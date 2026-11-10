@@ -1,0 +1,2340 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%233b82f6'/%3E%3Ccircle cx='16' cy='16' r='7' fill='none' stroke='%23111111' stroke-width='3'/%3E%3C/svg%3E">
+<title>文件操作 · Orca Mobile UI 原型</title>
+<style>
+  :root{
+    --bg:#111111;--page:#0a0a0b;--panel:#161618;--surface:#1c1c1f;--surface-2:#26262a;
+    --line:#2d2d31;--line-strong:#3f3f45;--text:#f4f4f5;--muted:#a1a1a7;--subtle:#77777f;
+    --accent:#3b82f6;--accent-ink:#ffffff;--accent-soft:rgba(59,130,246,.18);
+    --warn:#f59e0b;--warn-text:#fcd34d;--warn-soft:rgba(245,158,11,.12);
+    --danger:#ef4444;--danger-soft:rgba(239,68,68,.14);
+    --ok:#22c55e;--ok-soft:rgba(34,197,94,.14);
+    --sheet:#1a1a1d;--radius:6px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  html{color-scheme:dark}
+  body{margin:0;background:radial-gradient(1100px 700px at 12% -8%,#17171b 0%,var(--page) 58%) fixed;color:var(--text);font-family:var(--sans);-webkit-font-smoothing:antialiased;line-height:1.5}
+  .page{max-width:1480px;margin:0 auto;padding:54px 44px 110px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--accent);text-transform:uppercase;margin-bottom:12px}
+  h1{margin:0 0 14px;font-size:34px;line-height:1.15;letter-spacing:-.02em;font-weight:700}
+  .lede{margin:0;max-width:880px;color:var(--muted);font-size:15px;line-height:1.65}
+  .page-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:999px;padding:6px 11px;font-size:12px}
+  .pill strong{color:var(--text);font-weight:600}
+  .backlink{display:inline-flex;align-items:center;gap:6px;color:var(--muted);text-decoration:none;font-size:13px;margin-bottom:22px}
+  .backlink:hover{color:var(--text)}
+  .legend{display:flex;flex-wrap:wrap;gap:10px 20px;align-items:center;margin:30px 0 46px;padding:16px 18px;border:1px solid var(--line);border-radius:var(--radius);background:rgba(22,22,24,.7)}
+  .legend-item{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+  .swatch{width:14px;height:14px;border-radius:var(--radius);background:var(--accent);flex:none}
+  .swatch.soft{background:rgba(59,130,246,.34);box-shadow:inset 0 0 0 1px rgba(59,130,246,.55)}
+  .swatch.warn{background:var(--warn)}
+  .swatch.dim{background:#414147}
+  .swatch.sel{background:rgba(59,130,246,.42);box-shadow:inset 0 0 0 1px var(--accent)}
+  .devices{display:flex;flex-wrap:wrap;gap:64px 54px;align-items:flex-start}
+  .device{width:390px;margin:0}
+  .device-cap{display:flex;gap:12px;margin-bottom:16px;align-items:flex-start}
+  .state-num{flex:none;min-width:30px;height:30px;padding:0 7px;border-radius:var(--radius);background:var(--accent-soft);border:1px solid rgba(59,130,246,.36);color:#bfdbfe;font-family:var(--mono);font-size:12px;display:grid;place-items:center}
+  .device-cap h2{font-size:16px;margin:3px 0 5px;line-height:1.3}
+  .device-cap p{margin:0;color:var(--muted);font-size:12.5px;line-height:1.5;max-width:344px}
+  .phone{position:relative;width:390px;height:844px;background:#0b0b0c;border:1px solid #3d3d43;border-radius:44px;overflow:hidden;box-shadow:0 0 0 8px #0b0f14,0 0 0 9px #23252a,0 34px 90px rgba(0,0,0,.6);isolation:isolate}
+  .statusbar{position:relative;z-index:2;height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;color:#f4f4f5;font-size:12.5px;font-weight:650;background:var(--bg)}
+  .status-icons{display:flex;align-items:center;gap:7px}
+  .signal{display:inline-flex;align-items:flex-end;gap:2px;height:10px}
+  .signal i{width:3px;border-radius:1px;background:currentColor}
+  .signal i:nth-child(1){height:4px}.signal i:nth-child(2){height:6px}.signal i:nth-child(3){height:8px}.signal i:nth-child(4){height:10px}
+  .wifi{width:14px;height:10px;position:relative}
+  .wifi::before,.wifi::after{content:"";position:absolute;left:50%;transform:translateX(-50%);border:1.5px solid currentColor;border-bottom-color:transparent;border-left-color:transparent;border-right-color:transparent;border-radius:50%}
+  .wifi::before{width:14px;height:14px;top:-2px}
+  .wifi::after{width:7px;height:7px;top:2px}
+  .battery{width:22px;height:11px;border:1.5px solid currentColor;border-radius:3.5px;position:relative;padding:1.5px}
+  .battery::after{content:"";position:absolute;right:-4px;top:3px;width:2px;height:4px;border-radius:1px;background:currentColor}
+  .battery i{display:block;height:100%;width:74%;background:currentColor;border-radius:1.5px}
+  .screen{display:flex;flex-direction:column;height:calc(844px - 44px);overflow:hidden;position:relative;background:var(--bg)}
+  .home{position:absolute;z-index:55;bottom:8px;left:50%;transform:translateX(-50%);width:134px;height:5px;border-radius:99px;background:#65656d;pointer-events:none}
+  .appbar{flex:none;height:58px;display:flex;align-items:center;gap:6px;padding:0 8px;border-bottom:1px solid var(--line);background:var(--bg);position:relative;z-index:6}
+  .icon-btn{flex:none;width:44px;height:44px;border:0;border-radius:var(--radius);background:transparent;color:var(--text);display:grid;place-items:center;cursor:pointer;padding:0;position:relative}
+  .icon-btn:hover{background:var(--surface-2)}
+  .icon-btn.is-active{background:var(--surface-2);color:var(--accent)}
+  .icon-btn:disabled,.icon-btn[aria-disabled="true"]{color:var(--subtle);cursor:not-allowed;opacity:.55}
+  .icon-btn:focus-visible,.appbar-save:focus-visible,.tree-row:focus-visible,.chip:focus-visible,.sheet-action:focus-visible,.result:focus-visible,.download-banner button:focus-visible,.system-btn:focus-visible,.choice-row:focus-visible,.sel-callout button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .icon{display:block;width:22px;height:22px;flex:none}
+  .icon.sm{width:18px;height:18px}
+  .appbar-title{flex:1;min-width:0;text-align:center}
+  .appbar-title h2{margin:0;font-size:15px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .appbar-title p{margin:2px 0 0;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .appbar-save{flex:none;min-height:44px;padding:0 10px;border:0;border-radius:var(--radius);background:transparent;color:var(--accent);font:inherit;font-size:13px;font-weight:650;cursor:pointer}
+  .appbar-save:hover{background:var(--surface-2)}
+  .appbar-save:disabled{color:var(--subtle);cursor:not-allowed;opacity:.55}
+  .scrim{position:absolute;inset:0;z-index:20;background:rgba(0,0,0,.62);opacity:0;visibility:hidden;transition:opacity .24s ease,visibility .24s ease}
+  .scrim.is-open{opacity:1;visibility:visible}
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:30;background:var(--sheet);border-top:1px solid var(--line-strong);border-radius:var(--radius) var(--radius) 0 0;padding:8px 12px 30px;box-shadow:0 -30px 70px rgba(0,0,0,.55);transform:translateY(calc(100% + 20px));visibility:hidden;transition:transform .3s cubic-bezier(.2,.8,.2,1),visibility .3s;max-height:calc(844px - 76px);overflow:auto}
+  .sheet.is-open{transform:translateY(0);visibility:visible}
+  .grabber{width:38px;height:4px;border-radius:99px;background:#53535b;margin:4px auto 12px}
+  .sheet-head{display:flex;align-items:center;gap:12px;padding:4px 8px 12px}
+  .ico-badge{width:44px;height:44px;border-radius:var(--radius);background:var(--surface-2);color:var(--accent);display:grid;place-items:center;flex:none}
+  .sheet-title{font-size:16px;font-weight:650;line-height:1.25}
+  .sheet-sub{font-size:12px;color:var(--muted);margin-top:3px;word-break:break-all}
+  .sheet-list{display:flex;flex-direction:column;gap:2px}
+  .sheet-action{display:flex;align-items:center;gap:14px;width:100%;min-height:52px;padding:8px 12px;border:0;border-radius:var(--radius);background:transparent;color:var(--text);font:inherit;font-size:15px;text-align:left;cursor:pointer}
+  .sheet-action:hover{background:var(--surface-2)}
+  .sheet-action .icon{color:var(--muted)}
+  .sheet-action small{margin-left:auto;color:var(--subtle);font-size:11.5px;text-align:right}
+  .sheet-action:disabled{opacity:.52;cursor:not-allowed;background:transparent}
+  .sheet-action:disabled:hover{background:transparent}
+  .sheet-action:disabled .icon{color:var(--subtle)}
+  .sheet-action .action-note{display:block;font-size:11px;color:var(--subtle);font-weight:400;margin-top:2px}
+  .sheet-action.sheet-cancel{justify-content:center;font-weight:650;background:var(--surface-2);margin-top:8px}
+  .sheet-action.sheet-cancel:hover{background:#303036}
+  .sheet-action.is-danger{color:#fca5a5}
+  .sheet-action.is-danger .icon{color:#fca5a5}
+  .sheet-note{margin:6px 8px 2px;padding:10px 12px;border-radius:var(--radius);font-size:12px;line-height:1.45;display:flex;gap:8px}
+  .sheet-note.info{background:var(--accent-soft);border:1px solid rgba(59,130,246,.34);color:#c7dcf5}
+  .sheet-note.warn{background:var(--warn-soft);border:1px solid rgba(245,158,11,.3);color:var(--warn-text)}
+  .sheet-note.danger{background:var(--danger-soft);border:1px solid rgba(239,68,68,.34);color:#fecaca}
+  .sheet-note .icon{width:16px;height:16px;flex:none;margin-top:1px}
+  .sheet-note.info .icon{color:var(--accent)}
+  .sheet-note.warn .icon{color:var(--warn)}
+  .sheet-note.danger .icon{color:var(--danger)}
+  .sheet-progress{margin:2px 8px 10px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);font-size:12px;color:var(--muted)}
+  .sheet-progress strong{color:var(--text);font-weight:600}
+  .sheet-progress .bar{margin-top:8px}
+  .gesture-callout{position:absolute;left:50%;top:212px;transform:translateX(-50%);z-index:40;padding:8px 12px;border-radius:var(--radius);background:var(--accent-soft);border:1px solid rgba(59,130,246,.4);color:#dbeafe;font-size:11.5px;white-space:nowrap}
+  .toast{position:absolute;left:50%;bottom:104px;z-index:60;transform:translate(-50%,10px);max-width:330px;padding:10px 16px;border-radius:var(--radius);background:#2c2c31;border:1px solid var(--line-strong);color:var(--text);font-size:13px;text-align:center;opacity:0;visibility:hidden;transition:.2s;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .toast.show{opacity:1;visibility:visible;transform:translate(-50%,0)}
+  .searchwrap{flex:none;padding:10px 14px 8px;display:flex;gap:8px}
+  .searchfield{flex:1;display:flex;align-items:center;gap:8px;height:48px;padding:0 4px 0 12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);color:var(--subtle)}
+  .searchfield input{flex:1;min-width:0;border:0;background:transparent;color:var(--text);font:inherit;font-size:14px;outline:none}
+  .searchfield input::placeholder{color:var(--subtle)}
+  .searchfield .icon-btn{width:44px;height:44px;border-radius:var(--radius)}
+  .searchfield .icon-btn .icon{width:18px;height:18px}
+  .chips{flex:none;display:flex;gap:6px;padding:0 14px 10px;overflow-x:auto;scrollbar-width:none}
+  .chips::-webkit-scrollbar{display:none}
+  .chip{flex:none;min-width:44px;min-height:44px;padding:0 10px;border-radius:var(--radius);border:1px solid var(--line);background:var(--surface);color:var(--muted);font:inherit;font-size:12.5px;cursor:pointer}
+  .chip:hover{border-color:var(--line-strong);color:var(--text)}
+  .chip.is-active{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:650}
+  .hintbar{flex:none;display:flex;align-items:center;gap:8px;padding:9px 16px;background:#151517;border-top:1px solid var(--line);border-bottom:1px solid var(--line);color:var(--muted);font-size:11.5px}
+  .hintbar .icon{width:15px;height:15px;color:var(--accent)}
+  .hintbar strong{color:var(--text);font-weight:600}
+  .tree{flex:1;min-height:0;overflow-y:auto;padding:6px 8px 30px;scrollbar-width:thin;scrollbar-color:#3a3a40 transparent}
+  .tree-row{display:flex;align-items:center;gap:8px;min-height:52px;padding:0 4px 0 calc(8px + var(--depth,0) * 18px);border-radius:var(--radius);cursor:pointer;position:relative}
+  .tree-row:hover{background:var(--surface)}
+  .tree-row.is-target{background:var(--accent-soft);box-shadow:inset 0 0 0 1px rgba(59,130,246,.4)}
+  .tree-row.is-failing{background:var(--danger-soft);box-shadow:inset 0 0 0 1px rgba(239,68,68,.3)}
+  .tree-row .icon{width:19px;height:19px;color:var(--subtle)}
+  .tree-row .chev{width:15px;height:15px;color:var(--subtle)}
+  .tree-row .folder{color:#e3b56b}
+  .tree-row .file-code{color:#7fb5ff}
+  .tree-row .file-doc{color:#a6bacd}
+  .tree-row .file-img{color:#9b88f0}
+  .tree-row .file-bin{color:#8b97a4}
+  .tree-row .file-pdf{color:#f28b82}
+  .tree-row .file-media{color:#5fd996}
+  .tree-row .file-fail{color:#f87171}
+  .row-name{flex:1;min-width:0;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row-meta{font-size:10.5px;color:var(--subtle);white-space:nowrap}
+  .row-meta.flag{color:var(--warn-text);background:var(--warn-soft);border:1px solid rgba(245,158,11,.3);border-radius:var(--radius);padding:1px 6px}
+  .row-meta.fail{color:#fecaca;background:var(--danger-soft);border:1px solid rgba(239,68,68,.3);border-radius:var(--radius);padding:1px 6px}
+  .row-tag{font-size:10px;color:#bfdbfe;background:var(--accent-soft);border:1px solid rgba(59,130,246,.34);border-radius:var(--radius);padding:1px 6px;white-space:nowrap}
+  .row-menu-btn{flex:none;width:44px;height:44px;border:0;border-radius:var(--radius);background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer;padding:0}
+  .row-menu-btn:hover,.row-menu-btn:focus-visible{background:var(--surface-2);color:var(--text)}
+  .row-menu-btn .icon{width:20px;height:20px}
+  .empty{padding:34px 16px;text-align:center;color:var(--muted);font-size:13px}
+  .empty strong{display:block;color:var(--text);font-size:14px;margin-bottom:5px}
+  .notice{display:flex;gap:10px;margin:2px 14px 8px;padding:10px 12px;border-radius:var(--radius);background:var(--warn-soft);border:1px solid rgba(245,158,11,.3);color:var(--warn-text);font-size:11.5px;line-height:1.45;flex:none}
+  .notice .icon{width:16px;height:16px;color:var(--warn);margin-top:1px}
+  .notice.danger{background:var(--danger-soft);border-color:rgba(239,68,68,.32);color:#fecaca}
+  .notice.danger .icon{color:var(--danger)}
+  .results{flex:1;min-height:0;overflow-y:auto;padding:2px 8px 30px}
+  .result-head{padding:6px 16px 2px;font-size:12px;color:var(--text);font-weight:600}
+  .result-sub{padding:2px 16px 10px;font-size:11px;color:var(--muted);line-height:1.45}
+  .result{display:flex;gap:4px;align-items:center;width:100%;border-radius:var(--radius);background:transparent;color:var(--text);text-align:left;font:inherit}
+  .result:hover{background:var(--surface)}
+  .result-main{display:flex;gap:10px;align-items:center;flex:1;min-width:0;min-height:60px;padding:8px 4px 8px 10px;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;border-radius:var(--radius);overflow:hidden}
+  .result-main:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+  .result .icon{color:#7fb5ff}
+  .result-name{display:block;font-size:13.5px;font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .result-name mark{background:rgba(59,130,246,.3);color:#dbeafe;border-radius:3px;padding:0 1px}
+  .result-path{display:block;font-size:11px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .result-body{display:flex;flex-direction:column;min-width:0;flex:1;overflow:hidden}
+  .results-hint{padding:14px 16px;color:var(--subtle);font-size:11.5px;line-height:1.5}
+  .preview-view{position:absolute;inset:0;z-index:12;display:flex;flex-direction:column;background:var(--bg)}
+  .preview-body{flex:1;overflow-y:auto;padding:20px 20px 44px;font-size:14px;line-height:1.7;color:#dbe4ee}
+  .preview-meta{display:flex;align-items:center;gap:7px;margin-bottom:14px;font-size:11px;color:var(--muted)}
+  .preview-meta .icon{width:15px;height:15px;color:var(--subtle)}
+  .preview-body h1{font-size:25px;margin:0 0 14px;color:var(--text);letter-spacing:-.01em}
+  .preview-body h2{font-size:16px;margin:24px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--line);color:var(--text)}
+  .preview-body p{margin:0 0 12px;color:#c9c9ce}
+  .preview-body ul{margin:0 0 12px;padding-left:20px;color:#c9c9ce}
+  .preview-body li{margin:4px 0}
+  .preview-body code{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius);padding:1px 5px;color:#cfe0f2}
+  .preview-body pre{margin:0 0 14px;padding:12px 14px;background:#0d0d0f;border:1px solid var(--line);border-radius:var(--radius);overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.6;color:#c9d6e4}
+  .preview-body pre code{background:none;border:0;padding:0}
+  .image-preview,.media-preview{display:grid;place-items:center;min-height:300px;margin-top:8px;border:1px solid var(--line);border-radius:var(--radius);background:linear-gradient(145deg,#1c2430,#12161c);color:var(--muted);text-align:center}
+  .image-card{width:200px;height:140px;border-radius:var(--radius);background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:grid;place-items:center;color:#fff;font-weight:700;letter-spacing:.04em;box-shadow:0 18px 40px rgba(0,0,0,.35)}
+  .media-preview{flex-direction:column;gap:12px}
+  .play-btn{width:64px;height:64px;border-radius:50%;border:0;background:var(--accent);color:#fff;display:grid;place-items:center;cursor:pointer}
+  .play-btn .icon{width:28px;height:28px}
+  .error-panel{margin:40px 8px;padding:22px;border:1px solid rgba(239,68,68,.32);border-radius:var(--radius);background:var(--danger-soft);text-align:center}
+  .error-panel .error-icon{width:56px;height:56px;border-radius:50%;background:rgba(239,68,68,.18);color:#fca5a5;display:grid;place-items:center;margin:0 auto 14px}
+  .error-panel h2{margin:0 0 6px;font-size:18px;color:var(--text)}
+  .error-panel p{margin:0 0 18px;color:#fecaca;font-size:12.5px;line-height:1.55}
+  .error-panel.is-warn{border-color:rgba(245,158,11,.32);background:var(--warn-soft)}
+  .error-panel.is-warn .error-icon{background:rgba(245,158,11,.16);color:var(--warn)}
+  .error-panel.is-warn p{color:var(--warn-text)}
+  .error-actions{display:flex;flex-direction:column;gap:8px}
+  .btn{min-height:44px;padding:0 16px;border-radius:var(--radius);border:1px solid var(--line-strong);background:var(--surface-2);color:var(--text);font:inherit;font-size:14px;font-weight:600;cursor:pointer}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.ghost{background:transparent}
+  .download-banner{position:absolute;left:12px;right:12px;bottom:22px;z-index:14;padding:14px;border:1px solid var(--line-strong);border-radius:var(--radius);background:#1d1d21;box-shadow:0 18px 48px rgba(0,0,0,.5)}
+  .download-top{display:flex;gap:10px;align-items:center;font-size:13px;font-weight:600}
+  .download-top .icon{width:18px;height:18px;color:var(--accent)}
+  .download-top button{margin-left:auto;min-height:44px;background:transparent;border:0;color:var(--accent);font:inherit;font-size:12.5px;cursor:pointer;padding:0 8px}
+  .download-banner.is-error .download-top .icon{color:var(--danger)}
+  .download-banner.is-error .download-top button{color:#fca5a5}
+  .bar{height:6px;border-radius:99px;background:#333338;margin-top:11px;overflow:hidden}
+  .bar i{display:block;height:100%;width:68%;border-radius:99px;background:var(--accent)}
+  .download-sub{display:flex;justify-content:space-between;margin-top:8px;font-size:11px;color:var(--muted)}
+  .download-failure{margin-top:10px;font-size:11.5px;color:#fca5a5;line-height:1.45}
+  .inline-note{padding:0 16px 10px;font-size:11px;color:var(--subtle);line-height:1.5}
+  .phone.is-light .screen,.phone.is-light .statusbar{background:#f4f4f5;color:#18181b}
+  .phone.is-light .home{background:#18181b;opacity:.4}
+  .system-screen{display:flex;flex-direction:column;height:100%;background:#f4f4f5;color:#18181b}
+  .system-bar{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #d4d4d8}
+  .system-bar h2{margin:0;font-size:18px;font-weight:700}
+  .system-bar p{margin:1px 0 0;font-size:11px;color:#71717a}
+  .system-back{width:44px;height:44px;border:0;border-radius:var(--radius);background:transparent;color:#18181b;display:grid;place-items:center}
+  .system-note{margin:8px 16px;padding:10px 12px;border-radius:var(--radius);background:#e4e4e7;color:#3f3f46;font-size:11.5px;line-height:1.45}
+  .location-list{padding:8px 10px;overflow:auto}
+  .location{display:flex;align-items:center;gap:14px;width:100%;min-height:56px;padding:4px 12px;border:0;border-radius:var(--radius);background:transparent;color:#18181b;font:inherit;font-size:14.5px;text-align:left;cursor:pointer}
+  .location:hover{background:#e4e4e7}
+  .location .icon{width:22px;height:22px;color:#71717a}
+  .location.is-selected{background:#dbeafe;box-shadow:inset 0 0 0 1px rgba(59,130,246,.5)}
+  .location.is-selected .icon{color:#2563eb}
+  .location small{margin-left:auto;color:#71717a;font-size:11px}
+  .system-foot{margin-top:auto;padding:12px 16px 26px;border-top:1px solid #d4d4d8;display:flex;gap:10px}
+  .system-btn{flex:1;min-height:48px;border-radius:var(--radius);border:1px solid #d4d4d8;background:#fff;color:#18181b;font:inherit;font-size:14px;font-weight:650;cursor:pointer}
+  .system-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .saved-wrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:26px;text-align:center}
+  .saved-icon{width:72px;height:72px;border-radius:50%;background:var(--ok-soft);color:var(--ok);display:grid;place-items:center;margin-bottom:16px}
+  .saved-icon .icon{width:34px;height:34px}
+  .saved-wrap h2{margin:0 0 6px;font-size:20px}
+  .saved-wrap p{margin:0;color:#52525b;font-size:13px;line-height:1.55}
+  .saved-file{margin:18px 0 22px;padding:12px 16px;border:1px solid #d4d4d8;border-radius:var(--radius);background:#fff;font-size:12.5px;color:#3f3f46;word-break:break-all}
+  .saved-actions{display:flex;gap:10px;width:100%}
+  .saved-result{padding:4px 12px 14px;text-align:center}
+  .saved-result .saved-icon{width:58px;height:58px;margin:4px auto 12px}
+  .saved-result h3{margin:0 0 4px;font-size:17px;color:var(--text)}
+  .saved-result > p{margin:0;color:var(--muted);font-size:12px;line-height:1.5}
+  .saved-path{margin:12px 0;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);color:var(--text);font-size:12px;word-break:break-all;text-align:left}
+  .hash-row{display:flex;align-items:center;gap:8px;margin:0 0 12px;padding:8px 10px;border-radius:var(--radius);background:var(--ok-soft);border:1px solid rgba(34,197,94,.28);color:#bbf7d0;font-size:11px;text-align:left}
+  .hash-row .icon{width:15px;height:15px;color:var(--ok);flex:none}
+  .hash-row code{font-family:var(--mono);font-size:10.5px;color:#dcfce7}
+  .saved-actions .btn{flex:1}
+  .cache-panel{margin:4px 12px 12px;padding:14px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+  .cache-panel h3{margin:0 0 4px;font-size:14px}
+  .cache-panel p{margin:0;color:var(--muted);font-size:11.5px;line-height:1.5}
+  .cache-usage{display:flex;align-items:baseline;justify-content:space-between;margin:12px 0 8px;font-size:12px;color:var(--muted)}
+  .cache-usage strong{font-size:20px;color:var(--text)}
+  .settings-row{display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 16px;border-bottom:1px solid var(--line);font-size:13px}
+  .settings-row .icon{color:var(--muted)}
+  .settings-row small{margin-left:auto;color:var(--subtle);font-size:11px}
+  .chooser{position:absolute;left:0;right:0;bottom:0;z-index:30;background:#f4f4f5;color:#18181b;border-radius:var(--radius) var(--radius) 0 0;padding:8px 12px 26px;box-shadow:0 -30px 70px rgba(0,0,0,.55);max-height:calc(844px - 80px);overflow:auto}
+  .chooser .grabber{background:#a1a1aa}
+  .chooser-head{display:flex;align-items:center;gap:12px;padding:2px 8px 12px}
+  .chooser-head .ico-badge{background:#e4e4e7;color:#2563eb}
+  .chooser-title{font-size:16px;font-weight:650}
+  .chooser-sub{font-size:12px;color:#71717a;margin-top:2px}
+  .chooser-list{display:flex;flex-direction:column;gap:2px}
+  .chooser-row{display:flex;align-items:center;gap:14px;width:100%;min-height:56px;padding:6px 12px;border:0;border-radius:var(--radius);background:transparent;color:#18181b;font:inherit;font-size:14.5px;text-align:left;cursor:pointer}
+  .chooser-row:hover{background:#e4e4e7}
+  .chooser-row .app-dot{width:36px;height:36px;border-radius:var(--radius);display:grid;place-items:center;color:#fff;font-size:12px;font-weight:700;flex:none}
+  .chooser-row small{margin-left:auto;color:#71717a;font-size:11px}
+  .chooser-note{margin:8px 8px 2px;padding:10px 12px;border-radius:var(--radius);background:#fef3c7;border:1px solid #fcd34d;color:#78350f;font-size:11.5px;line-height:1.45}
+  .chooser-cancel{display:flex;align-items:center;justify-content:center;width:100%;min-height:52px;margin-top:8px;border-radius:var(--radius);background:#e4e4e7;border:0;color:#18181b;font:inherit;font-size:15px;font-weight:650;cursor:pointer}
+  .ios-sheet{position:absolute;left:0;right:0;bottom:0;z-index:30;background:#f4f4f5;color:#18181b;border-radius:var(--radius) var(--radius) 0 0;padding:8px 12px 26px;box-shadow:0 -30px 70px rgba(0,0,0,.55);max-height:calc(844px - 80px);overflow:auto}
+  .ios-sheet .grabber{background:#a1a1aa}
+  .ios-head{display:flex;align-items:center;gap:10px;padding:2px 8px 10px;border-bottom:1px solid #d4d4d8}
+  .ios-head h3{margin:0;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ios-head p{margin:1px 0 0;font-size:11px;color:#71717a}
+  .ios-airdrop{display:flex;gap:12px;padding:12px 8px;overflow-x:auto}
+  .airdrop-item{flex:none;width:64px;text-align:center;font-size:10px;color:#52525b}
+  .airdrop-avatar{width:46px;height:46px;border-radius:50%;background:#dbeafe;color:#2563eb;display:grid;place-items:center;margin:0 auto 5px}
+  .ios-apps{display:flex;gap:14px;padding:8px;overflow-x:auto;border-bottom:1px solid #d4d4d8}
+  .ios-app{flex:none;width:56px;text-align:center;font-size:10px;color:#52525b}
+  .ios-app span{display:grid;place-items:center;width:46px;height:46px;border-radius:12px;margin:0 auto 5px;color:#fff;font-weight:700;font-size:12px}
+  .ios-actions{display:flex;flex-direction:column;gap:2px;padding:8px 0}
+  .ios-action{display:flex;align-items:center;gap:12px;min-height:48px;padding:6px 10px;border:0;border-radius:var(--radius);background:transparent;color:#18181b;font:inherit;font-size:14px;text-align:left;cursor:pointer}
+  .ios-action:hover{background:#e4e4e7}
+  .ios-action .icon{color:#2563eb}
+  .ios-action.is-primary{background:#dbeafe;box-shadow:inset 0 0 0 1px rgba(59,130,246,.35);font-weight:650}
+  .ios-note{padding:8px 10px 2px;font-size:11px;color:#71717a;line-height:1.45}
+  .site-select{position:relative;background:#fbfcfe;color:#101820;padding:22px 20px 30px;font-family:var(--sans)}
+  .site-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:26px}
+  .brand{display:flex;align-items:center;gap:8px;font-weight:750;font-size:15px;color:#0d1620}
+  .brand-dot{width:18px;height:18px;border-radius:var(--radius);background:#2563eb;box-shadow:inset 0 0 0 4px #dbe7ff}
+  .site-links{font-size:11px;color:#5b6b7d}
+  .site-hero h3{margin:0 0 10px;font-size:24px;line-height:1.25;letter-spacing:-.02em;color:#0b1420}
+  .site-hero p{margin:0 0 16px;font-size:12.5px;line-height:1.7;color:#4b5b6d}
+  .sel{background:rgba(59,130,246,.3);box-shadow:0 0 0 1px rgba(59,130,246,.55);border-radius:2px}
+  .sel-wrap{position:relative;display:inline}
+  .sel-handle{position:absolute;width:3px;height:22px;background:var(--accent);border-radius:2px}
+  .sel-handle::before{content:"";position:absolute;left:50%;top:-7px;transform:translateX(-50%);width:11px;height:11px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px #fbfcfe}
+  .sel-handle.start{left:-3px;top:-2px}
+  .sel-handle.end{right:-3px;top:18px}
+  .sel-callout{position:absolute;bottom:calc(100% + 10px);left:-8px;z-index:5;display:flex;align-items:center;border-radius:var(--radius);background:#f4f4f5;color:#18181b;box-shadow:0 10px 30px rgba(0,0,0,.28);overflow:hidden;white-space:nowrap}
+  .site-hero p.sel-paragraph{margin-top:104px}
+  .sel-callout button{flex:none;min-height:44px;padding:0 16px;border:0;background:transparent;color:#18181b;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .sel-callout button + button{border-left:1px solid #d4d4d8}
+  .sel-callout button:hover{background:#e4e4e7}
+  @media (max-width:720px){.page{padding:34px 20px 80px}h1{font-size:29px}}
+  @media (prefers-reduced-motion: reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M20 20l-3.6-3.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><path d="M5 12h.01M12 12h.01M19 12h.01" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M14 3v5h5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6H9l2 2h8.5A1.5 1.5 0 0 1 21 9.5v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 6 12 6s9.5 6 9.5 6S18 18 12 18 2.5 12 2.5 12z" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4l9 16H3z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 10v4M12 17h.01" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="8.5" cy="9.5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M4 17l5-5 4 4 2-2 5 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+    <symbol id="i-save" viewBox="0 0 24 24"><path d="M12 3v11M8 10l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z" fill="currentColor"/></symbol>
+    <symbol id="i-retry" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 6.7M20 4v7h-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 7.6-8 9-4.6-1.4-8-4.5-8-9V6z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="M8.5 6.5L3 12l5.5 5.5M15.5 6.5L21 12l-5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M16 10l5-3v10l-5-3z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+  </defs>
+</svg>
+
+<main class="page">
+  <a class="backlink" href="index.html">
+    <svg class="icon sm" aria-hidden="true"><use href="#i-chevron-left"></use></svg>
+    所有原型
+  </a>
+  <div class="eyebrow">Orca Mobile · File Browser</div>
+  <h1>文件操作、搜索与筛选</h1>
+  <p class="lede">点按文件行进入预览；长按或行尾「…」打开底部 ActionSheet。Save to phone 是唯一的保存动作：Android 走 SAF 目录选择器，iOS 走 Save to Files；Open with 使用 Android ACTION_VIEW / iOS 分享面板。菜单没有独立的下载动作，也没有 Orca 浏览器动作。</p>
+  <div class="page-meta">
+    <span class="pill"><strong>Tap</strong> = Preview</span>
+    <span class="pill"><strong>Long-press</strong> = Actions</span>
+    <span class="pill"><strong>Theme</strong> #111111 · #3b82f6 · 6px</span>
+    <span class="pill"><strong>Touch</strong> 44×44 / hitSlop</span>
+  </div>
+
+  <section class="legend" aria-label="图例">
+    <span class="legend-item"><span class="swatch soft"></span>当前文件 / 长按目标</span>
+    <span class="legend-item"><span class="swatch dim"></span>不可预览（仍可长按）</span>
+    <span class="legend-item"><span class="swatch warn"></span>能力限制 / 回退</span>
+    <span class="legend-item"><span class="swatch sel"></span>文字选区</span>
+    <span class="legend-item">框架内 UI 文案为英文；中文仅用于页面注解</span>
+  </section>
+
+  <section class="devices">
+    <!-- 01 : interactive tree -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">01</span>
+        <div>
+          <h2>文件树 · 默认（可交互）</h2>
+          <p>点按文件行进入预览；长按 500 ms 或行尾「…」打开操作菜单。列表头部没有 More。筛选时未加载目录保留并标 “not loaded”，已加载空目录隐藏，匹配文件的祖先目录保留。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-tree" role="group" aria-label="文件树默认状态" data-interactive="true" data-platform="android">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>Files</h2><p>orca-mobile · main</p></div>
+            <span style="width:44px" aria-hidden="true"></span>
+          </header>
+          <div class="searchwrap">
+            <label class="searchfield">
+              <svg class="icon sm" aria-hidden="true"><use href="#i-search"></use></svg>
+              <input type="text" data-search-input placeholder="Search files" aria-label="Search files by name or path" autocomplete="off">
+              <button class="icon-btn" type="button" aria-label="Clear search" data-clear-search hidden><svg class="icon"><use href="#i-x"></use></svg></button>
+            </label>
+          </div>
+          <div class="chips" role="group" aria-label="Filter by file type">
+            <button class="chip is-active" type="button" data-chip="all" aria-pressed="true">All</button>
+            <button class="chip" type="button" data-chip="code">Code</button>
+            <button class="chip" type="button" data-chip="docs">Docs</button>
+            <button class="chip" type="button" data-chip="media">Media</button>
+            <button class="chip" type="button" data-chip="images">Images</button>
+            <button class="chip" type="button" data-chip="other">Other</button>
+          </div>
+          <div class="hintbar">
+            <svg class="icon" aria-hidden="true"><use href="#i-link"></use></svg>
+            <span><strong data-filter-count>12 items</strong> · <span data-filter-hint>Tap to preview · long-press or … for actions</span></span>
+          </div>
+          <div class="tree" data-tree role="tree" aria-label="src directory">
+            <div class="tree-row" data-file-row data-kind="folder" data-name="src" data-path="src" role="treeitem" aria-expanded="true" tabindex="0" style="--depth:0">
+              <svg class="icon chev" aria-hidden="true"><use href="#i-chevron-down"></use></svg>
+              <svg class="icon folder" aria-hidden="true"><use href="#i-folder"></use></svg>
+              <span class="row-name">src</span>
+              <button class="row-menu-btn" type="button" data-row-menu aria-label="Actions for src"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="tree-row" data-file-row data-kind="folder" data-name="components" data-path="src/components" role="treeitem" aria-expanded="true" tabindex="0" style="--depth:1">
+              <svg class="icon chev" aria-hidden="true"><use href="#i-chevron-down"></use></svg>
+              <svg class="icon folder" aria-hidden="true"><use href="#i-folder"></use></svg>
+              <span class="row-name">components</span>
+              <button class="row-menu-btn" type="button" data-row-menu aria-label="Actions for components"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="tree-row" data-file-row data-kind="code" data-name="MobileFilePreviewScreen.tsx" data-path="src/components/MobileFilePreviewScreen.tsx" data-size="8.1 KB" role="button" tabindex="0" style="--depth:2">
+              <span style="width:15px" aria-hidden="true"></span>
+              <svg class="icon file-code" aria-hidden="true"><use href="#i-file"></use></svg>
+              <span class="row-name">MobileFilePreviewScreen.tsx</span>
+              <button class="row-menu-btn" type="button" data-row-menu aria-label="Actions for MobileFilePreviewScreen.tsx"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="tree-row" data-file-row data-kind="code" data-name="MobileHtmlPreview.tsx" data-path="src/components/MobileHtmlPreview.tsx" data-size="3.6 KB" role="button" tabindex="0" style="--depth:2">
+              <span style="width:15px" aria-hidden="true"></span>
+              <svg class="icon file-code" aria-hidden="true"><use href="#i-file"></use></svg>
+              <span class="row-name">MobileHtmlPreview.tsx</span>
+              <button class="row-menu-btn" type="button" data-row-menu aria-label="Actions for MobileHtmlPreview.tsx"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="tree-row" data-file-row data-kind="folder" data-name="files" data-path="src/files" role="treeitem" aria-expanded="true" tabindex="0" style="--depth:1">
+              <svg class="icon chev" aria-hidden="true"><use href="#i-chevron-down"></use></svg>
+              <svg class="icon folder" aria-hidden="true"><use href="#i-folder"></use></svg>
+              <span class="row-name">files</span>
+              <button class="row-menu-btn" type="button" data-row-menu aria-label="Actions for files"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="tree-row" data-file-row data-kind="code" data-name="mobile-file-explorer-row.tsx" data-path="src/files/mobile-file-explorer-row.tsx" data-size="2.9 KB" role="button" tabindex="0" style="--depth:2">
+              <span style="width:15px" aria-hidden="true"></span>
+              <svg class="icon file-code" aria-hidden="true"><use href="#i-file"></use></svg>
+              <span class="row-name">mobile-file-explorer-row.tsx</span>
+              <button class="row-menu-btn" type="button" data-row-menu aria-label="Actions for mobile-file-explorer-row.tsx"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="tree-row is-target" data-file-row data-kind="docs" data-name="README.md" data-path="src/files/README.md" data-size="2.4 KB" role="button" tabindex="0" style="--depth:2">
+              <span style="width:15px" aria-hidden="true"></span>
+              <svg class="icon file-doc" aria-hidden="true"><use href="#i-file"></use></svg>
+              <span class="row-name">README.md</span>
+              <span class="row-tag">long-press</span>
+              <button class="row-menu-btn" type="button" data-row-menu aria-label="Actions for README.md"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="tree-row" data-file-row data-kind="image" data-name="logo.png" data-path="src/files/logo.png" data-size="18 KB" role="button" tabindex="0" style="--depth:2">
+              <span style="width:15px" aria-hidden="true"></span>
+              <svg class="icon file-img" aria-hidden="true"><use href="#i-image"></use></svg>
+              <span class="row-name">logo.png</span>
+              <button class="row-menu-btn" type="button" data-row-menu aria-label="Actions for logo.png"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="tree-row" data-file-row data-kind="binary" data-name="archive.zip" data-path="src/files/archive.zip" data-size="18.2 MB" role="button" tabindex="0" style="--depth:2">
+              <span style="width:15px" aria-hidden="true"></span>
+              <svg class="icon file-bin" aria-hidden="true"><use href="#i-file"></use></svg>
+              <span class="row-name">archive.zip</span>
+              <span class="row-meta">No preview</span>
+              <button class="row-menu-btn" type="button" data-row-menu aria-label="Actions for archive.zip"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="tree-row" data-file-row data-kind="pdf" data-name="notes.pdf" data-path="src/files/notes.pdf" data-size="1.8 MB" role="button" tabindex="0" style="--depth:2">
+              <span style="width:15px" aria-hidden="true"></span>
+              <svg class="icon file-pdf" aria-hidden="true"><use href="#i-file"></use></svg>
+              <span class="row-name">notes.pdf</span>
+              <span class="row-meta">No preview</span>
+              <button class="row-menu-btn" type="button" data-row-menu aria-label="Actions for notes.pdf"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="tree-row" data-file-row data-kind="code" data-name=".env" data-path="src/files/.env" data-size="1.2 KB" data-fail="eacces" role="button" tabindex="0" style="--depth:2">
+              <span style="width:15px" aria-hidden="true"></span>
+              <svg class="icon file-code" aria-hidden="true"><use href="#i-file"></use></svg>
+              <span class="row-name">.env</span>
+              <span class="row-meta fail" data-row-failure hidden>Read failed</span>
+              <button class="row-menu-btn" type="button" data-row-menu aria-label="Actions for .env"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="tree-row" data-file-row data-kind="folder" data-name="legacy" data-path="src/legacy" data-unloaded="true" role="treeitem" aria-expanded="false" tabindex="0" style="--depth:1">
+              <svg class="icon chev" aria-hidden="true"><use href="#i-chevron-down"></use></svg>
+              <svg class="icon folder" aria-hidden="true"><use href="#i-folder"></use></svg>
+              <span class="row-name">legacy</span>
+              <span class="row-meta flag" data-unloaded-note hidden>not loaded</span>
+              <button class="row-menu-btn" type="button" data-row-menu aria-label="Actions for legacy"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="tree-row" data-file-row data-kind="folder" data-name="session" data-path="src/session" role="treeitem" aria-expanded="true" tabindex="0" style="--depth:1">
+              <svg class="icon chev" aria-hidden="true"><use href="#i-chevron-down"></use></svg>
+              <svg class="icon folder" aria-hidden="true"><use href="#i-folder"></use></svg>
+              <span class="row-name">session</span>
+              <button class="row-menu-btn" type="button" data-row-menu aria-label="Actions for session"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="tree-row" data-file-row data-kind="media" data-name="recording.mp4" data-path="src/session/recording.mp4" data-size="42.6 MB" role="button" tabindex="0" style="--depth:2">
+              <span style="width:15px" aria-hidden="true"></span>
+              <svg class="icon file-media" aria-hidden="true"><use href="#i-video"></use></svg>
+              <span class="row-name">recording.mp4</span>
+              <button class="row-menu-btn" type="button" data-row-menu aria-label="Actions for recording.mp4"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="tree-row" data-file-row data-kind="binary" data-name="backup.tar" data-path="src/files/backup.tar" data-size="300 MB" role="button" tabindex="0" style="--depth:2">
+              <span style="width:15px" aria-hidden="true"></span>
+              <svg class="icon file-bin" aria-hidden="true"><use href="#i-file"></use></svg>
+              <span class="row-name">backup.tar</span>
+              <span class="row-meta">No preview</span>
+              <button class="row-menu-btn" type="button" data-row-menu aria-label="Actions for backup.tar"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="tree-row" data-file-row data-kind="code" data-name="package.json" data-path="package.json" data-size="1.8 KB" role="button" tabindex="0" style="--depth:0">
+              <span style="width:15px" aria-hidden="true"></span>
+              <svg class="icon file-code" aria-hidden="true"><use href="#i-file"></use></svg>
+              <span class="row-name">package.json</span>
+              <button class="row-menu-btn" type="button" data-row-menu aria-label="Actions for package.json"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="tree-row" data-file-row data-kind="image" data-name="screenshot.png" data-path="docs/screenshot.png" data-size="240 KB" role="button" tabindex="0" style="--depth:0">
+              <span style="width:15px" aria-hidden="true"></span>
+              <svg class="icon file-img" aria-hidden="true"><use href="#i-image"></use></svg>
+              <span class="row-name">screenshot.png</span>
+              <button class="row-menu-btn" type="button" data-row-menu aria-label="Actions for screenshot.png"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="empty" data-empty hidden><strong>No matching files</strong>Try another query or clear the type filter.</div>
+          </div>
+
+          <div class="preview-view" data-preview-view hidden>
+            <header class="appbar">
+              <button class="icon-btn" type="button" data-preview-back aria-label="Back to files"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+              <div class="appbar-title"><h2 data-preview-name>README.md</h2><p data-preview-path>src/files/README.md</p></div>
+              <button class="icon-btn" type="button" data-preview-more aria-label="File actions" aria-haspopup="dialog"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </header>
+            <div class="preview-body" data-preview-body></div>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="scrim" data-close></div>
+        <div class="sheet" data-file-sheet role="dialog" aria-modal="true" aria-label="File actions">
+          <div class="grabber"></div>
+          <div class="sheet-head">
+            <span class="ico-badge"><svg class="icon"><use href="#i-file"></use></svg></span>
+            <div><div class="sheet-title" data-sheet-name>README.md</div><div class="sheet-sub" data-sheet-path>src/files/README.md · 2.4 KB</div></div>
+          </div>
+          <div class="sheet-note info" data-sheet-note hidden></div>
+          <div class="sheet-list">
+            <button class="sheet-action" type="button" data-for="preview"><svg class="icon"><use href="#i-eye"></use></svg>Preview</button>
+            <button class="sheet-action" type="button" data-for="save"><svg class="icon"><use href="#i-save"></use></svg>Save to phone<small data-save-hint>Folder picker</small></button>
+            <button class="sheet-action" type="button" data-for="open"><svg class="icon"><use href="#i-external"></use></svg>Open with<small data-open-hint>System chooser</small></button>
+            <button class="sheet-action" type="button" data-for="contents"><svg class="icon"><use href="#i-copy"></use></svg>Copy content<small data-contents-hint></small></button>
+            <button class="sheet-action" type="button" data-for="retry" hidden><svg class="icon"><use href="#i-retry"></use></svg>Retry read</button>
+            <button class="sheet-action" type="button" data-for="copy-path"><svg class="icon"><use href="#i-link"></use></svg>Copy path<small data-path-label></small></button>
+          </div>
+          <button class="sheet-action sheet-cancel" type="button" data-close>Cancel</button>
+        </div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 02 : filtered tree, Code -->
+    <figure class="device filter-demo">
+      <figcaption class="device-cap">
+        <span class="state-num">02</span>
+        <div>
+          <h2>筛选 · Code</h2>
+          <p>筛选只隐藏不匹配的文件；匹配文件的祖先目录保留，已加载且无匹配后代的目录隐藏。未加载目录（legacy）始终保留并标 “not loaded”。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-filter" role="group" aria-label="Code 筛选后的文件树">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>Files</h2><p>orca-mobile · main</p></div>
+            <span style="width:44px" aria-hidden="true"></span>
+          </header>
+          <div class="searchwrap">
+            <label class="searchfield">
+              <svg class="icon sm" aria-hidden="true"><use href="#i-search"></use></svg>
+              <input type="text" placeholder="Search files" aria-label="Search files" readonly>
+            </label>
+          </div>
+          <div class="chips" role="group" aria-label="Filter by file type">
+            <button class="chip" type="button">All</button>
+            <button class="chip is-active" type="button" aria-pressed="true">Code</button>
+            <button class="chip" type="button">Docs</button>
+            <button class="chip" type="button">Media</button>
+            <button class="chip" type="button">Images</button>
+            <button class="chip" type="button">Other</button>
+          </div>
+          <div class="hintbar">
+            <svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
+            <span><strong>5 items</strong> · parent folders kept; legacy is not loaded</span>
+          </div>
+          <div class="tree" role="tree" aria-label="Filtered src directory">
+            <div class="tree-row" role="treeitem" aria-expanded="true" tabindex="0" style="--depth:0">
+              <svg class="icon chev" aria-hidden="true"><use href="#i-chevron-down"></use></svg>
+              <svg class="icon folder" aria-hidden="true"><use href="#i-folder"></use></svg>
+              <span class="row-name">src</span>
+              <span class="row-meta">parent</span>
+            </div>
+            <div class="tree-row" role="treeitem" aria-expanded="true" tabindex="0" style="--depth:1">
+              <svg class="icon chev" aria-hidden="true"><use href="#i-chevron-down"></use></svg>
+              <svg class="icon folder" aria-hidden="true"><use href="#i-folder"></use></svg>
+              <span class="row-name">components</span>
+              <span class="row-meta">parent</span>
+            </div>
+            <div class="tree-row" role="button" tabindex="0" style="--depth:2">
+              <span style="width:15px" aria-hidden="true"></span>
+              <svg class="icon file-code" aria-hidden="true"><use href="#i-file"></use></svg>
+              <span class="row-name">MobileFilePreviewScreen.tsx</span>
+              <button class="row-menu-btn" type="button" aria-label="Actions for MobileFilePreviewScreen.tsx"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="tree-row" role="button" tabindex="0" style="--depth:2">
+              <span style="width:15px" aria-hidden="true"></span>
+              <svg class="icon file-code" aria-hidden="true"><use href="#i-file"></use></svg>
+              <span class="row-name">MobileHtmlPreview.tsx</span>
+              <button class="row-menu-btn" type="button" aria-label="Actions for MobileHtmlPreview.tsx"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="tree-row" role="treeitem" aria-expanded="true" tabindex="0" style="--depth:1">
+              <svg class="icon chev" aria-hidden="true"><use href="#i-chevron-down"></use></svg>
+              <svg class="icon folder" aria-hidden="true"><use href="#i-folder"></use></svg>
+              <span class="row-name">files</span>
+              <span class="row-meta">parent</span>
+            </div>
+            <div class="tree-row" role="button" tabindex="0" style="--depth:2">
+              <span style="width:15px" aria-hidden="true"></span>
+              <svg class="icon file-code" aria-hidden="true"><use href="#i-file"></use></svg>
+              <span class="row-name">mobile-file-explorer-row.tsx</span>
+              <button class="row-menu-btn" type="button" aria-label="Actions for mobile-file-explorer-row.tsx"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="tree-row" role="button" tabindex="0" style="--depth:2">
+              <span style="width:15px" aria-hidden="true"></span>
+              <svg class="icon file-code" aria-hidden="true"><use href="#i-file"></use></svg>
+              <span class="row-name">.env</span>
+              <button class="row-menu-btn" type="button" aria-label="Actions for .env"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="tree-row" role="treeitem" aria-expanded="false" tabindex="0" style="--depth:1">
+              <svg class="icon chev" aria-hidden="true"><use href="#i-chevron-down"></use></svg>
+              <svg class="icon folder" aria-hidden="true"><use href="#i-folder"></use></svg>
+              <span class="row-name">legacy</span>
+              <span class="row-meta flag">not loaded</span>
+              <button class="row-menu-btn" type="button" aria-label="Actions for legacy"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="tree-row" role="button" tabindex="0" style="--depth:0">
+              <span style="width:15px" aria-hidden="true"></span>
+              <svg class="icon file-code" aria-hidden="true"><use href="#i-file"></use></svg>
+              <span class="row-name">package.json</span>
+              <button class="row-menu-btn" type="button" aria-label="Actions for package.json"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+          </div>
+          <p class="results-hint">“session” is hidden because it is loaded and has no Code files. “components” and “files” remain as ancestors. “legacy” stays visible because its contents are not loaded.</p>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 02b : filtered tree, Docs + PDF -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">02b</span>
+        <div>
+          <h2>筛选 · Docs（PDF 归 Docs）</h2>
+          <p>Docs 包含 md/txt/pdf/doc/docx。PDF 与文档一起显示；已加载的空目录隐藏，未加载目录保留并标 “not loaded”。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-filter-docs" role="group" aria-label="Docs 筛选后的文件树">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>Files</h2><p>orca-mobile · main</p></div>
+            <span style="width:44px" aria-hidden="true"></span>
+          </header>
+          <div class="searchwrap">
+            <label class="searchfield">
+              <svg class="icon sm" aria-hidden="true"><use href="#i-search"></use></svg>
+              <input type="text" placeholder="Search files" aria-label="Search files" readonly>
+            </label>
+          </div>
+          <div class="chips" role="group" aria-label="Filter by file type">
+            <button class="chip" type="button">All</button>
+            <button class="chip" type="button">Code</button>
+            <button class="chip is-active" type="button" aria-pressed="true">Docs</button>
+            <button class="chip" type="button">Media</button>
+            <button class="chip" type="button">Images</button>
+            <button class="chip" type="button">Other</button>
+          </div>
+          <div class="hintbar">
+            <svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
+            <span><strong>2 files</strong> · PDF belongs to Docs</span>
+          </div>
+          <div class="tree" role="tree" aria-label="Docs filter">
+            <div class="tree-row" role="treeitem" aria-expanded="true" tabindex="0" style="--depth:0">
+              <svg class="icon chev" aria-hidden="true"><use href="#i-chevron-down"></use></svg>
+              <svg class="icon folder" aria-hidden="true"><use href="#i-folder"></use></svg>
+              <span class="row-name">src</span>
+              <span class="row-meta">parent</span>
+            </div>
+            <div class="tree-row" role="treeitem" aria-expanded="true" tabindex="0" style="--depth:1">
+              <svg class="icon chev" aria-hidden="true"><use href="#i-chevron-down"></use></svg>
+              <svg class="icon folder" aria-hidden="true"><use href="#i-folder"></use></svg>
+              <span class="row-name">files</span>
+              <span class="row-meta">parent</span>
+            </div>
+            <div class="tree-row" role="button" tabindex="0" style="--depth:2">
+              <span style="width:15px" aria-hidden="true"></span>
+              <svg class="icon file-doc" aria-hidden="true"><use href="#i-file"></use></svg>
+              <span class="row-name">README.md</span>
+              <button class="row-menu-btn" type="button" aria-label="Actions for README.md"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="tree-row" role="button" tabindex="0" style="--depth:2">
+              <span style="width:15px" aria-hidden="true"></span>
+              <svg class="icon file-pdf" aria-hidden="true"><use href="#i-file"></use></svg>
+              <span class="row-name">notes.pdf</span>
+              <span class="row-meta">Docs</span>
+              <button class="row-menu-btn" type="button" aria-label="Actions for notes.pdf"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="tree-row" role="treeitem" aria-expanded="false" tabindex="0" style="--depth:1">
+              <svg class="icon chev" aria-hidden="true"><use href="#i-chevron-down"></use></svg>
+              <svg class="icon folder" aria-hidden="true"><use href="#i-folder"></use></svg>
+              <span class="row-name">legacy</span>
+              <span class="row-meta flag">not loaded</span>
+              <button class="row-menu-btn" type="button" aria-label="Actions for legacy"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+          </div>
+          <p class="results-hint">PDF is filtered as a Docs file. “components” and “session” are loaded and contain no Docs, so they are hidden. “legacy” is kept because it is not loaded.</p>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 03 : text action sheet -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">03</span>
+        <div>
+          <h2>长按文本文件 · 操作菜单</h2>
+          <p>固定顺序：Preview、Save to phone、Open with、Copy content、Copy path、Cancel。没有独立的下载动作。长按后释放只打开这个 sheet，不会进入预览。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-sheet" role="group" aria-label="文本文件操作菜单" data-platform="android">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>Files</h2><p>orca-mobile · main</p></div>
+            <span style="width:44px" aria-hidden="true"></span>
+          </header>
+          <div class="searchwrap">
+            <label class="searchfield"><svg class="icon sm" aria-hidden="true"><use href="#i-search"></use></svg><input type="text" placeholder="Search files" aria-label="Search files" readonly></label>
+          </div>
+          <div class="chips" role="group" aria-label="Filter by file type">
+            <button class="chip is-active" type="button">All</button><button class="chip" type="button">Code</button><button class="chip" type="button">Docs</button><button class="chip" type="button">Media</button><button class="chip" type="button">Images</button><button class="chip" type="button">Other</button>
+          </div>
+          <div class="tree" aria-hidden="true">
+            <div class="tree-row" style="--depth:0"><svg class="icon chev"><use href="#i-chevron-down"></use></svg><svg class="icon folder"><use href="#i-folder"></use></svg><span class="row-name">src</span></div>
+            <div class="tree-row" style="--depth:1"><svg class="icon chev"><use href="#i-chevron-down"></use></svg><svg class="icon folder"><use href="#i-folder"></use></svg><span class="row-name">files</span></div>
+            <div class="tree-row is-target" style="--depth:2"><span style="width:15px"></span><svg class="icon file-doc"><use href="#i-file"></use></svg><span class="row-name">README.md</span><span class="row-tag">long-press</span></div>
+            <div class="tree-row" style="--depth:2"><span style="width:15px"></span><svg class="icon file-code"><use href="#i-file"></use></svg><span class="row-name">mobile-file-explorer-row.tsx</span></div>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="gesture-callout" role="status">Long-press released · Preview not opened</div>
+        <div class="scrim is-open" data-close></div>
+        <div class="sheet is-open" role="dialog" aria-modal="true" aria-label="Actions for README.md">
+          <div class="grabber"></div>
+          <div class="sheet-head">
+            <span class="ico-badge"><svg class="icon"><use href="#i-file"></use></svg></span>
+            <div><div class="sheet-title">README.md</div><div class="sheet-sub">src/files/README.md · 2.4 KB</div></div>
+          </div>
+          <div class="sheet-note info"><svg class="icon"><use href="#i-alert"></use></svg><span>Copy content reads the file on demand (up to 512 KB). Larger worktree text is truncated at 512 KB and the copy says so.</span></div>
+          <div class="sheet-list">
+            <button class="sheet-action" type="button" data-action="preview" data-toast="Opening preview…"><svg class="icon"><use href="#i-eye"></use></svg>Preview</button>
+            <button class="sheet-action" type="button" data-action="save" data-toast="Saving README.md to phone…"><svg class="icon"><use href="#i-save"></use></svg>Save to phone<small>Folder picker</small></button>
+            <button class="sheet-action" type="button" data-action="open" data-toast="Opening the system chooser…"><svg class="icon"><use href="#i-external"></use></svg>Open with<small>System chooser</small></button>
+            <button class="sheet-action" type="button" data-action="contents" data-toast="Copied content"><svg class="icon"><use href="#i-copy"></use></svg>Copy content<small>Reads on demand (≤512 KB)</small></button>
+            <button class="sheet-action" type="button" data-action="copy-path" data-toast="Copied path"><svg class="icon"><use href="#i-link"></use></svg>Copy path<small>src/files/README.md</small></button>
+          </div>
+          <button class="sheet-action sheet-cancel" type="button" data-close>Cancel</button>
+        </div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 04 : image action sheet -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">04</span>
+        <div>
+          <h2>图片 · 操作菜单</h2>
+          <p>图片可预览，但没有 Copy content：Preview、Save to phone、Open with、Copy path、Cancel。Save to phone 写入用户选择的目录。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-image" role="group" aria-label="图片文件操作菜单" data-platform="android">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>logo.png</h2><p>src/files/logo.png · 18 KB</p></div>
+            <button class="icon-btn" type="button" aria-label="File actions" data-toast="Action sheet is already open"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="preview-body">
+            <div class="preview-meta"><svg class="icon"><use href="#i-image"></use></svg> Image · 18 KB · pinch to zoom</div>
+            <div class="image-preview"><div class="image-card">ORCA</div></div>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="scrim is-open" data-close></div>
+        <div class="sheet is-open" role="dialog" aria-modal="true" aria-label="Actions for logo.png">
+          <div class="grabber"></div>
+          <div class="sheet-head">
+            <span class="ico-badge"><svg class="icon"><use href="#i-image"></use></svg></span>
+            <div><div class="sheet-title">logo.png</div><div class="sheet-sub">src/files/logo.png · 18 KB</div></div>
+          </div>
+          <div class="sheet-note info"><svg class="icon"><use href="#i-alert"></use></svg><span>Image preview opens full screen. Save to phone writes a copy to the folder you choose.</span></div>
+          <div class="sheet-list">
+            <button class="sheet-action" type="button" data-action="preview" data-toast="Opening preview…"><svg class="icon"><use href="#i-eye"></use></svg>Preview</button>
+            <button class="sheet-action" type="button" data-action="save" data-toast="Saving logo.png to phone…"><svg class="icon"><use href="#i-save"></use></svg>Save to phone<small>Folder picker</small></button>
+            <button class="sheet-action" type="button" data-action="open" data-toast="Opening the system chooser…"><svg class="icon"><use href="#i-external"></use></svg>Open with<small>System chooser</small></button>
+            <button class="sheet-action" type="button" data-action="copy-path" data-toast="Copied path"><svg class="icon"><use href="#i-link"></use></svg>Copy path<small>src/files/logo.png</small></button>
+          </div>
+          <button class="sheet-action sheet-cancel" type="button" data-close>Cancel</button>
+        </div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 05 : media action sheet -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">05</span>
+        <div>
+          <h2>媒体 · 操作菜单（Android &gt;16 MB）</h2>
+          <p>预览是流式播放；Save to phone 拉取完整文件。42.6 MB 超过 Android SAF 直写上限 16 MB，因此 Save to phone 明确显示 “Share sheet (&gt;16 MB)”。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-media" role="group" aria-label="媒体文件操作菜单" data-platform="android">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>recording.mp4</h2><p>src/session/recording.mp4 · 42.6 MB</p></div>
+            <button class="icon-btn" type="button" aria-label="File actions" data-toast="Action sheet is already open"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="preview-body">
+            <div class="preview-meta"><svg class="icon"><use href="#i-video"></use></svg> Media · 42.6 MB · streamed preview</div>
+            <div class="media-preview"><button class="play-btn" type="button" data-toast="Playing preview"><svg class="icon"><use href="#i-play"></use></svg></button><div>recording.mp4 · 0:42</div></div>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="scrim is-open" data-close></div>
+        <div class="sheet is-open" role="dialog" aria-modal="true" aria-label="Actions for recording.mp4">
+          <div class="grabber"></div>
+          <div class="sheet-head">
+            <span class="ico-badge"><svg class="icon"><use href="#i-video"></use></svg></span>
+            <div><div class="sheet-title">recording.mp4</div><div class="sheet-sub">src/session/recording.mp4 · 42.6 MB</div></div>
+          </div>
+          <div class="sheet-note info"><svg class="icon"><use href="#i-alert"></use></svg><span>Preview streams the media. This file is over 16 MB, so Android saves it through the system share sheet.</span></div>
+          <div class="sheet-list">
+            <button class="sheet-action" type="button" data-action="preview" data-toast="Opening preview…"><svg class="icon"><use href="#i-eye"></use></svg>Preview</button>
+            <button class="sheet-action" type="button" data-action="save" data-toast="Saving recording.mp4 through the share sheet…"><svg class="icon"><use href="#i-save"></use></svg>Save to phone<small>Share sheet (&gt;16 MB)</small></button>
+            <button class="sheet-action" type="button" data-action="open" data-toast="Opening the system chooser…"><svg class="icon"><use href="#i-external"></use></svg>Open with<small>Share sheet</small></button>
+            <button class="sheet-action" type="button" data-action="copy-path" data-toast="Copied path"><svg class="icon"><use href="#i-link"></use></svg>Copy path<small>src/session/recording.mp4</small></button>
+          </div>
+          <button class="sheet-action sheet-cancel" type="button" data-close>Cancel</button>
+        </div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 06 : PDF / binary action sheet -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">06</span>
+        <div>
+          <h2>PDF / 二进制 · 操作菜单</h2>
+          <p>PDF 与 zip 行保持可聚焦、可长按与「…」入口，只隐藏 Preview 和 Copy content。PDF 在筛选里归 Docs。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-pdf" role="group" aria-label="PDF 与二进制文件操作菜单" data-platform="android">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>Files</h2><p>src/files</p></div>
+            <span style="width:44px" aria-hidden="true"></span>
+          </header>
+          <div class="tree" aria-hidden="true" style="padding-top:18px">
+            <div class="tree-row is-target" style="--depth:0"><span style="width:15px"></span><svg class="icon file-pdf"><use href="#i-file"></use></svg><span class="row-name">notes.pdf</span><span class="row-meta">No preview</span><button class="row-menu-btn" type="button" aria-label="Actions for notes.pdf"><svg class="icon"><use href="#i-more"></use></svg></button></div>
+            <div class="tree-row" style="--depth:0"><span style="width:15px"></span><svg class="icon file-bin"><use href="#i-file"></use></svg><span class="row-name">archive.zip</span><span class="row-meta">No preview</span><button class="row-menu-btn" type="button" aria-label="Actions for archive.zip"><svg class="icon"><use href="#i-more"></use></svg></button></div>
+            <div class="tree-row" style="--depth:0"><span style="width:15px"></span><svg class="icon file-doc"><use href="#i-file"></use></svg><span class="row-name">README.md</span></div>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="scrim is-open" data-close></div>
+        <div class="sheet is-open" role="dialog" aria-modal="true" aria-label="Actions for notes.pdf">
+          <div class="grabber"></div>
+          <div class="sheet-head">
+            <span class="ico-badge"><svg class="icon"><use href="#i-file"></use></svg></span>
+            <div><div class="sheet-title">notes.pdf</div><div class="sheet-sub">src/files/notes.pdf · 1.8 MB</div></div>
+          </div>
+          <div class="sheet-note warn"><svg class="icon"><use href="#i-alert"></use></svg><span>PDF is a Docs file. Preview is not available for this type; Save to phone and Open with are still available.</span></div>
+          <div class="sheet-list">
+            <button class="sheet-action" type="button" data-action="save" data-toast="Saving notes.pdf to phone…"><svg class="icon"><use href="#i-save"></use></svg>Save to phone<small>Folder picker</small></button>
+            <button class="sheet-action" type="button" data-action="open" data-toast="Opening the system chooser…"><svg class="icon"><use href="#i-external"></use></svg>Open with<small>System chooser</small></button>
+            <button class="sheet-action" type="button" data-action="copy-path" data-toast="Copied path"><svg class="icon"><use href="#i-link"></use></svg>Copy path<small>src/files/notes.pdf</small></button>
+          </div>
+          <button class="sheet-action sheet-cancel" type="button" data-close>Cancel</button>
+        </div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 07 : terminal artifact text, editable + dirty -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">07</span>
+        <div>
+          <h2>终端产物 · 可编辑小文本（未保存修改）</h2>
+          <p>header Save 只用于“可编辑文本 + 有未保存修改”的写回；这里展示 dirty 状态，保存的是终端产物修改，不是保存到手机。菜单里的 Save to phone 仍是唯一的保存到手机动作。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-artifact-text" role="group" aria-label="终端文本产物操作菜单" data-platform="android" data-dirty="true">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>build.log</h2><p>Terminal artifact · 84 KB</p></div>
+            <span class="row-tag" role="status">Unsaved</span>
+            <button class="appbar-save" type="button" aria-label="Save terminal artifact changes (unsaved changes)" data-toast="Saved changes to the terminal artifact">Save</button>
+            <button class="icon-btn" type="button" aria-label="File actions" data-toast="Action sheet is already open"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="preview-body">
+            <div class="preview-meta"><svg class="icon"><use href="#i-code"></use></svg> Terminal artifact · text · 84 KB · edited, not saved</div>
+            <pre><code>[09:41:02] build started
+[09:41:04] compiling mobile bundle
+[09:41:18] 142 modules ready
+[09:41:19] upload complete
+[09:41:19] build finished in 17.4s
+[09:42:03] retry requested</code></pre>
+            <p>This file is owned by the terminal session. Header Save writes the edit back to the artifact; Save to phone writes a copy outside Orca.</p>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="scrim is-open" data-close></div>
+        <div class="sheet is-open" role="dialog" aria-modal="true" aria-label="Actions for build.log">
+          <div class="grabber"></div>
+          <div class="sheet-head">
+            <span class="ico-badge"><svg class="icon"><use href="#i-code"></use></svg></span>
+            <div><div class="sheet-title">build.log</div><div class="sheet-sub">Terminal artifact · text · 84 KB</div></div>
+          </div>
+          <div class="sheet-note info"><svg class="icon"><use href="#i-alert"></use></svg><span>Terminal artifact · text ≤512 KB. Save to phone writes a copy outside the terminal. Copy path uses pathText ?? displayPath.</span></div>
+          <div class="sheet-list">
+            <button class="sheet-action" type="button" data-action="save" data-toast="Saving build.log to phone…"><svg class="icon"><use href="#i-save"></use></svg>Save to phone<small>Folder picker</small></button>
+            <button class="sheet-action" type="button" data-action="open" data-toast="Opening the system chooser…"><svg class="icon"><use href="#i-external"></use></svg>Open with<small>System chooser</small></button>
+            <button class="sheet-action" type="button" data-action="contents" data-toast="Copied content"><svg class="icon"><use href="#i-copy"></use></svg>Copy content<small>Reads on demand (≤512 KB)</small></button>
+            <button class="sheet-action" type="button" data-action="copy-path" data-toast="Copied path"><svg class="icon"><use href="#i-link"></use></svg>Copy path<small>pathText ?? displayPath</small></button>
+          </div>
+          <button class="sheet-action sheet-cancel" type="button" data-close>Cancel</button>
+        </div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 07b : terminal artifact text, over 512 KB -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">07b</span>
+        <div>
+          <h2>终端产物 · 文本超过 512 KB</h2>
+          <p>文本超过 512 KB 时 host 直接返回 file_too_large，不提供截断读取；移动端不显示部分内容。提示 “Too large for mobile; open on desktop”，操作菜单只有 Copy path、Cancel，没有保存到手机、打开方式或复制内容动作。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-artifact-text-too-large" role="group" aria-label="终端文本产物超过 512 KB" data-platform="android">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>session.log</h2><p>Terminal artifact · text · over 512 KB</p></div>
+            <button class="icon-btn" type="button" aria-label="File actions" data-toast="Action sheet is already open"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="preview-body">
+            <div class="preview-meta"><svg class="icon"><use href="#i-alert"></use></svg> Terminal artifact · text · over 512 KB</div>
+            <div class="error-panel is-warn">
+              <div class="error-icon"><svg class="icon"><use href="#i-alert"></use></svg></div>
+              <h2>Too large for mobile</h2>
+              <p>Open this terminal artifact on the desktop. Mobile does not read or truncate text over 512 KB, so there is no partial preview or copy.</p>
+            </div>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="scrim is-open" data-close></div>
+        <div class="sheet is-open" role="dialog" aria-modal="true" aria-label="Actions for session.log">
+          <div class="grabber"></div>
+          <div class="sheet-head">
+            <span class="ico-badge" style="color:#fcd34d"><svg class="icon"><use href="#i-alert"></use></svg></span>
+            <div><div class="sheet-title">session.log</div><div class="sheet-sub">Terminal artifact · text · over 512 KB</div></div>
+          </div>
+          <div class="sheet-note danger"><svg class="icon"><use href="#i-alert"></use></svg><span>Too large for mobile; open on desktop. Only Copy path is available; it copies pathText ?? displayPath.</span></div>
+          <div class="sheet-list">
+            <button class="sheet-action" type="button" data-action="copy-path" data-toast="Copied path"><svg class="icon"><use href="#i-link"></use></svg>Copy path</button>
+          </div>
+          <button class="sheet-action sheet-cancel" type="button" data-close>Cancel</button>
+        </div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 08 : terminal artifact image, under budget -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">08</span>
+        <div>
+          <h2>终端产物 · 小图片</h2>
+          <p>终端图片没有 Copy content，也不可编辑，因此 header 不显示 Save；右上角只有唯一溢出「…」。图片预算约 3 MB；2.1 MB 可在菜单里 Save to phone / Open with。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-artifact-image" role="group" aria-label="终端图片产物操作菜单" data-platform="android">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>chart.png</h2><p>Terminal artifact · 2.1 MB</p></div>
+            <button class="icon-btn" type="button" aria-label="File actions" data-toast="Action sheet is already open"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="preview-body">
+            <div class="preview-meta"><svg class="icon"><use href="#i-image"></use></svg> Terminal artifact · image · 2.1 MB</div>
+            <div class="image-preview"><div class="image-card" style="background:linear-gradient(135deg,#22c55e,#0ea5e9)">CHART</div></div>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="scrim is-open" data-close></div>
+        <div class="sheet is-open" role="dialog" aria-modal="true" aria-label="Actions for chart.png">
+          <div class="grabber"></div>
+          <div class="sheet-head">
+            <span class="ico-badge"><svg class="icon"><use href="#i-image"></use></svg></span>
+            <div><div class="sheet-title">chart.png</div><div class="sheet-sub">Terminal artifact · image · 2.1 MB</div></div>
+          </div>
+          <div class="sheet-note info"><svg class="icon"><use href="#i-alert"></use></svg><span>Terminal artifact images up to 3 MB can be saved or opened on mobile.</span></div>
+          <div class="sheet-list">
+            <button class="sheet-action" type="button" data-action="save" data-toast="Saving chart.png to phone…"><svg class="icon"><use href="#i-save"></use></svg>Save to phone<small>Folder picker</small></button>
+            <button class="sheet-action" type="button" data-action="open" data-toast="Opening the system chooser…"><svg class="icon"><use href="#i-external"></use></svg>Open with<small>System chooser</small></button>
+            <button class="sheet-action" type="button" data-action="copy-path" data-toast="Copied path"><svg class="icon"><use href="#i-link"></use></svg>Copy path<small>pathText ?? displayPath</small></button>
+          </div>
+          <button class="sheet-action sheet-cancel" type="button" data-close>Cancel</button>
+        </div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 08b : terminal artifact image, over budget -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">08b</span>
+        <div>
+          <h2>终端产物 · 图片超出移动预算</h2>
+          <p>图片超过约 3 MB 时不进入移动端读取预算；只保留 Copy path，并显示 “Too large for mobile; open on desktop”。图片不可编辑，header 不显示 Save。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-artifact-image-large" role="group" aria-label="终端图片产物超出预算" data-platform="android">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>diagram.png</h2><p>Terminal artifact · 4.2 MB</p></div>
+            <button class="icon-btn" type="button" aria-label="File actions" data-toast="Action sheet is already open"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="preview-body">
+            <div class="preview-meta"><svg class="icon"><use href="#i-image"></use></svg> Terminal artifact · image · 4.2 MB</div>
+            <div class="image-preview"><div class="image-card" style="background:linear-gradient(135deg,#f59e0b,#ef4444)">4.2 MB</div></div>
+            <p style="margin-top:14px">This image is larger than the mobile transfer budget. Open it on the desktop to inspect the original.</p>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="scrim is-open" data-close></div>
+        <div class="sheet is-open" role="dialog" aria-modal="true" aria-label="Actions for diagram.png">
+          <div class="grabber"></div>
+          <div class="sheet-head">
+            <span class="ico-badge"><svg class="icon"><use href="#i-image"></use></svg></span>
+            <div><div class="sheet-title">diagram.png</div><div class="sheet-sub">Terminal artifact · image · 4.2 MB</div></div>
+          </div>
+          <div class="sheet-note danger"><svg class="icon"><use href="#i-alert"></use></svg><span>Too large for mobile; open on desktop. Only Copy path is available; it copies pathText ?? displayPath.</span></div>
+          <div class="sheet-list">
+            <button class="sheet-action" type="button" data-action="copy-path" data-toast="Copied path"><svg class="icon"><use href="#i-link"></use></svg>Copy path</button>
+          </div>
+          <button class="sheet-action sheet-cancel" type="button" data-close>Cancel</button>
+        </div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 09 : read failure after an action -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">09</span>
+        <div>
+          <h2>读取失败 · 动作后徽标 + Retry</h2>
+          <p>初始列表不显示失败。只有预览/操作读取失败后才写入失败缓存并在行内显示 “Read failed”，该行的「…」/长按菜单改为 Retry read（不是 Preview）。Retry 成功后清除；重连只清除断线/超时类失败，EACCES/ENOENT 需 Retry 成功。没有逐行 stat。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-read-failure" role="group" aria-label="读取失败与无权限状态" data-platform="android">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>Files</h2><p>src/files</p></div>
+            <span style="width:44px" aria-hidden="true"></span>
+          </header>
+          <div class="notice danger"><svg class="icon"><use href="#i-alert"></use></svg><span>Read failed after preview attempt · EACCES. Other files remain available.</span></div>
+          <div class="tree" aria-hidden="true">
+            <div class="tree-row" style="--depth:0"><svg class="icon chev"><use href="#i-chevron-down"></use></svg><svg class="icon folder"><use href="#i-folder"></use></svg><span class="row-name">files</span></div>
+            <div class="tree-row is-failing is-target" style="--depth:1"><span style="width:15px"></span><svg class="icon file-fail"><use href="#i-lock"></use></svg><span class="row-name">.env</span><span class="row-meta fail" data-row-failure>Read failed</span><button class="row-menu-btn" type="button" aria-label="Actions for .env"><svg class="icon"><use href="#i-more"></use></svg></button></div>
+            <div class="tree-row" style="--depth:1"><span style="width:15px"></span><svg class="icon file-code"><use href="#i-file"></use></svg><span class="row-name">mobile-file-explorer-row.tsx</span></div>
+            <div class="tree-row" style="--depth:1"><span style="width:15px"></span><svg class="icon file-doc"><use href="#i-file"></use></svg><span class="row-name">README.md</span></div>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="scrim is-open" data-close></div>
+        <div class="sheet is-open" role="dialog" aria-modal="true" aria-label="Actions for .env">
+          <div class="grabber"></div>
+          <div class="sheet-head">
+            <span class="ico-badge" style="color:#f87171"><svg class="icon"><use href="#i-lock"></use></svg></span>
+            <div><div class="sheet-title">.env</div><div class="sheet-sub">src/files/.env · Read failed</div></div>
+          </div>
+          <div class="sheet-note danger"><svg class="icon"><use href="#i-alert"></use></svg><span>Permission denied (EACCES). The badge is only written after a failed read, not by scanning every row. Retry read clears it on success; reconnecting does not clear permission errors.</span></div>
+          <div class="sheet-list">
+            <button class="sheet-action" type="button" data-action="retry" data-toast="Retrying read…"><svg class="icon"><use href="#i-retry"></use></svg>Retry read</button>
+            <button class="sheet-action" type="button" data-action="copy-path" data-toast="Copied path"><svg class="icon"><use href="#i-link"></use></svg>Copy path<small>src/files/.env</small></button>
+          </div>
+          <button class="sheet-action sheet-cancel" type="button" data-close>Cancel</button>
+        </div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 10 : Android SAF directory picker -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">10</span>
+        <div>
+          <h2>Save to phone · Android SAF</h2>
+          <p>≤16 MB 使用 SAF：用户选择 Downloads / Documents / Pictures / 云盘目录后写入。取消或权限撤销不产生文件。</p>
+        </div>
+      </figcaption>
+      <div class="phone is-light" id="file-save-safe" role="group" aria-label="Android 保存到手机目录选择器">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <div class="system-screen">
+            <div class="system-bar">
+              <button class="system-back" type="button" aria-label="Close" data-toast="Save cancelled"><svg class="icon"><use href="#i-x"></use></svg></button>
+              <div><h2>Save to…</h2><p>notes.txt · 10 KB</p></div>
+            </div>
+            <div class="location-list">
+              <button class="location" type="button" data-toast="Selected Recent"><svg class="icon"><use href="#i-file"></use></svg>Recent<small>3 items</small></button>
+              <button class="location is-selected" type="button" data-toast="Downloads selected"><svg class="icon"><use href="#i-download"></use></svg>Downloads<small>18.2 GB free</small></button>
+              <button class="location" type="button" data-toast="Documents selected"><svg class="icon"><use href="#i-folder"></use></svg>Documents</button>
+              <button class="location" type="button" data-toast="Pictures selected"><svg class="icon"><use href="#i-image"></use></svg>Pictures</button>
+              <button class="location" type="button" data-toast="Drive selected"><svg class="icon"><use href="#i-folder"></use></svg>Drive<small>Cloud</small></button>
+            </div>
+            <div class="system-note">Files up to 16 MB are written directly to the folder you choose. Larger files use the system share sheet.</div>
+            <div class="system-foot">
+              <button class="system-btn" type="button" data-toast="Save cancelled; no file was written">Cancel</button>
+              <button class="system-btn primary" type="button" data-toast="Saved to Downloads/notes.txt">Use this folder</button>
+            </div>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 11 : saved result -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">11</span>
+        <div>
+          <h2>Save to phone · 完成结果</h2>
+          <p>保存结果留在同一 ActionSheet 流程，不新增导航。显示用户可见路径、大小、SHA-256 校验与 24 小时缓存说明；重名追加 “(1)”。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-save-result" role="group" aria-label="保存成功结果">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>Files</h2><p>src/files</p></div>
+            <span style="width:44px" aria-hidden="true"></span>
+          </header>
+          <div class="tree" aria-hidden="true" style="padding-top:18px">
+            <div class="tree-row" style="--depth:0"><svg class="icon chev"><use href="#i-chevron-down"></use></svg><svg class="icon folder"><use href="#i-folder"></use></svg><span class="row-name">files</span></div>
+            <div class="tree-row is-target" style="--depth:1"><span style="width:15px"></span><svg class="icon file-doc"><use href="#i-file"></use></svg><span class="row-name">notes.txt</span></div>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="scrim is-open" data-close></div>
+        <div class="sheet is-open" role="dialog" aria-modal="true" aria-label="File saved">
+          <div class="grabber"></div>
+          <div class="saved-result">
+            <div class="saved-icon"><svg class="icon"><use href="#i-check"></use></svg></div>
+            <h3>Saved to Downloads</h3>
+            <p>notes.txt · 10 KB</p>
+            <div class="saved-path">Downloads/notes.txt</div>
+            <div class="hash-row"><svg class="icon"><use href="#i-shield"></use></svg><span>SHA-256 verified</span><code>9f2c…a41d</code></div>
+            <div class="saved-actions">
+              <button class="btn ghost" type="button" data-toast="Opening with…">Open with</button>
+              <button class="btn primary" type="button" data-close>Done</button>
+            </div>
+            <p style="margin-top:14px">Cached copy kept for 24 hours. A duplicate name is saved as notes (1).txt.</p>
+          </div>
+        </div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 12 : Android ACTION_VIEW chooser -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">12</span>
+        <div>
+          <h2>Open with · Android ACTION_VIEW</h2>
+          <p>“Open with” 使用 content:// URI + ACTION_VIEW + MIME + read 权限，列出真正的查看器；不是分享动作。无 Activity 时回退分享面板。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-open-android" role="group" aria-label="Android 打开方式选择器">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>notes.pdf</h2><p>src/files/notes.pdf · 1.8 MB</p></div>
+            <button class="icon-btn" type="button" aria-label="File actions" data-toast="Action sheet is already open"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="preview-body">
+            <div class="preview-meta"><svg class="icon"><use href="#i-file"></use></svg> PDF · 1.8 MB · preview unavailable</div>
+            <div class="image-preview"><div class="image-card" style="background:linear-gradient(135deg,#ef4444,#f59e0b)">PDF</div></div>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="scrim is-open" data-close></div>
+        <div class="chooser" role="dialog" aria-modal="true" aria-label="Open notes.pdf with">
+          <div class="grabber"></div>
+          <div class="chooser-head">
+            <span class="ico-badge"><svg class="icon"><use href="#i-external"></use></svg></span>
+            <div><div class="chooser-title">Open with</div><div class="chooser-sub">notes.pdf · application/pdf</div></div>
+          </div>
+          <div class="chooser-list">
+            <button class="chooser-row" type="button" data-toast="Opening in Files…"><span class="app-dot" style="background:#3b82f6">F</span>Files<small>Just once</small></button>
+            <button class="chooser-row" type="button" data-toast="Opening in Drive PDF Viewer…"><span class="app-dot" style="background:#22c55e">D</span>Drive PDF Viewer<small>Open</small></button>
+            <button class="chooser-row" type="button" data-toast="Opening in Chrome…"><span class="app-dot" style="background:#f59e0b">C</span>Chrome<small>Open</small></button>
+            <button class="chooser-row" type="button" data-toast="Opening in Acrobat…"><span class="app-dot" style="background:#ef4444">A</span>Acrobat<small>Open</small></button>
+          </div>
+          <div class="chooser-note">The chosen app may read the cached copy after this sheet closes. Cached copy kept for 24 hours. If no app handles the MIME type, Orca falls back to the system share sheet.</div>
+          <button class="chooser-cancel" type="button" data-close>Cancel</button>
+        </div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 13 : iOS share sheet, Save to Files -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">13</span>
+        <div>
+          <h2>iOS · Save to phone → Save to Files</h2>
+          <p>iOS 的 Save to phone 打开系统分享面板；用户选择 “Save to Files” 保存。Open with 使用同一面板并选择一个 App。UTI 与 iPad anchor 必须正确。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-open-ios" role="group" aria-label="iOS 分享面板" data-platform="ios">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>archive.zip</h2><p>src/files/archive.zip · 18.2 MB</p></div>
+            <button class="icon-btn" type="button" aria-label="File actions" data-toast="Action sheet is already open"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="preview-body">
+            <div class="preview-meta"><svg class="icon"><use href="#i-file"></use></svg> Binary · 18.2 MB · no preview</div>
+            <div class="image-preview"><div class="image-card" style="background:linear-gradient(135deg,#64748b,#334155)">ZIP</div></div>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="scrim is-open" data-close></div>
+        <div class="ios-sheet" role="dialog" aria-modal="true" aria-label="Share archive.zip">
+          <div class="grabber"></div>
+          <div class="ios-head"><div style="min-width:0"><h3>archive.zip</h3><p>18.2 MB · application/zip</p></div></div>
+          <div class="ios-airdrop">
+            <div class="airdrop-item"><div class="airdrop-avatar"><svg class="icon"><use href="#i-save"></use></svg></div>AirDrop</div>
+            <div class="airdrop-item"><div class="airdrop-avatar"><svg class="icon"><use href="#i-file"></use></svg></div>My Mac</div>
+            <div class="airdrop-item"><div class="airdrop-avatar"><svg class="icon"><use href="#i-link"></use></svg></div>Copy</div>
+          </div>
+          <div class="ios-apps">
+            <div class="ios-app"><span style="background:#3b82f6">M</span>Mail</div>
+            <div class="ios-app"><span style="background:#22c55e">Ms</span>Messages</div>
+            <div class="ios-app"><span style="background:#f59e0b">Fi</span>Files</div>
+            <div class="ios-app"><span style="background:#64748b">N</span>Notes</div>
+            <div class="ios-app"><span style="background:#8b5cf6">More</span>More</div>
+          </div>
+          <div class="ios-actions">
+            <button class="ios-action is-primary" type="button" data-toast="Choose a folder in Files"><svg class="icon"><use href="#i-save"></use></svg>Save to Files</button>
+            <button class="ios-action" type="button" data-toast="Copied file"><svg class="icon"><use href="#i-copy"></use></svg>Copy</button>
+          </div>
+          <div class="ios-note">Save to phone uses this sheet; choose <strong>Save to Files</strong>. Cached copy kept for 24 hours for Files or the chosen app to read.</div>
+          <button class="chooser-cancel" type="button" data-close>Cancel</button>
+        </div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 13b : iOS action sheet subtitle -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">13b</span>
+        <div>
+          <h2>iOS 操作菜单 · Save to Files 副文案</h2>
+          <p>同一个文件动作菜单在 iOS 上把 Save to phone 的副文案显示为 “Save to Files”，不是 Android 的 “Folder picker”。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-sheet-ios" role="group" aria-label="iOS 文件操作菜单" data-platform="ios">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>Files</h2><p>orca-mobile · main</p></div>
+            <span style="width:44px" aria-hidden="true"></span>
+          </header>
+          <div class="searchwrap">
+            <label class="searchfield"><svg class="icon sm" aria-hidden="true"><use href="#i-search"></use></svg><input type="text" placeholder="Search files" aria-label="Search files" readonly></label>
+          </div>
+          <div class="chips" role="group" aria-label="Filter by file type">
+            <button class="chip is-active" type="button">All</button><button class="chip" type="button">Code</button><button class="chip" type="button">Docs</button><button class="chip" type="button">Media</button><button class="chip" type="button">Images</button><button class="chip" type="button">Other</button>
+          </div>
+          <div class="tree" aria-hidden="true">
+            <div class="tree-row" style="--depth:0"><svg class="icon chev"><use href="#i-chevron-down"></use></svg><svg class="icon folder"><use href="#i-folder"></use></svg><span class="row-name">src</span></div>
+            <div class="tree-row is-target" style="--depth:1"><span style="width:15px"></span><svg class="icon file-doc"><use href="#i-file"></use></svg><span class="row-name">README.md</span></div>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="scrim is-open" data-close></div>
+        <div class="sheet is-open" role="dialog" aria-modal="true" aria-label="Actions for README.md">
+          <div class="grabber"></div>
+          <div class="sheet-head">
+            <span class="ico-badge"><svg class="icon"><use href="#i-file"></use></svg></span>
+            <div><div class="sheet-title">README.md</div><div class="sheet-sub">src/files/README.md · 2.4 KB</div></div>
+          </div>
+          <div class="sheet-note info"><svg class="icon"><use href="#i-alert"></use></svg><span>On iOS, Save to phone opens the share sheet. Choose Save to Files to write a copy to iCloud Drive or On My iPhone.</span></div>
+          <div class="sheet-list">
+            <button class="sheet-action" type="button" data-action="preview" data-toast="Opening preview…"><svg class="icon"><use href="#i-eye"></use></svg>Preview</button>
+            <button class="sheet-action" type="button" data-action="save" data-toast="Opening the share sheet…"><svg class="icon"><use href="#i-save"></use></svg>Save to phone<small>Save to Files</small></button>
+            <button class="sheet-action" type="button" data-action="open" data-toast="Opening the share sheet…"><svg class="icon"><use href="#i-external"></use></svg>Open with<small>Share sheet</small></button>
+            <button class="sheet-action" type="button" data-action="contents" data-toast="Copied content"><svg class="icon"><use href="#i-copy"></use></svg>Copy content<small>Reads on demand (≤512 KB)</small></button>
+            <button class="sheet-action" type="button" data-action="copy-path" data-toast="Copied path"><svg class="icon"><use href="#i-link"></use></svg>Copy path<small>src/files/README.md</small></button>
+          </div>
+          <button class="sheet-action sheet-cancel" type="button" data-close>Cancel</button>
+        </div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 14 : Save preparing progress -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">14</span>
+        <div>
+          <h2>Save to phone · 准备进度 / 取消</h2>
+          <p>从预览页「…」发起 Save 时不跳回列表；进度、取消与失败重试都留在预览页底部横幅。prepare 是 Save/Open 的内部阶段，不是独立的下载动作。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-download-progress" role="group" aria-label="保存到手机进度" data-platform="android">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>README.md</h2><p>src/files/README.md · 2.4 KB</p></div>
+            <button class="icon-btn" type="button" aria-label="File actions" data-toast="Action sheet is already open"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="preview-body">
+            <div class="preview-meta"><svg class="icon"><use href="#i-file"></use></svg> Markdown · 2.4 KB · selectable text</div>
+            <h1>Orca Mobile</h1>
+            <p>Remote workspaces, terminals, and files continue on your phone.</p>
+            <h2>Files</h2>
+            <ul><li>Search by name or relative path</li><li>Type filters keep parent folders</li><li>Tap to preview, long-press for actions</li></ul>
+          </div>
+          <div class="download-banner" role="status" aria-live="polite">
+            <div class="download-top"><svg class="icon"><use href="#i-save"></use></svg><span>Saving README.md to phone</span><button type="button" data-toast="Save cancelled; temporary file removed">Cancel</button></div>
+            <div class="bar" role="progressbar" aria-valuenow="68" aria-valuemin="0" aria-valuemax="100" aria-label="Save progress"><i></i></div>
+            <div class="download-sub"><span>68% · 1.6 KB / 2.4 KB</span><span>Preparing file…</span></div>
+            <div class="download-failure" style="color:var(--muted)">One save/open task per file; repeated taps are ignored.</div>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 14b : list-side Save progress, single-flight -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">14b</span>
+        <div>
+          <h2>Save to phone · 列表侧进度 / 单飞</h2>
+          <p>从文件行发起 Save 后列表保持可见；底部复用预览页的进度横幅，包含进度、Cancel 与单飞提示。同一文件的重复 Save/Open 不会创建第二个任务，对应动作保持禁用。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-list-download-progress" role="group" aria-label="文件列表侧保存进度" data-platform="android">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>Files</h2><p>src/files</p></div>
+            <span style="width:44px" aria-hidden="true"></span>
+          </header>
+          <div class="tree" aria-hidden="true" style="padding-top:18px">
+            <div class="tree-row" style="--depth:0"><svg class="icon chev"><use href="#i-chevron-down"></use></svg><svg class="icon folder"><use href="#i-folder"></use></svg><span class="row-name">files</span></div>
+            <div class="tree-row is-target" style="--depth:1"><span style="width:15px"></span><svg class="icon file-doc"><use href="#i-file"></use></svg><span class="row-name">notes.txt</span><span class="row-tag">Saving…</span></div>
+            <div class="tree-row" style="--depth:1"><span style="width:15px"></span><svg class="icon file-doc"><use href="#i-file"></use></svg><span class="row-name">README.md</span></div>
+            <div class="tree-row" style="--depth:1"><span style="width:15px"></span><svg class="icon file-code"><use href="#i-file"></use></svg><span class="row-name">mobile-file-explorer-row.tsx</span></div>
+          </div>
+          <div class="download-banner" role="status" aria-live="polite">
+            <div class="download-top"><svg class="icon"><use href="#i-save"></use></svg><span>Saving notes.txt to phone</span><button type="button" data-toast="Save cancelled; temporary file removed">Cancel</button></div>
+            <div class="bar" role="progressbar" aria-valuenow="42" aria-valuemin="0" aria-valuemax="100" aria-label="Save progress"><i style="width:42%"></i></div>
+            <div class="download-sub"><span>42% · 4.2 KB / 10 KB</span><span>Preparing file…</span></div>
+            <div class="download-failure" style="color:var(--muted)">Single-flight: repeated Save/Open taps stay disabled until this task finishes.</div>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 15 : Save failed, retry from the beginning -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">15</span>
+        <div>
+          <h2>Save to phone · 失败 / 重试</h2>
+          <p>弱网或文件变化导致失败时删除临时文件；Retry 从头发起，不做断点续传，也不会打开或保存半成品。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-download-retry" role="group" aria-label="保存到手机失败重试" data-platform="android">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>README.md</h2><p>src/files/README.md · 2.4 KB</p></div>
+            <button class="icon-btn" type="button" aria-label="File actions" data-toast="Action sheet is already open"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="preview-body">
+            <div class="preview-meta"><svg class="icon"><use href="#i-file"></use></svg> Markdown · 2.4 KB · selectable text</div>
+            <h1>Orca Mobile</h1>
+            <p>Remote workspaces, terminals, and files continue on your phone.</p>
+            <h2>Files</h2>
+            <ul><li>Search by name or relative path</li><li>Type filters keep parent folders</li><li>Tap to preview, long-press for actions</li></ul>
+          </div>
+          <div class="download-banner is-error" role="alert">
+            <div class="download-top">
+              <svg class="icon"><use href="#i-alert"></use></svg><span>Save failed · Connection lost</span>
+              <span class="download-actions" style="margin-left:auto;display:flex;gap:2px">
+                <button type="button" style="margin-left:0" data-toast="Retrying from the beginning…">Retry</button>
+                <button type="button" style="margin-left:0" data-toast="Save cancelled; temporary file removed">Cancel</button>
+              </span>
+            </div>
+            <div class="download-failure">Temporary file removed. Retry starts from the beginning and re-checks size / mtime. No partial file is saved.</div>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 16 : search results, first 32 -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">16</span>
+        <div>
+          <h2>搜索结果 · 首 32 条 / 20k 截断</h2>
+          <p>点结果行打开预览；行尾「…」或长按打开同一文件操作 sheet（不是 toast）。结果头显示 “Showing first 32 of N matches”，过滤只作用于这 32 条。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-search" role="group" aria-label="搜索结果总数与截断提示" data-interactive="true" data-platform="android">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>Files</h2><p>orca-mobile · main</p></div>
+            <span style="width:44px" aria-hidden="true"></span>
+          </header>
+          <div class="searchwrap">
+            <label class="searchfield">
+              <svg class="icon sm" aria-hidden="true"><use href="#i-search"></use></svg>
+              <input type="text" value="preview" aria-label="Search files" readonly>
+              <button class="icon-btn" type="button" aria-label="Clear search" data-toast="Search cleared"><svg class="icon"><use href="#i-x"></use></svg></button>
+            </label>
+          </div>
+          <div class="chips" role="group" aria-label="Filter search results by type">
+            <button class="chip" type="button">All</button><button class="chip is-active" type="button" aria-pressed="true">Code</button><button class="chip" type="button">Docs</button><button class="chip" type="button">Media</button><button class="chip" type="button">Images</button><button class="chip" type="button">Other</button>
+          </div>
+          <div class="result-head">Showing first 32 of 148 matches</div>
+          <div class="result-sub">File library is over 20,000 files — results may be incomplete. Filters apply to these first 32 results only.</div>
+          <div class="results">
+            <div class="result" data-result-row data-kind="code" data-name="MobileFilePreviewScreen.tsx" data-path="src/components/MobileFilePreviewScreen.tsx" data-size="8.1 KB">
+              <button class="result-main" type="button">
+                <svg class="icon" aria-hidden="true"><use href="#i-file"></use></svg>
+                <span class="result-body"><span class="result-name">MobileFile<mark>Preview</mark>Screen.tsx</span><span class="result-path">src/components/MobileFilePreviewScreen.tsx</span></span>
+              </button>
+              <button class="row-menu-btn" type="button" aria-label="Actions for MobileFilePreviewScreen.tsx" data-row-menu><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="result" data-result-row data-kind="code" data-name="MobileFilePreviewBody.tsx" data-path="src/files/MobileFilePreviewBody.tsx" data-size="4.1 KB">
+              <button class="result-main" type="button">
+                <svg class="icon" aria-hidden="true"><use href="#i-file"></use></svg>
+                <span class="result-body"><span class="result-name">MobileFile<mark>Preview</mark>Body.tsx</span><span class="result-path">src/files/MobileFilePreviewBody.tsx</span></span>
+              </button>
+              <button class="row-menu-btn" type="button" aria-label="Actions for MobileFilePreviewBody.tsx" data-row-menu><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="result" data-result-row data-kind="code" data-name="mobile-file-preview.ts" data-path="src/files/mobile-file-preview.ts" data-size="2.2 KB">
+              <button class="result-main" type="button">
+                <svg class="icon" aria-hidden="true"><use href="#i-file"></use></svg>
+                <span class="result-body"><span class="result-name">mobile-file-<mark>preview</mark>.ts</span><span class="result-path">src/files/mobile-file-preview.ts</span></span>
+              </button>
+              <button class="row-menu-btn" type="button" aria-label="Actions for mobile-file-preview.ts" data-row-menu><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <p class="results-hint">Tap to preview · long-press or … for actions.</p>
+          </div>
+
+          <div class="preview-view" data-preview-view hidden>
+            <header class="appbar">
+              <button class="icon-btn" type="button" data-preview-back aria-label="Back to results"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+              <div class="appbar-title"><h2 data-preview-name>MobileFilePreviewScreen.tsx</h2><p data-preview-path>src/components/MobileFilePreviewScreen.tsx</p></div>
+              <button class="icon-btn" type="button" data-preview-more aria-label="File actions" aria-haspopup="dialog"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </header>
+            <div class="preview-body" data-preview-body></div>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="scrim" data-close></div>
+        <div class="sheet" data-file-sheet role="dialog" aria-modal="true" aria-label="File actions">
+          <div class="grabber"></div>
+          <div class="sheet-head">
+            <span class="ico-badge"><svg class="icon"><use href="#i-file"></use></svg></span>
+            <div><div class="sheet-title" data-sheet-name>MobileFilePreviewScreen.tsx</div><div class="sheet-sub" data-sheet-path>src/components/MobileFilePreviewScreen.tsx · 8.1 KB</div></div>
+          </div>
+          <div class="sheet-note info" data-sheet-note hidden></div>
+          <div class="sheet-list">
+            <button class="sheet-action" type="button" data-for="preview"><svg class="icon"><use href="#i-eye"></use></svg>Preview</button>
+            <button class="sheet-action" type="button" data-for="save"><svg class="icon"><use href="#i-save"></use></svg>Save to phone<small data-save-hint>Folder picker</small></button>
+            <button class="sheet-action" type="button" data-for="open"><svg class="icon"><use href="#i-external"></use></svg>Open with<small data-open-hint>System chooser</small></button>
+            <button class="sheet-action" type="button" data-for="contents"><svg class="icon"><use href="#i-copy"></use></svg>Copy content<small data-contents-hint></small></button>
+            <button class="sheet-action" type="button" data-for="retry" hidden><svg class="icon"><use href="#i-retry"></use></svg>Retry read</button>
+            <button class="sheet-action" type="button" data-for="copy-path"><svg class="icon"><use href="#i-link"></use></svg>Copy path<small data-path-label></small></button>
+          </div>
+          <button class="sheet-action sheet-cancel" type="button" data-close>Cancel</button>
+        </div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 16b : old-host search fallback -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">16b</span>
+        <div>
+          <h2>搜索结果 · 旧主机 5000 上限</h2>
+          <p>旧主机没有 files.searchPaths 时回退到 files.list 清单（上限 5000）。结果头显示 “Showing first 5000; results may be incomplete”，不声称搜索了全部文件。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-search-old-host" role="group" aria-label="旧主机搜索结果上限" data-interactive="true" data-platform="android">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>Files</h2><p>orca-mobile · main</p></div>
+            <span style="width:44px" aria-hidden="true"></span>
+          </header>
+          <div class="searchwrap">
+            <label class="searchfield">
+              <svg class="icon sm" aria-hidden="true"><use href="#i-search"></use></svg>
+              <input type="text" value="preview" aria-label="Search files" readonly>
+              <button class="icon-btn" type="button" aria-label="Clear search" data-toast="Search cleared"><svg class="icon"><use href="#i-x"></use></svg></button>
+            </label>
+          </div>
+          <div class="chips" role="group" aria-label="Filter search results by type">
+            <button class="chip is-active" type="button" aria-pressed="true">All</button><button class="chip" type="button">Code</button><button class="chip" type="button">Docs</button><button class="chip" type="button">Media</button><button class="chip" type="button">Images</button><button class="chip" type="button">Other</button>
+          </div>
+          <div class="result-head">Showing first 5000; results may be incomplete</div>
+          <div class="result-sub">Older host: searched its file list (limit 5000). The host capped the list at 5000 entries.</div>
+          <div class="results">
+            <div class="result" data-result-row data-kind="code" data-name="MobileFilePreviewScreen.tsx" data-path="src/components/MobileFilePreviewScreen.tsx" data-size="8.1 KB">
+              <button class="result-main" type="button">
+                <svg class="icon" aria-hidden="true"><use href="#i-file"></use></svg>
+                <span class="result-body"><span class="result-name">MobileFile<mark>Preview</mark>Screen.tsx</span><span class="result-path">src/components/MobileFilePreviewScreen.tsx</span></span>
+              </button>
+              <button class="row-menu-btn" type="button" aria-label="Actions for MobileFilePreviewScreen.tsx" data-row-menu><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <div class="result" data-result-row data-kind="docs" data-name="preview-notes.md" data-path="docs/preview-notes.md" data-size="6.3 KB">
+              <button class="result-main" type="button">
+                <svg class="icon" aria-hidden="true"><use href="#i-file"></use></svg>
+                <span class="result-body"><span class="result-name"><mark>preview</mark>-notes.md</span><span class="result-path">docs/preview-notes.md</span></span>
+              </button>
+              <button class="row-menu-btn" type="button" aria-label="Actions for preview-notes.md" data-row-menu><svg class="icon"><use href="#i-more"></use></svg></button>
+            </div>
+            <p class="results-hint">Tap to preview · long-press or … for actions. Results are limited to the first 5000 entries returned by the old host.</p>
+          </div>
+
+          <div class="preview-view" data-preview-view hidden>
+            <header class="appbar">
+              <button class="icon-btn" type="button" data-preview-back aria-label="Back to results"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+              <div class="appbar-title"><h2 data-preview-name>MobileFilePreviewScreen.tsx</h2><p data-preview-path>src/components/MobileFilePreviewScreen.tsx</p></div>
+              <button class="icon-btn" type="button" data-preview-more aria-label="File actions" aria-haspopup="dialog"><svg class="icon"><use href="#i-more"></use></svg></button>
+            </header>
+            <div class="preview-body" data-preview-body></div>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="scrim" data-close></div>
+        <div class="sheet" data-file-sheet role="dialog" aria-modal="true" aria-label="File actions">
+          <div class="grabber"></div>
+          <div class="sheet-head">
+            <span class="ico-badge"><svg class="icon"><use href="#i-file"></use></svg></span>
+            <div><div class="sheet-title" data-sheet-name>MobileFilePreviewScreen.tsx</div><div class="sheet-sub" data-sheet-path>src/components/MobileFilePreviewScreen.tsx · 8.1 KB</div></div>
+          </div>
+          <div class="sheet-note info" data-sheet-note hidden></div>
+          <div class="sheet-list">
+            <button class="sheet-action" type="button" data-for="preview"><svg class="icon"><use href="#i-eye"></use></svg>Preview</button>
+            <button class="sheet-action" type="button" data-for="save"><svg class="icon"><use href="#i-save"></use></svg>Save to phone<small data-save-hint>Folder picker</small></button>
+            <button class="sheet-action" type="button" data-for="open"><svg class="icon"><use href="#i-external"></use></svg>Open with<small data-open-hint>System chooser</small></button>
+            <button class="sheet-action" type="button" data-for="contents"><svg class="icon"><use href="#i-copy"></use></svg>Copy content<small data-contents-hint></small></button>
+            <button class="sheet-action" type="button" data-for="retry" hidden><svg class="icon"><use href="#i-retry"></use></svg>Retry read</button>
+            <button class="sheet-action" type="button" data-for="copy-path"><svg class="icon"><use href="#i-link"></use></svg>Copy path<small data-path-label></small></button>
+          </div>
+          <button class="sheet-action sheet-cancel" type="button" data-close>Cancel</button>
+        </div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 17 : HTML rendered text selection -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">17</span>
+        <div>
+          <h2>HTML 渲染视图 · 文字选择</h2>
+          <p>长按渲染视图中的文字进入原生选择；显示 Copy / Select All。链接点击仍走 scheme 白名单，不被选择手势吞掉。文件动作菜单不包含 Orca 浏览器。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-selection" role="group" aria-label="HTML 渲染视图文字选择">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>index.html</h2><p>src/pages/index.html · 4.2 KB</p></div>
+            <button class="icon-btn" type="button" aria-label="HTML actions" aria-haspopup="dialog" data-toast="HTML actions"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="preview-body" style="padding:0">
+            <div class="preview-meta" style="padding:14px 20px 0;margin-bottom:0"><svg class="icon"><use href="#i-eye"></use></svg> Rendered HTML · text selection enabled</div>
+            <div class="site-select">
+              <div class="site-nav"><span class="brand"><span class="brand-dot"></span>Orca</span><span class="site-links">Docs · Pricing</span></div>
+              <div class="site-hero">
+                <h3>Remote work, in your pocket.</h3>
+                <p class="sel-paragraph"><span class="sel-wrap"><span class="sel">Preview files, open links, and switch between rendered and source views</span><span class="sel-callout" role="toolbar" aria-label="Text selection actions"><button type="button" data-toast="Copied selection">Copy</button><button type="button" data-toast="Selected all text">Select All</button></span><span class="sel-handle start" aria-hidden="true"></span><span class="sel-handle end" aria-hidden="true"></span></span> from the same screen. Long-press any paragraph to select text, then use the native Copy or Select All callout.</p>
+                <p>Links still open on tap and are checked against the http / https / mailto allowlist.</p>
+              </div>
+              <div class="site-foot" style="margin-top:22px;padding-top:12px;border-top:1px solid #dbe3ee;font-family:var(--mono);font-size:9px;color:#7c8a9b">index.html · iOS textInteractionEnabled · Android user-select</div>
+            </div>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 18 : Android >16 MB share fallback -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">18</span>
+        <div>
+          <h2>Save to phone · Android &gt;16 MB 分享回退</h2>
+          <p>超过 16 MB 至 256 MB 的文件不通过 SAF 直写，而是把 cache 文件交给 Android 分享面板；用户可在 Files / Downloads / 云盘保存。FileProvider 流式读取，不构造大字符串。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-save-share-fallback" role="group" aria-label="Android 大文件分享保存" data-platform="android">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>recording.mp4</h2><p>src/session/recording.mp4 · 42.6 MB</p></div>
+            <button class="icon-btn" type="button" aria-label="File actions" data-toast="Action sheet is already open"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="preview-body">
+            <div class="preview-meta"><svg class="icon"><use href="#i-video"></use></svg> Media · 42.6 MB · streamed preview</div>
+            <div class="media-preview"><button class="play-btn" type="button" data-toast="Playing preview"><svg class="icon"><use href="#i-play"></use></svg></button><div>recording.mp4 · 0:42</div></div>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="scrim is-open" data-close></div>
+        <div class="chooser" role="dialog" aria-modal="true" aria-label="Save recording.mp4 with">
+          <div class="grabber"></div>
+          <div class="chooser-head">
+            <span class="ico-badge"><svg class="icon"><use href="#i-save"></use></svg></span>
+            <div><div class="chooser-title">Save to phone</div><div class="chooser-sub">recording.mp4 · 42.6 MB</div></div>
+          </div>
+          <div class="chooser-list">
+            <button class="chooser-row" type="button" data-toast="Saving to Files…"><span class="app-dot" style="background:#3b82f6">F</span>Files<small>Save</small></button>
+            <button class="chooser-row" type="button" data-toast="Saving to Downloads…"><span class="app-dot" style="background:#22c55e">D</span>Downloads<small>Save</small></button>
+            <button class="chooser-row" type="button" data-toast="Saving to Drive…"><span class="app-dot" style="background:#f59e0b">Dr</span>Drive<small>Cloud</small></button>
+            <button class="chooser-row" type="button" data-toast="Saving to OneDrive…"><span class="app-dot" style="background:#8b5cf6">O</span>OneDrive<small>Cloud</small></button>
+          </div>
+          <div class="chooser-note">42.6 MB is above the 16 MB direct-save limit, so Android uses the share sheet. Choose Files or a cloud app to save it. Cached copy kept for 24 hours.</div>
+          <button class="chooser-cancel" type="button" data-close>Cancel</button>
+        </div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 19 : Save cancelled / permission failure -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">19</span>
+        <div>
+          <h2>Save to phone · 取消 / 权限失败</h2>
+          <p>SAF 取消、权限撤销或写入失败都不产生用户可见文件；临时数据删除。用户可重新选择目录，或保存到 Downloads。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-save-error" role="group" aria-label="保存取消与权限失败" data-platform="android">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>Files</h2><p>src/files</p></div>
+            <span style="width:44px" aria-hidden="true"></span>
+          </header>
+          <div class="tree" aria-hidden="true" style="padding-top:18px">
+            <div class="tree-row" style="--depth:0"><svg class="icon chev"><use href="#i-chevron-down"></use></svg><svg class="icon folder"><use href="#i-folder"></use></svg><span class="row-name">files</span></div>
+            <div class="tree-row is-target" style="--depth:1"><span style="width:15px"></span><svg class="icon file-doc"><use href="#i-file"></use></svg><span class="row-name">notes.txt</span></div>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="scrim is-open" data-close></div>
+        <div class="sheet is-open" role="dialog" aria-modal="true" aria-label="Could not save file">
+          <div class="grabber"></div>
+          <div class="sheet-head">
+            <span class="ico-badge" style="color:#f87171"><svg class="icon"><use href="#i-alert"></use></svg></span>
+            <div><div class="sheet-title">Couldn't save file</div><div class="sheet-sub">notes.txt · 10 KB</div></div>
+          </div>
+          <div class="sheet-note danger"><svg class="icon"><use href="#i-alert"></use></svg><span>Folder permission was revoked. Choose the folder again, or save to Downloads. Cancelling writes nothing; the temporary file is removed.</span></div>
+          <div class="sheet-list">
+            <button class="sheet-action" type="button" data-toast="Reopening the system folder picker…"><svg class="icon"><use href="#i-folder"></use></svg>Choose folder</button>
+            <button class="sheet-action" type="button" data-toast="Saving to Downloads…"><svg class="icon"><use href="#i-save"></use></svg>Save to Downloads</button>
+            <button class="sheet-action" type="button" data-toast="Save cancelled; no file was written"><svg class="icon"><use href="#i-x"></use></svg>Cancel save</button>
+          </div>
+          <button class="sheet-action sheet-cancel" type="button" data-close>Cancel</button>
+        </div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 20 : over 256 MB -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">20</span>
+        <div>
+          <h2>Save to phone · 超过 256 MB</h2>
+          <p>超过 256 MB 不写入手机，也不构造分享字符串；Save / Open with 禁用，提示 “File is too large; save it on desktop.”，仅保留 Copy path。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-too-large" role="group" aria-label="文件超过 256 MB" data-platform="android">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>backup.tar</h2><p>src/files/backup.tar · 300 MB</p></div>
+            <button class="icon-btn" type="button" aria-label="File actions" data-toast="Action sheet is already open"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="preview-body">
+            <div class="preview-meta"><svg class="icon"><use href="#i-file"></use></svg> Binary · 300 MB · no preview</div>
+            <div class="image-preview"><div class="image-card" style="background:linear-gradient(135deg,#64748b,#334155)">300 MB</div></div>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="scrim is-open" data-close></div>
+        <div class="sheet is-open" role="dialog" aria-modal="true" aria-label="Actions for backup.tar">
+          <div class="grabber"></div>
+          <div class="sheet-head">
+            <span class="ico-badge"><svg class="icon"><use href="#i-file"></use></svg></span>
+            <div><div class="sheet-title">backup.tar</div><div class="sheet-sub">src/files/backup.tar · 300 MB</div></div>
+          </div>
+          <div class="sheet-note danger"><svg class="icon"><use href="#i-alert"></use></svg><span>File is too large; save it on desktop. Files over 256 MB are not fetched to the phone.</span></div>
+          <div class="sheet-list">
+            <button class="sheet-action" type="button" data-action="save" disabled aria-disabled="true"><svg class="icon"><use href="#i-save"></use></svg>Save to phone<small>Too large</small></button>
+            <button class="sheet-action" type="button" data-action="open" disabled aria-disabled="true"><svg class="icon"><use href="#i-external"></use></svg>Open with<small>Too large</small></button>
+            <button class="sheet-action" type="button" data-action="copy-path" data-toast="Copied path"><svg class="icon"><use href="#i-link"></use></svg>Copy path<small>src/files/backup.tar</small></button>
+          </div>
+          <button class="sheet-action sheet-cancel" type="button" data-close>Cancel</button>
+        </div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 22 : single-flight -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">21</span>
+        <div>
+          <h2>单飞 · 一个进度，重复动作禁用</h2>
+          <p>同一文件只允许一个 prepare 任务；Save 与 Open with 共享进度。重复点 Save/Open 不会开始第二个任务，菜单中的对应动作禁用。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-single-flight" role="group" aria-label="单飞进度与重复动作禁用" data-platform="android">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>README.md</h2><p>src/files/README.md · 2.4 KB</p></div>
+            <button class="icon-btn" type="button" aria-label="File actions" data-toast="Action sheet is already open"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="preview-body">
+            <div class="preview-meta"><svg class="icon"><use href="#i-file"></use></svg> Markdown · 2.4 KB · selectable text</div>
+            <h1>Orca Mobile</h1>
+            <p>Remote workspaces, terminals, and files continue on your phone.</p>
+          </div>
+        </div>
+        <div class="home"></div>
+        <div class="scrim is-open" data-close></div>
+        <div class="sheet is-open" role="dialog" aria-modal="true" aria-label="Saving README.md">
+          <div class="grabber"></div>
+          <div class="sheet-head">
+            <span class="ico-badge"><svg class="icon"><use href="#i-save"></use></svg></span>
+            <div><div class="sheet-title">Saving README.md to phone</div><div class="sheet-sub">One task per file</div></div>
+          </div>
+          <div class="sheet-progress">
+            <strong>68%</strong> · 1.6 KB / 2.4 KB
+            <div class="bar" role="progressbar" aria-valuenow="68" aria-valuemin="0" aria-valuemax="100" aria-label="Save progress"><i></i></div>
+            <div style="margin-top:7px">Save and Open with are disabled until this task finishes.</div>
+          </div>
+          <div class="sheet-list">
+            <button class="sheet-action" type="button" data-action="save" disabled aria-disabled="true"><svg class="icon"><use href="#i-save"></use></svg>Save to phone<small>Saving…</small></button>
+            <button class="sheet-action" type="button" data-action="open" disabled aria-disabled="true"><svg class="icon"><use href="#i-external"></use></svg>Open with<small>Waiting for save</small></button>
+            <button class="sheet-action" type="button" data-action="copy-path" data-toast="Copied path"><svg class="icon"><use href="#i-link"></use></svg>Copy path<small>src/files/README.md</small></button>
+          </div>
+          <button class="sheet-action sheet-cancel" type="button" data-close>Cancel</button>
+        </div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 23 : settings cache clear -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">22</span>
+        <div>
+          <h2>Settings · 清除保存缓存</h2>
+          <p>设置页显示缓存用量与 24 小时保留说明；清除后显示空态。缓存上限 512 MB，LRU 清理最旧项；用户保存到手机的文件不受影响。</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="file-cache-settings" role="group" aria-label="设置页清除下载缓存">
+        <div class="statusbar">
+          <span>9:41</span>
+          <span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span>
+        </div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>Settings</h2><p>Storage</p></div>
+            <span style="width:44px" aria-hidden="true"></span>
+          </header>
+          <div class="settings-row"><svg class="icon" aria-hidden="true"><use href="#i-file"></use></svg>Downloads<small>Ask every time</small></div>
+          <div class="settings-row"><svg class="icon" aria-hidden="true"><use href="#i-shield"></use></svg>Cache retention<small>24 hours</small></div>
+          <div class="cache-panel">
+            <h3>Download cache</h3>
+            <p>Cached copies are kept for 24 hours before cleanup. The cache is limited to 512 MB; the oldest files are removed first.</p>
+            <div class="cache-usage"><strong>0 B</strong><span>No cached copies</span></div>
+            <button class="btn" type="button" disabled aria-disabled="true" style="width:100%;opacity:.55">Clear download cache</button>
+          </div>
+          <p class="inline-note">Clearing this cache does not delete files you saved to your phone. It only removes Orca's temporary copies used by Save to phone and Open with.</p>
+        </div>
+        <div class="home"></div>
+        <div class="toast show" role="status" aria-live="polite">Download cache cleared</div>
+      </div>
+    </figure>
+  </section>
+
+  <p style="margin-top:46px;color:var(--subtle);font-size:12px;line-height:1.7;max-width:980px">
+    说明：手机框内的 UI 文案按现有移动端英文实现；页面标题与状态说明保留中文，仅用于设计沟通。颜色与圆角使用 mobile theme token：背景 #111111、强调色 #3b82f6、圆角 6px。所有菜单均为底部 ActionSheet；行尾「…」与长按等价，满足无障碍与可发现性。二进制 / PDF 行保持可长按，只隐藏 Preview；目录只保留 Copy path；文件动作不包含 Orca 浏览器。Save to phone 是唯一的用户可见保存动作，下载只是内部 prepare 语义。文件读取失败徽标只由动作失败产生，不逐行 stat。
+  </p>
+</main>
+
+<script>
+(function () {
+  var phones = Array.prototype.slice.call(document.querySelectorAll('.phone'));
+
+  function showToast(phone, text) {
+    var toast = phone.querySelector('.toast');
+    if (!toast) return;
+    toast.textContent = text;
+    toast.classList.add('show');
+    clearTimeout(phone._toastTimer);
+    phone._toastTimer = setTimeout(function () { toast.classList.remove('show'); }, 1900);
+  }
+
+  function closeOverlays(phone) {
+    phone.querySelectorAll('.sheet.is-open, .scrim.is-open').forEach(function (el) { el.classList.remove('is-open'); });
+    phone.querySelectorAll('.chooser, .ios-sheet').forEach(function (el) { el.style.display = 'none'; });
+    phone.querySelectorAll('.gesture-callout').forEach(function (el) { el.hidden = true; });
+  }
+
+  function parseSizeMb(size) {
+    if (!size) return 0;
+    var m = String(size).match(/([\d.]+)\s*(KB|MB|GB|B)/i);
+    if (!m) return 0;
+    var n = parseFloat(m[1]);
+    var unit = m[2].toUpperCase();
+    if (unit === 'GB') return n * 1024;
+    if (unit === 'MB') return n;
+    if (unit === 'KB') return n / 1024;
+    return n / (1024 * 1024);
+  }
+
+  function platformOf(phone) { return phone.dataset.platform || 'android'; }
+
+  function saveHintFor(phone, mb) {
+    if (platformOf(phone) === 'ios') return 'Save to Files';
+    if (mb > 256) return 'Too large for mobile';
+    if (mb > 16) return 'Share sheet (>16 MB)';
+    return 'Folder picker';
+  }
+
+  function openHintFor(phone, mb) {
+    if (platformOf(phone) === 'ios') return 'Share sheet';
+    if (mb > 16) return 'Share sheet (>16 MB)';
+    return 'System chooser';
+  }
+
+  function actionVisible(action, kind, fromPreview, mb) {
+    if (fromPreview && action === 'preview') return false;
+    if (kind === 'folder') return action === 'copy-path';
+    if (kind === 'failed') return action === 'retry' || action === 'copy-path';
+    if (mb > 256) return action === 'save' || action === 'open' || action === 'copy-path';
+    if (kind === 'binary' || kind === 'pdf') return ['save', 'open', 'copy-path'].indexOf(action) !== -1;
+    if (kind === 'image' || kind === 'media') return ['preview', 'save', 'open', 'copy-path'].indexOf(action) !== -1;
+    return ['preview', 'save', 'open', 'contents', 'copy-path'].indexOf(action) !== -1;
+  }
+
+  function noteFor(kind, data, mb, phone) {
+    if (mb > 256) return { cls: 'danger', text: 'File is too large; save it on desktop. Files over 256 MB are not fetched to the phone.' };
+    if (kind === 'folder') return { cls: 'info', text: 'Folder · Copy path only. Tap the row to expand or collapse.' };
+    if (kind === 'failed') return { cls: 'danger', text: 'Read failed after this action. The row badge appears only after a read fails; Retry read clears it on success. Reconnect only clears connection/timeout failures.' };
+    if (kind === 'binary' || kind === 'pdf') return { cls: 'warn', text: 'Preview is not available for this type. Save to phone and Open with are still available.' };
+    if (kind === 'image') return { cls: 'info', text: 'Image preview opens full screen. Save to phone writes a copy to the folder you choose.' };
+    if (kind === 'media') {
+      var suffix = (mb > 16 && platformOf(phone) !== 'ios') ? ' This file is over 16 MB, so Android saves it through the share sheet.' : '';
+      return { cls: 'info', text: 'Preview streams the media. Save to phone fetches the whole file first.' + suffix };
+    }
+    return { cls: 'info', text: 'Copy content reads the file on demand (up to 512 KB). Larger worktree text is truncated at 512 KB and the copy says so.' };
+  }
+
+  function setSmall(btn, text) {
+    var small = btn.querySelector('small');
+    if (!small) return;
+    small.textContent = text || '';
+    small.hidden = !text;
+  }
+
+  function isReadFailed(phone, data) {
+    if (!data) return false;
+    if (data.kind === 'failed') return true;
+    if (!data.path) return false;
+    if (phone._retriedPaths && phone._retriedPaths[data.path]) return false;
+    if (phone._readFailures && phone._readFailures[data.path]) return true;
+    var row = findRow(phone, data.path);
+    return !!(data.fail && row && row.classList.contains('is-failing'));
+  }
+
+  function openFileSheet(phone, data, fromPreview) {
+    var sheet = phone.querySelector('[data-file-sheet]');
+    if (!sheet || !data) return;
+    var failed = isReadFailed(phone, data);
+    var kind = failed ? 'failed' : (data.kind || 'code');
+    var size = data.size || '';
+    var mb = parseSizeMb(size);
+    phone._sheetTarget = data;
+    sheet.dataset.kind = kind;
+    sheet.dataset.source = fromPreview ? 'preview' : 'row';
+    sheet.setAttribute('aria-label', 'Actions for ' + (data.name || 'file'));
+    sheet.querySelector('[data-sheet-name]').textContent = data.name || 'File';
+    sheet.querySelector('[data-sheet-path]').textContent = (data.path || data.name || '') + (size ? ' · ' + size : '');
+    sheet.querySelectorAll('[data-for]').forEach(function (btn) {
+      var action = btn.dataset.for;
+      btn.hidden = !actionVisible(action, kind, !!fromPreview, mb);
+      btn.disabled = false;
+      btn.removeAttribute('aria-disabled');
+      if (action === 'save') setSmall(btn, saveHintFor(phone, mb));
+      else if (action === 'open') setSmall(btn, openHintFor(phone, mb));
+      else if (action === 'contents') setSmall(btn, 'Reads on demand (≤512 KB)');
+      else if (action === 'copy-path') setSmall(btn, data.path || '');
+      else setSmall(btn, '');
+      if (mb > 256 && (action === 'save' || action === 'open')) {
+        btn.disabled = true;
+        btn.setAttribute('aria-disabled', 'true');
+        setSmall(btn, 'Too large');
+      }
+    });
+    var note = sheet.querySelector('[data-sheet-note]');
+    if (note) {
+      var n = noteFor(kind, data, mb, phone);
+      note.className = 'sheet-note ' + n.cls;
+      note.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#i-alert"></use></svg><span></span>';
+      note.querySelector('span').textContent = n.text;
+      note.hidden = false;
+    }
+    sheet.classList.add('is-open');
+    var scrim = phone.querySelector('.scrim');
+    if (scrim) scrim.classList.add('is-open');
+  }
+
+  function failureMarkup(data) {
+    return '<div class="preview-meta"><svg class="icon" aria-hidden="true"><use href="#i-lock"></use></svg> Read failed · permission denied</div>' +
+      '<div class="error-panel"><div class="error-icon"><svg class="icon" aria-hidden="true"><use href="#i-lock"></use></svg></div>' +
+      '<h2>Could not read file</h2><p>Permission denied (EACCES). The host blocked this read for <strong>' + (data.path || data.name) + '</strong>. Nothing was cached.</p>' +
+      '<div class="error-actions"><button class="btn primary" type="button" data-retry>Retry read</button>' +
+      '<button class="btn ghost" type="button" data-toast="Copied path">Copy path</button></div></div>' +
+      '<p class="inline-note" style="padding:0">The row badge appears only after a failed read. Retry read clears it on success; reconnect only clears connection/timeout failures.</p>';
+  }
+
+  function previewMarkup(kind, data) {
+    var size = data.size || '';
+    if (kind === 'code') {
+      return '<div class="preview-meta"><svg class="icon" aria-hidden="true"><use href="#i-code"></use></svg> Code · ' + size + ' · selectable text</div>' +
+        '<pre><code>import { useMemo } from \'react\'\n\nexport function useFileActions(target) {\n  return useMemo(() => buildActions(target), [target])\n}\n\nexport function buildActions(target) {\n  return target.previewable ? [\'preview\'] : []\n}</code></pre>' +
+        '<p>Long-press text to select. Copy content reads this file on demand (up to 512 KB).</p>';
+    }
+    if (kind === 'docs') {
+      return '<div class="preview-meta"><svg class="icon" aria-hidden="true"><use href="#i-file"></use></svg> Markdown · ' + size + ' · selectable text</div>' +
+        '<h1>Orca Mobile</h1><p>Remote workspaces, terminals, and files continue on your phone.</p>' +
+        '<h2>Getting started</h2><pre><code>pnpm install\npnpm dev --host</code></pre>' +
+        '<h2>Files</h2><ul><li>Search files by name or relative path</li><li>Type filters keep parent folders</li><li>Tap to preview, long-press for actions</li></ul>' +
+        '<p>Save to phone prepares a temporary copy and writes it to the folder you choose.</p>';
+    }
+    if (kind === 'image') {
+      return '<div class="preview-meta"><svg class="icon" aria-hidden="true"><use href="#i-image"></use></svg> Image · ' + size + ' · pinch to zoom</div>' +
+        '<div class="image-preview"><div class="image-card">ORCA</div></div>' +
+        '<p style="margin-top:14px">Use Open with to send the original PNG to another app.</p>';
+    }
+    if (kind === 'media') {
+      return '<div class="preview-meta"><svg class="icon" aria-hidden="true"><use href="#i-video"></use></svg> Media · ' + size + ' · streamed preview</div>' +
+        '<div class="media-preview"><button class="play-btn" type="button" data-toast="Playing preview"><svg class="icon" aria-hidden="true"><use href="#i-play"></use></svg></button><div>recording.mp4 · 0:42</div></div>' +
+        '<p style="margin-top:14px">Save to phone prepares a cached copy that is kept for 24 hours.</p>';
+    }
+    if (kind === 'folder') {
+      return '<div class="preview-meta"><svg class="icon" aria-hidden="true"><use href="#i-folder"></use></svg> Folder</div>' +
+        '<div class="error-panel"><h2>Folder actions</h2><p>Long-press a folder to copy its relative path. Preview applies to files only.</p></div>';
+    }
+    return '<div class="preview-meta">File · ' + size + '</div><p>Preview is available for this file.</p>';
+  }
+
+  function findRow(phone, path) {
+    var rows = Array.prototype.slice.call(phone.querySelectorAll('[data-file-row]'));
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].dataset.path === path) return rows[i];
+    }
+    return null;
+  }
+
+  function markRowFailure(phone, path) {
+    var row = findRow(phone, path);
+    if (!row) return;
+    row.classList.add('is-failing');
+    var badge = row.querySelector('[data-row-failure]');
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'row-meta fail';
+      badge.setAttribute('data-row-failure', '');
+      badge.textContent = 'Read failed';
+      var menu = row.querySelector('[data-row-menu]');
+      if (menu) row.insertBefore(badge, menu);
+      else row.appendChild(badge);
+    }
+    badge.hidden = false;
+  }
+
+  function clearRowFailure(phone, path) {
+    var row = findRow(phone, path);
+    if (!row) return;
+    row.classList.remove('is-failing');
+    var badge = row.querySelector('[data-row-failure]');
+    if (badge) badge.hidden = true;
+  }
+
+  function openPreview(phone, data) {
+    if (!data) return;
+    var kind = data.kind || 'code';
+    if (kind === 'binary' || kind === 'pdf') {
+      showToast(phone, 'Preview is not available for ' + (data.name || 'this file') + '. Long-press for actions.');
+      return;
+    }
+    var view = phone.querySelector('[data-preview-view]');
+    if (!view) return;
+    phone._retriedPaths = phone._retriedPaths || {};
+    phone._readFailures = phone._readFailures || {};
+    phone._previewTarget = data;
+    view.querySelector('[data-preview-name]').textContent = data.name || 'File';
+    view.querySelector('[data-preview-path]').textContent = (data.path || '') + (data.size ? ' · ' + data.size : '');
+    var path = data.path || '';
+    var retried = !!phone._retriedPaths[path];
+    var failed = kind === 'failed' || (!retried && (data.fail || phone._readFailures[path]));
+    view.querySelector('[data-preview-body]').innerHTML = failed ? failureMarkup(data) : previewMarkup(kind === 'failed' ? 'code' : kind, data);
+    view.hidden = false;
+    if (failed) {
+      phone._readFailures[path] = true;
+      markRowFailure(phone, path);
+    } else if (retried) {
+      delete phone._readFailures[path];
+      clearRowFailure(phone, path);
+    }
+  }
+
+  function closePreview(phone) {
+    var view = phone.querySelector('[data-preview-view]');
+    if (view) view.hidden = true;
+  }
+
+  function matchesChip(kind, chip) {
+    if (chip === 'all') return true;
+    if (chip === 'code') return kind === 'code';
+    if (chip === 'docs') return kind === 'docs' || kind === 'pdf';
+    if (chip === 'media') return kind === 'media';
+    if (chip === 'images') return kind === 'image';
+    return kind === 'binary' || kind === 'other' || kind === 'failed';
+  }
+
+  phones.forEach(function (phone) {
+    var interactive = phone.dataset.interactive === 'true';
+    var previewView = phone.querySelector('[data-preview-view]');
+
+    if (previewView) {
+      previewView.addEventListener('click', function (e) {
+        if (e.target.closest('[data-preview-back]')) { closePreview(phone); return; }
+        if (e.target.closest('[data-preview-more]')) {
+          openFileSheet(phone, phone._previewTarget, true);
+          return;
+        }
+        if (e.target.closest('[data-retry]')) {
+          var target = phone._previewTarget || {};
+          phone._retriedPaths = phone._retriedPaths || {};
+          phone._readFailures = phone._readFailures || {};
+          if (target.path) {
+            phone._retriedPaths[target.path] = true;
+            delete phone._readFailures[target.path];
+          }
+          clearRowFailure(phone, target.path);
+          var body = previewView.querySelector('[data-preview-body]');
+          if (body) body.innerHTML = previewMarkup(target.kind === 'failed' ? 'code' : (target.kind || 'code'), target);
+          showToast(phone, 'Read succeeded; row badge cleared');
+          return;
+        }
+        var toastTarget = e.target.closest('[data-toast]');
+        if (toastTarget) showToast(phone, toastTarget.dataset.toast || 'Done');
+      });
+    }
+
+    phone.addEventListener('click', function (e) {
+      var closer = e.target.closest('[data-close]');
+      if (closer) { closeOverlays(phone); return; }
+      var sheetAction = e.target.closest('[data-for]');
+      if (sheetAction) {
+        var action = sheetAction.dataset.for;
+        var target = phone._sheetTarget || {};
+        var mb = parseSizeMb(target.size);
+        closeOverlays(phone);
+        if (action === 'preview') { openPreview(phone, target); }
+        else if (action === 'retry') {
+          phone._retriedPaths = phone._retriedPaths || {};
+          phone._readFailures = phone._readFailures || {};
+          if (target.path) {
+            phone._retriedPaths[target.path] = true;
+            delete phone._readFailures[target.path];
+          }
+          clearRowFailure(phone, target.path);
+          showToast(phone, 'Retry succeeded; row badge cleared');
+        }
+        else if (action === 'copy-path') { showToast(phone, 'Copied path: ' + (target.path || '')); }
+        else if (action === 'contents') { showToast(phone, 'Copied content'); }
+        else if (action === 'save') {
+          if (mb > 16 && platformOf(phone) === 'android') showToast(phone, 'Saving via the system share sheet…');
+          else showToast(phone, 'Saving ' + (target.name || 'file') + ' to phone…');
+        }
+        else if (action === 'open') { showToast(phone, 'Opening the system chooser…'); }
+        return;
+      }
+      var toastTarget = e.target.closest('[data-toast]');
+      if (toastTarget) showToast(phone, toastTarget.dataset.toast || 'Done');
+    });
+
+    if (interactive) {
+      phone.querySelectorAll('[data-file-row], [data-result-row]').forEach(function (row) {
+        var timer = null, longFired = false, startX = 0, startY = 0;
+        function clear() { clearTimeout(timer); timer = null; }
+        row.addEventListener('pointerdown', function (e) {
+          if (e.target.closest('[data-row-menu]')) return;
+          longFired = false;
+          startX = e.clientX; startY = e.clientY;
+          clear();
+          timer = setTimeout(function () { longFired = true; openFileSheet(phone, row.dataset, false); }, 500);
+        });
+        row.addEventListener('pointermove', function (e) {
+          if (timer && (Math.abs(e.clientX - startX) > 10 || Math.abs(e.clientY - startY) > 10)) clear();
+        });
+        ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (ev) { row.addEventListener(ev, clear); });
+        row.addEventListener('click', function (e) {
+          if (e.target.closest('[data-row-menu]')) return;
+          if (longFired) { longFired = false; return; }
+          openPreview(phone, row.dataset);
+        });
+        row.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPreview(phone, row.dataset); }
+        });
+      });
+
+      phone.querySelectorAll('[data-row-menu]').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var row = btn.closest('[data-file-row], [data-result-row]');
+          if (row) openFileSheet(phone, row.dataset, false);
+        });
+      });
+    }
+
+    var tree = phone.querySelector('[data-tree]');
+    if (tree) {
+      var input = phone.querySelector('[data-search-input]');
+      var clearBtn = phone.querySelector('[data-clear-search]');
+      var chips = Array.prototype.slice.call(phone.querySelectorAll('[data-chip]'));
+      var count = phone.querySelector('[data-filter-count]');
+      var hint = phone.querySelector('[data-filter-hint]');
+      var empty = phone.querySelector('[data-empty]');
+      var fileRows = Array.prototype.slice.call(tree.querySelectorAll('[data-file-row]')).filter(function (row) { return row.dataset.kind !== 'folder'; });
+      var folderRows = Array.prototype.slice.call(tree.querySelectorAll('[data-file-row]')).filter(function (row) { return row.dataset.kind === 'folder'; });
+
+      function applyFilter() {
+        var q = (input && input.value || '').trim().toLowerCase();
+        var activeChip = phone.querySelector('[data-chip].is-active');
+        var chip = activeChip ? activeChip.dataset.chip : 'all';
+        var filtering = q !== '' || chip !== 'all';
+        var visibleFiles = fileRows.filter(function (row) {
+          var name = (row.dataset.name || '').toLowerCase();
+          var path = (row.dataset.path || '').toLowerCase();
+          var matchQ = !q || name.indexOf(q) !== -1 || path.indexOf(q) !== -1;
+          var matchK = matchesChip(row.dataset.kind, chip);
+          return matchQ && matchK;
+        });
+        var visiblePaths = visibleFiles.map(function (row) { return row.dataset.path || ''; });
+        folderRows.forEach(function (folder) {
+          var fp = folder.dataset.path || '';
+          var unloaded = folder.dataset.unloaded === 'true';
+          var keep = unloaded || visiblePaths.some(function (p) { return p === fp || p.indexOf(fp + '/') === 0; });
+          folder.style.display = keep ? '' : 'none';
+          var note = folder.querySelector('[data-unloaded-note]');
+          if (note) note.hidden = !(unloaded && filtering);
+        });
+        fileRows.forEach(function (row) {
+          row.style.display = visibleFiles.indexOf(row) !== -1 ? '' : 'none';
+        });
+        if (count) count.textContent = visibleFiles.length + (visibleFiles.length === 1 ? ' item' : ' items');
+        if (empty) empty.hidden = visibleFiles.length !== 0;
+        if (clearBtn) clearBtn.hidden = !q;
+        if (hint) hint.textContent = q ? 'Matches in name and relative path' : 'Tap to preview · long-press or … for actions';
+      }
+
+      if (input) input.addEventListener('input', applyFilter);
+      if (clearBtn) clearBtn.addEventListener('click', function () {
+        if (input) { input.value = ''; input.focus(); }
+        applyFilter();
+      });
+      chips.forEach(function (chip) {
+        chip.addEventListener('click', function () {
+          chips.forEach(function (c) { c.classList.remove('is-active'); c.setAttribute('aria-pressed', 'false'); });
+          chip.classList.add('is-active');
+          chip.setAttribute('aria-pressed', 'true');
+          applyFilter();
+        });
+      });
+      applyFilter();
+    }
+  });
+})();
+</script>
+</body>
+</html>

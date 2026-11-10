@@ -1,0 +1,1008 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%235b9dff'/%3E%3Ccircle cx='16' cy='16' r='7' fill='none' stroke='%2304101f' stroke-width='3'/%3E%3C/svg%3E">
+<title>Terminal selection · Orca Mobile UI prototype</title>
+<style>
+  :root{
+    --bg:#05070a;--page:#06080b;--panel:#0c1015;--surface:#141920;--surface-2:#1c232c;
+    --line:#28313c;--line-strong:#36414e;--text:#eef3f8;--muted:#9aa7b4;--subtle:#8593a1;
+    --accent:#5b9dff;--accent-ink:#04101f;--accent-soft:rgba(91,157,255,.14);
+    --warn:#f0b45c;--warn-text:#f6d7a3;--warn-soft:rgba(240,180,92,.1);
+    --danger:#ff8a8a;--ok:#5fd996;--sheet:#171d25;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  html{color-scheme:dark}
+  body{margin:0;background:radial-gradient(1100px 700px at 12% -8%,#0d1723 0%,var(--page) 58%) fixed;color:var(--text);font-family:var(--sans);-webkit-font-smoothing:antialiased;line-height:1.5}
+  .page{max-width:1480px;margin:0 auto;padding:54px 44px 110px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--accent);text-transform:uppercase;margin-bottom:12px}
+  h1{margin:0 0 14px;font-size:34px;line-height:1.15;letter-spacing:-.02em;font-weight:700}
+  .lede{margin:0;max-width:900px;color:var(--muted);font-size:15px;line-height:1.65}
+  .page-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:999px;padding:6px 11px;font-size:12px}
+  .pill strong{color:var(--text);font-weight:600}
+  .backlink{display:inline-flex;align-items:center;gap:6px;min-height:44px;color:var(--muted);text-decoration:none;font-size:13px;margin-bottom:22px}
+  .backlink:hover{color:var(--text)}
+  .legend{display:flex;flex-wrap:wrap;gap:10px 20px;align-items:center;margin:30px 0 46px;padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:rgba(12,16,21,.65)}
+  .legend-item{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+  .swatch{width:14px;height:14px;border-radius:4px;background:var(--accent);flex:none}
+  .swatch.soft{background:rgba(91,157,255,.34);box-shadow:inset 0 0 0 1px rgba(91,157,255,.5)}
+  .swatch.round{background:var(--accent);border-radius:50%;width:12px;height:12px}
+  .swatch.warn{background:var(--warn)}
+  .devices{display:flex;flex-wrap:wrap;gap:64px 54px;align-items:flex-start}
+  .device{width:390px;margin:0}
+  .device-cap{display:flex;gap:12px;margin-bottom:16px;align-items:flex-start}
+  .state-num{flex:none;width:30px;height:30px;border-radius:9px;background:var(--accent-soft);border:1px solid rgba(91,157,255,.32);color:#a9ccff;font-family:var(--mono);font-size:12px;display:grid;place-items:center}
+  .device-cap h2{font-size:16px;margin:3px 0 5px;line-height:1.3}
+  .device-cap p{margin:0;color:var(--muted);font-size:12.5px;line-height:1.5;max-width:340px}
+  .phone{position:relative;width:390px;height:844px;background:#0a0d12;border:1px solid #39424e;border-radius:44px;overflow:hidden;box-shadow:0 0 0 8px #0b0f14,0 0 0 9px #232b35,0 34px 90px rgba(0,0,0,.6);isolation:isolate}
+  .statusbar{position:relative;z-index:2;height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;color:#edf3f9;font-size:12.5px;font-weight:650;background:#0a0d12}
+  .status-icons{display:flex;align-items:center;gap:7px}
+  .signal{display:inline-flex;align-items:flex-end;gap:2px;height:10px}
+  .signal i{width:3px;border-radius:1px;background:currentColor}
+  .signal i:nth-child(1){height:4px}.signal i:nth-child(2){height:6px}.signal i:nth-child(3){height:8px}.signal i:nth-child(4){height:10px}
+  .wifi{width:14px;height:10px;position:relative}
+  .wifi::before,.wifi::after{content:"";position:absolute;left:50%;transform:translateX(-50%);border:1.5px solid currentColor;border-bottom-color:transparent;border-left-color:transparent;border-right-color:transparent;border-radius:50%}
+  .wifi::before{width:14px;height:14px;top:-2px}
+  .wifi::after{width:7px;height:7px;top:2px}
+  .battery{width:22px;height:11px;border:1.5px solid currentColor;border-radius:3.5px;position:relative;padding:1.5px}
+  .battery::after{content:"";position:absolute;right:-4px;top:3px;width:2px;height:4px;border-radius:1px;background:currentColor}
+  .battery i{display:block;height:100%;width:74%;background:currentColor;border-radius:1.5px}
+  .screen{display:flex;flex-direction:column;height:calc(844px - 44px);overflow:hidden;position:relative;background:var(--page)}
+  .home{position:absolute;z-index:5;bottom:8px;left:50%;transform:translateX(-50%);width:134px;height:5px;border-radius:99px;background:#48525f;pointer-events:none}
+  .appbar{flex:none;height:58px;display:flex;align-items:center;gap:6px;padding:0 8px;border-bottom:1px solid var(--line);background:rgba(12,16,21,.94);position:relative;z-index:6}
+  .icon-btn{flex:none;width:44px;height:44px;border:0;border-radius:12px;background:transparent;color:var(--text);display:grid;place-items:center;cursor:pointer;padding:0}
+  .icon-btn:hover{background:var(--surface-2)}
+  .icon{display:block;width:22px;height:22px;flex:none}
+  .icon.sm{width:18px;height:18px}
+  .appbar-title{flex:1;min-width:0;text-align:center}
+  .appbar-title h2{margin:0;font-size:15px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .appbar-title p{margin:2px 0 0;font-size:11px;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:5px}
+  .live-dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px rgba(95,217,150,.14);flex:none}
+  .proto-note{flex:none;margin:8px 12px 0;padding:8px 10px;border:1px dashed rgba(91,157,255,.42);border-radius:9px;background:rgba(91,157,255,.07);color:#b9d5ff;font-size:10.5px;line-height:1.45;display:flex;gap:7px;align-items:flex-start;position:relative;z-index:3}
+  .proto-note .icon{width:14px;height:14px;color:var(--accent);margin-top:1px}
+  .term{flex:1;min-height:0;overflow-y:auto;background:#080a0d;padding:52px 14px 26px;font-family:var(--mono);font-size:12.5px;line-height:1.95;color:#c8d3df;scrollbar-width:thin;scrollbar-color:#2d3742 transparent}
+  .term-line{white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 2px;position:relative}
+  .prompt{color:var(--accent);font-weight:600}
+  .cmd{color:#eef3f8}
+  .dim{color:#7f8c99}
+  .ok{color:#67d391}
+  .warnc{color:#f0b45c}
+  .hash{color:#e0b05a}
+  .term-input{flex:none;height:54px;display:flex;align-items:center;gap:9px;padding:0 16px;border-top:1px solid #1e252e;background:#0b0e12;font-family:var(--mono);font-size:13.5px;color:#e9eff6}
+  .term-input .caret{width:2px;height:18px;background:var(--accent);animation:blink 1.2s steps(1) infinite}
+  .term-input .keyhint{margin-left:auto;color:var(--subtle);font-size:10.5px;font-family:var(--sans)}
+  @keyframes blink{50%{opacity:0}}
+  .sel-wrap{position:relative;display:inline-block;background:rgba(91,157,255,.34);box-shadow:inset 0 0 0 1px rgba(91,157,255,.55);border-radius:3px;z-index:2}
+  .handle{position:absolute;width:14px;height:22px;z-index:6;pointer-events:none}
+  .handle::before{content:"";position:absolute;left:1px;width:12px;height:12px;border-radius:50%;background:var(--accent);border:2px solid #080a0d;box-sizing:border-box;box-shadow:0 2px 6px rgba(0,0,0,.5)}
+  .handle::after{content:"";position:absolute;left:6px;width:2px;height:14px;background:var(--accent);border-radius:2px}
+  .handle.start{left:-8px;top:-13px}
+  .handle.start::before{top:0}
+  .handle.start::after{top:9px}
+  .handle.end{right:-8px;bottom:-13px}
+  .handle.end::before{bottom:0}
+  .handle.end::after{bottom:9px}
+  .tap-target{position:relative;display:inline-block}
+  .tap-dot{position:absolute;left:75%;top:50%;width:11px;height:11px;margin:-5.5px 0 0 -5.5px;border-radius:50%;background:var(--accent);border:2px solid #080a0d;box-shadow:0 0 0 4px rgba(91,157,255,.2);z-index:8;pointer-events:none}
+  .tap-dot.center{left:50%}
+  .tap-dot.left{left:25%}
+  .tap-dot.space{left:50%}
+  .drag-origin{position:absolute;left:75%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;border:2px solid rgba(91,157,255,.9);background:rgba(91,157,255,.18);z-index:8;pointer-events:none}
+  .space-target{position:relative;display:inline-block;width:1ch;height:1em;vertical-align:baseline}
+  .space-target::before{content:"";position:absolute;inset:1px -1px;border:1px dashed rgba(91,157,255,.55);border-radius:3px}
+  .editmenu{position:absolute;z-index:10;bottom:calc(100% + 17px);left:var(--menu-x,-6px);display:flex;align-items:stretch;background:#232c37;border:1px solid #465364;border-radius:11px;box-shadow:0 16px 36px rgba(0,0,0,.55)}
+  .editmenu button{min-width:76px;height:44px;display:flex;align-items:center;justify-content:center;border:0;background:transparent;color:#eef3f8;font:inherit;font-family:var(--sans);font-size:13px;cursor:pointer}
+  .editmenu button:hover{background:#2d3743}
+  .editmenu button:disabled{color:var(--subtle);cursor:not-allowed;opacity:.55}
+  .editmenu button:disabled:hover{background:transparent}
+  .editmenu button:first-child{border-radius:10px 0 0 10px}
+  .editmenu button:last-child{border-radius:0 10px 10px 0}
+  .editmenu button + button{border-left:1px solid #465364}
+  .blank-target{position:relative;display:inline-block;min-width:20ch;height:1.2em;vertical-align:baseline;border-bottom:1px dashed rgba(91,157,255,.38)}
+  .editmenu::after{content:"";position:absolute;left:24px;bottom:-6px;width:10px;height:10px;background:#232c37;border-right:1px solid #465364;border-bottom:1px solid #465364;transform:rotate(45deg)}
+  .wrap-ruler{display:flex;gap:4px;align-items:center;font-size:10px;color:var(--subtle);font-family:var(--sans);margin:0 0 4px}
+  .wrap-ruler span{font-family:var(--mono);color:#9fb3c8;background:#10161d;border:1px solid #29333f;border-radius:5px;padding:1px 5px}
+  .wrap-arrow{color:var(--accent);font-family:var(--sans)}
+  .copy-proof{display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:5px 9px;border-radius:8px;background:rgba(95,217,150,.09);border:1px solid rgba(95,217,150,.24);color:#bfe9d1;font-size:10.5px;font-family:var(--sans)}
+  .copy-proof code{font-family:var(--mono);color:#e8f7ee;white-space:nowrap}
+  .cross-trace{margin:6px 0 2px;padding:8px 10px;border:1px dashed rgba(240,180,92,.42);border-radius:9px;background:rgba(240,180,92,.07);font-family:var(--sans);font-size:10.5px;line-height:1.5;color:var(--warn-text);white-space:normal}
+  .cross-trace .trace-head{font-weight:650;color:#f6d7a3}
+  .cross-trace .trace-row{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:4px}
+  .cross-trace .trace-chip{font-family:var(--mono);font-size:10px;background:#111820;border:1px solid #3a4552;border-radius:5px;padding:2px 6px;color:#d7e2ee;white-space:nowrap}
+  .cross-trace .trace-chip.equal{border-color:rgba(240,180,92,.6);color:#f6d7a3}
+  .cross-trace .trace-chip.final{border-color:rgba(91,157,255,.6);color:#b9d5ff}
+  .cross-trace .trace-arrow{color:var(--accent);font-style:normal}
+  .cross-trace .trace-foot{display:block;margin-top:4px;color:#c3ceda}
+  .toast{position:absolute;left:50%;bottom:104px;z-index:50;transform:translate(-50%,10px);max-width:330px;padding:10px 16px;border-radius:999px;background:#222d39;border:1px solid #3b4856;color:var(--text);font-size:13px;text-align:center;opacity:0;visibility:hidden;transition:.2s;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .toast.show{opacity:1;visibility:visible;transform:translate(-50%,0)}
+  .notes{margin-top:60px}
+  .notes-head{display:flex;gap:12px;align-items:flex-start;margin-bottom:20px}
+  .notes-head h2{font-size:20px;margin:2px 0 4px}
+  .notes-head p{margin:0;color:var(--muted);font-size:13px;max-width:820px;line-height:1.6}
+  .notes-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:18px;max-width:1250px}
+  .note-card{padding:20px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,rgba(20,25,32,.8),rgba(12,16,21,.8))}
+  .note-card h3{margin:0 0 6px;font-size:14px}
+  .note-card .tagline{font-family:var(--mono);font-size:10.5px;color:var(--accent);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}
+  .note-card .tagline.warn{color:var(--warn)}
+  .note-card p{margin:0 0 12px;color:var(--muted);font-size:12.5px;line-height:1.6}
+  .note-card p:last-child{margin-bottom:0}
+  .mini-term{font-family:var(--mono);font-size:13px;background:#080a0d;border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:#c8d3df;line-height:2;overflow-x:auto}
+  .mini-term .bad{background:rgba(255,138,138,.22);box-shadow:inset 0 0 0 1px rgba(255,138,138,.45);border-radius:3px}
+  .mini-term .good{background:rgba(91,157,255,.3);box-shadow:inset 0 0 0 1px rgba(91,157,255,.5);border-radius:3px}
+  .mini-caption{margin-top:8px;font-size:11px;color:var(--subtle)}
+  .chain{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-family:var(--mono);font-size:10.5px;color:#b9d5ff;margin-top:4px}
+  .chain span{background:#111820;border:1px solid #2e3a47;border-radius:6px;padding:4px 7px}
+  .chain i{color:var(--subtle);font-style:normal}
+  .behavior{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;color:#c3ceda;font-size:12.5px}
+  .behavior li{display:flex;gap:8px;line-height:1.5}
+  .behavior li::before{content:"";flex:none;width:5px;height:5px;border-radius:50%;background:var(--accent);margin-top:7px}
+  .token-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+  .token-chip{font-family:var(--mono);font-size:10.5px;background:#111820;border:1px solid #2e3a47;border-radius:6px;padding:3px 6px;color:#b9d5ff}
+  .token-chip em{font-style:normal;color:var(--subtle)}
+  .icon-btn:focus-visible,.editmenu button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  @media (max-width:720px){.page{padding:34px 20px 80px}h1{font-size:29px}}
+  @media (prefers-reduced-motion: reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><path d="M5 12h.01M12 12h.01M19 12h.01" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4l9 16H3z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 10v4M12 17h.01" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  </defs>
+</svg>
+
+<main class="page">
+  <a class="backlink" href="index.html">
+    <svg class="icon sm" aria-hidden="true"><use href="#i-chevron-left"></use></svg>
+    All prototypes
+  </a>
+  <div class="eyebrow">Orca Mobile · Terminal selection</div>
+  <h1>Selection at cell boundaries</h1>
+  <p class="lede">A 500 ms long press shows the selection overlay and the Copy / Select All menu immediately, while the finger is still down. Wide characters, emoji, combining marks, and wrapped lines map cell columns to string indices, so the copied text always equals the highlight.</p>
+  <p class="lede" style="margin-top:10px">Cell numbers in annotations are 0-based and refer to the <strong>bare test-vector row</strong> highlighted in each phone. Prompt, command, and history rows are context only and carry no vector coordinates.</p>
+  <div class="page-meta">
+    <span class="pill"><strong>Long press</strong> 500 ms · overlay + menu</span>
+    <span class="pill"><strong>Handles</strong> 44 × 44 touch target</span>
+    <span class="pill"><strong>CJK run window</strong> 5 characters · tokenizer-independent</span>
+    <span class="pill"><strong>Copy</strong> English UI</span>
+  </div>
+
+  <section class="legend" aria-label="Legend">
+    <span class="legend-item"><span class="swatch soft"></span>Selection (cell boundary)</span>
+    <span class="legend-item"><span class="swatch round"></span>Selection handle</span>
+    <span class="legend-item"><span class="swatch"></span>Tap point / marker</span>
+    <span class="legend-item"><span class="swatch warn"></span>Geometry note / non-goal</span>
+  </section>
+
+  <section class="devices">
+    <!-- 01 -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">01</span>
+        <div>
+          <h2>500 ms — overlay and menu while holding</h2>
+          <p>The selection overlay, handles, and Copy / Select All menu all appear at 500 ms, while the finger is still down; release is not required. Tapping the comma selects the left phrase 修复.</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="select-hold" role="group" aria-label="Long press at 500 milliseconds showing the selection overlay">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span></div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>orca-mobile</h2><p><span class="live-dot"></span>zsh · live</p></div>
+            <button class="icon-btn" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="proto-note"><svg class="icon"><use href="#i-alert"></use></svg><span>G9 · t = 500 ms, finger still down; overlay, handles, and menu are visible. Bare vector row — tap cell 4 (，) → left gap 0, right gap 1 → span [0,4) → term.select(0,row,4) → Copy: 修复.</span></div>
+          <div class="term">
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">git log --oneline -3</span></div>
+            <div class="term-line"><span class="sel-wrap">修复<span class="handle start" aria-hidden="true"></span><span class="handle end" aria-hidden="true"></span><span class="editmenu" role="menu" aria-label="Selection menu"><button type="button" role="menuitem" data-toast="Copied: 修复">Copy</button><button type="button" role="menuitem" data-toast="Select All — buffer selected">Select All</button></span></span><span class="tap-target">，<span class="tap-dot center" aria-hidden="true"></span></span>登录流程 login_flow 的 bug 🐛</div>
+            <div class="term-line"><span class="hash">7d3e881</span> 更新 session 恢复逻辑</div>
+            <div class="term-line"><span class="hash">0f2c9bd</span> chore: bump deps</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">pnpm test auth</span></div>
+            <div class="term-line ok">✓ 登录流程 测试通过 (12/12)</div>
+            <div class="term-line warnc">→ 下一步: 验证 权限边界 &amp; token 刷新 🚀</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="caret" style="display:inline-block;width:7px;height:14px;background:#5b9dff;vertical-align:-2px"></span></div>
+          </div>
+          <div class="term-input"><span class="prompt">❯</span><span class="caret"></span><span class="keyhint">Holding — overlay visible</span></div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 02 -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">02</span>
+        <div>
+          <h2>中文abc — right half of 文</h2>
+          <p>A tap on the right half of 文 is a continuation cell. It snaps to the glyph start and selects the CJK span 中文, not the following abc.</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="select-cjk" role="group" aria-label="Selecting Chinese text from a wide-character tap">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span></div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>orca-mobile</h2><p><span class="live-dot"></span>zsh · live</p></div>
+            <button class="icon-btn" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="proto-note"><svg class="icon"><use href="#i-alert"></use></svg><span>G3 · bare vector row — tap cell 3 (right half of 文) → snap to cell 2 → string index 1 → span [0,4) → term.select(0,row,4) → Copy: 中文.</span></div>
+          <div class="term">
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">echo 中文abc</span></div>
+            <div class="term-line"><span class="sel-wrap"><span class="tap-target">中</span><span class="tap-target">文<span class="tap-dot" aria-hidden="true"></span></span><span class="handle start" aria-hidden="true"></span><span class="handle end" aria-hidden="true"></span></span>abc</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">echo abc</span></div>
+            <div class="term-line">abc</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="caret" style="display:inline-block;width:7px;height:14px;background:#5b9dff;vertical-align:-2px"></span></div>
+          </div>
+          <div class="term-input"><span class="prompt">❯</span><span class="caret"></span></div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 03 -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">03</span>
+        <div>
+          <h2>中文😀English — emoji right half</h2>
+          <p>The emoji occupies two cells. A tap on its right half snaps to the emoji glyph and selects only 😀; no code point is split.</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="select-emoji" role="group" aria-label="Selecting an emoji from its right half">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span></div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>orca-mobile</h2><p><span class="live-dot"></span>zsh · live</p></div>
+            <button class="icon-btn" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="proto-note"><svg class="icon"><use href="#i-alert"></use></svg><span>G5 · bare vector row — emoji covers cells 4–5; tap cell 5 (right half) → snap to 4 → span [4,6) → term.select(4,row,2) → Copy: 😀.</span></div>
+          <div class="term">
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">echo 中文😀English</span></div>
+            <div class="term-line">中文<span class="sel-wrap"><span class="tap-target">😀<span class="tap-dot" aria-hidden="true"></span></span><span class="handle start" aria-hidden="true"></span><span class="handle end" aria-hidden="true"></span></span>English</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">echo English</span></div>
+            <div class="term-line">English</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="caret" style="display:inline-block;width:7px;height:14px;background:#5b9dff;vertical-align:-2px"></span></div>
+          </div>
+          <div class="term-input"><span class="prompt">❯</span><span class="caret"></span></div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 04 -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">04</span>
+        <div>
+          <h2>中文😀English — tap E</h2>
+          <p>Tapping E after the emoji selects the Latin word English. The start cell is correct even though the preceding glyphs are two cells wide.</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="select-english" role="group" aria-label="Selecting English text after an emoji">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span></div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>orca-mobile</h2><p><span class="live-dot"></span>zsh · live</p></div>
+            <button class="icon-btn" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="proto-note"><svg class="icon"><use href="#i-alert"></use></svg><span>G6 · bare vector row — tap cell 6 (E) → span [6,13) → term.select(6,row,7) → Copy: English.</span></div>
+          <div class="term">
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">echo 中文😀English</span></div>
+            <div class="term-line">中文😀<span class="sel-wrap"><span class="tap-target">E<span class="tap-dot center" aria-hidden="true"></span></span>nglish<span class="handle start" aria-hidden="true"></span><span class="handle end" aria-hidden="true"></span></span></div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">echo 中文</span></div>
+            <div class="term-line">中文</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="caret" style="display:inline-block;width:7px;height:14px;background:#5b9dff;vertical-align:-2px"></span></div>
+          </div>
+          <div class="term-input"><span class="prompt">❯</span><span class="caret"></span></div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 05 -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">05</span>
+        <div>
+          <h2>验证 权限边界 &amp; token — tap &amp;</h2>
+          <p>Both neighbouring words are one empty cell away. The tie goes left, so tapping &amp; selects 权限边界.</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="select-and" role="group" aria-label="Selecting the nearest phrase from an ampersand">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span></div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>orca-mobile</h2><p><span class="live-dot"></span>zsh · live</p></div>
+            <button class="icon-btn" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="proto-note"><svg class="icon"><use href="#i-alert"></use></svg><span>G11 · bare vector row — 权限边界 at cells 5–12, &amp; at 14, token at 16. Left gap 1, right gap 1 → tie left → span [5,13) → term.select(5,row,8) → Copy: 权限边界.</span></div>
+          <div class="term">
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">pnpm test auth</span></div>
+            <div class="term-line ok">✓ 登录流程 测试通过 (12/12)</div>
+            <div class="term-line ok">✓ OAuth callback 边界检查通过</div>
+            <div class="term-line warnc">→ 下一步:</div>
+            <div class="term-line warnc">验证 <span class="sel-wrap">权限边界<span class="handle start" aria-hidden="true"></span><span class="handle end" aria-hidden="true"></span></span> <span class="tap-target">&amp;<span class="tap-dot center" aria-hidden="true"></span></span> token 刷新 🚀</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">git status</span></div>
+            <div class="term-line dim">On branch feat/mobile-terminal-link</div>
+            <div class="term-line ok">nothing to commit, working tree clean</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="caret" style="display:inline-block;width:7px;height:14px;background:#5b9dff;vertical-align:-2px"></span></div>
+          </div>
+          <div class="term-input"><span class="prompt">❯</span><span class="caret"></span></div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 06 -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">06</span>
+        <div>
+          <h2>CJK merge — 登录流程 stays one phrase</h2>
+          <p>When Intl.Segmenter splits 登录流程 into 登录 + 流程, the whole adjacent CJK run is 4 characters — under the 5-character window — so it is selected as one candidate. The window is tokenizer-independent.</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="select-merge" role="group" aria-label="Selecting a merged CJK phrase">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span></div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>orca-mobile</h2><p><span class="live-dot"></span>zsh · live</p></div>
+            <button class="icon-btn" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="proto-note"><svg class="icon"><use href="#i-alert"></use></svg><span>G10 · bare vector row — tap 登 (cell 6) → Segmenter yields <span class="token-chip">登录</span> + <span class="token-chip">流程</span> → merge to <span class="token-chip">登录流程</span> → span [6,14) → term.select(6,row,8) → Copy: 登录流程.</span></div>
+          <div class="term">
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">git log --oneline -3</span></div>
+            <div class="term-line">修复，<span class="sel-wrap"><span class="tap-target">登<span class="tap-dot center" aria-hidden="true"></span></span>录流程<span class="handle start" aria-hidden="true"></span><span class="handle end" aria-hidden="true"></span></span> login_flow 的 bug 🐛</div>
+            <div class="term-line"><span class="hash">7d3e881</span> 更新 session 恢复逻辑</div>
+            <div class="term-line"><span class="hash">0f2c9bd</span> chore: bump deps</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">pnpm test auth</span></div>
+            <div class="term-line ok">✓ 登录流程 测试通过 (12/12)</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="caret" style="display:inline-block;width:7px;height:14px;background:#5b9dff;vertical-align:-2px"></span></div>
+          </div>
+          <div class="term-input"><span class="prompt">❯</span><span class="caret"></span></div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 07 -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">07</span>
+        <div>
+          <h2>中文 abc — tap the space</h2>
+          <p>When both neighbours are at the same edge distance, the tie goes left. Tapping the space between 中文 and abc selects 中文.</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="select-space" role="group" aria-label="Selecting the left phrase from a space tap">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span></div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>orca-mobile</h2><p><span class="live-dot"></span>zsh · live</p></div>
+            <button class="icon-btn" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="proto-note"><svg class="icon"><use href="#i-alert"></use></svg><span>G7 · bare vector row — 中文 at cells 0–3, space at 4, abc at 5–7. Tap cell 4 → both gaps 0 → tie left → span [0,4) → term.select(0,row,4) → Copy: 中文.</span></div>
+          <div class="term">
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">echo "中文 abc"</span></div>
+            <div class="term-line"><span class="sel-wrap">中文<span class="handle start" aria-hidden="true"></span><span class="handle end" aria-hidden="true"></span></span><span class="space-target" aria-hidden="true"><span class="tap-dot space"></span></span>abc</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">echo abc</span></div>
+            <div class="term-line">abc</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="caret" style="display:inline-block;width:7px;height:14px;background:#5b9dff;vertical-align:-2px"></span></div>
+          </div>
+          <div class="term-input"><span class="prompt">❯</span><span class="caret"></span></div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 08 -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">08</span>
+        <div>
+          <h2>Fullwidth ＡＢＣ１２３</h2>
+          <p>Every fullwidth character occupies two cells. A tap on the right half of Ｂ selects the whole fullwidth token; the highlight spans all 12 cells.</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="select-fullwidth" role="group" aria-label="Selecting a fullwidth string">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span></div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>orca-mobile</h2><p><span class="live-dot"></span>zsh · live</p></div>
+            <button class="icon-btn" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="proto-note"><svg class="icon"><use href="#i-alert"></use></svg><span>G15 · bare vector row — every glyph is 2 cells. Tap cell 3 (right half of Ｂ) → span [0,12) → term.select(0,row,12) → Copy: ＡＢＣ１２３.</span></div>
+          <div class="term">
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">echo ＡＢＣ１２３</span></div>
+            <div class="term-line"><span class="sel-wrap">Ａ<span class="tap-target">Ｂ<span class="tap-dot" aria-hidden="true"></span></span>Ｃ１２３<span class="handle start" aria-hidden="true"></span><span class="handle end" aria-hidden="true"></span></span></div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">echo ABC123</span></div>
+            <div class="term-line">ABC123</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="caret" style="display:inline-block;width:7px;height:14px;background:#5b9dff;vertical-align:-2px"></span></div>
+          </div>
+          <div class="term-input"><span class="prompt">❯</span><span class="caret"></span></div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 09 -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">09</span>
+        <div>
+          <h2>NFD combining mark</h2>
+          <p>The text e + U+0301 is two UTF-16 code units but one glyph cell. Tapping it selects the whole grapheme; the accent is never split from the base letter.</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="select-nfd" role="group" aria-label="Selecting an NFD combining character">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span></div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>orca-mobile</h2><p><span class="live-dot"></span>zsh · live</p></div>
+            <button class="icon-btn" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="proto-note"><svg class="icon"><use href="#i-alert"></use></svg><span>G14 · bare vector row — e + U+0301 is 2 UTF-16 code units, 1 cell. Tap cell 0 → span [0,1) → term.select(0,row,1) → Copy: é (the full grapheme).</span></div>
+          <div class="term">
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">echo "e&#x301;x cafe&#x301;"</span></div>
+            <div class="term-line"><span class="sel-wrap"><span class="tap-target">e&#x301;<span class="tap-dot center" aria-hidden="true"></span></span><span class="handle start" aria-hidden="true"></span><span class="handle end" aria-hidden="true"></span></span>x cafe&#x301;</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">echo "ex cafe"</span></div>
+            <div class="term-line">ex cafe</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="caret" style="display:inline-block;width:7px;height:14px;background:#5b9dff;vertical-align:-2px"></span></div>
+          </div>
+          <div class="term-input"><span class="prompt">❯</span><span class="caret"></span></div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 10 -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">10</span>
+        <div>
+          <h2>Wrapped line — current row KLMNOP</h2>
+          <p>With cols = 10, the logical line abcdefghijKLMNOP wraps. Tapping K selects only the current row KLMNOP; the v1 word seed does not merge across the wrap.</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="select-wrap" role="group" aria-label="Selecting text on the current wrapped row">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span></div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>orca-mobile</h2><p><span class="live-dot"></span>zsh · live</p></div>
+            <button class="icon-btn" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="proto-note"><svg class="icon"><use href="#i-alert"></use></svg><span>G16 · bare vector rows, cols = 10. Tap K on row 2 → span row2 [0,6) → term.select(0,row2,6) → Copy: KLMNOP. The word seed stays on the current row.</span></div>
+          <div class="term">
+            <div class="wrap-ruler"><span>cols = 10</span> logical line abcdefghijKLMNOP <span class="wrap-arrow">↳ wraps</span></div>
+            <div class="term-line">abcdefghij<span class="wrap-arrow"> ↵</span></div>
+            <div class="term-line"><span class="sel-wrap"><span class="tap-target">K<span class="tap-dot center" aria-hidden="true"></span></span>LMNOP<span class="handle start" aria-hidden="true"></span><span class="handle end" aria-hidden="true"></span></span></div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">echo done</span></div>
+            <div class="term-line">done</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="caret" style="display:inline-block;width:7px;height:14px;background:#5b9dff;vertical-align:-2px"></span></div>
+          </div>
+          <div class="term-input"><span class="prompt">❯</span><span class="caret"></span></div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 11 -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">11</span>
+        <div>
+          <h2>Handle drag across a wide glyph</h2>
+          <p>The end handle is dragged into the right half of 😀. It stores the glyph-start anchor (cell 4); the derived endExclusive is 6, so the highlight and the copied text are both 中文😀.</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="select-drag" role="group" aria-label="Dragging a selection handle across a wide character">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span></div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>orca-mobile</h2><p><span class="live-dot"></span>zsh · live</p></div>
+            <button class="icon-btn" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="proto-note"><svg class="icon"><use href="#i-alert"></use></svg><span>B17 · bare vector row — drag the end handle to the right half of 😀 (cell 5) → the end anchor is snapToGlyphStart(5) = 4 → derived endExclusive = snapToGlyphEnd(4) = 6 → Copy: 中文😀. Copied text equals the highlighted text; no release-time word snap.</span></div>
+          <div class="term">
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">echo 中文😀English</span></div>
+            <div class="term-line"><span class="sel-wrap">中文<span class="tap-target">😀<span class="drag-origin" aria-hidden="true"></span></span><span class="handle start" aria-hidden="true"></span><span class="handle end" aria-hidden="true"></span></span>English</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">pbcopy</span></div>
+            <div class="term-line copy-proof"><svg class="icon sm"><use href="#i-check"></use></svg>Copy: <code>中文😀</code> — equals highlight</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="caret" style="display:inline-block;width:7px;height:14px;background:#5b9dff;vertical-align:-2px"></span></div>
+          </div>
+          <div class="term-input"><span class="prompt">❯</span><span class="caret"></span></div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 12 -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">12</span>
+        <div>
+          <h2>Selection menu — Copy / Select All</h2>
+          <p>While a selection is active the menu offers Copy and Select All. Copy copies exactly the highlighted text; Select All replaces the selection with the buffer text.</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="select-menu" role="group" aria-label="Selection menu with Copy and Select All">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span></div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>orca-mobile</h2><p><span class="live-dot"></span>zsh · live</p></div>
+            <button class="icon-btn" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="proto-note"><svg class="icon"><use href="#i-alert"></use></svg><span>Menu state · bare vector row, span [5,13), term.select(5,row,8). Copy copies the highlighted 权限边界. Select All selects the buffer. Both keep the existing 44 px touch targets.</span></div>
+          <div class="term">
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">pnpm test auth</span></div>
+            <div class="term-line ok">✓ 登录流程 测试通过 (12/12)</div>
+            <div class="term-line ok">✓ OAuth callback 边界检查通过</div>
+            <div class="term-line warnc">→ 下一步:</div>
+            <div class="term-line warnc">验证 <span class="sel-wrap">权限边界<span class="handle start" aria-hidden="true"></span><span class="handle end" aria-hidden="true"></span><span class="editmenu" role="menu" aria-label="Selection menu"><button type="button" role="menuitem" data-toast="Copied: 权限边界">Copy</button><button type="button" role="menuitem" data-toast="Select All — buffer selected">Select All</button></span></span> &amp; token 刷新 🚀</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">git status</span></div>
+            <div class="term-line dim">On branch feat/mobile-terminal-link</div>
+            <div class="term-line ok">nothing to commit, working tree clean</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="caret" style="display:inline-block;width:7px;height:14px;background:#5b9dff;vertical-align:-2px"></span></div>
+          </div>
+          <div class="term-input"><span class="prompt">❯</span><span class="caret"></span></div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 13 -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">13</span>
+        <div>
+          <h2>Long CJK run — tap 人</h2>
+          <p>A 9-character CJK run is longer than the 5-character window. Tapping 人 (character index 2) starts the window at the run start, so the selection is 人民共和国. The window is tokenizer-independent — no token boundaries are consulted.</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="select-long-run-start" role="group" aria-label="Selecting a five-character window from a long CJK run at the tapped character">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span></div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>orca-mobile</h2><p><span class="live-dot"></span>zsh · live</p></div>
+            <button class="icon-btn" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="proto-note"><svg class="icon"><use href="#i-alert"></use></svg><span>G26 · bare vector row — run 中华人民共和国万岁 is 9 chars / 18 cells. Tap 人 (char index 2) → start = clamp(2, 0, 4) = 2 → chars [2,7) = 人民共和国 → span [4,14) → term.select(4,row,10) → Copy: 人民共和国. The 5-character window is tokenizer-independent.</span></div>
+          <div class="term">
+            <div class="term-line dim">[12:01:09] build banner</div>
+            <div class="term-line">中华<span class="sel-wrap"><span class="tap-target">人<span class="tap-dot center" aria-hidden="true"></span></span>民共和国<span class="handle start" aria-hidden="true"></span><span class="handle end" aria-hidden="true"></span></span>万岁</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">echo status</span></div>
+            <div class="term-line">ok</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="caret" style="display:inline-block;width:7px;height:14px;background:#5b9dff;vertical-align:-2px"></span></div>
+          </div>
+          <div class="term-input"><span class="prompt">❯</span><span class="caret"></span></div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 14 -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">14</span>
+        <div>
+          <h2>Long CJK run — tap 国</h2>
+          <p>Tapping 国 (character index 6) clamps the 5-character window start to runEnd − 5 = 4, so the selection is 共和国万岁. No token boundaries are used; the result is identical with or without Intl.Segmenter.</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="select-long-run-end" role="group" aria-label="Selecting a five-character window from a long CJK run at 国">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span></div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>orca-mobile</h2><p><span class="live-dot"></span>zsh · live</p></div>
+            <button class="icon-btn" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="proto-note"><svg class="icon"><use href="#i-alert"></use></svg><span>G27 · bare vector row — run 中华人民共和国万岁 is 9 chars / 18 cells. Tap 国 (char index 6) → start = clamp(6, 0, 4) = 4 → chars [4,9) = 共和国万岁 → span [8,18) → term.select(8,row,10) → Copy: 共和国万岁. Tokenizer-independent.</span></div>
+          <div class="term">
+            <div class="term-line dim">[12:01:09] build banner</div>
+            <div class="term-line">中华人民<span class="sel-wrap">共和<span class="tap-target">国<span class="tap-dot" aria-hidden="true"></span></span>万岁<span class="handle start" aria-hidden="true"></span><span class="handle end" aria-hidden="true"></span></span></div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">echo status</span></div>
+            <div class="term-line">ok</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="caret" style="display:inline-block;width:7px;height:14px;background:#5b9dff;vertical-align:-2px"></span></div>
+          </div>
+          <div class="term-input"><span class="prompt">❯</span><span class="caret"></span></div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 15 -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">15</span>
+        <div>
+          <h2>Blank / end of line — only case with no selection</h2>
+          <p>Only a blank or end-of-line cell creates no selection and no handles; Copy is disabled and Select All remains available. A non-blank isolated glyph with no token within ±8 is not blank, so glyph fallback selects it instead (state 21).</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="select-blank" role="group" aria-label="Long press on a blank end-of-line cell with Copy disabled" data-state="15" data-span="none" data-copy="none">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span></div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>orca-mobile</h2><p><span class="live-dot"></span>zsh · live</p></div>
+            <button class="icon-btn" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="proto-note"><svg class="icon"><use href="#i-alert"></use></svg><span>B20 · bare vector row is blank / end-of-line. A blank cell is the only no-selection case: no token and blank → no selection span and no handles; Copy is disabled. Select All remains available. Non-blank glyph fallback is state 21.</span></div>
+          <div class="term">
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">printf '\n'</span></div>
+            <div class="term-line">verification complete<span class="wrap-arrow"> ↵</span></div>
+            <div class="term-line"><span class="blank-target"><span class="tap-dot center" aria-hidden="true"></span><span class="editmenu" role="menu" aria-label="Selection menu"><button type="button" role="menuitem" disabled aria-disabled="true">Copy</button><button type="button" role="menuitem" data-toast="Select All — buffer selected">Select All</button></span></span></div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="caret" style="display:inline-block;width:7px;height:14px;background:#5b9dff;vertical-align:-2px"></span></div>
+          </div>
+          <div class="term-input"><span class="prompt">❯</span><span class="caret"></span></div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 16 -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">16</span>
+        <div>
+          <h2>7-char CJK run — tap 风</h2>
+          <p>A 7-character run uses the same 5-character window. Tapping 风 (character index 4) clamps the start to runEnd − 5 = 2, so the selection is 秋冬风花雪. No token boundaries are used.</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="select-long-run-window" role="group" aria-label="Selecting a five-character window from a seven-character CJK run">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span></div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>orca-mobile</h2><p><span class="live-dot"></span>zsh · live</p></div>
+            <button class="icon-btn" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="proto-note"><svg class="icon"><use href="#i-alert"></use></svg><span>G28 · bare vector row — run 春夏秋冬风花雪 is 7 chars / 14 cells. Tap 风 (char index 4) → start = clamp(4, 0, 2) = 2 → chars [2,7) = 秋冬风花雪 → span [4,14) → term.select(4,row,10) → Copy: 秋冬风花雪. The window is tokenizer-independent.</span></div>
+          <div class="term">
+            <div class="term-line dim">[12:01:09] build banner</div>
+            <div class="term-line">春夏<span class="sel-wrap">秋冬<span class="tap-target">风<span class="tap-dot center" aria-hidden="true"></span></span>花雪<span class="handle start" aria-hidden="true"></span><span class="handle end" aria-hidden="true"></span></span></div>
+            <div class="term-line copy-proof"><svg class="icon sm"><use href="#i-check"></use></svg>Copy: <code>秋冬风花雪</code> — span [4,14), 10 cells</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">echo status</span></div>
+            <div class="term-line">ok</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="caret" style="display:inline-block;width:7px;height:14px;background:#5b9dff;vertical-align:-2px"></span></div>
+          </div>
+          <div class="term-input"><span class="prompt">❯</span><span class="caret"></span></div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 17 -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">17</span>
+        <div>
+          <h2>Handle crossing — start dragged past end</h2>
+          <p>Selection bc has anchors at cells 1 and 2. Drag the start handle past the end to cell 5. Both handles store glyph-start anchors; ordering gives start = snapToGlyphStart(2) = 2 and endExclusive = snapToGlyphEnd(5) = 6. The span is [2,6), Copy is cdef, and term.select gets 4 cells — never a negative length. The trace below is the equal-anchor moment: during drag keeps a single-glyph span; release at equal clears.</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="select-cross-start" role="group" aria-label="Handle crossing with the start handle dragged past the end" data-state="17" data-span="[2,6)" data-select="(2,row,4)" data-copy="cdef" data-equal-span="[2,3)" data-equal-select="(2,row,1)" data-equal-copy="c">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span></div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>orca-mobile</h2><p><span class="live-dot"></span>zsh · live</p></div>
+            <button class="icon-btn" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="proto-note"><svg class="icon"><use href="#i-alert"></use></svg><span>B17b · start handle dragged from cell 1 through the end anchor (2) to cell 5 → during drag keeps a single-glyph span; release at equal clears. At anchor 2 the span is [2,3), term.select(2,row,1), Copy c. Past the anchor: order lower 2, upper 5 → start = snapToGlyphStart(2) = 2, endExclusive = snapToGlyphEnd(5) = 6 → span [2,6) → term.select(2,row,4) → Copy: cdef. The dragged handle becomes the end handle; release at unequal anchors keeps the ordered span.</span></div>
+          <div class="term">
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">echo abcdef</span></div>
+            <div class="term-line">ab<span class="sel-wrap">cde<span class="tap-target">f<span class="drag-origin" aria-hidden="true"></span></span><span class="handle start" aria-hidden="true"></span><span class="handle end" aria-hidden="true"></span></span></div>
+            <div class="term-line cross-trace" data-through-equal="[2,3) copy c survives">
+              <span class="trace-head">Through-equal drag — the selection survives</span>
+              <span class="trace-row"><span class="trace-chip equal">anchor 2 · equal · [2,3) · Copy c</span><span class="trace-arrow">→</span><span class="trace-chip final">anchor 5 · past · [2,6) · Copy cdef</span></span>
+              <span class="trace-foot">During drag keeps a single-glyph span; release at equal clears. Release past the other anchor keeps the ordered span.</span>
+            </div>
+            <div class="term-line copy-proof"><svg class="icon sm"><use href="#i-check"></use></svg>Copy: <code>cdef</code> — span [2,6), 4 cells, length ≥ 0</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="caret" style="display:inline-block;width:7px;height:14px;background:#5b9dff;vertical-align:-2px"></span></div>
+          </div>
+          <div class="term-input"><span class="prompt">❯</span><span class="caret"></span></div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 18 -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">18</span>
+        <div>
+          <h2>Handle crossing — end dragged before start</h2>
+          <p>Selection bcd has anchors at cells 1 and 3 (the end handle stores the glyph start of d). Drag the end handle before the start to cell 0. Ordering yields start = snapToGlyphStart(0) = 0 and endExclusive = snapToGlyphEnd(1) = 2, so the span is [0,2), Copy is ab, and term.select gets 2 cells. No negative length is passed. The trace below is the equal-anchor moment: during drag keeps a single-glyph span; release at equal clears.</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="select-cross-end" role="group" aria-label="Handle crossing with the end handle dragged before the start" data-state="18" data-span="[0,2)" data-select="(0,row,2)" data-copy="ab" data-equal-span="[1,2)" data-equal-select="(1,row,1)" data-equal-copy="b">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span></div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>orca-mobile</h2><p><span class="live-dot"></span>zsh · live</p></div>
+            <button class="icon-btn" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="proto-note"><svg class="icon"><use href="#i-alert"></use></svg><span>B17b · end handle dragged from cell 3 through the start anchor (1) to cell 0 → during drag keeps a single-glyph span; release at equal clears. At anchor 1 the span is [1,2), term.select(1,row,1), Copy b. Past the anchor: order lower 0, upper 1 → start = snapToGlyphStart(0) = 0, endExclusive = snapToGlyphEnd(1) = 2 → span [0,2) → term.select(0,row,2) → Copy: ab. The dragged handle becomes the start handle; model, select, and copy all use the ordered span.</span></div>
+          <div class="term">
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">echo abcdef</span></div>
+            <div class="term-line"><span class="sel-wrap"><span class="tap-target">a<span class="drag-origin" aria-hidden="true"></span></span>b<span class="handle start" aria-hidden="true"></span><span class="handle end" aria-hidden="true"></span></span>cdef</div>
+            <div class="term-line cross-trace" data-through-equal="[1,2) copy b survives">
+              <span class="trace-head">Through-equal drag — the selection survives</span>
+              <span class="trace-row"><span class="trace-chip equal">anchor 1 · equal · [1,2) · Copy b</span><span class="trace-arrow">→</span><span class="trace-chip final">anchor 0 · past · [0,2) · Copy ab</span></span>
+              <span class="trace-foot">During drag keeps a single-glyph span; release at equal clears. Release past the other anchor keeps the ordered span.</span>
+            </div>
+            <div class="term-line copy-proof"><svg class="icon sm"><use href="#i-check"></use></svg>Copy: <code>ab</code> — span [0,2), 2 cells, length ≥ 0</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="caret" style="display:inline-block;width:7px;height:14px;background:#5b9dff;vertical-align:-2px"></span></div>
+          </div>
+          <div class="term-input"><span class="prompt">❯</span><span class="caret"></span></div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 19 -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">19</span>
+        <div>
+          <h2>Handle crossing — wide glyph on the crossed side</h2>
+          <p>Selection 文a has anchors at cells 2 and 4. Drag the start handle past the end to c at cell 6. The wide glyph 文 is on the crossed side, so it stays outside the crossing span. The lower anchor is 4 and the upper 6, giving span [4,7), Copy abc, and term.select(4,row,3). The trace below is the equal-anchor moment: during drag keeps a single-glyph span; release at equal clears.</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="select-cross-wide" role="group" aria-label="Handle crossing with a wide glyph on the crossed side" data-state="19" data-span="[4,7)" data-select="(4,row,3)" data-copy="abc" data-equal-span="[4,5)" data-equal-select="(4,row,1)" data-equal-copy="a">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span></div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>orca-mobile</h2><p><span class="live-dot"></span>zsh · live</p></div>
+            <button class="icon-btn" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="proto-note"><svg class="icon"><use href="#i-alert"></use></svg><span>B17b · bare vector row 中文abc — select 文a (anchors 2/4), drag the start handle through the end anchor (4) to c (cell 6) → during drag keeps a single-glyph span; release at equal clears. At anchor 4 the span is [4,5), term.select(4,row,1), Copy a. Past the anchor: order lower 4, upper 6 → start = snapToGlyphStart(4) = 4, endExclusive = snapToGlyphEnd(6) = 7 → span [4,7) → term.select(4,row,3) → Copy: abc. 文 covers cells 2–3 on the crossed side and is not included; no negative length.</span></div>
+          <div class="term">
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">echo 中文abc</span></div>
+            <div class="term-line">中文<span class="sel-wrap">ab<span class="tap-target">c<span class="drag-origin" aria-hidden="true"></span></span><span class="handle start" aria-hidden="true"></span><span class="handle end" aria-hidden="true"></span></span></div>
+            <div class="term-line cross-trace" data-through-equal="[4,5) copy a survives">
+              <span class="trace-head">Through-equal drag — the selection survives</span>
+              <span class="trace-row"><span class="trace-chip equal">anchor 4 · equal · [4,5) · Copy a</span><span class="trace-arrow">→</span><span class="trace-chip final">anchor 6 · past · [4,7) · Copy abc</span></span>
+              <span class="trace-foot">During drag keeps a single-glyph span; release at equal clears. Release past the other anchor keeps the ordered span.</span>
+            </div>
+            <div class="term-line copy-proof"><svg class="icon sm"><use href="#i-check"></use></svg>Copy: <code>abc</code> — span [4,7), 3 cells, length ≥ 0</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="caret" style="display:inline-block;width:7px;height:14px;background:#5b9dff;vertical-align:-2px"></span></div>
+          </div>
+          <div class="term-input"><span class="prompt">❯</span><span class="caret"></span></div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 20 -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">20</span>
+        <div>
+          <h2>Handle crossing — wide fixed upper anchor</h2>
+          <p>Selection 文a has glyph-start anchors at cells 2 (文) and 4 (a). Drag the end handle before the start to 中 at cell 0. The fixed upper anchor is the wide glyph 文, so endExclusive = snapToGlyphEnd(2) = 4, not 3. Ordering gives span [0,4), Copy 中文, and term.select(0,row,4). The trace below is the equal-anchor moment: during drag keeps a single-glyph span; release at equal clears.</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="select-cross-wide-fixed" role="group" aria-label="Handle crossing with a wide fixed upper anchor" data-state="20" data-span="[0,4)" data-select="(0,row,4)" data-copy="中文" data-equal-span="[2,4)" data-equal-select="(2,row,2)" data-equal-copy="文">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span></div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>orca-mobile</h2><p><span class="live-dot"></span>zsh · live</p></div>
+            <button class="icon-btn" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="proto-note"><svg class="icon"><use href="#i-alert"></use></svg><span>B17b2 · bare vector row 中文abc — select 文a (anchors 2/4), drag the end handle through the start anchor (2) to 中 (cell 0) → during drag keeps a single-glyph span; release at equal clears. At anchor 2 the span is [2,4), term.select(2,row,2), Copy 文. Past the anchor: order lower 0, upper 2 → start = snapToGlyphStart(0) = 0, endExclusive = snapToGlyphEnd(2) = 4 because 文 is 2 cells wide → span [0,4) → term.select(0,row,4) → Copy: 中文. The wide fixed upper anchor proves endExclusive is not upper + 1.</span></div>
+          <div class="term">
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">echo 中文abc</span></div>
+            <div class="term-line"><span class="sel-wrap"><span class="tap-target">中<span class="drag-origin" aria-hidden="true"></span></span>文<span class="handle start" aria-hidden="true"></span><span class="handle end" aria-hidden="true"></span></span>abc</div>
+            <div class="term-line cross-trace" data-through-equal="[2,4) copy 文 survives">
+              <span class="trace-head">Through-equal drag — the selection survives</span>
+              <span class="trace-row"><span class="trace-chip equal">anchor 2 · equal · [2,4) · Copy 文</span><span class="trace-arrow">→</span><span class="trace-chip final">anchor 0 · past · [0,4) · Copy 中文</span></span>
+              <span class="trace-foot">During drag keeps a single-glyph span; release at equal clears. Release past the other anchor keeps the ordered span.</span>
+            </div>
+            <div class="term-line copy-proof"><svg class="icon sm"><use href="#i-check"></use></svg>Copy: <code>中文</code> — span [0,4), 4 cells, wide fixed upper anchor</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="caret" style="display:inline-block;width:7px;height:14px;background:#5b9dff;vertical-align:-2px"></span></div>
+          </div>
+          <div class="term-input"><span class="prompt">❯</span><span class="caret"></span></div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+
+    <!-- 21 -->
+    <figure class="device">
+      <figcaption class="device-cap">
+        <span class="state-num">21</span>
+        <div>
+          <h2>Isolated non-blank glyph — select &amp;</h2>
+          <p>A blank or end-of-line cell is the only case that creates no selection. Here &amp; is non-blank and no token is within ±8 cells, so glyph fallback selects &amp; itself: span [14,15), term.select(14,row,1), Copy &amp;.</p>
+        </div>
+      </figcaption>
+      <div class="phone" id="select-isolated-glyph" role="group" aria-label="Selecting an isolated non-blank ampersand with no nearby token" data-state="21" data-span="[14,15)" data-select="(14,row,1)" data-copy="&amp;">
+        <div class="statusbar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"><i></i></span></span></div>
+        <div class="screen">
+          <header class="appbar">
+            <button class="icon-btn" type="button" aria-label="Back"><svg class="icon"><use href="#i-chevron-left"></use></svg></button>
+            <div class="appbar-title"><h2>orca-mobile</h2><p><span class="live-dot"></span>zsh · live</p></div>
+            <button class="icon-btn" type="button" aria-label="More options"><svg class="icon"><use href="#i-more"></use></svg></button>
+          </header>
+          <div class="proto-note"><svg class="icon"><use href="#i-alert"></use></svg><span>G30 · bare vector row — &amp; is at cell 14 with 10 blank cells between &amp; and the left token, and 10 between &amp; and the right token, so no token is within ±8. The pressed cell is non-blank → glyph fallback selects the full glyph: span [14,15) → term.select(14,row,1) → Copy: &amp;. Blank/end-of-line is the only no-selection case (state 15).</span></div>
+          <div class="term">
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">printf '%s' "$CHECK"</span></div>
+            <div class="term-line dim">left token            right token</div>
+            <div class="term-line">left          <span class="sel-wrap"><span class="tap-target">&amp;<span class="tap-dot center" aria-hidden="true"></span></span><span class="handle start" aria-hidden="true"></span><span class="handle end" aria-hidden="true"></span></span>          right</div>
+            <div class="term-line copy-proof"><svg class="icon sm"><use href="#i-check"></use></svg>Copy: <code>&amp;</code> — span [14,15), 1 cell, no token within ±8</div>
+            <div class="term-line dim">&#160;</div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="caret" style="display:inline-block;width:7px;height:14px;background:#5b9dff;vertical-align:-2px"></span></div>
+          </div>
+          <div class="term-input"><span class="prompt">❯</span><span class="caret"></span></div>
+        </div>
+        <div class="home"></div>
+        <div class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </figure>
+  </section>
+
+  <section class="notes" id="selection-notes">
+    <div class="notes-head">
+      <div>
+        <h2>Non-goals and mapping notes</h2>
+        <p>These are explicit non-goals; a selection is not promised to survive these transitions. Pinch and rotation may clear the selection. Dragging stays on cell boundaries; v1 does not snap endpoints to words on release. Crossing through the other anchor is not a non-goal: the selection survives during drag and clears only on release at equal anchors.</p>
+      </div>
+    </div>
+    <div class="notes-grid" id="selection-nongoals">
+      <div class="note-card">
+        <div class="tagline warn">Non-goal</div>
+        <h3>Pinch cancels selection</h3>
+        <p>Pinching the terminal calls the existing <code>cancelSelect</code>. The prototype does not show a preserved selection after zoom, and the implementation is not required to keep one.</p>
+      </div>
+      <div class="note-card">
+        <div class="tagline warn">Non-goal</div>
+        <h3>Rotation / refit may clear selection</h3>
+        <p>After orientation change or refit, state must stay consistent and the WebView must not crash. A cleared selection is acceptable; preserved selection is not a requirement.</p>
+      </div>
+      <div class="note-card">
+        <div class="tagline warn">Non-goal</div>
+        <h3>No release-time word snapping (v1)</h3>
+        <p>Dragging endpoints stays on cell boundaries. The release does not expand to a word boundary, because that would change the copied text. Copy must equal the highlight.</p>
+      </div>
+      <div class="note-card">
+        <div class="tagline">Geometry</div>
+        <h3>Current buffer line for the word seed</h3>
+        <p>The v1 seed selects a token on the current buffer line only. Manual drag can cross lines. Horizontal pan is only reachable when the content is wider than the viewport; selection coordinates follow the pan.</p>
+      </div>
+      <div class="note-card">
+        <div class="tagline">Geometry</div>
+        <h3>Before / after the mapping fix</h3>
+        <div class="mini-term">修复，登录<span class="bad">流程</span> login_flow</div>
+        <p class="mini-caption">Before: the cell column was used as a string index, so the selection shifted right.</p>
+        <div class="mini-term" style="margin-top:8px">修复，<span class="good">登录流程</span> login_flow</div>
+        <p class="mini-caption">After: snap to the glyph start, map cell → UTF-16 string index, tokenize, map back to cells.</p>
+      </div>
+      <div class="note-card">
+        <div class="tagline">Geometry</div>
+        <h3>Long CJK runs use a 5-character window</h3>
+        <p>Runs longer than five characters use a fixed 5-character window that is independent of tokenizer output: <code>start = clamp(tapCharIndex, runStart, runEnd - 5)</code>, span <code>[start, start + 5)</code>. In 中华人民共和国万岁, tap 人 → 人民共和国; tap 国 → 共和国万岁. In the 7-character run 春夏秋冬风花雪, tap 风 → 秋冬风花雪. Segmenter present or absent produces the same span. Numeric spans and <code>term.select</code> parameters match the rendered selection.</p>
+      </div>
+      <div class="note-card">
+        <div class="tagline">Geometry</div>
+        <h3>Handle crossing normalizes anchor order</h3>
+        <p>Both handles store a glyph-start cell anchor; the end handle is not stored as an exclusive boundary. The lower anchor becomes <code>start = snapToGlyphStart(lower)</code> and the upper becomes <code>endExclusive = snapToGlyphEnd(upper)</code>. Crossing swaps the handle roles and produces an ordered span. Anchors are equal while dragging through the other handle: during drag keeps a single-glyph span; release at equal clears, and release at unequal anchors keeps the ordered span. <code>term.select</code> never receives a negative length. When the fixed upper anchor is a wide glyph, <code>snapToGlyphEnd</code> adds its full width (state 20).</p>
+      </div>
+      <div class="note-card">
+        <div class="tagline">Geometry</div>
+        <h3>Blank / end of line is the only no-selection case</h3>
+        <p>Only a blank or end-of-line cell with no token creates no selection or handles and disables Copy; Select All remains available (B20). A non-blank glyph with no token within ±8 is selected as a single glyph instead — for example an isolated <code>&amp;</code> selects only <code>&amp;</code> (state 21, G30). A blank cell between two tokens still selects the nearest token (B20a).</p>
+      </div>
+      <div class="note-card">
+        <div class="tagline">Pipeline</div>
+        <h3>Long-press seed</h3>
+        <div class="chain"><span>viewportToCell</span><i>→</i><span>snapToGlyphStart</span><i>→</i><span>cellColToStringIndex</span><i>→</i><span>tokenizer</span><i>→</i><span>stringIndexToCellCol</span><i>→</i><span>term.select</span></div>
+        <p style="margin-top:12px">UTF-16 code units and cell columns advance separately. <code>getWidth()</code> and <code>getChars()</code> are the source of truth. Selection spans are end-exclusive.</p>
+      </div>
+    </div>
+  </section>
+
+  <p class="footnote" style="margin-top:40px;color:var(--subtle);font-size:12px;line-height:1.7;max-width:940px">
+    Prototype notes use the test-plan geometry IDs. Cell numbers are 0-based on the bare test-vector row; prompt, command, and history rows carry no coordinates. Terminal data strings are Chinese/emoji test vectors; all UI copy and explanatory text are English. The prototype is a single self-contained HTML file with no external dependencies.
+  </p>
+</main>
+
+<script>
+(function () {
+  document.querySelectorAll('.phone').forEach(function (phone) {
+    phone.addEventListener('click', function (e) {
+      var action = e.target.closest('[data-toast]');
+      if (!action) return;
+      var toast = phone.querySelector('.toast');
+      if (!toast) return;
+      toast.textContent = action.dataset.toast;
+      toast.classList.add('show');
+      clearTimeout(phone._toastTimer);
+      phone._toastTimer = setTimeout(function () { toast.classList.remove('show'); }, 2200);
+    });
+  });
+})();
+</script>
+</body>
+</html>
