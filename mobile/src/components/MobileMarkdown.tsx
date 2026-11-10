@@ -34,6 +34,11 @@ type Props = {
   fallback?: string
   /** Enables iOS range selection for native-chat transcript prose. */
   rangeSelectable?: boolean
+  /**
+   * `document` makes every block selectable (file previews). The chat transcript keeps its
+   * Android behavior: `rangeSelectable` there disables selection while scrolling.
+   */
+  textSelectionMode?: 'chat-transcript' | 'document'
   /** Forward long presses from interactive Android transcript spans to the message. */
   onLongPress?: () => void
   /** Multiplier for prose font size (paragraphs, lists, quotes). Defaults to 1;
@@ -415,20 +420,23 @@ function MobileMarkdownContent({
 }
 
 function MobileMarkdownInner(props: Props): React.JSX.Element | null {
-  const { rangeSelectable = false, onLongPress } = props
-  // Other Markdown surfaces retain their existing selection behavior.
-  const androidTranscript = rangeSelectable && !INLINE_TEXT_SELECTION
+  const { rangeSelectable = false, onLongPress, textSelectionMode } = props
+  const documentMode = textSelectionMode === 'document'
+  // Document mode opts every block in; it must not borrow the transcript's Android gate, which
+  // would set selectable=false on the paragraphs it is supposed to make selectable.
+  const androidTranscript = rangeSelectable && !INLINE_TEXT_SELECTION && !documentMode
+  const selectableBlocks = rangeSelectable || documentMode
   const setup = useMemo<MarkdownTextSetup>(
     () => ({
       TextComponent: rangeSelectable && !androidTranscript ? MobileSelectableText : NativeText,
       androidTranscript,
       ...(onLongPress ? { onLongPress } : {})
     }),
-    [rangeSelectable, androidTranscript, onLongPress]
+    [androidTranscript, onLongPress, rangeSelectable]
   )
   return (
     <MarkdownTextContext.Provider value={setup}>
-      <MobileMarkdownContent {...props} />
+      <MobileMarkdownContent {...props} rangeSelectable={selectableBlocks} />
     </MarkdownTextContext.Provider>
   )
 }

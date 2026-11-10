@@ -76,7 +76,8 @@ export class RuntimeFileCommandsWithConstructor extends RuntimeFileCommandsWithA
       rootPath: worktree.path,
       files: entries,
       totalCount: files.length,
-      truncated: files.length > MOBILE_FILE_LIST_LIMIT
+      truncated: files.length > MOBILE_FILE_LIST_LIMIT,
+      libraryTruncated: files.length > MOBILE_FILE_LIST_LIMIT
     }
   }
 
@@ -126,7 +127,8 @@ export class RuntimeFileCommandsWithConstructor extends RuntimeFileCommandsWithA
         kind: isMobileBinaryPath(relativePath) ? ('binary' as const) : ('text' as const)
       })),
       totalCount: matches.totalCount,
-      truncated: inventory.truncated || matches.totalCount > limit
+      truncated: inventory.truncated || matches.totalCount > limit,
+      libraryTruncated: inventory.truncated
     }
   }
 

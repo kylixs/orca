@@ -25,6 +25,7 @@ import { loadHostCatalog } from '../src/transport/host-store'
 import { extractPairingCodeFromUrl } from '../src/transport/pairing'
 import { recoverMobileRelayPairing } from '../src/transport/mobile-relay-pairing-recovery'
 import { appUpdateChecker } from '../src/app-update/app-update-runtime'
+import { cleanupDownloadCacheOnStartup } from '../src/files/mobile-file-download-cache'
 
 // Why: keeps the native splash screen visible until the React tree is mounted
 // and ready to render. Without this the user sees a blank white/black frame
@@ -36,6 +37,14 @@ SplashScreen.preventAutoHideAsync()
 // connected. Android drops a notification whose channel does not exist yet.
 void ensureDesktopNotificationChannel().catch(() => {})
 void registerPushDismissalTask().catch(() => {})
+// Why: an interrupted prepare leaves a partial directory; startup is the only point that can
+// distinguish it from a cache entry the user may still be sharing into another app. A filesystem
+// that is not ready yet must not take the app's first frame down with it.
+try {
+  cleanupDownloadCacheOnStartup()
+} catch {
+  // Best-effort: the next start retries.
+}
 
 // Register before scheduling so foreground delivery uses the same suppression policy.
 Notifications.setNotificationHandler({

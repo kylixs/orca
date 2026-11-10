@@ -135,6 +135,34 @@ export const filePreviewStyles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: typography.metaSize
   },
+  htmlPreviewContainer: {
+    flex: 1,
+    backgroundColor: colors.editorSurface
+  },
+  htmlAssetWarning: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderSubtle,
+    backgroundColor: colors.bgPanel
+  },
+  htmlAssetWarningText: {
+    color: colors.textSecondary,
+    fontSize: typography.metaSize,
+    lineHeight: 18
+  },
+  htmlTruncatedBanner: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.statusRed,
+    backgroundColor: colors.bgPanel
+  },
+  htmlTruncatedBannerText: {
+    color: colors.textSecondary,
+    fontSize: typography.metaSize,
+    lineHeight: 18
+  },
   imageContainer: {
     flex: 1,
     backgroundColor: colors.editorSurface

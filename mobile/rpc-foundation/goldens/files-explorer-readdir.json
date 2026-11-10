@@ -4,21 +4,63 @@
   "family": "files.explorer-screen",
   "namedDeltas": [],
   "values": {
-    "1fac8f3b8f44": {
+    "0dd567d1a880": {
       "crash": {
         "$rpc": "null"
       },
       "elements": {
         "ChevronLeft": 1,
         "FlatList": 1,
-        "Pressable": 1,
+        "Pressable": 7,
         "SafeAreaView": 1,
-        "Text": 2,
-        "View": 3
+        "ScrollView": 1,
+        "Search": 1,
+        "Text": 8,
+        "TextInput": 1,
+        "View": 5
       },
-      "labels": ["Back to session"],
+      "labels": [
+        "Back to session",
+        "Search files",
+        "File type filters",
+        "Show All files",
+        "Show Code files",
+        "Show Docs files",
+        "Show Media files",
+        "Show Images files",
+        "Show Other files"
+      ],
       "rows": ["dir:src", "file:README.md"],
-      "text": ["Files", "orca-files"]
+      "text": ["Files", "orca-files", "All", "Code", "Docs", "Media", "Images", "Other"]
+    },
+    "2273173de47b": {
+      "crash": {
+        "$rpc": "null"
+      },
+      "elements": {
+        "ActivityIndicator": 1,
+        "ChevronLeft": 1,
+        "Pressable": 7,
+        "SafeAreaView": 1,
+        "ScrollView": 1,
+        "Search": 1,
+        "Text": 8,
+        "TextInput": 1,
+        "View": 6
+      },
+      "labels": [
+        "Back to session",
+        "Search files",
+        "File type filters",
+        "Show All files",
+        "Show Code files",
+        "Show Docs files",
+        "Show Media files",
+        "Show Images files",
+        "Show Other files"
+      ],
+      "rows": [],
+      "text": ["Files", "orca-files", "All", "Code", "Docs", "Media", "Images", "Other"]
     },
     "59851eb4cbf7": {
       "name": "files.readDir#1",
@@ -51,22 +93,6 @@
       "name": "files.readDir#1",
       "ordinal": 2,
       "json": "{\"id\":\"frame-1\",\"deviceToken\":\"recording-device\",\"method\":\"files.readDir\",\"params\":{\"worktree\":\"id:wt-files\",\"relativePath\":\"\"}}"
-    },
-    "e91880eefe86": {
-      "crash": {
-        "$rpc": "null"
-      },
-      "elements": {
-        "ActivityIndicator": 1,
-        "ChevronLeft": 1,
-        "Pressable": 1,
-        "SafeAreaView": 1,
-        "Text": 2,
-        "View": 4
-      },
-      "labels": ["Back to session"],
-      "rows": [],
-      "text": ["Files", "orca-files"]
     },
     "eb79a9b3682a": {
       "status": "fulfilled",
@@ -130,7 +156,7 @@
           "settlements": {
             "mount": "eb79a9b3682a"
           },
-          "state": "e91880eefe86",
+          "state": "2273173de47b",
           "effects": []
         }
       },
@@ -142,7 +168,7 @@
           "settlements": {
             "mount": "eb79a9b3682a"
           },
-          "state": "1fac8f3b8f44",
+          "state": "0dd567d1a880",
           "effects": []
         }
       }

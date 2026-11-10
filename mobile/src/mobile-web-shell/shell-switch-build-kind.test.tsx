@@ -110,6 +110,8 @@ type SwitchCase = {
   /** What the mocked native screen pushes when it mounts. */
   readonly native: string
   readonly pathname: string
+  /** File routes opt out of the shell: they carry actions the desktop page cannot perform. */
+  readonly alwaysNative?: boolean
 }
 
 const SWITCHES: readonly SwitchCase[] = [
@@ -139,14 +141,16 @@ const SWITCHES: readonly SwitchCase[] = [
     Route: FilesRoute,
     params: { hostId: 'host-1', worktreeId: 'wt-1' },
     native: 'files',
-    pathname: '/h/host-1/files/wt-1'
+    pathname: '/h/host-1/files/wt-1',
+    alwaysNative: true
   },
   {
     name: 'file preview',
     Route: FilesPreviewRoute,
     params: { hostId: 'host-1', worktreeId: 'wt-1', relativePath: 'src/index.ts' },
     native: 'files-preview',
-    pathname: '/h/host-1/files/preview/wt-1'
+    pathname: '/h/host-1/files/preview/wt-1',
+    alwaysNative: true
   },
   {
     name: 'source control',
@@ -204,6 +208,12 @@ describe.each(SWITCHES)('the $name switch', (entry) => {
   it('commits the shell on its first frame in an OTA build, and never native', async () => {
     vi.stubEnv('EXPO_PUBLIC_MOBILE_SHELL', 'ota')
     renderFirstFrame(entry.Route)
+    if (entry.alwaysNative) {
+      expect(dependencies.natives).toEqual([entry.native])
+      await act(async () => {})
+      expect(dependencies.shells).toEqual([])
+      return
+    }
     expect(dependencies.shells).toEqual([entry.pathname])
     await act(async () => {})
     expect(dependencies.natives).toEqual([])

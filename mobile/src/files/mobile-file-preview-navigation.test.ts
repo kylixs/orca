@@ -33,6 +33,32 @@ describe('mobile-file-preview-navigation', () => {
     expect(push).toHaveBeenCalledTimes(1)
   })
 
+  it('carries an HTML open mode into the preview route', () => {
+    const push = vi.fn()
+
+    navigateToMobileFilePreview(
+      { push },
+      {
+        hostId: 'host-1',
+        worktreeId: 'wt-1',
+        relativePath: 'site/index.html',
+        name: 'index.html',
+        mode: 'source'
+      }
+    )
+
+    expect(push).toHaveBeenCalledWith({
+      pathname: '/h/[hostId]/files/preview/[worktreeId]',
+      params: {
+        hostId: 'host-1',
+        worktreeId: 'wt-1',
+        relativePath: 'site/index.html',
+        name: 'index.html',
+        mode: 'source'
+      }
+    })
+  })
+
   it('defers embedded close until after route push', () => {
     const events: string[] = []
     const scheduleClose = vi.fn((callback: () => void) => {

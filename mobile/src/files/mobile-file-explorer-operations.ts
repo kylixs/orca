@@ -41,3 +41,17 @@ export const legacyFileListRead = bindDeferredRpcOperation(
     read: rpcResultVariant('legacy-file-list', legacyFileListSchema)
   })
 )
+
+/**
+ * `files.searchPaths` for the explorer. Its reply is the same RuntimeFileListResult as the capped
+ * list, so the reader keeps `totalCount`/`truncated` instead of reducing the reply to path strings.
+ */
+export const filePathSearchRead = bindDeferredRpcOperation(
+  defineRpcOperation({
+    name: 'files.explorer-search-paths-or-skip',
+    method: 'files.searchPaths',
+    acceptance: 'success-result-or-skip',
+    barrier: 'after-caller-barrier',
+    read: rpcResultVariant('file-path-search', legacyFileListSchema)
+  })
+)

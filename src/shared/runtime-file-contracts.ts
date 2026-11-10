@@ -1,5 +1,8 @@
 import type { RasterImageDimensions } from './raster-image-dimensions'
 
+/** The host's path-search inventory cap; a larger library is reported as truncated. */
+export const MOBILE_FILE_PATH_SEARCH_CACHE_LIMIT = 20_000
+
 export type RuntimeFileListEntry = {
   relativePath: string
   basename: string
@@ -12,6 +15,8 @@ export type RuntimeFileListResult = {
   files: RuntimeFileListEntry[]
   totalCount: number
   truncated: boolean
+  /** The inventory was capped, independently of whether the matches fit in `limit`. */
+  libraryTruncated?: boolean
   quickOpenSearchVersion?: number
 }
 

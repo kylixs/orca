@@ -88,11 +88,19 @@ export function reactNativeScreenMembers(): Record<string, unknown> {
       'FlatList',
       'Pressable',
       'RefreshControl',
+      'ScrollView',
       'SectionList',
+      'Switch',
       'Text',
       'TextInput',
       'View'
     ]),
+    InteractionManager: {
+      runAfterInteractions: (callback: () => void) => {
+        callback()
+        return { cancel: () => {} }
+      }
+    },
     StyleSheet: {
       create: (sheet: unknown) => sheet,
       flatten: flattenStyle,

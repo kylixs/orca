@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Pressable, Text, View, useWindowDimensions } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
-import { ChevronLeft, Save } from 'lucide-react-native'
+import { View, useWindowDimensions } from 'react-native'
 import { useRouteHandoff } from '../navigation/route-handoff'
 import { getWorktreeLabel } from '../session/worktree-label'
-import { colors, spacing } from '../theme/mobile-theme'
+import { spacing } from '../theme/mobile-theme'
 import { useForceReconnect, useHostClient } from '../transport/client-context'
 import { connectionRetryAction } from '../transport/connection-retry-action'
 import {
@@ -14,7 +12,6 @@ import {
   type MobileFilePreviewSource,
   type MobileFilePreviewResult
 } from './mobile-file-preview-request'
-import { ConfirmModal } from '../components/ConfirmModal'
 import { MobileFilePreviewBody } from './MobileFilePreviewBody'
 import {
   displayNameFromPreviewPath,
@@ -29,11 +26,27 @@ import {
 } from './mobile-file-preview-editability'
 import { filePreviewStyles as styles } from './mobile-file-preview-styles'
 import { useMobileFilePreviewBack } from './use-mobile-file-preview-back'
+import { MobileFilePreviewHeader } from './MobileFilePreviewHeader'
+import { MobileFilePreviewOverlays } from './MobileFilePreviewOverlays'
+import { MobileFilePreviewHtmlControls } from './MobileFilePreviewHtmlControls'
+import { classifyMobileArtifact } from '../session/mobile-artifact-kind'
+import { MobileFileDownloadProgress } from './MobileFileDownloadProgress'
+import { useMobileFilePreviewHtmlMode } from './use-mobile-file-preview-html-mode'
+import { useMobileFilePreviewActions } from './use-mobile-file-preview-actions'
+import {
+  previewByteSize,
+  saveErrorMessageFromPreviewResult
+} from './mobile-file-preview-target-size'
+import { recordMobileFilePreviewResult } from './mobile-file-preview-read-failure'
+import {
+  clearNetworkFileReadFailures,
+  recordFileReadFailure,
+  type FileReadFailureScope
+} from './file-read-failures'
 
 type Props = {
   route: MobileFilePreviewRouteState
 }
-
 export function MobileFilePreviewScreen({ route }: Props) {
   const router = useRouteHandoff()
   const previewParams = route.ok ? route.params : null
@@ -46,6 +59,7 @@ export function MobileFilePreviewScreen({ route }: Props) {
   const [savedContent, setSavedContent] = useState('')
   const [saveError, setSaveError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [actionSheetVisible, setActionSheetVisible] = useState(false)
   const draftContentRef = useRef(draftContent)
   const savedContentRef = useRef(savedContent)
   const draftSourceKeyRef = useRef<string | null>(null)
@@ -70,6 +84,26 @@ export function MobileFilePreviewScreen({ route }: Props) {
         : null,
     [previewParams]
   )
+  const terminalArtifact = previewParams?.source === 'terminalArtifact'
+  const htmlFilePath = terminalArtifact ? previewParams?.absolutePath : previewParams?.relativePath
+  const htmlFile = Boolean(htmlFilePath && classifyMobileArtifact(htmlFilePath) === 'html')
+  const htmlTruncated = preview.status === 'ready' && preview.kind === 'html' && preview.truncated
+  const previewReadFailed = preview.status === 'error' || preview.status === 'waiting'
+  const {
+    mode: htmlMode,
+    setMode: setHtmlMode,
+    sheetVisible: htmlModeSheetVisible,
+    closeSheet: closeHtmlModeSheet,
+    notice: preferenceNotice,
+    setNotice: setPreferenceNotice,
+    selectMode: handleHtmlModeSelect
+  } = useMobileFilePreviewHtmlMode({
+    params: previewParams,
+    htmlFile,
+    terminalArtifact,
+    truncated: htmlTruncated,
+    readFailed: previewReadFailed
+  })
 
   useEffect(() => {
     setPreviewSource(routePreviewSource)
@@ -88,6 +122,25 @@ export function MobileFilePreviewScreen({ route }: Props) {
     savedContentRef.current = savedContent
   }, [savedContent])
 
+  const displayPath =
+    previewParams?.source === 'terminalArtifact'
+      ? (previewParams.absolutePath ?? '')
+      : (previewParams?.relativePath ?? '')
+  const title = previewParams?.name ?? displayNameFromPreviewPath(displayPath)
+  const readFailureScope = useMemo<FileReadFailureScope>(
+    () => ({
+      hostId: previewParams?.hostId,
+      worktreeId: previewParams?.worktreeId ?? ''
+    }),
+    [previewParams?.hostId, previewParams?.worktreeId]
+  )
+
+  const recordPreviewResult = useCallback(
+    (result: MobileFilePreviewResult) =>
+      recordMobileFilePreviewResult(readFailureScope, displayPath, result),
+    [displayPath, readFailureScope]
+  )
+
   const loadPreview = useCallback(async () => {
     const loadSourceKey = previewSourceKey
     if (!previewParams || !previewSource || loadSourceKey !== routePreviewSourceKey) {
@@ -102,7 +155,13 @@ export function MobileFilePreviewScreen({ route }: Props) {
         setSaveError('Waiting for desktop...')
         return
       }
-      setPreview({ status: 'waiting', message: 'Waiting for desktop...', reconnect: true })
+      const waiting: MobileFilePreviewResult = {
+        status: 'waiting',
+        message: 'Waiting for desktop...',
+        reconnect: true
+      }
+      setPreview(waiting)
+      recordPreviewResult(waiting)
       return
     }
     if (!preserveDirtyDraft) {
@@ -119,6 +178,7 @@ export function MobileFilePreviewScreen({ route }: Props) {
       }
       if (shouldKeepDirtyDraftOnPreviewLoadResult(preserveDirtyDraft, result)) {
         setSaveError(result.message)
+        recordPreviewResult(result)
         return
       }
       const loadedContent =
@@ -135,20 +195,27 @@ export function MobileFilePreviewScreen({ route }: Props) {
         draftSourceKeyRef.current = previewSourceKey
       }
       setPreview(result)
+      recordPreviewResult(result)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to load preview'
       if (preserveDirtyDraft) {
         setSaveError(message)
+        recordFileReadFailure(readFailureScope, displayPath, message)
         return
       }
-      setPreview(previewError(message))
+      const failed = previewError(message)
+      setPreview(failed)
+      recordPreviewResult(failed)
     }
   }, [
     client,
     connState,
+    displayPath,
     previewParams,
     previewSource,
     previewSourceKey,
+    readFailureScope,
+    recordPreviewResult,
     route,
     routePreviewSourceKey
   ])
@@ -156,6 +223,15 @@ export function MobileFilePreviewScreen({ route }: Props) {
   useEffect(() => {
     void loadPreview()
   }, [loadPreview])
+
+  const previousConnectionStateRef = useRef(connState)
+  useEffect(() => {
+    const previous = previousConnectionStateRef.current
+    previousConnectionStateRef.current = connState
+    if (connState === 'connected' && previous !== 'connected') {
+      clearNetworkFileReadFailures(readFailureScope)
+    }
+  }, [connState, readFailureScope])
 
   const retry = useMemo(
     () =>
@@ -171,11 +247,6 @@ export function MobileFilePreviewScreen({ route }: Props) {
     [connState, forceReconnect, loadPreview, preview, previewParams]
   )
 
-  const displayPath =
-    previewParams?.source === 'terminalArtifact'
-      ? (previewParams.absolutePath ?? '')
-      : (previewParams?.relativePath ?? '')
-  const title = previewParams?.name ?? displayNameFromPreviewPath(displayPath)
   const worktreeLabel = getWorktreeLabel(
     previewParams?.worktreeName,
     previewParams?.worktreeId ?? ''
@@ -194,6 +265,35 @@ export function MobileFilePreviewScreen({ route }: Props) {
     previewSourceKey,
     draftContent,
     savedContent
+  })
+
+  const previewSize = useMemo(() => previewByteSize(preview), [preview])
+  const sourceTruncated =
+    preview.status === 'ready' &&
+    preview.kind !== 'media' &&
+    preview.kind !== 'image' &&
+    preview.truncated
+  const truncatedNote = htmlFile && sourceTruncated ? 'Showing first 512 KB' : undefined
+  const terminalTooLarge =
+    preview.status === 'error' &&
+    preview.message.toLowerCase().includes('too large') &&
+    previewParams?.source === 'terminalArtifact'
+
+  const { actionTarget, actions, handleAction, htmlActionState } = useMobileFilePreviewActions({
+    client,
+    params: previewParams,
+    title,
+    size: previewSize,
+    previewSource,
+    readFailed: previewReadFailed,
+    terminalTooLarge,
+    htmlFile,
+    previewDisabled: htmlTruncated,
+    displayPath,
+    scope: readFailureScope,
+    onPreviewSourceRefreshed: setPreviewSource,
+    onReload: () => void loadPreview(),
+    onChangeHtmlMode: setHtmlMode
   })
 
   const saveArtifact = useCallback(async () => {
@@ -228,37 +328,37 @@ export function MobileFilePreviewScreen({ route }: Props) {
 
   return (
     <View style={styles.container}>
-      <SafeAreaView style={styles.header} edges={['top']}>
-        <View style={styles.topBar}>
-          <Pressable
-            style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
-            onPress={requestBack}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Back to files"
-          >
-            <ChevronLeft size={22} color={colors.textSecondary} strokeWidth={2.2} />
-          </Pressable>
-          <View style={styles.titleBlock}>
-            <Text style={styles.title} numberOfLines={1}>
-              {title || 'Preview'}
-            </Text>
-            <Text style={styles.meta} numberOfLines={1}>
-              {meta}
-            </Text>
-          </View>
-          {isEditableTerminalArtifact ? (
-            <Pressable
-              style={[styles.saveButton, (!canSaveArtifact || saving) && styles.saveButtonDisabled]}
-              onPress={() => void saveArtifact()}
-              disabled={!canSaveArtifact || saving}
-              accessibilityLabel="Save terminal artifact"
-            >
-              <Save size={18} color={colors.textPrimary} strokeWidth={2.2} />
-            </Pressable>
-          ) : null}
-        </View>
-      </SafeAreaView>
+      <MobileFilePreviewHeader
+        title={title || 'Preview'}
+        meta={meta}
+        canSave={canSaveArtifact}
+        saving={saving}
+        actionsExpanded={actionSheetVisible}
+        onBack={requestBack}
+        onSave={() => void saveArtifact()}
+        onActions={() => setActionSheetVisible(true)}
+      />
+      <MobileFileDownloadProgress
+        state={actions.task.state}
+        notice={actions.notice}
+        onCancel={actions.task.cancel}
+        onRetry={actions.retry}
+        onDismissNotice={actions.dismissNotice}
+      />
+      <MobileFilePreviewHtmlControls
+        htmlFile={htmlFile}
+        sourceOnly={terminalArtifact}
+        readFailed={previewReadFailed}
+        mode={htmlMode}
+        truncated={htmlTruncated}
+        notice={preferenceNotice}
+        fileLabel={title}
+        sheetVisible={htmlModeSheetVisible}
+        onChangeMode={setHtmlMode}
+        onSelectMode={handleHtmlModeSelect}
+        onDismissNotice={() => setPreferenceNotice(null)}
+        onCloseSheet={closeHtmlModeSheet}
+      />
       <MobileFilePreviewBody
         preview={preview}
         client={client}
@@ -270,28 +370,30 @@ export function MobileFilePreviewScreen({ route }: Props) {
         lineColumn={lineColumn}
         imageWidth={Math.max(1, width - spacing.md * 2)}
         imageHeight={Math.max(240, height - 160)}
+        htmlMode={htmlMode}
+        htmlRenderable={preview.status === 'ready' && preview.kind === 'html' && !htmlTruncated}
+        sourceOnly={terminalArtifact}
+        truncatedNote={truncatedNote}
         onDraftChange={setDraftContent}
         onImageError={() =>
           setPreview({ status: 'error', message: 'Unable to load preview', reconnect: false })
         }
         onRetry={retry}
       />
-      <ConfirmModal
-        visible={confirmingDiscard}
-        title="Discard changes?"
-        message="Unsaved edits will be lost."
-        confirmLabel="Discard"
-        cancelLabel="Stay"
-        destructive
-        onConfirm={discard}
-        onCancel={stay}
+      <MobileFilePreviewOverlays
+        actionSheetVisible={actionSheetVisible}
+        onCloseActionSheet={() => setActionSheetVisible(false)}
+        actionTarget={actionTarget}
+        capabilities={actions.capabilities}
+        busy={actions.busy}
+        htmlActionState={htmlActionState}
+        onAction={handleAction}
+        saveResult={actions.saveResult}
+        onCloseSaveResult={actions.dismissSaveResult}
+        confirmingDiscard={confirmingDiscard}
+        onConfirmDiscard={discard}
+        onStay={stay}
       />
     </View>
   )
-}
-
-function saveErrorMessageFromPreviewResult(result: MobileFilePreviewResult): string {
-  return result.status === 'error' || result.status === 'waiting'
-    ? result.message
-    : 'Unable to save file'
 }

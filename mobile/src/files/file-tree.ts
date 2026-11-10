@@ -2,6 +2,7 @@ import { MEDIA_FILE_MIME_TYPES } from '../../../src/shared/media-file-extensions
 // Pure tree projection for the mobile file explorer. Mobile mirrors desktop
 // browse semantics by flattening cached files.readDir results as folders open.
 import { compareFileNames } from '../../../src/shared/file-name-sort'
+import { matchesFileCategory, type MobileFileCategory } from './file-category'
 
 export type MobileDirEntry = {
   name: string
@@ -18,6 +19,8 @@ export type TreeNode = {
   depth: number
   kind: 'directory' | MobileFileKind
   isSymlink?: boolean
+  /** A directory whose contents are not in the cache, retained while a filter is active. */
+  filterNote?: 'not loaded'
 }
 
 export type DirectoryState = {
@@ -59,10 +62,11 @@ const BINARY_EXTENSIONS = new Set([
 
 export function flattenDirectoryCache(
   cache: DirectoryCache,
-  expanded: ReadonlySet<string>
+  expanded: ReadonlySet<string>,
+  category: MobileFileCategory = 'all'
 ): FileExplorerRow[] {
   const rows: FileExplorerRow[] = []
-  visitDirectory('', 0, cache, expanded, rows)
+  visitDirectory('', 0, cache, expanded, rows, category)
   return rows
 }
 
@@ -71,7 +75,8 @@ function visitDirectory(
   depth: number,
   cache: DirectoryCache,
   expanded: ReadonlySet<string>,
-  rows: FileExplorerRow[]
+  rows: FileExplorerRow[],
+  category: MobileFileCategory
 ): void {
   const state = getDirectoryCacheState(cache, relativePath)
   const entries = state?.entries ?? []
@@ -81,7 +86,27 @@ function visitDirectory(
 
   for (const entry of visibleEntries) {
     const childPath = joinRelativePath(relativePath, entry.name)
-    rows.push(toTreeNode(entry, childPath, depth))
+    if (entry.isDirectory) {
+      // A loaded directory with no matching descendant disappears; an unloaded one is kept
+      // because the client cannot know what it contains (and says so on the row).
+      if (
+        category !== 'all' &&
+        !directoryHasFilteredDescendant(childPath, cache, category, new Set())
+      ) {
+        continue
+      }
+    } else if (!matchesFileCategory(childPath, category)) {
+      continue
+    }
+    const node = toTreeNode(entry, childPath, depth)
+    if (
+      entry.isDirectory &&
+      category !== 'all' &&
+      getDirectoryCacheState(cache, childPath) === undefined
+    ) {
+      node.filterNote = 'not loaded'
+    }
+    rows.push(node)
     if (entry.isDirectory && expanded.has(childPath)) {
       const childState = getDirectoryCacheState(cache, childPath)
       if (childState?.loading) {
@@ -100,10 +125,38 @@ function visitDirectory(
           message: childState.error
         })
       } else {
-        visitDirectory(childPath, depth + 1, cache, expanded, rows)
+        visitDirectory(childPath, depth + 1, cache, expanded, rows, category)
       }
     }
   }
+}
+
+function directoryHasFilteredDescendant(
+  relativePath: string,
+  cache: DirectoryCache,
+  category: MobileFileCategory,
+  seen: Set<string>
+): boolean {
+  if (seen.has(relativePath)) {
+    return false
+  }
+  const state = getDirectoryCacheState(cache, relativePath)
+  // Not loaded, loading, or failed: keep the directory so the user can expand/retry it.
+  if (!state || state.loading || state.error) {
+    return true
+  }
+  seen.add(relativePath)
+  const matches = state.entries.some((entry) => {
+    if (!shouldIncludeMobileFileExplorerEntry(entry)) {
+      return false
+    }
+    const childPath = joinRelativePath(relativePath, entry.name)
+    return entry.isDirectory
+      ? directoryHasFilteredDescendant(childPath, cache, category, seen)
+      : matchesFileCategory(childPath, category)
+  })
+  seen.delete(relativePath)
+  return matches
 }
 
 function toTreeNode(entry: MobileDirEntry, relativePath: string, depth: number): TreeNode {

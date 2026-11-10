@@ -1,18 +1,21 @@
+import { useRef } from 'react'
 import { classifyMobileArtifact } from '../session/mobile-artifact-kind'
 import { ActivityIndicator, Pressable, Text, View } from 'react-native'
 import {
   ChevronDown,
   ChevronRight,
+  Ellipsis,
   File,
   FileText,
   Folder,
   Image as ImageIcon
 } from 'lucide-react-native'
-import { triggerSelection } from '../platform/haptics'
+import { triggerMediumImpact, triggerSelection } from '../platform/haptics'
 import { colors, spacing } from '../theme/mobile-theme'
 import { type FileExplorerRow, isMarkdownPath, type TreeNode } from './file-tree'
 import { fileExplorerStyles as styles } from './mobile-file-explorer-styles'
 import { canPreviewMobileFileRow } from './mobile-file-preview-navigation'
+import type { FileReadFailure } from './file-read-failures'
 
 type Props = {
   item: FileExplorerRow
@@ -20,6 +23,10 @@ type Props = {
   onPreviewFile: (relativePath: string, displayName: string) => void
   onRetryDirectory: (relativePath: string) => void
   onToggleDirectory: (relativePath: string) => void
+  onShowActions: (item: TreeNode) => void
+  readFailure?: FileReadFailure
+  /** Search results show the full relative path so two same-named files stay distinguishable. */
+  showPath?: boolean
 }
 
 export function MobileFileExplorerRow(props: Props) {
@@ -63,6 +70,9 @@ export function MobileFileExplorerRow(props: Props) {
         expanded={expanded}
         onPreviewFile={onPreviewFile}
         onToggleDirectory={onToggleDirectory}
+        onShowActions={props.onShowActions}
+        readFailure={props.readFailure}
+        showPath={props.showPath}
       />
     )
   }
@@ -79,66 +89,109 @@ function TreeRow(props: {
   expanded: ReadonlySet<string>
   onPreviewFile: (relativePath: string, displayName: string) => void
   onToggleDirectory: (relativePath: string) => void
+  onShowActions: (item: TreeNode) => void
+  readFailure?: FileReadFailure
+  showPath?: boolean
 }) {
-  const { item, expanded, onPreviewFile, onToggleDirectory } = props
+  const { item, expanded, onPreviewFile, onToggleDirectory, onShowActions, readFailure } = props
   const isDirectory = item.kind === 'directory'
   const isExpanded = expanded.has(item.relativePath)
   const previewable =
     item.kind !== 'directory' &&
     canPreviewMobileFileRow({ kind: item.kind, relativePath: item.relativePath })
   const isImage = item.kind === 'binary' && classifyMobileArtifact(item.relativePath) === 'image'
-  const disabled = item.kind === 'binary' && !previewable
   const markdown = item.kind === 'text' && isMarkdownPath(item.relativePath)
 
+  // Per gesture, so a release after a long press cannot also preview while the next tap still can.
+  const longPressFiredRef = useRef(false)
+
+  const showActions = () => {
+    longPressFiredRef.current = true
+    triggerMediumImpact()
+    onShowActions(item)
+  }
+
+  const accessibilityLabel = isDirectory
+    ? `Open folder ${item.name}`
+    : previewable
+      ? `Preview file ${item.name}`
+      : `File ${item.name}`
+
   return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.row,
-        { paddingLeft: spacing.lg + item.depth * 18 },
-        pressed && !disabled && styles.rowPressed,
-        disabled && styles.rowDisabled
-      ]}
-      disabled={disabled}
-      onPress={() => {
-        triggerSelection()
-        if (isDirectory) {
-          onToggleDirectory(item.relativePath)
-        } else if (!disabled) {
-          onPreviewFile(item.relativePath, item.name)
-        }
-      }}
-      accessibilityLabel={
-        isDirectory
-          ? `Open folder ${item.name}`
-          : disabled
-            ? `${item.name} unavailable on mobile`
-            : `Preview file ${item.name}`
-      }
-    >
-      {isDirectory ? (
-        isExpanded ? (
-          <ChevronDown size={16} color={colors.textSecondary} />
+    <View style={styles.rowContainer}>
+      <Pressable
+        style={({ pressed }) => [
+          styles.row,
+          { paddingLeft: spacing.lg + item.depth * 18 },
+          pressed && styles.rowPressed
+        ]}
+        onPressIn={() => {
+          longPressFiredRef.current = false
+        }}
+        onPress={() => {
+          if (longPressFiredRef.current) {
+            return
+          }
+          triggerSelection()
+          if (isDirectory) {
+            onToggleDirectory(item.relativePath)
+          } else if (previewable) {
+            onPreviewFile(item.relativePath, item.name)
+          }
+        }}
+        onLongPress={showActions}
+        delayLongPress={500}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        accessibilityHint="Long press for file actions"
+      >
+        {isDirectory ? (
+          isExpanded ? (
+            <ChevronDown size={16} color={colors.textSecondary} />
+          ) : (
+            <ChevronRight size={16} color={colors.textSecondary} />
+          )
         ) : (
-          <ChevronRight size={16} color={colors.textSecondary} />
-        )
-      ) : (
-        <View style={styles.chevronSpacer} />
-      )}
-      {isDirectory ? (
-        <Folder size={17} color={colors.textSecondary} />
-      ) : markdown ? (
-        <FileText size={17} color={disabled ? colors.textMuted : colors.textSecondary} />
-      ) : isImage ? (
-        <ImageIcon size={17} color={colors.textSecondary} />
-      ) : (
-        <File size={17} color={disabled ? colors.textMuted : colors.textSecondary} />
-      )}
-      <View style={styles.rowTextBlock}>
-        <Text style={[styles.rowTitle, disabled && styles.rowTitleDisabled]} numberOfLines={1}>
-          {item.name}
-        </Text>
-        {disabled ? <Text style={styles.rowMeta}>Unavailable on mobile</Text> : null}
-      </View>
-    </Pressable>
+          <View style={styles.chevronSpacer} />
+        )}
+        {isDirectory ? (
+          <Folder size={17} color={colors.textSecondary} />
+        ) : markdown ? (
+          <FileText size={17} color={colors.textSecondary} />
+        ) : isImage ? (
+          <ImageIcon size={17} color={colors.textSecondary} />
+        ) : (
+          <File size={17} color={colors.textSecondary} />
+        )}
+        <View style={styles.rowTextBlock}>
+          <Text style={styles.rowTitle} numberOfLines={1}>
+            {item.name}
+          </Text>
+          {readFailure ? (
+            <Text style={styles.rowReadFailed}>Read failed</Text>
+          ) : props.showPath && item.relativePath !== item.name ? (
+            <Text style={styles.rowMeta} numberOfLines={1}>
+              {item.relativePath}
+            </Text>
+          ) : item.filterNote ? (
+            <Text style={styles.rowMeta}>{item.filterNote}</Text>
+          ) : previewable || isDirectory ? null : (
+            <Text style={styles.rowMeta}>No mobile preview</Text>
+          )}
+        </View>
+      </Pressable>
+      <Pressable
+        style={({ pressed }) => [styles.rowActionsButton, pressed && styles.rowPressed]}
+        onPress={() => {
+          triggerSelection()
+          onShowActions(item)
+        }}
+        hitSlop={6}
+        accessibilityRole="button"
+        accessibilityLabel={`File actions for ${item.name}`}
+      >
+        <Ellipsis size={18} color={colors.textSecondary} />
+      </Pressable>
+    </View>
   )
 }

@@ -21,24 +21,55 @@ vi.mock('react-native', () => ({
   Pressable: 'Pressable',
   ScrollView: 'ScrollView',
   StyleSheet: { create: (styles: unknown) => styles, hairlineWidth: 1 },
+  Switch: 'Switch',
   Text: 'Text',
   TextInput: 'TextInput',
   View: 'View',
   useWindowDimensions: () => ({ width: 390, height: 844 })
 }))
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: 'SafeAreaView' }))
-vi.mock('lucide-react-native', () => ({ ChevronLeft: 'Icon', Save: 'Icon' }))
+vi.mock('lucide-react-native', () => ({
+  ChevronLeft: 'Icon',
+  Clipboard: 'Icon',
+  Code: 'Icon',
+  Copy: 'Icon',
+  Download: 'Icon',
+  Ellipsis: 'Icon',
+  ExternalLink: 'Icon',
+  Eye: 'Icon',
+  FileCode2: 'Icon',
+  RotateCw: 'Icon',
+  Save: 'Icon',
+  X: 'Icon'
+}))
 vi.mock('../navigation/route-handoff', () => ({
   useRouteHandoff: () => ({ back: () => {}, canGoBack: () => false })
 }))
 vi.mock('../components/ConfirmModal', () => ({ ConfirmModal: () => null }))
 vi.mock('./MobileFileMarkdownPreview', () => ({ MobileFileMarkdownPreview: () => null }))
 vi.mock('./MobileFilePreviewSourceText', () => ({ MobileFilePreviewSourceText: () => null }))
+vi.mock('expo-file-system', () => ({
+  Directory: class {},
+  File: class {},
+  Paths: { cache: '' }
+}))
+vi.mock('expo-modules-core', () => ({ requireOptionalNativeModule: () => null }))
+vi.mock('expo-clipboard', () => ({ setStringAsync: async () => true }))
+vi.mock('../components/ActionSheetModal', () => ({
+  ActionSheetModal: 'ActionSheetModal',
+  ActionSheetContent: 'ActionSheetContent'
+}))
 // A host the shell has not reached by default: no client, so the screen settles on `waiting`.
 vi.mock('../transport/client-context', () => ({
   useForceReconnect: () => transport.forceReconnect,
   useHostClient: () => ({ ...transport.connection, clientId: null })
 }))
+vi.mock('../storage/preferences', () => ({
+  loadMobileHtmlOpenMode: async () => 'ask',
+  saveMobileHtmlOpenMode: async () => {}
+}))
+vi.mock('./MobileFileOpenModeSheet', () => ({ MobileFileOpenModeSheet: () => null }))
+vi.mock('react-native-webview', () => ({ WebView: 'WebView' }))
 
 import { MobileFilePreviewScreen } from './MobileFilePreviewScreen'
 

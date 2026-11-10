@@ -46,18 +46,26 @@ export const fileExplorerStyles = StyleSheet.create({
   listContent: {
     paddingVertical: spacing.sm
   },
+  rowContainer: {
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
   row: {
     minHeight: 44,
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingRight: spacing.md
+    paddingRight: spacing.sm
+  },
+  rowActionsButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center'
   },
   rowPressed: {
     backgroundColor: colors.bgRaised
-  },
-  rowDisabled: {
-    opacity: 0.58
   },
   chevronSpacer: {
     width: 16
@@ -70,13 +78,16 @@ export const fileExplorerStyles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: typography.bodySize
   },
-  rowTitleDisabled: {
-    color: colors.textMuted
-  },
   rowMeta: {
     marginTop: 1,
     color: colors.textMuted,
     fontSize: 11
+  },
+  rowReadFailed: {
+    marginTop: 1,
+    color: colors.statusRed,
+    fontSize: 11,
+    fontWeight: '500'
   },
   inlineStatusRow: {
     minHeight: 36,
@@ -119,6 +130,17 @@ export const fileExplorerStyles = StyleSheet.create({
   emptyText: {
     color: colors.textSecondary,
     fontSize: typography.bodySize
+  },
+  stateText: {
+    color: colors.textSecondary,
+    fontSize: typography.bodySize,
+    textAlign: 'center'
+  },
+  searchNote: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+    color: colors.textSecondary,
+    fontSize: typography.metaSize
   },
   errorText: {
     color: colors.statusRed,

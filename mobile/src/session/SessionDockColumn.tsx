@@ -84,6 +84,8 @@ const DockPanelContent = memo(function DockPanelContent({
   }
   return (
     <MobileFileExplorerPanel
+      // A different worktree is a fresh explorer: search, filter, and sheet state reset by remount.
+      key={`${hostId}:${worktreeId}`}
       hostId={hostId}
       worktreeId={worktreeId}
       name={name}

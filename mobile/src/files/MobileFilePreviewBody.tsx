@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { MobileFileMediaPreview } from './MobileFileMediaPreview'
 import type { MobileFilePreviewRpcSender } from './mobile-file-preview-operations'
 import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from 'react-native'
@@ -8,6 +9,11 @@ import { MobileFilePreviewEditableSource } from './MobileFilePreviewEditableSour
 import { MobileFilePreviewSourceText } from './MobileFilePreviewSourceText'
 import type { MobileFilePreviewLineColumn } from './mobile-file-preview-line-column'
 import { filePreviewStyles as styles } from './mobile-file-preview-styles'
+import { classifyMobileArtifact } from '../session/mobile-artifact-kind'
+import { MobileHtmlPreviewFrame } from '../components/MobileHtmlPreview'
+import { openExternalLink } from '../platform/external-link'
+import { findRelativeHtmlAssetRefs, relativeHtmlAssetWarning } from './html-relative-assets'
+import type { MobileHtmlPreviewMode } from './mobile-html-open-mode'
 
 type Props = {
   preview: MobileFilePreviewResult
@@ -20,6 +26,12 @@ type Props = {
   lineColumn: MobileFilePreviewLineColumn | null
   imageWidth: number
   imageHeight: number
+  htmlMode?: MobileHtmlPreviewMode
+  /** False once the read is truncated, so Preview cannot mount the frame. */
+  htmlRenderable?: boolean
+  /** Terminal artifacts are source-only even when they look like HTML. */
+  sourceOnly?: boolean
+  truncatedNote?: string
   onDraftChange: (content: string) => void
   onImageError: () => void
   /** Null where the only retry is a re-dial this document cannot make. */
@@ -100,13 +112,19 @@ export function MobileFilePreviewBody({ preview, ...options }: Props) {
     )
   }
   if (preview.kind === 'html') {
-    return options.editable ? (
-      <EditablePreviewSource {...options} />
-    ) : (
+    if (options.editable) {
+      return <EditablePreviewSource {...options} />
+    }
+    const renderable = options.htmlRenderable ?? !preview.truncated
+    if (!options.sourceOnly && renderable && options.htmlMode === 'preview') {
+      return <HtmlRenderedPreview content={preview.content} />
+    }
+    return (
       <MobileFilePreviewSourceText
         relativePath={options.relativePath}
         content={preview.content}
         truncated={preview.truncated}
+        truncatedNote={options.truncatedNote}
         byteLength={preview.byteLength}
         initialLine={options.lineColumn?.line}
       />
@@ -115,14 +133,38 @@ export function MobileFilePreviewBody({ preview, ...options }: Props) {
   if (options.editable) {
     return <EditablePreviewSource {...options} />
   }
+  const htmlFile = classifyMobileArtifact(options.relativePath) === 'html'
   return (
     <MobileFilePreviewSourceText
       relativePath={options.relativePath}
       content={preview.content}
       truncated={preview.truncated}
+      truncatedNote={htmlFile ? options.truncatedNote : undefined}
       byteLength={preview.byteLength}
       initialLine={options.lineColumn?.line}
     />
+  )
+}
+
+function HtmlRenderedPreview({ content }: { content: string }) {
+  const warning = useMemo(() => {
+    const refs = findRelativeHtmlAssetRefs(content)
+    return relativeHtmlAssetWarning(refs)
+  }, [content])
+  return (
+    <View style={styles.htmlPreviewContainer}>
+      {warning ? (
+        <View style={styles.htmlAssetWarning}>
+          <Text style={styles.htmlAssetWarningText}>{warning}</Text>
+        </View>
+      ) : null}
+      <MobileHtmlPreviewFrame
+        html={content}
+        mode="preview"
+        showToolbar={false}
+        onExternalLink={(url) => openExternalLink(url)}
+      />
+    </View>
   )
 }
 

@@ -2,6 +2,7 @@ import { Buffer } from 'node:buffer'
 import * as React from 'react'
 import * as ReactJsxRuntime from 'react/jsx-runtime'
 import { sha256 } from '@noble/hashes/sha256'
+import { bytesToHex } from '@noble/hashes/utils'
 import * as lowlight from 'lowlight'
 import * as zod from 'zod'
 import {
@@ -73,6 +74,7 @@ export function nativeMountingSubstitutes(): Map<string, unknown> {
     // diff's success arm highlights before it ever reaches state.
     ['lowlight', lowlight],
     ['@noble/hashes/sha256', partialNativeModule('@noble/hashes/sha256', { sha256 })],
+    ['@noble/hashes/utils', partialNativeModule('@noble/hashes/utils', { bytesToHex })],
     [
       'expo-crypto',
       partialNativeModule('expo-crypto', {
@@ -82,6 +84,7 @@ export function nativeMountingSubstitutes(): Map<string, unknown> {
     ],
     // The RN polyfill mobile bundles is this same pure implementation of the same encoding.
     ['buffer', partialNativeModule('buffer', { Buffer })],
+    ['buffer/index.js', partialNativeModule('buffer/index.js', { Buffer })],
     // One pinned platform per recording; `platform` is golden provenance, not a compared field.
     [
       'react-native',
@@ -115,6 +118,20 @@ export function nativeMountingSubstitutes(): Map<string, unknown> {
       })
     ],
     ['expo-clipboard', pasteboardNativeStore()],
+    [
+      'expo-file-system',
+      partialNativeModule('expo-file-system', {
+        Directory: class {},
+        File: class {},
+        Paths: { cache: '' }
+      })
+    ],
+    // No optional native module exists in a recording: file save/open probe as unavailable, which
+    // is the old-binary branch and sends no device calls.
+    [
+      'expo-modules-core',
+      partialNativeModule('expo-modules-core', { requireOptionalNativeModule: () => null })
+    ],
     [
       'expo-keep-awake',
       partialNativeModule('expo-keep-awake', {

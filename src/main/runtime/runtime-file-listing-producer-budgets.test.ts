@@ -4,6 +4,10 @@ import {
   createRuntimeFileCommands,
   useRuntimeFileCommandsLifecycle
 } from './orca-runtime-files-test-harness'
+import {
+  MOBILE_FILE_LIST_LIMIT,
+  MOBILE_FILE_PATH_SEARCH_CACHE_LIMIT
+} from './runtime-file-commands-mobile-file-list-limit'
 const { localList } = vi.hoisted(() => ({ localList: vi.fn() }))
 vi.mock('../ipc/filesystem-list-files', () => ({ listQuickOpenFiles: localList }))
 vi.mock(
@@ -28,9 +32,10 @@ describe('runtime producer listing budgets', () => {
       const { commands } = createRuntimeFileCommands({ hostId: 'ssh:host' })
       const result = await commands.listMobileFiles('id:wt-1')
       expect(listFiles).toHaveBeenCalledWith('/repo', { maxResults: 5001, signal: undefined })
-      expect(result.files).toHaveLength(5000)
-      expect(result.totalCount).toBe(Math.min(count, 5001))
-      expect(result.truncated).toBe(count > 5000)
+      expect(result.files).toHaveLength(MOBILE_FILE_LIST_LIMIT)
+      expect(result.totalCount).toBe(Math.min(count, MOBILE_FILE_LIST_LIMIT + 1))
+      expect(result.truncated).toBe(count > MOBILE_FILE_LIST_LIMIT)
+      expect(result.libraryTruncated).toBe(count > MOBILE_FILE_LIST_LIMIT)
     }
   )
 
@@ -40,9 +45,36 @@ describe('runtime producer listing budgets', () => {
     )
     const { commands } = createRuntimeFileCommands()
     const result = await commands.listMobileFiles('id:wt-1')
-    expect(localList.mock.calls[0][4]).toBe(5001)
-    expect(result.totalCount).toBe(5001)
+    expect(localList.mock.calls[0][4]).toBe(MOBILE_FILE_LIST_LIMIT + 1)
+    expect(result.totalCount).toBe(MOBILE_FILE_LIST_LIMIT + 1)
     expect(result.truncated).toBe(true)
+    expect(result.libraryTruncated).toBe(true)
+  })
+
+  it('reports a truncated path-search inventory as libraryTruncated', async () => {
+    localList.mockClear()
+    localList.mockImplementation(async (_root, _store, _excluded, _signal, maxResults) =>
+      Array.from(
+        { length: Math.min(MOBILE_FILE_PATH_SEARCH_CACHE_LIMIT + 1, maxResults) },
+        (_, i) => `src/file-${i}.ts`
+      )
+    )
+    const { commands } = createRuntimeFileCommands()
+    const result = await commands.searchMobileFilePaths('id:wt-1', 'file', 5)
+    expect(localList.mock.calls[0][4]).toBe(MOBILE_FILE_PATH_SEARCH_CACHE_LIMIT + 1)
+    expect(result.files).toHaveLength(5)
+    expect(result.truncated).toBe(true)
+    expect(result.libraryTruncated).toBe(true)
+  })
+
+  it('does not report libraryTruncated when the path-search inventory fits the cap', async () => {
+    localList.mockClear()
+    localList.mockImplementation(async () => ['src/app.ts', 'src/main.ts', 'README.md'])
+    const { commands } = createRuntimeFileCommands()
+    const result = await commands.searchMobileFilePaths('id:wt-1', 'app', 5)
+    expect(result.files.map((file) => file.relativePath)).toEqual(['src/app.ts'])
+    expect(result.truncated).toBe(false)
+    expect(result.libraryTruncated).toBe(false)
   })
 
   it.each([25002, 100000])(

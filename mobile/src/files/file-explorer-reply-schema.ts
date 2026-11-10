@@ -28,7 +28,8 @@ export const fileDirectoryEntriesSchema = salvagingArray(
 )
 
 /**
- * The capped flat list an older desktop answers when `files.readDir` is not allowlisted.
+ * The capped flat list an older desktop answers when `files.readDir` is not allowlisted, and the
+ * `files.searchPaths` reply (same RuntimeFileListResult shape).
  *
  * `files` and `truncated` are both required and both read unguarded: directoryCacheFromFileList
  * walks `files` and splits each `relativePath` (file-list-fallback.ts:34), and
@@ -36,10 +37,15 @@ export const fileDirectoryEntriesSchema = salvagingArray(
  * first 5000" note. A row without a string `relativePath` drops — it can name no directory — where
  * main crashed the whole fallback on it.
  *
- * `basename` and `kind` are not declared: this consumer reads neither, and passthrough keeps them
- * for the inventory reader that does.
+ * `totalCount` is salvaged because a host that predates the mobile explorer may omit it; the
+ * reader falls back to `files.length` and never claims the list is complete. `basename` and `kind`
+ * are not declared: this consumer reads neither, and passthrough keeps them for the inventory
+ * reader that does.
  */
 export const legacyFileListSchema = z.looseObject({
   files: salvagingArray(z.looseObject({ relativePath: z.string() })),
-  truncated: z.boolean()
+  truncated: z.boolean(),
+  totalCount: salvagedOptional('totalCount', z.number().int().nonnegative()),
+  // Newer hosts separate "the inventory was capped" from "matches were capped".
+  libraryTruncated: salvagedOptional('libraryTruncated', z.boolean())
 })

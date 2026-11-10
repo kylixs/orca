@@ -70,7 +70,7 @@ export function MobileFileMarkdownPreview({
       {mode === 'preview' ? (
         <ScrollView style={styles.scroll} contentContainerStyle={styles.markdownContent}>
           {truncated ? <MobileFilePreviewTruncatedNote byteLength={byteLength} /> : null}
-          <MobileMarkdown content={content} />
+          <MobileMarkdown content={content} textSelectionMode="document" />
         </ScrollView>
       ) : (
         <MobileFilePreviewSourceText

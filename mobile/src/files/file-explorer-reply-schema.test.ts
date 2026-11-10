@@ -42,6 +42,16 @@ describe('file explorer reply schemas', () => {
     expect(parsed.files).toEqual([{ relativePath: 'a/b.ts' }])
   })
 
+  it('keeps totalCount for both the legacy list and searchPaths', () => {
+    expect(
+      legacyFileListSchema.parse({ files: [], truncated: true, totalCount: 6000 })
+    ).toMatchObject({ totalCount: 6000 })
+    // An older host that omits it still parses; the reader falls back to files.length.
+    expect(
+      legacyFileListSchema.parse({ files: [{ relativePath: 'a.ts' }], truncated: false })
+    ).toMatchObject({ files: [{ relativePath: 'a.ts' }] })
+  })
+
   it('passes a newer host member through on a directory row', () => {
     expect(
       fileDirectoryEntriesSchema.parse([{ name: 'a', isDirectory: false, sizeBytes: 12 }])[0]

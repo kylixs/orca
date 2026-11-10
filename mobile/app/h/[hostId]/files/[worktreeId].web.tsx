@@ -24,6 +24,13 @@ export default function MobileFileExplorerScreen() {
   const worktreeId = firstParam(params.worktreeId)
   const name = firstParam(params.name)
   return (
-    <MobileFileExplorerPanel hostId={hostId} worktreeId={worktreeId} name={name} embedded={false} />
+    <MobileFileExplorerPanel
+      // A different worktree is a fresh explorer: search, filter, and sheet state reset by remount.
+      key={`${hostId}:${worktreeId}`}
+      hostId={hostId}
+      worktreeId={worktreeId}
+      name={name}
+      embedded={false}
+    />
   )
 }

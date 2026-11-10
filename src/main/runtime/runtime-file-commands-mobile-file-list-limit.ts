@@ -16,7 +16,7 @@ export const MOBILE_FILE_LIST_LIMIT = 5000
 
 export const QUICK_OPEN_LEGACY_REMOTE_RESULT_LIMIT = 32
 
-export const MOBILE_FILE_PATH_SEARCH_CACHE_LIMIT = 20_000
+export { MOBILE_FILE_PATH_SEARCH_CACHE_LIMIT } from '../../shared/runtime-file-contracts'
 
 export const MOBILE_FILE_PATH_SEARCH_CACHE_ENTRIES = 8
 

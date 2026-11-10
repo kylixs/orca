@@ -4,11 +4,19 @@ import { BridgeInitRouteSchema, type BridgeInitRoute } from './bridge/bridge-env
 import { shellRouteHref } from './bridge/page-bootstrap'
 import { shellScreenRoute, shellScreenRouteKey } from './shell-screen-route'
 import {
-  mobileFilePreviewShellParams,
-  normalizeMobileFilePreviewRouteParams
+  normalizeMobileFilePreviewRouteParams,
+  type MobileFilePreviewRouteParams
 } from '../files/mobile-file-preview-route'
 
 const PREVIEW_PATH = '/h/host-1/files/preview/wt-1'
+
+/** The shell route's params: everything but the two segments, with absent values omitted. */
+function previewShellParams(params: MobileFilePreviewRouteParams): Record<string, string> {
+  const { hostId: _hostId, worktreeId: _worktreeId, ...rest } = params
+  return Object.fromEntries(
+    Object.entries(rest).flatMap(([key, value]) => (value === undefined ? [] : [[key, value]]))
+  )
+}
 
 function previewRoute(absolutePath: string) {
   const route = normalizeMobileFilePreviewRouteParams({
@@ -21,7 +29,7 @@ function previewRoute(absolutePath: string) {
   if (!route.ok) {
     throw new Error(route.message)
   }
-  return { pathname: PREVIEW_PATH, params: mobileFilePreviewShellParams(route.params) }
+  return { pathname: PREVIEW_PATH, params: previewShellParams(route.params) }
 }
 
 describe('the route a switch hands the shell', () => {

@@ -85,4 +85,15 @@ describe('MobileMarkdown on Android', () => {
     const all = render({ content: CONTENT })
     expect(all.filter((node) => node.props.selectable === true).length).toBeGreaterThan(0)
   })
+
+  it('makes every block selectable in document mode, where the transcript gate does not apply', () => {
+    const all = render({ content: CONTENT, textSelectionMode: 'document' })
+    const paragraph = all.find((node) =>
+      node.children.some((child) => typeof child === 'string' && child.includes('A paragraph'))
+    )
+    expect(paragraph?.props.selectable).toBe(true)
+    expect(all.filter((node) => node.props.selectable === true).length).toBeGreaterThan(5)
+    // The Android transcript override wrote `false` onto spans; document mode never does.
+    expect(all.filter((node) => node.props.selectable === false)).toHaveLength(0)
+  })
 })
