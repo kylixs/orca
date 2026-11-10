@@ -5,8 +5,7 @@ import { emitKeyboardAvoidanceMetrics } from './keyboard-avoidance-metrics'
 import { emitModesIfChanged } from './mode-mirroring'
 import { reflow } from './reflow'
 import { resumeTerminalDataReplyAuthority } from './query-reply'
-import { repositionOverlay } from './selection-overlay'
-import { cancelSelect } from './selection-range'
+import { cancelSelect, selectAllTerminal } from './selection-range'
 import { resetEvictionCounter } from './selection-state-and-eviction'
 import { applyTerminalTheme } from './terminal-theme'
 import { init, resize, write } from './terminal-init'
@@ -122,22 +121,6 @@ export function handleMsg(scope: TerminalDocumentScope, msg: TerminalHostMessage
       cancelSelect(scope)
     }
   } else if (msg.type === 'do-select-all') {
-    if (scope.term) {
-      try {
-        scope.term.selectAll()
-        const b = scope.term.buffer.active
-        if (scope.selMode !== 'select') {
-          scope.selMode = 'select'
-          scope.selectionOverlay!.classList.add('active')
-          notify(scope, { type: 'set-select-mode', enabled: true })
-        }
-        scope.sel = {
-          anchor: { col: 0, row: 0 },
-          focus: { col: scope.term.cols - 1, row: b.length - 1 },
-          activeHandle: null
-        }
-        repositionOverlay(scope)
-      } catch {}
-    }
+    selectAllTerminal(scope)
   }
 }

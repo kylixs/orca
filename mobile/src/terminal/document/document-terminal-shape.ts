@@ -34,6 +34,10 @@ export type TerminalInitialOscLink = {
  */
 export type TerminalDocumentCell = {
   isBgDefault: () => boolean
+  /** The glyph's UTF-16 text; a wide glyph's continuation cell answers ''. */
+  getChars?: () => string
+  /** Display columns: 0 for a continuation cell, 1 for most, 2 for CJK/emoji. */
+  getWidth?: () => number
   extended?: { urlId?: number }
   isInverse: () => number
   isUnderline?: () => number

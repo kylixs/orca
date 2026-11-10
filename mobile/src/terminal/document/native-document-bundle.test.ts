@@ -311,15 +311,35 @@ describe('the bundled native document', () => {
     // that ships rather than about a bundle this case built for itself.
     const { script, inputs } = await terminalDocumentBundle()
     expect(inputs.filter((input) => input.includes('node_modules'))).toEqual([])
-    // 50: `laid-out-cell-box` reads the cell box xterm laid out, for web-ready and each render;
+    // 51: `laid-out-cell-box` reads the cell box xterm laid out, for web-ready and each render;
     // `terminal-grid-fit` is the one fit of that box and `terminal-cell-box` its one comparison,
-    // both shared with the app.
-    expect(inputs).toHaveLength(50)
+    // both shared with the app; `text-tokenizer` is the long-press word splitter.
+    expect(inputs).toHaveLength(51)
     expect(script).not.toContain('__commonJS')
     // `__esm` wrappers are esbuild's answer to a cycle, and a cycle would make a module's top level
     // run at first import rather than where the bundle places it.
     expect(script).not.toContain('__esm(')
     expect(TERMINAL_DOCUMENT_SCRIPT).toBe(script)
+  }, 30_000)
+
+  it('stays within the Chrome 74 built-in floor', async () => {
+    // esbuild lowers syntax, not built-ins, so anything here reaches the oldest supported WebView
+    // as written. Array.prototype.at was the one that shipped and silently disabled selection.
+    const { script } = await terminalDocumentBundle()
+    for (const prohibited of [
+      '.at(',
+      '.findLast(',
+      '.findLastIndex(',
+      '.toSorted(',
+      '.toReversed(',
+      '.toSpliced(',
+      'Object.hasOwn(',
+      'Object.groupBy(',
+      'structuredClone(',
+      '.replaceAll('
+    ]) {
+      expect(script, prohibited).not.toContain(prohibited)
+    }
   }, 30_000)
 
   it('reports a missing engine rather than starting without one', () => {

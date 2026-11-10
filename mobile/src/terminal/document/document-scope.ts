@@ -208,7 +208,10 @@ export type TerminalDocumentState = {
 /** The document's whole scope: its state, and the seams to whatever is hosting it. */
 export type TerminalDocumentScope = TerminalDocumentState & TerminalDocumentHostSeams
 
-/** The live selection; only the dragged handle is read outside the overlay slice. */
+/**
+ * The live selection. Both anchors are leading (glyph-start) cells; the exclusive end is derived.
+ * Only the dragged handle is read outside the overlay slice.
+ */
 export type TerminalDocumentSelection = {
   anchor: { row: number; col: number }
   focus: { row: number; col: number }

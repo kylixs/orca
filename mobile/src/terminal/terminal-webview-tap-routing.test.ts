@@ -296,6 +296,19 @@ describe('terminal WebView tap routing', () => {
     expect(posted.find((m) => m.type === 'open-url')).toBeUndefined()
   })
 
+  it('leaves mailto and custom schemes out of the URL sheet', async () => {
+    for (const line of ['contact mailto:a@b.com now', 'run custom://thing/x now']) {
+      const { posted } = boot(line)
+      await settle()
+      fireTouch('touchstart', [{ x: screenXForCol(9), y: tapY }])
+      fireTouch('touchend', [])
+      expect(
+        posted.find((m) => m.type === 'open-url'),
+        line
+      ).toBeUndefined()
+    }
+  })
+
   it('does not post open-url for a scroll gesture past the tap slop', async () => {
     const { posted } = boot(URL_LINE)
     await settle()

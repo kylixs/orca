@@ -1,5 +1,6 @@
+import { snapToGlyphStart } from './cell-geometry'
 import { handleDragMove, repositionOverlay, stopEdgeScroll } from './selection-overlay'
-import { applyXtermSelection, cancelSelect } from './selection-range'
+import { applyXtermSelection, cancelSelect, finishSelectionDrag } from './selection-range'
 import { notify } from './host-notify'
 import { getMouseTrackingMode, isSafeSgrMouseCoordinate } from './mouse-input-encoding'
 import { viewportToCell } from './viewport-cell'
@@ -123,7 +124,11 @@ export function beginMouseDrag(scope: TerminalDocumentScope, gesture: TerminalMo
   // plumbing (edge scroll included) by acting as a live 'end' handle.
   gesture.mode = 'selecting'
   scope.selMode = 'select'
-  scope.sel = { anchor: anchor, focus: anchor, activeHandle: 'end' }
+  const startCell = {
+    row: anchor.row,
+    col: snapToGlyphStart(scope, anchor.row, anchor.col)
+  }
+  scope.sel = { anchor: startCell, focus: startCell, activeHandle: 'end' }
   scope.selectionOverlay!.classList.add('active')
   notify(scope, { type: 'set-select-mode', enabled: true })
   applyXtermSelection(scope)
@@ -240,9 +245,7 @@ export function attachSurfaceMouseClickDragHandler(
         return
       }
       if (gesture.mode === 'selecting') {
-        if (scope.sel) {
-          scope.sel.activeHandle = null
-        }
+        finishSelectionDrag(scope)
         stopEdgeScroll(scope)
         repositionOverlay(scope)
         return

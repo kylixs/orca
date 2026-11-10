@@ -10,6 +10,7 @@ import { ConfirmModal } from '../components/ConfirmModal'
 import { CustomKeyModal } from '../components/CustomKeyModal'
 import { MobileDictationSetupSheet } from '../components/MobileDictationSetupSheet'
 import { MobileBrowserTabActionSheet } from './MobileBrowserTabActionSheet'
+import { TerminalLinkActionSheet } from './TerminalLinkActionSheet'
 import { getMobileTerminalActionSheetActions } from './mobile-terminal-action-sheet-actions'
 import {
   getRepoIdFromMobileWorktreeId,
@@ -57,6 +58,10 @@ export function MobileSessionSheets({ controller }: { controller: MobileSessionC
     deleteKeyTarget,
     setDeleteKeyTarget,
     terminalModes,
+    terminalLinkChoice,
+    terminalLinkRemoteAvailability,
+    closeTerminalLinkSheet,
+    runTerminalLinkAction,
     showDictationSetup,
     setShowDictationSetup,
     browserScreencastSupported,
@@ -262,6 +267,16 @@ export function MobileSessionSheets({ controller }: { controller: MobileSessionC
           ...closeWithBulkActions(fileActionTarget, () => setFileActionTarget(null))
         ]}
         onClose={() => setFileActionTarget(null)}
+      />
+      <TerminalLinkActionSheet
+        visible={terminalLinkChoice != null}
+        url={terminalLinkChoice?.url ?? null}
+        preselect={terminalLinkChoice?.preselect ?? null}
+        remote={terminalLinkRemoteAvailability}
+        onOpenOnPhone={(remember) => runTerminalLinkAction('phone-browser', remember)}
+        onOpenOnDesktop={(remember) => runTerminalLinkAction('orca-browser', remember)}
+        onCopy={() => runTerminalLinkAction('copy', false)}
+        onCancel={closeTerminalLinkSheet}
       />
       <MobileBrowserTabActionSheet
         target={browserActionTarget}

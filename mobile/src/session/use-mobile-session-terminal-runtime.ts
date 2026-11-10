@@ -90,6 +90,11 @@ export function useMobileSessionTerminalRuntime(scope: MobileSessionScreenStateM
   const pendingTerminalActivationAttemptRef = useRef<string | null>(null)
   // Why: route the terminal URL tap through a ref so it runs the current handleCreateBrowser closure (the memoized one may hold a null-client render).
   const handleCreateBrowserRef = useRef<((rawUrl?: string) => Promise<boolean>) | null>(null)
+  // Why a second ref: a terminal link opens on the desktop without taking focus, so it must not
+  // share the foreground create path's pending focus page id.
+  const handleCreateBackgroundBrowserRef = useRef<((rawUrl?: string) => Promise<boolean>) | null>(
+    null
+  )
   const terminalInventoryRecoveryScope = JSON.stringify([hostId, worktreeId])
   const { registerTerminalInventoryRecoveryAction, signalTerminalInventoryRecovery } =
     useMobileTerminalInventoryRecoveryBridge(terminalInventoryRecoveryScope)
@@ -188,6 +193,7 @@ export function useMobileSessionTerminalRuntime(scope: MobileSessionScreenStateM
     switchSessionTabRef,
     pendingTerminalActivationAttemptRef,
     handleCreateBrowserRef,
+    handleCreateBackgroundBrowserRef,
     initialSessionAutoCreateRef,
     markdownSaveSeqRef,
     markdownSaveInFlightRef,

@@ -1,5 +1,5 @@
 import { handleDragMove, stopEdgeScroll } from './selection-overlay'
-import { cancelSelect, enterSelect } from './selection-range'
+import { cancelSelect, enterSelect, finishSelectionDrag } from './selection-range'
 import { notify } from './host-notify'
 import { viewportToCell } from './viewport-cell'
 import type { TerminalDocumentScope } from './document-scope'
@@ -214,9 +214,7 @@ function onDocumentTouchEnd(scope: TerminalDocumentScope, e: TouchEvent) {
   }
   const touches = touchesInRoot(scope.root, e.touches)
   if (scope.touchDispatch.mode === 'select-drag') {
-    if (scope.sel) {
-      scope.sel.activeHandle = null
-    }
+    finishSelectionDrag(scope)
     stopEdgeScroll(scope)
     scope.touchDispatch.mode = 'idle'
     scope.touchDispatch.touchId = null

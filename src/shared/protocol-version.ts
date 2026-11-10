@@ -126,6 +126,10 @@ export const BROWSER_CERTIFICATE_TRUST_RUNTIME_CAPABILITY = 'browser.certificate
 // treat a preallocated page ID as canonical when this is advertised.
 export const BROWSER_TAB_CREATE_KNOWN_ID_RUNTIME_CAPABILITY =
   'browser.tab-create-known-id.v1' as const
+// Why conditional: only a host that can browse can create a background tab, and older hosts would
+// silently steal focus if a client asked them to create one.
+export const BROWSER_TAB_CREATE_BACKGROUND_RUNTIME_CAPABILITY =
+  'browser.tab-create-background.v1' as const
 export const BROWSER_CLIENT_HOST_RUNTIME_CAPABILITY = 'browser.clientHost.v1' as const
 export const BROWSER_CLIENT_PAGE_METADATA_RUNTIME_CAPABILITY =
   'browser.clientHost.pageMetadata.v1' as const
@@ -356,6 +360,7 @@ export const RUNTIME_CAPABILITIES = [
   ...ORCHESTRATION_RUNTIME_CAPABILITIES,
   BROWSER_SCREENCAST_RUNTIME_CAPABILITY,
   BROWSER_TAB_CREATE_KNOWN_ID_RUNTIME_CAPABILITY,
+  BROWSER_TAB_CREATE_BACKGROUND_RUNTIME_CAPABILITY,
   BROWSER_CLIENT_HOST_RUNTIME_CAPABILITY,
   BROWSER_CLIENT_PAGE_METADATA_RUNTIME_CAPABILITY,
   BROWSER_CLIENT_AUTOMATION_RUNTIME_CAPABILITY,

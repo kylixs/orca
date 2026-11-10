@@ -1,3 +1,4 @@
+import { BROWSER_TAB_CREATE_BACKGROUND_RUNTIME_CAPABILITY } from '../../../src/shared/protocol-version'
 import { normalizeBrowserUrl } from '../browser/browser-url'
 import { captureMobileFileMutationOwnership } from '../files/mobile-file-mutation-ownership'
 import {
@@ -13,6 +14,12 @@ import {
 import { interpretOrThrowRefusalMessage } from '../transport/rpc-refusal-message'
 import type { MobileBrowserNavigationMethod } from './MobileBrowserTabActionSheet'
 import { isFileExistsErrorMessage } from './mobile-session-route-helpers'
+import {
+  TERMINAL_LINK_REMOTE_CREATING_HINT,
+  TERMINAL_LINK_REMOTE_OFFLINE_HINT,
+  TERMINAL_LINK_REMOTE_UNSUPPORTED_HINT,
+  TERMINAL_LINK_REMOTE_WORKSPACE_HINT
+} from './terminal-link-open-policy'
 import type { MobileSessionTab } from './mobile-session-route-types'
 import type { MobileSessionTerminalCreateActionsModel } from './use-mobile-session-terminal-create-actions'
 
@@ -29,6 +36,10 @@ export function useMobileSessionContentCreateActions(
   const {
     worktreeId,
     client,
+    connState,
+    isFolderWorkspaceRoute,
+    isFloatingWorkspaceRoute,
+    hostCapabilities,
     creatingBrowser,
     setCreatingBrowser,
     creatingMarkdown,
@@ -36,6 +47,7 @@ export function useMobileSessionContentCreateActions(
     setCreateError,
     pendingBrowserFocusPageIdRef,
     handleCreateBrowserRef,
+    handleCreateBackgroundBrowserRef,
     browserScreencastSupportedRef,
     scheduleDelayedAction,
     showToast,
@@ -141,6 +153,65 @@ export function useMobileSessionContentCreateActions(
   // Keep the ref at the latest handleCreateBrowser so a terminal URL tap always runs the current closure.
   handleCreateBrowserRef.current = handleCreateBrowser
 
+  /**
+   * The terminal link sheet's desktop action: create the tab in the background and leave the
+   * phone on its terminal. It deliberately does not set `pendingBrowserFocusPageIdRef`, which is
+   * what would make the next tab snapshot switch the phone to the new browser tab.
+   */
+  async function handleCreateBackgroundBrowser(rawUrl = 'about:blank'): Promise<boolean> {
+    // Why: a sheet rendered one frame ago can reach this after its gate changed. Every refusal
+    // says why, because a tap that does nothing reads as a broken link.
+    if (isFolderWorkspaceRoute || isFloatingWorkspaceRoute) {
+      showToast(TERMINAL_LINK_REMOTE_WORKSPACE_HINT, 2000)
+      return false
+    }
+    if (!client || connState !== 'connected') {
+      showToast(TERMINAL_LINK_REMOTE_OFFLINE_HINT, 2000)
+      return false
+    }
+    if (creatingBrowser) {
+      showToast(TERMINAL_LINK_REMOTE_CREATING_HINT, 2000)
+      return false
+    }
+    if (!hostCapabilities.includes(BROWSER_TAB_CREATE_BACKGROUND_RUNTIME_CAPABILITY)) {
+      showToast(TERMINAL_LINK_REMOTE_UNSUPPORTED_HINT, 2000)
+      return false
+    }
+    const url = normalizeBrowserUrl(rawUrl)
+    if (!url) {
+      showToast('Enter a valid URL', 1400)
+      return false
+    }
+
+    setCreatingBrowser(true)
+    try {
+      const response = await sessionBrowserTabCreate.request(
+        client,
+        {
+          worktree: `id:${worktreeId}`,
+          url,
+          activate: false
+        },
+        { timeoutMs: 30_000 }
+      )
+      sessionBrowserTabCreate.interpret(response)
+      void fetchSessionTabs()
+      scheduleDelayedAction(() => void fetchPendingBrowserSessionTabs(), 400)
+      scheduleDelayedAction(() => void fetchPendingBrowserSessionTabs(), 1200)
+      return true
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to open link on the desktop'
+      showToast(message, 1800)
+      return false
+    } finally {
+      setCreatingBrowser(false)
+    }
+  }
+  // Why: mount harnesses that only exercise the foreground path may omit this ref.
+  if (handleCreateBackgroundBrowserRef) {
+    handleCreateBackgroundBrowserRef.current = handleCreateBackgroundBrowser
+  }
+
   async function handleBrowserNavigationCommand(
     tab: Extract<MobileSessionTab, { type: 'browser' }>,
     method: MobileBrowserNavigationMethod
@@ -169,6 +240,7 @@ export function useMobileSessionContentCreateActions(
   return {
     handleCreateMarkdownNote,
     handleCreateBrowser,
+    handleCreateBackgroundBrowser,
     handleBrowserNavigationCommand
   }
 }

@@ -1,8 +1,8 @@
-import { cellToViewportPx } from './cell-geometry'
+import { cellToViewportPx, snapToGlyphStart } from './cell-geometry'
 import type { TerminalDocumentScope } from './document-scope'
 import { getCellHeight } from './fit-scale'
 import { notify } from './host-notify'
-import { applyXtermSelection, selRange } from './selection-range'
+import { applyXtermSelection, selectionSpan } from './selection-range'
 import { viewportPoint, viewportToCell } from './viewport-cell'
 import { getTotalScale } from './viewport-transform'
 
@@ -16,11 +16,16 @@ export function repositionOverlay(scope: TerminalDocumentScope) {
   if (scope.selMode !== 'select' || !scope.sel || !scope.term) {
     return
   }
-  const r = selRange(scope)!
-  const sPx = cellToViewportPx(scope, r.start.col, r.start.row)
-  const ePx = cellToViewportPx(scope, r.end.col + 1, r.end.row)
-  const cellH = getCellHeight(scope) * getTotalScale(scope)
+  const span = selectionSpan(scope)!
   const viewport = scope.viewportRect()
+  const sPx = cellToViewportPx(scope, span.start.col, span.start.row)
+  const ePx = cellToViewportPx(scope, span.endExclusive.col, span.endExclusive.row)
+  // Why: a span ending at the grid's right edge is one past the last cell. Keep that coordinate in
+  // the model, but pin the handle to the viewport so it never renders off-screen.
+  if (span.endExclusive.col >= scope.term.cols) {
+    ePx.x = Math.min(ePx.x, viewport.width)
+  }
+  const cellH = getCellHeight(scope) * getTotalScale(scope)
   // Why: native iOS pattern — start handle anchors at the TOP of the
   // first selected cell (dot above, stem covers the cell going down);
   // end handle anchors at the BOTTOM of the last selected cell (dot
@@ -67,6 +72,28 @@ export function repositionOverlay(scope: TerminalDocumentScope) {
   scope.selMenu!.style.left = clampedLeft + 'px'
 }
 
+/** A handle stores a glyph-start cell, never the exclusive end it derives. */
+export function moveSelectionHandleToCell(
+  scope: TerminalDocumentScope,
+  handle: string,
+  cell: { row: number; col: number }
+): boolean {
+  if (!scope.sel) {
+    return false
+  }
+  const anchor = {
+    row: cell.row,
+    col: snapToGlyphStart(scope, cell.row, cell.col)
+  }
+  if (handle === 'start') {
+    scope.sel.anchor = anchor
+  } else {
+    scope.sel.focus = anchor
+  }
+  applyXtermSelection(scope)
+  return true
+}
+
 export function syncSelectionHandleToViewportPoint(
   scope: TerminalDocumentScope,
   handle: string,
@@ -74,16 +101,10 @@ export function syncSelectionHandleToViewportPoint(
   clientY: number
 ) {
   const c = viewportToCell(scope, clientX, clientY)
-  if (!c || !scope.sel) {
+  if (!c) {
     return false
   }
-  if (handle === 'start') {
-    scope.sel.anchor = c
-  } else {
-    scope.sel.focus = c
-  }
-  applyXtermSelection(scope)
-  return true
+  return moveSelectionHandleToCell(scope, handle, c)
 }
 
 export function syncEdgeScrollSelectionEndpoint(scope: TerminalDocumentScope) {

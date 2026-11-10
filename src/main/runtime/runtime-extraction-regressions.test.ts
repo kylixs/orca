@@ -2,7 +2,10 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { OrcaRuntimeService } from './orca-runtime'
 import type { RuntimeStore } from './runtime-store-contract'
-import { SESSION_TABS_AUTHORITATIVE_INVENTORY_RUNTIME_CAPABILITY } from '../../shared/protocol-version'
+import {
+  BROWSER_TAB_CREATE_BACKGROUND_RUNTIME_CAPABILITY,
+  SESSION_TABS_AUTHORITATIVE_INVENTORY_RUNTIME_CAPABILITY
+} from '../../shared/protocol-version'
 
 vi.mock('electron', () => ({
   BrowserWindow: { fromId: vi.fn(() => null) },
@@ -48,6 +51,20 @@ describe('runtime extraction regressions', () => {
     } finally {
       vi.unstubAllEnvs()
     }
+  })
+
+  it('advertises background browser tab creation only when the host can browse', () => {
+    const runtime = new OrcaRuntimeService()
+    expect(runtime.getStatus().capabilities).not.toContain(
+      BROWSER_TAB_CREATE_BACKGROUND_RUNTIME_CAPABILITY
+    )
+    vi.spyOn(runtime, 'getAvailableAuthoritativeWindow').mockReturnValue(
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: status only reads the value for nullness.
+      {} as never
+    )
+    expect(runtime.getStatus().capabilities).toContain(
+      BROWSER_TAB_CREATE_BACKGROUND_RUNTIME_CAPABILITY
+    )
   })
 
   it('publishes the answering runtime machine name in status', () => {

@@ -44,7 +44,8 @@ export function useMobileSessionScreenState(scope: MobileSessionFoundationModel)
   // Why: terminal command-bar autocomplete opt-in, reloaded on focus so a Settings → Terminal toggle takes effect on return.
   const [autocompleteEnabled, setAutocompleteEnabled] = useState(false)
   const [terminalLinkOpenMode, setTerminalLinkOpenMode] =
-    useState<MobileTerminalLinkOpenMode>('orca-browser')
+    useState<MobileTerminalLinkOpenMode>('ask')
+  const [terminalLinkChoice, setTerminalLinkChoice] = useState<TerminalLinkChoice | null>(null)
   const [liveInputCapture, setLiveInputCapture] = useState('')
   const {
     clearTerminalLiveInputDefault,
@@ -147,6 +148,8 @@ export function useMobileSessionScreenState(scope: MobileSessionFoundationModel)
     setAutocompleteEnabled,
     terminalLinkOpenMode,
     setTerminalLinkOpenMode,
+    terminalLinkChoice,
+    setTerminalLinkChoice,
     liveInputCapture,
     setLiveInputCapture,
     clearTerminalLiveInputDefault,
@@ -239,6 +242,13 @@ export function useMobileSessionScreenState(scope: MobileSessionFoundationModel)
     toastHideTimerRef,
     toastSeqRef
   }
+}
+
+export type TerminalLinkChoice = {
+  handle: string
+  url: string
+  /** The legacy preference, read once for the first sheet and never again. */
+  preselect: 'phone-browser' | 'orca-browser' | null
 }
 
 export type MobileSessionScreenStateModel = MobileSessionFoundationModel &
