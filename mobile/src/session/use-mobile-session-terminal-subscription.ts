@@ -184,6 +184,7 @@ export function useMobileSessionTerminalSubscription(
               typeof data.serialized === 'string' && data.serialized.length > 0
                 ? data.serialized
                 : ''
+            diagnostics.scrollbackReceived(handle, seq, initialData.length)
             const oscLinks = isTerminalOscLinkRanges(data.oscLinks) ? data.oscLinks : undefined
             const ref = getTerminalRef(handle)
             // Why: only mark initialized once init() reaches the WebView, else later scrollback is dropped and the terminal stays blank.
@@ -197,6 +198,7 @@ export function useMobileSessionTerminalSubscription(
             }
             ref.init({ cols, rows, initialData, oscLinks, frame: terminalFrameRef.current })
             initializedHandlesRef.current.add(handle)
+            diagnostics.scrollbackApplied(handle, seq)
             if (data.displayMode) {
               const displayMode = data.displayMode as MobileDisplayMode
               // Why: same-mode frames must keep the Map identity, or every stream pass re-renders the whole route.
@@ -249,6 +251,7 @@ export function useMobileSessionTerminalSubscription(
                 chunkLen: typeof data.chunk === 'string' ? data.chunk.length : 0
               })
             }
+            diagnostics.firstDataAfterHydration(handle, seq)
             dataRef.write(data.chunk as string)
           } else if (data.type === 'resized') {
             updateTerminalCwdFromStreamEvent(handle, data, terminalCwdRef.current)

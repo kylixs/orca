@@ -8,6 +8,12 @@ import { TERMINAL_MULTIPLEX_STREAM_LIMIT_ERROR } from '../../../shared/terminal-
 import { recordE2eRemoteTerminalInitialSnapshotTruncated } from './remote-runtime-terminal-e2e-control'
 import { RemoteRuntimeTerminalResponseController } from './remote-runtime-terminal-response-controller'
 import {
+  beginSnapshotLoad,
+  endSnapshotLoad,
+  recordSnapshotApplied,
+  recordSnapshotChunk
+} from './remote-terminal-load-timing'
+import {
   MAX_REMOTE_TERMINAL_SNAPSHOT_BYTES,
   REMOTE_TERMINAL_SNAPSHOT_TOO_LARGE,
   classifySnapshotAvailability,
@@ -38,6 +44,7 @@ export abstract class RemoteRuntimeTerminalBinarySnapshots extends RemoteRuntime
           : stream.initialSnapshotReceived
             ? 'recovery'
             : 'initial'
+      beginSnapshotLoad(stream, stream.snapshotTarget, stream.snapshotInfo)
       return
     }
     if (frame.opcode === TerminalStreamOpcode.SnapshotChunk) {
@@ -53,6 +60,7 @@ export abstract class RemoteRuntimeTerminalBinarySnapshots extends RemoteRuntime
         return
       }
       stream.snapshotChunks.push(frame.payload)
+      recordSnapshotChunk(stream, frame.payload.byteLength)
       return
     }
     if (frame.opcode === TerminalStreamOpcode.SnapshotEnd) {
@@ -62,6 +70,7 @@ export abstract class RemoteRuntimeTerminalBinarySnapshots extends RemoteRuntime
       const target = stream.snapshotTarget
       const info = stream.snapshotInfo
       const pendingRequest = stream.pendingSnapshotRequest
+      endSnapshotLoad(stream)
       if (target === 'initial' && info?.truncated === true) {
         recordE2eRemoteTerminalInitialSnapshotTruncated()
       }
@@ -92,6 +101,7 @@ export abstract class RemoteRuntimeTerminalBinarySnapshots extends RemoteRuntime
           carriesHistory: (info?.scrollbackRows ?? 0) > 0
         }
         if (matchesPendingRequest) {
+          recordSnapshotApplied(stream, pushedMeta, (data ?? '').length)
           pendingRequest.resolve({
             availability: classifySnapshotAvailability(stream.snapshotOverflowed, info),
             snapshot: {
@@ -110,7 +120,9 @@ export abstract class RemoteRuntimeTerminalBinarySnapshots extends RemoteRuntime
           })
           clearPendingSnapshotRequest(stream)
         } else if (target === 'initial') {
-          stream.callbacks.onSnapshot(data ?? '', pushedMeta)
+          const initialImage = data ?? ''
+          stream.callbacks.onSnapshot(initialImage, pushedMeta)
+          recordSnapshotApplied(stream, pushedMeta, initialImage.length)
         } else if (target === 'recovery') {
           // Why: a server-pushed recovery snapshot follows dropped output, so the
           // pane's history ends before this image; clear screen and scrollback
@@ -119,10 +131,9 @@ export abstract class RemoteRuntimeTerminalBinarySnapshots extends RemoteRuntime
           // not linger on a terminal the model says is blank.
           // RELEASE_SYNCHRONIZED_OUTPUT: \x1b[2J does not clear mode 2026, so a pane
           // holding an open latch would not paint this recovery snapshot at all.
-          stream.callbacks.onSnapshot(
-            `${RELEASE_SYNCHRONIZED_OUTPUT}\x1b[2J\x1b[3J\x1b[H${data ?? ''}`,
-            pushedMeta
-          )
+          const recoveryImage = `${RELEASE_SYNCHRONIZED_OUTPUT}\x1b[2J\x1b[3J\x1b[H${data ?? ''}`
+          stream.callbacks.onSnapshot(recoveryImage, pushedMeta)
+          recordSnapshotApplied(stream, pushedMeta, recoveryImage.length)
         }
       } else if (matchesPendingRequest) {
         pendingRequest.resolve({

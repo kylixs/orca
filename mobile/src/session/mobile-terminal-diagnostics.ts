@@ -1,10 +1,19 @@
-const MOBILE_TERMINAL_DIAGNOSTIC_TAG = '[terminal-diagnostic]'
+import {
+  getMobileTerminalDiagnosticErrorName,
+  logMobileTerminalDiagnostic,
+  shortenMobileTerminalDiagnosticId,
+  type MobileTerminalDiagnosticDetails
+} from './mobile-terminal-diagnostic-log'
+import { MobileTerminalLoadTiming } from './mobile-terminal-load-timing'
 
-type MobileTerminalDiagnosticValue = string | number | boolean | null | undefined
-
-export type MobileTerminalDiagnosticDetails = Readonly<
-  Record<string, MobileTerminalDiagnosticValue>
->
+// Re-exported for existing importers. Named (not `export *`) because the
+// RPC-recording loader's CommonJS emit cannot enumerate its module proxy.
+export {
+  getMobileTerminalDiagnosticErrorName,
+  logMobileTerminalDiagnostic,
+  shortenMobileTerminalDiagnosticId,
+  type MobileTerminalDiagnosticDetails
+} from './mobile-terminal-diagnostic-log'
 
 type DiagnosticTab = {
   readonly id: string
@@ -21,38 +30,10 @@ type DiagnosticTabsSnapshot = {
 
 type DiagnosticDimensions = { readonly cols: number; readonly rows: number } | null | undefined
 
-// Why: full runtime identifiers make shared logs unnecessarily sensitive; the
-// suffix is enough to correlate lifecycle events within one reproduction.
-export function shortenMobileTerminalDiagnosticId(value: string | null | undefined): string | null {
-  if (!value) {
-    return null
-  }
-  return value.slice(-8)
-}
-
-export function getMobileTerminalDiagnosticErrorName(error: unknown): string {
-  if (error instanceof Error && error.name) {
-    return error.name
-  }
-  return typeof error
-}
-
-export function logMobileTerminalDiagnostic(
-  event: string,
-  details: MobileTerminalDiagnosticDetails = {}
-): void {
-  // Why: lifecycle diagnostics are intentionally available for HMR repros,
-  // but high-frequency WebView events must not add production log overhead.
-  if (typeof __DEV__ !== 'undefined' && !__DEV__) {
-    return
-  }
-  // Keep this structured and content-free so users can safely share a filtered log.
-  console.log(MOBILE_TERMINAL_DIAGNOSTIC_TAG, event, details)
-}
-
 export class MobileTerminalDiagnostics {
   private readonly streamGateByHandle = new Map<string, string>()
   private readonly firstStreamEventSeqByHandle = new Map<string, number>()
+  private readonly loadTiming = new MobileTerminalLoadTiming()
   private lastFetchedTabsSignature: string | null = null
   private lastAppliedTabsSignature: string | null = null
   private lastTabsFetchStartAt = 0
@@ -61,6 +42,7 @@ export class MobileTerminalDiagnostics {
   clearTerminalCache(): void {
     this.streamGateByHandle.clear()
     this.firstStreamEventSeqByHandle.clear()
+    this.loadTiming.clear()
   }
 
   resetRoute(): void {
@@ -74,6 +56,7 @@ export class MobileTerminalDiagnostics {
   terminalUnsubscribed(handle: string): void {
     this.streamGateByHandle.delete(handle)
     this.firstStreamEventSeqByHandle.delete(handle)
+    this.loadTiming.forget(handle)
   }
 
   viewportMeasured(handle: string, dims: DiagnosticDimensions, frameHeight: number): void {
@@ -100,6 +83,8 @@ export class MobileTerminalDiagnostics {
 
   streamArmed(handle: string, seq: number, viewport: DiagnosticDimensions): void {
     this.streamGateByHandle.delete(handle)
+    // T0 for the load cycle: every later phase reports its offset from here.
+    this.loadTiming.arm(handle, seq)
     logMobileTerminalDiagnostic('stream-armed', {
       handle: shortenMobileTerminalDiagnosticId(handle),
       seq,
@@ -114,11 +99,19 @@ export class MobileTerminalDiagnostics {
       return
     }
     this.firstStreamEventSeqByHandle.set(handle, seq)
-    logMobileTerminalDiagnostic('stream-first-event', {
-      handle: shortenMobileTerminalDiagnosticId(handle),
-      seq,
-      type: typeof type === 'string' ? type : 'unknown'
-    })
+    this.loadTiming.firstStreamEvent(handle, seq, type)
+  }
+
+  scrollbackReceived(handle: string, seq: number, serializedLength: number): void {
+    this.loadTiming.scrollbackReceived(handle, seq, serializedLength)
+  }
+
+  scrollbackApplied(handle: string, seq: number): void {
+    this.loadTiming.scrollbackApplied(handle, seq)
+  }
+
+  firstDataAfterHydration(handle: string, seq: number): void {
+    this.loadTiming.firstDataAfterHydration(handle, seq)
   }
 
   streamScrollback(

@@ -4,6 +4,7 @@ import {
 } from '../../../shared/terminal-stream-protocol'
 import { e2eDisableRemoteTerminalStallRecovery } from '@/lib/e2e-config'
 import { recordRendererCrashBreadcrumb } from '@/lib/crash-breadcrumb-recorder'
+import { recordSnapshotRequested } from './remote-terminal-load-timing'
 import { RemoteRuntimeTerminalBinaryController } from './remote-runtime-terminal-binary-controller'
 import {
   CONTROL_STREAM_ID,
@@ -157,6 +158,7 @@ export class RemoteRuntimeTerminalMultiplexer extends RemoteRuntimeTerminalBinar
         throw new Error('Remote terminal stream is not connected.')
       }
       state.subscriptionRequested = true
+      recordSnapshotRequested(state)
     } catch (error) {
       const terminalError = error instanceof Error ? error : new Error(String(error))
       if (this.streams.get(streamId) === state) {
