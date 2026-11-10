@@ -8,16 +8,21 @@ import {
   HOST_SIDEBAR_MIN_WIDTH,
   clampHostDockWidth,
   clampHostSidebarWidth,
+  consumeLegacyTerminalLinkOpenMode,
   loadDisabledTerminalLiveInputHandles,
   loadHostSidebarWidth,
+  loadMobileHtmlOpenMode,
+  MOBILE_HTML_OPEN_MODE_KEY,
   loadPushNotificationsEnabled,
   loadTerminalAutocompleteEnabled,
   loadTerminalLinkOpenMode,
   mobileShellBuildKind,
   readPushNotificationsPreference,
   readDisabledTerminalLiveInputHandlesPreference,
+  resetLegacyTerminalLinkOpenModeForTests,
   saveDisabledTerminalLiveInputHandles,
   saveHostSidebarWidth,
+  saveMobileHtmlOpenMode,
   savePushNotificationsEnabled,
   saveTerminalAutocompleteEnabled,
   saveTerminalLinkOpenMode
@@ -36,7 +41,8 @@ import {
 vi.mock('@react-native-async-storage/async-storage', () => ({
   default: {
     getItem: vi.fn(),
-    setItem: vi.fn(async () => undefined)
+    setItem: vi.fn(async () => undefined),
+    removeItem: vi.fn(async () => undefined)
   }
 }))
 
@@ -478,33 +484,106 @@ describe('terminal link open mode preference', () => {
   beforeEach(() => {
     vi.mocked(AsyncStorage.getItem).mockReset()
     vi.mocked(AsyncStorage.setItem).mockReset()
+    vi.mocked(AsyncStorage.removeItem).mockReset()
+    resetLegacyTerminalLinkOpenModeForTests()
   })
 
-  it('defaults to Orca browser when unset', async () => {
+  it('defaults to asking when the v2 key is unset', async () => {
     vi.mocked(AsyncStorage.getItem).mockResolvedValue(null)
 
-    await expect(loadTerminalLinkOpenMode()).resolves.toBe('orca-browser')
-    expect(AsyncStorage.getItem).toHaveBeenCalledWith('orca:terminalLinkOpenMode')
+    await expect(loadTerminalLinkOpenMode()).resolves.toBe('ask')
+    expect(AsyncStorage.getItem).toHaveBeenCalledWith('orca:terminalLinkOpenMode:v2')
   })
 
-  it('loads only known modes', async () => {
+  it('loads only known v2 modes', async () => {
     vi.mocked(AsyncStorage.getItem).mockResolvedValue('phone-browser')
     await expect(loadTerminalLinkOpenMode()).resolves.toBe('phone-browser')
 
+    vi.mocked(AsyncStorage.getItem).mockResolvedValue('ask')
+    await expect(loadTerminalLinkOpenMode()).resolves.toBe('ask')
+
     vi.mocked(AsyncStorage.getItem).mockResolvedValue('external')
-    await expect(loadTerminalLinkOpenMode()).resolves.toBe('orca-browser')
+    await expect(loadTerminalLinkOpenMode()).resolves.toBe('ask')
   })
 
-  it('falls back to Orca browser when storage cannot be read', async () => {
+  it('falls back to asking when storage cannot be read', async () => {
     vi.mocked(AsyncStorage.getItem).mockRejectedValue(new Error('storage unavailable'))
 
-    await expect(loadTerminalLinkOpenMode()).resolves.toBe('orca-browser')
+    await expect(loadTerminalLinkOpenMode()).resolves.toBe('ask')
   })
 
-  it('persists the selected mode', async () => {
+  it('persists the selected mode to v2', async () => {
     await saveTerminalLinkOpenMode('phone-browser')
 
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith('orca:terminalLinkOpenMode', 'phone-browser')
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
+      'orca:terminalLinkOpenMode:v2',
+      'phone-browser'
+    )
+  })
+
+  it('preselects once from the legacy key and migrates it to ask', async () => {
+    vi.mocked(AsyncStorage.getItem).mockImplementation(async (key) =>
+      key === 'orca:terminalLinkOpenMode' ? 'orca-browser' : null
+    )
+
+    await expect(consumeLegacyTerminalLinkOpenMode()).resolves.toBe('orca-browser')
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith('orca:terminalLinkOpenMode:v2', 'ask')
+    expect(AsyncStorage.removeItem).toHaveBeenCalledWith('orca:terminalLinkOpenMode')
+
+    // The migration is one-time, even before the store's removal is observed by a second sheet.
+    await expect(consumeLegacyTerminalLinkOpenMode()).resolves.toBeNull()
+  })
+
+  it('keeps an already written v2 value and only deletes the legacy key', async () => {
+    vi.mocked(AsyncStorage.getItem).mockImplementation(async (key) =>
+      key === 'orca:terminalLinkOpenMode' ? 'phone-browser' : 'orca-browser'
+    )
+
+    await expect(consumeLegacyTerminalLinkOpenMode()).resolves.toBeNull()
+    expect(AsyncStorage.setItem).not.toHaveBeenCalledWith('orca:terminalLinkOpenMode:v2', 'ask')
+    expect(AsyncStorage.removeItem).toHaveBeenCalledWith('orca:terminalLinkOpenMode')
+  })
+
+  it('does not write when the legacy key is absent', async () => {
+    vi.mocked(AsyncStorage.getItem).mockResolvedValue(null)
+
+    await expect(consumeLegacyTerminalLinkOpenMode()).resolves.toBeNull()
+    expect(AsyncStorage.setItem).not.toHaveBeenCalled()
+    expect(AsyncStorage.removeItem).not.toHaveBeenCalled()
+  })
+
+  it('does not let the legacy migration overwrite a Remember save issued mid-migration', async () => {
+    const storage = new Map<string, string>([['orca:terminalLinkOpenMode', 'orca-browser']])
+    const v2ReadStarted = deferred<void>()
+    const releaseV2Read = deferred<void>()
+    vi.mocked(AsyncStorage.getItem).mockImplementation(async (key) => {
+      if (key === 'orca:terminalLinkOpenMode:v2') {
+        // The migration's read is issued before the save but answers afterwards.
+        const snapshot = storage.get(key) ?? null
+        v2ReadStarted.resolve()
+        await releaseV2Read.promise
+        return snapshot
+      }
+      return storage.get(key) ?? null
+    })
+    vi.mocked(AsyncStorage.setItem).mockImplementation(async (key, value) => {
+      storage.set(key, value)
+    })
+    vi.mocked(AsyncStorage.removeItem).mockImplementation(async (key) => {
+      storage.delete(key)
+    })
+
+    const migration = consumeLegacyTerminalLinkOpenMode()
+    await v2ReadStarted.promise
+    const remember = saveTerminalLinkOpenMode('phone-browser')
+    const reloaded = loadTerminalLinkOpenMode()
+    releaseV2Read.resolve()
+
+    await expect(migration).resolves.toBe('orca-browser')
+    await remember
+    await expect(reloaded).resolves.toBe('phone-browser')
+    expect(storage.get('orca:terminalLinkOpenMode:v2')).toBe('phone-browser')
+    expect(storage.has('orca:terminalLinkOpenMode')).toBe(false)
   })
 })
 
@@ -517,6 +596,50 @@ function setShellBuildSwitch(value: string | undefined): void {
   }
   process.env.EXPO_PUBLIC_MOBILE_SHELL = value
 }
+
+describe('HTML open mode preference', () => {
+  beforeEach(() => {
+    vi.mocked(AsyncStorage.getItem).mockReset()
+    vi.mocked(AsyncStorage.setItem).mockReset()
+    vi.mocked(AsyncStorage.removeItem).mockReset()
+  })
+
+  it('defaults to asking when the key is absent', async () => {
+    vi.mocked(AsyncStorage.getItem).mockResolvedValue(null)
+
+    await expect(loadMobileHtmlOpenMode()).resolves.toBe('ask')
+    expect(AsyncStorage.getItem).toHaveBeenCalledWith(MOBILE_HTML_OPEN_MODE_KEY)
+  })
+
+  it('loads only preview or source, and falls back to ask for anything else', async () => {
+    vi.mocked(AsyncStorage.getItem).mockResolvedValue('preview')
+    await expect(loadMobileHtmlOpenMode()).resolves.toBe('preview')
+
+    vi.mocked(AsyncStorage.getItem).mockResolvedValue('source')
+    await expect(loadMobileHtmlOpenMode()).resolves.toBe('source')
+
+    for (const corrupted of ['render', 'PREVIEW', '', 'true']) {
+      vi.mocked(AsyncStorage.getItem).mockResolvedValue(corrupted)
+      await expect(loadMobileHtmlOpenMode()).resolves.toBe('ask')
+    }
+  })
+
+  it('falls back to asking when the store cannot be read', async () => {
+    vi.mocked(AsyncStorage.getItem).mockRejectedValue(new Error('storage unavailable'))
+
+    await expect(loadMobileHtmlOpenMode()).resolves.toBe('ask')
+  })
+
+  it('writes the selected mode and reports a refused write', async () => {
+    vi.mocked(AsyncStorage.getItem).mockResolvedValue('source')
+
+    await saveMobileHtmlOpenMode('source')
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith(MOBILE_HTML_OPEN_MODE_KEY, 'source')
+
+    vi.mocked(AsyncStorage.setItem).mockRejectedValueOnce(new Error('quota exceeded'))
+    await expect(saveMobileHtmlOpenMode('preview')).rejects.toThrow('quota exceeded')
+  })
+})
 
 describe('the mobile shell build kind', () => {
   beforeEach(() => {

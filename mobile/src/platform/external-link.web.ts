@@ -25,15 +25,17 @@ export function publishExternalLinkOpener(opener: ExternalLinkOpener): void {
   post = opener
 }
 
-export function openExternalLink(url: string): void {
+export function openExternalLink(url: string, onFailure?: () => void): void {
   // Checked before the post so the reason is this side's to name: the shell answers nothing, and a
   // refused frame would otherwise leave a tap looking exactly like one that opened a browser.
   if (readBridgeExternalLinkUrl(url) === null) {
     console.warn('[page] refused to open a URL outside the allowed schemes', { url })
+    onFailure?.()
     return
   }
   // The client normalizes again before it posts; this one only decides whether to ask at all.
   if (!post(url)) {
     console.warn('[page] the shell did not take a URL to open', { url })
+    onFailure?.()
   }
 }

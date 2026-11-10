@@ -11,20 +11,21 @@ import { Linking } from 'react-native'
  * The web sibling is where this earns its name: inside the shell the page is a document with no
  * `Linking` of its own, so the URL is handed back to the app that has one.
  */
-export function openExternalLink(url: string): void {
+export function openExternalLink(url: string, onFailure?: () => void): void {
   try {
     void Linking.openURL(url).catch((error: unknown) => {
-      report(url, error)
+      report(url, error, onFailure)
     })
   } catch (error) {
     // `openURL` validates before it returns anything — `_validateURL` is an `invariant` that throws
     // for an empty string — so this arm is the only one that sees that failure. The `catch` above
     // is attached to a promise which, in that case, never exists.
-    report(url, error)
+    report(url, error, onFailure)
   }
 }
 
 /** Named rather than swallowed: nothing else records a tap that opened nothing. */
-function report(url: string, error: unknown): void {
+function report(url: string, error: unknown, onFailure?: () => void): void {
   console.warn('[platform] could not open a URL', { url }, error)
+  onFailure?.()
 }

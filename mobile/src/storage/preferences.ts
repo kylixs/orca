@@ -1,6 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { persistMirrored } from './mirrored-storage-keys'
 import { TERMINAL_TEXT_SCALES } from '../terminal/terminal-text-scales'
+import {
+  DEFAULT_MOBILE_HTML_OPEN_MODE,
+  isMobileHtmlOpenMode,
+  type MobileHtmlOpenMode
+} from '../files/mobile-html-open-mode'
 
 const PINS_PREFIX = 'orca:pins:'
 // Consent to the push service is separate from the old socket notification choice.
@@ -251,22 +256,116 @@ export async function saveHostDockWidth(width: number): Promise<void> {
   await persistMirrored(DOCK_WIDTH_KEY, value)
 }
 
-export type MobileTerminalLinkOpenMode = 'orca-browser' | 'phone-browser'
+export type MobileTerminalLinkOpenMode = 'ask' | 'orca-browser' | 'phone-browser'
 
-const TERMINAL_LINK_OPEN_MODE_KEY = 'orca:terminalLinkOpenMode'
-export const DEFAULT_TERMINAL_LINK_OPEN_MODE: MobileTerminalLinkOpenMode = 'orca-browser'
+export type LegacyTerminalLinkOpenMode = Exclude<MobileTerminalLinkOpenMode, 'ask'>
+
+const TERMINAL_LINK_OPEN_MODE_KEY = 'orca:terminalLinkOpenMode:v2'
+const LEGACY_TERMINAL_LINK_OPEN_MODE_KEY = 'orca:terminalLinkOpenMode'
+export const DEFAULT_TERMINAL_LINK_OPEN_MODE: MobileTerminalLinkOpenMode = 'ask'
+
+function isTerminalLinkOpenMode(value: unknown): value is MobileTerminalLinkOpenMode {
+  return value === 'ask' || value === 'orca-browser' || value === 'phone-browser'
+}
+
+function isLegacyTerminalLinkOpenMode(value: unknown): value is LegacyTerminalLinkOpenMode {
+  return value === 'orca-browser' || value === 'phone-browser'
+}
+
+let terminalLinkOpenModeWriteBarrier: Promise<void> | null = null
+
+/** Orders every v2 write, including the migration's read/compare/write. */
+function queueTerminalLinkOpenModeWrite<T>(write: () => Promise<T>): Promise<T> {
+  const queued = (terminalLinkOpenModeWriteBarrier ?? Promise.resolve()).then(write)
+  const barrier = queued.then(
+    () => undefined,
+    () => undefined
+  )
+  terminalLinkOpenModeWriteBarrier = barrier
+  void barrier.then(() => {
+    if (terminalLinkOpenModeWriteBarrier === barrier) {
+      terminalLinkOpenModeWriteBarrier = null
+    }
+  })
+  return queued
+}
 
 export async function loadTerminalLinkOpenMode(): Promise<MobileTerminalLinkOpenMode> {
+  await terminalLinkOpenModeWriteBarrier
   try {
     const raw = await AsyncStorage.getItem(TERMINAL_LINK_OPEN_MODE_KEY)
-    return raw === 'phone-browser' || raw === 'orca-browser' ? raw : DEFAULT_TERMINAL_LINK_OPEN_MODE
+    return isTerminalLinkOpenMode(raw) ? raw : DEFAULT_TERMINAL_LINK_OPEN_MODE
   } catch {
     return DEFAULT_TERMINAL_LINK_OPEN_MODE
   }
 }
 
-export async function saveTerminalLinkOpenMode(mode: MobileTerminalLinkOpenMode): Promise<void> {
-  await persistMirrored(TERMINAL_LINK_OPEN_MODE_KEY, mode)
+export function saveTerminalLinkOpenMode(mode: MobileTerminalLinkOpenMode): Promise<void> {
+  // Why: a Remember save landing mid-migration must not be overwritten by the migration's `ask`.
+  return queueTerminalLinkOpenModeWrite(() => persistMirrored(TERMINAL_LINK_OPEN_MODE_KEY, mode))
+}
+
+let legacyLinkModeConsumed = false
+
+/**
+ * Reads the pre-v2 preference once, on the first link sheet.
+ *
+ * The old value primes that sheet only. Migration writes `ask` to v2 only when no v2 value exists;
+ * a user who already picked a v2 mode keeps it. Either way the old key is removed.
+ */
+export async function consumeLegacyTerminalLinkOpenMode(): Promise<LegacyTerminalLinkOpenMode | null> {
+  if (legacyLinkModeConsumed) {
+    return null
+  }
+  legacyLinkModeConsumed = true
+  // Why: the v2 read/compare/write shares its key with Remember saves; single-flight both so a
+  // save issued while the migration is awaiting storage cannot land before the migration's `ask`.
+  return queueTerminalLinkOpenModeWrite(async () => {
+    let preselect: LegacyTerminalLinkOpenMode | null = null
+    try {
+      const raw = await AsyncStorage.getItem(LEGACY_TERMINAL_LINK_OPEN_MODE_KEY)
+      const legacy = isLegacyTerminalLinkOpenMode(raw) ? raw : null
+      if (raw === null) {
+        return null
+      }
+      const current = await AsyncStorage.getItem(TERMINAL_LINK_OPEN_MODE_KEY)
+      if (current === null) {
+        await persistMirrored(TERMINAL_LINK_OPEN_MODE_KEY, DEFAULT_TERMINAL_LINK_OPEN_MODE)
+        // Why: a user who already picked a v2 mode must not see the old value highlighted.
+        preselect = legacy
+      }
+      await persistMirrored(LEGACY_TERMINAL_LINK_OPEN_MODE_KEY, null)
+    } catch {
+      // Why: a store that fails here must not keep the old value as a preselection on every sheet.
+      return preselect
+    }
+    return preselect
+  })
+}
+
+/** Test seam: the one-time migration latch outlives a test's storage double. */
+export function resetLegacyTerminalLinkOpenModeForTests(): void {
+  legacyLinkModeConsumed = false
+  terminalLinkOpenModeWriteBarrier = null
+}
+
+export const MOBILE_HTML_OPEN_MODE_KEY = 'orca:mobileHtmlOpenMode'
+
+/**
+ * Invalid or unreadable values fall back to `ask`, which is the only mode that writes nothing
+ * until the reader chooses. The caller shows the chooser for that answer.
+ */
+export async function loadMobileHtmlOpenMode(): Promise<MobileHtmlOpenMode> {
+  try {
+    const raw = await AsyncStorage.getItem(MOBILE_HTML_OPEN_MODE_KEY)
+    return isMobileHtmlOpenMode(raw) ? raw : DEFAULT_MOBILE_HTML_OPEN_MODE
+  } catch {
+    return DEFAULT_MOBILE_HTML_OPEN_MODE
+  }
+}
+
+export async function saveMobileHtmlOpenMode(mode: MobileHtmlOpenMode): Promise<void> {
+  await persistMirrored(MOBILE_HTML_OPEN_MODE_KEY, mode)
 }
 
 function stringArray(value: unknown): string[] {
