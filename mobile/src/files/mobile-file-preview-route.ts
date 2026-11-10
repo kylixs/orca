@@ -1,3 +1,5 @@
+import type { FileHtmlOpenMode } from './mobile-file-actions'
+
 export type MobileFilePreviewParamValue = string | string[] | undefined
 
 export type MobileFilePreviewRouteParams = {
@@ -16,6 +18,7 @@ export type MobileFilePreviewRouteParams = {
   column?: string
   name?: string
   worktreeName?: string
+  mode?: FileHtmlOpenMode
 }
 
 export type MobileFilePreviewRouteState =
@@ -43,6 +46,7 @@ type RawPreviewRouteParams = {
   column?: MobileFilePreviewParamValue
   name?: MobileFilePreviewParamValue
   worktreeName?: MobileFilePreviewParamValue
+  mode?: MobileFilePreviewParamValue
 }
 
 function singleParam(value: MobileFilePreviewParamValue): string | null {
@@ -51,6 +55,12 @@ function singleParam(value: MobileFilePreviewParamValue): string | null {
 
 function optionalSingleParam(value: MobileFilePreviewParamValue): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+/** Only the two explicit modes survive; anything else means the page decides. */
+function optionalPreviewMode(value: MobileFilePreviewParamValue): FileHtmlOpenMode | undefined {
+  const mode = optionalSingleParam(value)
+  return mode === 'preview' || mode === 'source' ? mode : undefined
 }
 
 export function normalizeMobileFilePreviewRouteParams(
@@ -85,7 +95,8 @@ export function normalizeMobileFilePreviewRouteParams(
         line: optionalSingleParam(params.line),
         column: optionalSingleParam(params.column),
         name: optionalSingleParam(params.name),
-        worktreeName: optionalSingleParam(params.worktreeName)
+        worktreeName: optionalSingleParam(params.worktreeName),
+        mode: optionalPreviewMode(params.mode)
       }
     }
   }
@@ -102,24 +113,10 @@ export function normalizeMobileFilePreviewRouteParams(
       line: optionalSingleParam(params.line),
       column: optionalSingleParam(params.column),
       name: optionalSingleParam(params.name),
-      worktreeName: optionalSingleParam(params.worktreeName)
+      worktreeName: optionalSingleParam(params.worktreeName),
+      mode: optionalPreviewMode(params.mode)
     }
   }
-}
-
-/**
- * The params the shell hands the page, which are this route's own minus the two it spells as path
- * segments. Every value is a `string`, because that is what `BridgeInitRoute.params` carries and
- * what `URLSearchParams` will encode it back out of; an absent one is left out rather than sent
- * empty, so the page's `useLocalSearchParams` reads exactly what the native screen read.
- */
-export function mobileFilePreviewShellParams(
-  params: MobileFilePreviewRouteParams
-): Record<string, string> {
-  const { hostId: _hostId, worktreeId: _worktreeId, ...rest } = params
-  return Object.fromEntries(
-    Object.entries(rest).flatMap(([key, value]) => (value === undefined ? [] : [[key, value]]))
-  )
 }
 
 export function createMobileFilePreviewHref(

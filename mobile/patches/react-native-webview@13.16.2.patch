@@ -1,8 +1,32 @@
 diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
-index 80c68034b193a47bedb56ca527352de9548e8ac6..977c068a74c88c0322fca2a4bbffab8bc1ba719d 100644
+index 80c68034b193a47bedb56ca527352de9548e8ac6..67253243559eb4788dd496c5beb578de5d9f6004 100644
 --- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
 +++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
-@@ -253,6 +253,12 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+@@ -18,6 +18,7 @@ import android.webkit.WebViewClient;
+ import androidx.annotation.NonNull;
+ import androidx.annotation.Nullable;
+ import androidx.webkit.JavaScriptReplyProxy;
++import androidx.webkit.ScriptHandler;
+ import androidx.webkit.WebMessageCompat;
+ import androidx.webkit.WebViewCompat;
+ import androidx.webkit.WebViewFeature;
+@@ -44,6 +45,7 @@ import com.reactnativecommunity.webview.events.TopMessageEvent;
+ import org.json.JSONException;
+ import org.json.JSONObject;
+ 
++import java.util.Collections;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
+@@ -65,6 +67,7 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+      */
+     protected boolean injectedJavaScriptForMainFrameOnly = true;
+     protected boolean injectedJavaScriptBeforeContentLoadedForMainFrameOnly = true;
++    private @Nullable ScriptHandler injectedJSBeforeContentLoadedHandler = null;
+ 
+     protected boolean messagingEnabled = false;
+     protected @Nullable
+@@ -253,6 +256,12 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
              this.bridgeListener = new WebViewCompat.WebMessageListener() {
                @Override
                public void onPostMessage(@NonNull WebView view, @NonNull WebMessageCompat message, @NonNull Uri sourceOrigin, boolean isMainFrame, @NonNull JavaScriptReplyProxy replyProxy) {
@@ -15,6 +39,145 @@ index 80c68034b193a47bedb56ca527352de9548e8ac6..977c068a74c88c0322fca2a4bbffab8b
                  RNCWebView.this.onMessage(message.getData(), sourceOrigin.toString());
                }
              };
+@@ -308,7 +317,48 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+         }
+     }
+ 
++    public void setInjectedJSBeforeContentLoaded(@Nullable String value) {
++        this.injectedJSBeforeContentLoaded = value;
++        registerInjectedJSBeforeContentLoaded();
++    }
++
++    public void setInjectedJavaScriptBeforeContentLoadedForMainFrameOnly(boolean value) {
++        this.injectedJavaScriptBeforeContentLoadedForMainFrameOnly = value;
++        registerInjectedJSBeforeContentLoaded();
++    }
++
++    /**
++     * Orca: run the before-content script as a real document-start script. `onPageStarted` is too
++     * late on Android -- an inline page script can execute (and pre-empt the event fence) before
++     * the evaluateJavascript call lands. The handler covers future navigations and, with
++     * `injectedJavaScriptBeforeContentLoadedForMainFrameOnly == false`, subframes too.
++     */
++    private void registerInjectedJSBeforeContentLoaded() {
++        if (injectedJSBeforeContentLoadedHandler != null) {
++            injectedJSBeforeContentLoadedHandler.remove();
++            injectedJSBeforeContentLoadedHandler = null;
++        }
++        if (injectedJSBeforeContentLoaded == null || TextUtils.isEmpty(injectedJSBeforeContentLoaded)) {
++            return;
++        }
++        if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
++            return;
++        }
++        String script = injectedJavaScriptBeforeContentLoadedForMainFrameOnly
++                ? "(function() {\nif (window.top !== window) return;\n" + injectedJSBeforeContentLoaded + "\n})();"
++                : "(function() {\n" + injectedJSBeforeContentLoaded + "\n})();";
++        try {
++            injectedJSBeforeContentLoadedHandler = WebViewCompat.addDocumentStartJavaScript(
++                    this, script, Collections.singleton("*"));
++        } catch (UnsupportedOperationException | IllegalArgumentException error) {
++            FLog.w("RNCWebView", "Document-start injection unavailable; using onPageStarted", error);
++        }
++    }
++
+     public void callInjectedJavaScriptBeforeContentLoaded() {
++        // Keep this as a fallback even when the document-start handler is registered: if a WebView
++        // build does not match the frame origin, the fence still lands here. The script's guard makes
++        // a second run a no-op.
+         if (getSettings().getJavaScriptEnabled() &&
+                 injectedJSBeforeContentLoaded != null &&
+                 !TextUtils.isEmpty(injectedJSBeforeContentLoaded)) {
+@@ -416,6 +466,11 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+ 
+     @Override
+     public void destroy() {
++        // Orca: release the document-start registration before the WebView goes away.
++        if (injectedJSBeforeContentLoadedHandler != null) {
++            injectedJSBeforeContentLoadedHandler.remove();
++            injectedJSBeforeContentLoadedHandler = null;
++        }
+         if (mWebChromeClient != null) {
+             mWebChromeClient.onHideCustomView();
+         }
+diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
+index 0287e1c56b07b6c23b4049f3992d88b86fdc5c79..aac5b201a72f5aec37bc4267e2788ed357e5427a 100644
+--- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
++++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
+@@ -92,6 +92,12 @@ public class RNCWebViewClient extends WebViewClient {
+ 
+     @Override
+     public boolean shouldOverrideUrlLoading(WebView view, String url) {
++        // Orca: the deprecated String overload cannot tell a subframe from the main frame. Keep its
++        // event shape unchanged (no isTopFrame) and let the WebResourceRequest overload report it.
++        return shouldOverrideUrlLoading(view, url, null);
++    }
++
++    private boolean shouldOverrideUrlLoading(WebView view, String url, @Nullable Boolean isTopFrame) {
+         final RNCWebView rncWebView = (RNCWebView) view;
+         final boolean isJsDebugging = rncWebView.getReactApplicationContext().getJavaScriptContextHolder().get() == 0;
+ 
+@@ -101,6 +107,10 @@ public class RNCWebViewClient extends WebViewClient {
+             final AtomicReference<RNCWebViewModuleImpl.ShouldOverrideUrlLoadingLock.ShouldOverrideCallbackState> lockObject = lock.second;
+ 
+             final WritableMap event = createWebViewEvent(view, url);
++            // Orca: WebResourceRequest.isForMainFrame(); absent on the deprecated String overload.
++            if (isTopFrame != null) {
++                event.putBoolean("isTopFrame", isTopFrame);
++            }
+             event.putDouble("lockIdentifier", lockIdentifier);
+             rncWebView.dispatchDirectShouldStartLoadWithRequest(event);
+ 
+@@ -132,9 +142,13 @@ public class RNCWebViewClient extends WebViewClient {
+             progressChangedFilter.setWaitingForCommandLoadUrl(true);
+ 
+             int reactTag = RNCWebViewWrapper.getReactTagFromWebView(view);
++            final WritableMap event = createWebViewEvent(view, url);
++            if (isTopFrame != null) {
++                event.putBoolean("isTopFrame", isTopFrame);
++            }
+             UIManagerHelper.getEventDispatcherForReactTag((ReactContext) view.getContext(), reactTag).dispatchEvent(new TopShouldStartLoadWithRequestEvent(
+                     reactTag,
+-                    createWebViewEvent(view, url)));
++                    event));
+             return true;
+         }
+     }
+@@ -143,7 +157,9 @@ public class RNCWebViewClient extends WebViewClient {
+     @Override
+     public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+         final String url = request.getUrl().toString();
+-        return this.shouldOverrideUrlLoading(view, url);
++        // Orca: this overload is also called for subframes. Report the frame so the JS policy does
++        // not apply the top-frame rule (which would open Chrome/mail for a frame link).
++        return this.shouldOverrideUrlLoading(view, url, request.isForMainFrame());
+     }
+ 
+     @Override
+diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
+index f83033b3597a425da159555233bacce250ccfce0..98bae1f921fea45d1317c0859b9a8a2f61a7b727 100644
+--- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
++++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
+@@ -493,8 +493,7 @@ class RNCWebViewManagerImpl(private val newArch: Boolean = false) {
+     }
+ 
+     fun setInjectedJavaScriptBeforeContentLoaded(viewWrapper: RNCWebViewWrapper, value: String?) {
+-        val view = viewWrapper.webView
+-        view.injectedJSBeforeContentLoaded = value
++        viewWrapper.webView.setInjectedJSBeforeContentLoaded(value)
+     }
+ 
+     fun setInjectedJavaScriptForMainFrameOnly(viewWrapper: RNCWebViewWrapper, value: Boolean) {
+@@ -503,8 +502,7 @@ class RNCWebViewManagerImpl(private val newArch: Boolean = false) {
+     }
+ 
+     fun setInjectedJavaScriptBeforeContentLoadedForMainFrameOnly(viewWrapper: RNCWebViewWrapper, value: Boolean) {
+-        val view = viewWrapper.webView
+-        view.injectedJavaScriptBeforeContentLoadedForMainFrameOnly = value
++        viewWrapper.webView.setInjectedJavaScriptBeforeContentLoadedForMainFrameOnly(value)
+     }
+ 
+     fun setInjectedJavaScriptObject(viewWrapper: RNCWebViewWrapper, value: String?) {
 diff --git a/apple/RNCWebViewImpl.m b/apple/RNCWebViewImpl.m
 index 7f5c24d6e2cfb26eddbc513bf17a81c24a7273e2..d70cb58a3c81cb22bd549a2c37340ba53853cfcf 100644
 --- a/apple/RNCWebViewImpl.m

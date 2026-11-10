@@ -10,12 +10,15 @@ export function MobileFilePreviewSourceText({
   relativePath,
   content,
   truncated,
+  truncatedNote,
   byteLength,
   initialLine
 }: {
   relativePath: string
   content: string
   truncated?: boolean
+  /** HTML supplies its own line; Markdown keeps the byte-size note below. */
+  truncatedNote?: string
   byteLength?: number
   initialLine?: number
 }) {
@@ -49,7 +52,11 @@ export function MobileFilePreviewSourceText({
       onContentSizeChange={revealInitialLine}
     >
       {truncated ? (
-        <MobileFilePreviewTruncatedNote byteLength={byteLength ?? content.length} />
+        truncatedNote ? (
+          <Text style={styles.truncatedNote}>{truncatedNote}</Text>
+        ) : (
+          <MobileFilePreviewTruncatedNote byteLength={byteLength ?? content.length} />
+        )
       ) : null}
       <Text selectable style={styles.textPreview} accessibilityLabel="File preview">
         <MobileSyntaxSegments segments={syntax.segments} />

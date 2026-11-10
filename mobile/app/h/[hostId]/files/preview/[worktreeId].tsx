@@ -1,26 +1,12 @@
 import { useLocalSearchParams } from 'expo-router'
 import { MobileFilePreviewScreen } from '../../../../../src/files/MobileFilePreviewScreen'
-import {
-  mobileFilePreviewShellParams,
-  normalizeMobileFilePreviewRouteParams
-} from '../../../../../src/files/mobile-file-preview-route'
-import {
-  shellScreenRoute,
-  shellScreenRouteKey
-} from '../../../../../src/mobile-web-shell/shell-screen-route'
-import { MobileWebShellScreen } from '../../../../../src/mobile-web-shell/MobileWebShellScreen'
-import { shellSwitchDecision } from '../../../../../src/mobile-web-shell/shell-switch-decision'
+import { normalizeMobileFilePreviewRouteParams } from '../../../../../src/files/mobile-file-preview-route'
 
 /**
- * The file preview, from the desktop's bundle or from this app.
+ * The file preview is native in every build, OTA included.
  *
- * Normalized before the switch, not after: a route the native screen would refuse is one the shell
- * has no pathname to build from, and its own refusal message is a better screen than a page opened
- * on params it will refuse again.
- *
- * Only the two path segments are spelled into the pathname; everything else — the file path among
- * them — is a param, which is what keeps a `/`, a space or a `..` out of the segment vocabulary the
- * bridge holds a route to.
+ * It hosts the file action sheet, selection mode, and save/open actions; the desktop page behind
+ * the shell cannot perform any of them on a phone. The web sibling remains for direct shell use.
  */
 export default function MobileFilePreviewRoute() {
   const params = useLocalSearchParams<{
@@ -39,37 +25,7 @@ export default function MobileFilePreviewRoute() {
     column?: string | string[]
     name?: string | string[]
     worktreeName?: string | string[]
+    mode?: string | string[]
   }>()
-  const route = normalizeMobileFilePreviewRouteParams(params)
-  const native = <MobileFilePreviewScreen route={route} />
-
-  const shellRoute = route.ok
-    ? shellScreenRoute({
-        pathname: `/h/${encodeURIComponent(route.params.hostId)}/files/preview/${encodeURIComponent(
-          route.params.worktreeId
-        )}`,
-        params: mobileFilePreviewShellParams(route.params)
-      })
-    : null
-
-  const decision = shellSwitchDecision(shellRoute)
-
-  // `route.ok` again for the compiler: `shellRoute` is built only on the ok branch, so a `shell`
-  // decision already implies it.
-  if (decision.kind === 'native' || !route.ok) {
-    return native
-  }
-  // Keyed on the whole route, params included, for two reasons. A host captures the grants its
-  // session was opened with, so only a remount drops the bridge the previous route opened. And the
-  // page learns its route exactly once, from `init`: a same-path param change — another file in
-  // this worktree — would otherwise leave the shell mounted and the page still showing the file it
-  // was opened on, with nothing to tell it otherwise.
-  return (
-    <MobileWebShellScreen
-      key={shellScreenRouteKey(decision.route)}
-      hostId={route.params.hostId}
-      route={decision.route}
-      fallback={native}
-    />
-  )
+  return <MobileFilePreviewScreen route={normalizeMobileFilePreviewRouteParams(params)} />
 }

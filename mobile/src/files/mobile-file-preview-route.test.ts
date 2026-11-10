@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   createMobileFilePreviewHref,
   displayNameFromPreviewPath,
-  mobileFilePreviewShellParams,
   normalizeMobileFilePreviewRouteParams
 } from './mobile-file-preview-route'
 
@@ -27,9 +26,40 @@ describe('mobile-file-preview-route', () => {
         line: undefined,
         column: undefined,
         name: 'note.md',
-        worktreeName: 'Orca'
+        worktreeName: 'Orca',
+        mode: undefined
       }
     })
+  })
+
+  it('carries only the two explicit open modes and drops anything else', () => {
+    const withMode = normalizeMobileFilePreviewRouteParams({
+      hostId: 'host-1',
+      worktreeId: 'wt-1',
+      relativePath: 'index.html',
+      mode: 'source'
+    })
+    expect(withMode.ok && withMode.params.mode).toBe('source')
+
+    const corrupt = normalizeMobileFilePreviewRouteParams({
+      hostId: 'host-1',
+      worktreeId: 'wt-1',
+      relativePath: 'index.html',
+      mode: 'render'
+    })
+    expect(corrupt.ok && corrupt.params.mode).toBeUndefined()
+  })
+
+  it('keeps a mode on the terminal artifact branch too', () => {
+    const route = normalizeMobileFilePreviewRouteParams({
+      hostId: 'host-1',
+      worktreeId: 'wt-1',
+      source: 'terminalArtifact',
+      absolutePath: '/tmp/index.html',
+      grantId: 'grant-1',
+      mode: 'preview'
+    })
+    expect(route.ok && route.params.mode).toBe('preview')
   })
 
   it('normalizes worktree preview line and column params', () => {
@@ -130,57 +160,6 @@ describe('mobile-file-preview-route', () => {
         relativePath,
         name: 'file.ts'
       }
-    })
-  })
-
-  it('hands the shell every param but the two the pathname spells as segments', () => {
-    expect(
-      mobileFilePreviewShellParams({
-        hostId: 'host-1',
-        worktreeId: 'wt-1',
-        relativePath: 'docs/my notes/readme.md',
-        source: 'worktree',
-        line: '12'
-      })
-    ).toEqual({ relativePath: 'docs/my notes/readme.md', source: 'worktree', line: '12' })
-  })
-
-  it('leaves an absent param out rather than sending it empty', () => {
-    // Driven through the normalizer because that is the only producer: it sets every optional key,
-    // so `line` is present with an `undefined` value rather than missing, and a literal written by
-    // hand here would omit the key and test nothing. The page reads these back through
-    // useLocalSearchParams, where a key present and empty is a different answer from one that was
-    // never there: `line: ''` scrolls nowhere, `line` absent opens the file at the top.
-    const route = normalizeMobileFilePreviewRouteParams({
-      hostId: 'host-1',
-      worktreeId: 'wt-1',
-      relativePath: 'readme.md'
-    })
-    if (!route.ok) {
-      throw new Error(route.message)
-    }
-    expect('line' in route.params).toBe(true)
-    expect(mobileFilePreviewShellParams(route.params)).toEqual({
-      relativePath: 'readme.md',
-      source: 'worktree'
-    })
-  })
-
-  it('carries a terminal artifact by its absolute path, which is not a segment either', () => {
-    expect(
-      mobileFilePreviewShellParams({
-        hostId: 'host-1',
-        worktreeId: 'wt-1',
-        source: 'terminalArtifact',
-        absolutePath: '/logs/run 1.txt',
-        grantId: 'grant-1',
-        cwd: '/logs'
-      })
-    ).toEqual({
-      source: 'terminalArtifact',
-      absolutePath: '/logs/run 1.txt',
-      grantId: 'grant-1',
-      cwd: '/logs'
     })
   })
 

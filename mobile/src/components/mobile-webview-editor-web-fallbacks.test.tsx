@@ -33,6 +33,7 @@ vi.mock('react-native', async () => {
     // The native preview's external-link opener reaches for this at module load, and a named import
     // missing from a mocked module throws before any case runs.
     Linking: { openURL: async () => true },
+    Platform: { OS: 'ios' },
     Pressable: host('Pressable'),
     ScrollView: host('ScrollView'),
     StyleSheet: { create: (styles: unknown) => styles, hairlineWidth: 1 },
