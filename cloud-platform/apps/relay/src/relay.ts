@@ -1,12 +1,18 @@
 import { connect, createServer, type Socket } from 'node:net'
+import { mtlsFetch } from '../../../packages/contract/src/internal-fetch.ts'
 import { extractSni } from './sni.ts'
 
 export type RelayRoute = { routeKey: string; hostId: string; target: string; version: number }
 
 export type RelayOptions = {
   port: number
+  /** Control-plane URL for route sync. HTTPS here means mTLS is used. */
   apiUrl: string
   internalToken: string
+  /** mTLS material for the control channel (required when apiUrl is https). */
+  keyPath?: string
+  certPath?: string
+  caPath?: string
   /** Reject new connections when the route table is older than this. */
   routeStaleMaxMs?: number
 }
@@ -34,9 +40,16 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
   const connections = new Set<Socket>()
 
   async function refresh(): Promise<void> {
-    const res = await fetch(`${options.apiUrl}/v1/internal/relay-routes`, {
-      headers: { 'x-internal-token': options.internalToken }
-    })
+    const res = await mtlsFetch(
+      {
+        internalUrl: options.apiUrl,
+        token: options.internalToken,
+        keyPath: options.keyPath,
+        certPath: options.certPath,
+        caPath: options.caPath
+      },
+      '/v1/internal/relay-routes'
+    )
     if (!res.ok) throw new Error(`route sync failed: ${res.status}`)
     const body = (await res.json()) as { routes: RelayRoute[] }
     routes.clear()
@@ -135,7 +148,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const relay = await startRelay({
     port: Number(process.env.PORT ?? 18443),
     apiUrl: process.env.API_URL ?? 'http://127.0.0.1:18787',
-    internalToken: process.env.INTERNAL_TOKEN ?? 'internal-test-token'
+    internalToken: process.env.INTERNAL_TOKEN ?? 'internal-test-token',
+    keyPath: process.env.INTERNAL_TLS_KEY,
+    certPath: process.env.INTERNAL_TLS_CERT,
+    caPath: process.env.INTERNAL_TLS_CA
   })
   console.log(`[relay] listening on :${relay.port}, routes=${relay.routes().size}`)
 }

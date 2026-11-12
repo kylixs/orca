@@ -1,6 +1,6 @@
 # 开发进度
 
-> 更新时间：2026-11-13 03:40
+> 更新时间：2026-11-13 04:10
 > 规则：每轮只推进一个模块；失败必须如实记录。
 
 ## 模块状态
@@ -16,6 +16,7 @@
 | M6 Web 前端 | ✅ 完成 | `evidence/web-ui/*.png` | 6 个页面 + 403 + 角色门禁 |
 | M7 端到端 | ✅ 完成 | `evidence/e2e-platform/*.json` | 14 条用例全通过 |
 | M8 管控面服务端门禁 | ✅ 完成 | `evidence/m8-admin-gating/` | 13 条用例：8 个管理接口 403、401、denied 审计、存在性不泄露 |
+| M9 内部通道 mTLS | ✅ 完成 | `evidence/m9-mtls/` | 8 条用例：有效证书放行、无证书/异 CA 握手失败、CN 白名单、路径范围、令牌双重校验、中继与 Runtime 实际走 mTLS |
 
 ## 最近一次测试结果
 
@@ -23,7 +24,8 @@
 node --test test/contract.test.ts            10 pass / 0 fail
 node --test test/e2e/platform.e2e.test.ts   15 pass / 0 fail
 node --test test/e2e/admin-gating.e2e.test.ts 13 pass / 0 fail
-合计 38 pass / 0 fail
+node --test test/e2e/mtls-control-channel.e2e.test.ts 8 pass / 0 fail
+合计 46 pass / 0 fail
 ```
 
 E2E 覆盖：
@@ -49,12 +51,20 @@ M8 管控面门禁：
 - 被拒操作写入 denied 审计
 - 未知项目与无权限项目响应完全一致（除 traceId），不泄露存在性
 
+M9 内部通道：
+- 中继与 Runtime 改用专用 HTTPS 监听（客户端证书 + CN 白名单）
+- 无证书、异 CA 证书均在 TLS 握手期失败
+- 内部监听只暴露 `/v1/internal/*`，其他路径 404
+- mTLS 通过后仍需内部令牌（双重校验）
+- JWKS 走公开监听，policy/revocations 走内部 mTLS；Runtime 日志 `policy synced v=1` 证明实际使用
+
 ## 阻塞
 
 无。
 
 ## 下一步
 
-1. 第 4 轮问题已修复（设备绑定 fail-closed、Windows 路径、停机存活），待第 5 轮复核。
+1. 第 5 轮评审（主动攻击验证）结果待出。
+2. 中继 SNI 白名单与证书固定尚未在实现中落地（当前仅按路由表转发）。
 2. 把真实 Orca Runtime 接入替身接口（需要本地可构建的 `orca serve`）。
 3. 客户端补丁层落地到 `src/main/cloud-platform/`（需在 Orca 根工程跑 typecheck/lint）。

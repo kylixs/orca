@@ -13,6 +13,7 @@ import {
   type SigningKey
 } from '../../../packages/contract/src/credential.ts'
 import { AuditChain } from './audit.ts'
+import { startInternalChannel } from './internal-channel.ts'
 import { ldapProfile, MockLdapAdapter, type LdapAdapter } from './ldap.ts'
 import { Store, type Host, type Project, type User } from './store.ts'
 
@@ -27,6 +28,14 @@ export type ApiConfig = {
   ldap?: LdapAdapter
   now?: () => number
   internalToken?: string
+  /** Enables the dedicated mTLS listener for platform → relay/runtime control traffic. */
+  internalTls?: {
+    port: number
+    keyPath: string
+    certPath: string
+    caPath: string
+    allowedCNs?: string[]
+  }
 }
 
 export type ApiHandle = {
@@ -36,6 +45,8 @@ export type ApiHandle = {
   listen: () => Promise<number>
   close: () => Promise<void>
   setRelayPort: (port: number) => void
+  /** Port of the mTLS control listener, when enabled. */
+  internalPort: () => number | null
 }
 
 type AuthedRequest = { user: User; sessionId: string }
@@ -1096,24 +1107,66 @@ export function createApp(config: ApiConfig): ApiHandle {
     })
   })
 
+  const isInternalPath = (path: string): boolean => path.startsWith('/v1/internal/')
+  let internalChannel: { port: number; close: () => Promise<void> } | null = null
+
   return {
     setRelayPort(port: number) {
       relayPort = port
     },
+    internalPort: () => internalChannel?.port ?? null,
     store,
     audit,
     signingKey,
-    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
-    listen: () =>
-      new Promise<number>((resolve) => {
+    close: async () => {
+      await internalChannel?.close()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    },
+    listen: async () => {
+      if (config.internalTls) {
+        internalChannel = await startInternalChannel({
+          ...config.internalTls,
+          handler: (req, res) => {
+            const path = new URL(req.url ?? '/', 'https://internal').pathname
+            if (!isInternalPath(path)) {
+              res.writeHead(404, { 'content-type': 'application/json' })
+              res.end(JSON.stringify({ error: { code: 'NOT_FOUND' } }))
+              return Promise.resolve()
+            }
+            // mTLS already authenticated the peer; the bearer token check still applies.
+            return handle(req, res)
+          }
+        })
+      }
+      return new Promise<number>((resolve) => {
         server.listen(config.port, '127.0.0.1', () => resolve((server.address() as { port: number }).port))
       })
+    }
   }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const app = createApp({ port: Number(process.env.PORT ?? 18787) })
+  const app = createApp({
+    port: Number(process.env.PORT ?? 18787),
+    internalTls:
+      process.env.INTERNAL_TLS_KEY && process.env.INTERNAL_TLS_CERT && process.env.INTERNAL_TLS_CA
+        ? {
+            port: Number(process.env.INTERNAL_TLS_PORT ?? 0),
+            keyPath: process.env.INTERNAL_TLS_KEY,
+            certPath: process.env.INTERNAL_TLS_CERT,
+            caPath: process.env.INTERNAL_TLS_CA,
+            allowedCNs: (process.env.INTERNAL_TLS_ALLOWED_CNS ?? '').split(',').filter(Boolean)
+          }
+        : undefined
+  })
   app.setRelayPort(Number(process.env.RELAY_PORT ?? 18080))
   const port = await app.listen()
+  const internal = app.internalPort()
+  if (internal) {
+    console.log(`[api] ready public=${port} internal=${internal}`)
+  } else {
+    console.log(`[api] ready public=${port} internal=none`)
+  }
   console.log(`[api] listening on http://127.0.0.1:${port} (kid=${app.signingKey.kid})`)
+  if (internal) console.log(`[api] internal mTLS on https://127.0.0.1:${internal}`)
 }

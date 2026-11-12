@@ -73,6 +73,25 @@
 
 合计：**13 passed / 0 failed**
 
+## 3.2 内部通道 mTLS 测试（M9）
+
+命令：`cd cloud-platform && node --test test/e2e/mtls-control-channel.e2e.test.ts`
+
+拓扑：自建 CA → 服务端证书（SAN=127.0.0.1）→ 中继客户端证书；另建一个独立 CA 签发「恶意客户端证书」用于负向��证。
+
+| 场景 | 预期 | 结果 | 证据 |
+|---|---|---|---|
+| 有效客户端证书读取内部路由表 | 200 | PASS | `valid-client-success.json` |
+| 不携带客户端证书 | TLS 握手失败 | PASS | `no-client-cert.json` |
+| 其他 CA 签发的证书 | 握手失败 | PASS | `rogue-ca-rejected.json` |
+| CN 不在白名单 | 403 `MTLS_CN_NOT_ALLOWED` | PASS | `cn-not-allowed.json` |
+| 访问非 `/v1/internal/*` 路径 | 404 | PASS | `path-scope.json` |
+| mTLS 通过但内部令牌错误 | 401 `INTERNAL_TOKEN_INVALID` | PASS | `wrong-token.json` |
+| 中继实际同步路由表 | 日志 `routes synced n=1` | PASS | `relay-sync-log.json` |
+| Runtime 实际拉取策略 | 日志 `policy synced v=1`，进程存活 | PASS | `runtime-uses-mtls.json` |
+
+合计：**8 passed / 0 failed**；全仓 **46 条测试全绿**。
+
 ## 4. Web UI 实测
 
 工具：Playwright 驱动真实浏览器访问 `http://127.0.0.1:18787/`，后端为真实 API + Agent 心跳。

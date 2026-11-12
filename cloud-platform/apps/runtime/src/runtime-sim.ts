@@ -4,14 +4,21 @@ import { mkdir, realpath } from 'node:fs/promises'
 import { assertInsideRoot } from './path-containment.ts'
 import { WebSocketServer } from 'ws'
 import { isInsideRoot } from '../../../packages/contract/src/permissions.ts'
+import { mtlsFetch } from '../../../packages/contract/src/internal-fetch.ts'
 import { PolicyGateway, type GatewayPolicy } from './policy-gateway.ts'
 
 export type RuntimeSimOptions = {
   hostId: string
   hostName: string
   port: number
+  /** Control-plane URL for internal routes; HTTPS enables mTLS there. */
   apiUrl: string
+  /** Public API URL used for JWKS (public endpoint, no client cert needed). */
+  publicApiUrl?: string
   internalToken: string
+  keyPath?: string
+  certPath?: string
+  caPath?: string
   sandboxRoot: string
   tls?: { key: string; cert: string }
 }
@@ -64,14 +71,19 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
   }
 
   async function fetchPolicyFromPlatform(): Promise<void> {
+    const control = {
+      internalUrl: options.apiUrl,
+      token: options.internalToken,
+      keyPath: options.keyPath,
+      certPath: options.certPath,
+      caPath: options.caPath
+    }
+    const publicUrl = options.publicApiUrl ?? options.apiUrl
     const [jwksRes, policyRes, revokedRes] = await Promise.all([
-      fetch(`${options.apiUrl}/v1/jwks`),
-      fetch(`${options.apiUrl}/v1/internal/policy`, {
-        headers: { 'x-internal-token': options.internalToken }
-      }),
-      fetch(`${options.apiUrl}/v1/internal/revocations`, {
-        headers: { 'x-internal-token': options.internalToken }
-      })
+      // JWKS is public and may be served by the public listener only.
+      fetch(`${publicUrl}/v1/jwks`),
+      mtlsFetch(control, '/v1/internal/policy'),
+      mtlsFetch(control, '/v1/internal/revocations')
     ])
     if (jwksRes.ok) {
       const body = (await jwksRes.json()) as { keys: { kid: string; publicKeyPem: string }[] }
@@ -79,6 +91,9 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
     }
     if (policyRes.ok) {
       policy = (await policyRes.json()) as GatewayPolicy
+    }
+    if (policyRes.ok && revokedRes.ok) {
+      console.log(`[runtime-sim] policy synced v=${policy.version}`)
     }
     if (revokedRes.ok) {
       const body = (await revokedRes.json()) as {
@@ -257,7 +272,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     hostName: process.env.HOST_NAME ?? 'dev-001',
     port: Number(process.env.PORT ?? 16768),
     apiUrl: process.env.API_URL ?? 'http://127.0.0.1:18787',
+    publicApiUrl: process.env.PUBLIC_API_URL,
     internalToken: process.env.INTERNAL_TOKEN ?? 'internal-test-token',
+    keyPath: process.env.INTERNAL_TLS_KEY,
+    certPath: process.env.INTERNAL_TLS_CERT,
+    caPath: process.env.INTERNAL_TLS_CA,
     sandboxRoot: process.env.SANDBOX_ROOT ?? '/tmp/orca-cloud-sandbox',
     tls: process.env.TLS_KEY
       ? { key: process.env.TLS_KEY, cert: process.env.TLS_CERT ?? '' }
