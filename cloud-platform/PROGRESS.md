@@ -464,7 +464,31 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 
 **如实记录**：两版实现都是被测试推翻的——首版只做预检 + 后置审计，实测首次失败是 500 且项目已创建；次版把状态锁死导致永远无法恢复。最终为"先写审计再变更 + write_failed 可自愈"。副作用：崩溃在两步之间会多记一条未生效事件（over-report），已在注释与 summary 中说明。
 
+## M33 云端会话并发上限（本轮）
+
+**问题**（设计 §8.4）：要求"每用户每项目最多 3 个会话、每主机最多 32 个连接，超出返回 4431"，但代码里只有与云无关的 128 连接上限；`grep 4431` 在整个 `cloud-platform/` 与 `src/main/` 中零命中。平台不在数据通路上，看不到这些连接，只能在主机侧计数。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-platform/cloud-session-limits.ts`（新） | 按 `(user, project)` 与全主机计数；键为票据的 deviceToken（每票唯一），**按活连接计而不是按票据计**——票一次性，会话比票活得久 |
+| `cloud-agent-client.ts` | 准入成功时记下票据文本 → `(sub, project, deviceToken)`；`connectionGate.accept()` 在 socket 建立时占用配额，`release()` 在关闭时归还；吊销时同步释放 |
+| `runtime/rpc/ws-transport.ts` | 新增可选 `connectionGate`：升级已成功后按 `req.headers` 计数，超限 `ws.close(4431, 'Too many sessions')` 并 1s 后 `terminate()`；`close` 事件归还配额（含握手未完成就断开的连接） |
+| `node-websocket-lifecycle.ts` | 抽出通用 `closeNodeWebSocket()`，新增 `rejectNodeWebSocketOverSessionLimit()`（4431） |
+| `runtime-rpc-{state,pairing-types,lifecycle}.ts` / `startup/cloud-runtime-admission.ts` | 把 `connectionGate` 像 `upgradeAdmission` 一样贯穿到 transport；enrolled 模式下用委托对象，因为 transport 先于异步注册完成构造 |
+| `renderer/cloud/cloud-close-notice.ts`（新） | 4403/4431 给用户可行动的文案（"先关闭其他会话"），两处云视图共用 |
+
+**为什么不在升级前拒绝**：`verifyClient` 的拒绝是 HTTP 401 + `x-orca-reject`，没有 WebSocket close 帧，带不出 4431；而"会话"本来就要等 socket 存在才算数，所以计数点放在 `connection` 事件，超限发 4431 关闭帧——同时解决了"票据被签发但握手没完成"的泄漏问题。
+
+**验证（`evidence/m33-session-limits/`）**：2 条真实端到端（真实平台进程 + 真实 Runtime + 真实 Ed25519 票据 + 真 NaCl 握手）：
+- M33-1 用生产接线（默认上限 3）：3 路握手成功 → 第 4 路被 **4431** 关闭 → 关闭 1 路后新会话重新可用；
+- M33-2 主机上限（测试把阈值降到 4 以便快速验证，代码路径与生产一致，两个用户各 2 路）：第 5 路 4431，释放一路后恢复。
+
+把 `accept` 改成恒真后两条用例立即变红（计数 0），确认测的是新逻辑。cloud-platform 主机侧 12 个文件 52 条在 Node 下全过；`tsc` node/web 0 错；changed-code 门禁 7 项 0 新发现。
+
+**如实记录**：本仓库 `pnpm test` 固定用 Bun 跑，Bun 的 `ws` 客户端对自签名 TLS 握手失败，导致 6 个**既有**的云测试文件（`cloud-device-pop`、`cloud-session-service` 等）在 Bun 下红；`git stash` 后在 HEAD 上复现同样失败，且在 Node 下全部通过，与本轮无关（本轮新用例走 ws:// 明文，两种运行方式都通过）。另外发现 Bun 的 `ws` 会把正在派发的消息重投给派发中新加的 `once` 监听器，握手助手已改为单一持久监听 + 幂等状态机。
+
 ## 下一步
 
 1. 面板接入：在工作区内用 M25 的 `environmentId` 挂载终端/文件面板（现有环境 selector 已可用，剩余是界面与 TabGroup 状态接线）。
 2. 遗留：M4 `isInsideRoot` 对 Windows 段大小写敏感（fail-closed，误拒而非误放；按需放宽）。
+3. 并发上限目前只统计云会话；本地配对连接不占这 32 个名额（设计表只约束云端会话），如运营需要主机总量配额再扩展。

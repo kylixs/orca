@@ -1,5 +1,5 @@
 import type { OrcaRuntimeService } from '../orca-runtime'
-import type { UpgradeAdmission } from '../rpc/ws-transport'
+import type { UpgradeAdmission, WebSocketConnectionGate } from '../rpc/ws-transport'
 import type { RpcAnyMethodDeclaration } from '../rpc/core'
 import type { DeviceRegistry } from '../device-registry'
 import type { E2EEKeypair } from '../e2ee-keypair'
@@ -65,6 +65,8 @@ export type OrcaRuntimeRpcServerOptions = {
   methods?: readonly RpcAnyMethodDeclaration[]
   /** Cloud-platform upgrade gate; when set, unauthenticated upgrades are refused before pairing. */
   upgradeAdmission?: UpgradeAdmission
+  /** Cloud-platform session cap; charged per accepted socket and released on close. */
+  connectionGate?: WebSocketConnectionGate
 }
 
 export type PairingOfferUnavailableReason =

@@ -12,6 +12,7 @@ import {
   attachNodeWebSocketLifecycle,
   clearNodeWebSocketPreAuthTimer,
   rejectNodeWebSocketOverCapacity,
+  rejectNodeWebSocketOverSessionLimit,
   stopNodeWebSocketTransport,
   type WebSocketConnectionCloseHandler,
   type WebSocketMessageHandler
@@ -51,9 +52,20 @@ export type WebSocketTransportOptions = {
    * handshake, so a rejection is an HTTP status the client can map, not a close frame.
    */
   upgradeAdmission?: UpgradeAdmission
+  /**
+   * Per-session cap check, run once the upgrade is accepted (cloud sessions).
+   * A refusal is a 4431 close frame, since a pre-handshake status cannot carry
+   * the cloud close code.
+   */
+  connectionGate?: WebSocketConnectionGate
 }
 
 export type UpgradeAdmission = (headers: IncomingHttpHeaders) => WebSocketUpgradeAdmission
+
+export type WebSocketConnectionGate = {
+  accept: (headers: IncomingHttpHeaders) => boolean
+  release: (headers: IncomingHttpHeaders) => void
+}
 
 export type WebSocketUpgradeAdmission =
   | { ok: true }
@@ -70,6 +82,7 @@ export class WebSocketTransport implements RpcTransport {
   private readonly fallbackPort: number | undefined
   private readonly preferPinnedPort: boolean
   private readonly upgradeAdmission: UpgradeAdmission | undefined
+  private readonly connectionGate: WebSocketConnectionGate | undefined
   private httpServer: HttpsServer | HttpServer | null = null
   private wss: WebSocketServer | null = null
   private messageHandler: WebSocketMessageHandler | null = null
@@ -90,7 +103,8 @@ export class WebSocketTransport implements RpcTransport {
     staticRoot,
     fallbackPort,
     preferPinnedPort,
-    upgradeAdmission
+    upgradeAdmission,
+    connectionGate
   }: WebSocketTransportOptions) {
     this.host = host
     this.port = port
@@ -106,6 +120,7 @@ export class WebSocketTransport implements RpcTransport {
     this.fallbackPort = fallbackPort
     this.preferPinnedPort = preferPinnedPort === true
     this.upgradeAdmission = upgradeAdmission
+    this.connectionGate = connectionGate
   }
 
   onMessage(handler: WebSocketMessageHandler): void {
@@ -252,10 +267,20 @@ export class WebSocketTransport implements RpcTransport {
         : {})
     })
 
-    wss.on('connection', (ws) => {
+    const gate = this.connectionGate
+    wss.on('connection', (ws, req) => {
       if (wss.clients.size > WEBSOCKET_TRANSPORT_MAX_CONNECTIONS) {
         rejectNodeWebSocketOverCapacity(ws)
         return
+      }
+      // Why: the cap is per live session, so the slot is charged to this socket
+      // and returned on close — including sockets that never finish the handshake.
+      if (gate) {
+        if (!gate.accept(req.headers)) {
+          rejectNodeWebSocketOverSessionLimit(ws)
+          return
+        }
+        ws.once('close', () => gate.release(req.headers))
       }
       this.handleConnection(ws)
     })

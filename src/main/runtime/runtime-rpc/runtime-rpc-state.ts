@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import type { RuntimeTransportMetadata } from '../../../shared/runtime-bootstrap'
-import type { UpgradeAdmission } from '../rpc/ws-transport'
+import type { UpgradeAdmission, WebSocketConnectionGate } from '../rpc/ws-transport'
 import type { OrcaRuntimeService } from '../orca-runtime'
 import { RpcDispatcher } from '../rpc/dispatcher'
 import { ALL_RPC_METHODS } from '../rpc/methods'
@@ -55,6 +55,7 @@ export class RuntimeRpcState {
   protected readonly longPollCap: number
   protected readonly metadataOwnershipPollMs: number
   protected readonly upgradeAdmission: UpgradeAdmission | undefined
+  protected readonly connectionGate: WebSocketConnectionGate | undefined
   protected readonly askLongPollCap: number
   protected readonly browserHostLongPollCap: number
   protected readonly browserHostLongPollCapPerDevice: number
@@ -113,7 +114,8 @@ export class RuntimeRpcState {
     longPollCap = LONG_POLL_CAP,
     metadataOwnershipPollMs = RUNTIME_METADATA_OWNERSHIP_POLL_MS,
     methods,
-    upgradeAdmission
+    upgradeAdmission,
+    connectionGate
   }: OrcaRuntimeRpcServerOptions) {
     this.runtime = runtime
     this.dispatcher = new RpcDispatcher({ runtime, methods: methods ?? ALL_RPC_METHODS })
@@ -131,6 +133,7 @@ export class RuntimeRpcState {
     this.longPollCap = longPollCap
     this.metadataOwnershipPollMs = metadataOwnershipPollMs
     this.upgradeAdmission = upgradeAdmission
+    this.connectionGate = connectionGate
     // Why: derived, not configurable — the reservation must hold for whatever cap a caller picks.
     this.askLongPollCap = Math.max(1, Math.floor(longPollCap * ASK_LONG_POLL_SHARE))
     this.browserHostLongPollCap = Math.max(

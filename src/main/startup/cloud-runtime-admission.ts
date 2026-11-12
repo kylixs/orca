@@ -1,9 +1,9 @@
 import {
-  cloudAgentConfigFromEnv,
   createCloudAgentClient,
   type CloudAgentClient,
   type CloudAgentConfig
 } from '../cloud-platform/cloud-agent-client'
+import { cloudAgentConfigFromEnv } from '../cloud-platform/cloud-agent-env'
 import {
   enrollCloudHost,
   readStoredHostCredential,
@@ -12,7 +12,7 @@ import {
 } from '../cloud-platform/cloud-host-enrollment'
 import { installCloudPlatformIpc } from '../ipc/cloud-platform'
 import type { DeviceRegistry } from '../runtime/device-registry'
-import type { UpgradeAdmission } from '../runtime/rpc/ws-transport'
+import type { UpgradeAdmission, WebSocketConnectionGate } from '../runtime/rpc/ws-transport'
 import type {
   CloudUpgradeDecision,
   CloudUpgradeHeaders
@@ -27,6 +27,8 @@ export type CloudRuntimeTarget = {
 
 export type CloudRuntimeAdmission = {
   admission: UpgradeAdmission
+  /** Cloud session cap, applied to sockets after the upgrade is accepted. */
+  connectionGate: WebSocketConnectionGate
   client: CloudAgentClient | null
   /** Resolves once the host is enrolled (or immediately in poll mode). */
   ready: Promise<void>
@@ -202,8 +204,16 @@ function startEnrolled(
     created.start()
   })()
 
+  // Delegates rather than snapshots: the client is created after enrolment, and
+  // the transport is constructed before that promise settles.
+  const connectionGate: WebSocketConnectionGate = {
+    accept: (headers) => client?.connectionGate.accept(headers) ?? false,
+    release: (headers) => client?.connectionGate.release(headers)
+  }
+
   return {
     admission: (headers) => admission(headers),
+    connectionGate,
     get client() {
       return client
     },
@@ -231,6 +241,7 @@ function startPolling(env: NodeJS.ProcessEnv): CloudRuntimeAdmission {
       (headers) => client.admit(headers),
       () => boundRuntime
     ),
+    connectionGate: client.connectionGate,
     client,
     ready: Promise.resolve(),
     host: () => null,
@@ -268,7 +279,9 @@ export function cloudRuntimeAdmission(
 export function cloudAdmissionOption(
   env: NodeJS.ProcessEnv = process.env,
   options: CloudAdmissionOptions = {}
-): { upgradeAdmission?: UpgradeAdmission } {
+): { upgradeAdmission?: UpgradeAdmission; connectionGate?: WebSocketConnectionGate } {
   const runtime = cloudRuntimeAdmission(env, options)
-  return runtime ? { upgradeAdmission: runtime.admission } : {}
+  return runtime
+    ? { upgradeAdmission: runtime.admission, connectionGate: runtime.connectionGate }
+    : {}
 }

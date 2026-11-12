@@ -181,7 +181,8 @@ export class RuntimeRpcLifecycle extends RuntimeRpcWebSocketDispatch {
         : {}),
       ...(options.fallbackPort !== undefined ? { fallbackPort: options.fallbackPort } : {}),
       ...(options.preferPinnedPort ? { preferPinnedPort: true } : {}),
-      ...(this.upgradeAdmission ? { upgradeAdmission: this.upgradeAdmission } : {})
+      ...(this.upgradeAdmission ? { upgradeAdmission: this.upgradeAdmission } : {}),
+      ...(this.connectionGate ? { connectionGate: this.connectionGate } : {})
     })
     const mobileSocketWiring = this.ensureMobileSocketWiring(deviceRegistry, e2eeKeypair)
     this.detachWebSocketWiring = mobileSocketWiring.attachTransport(wsTransport)

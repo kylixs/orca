@@ -102,6 +102,11 @@ function headerValue(headers: CloudUpgradeHeaders, name: string): string | null 
   return null
 }
 
+/** The credential is carried in a subprotocol, so a connection can be identified from headers alone. */
+export function readCloudCredentialFromHeaders(headers: CloudUpgradeHeaders): string | null {
+  return readCloudCredential(headerValue(headers, 'sec-websocket-protocol'))
+}
+
 export function readCloudCredential(protocolHeader: string | null): string | null {
   if (!protocolHeader) {
     return null

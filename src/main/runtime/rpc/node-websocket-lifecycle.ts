@@ -145,8 +145,20 @@ export async function stopNodeWebSocketTransport(args: {
 
 // Why: force-terminate soon after the 1013 close since a half-open phone may never ack and would hold the descriptor past the WS cap; the 'error' listener absorbs a reset while closing.
 export function rejectNodeWebSocketOverCapacity(ws: WebSocket): void {
+  closeNodeWebSocket(ws, 1013, 'Maximum connections reached')
+}
+
+/**
+ * Cloud session cap (design §8.4). The upgrade already succeeded, so this is a
+ * close frame with the design's code rather than an HTTP refusal.
+ */
+export function rejectNodeWebSocketOverSessionLimit(ws: WebSocket): void {
+  closeNodeWebSocket(ws, 4431, 'Too many sessions')
+}
+
+function closeNodeWebSocket(ws: WebSocket, code: number, reason: string): void {
   ws.on('error', () => {})
-  ws.close(1013, 'Maximum connections reached')
+  ws.close(code, reason)
   const terminateTimer = setTimeout(() => ws.terminate(), 1_000)
   terminateTimer.unref?.()
   ws.once('close', () => clearTimeout(terminateTimer))

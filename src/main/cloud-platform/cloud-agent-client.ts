@@ -3,11 +3,13 @@ import { emptyRevocations, parseRevocations } from './cloud-agent-revocations'
 import { readArray, readString } from '../../shared/json-fields'
 import {
   createCloudUpgradeAdmission,
+  readCloudCredentialFromHeaders,
   rejectCloudUpgrade,
   type CloudRevocations,
   type CloudUpgradeDecision,
   type CloudUpgradeHeaders
 } from './cloud-upgrade-admission'
+import { createCloudConnectionSessions } from './cloud-connection-sessions'
 
 /**
  * Host-side client for the cloud platform's control plane.
@@ -35,6 +37,9 @@ export type CloudAgentConfig = {
   now?: () => number
   /** How long signing keys stay usable without a successful refetch. */
   keysTtlMs?: number
+  /** Design §8.4 caps; overrides exist for tests, production uses the defaults. */
+  maxSessionsPerUserProject?: number
+  maxSessionsPerHost?: number
   /**
    * Enrolled-host mode: revocations and policy come from the heartbeat response
    * instead of `/v1/internal/*`. This is the normal path for a registered host;
@@ -62,9 +67,21 @@ export type CloudAgentSnapshot = {
   maintenance: { reason: string } | null
 }
 
+/**
+ * Session-cap gate for accepted upgrades. The ticket is verified before the
+ * handshake, but a session only exists once a socket does, so the cap is charged
+ * here and the peer is closed with 4431 rather than refused pre-handshake.
+ */
+export type CloudSessionConnectionGate = {
+  accept: (headers: CloudUpgradeHeaders) => boolean
+  release: (headers: CloudUpgradeHeaders) => void
+}
+
 export type CloudAgentClient = {
   /** Upgrade-time gate backed by the current snapshot. */
   admit: (headers: CloudUpgradeHeaders) => CloudUpgradeDecision
+  connectionGate: CloudSessionConnectionGate
+  activeSessionCount: () => number
   refresh: () => Promise<void>
   snapshot: () => CloudAgentSnapshot
   onRefresh: (listener: (snapshot: CloudAgentSnapshot) => void) => () => void
@@ -84,34 +101,6 @@ function parseKeys(value: unknown): { kid: string; publicKeyPem: string }[] {
     const publicKeyPem = readString(item, 'publicKeyPem')
     return kid !== null && publicKeyPem !== null ? [{ kid, publicKeyPem }] : []
   })
-}
-
-/** Cloud mode is opt-in; half-configured is an operator error, not a silent skip. */
-export function cloudAgentConfigFromEnv(env: NodeJS.ProcessEnv): CloudAgentConfig | null {
-  const apiUrl = env.ORCA_CLOUD_API_URL
-  if (!apiUrl) {
-    return null
-  }
-  const internalToken = env.ORCA_CLOUD_INTERNAL_TOKEN
-  const hostId = env.ORCA_CLOUD_HOST_ID
-  const hostName = env.ORCA_CLOUD_HOST_NAME
-  const missing = [
-    ['ORCA_CLOUD_INTERNAL_TOKEN', internalToken],
-    ['ORCA_CLOUD_HOST_ID', hostId],
-    ['ORCA_CLOUD_HOST_NAME', hostName]
-  ]
-    .filter(([, value]) => !value)
-    .map(([name]) => name)
-  if (missing.length > 0) {
-    throw new Error(`Cloud mode is incomplete: missing ${missing.join(', ')}`)
-  }
-  return {
-    apiUrl,
-    internalUrl: env.ORCA_CLOUD_INTERNAL_URL,
-    internalToken: internalToken!,
-    hostId: hostId!,
-    hostName: hostName!
-  }
 }
 
 export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClient {
@@ -136,8 +125,22 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
   const usedJtis = new Map<string, number>()
   const admitted = new Map<
     string,
-    { deviceToken: string; deviceId: string; sub: string; project: string; iatMs: number }
+    {
+      deviceToken: string
+      deviceId: string
+      sub: string
+      project: string
+      iatMs: number
+      /** The ticket text as carried in the subprotocol; the socket's handle. */
+      credential: string
+    }
   >()
+  // Why: the socket is identified by its ticket, so an admitted ticket's identity
+  // must outlive `admit` for the connection gate and its close path.
+  const sessions = createCloudConnectionSessions({
+    perUserProject: config.maxSessionsPerUserProject,
+    perHost: config.maxSessionsPerHost
+  })
 
   const snapshot = (): CloudAgentSnapshot => ({
     kids: [...keys.keys()],
@@ -248,6 +251,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
         continue
       }
       admitted.delete(jti)
+      sessions.forget(ticket.credential)
       revokedTokens.push(ticket.deviceToken)
     }
     if (revokedTokens.length === 0) {
@@ -300,10 +304,19 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
       if (usedJtis.has(jti)) {
         return rejectCloudUpgrade('replayed', '该连接凭证已被使用。')
       }
+      // The ticket text is what the socket carries, so it is the handle the
+      // connection gate and its close path use.
+      const credential = readCloudCredentialFromHeaders(headers)
+      if (credential === null) {
+        return rejectCloudUpgrade('credential_missing', '缺少连接凭证。')
+      }
       usedJtis.set(jti, exp * 1000 + 5_000)
-      admitted.set(jti, { deviceToken, deviceId, sub, project, iatMs })
+      admitted.set(jti, { deviceToken, deviceId, sub, project, iatMs, credential })
+      sessions.remember(credential, { user: sub, project, token: deviceToken })
       return decision
     },
+    connectionGate: sessions.gate,
+    activeSessionCount: sessions.activeCount,
     onRevoke: (listener) => {
       revokeListeners.add(listener)
       return () => revokeListeners.delete(listener)
@@ -331,6 +344,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
         clearInterval(timer)
         timer = null
       }
+      sessions.releaseAll()
       listeners.clear()
       revokeListeners.clear()
     }

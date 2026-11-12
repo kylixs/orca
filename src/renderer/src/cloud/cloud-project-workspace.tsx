@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { readString } from '../../../shared/json-fields'
 import type { CloudProjectSummary, CloudRpcOutcome } from '../../../shared/cloud-platform-ipc'
 import type { CloudSessionView } from './use-cloud-session'
+import { cloudCloseNotice } from './cloud-close-notice'
 
 export type CloudProjectWorkspaceProps = {
   session: CloudSessionView
@@ -74,9 +75,7 @@ export function CloudProjectWorkspace({
           role="status"
           className="border-b border-border bg-muted px-6 py-2 text-sm text-muted-foreground"
         >
-          {session.notice.code === 4403
-            ? '当前连接已被管理员收回，请重新登录或联系平台管理员。'
-            : '连接已断开，请重新打开项目。'}
+          {cloudCloseNotice(session.notice.code)}
         </div>
       ) : null}
 

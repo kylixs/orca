@@ -1,0 +1,223 @@
+import { spawn, type ChildProcess } from 'node:child_process'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import WebSocket from 'ws'
+import { parseJsonText, readArray, readField, readString } from '../../shared/json-fields'
+import { parsePairingCode } from '../../shared/pairing'
+import { readTicketClaims } from './cloud-connect-response'
+import { decrypt, deriveSharedKey, encrypt, generateKeyPair } from '../runtime/rpc/e2ee-crypto'
+import { OrcaRuntimeService } from '../runtime/orca-runtime'
+import { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
+import type { UpgradeAdmission, WebSocketConnectionGate } from '../runtime/rpc/ws-transport'
+
+/**
+ * Shared fixture for the cloud host tests that need the real stack: a real
+ * platform process issuing signed tickets, a real runtime server behind TLS-less
+ * WS, and the real E2EE handshake. Extracted so each test states only what it
+ * asserts, and so the platform's signing path is exercised the same way in all.
+ */
+
+export const REPO_ROOT = new URL('../../..', import.meta.url).pathname
+export const DEFAULT_INTERNAL_TOKEN = 'cloud-e2e-internal-token'
+
+export type Platform = { url: string; stop: () => Promise<void> }
+
+export async function startPlatform(): Promise<Platform> {
+  const proc: ChildProcess = spawn(process.execPath, ['cloud-platform/apps/api/src/server.ts'], {
+    cwd: REPO_ROOT,
+    env: { ...process.env, PORT: '0', INTERNAL_TOKEN: DEFAULT_INTERNAL_TOKEN },
+    stdio: ['ignore', 'pipe', 'pipe']
+  })
+  const url = await new Promise<string>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('platform did not start')), 15_000)
+    let buffer = ''
+    proc.stdout?.on('data', (chunk: Buffer) => {
+      buffer += chunk.toString()
+      const match = /\[api\] listening on (http:\/\/127\.0\.0\.1:\d+)/.exec(buffer)
+      if (match) {
+        clearTimeout(timer)
+        resolve(match[1])
+      }
+    })
+    proc.once('exit', (code) => reject(new Error(`platform exited ${code}`)))
+  })
+  return {
+    url,
+    stop: () =>
+      new Promise<void>((resolve) => {
+        if (proc.exitCode !== null) {
+          resolve()
+          return
+        }
+        proc.once('exit', () => resolve())
+        proc.kill('SIGTERM')
+      })
+  }
+}
+
+export type CloudSession = {
+  accessToken: string
+  deviceId: string
+  devicePubKey: string
+  /** The device key the host demands proof of at handshake. */
+  deviceKeys: { publicKey: Uint8Array; secretKey: Uint8Array }
+  deviceToken: string
+  credential: string
+  projectId: string
+}
+
+/** Logs in, registers this device, and asks the platform for a single-use ticket. */
+export async function openPlatformSession(
+  platform: Platform,
+  options: { username?: string; password?: string; deviceName?: string } = {}
+): Promise<CloudSession> {
+  // Why NaCl: the handshake must use the key the ticket binds, so it is the same
+  // 32-byte Curve25519 key material, not a PEM.
+  const deviceKeys = generateKeyPair()
+  const devicePubKey = Buffer.from(deviceKeys.publicKey).toString('base64')
+  const loginRes = await fetch(`${platform.url}/v1/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      username: options.username ?? 'zhangsan',
+      password: options.password ?? 'Passw0rd!',
+      devicePubKey,
+      deviceName: options.deviceName ?? 'cloud-session-e2e'
+    })
+  })
+  const login: unknown = await loginRes.json()
+  const accessToken = readString(login, 'accessToken')
+  const deviceId = readString(readField(login, 'device'), 'id')
+  if (accessToken === null || deviceId === null) {
+    throw new Error('login response malformed')
+  }
+  const auth = { authorization: `Bearer ${accessToken}` }
+  const projectsRes = await fetch(`${platform.url}/v1/projects`, { headers: auth })
+  const projectId = readString(readArray(await projectsRes.json(), 'projects')?.[0], 'id')
+  if (projectId === null) {
+    throw new Error('project list malformed')
+  }
+  const connectRes = await fetch(`${platform.url}/v1/projects/${projectId}/connect`, {
+    method: 'POST',
+    headers: { ...auth, 'content-type': 'application/json' },
+    body: JSON.stringify({ deviceId, devicePubKey, clientVersion: '1.5.0' })
+  })
+  if (!connectRes.ok) {
+    throw new Error(`connect failed: ${await connectRes.text()}`)
+  }
+  const credential = readString(await connectRes.json(), 'credential')
+  const deviceToken = credential === null ? null : readTicketClaims(credential).deviceToken
+  if (credential === null || deviceToken === null) {
+    throw new Error('connect response malformed')
+  }
+  return { accessToken, deviceId, devicePubKey, deviceKeys, deviceToken, credential, projectId }
+}
+
+export type CloseInfo = { code: number; reason: string }
+
+export type CloudConnection =
+  | { status: 'authenticated'; ws: WebSocket; close: Promise<CloseInfo> }
+  | { status: 'refused'; close: CloseInfo }
+
+/**
+ * Runs the real handshake. A host cap refuses the socket before `e2ee_ready`, so
+ * refusal is a resolved outcome rather than a handshake error.
+ */
+export function connectCloudSession(
+  url: string,
+  serverPublicKeyB64: string,
+  session: CloudSession,
+  handshakeTimeoutMs = 5000
+): Promise<CloudConnection> {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(url, ['orca-runtime', `orca-cred.${session.credential}`], {
+      headers: { 'x-orca-device-pubkey': session.devicePubKey },
+      handshakeTimeout: handshakeTimeoutMs
+    })
+    let authenticated = false
+    const close = new Promise<CloseInfo>((done) => {
+      ws.once('close', (code, reason) => done({ code, reason: reason.toString() }))
+    })
+    void close.then((info) => {
+      if (!authenticated) {
+        resolve({ status: 'refused', close: info })
+      }
+    })
+    const sharedKey = deriveSharedKey(
+      session.deviceKeys.secretKey,
+      Uint8Array.from(Buffer.from(serverPublicKeyB64, 'base64'))
+    )
+    // One persistent listener rather than nested `once` handlers: Bun's `ws`
+    // shim can re-deliver the in-flight message to a listener added mid-dispatch,
+    // and a nested handler would then read `e2ee_ready` where the reply belongs.
+    let sentAuth = false
+    ws.on('message', (raw) => {
+      const text = raw.toString()
+      const type = readString(parseJsonText(text), 'type')
+      if (type === 'e2ee_ready') {
+        if (!sentAuth) {
+          sentAuth = true
+          ws.send(
+            encrypt(
+              JSON.stringify({ type: 'e2ee_auth', deviceToken: session.deviceToken }),
+              sharedKey
+            )
+          )
+        }
+        return
+      }
+      const auth = parseJsonText(decrypt(text, sharedKey) ?? '{}')
+      if (readString(auth, 'type') !== 'e2ee_authenticated') {
+        reject(new Error(`expected e2ee_authenticated, got ${JSON.stringify(auth)}`))
+        return
+      }
+      authenticated = true
+      resolve({ status: 'authenticated', ws, close })
+    })
+    ws.once('open', () => {
+      ws.send(
+        JSON.stringify({
+          type: 'e2ee_hello',
+          publicKeyB64: Buffer.from(session.deviceKeys.publicKey).toString('base64')
+        })
+      )
+    })
+    ws.once('error', reject)
+  })
+}
+
+export type CloudRuntime = {
+  runtime: OrcaRuntimeRpcServer
+  endpoint: string
+  serverPublicKeyB64: string
+}
+
+export async function startCloudRuntime(options: {
+  admission: UpgradeAdmission
+  connectionGate?: WebSocketConnectionGate
+  userDataPrefix?: string
+}): Promise<CloudRuntime> {
+  const runtime = new OrcaRuntimeRpcServer({
+    runtime: new OrcaRuntimeService(),
+    userDataPath: mkdtempSync(join(tmpdir(), options.userDataPrefix ?? 'orca-cloud-session-')),
+    enableWebSocket: true,
+    wsPort: 0,
+    upgradeAdmission: options.admission,
+    ...(options.connectionGate ? { connectionGate: options.connectionGate } : {})
+  })
+  await runtime.start()
+  const offer = runtime.createPairingOffer({
+    address: '127.0.0.1',
+    name: 'cloud-session-e2e',
+    scope: 'runtime'
+  })
+  if (!offer.available) {
+    throw new Error('WebSocket pairing unavailable')
+  }
+  const parsed = parsePairingCode(offer.pairingUrl)
+  if (!parsed) {
+    throw new Error('pairing code unparsable')
+  }
+  return { runtime, endpoint: parsed.endpoint, serverPublicKeyB64: parsed.publicKeyB64 }
+}
