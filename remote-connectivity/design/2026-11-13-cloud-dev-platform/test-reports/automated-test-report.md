@@ -58,7 +58,7 @@
 | E9 | 证据汇总 | 证据落盘 | PASS | `summary.json` |
 | E10 | 中继未知 SNI / 非 TLS | 连接被黑洞 | PASS | `E10-relay-blackhole.json` |
 
-合计：**16 passed / 0 failed**；加上 M8 13 条、M9 8 条与 11 条单元测试，共 **48 条全绿**
+合计：**16 passed / 0 failed**；加上 M8 13 条、M9 8 条、M10 8 条与 11 条单元测试，共 **56 条全绿**
 
 ## 3.1 管控面门禁测试（M8）
 
@@ -92,6 +92,23 @@
 | Runtime 实际拉取策略 | 日志 `policy synced v=1`，进程存活 | PASS | `runtime-uses-mtls.json` |
 
 合计：**8 passed / 0 failed**；全仓 **46 条测试全绿**。
+
+## 3.3 中继 SNI 白名单测试（M10）
+
+命令：`cd cloud-platform && node --test test/e2e/relay-hardening.e2e.test.ts`
+
+| 场景 | 预期 | 结果 | 证据 |
+|---|---|---|---|
+| `<routeKey>.relay.local` 正常转发 | WebSocket 收到上游消息 | PASS | `whitelisted-sni-forwarded.json` |
+| 裸主机名 `dev-001`（等于 routeKey） | 拒绝 `sni-not-whitelisted` | PASS | `bare-hostname-rejected.json` |
+| 异后缀 `dev-001.relay.evil.com` | 拒绝 | PASS | `wrong-suffix-rejected.json` |
+| 多层子域 `a.dev-001.relay.local` | 拒绝 `sni-shape-invalid` | PASS | `nested-label-rejected.json` |
+| 白名单内但路由不存在 | 黑洞 `unknown-route` | PASS | `unknown-route-blackholed.json` |
+| 非 TLS 首字节 | 断开 `non-tls` | PASS | `non-tls-rejected.json` |
+| 单 IP 并发超限 | 拒绝 `per-ip-limit` | PASS | `per-ip-limit.json` |
+| 连接元数据 | 仅源/SNI/路由/结果，无负载与凭证 | PASS | `connection-metadata.json` |
+
+合计：**8 passed / 0 failed**；全仓 **56 条测试全绿**。
 
 ## 4. Web UI 实测
 

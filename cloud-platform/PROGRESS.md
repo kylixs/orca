@@ -1,6 +1,6 @@
 # 开发进度
 
-> 更新时间：2026-11-13 04:40
+> 更新时间：2026-11-13 05:10
 > 规则：每轮只推进一个模块；失败必须如实记录。
 
 ## 模块状态
@@ -17,6 +17,7 @@
 | M7 端到端 | ✅ 完成 | `evidence/e2e-platform/*.json` | 14 条用例全通过 |
 | M8 管控面服务端门禁 | ✅ 完成 | `evidence/m8-admin-gating/` | 13 条用例：8 个管理接口 403、401、denied 审计、存在性不泄露 |
 | M9 内部通道 mTLS | ✅ 完成 | `evidence/m9-mtls/` | 8 条用例：有效证书放行、无证书/异 CA 握手失败、CN 白名单、路径范围、令牌双重校验、中继与 Runtime 实际走 mTLS |
+| M10 中继 SNI 白名单 | ✅ 完成 | `evidence/m10-relay/` | 8 条用例：后缀白名单、裸主机名/异后缀/多层子域拒绝、未知路由黑洞、非 TLS 拒绝、单 IP 并发上限、元数据不含负载 |
 
 ## 最近一次测试结果
 
@@ -25,7 +26,8 @@ node --test test/contract.test.ts            11 pass / 0 fail
 node --test test/e2e/platform.e2e.test.ts   16 pass / 0 fail
 node --test test/e2e/admin-gating.e2e.test.ts 13 pass / 0 fail
 node --test test/e2e/mtls-control-channel.e2e.test.ts 8 pass / 0 fail
-合计 48 pass / 0 fail
+node --test test/e2e/relay-hardening.e2e.test.ts 8 pass / 0 fail
+合计 56 pass / 0 fail
 ```
 
 E2E 覆盖：
@@ -68,13 +70,19 @@ M9 内部通道：
 - `createManaged` 幂等键按 project+device 命名空间；分支名含 `..` 直接拒绝而非改写
 - 内部令牌同时接受 `INTERNAL_TOKEN` 与 `ORCA_CLOUD_INTERNAL_TOKEN`
 
+M10 中继边界：
+- SNI 必须命中 `<routeKey><suffix>` 形状（默认后缀 `relay.local`），裸主机名、异后缀、多层子域全部拒绝
+- 白名单内但路由不存在 → 黑洞
+- 非 TLS 首字节直接断开；单 IP 并发默认 100（测试用 5）
+- 记录连接元数据（源 IP、SNI、routeKey、target、结果、原因），不含任何负载或凭证
+- 说明：中继是 TLS 透传，**看不到也固定不了主机证书**；主机身份固定由客户端 TOFU 完成，中继只保证「只转发到已注册目标」
+
 ## 阻塞
 
 无。
 
 ## 下一步
 
-1. 第 5 轮评审（主动攻击验证）结果待出。
-2. 中继 SNI 白名单与证书固定尚未在实现中落地（当前仅按路由表转发）。
+1. 第 6 轮终审结果待出。
 2. 把真实 Orca Runtime 接入替身接口（需要本地可构建的 `orca serve`）。
 3. 客户端补丁层落地到 `src/main/cloud-platform/`（需在 Orca 根工程跑 typecheck/lint）。
