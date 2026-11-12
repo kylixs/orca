@@ -1,7 +1,9 @@
 import { createServer as createHttpServer } from 'node:http'
-import { mkdirSync, readFileSync } from 'node:fs'
-import { sep } from 'node:path'
+import { readFileSync } from 'node:fs'
+import { mkdir, realpath } from 'node:fs/promises'
+import { assertInsideRoot } from './path-containment.ts'
 import { WebSocketServer } from 'ws'
+import { isInsideRoot } from '../../../packages/contract/src/permissions.ts'
 import { PolicyGateway, type GatewayPolicy } from './policy-gateway.ts'
 
 export type RuntimeSimOptions = {
@@ -39,9 +41,29 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
     sandboxRoot: options.sandboxRoot
   })
   let policy: GatewayPolicy = { downloadDefault: 'deny', projectOverrides: {} }
-  const revocationRefresher = setInterval(() => void refreshPolicy(), 1000)
+  let policyFreshAt = Date.now()
+  const POLICY_STALE_MS = 5 * 60_000
+  const revocationRefresher = setInterval(() => {
+    void refreshPolicy().catch(() => undefined)
+  }, 1000)
 
+  /**
+   * Never throws: the platform may be down during an established session, and an
+   * unhandled rejection here would kill the runtime process (breaking AC-20).
+   * On failure we keep the last policy until it goes stale, then fail closed.
+   */
   async function refreshPolicy(): Promise<void> {
+    try {
+      await fetchPolicyFromPlatform()
+      policyFreshAt = Date.now()
+    } catch {
+      if (Date.now() - policyFreshAt > POLICY_STALE_MS) {
+        policy = { downloadDefault: 'deny', projectOverrides: {} }
+      }
+    }
+  }
+
+  async function fetchPolicyFromPlatform(): Promise<void> {
     const [jwksRes, policyRes, revokedRes] = await Promise.all([
       fetch(`${options.apiUrl}/v1/jwks`),
       fetch(`${options.apiUrl}/v1/internal/policy`, {
@@ -152,7 +174,12 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
           ws.send(JSON.stringify({ id: request.id, error: { code: 'BAD_REQUEST', message: '缺少分支名' } }))
           return
         }
-        const sanitized = branch.replace(/[^A-Za-z0-9._-]+/g, '-')
+        // Reject dot-only segments: `..` must not survive sanitisation.
+        const sanitized = branch.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^\.+$/, 'branch')
+        if (!sanitized || sanitized.startsWith('.')) {
+          ws.send(JSON.stringify({ id: request.id, error: { code: 'BAD_REQUEST', message: '分支名不合法' } }))
+          return
+        }
         const key = idempotencyKey || `${payload.project}:${payload.deviceId}:${sanitized}`
         const existing = worktrees.get(key)
         if (existing) {
@@ -161,11 +188,25 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
         }
         // nestWorkspaces=false: the worktree sits directly under workspaceRoot.
         const worktreePath = `${payload.workspaceRoot}/${sanitized}`
-        if (!worktreePath.startsWith(`${payload.workspaceRoot}${sep}`)) {
+        if (!isInsideRoot(payload.workspaceRoot, worktreePath)) {
           ws.send(JSON.stringify({ id: request.id, error: { code: 'PATH_OUTSIDE_ROOT' } }))
           return
         }
-        mkdirSync(gateway.localProjectPath(payload, worktreePath), { recursive: true })
+        try {
+          // Same containment path as file writes: validate before creating, then re-resolve.
+          // workspaceRoot is validated to sit inside projectRoot at admit(), so creating it is safe.
+          const rootPath = gateway.localProjectPath(payload, payload.workspaceRoot)
+          await mkdir(rootPath, { recursive: true })
+          const root = await realpath(rootPath)
+          const target = gateway.localProjectPath(payload, worktreePath)
+          await assertInsideRoot(root, target)
+          await mkdir(target, { recursive: true })
+          await assertInsideRoot(root, target)
+        } catch (err) {
+          const code = (err as { code?: string }).code ?? 'WORKSPACE_CREATE_FAILED'
+          ws.send(JSON.stringify({ id: request.id, error: { code } }))
+          return
+        }
         worktrees.set(key, { path: worktreePath, branch })
         ws.send(JSON.stringify({ id: request.id, result: { worktreeId: key, path: worktreePath } }))
         return

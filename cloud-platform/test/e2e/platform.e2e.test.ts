@@ -411,6 +411,30 @@ describe('平台端到端（真实进程 / TCP / TLS / Ed25519）', () => {
     client.close()
   })
 
+  test('E7b2 缺失设备公钥头一律拒绝（不接受省略绕过）', async () => {
+    const client = new CloudClient(api.url)
+    await client.login('zhangsan', 'Passw0rd!')
+    const projects = await client.listProjects()
+    const connect = await client.requestConnect(projects[0].id)
+
+    const WebSocket = requireWs()
+    const noHeader = await new Promise<{ status?: number; error?: string; reject?: string }>((resolve) => {
+      const ws = new WebSocket(`wss://127.0.0.1:${runtimePort}/`, ['orca-runtime', `orca-cred.${connect.credential}`], {
+        rejectUnauthorized: false
+      })
+      ws.once('open', () => {
+        ws.close()
+        resolve({ status: 101 })
+      })
+      ws.once('error', (err) => resolve({ error: err.message }))
+      ws.once('unexpected-response', (_req, res) => resolve({ status: res.statusCode, reject: String(res.headers['x-orca-reject'] ?? '') }))
+    })
+    assert.notEqual(noHeader.status, 101, 'omitting the device header must not grant access')
+
+    saveEvidence(EVIDENCE, 'E7b2-missing-device-header.json', noHeader)
+    client.close()
+  })
+
   test('E7c 客户端版本过低被平台拒绝（426）', async () => {
     const client = new CloudClient(api.url)
     await client.login('zhangsan', 'Passw0rd!')
@@ -470,14 +494,28 @@ describe('平台端到端（真实进程 / TCP / TLS / Ed25519）', () => {
     const opened = await client.openProject(projects[0].id)
     await api.stop()
 
-    const during = await client.rpc('sessions.whoami')
-    assert.equal(during.ok, true)
+    const immediately = await client.rpc('sessions.whoami')
+    assert.equal(immediately.ok, true)
+
+    // The runtime polls the platform every second; surviving several polls proves the
+    // session is truly independent, not just checked before the first failure.
+    await new Promise((r) => setTimeout(r, 3500))
+    assert.equal(runtime.proc.exitCode, null, 'runtime must survive the platform outage')
+    const afterOutage = await client.rpc('sessions.whoami')
+    assert.equal(afterOutage.ok, true, 'established session must still work after the outage')
+    const stillReads = await client.rpc('files.read', {
+      path: `${opened.connect.workspace.projectRoot}/README.md`
+    })
+    assert.equal(stillReads.ok, true)
 
     const fresh = new CloudClient(api.url)
     await assert.rejects(() => fresh.login('zhangsan', 'Passw0rd!'))
 
     saveEvidence(EVIDENCE, 'E8-platform-down.json', {
-      existingSession: during,
+      immediately,
+      afterOutage,
+      stillReads: stillReads.ok,
+      runtimeAlive: runtime.proc.exitCode === null,
       newLoginRejected: true,
       route: opened.route
     })

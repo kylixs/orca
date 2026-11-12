@@ -468,7 +468,8 @@ sequenceDiagram
 | 绑定 | 用户、主机、项目、**工作区根**、`deviceId`、设备公钥；任一不匹配拒绝 |
 | 重放 | 主机维护 `jti` 已用集合（TTL 120 秒） |
 | 撤销 | 权限收回时平台把该用户/项目的 `jti` 族与 `userId` 写入撤销集合，Agent 心跳拉取后主机关闭对应连接（≤60 秒，前提是主机心跳正常） |
-| 传递 | WSS 升级头 `Sec-WebSocket-Protocol: orca-runtime, orca-cred.<base64url>`；**必须 TLS**；不落日志、不写磁盘 |
+| 传递 | WSS 子协议 `['orca-runtime', 'orca-cred.<base64url>']` + 头 `x-orca-device-pubkey`；**必须 TLS**；不落日志、不写磁盘 |
+| 设备绑定 | 主机**要求**该头存在且等于凭证 `devicePubKey`；缺失即拒绝（fail-closed），不允许以省略头绕过 |
 
 **为什么凭证中带 `deviceToken` 与 `devicePubKey`**：Orca 的 E2EE 握手在升级后仍需 `deviceToken`（`e2ee_auth`）与设备公钥（`e2ee_hello`）。平台把这两项放进凭证，主机在升级期登记设备，后续握手**完全沿用现有实现**，无需新增消息类型、无需放宽现有键集合校验。
 
@@ -528,6 +529,7 @@ stateDiagram-v2
 | 404 | `PROJECT_NOT_FOUND` | 项目不存在或不可见（统一 404，不泄露存在性） |
 | 409 | `HOST_MAINTENANCE` | 主机维护中 |
 | 409 | `HOST_OFFLINE` | 主机离线 |
+| 426 | `VERSION_UNSUPPORTED` | 客户端版本低于 `minClientVersion`（打开项目时） |
 | 429 | `RATE_LIMITED` | 限流 |
 | 503 | `PLATFORM_UNAVAILABLE` | 平台暂不可用 |
 
@@ -540,7 +542,7 @@ stateDiagram-v2
 | 4404 | `PROJECT_NOT_FOUND` | 项目或路径不存在 |
 | 4408 | `CONNECT_TIMEOUT` | 连接超时 |
 | 4409 | `HOST_UNAVAILABLE` | 主机维护或离线（**仅此一义**） |
-| 4429 | `VERSION_UNSUPPORTED` | 客户端版本过低 |
+| 4429 | `VERSION_UNSUPPORTED` | 连接建立后的版本不兼容（升级期已由 HTTP 426 拒绝） |
 | 4431 | `SESSION_LIMIT` | 超出单用户/单主机连接上限 |
 | 4432 | `WORKSPACE_CREATE_FAILED` | 工作区创建失败（磁盘/权限） |
 | 4433 | `FINGERPRINT_MISMATCH` | 主机公钥与固定值不一致 |
@@ -1098,7 +1100,7 @@ Sec-WebSocket-Protocol: orca-runtime, orca-cred.<base64url(credential)>
 ```
 
 - 直连与中继使用**同一份**握手，唯一区别是 `Host` 与是否经中继。
-- 主机在升级前校验凭证；失败返回 HTTP `401/403` 并附 `x-orca-reject: <reason>`，**不发送 WebSocket 关闭帧**（101 之前没有关闭帧语义）。客户端把该 HTTP 状态映射为本地错误码，诊断页展示 reason。
+- 主机在升级前校验凭证；失败返回 HTTP `401` 并附 `x-orca-reject: <reason>`，**不发送 WebSocket 关闭帧**（101 之前没有关闭帧语义）。客户端把该 HTTP 状态映射为本地错误码，诊断页展示 reason。
 - 成功后才进入**未修改的** Orca E2EE 握手；此后权限收回等运行期错误才使用 4403 等关闭码。
 - 中继不读取 `Sec-WebSocket-Protocol`，只透传字节。
 - **携带凭证的升级必须 TLS**；内网也如此（可用内部 CA）。

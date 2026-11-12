@@ -9,6 +9,7 @@ export type ConnectResponse = {
     id: string
     name: string
     fingerprint: string
+    tlsFingerprint: string
     e2eePublicKeyB64: string
     capabilities: string[]
   }

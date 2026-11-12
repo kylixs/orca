@@ -28,8 +28,10 @@
 | 路径穿越与绝对逃逸拒绝 | PASS |
 | 审计哈希链追加、校验、篡改定位 | PASS |
 | 导出规则先于 browser 前缀匹配 | PASS |
+| Windows 盘符、跨盘与分隔符边界 | PASS |
+| 前缀白名单只覆盖已登记自省方法 | PASS |
 
-合计：**8 passed / 0 failed**
+合计：**10 passed / 0 failed**
 
 ## 3. 端到端测试
 
@@ -46,7 +48,8 @@
 | E5 | 下载策略 deny 下调用 `files.download` | 返回 `EXPORT_DENIED` | PASS | `E5-export-denied.json` |
 | E6 | 路径穿越 / 跨工作区写越界 | `../../etc/passwd` 拒绝；写项目根拒绝；写自己工作区成功 | PASS | `E6-path-boundary.json` |
 | E7 | 权限收回 | 旧凭证被拒；新登录看不到项目 | PASS | `E7-revocation.json` |
-| E8 | 平台停机 | 已建立会话 RPC 仍成功；新登录失败 | PASS | `E8-platform-down.json` |
+| E7b2 | 缺失设备公钥头 | 升级被拒，`x-orca-reject: device_pubkey_missing` | PASS | `E7b2-missing-device-header.json` |
+| E8 | 平台停机 3.5 秒 | Runtime 存活；已建立会话 RPC 与文件读仍成功；新登录失败 | PASS | `E8-platform-down.json` |
 | E7a | 符号链接写逃逸 | 写入被拒（`PATH_OUTSIDE_ROOT`），目标目录未生成文件 | PASS | `E7a-symlink-escape.json` |
 | E7b | 凭证移植到另一设备 | 他人设备 401；原设备 101 | PASS | `E7b-device-transplant.json` |
 | E7c | 客户端版本过低 | 平台返回 426 `VERSION_UNSUPPORTED` | PASS | `E7c-version-gate.json` |
@@ -54,7 +57,7 @@
 | E9 | 证据汇总 | 证据落盘 | PASS | `summary.json` |
 | E10 | 中继未知 SNI / 非 TLS | 连接被黑洞 | PASS | `E10-relay-blackhole.json` |
 
-合计：**14 passed / 0 failed**；加上 M8 的 13 条与 8 条单元测试，共 **35 条全绿**
+合计：**15 passed / 0 failed**；加上 M8 的 13 条与 10 条单元测试，共 **38 条全绿**
 
 ## 3.1 管控面门禁测试（M8）
 

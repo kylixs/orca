@@ -109,6 +109,26 @@ test('路径边界：拒绝穿越与绝对逃逸', () => {
   assert.equal(requiresWritePath('files.read'), false)
 })
 
+test('路径边界：Windows 盘符、跨盘与分隔符', () => {
+  const root = 'C:\\srv\\work\\payment-service\\.orca-worktrees\\zhangsan'
+  assert.equal(isInsideRoot(root, 'C:\\srv\\work\\payment-service\\.orca-worktrees\\zhangsan\\src\\a.ts'), true)
+  assert.equal(isInsideRoot(root, 'D:\\evil\\x.ts'), false, 'cross-drive must be rejected')
+  assert.equal(isInsideRoot(root, 'C:\\srv\\work\\payment-service\\.orca-worktrees\\zhangsan2\\a.ts'), false)
+  assert.equal(isInsideRoot(root, 'C:\\srv\\work\\payment-service\\.orca-worktrees\\zhangsan\\..\\..\\..\\etc'), false)
+  // Mixed separators must still resolve correctly.
+  assert.equal(isInsideRoot('C:\\root', 'C:/root/child'), true)
+  // Bare relative paths are rejected outright.
+  assert.equal(isInsideRoot('root', 'root/child'), false)
+})
+
+test('方法级权限：前缀白名单只覆盖已登记的自省方法', () => {
+  assert.equal(decideMethod('sessions.whoami', [], 'deny').allow, true)
+  assert.deepEqual(decideMethod('sessions.deleteAll', [], 'deny'), {
+    allow: false,
+    code: 'METHOD_NOT_REGISTERED'
+  })
+})
+
 test('审计哈希链：追加、校验、篡改可定位', () => {
   const store = new Store()
   const chain = new AuditChain(store)

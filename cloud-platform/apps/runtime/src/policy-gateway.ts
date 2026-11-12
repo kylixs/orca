@@ -4,7 +4,8 @@ import { assertInsideRoot } from './path-containment.ts'
 import {
   decideMethod,
   isInsideRoot,
-  requiresWritePath
+  requiresWritePath,
+  MULTI_PATH_WRITE_PARAMS
 } from '../../../packages/contract/src/permissions.ts'
 import { verifyCredential, type CredentialPayload } from '../../../packages/contract/src/credential.ts'
 
@@ -20,7 +21,7 @@ export class PolicyGateway {
   private usedJtis = new Map<string, number>()
   private revokedProjects = new Map<string, number>()
   private revokedUsers = new Map<string, number>()
-  private revokedJtis = new Set<string>()
+  private revokedJtis = new Map<string, number>()
 
   private readonly options: {
     hostId: string
@@ -50,7 +51,8 @@ export class PolicyGateway {
   }): void {
     this.revokedProjects = new Map((input.projects ?? []).map((p) => [p.id, p.since]))
     this.revokedUsers = new Map((input.users ?? []).map((u) => [u.id, u.since]))
-    this.revokedJtis = new Set(input.jtis ?? [])
+    const jtiExpiry = Date.now() + 10 * 60_000
+    this.revokedJtis = new Map((input.jtis ?? []).map((jti) => [jti, jtiExpiry]))
   }
 
   private pruneJtis(nowSeconds: number): void {
@@ -96,15 +98,21 @@ export class PolicyGateway {
       return { ok: false, code: 'user_revoked', message: '用户权限已收回。' }
     }
     // jti revocation wins over the local "already used" cache.
-    if (this.revokedJtis.has(payload.jti)) {
+    const revokedJtiExpiry = this.revokedJtis.get(payload.jti)
+    if (revokedJtiExpiry !== undefined && revokedJtiExpiry > Date.now()) {
       return { ok: false, code: 'jti_revoked', message: '该连接凭证已被吊销。' }
     }
-    // Bind the ticket to the device that presents it (AC-30).
-    if (declaredDevicePubKey && payload.devicePubKey && declaredDevicePubKey !== payload.devicePubKey) {
+    // Bind the ticket to the device that presents it (AC-30). Fail closed: omitting the
+    // header must not bypass the check, otherwise a copied credential upgrades freely.
+    if (!declaredDevicePubKey) {
+      return { ok: false, code: 'device_pubkey_missing', message: '缺少设备公钥。' }
+    }
+    if (!payload.devicePubKey || declaredDevicePubKey !== payload.devicePubKey) {
       return { ok: false, code: 'device_mismatch', message: '凭证与请求设备不匹配。' }
     }
     // Bind the workspace root to the project root so a forged credential cannot widen scope.
-    if (!payload.workspaceRoot.startsWith(`${payload.projectRoot}${sep}`)) {
+    // isInsideRoot handles both POSIX and Windows separators and rejects cross-drive paths.
+    if (!isInsideRoot(payload.projectRoot, payload.workspaceRoot)) {
       return { ok: false, code: 'workspace_root_invalid', message: '工作区根不在项目范围内。' }
     }
     this.usedJtis.set(payload.jti, nowS + 120)
@@ -124,11 +132,16 @@ export class PolicyGateway {
     if (!decision.allow) {
       return { ok: false, code: decision.code, message: '该操作不被当前权限允许。' }
     }
-    const target = typeof params.path === 'string' ? params.path : null
-    if (!target) return { ok: true }
     const root = requiresWritePath(method) ? payload.workspaceRoot : payload.projectRoot
-    if (!isInsideRoot(root, target)) {
-      return { ok: false, code: 'PATH_OUTSIDE_ROOT', message: '路径超出项目或工作区范围。' }
+    const candidates: string[] = []
+    if (typeof params.path === 'string') candidates.push(params.path)
+    for (const key of MULTI_PATH_WRITE_PARAMS[method] ?? []) {
+      if (typeof params[key] === 'string') candidates.push(params[key] as string)
+    }
+    for (const candidate of candidates) {
+      if (!isInsideRoot(root, candidate)) {
+        return { ok: false, code: 'PATH_OUTSIDE_ROOT', message: '路径超出项目或工作区范围。' }
+      }
     }
     return { ok: true }
   }
@@ -149,8 +162,11 @@ export class PolicyGateway {
       return realpath(created)
     })
     const target = this.localPath(path)
+    // Check containment before creating anything: mkdir on an escaping path would
+    // leave directories outside the root.
+    await assertInsideRoot(root, target)
     await mkdir(dirname(target), { recursive: true })
-    // Resolve after mkdir so symlinked parents are caught before the write.
+    // Re-check after mkdir to narrow the check-then-write window.
     const resolved = await assertInsideRoot(root, target)
     await writeFile(resolved, content, 'utf8')
   }

@@ -45,8 +45,9 @@ export const METHOD_RULES: MethodRule[] = [
   { method: 'browser.download', permission: 'download', exportClass: true },
   { method: 'browser.savePage', permission: 'download', exportClass: true },
   { method: 'browser.', permission: 'browser' },
-  // Explicitly registered introspection: available to any admitted connection.
-  { method: 'sessions.', permission: null },
+  // Explicitly registered introspection only — a bare prefix would auto-grant future methods.
+  { method: 'sessions.whoami', permission: null },
+  { method: 'sessions.list', permission: null },
   { method: 'workspace.info', permission: null }
 ]
 
@@ -73,23 +74,42 @@ export function decideMethod(
 }
 
 /** True when `target` resolves inside `root` after normalisation. */
-export function isInsideRoot(root: string, target: string): boolean {
-  const normalise = (p: string): string => {
-    const parts: string[] = []
-    for (const segment of p.replaceAll('\\', '/').split('/')) {
-      if (segment === '' || segment === '.') continue
-      if (segment === '..') {
-        parts.pop()
-        continue
-      }
-      parts.push(segment)
+function segments(p: string): string[] {
+  const parts: string[] = []
+  for (const segment of p.replaceAll('\\', '/').split('/')) {
+    if (segment === '' || segment === '.') continue
+    if (segment === '..') {
+      parts.pop()
+      continue
     }
-    return `/${parts.join('/')}`
+    parts.push(segment)
   }
-  const rootNorm = normalise(root)
-  const targetNorm = normalise(target)
-  if (targetNorm === rootNorm) return true
-  return targetNorm.startsWith(`${rootNorm}/`)
+  return parts
+}
+
+function isAbsolutePath(p: string): boolean {
+  return p.startsWith('/') || /^[A-Za-z]:[\\/]/.test(p)
+}
+
+function driveOf(p: string): string | null {
+  const match = p.match(/^([A-Za-z]):[\\/]/)
+  return match ? match[1].toLowerCase() : null
+}
+
+/**
+ * Lexical containment for project-absolute paths. Handles both POSIX and
+ * Windows separators and rejects cross-drive escapes (path.relative returns an
+ * absolute path for `C:\root` → `D:\evil`, which a naive check would accept).
+ */
+export function isInsideRoot(root: string, target: string): boolean {
+  if (!isAbsolutePath(root) || !isAbsolutePath(target)) return false
+  const rootDrive = driveOf(root)
+  const targetDrive = driveOf(target)
+  if (rootDrive !== targetDrive) return false
+  const rootParts = segments(root)
+  const targetParts = segments(target)
+  if (targetParts.length < rootParts.length) return false
+  return rootParts.every((part, i) => targetParts[i] === part)
 }
 
 export function requiresWritePath(method: string): boolean {
@@ -100,6 +120,13 @@ export function requiresWritePath(method: string): boolean {
     method.startsWith('files.copy') ||
     method.startsWith('files.delete') ||
     method.startsWith('files.commitUpload') ||
-    method.startsWith('worktree.')
+    method.startsWith('worktree.') ||
+    method === 'browser.savePage'
   )
+}
+
+/** Methods whose path parameters are not named `path`; all listed values are write targets. */
+export const MULTI_PATH_WRITE_PARAMS: Record<string, string[]> = {
+  'files.rename': ['from', 'to', 'oldPath', 'newPath'],
+  'files.copy': ['from', 'to', 'sourcePath', 'targetPath']
 }

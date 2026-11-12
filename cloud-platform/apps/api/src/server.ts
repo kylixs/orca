@@ -96,7 +96,9 @@ export function createApp(config: ApiConfig): ApiHandle {
   const jwks: Map<string, PublicKeyEntry> = new Map([
     [signingKey.kid, { kid: signingKey.kid, publicKeyPem: signingKey.publicKeyPem }]
   ])
-  const internalToken = config.internalToken ?? 'internal-test-token'
+  // Production must inject a secret; the fallback exists only for local tests.
+  const internalToken =
+    config.internalToken ?? process.env.ORCA_CLOUD_INTERNAL_TOKEN ?? 'internal-test-token'
   const usedJtis = new Map<string, number>()
 
   const accounts = new Map<string, { password: string; profile: ReturnType<typeof ldapProfile> }>([

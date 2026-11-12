@@ -1,13 +1,13 @@
 # 开发进度
 
-> 更新时间：2026-11-13 03:10
+> 更新时间：2026-11-13 03:40
 > 规则：每轮只推进一个模块；失败必须如实记录。
 
 ## 模块状态
 
 | 模块 | 状态 | 证据 | 备注 |
 |---|---|---|---|
-| M0 契约 | ✅ 完成 | `evidence/e2e-platform/` + 单元 7/7 | 凭证 Ed25519、方法映射、路径边界、审计链 |
+| M0 契约 | ✅ 完成 | `evidence/e2e-platform/` + 单元 10/10 | 凭证 Ed25519、方法映射、路径边界、审计链 |
 | M1 平台 API | ✅ 完成 | E1–E8 | 登录锁定、会话纪元、ACL、凭证、策略、审计、内部接口 |
 | M2 中继 | ✅ 完成 | E2、E10 | SNI ClientHello 解析、纯 TCP、黑洞、路由同步 |
 | M3 运行时 + 策略网关 | ✅ 完成 | E3–E6 | 升级期验签、方法权限、路径边界、导出拦截 |
@@ -20,9 +20,10 @@
 ## 最近一次测试结果
 
 ```
-node --test test/contract.test.ts            8 pass / 0 fail
-node --test test/e2e/platform.e2e.test.ts   14 pass / 0 fail
+node --test test/contract.test.ts            10 pass / 0 fail
+node --test test/e2e/platform.e2e.test.ts   15 pass / 0 fail
 node --test test/e2e/admin-gating.e2e.test.ts 13 pass / 0 fail
+合计 38 pass / 0 fail
 ```
 
 E2E 覆盖：
@@ -33,9 +34,10 @@ E2E 覆盖：
 - E5 导出类方法拒绝
 - E6 路径穿越 / 跨工作区写越界
 - E7 撤销后旧凭证失效、新登录不可见
-- E8 平台停机：已有会话继续，新连接失败
+- E8 平台停机 3.5 秒（跨过 3 次轮询）后 Runtime 存活、会话仍可读写
 - E7a 符号链接写逃逸被拒（realpath + 分隔符感知）
 - E7b 凭证移植到另一设备被拒（原设备同凭证仍可用）
+- E7b2 缺失设备公钥头一律拒绝（不允许省略绕过）
 - E7c 客户端版本过低返回 426
 - E7d 托管工作区创建幂等且落在 workspaceRoot
 - E9 证据汇总
@@ -53,6 +55,6 @@ M8 管控面门禁：
 
 ## 下一步
 
-1. 第 4 轮设计评审结果复核（评审子代理运行中）。
+1. 第 4 轮问题已修复（设备绑定 fail-closed、Windows 路径、停机存活），待第 5 轮复核。
 2. 把真实 Orca Runtime 接入替身接口（需要本地可构建的 `orca serve`）。
 3. 客户端补丁层落地到 `src/main/cloud-platform/`（需在 Orca 根工程跑 typecheck/lint）。
