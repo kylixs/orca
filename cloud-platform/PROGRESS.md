@@ -718,8 +718,36 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 2. 图片预览只显示 MIME，不解码 base64；`files.readPreview` 返回 base64 内容，渲染成 `<img>` 需要内容类型协商（设计 §9 的下载管控也应在此处生效），列入下载策略接入轮次。
 3. 终端面板需要云端链路的流式 RPC（PTY 输出推送），`CloudConnectClient` 目前只做请求/响应；这是 T206 剩余的最大一块，也是下一轮候选。
 
+## M43 云端终端：流式订阅传输 + 终端工作区边界（本轮）
+
+**问题**：两件事，缺一不可。
+
+1. **传输**：`CloudConnectClient` 只有请求/响应——每个调用各自 `on('message')` 过滤自己的 id，超时后监听器不摘除（泄漏），且无法接收流式方法的多帧回复。没有它，`terminal.subscribe` 一个事件也到不了客户端。
+2. **边界（真实漏洞）**：M34 只按 `terminal` 前缀授权，主机对终端方法**不做任何地址检查**。`terminal.create` 的 `worktree` 由客户端指定，`terminal.send`/`subscribe` 的句柄也是——一个有 terminal 权限的云端用户可以在**共享检出区**或**其他团队仓库**里开 shell 并任意执行命令、读标题/cwd、驱动他人终端。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-rpc-multiplexer.ts`（新） | 一个路由器拥有整条已准入 socket：`id → 调用` 的 pending 表、`call()` 一次性回复、`subscribe()` 多帧事件 + `{type:'end'}` 收尾、超时即摘除、socket 关闭时统一以 `CONNECTION_CLOSED` 结束所有在途调用 |
+| `cloud-connect-client.ts` | `rpc()` 改走多路复用器（修复超时监听器泄漏）；新增 `subscribe()` / `forgetSubscription()`；`close()` 先结束在途调用再关 socket |
+| `cloud-terminal-scope.ts`（新） | 终端方法三类：**create**（worktree 必须落在本人 `workspaceRoot`）、**handle**（按句柄所属 worktree 判定，含 `terminal.unsubscribe` 的 `subscriptionId` 及 `${terminal}:${clientId}` 复合 id）、**deny**（主机窗口/全局方法：`terminal.list`/`closeAll`/`split`/`focus`/`show`/`closeTab`/`sleep`/`resolve*`/`multiplex`/fit 偏好）。未分类的 `terminal.*` 一律拒绝 |
+| `cloud-path-guard.ts` | 接入终端三类；主机无法回答句柄归属（无 `resolveTerminalContext`）→ 拒绝；句柄已退出 → 拒绝 |
+
+**验证（`evidence/m43-cloud-terminal/`）**：3 条真实端到端——真实平台票据、真实 TLS Runtime、真实 git 仓库与托管 worktree，主机 PTY **由 node-pty 起真实 shell 进程**（`/bin/sh`，真实 pid），输出经 `onPtyData` 进入 Runtime 自己的数据通道：
+- M43-1 在本人工作区 `terminal.create` → 订阅收到 `scrollback` → `terminal.send("echo ORCA_CLOUD_TERMINAL_OK")` → 收到含该标记的 `data` 帧 → `terminal.unsubscribe{requestId}` 后流正常结束；
+- M43-2 在共享检出区、其他团队仓库、以及不带 worktree 的创建全部 `forbidden`；`terminal.list`/`closeAll`/`focus` 被拒；
+- M43-3 不存在的句柄 `forbidden`，不会落到 handler。
+
+另有 12 条单测（三类互斥、未分类默认拒绝、create/handle 的越界、复合 subscriptionId、句柄未知、主机无法回答）。**两组负向对照**：把 create/handle 交给"不检查"分支 → 10 条用例变红（含 M43-2/M43-3）；把流事件改成投递 `undefined` → M43-1 在 15 秒后超时变红（`saw [null,null]`），证明用例真的在看主机输出。主机侧 28 文件 147 条全过；模拟器 97 条全过；`tsc` node 0 错；门禁 7 项 0 新发现。
+
+**如实记录 / 剩余**：
+1. 终端面板 UI 尚未挂载：本轮交付的是**可用的传输 + 边界**（客户端已能创建、订阅、写入、退订）。渲染层还需要 xterm 组件与工作区布局接线。
+2. `terminal.multiplex`（手机用的二进制流通道）与 `agentSession`/`session.tabs.*` 仍对云端关闭——它们有各自的帧协议与窗口语义，需要单独一轮做帧级边界，不能靠本表覆盖。
+3. 云端客户端以"桌面客户端"身份订阅（不带 `client.type=mobile`），走 JSON 订阅；手机端若直连云主机需要二进制流能力协商，属后续项。
+4. `terminal.create` 在无桌面窗口的云主机上返回 `warning`（"could not make it discoverable"），PTY 本身可用——与 M41 的 `files.open` 同类：无窗口宿主只能后台运行。
+
 ## 下一步
 
-1. 终端面板：为云端链路补流式通道（`terminal.create` + PTY 输出推送 + `terminal.attach/detach` 语义），再把终端面板挂到工作区；需按「远程线兼容」规则做能力协商（新 opcode 必须协商，旧客户端静默丢弃未知 opcode）。
+1. 终端面板 UI：把 M43 的创建/订阅/写入接到工作区布局（xterm），并处理断线重连后的重新订阅（`cloud-connection-event` 已就绪）。
+2. 遗留：`agentSession`/`session.tabs.*` 按 M43 的方式做帧级与工作区边界。`agent.*` 家族目前**完全没有**路径/工作区边界（与 M36 之前的 files 相同），是下一个高风险缺口。
 2. 遗留：M4 `isInsideRoot` 对 Windows 段大小写敏感（fail-closed，误拒而非误放；按需放宽）。
 3. 并发上限目前只统计云会话；本地配对连接不占这 32 个名额（设计表只约束云端会话），如运营需要主机总量配额再扩展。

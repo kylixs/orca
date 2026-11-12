@@ -90,11 +90,11 @@ describe('RPC 路径检查', () => {
     resolveRepoRootPath: async (selector: string) => selector.slice(5)
   }
 
-  it('非文件方法不参与路径检查', async () => {
+  it('不寻址工作区的方法不参与路径检查', async () => {
     const decision = await checkCloudRpcPath({
       runtime,
       roots: { projectRoot: '/p', workspaceRoot: '/p/ws' },
-      method: 'terminal.list',
+      method: 'agentProvider.list',
       params: {}
     })
     expect(decision).toBeNull()

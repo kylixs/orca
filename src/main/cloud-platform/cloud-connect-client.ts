@@ -2,6 +2,11 @@ import WebSocket from 'ws'
 import { decrypt, deriveSharedKey, encrypt, generateKeyPair } from '../../shared/e2ee-crypto'
 import { chooseRoute, probeEndpoint, type RouteChoice } from './cloud-route-selection'
 import { parseConnectTicket, parseProjectList, readTicketClaims } from './cloud-connect-response'
+import {
+  CloudRpcMultiplexer,
+  type CloudStreamEvent,
+  type CloudSubscription
+} from './cloud-rpc-multiplexer'
 import { parseJsonText, readField, readString, readStringArray } from '../../shared/json-fields'
 
 /** Desktop-side cloud connection: the platform is a registry, never the data path (D1). */
@@ -60,7 +65,7 @@ export class CloudConnectClient {
   private readonly deviceKeys = generateKeyPair()
   private socket: WebSocket | null = null
   private sharedKey: Uint8Array | null = null
-  private rpcSeq = 0
+  private rpcMux: CloudRpcMultiplexer | null = null
   private closeListener: ((code: number, reason: string) => void) | null = null
 
   constructor(options: CloudConnectOptions) {
@@ -235,6 +240,7 @@ export class CloudConnectClient {
             return
           }
           this.socket = ws
+          this.rpcMux = new CloudRpcMultiplexer(ws, this.sharedKey!)
           resolve()
         })
         const claims = readTicketClaims(ticket.credential)
@@ -266,42 +272,36 @@ export class CloudConnectClient {
     params: Record<string, unknown> = {},
     timeoutMs = 5000
   ): Promise<CloudRpcResult> {
-    const socket = this.socket
-    const sharedKey = this.sharedKey
-    if (!socket || !sharedKey) {
+    const mux = this.rpcMux
+    if (!mux) {
       return Promise.resolve({ ok: false, code: 'NOT_CONNECTED' })
     }
-    const id = `cloud-${++this.rpcSeq}`
-    return new Promise<CloudRpcResult>((resolve) => {
-      const timer = setTimeout(() => resolve({ ok: false, code: 'RPC_TIMEOUT' }), timeoutMs)
-      const onMessage = (raw: WebSocket.RawData): void => {
-        const plaintext = decrypt(raw.toString(), sharedKey)
-        if (plaintext === null) {
-          return
-        }
-        let message: { id?: string; result?: unknown; error?: { code: string; message?: string } }
-        try {
-          message = JSON.parse(plaintext)
-        } catch {
-          return
-        }
-        if (message.id !== id) {
-          return
-        }
-        clearTimeout(timer)
-        socket.off('message', onMessage)
-        resolve(
-          message.error
-            ? { ok: false, code: message.error.code, message: message.error.message }
-            : { ok: true, result: message.result }
-        )
-      }
-      socket.on('message', onMessage)
-      socket.send(encrypt(JSON.stringify({ id, method, params }), sharedKey))
-    })
+    return mux.call(method, params, timeoutMs)
+  }
+
+  /**
+   * Opens a streaming method (`terminal.subscribe`) and delivers each event. The
+   * host ends the stream with `{type:'end'}`, which also settles `done`; a caller
+   * that unsubscribes first should call `subscribe`'s `requestId` back to the host
+   * so it can release the terminal.
+   */
+  subscribe(
+    method: string,
+    params: Record<string, unknown>,
+    onEvent: (event: CloudStreamEvent) => void,
+    timeoutMs = 10_000
+  ): CloudSubscription | null {
+    return this.rpcMux?.subscribe(method, params, onEvent, timeoutMs) ?? null
+  }
+
+  /** Stops delivering a stream locally; the host is told separately. */
+  forgetSubscription(requestId: string): void {
+    this.rpcMux?.forget(requestId)
   }
 
   close(): void {
+    this.rpcMux?.close()
+    this.rpcMux = null
     this.socket?.close()
     this.socket = null
     this.sharedKey = null

@@ -8,6 +8,12 @@ import {
 } from './cloud-file-path-params'
 import { cloudGitAccessOf, cloudGitPathsOf } from './cloud-git-scope'
 import {
+  cloudTerminalHandleOf,
+  cloudTerminalHandleParam,
+  cloudTerminalScopeOf,
+  type CloudTerminalScope
+} from './cloud-terminal-scope'
+import {
   MANAGED_CREATE_METHOD,
   cloudWorktreeAccessOf,
   isCloudRepoScopedWorktreeMethod
@@ -31,6 +37,10 @@ import {
 export type CloudPathGuardRuntime = {
   resolveWorktreeRootPath: (worktreeSelector: string) => Promise<string>
   resolveRepoRootPath: (repoSelector: string) => Promise<string>
+  /** Which worktree a live terminal handle belongs to, if it is still running. */
+  resolveTerminalContext?: (
+    terminalHandle: string
+  ) => { worktreeId: string; connectionId: string | null } | null
 }
 
 function stringField(value: unknown, key: string): string | null {
@@ -82,7 +92,11 @@ export function cloudPathAccessOf(method: string): 'read' | 'write' | null {
 
 /** Whether a cloud session's call must pass the workspace boundary at all. */
 export function isCloudPathGuardedMethod(method: string): boolean {
-  return cloudPathAccessOf(method) !== null || cloudWorktreeAccessOf(method) !== null
+  return (
+    cloudPathAccessOf(method) !== null ||
+    cloudWorktreeAccessOf(method) !== null ||
+    cloudTerminalScopeOf(method) !== null
+  )
 }
 
 /** A worktree method the host refuses outright, regardless of its selector. */
@@ -97,6 +111,13 @@ export async function checkCloudRpcPath(args: {
   method: string
   params: unknown
 }): Promise<CloudPathDecision | null> {
+  const terminalScope = cloudTerminalScopeOf(args.method)
+  if (terminalScope?.kind === 'deny') {
+    return { ok: false, reason: 'terminal_host_scope', message: terminalScope.message }
+  }
+  if (terminalScope) {
+    return await checkCloudTerminal(args, terminalScope)
+  }
   const denial = cloudWorktreeDenial(args.method)
   if (denial) {
     return { ok: false, reason: 'worktree_scope', message: denial.message }
@@ -255,4 +276,66 @@ async function checkRepoScopedRead(args: {
     }
   }
   return checkCloudTargetScope(args.roots, 'read', repoPath)
+}
+
+/**
+ * A terminal is a shell: creating one runs commands in a directory, and driving
+ * an existing handle writes to whatever directory that shell is in. Both are
+ * therefore bounded by the caller's workspace root, not the project — a teammate's
+ * checkout is readable but must not be drivable.
+ */
+async function checkCloudTerminal(
+  args: { runtime: CloudPathGuardRuntime; roots: CloudPathRoots; method: string; params: unknown },
+  scope: CloudTerminalScope
+): Promise<CloudPathDecision> {
+  if (scope.kind === 'create') {
+    const selector = stringField(args.params, 'worktree')
+    if (selector === null) {
+      return {
+        ok: false,
+        reason: 'terminal_worktree_required',
+        message: 'A cloud terminal must name the workspace it opens in.'
+      }
+    }
+    let worktreePath: string
+    try {
+      worktreePath = await args.runtime.resolveWorktreeRootPath(selector)
+    } catch {
+      return {
+        ok: false,
+        reason: 'worktree_unknown',
+        message: 'This worktree is not available to the cloud session.'
+      }
+    }
+    return checkCloudTargetScope(args.roots, 'write', worktreePath)
+  }
+  const handle = stringField(args.params, cloudTerminalHandleParam(args.method))
+  if (handle === null) {
+    return {
+      ok: false,
+      reason: 'terminal_unknown',
+      message: 'This call names no terminal.'
+    }
+  }
+  // A host that cannot say which worktree a handle belongs to cannot prove the
+  // handle is the caller's, so the call is refused rather than assumed in scope.
+  const context = args.runtime.resolveTerminalContext?.(cloudTerminalHandleOf(handle)) ?? null
+  if (context === null) {
+    return {
+      ok: false,
+      reason: 'terminal_unknown',
+      message: 'This terminal is not available to the cloud session.'
+    }
+  }
+  let worktreePath: string
+  try {
+    worktreePath = await args.runtime.resolveWorktreeRootPath(`id:${context.worktreeId}`)
+  } catch {
+    return {
+      ok: false,
+      reason: 'terminal_unknown',
+      message: 'This terminal is not available to the cloud session.'
+    }
+  }
+  return checkCloudTargetScope(args.roots, 'write', worktreePath)
 }
