@@ -1,6 +1,6 @@
 # 开发进度
 
-> 更新时间：2026-11-13 06:20
+> 更新时间：2026-11-13 07:10
 > 规则：每轮只推进一个模块；失败必须如实记录。
 
 ## 模块状态
@@ -22,6 +22,8 @@
 | M12 控制面挂起韧性 | ✅ 完成 | `evidence/m12-control-plane-resilience/` | 请求可中止（Runtime active≤4，修复前 9）；响应体挂起时轮询继续；中继单飞 + 3 秒超时，首次同步不阻塞监听 |
 | M13 真实 Orca Runtime 升级期准入 | ✅ 完成 | `evidence/m13-orca-admission/` | 在真实 `OrcaRuntimeRpcServer` 的 WS 升级前校验云端凭证：8 条真实升级用例；平台/主机验签实现一致性 7 条 |
 | M14 开发机侧云端接入 | ✅ 完成 | `evidence/m14-cloud-agent/` | Agent 轮询 JWKS/撤销快照（单飞 + 超时）；`orca serve` 按 env 开启云端模式；4 条真实平台进程 + 真实 Runtime 端到端 |
+| M15 云端会话撤销关闭（真实 Runtime） | ✅ 完成 | `evidence/m15-cloud-session-revocation/` | 准入时按凭证登记设备（`adoptCloudDevice`）；平台吊销后 `close(4403)`；3 条真实 E2EE 会话用例 |
+| M16 控制面三路隔离与撤销快照 fail-closed | ✅ 完成 | `evidence/m15-cloud-session-revocation/isolation.txt` | 评审 07 F1/F2：三路独立落地（allSettled + 每请求独立 timeout）、非法撤销体保留上一快照；3 条真实进程用例 |
 
 ## 最近一次测试结果
 
@@ -34,7 +36,8 @@ node --test test/e2e/relay-hardening.e2e.test.ts 8 pass / 0 fail
 node --test test/e2e/revocation.e2e.test.ts 1 pass / 0 fail
 node --test test/e2e/control-plane-resilience.e2e.test.ts 3 pass / 0 fail
 node --test test/cloud-admission-parity.test.ts 7 pass / 0 fail
-合计 67 pass / 0 fail
+node --test test/e2e/control-plane-isolation.e2e.test.ts 3 pass / 0 fail
+合计 70 pass / 0 fail
 ```
 
 M13（Orca 主进程侧，vitest）：
@@ -134,8 +137,21 @@ M10 中继边界：
 
 已知与本轮无关的既有失败：`src/main/startup` 有 5 条测试在改动前即失败（Electron 拷贝/资源类用例，环境相关），stash 对照确认非本轮引入。
 
+## M15/M16（本轮）
+
+**M15 真实 Runtime 的云端会话撤销**
+- `DeviceRegistry.adoptCloudDevice()`：准入时用凭证里的 `deviceId`/`deviceToken` 登记，E2EE 握手才能通过（此前云端凭证过了升级闸门仍会卡在 `e2ee_auth`）
+- `MobileSocketWiring.closeDeviceConnections()` + `WebSocketTransport.closeClientConnections()`：发 4403 关闭帧，1 秒未完成握手则 terminate
+- `OrcaRuntimeRpcServer.closeCloudDeviceSessions(tokens)`：云端 Agent 轮询到撤销时调用
+- 实测：真实平台进程 + 真实 E2EE 握手，吊销后 4403；未吊销的会话不受影响
+
+**M16 评审 07 的 F1/F2**
+- F1：三路控制面请求改 `Promise.allSettled`，每请求独立 `AbortSignal.timeout`（共享 signal 会在单端点挂起时连带中止健康响应）；`closeRevokedSessions()` 移出 try；首轮轮询不再阻塞 listen
+- F2：撤销体结构非法（`{}`、字段类型错、单条畸形）一律返回 null 并保留上一份快照——此前会被当作「无撤销」覆盖，等于重新放行已吊销凭证
+- 同类问题在主机侧 `cloud-agent-client.ts` 一并修复；JWKS 失败改为记录 `lastError` 而不是抛出，避免跳过撤销处理
+
 ## 下一步
 
-1. 已建连接的撤销关闭（4403）在真实 Runtime 上接线（M11 的替身逻辑搬到 `mobileSocketWiring`）。
-2. 开发机注册/心跳接入真实 Runtime（当前 hostId/hostName 由 env 提供，尚未走 host token 注册）。
+1. 开发机注册/心跳接入真实 Runtime（当前 hostId/hostName 由 env 提供，尚未走 host token 注册）。
+2. 评审 07 的 MINOR：N6 公网 404 用例、M8 非默认令牌用例、TLS 中止分支用例、allow 正向用例（F7）。
 3. 遗留：M1 设备 PoP、M6 `relativePath` 契约、`jwks_stale` 与分支名 `..` 补用例。

@@ -133,6 +133,22 @@ export class WebSocketTransport implements RpcTransport {
     return sockets.length
   }
 
+  /**
+   * Closes a client's sockets with an explicit code so the client can tell a
+   * revocation (4403) from a network drop. Falls back to terminate() when the
+   * peer never completes the close handshake.
+   */
+  closeClientConnections(clientId: string, code: number, reason: string): number {
+    const sockets = Array.from(this.wsClientIds.entries())
+      .filter(([, candidateClientId]) => candidateClientId === clientId)
+      .map(([ws]) => ws)
+    for (const ws of sockets) {
+      ws.close(code, reason)
+      setTimeout(() => ws.terminate(), 1000).unref()
+    }
+    return sockets.length
+  }
+
   // Why: with port 0 the OS assigns a random port; callers read the real bound port here for metadata and the mobile QR.
   get resolvedPort(): number {
     const addr = this.httpServer?.address()

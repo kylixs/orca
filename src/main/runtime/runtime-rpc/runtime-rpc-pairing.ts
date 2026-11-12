@@ -118,6 +118,19 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
     return true
   }
 
+  /**
+   * Cloud revocation: close every live session whose E2EE device token belongs to
+   * a ticket the platform just revoked. The peer gets 4403 so it can tell a
+   * revocation from a network drop (design §6.4, AC-25).
+   */
+  closeCloudDeviceSessions(deviceTokens: readonly string[]): number {
+    let closed = 0
+    for (const token of deviceTokens) {
+      closed += this.mobileSocketWiring?.closeDeviceConnections(token, 4403, 'session_revoked') ?? 0
+    }
+    return closed
+  }
+
   getWebSocketEndpoint(): string | null {
     const ws = this.transports.find((t) => t.kind === 'websocket')
     return ws?.endpoint ?? null

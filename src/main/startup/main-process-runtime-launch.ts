@@ -7,7 +7,7 @@ import {
   migrateMobilePairingDataToCanonicalUserDataPath
 } from '../persistence'
 import { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
-import { cloudAdmissionOption } from './cloud-runtime-admission'
+import { cloudAdmissionOption, cloudRuntimeAdmission } from './cloud-runtime-admission'
 import { resolveE2EWsPort } from './e2e-runtime-ws-port'
 import { registerMobileHandlers } from '../ipc/mobile'
 import { getLocalPtyProvider, registerHeadlessPtyRuntime } from '../ipc/pty'
@@ -93,6 +93,7 @@ function installRuntimeRpc(
     webClientRoot: getBundledWebClientRoot(),
     ...cloudAdmissionOption()
   })
+  cloudRuntimeAdmission()?.bindRuntime(runtimeRpc)
   state.runtimeRpc = runtimeRpc
   registerMobileHandlers(runtimeRpc, {
     getRelayStatus: getDesktopRelayStatus,

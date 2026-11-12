@@ -31,6 +31,8 @@ export type MobileSocketTransport = {
   ): void
   setClientId(ws: WebSocket, clientId: string): void
   terminateClientConnections(clientId: string): number
+  /** Optional: transports that can send a close frame report the revocation reason. */
+  closeClientConnections?(clientId: string, code: number, reason: string): number
 }
 
 export type AuthenticatedMobileSocket = {
@@ -128,6 +130,17 @@ export class MobileSocketWiring {
       terminated += transport.terminateClientConnections(deviceToken)
     }
     return terminated
+  }
+
+  /** Same, but the peer receives a close frame naming the reason (cloud revocation). */
+  closeDeviceConnections(deviceToken: string, code: number, reason: string): number {
+    let closed = 0
+    for (const transport of this.transports) {
+      closed += transport.closeClientConnections
+        ? transport.closeClientConnections(deviceToken, code, reason)
+        : transport.terminateClientConnections(deviceToken)
+    }
+    return closed
   }
 
   private handleRawMessage(

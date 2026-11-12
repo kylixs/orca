@@ -16,7 +16,8 @@ import { DEVICE_REGISTRY_FILENAME } from './mobile-pairing-files'
 import type { RelayDeviceBinding } from './relay/relay-revoke-outbox'
 import type { MobilePairingConnectionMode } from '../../shared/mobile-pairing-connection-mode'
 import type { RuntimePairingReach } from '../../shared/runtime-pairing-reach'
-import { RUNTIME_DEVICE_GRANTS, type RuntimeDeviceGrant } from './rpc/rpc-method-permission'
+import type { RuntimeDeviceGrant } from './rpc/rpc-method-permission'
+import { sameGrants, validGrants, validRelayBinding } from './device-registry-entry-validators'
 import {
   parseMobilePushRegistration,
   type MobilePushRegistration
@@ -41,44 +42,6 @@ export type DeviceEntry = {
   pushRegistration?: MobilePushRegistration
   // Why: administrative permissions are granted only when pairing; absent on older rows means none.
   grants?: RuntimeDeviceGrant[]
-}
-
-const GRANTABLE: ReadonlySet<string> = new Set(RUNTIME_DEVICE_GRANTS)
-
-function isRuntimeDeviceGrant(value: unknown): value is RuntimeDeviceGrant {
-  return typeof value === 'string' && GRANTABLE.has(value)
-}
-
-function validGrants(value: unknown, scope: DeviceScope): RuntimeDeviceGrant[] | undefined {
-  if (scope !== 'runtime' || !Array.isArray(value)) {
-    return undefined
-  }
-  const grants = [...new Set(value.filter(isRuntimeDeviceGrant))].sort()
-  return grants.length > 0 ? grants : undefined
-}
-
-function sameGrants(entry: DeviceEntry, grants: readonly RuntimeDeviceGrant[]): boolean {
-  const current = entry.grants ?? []
-  return current.length === grants.length && current.every((grant) => grants.includes(grant))
-}
-
-function validRelayBinding(value: unknown, deviceId: string): RelayDeviceBinding | undefined {
-  if (!value || typeof value !== 'object') {
-    return undefined
-  }
-  const binding = value as Partial<RelayDeviceBinding>
-  return binding.relayDeviceId === deviceId &&
-    typeof binding.relayHostId === 'string' &&
-    typeof binding.ownerIdentityKey === 'string'
-    ? {
-        relayHostId: binding.relayHostId,
-        relayDeviceId: binding.relayDeviceId,
-        ownerIdentityKey: binding.ownerIdentityKey,
-        ...(typeof binding.inviteExpiresAt === 'number' && Number.isFinite(binding.inviteExpiresAt)
-          ? { inviteExpiresAt: binding.inviteExpiresAt }
-          : {})
-      }
-    : undefined
 }
 
 // Why: a lastSeen refresh is pure bookkeeping, so coalesce reconnect bursts into one write instead of
@@ -189,6 +152,44 @@ export class DeviceRegistry {
   ): DeviceEntry {
     const retainedDevices = this.devices.filter((d) => d.lastSeenAt !== 0 || d.scope !== scope)
     return this.createAndPersistDevice(retainedDevices, name, scope, pairingReach, grants)
+  }
+
+  /**
+   * Registers a device the cloud platform already authenticated: the ticket carries
+   * the identity and token, so there is no QR step. Idempotent, and never widens
+   * grants on an existing row.
+   */
+  adoptCloudDevice(input: {
+    deviceId: string
+    token: string
+    name: string
+    scope?: DeviceScope
+  }): DeviceEntry {
+    const existing = this.devices.find((device) => device.deviceId === input.deviceId)
+    if (existing) {
+      if (existing.token === input.token) {
+        return existing
+      }
+      const updated: DeviceEntry = { ...existing, token: input.token, name: input.name }
+      const nextDevices = this.devices.map((device) =>
+        device.deviceId === input.deviceId ? updated : device
+      )
+      this.save(nextDevices)
+      this.devices = nextDevices
+      return updated
+    }
+    const entry: DeviceEntry = {
+      deviceId: input.deviceId,
+      name: input.name,
+      token: input.token,
+      scope: input.scope ?? 'runtime',
+      pairedAt: Date.now(),
+      lastSeenAt: 0
+    }
+    const nextDevices = [...this.devices, entry]
+    this.save(nextDevices)
+    this.devices = nextDevices
+    return entry
   }
 
   removeDevice(deviceId: string): boolean {

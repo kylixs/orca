@@ -44,6 +44,10 @@ export type CloudAgentClient = {
   snapshot: () => CloudAgentSnapshot
   /** Called after each successful refresh so the runtime can act on new revocations. */
   onRefresh: (listener: (snapshot: CloudAgentSnapshot) => void) => () => void
+  /** Emits E2EE device tokens whose live sessions must be closed. */
+  onRevoke: (listener: (deviceTokens: string[]) => void) => () => void
+  /** Tickets currently held open (test/diagnostic visibility). */
+  admittedCount: () => number
   start: () => void
   stop: () => void
 }
@@ -55,32 +59,45 @@ function emptyRevocations(): Required<CloudRevocations> {
   return { projects: [], users: [], devices: [], jtis: [] }
 }
 
-/** Structural check: a version-skewed platform must not poison the revocation set. */
-function parseRevocations(value: unknown): Required<CloudRevocations> {
-  const result = emptyRevocations()
+/**
+ * Returns null for a structurally invalid body so the caller keeps the previous
+ * snapshot. Reading `{}` as "nothing is revoked" would re-admit a revoked ticket
+ * (review-07 F2).
+ */
+function parseRevocations(value: unknown): Required<CloudRevocations> | null {
   if (!value || typeof value !== 'object') {
-    return result
+    return null
   }
   const candidate = value as Record<string, unknown>
-  const list = (key: 'projects' | 'users' | 'devices'): { id: string; since: number }[] =>
-    Array.isArray(candidate[key])
-      ? (candidate[key] as unknown[]).flatMap((item) => {
-          if (!item || typeof item !== 'object') {
-            return []
-          }
-          const entry = item as Record<string, unknown>
-          return typeof entry.id === 'string' && typeof entry.since === 'number'
-            ? [{ id: entry.id, since: entry.since }]
-            : []
-        })
-      : []
-  result.projects = list('projects')
-  result.users = list('users')
-  result.devices = list('devices')
-  result.jtis = Array.isArray(candidate.jtis)
-    ? (candidate.jtis as unknown[]).filter((jti): jti is string => typeof jti === 'string')
-    : []
-  return result
+  const list = (key: 'projects' | 'users' | 'devices'): { id: string; since: number }[] | null => {
+    const raw = candidate[key]
+    if (!Array.isArray(raw)) {
+      return null
+    }
+    const parsed: { id: string; since: number }[] = []
+    for (const item of raw) {
+      if (!item || typeof item !== 'object') {
+        return null
+      }
+      const entry = item as Record<string, unknown>
+      if (typeof entry.id !== 'string' || typeof entry.since !== 'number') {
+        return null
+      }
+      parsed.push({ id: entry.id, since: entry.since })
+    }
+    return parsed
+  }
+  const projects = list('projects')
+  const users = list('users')
+  const devices = list('devices')
+  const rawJtis = candidate.jtis
+  if (!projects || !users || !devices || !Array.isArray(rawJtis)) {
+    return null
+  }
+  if (!rawJtis.every((jti): jti is string => typeof jti === 'string')) {
+    return null
+  }
+  return { projects, users, devices, jtis: rawJtis }
 }
 
 function parseKeys(value: unknown): { kid: string; publicKeyPem: string }[] {
@@ -146,6 +163,13 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
   let timer: ReturnType<typeof setInterval> | null = null
   let inFlight: Promise<void> | null = null
   const listeners = new Set<(snapshot: CloudAgentSnapshot) => void>()
+  const revokeListeners = new Set<(deviceTokens: string[]) => void>()
+  // Why: revocation arrives as platform device/user/project ids, but the socket is
+  // keyed by the E2EE device token from the ticket — keep the mapping from admission.
+  const admitted = new Map<
+    string,
+    { deviceToken: string; deviceId: string; sub: string; project: string; iatMs: number }
+  >()
 
   const snapshot = (): CloudAgentSnapshot => ({
     kids: [...keys.keys()],
@@ -155,28 +179,75 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
   })
 
   async function refreshOnce(): Promise<void> {
-    const signal = AbortSignal.timeout(timeoutMs)
+    // Per-request signals: a shared one would abort the healthy response when the
+    // other endpoint hangs (review-07 F1).
     const headers = { 'x-internal-token': config.internalToken }
-    const [jwksRes, revokedRes] = await Promise.all([
-      fetchImpl(`${config.apiUrl}/v1/jwks`, { signal }),
-      fetchImpl(`${internalUrl}/v1/internal/revocations`, { signal, headers })
-    ])
-    if (!jwksRes.ok) {
-      throw new Error(`jwks fetch failed: ${jwksRes.status}`)
+    // Independent outcomes: a broken JWKS endpoint must not stop revocation from
+    // being applied, or an unreachable key endpoint would keep a revoked device
+    // online (review-07 F1).
+    const [jwksRes, revokedRes] = await Promise.allSettled([
+      fetchImpl(`${config.apiUrl}/v1/jwks`, { signal: AbortSignal.timeout(timeoutMs) }),
+      fetchImpl(`${internalUrl}/v1/internal/revocations`, {
+        signal: AbortSignal.timeout(timeoutMs),
+        headers
+      })
+    ]).then((results) =>
+      results.map((result) => (result.status === 'fulfilled' ? result.value : null))
+    )
+    if (jwksRes === null) {
+      lastError = 'jwks fetch failed'
+    } else if (!jwksRes.ok) {
+      // Record, never throw: a bad key endpoint must not skip the revocation pass.
+      lastError = `jwks fetch failed: ${jwksRes.status}`
+    } else {
+      const parsedKeys = parseKeys(await jwksRes.json())
+      // Keep the last good keys rather than admitting nothing on a partial body.
+      if (parsedKeys.length > 0) {
+        keys = new Map(parsedKeys.map((entry) => [entry.kid, entry.publicKeyPem]))
+      }
     }
-    const parsedKeys = parseKeys(await jwksRes.json())
-    // Keep the last good keys rather than admitting nothing on a partial body.
-    if (parsedKeys.length > 0) {
-      keys = new Map(parsedKeys.map((entry) => [entry.kid, entry.publicKeyPem]))
-    }
-    if (revokedRes.ok) {
-      revocations = parseRevocations(await revokedRes.json())
+    if (revokedRes?.ok) {
+      const parsed = parseRevocations(await revokedRes.json())
+      if (parsed) {
+        revocations = parsed
+      }
     }
     lastRefreshAt = Date.now()
-    lastError = null
     const current = snapshot()
     for (const listener of listeners) {
       listener(current)
+    }
+    emitRevokedSessions()
+  }
+
+  /**
+   * Tickets admitted before the revocation `since` are dead; their live sockets
+   * must be closed too, otherwise a revoked device keeps its session forever.
+   */
+  function emitRevokedSessions(): void {
+    const revokedTokens: string[] = []
+    for (const [jti, ticket] of admitted) {
+      const deviceSince = revocations.devices.find((entry) => entry.id === ticket.deviceId)?.since
+      const userSince = revocations.users.find(
+        (entry) => entry.id === ticket.sub.replace(/^user:/, '')
+      )?.since
+      const projectSince = revocations.projects.find((entry) => entry.id === ticket.project)?.since
+      const dead =
+        (deviceSince !== undefined && ticket.iatMs <= deviceSince) ||
+        (userSince !== undefined && ticket.iatMs <= userSince) ||
+        (projectSince !== undefined && ticket.iatMs <= projectSince) ||
+        revocations.jtis.includes(jti)
+      if (!dead) {
+        continue
+      }
+      admitted.delete(jti)
+      revokedTokens.push(ticket.deviceToken)
+    }
+    if (revokedTokens.length === 0) {
+      return
+    }
+    for (const listener of revokeListeners) {
+      listener(revokedTokens)
     }
   }
 
@@ -196,13 +267,24 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
   }
 
   return {
-    admit: (headers) =>
-      createCloudUpgradeAdmission({
+    admit: (headers) => {
+      const decision = createCloudUpgradeAdmission({
         hostId: config.hostId,
         hostName: config.hostName,
         keys,
         revocations
-      })(headers),
+      })(headers)
+      if (decision.ok) {
+        const { jti, deviceToken, deviceId, sub, project, iat } = decision.payload
+        admitted.set(jti, { deviceToken, deviceId, sub, project, iatMs: iat * 1000 })
+      }
+      return decision
+    },
+    onRevoke: (listener) => {
+      revokeListeners.add(listener)
+      return () => revokeListeners.delete(listener)
+    },
+    admittedCount: () => admitted.size,
     refresh,
     snapshot,
     onRefresh: (listener) => {
@@ -226,6 +308,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
         timer = null
       }
       listeners.clear()
+      revokeListeners.clear()
     }
   }
 }

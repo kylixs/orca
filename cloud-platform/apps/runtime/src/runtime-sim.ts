@@ -66,29 +66,35 @@ type RevocationSnapshot = {
   jtis: string[]
 }
 
-/** Ignores structurally invalid entries instead of failing the whole refresh. */
-function parseRevocations(value: unknown): RevocationSnapshot {
-  const empty: RevocationSnapshot = { projects: [], users: [], devices: [], jtis: [] }
-  if (!value || typeof value !== 'object') return empty
+/**
+ * Returns null for anything structurally wrong, so the caller keeps the previous
+ * snapshot. An empty-looking body (`{}`, `{"error":...}`) must never be read as
+ * "nothing is revoked" — that would re-admit a revoked ticket (review-07 F2).
+ * A single malformed entry is also fatal for the snapshot: dropping it silently
+ * would drop that revocation (F4).
+ */
+function parseRevocations(value: unknown): RevocationSnapshot | null {
+  if (!value || typeof value !== 'object') return null
   const candidate = value as Record<string, unknown>
-  const entries = (key: 'projects' | 'users' | 'devices'): { id: string; since: number }[] =>
-    Array.isArray(candidate[key])
-      ? (candidate[key] as unknown[]).flatMap((item) => {
-          if (!item || typeof item !== 'object') return []
-          const record = item as Record<string, unknown>
-          return typeof record.id === 'string' && typeof record.since === 'number'
-            ? [{ id: record.id, since: record.since }]
-            : []
-        })
-      : []
-  return {
-    projects: entries('projects'),
-    users: entries('users'),
-    devices: entries('devices'),
-    jtis: Array.isArray(candidate.jtis)
-      ? (candidate.jtis as unknown[]).filter((jti): jti is string => typeof jti === 'string')
-      : []
+  const entries = (key: 'projects' | 'users' | 'devices'): { id: string; since: number }[] | null => {
+    const raw = candidate[key]
+    if (!Array.isArray(raw)) return null
+    const parsed: { id: string; since: number }[] = []
+    for (const item of raw) {
+      if (!item || typeof item !== 'object') return null
+      const record = item as Record<string, unknown>
+      if (typeof record.id !== 'string' || typeof record.since !== 'number') return null
+      parsed.push({ id: record.id, since: record.since })
+    }
+    return parsed
   }
+  const projects = entries('projects')
+  const users = entries('users')
+  const devices = entries('devices')
+  const rawJtis = candidate.jtis
+  if (!projects || !users || !devices || !Array.isArray(rawJtis)) return null
+  if (!rawJtis.every((jti): jti is string => typeof jti === 'string')) return null
+  return { projects, users, devices, jtis: rawJtis }
 }
 
 function readCredentialFromProtocol(header: string | undefined): string | null {
@@ -133,19 +139,17 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
   }
 
   async function refreshPolicyOnce(): Promise<void> {
-    // The abort signal is what actually frees a socket against a control plane
-    // that accepts the connection but never answers (review-06 N3).
-    const signal = AbortSignal.timeout(options.controlTimeoutMs ?? 3000)
-    try {
-      const accepted = await fetchPolicyFromPlatform(signal)
-      // A malformed 200 is a normal return, so freshness must only advance when
-      // a valid policy was accepted; otherwise the deny fallback never kicks in
-      // (review-06 N4).
-      if (accepted) policyFreshAt = Date.now()
-      closeRevokedSessions()
-    } catch {
-      // Platform unreachable: keep the last policy (AC-20) until it goes stale.
-    }
+    // Each request gets its own signal: a shared one would abort the healthy
+    // responses when a single endpoint hangs (review-07 F1). The abort is what
+    // actually frees a socket against a platform that never answers (review-06 N3).
+    const accepted = await fetchPolicyFromPlatform().catch(() => false)
+    // A malformed 200 is a normal return, so freshness must only advance when
+    // a valid policy was accepted; otherwise the deny fallback never kicks in
+    // (review-06 N4).
+    if (accepted) policyFreshAt = Date.now()
+    // Outside any try: one failing endpoint must not stop revocation from
+    // reaching established sessions (review-07 F1).
+    closeRevokedSessions()
     if (Date.now() - policyFreshAt > POLICY_STALE_MS) {
       policy = { downloadDefault: 'deny', projectOverrides: {} }
     }
@@ -163,7 +167,9 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
     }
   }
 
-  async function fetchPolicyFromPlatform(signal: AbortSignal): Promise<boolean> {
+  async function fetchPolicyFromPlatform(): Promise<boolean> {
+    const timeoutMs = options.controlTimeoutMs ?? 3000
+    const timeout = (): AbortSignal => AbortSignal.timeout(timeoutMs)
     const control = {
       internalUrl: options.apiUrl,
       token: options.internalToken,
@@ -172,35 +178,58 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
       caPath: options.caPath
     }
     const publicUrl = options.publicApiUrl ?? options.apiUrl
-    const [jwksRes, policyRes, revokedRes] = await Promise.all([
+    // Independent outcomes: a hung or broken policy endpoint must not discard a
+    // healthy JWKS or revocation set, and vice versa (review-07 F1).
+    const [jwksRes, policyRes, revokedRes] = await Promise.allSettled([
       // JWKS is public and may be served by the public listener only.
-      fetch(`${publicUrl}/v1/jwks`, { signal }),
-      mtlsFetch(control, '/v1/internal/policy', { signal }),
-      mtlsFetch(control, '/v1/internal/revocations', { signal })
-    ])
-    if (jwksRes.ok) {
-      const body = (await jwksRes.json()) as { keys: { kid: string; publicKeyPem: string }[] }
-      gateway.setJwks(body.keys)
-    }
-    let accepted = false
-    if (policyRes.ok) {
-      const parsed = parsePolicy(await policyRes.json())
-      if (parsed) {
-        policy = { downloadDefault: parsed.downloadDefault, projectOverrides: parsed.projectOverrides }
-        if (typeof parsed.version === 'number') lastPolicyVersion = parsed.version
-        accepted = true
+      fetch(`${publicUrl}/v1/jwks`, { signal: timeout() }),
+      mtlsFetch(control, '/v1/internal/policy', { signal: timeout() }),
+      mtlsFetch(control, '/v1/internal/revocations', { signal: timeout() })
+    ]).then((results) => results.map((result) => (result.status === 'fulfilled' ? result.value : null)))
+
+    if (jwksRes?.ok) {
+      try {
+        const body = (await jwksRes.json()) as { keys: { kid: string; publicKeyPem: string }[] }
+        if (Array.isArray(body.keys)) gateway.setJwks(body.keys)
+      } catch {
+        // Keep the previous keys.
       }
     }
-    if (policyRes.ok && revokedRes.ok && lastPolicyVersion !== null) {
+    let accepted = false
+    if (policyRes?.ok) {
+      try {
+        const parsed = parsePolicy(await policyRes.json())
+        if (parsed) {
+          policy = {
+            downloadDefault: parsed.downloadDefault,
+            projectOverrides: parsed.projectOverrides
+          }
+          if (typeof parsed.version === 'number') lastPolicyVersion = parsed.version
+          accepted = true
+        }
+      } catch {
+        // Keep the previous policy.
+      }
+    }
+    if (policyRes?.ok && revokedRes?.ok && lastPolicyVersion !== null) {
       console.log(`[runtime-sim] policy synced v=${lastPolicyVersion}`)
     }
-    if (revokedRes.ok) {
-      gateway.setRevocations(parseRevocations(await revokedRes.json()))
+    if (revokedRes?.ok) {
+      try {
+        const parsed = parseRevocations(await revokedRes.json())
+        // null means the body is untrustworthy; keeping the old set is the only
+        // fail-closed option (F2).
+        if (parsed) gateway.setRevocations(parsed)
+      } catch {
+        // Keep the previous revocation set.
+      }
     }
     return accepted
   }
 
-  await refreshPolicy()
+  // Why not awaited: a hung platform must not delay listening (review-07 F1), and
+  // the first poll is bounded by the same abort signal.
+  void refreshPolicy()
 
   const httpServer = options.tls
     ? (await import('node:https')).createServer({
@@ -257,6 +286,16 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
       return
     }
     try {
+      // Why: revocation closes the socket, but the 1s terminate grace must not be a
+      // free window for more RPCs (review-07 F5).
+      const revokedReason = gateway.revocationReason(payload)
+      if (revokedReason) {
+        ws.send(
+          JSON.stringify({ id: request.id, error: { code: 'PERMISSION_DENIED', message: '会话已失效。' } })
+        )
+        ws.close(4403, revokedReason)
+        return
+      }
       const authorized = gateway.authorize(payload, request.method, request.params ?? {}, policy)
       if (!authorized.ok) {
         ws.send(
