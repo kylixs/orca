@@ -98,6 +98,10 @@ export function CloudProjectWorkspace({
               ))
             )}
           </dd>
+          <dt className="text-muted-foreground">运行环境</dt>
+          <dd className="font-mono text-xs text-foreground" data-testid="cloud-environment">
+            {opened?.environmentId ?? '未登记'}
+          </dd>
           <dt className="text-muted-foreground">运行时</dt>
           <dd data-testid="cloud-live">
             {live.kind === 'checking' ? (

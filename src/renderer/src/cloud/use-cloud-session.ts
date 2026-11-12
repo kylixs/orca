@@ -17,6 +17,7 @@ import type {
 
 export type CloudBridge = {
   login: (username: string, password: string) => Promise<CloudSessionState>
+  openWorkspace: (projectId: string) => Promise<CloudOpenResult>
   closeProject: () => Promise<{ ok: boolean }>
   logout: () => Promise<CloudSessionState>
   getState: () => Promise<CloudSessionState>
@@ -31,6 +32,8 @@ export type CloudOpenedProject = {
   workspaceRoot: string
   capabilities: string[]
   route: 'direct' | 'relay'
+  /** Runtime environment panes address; absent when registration was skipped. */
+  environmentId?: string
 }
 
 export type CloudSessionView = {
@@ -152,14 +155,15 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
       return null
     }
     setError(null)
-    const result = await active.openProject(projectId)
+    const result = await active.openWorkspace(projectId)
     if (result.ok) {
       setOpenProjectId(result.projectId)
       setOpened({
         projectId: result.projectId,
         workspaceRoot: result.workspaceRoot,
         capabilities: result.capabilities,
-        route: result.route
+        route: result.route,
+        ...(result.environmentId ? { environmentId: result.environmentId } : {})
       })
       setRoute(result.route)
       setStatus('signed-in')

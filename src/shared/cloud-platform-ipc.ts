@@ -14,6 +14,7 @@ export const CLOUD_PLATFORM_IPC = {
   openProject: 'cloud:openProject',
   closeProject: 'cloud:closeProject',
   prepareProjectLink: 'cloud:prepareProjectLink',
+  openWorkspace: 'cloud:openWorkspace',
   rpc: 'cloud:rpc',
   connectionChanged: 'cloud:connectionChanged'
 } as const
@@ -39,6 +40,11 @@ export type CloudOpenResult =
       route: 'direct' | 'relay'
       workspaceRoot: string
       capabilities: string[]
+      /**
+       * The runtime environment panes address for this project. Present when the
+       * project was opened for a workspace (`cloud:openWorkspace`).
+       */
+      environmentId?: string
     }
   | { ok: false; code: string; message?: string }
 

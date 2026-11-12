@@ -25,6 +25,16 @@ export type RemoteRuntimeTransportSubscriptionCallbacks<TResult = unknown> = {
   onClose?: () => void
 }
 
+/** The cloud ticket a host demands at the WebSocket upgrade. */
+export type CloudUpgradeOption = {
+  credential: string
+  devicePubKey: string
+  /** Test-only: accept a host certificate the CA did not sign. */
+  tlsRejectUnauthorized?: boolean
+  /** SNI for relay routes. */
+  servername?: string
+}
+
 export type RemoteRuntimeSubscriptionOptions = RemoteRuntimeSocketLivenessOptions & {
   signal?: AbortSignal
   clientCapabilities?: readonly RuntimeCapability[]
@@ -39,12 +49,5 @@ export type RemoteRuntimeSubscriptionOptions = RemoteRuntimeSocketLivenessOption
    * Absent means an ordinary paired host, which needs no upgrade credential and
    * must keep connecting exactly as before.
    */
-  cloudUpgrade?: {
-    credential: string
-    devicePubKey: string
-    /** Test-only: accept a host certificate the CA did not sign. */
-    tlsRejectUnauthorized?: boolean
-    /** SNI for relay routes. */
-    servername?: string
-  }
+  cloudUpgrade?: CloudUpgradeOption
 }

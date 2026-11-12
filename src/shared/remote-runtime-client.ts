@@ -2,6 +2,7 @@ import type { PairingOffer } from './pairing'
 import type { RuntimeCapability } from './protocol-version'
 import type { RemoteRuntimeClientError } from './remote-runtime-client-error'
 import { sendRemoteRuntimeRequestOnSocket } from './remote-runtime-request-socket'
+import type { CloudUpgradeOption } from './remote-runtime-subscription-contract'
 import {
   subscribeRemoteRuntimeTransport,
   type RemoteRuntimeSubscriptionOptions,
@@ -12,6 +13,7 @@ import type { RuntimeStatus } from './runtime-types'
 
 export { RemoteRuntimeClientError } from './remote-runtime-client-error'
 export type {
+  CloudUpgradeOption,
   RemoteRuntimeOutboundMemoryBudget,
   RemoteRuntimeOutboundSocketMemory,
   RemoteRuntimeSubscriptionOptions
@@ -42,7 +44,8 @@ export function sendRemoteRuntimeRequest<TResult>(
   timeoutMs: number,
   envelope?: RuntimeOrchestrationEnvelope,
   signal?: AbortSignal,
-  clientCapabilities: readonly RuntimeCapability[] = []
+  clientCapabilities: readonly RuntimeCapability[] = [],
+  cloudUpgrade?: CloudUpgradeOption
 ): Promise<RuntimeRpcResponse<TResult>> {
   return sendRemoteRuntimeRequestOnSocket(
     pairing,
@@ -52,7 +55,8 @@ export function sendRemoteRuntimeRequest<TResult>(
     envelope,
     undefined,
     signal,
-    clientCapabilities
+    clientCapabilities,
+    cloudUpgrade
   )
 }
 

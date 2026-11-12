@@ -80,7 +80,7 @@ function revokedSince(
   return entries?.find((entry) => entry.id === id)?.since
 }
 
-function reject(reason: string, message: string): CloudUpgradeDecision {
+export function rejectCloudUpgrade(reason: string, message: string): CloudUpgradeDecision {
   return { ok: false, status: 401, reason, message, headers: { 'x-orca-reject': reason } }
 }
 
@@ -97,44 +97,44 @@ export function createCloudUpgradeAdmission(
   return (headers) => {
     const token = readCloudCredential(headerValue(headers, 'sec-websocket-protocol'))
     if (!token) {
-      return reject('credential_missing', '缺少连接凭证。')
+      return rejectCloudUpgrade('credential_missing', '缺少连接凭证。')
     }
 
     const verdict = verifyCloudCredential(token, options.keys, Math.floor(now() / 1000), skew)
     if (!verdict.ok) {
-      return reject(verdict.reason, '连接凭证校验失败。')
+      return rejectCloudUpgrade(verdict.reason, '连接凭证校验失败。')
     }
     const payload = verdict.payload
 
     if (payload.host !== options.hostId || payload.aud !== `host:${options.hostName}`) {
-      return reject('host_mismatch', '凭证与主机不匹配。')
+      return rejectCloudUpgrade('host_mismatch', '凭证与主机不匹配。')
     }
 
     const revocations = options.revocations
     const issuedAtMs = payload.iat * 1000
     const projectSince = revokedSince(revocations?.projects, payload.project)
     if (projectSince !== undefined && issuedAtMs <= projectSince) {
-      return reject('project_revoked', '项目权限已收回。')
+      return rejectCloudUpgrade('project_revoked', '项目权限已收回。')
     }
     const userSince = revokedSince(revocations?.users, payload.sub.replace(/^user:/, ''))
     if (userSince !== undefined && issuedAtMs <= userSince) {
-      return reject('user_revoked', '用户权限已收回。')
+      return rejectCloudUpgrade('user_revoked', '用户权限已收回。')
     }
     const deviceSince = revokedSince(revocations?.devices, payload.deviceId)
     if (deviceSince !== undefined && issuedAtMs <= deviceSince) {
-      return reject('device_revoked', '该设备已被吊销。')
+      return rejectCloudUpgrade('device_revoked', '该设备已被吊销。')
     }
     if (revocations?.jtis?.includes(payload.jti)) {
-      return reject('jti_revoked', '该连接凭证已被吊销。')
+      return rejectCloudUpgrade('jti_revoked', '该连接凭证已被吊销。')
     }
 
     // Fail closed: omitting the header must not bypass the device binding.
     const declaredDevicePubKey = headerValue(headers, DEVICE_PUBKEY_HEADER)
     if (!declaredDevicePubKey) {
-      return reject('device_pubkey_missing', '缺少设备公钥。')
+      return rejectCloudUpgrade('device_pubkey_missing', '缺少设备公钥。')
     }
     if (!payload.devicePubKey || declaredDevicePubKey !== payload.devicePubKey) {
-      return reject('device_mismatch', '凭证与请求设备不匹配。')
+      return rejectCloudUpgrade('device_mismatch', '凭证与请求设备不匹配。')
     }
 
     return { ok: true, payload }

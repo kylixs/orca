@@ -21,6 +21,10 @@ import {
 import { runtimeEnvironmentRevisionFailure } from './runtime-environment-revision-guard'
 import { resetSharedControlSupport } from './runtime-environment-shared-control-support'
 import {
+  callCloudRuntimeProject,
+  subscribeCloudRuntimeEnvironment
+} from '../cloud-platform/cloud-runtime-environment'
+import {
   executeSupportRoutedCall,
   shouldUseSharedControlEnvelope,
   shouldRouteCallBySupport,
@@ -44,8 +48,30 @@ export async function callRuntimeEnvironment(
   envelope?: RuntimeOrchestrationEnvelope,
   options?: { signal?: AbortSignal; expectedEnvironmentRuntimeId?: string }
 ): Promise<RuntimeRpcResponse<unknown>> {
+  const environment = resolveEnvironment(userDataPath, selector)
+  if (environment.cloudProject) {
+    // Why: cloud environments re-issue a single-use ticket per connection, so the
+    // cached/shared-control paths cannot be used — they would connect without one.
+    try {
+      return await callCloudRuntimeProject(
+        environment,
+        method,
+        params,
+        timeoutMs ?? DEFAULT_REMOTE_RUNTIME_TIMEOUT_MS,
+        options?.signal,
+        ELECTRON_REMOTE_RUNTIME_CLIENT_CAPABILITIES
+      )
+    } catch (error) {
+      if (error instanceof Error && error.name !== 'AbortError') {
+        error.message = withRemoteRuntimeTailscaleHint(
+          error.message,
+          environment.endpoints[0]?.endpoint ?? ''
+        )
+      }
+      throw error
+    }
+  }
   if (method === 'status.get') {
-    const environment = resolveEnvironment(userDataPath, selector)
     const failure = runtimeEnvironmentRevisionFailure(
       environment,
       expectedEnvironmentPairingRevision,
@@ -53,7 +79,6 @@ export async function callRuntimeEnvironment(
     )
     return failure ?? getRuntimeEnvironmentStatus(userDataPath, selector, timeoutMs, options)
   }
-  const environment = resolveEnvironment(userDataPath, selector)
   // Why: connection failures reject (they don't resolve as ok:false), so the
   // Tailscale hint is applied to the thrown error here — wrapping the resolved
   // value would miss the in-use connect/timeout case the toast surfaces.
@@ -163,8 +188,18 @@ export async function subscribeRuntimeEnvironment(
   signal?: AbortSignal
 ): Promise<RemoteRuntimeSubscription> {
   const environment = await resolveManagedRuntimeEnvironment(userDataPath, selector)
-  const pairing = getPreferredPairingOffer(environment)
   const effectiveTimeoutMs = timeoutMs ?? DEFAULT_REMOTE_RUNTIME_TIMEOUT_MS
+  if (environment.cloudProject) {
+    return await subscribeCloudRuntimeEnvironment(
+      environment,
+      method,
+      params,
+      effectiveTimeoutMs,
+      callbacks,
+      signal
+    )
+  }
+  const pairing = getPreferredPairingOffer(environment)
   let markedUsed = false
   const markUsedOnce = (runtimeId: string): void => {
     if (markedUsed || !isCurrent()) {

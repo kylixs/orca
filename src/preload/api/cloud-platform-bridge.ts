@@ -8,6 +8,7 @@ export const cloudPlatformApi: CloudPlatformApi = {
   getState: () => ipcRenderer.invoke(CLOUD_PLATFORM_IPC.state),
   listProjects: () => ipcRenderer.invoke(CLOUD_PLATFORM_IPC.listProjects),
   openProject: (projectId) => ipcRenderer.invoke(CLOUD_PLATFORM_IPC.openProject, projectId),
+  openWorkspace: (projectId) => ipcRenderer.invoke(CLOUD_PLATFORM_IPC.openWorkspace, projectId),
   closeProject: () => ipcRenderer.invoke(CLOUD_PLATFORM_IPC.closeProject),
   prepareProjectLink: (projectId) =>
     ipcRenderer.invoke(CLOUD_PLATFORM_IPC.prepareProjectLink, projectId),

@@ -22,6 +22,20 @@ export type PublicRuntimeAccessEndpoint = z.infer<typeof PublicRuntimeAccessEndp
 export const RuntimeEnvironmentSourceSchema = z.enum(['manual', 'ephemeral-vm'])
 export type RuntimeEnvironmentSource = z.infer<typeof RuntimeEnvironmentSourceSchema>
 
+/**
+ * A project opened over the cloud platform. The link's endpoint and device
+ * token are re-issued per connection, so the persisted pairing is only a
+ * placeholder that keeps the environment resolvable between opens.
+ */
+export const CloudProjectLinkSchema = z.object({
+  projectId: z.string().min(1),
+  projectKey: z.string().min(1),
+  hostId: z.string().min(1),
+  registeredAt: z.number().finite()
+})
+
+export type CloudProjectLink = z.infer<typeof CloudProjectLinkSchema>
+
 export const RuntimeSshTunnelLinkSchema = z.object({
   sshTargetId: z.string().min(1),
   sshTargetGeneration: z.number().int().positive(),
@@ -84,7 +98,8 @@ export const KnownRuntimeEnvironmentSchema = PersistedRuntimeEnvironmentSchema.e
   orcadDeployment: OrcadDeploymentLinkSchema.optional(),
   /** When a migration into this managed server began committing; older snapshots predate it. */
   orcadMigratedAt: z.string().datetime().optional(),
-  reconciliation: RuntimeEnvironmentReconciliationRecordSchema.optional()
+  reconciliation: RuntimeEnvironmentReconciliationRecordSchema.optional(),
+  cloudProject: CloudProjectLinkSchema.optional()
 })
   .refine(
     ({ pendingSshAccessOperation, sshAccess, orcadDeployment, connectionDependency }) =>

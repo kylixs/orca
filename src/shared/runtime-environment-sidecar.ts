@@ -5,6 +5,7 @@ import { writeSecureJsonFileWithinLimit } from './bounded-secure-json-file'
 import { readNodeFileSyncWithinLimit } from './node-bounded-file-reader'
 import { RuntimeEnvironmentReconciliationRecordSchema } from './runtime-environment-reconciliation-record'
 import {
+  CloudProjectLinkSchema,
   KnownRuntimeEnvironmentSchema,
   OrcadDeploymentLinkSchema,
   RuntimeAccessEndpointSchema,
@@ -44,7 +45,8 @@ const SidecarEntrySchema = z.object({
   orcadMigratedAt: z.string().datetime().optional(),
   // Keeps the overlaid pairing revision monotonic after the access that raised it is removed.
   pairingRevisionFloor: z.number().finite().optional(),
-  reconciliation: RuntimeEnvironmentReconciliationRecordSchema.optional()
+  reconciliation: RuntimeEnvironmentReconciliationRecordSchema.optional(),
+  cloudProject: CloudProjectLinkSchema.optional()
 })
 
 const SidecarSchema = z.object({
@@ -148,7 +150,8 @@ export function overlayRuntimeEnvironmentSidecar(
       : {}),
     ...(entry.orcadDeployment ? { orcadDeployment: entry.orcadDeployment } : {}),
     ...(entry.orcadMigratedAt ? { orcadMigratedAt: entry.orcadMigratedAt } : {}),
-    ...(entry.reconciliation ? { reconciliation: entry.reconciliation } : {})
+    ...(entry.reconciliation ? { reconciliation: entry.reconciliation } : {}),
+    ...(entry.cloudProject ? { cloudProject: entry.cloudProject } : {})
   })
   return overlaid.success ? overlaid.data : base
 }
@@ -182,6 +185,7 @@ export function writeRuntimeEnvironmentSidecarEntry(
       entry.orcadDeployment !== undefined ||
       entry.orcadMigratedAt !== undefined ||
       entry.reconciliation !== undefined ||
+      entry.cloudProject !== undefined ||
       (entry.pairingRevisionFloor ?? basePairingRevision) > basePairingRevision)
   if (entry && hasState) {
     const { pendingBinding: _staleTarget, ...state } = entry

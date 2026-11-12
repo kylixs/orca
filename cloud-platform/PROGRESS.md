@@ -1,6 +1,6 @@
 # 开发进度
 
-> 更新时间：2026-11-13 12:35
+> 更新时间：2026-11-13 12:45
 > 规则：每轮只推进一个模块；失败必须如实记录。
 
 ## 模块状态
@@ -32,6 +32,7 @@
 | M22 项目链接（凭证 → Orca 配对） | ✅ 完成 | `evidence/m22-project-link/` | 云端票据转成现有 `PairingOffer` + `cloudUpgrade`，现有 `subscribeRemoteRuntimeRequest` 直接建链（请求与订阅两条通道）；5 条真实平台 + 真实 TLS Runtime 用例，含"不带凭证必被拒"对照 |
 | M23 质量门禁清理 | ✅ 完成 | `evidence/m23-quality-gate/` | 74 条 `consistent-type-assertions` → 0；JSON 字段读取器 + 票据/项目解析器；门禁 7 项扫描 0 新发现，79 条用例回归全过 |
 | M24 项目工作区视图 | ✅ 完成 | `evidence/m24-project-workspace/` | 打开项目进入工作区（线路/根目录/能力/实时 status.get）；返回工作台只关连接可再开；21 条用例 + 78 条回归 + 门禁绿 |
+| M25 云端项目 → 运行时环境 | ✅ 完成 | `evidence/m25-cloud-environment/` | 项目注册为环境（侧车 cloudProject），现有 selector/RPC/订阅直达；每次连接重签票据；顺带修复主机侧票据重放缺陷；7 条真实端到端 + 81 条回归 + 门禁绿 |
 
 ## 最近一次测试结果
 
@@ -333,8 +334,25 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 
 **如实说明**：界面用例用脚本化 bridge（happy-dom 跨源限制），真实链路由同批真实进程用例覆盖；运行时 id 仅在主机上报时显示，否则只显示"已连接"；终端/文件面板尚未嵌入，界面文案已明确写出来。
 
+## M25 云端项目 → 运行时环境（本轮）
+
+**问题**：终端、文件、流式通道都按"环境 id"访问开发机，而 M24 到工作台为止，云端项目还没有身份。
+
+| 文件 | 内容 |
+|---|---|
+| `shared/runtime-environments.ts` / `runtime-environment-sidecar.ts` | `cloudProject` 字段走侧车（`orca-environments.json` 保持旧版本可读） |
+| `main/cloud-platform/cloud-runtime-environment.ts`（新） | 注册/移除环境；`callCloudRuntimeProject` / `subscribeCloudRuntimeEnvironment` 每次连接经 `prepareProjectLink` **重签一次性票据** |
+| `main/cloud-platform/cloud-runtime-session.ts`（新） | 当前平台会话出口（传输层无 IPC 上下文） |
+| `main/ipc/runtime-environment-transport-routing.ts` | `cloudProject` 环境走云端专用路径，**跳过**共享控制/缓存连接（否则会绕过票据） |
+| `main/ipc/cloud-platform.ts` | 新通道 `cloud:openWorkspace`（打开 + 注册，返回 `environmentId`）；关闭时移除 |
+| `shared/remote-runtime-request-socket.ts` | 一次性请求支持 `cloudUpgrade`，复用 `openRemoteRuntimeSocket` |
+
+**顺带修复的真实缺陷**：测试"同一张票据只能握手一次"最初**失败**——真实主机只登记 jti 从不拒绝重放，被复制的票据在有效期内可重复建链。已加 jti 重放缓存（到期清理、吊销优先），并把 `401 + x-orca-reject` 透传为 `upgrade rejected (401, replayed)`；此前用户只能看到"连接失败"。
+
+**验证（`evidence/m25-cloud-environment/`）**：7 条新增真实端到端（真实平台进程 + 真实 TLS Runtime + Ed25519/NaCl）：环境落盘带标记、连续两次 RPC 成功、无会话 `NOT_SIGNED_IN`、设备吊销 `SESSION_EXPIRED`、授权收回后 `PROJECT_NOT_FOUND`、票据重放被拒、移除后不可解析。回归 12 个文件 **81 条**全过；门禁 7 项 0 新发现、tsc node/web 0 错。
+
 ## 下一步
 
-1. 工作区面板接入：把云端项目注册成 Orca 远程环境（selector → 云端会话路由），让现有 TabGroup/终端/文件面板直接使用该链路。
+1. 面板接入：在工作区内用 M25 的 `environmentId` 挂载终端/文件面板（现有环境 selector 已可用，剩余是界面与 TabGroup 状态接线）。
 2. 平台在授权变更后立即撤销全部项目凭证，同秒内重连可能被拒（`iat*1000 <= since`）；客户端重试可绕过，但值得确认是否需要秒级宽限。
 3. 遗留：M1 设备 PoP、M6 `relativePath` 契约、`jwks_stale` 与分支名 `..` 补用例。

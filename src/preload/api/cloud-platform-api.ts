@@ -13,6 +13,8 @@ export type CloudPlatformApi = {
   getState: () => Promise<CloudSessionState>
   listProjects: () => Promise<CloudProjectSummary[]>
   openProject: (projectId: string) => Promise<CloudOpenResult>
+  /** Open and register the project as a runtime environment panes can address. */
+  openWorkspace: (projectId: string) => Promise<CloudOpenResult>
   /** Leave the workspace; the platform session survives. */
   closeProject: () => Promise<{ ok: boolean }>
   prepareProjectLink: (projectId: string) => Promise<CloudProjectLinkResult>

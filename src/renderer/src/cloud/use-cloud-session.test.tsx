@@ -86,6 +86,16 @@ function makeBridge(script: Script = {}): TestBridge {
         workspaceRoot: `/srv/work/${projectId}`,
         capabilities: ['pty']
       },
+    openWorkspace: async (projectId: string): Promise<CloudOpenResult> => {
+      const result = script.openResult ?? {
+        ok: true,
+        projectId,
+        route: 'direct' as const,
+        workspaceRoot: `/srv/work/${projectId}`,
+        capabilities: ['pty']
+      }
+      return result.ok ? { ...result, environmentId: `cloud-${projectId}` } : result
+    },
     closeProject: async () => {
       bridge.closedProjects += 1
       return { ok: true }
@@ -172,6 +182,8 @@ describe('云端工作台界面', () => {
     expect(screen.getByTestId('cloud-route').textContent).toBe('直连')
     expect(screen.getByText('/srv/work/p1')).toBeTruthy()
     expect(screen.getByTestId('cloud-capabilities').textContent).toContain('pty')
+    // The project is registered as a runtime environment panes can address.
+    expect(screen.getByTestId('cloud-environment').textContent).toBe('cloud-p1')
     // Live status comes back from the host over the open link.
     await waitFor(() =>
       expect(screen.getByTestId('cloud-live').textContent).toContain('已连接 · rt-1')

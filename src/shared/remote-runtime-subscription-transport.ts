@@ -1,6 +1,7 @@
 import { closeRemoteRuntimeSocket } from './remote-runtime-socket-close'
 import { throwIfSignalAborted, abortSignalReason } from './abort-signal-reason'
 import { randomUUID } from 'node:crypto'
+import type { ClientRequest, IncomingMessage } from 'node:http'
 import WebSocket from 'ws'
 import type { PairingOffer } from './pairing'
 import {
@@ -16,6 +17,7 @@ import {
 } from './remote-runtime-client-handshake'
 import { RemoteRuntimeClientError } from './remote-runtime-client-error'
 import { remoteRuntimeConnectFailureMessage } from './remote-runtime-connect-bound'
+import { upgradeRejectionError } from './remote-runtime-upgrade-rejection'
 import { openRemoteRuntimeSocket } from './remote-runtime-upgrade-socket'
 import {
   isRemoteRuntimeBinaryFrameWithinLimit,
@@ -40,6 +42,8 @@ export type {
   RemoteRuntimeOutboundMemoryBudget,
   RemoteRuntimeOutboundSocketMemory
 } from './remote-runtime-subscription-outbound'
+
+export type { CloudUpgradeOption } from './remote-runtime-subscription-contract'
 
 export type {
   RemoteRuntimeSubscriptionOptions,
@@ -114,6 +118,7 @@ export async function subscribeRemoteRuntimeTransport<TResult>(
         }
         return null
       }
+      socket.off('unexpected-response', onUnexpectedResponse)
       socket.off('open', onOpen)
       socket.off('error', onError)
       socket.off('close', onClose)
@@ -273,6 +278,11 @@ export async function subscribeRemoteRuntimeTransport<TResult>(
       liveness?.noteActivity()
     }
 
+    const onUnexpectedResponse = (_request: ClientRequest, response: IncomingMessage): void => {
+      fail(upgradeRejectionError(response))
+      ws?.terminate()
+    }
+    ws.once('unexpected-response', onUnexpectedResponse)
     ws.once('open', onOpen)
     ws.once('error', onError)
     ws.on('close', onClose)

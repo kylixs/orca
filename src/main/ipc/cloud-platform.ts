@@ -6,6 +6,12 @@ import {
   type CloudSessionState
 } from '../../shared/cloud-platform-ipc'
 import { CloudSessionService } from '../cloud-platform/cloud-session-service'
+import {
+  registerCloudRuntimeEnvironment,
+  removeCloudRuntimeEnvironment
+} from '../cloud-platform/cloud-runtime-environment'
+import { setActiveCloudSession } from '../cloud-platform/cloud-runtime-session'
+import { getCanonicalUserDataPath } from '../persistence/loading-store/user-data-path'
 
 export type CloudPlatformHandlers = { dispose: () => void }
 
@@ -15,7 +21,11 @@ export type CloudPlatformHandlers = { dispose: () => void }
  */
 export function registerCloudPlatformHandlers(
   session: CloudSessionService,
-  options: { broadcast: (channel: string, payload: unknown) => void }
+  options: {
+    broadcast: (channel: string, payload: unknown) => void
+    /** Where the registered cloud environments live; omitted in tests that do not open workspaces. */
+    userDataPath?: string
+  }
 ): CloudPlatformHandlers {
   const handle = <T>(channel: string, fn: (...args: never[]) => Promise<T> | T): void => {
     ipcMain.handle(channel, async (_event, ...args: unknown[]) =>
@@ -33,7 +43,34 @@ export function registerCloudPlatformHandlers(
   handle<CloudOpenResult>(CLOUD_PLATFORM_IPC.openProject, (projectId: string) =>
     session.openProject(projectId)
   )
-  handle(CLOUD_PLATFORM_IPC.closeProject, () => session.closeProject())
+  handle<CloudOpenResult>(CLOUD_PLATFORM_IPC.openWorkspace, async (projectId: string) => {
+    const opened = await session.openProject(projectId)
+    if (!opened.ok || !options.userDataPath) {
+      return opened
+    }
+    const prepared = await session.prepareProjectLink(projectId)
+    if (!prepared.ok) {
+      return opened
+    }
+    const project = session.getState()
+    const summary =
+      project.status === 'signed-in' ? project.projects.find((p) => p.id === projectId) : undefined
+    const environment = registerCloudRuntimeEnvironment(options.userDataPath, {
+      projectId,
+      projectKey: summary?.key ?? projectId,
+      projectName: summary?.name ?? projectId,
+      hostId: summary?.hostName ?? '',
+      link: prepared.link
+    })
+    return { ...opened, environmentId: environment.id }
+  })
+  handle(CLOUD_PLATFORM_IPC.closeProject, () => {
+    const openProjectId = session.connectedProjectId
+    if (openProjectId && options.userDataPath) {
+      removeCloudRuntimeEnvironment(options.userDataPath, openProjectId)
+    }
+    return session.closeProject()
+  })
   handle<CloudRpcOutcome>(
     CLOUD_PLATFORM_IPC.rpc,
     (method: string, params?: Record<string, unknown>) => session.rpc(method, params ?? {})
@@ -70,7 +107,9 @@ export function installCloudPlatformIpc(
     // harnesses opt out of verification explicitly.
     tlsRejectUnauthorized: env.ORCA_CLOUD_TLS_INSECURE !== '1'
   })
-  return registerCloudPlatformHandlers(session, {
+  setActiveCloudSession(session)
+  const handlers = registerCloudPlatformHandlers(session, {
+    userDataPath: getCanonicalUserDataPath(),
     broadcast: (channel, payload) =>
       broadcastToWebContents(
         BrowserWindow.getAllWindows().map((win) => win.webContents),
@@ -78,6 +117,12 @@ export function installCloudPlatformIpc(
         payload
       )
   })
+  return {
+    dispose: () => {
+      handlers.dispose()
+      setActiveCloudSession(null)
+    }
+  }
 }
 
 /** Sends to every live renderer; a destroyed window must not throw during a push. */

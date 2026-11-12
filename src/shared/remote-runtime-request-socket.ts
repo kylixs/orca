@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import WebSocket from 'ws'
+import type { ClientRequest, IncomingMessage } from 'node:http'
 import { abortSignalReason, throwIfSignalAborted } from './abort-signal-reason'
 import {
   deriveSharedKey,
@@ -9,6 +10,7 @@ import {
   publicKeyToBase64
 } from './e2ee-crypto'
 import type { PairingOffer } from './pairing'
+import type { CloudUpgradeOption } from './remote-runtime-subscription-contract'
 import type { RuntimeCapability } from './protocol-version'
 import { remoteRuntimeClientCapabilities } from './remote-runtime-client-capabilities'
 import {
@@ -16,12 +18,10 @@ import {
   ignoreSettledRemoteRuntimeSocketError
 } from './remote-runtime-client-handshake'
 import { RemoteRuntimeClientError } from './remote-runtime-client-error'
+import { remoteRuntimeConnectFailureMessage } from './remote-runtime-connect-bound'
+import { openRemoteRuntimeSocket } from './remote-runtime-upgrade-socket'
+import { upgradeRejectionError } from './remote-runtime-upgrade-rejection'
 import {
-  remoteRuntimeConnectFailureMessage,
-  remoteRuntimeConnectOptions
-} from './remote-runtime-connect-bound'
-import {
-  REMOTE_RUNTIME_MAX_WEBSOCKET_FRAME_BYTES,
   serializeRemoteRuntimePayload,
   serializeRemoteRuntimeRpcRequest
 } from './remote-runtime-memory-limits'
@@ -43,7 +43,8 @@ export async function sendRemoteRuntimeRequestOnSocket<TResult>(
   envelope?: RuntimeOrchestrationEnvelope,
   validateStatus?: (response: RuntimeRpcResponse<RuntimeStatus>) => void,
   signal?: AbortSignal,
-  clientCapabilities: readonly RuntimeCapability[] = []
+  clientCapabilities: readonly RuntimeCapability[] = [],
+  cloudUpgrade?: CloudUpgradeOption
 ): Promise<RuntimeRpcResponse<TResult>> {
   throwIfSignalAborted(signal)
   if (!isSafeTimerDelayMs(timeoutMs)) {
@@ -187,10 +188,7 @@ export async function sendRemoteRuntimeRequestOnSocket<TResult>(
     }
 
     try {
-      const connectOptions = remoteRuntimeConnectOptions({
-        maxPayload: REMOTE_RUNTIME_MAX_WEBSOCKET_FRAME_BYTES
-      })
-      ws = new WebSocket(pairing.endpoint, connectOptions)
+      ws = openRemoteRuntimeSocket(pairing, cloudUpgrade ? { cloudUpgrade } : undefined)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       finishError(
@@ -206,6 +204,10 @@ export async function sendRemoteRuntimeRequestOnSocket<TResult>(
           publicKeyB64: publicKeyToBase64(keyPair.publicKey)
         })
       )
+    }
+
+    function onUpgradeRejected(_request: ClientRequest, response: IncomingMessage): void {
+      finishError(upgradeRejectionError(response))
     }
 
     function onError(error: Error): void {
@@ -251,6 +253,7 @@ export async function sendRemoteRuntimeRequestOnSocket<TResult>(
     }
 
     ws.once('open', onOpen)
+    ws.once('unexpected-response', onUpgradeRejected)
     ws.once('error', onError)
     ws.on('close', onClose)
     ws.on('message', onMessage)

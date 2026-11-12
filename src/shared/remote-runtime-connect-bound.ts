@@ -89,6 +89,20 @@ export function isRemoteRuntimeConnectTimeout(error: unknown): boolean {
  * evidence that remote work stopped. This message says the host did not answer
  * and stops there — it must not imply the host's terminals are gone.
  */
+/**
+ * Why it keeps the phrase: recovery classifiers key on it, and an upgrade
+ * rejection is a connect failure. The reason is appended so `replayed` and
+ * `device_revoked` are distinguishable from an unreachable host.
+ */
+export function remoteRuntimeUpgradeRejectionMessage(
+  statusCode: number,
+  rejectReason: string | undefined
+): string {
+  return rejectReason
+    ? `${REMOTE_RUNTIME_CONNECT_FAILURE_PHRASE}: upgrade rejected (${statusCode}, ${rejectReason}).`
+    : `${REMOTE_RUNTIME_CONNECT_FAILURE_PHRASE}: upgrade rejected (${statusCode}).`
+}
+
 export function remoteRuntimeConnectFailureMessage(error: unknown, endpoint: string): string {
   if (!isRemoteRuntimeConnectTimeout(error)) {
     return `${REMOTE_RUNTIME_CONNECT_FAILURE_PHRASE}.`

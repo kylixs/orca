@@ -3,6 +3,7 @@ import { emptyRevocations, parseRevocations } from './cloud-agent-revocations'
 import { readArray, readString } from '../../shared/json-fields'
 import {
   createCloudUpgradeAdmission,
+  rejectCloudUpgrade,
   type CloudRevocations,
   type CloudUpgradeDecision,
   type CloudUpgradeHeaders
@@ -126,6 +127,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
   const revokeListeners = new Set<(deviceTokens: string[]) => void>()
   // Why: revocation arrives as platform device/user/project ids, but the socket is
   // keyed by the E2EE device token from the ticket — keep the mapping from admission.
+  const usedJtis = new Map<string, number>()
   const admitted = new Map<
     string,
     { deviceToken: string; deviceId: string; sub: string; project: string; iatMs: number }
@@ -272,10 +274,23 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
         keys,
         revocations
       })(headers)
-      if (decision.ok) {
-        const { jti, deviceToken, deviceId, sub, project, iat } = decision.payload
-        admitted.set(jti, { deviceToken, deviceId, sub, project, iatMs: iat * 1000 })
+      if (!decision.ok) {
+        return decision
       }
+      const { jti, deviceToken, deviceId, sub, project, iat, exp } = decision.payload
+      // A ticket is a bearer credential: without this cache a copied one upgrades
+      // again until it expires, even though the platform minted it once.
+      const nowMs = Date.now()
+      for (const [used, expiresAtMs] of usedJtis) {
+        if (expiresAtMs <= nowMs) {
+          usedJtis.delete(used)
+        }
+      }
+      if (usedJtis.has(jti)) {
+        return rejectCloudUpgrade('replayed', '该连接凭证已被使用。')
+      }
+      usedJtis.set(jti, exp * 1000 + 5_000)
+      admitted.set(jti, { deviceToken, deviceId, sub, project, iatMs: iat * 1000 })
       return decision
     },
     onRevoke: (listener) => {
