@@ -21,6 +21,7 @@ export type CloudRuntimeTarget = {
   closeCloudDeviceSessions: (tokens: readonly string[]) => number
   getDeviceRegistry: () => DeviceRegistry | null
   getWebSocketEndpoint: () => string | null
+  getE2EEPublicKey: () => string | null
 }
 
 export type CloudRuntimeAdmission = {
@@ -175,6 +176,9 @@ function startEnrolled(
       heartbeat: {
         hostId: stored.hostId,
         credential: stored.credential,
+        // Clients derive the E2EE key from this, so it must come from the runtime
+        // that will actually answer — the enrolment call ran before it existed.
+        e2eePublicKeyB64: () => boundRuntime?.getE2EEPublicKey() ?? null,
         directAddrs: () =>
           advertisedAddrs(
             boundRuntime?.getWebSocketEndpoint() ?? null,

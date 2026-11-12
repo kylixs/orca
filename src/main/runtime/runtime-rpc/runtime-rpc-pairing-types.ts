@@ -24,8 +24,8 @@ export const WS_BIND_HOST_ALL_INTERFACES = '0.0.0.0'
 
 // Why brackets: `ws://::1:6768` is not a URL, and every consumer of this endpoint parses it
 // with `new URL`. An IPv6 bind address would otherwise publish an unparseable endpoint.
-export function formatWsEndpoint(host: string, port: number): string {
-  return `ws://${host.includes(':') ? `[${host}]` : host}:${port}`
+export function formatWsEndpoint(host: string, port: number, secure = false): string {
+  return `${secure ? 'wss' : 'ws'}://${host.includes(':') ? `[${host}]` : host}:${port}`
 }
 
 export type OrcaRuntimeRpcServerOptions = {
@@ -51,6 +51,11 @@ export type OrcaRuntimeRpcServerOptions = {
    */
   pinnedBindHost?: string
   webClientRoot?: string
+  /**
+   * Serve the WebSocket listener over TLS. Cloud hosts must, because the platform
+   * hands clients a `wss://` address.
+   */
+  webSocketTls?: { cert: string; key: string }
   // Why: test-only overrides for the two constants below; production must not pass these (defaults set by §3.1).
   keepaliveIntervalMs?: number
   longPollCap?: number

@@ -176,6 +176,9 @@ export class RuntimeRpcLifecycle extends RuntimeRpcWebSocketDispatch {
       host: options.host,
       port: options.port,
       staticRoot: this.webClientRoot,
+      ...(this.webSocketTls
+        ? { tlsCert: this.webSocketTls.cert, tlsKey: this.webSocketTls.key }
+        : {}),
       ...(options.fallbackPort !== undefined ? { fallbackPort: options.fallbackPort } : {}),
       ...(options.preferPinnedPort ? { preferPinnedPort: true } : {}),
       ...(this.upgradeAdmission ? { upgradeAdmission: this.upgradeAdmission } : {})
@@ -195,7 +198,7 @@ export class RuntimeRpcLifecycle extends RuntimeRpcWebSocketDispatch {
     this.wsBoundHost = options.host
     return {
       transport: wsTransport,
-      endpoint: formatWsEndpoint(options.host, wsTransport.resolvedPort)
+      endpoint: formatWsEndpoint(options.host, wsTransport.resolvedPort, Boolean(this.webSocketTls))
     }
   }
 

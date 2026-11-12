@@ -793,6 +793,11 @@ export function createApp(config: ApiConfig): ApiHandle {
         if (Array.isArray(body.directAddrs) && body.directAddrs.length > 0) {
           target.directAddrs = body.directAddrs as string[]
         }
+        // A host learns its own E2EE key only once its runtime has started, so the
+        // heartbeat is where it first becomes reportable.
+        if (typeof body.e2eePublicKeyB64 === 'string' && body.e2eePublicKeyB64.length > 0) {
+          target.e2eePublicKey = body.e2eePublicKeyB64
+        }
         if (typeof body.status === 'string' && target.status !== 'maintenance') {
           target.status = body.status === 'online' ? 'online' : 'offline'
         }

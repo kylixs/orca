@@ -1,4 +1,5 @@
 import { sendHeartbeat } from './cloud-host-enrollment'
+import { emptyRevocations, parseRevocations } from './cloud-agent-revocations'
 import {
   createCloudUpgradeAdmission,
   type CloudRevocations,
@@ -23,7 +24,6 @@ export type CloudAgentConfig = {
   internalToken: string
   hostId: string
   hostName: string
-  /** Poll cadence for keys + revocations. */
   refreshMs?: number
   /** Per-request timeout; a hung platform must not stall the loop. */
   timeoutMs?: number
@@ -42,6 +42,8 @@ export type CloudAgentConfig = {
      * actually bound, not one guessed before it listened.
      */
     directAddrs?: string[] | (() => string[])
+    /** Reported so the platform can hand the host key to clients with the ticket. */
+    e2eePublicKeyB64?: () => string | null
   }
 }
 
@@ -59,11 +61,9 @@ export type CloudAgentClient = {
   admit: (headers: CloudUpgradeHeaders) => CloudUpgradeDecision
   refresh: () => Promise<void>
   snapshot: () => CloudAgentSnapshot
-  /** Called after each successful refresh so the runtime can act on new revocations. */
   onRefresh: (listener: (snapshot: CloudAgentSnapshot) => void) => () => void
   /** Emits E2EE device tokens whose live sessions must be closed. */
   onRevoke: (listener: (deviceTokens: string[]) => void) => () => void
-  /** Tickets currently held open (test/diagnostic visibility). */
   admittedCount: () => number
   start: () => void
   stop: () => void
@@ -71,51 +71,6 @@ export type CloudAgentClient = {
 
 const DEFAULT_REFRESH_MS = 10_000
 const DEFAULT_TIMEOUT_MS = 3_000
-
-function emptyRevocations(): Required<CloudRevocations> {
-  return { projects: [], users: [], devices: [], jtis: [] }
-}
-
-/**
- * Returns null for a structurally invalid body so the caller keeps the previous
- * snapshot. Reading `{}` as "nothing is revoked" would re-admit a revoked ticket
- * (review-07 F2).
- */
-function parseRevocations(value: unknown): Required<CloudRevocations> | null {
-  if (!value || typeof value !== 'object') {
-    return null
-  }
-  const candidate = value as Record<string, unknown>
-  const list = (key: 'projects' | 'users' | 'devices'): { id: string; since: number }[] | null => {
-    const raw = candidate[key]
-    if (!Array.isArray(raw)) {
-      return null
-    }
-    const parsed: { id: string; since: number }[] = []
-    for (const item of raw) {
-      if (!item || typeof item !== 'object') {
-        return null
-      }
-      const entry = item as Record<string, unknown>
-      if (typeof entry.id !== 'string' || typeof entry.since !== 'number') {
-        return null
-      }
-      parsed.push({ id: entry.id, since: entry.since })
-    }
-    return parsed
-  }
-  const projects = list('projects')
-  const users = list('users')
-  const devices = list('devices')
-  const rawJtis = candidate.jtis
-  if (!projects || !users || !devices || !Array.isArray(rawJtis)) {
-    return null
-  }
-  if (!rawJtis.every((jti): jti is string => typeof jti === 'string')) {
-    return null
-  }
-  return { projects, users, devices, jtis: rawJtis }
-}
 
 function parseKeys(value: unknown): { kid: string; publicKeyPem: string }[] {
   if (!value || typeof value !== 'object') {
@@ -136,10 +91,7 @@ function parseKeys(value: unknown): { kid: string; publicKeyPem: string }[] {
   })
 }
 
-/**
- * Cloud mode is opt-in via env. Half-configured is an operator error: starting a
- * host that silently skips the admission check would be worse than not starting.
- */
+/** Cloud mode is opt-in; half-configured is an operator error, not a silent skip. */
 export function cloudAgentConfigFromEnv(env: NodeJS.ProcessEnv): CloudAgentConfig | null {
   const apiUrl = env.ORCA_CLOUD_API_URL
   if (!apiUrl) {
@@ -245,7 +197,10 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
         config.heartbeat.hostId,
         {
           status: 'online',
-          ...reportedAddrs()
+          ...reportedAddrs(),
+          ...(config.heartbeat.e2eePublicKeyB64?.()
+            ? { e2eePublicKeyB64: config.heartbeat.e2eePublicKeyB64() ?? undefined }
+            : {})
         },
         fetchImpl,
         timeoutMs
