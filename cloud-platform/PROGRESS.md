@@ -1,6 +1,6 @@
 # 开发进度
 
-> 更新时间：2026-11-13 09:50
+> 更新时间：2026-11-13 10:25
 > 规则：每轮只推进一个模块；失败必须如实记录。
 
 ## 模块状态
@@ -28,6 +28,7 @@
 | M18 开发机自注册与心跳 | ✅ 完成 | `evidence/m18-host-enrollment/` | 一次性令牌注册、凭证持久化复用、心跳下发撤销/策略/维护态、心跳上报真实绑定端口与 E2EE 公钥；7 条真实平台进程 + 真实 Runtime 用例 |
 | M19 桌面端云端连接客户端 | ✅ 完成 | `evidence/m19-desktop-connect/` | 登录/项目列表/选路/升级/E2EE/加密 RPC；Runtime 支持 WSS；4 条真实平台 + 真实 TLS Runtime 用例 |
 | M20 渲染进程 IPC 会话面 | ✅ 完成 | `evidence/m20-cloud-ipc/` | `cloud:*` 六个通道 + 连接事件推送；会话状态不含任何令牌；5 条真实平台 + 真实 Runtime 用例 |
+| M21 客户端界面（登录/工作台） | ✅ 完成 | `evidence/m21-cloud-ui/` | `CloudApp` + 登录面板 + 工作台列表；8 条界面用例（happy-dom），路由接入 `App.tsx` |
 
 ## 最近一次测试结果
 
@@ -230,8 +231,24 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 - 吊销后推送 `closeCode: 4403` 事件并清空 `connectedProjectId`
 - 登出后 RPC 返回 `NOT_SIGNED_IN`
 
+## M21 客户端界面（本轮）
+
+| 文件 | 内容 |
+|---|---|
+| `renderer/src/cloud/use-cloud-session.ts` | 会话 hook：加载/不可用/未登录/登录中/已登录；宿主关闭连接时清空已打开项目 |
+| `renderer/src/cloud/cloud-login-panel.tsx` | 域账号登录；平台错误码 → 中文文案，未知码原样显示 |
+| `renderer/src/cloud/cloud-workbench.tsx` | 工作台：项目列表、线路徽标、主机离线禁开、下载受限标注、吊销提示 |
+| `renderer/src/cloud/cloud-mode-gate.tsx` | 有 `window.api.cloud` 才切换到云端工作台，否则原样渲染本地 shell |
+| `App.tsx` | 用 `CloudModeGate` 包住工作区与根浮层 |
+
+全部使用 `components/ui` 原语与语义 token，无新增颜色；滚动容器按 lint 要求带 `scrollbar-sleek`。
+
+**测试说明（如实记录）**：界面用例使用**脚本化 bridge**，因为 happy-dom 阻止跨源 fetch 到真实平台进程（实测报 `Cross-Origin Request Blocked`）。真实链路（平台进程 + TLS 运行时 + E2EE 套接字）由 M19 `cloud-connect-client.test.ts` 与 M20 `cloud-session-service.test.ts` 覆盖，本模块只保证"用户看到什么"。迁移过程中还修了两处测试自身问题：`import.meta.url` 在 web 变换下是 `/@fs/...`（需剥离），以及 vitest globals 关闭时 RTL 不会自动 cleanup（需显式 `afterEach(cleanup)`）。
+
+实测 8 条：不可用态不显示登录表单；错误码文案与未知码回退；列表标注（离线 1 条、下载受限 2 条）；打开后显示"直连"；打开失败显示错误码且无"已打开"；4403 关闭显示"已被管理员收回"并清除线路；退出登录回到登录页。回归：`app-shell` 89 条全过。
+
 ## 下一步
 
-1. 渲染进程界面（登录页 / 工作台 / 项目视图接入 `window.api.cloud`），按 STYLEGUIDE 实现。
+1. 项目视图：打开项目后进入 Orca 工作区（把云端连接接到现有 TabGroup/终端），而不是停留在工作台。
 2. 平台在授权变更后立即撤销全部项目凭证，同秒内重连可能被拒（`iat*1000 <= since`）；客户端重试可绕过，但值得确认是否需要秒级宽限。
 3. 遗留：M1 设备 PoP、M6 `relativePath` 契约、`jwks_stale` 与分支名 `..` 补用例。
