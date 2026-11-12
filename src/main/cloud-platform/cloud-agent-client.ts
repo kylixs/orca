@@ -37,8 +37,11 @@ export type CloudAgentConfig = {
   heartbeat?: {
     hostId: string
     credential: string
-    /** Reported on every beat so the platform sees address changes. */
-    directAddrs?: string[]
+    /**
+     * Addresses reported on every beat so the platform sees the port the runtime
+     * actually bound, not one guessed before it listened.
+     */
+    directAddrs?: string[] | (() => string[])
   }
 }
 
@@ -194,6 +197,15 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
     maintenance: lastMaintenance
   })
 
+  function reportedAddrs(): { directAddrs?: string[] } {
+    const configured = config.heartbeat?.directAddrs
+    if (!configured) {
+      return {}
+    }
+    const value = typeof configured === 'function' ? configured() : configured
+    return value.length > 0 ? { directAddrs: value } : {}
+  }
+
   async function refreshOnce(): Promise<void> {
     // Per-request signals: a shared one would abort the healthy response when the
     // other endpoint hangs (review-07 F1).
@@ -233,7 +245,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
         config.heartbeat.hostId,
         {
           status: 'online',
-          ...(config.heartbeat.directAddrs ? { directAddrs: config.heartbeat.directAddrs } : {})
+          ...reportedAddrs()
         },
         fetchImpl,
         timeoutMs

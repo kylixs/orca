@@ -1,6 +1,6 @@
 # 开发进度
 
-> 更新时间：2026-11-13 08:10
+> 更新时间：2026-11-13 08:40
 > 规则：每轮只推进一个模块；失败必须如实记录。
 
 ## 模块状态
@@ -25,7 +25,7 @@
 | M15 云端会话撤销关闭（真实 Runtime） | ✅ 完成 | `evidence/m15-cloud-session-revocation/` | 准入时按凭证登记设备（`adoptCloudDevice`）；平台吊销后 `close(4403)`；3 条真实 E2EE 会话用例 |
 | M16 控制面三路隔离与撤销快照 fail-closed | ✅ 完成 | `evidence/m15-cloud-session-revocation/isolation.txt` | 评审 07 F1/F2：三路独立落地（allSettled + 每请求独立 timeout）、非法撤销体保留上一快照；3 条真实进程用例 |
 | M17 评审 07 遗留用例 | ✅ 完成 | `evidence/m17-review07-gaps/` | 4 条：公网内部路由 404（N6）、非默认 INTERNAL_TOKEN（M8）、TLS 中止分支、allow 正向放行；每条均做过回退变红对照 |
-| M18 开发机自注册与心跳 | ✅ 完成 | `evidence/m18-host-enrollment/` | 一次性令牌注册、凭证持久化复用、心跳下发撤销/策略/维护态；5 条真实平台进程 + 真实 Runtime 用例 |
+| M18 开发机自注册与心跳 | ✅ 完成 | `evidence/m18-host-enrollment/` | 一次性令牌注册、凭证持久化复用、心跳下发撤销/策略/维护态、心跳上报真实绑定端口；7 条真实平台进程 + 真实 Runtime 用例 |
 
 ## 最近一次测试结果
 
@@ -183,8 +183,18 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 - 吊销设备 → 心跳带回撤销 → 已建会话 4403
 - 维护开关 → 心跳 `maintenance.reason` 可见
 
+### 心跳上报真实地址（本轮补充）
+
+注册时还没有监听，所以那一刻上报的地址只能是配置值。心跳改为每次实时解析：
+
+- `advertisedAddrs(endpoint, advertiseHost, extras)`：取 Runtime 实际绑定的端口拼成 `host:port`
+- 回环绑定（`127.0.0.1` / `::1` / `localhost`）在未配置 `ORCA_CLOUD_ADVERTISE_HOST` 时**返回空**——报一个别处拨不通的地址，客户端只会在连接时才发现，不如让它走中继
+- `ORCA_CLOUD_ADVERTISE_HOST` 用于 NAT / 容器 / 反向代理后声明对客户端可见的主机名
+
+实测：平台侧 `directAddrs` 等于 Runtime 的真实端口（不是 6768，也不是注册时的空值）。
+
 ## 下一步
 
-1. 心跳里回传真实 `directAddrs`（当前取 env 配置；Runtime 监听后才拿到实际端口）。
-2. 平台在授权变更后立即撤销全部项目凭证，同秒内重连可能被拒（`iat*1000 <= since`）；客户端重试可绕过，但值得确认是否需要秒级宽限。
+1. 平台在授权变更后立即撤销全部项目凭证，同秒内重连可能被拒（`iat*1000 <= since`）；客户端重试可绕过，但值得确认是否需要秒级宽限。
+2. 客户端补丁层（`src/renderer` 侧的工作台/项目视图接入平台 API）尚未开始。
 3. 遗留：M1 设备 PoP、M6 `relativePath` 契约、`jwks_stale` 与分支名 `..` 补用例。

@@ -20,6 +20,7 @@ import type {
 export type CloudRuntimeTarget = {
   closeCloudDeviceSessions: (tokens: readonly string[]) => number
   getDeviceRegistry: () => DeviceRegistry | null
+  getWebSocketEndpoint: () => string | null
 }
 
 export type CloudRuntimeAdmission = {
@@ -71,9 +72,40 @@ function notEnrolledAdmission(): (headers: CloudUpgradeHeaders) => CloudUpgradeD
 export type CloudAdmissionOptions = {
   /** Where the host credential is persisted between restarts. */
   userDataPath?: string
-  /** Addresses advertised at registration; the heartbeat keeps reporting them. */
+  /** Extra addresses to advertise (e.g. a fabric IP) in addition to the bound port. */
   directAddrs?: string[]
   relayTarget?: string
+}
+
+/**
+ * Turns the runtime's bound endpoint into the address a client can dial.
+ *
+ * A loopback bind is not reachable from another machine, so reporting it would
+ * be a lie the client only discovers at connect time. Without an advertised
+ * host we report nothing and let the platform use the relay.
+ */
+export function advertisedAddrs(
+  endpoint: string | null,
+  advertiseHost: string | undefined,
+  extras: string[] = []
+): string[] {
+  const addrs = [...extras]
+  if (!endpoint) {
+    return addrs
+  }
+  let parsed: URL
+  try {
+    parsed = new URL(endpoint)
+  } catch {
+    return addrs
+  }
+  const boundHost = parsed.hostname.replace(/^\[|\]$/g, '')
+  const isLoopback = boundHost === '127.0.0.1' || boundHost === '::1' || boundHost === 'localhost'
+  const host = advertiseHost ?? (isLoopback ? null : boundHost)
+  if (host) {
+    addrs.push(`${host}:${parsed.port}`)
+  }
+  return addrs
 }
 
 export function startCloudRuntimeAdmission(
@@ -118,6 +150,7 @@ function startEnrolled(
         apiUrl,
         hostToken,
         hostName,
+        // Nothing is listening yet; the heartbeat reports the real port later.
         directAddrs: options.directAddrs ?? [],
         relayTarget: options.relayTarget
       })
@@ -142,7 +175,12 @@ function startEnrolled(
       heartbeat: {
         hostId: stored.hostId,
         credential: stored.credential,
-        directAddrs: options.directAddrs
+        directAddrs: () =>
+          advertisedAddrs(
+            boundRuntime?.getWebSocketEndpoint() ?? null,
+            env.ORCA_CLOUD_ADVERTISE_HOST,
+            options.directAddrs
+          )
       }
     }
     const created = createCloudAgentClient(config)

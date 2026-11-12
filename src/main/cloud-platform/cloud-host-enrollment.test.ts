@@ -10,6 +10,7 @@ import { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
 import { readStoredHostCredential } from './cloud-host-enrollment'
 import {
+  advertisedAddrs,
   startCloudRuntimeAdmission,
   type CloudRuntimeAdmission
 } from '../startup/cloud-runtime-admission'
@@ -91,15 +92,16 @@ async function startHost(input: {
   hostName: string
   hostToken: string
   userDataPath: string
-  directAddrs: string[]
+  advertiseHost?: string
 }): Promise<RuntimeFixture> {
   const admission = startCloudRuntimeAdmission(
     {
       ORCA_CLOUD_API_URL: platform.url,
       ORCA_CLOUD_HOST_TOKEN: input.hostToken,
-      ORCA_CLOUD_HOST_NAME: input.hostName
+      ORCA_CLOUD_HOST_NAME: input.hostName,
+      ...(input.advertiseHost ? { ORCA_CLOUD_ADVERTISE_HOST: input.advertiseHost } : {})
     },
-    { userDataPath: input.userDataPath, directAddrs: input.directAddrs }
+    { userDataPath: input.userDataPath }
   )
   if (!admission) {
     throw new Error('cloud admission not enabled')
@@ -239,7 +241,9 @@ beforeAll(async () => {
     hostName: 'dev-enrolled',
     hostToken: await mintHostToken(),
     userDataPath,
-    directAddrs: [`127.0.0.1:${0}`]
+    // A loopback bind is unreachable off-box, so the host must be told what to
+    // advertise; the port still comes from the socket that actually listened.
+    advertiseHost: '127.0.0.1'
   })
 
   // Bind a project to the host the platform assigned — the test never learns the
@@ -298,7 +302,7 @@ describe('开发机自注册与心跳（真实平台 + 真实 Runtime）', () =>
         ORCA_CLOUD_HOST_TOKEN: 'spent-token-should-not-be-used',
         ORCA_CLOUD_HOST_NAME: 'dev-enrolled'
       },
-      { userDataPath, directAddrs: ['127.0.0.1:6768'] }
+      { userDataPath }
     )
     await second!.ready
     expect(second!.host()?.hostId).toBe(stored!.hostId)
@@ -338,6 +342,24 @@ describe('开发机自注册与心跳（真实平台 + 真实 Runtime）', () =>
       session.deviceId
     )
   }, 25000)
+
+  it('心跳上报实际绑定的端口，而不是配置里猜的地址', async () => {
+    const boundPort = host.runtime.getWebSocketEndpoint()?.split(':').pop()
+    expect(boundPort).toBeTruthy()
+    expect(boundPort).not.toBe('6768')
+
+    await host.admission.client!.refresh()
+    const hosts = await platformHosts()
+    const row = hosts.find((entry) => entry.id === host.admission.host()!.hostId)
+    expect(row?.directAddrs).toEqual([`127.0.0.1:${boundPort}`])
+  })
+
+  it('回环地址不会被当作可拨号地址上报（宁可只走中继）', () => {
+    expect(advertisedAddrs('ws://127.0.0.1:6768', undefined)).toEqual([])
+    expect(advertisedAddrs('ws://10.20.3.18:6768', undefined)).toEqual(['10.20.3.18:6768'])
+    expect(advertisedAddrs('ws://127.0.0.1:6768', 'dev-001.corp')).toEqual(['dev-001.corp:6768'])
+    expect(advertisedAddrs(null, 'dev-001.corp', ['10.20.3.18:6768'])).toEqual(['10.20.3.18:6768'])
+  })
 
   it('主机维护状态经心跳可见', async () => {
     const enabled = await fetch(
