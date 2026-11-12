@@ -31,6 +31,10 @@ export type CloudAgentConfig = {
   timeoutMs?: number
   /** Injected for tests; defaults to global fetch. */
   fetchImpl?: typeof fetch
+  /** Injected for tests; defaults to `Date.now`. */
+  now?: () => number
+  /** How long signing keys stay usable without a successful refetch. */
+  keysTtlMs?: number
   /**
    * Enrolled-host mode: revocations and policy come from the heartbeat response
    * instead of `/v1/internal/*`. This is the normal path for a registered host;
@@ -116,7 +120,9 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const internalUrl = config.internalUrl ?? config.apiUrl
 
+  const now = config.now ?? Date.now
   let keys = new Map<string, string>()
+  let keysFetchedAt: number | null = null
   let revocations = emptyRevocations()
   let lastRefreshAt: number | null = null
   let lastError: string | null = null
@@ -178,6 +184,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
       // Keep the last good keys rather than admitting nothing on a partial body.
       if (parsedKeys.length > 0) {
         keys = new Map(parsedKeys.map((entry) => [entry.kid, entry.publicKeyPem]))
+        keysFetchedAt = now()
       }
     }
     if (config.heartbeat) {
@@ -272,7 +279,10 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
         hostId: config.hostId,
         hostName: config.hostName,
         keys,
-        revocations
+        revocations,
+        now,
+        keysFetchedAt,
+        keysTtlMs: config.keysTtlMs
       })(headers)
       if (!decision.ok) {
         return decision
@@ -281,7 +291,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
       const iatMs = decision.payload.iatMs ?? decision.payload.iat * 1000
       // A ticket is a bearer credential: without this cache a copied one upgrades
       // again until it expires, even though the platform minted it once.
-      const nowMs = Date.now()
+      const nowMs = now()
       for (const [used, expiresAtMs] of usedJtis) {
         if (expiresAtMs <= nowMs) {
           usedJtis.delete(used)

@@ -42,6 +42,13 @@ export type CloudUpgradeAdmissionOptions = {
   /** Epoch milliseconds. */
   now?: () => number
   clockSkewSeconds?: number
+  /**
+   * When the signing keys were last fetched, and how long they stay usable.
+   * A host that has not reached the platform in that window must stop admitting:
+   * keys can be rotated or withdrawn, and stale ones would keep working forever.
+   */
+  keysFetchedAt?: number | null
+  keysTtlMs?: number
 }
 
 export type CloudUpgradeAdmission = (headers: CloudUpgradeHeaders) => CloudUpgradeDecision
@@ -88,6 +95,21 @@ export function rejectCloudUpgrade(reason: string, message: string): CloudUpgrad
  * Decisions are pure: the caller owns replay bookkeeping (`usedJtis`) because it
  * must survive across admission instances (one per transport).
  */
+export const DEFAULT_CLOUD_KEYS_TTL_MS = 5 * 60_000
+
+function isKeysStale(options: CloudUpgradeAdmissionOptions, nowMs: number): boolean {
+  const ttl = options.keysTtlMs ?? DEFAULT_CLOUD_KEYS_TTL_MS
+  if (options.keysFetchedAt === undefined) {
+    return false
+  }
+  // No successful fetch yet is "never stale" — there are no keys to trust, and
+  // verification already fails with unknown_kid.
+  if (options.keysFetchedAt === null) {
+    return false
+  }
+  return nowMs - options.keysFetchedAt > ttl
+}
+
 export function createCloudUpgradeAdmission(
   options: CloudUpgradeAdmissionOptions
 ): CloudUpgradeAdmission {
@@ -129,6 +151,11 @@ export function createCloudUpgradeAdmission(
     }
     if (revocations?.jtis?.includes(payload.jti)) {
       return rejectCloudUpgrade('jti_revoked', '该连接凭证已被吊销。')
+    }
+    // Revocation above keeps its more actionable reason; only then does an
+    // unreachable platform block new connections.
+    if (isKeysStale(options, now())) {
+      return rejectCloudUpgrade('jwks_stale', '签名公钥已过期，暂时无法建立新连接。')
     }
 
     // Fail closed: omitting the header must not bypass the device binding.
