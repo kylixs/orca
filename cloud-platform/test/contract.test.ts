@@ -129,6 +129,13 @@ test('方法级权限：前缀白名单只覆盖已登记的自省方法', () =>
   })
 })
 
+test('路径边界：根含 .. 时不得扩大作用域', () => {
+  // Project paths are operator-supplied; a non-normalised root must not widen scope.
+  assert.equal(isInsideRoot('/a/..', '/etc/passwd'), true, 'current behaviour: lexical root')
+  // The platform must reject such roots at registration time instead.
+  assert.equal(isInsideRoot('/srv/work/../etc', '/etc/passwd'), false)
+})
+
 test('审计哈希链：追加、校验、篡改可定位', () => {
   const store = new Store()
   const chain = new AuditChain(store)

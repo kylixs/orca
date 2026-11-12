@@ -86,7 +86,7 @@ export type AuditEvent = AuditEventInput & {
 }
 
 export type Revocation = {
-  targetType: 'user' | 'project' | 'jti'
+  targetType: 'user' | 'project' | 'jti' | 'device'
   targetId: string
   reason: string
   /** Epoch ms; credentials issued before this instant are no longer accepted. */

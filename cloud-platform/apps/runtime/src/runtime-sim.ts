@@ -15,6 +15,8 @@ export type RuntimeSimOptions = {
   apiUrl: string
   /** Public API URL used for JWKS (public endpoint, no client cert needed). */
   publicApiUrl?: string
+  /** Timeout for each control-plane request; a hanging platform must not stall polling. */
+  controlTimeoutMs?: number
   internalToken: string
   keyPath?: string
   certPath?: string
@@ -49,6 +51,7 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
   })
   let policy: GatewayPolicy = { downloadDefault: 'deny', projectOverrides: {} }
   let policyFreshAt = Date.now()
+  let lastPolicyVersion: number | null = null
   const POLICY_STALE_MS = 5 * 60_000
   const revocationRefresher = setInterval(() => {
     void refreshPolicy().catch(() => undefined)
@@ -59,7 +62,18 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
    * unhandled rejection here would kill the runtime process (breaking AC-20).
    * On failure we keep the last policy until it goes stale, then fail closed.
    */
+  let refreshInFlight: Promise<void> | null = null
+
   async function refreshPolicy(): Promise<void> {
+    // Single-flight: a hanging platform must not pile up one request per tick.
+    if (refreshInFlight) return refreshInFlight
+    refreshInFlight = refreshPolicyOnce().finally(() => {
+      refreshInFlight = null
+    })
+    return refreshInFlight
+  }
+
+  async function refreshPolicyOnce(): Promise<void> {
     try {
       await fetchPolicyFromPlatform()
       policyFreshAt = Date.now()
@@ -79,27 +93,55 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
       caPath: options.caPath
     }
     const publicUrl = options.publicApiUrl ?? options.apiUrl
+    const timeoutMs = options.controlTimeoutMs ?? 3000
+    const withTimeout = <T>(promise: Promise<T>): Promise<T> =>
+      Promise.race([
+        promise,
+        new Promise<T>((_resolve, reject) =>
+          setTimeout(
+            () => reject(Object.assign(new Error('control request timeout'), { code: 'ETIMEDOUT' })),
+            timeoutMs
+          )
+        )
+      ])
     const [jwksRes, policyRes, revokedRes] = await Promise.all([
       // JWKS is public and may be served by the public listener only.
-      fetch(`${publicUrl}/v1/jwks`),
-      mtlsFetch(control, '/v1/internal/policy'),
-      mtlsFetch(control, '/v1/internal/revocations')
+      withTimeout(fetch(`${publicUrl}/v1/jwks`)),
+      withTimeout(mtlsFetch(control, '/v1/internal/policy')),
+      withTimeout(mtlsFetch(control, '/v1/internal/revocations'))
     ])
     if (jwksRes.ok) {
       const body = (await jwksRes.json()) as { keys: { kid: string; publicKeyPem: string }[] }
       gateway.setJwks(body.keys)
     }
     if (policyRes.ok) {
-      policy = (await policyRes.json()) as GatewayPolicy
+      const parsed = (await policyRes.json()) as
+        | (Partial<GatewayPolicy> & { version?: number })
+        | null
+      // A version-skewed or partially deployed platform may return 200 with a
+      // different shape. Keep the last good policy instead of trusting it.
+      if (
+        parsed &&
+        (parsed.downloadDefault === 'deny' || parsed.downloadDefault === 'allow') &&
+        typeof parsed.projectOverrides === 'object' &&
+        parsed.projectOverrides !== null
+      ) {
+        policy = {
+          downloadDefault: parsed.downloadDefault,
+          projectOverrides: parsed.projectOverrides
+        }
+        if (typeof parsed.version === 'number') lastPolicyVersion = parsed.version
+      }
     }
-    if (policyRes.ok && revokedRes.ok) {
-      console.log(`[runtime-sim] policy synced v=${policy.version}`)
+    if (policyRes.ok && revokedRes.ok && lastPolicyVersion !== null) {
+      console.log(`[runtime-sim] policy synced v=${lastPolicyVersion}`)
     }
     if (revokedRes.ok) {
       const body = (await revokedRes.json()) as {
-        projects: { id: string; since: number }[]
-        users: { id: string; since: number }[]
-        jtis: string[]
+        projects?: { id: string; since: number }[]
+        users?: { id: string; since: number }[]
+        devices?: { id: string; since: number }[]
+        jtis?: string[]
       }
       gateway.setRevocations(body)
     }
@@ -158,17 +200,17 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
       ws.send(JSON.stringify({ id: 0, error: { code: 'BAD_REQUEST' } }))
       return
     }
-    const authorized = gateway.authorize(payload, request.method, request.params ?? {}, policy)
-    if (!authorized.ok) {
-      ws.send(
-        JSON.stringify({
-          id: request.id,
-          error: { code: authorized.code, message: authorized.message }
-        })
-      )
-      return
-    }
     try {
+      const authorized = gateway.authorize(payload, request.method, request.params ?? {}, policy)
+      if (!authorized.ok) {
+        ws.send(
+          JSON.stringify({
+            id: request.id,
+            error: { code: authorized.code, message: authorized.message }
+          })
+        )
+        return
+      }
       if (request.method === 'files.read') {
         const path = String(request.params?.path ?? '')
         const content = await gateway.executeRead(payload, path)
@@ -189,13 +231,17 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
           ws.send(JSON.stringify({ id: request.id, error: { code: 'BAD_REQUEST', message: '缺少分支名' } }))
           return
         }
-        // Reject dot-only segments: `..` must not survive sanitisation.
-        const sanitized = branch.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^\.+$/, 'branch')
-        if (!sanitized || sanitized.startsWith('.')) {
+        // Reject instead of rewriting: silently mapping ".." to "branch" could collide
+        // two different branches onto one directory and one idempotency key.
+        const cleaned = branch.replace(/[^A-Za-z0-9._-]+/g, '-')
+        if (!cleaned || cleaned.startsWith('.') || cleaned.includes('..')) {
           ws.send(JSON.stringify({ id: request.id, error: { code: 'BAD_REQUEST', message: '分支名不合法' } }))
           return
         }
-        const key = idempotencyKey || `${payload.project}:${payload.deviceId}:${sanitized}`
+        const sanitized = cleaned
+        // Client-supplied keys are namespaced so one device cannot probe or suppress
+        // another device's worktree creation.
+        const key = `${payload.project}:${payload.deviceId}:${idempotencyKey || sanitized}`
         const existing = worktrees.get(key)
         if (existing) {
           ws.send(JSON.stringify({ id: request.id, result: { worktreeId: key, path: existing.path } }))
@@ -273,7 +319,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     port: Number(process.env.PORT ?? 16768),
     apiUrl: process.env.API_URL ?? 'http://127.0.0.1:18787',
     publicApiUrl: process.env.PUBLIC_API_URL,
-    internalToken: process.env.INTERNAL_TOKEN ?? 'internal-test-token',
+    internalToken:
+      process.env.INTERNAL_TOKEN ?? process.env.ORCA_CLOUD_INTERNAL_TOKEN ?? 'internal-test-token',
     keyPath: process.env.INTERNAL_TLS_KEY,
     certPath: process.env.INTERNAL_TLS_CERT,
     caPath: process.env.INTERNAL_TLS_CA,

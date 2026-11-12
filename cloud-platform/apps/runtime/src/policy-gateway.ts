@@ -22,6 +22,9 @@ export class PolicyGateway {
   private revokedProjects = new Map<string, number>()
   private revokedUsers = new Map<string, number>()
   private revokedJtis = new Map<string, number>()
+  private revokedDevices = new Map<string, number>()
+  private jwksFetchedAt: number | null = null
+  private static readonly JWKS_TTL_MS = 5 * 60_000
 
   private readonly options: {
     hostId: string
@@ -41,6 +44,13 @@ export class PolicyGateway {
 
   setJwks(keys: { kid: string; publicKeyPem: string }[]): void {
     this.jwks = new Map(keys.map((k) => [k.kid, k.publicKeyPem]))
+    this.jwksFetchedAt = (this.options.now ?? Date.now)()
+  }
+
+  /** Refuses to verify against keys older than the TTL (platform unreachable too long). */
+  private jwksUsable(): boolean {
+    if (this.jwksFetchedAt === null) return this.jwks.size > 0
+    return (this.options.now ?? Date.now)() - this.jwksFetchedAt <= PolicyGateway.JWKS_TTL_MS
   }
 
   /** `since` is epoch ms; credentials issued before it are rejected. */
@@ -48,11 +58,13 @@ export class PolicyGateway {
     projects?: { id: string; since: number }[]
     users?: { id: string; since: number }[]
     jtis?: string[]
+    devices?: { id: string; since: number }[]
   }): void {
     this.revokedProjects = new Map((input.projects ?? []).map((p) => [p.id, p.since]))
     this.revokedUsers = new Map((input.users ?? []).map((u) => [u.id, u.since]))
     const jtiExpiry = Date.now() + 10 * 60_000
     this.revokedJtis = new Map((input.jtis ?? []).map((jti) => [jti, jtiExpiry]))
+    this.revokedDevices = new Map((input.devices ?? []).map((d) => [d.id, d.since]))
   }
 
   private pruneJtis(nowSeconds: number): void {
@@ -98,6 +110,13 @@ export class PolicyGateway {
       return { ok: false, code: 'user_revoked', message: '用户权限已收回。' }
     }
     // jti revocation wins over the local "already used" cache.
+    if (!this.jwksUsable()) {
+      return { ok: false, code: 'jwks_stale', message: '签名公钥已过期，暂时无法建立新连接。' }
+    }
+    const deviceRevokedSince = this.revokedDevices.get(payload.deviceId)
+    if (deviceRevokedSince !== undefined && payload.iat * 1000 <= deviceRevokedSince) {
+      return { ok: false, code: 'device_revoked', message: '该设备已被吊销。' }
+    }
     const revokedJtiExpiry = this.revokedJtis.get(payload.jti)
     if (revokedJtiExpiry !== undefined && revokedJtiExpiry > Date.now()) {
       return { ok: false, code: 'jti_revoked', message: '该连接凭证已被吊销。' }
@@ -126,8 +145,9 @@ export class PolicyGateway {
     params: Record<string, unknown>,
     policy: GatewayPolicy
   ): GatewayDecision {
-    const effective =
-      policy.projectOverrides[payload.project] ?? policy.downloadDefault ?? 'deny'
+    // Defensive: a malformed policy must never take down the runtime.
+    const overrides = policy?.projectOverrides ?? {}
+    const effective = overrides[payload.project] ?? policy?.downloadDefault ?? 'deny'
     const decision = decideMethod(method, payload.perms, effective)
     if (!decision.allow) {
       return { ok: false, code: decision.code, message: '该操作不被当前权限允许。' }

@@ -501,6 +501,7 @@ describe('平台端到端（真实进程 / TCP / TLS / Ed25519）', () => {
     // session is truly independent, not just checked before the first failure.
     await new Promise((r) => setTimeout(r, 3500))
     assert.equal(runtime.proc.exitCode, null, 'runtime must survive the platform outage')
+    assert.equal(runtime.proc.signalCode, null, 'runtime must not be killed by a signal')
     const afterOutage = await client.rpc('sessions.whoami')
     assert.equal(afterOutage.ok, true, 'established session must still work after the outage')
     const stillReads = await client.rpc('files.read', {
@@ -521,6 +522,53 @@ describe('平台端到端（真实进程 / TCP / TLS / Ed25519）', () => {
     })
     client.close()
   })
+})
+
+test('E8a 畸形 200 策略响应不导致 Runtime 崩溃', async () => {
+  // A version-skewed platform may answer 200 with the wrong shape. Point a runtime
+  // at such a fake and confirm the process survives (regression for review-05 C-01).
+  const { createServer } = await import('node:http')
+  const fake = createServer((req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' })
+    if (req.url?.startsWith('/v1/internal/revocations')) {
+      res.end(JSON.stringify({ projects: [], users: [], devices: [], jtis: [] }))
+      return
+    }
+    if (req.url?.startsWith('/v1/internal/policy')) {
+      res.end(JSON.stringify({}))
+      return
+    }
+    res.end('{}')
+  })
+  await new Promise<void>((r) => fake.listen(0, '127.0.0.1', () => r()))
+  const fakePort = (fake.address() as { port: number }).port
+
+  const isolated = await spawnService(
+    'apps/runtime/src/runtime-sim.ts',
+    {
+      PORT: '0',
+      API_URL: `http://127.0.0.1:${fakePort}`,
+      PUBLIC_API_URL: api.url,
+      HOST_ID: 'host_dev001',
+      HOST_NAME: 'dev-001',
+      SANDBOX_ROOT: workspace.root
+    },
+    /\[runtime-sim\] dev-001 listening on :(\d+)/,
+    'runtime-malformed-policy'
+  )
+  try {
+    await new Promise((r) => setTimeout(r, 2500))
+    assert.equal(isolated.proc.exitCode, null, 'runtime must survive a malformed policy')
+    assert.equal(isolated.proc.signalCode, null, 'runtime must not be signalled either')
+    saveEvidence(EVIDENCE, 'E8a-malformed-policy-survives.json', {
+      alive: true,
+      exitCode: isolated.proc.exitCode,
+      logs: isolated.logs.join('').slice(-400)
+    })
+  } finally {
+    await isolated.stop()
+    await new Promise<void>((r) => fake.close(() => r()))
+  }
 })
 
 test('E9 证据汇总写入磁盘', async () => {

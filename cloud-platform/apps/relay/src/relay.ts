@@ -148,7 +148,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const relay = await startRelay({
     port: Number(process.env.PORT ?? 18443),
     apiUrl: process.env.API_URL ?? 'http://127.0.0.1:18787',
-    internalToken: process.env.INTERNAL_TOKEN ?? 'internal-test-token',
+    internalToken:
+      process.env.INTERNAL_TOKEN ?? process.env.ORCA_CLOUD_INTERNAL_TOKEN ?? 'internal-test-token',
     keyPath: process.env.INTERNAL_TLS_KEY,
     certPath: process.env.INTERNAL_TLS_CERT,
     caPath: process.env.INTERNAL_TLS_CA

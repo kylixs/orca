@@ -461,6 +461,8 @@ export function createApp(config: ApiConfig): ApiHandle {
           bumpEpoch(session.id)
         }
       }
+      // Established WSS sessions bypass the platform, so revocation must reach hosts too.
+      store.revocations.push({ targetType: 'device', targetId: device.id, reason: 'device_revoked', at: now() })
       audit.append({
         eventType: 'device_revoke',
         actor: authed.user.username,
@@ -793,6 +795,9 @@ export function createApp(config: ApiConfig): ApiHandle {
             projects: revoked
               .filter((r) => r.targetType === 'project')
               .map((r) => ({ id: r.targetId, since: r.at })),
+            devices: revoked
+              .filter((r) => r.targetType === 'device')
+              .map((r) => ({ id: r.targetId, since: r.at })),
             jtis: store.revocations.filter((r) => r.targetType === 'jti').map((r) => r.targetId)
           },
           maintenance: target.status === 'maintenance' ? { reason: target.maintenanceReason } : null,
@@ -914,6 +919,9 @@ export function createApp(config: ApiConfig): ApiHandle {
           .map((r) => ({ id: r.targetId, since: r.at })),
         users: store.revocations
           .filter((r) => r.targetType === 'user')
+          .map((r) => ({ id: r.targetId, since: r.at })),
+        devices: store.revocations
+          .filter((r) => r.targetType === 'device')
           .map((r) => ({ id: r.targetId, since: r.at })),
         jtis: store.revocations.filter((r) => r.targetType === 'jti').map((r) => r.targetId)
       })

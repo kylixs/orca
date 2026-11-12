@@ -1,6 +1,6 @@
 # 开发进度
 
-> 更新时间：2026-11-13 04:10
+> 更新时间：2026-11-13 04:40
 > 规则：每轮只推进一个模块；失败必须如实记录。
 
 ## 模块状态
@@ -21,11 +21,11 @@
 ## 最近一次测试结果
 
 ```
-node --test test/contract.test.ts            10 pass / 0 fail
-node --test test/e2e/platform.e2e.test.ts   15 pass / 0 fail
+node --test test/contract.test.ts            11 pass / 0 fail
+node --test test/e2e/platform.e2e.test.ts   16 pass / 0 fail
 node --test test/e2e/admin-gating.e2e.test.ts 13 pass / 0 fail
 node --test test/e2e/mtls-control-channel.e2e.test.ts 8 pass / 0 fail
-合计 46 pass / 0 fail
+合计 48 pass / 0 fail
 ```
 
 E2E 覆盖：
@@ -36,6 +36,7 @@ E2E 覆盖：
 - E5 导出类方法拒绝
 - E6 路径穿越 / 跨工作区写越界
 - E7 撤销后旧凭证失效、新登录不可见
+- E8a 畸形 200 策略响应：Runtime 存活（exitCode 与 signalCode 均为 null）
 - E8 平台停机 3.5 秒（跨过 3 次轮询）后 Runtime 存活、会话仍可读写
 - E7a 符号链接写逃逸被拒（realpath + 分隔符感知）
 - E7b 凭证移植到另一设备被拒（原设备同凭证仍可用）
@@ -57,6 +58,15 @@ M9 内部通道：
 - 内部监听只暴露 `/v1/internal/*`，其他路径 404
 - mTLS 通过后仍需内部令牌（双重校验）
 - JWKS 走公开监听，policy/revocations 走内部 mTLS；Runtime 日志 `policy synced v=1` 证明实际使用
+
+## 第 5 轮评审修复
+
+- MAJOR C-01：畸形 200 策略响应导致 Runtime 未处理拒绝退出 → 加响应形状校验（保留上一份策略）+ `authorize` 移入 try，新增 E8a 回归用例（配伪造控制面，实测进程存活）
+- 控制面请求加 3 秒超时 + 单飞，平台黑洞时不再堆积悬挂连接
+- 设备吊销写入撤销集合并经心跳/内部接口下发，Runtime 消费 `device_revoked`
+- JWKS 加 5 分钟 TTL，超期拒绝新连接（`jwks_stale`）
+- `createManaged` 幂等键按 project+device 命名空间；分支名含 `..` 直接拒绝而非改写
+- 内部令牌同时接受 `INTERNAL_TOKEN` 与 `ORCA_CLOUD_INTERNAL_TOKEN`
 
 ## 阻塞
 
