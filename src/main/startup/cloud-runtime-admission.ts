@@ -11,6 +11,7 @@ import {
   type CloudHostCredential
 } from '../cloud-platform/cloud-host-enrollment'
 import { installCloudPlatformIpc } from '../ipc/cloud-platform'
+import { createCloudAccessGuard } from '../cloud-platform/cloud-access-guard'
 import type { DeviceRegistry } from '../runtime/device-registry'
 import type { UpgradeAdmission, WebSocketConnectionGate } from '../runtime/rpc/ws-transport'
 import type {
@@ -20,6 +21,8 @@ import type {
 
 export type CloudRuntimeTarget = {
   closeCloudDeviceSessions: (tokens: readonly string[]) => number
+  /** Installs the policy/read-budget guard; optional so tests can drive a bare runtime. */
+  setCloudAccessGuard?: (guard: ReturnType<typeof createCloudAccessGuard> | null) => void
   getDeviceRegistry: () => DeviceRegistry | null
   getWebSocketEndpoint: () => string | null
   getE2EEPublicKey: () => string | null
@@ -260,8 +263,23 @@ function startPolling(env: NodeJS.ProcessEnv): CloudRuntimeAdmission {
  * Post-start wiring: revocation → live sockets, and the renderer IPC surface.
  * One call so the runtime launch path stays a single line.
  */
+export function installCloudAccessGuard(
+  runtime: Pick<CloudRuntimeTarget, 'setCloudAccessGuard'>,
+  client: Pick<CloudAgentClient, 'snapshot'>
+): void {
+  // Why resolve per call: a policy change must reach existing sessions, and the
+  // snapshot is refreshed on the heartbeat timer.
+  runtime.setCloudAccessGuard?.(
+    createCloudAccessGuard(() => ({ policies: client.snapshot().policies }))
+  )
+}
+
 export function attachCloudRuntime(runtime: CloudRuntimeTarget): void {
-  cloudRuntimeAdmission()?.bindRuntime(runtime)
+  const admission = cloudRuntimeAdmission()
+  admission?.bindRuntime(runtime)
+  if (admission?.client) {
+    installCloudAccessGuard(runtime, admission.client)
+  }
   installCloudPlatformIpc()
 }
 

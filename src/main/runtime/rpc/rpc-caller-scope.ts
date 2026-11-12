@@ -23,8 +23,11 @@ export type RpcCallerScope =
   | { kind: 'owner' }
   | { kind: 'mobile' }
   | { kind: 'runtime-paired'; grants: readonly RuntimeDeviceGrant[] }
-  /** A cloud session: the platform signed this project permission set into its ticket. */
-  | { kind: 'cloud'; permissions: readonly CloudPermission[] }
+  /**
+   * A cloud session: the platform signed this project permission set into its
+   * ticket, and its policy pack decides whether export is open at all.
+   */
+  | { kind: 'cloud'; permissions: readonly CloudPermission[]; downloadAllowed: boolean }
   /** The `orca` CLI of a remote SSH host, relayed through this host's bridge. `remoteCliControl`
    *  is the per-target opt-in that lets that host's CLI act outside its own terminals. */
   | { kind: 'ssh-bridge'; targetId: string; remoteCliControl: boolean }
@@ -33,7 +36,7 @@ export const OWNER_RPC_CALLER_SCOPE: RpcCallerScope = { kind: 'owner' }
 
 /** The ticket's permission set is authoritative; anything unlisted in the map is refused. */
 function cloudMethodDenial(
-  permissions: readonly CloudPermission[],
+  scope: { permissions: readonly CloudPermission[]; downloadAllowed: boolean },
   methodName: string
 ): string | null {
   const access = cloudMethodAccess(methodName)
@@ -43,9 +46,15 @@ function cloudMethodDenial(
   if (access === null) {
     return `Method '${methodName}' is not available to cloud sessions`
   }
-  return permissions.includes(access)
-    ? null
-    : `Method '${methodName}' needs the '${access}' project permission, which this cloud session was not granted.`
+  if (!scope.permissions.includes(access)) {
+    return `Method '${methodName}' needs the '${access}' project permission, which this cloud session was not granted.`
+  }
+  // Policy outranks the ticket: an admin revoking download must take effect on
+  // sessions that were admitted while export was still allowed (design §9.3).
+  if (access === 'download' && !scope.downloadAllowed) {
+    return `Method '${methodName}' is refused: downloads are disabled for this project by platform policy.`
+  }
+  return null
 }
 
 // Why: a paired desktop, web client or `--host runtime:` CLI is this runtime's full remote UI, so its
@@ -78,7 +87,7 @@ export function denyRpcMethodForCaller(
     return null
   }
   if (scope.kind === 'cloud') {
-    return cloudMethodDenial(scope.permissions, methodName)
+    return cloudMethodDenial(scope, methodName)
   }
   if (scope.kind === 'runtime-paired') {
     return !RUNTIME_PAIRED_STANDARD.has(permission) &&

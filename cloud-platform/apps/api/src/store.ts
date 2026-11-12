@@ -57,6 +57,13 @@ export type Project = {
   path: string
   defaultBranch: string
   downloadPolicy: 'deny' | 'allow'
+  /**
+   * Set once an admin writes this project's policy. Only explicit values travel
+   * as overrides, so the global default still governs untouched projects.
+   */
+  downloadPolicyExplicit?: boolean
+  /** Project override of the global read budget; absent means inherit. */
+  readRatePerHour?: { calls: number; bytes: number }
   status: 'ready' | 'archived' | 'failed'
   createdAt: number
 }
@@ -102,7 +109,10 @@ export class Store {
   usersByName = new Map<string, User>()
   devices = new Map<string, Device>()
   sessions = new Map<string, Session>()
-  accessTokens = new Map<string, { sessionId: string; userId: string; epoch: number; expiresAt: number }>()
+  accessTokens = new Map<
+    string,
+    { sessionId: string; userId: string; epoch: number; expiresAt: number }
+  >()
   refreshTokens = new Map<string, string>()
   hosts = new Map<string, Host>()
   hostsByName = new Map<string, Host>()
@@ -112,7 +122,12 @@ export class Store {
   revocations: Revocation[] = []
   relayRoutes = new Map<string, RelayRoute>()
   hostTokens: HostToken[] = []
-  policies = { downloadDefault: 'deny' as 'deny' | 'allow', version: 1 }
+  policies = {
+    downloadDefault: 'deny' as 'deny' | 'allow',
+    version: 1,
+    // Design §9.3: reads are bounded per project per rolling hour (calls and bytes).
+    readRatePerHour: { calls: 600, bytes: 64 * 1024 * 1024 }
+  }
   loginAttempts = new Map<string, { count: number; lockedUntil: number }>()
   audit: AuditEvent[] = []
   auditSeq = 0

@@ -1,6 +1,6 @@
 import { sendHeartbeat } from './cloud-host-enrollment'
 import { emptyRevocations, parseRevocations } from './cloud-agent-revocations'
-import { readArray, readString } from '../../shared/json-fields'
+import { parseKeys, parsePolicyResponse } from './cloud-agent-response-parsing'
 import {
   createCloudUpgradeAdmission,
   readCloudCredentialFromHeaders,
@@ -10,6 +10,7 @@ import {
   type CloudUpgradeHeaders
 } from './cloud-upgrade-admission'
 import { createCloudConnectionSessions } from './cloud-connection-sessions'
+import { parseCloudPolicies, type CloudPolicies } from './cloud-policies'
 
 /**
  * Host-side client for the cloud platform's control plane.
@@ -61,6 +62,9 @@ export type CloudAgentConfig = {
 export type CloudAgentSnapshot = {
   kids: string[]
   revocations: Required<CloudRevocations>
+  /** Last policy pack the platform delivered; null until one parses. */
+  policies: CloudPolicies | null
+  policyVersion: number | null
   lastRefreshAt: number | null
   lastError: string | null
   /** Set while the platform reports the host in maintenance. */
@@ -95,14 +99,6 @@ export type CloudAgentClient = {
 const DEFAULT_REFRESH_MS = 10_000
 const DEFAULT_TIMEOUT_MS = 3_000
 
-function parseKeys(value: unknown): { kid: string; publicKeyPem: string }[] {
-  return (readArray(value, 'keys') ?? []).flatMap((item) => {
-    const kid = readString(item, 'kid')
-    const publicKeyPem = readString(item, 'publicKeyPem')
-    return kid !== null && publicKeyPem !== null ? [{ kid, publicKeyPem }] : []
-  })
-}
-
 export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClient {
   const fetchImpl = config.fetchImpl ?? fetch
   const refreshMs = config.refreshMs ?? DEFAULT_REFRESH_MS
@@ -116,6 +112,8 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
   let lastRefreshAt: number | null = null
   let lastError: string | null = null
   let lastMaintenance: { reason: string } | null = null
+  let policies: CloudPolicies | null = null
+  let policyVersion: number | null = null
   let timer: ReturnType<typeof setInterval> | null = null
   let inFlight: Promise<void> | null = null
   const listeners = new Set<(snapshot: CloudAgentSnapshot) => void>()
@@ -145,6 +143,8 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
   const snapshot = (): CloudAgentSnapshot => ({
     kids: [...keys.keys()],
     revocations,
+    policies,
+    policyVersion,
     lastRefreshAt,
     lastError,
     maintenance: lastMaintenance
@@ -166,11 +166,18 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
     // Independent outcomes: a broken JWKS endpoint must not stop revocation from
     // being applied, or an unreachable key endpoint would keep a revoked device
     // online (review-07 F1).
-    const [jwksRes, revokedRes] = await Promise.allSettled([
+    const [jwksRes, revokedRes, policyRes] = await Promise.allSettled([
       fetchImpl(`${config.apiUrl}/v1/jwks`, { signal: AbortSignal.timeout(timeoutMs) }),
       config.heartbeat
         ? Promise.resolve(null)
         : fetchImpl(`${internalUrl}/v1/internal/revocations`, {
+            signal: AbortSignal.timeout(timeoutMs),
+            headers
+          }),
+      // Poll-mode hosts have no heartbeat, so this is their only policy channel.
+      config.heartbeat
+        ? Promise.resolve(null)
+        : fetchImpl(`${internalUrl}/v1/internal/policy`, {
             signal: AbortSignal.timeout(timeoutMs),
             headers
           })
@@ -212,6 +219,12 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
         if (parsed) {
           revocations = parsed
         }
+        // Keep the last good pack: a malformed one must not silently reopen exports.
+        const parsedPolicies = parseCloudPolicies(beat.policies)
+        if (parsedPolicies) {
+          policies = parsedPolicies
+        }
+        policyVersion = beat.policyVersion
         lastMaintenance = beat.maintenance
       } else {
         lastError = 'heartbeat failed'
@@ -220,6 +233,13 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
       const parsed = parseRevocations(await revokedRes.json())
       if (parsed) {
         revocations = parsed
+      }
+    }
+    if (!config.heartbeat && policyRes?.ok) {
+      const parsed = parsePolicyResponse(await policyRes.json())
+      if (parsed) {
+        policies = parsed.policies
+        policyVersion = parsed.version
       }
     }
     lastRefreshAt = Date.now()

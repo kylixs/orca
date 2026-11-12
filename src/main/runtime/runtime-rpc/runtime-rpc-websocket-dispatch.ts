@@ -11,6 +11,7 @@ import type { DeviceScope } from '../device-registry'
 import { RuntimeRpcRequestAdmission } from './runtime-rpc-request-admission'
 import { classifyRuntimeLongPoll } from './runtime-rpc-long-poll'
 import type { RpcCallerScope } from '../rpc/rpc-caller-scope'
+import { cloudMethodAccess } from '../../cloud-platform/cloud-rpc-permission'
 import { limitRuntimeRpcReplySize } from './runtime-rpc-reply-size-limit'
 
 // Why: status.get has no per-connection context in the dispatcher, so stamp the scope here at the transport boundary.
@@ -77,12 +78,40 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
     // Why: the dispatcher enforces this scope's permissions; it never trusts a request field.
     // A cloud device carries the platform's signed permission set; it is never
     // granted the paired-runtime UI powers (settings, accounts, host admin).
+    const cloudSession = device.cloudSession
+    const cloudGuard = this.cloudAccessGuard
     const callerScope: RpcCallerScope =
       device.scope === 'mobile'
         ? { kind: 'mobile' }
-        : device.cloudSession
-          ? { kind: 'cloud', permissions: device.cloudSession.permissions }
+        : cloudSession
+          ? {
+              kind: 'cloud',
+              permissions: cloudSession.permissions,
+              // Unknown policy means export stays closed (design §9.3).
+              downloadAllowed: cloudGuard?.downloadAllowed(cloudSession.projectId) ?? false
+            }
           : { kind: 'runtime-paired', grants: device.grants ?? [] }
+
+    // Why: reads are metered, not blocked (design §9.1) — the client may rebuild a
+    // file from the bytes, so the control is accounting plus a spent budget.
+    const meteredRead =
+      cloudSession !== undefined &&
+      cloudGuard !== null &&
+      cloudSession.permissions.includes('file:read') &&
+      cloudMethodAccess(request.method) === 'file:read'
+    if (meteredRead && !cloudGuard.consumeRead(cloudSession.projectId)) {
+      const usage = cloudGuard.usage(cloudSession.projectId)
+      reply(
+        JSON.stringify(
+          this.buildError(
+            request.id,
+            'read_budget_exceeded',
+            `Hourly read budget spent for this project (${usage.calls}/${usage.rate.calls} reads, ${usage.bytes}/${usage.rate.bytes} bytes).`
+          )
+        )
+      )
+      return
+    }
 
     // Why: bind deviceToken to this socket so ws.on('close') knows which mobile client disconnected.
     if (wsTransport && ws) {
@@ -102,10 +131,14 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
     const boundedReply = limitRuntimeRpcReplySize(request.id, reply, (id, code, message) =>
       this.buildError(id, code, message)
     )
-    const replyForRequest =
-      request.method === 'status.get'
-        ? (response: string): void => boundedReply(injectDeviceScope(response, device.scope))
-        : boundedReply
+    const replyForRequest = (response: string): void => {
+      if (meteredRead) {
+        cloudGuard.accountReply(cloudSession.projectId, Buffer.byteLength(response))
+      }
+      boundedReply(
+        request.method === 'status.get' ? injectDeviceScope(response, device.scope) : response
+      )
+    }
 
     const connectionId = ws ? this.mobileSocketWiring?.getConnectionId(ws) : undefined
     const pairingProvider = this.mobileRelayPairingProvider

@@ -68,7 +68,7 @@ describe('云端调用方作用域', () => {
       | 'browser'
       | 'download'
     )[]
-  ) => ({ kind: 'cloud' as const, permissions })
+  ) => ({ kind: 'cloud' as const, permissions, downloadAllowed: true })
 
   it('票据权限集是上限：没有的权限一律拒绝，并指明缺哪一个', () => {
     const scope = cloud(['open', 'file:read'])

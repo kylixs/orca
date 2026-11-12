@@ -13,6 +13,7 @@ import type { MobileSocketWiring } from '../rpc/mobile-socket-wiring'
 import { RelayRevokeOutbox } from '../relay/relay-revoke-outbox'
 import { PushUnregisterOutbox } from '../push/push-unregister-outbox'
 import { RuntimeBinaryMessageRouter } from '../runtime-binary-message-router'
+import type { CloudAccessGuard } from '../../cloud-platform/cloud-access-guard'
 import type { RuntimeMetadataOwnershipWatch } from '../runtime-metadata-ownership-watch'
 import { RUNTIME_METADATA_OWNERSHIP_POLL_MS } from '../runtime-metadata-ownership-watch'
 import {
@@ -56,6 +57,9 @@ export class RuntimeRpcState {
   protected readonly metadataOwnershipPollMs: number
   protected readonly upgradeAdmission: UpgradeAdmission | undefined
   protected readonly connectionGate: WebSocketConnectionGate | undefined
+  // Why mutable: the cloud client is created after enrolment, which is after this
+  // server exists; the guard resolves policy at call time, not at construction.
+  protected cloudAccessGuard: CloudAccessGuard | null = null
   protected readonly askLongPollCap: number
   protected readonly browserHostLongPollCap: number
   protected readonly browserHostLongPollCapPerDevice: number

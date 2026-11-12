@@ -12,6 +12,7 @@ import { encodePairingOffer, PAIRING_OFFER_VERSION } from '../../../shared/pairi
 import type { RuntimePairingReach } from '../../../shared/runtime-pairing-reach'
 import { resolveAdvertisedPairingEndpoint } from '../pairing-endpoint'
 import { RuntimeRpcNetworkExposure } from './runtime-rpc-network-exposure'
+import type { CloudAccessGuard } from '../../cloud-platform/cloud-access-guard'
 import {
   createWebClientUrl,
   DEVICE_REGISTRY_UNAVAILABLE_GUIDANCE,
@@ -123,6 +124,11 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
    * a ticket the platform just revoked. The peer gets 4403 so it can tell a
    * revocation from a network drop (design §6.4, AC-25).
    */
+  /** Policy enforcement for cloud sessions; installed once the cloud client exists. */
+  setCloudAccessGuard(guard: CloudAccessGuard | null): void {
+    this.cloudAccessGuard = guard
+  }
+
   closeCloudDeviceSessions(deviceTokens: readonly string[]): number {
     let closed = 0
     for (const token of deviceTokens) {

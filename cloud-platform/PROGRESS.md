@@ -42,6 +42,7 @@
 | M32 审计 fail-closed | ✅ 完成 | `evidence/m32-audit-fail-closed/` | 先写审计再改状态；写失败/断链时 6 类敏感写返回 503 且状态未变；读与登录保持可用；`GET /v1/audit/status`；3 条真实进程用例（chmod 只读、篡改后重启、全覆盖） |
 | M33 云端会话并发上限 | ✅ 完成 | `evidence/m33-session-limits/` | 每用户每项目 3 路、每主机 32 路，超限 `close(4431)`；按活连接计、关闭即归还；2 条真实端到端（去掉配额检查后全红） |
 | M34 云端 RPC 方法级权限 | ✅ 完成 | `evidence/m34-cloud-rpc-scope/` | 票据 `perms` 真正生效：终端/agent/文件读写/浏览器/下载分开判定，未登记方法拒绝；**修复云会话可访问 settings/accounts/pairing 的越权**；4 条真实端到端 + 11 条单测（回退后 4 条全红） |
+| M35 下载策略与读取限速 | ✅ 完成 | `evidence/m35-download-policy/` | 主机消费平台策略包：导出 RPC 默认拒绝、项目覆盖优先；文件读取按项目滚动小时记次数与字节，超限 `read_budget_exceeded`；3 条真实端到端 + 8 条单测（关掉检查后 2 条变红） |
 
 ## 最近一次测试结果
 
@@ -513,6 +514,33 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 1. `files.open`、`files.openDiff` 等面板会用到的方法目前**未登记 → 默认拒绝**。这是设计要求的 deny-by-default 直接后果，接入文件面板时必须逐条登记（届时一并补用例），不能靠"先加上"绕过。
 2. 主机现有 `files.*` 方法仍只声明粗粒度 `workspace` 权限；本轮在云端作用域上先做项目级细分，仓库全局的方法权限模型未改动（避免影响非云配对设备）。
 3. 本轮顺带发现：`settings.get` 的声明权限是 `workspace`，所以此前云会话确实能读主机设置；现在被云端映射拒绝。
+
+## M35 下载策略与读取限速（本轮）
+
+**问题**（设计 §9 / AC-10、AC-17，原 T304）：平台每次心跳都下发策略包（`policies.downloadDefault`、`projectOverrides`），**主机侧解析心跳时直接把它扔了**；`/v1/internal/policy` 接口存在，但轮询模式的客户端从不调用。结果 §9 的"专用导出 RPC 由主机拒绝"只有 ACL 一层：被授予 `download` 的用户在策略禁止的项目上照样能调 `browser.download`；`files.read` 也完全没有记账限速。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-platform/cloud-policies.ts`（新） | 解析策略包：缺 `downloadDefault` 即整包不可用（**不能把"没读懂"当成 allow**）；非法限速回落默认有界值 |
+| `cloud-platform/cloud-access-guard.ts`（新） | 项目级滚动小时预算（次数 + 字节）；无策略包时下载关闭、读取仍有界；字节在回复后记账，因此拦住的是**下一次**读取 |
+| `cloud-agent-client.ts` | 心跳与 `/v1/internal/policy` 两条通道都解析策略并保留上一份有效包；快照暴露 `policies`/`policyVersion` |
+| `rpc-caller-scope.ts` | 云端作用域新增 `downloadAllowed`：**策略优先于票据**——已准入的会话也会立刻受管理员改动约束 |
+| `runtime-rpc-websocket-dispatch.ts` | 读方法先扣配额，超限回 `read_budget_exceeded`（含用量），并把回复字节记入预算 |
+| `runtime-rpc-{state,pairing}.ts` / `startup/cloud-runtime-admission.ts` | `setCloudAccessGuard` + `installCloudAccessGuard`（生产与测试同一条接线） |
+| 平台 `store.ts` / `server.ts` / `policy-rate.ts`（新） | 策略新增 `readRatePerHour` 与项目覆盖；全局 `PUT /v1/policies/download`、项目 `PUT /v1/projects/{id}/policy` 均可设置，非法值 400 `POLICY_INVALID` |
+
+**顺带修的两个真实缺陷**：
+1. **全局开关此前是死的**：平台把每个项目的 `downloadPolicy` 都当作覆盖下发，而项目默认 `deny`，所以"全局 allow"对任何项目都不生效。改为只有管理员显式写过策略的项目才作为覆盖下发（`downloadPolicyExplicit`），未动过的项目继承全局默认。
+2. **项目策略写入绕过了 M32 的 fail-closed**：项目级 `/policy` 用的是 `audit.append` 而非 write-ahead，审计不可写时仍会改策略。已改为 `auditAllowsMutations` + `recordAudit`。
+
+**验证（`evidence/m35-download-policy/`）**：3 条真实端到端（真实平台进程 + 真实 Ed25519 票据 + 真实 Runtime + 真 NaCl 加密 RPC）：
+- M35-1 票据有 `download` 权限但策略默认 deny → `browser.download` 被 `forbidden` 且文案指出是策略；管理员放开全局 → 同一会话立即可通过网关（失败点变成 handler）；再写项目级 deny → 又立刻被策略拒绝；`policy_update` 事件已入审计且链仍通过 verify。
+- M35-2 项目限速 3 次/小时：前 3 次 `files.read` 通过网关（失败原因是 handler），第 4 次 `read_budget_exceeded`（`3/3`）；放宽到 50 次后**无需重连**即可继续读。
+- M35-3 `calls: 0` 被平台 400 拒绝；`readRatePerHour: null` 清除覆盖并回落到全局预算。
+
+另有 8 条单测（策略解析、deny-by-default、覆盖优先级、滚动窗口、字节记账、项目隔离）。**分别关掉策略判定与配额检查后 M35-1、M35-2 立即变红**。cloud-platform 主机侧 16 文件 78 条、模拟器 97 条全过；`tsc` node 0 错；门禁 7 项 0 新发现。
+
+**如实记录 / 剩余**：设计 §9.1 的三层里，本轮做实了"主机拒绝专用导出 RPC + 读取记账限速"；**受管客户端隐藏下载入口（UI）与主机 `will-download` 拦截尚未接入**——前者属于后续面板接入，后者需要 host-hosted 浏览器面板落地后才有效；`files.download`/`files.downloadFolder` 在当前 Mainline RPC 中并不存在，映射表先按设计登记，将来新增即自动受约束。
 
 ## 下一步
 

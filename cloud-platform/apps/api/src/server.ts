@@ -19,6 +19,7 @@ import { openAuditLogFile } from './audit-log-file.ts'
 import { startInternalChannel } from './internal-channel.ts'
 import { ldapProfile, MockLdapAdapter, type LdapAdapter } from './ldap.ts'
 import { Store, type Host, type Project, type User } from './store.ts'
+import { parseReadRate } from './policy-rate.ts'
 
 const ACCESS_TTL_MS = 30 * 60_000
 const REFRESH_TTL_MS = 12 * 60 * 60_000
@@ -145,7 +146,11 @@ export function createApp(config: ApiConfig): ApiHandle {
       return true
     } catch {
       const health = audit.getHealth()
-      const code = health.ok ? 'AUDIT_UNAVAILABLE' : health.reason === 'chain_broken' ? 'AUDIT_CHAIN_BROKEN' : 'AUDIT_UNAVAILABLE'
+      const code = health.ok
+        ? 'AUDIT_UNAVAILABLE'
+        : health.reason === 'chain_broken'
+          ? 'AUDIT_CHAIN_BROKEN'
+          : 'AUDIT_UNAVAILABLE'
       error(res, 503, code, '审计日志不可写，敏感操作已停止。', traceId)
       return false
     }
@@ -268,7 +273,10 @@ export function createApp(config: ApiConfig): ApiHandle {
     return { user, sessionId: session.id }
   }
 
-  function issueSession(user: User, deviceId: string): { accessToken: string; refreshToken: string } {
+  function issueSession(
+    user: User,
+    deviceId: string
+  ): { accessToken: string; refreshToken: string } {
     const accessToken = randomBytes(32).toString('base64url')
     const refreshToken = randomBytes(32).toString('base64url')
     const session = {
@@ -657,7 +665,10 @@ export function createApp(config: ApiConfig): ApiHandle {
       const found = store.projects.get(projectId)
       // 404 for both unknown and unauthorised: never leak existence.
       const adminAccess = isAdmin(authed.user) || authed.user.roles.includes('platform:auditor')
-      if (!found || (!adminAccess && !store.effectivePermissions(found.id, authed.user).includes('open'))) {
+      if (
+        !found ||
+        (!adminAccess && !store.effectivePermissions(found.id, authed.user).includes('open'))
+      ) {
         audit.append({
           eventType: 'project_access',
           actor: authed.user.username,
@@ -669,7 +680,8 @@ export function createApp(config: ApiConfig): ApiHandle {
         return error(res, 404, 'PROJECT_NOT_FOUND', '项目不存在或无权访问。', traceId)
       }
 
-      if (req.method === 'GET' && action === '') return json(res, 200, projectView(found, authed.user))
+      if (req.method === 'GET' && action === '')
+        return json(res, 200, projectView(found, authed.user))
 
       if (req.method === 'POST' && action === '/connect') {
         return handleConnect(req, res, authed.user, found, traceId)
@@ -688,7 +700,9 @@ export function createApp(config: ApiConfig): ApiHandle {
         const body = await readJson(req)
         const subjectType = body.subjectType === 'group' ? 'group' : 'user'
         const subjectId = String(body.subjectId ?? '')
-        const permissions = Array.isArray(body.permissions) ? (body.permissions as Permission[]) : []
+        const permissions = Array.isArray(body.permissions)
+          ? (body.permissions as Permission[])
+          : []
         if (
           !recordAudit(
             res,
@@ -707,7 +721,12 @@ export function createApp(config: ApiConfig): ApiHandle {
           return
         }
         store.grants = store.grants.filter(
-          (g) => !(g.projectId === projectId && g.subjectType === subjectType && g.subjectId === subjectId)
+          (g) =>
+            !(
+              g.projectId === projectId &&
+              g.subjectType === subjectType &&
+              g.subjectId === subjectId
+            )
         )
         if (permissions.length > 0) {
           store.grants.push({ projectId, subjectType, subjectId, permissions })
@@ -741,10 +760,16 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
 
       if (req.method === 'GET' && action === '/policy') {
+        const effective =
+          found.downloadPolicyExplicit === true
+            ? found.downloadPolicy
+            : store.policies.downloadDefault
         return json(res, 200, {
           downloadPolicy: found.downloadPolicy,
-          effective: found.downloadPolicy,
+          effective,
           globalDefault: store.policies.downloadDefault,
+          readRatePerHour: found.readRatePerHour ?? store.policies.readRatePerHour,
+          globalReadRatePerHour: store.policies.readRatePerHour,
           version: store.policies.version
         })
       }
@@ -754,18 +779,48 @@ export function createApp(config: ApiConfig): ApiHandle {
           return error(res, 403, 'PERMISSION_DENIED', '需要平台管理权限。', traceId)
         }
         const body = await readJson(req)
-        found.downloadPolicy = body.downloadPolicy === 'allow' ? 'allow' : 'deny'
+        if (!auditAllowsMutations(res, traceId)) return
+        const nextPolicy = body.downloadPolicy === 'allow' ? 'allow' : 'deny'
+        const rate = parseReadRate(body.readRatePerHour)
+        if (rate.kind === 'invalid') {
+          return error(res, 400, 'POLICY_INVALID', '读取限速必须是大于 0 的 calls/bytes。', traceId)
+        }
+        // Why write-ahead: same rule as every other sensitive write (M32) — a policy
+        // change that cannot be recorded must not take effect.
+        if (
+          !recordAudit(
+            res,
+            {
+              eventType: 'policy_update',
+              actor: authed.user.username,
+              targetType: 'project',
+              targetId: projectId,
+              result: 'success',
+              traceId,
+              metadata: {
+                downloadPolicy: nextPolicy,
+                ...(rate.kind === 'set' ? { readRatePerHour: rate.rate } : {}),
+                ...(rate.kind === 'clear' ? { readRatePerHour: null } : {})
+              }
+            },
+            traceId
+          )
+        ) {
+          return
+        }
+        found.downloadPolicy = nextPolicy
+        found.downloadPolicyExplicit = true
+        if (rate.kind === 'set') {
+          found.readRatePerHour = rate.rate
+        } else if (rate.kind === 'clear') {
+          delete found.readRatePerHour
+        }
         store.policies.version += 1
-        audit.append({
-          eventType: 'policy_update',
-          actor: authed.user.username,
-          targetType: 'project',
-          targetId: projectId,
-          result: 'success',
-          traceId,
-          metadata: { downloadPolicy: found.downloadPolicy, version: store.policies.version }
+        return json(res, 200, {
+          downloadPolicy: found.downloadPolicy,
+          readRatePerHour: found.readRatePerHour ?? store.policies.readRatePerHour,
+          version: store.policies.version
         })
-        return json(res, 200, { downloadPolicy: found.downloadPolicy, version: store.policies.version })
       }
     }
 
@@ -809,7 +864,11 @@ export function createApp(config: ApiConfig): ApiHandle {
       ) {
         return
       }
-      store.hostTokens.push({ tokenHash: hashToken(token), expiresAt: now() + 24 * 60 * 60_000, usedAt: null })
+      store.hostTokens.push({
+        tokenHash: hashToken(token),
+        expiresAt: now() + 24 * 60 * 60_000,
+        usedAt: null
+      })
       return json(res, 201, { token, expiresIn: 86400 })
     }
 
@@ -915,7 +974,15 @@ export function createApp(config: ApiConfig): ApiHandle {
           policies: {
             downloadDefault: store.policies.downloadDefault,
             projectOverrides: Object.fromEntries(
-              [...store.projects.values()].map((p) => [p.id, p.downloadPolicy])
+              [...store.projects.values()]
+                .filter((p) => p.downloadPolicyExplicit === true)
+                .map((p) => [p.id, p.downloadPolicy])
+            ),
+            readRatePerHour: store.policies.readRatePerHour,
+            rateOverrides: Object.fromEntries(
+              [...store.projects.values()]
+                .filter((p) => p.readRatePerHour !== undefined)
+                .map((p) => [p.id, p.readRatePerHour])
             )
           },
           revoked: {
@@ -930,7 +997,8 @@ export function createApp(config: ApiConfig): ApiHandle {
               .map((r) => ({ id: r.targetId, since: r.at })),
             jtis: store.revocations.filter((r) => r.targetType === 'jti').map((r) => r.targetId)
           },
-          maintenance: target.status === 'maintenance' ? { reason: target.maintenanceReason } : null,
+          maintenance:
+            target.status === 'maintenance' ? { reason: target.maintenanceReason } : null,
           serverTime: now()
         })
       }
@@ -1061,14 +1129,20 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (req.method === 'GET') {
         return json(res, 200, {
           downloadDefault: store.policies.downloadDefault,
+          readRatePerHour: store.policies.readRatePerHour,
           version: store.policies.version
         })
       }
       if (req.method === 'PUT') {
-        if (!isAdmin(authed.user)) return error(res, 403, 'PERMISSION_DENIED', '需要平台管理权限。', traceId)
+        if (!isAdmin(authed.user))
+          return error(res, 403, 'PERMISSION_DENIED', '需要平台管理权限。', traceId)
         if (!auditAllowsMutations(res, traceId)) return
         const body = await readJson(req)
         const nextDefault = body.downloadDefault === 'allow' ? 'allow' : 'deny'
+        const rate = parseReadRate(body.readRatePerHour)
+        if (rate.kind === 'invalid' || rate.kind === 'clear') {
+          return error(res, 400, 'POLICY_INVALID', '读取限速必须是大于 0 的 calls/bytes。', traceId)
+        }
         if (
           !recordAudit(
             res,
@@ -1079,7 +1153,10 @@ export function createApp(config: ApiConfig): ApiHandle {
               targetId: 'download',
               result: 'success',
               traceId,
-              metadata: { downloadDefault: nextDefault }
+              metadata: {
+                downloadDefault: nextDefault,
+                ...(rate.kind === 'set' ? { readRatePerHour: rate.rate } : {})
+              }
             },
             traceId
           )
@@ -1087,8 +1164,15 @@ export function createApp(config: ApiConfig): ApiHandle {
           return
         }
         store.policies.downloadDefault = nextDefault
+        if (rate.kind === 'set') {
+          store.policies.readRatePerHour = rate.rate
+        }
         store.policies.version += 1
-        return json(res, 200, { downloadDefault: store.policies.downloadDefault, version: store.policies.version })
+        return json(res, 200, {
+          downloadDefault: store.policies.downloadDefault,
+          readRatePerHour: store.policies.readRatePerHour,
+          version: store.policies.version
+        })
       }
     }
 
@@ -1130,7 +1214,15 @@ export function createApp(config: ApiConfig): ApiHandle {
         version: store.policies.version,
         downloadDefault: store.policies.downloadDefault,
         projectOverrides: Object.fromEntries(
-          [...store.projects.values()].map((p) => [p.id, p.downloadPolicy])
+          [...store.projects.values()]
+            .filter((p) => p.downloadPolicyExplicit === true)
+            .map((p) => [p.id, p.downloadPolicy])
+        ),
+        readRatePerHour: store.policies.readRatePerHour,
+        rateOverrides: Object.fromEntries(
+          [...store.projects.values()]
+            .filter((p) => p.readRatePerHour !== undefined)
+            .map((p) => [p.id, p.readRatePerHour])
         )
       })
     }
@@ -1358,7 +1450,9 @@ export function createApp(config: ApiConfig): ApiHandle {
         })
       }
       return new Promise<number>((resolve) => {
-        server.listen(config.port, '127.0.0.1', () => resolve((server.address() as { port: number }).port))
+        server.listen(config.port, '127.0.0.1', () =>
+          resolve((server.address() as { port: number }).port)
+        )
       })
     }
   }
