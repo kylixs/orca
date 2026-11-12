@@ -1,5 +1,11 @@
 import { isAbsolute, join } from 'node:path'
 import { cloudMethodAccess } from './cloud-rpc-permission'
+import {
+  CLOUD_FILE_PATH_PARAMS,
+  CLOUD_FILE_UNBOUNDED_METHODS,
+  CLOUD_FILE_WORKTREE_ONLY_METHODS,
+  type CloudFilePaths
+} from './cloud-file-path-params'
 import { cloudGitAccessOf, cloudGitPathsOf } from './cloud-git-scope'
 import {
   MANAGED_CREATE_METHOD,
@@ -27,9 +33,6 @@ export type CloudPathGuardRuntime = {
   resolveRepoRootPath: (repoSelector: string) => Promise<string>
 }
 
-/** Param names that carry a path; rename/copy contribute two. */
-const PATH_PARAM_SUFFIX = 'elativePath'
-
 function stringField(value: unknown, key: string): string | null {
   if (!value || typeof value !== 'object' || !(key in value)) {
     return null
@@ -38,14 +41,26 @@ function stringField(value: unknown, key: string): string | null {
   return typeof field === 'string' ? field : null
 }
 
-function relativePaths(params: unknown): string[] {
-  if (!params || typeof params !== 'object') {
-    return []
-  }
+function collectPaths(params: unknown, spec: CloudFilePaths): string[] {
   const paths: string[] = []
-  for (const [key, value] of Object.entries(params)) {
-    if (key.endsWith(PATH_PARAM_SUFFIX) && typeof value === 'string') {
+  for (const key of spec.singular) {
+    const value = stringField(params, key)
+    if (value !== null) {
       paths.push(value)
+    }
+  }
+  for (const key of spec.plural) {
+    if (!params || typeof params !== 'object' || !(key in params)) {
+      continue
+    }
+    const value: unknown = key in params ? Reflect.get(params, key) : undefined
+    if (!Array.isArray(value)) {
+      continue
+    }
+    for (const entry of value) {
+      if (typeof entry === 'string') {
+        paths.push(entry)
+      }
     }
   }
   return paths
@@ -92,6 +107,29 @@ export async function checkCloudRpcPath(args: {
   if (isCloudRepoScopedWorktreeMethod(args.method)) {
     return await checkRepoScopedRead(args)
   }
+  if (CLOUD_FILE_UNBOUNDED_METHODS.has(args.method)) {
+    return {
+      ok: false,
+      reason: 'path_unbounded',
+      message: `Method '${args.method}' addresses an absolute path outside the project and is not available to cloud sessions.`
+    }
+  }
+  // Fail closed: a file method whose path fields nobody declared could be
+  // carrying an unscoped path, and "no paths found" must not mean "allow".
+  // Keyed on the method name alone, so a newly added `files.*` RPC is refused
+  // even before anyone registers it for cloud sessions.
+  const fileSpec = CLOUD_FILE_PATH_PARAMS[args.method]
+  if (
+    fileSpec === undefined &&
+    !CLOUD_FILE_WORKTREE_ONLY_METHODS.has(args.method) &&
+    args.method.startsWith('files.')
+  ) {
+    return {
+      ok: false,
+      reason: 'path_unverifiable',
+      message: `Method '${args.method}' has no declared path scope and is not available to cloud sessions.`
+    }
+  }
   const access = cloudPathAccessOf(args.method)
   if (access === null) {
     return null
@@ -128,7 +166,10 @@ export async function checkCloudRpcPath(args: {
     }
   }
 
-  const paths = [...relativePaths(args.params), ...cloudGitPathsOf(args.params)]
+  const paths = [
+    ...(fileSpec ? collectPaths(args.params, fileSpec) : []),
+    ...cloudGitPathsOf(args.params)
+  ]
   for (const relativePath of paths) {
     // Why reject absolute paths: `join` would treat "/etc/passwd" as a relative
     // segment under the worktree, turning an escape attempt into a confusing 404.

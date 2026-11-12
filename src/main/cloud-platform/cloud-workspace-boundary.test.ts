@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { readString } from '../../shared/json-fields'
 import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 import { Store } from '../persistence/loading-store/store'
@@ -40,6 +40,12 @@ function saveEvidence(file: string, content: unknown): void {
   writeFileSync(join(EVIDENCE_DIR, file), JSON.stringify(content, null, 2))
 }
 
+function savePanelEvidence(file: string, content: unknown): void {
+  const dir = join(REPO_ROOT, 'cloud-platform', 'evidence', 'm41-file-panel')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, file), JSON.stringify(content, null, 2))
+}
+
 function initRepo(path: string): void {
   mkdirSync(path, { recursive: true })
   execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: path })
@@ -59,6 +65,8 @@ let base = ''
 let projectRoot = ''
 let workspaceRoot = ''
 let otherRepoPath = ''
+/** What the host's window was asked to open, in order. */
+const openedTabs: { kind: 'file' | 'diff'; filePath: string; relativePath: string }[] = []
 
 beforeAll(async () => {
   base = realpathSync(mkdtempSync(join(tmpdir(), 'orca-cloud-boundary-')))
@@ -99,6 +107,25 @@ beforeAll(async () => {
   })
   store.flushOrThrow()
   service = new OrcaRuntimeService(store)
+  // Why: `files.open` asks the host window to open a tab; without a notifier the
+  // runtime answers `renderer_unavailable` before the test can see the path.
+  service.setNotifier({
+    worktreesChanged: vi.fn(),
+    reposChanged: vi.fn(),
+    activateWorktree: vi.fn(),
+    createTerminal: vi.fn(),
+    splitTerminal: vi.fn(),
+    renameTerminal: vi.fn(),
+    focusTerminal: vi.fn(),
+    closeTerminal: vi.fn(),
+    sleepWorktree: vi.fn(),
+    terminalFitOverrideChanged: vi.fn(),
+    terminalDriverChanged: vi.fn(),
+    openFile: (_worktreeId, filePath, relativePath) =>
+      openedTabs.push({ kind: 'file', filePath, relativePath }),
+    openDiff: (_worktreeId, filePath, relativePath) =>
+      openedTabs.push({ kind: 'diff', filePath, relativePath })
+  })
 
   platform = await startPlatform()
   const admin = await fetch(`${platform.url}/v1/auth/login`, {
@@ -295,6 +322,90 @@ describe('云会话工作区边界（真实平台 + 真实 Runtime + 真实仓�
       }
 
       saveEvidence('m36-3-invalid-selectors.json', { absolute, unknown })
+    } finally {
+      session.ws.close()
+    }
+  }, 40000)
+})
+
+describe('文件面板接入的路径收口（M41）', () => {
+  it('M41-1 面板打开文件可用：files.open/openDiff 不再被权限表拒绝', async () => {
+    const session = await connect()
+    try {
+      const opened = await session.rpc('files.open', {
+        worktree: `path:${projectRoot}`,
+        relativePath: 'README.md'
+      })
+      expect(opened.ok, JSON.stringify(opened)).toBe(true)
+      if (opened.ok) {
+        expect(readString(opened.result, 'relativePath')).toBe('README.md')
+        expect(opened.result).toMatchObject({ opened: true })
+      }
+
+      const diff = await session.rpc('files.openDiff', {
+        worktree: `path:${projectRoot}`,
+        relativePath: 'README.md',
+        staged: false
+      })
+      expect(diff.ok, JSON.stringify(diff)).toBe(true)
+
+      // The host really stat'd the file and handed the resolved path to its window.
+      expect(openedTabs).toEqual([
+        { kind: 'file', filePath: join(projectRoot, 'README.md'), relativePath: 'README.md' },
+        { kind: 'diff', filePath: join(projectRoot, 'README.md'), relativePath: 'README.md' }
+      ])
+
+      savePanelEvidence('m41-1-panel-open.json', { opened, diff, openedTabs })
+    } finally {
+      session.ws.close()
+    }
+  }, 40000)
+
+  it('M41-2 批量存在性检查逐个路径校验：夹带项目外路径的整批被拒', async () => {
+    const session = await connect()
+    try {
+      const inside = await session.rpc('files.pathsExist', {
+        worktree: `path:${projectRoot}`,
+        relativePaths: ['README.md', 'src/app.ts']
+      })
+      expect(inside.ok, JSON.stringify(inside)).toBe(true)
+
+      const mixed = await session.rpc('files.pathsExist', {
+        worktree: `path:${projectRoot}`,
+        relativePaths: ['README.md', '../../other-team/secret.txt']
+      })
+      expect(mixed.ok).toBe(false)
+      if (!mixed.ok) {
+        expect(mixed.code).toBe('forbidden')
+        expect(mixed.message).toContain('outside the project')
+      }
+
+      savePanelEvidence('m41-2-batch-paths.json', { inside, mixed })
+    } finally {
+      session.ws.close()
+    }
+  }, 40000)
+
+  it('M41-3 以绝对路径寻址的方法整体拒绝，边界无法约束它们', async () => {
+    const session = await connect()
+    try {
+      const browse = await session.rpc('files.browseServerDir', {
+        worktree: `path:${projectRoot}`,
+        path: '/etc'
+      })
+      expect(browse.ok).toBe(false)
+      if (!browse.ok) {
+        expect(browse.code).toBe('forbidden')
+        expect(browse.message).toContain('absolute path')
+      }
+
+      const artifact = await session.rpc('files.readTerminalArtifact', {
+        worktree: `path:${projectRoot}`,
+        relativePath: 'artifact.txt'
+      })
+      expect(artifact.ok).toBe(false)
+
+      savePanelEvidence('m41-3-unbounded-paths.json', { browse, artifact })
     } finally {
       session.ws.close()
     }

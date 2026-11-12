@@ -669,8 +669,34 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 2. 首次打开的创建发生在 `cloud:openWorkspace` 内，**耗时已计入打开时延**（同步等待 worktree 创建）；设计允许后台创建 + 先显示进度，本轮选择了简单实现，压测（T507）时再评估。
 3. 客户端拿到的 `workspacePath` 目前只用于展示与后续面板寻址；`cloud-runtime-environment` 注册的侧车仍只带 projectId，尚未把 worktree 路径写进环境元数据。
 
+## M41 文件面板接入：方法登记与路径参数收口（本轮）
+
+**问题**：M36 的路径守卫用 `key.endsWith('relativePath')` 猜哪些参数是路径。这个猜测有真实缺口，而 M40 记录的前置项（`files.open`/`files.openDiff` 未登记）正好会让面板打不开文件。排查后发现两类问题：
+
+1. **漏检**：`files.pathsExist` 的 `relativePaths`（复数批量）、`files.readDocPreview` 的 `entryRelativePath`/`implicitRootRelativePath`/`authorizedRootRelativePaths` 都不是 `…relativePath` 后缀，**整类调用完全没做路径检查**；一个 `file:read` 会话可以借批量存在性检查探测项目外文件是否存在。
+2. **无界**：`files.browseServerDir`、`files.readTerminalArtifact`、`files.readTerminalArtifactPreview`、`files.writeTerminalArtifact`、`files.resolveTerminalPath` 只认绝对路径，项目根无法约束它们，却因为"没找到 relativePath"被当作无路径放行。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-file-path-params.ts`（新） | 显式方法→参数表 `CLOUD_FILE_PATH_PARAMS`（singular/plural 分开）；`CLOUD_FILE_UNBOUNDED_METHODS`（绝对路径方法，整体拒绝）；`CLOUD_FILE_WORKTREE_ONLY_METHODS`（只寻址 worktree，无文件路径） |
+| `cloud-path-guard.ts` | 以 `collectPaths()` 取代后缀猜测；无界方法返回 `path_unbounded`；**任何未在表中声明的 `files.*` 方法返回 `path_unverifiable`**——判断只看方法名，不看它是否已登记权限，所以将来新增的文件 RPC 在登记前也拿不到放行 |
+| `cloud-rpc-permission.ts` | `files.open`/`files.openDiff` 登记为 `file:read`（它们只把调用方本来就能读的文件展示出来）；补注释说明终端产物/目录浏览为何仍列出但由路径守卫拒绝 |
+| `cloud-rpc-permission.test.ts` | 断言这两个面板动作归 `file:read`；deny-by-default 的示例改用真实未登记的 `agentSessionAttachment.read` |
+
+**验证（`evidence/m41-file-panel/`）**：3 条真实端到端，复用 M36 的真实平台票据 + 真实 Runtime + 真实 git 仓库（含另一个团队的仓库与指向它的符号链接），另给主机装了记录型 `RuntimeNotifier`：
+- M41-1 `files.open`/`files.openDiff` 返回 `opened: true`，且主机的窗口确实收到解析后的绝对路径 `<projectRoot>/README.md`——证明守卫放行后真实 `stat` 与开标签动作都执行了；
+- M41-2 `files.pathsExist(['README.md','../../other-team/secret.txt'])` 整批被 `forbidden`（`outside the project`），全在项目内的批次正常返回；
+- M41-3 `files.browseServerDir` / `files.readTerminalArtifact` 被 `forbidden`，消息指明绝对路径方法不开放。
+
+另有 7 条单测（表的三类互斥、复数批量、doc preview 入口路径、改名目标落点、无界方法、未声明方法、面板动作放行）。**三组负向对照**：删掉 `relativePaths` 字段 → 单测与 M41-2 变红；取消 `files.open` 登记 → M41-1 变红且报 `not available to cloud sessions`；把 `browseServerDir` 移出无界集合 → M41-3 变红。主机侧 25 文件 131 条全过；`tsc` node 0 错；门禁 7 项 0 新发现。
+
+**如实记录 / 剩余**：
+1. `files.open` 在主机的**无渲染窗口**模式下返回 `runtime_error: renderer_unavailable`——它要求宿主窗口开标签。云主机（无桌面的容器/服务器）上因此不可用，这是宿主能力限制而非边界漏洞；远端面板应走 `files.read`/`files.readPreview` 由客户端自己渲染，`files.open` 只对 CLI/agent 与带窗口的宿主有意义。
+2. 表是人工维护的：新增文件 RPC 时必须同步登记，否则会被 `path_unverifiable` 拒绝。这是有意的 fail-closed，但需要加一条"新增 `files.*` 方法必须进表"的评审清单项。
+3. `files.searchPaths` 的 `excludePaths` 已纳入检查，但 `query`/`followSymlinks` 等语义未变——搜索仍可能沿工作区内的符号链接读到项目外内容（取决于 `files.search` 实现是否跟随），列为后续核查项。
+
 ## 下一步
 
-1. 面板接入：在工作区内用 M25 的 `environmentId` 挂载终端/文件面板（现有环境 selector 已可用，剩余是界面与 TabGroup 状态接线）。接文件面板时需按 M34 规则登记 `files.open`/`files.openDiff` 等并补用例。
+1. 面板接入：在工作区内用 M25 的 `environmentId` 挂载终端/文件面板（现有环境 selector 已可用，剩余是界面与 TabGroup 状态接线）。文件面板需用 `files.list`/`files.read`/`files.readPreview` 客户端渲染，不要依赖 `files.open`（云主机无窗口）。
 2. 遗留：M4 `isInsideRoot` 对 Windows 段大小写敏感（fail-closed，误拒而非误放；按需放宽）。
 3. 并发上限目前只统计云会话；本地配对连接不占这 32 个名额（设计表只约束云端会话），如运营需要主机总量配额再扩展。

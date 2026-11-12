@@ -33,6 +33,9 @@ describe('云端方法 → 项目权限映射', () => {
   it('文件读写分开：读方法不因写权限而放行，反之亦然', () => {
     expect(cloudMethodAccess('files.read')).toBe('file:read')
     expect(cloudMethodAccess('files.readDir')).toBe('file:read')
+    // Panel actions only reveal a file the caller could already read.
+    expect(cloudMethodAccess('files.open')).toBe('file:read')
+    expect(cloudMethodAccess('files.openDiff')).toBe('file:read')
     expect(cloudMethodAccess('files.write')).toBe('file:write')
     expect(cloudMethodAccess('files.delete')).toBe('file:write')
   })
@@ -53,7 +56,7 @@ describe('云端方法 → 项目权限映射', () => {
     expect(cloudMethodAccess('accounts.list')).toBeNull()
     expect(cloudMethodAccess('pairing.getEndpoints')).toBeNull()
     expect(cloudMethodAccess('host.wsl.listDistros')).toBeNull()
-    expect(cloudMethodAccess('files.open')).toBeNull()
+    expect(cloudMethodAccess('agentSessionAttachment.read')).toBeNull()
   })
 })
 

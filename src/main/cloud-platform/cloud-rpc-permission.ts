@@ -34,6 +34,11 @@ const READ_METHODS: ReadonlySet<string> = new Set([
   'files.pathsExist',
   'files.readPreview',
   'files.readDocPreview',
+  // Panel actions: they only ask the host to show a file it could already read.
+  'files.open',
+  'files.openDiff',
+  // Terminal artifacts and server-dir browsing address absolute paths; the path
+  // guard refuses them for cloud sessions (CLOUD_FILE_UNBOUNDED_METHODS).
   'files.readTerminalArtifact',
   'files.readTerminalArtifactPreview',
   'files.browseServerDir',
