@@ -1,6 +1,7 @@
 import type {
   CloudConnectionEvent,
   CloudOpenResult,
+  CloudProjectLinkResult,
   CloudProjectSummary,
   CloudRpcOutcome,
   CloudSessionState
@@ -12,6 +13,7 @@ export type CloudPlatformApi = {
   getState: () => Promise<CloudSessionState>
   listProjects: () => Promise<CloudProjectSummary[]>
   openProject: (projectId: string) => Promise<CloudOpenResult>
+  prepareProjectLink: (projectId: string) => Promise<CloudProjectLinkResult>
   rpc: (method: string, params?: Record<string, unknown>) => Promise<CloudRpcOutcome>
   onConnectionChanged: (listener: (event: CloudConnectionEvent) => void) => () => void
 }

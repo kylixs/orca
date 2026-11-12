@@ -33,11 +33,7 @@ export function CloudProjectRow({
       <div className="flex min-w-0 flex-col gap-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-sm font-medium text-foreground">{project.name}</span>
-          {project.hostStatus !== 'online' ? (
-            <Badge variant="outline" className="text-muted-foreground">
-              主机离线
-            </Badge>
-          ) : null}
+          {project.hostStatus !== 'online' ? <Badge variant="outline">主机离线</Badge> : null}
         </div>
         <span className="truncate text-xs text-muted-foreground">
           {project.key}

@@ -34,4 +34,17 @@ export type RemoteRuntimeSubscriptionOptions = RemoteRuntimeSocketLivenessOption
   // Why: overridable so the connect-bound regression test can pin the ordering against the
   // subscription-start timer without spending production wall-clock.
   connectTimeoutMs?: number
+  /**
+   * Cloud ticket presented at the WebSocket upgrade (`x-orca-reject` on failure).
+   * Absent means an ordinary paired host, which needs no upgrade credential and
+   * must keep connecting exactly as before.
+   */
+  cloudUpgrade?: {
+    credential: string
+    devicePubKey: string
+    /** Test-only: accept a host certificate the CA did not sign. */
+    tlsRejectUnauthorized?: boolean
+    /** SNI for relay routes. */
+    servername?: string
+  }
 }

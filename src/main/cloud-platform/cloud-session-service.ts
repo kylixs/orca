@@ -6,6 +6,11 @@ import type {
   CloudSessionState
 } from '../../shared/cloud-platform-ipc'
 import { CloudConnectClient, type CloudProject } from './cloud-connect-client'
+import { buildCloudProjectLink, type CloudProjectLink } from './cloud-pairing-offer'
+
+export type CloudProjectLinkResult =
+  | { ok: true; link: CloudProjectLink }
+  | { ok: false; code: string; message?: string }
 
 /**
  * Owns the desktop cloud session. The renderer gets a thin, credential-free view:
@@ -119,6 +124,33 @@ export class CloudSessionService {
         workspaceRoot: opened.ticket.workspace.workspaceRoot,
         capabilities: opened.ticket.host.capabilities
       }
+    } catch (error) {
+      const code = (error as { code?: string }).code ?? 'OPEN_FAILED'
+      return { ok: false, code, message: error instanceof Error ? error.message : String(error) }
+    }
+  }
+
+  /**
+   * Material for the renderer's own Orca workspace connection. The main process
+   * does not open a socket here: the ticket is single-use and belongs to whoever
+   * connects with it.
+   */
+  async prepareProjectLink(projectId: string): Promise<CloudProjectLinkResult> {
+    if (!this.client) {
+      return { ok: false, code: 'NOT_SIGNED_IN' }
+    }
+    try {
+      const prepared = await this.client.prepareProjectLink(projectId)
+      const link = buildCloudProjectLink({
+        ticket: prepared.ticket,
+        endpoint: prepared.endpoint,
+        route: prepared.route,
+        tlsRejectUnauthorized: this.options.tlsRejectUnauthorized
+      })
+      if (!link) {
+        return { ok: false, code: 'HOST_KEY_INVALID' }
+      }
+      return { ok: true, link }
     } catch (error) {
       const code = (error as { code?: string }).code ?? 'OPEN_FAILED'
       return { ok: false, code, message: error instanceof Error ? error.message : String(error) }

@@ -15,13 +15,10 @@ import {
   ignoreSettledRemoteRuntimeSocketError
 } from './remote-runtime-client-handshake'
 import { RemoteRuntimeClientError } from './remote-runtime-client-error'
-import {
-  remoteRuntimeConnectFailureMessage,
-  remoteRuntimeConnectOptions
-} from './remote-runtime-connect-bound'
+import { remoteRuntimeConnectFailureMessage } from './remote-runtime-connect-bound'
+import { openRemoteRuntimeSocket } from './remote-runtime-upgrade-socket'
 import {
   isRemoteRuntimeBinaryFrameWithinLimit,
-  REMOTE_RUNTIME_MAX_WEBSOCKET_FRAME_BYTES,
   serializeRemoteRuntimePayload,
   serializeRemoteRuntimeRpcRequest
 } from './remote-runtime-memory-limits'
@@ -219,15 +216,8 @@ export async function subscribeRemoteRuntimeTransport<TResult>(
       onAbort()
       return
     }
-    const connectOptions = remoteRuntimeConnectOptions(
-      {
-        maxPayload: REMOTE_RUNTIME_MAX_WEBSOCKET_FRAME_BYTES,
-        ...(options?.perMessageDeflate === false ? { perMessageDeflate: false } : {})
-      },
-      options?.connectTimeoutMs
-    )
     try {
-      ws = new WebSocket(pairing.endpoint, connectOptions)
+      ws = openRemoteRuntimeSocket(pairing, options)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       fail(new RemoteRuntimeClientError('invalid_argument', `Invalid remote endpoint: ${message}`))

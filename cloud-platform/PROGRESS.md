@@ -1,6 +1,6 @@
 # 开发进度
 
-> 更新时间：2026-11-13 10:25
+> 更新时间：2026-11-13 12:15
 > 规则：每轮只推进一个模块；失败必须如实记录。
 
 ## 模块状态
@@ -29,6 +29,7 @@
 | M19 桌面端云端连接客户端 | ✅ 完成 | `evidence/m19-desktop-connect/` | 登录/项目列表/选路/升级/E2EE/加密 RPC；Runtime 支持 WSS；4 条真实平台 + 真实 TLS Runtime 用例 |
 | M20 渲染进程 IPC 会话面 | ✅ 完成 | `evidence/m20-cloud-ipc/` | `cloud:*` 六个通道 + 连接事件推送；会话状态不含任何令牌；5 条真实平台 + 真实 Runtime 用例 |
 | M21 客户端界面（登录/工作台） | ✅ 完成 | `evidence/m21-cloud-ui/` | `CloudApp` + 登录面板 + 工作台列表；8 条界面用例（happy-dom），路由接入 `App.tsx` |
+| M22 项目链接（凭证 → Orca 配对） | ✅ 完成 | `evidence/m22-project-link/` | 云端票据转成现有 `PairingOffer` + `cloudUpgrade`，现有 `subscribeRemoteRuntimeRequest` 直接建链（请求与订阅两条通道）；5 条真实平台 + 真实 TLS Runtime 用例，含"不带凭证必被拒"对照 |
 
 ## 最近一次测试结果
 
@@ -53,6 +54,17 @@ npx vitest run src/main/runtime/runtime-rpc-cloud-admission.test.ts  8 pass / 0 
 npx vitest run src/main/cloud-platform                              12 pass / 0 fail
 npx tsc --noEmit -p config/tsconfig.node.json                        通过
 回归：runtime-rpc-websocket-bind-host / pairing-offer / device-revocation  33 pass
+```
+
+M22（本轮）：
+
+```
+npx vitest run src/main/cloud-platform/cloud-project-link.test.ts     5 pass / 0 fail
+npx vitest run --config config/vitest.config.ts \
+  cloud-session-service / use-cloud-session / connect-bound 回归        24 pass / 0 fail
+npx tsc --noEmit -p config/tsconfig.node.json --composite false       通过（0 错）
+npx tsc --noEmit -p config/tsconfig.web.json  --composite false       通过（0 错）
+npx oxlint <改动文件>                                                  0 错
 ```
 
 E2E 覆盖：
@@ -247,8 +259,37 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 
 实测 8 条：不可用态不显示登录表单；错误码文案与未知码回退；列表标注（离线 1 条、下载受限 2 条）；打开后显示"直连"；打开失败显示错误码且无"已打开"；4403 关闭显示"已被管理员收回"并清除线路；退出登录回到登录页。回归：`app-shell` 89 条全过。
 
+## M22 项目链接：云端票据 → Orca 配对（本轮）
+
+| 文件 | 内容 |
+|---|---|
+| `src/shared/remote-runtime-subscription-contract.ts` | 新增可选 `cloudUpgrade { credential, devicePubKey, servername?, tlsRejectUnauthorized? }`；缺省即普通配对主机，行为不变 |
+| `src/shared/remote-runtime-upgrade-socket.ts` | 从会话传输中抽出开套接字：有 `cloudUpgrade` 时在升级子协议带 `orca-cred.<ticket>`、请求头带 `x-orca-device-pubkey`，并按线路设置 SNI / 证书校验 |
+| `src/shared/remote-runtime-subscription-transport.ts` | 改用上面的开套接字函数；其余握手/心跳/清理逻辑不变（回归 62 条） |
+| `src/main/cloud-platform/cloud-pairing-offer.ts` | 票据 → `PairingOffer` + `cloudUpgrade`；主机未上报 32 字节 E2EE 公钥时返回 `null`，避免把"握手超时"当失败 |
+| `src/main/cloud-platform/cloud-connect-client.ts` / `cloud-session-service.ts` | `prepareProjectLink()`：只探测线路并取票，**不开连接、不消耗一次性票据** |
+| `src/shared/cloud-platform-ipc.ts` + preload | `cloud:prepareProjectLink` 通道，返回值不含平台令牌 |
+| `src/main/cloud-platform/cloud-route-selection.ts` | 抽出 `probeEndpoint` / `chooseRoute`（满足 300 行上限，未禁用规则） |
+
+**为什么这么做**：工作区的终端、文件、流式通道都走同一套 `subscribeRemoteRuntimeRequest`。把云端票据表达成它已有的 `PairingOffer`（+ 一个可选升级参数），就不用再造一个并行客户端，M19 的 `CloudConnectClient` 只保留"预处理/选路/取票"的职责。
+
+**端到端验证（真实平台进程 + 真实 TLS Runtime + 真实 Ed25519/NaCl）**：5 条全部通过，见 `evidence/m22-project-link/cases.txt`：
+
+1. 预处理返回 `wss://` 链接与 `workspaceRoot`，且 `connectedProjectId` 仍为 null（票据未被消耗）。
+2. 现有客户端带 `cloudUpgrade` 完成 E2EE 握手，收到真实 `status.get` 响应（`result`）。
+3. 订阅通道（终端/流式所用）同样可建立。
+4. **不带** `cloudUpgrade` 时主机拒绝升级——证明通过的第 2、3 条不是空转。
+5. 主机缺 E2EE 公钥时立即返回 null，而不是等 30 秒超时。
+
+回归：`cloud-session-service`、`use-cloud-session`、传输连接绑定 共 24 条通过；`tsc` node/web 均 0 错；oxlint 0 错（`evidence/m22-project-link/regressions.txt`、`checks.txt`）。
+
+**质量门禁（如实记录）**：`pnpm run check:code-quality:changed` 在本分支仍红——集中在 `src/main/cloud-platform/**` 与 `src/renderer/src/cloud/**` 的 74 条 `typescript/consistent-type-assertions`（M13 起累积，多为测试解析 JSON 响应）。本轮只修掉设计系统 1 条（`Badge` 上多余的 `text-muted-foreground`），并把 `cloud-platform/` 加入根门禁的排除前缀（与 `PLAN.md` §0 "独立 workspace 不进入根工程 lint" 一致，`config/scripts/check-changed-code-quality` 测试 32 条通过）。剩余 74 条留给下一模块清理，不假装门禁通过。
+
+**如实记录**：渲染进程用 node 项目配置直接跑 `use-cloud-session.test.tsx` 会因 `@/` 别名未注册而失败（`Failed to resolve import "@/components/ui/button"`），必须带 `--config config/vitest.config.ts`；这不是代码问题，已按正确配置复跑通过。
+
 ## 下一步
 
-1. 项目视图：打开项目后进入 Orca 工作区（把云端连接接到现有 TabGroup/终端），而不是停留在工作台。
-2. 平台在授权变更后立即撤销全部项目凭证，同秒内重连可能被拒（`iat*1000 <= since`）；客户端重试可绕过，但值得确认是否需要秒级宽限。
-3. 遗留：M1 设备 PoP、M6 `relativePath` 契约、`jwks_stale` 与分支名 `..` 补用例。
+1. 质量门禁清理：`src/main/cloud-platform/**` 与渲染进程 cloud 文件的 74 条 `consistent-type-assertions`（用校验型解析函数替代 `as`，测试侧统一 JSON 读取助手），把 `check:code-quality:changed` 恢复为绿。
+2. 项目视图：把云端项目注册成 Orca 远程环境/工作区入口，使工作台"打开项目"后真正切换到该环境的 TabGroup/终端（M22 已解决链路与会话层，剩余是界面状态切换）。
+3. 平台在授权变更后立即撤销全部项目凭证，同秒内重连可能被拒（`iat*1000 <= since`）；客户端重试可绕过，但值得确认是否需要秒级宽限。
+4. 遗留：M1 设备 PoP、M6 `relativePath` 契约、`jwks_stale` 与分支名 `..` 补用例。

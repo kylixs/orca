@@ -1,14 +1,8 @@
-import { connect as tcpConnect } from 'node:net'
 import WebSocket from 'ws'
 import { decrypt, deriveSharedKey, encrypt, generateKeyPair } from '../../shared/e2ee-crypto'
+import { chooseRoute, probeEndpoint, type RouteChoice } from './cloud-route-selection'
 
-/**
- * Desktop-side cloud connection.
- *
- * Login and project lookup go to the platform; the connection itself does not
- * (design §3.3 D1). Direct addresses are probed without a credential so a failed
- * probe never burns the single-use ticket (D6).
- */
+/** Desktop-side cloud connection: the platform is a registry, never the data path (D1). */
 
 export type CloudProject = {
   id: string
@@ -53,53 +47,8 @@ export type CloudConnectOptions = {
 
 const DEFAULT_PROBE_TIMEOUT_MS = 800
 const DEFAULT_MAX_DIRECT = 2
-
-/** Credential-free liveness check: a TCP connect says nothing about authorization. */
-export function probeEndpoint(url: string, timeoutMs: number): Promise<boolean> {
-  let parsed: URL
-  try {
-    parsed = new URL(url)
-  } catch {
-    return Promise.resolve(false)
-  }
-  const port = Number(parsed.port || (parsed.protocol === 'wss:' ? 443 : 80))
-  return new Promise<boolean>((resolve) => {
-    const socket = tcpConnect({ host: parsed.hostname, port })
-    const done = (ok: boolean): void => {
-      socket.destroy()
-      resolve(ok)
-    }
-    socket.setTimeout(timeoutMs, () => done(false))
-    socket.once('connect', () => done(true))
-    socket.once('error', () => done(false))
-  })
-}
-
-export type RouteChoice = { endpoint: CloudEndpoint; route: 'direct' | 'relay' }
-
-/**
- * Direct first, relay only when no direct address answers (design D4). Relay is a
- * fallback for reachability, never a default.
- */
-export async function chooseRoute(
-  endpoints: { direct: CloudEndpoint[]; relay: CloudEndpoint[] },
-  probe: (url: string) => Promise<boolean>,
-  maxDirectAddrs = DEFAULT_MAX_DIRECT
-): Promise<RouteChoice | null> {
-  for (const endpoint of [...endpoints.direct]
-    .sort((a, b) => a.priority - b.priority)
-    .slice(0, maxDirectAddrs)) {
-    if (await probe(endpoint.url)) {
-      return { endpoint, route: 'direct' }
-    }
-  }
-  for (const endpoint of [...endpoints.relay].sort((a, b) => a.priority - b.priority)) {
-    if (await probe(endpoint.url)) {
-      return { endpoint, route: 'relay' }
-    }
-  }
-  return null
-}
+export { chooseRoute, probeEndpoint } from './cloud-route-selection'
+export type { RouteChoice } from './cloud-route-selection'
 
 function readCredential(credential: string): { deviceToken: string } | null {
   try {
@@ -191,10 +140,14 @@ export class CloudConnectClient {
     return (await res.json()) as CloudConnectTicket
   }
 
-  /** Probe → one ticket → upgrade → E2EE. A failed upgrade needs a fresh ticket. */
-  async openProject(
+  /**
+   * Probe → ticket → route, WITHOUT opening a socket. The ticket is single-use, so
+   * a caller that intends to connect itself (the renderer's Orca workspace) must
+   * not have the main process consume it first.
+   */
+  async prepareProjectLink(
     projectId: string
-  ): Promise<{ route: 'direct' | 'relay'; ticket: CloudConnectTicket }> {
+  ): Promise<{ route: 'direct' | 'relay'; ticket: CloudConnectTicket; endpoint: CloudEndpoint }> {
     const ticket = await this.requestTicket(projectId)
     const probeTimeout = this.options.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS
     const choice = await chooseRoute(
@@ -205,8 +158,16 @@ export class CloudConnectClient {
     if (!choice) {
       throw Object.assign(new Error('no reachable endpoint'), { code: 'ENDPOINT_UNREACHABLE' })
     }
-    await this.upgrade(choice, ticket)
-    return { route: choice.route, ticket }
+    return { route: choice.route, ticket, endpoint: choice.endpoint }
+  }
+
+  /** Probe → one ticket → upgrade → E2EE. A failed upgrade needs a fresh ticket. */
+  async openProject(
+    projectId: string
+  ): Promise<{ route: 'direct' | 'relay'; ticket: CloudConnectTicket }> {
+    const prepared = await this.prepareProjectLink(projectId)
+    await this.upgrade({ endpoint: prepared.endpoint, route: prepared.route }, prepared.ticket)
+    return { route: prepared.route, ticket: prepared.ticket }
   }
 
   private upgrade(choice: RouteChoice, ticket: CloudConnectTicket): Promise<void> {

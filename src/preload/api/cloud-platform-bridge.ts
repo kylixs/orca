@@ -8,6 +8,8 @@ export const cloudPlatformApi: CloudPlatformApi = {
   getState: () => ipcRenderer.invoke(CLOUD_PLATFORM_IPC.state),
   listProjects: () => ipcRenderer.invoke(CLOUD_PLATFORM_IPC.listProjects),
   openProject: (projectId) => ipcRenderer.invoke(CLOUD_PLATFORM_IPC.openProject, projectId),
+  prepareProjectLink: (projectId) =>
+    ipcRenderer.invoke(CLOUD_PLATFORM_IPC.prepareProjectLink, projectId),
   rpc: (method, params) => ipcRenderer.invoke(CLOUD_PLATFORM_IPC.rpc, method, params),
   onConnectionChanged: (listener) => {
     const handler = (_event: unknown, payload: CloudConnectionEvent): void => listener(payload)

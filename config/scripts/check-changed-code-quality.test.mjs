@@ -71,6 +71,7 @@ describe('changed-code quality line matching', () => {
 
   it('leaves Cloud source to the independent Cloud quality checks', () => {
     expect(isRootCodeQualityPath('cloud/apps/relay/src/index.ts')).toBe(false)
+    expect(isRootCodeQualityPath('cloud-platform/apps/relay/src/relay.ts')).toBe(false)
     expect(isRootCodeQualityPath('src/main/index.ts')).toBe(true)
   })
 })
