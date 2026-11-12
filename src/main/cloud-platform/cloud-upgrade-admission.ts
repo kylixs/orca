@@ -53,6 +53,41 @@ export type CloudUpgradeAdmissionOptions = {
 
 export type CloudUpgradeAdmission = (headers: CloudUpgradeHeaders) => CloudUpgradeDecision
 
+function hasControlCharacter(value: string): boolean {
+  for (const character of value) {
+    const code = character.codePointAt(0) ?? 0
+    if (code < 0x20 || code === 0x7f) {
+      return true
+    }
+  }
+  return false
+}
+
+/** Local, dependency-free twin of the platform's validator (this module stays portable). */
+function isCanonicalSignedRoot(value: unknown): boolean {
+  if (typeof value !== 'string' || value === '') {
+    return false
+  }
+  if (hasControlCharacter(value)) {
+    return false
+  }
+  const isPosix = value.startsWith('/')
+  if (!isPosix && !/^[A-Za-z]:[\\/]/.test(value)) {
+    return false
+  }
+  const rootOnly = isPosix ? '/' : value.slice(0, 3)
+  if (value !== rootOnly && /[\\/]$/.test(value)) {
+    return false
+  }
+  if (isPosix && value.includes('\\')) {
+    return false
+  }
+  const body = isPosix ? value.slice(1) : value.slice(3)
+  return body
+    .split(/[\\/]/)
+    .every((segment) => segment !== '' && segment !== '.' && segment !== '..')
+}
+
 const CREDENTIAL_PROTOCOL_PREFIX = 'orca-cred.'
 const DEVICE_PUBKEY_HEADER = 'x-orca-device-pubkey'
 
@@ -130,6 +165,14 @@ export function createCloudUpgradeAdmission(
 
     if (payload.host !== options.hostId || payload.aud !== `host:${options.hostName}`) {
       return rejectCloudUpgrade('host_mismatch', '凭证与主机不匹配。')
+    }
+    // Defence in depth for older platforms, which minted whatever path an admin
+    // typed: a `..` segment would be normalised away and silently widen the root.
+    if (
+      !isCanonicalSignedRoot(payload.projectRoot) ||
+      !isCanonicalSignedRoot(payload.workspaceRoot)
+    ) {
+      return rejectCloudUpgrade('workspace_root_invalid', '工作区根不是规范化路径。')
     }
 
     const revocations = options.revocations

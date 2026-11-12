@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypt
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { extname, join, normalize } from 'node:path'
+import { validateProjectPath } from '../../../packages/contract/src/project-path.ts'
 import {
   generateSigningKey,
   newDeviceToken,
@@ -541,13 +542,28 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (store.projectsByKey.has(key)) {
         return error(res, 409, 'PROJECT_EXISTS', '项目 Key 已存在。', traceId)
       }
+      // A signed root carrying `..` would grant a directory nobody chose: the host
+      // normalises the same way, so `/srv/a/../../etc` becomes `/etc` for everyone.
+      const pathVerdict = validateProjectPath(body.path)
+      if (!pathVerdict.ok) {
+        audit.append({
+          eventType: 'project_create',
+          actor: authed.user.username,
+          targetType: 'project',
+          targetId: null,
+          result: 'denied',
+          traceId,
+          metadata: { reason: pathVerdict.code, path: String(body.path ?? '') }
+        })
+        return error(res, 400, pathVerdict.code, pathVerdict.message, traceId)
+      }
       const created: Project = {
         id: `proj_${randomBytes(4).toString('hex')}`,
         key,
         name: String(body.name ?? key),
         repoUrl: String(body.repoUrl ?? ''),
         hostId,
-        path: String(body.path ?? ''),
+        path: pathVerdict.path,
         defaultBranch: String(body.defaultBranch ?? 'main'),
         downloadPolicy: body.downloadPolicy === 'allow' ? 'allow' : 'deny',
         status: 'ready',
