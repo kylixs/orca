@@ -7,7 +7,7 @@ import {
   migrateMobilePairingDataToCanonicalUserDataPath
 } from '../persistence'
 import { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
-import { cloudAdmissionOption, cloudRuntimeAdmission } from './cloud-runtime-admission'
+import { attachCloudRuntime, cloudAdmissionOption } from './cloud-runtime-admission'
 import { resolveE2EWsPort } from './e2e-runtime-ws-port'
 import { registerMobileHandlers } from '../ipc/mobile'
 import { getLocalPtyProvider, registerHeadlessPtyRuntime } from '../ipc/pty'
@@ -75,7 +75,7 @@ function installRuntimeRpc(
   const devWsPort = is.dev && !isE2E ? 6769 : undefined
   const runtimeRpc = new OrcaRuntimeRpcServer({
     runtime,
-    // Why: mobile pairing needs the stable pre-setName() path (getCanonicalUserDataPath), not a late app.getPath('userData') that drops paired devices across restarts.
+    // Why: pairing needs the stable pre-setName() path, not a late app.getPath('userData').
     userDataPath: getCanonicalUserDataPath(),
     enableWebSocket: true,
     // Why: STA-2370 — the desktop app binds the WS listener to loopback until the user pairs a device;
@@ -93,7 +93,7 @@ function installRuntimeRpc(
     webClientRoot: getBundledWebClientRoot(),
     ...cloudAdmissionOption(process.env, { userDataPath: getCanonicalUserDataPath() })
   })
-  cloudRuntimeAdmission()?.bindRuntime(runtimeRpc)
+  attachCloudRuntime(runtimeRpc)
   state.runtimeRpc = runtimeRpc
   registerMobileHandlers(runtimeRpc, {
     getRelayStatus: getDesktopRelayStatus,

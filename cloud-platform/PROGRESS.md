@@ -1,6 +1,6 @@
 # 开发进度
 
-> 更新时间：2026-11-13 09:15
+> 更新时间：2026-11-13 09:50
 > 规则：每轮只推进一个模块；失败必须如实记录。
 
 ## 模块状态
@@ -27,6 +27,7 @@
 | M17 评审 07 遗留用例 | ✅ 完成 | `evidence/m17-review07-gaps/` | 4 条：公网内部路由 404（N6）、非默认 INTERNAL_TOKEN（M8）、TLS 中止分支、allow 正向放行；每条均做过回退变红对照 |
 | M18 开发机自注册与心跳 | ✅ 完成 | `evidence/m18-host-enrollment/` | 一次性令牌注册、凭证持久化复用、心跳下发撤销/策略/维护态、心跳上报真实绑定端口与 E2EE 公钥；7 条真实平台进程 + 真实 Runtime 用例 |
 | M19 桌面端云端连接客户端 | ✅ 完成 | `evidence/m19-desktop-connect/` | 登录/项目列表/选路/升级/E2EE/加密 RPC；Runtime 支持 WSS；4 条真实平台 + 真实 TLS Runtime 用例 |
+| M20 渲染进程 IPC 会话面 | ✅ 完成 | `evidence/m20-cloud-ipc/` | `cloud:*` 六个通道 + 连接事件推送；会话状态不含任何令牌；5 条真实平台 + 真实 Runtime 用例 |
 
 ## 最近一次测试结果
 
@@ -209,8 +210,28 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 
 实测（真实平台进程 + 真实 TLS Runtime + 真实 E2EE）：登录/列表/直连打开/加密 RPC 全通；无权项目 404 且不出现在列表；选路纯函数覆盖直连优先、回落、全不可达；吊销后已建加密会话 4403。
 
+## M20 渲染进程 IPC 会话面（本轮）
+
+渲染进程不接触平台：token、设备密钥、WSS 都在主进程。
+
+| 层 | 内容 |
+|---|---|
+| `shared/cloud-platform-ipc.ts` | 通道名 + 渲染进程可见的类型（无 token 字段） |
+| `main/cloud-platform/cloud-session-service.ts` | 登录/登出/列表/打开/RPC，持有 `CloudConnectClient`；连接关闭时清空当前项目 |
+| `main/ipc/cloud-platform.ts` | 六个 `ipcMain.handle` + 关闭事件广播；`installCloudPlatformIpc()` 在无 `ORCA_CLOUD_API_URL` 时返回 null |
+| `preload/api/cloud-platform-*.ts` | `window.api.cloud.*`，订阅返回取消函数 |
+
+**刻意约束**：`getState()`/`login()` 的返回值里没有 token、devicePubKey、deviceToken、credential——用例直接对序列化结果断言这些字段与 `eyJ` 前缀都不出���，防止以后有人"顺手"把凭证塞进 UI 状态。
+
+实测（真实平台进程 + 真实 TLS Runtime）：
+- 登录后状态只含展示名与项目摘要
+- 项目列表区分下载受限（同用户下授权含/不含 `download` 各一）
+- 打开项目返回选路与 workspaceRoot，加密 RPC 通
+- 吊销后推送 `closeCode: 4403` 事件并清空 `connectedProjectId`
+- 登出后 RPC 返回 `NOT_SIGNED_IN`
+
 ## 下一步
 
-1. 客户端补丁层 UI（`src/renderer` 工作台/项目视图接入上述客户端，经 IPC 暴露）。
+1. 渲染进程界面（登录页 / 工作台 / 项目视图接入 `window.api.cloud`），按 STYLEGUIDE 实现。
 2. 平台在授权变更后立即撤销全部项目凭证，同秒内重连可能被拒（`iat*1000 <= since`）；客户端重试可绕过，但值得确认是否需要秒级宽限。
 3. 遗留：M1 设备 PoP、M6 `relativePath` 契约、`jwks_stale` 与分支名 `..` 补用例。

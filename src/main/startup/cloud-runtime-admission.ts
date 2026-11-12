@@ -10,6 +10,7 @@ import {
   storeHostCredential,
   type CloudHostCredential
 } from '../cloud-platform/cloud-host-enrollment'
+import { installCloudPlatformIpc } from '../ipc/cloud-platform'
 import type { DeviceRegistry } from '../runtime/device-registry'
 import type { UpgradeAdmission } from '../runtime/rpc/ws-transport'
 import type {
@@ -238,6 +239,15 @@ function startPolling(env: NodeJS.ProcessEnv): CloudRuntimeAdmission {
     },
     stop: () => client.stop()
   }
+}
+
+/**
+ * Post-start wiring: revocation → live sockets, and the renderer IPC surface.
+ * One call so the runtime launch path stays a single line.
+ */
+export function attachCloudRuntime(runtime: CloudRuntimeTarget): void {
+  cloudRuntimeAdmission()?.bindRuntime(runtime)
+  installCloudPlatformIpc()
 }
 
 // Why: the RPC server reads its options synchronously and the gate needs the server

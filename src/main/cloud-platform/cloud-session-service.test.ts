@@ -1,0 +1,254 @@
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
+import { mkdtempSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { OrcaRuntimeService } from '../runtime/orca-runtime'
+import { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
+import {
+  startCloudRuntimeAdmission,
+  type CloudRuntimeAdmission
+} from '../startup/cloud-runtime-admission'
+import { CloudSessionService } from './cloud-session-service'
+
+/**
+ * The renderer-facing session. It must never expose a token or device key, and a
+ * revoked connection must leave the UI state honest rather than "still open".
+ */
+
+const REPO_ROOT = new URL('../../..', import.meta.url).pathname
+
+function makeTlsCerts(): { cert: string; key: string } {
+  const dir = mkdtempSync(join(tmpdir(), 'orca-cloud-session-'))
+  const key = join(dir, 'server.key')
+  const cert = join(dir, 'server.crt')
+  execFileSync('openssl', [
+    'req',
+    '-x509',
+    '-newkey',
+    'rsa:2048',
+    '-nodes',
+    '-keyout',
+    key,
+    '-out',
+    cert,
+    '-days',
+    '1',
+    '-subj',
+    '/CN=dev-session',
+    '-addext',
+    'subjectAltName=IP:127.0.0.1,DNS:localhost'
+  ])
+  return { key: readFileSync(key, 'utf8'), cert: readFileSync(cert, 'utf8') }
+}
+
+type Platform = { url: string; stop: () => Promise<void> }
+let platform: Platform
+let adminToken = ''
+let admission: CloudRuntimeAdmission
+let runtime: OrcaRuntimeRpcServer
+let projectId = ''
+let restrictedProjectId = ''
+
+async function startPlatform(): Promise<Platform> {
+  const proc: ChildProcess = spawn(process.execPath, ['cloud-platform/apps/api/src/server.ts'], {
+    cwd: REPO_ROOT,
+    env: { ...process.env, PORT: '0', INTERNAL_TOKEN: 'session-svc-token' },
+    stdio: ['ignore', 'pipe', 'pipe']
+  })
+  const url = await new Promise<string>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('platform did not start')), 15_000)
+    let buffer = ''
+    proc.stdout?.on('data', (chunk: Buffer) => {
+      buffer += chunk.toString()
+      const match = /\[api\] listening on (http:\/\/127\.0\.0\.1:\d+)/.exec(buffer)
+      if (match) {
+        clearTimeout(timer)
+        resolve(match[1])
+      }
+    })
+    proc.once('exit', (code) => reject(new Error(`platform exited ${code}`)))
+  })
+  return {
+    url,
+    stop: () =>
+      new Promise<void>((resolve) => {
+        if (proc.exitCode !== null) {
+          resolve()
+          return
+        }
+        proc.once('exit', () => resolve())
+        proc.kill('SIGTERM')
+      })
+  }
+}
+
+async function createProject(key: string, grants: string[]): Promise<string> {
+  const res = await fetch(`${platform.url}/v1/projects`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${adminToken}` },
+    body: JSON.stringify({
+      key,
+      name: key,
+      hostId: admission.host()!.hostId,
+      path: `/srv/work/${key}`
+    })
+  })
+  expect(res.status).toBe(201)
+  const { id } = (await res.json()) as { id: string }
+  await fetch(`${platform.url}/v1/projects/${id}/grants`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${adminToken}` },
+    body: JSON.stringify({ subjectType: 'group', subjectId: 'team-payment', permissions: grants })
+  })
+  return id
+}
+
+beforeAll(async () => {
+  platform = await startPlatform()
+  const adminRes = await fetch(`${platform.url}/v1/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: 'admin', password: 'Adm1n!', deviceName: 'session-admin' })
+  })
+  adminToken = ((await adminRes.json()) as { accessToken: string }).accessToken
+
+  const tokenRes = await fetch(`${platform.url}/v1/hosts/tokens`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${adminToken}` }
+  })
+  const { token: hostToken } = (await tokenRes.json()) as { token: string }
+
+  admission = startCloudRuntimeAdmission(
+    {
+      ORCA_CLOUD_API_URL: platform.url,
+      ORCA_CLOUD_HOST_TOKEN: hostToken,
+      ORCA_CLOUD_HOST_NAME: 'dev-session',
+      ORCA_CLOUD_ADVERTISE_HOST: '127.0.0.1'
+    },
+    { userDataPath: mkdtempSync(join(tmpdir(), 'orca-cloud-session-host-')) }
+  )!
+  await admission.ready
+
+  runtime = new OrcaRuntimeRpcServer({
+    runtime: new OrcaRuntimeService(),
+    userDataPath: mkdtempSync(join(tmpdir(), 'orca-cloud-session-rt-')),
+    enableWebSocket: true,
+    wsPort: 0,
+    webSocketTls: makeTlsCerts(),
+    upgradeAdmission: admission.admission
+  })
+  await runtime.start()
+  admission.bindRuntime(runtime)
+  await admission.client!.refresh()
+
+  // This one may export; the other may not — the UI hint has to distinguish them.
+  projectId = await createProject('session-svc', [
+    'open',
+    'terminal',
+    'agent',
+    'file:read',
+    'file:write',
+    'download'
+  ])
+  restrictedProjectId = await createProject('session-restricted', ['open', 'terminal'])
+  // Grant changes revoke tickets issued up to now; mint later.
+  await new Promise((r) => setTimeout(r, 1200))
+})
+
+afterAll(async () => {
+  admission?.stop()
+  await runtime?.stop()
+  await platform?.stop()
+})
+
+function makeSession(): CloudSessionService {
+  return new CloudSessionService({ apiUrl: platform.url, tlsRejectUnauthorized: false })
+}
+
+describe('云端会话服务（渲染进程可见面）', () => {
+  it('登录后只暴露展示信息，不携带令牌或设备密钥', async () => {
+    const session = makeSession()
+    const state = await session.login('zhangsan', 'Passw0rd!')
+    expect(state.status).toBe('signed-in')
+    if (state.status !== 'signed-in') {
+      throw new Error('expected signed-in state')
+    }
+    expect(state.displayName).toBe('张伟')
+    const serialized = JSON.stringify(state)
+    expect(serialized).not.toMatch(/accessToken|credential|devicePubKey|deviceToken|refreshToken/)
+    expect(serialized).not.toContain('eyJ')
+  })
+
+  it('项目列表标记下载受限，未登录时读取报错', async () => {
+    const signedOut = makeSession()
+    await expect(signedOut.listProjects()).rejects.toMatchObject({ code: 'NOT_SIGNED_IN' })
+
+    const session = makeSession()
+    await session.login('zhangsan', 'Passw0rd!')
+    const projects = await session.listProjects()
+    expect(projects.find((p) => p.id === projectId)?.downloadRestricted).toBe(false)
+    expect(projects.find((p) => p.id === restrictedProjectId)?.downloadRestricted).toBe(true)
+  })
+
+  it('打开项目返回选路与工作区根，RPC 走加密通道', async () => {
+    const session = makeSession()
+    await session.login('zhangsan', 'Passw0rd!')
+    const opened = await session.openProject(projectId)
+    expect(opened).toMatchObject({ ok: true, route: 'direct' })
+    if (!opened.ok) {
+      throw new Error('expected open to succeed')
+    }
+    expect(opened.workspaceRoot).toContain('/srv/work/session-svc')
+    expect(opened.capabilities.length).toBeGreaterThan(0)
+
+    const status = await session.rpc('status.get')
+    expect(status.ok).toBe(true)
+  }, 20000)
+
+  it('吊销后向渲染进程推送关闭事件，并清空当前项目', async () => {
+    const session = makeSession()
+    await session.login('zhangsan', 'Passw0rd!')
+    const opened = await session.openProject(projectId)
+    expect(opened.ok).toBe(true)
+
+    const events: { closeCode: number | null; reason: string | null; projectId: string | null }[] =
+      []
+    session.onConnectionChanged((event) =>
+      events.push({ closeCode: event.closeCode, reason: event.reason, projectId: event.projectId })
+    )
+
+    const deviceId = (session as unknown as { client: { currentDeviceId: string } }).client
+      .currentDeviceId
+    // The renderer never holds a token, so revocation comes from a separate
+    // login by the same user — devices are per-user, not per-session.
+    const revoke = await fetch(`${platform.url}/v1/me/devices/${deviceId}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${await userTokenForOwnDevice()}` }
+    })
+    expect(revoke.ok).toBe(true)
+    await admission.client!.refresh()
+
+    await new Promise((r) => setTimeout(r, 1500))
+    expect(events.some((event) => event.closeCode === 4403)).toBe(true)
+    expect(session.connectedProjectId).toBeNull()
+  }, 25000)
+
+  it('登出后状态回到未登录', async () => {
+    const session = makeSession()
+    await session.login('zhangsan', 'Passw0rd!')
+    expect(session.getState().status).toBe('signed-in')
+    expect(session.logout().status).toBe('signed-out')
+    expect(await session.rpc('status.get')).toEqual({ ok: false, code: 'NOT_SIGNED_IN' })
+  })
+})
+
+/** The device belongs to the session's own login; a fresh login sees it in its device list. */
+async function userTokenForOwnDevice(): Promise<string> {
+  const res = await fetch(`${platform.url}/v1/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: 'zhangsan', password: 'Passw0rd!', deviceName: 'revoker' })
+  })
+  return ((await res.json()) as { accessToken: string }).accessToken
+}
