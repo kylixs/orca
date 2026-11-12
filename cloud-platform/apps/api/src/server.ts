@@ -14,6 +14,7 @@ import {
   type SigningKey
 } from '../../../packages/contract/src/credential.ts'
 import { AuditChain } from './audit.ts'
+import { openAuditLogFile } from './audit-log-file.ts'
 import { startInternalChannel } from './internal-channel.ts'
 import { ldapProfile, MockLdapAdapter, type LdapAdapter } from './ldap.ts'
 import { Store, type Host, type Project, type User } from './store.ts'
@@ -29,6 +30,8 @@ export type ApiConfig = {
   ldap?: LdapAdapter
   now?: () => number
   internalToken?: string
+  /** Append-only audit log; absent keeps the chain in memory (tests). */
+  auditLogPath?: string
   /** Enables the dedicated mTLS listener for platform → relay/runtime control traffic. */
   internalTls?: {
     port: number
@@ -102,8 +105,14 @@ function isAdmin(user: User): boolean {
 
 export function createApp(config: ApiConfig): ApiHandle {
   const now = config.now ?? (() => Date.now())
+  const auditLogPath = config.auditLogPath ?? process.env.AUDIT_LOG_PATH ?? null
   const store = new Store()
-  const audit = new AuditChain(store)
+  const auditLog = auditLogPath ? openAuditLogFile(auditLogPath) : null
+  const audit = new AuditChain(store, auditLog?.append)
+  if (auditLog) {
+    // Why before serving: a chain continued from a tampered tail would launder it.
+    audit.restore(auditLog.load())
+  }
   const signingKey = generateSigningKey(`kid-${now()}`)
   const jwks: Map<string, PublicKeyEntry> = new Map([
     [signingKey.kid, { kid: signingKey.kid, publicKeyPem: signingKey.publicKeyPem }]
@@ -907,6 +916,38 @@ export function createApp(config: ApiConfig): ApiHandle {
         cursor: url.searchParams.get('cursor') ? Number(url.searchParams.get('cursor')) : undefined
       })
       return json(res, 200, page)
+    }
+
+    // ---- audit: chain integrity ----
+    if (req.method === 'GET' && path === '/v1/audit/verify') {
+      const authed = requireAuth()
+      if (!authed) return
+      if (!isAdmin(authed.user) && !authed.user.roles.includes('platform:auditor')) {
+        audit.append({
+          eventType: 'audit_verify',
+          actor: authed.user.username,
+          targetType: 'audit',
+          targetId: null,
+          result: 'denied',
+          traceId
+        })
+        return error(res, 403, 'PERMISSION_DENIED', '需要审计权限。', traceId)
+      }
+      // Verify the chain as it stands, then record the attempt: the attempt itself
+      // must be auditable, but it cannot be part of what it reports on.
+      const verdict = audit.verify()
+      audit.append({
+        eventType: 'audit_verify',
+        actor: authed.user.username,
+        targetType: 'audit',
+        targetId: null,
+        result: verdict.ok ? 'success' : 'denied',
+        traceId,
+        metadata: verdict.ok
+          ? { checked: verdict.checked }
+          : { checked: verdict.checked, brokenAtSeq: verdict.brokenAtSeq }
+      })
+      return json(res, verdict.ok ? 200 : 409, verdict)
     }
 
     // ---- policies ----

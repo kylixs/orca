@@ -149,7 +149,9 @@ test('审计哈希链：追加、校验、篡改可定位', () => {
       traceId: `t-${i}`
     })
   }
-  assert.deepEqual(chain.verify(), { ok: true })
+  const verdict = chain.verify()
+  assert.equal(verdict.ok, true)
+  assert.equal(verdict.ok ? verdict.checked : -1, 20)
   store.audit[7].actor = 'mallory'
   const broken = chain.verify()
   assert.equal(broken.ok, false)

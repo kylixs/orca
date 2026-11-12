@@ -8,9 +8,19 @@ import type { AuditEvent, AuditEventInput, Store } from './store.ts'
  */
 export class AuditChain {
   private readonly store: Store
+  /** Optional durable sink; a failed write throws so callers cannot pretend it landed. */
+  private readonly persist: ((event: AuditEvent) => void) | null
 
-  constructor(store: Store) {
+  constructor(store: Store, persist?: (event: AuditEvent) => void) {
     this.store = store
+    this.persist = persist ?? null
+  }
+
+  /** Restores a persisted chain before any new event is appended. */
+  restore(events: AuditEvent[]): void {
+    this.store.audit = [...events]
+    this.store.auditSeq = events.at(-1)?.seq ?? 0
+    this.store.auditTip = events.at(-1)?.hash ?? 'GENESIS'
   }
 
   append(input: AuditEventInput): AuditEvent {
@@ -33,11 +43,25 @@ export class AuditChain {
     this.store.audit.push(event)
     this.store.auditSeq = seq
     this.store.auditTip = hash
+    this.persist?.(event)
     return event
   }
 
-  verify(): { ok: true } | { ok: false; brokenAtSeq: number } {
+  get size(): number {
+    return this.store.audit.length
+  }
+
+  get tip(): string {
+    return this.store.auditTip
+  }
+
+  /**
+   * Recomputes the chain from GENESIS. `checked` is how many events were verified,
+   * so an empty log reports 0 rather than a vacuous "ok" that looks like coverage.
+   */
+  verify(): { ok: true; checked: number; tip: string } | { ok: false; brokenAtSeq: number; checked: number } {
     let prev = 'GENESIS'
+    let checked = 0
     for (const event of this.store.audit) {
       const body = {
         seq: event.seq,
@@ -52,11 +76,12 @@ export class AuditChain {
       }
       const expected = createHash('sha256').update(`${prev}|${canonicalJson(body)}`).digest('hex')
       if (event.prevHash !== prev || event.hash !== expected) {
-        return { ok: false, brokenAtSeq: event.seq }
+        return { ok: false, brokenAtSeq: event.seq, checked }
       }
       prev = event.hash
+      checked += 1
     }
-    return { ok: true }
+    return { ok: true, checked, tip: prev }
   }
 
   query(filter: {
