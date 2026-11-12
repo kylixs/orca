@@ -75,10 +75,14 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
       return
     }
     // Why: the dispatcher enforces this scope's permissions; it never trusts a request field.
+    // A cloud device carries the platform's signed permission set; it is never
+    // granted the paired-runtime UI powers (settings, accounts, host admin).
     const callerScope: RpcCallerScope =
       device.scope === 'mobile'
         ? { kind: 'mobile' }
-        : { kind: 'runtime-paired', grants: device.grants ?? [] }
+        : device.cloudSession
+          ? { kind: 'cloud', permissions: device.cloudSession.permissions }
+          : { kind: 'runtime-paired', grants: device.grants ?? [] }
 
     // Why: bind deviceToken to this socket so ws.on('close') knows which mobile client disconnected.
     if (wsTransport && ws) {

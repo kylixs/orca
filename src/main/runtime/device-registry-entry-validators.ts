@@ -2,6 +2,7 @@ import type { DeviceScope } from '../../shared/runtime-session-contracts'
 import type { RelayDeviceBinding } from './relay/relay-revoke-outbox'
 import { RUNTIME_DEVICE_GRANTS, type RuntimeDeviceGrant } from './rpc/rpc-method-permission'
 import type { DeviceEntry } from './device-registry'
+import type { CloudPermission } from '../cloud-platform/cloud-credential'
 
 // Field validators for registry rows, split out so the registry file stays within
 // its size budget. Each one decides whether an on-disk value may be trusted.
@@ -23,6 +24,51 @@ export function validGrants(value: unknown, scope: DeviceScope): RuntimeDeviceGr
 export function sameGrants(entry: DeviceEntry, grants: readonly RuntimeDeviceGrant[]): boolean {
   const current = entry.grants ?? []
   return current.length === grants.length && current.every((grant) => grants.includes(grant))
+}
+
+const CLOUD_PERMISSIONS: ReadonlySet<string> = new Set([
+  'open',
+  'terminal',
+  'agent',
+  'file:read',
+  'file:write',
+  'browser',
+  'download'
+])
+
+function isCloudPermission(value: unknown): value is CloudPermission {
+  return typeof value === 'string' && CLOUD_PERMISSIONS.has(value)
+}
+
+/** Cloud session rows decide RPC authority, so an unparsable row must lose it, not keep it. */
+export function validCloudSession(
+  value: unknown
+): { projectId: string; permissions: CloudPermission[] } | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined
+  }
+  if (!('projectId' in value) || typeof value.projectId !== 'string') {
+    return undefined
+  }
+  if (!('permissions' in value) || !Array.isArray(value.permissions)) {
+    return undefined
+  }
+  return { projectId: value.projectId, permissions: value.permissions.filter(isCloudPermission) }
+}
+
+export function sameCloudSession(
+  entry: DeviceEntry,
+  next: { projectId: string; permissions: readonly CloudPermission[] } | undefined
+): boolean {
+  const current = entry.cloudSession
+  if (!current || !next) {
+    return current === undefined && next === undefined
+  }
+  return (
+    current.projectId === next.projectId &&
+    current.permissions.length === next.permissions.length &&
+    current.permissions.every((permission) => next.permissions.includes(permission))
+  )
 }
 
 export function validRelayBinding(

@@ -1,4 +1,6 @@
 import type { DeviceEntry, DeviceScope } from './device-registry'
+import type { CloudPermission } from '../cloud-platform/cloud-credential'
+import { sameCloudSession } from './device-registry-entry-validators'
 
 export type CloudDeviceAdoption = {
   deviceId: string
@@ -7,6 +9,9 @@ export type CloudDeviceAdoption = {
   scope?: DeviceScope
   /** The ticket's device key; the handshake must prove possession of it. */
   publicKeyB64?: string
+  /** The project and permission set the platform signed into this ticket. */
+  project?: string
+  permissions?: readonly CloudPermission[]
 }
 
 /**
@@ -18,16 +23,25 @@ export function adoptCloudDeviceInList(
   input: CloudDeviceAdoption,
   now = Date.now()
 ): { device: DeviceEntry; devices: DeviceEntry[]; changed: boolean } {
+  const cloudSession =
+    input.project && input.permissions
+      ? { projectId: input.project, permissions: [...input.permissions] }
+      : undefined
   const existing = devices.find((device) => device.deviceId === input.deviceId)
   if (existing) {
-    if (existing.token === input.token && existing.publicKeyB64 === input.publicKeyB64) {
+    if (
+      existing.token === input.token &&
+      existing.publicKeyB64 === input.publicKeyB64 &&
+      sameCloudSession(existing, cloudSession)
+    ) {
       return { device: existing, devices: [...devices], changed: false }
     }
     const updated: DeviceEntry = {
       ...existing,
       token: input.token,
       name: input.name,
-      ...(input.publicKeyB64 ? { publicKeyB64: input.publicKeyB64 } : {})
+      ...(input.publicKeyB64 ? { publicKeyB64: input.publicKeyB64 } : {}),
+      ...(cloudSession ? { cloudSession } : {})
     }
     return {
       device: updated,
@@ -41,6 +55,7 @@ export function adoptCloudDeviceInList(
     token: input.token,
     scope: input.scope ?? 'runtime',
     ...(input.publicKeyB64 ? { publicKeyB64: input.publicKeyB64 } : {}),
+    ...(cloudSession ? { cloudSession } : {}),
     pairedAt: now,
     lastSeenAt: 0
   }

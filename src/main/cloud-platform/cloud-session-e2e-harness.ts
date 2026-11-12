@@ -70,7 +70,13 @@ export type CloudSession = {
 /** Logs in, registers this device, and asks the platform for a single-use ticket. */
 export async function openPlatformSession(
   platform: Platform,
-  options: { username?: string; password?: string; deviceName?: string } = {}
+  options: {
+    username?: string
+    password?: string
+    deviceName?: string
+    /** Target project key; defaults to the first project the user can see. */
+    projectKey?: string
+  } = {}
 ): Promise<CloudSession> {
   // Why NaCl: the handshake must use the key the ticket binds, so it is the same
   // 32-byte Curve25519 key material, not a PEM.
@@ -94,9 +100,14 @@ export async function openPlatformSession(
   }
   const auth = { authorization: `Bearer ${accessToken}` }
   const projectsRes = await fetch(`${platform.url}/v1/projects`, { headers: auth })
-  const projectId = readString(readArray(await projectsRes.json(), 'projects')?.[0], 'id')
+  const projects = readArray(await projectsRes.json(), 'projects') ?? []
+  const chosen =
+    options.projectKey === undefined
+      ? projects[0]
+      : projects.find((project) => readString(project, 'key') === options.projectKey)
+  const projectId = readString(chosen, 'id')
   if (projectId === null) {
-    throw new Error('project list malformed')
+    throw new Error(`project ${options.projectKey ?? '(first)'} not visible to this user`)
   }
   const connectRes = await fetch(`${platform.url}/v1/projects/${projectId}/connect`, {
     method: 'POST',
@@ -116,8 +127,19 @@ export async function openPlatformSession(
 
 export type CloseInfo = { code: number; reason: string }
 
+/** One RPC's reply, decrypted; `error.code` is what the host refused with. */
+export type CloudRpcReply =
+  | { ok: true; result: unknown }
+  | { ok: false; code: string; message: string }
+
 export type CloudConnection =
-  | { status: 'authenticated'; ws: WebSocket; close: Promise<CloseInfo> }
+  | {
+      status: 'authenticated'
+      ws: WebSocket
+      close: Promise<CloseInfo>
+      /** Sends an encrypted RPC over the admitted session and awaits its reply. */
+      rpc: (method: string, params?: unknown) => Promise<CloudRpcReply>
+    }
   | { status: 'refused'; close: CloseInfo }
 
 /**
@@ -152,6 +174,8 @@ export function connectCloudSession(
     // shim can re-deliver the in-flight message to a listener added mid-dispatch,
     // and a nested handler would then read `e2ee_ready` where the reply belongs.
     let sentAuth = false
+    const pending = new Map<string, (reply: CloudRpcReply) => void>()
+    let nextId = 0
     ws.on('message', (raw) => {
       const text = raw.toString()
       const type = readString(parseJsonText(text), 'type')
@@ -167,14 +191,40 @@ export function connectCloudSession(
         }
         return
       }
-      const auth = parseJsonText(decrypt(text, sharedKey) ?? '{}')
-      if (readString(auth, 'type') !== 'e2ee_authenticated') {
-        reject(new Error(`expected e2ee_authenticated, got ${JSON.stringify(auth)}`))
+      const decoded = parseJsonText(decrypt(text, sharedKey) ?? '{}')
+      if (readString(decoded, 'type') !== null) {
+        if (readString(decoded, 'type') !== 'e2ee_authenticated') {
+          reject(new Error(`expected e2ee_authenticated, got ${JSON.stringify(decoded)}`))
+          return
+        }
+        authenticated = true
+        resolve({ status: 'authenticated', ws, close, rpc })
         return
       }
-      authenticated = true
-      resolve({ status: 'authenticated', ws, close })
+      const id = readString(decoded, 'id')
+      const settle = id === null ? undefined : pending.get(id)
+      if (id === null || !settle) {
+        return
+      }
+      pending.delete(id)
+      settle(
+        decoded !== null && readField(decoded, 'ok') === true
+          ? { ok: true, result: readField(decoded, 'result') }
+          : {
+              ok: false,
+              code: readString(readField(decoded, 'error'), 'code') ?? 'unknown',
+              message: readString(readField(decoded, 'error'), 'message') ?? ''
+            }
+      )
     })
+
+    const rpc = (method: string, params?: unknown): Promise<CloudRpcReply> => {
+      const id = `e2e-${nextId++}`
+      return new Promise<CloudRpcReply>((settle) => {
+        pending.set(id, settle)
+        ws.send(encrypt(JSON.stringify({ id, method, params }), sharedKey))
+      })
+    }
     ws.once('open', () => {
       ws.send(
         JSON.stringify({

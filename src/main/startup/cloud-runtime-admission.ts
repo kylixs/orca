@@ -56,7 +56,10 @@ function withDeviceAdoption(
         deviceId: decision.payload.deviceId,
         token: decision.payload.deviceToken,
         name: decision.payload.sub,
-        publicKeyB64: decision.payload.devicePubKey
+        publicKeyB64: decision.payload.devicePubKey,
+        // The ticket's permission set is what the host will enforce per RPC.
+        project: decision.payload.project,
+        permissions: decision.payload.perms
       })
     }
     return decision

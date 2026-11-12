@@ -17,7 +17,13 @@ import type { RelayDeviceBinding } from './relay/relay-revoke-outbox'
 import type { MobilePairingConnectionMode } from '../../shared/mobile-pairing-connection-mode'
 import type { RuntimePairingReach } from '../../shared/runtime-pairing-reach'
 import type { RuntimeDeviceGrant } from './rpc/rpc-method-permission'
-import { sameGrants, validGrants, validRelayBinding } from './device-registry-entry-validators'
+import type { CloudPermission } from '../cloud-platform/cloud-credential'
+import {
+  sameGrants,
+  validCloudSession,
+  validGrants,
+  validRelayBinding
+} from './device-registry-entry-validators'
 import { adoptCloudDeviceInList, type CloudDeviceAdoption } from './device-registry-cloud-adoption'
 import {
   parseMobilePushRegistration,
@@ -49,6 +55,11 @@ export type DeviceEntry = {
    * matches, so a stolen ticket is useless without the matching secret.
    */
   publicKeyB64?: string
+  /**
+   * Present on cloud-admitted devices: the project and the permission set the
+   * platform signed into the ticket. It is the authority for cloud RPC access.
+   */
+  cloudSession?: { projectId: string; permissions: CloudPermission[] }
 }
 
 // Why: a lastSeen refresh is pure bookkeeping, so coalesce reconnect bursts into one write instead of
@@ -351,7 +362,8 @@ export class DeviceRegistry {
         // Why: a malformed row must degrade to "no background push", never fail the load
         // and strand every paired device.
         pushRegistration: parseMobilePushRegistration(device.pushRegistration),
-        publicKeyB64: typeof device.publicKeyB64 === 'string' ? device.publicKeyB64 : undefined
+        publicKeyB64: typeof device.publicKeyB64 === 'string' ? device.publicKeyB64 : undefined,
+        cloudSession: validCloudSession(device.cloudSession)
       }))
       this.registryUnreadable = false
     } catch (error) {

@@ -40,6 +40,8 @@
 | M30 项目根路径规范化 | ✅ 完成 | `evidence/m30-project-root/` | 登记处拒绝 `..`/相对/重复或尾随分隔符/控制字符；主机对旧平台票据做同形状复核（`workspace_root_invalid`）；4 条真实平台 + 真实签名用例（关掉检查后 2 条变红） |
 | M31 审计链落盘与校验 | ✅ 完成 | `evidence/m31-audit-verify/` | 审计 JSONL 只追加落盘、重启续链；`GET /v1/audit/verify`（409 + brokenAtSeq）；弃坏行拒绝启动；14 条（含"改写文件后重启"真实进程用例） |
 | M32 审计 fail-closed | ✅ 完成 | `evidence/m32-audit-fail-closed/` | 先写审计再改状态；写失败/断链时 6 类敏感写返回 503 且状态未变；读与登录保持可用；`GET /v1/audit/status`；3 条真实进程用例（chmod 只读、篡改后重启、全覆盖） |
+| M33 云端会话并发上限 | ✅ 完成 | `evidence/m33-session-limits/` | 每用户每项目 3 路、每主机 32 路，超限 `close(4431)`；按活连接计、关闭即归还；2 条真实端到端（去掉配额检查后全红） |
+| M34 云端 RPC 方法级权限 | ✅ 完成 | `evidence/m34-cloud-rpc-scope/` | 票据 `perms` 真正生效：终端/agent/文件读写/浏览器/下载分开判定，未登记方法拒绝；**修复云会话可访问 settings/accounts/pairing 的越权**；4 条真实端到端 + 11 条单测（回退后 4 条全红） |
 
 ## 最近一次测试结果
 
@@ -487,8 +489,33 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 
 **如实记录**：本仓库 `pnpm test` 固定用 Bun 跑，Bun 的 `ws` 客户端对自签名 TLS 握手失败，导致 6 个**既有**的云测试文件（`cloud-device-pop`、`cloud-session-service` 等）在 Bun 下红；`git stash` 后在 HEAD 上复现同样失败，且在 Node 下全部通过，与本轮无关（本轮新用例走 ws:// 明文，两种运行方式都通过）。另外发现 Bun 的 `ws` 会把正在派发的消息重投给派发中新加的 `once` 监听器，握手助手已改为单一持久监听 + 幂等状态机。
 
+## M34 云端 RPC 方法级权限（本轮）
+
+**问题**（设计 §7.3，原 T302）：票据里签了 `perms`，但主机侧从未看过它——`runtime-rpc-websocket-dispatch` 把所有非 mobile 设备一律当 `runtime-paired`，而该作用域自带 `workspace`/`settings-write`/`accounts-admin`/`skills-admin`/`host-admin`。**结果：任何云会话（哪怕只被授予 `open`）都能读写主机设置、列账号、读取配对信息**，这是越权提升，不只是"缺功能"。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-platform/cloud-rpc-permission.ts`（新） | 方法 → 项目权限：`terminal.*`/`git.*`/`worktree.{create,createManaged,rm}` → `terminal`；`agent*` → `agent`；`files.read*` 等 → `file:read`；`files.write|create|rename|copy|delete|commitUpload` → `file:write`；`browser.*` → `browser`，但导出类（`browser.download|savePage`、`files.download*`、`terminal.exportArtifact`）优先判 `download`；`status.get` 任何已准入会话可用；**未登记 → 拒绝** |
+| `runtime/rpc/rpc-caller-scope.ts` | 新增 `RpcCallerScope = { kind: 'cloud'; permissions }`，拒绝文案指明缺哪个项目权限 |
+| `runtime/runtime-rpc/runtime-rpc-websocket-dispatch.ts` | 有 `cloudSession` 的设备走 `cloud` 作用域，不再落到 `runtime-paired` |
+| `runtime/device-registry*.ts` | `DeviceEntry.cloudSession = { projectId, permissions }`；采纳时从票据写入；**落盘读取时逐字段校验，解析失败即丢弃（失去权限）而非保留** |
+| `startup/cloud-runtime-admission.ts` | 采纳设备时带上票据的 `project` 与 `perms` |
+
+**验证（`evidence/m34-cloud-rpc-scope/`）**：4 条真实端到端（真实平台进程签发的真实 Ed25519 票据 + 真实 Runtime + 真 NaCl 加密 RPC）：
+- M34-1 只授 `file:read` 的项目：`files.read` 通过网关（失败原因是 handler 的未知 worktree，不是 `forbidden`），`files.write`/`terminal.create` 被 `forbidden` 且文案指明缺 `file:write`/`terminal`；
+- M34-2 只授 `terminal` 的项目：`terminal.list` 成功，`files.read` 被拒；
+- M34-3 `settings.get`、`accounts.list`、`pairing.getEndpoints`、`host.platform` 全部 `forbidden`，`status.get` 仍可用；
+- M34-4 同一用户同一主机两张票据各自生效。
+
+另有 11 条映射单测。**把 dispatch 的 cloud 分支去掉后 4 条端到端全部变红**（报 `runtime_unavailable`，因为回落到配对作用域后又被 `files.read` 的 handler 拒绝，正好说明权限来自票据而非别处）。cloud-platform 主机侧 14 文件 67 条、模拟器 97 条全过；`tsc` node 0 错；门禁 7 项 0 新发现。
+
+**如实记录 / 已知取舍**：
+1. `files.open`、`files.openDiff` 等面板会用到的方法目前**未登记 → 默认拒绝**。这是设计要求的 deny-by-default 直接后果，接入文件面板时必须逐条登记（届时一并补用例），不能靠"先加上"绕过。
+2. 主机现有 `files.*` 方法仍只声明粗粒度 `workspace` 权限；本轮在云端作用域上先做项目级细分，仓库全局的方法权限模型未改动（避免影响非云配对设备）。
+3. 本轮顺带发现：`settings.get` 的声明权限是 `workspace`，所以此前云会话确实能读主机设置；现在被云端映射拒绝。
+
 ## 下一步
 
-1. 面板接入：在工作区内用 M25 的 `environmentId` 挂载终端/文件面板（现有环境 selector 已可用，剩余是界面与 TabGroup 状态接线）。
+1. 面板接入：在工作区内用 M25 的 `environmentId` 挂载终端/文件面板（现有环境 selector 已可用，剩余是界面与 TabGroup 状态接线）。接文件面板时需按 M34 规则登记 `files.open`/`files.openDiff` 等并补用例。
 2. 遗留：M4 `isInsideRoot` 对 Windows 段大小写敏感（fail-closed，误拒而非误放；按需放宽）。
 3. 并发上限目前只统计云会话；本地配对连接不占这 32 个名额（设计表只约束云端会话），如运营需要主机总量配额再扩展。

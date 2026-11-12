@@ -8,6 +8,8 @@
 import { MOBILE_RPC_METHOD_ALLOWLIST } from '../runtime-rpc/runtime-rpc-mobile-method-allowlist'
 import type { RpcMethodPermission, RuntimeDeviceGrant } from './rpc-method-permission'
 import type { OrcaRuntimeService } from '../orca-runtime'
+import type { CloudPermission } from '../../cloud-platform/cloud-credential'
+import { cloudMethodAccess } from '../../cloud-platform/cloud-rpc-permission'
 import {
   bindSshBridgeCall,
   SSH_BRIDGE_HOST_BINDERS,
@@ -21,11 +23,30 @@ export type RpcCallerScope =
   | { kind: 'owner' }
   | { kind: 'mobile' }
   | { kind: 'runtime-paired'; grants: readonly RuntimeDeviceGrant[] }
+  /** A cloud session: the platform signed this project permission set into its ticket. */
+  | { kind: 'cloud'; permissions: readonly CloudPermission[] }
   /** The `orca` CLI of a remote SSH host, relayed through this host's bridge. `remoteCliControl`
    *  is the per-target opt-in that lets that host's CLI act outside its own terminals. */
   | { kind: 'ssh-bridge'; targetId: string; remoteCliControl: boolean }
 
 export const OWNER_RPC_CALLER_SCOPE: RpcCallerScope = { kind: 'owner' }
+
+/** The ticket's permission set is authoritative; anything unlisted in the map is refused. */
+function cloudMethodDenial(
+  permissions: readonly CloudPermission[],
+  methodName: string
+): string | null {
+  const access = cloudMethodAccess(methodName)
+  if (access === 'session') {
+    return null
+  }
+  if (access === null) {
+    return `Method '${methodName}' is not available to cloud sessions`
+  }
+  return permissions.includes(access)
+    ? null
+    : `Method '${methodName}' needs the '${access}' project permission, which this cloud session was not granted.`
+}
 
 // Why: a paired desktop, web client or `--host runtime:` CLI is this runtime's full remote UI, so its
 // standard set covers what that UI drives here (settings, accounts, skills, SSH and server updates).
@@ -55,6 +76,9 @@ export function denyRpcMethodForCaller(
   }
   if (scope.kind === 'owner' || permission === undefined) {
     return null
+  }
+  if (scope.kind === 'cloud') {
+    return cloudMethodDenial(scope.permissions, methodName)
   }
   if (scope.kind === 'runtime-paired') {
     return !RUNTIME_PAIRED_STANDARD.has(permission) &&
