@@ -1,6 +1,6 @@
 # 开发进度
 
-> 更新时间：2026-11-13 12:15
+> 更新时间：2026-11-13 12:25
 > 规则：每轮只推进一个模块；失败必须如实记录。
 
 ## 模块状态
@@ -30,6 +30,7 @@
 | M20 渲染进程 IPC 会话面 | ✅ 完成 | `evidence/m20-cloud-ipc/` | `cloud:*` 六个通道 + 连接事件推送；会话状态不含任何令牌；5 条真实平台 + 真实 Runtime 用例 |
 | M21 客户端界面（登录/工作台） | ✅ 完成 | `evidence/m21-cloud-ui/` | `CloudApp` + 登录面板 + 工作台列表；8 条界面用例（happy-dom），路由接入 `App.tsx` |
 | M22 项目链接（凭证 → Orca 配对） | ✅ 完成 | `evidence/m22-project-link/` | 云端票据转成现有 `PairingOffer` + `cloudUpgrade`，现有 `subscribeRemoteRuntimeRequest` 直接建链（请求与订阅两条通道）；5 条真实平台 + 真实 TLS Runtime 用例，含"不带凭证必被拒"对照 |
+| M23 质量门禁清理 | ✅ 完成 | `evidence/m23-quality-gate/` | 74 条 `consistent-type-assertions` → 0；JSON 字段读取器 + 票据/项目解析器；门禁 7 项扫描 0 新发现，79 条用例回归全过 |
 
 ## 最近一次测试结果
 
@@ -283,13 +284,36 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 
 回归：`cloud-session-service`、`use-cloud-session`、传输连接绑定 共 24 条通过；`tsc` node/web 均 0 错；oxlint 0 错（`evidence/m22-project-link/regressions.txt`、`checks.txt`）。
 
-**质量门禁（如实记录）**：`pnpm run check:code-quality:changed` 在本分支仍红——集中在 `src/main/cloud-platform/**` 与 `src/renderer/src/cloud/**` 的 74 条 `typescript/consistent-type-assertions`（M13 起累积，多为测试解析 JSON 响应）。本轮只修掉设计系统 1 条（`Badge` 上多余的 `text-muted-foreground`），并把 `cloud-platform/` 加入根门禁的排除前缀（与 `PLAN.md` §0 "独立 workspace 不进入根工程 lint" 一致，`config/scripts/check-changed-code-quality` 测试 32 条通过）。剩余 74 条留给下一模块清理，不假装门禁通过。
+**质量门禁**：本轮修掉设计系统 1 条（`Badge` 上多余的 `text-muted-foreground`），并把 `cloud-platform/` 加入根门禁排除前缀（与 `PLAN.md` §0 一致）。当时仍有 74 条 `consistent-type-assertions`，已在 M23 全部清掉。
 
 **如实记录**：渲染进程用 node 项目配置直接跑 `use-cloud-session.test.tsx` 会因 `@/` 别名未注册而失败（`Failed to resolve import "@/components/ui/button"`），必须带 `--config config/vitest.config.ts`；这不是代码问题，已按正确配置复跑通过。
 
+## M23 质量门禁清理（本轮）
+
+**问题**：M22 结束时 `check:code-quality:changed` 有 74 条 `typescript/consistent-type-assertions`，全部在 `src/main/cloud-platform/**` 与 `src/renderer/src/cloud/**`。多数是 `(await res.json()) as {...}`：形状错了不会报错，只会让 `undefined` 沿调用链传播。
+
+| 文件 | 内容 |
+|---|---|
+| `src/shared/json-fields.ts`（新） | `readField/readString/readNumber/readArray/readStringArray/readObjectValue/ownEntries/errorCodeOf/parseJsonText`；形状不符返回 null，由调用方决定失败语义 |
+| `src/main/cloud-platform/cloud-connect-response.ts`（新） | 票据/项目/端点/workspace 逐字段解析；缺字段返回 null |
+| `src/shared/cloud-project-link-offer.ts`（新） | IPC 载荷 → `PairingOffer` 的结构化转换（`v===2 && scope==='runtime'` 才返回），M24 可直接复用 |
+| `src/shared/http-header-text.ts`（新） | `x-orca-reject` 等响应头统一取文本 |
+| `cloud-connect-client.ts` | 登录/列表/票据/握手消息全部走解析器；解析失败抛明确错误 |
+| `cloud-agent-client.ts` / `cloud-agent-revocations.ts` | JWKS 与撤销快照改字段读取，撤销结构非法仍返回 null（保留 fail-closed） |
+| `cloud-host-enrollment.ts` / `cloud-credential.ts` / `cloud-pairing-offer.ts` / `cloud-session-service.ts` | 同上一并替换；`cloud-session-service` 新增只读 `currentDeviceId`（只暴露标识，不含令牌） |
+| `src/main/ipc/cloud-platform.ts` | Electron 参数边界保留 1 处 line-specific disable，带 SAFETY 说明 |
+| 测试（6 个 cloud-platform 文件 + renderer hook） | 响应改读字段；吊销改用同一用户另行登录的令牌；不再访问私有 `session.client` / `client.accessToken` |
+
+**结果（证据 `evidence/m23-quality-gate/`）**：
+
+- `gate.txt`：`check:code-quality:changed` 7 项扫描全部 **0 new finding**，`Changed-code quality gate passed`（220 个改动文件）；`tsc` node/web 均 exit=0。
+- `cases.txt`：10 个文件 **79 条** 全过——6 个 cloud-platform 用例文件仍是真实平台进程 + 真实 TLS Runtime + 真实 Ed25519/NaCl（撤销 4403、令牌不外泄、项目链接 5 条），runtime 准入 8 条，renderer happy-dom 8 条，门禁脚本自身 32 条。
+- `regressions.txt`：shared 传输/配对回归 44 条全过。
+
+**行为等价性**：替换都是"先读字段、再判空"；失败路径从 `undefined` 静默传播变为显式错误，正常路径字段与类型不变。
+
 ## 下一步
 
-1. 质量门禁清理：`src/main/cloud-platform/**` 与渲染进程 cloud 文件的 74 条 `consistent-type-assertions`（用校验型解析函数替代 `as`，测试侧统一 JSON 读取助手），把 `check:code-quality:changed` 恢复为绿。
-2. 项目视图：把云端项目注册成 Orca 远程环境/工作区入口，使工作台"打开项目"后真正切换到该环境的 TabGroup/终端（M22 已解决链路与会话层，剩余是界面状态切换）。
-3. 平台在授权变更后立即撤销全部项目凭证，同秒内重连可能被拒（`iat*1000 <= since`）；客户端重试可绕过，但值得确认是否需要秒级宽限。
-4. 遗留：M1 设备 PoP、M6 `relativePath` 契约、`jwks_stale` 与分支名 `..` 补用例。
+1. 项目视图：把云端项目注册成 Orca 远程环境/工作区入口，使工作台"打开项目"后真正切换到该环境的 TabGroup/终端（M22 已解决链路与会话层，剩余是界面状态切换）。
+2. 平台在授权变更后立即撤销全部项目凭证，同秒内重连可能被拒（`iat*1000 <= since`）；客户端重试可绕过，但值得确认是否需要秒级宽限。
+3. 遗留：M1 设备 PoP、M6 `relativePath` 契约、`jwks_stale` 与分支名 `..` 补用例。

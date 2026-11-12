@@ -7,6 +7,7 @@ import type {
 } from '../../shared/cloud-platform-ipc'
 import { CloudConnectClient, type CloudProject } from './cloud-connect-client'
 import { buildCloudProjectLink, type CloudProjectLink } from './cloud-pairing-offer'
+import { errorCodeOf } from '../../shared/json-fields'
 
 export type CloudProjectLinkResult =
   | { ok: true; link: CloudProjectLink }
@@ -57,6 +58,11 @@ export class CloudSessionService {
   onConnectionChanged(listener: (event: CloudConnectionEvent) => void): () => void {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
+  }
+
+  /** Identifier only: the token and device key stay inside the client. */
+  get currentDeviceId(): string {
+    return this.client?.currentDeviceId ?? ''
   }
 
   getState(): CloudSessionState {
@@ -125,7 +131,7 @@ export class CloudSessionService {
         capabilities: opened.ticket.host.capabilities
       }
     } catch (error) {
-      const code = (error as { code?: string }).code ?? 'OPEN_FAILED'
+      const code = errorCodeOf(error) ?? 'OPEN_FAILED'
       return { ok: false, code, message: error instanceof Error ? error.message : String(error) }
     }
   }
@@ -152,7 +158,7 @@ export class CloudSessionService {
       }
       return { ok: true, link }
     } catch (error) {
-      const code = (error as { code?: string }).code ?? 'OPEN_FAILED'
+      const code = errorCodeOf(error) ?? 'OPEN_FAILED'
       return { ok: false, code, message: error instanceof Error ? error.message : String(error) }
     }
   }

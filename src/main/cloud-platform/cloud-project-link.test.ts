@@ -3,6 +3,8 @@ import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { pairingOfferFromCloudLink } from '../../shared/cloud-project-link-offer'
+import { readString } from '../../shared/json-fields'
 import { subscribeRemoteRuntimeRequest } from '../../shared/remote-runtime-client'
 import { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
@@ -91,13 +93,16 @@ beforeAll(async () => {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ username: 'admin', password: 'Adm1n!', deviceName: 'link-admin' })
   })
-  adminToken = ((await adminRes.json()) as { accessToken: string }).accessToken
+  adminToken = readString(await adminRes.json(), 'accessToken') ?? adminToken
 
   const tokenRes = await fetch(`${platform.url}/v1/hosts/tokens`, {
     method: 'POST',
     headers: { authorization: `Bearer ${adminToken}` }
   })
-  const { token: hostToken } = (await tokenRes.json()) as { token: string }
+  const hostToken = readString(await tokenRes.json(), 'token')
+  if (hostToken === null) {
+    throw new Error('host token missing')
+  }
 
   admission = startCloudRuntimeAdmission(
     {
@@ -131,7 +136,7 @@ beforeAll(async () => {
       path: '/srv/work/link-svc'
     })
   })
-  projectId = ((await projectRes.json()) as { id: string }).id
+  projectId = readString(await projectRes.json(), 'id') ?? projectId
   await fetch(`${platform.url}/v1/projects/${projectId}/grants`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${adminToken}` },
@@ -184,9 +189,13 @@ describe('云端项目进入 Orca 工作区（真实平台 + 真实 Runtime + �
 
     // The stock renderer path, given only the cloud upgrade options: this is the
     // same call the terminal pane makes against a paired host.
+    const offer = pairingOfferFromCloudLink(prepared.link)
+    if (offer === null) {
+      throw new Error('link is not a runtime offer')
+    }
     const received: unknown[] = []
     const subscription = await subscribeRemoteRuntimeRequest(
-      prepared.link.offer as never,
+      offer,
       'status.get',
       {},
       8000,
@@ -211,8 +220,12 @@ describe('云端项目进入 Orca 工作区（真实平台 + 真实 Runtime + �
       throw new Error(`prepare failed: ${prepared.code}`)
     }
 
+    const offer = pairingOfferFromCloudLink(prepared.link)
+    if (offer === null) {
+      throw new Error('link is not a runtime offer')
+    }
     const subscription = await subscribeRemoteRuntimeRequest(
-      prepared.link.offer as never,
+      offer,
       'status.get',
       {},
       8000,
@@ -233,8 +246,12 @@ describe('云端项目进入 Orca 工作区（真实平台 + 真实 Runtime + �
 
     // Same offer, no cloudUpgrade: the host has no ticket to verify and must
     // refuse, otherwise the passing tests above would prove nothing.
+    const offer = pairingOfferFromCloudLink(prepared.link)
+    if (offer === null) {
+      throw new Error('link is not a runtime offer')
+    }
     await expect(
-      subscribeRemoteRuntimeRequest(prepared.link.offer as never, 'status.get', {}, 5000, {
+      subscribeRemoteRuntimeRequest(offer, 'status.get', {}, 5000, {
         onResponse: () => undefined,
         onError: () => undefined
       })
@@ -245,22 +262,32 @@ describe('云端项目进入 Orca 工作区（真实平台 + 真实 Runtime + �
     // A ticket whose host key was never reported cannot drive an E2EE session.
     const session = makeSession()
     await session.login('zhangsan', 'Passw0rd!')
-    const ticket = await (
-      session as unknown as {
-        client: {
-          requestTicket: (id: string) => Promise<{
-            credential: string
-            expiresIn: number
-            host: Record<string, unknown>
-            endpoints: Record<string, unknown>
-            workspace: { workspaceRoot: string }
-          }>
-        }
+    const prepared = await session.prepareProjectLink(projectId)
+    if (!prepared.ok) {
+      throw new Error(`prepare failed: ${prepared.code}`)
+    }
+    // Same ticket, but the host never reported a key: the link must refuse it.
+    const ticket = {
+      credential: prepared.link.cloudUpgrade.credential,
+      expiresIn: prepared.link.expiresIn,
+      host: {
+        id: 'dev-link',
+        name: 'dev-link',
+        fingerprint: '',
+        tlsFingerprint: '',
+        e2eePublicKeyB64: '',
+        capabilities: ['pty']
+      },
+      endpoints: { direct: [], relay: [] },
+      workspace: {
+        projectRoot: prepared.link.workspaceRoot,
+        workspaceRoot: prepared.link.workspaceRoot,
+        defaultBranch: 'main'
       }
-    ).client.requestTicket(projectId)
+    }
     const { buildCloudProjectLink } = await import('./cloud-pairing-offer')
     const link = buildCloudProjectLink({
-      ticket: { ...ticket, host: { ...ticket.host, e2eePublicKeyB64: '' } } as never,
+      ticket,
       endpoint: { priority: 1, url: 'wss://127.0.0.1:1' },
       route: 'direct'
     })

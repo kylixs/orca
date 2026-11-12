@@ -1,5 +1,6 @@
 import { sendHeartbeat } from './cloud-host-enrollment'
 import { emptyRevocations, parseRevocations } from './cloud-agent-revocations'
+import { readArray, readString } from '../../shared/json-fields'
 import {
   createCloudUpgradeAdmission,
   type CloudRevocations,
@@ -73,21 +74,10 @@ const DEFAULT_REFRESH_MS = 10_000
 const DEFAULT_TIMEOUT_MS = 3_000
 
 function parseKeys(value: unknown): { kid: string; publicKeyPem: string }[] {
-  if (!value || typeof value !== 'object') {
-    return []
-  }
-  const keys = (value as { keys?: unknown }).keys
-  if (!Array.isArray(keys)) {
-    return []
-  }
-  return keys.flatMap((item) => {
-    if (!item || typeof item !== 'object') {
-      return []
-    }
-    const entry = item as Record<string, unknown>
-    return typeof entry.kid === 'string' && typeof entry.publicKeyPem === 'string'
-      ? [{ kid: entry.kid, publicKeyPem: entry.publicKeyPem }]
-      : []
+  return (readArray(value, 'keys') ?? []).flatMap((item) => {
+    const kid = readString(item, 'kid')
+    const publicKeyPem = readString(item, 'publicKeyPem')
+    return kid !== null && publicKeyPem !== null ? [{ kid, publicKeyPem }] : []
   })
 }
 

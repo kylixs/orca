@@ -1,4 +1,5 @@
 import { createPublicKey, verify, type KeyObject } from 'node:crypto'
+import { ownEntries } from '../../shared/json-fields'
 
 // Host-side twin of cloud-platform/packages/contract/src/credential.ts.
 // Kept dependency-free (node:crypto only) so it can be imported both by the main
@@ -46,7 +47,7 @@ export function canonicalCloudJson(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map(canonicalCloudJson).join(',')}]`
   }
-  const entries = Object.entries(value as Record<string, unknown>)
+  const entries = ownEntries(value)
     .filter(([, v]) => v !== undefined)
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
   return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalCloudJson(v)}`).join(',')}}`

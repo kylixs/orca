@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import WebSocket from 'ws'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { headerText } from '../../shared/http-header-text'
+import { readArray, readField, readString } from '../../shared/json-fields'
 import { parsePairingCode } from '../../shared/pairing'
 import { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
@@ -75,24 +77,35 @@ async function openPlatformSession(): Promise<Session> {
       deviceName: 'agent-e2e'
     })
   })
-  const login = (await loginRes.json()) as { accessToken: string; device: { id: string } }
-  const auth = { authorization: `Bearer ${login.accessToken}` }
+  const login: unknown = await loginRes.json()
+  const accessToken = readString(login, 'accessToken')
+  const deviceId = readString(readField(login, 'device'), 'id')
+  if (accessToken === null || deviceId === null) {
+    throw new Error('login response malformed')
+  }
+  const auth = { authorization: `Bearer ${accessToken}` }
   const projectsRes = await fetch(`${platform.url}/v1/projects`, { headers: auth })
-  const { projects } = (await projectsRes.json()) as { projects: { id: string }[] }
-  const connectRes = await fetch(`${platform.url}/v1/projects/${projects[0].id}/connect`, {
+  const projectId = readString(readArray(await projectsRes.json(), 'projects')?.[0], 'id')
+  if (projectId === null) {
+    throw new Error('project list malformed')
+  }
+  const connectRes = await fetch(`${platform.url}/v1/projects/${projectId}/connect`, {
     method: 'POST',
     headers: { ...auth, 'content-type': 'application/json' },
-    body: JSON.stringify({ deviceId: login.device.id, devicePubKey, clientVersion: '1.5.0' })
+    body: JSON.stringify({ deviceId, devicePubKey, clientVersion: '1.5.0' })
   })
   if (!connectRes.ok) {
     throw new Error(`connect failed: ${await connectRes.text()}`)
   }
-  const connect = (await connectRes.json()) as { credential: string }
+  const credential = readString(await connectRes.json(), 'credential')
+  if (credential === null) {
+    throw new Error('connect response malformed')
+  }
   return {
-    accessToken: login.accessToken,
-    deviceId: login.device.id,
+    accessToken,
+    deviceId,
     devicePubKey,
-    credential: connect.credential
+    credential
   }
 }
 
@@ -107,7 +120,7 @@ function attempt(url: string, credential: string, devicePubKey: string): Promise
     ws.once('unexpected-response', (_req, res) => {
       resolve({
         status: res.statusCode,
-        reject: res.headers['x-orca-reject'] as string | undefined
+        reject: headerText(res.headers['x-orca-reject'])
       })
       ws.terminate()
     })

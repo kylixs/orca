@@ -1,6 +1,8 @@
 import WebSocket from 'ws'
 import { decrypt, deriveSharedKey, encrypt, generateKeyPair } from '../../shared/e2ee-crypto'
 import { chooseRoute, probeEndpoint, type RouteChoice } from './cloud-route-selection'
+import { parseConnectTicket, parseProjectList, readTicketClaims } from './cloud-connect-response'
+import { parseJsonText, readField, readString, readStringArray } from '../../shared/json-fields'
 
 /** Desktop-side cloud connection: the platform is a registry, never the data path (D1). */
 
@@ -50,17 +52,6 @@ const DEFAULT_MAX_DIRECT = 2
 export { chooseRoute, probeEndpoint } from './cloud-route-selection'
 export type { RouteChoice } from './cloud-route-selection'
 
-function readCredential(credential: string): { deviceToken: string } | null {
-  try {
-    const claims = JSON.parse(Buffer.from(credential.split('.')[1], 'base64url').toString()) as {
-      deviceToken?: string
-    }
-    return typeof claims.deviceToken === 'string' ? { deviceToken: claims.deviceToken } : null
-  } catch {
-    return null
-  }
-}
-
 export class CloudConnectClient {
   private readonly options: CloudConnectOptions
   private readonly fetchImpl: typeof fetch
@@ -99,15 +90,21 @@ export class CloudConnectClient {
         deviceName: 'orca-desktop'
       })
     })
-    const body = (await res.json()) as Record<string, unknown>
+    const body: unknown = await res.json()
     if (!res.ok) {
-      const error = body.error as { code?: string } | undefined
-      throw Object.assign(new Error(error?.code ?? 'login failed'), { code: error?.code })
+      const code = readString(readField(body, 'error'), 'code')
+      throw Object.assign(new Error(code ?? 'login failed'), { code })
     }
-    this.accessToken = String(body.accessToken)
-    this.deviceId = (body.device as { id: string }).id
-    const user = body.user as { displayName: string; permissions: string[] }
-    return { displayName: user.displayName, permissions: user.permissions }
+    const accessToken = readString(body, 'accessToken')
+    const deviceId = readString(readField(body, 'device'), 'id')
+    const displayName = readString(readField(body, 'user'), 'displayName')
+    const permissions = readStringArray(readField(body, 'user'), 'permissions')
+    if (accessToken === null || deviceId === null || displayName === null || permissions === null) {
+      throw new Error('login response malformed')
+    }
+    this.accessToken = accessToken
+    this.deviceId = deviceId
+    return { displayName, permissions }
   }
 
   async listProjects(): Promise<CloudProject[]> {
@@ -117,8 +114,11 @@ export class CloudConnectClient {
     if (!res.ok) {
       throw new Error(`list projects failed: ${res.status}`)
     }
-    const body = (await res.json()) as { projects: CloudProject[] }
-    return body.projects
+    const projects = parseProjectList(await res.json())
+    if (projects === null) {
+      throw new Error('list projects response malformed')
+    }
+    return projects
   }
 
   async requestTicket(projectId: string): Promise<CloudConnectTicket> {
@@ -132,12 +132,14 @@ export class CloudConnectClient {
       })
     })
     if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as { error?: { code?: string } }
-      throw Object.assign(new Error(body.error?.code ?? `connect failed: ${res.status}`), {
-        code: body.error?.code
-      })
+      const code = readString(readField(await res.json().catch(() => null), 'error'), 'code')
+      throw Object.assign(new Error(code ?? `connect failed: ${res.status}`), { code })
     }
-    return (await res.json()) as CloudConnectTicket
+    const ticket = parseConnectTicket(await res.json())
+    if (ticket === null) {
+      throw new Error('connect response malformed')
+    }
+    return ticket
   }
 
   /**
@@ -197,8 +199,8 @@ export class CloudConnectClient {
       })
       ws.once('error', reject)
       ws.once('message', (readyRaw) => {
-        const ready = JSON.parse(readyRaw.toString()) as { type?: string }
-        if (ready.type !== 'e2ee_ready') {
+        const ready = parseJsonText(readyRaw.toString())
+        if (readString(ready, 'type') !== 'e2ee_ready') {
           reject(new Error(`expected e2ee_ready, got ${JSON.stringify(ready)}`))
           ws.terminate()
           return
@@ -218,10 +220,8 @@ export class CloudConnectClient {
         }
         this.sharedKey = deriveSharedKey(this.deviceKeys.secretKey, hostKey)
         ws.once('message', (authRaw) => {
-          const auth = JSON.parse(decrypt(authRaw.toString(), this.sharedKey!) ?? '{}') as {
-            type?: string
-          }
-          if (auth.type !== 'e2ee_authenticated') {
+          const auth = parseJsonText(decrypt(authRaw.toString(), this.sharedKey!) ?? '{}')
+          if (readString(auth, 'type') !== 'e2ee_authenticated') {
             reject(new Error(`expected e2ee_authenticated, got ${JSON.stringify(auth)}`))
             ws.terminate()
             return
@@ -229,7 +229,7 @@ export class CloudConnectClient {
           this.socket = ws
           resolve()
         })
-        const claims = readCredential(ticket.credential)
+        const claims = readTicketClaims(ticket.credential)
         ws.send(
           encrypt(
             JSON.stringify({ type: 'e2ee_auth', deviceToken: claims?.deviceToken }),

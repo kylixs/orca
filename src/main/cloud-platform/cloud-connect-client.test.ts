@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { readString } from '../../shared/json-fields'
 import { createServer as createHttpServer } from 'node:http'
 import { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
@@ -95,13 +96,16 @@ beforeAll(async () => {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ username: 'admin', password: 'Adm1n!', deviceName: 'connect-admin' })
   })
-  adminToken = ((await adminRes.json()) as { accessToken: string }).accessToken
+  adminToken = readString(await adminRes.json(), 'accessToken') ?? adminToken
 
   const tokenRes = await fetch(`${platform.url}/v1/hosts/tokens`, {
     method: 'POST',
     headers: { authorization: `Bearer ${adminToken}` }
   })
-  const { token: hostToken } = (await tokenRes.json()) as { token: string }
+  const hostToken = readString(await tokenRes.json(), 'token')
+  if (hostToken === null) {
+    throw new Error('host token missing')
+  }
 
   const admission = startCloudRuntimeAdmission(
     {
@@ -142,7 +146,7 @@ beforeAll(async () => {
     })
   })
   expect(projectRes.status).toBe(201)
-  projectId = ((await projectRes.json()) as { id: string }).id
+  projectId = readString(await projectRes.json(), 'id') ?? projectId
   await fetch(`${platform.url}/v1/projects/${projectId}/grants`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${adminToken}` },
@@ -197,7 +201,10 @@ describe('桌面端云端连接（真实平台 + 真实 TLS Runtime + E2EE）', 
         path: '/srv/work/admin-only-svc'
       })
     })
-    const hidden = ((await adminOnly.json()) as { id: string }).id
+    const hidden = readString(await adminOnly.json(), 'id')
+    if (hidden === null) {
+      throw new Error('project id missing')
+    }
     expect(projects.some((p) => p.id === hidden)).toBe(false)
     await expect(client.requestTicket(hidden)).rejects.toMatchObject({ code: 'PROJECT_NOT_FOUND' })
     client.close()
@@ -206,7 +213,11 @@ describe('桌面端云端连接（真实平台 + 真实 TLS Runtime + E2EE）', 
   it('直连不可达时回落中继；两者都不可达时明确报错', async () => {
     const closed = createHttpServer()
     await new Promise<void>((r) => closed.listen(0, '127.0.0.1', () => r()))
-    const closedPort = (closed.address() as { port: number }).port
+    const address = closed.address()
+    if (address === null || typeof address === 'string') {
+      throw new Error('unexpected server address')
+    }
+    const closedPort = address.port
     await new Promise<void>((r) => closed.close(() => r()))
 
     const deadDirect: CloudEndpoint = { priority: 1, url: `wss://127.0.0.1:${closedPort}` }
@@ -236,11 +247,20 @@ describe('桌面端云端连接（真实平台 + 真实 TLS Runtime + E2EE）', 
       client.onClose((code, reason) => resolve({ code, reason }))
     )
 
+    // The renderer never holds a token: revoke through a separate login by the
+    // same user, even though the device was minted by this client's session.
+    const relogin = await fetch(`${platform.url}/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'zhangsan', password: 'Passw0rd!', deviceName: 'revoker' })
+    })
+    const revokeToken = readString(await relogin.json(), 'accessToken')
+    if (revokeToken === null) {
+      throw new Error('revoker login failed')
+    }
     const revoke = await fetch(`${platform.url}/v1/me/devices/${client.currentDeviceId}`, {
       method: 'DELETE',
-      headers: {
-        authorization: `Bearer ${(client as unknown as { accessToken: string }).accessToken}`
-      }
+      headers: { authorization: `Bearer ${revokeToken}` }
     })
     expect(revoke.ok).toBe(true)
     await host.admission.client!.refresh()

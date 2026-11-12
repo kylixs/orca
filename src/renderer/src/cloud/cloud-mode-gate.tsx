@@ -11,8 +11,7 @@ import type { CloudBridge } from './use-cloud-session'
  */
 export function useCloudBridge(): CloudBridge | null {
   return React.useMemo(() => {
-    const api = (window as unknown as { api?: { cloud?: CloudBridge } }).api
-    return api?.cloud ?? null
+    return window.api?.cloud ?? null
   }, [])
 }
 

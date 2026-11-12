@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { errorCodeOf, readField } from '../../../shared/json-fields'
 import type {
   CloudConnectionEvent,
   CloudOpenResult,
@@ -40,10 +41,7 @@ export type CloudSessionView = {
 }
 
 function isCloudState(value: unknown): value is CloudSessionState {
-  if (!value || typeof value !== 'object') {
-    return false
-  }
-  const status = (value as { status?: unknown }).status
+  const status = readField(value, 'status')
   return status === 'signed-out' || status === 'signed-in'
 }
 
@@ -117,7 +115,7 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
       try {
         applyState(await active.login(username, password))
       } catch (cause) {
-        const code = (cause as { code?: string }).code ?? (cause as Error).message
+        const code = errorCodeOf(cause) ?? (cause instanceof Error ? cause.message : '登录失败')
         setError(code)
         setStatus('signed-out')
       }

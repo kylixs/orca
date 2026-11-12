@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import WebSocket from 'ws'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { parseJsonText, readArray, readField, readString } from '../../shared/json-fields'
+import { readTicketClaims } from './cloud-connect-response'
 import { parsePairingCode } from '../../shared/pairing'
 import { decrypt, deriveSharedKey, encrypt, generateKeyPair } from '../runtime/rpc/e2ee-crypto'
 import { OrcaRuntimeService } from '../runtime/orca-runtime'
@@ -65,7 +67,10 @@ async function mintHostToken(): Promise<string> {
     method: 'POST',
     headers: { authorization: `Bearer ${adminToken}` }
   })
-  const { token } = (await res.json()) as { token: string }
+  const token = readString(await res.json(), 'token')
+  if (token === null) {
+    throw new Error('host token missing')
+  }
   return token
 }
 
@@ -75,10 +80,13 @@ async function platformHosts(): Promise<
   const res = await fetch(`${platform.url}/v1/hosts`, {
     headers: { authorization: `Bearer ${adminToken}` }
   })
-  const body = (await res.json()) as {
-    hosts: { id: string; name: string; status: string; directAddrs: string[] }[]
-  }
-  return body.hosts
+  const hosts = readArray(await res.json(), 'hosts') ?? []
+  return hosts.map((host) => ({
+    id: readString(host, 'id') ?? '',
+    name: readString(host, 'name') ?? '',
+    status: readString(host, 'status') ?? '',
+    directAddrs: readArray(host, 'directAddrs')?.filter((addr) => typeof addr === 'string') ?? []
+  }))
 }
 
 type RuntimeFixture = {
@@ -150,24 +158,32 @@ async function openSession(projectId: string): Promise<Session> {
       deviceName: 'enrol-e2e'
     })
   })
-  const login = (await loginRes.json()) as { accessToken: string; device: { id: string } }
-  const auth = { authorization: `Bearer ${login.accessToken}` }
+  const login: unknown = await loginRes.json()
+  const accessToken = readString(login, 'accessToken')
+  const deviceId = readString(readField(login, 'device'), 'id')
+  if (accessToken === null || deviceId === null) {
+    throw new Error('login response malformed')
+  }
+  const auth = { authorization: `Bearer ${accessToken}` }
   const connectRes = await fetch(`${platform.url}/v1/projects/${projectId}/connect`, {
     method: 'POST',
     headers: { ...auth, 'content-type': 'application/json' },
-    body: JSON.stringify({ deviceId: login.device.id, devicePubKey, clientVersion: '1.5.0' })
+    body: JSON.stringify({ deviceId, devicePubKey, clientVersion: '1.5.0' })
   })
   if (!connectRes.ok) {
     throw new Error(`connect failed: ${await connectRes.text()}`)
   }
-  const { credential } = (await connectRes.json()) as { credential: string }
-  const claims = JSON.parse(Buffer.from(credential.split('.')[1], 'base64url').toString()) as {
-    deviceToken: string
-    host: string
+  const credential = readString(await connectRes.json(), 'credential')
+  if (credential === null) {
+    throw new Error('connect response malformed')
+  }
+  const claims = readTicketClaims(credential)
+  if (claims.deviceToken === null || claims.host === null) {
+    throw new Error('ticket claims malformed')
   }
   return {
-    accessToken: login.accessToken,
-    deviceId: login.device.id,
+    accessToken,
+    deviceId,
     devicePubKey,
     deviceToken: claims.deviceToken,
     credential,
@@ -202,17 +218,17 @@ function completeHandshake(
       )
     })
     ws.once('message', (readyRaw) => {
-      const ready = JSON.parse(readyRaw.toString()) as { type: string }
-      if (ready.type !== 'e2ee_ready') {
-        reject(new Error(`expected e2ee_ready, got ${ready.type}`))
+      const readyType = readString(parseJsonText(readyRaw.toString()), 'type')
+      if (readyType !== 'e2ee_ready') {
+        reject(new Error(`expected e2ee_ready, got ${readyType}`))
         return
       }
       ws.send(
         encrypt(JSON.stringify({ type: 'e2ee_auth', deviceToken: session.deviceToken }), sharedKey)
       )
       ws.once('message', (authRaw) => {
-        const auth = JSON.parse(decrypt(authRaw.toString(), sharedKey) ?? '{}') as { type: string }
-        if (auth.type !== 'e2ee_authenticated') {
+        const auth = parseJsonText(decrypt(authRaw.toString(), sharedKey) ?? '{}')
+        if (readString(auth, 'type') !== 'e2ee_authenticated') {
           reject(new Error(`expected e2ee_authenticated, got ${JSON.stringify(auth)}`))
           return
         }
@@ -234,7 +250,7 @@ beforeAll(async () => {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ username: 'admin', password: 'Adm1n!', deviceName: 'enrol-admin' })
   })
-  adminToken = ((await adminRes.json()) as { accessToken: string }).accessToken
+  adminToken = readString(await adminRes.json(), 'accessToken') ?? adminToken
 
   userDataPath = mkdtempSync(join(tmpdir(), 'orca-cloud-enrol-'))
   host = await startHost({
@@ -260,7 +276,7 @@ beforeAll(async () => {
     })
   })
   expect(projectRes.status).toBe(201)
-  projectId = ((await projectRes.json()) as { id: string }).id
+  projectId = readString(await projectRes.json(), 'id') ?? projectId
 
   const grant = await fetch(`${platform.url}/v1/projects/${projectId}/grants`, {
     method: 'PUT',

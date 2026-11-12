@@ -103,6 +103,16 @@ async function signIn(bridge: CloudBridge, password = 'Passw0rd!'): Promise<void
 // Why explicit: vitest globals are off, so RTL cannot register its auto-cleanup.
 afterEach(cleanup)
 
+function firstEnabledOpenButton(): HTMLElement {
+  const button = screen
+    .getAllByRole('button', { name: '打开' })
+    .find((entry) => entry instanceof HTMLButtonElement && !entry.disabled)
+  if (!button) {
+    throw new Error('no enabled 打开 button')
+  }
+  return button
+}
+
 describe('云端工作台界面', () => {
   it('未配置平台时显示不可用，而不是一个登不进去的表单', async () => {
     render(<CloudApp bridge={null} />)
@@ -130,9 +140,13 @@ describe('云端工作台界面', () => {
     // Two of three projects cannot export; ops-tools may.
     expect(screen.getAllByText('下载受限')).toHaveLength(2)
     // The offline host's project is listed but cannot be opened.
-    const openButtons = screen.getAllByRole('button', { name: '打开' }) as HTMLButtonElement[]
+    const openButtons = screen.getAllByRole('button', { name: '打开' })
     expect(openButtons).toHaveLength(3)
-    expect(openButtons.filter((button) => button.disabled)).toHaveLength(1)
+    // The offline host's row only.
+    const disabled = openButtons.filter(
+      (button) => button instanceof HTMLButtonElement && button.disabled
+    )
+    expect(disabled).toHaveLength(1)
   })
 
   it('打开项目后显示线路', async () => {
@@ -140,11 +154,9 @@ describe('云端工作台界面', () => {
     await signIn(bridge)
     await waitFor(() => expect(screen.getByText('工作台')).toBeTruthy())
 
-    const online = screen
-      .getAllByRole('button', { name: '打开' })
-      .find((button) => !(button as HTMLButtonElement).disabled)
+    const online = firstEnabledOpenButton()
     await act(async () => {
-      await userEvent.click(online!)
+      await userEvent.click(online)
     })
     await waitFor(() => expect(screen.getByTestId('cloud-route').textContent).toBe('直连'))
     expect(screen.getByRole('button', { name: '已打开' })).toBeTruthy()
@@ -155,11 +167,9 @@ describe('云端工作台界面', () => {
       makeBridge({ openResult: { ok: false, code: 'HOST_OFFLINE', message: '开发机已离线' } })
     )
     await waitFor(() => expect(screen.getByText('工作台')).toBeTruthy())
-    const online = screen
-      .getAllByRole('button', { name: '打开' })
-      .find((button) => !(button as HTMLButtonElement).disabled)
+    const online = firstEnabledOpenButton()
     await act(async () => {
-      await userEvent.click(online!)
+      await userEvent.click(online)
     })
     await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('HOST_OFFLINE'))
     expect(screen.queryByTestId('cloud-route')).toBeNull()
@@ -169,11 +179,9 @@ describe('云端工作台界面', () => {
     const bridge = makeBridge()
     await signIn(bridge)
     await waitFor(() => expect(screen.getByText('工作台')).toBeTruthy())
-    const online = screen
-      .getAllByRole('button', { name: '打开' })
-      .find((button) => !(button as HTMLButtonElement).disabled)
+    const online = firstEnabledOpenButton()
     await act(async () => {
-      await userEvent.click(online!)
+      await userEvent.click(online)
     })
     await waitFor(() => expect(screen.getByTestId('cloud-route')).toBeTruthy())
 

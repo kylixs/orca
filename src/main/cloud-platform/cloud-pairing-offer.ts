@@ -1,5 +1,6 @@
 import type { PairingOffer } from '../../shared/pairing'
 import type { CloudConnectTicket, CloudEndpoint } from './cloud-connect-client'
+import { readTicketClaims } from './cloud-connect-response'
 
 /**
  * Maps a cloud ticket onto Orca's existing pairing offer, so the renderer can
@@ -25,17 +26,6 @@ export type CloudProjectLink = {
 
 const PAIRING_OFFER_VERSION = 2
 
-function claimsOf(credential: string): { deviceToken?: string; deviceId?: string } | null {
-  try {
-    return JSON.parse(Buffer.from(credential.split('.')[1], 'base64url').toString()) as {
-      deviceToken?: string
-      deviceId?: string
-    }
-  } catch {
-    return null
-  }
-}
-
 /**
  * Returns null when the ticket cannot drive a real connection: the renderer would
  * otherwise fail at handshake time with no explanation.
@@ -47,9 +37,8 @@ export function buildCloudProjectLink(input: {
   tlsRejectUnauthorized?: boolean
 }): CloudProjectLink | null {
   const { ticket, endpoint, route } = input
-  const claims = claimsOf(ticket.credential)
-  const devicePubKey = deviceKeyOf(ticket.credential)
-  if (!claims?.deviceToken || !devicePubKey || !ticket.host.e2eePublicKeyB64) {
+  const claims = readTicketClaims(ticket.credential)
+  if (!claims.deviceToken || !claims.devicePubKey || !ticket.host.e2eePublicKeyB64) {
     return null
   }
   const hostKey = Buffer.from(ticket.host.e2eePublicKeyB64, 'base64')
@@ -69,24 +58,12 @@ export function buildCloudProjectLink(input: {
     },
     cloudUpgrade: {
       credential: ticket.credential,
-      devicePubKey: deviceKeyOf(ticket.credential),
+      devicePubKey: claims.devicePubKey,
       ...(route === 'relay' && endpoint.sni ? { servername: endpoint.sni } : {}),
       ...(input.tlsRejectUnauthorized === false ? { tlsRejectUnauthorized: false } : {})
     },
     route,
     workspaceRoot: ticket.workspace.workspaceRoot,
     expiresIn: ticket.expiresIn
-  }
-}
-
-/** The ticket's device binding; the host compares it to `x-orca-device-pubkey`. */
-function deviceKeyOf(credential: string): string {
-  try {
-    const claims = JSON.parse(Buffer.from(credential.split('.')[1], 'base64url').toString()) as {
-      devicePubKey?: string
-    }
-    return claims.devicePubKey ?? ''
-  } catch {
-    return ''
   }
 }

@@ -18,7 +18,10 @@ export function registerCloudPlatformHandlers(
   options: { broadcast: (channel: string, payload: unknown) => void }
 ): CloudPlatformHandlers {
   const handle = <T>(channel: string, fn: (...args: never[]) => Promise<T> | T): void => {
-    ipcMain.handle(channel, async (_event, ...args: unknown[]) => fn(...(args as never[])))
+    ipcMain.handle(channel, async (_event, ...args: unknown[]) =>
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the preload bridge is the only caller and its signatures are this channel's contract; Electron hands args over untyped.
+      fn(...(args as never[]))
+    )
   }
 
   handle<CloudSessionState>(CLOUD_PLATFORM_IPC.state, () => session.getState())

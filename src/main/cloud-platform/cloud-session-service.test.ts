@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { readString } from '../../shared/json-fields'
 import { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
 import {
@@ -95,7 +96,10 @@ async function createProject(key: string, grants: string[]): Promise<string> {
     })
   })
   expect(res.status).toBe(201)
-  const { id } = (await res.json()) as { id: string }
+  const id = readString(await res.json(), 'id')
+  if (id === null) {
+    throw new Error('project id missing')
+  }
   await fetch(`${platform.url}/v1/projects/${id}/grants`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${adminToken}` },
@@ -111,13 +115,16 @@ beforeAll(async () => {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ username: 'admin', password: 'Adm1n!', deviceName: 'session-admin' })
   })
-  adminToken = ((await adminRes.json()) as { accessToken: string }).accessToken
+  adminToken = readString(await adminRes.json(), 'accessToken') ?? adminToken
 
   const tokenRes = await fetch(`${platform.url}/v1/hosts/tokens`, {
     method: 'POST',
     headers: { authorization: `Bearer ${adminToken}` }
   })
-  const { token: hostToken } = (await tokenRes.json()) as { token: string }
+  const hostToken = readString(await tokenRes.json(), 'token')
+  if (hostToken === null) {
+    throw new Error('host token missing')
+  }
 
   admission = startCloudRuntimeAdmission(
     {
@@ -218,8 +225,7 @@ describe('云端会话服务（渲染进程可见面）', () => {
       events.push({ closeCode: event.closeCode, reason: event.reason, projectId: event.projectId })
     )
 
-    const deviceId = (session as unknown as { client: { currentDeviceId: string } }).client
-      .currentDeviceId
+    const deviceId = session.currentDeviceId
     // The renderer never holds a token, so revocation comes from a separate
     // login by the same user — devices are per-user, not per-session.
     const revoke = await fetch(`${platform.url}/v1/me/devices/${deviceId}`, {
@@ -250,5 +256,9 @@ async function userTokenForOwnDevice(): Promise<string> {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ username: 'zhangsan', password: 'Passw0rd!', deviceName: 'revoker' })
   })
-  return ((await res.json()) as { accessToken: string }).accessToken
+  const token = readString(await res.json(), 'accessToken')
+  if (token === null) {
+    throw new Error('revoker login failed')
+  }
+  return token
 }

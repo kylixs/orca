@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { hardenExistingSecureFile, writeSecureJsonFile } from '../../shared/secure-file'
+import { readField, readNumber, readObjectValue, readString } from '../../shared/json-fields'
 
 /**
  * Host enrolment with the cloud platform.
@@ -33,15 +34,11 @@ export type EnrollInput = {
 }
 
 function isCloudHostCredential(value: unknown): value is CloudHostCredential {
-  if (!value || typeof value !== 'object') {
-    return false
-  }
-  const entry = value as Record<string, unknown>
   return (
-    typeof entry.hostId === 'string' &&
-    typeof entry.hostName === 'string' &&
-    typeof entry.credential === 'string' &&
-    typeof entry.registeredAt === 'number'
+    readString(value, 'hostId') !== null &&
+    readString(value, 'hostName') !== null &&
+    readString(value, 'credential') !== null &&
+    readNumber(value, 'registeredAt') !== null
   )
 }
 
@@ -98,19 +95,21 @@ export async function enrollCloudHost(
     return { ok: false, error: error instanceof Error ? error.message : String(error) }
   }
   if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { error?: { code?: string } }
-    return { ok: false, error: body.error?.code ?? `register failed: ${res.status}` }
+    const code = readString(readField(await res.json().catch(() => null), 'error'), 'code')
+    return { ok: false, error: code ?? `register failed: ${res.status}` }
   }
-  const body = (await res.json()) as { hostId?: unknown; credential?: unknown }
-  if (typeof body.hostId !== 'string' || typeof body.credential !== 'string') {
+  const body: unknown = await res.json()
+  const hostId = readString(body, 'hostId')
+  const credential = readString(body, 'credential')
+  if (hostId === null || credential === null) {
     return { ok: false, error: 'register response missing hostId/credential' }
   }
   return {
     ok: true,
     value: {
-      hostId: body.hostId,
+      hostId,
       hostName: input.hostName,
-      credential: body.credential,
+      credential,
       registeredAt: Date.now()
     }
   }
@@ -141,15 +140,17 @@ export async function sendHeartbeat(
     if (!res.ok) {
       return null
     }
-    const parsed = (await res.json()) as Partial<HeartbeatResult>
-    if (typeof parsed.policyVersion !== 'number') {
+    const parsed: unknown = await res.json()
+    const policyVersion = readNumber(parsed, 'policyVersion')
+    if (policyVersion === null) {
       return null
     }
+    const maintenance = readObjectValue(readField(parsed, 'maintenance'))
     return {
-      policyVersion: parsed.policyVersion,
-      policies: parsed.policies,
-      revoked: parsed.revoked,
-      maintenance: parsed.maintenance ?? null
+      policyVersion,
+      policies: readField(parsed, 'policies'),
+      revoked: readField(parsed, 'revoked'),
+      maintenance: maintenance === null ? null : { reason: readString(maintenance, 'reason') ?? '' }
     }
   } catch {
     return null

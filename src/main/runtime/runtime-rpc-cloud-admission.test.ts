@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import WebSocket from 'ws'
 import { afterEach, describe, expect, it } from 'vitest'
+import { headerText } from '../../shared/http-header-text'
 import {
   createCloudUpgradeAdmission,
   type CloudRevocations
@@ -93,7 +94,7 @@ function attempt(
     ws.once('unexpected-response', (_req, res) => {
       resolve({
         status: res.statusCode,
-        reject: res.headers['x-orca-reject'] as string | undefined
+        reject: headerText(res.headers['x-orca-reject'])
       })
       ws.terminate()
     })
