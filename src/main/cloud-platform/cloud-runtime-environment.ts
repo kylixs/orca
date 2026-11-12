@@ -36,6 +36,8 @@ export type CloudRuntimeLink = {
   offer: PairingOffer
   cloudUpgrade: CloudUpgradeOption
   workspaceRoot: string
+  /** The device key the host demands at handshake (device PoP). */
+  clientKeyPair: { publicKey: Uint8Array; secretKey: Uint8Array }
 }
 
 export class CloudRuntimeLinkError extends Error {
@@ -80,10 +82,15 @@ export async function resolveCloudRuntimeLink(
   if (!prepared.ok) {
     throw new CloudRuntimeLinkError(prepared.code, prepared.message ?? prepared.code)
   }
+  const clientKeyPair = session.deviceKeyPair()
+  if (!clientKeyPair) {
+    throw new CloudRuntimeLinkError('NOT_SIGNED_IN', 'No cloud platform session is active.')
+  }
   return {
     offer: { ...prepared.link.offer, v: PAIRING_OFFER_VERSION, scope: 'runtime' },
     cloudUpgrade: prepared.link.cloudUpgrade,
-    workspaceRoot: prepared.link.workspaceRoot
+    workspaceRoot: prepared.link.workspaceRoot,
+    clientKeyPair
   }
 }
 
@@ -104,7 +111,8 @@ export function callCloudRuntimeProject<TResult = unknown>(
       undefined,
       signal,
       clientCapabilities,
-      link.cloudUpgrade
+      link.cloudUpgrade,
+      link.clientKeyPair
     )
   )
 }
@@ -140,7 +148,7 @@ export async function subscribeCloudRuntimeEnvironment(
         callbacks.onClose()
       }
     },
-    { cloudUpgrade: link.cloudUpgrade, signal }
+    { cloudUpgrade: link.cloudUpgrade, signal, clientKeyPair: link.clientKeyPair }
   )
 }
 

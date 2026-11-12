@@ -35,6 +35,15 @@ export type CloudUpgradeOption = {
   servername?: string
 }
 
+/**
+ * The key pair the E2EE handshake uses. Cloud links supply the device key so the
+ * host can check it against the key the platform bound into the ticket.
+ */
+export type RemoteRuntimeClientKeyPair = {
+  publicKey: Uint8Array
+  secretKey: Uint8Array
+}
+
 export type RemoteRuntimeSubscriptionOptions = RemoteRuntimeSocketLivenessOptions & {
   signal?: AbortSignal
   clientCapabilities?: readonly RuntimeCapability[]
@@ -50,4 +59,6 @@ export type RemoteRuntimeSubscriptionOptions = RemoteRuntimeSocketLivenessOption
    * must keep connecting exactly as before.
    */
   cloudUpgrade?: CloudUpgradeOption
+  /** Defaults to a fresh key pair, which no cloud host will accept as a device proof. */
+  clientKeyPair?: RemoteRuntimeClientKeyPair
 }

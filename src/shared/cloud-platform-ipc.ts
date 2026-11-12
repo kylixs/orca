@@ -13,7 +13,6 @@ export const CLOUD_PLATFORM_IPC = {
   listProjects: 'cloud:listProjects',
   openProject: 'cloud:openProject',
   closeProject: 'cloud:closeProject',
-  prepareProjectLink: 'cloud:prepareProjectLink',
   openWorkspace: 'cloud:openWorkspace',
   rpc: 'cloud:rpc',
   connectionChanged: 'cloud:connectionChanged'
@@ -46,35 +45,6 @@ export type CloudOpenResult =
        */
       environmentId?: string
     }
-  | { ok: false; code: string; message?: string }
-
-/**
- * Everything the renderer needs to attach its own Orca workspace to the project.
- * `offer` is Orca's existing pairing shape; `cloudUpgrade` carries the one-shot
- * ticket the host demands at the WebSocket upgrade.
- */
-export type CloudProjectLinkPayload = {
-  offer: {
-    v: number
-    endpoint: string
-    deviceToken: string
-    publicKeyB64: string
-    pairedDeviceId?: string
-    scope?: string
-  }
-  cloudUpgrade: {
-    credential: string
-    devicePubKey: string
-    servername?: string
-    tlsRejectUnauthorized?: boolean
-  }
-  route: 'direct' | 'relay'
-  workspaceRoot: string
-  expiresIn: number
-}
-
-export type CloudProjectLinkResult =
-  | { ok: true; link: CloudProjectLinkPayload }
   | { ok: false; code: string; message?: string }
 
 export type CloudRpcOutcome =

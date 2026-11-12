@@ -18,6 +18,7 @@ import type { MobilePairingConnectionMode } from '../../shared/mobile-pairing-co
 import type { RuntimePairingReach } from '../../shared/runtime-pairing-reach'
 import type { RuntimeDeviceGrant } from './rpc/rpc-method-permission'
 import { sameGrants, validGrants, validRelayBinding } from './device-registry-entry-validators'
+import { adoptCloudDeviceInList, type CloudDeviceAdoption } from './device-registry-cloud-adoption'
 import {
   parseMobilePushRegistration,
   type MobilePushRegistration
@@ -42,6 +43,12 @@ export type DeviceEntry = {
   pushRegistration?: MobilePushRegistration
   // Why: administrative permissions are granted only when pairing; absent on older rows means none.
   grants?: RuntimeDeviceGrant[]
+  /**
+   * The E2EE public key this device must prove at handshake (cloud devices only).
+   * The platform binds the ticket to this key; the host checks the handshake key
+   * matches, so a stolen ticket is useless without the matching secret.
+   */
+  publicKeyB64?: string
 }
 
 // Why: a lastSeen refresh is pure bookkeeping, so coalesce reconnect bursts into one write instead of
@@ -159,37 +166,13 @@ export class DeviceRegistry {
    * the identity and token, so there is no QR step. Idempotent, and never widens
    * grants on an existing row.
    */
-  adoptCloudDevice(input: {
-    deviceId: string
-    token: string
-    name: string
-    scope?: DeviceScope
-  }): DeviceEntry {
-    const existing = this.devices.find((device) => device.deviceId === input.deviceId)
-    if (existing) {
-      if (existing.token === input.token) {
-        return existing
-      }
-      const updated: DeviceEntry = { ...existing, token: input.token, name: input.name }
-      const nextDevices = this.devices.map((device) =>
-        device.deviceId === input.deviceId ? updated : device
-      )
-      this.save(nextDevices)
-      this.devices = nextDevices
-      return updated
+  adoptCloudDevice(input: CloudDeviceAdoption): DeviceEntry {
+    const adopted = adoptCloudDeviceInList(this.devices, input)
+    if (adopted.changed) {
+      this.save(adopted.devices)
+      this.devices = adopted.devices
     }
-    const entry: DeviceEntry = {
-      deviceId: input.deviceId,
-      name: input.name,
-      token: input.token,
-      scope: input.scope ?? 'runtime',
-      pairedAt: Date.now(),
-      lastSeenAt: 0
-    }
-    const nextDevices = [...this.devices, entry]
-    this.save(nextDevices)
-    this.devices = nextDevices
-    return entry
+    return adopted.device
   }
 
   removeDevice(deviceId: string): boolean {
@@ -367,7 +350,8 @@ export class DeviceRegistry {
         pairingReach: device.pairingReach === 'this-computer' ? 'this-computer' : 'network',
         // Why: a malformed row must degrade to "no background push", never fail the load
         // and strand every paired device.
-        pushRegistration: parseMobilePushRegistration(device.pushRegistration)
+        pushRegistration: parseMobilePushRegistration(device.pushRegistration),
+        publicKeyB64: typeof device.publicKeyB64 === 'string' ? device.publicKeyB64 : undefined
       }))
       this.registryUnreadable = false
     } catch (error) {

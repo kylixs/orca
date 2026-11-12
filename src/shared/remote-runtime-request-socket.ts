@@ -10,7 +10,10 @@ import {
   publicKeyToBase64
 } from './e2ee-crypto'
 import type { PairingOffer } from './pairing'
-import type { CloudUpgradeOption } from './remote-runtime-subscription-contract'
+import type {
+  CloudUpgradeOption,
+  RemoteRuntimeClientKeyPair
+} from './remote-runtime-subscription-contract'
 import type { RuntimeCapability } from './protocol-version'
 import { remoteRuntimeClientCapabilities } from './remote-runtime-client-capabilities'
 import {
@@ -44,7 +47,8 @@ export async function sendRemoteRuntimeRequestOnSocket<TResult>(
   validateStatus?: (response: RuntimeRpcResponse<RuntimeStatus>) => void,
   signal?: AbortSignal,
   clientCapabilities: readonly RuntimeCapability[] = [],
-  cloudUpgrade?: CloudUpgradeOption
+  cloudUpgrade?: CloudUpgradeOption,
+  clientKeyPair?: RemoteRuntimeClientKeyPair
 ): Promise<RuntimeRpcResponse<TResult>> {
   throwIfSignalAborted(signal)
   if (!isSafeTimerDelayMs(timeoutMs)) {
@@ -80,7 +84,7 @@ export async function sendRemoteRuntimeRequestOnSocket<TResult>(
   }
   let serializedRequest = takeRemoteRuntimePreparedRequest(pendingRequest)
   return await new Promise<RuntimeRpcResponse<TResult>>((resolve, reject) => {
-    const keyPair = generateKeyPair()
+    const keyPair = clientKeyPair ?? generateKeyPair()
     const sharedKey = deriveSharedKey(keyPair.secretKey, publicKeyFromBase64(pairing.publicKeyB64))
     let settled = false
     let ws: WebSocket | null = null

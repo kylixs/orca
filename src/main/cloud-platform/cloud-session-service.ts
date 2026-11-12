@@ -65,6 +65,11 @@ export class CloudSessionService {
     return this.client?.currentDeviceId ?? ''
   }
 
+  /** Main-process only (never over IPC): the device key the host demands proof of. */
+  deviceKeyPair(): { publicKey: Uint8Array; secretKey: Uint8Array } | null {
+    return this.client?.deviceKeyPair() ?? null
+  }
+
   getState(): CloudSessionState {
     return this.state
   }

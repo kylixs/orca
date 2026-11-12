@@ -1,8 +1,31 @@
-import type { CloudProjectLinkPayload } from './cloud-platform-ipc'
 import type { PairingOffer } from './pairing'
 
 /**
- * The IPC payload carries the cloud ticket alongside the offer; Orca's remote
+ * A prepared cloud link as the main process hands it to a caller in-process.
+ * It carries the ticket, so it is never sent to a renderer.
+ */
+export type CloudProjectLinkPayload = {
+  offer: {
+    v: number
+    endpoint: string
+    deviceToken: string
+    publicKeyB64: string
+    pairedDeviceId?: string
+    scope?: string
+  }
+  cloudUpgrade: {
+    credential: string
+    devicePubKey: string
+    servername?: string
+    tlsRejectUnauthorized?: boolean
+  }
+  route: 'direct' | 'relay'
+  workspaceRoot: string
+  expiresIn: number
+}
+
+/**
+ * The prepared link carries the cloud ticket alongside the offer; Orca's remote
  * client takes the offer alone. Returns null when the payload is not a runtime
  * offer this client can use.
  */

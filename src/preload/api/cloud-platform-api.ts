@@ -1,7 +1,6 @@
 import type {
   CloudConnectionEvent,
   CloudOpenResult,
-  CloudProjectLinkResult,
   CloudProjectSummary,
   CloudRpcOutcome,
   CloudSessionState
@@ -17,7 +16,6 @@ export type CloudPlatformApi = {
   openWorkspace: (projectId: string) => Promise<CloudOpenResult>
   /** Leave the workspace; the platform session survives. */
   closeProject: () => Promise<{ ok: boolean }>
-  prepareProjectLink: (projectId: string) => Promise<CloudProjectLinkResult>
   rpc: (method: string, params?: Record<string, unknown>) => Promise<CloudRpcOutcome>
   onConnectionChanged: (listener: (event: CloudConnectionEvent) => void) => () => void
 }

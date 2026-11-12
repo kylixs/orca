@@ -1,5 +1,4 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { generateKeyPairSync } from 'node:crypto'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -64,13 +63,17 @@ type Session = {
   accessToken: string
   deviceId: string
   devicePubKey: string
+  /** The device key the host demands proof of at handshake. */
+  deviceKeys: { publicKey: Uint8Array; secretKey: Uint8Array }
   deviceToken: string
   credential: string
 }
 
 async function openPlatformSession(): Promise<Session> {
-  const { publicKey } = generateKeyPairSync('x25519')
-  const devicePubKey = publicKey.export({ type: 'spki', format: 'der' }).toString('base64')
+  // Why a NaCl key: the handshake must use this key, so it has to be the same
+  // 32-byte Curve25519 key the ticket binds.
+  const deviceKeys = generateKeyPair()
+  const devicePubKey = Buffer.from(deviceKeys.publicKey).toString('base64')
   const loginRes = await fetch(`${platform.url}/v1/auth/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -106,7 +109,7 @@ async function openPlatformSession(): Promise<Session> {
   if (credential === null || deviceToken === null) {
     throw new Error('connect response malformed')
   }
-  return { accessToken, deviceId, devicePubKey, deviceToken, credential }
+  return { accessToken, deviceId, devicePubKey, deviceKeys, deviceToken, credential }
 }
 
 /**
@@ -127,9 +130,8 @@ function completeHandshake(
     const close = new Promise<{ code: number; reason: string }>((done) => {
       ws.once('close', (code, reason) => done({ code, reason: reason.toString() }))
     })
-    const mobileKeys = generateKeyPair()
     const sharedKey = deriveSharedKey(
-      mobileKeys.secretKey,
+      session.deviceKeys.secretKey,
       Uint8Array.from(Buffer.from(serverPublicKeyB64, 'base64'))
     )
     ws.once('message', (readyRaw) => {
@@ -155,7 +157,7 @@ function completeHandshake(
       ws.send(
         JSON.stringify({
           type: 'e2ee_hello',
-          publicKeyB64: Buffer.from(mobileKeys.publicKey).toString('base64')
+          publicKeyB64: Buffer.from(session.deviceKeys.publicKey).toString('base64')
         })
       )
     })

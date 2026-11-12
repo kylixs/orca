@@ -43,7 +43,10 @@ export type {
   RemoteRuntimeOutboundSocketMemory
 } from './remote-runtime-subscription-outbound'
 
-export type { CloudUpgradeOption } from './remote-runtime-subscription-contract'
+export type {
+  CloudUpgradeOption,
+  RemoteRuntimeClientKeyPair
+} from './remote-runtime-subscription-contract'
 
 export type {
   RemoteRuntimeSubscriptionOptions,
@@ -73,7 +76,7 @@ export async function subscribeRemoteRuntimeTransport<TResult>(
     clientCapabilities: remoteRuntimeClientCapabilities(options?.clientCapabilities)
   })
   return await new Promise((resolve, reject) => {
-    const keyPair = generateKeyPair()
+    const keyPair = options?.clientKeyPair ?? generateKeyPair()
     const serverPublicKey = publicKeyFromBase64(pairing.publicKeyB64)
     const sharedKey = deriveSharedKey(keyPair.secretKey, serverPublicKey)
     let settled = false

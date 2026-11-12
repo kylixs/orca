@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
 import { isRemoteBrowserPageMissingError } from './remote-browser-stream-errors'
 import type { RemoteBrowserStreamLifecycle } from './remote-browser-stream-lifecycle'
@@ -51,6 +51,8 @@ export function useRemoteBrowserPageWheel({
   remoteWheelFrameRef: React.MutableRefObject<number | null>
   remoteWheelInFlightRef: React.MutableRefObject<boolean>
 }): void {
+  // Why: consecutive wheel batches at the same point do not need a second mouseMove RTT.
+  const lastSentWheelPointRef = useRef<{ pageId: string; x: number; y: number } | null>(null)
   const schedulePendingRemoteWheel = useCallback((): void => {
     if (remoteWheelFrameRef.current !== null || remoteWheelInFlightRef.current) {
       return
@@ -70,12 +72,18 @@ export function useRemoteBrowserPageWheel({
           return
         }
         try {
-          await callRuntimeRpc(
-            target,
-            'browser.mouseMove',
-            { ...params, x: point.x, y: point.y },
-            { timeoutMs: 15_000, suppressFeatureInteraction: true }
-          )
+          const lastPoint = lastSentWheelPointRef.current
+          const pointerUnchanged =
+            lastPoint?.pageId === pageId && lastPoint.x === point.x && lastPoint.y === point.y
+          if (!pointerUnchanged) {
+            await callRuntimeRpc(
+              target,
+              'browser.mouseMove',
+              { ...params, x: point.x, y: point.y },
+              { timeoutMs: 15_000, suppressFeatureInteraction: true }
+            )
+            lastSentWheelPointRef.current = { pageId, x: point.x, y: point.y }
+          }
           await callRuntimeRpc(
             target,
             'browser.mouseWheel',
@@ -110,6 +118,7 @@ export function useRemoteBrowserPageWheel({
     closeMissingRemotePage,
     enqueueRemoteInput,
     isCurrentRemoteOperationToken,
+    lastSentWheelPointRef,
     pendingRemoteWheelRef,
     remoteWheelFrameRef,
     remoteWheelInFlightRef,

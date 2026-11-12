@@ -53,7 +53,8 @@ function withDeviceAdoption(
       getRuntime()?.getDeviceRegistry()?.adoptCloudDevice({
         deviceId: decision.payload.deviceId,
         token: decision.payload.deviceToken,
-        name: decision.payload.sub
+        name: decision.payload.sub,
+        publicKeyB64: decision.payload.devicePubKey
       })
     }
     return decision

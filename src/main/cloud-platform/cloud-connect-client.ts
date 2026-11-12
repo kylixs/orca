@@ -76,6 +76,14 @@ export class CloudConnectClient {
     return this.deviceId
   }
 
+  /**
+   * The key pair the platform registered as this device. The cloud handshake must
+   * use it: completing E2EE with this key is the proof of possession the host checks.
+   */
+  deviceKeyPair(): { publicKey: Uint8Array; secretKey: Uint8Array } {
+    return this.deviceKeys
+  }
+
   async login(
     username: string,
     password: string

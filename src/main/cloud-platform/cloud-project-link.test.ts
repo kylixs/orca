@@ -203,7 +203,10 @@ describe('云端项目进入 Orca 工作区（真实平台 + 真实 Runtime + �
         onResponse: (response) => received.push(response),
         onError: (error) => received.push(error)
       },
-      { cloudUpgrade: prepared.link.cloudUpgrade }
+      {
+        cloudUpgrade: prepared.link.cloudUpgrade,
+        clientKeyPair: session.deviceKeyPair() ?? undefined
+      }
     )
     await new Promise((r) => setTimeout(r, 800))
     subscription.close()
@@ -230,7 +233,10 @@ describe('云端项目进入 Orca 工作区（真实平台 + 真实 Runtime + �
       {},
       8000,
       { onResponse: () => undefined, onError: () => undefined },
-      { cloudUpgrade: prepared.link.cloudUpgrade }
+      {
+        cloudUpgrade: prepared.link.cloudUpgrade,
+        clientKeyPair: session.deviceKeyPair() ?? undefined
+      }
     )
     expect(subscription.requestId.length).toBeGreaterThan(0)
     subscription.close()

@@ -1,10 +1,12 @@
+import { readField, readString } from './json-fields'
 import { parseRemoteRuntimeJsonText } from './remote-runtime-request-frames'
 
 export type RemoteRuntimeHandshakeState = 'awaiting_ready' | 'awaiting_authenticated' | 'ready'
 
 export type RemoteRuntimeAuthenticatedFrame =
   | { kind: 'authenticated' }
-  | { kind: 'rejected'; unauthorized: boolean }
+  /** `reason` is the host's `e2ee_error` code, when it named one. */
+  | { kind: 'rejected'; unauthorized: boolean; reason: string | null }
   | { kind: 'invalid' }
 
 export function classifyRemoteRuntimeReadyFrame(frame: string): 'ready' | 'invalid' | 'unexpected' {
@@ -30,16 +32,28 @@ export function parseRemoteRuntimeAuthenticatedFrame(
   } catch {
     return { kind: 'invalid' }
   }
-  if ((authenticated as { type?: unknown }).type === 'e2ee_authenticated') {
+  if (readString(authenticated, 'type') === 'e2ee_authenticated') {
     return { kind: 'authenticated' }
   }
+  const errorCode = readString(readField(authenticated, 'error'), 'code')
   return {
     kind: 'rejected',
-    unauthorized:
-      typeof authenticated === 'object' &&
-      authenticated !== null &&
-      (authenticated as { error?: { code?: unknown } }).error?.code === 'unauthorized'
+    unauthorized: errorCode === 'unauthorized',
+    reason: typeof errorCode === 'string' ? errorCode : null
   }
+}
+
+/** Why the host refused: its own code when it sent one, the generic wording otherwise. */
+export function remoteRuntimeAuthRejectionMessage(
+  rejection: Extract<RemoteRuntimeAuthenticatedFrame, { kind: 'rejected' }>
+): string {
+  const base = 'Remote Orca runtime rejected the pairing token.'
+  if (rejection.reason === 'device_proof_failed') {
+    return `${base} It presented a different device key than the cloud ticket names.`
+  }
+  return rejection.reason && rejection.reason !== 'unauthorized'
+    ? `${base} The host reported: ${rejection.reason}.`
+    : base
 }
 
 export function formatRemoteRuntimeCloseMessage(code: number, reason: Buffer): string {

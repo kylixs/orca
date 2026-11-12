@@ -316,7 +316,10 @@ describe('云端项目注册为运行时环境（真实平台 + 真实 TLS Runti
       {},
       8000,
       { onResponse: () => undefined, onError: () => undefined },
-      { cloudUpgrade: prepared.link.cloudUpgrade }
+      {
+        cloudUpgrade: prepared.link.cloudUpgrade,
+        clientKeyPair: session.deviceKeyPair() ?? undefined
+      }
     )
     first.close()
     await expect(
@@ -326,7 +329,10 @@ describe('云端项目注册为运行时环境（真实平台 + 真实 TLS Runti
         {},
         8000,
         { onResponse: () => undefined, onError: () => undefined },
-        { cloudUpgrade: prepared.link.cloudUpgrade }
+        {
+          cloudUpgrade: prepared.link.cloudUpgrade,
+          clientKeyPair: session.deviceKeyPair() ?? undefined
+        }
       )
     ).rejects.toThrow(/upgrade rejected \(401, replayed\)/i)
   }, 30000)

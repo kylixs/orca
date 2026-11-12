@@ -1,6 +1,6 @@
 # 开发进度
 
-> 更新时间：2026-11-13 13:05
+> 更新时间：2026-11-13 13:15
 > 规则：每轮只推进一个模块；失败必须如实记录。
 
 ## 模块状态
@@ -35,6 +35,7 @@
 | M25 云端项目 → 运行时环境 | ✅ 完成 | `evidence/m25-cloud-environment/` | 项目注册为环境（侧车 cloudProject），现有 selector/RPC/订阅直达；每次连接重签票据；顺带修复主机侧票据重放缺陷；7 条真实端到端 + 81 条回归 + 门禁绿 |
 | M26 撤销时间语义 | ✅ 完成 | `evidence/m26-revocation-precision/` | 凭证新增 `iatMs`，消除同秒"收回→重授权"误拒；旧版无 `iatMs` 保持秒级比较；4 条真实平台 + 真实签名用例（修复前用例 2 为红） |
 | M27 主机侧公钥过期 | ✅ 完成 | `evidence/m27-jwks-staleness/` | 真实主机新增 `jwks_stale`：超过 TTL 未成功拉取 JWKS 即拒绝新连接；吊销原因优先；3 条真实平台 + 真实 Ed25519 用例（回退后 2 条变红） |
+| M28 设备公钥持有证明 | ✅ 完成 | `evidence/m28-device-pop/` | 主机把票据设备公钥登记并在 E2EE 认证时比对握手公钥，票据不再等于持有证明；拒绝原因透传；3 条真实端到端（关掉检查后负例变红） |
 
 ## 最近一次测试结果
 
@@ -381,7 +382,25 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 
 **验证（`evidence/m27-jwks-staleness/`）**：3 条真实平台进程 + 真实 Ed25519 票据——TTL 内放行/超窗拒绝/刷新恢复、刷新失败不延长新鲜度、吊销原因优先。**把修复注释掉后用例 1、2 变红**（2 failed / 1 passed），恢复后转绿。回归 11 个文件 61 条全过；门禁 7 项 0 新发现、tsc node/web 0 错。
 
+## M28 设备公钥持有证明（本轮）
+
+**问题**（评审 05/06 的 M1 遗留）：票据带 `devicePubKey`，客户端只需在升级头里复述它；主机只比对「头 == 票据」，任何拿到票据的人都能过升级检查——票据是持票证明，不是设备持有证明。
+
+| 改动 | 内容 |
+|---|---|
+| `runtime/device-registry.ts` | 云设备登记保存票据公钥 `publicKeyB64` |
+| `startup/cloud-runtime-admission.ts` | 准入通过后把 `devicePubKey` 交给 `adoptCloudDevice` |
+| `runtime/rpc/e2ee-channel.ts` | 认证成功且设备登记了公钥时，比对握手公钥；不一致 → `e2ee_error(device_proof_failed)` + close 4001 |
+| `shared/remote-runtime-*-contract/transport/socket` | 新增 `clientKeyPair`，握手使用设备密钥；一次性请求同样支持 |
+| `cloud-session-service` / `cloud-connect-client` | `deviceKeyPair()`（仅主进程，不经 IPC） |
+| `shared/remote-runtime-client-handshake.ts` | 解析 `e2ee_error` 的 code 并给出可行动文案 |
+| `shared/cloud-platform-ipc.ts` + preload | 删除无效的 `cloud:prepareProjectLink`（renderer 从未调用、无 handler、且会把票据送进渲染进程） |
+
+**验证（`evidence/m28-device-pop/`）**：3 条新增真实端到端（真实平台 + 真实 TLS Runtime）——设备密钥握手成功并拿到真实响应；**换一对密钥被拒且无任何响应**（注释掉检查后该用例变红）；主机确实登记了票据公钥。M22/M25 既有用例现在必须显式携带设备密钥才能通过，即 PoP 已生效。回归 17 个文件 117 条全过；门禁 7 项 0 新发现、tsc node/web 0 错。
+
+**如实记录**：全量 `src/main/runtime` 有 17 条既有失败（`agent-launch-*`、`agent-session-conversation-clear-commit`），把本模块改动 stash 后在 HEAD 上同样失败，确认与本轮无关；另有一次并行运行中 `cloud-revocation-precision` 单条抖动，单独与整目录运行均通过。
+
 ## 下一步
 
 1. 面板接入：在工作区内用 M25 的 `environmentId` 挂载终端/文件面板（现有环境 selector 已可用，剩余是界面与 TabGroup 状态接线）。
-2. 遗留：M1 设备 PoP、M6 `relativePath` 契约、分支名 `..` 补用例。
+2. 遗留：M6 `relativePath` 契约、分支名 `..` 补用例。

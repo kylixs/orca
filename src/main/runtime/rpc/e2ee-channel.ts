@@ -10,7 +10,6 @@ import { handleDesktopMobileE2EEV2Inbound } from './mobile-e2ee-v2-desktop-inbou
 import { authenticateMobileE2EE, decodeMobileE2EEPublicKey } from './mobile-e2ee-auth-validation'
 import {
   isMobileE2EEBinaryPayloadWithinLimit,
-  isMobileE2EEOutboundItemWithinLimit,
   isMobileE2EETextPayloadWithinLimit
 } from './mobile-e2ee-outbound-admission'
 import { parseRemoteRuntimeJsonText } from '../../../shared/remote-runtime-request-frames'
@@ -18,8 +17,9 @@ import type { MobileE2EEOutboundMemoryBudget } from './mobile-e2ee-outbound-memo
 import { MobileE2EEDesktopOutboundOwner } from './mobile-e2ee-desktop-outbound-owner'
 import { parseRuntimeClientCapabilities } from './runtime-client-capabilities'
 import type { RuntimeCapability } from '../../../shared/protocol-version'
+import { deviceProofHolds } from './e2ee-device-proof'
+import { closeE2EEOutboundBudget, enqueueE2EEV2Item } from './e2ee-channel-outbound'
 import type { EventProps } from '../../../shared/telemetry-events'
-import { track } from '../../telemetry/client'
 
 type OutboundBudgetEmitter = EventProps<'remote_outbound_budget_close'>['emitter']
 
@@ -40,6 +40,8 @@ export type E2EEAuthenticatedDevice = {
   deviceId: string
   deviceToken: string
   scope: 'mobile' | 'runtime'
+  /** Set for cloud-adopted devices: the handshake key must match it (device PoP). */
+  publicKeyB64?: string
 }
 
 export class E2EEChannel {
@@ -56,6 +58,8 @@ export class E2EEChannel {
   private readonly requireV2: boolean
   private readonly outbound: MobileE2EEDesktopOutboundOwner
   private v2Session: DesktopMobileE2EEV2Session | null = null
+  /** The key the client proved possession of by completing the handshake. */
+  private clientPublicKeyB64: string | null = null
   // Why: the handler is set after readiness because its reply closure needs this channel's encryption state.
   private messageHandler:
     | ((
@@ -231,6 +235,7 @@ export class E2EEChannel {
     }
 
     this.sharedKey = deriveSharedKey(this.serverSecretKey, clientPublicKey)
+    this.clientPublicKeyB64 = hello.publicKeyB64
     this.state = 'awaiting_auth'
 
     // Why: send e2ee_ready as plaintext — the client needs it to know the
@@ -252,6 +257,15 @@ export class E2EEChannel {
       return
     }
     const authenticatedDevice = authentication.device
+    // The ticket's device key is a claim unless we check the handshake key against it.
+    if (!deviceProofHolds(authenticatedDevice, this.clientPublicKeyB64)) {
+      this.sendEncryptedControl({
+        type: 'e2ee_error',
+        error: { code: 'device_proof_failed' }
+      })
+      this.onError(4001, 'device_proof_failed')
+      return
+    }
 
     this.clientCapabilities = parseRuntimeClientCapabilities(authentication.auth.clientCapabilities)
     this.deviceToken = authenticatedDevice.deviceToken
@@ -298,25 +312,13 @@ export class E2EEChannel {
   }
 
   private enqueueV2(item: V2OutboundItem): boolean {
-    if (!this.v2Session || this.ws.readyState !== this.ws.OPEN) {
-      return false
-    }
-    if (!isMobileE2EEOutboundItemWithinLimit(item)) {
-      this.closeForOutboundBudget('size')
-      return false
-    }
-    return this.outbound.enqueueV2(item, this.v2Session, () => this.closeForOutboundBudget('queue'))
+    return enqueueE2EEV2Item(this.outbound, this.v2Session, this.ws, item, (emitter) =>
+      this.closeForOutboundBudget(emitter)
+    )
   }
 
-  // Why: this close kills the whole remote session. `size` means a producer emitted something
-  // too big and should fall to zero once producers cap themselves; `queue` means a backed-up link.
   private closeForOutboundBudget(emitter: OutboundBudgetEmitter): void {
-    try {
-      track('remote_outbound_budget_close', { emitter })
-    } catch {
-      // Telemetry is best-effort; closing the unsafe socket remains authoritative.
-    }
-    this.onError(1013, 'Outbound reply buffer overflow')
+    closeE2EEOutboundBudget(this.onError, emitter)
   }
 
   private sendEncryptedControl(message: unknown): void {

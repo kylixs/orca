@@ -140,14 +140,16 @@ type Session = {
   accessToken: string
   deviceId: string
   devicePubKey: string
+  /** The device key the host demands proof of at handshake. */
+  deviceKeys: { publicKey: Uint8Array; secretKey: Uint8Array }
   deviceToken: string
   credential: string
   hostId: string
 }
 
 async function openSession(projectId: string): Promise<Session> {
-  const { publicKey } = generateKeyPair()
-  const devicePubKey = Buffer.from(publicKey).toString('base64')
+  const deviceKeys = generateKeyPair()
+  const devicePubKey = Buffer.from(deviceKeys.publicKey).toString('base64')
   const loginRes = await fetch(`${platform.url}/v1/auth/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -185,6 +187,7 @@ async function openSession(projectId: string): Promise<Session> {
     accessToken,
     deviceId,
     devicePubKey,
+    deviceKeys,
     deviceToken: claims.deviceToken,
     credential,
     hostId: claims.host
@@ -204,16 +207,16 @@ function completeHandshake(
     const close = new Promise<{ code: number; reason: string }>((done) => {
       ws.once('close', (code, reason) => done({ code, reason: reason.toString() }))
     })
-    const mobileKeys = generateKeyPair()
+    // Proof of possession: the handshake must use the device key the ticket names.
     const sharedKey = deriveSharedKey(
-      mobileKeys.secretKey,
+      session.deviceKeys.secretKey,
       Uint8Array.from(Buffer.from(serverPublicKeyB64, 'base64'))
     )
     ws.once('open', () => {
       ws.send(
         JSON.stringify({
           type: 'e2ee_hello',
-          publicKeyB64: Buffer.from(mobileKeys.publicKey).toString('base64')
+          publicKeyB64: Buffer.from(session.deviceKeys.publicKey).toString('base64')
         })
       )
     })

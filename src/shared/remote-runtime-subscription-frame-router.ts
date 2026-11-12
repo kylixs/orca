@@ -3,6 +3,7 @@ import { decrypt, decryptBytes, encrypt } from './e2ee-crypto'
 import {
   classifyRemoteRuntimeReadyFrame,
   parseRemoteRuntimeAuthenticatedFrame,
+  remoteRuntimeAuthRejectionMessage,
   type RemoteRuntimeHandshakeState
 } from './remote-runtime-client-handshake'
 import { RemoteRuntimeClientError } from './remote-runtime-client-error'
@@ -88,7 +89,7 @@ export class RemoteRuntimeSubscriptionFrameRouter<TResult> {
     if (authenticated.kind !== 'authenticated') {
       const code = authenticated.unauthorized ? 'unauthorized' : 'invalid_runtime_response'
       this.options.fail(
-        new RemoteRuntimeClientError(code, 'Remote Orca runtime rejected the pairing token.')
+        new RemoteRuntimeClientError(code, remoteRuntimeAuthRejectionMessage(authenticated))
       )
       return
     }
