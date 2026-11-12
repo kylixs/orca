@@ -339,6 +339,123 @@ describe('平台端到端（真实进程 / TCP / TLS / Ed25519）', () => {
     second.close()
   })
 
+  test('E7a 符号链接写逃逸被拒（realpath 边界）', async () => {
+    const { mkdirSync, symlinkSync, existsSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const outside = join(workspace.root, 'outside-target')
+    mkdirSync(outside, { recursive: true })
+    const linkPath = join(workspace.projectRoot, '.orca-worktrees', 'zhangsan', 'escape')
+    mkdirSync(join(workspace.projectRoot, '.orca-worktrees', 'zhangsan'), { recursive: true })
+    if (existsSync(linkPath)) (await import('node:fs')).rmSync(linkPath, { recursive: true, force: true })
+    symlinkSync(outside, linkPath, 'dir')
+
+    const client = new CloudClient(api.url)
+    await client.login('zhangsan', 'Passw0rd!')
+    const projects = await client.listProjects()
+    const opened = await client.openProject(projects[0].id)
+    const escaped = await client.rpc('files.write', {
+      path: `${opened.connect.workspace.workspaceRoot}/escape/pwned.ts`,
+      content: 'escaped'
+    })
+    assert.equal(escaped.ok, false)
+    assert.equal(escaped.ok === false ? escaped.code : '', 'PATH_OUTSIDE_ROOT')
+    assert.equal(existsSync(join(outside, 'pwned.ts')), false)
+
+    const sibling = await client.rpc('files.write', {
+      path: `/srv/work/payment-service/.orca-worktrees/zhangsan2/x.ts`,
+      content: 'x'
+    })
+    assert.equal(sibling.ok, false)
+
+    saveEvidence(EVIDENCE, 'E7a-symlink-escape.json', { escaped, sibling })
+    client.close()
+  })
+
+  test('E7b 凭证移植到另一设备被拒', async () => {
+    const client = new CloudClient(api.url)
+    await client.login('zhangsan', 'Passw0rd!')
+    const projects = await client.listProjects()
+    // Request a fresh, unused credential so the rejection can only be the device binding.
+    const connect = await client.requestConnect(projects[0].id)
+    const credential = connect.credential
+
+    const WebSocket = requireWs()
+    const replay = await new Promise<{ status?: number; error?: string }>((resolve) => {
+      const ws = new WebSocket(`wss://127.0.0.1:${runtimePort}/`, ['orca-runtime', `orca-cred.${credential}`], {
+        rejectUnauthorized: false,
+        headers: { 'x-orca-device-pubkey': 'attacker-device-public-key' }
+      })
+      ws.once('open', () => {
+        ws.close()
+        resolve({ status: 101 })
+      })
+      ws.once('error', (err) => resolve({ error: err.message }))
+      ws.once('unexpected-response', (_req, res) => resolve({ status: res.statusCode }))
+    })
+    assert.notEqual(replay.status, 101)
+    // Prove the same unused credential is accepted from the rightful device.
+    const legit = await new Promise<{ status?: number; error?: string }>((resolve) => {
+      const ws = new WebSocket(`wss://127.0.0.1:${runtimePort}/`, ['orca-runtime', `orca-cred.${credential}`], {
+        rejectUnauthorized: false,
+        headers: { 'x-orca-device-pubkey': (client as unknown as { deviceKey: string }).deviceKey }
+      })
+      ws.once('open', () => {
+        ws.close()
+        resolve({ status: 101 })
+      })
+      ws.once('error', (err) => resolve({ error: err.message }))
+      ws.once('unexpected-response', (_req, res) => resolve({ status: res.statusCode }))
+    })
+    assert.equal(legit.status, 101)
+    saveEvidence(EVIDENCE, 'E7b-device-transplant.json', { transplant: replay, rightfulDevice: legit })
+    client.close()
+  })
+
+  test('E7c 客户端版本过低被平台拒绝（426）', async () => {
+    const client = new CloudClient(api.url)
+    await client.login('zhangsan', 'Passw0rd!')
+    const projects = await client.listProjects()
+    const res = await fetch(`${api.url}/v1/projects/${projects[0].id}/connect`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${(client as unknown as { accessToken: string }).accessToken}`
+      },
+      body: JSON.stringify({ deviceId: 'dev_x', clientVersion: '1.0.0' })
+    })
+    const body = (await res.json()) as { error?: { code: string } }
+    assert.equal(res.status, 426)
+    assert.equal(body.error?.code, 'VERSION_UNSUPPORTED')
+    saveEvidence(EVIDENCE, 'E7c-version-gate.json', { status: res.status, body })
+    client.close()
+  })
+
+  test('E7d 托管工作区创建落在 workspaceRoot 内且幂等', async () => {
+    const client = new CloudClient(api.url)
+    await client.login('zhangsan', 'Passw0rd!')
+    const projects = await client.listProjects()
+    const opened = await client.openProject(projects[0].id)
+
+    const first = await client.rpc('worktree.createManaged', {
+      branchName: 'feat/refund',
+      idempotencyKey: 'e7d-key',
+      workspaceRoot: opened.connect.workspace.workspaceRoot
+    })
+    assert.equal(first.ok, true)
+    const firstPath = first.ok ? (first.result as { path: string }).path : ''
+    assert.equal(firstPath, `${opened.connect.workspace.workspaceRoot}/feat-refund`)
+
+    const again = await client.rpc('worktree.createManaged', {
+      branchName: 'feat/refund',
+      idempotencyKey: 'e7d-key',
+      workspaceRoot: opened.connect.workspace.workspaceRoot
+    })
+    assert.deepEqual(again, first)
+
+    saveEvidence(EVIDENCE, 'E7d-managed-worktree.json', { first, again })
+    client.close()
+  })
+
   test('E8 平台停机：已建立会话继续，新建连接失败', async () => {
     const client = new CloudClient(api.url)
     await client.login('zhangsan', 'Passw0rd!')

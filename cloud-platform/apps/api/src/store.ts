@@ -34,6 +34,7 @@ export type Host = {
   id: string
   name: string
   fingerprint: string
+  tlsFingerprint: string | null
   e2eePublicKey: string
   orcaVersion: string
   protocolVersion: number

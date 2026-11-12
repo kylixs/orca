@@ -76,26 +76,42 @@ export class CloudClient {
 
   async openProject(
     projectId: string,
-    options: { probeTimeoutMs?: number; maxDirectAddrs?: number } = {}
+    options: { probeTimeoutMs?: number; maxDirectAddrs?: number; failoverBudget?: number } = {}
   ): Promise<{ route: 'direct' | 'relay'; selection: SelectionResult; connect: ConnectResponse }> {
-    const connect = await this.requestConnect(projectId)
-    const selection = await selectRoute({
-      direct: connect.endpoints.direct,
-      relay: connect.endpoints.relay,
-      probeTimeoutMs: options.probeTimeoutMs,
-      maxDirectAddrs: options.maxDirectAddrs
-    })
-    if (!selection.chosen || !selection.route) {
-      throw Object.assign(new Error('no reachable endpoint'), { code: 'CONNECT_TIMEOUT' })
+    const failoverBudget = options.failoverBudget ?? 1
+    let attempts = 0
+    for (;;) {
+      const connect = await this.requestConnect(projectId)
+      const selection = await selectRoute({
+        direct: connect.endpoints.direct,
+        relay: connect.endpoints.relay,
+        probeTimeoutMs: options.probeTimeoutMs,
+        maxDirectAddrs: options.maxDirectAddrs
+      })
+      if (!selection.chosen || !selection.route) {
+        const directFailed = selection.probes.filter((p) => !p.ok && p.endpoint.url in connect.endpoints.direct)
+        const relayFailed = selection.probes.filter((p) => !p.ok).length === selection.probes.length
+        throw Object.assign(new Error('no reachable endpoint'), {
+          code: relayFailed ? 'RELAY_UNREACHABLE' : directFailed ? 'DIRECT_TIMEOUT' : 'CONNECT_TIMEOUT',
+          probes: selection.probes
+        })
+      }
+      try {
+        await this.upgrade(selection.chosen, selection.route, connect.credential)
+        return { route: selection.route, selection, connect }
+      } catch (err) {
+        // The credential was consumed by the failed upgrade; retry with a fresh one.
+        if (attempts >= failoverBudget) throw err
+        attempts += 1
+      }
     }
-    await this.upgrade(selection.chosen, selection.route, connect.credential)
-    return { route: selection.route, selection, connect }
   }
 
   private upgrade(endpoint: Endpoint, route: 'direct' | 'relay', credential: string): Promise<void> {
     const url = new URL(endpoint.url)
     const options: WebSocket.ClientOptions = {}
     if (url.protocol === 'wss:') {
+      options.headers = { 'x-orca-device-pubkey': this.deviceKey }
       options.rejectUnauthorized = this.options.tlsRejectUnauthorized ?? false
       if (route === 'relay' && endpoint.sni) options.servername = endpoint.sni
     }

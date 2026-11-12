@@ -46,10 +46,14 @@
 | E6 | 路径穿越 / 跨工作区写越界 | `../../etc/passwd` 拒绝；写项目根拒绝；写自己工作区成功 | PASS | `E6-path-boundary.json` |
 | E7 | 权限收回 | 旧凭证被拒；新登录看不到项目 | PASS | `E7-revocation.json` |
 | E8 | 平台停机 | 已建立会话 RPC 仍成功；新登录失败 | PASS | `E8-platform-down.json` |
+| E7a | 符号链接写逃逸 | 写入被拒（`PATH_OUTSIDE_ROOT`），目标目录未生成文件 | PASS | `E7a-symlink-escape.json` |
+| E7b | 凭证移植到另一设备 | 他人设备 401；原设备 101 | PASS | `E7b-device-transplant.json` |
+| E7c | 客户端版本过低 | 平台返回 426 `VERSION_UNSUPPORTED` | PASS | `E7c-version-gate.json` |
+| E7d | 托管工作区创建 | 路径落在 `workspaceRoot` 内且幂等 | PASS | `E7d-managed-worktree.json` |
 | E9 | 证据汇总 | 证据落盘 | PASS | `summary.json` |
 | E10 | 中继未知 SNI / 非 TLS | 连接被黑洞 | PASS | `E10-relay-blackhole.json` |
 
-合计：**10 passed / 0 failed**
+合计：**14 passed / 0 failed**（另有 7 条单元测试，合计 21）
 
 ## 4. Web UI 实测
 

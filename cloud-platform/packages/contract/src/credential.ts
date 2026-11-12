@@ -14,6 +14,7 @@ export type Permission =
   | 'agent'
   | 'file:read'
   | 'file:write'
+  | 'browser'
   | 'download'
 
 export type CredentialPayload = {
@@ -25,7 +26,7 @@ export type CredentialPayload = {
   project: string
   projectRoot: string
   workspaceRoot: string
-  device: string
+  deviceId: string
   devicePubKey: string
   deviceToken: string
   perms: Permission[]

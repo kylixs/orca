@@ -145,6 +145,7 @@ export function createApp(config: ApiConfig): ApiHandle {
     id: 'host_dev001',
     name: 'dev-001',
     fingerprint: 'sha256:hostfingerprint001',
+    tlsFingerprint: 'sha256:hosttls001',
     e2eePublicKey: 'MCowBQYDK2VuAyEAhostpublickeyplaceholder0000000000=',
     orcaVersion: '1.5.0',
     protocolVersion: 3,
@@ -687,6 +688,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         id: `host_${randomBytes(4).toString('hex')}`,
         name,
         fingerprint: '',
+        tlsFingerprint: null,
         e2eePublicKey: '',
         orcaVersion: '',
         protocolVersion: 3,
@@ -700,6 +702,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         credentialHash: null
       }
       target.fingerprint = String(body.fingerprint ?? '')
+      target.tlsFingerprint = String(body.tlsFingerprint ?? '') || null
       target.e2eePublicKey = String(body.e2eePublicKeyB64 ?? '')
       target.orcaVersion = String(body.orcaVersion ?? '')
       target.protocolVersion = Number(body.protocolVersion ?? 3)
@@ -954,6 +957,36 @@ export function createApp(config: ApiConfig): ApiHandle {
         lastHeartbeatAt: new Date(host.lastHeartbeatAt).toISOString()
       })
     }
+    const minClientVersion = '1.5.0'
+    const offeredVersion = String(body.clientVersion ?? '0.0.0')
+    const compareVersions = (a: string, b: string): number => {
+      const pa = a.split('.').map((n) => Number(n) || 0)
+      const pb = b.split('.').map((n) => Number(n) || 0)
+      for (let i = 0; i < 3; i++) {
+        if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) - (pb[i] ?? 0)
+      }
+      return 0
+    }
+    const clientVersionCheck = {
+      min: minClientVersion,
+      offered: offeredVersion,
+      ok: compareVersions(offeredVersion, minClientVersion) >= 0
+    }
+    if (!clientVersionCheck.ok) {
+      audit.append({
+        eventType: 'project_connect',
+        actor: user.username,
+        targetType: 'project',
+        targetId: project.id,
+        result: 'denied',
+        traceId,
+        metadata: { reason: 'VERSION_UNSUPPORTED', offered: offeredVersion, min: minClientVersion }
+      })
+      return error(res, 426, 'VERSION_UNSUPPORTED', '客户端版本过低，请升级后重试。', traceId, {
+        min: minClientVersion,
+        offered: offeredVersion
+      })
+    }
     const permissions = store.effectivePermissions(project.id, user)
     const devicePubKey = String(body.devicePubKey ?? '')
     const deviceId = String(body.deviceId ?? '')
@@ -975,7 +1008,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       project: project.id,
       projectRoot: project.path,
       workspaceRoot: `${project.path}/.orca-worktrees/${user.username}`,
-      device: device.id,
+      deviceId: device.id,
       devicePubKey: device.publicKey || devicePubKey,
       deviceToken: newDeviceToken(),
       perms: permissions,
@@ -1000,6 +1033,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         id: host.id,
         name: host.name,
         fingerprint: host.fingerprint,
+        tlsFingerprint: host.tlsFingerprint ?? host.fingerprint,
         e2eePublicKeyB64: host.e2eePublicKey,
         capabilities: host.capabilities
       },
@@ -1025,7 +1059,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         defaultBranch: project.defaultBranch,
         existingWorktreeId: null
       },
-      clientVersionCheck: { min: '1.5.0', ok: true }
+      clientVersionCheck: clientVersionCheck
     })
   }
 

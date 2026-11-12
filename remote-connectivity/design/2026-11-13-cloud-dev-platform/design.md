@@ -288,6 +288,7 @@ flowchart LR
 | `GET /v1/projects`、`GET /v1/projects/{id}` | 是 | 仅返回当前用户有权限的项目 |
 | `POST /v1/projects/{id}/connect` | 是 | 取地址与凭证 |
 | `GET /v1/jwks`、`GET /v1/client/config` | 是 | 公钥与客户端配置 |
+| `GET /v1/projects/{id}/workspaces`、`POST /v1/workspaces/{id}/close` | 是 | 本人工作区列表与关闭 |
 | `POST /v1/projects`、`POST /v1/projects/{id}/archive`、`/restore` | **否** | 管控面 |
 | `GET/PUT /v1/projects/{id}/grants`、`/policy` | **否** | 管控面 |
 | `/v1/hosts/*`、`/v1/audit/*`、`/v1/policies/*`、`/v1/users/*`、`/v1/internal/*` | **否** | 管控面与内部接口 |
@@ -407,10 +408,10 @@ sequenceDiagram
   participant A as 平台 API
   participant H as 开发机 Runtime
 
-  C->>A: POST /v1/projects/{id}/connect（deviceId + devicePubKey）
+  C->>A: POST /v1/projects/{id}/connect（deviceId + devicePubKey + clientVersion）
   A->>A: 校验会话、ACL、主机状态、客户端版本
   A->>A: 签发连接凭证（60s，一次性，绑定 user/host/project/workspace/device）
-  A-->>C: 凭证 + endpoints[]（direct[] + relay[]）+ host.e2eePublicKeyB64 + hostFingerprint
+  A-->>C: 凭证 + endpoints[]（direct[] + relay[]）+ host.e2eePublicKeyB64 + host.fingerprint + host.tlsFingerprint
   C->>C: TCP 预检直连地址（不带凭证，800ms × 2）
   alt 直连可达
     C->>H: WSS 升级 + 凭证 → 消耗凭证
@@ -625,10 +626,13 @@ flowchart LR
   P --> PC["agent"]
   P --> PD["file:read"]
   P --> PE["file:write"]
+  P --> PG["browser"]
   P --> PF["download"]
 ```
 
 **判定顺序**：显式拒绝 > 显式允许 > 组继承 > 默认拒绝。
+
+**项目 ACL 取值**：`open`、`terminal`、`agent`、`file:read`、`file:write`、`browser`、`download`。凭证 `perms` 只携带该用户在该项目内的子集。
 
 **方法 → 权限映射**（主机侧执行，新增；现状 `rpc-method-permission.ts` 只有 `workspace` 粗粒度）：
 
@@ -644,7 +648,7 @@ flowchart LR
 
 > 主机侧 `will-download` 是浏览器进程钩子而非 RPC，单独在主机拦截；`browser.download` 等显式导出 RPC 仍走本表。
 
-未在映射表中的新方法默认**拒绝**，需显式登记——避免上游新增方法自动获得权限。
+未在映射表中的新方法默认**拒绝**，需显式登记——避免上游新增方法自动获得权限。`sessions.*` 与 `workspace.info` 为显式登记的自省方法，任何通过准入的连接可用。
 
 **边界**：
 - 写操作的真实路径必须落在凭证的 `workspaceRoot` 之下（解析符号链接后）；
@@ -1166,7 +1170,7 @@ Sec-WebSocket-Protocol: orca-runtime, orca-cred.<base64url(credential)>
 | JWKS（主机侧） | 凭证签名公钥（按 `kid`） | 5 分钟 | 轮换时主动刷新 |
 | 凭证 jti（主机侧） | 已使用集合 | 120 秒 | 自然过期 |
 | 撤销集合（主机侧） | 用户/项目/jti | 心跳周期 | 心跳更新 |
-| 中继路由表 | routeKey → target | 60 秒 | 平台推送新版本 |
+| 中继路由表 | routeKey → target | 刷新 60 秒；硬陈旧上限 300 秒 | 平台推送新版本；超过硬上限拒绝新连接 |
 | DNS 解析（客户端） | 平台与中继地址 | 5 分钟 | 定时刷新 |
 
 - 一致性模型：控制面强一致（PostgreSQL）；主机侧最终一致（≤30 秒心跳），以「默认拒绝 + 短凭证」兜底。
@@ -1271,7 +1275,7 @@ Sec-WebSocket-Protocol: orca-runtime, orca-cred.<base64url(credential)>
 | 中继带宽 | 峰值 0.8 Gbps | 约 50% 会话走中继 |
 | 平台 API QPS | 峰值 200 | 登录、列表、凭证签发；无业务流量 |
 | 审计写入 | 10 万条/天 | 500 用户 × 200 事件 |
-| 审计存储 | 热数据约 54GB（10 万条/天 × 1KB × 180 天 × 3 副本，另计索引约 20%）；WORM 归档约 36GB/年（单副本） | 单条约 1KB |
+| 审计存储 | 热数据约 65GB（10 万条/天 × 1KB × 180 天 × 3 份：主库 + 备库 + 备份，含索引约 20%）；WORM 归档约 36GB/年（单份） | 单条约 1KB |
 
 > 修订：早期版本写「180 天约 200GB」，与 10 万条/天 × 1KB 不符，已按含索引与副本重算。
 
@@ -1426,9 +1430,11 @@ Sec-WebSocket-Protocol: orca-runtime, orca-cred.<base64url(credential)>
 |---|---|---|
 | FR-1 身份 | 7.1–7.2、14.3 | AC-01、AC-02、AC-16、AC-25 |
 | FR-2 工作台 | 10.2、11.1 | AC-03 |
-| FR-3 项目 | 8.1–8.4 | AC-04、AC-12 |
+| FR-3 项目 | 8.1–8.4 | AC-04 |
 | FR-4 主机 | 4.3.3、5.3、18 | AC-08、AC-09、AC-14 |
-| FR-5 连接 | 6.1–6.6 | AC-05、AC-06、AC-07、AC-20、AC-21、AC-27、AC-29 |
+| FR-5 连接 | 6.1–6.6 | AC-05、AC-06、AC-07、AC-20、AC-21、AC-29 |
+| FR-1.7 权限收回 | 7.4 | AC-12 |
+| FR-3.3 工作区边界 | 8.3 | AC-27 |
 | FR-6 文件 | 9.1 | AC-11、AC-28 |
 | FR-7 下载 | 9.1–9.4 | AC-10、AC-17 |
 | FR-8 审计 | 13.2、16.2 | AC-13、AC-26 |

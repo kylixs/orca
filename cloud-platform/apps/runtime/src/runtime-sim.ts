@@ -1,5 +1,6 @@
 import { createServer as createHttpServer } from 'node:http'
-import { readFileSync } from 'node:fs'
+import { mkdirSync, readFileSync } from 'node:fs'
+import { sep } from 'node:path'
 import { WebSocketServer } from 'ws'
 import { PolicyGateway, type GatewayPolicy } from './policy-gateway.ts'
 
@@ -31,6 +32,7 @@ function readCredentialFromProtocol(header: string | undefined): string | null {
 }
 
 export async function startRuntimeSim(options: RuntimeSimOptions): Promise<RuntimeSim> {
+  const worktrees = new Map<string, { path: string; branch: string }>()
   const gateway = new PolicyGateway({
     hostId: options.hostId,
     hostName: options.hostName,
@@ -57,8 +59,12 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
       policy = (await policyRes.json()) as GatewayPolicy
     }
     if (revokedRes.ok) {
-      const body = (await revokedRes.json()) as { projects: { id: string; since: number }[] }
-      gateway.setRevokedProjects(body.projects)
+      const body = (await revokedRes.json()) as {
+        projects: { id: string; since: number }[]
+        users: { id: string; since: number }[]
+        jtis: string[]
+      }
+      gateway.setRevocations(body)
     }
   }
 
@@ -81,7 +87,8 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
       socket.destroy()
       return
     }
-    const admission = gateway.admit(credential)
+    const declaredDevicePubKey = req.headers['x-orca-device-pubkey']?.toString()
+    const admission = gateway.admit(credential, declaredDevicePubKey)
     if (!admission.ok || !admission.payload) {
       socket.write(`HTTP/1.1 401 Unauthorized\r\nx-orca-reject: ${admission.code}\r\n\r\n`)
       socket.destroy()
@@ -136,6 +143,31 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
         const content = String(request.params?.content ?? '')
         await gateway.executeWrite(payload, path, content)
         ws.send(JSON.stringify({ id: request.id, result: { ok: true } }))
+        return
+      }
+      if (request.method === 'worktree.createManaged') {
+        const branch = String(request.params?.branchName ?? request.params?.branchNameOverride ?? '')
+        const idempotencyKey = String(request.params?.idempotencyKey ?? '')
+        if (!branch) {
+          ws.send(JSON.stringify({ id: request.id, error: { code: 'BAD_REQUEST', message: '缺少分支名' } }))
+          return
+        }
+        const sanitized = branch.replace(/[^A-Za-z0-9._-]+/g, '-')
+        const key = idempotencyKey || `${payload.project}:${payload.deviceId}:${sanitized}`
+        const existing = worktrees.get(key)
+        if (existing) {
+          ws.send(JSON.stringify({ id: request.id, result: { worktreeId: key, path: existing.path } }))
+          return
+        }
+        // nestWorkspaces=false: the worktree sits directly under workspaceRoot.
+        const worktreePath = `${payload.workspaceRoot}/${sanitized}`
+        if (!worktreePath.startsWith(`${payload.workspaceRoot}${sep}`)) {
+          ws.send(JSON.stringify({ id: request.id, error: { code: 'PATH_OUTSIDE_ROOT' } }))
+          return
+        }
+        mkdirSync(gateway.localProjectPath(payload, worktreePath), { recursive: true })
+        worktrees.set(key, { path: worktreePath, branch })
+        ws.send(JSON.stringify({ id: request.id, result: { worktreeId: key, path: worktreePath } }))
         return
       }
       if (request.method === 'workspace.info') {

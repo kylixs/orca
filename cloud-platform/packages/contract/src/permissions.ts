@@ -37,7 +37,15 @@ export const METHOD_RULES: MethodRule[] = [
   { method: 'git.', permission: 'terminal' },
   { method: 'worktree.create', permission: 'terminal' },
   { method: 'worktree.remove', permission: 'terminal' },
-  // Session-scoped introspection is available to any admitted connection.
+  // Managed worktree creation: path is constrained by the credential's workspaceRoot.
+  { method: 'worktree.createManaged', permission: 'terminal' },
+  { method: 'terminalArtifact.', permission: 'terminal' },
+  { method: 'agentProvider.', permission: 'agent' },
+  // Export rules must precede the browser.* prefix rule: first match wins.
+  { method: 'browser.download', permission: 'download', exportClass: true },
+  { method: 'browser.savePage', permission: 'download', exportClass: true },
+  { method: 'browser.', permission: 'browser' },
+  // Explicitly registered introspection: available to any admitted connection.
   { method: 'sessions.', permission: null },
   { method: 'workspace.info', permission: null }
 ]
