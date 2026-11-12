@@ -1,6 +1,6 @@
 # 开发进度
 
-> 更新时间：2026-11-13 07:10
+> 更新时间：2026-11-13 07:40
 > 规则：每轮只推进一个模块；失败必须如实记录。
 
 ## 模块状态
@@ -24,6 +24,7 @@
 | M14 开发机侧云端接入 | ✅ 完成 | `evidence/m14-cloud-agent/` | Agent 轮询 JWKS/撤销快照（单飞 + 超时）；`orca serve` 按 env 开启云端模式；4 条真实平台进程 + 真实 Runtime 端到端 |
 | M15 云端会话撤销关闭（真实 Runtime） | ✅ 完成 | `evidence/m15-cloud-session-revocation/` | 准入时按凭证登记设备（`adoptCloudDevice`）；平台吊销后 `close(4403)`；3 条真实 E2EE 会话用例 |
 | M16 控制面三路隔离与撤销快照 fail-closed | ✅ 完成 | `evidence/m15-cloud-session-revocation/isolation.txt` | 评审 07 F1/F2：三路独立落地（allSettled + 每请求独立 timeout）、非法撤销体保留上一快照；3 条真实进程用例 |
+| M17 评审 07 遗留用例 | ✅ 完成 | `evidence/m17-review07-gaps/` | 4 条：公网内部路由 404（N6）、非默认 INTERNAL_TOKEN（M8）、TLS 中止分支、allow 正向放行；每条均做过回退变红对照 |
 
 ## 最近一次测试结果
 
@@ -37,7 +38,8 @@ node --test test/e2e/revocation.e2e.test.ts 1 pass / 0 fail
 node --test test/e2e/control-plane-resilience.e2e.test.ts 3 pass / 0 fail
 node --test test/cloud-admission-parity.test.ts 7 pass / 0 fail
 node --test test/e2e/control-plane-isolation.e2e.test.ts 3 pass / 0 fail
-合计 70 pass / 0 fail
+node --test test/e2e/review07-gaps.e2e.test.ts 4 pass / 0 fail
+合计 74 pass / 0 fail
 ```
 
 M13（Orca 主进程侧，vitest）：
@@ -150,8 +152,21 @@ M10 中继边界：
 - F2：撤销体结构非法（`{}`、字段类型错、单条畸形）一律返回 null 并保留上一份快照——此前会被当作「无撤销」覆盖，等于重新放行已吊销凭证
 - 同类问题在主机侧 `cloud-agent-client.ts` 一并修复；JWKS 失败改为记录 `lastError` 而不是抛出，避免跳过撤销处理
 
+## M17 评审 07 遗留用例（本轮）
+
+评审 07 的 F7：四个已修行为缺少能失败的用例。
+
+| 用例 | 断言 | 回退后 |
+|---|---|---|
+| 公网监听对 `/v1/internal/*` 404（mTLS 已配置） | 三条路由 × 三种令牌全部 404；`relay-endpoint` 仍可用真实令牌 200、错误令牌 401 | 改判定为 `false` → 变红 |
+| 非默认 `INTERNAL_TOKEN` | mTLS + 非默认令牌 200；默认测试令牌 401 | — （实现已支持，此前无用例） |
+| TLS 控制面挂起中止 | 真实 HTTPS 服务端，3.5 秒后 total≥3 且 active≤4 | 移除 abort 监听 → 变红 |
+| allow 策略正向 | 项目策略 allow + 组授权含 `download` → `files.download` 返回 `NOT_IMPLEMENTED`（说明已过授权） | 让 exportClass 无条件拒绝 → 变红 |
+
+F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两半都在**。仅把全局策略改 allow 仍会得到 `PERMISSION_MISSING`，因为种子授权里没有 `download`；显式项目策略又优先于全局默认，所以测试同时改项目策略与组授权。
+
 ## 下一步
 
 1. 开发机注册/心跳接入真实 Runtime（当前 hostId/hostName 由 env 提供，尚未走 host token 注册）。
-2. 评审 07 的 MINOR：N6 公网 404 用例、M8 非默认令牌用例、TLS 中止分支用例、allow 正向用例（F7）。
+2. 平台在授权变更后立即撤销全部项目凭证，同秒内重连可能被拒（`iat*1000 <= since`）；客户端重试可绕过，但值得确认是否需要秒级宽限。
 3. 遗留：M1 设备 PoP、M6 `relativePath` 契约、`jwks_stale` 与分支名 `..` 补用例。
