@@ -91,7 +91,7 @@ function installRuntimeRpc(
         }
       : {}),
     webClientRoot: getBundledWebClientRoot(),
-    ...cloudAdmissionOption()
+    ...cloudAdmissionOption(process.env, { userDataPath: getCanonicalUserDataPath() })
   })
   cloudRuntimeAdmission()?.bindRuntime(runtimeRpc)
   state.runtimeRpc = runtimeRpc

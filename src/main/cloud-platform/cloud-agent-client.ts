@@ -1,3 +1,4 @@
+import { sendHeartbeat } from './cloud-host-enrollment'
 import {
   createCloudUpgradeAdmission,
   type CloudRevocations,
@@ -28,6 +29,17 @@ export type CloudAgentConfig = {
   timeoutMs?: number
   /** Injected for tests; defaults to global fetch. */
   fetchImpl?: typeof fetch
+  /**
+   * Enrolled-host mode: revocations and policy come from the heartbeat response
+   * instead of `/v1/internal/*`. This is the normal path for a registered host;
+   * the internal routes exist for hosts that never enrolled.
+   */
+  heartbeat?: {
+    hostId: string
+    credential: string
+    /** Reported on every beat so the platform sees address changes. */
+    directAddrs?: string[]
+  }
 }
 
 export type CloudAgentSnapshot = {
@@ -35,6 +47,8 @@ export type CloudAgentSnapshot = {
   revocations: Required<CloudRevocations>
   lastRefreshAt: number | null
   lastError: string | null
+  /** Set while the platform reports the host in maintenance. */
+  maintenance: { reason: string } | null
 }
 
 export type CloudAgentClient = {
@@ -160,6 +174,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
   let revocations = emptyRevocations()
   let lastRefreshAt: number | null = null
   let lastError: string | null = null
+  let lastMaintenance: { reason: string } | null = null
   let timer: ReturnType<typeof setInterval> | null = null
   let inFlight: Promise<void> | null = null
   const listeners = new Set<(snapshot: CloudAgentSnapshot) => void>()
@@ -175,7 +190,8 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
     kids: [...keys.keys()],
     revocations,
     lastRefreshAt,
-    lastError
+    lastError,
+    maintenance: lastMaintenance
   })
 
   async function refreshOnce(): Promise<void> {
@@ -187,10 +203,12 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
     // online (review-07 F1).
     const [jwksRes, revokedRes] = await Promise.allSettled([
       fetchImpl(`${config.apiUrl}/v1/jwks`, { signal: AbortSignal.timeout(timeoutMs) }),
-      fetchImpl(`${internalUrl}/v1/internal/revocations`, {
-        signal: AbortSignal.timeout(timeoutMs),
-        headers
-      })
+      config.heartbeat
+        ? Promise.resolve(null)
+        : fetchImpl(`${internalUrl}/v1/internal/revocations`, {
+            signal: AbortSignal.timeout(timeoutMs),
+            headers
+          })
     ]).then((results) =>
       results.map((result) => (result.status === 'fulfilled' ? result.value : null))
     )
@@ -206,7 +224,30 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
         keys = new Map(parsedKeys.map((entry) => [entry.kid, entry.publicKeyPem]))
       }
     }
-    if (revokedRes?.ok) {
+    if (config.heartbeat) {
+      // Heartbeat is the enrolled host's revocation channel (design §4.1). It is
+      // preferred over the internal routes, which a registered host may not reach.
+      const beat = await sendHeartbeat(
+        config.apiUrl,
+        config.heartbeat.credential,
+        config.heartbeat.hostId,
+        {
+          status: 'online',
+          ...(config.heartbeat.directAddrs ? { directAddrs: config.heartbeat.directAddrs } : {})
+        },
+        fetchImpl,
+        timeoutMs
+      )
+      if (beat) {
+        const parsed = parseRevocations(beat.revoked)
+        if (parsed) {
+          revocations = parsed
+        }
+        lastMaintenance = beat.maintenance
+      } else {
+        lastError = 'heartbeat failed'
+      }
+    } else if (revokedRes?.ok) {
       const parsed = parseRevocations(await revokedRes.json())
       if (parsed) {
         revocations = parsed

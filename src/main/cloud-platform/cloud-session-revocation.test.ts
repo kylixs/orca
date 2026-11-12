@@ -174,7 +174,7 @@ beforeAll(async () => {
   if (!admission) {
     throw new Error('cloud admission not enabled')
   }
-  await admission.client.refresh()
+  await admission.client!.refresh()
   runtime = new OrcaRuntimeRpcServer({
     runtime: new OrcaRuntimeService(),
     userDataPath: mkdtempSync(join(tmpdir(), 'orca-cloud-revoke-')),
@@ -198,7 +198,7 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  admission?.client.stop()
+  admission?.client?.stop()
   await runtime?.stop()
   await platform?.stop()
 })
@@ -223,7 +223,7 @@ describe('云端会话：设备登记与撤销关闭（真实平台 + 真实 Run
     })
     expect(revoke.ok).toBe(true)
 
-    await admission!.client.refresh()
+    await admission!.client!.refresh()
     const closed = await Promise.race([
       close,
       new Promise<{ code: number; reason: string }>((resolve) =>
@@ -243,7 +243,7 @@ describe('云端会话：设备登记与撤销关闭（真实平台 + 真实 Run
       method: 'DELETE',
       headers: { authorization: `Bearer ${victim.accessToken}` }
     })
-    await admission!.client.refresh()
+    await admission!.client!.refresh()
     await new Promise((r) => setTimeout(r, 800))
 
     expect(keepWs.readyState).toBe(WebSocket.OPEN)
