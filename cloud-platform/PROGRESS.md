@@ -45,6 +45,7 @@
 | M35 下载策略与读取限速 | ✅ 完成 | `evidence/m35-download-policy/` | 主机消费平台策略包：导出 RPC 默认拒绝、项目覆盖优先；文件读取按项目滚动小时记次数与字节，超限 `read_budget_exceeded`；3 条真实端到端 + 8 条单测（关掉检查后 2 条变红） |
 | M36 工作区路径边界 | ✅ 完成 | `evidence/m36-workspace-boundary/` | 票据 `projectRoot`/`workspaceRoot` 真正生效：读限项目根、写限本人工作区根，realpath 后校验（符号链接逃逸被拒）；绝对路径与未知 worktree 拒绝；3 条真实端到端 + 10 条单测（关掉检查后 3 条全红） |
 | M37 git 操作边界 | ✅ 完成 | `evidence/m37-git-boundary/` | git 读方法限项目根、写方法（stage/commit/push/discard…）限本人工作区根，**共享主仓库对云端只读**；git 文件路径同受边界；4 条真实端到端 + 6 条单测（关掉分类后 3 条变红） |
+| M38 worktree 操作边界 | ✅ 完成 | `evidence/m38-worktree-boundary/` | `worktree.create` 对云端拒绝（路径由主机设置推导、无法约束，指向未实现的托管创建）；`worktree.rm`/`forceDeleteBranch` 限本人工作区、`worktree.show` 限项目；无选择器的批量方法与其余 worktree 方法一律拒绝；4 条真实端到端 + 7 条单测（关掉分类后 3 条变红） |
 
 ## 最近一次测试结果
 
@@ -590,6 +591,32 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 1. `git.remoteCommitUrl`/`git.remoteFileUrl` 归为只读，但它们会拼远端 URL，需 `terminal` 权限——本轮不涉及网络出站管控（设计 §9.4 的出网白名单属部署项）。
 2. `worktree.create`/`worktree.createManaged`/`worktree.rm` 仍未纳入路径边界（平台票据的 `workspaceRoot` 应约束 createManaged 的目标）。留着下一轮，因为需要同时确认托管创建所用的路径推导。
 3. 终端本身仍是"打开后可 `cat` 任意文件"，设计 §9.4 已把它列为不可阻断、靠出网白名单与命令审计缓解，非本轮范围。
+
+## M38 worktree 操作边界（本轮）
+
+**问题**（设计 §8.3 / T301a，M37 备注里留的下一项）：`worktree.*` 仍未纳入 M36/M37 的边界。其中两处是真实逃逸：
+- **`worktree.create` 的目标路径不由调用方给出**，而是主机按自己的 `workspaceDir` 推导——云会话可以指定**任意 repo 选择器**（包括别的团队的仓库）让主机在机器上建出 checkout；
+- **`worktree.rm` 可以删除主机上任意 worktree**，包括别人正在用的分支和共享主仓库。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-platform/cloud-worktree-scope.ts`（新） | `worktree.create` → **明确拒绝**（设计：托管模式必须用 `worktree.createManaged`，而真实 Runtime 尚未实现，因此宁缺勿滥）；`worktree.rm`/`worktree.forceDeleteBranch` → 写（限本人 `workspaceRoot`）；`worktree.show` → 读（限 `projectRoot`）；**其余一律拒绝**（`list`/`detectedList`/`ps` 会枚举全机工作区，`activate`/`sleep`/`set`/`teardownMissingTerminals` 等属主机 UI 面） |
+| `cloud-path-guard.ts` | worktree 分类接入同一路径检查；新增 `isCloudPathGuardedMethod()` 供分发层判断"这个方法是否需要过边界" |
+| `cloud-rpc-permission.ts` | `worktree.show`/`worktree.forceDeleteBranch` 登记到 `terminal` 权限（仅表示"可被该方法族触达"，具体放行仍由 worktree 分类决定） |
+| `runtime-rpc-websocket-dispatch.ts` | 边界判定改用 `isCloudPathGuardedMethod`，让被拒绝的 worktree 方法也能拿到明确文案，而不是落到 `method_not_found` |
+
+**验证（`evidence/m38-worktree-boundary/`）**：4 条真实端到端（真实平台票据 + 真实 Runtime + 真实 store + 两个真实 git 仓库与 `git worktree`）：
+- M38-1 `worktree.create` 被 `forbidden` 且文案指向托管创建；**主机的 `workspaceDir` 下确实为空**（普通创建本会在此落盘）；
+- M38-2 `worktree.rm` 目标为另一团队的 worktree 被拒且目录仍在；目标为共享主仓库被拒（`workspace root`）且 `README.md` 仍在；
+- M38-3 `worktree.show` 在本人工作区成功、跨项目被拒；
+- M38-4 `worktree.list`/`detectedList`/`ps` 全部 `forbidden`。
+
+另有 7 条分类单测。**关掉 worktree 分类后 M38-1/2/3 变红**（M38-4 仍绿属预期：这三个方法根本没登记在云权限映射里，由权限层先拒）。主机侧 22 文件 112 条、模拟器 97 条全过；`tsc` node 0 错；门禁 7 项 0 新发现。
+
+**如实记录 / 剩余**：
+1. 本轮是**收紧**而非补齐：真实 Runtime 仍然没有 `worktree.createManaged`，云端用户目前只能打开已存在的工作区。这是设计 §8.3 明确要求的正向路径，**下一轮实现**（需把显式 `workspaceRoot` + `nestWorkspaces=false` 贯穿 `createManagedWorktree` 的路径推导，非托管构建不注册）。
+2. `worktree.prefetchCreateBase` 一并被拒：它服务于创建流程，托管创建落地后应随 `createManaged` 一起开放。
+3. 终端仍可 `cat` 任意文件（设计 §9.4 已列为不可阻断）。
 
 ## 下一步
 

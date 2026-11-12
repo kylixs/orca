@@ -1,6 +1,7 @@
 import { isAbsolute, join } from 'node:path'
 import { cloudMethodAccess } from './cloud-rpc-permission'
 import { cloudGitAccessOf, cloudGitPathsOf } from './cloud-git-scope'
+import { cloudWorktreeAccessOf } from './cloud-worktree-scope'
 import {
   checkCloudTargetScope,
   checkCloudWorktreeScope,
@@ -47,6 +48,10 @@ function relativePaths(params: unknown): string[] {
 
 /** Null when the method takes no project path, so non-file calls skip the check. */
 export function cloudPathAccessOf(method: string): 'read' | 'write' | null {
+  const worktreeAccess = cloudWorktreeAccessOf(method)
+  if (worktreeAccess !== null) {
+    return worktreeAccess.kind === 'deny' ? null : worktreeAccess.kind
+  }
   const gitAccess = cloudGitAccessOf(method)
   if (gitAccess !== null) {
     return gitAccess
@@ -55,12 +60,27 @@ export function cloudPathAccessOf(method: string): 'read' | 'write' | null {
   return access === 'file:read' ? 'read' : access === 'file:write' ? 'write' : null
 }
 
+/** Whether a cloud session's call must pass the workspace boundary at all. */
+export function isCloudPathGuardedMethod(method: string): boolean {
+  return cloudPathAccessOf(method) !== null || cloudWorktreeAccessOf(method) !== null
+}
+
+/** A worktree method the host refuses outright, regardless of its selector. */
+export function cloudWorktreeDenial(method: string): { message: string } | null {
+  const access = cloudWorktreeAccessOf(method)
+  return access?.kind === 'deny' ? { message: access.message } : null
+}
+
 export async function checkCloudRpcPath(args: {
   runtime: CloudPathGuardRuntime
   roots: CloudPathRoots
   method: string
   params: unknown
 }): Promise<CloudPathDecision | null> {
+  const denial = cloudWorktreeDenial(args.method)
+  if (denial) {
+    return { ok: false, reason: 'worktree_scope', message: denial.message }
+  }
   const access = cloudPathAccessOf(args.method)
   if (access === null) {
     return null

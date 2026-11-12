@@ -12,7 +12,7 @@ import { RuntimeRpcRequestAdmission } from './runtime-rpc-request-admission'
 import { classifyRuntimeLongPoll } from './runtime-rpc-long-poll'
 import type { RpcCallerScope } from '../rpc/rpc-caller-scope'
 import { cloudMethodAccess } from '../../cloud-platform/cloud-rpc-permission'
-import { checkCloudRpcPath, cloudPathAccessOf } from '../../cloud-platform/cloud-path-guard'
+import { checkCloudRpcPath, isCloudPathGuardedMethod } from '../../cloud-platform/cloud-path-guard'
 import { limitRuntimeRpcReplySize } from './runtime-rpc-reply-size-limit'
 
 // Why: status.get has no per-connection context in the dispatcher, so stamp the scope here at the transport boundary.
@@ -128,7 +128,7 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
     const cloudAccess = cloudSession === undefined ? null : cloudMethodAccess(request.method)
     const pathChecked =
       cloudSession !== undefined &&
-      cloudPathAccessOf(request.method) !== null &&
+      isCloudPathGuardedMethod(request.method) &&
       cloudAccess !== null &&
       cloudAccess !== 'session' &&
       cloudAccess !== 'open' &&

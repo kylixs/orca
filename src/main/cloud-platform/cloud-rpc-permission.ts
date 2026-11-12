@@ -67,7 +67,9 @@ const DOWNLOAD_METHODS: ReadonlySet<string> = new Set([
 const WORKTREE_METHODS: ReadonlySet<string> = new Set([
   'worktree.create',
   'worktree.createManaged',
-  'worktree.rm'
+  'worktree.rm',
+  'worktree.forceDeleteBranch',
+  'worktree.show'
 ])
 
 export type CloudMethodAccess = CloudPermission | 'session' | null
