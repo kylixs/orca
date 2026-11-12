@@ -1,6 +1,10 @@
 // WebSocket transport letting mobile clients reach the Orca runtime over LAN (wss:// with TLS, else ws://); auth is per-device tokens, independent of transport encryption.
 import { createServer as createHttpsServer, type Server as HttpsServer } from 'node:https'
-import { createServer as createHttpServer, type Server as HttpServer } from 'node:http'
+import {
+  createServer as createHttpServer,
+  type IncomingHttpHeaders,
+  type Server as HttpServer
+} from 'node:http'
 import { WebSocketServer, type WebSocket } from 'ws'
 import type { RpcTransport } from './transport'
 import { createStaticWebClientHandler } from './static-web-client-handler'
@@ -42,7 +46,18 @@ export type WebSocketTransportOptions = {
   fallbackPort?: number
   // Why: serve --port clients dial the pinned port; prefer it first so a stale fallback can't steal the pin (issue #8535). Default keeps fallback-first (STA-1511).
   preferPinnedPort?: boolean
+  /**
+   * Optional upgrade-time gate (cloud credential). Runs before the WebSocket
+   * handshake, so a rejection is an HTTP status the client can map, not a close frame.
+   */
+  upgradeAdmission?: UpgradeAdmission
 }
+
+export type UpgradeAdmission = (headers: IncomingHttpHeaders) => WebSocketUpgradeAdmission
+
+export type WebSocketUpgradeAdmission =
+  | { ok: true }
+  | { ok: false; status: number; message?: string; headers?: Record<string, string> }
 
 export class WebSocketTransport implements RpcTransport {
   private readonly host: string
@@ -54,6 +69,7 @@ export class WebSocketTransport implements RpcTransport {
   private readonly staticRoot: string | undefined
   private readonly fallbackPort: number | undefined
   private readonly preferPinnedPort: boolean
+  private readonly upgradeAdmission: UpgradeAdmission | undefined
   private httpServer: HttpsServer | HttpServer | null = null
   private wss: WebSocketServer | null = null
   private messageHandler: WebSocketMessageHandler | null = null
@@ -73,7 +89,8 @@ export class WebSocketTransport implements RpcTransport {
     preAuthTimeoutMs,
     staticRoot,
     fallbackPort,
-    preferPinnedPort
+    preferPinnedPort,
+    upgradeAdmission
   }: WebSocketTransportOptions) {
     this.host = host
     this.port = port
@@ -88,6 +105,7 @@ export class WebSocketTransport implements RpcTransport {
     this.staticRoot = staticRoot
     this.fallbackPort = fallbackPort
     this.preferPinnedPort = preferPinnedPort === true
+    this.upgradeAdmission = upgradeAdmission
   }
 
   onMessage(handler: WebSocketMessageHandler): void {
@@ -190,9 +208,32 @@ export class WebSocketTransport implements RpcTransport {
     // Why: the WS cap applies only post-upgrade; a separate TCP cap bounds raw/pre-upgrade descriptor use.
     httpServer.maxConnections = WEBSOCKET_TRANSPORT_MAX_TCP_CONNECTIONS
 
+    const admission = this.upgradeAdmission
     const wss = new WebSocketServer({
       server: httpServer,
-      maxPayload: WEBSOCKET_TRANSPORT_MAX_MESSAGE_BYTES
+      maxPayload: WEBSOCKET_TRANSPORT_MAX_MESSAGE_BYTES,
+      // Why: a cloud credential is checked before the handshake, so the client gets a
+      // status it can map instead of an opaque closed socket (design §4.3.4).
+      ...(admission
+        ? {
+            verifyClient: (
+              info: { req: { headers: IncomingHttpHeaders } },
+              done: (
+                ok: boolean,
+                code?: number,
+                message?: string,
+                headers?: Record<string, string>
+              ) => void
+            ): void => {
+              const decision = admission(info.req.headers)
+              if (decision.ok) {
+                done(true)
+                return
+              }
+              done(false, decision.status, decision.message ?? 'Rejected', decision.headers ?? {})
+            }
+          }
+        : {})
     })
 
     wss.on('connection', (ws) => {

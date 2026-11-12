@@ -1,4 +1,5 @@
 import type { OrcaRuntimeService } from '../orca-runtime'
+import type { UpgradeAdmission } from '../rpc/ws-transport'
 import type { RpcAnyMethodDeclaration } from '../rpc/core'
 import type { DeviceRegistry } from '../device-registry'
 import type { E2EEKeypair } from '../e2ee-keypair'
@@ -57,6 +58,8 @@ export type OrcaRuntimeRpcServerOptions = {
   metadataOwnershipPollMs?: number
   // Why: tests may inject inert protocol stages before production authorization registers them.
   methods?: readonly RpcAnyMethodDeclaration[]
+  /** Cloud-platform upgrade gate; when set, unauthenticated upgrades are refused before pairing. */
+  upgradeAdmission?: UpgradeAdmission
 }
 
 export type PairingOfferUnavailableReason =

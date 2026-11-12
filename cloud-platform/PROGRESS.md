@@ -20,6 +20,7 @@
 | M10 中继 SNI 白名单 | ✅ 完成 | `evidence/m10-relay/` | 8 条用例：后缀白名单、裸主机名/异后缀/多层子域拒绝、未知路由黑洞、非 TLS 拒绝、单 IP 并发上限、元数据不含负载 |
 | M11 撤销关闭已建连接 | ✅ 完成 | `evidence/m11-revocation/` | 设备吊销后 4.2 秒内 `close(4403, device_revoked)`；合并入升级期同一撤销快照 |
 | M12 控制面挂起韧性 | ✅ 完成 | `evidence/m12-control-plane-resilience/` | 请求可中止（Runtime active≤4，修复前 9）；响应体挂起时轮询继续；中继单飞 + 3 秒超时，首次同步不阻塞监听 |
+| M13 真实 Orca Runtime 升级期准入 | ✅ 完成 | `evidence/m13-orca-admission/` | 在真实 `OrcaRuntimeRpcServer` 的 WS 升级前校验云端凭证：8 条真实升级用例；平台/主机验签实现一致性 7 条 |
 
 ## 最近一次测试结果
 
@@ -31,7 +32,16 @@ node --test test/e2e/mtls-control-channel.e2e.test.ts 8 pass / 0 fail
 node --test test/e2e/relay-hardening.e2e.test.ts 8 pass / 0 fail
 node --test test/e2e/revocation.e2e.test.ts 1 pass / 0 fail
 node --test test/e2e/control-plane-resilience.e2e.test.ts 3 pass / 0 fail
-合计 60 pass / 0 fail
+node --test test/cloud-admission-parity.test.ts 7 pass / 0 fail
+合计 67 pass / 0 fail
+```
+
+M13（Orca 主进程侧，vitest）：
+
+```
+npx vitest run src/main/runtime/runtime-rpc-cloud-admission.test.ts  8 pass / 0 fail
+npx tsc --noEmit -p config/tsconfig.node.json                        通过
+回归：runtime-rpc-websocket-bind-host / pairing-offer / device-revocation  33 pass
 ```
 
 E2E 覆盖：
@@ -96,8 +106,20 @@ M10 中继边界：
 
 无。
 
+## M13 真实 Orca Runtime 升级期准入（本轮）
+
+在 Orca 主进程接入，而不是把替身逻辑搬过去：
+
+- `src/main/cloud-platform/cloud-credential.ts`：Ed25519 验签（仅 `node:crypto`，可被平台测试进程导入）
+- `src/main/cloud-platform/cloud-upgrade-admission.ts`：读 `Sec-WebSocket-Protocol` 的 `orca-cred.<token>` 与 `x-orca-device-pubkey`，校验主机绑定、撤销集合、设备公钥；拒绝时返回 `401` + `x-orca-reject`
+- `WebSocketTransport` 新增可选 `upgradeAdmission`，经 `verifyClient` 在握手前执行（未传时行为与之前完全一致）
+- `OrcaRuntimeRpcServer({ upgradeAdmission })` 透传，`orca serve` 后续接线只差取 JWKS 与撤销快照
+- 平台与主机两份验签实现的**一致性测试**（`cloud-platform/test/cloud-admission-parity.test.ts`）覆盖合法/过期/篡改/未知 kid/结构损坏/未来签发
+
+实测：真实服务端 + 真实 WS + 真实 Ed25519，8 条升级用例全过。
+
 ## 下一步
 
-1. 真实 Orca Runtime 接入替身接口（需要本地可构建的 `orca serve`）。
-2. 客户端补丁层落地到 `src/main/cloud-platform/`（需在 Orca 根工程跑 typecheck/lint）。
+1. `orca serve` 启动时接入云端：拉 JWKS/撤销快照、注入 `upgradeAdmission`，并用真实二进制跑一次端到端。
+2. 已建连接的撤销关闭（4403）在真实 Runtime 上接线（M11 的替身逻辑搬到 `mobileSocketWiring`）。
 3. 遗留：M1 设备 PoP、M6 `relativePath` 契约、`jwks_stale` 与分支名 `..` 补用例。
