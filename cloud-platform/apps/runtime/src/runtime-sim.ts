@@ -5,6 +5,7 @@ import { assertInsideRoot } from './path-containment.ts'
 import { WebSocketServer } from 'ws'
 import { isInsideRoot } from '../../../packages/contract/src/permissions.ts'
 import { mtlsFetch } from '../../../packages/contract/src/internal-fetch.ts'
+import type { CredentialPayload } from '../../../packages/contract/src/credential.ts'
 import { PolicyGateway, type GatewayPolicy } from './policy-gateway.ts'
 
 export type RuntimeSimOptions = {
@@ -33,6 +34,63 @@ export type RuntimeSim = {
 
 type RpcRequest = { id: number; method: string; params?: Record<string, unknown> }
 
+function isDownloadPolicy(value: unknown): value is 'deny' | 'allow' {
+  return value === 'deny' || value === 'allow'
+}
+
+/**
+ * A version-skewed platform may answer 200 with a different shape. Only a
+ * fully valid body may replace the last good policy — a malformed override
+ * value (e.g. `123`) must not read as "not deny" and silently allow exports
+ * (review-06 N1).
+ */
+function parsePolicy(value: unknown): (GatewayPolicy & { version?: number }) | null {
+  if (!value || typeof value !== 'object') return null
+  const candidate = value as Record<string, unknown>
+  if (!isDownloadPolicy(candidate.downloadDefault)) return null
+  const overrides = candidate.projectOverrides
+  if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) return null
+  const entries = Object.entries(overrides as Record<string, unknown>)
+  if (!entries.every(([, v]) => isDownloadPolicy(v))) return null
+  return {
+    downloadDefault: candidate.downloadDefault,
+    projectOverrides: Object.fromEntries(entries) as Record<string, 'deny' | 'allow'>,
+    version: typeof candidate.version === 'number' ? candidate.version : undefined
+  }
+}
+
+type RevocationSnapshot = {
+  projects: { id: string; since: number }[]
+  users: { id: string; since: number }[]
+  devices: { id: string; since: number }[]
+  jtis: string[]
+}
+
+/** Ignores structurally invalid entries instead of failing the whole refresh. */
+function parseRevocations(value: unknown): RevocationSnapshot {
+  const empty: RevocationSnapshot = { projects: [], users: [], devices: [], jtis: [] }
+  if (!value || typeof value !== 'object') return empty
+  const candidate = value as Record<string, unknown>
+  const entries = (key: 'projects' | 'users' | 'devices'): { id: string; since: number }[] =>
+    Array.isArray(candidate[key])
+      ? (candidate[key] as unknown[]).flatMap((item) => {
+          if (!item || typeof item !== 'object') return []
+          const record = item as Record<string, unknown>
+          return typeof record.id === 'string' && typeof record.since === 'number'
+            ? [{ id: record.id, since: record.since }]
+            : []
+        })
+      : []
+  return {
+    projects: entries('projects'),
+    users: entries('users'),
+    devices: entries('devices'),
+    jtis: Array.isArray(candidate.jtis)
+      ? (candidate.jtis as unknown[]).filter((jti): jti is string => typeof jti === 'string')
+      : []
+  }
+}
+
 function readCredentialFromProtocol(header: string | undefined): string | null {
   if (!header) return null
   for (const part of header.split(',')) {
@@ -53,6 +111,7 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
   let policyFreshAt = Date.now()
   let lastPolicyVersion: number | null = null
   const POLICY_STALE_MS = 5 * 60_000
+  const activeSessions = new Set<{ ws: import('ws').WebSocket; payload: CredentialPayload }>()
   const revocationRefresher = setInterval(() => {
     void refreshPolicy().catch(() => undefined)
   }, 1000)
@@ -74,17 +133,37 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
   }
 
   async function refreshPolicyOnce(): Promise<void> {
+    // The abort signal is what actually frees a socket against a control plane
+    // that accepts the connection but never answers (review-06 N3).
+    const signal = AbortSignal.timeout(options.controlTimeoutMs ?? 3000)
     try {
-      await fetchPolicyFromPlatform()
-      policyFreshAt = Date.now()
+      const accepted = await fetchPolicyFromPlatform(signal)
+      // A malformed 200 is a normal return, so freshness must only advance when
+      // a valid policy was accepted; otherwise the deny fallback never kicks in
+      // (review-06 N4).
+      if (accepted) policyFreshAt = Date.now()
+      closeRevokedSessions()
     } catch {
-      if (Date.now() - policyFreshAt > POLICY_STALE_MS) {
-        policy = { downloadDefault: 'deny', projectOverrides: {} }
-      }
+      // Platform unreachable: keep the last policy (AC-20) until it goes stale.
+    }
+    if (Date.now() - policyFreshAt > POLICY_STALE_MS) {
+      policy = { downloadDefault: 'deny', projectOverrides: {} }
     }
   }
 
-  async function fetchPolicyFromPlatform(): Promise<void> {
+  /** Server-initiated close for sessions whose device/user/project was revoked. */
+  function closeRevokedSessions(): void {
+    for (const session of [...activeSessions]) {
+      const reason = gateway.revocationReason(session.payload)
+      if (!reason) continue
+      activeSessions.delete(session)
+      session.ws.close(4403, reason)
+      // Do not rely on the peer completing the close handshake.
+      setTimeout(() => session.ws.terminate(), 1000).unref()
+    }
+  }
+
+  async function fetchPolicyFromPlatform(signal: AbortSignal): Promise<boolean> {
     const control = {
       internalUrl: options.apiUrl,
       token: options.internalToken,
@@ -93,58 +172,32 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
       caPath: options.caPath
     }
     const publicUrl = options.publicApiUrl ?? options.apiUrl
-    const timeoutMs = options.controlTimeoutMs ?? 3000
-    const withTimeout = <T>(promise: Promise<T>): Promise<T> =>
-      Promise.race([
-        promise,
-        new Promise<T>((_resolve, reject) =>
-          setTimeout(
-            () => reject(Object.assign(new Error('control request timeout'), { code: 'ETIMEDOUT' })),
-            timeoutMs
-          )
-        )
-      ])
     const [jwksRes, policyRes, revokedRes] = await Promise.all([
       // JWKS is public and may be served by the public listener only.
-      withTimeout(fetch(`${publicUrl}/v1/jwks`)),
-      withTimeout(mtlsFetch(control, '/v1/internal/policy')),
-      withTimeout(mtlsFetch(control, '/v1/internal/revocations'))
+      fetch(`${publicUrl}/v1/jwks`, { signal }),
+      mtlsFetch(control, '/v1/internal/policy', { signal }),
+      mtlsFetch(control, '/v1/internal/revocations', { signal })
     ])
     if (jwksRes.ok) {
       const body = (await jwksRes.json()) as { keys: { kid: string; publicKeyPem: string }[] }
       gateway.setJwks(body.keys)
     }
+    let accepted = false
     if (policyRes.ok) {
-      const parsed = (await policyRes.json()) as
-        | (Partial<GatewayPolicy> & { version?: number })
-        | null
-      // A version-skewed or partially deployed platform may return 200 with a
-      // different shape. Keep the last good policy instead of trusting it.
-      if (
-        parsed &&
-        (parsed.downloadDefault === 'deny' || parsed.downloadDefault === 'allow') &&
-        typeof parsed.projectOverrides === 'object' &&
-        parsed.projectOverrides !== null
-      ) {
-        policy = {
-          downloadDefault: parsed.downloadDefault,
-          projectOverrides: parsed.projectOverrides
-        }
+      const parsed = parsePolicy(await policyRes.json())
+      if (parsed) {
+        policy = { downloadDefault: parsed.downloadDefault, projectOverrides: parsed.projectOverrides }
         if (typeof parsed.version === 'number') lastPolicyVersion = parsed.version
+        accepted = true
       }
     }
     if (policyRes.ok && revokedRes.ok && lastPolicyVersion !== null) {
       console.log(`[runtime-sim] policy synced v=${lastPolicyVersion}`)
     }
     if (revokedRes.ok) {
-      const body = (await revokedRes.json()) as {
-        projects?: { id: string; since: number }[]
-        users?: { id: string; since: number }[]
-        devices?: { id: string; since: number }[]
-        jtis?: string[]
-      }
-      gateway.setRevocations(body)
+      gateway.setRevocations(parseRevocations(await revokedRes.json()))
     }
+    return accepted
   }
 
   await refreshPolicy()
@@ -175,6 +228,9 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
     }
     wss.handleUpgrade(req, socket, head, (ws) => {
       const payload = admission.payload!
+      const session = { ws, payload }
+      activeSessions.add(session)
+      ws.on('close', () => activeSessions.delete(session))
       ws.send(
         JSON.stringify({
           type: 'e2ee_ready',
@@ -306,6 +362,8 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
     close: () =>
       new Promise<void>((resolve) => {
         clearInterval(revocationRefresher)
+        for (const session of activeSessions) session.ws.terminate()
+        activeSessions.clear()
         wss.close()
         httpServer.close(() => resolve())
       })
@@ -319,6 +377,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     port: Number(process.env.PORT ?? 16768),
     apiUrl: process.env.API_URL ?? 'http://127.0.0.1:18787',
     publicApiUrl: process.env.PUBLIC_API_URL,
+    controlTimeoutMs: process.env.CONTROL_TIMEOUT_MS ? Number(process.env.CONTROL_TIMEOUT_MS) : undefined,
     internalToken:
       process.env.INTERNAL_TOKEN ?? process.env.ORCA_CLOUD_INTERNAL_TOKEN ?? 'internal-test-token',
     keyPath: process.env.INTERNAL_TLS_KEY,

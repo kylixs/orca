@@ -9,9 +9,16 @@ export type MtlsClientConfig = {
   token: string
 }
 
+function abortReason(signal: AbortSignal): Error {
+  return signal.reason instanceof Error ? signal.reason : new Error('request aborted')
+}
+
 /**
  * Fetches a control-plane resource over mTLS. Kept dependency-free so the
  * relay and runtime can share it without pulling in a TLS stack.
+ *
+ * Honours `init.signal` for both transports: a hung control plane must free
+ * the socket, not just reject the caller's promise (review-06 N3).
  */
 export async function mtlsFetch(
   config: MtlsClientConfig,
@@ -27,6 +34,9 @@ export async function mtlsFetch(
     }
   }
   if (!usesTls) return fetch(`${config.internalUrl}${path}`, options)
+
+  const signal = init.signal ?? null
+  if (signal?.aborted) throw abortReason(signal)
 
   // node:https does not accept RequestInit; use the dispatcher-free https module.
   const { request } = await import('node:https')
@@ -50,6 +60,7 @@ export async function mtlsFetch(
         const chunks: Buffer[] = []
         res.on('data', (chunk: Buffer) => chunks.push(chunk))
         res.on('end', () => {
+          cleanup()
           resolve(
             new Response(Buffer.concat(chunks), {
               status: res.statusCode ?? 500,
@@ -57,9 +68,27 @@ export async function mtlsFetch(
             })
           )
         })
+        // Headers arrived but the body stalled: an abort must settle the promise
+        // too, otherwise the single-flight refresh would stay pending forever.
+        res.on('error', (err) => {
+          cleanup()
+          reject(err)
+        })
+        res.on('aborted', () => {
+          cleanup()
+          reject(new Error('response aborted'))
+        })
       }
     )
-    req.on('error', reject)
+    const onAbort = (): void => {
+      if (signal) req.destroy(abortReason(signal))
+    }
+    const cleanup = (): void => signal?.removeEventListener('abort', onAbort)
+    signal?.addEventListener('abort', onAbort, { once: true })
+    req.on('error', (err) => {
+      cleanup()
+      reject(err)
+    })
     req.end()
   })
 }

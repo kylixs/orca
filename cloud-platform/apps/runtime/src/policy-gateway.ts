@@ -67,6 +67,24 @@ export class PolicyGateway {
     this.revokedDevices = new Map((input.devices ?? []).map((d) => [d.id, d.since]))
   }
 
+  /**
+   * Re-checks an *established* session against the current revocation snapshot.
+   * Admission only ran once at upgrade time, so a revoked device would otherwise
+   * keep its socket forever (review-06 N2, AC-25).
+   */
+  revocationReason(payload: CredentialPayload): string | null {
+    const nowMs = (this.options.now ?? Date.now)()
+    const projectSince = this.revokedProjects.get(payload.project)
+    if (projectSince !== undefined && payload.iat * 1000 <= projectSince) return 'project_revoked'
+    const userSince = this.revokedUsers.get(payload.sub.replace(/^user:/, ''))
+    if (userSince !== undefined && payload.iat * 1000 <= userSince) return 'user_revoked'
+    const deviceSince = this.revokedDevices.get(payload.deviceId)
+    if (deviceSince !== undefined && payload.iat * 1000 <= deviceSince) return 'device_revoked'
+    const jtiExpiry = this.revokedJtis.get(payload.jti)
+    if (jtiExpiry !== undefined && jtiExpiry > nowMs) return 'jti_revoked'
+    return null
+  }
+
   private pruneJtis(nowSeconds: number): void {
     for (const [jti, expiresAt] of this.usedJtis) {
       if (expiresAt <= nowSeconds) this.usedJtis.delete(jti)

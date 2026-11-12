@@ -108,7 +108,41 @@
 | 单 IP 并发超限 | 拒绝 `per-ip-limit` | PASS | `per-ip-limit.json` |
 | 连接元数据 | 仅源/SNI/路由/结果，无负载与凭证 | PASS | `connection-metadata.json` |
 
-合计：**8 passed / 0 failed**；全仓 **56 条测试全绿**。
+合计：**8 passed / 0 failed**（当时全仓 56 条；后续见 §3.4/§3.5，当前全仓 59 条）。
+
+## 3.4 撤销关闭已建连接（M11，评审 06 N2）
+
+命令：`cd cloud-platform && node --test test/e2e/revocation.e2e.test.ts`
+
+| 场景 | 预期 | 结果 | 证据 |
+|---|---|---|---|
+| 打开项目后吊销本设备 | 主机主动 `close(4403, device_revoked)` | PASS（4.2 秒） | `device-revoke-closes-session.json` |
+| 关闭后再次 RPC | 不再成功（拒绝或超时） | PASS | 同上 |
+
+说明：升级期只校验一次凭证，若不复查已建连接，被吊销设备可凭保持 socket 永久访问（AC-25/AC-14 违约）。
+
+## 3.5 控制面挂起韧性（M12，评审 06 N3/N9）
+
+命令：`cd cloud-platform && node --test test/e2e/control-plane-resilience.e2e.test.ts`
+
+伪控制面「接受 TCP 但永不应答」，统计其活动 socket：
+
+| 场景 | 修复前 | 修复后 | 证据 |
+|---|---|---|---|
+| Runtime 轮询 3.5 秒 | active=9，每秒 +3 永不回收 | active ≤ 4（每个请求 300ms 后 abort） | `runtime-aborts-hung-requests.json` |
+| 响应头已到、响应体挂起 | 单飞 Promise 永不 settle，轮询冻结 | 连接数持续增长（≥6），轮询未冻结 | `runtime-aborts-stalled-body.json` |
+| 中继启动 | 首次同步阻塞 `listen()`，3 秒仍未监听 | 先监听再同步，启动有界；active ≤ 2 | `relay-starts-while-control-hangs.json` |
+
+## 3.6 修复前失败对照（评审 06 §3）
+
+`git stash` 回退 5 个修复源文件后实跑：
+
+| 用例 | 修复前结果 |
+|---|---|
+| E8a 畸形策略值 | `PERMISSION_MISSING`（策略被忽略） |
+| M11 吊销关闭 | 10 秒内无关闭帧 |
+| M12 Runtime socket | `active=9 total=9` |
+| M12 中继启动 | `HUNG >3s: never listened` |
 
 ## 4. Web UI 实测
 

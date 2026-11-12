@@ -219,7 +219,7 @@ flowchart LR
 
 - 无状态 TCP 转发；按 SNI（`<route-key>.relay.example.com`）选择目标；TLS 透传，不做中间人。
 - **不校验业务凭证**、不解析 Orca 协议、不记录内容；只记录连接元数据（源、目标、时长、字节数）。
-- **路由表由平台单向同步**：平台通过**专用 mTLS 监听**（客户端证书 + CN 白名单，`/v1/internal/*` 之外一律 404）提供 `{routeKey → host:6768}` 的版本化路由表；中继拉取并带 TTL（刷新 60 秒）。mTLS 通过后仍需内部令牌，二者缺一不可。
+- **路由表由平台单向同步**：平台通过**专用 mTLS 监听**（客户端证书 + CN 白名单，`/v1/internal/*` 之外一律 404）提供 `{routeKey → host:6768}` 的版本化路由表；中继每 2 秒拉取一次并带 TTL（单飞 + 3 秒超时，首次同步不阻塞监听）。mTLS 通过后仍需内部令牌，二者缺一不可。
   - 中继不读平台数据库，不反向调用平台业务接口。
   - 平台不可达时：中继使用最后已知路由表继续转发，超过 5 分钟未更新则只保留已在转发的连接、拒绝新建（策略可配）。
   - **路由表陈旧不等于越权**：授权由开发机在升级期验凭证，平台下线主机后 Agent 会收到撤销并拒绝新连接；中继只影响「可达」，不影响「可授权」。
@@ -674,6 +674,8 @@ flowchart LR
 
 > **前提条件必须写进验收**：所有 ≤60 秒的撤销都以「主机与平台心跳正常、Redis 正常」为前提。主机断网时撤销不生效，恢复心跳后立即生效；这一窗口在风险登记中列明。
 
+主机侧实现（AC-25）：Runtime 每秒刷新撤销快照，对**已建立**连接重新比对 `deviceId` / `sub` / `project` / `jti`（`iat*1000 <= since` 或 jti 在集合内），命中即 `close(4403, reason)`，1 秒内未完成关闭握手则 `terminate()`。撤销判断与升级期共用同一 `PolicyGateway`，不允许出现两套语义。
+
 ---
 
 ## 8. 项目与工作区
@@ -1012,7 +1014,12 @@ flowchart TB
 | GET/PUT | `/v1/policies/download` | 全局下载策略 | 否 |
 | GET/PUT | `/v1/users/{id}/roles` | 用户角色覆盖 | 否 |
 | GET | `/v1/client/config` | 客户端托管配置 | 是 |
-| POST | `/v1/internal/relay-routes` | 平台 → 中继路由表（mTLS） | 否 |
+| GET | `/v1/internal/relay-routes` | 中继拉取路由表（mTLS） | 否 |
+| GET | `/v1/internal/policy` | Runtime 拉取导出策略与版本（mTLS，缓存 + 陈旧降级） | 否 |
+| GET | `/v1/internal/revocations` | Runtime / 中继拉取撤销集合（mTLS，心跳之外的补充通道） | 否 |
+| POST | `/v1/internal/relay-endpoint` | 中继上报可达端口（仅开发环境走公网监听，生产走 mTLS） | 否 |
+
+> `/v1/internal/*` 只在**配置了 mTLS 内部监听**时对公网监听返回 404；本地开发/测试未配置 mTLS 时由公网监听兼任控制通道，这一点在部署清单中必须显式配置。
 
 ### 12.2 关键接口
 
@@ -1103,7 +1110,7 @@ Sec-WebSocket-Protocol: orca-runtime, orca-cred.<base64url(credential)>
 ```
 
 - 直连与中继使用**同一份**握手，唯一区别是 `Host` 与是否经中继。
-- 主机在升级前校验凭证；失败返回 HTTP `401` 并附 `x-orca-reject: <reason>`，**不发送 WebSocket 关闭帧**（101 之前没有关闭帧语义）。客户端把该 HTTP 状态映射为本地错误码，诊断页展示 reason。
+- 主机在升级前校验凭证；失败返回 HTTP `401` 并附 `x-orca-reject: <reason>`，**不发送 WebSocket 关闭帧**（101 之前没有关闭帧语义）。客户端把该 HTTP 状态映射为本地错误码，诊断页展示 reason。已登记的 reason：`malformed`、`expired`、`not_yet_valid`、`bad_signature`、`unknown_kid`、`host_mismatch`、`replayed`、`project_revoked`、`user_revoked`、`device_revoked`、`jti_revoked`、`jwks_stale`、`device_pubkey_missing`、`device_mismatch`、`workspace_root_invalid`。新增 reason 只追加不改名。
 - 成功后才进入**未修改的** Orca E2EE 握手；此后权限收回等运行期错误才使用 4403 等关闭码。
 - 中继不读取 `Sec-WebSocket-Protocol`，只透传字节。
 - **携带凭证的升级必须 TLS**；内网也如此（可用内部 CA）。
@@ -1469,7 +1476,7 @@ Sec-WebSocket-Protocol: orca-runtime, orca-cred.<base64url(credential)>
 | `client.failoverBudget` | 1 | 升级失败后重申请凭证次数 |
 | `credential.ttlSeconds` | 60 | 连接凭证有效期 |
 | `credential.jtiTtlSeconds` | 120 | 主机侧 jti 缓存 |
-| `relay.routeRefreshSeconds` | 60 | 中继路由表刷新周期（由平台推送） |
+| `relay.routeRefreshSeconds` | 2 | 中继路由表轮询周期（拉模型；单飞 + 3 秒超时） |
 | `relay.routeStaleMaxSeconds` | 300 | 硬陈旧上限；超过后拒绝新连接（刷新周期与硬上限是两个语义） |
 | `host.heartbeatSeconds` | 15 | 心跳间隔 |
 | `host.offlineSeconds` | 60 | 离线判定 |

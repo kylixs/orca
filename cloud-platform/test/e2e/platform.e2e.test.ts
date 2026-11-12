@@ -524,10 +524,14 @@ describe('平台端到端（真实进程 / TCP / TLS / Ed25519）', () => {
   })
 })
 
-test('E8a 畸形 200 策略响应不导致 Runtime 崩溃', async () => {
-  // A version-skewed platform may answer 200 with the wrong shape. Point a runtime
-  // at such a fake and confirm the process survives (regression for review-05 C-01).
+test('E8a 畸形策略值不 fail-open，Runtime 存活（需真实会话才有效）', async () => {
+  // Regression for review-05 C-01 / review-06 N1+N5. The previous version pointed
+  // at an API that E8 had already stopped, so JWKS never arrived and the policy
+  // path was never exercised — it passed even against the broken build. This one
+  // starts its own platform, establishes a real session, and then asks for a
+  // download while the control plane returns a malformed override value.
   const { createServer } = await import('node:http')
+  let policyHits = 0
   const fake = createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' })
     if (req.url?.startsWith('/v1/internal/revocations')) {
@@ -535,7 +539,10 @@ test('E8a 畸形 200 策略响应不导致 Runtime 崩溃', async () => {
       return
     }
     if (req.url?.startsWith('/v1/internal/policy')) {
-      res.end(JSON.stringify({}))
+      policyHits += 1
+      // `123` is not a valid override value; treating it as "not deny" used to
+      // allow exports. It must be discarded, leaving the deny default in force.
+      res.end(JSON.stringify({ downloadDefault: 'deny', projectOverrides: { proj_payment: 123 } }))
       return
     }
     res.end('{}')
@@ -543,30 +550,74 @@ test('E8a 畸形 200 策略响应不导致 Runtime 崩溃', async () => {
   await new Promise<void>((r) => fake.listen(0, '127.0.0.1', () => r()))
   const fakePort = (fake.address() as { port: number }).port
 
+  const isolatedApi = await spawnService(
+    'apps/api/src/server.ts',
+    { PORT: '0' },
+    /\[api\] listening on http:\/\/127\.0\.0\.1:(\d+)/,
+    'api-malformed-policy'
+  )
+  const tls = makeTlsCerts()
   const isolated = await spawnService(
     'apps/runtime/src/runtime-sim.ts',
     {
       PORT: '0',
       API_URL: `http://127.0.0.1:${fakePort}`,
-      PUBLIC_API_URL: api.url,
+      PUBLIC_API_URL: isolatedApi.url,
+      CONTROL_TIMEOUT_MS: '400',
       HOST_ID: 'host_dev001',
       HOST_NAME: 'dev-001',
-      SANDBOX_ROOT: workspace.root
+      SANDBOX_ROOT: workspace.root,
+      TLS_KEY: tls.key,
+      TLS_CERT: tls.cert
     },
     /\[runtime-sim\] dev-001 listening on :(\d+)/,
     'runtime-malformed-policy'
   )
+  let client: CloudClient | null = null
   try {
-    await new Promise((r) => setTimeout(r, 2500))
+    const adminRes = await fetch(`${isolatedApi.url}/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password: 'Adm1n!', deviceName: 'e8a-admin' })
+    })
+    const { accessToken } = (await adminRes.json()) as { accessToken: string }
+    await registerHost({
+      apiUrl: isolatedApi.url,
+      adminToken: accessToken,
+      name: 'dev-001',
+      directAddr: `127.0.0.1:${isolated.port}`,
+      relayTarget: `127.0.0.1:${isolated.port}`
+    })
+
+    client = new CloudClient(isolatedApi.url)
+    await client.login('zhangsan', 'Passw0rd!')
+    const projects = await client.listProjects()
+    const opened = await client.openProject(projects[0].id)
+    assert.equal(opened.route, 'direct')
+
+    // Give the poller time to consume the malformed body at least once.
+    await waitFor(async () => policyHits > 0, 4000)
+    await new Promise((r) => setTimeout(r, 1500))
+
+    const download = await client.rpc('files.download', {
+      path: `${opened.connect.workspace.projectRoot}/README.md`
+    })
+    assert.equal(download.ok, false, 'malformed override value must not allow exports')
+    assert.equal(download.ok === false ? download.code : '', 'EXPORT_DENIED')
     assert.equal(isolated.proc.exitCode, null, 'runtime must survive a malformed policy')
     assert.equal(isolated.proc.signalCode, null, 'runtime must not be signalled either')
+
     saveEvidence(EVIDENCE, 'E8a-malformed-policy-survives.json', {
+      policyHits,
+      download,
       alive: true,
       exitCode: isolated.proc.exitCode,
       logs: isolated.logs.join('').slice(-400)
     })
   } finally {
+    client?.close()
     await isolated.stop()
+    await isolatedApi.stop()
     await new Promise<void>((r) => fake.close(() => r()))
   }
 })

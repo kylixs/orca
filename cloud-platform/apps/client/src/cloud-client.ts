@@ -43,7 +43,10 @@ export class CloudClient {
     this.deviceKey = publicKey.export({ type: 'spki', format: 'der' }).toString('base64')
   }
 
-  async login(username: string, password: string): Promise<{ displayName: string; permissions: string[] }> {
+  async login(
+    username: string,
+    password: string
+  ): Promise<{ displayName: string; permissions: string[]; deviceId: string }> {
     const res = await fetch(`${this.apiUrl}/v1/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -54,7 +57,18 @@ export class CloudClient {
     this.accessToken = String(body.accessToken)
     this.deviceId = (body.device as { id: string }).id
     const user = body.user as { displayName: string; permissions: string[] }
-    return { displayName: user.displayName, permissions: user.permissions }
+    return { displayName: user.displayName, permissions: user.permissions, deviceId: this.deviceId }
+  }
+
+  /** Revokes the device this client is logged in as (AC-25 producer side). */
+  async revokeCurrentDevice(): Promise<void> {
+    const res = await this.api(`/v1/me/devices/${this.deviceId}`, { method: 'DELETE' })
+    if (!res.ok) throw new Error(`device revoke failed: ${res.status}`)
+  }
+
+  /** Observes the server-initiated close so tests can assert the 4403 revocation code. */
+  onClose(listener: (code: number, reason: string) => void): void {
+    this.socket?.on('close', (code: number, data: Buffer) => listener(code, data.toString()))
   }
 
   async listProjects(): Promise<{ id: string; name: string; hostStatus: string; permissions: string[] }[]> {

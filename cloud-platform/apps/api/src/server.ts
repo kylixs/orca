@@ -109,8 +109,10 @@ export function createApp(config: ApiConfig): ApiHandle {
   ])
   // Production must inject a secret; the fallback exists only for local tests.
   const internalToken =
-    config.internalToken ?? process.env.ORCA_CLOUD_INTERNAL_TOKEN ?? 'internal-test-token'
-  const usedJtis = new Map<string, number>()
+    config.internalToken ??
+    process.env.INTERNAL_TOKEN ??
+    process.env.ORCA_CLOUD_INTERNAL_TOKEN ??
+    'internal-test-token'
 
   const accounts = new Map<string, { password: string; profile: ReturnType<typeof ldapProfile> }>([
     [
@@ -277,10 +279,26 @@ export function createApp(config: ApiConfig): ApiHandle {
     return h.status === 'online' && now() - h.lastHeartbeatAt <= HOST_OFFLINE_MS
   }
 
-  async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  async function handle(
+    req: IncomingMessage,
+    res: ServerResponse,
+    fromInternalChannel = false
+  ): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://localhost')
     const path = url.pathname
     const traceId = req.headers['x-trace-id']?.toString() ?? randomUUID()
+
+    // Second line of defence behind the WAF allowlist: once a dedicated mTLS
+    // channel exists, control-plane reads are only served there (review-06 N6).
+    // Without one (local dev / tests), the public listener is the control channel.
+    if (
+      !fromInternalChannel &&
+      config.internalTls &&
+      path.startsWith('/v1/internal/') &&
+      path !== '/v1/internal/relay-endpoint'
+    ) {
+      return error(res, 404, 'NOT_FOUND', '接口不存在。', traceId)
+    }
 
     if (path === '/health') return json(res, 200, { ok: true, time: now() })
 
@@ -462,7 +480,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         }
       }
       // Established WSS sessions bypass the platform, so revocation must reach hosts too.
-      store.revocations.push({ targetType: 'device', targetId: device.id, reason: 'device_revoked', at: now() })
+      appendRevocation('device', device.id, 'device_revoked')
       audit.append({
         eventType: 'device_revoke',
         actor: authed.user.username,
@@ -1037,7 +1055,6 @@ export function createApp(config: ApiConfig): ApiHandle {
       exp: nowS + CREDENTIAL_TTL_S
     }
     const credential = signCredential(payload, signingKey)
-    usedJtis.set(jti, nowS + 120)
     audit.append({
       eventType: 'project_connect',
       actor: user.username,
@@ -1084,8 +1101,25 @@ export function createApp(config: ApiConfig): ApiHandle {
     })
   }
 
+  /** Bounded by distinct targets: re-revoking refreshes the timestamp instead of growing the list. */
+  function appendRevocation(
+    targetType: 'project' | 'device' | 'user' | 'jti',
+    targetId: string,
+    reason: string
+  ): void {
+    const existing = store.revocations.find(
+      (r) => r.targetType === targetType && r.targetId === targetId
+    )
+    if (existing) {
+      existing.at = now()
+      existing.reason = reason
+      return
+    }
+    store.revocations.push({ targetType, targetId, reason, at: now() })
+  }
+
   function revokeProjectCredentials(projectId: string, reason: string): void {
-    store.revocations.push({ targetType: 'project', targetId: projectId, reason, at: now() })
+    appendRevocation('project', projectId, reason)
   }
 
   let relayPort = 18080
@@ -1142,7 +1176,7 @@ export function createApp(config: ApiConfig): ApiHandle {
               return Promise.resolve()
             }
             // mTLS already authenticated the peer; the bearer token check still applies.
-            return handle(req, res)
+            return handle(req, res, true)
           }
         })
       }

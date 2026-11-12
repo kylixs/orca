@@ -23,6 +23,8 @@ export type RelayOptions = {
   sniSuffix?: string
   /** Concurrent connections allowed from one source IP. */
   maxConnectionsPerIp?: number
+  /** Timeout for one route-sync request; a hung platform must not block listening. */
+  controlTimeoutMs?: number
 }
 
 export type RelayConnectionEvent = {
@@ -87,7 +89,18 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
     socket.destroy()
   }
 
-  async function refresh(): Promise<void> {
+  let refreshInFlight: Promise<void> | null = null
+
+  /** Single-flight: 2s ticks must not stack hung requests against a dead platform. */
+  function refresh(): Promise<void> {
+    if (refreshInFlight) return refreshInFlight
+    refreshInFlight = refreshOnce().finally(() => {
+      refreshInFlight = null
+    })
+    return refreshInFlight
+  }
+
+  async function refreshOnce(): Promise<void> {
     const res = await mtlsFetch(
       {
         internalUrl: options.apiUrl,
@@ -96,7 +109,8 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
         certPath: options.certPath,
         caPath: options.caPath
       },
-      '/v1/internal/relay-routes'
+      '/v1/internal/relay-routes',
+      { signal: AbortSignal.timeout(options.controlTimeoutMs ?? 3000) }
     )
     if (!res.ok) throw new Error(`route sync failed: ${res.status}`)
     const body = (await res.json()) as { routes: RelayRoute[] }
@@ -201,12 +215,14 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
     }
   })
 
-  await refresh()
-    .then(() => console.log(`[relay] routes synced n=${routes.size}`))
-    .catch(() => console.log('[relay] api not ready, will retry'))
+  // Listen before the first sync: a platform that accepts but never answers must
+  // not keep the relay from starting (review-06 N9). The sync is still bounded.
   await new Promise<void>((resolve) => server.listen(options.port, '0.0.0.0', () => resolve()))
   const address = server.address()
   const port = typeof address === 'object' && address ? address.port : options.port
+  await refresh()
+    .then(() => console.log(`[relay] routes synced n=${routes.size}`))
+    .catch(() => console.log('[relay] api not ready, will retry'))
 
   return {
     port,
@@ -235,7 +251,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     sniSuffix: process.env.RELAY_SNI_SUFFIX ?? undefined,
     maxConnectionsPerIp: process.env.RELAY_MAX_CONN_PER_IP
       ? Number(process.env.RELAY_MAX_CONN_PER_IP)
-      : undefined
+      : undefined,
+    controlTimeoutMs: process.env.CONTROL_TIMEOUT_MS ? Number(process.env.CONTROL_TIMEOUT_MS) : undefined
   })
   console.log(`[relay] listening on :${relay.port}, routes=${relay.routes().size}`)
 }
