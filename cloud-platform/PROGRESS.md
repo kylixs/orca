@@ -43,6 +43,7 @@
 | M33 云端会话并发上限 | ✅ 完成 | `evidence/m33-session-limits/` | 每用户每项目 3 路、每主机 32 路，超限 `close(4431)`；按活连接计、关闭即归还；2 条真实端到端（去掉配额检查后全红） |
 | M34 云端 RPC 方法级权限 | ✅ 完成 | `evidence/m34-cloud-rpc-scope/` | 票据 `perms` 真正生效：终端/agent/文件读写/浏览器/下载分开判定，未登记方法拒绝；**修复云会话可访问 settings/accounts/pairing 的越权**；4 条真实端到端 + 11 条单测（回退后 4 条全红） |
 | M35 下载策略与读取限速 | ✅ 完成 | `evidence/m35-download-policy/` | 主机消费平台策略包：导出 RPC 默认拒绝、项目覆盖优先；文件读取按项目滚动小时记次数与字节，超限 `read_budget_exceeded`；3 条真实端到端 + 8 条单测（关掉检查后 2 条变红） |
+| M36 工作区路径边界 | ✅ 完成 | `evidence/m36-workspace-boundary/` | 票据 `projectRoot`/`workspaceRoot` 真正生效：读限项目根、写限本人工作区根，realpath 后校验（符号链接逃逸被拒）；绝对路径与未知 worktree 拒绝；3 条真实端到端 + 10 条单测（关掉检查后 3 条全红） |
 
 ## 最近一次测试结果
 
@@ -541,6 +542,30 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 另有 8 条单测（策略解析、deny-by-default、覆盖优先级、滚动窗口、字节记账、项目隔离）。**分别关掉策略判定与配额检查后 M35-1、M35-2 立即变红**。cloud-platform 主机侧 16 文件 78 条、模拟器 97 条全过；`tsc` node 0 错；门禁 7 项 0 新发现。
 
 **如实记录 / 剩余**：设计 §9.1 的三层里，本轮做实了"主机拒绝专用导出 RPC + 读取记账限速"；**受管客户端隐藏下载入口（UI）与主机 `will-download` 拦截尚未接入**——前者属于后续面板接入，后者需要 host-hosted 浏览器面板落地后才有效；`files.download`/`files.downloadFolder` 在当前 Mainline RPC 中并不存在，映射表先按设计登记，将来新增即自动受约束。
+
+## M36 工作区路径边界（本轮）
+
+**问题**（设计 §8.3 第 4 步 / AC-11 / AC-27，原 T301b、T303）：票据里签了 `projectRoot` 与 `workspaceRoot`，但真实 Runtime 的文件 RPC **完全按客户端给的 `worktree` 选择器解析**——`files.read`/`files.write` 只校验相对路径形状，不校验解析出来的目录在不在项目里。也就是说：任何云会话都能读**主机上任意 worktree**（别的团队的项目、别人未提交的分支），有 `file:write` 的还能往里写。M34 只解决了"能不能调这个方法"，没有解决"能碰哪些文件"。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-platform/cloud-path-boundary.ts`（新） | 分隔符感知的根包含（`/srv/svc` 不含 `/srv/svc-evil`）+ `realpath` 解析（不存在的新文件按最近已存在祖先解析）；读限 `projectRoot`，写限 `workspaceRoot` |
+| `cloud-platform/cloud-path-guard.ts`（新） | 在 handler 之前把 `worktree` 选择器解析成真实目录并校验；`rename`/`copy` 的两条路径都查；绝对路径单独拒绝（`path.join` 会把 `/etc/passwd` 当成相对段） |
+| `runtime-rpc-websocket-dispatch.ts` | 云端会话的文件 RPC 先过边界；**仅在票据本身带该权限时**才做路径判定，缺权限的调用仍由权限层给出"needs 'file:write'"的文案 |
+| `runtime/orca-runtime-persist-headless-terminal-title.ts` | 新增公开的 `resolveWorktreeRootPath()`，复用既有的选择器/执行主机解析，不另起一套 |
+| `runtime/device-registry*.ts` | `cloudSession` 记录 `projectRoot`/`workspaceRoot`；落盘读取时缺根即丢弃整条云会话（无法执行边界的记录不能默认成"哪都能去"） |
+| `startup/cloud-runtime-admission.ts` | 采纳设备时带上票据的两个根 |
+
+**验证（`evidence/m36-workspace-boundary/`）**：3 条真实端到端——真实平台进程签发的真实 Ed25519 票据、真实 Runtime、真实 `OrcaRuntimeService` + 真实 SQLite store，store 里**真的注册了两个 git 仓库**（本项目与另一团队的项目），并且用 `git worktree add` 造出真实的工作区：
+- M36-1 项目内 `files.read` 成功并拿到真实内容；另一团队的 worktree 被 `forbidden`（`This worktree is outside the project...`）；`../..` 穿越与项目内 `escape` 符号链接（指向另一团队目录）都被拒；
+- M36-2 `files.write` 在工作区根内成功；写项目共享目录被 `forbidden`（`Writes are limited to your own workspace root`），**并且重新读取确认共享文件未被改动**；
+- M36-3 绝对路径被拒、未知 worktree 选择器被拒（`not available to the cloud session`）。
+
+另有 10 条单测（分隔符感知、真实符号链接、不存在文件的祖先解析、rename 双路径、绝对路径）。**关掉路径判定后 3 条���到端全部变红。** cloud-platform 主机侧 18 文件 91 条、模拟器 97 条全过；`tsc` node/web 0 错；门禁 7 项 0 新发现。
+
+**如实记录**：
+1. 首次跑整仓模拟器测试时出现一次 `unknown_kid`（期望 `device_revoked`），与质量门禁并行运行；单独重跑 97/97 通过，判定为并行负载下的既有抖动，本轮未改动模拟器任何代码。
+2. 本轮只覆盖**文件类 RPC**（`files.*`）。`terminal.*`/`git.*` 的 `worktree` 选择器仍只受"M34 权限层"约束，尚未做根包含校验——终端一旦打开就能 `cat` 任意文件，设计 §9.4 已把它列为**不可阻断**、靠出网白名单与命令审计缓解；git 的根包含留待下一轮（需同时确认 `git` 命令本身的工作目录边界）。
 
 ## 下一步
 

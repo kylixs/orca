@@ -59,7 +59,14 @@ export type DeviceEntry = {
    * Present on cloud-admitted devices: the project and the permission set the
    * platform signed into the ticket. It is the authority for cloud RPC access.
    */
-  cloudSession?: { projectId: string; permissions: CloudPermission[] }
+  cloudSession?: {
+    projectId: string
+    permissions: CloudPermission[]
+    /** The ticket's project root: the read boundary for this session. */
+    projectRoot: string
+    /** This user's workspace root: the write boundary. */
+    workspaceRoot: string
+  }
 }
 
 // Why: a lastSeen refresh is pure bookkeeping, so coalesce reconnect bursts into one write instead of

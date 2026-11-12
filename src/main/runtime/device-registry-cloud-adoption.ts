@@ -9,9 +9,11 @@ export type CloudDeviceAdoption = {
   scope?: DeviceScope
   /** The ticket's device key; the handshake must prove possession of it. */
   publicKeyB64?: string
-  /** The project and permission set the platform signed into this ticket. */
+  /** The project, permission set and path roots the platform signed into this ticket. */
   project?: string
   permissions?: readonly CloudPermission[]
+  projectRoot?: string
+  workspaceRoot?: string
 }
 
 /**
@@ -24,8 +26,13 @@ export function adoptCloudDeviceInList(
   now = Date.now()
 ): { device: DeviceEntry; devices: DeviceEntry[]; changed: boolean } {
   const cloudSession =
-    input.project && input.permissions
-      ? { projectId: input.project, permissions: [...input.permissions] }
+    input.project && input.permissions && input.projectRoot && input.workspaceRoot
+      ? {
+          projectId: input.project,
+          permissions: [...input.permissions],
+          projectRoot: input.projectRoot,
+          workspaceRoot: input.workspaceRoot
+        }
       : undefined
   const existing = devices.find((device) => device.deviceId === input.deviceId)
   if (existing) {

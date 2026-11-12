@@ -247,9 +247,11 @@ export async function startCloudRuntime(options: {
   admission: UpgradeAdmission
   connectionGate?: WebSocketConnectionGate
   userDataPrefix?: string
+  /** Pre-built service, for tests that need real repos or a real store. */
+  service?: OrcaRuntimeService
 }): Promise<CloudRuntime> {
   const runtime = new OrcaRuntimeRpcServer({
-    runtime: new OrcaRuntimeService(),
+    runtime: options.service ?? new OrcaRuntimeService(),
     userDataPath: mkdtempSync(join(tmpdir(), options.userDataPrefix ?? 'orca-cloud-session-')),
     enableWebSocket: true,
     wsPort: 0,

@@ -122,7 +122,9 @@ beforeAll(async () => {
           name: decision.payload.sub,
           publicKeyB64: decision.payload.devicePubKey,
           project: decision.payload.project,
-          permissions: decision.payload.perms
+          permissions: decision.payload.perms,
+          projectRoot: decision.payload.projectRoot,
+          workspaceRoot: decision.payload.workspaceRoot
         })
       }
       return decision

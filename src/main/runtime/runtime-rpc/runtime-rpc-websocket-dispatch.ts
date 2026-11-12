@@ -12,6 +12,7 @@ import { RuntimeRpcRequestAdmission } from './runtime-rpc-request-admission'
 import { classifyRuntimeLongPoll } from './runtime-rpc-long-poll'
 import type { RpcCallerScope } from '../rpc/rpc-caller-scope'
 import { cloudMethodAccess } from '../../cloud-platform/cloud-rpc-permission'
+import { checkCloudRpcPath } from '../../cloud-platform/cloud-path-guard'
 import { limitRuntimeRpcReplySize } from './runtime-rpc-reply-size-limit'
 
 // Why: status.get has no per-connection context in the dispatcher, so stamp the scope here at the transport boundary.
@@ -116,6 +117,29 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
     // Why: bind deviceToken to this socket so ws.on('close') knows which mobile client disconnected.
     if (wsTransport && ws) {
       wsTransport.setClientId(ws, token)
+    }
+
+    // Why before long-poll admission: a call outside the session's project must not
+    // occupy a slot, and the answer must be the boundary, not a handler error.
+    const cloudFileAccess = cloudSession === undefined ? null : cloudMethodAccess(request.method)
+    // Why gate on the ticket's own permission: a call that lacks the permission is
+    // refused by the dispatcher, and its message ("needs 'file:write'") is the one
+    // the user needs — not a path verdict for a call that was never allowed.
+    const pathChecked =
+      cloudSession !== undefined &&
+      (cloudFileAccess === 'file:read' || cloudFileAccess === 'file:write') &&
+      cloudSession.permissions.includes(cloudFileAccess)
+    if (cloudSession && pathChecked) {
+      const pathDecision = await checkCloudRpcPath({
+        runtime: this.runtime,
+        roots: { projectRoot: cloudSession.projectRoot, workspaceRoot: cloudSession.workspaceRoot },
+        method: request.method,
+        params: request.params
+      })
+      if (pathDecision && !pathDecision.ok) {
+        reply(JSON.stringify(this.buildError(request.id, 'forbidden', pathDecision.message)))
+        return
+      }
     }
 
     const longPoll = classifyRuntimeLongPoll(request)

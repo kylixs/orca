@@ -41,9 +41,14 @@ function isCloudPermission(value: unknown): value is CloudPermission {
 }
 
 /** Cloud session rows decide RPC authority, so an unparsable row must lose it, not keep it. */
-export function validCloudSession(
-  value: unknown
-): { projectId: string; permissions: CloudPermission[] } | undefined {
+export function validCloudSession(value: unknown):
+  | {
+      projectId: string
+      permissions: CloudPermission[]
+      projectRoot: string
+      workspaceRoot: string
+    }
+  | undefined {
   if (!value || typeof value !== 'object') {
     return undefined
   }
@@ -53,12 +58,32 @@ export function validCloudSession(
   if (!('permissions' in value) || !Array.isArray(value.permissions)) {
     return undefined
   }
-  return { projectId: value.projectId, permissions: value.permissions.filter(isCloudPermission) }
+  // The roots are the session's path boundary; a row missing them cannot be
+  // enforced, so it loses cloud rights entirely rather than defaulting to "anywhere".
+  if (!('projectRoot' in value) || typeof value.projectRoot !== 'string') {
+    return undefined
+  }
+  if (!('workspaceRoot' in value) || typeof value.workspaceRoot !== 'string') {
+    return undefined
+  }
+  return {
+    projectId: value.projectId,
+    permissions: value.permissions.filter(isCloudPermission),
+    projectRoot: value.projectRoot,
+    workspaceRoot: value.workspaceRoot
+  }
 }
 
 export function sameCloudSession(
   entry: DeviceEntry,
-  next: { projectId: string; permissions: readonly CloudPermission[] } | undefined
+  next:
+    | {
+        projectId: string
+        permissions: readonly CloudPermission[]
+        projectRoot: string
+        workspaceRoot: string
+      }
+    | undefined
 ): boolean {
   const current = entry.cloudSession
   if (!current || !next) {
@@ -66,6 +91,8 @@ export function sameCloudSession(
   }
   return (
     current.projectId === next.projectId &&
+    current.projectRoot === next.projectRoot &&
+    current.workspaceRoot === next.workspaceRoot &&
     current.permissions.length === next.permissions.length &&
     current.permissions.every((permission) => next.permissions.includes(permission))
   )

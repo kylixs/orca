@@ -99,7 +99,9 @@ beforeAll(async () => {
           name: decision.payload.sub,
           publicKeyB64: decision.payload.devicePubKey,
           project: decision.payload.project,
-          permissions: decision.payload.perms
+          permissions: decision.payload.perms,
+          projectRoot: decision.payload.projectRoot,
+          workspaceRoot: decision.payload.workspaceRoot
         })
       }
       return decision
@@ -134,15 +136,15 @@ describe('云端会话的 RPC 权限（真实平台票据 + 真实 Runtime）', 
   it('M34-1 只授予 file:read 的项目：读方法放行，写方法被拒并指明缺少 file:write', async () => {
     const session = authenticated(await connect('scope-readonly', 'scope-readonly-1'))
     try {
-      // Gate-open proof: the handler runs (an unknown worktree is the handler's
-      // answer, not the gate's), so a pass here is not just "denied later".
+      // Gate-open proof: file:read is granted, so the refusal is not an ACL one
+      // (an unresolvable worktree is refused by the path boundary instead).
       const read = await session.rpc('files.read', {
         worktree: 'scope-readonly',
         relativePath: 'x'
       })
       expect(read.ok).toBe(false)
       if (!read.ok) {
-        expect(read.code).not.toBe('forbidden')
+        expect(read.message).not.toContain("'file:read'")
       }
 
       const write = await session.rpc('files.write', {
