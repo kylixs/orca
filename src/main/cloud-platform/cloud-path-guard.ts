@@ -1,5 +1,6 @@
 import { isAbsolute, join } from 'node:path'
 import { cloudMethodAccess } from './cloud-rpc-permission'
+import { cloudGitAccessOf, cloudGitPathsOf } from './cloud-git-scope'
 import {
   checkCloudTargetScope,
   checkCloudWorktreeScope,
@@ -46,6 +47,10 @@ function relativePaths(params: unknown): string[] {
 
 /** Null when the method takes no project path, so non-file calls skip the check. */
 export function cloudPathAccessOf(method: string): 'read' | 'write' | null {
+  const gitAccess = cloudGitAccessOf(method)
+  if (gitAccess !== null) {
+    return gitAccess
+  }
   const access = cloudMethodAccess(method)
   return access === 'file:read' ? 'read' : access === 'file:write' ? 'write' : null
 }
@@ -82,8 +87,17 @@ export async function checkCloudRpcPath(args: {
   if (!worktreeScope.ok) {
     return worktreeScope
   }
+  // Why the directory too, not just the target: a git call names no path but acts
+  // on its working directory, so committing from the shared checkout must be
+  // refused even though no relative path names anything outside the workspace.
+  if (access === 'write') {
+    const directoryScope = checkCloudTargetScope(args.roots, 'write', worktreePath)
+    if (!directoryScope.ok) {
+      return directoryScope
+    }
+  }
 
-  const paths = relativePaths(args.params)
+  const paths = [...relativePaths(args.params), ...cloudGitPathsOf(args.params)]
   for (const relativePath of paths) {
     // Why reject absolute paths: `join` would treat "/etc/passwd" as a relative
     // segment under the worktree, turning an escape attempt into a confusing 404.

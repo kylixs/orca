@@ -44,6 +44,7 @@
 | M34 云端 RPC 方法级权限 | ✅ 完成 | `evidence/m34-cloud-rpc-scope/` | 票据 `perms` 真正生效：终端/agent/文件读写/浏览器/下载分开判定，未登记方法拒绝；**修复云会话可访问 settings/accounts/pairing 的越权**；4 条真实端到端 + 11 条单测（回退后 4 条全红） |
 | M35 下载策略与读取限速 | ✅ 完成 | `evidence/m35-download-policy/` | 主机消费平台策略包：导出 RPC 默认拒绝、项目覆盖优先；文件读取按项目滚动小时记次数与字节，超限 `read_budget_exceeded`；3 条真实端到端 + 8 条单测（关掉检查后 2 条变红） |
 | M36 工作区路径边界 | ✅ 完成 | `evidence/m36-workspace-boundary/` | 票据 `projectRoot`/`workspaceRoot` 真正生效：读限项目根、写限本人工作区根，realpath 后校验（符号链接逃逸被拒）；绝对路径与未知 worktree 拒绝；3 条真实端到端 + 10 条单测（关掉检查后 3 条全红） |
+| M37 git 操作边界 | ✅ 完成 | `evidence/m37-git-boundary/` | git 读方法限项目根、写方法（stage/commit/push/discard…）限本人工作区根，**共享主仓库对云端只读**；git 文件路径同受边界；4 条真实端到端 + 6 条单测（关掉分类后 3 条变红） |
 
 ## 最近一次测试结果
 
@@ -566,6 +567,29 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 **如实记录**：
 1. 首次跑整仓模拟器测试时出现一次 `unknown_kid`（期望 `device_revoked`），与质量门禁并行运行；单独重跑 97/97 通过，判定为并行负载下的既有抖动，本轮未改动模拟器任何代码。
 2. 本轮只覆盖**文件类 RPC**（`files.*`）。`terminal.*`/`git.*` 的 `worktree` 选择器仍只受"M34 权限层"约束，尚未做根包含校验——终端一旦打开就能 `cat` 任意文件，设计 §9.4 已把它列为**不可阻断**、靠出网白名单与命令审计缓解；git 的根包含留待下一轮（需同时确认 `git` 命令本身的工作目录边界）。
+
+## M37 git 操作边界（本轮）
+
+**问题**（设计 §8.3「主仓库目录默认只读」、§7.3 git 随 terminal 授予，原 T303 的 git 部分）：M36 只给 `files.*` 加了路径边界，`git.*` 仍只受 M34 的"方法级"权限约束——票据带 `terminal` 就能对**任意 worktree** 执行 `git.stage`/`git.commit`/`git.discard`。也就是说：任何云用户都能直接在**共享主仓库**上提交或丢弃别人的改动。M36 的备注里已如实写明这块留待本轮。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-platform/cloud-git-scope.ts`（新） | git 方法读写分类：19 个只读方法（status/diff/history/branchCompare/commitDiff/generateCommitMessage…）→ `read`；其余（stage/unstage/commit/checkout/discard/fetch/pull/push/rebase/forkSync…）→ `write`；**未登记方法按 write 处理**，新增的写方法不会因漏登记而落到主仓库 |
+| `cloud-platform/cloud-path-guard.ts` | 把 git 接入同一套边界；写操作**同时校验目录本身**——`git.commit` 不带任何路径参数，只看相对路径会漏掉"在共享 checkout 上提交"；git 的 `filePath`/`filePaths`/`paths`/`oldPath`/`submodulePath` 同样逐条查越界 |
+| `runtime-rpc-websocket-dispatch.ts` | 路径判定覆盖 git（按票据的 `terminal` 权限放行后才判定，缺权限仍由权限层给出文案） |
+
+**验证（`evidence/m37-git-boundary/`）**：4 条真实端到端（真实平台票据 + 真实 Runtime + 真实 store + 真实 git 仓库与 `git worktree`）：
+- M37-1 `git.status` 在本人 worktree 成功、在另一团队仓库被 `forbidden`；
+- M37-2 `git.stage`/`git.commit` 指向共享主仓库被拒，且用主机侧 `git rev-parse HEAD` 确认**主仓库 HEAD 未变**；
+- M37-3 本人工作区里 `git.stage` + `git.commit` 成功，主机侧 `git log -1` 读到真实提交主题；主仓库仍是 `init`；
+- M37-4 `filePath: '../../other-team/README.md'` 被拒，另一团队仓库的 `git status --porcelain` 为空（路径从未到达 git）。
+
+另有 6 条分类单测。**把 git 分类关掉后 M37-1/2/4 变红**（M37-3 仍绿属预期：它只断言"本工作区允许写"，禁用分类后依然允许）。主机侧 20 文件 101 条、模拟器 97 条全过；`tsc` node/web 0 错；门禁 7 项 0 新发现。
+
+**如实记录 / 剩余**：
+1. `git.remoteCommitUrl`/`git.remoteFileUrl` 归为只读，但它们会拼远端 URL，需 `terminal` 权限——本轮不涉及网络出站管控（设计 §9.4 的出网白名单属部署项）。
+2. `worktree.create`/`worktree.createManaged`/`worktree.rm` 仍未纳入路径边界（平台票据的 `workspaceRoot` 应约束 createManaged 的目标）。留着下一轮，因为需要同时确认托管创建所用的路径推导。
+3. 终端本身仍是"打开后可 `cat` 任意文件"，设计 §9.4 已把它列为不可阻断、靠出网白名单与命令审计缓解，非本轮范围。
 
 ## 下一步
 
