@@ -1,7 +1,7 @@
 import { isAbsolute, join } from 'node:path'
 import { cloudMethodAccess } from './cloud-rpc-permission'
 import { cloudGitAccessOf, cloudGitPathsOf } from './cloud-git-scope'
-import { cloudWorktreeAccessOf } from './cloud-worktree-scope'
+import { MANAGED_CREATE_METHOD, cloudWorktreeAccessOf } from './cloud-worktree-scope'
 import {
   checkCloudTargetScope,
   checkCloudWorktreeScope,
@@ -20,6 +20,7 @@ import {
 
 export type CloudPathGuardRuntime = {
   resolveWorktreeRootPath: (worktreeSelector: string) => Promise<string>
+  resolveRepoRootPath: (repoSelector: string) => Promise<string>
 }
 
 /** Param names that carry a path; rename/copy contribute two. */
@@ -81,6 +82,9 @@ export async function checkCloudRpcPath(args: {
   if (denial) {
     return { ok: false, reason: 'worktree_scope', message: denial.message }
   }
+  if (args.method === MANAGED_CREATE_METHOD) {
+    return await checkManagedCreate(args)
+  }
   const access = cloudPathAccessOf(args.method)
   if (access === null) {
     return null
@@ -134,4 +138,42 @@ export async function checkCloudRpcPath(args: {
     }
   }
   return { ok: true }
+}
+
+/**
+ * A managed create names both a repo and the parent directory it wants. The repo
+ * must be this project's, or a session could check out another team's repository
+ * into its own workspace and then read it; the directory must be inside the
+ * ticket's workspace root, or creation would escape the write boundary that the
+ * resulting worktree is supposed to live in.
+ */
+async function checkManagedCreate(args: {
+  runtime: CloudPathGuardRuntime
+  roots: CloudPathRoots
+  params: unknown
+}): Promise<CloudPathDecision> {
+  const repoSelector = stringField(args.params, 'repo')
+  const workspaceRoot = stringField(args.params, 'workspaceRoot')
+  if (repoSelector === null || workspaceRoot === null) {
+    return {
+      ok: false,
+      reason: 'managed_create_incomplete',
+      message: 'Managed creation needs a repo and a workspace root.'
+    }
+  }
+  let repoPath: string
+  try {
+    repoPath = await args.runtime.resolveRepoRootPath(repoSelector)
+  } catch {
+    return {
+      ok: false,
+      reason: 'repo_unknown',
+      message: 'That repository is not available to the cloud session.'
+    }
+  }
+  const repoScope = checkCloudTargetScope(args.roots, 'read', repoPath)
+  if (!repoScope.ok) {
+    return repoScope
+  }
+  return checkCloudTargetScope(args.roots, 'write', workspaceRoot)
 }

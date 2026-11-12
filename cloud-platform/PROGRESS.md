@@ -46,6 +46,7 @@
 | M36 工作区路径边界 | ✅ 完成 | `evidence/m36-workspace-boundary/` | 票据 `projectRoot`/`workspaceRoot` 真正生效：读限项目根、写限本人工作区根，realpath 后校验（符号链接逃逸被拒）；绝对路径与未知 worktree 拒绝；3 条真实端到端 + 10 条单测（关掉检查后 3 条全红） |
 | M37 git 操作边界 | ✅ 完成 | `evidence/m37-git-boundary/` | git 读方法限项目根、写方法（stage/commit/push/discard…）限本人工作区根，**共享主仓库对云端只读**；git 文件路径同受边界；4 条真实端到端 + 6 条单测（关掉分类后 3 条变红） |
 | M38 worktree 操作边界 | ✅ 完成 | `evidence/m38-worktree-boundary/` | `worktree.create` 对云端拒绝（路径由主机设置推导、无法约束，指向未实现的托管创建）；`worktree.rm`/`forceDeleteBranch` 限本人工作区、`worktree.show` 限项目；无选择器的批量方法与其余 worktree 方法一律拒绝；4 条真实端到端 + 7 条单测（关掉分类后 3 条变红） |
+| M39 托管工作区创建 | ✅ 完成 | `evidence/m39-managed-worktree/` | 真实 Runtime 新增 `worktree.createManaged`：调用方显式给根、宿主强制 `nestWorkspaces=false`，路径恰为 `<workspaceRoot>/<name>`；幂等键去重；云端作用域要求仓库属本项目、目标根属本人工作区；仅云构建注册；4 条真实端到端 + 8 条单测（关掉根覆盖后 M39-1 变红，关掉守卫后 4 条全红） |
 
 ## 最近一次测试结果
 
@@ -617,6 +618,31 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 1. 本轮是**收紧**而非补齐：真实 Runtime 仍然没有 `worktree.createManaged`，云端用户目前只能打开已存在的工作区。这是设计 §8.3 明确要求的正向路径，**下一轮实现**（需把显式 `workspaceRoot` + `nestWorkspaces=false` 贯穿 `createManagedWorktree` 的路径推导，非托管构建不注册）。
 2. `worktree.prefetchCreateBase` 一并被拒：它服务于创建流程，托管创建落地后应随 `createManaged` 一起开放。
 3. 终端仍可 `cat` 任意文件（设计 §9.4 已列为不可阻断）。
+
+## M39 托管工作区创建（本轮）
+
+**问题**（设计 §8.3 / T301a）：M38 把 `worktree.create` 对云端关掉了（它按主机自身的 `workspaceDir` 推导路径，无法约束），但设计要求的正向路径 `worktree.createManaged` **在真实 Runtime 里根本不存在**——于是云端用户能连上项目，却无法创建自己的工作区，只能打开已存在的。
+
+| 改动 | 内容 |
+|---|---|
+| `shared/rpc-contract/worktree-managed-create-params.ts`（新） | `{ repo, workspaceRoot, name, baseBranch, compareBaseRef, branchNameOverride, displayName, idempotencyKey }`；`workspaceRoot` 必须在协议层就是绝对路径 |
+| `runtime/rpc/methods/worktree-create-managed.ts`（新） | 新方法 `worktree.createManaged`（`workspace` 权限）：以 `idempotencyKey` 复用既有 `dedupeWorktreeCreate`；**拒绝远程仓库**（票据的工作区根是本地路径，在 SSH checkout 上照做会静默落在别处） |
+| `startup/cloud-managed-worktree-methods.ts`（新） | 仅当 `ORCA_CLOUD_API_URL` 存在时把该方法并入方法表——落实设计"非托管构建不注册该方法" |
+| `runtime/runtime-managed-worktree-create-types.ts` + `runtime-local-worktree-create.ts` | `workspaceRoot` 显式根：覆盖路径设置的 `workspaceDir` 并强制 `nestWorkspaces=false`，因此 `computeWorktreePath` 与 `ensurePathWithinWorkspace` 都按 `<root>/<name>` 计算 |
+| `cloud-worktree-scope.ts` / `cloud-path-guard.ts` | 云端作用域把 `createManaged` 归为写；新增 `checkManagedCreate()`：**仓库必须在本项目内**（否则可把别的团队仓库 checkout 进自己工作区再读），**目标根必须在本人工作区根内**。为此给运行时加了公开的 `resolveRepoRootPath()`（复用既有 `showRepo`，不另起解析） |
+
+**验证（`evidence/m39-managed-worktree/`）**：4 条真实端到端（真实平台票据 + 真实 Runtime + 真实 store + 真实 git 仓库，主机 `nestWorkspaces` 故意设为 `true`）：
+- M39-1 在票据工作区根下创建成功：路径恰为 `<workspaceRoot>/cloud-feature`，**没有多出一层 `<repoName>`**，`git rev-parse --show-toplevel` 指向该路径（是真 worktree 而非拷贝），主机自己的 `workspaceDir` 仍为空；
+- M39-2 同一 `idempotencyKey` 重试返回同一 worktree；
+- M39-3 目标根写在工作区之外被 `forbidden`，磁盘上没有建出目录；
+- M39-4 用另一团队的仓库创建被 `forbidden`（`outside the project`），本人工作区内没有出现该目录。
+
+另有 8 条单测（分类、库/根双重校验、缺字段）。**把显式根覆盖去掉后 M39-1 变红；把 `checkManagedCreate` 关掉后 4 条全部变红**。主机侧 23 文件 117 条、模拟器 97 条全过；`tsc` node/web 0 错；门禁 7 项 0 新发现。
+
+**如实记录 / 剩余**：
+1. 本轮只开放了"创建"；`worktree.prefetchCreateBase`（服务于创建预取）仍对云端拒绝，`worktree.create` 也仍拒绝——托管模式只走 `createManaged` 一条路，避免出现两条语义不同的创建通道。
+2. 客户端侧尚未调用它：`cloud-runtime-environment` 打开项目时仍是"打开已有工作区"，把 `createManaged` 接到 `openProject`（按需创建 + 失败码映射）留给面板接入那一轮。
+3. 远程（SSH）仓库的托管创建返回 `managed_workspace_remote_unsupported`，未做跨主机路径翻译——一期云主机都是本地/容器路径。
 
 ## 下一步
 

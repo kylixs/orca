@@ -63,7 +63,18 @@ export function createRuntimeLocalManagedWorktree<T>(args: RuntimeLocalWorktreeC
 async function performRuntimeLocalWorktreeCreate<T>(args: RuntimeLocalWorktreeCreateArgs<T>) {
   const { request, repo, store } = args
   const settings = store.getSettings()
-  const pathSettings = getWorktreePathSettings(repo, settings, getWorktreeMirrorDistro(store, repo))
+  const defaultPathSettings = getWorktreePathSettings(
+    repo,
+    settings,
+    getWorktreeMirrorDistro(store, repo)
+  )
+  // Why override instead of a separate pipeline: managed creation differs only in
+  // where the checkout goes. An explicit root is used verbatim with nesting off,
+  // so the result is `<root>/<name>` — the layout the cloud ticket's workspace
+  // root names (design §8.3).
+  const pathSettings = request.workspaceRoot
+    ? { ...defaultPathSettings, workspaceDir: request.workspaceRoot, nestWorkspaces: false }
+    : defaultPathSettings
   const gitExecOptions = getLocalProjectGitExecOptions(store, repo)
   const worktreeGitOptions = getLocalProjectWorktreeGitOptions(store, repo)
   args.timing.recordExecutionHost(localWorktreeCreateExecutionHost(gitExecOptions))

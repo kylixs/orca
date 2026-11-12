@@ -199,6 +199,11 @@ export class OrcaRuntimeWithPersistHeadlessTerminalTitle extends OrcaRuntimeWith
     return (await this.resolveRuntimeFileTarget(worktreeSelector)).worktree.path
   }
 
+  /** The checkout a repo selector names, for bounds checks on repo-scoped calls. */
+  async resolveRepoRootPath(repoSelector: string): Promise<string> {
+    return (await this.showRepo(repoSelector)).path
+  }
+
   // Why: same defect as `resolveRuntimeGitTarget` above, in ~30 filesystem dispatches. `getRepo(id)`
   // is host-blind and never read `worktree.hostId`, and the `connectionId` it returned spelled
   // "runtime host", "unresolved" and "genuinely local" all as `undefined` (#11163).

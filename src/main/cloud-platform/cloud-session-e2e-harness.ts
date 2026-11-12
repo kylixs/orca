@@ -9,6 +9,7 @@ import { readTicketClaims } from './cloud-connect-response'
 import { decrypt, deriveSharedKey, encrypt, generateKeyPair } from '../runtime/rpc/e2ee-crypto'
 import { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
+import type { OrcaRuntimeRpcServerOptions } from '../runtime/runtime-rpc/runtime-rpc-pairing-types'
 import type { UpgradeAdmission, WebSocketConnectionGate } from '../runtime/rpc/ws-transport'
 
 /**
@@ -249,6 +250,8 @@ export async function startCloudRuntime(options: {
   userDataPrefix?: string
   /** Pre-built service, for tests that need real repos or a real store. */
   service?: OrcaRuntimeService
+  /** Extra RPC methods; cloud-only ones are not in the default table. */
+  methods?: OrcaRuntimeRpcServerOptions['methods']
 }): Promise<CloudRuntime> {
   const runtime = new OrcaRuntimeRpcServer({
     runtime: options.service ?? new OrcaRuntimeService(),
@@ -256,7 +259,8 @@ export async function startCloudRuntime(options: {
     enableWebSocket: true,
     wsPort: 0,
     upgradeAdmission: options.admission,
-    ...(options.connectionGate ? { connectionGate: options.connectionGate } : {})
+    ...(options.connectionGate ? { connectionGate: options.connectionGate } : {}),
+    ...(options.methods ? { methods: options.methods } : {})
   })
   await runtime.start()
   const offer = runtime.createPairingOffer({

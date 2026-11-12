@@ -12,6 +12,9 @@ import {
 } from '../cloud-platform/cloud-host-enrollment'
 import { installCloudPlatformIpc } from '../ipc/cloud-platform'
 import { createCloudAccessGuard } from '../cloud-platform/cloud-access-guard'
+import { ALL_RPC_METHODS } from '../runtime/rpc/methods'
+import { MANAGED_WORKTREE_METHODS } from '../runtime/rpc/methods/worktree-create-managed'
+import type { RpcAnyMethodDeclaration } from '../runtime/rpc/core'
 import type { DeviceRegistry } from '../runtime/device-registry'
 import type { UpgradeAdmission, WebSocketConnectionGate } from '../runtime/rpc/ws-transport'
 import type {
@@ -302,9 +305,17 @@ export function cloudRuntimeAdmission(
 export function cloudAdmissionOption(
   env: NodeJS.ProcessEnv = process.env,
   options: CloudAdmissionOptions = {}
-): { upgradeAdmission?: UpgradeAdmission; connectionGate?: WebSocketConnectionGate } {
+): {
+  upgradeAdmission?: UpgradeAdmission
+  connectionGate?: WebSocketConnectionGate
+  methods?: readonly RpcAnyMethodDeclaration[]
+} {
   const runtime = cloudRuntimeAdmission(env, options)
-  return runtime
-    ? { upgradeAdmission: runtime.admission, connectionGate: runtime.connectionGate }
-    : {}
+  if (!runtime) {
+    return {}
+  }
+  // Design §8.3: managed creation exists only in cloud builds, so the method
+  // table is extended here rather than in ALL_RPC_METHODS.
+  const methods = [...ALL_RPC_METHODS, ...MANAGED_WORKTREE_METHODS]
+  return { upgradeAdmission: runtime.admission, connectionGate: runtime.connectionGate, methods }
 }

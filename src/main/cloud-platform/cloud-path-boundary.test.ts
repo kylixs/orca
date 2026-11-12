@@ -85,7 +85,10 @@ describe('路径容器化', () => {
 })
 
 describe('RPC 路径检查', () => {
-  const runtime = { resolveWorktreeRootPath: async (selector: string) => selector.slice(5) }
+  const runtime = {
+    resolveWorktreeRootPath: async (selector: string) => selector.slice(5),
+    resolveRepoRootPath: async (selector: string) => selector.slice(5)
+  }
 
   it('非文件方法不参与路径检查', async () => {
     const decision = await checkCloudRpcPath({
@@ -137,6 +140,9 @@ describe('RPC 路径检查', () => {
     const decision = await checkCloudRpcPath({
       runtime: {
         resolveWorktreeRootPath: async () => {
+          throw new Error('selector_not_found')
+        },
+        resolveRepoRootPath: async () => {
           throw new Error('selector_not_found')
         }
       },

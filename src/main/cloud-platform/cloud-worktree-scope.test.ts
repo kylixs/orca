@@ -21,6 +21,8 @@ describe('worktree 方法分类', () => {
     expect(cloudWorktreeAccessOf('worktree.show')).toEqual({ kind: 'read' })
     expect(cloudWorktreeAccessOf('worktree.rm')).toEqual({ kind: 'write' })
     expect(cloudWorktreeAccessOf('worktree.forceDeleteBranch')).toEqual({ kind: 'write' })
+    // Managed creation is a write: the root it names is the write boundary.
+    expect(cloudWorktreeAccessOf('worktree.createManaged')).toEqual({ kind: 'write' })
     for (const method of [
       'worktree.list',
       'worktree.detectedList',
@@ -53,7 +55,10 @@ describe('worktree 方法分类', () => {
 })
 
 describe('worktree RPC 边界', () => {
-  const runtime = { resolveWorktreeRootPath: async (selector: string) => selector.slice(5) }
+  const runtime = {
+    resolveWorktreeRootPath: async (selector: string) => selector.slice(5),
+    resolveRepoRootPath: async (selector: string) => selector.slice(5)
+  }
   const roots = { projectRoot: '/srv/work/svc', workspaceRoot: '/srv/work/svc/.orca-worktrees/me' }
 
   it('被拒绝的方法在任何选择器下都不会到达 handler', async () => {
@@ -82,6 +87,46 @@ describe('worktree RPC 边界', () => {
       params: { worktree: 'path:/srv/work/svc' }
     })
     expect(shared).toMatchObject({ ok: false, reason: 'workspace_scope' })
+  })
+
+  it('托管创建：仓库须在本项目内，目标根须在本工作区内', async () => {
+    const base = {
+      runtime: {
+        resolveWorktreeRootPath: async (selector: string) => selector.slice(5),
+        resolveRepoRootPath: async (selector: string) => selector.slice(5)
+      },
+      roots
+    }
+    const created = await checkCloudRpcPath({
+      ...base,
+      method: 'worktree.createManaged',
+      params: {
+        repo: 'path:/srv/work/svc',
+        workspaceRoot: '/srv/work/svc/.orca-worktrees/me'
+      }
+    })
+    expect(created).toEqual({ ok: true })
+
+    const foreignRepo = await checkCloudRpcPath({
+      ...base,
+      method: 'worktree.createManaged',
+      params: { repo: 'path:/srv/other-team', workspaceRoot: '/srv/work/svc/.orca-worktrees/me' }
+    })
+    expect(foreignRepo).toMatchObject({ ok: false, reason: 'project_scope' })
+
+    const outsideRoot = await checkCloudRpcPath({
+      ...base,
+      method: 'worktree.createManaged',
+      params: { repo: 'path:/srv/work/svc', workspaceRoot: '/srv/work/svc/src' }
+    })
+    expect(outsideRoot).toMatchObject({ ok: false, reason: 'workspace_scope' })
+
+    const incomplete = await checkCloudRpcPath({
+      ...base,
+      method: 'worktree.createManaged',
+      params: { repo: 'path:/srv/work/svc' }
+    })
+    expect(incomplete).toMatchObject({ ok: false, reason: 'managed_create_incomplete' })
   })
 
   it('展示限项目根', async () => {

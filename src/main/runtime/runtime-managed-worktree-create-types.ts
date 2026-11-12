@@ -72,6 +72,12 @@ export type RuntimeManagedWorktreeCreateArgs = {
    * branch it names. Only creates a person initiated opt in.
    */
   allowLocalBaseFallback?: boolean
+  /**
+   * Managed creation only (design §8.3): the exact parent directory for the new
+   * checkout. Set by `worktree.createManaged`, where the caller's workspace root
+   * must be honoured; nesting is forced off so the result is `<root>/<name>`.
+   */
+  workspaceRoot?: string
   cliProvenance?: CliWorkspaceProvenance
   creatorProvenance?: Worktree['creatorProvenance']
   startup?: WorktreeStartupLaunch
