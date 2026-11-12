@@ -54,7 +54,21 @@
 | E9 | 证据汇总 | 证据落盘 | PASS | `summary.json` |
 | E10 | 中继未知 SNI / 非 TLS | 连接被黑洞 | PASS | `E10-relay-blackhole.json` |
 
-合计：**14 passed / 0 failed**（另有 8 条单元测试，合计 22）
+合计：**14 passed / 0 failed**；加上 M8 的 13 条与 8 条单元测试，共 **35 条全绿**
+
+## 3.1 管控面门禁测试（M8）
+
+命令：`cd cloud-platform && node --test test/e2e/admin-gating.e2e.test.ts`
+
+| 场景 | 结果 | 证据 |
+|---|---|---|
+| 开发者访问 8 个管理接口（主机、注册令牌、登记项目、授权、项目策略、归档、审计、全局策略） | 全部 403 `PERMISSION_DENIED` | `evidence/m8-admin-gating/` |
+| 管理员访问只读管控接口 | 全部 200 | `admin-readonly-success.json` |
+| 未登录访问管控面 | 401 `SESSION_EXPIRED` | `anonymous-admin-access.json` |
+| 被拒操作审计 | 存在 `denied` 事件，actor 为被拒用户 | `denied-audit.json` |
+| 未知项目 vs 无权限项目 | 状态码与错误体一致（除 traceId） | `existence-non-disclosure.json` |
+
+合计：**13 passed / 0 failed**
 
 ## 4. Web UI 实测
 

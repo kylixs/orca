@@ -1,6 +1,6 @@
 # 开发进度
 
-> 更新时间：2026-11-13 02:40
+> 更新时间：2026-11-13 03:10
 > 规则：每轮只推进一个模块；失败必须如实记录。
 
 ## 模块状态
@@ -15,12 +15,14 @@
 | M5 Agent | ✅ 完成 | Web 主机页在线 | 注册、心跳、撤销同步 |
 | M6 Web 前端 | ✅ 完成 | `evidence/web-ui/*.png` | 6 个页面 + 403 + 角色门禁 |
 | M7 端到端 | ✅ 完成 | `evidence/e2e-platform/*.json` | 14 条用例全通过 |
+| M8 管控面服务端门禁 | ✅ 完成 | `evidence/m8-admin-gating/` | 13 条用例：8 个管理接口 403、401、denied 审计、存在性不泄露 |
 
 ## 最近一次测试结果
 
 ```
 node --test test/contract.test.ts            8 pass / 0 fail
 node --test test/e2e/platform.e2e.test.ts   14 pass / 0 fail
+node --test test/e2e/admin-gating.e2e.test.ts 13 pass / 0 fail
 ```
 
 E2E 覆盖：
@@ -39,12 +41,18 @@ E2E 覆盖：
 - E9 证据汇总
 - E10 中继未知 SNI 黑洞
 
+M8 管控面门禁：
+- 开发者访问主机/注册令牌/登记项目/授权/策略/归档/审计 8 个接口均 403
+- 未登录访问管控面 401
+- 被拒操作写入 denied 审计
+- 未知项目与无权限项目响应完全一致（除 traceId），不泄露存在性
+
 ## 阻塞
 
 无。
 
 ## 下一步
 
-1. 设计文档第 3 轮评审问题修复（已完成主要项，待第 4 轮复核）。
+1. 第 4 轮设计评审结果复核（评审子代理运行中）。
 2. 把真实 Orca Runtime 接入替身接口（需要本地可构建的 `orca serve`）。
 3. 客户端补丁层落地到 `src/main/cloud-platform/`（需在 Orca 根工程跑 typecheck/lint）。
