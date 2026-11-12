@@ -14,6 +14,7 @@ import {
   type SigningKey
 } from '../../../packages/contract/src/credential.ts'
 import { AuditChain } from './audit.ts'
+import type { AuditEventInput } from './store.ts'
 import { openAuditLogFile } from './audit-log-file.ts'
 import { startInternalChannel } from './internal-channel.ts'
 import { ldapProfile, MockLdapAdapter, type LdapAdapter } from './ldap.ts'
@@ -113,6 +114,43 @@ export function createApp(config: ApiConfig): ApiHandle {
     // Why before serving: a chain continued from a tampered tail would launder it.
     audit.restore(auditLog.load())
   }
+  /**
+   * Sensitive control-plane mutations gate on audit health (design §13.2): a full
+   * disk or a tampered chain must stop grants from being minted unrecorded.
+   * Reads, login, and liveness stay available so the platform can be diagnosed.
+   */
+  function auditAllowsMutations(res: ServerResponse, traceId: string): boolean {
+    const health = audit.getHealth()
+    // A broken chain stays refused until the log is repaired and the process
+    // restarts. A write failure is transient: the request is let through so the
+    // append can be attempted (and health cleared) once the disk is writable again.
+    if (health.ok || health.reason === 'write_failed') {
+      return true
+    }
+    error(res, 503, 'AUDIT_CHAIN_BROKEN', '审计链已损坏（可能被篡改），敏感操作已停止。', traceId, {
+      reason: health.reason
+    })
+    return false
+  }
+
+  /**
+   * Writes the event first and only then lets the caller mutate (write-ahead
+   * audit). If the write fails the mutation never happens, which is what
+   * fail-closed means; the reverse order would leave a change on disk that no
+   * event records.
+   */
+  function recordAudit(res: ServerResponse, input: AuditEventInput, traceId: string): boolean {
+    try {
+      audit.append(input)
+      return true
+    } catch {
+      const health = audit.getHealth()
+      const code = health.ok ? 'AUDIT_UNAVAILABLE' : health.reason === 'chain_broken' ? 'AUDIT_CHAIN_BROKEN' : 'AUDIT_UNAVAILABLE'
+      error(res, 503, code, '审计日志不可写，敏感操作已停止。', traceId)
+      return false
+    }
+  }
+
   const signingKey = generateSigningKey(`kid-${now()}`)
   const jwks: Map<string, PublicKeyEntry> = new Map([
     [signingKey.kid, { kid: signingKey.kid, publicKeyPem: signingKey.publicKeyPem }]
@@ -322,7 +360,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       const username = String(body.username ?? '')
       const password = String(body.password ?? '')
       if (store.isLocked(username, now())) {
-        audit.append({
+        audit.appendBestEffort({
           eventType: 'login',
           actor: username,
           targetType: 'session',
@@ -336,7 +374,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       const result = await ldap.authenticate(username, password)
       if (!result.ok) {
         const failure = store.recordLoginFailure(username, now())
-        audit.append({
+        audit.appendBestEffort({
           eventType: 'login',
           actor: username,
           targetType: 'session',
@@ -374,7 +412,9 @@ export function createApp(config: ApiConfig): ApiHandle {
           ? existingDevice
           : store.createDevice(user.id, deviceName, devicePubKey)
       const tokens = issueSession(user, device.id)
-      audit.append({
+      // Why best-effort: an operator must still be able to sign in and diagnose a
+      // full audit disk; mutations are what fail closed, not authentication.
+      audit.appendBestEffort({
         eventType: 'login',
         actor: user.username,
         targetType: 'session',
@@ -478,9 +518,26 @@ export function createApp(config: ApiConfig): ApiHandle {
     if (req.method === 'DELETE' && deviceRevoke) {
       const authed = requireAuth()
       if (!authed) return
+      if (!auditAllowsMutations(res, traceId)) return
       const device = store.devices.get(deviceRevoke[1])
       if (!device || device.userId !== authed.user.id) {
         return error(res, 404, 'NOT_FOUND', '设备不存在。', traceId)
+      }
+      if (
+        !recordAudit(
+          res,
+          {
+            eventType: 'device_revoke',
+            actor: authed.user.username,
+            targetType: 'device',
+            targetId: device.id,
+            result: 'success',
+            traceId
+          },
+          traceId
+        )
+      ) {
+        return
       }
       device.revokedAt = now()
       for (const session of store.sessions.values()) {
@@ -491,14 +548,6 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
       // Established WSS sessions bypass the platform, so revocation must reach hosts too.
       appendRevocation('device', device.id, 'device_revoked')
-      audit.append({
-        eventType: 'device_revoke',
-        actor: authed.user.username,
-        targetType: 'device',
-        targetId: device.id,
-        result: 'success',
-        traceId
-      })
       return json(res, 200, { ok: true })
     }
 
@@ -543,6 +592,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         })
         return error(res, 403, 'PERMISSION_DENIED', '需要平台管理权限。', traceId)
       }
+      if (!auditAllowsMutations(res, traceId)) return
       const body = await readJson(req)
       const hostId = String(body.hostId ?? '')
       const target = store.hosts.get(hostId)
@@ -551,8 +601,6 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (store.projectsByKey.has(key)) {
         return error(res, 409, 'PROJECT_EXISTS', '项目 Key 已存在。', traceId)
       }
-      // A signed root carrying `..` would grant a directory nobody chose: the host
-      // normalises the same way, so `/srv/a/../../etc` becomes `/etc` for everyone.
       const pathVerdict = validateProjectPath(body.path)
       if (!pathVerdict.ok) {
         audit.append({
@@ -578,17 +626,25 @@ export function createApp(config: ApiConfig): ApiHandle {
         status: 'ready',
         createdAt: now()
       }
+      if (
+        !recordAudit(
+          res,
+          {
+            eventType: 'project_create',
+            actor: authed.user.username,
+            targetType: 'project',
+            targetId: created.id,
+            result: 'success',
+            traceId,
+            metadata: { key: created.key, path: created.path }
+          },
+          traceId
+        )
+      ) {
+        return
+      }
       store.projects.set(created.id, created)
       store.projectsByKey.set(created.key, created)
-      audit.append({
-        eventType: 'project_create',
-        actor: authed.user.username,
-        targetType: 'project',
-        targetId: created.id,
-        result: 'success',
-        traceId,
-        metadata: { key: created.key, path: created.path }
-      })
       return json(res, 201, projectView(created, authed.user))
     }
 
@@ -625,6 +681,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
 
       if (req.method === 'PUT' && action === '/grants') {
+        if (!auditAllowsMutations(res, traceId)) return
         if (!isAdmin(authed.user) && !authed.user.roles.includes('project:owner')) {
           return error(res, 403, 'PERMISSION_DENIED', '需要平台管理权限。', traceId)
         }
@@ -632,6 +689,23 @@ export function createApp(config: ApiConfig): ApiHandle {
         const subjectType = body.subjectType === 'group' ? 'group' : 'user'
         const subjectId = String(body.subjectId ?? '')
         const permissions = Array.isArray(body.permissions) ? (body.permissions as Permission[]) : []
+        if (
+          !recordAudit(
+            res,
+            {
+              eventType: 'grant_update',
+              actor: authed.user.username,
+              targetType: 'project',
+              targetId: projectId,
+              result: 'success',
+              traceId,
+              metadata: { subjectType, subjectId, permissions }
+            },
+            traceId
+          )
+        ) {
+          return
+        }
         store.grants = store.grants.filter(
           (g) => !(g.projectId === projectId && g.subjectType === subjectType && g.subjectId === subjectId)
         )
@@ -639,15 +713,6 @@ export function createApp(config: ApiConfig): ApiHandle {
           store.grants.push({ projectId, subjectType, subjectId, permissions })
         }
         revokeProjectCredentials(projectId, 'grant_changed')
-        audit.append({
-          eventType: 'grant_update',
-          actor: authed.user.username,
-          targetType: 'project',
-          targetId: projectId,
-          result: 'success',
-          traceId,
-          metadata: { subjectType, subjectId, permissions }
-        })
         return json(res, 200, { ok: true })
       }
 
@@ -655,15 +720,23 @@ export function createApp(config: ApiConfig): ApiHandle {
         if (!isAdmin(authed.user)) {
           return error(res, 403, 'PERMISSION_DENIED', '需要平台管理权限。', traceId)
         }
+        if (
+          !recordAudit(
+            res,
+            {
+              eventType: action === '/archive' ? 'project_archive' : 'project_restore',
+              actor: authed.user.username,
+              targetType: 'project',
+              targetId: projectId,
+              result: 'success',
+              traceId
+            },
+            traceId
+          )
+        ) {
+          return
+        }
         found.status = action === '/archive' ? 'archived' : 'ready'
-        audit.append({
-          eventType: action === '/archive' ? 'project_archive' : 'project_restore',
-          actor: authed.user.username,
-          targetType: 'project',
-          targetId: projectId,
-          result: 'success',
-          traceId
-        })
         return json(res, 200, projectView(found, authed.user))
       }
 
@@ -718,16 +791,25 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (!isAdmin(authed.user)) {
         return error(res, 403, 'PERMISSION_DENIED', '需要平台管理权限。', traceId)
       }
+      if (!auditAllowsMutations(res, traceId)) return
       const token = randomBytes(24).toString('base64url')
+      if (
+        !recordAudit(
+          res,
+          {
+            eventType: 'host_token_create',
+            actor: authed.user.username,
+            targetType: 'host',
+            targetId: null,
+            result: 'success',
+            traceId
+          },
+          traceId
+        )
+      ) {
+        return
+      }
       store.hostTokens.push({ tokenHash: hashToken(token), expiresAt: now() + 24 * 60 * 60_000, usedAt: null })
-      audit.append({
-        eventType: 'host_token_create',
-        actor: authed.user.username,
-        targetType: 'host',
-        targetId: null,
-        result: 'success',
-        traceId
-      })
       return json(res, 201, { token, expiresIn: 86400 })
     }
 
@@ -857,18 +939,29 @@ export function createApp(config: ApiConfig): ApiHandle {
         if (!authed || !isAdmin(authed.user)) {
           return error(res, 403, 'PERMISSION_DENIED', '需要平台管理权限。', traceId)
         }
+        if (!auditAllowsMutations(res, traceId)) return
         const body = await readJson(req)
-        target.status = body.enabled === false ? 'online' : 'maintenance'
-        target.maintenanceReason = body.reason ? String(body.reason) : '计划维护'
-        audit.append({
-          eventType: 'host_maintenance',
-          actor: authed.user.username,
-          targetType: 'host',
-          targetId: hostId,
-          result: 'success',
-          traceId,
-          metadata: { enabled: target.status === 'maintenance', reason: target.maintenanceReason }
-        })
+        const nextStatus = body.enabled === false ? 'online' : 'maintenance'
+        const nextReason = body.reason ? String(body.reason) : '计划维护'
+        if (
+          !recordAudit(
+            res,
+            {
+              eventType: 'host_maintenance',
+              actor: authed.user.username,
+              targetType: 'host',
+              targetId: hostId,
+              result: 'success',
+              traceId,
+              metadata: { enabled: nextStatus === 'maintenance', reason: nextReason }
+            },
+            traceId
+          )
+        ) {
+          return
+        }
+        target.status = nextStatus
+        target.maintenanceReason = nextReason
         return json(res, 200, { status: target.status })
       }
 
@@ -918,12 +1011,23 @@ export function createApp(config: ApiConfig): ApiHandle {
       return json(res, 200, page)
     }
 
+    // ---- audit: write health ----
+    if (req.method === 'GET' && path === '/v1/audit/status') {
+      const authed = requireAuth()
+      if (!authed) return
+      if (!isAdmin(authed.user) && !authed.user.roles.includes('platform:auditor')) {
+        return error(res, 403, 'PERMISSION_DENIED', '需要审计权限。', traceId)
+      }
+      const health = audit.getHealth()
+      return json(res, 200, { ...health, persisted: auditLogPath !== null })
+    }
+
     // ---- audit: chain integrity ----
     if (req.method === 'GET' && path === '/v1/audit/verify') {
       const authed = requireAuth()
       if (!authed) return
       if (!isAdmin(authed.user) && !authed.user.roles.includes('platform:auditor')) {
-        audit.append({
+        audit.appendBestEffort({
           eventType: 'audit_verify',
           actor: authed.user.username,
           targetType: 'audit',
@@ -936,7 +1040,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       // Verify the chain as it stands, then record the attempt: the attempt itself
       // must be auditable, but it cannot be part of what it reports on.
       const verdict = audit.verify()
-      audit.append({
+      audit.appendBestEffort({
         eventType: 'audit_verify',
         actor: authed.user.username,
         targetType: 'audit',
@@ -962,18 +1066,28 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
       if (req.method === 'PUT') {
         if (!isAdmin(authed.user)) return error(res, 403, 'PERMISSION_DENIED', '需要平台管理权限。', traceId)
+        if (!auditAllowsMutations(res, traceId)) return
         const body = await readJson(req)
-        store.policies.downloadDefault = body.downloadDefault === 'allow' ? 'allow' : 'deny'
+        const nextDefault = body.downloadDefault === 'allow' ? 'allow' : 'deny'
+        if (
+          !recordAudit(
+            res,
+            {
+              eventType: 'policy_update',
+              actor: authed.user.username,
+              targetType: 'policy',
+              targetId: 'download',
+              result: 'success',
+              traceId,
+              metadata: { downloadDefault: nextDefault }
+            },
+            traceId
+          )
+        ) {
+          return
+        }
+        store.policies.downloadDefault = nextDefault
         store.policies.version += 1
-        audit.append({
-          eventType: 'policy_update',
-          actor: authed.user.username,
-          targetType: 'policy',
-          targetId: 'download',
-          result: 'success',
-          traceId,
-          metadata: { downloadDefault: store.policies.downloadDefault }
-        })
         return json(res, 200, { downloadDefault: store.policies.downloadDefault, version: store.policies.version })
       }
     }

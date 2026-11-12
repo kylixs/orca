@@ -6,10 +6,15 @@ import type { AuditEvent, AuditEventInput, Store } from './store.ts'
  * Single-writer hash chain. All API replicas funnel through this instance, so
  * `prevHash` never forks (design.md §13.2).
  */
+export type AuditHealth =
+  | { ok: true }
+  | { ok: false; reason: 'write_failed' | 'chain_broken'; detail: string }
+
 export class AuditChain {
   private readonly store: Store
   /** Optional durable sink; a failed write throws so callers cannot pretend it landed. */
   private readonly persist: ((event: AuditEvent) => void) | null
+  private health: AuditHealth = { ok: true }
 
   constructor(store: Store, persist?: (event: AuditEvent) => void) {
     this.store = store
@@ -21,6 +26,37 @@ export class AuditChain {
     this.store.audit = [...events]
     this.store.auditSeq = events.at(-1)?.seq ?? 0
     this.store.auditTip = events.at(-1)?.hash ?? 'GENESIS'
+    // A chain that is already broken must not silently accept new events on top:
+    // the tampering would be laundered into an otherwise valid-looking tail.
+    const verdict = this.verify()
+    if (!verdict.ok) {
+      this.markUnhealthy('chain_broken', `broken at seq ${verdict.brokenAtSeq}`)
+    }
+  }
+
+  /**
+   * Whether audit writes may be relied on. Sensitive mutations gate on this so a
+   * full disk or a tampered log stops grants from being minted unrecorded.
+   */
+  getHealth(): AuditHealth {
+    return this.health
+  }
+
+  private markUnhealthy(reason: 'write_failed' | 'chain_broken', detail: string): void {
+    if (!this.health.ok) {
+      return
+    }
+    this.health = { ok: false, reason, detail }
+  }
+
+  /** For informational events: the caller keeps serving, but the platform is now unhealthy. */
+  appendBestEffort(input: AuditEventInput): boolean {
+    try {
+      this.append(input)
+      return true
+    } catch {
+      return false
+    }
   }
 
   append(input: AuditEventInput): AuditEvent {
@@ -43,7 +79,19 @@ export class AuditChain {
     this.store.audit.push(event)
     this.store.auditSeq = seq
     this.store.auditTip = hash
-    this.persist?.(event)
+    try {
+      this.persist?.(event)
+      // A successful write clears a transient write failure; a broken chain stays
+      // latched until the log is repaired and the process restarts.
+      if (!this.health.ok && this.health.reason === 'write_failed') {
+        this.health = { ok: true }
+      }
+    } catch (error) {
+      // Recorded in memory but not durable: treat the log as unreliable so the next
+      // sensitive mutation is refused instead of silently going unrecorded.
+      this.markUnhealthy('write_failed', error instanceof Error ? error.message : String(error))
+      throw error
+    }
     return event
   }
 
@@ -76,6 +124,7 @@ export class AuditChain {
       }
       const expected = createHash('sha256').update(`${prev}|${canonicalJson(body)}`).digest('hex')
       if (event.prevHash !== prev || event.hash !== expected) {
+        this.markUnhealthy('chain_broken', `broken at seq ${event.seq}`)
         return { ok: false, brokenAtSeq: event.seq, checked }
       }
       prev = event.hash

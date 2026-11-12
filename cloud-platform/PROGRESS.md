@@ -1,6 +1,6 @@
 # 开发进度
 
-> 更新时间：2026-11-13 13:45
+> 更新时间：2026-11-13 13:55
 > 规则：每轮只推进一个模块；失败必须如实记录。
 
 ## 模块状态
@@ -39,6 +39,7 @@
 | M29 文件寻址契约对齐 | ✅ 完成 | `evidence/m29-file-contract/` | 模拟器改为真实 Orca 的 `worktree + relativePath`（旧 `path` 明确拒绝）；新增 readDir；分支名 `///` ��陷修复；6 条新用例 + 整仓 80 条全过 |
 | M30 项目根路径规范化 | ✅ 完成 | `evidence/m30-project-root/` | 登记处拒绝 `..`/相对/重复或尾随分隔符/控制字符；主机对旧平台票据做同形状复核（`workspace_root_invalid`）；4 条真实平台 + 真实签名用例（关掉检查后 2 条变红） |
 | M31 审计链落盘与校验 | ✅ 完成 | `evidence/m31-audit-verify/` | 审计 JSONL 只追加落盘、重启续链；`GET /v1/audit/verify`（409 + brokenAtSeq）；弃坏行拒绝启动；14 条（含"改写文件后重启"真实进程用例） |
+| M32 审计 fail-closed | ✅ 完成 | `evidence/m32-audit-fail-closed/` | 先写审计再改状态；写失败/断链时 6 类敏感写返回 503 且状态未变；读与登录保持可用；`GET /v1/audit/status`；3 条真实进程用例（chmod 只读、篡改后重启、全覆盖） |
 
 ## 最近一次测试结果
 
@@ -448,8 +449,22 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 
 **如实记录**：没有用进程内篡改冒充端到端——先补落盘再做"改文件重启"的真实用例。断链时平台仍启动并服务（运维需要排查入口），是否对敏感操作 fail-closed 留待下一轮决定；既有 `contract.test.ts` 的 `deepEqual(verify(), {ok:true})` 已随返回值扩展更新。
 
+## M32 审计 fail-closed（本轮）
+
+**问题**：设计 §13.2 要求"审计写入失败时拒绝该敏感操作"，但实现是先改状态再写审计，写失败只变成 500——**变更已经生效却没有任何记录**；断链也只影响 verify 接口，敏感操作照常执行。
+
+| 改动 | 内容 |
+|---|---|
+| `apps/api/src/audit.ts` | 健康状态：`write_failed`（瞬时，成功写入后自动清除）/ `chain_broken`（持续到修复并重启）；`appendBestEffort` 供非变更事件 |
+| `apps/api/src/server.ts` | **write-ahead audit**：`recordAudit()` 先写事件，失败即 503 且不执行变更；覆盖项目创建/归档、授权、设备吊销、主机令牌、维护、策略 |
+| 同上 | 预检只拦 `chain_broken`；`write_failed` 放行以便磁盘恢复后自愈 |
+| 同上 | 登录/读取/`/health`/`/v1/jwks` 保持可用；新增 `GET /v1/audit/status` |
+
+**验证（`evidence/m32-audit-fail-closed/`）**：3 条真实进程用例——日志 chmod 0400 后创建项目 503 且**项目确实没建**、chmod 恢复后自动回到 201；篡改日志重启后 503 `AUDIT_CHAIN_BROKEN`、verify 仍 409、用原始日志重启即恢复；一次覆盖 5 类敏感写全部 503 且逐项复核状态未变。整仓 **97 条**全过。
+
+**如实记录**：两版实现都是被测试推翻的——首版只做预检 + 后置审计，实测首次失败是 500 且项目已创建；次版把状态锁死导致永远无法恢复。最终为"先写审计再变更 + write_failed 可自愈"。副作用：崩溃在两步之间会多记一条未生效事件（over-report），已在注释与 summary 中说明。
+
 ## 下一步
 
 1. 面板接入：在工作区内用 M25 的 `environmentId` 挂载终端/文件面板（现有环境 selector 已可用，剩余是界面与 TabGroup 状态接线）。
-2. 审计断链时的 fail-closed 策略：目前仍服务并报告断链；需决定敏感写操作是否拒绝。
-3. 遗留：M4 `isInsideRoot` 对 Windows 段大小写敏感（fail-closed，误拒而非误放；按需放宽）。
+2. 遗留：M4 `isInsideRoot` 对 Windows 段大小写敏感（fail-closed，误拒而非误放；按需放宽）。
