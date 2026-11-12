@@ -1,0 +1,600 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Orca Cloud 云端开发平台 — 架构与拓扑图</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #171717;
+    --muted: #525252;
+    --faint: #737373;
+    --line: #e5e7eb;
+    --soft: #fafafa;
+    --accent: #2563eb;
+    --accent-soft: #eff6ff;
+    --ok: #16a34a;
+    --warn: #d97706;
+    --danger: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    font-size: 13px; line-height: 1.6; letter-spacing: 0.01em;
+  }
+  .page { max-width: 1280px; margin: 0 auto; padding: 40px 32px 72px; }
+  header { border-bottom: 1px solid var(--line); padding-bottom: 20px; margin-bottom: 40px; }
+  header h1 { font-size: 22px; margin: 0 0 6px; font-weight: 600; }
+  header p { margin: 0; color: var(--muted); font-size: 13px; }
+  .meta { margin-top: 12px; display: flex; gap: 20px; color: var(--faint); font-size: 12px; flex-wrap: wrap; }
+  section { margin-bottom: 56px; }
+  h2 { font-size: 16px; font-weight: 600; margin: 0 0 6px; }
+  h2 .idx {
+    display: inline-block; min-width: 22px; height: 22px; line-height: 22px; text-align: center;
+    background: var(--accent-soft); color: var(--accent); border-radius: 6px;
+    font-size: 12px; margin-right: 8px; font-variant-numeric: tabular-nums;
+  }
+  .lede { color: var(--muted); margin: 0 0 18px; max-width: 900px; }
+  .canvas {
+    border: 1px solid var(--line); border-radius: 10px; background: #fff;
+    padding: 8px; overflow: auto;
+  }
+  svg { display: block; width: 100%; height: auto; }
+  .legend { display: flex; gap: 24px; flex-wrap: wrap; margin-top: 14px; color: var(--muted); font-size: 12px; }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; }
+  .swatch { width: 26px; height: 0; border-top: 2px solid var(--accent); }
+  .swatch.dash { border-top: 2px dashed #9ca3af; }
+  .swatch.gray { border-top: 2px solid #9ca3af; }
+  .note {
+    margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line);
+    border-left: 3px solid var(--accent); border-radius: 8px; background: var(--soft);
+    color: var(--muted); font-size: 12.5px;
+  }
+  .note strong { color: var(--fg); font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 8px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11.5px; background: #f5f5f5; padding: 1px 5px; border-radius: 4px;
+  }
+  /* SVG shared classes */
+  .zone { fill: #fafafa; stroke: #e5e7eb; stroke-width: 1; }
+  .node { fill: #ffffff; stroke: #e5e7eb; stroke-width: 1; }
+  .node-accent { fill: #ffffff; stroke: #2563eb; stroke-width: 1.25; }
+  .store { fill: #ffffff; stroke: #e5e7eb; stroke-width: 1; }
+  .ztitle { fill: #737373; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; }
+  .ntitle { fill: #171717; font-size: 12.5px; font-weight: 600; }
+  .nsub { fill: #737373; font-size: 10.5px; }
+  .lbl { fill: #525252; font-size: 11px; }
+  .lbl-accent { fill: #2563eb; font-size: 11px; font-weight: 600; }
+  .lbl-dash { fill: #737373; font-size: 10.5px; }
+  .link { stroke: #b8bcc4; stroke-width: 1.25; fill: none; }
+  .link-data { stroke: #2563eb; stroke-width: 2; fill: none; }
+  .link-dash { stroke: #9ca3af; stroke-width: 1.25; fill: none; stroke-dasharray: 5 4; }
+  .num { fill: #2563eb; font-size: 10.5px; font-weight: 700; }
+  .num-bg { fill: #eff6ff; stroke: #bfdbfe; stroke-width: 1; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <h1>Orca Cloud 云端开发平台 — 架构与拓扑</h1>
+  <p>平台只做注册与认证授权；客户端拿到地址后自行建链；中继只做 TCP 转发。</p>
+  <div class="meta">
+    <span>版本 v1.2</span>
+    <span>2026-11-13</span>
+    <span>关联：requirements.md / design.md</span>
+  </div>
+</header>
+
+<!-- ============ 图 1 总体架构 ============ -->
+<section>
+  <h2><span class="idx">01</span>总体架构图</h2>
+  <p class="lede">管控面（细线）负责登录、项目查询与地址/凭证下发；数据面（粗蓝线）是客户端与开发机之间的 Orca WSS + E2EE，完全绕开平台。中继仅在直连不可达时承接 TCP 转发。</p>
+  <div class="canvas">
+  <svg viewBox="0 0 1240 660" role="img" aria-label="总体架构图">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#b8bcc4"/>
+      </marker>
+      <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/>
+      </marker>
+      <marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#9ca3af"/>
+      </marker>
+    </defs>
+
+    <!-- 管控面 -->
+    <rect class="zone" x="360" y="52" width="520" height="210" rx="10"/>
+    <text class="ztitle" x="376" y="76">管控面 · 注册中心 + 认证授权</text>
+
+    <rect class="node-accent" x="380" y="92" width="220" height="64" rx="8"/>
+    <text class="ntitle" x="490" y="118" text-anchor="middle">平台 API</text>
+    <text class="nsub" x="490" y="136" text-anchor="middle">身份 · 项目 · 主机 · 凭证 · 策略</text>
+
+    <rect class="store" x="616" y="92" width="112" height="64" rx="8"/>
+    <text class="ntitle" x="672" y="118" text-anchor="middle">PostgreSQL</text>
+    <text class="nsub" x="672" y="136" text-anchor="middle">主 + 备</text>
+
+    <rect class="store" x="744" y="92" width="116" height="64" rx="8"/>
+    <text class="ntitle" x="802" y="118" text-anchor="middle">Redis</text>
+    <text class="nsub" x="802" y="136" text-anchor="middle">会话 · 撤销</text>
+
+    <rect class="store" x="380" y="172" width="220" height="64" rx="8"/>
+    <text class="ntitle" x="490" y="198" text-anchor="middle">审计存储</text>
+    <text class="nsub" x="490" y="216" text-anchor="middle">只追加 · 哈希链 · WORM</text>
+
+    <rect class="store" x="616" y="172" width="244" height="64" rx="8"/>
+    <text class="ntitle" x="738" y="198" text-anchor="middle">审计写入服务</text>
+    <text class="nsub" x="738" y="216" text-anchor="middle">单写入序列 · 哈希链</text>
+
+    <!-- LDAP -->
+    <rect class="node" x="924" y="52" width="180" height="80" rx="8"/>
+    <text class="ntitle" x="1014" y="82" text-anchor="middle">LDAP / AD</text>
+    <text class="nsub" x="1014" y="102" text-anchor="middle">LDAPS 636 · 域账号校验</text>
+
+    <!-- 客户端层 -->
+    <rect class="zone" x="36" y="320" width="280" height="290" rx="10"/>
+    <text class="ztitle" x="52" y="344">客户端层</text>
+
+    <rect class="node-accent" x="56" y="360" width="240" height="86" rx="8"/>
+    <text class="ntitle" x="176" y="388" text-anchor="middle">Orca Cloud 桌面客户端</text>
+    <text class="nsub" x="176" y="407" text-anchor="middle">登录 · 工作台 · 项目视图</text>
+    <text class="nsub" x="176" y="424" text-anchor="middle">选路器 · 直连探测 · 中继回落</text>
+
+    <rect class="node" x="56" y="470" width="240" height="76" rx="8"/>
+    <text class="ntitle" x="176" y="498" text-anchor="middle">浏览器 · Web 前端</text>
+    <text class="nsub" x="176" y="517" text-anchor="middle">工作台 · 管控面（前后端分离）</text>
+
+    <!-- 转发面 -->
+    <rect class="zone" x="500" y="360" width="320" height="250" rx="10"/>
+    <text class="ztitle" x="516" y="384">转发面 · DMZ</text>
+
+    <rect class="node" x="520" y="398" width="280" height="58" rx="8"/>
+    <text class="ntitle" x="660" y="422" text-anchor="middle">中继节点 1</text>
+    <text class="nsub" x="660" y="440" text-anchor="middle">TCP 转发 · 不解析 · 不解密</text>
+
+    <rect class="node" x="520" y="476" width="280" height="58" rx="8"/>
+    <text class="ntitle" x="660" y="500" text-anchor="middle">中继节点 2</text>
+    <text class="nsub" x="660" y="518" text-anchor="middle">SNI 白名单 · 默认黑洞</text>
+
+    <!-- 执行面 -->
+    <rect class="zone" x="880" y="320" width="320" height="290" rx="10"/>
+    <text class="ztitle" x="896" y="344">执行面 · 开发机（内网 / 办公网）</text>
+
+    <rect class="node" x="900" y="360" width="280" height="56" rx="8"/>
+    <text class="ntitle" x="1040" y="384" text-anchor="middle">开发机 A</text>
+    <text class="nsub" x="1040" y="402" text-anchor="middle">Orca Runtime + Agent · 直连可达</text>
+
+    <rect class="node" x="900" y="430" width="280" height="56" rx="8"/>
+    <text class="ntitle" x="1040" y="454" text-anchor="middle">开发机 B</text>
+    <text class="nsub" x="1040" y="472" text-anchor="middle">Orca Runtime + Agent · 仅中继</text>
+
+    <rect class="node" x="900" y="500" width="280" height="56" rx="8"/>
+    <text class="ntitle" x="1040" y="524" text-anchor="middle">开发机 C</text>
+    <text class="nsub" x="1040" y="542" text-anchor="middle">容器化 Runtime · 仅中继</text>
+
+    <!-- ① 客户端 → 平台 API -->
+    <path class="link" d="M 176 360 L 176 300 L 440 300 L 440 262" marker-end="url(#arrow)"/>
+    <circle class="num-bg" cx="200" cy="300" r="9"/>
+    <text class="num" x="200" y="304" text-anchor="middle">1</text>
+    <text class="lbl" x="248" y="292">REST · 登录 / 项目 / 地址 / 凭证</text>
+
+    <!-- ② 直连 -->
+    <path class="link-data" d="M 296 386 L 340 386 L 340 344 L 858 344 L 858 388 L 900 388" marker-end="url(#arrow-blue)"/>
+    <circle class="num-bg" cx="356" cy="386" r="9"/>
+    <text class="num" x="356" y="390" text-anchor="middle">2</text>
+    <text class="lbl-accent" x="420" y="378">直连 WSS :6768 + E2EE（数据面，不经平台）</text>
+
+    <!-- ③ 中继 -->
+    <path class="link-data" d="M 296 490 L 520 490" marker-end="url(#arrow-blue)"/>
+    <path class="link-data" d="M 800 505 L 880 505" marker-end="url(#arrow-blue)"/>
+    <circle class="num-bg" cx="356" cy="490" r="9"/>
+    <text class="num" x="356" y="494" text-anchor="middle">3</text>
+    <text class="lbl-accent" x="380" y="480" dy="26">直连不通 → 中继 TCP 转发</text>
+
+    <!-- ④ 心跳 -->
+    <path class="link-dash" d="M 1180 400 L 1215 400 L 1215 40 L 490 40 L 490 92" marker-end="url(#arrow-gray)"/>
+    <text class="lbl-dash" x="660" y="32">Agent 心跳 · 撤销同步 · 审计上报</text>
+
+    <!-- 平台 → LDAP -->
+    <path class="link" d="M 600 124 L 924 124" marker-end="url(#arrow)"/>
+    <path class="link" d="M 380 124 L 300 124 L 300 210 L 380 210" marker-end="url(#arrow)" opacity="0"/>
+
+    <text class="lbl-dash" x="36" y="636">图 1 · 粗蓝线为业务数据面；细线/虚线为控制面与上报通道</text>
+  </svg>
+  </div>
+  <div class="legend">
+    <span><i class="swatch"></i>业务数据面（直连 / 中继）</span>
+    <span><i class="swatch gray"></i>控制面 REST</span>
+    <span><i class="swatch dash"></i>心跳与事件上报</span>
+  </div>
+  <div class="note"><strong>关键点：</strong>平台没有任何一条线承载终端或文件流量。平台 API 停机时，已建立的会话不受影响；中继停机时，直连主机不受影响。</div>
+</section>
+
+<!-- ============ 图 2 组件拓扑 ============ -->
+<section>
+  <h2><span class="idx">02</span>组件拓扑图</h2>
+  <p class="lede">按进程划分职责：客户端进程内新增选路器，平台 API 按领域拆模块，开发机由 Agent 守护 Runtime 并在 RPC 分发层挂策略网关。</p>
+  <div class="canvas">
+  <svg viewBox="0 0 1240 600" role="img" aria-label="组件拓扑图">
+    <defs>
+      <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#b8bcc4"/>
+      </marker>
+      <marker id="a2b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/>
+      </marker>
+      <marker id="a2g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#9ca3af"/>
+      </marker>
+    </defs>
+
+    <!-- 桌面客户端 -->
+    <rect class="zone" x="36" y="48" width="280" height="360" rx="10"/>
+    <text class="ztitle" x="52" y="72">桌面客户端进程</text>
+    <rect class="node" x="56" y="92" width="240" height="62" rx="8"/>
+    <text class="ntitle" x="176" y="118" text-anchor="middle">Renderer</text>
+    <text class="nsub" x="176" y="136" text-anchor="middle">登录 · 工作台 · 项目视图</text>
+
+    <rect class="node" x="56" y="168" width="240" height="62" rx="8"/>
+    <text class="ntitle" x="176" y="194" text-anchor="middle">Main</text>
+    <text class="nsub" x="176" y="212" text-anchor="middle">会话 · 平台 API 客户端</text>
+
+    <rect class="node-accent" x="56" y="244" width="240" height="62" rx="8"/>
+    <text class="ntitle" x="176" y="270" text-anchor="middle">选路器（新增）</text>
+    <text class="nsub" x="176" y="288" text-anchor="middle">探测 · 超时 · 回落 · 耗时</text>
+
+    <rect class="node" x="56" y="320" width="240" height="62" rx="8"/>
+    <text class="ntitle" x="176" y="346" text-anchor="middle">Runtime 连接栈</text>
+    <text class="nsub" x="176" y="364" text-anchor="middle">WSS + E2EE（复用 Orca）</text>
+
+    <!-- Web 前端 -->
+    <rect class="zone" x="36" y="440" width="280" height="130" rx="10"/>
+    <text class="ztitle" x="52" y="464">Web 前端</text>
+    <rect class="node" x="56" y="478" width="240" height="76" rx="8"/>
+    <text class="ntitle" x="176" y="504" text-anchor="middle">React SPA</text>
+    <text class="nsub" x="176" y="522" text-anchor="middle">工作台 · 管控面 · 403 门禁</text>
+    <text class="nsub" x="176" y="539" text-anchor="middle">OpenAPI 客户端</text>
+
+    <!-- 平台 API -->
+    <rect class="zone" x="380" y="48" width="440" height="360" rx="10"/>
+    <text class="ztitle" x="396" y="72">平台 API（无状态 · 3 副本）</text>
+    <rect class="node" x="400" y="92" width="196" height="58" rx="8"/>
+    <text class="ntitle" x="498" y="116" text-anchor="middle">身份与会话</text>
+    <text class="nsub" x="498" y="134" text-anchor="middle">LDAP bind · 令牌 · 角色</text>
+
+    <rect class="node" x="612" y="92" width="188" height="58" rx="8"/>
+    <text class="ntitle" x="706" y="116" text-anchor="middle">项目与授权</text>
+    <text class="nsub" x="706" y="134" text-anchor="middle">ACL · 可见性过滤</text>
+
+    <rect class="node" x="400" y="166" width="196" height="58" rx="8"/>
+    <text class="ntitle" x="498" y="190" text-anchor="middle">主机与注册</text>
+    <text class="nsub" x="498" y="208" text-anchor="middle">令牌 · 心跳 · 地址表</text>
+
+    <rect class="node-accent" x="612" y="166" width="188" height="58" rx="8"/>
+    <text class="ntitle" x="706" y="190" text-anchor="middle">凭证签发</text>
+    <text class="nsub" x="706" y="208" text-anchor="middle">Ed25519 · 60s · JWKS</text>
+
+    <rect class="node" x="400" y="240" width="196" height="58" rx="8"/>
+    <text class="ntitle" x="498" y="264" text-anchor="middle">策略</text>
+    <text class="nsub" x="498" y="282" text-anchor="middle">下载 · 版本 · 签名下发</text>
+
+    <rect class="node" x="612" y="240" width="188" height="58" rx="8"/>
+    <text class="ntitle" x="706" y="264" text-anchor="middle">审计</text>
+    <text class="nsub" x="706" y="282" text-anchor="middle">写入 · 查询 · 哈希链</text>
+
+    <rect class="store" x="400" y="322" width="196" height="62" rx="8"/>
+    <text class="ntitle" x="498" y="348" text-anchor="middle">PostgreSQL</text>
+    <text class="nsub" x="498" y="366" text-anchor="middle">注册信息 · 授权 · 审计</text>
+
+    <rect class="store" x="612" y="322" width="188" height="62" rx="8"/>
+    <text class="ntitle" x="706" y="348" text-anchor="middle">Redis</text>
+    <text class="nsub" x="706" y="366" text-anchor="middle">会话 · 撤销集合</text>
+
+    <!-- 开发机 -->
+    <rect class="zone" x="880" y="48" width="320" height="360" rx="10"/>
+    <text class="ztitle" x="896" y="72">开发机</text>
+    <rect class="node" x="900" y="92" width="280" height="58" rx="8"/>
+    <text class="ntitle" x="1040" y="116" text-anchor="middle">Agent</text>
+    <text class="nsub" x="1040" y="134" text-anchor="middle">注册 · 心跳 · 撤销 · 审计缓冲</text>
+
+    <rect class="node-accent" x="900" y="166" width="280" height="58" rx="8"/>
+    <text class="ntitle" x="1040" y="190" text-anchor="middle">策略网关（新增）</text>
+    <text class="nsub" x="1040" y="208" text-anchor="middle">验签 · 路径包含 · 导出拦截</text>
+
+    <rect class="node" x="900" y="240" width="280" height="88" rx="8"/>
+    <text class="ntitle" x="1040" y="266" text-anchor="middle">Orca Runtime</text>
+    <text class="nsub" x="1040" y="285" text-anchor="middle">PTY · Agent · 文件 · Git</text>
+    <text class="nsub" x="1040" y="303" text-anchor="middle">WSS :6768 + E2EE</text>
+
+    <rect class="store" x="900" y="344" width="280" height="40" rx="8"/>
+    <text class="nsub" x="1040" y="369" text-anchor="middle">项目目录 / worktree（受管路径）</text>
+
+    <!-- 中继 -->
+    <rect class="zone" x="380" y="440" width="300" height="130" rx="10"/>
+    <text class="ztitle" x="396" y="464">中继（独立部署）</text>
+    <rect class="node" x="400" y="478" width="260" height="76" rx="8"/>
+    <text class="ntitle" x="530" y="504" text-anchor="middle">TCP 转发</text>
+    <text class="nsub" x="530" y="522" text-anchor="middle">SNI 路由 · 白名单 · 默认黑洞</text>
+    <text class="nsub" x="530" y="539" text-anchor="middle">不解析协议 · 授权由主机判定</text>
+
+    <!-- 连线 -->
+    <path class="link" d="M 176 230 L 176 236" opacity="0"/>
+    <path class="link" d="M 296 200 L 380 120" marker-end="url(#a2)" opacity="0"/>
+    <path class="link" d="M 296 200 L 400 120" marker-end="url(#a2)"/>
+    <text class="lbl" x="300" y="182">REST</text>
+
+    <path class="link" d="M 296 516 L 400 516" marker-end="url(#a2)"/>
+    <text class="lbl" x="316" y="506">REST</text>
+
+    <path class="link-dash" d="M 900 120 L 800 120" marker-end="url(#a2g)" opacity="0"/>
+    <path class="link-dash" d="M 900 120 L 800 120" marker-end="url(#a2g)"/>
+    <path class="link-dash" d="M 900 190 L 800 190" marker-end="url(#a2g)"/>
+    <text class="lbl-dash" x="812" y="112">心跳</text>
+    <text class="lbl-dash" x="812" y="182">JWKS</text>
+
+    <path class="link-data" d="M 296 350 L 330 350 L 330 470 L 900 470 L 900 284" marker-end="url(#a2b)" fill="none"/>
+    <text class="lbl-accent" x="470" y="462">直连 WSS（数据面）</text>
+
+    <path class="link-data" d="M 296 372 L 400 500" marker-end="url(#a2b)" opacity="0"/>
+    <path class="link-data" d="M 296 372 L 340 372 L 340 550 L 400 550" marker-end="url(#a2b)"/>
+    <path class="link-data" d="M 660 550 L 760 550 L 760 300 L 900 300" marker-end="url(#a2b)"/>
+    <text class="lbl-accent" x="470" y="542">经中继（仅直连失败）</text>
+
+    <path class="link-dash" d="M 900 200 L 860 200 L 860 250 L 900 250" opacity="0"/>
+    <path class="link-dash" d="M 900 134 L 880 134 L 880 214 L 620 214" marker-end="url(#a2g)" opacity="0"/>
+  </svg>
+  </div>
+  <div class="note"><strong>策略网关为什么在开发机：</strong>平台不承载流量，无法在链路上拦截导出；因此文件导出、浏览器下载、剪贴板限制必须在 Runtime 的 RPC 分发层执行，并由 Agent 上报审计。</div>
+</section>
+
+<!-- ============ 图 3 部署拓扑 ============ -->
+<section>
+  <h2><span class="idx">03</span>部署拓扑图</h2>
+  <p class="lede">办公网放平台与员工终端；DMZ 只放中继（唯一从 DMZ 进入内网的点）；内网开发机不开放公网入站，通过出站心跳注册。</p>
+  <div class="canvas">
+  <svg viewBox="0 0 1240 620" role="img" aria-label="部署拓扑图">
+    <defs>
+      <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#b8bcc4"/>
+      </marker>
+      <marker id="a3b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/>
+      </marker>
+      <marker id="a3g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#9ca3af"/>
+      </marker>
+    </defs>
+
+    <!-- 办公网 -->
+    <rect class="zone" x="24" y="48" width="420" height="480" rx="10"/>
+    <text class="ztitle" x="40" y="72">办公网</text>
+
+    <rect class="node" x="44" y="92" width="180" height="66" rx="8"/>
+    <text class="ntitle" x="134" y="118" text-anchor="middle">员工终端</text>
+    <text class="nsub" x="134" y="136" text-anchor="middle">Orca Cloud 客户端</text>
+
+    <rect class="node" x="244" y="92" width="180" height="66" rx="8"/>
+    <text class="ntitle" x="334" y="118" text-anchor="middle">浏览器</text>
+    <text class="nsub" x="334" y="136" text-anchor="middle">平台 Web 前端</text>
+
+    <rect class="zone" x="44" y="186" width="380" height="240" rx="8"/>
+    <text class="ztitle" x="60" y="208">Kubernetes 集群</text>
+
+    <rect class="node-accent" x="60" y="222" width="348" height="56" rx="8"/>
+    <text class="ntitle" x="234" y="246" text-anchor="middle">平台 API × 3</text>
+    <text class="nsub" x="234" y="264" text-anchor="middle">4C8G · 滚动发布 · 不承载业务流量</text>
+
+    <rect class="store" x="60" y="290" width="166" height="56" rx="8"/>
+    <text class="ntitle" x="143" y="314" text-anchor="middle">PostgreSQL</text>
+    <text class="nsub" x="143" y="332" text-anchor="middle">主 + 备</text>
+
+    <rect class="store" x="242" y="290" width="166" height="56" rx="8"/>
+    <text class="ntitle" x="325" y="314" text-anchor="middle">Redis 哨兵</text>
+    <text class="nsub" x="325" y="332" text-anchor="middle">3 节点</text>
+
+    <rect class="store" x="60" y="358" width="348" height="52" rx="8"/>
+    <text class="ntitle" x="234" y="381" text-anchor="middle">审计存储</text>
+    <text class="nsub" x="234" y="398" text-anchor="middle">对象存储 WORM · 180 天热数据</text>
+
+    <rect class="node" x="44" y="450" width="180" height="60" rx="8"/>
+    <text class="ntitle" x="134" y="475" text-anchor="middle">LDAP / AD</text>
+    <text class="nsub" x="134" y="493" text-anchor="middle">LDAPS 636</text>
+
+    <rect class="store" x="244" y="450" width="180" height="60" rx="8"/>
+    <text class="ntitle" x="334" y="475" text-anchor="middle">CDN</text>
+    <text class="nsub" x="334" y="493" text-anchor="middle">Web 静态资源</text>
+
+    <!-- DMZ -->
+    <rect class="zone" x="484" y="48" width="300" height="480" rx="10"/>
+    <text class="ztitle" x="500" y="72">DMZ</text>
+
+    <rect class="node" x="504" y="92" width="260" height="66" rx="8"/>
+    <text class="ntitle" x="634" y="118" text-anchor="middle">L4 负载均衡</text>
+    <text class="nsub" x="634" y="136" text-anchor="middle">VIP :443 · 健康检查</text>
+
+    <rect class="node" x="504" y="196" width="260" height="86" rx="8"/>
+    <text class="ntitle" x="634" y="222" text-anchor="middle">中继节点 1</text>
+    <text class="nsub" x="634" y="241" text-anchor="middle">4C8G · 2000 并发 · 2Gbps</text>
+    <text class="nsub" x="634" y="259" text-anchor="middle">SNI 白名单 · 默认黑洞</text>
+
+    <rect class="node" x="504" y="300" width="260" height="86" rx="8"/>
+    <text class="ntitle" x="634" y="326" text-anchor="middle">中继节点 2</text>
+    <text class="nsub" x="634" y="345" text-anchor="middle">同规格 · 无状态</text>
+    <text class="nsub" x="634" y="363" text-anchor="middle">故障时客户端自动换节点</text>
+
+    <rect class="node" x="504" y="410" width="260" height="94" rx="8"/>
+    <text class="ntitle" x="634" y="436" text-anchor="middle">出站防火墙</text>
+    <text class="nsub" x="634" y="455" text-anchor="middle">仅开发机 :6768 与平台 :8443（mTLS）</text>
+    <text class="nsub" x="634" y="475" text-anchor="middle">无 UDP/CONNECT · 放行平台 8443 同步</text>
+
+    <!-- 内网 -->
+    <rect class="zone" x="820" y="48" width="396" height="480" rx="10"/>
+    <text class="ztitle" x="836" y="72">内网 · 开发机</text>
+
+    <rect class="node" x="840" y="92" width="356" height="70" rx="8"/>
+    <text class="ntitle" x="1018" y="118" text-anchor="middle">开发机 A · Ubuntu 24.04</text>
+    <text class="nsub" x="1018" y="137" text-anchor="middle">Runtime :6768 + Agent · 直连可达（办公网/VPN）</text>
+
+    <rect class="node" x="840" y="178" width="356" height="70" rx="8"/>
+    <text class="ntitle" x="1018" y="204" text-anchor="middle">开发机 B · Ubuntu 22.04</text>
+    <text class="nsub" x="1018" y="223" text-anchor="middle">Runtime :6768 + Agent · 仅中继可达</text>
+
+    <rect class="node" x="840" y="264" width="356" height="70" rx="8"/>
+    <text class="ntitle" x="1018" y="290" text-anchor="middle">开发机 C · CentOS 7（容器）</text>
+    <text class="nsub" x="1018" y="309" text-anchor="middle">容器内 Runtime + 宿主 Agent · 仅中继</text>
+
+    <rect class="node" x="840" y="350" width="356" height="70" rx="8"/>
+    <text class="ntitle" x="1018" y="376" text-anchor="middle">开发机 D · Windows Server</text>
+    <text class="nsub" x="1018" y="395" text-anchor="middle">Runtime + Windows 服务 Agent · 仅中继</text>
+
+    <rect class="store" x="840" y="436" width="356" height="68" rx="8"/>
+    <text class="ntitle" x="1018" y="462" text-anchor="middle">出网白名单</text>
+    <text class="nsub" x="1018" y="481" text-anchor="middle">代码仓库 · 包镜像 · 平台 API 443</text>
+
+    <!-- 连线 -->
+    <path class="link" d="M 224 125 L 504 125" marker-end="url(#a3)"/>
+    <text class="lbl" x="300" y="116">HTTPS 443</text>
+
+    <path class="link" d="M 234 278 L 234 292" opacity="0"/>
+    <path class="link" d="M 234 278 L 484 375" opacity="0"/>
+    <path class="link" d="M 408 250 L 504 250" marker-end="url(#a3)" opacity="0"/>
+    <path class="link" d="M 408 330 L 504 330" marker-end="url(#a3)" opacity="0"/>
+    <path class="link" d="M 400 250 L 470 250 L 470 520 L 504 520" marker-end="url(#a3)" opacity="0"/>
+
+    <path class="link-data" d="M 224 158 L 240 158 L 240 560 L 840 560 L 840 127" marker-end="url(#a3b)"/>
+    <text class="lbl-accent" x="300" y="552">② 直连 6768（办公网/VPN 内）</text>
+
+    <path class="link-data" d="M 224 158 L 300 158 L 300 596 L 676 596 L 676 528" marker-end="url(#a3b)" opacity="0"/>
+    <path class="link-data" d="M 224 158 L 440 158 L 440 60 L 634 60 L 634 92" marker-end="url(#a3b)"/>
+    <path class="link" d="M 634 158 L 634 196" marker-end="url(#a3)"/>
+    <path class="link" d="M 504 125 L 486 125 L 486 343 L 504 343" marker-end="url(#a3)"/>
+    <path class="link-data" d="M 764 239 L 800 239 L 800 213 L 840 213" marker-end="url(#a3b)"/>
+    <path class="link-data" d="M 764 343 L 800 343 L 800 299 L 840 299" marker-end="url(#a3b)"/>
+    <path class="link-data" d="M 764 360 L 820 360 L 820 385 L 840 385" marker-end="url(#a3b)"/>
+    <text class="lbl-accent" x="470" y="592">③ 中继 TCP 转发（直连不通时）</text>
+
+    <path class="link-dash" d="M 1018 92 L 1018 60 L 234 60 L 234 222" marker-end="url(#a3g)"/>
+    <text class="lbl-dash" x="560" y="52">Agent 心跳 443（出站）</text>
+
+    <path class="link" d="M 234 222 L 234 450" marker-end="url(#a3)"/>
+    <text class="lbl" x="240" y="330">LDAPS</text>
+  </svg>
+  </div>
+  <div class="legend">
+    <span><i class="swatch"></i>业务数据面</span>
+    <span><i class="swatch gray"></i>控制面 / 管理</span>
+    <span><i class="swatch dash"></i>出站心跳</span>
+  </div>
+  <div class="note"><strong>网络边界：</strong>DMZ 只有中继暴露 443；内网开发机不开放公网入站。中继的出站防火墙只允许访问已注册开发机的 6768 端口，且不提供 UDP 与 HTTP CONNECT，避免成为通用内网跳板。</div>
+</section>
+
+<!-- ============ 图 4 关键流程 ============ -->
+<section>
+  <h2><span class="idx">04</span>打开项目的时序</h2>
+  <div class="canvas" style="padding: 20px;">
+  <svg viewBox="0 0 1240 470" role="img" aria-label="打开项目时序图">
+    <defs>
+      <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#525252"/>
+      </marker>
+      <marker id="a4b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/>
+      </marker>
+    </defs>
+
+    <rect class="node" x="40" y="20" width="200" height="52" rx="8"/>
+    <text class="ntitle" x="140" y="44" text-anchor="middle">桌面客户端</text>
+    <text class="nsub" x="140" y="61" text-anchor="middle">选路器</text>
+
+    <rect class="node" x="380" y="20" width="200" height="52" rx="8"/>
+    <text class="ntitle" x="480" y="44" text-anchor="middle">平台 API</text>
+    <text class="nsub" x="480" y="61" text-anchor="middle">注册 + 授权</text>
+
+    <rect class="node" x="700" y="20" width="180" height="52" rx="8"/>
+    <text class="ntitle" x="790" y="44" text-anchor="middle">中继</text>
+    <text class="nsub" x="790" y="61" text-anchor="middle">仅回落时</text>
+
+    <rect class="node" x="980" y="20" width="220" height="52" rx="8"/>
+    <text class="ntitle" x="1090" y="44" text-anchor="middle">开发机 Runtime</text>
+    <text class="nsub" x="1090" y="61" text-anchor="middle">策略网关</text>
+
+    <line x1="140" y1="72" x2="140" y2="440" stroke="#e5e7eb"/>
+    <line x1="480" y1="72" x2="480" y2="440" stroke="#e5e7eb"/>
+    <line x1="790" y1="72" x2="790" y2="440" stroke="#e5e7eb"/>
+    <line x1="1090" y1="72" x2="1090" y2="440" stroke="#e5e7eb"/>
+
+    <path class="link" d="M 140 110 L 476 110" marker-end="url(#a4)"/>
+    <text class="lbl" x="150" y="103">POST /v1/projects/{id}/connect</text>
+
+    <path class="link" d="M 480 148 L 144 148" marker-end="url(#a4)"/>
+    <text class="lbl" x="150" y="141">凭证(60s·一次性) + direct[] + relay[] + 主机 E2EE 公钥 + 指纹</text>
+
+    <path class="link-data" d="M 140 196 L 1086 196" marker-end="url(#a4b)"/>
+    <text class="lbl-accent" x="150" y="189">① 探测直连（800ms × 2）→ 成功：WSS :6768 + 凭证</text>
+
+    <path class="link-data" d="M 140 236 L 786 236" marker-end="url(#a4b)"/>
+    <text class="lbl-accent" x="150" y="229">② 直连预检全部失败 → 无凭证预检中继</text>
+
+    <path class="link-data" d="M 790 268 L 1086 268" marker-end="url(#a4b)"/>
+    <text class="lbl-accent" x="820" y="261">TCP 转发 → :6768（不解析）</text>
+
+    <path class="link-data" d="M 140 314 L 1086 314" marker-end="url(#a4b)"/>
+    <text class="lbl-accent" x="150" y="307">③ E2EE 握手（nacl.box）· 客户端 ↔ 开发机端到端</text>
+
+    <path class="link" d="M 1090 352 L 144 352" marker-end="url(#a4)" opacity="0"/>
+    <path class="link-dash" d="M 1090 352 L 484 352" marker-end="url(#a4)" stroke-dasharray="5 4"/>
+    <text class="lbl-dash" x="620" y="345">④ 异步批量上报：连接事件 / 鉴权失败 / 下载拦截</text>
+
+    <path class="link" d="M 140 396 L 144 396" opacity="0"/>
+    <text class="lbl" x="150" y="396">⑤ 工作区就绪，渲染项目视图（顶部显示线路与延迟）</text>
+  </svg>
+  </div>
+  <div class="note"><strong>失败与重连：</strong>凭证 60 秒内有效且只能使用一次；升级失败可重申请一次（failoverBudget）。断线重连必须重新申请凭证，因此平台不可用时无法重连——但已建立会话不受影响。</div>
+</section>
+
+<!-- ============ 关键设计取舍 ============ -->
+<section>
+  <h2><span class="idx">05</span>关键取舍</h2>
+  <table>
+    <thead>
+      <tr><th style="width: 26%">决策</th><th style="width: 30%">选择</th><th>原因与代价</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>平台是否承载流量</td>
+        <td>不承载（注册中心 + 授权）</td>
+        <td>平台可用性与数据面解耦，扩容成本低；代价是撤销依赖主机侧执行（≤60 秒），且无法做链路级内容检查。</td>
+      </tr>
+      <tr>
+        <td>选路归属</td>
+        <td>客户端自行探测</td>
+        <td>复用 Orca 现有 WSS/E2EE 栈，改动集中在选路器；代价是每个客户端都要实现超时与回落逻辑，需统一回归测试。</td>
+      </tr>
+      <tr>
+        <td>中继职责</td>
+        <td>纯 TCP 转发</td>
+        <td>部署简单、故障面小、与 Orca 协议解耦；代价是中继无法按用户限流或审计内容，只能靠 SNI 白名单与连接元数据。</td>
+      </tr>
+      <tr>
+        <td>授权执行点</td>
+        <td>平台签凭证 + 主机验签与路径校验</td>
+        <td>双层校验，客户端不可信；代价是主机需维护 JWKS 缓存、jti 重放集合与撤销同步。</td>
+      </tr>
+      <tr>
+        <td>下载管控</td>
+        <td>主机侧 RPC 拦截 + 客户端隐藏入口</td>
+        <td>绕过客户端仍被服务端拒绝；代价是无法阻止终端命令与截屏，需以出网管控与审计兜底。</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+</div>
+</body>
+</html>

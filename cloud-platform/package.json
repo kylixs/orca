@@ -1,0 +1,13 @@
+{
+  "name": "@orca-cloud/platform",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "test": "node --test --test-reporter=spec test/*.test.ts test/e2e/*.test.ts",
+    "test:unit": "node --test test/*.test.ts",
+    "test:e2e": "node --test test/e2e/*.test.ts",
+    "api": "node apps/api/src/server.ts",
+    "relay": "node apps/relay/src/relay.ts"
+  }
+}
