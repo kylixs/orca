@@ -1057,6 +1057,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       deviceToken: newDeviceToken(),
       perms: permissions,
       iat: nowS,
+      iatMs: now(),
       exp: nowS + CREDENTIAL_TTL_S
     }
     const credential = signCredential(payload, signingKey)

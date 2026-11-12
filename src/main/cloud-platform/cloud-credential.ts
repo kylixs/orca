@@ -29,6 +29,8 @@ export type CloudCredentialPayload = {
   deviceToken: string
   perms: CloudPermission[]
   iat: number
+  /** Millisecond issue time; absent for tickets minted before it was added. */
+  iatMs?: number
   exp: number
 }
 

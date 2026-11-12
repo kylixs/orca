@@ -277,7 +277,8 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
       if (!decision.ok) {
         return decision
       }
-      const { jti, deviceToken, deviceId, sub, project, iat, exp } = decision.payload
+      const { jti, deviceToken, deviceId, sub, project, exp } = decision.payload
+      const iatMs = decision.payload.iatMs ?? decision.payload.iat * 1000
       // A ticket is a bearer credential: without this cache a copied one upgrades
       // again until it expires, even though the platform minted it once.
       const nowMs = Date.now()
@@ -290,7 +291,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
         return rejectCloudUpgrade('replayed', '该连接凭证已被使用。')
       }
       usedJtis.set(jti, exp * 1000 + 5_000)
-      admitted.set(jti, { deviceToken, deviceId, sub, project, iatMs: iat * 1000 })
+      admitted.set(jti, { deviceToken, deviceId, sub, project, iatMs })
       return decision
     },
     onRevoke: (listener) => {

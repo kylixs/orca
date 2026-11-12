@@ -31,6 +31,8 @@ export type CredentialPayload = {
   deviceToken: string
   perms: Permission[]
   iat: number
+  /** Issued-at in milliseconds. `iat` is whole seconds, so revocation (ms) needs this to avoid a same-second lockout. */
+  iatMs?: number
   exp: number
 }
 

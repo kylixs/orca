@@ -9,6 +9,9 @@ import {
 } from '../../../packages/contract/src/permissions.ts'
 import { verifyCredential, type CredentialPayload } from '../../../packages/contract/src/credential.ts'
 
+/** Milliseconds since issue; `iat` alone is whole seconds and cannot settle a same-second revoke+regrant. */
+const issuedAtMs = (payload: CredentialPayload): number => payload.iatMs ?? payload.iat * 1000
+
 export type GatewayPolicy = {
   downloadDefault: 'deny' | 'allow'
   projectOverrides: Record<string, 'deny' | 'allow'>
@@ -75,11 +78,11 @@ export class PolicyGateway {
   revocationReason(payload: CredentialPayload): string | null {
     const nowMs = (this.options.now ?? Date.now)()
     const projectSince = this.revokedProjects.get(payload.project)
-    if (projectSince !== undefined && payload.iat * 1000 <= projectSince) return 'project_revoked'
+    if (projectSince !== undefined && issuedAtMs(payload) <= projectSince) return 'project_revoked'
     const userSince = this.revokedUsers.get(payload.sub.replace(/^user:/, ''))
-    if (userSince !== undefined && payload.iat * 1000 <= userSince) return 'user_revoked'
+    if (userSince !== undefined && issuedAtMs(payload) <= userSince) return 'user_revoked'
     const deviceSince = this.revokedDevices.get(payload.deviceId)
-    if (deviceSince !== undefined && payload.iat * 1000 <= deviceSince) return 'device_revoked'
+    if (deviceSince !== undefined && issuedAtMs(payload) <= deviceSince) return 'device_revoked'
     const jtiExpiry = this.revokedJtis.get(payload.jti)
     if (jtiExpiry !== undefined && jtiExpiry > nowMs) return 'jti_revoked'
     return null
@@ -120,11 +123,11 @@ export class PolicyGateway {
       return { ok: false, code: 'replayed', message: '凭证已被使用。' }
     }
     const revokedSince = this.revokedProjects.get(payload.project)
-    if (revokedSince !== undefined && payload.iat * 1000 <= revokedSince) {
+    if (revokedSince !== undefined && issuedAtMs(payload) <= revokedSince) {
       return { ok: false, code: 'project_revoked', message: '项目权限已收回。' }
     }
     const userRevokedSince = this.revokedUsers.get(payload.sub.replace(/^user:/, ''))
-    if (userRevokedSince !== undefined && payload.iat * 1000 <= userRevokedSince) {
+    if (userRevokedSince !== undefined && issuedAtMs(payload) <= userRevokedSince) {
       return { ok: false, code: 'user_revoked', message: '用户权限已收回。' }
     }
     // jti revocation wins over the local "already used" cache.
@@ -132,7 +135,7 @@ export class PolicyGateway {
       return { ok: false, code: 'jwks_stale', message: '签名公钥已过期，暂时无法建立新连接。' }
     }
     const deviceRevokedSince = this.revokedDevices.get(payload.deviceId)
-    if (deviceRevokedSince !== undefined && payload.iat * 1000 <= deviceRevokedSince) {
+    if (deviceRevokedSince !== undefined && issuedAtMs(payload) <= deviceRevokedSince) {
       return { ok: false, code: 'device_revoked', message: '该设备已被吊销。' }
     }
     const revokedJtiExpiry = this.revokedJtis.get(payload.jti)

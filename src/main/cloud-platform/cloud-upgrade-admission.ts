@@ -111,7 +111,10 @@ export function createCloudUpgradeAdmission(
     }
 
     const revocations = options.revocations
-    const issuedAtMs = payload.iat * 1000
+    // `iat` is whole seconds while revocations are milliseconds: a ticket minted
+    // in the same second as a revoke+regrant would otherwise be refused for up
+    // to a second. Older tickets without `iatMs` keep the second-granularity rule.
+    const issuedAtMs = payload.iatMs ?? payload.iat * 1000
     const projectSince = revokedSince(revocations?.projects, payload.project)
     if (projectSince !== undefined && issuedAtMs <= projectSince) {
       return rejectCloudUpgrade('project_revoked', '项目权限已收回。')
