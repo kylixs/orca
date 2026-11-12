@@ -3,14 +3,16 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { readString } from '../../../shared/json-fields'
 import type { CloudProjectSummary, CloudRpcOutcome } from '../../../shared/cloud-platform-ipc'
+import type { CloudRpc } from '../../../shared/cloud-file-browser'
 import type { CloudSessionView } from './use-cloud-session'
 import { cloudCloseNotice } from './cloud-close-notice'
+import { CloudFilePanel } from './cloud-file-panel'
 
 export type CloudProjectWorkspaceProps = {
   session: CloudSessionView
   project: CloudProjectSummary
-  /** One-shot RPC over the open cloud link; injected so the view stays testable. */
-  rpc: (method: string) => Promise<CloudRpcOutcome>
+  /** RPC over the open cloud link; injected so the view stays testable. */
+  rpc: CloudRpc
 }
 
 type LiveState =
@@ -46,6 +48,9 @@ export function CloudProjectWorkspace({
   }, [check])
 
   const capabilities = opened?.capabilities ?? []
+  // Absent means the reply predates the field; the host still enforces, so show
+  // the panel and let a refusal surface rather than hiding a usable pane.
+  const canReadFiles = opened?.permissions?.includes('file:read') ?? true
 
   return (
     <div className="flex h-full flex-col bg-background">
@@ -133,9 +138,15 @@ export function CloudProjectWorkspace({
           </Button>
         </div>
 
-        <p className="max-w-prose text-xs leading-relaxed text-muted-foreground">
-          终端与文件面板将在此工作区内按项目管理；当前版本先展示连接与主机信息，面板接入见后续模块。
-        </p>
+        {opened?.workspacePath && canReadFiles ? (
+          <CloudFilePanel rpc={rpc} workspacePath={opened.workspacePath} />
+        ) : (
+          <p className="max-w-prose text-xs leading-relaxed text-muted-foreground">
+            {opened?.workspacePath
+              ? '当前项目未授予文件读取权限，文件面板不可用。'
+              : '工作区尚未创建，无法打开文件面板。'}
+          </p>
+        )}
       </div>
     </div>
   )

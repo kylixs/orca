@@ -4,6 +4,7 @@ import type {
   CloudConnectionEvent,
   CloudOpenResult,
   CloudProjectSummary,
+  CloudProjectPermission,
   CloudRpcOutcome,
   CloudSessionState
 } from '../../../shared/cloud-platform-ipc'
@@ -34,6 +35,8 @@ export type CloudOpenedProject = {
   /** The user's checkout inside it, created on first open if needed. */
   workspacePath?: string
   capabilities: string[]
+  /** What the ticket grants; the host enforces it, the UI only hides panes. */
+  permissions?: CloudProjectPermission[]
   route: 'direct' | 'relay'
   /** Runtime environment panes address; absent when registration was skipped. */
   environmentId?: string
@@ -166,6 +169,7 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
         workspaceRoot: result.workspaceRoot,
         ...(result.workspacePath ? { workspacePath: result.workspacePath } : {}),
         capabilities: result.capabilities,
+        ...(result.permissions ? { permissions: result.permissions } : {}),
         route: result.route,
         ...(result.environmentId ? { environmentId: result.environmentId } : {})
       })

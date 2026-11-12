@@ -7,6 +7,7 @@ import {
   readString,
   readStringArray
 } from '../../shared/json-fields'
+import type { CloudProjectPermission } from '../../shared/cloud-platform-ipc'
 import type { CloudConnectTicket, CloudEndpoint, CloudProject } from './cloud-connect-client'
 
 /** Platform response parsing for the desktop connect client; null means "malformed". */
@@ -16,7 +17,19 @@ export type TicketClaims = {
   deviceId: string | null
   devicePubKey: string | null
   host: string | null
+  /** Signed project permissions; unknown values are dropped, never passed on. */
+  permissions: CloudProjectPermission[]
 }
+
+const KNOWN_PERMISSIONS: ReadonlySet<string> = new Set<CloudProjectPermission>([
+  'open',
+  'terminal',
+  'agent',
+  'file:read',
+  'file:write',
+  'browser',
+  'download'
+])
 
 export function readTicketClaims(credential: string): TicketClaims {
   const body = credential.split('.')[1]
@@ -26,7 +39,10 @@ export function readTicketClaims(credential: string): TicketClaims {
     deviceToken: readString(parsed, 'deviceToken'),
     deviceId: readString(parsed, 'deviceId'),
     devicePubKey: readString(parsed, 'devicePubKey'),
-    host: readString(parsed, 'host')
+    host: readString(parsed, 'host'),
+    permissions: (readStringArray(parsed, 'perms') ?? []).filter(
+      (value): value is CloudProjectPermission => KNOWN_PERMISSIONS.has(value)
+    )
   }
 }
 

@@ -695,8 +695,31 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 2. 表是人工维护的：新增文件 RPC 时必须同步登记，否则会被 `path_unverifiable` 拒绝。这是有意的 fail-closed，但需要加一条"新增 `files.*` 方法必须进表"的评审清单项。
 3. `files.searchPaths` 的 `excludePaths` 已纳入检查，但 `query`/`followSymlinks` 等语义未变——搜索仍可能沿工作区内的符号链接读到项目外内容（取决于 `files.search` 实现是否跟随），列为后续核查项。
 
+## M42 云端文件面板（本轮，T206 第一片）
+
+**问题**：M25/M40 之后云端项目有了 `environmentId` 与真实 checkout，但工作区页只显示连接信息，用户看不到自己工作区里的任何文件。T206「项目视图接入」要挂终端与文件面板；终端需要云端链路上的流式通道（当前 `CloudConnectClient` 只有请求/响应，见剩余项），文件面板则只依赖已就绪的 `files.readDir`/`files.readPreview`（M41 已登记并收口路径），因此本轮先交付文件面板。
+
+| 改动 | 内容 |
+|---|---|
+| `shared/cloud-file-browser.ts`（新） | 面板的数据层：`browseCloudDirectory` / `previewCloudFile` 走 `files.readDir`/`files.readPreview`，worker 选择器固定为 `path:<workspacePath>`；路径拼接拒绝 `..`、分隔符与空名；目录在前、名称不区分大小写排序；未知/残缺回复报 `malformed_reply`，**不当作空目录**；隐藏 `.git`（worktree 里它是 gitfile 指针） |
+| `renderer/cloud/cloud-file-panel.tsx`（新） | 面包屑 + 目录列表 + 文本预览；失败显示主机原因（`forbidden` → 越界/无权限），二进制/图片不按文本渲染；用请求序号丢弃过期目录回复 |
+| `shared/cloud-platform-ipc.ts` / `cloud-connect-response.ts` | 票据 `perms` 解析为 `CloudProjectPermission[]`（未知值丢弃）；`CloudOpenResult.permissions` 由**将要被主机校验的那张票据**读出，供 UI 判断能否显示面板 |
+| `ipc/cloud-platform.ts` / `use-cloud-session.ts` / `cloud-project-workspace.tsx` / `cloud-app.tsx` | 透传权限；工作区页在 `workspacePath` 存在且票据含 `file:read` 时挂载面板，否则说明原因；`CloudApp` 改为把完整 `rpc(method, params)` 传下去（此前固定只调 `status.get`） |
+
+**验证（`evidence/m42-file-panel/`）**：3 条真实端到端——真实平台进程签票、真实 TLS Runtime、真实 git 仓库与托管 worktree、真实 `CloudConnectClient`，且**直接调用面板自己的数据层函数**：
+- M42-1 根目录列出 `src/`（目录在前）与 `logo.bin`、`README.md`；进入 `src/` 列出 `app.ts`；预览内容为主机真实读到的 `# payment service`；
+- M42-2 `../../../../other-team` 被拒 `forbidden`（`outside the project`），预览他人仓库文件同样被拒；
+- M42-3 管理员收回 `file:read` 后，平台新签票据的 `perms` 不再含它，同一工作区读取被 `forbidden` 且提示缺少 `'file:read'`；结束后恢复授权。
+
+另有 9 条数据层单测（路径拼接/排序/过滤/残缺回复/错误透传）与 3 条面板组件测试（导航、越界提示、二进制不按文本显示）。**负向对照**：把 `files.readDir` 临时放进 `SESSION_METHODS`（绕过 `file:read`）后 M42-2、M42-3 变红——同时暴露了权限表与路径守卫的耦合：`cloudPathAccessOf` 依据 `cloudMethodAccess` 判断读/写，归为 `session` 的方法会连路径检查一起跳过，因此文件方法**不能**登记为 `session`。主机侧 + 渲染侧 + 共享 29 文件 156 条、模拟器 97 条全过；`tsc` node/web 0 错；门禁 7 项 0 新发现。
+
+**如实记录 / 剩余**：
+1. 面板是只读的（列表 + 预览）。写/新建/删除虽已登记为 `file:write`，但 UI 未接；等 M41 的写路径在面板上做完整错误呈现后再开放。
+2. 图片预览只显示 MIME，不解码 base64；`files.readPreview` 返回 base64 内容，渲染成 `<img>` 需要内容类型协商（设计 §9 的下载管控也应在此处生效），列入下载策略接入轮次。
+3. 终端面板需要云端链路的流式 RPC（PTY 输出推送），`CloudConnectClient` 目前只做请求/响应；这是 T206 剩余的最大一块，也是下一轮候选。
+
 ## 下一步
 
-1. 面板接入：在工作区内用 M25 的 `environmentId` 挂载终端/文件面板（现有环境 selector 已可用，剩余是界面与 TabGroup 状态接线）。文件面板需用 `files.list`/`files.read`/`files.readPreview` 客户端渲染，不要依赖 `files.open`（云主机无窗口）。
+1. 终端面板：为云端链路补流式通道（`terminal.create` + PTY 输出推送 + `terminal.attach/detach` 语义），再把终端面板挂到工作区；需按「远程线兼容」规则做能力协商（新 opcode 必须协商，旧客户端静默丢弃未知 opcode）。
 2. 遗留：M4 `isInsideRoot` 对 Windows 段大小写敏感（fail-closed，误拒而非误放；按需放宽）。
 3. 并发上限目前只统计云会话；本地配对连接不占这 32 个名额（设计表只约束云端会话），如运营需要主机总量配额再扩展。

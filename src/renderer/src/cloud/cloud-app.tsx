@@ -35,7 +35,7 @@ export function CloudApp({ bridge }: { bridge: CloudBridge | null }): React.JSX.
       <CloudProjectWorkspace
         session={session}
         project={openedProject}
-        rpc={() => bridge.rpc('status.get')}
+        rpc={(method, params) => bridge.rpc(method, params)}
       />
     )
   }

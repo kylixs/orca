@@ -18,6 +18,19 @@ export const CLOUD_PLATFORM_IPC = {
   connectionChanged: 'cloud:connectionChanged'
 } as const
 
+/**
+ * The project permissions the platform signed into the ticket. The host enforces
+ * them; the renderer reads them only to hide what it cannot do, never to allow.
+ */
+export type CloudProjectPermission =
+  | 'open'
+  | 'terminal'
+  | 'agent'
+  | 'file:read'
+  | 'file:write'
+  | 'browser'
+  | 'download'
+
 export type CloudProjectSummary = {
   id: string
   key: string
@@ -45,6 +58,8 @@ export type CloudOpenResult =
        */
       workspacePath?: string
       capabilities: string[]
+      /** Project permissions from the ticket; absent when the reply predates them. */
+      permissions?: CloudProjectPermission[]
       /**
        * The runtime environment panes address for this project. Present when the
        * project was opened for a workspace (`cloud:openWorkspace`).

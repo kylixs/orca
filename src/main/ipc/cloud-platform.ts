@@ -5,6 +5,7 @@ import {
   type CloudRpcOutcome,
   type CloudSessionState
 } from '../../shared/cloud-platform-ipc'
+import { readTicketClaims } from '../cloud-platform/cloud-connect-response'
 import { CloudSessionService } from '../cloud-platform/cloud-session-service'
 import {
   registerCloudRuntimeEnvironment,
@@ -73,6 +74,9 @@ export function registerCloudPlatformHandlers(
       workspaceRoot: prepared.link.workspaceRoot,
       workspacePath: ensured.workspacePath,
       capabilities: ensured.capabilities,
+      // Read from the ticket the host will verify, so the UI shows exactly the
+      // permissions this connection carries rather than a stale platform list.
+      permissions: readTicketClaims(prepared.link.cloudUpgrade.credential).permissions,
       environmentId: environment.id
     }
   })
