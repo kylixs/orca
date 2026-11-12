@@ -1,6 +1,6 @@
 # 开发进度
 
-> 更新时间：2026-11-13 12:25
+> 更新时间：2026-11-13 12:35
 > 规则：每轮只推进一个模块；失败必须如实记录。
 
 ## 模块状态
@@ -31,6 +31,7 @@
 | M21 客户端界面（登录/工作台） | ✅ 完成 | `evidence/m21-cloud-ui/` | `CloudApp` + 登录面板 + 工作台列表；8 条界面用例（happy-dom），路由接入 `App.tsx` |
 | M22 项目链接（凭证 → Orca 配对） | ✅ 完成 | `evidence/m22-project-link/` | 云端票据转成现有 `PairingOffer` + `cloudUpgrade`，现有 `subscribeRemoteRuntimeRequest` 直接建链（请求与订阅两条通道）；5 条真实平台 + 真实 TLS Runtime 用例，含"不带凭证必被拒"对照 |
 | M23 质量门禁清理 | ✅ 完成 | `evidence/m23-quality-gate/` | 74 条 `consistent-type-assertions` → 0；JSON 字段读取器 + 票据/项目解析器；门禁 7 项扫描 0 新发现，79 条用例回归全过 |
+| M24 项目工作区视图 | ✅ 完成 | `evidence/m24-project-workspace/` | 打开项目进入工作区（线路/根目录/能力/实时 status.get）；返回工作台只关连接可再开；21 条用例 + 78 条回归 + 门禁绿 |
 
 ## 最近一次测试结果
 
@@ -312,8 +313,28 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 
 **行为等价性**：替换都是"先读字段、再判空"；失败路径从 `undefined` 静默传播变为显式错误，正常路径字段与类型不变。
 
+## M24 项目工作区视图（本轮）
+
+**问题**：M21 打开项目后界面停在列表；M22 打通链路但用户看不到"进了工作区"。
+
+| 文件 | 内容 |
+|---|---|
+| `renderer/src/cloud/cloud-project-workspace.tsx`（新） | 工作区：项目名、线路徽标、下载受限、工作区根目录、开发机能力、实时运行时状态（`status.get`）、刷新、返回工作台 |
+| `renderer/src/cloud/cloud-app.tsx` | 有已打开项目 → 工作区；否则 → 工作台 |
+| `renderer/src/cloud/use-cloud-session.ts` | 新增 `opened{projectId,workspaceRoot,capabilities,route}` 与 `closeProject()`；4403/登出/返回都会清空 |
+| `shared/cloud-platform-ipc.ts` + preload + main ipc | 新增 `cloud:closeProject` |
+| `main/cloud-platform/cloud-session-service.ts` | `closeProject()` 只关连接，保留令牌与设备密钥；再次打开同一项目无需重新登录 |
+
+**端到端验证（`evidence/m24-project-workspace/`）**：
+
+- `cases.txt` 21 条：界面 10 条（进入工作区显示根目录/能力/`已连接 · rt-1`、检查失败显示 `NOT_CONNECTED`、返回工作台调用 `closeProject`、吊销后回列表并提示）；真实平台进程 + 真实 TLS Runtime 会话 6 条（新增"返回工作台只关连接：会话仍在，可再次打开且 RPC 仍通"）；M22 项目链接 5 条。
+- `regressions.txt` 9 个文件 78 条全过。
+- `gate.txt`：7 项扫描 0 新发现、gate passed（221 文件）；tsc node/web exit=0。
+
+**如实说明**：界面用例用脚本化 bridge（happy-dom 跨源限制），真实链路由同批真实进程用例覆盖；运行时 id 仅在主机上报时显示，否则只显示"已连接"；终端/文件面板尚未嵌入，界面文案已明确写出来。
+
 ## 下一步
 
-1. 项目视图：把云端项目注册成 Orca 远程环境/工作区入口，使工作台"打开项目"后真正切换到该环境的 TabGroup/终端（M22 已解决链路与会话层，剩余是界面状态切换）。
+1. 工作区面板接入：把云端项目注册成 Orca 远程环境（selector → 云端会话路由），让现有 TabGroup/终端/文件面板直接使用该链路。
 2. 平台在授权变更后立即撤销全部项目凭证，同秒内重连可能被拒（`iat*1000 <= since`）；客户端重试可绕过，但值得确认是否需要秒级宽限。
 3. 遗留：M1 设备 PoP、M6 `relativePath` 契约、`jwks_stale` 与分支名 `..` 补用例。

@@ -33,6 +33,7 @@ export function registerCloudPlatformHandlers(
   handle<CloudOpenResult>(CLOUD_PLATFORM_IPC.openProject, (projectId: string) =>
     session.openProject(projectId)
   )
+  handle(CLOUD_PLATFORM_IPC.closeProject, () => session.closeProject())
   handle<CloudRpcOutcome>(
     CLOUD_PLATFORM_IPC.rpc,
     (method: string, params?: Record<string, unknown>) => session.rpc(method, params ?? {})

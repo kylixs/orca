@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { CloudLoginPanel } from './cloud-login-panel'
+import { CloudProjectWorkspace, openedProjectSummary } from './cloud-project-workspace'
 import { CloudWorkbench } from './cloud-workbench'
 import { useCloudSession, type CloudBridge } from './use-cloud-session'
 
@@ -24,6 +25,17 @@ export function CloudApp({ bridge }: { bridge: CloudBridge | null }): React.JSX.
         submitting={session.status === 'signing-in'}
         error={session.error}
         onSignIn={(username, password) => void session.signIn(username, password)}
+      />
+    )
+  }
+
+  const openedProject = openedProjectSummary(session)
+  if (bridge && openedProject) {
+    return (
+      <CloudProjectWorkspace
+        session={session}
+        project={openedProject}
+        rpc={() => bridge.rpc('status.get')}
       />
     )
   }

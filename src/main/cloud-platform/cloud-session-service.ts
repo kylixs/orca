@@ -103,6 +103,15 @@ export class CloudSessionService {
     return this.state
   }
 
+  /** Leaves the workspace without ending the platform session. */
+  closeProject(): { ok: true } {
+    // Keeps the token and device keys: reopening the same project must not need a re-login.
+    this.client?.close()
+    this.currentProjectId = null
+    this.currentRoute = null
+    return { ok: true }
+  }
+
   async listProjects(): Promise<CloudProjectSummary[]> {
     if (!this.client) {
       throw Object.assign(new Error('not signed in'), { code: 'NOT_SIGNED_IN' })

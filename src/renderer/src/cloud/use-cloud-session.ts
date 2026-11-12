@@ -17,6 +17,7 @@ import type {
 
 export type CloudBridge = {
   login: (username: string, password: string) => Promise<CloudSessionState>
+  closeProject: () => Promise<{ ok: boolean }>
   logout: () => Promise<CloudSessionState>
   getState: () => Promise<CloudSessionState>
   listProjects: () => Promise<CloudProjectSummary[]>
@@ -25,12 +26,21 @@ export type CloudBridge = {
   onConnectionChanged: (listener: (event: CloudConnectionEvent) => void) => () => void
 }
 
+export type CloudOpenedProject = {
+  projectId: string
+  workspaceRoot: string
+  capabilities: string[]
+  route: 'direct' | 'relay'
+}
+
 export type CloudSessionView = {
   status: 'loading' | 'unavailable' | 'signed-out' | 'signing-in' | 'signed-in' | 'error'
   displayName: string | null
   projects: CloudProjectSummary[]
   /** Project currently open over the cloud link, if any. */
   openProjectId: string | null
+  /** What the workspace view needs about the open project. */
+  opened: CloudOpenedProject | null
   route: 'direct' | 'relay' | null
   /** Set when the host closed the socket (revocation, maintenance, network). */
   notice: { code: number | null; reason: string | null } | null
@@ -38,6 +48,7 @@ export type CloudSessionView = {
   signIn: (username: string, password: string) => Promise<void>
   signOut: () => Promise<void>
   openProject: (projectId: string) => Promise<CloudOpenResult | null>
+  closeProject: () => Promise<void>
 }
 
 function isCloudState(value: unknown): value is CloudSessionState {
@@ -50,6 +61,7 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
   const [displayName, setDisplayName] = useState<string | null>(null)
   const [projects, setProjects] = useState<CloudProjectSummary[]>([])
   const [openProjectId, setOpenProjectId] = useState<string | null>(null)
+  const [opened, setOpened] = useState<CloudOpenedProject | null>(null)
   const [route, setRoute] = useState<'direct' | 'relay' | null>(null)
   const [notice, setNotice] = useState<CloudSessionView['notice']>(null)
   const [error, setError] = useState<string | null>(null)
@@ -66,6 +78,7 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
     setDisplayName(null)
     setProjects([])
     setOpenProjectId(null)
+    setOpened(null)
     setRoute(null)
     setStatus('signed-out')
   }, [])
@@ -93,6 +106,7 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
     const unsubscribe = active.onConnectionChanged((event) => {
       if (event.closeCode !== null) {
         setOpenProjectId(null)
+        setOpened(null)
         setRoute(null)
         setNotice({ code: event.closeCode, reason: event.reason })
       }
@@ -141,6 +155,12 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
     const result = await active.openProject(projectId)
     if (result.ok) {
       setOpenProjectId(result.projectId)
+      setOpened({
+        projectId: result.projectId,
+        workspaceRoot: result.workspaceRoot,
+        capabilities: result.capabilities,
+        route: result.route
+      })
       setRoute(result.route)
       setStatus('signed-in')
     } else {
@@ -149,16 +169,31 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
     return result
   }, [])
 
+  const closeProject = useCallback(async () => {
+    const active = bridgeRef.current
+    if (!active) {
+      return
+    }
+    await active.closeProject()
+    setOpenProjectId(null)
+    setOpened(null)
+    setRoute(null)
+    setError(null)
+    setNotice(null)
+  }, [])
+
   return {
     status,
     displayName,
     projects,
     openProjectId,
+    opened,
     route,
     notice,
     error,
     signIn,
     signOut,
-    openProject
+    openProject,
+    closeProject
   }
 }

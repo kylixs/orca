@@ -12,6 +12,7 @@ export const CLOUD_PLATFORM_IPC = {
   state: 'cloud:state',
   listProjects: 'cloud:listProjects',
   openProject: 'cloud:openProject',
+  closeProject: 'cloud:closeProject',
   prepareProjectLink: 'cloud:prepareProjectLink',
   rpc: 'cloud:rpc',
   connectionChanged: 'cloud:connectionChanged'

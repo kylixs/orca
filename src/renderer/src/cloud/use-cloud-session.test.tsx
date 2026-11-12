@@ -6,6 +6,7 @@ import type {
   CloudConnectionEvent,
   CloudOpenResult,
   CloudProjectSummary,
+  CloudRpcOutcome,
   CloudSessionState
 } from '../../../shared/cloud-platform-ipc'
 import { CloudApp } from './cloud-app'
@@ -47,17 +48,23 @@ const projects: CloudProjectSummary[] = [
   }
 ]
 
-type Script = { loginError?: string; openResult?: CloudOpenResult }
+type Script = {
+  loginError?: string
+  openResult?: CloudOpenResult
+  rpcResult?: CloudRpcOutcome
+}
 
 type TestBridge = CloudBridge & {
   emitClose: (event: CloudConnectionEvent) => void
   signedOut: boolean
+  closedProjects: number
 }
 
 function makeBridge(script: Script = {}): TestBridge {
   let listener: ((event: CloudConnectionEvent) => void) | null = null
   const bridge: TestBridge = {
     signedOut: false,
+    closedProjects: 0,
     emitClose: (event) => listener?.(event),
     login: async (username: string): Promise<CloudSessionState> => {
       if (script.loginError) {
@@ -79,7 +86,11 @@ function makeBridge(script: Script = {}): TestBridge {
         workspaceRoot: `/srv/work/${projectId}`,
         capabilities: ['pty']
       },
-    rpc: async () => ({ ok: true, result: {} }),
+    closeProject: async () => {
+      bridge.closedProjects += 1
+      return { ok: true }
+    },
+    rpc: async () => script.rpcResult ?? { ok: true, result: { runtimeId: 'rt-1' } },
     onConnectionChanged: (next) => {
       listener = next
       return () => {
@@ -149,17 +160,51 @@ describe('云端工作台界面', () => {
     expect(disabled).toHaveLength(1)
   })
 
-  it('打开项目后显示线路', async () => {
+  it('打开项目后进入项目工作区：线路、工作区根、能力、实时状态', async () => {
     const bridge = makeBridge()
     await signIn(bridge)
     await waitFor(() => expect(screen.getByText('工作台')).toBeTruthy())
 
-    const online = firstEnabledOpenButton()
     await act(async () => {
-      await userEvent.click(online)
+      await userEvent.click(firstEnabledOpenButton())
     })
-    await waitFor(() => expect(screen.getByTestId('cloud-route').textContent).toBe('直连'))
-    expect(screen.getByRole('button', { name: '已打开' })).toBeTruthy()
+    await waitFor(() => expect(screen.getByText('工作区根目录')).toBeTruthy())
+    expect(screen.getByTestId('cloud-route').textContent).toBe('直连')
+    expect(screen.getByText('/srv/work/p1')).toBeTruthy()
+    expect(screen.getByTestId('cloud-capabilities').textContent).toContain('pty')
+    // Live status comes back from the host over the open link.
+    await waitFor(() =>
+      expect(screen.getByTestId('cloud-live').textContent).toContain('已连接 · rt-1')
+    )
+  })
+
+  it('工作区里运行时检查失败时显示错误码，而不是空白', async () => {
+    const bridge = makeBridge({ rpcResult: { ok: false, code: 'NOT_CONNECTED' } })
+    await signIn(bridge)
+    await waitFor(() => expect(screen.getByText('工作台')).toBeTruthy())
+    await act(async () => {
+      await userEvent.click(firstEnabledOpenButton())
+    })
+    await waitFor(() =>
+      expect(screen.getByTestId('cloud-live').textContent).toContain('NOT_CONNECTED')
+    )
+  })
+
+  it('返回工作台会关闭项目连接并回到项目列表', async () => {
+    const bridge = makeBridge()
+    await signIn(bridge)
+    await waitFor(() => expect(screen.getByText('工作台')).toBeTruthy())
+    await act(async () => {
+      await userEvent.click(firstEnabledOpenButton())
+    })
+    await waitFor(() => expect(screen.getByText('工作区根目录')).toBeTruthy())
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: '返回工作台' }))
+    })
+    await waitFor(() => expect(screen.getByText('工作台')).toBeTruthy())
+    expect(bridge.closedProjects).toBe(1)
+    expect(screen.queryByTestId('cloud-route')).toBeNull()
   })
 
   it('打开失败把错误码摆在界面上，不保留"已打开"', async () => {

@@ -211,6 +211,11 @@ describe('云端会话服务（渲染进程可见面）', () => {
 
     const status = await session.rpc('status.get')
     expect(status.ok).toBe(true)
+    // The workspace view renders this reply; it must be a real object, not null.
+    if (!status.ok) {
+      throw new Error(`status.get failed: ${status.code}`)
+    }
+    expect(typeof status.result).toBe('object')
   }, 20000)
 
   it('吊销后向渲染进程推送关闭事件，并清空当前项目', async () => {
@@ -238,6 +243,22 @@ describe('云端会话服务（渲染进程可见面）', () => {
     await new Promise((r) => setTimeout(r, 1500))
     expect(events.some((event) => event.closeCode === 4403)).toBe(true)
     expect(session.connectedProjectId).toBeNull()
+  }, 25000)
+
+  it('返回工作台只关闭项目连接：会话仍在，可再次打开', async () => {
+    const session = makeSession()
+    await session.login('zhangsan', 'Passw0rd!')
+    expect((await session.openProject(projectId)).ok).toBe(true)
+    expect((await session.rpc('status.get')).ok).toBe(true)
+
+    expect(session.closeProject()).toEqual({ ok: true })
+    expect(await session.rpc('status.get')).toEqual({ ok: false, code: 'NOT_CONNECTED' })
+    expect(session.getState().status).toBe('signed-in')
+
+    // The token and device keys survived, so reopening needs no second login.
+    const reopened = await session.openProject(projectId)
+    expect(reopened.ok).toBe(true)
+    expect((await session.rpc('status.get')).ok).toBe(true)
   }, 25000)
 
   it('登出后状态回到未登录', async () => {
