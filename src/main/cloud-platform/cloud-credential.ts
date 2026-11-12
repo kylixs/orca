@@ -1,5 +1,4 @@
 import { createPublicKey, verify, type KeyObject } from 'node:crypto'
-import { ownEntries } from '../../shared/json-fields'
 
 // Host-side twin of cloud-platform/packages/contract/src/credential.ts.
 // Kept dependency-free (node:crypto only) so it can be imported both by the main
@@ -40,6 +39,14 @@ export type CloudCredentialVerdict =
       ok: false
       reason: 'malformed' | 'unknown_kid' | 'bad_signature' | 'expired' | 'not_yet_valid'
     }
+
+// Why local: this module must stay dependency-free — the platform's parity test
+// imports it directly under plain Node type stripping.
+function ownEntries(value: unknown): [string, unknown][] {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? Object.entries(value)
+    : []
+}
 
 /** Deterministic JSON (sorted keys) so the signature input matches the platform's. */
 export function canonicalCloudJson(value: unknown): string {

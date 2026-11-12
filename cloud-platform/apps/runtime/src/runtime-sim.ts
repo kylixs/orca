@@ -2,6 +2,7 @@ import { createServer as createHttpServer } from 'node:http'
 import { readFileSync } from 'node:fs'
 import { mkdir, realpath } from 'node:fs/promises'
 import { assertInsideRoot } from './path-containment.ts'
+import { resolveFileRequestPath } from './file-request-paths.ts'
 import { WebSocketServer } from 'ws'
 import { isInsideRoot } from '../../../packages/contract/src/permissions.ts'
 import { mtlsFetch } from '../../../packages/contract/src/internal-fetch.ts'
@@ -306,16 +307,37 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
         )
         return
       }
-      if (request.method === 'files.read') {
-        const path = String(request.params?.path ?? '')
-        const content = await gateway.executeRead(payload, path)
-        ws.send(JSON.stringify({ id: request.id, result: { content } }))
+      const filePath = (mode: 'read' | 'write') =>
+        resolveFileRequestPath(
+          { projectRoot: payload.projectRoot, workspaceRoot: payload.workspaceRoot },
+          request.params ?? {},
+          mode
+        )
+      if (request.method === 'files.read' || request.method === 'files.readDir') {
+        const resolved = filePath('read')
+        if (!resolved.ok) {
+          ws.send(
+            JSON.stringify({ id: request.id, error: { code: resolved.code, message: resolved.message } })
+          )
+          return
+        }
+        const result =
+          request.method === 'files.read'
+            ? { content: await gateway.executeRead(payload, resolved.absolute) }
+            : { entries: await gateway.executeReadDir(payload, resolved.absolute) }
+        ws.send(JSON.stringify({ id: request.id, result }))
         return
       }
       if (request.method === 'files.write') {
-        const path = String(request.params?.path ?? '')
+        const resolved = filePath('write')
+        if (!resolved.ok) {
+          ws.send(
+            JSON.stringify({ id: request.id, error: { code: resolved.code, message: resolved.message } })
+          )
+          return
+        }
         const content = String(request.params?.content ?? '')
-        await gateway.executeWrite(payload, path, content)
+        await gateway.executeWrite(payload, resolved.absolute, content)
         ws.send(JSON.stringify({ id: request.id, result: { ok: true } }))
         return
       }
@@ -329,7 +351,9 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
         // Reject instead of rewriting: silently mapping ".." to "branch" could collide
         // two different branches onto one directory and one idempotency key.
         const cleaned = branch.replace(/[^A-Za-z0-9._-]+/g, '-')
-        if (!cleaned || cleaned.startsWith('.') || cleaned.includes('..')) {
+        // A name of pure separators sanitizes to dashes and would become a real
+        // directory with no relation to any branch.
+        if (!/[A-Za-z0-9]/.test(cleaned) || cleaned.startsWith('.') || cleaned.includes('..')) {
           ws.send(JSON.stringify({ id: request.id, error: { code: 'BAD_REQUEST', message: '分支名不合法' } }))
           return
         }

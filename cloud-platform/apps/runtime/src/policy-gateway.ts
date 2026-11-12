@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, realpath } from 'node:fs/promises'
+import { readFile, readdir, writeFile, mkdir, realpath } from 'node:fs/promises'
 import { dirname, normalize, sep } from 'node:path'
 import { assertInsideRoot } from './path-containment.ts'
 import {
@@ -175,6 +175,16 @@ export class PolicyGateway {
     }
     const root = requiresWritePath(method) ? payload.workspaceRoot : payload.projectRoot
     const candidates: string[] = []
+    if (typeof params.relativePath === 'string' && typeof params.worktree === 'string') {
+      // Real Orca's shape: a path relative to the selected worktree.
+      if (requiresWritePath(method) && params.worktree !== payload.workspaceRoot) {
+        return { ok: false, code: 'PATH_OUTSIDE_ROOT', message: '写操作只能落在本人工作区内。' }
+      }
+      if (params.worktree !== payload.workspaceRoot && params.worktree !== payload.projectRoot) {
+        return { ok: false, code: 'WORKTREE_NOT_FOUND', message: '未知的工作区选择器。' }
+      }
+      candidates.push(normalize(`${params.worktree}${sep}${params.relativePath}`))
+    }
     if (typeof params.path === 'string') candidates.push(params.path)
     for (const key of MULTI_PATH_WRITE_PARAMS[method] ?? []) {
       if (typeof params[key] === 'string') candidates.push(params[key] as string)
@@ -189,6 +199,21 @@ export class PolicyGateway {
 
   localProjectPath(_payload: CredentialPayload, absolute: string): string {
     return this.localPath(absolute)
+  }
+
+  async executeReadDir(
+    payload: CredentialPayload,
+    path: string
+  ): Promise<{ name: string; type: 'file' | 'directory' }[]> {
+    const resolved = await assertInsideRoot(
+      await realpath(this.localPath(payload.projectRoot)),
+      this.localPath(path)
+    )
+    const entries = await readdir(resolved, { withFileTypes: true })
+    return entries.map((entry) => ({
+      name: entry.name,
+      type: entry.isDirectory() ? 'directory' : 'file'
+    }))
   }
 
   async executeRead(payload: CredentialPayload, path: string): Promise<string> {

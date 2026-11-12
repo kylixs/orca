@@ -15,6 +15,22 @@ import {
   type Service
 } from './harness.ts'
 
+
+/**
+ * Real Orca addresses files as { worktree, relativePath }, not as a project-absolute
+ * path. The simulator accepts exactly that shape so these cases speak the real
+ * wire contract a shipped client does.
+ */
+type Opened = { connect: { workspace: { projectRoot: string; workspaceRoot: string } } }
+
+function projectFile(opened: Opened, relativePath: string): Record<string, string> {
+  return { worktree: opened.connect.workspace.projectRoot, relativePath }
+}
+
+function workspaceFile(opened: Opened, relativePath: string): Record<string, string> {
+  return { worktree: opened.connect.workspace.workspaceRoot, relativePath }
+}
+
 const EVIDENCE = 'e2e-platform'
 let api: Service
 let relay: Service
@@ -127,7 +143,7 @@ describe('平台端到端（真实进程 / TCP / TLS / Ed25519）', () => {
     const result = who.ok ? (who.result as { sub: string }) : null
     assert.equal(result?.sub, 'user:zhangsan')
 
-    const read = await client.rpc('files.read', { path: `${opened.connect.workspace.projectRoot}/src/calculator.ts` })
+    const read = await client.rpc('files.read', projectFile(opened, 'src/calculator.ts'))
     assert.equal(read.ok, true)
 
     saveEvidence(EVIDENCE, 'E1-direct.json', {
@@ -216,15 +232,13 @@ describe('平台端到端（真实进程 / TCP / TLS / Ed25519）', () => {
     const projects = await client.listProjects()
     const opened = await client.openProject(projects[0].id)
     const write = await client.rpc('files.write', {
-      path: `${opened.connect.workspace.workspaceRoot}/src/new.ts`,
+      ...workspaceFile(opened, 'src/new.ts'),
       content: 'x'
     })
     assert.equal(write.ok, false)
     assert.equal(write.ok === false ? write.code : '', 'PERMISSION_MISSING')
 
-    const read = await client.rpc('files.read', {
-      path: `${opened.connect.workspace.projectRoot}/README.md`
-    })
+    const read = await client.rpc('files.read', projectFile(opened, 'README.md'))
     assert.equal(read.ok, true)
 
     saveEvidence(EVIDENCE, 'E4-method-permission.json', { write, read })
@@ -248,9 +262,7 @@ describe('平台端到端（真实进程 / TCP / TLS / Ed25519）', () => {
     await client.login('zhangsan', 'Passw0rd!')
     const projects = await client.listProjects()
     const opened = await client.openProject(projects[0].id)
-    const download = await client.rpc('files.download', {
-      path: `${opened.connect.workspace.projectRoot}/README.md`
-    })
+    const download = await client.rpc('files.download', projectFile(opened, 'README.md'))
     assert.equal(download.ok, false)
     assert.equal(download.ok === false ? download.code : '', 'EXPORT_DENIED')
     saveEvidence(EVIDENCE, 'E5-export-denied.json', download)
@@ -262,18 +274,18 @@ describe('平台端到端（真实进程 / TCP / TLS / Ed25519）', () => {
     await client.login('zhangsan', 'Passw0rd!')
     const projects = await client.listProjects()
     const opened = await client.openProject(projects[0].id)
-    const traversalRead = await client.rpc('files.read', { path: '../../etc/passwd' })
+    const traversalRead = await client.rpc('files.read', projectFile(opened, '../../etc/passwd'))
     assert.equal(traversalRead.ok, false)
 
     const outsideWrite = await client.rpc('files.write', {
-      path: `${opened.connect.workspace.projectRoot}/main-only.ts`,
+      ...projectFile(opened, 'main-only.ts'),
       content: 'x'
     })
     assert.equal(outsideWrite.ok, false)
     assert.equal(outsideWrite.ok === false ? outsideWrite.code : '', 'PATH_OUTSIDE_ROOT')
 
     const insideWrite = await client.rpc('files.write', {
-      path: `${opened.connect.workspace.workspaceRoot}/src/feature.ts`,
+      ...workspaceFile(opened, 'src/feature.ts'),
       content: 'export const ok = true\n'
     })
     assert.equal(insideWrite.ok, true)
@@ -354,7 +366,7 @@ describe('平台端到端（真实进程 / TCP / TLS / Ed25519）', () => {
     const projects = await client.listProjects()
     const opened = await client.openProject(projects[0].id)
     const escaped = await client.rpc('files.write', {
-      path: `${opened.connect.workspace.workspaceRoot}/escape/pwned.ts`,
+      ...workspaceFile(opened, 'escape/pwned.ts'),
       content: 'escaped'
     })
     assert.equal(escaped.ok, false)
@@ -362,7 +374,8 @@ describe('平台端到端（真实进程 / TCP / TLS / Ed25519）', () => {
     assert.equal(existsSync(join(outside, 'pwned.ts')), false)
 
     const sibling = await client.rpc('files.write', {
-      path: `/srv/work/payment-service/.orca-worktrees/zhangsan2/x.ts`,
+      worktree: '/srv/work/payment-service/.orca-worktrees/zhangsan2',
+      relativePath: 'x.ts',
       content: 'x'
     })
     assert.equal(sibling.ok, false)
@@ -504,9 +517,7 @@ describe('平台端到端（真实进程 / TCP / TLS / Ed25519）', () => {
     assert.equal(runtime.proc.signalCode, null, 'runtime must not be killed by a signal')
     const afterOutage = await client.rpc('sessions.whoami')
     assert.equal(afterOutage.ok, true, 'established session must still work after the outage')
-    const stillReads = await client.rpc('files.read', {
-      path: `${opened.connect.workspace.projectRoot}/README.md`
-    })
+    const stillReads = await client.rpc('files.read', projectFile(opened, 'README.md'))
     assert.equal(stillReads.ok, true)
 
     const fresh = new CloudClient(api.url)
@@ -599,9 +610,7 @@ test('E8a 畸形策略值不 fail-open，Runtime 存活（需真实会话才有�
     await waitFor(async () => policyHits > 0, 4000)
     await new Promise((r) => setTimeout(r, 1500))
 
-    const download = await client.rpc('files.download', {
-      path: `${opened.connect.workspace.projectRoot}/README.md`
-    })
+    const download = await client.rpc('files.download', projectFile(opened, 'README.md'))
     assert.equal(download.ok, false, 'malformed override value must not allow exports')
     assert.equal(download.ok === false ? download.code : '', 'EXPORT_DENIED')
     assert.equal(isolated.proc.exitCode, null, 'runtime must survive a malformed policy')
