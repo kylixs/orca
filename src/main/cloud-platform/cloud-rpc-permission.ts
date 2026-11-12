@@ -69,7 +69,10 @@ const WORKTREE_METHODS: ReadonlySet<string> = new Set([
   'worktree.createManaged',
   'worktree.rm',
   'worktree.forceDeleteBranch',
-  'worktree.show'
+  'worktree.show',
+  // Repo-scoped catalog reads, needed to decide whether the user's checkout exists.
+  'worktree.list',
+  'worktree.detectedList'
 ])
 
 export type CloudMethodAccess = CloudPermission | 'session' | null

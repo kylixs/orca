@@ -1,7 +1,11 @@
 import { isAbsolute, join } from 'node:path'
 import { cloudMethodAccess } from './cloud-rpc-permission'
 import { cloudGitAccessOf, cloudGitPathsOf } from './cloud-git-scope'
-import { MANAGED_CREATE_METHOD, cloudWorktreeAccessOf } from './cloud-worktree-scope'
+import {
+  MANAGED_CREATE_METHOD,
+  cloudWorktreeAccessOf,
+  isCloudRepoScopedWorktreeMethod
+} from './cloud-worktree-scope'
 import {
   checkCloudTargetScope,
   checkCloudWorktreeScope,
@@ -84,6 +88,9 @@ export async function checkCloudRpcPath(args: {
   }
   if (args.method === MANAGED_CREATE_METHOD) {
     return await checkManagedCreate(args)
+  }
+  if (isCloudRepoScopedWorktreeMethod(args.method)) {
+    return await checkRepoScopedRead(args)
   }
   const access = cloudPathAccessOf(args.method)
   if (access === null) {
@@ -176,4 +183,35 @@ async function checkManagedCreate(args: {
     return repoScope
   }
   return checkCloudTargetScope(args.roots, 'write', workspaceRoot)
+}
+
+/**
+ * `worktree.list`/`detectedList` name a repo, not a worktree. Answering them is
+ * what lets a client decide whether to create the user's checkout, so the repo is
+ * checked against the project rather than the call being refused outright.
+ */
+async function checkRepoScopedRead(args: {
+  runtime: CloudPathGuardRuntime
+  roots: CloudPathRoots
+  params: unknown
+}): Promise<CloudPathDecision> {
+  const repoSelector = stringField(args.params, 'repo')
+  if (repoSelector === null) {
+    return {
+      ok: false,
+      reason: 'repo_required',
+      message: 'This call must name a repository.'
+    }
+  }
+  let repoPath: string
+  try {
+    repoPath = await args.runtime.resolveRepoRootPath(repoSelector)
+  } catch {
+    return {
+      ok: false,
+      reason: 'repo_unknown',
+      message: 'That repository is not available to the cloud session.'
+    }
+  }
+  return checkCloudTargetScope(args.roots, 'read', repoPath)
 }

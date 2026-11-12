@@ -1,5 +1,5 @@
-import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdtempSync } from 'node:fs'
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
+import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import WebSocket from 'ws'
@@ -21,6 +21,31 @@ import type { UpgradeAdmission, WebSocketConnectionGate } from '../runtime/rpc/w
 
 export const REPO_ROOT = new URL('../../..', import.meta.url).pathname
 export const DEFAULT_INTERNAL_TOKEN = 'cloud-e2e-internal-token'
+
+/** A throwaway certificate for a real wss:// runtime in tests, as the platform hands out `wss://`. */
+export function makeSelfSignedTls(commonName = 'dev-cloud'): { cert: string; key: string } {
+  const dir = mkdtempSync(join(tmpdir(), 'orca-cloud-tls-'))
+  const key = join(dir, 'server.key')
+  const cert = join(dir, 'server.crt')
+  execFileSync('openssl', [
+    'req',
+    '-x509',
+    '-newkey',
+    'rsa:2048',
+    '-nodes',
+    '-keyout',
+    key,
+    '-out',
+    cert,
+    '-days',
+    '1',
+    '-subj',
+    `/CN=${commonName}`,
+    '-addext',
+    'subjectAltName=IP:127.0.0.1,DNS:localhost'
+  ])
+  return { key: readFileSync(key, 'utf8'), cert: readFileSync(cert, 'utf8') }
+}
 
 export type Platform = { url: string; stop: () => Promise<void> }
 
@@ -252,6 +277,8 @@ export async function startCloudRuntime(options: {
   service?: OrcaRuntimeService
   /** Extra RPC methods; cloud-only ones are not in the default table. */
   methods?: OrcaRuntimeRpcServerOptions['methods']
+  /** Serve the runtime over TLS, which cloud clients expect (`wss://`). */
+  tls?: { cert: string; key: string }
 }): Promise<CloudRuntime> {
   const runtime = new OrcaRuntimeRpcServer({
     runtime: options.service ?? new OrcaRuntimeService(),
@@ -260,7 +287,8 @@ export async function startCloudRuntime(options: {
     wsPort: 0,
     upgradeAdmission: options.admission,
     ...(options.connectionGate ? { connectionGate: options.connectionGate } : {}),
-    ...(options.methods ? { methods: options.methods } : {})
+    ...(options.methods ? { methods: options.methods } : {}),
+    ...(options.tls ? { webSocketTls: options.tls } : {})
   })
   await runtime.start()
   const offer = runtime.createPairingOffer({

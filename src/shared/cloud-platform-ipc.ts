@@ -38,6 +38,12 @@ export type CloudOpenResult =
       projectId: string
       route: 'direct' | 'relay'
       workspaceRoot: string
+      /**
+       * The user's actual checkout after opening a workspace. `workspaceRoot` is
+       * the per-user parent directory the platform signs; a worktree is created
+       * inside it, and panes must address that path (design §8.3).
+       */
+      workspacePath?: string
       capabilities: string[]
       /**
        * The runtime environment panes address for this project. Present when the

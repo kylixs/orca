@@ -29,7 +29,10 @@ export type CloudBridge = {
 
 export type CloudOpenedProject = {
   projectId: string
+  /** The per-user parent directory the platform signs. */
   workspaceRoot: string
+  /** The user's checkout inside it, created on first open if needed. */
+  workspacePath?: string
   capabilities: string[]
   route: 'direct' | 'relay'
   /** Runtime environment panes address; absent when registration was skipped. */
@@ -161,6 +164,7 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
       setOpened({
         projectId: result.projectId,
         workspaceRoot: result.workspaceRoot,
+        ...(result.workspacePath ? { workspacePath: result.workspacePath } : {}),
         capabilities: result.capabilities,
         route: result.route,
         ...(result.environmentId ? { environmentId: result.environmentId } : {})

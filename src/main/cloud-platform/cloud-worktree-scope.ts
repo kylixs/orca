@@ -9,7 +9,8 @@
  * creation stays refused rather than left open.
  *
  * Everything else is deny-by-default, because most of these calls are fleet-wide
- * (list, detectedList, ps) or carry no single worktree to check.
+ * (`ps`, `activate`, `set`) or carry no single worktree to check. The two catalog
+ * reads that name a repo are allowed but checked against the project.
  */
 
 /** Managed creation names its own root, so it is checked as an absolute target. */
@@ -21,6 +22,20 @@ export type CloudWorktreeAccess =
   | { kind: 'deny'; message: string }
 
 const READ_METHODS: ReadonlySet<string> = new Set(['worktree.show'])
+
+/**
+ * Catalog reads that take a repo instead of a worktree. Allowed because opening a
+ * project needs to know whether the user's checkout already exists (design §8.3
+ * step 3); the repo is checked against the project, so the answer stays scoped.
+ */
+const REPO_SCOPED_READ_METHODS: ReadonlySet<string> = new Set([
+  'worktree.list',
+  'worktree.detectedList'
+])
+
+export function isCloudRepoScopedWorktreeMethod(method: string): boolean {
+  return REPO_SCOPED_READ_METHODS.has(method)
+}
 
 const WRITE_METHODS: ReadonlySet<string> = new Set([
   'worktree.rm',
@@ -36,7 +51,7 @@ export function cloudWorktreeAccessOf(method: string): CloudWorktreeAccess | nul
   if (!method.startsWith('worktree.')) {
     return null
   }
-  if (READ_METHODS.has(method)) {
+  if (READ_METHODS.has(method) || REPO_SCOPED_READ_METHODS.has(method)) {
     return { kind: 'read' }
   }
   if (WRITE_METHODS.has(method)) {

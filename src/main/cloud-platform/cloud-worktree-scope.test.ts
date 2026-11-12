@@ -23,9 +23,10 @@ describe('worktree 方法分类', () => {
     expect(cloudWorktreeAccessOf('worktree.forceDeleteBranch')).toEqual({ kind: 'write' })
     // Managed creation is a write: the root it names is the write boundary.
     expect(cloudWorktreeAccessOf('worktree.createManaged')).toEqual({ kind: 'write' })
+    // Repo-scoped catalog reads are allowed, but only with a repo inside the project.
+    expect(cloudWorktreeAccessOf('worktree.list')).toEqual({ kind: 'read' })
+    expect(cloudWorktreeAccessOf('worktree.detectedList')).toEqual({ kind: 'read' })
     for (const method of [
-      'worktree.list',
-      'worktree.detectedList',
       'worktree.ps',
       'worktree.lineageList',
       'worktree.activate',
@@ -65,10 +66,36 @@ describe('worktree RPC 边界', () => {
     const decision = await checkCloudRpcPath({
       runtime,
       roots,
-      method: 'worktree.list',
+      method: 'worktree.ps',
       params: {}
     })
     expect(decision).toMatchObject({ ok: false, reason: 'worktree_scope' })
+  })
+
+  it('目录读取必须带仓库，且仓库须在本项目内', async () => {
+    const missing = await checkCloudRpcPath({
+      runtime,
+      roots,
+      method: 'worktree.list',
+      params: {}
+    })
+    expect(missing).toMatchObject({ ok: false, reason: 'repo_required' })
+
+    const foreign = await checkCloudRpcPath({
+      runtime,
+      roots,
+      method: 'worktree.detectedList',
+      params: { repo: 'path:/srv/other-team' }
+    })
+    expect(foreign).toMatchObject({ ok: false, reason: 'project_scope' })
+
+    const own = await checkCloudRpcPath({
+      runtime,
+      roots,
+      method: 'worktree.list',
+      params: { repo: 'path:/srv/work/svc' }
+    })
+    expect(own).toEqual({ ok: true })
   })
 
   it('删除必须落在本人工作区根内', async () => {

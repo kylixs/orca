@@ -8,6 +8,7 @@ import type {
 import { CloudConnectClient, type CloudProject } from './cloud-connect-client'
 import { buildCloudProjectLink, type CloudProjectLink } from './cloud-pairing-offer'
 import { errorCodeOf } from '../../shared/json-fields'
+import { ensureCloudWorkspace, type EnsureWorkspaceResult } from './cloud-workspace-ensure'
 
 export type CloudProjectLinkResult =
   | { ok: true; link: CloudProjectLink }
@@ -148,6 +149,22 @@ export class CloudSessionService {
       const code = errorCodeOf(error) ?? 'OPEN_FAILED'
       return { ok: false, code, message: error instanceof Error ? error.message : String(error) }
     }
+  }
+
+  /**
+   * Opens the project and makes sure the user's checkout exists (design §8.3):
+   * an existing worktree in their workspace root is reused, otherwise one is
+   * created through `worktree.createManaged`.
+   */
+  async ensureWorkspace(projectId: string): Promise<EnsureWorkspaceResult> {
+    if (!this.client) {
+      return { ok: false, code: 'NOT_SIGNED_IN' }
+    }
+    const result = await ensureCloudWorkspace(this.client, projectId)
+    if (result.ok) {
+      this.currentProjectId = projectId
+    }
+    return result
   }
 
   /**

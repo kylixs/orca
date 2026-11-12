@@ -47,6 +47,7 @@
 | M37 git 操作边界 | ✅ 完成 | `evidence/m37-git-boundary/` | git 读方法限项目根、写方法（stage/commit/push/discard…）限本人工作区根，**共享主仓库对云端只读**；git 文件路径同受边界；4 条真实端到端 + 6 条单测（关掉分类后 3 条变红） |
 | M38 worktree 操作边界 | ✅ 完成 | `evidence/m38-worktree-boundary/` | `worktree.create` 对云端拒绝（路径由主机设置推导、无法约束，指向未实现的托管创建）；`worktree.rm`/`forceDeleteBranch` 限本人工作区、`worktree.show` 限项目；无选择器的批量方法与其余 worktree 方法一律拒绝；4 条真实端到端 + 7 条单测（关掉分类后 3 条变红） |
 | M39 托管工作区创建 | ✅ 完成 | `evidence/m39-managed-worktree/` | 真实 Runtime 新增 `worktree.createManaged`：调用方显式给根、宿主强制 `nestWorkspaces=false`，路径恰为 `<workspaceRoot>/<name>`；幂等键去重；云端作用域要求仓库属本项目、目标根属本人工作区；仅云构建注册；4 条真实端到端 + 8 条单测（关掉根覆盖后 M39-1 变红，关掉守卫后 4 条全红） |
+| M40 打开项目按需建工作区 | ✅ 完成 | `evidence/m40-ensure-workspace/` | `cloud:openWorkspace` 改为「先列本仓库工作区，命中则复用，否则 `createManaged`」；repo 限定的 `worktree.list`/`detectedList` 对云端开放（仓库须属本项目）；打开结果新增 `workspacePath`，工作区视图展示"我的工作区"；3 条真实端到端（含真实 wss + 已注册主机 + 真实客户端类）+ 9 条单测（关掉复用后 M40-2 变红） |
 
 ## 最近一次测试结果
 
@@ -643,6 +644,30 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 1. 本轮只开放了"创建"；`worktree.prefetchCreateBase`（服务于创建预取）仍对云端拒绝，`worktree.create` 也仍拒绝——托管模式只走 `createManaged` 一条路，避免出现两条语义不同的创建通道。
 2. 客户端侧尚未调用它：`cloud-runtime-environment` 打开项目时仍是"打开已有工作区"，把 `createManaged` 接到 `openProject`（按需创建 + 失败码映射）留给面板接入那一轮。
 3. 远程（SSH）仓库的托管创建返回 `managed_workspace_remote_unsupported`，未做跨主机路径翻译——一期云主机都是本地/容器路径。
+
+## M40 打开项目时按需创建工作区（本轮）
+
+**问题**（设计 §8.3 第 3 步）：M39 让主机能够创建托管工作区，但**没有任何一端去调用它**——`cloud:openWorkspace` 仍然是"拿到票据就注册环境"，首次打开项目时用户的工作区目录里空无一物，面板拿到的是一个没有 checkout 的路径。设计写的是"连接后先查现有 worktree，存在则直接打开，否则创建"。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-platform/cloud-workspace-ensure.ts`（新） | `ensureCloudWorkspace()`：`openProject` 建链 → `worktree.list`（repo 限定）→ **只挑落在票据 workspaceRoot 下的那条**（同仓库还有队友的 checkout）→ 没有才 `worktree.createManaged`；创建失败时再列一次（并发打开同一项目的竞态） |
+| `cloud-worktree-scope.ts` / `cloud-rpc-permission.ts` | 对云端开放 `worktree.list`/`worktree.detectedList`，但**必须带 repo**；`cloud-path-guard` 新增 `checkRepoScopedRead()`——仓库须在本项目内，否则拒绝（这是 M38"一律拒绝"的精确化，不是放开） |
+| `cloud-session-service.ts` | 新增 `ensureWorkspace(projectId)`；成功后设置当前项目 |
+| `ipc/cloud-platform.ts` | `cloud:openWorkspace` 改走 ensure；结果返回 `workspacePath` 与真实能力集 |
+| `shared/cloud-platform-ipc.ts` / `use-cloud-session.ts` / `cloud-project-workspace.tsx` | `CloudOpenResult.workspacePath` 透传到视图，工作区页新增"我的工作区"一行（首次打开显示"首次打开时创建"） |
+
+**验证（`evidence/m40-ensure-workspace/`）**：3 条真实端到端，且**用的是桌面端真实客户端类 `CloudConnectClient`**——主机以注册模式运行（心跳上报真实端口与 E2EE 公钥），Runtime 用真实自签 TLS 提供 `wss://`，客户端按票据里的地址连接：
+- M40-1 首次打开 → 创建工作区，路径恰为 `<workspaceRoot>/main`，`README.md` 存在，`git rev-parse --show-toplevel` 指向该目录；
+- M40-2 再次打开 → `created: false`，路径相同，`git worktree list` 仍只有 2 条（主仓库 + 本人），没有就地再造一份；
+- M40-3 `worktree.list` 指向他人仓库被 `forbidden`（`outside the project`），不带 repo 的调用也被拒。
+
+另有 9 条单测（含目录读取的 repo 要求与越界）。**把"复用已有工作区"关掉后 M40-2 变红。** 主机侧与渲染侧 25 文件 131 条、模拟器 97 条全过；`tsc` node/web 0 错；门禁 7 项 0 新发现。
+
+**如实记录 / 剩余**：
+1. `files.open`/`files.openDiff` 仍**未登记**（M34 的 deny-by-default），文件面板打开文件前必须先登记它们——这是下一轮面板接入的前置项。
+2. 首次打开的创建发生在 `cloud:openWorkspace` 内，**耗时已计入打开时延**（同步等待 worktree 创建）；设计允许后台创建 + 先显示进度，本轮选择了简单实现，压测（T507）时再评估。
+3. 客户端拿到的 `workspacePath` 目前只用于展示与后续面板寻址；`cloud-runtime-environment` 注册的侧车仍只带 projectId，尚未把 worktree 路径写进环境元数据。
 
 ## 下一步
 

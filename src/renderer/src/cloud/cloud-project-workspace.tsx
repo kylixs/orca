@@ -85,6 +85,13 @@ export function CloudProjectWorkspace({
           <dd className="break-all font-mono text-xs text-foreground">
             {opened?.workspaceRoot ?? '—'}
           </dd>
+          <dt className="text-muted-foreground">我的工作区</dt>
+          <dd
+            className="break-all font-mono text-xs text-foreground"
+            data-testid="cloud-workspace-path"
+          >
+            {opened?.workspacePath ?? '首次打开时创建'}
+          </dd>
           <dt className="text-muted-foreground">开发机能力</dt>
           <dd className="flex flex-wrap gap-1.5" data-testid="cloud-capabilities">
             {capabilities.length === 0 ? (

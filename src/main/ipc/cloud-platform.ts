@@ -44,13 +44,17 @@ export function registerCloudPlatformHandlers(
     session.openProject(projectId)
   )
   handle<CloudOpenResult>(CLOUD_PLATFORM_IPC.openWorkspace, async (projectId: string) => {
-    const opened = await session.openProject(projectId)
-    if (!opened.ok || !options.userDataPath) {
-      return opened
+    // Why ensure rather than open: a first-time user has no checkout yet, and
+    // design §8.3 says opening the project creates it (managed worktree).
+    const ensured = await session.ensureWorkspace(projectId)
+    if (!ensured.ok || !options.userDataPath) {
+      return ensured.ok
+        ? { ok: false, code: 'WORKSPACE_UNAVAILABLE' }
+        : { ok: false, code: ensured.code, message: ensured.message }
     }
     const prepared = await session.prepareProjectLink(projectId)
     if (!prepared.ok) {
-      return opened
+      return { ok: false, code: prepared.code, message: prepared.message }
     }
     const project = session.getState()
     const summary =
@@ -62,7 +66,15 @@ export function registerCloudPlatformHandlers(
       hostId: summary?.hostName ?? '',
       link: prepared.link
     })
-    return { ...opened, environmentId: environment.id }
+    return {
+      ok: true,
+      projectId,
+      route: prepared.link.route,
+      workspaceRoot: prepared.link.workspaceRoot,
+      workspacePath: ensured.workspacePath,
+      capabilities: ensured.capabilities,
+      environmentId: environment.id
+    }
   })
   handle(CLOUD_PLATFORM_IPC.closeProject, () => {
     const openProjectId = session.connectedProjectId
