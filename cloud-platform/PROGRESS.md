@@ -21,6 +21,7 @@
 | M11 撤销关闭已建连接 | ✅ 完成 | `evidence/m11-revocation/` | 设备吊销后 4.2 秒内 `close(4403, device_revoked)`；合并入升级期同一撤销快照 |
 | M12 控制面挂起韧性 | ✅ 完成 | `evidence/m12-control-plane-resilience/` | 请求可中止（Runtime active≤4，修复前 9）；响应体挂起时轮询继续；中继单飞 + 3 秒超时，首次同步不阻塞监听 |
 | M13 真实 Orca Runtime 升级期准入 | ✅ 完成 | `evidence/m13-orca-admission/` | 在真实 `OrcaRuntimeRpcServer` 的 WS 升级前校验云端凭证：8 条真实升级用例；平台/主机验签实现一致性 7 条 |
+| M14 开发机侧云端接入 | ✅ 完成 | `evidence/m14-cloud-agent/` | Agent 轮询 JWKS/撤销快照（单飞 + 超时）；`orca serve` 按 env 开启云端模式；4 条真实平台进程 + 真实 Runtime 端到端 |
 
 ## 最近一次测试结果
 
@@ -118,8 +119,23 @@ M10 中继边界：
 
 实测：真实服务端 + 真实 WS + 真实 Ed25519，8 条升级用例全过。
 
+## M14 开发机侧云端接入（本轮）
+
+- `src/main/cloud-platform/cloud-agent-client.ts`：10 秒轮询 `/v1/jwks` 与 `/v1/internal/revocations`，单飞 + 3 秒超时；响应结构非法时保留上一份，不清空
+- `src/main/startup/cloud-runtime-admission.ts`：`ORCA_CLOUD_API_URL` 存在才启用云模式；缺 `INTERNAL_TOKEN`/`HOST_ID`/`HOST_NAME` 时**抛错拒绝启动**，不静默跳过准入
+- `main-process-runtime-launch.ts`：把准入作为 `upgradeAdmission` 注入 `OrcaRuntimeRpcServer`；无 env 时展开为空对象，配对模式行为不变
+- 顺带把 E2E WS 端口解析抽到 `e2e-runtime-ws-port.ts`（该文件已到 max-lines 上限，规则禁止禁用）
+
+实测（真实平台子进程 + 真实 `OrcaRuntimeRpcServer` + 真实 Ed25519）：
+- 从平台拉到 JWKS/撤销快照
+- 平台 `/connect` 签发的凭证在真实 Runtime 升级成功
+- 凭证换设备头 → 401 `device_mismatch`
+- 吊销设备 → 下一轮轮询拿到 `device_revoked`，旧凭证升级 401
+
+已知与本轮无关的既有失败：`src/main/startup` 有 5 条测试在改动前即失败（Electron 拷贝/资源类用例，环境相关），stash 对照确认非本轮引入。
+
 ## 下一步
 
-1. `orca serve` 启动时接入云端：拉 JWKS/撤销快照、注入 `upgradeAdmission`，并用真实二进制跑一次端到端。
-2. 已建连接的撤销关闭（4403）在真实 Runtime 上接线（M11 的替身逻辑搬到 `mobileSocketWiring`）。
+1. 已建连接的撤销关闭（4403）在真实 Runtime 上接线（M11 的替身逻辑搬到 `mobileSocketWiring`）。
+2. 开发机注册/心跳接入真实 Runtime（当前 hostId/hostName 由 env 提供，尚未走 host token 注册）。
 3. 遗留：M1 设备 PoP、M6 `relativePath` 契约、`jwks_stale` 与分支名 `..` 补用例。

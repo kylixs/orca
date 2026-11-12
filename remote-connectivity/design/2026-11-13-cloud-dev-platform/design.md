@@ -1482,6 +1482,9 @@ Sec-WebSocket-Protocol: orca-runtime, orca-cred.<base64url(credential)>
 | `host.offlineSeconds` | 60 | 离线判定 |
 | `host.maxConnections` | 32 | 单主机并发连接 |
 | `revoke.graceSeconds` | 60 | 撤销后断开宽限（心跳正常前提） |
+| `agent.refreshSeconds` | 10 | 开发机拉取 JWKS 与撤销快照的周期（单飞 + 3 秒超时） |
+| `ORCA_CLOUD_API_URL` | 未设置 | 开发机进入云端模式；未设置时保持配对模式不变 |
+| `ORCA_CLOUD_INTERNAL_TOKEN` | — | 云端模式下必填；缺失时拒绝启动而不是静默跳过准入 |
 | `session.accessTtlMinutes` | 30 | 访问令牌 |
 | `session.refreshTtlHours` | 12 | 刷新令牌 |
 | `audit.retentionDays` | 180 | 热存保留 |
