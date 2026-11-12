@@ -36,7 +36,7 @@
 | M26 撤销时间语义 | ✅ 完成 | `evidence/m26-revocation-precision/` | 凭证新增 `iatMs`，消除同秒"收回→重授权"误拒；旧版无 `iatMs` 保持秒级比较；4 条真实平台 + 真实签名用例（修复前用例 2 为红） |
 | M27 主机侧公钥过期 | ✅ 完成 | `evidence/m27-jwks-staleness/` | 真实主机新增 `jwks_stale`：超过 TTL 未成功拉取 JWKS 即拒绝新连接；吊销原因优先；3 条真实平台 + 真实 Ed25519 用例（回退后 2 条变红） |
 | M28 设备公钥持有证明 | ✅ 完成 | `evidence/m28-device-pop/` | 主机把票据设备公钥登记并在 E2EE 认证时比对握手公钥，票据不再等于持有证明；拒绝原因透传；3 条真实端到端（关掉检查后负例变红） |
-| M29 文件寻址契约对齐 | ✅ 完成 | `evidence/m29-file-contract/` | 模拟器改为真实 Orca 的 `worktree + relativePath`（旧 `path` 明确拒绝）；新增 readDir；分支名 `///` ��陷修复；6 条新用例 + 整仓 80 条全过 |
+| M29 文件寻址契约对齐 | ✅ 完成 | `evidence/m29-file-contract/` | 模拟器改为真实 Orca 的 `worktree + relativePath`（旧 `path` 明确拒绝）；新增 readDir；分支名 `///` 缺陷修复；6 条新用例 + 整仓 80 条全过 |
 | M30 项目根路径规范化 | ✅ 完成 | `evidence/m30-project-root/` | 登记处拒绝 `..`/相对/重复或尾随分隔符/控制字符；主机对旧平台票据做同形状复核（`workspace_root_invalid`）；4 条真实平台 + 真实签名用例（关掉检查后 2 条变红） |
 | M31 审计链落盘与校验 | ✅ 完成 | `evidence/m31-audit-verify/` | 审计 JSONL 只追加落盘、重启续链；`GET /v1/audit/verify`（409 + brokenAtSeq）；弃坏行拒绝启动；14 条（含"改写文件后重启"真实进程用例） |
 | M32 审计 fail-closed | ✅ 完成 | `evidence/m32-audit-fail-closed/` | 先写审计再改状态；写失败/断链时 6 类敏感写返回 503 且状态未变；读与登录保持可用；`GET /v1/audit/status`；3 条真实进程用例（chmod 只读、篡改后重启、全覆盖） |
@@ -248,7 +248,7 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 | `main/ipc/cloud-platform.ts` | 六个 `ipcMain.handle` + 关闭事件广播；`installCloudPlatformIpc()` 在无 `ORCA_CLOUD_API_URL` 时返回 null |
 | `preload/api/cloud-platform-*.ts` | `window.api.cloud.*`，订阅返回取消函数 |
 
-**刻意约束**：`getState()`/`login()` 的返回值里没有 token、devicePubKey、deviceToken、credential——用例直接对序列化结果断言这些字段与 `eyJ` 前缀都不出���，防止以后有人"顺手"把凭证塞进 UI 状态。
+**刻意约束**：`getState()`/`login()` 的返回值里没有 token、devicePubKey、deviceToken、credential——用例直接对序列化结果断言这些字段与 `eyJ` 前缀都不出现，防止以后有人"顺手"把凭证塞进 UI 状态。
 
 实测（真实平台进程 + 真实 TLS Runtime）：
 - 登录后状态只含展示名与项目摘要
@@ -561,7 +561,7 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 - M36-2 `files.write` 在工作区根内成功；写项目共享目录被 `forbidden`（`Writes are limited to your own workspace root`），**并且重新读取确认共享文件未被改动**；
 - M36-3 绝对路径被拒、未知 worktree 选择器被拒（`not available to the cloud session`）。
 
-另有 10 条单测（分隔符感知、真实符号链接、不存在文件的祖先解析、rename 双路径、绝对路径）。**关掉路径判定后 3 条���到端全部变红。** cloud-platform 主机侧 18 文件 91 条、模拟器 97 条全过；`tsc` node/web 0 错；门禁 7 项 0 新发现。
+另有 10 条单测（分隔符感知、真实符号链接、不存在文件的祖先解析、rename 双路径、绝对路径）。**关掉路径判定后 3 条端到端全部变红。** cloud-platform 主机侧 18 文件 91 条、模拟器 97 条全过；`tsc` node/web 0 错；门禁 7 项 0 新发现。
 
 **如实记录**：
 1. 首次跑整仓模拟器测试时出现一次 `unknown_kid`（期望 `device_revoked`），与质量门禁并行运行；单独重跑 97/97 通过，判定为并行负载下的既有抖动，本轮未改动模拟器任何代码。
