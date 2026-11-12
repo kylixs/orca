@@ -26,7 +26,7 @@ function payload(overrides: Partial<CredentialPayload> = {}): CredentialPayload 
     project: 'proj_payment',
     projectRoot: '/srv/work/payment-service',
     workspaceRoot: '/srv/work/payment-service/.orca-worktrees/zhangsan',
-    device: 'dev_1',
+    deviceId: 'dev_1',
     devicePubKey: 'pk',
     deviceToken: 'tok',
     perms: ['open', 'file:read'],
@@ -84,6 +84,19 @@ test('方法级权限：读允许、写需权限、导出恒拒绝', () => {
     code: 'EXPORT_DENIED'
   })
   assert.equal(decideMethod('files.download', ['download'], 'allow').allow, true)
+})
+
+test('方法级权限：导出规则先于 browser 前缀匹配', () => {
+  assert.deepEqual(decideMethod('browser.download', ['browser', 'download'], 'deny'), {
+    allow: false,
+    code: 'EXPORT_DENIED'
+  })
+  assert.equal(decideMethod('browser.navigate', ['browser'], 'deny').allow, true)
+  assert.deepEqual(decideMethod('browser.navigate', ['download'], 'deny'), {
+    allow: false,
+    code: 'PERMISSION_MISSING'
+  })
+  assert.equal(decideMethod('worktree.createManaged', ['terminal'], 'deny').allow, true)
 })
 
 test('路径边界：拒绝穿越与绝对逃逸', () => {

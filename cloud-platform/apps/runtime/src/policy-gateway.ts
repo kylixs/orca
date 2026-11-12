@@ -88,11 +88,11 @@ export class PolicyGateway {
       return { ok: false, code: 'replayed', message: '凭证已被使用。' }
     }
     const revokedSince = this.revokedProjects.get(payload.project)
-    if (revokedSince !== undefined && payload.iat * 1000 < revokedSince) {
+    if (revokedSince !== undefined && payload.iat * 1000 <= revokedSince) {
       return { ok: false, code: 'project_revoked', message: '项目权限已收回。' }
     }
     const userRevokedSince = this.revokedUsers.get(payload.sub.replace(/^user:/, ''))
-    if (userRevokedSince !== undefined && payload.iat * 1000 < userRevokedSince) {
+    if (userRevokedSince !== undefined && payload.iat * 1000 <= userRevokedSince) {
       return { ok: false, code: 'user_revoked', message: '用户权限已收回。' }
     }
     // jti revocation wins over the local "already used" cache.

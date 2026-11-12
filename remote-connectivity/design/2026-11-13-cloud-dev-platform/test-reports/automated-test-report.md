@@ -27,8 +27,9 @@
 | 读允许 / 写需权限 / 导出恒拒绝 | PASS |
 | 路径穿越与绝对逃逸拒绝 | PASS |
 | 审计哈希链追加、校验、篡改定位 | PASS |
+| 导出规则先于 browser 前缀匹配 | PASS |
 
-合计：**7 passed / 0 failed**
+合计：**8 passed / 0 failed**
 
 ## 3. 端到端测试
 
@@ -53,7 +54,7 @@
 | E9 | 证据汇总 | 证据落盘 | PASS | `summary.json` |
 | E10 | 中继未知 SNI / 非 TLS | 连接被黑洞 | PASS | `E10-relay-blackhole.json` |
 
-合计：**14 passed / 0 failed**（另有 7 条单元测试，合计 21）
+合计：**14 passed / 0 failed**（另有 8 条单元测试，合计 22）
 
 ## 4. Web UI 实测
 

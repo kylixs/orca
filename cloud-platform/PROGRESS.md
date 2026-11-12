@@ -19,7 +19,7 @@
 ## 最近一次测试结果
 
 ```
-node --test test/contract.test.ts            7 pass / 0 fail
+node --test test/contract.test.ts            8 pass / 0 fail
 node --test test/e2e/platform.e2e.test.ts   14 pass / 0 fail
 ```
 
