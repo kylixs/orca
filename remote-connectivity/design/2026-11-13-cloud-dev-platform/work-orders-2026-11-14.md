@@ -46,6 +46,10 @@ CloudProjectWorkspace 接入终端面板（复用 web 客户端终端管线 + cl
 
 平台：`POST /v1/projects/{id}/web-handoff`（open 权限，审计 `web_handoff`）→ 一次性 ≤60s code + URL（`<browserEntryUrl 或直连 web-index>#handoff=<code>&project=<id>`）；`POST /v1/web/handoff` 换正式会话（复用设备会话签发；二次/过期 410、无权限 403）。orca web：启动读 hash → 换会话 → 自动打开指定项目；失败回落登录表单（预填平台地址）；hash 用后即清。Web 项目行「Orca Web」按钮激活（调 web-handoff 并 window.open）。e2e：签发→换发→二次 410→过期 410→无权限 403 + web 端自动进入。提交 `feat(cloud): one-time web handoff auto-entry`。
 
+## W8 · M115 兼容性回归修复（全量复测发现，优先级最高，W2 完成后立即派发）
+
+HEAD 快照全量套件 171 用例 163 过 8 失败；其中 4 个失败为**真回归**：M115（7eba67c76cd）把 `dir` 设为必填后，**管理员按 `path` 登记项目的旧调用收到 400 INVALID_DIR**（project-archive.e2e.test.ts 建项目失败级联 4 断言；证据 /tmp/m116-retest-full.log）。修法：目录必填仅约束开发者自助路径（FR-3.7）；管理员登记（path 直供）保持原语义，dir 缺省时按现有 key/path 规则派生。修复后 project-archive e2e 全绿 + 新增「管理员无 dir 登记」回归断言。提交 `fix(cloud): admin project creation keeps path semantics`。另 2 个失败为快照缺 evidence/、1 个为快照缺 src/ 跨目录依赖（环境产物，修复验证时在主工作区跑对应文件确认即可，不算回归）。
+
 ## M120（功能缺口，暂缓待排）
 
 管理台项目登记弹层（QA-013）、权限矩阵可配置（QA-014）、项目级下载策略（QA-015）——FR-3.1/9.3/9.4 的 Web 呈现补齐。依赖 W3 布局稳定后再派发。
