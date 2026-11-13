@@ -2408,6 +2408,14 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W8 关闭（审计通过，2026-11-14）
+
+W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理、无脆弱性、命名合规；minor×2（docstring 未提兼守护语义、saveEvidence 字面量绕过常量）记入 `test-reports/w8-audit.md`，随手折入通道①下一任务（W7a）清单。W8 关闭。
+
+### W6a 审计有条件通过 → 合并回派（2026-11-14）
+
+审计（`test-reports/w6a-audit.md`）：blocker 0、**major 2**（MAJ-1 半开上游 socket 泄漏 5/5 滞留宿主侧且指标不可见；MAJ-2 浏览器监听无 per-IP 限速，与 design §4.3.2「单 IP 并发默认 100」不符）+ minor（升级 stale 404 与测试探针交叉印证、Connection 命名头未剥、升级路径跳过 hop-by-hop 致 proxy-authorization 透传等）。绕过面/hop-by-hop HTTP 侧/背压/线兼容确认正确。审计明确不阻塞 W6b/W6c 派发，但通道②保持串行（修复也改 relay.ts）。已派**合并回派修复代理**（MAJ-1/2 + MIN-1/3 一次修完 + 各配回归断言），修复后测试代理复验再关闭②。审计测试建议（8 条负向用例、parseBrowserPath 单测）纳入修复轮。最高价值缺口记录：当前删掉 HOP_BY_HOP 过滤不会有测试变红。
+
 ### W6a 独立测试完成（1 缺陷 + 2 观察项，2026-11-14）
 
 测试代理独立复跑全绿（新套件 6/0 + SNI 回归 70/0 + 边界探针 7/7），线兼容与 HEAD^ 逐字段一致对比通过。**发现缺陷 D-W6a**：路由表过期时 WSS 升级返回 404（`refuse()` 恒写 404），规格要求 503 fail-closed（HTTP 侧符合）。观察项 2 条：① 浏览器端口未套用 per-IP 限速（恰是公网暴露面）；② routeKey 后的路径不归一化原样转发（宿主侧需自行处理）。证据 `evidence/w6a-verify/`（探针 8 件 + 线兼容产物）。处置：等 W6a 审计代理返回后**合并一次回派**实现代理（升级 503 + 视审计结果纳入限速/归一化决策），修复后复验。
