@@ -56,3 +56,51 @@ export async function startPausableProxy(targetPort: number): Promise<PausablePr
     }
   }
 }
+
+export type RecordingProxy = {
+  url: string
+  totalBytes: () => number
+  /** Every byte the hop carried, both directions, concatenated. */
+  captured: () => Buffer
+  close: () => Promise<void>
+}
+
+/**
+ * Records everything that crosses the platform hop, so a test can prove a
+ * session's payload never did — and, with a marker sent on purpose, that the
+ * recording itself would have caught it.
+ */
+export async function startRecordingProxy(targetPort: number): Promise<RecordingProxy> {
+  const chunks: Buffer[] = []
+  let size = 0
+  const server: Server = createServer((client) => {
+    const upstream = connect(targetPort, '127.0.0.1')
+    const record = (chunk: Buffer): void => {
+      chunks.push(chunk)
+      size += chunk.length
+    }
+    client.on('data', record)
+    upstream.on('data', record)
+    client.pipe(upstream).pipe(client)
+    const drop = (): void => {
+      client.destroy()
+      upstream.destroy()
+    }
+    client.on('error', drop)
+    upstream.on('error', drop)
+    client.on('close', () => upstream.destroy())
+    upstream.on('close', () => client.destroy())
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()))
+  const address = server.address()
+  const port = typeof address === 'object' && address ? address.port : 0
+  return {
+    url: `http://127.0.0.1:${port}`,
+    totalBytes: () => size,
+    captured: () => Buffer.concat(chunks),
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.close(() => resolve())
+      })
+  }
+}
