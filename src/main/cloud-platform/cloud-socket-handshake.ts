@@ -1,4 +1,5 @@
 import WebSocket from 'ws'
+import { AGENT_LAUNCH_RUNTIME_CAPABILITY } from '../../shared/agent-launch-runtime-capability'
 import { decrypt, deriveSharedKey, encrypt } from '../../shared/e2ee-crypto'
 import { parseJsonText, readString } from '../../shared/json-fields'
 import type { CloudEndpoint, CloudConnectTicket, CloudDeviceKeyPair } from './cloud-connect-client'
@@ -6,6 +7,15 @@ import { readTicketClaims } from './cloud-connect-response'
 import { CloudRpcMultiplexer } from './cloud-rpc-multiplexer'
 
 /** Probe→ticket→upgrade→E2EE: the socket half of a cloud project connection. */
+
+/**
+ * What this client tells a cloud runtime it can render on a launched surface.
+ *
+ * Only `agent.launch.v2`: the desktop shell behind this transport reads either outcome — a
+ * structured chat it opens, or a terminal agent. The replay and prompt-carry capabilities are a
+ * separate contract this transport does not negotiate, so it must not claim them for the host.
+ */
+export const CLOUD_RUNTIME_CLIENT_CAPABILITIES = [AGENT_LAUNCH_RUNTIME_CAPABILITY] as const
 
 export type CloudSocketInput = {
   endpoint: CloudEndpoint
@@ -88,7 +98,14 @@ export function upgradeCloudSocket(input: CloudSocketInput): Promise<CloudSocket
       })
       const claims = readTicketClaims(ticket.credential)
       ws.send(
-        encrypt(JSON.stringify({ type: 'e2ee_auth', deviceToken: claims?.deviceToken }), sharedKey)
+        encrypt(
+          JSON.stringify({
+            type: 'e2ee_auth',
+            deviceToken: claims?.deviceToken,
+            clientCapabilities: CLOUD_RUNTIME_CLIENT_CAPABILITIES
+          }),
+          sharedKey
+        )
       )
     })
     ws.once('open', () => {

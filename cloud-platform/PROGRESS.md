@@ -1299,10 +1299,36 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 5. 轮换写盘失败只 warn：请求不受影响，但下次重启可能需要重新登录。
 6. Windows 无法断言 POSIX 权限位，该断言在非 POSIX 平台跳过。
 
+## M67 云端会话真实执行 `agent.launch`（本轮，开发子代理执行）
+
+**问题（M44 起一直记录的遗留）**：云端桌面会话**永远无法**调用 `agent.launch`。分发器把 `clientKind: device.scope` 传给方法上下文，云设备 scope 是 `'runtime'`；而 `supportsAgentLaunch` 要求 `clientKind === undefined` 或 E2EE 认证里声明 `agent.launch.v2`。云客户端 `e2ee_auth` 只发 `{type, deviceToken}`，从不声明能力 → 每个云会话都得到 `agent_launch_unsupported`。M44 只验证了“在自己工作区应被允许”的路径被边界拦截，真实执行从未发生。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-socket-handshake.ts` | `e2ee_auth` 增加 `clientCapabilities: ['agent.launch.v2']`（`CLOUD_RUNTIME_CLIENT_CAPABILITIES`）。只声明 v2：桌面原生云工作区两种结果都能渲染；replay/prompt-carry 属于本传输未协商的独立契约，不能替主机宣称 |
+| `cloud-agent-launch-execution.test.ts` + fixture（新） | 真实平台 + 真实注册主机/心跳 + 真实 TLS Runtime + 真实 managed worktree + 真实 PTY（假 `claude` CLI 经 `agentCmdOverrides` 注入，不改全局 PATH） |
+
+**修复前/后对比（`evidence/m67-cloud-agent-launch/`）**：
+- `m67-0`：修复前 `agent.launch` → `{ok:false, code:'runtime_error', message:'agent_launch_unsupported'}`。
+- `m67-1`：修复后 `outcome.kind === 'terminal'`、真实 `terminal` handle；PTY 输出含假 CLI 唯一标记 `M67_FAKE_CLAUDE_STARTED` 与本人 checkout 的 `realpath`（证明 cwd 正确）；同一 handle 再经云端 `terminal.read` 读到标记。
+- `m67-2`：共享检出与他人仓库仍 `forbidden` + `workspace root`（边界未降低）。
+- `m67-3`：用真实票据做一次**不带 clientCapabilities** 的 legacy 握手 → 仍 `agent_launch_unsupported`（常驻负向对照）。
+
+**主会话独立验收**：6 个相关测试文件 **41 条全过**（含 agent boundary/scope/permission、renewal、mobile socket wiring）；`tsc node` 仅 2 条既有 TS6307；`tsc tc.web` 0 错；`check:code-quality:changed` 0 新发现。
+
+**主会话独立负向对照**：移除 `e2ee_auth` 里的 `clientCapabilities` → M67-1 **变红**（`agent_launch_unsupported`），M67-2/3 仍绿；恢复后 3/3 绿。
+
+**如实记录 / 剩余**：
+1. **假 CLI ≠ 真实 Claude**：用 `agentCmdOverrides.claude` 注入临时脚本，仍走真实启动命令构建、真实 node-pty、真实 runtime；但不覆盖 Claude 的信任询问、登录、TUI 就绪检测。
+2. **结构化会话路径未验证**：测试关闭 native chat，host 走终端 agent；`agent.launch.v2` 声明覆盖“两种结果都可渲染”，但结构化 outcome 未端到端跑通（需要真实 Claude 会话宿主）。
+3. Windows 未验证（PTY 控制器用 `/bin/sh -c`）。
+4. 若云客户端将来切到 E2EE v2 握手（`e2ee_hello.v === 2`），v2 认证消息是严格键集形状，新增的 `clientCapabilities` 会被拒；当前云客户端固定 legacy 握手，不受影响，但切换时需同步契约。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M66（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M67（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步（按缺口排序）**：
-1. **`agent.launch` 在本人工作区的真实执行**未被实际验证（历史仅覆盖拒绝路径）。
-2. **里程碑收口**：执行一次 L3 里程碑测试（按 `DEVELOPMENT_PROCESS.md` §4.1 控制并发），核对全部证据目录，然后进入人工验收。
+1. **里程碑收口（L3）**：按 `DEVELOPMENT_PROCESS.md` §4.1 分批跑里程碑测试（平台 e2e 全套 + 云端 vitest 模块全集，`--maxWorkers=4`），核对全部证据目录，然后进入人工验收。
+2. 结构化 agent 会话路径的端到端验证（需要真实 Claude 会话宿主）。
+3. Windows 主机验证（PTY/路径/权限位）。

@@ -96,6 +96,8 @@
 
 | M66 | 会话持久化：桌面把 refresh token 与设备密钥存入受限文件、开机自动恢复；浏览器写入 localStorage、重载自动恢复；失效即清除 | 真实平台 + 主机 + TLS + git：同 userDataPath 新建服务仍 signed-in 且能建工作区；作废后恢复为 signed-out 且文件被删 |
 
+| M67 | 云端 `agent.launch` 真实执行：云客户端在 E2EE 认证中声明 `agent.launch.v2`；本人工作区可真正启动 agent，共享检出/他人仓库仍拒绝 | 真实平台 + 主机 + TLS + PTY：修复前 `agent_launch_unsupported`，修复后真实终端 handle + 假 CLI 标记；边界拒绝未回归 |
+
 ### 5.1 M57 项目创建 provisioning（平台不在数据通道）
 
 - **平台**：`POST /v1/projects` 仍 admin-only；有 `repoUrl` → `status: 'provisioning'`，无 → `ready`（路径由管理员备好）。连接票据新增可选 claim `repoUrl`、`defaultBranch`（旧主机忽略未知 claim）。
