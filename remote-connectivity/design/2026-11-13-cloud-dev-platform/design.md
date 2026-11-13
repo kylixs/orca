@@ -1,6 +1,6 @@
 # Orca Cloud 云端开发平台 — 总体设计
 
-> 版本：1.2（2026-11-13）
+> 版本：1.3（2026-11-14）
 > 状态：评审修订中
 > 需求基线：[requirements.md](./requirements.md)（v1.2）
 > 原型：[ui/prototype.html](./ui/prototype.html)
@@ -213,12 +213,14 @@ flowchart LR
 - 模块：`auth`、`users`、`projects`、`grants`、`hosts`、`credentials`、`policies`、`audit`、`admin`。
 - 核心输出：**项目 → 开发机地址集合 + 短期连接凭证 + 主机 E2EE 公钥**。不代理、不转发、不窥探任何业务帧。
 - 所有管控面接口统一经过 `requirePlatformPermission()`；权限不足返回 403 并写审计。
+- **节点登记**：开发机与中继同为**主动注册节点**。中继注册携带客户端可拨地址（`RELAY_PUBLIC_HOST` 显式配置，缺省取注册来源 IP），窗口期外自动剔除；管理台「中继」页（`GET /v1/relays`）独立于主机页管理。两类节点的批量装机走**一行安装命令向导**：平台提供 `GET /install/host.sh`、`GET /install/relay.sh`（令牌内嵌、管理台生成、写 `install_script` 审计）。
 - 不保存开发机业务数据；只保存注册信息、授权信息与审计元数据。
 
 #### 4.3.2 中继
 
 - 无状态 TCP 转发；按 SNI（`<route-key>.relay.example.com`）选择目标；TLS 透传，不做中间人。
 - **不校验业务凭证**、不解析 Orca 协议、不记录内容；只记录连接元数据（源、目标、时长、字节数）。
+- **中继为主动注册节点**：启动后向 `/v1/internal/relay-endpoint` 上报 `{id, host, port}`（`host`=客户端可拨地址，缺省取注册来源 IP），窗口期内持续刷新、超窗自动剔除；平台据此生成下发给客户端的中继端点 `wss://<host>:<port>/`（M83/M114）。
 - **路由表由平台单向同步**：平台通过**专用 mTLS 监听**（客户端证书 + CN 白名单，`/v1/internal/*` 之外一律 404）提供 `{routeKey → host:6768}` 的版本化路由表；中继每 2 秒拉取一次并带 TTL（单飞 + 3 秒超时，首次同步不阻塞监听）。mTLS 通过后仍需内部令牌，二者缺一不可。
   - 中继不读平台数据库，不反向调用平台业务接口。
   - 平台不可达时：中继使用最后已知路由表继续转发，超过 5 分钟未更新则只保留已在转发的连接、拒绝新建（策略可配）。
@@ -232,7 +234,7 @@ flowchart LR
 #### 4.3.3 Agent
 
 - 首次注册：一次性令牌 → 交换长期主机凭证（存系统安全存储）。
-- 心跳 15s：状态、版本、**直连地址列表**、**中继路由键**、**Runtime E2EE 公钥与 TLS 指纹**、负载、Runtime 健康。
+- 心跳 15s：状态、版本、**直连地址列表**、**中继路由键**（缺省由首个直连地址派生 `ip-<IP>`，IPv6 的 `:` 替换为 `-`；显式配置优先且永不自动覆盖；自动派生的键随心跳上报的直连地址变化自动跟随）、**Runtime E2EE 公钥与 TLS 指纹**、负载、Runtime 健康。
 - 策略拉取：30s 轮询；内容为项目路径白名单、下载策略、最低客户端版本。
 - 撤销同步：心跳响应携带吊销的用户/项目/凭证 `jti` 集合，主机在本地生效。
 - Runtime 守护：崩溃自动拉起；升级前进入维护模式。
@@ -971,7 +973,8 @@ flowchart TB
 |---|---|---|---|
 | 工作台 | 项目列表、最近使用 | 所有登录用户 | 是 |
 | 我的项目 | 项目详情（只读） | 项目成员 | 是 |
-| 主机 | 主机列表、详情、注册令牌 | `platform:admin` | 否（VPN/办公网） |
+| 主机 | 主机列表、详情、注册令牌、注册向导（路由键默认 `ip-<IP>`） | `platform:admin` | 否（VPN/办公网） |
+| 中继 | 中继节点列表、可达地址、路由同步状态、添加中继向导 | `platform:admin` | 否（VPN/办公网） |
 | 成员与权限 | 用户/组、角色绑定、项目授权 | `platform:admin` / `project:owner` | 否 |
 | 审计日志 | 查询、详情、导出 | `platform:admin` / `platform:auditor` | 否 |
 | 平台设置 | 下载策略、客户端最低版本、告警 | `platform:admin` | 否 |
@@ -1031,7 +1034,9 @@ flowchart TB
 | GET | `/v1/internal/relay-routes` | 中继拉取路由表（mTLS） | 否 |
 | GET | `/v1/internal/policy` | Runtime 拉取导出策略与版本（mTLS，缓存 + 陈旧降级） | 否 |
 | GET | `/v1/internal/revocations` | Runtime / 中继拉取撤销集合（mTLS，心跳之外的补充通道） | 否 |
-| POST | `/v1/internal/relay-endpoint` | 中继上报可达端口（仅开发环境走公网监听，生产走 mTLS） | 否 |
+| POST | `/v1/internal/relay-endpoint` | 中继自注册上报 `{id, host, port}`，`host`=客户端可拨地址（`RELAY_PUBLIC_HOST` 或注册来源 IP；仅开发环境走公网监听，生产走 mTLS） | 否 |
+| GET | `/v1/relays` | 中继节点列表（独立于主机管理，admin 门禁 + 审计） | 否 |
+| GET | `/install/host.sh`、`/install/relay.sh` | 向导一行安装脚本（令牌内嵌、24h 时效；管理台生成并写 `install_script` 审计） | 否 |
 
 > `/v1/internal/*` 只在**配置了 mTLS 内部监听**时对公网监听返回 404；本地开发/测试未配置 mTLS 时由公网监听兼任控制通道，这一点在部署清单中必须显式配置。
 
@@ -1093,7 +1098,8 @@ flowchart TB
   "arch": "x86_64",
   "networkZone": "intranet",
   "directAddrs": ["10.20.3.18:6768"],
-  "relayRoute": { "routeKey": "dev-001", "nodes": ["relay-01", "relay-02"] },
+  // relayRoute 可省略：缺省由首个直连地址派生 routeKey（此处即 ip-10.20.3.18）
+  "relayRoute": { "routeKey": "ip-10.20.3.18", "nodes": ["relay-01", "relay-02"] },
   "runtimeCapabilities": ["pty", "files", "git", "managed-credential"]
 }
 

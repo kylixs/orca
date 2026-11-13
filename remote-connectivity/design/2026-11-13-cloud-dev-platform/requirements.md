@@ -1,6 +1,6 @@
 # Orca Cloud 云端开发平台 — 需求规格说明
 
-> 版本：1.2（2026-11-13）
+> 版本：1.3（2026-11-14）
 > 状态：待评审
 > 关联文档：[design.md](./design.md)、[ui/README.md](./ui/README.md)、[tasks.md](./tasks.md)、[diagrams.html](./diagrams.html)
 
