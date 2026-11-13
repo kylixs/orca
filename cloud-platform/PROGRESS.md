@@ -1015,6 +1015,24 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 5. Windows/UNC 路径只由共享规范化函数的单测覆盖，无真实 Windows 主机验证。
 6. 子代理报告 `pnpm test`（Bun 运行器）在本机会让所有云端 TLS e2e 报 `TLS handshake failed`（M45 既有用例同样失败），因此 e2e 用 `pnpm test:node` 执行——与本轮改动无关，属于既有环境限制。
 
+## M56 修复 `pnpm tc:web` 的 TS6307 工程边界（本轮，开发子代理执行）
+
+**问题**：`pnpm tc:web`（`tsc -p config/tsconfig.tc.web.json`）长期是红的——**4168 条 TS6307**。渲染侧 6 个 Node 环境的云端 e2e 测试 import 了主进程测试夹具（`cloud-session-e2e-harness`、`cloud-runtime-admission`），把整个 `src/main` 依赖图拖进浏览器工程，而该工程的 include 只列了手挑的一部分 main 文件，于是其余每个 main 文件都被判"不在工程文件列表内"。
+
+| 改动 | 内容 |
+|---|---|
+| `config/tsconfig.cloud-e2e.json`（新） | 专门承载跨边界测试的工程：包含 `src/main`/`src/shared`/`src/preload`/`src/types`、`env.d.ts`、6 个 e2e 文件以及它们直接 import 的渲染模块（**不是整个 `src/renderer/src`**）；`types` 需要 `electron-vite/node` 提供 `*?asset` 声明，与既有 node 工程一致，**未放宽任何检查**（`strict`/`skipLibCheck` 沿用基础配置） |
+| `config/tsconfig.tc.web.json` | 用**显式 6 项** `exclude`（而非 `**/*.e2e.test.ts` 通配）：将来若有只 import 白名单 main 文件的渲染 e2e，仍由 web 工程检查 |
+| `config/scripts/run-typecheck-projects-in-parallel.mjs` / `package.json` | 新工程加入 `pnpm tc` 并行链（`heapGib: 9`，实测 8.8 GB / 13.4 s），新增 `typecheck:cloud-e2e` 脚本 |
+
+**验证**：`tsc -p config/tsconfig.tc.web.json` **4168 错误 → 0**；`tsc -p config/tsconfig.cloud-e2e.json` 0；`tsc -p config/tsconfig.node.json` 0；6 个 e2e 全过（12 条）。**主会话独立负向对照**：去掉 exclude 后 TS6307 立刻回到 4168 条，恢复后 0。门禁 7 项 0 新发现。
+
+**如实记录 / 剩余**：
+1. 代价是内存：新工程把 main + renderer 图放进同一个 program，实测 8.8 GB，比 node（7）和 web（6）都大。32 GB 机器上仍是一批（合计 24 GiB 恰好等于预算）；**16 GB CI runner 上会多出一个串行批次（约 13 s）**，而不会把 node/web 挤到 OOM。
+2. `config/tsconfig.e2e.json`（`tests/**`）仍按原注释保持**未启用**，本轮未动。
+3. 6 个测试本身**没有**需要修的类型错误（新工程一开始报的 18 个 TS2307 是 main 依赖图里的 `*?asset` 环境声明，由 `electron-vite/node` 类型解决，不是改测试）。
+4. 未跑完整 `pnpm tc`（会并行拉起 node+web+cloud-e2e+cli，约 24 GB）；按分级规范留到里程碑收口时验证一次。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
 **用户决策**：普通开发者登录后直接进入 Orca 原生工作界面（左侧项目列表，用法不变）；自造的云端会话页**保留给管理员**，从平台项目列表页打开、可单独用 PC 浏览器访问；侧栏多项目**每项目独立连接**；文件面板随管理员页保留。

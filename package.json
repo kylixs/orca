@@ -67,6 +67,7 @@
     "typecheck:cli": "pnpm run build:packages && node node_modules/typescript/bin/tsc --noEmit -p config/tsconfig.tc.cli.json",
     "typecheck:web": "pnpm run build:packages && node node_modules/typescript/bin/tsc --noEmit -p config/tsconfig.tc.web.json",
     "typecheck:e2e": "pnpm run build:packages && node node_modules/typescript/bin/tsc --noEmit -p config/tsconfig.e2e.json",
+    "typecheck:cloud-e2e": "pnpm run build:packages && node node_modules/typescript/bin/tsc --noEmit -p config/tsconfig.cloud-e2e.json",
     "typecheck": "pnpm run build:packages && node config/scripts/run-typecheck-projects-in-parallel.mjs",
     "typecheck:tsc:node": "pnpm run build:packages && node node_modules/typescript/bin/tsc --noEmit -p config/tsconfig.node.json --composite false",
     "typecheck:tsc:cli": "pnpm run build:packages && tsc --noEmit -p config/tsconfig.cli.json --composite false",

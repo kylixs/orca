@@ -48,6 +48,16 @@
     "../src/main/window/foreground-activation-policy.ts",
     "../src/main/window/macos-app-activation.ts"
   ],
+  // These Node-environment cloud e2e specs import main-process fixtures, which the web project
+  // cannot list without dragging the whole main graph in. config/tsconfig.cloud-e2e.json owns them.
+  "exclude": [
+    "../src/renderer/src/cloud-admin/cloud-admin-session.e2e.test.ts",
+    "../src/renderer/src/web/web-cloud-connect.e2e.test.ts",
+    "../src/renderer/src/web/web-cloud-handoff.e2e.test.ts",
+    "../src/renderer/src/web/web-cloud-session-recovery.e2e.test.ts",
+    "../src/renderer/src/web/web-cloud-session.e2e.test.ts",
+    "../src/renderer/src/web/web-cloud-transport.e2e.test.ts"
+  ],
   "compilerOptions": {
     "paths": {
       "@renderer/*": ["../src/renderer/src/*"],

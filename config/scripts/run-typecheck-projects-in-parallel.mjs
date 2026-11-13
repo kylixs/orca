@@ -15,6 +15,10 @@ export const TYPECHECK_PROJECTS = [
   { config: 'config/tsconfig.node.json', heapGib: 7 },
   { config: 'config/tsconfig.tc.web.json', heapGib: 6 },
   { config: 'config/tsconfig.tc.cli.json', heapGib: 2 },
+  // Renderer cloud e2e specs import main fixtures, so main and renderer share one program
+  // (8.8 GB measured). It shares a batch with node/web on large runners; on a 16 GB CI box it
+  // runs alone, costing one serial batch instead of evicting the node/web pair.
+  { config: 'config/tsconfig.cloud-e2e.json', heapGib: 9 },
   // Root projects exclude workspace package tests; each runs with its package's compiler.
   { config: 'src/packages/process-host/tsconfig.test.json', heapGib: 1 }
 ]
