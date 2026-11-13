@@ -448,6 +448,57 @@ describe('平台端到端（真实进程 / TCP / TLS / Ed25519）', () => {
     client.close()
   })
 
+  test('E7b3 浏览器形态：设备公钥只走子协议被接受，两种形式冲突被拒', async () => {
+    const client = new CloudClient(api.url)
+    await client.login('zhangsan', 'Passw0rd!')
+    const projects = await client.listProjects()
+    const connect = await client.requestConnect(projects[0].id)
+    const claims = JSON.parse(Buffer.from(connect.credential.split('.')[1], 'base64url').toString()) as {
+      devicePubKey: string
+    }
+    const protocolKey = Buffer.from(claims.devicePubKey, 'base64').toString('base64url')
+    const WebSocket = requireWs()
+
+    // No x-orca-device-pubkey header: exactly what a browser can send.
+    const browser = await new Promise<{ status?: number; error?: string; reject?: string }>((resolve) => {
+      const ws = new WebSocket(
+        `wss://127.0.0.1:${runtimePort}/`,
+        ['orca-runtime', `orca-cred.${connect.credential}`, `orca-device.${protocolKey}`],
+        { rejectUnauthorized: false }
+      )
+      ws.once('open', () => {
+        ws.close()
+        resolve({ status: 101 })
+      })
+      ws.once('error', (err) => resolve({ error: err.message }))
+      ws.once('unexpected-response', (_req, res) =>
+        resolve({ status: res.statusCode, reject: String(res.headers['x-orca-reject'] ?? '') })
+      )
+    })
+    assert.equal(browser.status, 101, 'a header-less browser client must be admitted by the subprotocol key')
+
+    // A header naming a different device cannot be masked by a valid subprotocol key.
+    const conflicting = await new Promise<{ status?: number; error?: string; reject?: string }>((resolve) => {
+      const ws = new WebSocket(
+        `wss://127.0.0.1:${runtimePort}/`,
+        ['orca-runtime', `orca-cred.${connect.credential}`, `orca-device.${protocolKey}`],
+        { rejectUnauthorized: false, headers: { 'x-orca-device-pubkey': 'attacker-device-public-key' } }
+      )
+      ws.once('open', () => {
+        ws.close()
+        resolve({ status: 101 })
+      })
+      ws.once('error', (err) => resolve({ error: err.message }))
+      ws.once('unexpected-response', (_req, res) =>
+        resolve({ status: res.statusCode, reject: String(res.headers['x-orca-reject'] ?? '') })
+      )
+    })
+    assert.notEqual(conflicting.status, 101)
+
+    saveEvidence(EVIDENCE, 'E7b3-browser-device-token.json', { browser, conflicting })
+    client.close()
+  })
+
   test('E7c 客户端版本过低被平台拒绝（426）', async () => {
     const client = new CloudClient(api.url)
     await client.login('zhangsan', 'Passw0rd!')

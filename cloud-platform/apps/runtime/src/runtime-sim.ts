@@ -107,6 +107,26 @@ function readCredentialFromProtocol(header: string | undefined): string | null {
   return null
 }
 
+/**
+ * Mirror of the Orca host's rule: clients that cannot set request headers (a
+ * browser) carry the device key as `orca-device.<base64url>` in the same
+ * subprotocol header. Anything present must match the ticket.
+ */
+function readDevicePubKeyFromProtocol(header: string | undefined): string | null {
+  if (!header) return null
+  for (const part of header.split(',')) {
+    const value = part.trim()
+    if (!value.startsWith('orca-device.')) continue
+    const body = value.slice('orca-device.'.length)
+    if (!/^[A-Za-z0-9_-]+$/.test(body)) return null
+    const bytes = Buffer.from(body, 'base64url')
+    // Re-encoded to reject non-canonical trailing bits. No length rule: this
+    // simulator's device keys are SPKI DER, not the host's 32-byte NaCl key.
+    return bytes.toString('base64url') === body ? bytes.toString('base64') : null
+  }
+  return null
+}
+
 export async function startRuntimeSim(options: RuntimeSimOptions): Promise<RuntimeSim> {
   const worktrees = new Map<string, { path: string; branch: string }>()
   const gateway = new PolicyGateway({
@@ -249,7 +269,13 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
       socket.destroy()
       return
     }
-    const declaredDevicePubKey = req.headers['x-orca-device-pubkey']?.toString()
+    const headerDeviceKey = req.headers['x-orca-device-pubkey']?.toString()
+    const protocolDeviceKey = readDevicePubKeyFromProtocol(header)
+    // Both forms are compared, never one preferred over a conflicting other.
+    const declaredDevicePubKey =
+      headerDeviceKey && protocolDeviceKey && headerDeviceKey !== protocolDeviceKey
+        ? `${headerDeviceKey}\u0000${protocolDeviceKey}`
+        : (headerDeviceKey ?? protocolDeviceKey)
     const admission = gateway.admit(credential, declaredDevicePubKey)
     if (!admission.ok || !admission.payload) {
       socket.write(`HTTP/1.1 401 Unauthorized\r\nx-orca-reject: ${admission.code}\r\n\r\n`)

@@ -791,7 +791,31 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 2. 向后兼容是双向的：旧构建忽略未知键（zod strip）；但旧构建若重写侧车，新字段会丢失，新构建退化为 `null`——不会抛错，也不会误判。
 3. 本模块不涉及传输路由、路径守卫与面板 UI，均未改动。
 
+## M46 无自定义头客户端的设备绑定（本轮，开发子代理 + 主会话补模拟器对齐）
+
+**问题**（浏览器接入的硬阻塞）：云端准入在**升级期**要求设备公钥走 HTTP 头 `x-orca-device-pubkey`，并与票据里的 `devicePubKey` 精确比对。**浏览器无法为 `new WebSocket()` 设置自定义头**，因此任何浏览器都永远连不上云主机——`src/renderer/src/web/web-runtime-connection-transport.ts` 连子协议都不传。而「复用 Orca 原有浏览器界面」正是产品方向，所以这是必须先拆掉的阻塞。
+
+**做法（不放宽安全性）**：浏览器可以控制子协议列表，因此设备公钥也可作为 `orca-device.<base64url>` 与凭证 `orca-cred.<ticket>` 并列传递；主机**对存在的每一种声明都比对**，任一与票据不符即 `device_mismatch`（头与子协议冲突时不会"择优放行"），两者都缺席仍是 `device_pubkey_missing`。E2EE 握手依旧用票据绑定的密钥完成，持有证明不变。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-upgrade-admission.ts` | 新增 `readDevicePubKeyFromProtocols()`：仅接受无填充 base64url、32 字节、可规范化重编码的 key（拒绝短 key 与非规范尾比特）；格式无效或出现两个互相冲突的 token → `device_mismatch`；头与 token 并存时逐一比对 |
+| `cloud-session-e2e-harness.ts` | `connectCloudSession` 支持 `deviceKeyIn: 'subprotocol'`（模拟浏览器：不带设备头） |
+| `cloud-platform/apps/runtime/src/runtime-sim.ts`（主会话补） | 模拟器网关同步接受子协议形态，冲突时同样拒绝；键长不设 32 字节限制（模拟器设备键是 SPKI DER，真实主机才是 NaCl 32 字节）——**否则整机与替身的行为会分叉** |
+| `cloud-platform/test/e2e/platform.e2e.test.ts`（主会话补） | 新增 E7b3：无头浏览器形态被接受；头与子协议冲突被拒 |
+
+**验证（`evidence/m46-browser-upgrade/`）**：3 条真实端到端——真实平台进程签票、真实 TLS Runtime、**手工构造与浏览器能力一致的手连接**（只有子协议、无设备头），完成真实 E2EE 握手后 `status.get` 有真实响应；错误设备键 401 `device_mismatch`；两者都不带 401 `device_pubkey_missing`。另有 6 条准入单测（头/子协议/两者相等/冲突/缺失/格式错误）。模拟器 E7b3 通过（17/17）。
+
+**主会话独立负向对照**：让准入忽略子协议形态 → M46-1/M46-2 变红（`Unexpected server response: 401` 与 `expected 'device_pubkey_missing' to be 'device_mismatch'`），恢复后 3/3 绿。主机侧 34 文件 186 条、模拟器 e2e 17 条全过；`tsc` node 0 错；门禁 7 项 0 新发现。
+
+**如实记录 / 剩余**：
+1. **线兼容**：使用子协议形态的客户端需要理解该 token 的主机；旧主机会返回 `device_pubkey_missing`（可映射的明确错误，不是静默关闭）。本模块不做能力协商。
+2. 浏览器渲染层**还没有**真的使用它：`web-runtime-connection-transport.ts` 仍未传子协议、未接入云票据，这是下一模块（M47）的内容。
+3. 平台与票据格式未改；E2EE 握手未改。
+
 ## 下一步
+
+**M47 浏览器客户端接入云票据**：`web-runtime-connection-transport` 传入 `['orca-runtime','orca-cred.<ticket>','orca-device.<pubkey>']`、浏览器内生成并持久化设备密钥（IndexedDB）、登录平台取票后渲染同一个 `App`；随后删除自造的 `cloud-file-panel.tsx` 与云端壳子工作区页。
 
 **界面方向修正（用户决定）**：不再自造云端面板。Orca 自带浏览器客户端（`src/renderer/src/web/`，约 1.1 万行，入口 `web-index.html`，在浏览器内重建 `window.api` 并挂载同一个 `App`）才是"统一工作界面"；它目前只接受**配对码**，没有云票据支持。改造顺序：
 

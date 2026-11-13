@@ -1,4 +1,4 @@
-import { generateKeyPairSync, sign } from 'node:crypto'
+import { generateKeyPairSync, randomBytes, sign } from 'node:crypto'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -47,6 +47,15 @@ function ticket(overrides: Partial<CloudCredentialPayload> = {}): CloudCredentia
     exp: now + 60,
     ...overrides
   }
+}
+
+// A real 32-byte NaCl box key, as the E2EE handshake uses; the subprotocol form
+// cannot carry the ad-hoc strings the header-only cases use.
+const DEVICE_KEY_B64 = randomBytes(32).toString('base64')
+const OTHER_DEVICE_KEY_B64 = randomBytes(32).toString('base64')
+
+function deviceProtocol(publicKeyB64: string): string {
+  return `orca-device.${Buffer.from(publicKeyB64, 'base64').toString('base64url')}`
 }
 
 type Server = { url: string; stop: () => Promise<void> }
@@ -162,6 +171,78 @@ describe('真实 Orca Runtime 的云端凭证准入', () => {
         'x-orca-device-pubkey': 'another-device-key'
       }
     )
+    expect(outcome.status).toBe(401)
+    expect(outcome.reject).toBe('device_mismatch')
+  })
+
+  it('设备公钥只走子协议也能通过升级（浏览器无自定义头）', async () => {
+    running = await startServer()
+    const outcome = await attempt(running.url, [
+      'orca-runtime',
+      `orca-cred.${signTicket(ticket({ devicePubKey: DEVICE_KEY_B64 }))}`,
+      deviceProtocol(DEVICE_KEY_B64)
+    ])
+    expect(outcome.opened).toBe(true)
+  })
+
+  it('设备头与子协议同时携带且一致时通过', async () => {
+    running = await startServer()
+    const outcome = await attempt(
+      running.url,
+      [
+        'orca-runtime',
+        `orca-cred.${signTicket(ticket({ devicePubKey: DEVICE_KEY_B64 }))}`,
+        deviceProtocol(DEVICE_KEY_B64)
+      ],
+      { 'x-orca-device-pubkey': DEVICE_KEY_B64 }
+    )
+    expect(outcome.opened).toBe(true)
+  })
+
+  it('设备头与子协议同时携带但不一致被拒（device_mismatch）', async () => {
+    running = await startServer()
+    const outcome = await attempt(
+      running.url,
+      [
+        'orca-runtime',
+        `orca-cred.${signTicket(ticket({ devicePubKey: DEVICE_KEY_B64 }))}`,
+        deviceProtocol(OTHER_DEVICE_KEY_B64)
+      ],
+      { 'x-orca-device-pubkey': DEVICE_KEY_B64 }
+    )
+    expect(outcome.status).toBe(401)
+    expect(outcome.reject).toBe('device_mismatch')
+  })
+
+  it('子协议公钥与票据不一致被拒（device_mismatch）', async () => {
+    running = await startServer()
+    const outcome = await attempt(running.url, [
+      'orca-runtime',
+      `orca-cred.${signTicket(ticket({ devicePubKey: DEVICE_KEY_B64 }))}`,
+      deviceProtocol(OTHER_DEVICE_KEY_B64)
+    ])
+    expect(outcome.status).toBe(401)
+    expect(outcome.reject).toBe('device_mismatch')
+  })
+
+  it('子协议公钥不是合法 base64url 时拒绝，不崩溃', async () => {
+    running = await startServer()
+    const outcome = await attempt(running.url, [
+      'orca-runtime',
+      `orca-cred.${signTicket(ticket({ devicePubKey: DEVICE_KEY_B64 }))}`,
+      'orca-device.!!!!'
+    ])
+    expect(outcome.status).toBe(401)
+    expect(outcome.reject).toBe('device_mismatch')
+  })
+
+  it('子协议公钥长度不对时拒绝，不崩溃', async () => {
+    running = await startServer()
+    const outcome = await attempt(running.url, [
+      'orca-runtime',
+      `orca-cred.${signTicket(ticket({ devicePubKey: DEVICE_KEY_B64 }))}`,
+      deviceProtocol(randomBytes(31).toString('base64'))
+    ])
     expect(outcome.status).toBe(401)
     expect(outcome.reject).toBe('device_mismatch')
   })

@@ -90,6 +90,11 @@ function isCanonicalSignedRoot(value: unknown): boolean {
 
 const CREDENTIAL_PROTOCOL_PREFIX = 'orca-cred.'
 const DEVICE_PUBKEY_HEADER = 'x-orca-device-pubkey'
+const DEVICE_PROTOCOL_PREFIX = 'orca-device.'
+/** NaCl box public keys are 32 bytes; the E2EE handshake rejects any other size. */
+const DEVICE_PUBKEY_BYTES = 32
+/** Unpadded base64url only: a WS subprotocol token cannot contain `=`, `+` or `/`. */
+const BASE64URL_BODY = /^[A-Za-z0-9_-]+$/
 
 function headerValue(headers: CloudUpgradeHeaders, name: string): string | null {
   const raw = headers[name]
@@ -118,6 +123,47 @@ export function readCloudCredential(protocolHeader: string | null): string | nul
     }
   }
   return null
+}
+
+export type DeviceProtocolKey =
+  | { state: 'absent' }
+  | { state: 'malformed' }
+  | { state: 'declared'; publicKeyB64: string }
+
+/**
+ * The device key may ride as `orca-device.<base64url>` for clients that cannot set
+ * request headers (browsers only control the subprotocol list). Such a client needs
+ * a host that understands the token: an older host ignores it and answers
+ * `device_pubkey_missing`, which the client can map to an error instead of a silent
+ * close. No capability negotiation is involved.
+ */
+export function readDevicePubKeyFromProtocols(protocolHeader: string | null): DeviceProtocolKey {
+  if (!protocolHeader) {
+    return { state: 'absent' }
+  }
+  let declared: string | null = null
+  for (const part of protocolHeader.split(',')) {
+    const value = part.trim()
+    if (!value.startsWith(DEVICE_PROTOCOL_PREFIX)) {
+      continue
+    }
+    const body = value.slice(DEVICE_PROTOCOL_PREFIX.length)
+    if (!BASE64URL_BODY.test(body)) {
+      return { state: 'malformed' }
+    }
+    const bytes = Buffer.from(body, 'base64url')
+    // Length and re-encoding reject short keys and non-canonical trailing bits.
+    if (bytes.length !== DEVICE_PUBKEY_BYTES || bytes.toString('base64url') !== body) {
+      return { state: 'malformed' }
+    }
+    const publicKeyB64 = bytes.toString('base64')
+    // Two different declarations are ambiguous; fail closed rather than pick one.
+    if (declared !== null && declared !== publicKeyB64) {
+      return { state: 'malformed' }
+    }
+    declared = publicKeyB64
+  }
+  return declared === null ? { state: 'absent' } : { state: 'declared', publicKeyB64: declared }
 }
 
 function revokedSince(
@@ -206,12 +252,26 @@ export function createCloudUpgradeAdmission(
       return rejectCloudUpgrade('jwks_stale', '签名公钥已过期，暂时无法建立新连接。')
     }
 
-    // Fail closed: omitting the header must not bypass the device binding.
-    const declaredDevicePubKey = headerValue(headers, DEVICE_PUBKEY_HEADER)
-    if (!declaredDevicePubKey) {
+    // Fail closed: omitting both forms must not bypass the device binding. Every
+    // declaration present is compared, so a header cannot mask a conflicting token.
+    const protocolDevice = readDevicePubKeyFromProtocols(
+      headerValue(headers, 'sec-websocket-protocol')
+    )
+    if (protocolDevice.state === 'malformed') {
+      return rejectCloudUpgrade('device_mismatch', '设备公钥格式无效。')
+    }
+    const headerDevice = headerValue(headers, DEVICE_PUBKEY_HEADER)
+    const declaredDevicePubKeys = [
+      ...(headerDevice ? [headerDevice] : []),
+      ...(protocolDevice.state === 'declared' ? [protocolDevice.publicKeyB64] : [])
+    ]
+    if (declaredDevicePubKeys.length === 0) {
       return rejectCloudUpgrade('device_pubkey_missing', '缺少设备公钥。')
     }
-    if (!payload.devicePubKey || declaredDevicePubKey !== payload.devicePubKey) {
+    if (
+      !payload.devicePubKey ||
+      declaredDevicePubKeys.some((key) => key !== payload.devicePubKey)
+    ) {
       return rejectCloudUpgrade('device_mismatch', '凭证与请求设备不匹配。')
     }
 

@@ -168,6 +168,21 @@ export type CloudConnection =
     }
   | { status: 'refused'; close: CloseInfo }
 
+export type CloudConnectTransport = {
+  /**
+   * How the device key reaches the host. A browser cannot set headers, so it
+   * presents the key as an extra subprotocol token instead.
+   */
+  deviceKeyIn?: 'header' | 'subprotocol'
+  /** The test runtime uses a throwaway certificate. */
+  tlsRejectUnauthorized?: boolean
+}
+
+/** The `orca-device.<base64url>` token a header-less client offers. */
+export function cloudDeviceProtocol(devicePubKeyB64: string): string {
+  return `orca-device.${Buffer.from(devicePubKeyB64, 'base64').toString('base64url')}`
+}
+
 /**
  * Runs the real handshake. A host cap refuses the socket before `e2ee_ready`, so
  * refusal is a resolved outcome rather than a handshake error.
@@ -176,11 +191,19 @@ export function connectCloudSession(
   url: string,
   serverPublicKeyB64: string,
   session: CloudSession,
-  handshakeTimeoutMs = 5000
+  handshakeTimeoutMs = 5000,
+  transport: CloudConnectTransport = {}
 ): Promise<CloudConnection> {
+  const protocols = ['orca-runtime', `orca-cred.${session.credential}`]
+  if (transport.deviceKeyIn === 'subprotocol') {
+    protocols.push(cloudDeviceProtocol(session.devicePubKey))
+  }
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(url, ['orca-runtime', `orca-cred.${session.credential}`], {
-      headers: { 'x-orca-device-pubkey': session.devicePubKey },
+    const ws = new WebSocket(url, protocols, {
+      ...(transport.deviceKeyIn === 'subprotocol'
+        ? {}
+        : { headers: { 'x-orca-device-pubkey': session.devicePubKey } }),
+      ...(transport.tlsRejectUnauthorized === false ? { rejectUnauthorized: false } : {}),
       handshakeTimeout: handshakeTimeoutMs
     })
     let authenticated = false
