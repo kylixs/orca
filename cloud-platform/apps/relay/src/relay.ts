@@ -1,8 +1,23 @@
 import { connect, createServer, type Socket } from 'node:net'
+import { createServer as createTlsServer, request as tlsRequest, type Server as TlsServer } from 'node:https'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { Duplex } from 'node:stream'
+import { readFileSync } from 'node:fs'
 import { mtlsFetch } from '../../../packages/contract/src/internal-fetch.ts'
 import { extractSni } from './sni.ts'
 
 export type RelayRoute = { routeKey: string; hostId: string; target: string; version: number }
+
+/**
+ * Browser edge: TLS terminates here with the relay's own certificate and
+ * `/h/<routeKey>/...` is routed by URL path, because a browser cannot dial an
+ * IP and present an arbitrary SNI label the way the desktop client does.
+ */
+export type RelayBrowserOptions = {
+  port: number
+  certPath: string
+  keyPath: string
+}
 
 export type RelayOptions = {
   port: number
@@ -29,6 +44,8 @@ export type RelayOptions = {
   maxConnectionsPerIp?: number
   /** Timeout for one route-sync request; a hung platform must not block listening. */
   controlTimeoutMs?: number
+  /** Browser-mode listener; absent means the feature is entirely off. */
+  browser?: RelayBrowserOptions
 }
 
 export type RelayConnectionEvent = {
@@ -50,6 +67,8 @@ export type RelayStats = {
 
 export type RelayHandle = {
   port: number
+  /** Assigned port of the browser-mode listener, or null when not enabled. */
+  browserPort: number | null
   routes: () => Map<string, RelayRoute>
   refresh: () => Promise<void>
   stats: () => RelayStats
@@ -61,12 +80,92 @@ const DEFAULT_STALE_MS = 300_000
 const DEFAULT_SNI_SUFFIX = '.relay.local'
 const DEFAULT_PER_IP = 100
 const MAX_EVENTS = 500
+const BROWSER_ROUTE_KEY = /^[A-Za-z0-9_-]+$/
+/** RFC 2616 13.5.1: headers that belong to one hop and must not be relayed. */
+const HOP_BY_HOP = new Set([
+  'connection',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'proxy-connection',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade'
+])
 
 function parseTarget(target: string): { host: string; port: number } | null {
   const [host, portText] = target.split(':')
   const port = Number(portText)
   if (!host || !Number.isInteger(port)) return null
   return { host, port }
+}
+
+/**
+ * `/h/<routeKey>/rest` → the route key and the path the host should see, or
+ * null when the URL is not a browser route. The key shape matches the SNI
+ * listener's rule: no dots, so `..` and FQDN look-alikes cannot reach a target.
+ */
+export function parseBrowserPath(url: string): { routeKey: string; path: string } | null {
+  if (!url.startsWith('/h/')) return null
+  const remainder = url.slice('/h/'.length)
+  const separator = remainder.indexOf('/')
+  if (separator <= 0) return null
+  const routeKey = remainder.slice(0, separator)
+  if (!BROWSER_ROUTE_KEY.test(routeKey)) return null
+  return { routeKey, path: remainder.slice(separator) }
+}
+
+/** Request headers for the host hop: hop-by-hop dropped, proxy trail appended. */
+function forwardedHeaders(req: IncomingMessage, sourceIp: string, keepUpgrade: boolean): Record<string, string | string[] | undefined> {
+  const headers: Record<string, string | string[] | undefined> = {}
+  for (const [name, value] of Object.entries(req.headers)) {
+    if (!keepUpgrade && HOP_BY_HOP.has(name)) continue
+    headers[name] = value
+  }
+  const prior = req.headers['x-forwarded-for']
+  headers['x-forwarded-for'] = prior ? `${prior}, ${sourceIp}` : sourceIp
+  headers['x-forwarded-proto'] = 'https'
+  if (req.headers.host) headers['x-forwarded-host'] = req.headers.host
+  return headers
+}
+
+/** Response headers for the caller: framing stays ours, not the host hop's. */
+function forwardableResponseHeaders(res: IncomingMessage): [string, string][] {
+  const pairs: [string, string][] = []
+  for (let index = 0; index < res.rawHeaders.length; index += 2) {
+    if (HOP_BY_HOP.has(res.rawHeaders[index].toLowerCase())) continue
+    pairs.push([res.rawHeaders[index], res.rawHeaders[index + 1]])
+  }
+  return pairs
+}
+
+function rawHead(status: number, reason: string, res: IncomingMessage, keepAll = false): string {
+  const lines = [`HTTP/1.1 ${status} ${reason}`.trimEnd()]
+  // A 101 *is* the handshake: Connection/Upgrade must survive the hop or the
+  // client never sees an upgrade at all.
+  const headers = keepAll ? allResponseHeaders(res) : forwardableResponseHeaders(res)
+  for (const [name, value] of headers) lines.push(`${name}: ${value}`)
+  return `${lines.join('\r\n')}\r\n\r\n`
+}
+
+function allResponseHeaders(res: IncomingMessage): [string, string][] {
+  const pairs: [string, string][] = []
+  for (let index = 0; index < res.rawHeaders.length; index += 2) {
+    pairs.push([res.rawHeaders[index], res.rawHeaders[index + 1]])
+  }
+  return pairs
+}
+
+/** All three env vars must be set: a half-configured browser listener is worse than none. */
+function browserOptionsFromEnv(): RelayBrowserOptions | undefined {
+  const certPath = process.env.RELAY_BROWSER_TLS_CERT?.trim()
+  const keyPath = process.env.RELAY_BROWSER_TLS_KEY?.trim()
+  const port = Number(process.env.RELAY_BROWSER_PORT?.trim())
+  if (!certPath || !keyPath || !process.env.RELAY_BROWSER_PORT?.trim() || !Number.isInteger(port)) {
+    return undefined
+  }
+  return { port, certPath, keyPath }
 }
 
 export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
@@ -257,6 +356,137 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
     }
   })
 
+  /**
+   * Browser edge. Same route table and staleness rule as the SNI listener, but
+   * TLS ends here, so a miss is a plain 404 rather than a silent blackhole —
+   * a browser needs an answer, not a hanging socket.
+   */
+  let browserServer: TlsServer | null = null
+  let browserPort: number | null = null
+  const browser = options.browser
+  if (browser) {
+    browserServer = createTlsServer(
+      { key: readFileSync(browser.keyPath), cert: readFileSync(browser.certPath) },
+      (req: IncomingMessage, res: ServerResponse) => {
+        const sourceIp = req.socket.remoteAddress?.replace(/^::ffff:/, '') ?? 'unknown'
+        const stale = Date.now() - lastSyncAt > staleMax
+        const parsed = stale ? null : parseBrowserPath(req.url ?? '/')
+        if (!parsed) {
+          const reason = stale ? 'browser-stale-route-table' : 'browser-route-miss'
+          stats.dropped += 1
+          stats.dropsByReason[reason] = (stats.dropsByReason[reason] ?? 0) + 1
+          record({ at: Date.now(), sourceIp, sni: null, routeKey: null, target: null, outcome: 'drop', reason })
+          res.writeHead(stale ? 503 : 404, { connection: 'close' })
+          res.end()
+          return
+        }
+        const route = routes.get(parsed.routeKey)
+        const target = route ? parseTarget(route.target) : null
+        if (!route || !target) {
+          stats.dropped += 1
+          stats.dropsByReason['browser-unknown-route'] =
+            (stats.dropsByReason['browser-unknown-route'] ?? 0) + 1
+          record({ at: Date.now(), sourceIp, sni: null, routeKey: null, target: null, outcome: 'drop', reason: 'browser-unknown-route' })
+          res.writeHead(404, { connection: 'close' })
+          res.end()
+          return
+        }
+        stats.routed += 1
+        record({ at: Date.now(), sourceIp, sni: null, routeKey: route.routeKey, target: route.target, outcome: 'routed' })
+        const upstream = tlsRequest(
+          {
+            host: target.host,
+            port: target.port,
+            method: req.method,
+            path: parsed.path,
+            headers: forwardedHeaders(req, sourceIp, false),
+            agent: false,
+            // The host hop re-enters the host's own TLS listener, whose cert is
+            // self-signed by design; identity is pinned by the route table.
+            rejectUnauthorized: false
+          },
+          (upstreamRes) => {
+            res.writeHead(upstreamRes.statusCode ?? 502, forwardableResponseHeaders(upstreamRes))
+            upstreamRes.pipe(res)
+          }
+        )
+        upstream.on('error', () => {
+          if (res.headersSent) res.destroy()
+          else {
+            res.writeHead(502, { connection: 'close' })
+            res.end()
+          }
+        })
+        req.pipe(upstream)
+      }
+    )
+    browserServer.on('upgrade', (req: IncomingMessage, clientSocket: Duplex, head: Buffer) => {
+      const sourceIp = req.socket.remoteAddress?.replace(/^::ffff:/, '') ?? 'unknown'
+      const stale = Date.now() - lastSyncAt > staleMax
+      const parsed = stale ? null : parseBrowserPath(req.url ?? '/')
+      const refuse = (reason: string): void => {
+        stats.dropped += 1
+        stats.dropsByReason[reason] = (stats.dropsByReason[reason] ?? 0) + 1
+        record({ at: Date.now(), sourceIp, sni: null, routeKey: null, target: null, outcome: 'drop', reason })
+        clientSocket.write('HTTP/1.1 404 Not Found\r\nconnection: close\r\n\r\n')
+        clientSocket.destroy()
+      }
+      if (!parsed) {
+        refuse(stale ? 'browser-stale-route-table' : 'browser-route-miss')
+        return
+      }
+      const route = routes.get(parsed.routeKey)
+      const target = route ? parseTarget(route.target) : null
+      if (!route || !target) {
+        refuse('browser-unknown-route')
+        return
+      }
+      stats.routed += 1
+      record({ at: Date.now(), sourceIp, sni: null, routeKey: route.routeKey, target: route.target, outcome: 'routed' })
+      const upstream = tlsRequest({
+        host: target.host,
+        port: target.port,
+        path: parsed.path,
+        // Upgrade headers stay: without `Connection: Upgrade` the host never answers 101.
+        headers: forwardedHeaders(req, sourceIp, true),
+        agent: false,
+        rejectUnauthorized: false
+      })
+      upstream.on('upgrade', (upstreamRes, upstreamSocket: Duplex, upstreamHead: Buffer) => {
+        clientSocket.write(
+          rawHead(upstreamRes.statusCode ?? 101, upstreamRes.statusMessage ?? '', upstreamRes, true)
+        )
+        if (upstreamHead.length > 0) clientSocket.write(upstreamHead)
+        const teardown = (): void => {
+          clientSocket.destroy()
+          upstreamSocket.destroy()
+        }
+        clientSocket.on('error', teardown)
+        upstreamSocket.on('error', teardown)
+        clientSocket.on('close', teardown)
+        upstreamSocket.on('close', teardown)
+        upstreamSocket.pipe(clientSocket)
+        clientSocket.pipe(upstreamSocket)
+      })
+      // The host refused the upgrade: its answer is the client's answer.
+      upstream.on('response', (upstreamRes) => {
+        clientSocket.write(rawHead(upstreamRes.statusCode ?? 502, upstreamRes.statusMessage ?? '', upstreamRes))
+        clientSocket.end()
+      })
+      upstream.on('error', () => clientSocket.destroy())
+      upstream.end(head)
+    })
+    browserServer.on('connection', (socket: Socket) => {
+      // close() reaps browser sockets through the same set as the SNI listener.
+      inbound.add(socket)
+      socket.once('close', () => inbound.delete(socket))
+    })
+    await new Promise<void>((resolve) => browserServer.listen(browser.port, '0.0.0.0', () => resolve()))
+    const browserAddress = browserServer.address()
+    browserPort = typeof browserAddress === 'object' && browserAddress ? browserAddress.port : browser.port
+    console.log(`[relay] browser mode listening on :${browserPort}`)
+  }
+
   // Listen before the first sync: a platform that accepts but never answers must
   // not keep the relay from starting (review-06 N9). The sync is still bounded.
   await new Promise<void>((resolve) => server.listen(options.port, '0.0.0.0', () => resolve()))
@@ -269,6 +499,7 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
 
   return {
     port,
+    browserPort,
     routes: () => new Map(routes),
     stats: () => ({ ...stats, dropsByReason: { ...stats.dropsByReason } }),
     events: () => events.slice(-50),
@@ -279,6 +510,7 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
         for (const socket of connections) socket.destroy()
         for (const socket of inbound) socket.destroy()
         server.close(() => resolve())
+        browserServer?.close(() => resolve())
       })
   }
 }
@@ -297,7 +529,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     maxConnectionsPerIp: process.env.RELAY_MAX_CONN_PER_IP
       ? Number(process.env.RELAY_MAX_CONN_PER_IP)
       : undefined,
-    controlTimeoutMs: process.env.CONTROL_TIMEOUT_MS ? Number(process.env.CONTROL_TIMEOUT_MS) : undefined
+    controlTimeoutMs: process.env.CONTROL_TIMEOUT_MS ? Number(process.env.CONTROL_TIMEOUT_MS) : undefined,
+    browser: browserOptionsFromEnv()
   })
   console.log(`[relay] listening on :${relay.port}, routes=${relay.routes().size}`)
 }
