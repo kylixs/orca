@@ -18,6 +18,7 @@ const DESIGN = join(ROOT, '../remote-connectivity/design/2026-11-13-cloud-dev-pl
 const PLAN = join(DESIGN, 'test-plan.md')
 const EVIDENCE_ROOT = join(ROOT, 'evidence')
 const INDEX_MD = join(DESIGN, 'test-reports', 'acceptance-index.md')
+const RUNBOOK_MD = join(DESIGN, 'test-reports', 'acceptance-runbook.md')
 const INDEX_JSON = join(EVIDENCE_ROOT, 'm99-acceptance-index', 'acceptance-index.json')
 
 type Row = { ac: string; status: string; cells: string[]; evidence: string[] }
@@ -176,4 +177,25 @@ test('验收索引：每条 AC 的证据文件都存在、非空且可解析', (
   )
   mkdirSync(join(DESIGN, 'test-reports'), { recursive: true })
   writeFileSync(INDEX_MD, lines.join('\n'))
+})
+
+
+test('验收指引：覆盖每条 AC、不引用未知编号、未验证项如实列出', () => {
+  const runbook = readFileSync(RUNBOOK_MD, 'utf8')
+  const referenced = [...runbook.matchAll(/AC-\d\d/g)].map((match) => match[0] ?? '')
+
+  const ids = parseRows(readFileSync(PLAN, 'utf8')).map((row) => row.ac)
+  // Every AC appears somewhere a human will read; nothing points at a nonexistent one.
+  const missing = ids.filter((id) => !referenced.includes(id))
+  assert.deepEqual(missing, [], `runbook never mentions: ${missing.join(', ')}`)
+  const unknown = [...new Set(referenced)].filter((id) => !ids.includes(id))
+  assert.deepEqual(unknown, [], `runbook cites unknown ACs: ${unknown.join(', ')}`)
+
+  // An UNVERIFIED row must sit in the leftover section, not inside a walkthrough.
+  const leftover = runbook.slice(runbook.indexOf('剩余未验证项'))
+  for (const row of parseRows(readFileSync(PLAN, 'utf8'))) {
+    if (row.status === 'UNVERIFIED') {
+      assert.ok(leftover.includes(row.ac), `${row.ac} is UNVERIFIED but not listed as leftover work`)
+    }
+  }
 })
