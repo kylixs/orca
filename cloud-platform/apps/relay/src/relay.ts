@@ -6,6 +6,8 @@ export type RelayRoute = { routeKey: string; hostId: string; target: string; ver
 
 export type RelayOptions = {
   port: number
+  /** How the platform knows this relay; defaults to `relay:<port>`. */
+  id?: string
   /** Control-plane URL for route sync. HTTPS here means mTLS is used. */
   apiUrl: string
   internalToken: string
@@ -67,11 +69,17 @@ function parseTarget(target: string): { host: string; port: number } | null {
 
 export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
   const routes = new Map<string, RelayRoute>()
+  // Why a mutable copy: the timer can beat the listen callback, and announcing a
+  // port of 0 would register an unreachable node.
+  let announcedPort = options.port
   let lastSyncAt = 0
   const staleMax = options.routeStaleMaxMs ?? DEFAULT_STALE_MS
   const sniSuffix = options.sniSuffix ?? DEFAULT_SNI_SUFFIX
   const perIpMax = options.maxConnectionsPerIp ?? DEFAULT_PER_IP
   const connections = new Set<Socket>()
+  // Inbound sockets too: close() waits for them, and a relay left holding an idle
+  // client would never shut down.
+  const inbound = new Set<Socket>()
   const perIp = new Map<string, number>()
   const stats: RelayStats = { active: 0, routed: 0, dropped: 0, dropsByReason: {} }
   const events: RelayConnectionEvent[] = []
@@ -117,6 +125,30 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
     routes.clear()
     for (const route of body.routes) routes.set(route.routeKey, route)
     lastSyncAt = Date.now()
+    // Why here: a successful sync proves both that this relay is alive and that the
+    // platform can be reached, which is exactly when re-registering is meaningful.
+    await announce().catch(() => undefined)
+  }
+
+  /** AC-23: keeps this node in the platform's live relay list, or lets it lapse. */
+  async function announce(): Promise<void> {
+    const res = await mtlsFetch(
+      {
+        internalUrl: options.apiUrl,
+        token: options.internalToken,
+        keyPath: options.keyPath,
+        certPath: options.certPath,
+        caPath: options.caPath
+      },
+      '/v1/internal/relay-endpoint',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: options.id ?? `relay:${announcedPort}`, port: announcedPort }),
+        signal: AbortSignal.timeout(options.controlTimeoutMs ?? 3000)
+      }
+    )
+    if (!res.ok) throw new Error(`relay announce failed: ${res.status}`)
   }
 
   const timer = setInterval(() => {
@@ -126,6 +158,8 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
   }, 2_000)
 
   const server = createServer((socket) => {
+    inbound.add(socket)
+    socket.once('close', () => inbound.delete(socket))
     const sourceIp = socket.remoteAddress?.replace(/^::ffff:/, '') ?? 'unknown'
     const current = perIp.get(sourceIp) ?? 0
     if (current >= perIpMax) {
@@ -220,6 +254,7 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
   await new Promise<void>((resolve) => server.listen(options.port, '0.0.0.0', () => resolve()))
   const address = server.address()
   const port = typeof address === 'object' && address ? address.port : options.port
+  announcedPort = port
   await refresh()
     .then(() => console.log(`[relay] routes synced n=${routes.size}`))
     .catch(() => console.log('[relay] api not ready, will retry'))
@@ -234,6 +269,7 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
       new Promise<void>((resolve) => {
         clearInterval(timer)
         for (const socket of connections) socket.destroy()
+        for (const socket of inbound) socket.destroy()
         server.close(() => resolve())
       })
   }

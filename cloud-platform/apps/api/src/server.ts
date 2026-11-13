@@ -40,6 +40,11 @@ import {
   WEB_CONTRACT_VERSION
 } from './web-release.ts'
 import { checkWebContract, readWebContract } from './web-contract.ts'
+import {
+  createRelayNodeRegistry,
+  parseRelayRegistration,
+  RELAY_ALIVE_DEFAULT_MS
+} from './relay-nodes.ts'
 
 const ACCESS_TTL_MS = 30 * 60_000
 const REFRESH_TTL_MS = 12 * 60 * 60_000
@@ -363,6 +368,24 @@ export function createApp(config: ApiConfig): ApiHandle {
   function bumpEpoch(sessionId: string): void {
     const session = store.sessions.get(sessionId)
     if (session) session.epoch += 1
+  }
+
+  /**
+   * Every live relay, in registration order (AC-23). A dead relay is dropped from
+   * the list rather than being handed to a client that would only time out on it;
+   * if none has checked in recently, the last known one is still offered so a
+   * brief control-plane blip does not leave clients with no relay at all.
+   */
+  function relayEndpointsFor(routeKey: string): Record<string, unknown>[] {
+    const nowMs = now()
+    const live = relayNodes.healthy(nowMs, relayAliveMs)
+    const chosen = live.length > 0 ? live : relayNodes.all().slice(-1)
+    return chosen.map((node, index) => ({
+      priority: 99 + index,
+      url: `wss://127.0.0.1:${node.port}/`,
+      routeKey,
+      sni: `${routeKey}.relay.local`
+    }))
   }
 
   function projectView(p: Project, user: User): Record<string, unknown> {
@@ -1742,8 +1765,18 @@ export function createApp(config: ApiConfig): ApiHandle {
         return error(res, 401, 'INTERNAL_TOKEN_INVALID', '内部令牌无效。', traceId)
       }
       const body = await readJson(req)
-      relayPort = Number(body.port)
-      return json(res, 200, { ok: true, relayPort })
+      const registration = parseRelayRegistration(body)
+      if (!registration) {
+        return error(res, 400, 'RELAY_PORT_INVALID', '中继端口无效。', traceId)
+      }
+      relayPort = registration.port
+      const node = relayNodes.register(registration, now())
+      return json(res, 200, {
+        ok: true,
+        relayPort,
+        id: node.id,
+        healthyRelays: relayNodes.healthy(now(), relayAliveMs).length
+      })
     }
 
     if (path === '/v1/internal/revocations' && req.method === 'GET') {
@@ -1788,6 +1821,20 @@ export function createApp(config: ApiConfig): ApiHandle {
     }
 
     // ---- relay routes (internal) ----
+    if (path === '/v1/internal/relays' && req.method === 'GET') {
+      const token = req.headers['x-internal-token']
+      if (token !== internalToken) {
+        return error(res, 401, 'INTERNAL_TOKEN_INVALID', '内部令牌无效。', traceId)
+      }
+      return json(res, 200, {
+        aliveMs: relayAliveMs,
+        relays: relayNodes.all().map((node) => ({
+          ...node,
+          online: now() - node.lastSeenAt <= relayAliveMs
+        }))
+      })
+    }
+
     if (path === '/v1/internal/relay-routes') {
       const token = req.headers['x-internal-token']
       if (token !== internalToken) {
@@ -1915,16 +1962,7 @@ export function createApp(config: ApiConfig): ApiHandle {
           priority: index + 1,
           url: `wss://${url}`
         })),
-        relay: host.relayRoute
-          ? [
-              {
-                priority: 99,
-                url: `wss://127.0.0.1:${relayPort}/`,
-                routeKey: host.relayRoute,
-                sni: `${host.relayRoute}.relay.local`
-              }
-            ]
-          : []
+        relay: host.relayRoute ? relayEndpointsFor(host.relayRoute) : []
       },
       workspace: {
         projectRoot: project.path,
@@ -1958,6 +1996,8 @@ export function createApp(config: ApiConfig): ApiHandle {
   }
 
   let relayPort = 18080
+  const relayNodes = createRelayNodeRegistry()
+  const relayAliveMs = Number(process.env.ORCA_CLOUD_RELAY_ALIVE_MS ?? RELAY_ALIVE_DEFAULT_MS)
 
   const webReleases = createWebReleaseStore({
     webRoot: config.webRoot ?? WEB_ROOT,

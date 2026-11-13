@@ -4,7 +4,7 @@
 > 需求基线：`requirements.md` §8（AC-01 ~ AC-32）
 > 流程基线：`remote-connectivity/design/DEVELOPMENT_PROCESS.md` §4.1、G8
 > 证据根目录：`cloud-platform/evidence/`（gitignore）
-> 本轮新增证据：`cloud-platform/evidence/m70-acceptance/`、`cloud-platform/evidence/m72-denial-details/`、`cloud-platform/evidence/m73-host-audit/`、`cloud-platform/evidence/m74-offline-host/`、`cloud-platform/evidence/m75-platform-unavailable/`、`cloud-platform/evidence/m76-signing-key-rotation/`、`cloud-platform/evidence/m77-host-key-pinning/`、`cloud-platform/evidence/m78-web-release/`、`cloud-platform/evidence/m79-policy-propagation/`、`cloud-platform/evidence/m80-audit-writer/`、`cloud-platform/evidence/m81-host-key-confirmation/`、`cloud-platform/evidence/m82-web-host-key/`
+> 本轮新增证据：`cloud-platform/evidence/m70-acceptance/`、`cloud-platform/evidence/m72-denial-details/`、`cloud-platform/evidence/m73-host-audit/`、`cloud-platform/evidence/m74-offline-host/`、`cloud-platform/evidence/m75-platform-unavailable/`、`cloud-platform/evidence/m76-signing-key-rotation/`、`cloud-platform/evidence/m77-host-key-pinning/`、`cloud-platform/evidence/m78-web-release/`、`cloud-platform/evidence/m79-policy-propagation/`、`cloud-platform/evidence/m80-audit-writer/`、`cloud-platform/evidence/m81-host-key-confirmation/`、`cloud-platform/evidence/m82-web-host-key/`、`cloud-platform/evidence/m83-relay-failover/`
 
 ## 1. 目的与范围
 
@@ -89,7 +89,7 @@
 | AC | 场景 | 层级 | 测试文件::用例 | 证据 | 结论 | 说明 |
 |---|---|---|---|---|---|---|
 | AC-22 | 300 并发 30 分钟压测 | 压测 | 无 | 无 | UNVERIFIED | 需独立压测环境与指标采集（见 §5） |
-| AC-23 | 单中继宕机，5 次退避内重连，新开会话成功率 ≥99% | 故障注入 | 无 | 无 | UNVERIFIED | 需多中继部署与节点杀进程演练 |
+| AC-23 | 单中继宕机，5 次退避内重连，新开会话成功率 ≥99% | 故障注入（2 个真实中继进程 + 真实平台 + 真实 TLS/WSS） | `cloud-platform/test/e2e/relay-failover.e2e.test.ts::AC-23`；`relay-hardening.e2e.test.ts::M10` | `m83-relay-failover/relay-failover.json` | PASS | 平台维护活中继列表（中继每次路由同步自注册，窗口外自动剔除）：两台注册后 `/connect` 下发 2 个 relay 端点；杀掉其一并在窗口过期后只下发存活节点；随后 **40 次新会话全部成功（成功率 100%）**，最长尝试 1 次；仍带着死节点的过期列表按优先级回退，**第 2 次尝试**切到存活中继并完成真实 TLS+WSS 握手 |
 | AC-24 | 数据面密文；平台/中继日志无明文；平台只持公钥与元数据 | 真实 e2e + 日志审查 | `relay-hardening.e2e.test.ts::连接元数据被记录，且不含负载内容`；E2EE 握手由 `cloud-connect-client.test.ts`、`m46-browser-upgrade.test.ts` 覆盖 | `m10-relay/connection-metadata.json`；`m46-browser-upgrade/m46-1-subprotocol-upgrade.json` | PASS(部分) | 中继元数据只含源/SNI/路由/结果；E2EE RPC 可用。未做实际抓包与平台/中继日志全文扫描 |
 | AC-25 | 令牌泄露：访问令牌 ≤5s 失效、刷新令牌立即失效、已建连接 ≤60s 断开 | 真实 e2e | `P-M70::AC-25 吊销设备后访问令牌与刷新令牌立即失效`；`cloud-platform/test/e2e/revocation.e2e.test.ts::M11 设备吊销后已建立连接在 60 秒内被关闭（4403）` | `m70-acceptance/ac-25-token-revocation.json`；`m11-revocation/device-revoke-closes-session.json` | PASS | 吊销后访问/刷新令牌均 401；真实主机在 4.2s 内 `4403 device_revoked` |
 | AC-26 | 审计不可改；3 副本 10 万条并发无分叉；篡改告警 | 真实 e2e（1 真实写入者进程 + 3 真实 API 副本 + 真实 TCP） | `cloud-platform/test/e2e/audit-writer.e2e.test.ts::AC-26`；`cloud-platform/test/audit-integrity.test.ts`；`audit-verify.e2e.test.ts::M31-6`；`audit-fail-closed.e2e.test.ts::M32-2` | `m80-audit-writer/audit-writer.json`；`m31-audit-verify/m31-6-tampered.json`；`m32-audit-fail-closed/m32-2-chain-broken.json` | PASS | 3 个 API 副本经单写入者定序：**10 万条并发**（3 生产者，42k 事件/秒）`seq` 连续无重复、整链 `verify.ok`；改写日志中间一行后重启，写入者报告 `brokenAtSeq`，3 个副本的敏感写操作一律 503 `AUDIT_CHAIN_BROKEN`。未实现 standby/leader 选举与 Redis/PG 持久层（见 G-04 剩余项） |
