@@ -2379,7 +2379,9 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 
 **114c/114d 待执行**：中继上线 100.67.197.59 → 验证注册与 `/v1/relays`；ssh 202 装宿主（Orca + 宿主 env）；本机客户端全链路直连/回落；WAN 口径复测。均派发执行/测试子代理，主会话只调度与快速检测。
 
-### M114b3 UI 原型按新设计更新（派发中，2026-11-14）
+### M114b3 UI 原型按新设计更新（完成，2026-11-14）
+
+提交 `aca26798b72`（仅 ui/prototype.html +431/−29 与 ui/README.md）：`#/relays` 独立中继管理页（统计卡/筛选/表格/抽屉，与主机页分开管理）、主机与中继两个一行安装命令向导（`bash <(curl -fsSL …/install/{host,relay}.sh?token=…)`）、主机表「路由键」列与抽屉「路由与中继」区（`ip-<IP>` routeKey + `ip-….relay.local` SNI）、P7 诊断页同步。主会话核验：提交仅含两个目标文件；关键标记 grep 15 处命中；README 含 P4b 章节与路由清单。子代理另做了 headless Chrome 逐路由验证（0 console error、403 门禁、弹层/复制/Escape）。
 
 三项设计决策落入高保真原型 `ui/prototype.html`：① FR-4.10 独立中继管理页（#/relays，含抽屉与统计，与主机页分开管理）；② FR-4.11 向导一行安装命令（中继/宿主两条 `bash <(curl -fsSL …/install/<类型>.sh?token=…)` 弹层）；③ FR-4.9 routeKey 默认 IP（主机页/抽屉/诊断页展示 `ip-<IP>` 路由键与 `ip-<IP>.relay.local` SNI 标签）。要求子代理以 headless Chrome 逐路由自检（console 无错、门禁/弹层/复制可用）后仅提交原型与 README。
 
