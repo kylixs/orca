@@ -2,6 +2,14 @@
 
 > 纪律：**一个子代理只执行一个工作令**；主会话串行派发、逐个核验后再派下一个。
 > **设计先行**：复杂令（W3/W5/W6/W7）分两步——先派「设计代理」产出设计方案（组件改动、数据流、边界与错误处理、测试点、风险），主会话确认后再派「实现代理」；简单令（W2/W4）设计方案已在本文件内，直接实现。
+> **执行队列（细粒度，防漂移/遗漏——每个子代理只做一个组件级任务，主会话逐令核验后放行下一个）**：
+> W2（执行中）→ W8 → W10 → W3 → W4 →
+> W6a 中继浏览器模式 → W6b 平台入口字段 → W6c web 前缀适配 →
+> W7a 平台 handoff 端点 → W7b web 消费与入口激活 →
+> W5a 详情页终端组件 → W5b 终端 e2e →
+> W9a 桌面黄金线 → W9b Orca Web 黄金线 →
+> M120 设计 → M120a 登记表单 → M120b 权限矩阵 → M120c 项目级策略。
+> 拆分原则：一个任务=一个组件域（中继/平台/web 管理台/orca web/桌面/测试工程），跨域耦合以既有已提交契约为界；每任务自带测试与证据；复杂令先派设计代理。
 > 每令一次提交、一次测试报告、证据入 `cloud-platform/evidence/<work-order>/`（gitignored）。
 > 设计依据以 requirements.md（v1.3+FR 修订）、design.md、deployment-real-link.md、test-plan.md 为准；与本文件冲突时先在交付说明中指出，不要自行改文档。
 > 工作区内与平台无关的改动（claude-auto-resume、acceptance-index 等）**不要触碰、不要提交**。
@@ -104,3 +112,36 @@ HEAD 快照全量套件 171 用例 163 过 8 失败；其中 4 个失败为**真
 - web 端：hash 读取 → 换发 → 存会话 → 自动打开项目；失败清 hash 回登录表单（预填平台地址）；与既有 web-cloud-session 恢复逻辑的优先级：handoff 显式优先。
 - 错误处理：410/403/网络失败分别提示；防重放（消费即删）。
 - 测试：平台五步负向链 + web e2e 自动进入 + 审计断言。
+
+
+---
+
+## 细粒度拆分规格（每条=一个子代理任务）
+
+### W6a · 中继浏览器模式监听（仅 relay 组件）
+`cloud-platform/apps/relay/src/relay.ts`：新增 TLS 终结监听（RELAY_BROWSER_TLS_CERT/KEY/PORT，未配置不启用），按 `/h/<routeKey>/` 路由 HTTP/WSS 到路由表 target（剥前缀、X-Forwarded-*、升级请求同规则），未命中 404；SNI 透传模式与既有端口零改动。测试：真实三进程（平台+浏览器模式中继+宿主）转发伺服、未知 404、SNI 模式回归全绿、未配置不启用。证据 `evidence/w6a-relay-browser/`。提交 `feat(relay): browser mode listener with path routing`。
+
+### W6b · 平台浏览器入口字段（仅平台）
+中继注册体可选 `browserHost`（relay 侧注册一行 + 解析测试）；平台宿主/项目 payload 增 `browserEntryUrl`（`https://<browserHost>/h/<routeKey>/web-index.html`，缺省/非 DNS 安全 → 空）；`/v1/relays` 带该字段。e2e 正反例。证据 `evidence/w6b-browser-entry/`。提交 `feat(cloud): per-host browser entry url`。
+
+### W6c · orca web 前缀适配（仅 web 客户端与构建）
+vite 相对 base（双 base 构建校验通过）；运行时 WSS URL 从 `location.pathname` 推导 `/h/<routeKey>` 前缀（直连不变）。测试：带前缀页面资源零 404、前缀 WSS 连接、直连回归。证据 `evidence/w6c-web-prefix/`。提交 `feat(web): path-prefix aware assets and runtime socket`。
+
+### W7a · 平台 handoff 端点（仅平台）
+`POST /v1/projects/{id}/web-handoff`（open 权限、60s 单次 code、审计 `web_handoff` 记指纹）+ `POST /v1/web/handoff`（换发复用设备会话签发；重放/过期 410、无权限 403）。e2e 五步负向链。证据 `evidence/w7a-handoff-api/`。提交 `feat(cloud): web handoff endpoints`。
+
+### W7b · web 消费与入口激活（orca web + 管理台）
+orca web：hash 读码→换发→自动打开项目→hash 即清；410/403/网络错误回落登录表单（预填地址）；恢复优先级 handoff>localStorage（M62）。管理台：「Orca Web」按钮激活（调 web-handoff 并 window.open）。e2e：B1–B3/B5/B7/B8。证据 `evidence/w7b-handoff-web/`。提交 `feat(web): one-time handoff auto-entry`。
+
+### W5a · 详情页终端组件（仅 renderer）
+`CloudProjectWorkspace` 终端区（懒加载、cloud-browser-bridge rpc→宿主 pty、cloud-admin/main.tsx WebGL prime）；无 `terminal` 授权占位；断线重连语义对齐 web 客户端。组件级测试。证据 `evidence/w5a-terminal-panel/`。提交 `feat(cloud): terminal panel in admin workspace`。
+
+### W5b · 详情页终端 e2e（仅测试工程）
+真实平台+TLS 宿主+PTY：输入回显、文件树打开只读预览、无授权占位、文件面板零回归。扩展 cloud-admin-session e2e。证据 `evidence/w5b-terminal-e2e/`。提交 `test(e2e): admin workspace terminal and file preview`。
+
+### W9a / W9b · 黄金旅程双线（各一个测试代理）
+W9a：A 线（桌面）按 business-chain-tests §1，含 C2/C3/C4(API)/C5(组) 前置串联，时间线 JSON+截图，证据 `evidence/journey-golden-a/`，提交 `test(e2e): golden journey desktop line`。
+W9b：B 线（Orca Web）按 §2（依赖 W7b/W6c 已落地），code 重放 410 纳入旅程，证据 `evidence/journey-golden-b/`，提交 `test(e2e): golden journey orca web line`。
+
+### M120（先设计，再 a/b/c 三任务）
+设计代理出方案（登记表单字段与校验、权限矩阵交互模型、项目级策略 UI 与接口映射）→ 主会话确认 → M120a 登记表单 / M120b 权限矩阵 / M120c 项目级策略，各自独立提交与证据。
