@@ -70,11 +70,17 @@ export type RecordingProxy = {
  * session's payload never did — and, with a marker sent on purpose, that the
  * recording itself would have caught it.
  */
-export async function startRecordingProxy(targetPort: number): Promise<RecordingProxy> {
+export async function startRecordingProxy(
+  // A getter lets the proxy exist before the runtime it forwards to has a port.
+  targetPort: number | (() => number)
+): Promise<RecordingProxy> {
   const chunks: Buffer[] = []
   let size = 0
   const server: Server = createServer((client) => {
-    const upstream = connect(targetPort, '127.0.0.1')
+    const upstream = connect(
+      typeof targetPort === 'number' ? targetPort : targetPort(),
+      '127.0.0.1'
+    )
     const record = (chunk: Buffer): void => {
       chunks.push(chunk)
       size += chunk.length
