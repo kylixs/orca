@@ -1,36 +1,9 @@
-import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { readField, readString } from '../../shared/json-fields'
-import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
-import { Store } from '../persistence/loading-store/store'
-import { createSqliteTestStore } from '../persistence-test-harness'
-import { OrcaRuntimeService } from '../runtime/orca-runtime'
-import { ALL_RPC_METHODS } from '../runtime/rpc/methods'
-import { MANAGED_WORKTREE_METHODS } from '../runtime/rpc/methods/worktree-create-managed'
-import {
-  DEFAULT_INTERNAL_TOKEN,
-  REPO_ROOT,
-  makeSelfSignedTls,
-  startCloudRuntime,
-  startPlatform,
-  type CloudRuntime,
-  type Platform
-} from './cloud-session-e2e-harness'
-import {
-  startCloudRuntimeAdmission,
-  type CloudRuntimeAdmission
-} from '../startup/cloud-runtime-admission'
-import { CloudConnectClient } from './cloud-connect-client'
-import {
-  installRealPtyController,
-  startRelayProcess,
-  type RelayProcess
-} from './cloud-terminal-e2e-fixture'
-import { startLatencyHop, type LatencyHop } from './cloud-latency-hop-fixture'
-import { ensureCloudWorkspace } from './cloud-workspace-ensure'
+import { REPO_ROOT } from './cloud-session-e2e-harness'
+import { startRelayStack, stopRelayStack, type RelayStack } from './cloud-relay-stack-fixture'
 
 /**
  * M102 (requirements §5.1): terminal input echo P95 ≤ 120ms. Measured on the
@@ -51,10 +24,6 @@ const QUIET_MS = 80
 function saveEvidence(file: string, content: unknown): void {
   mkdirSync(EVIDENCE_DIR, { recursive: true })
   writeFileSync(join(EVIDENCE_DIR, file), JSON.stringify(content, null, 2))
-}
-
-function git(cwd: string, ...args: string[]): void {
-  execFileSync('git', args, { cwd, stdio: 'ignore' })
 }
 
 type EchoStats = { samples: number; p50: number; p95: number; min: number; max: number }
@@ -85,167 +54,15 @@ function assertEchoBudget(stats: EchoStats, budget: number): void {
   }
 }
 
-type Stack = {
-  platform: Platform
-  cloud: CloudRuntime
-  admission: CloudRuntimeAdmission
-  relay: RelayProcess
-  hop: LatencyHop
-  client: CloudConnectClient
-  projectId: string
-  workspacePath: string
-  route: 'direct' | 'relay'
-}
-
-let stack: Stack
-let runtimePort = 0
+let stack: RelayStack
 
 beforeAll(async () => {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'orca-m102-')))
-  installFakeAppEnvironment({ getPath: () => dir })
-  const store = createSqliteTestStore(Store, { dataFile: join(dir, 'orca-data.json') })
-  const projectRoot = join(dir, 'payment-service')
-  mkdirSync(projectRoot, { recursive: true })
-  git(projectRoot, 'init', '-q', '-b', 'main')
-  git(projectRoot, 'config', 'user.email', 'e2e@example.com')
-  git(projectRoot, 'config', 'user.name', 'e2e')
-  writeFileSync(join(projectRoot, 'README.md'), 'hello\n')
-  git(projectRoot, 'add', '.')
-  git(projectRoot, 'commit', '-qm', 'init')
-  store.addRepo({
-    id: 'repo-m102',
-    path: projectRoot,
-    displayName: 'payment-service',
-    badgeColor: 'gray',
-    addedAt: 1
-  })
-  store.updateSettings({ workspaceDir: join(dir, 'host-workspaces') })
-  store.flushOrThrow()
-  const service = new OrcaRuntimeService(store)
-  installRealPtyController(service)
-
-  const platform = await startPlatform()
-  const adminLogin = await fetch(`${platform.url}/v1/auth/login`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ username: 'admin', password: 'Adm1n!', deviceName: 'm102-admin' })
-  })
-  const adminToken = readString(await adminLogin.json(), 'accessToken')
-  if (adminToken === null) {
-    throw new Error('admin login failed')
-  }
-  const hostTokenRes = await fetch(`${platform.url}/v1/hosts/tokens`, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${adminToken}` }
-  })
-  const hostToken = readString(await hostTokenRes.json(), 'token')
-  if (hostToken === null) {
-    throw new Error('host token missing')
-  }
-
-  // Relay-only by design: no advertised address, so the slowest supported line
-  // is the one measured. The relay target goes through the delay hop.
-  const hop = await startLatencyHop(() => runtimePort)
-  const admission = startCloudRuntimeAdmission(
-    {
-      ORCA_CLOUD_API_URL: platform.url,
-      ORCA_CLOUD_HOST_TOKEN: hostToken,
-      ORCA_CLOUD_HOST_NAME: 'dev-m102'
-    },
-    {
-      userDataPath: join(dir, 'host-data'),
-      relayTarget: `127.0.0.1:${Number(new URL(hop.url).port)}`
-    }
-  )
-  if (!admission) {
-    throw new Error('cloud admission not enabled')
-  }
-  await admission.ready
-
-  const cloud = await startCloudRuntime({
-    admission: admission.admission,
-    connectionGate: admission.connectionGate,
-    userDataPrefix: 'orca-m102-',
-    service,
-    tls: makeSelfSignedTls('dev-m102'),
-    methods: [...ALL_RPC_METHODS, ...MANAGED_WORKTREE_METHODS]
-  })
-  admission.bindRuntime(cloud.runtime)
-  await admission.client!.refresh()
-  runtimePort = Number(new URL(cloud.endpoint).port)
-
-  const relay = await startRelayProcess(platform.url)
-  const deadline = Date.now() + 20_000
-  let announced = false
-  while (Date.now() < deadline) {
-    if (/routes synced n=\d+/.test(relay.logs())) {
-      const view = await fetch(`${platform.url}/v1/internal/relays`, {
-        headers: { 'x-internal-token': DEFAULT_INTERNAL_TOKEN }
-      })
-      const nodes = readField(await view.json(), 'relays')
-      announced =
-        Array.isArray(nodes) &&
-        nodes.some(
-          (node) => readField(node, 'port') === relay.port && readField(node, 'online') === true
-        )
-      if (announced) {
-        break
-      }
-    }
-    await new Promise((resolve) => setTimeout(resolve, 200))
-  }
-  expect(announced, `relay never registered: ${relay.logs()}`).toBe(true)
-
-  const create = await fetch(`${platform.url}/v1/projects`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${adminToken}` },
-    body: JSON.stringify({
-      key: 'm102-echo-latency',
-      name: 'm102-echo-latency',
-      hostId: admission.host()!.hostId,
-      path: projectRoot
-    })
-  })
-  expect(create.status, await create.clone().text()).toBe(201)
-  const projectId = readString(await create.json(), 'id') ?? ''
-  const grant = await fetch(`${platform.url}/v1/projects/${projectId}/grants`, {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${adminToken}` },
-    body: JSON.stringify({
-      subjectType: 'group',
-      subjectId: 'team-payment',
-      permissions: ['open', 'terminal', 'agent', 'file:read', 'file:write']
-    })
-  })
-  expect(grant.status).toBe(200)
-
-  const client = new CloudConnectClient({ apiUrl: platform.url, tlsRejectUnauthorized: false })
-  await client.login('zhangsan', 'Passw0rd!')
-  const ensured = await ensureCloudWorkspace(client, projectId)
-  if (!ensured.ok) {
-    throw new Error(`workspace ensure failed: ${ensured.code} ${ensured.message ?? ''}`)
-  }
-  expect(ensured.route).toBe('relay')
-  stack = {
-    platform,
-    cloud,
-    admission,
-    relay,
-    hop,
-    client,
-    projectId,
-    workspacePath: ensured.workspacePath,
-    route: ensured.route
-  }
+  stack = await startRelayStack({ name: 'm102', realPty: true })
+  expect(stack.route).toBe('relay')
 }, 180_000)
 
 afterAll(async () => {
-  stack?.client.close()
-  stack?.admission.client?.stop()
-  await stack?.cloud.runtime.stop()
-  await stack?.relay.stop()
-  await stack?.hop.close()
-  await stack?.platform.stop()
+  await stopRelayStack(stack)
 })
 
 describe('终端输入回显延迟（真实中继 + 真实 TLS + E2EE + 真实 PTY）', () => {
