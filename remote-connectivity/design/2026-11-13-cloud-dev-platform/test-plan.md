@@ -100,6 +100,19 @@
 | AC-31 | 签名密钥轮换：新旧 `kid` 并行；轮换后 60 天旧公钥可验旧凭证 | 真实 e2e（真实签名 + 真实 HTTP/WSS） | `signing-key-rotation.e2e.test.ts::AC-31 轮换后新旧 kid 并行验签…`、`非管理员轮换被 403 拒绝并写审计`；`cloud-signing-key-rotation.test.ts::M76-1`（真实平台 + 真实 TLS Runtime + 真实 WSS） | `m76-signing-key-rotation/ac-31-rotation.json`、`ac-31-denied.json`、`m76-host-admission.json` | PASS | 轮换前签发的票据在轮换后仍可验签并被真实主机接纳（主机刷新 JWKS 后同时持有新旧 `kid`）；新票据用新 `kid`；第 59 天旧公钥仍发布，超过 60 天后从 JWKS 移除（旧票据 `unknown_kid`）；轮换/被拒均写审计 |
 | AC-32 | 外网无 VPN 访问管控接口被 WAF 拒绝，工作台与打开项目正常 | 未覆盖 | 无 | 无 | UNVERIFIED | 需 DMZ/WAF 真实网络环境 |
 
+### 4.3 性能指标（requirements §5.1）
+
+> 本节不是 AC 行；按需求表的六项指标逐条对齐，未测的如实标 UNVERIFIED。
+
+| 指标 | 目标 | 测试文件::用例 | 证据 | 结论 | 说明 |
+|---|---|---|---|---|---|
+| 登录 → 工作台可交互 | P95 ≤ 1.5s | `web-workbench-latency.e2e.test.ts::AC-01` | `m97-workbench-latency/workbench-latency.json` | PASS | 真实 Chromium，50 次采样 P95 71ms |
+| 工作台项目列表（≤ 200 项目） | P95 ≤ 500ms | 无 | 无 | UNVERIFIED | 现测的是少量项目的工作台渲染，未做 200 项目规模 |
+| 连接建立（凭证 → 工作区可交互） | 直连 P95 ≤ 2s；中继 P95 ≤ 3s | 无 | 无 | UNVERIFIED | M101 记录的是单次探测耗时，不是完整建连到可交互 |
+| 终端输入回显（同城网络） | P95 ≤ 120ms | `cloud-terminal-echo-latency.test.ts::M102-1`（真实中继进程 + 真实 TLS + E2EE + 真实 PTY） | `m102-terminal-echo-latency/terminal-echo-latency.json` | PASS（本机） | 中继线路 50 次采样 P95 **7.52ms**、中位 6.37ms；注入 150ms 后同一预算断言转红（P95 306.8ms），撤销后恢复 7.15ms。客户端与主机同机，未计入同城网络 RTT |
+| 文件目录读取（1000 项） | P95 ≤ 400ms | 无 | 无 | UNVERIFIED | 待补 |
+| 审计查询（31 天窗口） | P95 ≤ 2s | 无 | 无 | UNVERIFIED | 待补 |
+
 ## 5. 不可验证项与前置条件
 
 | AC | 缺什么 | 建议验证环境 |
