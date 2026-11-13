@@ -131,6 +131,7 @@
 | 文件 | 覆盖 AC | 说明 |
 |---|---|---|
 | `cloud-platform/test/e2e/m70-acceptance.e2e.test.ts` | AC-01、AC-02、AC-03、AC-04、AC-08、AC-25 | 进程内真实 API + 注入时钟；不等待 15 分钟/60 秒 |
+| `cloud-platform/test/e2e/install-wizard.e2e.test.ts`（M114，FR-4.11） | 真实平台 | `GET /install/host.sh?token=…`、`GET /install/relay.sh`：管理员 200 且脚本文本含平台地址与一次性令牌（relay 版含内部令牌）；开发者 403 + `install_script` denied 审计；脚本参数缺 token 时 host 版 400（不签发无凭据脚本）；Web 向导页（主机/中继）展示的命令与脚本端点 URL 一致 |
 | `cloud-platform/test/e2e/relay-endpoint-address.e2e.test.ts`（M114，FR-4.9） | 真实平台 + 真实中继进程 | 中继注册后：`/v1/relays` 列出该节点（地址=注册来源 IP 或显式配置）；开发者 connect 收到的中继端点 `url` 携带该地址与 `sni=<路由键>.relay.local`；负向对照：无地址上报时回落到来源 IP；单测覆盖注册体解析（host 保留/缺省/空白剔除） |
 | `cloud-platform/test/e2e/admin-gating.e2e.test.ts` 扩展（M114，FR-4.10） | 真实平台 | `GET /v1/relays`：管理员 200 且列出节点；开发者 403 + `relay_list` denied 审计（与 AC-18 同口径）；Web 独立「中继」导航仅管理员可见（不与「主机」页混排） |
 | `src/main/cloud-platform/cloud-host-tls-pinning.test.ts`（M109，§5.3 传输） | AC-29 邻接 | 真实平台 + 真实 TLS Runtime + MITM（另一张自签证书终结后转发）：真端点可连、换证书 `TLS_FINGERPRINT_MISMATCH` 被拒、无指纹不校验（旧平台兼容）；证据 `m109-host-tls-pinning/host-tls-pinning.json` |

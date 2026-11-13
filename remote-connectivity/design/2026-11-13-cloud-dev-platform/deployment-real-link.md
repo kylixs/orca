@@ -51,9 +51,9 @@
 
 1. **平台**：本机启动 orca-server（docker 或 node），确认 `[api] listening`；管理员登录签发
    宿主令牌 `POST /v1/hosts/tokens`（一次性、24h）。
-2. **中继**：100.67.197.59 启动 relay 进程（env 同上）；等 `[relay] routes synced`，
+2. **中继**：管理台「中继」页 →「添加中继」向导复制一行命令（`bash <(curl -fsSL http://<平台>/install/relay.sh?…)`，内嵌平台地址与内部令牌）到 100.67.197.59 执行；等 `[relay] routes synced`，
    平台 `/v1/internal/relays` 应显示该节点 online（M10/M83 的判定方式）。
-3. **开发机 202**（经 `ssh 202`）：安装/更新 Orca → 写入宿主 env（含 TLS 自签证书对）→ 启动 →
+3. **开发机 202**（经 `ssh 202`）：管理台「主机」页 →「注册主机」向导复制一行安装命令执行（内嵌一次性令牌；自签证书由脚本生成或按提示放置）→
    平台 `/v1/hosts` 出现该主机且 `online=true`、`directAddrs=[192.168.2.202:<port>]`、
    `e2eePublicKey`/`tlsFingerprint` 非空（M107/M108 的就绪判据）。
 4. **登记项目**：管理员 Web 建项目（hostId=202 主机、path=202 上的仓库路径）+ 授权组
