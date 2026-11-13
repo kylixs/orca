@@ -73,6 +73,8 @@ export type ApiConfig = {
   auditLogPath?: string
   /** Single audit writer shared by replicas; absent keeps the local chain. */
   auditWriterUrl?: string
+  /** Leader first, then standbys; replicas fail over on their own. */
+  auditWriterUrls?: string[]
   /** Shared login-lockout counter; absent counts in this process only. */
   loginLockoutUrl?: string
   /** Frontend directory; tests point this at a copy to simulate a new release. */
@@ -175,12 +177,18 @@ export function createApp(config: ApiConfig): ApiHandle {
   const sharedLockout = loginLockoutUrl
     ? createRemoteLoginLockout({ url: loginLockoutUrl, internalToken })
     : null
-  const auditWriterUrl = config.auditWriterUrl ?? process.env.ORCA_CLOUD_AUDIT_WRITER_URL ?? null
+  const auditWriterUrls = auditWriterEndpoints(config)
   // Why the writer wins: with several replicas, only one process may assign
   // `seq`/`prevHash`, otherwise the chain forks (AC-26).
-  const audit: AuditSink = auditWriterUrl
-    ? createRemoteAudit({ url: auditWriterUrl, internalToken: internalToken })
-    : localAudit()
+  const audit: AuditSink =
+    auditWriterUrls.length > 0
+      ? createRemoteAudit({ urls: auditWriterUrls, internalToken: internalToken })
+      : localAudit()
+  /** Single URL and list are both supported; blank entries are dropped. */
+  function auditWriterEndpoints(cfg: ApiConfig): string[] {
+    const listed = cfg.auditWriterUrls ?? (cfg.auditWriterUrl ? [cfg.auditWriterUrl] : [])
+    return listed.map((url) => url.trim()).filter(Boolean)
+  }
   function localAudit(): AuditChain {
     const auditLog = auditLogPath ? openAuditLogFile(auditLogPath) : null
     const chain = new AuditChain(store, auditLog?.append)
@@ -2175,6 +2183,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       : {}),
     ...(process.env.ORCA_CLOUD_AUDIT_WRITER_URL
       ? { auditWriterUrl: process.env.ORCA_CLOUD_AUDIT_WRITER_URL }
+      : {}),
+    ...(process.env.ORCA_CLOUD_AUDIT_WRITER_URLS
+      ? { auditWriterUrls: process.env.ORCA_CLOUD_AUDIT_WRITER_URLS.split(',') }
       : {}),
     ...(process.env.ORCA_CLOUD_WEB_ROOT ? { webRoot: process.env.ORCA_CLOUD_WEB_ROOT } : {}),
     ...(process.env.ORCA_CLOUD_WEB_ARCHIVE

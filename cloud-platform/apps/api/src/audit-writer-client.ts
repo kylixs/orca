@@ -50,24 +50,62 @@ export type AuditSink = {
 }
 
 export function createRemoteAudit(options: {
-  url: string
+  url?: string
+  /** Leader plus standby; the client sticks to whichever answers and fails over. */
+  urls?: string[]
   internalToken: string
   timeoutMs?: number
   fetchImpl?: typeof fetch
 }): RemoteAudit {
   const fetchImpl = options.fetchImpl ?? fetch
   const timeoutMs = options.timeoutMs ?? 3_000
+  const endpoints = options.urls?.length ? options.urls : options.url ? [options.url] : []
+  let current = 0
   let health: AuditHealth = { ok: true }
   let lastSize = 0
   let lastTip = ''
 
-  const call = async (path: string, init: RequestInit = {}): Promise<Response> => {
-    const res = await fetchImpl(`${options.url}${path}`, {
+  const send = (base: string, path: string, init: RequestInit): Promise<Response> =>
+    fetchImpl(`${base}${path}`, {
       ...init,
       headers: { ...(init.headers ?? {}), 'x-internal-token': options.internalToken },
       signal: AbortSignal.timeout(timeoutMs)
     })
-    return res
+
+  /**
+   * Sticky failover. An unreachable writer or a standby is retried on the next
+   * one; a broken chain is global (both share the log) and is never masked by
+   * trying the other endpoint.
+   */
+  const call = async (path: string, init: RequestInit = {}): Promise<Response> => {
+    let lastError: unknown = new Error('no audit writer configured')
+    for (let attempt = 0; attempt < endpoints.length; attempt += 1) {
+      const index = (current + attempt) % endpoints.length
+      const base = endpoints[index] ?? ''
+      let res: Response
+      try {
+        res = await send(base, path, init)
+      } catch (error) {
+        lastError = error
+        continue
+      }
+      if (res.status === 503) {
+        const body = await res
+          .clone()
+          .json()
+          .catch(() => null)
+        const refused = body?.error?.code
+        if (refused === 'AUDIT_WRITER_STANDBY') {
+          lastError = Object.assign(new Error('audit writer is standby'), {
+            code: 'AUDIT_WRITER_STANDBY'
+          })
+          continue
+        }
+      }
+      current = index
+      return res
+    }
+    throw lastError
   }
 
   const markWriteFailed = (error: unknown): void => {

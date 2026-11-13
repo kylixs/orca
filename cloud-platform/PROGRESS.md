@@ -1810,14 +1810,38 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 1. 中继入向（客户端→中继）未单独记录；由于 TLS 终止在主机侧，出向记录已覆盖中继可见的全部业务字节。
 2. 未对中继进程做内存转储或全量日志全文扫描，只检视了它实际输出的日志行。
 
+## M87 审计写入者主备（G-04 部署形态）（本轮，主会话执行）
+
+**问题（M80 遗留）**：审计写入者是单实例。它一死，所有副本的敏感操作都 503 `AUDIT_UNAVAILABLE`——fail-closed 是对的，但没有可接管者，平台等于停摆。G-04 的 standby/leader 选举一直未实现。
+
+| 改动 | 内容 |
+|---|---|
+| `apps/audit-writer/src/writer-lease.ts`（新） | 租约文件：`wx` 原子创建抢占 + mtime 刷新 + 过期接管；写入前逐批 `assertLeadership()`（fencing：读到别的持有者即让位）。明确不是共识算法 |
+| `apps/audit-writer/src/writer.ts` | `AUDIT_LEASE_PATH`/`AUDIT_LEASE_TTL_MS`/`WRITER_ID`；只有持租约者读日志并接受 append，其余返回 503 `AUDIT_WRITER_STANDBY`；`/health` 增加 `role`；接管时在串行队列内重新 `restore` 日志再置为 leader |
+| `apps/api/src/audit-writer-client.ts` | 支持 `urls`：粘性选择 + 网络失败/`AUDIT_WRITER_STANDBY` 时切下一个；**`AUDIT_CHAIN_BROKEN` 不切换**（链损坏是全局的） |
+| `apps/api/src/server.ts` | `apiConfig.auditWriterUrls` / `ORCA_CLOUD_AUDIT_WRITER_URLS`（逗号分隔）；单 URL 配置仍兼容 |
+
+**验证（`evidence/m87-audit-writer-standby/standby-takeover.json`）**：2 个真实写入者进程 + 2 个真实 API 副本 + 真实 HTTP：
+- 启动后恰好 1 leader / 1 standby。
+- 写入一次审计后 SIGKILL 主写入者；**空窗期内**的敏感操作返回 503（fail-closed，不产生乱序事件）。
+- 备用在 **2.4s** 接管（租约 TTL 2s），接管时 `events=3` 说明从磁盘完整续链。
+- 接管后敏感操作恢复 201；`/v1/verify` `ok=true, checked=4`；日志 `seq` 为 1..4 连续且唯一（不分叉），两次成功的 `project_create` 各 1 条。
+- **负向对照**：去掉 `AUDIT_LEASE_PATH`（两台都自认 leader）→ 用例在「恰好一个 leader」处转红。
+- 回归：平台全量 **136/136**；`typecheck:cloud-e2e` 0；新模块独立 `tsc --strict` 0；`check:code-quality:changed` 0 新发现。
+
+**如实记录 / 剩余**：
+1. 租约靠文件 mtime，不是分布式共识：主机级时钟跳变或长时间暂停（超过 TTL）存在双写窗口，fencing 只能缩小、不能消除；生产应换成 etcd/Redis 租约或数据库单写约束。
+2. 租约文件与日志需在同一存储上（当前为同目录）；跨机主备需要共享文件系统或改为网络库。
+3. 未实现 Redis Stream 队列、PostgreSQL/对象存储归档与签名锚点（G-04 其余项）。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M86（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M87（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步**：
 1. **剩余 MINOR**：G-12 的浏览器渲染 P95 半分（AC-01，需 Electron/CDP 真实渲染环境）；「平台无业务流量」「中继无明文」已由 M85/M86 补齐。
 2. **人工验收准备**：整理验收清单与证据索引（AC-29 桌面与浏览器两半均已覆盖）。
-3. **G-04 部署形态**：写入者 standby/leader 选举、Redis Stream 队列、PostgreSQL/对象存储归档与签名锚点仍待部署阶段实现（本轮已完成单写入者定序与 fail-closed）。
+3. **G-04 部署形态**：单写入者定序与 fail-closed（M80）、主备租约接管（M87）已完成；Redis Stream 队列、PostgreSQL/对象存储归档与签名锚点仍待部署阶段实现。
 4. **人工验收**：按 design/test-plan 逐条核对验收标准；重点看桌面真实界面（登录 → 侧栏项目 → 本人 checkout → 终端/文件/git/agent）与管理员浏览器会话页。
 4. 真机/跨平台：Windows、WSL、SSH 主机各跑一遍关键路径（provisioning、路径边界、PTY、会话持久化权限位）。
 5. L4 全量回归：发版前单独执行，含桌面 Electron 渲染验证。

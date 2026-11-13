@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { timingSafeEqual, createHash } from 'node:crypto'
 import { AuditChain } from '../../api/src/audit.ts'
+import { createWriterLease } from './writer-lease.ts'
 import { openAuditLogFile } from '../../api/src/audit-log-file.ts'
 import type { AuditEvent, AuditEventInput } from '../../api/src/store.ts'
 
@@ -14,6 +15,7 @@ import type { AuditEvent, AuditEventInput } from '../../api/src/store.ts'
  */
 
 const MAX_BATCH = 1000
+const DEFAULT_LEASE_TTL_MS = 3_000
 
 type WriterStore = { audit: AuditEvent[]; auditSeq: number; auditTip: string }
 
@@ -63,11 +65,25 @@ export async function startAuditWriter(options: {
   port: number
   internalToken: string
   logPath?: string | null
+  /** Standby pairing: a shared file only one writer may hold at a time. */
+  leasePath?: string | null
+  leaseTtlMs?: number
+  holderId?: string
 }): Promise<AuditWriter> {
   const store: WriterStore = { audit: [], auditSeq: 0, auditTip: 'GENESIS' }
   const log = options.logPath ? openAuditLogFile(options.logPath) : null
   const chain = new AuditChain(store, log?.append)
-  if (log) {
+  const lease = options.leasePath
+    ? createWriterLease({
+        path: options.leasePath,
+        holderId: options.holderId ?? `writer-${process.pid}`,
+        ttlMs: options.leaseTtlMs ?? DEFAULT_LEASE_TTL_MS
+      })
+    : null
+  let leader = lease === null || lease.acquire()
+  // Only the leader reads the log into the chain; a standby that restored early
+  // would serve a tip that is already behind the leader's.
+  if (leader && log) {
     chain.restore(log.load())
   }
   // Why a promise chain: Node may start the next request before the previous
@@ -79,6 +95,24 @@ export async function startAuditWriter(options: {
     return next
   }
 
+  const promoteTimer = lease
+    ? setInterval(() => {
+        if (leader) {
+          // A promoted standby stamps its own id; the old holder must stop here.
+          if (!lease.assertLeadership()) leader = false
+          return
+        }
+        if (!lease.acquire()) return
+        void serialize(() => {
+          // Appends landed while this process was standby; re-read before taking over.
+          if (log) chain.restore(log.load())
+          leader = true
+        })
+      }, Math.max(50, Math.floor((options.leaseTtlMs ?? DEFAULT_LEASE_TTL_MS) / 4)))
+    : null
+
+  const canAppend = (): boolean => leader && (lease === null || lease.assertLeadership())
+
   const append = (inputs: readonly AuditEventInput[]): Promise<AuditEvent[]> =>
     serialize(() => inputs.map((input) => chain.append(input)))
 
@@ -89,7 +123,12 @@ export async function startAuditWriter(options: {
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://writer')
     if (url.pathname === '/health') {
-      return json(res, 200, { ok: true, events: chain.size, tip: chain.tip })
+      return json(res, 200, {
+        ok: true,
+        role: leader ? 'leader' : 'standby',
+        events: chain.size,
+        tip: chain.tip
+      })
     }
     const offered = req.headers['x-internal-token']
     if (typeof offered !== 'string' || !safeEqual(offered, options.internalToken)) {
@@ -111,6 +150,11 @@ export async function startAuditWriter(options: {
       // stop minting grants, not just the one that noticed (AC-26 fail-closed).
       if (!chain.getHealth().ok) {
         return json(res, 503, { error: { code: 'AUDIT_CHAIN_BROKEN' } })
+      }
+      // Why a distinct code: the replica should fail over, not treat this as a
+      // broken chain (which is global and must stop every writer).
+      if (!canAppend()) {
+        return json(res, 503, { error: { code: 'AUDIT_WRITER_STANDBY' } })
       }
       const appended = await append(raw)
       return json(res, 200, { events: appended })
@@ -145,7 +189,12 @@ export async function startAuditWriter(options: {
   return {
     port,
     append,
-    close: () => new Promise<void>((resolve) => server.close(() => resolve()))
+    close: () =>
+      new Promise<void>((resolve) => {
+        if (promoteTimer) clearInterval(promoteTimer)
+        lease?.release()
+        server.close(() => resolve())
+      })
   }
 }
 
@@ -155,7 +204,10 @@ if (isMain) {
   const writer = await startAuditWriter({
     port: Number(process.env.PORT ?? 18788),
     internalToken: process.env.INTERNAL_TOKEN ?? 'internal-test-token',
-    logPath: process.env.AUDIT_LOG_PATH ?? null
+    logPath: process.env.AUDIT_LOG_PATH ?? null,
+    leasePath: process.env.AUDIT_LEASE_PATH ?? null,
+    leaseTtlMs: process.env.AUDIT_LEASE_TTL_MS ? Number(process.env.AUDIT_LEASE_TTL_MS) : undefined,
+    holderId: process.env.WRITER_ID
   })
   console.log(`[audit-writer] listening on http://127.0.0.1:${writer.port}`)
 }
