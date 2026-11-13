@@ -1324,11 +1324,41 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 3. Windows 未验证（PTY 控制器用 `/bin/sh -c`）。
 4. 若云客户端将来切到 E2EE v2 握手（`e2ee_hello.v === 2`），v2 认证消息是严格键集形状，新增的 `clientCapabilities` 会被拒；当前云客户端固定 legacy 握手，不受影响，但切换时需同步契约。
 
+## M68 里程碑收口（L3）（本轮，主会话执行）
+
+按 `DEVELOPMENT_PROCESS.md` §4.1 分级执行：先看负载（10 核，1 分钟负载 4.3–5.2，低于半数阈值 5 之外仅瞬时越线），全部命令带并发上限，不使用全量 L4。
+
+| 批次 | 命令 | 结果 |
+|---|---|---|
+| 平台 e2e | `cd cloud-platform && node --test --test-concurrency=4 test/e2e/*.e2e.test.ts` | **94/94 通过**（17 suites，26.6s） |
+| 平台单元/契约 | `cd cloud-platform && node --test --test-concurrency=4 test/*.test.ts` | **25/25 通过** |
+| 云端主进程模块 | `vitest run --maxWorkers=4 src/main/cloud-platform/` | **51 文件 / 260 条全过**（38.2s） |
+| 渲染/Web/共享云模块 | `vitest run --maxWorkers=4 src/renderer/src/cloud/ src/renderer/src/web/web-cloud src/shared/cloud- src/shared/bounded-parallel-map.test.ts` | **23 文件 / 114 条全过**（8.7s） |
+
+**类型检查（四个工程，逐个串行执行，未与测试并行）**：`tsc node` **0**、`tsc tc.web` **0**、`tsc cloud-e2e` **0**、`tsc tc.cli` **0**。
+
+**本轮修复（收口时发现的既有门禁债）**：`config/tsconfig.node.json` 长期有 2 条 TS6307（云跨边界主进程测试 import 渲染模块 / 平台 credential 孪生文件不在工程内）——与 M56 同样处理：
+- 5 个 import 渲染模块的主进程云测试（create-failure / project-archive / provision-recovery / repo-registration / self-service）**改由 `tsconfig.cloud-e2e.json` 拥有**（node 工程 `exclude`，cloud-e2e 增列 `cloud-project-repos.ts`）；
+- node 工程 `include` 平台 `packages/contract/src/credential.ts`（仅此一个依赖无关的文件，未放宽 `internal-fetch.ts` 等其余平台代码）。
+→ `tsc node` 由 2 条基线错误变为 **0**，没有放宽任何检查。
+
+**证据目录核对**：`cloud-platform/evidence/` 共 **63 个目录，无空目录**；m41–m68 每个模块目录都有 JSON/日志证据，本轮结果写入 `evidence/m68-milestone-l3/m68-milestone.json`。
+
+**质量门禁**：`check:code-quality:changed` 0 新发现（409 个变更文件）。
+
+**如实记录 / 剩余**：
+1. 本轮是 **L3 里程碑级**，不是 L4 全量：未跑整个仓库（`pnpm test` 全量 / 全部 renderer 套件）。桌面 Electron 真实界面（截图/交互）仍未做，UI 覆盖为 happy-dom 组件测试 + 真实平台/TLS/git e2e。
+2. Windows / WSL / SSH 主机未实机验证（PTY、路径、权限位、conhost 行为）。
+3. 结构化 agent 会话（native chat）outcome 未端到端验证，仅终端 agent 路径（M67）。
+4. 浏览器 localStorage 存 token 的 XSS 暴露面（M66）与主机目录不回收（M65）是已记录的产品取舍。
+5. 平台 e2e 用 `--test-concurrency=4` 而非默认并发，属按 §4.1 的主动限流。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
 **已完成**：M41–M67（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
-**建议下一步（按缺口排序）**：
-1. **里程碑收口（L3）**：按 `DEVELOPMENT_PROCESS.md` §4.1 分批跑里程碑测试（平台 e2e 全套 + 云端 vitest 模块全集，`--maxWorkers=4`），核对全部证据目录，然后进入人工验收。
-2. 结构化 agent 会话路径的端到端验证（需要真实 Claude 会话宿主）。
-3. Windows 主机验证（PTY/路径/权限位）。
+**建议下一步**：
+1. **人工验收**：按 design/test-plan 逐条核对验收标准；重点看桌面真实界面（登录 → 侧栏项目 → 本人 checkout → 终端/文件/git/agent）与管理员浏览器会话页。
+2. 真机/跨平台：Windows、WSL、SSH 主机各跑一遍关键路径（provisioning、路径边界、PTY、会话持久化权限位）。
+3. 结构化 agent 会话路径的端到端验证（需要真实 Claude 会话宿主）。
+4. L4 全量回归：发版前单独执行，含桌面 Electron 渲染验证。

@@ -26,6 +26,7 @@
     "../src/renderer/src/web/web-cloud-session.e2e.test.ts",
     "../src/renderer/src/web/web-cloud-transport.e2e.test.ts",
     "../src/renderer/src/cloud/cloud-browser-bridge.ts",
+    "../src/renderer/src/cloud/cloud-project-repos.ts",
     "../src/renderer/src/cloud/use-cloud-session.ts",
     "../src/renderer/src/web/web-cloud-connect.ts",
     "../src/renderer/src/web/web-cloud-device-key.ts",

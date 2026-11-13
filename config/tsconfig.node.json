@@ -21,7 +21,17 @@
     "../src/shared/**/*",
     "../src/packages/process-host/src/__fixtures__/**/*",
     "../src/relay/**/*",
-    "../src/types/**/*"
+    "../src/types/**/*",
+    // The platform's credential twin is dependency-free, so parity tests can import it.
+    "../cloud-platform/packages/contract/src/credential.ts"
+  ],
+  "exclude": [
+    // Why cloud-e2e owns them: each imports a renderer module this project does not list.
+    "../src/main/cloud-platform/cloud-create-failure.test.ts",
+    "../src/main/cloud-platform/cloud-project-archive.test.ts",
+    "../src/main/cloud-platform/cloud-provision-recovery.test.ts",
+    "../src/main/cloud-platform/cloud-repo-registration.test.ts",
+    "../src/main/cloud-platform/cloud-self-service-project.test.ts"
   ],
   "compilerOptions": {
     "composite": true,
