@@ -11,10 +11,12 @@ import {
   encrypt,
   encryptBytes,
   generateKeyPair,
+  keyPairFromSecretKey,
   publicKeyFromBase64,
   publicKeyToBase64
 } from './web-e2ee'
-import type { WebPairingOffer } from './web-pairing'
+import { resolveWebCloudDeviceSecretKey } from './web-cloud-device-key'
+import { webRuntimeSubprotocols, type WebPairingOffer } from './web-pairing'
 import type { WebRuntimeTransportSubscription } from './web-runtime-subscription-contract'
 import { WebRuntimeSubscriptionRegistry } from './web-runtime-subscription-registry'
 import { WebRuntimeRequestRegistry } from './web-runtime-request-registry'
@@ -23,6 +25,19 @@ import { WebRuntimeConnectionWaiters } from './web-runtime-connection-waiters'
 const CONNECT_TIMEOUT_MS = 12_000
 const HANDSHAKE_TIMEOUT_MS = 10_000
 const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000, 8000, 15_000]
+
+/** Test seam: production uses the browser globals exactly as before. */
+export type WebRuntimeTransportRuntime = {
+  WebSocketImpl?: typeof WebSocket
+  setTimeout?: (callback: () => void, timeoutMs: number) => number
+  clearTimeout?: (handle: number) => void
+  /**
+   * Cloud offers only: the persisted device secret. The host verifies the E2EE
+   * hello key equals the ticket's device key, so the handshake must use this pair
+   * instead of a throwaway one. Never stored on or read back from the offer.
+   */
+  deviceSecretKeyB64?: string
+}
 
 export class WebRuntimeConnectionTransport {
   ws: WebSocket | null = null
@@ -40,6 +55,11 @@ export class WebRuntimeConnectionTransport {
   private readonly subscriptionRegistry: WebRuntimeSubscriptionRegistry
   private readonly requestRegistry: WebRuntimeRequestRegistry
   private readonly connectionWaiters: WebRuntimeConnectionWaiters
+  private readonly WebSocketImpl: typeof WebSocket
+  private readonly setTimeoutFn: (callback: () => void, timeoutMs: number) => number
+  private readonly clearTimeoutFn: (handle: number) => void
+  private readonly subprotocols: string[] | null
+  private readonly deviceSecretKey: Uint8Array | null
 
   constructor(
     private readonly pairing: WebPairingOffer,
@@ -47,8 +67,19 @@ export class WebRuntimeConnectionTransport {
     private readonly lifecycle: {
       onStateChanged?: (state: WebRuntimeConnectionState) => void
       reconnect?: boolean
-    } = {}
+    } = {},
+    runtime: WebRuntimeTransportRuntime = {}
   ) {
+    // Why resolve lazily in the timer fallbacks: the module must load in Node
+    // tests where `WebSocket`/`window` are absent until injected.
+    this.WebSocketImpl = runtime.WebSocketImpl ?? WebSocket
+    this.setTimeoutFn =
+      runtime.setTimeout ?? ((callback, timeoutMs) => window.setTimeout(callback, timeoutMs))
+    this.clearTimeoutFn = runtime.clearTimeout ?? ((handle) => window.clearTimeout(handle))
+    // Throws on a malformed cloud device key: falling back to a headerless
+    // upgrade would only surface later as an opaque host refusal.
+    this.subprotocols = webRuntimeSubprotocols(pairing)
+    this.deviceSecretKey = resolveWebCloudDeviceSecretKey(pairing.cloud, runtime.deviceSecretKeyB64)
     this.serverPublicKey = publicKeyFromBase64(pairing.publicKeyB64)
     this.connectionWaiters = new WebRuntimeConnectionWaiters({
       endpoint: pairing.endpoint,
@@ -166,7 +197,11 @@ export class WebRuntimeConnectionTransport {
     }
     let socket: WebSocket
     try {
-      socket = new WebSocket(this.pairing.endpoint)
+      // A cloud offer must carry the ticket and device key in the protocol list;
+      // a legacy offer keeps the protocol-less connect.
+      socket = this.subprotocols
+        ? new this.WebSocketImpl(this.pairing.endpoint, this.subprotocols)
+        : new this.WebSocketImpl(this.pairing.endpoint)
     } catch (error) {
       this.requestRegistry.rejectAll(error instanceof Error ? error.message : String(error))
       this.scheduleReconnect()
@@ -176,8 +211,8 @@ export class WebRuntimeConnectionTransport {
     this.ws = socket
     this.sharedKey = null
     this.setState('connecting')
-    this.connectTimer = window.setTimeout(() => {
-      if (this.ws === socket && socket.readyState === WebSocket.CONNECTING) {
+    this.connectTimer = this.setTimeoutFn(() => {
+      if (this.ws === socket && socket.readyState === this.WebSocketImpl.CONNECTING) {
         socket.close()
         this.handleSocketClosed(socket)
       }
@@ -188,12 +223,15 @@ export class WebRuntimeConnectionTransport {
       }
       this.clearConnectTimer()
       this.setState('handshaking')
-      const keyPair = generateKeyPair()
+      // The device pair when the offer is a cloud ticket, so the host's proof holds.
+      const keyPair = this.deviceSecretKey
+        ? keyPairFromSecretKey(this.deviceSecretKey)
+        : generateKeyPair()
       this.sharedKey = deriveSharedKey(keyPair.secretKey, this.serverPublicKey)
       socket.send(
         JSON.stringify({ type: 'e2ee_hello', publicKeyB64: publicKeyToBase64(keyPair.publicKey) })
       )
-      this.handshakeTimer = window.setTimeout(() => {
+      this.handshakeTimer = this.setTimeoutFn(() => {
         if (this.ws === socket && this.state === 'handshaking') {
           socket.close()
         }
@@ -216,7 +254,7 @@ export class WebRuntimeConnectionTransport {
 
   sendEncrypted(message: unknown): boolean {
     const socket = this.ws
-    if (!socket || socket.readyState !== WebSocket.OPEN || !this.sharedKey) {
+    if (!socket || socket.readyState !== this.WebSocketImpl.OPEN || !this.sharedKey) {
       return false
     }
     socket.send(encrypt(JSON.stringify(message), this.sharedKey))
@@ -225,7 +263,7 @@ export class WebRuntimeConnectionTransport {
 
   sendEncryptedBinary(bytes: Uint8Array<ArrayBufferLike>): boolean {
     const socket = this.ws
-    if (!socket || socket.readyState !== WebSocket.OPEN || !this.sharedKey) {
+    if (!socket || socket.readyState !== this.WebSocketImpl.OPEN || !this.sharedKey) {
       return false
     }
     socket.send(encryptBytes(bytes, this.sharedKey))
@@ -244,7 +282,7 @@ export class WebRuntimeConnectionTransport {
       RECONNECT_DELAYS_MS[Math.min(this.reconnectAttempt, RECONNECT_DELAYS_MS.length - 1)]
     )
     this.reconnectAttempt += 1
-    this.reconnectTimer = window.setTimeout(() => {
+    this.reconnectTimer = this.setTimeoutFn(() => {
       this.reconnectTimer = null
       this.openConnection()
     }, delay)
@@ -264,7 +302,7 @@ export class WebRuntimeConnectionTransport {
     this.clearHandshakeTimer()
     this.heartbeat.clear()
     if (this.reconnectTimer) {
-      window.clearTimeout(this.reconnectTimer)
+      this.clearTimeoutFn(this.reconnectTimer)
       this.reconnectTimer = null
     }
   }
@@ -273,7 +311,7 @@ export class WebRuntimeConnectionTransport {
     if (!this.connectTimer) {
       return
     }
-    window.clearTimeout(this.connectTimer)
+    this.clearTimeoutFn(this.connectTimer)
     this.connectTimer = null
   }
 
@@ -281,7 +319,7 @@ export class WebRuntimeConnectionTransport {
     if (!this.handshakeTimer) {
       return
     }
-    window.clearTimeout(this.handshakeTimer)
+    this.clearTimeoutFn(this.handshakeTimer)
     this.handshakeTimer = null
   }
 }

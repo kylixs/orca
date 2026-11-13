@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { decideWebPairingStartup, parseWebPairingInput, type WebPairingOffer } from './web-pairing'
+import {
+  decideWebPairingStartup,
+  parseWebPairingInput,
+  WebPairingCloudKeyError,
+  webRuntimeSubprotocols,
+  type WebPairingOffer
+} from './web-pairing'
 
 describe('web pairing input', () => {
   const offer: WebPairingOffer = {
@@ -93,5 +99,95 @@ describe('web pairing input', () => {
     ).toEqual({
       kind: 'use-stored-environment'
     })
+  })
+})
+
+describe('cloud pairing offers', () => {
+  const deviceKeyBytes = Uint8Array.from({ length: 32 }, (_, index) => index + 1)
+  const devicePublicKeyB64 = Buffer.from(deviceKeyBytes).toString('base64')
+  const credential = 'header.payload.signature'
+
+  function encodeOffer(overrides: Record<string, unknown> = {}) {
+    return Buffer.from(
+      JSON.stringify({
+        v: 2,
+        endpoint: 'wss://cloud.example/orca/runtime',
+        deviceToken: 'token',
+        publicKeyB64: 'public-key',
+        ...overrides
+      }),
+      'utf-8'
+    )
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '')
+  }
+
+  function cloudOffer(devicePublicKeyB64Override = devicePublicKeyB64): WebPairingOffer {
+    return {
+      v: 2,
+      endpoint: 'wss://cloud.example/orca/runtime',
+      deviceToken: 'token',
+      publicKeyB64: 'public-key',
+      cloud: { credential, devicePublicKeyB64: devicePublicKeyB64Override }
+    }
+  }
+
+  it('parses and normalises a cloud offer', () => {
+    expect(
+      parseWebPairingInput(`orca://pair?code=${encodeOffer({ cloud: cloudOffer().cloud })}`)
+    ).toEqual(cloudOffer())
+  })
+
+  it('accepts the device key in base64url and stores standard base64', () => {
+    const base64url = Buffer.from(deviceKeyBytes).toString('base64url')
+    expect(base64url).not.toContain('=')
+    expect(
+      parseWebPairingInput(
+        `orca://pair?code=${encodeOffer({
+          cloud: { credential, devicePublicKeyB64: base64url }
+        })}`
+      )
+    ).toEqual(cloudOffer())
+  })
+
+  it.each([
+    ['missing credential', { devicePublicKeyB64 }],
+    ['empty credential', { credential: '', devicePublicKeyB64 }],
+    ['missing device key', { credential }],
+    ['non-base64 device key', { credential, devicePublicKeyB64: 'not a key' }],
+    ['short device key', { credential, devicePublicKeyB64: Buffer.alloc(16).toString('base64') }],
+    ['long device key', { credential, devicePublicKeyB64: Buffer.alloc(33).toString('base64') }]
+  ])('rejects a cloud field with %s', (_label, cloud) => {
+    expect(parseWebPairingInput(`orca://pair?code=${encodeOffer({ cloud })}`)).toBeNull()
+  })
+
+  it('keeps legacy offers protocol-less', () => {
+    const legacy: WebPairingOffer = {
+      v: 2,
+      endpoint: 'ws://127.0.0.1:6768',
+      deviceToken: 'token',
+      publicKeyB64: 'public-key'
+    }
+    expect(webRuntimeSubprotocols(legacy)).toBeNull()
+  })
+
+  it('builds the runtime, credential, and device protocols for a cloud offer', () => {
+    const protocols = webRuntimeSubprotocols(cloudOffer())
+    expect(protocols).toEqual([
+      'orca-runtime',
+      `orca-cred.${credential}`,
+      `orca-device.${Buffer.from(deviceKeyBytes).toString('base64url')}`
+    ])
+    const deviceToken = protocols?.[2]?.slice('orca-device.'.length) ?? ''
+    expect(deviceToken).toMatch(/^[A-Za-z0-9_-]+$/)
+    expect(deviceToken).not.toContain('=')
+    expect(deviceToken).not.toContain('+')
+    expect(deviceToken).not.toContain('/')
+  })
+
+  it('fails loudly when a constructed offer carries a malformed device key', () => {
+    expect(() => webRuntimeSubprotocols(cloudOffer('short-key'))).toThrow(WebPairingCloudKeyError)
   })
 })

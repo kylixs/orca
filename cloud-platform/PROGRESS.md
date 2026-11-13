@@ -813,9 +813,35 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 2. 浏览器渲染层**还没有**真的使用它：`web-runtime-connection-transport.ts` 仍未传子协议、未接入云票据，这是下一模块（M47）的内容。
 3. 平台与票据格式未改；E2EE 握手未改。
 
+## M47 浏览器客户端在传输层支持云票据（本轮，开发子代理执行）
+
+**问题**：浏览器传输层 `web-runtime-connection-transport.ts` 打开的是 `new WebSocket(endpoint)`——**不传任何子协议、不携带票据**，因此即使 M46 让主机接受子协议形式的设备公钥，浏览器仍然永远到不了云主机。
+
+**本轮还发现一个隐藏前提**：主机不只看升级期的子协议，还在 E2EE 握手里校验 `deviceProofHolds`——**hello 里出示的公钥必须等于票据绑定的设备公钥**。浏览器传输层原本每次连接都临时生成密钥对，所以即便子协议补齐，握手仍会被判 `Unauthorized`。因此云端 offer 必须使用**持久化的设备密钥对**。
+
+| 改动 | 内容 |
+|---|---|
+| `web-pairing.ts` | `WebPairingOffer` 新增可选 `cloud: { credential, devicePublicKeyB64 }`；严格校验（非空、子协议安全字符集、32 字节键、base64/base64url 规范化并拒绝非规范尾比特）；新增 `webRuntimeSubprotocols()`：普通 offer → `null`（保持无子协议连接），云端 offer → `['orca-runtime','orca-cred.<ticket>','orca-device.<base64url>']`；键损坏时抛 `WebPairingCloudKeyError`，**不退回无凭据连接** |
+| `web-cloud-device-key.ts`（新） | 生成并持久化设备身份（存储接口注入，不绑定 localStorage/IndexedDB）；同一浏览器复用一个身份；对外只暴露公钥 |
+| `web-runtime-connection-transport.ts` | 传入子协议；云端 offer 用持久化私钥完成 E2EE（普通 offer 仍用临时密钥对，行为不变）；新增可注入的 `WebSocketImpl`/定时器作为测试缝（缺省即浏览器全局） |
+| `web-e2ee.ts` | 支持由私钥重建密钥对；`window.atob/btoa` 改 `globalThis` 以便同一份代码在 Node 测试中运行 |
+
+**验证（`evidence/m47-web-cloud-transport/`）**：2 条真实端到端 + 1 条构造期失败用例——真实平台进程、真实 TLS Runtime、**真实的 `WebRuntimeConnectionTransport` 类**（只注入 Node 的 `ws` 与定时器）：
+- M47-1 服务端收到的子协议就是 `['orca-runtime','orca-cred.<ticket>','orca-device.<base64url>']`，状态机 `connecting → handshaking → connected`，`status.get` 返回真实 `runtimeId`；
+- M47-2 设备键与票据不符时永不进入 `connected`，另用原始升级探测证明原因是 `401 device_mismatch`（DOM API 不暴露状态码）；
+- M47-3 云端 offer 缺少设备私钥时在构造期抛错。
+
+另有 31 条单测（offer 解析/规范化/子协议构造/设备身份持久化）。**主会话独立负向对照**：子协议只带票据、去掉 `orca-device.` → M47-1、M47-2 变红（`Could not connect…` 与 `expected 'device_pubkey_missing' to be 'device_mismatch'`），恢复后 3/3 绿。浏览器侧 41 文件 299 条全过；`tsc` web/node 0 错；门禁 7 项 0 新发现。
+
+**如实记录 / 剩余**：
+1. **还没有生产代码构造云端 offer**：平台登录、取票、把 offer 交给传输层这一段尚未接线（本轮只到传输层为止）。
+2. 设备密钥持久化只是接缝：真实浏览器需要接 IndexedDB 并把公钥注册到平台登录接口。
+3. 端到端用的是 Node 的 `ws`（协议列表与浏览器一致），不是真实 DOM WebSocket。
+4. 这一轮改了 `config/tsconfig.web.json`（加入 `src/types/**/*`），因为渲染侧测试引用了主进程测试夹具的类型；如后续不希望 web 工程依赖该目录，应改为在测试文件内本地声明。
+
 ## 下一步
 
-**M47 浏览器客户端接入云票据**：`web-runtime-connection-transport` 传入 `['orca-runtime','orca-cred.<ticket>','orca-device.<pubkey>']`、浏览器内生成并持久化设备密钥（IndexedDB）、登录平台取票后渲染同一个 `App`；随后删除自造的 `cloud-file-panel.tsx` 与云端壳子工作区页。
+**M48 浏览器云端登录与取票接线**：登录平台（设备公钥来自 M47 的持久化身份）→ 选项目 → `/v1/projects/:id/connect` 取票 → 用 M47 的 offer 构造器得到 `WebPairingOffer` → `WebRuntimeClient` 连上后渲染同一个 `App`；随后删除自造的 `cloud-file-panel.tsx` 与云端壳子工作区页。
 
 **界面方向修正（用户决定）**：不再自造云端面板。Orca 自带浏览器客户端（`src/renderer/src/web/`，约 1.1 万行，入口 `web-index.html`，在浏览器内重建 `window.api` 并挂载同一个 `App`）才是"统一工作界面"；它目前只接受**配对码**，没有云票据支持。改造顺序：
 

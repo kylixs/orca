@@ -10,6 +10,10 @@ export function generateKeyPair(): nacl.BoxKeyPair {
   return nacl.box.keyPair()
 }
 
+export function keyPairFromSecretKey(secretKey: Uint8Array): nacl.BoxKeyPair {
+  return nacl.box.keyPair.fromSecretKey(secretKey)
+}
+
 export function deriveSharedKey(ourSecretKey: Uint8Array, peerPublicKey: Uint8Array): Uint8Array {
   return nacl.box.before(peerPublicKey, ourSecretKey)
 }
@@ -22,8 +26,21 @@ export function publicKeyFromBase64(b64: string): Uint8Array {
   return key
 }
 
+export function secretKeyFromBase64(b64: string): Uint8Array {
+  const key = base64ToBytes(b64)
+  if (key.length !== 32) {
+    throw new Error(`Invalid secret key: expected 32 bytes, got ${key.length}`)
+  }
+  return key
+}
+
 export function publicKeyToBase64(key: Uint8Array): string {
   return bytesToBase64(key)
+}
+
+/** Re-derives a key pair's public half; used to reject a corrupted stored identity. */
+export function publicKeyFromSecretKey(secretKey: Uint8Array): Uint8Array {
+  return keyPairFromSecretKey(secretKey).publicKey
 }
 
 export function encrypt(plaintext: string, sharedKey: Uint8Array): string {
@@ -60,8 +77,9 @@ export function decryptBytes(
   return plaintext ? new Uint8Array(plaintext) : null
 }
 
+// Why globalThis: the same code runs in browsers (`window`) and in Node-hosted tests.
 function base64ToBytes(value: string): Uint8Array {
-  const binary = window.atob(value)
+  const binary = globalThis.atob(value)
   const bytes = new Uint8Array(binary.length)
   for (let index = 0; index < binary.length; index += 1) {
     bytes[index] = binary.charCodeAt(index)
@@ -69,12 +87,12 @@ function base64ToBytes(value: string): Uint8Array {
   return bytes
 }
 
-function bytesToBase64(bytes: Uint8Array): string {
+export function bytesToBase64(bytes: Uint8Array): string {
   const chunkSize = 0x8000
   let binary = ''
   for (let offset = 0; offset < bytes.length; offset += chunkSize) {
     const chunk = bytes.subarray(offset, offset + chunkSize)
     binary += String.fromCharCode(...chunk)
   }
-  return window.btoa(binary)
+  return globalThis.btoa(binary)
 }
