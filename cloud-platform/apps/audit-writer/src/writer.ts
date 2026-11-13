@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { timingSafeEqual, createHash } from 'node:crypto'
 import { AuditChain } from '../../api/src/audit.ts'
 import { createWriterLease } from './writer-lease.ts'
+import { openAnchorStore, type AnchorStore } from './anchor.ts'
 import { openAuditLogFile } from '../../api/src/audit-log-file.ts'
 import type { AuditEvent, AuditEventInput } from '../../api/src/store.ts'
 
@@ -16,6 +17,8 @@ import type { AuditEvent, AuditEventInput } from '../../api/src/store.ts'
 
 const MAX_BATCH = 1000
 const DEFAULT_LEASE_TTL_MS = 3_000
+/** Design §13.2: one signed anchor every five minutes. */
+const DEFAULT_ANCHOR_INTERVAL_MS = 300_000
 
 type WriterStore = { audit: AuditEvent[]; auditSeq: number; auditTip: string }
 
@@ -69,6 +72,10 @@ export async function startAuditWriter(options: {
   leasePath?: string | null
   leaseTtlMs?: number
   holderId?: string
+  /** Signed chain anchors; absent keeps the writer anchor-free (tests of the chain itself). */
+  anchorPath?: string | null
+  anchorKeyPath?: string | null
+  anchorIntervalMs?: number
 }): Promise<AuditWriter> {
   const store: WriterStore = { audit: [], auditSeq: 0, auditTip: 'GENESIS' }
   const log = options.logPath ? openAuditLogFile(options.logPath) : null
@@ -112,6 +119,25 @@ export async function startAuditWriter(options: {
     : null
 
   const canAppend = (): boolean => leader && (lease === null || lease.assertLeadership())
+
+  const anchors: AnchorStore | null =
+    options.anchorPath && options.anchorKeyPath
+      ? openAnchorStore({ path: options.anchorPath, keyPath: options.anchorKeyPath })
+      : null
+
+  /** One anchor per (advancing) tip; a quiet chain needs no new proof. */
+  const anchorTip = (): void => {
+    if (!anchors || !leader) return
+    if (chain.size === 0 || chain.size <= anchors.lastSeq()) return
+    anchors.append({ seq: chain.size, hash: chain.tip }, Date.now())
+  }
+  const anchorTimer = anchors
+    ? setInterval(() => {
+        // Why serialized: the timer must not read a tip an append is mid-way through.
+        void serialize(() => anchorTip())
+      }, options.anchorIntervalMs ?? DEFAULT_ANCHOR_INTERVAL_MS)
+    : null
+  anchorTimer?.unref?.()
 
   const append = (inputs: readonly AuditEventInput[]): Promise<AuditEvent[]> =>
     serialize(() => inputs.map((input) => chain.append(input)))
@@ -173,6 +199,21 @@ export async function startAuditWriter(options: {
       return json(res, 200, page)
     }
 
+    if (req.method === 'GET' && url.pathname === '/v1/anchors') {
+      return json(res, 200, {
+        publicKeyPem: anchors?.key.publicKeyPem ?? null,
+        anchors: anchors?.list() ?? []
+      })
+    }
+
+    if (req.method === 'POST' && url.pathname === '/v1/anchors') {
+      const appended = await serialize(() => {
+        anchorTip()
+        return anchors?.list().at(-1) ?? null
+      })
+      return json(res, 200, { anchor: appended })
+    }
+
     if (req.method === 'GET' && url.pathname === '/v1/verify') {
       return json(res, 200, { ...chain.verify(), size: chain.size, tip: chain.tip })
     }
@@ -193,6 +234,7 @@ export async function startAuditWriter(options: {
     close: () =>
       new Promise<void>((resolve) => {
         if (promoteTimer) clearInterval(promoteTimer)
+        if (anchorTimer) clearInterval(anchorTimer)
         lease?.release()
         server.close(() => resolve())
       })
@@ -208,7 +250,12 @@ if (isMain) {
     logPath: process.env.AUDIT_LOG_PATH ?? null,
     leasePath: process.env.AUDIT_LEASE_PATH ?? null,
     leaseTtlMs: process.env.AUDIT_LEASE_TTL_MS ? Number(process.env.AUDIT_LEASE_TTL_MS) : undefined,
-    holderId: process.env.WRITER_ID
+    holderId: process.env.WRITER_ID,
+    anchorPath: process.env.AUDIT_ANCHOR_PATH ?? null,
+    anchorKeyPath: process.env.AUDIT_ANCHOR_KEY_PATH ?? null,
+    anchorIntervalMs: process.env.AUDIT_ANCHOR_INTERVAL_MS
+      ? Number(process.env.AUDIT_ANCHOR_INTERVAL_MS)
+      : undefined
   })
   console.log(`[audit-writer] listening on http://127.0.0.1:${writer.port}`)
 }
