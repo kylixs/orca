@@ -107,9 +107,11 @@ function EntryRow({
 
 function PreviewBody({ preview }: { preview: CloudFilePreview }): React.JSX.Element {
   if (preview.isImage) {
+    // Why not "use download": managed projects have no download by policy (AC-10),
+    // so pointing there would advertise an entry that does not exist.
     return (
       <p className="text-xs text-muted-foreground">
-        图片文件{preview.mimeType ? `（${preview.mimeType}）` : ''}，预览请使用文件下载或本地面板。
+        图片文件{preview.mimeType ? `（${preview.mimeType}）` : ''}，托管项目不提供图片预览与下载。
       </p>
     )
   }

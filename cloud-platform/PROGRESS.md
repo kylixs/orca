@@ -1927,9 +1927,29 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 2. 未实现 FR-5.7 的「连接诊断」常驻页与延迟展示；面板只在失败时出现。
 3. 复制依赖浏览器/Electron 的 clipboard 权限；不可用时文本仍在屏幕上。
 
+## M92 补齐 AC-10 的「受管 UI 无下载/导出入口」（本轮，主会话执行）
+
+**问题（M70 验收映射）**：AC-10 已证明主机拒绝导出 RPC 与读预算，但**从未断言受管界面真的没有下载/导出入口**。检查时还发现一处实际错误：图片预览文案写着「预览请使用文件下载或本地面板」——指向一个按策略不存在、也不应存在的入口。
+
+| 改动 | 内容 |
+|---|---|
+| `src/renderer/src/cloud/cloud-file-panel.tsx` | 图片预览文案改为「托管项目不提供图片预览与下载」，不再引导用户去找下载 |
+| `src/renderer/src/cloud/cloud-managed-no-export.test.tsx`（新） | 渲染真实受管工作区 + 文件面板（记录型 RPC）：遍历全部可点控件核对标签，完整走一遍浏览流程核对 RPC 方法集合 |
+
+**验证（`evidence/m92-managed-no-export/managed-no-export.json`）**：
+- 可点控件共 6 个：返回工作台 / 刷新状态 / 上一级 / 工作区 / 目录 docs / 文件 README.md；**匹配「下载/导出/另存/download/export」的为 0 个**。
+- 走完「文本预览 → 进 docs → 打开 logo.png」后，实际发出的 RPC 只有 `status.get`、`files.readDir`、`files.readPreview`；导出族（`files.download`、`files.downloadFolder`、`terminal.exportArtifact`、`browser.download`、`browser.savePage`）调用数为 **0**。
+- 图片提示文案为「托管项目不提供图片预览与下载」，且不含任何引导下载的措辞。
+- **负向对照**：① 往文件面板加一个「下载」按钮 → 控件标签断言转红（`expected [ '下载' ] to deeply equal []`）；② 让预览额外调用 `files.download` → RPC 断言转红（`expected [ 'files.download', … ] to deeply equal []`）。均恢复后全绿。
+- 回归：云端渲染层全部用例 **43/43**（9 个文件）；`tc:web` 0；`check:code-quality:changed` 0 新发现。
+
+**如实记录 / 剩余**：
+1. 这里证明的是**当前受管 UI** 无入口，不是「永远不可能有」；主机侧拒绝（M35-1）才是控制，UI 只是便利。
+2. 未覆盖 Electron 原生菜单/右键菜单中是否出现下载项（云模式复用的是本地工作区外壳）；如需覆盖应在 Electron/CDP 环境做一次菜单枚举。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M91（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M92（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步**：
 1. **剩余 MINOR**：G-12 的浏览器渲染 P95 半分（AC-01，需 Electron/CDP 真实渲染环境）；「平台无业务流量」「中继无明文」已由 M85/M86 补齐。
