@@ -159,6 +159,8 @@ type RegistrationInput = {
   hostId: string
   /** The link prepared for the open; its endpoint keeps the environment resolvable. */
   link: CloudProjectLink
+  /** The user's checkout; unknown on the first open, before it is created. */
+  workspacePath?: string
 }
 
 /**
@@ -193,7 +195,9 @@ export function registerCloudRuntimeEnvironment(
       projectId: input.projectId,
       projectKey: input.projectKey,
       hostId: input.hostId,
-      registeredAt: now
+      registeredAt: now,
+      // Omitted while unknown, so an old sidecar shape stays byte-identical.
+      ...(input.workspacePath ? { workspacePath: input.workspacePath } : {})
     }
   })
   return environment

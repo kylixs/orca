@@ -65,7 +65,8 @@ export function registerCloudPlatformHandlers(
       projectKey: summary?.key ?? projectId,
       projectName: summary?.name ?? projectId,
       hostId: summary?.hostName ?? '',
-      link: prepared.link
+      link: prepared.link,
+      workspacePath: ensured.workspacePath
     })
     return {
       ok: true,

@@ -20,6 +20,7 @@ import {
 } from './runtime-environment-ssh-access-store'
 import { readPersistedEnvironmentStore } from './runtime-environment-store-file'
 import { shippedBuildRewrite } from './runtime-environment-shipped-store.test-fixture'
+import { cloudWorkspacePathOf } from './runtime-environments'
 
 const pairing = {
   v: 2 as const,
@@ -118,6 +119,43 @@ describe('runtime environment sidecar across a downgrade', () => {
     linked()
     writeFileSync(getRuntimeEnvironmentSidecarPath(userDataPath), '{not json')
     expect(() => listEnvironments(userDataPath)).toThrow('Orca environment links')
+  })
+
+  it('reads a cloud entry written before workspacePath existed as having no checkout', () => {
+    const seeded = addEnvironmentFromPairingCode(userDataPath, {
+      name: 'Cloud',
+      pairingCode: encodePairingOffer(pairing),
+      now: 100
+    })
+    const persisted = readPersistedEnvironmentStore(userDataPath).environments
+    writeRuntimeEnvironmentSidecarEntry(userDataPath, persisted, persisted[0]!, {
+      cloudProject: { projectId: 'p1', projectKey: 'k1', hostId: 'h1', registeredAt: 120 }
+    })
+
+    const raw = JSON.parse(readFileSync(getRuntimeEnvironmentSidecarPath(userDataPath), 'utf8'))
+    expect(raw.entries[seeded.id].cloudProject).not.toHaveProperty('workspacePath')
+    expect(cloudWorkspacePathOf(listEnvironments(userDataPath)[0]!)).toBeNull()
+  })
+
+  it('round-trips a cloud workspacePath through write and read', () => {
+    addEnvironmentFromPairingCode(userDataPath, {
+      name: 'Cloud',
+      pairingCode: encodePairingOffer(pairing),
+      now: 100
+    })
+    const persisted = readPersistedEnvironmentStore(userDataPath).environments
+    const workspacePath = '/srv/work/checkout-zhangsan'
+    writeRuntimeEnvironmentSidecarEntry(userDataPath, persisted, persisted[0]!, {
+      cloudProject: {
+        projectId: 'p1',
+        projectKey: 'k1',
+        hostId: 'h1',
+        registeredAt: 120,
+        workspacePath
+      }
+    })
+
+    expect(cloudWorkspacePathOf(listEnvironments(userDataPath)[0]!)).toBe(workspacePath)
   })
 
   it('overlays a reconciliation record so lifecycle changes refuse while it exists', () => {

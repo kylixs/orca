@@ -31,7 +31,9 @@ export const CloudProjectLinkSchema = z.object({
   projectId: z.string().min(1),
   projectKey: z.string().min(1),
   hostId: z.string().min(1),
-  registeredAt: z.number().finite()
+  registeredAt: z.number().finite(),
+  /** This user's checkout; absent until a first open has created it. */
+  workspacePath: z.string().min(1).optional()
 })
 
 export type CloudProjectLink = z.infer<typeof CloudProjectLinkSchema>
@@ -235,6 +237,13 @@ export function getPreferredPairingOffer(environment: KnownRuntimeEnvironment): 
     publicKeyB64: endpoint.publicKeyB64,
     ...(environment.pairedDeviceId ? { pairedDeviceId: environment.pairedDeviceId } : {})
   }
+}
+
+/** The user's checkout on the cloud host; null for sidecars written before the field existed. */
+export function cloudWorkspacePathOf(
+  environment: Pick<KnownRuntimeEnvironment, 'cloudProject'>
+): string | null {
+  return environment.cloudProject?.workspacePath ?? null
 }
 
 /** The tunnel a server is reached through; only orcadDeployment also grants lifecycle ownership. */

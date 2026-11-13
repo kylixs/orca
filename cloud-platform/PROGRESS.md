@@ -768,6 +768,29 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 2. `agentProvider.list` 现在被守卫拒绝（provider 目录是主机全局的）。若后续让云端复用 Orca 原有 agent 面板，需要重新评估：面板启动前要读 provider 目录，届时应改为"只按本人工作区过滤"而不是整体拒绝，并给出目录内容不跨租户的依据。
 3. `agentSessionAttachment.*`、`agentTeams.*`、`agentHooks.*` 在当前分支本就未登记权限（`cloudMethodAccess` 返回 null，权限层已拒）；本表仍显式分类，是为将来放宽前缀时守卫依然正确。
 
+## M45 云端运行时环境携带工作区路径（本轮，由开发子代理执行）
+
+**问题**：M40 在打开项目时创建了用户的 checkout 并把 `workspacePath` 返回给渲染层，但**运行时环境本身不携带它**。任何按 `environmentId` 寻址的面板（包括我们准备复用的 Orca 原有界面）只能看到主机的整个 worktree 目录——包含队友的检出区——无法知道哪一份是当前用户的。这正是「复用 Orca 原有界面」的前置条件。
+
+| 改动 | 内容 |
+|---|---|
+| `shared/runtime-environments.ts` | `CloudProjectLinkSchema` 新增**可选** `workspacePath`；新增 `cloudWorkspacePathOf(environment)`，旧侧车返回 `null` |
+| `cloud-runtime-environment.ts` | `RegistrationInput.workspacePath?`，写入时条件展开（未知则不写键，旧侧车形状保持逐字节一致）；同一项目重开时**刷新路径并保持环境 id** |
+| `ipc/cloud-platform.ts` | 把 `ensured.workspacePath` 传给注册 |
+| `shared/runtime-environment-sidecar.test.ts` / `cloud-runtime-environment-registration.test.ts` | 旧条目读作 `null`、写读往返、写入时省略、重开保持 id |
+
+**验证（`evidence/m45-workspace-path-sidecar/`）**：3 条真实端到端（真实平台票据 + 真实 TLS Runtime + 真实 git 仓库与托管 worktree + 真实客户端）：
+- M45-1 侧车落盘的 `workspacePath` 等于主机创建的 `.orca-worktrees/zhangsan/main`，且 `realpath` 与 `git rev-parse --show-toplevel` 一致——证明写进去的是真实 worktree 而不是回显；
+- M45-2 重开保持环境 id 不变、路径被新检出的真实 worktree 刷新；
+- M45-3 去掉该字段的旧条目读作 `null`，不抛错。
+
+**主会话独立负向对照**：把 `cloudWorkspacePathOf` 改为恒返回 `null` → M45-1/M45-2 变红（`expected null to be '/private/var/…'`），恢复后 3/3 绿。主机侧 + 共享 + 渲染侧 35 文件 190 条全过；`tsc` node/web 0 错；门禁 7 项 0 新发现。
+
+**如实记录 / 剩余**：
+1. 字段只是数据管道：还没有任何面板**读取**它来决定打开哪个工作区（那属于界面改造那一轮）。
+2. 向后兼容是双向的：旧构建忽略未知键（zod strip）；但旧构建若重写侧车，新字段会丢失，新构建退化为 `null`——不会抛错，也不会误判。
+3. 本模块不涉及传输路由、路径守卫与面板 UI，均未改动。
+
 ## 下一步
 
 **界面方向修正（用户决定）**：不再自造云端面板。Orca 自带浏览器客户端（`src/renderer/src/web/`，约 1.1 万行，入口 `web-index.html`，在浏览器内重建 `window.api` 并挂载同一个 `App`）才是"统一工作界面"；它目前只接受**配对码**，没有云票据支持。改造顺序：
