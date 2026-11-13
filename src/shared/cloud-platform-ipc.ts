@@ -91,12 +91,27 @@ export type CloudOpenResult =
       code: string
       message?: string
       /**
+       * `ENDPOINT_UNREACHABLE` only: each address the client probed, in order,
+       * with its outcome — the step-by-step diagnosis the failure panel shows.
+       */
+      connectDiagnostics?: CloudConnectDiagnostics
+      /**
        * Set when `code` is `FINGERPRINT_MISMATCH`: what was pinned, what the
        * platform now hands out, and the host it belongs to. The user must
        * re-verify before the new key replaces the pin.
        */
       hostKey?: CloudHostKeyMismatch
     }
+
+export type CloudEndpointProbe = {
+  route: 'direct' | 'relay'
+  /** `host:port`; never the signed route key or query. */
+  endpoint: string
+  ok: boolean
+  elapsedMs: number
+}
+
+export type CloudConnectDiagnostics = { probes: CloudEndpointProbe[] }
 
 export type CloudHostKeyMismatch = {
   hostId: string

@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { CloudConnectFailureDialog } from './cloud-connect-failure-dialog'
 import { CloudHostKeyDialog } from './cloud-host-key-dialog'
 import { CloudLoginPanel } from './cloud-login-panel'
 import { CloudProjectWorkspace, openedProjectSummary } from './cloud-project-workspace'
@@ -49,6 +50,18 @@ export function CloudApp({ bridge }: { bridge: CloudBridge | null }): React.JSX.
         session={session}
         onOpenProject={(projectId: string) => void session.openProject(projectId)}
       />
+      {session.connectFailure ? (
+        <CloudConnectFailureDialog
+          code={session.connectFailure.code}
+          diagnostics={{ probes: session.connectFailure.probes }}
+          retrying={confirmingKey}
+          onRetry={() => {
+            setConfirmingKey(true)
+            void session.retryConnect().finally(() => setConfirmingKey(false))
+          }}
+          onClose={() => session.dismissConnectFailure()}
+        />
+      ) : null}
       {session.hostKeyMismatch ? (
         <CloudHostKeyDialog
           mismatch={session.hostKeyMismatch}

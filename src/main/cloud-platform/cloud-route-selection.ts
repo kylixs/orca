@@ -1,53 +1,55 @@
-import { connect as tcpConnect } from 'node:net'
 import type { CloudEndpoint } from './cloud-connect-client'
+import { describeEndpoint, type EndpointProbe } from './cloud-endpoint-probe'
+
+export { probeEndpoint } from './cloud-endpoint-probe'
 
 /** Route selection for cloud endpoints: probe first, then pick. */
 
 export type RouteChoice = { endpoint: CloudEndpoint; route: 'direct' | 'relay' }
 
-const DEFAULT_MAX_DIRECT = 2
-
-/** Credential-free liveness check: a TCP connect says nothing about authorization. */
-export function probeEndpoint(url: string, timeoutMs: number): Promise<boolean> {
-  let parsed: URL
-  try {
-    parsed = new URL(url)
-  } catch {
-    return Promise.resolve(false)
-  }
-  const port = Number(parsed.port || (parsed.protocol === 'wss:' ? 443 : 80))
-  return new Promise<boolean>((resolve) => {
-    const socket = tcpConnect({ host: parsed.hostname, port })
-    const done = (ok: boolean): void => {
-      socket.destroy()
-      resolve(ok)
-    }
-    socket.setTimeout(timeoutMs, () => done(false))
-    socket.once('connect', () => done(true))
-    socket.once('error', () => done(false))
-  })
+export type RouteSelection = {
+  /** Null when nothing answered: the caller reports `ENDPOINT_UNREACHABLE`. */
+  choice: RouteChoice | null
+  /** Every address tried, in order, with its outcome (AC-07's step-by-step diagnosis). */
+  probes: EndpointProbe[]
 }
+
+const DEFAULT_MAX_DIRECT = 2
 
 /**
  * Direct first, relay only when no direct address answers (design D4). Relay is a
- * fallback for reachability, never a default.
+ * fallback for reachability, never a default. Every attempt is recorded, so a
+ * failure can be explained address by address instead of as one opaque error.
  */
 export async function chooseRoute(
   endpoints: { direct: CloudEndpoint[]; relay: CloudEndpoint[] },
   probe: (url: string) => Promise<boolean>,
   maxDirectAddrs = DEFAULT_MAX_DIRECT
-): Promise<RouteChoice | null> {
+): Promise<RouteSelection> {
+  const probes: EndpointProbe[] = []
+  const attempt = async (endpoint: CloudEndpoint, route: 'direct' | 'relay'): Promise<boolean> => {
+    const started = Date.now()
+    const ok = await probe(endpoint.url)
+    probes.push({
+      route,
+      endpoint: describeEndpoint(endpoint.url),
+      ok,
+      elapsedMs: Date.now() - started
+    })
+    return ok
+  }
+
   for (const endpoint of [...endpoints.direct]
     .sort((a, b) => a.priority - b.priority)
     .slice(0, maxDirectAddrs)) {
-    if (await probe(endpoint.url)) {
-      return { endpoint, route: 'direct' }
+    if (await attempt(endpoint, 'direct')) {
+      return { choice: { endpoint, route: 'direct' }, probes }
     }
   }
   for (const endpoint of [...endpoints.relay].sort((a, b) => a.priority - b.priority)) {
-    if (await probe(endpoint.url)) {
-      return { endpoint, route: 'relay' }
+    if (await attempt(endpoint, 'relay')) {
+      return { choice: { endpoint, route: 'relay' }, probes }
     }
   }
-  return null
+  return { choice: null, probes }
 }

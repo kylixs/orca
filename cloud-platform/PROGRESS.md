@@ -1900,9 +1900,36 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 1. 只验证了终端与文件 RPC；中继下的 agent/结构化会话与长时流（scrollback 大回放）未复测。
 2. 中继目标通过测试内的惰性转发 hop 解析（运行时端口后于注册出现）；生产部署里中继目标应指向固定的主机侧入口。
 
+## M91 补齐 AC-07 的「分步诊断 + 重试」（本轮，主会话执行）
+
+**问题（M70 验收映射）**：线路全不可达时只抛 `ENDPOINT_UNREACHABLE` 与一句英文消息，**没有逐地址诊断，也没有重试入口**。用户无法判断是直连还是中继失败，也无法把信息交给管理员（FR-5.6 / J4.2）。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-endpoint-probe.ts`（新） | 探测原语从路由选择中抽出；`describeEndpoint` 只保留 `host:port`（不带 route key / 查询串） |
+| `cloud-route-selection.ts` | `chooseRoute` 返回 `{ choice, probes }`：按尝试顺序记录线路、地址、结果、耗时 |
+| `cloud-connect-client.ts` | 全部不可达时把 `probes` 挂在错误上 |
+| `cloud-project-open-result.ts` | `failedCloudOpen` 将 `probes` 透传为 `connectDiagnostics`（全有或全无，避免半截诊断） |
+| `shared/cloud-platform-ipc.ts` | `CloudOpenResult` 失败分支新增 `connectDiagnostics` |
+| `use-cloud-session.ts` / `cloud-connect-failure-dialog.tsx`（新） | 打开失败时弹出面板：错误码、逐地址步骤、重试、复制诊断；重试复用同一项目 |
+| 测试 | `cloud-connect-diagnostics.test.ts`（真实平台/真实 TCP/真实中继进程）、`cloud-connect-failure-dialog.test.tsx`（3 例） |
+
+**验证（`evidence/m91-connect-diagnostics/connect-diagnostics.json`）**：
+- 直连地址是关闭端口、中继进程被杀后打开项目 → `ENDPOINT_UNREACHABLE`，`probes` 依次为 `direct 127.0.0.1:64528 不可达 1ms` 与 `relay 127.0.0.1:64541 不可达 0ms`。
+- 该记录经 `failedCloudOpen` 出现在 IPC 结果里（`connectDiagnostics.probes` 长度 2），渲染层拿到的是同一份数据。
+- 面板测试：显示错误码与两步诊断、重试回调触发、重试中禁用、复制文本与界面一致。
+- 重申：重启中继后**同一客户端不重新登录**重试成功（`route=relay`，`status.get` 可用）。
+- **负向对照**：① 去掉 IPC 诊断透传 → `connectDiagnostics` 为 undefined，断言转红；② 不记录探测步骤 → 步骤数 0，断言转红。均恢复后全绿。
+- 回归：相关套件 **10/10**；`tc:node`、`tc:web` 0；`check:code-quality:changed` 0 新发现。
+
+**如实记录 / 剩余**：
+1. 诊断步骤是「TCP 可达性」，不是 TLS 握手或鉴权失败原因；这两类失败有各自错误码（如 426/401、`FINGERPRINT_MISMATCH`），面板只在全不可达时出现。
+2. 未实现 FR-5.7 的「连接诊断」常驻页与延迟展示；面板只在失败时出现。
+3. 复制依赖浏览器/Electron 的 clipboard 权限；不可用时文本仍在屏幕上。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M90（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M91（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步**：
 1. **剩余 MINOR**：G-12 的浏览器渲染 P95 半分（AC-01，需 Electron/CDP 真实渲染环境）；「平台无业务流量」「中继无明文」已由 M85/M86 补齐。

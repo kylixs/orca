@@ -12,7 +12,10 @@ export type PausableProxy = {
   resume: () => void
 }
 
-export async function startPausableProxy(targetPort: number): Promise<PausableProxy> {
+export async function startPausableProxy(
+  // A getter lets the proxy exist before the runtime it forwards to has a port.
+  targetPort: number | (() => number)
+): Promise<PausableProxy> {
   let paused = false
   const live = new Set<Socket>()
   const server: Server = createServer((client) => {
@@ -20,7 +23,10 @@ export async function startPausableProxy(targetPort: number): Promise<PausablePr
       client.destroy()
       return
     }
-    const upstream = connect(targetPort, '127.0.0.1')
+    const upstream = connect(
+      typeof targetPort === 'number' ? targetPort : targetPort(),
+      '127.0.0.1'
+    )
     live.add(client)
     live.add(upstream)
     client.pipe(upstream).pipe(client)

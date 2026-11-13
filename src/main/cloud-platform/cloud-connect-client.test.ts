@@ -225,18 +225,22 @@ describe('桌面端云端连接（真实平台 + 真实 TLS Runtime + E2EE）', 
     const reachable = await chooseRoute({ direct: [deadDirect], relay: [liveRelay] }, (url) =>
       probeEndpoint(url, 300)
     )
-    expect(reachable?.route).toBe('relay')
+    expect(reachable.choice?.route).toBe('relay')
+    // The dead direct address is recorded before the relay that worked.
+    expect(reachable.probes[0]?.route).toBe('direct')
+    expect(reachable.probes[0]?.ok).toBe(false)
+    expect(reachable.probes.at(-1)?.ok).toBe(true)
 
     const nothing = await chooseRoute({ direct: [deadDirect], relay: [liveRelay] }, () =>
       Promise.resolve(false)
     )
-    expect(nothing).toBeNull()
+    expect(nothing.choice).toBeNull()
 
     // Direct wins whenever it answers, even if the relay is also up.
     const direct = await chooseRoute({ direct: [liveRelay], relay: [liveRelay] }, () =>
       Promise.resolve(true)
     )
-    expect(direct?.route).toBe('direct')
+    expect(direct.choice?.route).toBe('direct')
   })
 
   it('凭证被吊销后，已建立的加密会话收到 4403', async () => {

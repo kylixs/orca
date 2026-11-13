@@ -82,6 +82,7 @@ export type CloudConnectOptions = {
 const DEFAULT_PROBE_TIMEOUT_MS = 800
 const DEFAULT_MAX_DIRECT = 2
 export { chooseRoute, probeEndpoint } from './cloud-route-selection'
+export type { EndpointProbe } from './cloud-endpoint-probe'
 export type { RouteChoice } from './cloud-route-selection'
 
 export class CloudConnectClient {
@@ -280,13 +281,19 @@ export class CloudConnectClient {
     const ticket = await this.requestTicket(projectId)
     this.hostKeys.check(ticket)
     const probeTimeout = this.options.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS
-    const choice = await chooseRoute(
+    const selection = await chooseRoute(
       ticket.endpoints,
       (url) => probeEndpoint(url, probeTimeout),
       this.options.maxDirectAddrs ?? DEFAULT_MAX_DIRECT
     )
+    const choice = selection.choice
     if (!choice) {
-      throw Object.assign(new Error('no reachable endpoint'), { code: 'ENDPOINT_UNREACHABLE' })
+      // Why the probes ride along: the user must be able to see which address
+      // failed and how long it waited, not just that nothing worked (AC-07).
+      throw Object.assign(new Error('no reachable endpoint'), {
+        code: 'ENDPOINT_UNREACHABLE',
+        probes: selection.probes
+      })
     }
     return { route: choice.route, ticket, endpoint: choice.endpoint }
   }

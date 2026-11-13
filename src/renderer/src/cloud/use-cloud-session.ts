@@ -11,6 +11,7 @@ import type {
   CloudProjectPermission,
   CloudProvisionableHost,
   CloudRetryPrepareResult,
+  CloudConnectDiagnostics,
   CloudHostKeyMismatch,
   CloudRpcOutcome,
   CloudSessionState
@@ -80,6 +81,13 @@ export type CloudSessionView = {
    * blocks on it until the user confirms or cancels.
    */
   hostKeyMismatch: (CloudHostKeyMismatch & { projectId: string }) | null
+  /**
+   * Set when every endpoint was unreachable (AC-07): the panel shows the code,
+   * each probed address and a retry. Null for every other failure.
+   */
+  connectFailure: (CloudConnectDiagnostics & { code: string; projectId: string }) | null
+  retryConnect: () => Promise<CloudOpenResult | null>
+  dismissConnectFailure: () => void
   /** Pins the key the user just verified and retries the open. */
   confirmHostKey: () => Promise<CloudOpenResult | null>
   dismissHostKeyMismatch: () => void
@@ -105,6 +113,9 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
   const [error, setError] = useState<string | null>(null)
   const [hostKeyMismatch, setHostKeyMismatch] = useState<
     (CloudHostKeyMismatch & { projectId: string }) | null
+  >(null)
+  const [connectFailure, setConnectFailure] = useState<
+    (CloudConnectDiagnostics & { code: string; projectId: string }) | null
   >(null)
   const bridgeRef = useRef(bridge)
   bridgeRef.current = bridge
@@ -213,6 +224,7 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
       return null
     }
     setError(null)
+    setConnectFailure(null)
     const result = await active.openWorkspace(projectId)
     if (result.ok) {
       setOpenProjectId(result.projectId)
@@ -230,6 +242,12 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
     } else {
       setError(result.code)
       setHostKeyMismatch(result.hostKey ? { ...result.hostKey, projectId } : null)
+      // Why only this code: other failures are explained by their own UI.
+      setConnectFailure(
+        result.code === 'ENDPOINT_UNREACHABLE' && result.connectDiagnostics
+          ? { ...result.connectDiagnostics, code: result.code, projectId }
+          : null
+      )
     }
     return result
   }, [])
@@ -256,6 +274,16 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
 
   const dismissHostKeyMismatch = useCallback(() => setHostKeyMismatch(null), [])
 
+  const retryConnect = useCallback(async () => {
+    const pending = connectFailure
+    if (!pending) {
+      return null
+    }
+    return openProjectRef.current(pending.projectId)
+  }, [connectFailure])
+
+  const dismissConnectFailure = useCallback(() => setConnectFailure(null), [])
+
   openProjectRef.current = openProject
 
   const closeProject = useCallback(async (projectId: string) => {
@@ -281,6 +309,9 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
     notice,
     error,
     hostKeyMismatch,
+    connectFailure,
+    retryConnect,
+    dismissConnectFailure,
     confirmHostKey,
     dismissHostKeyMismatch,
     signIn,
