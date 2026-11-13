@@ -861,9 +861,30 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 4. 一次性票据被消费后不自动重取；工作区/环境注册未涉及。
 5. 真实 DOM WebSocket 页面上下文未验证（e2e 用 Node `ws`，协议列表一致）。
 
+## M49 浏览器界面的云端登录入口（本轮，开发子代理执行）
+
+**问题**：M47/M48 把传输与取票能力做齐了，但浏览器**没有任何入口**用到它们——`WebConnect` 仍只认配对码。
+
+| 改动 | 内容 |
+|---|---|
+| `web-cloud-connect.ts`（新） | 无 React/DOM 的编排：读取/生成设备身份 → 登录 → 列项目 → 取票 → 构造 offer → 注入式客户端 `status.get` 校验 → 拒绝 mobile 作用域 → 返回 `{offer, runtimeId, projectName, deviceSecretKeyB64}`。平台错误码原样透出；其余映射为 `CONNECT_FAILED` / `MOBILE_SCOPE_REJECTED` / `NO_PROJECTS` |
+| `WebConnectCloudForm.tsx`（新）+ `WebConnect.tsx` | 云端账号 / 配对码两个页签（无深链时默认云端）；平台错误码与消息直接显示；原配对码路径行为不变 |
+| `web-runtime-client.ts` | 新增可选 `deviceSecretKeyB64` 并透传给传输层与订阅客户端——没有它云端 offer 无法完成 E2EE 握手 |
+| `web-runtime-environment.ts` / `main.tsx` | 存 `cloudLoginRequired` 标记：云端登录取票成功但**票据不可复用**，因此不保存 `cloud` 绑定；刷新时清除该记录并回到登录页，提示"云会话已随页面关闭结束"，绝不挂载一个半连接的应用 |
+
+**验证（`evidence/m49-web-cloud-connect/`）**：2 条真实端到端（真实平台进程 + 真实注册主机 + 真实 TLS Runtime + 真实设备身份）：`connectCloudProject` 返回真实 `runtimeId`；返回的 offer 能被真实 `WebRuntimeConnectionTransport` 接受并进入 `connected`；连续两次调用各自拿到**不同票据**且都成功。另有 7 条编排单测 + 3 条界面组件测试。
+
+**主会话独立负向对照**：把 `status.get` 探测替换为固定成功值 → 3 条单测变红（runtime 绑定、mobile 作用域、CONNECT_FAILED），恢复后 7/7 绿。浏览器侧 46 文件 327 条全过；`tsc` web/node 0 错；门禁 7 项 0 新发现。
+
+**如实记录 / 未达成用户价值（重要）**：
+1. **登录成功后挂载的 `App` 实际连不上运行时**：本轮用一次 `status.get` 校验票据，而票据是**一次性**的——该次校验已消费它。保存的普通环境没有 `cloud` 绑定，App 自己的 runtime client 再次连接必然被拒，界面表现为"已进入但运行时断开"。这不是"完整可用"的登录，只是入口与编排打通。
+2. 因此下一模块（M50）必须做**会话交接**：把 `WebConnect` 已验证的实时传输交给 `installWebPreloadApi`/`WebRuntimeClient` 复用，而不是校验后丢弃再重连；或在 App 侧实现**按需重新取票**（持有内存中的平台会话 + 设备身份）。二者取其一，否则云端登录对用户无价值。
+3. 未做：令牌刷新（`/v1/auth/refresh`）、会话持久化、IndexedDB 迁移、启动期重取票、真实 DOM 页面上下文验证（e2e 用 Node `ws`）。
+4. `VITE_ORCA_CLOUD_API_URL` 是构建期变量，尚无运行时配置发现。
+
 ## 下一步
 
-**M49 浏览器界面接入**：在 `web-shell` 增加"云端登录"入口（用 M48 的会话 + M47 的设备身份），登录取票后以云端 offer 构造 `WebRuntimeClient` 并挂载**同一个 `App`**；随后删除自造的 `cloud-file-panel.tsx` 与云端壳子工作区页。
+**M50 云会话交接**：让云端登录的**同一条连接**服务 App（把 WebConnect 的已验证传输/客户端交给 preload API），或实现 App 侧按需重取票；验收标准是"登录后终端面板可用"，而不是"能进界面"。完成后删除自造的 `cloud-file-panel.tsx` 与云端壳子工作区页。
 
 **界面方向修正（用户决定）**：不再自造云端面板。Orca 自带浏览器客户端（`src/renderer/src/web/`，约 1.1 万行，入口 `web-index.html`，在浏览器内重建 `window.api` 并挂载同一个 `App`）才是"统一工作界面"；它目前只接受**配对码**，没有云票据支持。改造顺序：
 

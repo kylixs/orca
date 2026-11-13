@@ -5,6 +5,11 @@ import { translate } from '@/i18n/i18n'
 
 export type StoredWebRuntimeEnvironment = Omit<PublicKnownRuntimeEnvironment, 'endpoints'> & {
   compatibleEnvironmentIds?: string[]
+  /**
+   * Why: a cloud ticket is single-use and not stored, so this environment cannot
+   * reconnect. Startup sends the user back to sign in instead of mounting App.
+   */
+  cloudLoginRequired?: boolean
   endpoints: {
     id: string
     kind: 'websocket'
@@ -41,19 +46,29 @@ export function readStoredWebRuntimeEnvironment(): StoredWebRuntimeEnvironment |
       typeof parsed.pairedDeviceId === 'string' && parsed.pairedDeviceId.trim().length > 0
         ? parsed.pairedDeviceId.trim()
         : null
+    const cloudLoginRequired = parsed.cloudLoginRequired === true
     const {
       compatibleEnvironmentIds: _unvalidatedIds,
       pairedDeviceId: _unvalidatedDeviceId,
+      cloudLoginRequired: _unvalidatedCloudFlag,
       ...environment
     } = parsed
     return {
       ...environment,
       ...(pairedDeviceId ? { pairedDeviceId } : {}),
+      ...(cloudLoginRequired ? { cloudLoginRequired } : {}),
       ...(compatibleEnvironmentIds.length > 0 ? { compatibleEnvironmentIds } : {})
     }
   } catch {
     return null
   }
+}
+
+/** True for an environment whose pairing came from a consumed cloud ticket. */
+export function isCloudSessionWebEnvironment(
+  environment: Pick<StoredWebRuntimeEnvironment, 'cloudLoginRequired'>
+): boolean {
+  return environment.cloudLoginRequired === true
 }
 
 export function saveStoredWebRuntimeEnvironment(environment: StoredWebRuntimeEnvironment): void {

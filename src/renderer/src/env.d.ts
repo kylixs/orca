@@ -105,6 +105,8 @@ interface ImportMetaEnv {
   readonly VITE_DIRECT_SSH_RECONNECT_COORDINATOR?: string
   readonly VITE_EXPOSE_STORE?: boolean
   readonly VITE_SKILL_WARNING_PREVIEW?: string
+  /** Prefills the web client's cloud platform address; the field stays editable. */
+  readonly VITE_ORCA_CLOUD_API_URL?: string
 }
 
 export {}

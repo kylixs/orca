@@ -3,6 +3,7 @@ import { Cable, Loader2, Server, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   clearStoredWebRuntimeEnvironment,
   createStoredWebRuntimeEnvironment,
@@ -12,19 +13,26 @@ import {
 } from './web-runtime-environment'
 import { parseWebPairingInput } from './web-pairing'
 import { WebRuntimeClient } from './web-runtime-client'
+import WebConnectCloudForm from './WebConnectCloudForm'
 import type { RuntimeStatus } from '../../../shared/runtime-types'
 import { translate } from '@/i18n/i18n'
 
 type WebConnectProps = {
   initialPairingInput: string | null
+  /** Explains why a previously saved cloud environment is no longer usable. */
+  initialNotice?: string | null
   onConnected: () => void
 }
 
+type ConnectMode = 'cloud' | 'pairing'
+
 export default function WebConnect({
   initialPairingInput,
+  initialNotice = null,
   onConnected
 }: WebConnectProps): React.JSX.Element {
   const existingEnvironment = readStoredWebRuntimeEnvironment()
+  const [mode, setMode] = useState<ConnectMode>(initialPairingInput ? 'pairing' : 'cloud')
   const [name, setName] = useState(existingEnvironment?.name ?? 'Orca Server')
   const [pairingCode, setPairingCode] = useState(initialPairingInput ?? '')
   const [error, setError] = useState<string | null>(null)
@@ -61,7 +69,9 @@ export default function WebConnect({
     })
     const client = new WebRuntimeClient(parsedOffer)
     try {
-      const response = await client.call('status.get', undefined, { timeoutMs: 15_000 })
+      const response = await client.call('status.get', undefined, {
+        timeoutMs: 15_000
+      })
       if (!response.ok) {
         throw new Error(response.error.message)
       }
@@ -128,63 +138,94 @@ export default function WebConnect({
           </div>
         </div>
 
-        <div className="grid gap-2">
-          <Label htmlFor="web-runtime-name">
-            {translate('auto.web.WebConnect.cb4d287238', 'Server name')}
-          </Label>
-          <Input
-            id="web-runtime-name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            autoComplete="off"
-          />
-        </div>
-
-        <div className="grid gap-2">
-          <Label htmlFor="web-runtime-pairing-code">
-            {translate('auto.web.WebConnect.7a566540de', 'Pairing URL or code')}
-          </Label>
-          <Input
-            id="web-runtime-pairing-code"
-            value={pairingCode}
-            onChange={(event) => setPairingCode(event.target.value)}
-            placeholder={translate('auto.web.WebConnect.27393856e4', 'orca://pair?code=...')}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </div>
-
-        {parsedOffer && (
-          <div className="rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
-            {translate('auto.web.WebConnect.4a4c017be1', 'Endpoint:')} {parsedOffer.endpoint}
+        {initialNotice && (
+          <div className="rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
+            {initialNotice}
           </div>
         )}
 
-        {error && (
-          <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        <Tabs
+          value={mode}
+          onValueChange={(value) => setMode(value === 'pairing' ? 'pairing' : 'cloud')}
+        >
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="cloud">
+              {translate('auto.web.WebConnect.cloudAccount', 'Cloud account')}
+            </TabsTrigger>
+            <TabsTrigger value="pairing">
+              {translate('auto.web.WebConnect.pairingCode', 'Pairing code')}
+            </TabsTrigger>
+          </TabsList>
 
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
-          <Button type="button" variant="outline" onClick={clear} className="gap-2">
-            <Trash2 size={15} aria-hidden />
-            {translate('auto.web.WebConnect.2cf9e5a294', 'Clear saved server')}
-          </Button>
-          <Button
-            type="button"
-            onClick={() => void connect()}
-            disabled={connecting || !parsedOffer}
-            className="gap-2"
-          >
-            {connecting ? (
-              <Loader2 size={15} className="animate-spin" aria-hidden />
-            ) : (
-              <Cable size={15} aria-hidden />
-            )}
-            {translate('auto.web.WebConnect.b411ec0069', 'Connect')}
-          </Button>
-        </div>
+          <TabsContent value="cloud">
+            <WebConnectCloudForm
+              existingEnvironment={existingEnvironment}
+              onConnected={onConnected}
+            />
+          </TabsContent>
+
+          <TabsContent value="pairing">
+            <div className="grid gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="web-runtime-name">
+                  {translate('auto.web.WebConnect.cb4d287238', 'Server name')}
+                </Label>
+                <Input
+                  id="web-runtime-name"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  autoComplete="off"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="web-runtime-pairing-code">
+                  {translate('auto.web.WebConnect.7a566540de', 'Pairing URL or code')}
+                </Label>
+                <Input
+                  id="web-runtime-pairing-code"
+                  value={pairingCode}
+                  onChange={(event) => setPairingCode(event.target.value)}
+                  placeholder={translate('auto.web.WebConnect.27393856e4', 'orca://pair?code=...')}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
+
+              {parsedOffer && (
+                <div className="rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
+                  {translate('auto.web.WebConnect.4a4c017be1', 'Endpoint:')} {parsedOffer.endpoint}
+                </div>
+              )}
+
+              {error && (
+                <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {error}
+                </div>
+              )}
+
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+                <Button type="button" variant="outline" onClick={clear} className="gap-2">
+                  <Trash2 size={15} aria-hidden />
+                  {translate('auto.web.WebConnect.2cf9e5a294', 'Clear saved server')}
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => void connect()}
+                  disabled={connecting || !parsedOffer}
+                  className="gap-2"
+                >
+                  {connecting ? (
+                    <Loader2 size={15} className="animate-spin" aria-hidden />
+                  ) : (
+                    <Cable size={15} aria-hidden />
+                  )}
+                  {translate('auto.web.WebConnect.b411ec0069', 'Connect')}
+                </Button>
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   )

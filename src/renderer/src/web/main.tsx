@@ -12,7 +12,9 @@ import {
   readPairingInputFromLocation
 } from './web-pairing'
 import {
+  clearStoredWebRuntimeEnvironment,
   createStoredWebRuntimeEnvironment,
+  isCloudSessionWebEnvironment,
   readStoredWebRuntimeEnvironment,
   saveStoredWebRuntimeEnvironment
 } from './web-runtime-environment'
@@ -26,13 +28,23 @@ import.meta.hot?.dispose(disposeOsFileDropGuard)
 const App = lazy(() => import('../App'))
 
 function WebRoot(): React.JSX.Element {
-  const initialPairingInput = useMemo(() => readPairingInputFromLocation(window.location), [])
-  // Why: current runtime links carry scope metadata. Runtime-scope offers keep
-  // the instant save path; mobile/legacy-unknown offers must be shown/probed.
-  const startupDecision = useMemo(() => {
+  // Why here, once: startup routing must see the same stored environment the App
+  // will install, including whether a cloud ticket (already consumed) produced it.
+  const startup = useMemo(() => {
+    const initialPairingInput = readPairingInputFromLocation(window.location)
+    const storedEnvironment = readStoredWebRuntimeEnvironment()
+    const cloudSessionEnded =
+      storedEnvironment !== null && isCloudSessionWebEnvironment(storedEnvironment)
+    if (cloudSessionEnded) {
+      // Why clear: the ticket cannot be replayed, so keeping the record only
+      // risks mounting App against a pairing that can never authenticate.
+      clearStoredWebRuntimeEnvironment()
+    }
+    // Why: current runtime links carry scope metadata. Runtime-scope offers keep
+    // the instant save path; mobile/legacy-unknown offers must be shown/probed.
     const decision = decideWebPairingStartup({
       initialPairingInput,
-      hasStoredEnvironment: readStoredWebRuntimeEnvironment() !== null
+      hasStoredEnvironment: storedEnvironment !== null && !cloudSessionEnded
     })
     if (
       decision.kind === 'auto-save-runtime-offer' ||
@@ -40,8 +52,9 @@ function WebRoot(): React.JSX.Element {
     ) {
       clearPairingInputFromAddressBar()
     }
-    return decision
-  }, [initialPairingInput])
+    return { decision, cloudSessionEnded }
+  }, [])
+  const startupDecision = startup.decision
   const [hasEnvironment, setHasEnvironment] = useState(() => {
     if (startupDecision.kind === 'auto-save-runtime-offer') {
       saveStoredWebRuntimeEnvironment(
@@ -61,6 +74,16 @@ function WebRoot(): React.JSX.Element {
       <WebConnect
         initialPairingInput={
           startupDecision.kind === 'show-connect' ? startupDecision.initialPairingInput : null
+        }
+        initialNotice={
+          startup.cloudSessionEnded &&
+          startupDecision.kind === 'show-connect' &&
+          startupDecision.initialPairingInput === null
+            ? translate(
+                'auto.web.WebConnect.cloudSessionEnded',
+                'Your cloud session ended when this page closed. Sign in again to continue.'
+              )
+            : null
         }
         onConnected={() => setHasEnvironment(true)}
       />
