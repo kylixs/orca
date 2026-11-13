@@ -1297,7 +1297,15 @@ export function createApp(config: ApiConfig): ApiHandle {
         if (permissions.length > 0) {
           store.grants.push({ projectId, subjectType, subjectId, permissions })
         }
-        revokeProjectCredentials(projectId, 'grant_changed')
+        // Why scoped for users: the host cannot resolve group membership, so a
+        // group edit has to close the project; a user's own edit must not
+        // disconnect everyone else working on it (AC-12).
+        const subject = subjectType === 'user' ? store.users.get(subjectId) : undefined
+        if (subject) {
+          revokeUserCredentials(subject.username, 'grant_changed')
+        } else {
+          revokeProjectCredentials(projectId, 'grant_changed')
+        }
         return json(res, 200, { ok: true })
       }
 
@@ -2130,6 +2138,14 @@ export function createApp(config: ApiConfig): ApiHandle {
 
   function revokeProjectCredentials(projectId: string, reason: string): void {
     appendRevocation('project', projectId, reason)
+  }
+
+  /**
+   * A ticket's `sub` is `user:<username>`, so a user-scoped revocation must carry
+   * the username — the host compares against that claim, not the user id.
+   */
+  function revokeUserCredentials(username: string, reason: string): void {
+    appendRevocation('user', username, reason)
   }
 
   let relayPort = 18080
