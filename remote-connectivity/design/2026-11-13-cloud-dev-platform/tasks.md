@@ -63,6 +63,7 @@
 | T219 | routeKey 默认取直连 IP（`ip-<IP>`：显式配置优先、自动派生键随心跳地址跟随），SNI 标签随动 | 注册/心跳/路由表改造 | T216 | FR-4.9 修订；断言 `sni=ip-….relay.local` |
 | T220 | 真实链路部署与复测（中继 100.67.197.59、宿主 192.168.2.202、平台本机） | 部署记录 + §5.1 延迟证据 | T216–T219 | deployment-real-link.md 全步通过 |
 | T221 | 自助建项目改造：名称+目录必填、仓库地址可选（空项目直接就绪）、目录选自宿主心跳清单或新建（限 projectsRoot 内） | `cloud-new-project-dialog.tsx`、`project-self-service.ts`、`cloud-heartbeat-body.ts` | — | FR-3.7；无 git 地址可建空项目并打开 |
+| T222 | 管理员项目详情/会话页入口：平台按宿主直连地址生成 `cloud-admin.html` 链接（按项目），项目行显示「详情」；开发者「打开」对话框补桌面客户端引导文案 | `server.ts`、`apps/web/app.js` | — | FR-3.8；管理员新标签打开详情页，开发者不显示入口 |
 
 ### M3 策略与管控面
 
