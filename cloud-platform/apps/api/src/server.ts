@@ -218,6 +218,44 @@ export function createApp(config: ApiConfig): ApiHandle {
   }
 
   /**
+   * AC-18: a refusal at a privileged endpoint is a 403 *and* an audit event, so
+   * "who tried to reach the console" is answerable instead of invisible.
+   *
+   * Why best effort: the caller is already refused, and a broken log must not
+   * turn a 403 into a 500 — audit health has its own fail-closed gate for the
+   * mutations that must not proceed unrecorded.
+   */
+  function denyPrivileged(
+    res: ServerResponse,
+    traceId: string,
+    user: User,
+    input: {
+      eventType: string
+      targetType: string
+      targetId?: string | null
+      /** Exactly the role that was missing, so the event reads on its own. */
+      permission: 'platform:admin' | 'platform:auditor'
+    }
+  ): void {
+    audit.appendBestEffort({
+      eventType: input.eventType,
+      actor: user.username,
+      targetType: input.targetType,
+      targetId: input.targetId ?? null,
+      result: 'denied',
+      traceId,
+      metadata: { reason: 'PERMISSION_DENIED', requiredPermission: input.permission }
+    })
+    error(
+      res,
+      403,
+      'PERMISSION_DENIED',
+      input.permission === 'platform:admin' ? '需要平台管理权限。' : '需要审计权限。',
+      traceId
+    )
+  }
+
+  /**
    * Writes the event first and only then lets the caller mutate (write-ahead
    * audit). If the write fails the mutation never happens, which is what
    * fail-closed means; the reverse order would leave a change on disk that no
@@ -835,15 +873,11 @@ export function createApp(config: ApiConfig): ApiHandle {
       const authed = requireAuth()
       if (!authed) return
       if (!isAdmin(authed.user)) {
-        audit.appendBestEffort({
+        return denyPrivileged(res, traceId, authed.user, {
           eventType: 'signing_key_rotate',
-          actor: authed.user.username,
           targetType: 'signing_key',
-          targetId: null,
-          result: 'denied',
-          traceId
+          permission: 'platform:admin'
         })
-        return error(res, 403, 'PERMISSION_DENIED', '需要平台管理权限。', traceId)
       }
       if (!auditAllowsMutations(res, traceId)) return
       const rotated = signingKeys.rotate()
@@ -899,7 +933,8 @@ export function createApp(config: ApiConfig): ApiHandle {
           targetType: 'project',
           targetId: null,
           result: 'denied',
-          traceId
+          traceId,
+          metadata: { reason: 'PERMISSION_DENIED', requiredPermission: 'platform:admin' }
         })
         return error(res, 403, 'PERMISSION_DENIED', '需要平台管理权限。', traceId)
       }
@@ -1139,7 +1174,8 @@ export function createApp(config: ApiConfig): ApiHandle {
             targetType: 'project',
             targetId: projectId,
             result: 'denied',
-            traceId
+            traceId,
+            metadata: { reason: 'PERMISSION_DENIED', requiredPermission: 'platform:admin' }
           })
           return error(res, 403, 'PERMISSION_DENIED', '需要平台管理权限。', traceId)
         }
@@ -1372,7 +1408,12 @@ export function createApp(config: ApiConfig): ApiHandle {
 
       if (req.method === 'PUT' && action === '/policy') {
         if (!isAdmin(authed.user)) {
-          return error(res, 403, 'PERMISSION_DENIED', '需要平台管理权限。', traceId)
+          return denyPrivileged(res, traceId, authed.user, {
+            eventType: 'policy_update',
+            targetType: 'project',
+            targetId: found.id,
+            permission: 'platform:admin'
+          })
         }
         const body = await readJson(req)
         if (!auditAllowsMutations(res, traceId)) return
@@ -1425,7 +1466,11 @@ export function createApp(config: ApiConfig): ApiHandle {
       const authed = requireAuth()
       if (!authed) return
       if (!isAdmin(authed.user)) {
-        return error(res, 403, 'PERMISSION_DENIED', '需要平台管理权限。', traceId)
+        return denyPrivileged(res, traceId, authed.user, {
+          eventType: 'host_list',
+          targetType: 'host',
+          permission: 'platform:admin'
+        })
       }
       return json(res, 200, {
         hosts: [...store.hosts.values()].map((h) => ({
@@ -1454,7 +1499,11 @@ export function createApp(config: ApiConfig): ApiHandle {
       const authed = requireAuth()
       if (!authed) return
       if (!isAdmin(authed.user)) {
-        return error(res, 403, 'PERMISSION_DENIED', '需要平台管理权限。', traceId)
+        return denyPrivileged(res, traceId, authed.user, {
+          eventType: 'host_token_create',
+          targetType: 'host',
+          permission: 'platform:admin'
+        })
       }
       if (!auditAllowsMutations(res, traceId)) return
       const token = randomBytes(24).toString('base64url')
@@ -1646,8 +1695,16 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
 
       if (req.method === 'POST' && action === '/maintenance') {
-        if (!authed || !isAdmin(authed.user)) {
-          return error(res, 403, 'PERMISSION_DENIED', '需要平台管理权限。', traceId)
+        if (!authed) {
+          return error(res, 401, 'SESSION_EXPIRED', '登录已过期，请重新登录。', traceId)
+        }
+        if (!isAdmin(authed.user)) {
+          return denyPrivileged(res, traceId, authed.user, {
+            eventType: 'host_maintenance',
+            targetType: 'host',
+            targetId: hostId,
+            permission: 'platform:admin'
+          })
         }
         if (!auditAllowsMutations(res, traceId)) return
         const body = await readJson(req)
@@ -1676,8 +1733,16 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
 
       if (req.method === 'DELETE' && action === '') {
-        if (!authed || !isAdmin(authed.user)) {
-          return error(res, 403, 'PERMISSION_DENIED', '需要平台管理权限。', traceId)
+        if (!authed) {
+          return error(res, 401, 'SESSION_EXPIRED', '登录已过期，请重新登录。', traceId)
+        }
+        if (!isAdmin(authed.user)) {
+          return denyPrivileged(res, traceId, authed.user, {
+            eventType: 'host_revoke',
+            targetType: 'host',
+            targetId: hostId,
+            permission: 'platform:admin'
+          })
         }
         const revokedAt = now()
         target.status = 'offline'
@@ -1704,7 +1769,11 @@ export function createApp(config: ApiConfig): ApiHandle {
       const authed = requireAuth()
       if (!authed) return
       if (!isAdmin(authed.user) && !authed.user.roles.includes('platform:auditor')) {
-        return error(res, 403, 'PERMISSION_DENIED', '需要审计权限。', traceId)
+        return denyPrivileged(res, traceId, authed.user, {
+          eventType: 'audit_query',
+          targetType: 'audit',
+          permission: 'platform:auditor'
+        })
       }
       const limit = Math.min(Number(url.searchParams.get('limit') ?? 50), 200)
       const sinceParam = url.searchParams.get('since')
@@ -1729,7 +1798,11 @@ export function createApp(config: ApiConfig): ApiHandle {
       const authed = requireAuth()
       if (!authed) return
       if (!isAdmin(authed.user) && !authed.user.roles.includes('platform:auditor')) {
-        return error(res, 403, 'PERMISSION_DENIED', '需要审计权限。', traceId)
+        return denyPrivileged(res, traceId, authed.user, {
+          eventType: 'audit_query',
+          targetType: 'audit',
+          permission: 'platform:auditor'
+        })
       }
       const health = audit.getHealth()
       return json(res, 200, { ...health, persisted: auditLogPath !== null })
@@ -1740,15 +1813,11 @@ export function createApp(config: ApiConfig): ApiHandle {
       const authed = requireAuth()
       if (!authed) return
       if (!isAdmin(authed.user) && !authed.user.roles.includes('platform:auditor')) {
-        audit.appendBestEffort({
+        return denyPrivileged(res, traceId, authed.user, {
           eventType: 'audit_verify',
-          actor: authed.user.username,
           targetType: 'audit',
-          targetId: null,
-          result: 'denied',
-          traceId
+          permission: 'platform:auditor'
         })
-        return error(res, 403, 'PERMISSION_DENIED', '需要审计权限。', traceId)
       }
       // Verify the chain as it stands, then record the attempt: the attempt itself
       // must be auditable, but it cannot be part of what it reports on.
@@ -1779,8 +1848,14 @@ export function createApp(config: ApiConfig): ApiHandle {
         })
       }
       if (req.method === 'PUT') {
-        if (!isAdmin(authed.user))
-          return error(res, 403, 'PERMISSION_DENIED', '需要平台管理权限。', traceId)
+        if (!isAdmin(authed.user)) {
+          return denyPrivileged(res, traceId, authed.user, {
+            eventType: 'policy_update',
+            targetType: 'policy',
+            targetId: 'download',
+            permission: 'platform:admin'
+          })
+        }
         if (!auditAllowsMutations(res, traceId)) return
         const body = await readJson(req)
         const nextDefault = body.downloadDefault === 'allow' ? 'allow' : 'deny'

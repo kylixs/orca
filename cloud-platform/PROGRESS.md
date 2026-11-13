@@ -1968,14 +1968,36 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 2. `/v1/hosts`、`/v1/audit/events`、`PUT /v1/policies/download` 的 403 **不写审计**（只有 `audit_verify` 等少数路径写）。若要求"每个被拒的管理操作都留痕"，需在服务端统一补 denied 审计——这是实现缺口，未在本轮擅自扩大范围。
 3. `#adminNav` 的隐藏依赖登录响应里的 `permissions`；若平台返回的角色集变化，前端按权限判定而非硬编码角色名，已如此实现。
 
+## M94 补齐 AC-18 的「所有管理接口拒绝都写审计」（本轮，主会话执行）
+
+**问题（M93 记录的实现缺口）**：AC-18 要求被拒的管理操作写审计，但 12 个管理/审计接口里只有 `project_create`、`project_update`、`signing_key_rotate`、`audit_verify` 留痕；`GET /v1/hosts`、`POST /v1/hosts/tokens`、主机维护/吊销、下载策略、项目策略、`GET /v1/audit/events|status` 全部只返回 403。「谁尝试过进入管理台」无法回答。
+
+| 改动 | 内容 |
+|---|---|
+| `apps/api/src/server.ts` | 新增 `denyPrivileged()`：写 `denied` 审计（含 `reason`、`requiredPermission`）后返回 403；9 处裸 403 改为调用它；3 处已有审计补上同样的 `metadata`，`signing_key_rotate` / `audit_verify` 也统一走该函数 |
+| `test/e2e/admin-denial-audit.e2e.test.ts`（新） | 真实平台进程 + 真实登录令牌，逐一访问 12 个管理接口并核对审计链 |
+
+**验证（`evidence/m94-admin-denial-audit/admin-denial-audit.json`）**：
+- 12 个接口（hosts 列表、主机令牌、维护、吊销、全局下载策略、项目策略、审计事件、审计状态、审计校验、密钥轮换、项目创建、项目更新）开发者访问 **全部 403**。
+- 开发者名下的 `denied` 事件 **12 条**，逐条带 `targetType`／`targetId`／`requiredPermission`（`platform:admin` 或 `platform:auditor`）；`missingEventTypes` 为空。
+- 管理员读取 `/v1/hosts` 成功（200），且管理员名下无 denied 事件——过滤条件真实生效，不是把所有 403 都算数。
+- 新增 12 条后整链 `verify.ok, checked=14`。
+- **负向对照**：把 `GET /v1/hosts` 改回裸 403 → 用例报 `no denied event for: host_list` 转红；恢复后全绿。
+- 回归：平台全量 **140/140**；`check:code-quality:changed` 0 新发现。
+
+**如实记录 / 剩余**：
+1. 拒绝审计用 best-effort 写入：调用方已被拒绝，审计盘坏不该把 403 变成 500；若要求「拒绝也绝不丢」，需在审计不可用时改返回 503。
+2. 未对「已登录但越权的普通接口」（如跨项目 404）补审计——那是 AC-03 的 `project_access` denied，已覆盖。
+3. 拒绝事件的 `eventType` 复用各接口的成功事件名（`host_list`、`policy_update` 等），靠 `result=denied` 区分；审计查询需同时按 result 过滤。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M93（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M94（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步**：
 1. **剩余 MINOR**：G-12 的浏览器渲染 P95 半分（AC-01，需 Electron/CDP 真实渲染环境）；「平台无业务流量」「中继无明文」已由 M85/M86 补齐。
 2. **人工验收准备**：整理验收清单与证据索引（AC-29 桌面与浏览器两半均已覆盖）。
-   - 待决策：是否为所有被拒的管理接口统一补写 denied 审计（AC-18 只要求"写审计"，当前仅少数路径写）。
+   - AC-18 的「所有被拒的管理接口写审计」已由 M94 补齐（12 个接口、逐条含 requiredPermission）。
 3. **G-04 部署形态**：单写入者定序与 fail-closed（M80）、主备租约接管（M87）已完成；Redis Stream 队列、PostgreSQL/对象存储归档与签名锚点仍待部署阶段实现。
 4. **人工验收**：按 design/test-plan 逐条核对验收标准；重点看桌面真实界面（登录 → 侧栏项目 → 本人 checkout → 终端/文件/git/agent）与管理员浏览器会话页。
 4. 真机/跨平台：Windows、WSL、SSH 主机各跑一遍关键路径（provisioning、路径边界、PTY、会话持久化权限位）。
