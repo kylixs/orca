@@ -133,6 +133,11 @@
 | `cloud-platform/test/e2e/m70-acceptance.e2e.test.ts` | AC-01、AC-02、AC-03、AC-04、AC-08、AC-25 | 进程内真实 API + 注入时钟；不等待 15 分钟/60 秒 |
 | `cloud-platform/test/e2e/install-wizard.e2e.test.ts`（M114，FR-4.11） | 真实平台 | `GET /install/host.sh?token=…`、`GET /install/relay.sh`：管理员 200 且脚本文本含平台地址与一次性令牌（relay 版含内部令牌）；开发者 403 + `install_script` denied 审计；脚本参数缺 token 时 host 版 400（不签发无凭据脚本）；Web 向导页（主机/中继）展示的命令与脚本端点 URL 一致 |
 | `cloud-platform/test/e2e/relay-endpoint-address.e2e.test.ts`（M114，FR-4.9） | 真实平台 + 真实中继进程 | 中继注册后：`/v1/relays` 列出该节点（地址=注册来源 IP 或显式配置）；开发者 connect 收到的中继端点 `url` 携带该地址与 `sni=<路由键>.relay.local`；负向对照：无地址上报时回落到来源 IP；单测覆盖注册体解析（host 保留/缺省/空白剔除）；**routeKey 修订**：宿主缺省派生 `ip-<直连IP>` 并体现为 `sni=ip-….relay.local`，显式配置优先且不随心跳变化，自动派生键随心跳新地址跟随迁移（旧键路由移除） |
+| `cloud-platform/test/e2e/*`（M116 修复回归） | 真实平台进程 | F1：用户级授权按 username 解析为 user id，授权真实生效；grant 变更只撤销该用户会话（不再全项目撤销）。F2：审计总数/截断、筛选一致性、traceId 可复制、主机状态以心跳推导、已吊销主机禁维护、离线打开全入口禁用、维护原因可见、策略保存失败提示回滚、admin 权限列、加载错误态重试、登录必填校验 |
+| `cloud-platform/test/e2e/*`（M117，FR-3.8） | 真实平台 + TLS 宿主 | 项目 payload 含 `sessionPageUrl`（与 directAddrs 首项一致）；管理员行「详情」新标签；开发者不显示；打开对话框含桌面客户端引导 |
+| `src/renderer/src/cloud-admin/*`（M118，FR-3.9） | 真实平台 + TLS 宿主 + PTY | 详情页终端可输入且回显；无 `terminal` 授权显示占位；文件树打开只读预览 |
+| `cloud-platform/test/e2e/*`（M121，FR-4.12） | 平台 + 浏览器模式中继 + 宿主 | `/h/<routeKey>/web-index.html` 经中继转发伺服（相对 base 资源无 404）；未知 routeKey 404；SNI 透传模式既有用例全绿（线兼容）；未配置浏览器证书时不启用 |
+| `cloud-platform/test/e2e/*` + web e2e（M122，FR-3.10） | 真实平台 | handoff 签发→换发→二次使用 410→过期 410→无权限 403；审计 `web_handoff`；web 端 hash 清除与自动打开项目 |
 | `cloud-platform/test/e2e/self-service-project-dir.e2e.test.ts`（M115，FR-3.7） | 真实平台 + 真实宿主实例 | 名称/目录缺一 400；`repoUrl` 省略 → 项目直接 ready 可打开（空项目）；宿主心跳上报 `projectDirs` 供「选择已有目录」；目录越界 projectsRoot → 4xx 且宿主不建目录；新建目录由宿主创建成功 |
 | `cloud-platform/test/e2e/admin-gating.e2e.test.ts` 扩展（M114，FR-4.10） | 真实平台 | `GET /v1/relays`：管理员 200 且列出节点；开发者 403 + `relay_list` denied 审计（与 AC-18 同口径）；Web 独立「中继」导航仅管理员可见（不与「主机」页混排） |
 | `src/main/cloud-platform/cloud-host-tls-pinning.test.ts`（M109，§5.3 传输） | AC-29 邻接 | 真实平台 + 真实 TLS Runtime + MITM（另一张自签证书终结后转发）：真端点可连、换证书 `TLS_FINGERPRINT_MISMATCH` 被拒、无指纹不校验（旧平台兼容）；证据 `m109-host-tls-pinning/host-tls-pinning.json` |
