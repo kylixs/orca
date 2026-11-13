@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { readField, readString } from '../../shared/json-fields'
 import { REPO_ROOT } from './cloud-session-e2e-harness'
 import { startRelayStack, stopRelayStack, type RelayStack } from './cloud-relay-stack-fixture'
+import { assertLatencyBudget, latencyStats, type LatencyStats } from './cloud-latency-samples'
 
 /**
  * M102 (requirements §5.1): terminal input echo P95 ≤ 120ms. Measured on the
@@ -26,33 +27,9 @@ function saveEvidence(file: string, content: unknown): void {
   writeFileSync(join(EVIDENCE_DIR, file), JSON.stringify(content, null, 2))
 }
 
-type EchoStats = { samples: number; p50: number; p95: number; min: number; max: number }
-
-function statsOf(values: number[]): EchoStats {
-  const sorted = [...values].sort((a, b) => a - b)
-  const at = (percent: number): number => {
-    const index = Math.min(sorted.length - 1, Math.ceil((percent / 100) * sorted.length) - 1)
-    return round(sorted[Math.max(0, index)] ?? 0)
-  }
-  return {
-    samples: sorted.length,
-    p50: at(50),
-    p95: at(95),
-    min: round(sorted[0] ?? 0),
-    max: round(sorted.at(-1) ?? 0)
-  }
-}
-
-function round(value: number): number {
-  return Math.round(value * 100) / 100
-}
-
-/** The product's own acceptance check; the delayed run must make this throw. */
-function assertEchoBudget(stats: EchoStats, budget: number): void {
-  if (stats.p95 > budget) {
-    throw new Error(`terminal echo P95 ${stats.p95}ms over budget ${budget}ms`)
-  }
-}
+const statsOf = latencyStats
+const assertEchoBudget = (stats: LatencyStats, budget: number): void =>
+  assertLatencyBudget('terminal echo', stats, budget)
 
 let stack: RelayStack
 

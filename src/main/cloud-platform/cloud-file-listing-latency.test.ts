@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { REPO_ROOT } from './cloud-session-e2e-harness'
 import { startRelayStack, stopRelayStack, type RelayStack } from './cloud-relay-stack-fixture'
+import { assertLatencyBudget, latencyStats, type LatencyStats } from './cloud-latency-samples'
 
 /**
  * M103 (requirements §5.1): reading a 1000-entry directory P95 ≤ 400ms. Run over
@@ -18,38 +19,14 @@ const WARMUP = 3
 const CONTROL_SAMPLES = 10
 const INJECTED_DELAY_MS = 450
 
-type ListingStats = { samples: number; p50: number; p95: number; min: number; max: number }
-
 function saveEvidence(file: string, content: unknown): void {
   mkdirSync(EVIDENCE_DIR, { recursive: true })
   writeFileSync(join(EVIDENCE_DIR, file), JSON.stringify(content, null, 2))
 }
 
-function round(value: number): number {
-  return Math.round(value * 100) / 100
-}
-
-function statsOf(values: number[]): ListingStats {
-  const sorted = [...values].sort((a, b) => a - b)
-  const at = (percent: number): number => {
-    const index = Math.min(sorted.length - 1, Math.ceil((percent / 100) * sorted.length) - 1)
-    return round(sorted[Math.max(0, index)] ?? 0)
-  }
-  return {
-    samples: sorted.length,
-    p50: at(50),
-    p95: at(95),
-    min: round(sorted[0] ?? 0),
-    max: round(sorted.at(-1) ?? 0)
-  }
-}
-
-/** The acceptance check; the delayed run must make this throw. */
-function assertListingBudget(stats: ListingStats, budget: number): void {
-  if (stats.p95 > budget) {
-    throw new Error(`file listing P95 ${stats.p95}ms over budget ${budget}ms`)
-  }
-}
+const statsOf = latencyStats
+const assertListingBudget = (stats: LatencyStats, budget: number): void =>
+  assertLatencyBudget('file listing', stats, budget)
 
 /** 990 files across the extensions a checkout really has, plus 10 subdirectories. */
 function fillListing(dir: string): void {

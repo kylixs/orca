@@ -43,7 +43,7 @@ export type RelayStack = {
   platform: Platform
   cloud: CloudRuntime
   admission: CloudRuntimeAdmission
-  relay: RelayProcess
+  relay: RelayProcess | null
   hop: LatencyHop
   client: CloudConnectClient
   projectId: string
@@ -57,6 +57,11 @@ export type RelayStackOptions = {
   contentDir?: string
   realPty?: boolean
   permissions?: string[]
+  /**
+   * Advertise a direct address (through the delay hop) instead of relying on the
+   * relay. The host must stay reachable without the relay for this to work.
+   */
+  directOnly?: boolean
 }
 
 export async function startRelayStack(options: RelayStackOptions): Promise<RelayStack> {
@@ -95,6 +100,7 @@ export async function startRelayStack(options: RelayStackOptions): Promise<Relay
 
   let runtimePort = 0
   const hop = await startLatencyHop(() => runtimePort)
+  const hopAddr = `127.0.0.1:${Number(new URL(hop.url).port)}`
   const admission = startCloudRuntimeAdmission(
     {
       ORCA_CLOUD_API_URL: platform.url,
@@ -103,7 +109,10 @@ export async function startRelayStack(options: RelayStackOptions): Promise<Relay
     },
     {
       userDataPath: join(dir, 'host-data'),
-      relayTarget: `127.0.0.1:${Number(new URL(hop.url).port)}`
+      relayTarget: hopAddr,
+      // Why: the direct address also goes through the hop, so the delay control
+      // moves both routes and the host never advertises its real port.
+      ...(options.directOnly ? { directAddrs: [hopAddr] } : {})
     }
   )
   if (!admission) {
@@ -123,8 +132,12 @@ export async function startRelayStack(options: RelayStackOptions): Promise<Relay
   await admission.client!.refresh()
   runtimePort = Number(new URL(cloud.endpoint).port)
 
-  const relay = await startRelayProcess(platform.url)
-  await waitForRelayAnnounced(platform, relay)
+  // A relay would also be a valid fallback; direct-only stacks skip it so the
+  // route assertion cannot pass by accident.
+  const relay = options.directOnly ? null : await startRelayProcess(platform.url)
+  if (relay) {
+    await waitForRelayAnnounced(platform, relay)
+  }
 
   const create = await fetch(`${platform.url}/v1/projects`, {
     method: 'POST',
@@ -174,7 +187,7 @@ export async function stopRelayStack(stack: RelayStack | undefined): Promise<voi
   stack?.client.close()
   stack?.admission.client?.stop()
   await stack?.cloud.runtime.stop()
-  await stack?.relay.stop()
+  await stack?.relay?.stop()
   await stack?.hop.close()
   await stack?.platform.stop()
 }
