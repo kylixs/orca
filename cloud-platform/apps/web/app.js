@@ -560,9 +560,13 @@ async function showGrants(projectId) {
   const body = await api(`/v1/projects/${projectId}/grants`)
   const permissionSet = ['open', 'terminal', 'agent', 'file:read', 'file:write', 'download']
   const rows = body.grants
-    .map(
-      (g) => `<tr>
-        <td>${esc(g.username ?? g.subjectId)}</td>
+    .map((g) => {
+      // GET /grants names only user rows it can resolve: an unnamed user row has
+      // no live account behind it (a pre-fix row keyed by the typed name), so it
+      // grants nothing and its removal is refused server-side (W2 audit m-2).
+      const deadUser = g.subjectType === 'user' && !g.username
+      return `<tr>
+        <td>${esc(g.username ?? g.subjectId)}${deadUser ? ' <span class="badge">已删除用户</span>' : ''}</td>
         <td class="muted">${g.subjectType === 'group' ? '组' : '用户'}</td>
         ${permissionSet
           .map((p) =>
@@ -571,9 +575,9 @@ async function showGrants(projectId) {
               : `<td>${g.permissions.includes(p) ? '✓' : '—'}</td>`
           )
           .join('')}
-        <td class="actions"><button class="btn sm danger" data-remove="${g.subjectType}:${g.subjectId}">移除</button></td>
+        <td class="actions"><button class="btn sm danger" data-remove="${g.subjectType}:${g.subjectId}" ${deadUser ? 'disabled title="该账号已不存在，无法在此移除"' : ''}>移除</button></td>
       </tr>`
-    )
+    })
     .join('')
   const panel = $('#grantPanel')
   panel.innerHTML = `
@@ -593,24 +597,36 @@ async function showGrants(projectId) {
   $('#grantAdd').onclick = async () => {
     const subjectId = $('#grantSubject').value.trim()
     if (!subjectId) return
-    await api(`/v1/projects/${projectId}/grants`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        subjectType: $('#grantType').value,
-        subjectId,
-        permissions: ['open', 'terminal', 'agent', 'file:read', 'file:write']
+    try {
+      await api(`/v1/projects/${projectId}/grants`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          subjectType: $('#grantType').value,
+          subjectId,
+          permissions: ['open', 'terminal', 'agent', 'file:read', 'file:write']
+        })
       })
-    })
+    } catch (err) {
+      // A refused grant (a mistyped name → 400 USER_NOT_FOUND) used to vanish
+      // silently: report it and leave the matrix as the platform holds it (W2-M-1).
+      toast(`授予失败：${err.message ?? err}`)
+      return
+    }
     toast('已授予')
     showGrants(projectId)
   }
   for (const btn of document.querySelectorAll('[data-remove]')) {
     btn.onclick = async () => {
       const [subjectType, subjectId] = btn.dataset.remove.split(':')
-      await api(`/v1/projects/${projectId}/grants`, {
-        method: 'PUT',
-        body: JSON.stringify({ subjectType, subjectId, permissions: [] })
-      })
+      try {
+        await api(`/v1/projects/${projectId}/grants`, {
+          method: 'PUT',
+          body: JSON.stringify({ subjectType, subjectId, permissions: [] })
+        })
+      } catch (err) {
+        toast(`移除失败：${err.message ?? err}`)
+        return
+      }
       toast('已移除')
       showGrants(projectId)
     }

@@ -12,8 +12,11 @@ export type WebConsolePage = {
   submitLogin: (username: string, password: string) => Promise<void>
   text: (selector: string) => string
   hidden: (selector: string) => boolean
-  /** Makes the next requests to `METHOD path` fail inside the page's own fetch. */
-  fail: (method: string, path: string) => void
+  /**
+   * Makes the next requests to `METHOD path` fail inside the page's own fetch,
+   * or return a stubbed payload when `respond` is given.
+   */
+  fail: (method: string, path: string, respond?: { status: number; body: unknown }) => void
   clearFails: () => void
   /** Every request the page made, as `METHOD path`. */
   calls: () => string[]
@@ -33,23 +36,29 @@ export function loadWebConsolePage(platformUrl: string): WebConsolePage {
 
   const realFetch = globalThis.fetch
   const failing = new Map<string, number>()
+  const stubbed = new Map<string, { status: number; body: unknown }>()
   const requests: string[] = []
   const fetchToPlatform: typeof fetch = (input, init) => {
     const path =
       typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url
     const method = (init?.method ?? 'GET').toUpperCase()
     requests.push(`${method} ${path}`)
-    const status = failing.get(`${method} ${path}`)
-    if (status) {
-      // An in-page failure exercises the console's own error paths (M116-QA-009/011).
+    const key = `${method} ${path}`
+    const failure = failing.get(key)
+    const stub = stubbed.get(key)
+    if (failure !== undefined || stub !== undefined) {
+      // An in-page failure exercises the console's own error paths (M116-QA-009/011);
+      // a stub replays a payload the live platform cannot produce any more, such as
+      // a legacy pre-fix grant row.
+      const respond = stub ?? {
+        status: failure ?? 503,
+        body: { error: { code: 'SIMULATED_FAILURE', message: '模拟平台故障' } }
+      }
       return Promise.resolve(
-        new Response(
-          JSON.stringify({ error: { code: 'SIMULATED_FAILURE', message: '模拟平台故障' } }),
-          {
-            status,
-            headers: { 'content-type': 'application/json' }
-          }
-        )
+        new Response(JSON.stringify(respond.body), {
+          status: respond.status,
+          headers: { 'content-type': 'application/json' }
+        })
       )
     }
     return realFetch(`${platformUrl}${path}`, init)
@@ -134,10 +143,18 @@ export function loadWebConsolePage(platformUrl: string): WebConsolePage {
     },
     text: (selector) => element(selector).textContent ?? '',
     hidden: (selector) => element(selector).hidden === true,
-    fail: (method, path) => {
-      failing.set(`${method.toUpperCase()} ${path}`, 503)
+    fail: (method, path, respond) => {
+      const key = `${method.toUpperCase()} ${path}`
+      if (respond) {
+        stubbed.set(key, respond)
+      } else {
+        failing.set(key, 503)
+      }
     },
-    clearFails: () => failing.clear(),
+    clearFails: () => {
+      failing.clear()
+      stubbed.clear()
+    },
     calls: () => [...requests]
   }
 }

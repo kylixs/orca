@@ -14,7 +14,8 @@ import { loadWebConsolePage, type WebConsolePage } from './web-console-page.ts'
  * shown with its reason · QA-009 a failed policy save reports and rolls back ·
  * QA-010 an ungranted admin's permission column says so · QA-011 a failed load
  * shows an error state with retry · QA-012 empty login fields never reach the
- * platform.
+ * platform. · W2-M-1 a refused grant or revoke reports and leaves the matrix
+ * alone · W2-m-2 a legacy user row with no account behind it is labelled dead
  */
 
 const EVIDENCE = 'w116-fixes'
@@ -431,4 +432,153 @@ test('M116-QA-009 保存下载策略失败时提示并回滚', async () => {
   assert.equal(afterFail.body.downloadDefault, 'deny')
   page.clearFails()
   record('QA-009', 'PUT 失败 → toast 保存失败 + 单选回滚为 deny，策略版本不变')
+}, 120_000)
+
+type GrantRow = { subjectType: string; subjectId: string; username?: string }
+
+/** The newest toast: earlier ones are still inside their 2.4s lifetime. */
+function lastToast(page: WebConsolePage): string {
+  const toasts = page.window.document.querySelectorAll('.toast')
+  return toasts[toasts.length - 1]?.textContent ?? ''
+}
+
+/** How often the console loaded the project's matrix — a refresh is observable. */
+function matrixLoads(page: WebConsolePage, projectId: string): number {
+  return page.calls().filter((call) => call === `GET /v1/projects/${projectId}/grants`).length
+}
+
+/** Opens the named project's matrix on the members page. */
+async function openGrantPanel(page: WebConsolePage, name: string): Promise<void> {
+  const button = [...page.window.document.querySelectorAll<HTMLButtonElement>('[data-material]')].find(
+    (candidate) => candidate.textContent === name
+  )
+  assert.ok(button, `the members page must list ${name}`)
+  button.click()
+  await page.settle()
+}
+
+test('W2-M-1 授予/移除失败时提示且矩阵不被误刷新', async () => {
+  const projectId = 'proj_payment'
+  const grantsPath = `/v1/projects/${projectId}/grants`
+  const before = await adminApi(grantsPath)
+  assert.equal(before.status, 200, JSON.stringify(before.body))
+  const baseline = before.body.grants.length
+
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  await page.clickNav('members')
+  await openGrantPanel(page, 'payment-service')
+  const loads = matrixLoads(page, projectId)
+
+  // A mistyped user name is refused by the platform: the console used to swallow
+  // it and leave the admin staring at an unchanged matrix (W2 audit M-1).
+  page.window.document.querySelector<HTMLInputElement>('#grantSubject')!.value = 'no-such-user'
+  page.window.document.querySelector<HTMLSelectElement>('#grantType')!.value = 'user'
+  page.window.document.querySelector<HTMLButtonElement>('#grantAdd')!.click()
+  await page.settle()
+
+  const refusal = lastToast(page)
+  assert.match(refusal, /授予失败/, 'the refusal must be reported in the page')
+  assert.match(refusal, /用户不存在/, 'the toast must carry the platform reason')
+  assert.equal(
+    matrixLoads(page, projectId),
+    loads,
+    'a refused grant must not redraw the matrix as if it landed'
+  )
+  const afterRefusal = await adminApi(grantsPath)
+  assert.equal(afterRefusal.body.grants.length, baseline, 'no row may be added for the unknown user')
+  assert.equal(
+    afterRefusal.body.grants.some((g: GrantRow) => g.subjectId === 'no-such-user'),
+    false,
+    'the unknown name must not be stored'
+  )
+
+  // The happy path still reports and refreshes, so the guard cannot hide success.
+  page.window.document.querySelector<HTMLInputElement>('#grantSubject')!.value = 'zhangsan'
+  page.window.document.querySelector<HTMLSelectElement>('#grantType')!.value = 'user'
+  page.window.document.querySelector<HTMLButtonElement>('#grantAdd')!.click()
+  await page.settle()
+  assert.match(lastToast(page), /已授予/)
+  assert.equal(matrixLoads(page, projectId), loads + 1, 'a landed grant must refresh the matrix')
+  assert.ok(rowFor(page, 'zhangsan').querySelector('[data-remove]'), 'the new row must be removable')
+
+  // Same for a removal that does not land.
+  page.fail('PUT', grantsPath)
+  rowFor(page, 'zhangsan').querySelector<HTMLButtonElement>('[data-remove]')!.click()
+  await page.settle()
+  assert.match(lastToast(page), /移除失败/, 'a failed removal must be reported')
+  assert.equal(
+    matrixLoads(page, projectId),
+    loads + 1,
+    'a failed removal must not redraw the matrix'
+  )
+  const afterFailedRemove = await adminApi(grantsPath)
+  assert.equal(
+    afterFailedRemove.body.grants.some((g: GrantRow) => g.username === 'zhangsan'),
+    true,
+    'the grant must survive a failed removal'
+  )
+
+  page.clearFails()
+  rowFor(page, 'zhangsan').querySelector<HTMLButtonElement>('[data-remove]')!.click()
+  await page.settle()
+  assert.match(lastToast(page), /已移除/)
+  const afterRemove = await adminApi(grantsPath)
+  assert.equal(
+    afterRemove.body.grants.some((g: GrantRow) => g.username === 'zhangsan'),
+    false,
+    'a landed removal must drop the row'
+  )
+  record(
+    'W2-M-1',
+    '授予未知用户 400 → toast 授予失败：用户不存在，矩阵不刷新且无新行；移除失败同样提示，成功路径照常刷新'
+  )
+  saveEvidence('w2-m1-fix', 'm1-grant-refusal.json', {
+    finding: 'W2 audit M-1',
+    refusedGrant: '授予失败：用户不存在。 + 矩阵不刷新、无新行',
+    failedRemoval: '移除失败：模拟平台故障 + 矩阵不刷新、行保留',
+    happyPath: '已授予/已移除 + 矩阵刷新'
+  })
+}, 120_000)
+
+test('W2-m-2 无主用户授权行标记已删除用户且不可移除', async () => {
+  const projectId = 'proj_payment'
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+
+  // A pre-fix matrix stores user rows keyed by whatever was typed; the platform
+  // cannot resolve them any more, so GET /grants returns them without a username.
+  page.fail('GET', `/v1/projects/${projectId}/grants`, {
+    status: 200,
+    body: {
+      grants: [
+        { projectId, subjectType: 'group', subjectId: 'team-payment', permissions: ['open'] },
+        { projectId, subjectType: 'user', subjectId: 'lsii', permissions: ['open'] },
+        { projectId, subjectType: 'user', subjectId: 'user_live', username: 'zhangsan', permissions: ['open'] }
+      ]
+    }
+  })
+  await page.clickNav('members')
+  await openGrantPanel(page, 'payment-service')
+
+  const dead = rowFor(page, 'lsii')
+  assert.match(dead.textContent ?? '', /已删除用户/, 'a user row without an account must be labelled')
+  assert.equal(
+    dead.querySelector<HTMLButtonElement>('[data-remove]')?.disabled,
+    true,
+    'the platform would refuse to clear that row'
+  )
+  const alive = rowFor(page, 'zhangsan')
+  assert.doesNotMatch(alive.textContent ?? '', /已删除用户/)
+  assert.equal(alive.querySelector<HTMLButtonElement>('[data-remove]')?.disabled, false)
+  const group = rowFor(page, 'team-payment')
+  assert.doesNotMatch(group.textContent ?? '', /已删除用户/, 'only user rows can be dead')
+  page.clearFails()
+  saveEvidence('w2-m1-fix', 'm2-dead-row.json', {
+    finding: 'W2 audit m-2',
+    deadRow: 'lsii → 已删除用户 标记，移除禁用',
+    liveRows: 'zhangsan / team-payment → 无标记，移除可用'
+  })
 }, 120_000)
