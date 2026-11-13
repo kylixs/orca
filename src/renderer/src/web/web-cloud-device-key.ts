@@ -16,6 +16,7 @@ import {
 
 const KEY_BYTES = 32
 const STANDARD_BASE64 = /^[A-Za-z0-9+/]+={0,2}$/
+const LOCAL_STORAGE_KEY = 'orca.webCloudDeviceKey'
 
 /** The persistence seam; callers supply localStorage/IndexedDB, this module stays pure. */
 export type WebCloudDeviceKeyStorage = {
@@ -74,6 +75,16 @@ function parseStoredIdentity(raw: string | null): WebCloudDeviceIdentity | null 
   return {
     publicKeyB64: publicKeyToBase64(publicKey),
     secretKeyB64: bytesToBase64(secretKey)
+  }
+}
+
+/** Browser wiring for the storage seam; tests inject their own instead. */
+export function createLocalStorageWebCloudDeviceKey(
+  storage: Storage = window.localStorage
+): WebCloudDeviceKeyStorage {
+  return {
+    read: () => storage.getItem(LOCAL_STORAGE_KEY),
+    write: (value) => storage.setItem(LOCAL_STORAGE_KEY, value)
   }
 }
 

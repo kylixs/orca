@@ -839,9 +839,31 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 3. 端到端用的是 Node 的 `ws`（协议列表与浏览器一致），不是真实 DOM WebSocket。
 4. 这一轮改了 `config/tsconfig.web.json`（加入 `src/types/**/*`），因为渲染侧测试引用了主进程测试夹具的类型；如后续不希望 web 工程依赖该目录，应改为在测试文件内本地声明。
 
+## M48 浏览器云端登录与取票（本轮，开发子代理执行）
+
+**问题**：M47 让浏览器传输层能携带云票据，但**没有任何浏览器代码去拿票**——登录平台、列项目、取一次性票据、把它变成 `WebPairingOffer` 这一步完全缺失，浏览器侧仍然只能靠人工配对码。
+
+| 改动 | 内容 |
+|---|---|
+| `shared/cloud-platform-reply.ts`（新） | 把平台回复解析抽到共享层：`parseConnectTicketReply`/`parseProjectListReply`/`readTicketClaims`。桌面端解析原先用 Node 的 `Buffer` 解码 JWT，浏览器构建无法复用；现在两端读同一份契约（`cloud-connect-response.ts` 变成门面 re-export，桌面类型改为共享类型的别名） |
+| `renderer/web/web-cloud-session.ts`（新） | `loginToCloud` → `listCloudProjects` → `requestCloudTicket` → `cloudPairingOfferFromTicket`。票据里的 `deviceToken` 从 JWT 载荷解出，`endpoint` 按 priority 直连优先（浏览器无法 TCP 预检），`publicKeyB64` 取 `host.e2eePublicKeyB64` |
+| 错误处理 | 非 2xx 抛带平台 `error.code` 的 `WebCloudSessionError`（`INVALID_CREDENTIALS`/`HOST_OFFLINE`/`VERSION_UNSUPPORTED`/`DEVICE_KEY_MISMATCH`…）；200 但结构不符抛 `malformed_reply`；无端点抛 `no_endpoint`——**绝不返回半成品 offer** |
+| `web-cloud-device-key.ts` | 新增 `createLocalStorageWebCloudDeviceKey()` 显式工厂（生产代码尚未调用；测试用内存 Storage） |
+
+**验证（`evidence/m48-web-cloud-session/`）**：真实端到端 1 条 —— 真实平台进程 + 真实注册主机 + 真实 TLS Runtime + 真实设备身份，**完整走浏览器链路** `loginToCloud → listCloudProjects → requestCloudTicket → cloudPairingOfferFromTicket → WebRuntimeConnectionTransport`，`status.get` 返回真实 `runtimeId`；另 2 条负向：错误口令 → `INVALID_CREDENTIALS`（401），不可见项目 → `PROJECT_NOT_FOUND`（404）。另有 12 条单测（offer 构造、子协议产物、错误码映射、残缺回复、无端点）。
+
+**主会话独立负向对照**：把 offer 构造里的 `cloud` 字段改名 → M48-1 变红（`expected undefined to be 'eyJhbGciOiJFZERTQSIs…'`），恢复后 4/4 绿。浏览器侧 + 主机侧 76 文件 487 条全过；`tsc` web/node 0 错；门禁 7 项 0 新发现。
+
+**如实记录 / 剩余**：
+1. **没有 UI 接线**：`web-shell`/`WebConnect` 仍只认配对码；`App` 尚未在登录取票后挂载。
+2. 令牌只存内存，无刷新（`/v1/auth/refresh`）与持久化；调用方负责续期。
+3. 无端点探测/测速（浏览器不能做 TCP 预检），仅按 priority 直连优先。
+4. 一次性票据被消费后不自动重取；工作区/环境注册未涉及。
+5. 真实 DOM WebSocket 页面上下文未验证（e2e 用 Node `ws`，协议列表一致）。
+
 ## 下一步
 
-**M48 浏览器云端登录与取票接线**：登录平台（设备公钥来自 M47 的持久化身份）→ 选项目 → `/v1/projects/:id/connect` 取票 → 用 M47 的 offer 构造器得到 `WebPairingOffer` → `WebRuntimeClient` 连上后渲染同一个 `App`；随后删除自造的 `cloud-file-panel.tsx` 与云端壳子工作区页。
+**M49 浏览器界面接入**：在 `web-shell` 增加"云端登录"入口（用 M48 的会话 + M47 的设备身份），登录取票后以云端 offer 构造 `WebRuntimeClient` 并挂载**同一个 `App`**；随后删除自造的 `cloud-file-panel.tsx` 与云端壳子工作区页。
 
 **界面方向修正（用户决定）**：不再自造云端面板。Orca 自带浏览器客户端（`src/renderer/src/web/`，约 1.1 万行，入口 `web-index.html`，在浏览器内重建 `window.api` 并挂载同一个 `App`）才是"统一工作界面"；它目前只接受**配对码**，没有云票据支持。改造顺序：
 

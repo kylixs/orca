@@ -194,6 +194,15 @@ function devicePublicKeyToBase64Url(publicKeyB64: string): string {
   return canonical.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
+/**
+ * Standard base64 form of a 32-byte pairing key, or null when the value is not
+ * one. Shared with cloud ticket mapping, which must reject a host key the E2EE
+ * handshake cannot use.
+ */
+export function normalizeWebPairingKey32(value: string): string | null {
+  return normalizeDevicePublicKeyBase64(value)
+}
+
 /** Accepts standard base64 or base64url, returns canonical standard base64. */
 function normalizeDevicePublicKeyBase64(value: string): string | null {
   const standard = value.replace(/-/g, '+').replace(/_/g, '/')

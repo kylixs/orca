@@ -1,5 +1,10 @@
 import WebSocket from 'ws'
 import { decrypt, deriveSharedKey, encrypt, generateKeyPair } from '../../shared/e2ee-crypto'
+import type {
+  CloudReplyEndpoint,
+  CloudReplyProject,
+  CloudReplyTicket
+} from '../../shared/cloud-platform-reply'
 import { chooseRoute, probeEndpoint, type RouteChoice } from './cloud-route-selection'
 import { parseConnectTicket, parseProjectList, readTicketClaims } from './cloud-connect-response'
 import {
@@ -11,31 +16,9 @@ import { parseJsonText, readField, readString, readStringArray } from '../../sha
 
 /** Desktop-side cloud connection: the platform is a registry, never the data path (D1). */
 
-export type CloudProject = {
-  id: string
-  key: string
-  name: string
-  hostName: string | null
-  hostStatus: string
-  permissions: string[]
-}
-
-export type CloudEndpoint = { priority: number; url: string; sni?: string; routeKey?: string }
-
-export type CloudConnectTicket = {
-  credential: string
-  expiresIn: number
-  host: {
-    id: string
-    name: string
-    fingerprint: string
-    tlsFingerprint: string
-    e2eePublicKeyB64: string
-    capabilities: string[]
-  }
-  endpoints: { direct: CloudEndpoint[]; relay: CloudEndpoint[] }
-  workspace: { projectRoot: string; workspaceRoot: string; defaultBranch: string }
-}
+export type CloudProject = CloudReplyProject
+export type CloudEndpoint = CloudReplyEndpoint
+export type CloudConnectTicket = CloudReplyTicket
 
 export type CloudRpcResult =
   | { ok: true; result: unknown }

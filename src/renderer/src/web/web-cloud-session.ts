@@ -1,0 +1,310 @@
+import { parseJsonText, readField, readString, readStringArray } from '../../../shared/json-fields'
+import {
+  parseConnectTicketReply,
+  parseProjectRow,
+  readProjectRows,
+  readTicketClaims,
+  type CloudReplyEndpoint,
+  type CloudReplyProject,
+  type CloudReplyTicket
+} from '../../../shared/cloud-platform-reply'
+import { normalizeWebPairingKey32, type WebPairingOffer } from './web-pairing'
+
+/**
+ * The browser's platform session: login, project list, ticket, and offer. Tokens
+ * stay in memory — this module never persists them; the caller decides whether a
+ * refresh flow or an encrypted store exists. The device secret never enters a
+ * session; only the public key travels with login and ticket requests.
+ */
+
+export const WEB_CLOUD_CLIENT_VERSION = '1.5.0'
+
+/** Platform error codes and local failures surface in the same `code` slot. */
+export const WEB_CLOUD_ERROR_CODE = {
+  malformedReply: 'malformed_reply',
+  noEndpoint: 'no_endpoint',
+  deviceKeyInvalid: 'device_key_invalid',
+  network: 'network_error'
+} as const
+
+export class WebCloudSessionError extends Error {
+  readonly code: string
+  readonly status: number | null
+
+  constructor(code: string, message: string, status: number | null = null) {
+    super(message)
+    this.name = 'WebCloudSessionError'
+    this.code = code
+    this.status = status
+  }
+}
+
+export type WebCloudUser = {
+  id: string
+  username: string
+  displayName: string
+  dept: string | null
+  roles: string[]
+  permissions: string[]
+}
+
+export type WebCloudSession = {
+  apiUrl: string
+  accessToken: string
+  refreshToken: string
+  user: WebCloudUser
+  deviceId: string
+  /** When the platform issued the tokens; lets the caller age the session. */
+  obtainedAtMs: number
+}
+
+export type WebCloudProject = {
+  id: string
+  key: string
+  name: string
+  hostName: string | null
+  hostStatus: string
+  downloadRestricted: boolean
+}
+
+type RequestOptions = { fetchImpl?: typeof fetch }
+
+type RequestInput = RequestOptions & {
+  url: string
+  method?: 'GET' | 'POST'
+  accessToken?: string
+  body?: unknown
+}
+
+function malformed(message: string): WebCloudSessionError {
+  return new WebCloudSessionError(WEB_CLOUD_ERROR_CODE.malformedReply, message)
+}
+
+function resolveFetch(options: RequestOptions): typeof fetch {
+  return options.fetchImpl ?? globalThis.fetch
+}
+
+async function readReplyBody(response: Response): Promise<unknown> {
+  try {
+    return parseJsonText(await response.text())
+  } catch {
+    return null
+  }
+}
+
+/** One JSON request; non-2xx becomes a typed error carrying the platform code. */
+async function requestJson(input: RequestInput): Promise<unknown> {
+  let response: Response
+  try {
+    response = await resolveFetch(input)(input.url, {
+      method: input.method ?? 'GET',
+      headers: {
+        ...(input.body === undefined ? {} : { 'content-type': 'application/json' }),
+        ...(input.accessToken ? { authorization: `Bearer ${input.accessToken}` } : {})
+      },
+      ...(input.body === undefined ? {} : { body: JSON.stringify(input.body) })
+    })
+  } catch (error) {
+    throw new WebCloudSessionError(
+      WEB_CLOUD_ERROR_CODE.network,
+      error instanceof Error ? error.message : String(error)
+    )
+  }
+  const body = await readReplyBody(response)
+  if (!response.ok) {
+    // Why fall back to a status code: a proxy or crash page may not be the
+    // platform's JSON envelope, and the UI still needs something to branch on.
+    const code = readString(readField(body, 'error'), 'code') ?? `http_${response.status}`
+    const message =
+      readString(readField(body, 'error'), 'message') ??
+      `platform request failed ${response.status}`
+    throw new WebCloudSessionError(code, message, response.status)
+  }
+  return body
+}
+
+function trimApiUrl(apiUrl: string): string {
+  return apiUrl.replace(/\/+$/, '')
+}
+
+export type WebCloudLoginInput = {
+  apiUrl: string
+  username: string
+  password: string
+  /** Standard base64, 32 bytes: the identity the platform enrols for this device. */
+  devicePublicKeyB64: string
+  deviceName: string
+  fetchImpl?: typeof fetch
+  now?: () => number
+}
+
+export async function loginToCloud(input: WebCloudLoginInput): Promise<WebCloudSession> {
+  const apiUrl = trimApiUrl(input.apiUrl)
+  const body = await requestJson({
+    url: `${apiUrl}/v1/auth/login`,
+    method: 'POST',
+    fetchImpl: input.fetchImpl,
+    body: {
+      username: input.username,
+      password: input.password,
+      devicePubKey: input.devicePublicKeyB64,
+      deviceName: input.deviceName
+    }
+  })
+  const accessToken = readString(body, 'accessToken')
+  const refreshToken = readString(body, 'refreshToken')
+  const user = readField(body, 'user')
+  const userId = readString(user, 'id')
+  const username = readString(user, 'username')
+  const displayName = readString(user, 'displayName')
+  const deviceId = readString(readField(body, 'device'), 'id')
+  if (
+    accessToken === null ||
+    refreshToken === null ||
+    userId === null ||
+    username === null ||
+    displayName === null ||
+    deviceId === null
+  ) {
+    throw malformed('login reply did not match the platform contract')
+  }
+  return {
+    apiUrl,
+    accessToken,
+    refreshToken,
+    user: {
+      id: userId,
+      username,
+      displayName,
+      dept: readString(user, 'dept'),
+      roles: readStringArray(user, 'roles') ?? [],
+      permissions: readStringArray(user, 'permissions') ?? []
+    },
+    deviceId,
+    obtainedAtMs: (input.now ?? Date.now)()
+  }
+}
+
+function toWebProject(project: CloudReplyProject): WebCloudProject {
+  return {
+    id: project.id,
+    key: project.key,
+    name: project.name,
+    hostName: project.hostName,
+    hostStatus: project.hostStatus,
+    // The host enforces export; this only decides whether the UI offers it.
+    downloadRestricted: !project.permissions.includes('download')
+  }
+}
+
+/** A malformed row is dropped: one bad project must not hide the rest. */
+export async function listCloudProjects(
+  session: WebCloudSession,
+  options: RequestOptions = {}
+): Promise<WebCloudProject[]> {
+  const body = await requestJson({
+    url: `${session.apiUrl}/v1/projects`,
+    accessToken: session.accessToken,
+    fetchImpl: options.fetchImpl
+  })
+  const rows = readProjectRows(body)
+  if (rows === null) {
+    throw malformed('project list reply has no projects array')
+  }
+  const projects: WebCloudProject[] = []
+  for (const row of rows) {
+    const parsed = parseProjectRow(row)
+    if (parsed !== null) {
+      projects.push(toWebProject(parsed))
+    }
+  }
+  return projects
+}
+
+export async function requestCloudTicket(
+  session: WebCloudSession,
+  projectId: string,
+  devicePublicKeyB64: string,
+  options: RequestOptions = {}
+): Promise<CloudReplyTicket> {
+  const body = await requestJson({
+    url: `${session.apiUrl}/v1/projects/${encodeURIComponent(projectId)}/connect`,
+    method: 'POST',
+    accessToken: session.accessToken,
+    fetchImpl: options.fetchImpl,
+    body: {
+      deviceId: session.deviceId,
+      devicePubKey: devicePublicKeyB64,
+      clientVersion: WEB_CLOUD_CLIENT_VERSION
+    }
+  })
+  const ticket = parseConnectTicketReply(body)
+  if (ticket === null) {
+    throw malformed('connect reply did not match the ticket contract')
+  }
+  return ticket
+}
+
+export type CloudPairingOfferOptions = {
+  /** Test/recovery override; the ticket's direct endpoints win otherwise. */
+  endpointUrl?: string
+}
+
+/**
+ * A browser cannot probe addresses, so selection is priority only: direct first,
+ * relay as last resort (design D4). `wss://` on an `https://` page is expected.
+ */
+function chooseTicketEndpoint(
+  ticket: CloudReplyTicket,
+  overrideUrl: string | undefined
+): CloudReplyEndpoint | null {
+  if (overrideUrl) {
+    return { priority: 0, url: overrideUrl }
+  }
+  const byPriority = (a: CloudReplyEndpoint, b: CloudReplyEndpoint): number =>
+    a.priority - b.priority
+  return (
+    [...ticket.endpoints.direct].sort(byPriority)[0] ??
+    [...ticket.endpoints.relay].sort(byPriority)[0] ??
+    null
+  )
+}
+
+export function cloudPairingOfferFromTicket(
+  ticket: CloudReplyTicket,
+  devicePublicKeyB64: string,
+  options: CloudPairingOfferOptions = {}
+): WebPairingOffer {
+  const deviceKey = normalizeWebPairingKey32(devicePublicKeyB64)
+  if (deviceKey === null) {
+    throw new WebCloudSessionError(
+      WEB_CLOUD_ERROR_CODE.deviceKeyInvalid,
+      'device public key must be a 32-byte base64 key'
+    )
+  }
+  // Why validate now: the transport would otherwise fail after a socket opens.
+  const hostKey = normalizeWebPairingKey32(ticket.host.e2eePublicKeyB64)
+  if (hostKey === null) {
+    throw malformed('ticket host has no usable E2EE public key')
+  }
+  const endpoint = chooseTicketEndpoint(ticket, options.endpointUrl)
+  if (endpoint === null) {
+    throw new WebCloudSessionError(
+      WEB_CLOUD_ERROR_CODE.noEndpoint,
+      'ticket carries no direct or relay endpoint'
+    )
+  }
+  const claims = readTicketClaims(ticket.credential)
+  if (claims.deviceToken === null) {
+    throw malformed('ticket credential has no device token claim')
+  }
+  return {
+    v: 2,
+    endpoint: endpoint.url,
+    deviceToken: claims.deviceToken,
+    publicKeyB64: hostKey,
+    ...(claims.deviceId ? { pairedDeviceId: claims.deviceId } : {}),
+    scope: 'runtime',
+    cloud: { credential: ticket.credential, devicePublicKeyB64: deviceKey }
+  }
+}
