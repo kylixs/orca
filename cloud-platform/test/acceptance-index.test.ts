@@ -121,12 +121,14 @@ test('验收索引：每条 AC 的证据文件都存在、非空且可解析', (
   assert.deepEqual(problems, [], problems.join('\n'))
 
   // ---- the evidence tree has no module nobody cites ----
+  // §4 rows carry the per-AC mapping, but §4.3/§6 also cite evidence; a module
+  // referenced only there is cited, and saying "uncited" would mislead a reviewer.
+  const fullText = readFileSync(PLAN, 'utf8')
   const citedDirs = new Set(
-    rows.flatMap((row) =>
-      row.evidence
-        .filter((ref) => ref.includes('/') && !ref.includes('::'))
-        .map((ref) => ref.split('/')[0] ?? '')
-    )
+    [...fullText.matchAll(/`([^`\s]+\/(?:[^`\s/]+\.(?:json|txt)))`/g)]
+      .map((match) => match[1] ?? '')
+      .filter((ref) => existsSync(evidenceFile(ref) ?? ''))
+      .map((ref) => ref.split('/')[0] ?? '')
   )
   const uncited = readdirSync(EVIDENCE_ROOT, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
