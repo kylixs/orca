@@ -200,9 +200,11 @@ export function registerCloudPlatformHandlers(
         options.userDataPath,
         created.project
       )
+      // Why carry the project: the platform row exists, so the renderer must be
+      // able to retry preparation after an admin fixes the repo URL.
       return prepared.ok
         ? { ok: true, projectId: created.projectId, environment: prepared.environment }
-        : prepared
+        : { ...prepared, projectId: created.projectId, project: created.project }
     }
   )
   handle<CloudProvisionableHost[]>(CLOUD_PLATFORM_IPC.listProvisionableHosts, async () => {

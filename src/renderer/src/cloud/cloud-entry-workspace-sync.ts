@@ -3,7 +3,11 @@ import { selectCloudInitialWorktreeId } from '../../../shared/cloud-initial-work
 import { getRepoExecutionHostId } from '../../../shared/execution-host'
 import { useAppStore } from '@/store'
 import { getRepoHostIdentity } from '@/store/slices/repo-host-identity'
-import { cloudProjectRepoTarget, type CloudProjectRepoPorts } from './cloud-project-repos'
+import {
+  cloudProjectRepoTarget,
+  syncCloudProjectRepos,
+  type CloudProjectRepoPorts
+} from './cloud-project-repos'
 import type { CloudBridge } from './use-cloud-session'
 
 export function rendererRepoPorts(bridge: CloudBridge): CloudProjectRepoPorts {
@@ -33,6 +37,40 @@ export function rendererRepoPorts(bridge: CloudBridge): CloudProjectRepoPorts {
       await state().hydrateRuntimeEnvironmentStatuses()
     }
   }
+}
+
+/** A newly created project joins the sidebar the same way a sign-in batch does. */
+export async function openCreatedCloudProject(args: {
+  bridge: CloudBridge
+  environment: CloudProjectEnvironment
+  projectId: string
+}): Promise<void> {
+  const state = () => useAppStore.getState()
+  void state().hydrateRuntimeEnvironmentStatuses()
+  try {
+    await syncCloudProjectRepos({
+      environments: [args.environment],
+      repos: state().repos,
+      ports: rendererRepoPorts(args.bridge)
+    })
+  } catch (error) {
+    console.warn(
+      '[cloud] could not register created repo',
+      error instanceof Error ? error.message : String(error)
+    )
+  }
+  const opened = await args.bridge.openWorkspace(args.projectId)
+  if (!opened.ok) {
+    // Why not throw: the row is already usable; opening is a convenience.
+    console.warn('[cloud] could not open created project', opened.code)
+    return
+  }
+  await selectInitialWorktree({
+    opened,
+    environments: [args.environment],
+    projectId: args.projectId,
+    isCancelled: () => false
+  })
 }
 
 /**

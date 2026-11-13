@@ -1,8 +1,11 @@
 import * as React from 'react'
-import type { CloudProjectFailure } from '../../../shared/cloud-platform-ipc'
+import type {
+  CloudCreateProjectResult,
+  CloudProjectFailure
+} from '../../../shared/cloud-platform-ipc'
 import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
-import { CloudNewProjectDialog, type CreatedCloudProject } from './cloud-new-project-dialog'
+import { CloudNewProjectDialog } from './cloud-new-project-dialog'
 import type { CloudBridge } from './use-cloud-session'
 
 /** Non-blocking: the shell stays usable while the host prepares the checkout. */
@@ -26,7 +29,7 @@ export function NewCloudProjectButton({
   onCreated
 }: {
   bridge: CloudBridge
-  onCreated: (created: CreatedCloudProject) => Promise<void> | void
+  onCreated: (result: CloudCreateProjectResult) => Promise<void> | void
 }): React.JSX.Element {
   const [open, setOpen] = React.useState(false)
   return (

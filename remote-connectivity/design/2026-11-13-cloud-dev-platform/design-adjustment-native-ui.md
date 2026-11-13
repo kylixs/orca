@@ -82,6 +82,8 @@
 
 | M59 | 开发者自助创建项目：主机上报 `projectsRoot`，平台据此推导路径（开发者不能指定 `path`），创建者自动获得项目权限；客户端新建对话框 → provisioning → 侧栏出现 | 真实平台 + 主机 + TLS + git：非管理员创建 → 主机 clone 到 `projectsRoot/<key>` → 心跳 `ready` → 侧栏 repo 行 |
 
+| M60 | 创建成功但准备失败的项目并入失败横幅：IPC 失败结果带 `projectId`，对话框关闭，条目可走 M58 重试 | 真实平台 + 主机 + TLS + git：坏 repoUrl 创建 → 失败条目含 projectId → 管理员修正 → 重试 clone 成功 → `ready` + 侧栏行 |
+
 ### 5.1 M57 项目创建 provisioning（平台不在数据通道）
 
 - **平台**：`POST /v1/projects` 仍 admin-only；有 `repoUrl` → `status: 'provisioning'`，无 → `ready`（路径由管理员备好）。连接票据新增可选 claim `repoUrl`、`defaultBranch`（旧主机忽略未知 claim）。

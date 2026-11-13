@@ -2,6 +2,7 @@ import * as React from 'react'
 import { toast } from 'sonner'
 import { errorCodeOf } from '../../../shared/json-fields'
 import type {
+  CloudCreateProjectResult,
   CloudProjectEnvironment,
   CloudProjectFailure
 } from '../../../shared/cloud-platform-ipc'
@@ -13,8 +14,12 @@ import {
   NewCloudProjectButton,
   PreparingCloudProjectBanner
 } from './cloud-workspace-banners'
-import type { CreatedCloudProject } from './cloud-new-project-dialog'
-import { rendererRepoPorts, selectInitialWorktree } from './cloud-entry-workspace-sync'
+import {
+  openCreatedCloudProject,
+  rendererRepoPorts,
+  selectInitialWorktree
+} from './cloud-entry-workspace-sync'
+import { createdProjectFailure } from './cloud-created-project-failure'
 import { signOutCloudProjectRepos, syncCloudProjectRepos } from './cloud-project-repos'
 import { useCloudSession, type CloudBridge, type CloudSessionView } from './use-cloud-session'
 
@@ -41,7 +46,7 @@ export type CloudWorkspaceEntryState = {
   failures: CloudProjectFailure[]
   retrying: boolean
   retryFailures: () => Promise<void>
-  registerCreatedProject: (created: CreatedCloudProject) => Promise<void>
+  registerCreatedProject: (result: CloudCreateProjectResult) => Promise<void>
   signOut: () => Promise<void>
 }
 
@@ -186,31 +191,33 @@ function useCloudWorkspaceEntry(
     }
   }, [bridge, failures, retrying])
 
-  /** A newly created project joins the sidebar the same way a sign-in batch does. */
   const registerCreatedProject = React.useCallback(
-    async (created: CreatedCloudProject) => {
-      environments.current = [...environments.current, created.environment]
-      void useAppStore.getState().hydrateRuntimeEnvironmentStatuses()
-      try {
-        await syncCloudProjectRepos({
-          environments: [created.environment],
-          repos: useAppStore.getState().repos,
-          ports: rendererRepoPorts(bridge)
-        })
-      } catch (error) {
-        console.warn('[cloud] could not register created repo', entryFailureCode(error))
-      }
-      const opened = await bridge.openWorkspace(created.projectId)
-      if (!opened.ok) {
-        // Why not throw: the row is already usable; opening is a convenience.
-        console.warn('[cloud] could not open created project', opened.code)
+    async (result: CloudCreateProjectResult) => {
+      if (!result.ok) {
+        // Why: the platform already has the project; a dialog stuck on the error
+        // would leave no way to retry after an admin fixes the repo URL.
+        const failure = createdProjectFailure(result)
+        if (!failure) {
+          return
+        }
+        setFailures((current) => [
+          ...current.filter((entry) => entry.projectId !== failure.projectId),
+          failure
+        ])
+        toast.error(
+          translate(
+            'auto.cloud.projectCreatedUnprepared',
+            '项目已创建，但准备失败，可在提示条重试'
+          ),
+          { description: `${failure.projectName}（${failure.code}）` }
+        )
         return
       }
-      await selectInitialWorktree({
-        opened,
-        environments: [created.environment],
-        projectId: created.projectId,
-        isCancelled: () => false
+      environments.current = [...environments.current, result.environment]
+      await openCreatedCloudProject({
+        bridge,
+        environment: result.environment,
+        projectId: result.projectId
       })
     },
     [bridge]

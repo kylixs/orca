@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import type {
   CloudConnectionEvent,
@@ -43,7 +43,8 @@ function makeBridge(
   retryPrepare: (projectId: string) => Promise<CloudRetryPrepareResult> = async () => ({
     ok: false,
     code: 'CLONE_FAILED'
-  })
+  }),
+  overrides: Partial<CloudBridge> = {}
 ): CloudBridge {
   return {
     login: async (): Promise<CloudSessionState> => ({
@@ -78,7 +79,8 @@ function makeBridge(
       capabilities: []
     }),
     rpc: async (): Promise<CloudRpcOutcome> => ({ ok: true, result: {} }),
-    onConnectionChanged: (_listener: (event: CloudConnectionEvent) => void) => () => undefined
+    onConnectionChanged: (_listener: (event: CloudConnectionEvent) => void) => () => undefined,
+    ...overrides
   }
 }
 
@@ -162,6 +164,65 @@ describe('云端原生入口', () => {
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toContain('CLONE_FAILED')
     expect(screen.getByRole('button', { name: '新建云端项目' })).toBeTruthy()
+    expect(screen.getByTestId('workspace-shell')).toBeTruthy()
+  })
+
+  it('创建后准备失败的项目进入失败横幅，重试成功后消失', async () => {
+    const createdProject: CloudProjectSummary = {
+      id: 'proj_new',
+      key: 'broken-source',
+      name: 'Broken Source',
+      hostName: 'dev-001',
+      hostStatus: 'online',
+      downloadRestricted: false,
+      status: 'failed',
+      provisioningError: 'CLONE_FAILED'
+    }
+    const environment = {
+      projectId: 'proj_new',
+      projectName: 'Broken Source',
+      projectRoot: '/srv/projects/broken-source',
+      environmentId: 'env-new'
+    }
+    const bridge = makeBridge(
+      Promise.resolve(EMPTY_REGISTRATION),
+      async () => ({
+        ok: true,
+        environment
+      }),
+      {
+        listProvisionableHosts: async () => [
+          { id: 'host_1', name: 'dev-001', online: true, provisionable: true }
+        ],
+        createProject: async () => ({
+          ok: false,
+          code: 'CLONE_FAILED',
+          projectId: 'proj_new',
+          project: createdProject
+        })
+      }
+    )
+    renderEntry(bridge)
+
+    fireEvent.click(await screen.findByRole('button', { name: '新建云端项目' }))
+    fireEvent.change(screen.getByLabelText('名称'), { target: { value: 'Broken Source' } })
+    fireEvent.change(screen.getByLabelText('仓库地址'), {
+      target: { value: '/srv/missing.git' }
+    })
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '创建' }).hasAttribute('disabled')).toBe(false)
+    )
+    fireEvent.click(screen.getByRole('button', { name: '创建' }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain('Broken Source')
+    expect(alert.textContent).toContain('CLONE_FAILED')
+    await waitFor(() => expect(screen.queryByLabelText('名称')).toBeNull())
+
+    await act(async () => {
+      screen.getByRole('button', { name: '重试' }).click()
+    })
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
     expect(screen.getByTestId('workspace-shell')).toBeTruthy()
   })
 

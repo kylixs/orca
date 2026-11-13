@@ -52,6 +52,9 @@ export type SelfServiceHarness = {
   createProject: (input: Record<string, unknown>) => Promise<unknown>
   listProvisionableHosts: () => Promise<unknown[]>
   getProject: (id: string) => Promise<unknown>
+  adminFetch: (path: string, init?: RequestInit) => Promise<Response>
+  retryPrepare: (id: string) => Promise<unknown>
+  listPlatformProjects: () => Promise<unknown[]>
   beat: () => Promise<void>
   saveEvidence: (file: string, content: unknown) => void
   repoOf: (result: unknown) => Repo | null
@@ -191,6 +194,13 @@ export async function startSelfServiceHarness(
       const res = await adminFetch(`/v1/projects/${id}`)
       expect(res.status).toBe(200)
       return res.json()
+    },
+    adminFetch,
+    retryPrepare: (id) => requireHandler(ipcHandlers, CLOUD_PLATFORM_IPC.retryPrepare)(null, id),
+    listPlatformProjects: async () => {
+      const res = await adminFetch('/v1/projects')
+      expect(res.status).toBe(200)
+      return readArrayValue(readField(await res.json(), 'projects')) ?? []
     },
     beat: async () => {
       await admission.client!.refresh()

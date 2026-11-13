@@ -131,7 +131,14 @@ export type CloudProvisionableHost = {
 
 export type CloudCreateProjectResult =
   | { ok: true; projectId: string; environment: CloudProjectEnvironment }
-  | { ok: false; code: string; message?: string }
+  | {
+      ok: false
+      code: string
+      message?: string
+      /** Present only when the platform created the project but preparing it failed. */
+      projectId?: string
+      project?: CloudProjectSummary
+    }
 
 export type CloudRpcOutcome =
   | { ok: true; result: unknown }

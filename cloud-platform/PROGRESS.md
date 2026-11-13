@@ -1119,13 +1119,35 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 5. 自助项目全局 key 唯一（跨主机也不能重名），避免平台 key 语义不一致；用户需改名。
 6. `server.ts`（1813 行）为既有大文件，本次新增 180 行；新增文件均 ≤300 行。
 
+## M60 创建成功但准备失败的项目并入重试横幅（本轮，开发子代理执行）
+
+**问题**：M59 的创建对话框里，平台创建成功但 `prepareProjectEnvironment` 失败（典型：仓库地址错）时 IPC 只返回 `{ ok:false, code }`，**不带 projectId**。结果项目已在平台上存在，却既不在侧栏也不在 M58 失败横幅：对话框停在错误上，管理员修正 `repoUrl` 后用户也无法重试。
+
+| 改动 | 内容 |
+|---|---|
+| `shared/cloud-platform-ipc.ts` / `main/ipc/cloud-platform.ts` | `CloudCreateProjectResult` 失败分支增加可选 `projectId`、`project`（仅“平台已创建、准备失败”）；handler 失败时回填 `{ projectId, project }` |
+| `renderer/cloud-created-project-failure.ts`（新） | 把“已创建但准备失败”的返回值映射成 `CloudProjectFailure`；前置失败（主机/key/配额）返回 `null` 仍内联 |
+| `renderer/cloud-new-project-dialog.tsx` | 回调统一为 `onCreated(result)`：带 `projectId` 的失败交给入口并**关闭**对话框；不带者仍内联报错保持打开 |
+| `renderer/cloud-workspace-entry.tsx` + `cloud-entry-workspace-sync.ts` | 失败条目按 projectId 去重并入 `failures` 并 `toast.error`；成功项目的同步/打开逻辑抽到 sync 模块（入口保持 300 行） |
+
+**验证（`evidence/m60-create-failure-recovery/`）**：真实端到端 1 条（真实平台 + 注册主机/心跳 + TLS Runtime + bare git + 真实 `cloud:createProject` handler）：坏 `repoUrl` 创建 → 返回 `ok:false, code: CLONE_FAILED` 且**带 projectId 与项目摘要** → 心跳后平台 `failed` → 管理员 `PUT` 修正 → 真实 `cloud:retryPrepare` → checkout 存在、README 一致 → 心跳后 `ready` → `planCloudProjectRepos` 生成侧栏行。组件测试：带 projectId 的失败交回调并关闭、无 projectId 仍内联、创建失败条目进横幅且重试后消失。
+
+**主会话独立验收**：7 个相关 vitest 文件 **29 条全过**；`tsc tc.web` 0 错；`tsc node` 仅 2 条既有 TS6307（同一底层问题，首个 importer 换成了新测试文件）；`check:code-quality:changed` 0 新发现。
+
+**主会话独立负向对照**：让 handler 在准备失败时返回裸 `prepared`（丢掉 projectId）→ 新 e2e **变红**（`expected null not to be null`），恢复后 1/1 绿。
+
+**如实记录 / 剩余**：
+1. 创建失败但仍留在平台的项目**名字/key 已占用**，用户重试前不能复用同名；改名重建需另开项目（本轮不做“删除/重命名项目”）。
+2. 对话框关闭后靠 toast 与底部横幅说明，未做逐项目状态图标。
+3. 组件测试用 bridge 打桩；真实 IPC 全链路只由 e2e 覆盖。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M59（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M60（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步（按缺口排序）**：
-1. **创建即准备失败的可见性**：M59 的创建对话框失败后项目已存在但不进入重试横幅；应把失败项目并入统一状态并允许重试/重命名。
-2. **登录后自动重登**：断线仍只回登录页（M51 范围），长会话需要自动续期。
-3. **主机断连清理**：云设备 token 仅在注册表淘汰，不随 socket 关闭释放。
-4. **签到准备并行化**：`registerProjects` 逐项目串行准备，多仓库首屏被最长 clone 拖慢。
+1. **登录后自动重登**：断线仍只回登录页（M51 范围），长会话需要自动续期。
+2. **主机断连清理**：云设备 token 仅在注册表淘汰，不随 socket 关闭释放。
+3. **签到准备并行化**：`registerProjects` 逐项目串行准备，多仓库首屏被最长 clone 拖慢。
+4. **项目删除/重命名**：创建失败或废弃的项目会永久占用 key 与 `projectsRoot/<key>` 路径。
 5. **`agent.launch` 在本人工作区的真实执行**未被实际验证（历史仅覆盖拒绝路径）。

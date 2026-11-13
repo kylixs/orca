@@ -2,7 +2,7 @@ import * as React from 'react'
 import { toast } from 'sonner'
 import { errorCodeOf } from '../../../shared/json-fields'
 import type {
-  CloudProjectEnvironment,
+  CloudCreateProjectResult,
   CloudProvisionableHost
 } from '../../../shared/cloud-platform-ipc'
 import { Button } from '@/components/ui/button'
@@ -26,11 +26,6 @@ import {
 import { translate } from '@/i18n/i18n'
 import type { CloudBridge } from './use-cloud-session'
 
-export type CreatedCloudProject = {
-  projectId: string
-  environment: CloudProjectEnvironment
-}
-
 /** Minimal self-service creation form; the platform derives the host path from `key`. */
 export function CloudNewProjectDialog({
   bridge,
@@ -41,7 +36,11 @@ export function CloudNewProjectDialog({
   bridge: CloudBridge
   open: boolean
   onOpenChange: (open: boolean) => void
-  onCreated: (created: CreatedCloudProject) => Promise<void> | void
+  /**
+   * Takes the whole reply: a failure that still carries `projectId` means the
+   * platform created the project, so the entry surfaces it in the retry banner.
+   */
+  onCreated: (result: CloudCreateProjectResult) => Promise<void> | void
 }): React.JSX.Element {
   const [name, setName] = React.useState('')
   const [key, setKey] = React.useState('')
@@ -112,6 +111,11 @@ export function CloudNewProjectDialog({
         hostId
       })
       if (!result.ok) {
+        if (result.projectId && result.project) {
+          await onCreated(result)
+          onOpenChange(false)
+          return
+        }
         setError(result.message ? `${result.code}：${result.message}` : result.code)
         return
       }
