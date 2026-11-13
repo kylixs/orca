@@ -2408,6 +2408,12 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W2 独立验证通过 + 审计打回一项（2026-11-14）
+
+**测试代理结论**：全套件独立复跑 **190/190**；F1 自有探针 **8/8**（lisi 授权可见可连、撤权仅撤 lisi、未知用户 400、zhangsan 不受影响）；UI 抽查 **4/4**（QA-005 状态推导、QA-002 分页加载更早、QA-011 错误态重试、QA-009 失败回滚）；证据 `evidence/w2-verify/`（含 w8-fact.json）。**W8 裁定：非产品缺陷**（管理员 path 登记本就 201；INVALID_DIR 仅自助路由且符合 FR-3.7 契约；归档失败=测试缺 dir 已止血）→ W8 降级为回归断言令，已派执行。
+
+**审计代理结论**：不通过（1 major）——M-1 授予/移除入口缺错误处理，输错用户名静默失败（与 QA-009 同形态，恰是 F1 目标流程）。已按流程**回派实现代理**修复（toast + 回归断言，顺带评估审计 minor：被删用户遗留行可移除）。minor×4/note×7 记录在 `test-reports/w2-audit.md`（含：F1 两点断言削弱、audit metadata 无断言、被删用户死行清理不完整、一处 body:any）。M-1 修复+复验通过后 W2 方可关闭。
+
 ### W6a 开发完成（通道②，待独立测试+审计，2026-11-14）
 
 实现代理交付 `a9e1fc5e96e`（仅 3 文件）：relay.ts 新增 TLS 终结浏览器监听（三项 env 任缺不启用、线兼容零行为差异），`/h/<routeKey>/` 剥前缀转发 HTTP/WSS（routeKey 白名单、101 头原样透传、未命中 404、过期 503 与 SNI 同口径 fail-closed）。新套件 6/0 + SNI 既有回归 70/0，证据 `evidence/w6a-relay-browser/`（含安全语义确认点）。超范围发现：W6b 无需 W6a 新增交换字段，但平台拼 URL 必须校验 routeKey 形态（无点、`A-Za-z0-9_-`）。已派独立测试代理（边界探针：编码绕过/XFF 行为/stale 503/线兼容对比）与审计代理（绕过面/可靠性/规范，报告 `test-reports/w6a-audit.md`）。
