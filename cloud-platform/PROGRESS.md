@@ -1562,14 +1562,39 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 3. 退役键只在 `publicKeys()`/`rotate()` 被调用时裁剪；没有后台任务。
 4. `ApiHandle.signingKey` 现在指向当前键，测试/日志读取到的 `kid` 会随轮换变化。
 
+## M77 修复 G-02：主机公钥 TOFU 固定与 4433 中断（AC-29）（本轮，主会话执行）
+
+**问题（M70 验收映射发现）**：`/connect` 由平台下发主机 E2EE 公钥，客户端直接使用，不做任何固定——平台（或能改写主机记录的人）可以在用户无感的情况下替换主机公钥，AC-29 的 4433 中断、重新核对与审计全都不存在。设计 §10.4/§14.2 已明确口径：固定的是**主机自签 E2EE 公钥**（X25519），TOFU。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-host-trust.ts`（新） | `sha256:<hex>` 指纹（对原始密钥字节，跨 base64 重编码稳定）+ 展示分组；持久化 `orca-cloud-host-trust.json`（`writeSecureJsonFile`）；`hostKeyVerdict()` 返回 `first_use` / `trusted` / `mismatch` |
+| `cloud-host-key-guard.ts`（新） | `check(ticket)`：首次使用自动固定并落盘；不匹配则关闭当前 socket（4433 `fingerprint_mismatch`）并抛 `FINGERPRINT_MISMATCH`（带 `closeCode` 与两个指纹）；`trust()` 是唯一的重新固定入口 |
+| `cloud-connect-client.ts` | `prepareProjectLink` 在取票后、选路/升级前调用 guard；新增 `trustHostKey()` / `pinnedHostFingerprint()`；`userDataPath` 透传信任库位置 |
+| `cloud-socket-handshake.ts` | `close(code?, reason?)`，让客户端侧的拒绝能作为 4433 关闭帧发出 |
+| 平台 `server.ts` | 心跳里 E2EE 公钥变化时写 `host_e2ee_key_changed` 审计（只记录新旧指纹，不记录密钥），相同键重复上报不重复写 |
+| 文档 | `test-plan.md` AC-29 由 UNVERIFIED 更新为 PASS |
+
+**验证（`evidence/m77-host-key-pinning/`）**：
+- 真实平台 + 真实注册主机/心跳 + 真实 TLS Runtime + 真实 WSS（`cloud-host-key-pinning.test.ts`）：首次打开固定真实指纹 → 心跳改写平台侧公钥（模拟替换）→ `openProject` 抛 `FINGERPRINT_MISMATCH`、`closeCode=4433`、原 socket 已断（`status.get` 返回非 ok）、固定值保持不变 → `trustHostKey()` 后才更新；新客户端实例读到持久化的固定值，且对恢复后的真实公钥仍报不匹配。
+- 平台 e2e（`host-key-change-audit.e2e.test.ts`）：换钥写 `host_e2ee_key_changed`（`targetType=host`、`previousFingerprint`/`fingerprint` 均为 `sha256:` 前缀截断值，事件体不含密钥）、同键重复上报不增加事件、`/connect` 下发最新公钥。
+- 回归：平台 **130/130**；主机侧 4 个文件 8 条；`tsc node` 0；`check:code-quality:changed` 0 新发现。
+
+**负向对照**：去掉 `prepareProjectLink` 里的 `hostKeys.check(ticket)` → M77-1/M77-2 均转红（`pinnedHostFingerprint` 为 null）；恢复后全绿。
+
+**如实记录 / 剩余**：
+1. 首次连接的「展示指纹并请用户确认」弹窗未做：当前是静默 TOFU + 固定后可见 `pinnedHostFingerprint()`，比设计少一个确认步骤。
+2. 固定值按 `userDataPath` 存本机：换机器/清数据即重新 TOFU；没有跨设备同步（设计也未要求）。
+3. 客户端侧的拒绝是本地错误码 + 4433 关闭帧，不进入平台审计；平台审计覆盖的是「公钥变更」本身。
+4. 平台侧 E2EE 公钥只由主机心跳写入，平台管理员无审批环节。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M76（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M77（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步**：
-1. **G-02 主机公钥固定（AC-29，4433）**：客户端 TOFU 固定主机指纹，不匹配即中断并要求重新核对 + 审计——需先确认「固定哪个值」（E2EE 公钥 / TLS 指纹 / 平台签发）的产品口径。
-2. **G-04 多副本审计链（AC-26）**：单写入者 + leader 选举或集中定序服务，需部署形态决策。
-3. **人工验收准备**：整理验收清单与证据索引（MAJOR 已全部关闭）。
+1. **G-04 多副本审计链（AC-26）**：单写入者 + leader 选举或集中定序服务，需部署形态决策（剩余唯一 BLOCKER）。
+2. **人工验收准备**：整理验收清单与证据索引；`AC-29` 首次连接确认弹窗 UI 未做，其余 MAJOR 已关闭。
 3. **人工验收**：按 design/test-plan 逐条核对验收标准；重点看桌面真实界面（登录 → 侧栏项目 → 本人 checkout → 终端/文件/git/agent）与管理员浏览器会话页。
 4. 真机/跨平台：Windows、WSL、SSH 主机各跑一遍关键路径（provisioning、路径边界、PTY、会话持久化权限位）。
 5. L4 全量回归：发版前单独执行，含桌面 Electron 渲染验证。

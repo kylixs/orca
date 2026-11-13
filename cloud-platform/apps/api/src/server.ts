@@ -106,6 +106,11 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> 
   }
 }
 
+function e2eeKeyFingerprint(e2eePublicKeyB64: string): string {
+  const digest = createHash('sha256').update(Buffer.from(e2eePublicKeyB64, 'base64')).digest('hex')
+  return `sha256:${digest.slice(0, 16)}`
+}
+
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex')
 }
@@ -1436,6 +1441,23 @@ export function createApp(config: ApiConfig): ApiHandle {
           // A host learns its own E2EE key only once its runtime has started, so the
           // heartbeat is where it first becomes reportable.
           if (typeof body.e2eePublicKeyB64 === 'string' && body.e2eePublicKeyB64.length > 0) {
+            // Why audited: this key is handed to clients as the host's identity, so a
+            // change is exactly what a substitution attempt would look like (AC-29).
+            if (target.e2eePublicKey !== body.e2eePublicKeyB64) {
+              const previous = target.e2eePublicKey
+              audit.appendBestEffort({
+                eventType: 'host_e2ee_key_changed',
+                actor: null,
+                targetType: 'host',
+                targetId: target.id,
+                result: 'success',
+                traceId,
+                metadata: {
+                  ...(previous ? { previousFingerprint: e2eeKeyFingerprint(previous) } : {}),
+                  fingerprint: e2eeKeyFingerprint(body.e2eePublicKeyB64)
+                }
+              })
+            }
             target.e2eePublicKey = body.e2eePublicKeyB64
           }
           if (typeof body.status === 'string' && target.status !== 'maintenance') {

@@ -44,7 +44,8 @@ export type CloudSocket = {
   mux: CloudRpcMultiplexer
   /** The device the host's ticket bound this socket to. */
   ticketDevicePubKey: string | null
-  close: () => void
+  /** A caller-side refusal (e.g. a changed host key) must reach the peer as a close code. */
+  close: (code?: number, reason?: string) => void
 }
 
 export function upgradeCloudSocket(input: CloudSocketInput): Promise<CloudSocket> {
@@ -65,9 +66,13 @@ export function upgradeCloudSocket(input: CloudSocketInput): Promise<CloudSocket
     )
     const ticketDevicePubKey = readTicketClaims(ticket.credential).devicePubKey
     let mux: CloudRpcMultiplexer | null = null
-    const close = (): void => {
+    const close = (code?: number, reason?: string): void => {
       mux?.close()
-      ws.close()
+      if (code === undefined) {
+        ws.close()
+        return
+      }
+      ws.close(code, reason ?? '')
     }
     ws.once('unexpected-response', (_req, res) => {
       reject(

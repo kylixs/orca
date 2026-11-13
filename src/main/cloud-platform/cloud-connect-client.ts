@@ -22,6 +22,7 @@ import {
 } from './cloud-auth-session'
 import { cloudAuthorizedFetch, throwCloudPlatformError } from './cloud-authorized-request'
 import { platformRequest } from './cloud-platform-unavailable'
+import { createHostKeyGuard, type HostKeyGuard } from './cloud-host-key-guard'
 import { upgradeCloudSocket, type CloudSocket } from './cloud-socket-handshake'
 
 /** Desktop-side cloud connection: the platform is a registry, never the data path (D1). */
@@ -69,6 +70,8 @@ export type CloudConnectOptions = {
   fetchImpl?: typeof fetch
   /** Rotation hook: the service writes the newest refresh token to its session store. */
   onTokensChanged?: (tokens: CloudAuthTokens) => void
+  /** Where host-key pins live; omitted keeps them in memory (tests, throwaway clients). */
+  userDataPath?: string
 }
 
 const DEFAULT_PROBE_TIMEOUT_MS = 800
@@ -84,11 +87,19 @@ export class CloudConnectClient {
   private readonly deviceKeys: CloudDeviceKeyPair
   private connection: CloudSocket | null = null
   private closeListener: ((code: number, reason: string) => void) | null = null
+  private readonly hostKeys: HostKeyGuard
 
   constructor(options: CloudConnectOptions, identity?: CloudDeviceIdentity) {
     this.options = options
     this.fetchImpl = options.fetchImpl ?? fetch
     this.deviceKeys = identity?.keyPair ?? generateKeyPair()
+    this.hostKeys = createHostKeyGuard({
+      ...(options.userDataPath !== undefined ? { userDataPath: options.userDataPath } : {}),
+      closeConnection: (code, reason) => {
+        this.connection?.close(code, reason)
+        this.connection = null
+      }
+    })
     this.auth = identity?.auth ?? this.blankAuth()
     if (identity) {
       this.deviceId = identity.deviceId
@@ -255,6 +266,7 @@ export class CloudConnectClient {
     projectId: string
   ): Promise<{ route: 'direct' | 'relay'; ticket: CloudConnectTicket; endpoint: CloudEndpoint }> {
     const ticket = await this.requestTicket(projectId)
+    this.hostKeys.check(ticket)
     const probeTimeout = this.options.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS
     const choice = await chooseRoute(
       ticket.endpoints,
@@ -265,6 +277,16 @@ export class CloudConnectClient {
       throw Object.assign(new Error('no reachable endpoint'), { code: 'ENDPOINT_UNREACHABLE' })
     }
     return { route: choice.route, ticket, endpoint: choice.endpoint }
+  }
+
+  /** The user re-verified a changed host key; the new key replaces the pinned one. */
+  trustHostKey(hostId: string, e2eePublicKeyB64: string): void {
+    this.hostKeys.trust(hostId, e2eePublicKeyB64)
+  }
+
+  /** What the confirmation dialog shows; null when this host was never seen. */
+  pinnedHostFingerprint(hostId: string): string | null {
+    return this.hostKeys.pinnedFingerprint(hostId)
   }
 
   /** Probe → one ticket → upgrade → E2EE. A failed upgrade needs a fresh ticket. */
