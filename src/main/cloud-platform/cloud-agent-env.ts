@@ -1,4 +1,4 @@
-import type { CloudAgentConfig } from './cloud-agent-client'
+import type { CloudAgentConfig } from './cloud-agent-config'
 
 /** Cloud mode is opt-in; half-configured is an operator error, not a silent skip. */
 export function cloudAgentConfigFromEnv(env: NodeJS.ProcessEnv): CloudAgentConfig | null {

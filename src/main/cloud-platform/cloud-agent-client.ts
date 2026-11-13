@@ -1,4 +1,6 @@
-import { heartbeatAddrsField, sendHeartbeat } from './cloud-host-enrollment'
+import type { CloudAgentConfig } from './cloud-agent-config'
+import { sendHeartbeat } from './cloud-host-enrollment'
+import { cloudHeartbeatBody } from './cloud-heartbeat-body'
 import { emptyRevocations, parseRevocations } from './cloud-agent-revocations'
 import { parseKeys, parsePolicyResponse } from './cloud-agent-response-parsing'
 import {
@@ -13,6 +15,7 @@ import { createCloudConnectionSessions } from './cloud-connection-sessions'
 import { parseCloudPolicies, type CloudPolicies } from './cloud-policies'
 import type { CloudProvisionReport } from './cloud-project-provision'
 import { createCloudProvisionReportQueue } from './cloud-provision-report-queue'
+import { createCloudHostAuditQueue, type CloudHostAuditSink } from './cloud-host-audit'
 import { fetchControlPlaneReads } from './cloud-agent-endpoint-fetch'
 import {
   createCloudAdmissionLedger,
@@ -28,47 +31,6 @@ import {
  * §3.3 D1). The host therefore keeps its own view of the signing keys and the
  * revocation sets, refreshed on a timer, and admits upgrades from that view.
  */
-
-export type CloudAgentConfig = {
-  /** Public API base, used for /v1/jwks. */
-  apiUrl: string
-  /** Control-plane base; https here means the requests go over mTLS. */
-  internalUrl?: string
-  /** Bearer token for /v1/internal/*. */
-  internalToken: string
-  hostId: string
-  hostName: string
-  refreshMs?: number
-  /** Per-request timeout; a hung platform must not stall the loop. */
-  timeoutMs?: number
-  /** Injected for tests; defaults to global fetch. */
-  fetchImpl?: typeof fetch
-  /** Injected for tests; defaults to `Date.now`. */
-  now?: () => number
-  /** How long signing keys stay usable without a successful refetch. */
-  keysTtlMs?: number
-  /** Design §8.4 caps; overrides exist for tests, production uses the defaults. */
-  maxSessionsPerUserProject?: number
-  maxSessionsPerHost?: number
-  /**
-   * Enrolled-host mode: revocations and policy come from the heartbeat response
-   * instead of `/v1/internal/*`. This is the normal path for a registered host;
-   * the internal routes exist for hosts that never enrolled.
-   */
-  heartbeat?: {
-    hostId: string
-    credential: string
-    /**
-     * Addresses reported on every beat so the platform sees the port the runtime
-     * actually bound, not one guessed before it listened.
-     */
-    directAddrs?: string[] | (() => string[])
-    /** Reported so the platform can hand the host key to clients with the ticket. */
-    e2eePublicKeyB64?: () => string | null
-    /** Parent directory for self-service projects; absent means the host opts out. */
-    projectsRoot?: string
-  }
-}
 
 export type CloudAgentSnapshot = {
   kids: string[]
@@ -109,6 +71,8 @@ export type CloudAgentClient = {
   isHostRevoked: () => boolean
   /** Queues a provisioning outcome for the next heartbeat; no-op in poll mode. */
   reportProvisioned: (report: CloudProvisionReport) => void
+  /** Queues a session refusal for the next heartbeat; no-op in poll mode. */
+  reportAudit: CloudHostAuditSink
   start: () => void
   stop: () => void
 }
@@ -135,6 +99,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
   let timer: ReturnType<typeof setInterval> | null = null
   let inFlight: Promise<void> | null = null
   const provisionReports = createCloudProvisionReportQueue(config.heartbeat !== undefined)
+  const auditEvents = createCloudHostAuditQueue(config.heartbeat !== undefined)
   const listeners = new Set<(snapshot: CloudAgentSnapshot) => void>()
   const revokeListeners = new Set<(deviceTokens: string[]) => void>()
   // Why: revocation arrives as platform device/user/project ids, but the socket is
@@ -184,21 +149,14 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
     if (config.heartbeat) {
       // Snapshot before sending; keep the entries until the platform accepts the beat.
       const provisionBatch = provisionReports.take()
+      const auditBatch = auditEvents.take()
       // Heartbeat is the enrolled host's revocation channel (design §4.1). It is
       // preferred over the internal routes, which a registered host may not reach.
       const beat = await sendHeartbeat(
         config.apiUrl,
         config.heartbeat.credential,
         config.heartbeat.hostId,
-        {
-          status: 'online',
-          ...heartbeatAddrsField(config.heartbeat?.directAddrs),
-          ...(config.heartbeat.projectsRoot ? { projectsRoot: config.heartbeat.projectsRoot } : {}),
-          ...(config.heartbeat.e2eePublicKeyB64?.()
-            ? { e2eePublicKeyB64: config.heartbeat.e2eePublicKeyB64() ?? undefined }
-            : {}),
-          ...(provisionBatch.reports.length > 0 ? { provisioned: provisionBatch.reports } : {})
-        },
+        cloudHeartbeatBody(config.heartbeat, provisionBatch.reports, auditBatch.events),
         fetchImpl,
         timeoutMs
       )
@@ -206,6 +164,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
         // Why by sequence: a report queued while this beat was in flight is newer
         // than anything the platform just accepted.
         provisionReports.clearThrough(provisionBatch.seq)
+        auditEvents.clearThrough(auditBatch.seq)
         const parsed = parseRevocations(beat.revoked)
         if (parsed) {
           revocations = parsed
@@ -312,9 +271,15 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
 
   return {
     admit: (headers) => {
+      // Why every refusal is audited here: this is the one gate all upgrades pass,
+      // and a failed ticket has no device to record it from anywhere else.
+      const refuse = (reason: string, message: string) => {
+        auditEvents({ eventType: 'connection_rejected', reason })
+        return rejectCloudUpgrade(reason, message)
+      }
       // A revoked host refuses upgrades even with a still-fresh ticket.
       if (hostRevoked) {
-        return rejectCloudUpgrade('host_revoked', '主机已被吊销。')
+        return refuse('host_revoked', '主机已被吊销。')
       }
       const decision = createCloudUpgradeAdmission({
         hostId: config.hostId,
@@ -326,18 +291,19 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
         keysTtlMs: config.keysTtlMs
       })(headers)
       if (!decision.ok) {
+        auditEvents({ eventType: 'connection_rejected', reason: decision.reason })
         return decision
       }
       const { jti, deviceToken, deviceId, sub, project, exp } = decision.payload
       const iatMs = decision.payload.iatMs ?? decision.payload.iat * 1000
       if (ledger.isReplayed(jti)) {
-        return rejectCloudUpgrade('replayed', '该连接凭证已被使用。')
+        return refuse('replayed', '该连接凭证已被使用。')
       }
       // The ticket text is what the socket carries, so it is the handle the
       // connection gate and its close path use.
       const credential = readCloudCredentialFromHeaders(headers)
       if (credential === null) {
-        return rejectCloudUpgrade('credential_missing', '缺少连接凭证。')
+        return refuse('credential_missing', '缺少连接凭证。')
       }
       ledger.remember({
         jti,
@@ -356,6 +322,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
     admittedCount: () => ledger.size(),
     isHostRevoked: () => hostRevoked,
     reportProvisioned: provisionReports.queue,
+    reportAudit: auditEvents,
     refresh,
     snapshot,
     onRefresh: (listener) => {

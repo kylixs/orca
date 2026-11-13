@@ -15,6 +15,7 @@ import { PushUnregisterOutbox } from '../push/push-unregister-outbox'
 import { RuntimeBinaryMessageRouter } from '../runtime-binary-message-router'
 import type { CloudAccessGuard } from '../../cloud-platform/cloud-access-guard'
 import type { CloudProvisionReporter } from '../../cloud-platform/cloud-project-provision'
+import type { CloudHostAuditSink } from '../../cloud-platform/cloud-host-audit'
 import type { RuntimeMetadataOwnershipWatch } from '../runtime-metadata-ownership-watch'
 import { RUNTIME_METADATA_OWNERSHIP_POLL_MS } from '../runtime-metadata-ownership-watch'
 import {
@@ -63,6 +64,8 @@ export class RuntimeRpcState {
   protected cloudAccessGuard: CloudAccessGuard | null = null
   // Why mutable: the cloud client exists only after enrolment, which is after this server starts.
   protected cloudProvisionReporter: CloudProvisionReporter | null = null
+  // Why mutable: same lifecycle as the provision reporter — installed with the client.
+  protected cloudAuditSink: CloudHostAuditSink | null = null
   protected readonly askLongPollCap: number
   protected readonly browserHostLongPollCap: number
   protected readonly browserHostLongPollCapPerDevice: number

@@ -3,6 +3,7 @@ import type { OrchestrationSessionCaller } from '../orchestration/orchestration-
 import { isRegistrationFencedUnsubscribe, type RpcContext, type RpcRequest } from './core'
 import { resolveRpcCallerIdentity } from './rpc-caller-identity'
 import type { RpcCallerScope } from './rpc-caller-scope'
+import type { CloudDenialDetails } from '../../cloud-platform/cloud-denial-details'
 
 export type RpcDispatchStreamingOptions = Pick<
   RpcContext,
@@ -24,6 +25,8 @@ export type RpcDispatchStreamingOptions = Pick<
 > & {
   /** What the transport proved the caller may do; absent means this host's owner. */
   callerScope?: RpcCallerScope
+  /** A cloud permission/policy refusal, for the host's own security audit. */
+  onCloudDenial?: (details: CloudDenialDetails, method: string) => void
 }
 
 export function rpcContextFromTransport(

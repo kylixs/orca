@@ -143,6 +143,15 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
         params: request.params
       })
       if (pathDecision && !pathDecision.ok) {
+        this.cloudAuditSink?.({
+          eventType: 'path_denied',
+          deviceId: device.deviceId,
+          subject: device.name,
+          projectId: cloudSession.projectId,
+          method: request.method,
+          denial: 'PATH_OUTSIDE_ROOT',
+          reason: pathDecision.reason
+        })
         reply(
           JSON.stringify(
             this.buildError(
@@ -214,6 +223,16 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
         // Why: gates the mobile-only payload diet so full-screen web/desktop clients aren't truncated.
         clientKind: device.scope,
         callerScope,
+        onCloudDenial: (details, method) =>
+          this.cloudAuditSink?.({
+            eventType: 'method_denied',
+            deviceId: device.deviceId,
+            subject: device.name,
+            projectId: cloudSession?.projectId,
+            method,
+            denial: details.denial,
+            reason: details.reason
+          }),
         // Why: the host-only view of the ticket; provisioning must never read a
         // path or URL out of client-supplied params.
         cloud: cloudSession

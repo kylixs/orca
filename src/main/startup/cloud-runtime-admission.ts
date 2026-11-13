@@ -1,8 +1,5 @@
-import {
-  createCloudAgentClient,
-  type CloudAgentClient,
-  type CloudAgentConfig
-} from '../cloud-platform/cloud-agent-client'
+import { createCloudAgentClient, type CloudAgentClient } from '../cloud-platform/cloud-agent-client'
+import type { CloudAgentConfig } from '../cloud-platform/cloud-agent-config'
 import { cloudAgentConfigFromEnv } from '../cloud-platform/cloud-agent-env'
 import {
   enrollCloudHost,
@@ -23,6 +20,7 @@ import type {
   CloudUpgradeHeaders
 } from '../cloud-platform/cloud-upgrade-admission'
 import type { CloudProvisionReporter } from '../cloud-platform/cloud-project-provision'
+import type { CloudHostAuditSink } from '../cloud-platform/cloud-host-audit'
 
 export type CloudRuntimeTarget = {
   closeCloudDeviceSessions: (tokens: readonly string[]) => number
@@ -30,6 +28,8 @@ export type CloudRuntimeTarget = {
   setCloudAccessGuard?: (guard: ReturnType<typeof createCloudAccessGuard> | null) => void
   /** Installs the heartbeat reporter; optional for the same reason. */
   setCloudProvisionReporter?: (reporter: CloudProvisionReporter | null) => void
+  /** Installs the refusal sink; optional for the same reason. */
+  setCloudHostAudit?: (sink: CloudHostAuditSink | null) => void
   getDeviceRegistry: () => DeviceRegistry | null
   getWebSocketEndpoint: () => string | null
   getE2EEPublicKey: () => string | null
@@ -296,6 +296,7 @@ export function attachCloudRuntime(runtime: CloudRuntimeTarget): void {
     installCloudAccessGuard(runtime, admission.client)
     const client = admission.client
     runtime.setCloudProvisionReporter?.((report) => client.reportProvisioned(report))
+    runtime.setCloudHostAudit?.((event) => client.reportAudit(event))
   }
   installCloudPlatformIpc()
 }

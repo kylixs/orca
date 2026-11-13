@@ -14,6 +14,7 @@ import { resolveAdvertisedPairingEndpoint } from '../pairing-endpoint'
 import { RuntimeRpcNetworkExposure } from './runtime-rpc-network-exposure'
 import type { CloudAccessGuard } from '../../cloud-platform/cloud-access-guard'
 import type { CloudProvisionReporter } from '../../cloud-platform/cloud-project-provision'
+import type { CloudHostAuditSink } from '../../cloud-platform/cloud-host-audit'
 import {
   createWebClientUrl,
   DEVICE_REGISTRY_UNAVAILABLE_GUIDANCE,
@@ -133,6 +134,11 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
   /** Provisioning outcomes ride the cloud heartbeat; installed with the cloud client. */
   setCloudProvisionReporter(reporter: CloudProvisionReporter | null): void {
     this.cloudProvisionReporter = reporter
+  }
+
+  /** Session refusals ride the same heartbeat; installed with the cloud client. */
+  setCloudHostAudit(sink: CloudHostAuditSink | null): void {
+    this.cloudAuditSink = sink
   }
 
   closeCloudDeviceSessions(deviceTokens: readonly string[]): number {

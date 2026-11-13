@@ -49,6 +49,9 @@ export function admitRpcRequest<M extends RpcMethod | RpcStreamingMethod>(
     // reason is what the CLI and the platform documentation branch on.
     const details =
       callerScope.kind === 'cloud' ? methodDenialDetails(callerScope, rawRequest.method) : null
+    if (details) {
+      options?.onCloudDenial?.(details, rawRequest.method)
+    }
     return reject(errorResponse(rawRequest.id, meta, 'forbidden', denial, details ?? undefined))
   }
   if (!method) {

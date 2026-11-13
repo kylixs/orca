@@ -33,6 +33,7 @@ import { startInternalChannel } from './internal-channel.ts'
 import { ldapProfile, MockLdapAdapter, type LdapAdapter } from './ldap.ts'
 import { Store, type Host, type Project, type User } from './store.ts'
 import { parseReadRate } from './policy-rate.ts'
+import { appendHostAuditReports, parseHostAuditReports } from './host-audit-ingest.ts'
 
 const ACCESS_TTL_MS = 30 * 60_000
 const REFRESH_TTL_MS = 12 * 60 * 60_000
@@ -1391,6 +1392,11 @@ export function createApp(config: ApiConfig): ApiHandle {
           applyProjectProvisionReports(target.id, body.provisioned, traceId)
           target.lastHeartbeatAt = now()
         }
+        // Why outside the revoked guard: a host's last refusal before it is cut
+        // off still belongs in the chain, and this never fails the beat.
+        // Why outside the revoked guard: a host's last refusal before it is cut
+        // off still belongs in the chain, and this never fails the beat.
+        appendHostAuditReports(audit, target, parseHostAuditReports(body.audit), traceId)
         const revoked = store.revocations.filter((r) => r.targetType !== 'jti')
         return json(res, 200, {
           ...(target.revokedAt !== null ? { hostRevoked: true } : {}),

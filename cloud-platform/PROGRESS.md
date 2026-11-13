@@ -1463,13 +1463,43 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 2. `files.download` 不是已注册方法，`DOWNLOAD_DISABLED` 用 `browser.download` 验证。
 3. 主机侧拒绝仍无审计事件（G-08）；`PLATFORM_UNAVAILABLE` 映射（G-09）与离线主机禁用（G-05）未动。
 
+## M73 修复 G-08：主机侧拒绝进入平台审计链（AC-11/AC-21/AC-27/AC-28）（本轮，主会话执行）
+
+**问题（M70 验收映射发现）**：主机是唯一能看到「升级前拒绝」的一侧，但它不写任何审计；平台审计链因此对伪造/过期票据、路径越界、权限越界完全没有记录，AC-11/21/27/28 的「审计」子项无法满足。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-host-audit.ts`（新） | 主机侧有界缓冲（200 条，保留最新），事件 `connection_rejected` / `path_denied` / `method_denied`，按序号 `take`/`clearThrough`，与 provisioning 上报同一模式 |
+| `cloud-agent-client.ts` | `admit` 的每一条拒绝路径（伪造/过期/重放/缺凭证/主机已吊销）都入缓冲；`reportAudit` 暴露给 Runtime；心跳携带 `audit[]`，平台接受后按序号清除 |
+| `cloud-heartbeat-body.ts`（新） | 心跳体组装（地址、E2EE 公钥、projectsRoot、provisioned、audit），从客户端抽出以守住行数上限 |
+| `cloud-agent-config.ts`（新） | `CloudAgentConfig` 类型移出，客户端行数回到预算内 |
+| `host-audit-ingest.ts`（新，平台） | 校验事件类型/结果，单次 ≤100 条、文本 ≤512 字符；逐条 `appendBestEffort` 写入既有哈希链，`eventType=host.<事件>`，`actor=host:<主机名>`，`target` 为设备（有 `deviceId` 时）或主机 |
+| Runtime 侧 | `setCloudHostAudit` 安装接收器；WSS 路径拒绝、方法/权限拒绝分别写入 `path_denied` / `method_denied`（带设备、主体、项目、方法、`denial`、`reason`） |
+| 文档 | `design.md` §4.3.3 增补实现载体与事件名；`test-plan.md` AC-11/21/27/28 更新为 PASS 并引用 M73 证据 |
+
+**验证（`evidence/m73-host-audit/`）**：真实平台进程 + 真实注册主机/心跳 + 真实 TLS Runtime + 真实 WSS：
+- 越界写 → 平台审计 `host.path_denied`：`actor=host:dev-m67`、`targetType=device`、`metadata={denial:PATH_OUTSIDE_ROOT, reason:workspace_scope, method:files.write, subject:user:zhangsan, projectId}`。
+- `settings.update` → `host.method_denied`：`metadata.denial=METHOD_NOT_AVAILABLE`。
+- 伪造票据直连 → 主机预握手 `401 x-orca-reject: malformed`；同一心跳内出现 `host.connection_rejected`（`metadata.reason=malformed`，target 为主机）。
+- `GET /v1/audit/verify` → `ok: true`，`checked` 覆盖上述事件（链未分叉）。
+- 回归：platform 测试 **126/126**；主机侧 5 个文件 14 条全过；`tsc node` 0、`tsc tc.web` 0；oxlint 无新增（`server.ts` 的 curly 报错为存量）。
+
+**负向对照**：移除心跳处理里的 `appendHostAuditReports(...)` → M73-1 失败（`expected 0 to be greater than 0`）；恢复后全绿。
+
+**如实记录 / 剩余**：
+1. 缓冲在内存：断网不丢，主机重启会丢（设计原文只承诺「断网不丢」；若需重启不丢要另建落盘队列与保留策略）。
+2. 仅 enrolled（心跳）主机上报；legacy poll 模式主机无携带通道，事件不产生。
+3. 事件按主机批次到达，`traceId` 是平台处理心跳的 trace，不与原始请求 trace 关联。
+4. 成功/计量类事件（读预算、导出放行）未上报，本轮只覆盖拒绝类。
+5. 平台审计链损坏时主机事件静默丢弃（`appendBestEffort`），心跳不断——与「审计不可写则敏感操作 fail-closed」不同，因为心跳本身不是授权动作。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M72（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M73（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步**：
-1. **G-08 主机侧拒绝审计**（MAJOR）：越界/缺权限/吊销等主机侧拒绝写审计事件（错误码已在 M72 完成）。
-2. **G-05 离线主机禁用** + **G-09 `PLATFORM_UNAVAILABLE`**（其余 MAJOR）。
+1. **G-05 离线主机禁用**（MAJOR）：工作台按心跳超时把项目标为离线并禁用「打开」。
+2. **G-09 `PLATFORM_UNAVAILABLE`**（MAJOR）：平台停机时新建/重连映射该错误码，并断言不做无凭证重连。
 3. **人工验收**：按 design/test-plan 逐条核对验收标准；重点看桌面真实界面（登录 → 侧栏项目 → 本人 checkout → 终端/文件/git/agent）与管理员浏览器会话页。
 4. 真机/跨平台：Windows、WSL、SSH 主机各跑一遍关键路径（provisioning、路径边界、PTY、会话持久化权限位）。
 5. L4 全量回归：发版前单独执行，含桌面 Electron 渲染验证。
