@@ -7,6 +7,7 @@ import {
   type CloudFilePaths
 } from './cloud-file-path-params'
 import { cloudGitAccessOf, cloudGitPathsOf } from './cloud-git-scope'
+import { checkCloudAgentScope, cloudAgentScopeOf } from './cloud-agent-scope'
 import {
   cloudTerminalHandleOf,
   cloudTerminalHandleParam,
@@ -41,6 +42,8 @@ export type CloudPathGuardRuntime = {
   resolveTerminalContext?: (
     terminalHandle: string
   ) => { worktreeId: string; connectionId: string | null } | null
+  /** Which worktree an agent session runs in, from its durable record or live terminal. */
+  resolveAgentSessionContext?: (sessionId: string) => { worktreeId: string } | null
 }
 
 function stringField(value: unknown, key: string): string | null {
@@ -95,7 +98,8 @@ export function isCloudPathGuardedMethod(method: string): boolean {
   return (
     cloudPathAccessOf(method) !== null ||
     cloudWorktreeAccessOf(method) !== null ||
-    cloudTerminalScopeOf(method) !== null
+    cloudTerminalScopeOf(method) !== null ||
+    cloudAgentScopeOf(method) !== null
   )
 }
 
@@ -117,6 +121,10 @@ export async function checkCloudRpcPath(args: {
   }
   if (terminalScope) {
     return await checkCloudTerminal(args, terminalScope)
+  }
+  const agentScope = cloudAgentScopeOf(args.method)
+  if (agentScope) {
+    return await checkCloudAgentScope(args, agentScope)
   }
   const denial = cloudWorktreeDenial(args.method)
   if (denial) {

@@ -94,7 +94,8 @@ describe('RPC 路径检查', () => {
     const decision = await checkCloudRpcPath({
       runtime,
       roots: { projectRoot: '/p', workspaceRoot: '/p/ws' },
-      method: 'agentProvider.list',
+      // A session introspection method: no workspace address to check.
+      method: 'status.get',
       params: {}
     })
     expect(decision).toBeNull()

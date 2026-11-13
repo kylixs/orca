@@ -94,6 +94,14 @@ class OrcaRuntimeService extends OrcaRuntimeWithMigrationCatalog {
   openedAgentSessionRecordStore(): AgentSessionRecordStore | null {
     return peekOpenedAgentSessionRecordStore()
   }
+
+  /** The worktree a session runs in; falls back to a live terminal for terminal-backed agents. */
+  resolveAgentSessionContext(sessionId: string): { worktreeId: string } | null {
+    const record = this.openedAgentSessionRecordStore()?.getRecord(sessionId)
+    return record
+      ? { worktreeId: record.location.workspaceId }
+      : this.resolveTerminalContext(sessionId)
+  }
 }
 type OrcaRuntimeServiceExport = RuntimeCommandSurfaceHost<OrcaRuntimeService>
 const OrcaRuntimeServiceExport = OrcaRuntimeService as unknown as {

@@ -745,9 +745,39 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 3. 云端客户端以"桌面客户端"身份订阅（不带 `client.type=mobile`），走 JSON 订阅；手机端若直连云主机需要二进制流能力协商，属后续项。
 4. `terminal.create` 在无桌面窗口的云主机上返回 `warning`（"could not make it discoverable"），PTY 本身可用——与 M41 的 `files.open` 同类：无窗口宿主只能后台运行。
 
+## M44 agent 家族工作区边界（本轮，由开发子代理执行）
+
+**问题**：`agent` 权限通过前缀一次性放行了 `agent.` / `agentSession.` / `agentProvider.`，而路径守卫对这些方法**没有任何规则**（与 M36 之前的 files、M43 之前的 terminal 相同）。agent CLI 会执行命令，结构化会话会驱动一个正在运行的 agent；两者的目标工作区与会话 id 都由客户端指定。因此一个有 `agent` 权限的云端用户可以在**共享检出区或队友仓库**里启动 agent、读取他人的会话历史、并向他人的会话发送消息。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-agent-scope.ts`（新，328 物理行/211 有效行） | 三类：**create**（`agent.launch`/`launchReplay`/`agentSession.create`/`createSupport`/`ensure`）——目标 worktree 必须解析进本人 `workspaceRoot`；`agent.launch` 还检查 `cwd` 与 `reuseTerminal.handle`，且 `target.kind` 必须是 `existing`（新建工作区由主机自己推导路径，与 `worktree.create` 同样拒绝）；**session**（26 个方法）——从 `sessionId` 或 `envelope.sessionId` 解析会话所属 worktree；**deny**——附件（主机文件存储、`read` 传绝对路径、上传流无法定界）、`agentTeams`/`agentHooks`（主机窗口/全局状态）、provider 目录、跨会话流与 restart 列表。未分类的 `agent*` 一律拒绝 |
+| `cloud-path-guard.ts` | 接入 agent 三类；`isCloudPathGuardedMethod` 覆盖 |
+| `orca-runtime.ts` | 新增 `resolveAgentSessionContext`：先查会话持久记录（`location.workspaceId`），再回退到终端上下文（终端承载的会话仍在 PTY 上）。两者都答不出 → 拒绝 |
+
+**验证（`evidence/m44-agent-boundary/`）**：4 条真实端到端——真实平台票据、真实 TLS Runtime、真实 git 仓库与托管 worktree、真实 `CloudConnectClient`：
+- M44-1 本人工作区的会话调用**到达 handler**（返回 `structured_agent_session_unsupported`，不是 `forbidden`）——证明边界放行后真的执行；
+- M44-2 共享检出区与队友仓库的 `history`/`send` 被 `forbidden`；
+- M44-3 向共享检出区、队友仓库、以及不指定工作区的 `agent.launch` 全部 `forbidden`；
+- M44-4 全车级与主机侧方法（`subscribeStatus`、附件、`agentTeams`）被拒。
+
+另有 13 条单测。**主会话独立负向对照**（不只看子代理报告）：把 `cloudAgentScopeOf` 改为恒返回 `null` → 3 条 e2e 变红（`expected 'runtime_error' to be 'forbidden'`），恢复后 4/4 绿。主机侧 + 渲染侧 + 共享 33 文件 186 条全过；`tsc` node/web 0 错；门禁 7 项 0 新发现。
+
+**如实记录 / 剩余**：
+1. 会话归属的**记录存储路径未端到端验证**：真实结构化会话需要启动真实 provider CLI。e2e 走的是终端回退路径，记录查询只有单测覆盖。
+2. `agentProvider.list` 现在被守卫拒绝（provider 目录是主机全局的）。若后续让云端复用 Orca 原有 agent 面板，需要重新评估：面板启动前要读 provider 目录，届时应改为"只按本人工作区过滤"而不是整体拒绝，并给出目录内容不跨租户的依据。
+3. `agentSessionAttachment.*`、`agentTeams.*`、`agentHooks.*` 在当前分支本就未登记权限（`cloudMethodAccess` 返回 null，权限层已拒）；本表仍显式分类，是为将来放宽前缀时守卫依然正确。
+
 ## 下一步
 
-1. 终端面板 UI：把 M43 的创建/订阅/写入接到工作区布局（xterm），并处理断线重连后的重新订阅（`cloud-connection-event` 已就绪）。
-2. 遗留：`agentSession`/`session.tabs.*` 按 M43 的方式做帧级与工作区边界。`agent.*` 家族目前**完全没有**路径/工作区边界（与 M36 之前的 files 相同），是下一个高风险缺口。
+**界面方向修正（用户决定）**：不再自造云端面板。Orca 自带浏览器客户端（`src/renderer/src/web/`，约 1.1 万行，入口 `web-index.html`，在浏览器内重建 `window.api` 并挂载同一个 `App`）才是"统一工作界面"；它目前只接受**配对码**，没有云票据支持。改造顺序：
+
+1. 给 `web-runtime-connection-transport` 接入 cloud ticket（`shared/remote-runtime-request-socket.ts` 的 `cloudUpgrade` 已铺好一半）；浏览器内生成设备密钥并完成设备绑定证明。
+2. 浏览器 → 平台登录 → 票据选路（直连/中继）→ 连上远端 Runtime → 渲染同一个 `App`。
+3. 删除 `renderer/cloud/cloud-file-panel.tsx` 与云端壳子的工作区页；`shared/cloud-file-browser.ts` 仅保留给既有 e2e，或随面板一并移除。
+4. `cloud-runtime-environment` 侧车补 `workspacePath`，让复用后的面板直接寻址用户 checkout。
+5. 管理台（`cloud-platform/apps/web/`）保持独立，仅管理员可见主机/成员/审计/设置。
+
+遗留风险：`agent.launch` 在本人工作区**未被实际执行**（会真的拉起 agent 进程），目前只断言了拒绝路径。
 2. 遗留：M4 `isInsideRoot` 对 Windows 段大小写敏感（fail-closed，误拒而非误放；按需放宽）。
 3. 并发上限目前只统计云会话；本地配对连接不占这 32 个名额（设计表只约束云端会话），如运营需要主机总量配额再扩展。
