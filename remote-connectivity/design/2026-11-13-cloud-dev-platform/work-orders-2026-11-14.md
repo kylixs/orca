@@ -46,6 +46,17 @@ CloudProjectWorkspace 接入终端面板（复用 web 客户端终端管线 + cl
 
 平台：`POST /v1/projects/{id}/web-handoff`（open 权限，审计 `web_handoff`）→ 一次性 ≤60s code + URL（`<browserEntryUrl 或直连 web-index>#handoff=<code>&project=<id>`）；`POST /v1/web/handoff` 换正式会话（复用设备会话签发；二次/过期 410、无权限 403）。orca web：启动读 hash → 换会话 → 自动打开指定项目；失败回落登录表单（预填平台地址）；hash 用后即清。Web 项目行「Orca Web」按钮激活（调 web-handoff 并 window.open）。e2e：签发→换发→二次 410→过期 410→无权限 403 + web 端自动进入。提交 `feat(cloud): one-time web handoff auto-entry`。
 
+## W10 · 客户端首启零环境变量（M119，用户反馈，排在 W9 之后）
+
+用户反馈：本地启动客户端失败，提示需要环境变量——不符合真实使用场景。目标：**无任何环境变量也能正常启动并使用云端功能**。
+
+设计要点（设计先行，派发设计代理细化）：
+- 现状：云端模式由 ORCA_CLOUD_API_URL/HOST_TOKEN 等环境变量驱动，未设则无云入口；构建时 VITE/ORCA 默认值不存在。
+- 目标形态：① 无 env 启动 → 正常进入首启界面，云端登录表单含「平台地址」输入（默认值=构建注入的默认平台地址，其次取上次成功使用的地址——持久化）；② 填地址+域账号即可登录，地址保存；③ env 存在时仅作**预填/覆盖**，不阻塞启动；④ 设置界面新增「云平台地址」项，改后下次登录生效；⑤ 托管构建（ORCA_MANAGED_BUILD）锁定地址语义不变。
+- 涉及：src/main/orca-profiles/profile-cloud-auth-config.ts（云端模式判定）、首启登录链、renderer 登录表单（cloud-login-panel）地址字段、设置持久化。
+- 错误处理：地址不可达 → 登录表单内联错误；地址格式非法 → 校验拒绝。
+- 测试：真实平台三例（无 env 填地址登录成功；env 预填覆盖；设置修改持久化重登录生效）+ 非云端构建零回归。提交 `feat(cloud): first-run client works without env vars`。
+
 ## W9 · 黄金旅程端到端（用户要求：加主机→建项目→开项目→终端输入→看文件 一条串起来）
 
 现状是分段覆盖（注册/建项/连接/终端/文件各有真实 e2e），缺单测串联。本令交付**一条连续旅程测试**（真实平台进程 + 真实 Orca 宿主 Electron 实例（TLS+PTY+projectsRoot）+ 真实客户端登录，复用 M113 的启动法与 src e2e 基建）：
