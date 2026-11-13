@@ -46,6 +46,17 @@ CloudProjectWorkspace 接入终端面板（复用 web 客户端终端管线 + cl
 
 平台：`POST /v1/projects/{id}/web-handoff`（open 权限，审计 `web_handoff`）→ 一次性 ≤60s code + URL（`<browserEntryUrl 或直连 web-index>#handoff=<code>&project=<id>`）；`POST /v1/web/handoff` 换正式会话（复用设备会话签发；二次/过期 410、无权限 403）。orca web：启动读 hash → 换会话 → 自动打开指定项目；失败回落登录表单（预填平台地址）；hash 用后即清。Web 项目行「Orca Web」按钮激活（调 web-handoff 并 window.open）。e2e：签发→换发→二次 410→过期 410→无权限 403 + web 端自动进入。提交 `feat(cloud): one-time web handoff auto-entry`。
 
+## W9 · 黄金旅程端到端（用户要求：加主机→建项目→开项目→终端输入→看文件 一条串起来）
+
+现状是分段覆盖（注册/建项/连接/终端/文件各有真实 e2e），缺单测串联。本令交付**一条连续旅程测试**（真实平台进程 + 真实 Orca 宿主 Electron 实例（TLS+PTY+projectsRoot）+ 真实客户端登录，复用 M113 的启动法与 src e2e 基建）：
+1. 管理员取令牌 → 宿主注册（断言 online、directAddrs、e2eePublicKey、tlsFingerprint）；
+2. 管理员建项目（绑定宿主）+ 授权组；开发者可见；
+3. 开发者真实登录 → 打开项目（断言工作区打开、直连线路徽标）；
+4. 打开终端 → 输入 `echo orca-journey && ls` → 断言回显与文件列表输出；
+5. 文件树浏览（断言 seed 文件可见）→ 打开文件 → 断言内容渲染；
+6. 旅程时间线 JSON（每步耗时）+ 截图入 evidence/journey-golden/。
+文件：tests/e2e/cloud-journey-golden.spec.ts（或并入既有 native e2e 工程，按基建惯例）。不依赖 W5/W7（桌面客户端已有终端/文件面）。提交 `test(e2e): golden journey from host enrollment to terminal and files`。
+
 ## W8 · M115 兼容性回归修复（全量复测发现，优先级最高，W2 完成后立即派发）
 
 HEAD 快照全量套件 171 用例 163 过 8 失败；其中 4 个失败为**真回归**：M115（7eba67c76cd）把 `dir` 设为必填后，**管理员按 `path` 登记项目的旧调用收到 400 INVALID_DIR**（project-archive.e2e.test.ts 建项目失败级联 4 断言；证据 /tmp/m116-retest-full.log）。修法：目录必填仅约束开发者自助路径（FR-3.7）；管理员登记（path 直供）保持原语义，dir 缺省时按现有 key/path 规则派生。修复后 project-archive e2e 全绿 + 新增「管理员无 dir 登记」回归断言。提交 `fix(cloud): admin project creation keeps path semantics`。另 2 个失败为快照缺 evidence/、1 个为快照缺 src/ 跨目录依赖（环境产物，修复验证时在主工作区跑对应文件确认即可，不算回归）。

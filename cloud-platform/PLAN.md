@@ -47,6 +47,7 @@ node apps/api/src/server.ts                # 本地起平台
 | 1 | W2 QA 修复（P0 用户授权 + P1×11） | M116 探索性测试 | findings.json 逐条回归断言 |
 | 2 | **W8 M115 兼容回归**（管理员 path 登记被 INVALID_DIR 拒） | 全量复测 | project-archive e2e 全绿 + 新增回归 |
 | 3 | W3 详情入口+双入口（先设计） | FR-3.8/3.11 | test-plan §6 M117 行 |
+| 2b | W9 黄金旅程端到端（加主机→建项目→开项目→终端→文件） | 用户要求 | 旅程时间线 + 每步断言 |
 | 4 | W4 静态 503 兜底 | 复检 D1 | 单测 503 + 有 bundle 不回归 |
 | 5 | W5 详情页终端（先设计） | FR-3.9 | test-plan §6 M118 行 |
 | 6 | W6 中继双模式（先设计） | FR-4.12 修订 | test-plan §6 M121 行 |
