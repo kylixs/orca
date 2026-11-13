@@ -4,7 +4,7 @@
 > 需求基线：`requirements.md` §8（AC-01 ~ AC-32）
 > 流程基线：`remote-connectivity/design/DEVELOPMENT_PROCESS.md` §4.1、G8
 > 证据根目录：`cloud-platform/evidence/`（gitignore）
-> 本轮新增证据：`cloud-platform/evidence/m70-acceptance/`、`cloud-platform/evidence/m72-denial-details/`、`cloud-platform/evidence/m73-host-audit/`、`cloud-platform/evidence/m74-offline-host/`、`cloud-platform/evidence/m75-platform-unavailable/`、`cloud-platform/evidence/m76-signing-key-rotation/`、`cloud-platform/evidence/m77-host-key-pinning/`、`cloud-platform/evidence/m78-web-release/`、`cloud-platform/evidence/m79-policy-propagation/`、`cloud-platform/evidence/m80-audit-writer/`、`cloud-platform/evidence/m81-host-key-confirmation/`、`cloud-platform/evidence/m82-web-host-key/`、`cloud-platform/evidence/m83-relay-failover/`
+> 本轮新增证据：`cloud-platform/evidence/m70-acceptance/`、`cloud-platform/evidence/m72-denial-details/`、`cloud-platform/evidence/m73-host-audit/`、`cloud-platform/evidence/m74-offline-host/`、`cloud-platform/evidence/m75-platform-unavailable/`、`cloud-platform/evidence/m76-signing-key-rotation/`、`cloud-platform/evidence/m77-host-key-pinning/`、`cloud-platform/evidence/m78-web-release/`、`cloud-platform/evidence/m79-policy-propagation/`、`cloud-platform/evidence/m80-audit-writer/`、`cloud-platform/evidence/m81-host-key-confirmation/`、`cloud-platform/evidence/m82-web-host-key/`、`cloud-platform/evidence/m83-relay-failover/`、`cloud-platform/evidence/m84-shared-login-lockout/`
 
 ## 1. 目的与范围
 
@@ -63,7 +63,7 @@
 | AC | 场景 | 层级 | 测试文件::用例 | 证据 | 结论 | 说明 |
 |---|---|---|---|---|---|---|
 | AC-01 | 正确账号登录，P95 ≤ 1.5s，显示有权限项目 | 真实 e2e + 采样 | `P-E2E::E1 登录 → 项目列表 → 直连打开项目`；`P-M70::AC-01 登录到项目列表 50 次采样 P95 ≤ 1.5s（API 段）` | `e2e-platform/E1-direct.json`；`m70-acceptance/ac-01-login-latency.json` | PASS(部分) | API 段 50 次采样 P95=1.3ms，项目列表可见；浏览器渲染到工作台可交互未测 |
-| AC-02 | 连续 5 次密码错误锁定 15 分钟，提示明确，审计 | 真实 e2e（注入时钟） | `P-M70::AC-02 连续 5 次失败锁定 15 分钟，锁定与恢复都有审计` | `m70-acceptance/ac-02-login-lockout.json` | PASS | 第 5 次 423 `ACCOUNT_LOCKED`；15 分钟后恢复 200；审计含 `locked: true` |
+| AC-02 | 连续 5 次密码错误锁定 15 分钟，提示明确，审计 | 真实 e2e（注入时钟；3 副本共享计数） | `P-M70::AC-02 连续 5 次失败锁定 15 分钟，锁定与恢复都有审计`；`login-lockout-shared.e2e.test.ts::AC-02`（3 个真实 API 副本 + 独立计数服务进程） | `m70-acceptance/ac-02-login-lockout.json`；`m84-shared-login-lockout/shared-lockout.json`、`lockout-unavailable.json` | PASS | 单副本：第 5 次 423、15 分钟恢复、审计含 `locked: true`。多副本：5 次失败轮流打到 3 个副本仍是第 5 次锁定，换副本用正确密码也 423；成功登录清零计数；计数服务不可达时登录 503 `PLATFORM_UNAVAILABLE`（fail-closed） |
 | AC-03 | 无权限项目统一 404，不泄露项目名，写审计 | 真实 e2e | `cloud-platform/test/e2e/admin-gating.e2e.test.ts::开发者访问项目详情：有权限 200，无权限统一 404`、`开发者无法通过响应差异探测项目是否存在`；`P-M70::AC-03 无权限项目统一 404、响应不含项目名并写审计` | `m8-admin-gating/project-visibility.json`、`existence-non-disclosure.json`；`m70-acceptance/ac-03-project-non-disclosure.json` | PASS | 未知与无权限状态/错误体一致；`project_access` denied 事件可查 |
 | AC-04 | 管理员登记并授权组，成员刷新可见并可打开 | 真实 e2e | `P-M70::AC-04 管理员登记并授权组后，成员刷新即可见并可取到连接票据` | `m70-acceptance/ac-04-project-grant.json` | PASS(部分) | 管理员 POST 项目 + PUT 组授权；成员列表可见并拿到 200 连接票据；未对该新项目执行真实打开 |
 | AC-05 | 直连可达：预检选直连、显示线路、终端可交互、平台无业务流量 | 真实 e2e | `P-E2E::E1`；`src/main/cloud-platform/cloud-connect-client.test.ts::登录 → 项目列表 → 直连打开 → 加密 RPC`；`src/main/cloud-platform/cloud-terminal-session.test.ts::M43-1 在工作区内创建终端、订阅流并读到 shell 真实输出` | `e2e-platform/E1-direct.json`；`m43-cloud-terminal/m43-1-stream.json` | PASS(部分) | 直连路由、加密 RPC、真实 PTY 输出已验证；未抓包证明平台侧无该会话业务流量 |

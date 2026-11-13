@@ -45,6 +45,12 @@ import {
   parseRelayRegistration,
   RELAY_ALIVE_DEFAULT_MS
 } from './relay-nodes.ts'
+import {
+  createRemoteLoginLockout,
+  lockoutUnavailable,
+  type LoginLockout,
+  type LockoutState
+} from './login-lockout-client.ts'
 
 const ACCESS_TTL_MS = 30 * 60_000
 const REFRESH_TTL_MS = 12 * 60 * 60_000
@@ -67,6 +73,8 @@ export type ApiConfig = {
   auditLogPath?: string
   /** Single audit writer shared by replicas; absent keeps the local chain. */
   auditWriterUrl?: string
+  /** Shared login-lockout counter; absent counts in this process only. */
+  loginLockoutUrl?: string
   /** Frontend directory; tests point this at a copy to simulate a new release. */
   webRoot?: string
   /** Where superseded frontend builds are kept so cached old pages still load. */
@@ -163,6 +171,10 @@ export function createApp(config: ApiConfig): ApiHandle {
     process.env.ORCA_CLOUD_INTERNAL_TOKEN ??
     'internal-test-token'
 
+  const loginLockoutUrl = config.loginLockoutUrl ?? process.env.ORCA_CLOUD_LOGIN_LOCKOUT_URL ?? null
+  const sharedLockout = loginLockoutUrl
+    ? createRemoteLoginLockout({ url: loginLockoutUrl, internalToken })
+    : null
   const auditWriterUrl = config.auditWriterUrl ?? process.env.ORCA_CLOUD_AUDIT_WRITER_URL ?? null
   // Why the writer wins: with several replicas, only one process may assign
   // `seq`/`prevHash`, otherwise the chain forks (AC-26).
@@ -221,6 +233,40 @@ export function createApp(config: ApiConfig): ApiHandle {
       error(res, 503, code, '审计日志不可写，敏感操作已停止。', traceId)
       return false
     }
+  }
+
+  /**
+   * AC-02 counts failures per account, not per replica: with a shared counter the
+   * fifth wrong password locks the account wherever the attempts landed.
+   */
+  async function loginLockState(username: string): Promise<LockoutState | null> {
+    if (sharedLockout) {
+      const state = await sharedLockout.isLocked(username)
+      return lockoutUnavailable(state) ? null : state
+    }
+    return store.isLocked(username, now())
+      ? { locked: true, remaining: 0, lockedUntil: 0 }
+      : { locked: false, remaining: 5, lockedUntil: 0 }
+  }
+
+  async function recordLoginFailure(username: string): Promise<LockoutState | null> {
+    if (sharedLockout) {
+      try {
+        return await sharedLockout.recordFailure(username)
+      } catch {
+        return null
+      }
+    }
+    return store.recordLoginFailure(username, now())
+  }
+
+  async function clearLoginFailures(username: string): Promise<void> {
+    if (!sharedLockout) {
+      store.clearLoginFailures(username)
+      return
+    }
+    // A stale counter must not block a user who just proved the password.
+    await sharedLockout.clear(username).catch(() => undefined)
   }
 
   const signingKeys = createSigningKeyRing(now)
@@ -562,7 +608,11 @@ export function createApp(config: ApiConfig): ApiHandle {
       const body = await readJson(req)
       const username = String(body.username ?? '')
       const password = String(body.password ?? '')
-      if (store.isLocked(username, now())) {
+      const lockState = await loginLockState(username)
+      if (lockState === null) {
+        return error(res, 503, 'PLATFORM_UNAVAILABLE', '平台暂不可用，请稍后再试。', traceId)
+      }
+      if (lockState.locked) {
         audit.appendBestEffort({
           eventType: 'login',
           actor: username,
@@ -576,7 +626,10 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
       const result = await ldap.authenticate(username, password)
       if (!result.ok) {
-        const failure = store.recordLoginFailure(username, now())
+        const failure = await recordLoginFailure(username)
+        if (failure === null) {
+          return error(res, 503, 'PLATFORM_UNAVAILABLE', '平台暂不可用，请稍后再试。', traceId)
+        }
         audit.appendBestEffort({
           eventType: 'login',
           actor: username,
@@ -591,7 +644,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         }
         return error(res, 401, 'INVALID_CREDENTIALS', '账号或密码错误。', traceId)
       }
-      store.clearLoginFailures(username)
+      await clearLoginFailures(username)
       let user = store.usersByName.get(username)
       if (!user) {
         user = store.seedUser({
@@ -2117,6 +2170,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     port: Number(process.env.PORT ?? 18787),
     ...(accessTtlMs === undefined ? {} : { accessTtlMs }),
     ...(refreshTtlMs === undefined ? {} : { refreshTtlMs }),
+    ...(process.env.ORCA_CLOUD_LOGIN_LOCKOUT_URL
+      ? { loginLockoutUrl: process.env.ORCA_CLOUD_LOGIN_LOCKOUT_URL }
+      : {}),
     ...(process.env.ORCA_CLOUD_AUDIT_WRITER_URL
       ? { auditWriterUrl: process.env.ORCA_CLOUD_AUDIT_WRITER_URL }
       : {}),
