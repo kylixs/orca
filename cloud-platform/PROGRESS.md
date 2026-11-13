@@ -1880,9 +1880,29 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 2. 7 天窗口的语义由调用方传 `since`；平台只强制 31 天上限，不强制"7 天"——这与需求一致（审计员按需查询），默认窗口由前端预设。
 3. platform 的"连接日志"目前即审计链中的 `project_connect` 事件；独立的结构化连接日志文件仍属部署阶段（design §13.1 的 JSON 日志）。
 
+## M90 补齐 AC-06 的「中继下终端可交互」（本轮，主会话执行）
+
+**问题（M70 验收映射）**：AC-06 已验证「回落中继 + RPC 通过中继」，但**中继线路下的终端交互从未单独复测**——而终端是开发者最核心的交互面。
+
+| 改动 | 内容 |
+|---|---|
+| `src/main/cloud-platform/cloud-terminal-relay.test.ts`（新） | 真实中继**进程**（`apps/relay/src/relay.ts`，PORT=0）+ 真实平台 + 真实 TLS Runtime + 真实 E2EE + **真实 PTY**（node-pty）；主机不广播直连地址，强制选中继；运行时 TLS 端口在注册时尚不存在，故中继目标经惰性端口转发 hop 解析 |
+| 文档 | `test-plan.md` AC-06 由 PASS(部分) 升为 PASS |
+
+**验证（`evidence/m90-terminal-over-relay/terminal-over-relay.json`）**：
+- `route=relay`：平台只下发中继端点，客户端确实走中继。
+- 终端流事件 `scrollback → data → end`，`echo ORCA_M90_RELAY_TERMINAL_OK` 的**shell 真实输出**被读回（`sawMarker=true`）。
+- 同一中继 socket 上的 `files.write` 成功（`fileWriteOverRelay=true`），说明不是终端专用旁路。
+- **负向对照**：会话建立后杀掉中继进程 → `terminal.create` 返回 `CONNECTION_CLOSED`，用例转红；恢复后全绿。
+- 回归：本案与直连终端用例 **4/4**；`tc:node` 0；`check:code-quality:changed` 0 新发现。
+
+**如实记录 / 剩余**：
+1. 只验证了终端与文件 RPC；中继下的 agent/结构化会话与长时流（scrollback 大回放）未复测。
+2. 中继目标通过测试内的惰性转发 hop 解析（运行时端口后于注册出现）；生产部署里中继目标应指向固定的主机侧入口。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M89（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M90（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步**：
 1. **剩余 MINOR**：G-12 的浏览器渲染 P95 半分（AC-01，需 Electron/CDP 真实渲染环境）；「平台无业务流量」「中继无明文」已由 M85/M86 补齐。
