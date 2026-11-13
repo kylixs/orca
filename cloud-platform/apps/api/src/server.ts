@@ -35,6 +35,12 @@ import { ldapProfile, MockLdapAdapter, type LdapAdapter } from './ldap.ts'
 import { Store, type Host, type Project, type User } from './store.ts'
 import { parseReadRate } from './policy-rate.ts'
 import { appendHostAuditReports, parseHostAuditReports } from './host-audit-ingest.ts'
+import {
+  createWebReleaseStore,
+  MIN_WEB_CONTRACT_VERSION,
+  WEB_CONTRACT_VERSION
+} from './web-release.ts'
+import { checkWebContract, readWebContract } from './web-contract.ts'
 
 const ACCESS_TTL_MS = 30 * 60_000
 const REFRESH_TTL_MS = 12 * 60 * 60_000
@@ -55,6 +61,10 @@ export type ApiConfig = {
   hostOfflineMs?: number
   /** Append-only audit log; absent keeps the chain in memory (tests). */
   auditLogPath?: string
+  /** Frontend directory; tests point this at a copy to simulate a new release. */
+  webRoot?: string
+  /** Where superseded frontend builds are kept so cached old pages still load. */
+  webReleaseArchiveDir?: string
   /** Enables the dedicated mTLS listener for platform → relay/runtime control traffic. */
   internalTls?: {
     port: number
@@ -476,6 +486,35 @@ export function createApp(config: ApiConfig): ApiHandle {
     }
 
     if (path === '/health') return json(res, 200, { ok: true, time: now() })
+
+    // ---- frontend release (AC-19): public, a console bootstraps before it has a token ----
+    if (req.method === 'GET' && path === '/v1/web/release') {
+      const release = webReleases.current()
+      return json(res, 200, {
+        contract: WEB_CONTRACT_VERSION,
+        minContract: MIN_WEB_CONTRACT_VERSION,
+        build: release.build,
+        assets: Object.fromEntries(
+          [...release.files.keys()]
+            .filter((name) => name !== 'index.html')
+            .map((name) => [
+              name,
+              { path: webReleases.assetPath(release.build, name), sha256: release.files.get(name)?.sha256 }
+            ])
+        )
+      })
+    }
+
+    if (path.startsWith('/v1/')) {
+      const contract = checkWebContract(readWebContract(req.headers))
+      if (!contract.ok) {
+        return error(res, 426, 'WEB_CONTRACT_UNSUPPORTED', '前端版本过旧或过新，请刷新页面获取最新版本。', traceId, {
+          offered: contract.offered,
+          minContract: contract.min,
+          maxContract: contract.max
+        })
+      }
+    }
 
     if (req.method === 'GET' && !path.startsWith('/v1/') && path !== '/health') {
       return serveStatic(path, res)
@@ -1906,18 +1945,55 @@ export function createApp(config: ApiConfig): ApiHandle {
 
   let relayPort = 18080
 
+  const webReleases = createWebReleaseStore({
+    webRoot: config.webRoot ?? WEB_ROOT,
+    ...(config.webReleaseArchiveDir ? { archiveDir: config.webReleaseArchiveDir } : {})
+  })
+  webReleases.archive()
+
+  /** Hashed assets are immutable; the hashed path is what makes an old page keep working. */
+  function serveAsset(path: string, res: ServerResponse): boolean {
+    const match = path.match(/^\/assets\/([0-9a-f]{6,32})\/([\w.-]+)$/)
+    if (!match) {
+      return false
+    }
+    const asset = webReleases.resolve(match[1], match[2])
+    if (!asset) {
+      return false
+    }
+    res.writeHead(200, {
+      'content-type': asset.contentType,
+      'cache-control': 'public, max-age=31536000, immutable',
+      etag: `"${asset.sha256}"`
+    })
+    res.end(asset.bytes)
+    return true
+  }
+
   async function serveStatic(path: string, res: ServerResponse): Promise<void> {
+    if (serveAsset(path, res)) {
+      return
+    }
     const rel = path === '/' ? 'index.html' : decodeURIComponent(path).replace(/^\//, '')
-    const target = join(WEB_ROOT, normalize(rel).replace(/^(\.\.[/\\])+/, ''))
+    const name = normalize(rel).replace(/^(\.\.[/\\])+/, '')
+    const current = webReleases.current().files.get(name)
+    if (current) {
+      // Why no-store on the entry point and no-cache on legacy paths: a deploy
+      // must be picked up, while an already-cached old page still resolves here.
+      const isEntry = name === 'index.html'
+      res.writeHead(200, {
+        'content-type': current.contentType,
+        'cache-control': isEntry ? 'no-store' : 'no-cache',
+        etag: `"${current.sha256}"`,
+        'x-orca-web-build': webReleases.current().build
+      })
+      res.end(isEntry ? webReleases.indexHtml() : current.bytes)
+      return
+    }
     try {
+      const target = join(config.webRoot ?? WEB_ROOT, name)
       const data = await readFile(target)
-      const type =
-        extname(target) === '.css'
-          ? 'text/css; charset=utf-8'
-          : extname(target) === '.js'
-            ? 'text/javascript; charset=utf-8'
-            : 'text/html; charset=utf-8'
-      res.writeHead(200, { 'content-type': type })
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
       res.end(data)
     } catch {
       res.writeHead(404)
@@ -1987,6 +2063,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     port: Number(process.env.PORT ?? 18787),
     ...(accessTtlMs === undefined ? {} : { accessTtlMs }),
     ...(refreshTtlMs === undefined ? {} : { refreshTtlMs }),
+    ...(process.env.ORCA_CLOUD_WEB_ROOT ? { webRoot: process.env.ORCA_CLOUD_WEB_ROOT } : {}),
+    ...(process.env.ORCA_CLOUD_WEB_ARCHIVE
+      ? { webReleaseArchiveDir: process.env.ORCA_CLOUD_WEB_ARCHIVE }
+      : {}),
     internalTls:
       process.env.INTERNAL_TLS_KEY && process.env.INTERNAL_TLS_CERT && process.env.INTERNAL_TLS_CA
         ? {

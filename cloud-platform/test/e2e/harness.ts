@@ -61,7 +61,9 @@ export function spawnService(
           logs,
           stop: () =>
             new Promise<void>((done) => {
-              if (proc.exitCode !== null) return done()
+              // A signal-killed child reports signalCode, not exitCode, and its 'exit'
+              // already fired — re-registering would wait forever.
+              if (proc.exitCode !== null || proc.signalCode !== null) return done()
               proc.once('exit', () => done())
               proc.kill('SIGTERM')
               setTimeout(() => proc.kill('SIGKILL'), 2000)

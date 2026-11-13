@@ -1588,12 +1588,39 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 3. 客户端侧的拒绝是本地错误码 + 4433 关闭帧，不进入平台审计；平台审计覆盖的是「公钥变更」本身。
 4. 平台侧 E2EE 公钥只由主机心跳写入，平台管理员无审批环节。
 
+## M78 修复 G-10：Web 前端契约版本 + 静态资源独立发布（AC-19）（本轮，主会话执行）
+
+**问题（M70 验收映射发现）**：平台把前端与 API 同进程同版本发布，静态资源没有内容哈希、没有版本协商、没有旧版本保留。前端独立发版时，浏览器缓存的旧页面会拿到新构建的 `app.js`，或在新构建部署后请求到 404——白屏；旧前端调用不存在的新路由也只会得到裸 404。
+
+| 改动 | 内容 |
+|---|---|
+| `web-release.ts`（新，平台） | 启动时读取前端目录、按文件内容算 SHA-256、以「文件名:哈希」聚合出 `build` id；`index.html` 中的 `/app.js`、`/config.js`、`/styles.css` 改写为 `/assets/<build>/…`；当前构建归档到 `WEB_ARCHIVE/<build>/`，解析旧 build 时从归档读取（并校验归档 build 一致，防止残缺归档冒充） |
+| `web-contract.ts`（新） | 前端契约版本（`WEB_CONTRACT_VERSION=1`、`MIN=1`）与 `x-orca-web-contract` 解析/判定；缺失头视为当前版本（兼容未协商的旧前端） |
+| `server.ts` | `GET /v1/web/release`（公开：contract/build/资产路径与哈希）；`/v1/*` 契约门（超出窗口 → 426 `WEB_CONTRACT_UNSUPPORTED` + `{offered, minContract, maxContract}`）；`/assets/<build>/<file>` 以 `immutable` 长缓存返回；入口 `index.html` `no-store` + `x-orca-web-build`；旧的未哈希路径保留 `no-cache` + ETag；`ApiConfig.webRoot`/`webReleaseArchiveDir` 可用环境变量覆盖 |
+| 测试夹具 | `spawnService` 的 `stop()` 修复：被信号终止的子进程 `exitCode` 为 null，重复调用 stop 会永久等待（本轮实际踩到） |
+
+**验证（`evidence/m78-web-release/web-release.json`）**：两个真实平台进程 + 真实 HTTP：
+- 构建 A：`/v1/web/release` 返回契约与 build；`index.html` 为 `no-store`、带 `x-orca-web-build`、引用 `/assets/<A>/app.js`；该资源 200 + `public, max-age=31536000, immutable`；旧路径 `/app.js` 200 + `no-cache` + ETag。
+- 旧前端（`x-orca-web-contract: 1`）调用 `/v1/projects` 得 401（路由存在，非 404/426）；`2` 与 `beta` 得 426；不带头的请求按当前契约 401。
+- 构建 B 在同一归档目录启动：build 变化、index 指向 `/assets/<B>/`；**旧页面的 `/assets/<A>/app.js` 仍 200 且返回旧字节**；契约 1 仍可用。
+- 回归：平台测试 **131/131**；`tsc node` 0；新模块独立 `tsc --strict` 0；`check:code-quality:changed` 0 新发现。
+
+**负向对照**：让 `resolve()` 不再回退归档 → 断言「a cached old page must not white-screen after a deploy」转红（旧资源 404）；恢复后全绿。
+
+**如实记录 / 剩余**：
+1. 归档目录需持久化（默认未启用：未配置 `webReleaseArchiveDir` 时只有当前构建可用，旧页面会 404）；生产应挂载持久卷。
+2. 归档无保留期清理策略，构建多了会累积。
+3. 契约版本目前只有一个（1/1）；提高 `MIN` 就是关闭兼容窗口，属于发布决策。
+4. 前端没有实际发送 `x-orca-web-contract` 头（`apps/web/app.js` 未改），当前由「缺失=当前」兜底；后续前端发版应显式带上。
+5. 426 是 JSON；前端页面需自行渲染提示（当前未做 UI）。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M77（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M78（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步**：
 1. **G-04 多副本审计链（AC-26）**：单写入者 + leader 选举或集中定序服务，需部署形态决策（剩余唯一 BLOCKER）。
+
 2. **人工验收准备**：整理验收清单与证据索引；`AC-29` 首次连接确认弹窗 UI 未做，其余 MAJOR 已关闭。
 3. **人工验收**：按 design/test-plan 逐条核对验收标准；重点看桌面真实界面（登录 → 侧栏项目 → 本人 checkout → 终端/文件/git/agent）与管理员浏览器会话页。
 4. 真机/跨平台：Windows、WSL、SSH 主机各跑一遍关键路径（provisioning、路径边界、PTY、会话持久化权限位）。

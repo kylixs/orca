@@ -4,7 +4,7 @@
 > 需求基线：`requirements.md` §8（AC-01 ~ AC-32）
 > 流程基线：`remote-connectivity/design/DEVELOPMENT_PROCESS.md` §4.1、G8
 > 证据根目录：`cloud-platform/evidence/`（gitignore）
-> 本轮新增证据：`cloud-platform/evidence/m70-acceptance/`、`cloud-platform/evidence/m72-denial-details/`、`cloud-platform/evidence/m73-host-audit/`、`cloud-platform/evidence/m74-offline-host/`、`cloud-platform/evidence/m75-platform-unavailable/`、`cloud-platform/evidence/m76-signing-key-rotation/`、`cloud-platform/evidence/m77-host-key-pinning/`
+> 本轮新增证据：`cloud-platform/evidence/m70-acceptance/`、`cloud-platform/evidence/m72-denial-details/`、`cloud-platform/evidence/m73-host-audit/`、`cloud-platform/evidence/m74-offline-host/`、`cloud-platform/evidence/m75-platform-unavailable/`、`cloud-platform/evidence/m76-signing-key-rotation/`、`cloud-platform/evidence/m77-host-key-pinning/`、`cloud-platform/evidence/m78-web-release/`
 
 ## 1. 目的与范围
 
@@ -80,7 +80,7 @@
 | AC-16 | 重启客户端且刷新令牌有效：免密进入工作台 | 真实 e2e | `src/main/cloud-platform/cloud-session-restart.test.ts::M66-1 三次重启都免登录…`；`cloud-session-persistence.test.ts` | `m66-session-persistence/desktop-restart.json` | PASS | 三次新进程恢复均 signed-in，设备身份不变；登出后恢复为 signed-out 并删文件 |
 | AC-17 | 管理员改下载策略：30 秒内生效并审计 | 真实 e2e | `cloud-download-policy.test.ts::M35-1 默认为拒绝…` | `m35-download-policy/m35-1-download-policy.json` | PASS(部分) | 策略变更 + 审计 + 链校验已验证；用例通过手动 `refresh()` 立即生效，未测 10s 轮询在 30s 内的端到端时延 |
 | AC-18 | 无管理权限：导航隐藏；页面/接口 403；写审计 | 真实 e2e + 浏览器人工 | `admin-gating.e2e.test.ts::开发者访问「…」返回 403`（8 条）、`被拒的管理操作写入审计（denied）`；Web UI 手动检查 | `m8-admin-gating/denied-audit.json`；`web-ui/07-forbidden.png`、`web-ui/08-developer-workbench.png` | PASS(部分) | 8 个管理接口 403 + denied 审计已自动化；`#adminNav.hidden` 与直接路由拦截仅截图/人工，无自动化断言 |
-| AC-19 | Web 前端独立发布新版本，旧前端兼容期内不白屏/404 | 未覆盖 | 无 | 无 | UNVERIFIED | 平台未提供静态资源/API 版本协商或旧前端契约测试；需独立部署环境（见 §5） |
+| AC-19 | Web 前端独立发布新版本，旧前端兼容期内不白屏/404 | 真实 e2e（两个真实平台进程 + 真实静态资源） | `web-release.e2e.test.ts::AC-19 前端独立发布…` | `m78-web-release/web-release.json` | PASS | 前端按内容哈希发布：`index.html` 为 `no-store` 并引用 `/assets/<build>/…`（`immutable`），上一构建归档后仍可取（旧页面缓存的 URL 不 404）；`/v1/web/release` 提供契约版本；`x-orca-web-contract` 超出兼容窗口返回 426 `WEB_CONTRACT_UNSUPPORTED`（带 min/max），不带该头的旧前端按当前契约处理；`/v1` 路由在兼容期内保持 200/401 而非 404 |
 | AC-20 | 平台停机：已有会话继续；新建/重连提示 `PLATFORM_UNAVAILABLE`，不无凭证重连 | 真实 e2e | `P-E2E::E8 平台停机：已建立会话继续，新建连接失败`；`cloud-platform-unavailable.test.ts::M75-1/M75-2`（真实平台 + 可暂停 TCP 代理 + 真实 TLS Runtime + 真实 WSS）；`cloud-platform-unavailable-unit.test.ts` | `e2e-platform/E8-platform-down.json`；`m75-platform-unavailable/m75-outage.json`、`m75-recovered.json` | PASS | M75 起网络中断统一映射 `PLATFORM_UNAVAILABLE`（登录、列表、取票、刷新四处）；已有会话不受影响；断网期间不重连（取票先失败，票据未取到就没有 socket）；恢复后**同一会话不重新登录**即可再次取票打开，证明未被判死 |
 | AC-21 | 过期/伪造凭证直连：WSS 401 + `x-orca-reject`，101 前无关闭帧，审计 | 真实 e2e | `P-E2E::E3 伪造/过期凭证在升级期被拒`（本轮加强断言） | `m70-acceptance/ac-21-forged-credential.json`；`m46-browser-upgrade/m46-2/3`；`cloud-host-audit.test.ts::M73-1` | `m73-host-audit/m73-host-refusals.json` | PASS | 实测 401 + `x-orca-reject: malformed`，未升级成功；M73 起伪造凭证在同一心跳内写入 `host.connection_rejected` 审计（`reason: malformed`），并验证整链 `verify.ok` |
 
