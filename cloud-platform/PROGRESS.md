@@ -2564,6 +2564,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W10 开发完成（通道③，待独立测试+审计，2026-11-14）
+
+提交 `af75dc475ea`（29 文件，全部客户端域）：编译期 `ORCA_DEFAULT_PLATFORM_URL`/`ORCA_MANAGED_BUILD` 注入（vite define，同遥测常量机制）；地址优先级 env>记忆>构建默认>空、逐档降级永不抛错；托管锁定语义（锁定已解析地址、无地址仍可手填、表单输入被无视）；登录记忆落盘 M66 同款受保护文件（登出保留记忆）；`installCloudPlatformIpc` 改「云端构建即装配」实现无 env 启动出登录界面（零回归：判定保持）；登录表单「平台地址」输入（晚到预填不覆盖用户输入、托管只读、`PLATFORM_ADDRESS_INVALID` 内联错误）。专项 52 用例 + 回归批 93 用例全绿；typecheck/oxlint/design-system 门 0 项。`cloud-session-service.test.ts` 4 失败为既有环境问题（stash 对照 HEAD 复现）。偏差如实：工作令误指 orca-profiles（实改 ipc/cloud-platform.ts），判定语义不受影响；真实平台首启 e2e 超预算，已留 6 步脚本建议给测试代理。**注意**：该代理曾跑全仓 pnpm format，把在途代理的未提交文件做了纯格式化——核验各通道提交时留意格式化噪声。已派独立测试（首启 6 步旅程）与审计代理；通道③放行 **W6c**。
+
 ### W2 关闭（三权分立全流程完成，2026-11-14）
 
 M-1 独立复验通过：三套件 13/0+3/0+1/0；自有 UI 探针（真实服务端 400）确认 toast 逐字正确、矩阵零误刷新、unhandled rejection=0；服务端 400 行为未改；red-check 复核成立；两项遗留（m-1 服务端 denied 审计缺失、空主体静默 return）如实挂账 M120/P2；观察项（toast 单槽位叠盖，QA-009 起既有）记 P2。W2 关闭：提交 `21651eea9ce`/`807c3b9ff2e`/`2bd257e4934`/`fd35997a094` + 独立测试（190/190 全套件 + F1 探针 8/8 + UI 抽查 4/4）+ 审计（M-1 已闭环，minor 全挂账）。通道①放行 **W7a**（平台 handoff 端点 + W8 两个 minor 顺手项），已派实现代理。证据 `evidence/w2-m1-reverify/`（summary/ui-probe/wire/审计残留 + 4 截图）。
