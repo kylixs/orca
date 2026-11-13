@@ -14,6 +14,7 @@ export type AuditQuery = {
   actor?: string
   eventType?: string
   result?: string
+  traceId?: string
   since?: number
   limit: number
   cursor?: number
@@ -165,6 +166,7 @@ export function createRemoteAudit(options: {
       if (filter.actor) params.set('actor', filter.actor)
       if (filter.eventType) params.set('eventType', filter.eventType)
       if (filter.result) params.set('result', filter.result)
+      if (filter.traceId) params.set('traceId', filter.traceId)
       if (filter.since !== undefined) params.set('since', String(filter.since))
       if (filter.cursor !== undefined) params.set('cursor', String(filter.cursor))
       const res = await call(`/v1/events?${params.toString()}`)

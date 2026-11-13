@@ -165,6 +165,7 @@ export async function startAuditWriter(options: {
         actor: url.searchParams.get('actor') ?? undefined,
         eventType: url.searchParams.get('eventType') ?? undefined,
         result: url.searchParams.get('result') ?? undefined,
+        traceId: url.searchParams.get('traceId') ?? undefined,
         since: url.searchParams.get('since') ? Number(url.searchParams.get('since')) : undefined,
         limit: Math.min(Number(url.searchParams.get('limit') ?? 50), 200),
         cursor: url.searchParams.get('cursor') ? Number(url.searchParams.get('cursor')) : undefined

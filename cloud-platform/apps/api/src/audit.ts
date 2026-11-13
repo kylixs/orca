@@ -19,10 +19,18 @@ export class AuditChain {
   private readonly persist: ((event: AuditEvent) => void) | null
   private health: AuditHealth = { ok: true }
 
-  constructor(store: AuditStore, persist?: (event: AuditEvent) => void) {
+  /** `now` keeps `ts` on the platform's clock, which is what time-window queries compare. */
+  constructor(
+    store: AuditStore,
+    persist?: (event: AuditEvent) => void,
+    now: () => number = () => Date.now()
+  ) {
     this.store = store
     this.persist = persist ?? null
+    this.now = now
   }
+
+  private readonly now: () => number
 
   /** Restores a persisted chain before any new event is appended. */
   restore(events: AuditEvent[]): void {
@@ -64,7 +72,7 @@ export class AuditChain {
 
   append(input: AuditEventInput): AuditEvent {
     const seq = this.store.auditSeq + 1
-    const ts = Date.now()
+    const ts = this.now()
     const prevHash = this.store.auditTip
     const body = {
       seq,
@@ -140,6 +148,8 @@ export class AuditChain {
     actor?: string
     eventType?: string
     result?: string
+    /** Correlates the event with the request/log line that produced it (AC-13). */
+    traceId?: string
     since?: number
     limit: number
     cursor?: number
@@ -148,6 +158,7 @@ export class AuditChain {
       if (filter.actor && e.actor !== filter.actor) return false
       if (filter.eventType && e.eventType !== filter.eventType) return false
       if (filter.result && e.result !== filter.result) return false
+      if (filter.traceId && e.traceId !== filter.traceId) return false
       if (filter.since && e.ts < filter.since) return false
       if (filter.cursor && e.seq >= filter.cursor) return false
       return true

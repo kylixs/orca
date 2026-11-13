@@ -191,7 +191,7 @@ export function createApp(config: ApiConfig): ApiHandle {
   }
   function localAudit(): AuditChain {
     const auditLog = auditLogPath ? openAuditLogFile(auditLogPath) : null
-    const chain = new AuditChain(store, auditLog?.append)
+    const chain = new AuditChain(store, auditLog?.append, now)
     if (auditLog) {
       // Why before serving: a chain continued from a tampered tail would launder it.
       chain.restore(auditLog.load())
@@ -1716,6 +1716,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         actor: url.searchParams.get('actor') ?? undefined,
         eventType: url.searchParams.get('eventType') ?? undefined,
         result: url.searchParams.get('result') ?? undefined,
+        traceId: url.searchParams.get('traceId') ?? undefined,
         since,
         limit,
         cursor: url.searchParams.get('cursor') ? Number(url.searchParams.get('cursor')) : undefined
