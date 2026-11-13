@@ -4,7 +4,13 @@
  * host mode, which is how the product runs a development machine.
  */
 
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
+import { connect as connectNet, createServer as createNetServer } from 'node:net'
+import { createHash, X509Certificate } from 'node:crypto'
+import { mkdtempSync, readFileSync } from 'node:fs'
+import path from 'node:path'
+import type { ChildProcess } from 'node:child_process'
+
 /** Minimal checked readers: the spec typechecks without the renderer's module graph. */
 export function readField(source: unknown, key: string): unknown {
   return source !== null && typeof source === 'object' ? Reflect.get(source, key) : undefined
@@ -24,8 +30,6 @@ export function readStringArray(source: unknown, key: string): string[] | null {
   const value = readField(source, key)
   return Array.isArray(value) && value.every((entry) => typeof entry === 'string') ? value : null
 }
-import path from 'node:path'
-import type { ChildProcess } from 'node:child_process'
 
 export type CloudPlatform = {
   url: string
@@ -124,6 +128,8 @@ export function cloudHostEnv(input: {
   hostToken: string
   hostName: string
   projectsRoot: string
+  /** Serves the runtime socket over TLS; the platform always hands out `wss://`. */
+  tls?: { certPath: string; keyPath: string }
 }): Record<string, string> {
   return {
     ORCA_CLOUD_API_URL: input.platformUrl,
@@ -131,7 +137,47 @@ export function cloudHostEnv(input: {
     ORCA_CLOUD_HOST_NAME: input.hostName,
     ORCA_CLOUD_ADVERTISE_HOST: '127.0.0.1',
     ORCA_CLOUD_TLS_INSECURE: '1',
-    ORCA_CLOUD_PROJECTS_ROOT: input.projectsRoot
+    ORCA_CLOUD_PROJECTS_ROOT: input.projectsRoot,
+    ...(input.tls
+      ? {
+          ORCA_CLOUD_TLS_CERT_PATH: input.tls.certPath,
+          ORCA_CLOUD_TLS_KEY_PATH: input.tls.keyPath
+        }
+      : {})
+  }
+}
+
+/** A self-signed certificate with the loopback SAN the direct address resolves to. */
+export function makeHostTls(commonName: string): {
+  certPath: string
+  keyPath: string
+  fingerprint: string
+} {
+  const dir = mkdtempSync('/tmp/orca-cloud-tls-')
+  const keyPath = path.join(dir, 'server.key')
+  const certPath = path.join(dir, 'server.crt')
+  execFileSync('openssl', [
+    'req',
+    '-x509',
+    '-newkey',
+    'rsa:2048',
+    '-nodes',
+    '-keyout',
+    keyPath,
+    '-out',
+    certPath,
+    '-days',
+    '1',
+    '-subj',
+    `/CN=${commonName}`,
+    '-addext',
+    'subjectAltName=IP:127.0.0.1,DNS:localhost'
+  ])
+  const der = new X509Certificate(readFileSync(certPath, 'utf8')).raw
+  return {
+    certPath,
+    keyPath,
+    fingerprint: `sha256:${createHash('sha256').update(der).digest('hex')}`
   }
 }
 
@@ -181,6 +227,60 @@ function findHost(hosts: unknown[] | null, name: string): unknown {
     }
   }
   return null
+}
+
+export type TcpDelayHop = {
+  url: string
+  /** Delays the platform's replies, so every control-plane round trip costs more. */
+  setDelayMs: (ms: number) => void
+  close: () => Promise<void>
+}
+
+/**
+ * A TCP hop in front of the platform whose replies can be held back. The client
+ * talks to the platform through it, so a latency budget can be shown to move with
+ * the control plane instead of being a constant.
+ */
+export async function startTcpDelayHop(targetPort: number): Promise<TcpDelayHop> {
+  let delayMs = 0
+  const server = createNetServer((caller) => {
+    const target = connectNet(targetPort, '127.0.0.1')
+    caller.pipe(target)
+    target.on('data', (chunk: Buffer) => {
+      // Why pause: with a delay the reply must land after the timer, and pausing
+      // keeps later chunks from overtaking this one.
+      if (delayMs === 0) {
+        caller.write(chunk)
+        return
+      }
+      target.pause()
+      setTimeout(() => {
+        caller.write(chunk)
+        target.resume()
+      }, delayMs)
+    })
+    const drop = (): void => {
+      caller.destroy()
+      target.destroy()
+    }
+    caller.on('error', drop)
+    target.on('error', drop)
+    caller.on('close', () => target.destroy())
+    target.on('close', () => caller.destroy())
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()))
+  const address = server.address()
+  const port = typeof address === 'object' && address ? address.port : 0
+  return {
+    url: `http://127.0.0.1:${port}`,
+    setDelayMs: (ms) => {
+      delayMs = ms
+    },
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.close(() => resolve())
+      })
+  }
 }
 
 export function mainEntryPath(): string {

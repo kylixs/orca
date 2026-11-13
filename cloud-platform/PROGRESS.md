@@ -2264,16 +2264,40 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 2. 同一个 OS 会话内两个 Electron 实例需要 `ORCA_BYPASS_SINGLE_INSTANCE_LOCK=1`。
 3. 只要设置了 `ORCA_CLOUD_API_URL`，实例就会按宿主角色的要求完整配置（本仓库没有纯客户端模式）；因此客户端实例也用自己的宿主凭据上线。
 
-**结论 / 阻塞**：M107 的 AC-01 原生 P95 **未测**（不能声称完成）。下一步需要先补「宿主侧 TLS 监听 + 证书/指纹上报」：平台票据里已有 `tlsFingerprint` 字段且客户端已按 `rejectUnauthorized` 处理，缺的是宿主把运行时 WS 以 TLS 提供并上报指纹；完成后再启用 M107-1（20 次采样、P95 ≤ 1500ms、注入延迟负向对照）。
+**当时结论**：M107 的 AC-01 原生 P95 未测。阻塞项「宿主侧 TLS 监听 + 指纹上报」已由 **M108** 修复并实测定稿（见下节）。
 
 **回归**：本 spec `M107-0` 通过、`M107-1` 跳过；`check:code-quality:changed` 0 新发现；`tsconfig.e2e` 对本轮文件 0 错误。
 
+## M108 宿主运行时 TLS 与证书指纹上报（M107 的阻塞修复）（本轮，主会话执行）
+
+**问题**：M107 记录到平台下发 `wss://` 而宿主运行时只提供 `ws://`，客户端报 `EPROTO`，原生首屏 P95 无法测。运行时 RPC 服务本身早已支持 `webSocketTls`，但应用启动路径从未传入证书，平台也只在下发地址时假定 TLS。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-host-tls.ts`（新） | 读取 `ORCA_CLOUD_TLS_CERT_PATH` / `ORCA_CLOUD_TLS_KEY_PATH`，按证书 **DER** 计算 `sha256:<hex>` 指纹；只配一项直接报错（避免用 TLS 地址指向明文监听） |
+| `main-process-runtime-launch.ts` | 有证书时把 `webSocketTls` 传给运行时 RPC 服务，端点随之变为 `wss://` |
+| `cloud-runtime-admission.ts` / `cloud-host-enrollment.ts` / `cloud-heartbeat-body.ts` / `cloud-agent-config.ts` | 注册与心跳都上报 `tlsFingerprint`（随心跳持续，证书更换可见） |
+| `cloud-platform/apps/api/src/server.ts` | 心跳接受 `tlsFingerprint`；变化写 `host_tls_fingerprint_changed` 审计（与 E2EE 换钥同级的替换信号，AC-29 语义） |
+| 测试 | `cloud-host-tls.test.ts`（2 例：指纹按 DER 稳定、半配置报错）；`tests/e2e/cloud-native-first-paint.spec.ts` 重写为 M107-0（TLS + 指纹）与 M107-1（原生 P95） |
+
+**验证**：
+- `evidence/m107-native-first-paint/host-tls.json`：宿主上报 `tlsFingerprint` 与磁盘证书计算值**完全一致**（`sha256:82c23f…cc7d`）；平台下发给客户端的是 `wss://127.0.0.1:63923`；**用明文 `ws://` 连同一端口被拒**（证明监听确实是 TLS，而非只是换了个前缀）。
+- `evidence/m107-native-first-paint/native-first-paint.json`：全新客户端实例 20 次采样，计时从点击「登录」到项目行出现在界面上：P95 **245ms**、全部样本 208–354ms（预算 1500ms）。
+- **灵敏度对照**：客户端经可延迟 TCP 跳到平台，注入 1800ms 响应延迟后同一口径 P95 **11037ms**，断言按预期转红；撤销后恢复。说明测量跟随控制面变慢，不是常数。
+- 负向对照（实现层）：`cloud-host-tls.test.ts` 覆盖「只配证书不配私钥 → 抛错」；M107-0 覆盖「明文 ws 打 TLS 端口 → 被拒」。
+- 回归：`cloud-connect-client.test.ts` / `cloud-runtime-environment.test.ts` 11/11；`tc:node` 0；`check:code-quality:changed` 0 新发现；Playwright `M107-0` + `M107-1` 2/2 通过。
+
+**如实记录 / 剩余**：
+1. 测量起点是点击登录、终点是**项目行可见**；进入具体工作区（worktree 准备完成）更晚，属 §5.1「连接建立」口径，已由 M104 覆盖。
+2. 平台目前只**发布** TLS 指纹，客户端尚未据此做 TLS 证书固定（E2EE 公钥固定另有实现，AC-29）；目标网络部署时以平台 CA 校验为主。
+3. 采样使用自签证书 + `ORCA_CLOUD_TLS_INSECURE=1`；真实证书链校验仍需在部署环境验证。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M106（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话、终端回显 P95、目录读取 P95、连接建立 P95、审计查询 P95、200 项目列表 P95），以及 M107-0（原生全栈 E2E 与阻塞取证）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M108（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话、终端回显 P95、目录读取 P95、连接建立 P95、审计查询 P95、200 项目列表 P95）（含 M107 原生首屏 P95 与 M108 宿主 TLS/证书指纹）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步**：
-1. **G-12 已收口**：平台无业务流量（M85）、中继无明文（M86）、浏览器渲染 P95（M97）均已有证据；仅剩原生 Electron 界面的渲染 P95：M107 已搭起真实全栈并测到宿主上线，但被「平台要求 `wss://` / 宿主只提供 `ws://`」阻断（客户端 `EPROTO`），需先补宿主 TLS 监听。requirements §5.1 的终端输入回显（M102，本机中继路径 P95 7.5–9.1ms）、1000 项目录读取（M103，P95 3.3–5.1ms）、连接建立（M104，直连 6.3ms / 中继 6.1ms）、31 天窗口审计查询（M105，20 万条约 6.6ms）与 200 项目列表（M106，P95 75ms）也已实测——requirements §5.1 六项指标本机全部有证据，共同限制是未含真实网络 RTT。
+1. **G-12 已收口**：平台无业务流量（M85）、中继无明文（M86）、浏览器渲染 P95（M97）均已有证据；原生 Electron 界面的首屏 P95 已由 M107-1 实测（20 次采样 P95 245ms，预算 1500ms），前提是 M108 补齐的宿主 TLS 监听与证书指纹上报。requirements §5.1 的终端输入回显（M102，本机中继路径 P95 7.5–9.1ms）、1000 项目录读取（M103，P95 3.3–5.1ms）、连接建立（M104，直连 6.3ms / 中继 6.1ms）、31 天窗口审计查询（M105，20 万条约 6.6ms）与 200 项目列表（M106，P95 75ms）也已实测——requirements §5.1 六项指标本机全部有证据，共同限制是未含真实网络 RTT。
 2. **人工验收准备**：验收索引已由 M99 自动生成并校验（`test-reports/acceptance-index.md`），可直接逐条勾选。
    - AC-18 的「所有被拒的管理接口写审计」已由 M94 补齐（12 个接口、逐条含 requiredPermission）。
 3. **G-04 部署形态**：单写入者定序与 fail-closed（M80）、主备租约接管（M87）、5 分钟签名锚点（M100）已完成；Redis Stream 队列与 PostgreSQL/对象存储归档仍待部署阶段实现。

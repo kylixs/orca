@@ -1654,6 +1654,25 @@ export function createApp(config: ApiConfig): ApiHandle {
             }
             target.e2eePublicKey = body.e2eePublicKeyB64
           }
+          // The TLS certificate clients will see on the direct address. A change is
+          // as much a substitution signal as an E2EE key change (design §5.3).
+          if (typeof body.tlsFingerprint === 'string' && body.tlsFingerprint.length > 0) {
+            if (target.tlsFingerprint !== body.tlsFingerprint) {
+              audit.appendBestEffort({
+                eventType: 'host_tls_fingerprint_changed',
+                actor: null,
+                targetType: 'host',
+                targetId: target.id,
+                result: 'success',
+                traceId,
+                metadata: {
+                  ...(target.tlsFingerprint ? { previousFingerprint: target.tlsFingerprint } : {}),
+                  fingerprint: body.tlsFingerprint
+                }
+              })
+            }
+            target.tlsFingerprint = body.tlsFingerprint
+          }
           if (typeof body.status === 'string' && target.status !== 'maintenance') {
             target.status = body.status === 'online' ? 'online' : 'offline'
           }

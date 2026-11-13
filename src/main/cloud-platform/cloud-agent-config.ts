@@ -40,6 +40,8 @@ export type CloudAgentConfig = {
     directAddrs?: string[] | (() => string[])
     /** Reported so the platform can hand the host key to clients with the ticket. */
     e2eePublicKeyB64?: () => string | null
+    /** SHA-256 of the host's TLS certificate; only when the listener serves TLS. */
+    tlsFingerprint?: () => string | null
     /** Parent directory for self-service projects; absent means the host opts out. */
     projectsRoot?: string
   }

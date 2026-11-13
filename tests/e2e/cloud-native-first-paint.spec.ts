@@ -5,7 +5,8 @@ import {
   _electron as electron,
   expect,
   test,
-  type ElectronApplication
+  type ElectronApplication,
+  type Page
 } from '@stablyai/playwright-test'
 import { closeElectronAppForE2E } from './helpers/electron-process-shutdown'
 import { createElectronHomeIsolation } from './helpers/electron-home-isolation'
@@ -14,12 +15,15 @@ import {
   adminTokenOf,
   cloudHostEnv,
   hostTokenOf,
+  makeHostTls,
   readArray,
   readField,
   readString,
   startCloudPlatform,
+  startTcpDelayHop,
   waitForHostOnline,
-  type CloudPlatform
+  type CloudPlatform,
+  type TcpDelayHop
 } from './helpers/cloud-platform-stack'
 
 /**
@@ -27,18 +31,18 @@ import {
  * browser page — reaching an interactive workbench within 1.5s P95 needs a real
  * platform, a real host Orca instance and a real client Orca instance.
  *
- * This spec stands that stack up for real and records what it finds: the host
- * enrols and reports its runtime endpoint, but the platform hands clients a
- * `wss://` URL for a port the host serves as plain `ws://`. A developer signing
- * in therefore gets `EPROTO` on the project and no workspace row, so the budget
- * cannot be measured until the host serves TLS (design §5.3 requires TLS for
- * every credential-carrying upgrade, internal networks included).
+ * The first run of this stack found the host serving plain `ws://` while the
+ * platform hands out `wss://`, so a developer's projects failed with EPROTO.
+ * M107-0 now proves the host serves TLS and publishes the certificate it serves;
+ * M107-1 measures the sign-in to project-row budget on that stack.
  */
 
 const CLIENT_BUDGET_MS = 1_500
 const SAMPLES = 20
+const CONTROL_SAMPLES = 3
+const INJECTED_DELAY_MS = 1_800
 const HOST_NAME = 'dev-native-001'
-const PROJECT_NAME = 'payment-service'
+const PROJECT_NAME = 'checkout-service'
 const EVIDENCE = path.join(process.cwd(), 'cloud-platform', 'evidence', 'm107-native-first-paint')
 
 type Stack = {
@@ -47,6 +51,8 @@ type Stack = {
   host: ElectronApplication
   clientRoot: string
   clientEnv: Record<string, string>
+  hostTls: { certPath: string; keyPath: string; fingerprint: string }
+  hop: TcpDelayHop
 }
 
 function git(cwd: string, ...args: string[]): void {
@@ -98,8 +104,15 @@ async function startStack(): Promise<Stack> {
   const platform = await startCloudPlatform()
   const adminToken = await adminTokenOf(platform.url)
   const hostToken = await hostTokenOf(platform.url, adminToken)
+  const hostTls = makeHostTls(HOST_NAME)
   const host = await launchOrca(
-    cloudHostEnv({ platformUrl: platform.url, hostToken, hostName: HOST_NAME, projectsRoot }),
+    cloudHostEnv({
+      platformUrl: platform.url,
+      hostToken,
+      hostName: HOST_NAME,
+      projectsRoot,
+      tls: { certPath: hostTls.certPath, keyPath: hostTls.keyPath }
+    }),
     mkdtempSync(path.join(root, 'host-ud-'))
   )
   await host.firstWindow({ timeout: 120_000 })
@@ -129,17 +142,29 @@ async function startStack(): Promise<Stack> {
   })
   expect(granted.status, await granted.clone().text()).toBe(200)
 
+  // The platform seeds `proj_payment` on a host that does not exist; leaving it
+  // granted would put an unrelated ENDPOINT_UNREACHABLE banner on every sample.
+  const seedCleared = await fetch(`${platform.url}/v1/projects/proj_payment/grants`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${adminToken}` },
+    body: JSON.stringify({ subjectType: 'group', subjectId: 'team-payment', permissions: [] })
+  })
+  expect(seedCleared.status, await seedCleared.clone().text()).toBe(200)
+
   // An Orca instance with a platform URL always acts as a host, so the developer's
   // own machine enrols too; the client gets its own credential, not the host's.
   const clientProjects = path.join(root, 'client-projects')
   mkdirSync(clientProjects, { recursive: true })
+  // The client reaches the platform through a hop, so the control run can slow
+  // every control-plane round trip the sign-in waits on.
+  const hop = await startTcpDelayHop(platform.port)
   const clientEnv = cloudHostEnv({
-    platformUrl: platform.url,
+    platformUrl: hop.url,
     hostToken: await hostTokenOf(platform.url, adminToken),
     hostName: `${HOST_NAME}-client`,
     projectsRoot: clientProjects
   })
-  return { platform, adminToken, host, clientRoot: root, clientEnv }
+  return { platform, adminToken, host, clientRoot: root, clientEnv, hostTls, hop }
 }
 
 async function stopStack(stack: Stack | null): Promise<void> {
@@ -147,14 +172,14 @@ async function stopStack(stack: Stack | null): Promise<void> {
     return
   }
   await closeElectronAppForE2E(stack.host)
+  await stack.hop.close()
   await stack.platform.stop()
 }
 
 /** Signs in on a fresh client instance and reports what the shell shows. */
 async function signIn(
   stack: Stack,
-  index: number,
-  waitForRepo: boolean
+  index: number
 ): Promise<{ elapsedMs: number; text: string; repos: string[] }> {
   const clientUserData = mkdtempSync(path.join(stack.clientRoot, `client-${index}-`))
   const app = await launchOrca(stack.clientEnv, clientUserData)
@@ -162,31 +187,19 @@ async function signIn(
     const page = await app.firstWindow({ timeout: 120_000 })
     await page.waitForLoadState('domcontentloaded')
     await page.waitForSelector('#cloud-username', { state: 'visible', timeout: 60_000 })
-    await page.fill('#cloud-username', 'zhangsan')
-    await page.fill('#cloud-password', 'Passw0rd!')
+    await fillCredentials(page)
     const started = Date.now()
     await page.click('button[type="submit"]')
-    const ready = waitForRepo
-    await (ready
-      ? page.waitForFunction(
-          (name) =>
-            Boolean(
-              window.__store
-                ?.getState()
-                .repos.some((repo: { displayName?: string }) => repo.displayName === name)
-            ),
-          PROJECT_NAME,
-          { timeout: 60_000 }
-        )
-      : // Without a host row to wait for, the entry attempt settling is the signal.
-        page.waitForFunction(
-          () =>
-            document.body.innerText.includes('准备失败') ||
-            document.body.innerText.includes('重试'),
-          undefined,
-          { timeout: 60_000 }
-        ))
-    void ready
+    // User-visible signal: the project row is on screen. A failure banner names the
+    // project with a trailing code in full-width parentheses, so that does not count.
+    await page.waitForFunction(
+      (name) => {
+        const text = document.body.innerText
+        return text.includes(name) && !text.includes(`${name}\uff08`)
+      },
+      PROJECT_NAME,
+      { timeout: 60_000 }
+    )
     const elapsedMs = Date.now() - started
     const state = await page.evaluate(() => ({
       text: document.body.innerText.slice(0, 600),
@@ -201,6 +214,24 @@ async function signIn(
   }
 }
 
+/**
+ * The panel remounts once session restore settles (loading → signed-out), which
+ * drops anything typed before it; type until the submit button accepts the form.
+ */
+async function fillCredentials(page: Page): Promise<void> {
+  const enabled = (): boolean =>
+    !document.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    await page.fill('#cloud-username', 'zhangsan')
+    await page.fill('#cloud-password', 'Passw0rd!')
+    await page.waitForTimeout(100)
+    if (await page.evaluate(enabled)) {
+      return
+    }
+  }
+  throw new Error('login form never became submittable')
+}
+
 let stack: Stack | null = null
 
 test.beforeAll(async () => {
@@ -211,7 +242,7 @@ test.afterAll(async () => {
   await stopStack(stack)
 })
 
-test('M107-0 原生宿主上线并上报运行时端点；平台下发的 wss 与宿主的 ws 不一致（阻塞记录）', async () => {
+test('M107-0 宿主以 TLS 提供运行时监听并上报证书指纹；明文 ws 连不上', async () => {
   test.setTimeout(240_000)
   const hostsBody: unknown = await (
     await fetch(`${stack!.platform.url}/v1/hosts`, {
@@ -222,48 +253,76 @@ test('M107-0 原生宿主上线并上报运行时端点；平台下发的 wss �
     (entry) => readString(entry, 'name') === HOST_NAME
   )
   const directAddrs = readArray(host, 'directAddrs') ?? []
+  const reportedFingerprint = readString(host, 'tlsFingerprint') ?? ''
   expect(readField(host, 'online')).toBe(true)
   expect(directAddrs.length).toBeGreaterThan(0)
   expect((readString(host, 'e2eePublicKey') ?? '').length).toBeGreaterThan(0)
+  // The platform publishes exactly the certificate the host is serving.
+  expect(reportedFingerprint).toBe(stack!.hostTls.fingerprint)
 
-  const first = await signIn(stack!, 0, false)
-  saveEvidence({
-    host: { name: HOST_NAME, online: readField(host, 'online'), directAddrs },
-    platformHandsClient: `wss://${String(directAddrs[0] ?? '')}`,
-    clientText: first.text,
-    clientRepos: first.repos,
-    observation:
-      'The host runtime WS listener is plain ws://; the platform always builds wss://, so the client fails TLS (EPROTO) and never registers the project.',
-    blockedBudgetMs: CLIENT_BUDGET_MS
+  // The listener really is TLS: a plain `ws://` upgrade dies at the handshake,
+  // which is what made the native client fail with EPROTO before this change.
+  const [hostName, port] = String(directAddrs[0]).split(':')
+  const plainRefusal = await new Promise<string>((resolve) => {
+    const socket = new WebSocket(`ws://${hostName}:${port}/`)
+    socket.onopen = () => {
+      socket.close()
+      resolve('opened')
+    }
+    socket.onerror = () => resolve('refused')
   })
-  // The failure is the point of this record; silent success would mean the gap closed.
-  expect(first.text).toMatch(/EPROTO|准备失败/)
-  expect(first.repos).toEqual([])
+  expect(plainRefusal).toBe('refused')
+
+  saveEvidence({
+    host: { name: HOST_NAME, directAddrs, tlsFingerprint: reportedFingerprint },
+    platformHandsClient: `wss://${String(directAddrs[0])}`,
+    plainWsRefused: plainRefusal === 'refused'
+  })
 })
 
-test.fixme('M107-1 原生客户端登录到项目可见 P95 ≤ 1.5s（待宿主提供 TLS）', async () => {
-  test.setTimeout(600_000)
+test('M107-1 原生客户端登录到项目可见 P95 ≤ 1.5s（真实平台 + 真实宿主 + TLS）', async () => {
+  test.setTimeout(900_000)
   const samples: number[] = []
   for (let index = 1; index <= SAMPLES; index += 1) {
-    const sample = await signIn(stack!, index, true)
-    expect(sample.repos).toContain(PROJECT_NAME)
+    const sample = await signIn(stack!, index)
+    expect(sample.text, sample.text).toContain(PROJECT_NAME)
+    if (process.env.ORCA_E2E_CLOUD_DEBUG === '1') {
+      console.log('[m107] sample', JSON.stringify(sample))
+    }
     samples.push(sample.elapsedMs)
   }
   const sorted = [...samples].sort((a, b) => a - b)
   const p95 = sorted[Math.ceil(0.95 * sorted.length) - 1] ?? Number.POSITIVE_INFINITY
-  saveEvidenceP95({ samples, p95 })
   expect(p95).toBeLessThanOrEqual(CLIENT_BUDGET_MS)
+
+  // Sensitivity control: the same measurement must notice a slow backend.
+  stack!.hop.setDelayMs(INJECTED_DELAY_MS)
+  const slow: number[] = []
+  for (let index = 0; index < CONTROL_SAMPLES; index += 1) {
+    slow.push((await signIn(stack!, SAMPLES + index + 1)).elapsedMs)
+  }
+  stack!.hop.setDelayMs(0)
+  const slowSorted = [...slow].sort((a, b) => a - b)
+  const slowP95 = slowSorted[Math.ceil(0.95 * slowSorted.length) - 1] ?? 0
+  expect(slowP95).toBeGreaterThan(CLIENT_BUDGET_MS)
+
+  saveEvidenceP95({
+    samples,
+    p95,
+    control: { delayMs: INJECTED_DELAY_MS, samples: slow, p95: slowP95 }
+  })
 })
 
 function saveEvidence(content: unknown): void {
   mkdirSync(EVIDENCE, { recursive: true })
-  writeFileSync(
-    path.join(EVIDENCE, 'native-first-paint-blocked.json'),
-    JSON.stringify(content, null, 2)
-  )
+  writeFileSync(path.join(EVIDENCE, 'host-tls.json'), JSON.stringify(content, null, 2))
 }
 
-function saveEvidenceP95(content: { samples: number[]; p95: number }): void {
+function saveEvidenceP95(content: {
+  samples: number[]
+  p95: number
+  control: { delayMs: number; samples: number[]; p95: number }
+}): void {
   mkdirSync(EVIDENCE, { recursive: true })
   writeFileSync(
     path.join(EVIDENCE, 'native-first-paint.json'),

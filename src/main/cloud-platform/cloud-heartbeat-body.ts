@@ -6,6 +6,7 @@ import type { CloudHostAuditRecord } from './cloud-host-audit'
 export type HeartbeatSource = {
   directAddrs?: string[] | (() => string[])
   e2eePublicKeyB64?: () => string | null
+  tlsFingerprint?: () => string | null
   projectsRoot?: string
 }
 
@@ -15,11 +16,13 @@ export function cloudHeartbeatBody(
   audit: readonly CloudHostAuditRecord[]
 ): Record<string, unknown> {
   const e2eePublicKeyB64 = source.e2eePublicKeyB64?.()
+  const tlsFingerprint = source.tlsFingerprint?.()
   return {
     status: 'online',
     ...heartbeatAddrsField(source.directAddrs),
     ...(source.projectsRoot ? { projectsRoot: source.projectsRoot } : {}),
     ...(e2eePublicKeyB64 ? { e2eePublicKeyB64 } : {}),
+    ...(tlsFingerprint ? { tlsFingerprint } : {}),
     ...(provisioned.length > 0 ? { provisioned } : {}),
     ...(audit.length > 0 ? { audit } : {})
   }

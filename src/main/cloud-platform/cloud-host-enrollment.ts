@@ -30,6 +30,8 @@ export type EnrollInput = {
   relayTarget?: string
   relayRoute?: string
   e2eePublicKeyB64?: string
+  /** SHA-256 of the TLS certificate clients will see on the direct address. */
+  tlsFingerprint?: string
   orcaVersion?: string
   /** Parent directory the platform may create self-service projects under. */
   projectsRoot?: string
@@ -83,6 +85,7 @@ export async function enrollCloudHost(
         name: input.hostName,
         fingerprint: `host:${input.hostName}`,
         e2eePublicKeyB64: input.e2eePublicKeyB64 ?? '',
+        ...(input.tlsFingerprint ? { tlsFingerprint: input.tlsFingerprint } : {}),
         orcaVersion: input.orcaVersion ?? '',
         protocolVersion: 3,
         networkZone: 'intranet',

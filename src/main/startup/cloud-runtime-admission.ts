@@ -7,6 +7,7 @@ import {
   storeHostCredential,
   type CloudHostCredential
 } from '../cloud-platform/cloud-host-enrollment'
+import { resolveCloudHostTls } from '../cloud-platform/cloud-host-tls'
 import { installCloudPlatformIpc } from '../ipc/cloud-platform'
 import { createCloudAccessGuard } from '../cloud-platform/cloud-access-guard'
 import { ALL_RPC_METHODS } from '../runtime/rpc/methods'
@@ -168,6 +169,9 @@ function startEnrolled(
     const { userDataPath } = options
     // Absent means this host does not offer developer self-service projects.
     const projectsRoot = env.ORCA_CLOUD_PROJECTS_ROOT?.trim() || undefined
+    // The same certificate the runtime listens with, announced to the platform so
+    // clients can check the `wss://` address they are handed.
+    const hostTls = resolveCloudHostTls(env)
     let stored = userDataPath ? readStoredHostCredential(userDataPath) : null
     if (!stored) {
       const enrolled = await enrollCloudHost({
@@ -177,6 +181,7 @@ function startEnrolled(
         // Nothing is listening yet; the heartbeat reports the real port later.
         directAddrs: options.directAddrs ?? [],
         relayTarget: options.relayTarget,
+        ...(hostTls ? { tlsFingerprint: hostTls.fingerprint } : {}),
         ...(projectsRoot ? { projectsRoot } : {})
       })
       if (!enrolled.ok) {
@@ -204,6 +209,7 @@ function startEnrolled(
         // Clients derive the E2EE key from this, so it must come from the runtime
         // that will actually answer — the enrolment call ran before it existed.
         e2eePublicKeyB64: () => boundRuntime?.getE2EEPublicKey() ?? null,
+        tlsFingerprint: () => hostTls?.fingerprint ?? null,
         directAddrs: () =>
           advertisedAddrs(
             boundRuntime?.getWebSocketEndpoint() ?? null,
@@ -322,13 +328,22 @@ export function cloudAdmissionOption(
   upgradeAdmission?: UpgradeAdmission
   connectionGate?: WebSocketConnectionGate
   methods?: readonly RpcAnyMethodDeclaration[]
+  /** The platform advertises this host's direct address as `wss://` (design §5.3). */
+  webSocketTls?: { cert: string; key: string }
 } {
   const runtime = cloudRuntimeAdmission(env, options)
+  const tls = resolveCloudHostTls(env)
+  const webSocketTls = tls ? { webSocketTls: { cert: tls.cert, key: tls.key } } : {}
   if (!runtime) {
-    return {}
+    return webSocketTls
   }
   // Design §8.3: managed creation exists only in cloud builds, so the method
   // table is extended here rather than in ALL_RPC_METHODS.
   const methods = [...ALL_RPC_METHODS, ...MANAGED_WORKTREE_METHODS, ...PROJECT_PROVISION_METHODS]
-  return { upgradeAdmission: runtime.admission, connectionGate: runtime.connectionGate, methods }
+  return {
+    ...webSocketTls,
+    upgradeAdmission: runtime.admission,
+    connectionGate: runtime.connectionGate,
+    methods
+  }
 }
