@@ -15,6 +15,17 @@
 > 三方齐备（实现提交+测试证据+审计报告）主会话才关闭该任务并放行下一个。
 > **时长预算**：每个代理目标 ≤15 分钟完成；预估超时的任务必须继续拆分（宁可多拆一个 15 分钟任务，不做长跑代理）。
 > 注：W2 为旧模式启动的在途任务，让其完成后补跑独立测试与审计代理；自 W8 起全面执行三权分立。
+> **并发模型（用户确认可并发）**：按组件域分 **4 条并行通道**，通道内严格串行、通道间文件域不相交；每通道同时至多一个代理，三权分立（实现→测试→审计）在通道内完成。热点文件 `cloud-platform/apps/api/src/server.ts` 归通道①独占；`apps/web/app.js` 归通道③（W3 虽在①，其 app.js 改动错峰到③执行前完成——W3 与 W7b 都改 app.js，故 W7b 必须排在 W3 之后）。
+>
+> | 通道 | 组件域 | 串行任务序列 |
+> |---|---|---|
+> | ① 平台侧 | server.ts / store / 自助与归档 | W8 → W7a → W6b → W3 → M120 设计+abc |
+> | ② 中继侧 | apps/relay | W6a |
+> | ③ 客户端侧 | src/main + renderer 登录 + web 构建 + apps/web | W10 → W6c →（等①的 W3 提交后）W7b |
+> | ④ 详情页 | renderer cloud-admin + 其 e2e | W5a → W5b |
+> | 收口 | 测试工程 | W9a → W9b（依赖①③④全部落地） |
+>
+> 并发护栏：测试代理一律 PORT=0 自起实例（无端口冲突）；主会话每通道一次只派一个代理（提交天然错峰，git index 冲突则重试）；预计同时活跃代理 ≤4，符合资源约束。
 > 每令一次提交、一次测试报告、证据入 `cloud-platform/evidence/<work-order>/`（gitignored）。
 > 设计依据以 requirements.md（v1.3+FR 修订）、design.md、deployment-real-link.md、test-plan.md 为准；与本文件冲突时先在交付说明中指出，不要自行改文档。
 > 工作区内与平台无关的改动（claude-auto-resume、acceptance-index 等）**不要触碰、不要提交**。
