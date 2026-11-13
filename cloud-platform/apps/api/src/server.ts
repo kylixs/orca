@@ -27,6 +27,7 @@ import {
   type SigningKey
 } from '../../../packages/contract/src/credential.ts'
 import { AuditChain } from './audit.ts'
+import { createSigningKeyRing } from './signing-key-ring.ts'
 import type { AuditEventInput } from './store.ts'
 import { openAuditLogFile } from './audit-log-file.ts'
 import { startInternalChannel } from './internal-channel.ts'
@@ -181,10 +182,7 @@ export function createApp(config: ApiConfig): ApiHandle {
     }
   }
 
-  const signingKey = generateSigningKey(`kid-${now()}`)
-  const jwks: Map<string, PublicKeyEntry> = new Map([
-    [signingKey.kid, { kid: signingKey.kid, publicKeyPem: signingKey.publicKeyPem }]
-  ])
+  const signingKeys = createSigningKeyRing(now)
   // Production must inject a secret; the fallback exists only for local tests.
   const internalToken =
     config.internalToken ??
@@ -687,7 +685,48 @@ export function createApp(config: ApiConfig): ApiHandle {
     }
 
     if (req.method === 'GET' && path === '/v1/jwks') {
-      return json(res, 200, { keys: [...jwks.values()] })
+      return json(res, 200, { keys: signingKeys.publicKeys() })
+    }
+
+    // ---- signing-key rotation (AC-31): old public keys stay published for 60 days ----
+    if (req.method === 'POST' && path === '/v1/admin/signing-keys/rotate') {
+      const authed = requireAuth()
+      if (!authed) return
+      if (!isAdmin(authed.user)) {
+        audit.appendBestEffort({
+          eventType: 'signing_key_rotate',
+          actor: authed.user.username,
+          targetType: 'signing_key',
+          targetId: null,
+          result: 'denied',
+          traceId
+        })
+        return error(res, 403, 'PERMISSION_DENIED', '需要平台管理权限。', traceId)
+      }
+      if (!auditAllowsMutations(res, traceId)) return
+      const rotated = signingKeys.rotate()
+      if (
+        !recordAudit(
+          res,
+          {
+            eventType: 'signing_key_rotate',
+            actor: authed.user.username,
+            targetType: 'signing_key',
+            targetId: rotated.current.kid,
+            result: 'success',
+            traceId,
+            metadata: { previousKid: rotated.retired.kid, retiredKids: signingKeys.retired().length }
+          },
+          traceId
+        )
+      ) {
+        return
+      }
+      return json(res, 200, {
+        kid: rotated.current.kid,
+        previousKid: rotated.retired.kid,
+        publishedKids: signingKeys.publicKeys().map((entry) => entry.kid)
+      })
     }
 
     // ---- projects ----
@@ -1775,7 +1814,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       iatMs: now(),
       exp: nowS + CREDENTIAL_TTL_S
     }
-    const credential = signCredential(payload, signingKey)
+    const credential = signCredential(payload, signingKeys.current())
     audit.append({
       eventType: 'project_connect',
       actor: user.username,
@@ -1880,7 +1919,9 @@ export function createApp(config: ApiConfig): ApiHandle {
     internalPort: () => internalChannel?.port ?? null,
     store,
     audit,
-    signingKey,
+    get signingKey() {
+      return signingKeys.current()
+    },
     close: async () => {
       await internalChannel?.close()
       await new Promise<void>((resolve) => server.close(() => resolve()))

@@ -1014,7 +1014,8 @@ flowchart TB
 | GET/PUT | `/v1/projects/{id}/policy` | 项目级下载策略 | 否 |
 | GET | `/v1/projects/{id}/workspaces` | 我的工作区列表 | 是 |
 | POST | `/v1/workspaces/{id}/close` | 关闭工作区 | 是 |
-| GET | `/v1/jwks` | 凭证验签公钥（含 `kid`、轮换期） | 是 |
+| GET | `/v1/jwks` | 凭证验签公钥（含 `kid`、轮换期）。轮换后旧公钥继续发布 60 天 | 是 |
+| POST | `/v1/admin/signing-keys/rotate` | 轮换凭证签名密钥（管理员，写审计；返回新 `kid` 与仍发布的全部 `kid`） | 否 |
 | POST | `/v1/hosts/tokens` | 生成注册令牌 | 否 |
 | POST | `/v1/hosts/register` | Agent 注册 | 否 |
 | POST | `/v1/hosts/{id}/heartbeat` | Agent 心跳（含撤销集合、策略版本） | 否 |

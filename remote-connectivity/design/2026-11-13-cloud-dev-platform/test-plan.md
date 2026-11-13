@@ -4,7 +4,7 @@
 > 需求基线：`requirements.md` §8（AC-01 ~ AC-32）
 > 流程基线：`remote-connectivity/design/DEVELOPMENT_PROCESS.md` §4.1、G8
 > 证据根目录：`cloud-platform/evidence/`（gitignore）
-> 本轮新增证据：`cloud-platform/evidence/m70-acceptance/`、`cloud-platform/evidence/m72-denial-details/`、`cloud-platform/evidence/m73-host-audit/`、`cloud-platform/evidence/m74-offline-host/`、`cloud-platform/evidence/m75-platform-unavailable/`
+> 本轮新增证据：`cloud-platform/evidence/m70-acceptance/`、`cloud-platform/evidence/m72-denial-details/`、`cloud-platform/evidence/m73-host-audit/`、`cloud-platform/evidence/m74-offline-host/`、`cloud-platform/evidence/m75-platform-unavailable/`、`cloud-platform/evidence/m76-signing-key-rotation/`
 
 ## 1. 目的与范围
 
@@ -97,7 +97,7 @@
 | AC-28 | 仅 `file:read` 调用 `files.write`：按方法映射拒绝（`PERMISSION_MISSING`），审计方法与凭证权限 | 真实 e2e | `cloud-rpc-scope.test.ts::M34-1 只授予 file:read…`；`P-E2E::E4 方法级权限：无 file:write 时写操作被拒`；`rpc-caller-scope.test.ts::names the missing permission…`（M72）；`cloud-host-audit.test.ts::M73-1`（方法级拒绝审计） | `m34-cloud-rpc-scope/m34-1-readonly.json`；`e2e-platform/E4-method-permission.json`；`m72-denial-details/m72-path-denial.json`；`m73-host-audit/m73-host-refusals.json` | PASS | 读放行、写拒绝；M72 起顶层 `forbidden` + `data.denial=PERMISSION_MISSING`、`permission=file:write`；M73 起主机级/缺权限拒绝写 `host.method_denied` 审计（含 `denial`、`method`、设备与项目） |
 | AC-29 | 主机公钥被替换：固定指纹不匹配 → 关闭码 4433，强制中断并要求重新核对，写审计 | 未覆盖 | 无 | 无 | UNVERIFIED | 仓库内无 4433/云端公钥固定实现；`tls-certificate.ts` 的指纹固定服务于移动端配对，不覆盖云端票据路径（见 G-06） |
 | AC-30 | 凭证复制到另一设备：设备公钥必须与凭证一致；不一致/缺失均拒绝（401 + `x-orca-reject`） | 真实 e2e | `m46-browser-upgrade.test.ts::M46-2 子协议设备公钥与票据不同：升级被 401 device_mismatch 拒绝`、`M46-3 两种形式都不带：升级被 401 device_pubkey_missing 拒绝`；`P-E2E::E7b/E7b2` | `m46-browser-upgrade/m46-2-wrong-device-key.json`、`m46-3-missing-device-key.json`；`e2e-platform/E7b-device-transplant.json`、`E7b2-missing-device-header.json` | PASS | 真实 Runtime 与模拟 Runtime 均拒绝移植/缺失，401 + 原因头 |
-| AC-31 | 签名密钥轮换：新旧 `kid` 并行；轮换后 60 天旧公钥可验旧凭证 | 未覆盖 | 无 | 无 | UNVERIFIED | 平台启动时生成单个 `kid`，JWKS 只含当前公钥，无轮换接口/旧钥保留期（见 G-07） |
+| AC-31 | 签名密钥轮换：新旧 `kid` 并行；轮换后 60 天旧公钥可验旧凭证 | 真实 e2e（真实签名 + 真实 HTTP/WSS） | `signing-key-rotation.e2e.test.ts::AC-31 轮换后新旧 kid 并行验签…`、`非管理员轮换被 403 拒绝并写审计`；`cloud-signing-key-rotation.test.ts::M76-1`（真实平台 + 真实 TLS Runtime + 真实 WSS） | `m76-signing-key-rotation/ac-31-rotation.json`、`ac-31-denied.json`、`m76-host-admission.json` | PASS | 轮换前签发的票据在轮换后仍可验签并被真实主机接纳（主机刷新 JWKS 后同时持有新旧 `kid`）；新票据用新 `kid`；第 59 天旧公钥仍发布，超过 60 天后从 JWKS 移除（旧票据 `unknown_kid`）；轮换/被拒均写审计 |
 | AC-32 | 外网无 VPN 访问管控接口被 WAF 拒绝，工作台与打开项目正常 | 未覆盖 | 无 | 无 | UNVERIFIED | 需 DMZ/WAF 真实网络环境 |
 
 ## 5. 不可验证项与前置条件
