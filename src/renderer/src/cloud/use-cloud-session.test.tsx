@@ -28,7 +28,9 @@ const projects: CloudProjectSummary[] = [
     name: 'payment-svc',
     hostName: 'dev-001',
     hostStatus: 'online',
-    downloadRestricted: true
+    downloadRestricted: true,
+    status: 'ready',
+    provisioningError: null
   },
   {
     id: 'p2',
@@ -36,7 +38,9 @@ const projects: CloudProjectSummary[] = [
     name: 'refund-svc',
     hostName: 'dev-002',
     hostStatus: 'offline',
-    downloadRestricted: true
+    downloadRestricted: true,
+    status: 'ready',
+    provisioningError: null
   },
   {
     id: 'p3',
@@ -44,7 +48,9 @@ const projects: CloudProjectSummary[] = [
     name: 'ops-tools',
     hostName: 'dev-001',
     hostStatus: 'online',
-    downloadRestricted: false
+    downloadRestricted: false,
+    status: 'ready',
+    provisioningError: null
   }
 ]
 
@@ -96,7 +102,8 @@ function makeBridge(script: Script = {}): TestBridge {
       }
       return result.ok ? { ...result, environmentId: `cloud-${projectId}` } : result
     },
-    registerProjects: async () => [],
+    registerProjects: async () => ({ environments: [], failures: [] }),
+    retryPrepare: async () => ({ ok: false, code: 'CLONE_FAILED' }),
     closeProject: async () => {
       bridge.closedProjects += 1
       return { ok: true }

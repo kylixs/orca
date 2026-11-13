@@ -1,8 +1,9 @@
 import type {
   CloudConnectionEvent,
   CloudOpenResult,
-  CloudProjectEnvironment,
+  CloudProjectRegistration,
   CloudProjectSummary,
+  CloudRetryPrepareResult,
   CloudRpcOutcome,
   CloudSessionState
 } from '../../shared/cloud-platform-ipc'
@@ -16,7 +17,9 @@ export type CloudPlatformApi = {
   /** Open and register the project as a runtime environment panes can address. */
   openWorkspace: (projectId: string) => Promise<CloudOpenResult>
   /** Register one runtime environment per visible project (no checkout). */
-  registerProjects: () => Promise<CloudProjectEnvironment[]>
+  registerProjects: () => Promise<CloudProjectRegistration>
+  /** Re-run provisioning and linking for one project that failed to register. */
+  retryPrepare: (projectId: string) => Promise<CloudRetryPrepareResult>
   /** Leave one project's workspace; its socket closes, the platform session survives. */
   closeProject: (projectId: string) => Promise<{ ok: boolean }>
   /** Routes to `projectId`'s own connection; there is no implicit current project. */

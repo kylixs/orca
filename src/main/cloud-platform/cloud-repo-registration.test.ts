@@ -231,7 +231,7 @@ async function registerEnvironments(): Promise<CloudProjectEnvironment[]> {
   }
   const raw = await handlerFor(CLOUD_PLATFORM_IPC.registerProjects)(null)
   const entries: CloudProjectEnvironment[] = []
-  for (const item of readArrayValue(raw) ?? []) {
+  for (const item of readArrayValue(readField(raw, 'environments')) ?? []) {
     const projectId = readString(item, 'projectId')
     const projectName = readString(item, 'projectName')
     const projectRoot = readString(item, 'projectRoot')

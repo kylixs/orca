@@ -78,6 +78,8 @@
 | M56 | 渲染侧云端 e2e 从 `tsconfig.tc.web.json` 拆到独立工程 | `pnpm tc:web` 0 错；新工程 0 错 |
 | M57 | 项目创建 provisioning：平台记录 `repoUrl`/`defaultBranch`，主机首次打开时真实 clone 到 `projectRoot`，心跳回报 `ready`/`failed`，客户端显示准备进度 | 真实平台 + 注册主机 + TLS Runtime + 真实 git 远端：新建项目首次打开完成克隆并可建工作区；成功后平台状态 `ready`，失败为 `failed` 且带错误；旧主机（`method_not_found`）仍可打开已有仓库 |
 
+| M58 | 准备失败可见 + 可修复/可重试：`registerProjects` 上报失败项，原生入口显示项目名与错误码并提供重试；平台新增管理员修正 `repoUrl`/`defaultBranch` 并重置为 `provisioning` | 真实平台 + 主机 + TLS + git：坏 repoUrl 首次注册上报失败 → 管理员修正 → 客户端重试真实 clone → 心跳后 `ready`、侧栏 repo 出现 |
+
 ### 5.1 M57 项目创建 provisioning（平台不在数据通道）
 
 - **平台**：`POST /v1/projects` 仍 admin-only；有 `repoUrl` → `status: 'provisioning'`，无 → `ready`（路径由管理员备好）。连接票据新增可选 claim `repoUrl`、`defaultBranch`（旧主机忽略未知 claim）。

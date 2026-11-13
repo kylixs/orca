@@ -123,7 +123,9 @@ const projects = [
     name: 'Checkout Service',
     hostName: 'dev-host',
     hostStatus: 'online',
-    downloadRestricted: false
+    downloadRestricted: false,
+    status: 'ready',
+    provisioningError: null
   },
   {
     id: 'project-b',
@@ -131,7 +133,9 @@ const projects = [
     name: 'Payments',
     hostName: 'dev-host',
     hostStatus: 'online',
-    downloadRestricted: false
+    downloadRestricted: false,
+    status: 'ready',
+    provisioningError: null
   }
 ]
 
@@ -140,20 +144,24 @@ function cloudBridge(overrides: Record<string, unknown> = {}) {
     getState: async () => ({ status: 'signed-out' }),
     login: async () => ({ status: 'signed-in', displayName: 'zhangsan', projects }),
     logout: async () => ({ status: 'signed-out' }),
-    registerProjects: async () => [
-      {
-        projectId: 'project-a',
-        projectName: 'Checkout Service',
-        projectRoot: '/srv/projects/checkout',
-        environmentId: 'env-a'
-      },
-      {
-        projectId: 'project-b',
-        projectName: 'Payments',
-        projectRoot: '/srv/projects/payments',
-        environmentId: 'env-b'
-      }
-    ],
+    registerProjects: async () => ({
+      environments: [
+        {
+          projectId: 'project-a',
+          projectName: 'Checkout Service',
+          projectRoot: '/srv/projects/checkout',
+          environmentId: 'env-a'
+        },
+        {
+          projectId: 'project-b',
+          projectName: 'Payments',
+          projectRoot: '/srv/projects/payments',
+          environmentId: 'env-b'
+        }
+      ],
+      failures: []
+    }),
+    retryPrepare: async () => ({ ok: false, code: 'CLONE_FAILED' }),
     openWorkspace: async (projectId: string) => ({
       ok: true,
       projectId,

@@ -3,9 +3,10 @@ import { errorCodeOf, readField } from '../../../shared/json-fields'
 import type {
   CloudConnectionEvent,
   CloudOpenResult,
-  CloudProjectEnvironment,
+  CloudProjectRegistration,
   CloudProjectSummary,
   CloudProjectPermission,
+  CloudRetryPrepareResult,
   CloudRpcOutcome,
   CloudSessionState
 } from '../../../shared/cloud-platform-ipc'
@@ -20,7 +21,8 @@ import type {
 export type CloudBridge = {
   login: (username: string, password: string) => Promise<CloudSessionState>
   openWorkspace: (projectId: string) => Promise<CloudOpenResult>
-  registerProjects: () => Promise<CloudProjectEnvironment[]>
+  registerProjects: () => Promise<CloudProjectRegistration>
+  retryPrepare: (projectId: string) => Promise<CloudRetryPrepareResult>
   closeProject: (projectId: string) => Promise<{ ok: boolean }>
   logout: () => Promise<CloudSessionState>
   getState: () => Promise<CloudSessionState>

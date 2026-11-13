@@ -65,6 +65,9 @@ export type WebCloudProject = {
   hostName: string | null
   hostStatus: string
   downloadRestricted: boolean
+  /** Null when the platform predates provisioning status. */
+  status: string | null
+  provisioningError: string | null
 }
 
 type RequestOptions = { fetchImpl?: typeof fetch }
@@ -192,6 +195,8 @@ function toWebProject(project: CloudReplyProject): WebCloudProject {
     name: project.name,
     hostName: project.hostName,
     hostStatus: project.hostStatus,
+    status: project.status,
+    provisioningError: project.provisioningError,
     // The host enforces export; this only decides whether the UI offers it.
     downloadRestricted: !project.permissions.includes('download')
   }

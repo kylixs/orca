@@ -1,19 +1,16 @@
 import * as React from 'react'
 import { toast } from 'sonner'
 import { errorCodeOf } from '../../../shared/json-fields'
-import type { CloudOpenResult, CloudProjectEnvironment } from '../../../shared/cloud-platform-ipc'
-import { selectCloudInitialWorktreeId } from '../../../shared/cloud-initial-worktree'
-import { getRepoExecutionHostId } from '../../../shared/execution-host'
+import type {
+  CloudProjectEnvironment,
+  CloudProjectFailure
+} from '../../../shared/cloud-platform-ipc'
 import { useAppStore } from '@/store'
-import { getRepoHostIdentity } from '@/store/slices/repo-host-identity'
 import { translate } from '@/i18n/i18n'
 import { CloudLoginPanel } from './cloud-login-panel'
-import {
-  cloudProjectRepoTarget,
-  signOutCloudProjectRepos,
-  syncCloudProjectRepos,
-  type CloudProjectRepoPorts
-} from './cloud-project-repos'
+import { CloudProjectFailureBanner, PreparingCloudProjectBanner } from './cloud-workspace-banners'
+import { rendererRepoPorts, selectInitialWorktree } from './cloud-entry-workspace-sync'
+import { signOutCloudProjectRepos, syncCloudProjectRepos } from './cloud-project-repos'
 import { useCloudSession, type CloudBridge, type CloudSessionView } from './use-cloud-session'
 
 /**
@@ -26,84 +23,8 @@ function useCloudBridge(): CloudBridge | null {
   return React.useMemo(() => window.api?.cloud ?? null, [])
 }
 
-function rendererRepoPorts(bridge: CloudBridge): CloudProjectRepoPorts {
-  const state = () => useAppStore.getState()
-  return {
-    // The canonical runtime-repo add: main routes `repo.add` to the environment's host.
-    addRepo: (target) =>
-      state().addRepoPath(target.path, 'git', {
-        runtimeEnvironmentId: target.environmentId,
-        displayName: target.displayName
-      }),
-    // Why renderer-only: `repo.update` is not open to cloud sessions, and the
-    // platform name is what the sidebar should show.
-    renameRepo: ({ repo, displayName }) => {
-      const identity = getRepoHostIdentity(repo)
-      useAppStore.setState((s) => ({
-        repos: s.repos.map((entry) =>
-          getRepoHostIdentity(entry) === identity ? { ...entry, displayName } : entry
-        )
-      }))
-    },
-    purgeRepos: (environmentIds) => state().purgeStaleRuntimeHostState(environmentIds),
-    signOut: async () => {
-      await bridge.logout()
-      // Why: main retired every cloud environment; this re-read also publishes
-      // the removal so host pickers stop offering them.
-      await state().hydrateRuntimeEnvironmentStatuses()
-    }
-  }
-}
-
 function entryFailureCode(error: unknown): string {
   return errorCodeOf(error) ?? (error instanceof Error ? error.message : String(error))
-}
-
-/**
- * Lands a signed-in user on their own checkout: the host opened (or created) a
- * worktree, and the sidebar knows that worktree by `<repoId>::<path>`.
- */
-async function selectInitialWorktree(args: {
-  opened: CloudOpenResult
-  environments: readonly CloudProjectEnvironment[]
-  projectId: string
-  isCancelled: () => boolean
-}): Promise<void> {
-  const workspacePath = args.opened.ok ? args.opened.workspacePath : undefined
-  if (!workspacePath) {
-    // Why: older sidecars may not record a checkout; leave the default view alone.
-    return
-  }
-  const environment = args.environments.find((entry) => entry.projectId === args.projectId)
-  if (!environment) {
-    return
-  }
-  const target = cloudProjectRepoTarget(environment)
-  const state = () => useAppStore.getState()
-  const repo = state().repos.find(
-    (row) => getRepoExecutionHostId(row) === target.executionHostId && row.path === target.path
-  )
-  if (!repo) {
-    return
-  }
-  const select = (): string | null =>
-    selectCloudInitialWorktreeId({
-      workspacePath,
-      repo,
-      worktrees: state().worktreesByRepo[repo.id] ?? []
-    })
-  let worktreeId = select()
-  if (worktreeId === null) {
-    // Why: the repo row was just added, so its sidebar worktrees are not loaded yet.
-    await state().fetchWorktrees(repo.id)
-    if (args.isCancelled()) {
-      return
-    }
-    worktreeId = select()
-  }
-  if (worktreeId !== null) {
-    state().setActiveWorktree(worktreeId, target.executionHostId)
-  }
 }
 
 export type CloudWorkspaceEntryState = {
@@ -111,6 +32,10 @@ export type CloudWorkspaceEntryState = {
   entryError: string | null
   /** True while the host clones/verifies the project and the checkout is created. */
   preparing: boolean
+  /** Projects that did not register; the user can retry after an admin fix. */
+  failures: CloudProjectFailure[]
+  retrying: boolean
+  retryFailures: () => Promise<void>
   signOut: () => Promise<void>
 }
 
@@ -122,6 +47,8 @@ function useCloudWorkspaceEntry(
   const environments = React.useRef<readonly CloudProjectEnvironment[]>([])
   const [entryError, setEntryError] = React.useState<string | null>(null)
   const [preparing, setPreparing] = React.useState(false)
+  const [failures, setFailures] = React.useState<CloudProjectFailure[]>([])
+  const [retrying, setRetrying] = React.useState(false)
   const projects = session.projects
   const sessionKey =
     session.status === 'signed-in' ? projects.map((project) => project.id).join('\u0000') : null
@@ -133,6 +60,7 @@ function useCloudWorkspaceEntry(
       environments.current = []
       setEntryError(null)
       setPreparing(false)
+      setFailures([])
       return
     }
     if (enteredFor.current === sessionKey) {
@@ -140,6 +68,7 @@ function useCloudWorkspaceEntry(
     }
     enteredFor.current = sessionKey
     setPreparing(true)
+    setFailures([])
     let cancelled = false
 
     const fail = (code: string): void => {
@@ -155,12 +84,14 @@ function useCloudWorkspaceEntry(
         if (cancelled) {
           return
         }
-        environments.current = registered
+        const preparedEnvironments = registered.environments
+        environments.current = preparedEnvironments
+        setFailures(registered.failures)
         // Why fire-and-forget: the sidebar needs the host rows, but a slow status
         // probe must not hold the shell hostage.
         void useAppStore.getState().hydrateRuntimeEnvironmentStatuses()
         const result = await syncCloudProjectRepos({
-          environments: registered,
+          environments: preparedEnvironments,
           repos: useAppStore.getState().repos,
           ports: rendererRepoPorts(bridge)
         })
@@ -184,7 +115,7 @@ function useCloudWorkspaceEntry(
         }
         await selectInitialWorktree({
           opened,
-          environments: registered,
+          environments: preparedEnvironments,
           projectId: first.id,
           isCancelled: () => cancelled
         })
@@ -204,6 +135,51 @@ function useCloudWorkspaceEntry(
     }
   }, [bridge, sessionKey, projects])
 
+  const retryFailures = React.useCallback(async () => {
+    if (retrying) {
+      return
+    }
+    setRetrying(true)
+    const recovered: CloudProjectEnvironment[] = []
+    const remaining: CloudProjectFailure[] = []
+    try {
+      for (const failure of failures) {
+        try {
+          const result = await bridge.retryPrepare(failure.projectId)
+          if (!result.ok) {
+            remaining.push({
+              ...failure,
+              code: result.code,
+              ...(result.message !== undefined ? { message: result.message } : {})
+            })
+            continue
+          }
+          recovered.push(result.environment)
+        } catch (error) {
+          remaining.push({ ...failure, code: entryFailureCode(error) })
+        }
+      }
+      if (recovered.length > 0) {
+        environments.current = [...environments.current, ...recovered]
+        for (const environment of recovered) {
+          try {
+            await syncCloudProjectRepos({
+              environments: [environment],
+              repos: useAppStore.getState().repos,
+              ports: rendererRepoPorts(bridge)
+            })
+          } catch (error) {
+            console.warn('[cloud] could not register recovered repo', entryFailureCode(error))
+          }
+        }
+        void useAppStore.getState().hydrateRuntimeEnvironmentStatuses()
+      }
+    } finally {
+      setFailures(remaining)
+      setRetrying(false)
+    }
+  }, [bridge, failures, retrying])
+
   const signOut = React.useCallback(async () => {
     const registered = environments.current
     await signOutCloudProjectRepos({
@@ -216,24 +192,10 @@ function useCloudWorkspaceEntry(
       }
     })
     environments.current = []
+    setFailures([])
   }, [bridge])
 
-  return { entryError, preparing, signOut }
-}
-
-/** Non-blocking: the shell stays usable while the host prepares the checkout. */
-function PreparingCloudProjectBanner(): React.JSX.Element {
-  return (
-    <div className="pointer-events-none fixed left-1/2 top-3 z-50 -translate-x-1/2">
-      <div
-        role="status"
-        className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-xs text-muted-foreground shadow-xs"
-      >
-        <span className="size-2 animate-pulse rounded-full bg-muted-foreground" />
-        {translate('auto.cloud.preparing', '正在准备云端项目…')}
-      </div>
-    </div>
-  )
+  return { entryError, preparing, failures, retrying, retryFailures, signOut }
 }
 
 function CloudWorkspaceSession({
@@ -250,6 +212,11 @@ function CloudWorkspaceSession({
     return (
       <>
         {entry.preparing ? <PreparingCloudProjectBanner /> : null}
+        <CloudProjectFailureBanner
+          failures={entry.failures}
+          retrying={entry.retrying}
+          onRetry={() => void entry.retryFailures()}
+        />
         {children}
       </>
     )

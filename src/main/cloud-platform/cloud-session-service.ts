@@ -43,6 +43,10 @@ function summarize(project: CloudProject): CloudProjectSummary {
     name: project.name,
     hostName: project.hostName,
     hostStatus: project.hostStatus,
+    // Never guess `ready`: an older platform omits the field, and the UI must
+    // treat that as unknown rather than claim the project is prepared.
+    status: project.status,
+    provisioningError: project.provisioningError,
     // Managed projects deny export by default; the host enforces it, this only
     // drives whether the UI offers the action at all (FR-7.3).
     downloadRestricted: !project.permissions.includes('download')

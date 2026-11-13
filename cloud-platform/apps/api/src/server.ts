@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { extname, join, normalize } from 'node:path'
 import { validateProjectPath } from '../../../packages/contract/src/project-path.ts'
 import { validateProjectRepoUrl } from '../../../packages/contract/src/repo-url.ts'
+import { validateProjectDefaultBranch } from '../../../packages/contract/src/branch-name.ts'
 import {
   generateSigningKey,
   newDeviceToken,
@@ -740,6 +741,88 @@ export function createApp(config: ApiConfig): ApiHandle {
 
       if (req.method === 'GET' && action === '')
         return json(res, 200, projectView(found, authed.user))
+
+      if (req.method === 'PUT' && action === '') {
+        if (!isAdmin(authed.user)) {
+          audit.append({
+            eventType: 'project_update',
+            actor: authed.user.username,
+            targetType: 'project',
+            targetId: projectId,
+            result: 'denied',
+            traceId
+          })
+          return error(res, 403, 'PERMISSION_DENIED', '需要平台管理权限。', traceId)
+        }
+        if (!auditAllowsMutations(res, traceId)) return
+        if (found.status === 'archived') {
+          // Same payload as unknown/unreadable: an archived project is not editable.
+          return error(res, 404, 'PROJECT_NOT_FOUND', '项目不存在或无权访问。', traceId)
+        }
+        const body = await readJson(req)
+        if ('path' in body || 'hostId' in body) {
+          return error(res, 400, 'PROJECT_FIELD_IMMUTABLE', '项目路径与主机不允许修改。', traceId)
+        }
+        let nextRepoUrl = found.repoUrl
+        if ('repoUrl' in body) {
+          const verdict = validateProjectRepoUrl(body.repoUrl)
+          if (!verdict.ok) {
+            audit.append({
+              eventType: 'project_update',
+              actor: authed.user.username,
+              targetType: 'project',
+              targetId: projectId,
+              result: 'denied',
+              traceId,
+              metadata: { reason: verdict.code }
+            })
+            return error(res, 400, verdict.code, verdict.message, traceId)
+          }
+          nextRepoUrl = verdict.repoUrl
+        }
+        let nextBranch = found.defaultBranch
+        if ('defaultBranch' in body) {
+          const verdict = validateProjectDefaultBranch(body.defaultBranch)
+          if (!verdict.ok) {
+            audit.append({
+              eventType: 'project_update',
+              actor: authed.user.username,
+              targetType: 'project',
+              targetId: projectId,
+              result: 'denied',
+              traceId,
+              metadata: { reason: verdict.code }
+            })
+            return error(res, 400, verdict.code, verdict.message, traceId)
+          }
+          nextBranch = verdict.defaultBranch
+        }
+        const repoUrlChanged = nextRepoUrl !== found.repoUrl
+        if (
+          !recordAudit(
+            res,
+            {
+              eventType: 'project_update',
+              actor: authed.user.username,
+              targetType: 'project',
+              targetId: projectId,
+              result: 'success',
+              traceId,
+              // Why no repoUrl value: it may embed credentials.
+              metadata: { key: found.key, repoUrlChanged, hostId: found.hostId }
+            },
+            traceId
+          )
+        ) {
+          return
+        }
+        found.repoUrl = nextRepoUrl
+        found.defaultBranch = nextBranch
+        // A repo URL means the host must clone it before the next open.
+        found.status = nextRepoUrl ? 'provisioning' : 'ready'
+        delete found.provisioningError
+        return json(res, 200, projectView(found, authed.user))
+      }
 
       if (req.method === 'POST' && action === '/connect') {
         return handleConnect(req, res, authed.user, found, traceId)

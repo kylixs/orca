@@ -17,6 +17,8 @@ export const CLOUD_PLATFORM_IPC = {
   openWorkspace: 'cloud:openWorkspace',
   /** Registers one runtime environment per visible project (no checkout). */
   registerProjects: 'cloud:registerProjects',
+  /** Args: `(projectId)`. Re-prepares a project whose first registration failed. */
+  retryPrepare: 'cloud:retryPrepare',
   /** Args: `(method, params, projectId)`. Routes to that project's own socket. */
   rpc: 'cloud:rpc',
   connectionChanged: 'cloud:connectionChanged'
@@ -43,6 +45,10 @@ export type CloudProjectSummary = {
   hostStatus: string
   /** True when the managed project forbids exporting files (FR-7). */
   downloadRestricted: boolean
+  /** Platform provisioning state; null when the platform predates it. */
+  status: string | null
+  /** Last host-reported provisioning failure; null when there is none. */
+  provisioningError: string | null
 }
 
 export type CloudSessionState =
@@ -83,6 +89,24 @@ export type CloudProjectEnvironment = {
   projectRoot: string
   environmentId: string
 }
+
+/** One project the client could not prepare; the UI shows it and offers a retry. */
+export type CloudProjectFailure = {
+  projectId: string
+  projectKey: string
+  projectName: string
+  code: string
+  message?: string
+}
+
+export type CloudProjectRegistration = {
+  environments: CloudProjectEnvironment[]
+  failures: CloudProjectFailure[]
+}
+
+export type CloudRetryPrepareResult =
+  | { ok: true; environment: CloudProjectEnvironment }
+  | { ok: false; code: string; message?: string }
 
 export type CloudRpcOutcome =
   | { ok: true; result: unknown }

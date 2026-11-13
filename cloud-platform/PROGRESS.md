@@ -1065,13 +1065,39 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 5. Windows 未实机验证；克隆使用既有跨平台 git runner。
 6. 平台侧“非本主机回报被忽略”只有代码路径，未单独补 HTTP 用例（e2e 覆盖合法主机回报）。
 
+## M58 准备失败可见 + 可修复/可重试（本轮，开发子代理执行）
+
+**问题**：M57 之后，准备失败的项目在 `cloud:registerProjects` 里被 `console.warn` + `continue` **静默丢弃**——侧栏少一项、用户看不到原因、也没有重试入口；管理员在平台上也无法修正写错的 `repoUrl`，失败项目永远无法恢复。
+
+| 改动 | 内容 |
+|---|---|
+| 平台 `server.ts` + `contract/branch-name.ts`（新） | 新增管理员 `PUT /v1/projects/:id`：可改 `repoUrl`/`defaultBranch`（分别复用/新增校验），`path`/`hostId` → `PROJECT_FIELD_IMMUTABLE`，归档项目 404；成功后 `status = repoUrl ? 'provisioning' : 'ready'`、清除 `provisioningError`，审计 `project_update`（只记 `repoUrlChanged` 布尔，不写完整 URL） |
+| `src/shared/cloud-platform-reply.ts` / `cloud-platform-ipc.ts` | 项目行解析增加 `status`、`provisioningError`（老平台缺失为 `null`）；`CloudProjectSummary` 透传；新增 `CloudProjectFailure`、`CloudProjectRegistration`、`CloudRetryPrepareResult` 与 channel `cloud:retryPrepare` |
+| `src/main/ipc/cloud-platform.ts` | 抽出 `prepareProjectEnvironment`（provision → link → register）；`registerProjects` 返回 `{environments, failures}`；新增 `retryPrepare(projectId)` |
+| `renderer/cloud-workspace-entry.tsx` + `cloud-workspace-banners.tsx`（新）+ `cloud-entry-workspace-sync.ts`（新） | 失败进入状态并显示非阻塞横幅（项目名 + 错误码，最多 3 个 + “等 N 个”）；「重试」逐项目 `retryPrepare`，成功项目注册环境并同步侧栏 repo，仍失败则更新错误码；拆分以保持单文件 ≤300 行 |
+| `preload` / 浏览器 bridge / web 会话 | 类型与桥同步；管理页 bridge 的 `retryPrepare` 返回 `ADMIN_SESSION_UNSUPPORTED`（管理页不注册原生环境）；浏览器会话透传状态 |
+
+**验证（`evidence/m58-provision-recovery/`）**：真实端到端 1 条（真实平台 + 真实注册主机/心跳 + 真实 TLS Runtime + 真实 bare git）：
+坏 `repoUrl` → `registerProjects` 返回 `failures: [{code: CLONE_FAILED}]`、`environments: []` → 心跳后平台 `failed` + `provisioningError`、`listProjects` 摘要带状态 → 管理员 `PUT` 指向新建的真实裸仓库 → `status: provisioning` → 真实 `cloud:retryPrepare` → 真实 clone，README 一致 → 心跳后平台 `ready` → 再次 `registerProjects` 无失败，`planCloudProjectRepos`/`syncCloudProjectRepos` 在真实 store 中生成侧栏行。
+平台侧 `project-update.e2e` 4 条：非管理员 403（先授权使项目可见）、状态重置与错误清除、非法 URL/分支 400、归档 404、审计不含 URL。组件测试 4 条（失败提示、重试失败更新码、重试成功消失、准备中）。
+
+**主会话独立验收**：10 个相关 vitest 文件 **84 条全过**；平台 e2e 4 条全过；`tsc tc.web` 0 错；`tsc node` 仅 2 条既有 TS6307（`cloud-project-root` 与新的 recovery 测试沿用 `cloud-repo-registration` 的同一渲染导入模式，非语义错误）；`check:code-quality:changed` 0 新发现。
+
+**主会话独立负向对照**：让平台 `PUT` 忽略 `repoUrl`（只改状态）→ recovery e2e **变红**（`expected false to be true`，重试仍打旧地址）；恢复后 1/1 绿。子代理另有对照：去掉 `failures.push` → 失败收集用例变红。
+
+**如实记录 / 剩余**：
+1. 管理页浏览器 bridge 不支持 `retryPrepare`（管理页不注册原生环境）；管理员重试仍走平台修正 + 开发者端重试。
+2. UI 仅 happy-dom 组件测试，未做真实 Electron 渲染截图；样式只用既有 shadcn Button 与 token。
+3. 重试失败的项目错误码会更新，但 `provisioningError` 的**完整消息**只在平台侧；原生横幅只显示 code（避免把主机内部文案当 UI 文案）。
+4. 首次签到仍**串行**准备所有项目（M57 遗留），失败项目不再拖慢其它项目——它们只是被并行计入失败列表。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M57（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M58（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步（按缺口排序）**：
-1. **开发者自助创建项目**：建项目仍 admin-only；需要"用户在平台创建 → 主机 provisioning → 本地出现"的自助流程（含权限授予界面与项目创建审计）。
-2. **provisioning 失败可见性**：失败目前只进平台状态和侧栏缺行；应在原生界面按项目显示状态/错误并提供重试。
-3. **登录后自动重登**：断线仍只回登录页（M51 范围），长会话需要自动续期。
-4. **主机断连清理**：云设备 token 仅在注册表淘汰，不随 socket 关闭释放。
+1. **开发者自助创建项目**：建项目仍 admin-only；需要"用户在平台创建 → 主机 provisioning → 本地出现"的自助流程（含主机项目根目录、权限授予界面与项目创建审计）。
+2. **登录后自动重登**：断线仍只回登录页（M51 范围），长会话需要自动续期。
+3. **主机断连清理**：云设备 token 仅在注册表淘汰，不随 socket 关闭释放。
+4. **签到准备并行化**：`registerProjects` 逐项目串行准备，多仓库首屏被最长 clone 拖慢。
 5. **`agent.launch` 在本人工作区的真实执行**未被实际验证（历史仅覆盖拒绝路径）。

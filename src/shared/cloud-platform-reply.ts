@@ -44,6 +44,9 @@ export type CloudReplyProject = {
   hostName: string | null
   hostStatus: string
   permissions: string[]
+  /** Null when the platform predates provisioning status. */
+  status: string | null
+  provisioningError: string | null
 }
 
 export type CloudTicketClaims = {
@@ -127,7 +130,9 @@ export function parseProjectRow(value: unknown): CloudReplyProject | null {
     name,
     hostName: readString(value, 'hostName'),
     hostStatus,
-    permissions: readStringArray(value, 'permissions') ?? []
+    permissions: readStringArray(value, 'permissions') ?? [],
+    status: readString(value, 'status'),
+    provisioningError: readString(value, 'provisioningError')
   }
 }
 

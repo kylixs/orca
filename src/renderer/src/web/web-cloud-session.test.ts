@@ -198,7 +198,9 @@ describe('browser cloud login, project list and ticket', () => {
         name: 'M48',
         hostName: 'dev-m48',
         hostStatus: 'online',
-        downloadRestricted: true
+        downloadRestricted: true,
+        status: null,
+        provisioningError: null
       },
       {
         id: 'proj-2',
@@ -206,7 +208,9 @@ describe('browser cloud login, project list and ticket', () => {
         name: 'Downloads',
         hostName: null,
         hostStatus: 'online',
-        downloadRestricted: false
+        downloadRestricted: false,
+        status: null,
+        provisioningError: null
       }
     ])
 

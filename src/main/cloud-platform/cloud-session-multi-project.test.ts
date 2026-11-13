@@ -28,7 +28,9 @@ const PROJECTS: CloudProject[] = [
     name: 'Alpha',
     hostName: 'dev-host',
     hostStatus: 'online',
-    permissions: ['open']
+    permissions: ['open'],
+    status: 'ready',
+    provisioningError: null
   },
   {
     id: 'project-b',
@@ -36,7 +38,9 @@ const PROJECTS: CloudProject[] = [
     name: 'Beta',
     hostName: 'dev-host',
     hostStatus: 'online',
-    permissions: ['open']
+    permissions: ['open'],
+    status: 'ready',
+    provisioningError: null
   }
 ]
 

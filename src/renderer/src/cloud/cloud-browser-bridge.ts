@@ -5,9 +5,10 @@ import { openCloudWorkspaceOverRpc } from '../../../shared/cloud-workspace-open'
 import type {
   CloudConnectionEvent,
   CloudOpenResult,
-  CloudProjectEnvironment,
   CloudProjectPermission,
+  CloudProjectRegistration,
   CloudProjectSummary,
+  CloudRetryPrepareResult,
   CloudRpcOutcome,
   CloudSessionState
 } from '../../../shared/cloud-platform-ipc'
@@ -68,6 +69,8 @@ function summarize(project: WebCloudProject): CloudProjectSummary {
     name: project.name,
     hostName: project.hostName,
     hostStatus: project.hostStatus,
+    status: project.status,
+    provisioningError: project.provisioningError,
     downloadRestricted: project.downloadRestricted
   }
 }
@@ -260,8 +263,13 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
     },
 
     /** A browser has no runtime-environment registry; the admin page never uses it. */
-    async registerProjects(): Promise<CloudProjectEnvironment[]> {
-      return []
+    async registerProjects(): Promise<CloudProjectRegistration> {
+      return { environments: [], failures: [] }
+    },
+
+    /** Admin pages have no native environment to register a recovered project into. */
+    async retryPrepare(): Promise<CloudRetryPrepareResult> {
+      return { ok: false, code: 'ADMIN_SESSION_UNSUPPORTED' }
     },
 
     async closeProject(projectId: string): Promise<{ ok: boolean }> {
