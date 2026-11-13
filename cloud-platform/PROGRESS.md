@@ -905,10 +905,30 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 3. 配对码路径未变（其 offer 可复用，仍自带校验客户端）。
 4. 采纳的连接保持 `reconnect: false`；将来要支持断线重连必须重新登录取票，而不是传输层重试。
 
+## M51 云会话断线后自动回到登录页（本轮，开发子代理执行）
+
+**问题**（M50 记录的缺口）：票据一次性，断线后无法重连。M50 让状态层如实报告断开、让客户端查找返回 `runtime_cloud_session_ended`，但**界面从不离开 App**——用户停在死界面上，只能手动刷新。
+
+| 改动 | 内容 |
+|---|---|
+| `preload-api/web-runtime-session.ts` | 新增 `subscribeCloudSessionEnded(listener)`：仅在"已采纳客户端 + 云环境 + 传输 `disconnected` + 连接态 `disconnected`/`auth-failed`"四条同时成立时触发；用 `WeakSet` 按客户端去重（一个客户端最多一次），先标记再通知以避免监听器关闭客户端引发的递归。`connecting`/刷新失败不会触发 |
+| `web-session-recovery.ts`（新） | `useWebSessionRecovery`：订阅信号 → 清除已作废的存储环境 → `closeActiveRuntimeClients()` → 返回 `signed-out` + 原因 → 回调 `setHasEnvironment(false)`。在 `WebRoot` **无条件挂载**，因为客户端可能在 App 挂载前就死掉 |
+| `main.tsx` | 断线通知优先于启动期通知；App 仅在终结信号时卸载，瞬时 `connecting` 不卸载；普通配对环境行为不变（仍可重连） |
+
+**验证（`evidence/m51-cloud-session-recovery/`）**：真实端到端 1 条 —— 真实平台 + 真实 TLS Runtime：采纳后真实 `status.get` 成功（`runtimeId` 有值）→ `cloud.runtime.stop()` **真实杀掉主机** → 信号恰好触发 1 次，状态变 `disconnected`，随后的客户端查找返回 `runtime_cloud_session_ended`（不挂起、不重连）。另有 5 条信号单测（含 `connecting` 不触发、非云环境不触发）与 2 条恢复钩子测试。
+
+**主会话独立负向对照**：让信号永不派发 → 恢复钩子测试与真实 e2e 双双变红（`expected +0 to be 1`、`Matcher did not succeed in time`），恢复后浏览器侧 50 文件 344 条全过；`tsc` web/node 0 错；门禁 7 项 0 新发现。
+
+**如实记录 / 剩余**：
+1. 真实浏览器 DOM 未验证：`main.tsx` 是入口模块，钩子与信号有测试，但没有真实页面观察到 WebConnect → App → WebConnect 的切换。
+2. "同一页面内重新登录"未走通 `WebConnectCloudForm` 的浏览器路径。
+3. 刷新路径（启动期提示）沿用既有实现，本轮未重复验证。
+4. 断线后**不会自动重登**——只回到登录页；自动续期需要保存平台会话（安全范围更大），未做。
+
 ## 下一步
 
-1. **M51 断线后自动回到登录（带提示）**：云环境断线/`runtime_cloud_session_ended` 时自动卸载 App 并展示登录页与原因，而不是让用户停在死界面。
-2. 随后：删除自造的 `cloud-file-panel.tsx` 与云端壳子工作区页，让浏览器完全走 Orca 原生界面。
+1. **M52 删除自造的云端界面**：移除 `renderer/cloud/cloud-file-panel.tsx`、`cloud-project-workspace.tsx` 的云端壳子路径与 `shared/cloud-file-browser.ts` 的 UI 用途，让浏览器与桌面都只用 Orca 原生界面；保留服务端边界模块（M36–M44）不动。
+2. 随后评估：云端登录后 `workspacePath`（M45 已写入侧车）如何被原生工作区视图用于初始导航。
 
 **界面方向修正（用户决定）**：不再自造云端面板。Orca 自带浏览器客户端（`src/renderer/src/web/`，约 1.1 万行，入口 `web-index.html`，在浏览器内重建 `window.api` 并挂载同一个 `App`）才是"统一工作界面"；它目前只接受**配对码**，没有云票据支持。改造顺序：
 

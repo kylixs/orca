@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import WebSocket from 'ws'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { RuntimeHostStatusSnapshot } from '../../../../shared/runtime-host-status'
 import type { RuntimeRpcResponse } from '../../../../shared/runtime-rpc-envelope'
 import {
   closeSharedControlTestServers,
@@ -60,6 +61,154 @@ function fakeClient(state: { value: WebRuntimeConnectionState }): {
   }
   return { client, close, attachStatusOwner }
 }
+
+function pairedEnvironment(): StoredWebRuntimeEnvironment {
+  const environment = cloudEnvironment('web-paired-1')
+  delete environment.cloudLoginRequired
+  return environment
+}
+
+/** A client whose status owner can be driven snapshot-by-snapshot. */
+function controlledClient(initialState: WebRuntimeConnectionState): {
+  client: WebRuntimeSessionClient
+  close: ReturnType<typeof vi.fn>
+  setState: (state: WebRuntimeConnectionState) => void
+  publish: (transport: RuntimeHostStatusSnapshot['transport']) => void
+} {
+  const state: { value: WebRuntimeConnectionState } = { value: initialState }
+  const close = vi.fn()
+  let publishStatus: ((snapshot: RuntimeHostStatusSnapshot) => void) | null = null
+  const client: WebRuntimeSessionClient = {
+    get connectionState() {
+      return state.value
+    },
+    call: async () => STATUS_REPLY,
+    subscribe: async () => {
+      throw new Error('unit fake does not subscribe')
+    },
+    close,
+    attachStatusOwner: (options) => {
+      publishStatus = options.publish
+    }
+  }
+  return {
+    client,
+    close,
+    setState: (next) => {
+      state.value = next
+    },
+    publish: (transport) => {
+      if (!publishStatus) {
+        throw new Error('status owner not attached')
+      }
+      publishStatus({
+        environmentId: 'web-cloud-1',
+        pairingRevision: 1,
+        sequence: 1,
+        checkedAt: 0,
+        status: null,
+        verification: 'unavailable',
+        transport
+      })
+    }
+  }
+}
+
+describe('web runtime session cloud session ended signal', () => {
+  beforeEach(() => {
+    vi.resetModules()
+  })
+
+  it('fires exactly once per adopted cloud client on a terminal disconnect', async () => {
+    const session = await import('./web-runtime-session')
+    const fake = controlledClient('connected')
+    session.adoptWebRuntimeClient(fake.client, cloudEnvironment())
+    const first = vi.fn()
+    const second = vi.fn()
+    session.subscribeCloudSessionEnded(first)
+    session.subscribeCloudSessionEnded(second)
+
+    fake.setState('disconnected')
+    fake.publish('disconnected')
+    fake.publish('disconnected')
+
+    expect(first).toHaveBeenCalledTimes(1)
+    expect(second).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not fire while the cloud client is connecting or retrying', async () => {
+    const session = await import('./web-runtime-session')
+    const fake = controlledClient('connecting')
+    session.adoptWebRuntimeClient(fake.client, cloudEnvironment())
+    const listener = vi.fn()
+    session.subscribeCloudSessionEnded(listener)
+
+    fake.publish('connecting')
+    fake.setState('connected')
+    fake.publish('ready')
+    fake.setState('connecting')
+    fake.publish('disconnected')
+
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('fires on an authentication rejection, which is equally terminal', async () => {
+    const session = await import('./web-runtime-session')
+    const fake = controlledClient('connected')
+    session.adoptWebRuntimeClient(fake.client, cloudEnvironment())
+    const listener = vi.fn()
+    session.subscribeCloudSessionEnded(listener)
+
+    fake.setState('auth-failed')
+    fake.publish('disconnected')
+
+    expect(listener).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not fire for an ordinary paired environment', async () => {
+    const session = await import('./web-runtime-session')
+    const fake = controlledClient('connected')
+    session.adoptWebRuntimeClient(fake.client, pairedEnvironment())
+    const listener = vi.fn()
+    session.subscribeCloudSessionEnded(listener)
+
+    fake.setState('disconnected')
+    fake.publish('disconnected')
+
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('fires once for each freshly adopted cloud client', async () => {
+    const session = await import('./web-runtime-session')
+    const first = controlledClient('connected')
+    session.adoptWebRuntimeClient(first.client, cloudEnvironment())
+    const listener = vi.fn()
+    session.subscribeCloudSessionEnded(listener)
+    first.setState('disconnected')
+    first.publish('disconnected')
+
+    const second = controlledClient('connected')
+    session.adoptWebRuntimeClient(second.client, cloudEnvironment('web-cloud-2'))
+    second.setState('disconnected')
+    second.publish('disconnected')
+
+    expect(listener).toHaveBeenCalledTimes(2)
+  })
+
+  it('stops delivery after unsubscribe', async () => {
+    const session = await import('./web-runtime-session')
+    const fake = controlledClient('connected')
+    session.adoptWebRuntimeClient(fake.client, cloudEnvironment())
+    const listener = vi.fn()
+    const unsubscribe = session.subscribeCloudSessionEnded(listener)
+    unsubscribe()
+
+    fake.setState('disconnected')
+    fake.publish('disconnected')
+
+    expect(listener).not.toHaveBeenCalled()
+  })
+})
 
 describe('web runtime session cloud handoff', () => {
   beforeEach(() => {

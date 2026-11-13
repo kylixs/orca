@@ -1,6 +1,7 @@
 import '../assets/main.css'
 
 import { Suspense, useMemo, useState } from 'react'
+import { useWebSessionRecovery } from './web-session-recovery'
 import { lazyWithRetry as lazy } from '@/lib/lazy-with-retry'
 import ReactDOM from 'react-dom/client'
 import { useTranslation } from 'react-i18next'
@@ -68,6 +69,9 @@ function WebRoot(): React.JSX.Element {
     }
     return startupDecision.kind === 'use-stored-environment'
   })
+  // Why here, unconditionally: a cloud client can die before the App ever mounts,
+  // and a lost ticket must never leave the user on a dead screen.
+  const sessionRecovery = useWebSessionRecovery(() => setHasEnvironment(false))
 
   if (!hasEnvironment) {
     return (
@@ -76,14 +80,16 @@ function WebRoot(): React.JSX.Element {
           startupDecision.kind === 'show-connect' ? startupDecision.initialPairingInput : null
         }
         initialNotice={
-          startup.cloudSessionEnded &&
-          startupDecision.kind === 'show-connect' &&
-          startupDecision.initialPairingInput === null
-            ? translate(
-                'auto.web.WebConnect.cloudSessionEnded',
-                'Your cloud session ended when this page closed. Sign in again to continue.'
-              )
-            : null
+          sessionRecovery.status === 'signed-out'
+            ? sessionRecovery.notice
+            : startup.cloudSessionEnded &&
+                startupDecision.kind === 'show-connect' &&
+                startupDecision.initialPairingInput === null
+              ? translate(
+                  'auto.web.WebConnect.cloudSessionEnded',
+                  'Your cloud session ended when this page closed. Sign in again to continue.'
+                )
+              : null
         }
         onConnected={() => setHasEnvironment(true)}
       />

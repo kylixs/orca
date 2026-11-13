@@ -56,6 +56,44 @@ function publishRuntimeStatus(snapshot: RuntimeHostStatusSnapshot): void {
     listener(snapshot)
   }
 }
+
+const cloudSessionEndedListeners = new Set<() => void>()
+const endedCloudClients = new WeakSet<WebRuntimeSessionClient>()
+
+/**
+ * Fires once per adopted cloud client that reaches a terminal disconnect. A cloud
+ * ticket cannot reconnect, so this is the only in-page "sign in again" signal.
+ */
+export function subscribeCloudSessionEnded(listener: () => void): () => void {
+  cloudSessionEndedListeners.add(listener)
+  return () => {
+    cloudSessionEndedListeners.delete(listener)
+  }
+}
+
+function publishAdoptedClientStatus(
+  client: WebRuntimeSessionClient,
+  environment: StoredWebRuntimeEnvironment
+): (snapshot: RuntimeHostStatusSnapshot) => void {
+  return (snapshot) => {
+    publishRuntimeStatus(snapshot)
+    if (
+      !isCloudSessionWebEnvironment(environment) ||
+      webRuntimeState.activeClient !== client ||
+      snapshot.transport !== 'disconnected' ||
+      (client.connectionState !== 'disconnected' && client.connectionState !== 'auth-failed') ||
+      endedCloudClients.has(client)
+    ) {
+      return
+    }
+    // Why mark before notifying: a listener closes the client, whose dispose
+    // publishes another disconnected snapshot for the same ended session.
+    endedCloudClients.add(client)
+    for (const listener of Array.from(cloudSessionEndedListeners)) {
+      listener()
+    }
+  }
+}
 export function readWebRuntimeStatusSnapshots(): RuntimeHostStatusSnapshot[] {
   const snapshot = webRuntimeState.activeClient?.statusOwner?.read()
   return snapshot ? [snapshot] : []
@@ -114,7 +152,7 @@ export function adoptWebRuntimeClient(
   client.attachStatusOwner({
     environmentId: environment.id,
     pairingRevision: environment.pairingRevision ?? environment.createdAt,
-    publish: publishRuntimeStatus,
+    publish: publishAdoptedClientStatus(client, environment),
     verified: (response) => updateEnvironmentFromResponse(environment, response)
   })
   // Why: ownership moved, so an older client's socket must not linger unread.
