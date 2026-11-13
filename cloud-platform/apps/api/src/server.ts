@@ -474,7 +474,7 @@ export function createApp(config: ApiConfig): ApiHandle {
     const chosen = live.length > 0 ? live : relayNodes.all().slice(-1)
     return chosen.map((node, index) => ({
       priority: 99 + index,
-      url: `wss://127.0.0.1:${node.port}/`,
+      url: `wss://${node.host}:${node.port}/`,
       routeKey,
       sni: `${routeKey}.relay.local`
     }))
@@ -1470,6 +1470,28 @@ export function createApp(config: ApiConfig): ApiHandle {
     }
 
     // ---- hosts ----
+    // Relays are managed apart from dev hosts: their own page, own endpoint.
+    if (req.method === 'GET' && path === '/v1/relays') {
+      const authed = requireAuth()
+      if (!authed) return
+      if (!isAdmin(authed.user)) {
+        return denyPrivileged(res, traceId, authed.user, {
+          eventType: 'relay_list',
+          targetType: 'relay',
+          permission: 'platform:admin'
+        })
+      }
+      return json(res, 200, {
+        relays: relayNodes.all().map((node) => ({
+          id: node.id,
+          host: node.host,
+          port: node.port,
+          online: now() - node.lastSeenAt <= relayAliveMs,
+          lastSeenAt: node.lastSeenAt
+        }))
+      })
+    }
+
     if (req.method === 'GET' && path === '/v1/hosts') {
       const authed = requireAuth()
       if (!authed) return
@@ -1934,7 +1956,13 @@ export function createApp(config: ApiConfig): ApiHandle {
         return error(res, 400, 'RELAY_PORT_INVALID', '中继端口无效。', traceId)
       }
       relayPort = registration.port
-      const node = relayNodes.register(registration, now())
+      // Where clients dial this relay: what it announced, else the address it
+      // registered from. A co-located test relay keeps today's 127.0.0.1.
+      const source = (req.socket.remoteAddress ?? '').replace(/^::ffff:/, '')
+      const node = relayNodes.register(
+        { ...registration, ...(registration.host ? {} : { host: source }) },
+        now()
+      )
       return json(res, 200, {
         ok: true,
         relayPort,

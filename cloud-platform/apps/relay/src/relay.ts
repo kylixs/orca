@@ -8,6 +8,8 @@ export type RelayOptions = {
   port: number
   /** How the platform knows this relay; defaults to `relay:<port>`. */
   id?: string
+  /** The address clients dial (NAT/DNS name); default is the registration's source IP. */
+  publicHost?: string
   /** Control-plane URL for route sync. HTTPS here means mTLS is used. */
   apiUrl: string
   internalToken: string
@@ -144,7 +146,13 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ id: options.id ?? `relay:${announcedPort}`, port: announcedPort }),
+        body: JSON.stringify({
+          id: options.id ?? `relay:${announcedPort}`,
+          // Where clients should dial us: an explicit advertise wins (NAT),
+          // otherwise the platform falls back to the registration's source IP.
+          ...(options.publicHost ? { host: options.publicHost } : {}),
+          port: announcedPort
+        }),
         signal: AbortSignal.timeout(options.controlTimeoutMs ?? 3000)
       }
     )
@@ -284,6 +292,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     keyPath: process.env.INTERNAL_TLS_KEY,
     certPath: process.env.INTERNAL_TLS_CERT,
     caPath: process.env.INTERNAL_TLS_CA,
+    publicHost: process.env.RELAY_PUBLIC_HOST?.trim() || undefined,
     sniSuffix: process.env.RELAY_SNI_SUFFIX ?? undefined,
     maxConnectionsPerIp: process.env.RELAY_MAX_CONN_PER_IP
       ? Number(process.env.RELAY_MAX_CONN_PER_IP)
