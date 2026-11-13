@@ -21,6 +21,38 @@ export type CloudHostCredential = {
   registeredAt: number
 }
 
+/**
+ * The address part of an advertised direct address: `[v6]:port`, `v4:port`, a
+ * bare IPv6 literal, or a bare host. The port is not part of the label.
+ */
+export function ipOfDirectAddr(addr: string): string | null {
+  const value = addr.trim()
+  if (value === '') {
+    return null
+  }
+  if (value.startsWith('[')) {
+    const end = value.indexOf(']')
+    return end > 1 ? value.slice(1, end) : null
+  }
+  const first = value.indexOf(':')
+  const last = value.lastIndexOf(':')
+  if (first === -1) {
+    return value
+  }
+  // One colon separates host and port; several mean a bare IPv6 literal.
+  return first === last ? value.slice(0, first) : value
+}
+
+/**
+ * Route keys are the SNI labels clients dial through the relay, so they must be
+ * dot-free (the relay refuses dotted labels) and keep resolving — the advertised
+ * IP, not an intranet hostname. No address falls back to the hostname.
+ */
+export function defaultRelayRoute(directAddrs: string[], hostName: string): string {
+  const addr = directAddrs.map(ipOfDirectAddr).find((ip) => ip !== null)
+  return addr ? `ip-${addr.replace(/[.:]/g, '-')}` : hostName
+}
+
 export type EnrollInput = {
   apiUrl: string
   /** One-time token minted by an admin (`POST /v1/hosts/tokens`). */
@@ -91,7 +123,7 @@ export async function enrollCloudHost(
         networkZone: 'intranet',
         directAddrs: input.directAddrs,
         relayTarget: input.relayTarget ?? '',
-        relayRoute: input.relayRoute ?? input.hostName,
+        relayRoute: input.relayRoute ?? defaultRelayRoute(input.directAddrs, input.hostName),
         runtimeCapabilities: ['pty', 'files', 'agent', 'managed-credential'],
         ...(input.projectsRoot ? { projectsRoot: input.projectsRoot } : {})
       }),

@@ -10,7 +10,11 @@ import { parsePairingCode } from '../../shared/pairing'
 import { decrypt, deriveSharedKey, encrypt, generateKeyPair } from '../runtime/rpc/e2ee-crypto'
 import { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
-import { readStoredHostCredential } from './cloud-host-enrollment'
+import {
+  readStoredHostCredential,
+  defaultRelayRoute,
+  ipOfDirectAddr
+} from './cloud-host-enrollment'
 import {
   advertisedAddrs,
   startCloudRuntimeAdmission,
@@ -75,7 +79,7 @@ async function mintHostToken(): Promise<string> {
 }
 
 async function platformHosts(): Promise<
-  { id: string; name: string; status: string; directAddrs: string[] }[]
+  { id: string; name: string; status: string; directAddrs: string[]; relayRoute: string | null }[]
 > {
   const res = await fetch(`${platform.url}/v1/hosts`, {
     headers: { authorization: `Bearer ${adminToken}` }
@@ -85,7 +89,8 @@ async function platformHosts(): Promise<
     id: readString(host, 'id') ?? '',
     name: readString(host, 'name') ?? '',
     status: readString(host, 'status') ?? '',
-    directAddrs: readArray(host, 'directAddrs')?.filter((addr) => typeof addr === 'string') ?? []
+    directAddrs: readArray(host, 'directAddrs')?.filter((addr) => typeof addr === 'string') ?? [],
+    relayRoute: readString(host, 'relayRoute')
   }))
 }
 
@@ -307,6 +312,8 @@ describe('开发机自注册与心跳（真实平台 + 真实 Runtime）', () =>
     const row = hosts.find((entry) => entry.id === enrolled!.hostId)
     expect(row?.name).toBe('dev-enrolled')
     expect(row?.status).toBe('online')
+    // 注册时还未监听端口（无可上报地址），路由键回退主机名。
+    expect(row?.relayRoute).toBe('dev-enrolled')
   })
 
   it('注册凭证持久化，重启复用而不是再消耗一个令牌', async () => {
@@ -398,5 +405,21 @@ describe('开发机自注册与心跳（真实平台 + 真实 Runtime）', () =>
       headers: { 'content-type': 'application/json', authorization: `Bearer ${adminToken}` },
       body: JSON.stringify({ enabled: false })
     })
+  })
+})
+
+describe('默认路由键：上报 IP 优先于主机名（M114a）', () => {
+  it('取首个直连地址的 IP 部分，点与冒号改成横线（SNI 标签不含点）', () => {
+    expect(defaultRelayRoute(['192.168.2.202:5210'], 'dev-enrolled')).toBe('ip-192-168-2-202')
+    expect(defaultRelayRoute(['[fe80::1]:5210', '10.0.0.8:9'], 'dev-enrolled')).toBe('ip-fe80--1')
+    expect(defaultRelayRoute(['fe80::1'], 'dev-enrolled')).toBe('ip-fe80--1')
+    expect(ipOfDirectAddr('10.20.3.18:6768')).toBe('10.20.3.18')
+    expect(ipOfDirectAddr('[::1]:6768')).toBe('::1')
+  })
+
+  it('无直连地址回退主机名，显式配置由调用方优先', () => {
+    expect(defaultRelayRoute([], 'dev-enrolled')).toBe('dev-enrolled')
+    // 调用方语义：input.relayRoute 存在时原样上报，永不派生覆盖。
+    expect(defaultRelayRoute(['10.0.0.8:9'], 'dev-enrolled')).not.toBe('dev-enrolled')
   })
 })
