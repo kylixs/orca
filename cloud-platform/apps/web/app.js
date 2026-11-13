@@ -134,7 +134,7 @@ function renderForbidden() {
 }
 
 async function loadProjects() {
-  const body = await api('/v1/projects')
+  const body = await api('/v1/projects?includeArchived=1')
   state.projects = body.projects
   return body.projects
 }

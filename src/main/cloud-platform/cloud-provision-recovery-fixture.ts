@@ -101,7 +101,10 @@ export function parseCloudProjectRegistration(raw: unknown): CloudProjectRegistr
       failures.push({ projectId, projectKey, projectName, code })
     }
   }
-  return { environments, failures }
+  const removedEnvironmentIds = (readArrayValue(readField(raw, 'removedEnvironmentIds')) ?? [])
+    .map((item) => (typeof item === 'string' ? item : null))
+    .filter((item): item is string => item !== null)
+  return { environments, failures, removedEnvironmentIds }
 }
 
 export async function startRecoveryHarness(

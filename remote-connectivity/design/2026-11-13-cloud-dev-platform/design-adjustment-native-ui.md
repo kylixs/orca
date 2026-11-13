@@ -92,6 +92,8 @@
 
 | M64 | 签到准备有界并行：provision + 取票/选路按上限 3 并行，环境注册仍串行（sidecar 是读改写） | 真实平台 + 主机 + TLS + 3 个真实 git 项目：观察到的准备区间真实重叠且 ≤ 上限；失败隔离；环境顺序稳定 |
 
+| M65 | 项目归档闭环：归档释放 key/路径、恢复冲突保护、创建者可归档自己的项目；客户端归档后关闭连接并清理环境与侧栏 | 真实平台 + 主机 + TLS + git：归档后 live 会话被撤销、环境删除、key 可复用；恢复撞车 409 |
+
 ### 5.1 M57 项目创建 provisioning（平台不在数据通道）
 
 - **平台**：`POST /v1/projects` 仍 admin-only；有 `repoUrl` → `status: 'provisioning'`，无 → `ready`（路径由管理员备好）。连接票据新增可选 claim `repoUrl`、`defaultBranch`（旧主机忽略未知 claim）。

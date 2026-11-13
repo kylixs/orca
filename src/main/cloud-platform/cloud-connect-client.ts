@@ -190,6 +190,19 @@ export class CloudConnectClient {
     return createCloudProject(this.fetchImpl, this.options.apiUrl, this.auth, input)
   }
 
+  async archiveProject(projectId: string): Promise<void> {
+    const res = await cloudAuthorizedFetch(
+      this.fetchImpl,
+      this.options.apiUrl,
+      this.auth,
+      `/v1/projects/${projectId}/archive`,
+      { method: 'POST' }
+    )
+    if (!res.ok) {
+      return throwCloudPlatformError(res, `archive project failed: ${res.status}`)
+    }
+  }
+
   listProvisionableHosts(): Promise<CloudReplyHostOption[]> {
     return fetchProvisionableHosts(this.fetchImpl, this.options.apiUrl, this.auth)
   }

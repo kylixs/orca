@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { errorCodeOf, readField } from '../../../shared/json-fields'
 import type {
+  CloudArchiveProjectResult,
   CloudConnectionEvent,
   CloudCreateProjectInput,
   CloudCreateProjectResult,
@@ -27,6 +28,7 @@ export type CloudBridge = {
   registerProjects: () => Promise<CloudProjectRegistration>
   retryPrepare: (projectId: string) => Promise<CloudRetryPrepareResult>
   createProject: (input: CloudCreateProjectInput) => Promise<CloudCreateProjectResult>
+  archiveProject: (projectId: string) => Promise<CloudArchiveProjectResult>
   listProvisionableHosts: () => Promise<CloudProvisionableHost[]>
   closeProject: (projectId: string) => Promise<{ ok: boolean }>
   logout: () => Promise<CloudSessionState>

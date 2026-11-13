@@ -215,6 +215,35 @@ export function removeCloudRuntimeEnvironments(userDataPath: string): string[] {
   return projectIds.filter((projectId) => removeCloudRuntimeEnvironment(userDataPath, projectId))
 }
 
+/** The environment a project currently owns; callers purge its sidebar row by this id. */
+export function cloudEnvironmentIdForProject(
+  userDataPath: string,
+  projectId: string
+): string | null {
+  const environment = readEnvironmentStore(userDataPath).environments.find(
+    (entry) => entry.cloudProject?.projectId === projectId
+  )
+  return environment?.id ?? null
+}
+
+/** Drops environments whose project the platform no longer lists; returns their ids. */
+export function removeStaleCloudRuntimeEnvironments(
+  userDataPath: string,
+  visibleProjectIds: ReadonlySet<string>
+): string[] {
+  const removed: string[] = []
+  for (const entry of readEnvironmentStore(userDataPath).environments) {
+    const projectId = entry.cloudProject?.projectId
+    if (projectId === undefined || visibleProjectIds.has(projectId)) {
+      continue
+    }
+    if (removeCloudRuntimeEnvironment(userDataPath, projectId)) {
+      removed.push(entry.id)
+    }
+  }
+  return removed
+}
+
 /** Drops the environment for a project; the next open registers it again. */
 export function removeCloudRuntimeEnvironment(userDataPath: string, projectId: string): boolean {
   const known = readEnvironmentStore(userDataPath).environments

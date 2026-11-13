@@ -21,6 +21,8 @@ export const CLOUD_PLATFORM_IPC = {
   retryPrepare: 'cloud:retryPrepare',
   /** Args: `(input)`. Developer self-service creation; path is platform-derived. */
   createProject: 'cloud:createProject',
+  /** Args: `(projectId)`. Archives the project and retires its local environment. */
+  archiveProject: 'cloud:archiveProject',
   /** Lists hosts a developer may create a project on, without addresses or keys. */
   listProvisionableHosts: 'cloud:listProvisionableHosts',
   /** Args: `(method, params, projectId)`. Routes to that project's own socket. */
@@ -106,7 +108,17 @@ export type CloudProjectFailure = {
 export type CloudProjectRegistration = {
   environments: CloudProjectEnvironment[]
   failures: CloudProjectFailure[]
+  /** Environments dropped because the platform no longer lists their project. */
+  removedEnvironmentIds: string[]
 }
+
+export type CloudArchiveProjectResult =
+  | {
+      ok: true
+      /** The retired environment, or null when the project had none registered. */
+      environmentId: string | null
+    }
+  | { ok: false; code: string; message?: string }
 
 export type CloudRetryPrepareResult =
   | { ok: true; environment: CloudProjectEnvironment }

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { useAppStore } from '@/store'
 import type {
   CloudConnectionEvent,
   CloudOpenResult,
@@ -26,7 +27,11 @@ const PROJECTS: CloudProjectSummary[] = [
   }
 ]
 
-const EMPTY_REGISTRATION: CloudProjectRegistration = { environments: [], failures: [] }
+const EMPTY_REGISTRATION: CloudProjectRegistration = {
+  environments: [],
+  failures: [],
+  removedEnvironmentIds: []
+}
 
 type Deferred<T> = { promise: Promise<T>; resolve: (value: T) => void }
 
@@ -62,6 +67,7 @@ function makeBridge(
     registerProjects: async () => registerProjects,
     retryPrepare,
     createProject: async () => ({ ok: false, code: 'ADMIN_SESSION_UNSUPPORTED' }),
+    archiveProject: async () => ({ ok: false, code: 'ADMIN_SESSION_UNSUPPORTED' }),
     listProvisionableHosts: async () => [],
     closeProject: async () => ({ ok: true }),
     logout: async (): Promise<CloudSessionState> => ({ status: 'signed-out' }),
@@ -121,6 +127,21 @@ describe('云端原生入口', () => {
     expect(screen.getByTestId('workspace-shell')).toBeTruthy()
   })
 
+  it('登记返回已消失的环境 id 时清理对应侧栏行', async () => {
+    const purge = vi.spyOn(useAppStore.getState(), 'purgeStaleRuntimeHostState')
+    const bridge = makeBridge(
+      Promise.resolve({
+        environments: [],
+        failures: [],
+        removedEnvironmentIds: ['env-gone']
+      })
+    )
+    renderEntry(bridge)
+
+    await waitFor(() => expect(purge).toHaveBeenCalledWith(['env-gone']))
+    purge.mockRestore()
+  })
+
   it('登记失败时显示项目名与错误码，且不阻塞工作区', async () => {
     const bridge = makeBridge(
       Promise.resolve({
@@ -133,7 +154,8 @@ describe('云端原生入口', () => {
             code: 'CLONE_FAILED',
             message: '项目准备失败'
           }
-        ]
+        ],
+        removedEnvironmentIds: []
       })
     )
     renderEntry(bridge)
@@ -156,7 +178,8 @@ describe('云端原生入口', () => {
             projectName: 'Payment Service',
             code: 'CLONE_FAILED'
           }
-        ]
+        ],
+        removedEnvironmentIds: []
       })
     )
     renderEntry(bridge)
@@ -244,7 +267,8 @@ describe('云端原生入口', () => {
             projectName: 'Payment Service',
             code: 'CLONE_FAILED'
           }
-        ]
+        ],
+        removedEnvironmentIds: []
       }),
       async () => {
         if (!retried) {

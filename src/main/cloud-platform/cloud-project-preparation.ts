@@ -6,7 +6,10 @@ import type {
 } from '../../shared/cloud-platform-ipc'
 import { boundedParallelMap } from '../../shared/bounded-parallel-map'
 import type { CloudProjectLink } from './cloud-pairing-offer'
-import { registerCloudRuntimeEnvironment } from './cloud-runtime-environment'
+import {
+  registerCloudRuntimeEnvironment,
+  removeStaleCloudRuntimeEnvironments
+} from './cloud-runtime-environment'
 import type { CloudSessionService } from './cloud-session-service'
 
 // Clone/probe work may overlap; the environment sidecar registration may not.
@@ -119,5 +122,10 @@ export async function registerProjectEnvironments(
     }
     environments.push(registerPreparedEnvironment(userDataPath, project, candidate.link))
   }
-  return { environments, failures }
+  // Why: an archived project leaves the visible list, so its sidebar host must go too.
+  const removedEnvironmentIds = removeStaleCloudRuntimeEnvironments(
+    userDataPath,
+    new Set(projects.map((project) => project.id))
+  )
+  return { environments, failures, removedEnvironmentIds }
 }

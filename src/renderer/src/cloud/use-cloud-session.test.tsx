@@ -102,9 +102,14 @@ function makeBridge(script: Script = {}): TestBridge {
       }
       return result.ok ? { ...result, environmentId: `cloud-${projectId}` } : result
     },
-    registerProjects: async () => ({ environments: [], failures: [] }),
+    registerProjects: async () => ({
+      environments: [],
+      failures: [],
+      removedEnvironmentIds: []
+    }),
     retryPrepare: async () => ({ ok: false, code: 'CLONE_FAILED' }),
     createProject: async () => ({ ok: false, code: 'CREATE_FAILED' }),
+    archiveProject: async () => ({ ok: false, code: 'ARCHIVE_FAILED' }),
     listProvisionableHosts: async () => [],
     closeProject: async () => {
       bridge.closedProjects += 1

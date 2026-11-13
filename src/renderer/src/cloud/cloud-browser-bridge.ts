@@ -1,6 +1,7 @@
 import { readTicketClaims } from '../../../shared/cloud-platform-reply'
 import { openCloudWorkspaceOverRpc } from '../../../shared/cloud-workspace-open'
 import type {
+  CloudArchiveProjectResult,
   CloudConnectionEvent,
   CloudCreateProjectResult,
   CloudOpenResult,
@@ -267,7 +268,7 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
 
     /** A browser has no runtime-environment registry; the admin page never uses it. */
     async registerProjects(): Promise<CloudProjectRegistration> {
-      return { environments: [], failures: [] }
+      return { environments: [], failures: [], removedEnvironmentIds: [] }
     },
 
     /** Admin pages have no native environment to register a recovered project into. */
@@ -277,6 +278,11 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
 
     /** Admin pages have no runtime host, so creation cannot produce an environment. */
     async createProject(): Promise<CloudCreateProjectResult> {
+      return { ok: false, code: 'ADMIN_SESSION_UNSUPPORTED' }
+    },
+
+    /** Admin pages have no native environment to retire. */
+    async archiveProject(): Promise<CloudArchiveProjectResult> {
       return { ok: false, code: 'ADMIN_SESSION_UNSUPPORTED' }
     },
 

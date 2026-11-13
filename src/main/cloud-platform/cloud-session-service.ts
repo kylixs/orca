@@ -184,6 +184,32 @@ export class CloudSessionService {
     }
   }
 
+  /** Archive, retire this project's socket, then refresh the visible list. */
+  async archiveProject(
+    projectId: string
+  ): Promise<{ ok: true } | { ok: false; code: string; message?: string }> {
+    if (!this.client) {
+      return { ok: false, code: 'NOT_SIGNED_IN' }
+    }
+    try {
+      await this.client.archiveProject(projectId)
+    } catch (error) {
+      return {
+        ok: false,
+        code: this.expiredCode(error) ?? errorCodeOf(error) ?? 'ARCHIVE_PROJECT_FAILED',
+        message: error instanceof Error ? error.message : String(error)
+      }
+    }
+    this.connections.close(projectId)
+    try {
+      await this.listProjects()
+    } catch (error) {
+      // The archive already happened; a stale list must not turn it into a failure.
+      this.expiredCode(error)
+    }
+    return { ok: true }
+  }
+
   async listProvisionableHosts(): Promise<CloudProvisionableHost[]> {
     if (!this.client) {
       return []

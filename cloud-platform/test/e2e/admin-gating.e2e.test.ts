@@ -87,9 +87,13 @@ describe('M8 管控面服务端门禁（AC-18 / AC-32）', () => {
       body: { downloadPolicy: 'allow' },
       label: '修改项目下载策略'
     },
-    { method: 'POST', path: '/v1/projects/proj_payment/archive', label: '归档项目' },
     { method: 'GET', path: '/v1/audit/events?limit=10', label: '查询审计日志' },
-    { method: 'PUT', path: '/v1/policies/download', body: { downloadDefault: 'allow' }, label: '修改全局策略' }
+    {
+      method: 'PUT',
+      path: '/v1/policies/download',
+      body: { downloadDefault: 'allow' },
+      label: '修改全局策略'
+    }
   ]
 
   for (const route of adminOnly) {
@@ -117,11 +121,23 @@ describe('M8 管控面服务端门禁（AC-18 / AC-32）', () => {
     saveEvidence(EVIDENCE, 'admin-readonly-success.json', results)
   })
 
+  test('非创建者归档项目返回 404（M65 自助归档，与无权限同语义）', async () => {
+    const res = await fetch(`${api.url}/v1/projects/proj_payment/archive`, {
+      method: 'POST',
+      headers: auth(devToken)
+    })
+    const body = (await res.json()) as { error?: { code: string } }
+    assert.equal(res.status, 404)
+    assert.equal(body.error?.code, 'PROJECT_NOT_FOUND')
+  })
+
   test('开发者访问项目详情：有权限 200，无权限统一 404', async () => {
     const visible = await fetch(`${api.url}/v1/projects/proj_payment`, { headers: auth(devToken) })
     assert.equal(visible.status, 200)
 
-    const unknown = await fetch(`${api.url}/v1/projects/proj_does_not_exist`, { headers: auth(devToken) })
+    const unknown = await fetch(`${api.url}/v1/projects/proj_does_not_exist`, {
+      headers: auth(devToken)
+    })
     const unknownBody = (await unknown.json()) as { error?: { code: string } }
     assert.equal(unknown.status, 404)
     assert.equal(unknownBody.error?.code, 'PROJECT_NOT_FOUND')
@@ -151,7 +167,10 @@ describe('M8 管控面服务端门禁（AC-18 / AC-32）', () => {
     const body = (await res.json()) as { events: { result: string; actor: string | null }[] }
     const denied = body.events.filter((e) => e.result === 'denied' && e.actor === 'zhangsan')
     assert.ok(denied.length >= 1, 'denied project_create event expected')
-    saveEvidence(EVIDENCE, 'denied-audit.json', { deniedCount: denied.length, events: body.events.slice(0, 5) })
+    saveEvidence(EVIDENCE, 'denied-audit.json', {
+      deniedCount: denied.length,
+      events: body.events.slice(0, 5)
+    })
   })
 
   test('开发者无法通过响应差异探测项目是否存在（未知 vs 无权限）', async () => {
@@ -170,8 +189,12 @@ describe('M8 管控面服务端门禁（AC-18 / AC-32）', () => {
     assert.equal(created.status, 201)
     const createdBody = (await created.json()) as { id: string }
 
-    const forbidden = await fetch(`${api.url}/v1/projects/${createdBody.id}`, { headers: auth(devToken) })
-    const missing = await fetch(`${api.url}/v1/projects/proj_missing_anyway`, { headers: auth(devToken) })
+    const forbidden = await fetch(`${api.url}/v1/projects/${createdBody.id}`, {
+      headers: auth(devToken)
+    })
+    const missing = await fetch(`${api.url}/v1/projects/proj_missing_anyway`, {
+      headers: auth(devToken)
+    })
     assert.equal(forbidden.status, missing.status, 'status must not differ')
     const normalise = (body: { error?: Record<string, unknown> }): unknown => {
       const { traceId: _traceId, ...rest } = body.error ?? {}

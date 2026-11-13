@@ -1242,11 +1242,37 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 4. 任务**抛出**异常（不同于 `{ok:false}`）仍会中断整次 `registerProjects`，保持 M58 之前的行为。
 5. 并发证明依赖测试侧在真实调用外包 150ms 的观测窗口（真实 clone 太快不足以稳定交叠）；串行实现下该断言必然失败，负向对照已验证。
 
+## M65 项目归档闭环（本轮，开发子代理执行 + 主会话修正）
+
+**问题**：平台早就有 `POST /v1/projects/:id/archive|/restore`（admin-only，archive 会写项目撤销），但没有闭环：归档项目**永久占用 key 与路径**（自助/管理员建项目判重都遍历含 archived 的项目）；restore 无条件置 `ready`（带 `repoUrl` 且从未克隆的项目恢复后被当成已就绪）；restore 不防撞车；创建者不能归档自己的项目；客户端在项目归档后**不清理**已注册的 runtime environment 与侧栏 repo 行。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-platform/apps/api/src/project-occupancy.ts`（新） | `projectKeyTaken`/`projectPathTaken` 只统计非 archived 项目；`isProjectCreator`。管理员/自助创建统一使用 |
+| `server.ts` | archive：释放 `projectsByKey`、幂等、写 `revokeProjectCredentials('project_archived')`；restore：`repoUrl` 非空 → `provisioning`（否则 `ready`）、清 `provisioningError`、key/path 被占用 → 409 + failure 审计、成功后重占 key；archive/restore 允许**管理员或创建者**，其它人 404；archived 项目除 archive/restore 外一律 404 |
+| `server.ts`（主会话修正） | `GET /v1/projects` 默认**不返回** archived（管理员也一样），新增 `?includeArchived=1`（仅管理员）给管理台；`apps/web/app.js` 改用该参数。理由：原生桌面端用同一接口注册环境，若管理员看到 archived 会把历史项目当成活跃项目去准备 |
+| `cloud-connect-client.ts` / `cloud-session-service.ts` / IPC / preload | `archiveProject(projectId)`：归档 → 关闭该项目连接 → 刷新列表；IPC 删除运行时环境并返回 `environmentId` |
+| `cloud-runtime-environment.ts` / `cloud-project-preparation.ts` / `registerProjects` | `removeStaleCloudRuntimeEnvironments`：签到注册后清理不在可见项目集合里的云环境，`CloudProjectRegistration` 新增 `removedEnvironmentIds` |
+| `renderer/cloud-workspace-entry.tsx` | 收到 `removedEnvironmentIds` → `purgeStaleRuntimeHostState` 清掉侧栏行；对外暴露 `archiveProject` 能力（未新增按钮） |
+
+**验证（`evidence/m65-project-archive/`）**：
+- 平台 e2e 5 条（真实平台进程）：创建者归档自己的项目 200、非创建者 404、管理员可归档他人；归档后创建者列表/详情均不可见，管理员默认列表也不可见、`includeArchived=1` 可见且 `status: archived`；同 key 再建 201（新 id）而对活跃 key 仍 409；restore 撞 key → 409 `PROJECT_KEY_TAKEN`，撞车解除后 restore → `provisioning`；archive 写入项目撤销（internal revocations 可查）。
+- 真实端到端 1 条（真实平台 + 真实注册主机/心跳 + 真实 TLS Runtime + 真实 bare git + 真实 `cloud:archiveProject`）：归档后该项目的 **live WSS 会话在 9.4s 被主机以 4403 关闭**、侧车环境已删除、管理员状态 archived/详情 404、`cloudProjectReposOnHosts` 选中该行；同 key 重建成功（见限制 1）。
+- 回归：10 个相关 vitest 文件 **36 条全过**；平台 e2e **全套 94 条全过**；`tsc tc.web` 0 错、`tsc node` 仅 2 条既有 TS6307；`check:code-quality:changed` 0 新发现。
+
+**主会话独立负向对照**：子代理把归档权限改回仅管理员 → 平台 e2e 5/5 全红（创建者归档 404），恢复后全绿。主会话另发现并修正了管理员列表泄露 archived 的问题（见上表第 3 行），并同步改了 `admin-gating` 用例与真实 e2e fixture 的列表参数（`admin-gating` + `project-archive` 18 条全过）。
+
+**如实记录 / 剩余**：
+1. **主机目录不回收**：归档只删平台记录，`projectsRoot/<key>` 目录仍在。同 key 重建时该目录仍是 git 仓库，provisioning 判定“已准备”，因此**复用旧 checkout**（`oldCheckoutSurvived: true`、`reborn.ok: true`），而不是全新克隆。是否删除用户磁盘必须由用户/管理员显式决定，本轮不自动删。
+2. 路径冲突判定不区分主机（沿用自助创建既有语义）：不同主机上的同路径项目也算冲突。
+3. 未新增归档按钮；能力通过 `useCloudWorkspaceEntry().archiveProject` 暴露。
+4. 管理台（`apps/web`）通过 `includeArchived=1` 看到归档项目以便恢复；原生云会话列表默认不含。
+5. 归档后侧栏行的清理只在下次签到注册或显式调用时发生；若归档由管理员在平台侧完成，当前已登录会话在主机刷新周期内收到 4403 关闭，但侧栏行要等重新注册。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M64（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M65（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步（按缺口排序）**：
-1. **项目删除/重命名**：创建失败或废弃的项目会永久占用 key 与 `projectsRoot/<key>` 路径。
-2. **Refresh token 持久化**：桌面重启与浏览器重载都需重新登录；需要安全存储方案。
-3. **`agent.launch` 在本人工作区的真实执行**未被实际验证（历史仅覆盖拒绝路径）。
+1. **Refresh token 持久化**：桌面重启与浏览器重载都需重新登录；需要安全存储方案。
+2. **`agent.launch` 在本人工作区的真实执行**未被实际验证（历史仅覆盖拒绝路径）。

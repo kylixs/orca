@@ -29,9 +29,14 @@ function makeBridge(
     listProjects: async () => [],
     openProject: async () => ({ ok: false, code: 'UNUSED' }),
     openWorkspace: async () => ({ ok: false, code: 'UNUSED' }),
-    registerProjects: async () => ({ environments: [], failures: [] }),
+    registerProjects: async () => ({
+      environments: [],
+      failures: [],
+      removedEnvironmentIds: []
+    }),
     retryPrepare: async () => ({ ok: false, code: 'UNUSED' }),
     createProject: options.create ?? (async () => ({ ok: false, code: 'UNUSED' })),
+    archiveProject: async () => ({ ok: false, code: 'UNUSED' }),
     listProvisionableHosts: async () => options.hosts ?? [],
     closeProject: async () => ({ ok: true }),
     rpc: async () => ({ ok: true, result: {} }),

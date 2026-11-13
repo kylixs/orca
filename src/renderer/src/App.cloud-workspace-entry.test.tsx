@@ -159,10 +159,12 @@ function cloudBridge(overrides: Record<string, unknown> = {}) {
           environmentId: 'env-b'
         }
       ],
-      failures: []
+      failures: [],
+      removedEnvironmentIds: []
     }),
     retryPrepare: async () => ({ ok: false, code: 'CLONE_FAILED' }),
     createProject: async () => ({ ok: false, code: 'CREATE_FAILED' }),
+    archiveProject: async () => ({ ok: false, code: 'ARCHIVE_FAILED' }),
     listProvisionableHosts: async () => [],
     openWorkspace: async (projectId: string) => ({
       ok: true,

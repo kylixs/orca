@@ -2,6 +2,7 @@ import * as React from 'react'
 import { toast } from 'sonner'
 import { errorCodeOf } from '../../../shared/json-fields'
 import type {
+  CloudArchiveProjectResult,
   CloudCreateProjectResult,
   CloudProjectEnvironment,
   CloudProjectFailure
@@ -47,10 +48,11 @@ export type CloudWorkspaceEntryState = {
   retrying: boolean
   retryFailures: () => Promise<void>
   registerCreatedProject: (result: CloudCreateProjectResult) => Promise<void>
+  archiveProject: (projectId: string) => Promise<CloudArchiveProjectResult>
   signOut: () => Promise<void>
 }
 
-function useCloudWorkspaceEntry(
+export function useCloudWorkspaceEntry(
   bridge: CloudBridge,
   session: CloudSessionView
 ): CloudWorkspaceEntryState {
@@ -98,6 +100,9 @@ function useCloudWorkspaceEntry(
         const preparedEnvironments = registered.environments
         environments.current = preparedEnvironments
         setFailures(registered.failures)
+        if (registered.removedEnvironmentIds.length > 0) {
+          useAppStore.getState().purgeStaleRuntimeHostState(registered.removedEnvironmentIds)
+        }
         // Why fire-and-forget: the sidebar needs the host rows, but a slow status
         // probe must not hold the shell hostage.
         void useAppStore.getState().hydrateRuntimeEnvironmentStatuses()
@@ -223,6 +228,25 @@ function useCloudWorkspaceEntry(
     [bridge]
   )
 
+  const archiveProject = React.useCallback(
+    async (projectId: string): Promise<CloudArchiveProjectResult> => {
+      try {
+        const result = await bridge.archiveProject(projectId)
+        if (!result.ok) {
+          return result
+        }
+        if (result.environmentId) {
+          useAppStore.getState().purgeStaleRuntimeHostState([result.environmentId])
+        }
+        environments.current = environments.current.filter((entry) => entry.projectId !== projectId)
+        return result
+      } catch (error) {
+        return { ok: false, code: entryFailureCode(error) }
+      }
+    },
+    [bridge]
+  )
+
   const signOut = React.useCallback(async () => {
     const registered = environments.current
     await signOutCloudProjectRepos({
@@ -245,6 +269,7 @@ function useCloudWorkspaceEntry(
     retrying,
     retryFailures,
     registerCreatedProject,
+    archiveProject,
     signOut
   }
 }

@@ -1,4 +1,5 @@
 import type {
+  CloudArchiveProjectResult,
   CloudConnectionEvent,
   CloudCreateProjectInput,
   CloudCreateProjectResult,
@@ -25,6 +26,8 @@ export type CloudPlatformApi = {
   retryPrepare: (projectId: string) => Promise<CloudRetryPrepareResult>
   /** Developer self-service creation; path is derived by the platform. */
   createProject: (input: CloudCreateProjectInput) => Promise<CloudCreateProjectResult>
+  /** Archive a project the user created; retires its local runtime environment. */
+  archiveProject: (projectId: string) => Promise<CloudArchiveProjectResult>
   /** Credential-free host catalog for the creation dialog. */
   listProvisionableHosts: () => Promise<CloudProvisionableHost[]>
   /** Leave one project's workspace; its socket closes, the platform session survives. */

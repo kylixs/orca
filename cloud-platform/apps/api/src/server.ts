@@ -15,6 +15,7 @@ import {
   joinProjectPath,
   selectSelfServiceHost
 } from './project-self-service.ts'
+import { isProjectCreator, projectKeyTaken, projectPathTaken } from './project-occupancy.ts'
 import {
   generateSigningKey,
   newDeviceToken,
@@ -673,10 +674,14 @@ export function createApp(config: ApiConfig): ApiHandle {
     if (req.method === 'GET' && path === '/v1/projects') {
       const authed = requireAuth()
       if (!authed) return
+      // Why opt-in: archived rows are history; the admin console asks for them to
+      // restore, while a signed-in desktop must never treat one as a live project.
+      const includeArchived =
+        url.searchParams.get('includeArchived') === '1' && isAdmin(authed.user)
       const visible = [...store.projects.values()]
         .filter(
           (p) =>
-            p.status !== 'archived' &&
+            (includeArchived || p.status !== 'archived') &&
             (isAdmin(authed.user) || store.effectivePermissions(p.id, authed.user).includes('open'))
         )
         .map((p) => projectView(p, authed.user))
@@ -703,7 +708,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       const target = store.hosts.get(hostId)
       if (!target) return error(res, 400, 'HOST_NOT_FOUND', '主机不存在。', traceId)
       const key = String(body.key ?? '')
-      if (store.projectsByKey.has(key)) {
+      if (projectKeyTaken(store, key)) {
         return error(res, 409, 'PROJECT_EXISTS', '项目 Key 已存在。', traceId)
       }
       const pathVerdict = validateProjectPath(body.path)
@@ -718,6 +723,9 @@ export function createApp(config: ApiConfig): ApiHandle {
           metadata: { reason: pathVerdict.code, path: String(body.path ?? '') }
         })
         return error(res, 400, pathVerdict.code, pathVerdict.message, traceId)
+      }
+      if (projectPathTaken(store, pathVerdict.path)) {
+        return error(res, 409, 'PROJECT_PATH_TAKEN', '该主机目录下已存在同路径的项目。', traceId)
       }
       const repoUrlVerdict = validateProjectRepoUrl(body.repoUrl)
       if (!repoUrlVerdict.ok) {
@@ -825,7 +833,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         return deny(selection.status, selection.code, selection.message, selection.details)
       }
       const key = keyVerdict.key
-      if (store.projectsByKey.has(key)) {
+      if (projectKeyTaken(store, key)) {
         return deny(409, 'PROJECT_KEY_TAKEN', '项目 Key 已被占用，请更换。')
       }
       const root = selection.host.projectsRoot
@@ -833,10 +841,8 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (derivedPath === null) {
         return deny(400, 'PROJECT_PATH_INVALID', '无法根据主机目录生成合法的项目路径。')
       }
-      for (const existing of store.projects.values()) {
-        if (existing.path === derivedPath) {
-          return deny(409, 'PROJECT_PATH_TAKEN', '该主机目录下已存在同路径的项目。')
-        }
+      if (projectPathTaken(store, derivedPath)) {
+        return deny(409, 'PROJECT_PATH_TAKEN', '该主机目录下已存在同路径的项目。')
       }
       if (
         countActiveProjectsCreatedBy(store.projects.values(), authed.user.username) >=
@@ -911,6 +917,13 @@ export function createApp(config: ApiConfig): ApiHandle {
           result: 'denied',
           traceId
         })
+        return error(res, 404, 'PROJECT_NOT_FOUND', '项目不存在或无权访问。', traceId)
+      }
+
+      const archiveAction =
+        req.method === 'POST' && (action === '/archive' || action === '/restore')
+      // Why: an archived project is history; only archive/restore may still see it.
+      if (found.status === 'archived' && !archiveAction) {
         return error(res, 404, 'PROJECT_NOT_FOUND', '项目不存在或无权访问。', traceId)
       }
 
@@ -1051,27 +1064,93 @@ export function createApp(config: ApiConfig): ApiHandle {
         return json(res, 200, { ok: true })
       }
 
-      if (req.method === 'POST' && (action === '/archive' || action === '/restore')) {
-        if (!isAdmin(authed.user)) {
-          return error(res, 403, 'PERMISSION_DENIED', '需要平台管理权限。', traceId)
+      if (archiveAction) {
+        const selfService = isProjectCreator(found, authed.user.username) && !isAdmin(authed.user)
+        if (!isAdmin(authed.user) && !selfService) {
+          // Same payload as unknown/unreadable: never leak the project's existence.
+          return error(res, 404, 'PROJECT_NOT_FOUND', '项目不存在或无权访问。', traceId)
+        }
+        if (action === '/archive') {
+          if (found.status !== 'archived') {
+            if (
+              !recordAudit(
+                res,
+                {
+                  eventType: 'project_archive',
+                  actor: authed.user.username,
+                  targetType: 'project',
+                  targetId: projectId,
+                  result: 'success',
+                  traceId,
+                  metadata: { selfService }
+                },
+                traceId
+              )
+            ) {
+              return
+            }
+            found.status = 'archived'
+            if (store.projectsByKey.get(found.key)?.id === found.id) {
+              store.projectsByKey.delete(found.key)
+            }
+            // Why: live host sockets only learn about an archived project here.
+            revokeProjectCredentials(projectId, 'project_archived')
+          }
+          return json(res, 200, projectView(found, authed.user))
+        }
+        const conflict = projectKeyTaken(store, found.key, found.id)
+          ? ('PROJECT_KEY_TAKEN' as const)
+          : projectPathTaken(store, found.path, found.id)
+            ? ('PROJECT_PATH_TAKEN' as const)
+            : null
+        if (conflict !== null) {
+          if (
+            !recordAudit(
+              res,
+              {
+                eventType: 'project_restore',
+                actor: authed.user.username,
+                targetType: 'project',
+                targetId: projectId,
+                result: 'failure',
+                traceId,
+                metadata: { selfService, reason: conflict }
+              },
+              traceId
+            )
+          ) {
+            return
+          }
+          return error(
+            res,
+            409,
+            conflict,
+            conflict === 'PROJECT_KEY_TAKEN'
+              ? '项目 Key 已被占用，无法恢复。'
+              : '项目路径已被占用，无法恢复。',
+            traceId
+          )
         }
         if (
           !recordAudit(
             res,
             {
-              eventType: action === '/archive' ? 'project_archive' : 'project_restore',
+              eventType: 'project_restore',
               actor: authed.user.username,
               targetType: 'project',
               targetId: projectId,
               result: 'success',
-              traceId
+              traceId,
+              metadata: { selfService }
             },
             traceId
           )
         ) {
           return
         }
-        found.status = action === '/archive' ? 'archived' : 'ready'
+        found.status = found.repoUrl ? 'provisioning' : 'ready'
+        delete found.provisioningError
+        store.projectsByKey.set(found.key, found)
         return json(res, 200, projectView(found, authed.user))
       }
 

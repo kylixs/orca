@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain, type WebContents } from 'electron'
 import {
   CLOUD_PLATFORM_IPC,
+  type CloudArchiveProjectResult,
   type CloudCreateProjectInput,
   type CloudCreateProjectResult,
   type CloudOpenResult,
@@ -17,6 +18,7 @@ import {
   registerProjectEnvironments
 } from '../cloud-platform/cloud-project-preparation'
 import {
+  cloudEnvironmentIdForProject,
   registerCloudRuntimeEnvironment,
   removeCloudRuntimeEnvironment,
   removeCloudRuntimeEnvironments
@@ -103,7 +105,7 @@ export function registerCloudPlatformHandlers(
   handle<CloudProjectRegistration>(CLOUD_PLATFORM_IPC.registerProjects, async () => {
     const state = session.getState()
     if (state.status !== 'signed-in' || !options.userDataPath) {
-      return { environments: [], failures: [] }
+      return { environments: [], failures: [], removedEnvironmentIds: [] }
     }
     return registerProjectEnvironments(
       session,
@@ -149,6 +151,18 @@ export function registerCloudPlatformHandlers(
       return prepared.ok
         ? { ok: true, projectId: created.projectId, environment: prepared.environment }
         : { ...prepared, projectId: created.projectId, project: created.project }
+    }
+  )
+  handle<CloudArchiveProjectResult>(
+    CLOUD_PLATFORM_IPC.archiveProject,
+    async (projectId: string) => {
+      const archived = await session.archiveProject(projectId)
+      if (!archived.ok || !options.userDataPath) {
+        return archived.ok ? { ok: true, environmentId: null } : archived
+      }
+      const environmentId = cloudEnvironmentIdForProject(options.userDataPath, projectId)
+      removeCloudRuntimeEnvironment(options.userDataPath, projectId)
+      return { ok: true, environmentId }
     }
   )
   handle<CloudProvisionableHost[]>(CLOUD_PLATFORM_IPC.listProvisionableHosts, async () => {
