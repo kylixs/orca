@@ -62,6 +62,8 @@ export type CloudOpenedProject = {
   route: 'direct' | 'relay'
   /** Runtime environment panes address; absent when registration was skipped. */
   environmentId?: string
+  /** How the route was chosen (FR-5.7); absent when the reply predates it. */
+  connectDiagnostics?: CloudConnectDiagnostics
 }
 
 export type CloudSessionView = {
@@ -235,7 +237,8 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
         capabilities: result.capabilities,
         ...(result.permissions ? { permissions: result.permissions } : {}),
         route: result.route,
-        ...(result.environmentId ? { environmentId: result.environmentId } : {})
+        ...(result.environmentId ? { environmentId: result.environmentId } : {}),
+        ...(result.connectDiagnostics ? { connectDiagnostics: result.connectDiagnostics } : {})
       })
       setRoute(result.route)
       setStatus('signed-in')

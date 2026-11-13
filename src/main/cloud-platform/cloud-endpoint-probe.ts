@@ -40,3 +40,14 @@ export function describeEndpoint(url: string): string {
     return url
   }
 }
+
+/**
+ * The failure the client throws when nothing answered. The probe log rides on the
+ * error so both the failure panel and the workspace can name the addresses (AC-07).
+ */
+export function endpointUnreachableError(probes: EndpointProbe[]): Error {
+  return Object.assign(new Error('no reachable endpoint'), {
+    code: 'ENDPOINT_UNREACHABLE',
+    probes
+  })
+}

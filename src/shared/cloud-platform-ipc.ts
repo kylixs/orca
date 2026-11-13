@@ -85,6 +85,12 @@ export type CloudOpenResult =
       environmentId?: string
       /** Pinned fingerprint of the host this project runs on; the UI shows it (AC-29). */
       hostFingerprint?: string
+      /**
+       * How the route was chosen: every endpoint probed, in order, with its
+       * latency. Present on success as well as failure, so the workspace can show
+       * the line and its delay instead of only learning it when things break.
+       */
+      connectDiagnostics?: CloudConnectDiagnostics
     }
   | {
       ok: false

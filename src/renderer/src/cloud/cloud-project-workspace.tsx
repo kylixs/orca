@@ -6,6 +6,8 @@ import type { CloudProjectSummary, CloudRpcOutcome } from '../../../shared/cloud
 import type { CloudRpc } from '../../../shared/cloud-file-browser'
 import type { CloudSessionView } from './use-cloud-session'
 import { cloudCloseNotice } from './cloud-close-notice'
+import { translate } from '@/i18n/i18n'
+import { CloudConnectionDiagnosticsDialog, chosenProbe } from './cloud-connection-diagnostics'
 import { CloudFilePanel } from './cloud-file-panel'
 
 export type CloudProjectWorkspaceProps = {
@@ -31,7 +33,10 @@ export function CloudProjectWorkspace({
   rpc
 }: CloudProjectWorkspaceProps): React.JSX.Element {
   const [live, setLive] = React.useState<LiveState>({ kind: 'checking' })
+  const [diagnosticsOpen, setDiagnosticsOpen] = React.useState(false)
   const opened = session.opened
+  const diagnostics = opened?.connectDiagnostics
+  const chosen = chosenProbe(diagnostics)
 
   const check = React.useCallback(async () => {
     setLive({ kind: 'checking' })
@@ -54,6 +59,15 @@ export function CloudProjectWorkspace({
 
   return (
     <div className="flex h-full flex-col bg-background">
+      {diagnostics && opened ? (
+        diagnosticsOpen ? (
+          <CloudConnectionDiagnosticsDialog
+            route={opened.route}
+            diagnostics={diagnostics}
+            onClose={() => setDiagnosticsOpen(false)}
+          />
+        ) : null
+      ) : null}
       <header className="flex items-center justify-between border-b border-border px-6 py-4">
         <div className="flex min-w-0 flex-col gap-0.5">
           <div className="flex items-center gap-2">
@@ -61,6 +75,11 @@ export function CloudProjectWorkspace({
             <Badge variant="secondary" data-testid="cloud-route">
               {opened?.route === 'relay' ? '中继' : '直连'}
             </Badge>
+            {chosen ? (
+              <span className="text-xs text-muted-foreground" data-testid="cloud-route-latency">
+                {chosen.elapsedMs}ms
+              </span>
+            ) : null}
             {project.downloadRestricted ? (
               <span className="text-xs text-muted-foreground">下载受限</span>
             ) : null}
@@ -70,9 +89,21 @@ export function CloudProjectWorkspace({
             {project.hostName ? ` · ${project.hostName}` : ''}
           </p>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => void session.closeProject(project.id)}>
-          返回工作台
-        </Button>
+        <div className="flex items-center gap-2">
+          {diagnostics ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              data-testid="cloud-open-diagnostics"
+              onClick={() => setDiagnosticsOpen(true)}
+            >
+              {translate('auto.cloud.connectionDiagnostics', '连接诊断')}
+            </Button>
+          ) : null}
+          <Button variant="ghost" size="sm" onClick={() => void session.closeProject(project.id)}>
+            返回工作台
+          </Button>
+        </div>
       </header>
 
       {session.notice ? (

@@ -12,7 +12,8 @@ export function openedCloudProject(
   projectId: string,
   connection: { route: 'direct' | 'relay' },
   ticket: CloudConnectTicket,
-  hostFingerprint: string | null
+  hostFingerprint: string | null,
+  probes: CloudEndpointProbe[] = []
 ): CloudOpenResult {
   return {
     ok: true,
@@ -20,7 +21,8 @@ export function openedCloudProject(
     route: connection.route,
     workspaceRoot: ticket.workspace.workspaceRoot,
     capabilities: ticket.host.capabilities,
-    ...(hostFingerprint ? { hostFingerprint } : {})
+    ...(hostFingerprint ? { hostFingerprint } : {}),
+    ...(probes.length > 0 ? { connectDiagnostics: { probes } } : {})
   }
 }
 
@@ -56,17 +58,25 @@ function connectDiagnostics(error: unknown): { connectDiagnostics?: CloudConnect
 
 export async function openCloudProject(
   plan: {
-    open: (
-      projectId: string
-    ) => Promise<{ connection: { route: 'direct' | 'relay' }; ticket: CloudConnectTicket }>
+    open: (projectId: string) => Promise<{
+      connection: { route: 'direct' | 'relay' }
+      ticket: CloudConnectTicket
+      probes?: CloudEndpointProbe[]
+    }>
     pinnedFingerprint: (hostId: string) => string | null
     failureCode: (error: unknown) => string
   },
   projectId: string
 ): Promise<CloudOpenResult> {
   try {
-    const { connection, ticket } = await plan.open(projectId)
-    return openedCloudProject(projectId, connection, ticket, plan.pinnedFingerprint(ticket.host.id))
+    const { connection, ticket, probes } = await plan.open(projectId)
+    return openedCloudProject(
+      projectId,
+      connection,
+      ticket,
+      plan.pinnedFingerprint(ticket.host.id),
+      probes ?? []
+    )
   } catch (error) {
     return failedCloudOpen(plan.failureCode(error), error)
   }

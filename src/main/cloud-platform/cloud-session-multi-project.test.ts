@@ -102,11 +102,17 @@ class FakeClient extends CloudConnectClient {
     return PROJECTS
   }
 
-  override async openProject(
-    projectId: string
-  ): Promise<{ route: 'direct' | 'relay'; ticket: CloudConnectTicket }> {
+  override async openProject(projectId: string): Promise<{
+    route: 'direct' | 'relay'
+    ticket: CloudConnectTicket
+    probes: { route: 'direct' | 'relay'; endpoint: string; ok: boolean; elapsedMs: number }[]
+  }> {
     this.activeProjectId = projectId
-    return { route: 'direct', ticket: ticketFor(projectId) }
+    return {
+      route: 'direct',
+      ticket: ticketFor(projectId),
+      probes: [{ route: 'direct', endpoint: '10.0.0.1:4433', ok: true, elapsedMs: 3 }]
+    }
   }
 
   override rpc(method: string, params: Record<string, unknown> = {}): Promise<CloudRpcResult> {

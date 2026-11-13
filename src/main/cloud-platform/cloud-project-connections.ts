@@ -2,7 +2,8 @@ import type { CloudConnectionEvent, CloudRpcOutcome } from '../../shared/cloud-p
 import type {
   CloudConnectClient,
   CloudConnectTicket,
-  CloudDeviceIdentity
+  CloudDeviceIdentity,
+  EndpointProbe
 } from './cloud-connect-client'
 
 /**
@@ -37,6 +38,8 @@ export type CloudProjectConnection = {
 export type OpenedCloudConnection = {
   connection: CloudProjectConnection
   ticket: CloudConnectTicket
+  /** Route selection detail, shown in the workspace's connection panel (FR-5.7). */
+  probes: EndpointProbe[]
 }
 
 export type CloudConnectionIdentity = {
@@ -89,15 +92,17 @@ export class CloudProjectConnections {
     const client = this.createClient(this.options, identity)
     let ticket: CloudConnectTicket
     let route: 'direct' | 'relay'
+    let probes: EndpointProbe[]
     try {
       const opened = await client.openProject(projectId)
       ticket = opened.ticket
       route = opened.route
+      probes = opened.probes
     } catch (error) {
       client.close()
       throw error
     }
-    return { connection: this.track(projectId, client, route), ticket }
+    return { connection: this.track(projectId, client, route), ticket, probes }
   }
 
   /** Takes ownership of a client that already completed `openProject`. */

@@ -2121,9 +2121,32 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 2. 密钥文件与写入者同机；若攻击者同时拿到两把，锚点也可重签——锚点公钥需在平台侧/运维侧留存一份。
 3. 未实现 Redis Stream 队列、PostgreSQL/对象存储归档（G-04 其余项）。
 
+## M101 补齐 FR-5.7 的「工作区显示线路与延迟 + 连接诊断页」（本轮，主会话执行）
+
+**问题（M91 记录的剩余项）**：FR-5.7 要求「项目视图显示当前线路（直连/中继）与延迟，并可打开连接诊断页」。此前只有**失败时**才出现诊断面板；打开成功的会话只显示线路徽标，没有延迟，也没有可打开的诊断页。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-connect-client.ts` / `cloud-project-connections.ts` / `cloud-project-open-result.ts` | 打开成功的结果携带 `probes`（逐地址探测与耗时）；`CloudOpenResult` 成功分支新增 `connectDiagnostics` |
+| `cloud-endpoint-probe.ts` | 抽出 `endpointUnreachableError()`，避免客户端主文件超行数 |
+| `use-cloud-session.ts` | `opened` 保存 `connectDiagnostics` |
+| `cloud-project-workspace.tsx` + `cloud-connection-diagnostics.tsx`（新） | 顶部显示线路与**选中线路的探测延迟**；「连接诊断」按钮打开面板，列出选中地址、延迟与全部探测步骤 |
+| 测试 | `cloud-open-route-diagnostics.test.ts`（真实平台/Runtime）、`cloud-connection-diagnostics.test.tsx`（2 例） |
+
+**验证（`evidence/m101-open-route-diagnostics/open-route-diagnostics.json`）**：
+- 真实打开：首个直连地址不可用（关闭端口）→ 继续探测 → 打开成功，结果里 2 条探测（第一条失败、第二条成功），`route=direct` 与成功探测一致，`status.get` 可用。
+- 组件：顶部显示「中继」+「24ms」；诊断面板显示「直连 10.0.0.5:4433（1002ms）无响应」「中继 10.0.0.9:4433（24ms）已连通」以及选中线路/地址/延迟。
+- 没有诊断数据（旧回复）时不显示延迟与诊断入口。
+- **负向对照**：① 从打开结果里去掉 `connectDiagnostics` → `expected 0 to be greater than or equal to 2` 转红；② 去掉顶部延迟 → `Unable to find … cloud-route-latency` 转红。均恢复后全绿。
+- 回归：相关 main + renderer 用例 **57/57**（14 个文件，含全部云端渲染层 45 例）；`tc:node`、`tc:web` 0；`check:code-quality:changed` 0 新发现。
+
+**如实记录 / 剩余**：
+1. 显示的是**探测**耗时（TCP 建立、路由选择），不是持续的 RTT 或终端回显延迟；设计 §7 的「终端输入回显 P95 ≤ 120ms」仍未测。
+2. 浏览器版（管理员会话页）未加同款面板，它复用 `CloudOpenResult`，但界面尚未展示。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M100（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M101（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步**：
 1. **G-12 已收口**：平台无业务流量（M85）、中继无明文（M86）、浏览器渲染 P95（M97）均已有证据；仅剩原生 Electron 界面的渲染 P95 未测（需 CDP 环境）。

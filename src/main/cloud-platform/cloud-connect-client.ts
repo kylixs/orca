@@ -12,6 +12,7 @@ import {
   listProvisionableHosts as fetchProvisionableHosts
 } from './cloud-self-service-api'
 import { chooseRoute, probeEndpoint } from './cloud-route-selection'
+import { endpointUnreachableError } from './cloud-endpoint-probe'
 import { parseConnectTicket, parseProjectList } from './cloud-connect-response'
 import type { CloudStreamEvent, CloudSubscription } from './cloud-rpc-multiplexer'
 import {
@@ -82,8 +83,8 @@ export type CloudConnectOptions = {
 const DEFAULT_PROBE_TIMEOUT_MS = 800
 const DEFAULT_MAX_DIRECT = 2
 export { chooseRoute, probeEndpoint } from './cloud-route-selection'
-export type { EndpointProbe } from './cloud-endpoint-probe'
-export type { RouteChoice } from './cloud-route-selection'
+export type { EndpointProbe, RouteChoice } from './cloud-route-selection'
+import type { EndpointProbe } from './cloud-endpoint-probe'
 
 export class CloudConnectClient {
   private readonly options: CloudConnectOptions
@@ -275,9 +276,12 @@ export class CloudConnectClient {
    * a caller that intends to connect itself (the renderer's Orca workspace) must
    * not have the main process consume it first.
    */
-  async prepareProjectLink(
-    projectId: string
-  ): Promise<{ route: 'direct' | 'relay'; ticket: CloudConnectTicket; endpoint: CloudEndpoint }> {
+  async prepareProjectLink(projectId: string): Promise<{
+    route: 'direct' | 'relay'
+    ticket: CloudConnectTicket
+    endpoint: CloudEndpoint
+    probes: EndpointProbe[]
+  }> {
     const ticket = await this.requestTicket(projectId)
     this.hostKeys.check(ticket)
     const probeTimeout = this.options.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS
@@ -290,12 +294,9 @@ export class CloudConnectClient {
     if (!choice) {
       // Why the probes ride along: the user must be able to see which address
       // failed and how long it waited, not just that nothing worked (AC-07).
-      throw Object.assign(new Error('no reachable endpoint'), {
-        code: 'ENDPOINT_UNREACHABLE',
-        probes: selection.probes
-      })
+      throw endpointUnreachableError(selection.probes)
     }
-    return { route: choice.route, ticket, endpoint: choice.endpoint }
+    return { route: choice.route, ticket, endpoint: choice.endpoint, probes: selection.probes }
   }
 
   /** The user re-verified a changed host key; the new key replaces the pinned one. */
@@ -316,7 +317,7 @@ export class CloudConnectClient {
   /** Probe → one ticket → upgrade → E2EE. A failed upgrade needs a fresh ticket. */
   async openProject(
     projectId: string
-  ): Promise<{ route: 'direct' | 'relay'; ticket: CloudConnectTicket }> {
+  ): Promise<{ route: 'direct' | 'relay'; ticket: CloudConnectTicket; probes: EndpointProbe[] }> {
     const prepared = await this.prepareProjectLink(projectId)
     this.connection?.close()
     this.connection = await upgradeCloudSocket({
@@ -327,7 +328,7 @@ export class CloudConnectClient {
       tlsRejectUnauthorized: this.options.tlsRejectUnauthorized ?? true,
       onClose: (code, reason) => this.closeListener?.(code, reason)
     })
-    return { route: prepared.route, ticket: prepared.ticket }
+    return { route: prepared.route, ticket: prepared.ticket, probes: prepared.probes }
   }
 
   onClose(listener: (code: number, reason: string) => void): void {

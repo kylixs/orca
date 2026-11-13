@@ -2,6 +2,7 @@ import type { CloudEndpoint } from './cloud-connect-client'
 import { describeEndpoint, type EndpointProbe } from './cloud-endpoint-probe'
 
 export { probeEndpoint } from './cloud-endpoint-probe'
+export type { EndpointProbe } from './cloud-endpoint-probe'
 
 /** Route selection for cloud endpoints: probe first, then pick. */
 
