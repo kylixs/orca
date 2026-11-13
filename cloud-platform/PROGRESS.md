@@ -2408,6 +2408,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W8 完成（降级版回归断言，2026-11-14）
+
+提交 `c50ffe41ccd`（仅测试文件 +31 行）：M115 dir 语义套件内新增「管理员按 hostId+path 登记无需 dir」用例（201、path 原样、无 dir 键、ready），并用**变异验证**证明防护有效（临时把 validateProjectDir 注入管理员路由 → 断言如期变红 → 还原）。6/6 过，证据 `evidence/w8-regression/`。轻量审计代理已派（报告 `test-reports/w8-audit.md`）。
+
 ### W2 独立验证通过 + 审计打回一项（2026-11-14）
 
 **测试代理结论**：全套件独立复跑 **190/190**；F1 自有探针 **8/8**（lisi 授权可见可连、撤权仅撤 lisi、未知用户 400、zhangsan 不受影响）；UI 抽查 **4/4**（QA-005 状态推导、QA-002 分页加载更早、QA-011 错误态重试、QA-009 失败回滚）；证据 `evidence/w2-verify/`（含 w8-fact.json）。**W8 裁定：非产品缺陷**（管理员 path 登记本就 201；INVALID_DIR 仅自助路由且符合 FR-3.7 契约；归档失败=测试缺 dir 已止血）→ W8 降级为回归断言令，已派执行。
