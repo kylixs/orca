@@ -1687,13 +1687,41 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 2. 首次连接仍是「静默固定 + 打开成功后可见指纹」：没有在首次连接时强制用户点确认（那会让所有既有云会话首次打开都被拦一次，影响面大，未在本轮改）。
 3. 重新核对后若新公钥无法完成 E2EE（如平台被攻击者指向假主机），打开会以握手失败结束——这一层由 TLS/E2EE 自身兜底。
 
+## M82 修复浏览器侧主机公钥固定（AC-29 剩余一半）（本轮，主会话执行）
+
+**问题**：M81 让原生桌面完成固定与确认，但管理员会话页（浏览器）走的是另一条取票路径——`requestCloudTicket` + `WebRuntimeClient`，**完全没有公钥固定**；`CloudBridge.trustHostKey` 在该桥接上缺失，UI 只能返回 `HOST_KEY_PINNING_UNSUPPORTED`。也就是说同一平台下，浏览器用户可以无感接受被替换的主机公钥。
+
+| 改动 | 内容 |
+|---|---|
+| `web-host-key-trust.ts`（新，浏览器） | TOFU 固定库：WebCrypto SHA-256（对原始密钥字节，`sha256:<hex>`，与桌面同格式）、JSON 存 localStorage（独立 key `orca.webCloudHostTrust`）、`first_use`/`trusted`/`mismatch` 判定；损坏或空库一律视为「未固定」，不 fail-open |
+| `cloud-browser-project-connections.ts` | 取票后、创建任何 socket 之前校验：首次自动固定；不匹配时把新公钥留在内存 `pendingKeys` 并返回 `FINGERPRINT_MISMATCH` + 两个指纹；`trustPendingHostKey()` 是唯一消费入口；打开结果带 `hostId`/`hostFingerprint` |
+| `cloud-browser-bridge.ts` | 注入 `hostTrustStorage`（默认 localStorage，node 下无操作）；暴露 `trustHostKey(hostId)`；两个 open 结果都带 `hostFingerprint` |
+| 管理端入口 | `cloud-admin/main.tsx` 渲染同一个 `CloudApp`，因此 M81 的阻塞确认对话框直接生效，无需新增 UI |
+| 工程 | 新 e2e 规格加入 `tsconfig.cloud-e2e.json`，并从 `tsconfig.tc.web.json` 排除（与其他浏览器 cloud e2e 一致） |
+
+**验证（`evidence/m82-web-host-key/m82-web-host-key.json`）**：真实平台进程 + 真实注册主机/心跳 + 真实 TLS Runtime + 真实 WSS + 真实浏览器桥接：
+- 首次打开：`hostFingerprint` 为 `sha256:…` 64 hex（`sockets=1`）。
+- 心跳改写平台侧 E2EE 公钥 → 再次打开：`FINGERPRINT_MISMATCH`，带 `hostId` 与两个指纹，**socket 计数仍为 1（建连前就拒绝）**。
+- `trustHostKey` 首次 `{ok:true}`、再次 `HOST_KEY_NOT_PENDING`；固定库已写入新指纹。
+- 恢复真实公钥 → 仍判 mismatch（固定值是新指纹）→ 再次核对 → 打开成功、指纹回到原值。
+- 单元（`cloud-browser-bridge.test.ts` 新增 2 条）：确认流程与「取消后固定值不变」。
+- 回归：浏览器桥接 4 个文件 **21/21**；`tsc tc.web` 0、`tsc node` 0、`tsc cloud-e2e` 0；`check:code-quality:changed` 0 新发现。
+
+**负向对照**：移除 `BrowserProjectConnections.open()` 里的 `checkHostKey` 调用 → M82-1 转红（换钥后仍打开成功）；恢复后全绿。
+
+**如实记录 / 剩余**：
+1. 浏览器固定库在 localStorage：XSS 可改固定值，与 saved-session 同一威胁模型（已在该文件头注明取舍）。
+2. 首次连接仍是静默固定（与桌面一致），没有强制确认步骤。
+3. 浏览器侧没有 4433 关闭帧——它在建 socket 之前拒绝，本来就没有可关闭的连接；UI 表现为打开失败 + 确认对话框。
+4. 两套固定库（桌面文件 / 浏览器 localStorage）不互通，符合「每端各自 TOFU」。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M81（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M82（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步**：
 1. **剩余 MINOR**：G-11（登录失败锁计数在进程内存，多副本各算 5 次）、G-12（浏览器渲染 P95 与「平台无业务流量」抓包证明，需独立环境）。
-2. **人工验收准备**：整理验收清单与证据索引；`AC-29` 的浏览器（管理员会话页）路径仍无公钥固定。
+2. **人工验收准备**：整理验收清单与证据索引（AC-29 桌面与浏览器两半均已覆盖）。
 3. **G-04 部署形态**：写入者 standby/leader 选举、Redis Stream 队列、PostgreSQL/对象存储归档与签名锚点仍待部署阶段实现（本轮已完成单写入者定序与 fail-closed）。
 4. **人工验收**：按 design/test-plan 逐条核对验收标准；重点看桌面真实界面（登录 → 侧栏项目 → 本人 checkout → 终端/文件/git/agent）与管理员浏览器会话页。
 4. 真机/跨平台：Windows、WSL、SSH 主机各跑一遍关键路径（provisioning、路径边界、PTY、会话持久化权限位）。

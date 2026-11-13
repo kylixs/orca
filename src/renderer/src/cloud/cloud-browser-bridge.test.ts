@@ -55,7 +55,11 @@ function jsonReply(body: unknown, status = 200): Response {
   })
 }
 
-function ticketReply(projectId: string, devicePublicKeyB64: string): Record<string, unknown> {
+function ticketReply(
+  projectId: string,
+  devicePublicKeyB64: string,
+  hostKeyB64 = HOST_KEY_B64
+): Record<string, unknown> {
   return {
     credential: jwt({
       deviceToken: `device-token-${projectId}`,
@@ -70,7 +74,7 @@ function ticketReply(projectId: string, devicePublicKeyB64: string): Record<stri
       name: 'dev-m54',
       fingerprint: 'fp',
       tlsFingerprint: 'tf',
-      e2eePublicKeyB64: HOST_KEY_B64,
+      e2eePublicKeyB64: hostKeyB64,
       capabilities: ['terminal']
     },
     endpoints: {
@@ -91,12 +95,15 @@ type ScriptedPlatform = {
   devicePublicKeyB64: () => string
   /** Makes every token-guarded call answer as a dead session. */
   expire: () => void
+  /** What the platform puts in `host.e2eePublicKeyB64`; a swap simulates AC-29. */
+  setHostKey: (keyB64: string) => void
 }
 
 function scriptedPlatform(): ScriptedPlatform {
   const requests: string[] = []
   let devicePublicKey = ''
   let expired = false
+  let hostKeyB64 = HOST_KEY_B64
   const fetchImpl: typeof fetch = async (input, init) => {
     const url = String(input)
     requests.push(`${init?.method ?? 'GET'} ${url}`)
@@ -128,7 +135,7 @@ function scriptedPlatform(): ScriptedPlatform {
     const connect = /\/v1\/projects\/([^/]+)\/connect$/.exec(url)
     if (connect) {
       const projectId = decodeURIComponent(connect[1])
-      return jsonReply(ticketReply(projectId, devicePublicKey))
+      return jsonReply(ticketReply(projectId, devicePublicKey, hostKeyB64))
     }
     return jsonReply({ error: { code: 'not_found', message: url } }, 404)
   }
@@ -138,6 +145,9 @@ function scriptedPlatform(): ScriptedPlatform {
     devicePublicKeyB64: () => devicePublicKey,
     expire: () => {
       expired = true
+    },
+    setHostKey: (keyB64) => {
+      hostKeyB64 = keyB64
     }
   }
 }
@@ -166,13 +176,27 @@ function scriptedFactory(offers: WebPairingOffer[], calls: FakeCall[], closed: s
   }
 }
 
-function makeBridge(): {
+class MemoryStore {
+  value: string | null = null
+  read(): string | null {
+    return this.value
+  }
+  write(next: string): void {
+    this.value = next
+  }
+  remove(): void {
+    this.value = null
+  }
+}
+
+function makeBridge(hostTrustStorage = new MemoryStore()): {
   bridge: ReturnType<typeof createCloudBrowserBridge>
   storage: DeviceKeyStorage
   offers: WebPairingOffer[]
   calls: FakeCall[]
   closed: string[]
   platform: ScriptedPlatform
+  hostTrustStorage: MemoryStore
 } {
   const storage = new DeviceKeyStorage()
   const offers: WebPairingOffer[] = []
@@ -184,9 +208,10 @@ function makeBridge(): {
     deviceName: 'm54-admin',
     deviceKeyStore: storage,
     fetchImpl: platform.fetchImpl,
-    clientFactory: scriptedFactory(offers, calls, closed)
+    clientFactory: scriptedFactory(offers, calls, closed),
+    hostTrustStorage
   })
-  return { bridge, storage, offers, calls, closed, platform }
+  return { bridge, storage, offers, calls, closed, platform, hostTrustStorage }
 }
 
 describe('浏览器 CloudBridge', () => {
@@ -283,5 +308,71 @@ describe('浏览器 CloudBridge', () => {
     ).toHaveLength(1)
     await expect(bridge.listProjects()).rejects.toMatchObject({ code: 'NOT_SIGNED_IN' })
     unsubscribe()
+  })
+})
+
+describe('AC-29 浏览器侧主机公钥固定', () => {
+  it('首次打开固定，平台换钥后拒绝且不建 socket；确认后才重新固定', async () => {
+    const { bridge, platform, offers, hostTrustStorage } = makeBridge()
+    await bridge.login('zhangsan', 'Passw0rd!')
+
+    const first = await bridge.openProject('proj-1')
+    expect(first).toMatchObject({ ok: true, projectId: 'proj-1' })
+    if (!first.ok) {
+      throw new Error('expected first open to succeed')
+    }
+    expect(first.hostFingerprint).toMatch(/^sha256:[0-9a-f]{64}$/)
+    const pinned = first.hostFingerprint
+    const socketsBefore = offers.length
+
+    // Someone changes the key the platform hands out for this host.
+    const rogueKey = Buffer.alloc(32, 0x11).toString('base64')
+    platform.setHostKey(rogueKey)
+    await bridge.closeProject('proj-1')
+
+    const refused = await bridge.openProject('proj-1')
+    expect(refused.ok).toBe(false)
+    if (refused.ok) {
+      throw new Error('expected a refusal')
+    }
+    expect(refused.code).toBe('FINGERPRINT_MISMATCH')
+    expect(refused.hostKey?.hostId).toBe('host-1')
+    expect(refused.hostKey?.pinnedFingerprint).toBe(pinned)
+    expect(refused.hostKey?.seenFingerprint).not.toBe(pinned)
+    // No socket was opened for the substituted key.
+    expect(offers.length).toBe(socketsBefore)
+
+    // Re-verification is explicit and consumes the pending key once.
+    expect(await bridge.trustHostKey?.('host-1')).toEqual({ ok: true })
+    expect(await bridge.trustHostKey?.('host-1')).toEqual({
+      ok: false,
+      code: 'HOST_KEY_NOT_PENDING'
+    })
+
+    const reopened = await bridge.openProject('proj-1')
+    expect(reopened).toMatchObject({ ok: true })
+    if (!reopened.ok) {
+      throw new Error('expected reopen to succeed')
+    }
+    expect(reopened.hostFingerprint).toBe(refused.hostKey?.seenFingerprint)
+    // The pin survives in storage, so a fresh bridge refuses the original key.
+    expect(hostTrustStorage.value).toContain(refused.hostKey?.seenFingerprint ?? '')
+  })
+
+  it('取消后固定值不变：同一平台状态再次打开仍被拒', async () => {
+    const { bridge, platform } = makeBridge()
+    await bridge.login('zhangsan', 'Passw0rd!')
+    await bridge.openProject('proj-1')
+    platform.setHostKey(Buffer.alloc(32, 0x22).toString('base64'))
+    await bridge.closeProject('proj-1')
+
+    const first = await bridge.openProject('proj-1')
+    const second = await bridge.openProject('proj-1')
+    expect(first.ok).toBe(false)
+    expect(second.ok).toBe(false)
+    if (first.ok || second.ok) {
+      throw new Error('expected both opens to be refused')
+    }
+    expect(second.hostKey?.pinnedFingerprint).toBe(first.hostKey?.pinnedFingerprint)
   })
 })

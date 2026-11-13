@@ -20,6 +20,9 @@ export type OpenConnection = {
   workspace: CloudReplyTicket['workspace']
   capabilities: string[]
   permissions?: CloudProjectPermission[]
+  /** The host this socket belongs to, and the key pin the open verified (AC-29). */
+  hostId: string
+  hostFingerprint: string | null
 }
 
 export function summarize(project: WebCloudProject): CloudProjectSummary {

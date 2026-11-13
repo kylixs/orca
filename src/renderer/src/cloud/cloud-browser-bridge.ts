@@ -30,6 +30,7 @@ import {
   createBrowserWebCloudSessionStorage,
   type WebCloudSessionStorage
 } from '../web/web-cloud-session-storage'
+import { WEB_HOST_TRUST_STORAGE_KEY } from '../web/web-host-key-trust'
 import {
   clearBrowserSession,
   persistBrowserSession,
@@ -56,6 +57,8 @@ export type CloudBrowserBridgeOptions = {
   deviceKeyStore: WebCloudDeviceKeyStorage
   /** Saved-login seam; defaults to localStorage in a browser and to nothing in node. */
   sessionStorage?: WebCloudSessionStorage
+  /** Host-key pin seam; defaults to localStorage under its own key (AC-29). */
+  hostTrustStorage?: WebCloudSessionStorage
   fetchImpl?: typeof fetch
   now?: () => number
   endpointUrl?: string
@@ -98,12 +101,23 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
     }
   }
 
+  const hostTrustStorage =
+    options.hostTrustStorage ??
+    (typeof window === 'undefined' || !window.localStorage
+      ? createBrowserWebCloudSessionStorage()
+      : {
+          read: () => window.localStorage.getItem(WEB_HOST_TRUST_STORAGE_KEY),
+          write: (value) => window.localStorage.setItem(WEB_HOST_TRUST_STORAGE_KEY, value),
+          remove: () => window.localStorage.removeItem(WEB_HOST_TRUST_STORAGE_KEY)
+        })
   const projectConnections = new BrowserProjectConnections({
     getSession: () => session,
     getIdentity: () => identity,
     ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
     ...(options.endpointUrl ? { endpointUrl: options.endpointUrl } : {}),
     createClient,
+    hostTrustStorage,
+    ...(options.now ? { now: options.now } : {}),
     onPlatformError: (error) => notePlatformError(error),
     onDropped: (event) => emit(event)
   })
@@ -221,8 +235,15 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
         route: opened.route,
         workspaceRoot: opened.workspace.workspaceRoot,
         capabilities: opened.capabilities,
-        ...(opened.permissions ? { permissions: opened.permissions } : {})
+        ...(opened.permissions ? { permissions: opened.permissions } : {}),
+        ...(opened.hostFingerprint ? { hostFingerprint: opened.hostFingerprint } : {})
       }
+    },
+
+    async trustHostKey(hostId: string) {
+      return (await projectConnections.trustPendingHostKey(hostId))
+        ? { ok: true as const }
+        : { ok: false as const, code: 'HOST_KEY_NOT_PENDING' }
     },
 
     async openWorkspace(projectId: string): Promise<CloudOpenResult> {
@@ -246,7 +267,8 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
         workspaceRoot: opened.workspace.workspaceRoot,
         workspacePath: ensured.workspacePath,
         capabilities: opened.capabilities,
-        ...(opened.permissions ? { permissions: opened.permissions } : {})
+        ...(opened.permissions ? { permissions: opened.permissions } : {}),
+        ...(opened.hostFingerprint ? { hostFingerprint: opened.hostFingerprint } : {})
       }
     },
 
