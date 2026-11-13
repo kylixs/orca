@@ -253,4 +253,35 @@ describe('M115 自助建项目：名称+目录必填，仓库地址可选', () =
       second: { status: second.status, code: errorCode(second.body) }
     })
   })
+
+  test('管理员按 hostId+path 登记无需 dir：path 原样、payload 不含 dir、状态 ready', async () => {
+    const host = await registerHost('m115-host-admin')
+    const targetPath = '/srv/work/admin-no-dir-demo'
+    const created = await fetch(`${api.url}/v1/projects`, {
+      method: 'POST',
+      headers: auth(adminToken),
+      body: JSON.stringify({
+        key: 'admin-no-dir-demo',
+        name: 'Admin No Dir Demo',
+        hostId: host.hostId,
+        path: targetPath
+      })
+    })
+    const body = (await created.json()) as Record<string, unknown>
+    // Why: FR-3.7 makes dir mandatory on /v1/projects/self only; the admin
+    // route keeps its own semantics — path verbatim, no dir join, ready now.
+    assert.equal(created.status, 201, JSON.stringify(body))
+    assert.equal(errorCode(body), '')
+    assert.equal(body.hostId, host.hostId)
+    assert.equal(body.path, targetPath, 'admin path must not be joined onto projectsRoot')
+    assert.equal('dir' in body, false)
+    assert.equal(body.status, 'ready')
+    saveEvidence('w8-regression', 'admin-path-registration-dir-free.json', {
+      request: { key: 'admin-no-dir-demo', name: 'Admin No Dir Demo', hostId: host.hostId, path: targetPath },
+      requestHadDir: false,
+      status: created.status,
+      response: body,
+      responseHasDir: 'dir' in body
+    })
+  })
 })
