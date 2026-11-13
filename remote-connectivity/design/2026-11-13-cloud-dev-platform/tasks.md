@@ -62,6 +62,7 @@
 | T218 | 添加宿主/中继向导：`GET /install/host.sh`、`/install/relay.sh` 一行安装命令（令牌内嵌） | 安装脚本接口 + 向导弹层 | T217 | FR-4.11；host.sh 无令牌 400；复制命令执行即完成注册 |
 | T219 | routeKey 默认取直连 IP（`ip-<IP>`：显式配置优先、自动派生键随心跳地址跟随），SNI 标签随动 | 注册/心跳/路由表改造 | T216 | FR-4.9 修订；断言 `sni=ip-….relay.local` |
 | T220 | 真实链路部署与复测（中继 100.67.197.59、宿主 192.168.2.202、平台本机） | 部署记录 + §5.1 延迟证据 | T216–T219 | deployment-real-link.md 全步通过 |
+| T221 | 自助建项目改造：名称+目录必填、仓库地址可选（空项目直接就绪）、目录选自宿主心跳清单或新建（限 projectsRoot 内） | `cloud-new-project-dialog.tsx`、`project-self-service.ts`、`cloud-heartbeat-body.ts` | — | FR-3.7；无 git 地址可建空项目并打开 |
 
 ### M3 策略与管控面
 

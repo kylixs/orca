@@ -2385,6 +2385,17 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 
 三项设计决策落入高保真原型 `ui/prototype.html`：① FR-4.10 独立中继管理页（#/relays，含抽屉与统计，与主机页分开管理）；② FR-4.11 向导一行安装命令（中继/宿主两条 `bash <(curl -fsSL …/install/<类型>.sh?token=…)` 弹层）；③ FR-4.9 routeKey 默认 IP（主机页/抽屉/诊断页展示 `ip-<IP>` 路由键与 `ip-<IP>.relay.local` SNI 标签）。要求子代理以 headless Chrome 逐路由自检（console 无错、门禁/弹层/复制可用）后仅提交原型与 README。
 
+### M114b/114b2/114b3 + routeKey 代码（完成，2026-11-14）
+
+三批实现由代码子代理完成、主会话核验后提交：
+- `af7621f7511`（平台侧）：中继自注册可拨地址（`RELAY_PUBLIC_HOST`/来源 IP 兜底）、独立中继管理页（`/v1/relays`，开发者 403 + `relay_list` 拒绝审计）、Web 中继页与添加中继弹层、`GET /install/{host,relay}.sh` 安装脚本端点（缺 token 400、写 `install_script` 审计、元数据不含令牌明文）、routeKey 平台侧派生 `ip-<IP>`（显式永不覆盖、派生键随心跳迁移、旧键路由删除、幂等）。核验复跑 relay-nodes + host-route-key-follow + install-wizard 共 20/0 通过，证据 12 件在 `evidence/m114-relay-page/`。
+- `6997ee99f78`（宿主侧）：`enrollCloudHost` 缺省 routeKey=派生 `ip-<地址>`（点/冒号折叠为横线以过中继 SNI 白名单），显式配置优先。
+- 已知记录项：acceptance-index 会把 `m114-relay-page` 列为「test-plan 未引用」（记录性输出）；后续在 test-plan 补引用即可消除。
+
+### M115 自助建项目改造（需求修订 + 派发，2026-11-14）
+
+用户修订：新建项目**必填名称与目录**，**仓库地址可选**（不填为空项目直接就绪），目录可「选择已有目录」或「新建目录」（参考本地 Orca 添加项目）。落地设计：目录限定宿主 `projectsRoot` 内（安全边界不变），已有目录列表来自宿主心跳新增 `projectDirs` 字段（一级目录名、≤200 条，不新建控制通道）。文档已同步（FR-3.7、design §8.2、tasks T221、test-plan §6）；实现派发给代码子代理（对话框 `cloud-new-project-dialog.tsx`、平台 `project-self-service.ts`、心跳 `cloud-heartbeat-body.ts`）。
+
 ### M114 补充：routeKey 默认改 IP（用户决策 2026-11-14）
 
 内网主机名不可靠：宿主路由键默认从主机名改为**直连 IP**（`ip-<地址>` 形态；显式配置优先；自动派生的 routeKey 随心跳直连地址变化自动跟随，显式配置不动）。SNI 标签相应变为 `ip-192.168.2.202.relay.local` 这类形态。FR-4.9、部署方案、开发计划已同步；实现追加派发给 114b 开发子代理（含：注册派生、心跳跟随、connect 端点 sni 断言、显式配置不被覆盖）。
