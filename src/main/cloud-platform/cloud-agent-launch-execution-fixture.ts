@@ -34,6 +34,8 @@ export type AgentLaunchStack = {
   admission: CloudRuntimeAdmission
   cloud: CloudRuntime
   service: OrcaRuntimeService
+  /** Exposed so a test can switch launch mode or restore the real CLI command. */
+  store: Store
   projectRoot: string
   otherRepoPath: string
   desktop: CloudConnectClient
@@ -222,6 +224,7 @@ export async function startAgentLaunchStack(): Promise<AgentLaunchStack> {
     admission,
     cloud,
     service,
+    store,
     projectRoot,
     otherRepoPath,
     desktop,

@@ -1,5 +1,11 @@
 import WebSocket from 'ws'
 import { AGENT_LAUNCH_RUNTIME_CAPABILITY } from '../../shared/agent-launch-runtime-capability'
+import { AGENT_SESSION_OPTIONAL_MODEL_CLIENT_CAPABILITY } from '../../shared/agent-session-optional-model-capability'
+import {
+  AGENT_SESSION_TURN_ITEM_CAPABILITY,
+  CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
+  STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY
+} from '../../shared/protocol-version'
 import { decrypt, deriveSharedKey, encrypt } from '../../shared/e2ee-crypto'
 import { parseJsonText, readString } from '../../shared/json-fields'
 import type { CloudEndpoint, CloudConnectTicket, CloudDeviceKeyPair } from './cloud-connect-client'
@@ -11,11 +17,19 @@ import { CloudRpcMultiplexer } from './cloud-rpc-multiplexer'
 /**
  * What this client tells a cloud runtime it can render on a launched surface.
  *
- * Only `agent.launch.v2`: the desktop shell behind this transport reads either outcome — a
- * structured chat it opens, or a terminal agent. The replay and prompt-carry capabilities are a
- * separate contract this transport does not negotiate, so it must not claim them for the host.
+ * `agent.launch.v2`: the desktop shell behind this transport reads either outcome — a structured
+ * chat it opens, or a terminal agent. It can only open one if it also advertises the structured
+ * read surface, otherwise a structured outcome arrives with no way to read it. The replay and
+ * prompt-carry capabilities are a separate contract this transport does not negotiate, so it must
+ * not claim them for the host.
  */
-export const CLOUD_RUNTIME_CLIENT_CAPABILITIES = [AGENT_LAUNCH_RUNTIME_CAPABILITY] as const
+export const CLOUD_RUNTIME_CLIENT_CAPABILITIES = [
+  AGENT_LAUNCH_RUNTIME_CAPABILITY,
+  STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
+  CLAUDE_STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY,
+  AGENT_SESSION_TURN_ITEM_CAPABILITY,
+  AGENT_SESSION_OPTIONAL_MODEL_CLIENT_CAPABILITY
+] as const
 
 export type CloudSocketInput = {
   endpoint: CloudEndpoint

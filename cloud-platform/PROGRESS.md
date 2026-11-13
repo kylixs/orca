@@ -1353,12 +1353,39 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 4. 浏览器 localStorage 存 token 的 XSS 暴露面（M66）与主机目录不回收（M65）是已记录的产品取舍。
 5. 平台 e2e 用 `--test-concurrency=4` 而非默认并发，属按 §4.1 的主动限流。
 
+## M69 云端结构化 agent 会话（native chat）端到端验证（本轮，开发子代理执行）
+
+**问题**：M67 只验证了终端 agent outcome；`agent.launch.v2` 的语义是“客户端两种 outcome 都能渲染”，而**结构化会话在云端会话下从未真正可读**。本轮用本机真实 Claude CLI（2.1.316，已登录；`ORCA_REAL_CLAUDE_CLI_TEST=1` 门禁）做探针，发现一个真实缺陷。
+
+| 项 | 结果 |
+|---|---|
+| 探针（修复前） | 云端 `agent.launch` **能**返回 `outcome.kind: 'structured'` 并拿到 sessionId，但随后 `agentSession.history` / `options` / `close` **全部**返回 `structured_agent_session_unsupported`——即“宣称能渲染 chat，却读不到刚创建的 chat” |
+| 根因 | `cloud-socket-handshake.ts` 的 `CLOUD_RUNTIME_CLIENT_CAPABILITIES` 只有 `agent.launch.v2`；host 的 `requireStructuredCapability` 因缺少 `agent-session.structured.v1` 拒绝全部 `agentSession.*` |
+| 修复 | 客户端能力表补齐：`agent-session.structured.v1`、`agent-session.structured.claude.v1`、`agent-session.turn-item.v1`、`agent-session.options.optional-model.v1`（桌面壳渲染这些形状；replay/prompt-carry 仍不宣称，注释保留理由） |
+| 测试 | `src/main/cloud-platform/cloud-structured-agent-session.test.ts`（184 行，门禁 skip 时标题写明原因）+ fixture 暴露 `store` 以便切换 launch mode 与还原真实 CLI |
+
+**验证（`evidence/m69-cloud-structured-agent/`）**：
+- `m69-probe.json`：修复前/后对比（三条 `structured_agent_session_unsupported` → 全部成功）。
+- `m69-structured.json`：真实云端会话 structured launch → sessionId 归属本人 worktree → `history` 命中（user 1 / assistant 1）→ 真实 turn 1.7s 内出现 assistant 文本 → `agentSession.close` 清理。
+- `m69-boundary.json`：对**共享检出**的 structured launch 仍 `forbidden`（`Writes are limited to your own workspace root inside this project.`）。
+
+**主会话独立验收**：设门禁运行 3 个文件 **9 条全过**（M69 2 条 + M67 3 条 + M44 边界 4 条）；不设门禁时 M69 为 skip；`tsc node` **0**、`tsc tc.web` **0**；`check:code-quality:changed` 0 新发现。
+
+**主会话独立负向对照**：
+1. 只保留 `agent.launch.v2`（去掉 `agent-session.structured.v1`）→ M69 **变红**（`structured_agent_session_unsupported`），恢复后绿。
+2. 只去掉 `claude`/`turn-item`/`optional-model` 三项、保留基础项 → 当前断言**仍通过**（如实记录：这 3 项只影响 host 的降级形状与模型选择呈现，现有断言不覆盖；它们仍按“桌面壳能渲染”宣称）。
+
+**如实记录 / 剩余**：
+1. 真实 CLI 用量超出原定“1–2 个 turn”：探针 2 次 launch + 正式测试 2 次 turn（均完成回复）。
+2. 断言只要求“出现非空 assistant 文本”，未断言内容等于 `pong`。
+3. 结构化会话依赖本机已登录的真实 Claude；CI 默认 skip（门禁保护），因此该项在无凭据环境不会被自动执行。
+4. 云端客户端能力表扩大到结构化读取面：云端会话现在可读/关闭结构化会话，工作区边界不变（共享检出仍 forbidden）。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M67（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M69（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步**：
 1. **人工验收**：按 design/test-plan 逐条核对验收标准；重点看桌面真实界面（登录 → 侧栏项目 → 本人 checkout → 终端/文件/git/agent）与管理员浏览器会话页。
 2. 真机/跨平台：Windows、WSL、SSH 主机各跑一遍关键路径（provisioning、路径边界、PTY、会话持久化权限位）。
-3. 结构化 agent 会话路径的端到端验证（需要真实 Claude 会话宿主）。
-4. L4 全量回归：发版前单独执行，含桌面 Electron 渲染验证。
+3. L4 全量回归：发版前单独执行，含桌面 Electron 渲染验证。

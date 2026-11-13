@@ -100,6 +100,8 @@
 
 | M68 | 里程碑收口（L3）：平台 e2e 全套 + 云端模块 vitest 分批（`--maxWorkers=4`）+ 四个 tsconfig 工程 0 错 + 证据目录核对 | 平台 94 + 25 条、云端模块 260 + 114 条全过；`tsc node/web/cloud-e2e/cli` 均 0 错；63 个证据目录无空目录 |
 
+| M69 | 云端结构化 agent 会话：云端客户端补齐 `agent-session.*` 读取能力，`agent.launch` 的 structured outcome 真正可读、可跑 turn、可关闭；边界不变 | 真实 Claude CLI（门禁）：structured sessionId 归属本人 worktree、history 命中、真实 turn 出文本、`close` 成功；共享检出仍 forbidden |
+
 ### 5.1 M57 项目创建 provisioning（平台不在数据通道）
 
 - **平台**：`POST /v1/projects` 仍 admin-only；有 `repoUrl` → `status: 'provisioning'`，无 → `ready`（路径由管理员备好）。连接票据新增可选 claim `repoUrl`、`defaultBranch`（旧主机忽略未知 claim）。
