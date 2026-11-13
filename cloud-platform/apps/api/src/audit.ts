@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto'
 import { canonicalJson } from '../../../packages/contract/src/credential.ts'
-import type { AuditEvent, AuditEventInput, Store } from './store.ts'
+import type { AuditEvent, AuditEventInput } from './store.ts'
+
+/** The chain needs only the tail plus the log it appends to, not the whole store. */
+export type AuditStore = Pick<import('./store.ts').Store, 'audit' | 'auditSeq' | 'auditTip'>
 
 /**
  * Single-writer hash chain. All API replicas funnel through this instance, so
@@ -11,12 +14,12 @@ export type AuditHealth =
   | { ok: false; reason: 'write_failed' | 'chain_broken'; detail: string }
 
 export class AuditChain {
-  private readonly store: Store
+  private readonly store: AuditStore
   /** Optional durable sink; a failed write throws so callers cannot pretend it landed. */
   private readonly persist: ((event: AuditEvent) => void) | null
   private health: AuditHealth = { ok: true }
 
-  constructor(store: Store, persist?: (event: AuditEvent) => void) {
+  constructor(store: AuditStore, persist?: (event: AuditEvent) => void) {
     this.store = store
     this.persist = persist ?? null
   }

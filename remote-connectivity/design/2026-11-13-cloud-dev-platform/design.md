@@ -1187,6 +1187,8 @@ Sec-WebSocket-Protocol: orca-runtime, orca-cred.<base64url(credential)>
 - **保留**：PostgreSQL 保留 180 天热数据（可按月分区 detach）；对象存储 WORM 保存全量归档（≥1 年）。
 - **不可变**：应用账号对 `audit_events` 只有 INSERT 权限，无 UPDATE/DELETE。
 
+**一期实现**（M80）：`cloud-platform/apps/audit-writer` 提供 `POST /v1/append`（批量 ≤1000）、`GET /v1/events`、`GET /v1/verify`、`GET /v1/status`；API 副本通过 `ORCA_CLOUD_AUDIT_WRITER_URL` 投递，写入者用一个进程内的串行队列分配 `seq`/`prev_hash`，文件按行追加并在启动时回放校验。链损坏时写入者对所有副本返回 503 `AUDIT_CHAIN_BROKEN`，敏感操作全部 fail-closed。**未实现**：Redis Stream 队列、PostgreSQL/对象存储、leader 选举与 standby 接管、5 分钟签名锚点（需要独立的锚点存储，留待部署阶段）。
+
 ### 13.3 缓存与一致性
 
 | 缓存 | 内容 | TTL | 失效 |

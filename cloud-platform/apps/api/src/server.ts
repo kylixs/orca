@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { readFile } from 'node:fs/promises'
-import { extname, join, normalize } from 'node:path'
+import { join, normalize } from 'node:path'
 import { validateProjectPath } from '../../../packages/contract/src/project-path.ts'
 import { validateProjectRepoUrl } from '../../../packages/contract/src/repo-url.ts'
 import { validateProjectDefaultBranch } from '../../../packages/contract/src/branch-name.ts'
@@ -17,16 +17,15 @@ import {
 } from './project-self-service.ts'
 import { isProjectCreator, projectKeyTaken, projectPathTaken } from './project-occupancy.ts'
 import {
-  generateSigningKey,
   newDeviceToken,
   newJti,
   signCredential,
   type CredentialPayload,
   type Permission,
-  type PublicKeyEntry,
   type SigningKey
 } from '../../../packages/contract/src/credential.ts'
 import { AuditChain } from './audit.ts'
+import { createRemoteAudit, type AuditSink } from './audit-writer-client.ts'
 import { createSigningKeyRing } from './signing-key-ring.ts'
 import type { AuditEventInput } from './store.ts'
 import { openAuditLogFile } from './audit-log-file.ts'
@@ -61,6 +60,8 @@ export type ApiConfig = {
   hostOfflineMs?: number
   /** Append-only audit log; absent keeps the chain in memory (tests). */
   auditLogPath?: string
+  /** Single audit writer shared by replicas; absent keeps the local chain. */
+  auditWriterUrl?: string
   /** Frontend directory; tests point this at a copy to simulate a new release. */
   webRoot?: string
   /** Where superseded frontend builds are kept so cached old pages still load. */
@@ -150,11 +151,27 @@ export function createApp(config: ApiConfig): ApiHandle {
   const expiresInSeconds = Math.ceil(accessTtlMs / 1000)
   const auditLogPath = config.auditLogPath ?? process.env.AUDIT_LOG_PATH ?? null
   const store = new Store()
-  const auditLog = auditLogPath ? openAuditLogFile(auditLogPath) : null
-  const audit = new AuditChain(store, auditLog?.append)
-  if (auditLog) {
-    // Why before serving: a chain continued from a tampered tail would launder it.
-    audit.restore(auditLog.load())
+  // Production must inject a secret; the fallback exists only for local tests.
+  const internalToken =
+    config.internalToken ??
+    process.env.INTERNAL_TOKEN ??
+    process.env.ORCA_CLOUD_INTERNAL_TOKEN ??
+    'internal-test-token'
+
+  const auditWriterUrl = config.auditWriterUrl ?? process.env.ORCA_CLOUD_AUDIT_WRITER_URL ?? null
+  // Why the writer wins: with several replicas, only one process may assign
+  // `seq`/`prevHash`, otherwise the chain forks (AC-26).
+  const audit: AuditSink = auditWriterUrl
+    ? createRemoteAudit({ url: auditWriterUrl, internalToken: internalToken })
+    : localAudit()
+  function localAudit(): AuditChain {
+    const auditLog = auditLogPath ? openAuditLogFile(auditLogPath) : null
+    const chain = new AuditChain(store, auditLog?.append)
+    if (auditLog) {
+      // Why before serving: a chain continued from a tampered tail would launder it.
+      chain.restore(auditLog.load())
+    }
+    return chain
   }
   /**
    * Sensitive control-plane mutations gate on audit health (design §13.2): a full
@@ -181,9 +198,13 @@ export function createApp(config: ApiConfig): ApiHandle {
    * fail-closed means; the reverse order would leave a change on disk that no
    * event records.
    */
-  function recordAudit(res: ServerResponse, input: AuditEventInput, traceId: string): boolean {
+  async function recordAudit(
+    res: ServerResponse,
+    input: AuditEventInput,
+    traceId: string
+  ): Promise<boolean> {
     try {
-      audit.append(input)
+      await audit.append(input)
       return true
     } catch {
       const health = audit.getHealth()
@@ -198,13 +219,6 @@ export function createApp(config: ApiConfig): ApiHandle {
   }
 
   const signingKeys = createSigningKeyRing(now)
-  // Production must inject a secret; the fallback exists only for local tests.
-  const internalToken =
-    config.internalToken ??
-    process.env.INTERNAL_TOKEN ??
-    process.env.ORCA_CLOUD_INTERNAL_TOKEN ??
-    'internal-test-token'
-
   const accounts = new Map<string, { password: string; profile: ReturnType<typeof ldapProfile> }>([
     [
       'zhangsan',
@@ -640,7 +654,7 @@ export function createApp(config: ApiConfig): ApiHandle {
           session.revokedAt = now()
           bumpEpoch(session.id)
         }
-        audit.append({
+        await audit.append({
           eventType: 'logout',
           actor: auth.user.username,
           targetType: 'session',
@@ -692,7 +706,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         return error(res, 404, 'NOT_FOUND', '设备不存在。', traceId)
       }
       if (
-        !recordAudit(
+        !(await recordAudit(
           res,
           {
             eventType: 'device_revoke',
@@ -703,7 +717,7 @@ export function createApp(config: ApiConfig): ApiHandle {
             traceId
           },
           traceId
-        )
+        ))
       ) {
         return
       }
@@ -750,7 +764,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (!auditAllowsMutations(res, traceId)) return
       const rotated = signingKeys.rotate()
       if (
-        !recordAudit(
+        !(await recordAudit(
           res,
           {
             eventType: 'signing_key_rotate',
@@ -762,7 +776,7 @@ export function createApp(config: ApiConfig): ApiHandle {
             metadata: { previousKid: rotated.retired.kid, retiredKids: signingKeys.retired().length }
           },
           traceId
-        )
+        ))
       ) {
         return
       }
@@ -795,7 +809,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       const authed = requireAuth()
       if (!authed) return
       if (!isAdmin(authed.user)) {
-        audit.append({
+        await audit.append({
           eventType: 'project_create',
           actor: authed.user.username,
           targetType: 'project',
@@ -816,7 +830,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
       const pathVerdict = validateProjectPath(body.path)
       if (!pathVerdict.ok) {
-        audit.append({
+        await audit.append({
           eventType: 'project_create',
           actor: authed.user.username,
           targetType: 'project',
@@ -832,7 +846,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
       const repoUrlVerdict = validateProjectRepoUrl(body.repoUrl)
       if (!repoUrlVerdict.ok) {
-        audit.append({
+        await audit.append({
           eventType: 'project_create',
           actor: authed.user.username,
           targetType: 'project',
@@ -858,7 +872,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         createdAt: now()
       }
       if (
-        !recordAudit(
+        !(await recordAudit(
           res,
           {
             eventType: 'project_create',
@@ -870,7 +884,7 @@ export function createApp(config: ApiConfig): ApiHandle {
             metadata: { key: created.key, path: created.path }
           },
           traceId
-        )
+        ))
       ) {
         return
       }
@@ -884,13 +898,13 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (!authed) return
       if (!auditAllowsMutations(res, traceId)) return
       const body = await readJson(req)
-      const deny = (
+      const deny = async (
         status: number,
         code: string,
         message: string,
         details?: Record<string, unknown>
-      ): void => {
-        audit.append({
+      ): Promise<void> => {
+        await audit.append({
           eventType: 'project_create',
           actor: authed.user.username,
           targetType: 'project',
@@ -904,28 +918,28 @@ export function createApp(config: ApiConfig): ApiHandle {
       // Why: the path is the platform's decision; accepting one would let a
       // developer name any directory on a shared host.
       if ('path' in body) {
-        return deny(400, 'PROJECT_PATH_FORBIDDEN', '项目路径由平台推导，不能指定。')
+        return await deny(400, 'PROJECT_PATH_FORBIDDEN', '项目路径由平台推导，不能指定。')
       }
       const name = typeof body.name === 'string' ? body.name.trim() : ''
       if (name === '' || name.length > 200) {
-        return deny(400, 'PROJECT_NAME_INVALID', '项目名称不能为空且不能超过 200 个字符。')
+        return await deny(400, 'PROJECT_NAME_INVALID', '项目名称不能为空且不能超过 200 个字符。')
       }
       const keyVerdict = validateProjectKey(
         body.key === undefined ? projectKeyFromName(name) : body.key
       )
       if (!keyVerdict.ok) {
-        return deny(400, keyVerdict.code, keyVerdict.message)
+        return await deny(400, keyVerdict.code, keyVerdict.message)
       }
       const repoVerdict = validateProjectRepoUrl(body.repoUrl)
       if (!repoVerdict.ok) {
-        return deny(400, repoVerdict.code, repoVerdict.message)
+        return await deny(400, repoVerdict.code, repoVerdict.message)
       }
       if (repoVerdict.repoUrl === '') {
-        return deny(400, 'REPO_URL_REQUIRED', '仓库地址不能为空。')
+        return await deny(400, 'REPO_URL_REQUIRED', '仓库地址不能为空。')
       }
       const branchVerdict = validateProjectDefaultBranch(body.defaultBranch)
       if (!branchVerdict.ok) {
-        return deny(400, branchVerdict.code, branchVerdict.message)
+        return await deny(400, branchVerdict.code, branchVerdict.message)
       }
       const selection = selectSelfServiceHost({
         hosts: store.hosts.values(),
@@ -933,25 +947,25 @@ export function createApp(config: ApiConfig): ApiHandle {
         isOnline: hostOnline
       })
       if (!selection.ok) {
-        return deny(selection.status, selection.code, selection.message, selection.details)
+        return await deny(selection.status, selection.code, selection.message, selection.details)
       }
       const key = keyVerdict.key
       if (projectKeyTaken(store, key)) {
-        return deny(409, 'PROJECT_KEY_TAKEN', '项目 Key 已被占用，请更换。')
+        return await deny(409, 'PROJECT_KEY_TAKEN', '项目 Key 已被占用，请更换。')
       }
       const root = selection.host.projectsRoot
       const derivedPath = root === null ? null : joinProjectPath(root, key)
       if (derivedPath === null) {
-        return deny(400, 'PROJECT_PATH_INVALID', '无法根据主机目录生成合法的项目路径。')
+        return await deny(400, 'PROJECT_PATH_INVALID', '无法根据主机目录生成合法的项目路径。')
       }
       if (projectPathTaken(store, derivedPath)) {
-        return deny(409, 'PROJECT_PATH_TAKEN', '该主机目录下已存在同路径的项目。')
+        return await deny(409, 'PROJECT_PATH_TAKEN', '该主机目录下已存在同路径的项目。')
       }
       if (
         countActiveProjectsCreatedBy(store.projects.values(), authed.user.username) >=
         SELF_SERVICE_PROJECT_LIMIT
       ) {
-        return deny(
+        return await deny(
           429,
           'PROJECT_LIMIT_REACHED',
           `自助创建的项目数量已达上限（${SELF_SERVICE_PROJECT_LIMIT} 个）。`
@@ -971,7 +985,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         createdAt: now()
       }
       if (
-        !recordAudit(
+        !(await recordAudit(
           res,
           {
             eventType: 'project_create',
@@ -983,7 +997,7 @@ export function createApp(config: ApiConfig): ApiHandle {
             metadata: { key, selfService: true, hostId: created.hostId }
           },
           traceId
-        )
+        ))
       ) {
         return
       }
@@ -1012,7 +1026,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         !found ||
         (!adminAccess && !store.effectivePermissions(found.id, authed.user).includes('open'))
       ) {
-        audit.append({
+        await audit.append({
           eventType: 'project_access',
           actor: authed.user.username,
           targetType: 'project',
@@ -1035,7 +1049,7 @@ export function createApp(config: ApiConfig): ApiHandle {
 
       if (req.method === 'PUT' && action === '') {
         if (!isAdmin(authed.user)) {
-          audit.append({
+          await audit.append({
             eventType: 'project_update',
             actor: authed.user.username,
             targetType: 'project',
@@ -1058,7 +1072,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         if ('repoUrl' in body) {
           const verdict = validateProjectRepoUrl(body.repoUrl)
           if (!verdict.ok) {
-            audit.append({
+            await audit.append({
               eventType: 'project_update',
               actor: authed.user.username,
               targetType: 'project',
@@ -1075,7 +1089,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         if ('defaultBranch' in body) {
           const verdict = validateProjectDefaultBranch(body.defaultBranch)
           if (!verdict.ok) {
-            audit.append({
+            await audit.append({
               eventType: 'project_update',
               actor: authed.user.username,
               targetType: 'project',
@@ -1090,7 +1104,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         }
         const repoUrlChanged = nextRepoUrl !== found.repoUrl
         if (
-          !recordAudit(
+          !(await recordAudit(
             res,
             {
               eventType: 'project_update',
@@ -1103,7 +1117,7 @@ export function createApp(config: ApiConfig): ApiHandle {
               metadata: { key: found.key, repoUrlChanged, hostId: found.hostId }
             },
             traceId
-          )
+          ))
         ) {
           return
         }
@@ -1136,7 +1150,7 @@ export function createApp(config: ApiConfig): ApiHandle {
           ? (body.permissions as Permission[])
           : []
         if (
-          !recordAudit(
+          !(await recordAudit(
             res,
             {
               eventType: 'grant_update',
@@ -1148,7 +1162,7 @@ export function createApp(config: ApiConfig): ApiHandle {
               metadata: { subjectType, subjectId, permissions }
             },
             traceId
-          )
+          ))
         ) {
           return
         }
@@ -1176,7 +1190,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         if (action === '/archive') {
           if (found.status !== 'archived') {
             if (
-              !recordAudit(
+              !(await recordAudit(
                 res,
                 {
                   eventType: 'project_archive',
@@ -1188,7 +1202,7 @@ export function createApp(config: ApiConfig): ApiHandle {
                   metadata: { selfService }
                 },
                 traceId
-              )
+              ))
             ) {
               return
             }
@@ -1208,7 +1222,7 @@ export function createApp(config: ApiConfig): ApiHandle {
             : null
         if (conflict !== null) {
           if (
-            !recordAudit(
+            !(await recordAudit(
               res,
               {
                 eventType: 'project_restore',
@@ -1220,7 +1234,7 @@ export function createApp(config: ApiConfig): ApiHandle {
                 metadata: { selfService, reason: conflict }
               },
               traceId
-            )
+            ))
           ) {
             return
           }
@@ -1235,7 +1249,7 @@ export function createApp(config: ApiConfig): ApiHandle {
           )
         }
         if (
-          !recordAudit(
+          !(await recordAudit(
             res,
             {
               eventType: 'project_restore',
@@ -1247,7 +1261,7 @@ export function createApp(config: ApiConfig): ApiHandle {
               metadata: { selfService }
             },
             traceId
-          )
+          ))
         ) {
           return
         }
@@ -1286,7 +1300,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         // Why write-ahead: same rule as every other sensitive write (M32) — a policy
         // change that cannot be recorded must not take effect.
         if (
-          !recordAudit(
+          !(await recordAudit(
             res,
             {
               eventType: 'policy_update',
@@ -1302,7 +1316,7 @@ export function createApp(config: ApiConfig): ApiHandle {
               }
             },
             traceId
-          )
+          ))
         ) {
           return
         }
@@ -1361,7 +1375,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (!auditAllowsMutations(res, traceId)) return
       const token = randomBytes(24).toString('base64url')
       if (
-        !recordAudit(
+        !(await recordAudit(
           res,
           {
             eventType: 'host_token_create',
@@ -1372,7 +1386,7 @@ export function createApp(config: ApiConfig): ApiHandle {
             traceId
           },
           traceId
-        )
+        ))
       ) {
         return
       }
@@ -1441,7 +1455,7 @@ export function createApp(config: ApiConfig): ApiHandle {
           version: store.policies.version
         })
       }
-      audit.append({
+      await audit.append({
         eventType: 'host_register',
         actor: 'agent',
         targetType: 'host',
@@ -1556,7 +1570,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         const nextStatus = body.enabled === false ? 'online' : 'maintenance'
         const nextReason = body.reason ? String(body.reason) : '计划维护'
         if (
-          !recordAudit(
+          !(await recordAudit(
             res,
             {
               eventType: 'host_maintenance',
@@ -1568,7 +1582,7 @@ export function createApp(config: ApiConfig): ApiHandle {
               metadata: { enabled: nextStatus === 'maintenance', reason: nextReason }
             },
             traceId
-          )
+          ))
         ) {
           return
         }
@@ -1588,7 +1602,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         for (const p of store.projects.values()) {
           if (p.hostId === hostId) revokeProjectCredentials(p.id, 'host_revoked')
         }
-        audit.append({
+        await audit.append({
           eventType: 'host_revoke',
           actor: authed.user.username,
           targetType: 'host',
@@ -1614,7 +1628,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (since && now() - since > 31 * 24 * 60 * 60_000) {
         return error(res, 400, 'TIME_WINDOW_TOO_LARGE', '查询时间窗最大 31 天。', traceId)
       }
-      const page = audit.query({
+      const page = await audit.query({
         actor: url.searchParams.get('actor') ?? undefined,
         eventType: url.searchParams.get('eventType') ?? undefined,
         result: url.searchParams.get('result') ?? undefined,
@@ -1653,7 +1667,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
       // Verify the chain as it stands, then record the attempt: the attempt itself
       // must be auditable, but it cannot be part of what it reports on.
-      const verdict = audit.verify()
+      const verdict = await audit.verify()
       audit.appendBestEffort({
         eventType: 'audit_verify',
         actor: authed.user.username,
@@ -1690,7 +1704,7 @@ export function createApp(config: ApiConfig): ApiHandle {
           return error(res, 400, 'POLICY_INVALID', '读取限速必须是大于 0 的 calls/bytes。', traceId)
         }
         if (
-          !recordAudit(
+          !(await recordAudit(
             res,
             {
               eventType: 'policy_update',
@@ -1705,7 +1719,7 @@ export function createApp(config: ApiConfig): ApiHandle {
               }
             },
             traceId
-          )
+          ))
         ) {
           return
         }
@@ -1829,7 +1843,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       ok: compareVersions(offeredVersion, minClientVersion) >= 0
     }
     if (!clientVersionCheck.ok) {
-      audit.append({
+      await audit.append({
         eventType: 'project_connect',
         actor: user.username,
         targetType: 'project',
@@ -1876,7 +1890,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       exp: nowS + CREDENTIAL_TTL_S
     }
     const credential = signCredential(payload, signingKeys.current())
-    audit.append({
+    await audit.append({
       eventType: 'project_connect',
       actor: user.username,
       targetType: 'project',
@@ -2063,6 +2077,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     port: Number(process.env.PORT ?? 18787),
     ...(accessTtlMs === undefined ? {} : { accessTtlMs }),
     ...(refreshTtlMs === undefined ? {} : { refreshTtlMs }),
+    ...(process.env.ORCA_CLOUD_AUDIT_WRITER_URL
+      ? { auditWriterUrl: process.env.ORCA_CLOUD_AUDIT_WRITER_URL }
+      : {}),
     ...(process.env.ORCA_CLOUD_WEB_ROOT ? { webRoot: process.env.ORCA_CLOUD_WEB_ROOT } : {}),
     ...(process.env.ORCA_CLOUD_WEB_ARCHIVE
       ? { webReleaseArchiveDir: process.env.ORCA_CLOUD_WEB_ARCHIVE }

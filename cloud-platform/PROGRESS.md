@@ -1633,14 +1633,43 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 2. 未覆盖轮询连续失败时的行为（已有 `jwks_staleness` 与 `control-plane-isolation` 用例覆盖策略拉取失败）。
 3. 生效时延 = 轮询间隔 + 一个请求往返，25 秒内的请求仍可能看到旧策略——这是「30 秒内生效」口径的固有语义。
 
+## M80 修复 G-04：三副本共用一个审计写入者（AC-26）（本轮，主会话执行）
+
+**问题（M70 验收映射发现）**：审计链只在单个 API 进程内维护，`auditLog` 是每副本各自的文件。部署 3 个副本时，每个副本各自从自己的 `GENESIS` 开始分配 `seq`/`prevHash`，链必然分叉；篡改也只会被读过该文件的副本发现。AC-26 的「3 副本 10 万条并发无分叉」不可能成立。
+
+**设计决策（本轮确定）**：按 design §3 已列出的 `orca-cloud-audit-writer`，先实现「单写入者 + 串行定序 + 文件回放」：API 副本把事件投递给写入者，写入者一个进程分配全局 `seq`/`prev_hash`。leader 选举/standby、Redis Stream 与 PG/对象存储归档留待部署阶段（已在 design §13.2 标注为未实现）。
+
+| 改动 | 内容 |
+|---|---|
+| `apps/audit-writer/src/writer.ts`（新） | `POST /v1/append`（批量 ≤1000，进程内串行）、`GET /v1/events`、`/v1/verify`、`/v1/status`、`/health`；内部令牌鉴权；启动时回放并校验既有日志；链损坏时**拒绝一切追加**（503 `AUDIT_CHAIN_BROKEN`），让所有副本 fail-closed |
+| `apps/api/src/audit-writer-client.ts`（新） | 副本侧 `AuditSink` 实现（append / appendBestEffort / query / verify / getHealth）；写失败标记 `write_failed`、写入者报告断链则标记 `chain_broken` 并抛同码错误 |
+| `audit.ts` | `AuditChain` 依赖收窄为 `AuditStore`（只要 `audit/auditSeq/auditTip`），写入者可复用它而无需整个 `Store` |
+| `server.ts` | `AuditSink` 接口；设置 `ORCA_CLOUD_AUDIT_WRITER_URL` 时走远端写入者，否则保持原有本地链；`recordAudit`、`audit.append/query/verify` 全部改为 `await`（本地链返回同步值，`await` 兼容） |
+| 文档 | design §13.2 增补一期实现与未实现清单；test-plan AC-26 由 UNVERIFIED 更新为 PASS |
+
+**验证（`evidence/m80-audit-writer/audit-writer.json`）**：1 个真实写入者进程 + 3 个真实 API 副本 + 真实 TCP：
+- 集成：3 个副本各自的审计写操作经写入者落链，`/v1/events` 可查。
+- 规模：3 个并发生产者（与副本同一条 append 路径）写入 **100,000** 条，用时 **2.35s（≈42,500 条/秒）**；`seq` 无重复无缺口，`/v1/verify` → `ok: true, checked: 100006`（含副本自身事件）。
+- 篡改：改写日志中间一行（第 50004 行）并重启写入者 → `/v1/verify` 报 `brokenAtSeq: 50004`；3 个副本的敏感写操作（建项目）全部 **503 `AUDIT_CHAIN_BROKEN`**。
+- 回归：平台测试 **132/132**；新模块独立 `tsc --strict` 0；`tsc node` 0；`check:code-quality:changed` 0 新发现。
+
+**负向对照**：移除写入者追加前的健康检查 → 篡改后副本仍返回 **201**（授权被静默铸出），断言 503 失败；恢复后全绿。
+
+**如实记录 / 剩余**：
+1. 写入者仍是单实例：无 leader 选举/standby，写入者宕机即全部敏感操作 fail-closed（可用性问题，不是分叉问题）。
+2. 事件投递是同步 HTTP（每个审计写一次往返），不是 design 里的 Redis Stream 异步队列；副本在写入者不可达时直接拒绝敏感操作。
+3. 持久层是单文件（行追加 + 重启回放），不是 PostgreSQL + 对象存储 WORM；5 分钟签名锚点未实现。
+4. 10 万条规模测试由 3 个并发客户端直接打 append 端点完成（与副本同一条路径），副本侧只做了端到端集成验证——用 10 万次用户操作驱动会超出单轮时间预算，此处如实说明。
+5. `appendBestEffort` 在远端模式下立即返回 true（失败只在健康状态里体现），与本地模式语义略有差异。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M79（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M80（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步**：
-1. **G-04 多副本审计链（AC-26）**：单写入者 + leader 选举或集中定序服务，需部署形态决策（剩余唯一 BLOCKER）。
-2. **剩余 MINOR**：G-11（多副本锁计数，随 G-04 一起解决）、G-12（浏览器渲染 P95 与「平台无业务流量」抓包证明）。
-3. **人工验收准备**：整理验收清单与证据索引；`AC-29` 首次连接确认弹窗 UI 未做，其余 MAJOR 已关闭。
+1. **剩余 MINOR**：G-11（登录失败锁计数在进程内存，多副本各算 5 次）、G-12（浏览器渲染 P95 与「平台无业务流量」抓包证明，需独立环境）。
+2. **人工验收准备**：整理验收清单与证据索引；`AC-29` 首次连接确认弹窗 UI 未做。
+3. **G-04 部署形态**：写入者 standby/leader 选举、Redis Stream 队列、PostgreSQL/对象存储归档与签名锚点仍待部署阶段实现（本轮已完成单写入者定序与 fail-closed）。
 4. **人工验收**：按 design/test-plan 逐条核对验收标准；重点看桌面真实界面（登录 → 侧栏项目 → 本人 checkout → 终端/文件/git/agent）与管理员浏览器会话页。
 4. 真机/跨平台：Windows、WSL、SSH 主机各跑一遍关键路径（provisioning、路径边界、PTY、会话持久化权限位）。
 5. L4 全量回归：发版前单独执行，含桌面 Electron 渲染验证。
