@@ -2392,6 +2392,10 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 - `6997ee99f78`（宿主侧）：`enrollCloudHost` 缺省 routeKey=派生 `ip-<地址>`（点/冒号折叠为横线以过中继 SNI 白名单），显式配置优先。
 - 已知记录项：acceptance-index 会把 `m114-relay-page` 列为「test-plan 未引用」（记录性输出）；后续在 test-plan 补引用即可消除。
 
+### M116 Web 探索性测试（用户复查要求，进行中，2026-11-14）
+
+背景：用户在 Web 用管理员打开项目，得到「连接信息已就绪」对话框而非工作区。**结论：设计内行为**（`apps/web/app.js:249` 调 `/connect` 展示直连/中继地址与凭证时效；项目内终端/文件工作区按架构由桌面客户端承载，平台 Web 不代理流量），但对话框未引导「请到桌面客户端打开」，记为 UX 缺陷待修。已派发独立探索性测试子代理（与 M115 实现代理并行、零文件冲突）：用 `git archive HEAD` 快照起隔离平台 + 真实 runtime-sim 宿主 + 两个真实中继进程，双角色双视口逐页走查（登录/工作台/项目/主机/中继/成员/审计/设置/门禁/全局交互），产出分级问题清单 `test-reports/exploratory-qa-web.md` + `evidence/m116-exploratory-web/`（findings.json + 截图）。问题清单回收后统一派发修复。
+
 ### M115 自助建项目改造（需求修订 + 派发，2026-11-14）
 
 用户修订：新建项目**必填名称与目录**，**仓库地址可选**（不填为空项目直接就绪），目录可「选择已有目录」或「新建目录」（参考本地 Orca 添加项目）。落地设计：目录限定宿主 `projectsRoot` 内（安全边界不变），已有目录列表来自宿主心跳新增 `projectDirs` 字段（一级目录名、≤200 条，不新建控制通道）。文档已同步（FR-3.7、design §8.2、tasks T221、test-plan §6）；实现派发给代码子代理（对话框 `cloud-new-project-dialog.tsx`、平台 `project-self-service.ts`、心跳 `cloud-heartbeat-body.ts`）。
