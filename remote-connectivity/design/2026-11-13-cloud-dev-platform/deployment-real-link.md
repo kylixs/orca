@@ -91,6 +91,15 @@ flowchart LR
 | 中继多节点负载/切换 | ≥2 个中继节点 | AC-23 用例指向真实中继；可选增强：客户端按探测延迟选最快中继 |
 | 真实证书链 | 平台 CA 签发 | 撤掉 `TLS_INSECURE=1`，验证宿主 TLS 链 + 指纹固定（M109） |
 
+## 4b. 浏览器经中继使用 Web 界面（M121，改造项）
+
+浏览器只能拿 URL 域名做 SNI（不能像桌面客户端显式 `servername`），因此经中继使用 `web-index.html` 需要：
+
+1. **中继监听 443**，并配置通配 DNS：`*.relay.example.com → 中继地址`（或内网逐台 hosts 记录）。
+2. **平台下发浏览器入口**：`https://<routeKey>.relay.example.com/web-index.html`（如 `https://ip-192-168-2-202.relay.example.com/...`）；routeKey 派生规则已把点/冒号折叠为横线，天然合法。
+3. **宿主证书 SAN**：`<routeKey>` 与 `<routeKey>.relay.example.com`（平台 CA 签发；安装脚本当前只含 localhost/127.0.0.1，需扩展）。
+4. 桌面客户端完全不变：仍按平台下发的端点显式设 SNI。
+
 ## 5. 已知限制 / 风险
 
 - 平台跑在本机 Docker：本机休眠/网络切换 = 全链路控制面下线；仅作联调，不作长驻。
