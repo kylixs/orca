@@ -7,6 +7,7 @@ import type {
   RpcStreamingMethod
 } from './core'
 import { errorResponse } from './errors'
+import { methodDenialDetails } from '../../cloud-platform/cloud-denial-details'
 import type { OrcaRuntimeService } from '../orca-runtime'
 import { orchestrationMigrationFence } from './orchestration-contract-fence'
 import type { RpcDispatchStreamingOptions } from './dispatcher-stream-options'
@@ -44,7 +45,11 @@ export function admitRpcRequest<M extends RpcMethod | RpcStreamingMethod>(
   const callerScope = pinnedCallerScope ?? options?.callerScope ?? OWNER_RPC_CALLER_SCOPE
   const denial = denyRpcMethodForCaller(callerScope, rawRequest.method, method?.permission)
   if (denial) {
-    return reject(errorResponse(rawRequest.id, meta, 'forbidden', denial))
+    // Why data: the wire code stays `forbidden` for shipped clients; the precise
+    // reason is what the CLI and the platform documentation branch on.
+    const details =
+      callerScope.kind === 'cloud' ? methodDenialDetails(callerScope, rawRequest.method) : null
+    return reject(errorResponse(rawRequest.id, meta, 'forbidden', denial, details ?? undefined))
   }
   if (!method) {
     return reject(

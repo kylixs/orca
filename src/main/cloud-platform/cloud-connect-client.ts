@@ -31,7 +31,12 @@ export type CloudConnectTicket = CloudReplyTicket
 
 export type CloudRpcResult =
   | { ok: true; result: unknown }
-  | { ok: false; code: string; message?: string }
+  | {
+      ok: false
+      code: string
+      message?: string
+      /** Machine-readable denial details. */ data?: unknown
+    }
 
 export type CloudDeviceKeyPair = {
   publicKey: Uint8Array

@@ -124,10 +124,12 @@ export class CloudRpcMultiplexer {
     }
     const failure = readField(message, 'error')
     if (readField(message, 'ok') === false) {
+      const data = readField(failure, 'data')
       this.finish(id, entry, {
         ok: false,
         code: readString(failure, 'code') ?? 'unknown',
-        message: readString(failure, 'message') ?? ''
+        message: readString(failure, 'message') ?? '',
+        ...(data === null ? {} : { data })
       })
       return
     }

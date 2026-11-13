@@ -13,6 +13,7 @@ import { classifyRuntimeLongPoll } from './runtime-rpc-long-poll'
 import type { RpcCallerScope } from '../rpc/rpc-caller-scope'
 import { cloudMethodAccess } from '../../cloud-platform/cloud-rpc-permission'
 import { checkCloudRpcPath, isCloudPathGuardedMethod } from '../../cloud-platform/cloud-path-guard'
+import { pathDenialDetails } from '../../cloud-platform/cloud-denial-details'
 import { limitRuntimeRpcReplySize } from './runtime-rpc-reply-size-limit'
 
 // Why: status.get has no per-connection context in the dispatcher, so stamp the scope here at the transport boundary.
@@ -142,7 +143,16 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
         params: request.params
       })
       if (pathDecision && !pathDecision.ok) {
-        reply(JSON.stringify(this.buildError(request.id, 'forbidden', pathDecision.message)))
+        reply(
+          JSON.stringify(
+            this.buildError(
+              request.id,
+              'forbidden',
+              pathDecision.message,
+              pathDenialDetails(pathDecision.reason)
+            )
+          )
+        )
         return
       }
     }

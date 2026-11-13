@@ -92,6 +92,43 @@ describe('every RPC method declares a known permission', () => {
   })
 })
 
+describe('cloud denials carry a machine-readable reason', () => {
+  const READ_ONLY: RpcCallerScope = {
+    kind: 'cloud',
+    permissions: ['open', 'file:read'],
+    downloadAllowed: false
+  }
+
+  it('names the missing permission instead of only saying forbidden', async () => {
+    const response = await dispatchAs(READ_ONLY, 'files.write', {})
+    expect(errorCode(response)).toBe('forbidden')
+    if (!response.ok) {
+      expect(response.error.data).toEqual({
+        denial: 'PERMISSION_MISSING',
+        permission: 'file:write'
+      })
+    }
+  })
+
+  it('marks a host-wide method as unavailable to cloud sessions', async () => {
+    const response = await dispatchAs(READ_ONLY, 'settings.update', {})
+    if (!response.ok) {
+      expect(response.error.data).toEqual({ denial: 'METHOD_NOT_AVAILABLE' })
+    }
+  })
+
+  it('distinguishes a policy-refused export from a missing permission', async () => {
+    const response = await dispatchAs(
+      { kind: 'cloud', permissions: ['open', 'download'], downloadAllowed: false },
+      'browser.download',
+      {}
+    )
+    if (!response.ok) {
+      expect(response.error.data).toEqual({ denial: 'DOWNLOAD_DISABLED', permission: 'download' })
+    }
+  })
+})
+
 describe('SSH bridge without the per-host opt-in', () => {
   it('binds only registered workspace methods', () => {
     const permissionOf = (name: string) => ALL_RPC_METHODS.find((m) => m.name === name)?.permission

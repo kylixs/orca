@@ -144,8 +144,8 @@ export class RuntimeRpcRequestAdmission extends RuntimeRpcBinaryRouting {
     return { error: this.buildError(request.id, 'unauthorized', 'Invalid auth token') }
   }
 
-  protected buildError(id: string, code: string, message: string): RpcResponse {
-    return errorResponse(id, { runtimeId: this.runtime.getRuntimeId() }, code, message)
+  protected buildError(id: string, code: string, message: string, data?: unknown): RpcResponse {
+    return errorResponse(id, { runtimeId: this.runtime.getRuntimeId() }, code, message, data)
   }
 
   protected writeMetadata(): void {

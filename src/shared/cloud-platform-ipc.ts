@@ -154,7 +154,7 @@ export type CloudCreateProjectResult =
 
 export type CloudRpcOutcome =
   | { ok: true; result: unknown }
-  | { ok: false; code: string; message?: string }
+  | { ok: false; code: string; message?: string; data?: unknown }
 
 /** Pushed when the host closes the socket (revocation, maintenance, network). */
 export type CloudConnectionEvent = {

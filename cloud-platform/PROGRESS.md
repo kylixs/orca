@@ -1435,13 +1435,41 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 4. 吊销后主机重启：持久化凭证仍指向已吊销主机，首次 refresh 即得知并停止，不会自动重新注册。
 5. 心跳定时器停止属卫生性改动：`refresh()` 本身已短路，测试无法单独区分，已在证据中注明。
 
+## M72 修复 G-07：云端拒绝携带机器可读原因（AC-27/AC-28）（本轮，主会话执行）
+
+**问题（M70 验收映射发现）**：真实主机对越界路径/缺权限只返回顶层 `forbidden` + 英文消息，文档写的是 `PATH_OUTSIDE_ROOT` / `PERMISSION_MISSING`；客户端/CLI 按码分支无法匹配。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-denial-details.ts`（新） | `PATH_OUTSIDE_ROOT` / `PERMISSION_MISSING` / `METHOD_NOT_AVAILABLE` / `DOWNLOAD_DISABLED` 词汇与构造；由权限映射推导，不改变准入逻辑 |
+| `runtime-rpc-request-admission.ts` / `runtime-rpc-websocket-dispatch.ts` | `buildError` 增加可选 `data`；路径拒绝附 `{denial:'PATH_OUTSIDE_ROOT', reason}` |
+| `rpc-request-admission-prologue.ts` | 云会话的方法权限拒绝附 `methodDenialDetails(...)` |
+| `cloud-rpc-multiplexer.ts` / `cloud-connect-client.ts` / `cloud-platform-ipc.ts` | 把 `error.data` 一路带到 `CloudRpcResult`/`CloudRpcOutcome` 的 `data` |
+| 文档 | `design.md` §6.5 增补「D. 云会话 RPC 拒绝」表；`test-plan.md` AC-27/AC-28 结果与证据更新 |
+
+**顶层 `code` 保持 `forbidden`**：已发布客户端把它读作「主机拒绝」，精确原因只放在 `data.denial`，属于向后兼容的加字段。
+
+**G-06（读语义）核实结论**：实现读限 `projectRoot`、写限 `workspaceRoot`——AC-27 的「项目内跨工作区读允许」本来就成立；M36-1 中被拒的是**另一个项目**的仓库（在 `projectRoot` 之外），不是同项目同伴 worktree。`cloud-path-boundary.test.ts::工作区根内的写入放行，项目其它位置只读` 即该语义的真实用例，已补进 AC-27 引用。
+
+**验证（`evidence/m72-denial-details/`）**：
+- 真实平台 + 真实 TLS Runtime + 真实 WSS（`cloud-denial-details.test.ts`）：越界写 → `forbidden` + `data.denial=PATH_OUTSIDE_ROOT`、带 `reason`；`settings.update` → `forbidden` + `data.denial=METHOD_NOT_AVAILABLE`。证据 `m72-path-denial.json`、`m72-method-denial.json`。
+- 单元（`rpc-caller-scope.test.ts` 新增 3 条）：`PERMISSION_MISSING` + `permission=file:write`；`METHOD_NOT_AVAILABLE`；`DOWNLOAD_DISABLED`（`browser.download` 且策略关闭下载）。
+- 合并重跑 **40/40 通过**；回归 `cloud-workspace-boundary.test.ts` + `cloud-agent-boundary.test.ts` 10 条通过；`tsc node` 0、`tsc tc.web` 0；`check:code-quality:changed` 0 新发现。
+
+**负向对照**：从 dispatch 的 `buildError` 去掉 `pathDenialDetails(...)` → M72-1 失败（`expected undefined to match object { denial: 'PATH_OUTSIDE_ROOT' }`），M72-2 仍通过（方法级路径独立）；恢复后全绿。
+
+**如实记录 / 剩余**：
+1. `data` 只走内存回程：不进审计、不落日志（审计缺失见 G-08）。
+2. `files.download` 不是已注册方法，`DOWNLOAD_DISABLED` 用 `browser.download` 验证。
+3. 主机侧拒绝仍无审计事件（G-08）；`PLATFORM_UNAVAILABLE` 映射（G-09）与离线主机禁用（G-05）未动。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M69（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M72（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步**：
-1. **G-06/G-07 语义与错误码统一**（MAJOR）：确认 AC-27「读允许」的产品语义，并让主机对越界/缺权限返回文档约定的错误码（或在文档中正式修订），避免验收时对不上。
-2. **G-08 主机侧拒绝审计** + **G-05 离线禁用** + **G-09 `PLATFORM_UNAVAILABLE`**（其余 MAJOR）。
+1. **G-08 主机侧拒绝审计**（MAJOR）：越界/缺权限/吊销等主机侧拒绝写审计事件（错误码已在 M72 完成）。
+2. **G-05 离线主机禁用** + **G-09 `PLATFORM_UNAVAILABLE`**（其余 MAJOR）。
 3. **人工验收**：按 design/test-plan 逐条核对验收标准；重点看桌面真实界面（登录 → 侧栏项目 → 本人 checkout → 终端/文件/git/agent）与管理员浏览器会话页。
 4. 真机/跨平台：Windows、WSL、SSH 主机各跑一遍关键路径（provisioning、路径边界、PTY、会话持久化权限位）。
 5. L4 全量回归：发版前单独执行，含桌面 Electron 渲染验证。

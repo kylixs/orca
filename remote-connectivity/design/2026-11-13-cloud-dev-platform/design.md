@@ -553,6 +553,19 @@ stateDiagram-v2
 
 > WebSocket 帧过大改为**协议层直接断开（1009 Message Too Big）**，不再占用 4409。
 
+**D. 云会话 RPC 拒绝（主机侧，`error.data.denial`）**
+
+已连通的会话内，主机拒绝一次 RPC 时顶层 `code` 保持 `forbidden`（兼容已发布客户端），精确原因放在 `error.data`：
+
+| `data.denial` | 附带字段 | 说明 |
+|---|---|---|
+| `PATH_OUTSIDE_ROOT` | `reason`（`project_scope` / `workspace_scope` / …） | 路径未落在允许根内：读限 `projectRoot`，写限 `workspaceRoot` |
+| `PERMISSION_MISSING` | `permission` | 会话权限不包含该方法所需权限 |
+| `METHOD_NOT_AVAILABLE` | — | 主机级/本地方法对云会话不可用 |
+| `DOWNLOAD_DISABLED` | `permission: 'download'` | 会话权限含下载但项目策略关闭下载 |
+
+客户端与 CLI 按 `data.denial` 分支，`code === 'forbidden'` 只表示「主机拒绝」。
+
 ### 6.6 与 Orca 现有 E2EE 握手的衔接
 
 现状：Orca 直连依赖手工配对——主机在 `DeviceRegistry` 生成 `deviceToken`，客户端从 `orca://pair?code=...` 得到 `deviceToken` 与主机 `publicKeyB64`，然后用主机公钥派生共享密钥（`src/shared/remote-runtime-request-websocket.ts:47-49`），发 `e2ee_hello{publicKeyB64}`，主机 `e2ee-channel.ts:227-233` 用 `serverSecretKey + clientPub` 派生同一密钥，客户端再发 `e2ee_auth{deviceToken,...}` 由 `mobile-e2ee-auth-validation.ts` 校验。
