@@ -155,7 +155,7 @@ test('AC-18 开发者登录 Web 前端：管理导航隐藏，直达管理路由
   // ---- navigation is hidden, not merely disabled ----
   assert.equal(page.hidden('#adminNav'), true, 'the admin nav group must be hidden')
   const visibleAdminLinks: string[] = []
-  for (const route of ['hosts', 'members', 'audit', 'settings']) {
+  for (const route of ['hosts', 'relays', 'members', 'audit', 'settings']) {
     const button = page.window.document.querySelector<HTMLElement>(
       `.nav-item[data-route="${route}"]`
     )
@@ -172,6 +172,13 @@ test('AC-18 开发者登录 Web 前端：管理导航隐藏，直达管理路由
   assert.match(page.text('#content'), /无权访问/)
   assert.match(page.text('#content'), /没有平台管理权限/)
   assert.doesNotMatch(page.text('#content'), /注册主机/)
+
+  // M114b: the relay page is gated exactly like the hosts page.
+  await page.clickNav('relays')
+  assert.equal(page.text('#crumbs'), '无权访问')
+  assert.match(page.text('#content'), /没有平台管理权限/)
+  assert.doesNotMatch(page.text('#content'), /尚未注册中继/)
+
   // The workbench nav item must not be left marked active by a refused route.
   const activeRoutes = [...page.window.document.querySelectorAll('.nav-item.active')].map(
     (element) => element.getAttribute('data-route')
@@ -242,4 +249,42 @@ test('AC-18 管理员登录：管理导航可见，管理路由可用', async ()
   await page.clickNav('hosts')
   assert.equal(page.text('#crumbs'), '平台设置 / 主机')
   assert.doesNotMatch(page.text('#content'), /无权访问/)
+}, 120_000)
+
+test('M114b 管理员「中继」页：导航可见且渲染 /v1/relays 数据', async () => {
+  // A real registration, so the table shows what the platform would show an admin.
+  const registered = await fetch(`${service.url}/v1/internal/relay-endpoint`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-internal-token': 'm93-internal-token' },
+    body: JSON.stringify({ id: 'relay-web', host: 'relay.example.test', port: 18443 })
+  })
+  assert.equal(registered.status, 200)
+
+  const page = loadPage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+
+  const relayNav = page.window.document.querySelector<HTMLElement>(
+    '.nav-item[data-route="relays"]'
+  )
+  assert.ok(relayNav, 'the relay nav item must exist')
+  assert.equal(relayNav.hidden, false, 'an admin must see the relay nav item')
+  assert.equal(relayNav.textContent?.trim(), '中继')
+
+  await page.clickNav('relays')
+  assert.equal(page.text('#crumbs'), '平台设置 / 中继')
+  assert.doesNotMatch(page.text('#content'), /无权访问/)
+  const content = page.text('#content')
+  assert.match(content, /节点 ID/)
+  assert.match(content, /relay-web/, 'the registered node id must be listed')
+  assert.match(content, /relay\.example\.test:18443/, 'the dialable address must be listed')
+  assert.match(content, /在线/)
+  assert.match(content, /最近注册时间/)
+
+  saveEvidence(EVIDENCE, 'web-relay-page.json', {
+    adminNavHasRelay: true,
+    crumbs: page.text('#crumbs'),
+    listedRelay: { id: 'relay-web', host: 'relay.example.test', port: 18443, online: true },
+    content: content.slice(0, 600)
+  })
 }, 120_000)

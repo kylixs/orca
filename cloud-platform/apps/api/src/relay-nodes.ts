@@ -57,6 +57,32 @@ function field(source: unknown, key: string): unknown {
   return source !== null && typeof source === 'object' ? Reflect.get(source, key) : undefined
 }
 
+/** The address part of a direct address: `[v6]:port`, `v4:port`, bare IPv6, bare host. */
+export function ipOfDirectAddr(addr: string): string | null {
+  const value = addr.trim()
+  if (value === '') return null
+  if (value.startsWith('[')) {
+    const end = value.indexOf(']')
+    return end > 1 ? value.slice(1, end) : null
+  }
+  const first = value.indexOf(':')
+  const last = value.lastIndexOf(':')
+  if (first === -1) return value
+  // One colon separates host and port; several mean a bare IPv6 literal.
+  return first === last ? value.slice(0, first) : value
+}
+
+/**
+ * A host that does not name its own route gets one derived from what it
+ * advertises: an intranet hostname resolves unreliably, an IP does not. Dots and
+ * colons become dashes because the key is an SNI label and the relay refuses
+ * dotted ones. No address falls back to the hostname.
+ */
+export function routeKeyFromDirectAddrs(directAddrs: string[], hostName: string): string {
+  const addr = directAddrs.map(ipOfDirectAddr).find((ip) => ip !== null)
+  return addr ? `ip-${addr.replace(/[.:]/g, '-')}` : hostName
+}
+
 /** Reads a relay registration body; a bad port is the only thing that invalidates it. */
 export function parseRelayRegistration(
   body: unknown

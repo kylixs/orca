@@ -43,6 +43,7 @@ import { checkWebContract, readWebContract } from './web-contract.ts'
 import {
   createRelayNodeRegistry,
   parseRelayRegistration,
+  routeKeyFromDirectAddrs,
   RELAY_ALIVE_DEFAULT_MS
 } from './relay-nodes.ts'
 import {
@@ -145,6 +146,116 @@ function safeEqual(a: string, b: string): boolean {
   const left = Buffer.from(a)
   const right = Buffer.from(b)
   return left.length === right.length && timingSafeEqual(left, right)
+}
+
+/**
+ * FR-4.11: the payload behind the wizard's one-liner. It writes the env file the
+ * target machine needs and prints the follow-up commands; it never prompts, so
+ * `bash <(curl …)` stays unattended-safe.
+ */
+function hostInstallScript(input: { platformUrl: string; token: string }): string {
+  return `#!/usr/bin/env bash
+# Orca Cloud 开发机接入脚本（平台生成；内嵌一次性注册令牌，注册一次后失效）
+set -euo pipefail
+
+ORCA_ENV_FILE="\${ORCA_ENV_FILE:-\$HOME/.orca-cloud/host.env}"
+mkdir -p "\$(dirname "\$ORCA_ENV_FILE")"
+umask 077
+
+echo ">> 写入环境配置 \$ORCA_ENV_FILE"
+{
+  echo "ORCA_CLOUD_API_URL=${input.platformUrl}"
+  echo "HOST_TOKEN=${input.token}"
+  echo "HOST_NAME=\$(hostname -s 2>/dev/null || hostname)"
+  echo "ADVERTISE_HOST=\${ADVERTISE_HOST:-\$(hostname -I 2>/dev/null | awk '{print \$1}')}"
+  echo "PROJECTS_ROOT=\${PROJECTS_ROOT:-/srv/work}"
+} > "\$ORCA_ENV_FILE"
+
+ORCA_TLS_CERT="\${ORCA_TLS_CERT:-\$HOME/.orca-cloud/tls/host.crt}"
+ORCA_TLS_KEY="\${ORCA_TLS_KEY:-\$HOME/.orca-cloud/tls/host.key}"
+if [ ! -s "\$ORCA_TLS_CERT" ] || [ ! -s "\$ORCA_TLS_KEY" ]; then
+  echo ">> 生成自签 TLS 证书（openssl）"
+  mkdir -p "\$(dirname "\$ORCA_TLS_CERT")"
+  openssl req -x509 -newkey rsa:2048 -nodes -days 365 \\
+    -keyout "\$ORCA_TLS_KEY" -out "\$ORCA_TLS_CERT" \\
+    -subj "/CN=\$(hostname -s 2>/dev/null || hostname)" \\
+    -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" >/dev/null 2>&1
+  printf 'ORCA_CLOUD_TLS_CERT=%s\\nORCA_CLOUD_TLS_KEY=%s\\n' "\$ORCA_TLS_CERT" "\$ORCA_TLS_KEY" >> "\$ORCA_ENV_FILE"
+fi
+
+echo ">> 平台连通性检查"
+curl -fsS "\$ORCA_CLOUD_API_URL/health" > /dev/null
+echo ">> 环境已就绪：\$ORCA_ENV_FILE"
+
+cat <<'ORCA_NEXT'
+
+后续命令在开发机上执行：
+1) 前台启动 Orca 宿主模式（调试，注册并开始心跳）：
+   set -a; . "\$ORCA_ENV_FILE"; set +a
+   orca --host-mode
+2) systemd 用户单元（开机自启）：
+   mkdir -p ~/.config/systemd/user
+   cat > ~/.config/systemd/user/orca-host.service <<'UNIT'
+[Unit]
+Description=Orca Cloud 宿主代理
+[Service]
+EnvironmentFile=%h/.orca-cloud/host.env
+ExecStart=/usr/bin/orca --host-mode
+Restart=on-failure
+[Install]
+WantedBy=default.target
+UNIT
+   systemctl --user daemon-reload
+   systemctl --user enable --now orca-host.service
+ORCA_NEXT
+`
+}
+
+function relayInstallScript(input: { platformUrl: string; internalToken: string }): string {
+  return `#!/usr/bin/env bash
+# Orca Cloud 中继接入脚本（平台生成；内嵌内部控制令牌，仅管理员可见）
+set -euo pipefail
+
+ORCA_ENV_FILE="\${ORCA_ENV_FILE:-\$HOME/.orca-cloud/relay.env}"
+mkdir -p "\$(dirname "\$ORCA_ENV_FILE")"
+umask 077
+
+echo ">> 写入环境配置 \$ORCA_ENV_FILE"
+{
+  echo "ORCA_CLOUD_API_URL=${input.platformUrl}"
+  echo "ORCA_CLOUD_INTERNAL_TOKEN=${input.internalToken}"
+  echo "PORT=\${PORT:-18443}"
+  echo "RELAY_PUBLIC_HOST=\${RELAY_PUBLIC_HOST:-}"
+} > "\$ORCA_ENV_FILE"
+
+echo ">> 平台连通性检查"
+curl -fsS "\$ORCA_CLOUD_API_URL/health" > /dev/null
+echo ">> 环境已就绪：\$ORCA_ENV_FILE"
+
+cat <<'ORCA_NEXT'
+
+后续命令在中继机上执行：
+1) 前台启动中继（调试；需要仓库代码）：
+   set -a; . "\$ORCA_ENV_FILE"; set +a
+   node cloud-platform/apps/relay/src/relay.ts
+2) systemd 用户单元（开机自启）：
+   mkdir -p ~/.config/systemd/user
+   cat > ~/.config/systemd/user/orca-relay.service <<'UNIT'
+[Unit]
+Description=Orca Cloud 中继
+[Service]
+EnvironmentFile=%h/.orca-cloud/relay.env
+ExecStart=/usr/bin/env node /opt/orca-cloud/cloud-platform/apps/relay/src/relay.ts
+Restart=on-failure
+[Install]
+WantedBy=default.target
+UNIT
+   systemctl --user daemon-reload
+   systemctl --user enable --now orca-relay.service
+
+说明：RELAY_PUBLIC_HOST 填客户端可达地址（NAT/跨网段必填）；缺省时平台记录注册来源 IP。
+ORCA_NEXT
+`
 }
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -593,6 +704,37 @@ export function createApp(config: ApiConfig): ApiHandle {
     target.projectsRoot = verdict.path
   }
 
+  /**
+   * A derived `ip-…` route key follows the address the host advertises, so a
+   * machine that changes networks keeps a label clients can still dial; an
+   * explicitly configured key never moves. Same address ⇒ no-op, so beats and
+   * re-registrations cannot churn the route table.
+   */
+  function syncHostRoute(target: Host): void {
+    const currentKey = target.relayRoute
+    if (!currentKey || !currentKey.startsWith('ip-')) {
+      return
+    }
+    const nextKey = routeKeyFromDirectAddrs(target.directAddrs, currentKey)
+    if (nextKey === currentKey) {
+      return
+    }
+    // Carry the upstream over: the heartbeat reports no relay target, and the
+    // address the host listens on has not changed with its label.
+    const current = store.relayRoutes.get(currentKey)
+    if (current) store.relayRoutes.delete(currentKey)
+    target.relayRoute = nextKey
+    const routeTarget = current?.target ?? target.directAddrs[0]
+    if (routeTarget) {
+      store.relayRoutes.set(nextKey, {
+        routeKey: nextKey,
+        hostId: target.id,
+        target: routeTarget,
+        version: store.policies.version
+      })
+    }
+  }
+
   async function handle(
     req: IncomingMessage,
     res: ServerResponse,
@@ -645,7 +787,8 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
     }
 
-    if (req.method === 'GET' && !path.startsWith('/v1/') && path !== '/health') {
+    // /install/*.sh is gated below (after session resolution), never served as a file.
+    if (req.method === 'GET' && !path.startsWith('/v1/') && !path.startsWith('/install/') && path !== '/health') {
       return serveStatic(path, res)
     }
 
@@ -792,6 +935,58 @@ export function createApp(config: ApiConfig): ApiHandle {
     const requireAuth = (): AuthedRequest | null => {
       if (!auth) error(res, 401, 'SESSION_EXPIRED', '登录已过期，请重新登录。', traceId)
       return auth
+    }
+
+    // ---- install wizard (FR-4.11): admin-only, the script embeds secrets ----
+    // Sits beside the /v1/relays admin gate and after session resolution; the
+    // static fallback above skips /install/ so a plain GET still reaches here.
+    if (req.method === 'GET' && (path === '/install/host.sh' || path === '/install/relay.sh')) {
+      const authed = requireAuth()
+      if (!authed) return
+      if (!isAdmin(authed.user)) {
+        return denyPrivileged(res, traceId, authed.user, {
+          eventType: 'install_script',
+          targetType: 'install_script',
+          targetId: path,
+          permission: 'platform:admin'
+        })
+      }
+      const kind = path === '/install/host.sh' ? 'host' : 'relay'
+      // The operator pastes this address on the target machine, so it is echoed
+      // the same way the wizard page saw it (proxy scheme + request Host).
+      const forwardedScheme = req.headers['x-forwarded-proto']?.toString().split(',')[0]?.trim()
+      const platformUrl = `${forwardedScheme || 'http'}://${
+        req.headers.host ?? `127.0.0.1:${req.socket.localPort ?? 0}`
+      }`
+      let script: string
+      let tokenEmbedded = false
+      if (kind === 'host') {
+        const token = url.searchParams.get('token') ?? ''
+        if (!token) {
+          return error(res, 400, 'INSTALL_TOKEN_REQUIRED', '缺少一次性注册令牌。', traceId)
+        }
+        const entry = store.hostTokens.find((t) => safeEqual(t.tokenHash, hashToken(token)))
+        if (!entry || entry.usedAt || entry.expiresAt < now()) {
+          return error(res, 401, 'HOST_TOKEN_INVALID', '注册令牌无效或已使用。', traceId)
+        }
+        tokenEmbedded = true
+        script = hostInstallScript({ platformUrl, token })
+      } else {
+        script = relayInstallScript({ platformUrl, internalToken })
+      }
+      // Why no token in metadata: the audit log must not become a second copy of the secret.
+      audit.appendBestEffort({
+        eventType: 'install_script',
+        actor: authed.user.username,
+        targetType: 'install_script',
+        targetId: `${kind}.sh`,
+        result: 'success',
+        traceId,
+        metadata: { type: kind, tokenEmbedded, platformUrl }
+      })
+      res.writeHead(200, { 'content-type': 'text/x-shellscript; charset=utf-8' })
+      res.end(script)
+      return
     }
 
     if (req.method === 'GET' && path === '/v1/me') {
@@ -1598,7 +1793,11 @@ export function createApp(config: ApiConfig): ApiHandle {
       target.protocolVersion = Number(body.protocolVersion ?? 3)
       target.zone = String(body.networkZone ?? 'intranet')
       target.directAddrs = Array.isArray(body.directAddrs) ? (body.directAddrs as string[]) : []
-      target.relayRoute = String(body.relayRoute ?? '') || null
+      // An absent relayRoute means the host named none: derive it from the address
+      // it advertises rather than the hostname (M114a). Explicit values are kept as is.
+      const previousRoute = target.relayRoute
+      target.relayRoute =
+        String(body.relayRoute ?? '') || routeKeyFromDirectAddrs(target.directAddrs, name)
       target.capabilities = Array.isArray(body.runtimeCapabilities)
         ? (body.runtimeCapabilities as string[])
         : []
@@ -1611,6 +1810,14 @@ export function createApp(config: ApiConfig): ApiHandle {
       const relayTarget = String(body.relayTarget ?? '')
       const routeTarget = relayTarget || target.directAddrs[0]
       if (target.relayRoute && routeTarget) {
+        // A re-registration that changed the key must not leave the old label resolving.
+        if (
+          previousRoute &&
+          previousRoute !== target.relayRoute &&
+          store.relayRoutes.get(previousRoute)?.hostId === target.id
+        ) {
+          store.relayRoutes.delete(previousRoute)
+        }
         store.relayRoutes.set(target.relayRoute, {
           routeKey: target.relayRoute,
           hostId: target.id,
@@ -1653,6 +1860,8 @@ export function createApp(config: ApiConfig): ApiHandle {
         if (target.revokedAt === null) {
           if (Array.isArray(body.directAddrs) && body.directAddrs.length > 0) {
             target.directAddrs = body.directAddrs as string[]
+            // A host that moved keeps its derived label resolvable (M114a).
+            syncHostRoute(target)
           }
           // A host learns its own E2EE key only once its runtime has started, so the
           // heartbeat is where it first becomes reportable.

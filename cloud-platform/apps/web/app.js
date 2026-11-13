@@ -77,11 +77,12 @@ function toast(text) {
 
 /* ---------------- routing ---------------- */
 
-const ADMIN_ROUTES = new Set(['hosts', 'members', 'audit', 'settings'])
+const ADMIN_ROUTES = new Set(['hosts', 'relays', 'members', 'audit', 'settings'])
 const TITLES = {
   workbench: '工作台',
   projects: '我的项目',
   hosts: '平台设置 / 主机',
+  relays: '平台设置 / 中继',
   members: '成员与权限',
   audit: '审计日志',
   settings: '平台设置',
@@ -106,6 +107,7 @@ function navigate(route) {
     workbench: renderWorkbench,
     projects: renderProjects,
     hosts: renderHosts,
+    relays: renderRelays,
     members: renderMembers,
     audit: renderAudit,
     settings: renderSettings
@@ -343,24 +345,26 @@ function hostRow(h) {
   </tr>`
 }
 
+function copyCommandAction(cmd) {
+  return {
+    label: '复制命令',
+    primary: false,
+    onClick: () => {
+      navigator.clipboard?.writeText(cmd)
+      toast('已复制')
+      return false
+    }
+  }
+}
+
 async function registerHostDialog() {
   const body = await api('/v1/hosts/tokens', { method: 'POST' })
-  const cmd = `curl -fsSL https://devcloud.example.com/install.sh | sudo bash -s -- --token ${body.token}`
+  const cmd = `bash <(curl -fsSL ${location.origin}/install/host.sh?token=${body.token})`
   dialog(
     '注册主机',
-    `<p>在目标开发机执行以下命令完成注册。令牌 24 小时内有效且只能使用一次。</p>
+    `<p>在目标开发机执行以下命令完成注册。脚本会写入环境配置并生成自签证书，令牌 24 小时内有效且只能使用一次。</p>
      <pre id="installCmd">${esc(cmd)}</pre>`,
-    [
-      {
-        label: '复制命令',
-        primary: false,
-        onClick: () => {
-          navigator.clipboard?.writeText(cmd)
-          toast('已复制')
-          return false
-        }
-      }
-    ]
+    [copyCommandAction(cmd)]
   )
 }
 
@@ -398,6 +402,50 @@ async function showHost(hostId) {
     drawer.close()
     renderHosts()
   }
+}
+
+async function renderRelays() {
+  const body = await api('/v1/relays')
+  content().innerHTML = `
+    <div class="page-head">
+      <div><h1>中继</h1><p>已注册中继节点、客户端拨号地址与在线状态。</p></div>
+      <div>
+        <button class="btn primary" id="addRelayBtn">添加中继</button>
+        <button class="btn" id="refreshRelaysBtn">刷新</button>
+      </div>
+    </div>
+    <div class="note">客户端地址是客户端实际拨号的 host:port：中继显式上报的可达地址优先，未上报时取注册来源 IP。路由表由平台单向同步。</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>节点 ID</th><th>客户端地址</th><th>状态</th><th>最近注册时间</th></tr></thead>
+        <tbody>
+          ${body.relays.map(relayRow).join('') || '<tr><td colspan="4" class="table-empty">尚未注册中继</td></tr>'}
+        </tbody>
+      </table>
+    </div>`
+  $('#addRelayBtn').onclick = addRelayDialog
+  $('#refreshRelaysBtn').onclick = () => renderRelays()
+}
+
+/** FR-4.11: the internal token is injected by the script endpoint, never the URL. */
+function addRelayDialog() {
+  const cmd = `bash <(curl -fsSL ${location.origin}/install/relay.sh)`
+  dialog(
+    '添加中继',
+    `<p>在中继机执行以下命令完成注册上线。内部控制令牌由脚本端点注入，不出现在 URL 中。</p>
+     <pre id="relayInstallCmd">${esc(cmd)}</pre>
+     <p class="muted">仅管理员可见。RELAY_PUBLIC_HOST 缺省时平台记录注册来源 IP。</p>`,
+    [copyCommandAction(cmd)]
+  )
+}
+
+function relayRow(r) {
+  return `<tr>
+    <td class="mono">${esc(r.id)}</td>
+    <td class="mono">${esc(`${r.host}:${r.port}`)}</td>
+    <td><span class="dot ${r.online ? 'online' : 'offline'}"></span> ${r.online ? '在线' : '离线'}</td>
+    <td class="muted">${new Date(r.lastSeenAt).toLocaleString()}</td>
+  </tr>`
 }
 
 async function renderMembers() {
