@@ -21,19 +21,37 @@
 
 ## 1. 拓扑
 
-```
-本机 Orca 客户端 ──直连(TLS+wss, E2EE)──► 192.168.2.202:宿主端口
-       │  ▲                                     ▲
-       │  │控制面(HTTP)                          │ ssh(免密,装/查)
-       ▼  │                                     │
-本机 Docker: orca-server(平台 API+Web) ◄─路由同步─ 中继 100.67.197.59
-                                            └─SNI 转发─► 192.168.2.202:宿主端口
+```mermaid
+flowchart LR
+    client["Orca 客户端<br/>本机 · 开发者桌面"]
+    platform["云端开发平台 orca-server<br/>本机 Docker · API+Web<br/>登录 · 票据 · 授权 · 审计"]
+    relay["中继 relay-01<br/>100.67.197.59:7443<br/>TLS SNI 转发 · 不解密"]
+    host["Orca 宿主（开发机）<br/>192.168.2.202:宿主端口<br/>TLS+wss · E2EE"]
+
+    client -->|控制面 HTTP<br/>登录/取票据/审计| platform
+    host -->|注册+心跳<br/>一次性令牌| platform
+    relay -->|路由同步注册<br/>INTERNAL_TOKEN| platform
+    client ==>|"① 直连主路径<br/>TLS+wss · E2EE"| host
+    client -->|"② 回落路径<br/>SNI=ip-….relay.local"| relay
+    relay -->|"③ SNI 查路由表转发"| host
+    relay -.->|"ssh 免密：装机/巡检<br/>非产品数据路径"| host
+
+    classDef control fill:#f5f5f5,stroke:#a3a3a3,color:#525252
+    classDef node fill:#eff6ff,stroke:#2563eb,color:#1e3a8a
+    class platform control
+    class client,relay,host node
+    linkStyle 0,1,2 stroke:#a3a3a3
+    linkStyle 3,4,5 stroke:#2563eb,stroke-width:2px
+    linkStyle 6 stroke:#d97706,stroke-dasharray:4 3
 ```
 
-- 平台只做控制面（登录/票据/授权/审计），永不进入数据路径（D1，M85 已验证）。
-- 中继按 TLS ClientHello 的 **SNI**（宿主路由名，默认=主机名）转发，无解密能力（M10/M86）。
-- 客户端拿到票据后：先探测直连地址，不可达才走中继（D4，M90）；中继端点按平台下发的
-  优先级逐个尝试（AC-23：单中继宕机自动切换，40 次新会话 100% 成功）。
+> 可编辑源图：[`deployment-real-link.drawio`](./deployment-real-link.drawio)（draw.io / diagrams.net 打开）。
+
+- **① 直连优先**：同网段可达 202 时直接 TLS+wss，端到端 E2EE（D4，M90）。
+- **② 回落中继**：直连探测失败后按平台下发的中继端点逐个尝试（AC-23：单中继宕机自动切换）。
+- **③ 中继转发**：按 TLS ClientHello 的 **SNI**（路由键标签，默认=`ip-<直连IP>.relay.local`）查表转发，无解密能力（M10/M86）。
+- **平台只做控制面**（登录/票据/授权/审计），永不进入数据路径（D1，M85 已验证 0 字节）。
+- **ssh 虚线**是运维通道（装机/巡检），不属于产品数据路径。
 
 ## 2. 环境清单与前置条件
 
@@ -61,7 +79,7 @@
 5. **客户端**：本机 Orca 登录 → 打开项目 → 预检应选中**直连**（本机→202 可达）；
    工作区标题显示「直连 + 延迟」。
 6. **回落演练**：阻断本机→202 的直连（如断开该网段/防火墙），重开项目 → 自动走中继
-   （SNI=202 主机名），徽标变「中继」；连接诊断面板应列出两种地址的探测结果。
+   （SNI=`ip-192.168.2.202.relay.local` 路由标签），徽标变「中继」；连接诊断面板应列出两种地址的探测结果。
 
 ## 4. 在此链路上要测什么（映射到 test-plan）
 
