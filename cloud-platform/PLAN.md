@@ -39,3 +39,22 @@ node --test test/contract.test.ts          # 单元
 node --test test/e2e/platform.e2e.test.ts  # 端到端
 node apps/api/src/server.ts                # 本地起平台
 ```
+
+## 当前排期（2026-11-14 回顾，依据工作令与测试缺口）
+
+| 序 | 项 | 来源 | 测试判据 |
+|---|---|---|---|
+| 1 | W2 QA 修复（P0 用户授权 + P1×11） | M116 探索性测试 | findings.json 逐条回归断言 |
+| 2 | **W8 M115 兼容回归**（管理员 path 登记被 INVALID_DIR 拒） | 全量复测 | project-archive e2e 全绿 + 新增回归 |
+| 3 | W3 详情入口+双入口（先设计） | FR-3.8/3.11 | test-plan §6 M117 行 |
+| 4 | W4 静态 503 兜底 | 复检 D1 | 单测 503 + 有 bundle 不回归 |
+| 5 | W5 详情页终端（先设计） | FR-3.9 | test-plan §6 M118 行 |
+| 6 | W6 中继双模式（先设计） | FR-4.12 修订 | test-plan §6 M121 行 |
+| 7 | W7 handoff 自动进入（先设计） | FR-3.10 | test-plan §6 M122 行 |
+| 8 | M120 管控台补齐（登记弹层/权限矩阵/项目级策略，先设计） | QA-013/014/015 | FR-3.1/9.3/9.4 对应用例 |
+| 9 | M119 客户端首启零环境变量（先设计） | 用户反馈 | 首启引导 + 配置界面 + env 仅覆盖 |
+| 10 | QA P2×18 打磨批 | M116 | findings.json P2 逐条 |
+| 11 | src/renderer+main 全量回归 | 队列清空后 | vitest + tc:web + 相关 e2e |
+| 12 | M114c/d 真实链路部署与 WAN 复测 | deployment-real-link | §4 全表 + §5.1 复测 |
+| 13 | 环境依赖项（AC-32 WAF、G-04 队列/归档、生产容量、真实 CA、跨平台宿主） | 验收剩余项 | 各 AC 行，待环境 |
+
