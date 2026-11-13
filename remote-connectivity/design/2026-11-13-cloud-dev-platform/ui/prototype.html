@@ -1859,6 +1859,11 @@ svg { display: block; }
         <span>主机</span>
         <span class="nav-count">8</span>
       </button>
+      <button class="nav-item admin-only" data-route="relays">
+        <svg class="icon" aria-hidden="true"><use href="#i-network"/></svg>
+        <span>中继</span>
+        <span class="nav-count">3</span>
+      </button>
       <button class="nav-item admin-only" data-route="members">
         <svg class="icon" aria-hidden="true"><use href="#i-users"/></svg>
         <span>成员与权限</span>
@@ -1959,6 +1964,12 @@ svg { display: block; }
           <button class="btn btn-primary" data-open-modal="registerHost">
             <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>
             注册主机
+          </button>
+        </div>
+        <div class="topbar-group" data-topbar-group="relays" hidden>
+          <button class="btn btn-primary" data-open-modal="registerRelay">
+            <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>
+            添加中继
           </button>
         </div>
         <div class="topbar-group" data-topbar-group="diagnostics" hidden>
@@ -2207,6 +2218,7 @@ svg { display: block; }
         <tr>
           <th style="width:188px">主机名</th>
           <th style="width:146px">地址</th>
+          <th style="width:132px">路由键</th>
           <th style="width:142px">系统</th>
           <th style="width:96px">网络位置</th>
           <th style="width:96px">连接路径</th>
@@ -2226,7 +2238,109 @@ svg { display: block; }
 
 <div class="notice">
   <svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>
-  <span>主机地址、公钥指纹与 Orca 版本由 Agent 注册时自动上报。维护模式不会中断已有会话，但会拒绝新连接。</span>
+  <span>主机地址、公钥指纹与 Orca 版本由 Agent 注册时自动上报。路由键默认取直连 IP（主机名不可靠），随 IP 变化自动跟随；维护模式不会中断已有会话，但会拒绝新连接。</span>
+</div>
+</section>
+      <section class="page" data-page="relays" hidden><div class="page-head">
+  <div>
+    <h1>中继</h1>
+    <p>中继自行向平台注册，平台只登记与分配，不代理业务流量；客户端直连中继。</p>
+  </div>
+  <div class="page-head-actions">
+    <span class="status status-success"><span class="dot dot-success"></span>2 个节点在线</span>
+    <span class="status status-muted"><span class="dot dot-gray"></span>1 个节点离线</span>
+  </div>
+</div>
+
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="stat-top">
+      <span class="stat-label">在线中继</span>
+      <svg class="icon icon-sm stat-icon" aria-hidden="true"><use href="#i-network"/></svg>
+    </div>
+    <div class="stat-value" id="relayStatOnline">2<small>/ 注册 3 个</small></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-top">
+      <span class="stat-label">承载路由</span>
+      <svg class="icon icon-sm stat-icon" aria-hidden="true"><use href="#i-server"/></svg>
+    </div>
+    <div class="stat-value" id="relayStatRoutes">8<small>routeKey</small></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-top">
+      <span class="stat-label">路由同步窗口</span>
+      <svg class="icon icon-sm stat-icon" aria-hidden="true"><use href="#i-rotate-cw"/></svg>
+    </div>
+    <div class="stat-value">30<small>秒 · 超窗剔除</small></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-top">
+      <span class="stat-label">窗口期外剔除</span>
+      <svg class="icon icon-sm stat-icon" aria-hidden="true"><use href="#i-alert-triangle"/></svg>
+    </div>
+    <div class="stat-value">1<small>近 7 天</small></div>
+  </div>
+</div>
+
+<div class="filter-bar">
+  <div class="filter-field search-field" style="flex:2.2;max-width:340px">
+    <label for="relaySearch">搜索中继</label>
+    <div class="input-icon-wrap">
+      <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
+      <input class="input input-sm" id="relaySearch" type="search" placeholder="搜索节点 ID 或可拨地址" autocomplete="off">
+    </div>
+  </div>
+  <div class="filter-field" style="max-width:160px">
+    <label for="relayStatusFilter">状态</label>
+    <select class="select select-sm" id="relayStatusFilter">
+      <option value="all">全部状态</option>
+      <option value="online">在线</option>
+      <option value="offline">离线</option>
+    </select>
+  </div>
+  <div class="filter-actions" style="margin-left:auto">
+    <span class="section-count" id="relayFilteredCount">共 3 个</span>
+  </div>
+</div>
+
+<section class="card table-card">
+  <div class="table-card-head">
+    <div class="table-card-title">
+      <h2>中继节点</h2>
+      <span class="section-count">与主机分开管理 · /v1/relays</span>
+    </div>
+    <div class="muted-note">
+      <svg class="icon" aria-hidden="true"><use href="#i-activity"/></svg>
+      节点按路由同步窗口向平台续期，窗口期外自动剔除
+    </div>
+  </div>
+  <div class="table-scroll">
+    <table class="data-table" aria-label="中继节点列表">
+      <thead>
+        <tr>
+          <th style="width:170px">节点 ID</th>
+          <th style="width:170px">客户端可拨地址</th>
+          <th style="width:104px">注册方式</th>
+          <th style="width:96px">路由同步</th>
+          <th style="width:104px">最近同步</th>
+          <th style="width:88px">承载路由</th>
+          <th style="width:88px">状态</th>
+          <th style="width:60px;text-align:right">操作</th>
+        </tr>
+      </thead>
+      <tbody id="relaysBody"></tbody>
+    </table>
+  </div>
+  <div class="table-foot">
+    <span id="relaysFoot">共 3 个中继节点</span>
+    <span>平台只登记与分配节点，不代理任何业务流量</span>
+  </div>
+</section>
+
+<div class="notice">
+  <svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>
+  <span>中继只做 TCP 转发：按 TLS ClientHello 的 SNI 路由标签查表转发，不解析 Orca 协议、不解密、不做授权判定。路由表由平台单向同步，且只包含已注册开发机。</span>
 </div>
 </section>
       <section class="page" data-page="members" hidden><div class="page-head">
@@ -2548,7 +2662,7 @@ svg { display: block; }
       <h2 class="diag-title">连接成功，已自动回落中继 <span class="badge badge-warning">RELAY_FALLBACK</span></h2>
       <div class="diag-meta">
         <span><svg class="icon" aria-hidden="true"><use href="#i-clock"/></svg>2026-11-13 14:58:12</span>
-        <span><svg class="icon" aria-hidden="true"><use href="#i-network"/></svg>relay-01 · 中继</span>
+        <span><svg class="icon" aria-hidden="true"><use href="#i-network"/></svg>relay-01 · 中继 · <span class="mono">ip-10.20.3.18.relay.local</span></span>
         <span class="mono">sess_9f2a41c7</span>
       </div>
     </div>
@@ -2603,8 +2717,8 @@ svg { display: block; }
       <div class="timeline-step">
         <div class="timeline-dot-wrap"><span class="timeline-dot is-success"></span></div>
         <div class="timeline-body">
-          <div class="timeline-title">通过中继 <span class="mono">relay-01</span></div>
-          <div class="timeline-desc">接入层经 DMZ 中继建立 TCP 通道，TLS 1.3 会话建立成功。</div>
+          <div class="timeline-title">通过中继 <span class="mono">relay-01</span><span class="mono">ip-10.20.3.18.relay.local</span></div>
+          <div class="timeline-desc">按 TLS ClientHello 的 SNI 路由标签（默认 = 路由键 ip-10.20.3.18，无 DNS 解析）查表转发，TLS 1.3 会话建立成功。</div>
         </div>
         <div class="timeline-right">
           <span class="timeline-time">140ms</span>
@@ -2646,12 +2760,14 @@ svg { display: block; }
   "host": "dev-node-03",
   "selectedPath": "relay",
   "relay": "relay-01",
+  "routeKey": "ip-10.20.3.18",
+  "relaySni": "ip-10.20.3.18.relay.local",
   "totalMs": 1269,
   "steps": [
     { "name": "ticket", "status": "ok", "durationMs": 23 },
     { "name": "direct_probe", "target": "10.20.3.18:6768", "status": "timeout", "durationMs": 800 },
     { "name": "direct_probe_backup", "status": "skipped" },
-    { "name": "relay_connect", "target": "relay-01", "status": "ok", "durationMs": 140 },
+    { "name": "relay_connect", "target": "relay-01", "sni": "ip-10.20.3.18.relay.local", "status": "ok", "durationMs": 140 },
     { "name": "e2ee_handshake", "status": "ok", "durationMs": 96 },
     { "name": "workspace_mount", "status": "ok", "durationMs": 210 }
   ]
@@ -3286,6 +3402,16 @@ svg { display: block; }
       </section>
 
       <section>
+        <h3 class="detail-section-title">路由与中继</h3>
+        <div class="detail-list">
+          <div class="detail-row"><span class="detail-key">路由键</span><span class="detail-val"><span class="badge badge-mono" id="hostDetailRouteKey">ip-10.20.3.18</span></span></div>
+          <div class="detail-row"><span class="detail-key">路由键来源</span><span class="detail-val" id="hostDetailRouteKeySource">自动派生 · 跟随直连 IP</span></div>
+          <div class="detail-row"><span class="detail-key">中继端点 SNI</span><span class="detail-val mono" id="hostDetailSni">ip-10.20.3.18.relay.local</span></div>
+        </div>
+        <p class="muted-note" style="margin-top:10px"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>路由键默认取直连 IP，可显式配置；SNI 只是中继的路由标签，无 DNS 解析。</p>
+      </section>
+
+      <section>
         <h3 class="detail-section-title">连接探测</h3>
         <div>
           <div class="latency-row">
@@ -3361,6 +3487,60 @@ svg { display: block; }
         <svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg>
         复制 traceId
       </button>
+    </div>
+  </aside>
+</div>
+
+<div class="drawer-layer" id="relayDrawerLayer" hidden>
+  <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="relayDrawerTitle">
+    <div class="drawer-head">
+      <div class="drawer-head-main">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <h2 class="drawer-title mono" id="relayDrawerTitle" style="font-size:15px">relay-01</h2>
+          <span class="badge badge-success" id="relayDrawerStatus"><span class="dot dot-success"></span>在线</span>
+        </div>
+        <p class="drawer-sub" id="relayDrawerSub">100.67.197.59:7443 · DMZ 中继</p>
+      </div>
+      <button class="icon-btn icon-btn-sm" data-close-drawer="relay" aria-label="关闭中继详情">
+        <svg class="icon" aria-hidden="true"><use href="#i-x"/></svg>
+      </button>
+    </div>
+    <div class="drawer-body">
+      <div class="host-drawer-status">
+        <div>
+          <div class="eyebrow">路由同步</div>
+          <div style="margin-top:4px;display:flex;align-items:center;gap:6px;font-size:12px">
+            <span class="dot dot-success" id="relaySyncDot"></span>
+            <span id="relaySyncText">6 秒前已同步</span>
+          </div>
+        </div>
+        <span class="badge">窗口 30 秒</span>
+      </div>
+
+      <section>
+        <h3 class="detail-section-title">节点信息</h3>
+        <div class="detail-list">
+          <div class="detail-row"><span class="detail-key">客户端可拨地址</span><span class="detail-val mono" id="relayDetailAddress">100.67.197.59:7443</span></div>
+          <div class="detail-row"><span class="detail-key">注册方式</span><span class="detail-val" id="relayDetailRegistration">自动注册</span></div>
+          <div class="detail-row"><span class="detail-key">注册来源 IP</span><span class="detail-val mono" id="relayDetailSourceIp">100.67.197.59</span></div>
+          <div class="detail-row"><span class="detail-key">内部令牌指纹</span><span class="detail-val mono" id="relayDetailToken">m114-…a7f2</span></div>
+          <div class="detail-row"><span class="detail-key">注册时间</span><span class="detail-val" id="relayDetailRegistered">2026-11-06 09:40</span></div>
+        </div>
+        <p class="muted-note" style="margin-top:10px"><svg class="icon" aria-hidden="true"><use href="#i-key"/></svg>内部令牌仅管理员可见，平台只保留指纹（尾 4 位）；窗口期外未同步的节点会被自动剔除。</p>
+      </section>
+
+      <section>
+        <h3 class="detail-section-title">承载路由</h3>
+        <div style="display:flex;flex-wrap:wrap;gap:6px" id="relayDetailRoutes"></div>
+        <p class="muted-note" style="margin-top:10px"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>路由键默认取宿主直连 IP；中继端点 SNI 形如 <span class="mono">ip-10.20.3.18.relay.local</span>，仅是路由标签，无 DNS 解析。</p>
+      </section>
+    </div>
+    <div class="drawer-foot">
+      <button class="btn btn-secondary" id="copyRelayAddressBtn">
+        <svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg>
+        复制可拨地址
+      </button>
+      <button class="btn btn-ghost" data-close-drawer="relay" style="margin-left:auto">关闭</button>
     </div>
   </aside>
 </div>
@@ -3459,7 +3639,7 @@ svg { display: block; }
     <div class="modal-head">
       <div class="modal-head-main">
         <h2 class="modal-title" id="registerHostTitle">注册新主机</h2>
-        <p class="modal-sub">生成一次性令牌，在目标开发机执行安装命令完成注册。</p>
+        <p class="modal-sub">向导生成一行安装命令，在目标开发机执行后自动完成注册。</p>
       </div>
       <button class="icon-btn icon-btn-sm modal-close" data-close-modal aria-label="关闭">
         <svg class="icon" aria-hidden="true"><use href="#i-x"/></svg>
@@ -3467,8 +3647,8 @@ svg { display: block; }
     </div>
     <div class="modal-body">
       <div class="modal-steps">
-        <div class="modal-step"><span class="step-num">1</span><span>登录目标开发机，使用 sudo 权限执行以下命令。</span></div>
-        <div class="modal-step"><span class="step-num">2</span><span>Agent 启动后上报主机指纹、Orca 版本与监听地址。</span></div>
+        <div class="modal-step"><span class="step-num">1</span><span>登录目标开发机，使用 sudo 执行以下一行命令；平台地址与一次性令牌已内嵌其中。</span></div>
+        <div class="modal-step"><span class="step-num">2</span><span>脚本安装并启动 Agent，自动上报主机指纹、Orca 版本与直连地址。</span></div>
         <div class="modal-step"><span class="step-num">3</span><span>平台完成直连探测后，主机将出现在列表中并标记为在线。</span></div>
       </div>
       <div class="command-block">
@@ -3479,16 +3659,57 @@ svg { display: block; }
             复制
           </button>
         </div>
-        <div class="command-code" id="regCommandCode">curl -fsSL https://devcloud.example.com/install.sh | sudo bash -s -- --token <span class="command-token" id="regToken">oc_reg_7f3a9c2e5b8d4a61</span></div>
+        <div class="command-code" id="regCommandCode">bash &lt;(curl -fsSL http://platform.internal:18787/install/host.sh?token=<span class="command-token" id="regToken">ht_7f3a9c2e5b8d4a61</span>)</div>
       </div>
       <div class="notice" style="margin-top:14px">
         <svg class="icon" aria-hidden="true"><use href="#i-clock"/></svg>
-        <span>令牌 24 小时内有效且仅可使用一次。注册命令视为敏感凭证，请勿转发到公开渠道。</span>
+        <span>令牌一次性且 24 小时内有效，已内嵌于命令。注册命令视为敏感凭证，请勿转发到公开渠道；过期后请回到本向导重新生成。</span>
       </div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-secondary" data-close-modal>关闭</button>
       <button class="btn btn-primary" id="registerHostDoneBtn">完成</button>
+    </div>
+  </div>
+
+  <div class="modal modal-xl" role="dialog" aria-modal="true" aria-labelledby="registerRelayTitle" data-modal="registerRelay" hidden>
+    <div class="modal-head">
+      <div class="modal-head-main">
+        <h2 class="modal-title" id="registerRelayTitle">添加中继</h2>
+        <p class="modal-sub">向导生成一行安装命令，在 DMZ 中继主机执行后自动完成注册并接入路由同步。</p>
+      </div>
+      <button class="icon-btn icon-btn-sm modal-close" data-close-modal aria-label="关闭">
+        <svg class="icon" aria-hidden="true"><use href="#i-x"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-steps">
+        <div class="modal-step"><span class="step-num">1</span><span>登录 DMZ 中继主机，使用 sudo 执行以下一行命令；平台地址与内部令牌已内嵌其中，仅管理员可见。</span></div>
+        <div class="modal-step"><span class="step-num">2</span><span>中继启动后向平台路由同步注册，自动上报客户端可拨地址（缺省取注册来源 IP）。</span></div>
+        <div class="modal-step"><span class="step-num">3</span><span>日志出现 <span class="mono">[relay] routes synced</span> 后，节点在列表中标记为在线并开始承载路由。</span></div>
+      </div>
+      <div class="command-block">
+        <div class="command-label">
+          <span>在 DMZ 中继主机执行</span>
+          <button class="btn btn-secondary btn-sm" id="copyRelayCommandBtn" type="button">
+            <svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg>
+            复制
+          </button>
+        </div>
+        <div class="command-code" id="relayCommandCode">bash &lt;(curl -fsSL http://platform.internal:18787/install/relay.sh?token=<span class="command-token" id="relayToken">rt_9f2c41d8e6a07b53</span>)</div>
+      </div>
+      <div class="notice" style="margin-top:14px">
+        <svg class="icon" aria-hidden="true"><use href="#i-clock"/></svg>
+        <span>内部令牌一次性且 24 小时内有效。中继按路由同步窗口（30 秒）向平台续期，窗口期外未同步的节点会被自动剔除。</span>
+      </div>
+      <div class="notice" style="margin-top:10px">
+        <svg class="icon" aria-hidden="true"><use href="#i-network"/></svg>
+        <span>客户端可拨地址缺省取注册来源 IP；若中继位于 NAT 后，请在执行前设置 <span class="mono">RELAY_PUBLIC_HOST</span> 为客户端可拨地址（形如 <span class="mono">100.67.197.59:7443</span>）。</span>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" data-close-modal>关闭</button>
+      <button class="btn btn-primary" id="registerRelayDoneBtn">完成</button>
     </div>
   </div>
 
@@ -3688,6 +3909,7 @@ svg { display: block; }
     loggedIn: false,
     selectedProjectId: 'payment-service',
     selectedHostId: null,
+    selectedRelayId: null,
     selectedAuditId: null,
     contextFile: null,
     memberType: 'user',
@@ -3710,12 +3932,13 @@ svg { display: block; }
     notificationUnread: 3
   };
 
-  const adminRoutes = new Set(['hosts', 'members', 'audit', 'settings']);
+  const adminRoutes = new Set(['hosts', 'relays', 'members', 'audit', 'settings']);
 
   const routeMeta = {
     workbench: { page: 'workbench', crumb: ['工作台'], search: true, actions: 'workbench', title: '工作台' },
     projects: { page: 'projects', crumb: ['工作台', '我的项目'], search: true, actions: 'projects', title: '我的项目' },
     hosts: { page: 'hosts', crumb: ['平台设置', '主机'], search: false, actions: 'hosts', title: '主机' },
+    relays: { page: 'relays', crumb: ['平台设置', '中继'], search: false, actions: 'relays', title: '中继' },
     members: { page: 'members', crumb: ['平台设置', '成员与权限'], search: false, actions: null, title: '项目授权' },
     audit: { page: 'audit', crumb: ['平台设置', '审计日志'], search: false, actions: null, title: '审计日志' },
     settings: { page: 'settings', crumb: ['平台设置', '下载策略'], search: false, actions: null, title: '下载策略' },
@@ -3767,7 +3990,8 @@ svg { display: block; }
 
   const hostDirectory = [
     {
-      id: 'dev-node-01', hostId: 'host_01', address: '10.20.3.12:6768', system: 'Ubuntu 22.04 LTS',
+      id: 'dev-node-01', hostId: 'host_01', address: '10.20.3.12:6768',
+      routeKey: 'ip-10.20.3.12', system: 'Ubuntu 22.04 LTS',
       network: '内网', location: '北京亦庄 · A 区', path: '直连', heartbeat: '12 秒前',
       heartbeatAbs: '2026-11-13 15:01:02', status: 'online', projects: 6,
       version: '2026.10.2', protocol: 'v3（兼容 v2）', directMs: 12, relayMs: 48,
@@ -3775,7 +3999,8 @@ svg { display: block; }
       registered: '2026-07-02 09:12'
     },
     {
-      id: 'dev-node-02', hostId: 'host_02', address: '10.20.3.14:6768', system: 'Ubuntu 22.04 LTS',
+      id: 'dev-node-02', hostId: 'host_02', address: '10.20.3.14:6768',
+      routeKey: 'ip-10.20.3.14', system: 'Ubuntu 22.04 LTS',
       network: '内网', location: '北京亦庄 · A 区', path: '直连', heartbeat: '28 秒前',
       heartbeatAbs: '2026-11-13 15:00:46', status: 'online', projects: 5,
       version: '2026.10.2', protocol: 'v3（兼容 v2）', directMs: 22, relayMs: 57,
@@ -3783,7 +4008,8 @@ svg { display: block; }
       registered: '2026-07-02 09:30'
     },
     {
-      id: 'dev-node-03', hostId: 'host_03', address: '10.20.3.18:6768', system: 'Ubuntu 22.04 LTS',
+      id: 'dev-node-03', hostId: 'host_03', address: '10.20.3.18:6768',
+      routeKey: 'ip-10.20.3.18', system: 'Ubuntu 22.04 LTS',
       network: '内网', location: '北京亦庄 · A 区', path: '直连', heartbeat: '6 秒前',
       heartbeatAbs: '2026-11-13 15:01:08', status: 'online', projects: 4,
       version: '2026.10.2', protocol: 'v3（兼容 v2）', directMs: 18, relayMs: 62,
@@ -3791,7 +4017,8 @@ svg { display: block; }
       registered: '2026-09-18 10:24'
     },
     {
-      id: 'dev-node-04', hostId: 'host_04', address: '10.20.4.21:6768', system: 'CentOS 7.9',
+      id: 'dev-node-04', hostId: 'host_04', address: '10.20.4.21:6768',
+      routeKey: 'ip-10.20.4.21', system: 'CentOS 7.9',
       network: '办公网', location: '北京望京 · 办公区', path: '中继', heartbeat: '45 秒前',
       heartbeatAbs: '2026-11-13 15:00:29', status: 'online', projects: 3,
       version: '2026.09.6', protocol: 'v3（兼容 v2）', directMs: 86, relayMs: 44,
@@ -3799,7 +4026,8 @@ svg { display: block; }
       registered: '2026-08-11 14:08'
     },
     {
-      id: 'dev-node-07', hostId: 'host_07', address: '10.20.3.27:6768', system: 'Ubuntu 20.04 LTS',
+      id: 'dev-node-07', hostId: 'host_07', address: '10.20.3.27:6768',
+      routeKey: 'ip-10.20.3.27', system: 'Ubuntu 20.04 LTS',
       network: '内网', location: '北京亦庄 · B 区', path: '直连', heartbeat: '4 分钟前',
       heartbeatAbs: '2026-11-13 14:56:51', status: 'offline', projects: 2,
       version: '2026.09.6', protocol: 'v3（兼容 v2）', directMs: 0, relayMs: 0,
@@ -3807,7 +4035,8 @@ svg { display: block; }
       registered: '2026-06-20 11:46'
     },
     {
-      id: 'dev-node-09', hostId: 'host_09', address: '10.20.5.10:6768', system: 'Rocky Linux 9.3',
+      id: 'dev-node-09', hostId: 'host_09', address: '10.20.5.10:6768',
+      routeKey: 'ip-10.20.5.10', system: 'Rocky Linux 9.3',
       network: '办公网', location: '上海张江 · 办公区', path: '中继', heartbeat: '8 分钟前',
       heartbeatAbs: '2026-11-13 14:52:40', status: 'maintenance', projects: 2,
       version: '2026.10.1', protocol: 'v3（兼容 v2）', directMs: 41, relayMs: 71,
@@ -3815,7 +4044,8 @@ svg { display: block; }
       registered: '2026-10-30 16:20'
     },
     {
-      id: 'gpu-node-02', hostId: 'host_12', address: '10.20.6.31:6768', system: 'Ubuntu 22.04 LTS',
+      id: 'gpu-node-02', hostId: 'host_12', address: '10.20.6.31:6768',
+      routeKey: 'ip-10.20.6.31', system: 'Ubuntu 22.04 LTS',
       network: '内网', location: '北京亦庄 · GPU 机房', path: '中继', heartbeat: '19 秒前',
       heartbeatAbs: '2026-11-13 15:00:55', status: 'online', projects: 2,
       version: '2026.10.2', protocol: 'v3（兼容 v2）', directMs: 39, relayMs: 55,
@@ -3823,12 +4053,35 @@ svg { display: block; }
       registered: '2026-10-12 10:02'
     },
     {
-      id: 'build-node-01', hostId: 'host_14', address: '10.20.7.5:6768', system: 'Debian 12',
+      id: 'build-node-01', hostId: 'host_14', address: '10.20.7.5:6768',
+      routeKey: 'ip-10.20.7.5', system: 'Debian 12',
       network: '办公网', location: '北京望京 · 办公区', path: '直连', heartbeat: '2 分钟前',
       heartbeatAbs: '2026-11-13 14:59:04', status: 'maintenance', projects: 1,
       version: '2026.09.6', protocol: 'v3（兼容 v2）', directMs: 31, relayMs: 79,
       fingerprint: 'SHA256:3c68e1A3b5D7f9C1e3A5b7D9f1C3e5A7b9D1f3C5e7A9b1D3f5C7e9A1b3D5f7C9e',
       registered: '2026-11-02 09:38'
+    }
+  ];
+
+  // 中继与开发机同为主动注册节点；平台只登记与分配（FR-4.9/4.10）
+  const relayDirectory = [
+    {
+      id: 'relay-01', address: '100.67.197.59:7443', sourceIp: '100.67.197.59',
+      syncWindow: '30 秒', lastSync: '6 秒前', lastSyncAbs: '2026-11-13 15:01:08',
+      routes: ['ip-10.20.3.18', 'ip-10.20.4.21'], tokenFingerprint: 'm114-…a7f2',
+      registered: '2026-11-06 09:40', status: 'online'
+    },
+    {
+      id: 'relay-02', address: '100.67.197.60:7443', sourceIp: '100.67.197.60',
+      syncWindow: '30 秒', lastSync: '14 秒前', lastSyncAbs: '2026-11-13 15:01:00',
+      routes: ['ip-10.20.5.10', 'ip-10.20.6.31', 'ip-10.20.7.5'], tokenFingerprint: 'm114-…c3e9',
+      registered: '2026-11-08 17:12', status: 'online'
+    },
+    {
+      id: 'relay-03', address: '100.67.198.11:7443', sourceIp: '100.67.198.11',
+      syncWindow: '30 秒', lastSync: '6 分钟前', lastSyncAbs: '2026-11-13 14:55:02',
+      routes: ['ip-10.20.3.12', 'ip-10.20.3.14', 'ip-10.20.3.27'], tokenFingerprint: 'm114-…81b4',
+      registered: '2026-11-10 11:26', status: 'offline'
     }
   ];
 
@@ -4218,6 +4471,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     closeConnectionPopover();
     if (!options.keepDrawer) {
       closeHostDrawer();
+      closeRelayDrawer();
       closeAuditDrawer();
     }
     if (!options.keepModal) closeModal();
@@ -4263,6 +4517,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     if (route === 'workbench') renderWorkbench();
     if (route === 'projects') renderMyProjects();
     if (route === 'hosts') renderHosts();
+    if (route === 'relays') renderRelays();
     if (route === 'members') renderAuthPage();
     if (route === 'audit') renderAuditTable();
     if (route === 'settings') syncPolicyUI();
@@ -4567,6 +4822,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
           </div>
         </td>
         <td><span class="cell-mono">${escapeHTML(host.address)}</span></td>
+        <td><span class="badge badge-mono" title="路由键默认取直连 IP，可显式配置">${escapeHTML(host.routeKey)}</span></td>
         <td>${escapeHTML(host.system)}</td>
         <td><span class="network-tag">${iconMarkup('map-pin')}${escapeHTML(host.network)}</span></td>
         <td><span class="status"><span class="dot ${host.path === '直连' ? 'dot-info' : 'dot-warning'}"></span>${escapeHTML(host.path)}</span></td>
@@ -4591,7 +4847,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     if (tbody) {
       tbody.innerHTML = filtered.length
         ? filtered.map(hostRowMarkup).join('')
-        : `<tr><td colspan="8" class="empty-cell"><div class="empty-inline">${iconMarkup('server')}<span>没有符合筛选条件的主机</span></div></td></tr>`;
+        : `<tr><td colspan="9" class="empty-cell"><div class="empty-inline">${iconMarkup('server')}<span>没有符合筛选条件的主机</span></div></td></tr>`;
     }
     const count = $('#hostFilteredCount');
     if (count) count.textContent = `共 ${filtered.length} 台`;
@@ -4624,6 +4880,9 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     $('#hostDetailProjects').textContent = `${host.projects} 个`;
     $('#hostDetailRegistered').textContent = host.registered;
     $('#hostDetailFingerprint').textContent = host.fingerprint;
+    $('#hostDetailRouteKey').textContent = host.routeKey;
+    $('#hostDetailRouteKeySource').textContent = '自动派生 · 跟随直连 IP';
+    $('#hostDetailSni').textContent = `${host.routeKey}.relay.local`;
 
     const directValue = host.status === 'offline' ? 0 : host.directMs;
     const relayValue = host.status === 'offline' ? 0 : host.relayMs;
@@ -4703,6 +4962,105 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
   function handleRegisterCopy() {
     const command = $('#regCommandCode').textContent.replace(/\s+/g, ' ').trim();
     copyText(command, '注册命令已复制');
+  }
+
+  /* ------------------------------------------------------------
+     Relays（与主机分开管理：FR-4.10）
+     ------------------------------------------------------------ */
+  function relayStatusInfo(status) {
+    if (status === 'online') {
+      return { label: '在线', dot: 'dot-success', status: 'status-success', badge: 'badge-success', sync: { label: '正常', dot: 'dot-success', cls: 'status-success' } };
+    }
+    return { label: '离线', dot: 'dot-gray', status: 'status-muted', badge: 'badge-neutral', sync: { label: '已中断', dot: 'dot-gray', cls: 'status-muted' } };
+  }
+
+  function relayRowMarkup(relay) {
+    const info = relayStatusInfo(relay.status);
+    return `
+      <tr class="row-click" data-relay-open="${escapeHTML(relay.id)}">
+        <td>
+          <div class="host-name-cell">
+            <span class="host-icon">${iconMarkup('network')}</span>
+            <span>
+              <span class="host-name-main mono">${escapeHTML(relay.id)}</span>
+              <span class="host-name-sub">注册来源 ${escapeHTML(relay.sourceIp)}</span>
+            </span>
+          </div>
+        </td>
+        <td><span class="cell-mono">${escapeHTML(relay.address)}</span></td>
+        <td><span class="badge" title="启动后向 /v1/internal/relay-endpoint 路由同步注册">自动注册</span></td>
+        <td><span class="status ${info.sync.cls}"><span class="dot ${info.sync.dot}"></span>${info.sync.label}</span></td>
+        <td><span title="${escapeHTML(relay.lastSyncAbs)}">${escapeHTML(relay.lastSync)}</span></td>
+        <td class="cell-strong">${relay.routes.length} 个</td>
+        <td><span class="status ${info.status}"><span class="dot ${info.dot}"></span>${info.label}</span></td>
+        <td class="cell-ops"><button class="text-link" data-relay-open="${escapeHTML(relay.id)}">查看</button></td>
+      </tr>`;
+  }
+
+  function renderRelays() {
+    if (!$('#relaysBody')) return;
+    const query = ($('#relaySearch')?.value || '').trim().toLowerCase();
+    const status = $('#relayStatusFilter')?.value || 'all';
+    const filtered = relayDirectory.filter((relay) => {
+      const matchesQuery = !query || relay.id.toLowerCase().includes(query) || relay.address.toLowerCase().includes(query);
+      const matchesStatus = status === 'all' || relay.status === status;
+      return matchesQuery && matchesStatus;
+    });
+    $('#relaysBody').innerHTML = filtered.length
+      ? filtered.map(relayRowMarkup).join('')
+      : `<tr><td colspan="8" class="empty-cell"><div class="empty-inline">${iconMarkup('network')}<span>没有符合筛选条件的中继</span></div></td></tr>`;
+    $('#relayFilteredCount').textContent = `共 ${filtered.length} 个`;
+    $('#relaysFoot').textContent = `共 ${relayDirectory.length} 个中继节点${filtered.length !== relayDirectory.length ? ` · 当前筛选 ${filtered.length} 个` : ''}`;
+
+    const online = relayDirectory.filter((relay) => relay.status === 'online').length;
+    const routes = relayDirectory.reduce((sum, relay) => sum + relay.routes.length, 0);
+    const statOnline = $('#relayStatOnline');
+    if (statOnline) statOnline.innerHTML = `${online}<small>/ 注册 ${relayDirectory.length} 个</small>`;
+    const statRoutes = $('#relayStatRoutes');
+    if (statRoutes) statRoutes.innerHTML = `${routes}<small>routeKey</small>`;
+  }
+
+  function fillRelayDrawer(relay) {
+    if (!relay) return;
+    const info = relayStatusInfo(relay.status);
+    $('#relayDrawerLayer').hidden = false;
+    $('#relayDrawerTitle').textContent = relay.id;
+    $('#relayDrawerSub').textContent = `${relay.address} · DMZ 中继`;
+    const status = $('#relayDrawerStatus');
+    status.className = `badge ${info.badge}`;
+    status.innerHTML = `<span class="dot ${info.dot}"></span>${info.label}`;
+    $('#relaySyncDot').className = `dot ${info.sync.dot}`;
+    $('#relaySyncText').textContent = relay.status === 'online'
+      ? `${relay.lastSync}已同步 · 窗口内`
+      : `${relay.lastSync}已同步 · 超出窗口，等待重新注册`;
+    $('#relayDetailAddress').textContent = relay.address;
+    $('#relayDetailRegistration').textContent = '自动注册 · /v1/internal/relay-endpoint';
+    $('#relayDetailSourceIp').textContent = relay.sourceIp;
+    $('#relayDetailToken').textContent = relay.tokenFingerprint;
+    $('#relayDetailRegistered').textContent = relay.registered;
+    $('#relayDetailRoutes').innerHTML = relay.routes
+      .map((routeKey) => `<span class="badge badge-mono" title="SNI 路由标签：${escapeHTML(routeKey)}.relay.local">${escapeHTML(routeKey)}</span>`)
+      .join('');
+    $('.drawer-body', $('#relayDrawerLayer')).scrollTop = 0;
+  }
+
+  function openRelayDrawer(relayId) {
+    const relay = relayDirectory.find((item) => item.id === relayId);
+    if (!relay) return;
+    state.selectedRelayId = relayId;
+    closeNotifPopover();
+    closeSearchResults();
+    fillRelayDrawer(relay);
+    const closeButton = $('[data-close-drawer="relay"]');
+    if (closeButton) window.setTimeout(() => closeButton.focus(), 20);
+  }
+
+  function closeRelayDrawer() {
+    const layer = $('#relayDrawerLayer');
+    if (layer && !layer.hidden) {
+      layer.hidden = true;
+      state.selectedRelayId = null;
+    }
   }
 
   /* ------------------------------------------------------------
@@ -5484,9 +5842,11 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
           ? $('#newProjectName')
           : modalId === 'registerHost'
             ? $('#copyRegCommandBtn')
-            : modalId === 'newWorkspace'
-              ? $('#workspaceNameInput')
-              : focusableElements(modal)[0];
+            : modalId === 'registerRelay'
+              ? $('#copyRelayCommandBtn')
+              : modalId === 'newWorkspace'
+                ? $('#workspaceNameInput')
+                : focusableElements(modal)[0];
       if (preferred) preferred.focus();
     }, 30);
   }
@@ -5679,6 +6039,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
       const closeDrawerTrigger = target.closest('[data-close-drawer]');
       if (closeDrawerTrigger) {
         if (closeDrawerTrigger.dataset.closeDrawer === 'host') closeHostDrawer();
+        if (closeDrawerTrigger.dataset.closeDrawer === 'relay') closeRelayDrawer();
         if (closeDrawerTrigger.dataset.closeDrawer === 'audit') closeAuditDrawer();
         return;
       }
@@ -5686,6 +6047,12 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
       const hostTarget = target.closest('[data-host-open]');
       if (hostTarget) {
         openHostDrawer(hostTarget.dataset.hostOpen);
+        return;
+      }
+
+      const relayTarget = target.closest('[data-relay-open]');
+      if (relayTarget) {
+        openRelayDrawer(relayTarget.dataset.relayOpen);
         return;
       }
 
@@ -5762,6 +6129,9 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     $('#auditDrawerLayer').addEventListener('click', (event) => {
       if (event.target === $('#auditDrawerLayer')) closeAuditDrawer();
     });
+    $('#relayDrawerLayer').addEventListener('click', (event) => {
+      if (event.target === $('#relayDrawerLayer')) closeRelayDrawer();
+    });
     $('#maintenanceHostBtn').addEventListener('click', handleMaintenanceToggle);
     $('#offlineHostBtn').addEventListener('click', handleOfflineHost);
     $('#copyTraceBtn').addEventListener('click', () => {
@@ -5778,6 +6148,23 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     $('#registerHostDoneBtn').addEventListener('click', () => {
       closeModal();
       showToast('注册流程已生成', { sub: '令牌 24 小时内有效，仅可使用一次' });
+    });
+  }
+
+  function bindRelayEvents() {
+    $('#relaySearch').addEventListener('input', renderRelays);
+    $('#relayStatusFilter').addEventListener('change', renderRelays);
+    $('#copyRelayCommandBtn').addEventListener('click', () => {
+      const command = $('#relayCommandCode').textContent.replace(/\s+/g, ' ').trim();
+      copyText(command, '安装命令已复制');
+    });
+    $('#registerRelayDoneBtn').addEventListener('click', () => {
+      closeModal();
+      showToast('中继添加流程已生成', { sub: '内部令牌 24 小时内有效，窗口期外自动剔除' });
+    });
+    $('#copyRelayAddressBtn').addEventListener('click', () => {
+      const relay = relayDirectory.find((item) => item.id === state.selectedRelayId);
+      if (relay) copyText(relay.address, '客户端可拨地址已复制');
     });
   }
 
@@ -5958,6 +6345,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
       if (event.key === 'Escape') {
         if (state.activeModal) { closeModal(); return; }
         if (!$('#hostDrawerLayer').hidden) { closeHostDrawer(); return; }
+        if (!$('#relayDrawerLayer').hidden) { closeRelayDrawer(); return; }
         if (!$('#auditDrawerLayer').hidden) { closeAuditDrawer(); return; }
         if (!$('#fileMenu').hidden) { closeFileMenu(); return; }
         if (!$('#connPopover').hidden) { closeConnectionPopover(); return; }
@@ -5989,6 +6377,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     bindTopbarEvents();
     bindDrawerEvents();
     bindHostEvents();
+    bindRelayEvents();
     bindAuthEvents();
     bindAuditEvents();
     bindPolicyEvents();
@@ -6002,6 +6391,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     renderWorkbench();
     renderMyProjects();
     renderHosts();
+    renderRelays();
     renderAuditTable();
     renderAuthPage();
 
