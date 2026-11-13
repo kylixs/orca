@@ -80,6 +80,8 @@
 
 | M58 | 准备失败可见 + 可修复/可重试：`registerProjects` 上报失败项，原生入口显示项目名与错误码并提供重试；平台新增管理员修正 `repoUrl`/`defaultBranch` 并重置为 `provisioning` | 真实平台 + 主机 + TLS + git：坏 repoUrl 首次注册上报失败 → 管理员修正 → 客户端重试真实 clone → 心跳后 `ready`、侧栏 repo 出现 |
 
+| M59 | 开发者自助创建项目：主机上报 `projectsRoot`，平台据此推导路径（开发者不能指定 `path`），创建者自动获得项目权限；客户端新建对话框 → provisioning → 侧栏出现 | 真实平台 + 主机 + TLS + git：非管理员创建 → 主机 clone 到 `projectsRoot/<key>` → 心跳 `ready` → 侧栏 repo 行 |
+
 ### 5.1 M57 项目创建 provisioning（平台不在数据通道）
 
 - **平台**：`POST /v1/projects` 仍 admin-only；有 `repoUrl` → `status: 'provisioning'`，无 → `ready`（路径由管理员备好）。连接票据新增可选 claim `repoUrl`、`defaultBranch`（旧主机忽略未知 claim）。

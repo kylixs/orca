@@ -8,7 +8,12 @@ import type {
 import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
 import { CloudLoginPanel } from './cloud-login-panel'
-import { CloudProjectFailureBanner, PreparingCloudProjectBanner } from './cloud-workspace-banners'
+import {
+  CloudProjectFailureBanner,
+  NewCloudProjectButton,
+  PreparingCloudProjectBanner
+} from './cloud-workspace-banners'
+import type { CreatedCloudProject } from './cloud-new-project-dialog'
 import { rendererRepoPorts, selectInitialWorktree } from './cloud-entry-workspace-sync'
 import { signOutCloudProjectRepos, syncCloudProjectRepos } from './cloud-project-repos'
 import { useCloudSession, type CloudBridge, type CloudSessionView } from './use-cloud-session'
@@ -36,6 +41,7 @@ export type CloudWorkspaceEntryState = {
   failures: CloudProjectFailure[]
   retrying: boolean
   retryFailures: () => Promise<void>
+  registerCreatedProject: (created: CreatedCloudProject) => Promise<void>
   signOut: () => Promise<void>
 }
 
@@ -180,6 +186,36 @@ function useCloudWorkspaceEntry(
     }
   }, [bridge, failures, retrying])
 
+  /** A newly created project joins the sidebar the same way a sign-in batch does. */
+  const registerCreatedProject = React.useCallback(
+    async (created: CreatedCloudProject) => {
+      environments.current = [...environments.current, created.environment]
+      void useAppStore.getState().hydrateRuntimeEnvironmentStatuses()
+      try {
+        await syncCloudProjectRepos({
+          environments: [created.environment],
+          repos: useAppStore.getState().repos,
+          ports: rendererRepoPorts(bridge)
+        })
+      } catch (error) {
+        console.warn('[cloud] could not register created repo', entryFailureCode(error))
+      }
+      const opened = await bridge.openWorkspace(created.projectId)
+      if (!opened.ok) {
+        // Why not throw: the row is already usable; opening is a convenience.
+        console.warn('[cloud] could not open created project', opened.code)
+        return
+      }
+      await selectInitialWorktree({
+        opened,
+        environments: [created.environment],
+        projectId: created.projectId,
+        isCancelled: () => false
+      })
+    },
+    [bridge]
+  )
+
   const signOut = React.useCallback(async () => {
     const registered = environments.current
     await signOutCloudProjectRepos({
@@ -195,7 +231,15 @@ function useCloudWorkspaceEntry(
     setFailures([])
   }, [bridge])
 
-  return { entryError, preparing, failures, retrying, retryFailures, signOut }
+  return {
+    entryError,
+    preparing,
+    failures,
+    retrying,
+    retryFailures,
+    registerCreatedProject,
+    signOut
+  }
 }
 
 function CloudWorkspaceSession({
@@ -217,6 +261,7 @@ function CloudWorkspaceSession({
           retrying={entry.retrying}
           onRetry={() => void entry.retryFailures()}
         />
+        <NewCloudProjectButton bridge={bridge} onCreated={entry.registerCreatedProject} />
         {children}
       </>
     )

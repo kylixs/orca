@@ -1,8 +1,11 @@
 import type {
   CloudConnectionEvent,
+  CloudCreateProjectInput,
+  CloudCreateProjectResult,
   CloudOpenResult,
   CloudProjectRegistration,
   CloudProjectSummary,
+  CloudProvisionableHost,
   CloudRetryPrepareResult,
   CloudRpcOutcome,
   CloudSessionState
@@ -20,6 +23,10 @@ export type CloudPlatformApi = {
   registerProjects: () => Promise<CloudProjectRegistration>
   /** Re-run provisioning and linking for one project that failed to register. */
   retryPrepare: (projectId: string) => Promise<CloudRetryPrepareResult>
+  /** Developer self-service creation; path is derived by the platform. */
+  createProject: (input: CloudCreateProjectInput) => Promise<CloudCreateProjectResult>
+  /** Credential-free host catalog for the creation dialog. */
+  listProvisionableHosts: () => Promise<CloudProvisionableHost[]>
   /** Leave one project's workspace; its socket closes, the platform session survives. */
   closeProject: (projectId: string) => Promise<{ ok: boolean }>
   /** Routes to `projectId`'s own connection; there is no implicit current project. */

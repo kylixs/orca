@@ -166,6 +166,8 @@ function startEnrolled(
 
   const ready = (async () => {
     const { userDataPath } = options
+    // Absent means this host does not offer developer self-service projects.
+    const projectsRoot = env.ORCA_CLOUD_PROJECTS_ROOT?.trim() || undefined
     let stored = userDataPath ? readStoredHostCredential(userDataPath) : null
     if (!stored) {
       const enrolled = await enrollCloudHost({
@@ -174,7 +176,8 @@ function startEnrolled(
         hostName,
         // Nothing is listening yet; the heartbeat reports the real port later.
         directAddrs: options.directAddrs ?? [],
-        relayTarget: options.relayTarget
+        relayTarget: options.relayTarget,
+        ...(projectsRoot ? { projectsRoot } : {})
       })
       if (!enrolled.ok) {
         // Do not fall through to "serve without a gate": an enrolled-mode host that
@@ -197,6 +200,7 @@ function startEnrolled(
       heartbeat: {
         hostId: stored.hostId,
         credential: stored.credential,
+        ...(projectsRoot ? { projectsRoot } : {}),
         // Clients derive the E2EE key from this, so it must come from the runtime
         // that will actually answer — the enrolment call ran before it existed.
         e2eePublicKeyB64: () => boundRuntime?.getE2EEPublicKey() ?? null,

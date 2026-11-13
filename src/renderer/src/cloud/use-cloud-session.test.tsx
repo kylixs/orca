@@ -104,6 +104,8 @@ function makeBridge(script: Script = {}): TestBridge {
     },
     registerProjects: async () => ({ environments: [], failures: [] }),
     retryPrepare: async () => ({ ok: false, code: 'CLONE_FAILED' }),
+    createProject: async () => ({ ok: false, code: 'CREATE_FAILED' }),
+    listProvisionableHosts: async () => [],
     closeProject: async () => {
       bridge.closedProjects += 1
       return { ok: true }

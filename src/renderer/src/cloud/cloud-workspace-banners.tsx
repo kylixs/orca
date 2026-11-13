@@ -2,6 +2,8 @@ import * as React from 'react'
 import type { CloudProjectFailure } from '../../../shared/cloud-platform-ipc'
 import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
+import { CloudNewProjectDialog, type CreatedCloudProject } from './cloud-new-project-dialog'
+import type { CloudBridge } from './use-cloud-session'
 
 /** Non-blocking: the shell stays usable while the host prepares the checkout. */
 export function PreparingCloudProjectBanner(): React.JSX.Element {
@@ -15,6 +17,32 @@ export function PreparingCloudProjectBanner(): React.JSX.Element {
         {translate('auto.cloud.preparing', '正在准备云端项目…')}
       </div>
     </div>
+  )
+}
+
+/** Bottom-right, below the z-50 failure banner that owns the bottom centre. */
+export function NewCloudProjectButton({
+  bridge,
+  onCreated
+}: {
+  bridge: CloudBridge
+  onCreated: (created: CreatedCloudProject) => Promise<void> | void
+}): React.JSX.Element {
+  const [open, setOpen] = React.useState(false)
+  return (
+    <>
+      <div className="fixed bottom-3 right-3 z-40">
+        <Button variant="outline" size="xs" onClick={() => setOpen(true)}>
+          {translate('auto.cloud.newProject', '新建云端项目')}
+        </Button>
+      </div>
+      <CloudNewProjectDialog
+        bridge={bridge}
+        open={open}
+        onOpenChange={setOpen}
+        onCreated={onCreated}
+      />
+    </>
   )
 }
 

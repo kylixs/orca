@@ -1,11 +1,14 @@
 import { BrowserWindow, ipcMain, type WebContents } from 'electron'
 import {
   CLOUD_PLATFORM_IPC,
+  type CloudCreateProjectInput,
+  type CloudCreateProjectResult,
   type CloudOpenResult,
   type CloudProjectEnvironment,
   type CloudProjectFailure,
   type CloudProjectRegistration,
   type CloudProjectSummary,
+  type CloudProvisionableHost,
   type CloudRetryPrepareResult,
   type CloudRpcOutcome,
   type CloudSessionState
@@ -178,6 +181,37 @@ export function registerCloudPlatformHandlers(
       return { ok: false, code: 'PROJECT_NOT_FOUND' }
     }
     return prepareProjectEnvironment(session, options.userDataPath, project)
+  })
+  handle<CloudCreateProjectResult>(
+    CLOUD_PLATFORM_IPC.createProject,
+    async (input: CloudCreateProjectInput) => {
+      if (session.getState().status !== 'signed-in') {
+        return { ok: false, code: 'NOT_SIGNED_IN' }
+      }
+      if (!options.userDataPath) {
+        return { ok: false, code: 'WORKSPACE_UNAVAILABLE' }
+      }
+      const created = await session.createProject(input)
+      if (!created.ok) {
+        return created
+      }
+      const prepared = await prepareProjectEnvironment(
+        session,
+        options.userDataPath,
+        created.project
+      )
+      return prepared.ok
+        ? { ok: true, projectId: created.projectId, environment: prepared.environment }
+        : prepared
+    }
+  )
+  handle<CloudProvisionableHost[]>(CLOUD_PLATFORM_IPC.listProvisionableHosts, async () => {
+    try {
+      return await session.listProvisionableHosts()
+    } catch {
+      // The dialog treats an empty list as "no eligible host".
+      return []
+    }
   })
   handle(CLOUD_PLATFORM_IPC.closeProject, (projectId: string) => {
     if (options.userDataPath) {

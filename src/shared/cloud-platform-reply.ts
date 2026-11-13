@@ -150,6 +150,38 @@ export function parseProjectListReply(body: unknown): CloudReplyProject[] | null
   return parsed.every((entry): entry is CloudReplyProject => entry !== null) ? parsed : null
 }
 
+export type CloudReplyHostOption = {
+  id: string
+  name: string
+  online: boolean
+  provisionable: boolean
+}
+
+/** `/v1/hosts/available`; a malformed row rejects the list so the UI cannot mislead. */
+export function parseProvisionableHostsReply(body: unknown): CloudReplyHostOption[] | null {
+  const rows = readArray(body, 'hosts')
+  if (rows === null) {
+    return null
+  }
+  const parsed: CloudReplyHostOption[] = []
+  for (const row of rows) {
+    const id = readString(row, 'id')
+    const name = readString(row, 'name')
+    const online = readField(row, 'online')
+    const provisionable = readField(row, 'provisionable')
+    if (
+      id === null ||
+      name === null ||
+      typeof online !== 'boolean' ||
+      typeof provisionable !== 'boolean'
+    ) {
+      return null
+    }
+    parsed.push({ id, name, online, provisionable })
+  }
+  return parsed
+}
+
 function parseTicketHost(value: unknown): CloudReplyTicket['host'] | null {
   const id = readString(value, 'id')
   const name = readString(value, 'name')

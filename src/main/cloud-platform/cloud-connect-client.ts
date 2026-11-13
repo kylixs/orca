@@ -2,9 +2,15 @@ import WebSocket from 'ws'
 import { decrypt, deriveSharedKey, encrypt, generateKeyPair } from '../../shared/e2ee-crypto'
 import type {
   CloudReplyEndpoint,
+  CloudReplyHostOption,
   CloudReplyProject,
   CloudReplyTicket
 } from '../../shared/cloud-platform-reply'
+import {
+  createCloudProject,
+  listProvisionableHosts as fetchProvisionableHosts
+} from './cloud-self-service-api'
+import type { CloudCreateProjectInput } from '../../shared/cloud-platform-ipc'
 import { chooseRoute, probeEndpoint, type RouteChoice } from './cloud-route-selection'
 import { parseConnectTicket, parseProjectList, readTicketClaims } from './cloud-connect-response'
 import {
@@ -147,6 +153,14 @@ export class CloudConnectClient {
       throw new Error('list projects response malformed')
     }
     return projects
+  }
+
+  createProject(input: CloudCreateProjectInput): Promise<CloudProject> {
+    return createCloudProject(this.fetchImpl, this.options.apiUrl, this.accessToken, input)
+  }
+
+  listProvisionableHosts(): Promise<CloudReplyHostOption[]> {
+    return fetchProvisionableHosts(this.fetchImpl, this.options.apiUrl, this.accessToken)
   }
 
   async requestTicket(projectId: string): Promise<CloudConnectTicket> {

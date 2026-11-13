@@ -6,6 +6,16 @@ import { validateProjectPath } from '../../../packages/contract/src/project-path
 import { validateProjectRepoUrl } from '../../../packages/contract/src/repo-url.ts'
 import { validateProjectDefaultBranch } from '../../../packages/contract/src/branch-name.ts'
 import {
+  projectKeyFromName,
+  validateProjectKey
+} from '../../../packages/contract/src/project-key.ts'
+import {
+  SELF_SERVICE_PROJECT_LIMIT,
+  countActiveProjectsCreatedBy,
+  joinProjectPath,
+  selectSelfServiceHost
+} from './project-self-service.ts'
+import {
   generateSigningKey,
   newDeviceToken,
   newJti,
@@ -188,6 +198,13 @@ export function createApp(config: ApiConfig): ApiHandle {
           groups: ['platform-admins']
         })
       }
+    ],
+    [
+      'lisi',
+      {
+        password: 'Passw0rd!',
+        profile: ldapProfile({ username: 'lisi', displayName: '李四', dept: '风控研发部' })
+      }
     ]
   ])
   const ldap = config.ldap ?? new MockLdapAdapter(accounts)
@@ -223,6 +240,7 @@ export function createApp(config: ApiConfig): ApiHandle {
     directAddrs: ['127.0.0.1:16768'],
     relayRoute: 'dev-001',
     capabilities: ['pty', 'files', 'git', 'managed-credential'],
+    projectsRoot: null,
     status: 'online',
     maintenanceReason: null,
     lastHeartbeatAt: now(),
@@ -378,6 +396,31 @@ export function createApp(config: ApiConfig): ApiHandle {
 
   function hostOnline(h: Host): boolean {
     return h.status === 'online' && now() - h.lastHeartbeatAt <= HOST_OFFLINE_MS
+  }
+
+  /** A bad root is ignored on its own; it must not fail registration or a heartbeat. */
+  function applyProjectsRoot(target: Host, value: unknown, traceId: string): void {
+    if (value === undefined) {
+      return
+    }
+    if (value === '' || value === null) {
+      target.projectsRoot = null
+      return
+    }
+    const verdict = validateProjectPath(value)
+    if (!verdict.ok) {
+      audit.appendBestEffort({
+        eventType: 'host_projects_root_rejected',
+        actor: 'agent',
+        targetType: 'host',
+        targetId: target.id,
+        result: 'failure',
+        traceId,
+        metadata: { reason: verdict.code }
+      })
+      return
+    }
+    target.projectsRoot = verdict.path
   }
 
   async function handle(
@@ -691,6 +734,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         downloadPolicy: body.downloadPolicy === 'allow' ? 'allow' : 'deny',
         // Why: a repo URL means the host must clone it before the first open.
         status: repoUrlVerdict.repoUrl ? 'provisioning' : 'ready',
+        createdBy: authed.user.username,
         createdAt: now()
       }
       if (
@@ -712,6 +756,128 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
       store.projects.set(created.id, created)
       store.projectsByKey.set(created.key, created)
+      return json(res, 201, projectView(created, authed.user))
+    }
+
+    if (req.method === 'POST' && path === '/v1/projects/self') {
+      const authed = requireAuth()
+      if (!authed) return
+      if (!auditAllowsMutations(res, traceId)) return
+      const body = await readJson(req)
+      const deny = (
+        status: number,
+        code: string,
+        message: string,
+        details?: Record<string, unknown>
+      ): void => {
+        audit.append({
+          eventType: 'project_create',
+          actor: authed.user.username,
+          targetType: 'project',
+          targetId: null,
+          result: 'denied',
+          traceId,
+          metadata: { reason: code, selfService: true }
+        })
+        error(res, status, code, message, traceId, details)
+      }
+      // Why: the path is the platform's decision; accepting one would let a
+      // developer name any directory on a shared host.
+      if ('path' in body) {
+        return deny(400, 'PROJECT_PATH_FORBIDDEN', '项目路径由平台推导，不能指定。')
+      }
+      const name = typeof body.name === 'string' ? body.name.trim() : ''
+      if (name === '' || name.length > 200) {
+        return deny(400, 'PROJECT_NAME_INVALID', '项目名称不能为空且不能超过 200 个字符。')
+      }
+      const keyVerdict = validateProjectKey(
+        body.key === undefined ? projectKeyFromName(name) : body.key
+      )
+      if (!keyVerdict.ok) {
+        return deny(400, keyVerdict.code, keyVerdict.message)
+      }
+      const repoVerdict = validateProjectRepoUrl(body.repoUrl)
+      if (!repoVerdict.ok) {
+        return deny(400, repoVerdict.code, repoVerdict.message)
+      }
+      if (repoVerdict.repoUrl === '') {
+        return deny(400, 'REPO_URL_REQUIRED', '仓库地址不能为空。')
+      }
+      const branchVerdict = validateProjectDefaultBranch(body.defaultBranch)
+      if (!branchVerdict.ok) {
+        return deny(400, branchVerdict.code, branchVerdict.message)
+      }
+      const selection = selectSelfServiceHost({
+        hosts: store.hosts.values(),
+        hostId: typeof body.hostId === 'string' ? body.hostId : '',
+        isOnline: hostOnline
+      })
+      if (!selection.ok) {
+        return deny(selection.status, selection.code, selection.message, selection.details)
+      }
+      const key = keyVerdict.key
+      if (store.projectsByKey.has(key)) {
+        return deny(409, 'PROJECT_KEY_TAKEN', '项目 Key 已被占用，请更换。')
+      }
+      const root = selection.host.projectsRoot
+      const derivedPath = root === null ? null : joinProjectPath(root, key)
+      if (derivedPath === null) {
+        return deny(400, 'PROJECT_PATH_INVALID', '无法根据主机目录生成合法的项目路径。')
+      }
+      for (const existing of store.projects.values()) {
+        if (existing.path === derivedPath) {
+          return deny(409, 'PROJECT_PATH_TAKEN', '该主机目录下已存在同路径的项目。')
+        }
+      }
+      if (
+        countActiveProjectsCreatedBy(store.projects.values(), authed.user.username) >=
+        SELF_SERVICE_PROJECT_LIMIT
+      ) {
+        return deny(
+          429,
+          'PROJECT_LIMIT_REACHED',
+          `自助创建的项目数量已达上限（${SELF_SERVICE_PROJECT_LIMIT} 个）。`
+        )
+      }
+      const created: Project = {
+        id: `proj_${randomBytes(4).toString('hex')}`,
+        key,
+        name,
+        repoUrl: repoVerdict.repoUrl,
+        hostId: selection.host.id,
+        path: derivedPath,
+        defaultBranch: branchVerdict.defaultBranch || 'main',
+        downloadPolicy: 'deny',
+        status: repoVerdict.repoUrl ? 'provisioning' : 'ready',
+        createdBy: authed.user.username,
+        createdAt: now()
+      }
+      if (
+        !recordAudit(
+          res,
+          {
+            eventType: 'project_create',
+            actor: authed.user.username,
+            targetType: 'project',
+            targetId: created.id,
+            result: 'success',
+            traceId,
+            metadata: { key, selfService: true, hostId: created.hostId }
+          },
+          traceId
+        )
+      ) {
+        return
+      }
+      store.projects.set(created.id, created)
+      store.projectsByKey.set(created.key, created)
+      store.grants.push({
+        projectId: created.id,
+        subjectType: 'user',
+        subjectId: authed.user.id,
+        // Why no download: self-service projects keep the platform default policy.
+        permissions: ['open', 'terminal', 'agent', 'file:read', 'file:write']
+      })
       return json(res, 201, projectView(created, authed.user))
     }
 
@@ -981,6 +1147,20 @@ export function createApp(config: ApiConfig): ApiHandle {
       })
     }
 
+    if (req.method === 'GET' && path === '/v1/hosts/available') {
+      const authed = requireAuth()
+      if (!authed) return
+      // Deliberately credential-free: developers may pick a host, not inspect one.
+      return json(res, 200, {
+        hosts: [...store.hosts.values()].map((h) => ({
+          id: h.id,
+          name: h.name,
+          online: hostOnline(h),
+          provisionable: Boolean(h.projectsRoot)
+        }))
+      })
+    }
+
     if (req.method === 'POST' && path === '/v1/hosts/tokens') {
       const authed = requireAuth()
       if (!authed) return
@@ -1036,6 +1216,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         directAddrs: [],
         relayRoute: null,
         capabilities: [],
+        projectsRoot: null,
         status: 'online',
         maintenanceReason: null,
         lastHeartbeatAt: now(),
@@ -1052,6 +1233,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       target.capabilities = Array.isArray(body.runtimeCapabilities)
         ? (body.runtimeCapabilities as string[])
         : []
+      applyProjectsRoot(target, body.projectsRoot, traceId)
       target.status = 'online'
       target.lastHeartbeatAt = now()
       target.credentialHash = hashToken(credential)
@@ -1108,6 +1290,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         if (typeof body.status === 'string' && target.status !== 'maintenance') {
           target.status = body.status === 'online' ? 'online' : 'offline'
         }
+        applyProjectsRoot(target, body.projectsRoot, traceId)
         applyProjectProvisionReports(target.id, body.provisioned, traceId)
         target.lastHeartbeatAt = now()
         const revoked = store.revocations.filter((r) => r.targetType !== 'jti')

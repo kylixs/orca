@@ -43,7 +43,10 @@ export function spawnService(
   const logs: string[] = []
   let port = 0
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error(`${name} did not start: ${logs.join('')}`)), 15000)
+    const timeout = setTimeout(
+      () => reject(new Error(`${name} did not start: ${logs.join('')}`)),
+      15000
+    )
     const onChunk = (chunk: Buffer): void => {
       const text = chunk.toString()
       logs.push(text)
@@ -119,6 +122,8 @@ export async function registerHost(input: {
   directAddr: string
   relayTarget: string
   relayRoute?: string
+  /** Parent directory for developer self-service projects. */
+  projectsRoot?: string
 }): Promise<{ hostId: string; credential: string }> {
   const tokenRes = await fetch(`${input.apiUrl}/v1/hosts/tokens`, {
     method: 'POST',
@@ -138,7 +143,8 @@ export async function registerHost(input: {
       directAddrs: [input.directAddr],
       relayTarget: input.relayTarget,
       relayRoute: input.relayRoute ?? input.name,
-      runtimeCapabilities: ['pty', 'files', 'managed-credential']
+      runtimeCapabilities: ['pty', 'files', 'managed-credential'],
+      ...(input.projectsRoot ? { projectsRoot: input.projectsRoot } : {})
     })
   })
   if (!res.ok) throw new Error(`register failed: ${await res.text()}`)

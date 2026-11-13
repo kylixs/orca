@@ -2,10 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { errorCodeOf, readField } from '../../../shared/json-fields'
 import type {
   CloudConnectionEvent,
+  CloudCreateProjectInput,
+  CloudCreateProjectResult,
   CloudOpenResult,
   CloudProjectRegistration,
   CloudProjectSummary,
   CloudProjectPermission,
+  CloudProvisionableHost,
   CloudRetryPrepareResult,
   CloudRpcOutcome,
   CloudSessionState
@@ -23,6 +26,8 @@ export type CloudBridge = {
   openWorkspace: (projectId: string) => Promise<CloudOpenResult>
   registerProjects: () => Promise<CloudProjectRegistration>
   retryPrepare: (projectId: string) => Promise<CloudRetryPrepareResult>
+  createProject: (input: CloudCreateProjectInput) => Promise<CloudCreateProjectResult>
+  listProvisionableHosts: () => Promise<CloudProvisionableHost[]>
   closeProject: (projectId: string) => Promise<{ ok: boolean }>
   logout: () => Promise<CloudSessionState>
   getState: () => Promise<CloudSessionState>

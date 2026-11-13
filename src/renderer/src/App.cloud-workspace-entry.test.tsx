@@ -162,6 +162,8 @@ function cloudBridge(overrides: Record<string, unknown> = {}) {
       failures: []
     }),
     retryPrepare: async () => ({ ok: false, code: 'CLONE_FAILED' }),
+    createProject: async () => ({ ok: false, code: 'CREATE_FAILED' }),
+    listProvisionableHosts: async () => [],
     openWorkspace: async (projectId: string) => ({
       ok: true,
       projectId,

@@ -31,6 +31,8 @@ export type EnrollInput = {
   relayRoute?: string
   e2eePublicKeyB64?: string
   orcaVersion?: string
+  /** Parent directory the platform may create self-service projects under. */
+  projectsRoot?: string
 }
 
 function isCloudHostCredential(value: unknown): value is CloudHostCredential {
@@ -87,7 +89,8 @@ export async function enrollCloudHost(
         directAddrs: input.directAddrs,
         relayTarget: input.relayTarget ?? '',
         relayRoute: input.relayRoute ?? input.hostName,
-        runtimeCapabilities: ['pty', 'files', 'agent', 'managed-credential']
+        runtimeCapabilities: ['pty', 'files', 'agent', 'managed-credential'],
+        ...(input.projectsRoot ? { projectsRoot: input.projectsRoot } : {})
       }),
       signal: AbortSignal.timeout(10_000)
     })

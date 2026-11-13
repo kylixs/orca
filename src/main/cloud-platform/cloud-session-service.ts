@@ -1,7 +1,9 @@
 import type {
   CloudConnectionEvent,
+  CloudCreateProjectInput,
   CloudOpenResult,
   CloudProjectSummary,
+  CloudProvisionableHost,
   CloudRpcOutcome,
   CloudSessionState
 } from '../../shared/cloud-platform-ipc'
@@ -133,6 +135,40 @@ export class CloudSessionService {
       this.state = { ...this.state, projects: summaries }
     }
     return summaries
+  }
+
+  /** Self-service creation; the refreshed list is what the renderer re-reads later. */
+  async createProject(
+    input: CloudCreateProjectInput
+  ): Promise<
+    | { ok: true; projectId: string; project: CloudProjectSummary }
+    | { ok: false; code: string; message?: string }
+  > {
+    if (!this.client) {
+      return { ok: false, code: 'NOT_SIGNED_IN' }
+    }
+    try {
+      const created = await this.client.createProject(input)
+      try {
+        const projects = await this.client.listProjects()
+        if (this.state.status === 'signed-in') {
+          this.state = { ...this.state, projects: projects.map(summarize) }
+        }
+      } catch {
+        // The project exists; a stale list must not turn creation into a failure.
+      }
+      return { ok: true, projectId: created.id, project: summarize(created) }
+    } catch (error) {
+      return {
+        ok: false,
+        code: errorCodeOf(error) ?? 'CREATE_PROJECT_FAILED',
+        message: error instanceof Error ? error.message : String(error)
+      }
+    }
+  }
+
+  async listProvisionableHosts(): Promise<CloudProvisionableHost[]> {
+    return this.client ? this.client.listProvisionableHosts() : []
   }
 
   async openProject(projectId: string): Promise<CloudOpenResult> {

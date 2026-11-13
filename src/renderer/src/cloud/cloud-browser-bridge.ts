@@ -4,10 +4,12 @@ import { readTicketClaims, type CloudReplyTicket } from '../../../shared/cloud-p
 import { openCloudWorkspaceOverRpc } from '../../../shared/cloud-workspace-open'
 import type {
   CloudConnectionEvent,
+  CloudCreateProjectResult,
   CloudOpenResult,
   CloudProjectPermission,
   CloudProjectRegistration,
   CloudProjectSummary,
+  CloudProvisionableHost,
   CloudRetryPrepareResult,
   CloudRpcOutcome,
   CloudSessionState
@@ -270,6 +272,15 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
     /** Admin pages have no native environment to register a recovered project into. */
     async retryPrepare(): Promise<CloudRetryPrepareResult> {
       return { ok: false, code: 'ADMIN_SESSION_UNSUPPORTED' }
+    },
+
+    /** Admin pages have no runtime host, so creation cannot produce an environment. */
+    async createProject(): Promise<CloudCreateProjectResult> {
+      return { ok: false, code: 'ADMIN_SESSION_UNSUPPORTED' }
+    },
+
+    async listProvisionableHosts(): Promise<CloudProvisionableHost[]> {
+      return []
     },
 
     async closeProject(projectId: string): Promise<{ ok: boolean }> {

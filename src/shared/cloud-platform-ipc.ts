@@ -19,6 +19,10 @@ export const CLOUD_PLATFORM_IPC = {
   registerProjects: 'cloud:registerProjects',
   /** Args: `(projectId)`. Re-prepares a project whose first registration failed. */
   retryPrepare: 'cloud:retryPrepare',
+  /** Args: `(input)`. Developer self-service creation; path is platform-derived. */
+  createProject: 'cloud:createProject',
+  /** Lists hosts a developer may create a project on, without addresses or keys. */
+  listProvisionableHosts: 'cloud:listProvisionableHosts',
   /** Args: `(method, params, projectId)`. Routes to that project's own socket. */
   rpc: 'cloud:rpc',
   connectionChanged: 'cloud:connectionChanged'
@@ -106,6 +110,27 @@ export type CloudProjectRegistration = {
 
 export type CloudRetryPrepareResult =
   | { ok: true; environment: CloudProjectEnvironment }
+  | { ok: false; code: string; message?: string }
+
+export type CloudCreateProjectInput = {
+  name: string
+  /** Omitted lets the platform derive a key from the name. */
+  key?: string
+  repoUrl: string
+  defaultBranch?: string
+  /** Omitted lets the platform use the only eligible online host. */
+  hostId?: string
+}
+
+export type CloudProvisionableHost = {
+  id: string
+  name: string
+  online: boolean
+  provisionable: boolean
+}
+
+export type CloudCreateProjectResult =
+  | { ok: true; projectId: string; environment: CloudProjectEnvironment }
   | { ok: false; code: string; message?: string }
 
 export type CloudRpcOutcome =

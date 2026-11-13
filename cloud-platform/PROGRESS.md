@@ -1091,12 +1091,40 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 3. 重试失败的项目错误码会更新，但 `provisioningError` 的**完整消息**只在平台侧；原生横幅只显示 code（避免把主机内部文案当 UI 文案）。
 4. 首次签到仍**串行**准备所有项目（M57 遗留），失败项目不再拖慢其它项目——它们只是被并行计入失败列表。
 
+## M59 开发者自助创建云端项目（本轮，开发子代理执行）
+
+**问题**：`POST /v1/projects` 一直是 **admin-only**，而用户需求是"普通开发者可以在平台上创建项目，创建后本地拉取到并打开使用，连接过程不需要感知"。缺口不只是权限：平台还必须**自己**决定项目落在主机哪个目录（开发者指定 `path` 等于允许在共享主机上任意落盘），并且创建后客户端要自动出现该项目。
+
+| 改动 | 内容 |
+|---|---|
+| 主机 `ORCA_CLOUD_PROJECTS_ROOT` | 注册与心跳上报 `projectsRoot`（绝对路径）；未配置 = 该主机不支持自助创建 |
+| 平台 `store.ts` / `server.ts` / `project-self-service.ts`（新）/ `contract/project-key.ts`（新） | `Host.projectsRoot`、`Project.createdBy`；`POST /v1/projects/self`（登录即可）：`path` 出现即 400 `PROJECT_PATH_FORBIDDEN`，key 由 `validateProjectKey` 校验（`^[a-z0-9][a-z0-9._-]*$`，可由名称规范化），主机选择（无 / 多台 / 不合格分别 409 `NO_PROVISIONABLE_HOST`/`HOST_REQUIRED`/`HOST_NOT_PROVISIONABLE`），路径由 `joinProjectPath(projectsRoot, key)` 推导并复验，key/路径冲突 409，每用户 20 个未归档项目上限 429；创建者自动获得 `open,terminal,agent,file:read,file:write`（**无 download**），审计 `project_create`（`selfService: true`，不含地址）；新增 `GET /v1/hosts/available`（登录即可，只回 `{id,name,online,provisionable}`，不含地址/凭据） |
+| 主机/客户端 `cloud-self-service-api.ts`（新）/ `cloud-connect-client.ts` / `cloud-session-service.ts` / IPC / preload | `createProject`、`listProvisionableHosts`；`cloud:createProject` 创建后立即 `prepareProjectEnvironment` 并返回 environment；`cloud:listProvisionableHosts` |
+| 渲染 `cloud-new-project-dialog.tsx`（新）+ `cloud-workspace-banners.tsx` + `cloud-workspace-entry.tsx` | 云构建已登录时右下角“新建云端项目”按钮（`z-40`，与底部失败横幅 `z-50` 不重叠）；对话框填写名称/key/仓库/分支/主机（无合格主机时禁用提交）；创建成功注册 environment、同步侧栏 repo 并打开项目 |
+
+**验证（`evidence/m59-self-service-projects/`）**：
+- 平台 e2e 10 条（真实平台进程）：非管理员创建 201 + `path === projectsRoot/key` + 自动权限（无 download）；显式 `path` 400；无合格主机 409；多主机未选 409 并附列表；key 冲突 409；配额 429；非创建者 `GET /v1/projects` 不可见；`/v1/hosts/available` 不含 `credentialHash`/`directAddrs`；非法 `projectsRoot` 被忽略且写审计。
+- 主机端到端 1 条（真实平台 + 真实注册主机上报 `projectsRoot` + 真实心跳 + 真实 TLS Runtime + 真实 bare git + 真实 `cloud:createProject` handler）：开发者创建 → checkout 真实位于 `projectsRoot/<key>`、README 一致 → 心跳后平台 `ready` → `planCloudProjectRepos`/真实 `repo.add` 生成侧栏行。
+- 组件测试：对话框（打开/关闭、无主机禁用、成功回调）+ 入口按钮共存。
+
+**主会话独立验收**：11 个相关 vitest 文件 **48 条全过**；平台 e2e 10 条全过；`tsc tc.web` 0 错；`tsc node` 仅 2 条既有 TS6307；`check:code-quality:changed` 0 新发现。
+
+**主会话独立负向对照**：去掉 `POST /v1/projects/self` 的 `path` 拒绝 → 2 条用例变红（显式 path 与配额用例，路径冲突掩盖了上限判定）；恢复后 10/10 绿。子代理另有对照：把路径推导改成 `${root}/../escape` → 3 条变红（POSIX/Windows 路径与限额），恢复后全绿。
+
+**如实记录 / 剩余**：
+1. 创建成功但**准备失败**（仓库地址错等）时平台项目已存在、对话框显示错误且不关闭；该项目的失败不会进入 M58 的重试横幅，需重新登录后走注册失败路径或改名重建。这是后续 UX 改进点。
+2. 多主机时要求显式选择，未做“记住上次主机/默认主机”偏好。
+3. Windows 根目录路径推导有平台 e2e 覆盖，但未在真实 Windows 主机跑 clone。
+4. 新建对话框仅 happy-dom 组件测试，未做真实 Electron 渲染截图。
+5. 自助项目全局 key 唯一（跨主机也不能重名），避免平台 key 语义不一致；用户需改名。
+6. `server.ts`（1813 行）为既有大文件，本次新增 180 行；新增文件均 ≤300 行。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M58（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M59（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步（按缺口排序）**：
-1. **开发者自助创建项目**：建项目仍 admin-only；需要"用户在平台创建 → 主机 provisioning → 本地出现"的自助流程（含主机项目根目录、权限授予界面与项目创建审计）。
+1. **创建即准备失败的可见性**：M59 的创建对话框失败后项目已存在但不进入重试横幅；应把失败项目并入统一状态并允许重试/重命名。
 2. **登录后自动重登**：断线仍只回登录页（M51 范围），长会话需要自动续期。
 3. **主机断连清理**：云设备 token 仅在注册表淘汰，不随 socket 关闭释放。
 4. **签到准备并行化**：`registerProjects` 逐项目串行准备，多仓库首屏被最长 clone 拖慢。

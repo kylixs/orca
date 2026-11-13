@@ -58,6 +58,8 @@ export type CloudAgentConfig = {
     directAddrs?: string[] | (() => string[])
     /** Reported so the platform can hand the host key to clients with the ticket. */
     e2eePublicKeyB64?: () => string | null
+    /** Parent directory for self-service projects; absent means the host opts out. */
+    projectsRoot?: string
   }
 }
 
@@ -205,6 +207,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
         {
           status: 'online',
           ...heartbeatAddrsField(config.heartbeat?.directAddrs),
+          ...(config.heartbeat.projectsRoot ? { projectsRoot: config.heartbeat.projectsRoot } : {}),
           ...(config.heartbeat.e2eePublicKeyB64?.()
             ? { e2eePublicKeyB64: config.heartbeat.e2eePublicKeyB64() ?? undefined }
             : {}),

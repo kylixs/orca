@@ -42,6 +42,8 @@ export type Host = {
   directAddrs: string[]
   relayRoute: string | null
   capabilities: string[]
+  /** Parent directory the platform may create self-service projects under. */
+  projectsRoot: string | null
   status: 'online' | 'offline' | 'maintenance'
   maintenanceReason: string | null
   lastHeartbeatAt: number
@@ -67,6 +69,8 @@ export type Project = {
   status: 'provisioning' | 'ready' | 'archived' | 'failed'
   /** Last provisioning failure reported by the host; cleared once it succeeds. */
   provisioningError?: string
+  /** Platform username that created the project; drives the per-user quota. */
+  createdBy?: string | null
   createdAt: number
 }
 

@@ -60,6 +60,8 @@ function makeBridge(
     }),
     registerProjects: async () => registerProjects,
     retryPrepare,
+    createProject: async () => ({ ok: false, code: 'ADMIN_SESSION_UNSUPPORTED' }),
+    listProvisionableHosts: async () => [],
     closeProject: async () => ({ ok: true }),
     logout: async (): Promise<CloudSessionState> => ({ status: 'signed-out' }),
     getState: async (): Promise<CloudSessionState> => ({
@@ -138,6 +140,28 @@ describe('云端原生入口', () => {
     expect(alert.textContent).toContain('部分云端项目准备失败')
     expect(alert.textContent).toContain('Payment Service')
     expect(alert.textContent).toContain('CLONE_FAILED')
+    expect(screen.getByTestId('workspace-shell')).toBeTruthy()
+  })
+
+  it('已登录显示新建云端项目按钮，且与失败横幅共存', async () => {
+    const bridge = makeBridge(
+      Promise.resolve({
+        environments: [],
+        failures: [
+          {
+            projectId: 'proj_1',
+            projectKey: 'payment-service',
+            projectName: 'Payment Service',
+            code: 'CLONE_FAILED'
+          }
+        ]
+      })
+    )
+    renderEntry(bridge)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain('CLONE_FAILED')
+    expect(screen.getByRole('button', { name: '新建云端项目' })).toBeTruthy()
     expect(screen.getByTestId('workspace-shell')).toBeTruthy()
   })
 
