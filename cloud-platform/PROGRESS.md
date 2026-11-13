@@ -2392,6 +2392,10 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 - `6997ee99f78`（宿主侧）：`enrollCloudHost` 缺省 routeKey=派生 `ip-<地址>`（点/冒号折叠为横线以过中继 SNI 白名单），显式配置优先。
 - 已知记录项：acceptance-index 会把 `m114-relay-page` 列为「test-plan 未引用」（记录性输出）；后续在 test-plan 补引用即可消除。
 
+### M118 管理台详情页终端与文件树（需求澄清 + 派发，2026-11-14）
+
+用户按设计稿澄清：管理台项目详情页要能**看实时终端、敲按键、右侧浏览文件树并打开文件**（原型 P3）。现状：详情页已有文件面板（浏览/打开），**无终端**；web 完整客户端（web-index.html）已在浏览器承载终端（WebGL 管线），云 RPC 通道同源可复用。已落 FR-3.9 并修正 design-adjustment 文档的「只读+文件浏览」表述（终端按 terminal 授权交互；文件写仍受主机边界）。派发实现（复用 web 终端管线接入 CloudProjectWorkspace）。
+
 ### 复检发现 D1：Web bundle 缺失时宿主静态页挂起（已记录 + 派发修复，2026-11-14）
 
 用户报「无法跳过证书错误 + 页面打不开」。排查链：① 本机测试宿主证书漏 SAN（主会话手工签发所致，产品 `/install/host.sh` 已带 `subjectAltName=DNS:localhost,IP:127.0.0.1`，无缺陷）；② 自签 CA 不受浏览器信任 → 已建本地 CA 加入登录钥匙串解决；③ **真正产品缺陷 D1**：开发树未构建 `out/web/` 时 `getBundledWebClientRoot()` 返回 undefined，宿主 TLS 监听无 requestListener，对 `/cloud-admin.html` 的 GET **挂起 0 字节**（curl 超时/浏览器空转），而非 404/503——这也是 M113 管理员页截图任务始终未完成的根因。本机已 `pnpm run build:web-from-renderer` 构建并重启宿主验证 200。修复派发：ws-transport 无 staticRoot 时对静态路径返回 503 + 启动警告日志。

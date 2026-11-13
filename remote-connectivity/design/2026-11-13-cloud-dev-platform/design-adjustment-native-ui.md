@@ -56,7 +56,7 @@
 - 新增 `CloudBridge` 的**浏览器实现**：登录/项目列表/取票复用 `web-cloud-session.ts`，RPC 复用 `WebRuntimeConnectionTransport`，文件浏览复用 `cloud-file-browser.ts`。组件层（`cloud-app`/`cloud-workbench`/`cloud-project-workspace`/`cloud-file-panel`）不改语义。
 - 会话页**独立登录**，不从平台 URL 传递令牌（避免令牌进入浏览器历史/代理日志）。若后续要免二次登录，用一次性短期码换取会话，不复用访问令牌。
 - 平台管理台（`cloud-platform/apps/web/`）在每个项目行增加"打开会话页"链接；目标地址可配置（部署时注入），未配置时隐藏。
-- 管理员页面只读 + 文件浏览；写操作仍受主机边界与下载策略约束，不因"管理员"放宽。
+- 管理员页面：**实时终端（查看 + 输入按键）**、右侧文件树（浏览、打开文件只读预览）——按 ui 原型 P3（用户 2026-11-14 澄清，覆盖早前「只读 + 文件浏览」表述）。文件写操作仍受主机边界与下载策略约束，不因"管理员"放宽；终端交互受 `terminal` 授权约束。
 
 ### 4.3 角色
 
