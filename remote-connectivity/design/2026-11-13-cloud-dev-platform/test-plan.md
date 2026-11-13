@@ -111,7 +111,7 @@
 | 连接建立（凭证 → 工作区可交互） | 直连 P95 ≤ 2s；中继 P95 ≤ 3s | `cloud-connection-establish-latency.test.ts::M104-1/M104-2`（真实平台 + 真实中继进程 + 真实 TLS Runtime + 真实 WSS） | `m104-connection-latency/connection-latency-direct.json`、`connection-latency-relay.json` | PASS（本机） | 每条线路 20 次采样，每次全新客户端与 socket；计时从取凭证到工作区 `status.get` 成功：直连 P95 **6.26ms**、中继 P95 **6.09ms**。注入 800ms 延迟后 P95 分别升到 6432/6428ms，同一预算断言转红；撤销后恢复。客户端与主机同机，未含真实网络 RTT；已登录会话，登录不计时 |
 | 终端输入回显（同城网络） | P95 ≤ 120ms | `cloud-terminal-echo-latency.test.ts::M102-1`（真实中继进程 + 真实 TLS + E2EE + 真实 PTY） | `m102-terminal-echo-latency/terminal-echo-latency.json` | PASS（本机） | 中继线路 50 次采样，多次运行 P95 **7.5–9.1ms**（当前证据 9.05ms）；注入 150ms 后同一预算断言转红（P95 306.9ms），撤销后恢复 9.87ms。客户端与主机同机，未计入同城网络 RTT |
 | 文件目录读取（1000 项） | P95 ≤ 400ms | `cloud-file-listing-latency.test.ts::M103-1`（真实中继进程 + 真实 TLS + E2EE + 真实 Runtime） | `m103-file-listing-latency/file-listing-latency.json` | PASS（本机） | 中继线路下返回 1000 条目，30 次采样，多次运行 P95 **3.3–5.1ms**（当前证据 5.07ms）；注入 450ms 后同一预算断言转红（P95 914.06ms），撤销后恢复。平铺目录、客户端与主机同机，未含真实网络 RTT 与 SSH 文件系统 |
-| 审计查询（31 天窗口） | P95 ≤ 2s | 无 | 无 | UNVERIFIED | 待补 |
+| 审计查询（31 天窗口） | P95 ≤ 2s | `cloud-platform/test/e2e/audit-query-latency.e2e.test.ts::M105-1`（真实写入者进程 + 真实 API 进程 + 真实 HTTP 跳） | `m105-audit-query-latency/audit-query-latency.json` | PASS（本机） | 写入 20 万条事件后按 30 天窗口查询，30 次采样 P95 **6.6–7.3ms**（中位 4.2–4.3ms，预算 2000ms）；5 万条时 P95 4.0–6.2ms、中位 1.6–2.2ms，中位随语料近似线性。整链 `/v1/verify` 通过（checked=200001）。注入 2200ms 延迟后同一预算断言转红（P95 2211.64ms），撤销后恢复 18.94ms。查询是内存线性扫描，语料再大一个数量级需换索引/分页存储 |
 
 ## 5. 不可验证项与前置条件
 

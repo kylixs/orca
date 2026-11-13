@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { execFileSync } from 'node:child_process'
+import { connect as connectNet, createServer as createNetServer } from 'node:net'
 import { mkdirSync, mkdtempSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -166,4 +167,58 @@ export async function login(apiUrl: string, username: string, password: string):
 
 export function readEvidence(path: string): string {
   return readFileSync(path, 'utf8')
+}
+
+export type TcpDelayHop = {
+  url: string
+  /** Delays the target→caller direction, so a response is late by this much. */
+  setDelayMs: (ms: number) => void
+  close: () => Promise<void>
+}
+
+/**
+ * A TCP hop whose replies can be held back, so a latency budget can be shown to
+ * move with the path instead of being a constant. Delay 0 is a pass-through.
+ */
+export async function startTcpDelayHop(
+  targetPort: number | (() => number)
+): Promise<TcpDelayHop> {
+  let delayMs = 0
+  const server = createNetServer((caller) => {
+    const target = connectNet(typeof targetPort === 'number' ? targetPort : targetPort(), '127.0.0.1')
+    caller.pipe(target)
+    target.on('data', (chunk: Buffer) => {
+      // Why pause: with a delay the reply must land after the timer, and pausing
+      // keeps later chunks from overtaking this one.
+      if (delayMs === 0) {
+        caller.write(chunk)
+        return
+      }
+      target.pause()
+      setTimeout(() => {
+        caller.write(chunk)
+        target.resume()
+      }, delayMs)
+    })
+    const drop = (): void => {
+      caller.destroy()
+      target.destroy()
+    }
+    caller.on('error', drop)
+    target.on('error', drop)
+    caller.on('close', () => target.destroy())
+    target.on('close', () => caller.destroy())
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()))
+  const port = (server.address() as { port: number }).port
+  return {
+    url: `http://127.0.0.1:${port}`,
+    setDelayMs: (ms) => {
+      delayMs = ms
+    },
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.close(() => resolve())
+      })
+  }
 }
