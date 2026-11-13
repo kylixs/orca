@@ -23,10 +23,34 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { translate } from '@/i18n/i18n'
 import type { CloudBridge } from './use-cloud-session'
 
-/** Minimal self-service creation form; the platform derives the host path from `key`. */
+function hasSeparatorOrControl(value: string): boolean {
+  for (const character of value) {
+    const code = character.codePointAt(0) ?? 0
+    if (code < 0x20 || code === 0x7f || character === '/' || character === '\\') {
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * A directory is a single relative segment under the host's projects root
+ * (FR-3.7): no separators, no `.`/`..`, no control characters.
+ */
+export function isValidProjectDirName(value: string): boolean {
+  const dir = value.trim()
+  return (
+    dir !== '' && dir !== '.' && dir !== '..' && dir.length <= 200 && !hasSeparatorOrControl(dir)
+  )
+}
+
+type DirMode = 'existing' | 'new'
+
+/** Self-service creation: pick or name a directory; the repo URL is optional. */
 export function CloudNewProjectDialog({
   bridge,
   open,
@@ -44,6 +68,9 @@ export function CloudNewProjectDialog({
 }): React.JSX.Element {
   const [name, setName] = React.useState('')
   const [key, setKey] = React.useState('')
+  const [dirMode, setDirMode] = React.useState<DirMode>('existing')
+  const [existingDir, setExistingDir] = React.useState('')
+  const [newDir, setNewDir] = React.useState('')
   const [repoUrl, setRepoUrl] = React.useState('')
   const [branch, setBranch] = React.useState('main')
   const [hosts, setHosts] = React.useState<CloudProvisionableHost[] | null>(null)
@@ -58,6 +85,9 @@ export function CloudNewProjectDialog({
     let cancelled = false
     setName('')
     setKey('')
+    setDirMode('existing')
+    setExistingDir('')
+    setNewDir('')
     setRepoUrl('')
     setBranch('main')
     setHostId('')
@@ -75,6 +105,7 @@ export function CloudNewProjectDialog({
         // stay unselected so the user sees which machine receives the project.
         if (eligible.length === 1) {
           setHostId(eligible[0].id)
+          setDirMode(eligible[0].projectDirs.length > 0 ? 'existing' : 'new')
         }
       })
       .catch(() => {
@@ -88,13 +119,26 @@ export function CloudNewProjectDialog({
   }, [bridge, open])
 
   const eligibleHosts = (hosts ?? []).filter((host) => host.provisionable)
+  const selectedHost = eligibleHosts.find((host) => host.id === hostId) ?? null
+  const dir = dirMode === 'existing' ? existingDir : newDir.trim()
+  const dirValid = dirMode === 'existing' ? existingDir !== '' : isValidProjectDirName(newDir)
   const canSubmit =
     !submitting &&
     hosts !== null &&
     eligibleHosts.length > 0 &&
     hostId !== '' &&
     name.trim() !== '' &&
-    repoUrl.trim() !== ''
+    dirValid
+
+  const pickHost = (nextId: string): void => {
+    setHostId(nextId)
+    setExistingDir('')
+    // A host that reports no directories can only offer creating a new one.
+    const next = eligibleHosts.find((host) => host.id === nextId)
+    if (next && next.projectDirs.length === 0) {
+      setDirMode('new')
+    }
+  }
 
   const submit = async (): Promise<void> => {
     if (!canSubmit) {
@@ -105,8 +149,9 @@ export function CloudNewProjectDialog({
     try {
       const result = await bridge.createProject({
         name: name.trim(),
+        dir,
         ...(key.trim() ? { key: key.trim() } : {}),
-        repoUrl: repoUrl.trim(),
+        ...(repoUrl.trim() ? { repoUrl: repoUrl.trim() } : {}),
         defaultBranch: branch.trim() || 'main',
         hostId
       })
@@ -139,7 +184,7 @@ export function CloudNewProjectDialog({
           <DialogDescription>
             {translate(
               'auto.cloud.newProjectHint',
-              '项目会创建在所选主机的项目目录下，随后自动准备并打开。'
+              '项目会落在所选主机的项目目录下；仓库地址可不填，宿主直接使用已有目录。'
             )}
           </DialogDescription>
         </DialogHeader>
@@ -158,46 +203,10 @@ export function CloudNewProjectDialog({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="cloud-project-key">
-              {translate('auto.cloud.projectKey', '项目 Key')}
-            </Label>
-            <Input
-              id="cloud-project-key"
-              value={key}
-              onChange={(event) => setKey(event.target.value)}
-              placeholder={translate(
-                'auto.cloud.projectKeyPlaceholder',
-                '留空时根据名称自动生成（小写字母/数字/._-）'
-              )}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="cloud-project-repo">
-              {translate('auto.cloud.projectRepoUrl', '仓库地址')}
-            </Label>
-            <Input
-              id="cloud-project-repo"
-              value={repoUrl}
-              onChange={(event) => setRepoUrl(event.target.value)}
-              placeholder="https://… / git@… / /absolute/path"
-              required
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="cloud-project-branch">
-              {translate('auto.cloud.projectBranch', '默认分支')}
-            </Label>
-            <Input
-              id="cloud-project-branch"
-              value={branch}
-              onChange={(event) => setBranch(event.target.value)}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
             <Label htmlFor="cloud-project-host">
               {translate('auto.cloud.projectHost', '主机')}
             </Label>
-            <Select value={hostId} onValueChange={setHostId} disabled={eligibleHosts.length === 0}>
+            <Select value={hostId} onValueChange={pickHost} disabled={eligibleHosts.length === 0}>
               <SelectTrigger id="cloud-project-host">
                 <SelectValue
                   placeholder={translate('auto.cloud.projectHostPlaceholder', '选择主机')}
@@ -223,6 +232,102 @@ export function CloudNewProjectDialog({
                 )}
               </p>
             ) : null}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="cloud-project-dir">{translate('auto.cloud.projectDir', '目录')}</Label>
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              value={dirMode}
+              onValueChange={(value) => {
+                if (value === 'existing' || value === 'new') {
+                  setDirMode(value)
+                }
+              }}
+            >
+              <ToggleGroupItem value="existing">
+                {translate('auto.cloud.projectDirExisting', '选择已有目录')}
+              </ToggleGroupItem>
+              <ToggleGroupItem value="new">
+                {translate('auto.cloud.projectDirNew', '新建目录')}
+              </ToggleGroupItem>
+            </ToggleGroup>
+            {dirMode === 'existing' ? (
+              <Select
+                value={existingDir}
+                onValueChange={setExistingDir}
+                disabled={!selectedHost || selectedHost.projectDirs.length === 0}
+              >
+                <SelectTrigger id="cloud-project-dir">
+                  <SelectValue
+                    placeholder={translate('auto.cloud.projectDirPlaceholder', '选择主机上的目录')}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {(selectedHost?.projectDirs ?? []).map((entry) => (
+                    <SelectItem key={entry} value={entry}>
+                      {entry}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input
+                id="cloud-project-dir"
+                value={newDir}
+                onChange={(event) => setNewDir(event.target.value)}
+                placeholder={translate('auto.cloud.projectDirNewPlaceholder', '如 payment-service')}
+              />
+            )}
+            {dirMode === 'new' && newDir.trim() !== '' && !isValidProjectDirName(newDir) ? (
+              <p className="text-xs text-destructive">
+                {translate(
+                  'auto.cloud.projectDirInvalid',
+                  '目录名只能是单级名称，不能包含 / \\ 或 ..'
+                )}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="cloud-project-key">
+              {translate('auto.cloud.projectKey', '项目 Key')}
+            </Label>
+            <Input
+              id="cloud-project-key"
+              value={key}
+              onChange={(event) => setKey(event.target.value)}
+              placeholder={translate(
+                'auto.cloud.projectKeyPlaceholder',
+                '可选，留空时根据名称自动生成（小写字母/数字/._-）'
+              )}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="cloud-project-repo">
+              {translate('auto.cloud.projectRepoUrl', '仓库地址')}
+            </Label>
+            <Input
+              id="cloud-project-repo"
+              value={repoUrl}
+              onChange={(event) => setRepoUrl(event.target.value)}
+              placeholder="https://… / git@… / /absolute/path"
+            />
+            <p className="text-xs text-muted-foreground">
+              {translate(
+                'auto.cloud.projectRepoOptional',
+                '可选，填写后由宿主克隆；不填则直接使用目录。'
+              )}
+            </p>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="cloud-project-branch">
+              {translate('auto.cloud.projectBranch', '默认分支')}
+            </Label>
+            <Input
+              id="cloud-project-branch"
+              value={branch}
+              onChange={(event) => setBranch(event.target.value)}
+            />
           </div>
           {error ? (
             <p role="alert" className="text-xs text-destructive">

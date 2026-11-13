@@ -8,6 +8,19 @@ export type HeartbeatSource = {
   e2eePublicKeyB64?: () => string | null
   tlsFingerprint?: () => string | null
   projectsRoot?: string
+  /** Directory names under projectsRoot, resolved per beat so the listing stays current. */
+  projectDirs?: string[] | (() => string[])
+}
+
+/** Reported whenever the host declares a root, so an empty listing stays visible. */
+function projectDirsField(configured: string[] | (() => string[]) | undefined): {
+  projectDirs?: string[]
+} {
+  if (!configured) {
+    return {}
+  }
+  const value = typeof configured === 'function' ? configured() : configured
+  return { projectDirs: value }
 }
 
 export function cloudHeartbeatBody(
@@ -21,6 +34,7 @@ export function cloudHeartbeatBody(
     status: 'online',
     ...heartbeatAddrsField(source.directAddrs),
     ...(source.projectsRoot ? { projectsRoot: source.projectsRoot } : {}),
+    ...projectDirsField(source.projectDirs),
     ...(e2eePublicKeyB64 ? { e2eePublicKeyB64 } : {}),
     ...(tlsFingerprint ? { tlsFingerprint } : {}),
     ...(provisioned.length > 0 ? { provisioned } : {}),

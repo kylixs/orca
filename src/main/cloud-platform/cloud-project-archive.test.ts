@@ -48,6 +48,7 @@ describe('M65 项目归档闭环（真实平台 + 真实主机 + 真实 TLS Runt
   it('归档释放 key、删除侧车环境并让主机关闭 Live 会话', { timeout: 120_000 }, async () => {
     const created = await harness.createProject({
       name: 'Archive Demo',
+      dir: KEY,
       key: KEY,
       repoUrl: harness.repoUrl,
       defaultBranch: 'main'
@@ -114,6 +115,7 @@ describe('M65 项目归档闭环（真实平台 + 真实主机 + 真实 TLS Runt
 
     const reborn = await harness.createProject({
       name: 'Archive Demo Reborn',
+      dir: KEY,
       key: KEY,
       repoUrl: harness.repoUrl,
       defaultBranch: 'main'

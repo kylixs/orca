@@ -44,6 +44,8 @@ export type Host = {
   capabilities: string[]
   /** Parent directory the platform may create self-service projects under. */
   projectsRoot: string | null
+  /** First-level directory names the host reports under that root (FR-3.7). */
+  projectDirs: string[]
   status: 'online' | 'offline' | 'maintenance'
   maintenanceReason: string | null
   lastHeartbeatAt: number

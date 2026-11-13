@@ -216,7 +216,13 @@ describe('云端原生入口', () => {
       }),
       {
         listProvisionableHosts: async () => [
-          { id: 'host_1', name: 'dev-001', online: true, provisionable: true }
+          {
+            id: 'host_1',
+            name: 'dev-001',
+            online: true,
+            provisionable: true,
+            projectDirs: []
+          }
         ],
         createProject: async () => ({
           ok: false,
@@ -229,7 +235,10 @@ describe('云端原生入口', () => {
     renderEntry(bridge)
 
     fireEvent.click(await screen.findByRole('button', { name: '新建云端项目' }))
+    // 主机未上报目录清单，对话框自动切到「新建目录」。
+    await screen.findByText('dev-001')
     fireEvent.change(screen.getByLabelText('名称'), { target: { value: 'Broken Source' } })
+    fireEvent.change(screen.getByLabelText('目录'), { target: { value: 'broken-source' } })
     fireEvent.change(screen.getByLabelText('仓库地址'), {
       target: { value: '/srv/missing.git' }
     })

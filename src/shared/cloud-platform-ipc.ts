@@ -169,9 +169,12 @@ export type CloudRetryPrepareResult =
 
 export type CloudCreateProjectInput = {
   name: string
+  /** Directory name under the host's projects root; the platform joins and contains it. */
+  dir: string
   /** Omitted lets the platform derive a key from the name. */
   key?: string
-  repoUrl: string
+  /** Empty means the host's directory is used as is — no clone task is issued. */
+  repoUrl?: string
   defaultBranch?: string
   /** Omitted lets the platform use the only eligible online host. */
   hostId?: string
@@ -182,6 +185,8 @@ export type CloudProvisionableHost = {
   name: string
   online: boolean
   provisionable: boolean
+  /** First-level directories the host reports under its projects root. */
+  projectDirs: string[]
 }
 
 export type CloudCreateProjectResult =

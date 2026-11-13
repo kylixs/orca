@@ -8,6 +8,7 @@ import {
   type CloudHostCredential
 } from '../cloud-platform/cloud-host-enrollment'
 import { resolveCloudHostTls } from '../cloud-platform/cloud-host-tls'
+import { listProjectDirs } from '../cloud-platform/cloud-project-dirs'
 import { installCloudPlatformIpc } from '../ipc/cloud-platform'
 import { createCloudAccessGuard } from '../cloud-platform/cloud-access-guard'
 import { ALL_RPC_METHODS } from '../runtime/rpc/methods'
@@ -205,7 +206,7 @@ function startEnrolled(
       heartbeat: {
         hostId: stored.hostId,
         credential: stored.credential,
-        ...(projectsRoot ? { projectsRoot } : {}),
+        ...(projectsRoot ? { projectsRoot, projectDirs: () => listProjectDirs(projectsRoot) } : {}),
         // Clients derive the E2EE key from this, so it must come from the runtime
         // that will actually answer — the enrolment call ran before it existed.
         e2eePublicKeyB64: () => boundRuntime?.getE2EEPublicKey() ?? null,

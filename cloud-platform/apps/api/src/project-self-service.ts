@@ -5,6 +5,53 @@ import type { Host, Project } from './store.ts'
 
 export const SELF_SERVICE_PROJECT_LIMIT = 20
 
+/** Bound on the directory list a host may report per beat. */
+export const PROJECT_DIR_LIMIT = 200
+
+export type ProjectDirVerdict =
+  | { ok: true; dir: string }
+  | { ok: false; code: 'INVALID_DIR' | 'PATH_OUTSIDE_ROOT'; message: string }
+
+const DIR_SEPARATOR = /[\\/\u0000-\u001f\u007f]/
+
+/**
+ * FR-3.7: the developer picks the directory by name, the platform joins it onto
+ * the host's root. One relative segment is the whole contract — `..`, separators
+ * or an absolute path would leave the root, so they never reach the join.
+ */
+export function validateProjectDir(value: unknown): ProjectDirVerdict {
+  const dir = typeof value === 'string' ? value.trim() : ''
+  if (dir === '') {
+    return { ok: false, code: 'INVALID_DIR', message: '项目目录不能为空。' }
+  }
+  if (dir.length > 200 || dir === '.' || dir === '..' || DIR_SEPARATOR.test(dir)) {
+    return {
+      ok: false,
+      code: 'INVALID_DIR',
+      message: '项目目录只能是单级目录名，不能包含路径分隔符。'
+    }
+  }
+  return { ok: true, dir }
+}
+
+/** Host-reported listing: names only, deduplicated, sorted, bounded. */
+export function parseProjectDirs(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  const names = new Set<string>()
+  for (const entry of value) {
+    if (typeof entry !== 'string') {
+      continue
+    }
+    const name = entry.trim()
+    if (name !== '' && !DIR_SEPARATOR.test(name)) {
+      names.add(name)
+    }
+  }
+  return [...names].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).slice(0, PROJECT_DIR_LIMIT)
+}
+
 export type SelfServiceHostSelection =
   | { ok: true; host: Host }
   | {

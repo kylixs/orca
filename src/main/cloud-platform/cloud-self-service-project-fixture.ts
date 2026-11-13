@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { expect } from 'vitest'
 import type { CloudProjectEnvironment } from '../../shared/cloud-platform-ipc'
 import { CLOUD_PLATFORM_IPC } from '../../shared/cloud-platform-ipc'
-import { readArrayValue, readField, readString } from '../../shared/json-fields'
+import { readArrayValue, readField, readString, readStringArray } from '../../shared/json-fields'
 import type { Repo } from '../../shared/repo-types'
 import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 import { Store } from '../persistence/loading-store/store'
@@ -185,7 +185,8 @@ export async function startSelfServiceHarness(
           id: readString(item, 'id'),
           name: readString(item, 'name'),
           online: readField(item, 'online'),
-          provisionable: readField(item, 'provisionable')
+          provisionable: readField(item, 'provisionable'),
+          projectDirs: readStringArray(item, 'projectDirs') ?? []
         })
       }
       return hosts

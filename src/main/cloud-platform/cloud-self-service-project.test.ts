@@ -43,17 +43,19 @@ afterAll(async () => {
 })
 
 describe('开发者自助创建云端项目（真实平台 + 主机 + TLS Runtime + git）', () => {
-  it('M59-1 创建 → 主机 clone 到 projectsRoot/key → 心跳 ready → 侧栏 repo', async () => {
+  it('M59-1 创建 → 主机 clone 到 projectsRoot/dir → 心跳 ready → 侧栏 repo', async () => {
     const hosts = await harness.listProvisionableHosts()
     expect(hosts).toContainEqual({
       id: harness.hostId,
       name: 'dev-m59-self-service',
       online: true,
-      provisionable: true
+      provisionable: true,
+      projectDirs: []
     })
 
     const created = await harness.createProject({
       name: 'Self Service Demo',
+      dir: 'self-service-demo',
       repoUrl: harness.repoUrl,
       defaultBranch: 'main'
     })
@@ -136,6 +138,7 @@ describe('开发者自助创建云端项目（真实平台 + 主机 + TLS Runtim
   it('M59-2 显式 path 被平台拒绝，项目未创建', async () => {
     const result = await harness.createProject({
       name: 'Path Injection',
+      dir: 'path-injection',
       key: 'path-injection',
       repoUrl: harness.repoUrl,
       path: join(harness.projectsRoot, '..', 'outside')

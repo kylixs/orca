@@ -155,6 +155,8 @@ export type CloudReplyHostOption = {
   name: string
   online: boolean
   provisionable: boolean
+  /** Absent on platforms that predate FR-3.7: no directory can be picked. */
+  projectDirs: string[]
 }
 
 /** `/v1/hosts/available`; a malformed row rejects the list so the UI cannot mislead. */
@@ -177,7 +179,13 @@ export function parseProvisionableHostsReply(body: unknown): CloudReplyHostOptio
     ) {
       return null
     }
-    parsed.push({ id, name, online, provisionable })
+    parsed.push({
+      id,
+      name,
+      online,
+      provisionable,
+      projectDirs: readStringArray(row, 'projectDirs') ?? []
+    })
   }
   return parsed
 }

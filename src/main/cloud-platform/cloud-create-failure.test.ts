@@ -55,6 +55,7 @@ describe('创建成功但准备失败的项目可恢复（真实平台 + 主机 
 
     const created = await harness.createProject({
       name: 'Broken Source',
+      dir: 'broken-source',
       repoUrl: missingRepo,
       defaultBranch: 'main'
     })

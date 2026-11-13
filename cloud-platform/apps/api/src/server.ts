@@ -13,7 +13,9 @@ import {
   SELF_SERVICE_PROJECT_LIMIT,
   countActiveProjectsCreatedBy,
   joinProjectPath,
-  selectSelfServiceHost
+  parseProjectDirs,
+  selectSelfServiceHost,
+  validateProjectDir
 } from './project-self-service.ts'
 import { isProjectCreator, projectKeyTaken, projectPathTaken } from './project-occupancy.ts'
 import {
@@ -489,6 +491,7 @@ export function createApp(config: ApiConfig): ApiHandle {
     relayRoute: 'dev-001',
     capabilities: ['pty', 'files', 'git', 'managed-credential'],
     projectsRoot: null,
+    projectDirs: [],
     status: 'online',
     maintenanceReason: null,
     lastHeartbeatAt: now(),
@@ -1238,6 +1241,12 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (name === '' || name.length > 200) {
         return await deny(400, 'PROJECT_NAME_INVALID', '项目名称不能为空且不能超过 200 个字符。')
       }
+      // FR-3.7: the developer names the directory under the host's root; the key
+      // only identifies the project, it no longer decides where the project lives.
+      const dirVerdict = validateProjectDir(body.dir)
+      if (!dirVerdict.ok) {
+        return await deny(400, dirVerdict.code, dirVerdict.message)
+      }
       const keyVerdict = validateProjectKey(
         body.key === undefined ? projectKeyFromName(name) : body.key
       )
@@ -1247,9 +1256,6 @@ export function createApp(config: ApiConfig): ApiHandle {
       const repoVerdict = validateProjectRepoUrl(body.repoUrl)
       if (!repoVerdict.ok) {
         return await deny(400, repoVerdict.code, repoVerdict.message)
-      }
-      if (repoVerdict.repoUrl === '') {
-        return await deny(400, 'REPO_URL_REQUIRED', '仓库地址不能为空。')
       }
       const branchVerdict = validateProjectDefaultBranch(body.defaultBranch)
       if (!branchVerdict.ok) {
@@ -1268,11 +1274,11 @@ export function createApp(config: ApiConfig): ApiHandle {
         return await deny(409, 'PROJECT_KEY_TAKEN', '项目 Key 已被占用，请更换。')
       }
       const root = selection.host.projectsRoot
-      const derivedPath = root === null ? null : joinProjectPath(root, key)
-      if (derivedPath === null) {
-        return await deny(400, 'PROJECT_PATH_INVALID', '无法根据主机目录生成合法的项目路径。')
+      const projectPath = root === null ? null : joinProjectPath(root, dirVerdict.dir)
+      if (projectPath === null) {
+        return await deny(400, 'PATH_OUTSIDE_ROOT', '项目目录不在主机项目根目录内。')
       }
-      if (projectPathTaken(store, derivedPath)) {
+      if (projectPathTaken(store, projectPath)) {
         return await deny(409, 'PROJECT_PATH_TAKEN', '该主机目录下已存在同路径的项目。')
       }
       if (
@@ -1291,7 +1297,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         name,
         repoUrl: repoVerdict.repoUrl,
         hostId: selection.host.id,
-        path: derivedPath,
+        path: projectPath,
         defaultBranch: branchVerdict.defaultBranch || 'main',
         downloadPolicy: 'deny',
         status: repoVerdict.repoUrl ? 'provisioning' : 'ready',
@@ -1715,7 +1721,8 @@ export function createApp(config: ApiConfig): ApiHandle {
           id: h.id,
           name: h.name,
           online: hostOnline(h),
-          provisionable: Boolean(h.projectsRoot)
+          provisionable: Boolean(h.projectsRoot),
+          projectDirs: h.projectDirs ?? []
         }))
       })
     }
@@ -1780,6 +1787,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         relayRoute: null,
         capabilities: [],
         projectsRoot: null,
+        projectDirs: [],
         status: 'online',
         maintenanceReason: null,
         lastHeartbeatAt: now(),
@@ -1802,6 +1810,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         ? (body.runtimeCapabilities as string[])
         : []
       applyProjectsRoot(target, body.projectsRoot, traceId)
+      target.projectDirs = parseProjectDirs(body.projectDirs)
       target.status = 'online'
       target.lastHeartbeatAt = now()
       target.credentialHash = hashToken(credential)
@@ -1862,6 +1871,9 @@ export function createApp(config: ApiConfig): ApiHandle {
             target.directAddrs = body.directAddrs as string[]
             // A host that moved keeps its derived label resolvable (M114a).
             syncHostRoute(target)
+          }
+          if (Array.isArray(body.projectDirs)) {
+            target.projectDirs = parseProjectDirs(body.projectDirs)
           }
           // A host learns its own E2EE key only once its runtime has started, so the
           // heartbeat is where it first becomes reportable.

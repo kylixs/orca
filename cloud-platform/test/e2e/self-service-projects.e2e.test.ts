@@ -66,13 +66,14 @@ describe('M59 开发者自助创建云端项目（真实平台进程）', () => 
   test('没有声明 projectsRoot 的主机时返回 409 NO_PROVISIONABLE_HOST', async () => {
     const result = await createSelfService(devToken, {
       name: 'Self Service Demo',
+      dir: 'self-service-demo',
       repoUrl: REPO_URL
     })
     assert.equal(result.status, 409)
     assert.equal(errorCode(result.body), 'NO_PROVISIONABLE_HOST')
   })
 
-  test('普通开发者创建：路径由主机 projectsRoot 推导并自动授权', async () => {
+  test('普通开发者创建：路径由 dir 拼接 projectsRoot 并自动授权', async () => {
     const host = await registerHost({
       apiUrl: api.url,
       adminToken,
@@ -85,6 +86,7 @@ describe('M59 开发者自助创建云端项目（真实平台进程）', () => 
 
     const result = await createSelfService(devToken, {
       name: 'Self Service Demo',
+      dir: 'self-service-demo',
       repoUrl: REPO_URL,
       defaultBranch: 'main'
     })
@@ -122,6 +124,7 @@ describe('M59 开发者自助创建云端项目（真实平台进程）', () => 
   test('显式指定 path 返回 400 PROJECT_PATH_FORBIDDEN', async () => {
     const result = await createSelfService(devToken, {
       name: 'Path Injection',
+      dir: 'path-injection',
       key: 'path-injection',
       repoUrl: REPO_URL,
       path: '/etc/cron.d'
@@ -133,6 +136,7 @@ describe('M59 开发者自助创建云端项目（真实平台进程）', () => 
   test('重复 key 返回 409 PROJECT_KEY_TAKEN（可预期，不自动改名）', async () => {
     const result = await createSelfService(devToken, {
       name: 'Self Service Demo Duplicate',
+      dir: 'self-service-demo',
       key: 'self-service-demo',
       repoUrl: REPO_URL
     })
@@ -145,7 +149,7 @@ describe('M59 开发者自助创建云端项目（真实平台进程）', () => 
     assert.equal(visibleIds(await listed.json()).includes('self-service-demo'), false)
   })
 
-  test('GET /v1/hosts/available 只返回 id/name/online/provisionable', async () => {
+  test('GET /v1/hosts/available 只返回 id/name/online/provisionable/projectDirs', async () => {
     const res = await fetch(`${api.url}/v1/hosts/available`, { headers: auth(devToken) })
     assert.equal(res.status, 200)
     const raw = await res.text()
@@ -153,14 +157,15 @@ describe('M59 开发者自助创建云端项目（真实平台进程）', () => 
     assert.equal(raw.includes('directAddrs'), false)
     assert.equal(raw.includes('e2eePublicKey'), false)
     const body = JSON.parse(raw) as {
-      hosts: { id: string; name: string; online: boolean; provisionable: boolean }[]
+      hosts: { id: string; name: string; online: boolean; provisionable: boolean; projectDirs: string[] }[]
     }
     const first = body.hosts.find((host) => host.id === firstHostId)
     assert.deepEqual(first, {
       id: firstHostId,
       name: 'dev-m59-a',
       online: true,
-      provisionable: true
+      provisionable: true,
+      projectDirs: []
     })
     const seeded = body.hosts.find((host) => host.id === 'host_dev001')
     assert.equal(seeded?.provisionable, false)
@@ -177,6 +182,7 @@ describe('M59 开发者自助创建云端项目（真实平台进程）', () => 
     })
     const result = await createSelfService(devToken, {
       name: 'Ambiguous Host',
+      dir: 'ambiguous-host',
       repoUrl: REPO_URL
     })
     assert.equal(result.status, 409)
@@ -194,6 +200,7 @@ describe('M59 开发者自助创建云端项目（真实平台进程）', () => 
   test('未声明 projectsRoot 的主机（即使显式指定）返回 409 HOST_NOT_PROVISIONABLE', async () => {
     const result = await createSelfService(devToken, {
       name: 'Not Provisionable',
+      dir: 'not-provisionable',
       repoUrl: REPO_URL,
       hostId: 'host_dev001'
     })
@@ -212,6 +219,7 @@ describe('M59 开发者自助创建云端项目（真实平台进程）', () => 
     })
     const result = await createSelfService(devToken, {
       name: 'Windows Layout',
+      dir: 'windows-layout',
       key: 'windows-layout',
       repoUrl: REPO_URL,
       hostId: host.hostId
@@ -225,6 +233,7 @@ describe('M59 开发者自助创建云端项目（真实平台进程）', () => 
     for (let index = 2; index <= 19; index += 1) {
       const created = await createSelfService(devToken, {
         name: `Quota ${index}`,
+        dir: `quota-${index}`,
         key: `quota-${index}`,
         repoUrl: REPO_URL,
         hostId: firstHostId
@@ -233,6 +242,7 @@ describe('M59 开发者自助创建云端项目（真实平台进程）', () => 
     }
     const over = await createSelfService(devToken, {
       name: 'Quota 20',
+      dir: 'quota-20',
       key: 'quota-20',
       repoUrl: REPO_URL,
       hostId: firstHostId
