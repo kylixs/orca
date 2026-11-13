@@ -3,13 +3,8 @@
 // compromising one device doesn't expose others. The registry is a simple
 // JSON file with hardened permissions matching the runtime metadata pattern.
 import { randomBytes, randomUUID } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import {
-  hardenExistingSecureFile,
-  isUnreadableError,
-  writeSecureJsonFile
-} from '../../shared/secure-file'
+import { writeSecureJsonFile } from '../../shared/secure-file'
 import type { DeviceScope } from '../../shared/runtime-types'
 import { removeStaleDurableWriteTempFiles } from '../durable-file-write'
 import { DEVICE_REGISTRY_FILENAME } from './mobile-pairing-files'
@@ -18,17 +13,11 @@ import type { MobilePairingConnectionMode } from '../../shared/mobile-pairing-co
 import type { RuntimePairingReach } from '../../shared/runtime-pairing-reach'
 import type { RuntimeDeviceGrant } from './rpc/rpc-method-permission'
 import type { CloudPermission } from '../cloud-platform/cloud-credential'
-import {
-  sameGrants,
-  validCloudSession,
-  validGrants,
-  validRelayBinding
-} from './device-registry-entry-validators'
+import { sameGrants, validGrants } from './device-registry-entry-validators'
 import { adoptCloudDeviceInList, type CloudDeviceAdoption } from './device-registry-cloud-adoption'
-import {
-  parseMobilePushRegistration,
-  type MobilePushRegistration
-} from '../../shared/mobile-push-contract'
+import { withoutCloudDeviceToken } from './device-registry-cloud-rows'
+import { readDeviceRegistryEntries } from './device-registry-load'
+import type { MobilePushRegistration } from '../../shared/mobile-push-contract'
 
 export type { DeviceScope }
 
@@ -209,6 +198,22 @@ export class DeviceRegistry {
     return true
   }
 
+  /** Drops the cloud row this token authenticated; paired and mobile rows never match. */
+  releaseCloudDeviceToken(token: string): boolean {
+    const nextDevices = withoutCloudDeviceToken(this.devices, token)
+    if (!nextDevices) {
+      return false
+    }
+    // Why: persist before the memory swap so disk cannot keep admitting a closed session.
+    this.save(nextDevices)
+    this.devices = nextDevices
+    return true
+  }
+
+  countCloudTokens(): number {
+    return this.devices.filter((device) => device.cloudSession !== undefined).length
+  }
+
   getDevice(deviceId: string): DeviceEntry | null {
     return this.devices.find((d) => d.deviceId === deviceId) ?? null
   }
@@ -351,37 +356,16 @@ export class DeviceRegistry {
   }
 
   private load(): void {
-    if (!existsSync(this.registryPath)) {
-      this.devices = []
-      return
-    }
-    try {
-      hardenExistingSecureFile(this.registryPath)
-      const parsed = JSON.parse(readFileSync(this.registryPath, 'utf-8')) as DeviceEntry[]
-      this.devices = parsed.map((device) => ({
-        ...device,
-        // Why: older registries only existed for phone pairing. Treat missing
-        // scope as mobile so legacy device tokens do not gain new CLI powers.
-        scope: device.scope === 'runtime' ? 'runtime' : 'mobile',
-        grants: validGrants(device.grants, device.scope === 'runtime' ? 'runtime' : 'mobile'),
-        relayBinding: validRelayBinding(device.relayBinding, device.deviceId),
-        mobilePairingConnectionMode:
-          device.mobilePairingConnectionMode === 'local-only' ? 'local-only' : 'automatic',
-        // Why: registries written before this field existed only ever held network-reach grants (phones and
-        // LAN links), so a missing value must keep binding every interface on reconnect.
-        pairingReach: device.pairingReach === 'this-computer' ? 'this-computer' : 'network',
-        // Why: a malformed row must degrade to "no background push", never fail the load
-        // and strand every paired device.
-        pushRegistration: parseMobilePushRegistration(device.pushRegistration),
-        publicKeyB64: typeof device.publicKeyB64 === 'string' ? device.publicKeyB64 : undefined,
-        cloudSession: validCloudSession(device.cloudSession)
-      }))
-      this.registryUnreadable = false
-    } catch (error) {
-      // "Cannot read" is not "is empty". Saving an empty list over a registry we were merely
-      // denied would erase every paired device's bearer token, and the write would succeed.
-      this.registryUnreadable = isUnreadableError(error)
-      this.devices = []
+    const { devices, droppedCloudRows, unreadable } = readDeviceRegistryEntries(this.registryPath)
+    this.devices = devices
+    this.registryUnreadable = unreadable
+    if (droppedCloudRows > 0 && !unreadable) {
+      try {
+        this.save(devices)
+      } catch (error) {
+        // Why: the pruned list already governs admission; a failed rewrite must not erase paired rows.
+        console.error('[cloud] failed to persist device registry restart cleanup:', error)
+      }
     }
   }
 

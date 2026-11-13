@@ -88,6 +88,8 @@
 
 | M62 | 浏览器会话续期：`web-cloud-session` 提前/401 刷新并单飞；刷新失效时 bridge 置 signed-out 并发 `session_expired` | 真实平台（短 TTL）+ 真实票据 + WSS：过期后列项目/取票仍成功；会话作废后返回 `SESSION_EXPIRED` |
 
+| M63 | 主机清理云设备 token：socket 关闭即释放该票 token；重启时丢弃全部云会话行 | 真实平台 + TLS + WSS：打开会话后注册表 +1，关闭后归零且不动 paired 设备；重启后为 0 且磁盘无云行 |
+
 ### 5.1 M57 项目创建 provisioning（平台不在数据通道）
 
 - **平台**：`POST /v1/projects` 仍 admin-only；有 `repoUrl` → `status: 'provisioning'`，无 → `ready`（路径由管理员备好）。连接票据新增可选 claim `repoUrl`、`defaultBranch`（旧主机忽略未知 claim）。

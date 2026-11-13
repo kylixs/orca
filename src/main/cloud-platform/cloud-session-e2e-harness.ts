@@ -49,11 +49,8 @@ export function makeSelfSignedTls(commonName = 'dev-cloud'): { cert: string; key
 
 export type Platform = { url: string; stop: () => Promise<void> }
 
-export type PlatformOptions = {
-  /** Shortens the access token so a test can observe expiry. */
-  accessTtlMs?: number
-  refreshTtlMs?: number
-}
+// accessTtlMs shortens the access token so a test can observe expiry.
+export type PlatformOptions = { accessTtlMs?: number; refreshTtlMs?: number }
 
 export async function startPlatform(options: PlatformOptions = {}): Promise<Platform> {
   const env: NodeJS.ProcessEnv = {
@@ -313,6 +310,8 @@ export async function startCloudRuntime(options: {
   admission: UpgradeAdmission
   connectionGate?: WebSocketConnectionGate
   userDataPrefix?: string
+  /** Fixed runtime data dir, for tests that restart against the same device registry. */
+  userDataPath?: string
   /** Pre-built service, for tests that need real repos or a real store. */
   service?: OrcaRuntimeService
   /** Extra RPC methods; cloud-only ones are not in the default table. */
@@ -322,7 +321,9 @@ export async function startCloudRuntime(options: {
 }): Promise<CloudRuntime> {
   const runtime = new OrcaRuntimeRpcServer({
     runtime: options.service ?? new OrcaRuntimeService(),
-    userDataPath: mkdtempSync(join(tmpdir(), options.userDataPrefix ?? 'orca-cloud-session-')),
+    userDataPath:
+      options.userDataPath ??
+      mkdtempSync(join(tmpdir(), options.userDataPrefix ?? 'orca-cloud-session-')),
     enableWebSocket: true,
     wsPort: 0,
     upgradeAdmission: options.admission,

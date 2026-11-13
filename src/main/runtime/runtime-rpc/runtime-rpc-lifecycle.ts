@@ -261,6 +261,13 @@ export class RuntimeRpcLifecycle extends RuntimeRpcWebSocketDispatch {
         this.binaryMessageRouter.deleteConnection(socket.connectionId)
         if (!hasOtherConnections) {
           this.runtime.onClientDisconnected(socket.device.deviceToken)
+          // Why: the one-shot cloud ticket behind this socket is dead; free its registry row.
+          try {
+            this.deviceRegistry?.releaseCloudDeviceToken(socket.device.deviceToken)
+          } catch (error) {
+            console.error('[cloud] failed to release device token:', error)
+          }
+          // Why: the one-shot cloud ticket behind this socket is dead; free its registry row.
         }
       },
       // Why: relay attempts are authorized upstream; only direct failures should prompt local re-pairing.

@@ -3,6 +3,7 @@ import type { RelayDeviceBinding } from './relay/relay-revoke-outbox'
 import { RUNTIME_DEVICE_GRANTS, type RuntimeDeviceGrant } from './rpc/rpc-method-permission'
 import type { DeviceEntry } from './device-registry'
 import type { CloudPermission } from '../cloud-platform/cloud-credential'
+import { parseMobilePushRegistration } from '../../shared/mobile-push-contract'
 
 // Field validators for registry rows, split out so the registry file stays within
 // its size budget. Each one decides whether an on-disk value may be trusted.
@@ -24,6 +25,28 @@ export function validGrants(value: unknown, scope: DeviceScope): RuntimeDeviceGr
 export function sameGrants(entry: DeviceEntry, grants: readonly RuntimeDeviceGrant[]): boolean {
   const current = entry.grants ?? []
   return current.length === grants.length && current.every((grant) => grants.includes(grant))
+}
+
+/** Applies the trusted defaults for fields an older registry may not carry. */
+export function normalizeDeviceEntry(device: DeviceEntry): DeviceEntry {
+  return {
+    ...device,
+    // Why: older registries only existed for phone pairing. Treat missing
+    // scope as mobile so legacy device tokens do not gain new CLI powers.
+    scope: device.scope === 'runtime' ? 'runtime' : 'mobile',
+    grants: validGrants(device.grants, device.scope === 'runtime' ? 'runtime' : 'mobile'),
+    relayBinding: validRelayBinding(device.relayBinding, device.deviceId),
+    mobilePairingConnectionMode:
+      device.mobilePairingConnectionMode === 'local-only' ? 'local-only' : 'automatic',
+    // Why: registries written before this field existed only ever held network-reach grants (phones and
+    // LAN links), so a missing value must keep binding every interface on reconnect.
+    pairingReach: device.pairingReach === 'this-computer' ? 'this-computer' : 'network',
+    // Why: a malformed row must degrade to "no background push", never fail the load
+    // and strand every paired device.
+    pushRegistration: parseMobilePushRegistration(device.pushRegistration),
+    publicKeyB64: typeof device.publicKeyB64 === 'string' ? device.publicKeyB64 : undefined,
+    cloudSession: validCloudSession(device.cloudSession)
+  }
 }
 
 const CLOUD_PERMISSIONS: ReadonlySet<string> = new Set([

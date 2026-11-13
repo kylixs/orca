@@ -1195,13 +1195,36 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 3. 刷新成功但平台持续 401 时不锁定（只有刷新失败才结束会话），会每次重试一次刷新——可接受，但极端情况下多打平台。
 4. e2e 依赖本地 `openssl` 与真实平台进程（沿用既有 harness）。
 
+## M63 主机清理云设备 token（断连释放 + 重启清理）（本轮，开发子代理执行）
+
+**问题**：云会话在主机设备注册表里每个 `(deviceId, token)` 一行，`adoptCloudDeviceInList` 只在新票进入时按 4 行上限淘汰。因此 socket 关闭后死 token 仍留在注册表（`validateToken` 仍认可），并且 `load()` 通过 `validCloudSession()` 把 `cloudSession` 行从磁盘加载回来——重启后没有任何 live socket，这些死票却继续被承认，直到被新票挤掉。
+
+| 改动 | 内容 |
+|---|---|
+| `device-registry.ts` + `device-registry-cloud-rows.ts`（新） | `releaseCloudDeviceToken(token)`：只删除 `token` 匹配且 `cloudSession !== undefined` 的行（paired/mobile 行永不匹配），先 `save` 后换内存；`countCloudTokens()` 便于诊断/测试 |
+| `device-registry-load.ts`（新） | 注册表读取/归一化抽出；**重启即丢弃全部 `cloudSession` 行**并在丢弃时立即写回（不可读文件仍拒写，沿用既有保护） |
+| `runtime-rpc-lifecycle.ts` | `onClose` 且无同 token 其它连接时调用释放；持久化失败只记日志，不打断其它 close 清理 |
+| `device-registry-entry-validators.ts` | 逐行归一化抽为 `normalizeDeviceEntry`，给注册表腾出行数预算（max-lines 按非空行计，原文件仅余 6 行） |
+
+**验证（`evidence/m63-cloud-device-release/`）**：单测 3 条（只删云行、持久化、重启丢弃并写回、不可读不写）+ 真实端到端 1 条（真实平台 + 真实注册主机/心跳 + 真实 TLS Runtime + 真实 git + `ensureWorkspace` 打开真实 WSS）：
+云 token 计数 `0 → 1（打开）→ 0（关闭）→ 1（重开）→ 0（重启加载）`；paired 设备行 `2 → 2 → 2` 始终不变，关闭后 paired token 仍有效、云 token 已失效；重启后磁盘 `cloudSession` 键为 0、paired token 仍有效。
+
+**主会话独立验收**：8 个相关测试文件 **21 条全过**（含 multi-project / revocation / session-limits / mobile-socket-wiring / renewal）；`tsc tc.web` 0 错；`tsc node` 仅 2 条既有 TS6307；`check:code-quality:changed` 0 新发现。
+
+**主会话独立负向对照**：移除 `onClose` 中的释放调用 → e2e **变红**（`expected 1 to be +0`，关闭后计数未归零），恢复后 4/4 绿。
+
+**如实记录 / 剩余**：
+1. 断线即释放：已确认客户端连接始终重新取票（`prepareProjectLink` → `requestTicket`），不存在复用旧票重连的路径；旧票重试会被拒（预期内）。
+2. 重启模拟在同一测试进程内完成（关闭旧 runtime → 恢复崩溃快照 → 新 runtime 加载），未重启真实 Electron 进程。
+3. 释放时若持久化失败（磁盘只读等）只记日志，token 留在内存直到重启；重启清理的写回失败同理，但内存已丢弃死票、不会放行。
+4. 未改移动端配对、revocation（4403）与云端 admission 语义；WSL/SSH 主机未单独验证（逻辑在 runtime 进程内，与执行主机无关）。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M62（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M63（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步（按缺口排序）**：
-1. **主机断连清理**：云设备 token 仅在注册表淘汰，不随 socket 关闭释放。
-2. **签到准备并行化**：`registerProjects` 逐项目串行准备，多仓库首屏被最长 clone 拖慢。
-3. **项目删除/重命名**：创建失败或废弃的项目会永久占用 key 与 `projectsRoot/<key>` 路径。
-4. **Refresh token 持久化**：桌面重启与浏览器重载都需重新登录；需要安全存储方案。
-5. **`agent.launch` 在本人工作区的真实执行**未被实际验证（历史仅覆盖拒绝路径）。
+1. **签到准备并行化**：`registerProjects` 逐项目串行准备，多仓库首屏被最长 clone 拖慢。
+2. **项目删除/重命名**：创建失败或废弃的项目会永久占用 key 与 `projectsRoot/<key>` 路径。
+3. **Refresh token 持久化**：桌面重启与浏览器重载都需重新登录；需要安全存储方案。
+4. **`agent.launch` 在本人工作区的真实执行**未被实际验证（历史仅覆盖拒绝路径）。
