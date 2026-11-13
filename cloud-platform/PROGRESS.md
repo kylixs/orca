@@ -934,7 +934,7 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 | `cloud-workspace-entry.tsx`（新） | 替换 `CloudModeGate`：云端构建未登录时显示登录面板，登录后**照常渲染原生 `AppWorkspaceShell`**；每个项目注册环境后再同步为侧栏 repo |
 | `cloud-project-repos.ts`（新） | 无 DOM 的同步计划：按 `(executionHostId, path)` 幂等，重登录不重复；平台名称变化只改显示名；登出先由主进程回收环境、再删除行 |
 | `cloud:registerProjects`（新通道） | 为每个可见项目 `prepareProjectLink` + 注册环境，返回 `projectId/projectName/projectRoot/environmentId`。**不创建 checkout、不占用唯一连接**（列侧栏不该建工作区） |
-| `cloud-rpc-permission.ts` / `cloud-path-guard.ts` | 新增 `repo.add`（归 `open` 权限），路径守卫**只允许票据里的 `projectRoot` 本身**（含 realpath），其他路径与符号链接写法一律拒绝 |
+| `cloud-rpc-permission.ts` / `cloud-repo-add-scope.ts`（新）/ `cloud-path-guard.ts` | 新增 `repo.add`（归 `open` 权限），路径守卫**只允许票据里的 `projectRoot` 本身**（含 realpath），其他路径与符号链接写法一律拒绝；守卫单独成模块以守住 300 行上限 |
 | `preload` | `api.cloud` 仅当 `ORCA_CLOUD_API_URL` 设置时暴露（与主进程注册 handler 的条件一致）；此前无条件暴露会让普通桌面构建误判为云端模式 |
 | `cloud:logout` | 回收全部云环境（此前只关当前项目） |
 
