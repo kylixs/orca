@@ -3,9 +3,11 @@ import { CLOUD_PLATFORM_IPC, type CloudConnectionEvent } from '../../shared/clou
 import type { CloudPlatformApi } from './cloud-platform-api'
 
 export const cloudPlatformApi: CloudPlatformApi = {
-  login: (username, password) => ipcRenderer.invoke(CLOUD_PLATFORM_IPC.login, username, password),
+  login: (username, password, platformUrl) =>
+    ipcRenderer.invoke(CLOUD_PLATFORM_IPC.login, username, password, platformUrl),
   logout: () => ipcRenderer.invoke(CLOUD_PLATFORM_IPC.logout),
   getState: () => ipcRenderer.invoke(CLOUD_PLATFORM_IPC.state),
+  getLoginContext: () => ipcRenderer.invoke(CLOUD_PLATFORM_IPC.loginContext),
   listProjects: () => ipcRenderer.invoke(CLOUD_PLATFORM_IPC.listProjects),
   openProject: (projectId) => ipcRenderer.invoke(CLOUD_PLATFORM_IPC.openProject, projectId),
   openWorkspace: (projectId) => ipcRenderer.invoke(CLOUD_PLATFORM_IPC.openWorkspace, projectId),

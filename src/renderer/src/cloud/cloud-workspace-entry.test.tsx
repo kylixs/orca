@@ -58,6 +58,7 @@ function makeBridge(
       displayName: '张伟',
       projects: PROJECTS
     }),
+    getLoginContext: async () => null,
     openWorkspace: async (projectId: string): Promise<CloudOpenResult> => ({
       ok: true,
       projectId,

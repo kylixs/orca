@@ -66,6 +66,7 @@ function makeBridge(
 ): CloudBridge {
   return {
     login: async () => ({ status: 'signed-out' }),
+    getLoginContext: async () => null,
     logout: async () => ({ status: 'signed-out' }),
     getState: async () => ({ status: 'signed-out' }),
     listProjects: async () => [],

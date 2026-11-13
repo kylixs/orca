@@ -3,6 +3,7 @@ import type {
   CloudConnectionEvent,
   CloudCreateProjectInput,
   CloudCreateProjectResult,
+  CloudLoginContext,
   CloudOpenResult,
   CloudProjectRegistration,
   CloudProjectSummary,
@@ -14,9 +15,11 @@ import type {
 } from '../../shared/cloud-platform-ipc'
 
 export type CloudPlatformApi = {
-  login: (username: string, password: string) => Promise<CloudSessionState>
+  login: (username: string, password: string, platformUrl?: string) => Promise<CloudSessionState>
   logout: () => Promise<CloudSessionState>
   getState: () => Promise<CloudSessionState>
+  /** Address and username the login form prefills (M119/W10). */
+  getLoginContext: () => Promise<CloudLoginContext | null>
   listProjects: () => Promise<CloudProjectSummary[]>
   openProject: (projectId: string) => Promise<CloudOpenResult>
   /** Open and register the project as a runtime environment panes can address. */

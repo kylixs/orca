@@ -156,6 +156,8 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
 
   return {
     async login(username: string, password: string): Promise<CloudSessionState> {
+      // Why no address argument: this page is served by its platform, so the
+      // deployment-fixed origin is the only address a browser login may use.
       projectConnections.closeAll()
       session = null
       identity = null
@@ -204,6 +206,16 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
         await restorePromise
       }
       return state
+    },
+
+    async getLoginContext() {
+      // Why locked: the page's own deployment config names the platform, so the
+      // form shows it read-only instead of offering a choice.
+      return {
+        platformUrl: options.apiUrl || null,
+        username: null,
+        locked: Boolean(options.apiUrl)
+      }
     },
 
     async listProjects(): Promise<CloudProjectSummary[]> {

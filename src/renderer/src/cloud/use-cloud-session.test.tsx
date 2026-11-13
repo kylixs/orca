@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it } from 'vitest'
 import type {
   CloudConnectionEvent,
+  CloudLoginContext,
   CloudOpenResult,
   CloudProjectSummary,
   CloudRpcOutcome,
@@ -56,6 +57,8 @@ const projects: CloudProjectSummary[] = [
 
 type Script = {
   loginError?: string
+  /** What the bridge answers for the login form's prefill. */
+  loginContext?: CloudLoginContext | null
   openResult?: CloudOpenResult
   /** Result after the user re-verifies a changed host key. */
   openResultAfterTrust?: CloudOpenResult
@@ -67,6 +70,8 @@ type TestBridge = CloudBridge & {
   signedOut: boolean
   closedProjects: number
   trustedHosts: string[]
+  /** The address the last login handed to the bridge; null when it sent none. */
+  loginPlatformUrl: string | null
 }
 
 function makeBridge(script: Script = {}): TestBridge {
@@ -75,13 +80,20 @@ function makeBridge(script: Script = {}): TestBridge {
     signedOut: false,
     closedProjects: 0,
     trustedHosts: [],
+    loginPlatformUrl: null,
     emitClose: (event) => listener?.(event),
-    login: async (username: string): Promise<CloudSessionState> => {
+    login: async (
+      username: string,
+      _password: string,
+      platformUrl?: string
+    ): Promise<CloudSessionState> => {
+      bridge.loginPlatformUrl = platformUrl ?? null
       if (script.loginError) {
         throw Object.assign(new Error(script.loginError), { code: script.loginError })
       }
       return { status: 'signed-in', displayName: `${username} 的显示名`, projects }
     },
+    getLoginContext: async () => script.loginContext ?? null,
     logout: async (): Promise<CloudSessionState> => {
       bridge.signedOut = true
       return { status: 'signed-out' }
@@ -138,6 +150,7 @@ function makeBridge(script: Script = {}): TestBridge {
 async function signIn(bridge: CloudBridge, password = 'Passw0rd!'): Promise<void> {
   render(<CloudApp bridge={bridge} />)
   await waitFor(() => expect(screen.getByLabelText('域账号')).toBeTruthy())
+  await userEvent.type(screen.getByLabelText('平台地址'), 'https://cloud.example.com')
   await userEvent.type(screen.getByLabelText('域账号'), 'zhangsan')
   await userEvent.type(screen.getByLabelText('密码'), password)
   await act(async () => {
@@ -163,6 +176,33 @@ describe('云端工作台界面', () => {
     render(<CloudApp bridge={null} />)
     await waitFor(() => expect(screen.getByText(/未配置云端开发平台地址/)).toBeTruthy())
     expect(screen.queryByLabelText('域账号')).toBeNull()
+  })
+
+  it('登录界面预填上次登录的地址与用户名（M119/W10）', async () => {
+    render(
+      <CloudApp
+        bridge={makeBridge({
+          loginContext: {
+            platformUrl: 'https://memory.example.com',
+            username: 'zhangsan',
+            locked: false
+          }
+        })}
+      />
+    )
+    await waitFor(() =>
+      expect(screen.getByLabelText<HTMLInputElement>('平台地址').value).toBe(
+        'https://memory.example.com'
+      )
+    )
+    expect(screen.getByLabelText<HTMLInputElement>('域账号').value).toBe('zhangsan')
+  })
+
+  it('登录把表单中的平台地址交给主进程（M119/W10）', async () => {
+    const bridge = makeBridge()
+    await signIn(bridge)
+    expect(bridge.loginPlatformUrl).toBe('https://cloud.example.com')
+    await waitFor(() => expect(screen.getByText('工作台')).toBeTruthy())
   })
 
   it('登录失败按平台错误码给出中文提示', async () => {

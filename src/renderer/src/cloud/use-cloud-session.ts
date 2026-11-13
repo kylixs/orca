@@ -5,6 +5,7 @@ import type {
   CloudConnectionEvent,
   CloudCreateProjectInput,
   CloudCreateProjectResult,
+  CloudLoginContext,
   CloudOpenResult,
   CloudProjectRegistration,
   CloudProjectSummary,
@@ -25,7 +26,9 @@ import type {
  */
 
 export type CloudBridge = {
-  login: (username: string, password: string) => Promise<CloudSessionState>
+  login: (username: string, password: string, platformUrl?: string) => Promise<CloudSessionState>
+  /** Address and username the login form prefills (M119/W10). */
+  getLoginContext: () => Promise<CloudLoginContext | null>
   openWorkspace: (projectId: string) => Promise<CloudOpenResult>
   registerProjects: () => Promise<CloudProjectRegistration>
   retryPrepare: (projectId: string) => Promise<CloudRetryPrepareResult>
@@ -69,6 +72,8 @@ export type CloudOpenedProject = {
 export type CloudSessionView = {
   status: 'loading' | 'unavailable' | 'signed-out' | 'signing-in' | 'signed-in' | 'error'
   displayName: string | null
+  /** What the login form prefills; null until the bridge answers (or without one). */
+  loginContext: CloudLoginContext | null
   projects: CloudProjectSummary[]
   /** Project currently open over the cloud link, if any. */
   openProjectId: string | null
@@ -93,7 +98,7 @@ export type CloudSessionView = {
   /** Pins the key the user just verified and retries the open. */
   confirmHostKey: () => Promise<CloudOpenResult | null>
   dismissHostKeyMismatch: () => void
-  signIn: (username: string, password: string) => Promise<void>
+  signIn: (username: string, password: string, platformUrl?: string) => Promise<void>
   signOut: () => Promise<void>
   openProject: (projectId: string) => Promise<CloudOpenResult | null>
   closeProject: (projectId: string) => Promise<void>
@@ -107,6 +112,7 @@ function isCloudState(value: unknown): value is CloudSessionState {
 export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSessionView {
   const [status, setStatus] = useState<CloudSessionView['status']>('loading')
   const [displayName, setDisplayName] = useState<string | null>(null)
+  const [loginContext, setLoginContext] = useState<CloudLoginContext | null>(null)
   const [projects, setProjects] = useState<CloudProjectSummary[]>([])
   const [openProjectId, setOpenProjectId] = useState<string | null>(null)
   const [opened, setOpened] = useState<CloudOpenedProject | null>(null)
@@ -145,6 +151,16 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
       return
     }
     let cancelled = false
+    // Why fire-and-forget: the prefill must never delay the session restore; a
+    // failure just means the user types the address themselves.
+    active
+      .getLoginContext()
+      .then((context) => {
+        if (!cancelled && context) {
+          setLoginContext(context)
+        }
+      })
+      .catch(() => undefined)
     void active
       .getState()
       .then((state) => {
@@ -188,7 +204,7 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
   }, [applyState])
 
   const signIn = useCallback(
-    async (username: string, password: string) => {
+    async (username: string, password: string, platformUrl?: string) => {
       const active = bridgeRef.current
       if (!active) {
         return
@@ -197,7 +213,7 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
       setError(null)
       setNotice(null)
       try {
-        applyState(await active.login(username, password))
+        applyState(await active.login(username, password, platformUrl))
       } catch (cause) {
         const code = errorCodeOf(cause) ?? (cause instanceof Error ? cause.message : '登录失败')
         setError(code)
@@ -305,6 +321,7 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
   return {
     status,
     displayName,
+    loginContext,
     projects,
     openProjectId,
     opened,

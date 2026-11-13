@@ -10,6 +10,8 @@ export const CLOUD_PLATFORM_IPC = {
   login: 'cloud:login',
   logout: 'cloud:logout',
   state: 'cloud:state',
+  /** What the login form prefills: the resolved address and the remembered username. */
+  loginContext: 'cloud:loginContext',
   listProjects: 'cloud:listProjects',
   openProject: 'cloud:openProject',
   /** Args: `(projectId)`. Closes only that project's socket. */
@@ -62,6 +64,18 @@ export type CloudProjectSummary = {
 export type CloudSessionState =
   | { status: 'signed-out' }
   | { status: 'signed-in'; displayName: string; projects: CloudProjectSummary[] }
+
+/**
+ * What the login form prefills (M119/W10). The address follows the priority
+ * runtime env > last successful login > build-injected default; the username is
+ * the one the last successful login used. A managed build pins the address, so
+ * the form shows it read-only.
+ */
+export type CloudLoginContext = {
+  platformUrl: string | null
+  username: string | null
+  locked: boolean
+}
 
 export type CloudOpenResult =
   | {

@@ -12,6 +12,16 @@
 declare const ORCA_BUILD_IDENTITY: 'stable' | 'rc' | null
 declare const ORCA_POSTHOG_WRITE_KEY: string | null
 
+// Cloud-platform build parameters (M119/W10), substituted from the build
+// environment of the same names. `ORCA_DEFAULT_PLATFORM_URL` is the platform
+// address an enterprise distribution bakes in, so an installed client reaches
+// the login screen with no environment variable; `ORCA_MANAGED_BUILD` pins that
+// address against user changes. Both are read through
+// `src/shared/cloud-build-flags.ts` (main and preload) and fall back to
+// null/false in contributor/dev builds.
+declare const ORCA_DEFAULT_PLATFORM_URL: string | null
+declare const ORCA_MANAGED_BUILD: boolean
+
 // Diagnostic-bundle upload endpoint for Mode 3 (telemetry-error-tracking.md
 // §Endpoint contract). Substituted by CI; `null` in contributor builds, at
 // which point the upload IPC handler returns "endpoint not configured"

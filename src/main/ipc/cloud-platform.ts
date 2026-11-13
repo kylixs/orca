@@ -1,9 +1,10 @@
-import { BrowserWindow, ipcMain, type WebContents } from 'electron'
+import { BrowserWindow, app, ipcMain, type WebContents } from 'electron'
 import {
   CLOUD_PLATFORM_IPC,
   type CloudArchiveProjectResult,
   type CloudCreateProjectInput,
   type CloudCreateProjectResult,
+  type CloudLoginContext,
   type CloudOpenResult,
   type CloudProjectRegistration,
   type CloudProvisionableHost,
@@ -14,6 +15,12 @@ import {
 } from '../../shared/cloud-platform-ipc'
 import { readTicketClaims } from '../cloud-platform/cloud-connect-response'
 import { CloudSessionService } from '../cloud-platform/cloud-session-service'
+import { readCloudLoginMemory } from '../cloud-platform/cloud-login-memory'
+import { isCloudPlatformBuild } from '../../shared/cloud-build-flags'
+import {
+  loginPlatformAddress,
+  resolveCloudPlatformAddress
+} from '../cloud-platform/cloud-platform-address'
 import {
   prepareProjectEnvironment,
   registerProjectEnvironments
@@ -41,6 +48,12 @@ export function registerCloudPlatformHandlers(
     userDataPath?: string
     /** Maximum projects whose clone/ticket work overlaps; environment writes stay serial. */
     prepareConcurrency?: number
+    /** What the login form prefills (M119/W10); absent in older test harnesses. */
+    loginContext?: CloudLoginContext
+    /** Resolves the address a sign-in uses; rejects typed addresses on pinned builds. */
+    loginAddress?: (
+      typedUrl: string | undefined
+    ) => { ok: true; apiUrl: string } | { ok: false; code: string }
   }
 ): CloudPlatformHandlers {
   const handle = <T>(channel: string, fn: (...args: never[]) => Promise<T> | T): void => {
@@ -52,8 +65,24 @@ export function registerCloudPlatformHandlers(
 
   // Why await: the first renderer read must see the restored login, not signed-out.
   handle<CloudSessionState>(CLOUD_PLATFORM_IPC.state, () => session.whenRestored())
-  handle<CloudSessionState>(CLOUD_PLATFORM_IPC.login, async (username: string, password: string) =>
-    session.login(username, password)
+  handle<CloudLoginContext | null>(
+    CLOUD_PLATFORM_IPC.loginContext,
+    () => options.loginContext ?? null
+  )
+  handle<CloudSessionState>(
+    CLOUD_PLATFORM_IPC.login,
+    async (username: string, password: string, platformUrl?: string) => {
+      // Why the bypass: harnesses that register handlers without an address gate
+      // keep the old two-argument behavior untouched.
+      if (!options.loginAddress) {
+        return session.login(username, password, platformUrl)
+      }
+      const address = options.loginAddress(platformUrl)
+      if (!address.ok) {
+        throw Object.assign(new Error('platform address rejected'), { code: address.code })
+      }
+      return session.login(username, password, address.apiUrl)
+    }
   )
   handle<CloudSessionState>(CLOUD_PLATFORM_IPC.logout, () => {
     // Why: the native shell owns one environment per project, so signing out
@@ -214,17 +243,32 @@ export function registerCloudPlatformHandlers(
 /**
  * Registers the IPC surface when the app runs in cloud mode. Returns null in
  * ordinary desktop mode, which has no platform to talk to.
+ *
+ * A cloud build is one that ships the platform entry at all: the runtime env
+ * address (today's signal, unchanged), or a build-injected default, or the
+ * managed-build switch. Once that holds, the login screen appears even with no
+ * environment variable — the user types the address there (M119/W10) — and the
+ * default comes from env > last successful login > the build-injected constant.
  */
 export function installCloudPlatformIpc(
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
+  deps: { userDataPath?: string; packaged?: boolean } = {}
 ): CloudPlatformHandlers | null {
-  const apiUrl = env.ORCA_CLOUD_API_URL
-  if (!apiUrl) {
+  if (!isCloudPlatformBuild(env)) {
     return null
   }
-  const userDataPath = getCanonicalUserDataPath()
+  const userDataPath = deps.userDataPath ?? getCanonicalUserDataPath()
+  const packaged = deps.packaged ?? isPackagedOrcaBuild()
+  const memory = readCloudLoginMemory(userDataPath)
+  const address = resolveCloudPlatformAddress({
+    envApiUrl: env.ORCA_CLOUD_API_URL,
+    memoryApiUrl: memory.lastPlatformUrl,
+    packaged
+  })
   const session = new CloudSessionService({
-    apiUrl,
+    // Why '' can happen: a cloud build with no resolvable address still installs,
+    // and only a login that types one ever builds a client.
+    apiUrl: address.apiUrl ?? '',
     // Production hosts present a certificate the platform's CA signed; test
     // harnesses opt out of verification explicitly.
     tlsRejectUnauthorized: env.ORCA_CLOUD_TLS_INSECURE !== '1',
@@ -237,6 +281,12 @@ export function installCloudPlatformIpc(
     .catch((error: unknown) => console.warn('[cloud] session restore did not complete', error))
   const handlers = registerCloudPlatformHandlers(session, {
     userDataPath,
+    loginContext: {
+      platformUrl: address.apiUrl,
+      username: memory.lastUsername,
+      locked: address.locked
+    },
+    loginAddress: (typedUrl) => loginPlatformAddress(address, typedUrl, packaged),
     broadcast: (channel, payload) =>
       broadcastToWebContents(
         BrowserWindow.getAllWindows().map((win) => win.webContents),
@@ -249,6 +299,14 @@ export function installCloudPlatformIpc(
       handlers.dispose()
       setActiveCloudSession(null)
     }
+  }
+}
+
+function isPackagedOrcaBuild(): boolean {
+  try {
+    return app?.isPackaged === true
+  } catch {
+    return false
   }
 }
 

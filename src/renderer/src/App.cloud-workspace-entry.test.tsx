@@ -143,6 +143,11 @@ function cloudBridge(overrides: Record<string, unknown> = {}) {
   return {
     getState: async () => ({ status: 'signed-out' }),
     login: async () => ({ status: 'signed-in', displayName: 'zhangsan', projects }),
+    getLoginContext: async () => ({
+      platformUrl: 'https://cloud.example.com',
+      username: 'zhangsan',
+      locked: false
+    }),
     logout: async () => ({ status: 'signed-out' }),
     registerProjects: async () => ({
       environments: [
@@ -186,6 +191,9 @@ function installBridge(bridge: ReturnType<typeof cloudBridge>): void {
 }
 
 function signIn(): void {
+  fireEvent.change(screen.getByLabelText('平台地址'), {
+    target: { value: 'https://cloud.example.com' }
+  })
   fireEvent.change(screen.getByLabelText('域账号'), { target: { value: 'zhangsan' } })
   fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'Passw0rd!' } })
   fireEvent.click(screen.getByRole('button', { name: '登录' }))

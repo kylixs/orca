@@ -28,7 +28,12 @@ export function CloudApp({ bridge }: { bridge: CloudBridge | null }): React.JSX.
         submitting={session.status === 'signing-in'}
         error={session.error}
         notice={session.notice}
-        onSignIn={(username, password) => void session.signIn(username, password)}
+        defaultPlatformUrl={session.loginContext?.platformUrl ?? null}
+        defaultUsername={session.loginContext?.username ?? null}
+        addressLocked={session.loginContext?.locked ?? false}
+        onSignIn={(username, password, platformUrl) =>
+          void session.signIn(username, password, platformUrl)
+        }
       />
     )
   }

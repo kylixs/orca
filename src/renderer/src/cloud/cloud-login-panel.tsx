@@ -9,7 +9,13 @@ export type CloudLoginPanelProps = {
   error: string | null
   /** Why the user was returned here, e.g. an expired platform session. */
   notice?: { code: number | null; reason: string | null } | null
-  onSignIn: (username: string, password: string) => void
+  /** Address prefilled from the last successful login or the build default; null asks the user. */
+  defaultPlatformUrl?: string | null
+  /** Username remembered from the last successful login. */
+  defaultUsername?: string | null
+  /** A managed build pins the address: the field shows it read-only. */
+  addressLocked?: boolean
+  onSignIn: (username: string, password: string, platformUrl: string) => void
 }
 
 /** Error codes come from the platform; the copy is ours (AC-30 vocabulary). */
@@ -17,7 +23,9 @@ const ERROR_COPY: Record<string, string> = {
   INVALID_CREDENTIALS: '账号或密码不正确。',
   ACCOUNT_LOCKED: '账号已锁定，请 15 分钟后再试。',
   RATE_LIMITED: '尝试过于频繁，请稍后再试。',
-  PLATFORM_UNAVAILABLE: '平台暂不可用，请稍后再试。'
+  PLATFORM_UNAVAILABLE: '平台暂不可用，请稍后再试。',
+  PLATFORM_ADDRESS_REQUIRED: '请填写平台地址。',
+  PLATFORM_ADDRESS_INVALID: '平台地址格式不正确，需为 https:// 开头的完整地址。'
 }
 
 export function cloudErrorMessage(code: string | null): string | null {
@@ -27,15 +35,61 @@ export function cloudErrorMessage(code: string | null): string | null {
   return ERROR_COPY[code] ?? `登录失败（${code}）。`
 }
 
+/**
+ * Inline address check (M119/W10): it only judges shape, so a dev platform on
+ * http://127.0.0.1 still passes and the packaged policy (https only) stays with
+ * the main process, which answers with PLATFORM_ADDRESS_INVALID.
+ */
+export function cloudPlatformAddressError(value: string): string | null {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return '请填写平台地址。'
+  }
+  try {
+    const parsed = new URL(trimmed)
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      return '平台地址格式不正确，需为 https:// 开头的完整地址。'
+    }
+    return null
+  } catch {
+    return '平台地址格式不正确，需为 https:// 开头的完整地址。'
+  }
+}
+
 export function CloudLoginPanel({
   submitting,
   error,
   notice,
+  defaultPlatformUrl,
+  defaultUsername,
+  addressLocked,
   onSignIn
 }: CloudLoginPanelProps): React.JSX.Element {
-  const [username, setUsername] = React.useState('')
+  // Why drafts over initial state: the login context arrives after the first
+  // paint (the login screen is never held back for it), so the remembered
+  // address and username are what the field shows until the user types over it.
+  const [usernameDraft, setUsernameDraft] = React.useState<string | null>(null)
   const [password, setPassword] = React.useState('')
-  const canSubmit = username.trim().length > 0 && password.length > 0 && !submitting
+  const [addressDraft, setAddressDraft] = React.useState<string | null>(null)
+  const [addressError, setAddressError] = React.useState<string | null>(null)
+  const username = usernameDraft ?? defaultUsername ?? ''
+  const platformUrl = addressDraft ?? defaultPlatformUrl ?? ''
+
+  const canSubmit =
+    username.trim().length > 0 &&
+    password.length > 0 &&
+    platformUrl.trim().length > 0 &&
+    !submitting
+
+  const submit = (): void => {
+    const addressProblem = cloudPlatformAddressError(platformUrl)
+    if (addressProblem) {
+      setAddressError(addressProblem)
+      return
+    }
+    setAddressError(null)
+    onSignIn(username.trim(), password, platformUrl.trim())
+  }
 
   return (
     <div className="flex h-full w-full items-center justify-center bg-background">
@@ -49,10 +103,37 @@ export function CloudLoginPanel({
           onSubmit={(event) => {
             event.preventDefault()
             if (canSubmit) {
-              onSignIn(username.trim(), password)
+              submit()
             }
           }}
         >
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="cloud-platform-address">平台地址</Label>
+            <Input
+              id="cloud-platform-address"
+              inputMode="url"
+              spellCheck={false}
+              placeholder="https://cloud.example.com"
+              value={platformUrl}
+              disabled={submitting || addressLocked === true}
+              aria-invalid={addressError !== null}
+              onChange={(event) => {
+                setAddressDraft(event.target.value)
+                // Why clear-on-type: the message describes the previous value.
+                if (addressError !== null) {
+                  setAddressError(null)
+                }
+              }}
+            />
+            {addressError ? (
+              <p role="alert" className="text-sm text-destructive">
+                {addressError}
+              </p>
+            ) : null}
+            {addressError === null && addressLocked === true ? (
+              <p className="text-sm text-muted-foreground">平台地址由企业管理员指定。</p>
+            ) : null}
+          </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="cloud-username">域账号</Label>
             <Input
@@ -61,7 +142,7 @@ export function CloudLoginPanel({
               autoFocus
               value={username}
               disabled={submitting}
-              onChange={(event) => setUsername(event.target.value)}
+              onChange={(event) => setUsernameDraft(event.target.value)}
             />
           </div>
           <div className="flex flex-col gap-2">

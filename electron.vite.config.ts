@@ -68,6 +68,16 @@ const ORCA_DIAGNOSTICS_TOKEN_URL_LITERAL =
     ? JSON.stringify(orcaDiagnosticsTokenUrl)
     : 'null'
 
+// Why: enterprise distributions bake their platform address into the client
+// (M119/W10) so an installed app reaches the login screen with no environment
+// variable; ORCA_MANAGED_BUILD additionally pins that address against user
+// changes. Both fold to null/false in every other build path, exactly like the
+// telemetry constants above; ambient declarations live in the same file.
+const ORCA_DEFAULT_PLATFORM_URL_LITERAL = JSON.stringify(
+  process.env.ORCA_DEFAULT_PLATFORM_URL?.trim() || null
+)
+const ORCA_MANAGED_BUILD_LITERAL = String(process.env.ORCA_MANAGED_BUILD === '1')
+
 function createStartupDiagnosticsBanner(chunkName: string): string {
   return `
 ;(() => {
@@ -303,7 +313,9 @@ export const electronViteConfig: UserConfig = {
     define: {
       ORCA_BUILD_IDENTITY: ORCA_BUILD_IDENTITY_LITERAL,
       ORCA_POSTHOG_WRITE_KEY: ORCA_POSTHOG_WRITE_KEY_LITERAL,
-      ORCA_DIAGNOSTICS_TOKEN_URL: ORCA_DIAGNOSTICS_TOKEN_URL_LITERAL
+      ORCA_DIAGNOSTICS_TOKEN_URL: ORCA_DIAGNOSTICS_TOKEN_URL_LITERAL,
+      ORCA_DEFAULT_PLATFORM_URL: ORCA_DEFAULT_PLATFORM_URL_LITERAL,
+      ORCA_MANAGED_BUILD: ORCA_MANAGED_BUILD_LITERAL
     },
     // Why: @xterm/headless declares "exports": null in package.json, which
     // prevents Vite's default resolver from finding the CJS entry. Point

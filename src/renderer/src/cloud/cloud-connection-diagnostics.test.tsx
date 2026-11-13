@@ -34,6 +34,7 @@ function session(overrides: Partial<CloudSessionView> = {}): CloudSessionView {
   return {
     status: 'signed-in',
     displayName: '张三',
+    loginContext: null,
     projects: [PROJECT],
     openProjectId: PROJECT.id,
     opened: {

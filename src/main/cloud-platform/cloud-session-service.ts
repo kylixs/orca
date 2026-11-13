@@ -43,6 +43,12 @@ export type { CloudProjectLinkResult } from './cloud-pairing-offer'
 export type CloudSessionDeps = { createClient?: CreateCloudClient }
 
 export class CloudSessionService {
+  /**
+   * Why one shared, mutable object: a login that types its own platform address
+   * re-points `apiUrl`, and every client builder plus the saved-login write must
+   * target that address from then on. Copying the input keeps the caller's
+   * options untouched.
+   */
   private readonly options: CloudSessionOptions
   private readonly createClient: CreateCloudClient
   private client: CloudConnectClient | null = null
@@ -53,12 +59,12 @@ export class CloudSessionService {
   private readonly savedLogin: CloudSessionSavedLogin
 
   constructor(options: CloudSessionOptions, deps: CloudSessionDeps = {}) {
-    this.options = options
+    this.options = { ...options }
     this.createClient =
       deps.createClient ?? ((settings, identity) => new CloudConnectClient(settings, identity))
-    this.savedLogin = new CloudSessionSavedLogin(options, this.createClient)
+    this.savedLogin = new CloudSessionSavedLogin(this.options, this.createClient)
     this.connections = new CloudProjectConnections(
-      options,
+      this.options,
       this.createClient,
       () => this.client?.deviceIdentity() ?? null,
       (event) => this.emit(event)
@@ -145,15 +151,16 @@ export class CloudSessionService {
     }
   }
 
-  async login(username: string, password: string): Promise<CloudSessionState> {
+  /** Signs in; `platformUrl` is the address the user typed in the form (M119/W10). */
+  async login(username: string, password: string, platformUrl?: string) {
     this.connections.closeAll()
     this.client?.close()
     this.client = null
-    const client = this.createClient(this.savedLogin.restoredClientOptions)
+    const client = this.createClient(this.savedLogin.beginLogin(platformUrl))
     const user = await client.login(username, password)
     const projects = await client.listProjects()
     this.client = client
-    this.savedLogin.attach(client.deviceIdentity(), user.displayName)
+    this.savedLogin.attach(client.deviceIdentity(), user.displayName, username)
     this.state = {
       status: 'signed-in',
       displayName: user.displayName,

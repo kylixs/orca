@@ -1,6 +1,7 @@
 import { keyPairFromSecretKey } from '../../shared/e2ee-crypto'
 import { errorCodeOf } from '../../shared/json-fields'
 import { createCloudAuthSession, type CloudAuthTokens } from './cloud-auth-session'
+import { writeCloudLoginMemory } from './cloud-login-memory'
 import type {
   CloudConnectClient,
   CloudConnectOptions,
@@ -27,34 +28,58 @@ export type SavedLoginRestore =
 export class CloudSessionSavedLogin {
   private displayName: string | null = null
   private identity: CloudDeviceIdentity | null = null
-  private readonly clientOptions: CloudConnectOptions
 
   constructor(
     private readonly options: CloudSessionOptions,
     private readonly createClient: CreateCloudClient
-  ) {
-    // Why one view: every client this login builds must report rotation to the same store.
-    this.clientOptions = { ...options, onTokensChanged: this.onTokensChanged }
-  }
+  ) {}
 
   /** Rotation hook handed to every auth session this login creates. */
   readonly onTokensChanged = (tokens: CloudAuthTokens): void => {
     this.write(tokens)
   }
 
-  /** Options a manually logging-in client must use so its rotations are persisted. */
+  /**
+   * Options a manually logging-in client must use so its rotations are persisted.
+   * Why read live: a login that typed its own platform address re-points the
+   * shared options object, and this client must target the new address.
+   */
   get restoredClientOptions(): CloudConnectOptions {
-    return this.clientOptions
+    return { ...this.options, onTokensChanged: this.onTokensChanged }
+  }
+
+  /**
+   * Starts a login, honouring the platform address the user typed (M119/W10):
+   * it re-points the shared session options, so every later client call and the
+   * saved login follow it. An address-less client with no typed one is a bug in
+   * the caller, not a request worth sending.
+   */
+  beginLogin(platformUrl?: string): CloudConnectOptions {
+    this.options.apiUrl = platformUrl?.trim() || this.options.apiUrl
+    if (!this.options.apiUrl) {
+      throw Object.assign(new Error('platform address required'), {
+        code: 'PLATFORM_ADDRESS_REQUIRED'
+      })
+    }
+    return this.restoredClientOptions
   }
 
   /** After a manual login: remember what a later rotation must write and do the first write. */
-  attach(identity: CloudDeviceIdentity, displayName: string): void {
+  attach(identity: CloudDeviceIdentity, displayName: string, username: string): void {
     this.identity = identity
     this.displayName = displayName
     if (identity.auth.refreshToken !== null) {
       this.write({
         accessToken: identity.auth.accessToken,
         refreshToken: identity.auth.refreshToken
+      })
+    }
+    // Why here: the login succeeded, so this is the {address, username} the form
+    // prefills next launch — kept even when sign-out later clears the session.
+    if (this.options.userDataPath) {
+      writeCloudLoginMemory(this.options.userDataPath, {
+        platformUrl: this.options.apiUrl,
+        username
       })
     }
   }
@@ -89,7 +114,7 @@ export class CloudSessionSavedLogin {
     // Why the saved secret: the platform and every host ticket bind this device key.
     const keyPair = keyPairFromSecretKey(Buffer.from(persisted.deviceSecretKeyB64, 'base64'))
     const identity: CloudDeviceIdentity = { auth, deviceId: persisted.deviceId, keyPair }
-    const client = this.createClient(this.clientOptions, identity)
+    const client = this.createClient(this.restoredClientOptions, identity)
     this.identity = identity
     this.displayName = persisted.displayName
     try {
