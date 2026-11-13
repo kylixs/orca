@@ -73,7 +73,7 @@ const DOWNLOAD_METHODS: ReadonlySet<string> = new Set([
  * Methods that only ever touch the ticket's own project root. `open` is the
  * permission every admitted session carries; the path guard pins the argument.
  */
-const PROJECT_METHODS: ReadonlySet<string> = new Set(['repo.add'])
+const PROJECT_METHODS: ReadonlySet<string> = new Set(['repo.add', 'project.provision'])
 
 const WORKTREE_METHODS: ReadonlySet<string> = new Set([
   'worktree.create',

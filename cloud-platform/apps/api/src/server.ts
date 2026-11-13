@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { readFile } from 'node:fs/promises'
 import { extname, join, normalize } from 'node:path'
 import { validateProjectPath } from '../../../packages/contract/src/project-path.ts'
+import { validateProjectRepoUrl } from '../../../packages/contract/src/repo-url.ts'
 import {
   generateSigningKey,
   newDeviceToken,
@@ -318,8 +319,51 @@ export function createApp(config: ApiConfig): ApiHandle {
       defaultBranch: p.defaultBranch,
       downloadPolicy: p.downloadPolicy,
       status: p.status,
+      ...(p.provisioningError ? { provisioningError: p.provisioningError } : {}),
       createdAt: p.createdAt,
       permissions
+    }
+  }
+
+  /**
+   * Applies the host's provisioning outcomes from one heartbeat. A malformed entry
+   * is ignored on its own; it must not fail the heartbeat's other fields.
+   */
+  function applyProjectProvisionReports(hostId: string, reports: unknown, traceId: string): void {
+    if (!Array.isArray(reports)) {
+      return
+    }
+    for (const raw of reports.slice(0, 50)) {
+      if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+        continue
+      }
+      const projectId =
+        'projectId' in raw && typeof raw.projectId === 'string' ? raw.projectId : null
+      const ok = 'ok' in raw && typeof raw.ok === 'boolean' ? raw.ok : null
+      if (projectId === null || projectId === '' || ok === null) {
+        continue
+      }
+      const project = store.projects.get(projectId)
+      if (!project || project.hostId !== hostId || project.status === 'archived') {
+        continue
+      }
+      const error = 'error' in raw && typeof raw.error === 'string' ? raw.error.slice(0, 500) : ''
+      if (ok) {
+        project.status = 'ready'
+        delete project.provisioningError
+      } else {
+        project.status = 'failed'
+        project.provisioningError = error || 'PROVISION_FAILED'
+      }
+      audit.appendBestEffort({
+        eventType: 'project_provision',
+        actor: null,
+        targetType: 'project',
+        targetId: project.id,
+        result: ok ? 'success' : 'failure',
+        traceId,
+        metadata: { hostId, ...(error ? { error } : {}) }
+      })
     }
   }
 
@@ -622,16 +666,30 @@ export function createApp(config: ApiConfig): ApiHandle {
         })
         return error(res, 400, pathVerdict.code, pathVerdict.message, traceId)
       }
+      const repoUrlVerdict = validateProjectRepoUrl(body.repoUrl)
+      if (!repoUrlVerdict.ok) {
+        audit.append({
+          eventType: 'project_create',
+          actor: authed.user.username,
+          targetType: 'project',
+          targetId: null,
+          result: 'denied',
+          traceId,
+          metadata: { reason: repoUrlVerdict.code }
+        })
+        return error(res, 400, repoUrlVerdict.code, repoUrlVerdict.message, traceId)
+      }
       const created: Project = {
         id: `proj_${randomBytes(4).toString('hex')}`,
         key,
         name: String(body.name ?? key),
-        repoUrl: String(body.repoUrl ?? ''),
+        repoUrl: repoUrlVerdict.repoUrl,
         hostId,
         path: pathVerdict.path,
         defaultBranch: String(body.defaultBranch ?? 'main'),
         downloadPolicy: body.downloadPolicy === 'allow' ? 'allow' : 'deny',
-        status: 'ready',
+        // Why: a repo URL means the host must clone it before the first open.
+        status: repoUrlVerdict.repoUrl ? 'provisioning' : 'ready',
         createdAt: now()
       }
       if (
@@ -967,6 +1025,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         if (typeof body.status === 'string' && target.status !== 'maintenance') {
           target.status = body.status === 'online' ? 'online' : 'offline'
         }
+        applyProjectProvisionReports(target.id, body.provisioned, traceId)
         target.lastHeartbeatAt = now()
         const revoked = store.revocations.filter((r) => r.targetType !== 'jti')
         return json(res, 200, {
@@ -1315,6 +1374,9 @@ export function createApp(config: ApiConfig): ApiHandle {
       project: project.id,
       projectRoot: project.path,
       workspaceRoot: `${project.path}/.orca-worktrees/${user.username}`,
+      // Optional claims: the host provisions from the ticket, never from client params.
+      repoUrl: project.repoUrl,
+      defaultBranch: project.defaultBranch,
       deviceId: device.id,
       devicePubKey: device.publicKey || devicePubKey,
       deviceToken: newDeviceToken(),

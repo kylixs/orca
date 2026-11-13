@@ -64,7 +64,9 @@ export type Project = {
   downloadPolicyExplicit?: boolean
   /** Project override of the global read budget; absent means inherit. */
   readRatePerHour?: { calls: number; bytes: number }
-  status: 'ready' | 'archived' | 'failed'
+  status: 'provisioning' | 'ready' | 'archived' | 'failed'
+  /** Last provisioning failure reported by the host; cleared once it succeeds. */
+  provisioningError?: string
   createdAt: number
 }
 

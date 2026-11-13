@@ -66,6 +66,10 @@ export type DeviceEntry = {
     projectRoot: string
     /** This user's workspace root: the write boundary. */
     workspaceRoot: string
+    /** Clone source from the ticket; absent on rows written by older hosts. */
+    repoUrl?: string
+    /** Branch to check out; absent means the remote default. */
+    defaultBranch?: string
   }
 }
 

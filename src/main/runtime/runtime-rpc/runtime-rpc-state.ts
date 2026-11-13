@@ -14,6 +14,7 @@ import { RelayRevokeOutbox } from '../relay/relay-revoke-outbox'
 import { PushUnregisterOutbox } from '../push/push-unregister-outbox'
 import { RuntimeBinaryMessageRouter } from '../runtime-binary-message-router'
 import type { CloudAccessGuard } from '../../cloud-platform/cloud-access-guard'
+import type { CloudProvisionReporter } from '../../cloud-platform/cloud-project-provision'
 import type { RuntimeMetadataOwnershipWatch } from '../runtime-metadata-ownership-watch'
 import { RUNTIME_METADATA_OWNERSHIP_POLL_MS } from '../runtime-metadata-ownership-watch'
 import {
@@ -60,6 +61,8 @@ export class RuntimeRpcState {
   // Why mutable: the cloud client is created after enrolment, which is after this
   // server exists; the guard resolves policy at call time, not at construction.
   protected cloudAccessGuard: CloudAccessGuard | null = null
+  // Why mutable: the cloud client exists only after enrolment, which is after this server starts.
+  protected cloudProvisionReporter: CloudProvisionReporter | null = null
   protected readonly askLongPollCap: number
   protected readonly browserHostLongPollCap: number
   protected readonly browserHostLongPollCapPerDevice: number

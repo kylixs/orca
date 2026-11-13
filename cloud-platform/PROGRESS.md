@@ -1033,13 +1033,45 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 3. 6 个测试本身**没有**需要修的类型错误（新工程一开始报的 18 个 TS2307 是 main 依赖图里的 `*?asset` 环境声明，由 `electron-vite/node` 类型解决，不是改测试）。
 4. 未跑完整 `pnpm tc`（会并行拉起 node+web+cloud-e2e+cli，约 24 GB）；按分级规范留到里程碑收口时验证一次。
 
+## M57 项目创建 provisioning：主机真实 clone 缺失段（本轮，开发子代理执行）
+
+**问题**：平台 `POST /v1/projects` 直接写 `status: 'ready'`，而主机 `ensureCloudWorkspace` 要求 `projectRoot` 已是 git 仓库，**代码里没有任何 clone 步骤**。管理员在平台建了带 `repoUrl` 的项目后，开发者首次打开只会得到模糊的仓库错误；项目也无法出现在侧栏（`repo.add` 同样失败）。
+
+| 改动 | 内容 |
+|---|---|
+| 平台 `store.ts` / `server.ts` / `contract/credential.ts` / `contract/repo-url.ts`（新） | `Project.status` 增加 `provisioning`；有 `repoUrl` → `provisioning`，无 → `ready`；建项目时校验仓库地址（trim、长度、控制字符、`-` 开头、`ext::`）；票据新增**可选** claim `repoUrl`/`defaultBranch`；心跳解析 `provisioned`（≤50 项、error 截断 500、只处理本主机项目、archived 跳过），写 `project_provision` 审计并置 `ready`/`failed` + `provisioningError` |
+| `src/main/cloud-platform/cloud-project-provision.ts`（新） | URL/分支校验（拒绝 `ext::`、参数注入、非法 ref）、provision 决策、失败文案；纯逻辑可单测 |
+| `src/main/runtime/rpc/methods/project-provision.ts`（新） | 云端专用 `project.provision`（不进 `ALL_RPC_METHODS`，只在云端方法表追加）；路径/URL/分支**全部取自签名票据**，handler 拒绝非云上下文；成功/失败都排入心跳回报 |
+| `src/main/runtime/orca-runtime.ts` + `runtime-repository-clone-controller.ts` | `provisionCloudProject()`；clone 控制器新增精确路径 `cloneToPath()`，复用路径锁、`claimCloneTarget`、失败清理、git 读缓存失效与 repo 注册，`git clone --branch <branch> -- <url> <checkoutPath>` |
+| `device-registry*` / dispatch / `runtime-rpc-pairing` / `cloud-runtime-admission.ts` | 票据 claims 进 device registry；`RpcContext.cloud` 与 `cloudReportProvision`；`setCloudProvisionReporter` 由 `attachCloudRuntime` 接到 `client.reportProvisioned(...)`；方法表追加 `PROJECT_PROVISION_METHODS` |
+| `cloud-agent-client.ts` | `reportProvisioned` 有界队列（≤32、同项目保留最新），心跳 2xx 后按序号清空；poll 模式无心跳，报告丢弃（注释说明） |
+| `shared/cloud-workspace-open.ts` / `cloud-session-service.ts` / `ipc/cloud-platform.ts` | 打开前先 provision（600s 超时）；旧主机 `method_not_found` 或“方法不可用于云会话”的 `forbidden` 视为跳过；`ensureProjectPrepared` 复用已有连接或临时 client；`registerProjects` 在取链接前逐项目准备，失败告警并跳过 |
+| `renderer/cloud-workspace-entry.tsx` + 测试 | 入口 `preparing` 状态 + 非阻塞提示条（“正在准备云端项目…”），不隐藏工作区 |
+
+**验证（`evidence/m57-project-provisioning/`）**：真实端到端 2 条（真实平台进程 + 真实注册主机/心跳 + 真实 TLS Runtime + 真实 `git init --bare` 远端）：
+- M57-1：平台建项目（repoUrl=真实裸仓库，目标路径不存在）→ `status: provisioning` → 登录 → `ensureWorkspace` → 主机真实 clone；README 与源一致、`rev-parse --show-toplevel` 等于 checkout 路径；工作区 worktree 在 `workspaceRoot` 内且自成 toplevel；两次心跳后平台 `ready`、无 error、审计 success。
+- M57-2：repoUrl 指向不存在的远端 → `CLONE_FAILED`、**目标目录未残留**；心跳后平台 `failed` + `provisioningError`，审计 failure。
+- 另有 4 个测试文件 55 条（URL/分支/决策、旧主机跳过、入口提示）。
+
+**主会话独立验收**：12 个相关测试文件 **87 条全过**（含 `cloud-workspace-ensure`、`cloud-repo-registration`、`cloud-native-entry`、`cloud-agent-client`、`cloud-rpc-permission/scope`、多项目、managed worktree、共享打开函数、入口组件）；平台 `node --test` 18 条（parity/contract）与 e2e 39 条（admin-gating 13、platform/revocation/mtls 26）全过。`tsc -p config/tsconfig.tc.web.json` **0 错**；`tsc -p config/tsconfig.node.json` 仅 2 条既有 TS6307（`cloud-project-root`/`cloud-repo-registration` 的旧工程边界，本轮未触碰）。`check:code-quality:changed` 0 新发现。
+
+**主会话独立负向对照**：让 `provisionCloudProject()` 直接返回成功而不 clone（临时改动后已恢复）→ M57-1/M57-2 **双双变红**（后续 `worktree.list` 报 `forbidden: That repository is not available to the cloud session`，失败路径也拿不到 `CLONE_FAILED`）；恢复后 2/2 绿。
+
+**如实记录 / 剩余**：
+1. **旧主机兼容**依赖错误文案：真实旧主机对未注册方法在权限阶段返回 `forbidden`（`Method 'project.provision' is not available to cloud sessions`）而不是 `method_not_found`；客户端同时接受两者，但这是对固定英文文案的依赖，未用真实旧版二进制验证。新主机+旧平台（票据无 `repoUrl`）时，已有仓库照常打开，未准备路径返回 `PROJECT_NOT_PREPARED`。
+2. **poll 模式主机**（无心跳）只拿到同步 RPC 结果，平台状态不会更新，停留在 `provisioning`。
+3. `registerProjects` 在签到期间**串行**准备所有项目：首次签到若含未克隆的大仓库，侧栏出现时间等于克隆耗时（提示条可见，但会拖慢首屏）。
+4. 目标路径若是管理员预先创建的**非空目录**，git 自身拒绝且不会清理（`cloneToPath` 只清理自己创建的目录）；常规“目录不存在”路径已由 e2e 验证无残留。
+5. Windows 未实机验证；克隆使用既有跨平台 git runner。
+6. 平台侧“非本主机回报被忽略”只有代码路径，未单独补 HTTP 用例（e2e 覆盖合法主机回报）。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**用户决策**：普通开发者登录后直接进入 Orca 原生工作界面（左侧项目列表，用法不变）；自造的云端会话页**保留给管理员**，从平台项目列表页打开、可单独用 PC 浏览器访问；侧栏多项目**每项目独立连接**；文件面板随管理员页保留。
+**已完成**：M41–M57（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
-1. **M52 桌面回归原生界面**：移除 `CloudModeGate` 对整壳的替换；`api.cloud` 仅在云端构建暴露；登录成功后把云项目注册为 repo（`executionHostId: 'runtime:<envId>'`，侧栏数据源即 `repos`）并自动打开默认项目；桌面端不再引用 `CloudApp`。验收：普通桌面构建行为不变（回归测试），云端构建登录后侧栏出现项目。
-2. **M53 多项目连接**：`CloudSessionService` 改为按 projectId 的多客户端；`cloud:rpc(method, params, projectId)` 与 `cloud:closeProject(projectId)` 显式路由；断线按项目标记"需重新登录"。验收：两个项目同时在线、各自 RPC 成功、断开一个不影响另一个。
-3. **M54 管理员浏览器会话页**：新增独立 web 入口 + 浏览器版 `CloudBridge`（复用 `web-cloud-session` / `WebRuntimeConnectionTransport` / `cloud-file-browser`），平台管理台项目行加"打开会话页"链接；会话页独立登录，令牌不经过 URL。验收：浏览器打开会话页 → 登录 → 列项目 → 打开项目 → 文件面板列出真实文件、越界被拒。
-4. **M55 原生初始导航**：原生工作区视图读取侧车 `workspacePath`（M45），进入项目即定位到本人 checkout。
-
-遗留（不阻塞）：`agent.launch` 在本人工作区未被实际执行（只断言拒绝路径）；断线后不自动重登，只回登录页。
+**建议下一步（按缺口排序）**：
+1. **开发者自助创建项目**：建项目仍 admin-only；需要"用户在平台创建 → 主机 provisioning → 本地出现"的自助流程（含权限授予界面与项目创建审计）。
+2. **provisioning 失败可见性**：失败目前只进平台状态和侧栏缺行；应在原生界面按项目显示状态/错误并提供重试。
+3. **登录后自动重登**：断线仍只回登录页（M51 范围），长会话需要自动续期。
+4. **主机断连清理**：云设备 token 仅在注册表淘汰，不随 socket 关闭释放。
+5. **`agent.launch` 在本人工作区的真实执行**未被实际验证（历史仅覆盖拒绝路径）。

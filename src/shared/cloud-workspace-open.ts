@@ -26,8 +26,15 @@ export type CloudWorkspaceRpc = (
 ) => Promise<CloudWorkspaceRpcResult>
 
 export type OpenCloudWorkspaceResult =
-  | { ok: true; workspacePath: string; created: boolean }
+  | { ok: true; workspacePath: string; created: boolean; provisioned: boolean }
   | { ok: false; code: string; message?: string }
+
+export type ProvisionCloudProjectResult =
+  | { ok: true; provisioned: boolean }
+  | { ok: false; code: string; message?: string }
+
+/** Clone can take minutes on a large repository; keep the RPC alive well past a probe. */
+const PROVISION_TIMEOUT_MS = 600_000
 
 function isInside(root: string, candidate: string): boolean {
   if (candidate === root) {
@@ -52,6 +59,41 @@ function existingWorkspacePath(result: unknown, workspaceRoot: string): string |
   return null
 }
 
+/**
+ * Makes the host's project root a checkout. Idempotent, so every open can call it.
+ *
+ * A host predating this method answers `method_not_found`; that is not a failure,
+ * because such a host already works for admin-prepared repositories.
+ */
+export async function provisionCloudProjectOverRpc(
+  rpc: CloudWorkspaceRpc
+): Promise<ProvisionCloudProjectResult> {
+  const reply = await rpc('project.provision', {}, PROVISION_TIMEOUT_MS)
+  if (!reply.ok) {
+    // Why the message check too: cloud scopes reject an unregistered method as
+    // `forbidden` before the dispatcher can answer `method_not_found`. That exact
+    // message is the only signal that distinguishes a pre-M57 host from a ticket
+    // that genuinely lacks the `open` permission.
+    if (
+      reply.code === 'method_not_found' ||
+      (reply.code === 'forbidden' &&
+        (reply.message ?? '').includes('is not available to cloud sessions'))
+    ) {
+      return { ok: true, provisioned: false }
+    }
+    return { ok: false, code: reply.code, message: reply.message }
+  }
+  if (readField(reply.result, 'ok') === true) {
+    return { ok: true, provisioned: readField(reply.result, 'provisioned') === true }
+  }
+  const message = readString(reply.result, 'message')
+  return {
+    ok: false,
+    code: readString(reply.result, 'code') ?? 'PROVISION_FAILED',
+    ...(message !== null ? { message } : {})
+  }
+}
+
 export async function openCloudWorkspaceOverRpc(
   rpc: CloudWorkspaceRpc,
   projectId: string,
@@ -61,11 +103,23 @@ export async function openCloudWorkspaceOverRpc(
   const repo = `path:${projectRoot}`
   const branch = defaultBranch || 'main'
 
+  // Why not continue on failure: creating a worktree against a missing repo would
+  // replace the real cause with a vaguer "repo unknown" error.
+  const provision = await provisionCloudProjectOverRpc(rpc)
+  if (!provision.ok) {
+    return { ok: false, code: provision.code, message: provision.message }
+  }
+
   const listed = await rpc('worktree.list', { repo }, 15_000)
   if (listed.ok) {
     const existing = existingWorkspacePath(listed.result, workspaceRoot)
     if (existing !== null) {
-      return { ok: true, workspacePath: existing, created: false }
+      return {
+        ok: true,
+        workspacePath: existing,
+        created: false,
+        provisioned: provision.provisioned
+      }
     }
   }
 
@@ -85,7 +139,7 @@ export async function openCloudWorkspaceOverRpc(
     const path = readString(readField(created.result, 'worktree'), 'path')
     return path === null
       ? { ok: false, code: 'WORKSPACE_PATH_MISSING' }
-      : { ok: true, workspacePath: path, created: true }
+      : { ok: true, workspacePath: path, created: true, provisioned: provision.provisioned }
   }
   // A racer may have created it between the listing and the create; re-list once
   // so a concurrent open of the same project still lands on a real checkout.
@@ -93,7 +147,12 @@ export async function openCloudWorkspaceOverRpc(
   if (recheck.ok) {
     const existing = existingWorkspacePath(recheck.result, workspaceRoot)
     if (existing !== null) {
-      return { ok: true, workspacePath: existing, created: false }
+      return {
+        ok: true,
+        workspacePath: existing,
+        created: false,
+        provisioned: provision.provisioned
+      }
     }
   }
   return { ok: false, code: created.code, message: created.message }

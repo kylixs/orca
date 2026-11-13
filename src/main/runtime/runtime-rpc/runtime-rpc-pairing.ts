@@ -13,6 +13,7 @@ import type { RuntimePairingReach } from '../../../shared/runtime-pairing-reach'
 import { resolveAdvertisedPairingEndpoint } from '../pairing-endpoint'
 import { RuntimeRpcNetworkExposure } from './runtime-rpc-network-exposure'
 import type { CloudAccessGuard } from '../../cloud-platform/cloud-access-guard'
+import type { CloudProvisionReporter } from '../../cloud-platform/cloud-project-provision'
 import {
   createWebClientUrl,
   DEVICE_REGISTRY_UNAVAILABLE_GUIDANCE,
@@ -127,6 +128,11 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
   /** Policy enforcement for cloud sessions; installed once the cloud client exists. */
   setCloudAccessGuard(guard: CloudAccessGuard | null): void {
     this.cloudAccessGuard = guard
+  }
+
+  /** Provisioning outcomes ride the cloud heartbeat; installed with the cloud client. */
+  setCloudProvisionReporter(reporter: CloudProvisionReporter | null): void {
+    this.cloudProvisionReporter = reporter
   }
 
   closeCloudDeviceSessions(deviceTokens: readonly string[]): number {

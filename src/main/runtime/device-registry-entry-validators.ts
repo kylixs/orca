@@ -47,6 +47,8 @@ export function validCloudSession(value: unknown):
       permissions: CloudPermission[]
       projectRoot: string
       workspaceRoot: string
+      repoUrl?: string
+      defaultBranch?: string
     }
   | undefined {
   if (!value || typeof value !== 'object') {
@@ -70,7 +72,11 @@ export function validCloudSession(value: unknown):
     projectId: value.projectId,
     permissions: value.permissions.filter(isCloudPermission),
     projectRoot: value.projectRoot,
-    workspaceRoot: value.workspaceRoot
+    workspaceRoot: value.workspaceRoot,
+    ...('repoUrl' in value && typeof value.repoUrl === 'string' ? { repoUrl: value.repoUrl } : {}),
+    ...('defaultBranch' in value && typeof value.defaultBranch === 'string'
+      ? { defaultBranch: value.defaultBranch }
+      : {})
   }
 }
 
@@ -82,6 +88,8 @@ export function sameCloudSession(
         permissions: readonly CloudPermission[]
         projectRoot: string
         workspaceRoot: string
+        repoUrl?: string
+        defaultBranch?: string
       }
     | undefined
 ): boolean {
@@ -89,6 +97,8 @@ export function sameCloudSession(
   if (!current || !next) {
     return current === undefined && next === undefined
   }
+  // Why ignore repoUrl/defaultBranch: they describe how the checkout was made,
+  // not what this session may reach, so a refreshed ticket stays the same session.
   return (
     current.projectId === next.projectId &&
     current.projectRoot === next.projectRoot &&

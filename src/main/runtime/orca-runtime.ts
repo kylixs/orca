@@ -1,4 +1,13 @@
 import { installRuntimeLinearCommandSurface } from './runtime-linear-command-surface'
+import {
+  planCloudProjectProvision,
+  provisionFailureMessage,
+  validateCloudBranchName,
+  validateCloudCloneUrl,
+  type CloudProjectProvisionInput,
+  type CloudProjectProvisionResult
+} from '../cloud-platform/cloud-project-provision'
+import { isGitRepo } from '../git/repo-detection'
 import { OrcaRuntimeWithMigrationCatalog } from './orca-runtime-migration-catalog'
 import type { RuntimeCommandSurfaceHost } from './orca-runtime-core'
 import type {
@@ -101,6 +110,51 @@ class OrcaRuntimeService extends OrcaRuntimeWithMigrationCatalog {
     return record
       ? { worktreeId: record.location.workspaceId }
       : this.resolveTerminalContext(sessionId)
+  }
+
+  /**
+   * Makes the ticket's project root a git checkout. Idempotent: an existing repo
+   * is left alone, so every open can call it.
+   */
+  async provisionCloudProject(
+    input: CloudProjectProvisionInput
+  ): Promise<CloudProjectProvisionResult> {
+    const plan = planCloudProjectProvision({
+      hasRepo: isGitRepo(input.projectRoot),
+      hasRepoUrl: input.repoUrl.trim() !== ''
+    })
+    if (plan.kind === 'already-provisioned') {
+      return { ok: true, provisioned: false }
+    }
+    if (plan.kind === 'not-prepared') {
+      return {
+        ok: false,
+        code: 'PROJECT_NOT_PREPARED',
+        message: provisionFailureMessage('PROJECT_NOT_PREPARED')
+      }
+    }
+    const url = validateCloudCloneUrl(input.repoUrl)
+    if (!url.ok) {
+      return { ok: false, code: url.code, message: provisionFailureMessage(url.code) }
+    }
+    const branch = input.defaultBranch.trim()
+    if (branch !== '') {
+      const verdict = validateCloudBranchName(branch)
+      if (!verdict.ok) {
+        return { ok: false, code: verdict.code, message: provisionFailureMessage(verdict.code) }
+      }
+    }
+    try {
+      await this.repositoryClones.cloneToPath(
+        url.value,
+        input.projectRoot,
+        branch !== '' ? { branch } : {}
+      )
+    } catch (error) {
+      console.warn('[cloud] project provisioning clone failed:', error)
+      return { ok: false, code: 'CLONE_FAILED', message: provisionFailureMessage('CLONE_FAILED') }
+    }
+    return { ok: true, provisioned: true }
   }
 }
 type OrcaRuntimeServiceExport = RuntimeCommandSurfaceHost<OrcaRuntimeService>

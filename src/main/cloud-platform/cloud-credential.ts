@@ -23,6 +23,9 @@ export type CloudCredentialPayload = {
   project: string
   projectRoot: string
   workspaceRoot: string
+  /** Optional: absent on tickets minted before project provisioning existed. */
+  repoUrl?: string
+  defaultBranch?: string
   deviceId: string
   devicePubKey: string
   deviceToken: string

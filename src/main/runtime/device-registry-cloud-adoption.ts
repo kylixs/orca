@@ -14,6 +14,8 @@ export type CloudDeviceAdoption = {
   permissions?: readonly CloudPermission[]
   projectRoot?: string
   workspaceRoot?: string
+  repoUrl?: string
+  defaultBranch?: string
 }
 
 /**
@@ -57,7 +59,9 @@ export function adoptCloudDeviceInList(
           projectId: input.project,
           permissions: [...input.permissions],
           projectRoot: input.projectRoot,
-          workspaceRoot: input.workspaceRoot
+          workspaceRoot: input.workspaceRoot,
+          ...(typeof input.repoUrl === 'string' ? { repoUrl: input.repoUrl } : {}),
+          ...(typeof input.defaultBranch === 'string' ? { defaultBranch: input.defaultBranch } : {})
         }
       : undefined
   // Why token, not just deviceId: one registered desktop opens a socket per

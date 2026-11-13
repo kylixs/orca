@@ -26,6 +26,9 @@ export type CredentialPayload = {
   project: string
   projectRoot: string
   workspaceRoot: string
+  /** Optional: absent on tickets minted before project provisioning existed. */
+  repoUrl?: string
+  defaultBranch?: string
   deviceId: string
   devicePubKey: string
   deviceToken: string
@@ -78,7 +81,10 @@ export function signCredential(payload: CredentialPayload, key: SigningKey): str
 
 export type VerifyResult =
   | { ok: true; payload: CredentialPayload; kid: string }
-  | { ok: false; reason: 'malformed' | 'unknown_kid' | 'bad_signature' | 'expired' | 'not_yet_valid' }
+  | {
+      ok: false
+      reason: 'malformed' | 'unknown_kid' | 'bad_signature' | 'expired' | 'not_yet_valid'
+    }
 
 export function verifyCredential(
   token: string,
@@ -129,6 +135,8 @@ export function newDeviceToken(): string {
 
 export function loadSigningKeyFromPem(kid: string, privateKeyPem: string): SigningKey {
   const privateKey = createPrivateKey(privateKeyPem)
-  const publicKeyPem = createPublicKey(privateKey).export({ type: 'spki', format: 'pem' }).toString()
+  const publicKeyPem = createPublicKey(privateKey)
+    .export({ type: 'spki', format: 'pem' })
+    .toString()
   return { kid, privateKey, publicKeyPem }
 }

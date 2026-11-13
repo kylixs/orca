@@ -10,6 +10,8 @@ export type RpcDispatchStreamingOptions = Pick<
   | 'connectionId'
   | 'signal'
   | 'clientId'
+  | 'cloud'
+  | 'cloudReportProvision'
   | 'pairedDeviceId'
   | 'caller'
   | 'clientKind'
@@ -41,6 +43,8 @@ export function rpcContextFromTransport(
       ? runtime.getSubscriptionRegistrationVersion()
       : undefined,
     clientId: options?.clientId,
+    cloud: options?.cloud,
+    cloudReportProvision: options?.cloudReportProvision,
     pairedDeviceId: options?.pairedDeviceId,
     caller: resolveRpcCallerIdentity(options),
     clientKind: options?.clientKind,

@@ -115,6 +115,17 @@ export async function enrollCloudHost(
   }
 }
 
+/** Advertised addresses, resolved per beat; omitted when none are configured. */
+export function heartbeatAddrsField(configured: string[] | (() => string[]) | undefined): {
+  directAddrs?: string[]
+} {
+  if (!configured) {
+    return {}
+  }
+  const value = typeof configured === 'function' ? configured() : configured
+  return value.length > 0 ? { directAddrs: value } : {}
+}
+
 export type HeartbeatResult = {
   policyVersion: number
   policies: unknown

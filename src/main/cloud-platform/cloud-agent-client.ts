@@ -1,4 +1,4 @@
-import { sendHeartbeat } from './cloud-host-enrollment'
+import { heartbeatAddrsField, sendHeartbeat } from './cloud-host-enrollment'
 import { emptyRevocations, parseRevocations } from './cloud-agent-revocations'
 import { parseKeys, parsePolicyResponse } from './cloud-agent-response-parsing'
 import {
@@ -11,6 +11,8 @@ import {
 } from './cloud-upgrade-admission'
 import { createCloudConnectionSessions } from './cloud-connection-sessions'
 import { parseCloudPolicies, type CloudPolicies } from './cloud-policies'
+import type { CloudProvisionReport } from './cloud-project-provision'
+import { createCloudProvisionReportQueue } from './cloud-provision-report-queue'
 
 /**
  * Host-side client for the cloud platform's control plane.
@@ -92,6 +94,8 @@ export type CloudAgentClient = {
   /** Emits E2EE device tokens whose live sessions must be closed. */
   onRevoke: (listener: (deviceTokens: string[]) => void) => () => void
   admittedCount: () => number
+  /** Queues a provisioning outcome for the next heartbeat; no-op in poll mode. */
+  reportProvisioned: (report: CloudProvisionReport) => void
   start: () => void
   stop: () => void
 }
@@ -116,6 +120,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
   let policyVersion: number | null = null
   let timer: ReturnType<typeof setInterval> | null = null
   let inFlight: Promise<void> | null = null
+  const provisionReports = createCloudProvisionReportQueue(config.heartbeat !== undefined)
   const listeners = new Set<(snapshot: CloudAgentSnapshot) => void>()
   const revokeListeners = new Set<(deviceTokens: string[]) => void>()
   // Why: revocation arrives as platform device/user/project ids, but the socket is
@@ -149,15 +154,6 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
     lastError,
     maintenance: lastMaintenance
   })
-
-  function reportedAddrs(): { directAddrs?: string[] } {
-    const configured = config.heartbeat?.directAddrs
-    if (!configured) {
-      return {}
-    }
-    const value = typeof configured === 'function' ? configured() : configured
-    return value.length > 0 ? { directAddrs: value } : {}
-  }
 
   async function refreshOnce(): Promise<void> {
     // Per-request signals: a shared one would abort the healthy response when the
@@ -198,6 +194,8 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
       }
     }
     if (config.heartbeat) {
+      // Snapshot before sending; keep the entries until the platform accepts the beat.
+      const provisionBatch = provisionReports.take()
       // Heartbeat is the enrolled host's revocation channel (design §4.1). It is
       // preferred over the internal routes, which a registered host may not reach.
       const beat = await sendHeartbeat(
@@ -206,15 +204,19 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
         config.heartbeat.hostId,
         {
           status: 'online',
-          ...reportedAddrs(),
+          ...heartbeatAddrsField(config.heartbeat?.directAddrs),
           ...(config.heartbeat.e2eePublicKeyB64?.()
             ? { e2eePublicKeyB64: config.heartbeat.e2eePublicKeyB64() ?? undefined }
-            : {})
+            : {}),
+          ...(provisionBatch.reports.length > 0 ? { provisioned: provisionBatch.reports } : {})
         },
         fetchImpl,
         timeoutMs
       )
       if (beat) {
+        // Why by sequence: a report queued while this beat was in flight is newer
+        // than anything the platform just accepted.
+        provisionReports.clearThrough(provisionBatch.seq)
         const parsed = parseRevocations(beat.revoked)
         if (parsed) {
           revocations = parsed
@@ -342,6 +344,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
       return () => revokeListeners.delete(listener)
     },
     admittedCount: () => admitted.size,
+    reportProvisioned: provisionReports.queue,
     refresh,
     snapshot,
     onRefresh: (listener) => {

@@ -13,6 +13,7 @@ import type { OrchestrationCompatibilityEvidence } from '../../../shared/orchest
 import type { OrchestrationSessionCaller } from '../orchestration/orchestration-caller-identity'
 import type { RpcCallerIdentity } from './rpc-caller-identity'
 import type { RpcMethodPermission } from './rpc-method-permission'
+import type { CloudProvisionReport } from '../../cloud-platform/cloud-project-provision'
 
 export type PairingRpcContext = {
   getEndpoints(params: PairingGetEndpointsParams): Promise<PairingGetEndpointsResult>
@@ -21,6 +22,18 @@ export type PairingRpcContext = {
 
 export type RpcEnvelopeMeta = {
   runtimeId: string
+}
+
+/**
+ * The signed cloud session behind a socket. Params never carry these values:
+ * `project.provision` acts on this host-only copy of the ticket.
+ */
+export type CloudRpcSession = {
+  projectId: string
+  projectRoot: string
+  workspaceRoot: string
+  repoUrl: string
+  defaultBranch: string
 }
 
 export type RpcSuccess = {
@@ -112,6 +125,10 @@ export type RpcContext = {
   // Why: federation pins the authenticated saved-environment caller without exposing its token to handlers or storage.
   authenticatedCallerFingerprint?: string
   pairing?: PairingRpcContext
+  // Why: cloud-only methods execute the ticket's project, never a path supplied in params.
+  cloud?: CloudRpcSession
+  // Why: the platform learns the outcome on the next heartbeat, not from a client report.
+  cloudReportProvision?: (report: CloudProvisionReport) => void
   // Why: mobile terminal traffic bypasses JSON streaming; undefined on Unix/socket and non-E2EE WebSocket paths.
   sendBinary?: (bytes: Uint8Array<ArrayBufferLike>) => boolean | void
   // Why: binary terminal frames arrive outside JSON-RPC once a stream is established; handlers register only the stream IDs they created.

@@ -97,6 +97,13 @@ export function registerCloudPlatformHandlers(
     }
     const environments: CloudProjectEnvironment[] = []
     for (const project of state.projects) {
+      // Why before the link: a project the host has never cloned cannot answer
+      // `worktree.*`, and preparing it here is what makes the sidebar row real.
+      const provisioned = await session.ensureProjectPrepared(project.id)
+      if (!provisioned.ok) {
+        console.warn(`[cloud] could not prepare ${project.key}: ${provisioned.code}`)
+        continue
+      }
       // Why a prepared link, not openWorkspace: listing a project in the sidebar
       // must not create a checkout or consume the one live connection.
       let prepared = await session.prepareProjectLink(project.id)

@@ -14,6 +14,7 @@ import { installCloudPlatformIpc } from '../ipc/cloud-platform'
 import { createCloudAccessGuard } from '../cloud-platform/cloud-access-guard'
 import { ALL_RPC_METHODS } from '../runtime/rpc/methods'
 import { MANAGED_WORKTREE_METHODS } from '../runtime/rpc/methods/worktree-create-managed'
+import { PROJECT_PROVISION_METHODS } from '../runtime/rpc/methods/project-provision'
 import type { RpcAnyMethodDeclaration } from '../runtime/rpc/core'
 import type { DeviceRegistry } from '../runtime/device-registry'
 import type { UpgradeAdmission, WebSocketConnectionGate } from '../runtime/rpc/ws-transport'
@@ -21,11 +22,14 @@ import type {
   CloudUpgradeDecision,
   CloudUpgradeHeaders
 } from '../cloud-platform/cloud-upgrade-admission'
+import type { CloudProvisionReporter } from '../cloud-platform/cloud-project-provision'
 
 export type CloudRuntimeTarget = {
   closeCloudDeviceSessions: (tokens: readonly string[]) => number
   /** Installs the policy/read-budget guard; optional so tests can drive a bare runtime. */
   setCloudAccessGuard?: (guard: ReturnType<typeof createCloudAccessGuard> | null) => void
+  /** Installs the heartbeat reporter; optional for the same reason. */
+  setCloudProvisionReporter?: (reporter: CloudProvisionReporter | null) => void
   getDeviceRegistry: () => DeviceRegistry | null
   getWebSocketEndpoint: () => string | null
   getE2EEPublicKey: () => string | null
@@ -67,7 +71,9 @@ function withDeviceAdoption(
         project: decision.payload.project,
         permissions: decision.payload.perms,
         projectRoot: decision.payload.projectRoot,
-        workspaceRoot: decision.payload.workspaceRoot
+        workspaceRoot: decision.payload.workspaceRoot,
+        repoUrl: decision.payload.repoUrl,
+        defaultBranch: decision.payload.defaultBranch
       })
     }
     return decision
@@ -284,6 +290,8 @@ export function attachCloudRuntime(runtime: CloudRuntimeTarget): void {
   admission?.bindRuntime(runtime)
   if (admission?.client) {
     installCloudAccessGuard(runtime, admission.client)
+    const client = admission.client
+    runtime.setCloudProvisionReporter?.((report) => client.reportProvisioned(report))
   }
   installCloudPlatformIpc()
 }
@@ -316,6 +324,6 @@ export function cloudAdmissionOption(
   }
   // Design §8.3: managed creation exists only in cloud builds, so the method
   // table is extended here rather than in ALL_RPC_METHODS.
-  const methods = [...ALL_RPC_METHODS, ...MANAGED_WORKTREE_METHODS]
+  const methods = [...ALL_RPC_METHODS, ...MANAGED_WORKTREE_METHODS, ...PROJECT_PROVISION_METHODS]
   return { upgradeAdmission: runtime.admission, connectionGate: runtime.connectionGate, methods }
 }

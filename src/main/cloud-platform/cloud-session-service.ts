@@ -8,6 +8,10 @@ import type {
 import { CloudConnectClient, type CloudProject } from './cloud-connect-client'
 import { buildCloudProjectLink, type CloudProjectLink } from './cloud-pairing-offer'
 import { errorCodeOf } from '../../shared/json-fields'
+import {
+  provisionCloudProjectOverRpc,
+  type ProvisionCloudProjectResult
+} from '../../shared/cloud-workspace-open'
 import { ensureCloudWorkspace, type EnsureWorkspaceResult } from './cloud-workspace-ensure'
 import {
   CloudProjectConnections,
@@ -167,6 +171,38 @@ export class CloudSessionService {
     }
     this.connections.track(projectId, client, result.route)
     return result
+  }
+
+  /**
+   * Prepares the project's checkout without disturbing a live socket: reuse the
+   * one this session already tracks, otherwise open a throwaway ticket. Idempotent.
+   */
+  async ensureProjectPrepared(projectId: string): Promise<ProvisionCloudProjectResult> {
+    const identity = this.client?.deviceIdentity()
+    if (!identity) {
+      return { ok: false, code: 'NOT_SIGNED_IN' }
+    }
+    const existing = this.connections.get(projectId)
+    if (existing) {
+      return provisionCloudProjectOverRpc((method, params, timeoutMs) =>
+        existing.client.rpc(method, params, timeoutMs)
+      )
+    }
+    const client = this.createClient(this.options, identity)
+    try {
+      await client.openProject(projectId)
+      return await provisionCloudProjectOverRpc((method, params, timeoutMs) =>
+        client.rpc(method, params, timeoutMs)
+      )
+    } catch (error) {
+      return {
+        ok: false,
+        code: errorCodeOf(error) ?? 'OPEN_FAILED',
+        message: error instanceof Error ? error.message : String(error)
+      }
+    } finally {
+      client.close()
+    }
   }
 
   /**

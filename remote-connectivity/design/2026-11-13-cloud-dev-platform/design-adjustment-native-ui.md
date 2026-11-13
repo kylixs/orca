@@ -75,6 +75,16 @@
 | M53 | `CloudSessionService` 多客户端 + `cloud:rpc(projectId)` 路由 + 断线按项目标记 | 真实平台 + 真实 TLS Runtime：两个项目同时在线，各自 RPC 成功；断开一个不影响另一个 |
 | M54 | 管理员浏览器会话页：独立入口 + 浏览器 `CloudBridge` + 平台项目列表链接 | 浏览器打开会话页登录 → 列项目 → 打开项目 → 文件面板列出真实文件；越界路径被拒 |
 | M55 | 原生初始导航使用 `workspacePath`；清理桌面端残留 | 进入项目即定位到本人 checkout |
+| M56 | 渲染侧云端 e2e 从 `tsconfig.tc.web.json` 拆到独立工程 | `pnpm tc:web` 0 错；新工程 0 错 |
+| M57 | 项目创建 provisioning：平台记录 `repoUrl`/`defaultBranch`，主机首次打开时真实 clone 到 `projectRoot`，心跳回报 `ready`/`failed`，客户端显示准备进度 | 真实平台 + 注册主机 + TLS Runtime + 真实 git 远端：新建项目首次打开完成克隆并可建工作区；成功后平台状态 `ready`，失败为 `failed` 且带错误；旧主机（`method_not_found`）仍可打开已有仓库 |
+
+### 5.1 M57 项目创建 provisioning（平台不在数据通道）
+
+- **平台**：`POST /v1/projects` 仍 admin-only；有 `repoUrl` → `status: 'provisioning'`，无 → `ready`（路径由管理员备好）。连接票据新增可选 claim `repoUrl`、`defaultBranch`（旧主机忽略未知 claim）。
+- **主机**：新增云端专用 RPC `project.provision`（`open` 权限）。路径/URL/分支**全部取自签名票据**，不接受客户端参数；已是 git 仓库 → 直接返回；否则真实 `git clone` 到 `projectRoot`。克隆拒绝 `ext::`、以 `-` 开头的 URL 与非法分支名，失败不留半成品目录，并发打开共用同一路径锁。
+- **状态回报**：主机把成功/失败放进下一次心跳 `provisioned: [{projectId, ok, error?}]`；平台只接受本项目所属主机的报告，写审计并把状态改为 `ready`/`failed`。poll 模式主机无心跳，状态停留在 `provisioning`（记为限制）。
+- **客户端**：`openCloudWorkspaceOverRpc`（桌面与管理员页共用）在建工作区前先 `project.provision`；`method_not_found` 视为旧主机并跳过。原生入口在准备期间显示非阻塞提示，不隐藏工作区。
+- **为什么不做平台推送队列**：平台仍不持有执行路径；首次打开是唯一需要 clone 的时刻，票据已经携带全部所需事实。代价是新项目在第一次打开前不会自动出现在主机上（侧栏在签到注册时触发准备，等价于首次打开）。
 
 ## 6. 风险与取舍
 

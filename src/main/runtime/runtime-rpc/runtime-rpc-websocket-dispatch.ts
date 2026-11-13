@@ -204,6 +204,20 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
         // Why: gates the mobile-only payload diet so full-screen web/desktop clients aren't truncated.
         clientKind: device.scope,
         callerScope,
+        // Why: the host-only view of the ticket; provisioning must never read a
+        // path or URL out of client-supplied params.
+        cloud: cloudSession
+          ? {
+              projectId: cloudSession.projectId,
+              projectRoot: cloudSession.projectRoot,
+              workspaceRoot: cloudSession.workspaceRoot,
+              repoUrl: cloudSession.repoUrl ?? '',
+              defaultBranch: cloudSession.defaultBranch ?? ''
+            }
+          : undefined,
+        // Why: the handler only asks this server to queue the outcome; it never
+        // reports to the platform itself.
+        cloudReportProvision: (report) => this.cloudProvisionReporter?.(report),
         clientCapabilities: authenticatedSocket?.clientCapabilities,
         updateClientCapabilities:
           authenticatedSocket && device.scope === 'mobile'

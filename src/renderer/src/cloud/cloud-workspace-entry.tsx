@@ -109,6 +109,8 @@ async function selectInitialWorktree(args: {
 export type CloudWorkspaceEntryState = {
   /** First failure while entering the workspace, as the platform's error code. */
   entryError: string | null
+  /** True while the host clones/verifies the project and the checkout is created. */
+  preparing: boolean
   signOut: () => Promise<void>
 }
 
@@ -119,6 +121,7 @@ function useCloudWorkspaceEntry(
   const enteredFor = React.useRef<string | null>(null)
   const environments = React.useRef<readonly CloudProjectEnvironment[]>([])
   const [entryError, setEntryError] = React.useState<string | null>(null)
+  const [preparing, setPreparing] = React.useState(false)
   const projects = session.projects
   const sessionKey =
     session.status === 'signed-in' ? projects.map((project) => project.id).join('\u0000') : null
@@ -129,12 +132,14 @@ function useCloudWorkspaceEntry(
       enteredFor.current = null
       environments.current = []
       setEntryError(null)
+      setPreparing(false)
       return
     }
     if (enteredFor.current === sessionKey) {
       return
     }
     enteredFor.current = sessionKey
+    setPreparing(true)
     let cancelled = false
 
     const fail = (code: string): void => {
@@ -187,6 +192,10 @@ function useCloudWorkspaceEntry(
         if (!cancelled) {
           fail(entryFailureCode(error))
         }
+      } finally {
+        if (!cancelled) {
+          setPreparing(false)
+        }
       }
     })()
 
@@ -209,7 +218,22 @@ function useCloudWorkspaceEntry(
     environments.current = []
   }, [bridge])
 
-  return { entryError, signOut }
+  return { entryError, preparing, signOut }
+}
+
+/** Non-blocking: the shell stays usable while the host prepares the checkout. */
+function PreparingCloudProjectBanner(): React.JSX.Element {
+  return (
+    <div className="pointer-events-none fixed left-1/2 top-3 z-50 -translate-x-1/2">
+      <div
+        role="status"
+        className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-xs text-muted-foreground shadow-xs"
+      >
+        <span className="size-2 animate-pulse rounded-full bg-muted-foreground" />
+        {translate('auto.cloud.preparing', '正在准备云端项目…')}
+      </div>
+    </div>
+  )
 }
 
 function CloudWorkspaceSession({
@@ -220,10 +244,15 @@ function CloudWorkspaceSession({
   children: React.ReactNode
 }): React.JSX.Element {
   const session = useCloudSession(bridge)
-  useCloudWorkspaceEntry(bridge, session)
+  const entry = useCloudWorkspaceEntry(bridge, session)
 
   if (session.status === 'signed-in') {
-    return <>{children}</>
+    return (
+      <>
+        {entry.preparing ? <PreparingCloudProjectBanner /> : null}
+        {children}
+      </>
+    )
   }
   if (session.status === 'loading') {
     // Why: the cloud build must not flash the local shell before the session is known.
