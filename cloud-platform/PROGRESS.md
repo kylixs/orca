@@ -1219,12 +1219,34 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 3. 释放时若持久化失败（磁盘只读等）只记日志，token 留在内存直到重启；重启清理的写回失败同理，但内存已丢弃死票、不会放行。
 4. 未改移动端配对、revocation（4403）与云端 admission 语义；WSL/SSH 主机未单独验证（逻辑在 runtime 进程内，与执行主机无关）。
 
+## M64 签到准备有界并行化（本轮，开发子代理执行）
+
+**问题**：登录后 `cloud:registerProjects` 逐个串行准备每个项目（provision → 取票/选路 → 注册环境），侧栏出现时间等于**所有项目准备时间之和**；含未克隆大仓库时首屏被长时间拖住。不能简单整段并行：`registerCloudRuntimeEnvironment` 是 sidecar 的读-改-写，并发调用会互相覆盖。
+
+| 改动 | 内容 |
+|---|---|
+| `src/shared/bounded-parallel-map.ts`（新） | 有界并行映射：结果按输入顺序返回 `PromiseSettledResult[]`，在飞任务数 ≤ limit（`limit<1` 视为 1），失败按槽位隔离 |
+| `src/main/cloud-platform/cloud-project-preparation.ts`（新） | 拆成 `prepareCloudProjectLink`（provision + 取票/选路，含一次重试，**不写环境**）与 `registerPreparedEnvironment`（写 sidecar）；`prepareProjectEnvironment` 保持两段串行组合（单项目路径不变）；`registerProjectEnvironments` = 有界并行准备 → **按原始顺序串行注册**，默认并发 3 |
+| `src/main/ipc/cloud-platform.ts` | 处理器瘦身到 234 行，`registerProjects` 委托编排器；新增可选 `prepareConcurrency` 注入（测试/调参） |
+
+**验证（`evidence/m64-parallel-prepare/`）**：真实端到端 1 条（真实平台进程 + 真实注册主机/心跳 + 真实 TLS Runtime + 3 个真实 git 项目，其中 1 个 repoUrl 指向不存在路径）：真实 `cloud:registerProjects` handler，spy `ensureProjectPrepared` 记录真实调用区间（仍在区间内执行真实 clone/取票）→ 最大重叠 2（= 注入上限），区间真实交叠；`environments` 按 `state.projects` 顺序、只含 2 个成功项目；`failures` 只含坏项目且 `code: CLONE_FAILED`、目标目录未残留；成功项目 README 与源一致、`rev-parse --show-toplevel` 等于自身。另有 pool 单测（在飞上限、顺序、空数组、limit<1、失败隔离）。
+
+**主会话独立验收**：10 个相关测试文件 **25 条全过**（含 repo-registration / provision-recovery / self-service / create-failure / device-release / multi-project / 入口组件）；`tsc tc.web` 0 错；`tsc node` 仅 2 条既有 TS6307；`check:code-quality:changed` 0 新发现。
+
+**主会话独立负向对照**：把编排器并发强制为 1（等价于串行）→ e2e **变红**（`expected 1 to be greater than or equal to 2`），恢复后 1/1 绿。
+
+**如实记录 / 剩余**：
+1. N 个项目按 `ceil(N/limit)` 波次完成：某个特别慢的仓库仍决定其所在波次的墙钟时间；未做自适应并发。
+2. 并发会同时开多个一次性项目 socket/取票；默认 3 远低于主机 32 会话上限，但提高上限前需要按平台/主机限流复核。
+3. 注册阶段（sidecar 写入）在所有准备完成后串行执行，尾段仍是 O(N)（很小）。
+4. 任务**抛出**异常（不同于 `{ok:false}`）仍会中断整次 `registerProjects`，保持 M58 之前的行为。
+5. 并发证明依赖测试侧在真实调用外包 150ms 的观测窗口（真实 clone 太快不足以稳定交叠）；串行实现下该断言必然失败，负向对照已验证。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M63（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M64（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步（按缺口排序）**：
-1. **签到准备并行化**：`registerProjects` 逐项目串行准备，多仓库首屏被最长 clone 拖慢。
-2. **项目删除/重命名**：创建失败或废弃的项目会永久占用 key 与 `projectsRoot/<key>` 路径。
-3. **Refresh token 持久化**：桌面重启与浏览器重载都需重新登录；需要安全存储方案。
-4. **`agent.launch` 在本人工作区的真实执行**未被实际验证（历史仅覆盖拒绝路径）。
+1. **项目删除/重命名**：创建失败或废弃的项目会永久占用 key 与 `projectsRoot/<key>` 路径。
+2. **Refresh token 持久化**：桌面重启与浏览器重载都需重新登录；需要安全存储方案。
+3. **`agent.launch` 在本人工作区的真实执行**未被实际验证（历史仅覆盖拒绝路径）。

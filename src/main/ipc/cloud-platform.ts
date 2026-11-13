@@ -4,10 +4,7 @@ import {
   type CloudCreateProjectInput,
   type CloudCreateProjectResult,
   type CloudOpenResult,
-  type CloudProjectEnvironment,
-  type CloudProjectFailure,
   type CloudProjectRegistration,
-  type CloudProjectSummary,
   type CloudProvisionableHost,
   type CloudRetryPrepareResult,
   type CloudRpcOutcome,
@@ -15,6 +12,10 @@ import {
 } from '../../shared/cloud-platform-ipc'
 import { readTicketClaims } from '../cloud-platform/cloud-connect-response'
 import { CloudSessionService } from '../cloud-platform/cloud-session-service'
+import {
+  prepareProjectEnvironment,
+  registerProjectEnvironments
+} from '../cloud-platform/cloud-project-preparation'
 import {
   registerCloudRuntimeEnvironment,
   removeCloudRuntimeEnvironment,
@@ -24,51 +25,6 @@ import { setActiveCloudSession } from '../cloud-platform/cloud-runtime-session'
 import { getCanonicalUserDataPath } from '../persistence/loading-store/user-data-path'
 
 export type CloudPlatformHandlers = { dispose: () => void }
-
-type PreparedEnvironment =
-  | { ok: true; environment: CloudProjectEnvironment }
-  | { ok: false; code: string; message?: string }
-
-/** provision → link → register, the exact sequence both entry and retry need. */
-async function prepareProjectEnvironment(
-  session: CloudSessionService,
-  userDataPath: string,
-  project: CloudProjectSummary
-): Promise<PreparedEnvironment> {
-  // Why before the link: a project the host has never cloned cannot answer
-  // `worktree.*`, and preparing it here is what makes the sidebar row real.
-  const provisioned = await session.ensureProjectPrepared(project.id)
-  if (!provisioned.ok) {
-    return { ok: false, code: provisioned.code, message: provisioned.message }
-  }
-  // Why a prepared link, not openWorkspace: listing a project in the sidebar
-  // must not create a checkout or consume the one live connection.
-  let prepared = await session.prepareProjectLink(project.id)
-  if (!prepared.ok) {
-    // Why retry once: route selection is a raw TCP probe, which can lose one
-    // race at sign-in while the host is otherwise reachable.
-    prepared = await session.prepareProjectLink(project.id)
-  }
-  if (!prepared.ok) {
-    return { ok: false, code: prepared.code, message: prepared.message }
-  }
-  const environment = registerCloudRuntimeEnvironment(userDataPath, {
-    projectId: project.id,
-    projectKey: project.key,
-    projectName: project.name,
-    hostId: project.hostName ?? '',
-    link: prepared.link
-  })
-  return {
-    ok: true,
-    environment: {
-      projectId: project.id,
-      projectName: project.name,
-      projectRoot: prepared.link.projectRoot,
-      environmentId: environment.id
-    }
-  }
-}
 
 /**
  * Exposes the main-process cloud session to renderers. Nothing here returns a
@@ -80,6 +36,8 @@ export function registerCloudPlatformHandlers(
     broadcast: (channel: string, payload: unknown) => void
     /** Where the registered cloud environments live; omitted in tests that do not open workspaces. */
     userDataPath?: string
+    /** Maximum projects whose clone/ticket work overlaps; environment writes stay serial. */
+    prepareConcurrency?: number
   }
 ): CloudPlatformHandlers {
   const handle = <T>(channel: string, fn: (...args: never[]) => Promise<T> | T): void => {
@@ -147,26 +105,12 @@ export function registerCloudPlatformHandlers(
     if (state.status !== 'signed-in' || !options.userDataPath) {
       return { environments: [], failures: [] }
     }
-    const environments: CloudProjectEnvironment[] = []
-    const failures: CloudProjectFailure[] = []
-    for (const project of state.projects) {
-      const prepared = await prepareProjectEnvironment(session, options.userDataPath, project)
-      if (!prepared.ok) {
-        console.warn(`[cloud] could not prepare ${project.key}: ${prepared.code}`)
-        // Why surface it: silently dropping the project hides both the cause and
-        // the retry the user needs once an admin fixes the repo URL.
-        failures.push({
-          projectId: project.id,
-          projectKey: project.key,
-          projectName: project.name,
-          code: prepared.code,
-          ...(prepared.message !== undefined ? { message: prepared.message } : {})
-        })
-        continue
-      }
-      environments.push(prepared.environment)
-    }
-    return { environments, failures }
+    return registerProjectEnvironments(
+      session,
+      options.userDataPath,
+      state.projects,
+      options.prepareConcurrency
+    )
   })
   handle<CloudRetryPrepareResult>(CLOUD_PLATFORM_IPC.retryPrepare, async (projectId: string) => {
     const state = session.getState()

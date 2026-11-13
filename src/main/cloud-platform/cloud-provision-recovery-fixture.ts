@@ -80,7 +80,7 @@ function requireHandler(handlers: ReadonlyMap<string, IpcHandler>, channel: stri
   return handler
 }
 
-function parseRegistration(raw: unknown): CloudProjectRegistration {
+export function parseCloudProjectRegistration(raw: unknown): CloudProjectRegistration {
   const environments: CloudProjectEnvironment[] = []
   for (const item of readArrayValue(readField(raw, 'environments')) ?? []) {
     const projectId = readString(item, 'projectId')
@@ -241,7 +241,7 @@ export async function startRecoveryHarness(
       await admission.client!.refresh()
     },
     registerProjects: async () =>
-      parseRegistration(
+      parseCloudProjectRegistration(
         await requireHandler(ipcHandlers, CLOUD_PLATFORM_IPC.registerProjects)(null)
       ),
     retryPrepare: (id: string) =>
