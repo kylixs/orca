@@ -49,7 +49,8 @@ export function registerCloudPlatformHandlers(
     )
   }
 
-  handle<CloudSessionState>(CLOUD_PLATFORM_IPC.state, () => session.getState())
+  // Why await: the first renderer read must see the restored login, not signed-out.
+  handle<CloudSessionState>(CLOUD_PLATFORM_IPC.state, () => session.whenRestored())
   handle<CloudSessionState>(CLOUD_PLATFORM_IPC.login, async (username: string, password: string) =>
     session.login(username, password)
   )
@@ -210,15 +211,21 @@ export function installCloudPlatformIpc(
   if (!apiUrl) {
     return null
   }
+  const userDataPath = getCanonicalUserDataPath()
   const session = new CloudSessionService({
     apiUrl,
     // Production hosts present a certificate the platform's CA signed; test
     // harnesses opt out of verification explicitly.
-    tlsRejectUnauthorized: env.ORCA_CLOUD_TLS_INSECURE !== '1'
+    tlsRejectUnauthorized: env.ORCA_CLOUD_TLS_INSECURE !== '1',
+    userDataPath
   })
   setActiveCloudSession(session)
+  // Why background: startup must not wait on a platform round-trip; the state IPC awaits it.
+  void session
+    .restoreSession()
+    .catch((error: unknown) => console.warn('[cloud] session restore did not complete', error))
   const handlers = registerCloudPlatformHandlers(session, {
-    userDataPath: getCanonicalUserDataPath(),
+    userDataPath,
     broadcast: (channel, payload) =>
       broadcastToWebContents(
         BrowserWindow.getAllWindows().map((win) => win.webContents),

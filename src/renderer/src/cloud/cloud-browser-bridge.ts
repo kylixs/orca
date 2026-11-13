@@ -1,14 +1,8 @@
-import { readTicketClaims } from '../../../shared/cloud-platform-reply'
 import { openCloudWorkspaceOverRpc } from '../../../shared/cloud-workspace-open'
 import type {
-  CloudArchiveProjectResult,
   CloudConnectionEvent,
-  CloudCreateProjectResult,
   CloudOpenResult,
-  CloudProjectRegistration,
   CloudProjectSummary,
-  CloudProvisionableHost,
-  CloudRetryPrepareResult,
   CloudRpcOutcome,
   CloudSessionState
 } from '../../../shared/cloud-platform-ipc'
@@ -23,19 +17,27 @@ import {
   failure,
   isSessionExpired,
   outcomeOf,
-  routeOf,
   summarize,
-  type BrowserCloudClient,
-  type OpenConnection
+  type BrowserCloudClient
 } from './cloud-browser-bridge-replies'
 import {
-  cloudPairingOfferFromTicket,
   listCloudProjects,
   loginToCloud,
-  requestCloudTicket,
   type WebCloudProject,
   type WebCloudSession
 } from '../web/web-cloud-session'
+import {
+  createBrowserWebCloudSessionStorage,
+  type WebCloudSessionStorage
+} from '../web/web-cloud-session-storage'
+import {
+  clearBrowserSession,
+  persistBrowserSession,
+  restoreBrowserSession,
+  type BrowserSavedSession
+} from './cloud-browser-saved-session'
+import { browserUnsupportedAdminMethods } from './cloud-browser-bridge-unsupported'
+import { BrowserProjectConnections } from './cloud-browser-project-connections'
 import type { CloudBridge } from './use-cloud-session'
 
 /**
@@ -52,6 +54,8 @@ export type CloudBrowserBridgeOptions = {
   apiUrl: string
   deviceName: string
   deviceKeyStore: WebCloudDeviceKeyStorage
+  /** Saved-login seam; defaults to localStorage in a browser and to nothing in node. */
+  sessionStorage?: WebCloudSessionStorage
   fetchImpl?: typeof fetch
   now?: () => number
   endpointUrl?: string
@@ -59,7 +63,6 @@ export type CloudBrowserBridgeOptions = {
   clientFactory?: (offer: WebPairingOffer, deviceSecretKeyB64: string) => BrowserCloudClient
 }
 
-const STATUS_TIMEOUT_MS = 15_000
 const RPC_TIMEOUT_MS = 5_000
 const CONNECTION_POLL_MS = 2_000
 
@@ -69,30 +72,41 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
     options.clientFactory ??
     ((offer: WebPairingOffer, deviceSecretKeyB64: string) =>
       new WebRuntimeClient(offer, { deviceSecretKeyB64 }))
-  const connections = new Map<string, OpenConnection>()
   const listeners = new Set<(event: CloudConnectionEvent) => void>()
   let session: WebCloudSession | null = null
   let identity: WebCloudDeviceIdentity | null = null
   let state: CloudSessionState = { status: 'signed-out' }
   let pollTimer: ReturnType<typeof setInterval> | null = null
+  let restorePromise: Promise<CloudSessionState> | null = null
   // Why once: concurrent platform calls can all fail after the first one signed out.
   let sessionEnded = false
-
-  function closeConnection(projectId: string): boolean {
-    const entry = connections.get(projectId)
-    if (!entry) {
-      return false
+  const savedSession: BrowserSavedSession = {
+    store: options.sessionStorage ?? createBrowserWebCloudSessionStorage(),
+    apiUrl: options.apiUrl,
+    deviceKeyStore: options.deviceKeyStore,
+    ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+    ...(options.now ? { now: options.now } : {}),
+    getSession: () => session,
+    setSession: (next) => {
+      session = next
+    },
+    setIdentity: (next) => {
+      identity = next
+    },
+    setState: (next) => {
+      state = next
     }
-    connections.delete(projectId)
-    entry.client.close()
-    return true
   }
 
-  function closeAll(): void {
-    for (const projectId of Array.from(connections.keys())) {
-      closeConnection(projectId)
-    }
-  }
+  const projectConnections = new BrowserProjectConnections({
+    getSession: () => session,
+    getIdentity: () => identity,
+    ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+    ...(options.endpointUrl ? { endpointUrl: options.endpointUrl } : {}),
+    createClient,
+    onPlatformError: (error) => notePlatformError(error),
+    onDropped: (event) => emit(event)
+  })
 
   function emit(event: CloudConnectionEvent): void {
     for (const listener of listeners) {
@@ -106,10 +120,11 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
       return
     }
     sessionEnded = true
-    closeAll()
+    projectConnections.closeAll()
     session = null
     identity = null
     state = { status: 'signed-out' }
+    clearBrowserSession(savedSession)
     emit({ projectId: null, route: null, closeCode: 4401, reason: 'session_expired' })
   }
 
@@ -119,64 +134,21 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
     }
   }
 
-  /** Polls only while someone listens; a dropped socket is the notice the UI shows. */
-  function sweepConnections(): void {
-    for (const [projectId, entry] of Array.from(connections)) {
-      const next = entry.client.connectionState
-      if (next !== 'disconnected' && next !== 'auth-failed') {
-        continue
-      }
-      connections.delete(projectId)
-      entry.client.close()
-      emit({ projectId, route: entry.route, closeCode: null, reason: next })
-    }
-  }
-
-  async function openConnection(projectId: string): Promise<OpenConnection | CloudOpenResult> {
-    if (!session || !identity) {
-      return { ok: false, code: 'NOT_SIGNED_IN' }
-    }
-    try {
-      const ticket = await requestCloudTicket(
-        session,
-        projectId,
-        identity.publicKeyB64,
-        fetchOptions
-      )
-      const offer = cloudPairingOfferFromTicket(
-        ticket,
-        identity.publicKeyB64,
-        options.endpointUrl ? { endpointUrl: options.endpointUrl } : {}
-      )
-      const client = createClient(offer, identity.secretKeyB64)
-      const probe = await client.call('status.get', undefined, { timeoutMs: STATUS_TIMEOUT_MS })
-      if (!probe.ok) {
-        client.close()
-        return { ok: false, code: probe.error.code, message: probe.error.message }
-      }
-      closeConnection(projectId)
-      const entry: OpenConnection = {
-        client,
-        route: routeOf(offer, ticket),
-        workspace: ticket.workspace,
-        capabilities: ticket.host.capabilities,
-        permissions: readTicketClaims(ticket.credential).permissions
-      }
-      connections.set(projectId, entry)
-      return entry
-    } catch (error) {
-      notePlatformError(error)
-      return failure(error, 'OPEN_FAILED')
-    }
+  /** Lazy on the first state read, so a fresh login page never waits on restoration. */
+  async function restorePersistedSession(): Promise<CloudSessionState> {
+    await restoreBrowserSession(savedSession)
+    return state
   }
 
   return {
     async login(username: string, password: string): Promise<CloudSessionState> {
-      closeAll()
+      projectConnections.closeAll()
       session = null
       identity = null
       sessionEnded = false
       state = { status: 'signed-out' }
+      // Why: an explicit sign-in supersedes whatever login was saved before it.
+      clearBrowserSession(savedSession)
       const loaded = loadOrCreateWebCloudDeviceKey(options.deviceKeyStore)
       const nextSession = await loginToCloud({
         apiUrl: options.apiUrl,
@@ -184,6 +156,7 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
         password,
         devicePublicKeyB64: loaded.publicKeyB64,
         deviceName: options.deviceName,
+        onTokensChanged: (tokens) => persistBrowserSession(savedSession, tokens),
         ...fetchOptions,
         ...(options.now ? { now: options.now } : {})
       })
@@ -201,10 +174,21 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
         displayName: nextSession.user.displayName,
         projects: projects.map(summarize)
       }
+      const auth = nextSession.auth
+      if (auth?.refreshToken) {
+        persistBrowserSession(savedSession, {
+          accessToken: auth.accessToken,
+          refreshToken: auth.refreshToken
+        })
+      }
       return state
     },
 
     async getState(): Promise<CloudSessionState> {
+      if (session === null) {
+        restorePromise ??= restorePersistedSession()
+        await restorePromise
+      }
       return state
     },
 
@@ -227,7 +211,7 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
     },
 
     async openProject(projectId: string): Promise<CloudOpenResult> {
-      const opened = await openConnection(projectId)
+      const opened = await projectConnections.open(projectId)
       if ('ok' in opened) {
         return opened
       }
@@ -242,7 +226,7 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
     },
 
     async openWorkspace(projectId: string): Promise<CloudOpenResult> {
-      const opened = await openConnection(projectId)
+      const opened = await projectConnections.open(projectId)
       if ('ok' in opened) {
         return opened
       }
@@ -266,40 +250,19 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
       }
     },
 
-    /** A browser has no runtime-environment registry; the admin page never uses it. */
-    async registerProjects(): Promise<CloudProjectRegistration> {
-      return { environments: [], failures: [], removedEnvironmentIds: [] }
-    },
-
-    /** Admin pages have no native environment to register a recovered project into. */
-    async retryPrepare(): Promise<CloudRetryPrepareResult> {
-      return { ok: false, code: 'ADMIN_SESSION_UNSUPPORTED' }
-    },
-
-    /** Admin pages have no runtime host, so creation cannot produce an environment. */
-    async createProject(): Promise<CloudCreateProjectResult> {
-      return { ok: false, code: 'ADMIN_SESSION_UNSUPPORTED' }
-    },
-
-    /** Admin pages have no native environment to retire. */
-    async archiveProject(): Promise<CloudArchiveProjectResult> {
-      return { ok: false, code: 'ADMIN_SESSION_UNSUPPORTED' }
-    },
-
-    async listProvisionableHosts(): Promise<CloudProvisionableHost[]> {
-      return []
-    },
+    ...browserUnsupportedAdminMethods,
 
     async closeProject(projectId: string): Promise<{ ok: boolean }> {
-      closeConnection(projectId)
+      projectConnections.close(projectId)
       return { ok: true }
     },
 
     async logout(): Promise<CloudSessionState> {
-      closeAll()
+      projectConnections.closeAll()
       session = null
       identity = null
       sessionEnded = false
+      clearBrowserSession(savedSession)
       state = { status: 'signed-out' }
       return state
     },
@@ -312,7 +275,7 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
       if (!session) {
         return { ok: false, code: 'NOT_SIGNED_IN' }
       }
-      const entry = connections.get(projectId)
+      const entry = projectConnections.get(projectId)
       if (!entry) {
         return { ok: false, code: 'NOT_CONNECTED' }
       }
@@ -325,7 +288,7 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
 
     onConnectionChanged(listener: (event: CloudConnectionEvent) => void): () => void {
       listeners.add(listener)
-      pollTimer ??= setInterval(sweepConnections, CONNECTION_POLL_MS)
+      pollTimer ??= setInterval(() => projectConnections.sweep(), CONNECTION_POLL_MS)
       return () => {
         listeners.delete(listener)
         if (listeners.size === 0 && pollTimer !== null) {

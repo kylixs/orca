@@ -1269,10 +1269,40 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 4. 管理台（`apps/web`）通过 `includeArchived=1` 看到归档项目以便恢复；原生云会话列表默认不含。
 5. 归档后侧栏行的清理只在下次签到注册或显式调用时发生；若归档由管理员在平台侧完成，当前已登录会话在主机刷新周期内收到 4403 关闭，但侧栏行要等重新注册。
 
+## M66 云端会话持久化（桌面重启 / 浏览器重载免登录）（本轮，开发子代理执行）
+
+**问题**：M61/M62 只做了进程内续期，refresh token 仅在内存：桌面重启、浏览器刷新后都必须重新登录（两轮 PROGRESS 都记为遗留）。用户要的是“打开即用”。
+
+| 改动 | 内容 |
+|---|---|
+| 桌面 `cloud-session-persistence.ts`（新） | `orca-cloud-session.json` 存 access/refresh token、deviceId、**device secret key**、显示名、apiUrl；形状校验、apiUrl 不匹配即忽略、`writeSecureJsonFile` + 权限收紧、删除。密码从不落盘 |
+| 桌面 `cloud-session-saved-login.ts`（新）/ `cloud-session-service.ts` | `restoreSession()`（单飞）在启动后台执行：读文件 → 用**已存 secret key** 重建身份 → `listProjects()` 验证（401 走 M61 刷新）→ signed-in；`SESSION_EXPIRED` 删文件，网络错误保留文件；`whenRestored()` 让首个 `cloud:state` 等恢复完成；登录写盘、登出/会话失效清盘、轮换写回 |
+| `cloud-auth-session.ts` / `web-cloud-auth.ts` | 新增 `onTokensChanged`，刷新轮换成功后回调（写盘失败只 warn，不影响已成功的请求） |
+| 浏览器 `web-cloud-session-storage.ts`（新）/ `web-cloud-session-restore.ts`（新）/ `cloud-browser-bridge.ts` | localStorage 存会话（**不重复存设备 key**，复用 `web-cloud-device-key`）；`getState()` 首次惰性恢复；login/logout/会话失效写清；token 轮换写回 |
+| 拆分（保持 ≤300 行） | `cloud-session-project-admin.ts`、`cloud-browser-saved-session.ts`、`cloud-browser-project-connections.ts`、`cloud-browser-bridge-unsupported.ts`；`e2ee-crypto` 增加 `keyPairFromSecretKey` |
+
+**验证（`evidence/m66-session-persistence/`）**：
+- 桌面真实端到端：真实平台（access TTL 1200ms）+ 真实注册主机/心跳 + 真实 TLS Runtime + 真实 git；登录 → **同 userDataPath 三次新建服务实例**每次 `restoreSession()` 都 signed-in 且 deviceId 始终一致（证明密钥复用 + 轮换 token 已写回）→ 平台作废会话后第四次恢复为 signed-out 且**文件已删除**。
+- 浏览器真实端到端：登录 → 同 storage 新建 bridge `getState()` → signed-in、列项目、真实 TLS Runtime 打开工作区；作废后新 bridge 为 signed-out 且存储已清除。
+- 单测：桌面存储 5 条（往返/malformed/apiUrl 不匹配/权限位/删除）+ 浏览器存储 4 条。
+- 回归：14 个相关测试文件 **57 条全过**（含 renewal、auth、service、connect-client、provision-recovery、browser-bridge、入口组件）。
+
+**主会话独立验收**：14 个 vitest 文件 **57 条全过**；`tsc node` 仅 2 条既有 TS6307、`tsc tc.web` 0 错；`check:code-quality:changed` 0 新发现；证据中不含 token/refreshToken/密码。
+
+**主会话独立负向对照**：让 `cloud-auth-session` 的轮换不再写回 → 桌面重启 e2e **变红**（`expected 'signed-out' to be 'signed-in'`），恢复后 1/1 绿。子代理另有浏览器对照：跳过 `getState()` 恢复 → 重载 e2e 变红。
+
+**如实记录 / 剩余**：
+1. **浏览器 localStorage 可被同源脚本（XSS）读取**；这是管理页/内网工具的明确取舍，token 不进 URL、日志、证据。若将来做公网部署，应改用 HttpOnly cookie 或短期一次性码。
+2. 桌面首屏：`cloud:state` 等待恢复完成，网络慢时登录态判定会延迟；启动本身不被阻塞（后台恢复）。
+3. 平台换 `apiUrl` 时旧文件保留但被忽略，必须重新登录。
+4. 设备 key 存储被单独清空而会话文件仍在时，能恢复登录态，但后续取票/打开工作区会失败（会话文件不重复存 key）。
+5. 轮换写盘失败只 warn：请求不受影响，但下次重启可能需要重新登录。
+6. Windows 无法断言 POSIX 权限位，该断言在非 POSIX 平台跳过。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M65（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M66（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步（按缺口排序）**：
-1. **Refresh token 持久化**：桌面重启与浏览器重载都需重新登录；需要安全存储方案。
-2. **`agent.launch` 在本人工作区的真实执行**未被实际验证（历史仅覆盖拒绝路径）。
+1. **`agent.launch` 在本人工作区的真实执行**未被实际验证（历史仅覆盖拒绝路径）。
+2. **里程碑收口**：执行一次 L3 里程碑测试（按 `DEVELOPMENT_PROCESS.md` §4.1 控制并发），核对全部证据目录，然后进入人工验收。

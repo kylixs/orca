@@ -11,6 +11,11 @@ export type CloudAuthFingerprints = {
   refresh: string | null
 }
 
+export type CloudAuthTokens = {
+  accessToken: string
+  refreshToken: string
+}
+
 export type CloudAuthSession = {
   readonly accessToken: string
   readonly refreshToken: string | null
@@ -34,6 +39,8 @@ export type CloudAuthSessionInit = {
   now?: () => number
   /** Refresh this long before expiry; tests with short TTLs shrink it. */
   refreshLeadMs?: number
+  /** Notifies the session store after rotation so a restart keeps the newest token. */
+  onTokensChanged?: (tokens: CloudAuthTokens) => void
 }
 
 const DEFAULT_REFRESH_LEAD_MS = 60_000
@@ -80,6 +87,12 @@ export function createCloudAuthSession(init: CloudAuthSessionInit): CloudAuthSes
       refreshToken = readString(body, 'refreshToken') ?? refreshToken
       const expiresIn = readNumber(body, 'expiresIn')
       expiresAt = expiresIn === null ? null : now() + Math.max(0, expiresIn) * 1000
+      // Why: a failure to persist must not fail a request that just succeeded.
+      try {
+        init.onTokensChanged?.({ accessToken, refreshToken })
+      } catch {
+        // Best-effort persistence only.
+      }
     } catch {
       expired = true
       throw cloudSessionExpiredError()

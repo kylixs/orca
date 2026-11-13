@@ -17,7 +17,8 @@ import type { CloudStreamEvent, CloudSubscription } from './cloud-rpc-multiplexe
 import {
   createCloudAuthSession,
   type CloudAuthFingerprints,
-  type CloudAuthSession
+  type CloudAuthSession,
+  type CloudAuthTokens
 } from './cloud-auth-session'
 import { cloudAuthorizedFetch, throwCloudPlatformError } from './cloud-authorized-request'
 import { upgradeCloudSocket, type CloudSocket } from './cloud-socket-handshake'
@@ -60,6 +61,8 @@ export type CloudConnectOptions = {
   /** Refresh this long before expiry; short-lived test tokens shrink it. */
   refreshLeadMs?: number
   fetchImpl?: typeof fetch
+  /** Rotation hook: the service writes the newest refresh token to its session store. */
+  onTokensChanged?: (tokens: CloudAuthTokens) => void
 }
 
 const DEFAULT_PROBE_TIMEOUT_MS = 800
@@ -94,7 +97,8 @@ export class CloudConnectClient {
       fetchImpl: this.fetchImpl,
       ...(this.options.refreshLeadMs !== undefined
         ? { refreshLeadMs: this.options.refreshLeadMs }
-        : {})
+        : {}),
+      ...(this.options.onTokensChanged ? { onTokensChanged: this.options.onTokensChanged } : {})
     })
   }
 
@@ -163,7 +167,8 @@ export class CloudConnectClient {
       fetchImpl: this.fetchImpl,
       ...(this.options.refreshLeadMs !== undefined
         ? { refreshLeadMs: this.options.refreshLeadMs }
-        : {})
+        : {}),
+      ...(this.options.onTokensChanged ? { onTokensChanged: this.options.onTokensChanged } : {})
     })
     this.deviceId = deviceId
     return { displayName, permissions }

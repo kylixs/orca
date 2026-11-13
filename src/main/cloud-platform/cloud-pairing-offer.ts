@@ -11,6 +11,10 @@ import { readTicketClaims } from './cloud-connect-response'
  * `cloudUpgrade`, leaving ordinary paired hosts untouched.
  */
 
+export type CloudProjectLinkResult =
+  | { ok: true; link: CloudProjectLink }
+  | { ok: false; code: string; message?: string }
+
 export type CloudProjectLink = {
   offer: PairingOffer
   cloudUpgrade: {

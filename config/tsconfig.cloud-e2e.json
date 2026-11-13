@@ -1,5 +1,5 @@
 {
-  // Why this project exists: six renderer-side cloud e2e specs (`*.e2e.test.ts`) drive the real
+  // Why this project exists: seven renderer-side cloud e2e specs (`*.e2e.test.ts`) drive the real
   // main-process stack — a platform process, runtime admission, and the e2e harness — but they
   // live under src/renderer/src because that is where the browser code they exercise lives. They
   // are Node tests (`@vitest-environment node`), so the web project cannot typecheck them: listing
@@ -16,12 +16,13 @@
     "../config/scripts/vitest-host-ports-setup.ts",
     // Ambient renderer declarations (vite client types, build-time defines) the specs rely on.
     "../src/renderer/src/env.d.ts",
-    // The seven specs, plus the renderer modules they import; everything transitive follows.
+    // The eight specs, plus the renderer modules they import; everything transitive follows.
     "../src/renderer/src/cloud-admin/cloud-admin-session.e2e.test.ts",
     "../src/renderer/src/web/web-cloud-connect.e2e.test.ts",
     "../src/renderer/src/web/web-cloud-handoff.e2e.test.ts",
     "../src/renderer/src/web/web-cloud-session-recovery.e2e.test.ts",
     "../src/renderer/src/web/web-cloud-session-renewal.e2e.test.ts",
+    "../src/renderer/src/web/web-cloud-session-restore.e2e.test.ts",
     "../src/renderer/src/web/web-cloud-session.e2e.test.ts",
     "../src/renderer/src/web/web-cloud-transport.e2e.test.ts",
     "../src/renderer/src/cloud/cloud-browser-bridge.ts",
@@ -29,6 +30,8 @@
     "../src/renderer/src/web/web-cloud-connect.ts",
     "../src/renderer/src/web/web-cloud-device-key.ts",
     "../src/renderer/src/web/web-cloud-session.ts",
+    "../src/renderer/src/web/web-cloud-session-restore.ts",
+    "../src/renderer/src/web/web-cloud-session-storage.ts",
     "../src/renderer/src/web/web-pairing.ts",
     "../src/renderer/src/web/web-preload-api-test-harness.ts",
     "../src/renderer/src/web/web-runtime-connection-transport.ts",

@@ -9,8 +9,15 @@ import type {
 } from '../../shared/cloud-platform-ipc'
 import { CloudConnectClient, type CloudProject } from './cloud-connect-client'
 import type { CloudAuthFingerprints } from './cloud-auth-session'
+import { CloudSessionSavedLogin } from './cloud-session-saved-login'
+import {
+  archiveSessionProject,
+  createSessionProject,
+  type CreateProjectOutcome,
+  type ProjectAdminHooks
+} from './cloud-session-project-admin'
 import { summarizeCloudProject } from './cloud-project-summary'
-import { buildCloudProjectLink, type CloudProjectLink } from './cloud-pairing-offer'
+import { buildCloudProjectLink, type CloudProjectLinkResult } from './cloud-pairing-offer'
 import { errorCodeOf } from '../../shared/json-fields'
 import {
   provisionCloudProjectOverRpc,
@@ -24,21 +31,14 @@ import {
   type CreateCloudClient
 } from './cloud-project-connections'
 
-export type { CloudSessionOptions } from './cloud-project-connections'
-export type { CloudConnectionIdentity } from './cloud-project-connections'
-
-export type CloudProjectLinkResult =
-  | { ok: true; link: CloudProjectLink }
-  | { ok: false; code: string; message?: string }
+export type { CloudProjectLinkResult } from './cloud-pairing-offer'
 
 /**
  * Owns the desktop cloud session. One platform login (token, device keys, device
  * id) and one live socket per project; the renderer sees only credential-free state.
  */
 
-export type CloudSessionDeps = {
-  createClient?: CreateCloudClient
-}
+export type CloudSessionDeps = { createClient?: CreateCloudClient }
 
 export class CloudSessionService {
   private readonly options: CloudSessionOptions
@@ -47,11 +47,14 @@ export class CloudSessionService {
   private readonly connections: CloudProjectConnections
   private state: CloudSessionState = { status: 'signed-out' }
   private listeners = new Set<(event: CloudConnectionEvent) => void>()
+  private restorePromise: Promise<CloudSessionState> | null = null
+  private readonly savedLogin: CloudSessionSavedLogin
 
   constructor(options: CloudSessionOptions, deps: CloudSessionDeps = {}) {
     this.options = options
     this.createClient =
       deps.createClient ?? ((settings, identity) => new CloudConnectClient(settings, identity))
+    this.savedLogin = new CloudSessionSavedLogin(options, this.createClient)
     this.connections = new CloudProjectConnections(
       options,
       this.createClient,
@@ -104,14 +107,43 @@ export class CloudSessionService {
     return null
   }
 
+  /** Rebuilds a login saved by a previous process; the first platform call validates it. */
+  restoreSession(): Promise<CloudSessionState> {
+    // Why single-flight: boot starts this in the background, the first state read awaits it.
+    return (this.restorePromise ??= this.performRestore())
+  }
+
+  /** The current state once the background restore has settled (immediate if not started). */
+  whenRestored(): Promise<CloudSessionState> {
+    return this.restorePromise ?? Promise.resolve(this.state)
+  }
+
+  private async performRestore(): Promise<CloudSessionState> {
+    if (this.state.status === 'signed-in') {
+      return this.state
+    }
+    const restored = await this.savedLogin.restore()
+    if (restored.kind !== 'ready') {
+      return this.state
+    }
+    this.client = restored.client
+    this.state = {
+      status: 'signed-in',
+      displayName: restored.displayName,
+      projects: restored.projects.map(summarizeCloudProject)
+    }
+    return this.state
+  }
+
   async login(username: string, password: string): Promise<CloudSessionState> {
     this.connections.closeAll()
     this.client?.close()
     this.client = null
-    const client = this.createClient(this.options)
+    const client = this.createClient(this.savedLogin.restoredClientOptions)
     const user = await client.login(username, password)
     const projects = await client.listProjects()
     this.client = client
+    this.savedLogin.attach(client.deviceIdentity(), user.displayName)
     this.state = {
       status: 'signed-in',
       displayName: user.displayName,
@@ -124,6 +156,7 @@ export class CloudSessionService {
     this.connections.closeAll()
     this.client?.close()
     this.client = null
+    this.savedLogin.clear()
     this.state = { status: 'signed-out' }
     return this.state
   }
@@ -154,34 +187,11 @@ export class CloudSessionService {
   }
 
   /** Self-service creation; the refreshed list is what the renderer re-reads later. */
-  async createProject(
-    input: CloudCreateProjectInput
-  ): Promise<
-    | { ok: true; projectId: string; project: CloudProjectSummary }
-    | { ok: false; code: string; message?: string }
-  > {
+  async createProject(input: CloudCreateProjectInput): Promise<CreateProjectOutcome> {
     if (!this.client) {
       return { ok: false, code: 'NOT_SIGNED_IN' }
     }
-    try {
-      const created = await this.client.createProject(input)
-      try {
-        const projects = await this.client.listProjects()
-        if (this.state.status === 'signed-in') {
-          this.state = { ...this.state, projects: projects.map(summarizeCloudProject) }
-        }
-      } catch (error) {
-        // The project exists; a stale list must not turn creation into a failure.
-        this.expiredCode(error)
-      }
-      return { ok: true, projectId: created.id, project: summarizeCloudProject(created) }
-    } catch (error) {
-      return {
-        ok: false,
-        code: this.expiredCode(error) ?? errorCodeOf(error) ?? 'CREATE_PROJECT_FAILED',
-        message: error instanceof Error ? error.message : String(error)
-      }
-    }
+    return createSessionProject(this.client, this.projectAdminHooks(), input)
   }
 
   /** Archive, retire this project's socket, then refresh the visible list. */
@@ -191,23 +201,21 @@ export class CloudSessionService {
     if (!this.client) {
       return { ok: false, code: 'NOT_SIGNED_IN' }
     }
-    try {
-      await this.client.archiveProject(projectId)
-    } catch (error) {
-      return {
-        ok: false,
-        code: this.expiredCode(error) ?? errorCodeOf(error) ?? 'ARCHIVE_PROJECT_FAILED',
-        message: error instanceof Error ? error.message : String(error)
+    return archiveSessionProject(this.client, this.projectAdminHooks(), projectId)
+  }
+
+  private projectAdminHooks(): ProjectAdminHooks {
+    return {
+      expiredCode: (error) => this.expiredCode(error),
+      publishProjects: (projects) => {
+        if (this.state.status === 'signed-in') {
+          this.state = { ...this.state, projects }
+        }
+      },
+      closeProjectSocket: (projectId) => {
+        this.connections.close(projectId)
       }
     }
-    this.connections.close(projectId)
-    try {
-      await this.listProjects()
-    } catch (error) {
-      // The archive already happened; a stale list must not turn it into a failure.
-      this.expiredCode(error)
-    }
-    return { ok: true }
   }
 
   async listProvisionableHosts(): Promise<CloudProvisionableHost[]> {

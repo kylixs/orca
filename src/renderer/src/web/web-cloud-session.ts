@@ -10,7 +10,7 @@ import {
 } from '../../../shared/cloud-platform-reply'
 import { normalizeWebPairingKey32, type WebPairingOffer } from './web-pairing'
 import { authorizedRequest } from './web-cloud-authorized-request'
-import { createWebCloudAuth, type WebCloudAuth } from './web-cloud-auth'
+import { createWebCloudAuth, type WebCloudAuth, type WebCloudAuthTokens } from './web-cloud-auth'
 import { WEB_CLOUD_ERROR_CODE, WebCloudSessionError } from './web-cloud-error'
 import { requestJson, type RequestOptions } from './web-cloud-request'
 
@@ -87,6 +87,8 @@ export type WebCloudLoginInput = {
   now?: () => number
   /** Test seam: a zero lead forces the 401 recovery path with a short platform TTL. */
   refreshLeadMs?: number
+  /** Rotation hook: the bridge writes the newest tokens back to storage. */
+  onTokensChanged?: (tokens: WebCloudAuthTokens) => void
 }
 
 export async function loginToCloud(input: WebCloudLoginInput): Promise<WebCloudSession> {
@@ -127,7 +129,8 @@ export async function loginToCloud(input: WebCloudLoginInput): Promise<WebCloudS
     ...(expiresIn === null ? {} : { expiresIn }),
     ...(input.fetchImpl ? { fetchImpl: input.fetchImpl } : {}),
     ...(input.now ? { now: input.now } : {}),
-    ...(input.refreshLeadMs === undefined ? {} : { refreshLeadMs: input.refreshLeadMs })
+    ...(input.refreshLeadMs === undefined ? {} : { refreshLeadMs: input.refreshLeadMs }),
+    ...(input.onTokensChanged ? { onTokensChanged: input.onTokensChanged } : {})
   })
   return {
     apiUrl,

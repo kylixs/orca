@@ -12,6 +12,11 @@ export function generateKeyPair(): nacl.BoxKeyPair {
   return nacl.box.keyPair()
 }
 
+/** Rebuilds a registered device's pair from its persisted 32-byte secret. */
+export function keyPairFromSecretKey(secretKey: Uint8Array): nacl.BoxKeyPair {
+  return nacl.box.keyPair.fromSecretKey(secretKey)
+}
+
 export function deriveSharedKey(ourSecretKey: Uint8Array, peerPublicKey: Uint8Array): Uint8Array {
   return nacl.box.before(peerPublicKey, ourSecretKey)
 }

@@ -11,6 +11,11 @@ export type WebCloudAuthFingerprints = {
   refresh: string | null
 }
 
+export type WebCloudAuthTokens = {
+  accessToken: string
+  refreshToken: string
+}
+
 export type WebCloudAuth = {
   readonly accessToken: string
   readonly refreshToken: string | null
@@ -34,6 +39,8 @@ export type WebCloudAuthInit = {
   now?: () => number
   /** Refresh this long before expiry; tests with short TTLs shrink it. */
   refreshLeadMs?: number
+  /** Notifies the session store after rotation so a reload keeps the newest token. */
+  onTokensChanged?: (tokens: WebCloudAuthTokens) => void
 }
 
 const DEFAULT_REFRESH_LEAD_MS = 60_000
@@ -93,6 +100,12 @@ export function createWebCloudAuth(init: WebCloudAuthInit): WebCloudAuth {
     // A pre-rotation platform may omit the new token; keeping ours stays usable.
     refreshToken = nextRefresh ?? refreshToken
     expiresAt = nextExpiresIn === null ? null : now() + Math.max(0, nextExpiresIn) * 1000
+    // Why: a failure to persist must not fail a request that just succeeded.
+    try {
+      init.onTokensChanged?.({ accessToken, refreshToken })
+    } catch {
+      // Best-effort persistence only.
+    }
   }
 
   function refresh(force = false): Promise<void> {

@@ -94,6 +94,8 @@
 
 | M65 | 项目归档闭环：归档释放 key/路径、恢复冲突保护、创建者可归档自己的项目；客户端归档后关闭连接并清理环境与侧栏 | 真实平台 + 主机 + TLS + git：归档后 live 会话被撤销、环境删除、key 可复用；恢复撞车 409 |
 
+| M66 | 会话持久化：桌面把 refresh token 与设备密钥存入受限文件、开机自动恢复；浏览器写入 localStorage、重载自动恢复；失效即清除 | 真实平台 + 主机 + TLS + git：同 userDataPath 新建服务仍 signed-in 且能建工作区；作废后恢复为 signed-out 且文件被删 |
+
 ### 5.1 M57 项目创建 provisioning（平台不在数据通道）
 
 - **平台**：`POST /v1/projects` 仍 admin-only；有 `repoUrl` → `status: 'provisioning'`，无 → `ready`（路径由管理员备好）。连接票据新增可选 claim `repoUrl`、`defaultBranch`（旧主机忽略未知 claim）。

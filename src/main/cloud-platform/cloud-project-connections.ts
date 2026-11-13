@@ -14,6 +14,8 @@ export type CloudSessionOptions = {
   apiUrl: string
   tlsRejectUnauthorized?: boolean
   probeTimeoutMs?: number
+  /** Where the saved login lives; omitted by tests that must not touch disk. */
+  userDataPath?: string
   /** Refresh this long before expiry; short-lived test tokens shrink it. */
   refreshLeadMs?: number
   /** Test seam: observe/record platform traffic without changing production paths. */
