@@ -1990,9 +1990,32 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 2. 未对「已登录但越权的普通接口」（如跨项目 404）补审计——那是 AC-03 的 `project_access` denied，已覆盖。
 3. 拒绝事件的 `eventType` 复用各接口的成功事件名（`host_list`、`policy_update` 等），靠 `result=denied` 区分；审计查询需同时按 result 过滤。
 
+## M95 补齐 AC-04 的「成员真实打开新项目」（本轮，主会话执行）
+
+**问题（M70 验收映射）**：AC-04 只验证到「成员刷新可见 + 取票 200」，**没有对新登记的项目做过一次真实打开**——而取票成功不等于工作区可用。
+
+| 改动 | 内容 |
+|---|---|
+| `src/main/cloud-platform/cloud-admin-grant-open.test.ts`（新） | 真实平台进程 + 真实主机注册（一次性令牌）+ 真实 TLS Runtime + 真实 E2EE：成员先登录，管理员再建项目并授权，同一会话刷新后打开 |
+| 文档 | `test-plan.md` AC-04 由 PASS(部分) 升为 PASS |
+
+**验证（`evidence/m95-admin-grant-open/admin-grant-open.json`）**：
+- 授权前：成员列表不含 `m95-granted-project`。
+- 授权后**同一会话刷新**（不重新登录）：项目出现，`hostStatus=online`，`permissions` 含 `open`。
+- 真实打开：`ensureCloudWorkspace` 返回 `ok`，`route=direct`，检出位于该用户自己的路径下（`zhangsan/main`）。
+- 打开后 `status.get` 成功，`files.read` 读到工作区内的 `README.md`。
+- 组外开发者 `lisi` 刷新后仍看不到该项目。
+- 首轮失败如实记录：未设置 `ORCA_CLOUD_ADVERTISE_HOST` 时平台不下发直连地址、客户端也没有中继可回落，报 `ENDPOINT_UNREACHABLE`——补上广播地址后通过（这正是 AC-07 诊断面板会展示的那类失败）。
+- **负向对照**：① 授权改为空权限 → 刷新后不可见转红；② 用创建前的旧列表冒充刷新 → 同样转红。均恢复后全绿。
+- 回归：本案与多项目用例 2/2；`tc:node` 0；`check:code-quality:changed` 0 新发现。
+
+**如实记录 / 剩余**：
+1. 项目路径直接指向已存在的仓库目录；未覆盖「从 repoUrl 克隆」的 provisioning 路径（已有 M64/M65 用例覆盖准备与失败重试）。
+2. 只验证了直连打开；中继下的打开由 M90 覆盖。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M94（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M95（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步**：
 1. **剩余 MINOR**：G-12 的浏览器渲染 P95 半分（AC-01，需 Electron/CDP 真实渲染环境）；「平台无业务流量」「中继无明文」已由 M85/M86 补齐。
