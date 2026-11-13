@@ -198,20 +198,29 @@ describe('平台端到端（真实进程 / TCP / TLS / Ed25519）', () => {
 
   test('E3 伪造/过期凭证在升级期被拒', async () => {
     const WebSocket = (await import('ws')).default
-    const result = await new Promise<{ status?: number; error?: string }>((resolve) => {
-      const ws = new WebSocket(`wss://127.0.0.1:${runtimePort}/`, {
-        rejectUnauthorized: false,
-        protocols: ['orca-runtime', 'orca-cred.forged.token.value']
-      })
-      ws.once('open', () => {
-        ws.close()
-        resolve({ status: 101 })
-      })
-      ws.once('error', (err) => resolve({ error: err.message }))
-      ws.once('unexpected-response', (_req, res) => resolve({ status: res.statusCode }))
-    })
-    assert.notEqual(result.status, 101)
+    const result = await new Promise<{ status?: number; error?: string; reject?: string }>(
+      (resolve) => {
+        const ws = new WebSocket(`wss://127.0.0.1:${runtimePort}/`, {
+          rejectUnauthorized: false,
+          protocols: ['orca-runtime', 'orca-cred.forged.token.value']
+        })
+        ws.once('open', () => {
+          ws.close()
+          resolve({ status: 101 })
+        })
+        ws.once('error', (err) => resolve({ error: err.message }))
+        ws.once('unexpected-response', (_req, res) =>
+          resolve({
+            status: res.statusCode,
+            reject: String(res.headers['x-orca-reject'] ?? '')
+          })
+        )
+      }
+    )
+    assert.equal(result.status, 401, 'AC-21: upgrade must be refused with HTTP 401')
+    assert.ok(result.reject, 'AC-21: refusal must name a reason in x-orca-reject')
     saveEvidence(EVIDENCE, 'E3-forged-credential.json', result)
+    saveEvidence('m70-acceptance', 'ac-21-forged-credential.json', result)
   })
 
   test('E4 方法级权限：无 file:write 时写操作被拒', async () => {

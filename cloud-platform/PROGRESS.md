@@ -1381,11 +1381,40 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 3. 结构化会话依赖本机已登录的真实 Claude；CI 默认 skip（门禁保护），因此该项在无凭据环境不会被自动执行。
 4. 云端客户端能力表扩大到结构化读取面：云端会话现在可读/关闭结构化会话，工作区边界不变（共享检出仍 forbidden）。
 
+## M70 验收标准映射与缺失项真实验证（本轮，验证子代理执行 + 主会话复核）
+
+**问题**：`requirements.md` §8 有 AC-01…AC-32，`DEVELOPMENT_PROCESS.md` G8 要求「每条验收标准有通过证据」，但仓库既无 `test-plan.md`，也没有任何 AC → 测试/证据映射；早期 `test-reports/automated-test-report.md` 只覆盖最初模块。无法判断哪些验收标准真的通过。
+
+| 产出 | 内容 |
+|---|---|
+| `test-plan.md`（新） | 分级策略（引用 §4.1）、测试数据/环境、**AC-01…AC-32 逐条映射**（测试文件::用例 + 证据路径 + 结论）、不可验证项与前置条件、执行命令。映射只认用例里的断言，不按测试名推断 |
+| `test-reports/acceptance-2026-11-13.md`（新） | 本轮真实执行结果、产品缺口（BLOCKER/MAJOR/MINOR）分级、结论 |
+| `m70-acceptance.e2e.test.ts`（新，294 行） | AC-01（50 次采样 P95）、AC-02（注入时钟验证 15 分钟锁定）、AC-03（存在性不泄露）、AC-04（授权后可见）、AC-08（心跳超时）、AC-25（吊销后令牌失效） |
+| `src/main/cloud-platform/m70-acceptance.test.ts`（新，145 行） | AC-09：真实平台进程 + 真实 Orca Runtime + 真实加密 RPC 验证维护模式拒绝新连接 |
+| `platform.e2e.test.ts` E3 | 加强为必须 `401` 且 `x-orca-reject` 非空（AC-21） |
+
+**映射结论**：**PASS 7**、**PASS(部分) 17**、**UNVERIFIED 8**（AC-14/19/22/23/26/29/31/32，均写明前置条件，不伪造）。
+
+**本轮真实执行（`evidence/m70-acceptance/`）**：`m70-acceptance.e2e.test.ts` **6/6**、`m70-acceptance.test.ts` **1/1**、`platform.e2e.test.ts::E3` **1/1**；`tsc node` 0、`tsc tc.web` 0、`check:code-quality:changed` 0 新发现。主会话独立复跑平台 6 条与真实 Runtime 1 条，均通过。
+
+**本轮发现的缺口（已写入验收报告，未在本轮修复）**：
+- **BLOCKER ×4**：G-01 主机吊销通知不到已登记主机（`DELETE /v1/hosts/:id` 清空 `credentialHash` → 下次心跳 401 → 主机拿不到撤销集合 → 已建会话不会 60 秒内断开）；G-02 无 4433 公钥固定；G-03 无签名密钥轮换/旧钥保留；G-04 审计链单进程单文件、不支持多副本并发。
+- **MAJOR ×6**：心跳超时后项目仍显示 online 且「打开」未禁用（G-05）；AC-27 文档「读允许」与真实主机跨工作区读取被拒不一致（G-06）；文档错误码 `PATH_OUTSIDE_ROOT`/`PERMISSION_MISSING` 与实现 `forbidden` 不一致（G-07）；主机侧拒绝路径无审计事件（G-08）；平台停机网络错误未映射 `PLATFORM_UNAVAILABLE`（G-09）；无前端/API 版本兼容策略（G-10）。
+- **MINOR ×4**：登录锁计数为进程内存；AC-01/05 只测 API 段时延、无抓包；AC-17 用手动刷新；AC-16 未测多用户隔离。
+
+**主会话复核**：已确认 G-01 的代码路径（`server.ts:1454` 清空 `credentialHash`；`:1366` 心跳 401；`cloud-agent-client.ts` 心跳失败即放弃本轮回撤）——是真实 BLOCKER，不是映射误差。
+
+**如实记录 / 剩余**：
+1. **暂不进入人工验收**：4 BLOCKER + 6 MAJOR。
+2. 8 条 UNVERIFIED 需要独立环境（压测、多中继、多副本审计、MITM、跨轮换窗口、WAF）。
+3. 本轮未修任何产品缺口（映射任务范围），下一模块应优先修 G-01。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
 **已完成**：M41–M69（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步**：
-1. **人工验收**：按 design/test-plan 逐条核对验收标准；重点看桌面真实界面（登录 → 侧栏项目 → 本人 checkout → 终端/文件/git/agent）与管理员浏览器会话页。
-2. 真机/跨平台：Windows、WSL、SSH 主机各跑一遍关键路径（provisioning、路径边界、PTY、会话持久化权限位）。
-3. L4 全量回归：发版前单独执行，含桌面 Electron 渲染验证。
+1. **G-01 主机吊销通道**（BLOCKER）：让管理员吊销主机后，已登记主机仍能收到撤销集合并在 60 秒内关闭已建会话（真实 e2e 验证 AC-14）。
+2. **人工验收**：按 design/test-plan 逐条核对验收标准；重点看桌面真实界面（登录 → 侧栏项目 → 本人 checkout → 终端/文件/git/agent）与管理员浏览器会话页。
+3. 真机/跨平台：Windows、WSL、SSH 主机各跑一遍关键路径（provisioning、路径边界、PTY、会话持久化权限位）。
+4. L4 全量回归：发版前单独执行，含桌面 Electron 渲染验证。
