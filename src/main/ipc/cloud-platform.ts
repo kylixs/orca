@@ -43,7 +43,7 @@ export function registerCloudPlatformHandlers(
   )
   handle<CloudSessionState>(CLOUD_PLATFORM_IPC.logout, () => {
     // Why: the native shell owns one environment per project, so signing out
-    // must retire all of them — `closeProject` only knows the connected one.
+    // must retire all of them, not just the project the user last opened.
     if (options.userDataPath) {
       removeCloudRuntimeEnvironments(options.userDataPath)
     }
@@ -125,16 +125,16 @@ export function registerCloudPlatformHandlers(
     }
     return environments
   })
-  handle(CLOUD_PLATFORM_IPC.closeProject, () => {
-    const openProjectId = session.connectedProjectId
-    if (openProjectId && options.userDataPath) {
-      removeCloudRuntimeEnvironment(options.userDataPath, openProjectId)
+  handle(CLOUD_PLATFORM_IPC.closeProject, (projectId: string) => {
+    if (options.userDataPath) {
+      removeCloudRuntimeEnvironment(options.userDataPath, projectId)
     }
-    return session.closeProject()
+    return session.closeProject(projectId)
   })
   handle<CloudRpcOutcome>(
     CLOUD_PLATFORM_IPC.rpc,
-    (method: string, params?: Record<string, unknown>) => session.rpc(method, params ?? {})
+    (method: string, params: Record<string, unknown> | undefined, projectId: string) =>
+      session.rpc(method, params ?? {}, projectId)
   )
 
   const unsubscribe = session.onConnectionChanged((event) => {

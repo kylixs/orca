@@ -12,10 +12,12 @@ export const CLOUD_PLATFORM_IPC = {
   state: 'cloud:state',
   listProjects: 'cloud:listProjects',
   openProject: 'cloud:openProject',
+  /** Args: `(projectId)`. Closes only that project's socket. */
   closeProject: 'cloud:closeProject',
   openWorkspace: 'cloud:openWorkspace',
   /** Registers one runtime environment per visible project (no checkout). */
   registerProjects: 'cloud:registerProjects',
+  /** Args: `(method, params, projectId)`. Routes to that project's own socket. */
   rpc: 'cloud:rpc',
   connectionChanged: 'cloud:connectionChanged'
 } as const

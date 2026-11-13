@@ -209,7 +209,7 @@ describe('云端会话服务（渲染进程可见面）', () => {
     expect(opened.workspaceRoot).toContain('/srv/work/session-svc')
     expect(opened.capabilities.length).toBeGreaterThan(0)
 
-    const status = await session.rpc('status.get')
+    const status = await session.rpc('status.get', {}, projectId)
     expect(status.ok).toBe(true)
     // The workspace view renders this reply; it must be a real object, not null.
     if (!status.ok) {
@@ -242,23 +242,26 @@ describe('云端会话服务（渲染进程可见面）', () => {
 
     await new Promise((r) => setTimeout(r, 1500))
     expect(events.some((event) => event.closeCode === 4403)).toBe(true)
-    expect(session.connectedProjectId).toBeNull()
+    expect(session.isProjectConnected(projectId)).toBe(false)
   }, 25000)
 
   it('返回工作台只关闭项目连接：会话仍在，可再次打开', async () => {
     const session = makeSession()
     await session.login('zhangsan', 'Passw0rd!')
     expect((await session.openProject(projectId)).ok).toBe(true)
-    expect((await session.rpc('status.get')).ok).toBe(true)
+    expect((await session.rpc('status.get', {}, projectId)).ok).toBe(true)
 
-    expect(session.closeProject()).toEqual({ ok: true })
-    expect(await session.rpc('status.get')).toEqual({ ok: false, code: 'NOT_CONNECTED' })
+    expect(session.closeProject(projectId)).toEqual({ ok: true })
+    expect(await session.rpc('status.get', {}, projectId)).toEqual({
+      ok: false,
+      code: 'NOT_CONNECTED'
+    })
     expect(session.getState().status).toBe('signed-in')
 
     // The token and device keys survived, so reopening needs no second login.
     const reopened = await session.openProject(projectId)
     expect(reopened.ok).toBe(true)
-    expect((await session.rpc('status.get')).ok).toBe(true)
+    expect((await session.rpc('status.get', {}, projectId)).ok).toBe(true)
   }, 25000)
 
   it('登出后状态回到未登录', async () => {
@@ -266,7 +269,10 @@ describe('云端会话服务（渲染进程可见面）', () => {
     await session.login('zhangsan', 'Passw0rd!')
     expect(session.getState().status).toBe('signed-in')
     expect(session.logout().status).toBe('signed-out')
-    expect(await session.rpc('status.get')).toEqual({ ok: false, code: 'NOT_SIGNED_IN' })
+    expect(await session.rpc('status.get', {}, projectId)).toEqual({
+      ok: false,
+      code: 'NOT_SIGNED_IN'
+    })
   })
 })
 

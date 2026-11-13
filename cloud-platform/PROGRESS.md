@@ -947,6 +947,30 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 2. 本轮只做"列出 + 默认打开第一个项目"，**每项目独立连接尚未实现**（M53）：`CloudSessionService` 仍是单客户端，切换项目会断开上一个。
 3. `repo.add` 对云端开放是新增攻击面：目前仅由"只能添加项目根"限定；"添加后能否读到项目根之外"由既有工作区边界（M36）兜底，值得在 M53 补一条组合用例。
 
+## M53 每项目独立连接（多项目并存）（本轮，开发子代理执行）
+
+**问题**：M52 已为每个项目注册运行时环境并同步出侧栏 repo，但 `CloudSessionService` 仍只有**一个** `CloudConnectClient` 和一个"当前项目"，`rpc`/`closeProject` 没有 projectId——切换项目会断开上一个，多项目只能串行使用。
+
+**关键约束**：设备身份（accessToken、deviceId、密钥对）在登录时注册，主机在 E2EE 握手里校验"hello 公钥 == 票据设备公钥"。因此**不能**每个项目重新登录（会注册多余设备、破坏设备绑定）。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-project-connections.ts`（新） | 平台会话持有者与 socket 持有者分离：登录客户端只做 HTTP（登录/列项目/取票），每项目 fork 一个**共享同一 `CloudDeviceIdentity`** 的连接客户端，各自升级与 `rpc`；`Map<projectId, entry>` 管理打开/关闭/全部关闭/按项目 RPC/按项目断开事件 |
+| `cloud-session-service.ts` | `openProject/ensureWorkspace/rpc/closeProject` 全部显式按 projectId 路由；移除 `connectedProjectId` 这类模糊的"当前项目"API；登出关闭全部 |
+| IPC / preload / 渲染层 | `cloud:rpc(method, params, projectId)`、`cloud:closeProject(projectId)`；更新全部调用点（`cloud-app.tsx`、`use-cloud-session.ts`、`cloud-project-workspace.tsx`） |
+| `device-registry-cloud-adoption.ts` | **主机侧必要修复**（非 M36–M44 边界）：设备登记原先按 deviceId 唯一，第二个项目的票会覆盖第一个项目的活 token，导致 `Invalid device token`。改为按 `(deviceId, token)` 登记，同一设备的兄弟会话各自持行；每设备每项目最多保留 4 个 token 防膨胀；按 deviceId 吊销仍会清除全部兄弟行 |
+
+**验证（`evidence/m53-multi-project/`）**：真实端到端（真实平台 + **单台**真实注册主机 + 两个项目 + 真实 TLS Runtime + 真实客户端）：两个项目同时在线，**两张票据携带同一 `devicePubKey`** 且主机都接受握手；各自 `status.get` 返回真实 `runtimeId`；会话 A 发起的跨项目 `worktree.list` 被 `forbidden`（证明两条 socket 各自受限，不是同一条）；关闭 A 后 A 返回 `NOT_CONNECTED` 而 B 仍正常。另有 6 条多项目单测 + 相关模块测试。
+
+**主会话独立负向对照**：让 `rpc` 忽略 projectId、固定用第一个连接 → e2e 变红（`forbidden: That file is outside the project this cloud session was granted`），恢复后通过。`tsc` node/web 0 错；changed-code 门禁 7 项 0 新发现。
+
+**测试执行规范（本轮同时确立，已写入 `DEVELOPMENT_PROCESS.md` §4.1）**：L1 最小（改动文件+邻居）→ L2 模块 → L3 里程碑 → L4 全量；**所有命令必须带 `--maxWorkers`（默认 4）**，禁止并行跑两个大范围套件，主会话与子代理不得同时跑大范围测试；负载过高立即终止且不得把部分结果当结论。
+
+**如实记录 / 剩余**：
+1. 设备登记现在每个设备+项目最多保留 4 个 token；socket 正常关闭时**不会**立即失效对应 token，只靠后来的登记淘汰。票据本身一次性且准入期会复查吊销，风险与之前同级，但留下一条主机侧清理待办。
+2. 管理页 `CloudApp` 仍是"同一时刻打开一个项目"的页面（现在按 projectId 显式路由）；多项目同屏展示不在本轮范围。
+3. 本轮未做 L4 全量：按分级规范，全量留到里程碑收口/最终验收单跑。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
 **用户决策**：普通开发者登录后直接进入 Orca 原生工作界面（左侧项目列表，用法不变）；自造的云端会话页**保留给管理员**，从平台项目列表页打开、可单独用 PC 浏览器访问；侧栏多项目**每项目独立连接**；文件面板随管理员页保留。

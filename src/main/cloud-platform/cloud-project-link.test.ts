@@ -176,7 +176,7 @@ describe('云端项目进入 Orca 工作区（真实平台 + 真实 Runtime + �
     expect(prepared.link.offer.deviceToken.length).toBeGreaterThan(0)
     expect(prepared.link.workspaceRoot).toContain('/srv/work/link-svc')
     // Preparation must not burn the single-use ticket: no socket was opened.
-    expect(session.connectedProjectId).toBeNull()
+    expect(session.connectedProjectIds).toEqual([])
   }, 20000)
 
   it('现有远程客户端用该链接完成 E2EE 并跑通 RPC', async () => {

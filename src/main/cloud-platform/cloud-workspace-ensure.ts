@@ -11,7 +11,14 @@ import type { CloudConnectClient } from './cloud-connect-client'
  */
 
 export type EnsureWorkspaceResult =
-  | { ok: true; workspacePath: string; created: boolean; capabilities: string[] }
+  | {
+      ok: true
+      workspacePath: string
+      created: boolean
+      capabilities: string[]
+      /** The route the live connection used; the session tracks the socket by it. */
+      route: 'direct' | 'relay'
+    }
   | { ok: false; code: string; message?: string }
 
 function isInside(root: string, candidate: string): boolean {
@@ -55,6 +62,7 @@ export async function ensureCloudWorkspace(
 
   const { projectRoot, workspaceRoot, defaultBranch } = ticket.ticket.workspace
   const capabilities = ticket.ticket.host.capabilities
+  const route = ticket.route
   const repo = `path:${projectRoot}`
   const branch = defaultBranch || 'main'
 
@@ -62,7 +70,7 @@ export async function ensureCloudWorkspace(
   if (listed.ok) {
     const existing = existingWorkspacePath(listed.result, workspaceRoot)
     if (existing !== null) {
-      return { ok: true, workspacePath: existing, created: false, capabilities }
+      return { ok: true, workspacePath: existing, created: false, capabilities, route }
     }
   }
 
@@ -82,7 +90,7 @@ export async function ensureCloudWorkspace(
     const path = readString(readField(created.result, 'worktree'), 'path')
     return path === null
       ? { ok: false, code: 'WORKSPACE_PATH_MISSING' }
-      : { ok: true, workspacePath: path, created: true, capabilities }
+      : { ok: true, workspacePath: path, created: true, capabilities, route }
   }
   // A racer may have created it between the listing and the create; re-list once
   // so a concurrent open of the same project still lands on a real checkout.
@@ -90,7 +98,7 @@ export async function ensureCloudWorkspace(
   if (recheck.ok) {
     const existing = existingWorkspacePath(recheck.result, workspaceRoot)
     if (existing !== null) {
-      return { ok: true, workspacePath: existing, created: false, capabilities }
+      return { ok: true, workspacePath: existing, created: false, capabilities, route }
     }
   }
   return { ok: false, code: created.code, message: created.message }

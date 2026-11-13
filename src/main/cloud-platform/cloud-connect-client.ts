@@ -24,6 +24,22 @@ export type CloudRpcResult =
   | { ok: true; result: unknown }
   | { ok: false; code: string; message?: string }
 
+export type CloudDeviceKeyPair = {
+  publicKey: Uint8Array
+  secretKey: Uint8Array
+}
+
+/**
+ * The platform identity a project connection must reuse. The device key pair is
+ * registered once at login and the host checks the E2EE hello against the ticket
+ * that names it, so a second login (new keys ⇒ new device) would break binding.
+ */
+export type CloudDeviceIdentity = {
+  accessToken: string
+  deviceId: string
+  keyPair: CloudDeviceKeyPair
+}
+
 export type CloudConnectOptions = {
   apiUrl: string
   /** Direct probe timeout per address. */
@@ -45,15 +61,21 @@ export class CloudConnectClient {
   private readonly fetchImpl: typeof fetch
   private accessToken = ''
   private deviceId = ''
-  private readonly deviceKeys = generateKeyPair()
+  private readonly deviceKeys: CloudDeviceKeyPair
   private socket: WebSocket | null = null
   private sharedKey: Uint8Array | null = null
   private rpcMux: CloudRpcMultiplexer | null = null
   private closeListener: ((code: number, reason: string) => void) | null = null
+  private lastTicketDevicePubKey: string | null = null
 
-  constructor(options: CloudConnectOptions) {
+  constructor(options: CloudConnectOptions, identity?: CloudDeviceIdentity) {
     this.options = options
     this.fetchImpl = options.fetchImpl ?? fetch
+    this.deviceKeys = identity?.keyPair ?? generateKeyPair()
+    if (identity) {
+      this.accessToken = identity.accessToken
+      this.deviceId = identity.deviceId
+    }
   }
 
   get devicePubKeyB64(): string {
@@ -68,8 +90,18 @@ export class CloudConnectClient {
    * The key pair the platform registered as this device. The cloud handshake must
    * use it: completing E2EE with this key is the proof of possession the host checks.
    */
-  deviceKeyPair(): { publicKey: Uint8Array; secretKey: Uint8Array } {
+  deviceKeyPair(): CloudDeviceKeyPair {
     return this.deviceKeys
+  }
+
+  /** Credentials a per-project connection forks; never exposed to a renderer. */
+  deviceIdentity(): CloudDeviceIdentity {
+    return { accessToken: this.accessToken, deviceId: this.deviceId, keyPair: this.deviceKeys }
+  }
+
+  /** Main-process only: the device key the host bound the live socket to. */
+  get ticketDevicePubKey(): string | null {
+    return this.lastTicketDevicePubKey
   }
 
   async login(
@@ -164,6 +196,7 @@ export class CloudConnectClient {
     projectId: string
   ): Promise<{ route: 'direct' | 'relay'; ticket: CloudConnectTicket }> {
     const prepared = await this.prepareProjectLink(projectId)
+    this.lastTicketDevicePubKey = readTicketClaims(prepared.ticket.credential).devicePubKey
     await this.upgrade({ endpoint: prepared.endpoint, route: prepared.route }, prepared.ticket)
     return { route: prepared.route, ticket: prepared.ticket }
   }

@@ -70,7 +70,7 @@ export function CloudProjectWorkspace({
             {project.hostName ? ` · ${project.hostName}` : ''}
           </p>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => void session.closeProject()}>
+        <Button variant="ghost" size="sm" onClick={() => void session.closeProject(project.id)}>
           返回工作台
         </Button>
       </header>

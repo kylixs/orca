@@ -21,12 +21,16 @@ export type CloudBridge = {
   login: (username: string, password: string) => Promise<CloudSessionState>
   openWorkspace: (projectId: string) => Promise<CloudOpenResult>
   registerProjects: () => Promise<CloudProjectEnvironment[]>
-  closeProject: () => Promise<{ ok: boolean }>
+  closeProject: (projectId: string) => Promise<{ ok: boolean }>
   logout: () => Promise<CloudSessionState>
   getState: () => Promise<CloudSessionState>
   listProjects: () => Promise<CloudProjectSummary[]>
   openProject: (projectId: string) => Promise<CloudOpenResult>
-  rpc: (method: string, params?: Record<string, unknown>) => Promise<CloudRpcOutcome>
+  rpc: (
+    method: string,
+    params: Record<string, unknown>,
+    projectId: string
+  ) => Promise<CloudRpcOutcome>
   onConnectionChanged: (listener: (event: CloudConnectionEvent) => void) => () => void
 }
 
@@ -59,7 +63,7 @@ export type CloudSessionView = {
   signIn: (username: string, password: string) => Promise<void>
   signOut: () => Promise<void>
   openProject: (projectId: string) => Promise<CloudOpenResult | null>
-  closeProject: () => Promise<void>
+  closeProject: (projectId: string) => Promise<void>
 }
 
 function isCloudState(value: unknown): value is CloudSessionState {
@@ -183,12 +187,12 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
     return result
   }, [])
 
-  const closeProject = useCallback(async () => {
+  const closeProject = useCallback(async (projectId: string) => {
     const active = bridgeRef.current
     if (!active) {
       return
     }
-    await active.closeProject()
+    await active.closeProject(projectId)
     setOpenProjectId(null)
     setOpened(null)
     setRoute(null)

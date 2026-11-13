@@ -9,24 +9,27 @@ import { CloudConnectClient, type CloudProject } from './cloud-connect-client'
 import { buildCloudProjectLink, type CloudProjectLink } from './cloud-pairing-offer'
 import { errorCodeOf } from '../../shared/json-fields'
 import { ensureCloudWorkspace, type EnsureWorkspaceResult } from './cloud-workspace-ensure'
+import {
+  CloudProjectConnections,
+  type CloudConnectionIdentity,
+  type CloudSessionOptions,
+  type CreateCloudClient
+} from './cloud-project-connections'
+
+export type { CloudSessionOptions } from './cloud-project-connections'
+export type { CloudConnectionIdentity } from './cloud-project-connections'
 
 export type CloudProjectLinkResult =
   | { ok: true; link: CloudProjectLink }
   | { ok: false; code: string; message?: string }
 
 /**
- * Owns the desktop cloud session. The renderer gets a thin, credential-free view:
- * tokens, device keys, and the socket stay in the main process.
+ * Owns the desktop cloud session. One platform login (token, device keys, device
+ * id) and one live socket per project; the renderer sees only credential-free state.
  */
 
-export type CloudSessionOptions = {
-  apiUrl: string
-  tlsRejectUnauthorized?: boolean
-  probeTimeoutMs?: number
-}
-
 export type CloudSessionDeps = {
-  createClient?: (options: CloudSessionOptions) => CloudConnectClient
+  createClient?: CreateCloudClient
 }
 
 function summarize(project: CloudProject): CloudProjectSummary {
@@ -44,16 +47,22 @@ function summarize(project: CloudProject): CloudProjectSummary {
 
 export class CloudSessionService {
   private readonly options: CloudSessionOptions
-  private readonly createClient: (options: CloudSessionOptions) => CloudConnectClient
+  private readonly createClient: CreateCloudClient
   private client: CloudConnectClient | null = null
+  private readonly connections: CloudProjectConnections
   private state: CloudSessionState = { status: 'signed-out' }
-  private currentProjectId: string | null = null
-  private currentRoute: 'direct' | 'relay' | null = null
   private listeners = new Set<(event: CloudConnectionEvent) => void>()
 
   constructor(options: CloudSessionOptions, deps: CloudSessionDeps = {}) {
     this.options = options
-    this.createClient = deps.createClient ?? ((settings) => new CloudConnectClient(settings))
+    this.createClient =
+      deps.createClient ?? ((settings, identity) => new CloudConnectClient(settings, identity))
+    this.connections = new CloudProjectConnections(
+      options,
+      this.createClient,
+      () => this.client?.deviceIdentity() ?? null,
+      (event) => this.emit(event)
+    )
   }
 
   onConnectionChanged(listener: (event: CloudConnectionEvent) => void): () => void {
@@ -76,21 +85,12 @@ export class CloudSessionService {
   }
 
   async login(username: string, password: string): Promise<CloudSessionState> {
+    this.connections.closeAll()
     this.client?.close()
+    this.client = null
     const client = this.createClient(this.options)
     const user = await client.login(username, password)
     const projects = await client.listProjects()
-    client.onClose((code, reason) => {
-      // A revoked session must not leave the UI looking connected.
-      this.emit({
-        closeCode: code,
-        reason,
-        projectId: this.currentProjectId,
-        route: this.currentRoute
-      })
-      this.currentProjectId = null
-      this.currentRoute = null
-    })
     this.client = client
     this.state = {
       status: 'signed-in',
@@ -101,20 +101,17 @@ export class CloudSessionService {
   }
 
   logout(): CloudSessionState {
+    this.connections.closeAll()
     this.client?.close()
     this.client = null
-    this.currentProjectId = null
-    this.currentRoute = null
     this.state = { status: 'signed-out' }
     return this.state
   }
 
-  /** Leaves the workspace without ending the platform session. */
-  closeProject(): { ok: true } {
-    // Keeps the token and device keys: reopening the same project must not need a re-login.
-    this.client?.close()
-    this.currentProjectId = null
-    this.currentRoute = null
+  /** Leaves one workspace without ending the platform session or other projects. */
+  closeProject(projectId: string): { ok: true } {
+    // Keeps the token and device keys: reopening must not need a re-login.
+    this.connections.close(projectId)
     return { ok: true }
   }
 
@@ -135,15 +132,13 @@ export class CloudSessionService {
       return { ok: false, code: 'NOT_SIGNED_IN' }
     }
     try {
-      const opened = await this.client.openProject(projectId)
-      this.currentProjectId = projectId
-      this.currentRoute = opened.route
+      const { connection, ticket } = await this.connections.open(projectId)
       return {
         ok: true,
         projectId,
-        route: opened.route,
-        workspaceRoot: opened.ticket.workspace.workspaceRoot,
-        capabilities: opened.ticket.host.capabilities
+        route: connection.route,
+        workspaceRoot: ticket.workspace.workspaceRoot,
+        capabilities: ticket.host.capabilities
       }
     } catch (error) {
       const code = errorCodeOf(error) ?? 'OPEN_FAILED'
@@ -157,13 +152,20 @@ export class CloudSessionService {
    * created through `worktree.createManaged`.
    */
   async ensureWorkspace(projectId: string): Promise<EnsureWorkspaceResult> {
-    if (!this.client) {
+    const identity = this.client?.deviceIdentity()
+    if (!identity) {
       return { ok: false, code: 'NOT_SIGNED_IN' }
     }
-    const result = await ensureCloudWorkspace(this.client, projectId)
-    if (result.ok) {
-      this.currentProjectId = projectId
+    // Why a fresh client: this socket performs the worktree calls itself, so it
+    // must not share the platform session's no-socket client. An existing socket
+    // for the project stays untouched until this one succeeds.
+    const client = this.createClient(this.options, identity)
+    const result = await ensureCloudWorkspace(client, projectId)
+    if (!result.ok) {
+      client.close()
+      return result
     }
+    this.connections.track(projectId, client, result.route)
     return result
   }
 
@@ -194,16 +196,29 @@ export class CloudSessionService {
     }
   }
 
-  async rpc(method: string, params: Record<string, unknown> = {}): Promise<CloudRpcOutcome> {
+  rpc(
+    method: string,
+    params: Record<string, unknown>,
+    projectId: string
+  ): Promise<CloudRpcOutcome> {
     if (!this.client) {
-      return { ok: false, code: 'NOT_SIGNED_IN' }
+      return Promise.resolve({ ok: false, code: 'NOT_SIGNED_IN' })
     }
-    return this.client.rpc(method, params)
+    return this.connections.rpc(projectId, method, params)
   }
 
-  /** True until the host closes the socket; used to decide whether to reconnect. */
-  get connectedProjectId(): string | null {
-    return this.currentProjectId
+  /** True while that project's host socket is live; used to decide reconnects. */
+  isProjectConnected(projectId: string): boolean {
+    return this.connections.has(projectId)
+  }
+
+  get connectedProjectIds(): string[] {
+    return this.connections.projectIds()
+  }
+
+  /** Main-process only: which device each live connection's ticket proved. */
+  connectionIdentities(): CloudConnectionIdentity[] {
+    return this.connections.identities()
   }
 
   private emit(event: CloudConnectionEvent): void {

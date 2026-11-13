@@ -17,6 +17,32 @@ export type CloudDeviceAdoption = {
 }
 
 /**
+ * Live tokens kept per registered device per project. The host admits at most 3
+ * sessions per user per project; one spare covers the socket closing as its
+ * replacement is adopted. Older tokens are dead once evicted.
+ */
+const CLOUD_TOKENS_PER_DEVICE_PROJECT = 4
+
+/** Drops the oldest tokens for this device+project so one-shot ticket churn stays bounded. */
+function trimSessionRows(
+  devices: DeviceEntry[],
+  deviceId: string,
+  projectId: string | undefined
+): DeviceEntry[] {
+  if (projectId === undefined) {
+    return devices
+  }
+  const group = devices.filter(
+    (device) => device.deviceId === deviceId && device.cloudSession?.projectId === projectId
+  )
+  if (group.length <= CLOUD_TOKENS_PER_DEVICE_PROJECT) {
+    return devices
+  }
+  const evicted = new Set(group.slice(0, group.length - CLOUD_TOKENS_PER_DEVICE_PROJECT))
+  return devices.filter((device) => !evicted.has(device))
+}
+
+/**
  * Registers a device the cloud platform already authenticated. Pure so the registry
  * stays under its size budget; the caller persists the returned list.
  */
@@ -34,7 +60,11 @@ export function adoptCloudDeviceInList(
           workspaceRoot: input.workspaceRoot
         }
       : undefined
-  const existing = devices.find((device) => device.deviceId === input.deviceId)
+  // Why token, not just deviceId: one registered desktop opens a socket per
+  // project, and each ticket carries its own token and project roots.
+  const existing = devices.find(
+    (device) => device.deviceId === input.deviceId && device.token === input.token
+  )
   if (existing) {
     if (
       existing.token === input.token &&
@@ -52,7 +82,9 @@ export function adoptCloudDeviceInList(
     }
     return {
       device: updated,
-      devices: devices.map((device) => (device.deviceId === input.deviceId ? updated : device)),
+      devices: devices.map((device) =>
+        device.deviceId === input.deviceId && device.token === input.token ? updated : device
+      ),
       changed: true
     }
   }
@@ -66,5 +98,9 @@ export function adoptCloudDeviceInList(
     pairedAt: now,
     lastSeenAt: 0
   }
-  return { device: entry, devices: [...devices, entry], changed: true }
+  return {
+    device: entry,
+    devices: trimSessionRows([...devices, entry], input.deviceId, cloudSession?.projectId),
+    changed: true
+  }
 }
