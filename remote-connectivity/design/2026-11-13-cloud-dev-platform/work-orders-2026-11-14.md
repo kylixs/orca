@@ -94,7 +94,10 @@ CloudProjectWorkspace 接入终端面板（复用 web 客户端终端管线 + cl
 - 管理员链路 C 的 C2/C3/C4(API)/C5(组) 步骤作为两线共同前置串联其中（对应管理员独立链的自动化部分）。
 文件 tests/e2e/cloud-journey-golden.spec.ts（或按基建惯例并入 native e2e 工程）。提交 `test(e2e): golden journey dual-line desktop and orca web`。
 
-## W8 · M115 兼容性回归修复（全量复测发现，优先级最高，W2 完成后立即派发）
+## W8 · 管理员 path 登记回归断言（降级为测试覆盖项，W2 测试代理已裁定非产品缺陷）
+
+裁定（evidence/w2-verify/w8-fact.json）：管理员 `POST /v1/projects` 携带 hostId+path 不带 dir → **201 正常**；INVALID_DIR 仅在 `/v1/projects/self`（自助）缺 dir 时出现；M115（7eba67c76cd）只改了自助路由校验。归档 e2e 失败是测试用了自助路由且缺 dir，已由 2bd257e4934 止血。
+剩余任务（一个测试代理，≤15 分钟）：为「管理员不带 dir、按 hostId+path 登记」补一条回归断言（挂到既有项目登记 e2e 或 archive 套件），防未来误把 dir 必填扩散到管理员路由。提交 `test(cloud): admin path-based project registration stays dir-free`。
 
 HEAD 快照全量套件 171 用例 163 过 8 失败；其中 4 个失败为**真回归**：M115（7eba67c76cd）把 `dir` 设为必填后，**管理员按 `path` 登记项目的旧调用收到 400 INVALID_DIR**（project-archive.e2e.test.ts 建项目失败级联 4 断言；证据 /tmp/m116-retest-full.log）。修法：目录必填仅约束开发者自助路径（FR-3.7）；管理员登记（path 直供）保持原语义，dir 缺省时按现有 key/path 规则派生。修复后 project-archive e2e 全绿 + 新增「管理员无 dir 登记」回归断言。提交 `fix(cloud): admin project creation keeps path semantics`。另 2 个失败为快照缺 evidence/、1 个为快照缺 src/ 跨目录依赖（环境产物，修复验证时在主工作区跑对应文件确认即可，不算回归）。
 
