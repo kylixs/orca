@@ -2392,6 +2392,10 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 - `6997ee99f78`（宿主侧）：`enrollCloudHost` 缺省 routeKey=派生 `ip-<地址>`（点/冒号折叠为横线以过中继 SNI 白名单），显式配置优先。
 - 已知记录项：acceptance-index 会把 `m114-relay-page` 列为「test-plan 未引用」（记录性输出）；后续在 test-plan 补引用即可消除。
 
+### 复检发现 D1：Web bundle 缺失时宿主静态页挂起（已记录 + 派发修复，2026-11-14）
+
+用户报「无法跳过证书错误 + 页面打不开」。排查链：① 本机测试宿主证书漏 SAN（主会话手工签发所致，产品 `/install/host.sh` 已带 `subjectAltName=DNS:localhost,IP:127.0.0.1`，无缺陷）；② 自签 CA 不受浏览器信任 → 已建本地 CA 加入登录钥匙串解决；③ **真正产品缺陷 D1**：开发树未构建 `out/web/` 时 `getBundledWebClientRoot()` 返回 undefined，宿主 TLS 监听无 requestListener，对 `/cloud-admin.html` 的 GET **挂起 0 字节**（curl 超时/浏览器空转），而非 404/503——这也是 M113 管理员页截图任务始终未完成的根因。本机已 `pnpm run build:web-from-renderer` 构建并重启宿主验证 200。修复派发：ws-transport 无 staticRoot 时对静态路径返回 503 + 启动警告日志。
+
 ### M117 管理员项目详情/会话页入口（需求澄清 + 派发，2026-11-14）
 
 用户澄清：此前设计调整（design-adjustment-native-ui.md）已定「云端项目详情界面保留为管理员查看使用」，界面细节以 ui 原型 P3 为准。现状缺口：平台 Web 的「打开会话页」是全局注入配置（未配置即隐藏、不分项目，`apps/web/app.js:205-222`），宿主侧 cloud-admin.html 已实现（M113 截图证据）。派发改造：平台按宿主直连地址**按项目**生成 `https://<宿主直连>/cloud-admin.html?api=<平台>` 详情链接（管理员项目行「详情」新标签打开）；开发者不显示入口、「打开」对话框补「请在桌面客户端打开」引导。文档同步（FR-3.8、tasks T222、PLAN M117，提交 1c919a989f7）；实现追加给 M115 代码子代理顺序执行。
