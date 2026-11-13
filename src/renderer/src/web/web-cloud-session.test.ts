@@ -270,6 +270,42 @@ describe('browser cloud login, project list and ticket', () => {
     expect(projects[1]?.downloadRestricted).toBe(true)
   })
 
+  it('a 401 refreshes once and retries the project list with the rotated token', async () => {
+    const { fetchImpl, calls } = scriptedFetch([
+      jsonReply({ ...LOGIN_BODY, expiresIn: 300 }),
+      errorReply('SESSION_EXPIRED', 401),
+      jsonReply({ accessToken: 'access-2', refreshToken: 'refresh-2', expiresIn: 300 }),
+      jsonReply({ projects: [] })
+    ])
+    const session = await loginToCloud(loginInput(fetchImpl))
+
+    const projects = await listCloudProjects(session, { fetchImpl })
+    expect(projects).toEqual([])
+    expect(session.auth?.accessToken).toBe('access-2')
+    expect(session.auth?.refreshToken).toBe('refresh-2')
+    expect(calls.map((call) => call.url)).toEqual([
+      'http://platform.test/v1/auth/login',
+      'http://platform.test/v1/projects',
+      'http://platform.test/v1/auth/refresh',
+      'http://platform.test/v1/projects'
+    ])
+  })
+
+  it('a second 401 after the refresh surfaces SESSION_EXPIRED without retrying again', async () => {
+    const { fetchImpl, calls } = scriptedFetch([
+      jsonReply({ ...LOGIN_BODY, expiresIn: 300 }),
+      errorReply('SESSION_EXPIRED', 401),
+      jsonReply({ accessToken: 'access-2', refreshToken: 'refresh-2', expiresIn: 300 }),
+      errorReply('SESSION_EXPIRED', 401)
+    ])
+    const session = await loginToCloud(loginInput(fetchImpl))
+
+    const error = await captureError(() => listCloudProjects(session, { fetchImpl }))
+    expect(error.code).toBe('SESSION_EXPIRED')
+    expect(error.status).toBe(401)
+    expect(calls.filter((call) => call.url.endsWith('/v1/auth/refresh'))).toHaveLength(1)
+  })
+
   it('surfaces INVALID_CREDENTIALS from login and returns no session', async () => {
     const { fetchImpl } = scriptedFetch([errorReply('INVALID_CREDENTIALS', 401)])
     const error = await captureError(() => loginToCloud(loginInput(fetchImpl)))

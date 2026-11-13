@@ -1,12 +1,9 @@
-import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
-import { errorCodeOf } from '../../../shared/json-fields'
-import { readTicketClaims, type CloudReplyTicket } from '../../../shared/cloud-platform-reply'
+import { readTicketClaims } from '../../../shared/cloud-platform-reply'
 import { openCloudWorkspaceOverRpc } from '../../../shared/cloud-workspace-open'
 import type {
   CloudConnectionEvent,
   CloudCreateProjectResult,
   CloudOpenResult,
-  CloudProjectPermission,
   CloudProjectRegistration,
   CloudProjectSummary,
   CloudProvisionableHost,
@@ -21,6 +18,15 @@ import {
 } from '../web/web-cloud-device-key'
 import { WebRuntimeClient } from '../web/web-runtime-client'
 import type { WebPairingOffer } from '../web/web-pairing'
+import {
+  failure,
+  isSessionExpired,
+  outcomeOf,
+  routeOf,
+  summarize,
+  type BrowserCloudClient,
+  type OpenConnection
+} from './cloud-browser-bridge-replies'
 import {
   cloudPairingOfferFromTicket,
   listCloudProjects,
@@ -39,7 +45,7 @@ import type { CloudBridge } from './use-cloud-session'
  * only thing persisted, and the secret half never enters an offer or bridge state.
  */
 
-export type BrowserCloudClient = Pick<WebRuntimeClient, 'call' | 'close' | 'connectionState'>
+export type { BrowserCloudClient } from './cloud-browser-bridge-replies'
 
 export type CloudBrowserBridgeOptions = {
   apiUrl: string
@@ -52,50 +58,9 @@ export type CloudBrowserBridgeOptions = {
   clientFactory?: (offer: WebPairingOffer, deviceSecretKeyB64: string) => BrowserCloudClient
 }
 
-type OpenConnection = {
-  client: BrowserCloudClient
-  route: 'direct' | 'relay'
-  workspace: CloudReplyTicket['workspace']
-  capabilities: string[]
-  permissions?: CloudProjectPermission[]
-}
-
 const STATUS_TIMEOUT_MS = 15_000
 const RPC_TIMEOUT_MS = 5_000
 const CONNECTION_POLL_MS = 2_000
-
-function summarize(project: WebCloudProject): CloudProjectSummary {
-  return {
-    id: project.id,
-    key: project.key,
-    name: project.name,
-    hostName: project.hostName,
-    hostStatus: project.hostStatus,
-    status: project.status,
-    provisioningError: project.provisioningError,
-    downloadRestricted: project.downloadRestricted
-  }
-}
-
-function routeOf(offer: WebPairingOffer, ticket: CloudReplyTicket): 'direct' | 'relay' {
-  return ticket.endpoints.direct.some((endpoint) => endpoint.url === offer.endpoint)
-    ? 'direct'
-    : 'relay'
-}
-
-function outcomeOf(reply: RuntimeRpcResponse<unknown>): CloudRpcOutcome {
-  return reply.ok
-    ? { ok: true, result: reply.result }
-    : { ok: false, code: reply.error.code, message: reply.error.message }
-}
-
-function failure(cause: unknown, fallback: string): { ok: false; code: string; message: string } {
-  return {
-    ok: false,
-    code: errorCodeOf(cause) ?? fallback,
-    message: cause instanceof Error ? cause.message : String(cause)
-  }
-}
 
 export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): CloudBridge {
   const fetchOptions = options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}
@@ -109,6 +74,8 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
   let identity: WebCloudDeviceIdentity | null = null
   let state: CloudSessionState = { status: 'signed-out' }
   let pollTimer: ReturnType<typeof setInterval> | null = null
+  // Why once: concurrent platform calls can all fail after the first one signed out.
+  let sessionEnded = false
 
   function closeConnection(projectId: string): boolean {
     const entry = connections.get(projectId)
@@ -129,6 +96,25 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
   function emit(event: CloudConnectionEvent): void {
     for (const listener of listeners) {
       listener(event)
+    }
+  }
+
+  /** A dead refresh token ends the login: sockets close and the UI returns to sign-in. */
+  function endSession(): void {
+    if (sessionEnded) {
+      return
+    }
+    sessionEnded = true
+    closeAll()
+    session = null
+    identity = null
+    state = { status: 'signed-out' }
+    emit({ projectId: null, route: null, closeCode: 4401, reason: 'session_expired' })
+  }
+
+  function notePlatformError(error: unknown): void {
+    if (isSessionExpired(error)) {
+      endSession()
     }
   }
 
@@ -178,6 +164,7 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
       connections.set(projectId, entry)
       return entry
     } catch (error) {
+      notePlatformError(error)
       return failure(error, 'OPEN_FAILED')
     }
   }
@@ -187,6 +174,7 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
       closeAll()
       session = null
       identity = null
+      sessionEnded = false
       state = { status: 'signed-out' }
       const loaded = loadOrCreateWebCloudDeviceKey(options.deviceKeyStore)
       const nextSession = await loginToCloud({
@@ -198,7 +186,13 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
         ...fetchOptions,
         ...(options.now ? { now: options.now } : {})
       })
-      const projects = await listCloudProjects(nextSession, fetchOptions)
+      let projects: WebCloudProject[]
+      try {
+        projects = await listCloudProjects(nextSession, fetchOptions)
+      } catch (error) {
+        notePlatformError(error)
+        throw error
+      }
       session = nextSession
       identity = loaded
       state = {
@@ -217,7 +211,14 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
       if (!session) {
         throw Object.assign(new Error('not signed in'), { code: 'NOT_SIGNED_IN' })
       }
-      const projects = (await listCloudProjects(session, fetchOptions)).map(summarize)
+      let listed: WebCloudProject[]
+      try {
+        listed = await listCloudProjects(session, fetchOptions)
+      } catch (error) {
+        notePlatformError(error)
+        throw error
+      }
+      const projects = listed.map(summarize)
       if (state.status === 'signed-in') {
         state = { ...state, projects }
       }
@@ -292,6 +293,7 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
       closeAll()
       session = null
       identity = null
+      sessionEnded = false
       state = { status: 'signed-out' }
       return state
     },

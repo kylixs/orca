@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import { ownEntries, parseJsonText, readString } from '../../../shared/json-fields'
+import type { CloudConnectionEvent } from '../../../shared/cloud-platform-ipc'
 import type { WebCloudDeviceKeyStorage } from '../web/web-cloud-device-key'
 import type { WebPairingOffer } from '../web/web-pairing'
 import { createCloudBrowserBridge, type BrowserCloudClient } from './cloud-browser-bridge'
@@ -88,14 +89,23 @@ type ScriptedPlatform = {
   fetchImpl: typeof fetch
   requests: string[]
   devicePublicKeyB64: () => string
+  /** Makes every token-guarded call answer as a dead session. */
+  expire: () => void
 }
 
 function scriptedPlatform(): ScriptedPlatform {
   const requests: string[] = []
   let devicePublicKey = ''
+  let expired = false
   const fetchImpl: typeof fetch = async (input, init) => {
     const url = String(input)
     requests.push(`${init?.method ?? 'GET'} ${url}`)
+    if (url.endsWith('/v1/auth/refresh')) {
+      return jsonReply({ error: { code: 'SESSION_EXPIRED', message: 'dead' } }, 401)
+    }
+    if (expired) {
+      return jsonReply({ error: { code: 'SESSION_EXPIRED', message: 'dead' } }, 401)
+    }
     if (url.endsWith('/v1/auth/login')) {
       const body = typeof init?.body === 'string' ? parseJsonText(init.body) : null
       devicePublicKey = readString(body, 'devicePubKey') ?? ''
@@ -122,12 +132,19 @@ function scriptedPlatform(): ScriptedPlatform {
     }
     return jsonReply({ error: { code: 'not_found', message: url } }, 404)
   }
-  return { fetchImpl, requests, devicePublicKeyB64: () => devicePublicKey }
+  return {
+    fetchImpl,
+    requests,
+    devicePublicKeyB64: () => devicePublicKey,
+    expire: () => {
+      expired = true
+    }
+  }
 }
 
 type FakeCall = { projectId: string; method: string; params: unknown }
 
-function scriptedFactory(offers: WebPairingOffer[], calls: FakeCall[]) {
+function scriptedFactory(offers: WebPairingOffer[], calls: FakeCall[], closed: string[]) {
   return (offer: WebPairingOffer): BrowserCloudClient => {
     offers.push(offer)
     const projectId = offer.deviceToken.replace('device-token-', '')
@@ -142,7 +159,9 @@ function scriptedFactory(offers: WebPairingOffer[], calls: FakeCall[]) {
           _meta: { runtimeId: 'runtime-1' }
         }
       },
-      close: () => undefined
+      close: () => {
+        closed.push(projectId)
+      }
     }
   }
 }
@@ -152,20 +171,22 @@ function makeBridge(): {
   storage: DeviceKeyStorage
   offers: WebPairingOffer[]
   calls: FakeCall[]
+  closed: string[]
   platform: ScriptedPlatform
 } {
   const storage = new DeviceKeyStorage()
   const offers: WebPairingOffer[] = []
   const calls: FakeCall[] = []
+  const closed: string[] = []
   const platform = scriptedPlatform()
   const bridge = createCloudBrowserBridge({
     apiUrl: 'http://platform.test',
     deviceName: 'm54-admin',
     deviceKeyStore: storage,
     fetchImpl: platform.fetchImpl,
-    clientFactory: scriptedFactory(offers, calls)
+    clientFactory: scriptedFactory(offers, calls, closed)
   })
-  return { bridge, storage, offers, calls, platform }
+  return { bridge, storage, offers, calls, closed, platform }
 }
 
 describe('浏览器 CloudBridge', () => {
@@ -234,5 +255,33 @@ describe('浏览器 CloudBridge', () => {
     expect(JSON.stringify(await bridge.getState())).not.toContain(secretKeyB64)
     // Exactly one write: the injected store created the identity on first use.
     expect(storage.writes).toHaveLength(1)
+  })
+
+  it('会话过期时关闭连接、回到签出，并且只发一次 4401 事件', async () => {
+    const { bridge, platform, closed } = makeBridge()
+    await bridge.login('zhangsan', 'Passw0rd!')
+    await bridge.openProject('proj-1')
+
+    const events: CloudConnectionEvent[] = []
+    const unsubscribe = bridge.onConnectionChanged((event) => events.push(event))
+    platform.expire()
+
+    const [first, second] = await Promise.all([
+      bridge.openProject('proj-2'),
+      bridge.openWorkspace('proj-1')
+    ])
+    expect(first).toMatchObject({ ok: false, code: 'SESSION_EXPIRED' })
+    expect(second).toMatchObject({ ok: false, code: 'SESSION_EXPIRED' })
+    expect(await bridge.getState()).toEqual({ status: 'signed-out' })
+    expect(events).toEqual([
+      { projectId: null, route: null, closeCode: 4401, reason: 'session_expired' }
+    ])
+    expect(closed).toContain('proj-1')
+    // Why one refresh: both failed calls share the single-flight refresh.
+    expect(
+      platform.requests.filter((request) => request.endsWith('/v1/auth/refresh'))
+    ).toHaveLength(1)
+    await expect(bridge.listProjects()).rejects.toMatchObject({ code: 'NOT_SIGNED_IN' })
+    unsubscribe()
   })
 })

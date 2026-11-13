@@ -55,6 +55,7 @@
     "../src/renderer/src/web/web-cloud-connect.e2e.test.ts",
     "../src/renderer/src/web/web-cloud-handoff.e2e.test.ts",
     "../src/renderer/src/web/web-cloud-session-recovery.e2e.test.ts",
+    "../src/renderer/src/web/web-cloud-session-renewal.e2e.test.ts",
     "../src/renderer/src/web/web-cloud-session.e2e.test.ts",
     "../src/renderer/src/web/web-cloud-transport.e2e.test.ts"
   ],

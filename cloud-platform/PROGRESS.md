@@ -1169,13 +1169,39 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 4. 旧 refresh token 映射为支持重放检测而保留，未按会话清理；条目数受刷新次数约束（每会话每 30 分钟一条，12 小时内 ≤24）。
 5. 会话过期时主进程直接 `logout()`，未走 IPC 层的 `removeCloudRuntimeEnvironments`；重新登录时 `registerProjects` 会按 projectId 覆盖环境，但登出瞬间侧栏环境记录残留（界面已切回登录页，不可见）。
 
+## M62 浏览器云端会话续期（本轮，开发子代理执行）
+
+**问题**：M61 只给桌面主进程做了续期。浏览器侧（Orca Web + 管理员会话页共用 `src/renderer/src/web/`）保存了 `refreshToken` 却从不使用：30 分钟后 `listCloudProjects` / `requestCloudTicket` 全部 401 `SESSION_EXPIRED`，管理员会话页与浏览器工作区只能重新登录。
+
+| 改动 | 内容 |
+|---|---|
+| `web-cloud-auth.ts`（新）/ `web-cloud-authorized-request.ts`（新）/ `web-cloud-error.ts`（新）/ `web-cloud-request.ts`（新） | 每次登录一份 auth：提前 60s 刷新、401 强制刷新、单飞、失败锁定 `SESSION_EXPIRED`、无 `expiresIn` 时按 401 刷新；指纹用 FNV（浏览器无 `node:crypto`）。授权请求先 `ensureFresh`，401 后**只重试一次** |
+| `web-cloud-session.ts` | `WebCloudSession` 增加 `expiresIn`/`auth`；`loginToCloud` 读取平台新字段并建 auth；列表/取票走授权请求，**无 auth 的旧会话行为不变** |
+| `cloud-browser-bridge.ts` + `cloud-browser-bridge-replies.ts`（新） | 平台调用 `SESSION_EXPIRED` → 关闭全部连接、清 session/identity、置 signed-out、**一次性**发 `{closeCode:4401, reason:'session_expired'}`（并发过期只发一次）；bridge 保持 ≤300 行 |
+| tsconfig | 新 e2e 归入既有 `config/tsconfig.cloud-e2e.json`（与另外 6 个 web e2e 同一做法，未改工程边界） |
+
+**验证（`evidence/m62-web-session-renewal/`）**：
+- 真实端到端 1 条（真实平台 `accessTtlMs: 1200` + 真实注册主机 + 真实 TLS Runtime + 真实 Ed25519 票据 + 真实 WSS）：登录 → 等到客户端估算仅剩 ~500ms（服务端已过期）→ `listCloudProjects` 与 `requestCloudTicket` **仍成功**（access/refresh 指纹均变化，票据可用于真实 WSS）→ 用该用户 token `/v1/auth/logout` 作废会话 → 下一次取票抛 `SESSION_EXPIRED`。
+- 单测：提前阈值、无 `expiresIn` 不提前请求、单飞、旋转、失败锁定、网络异常；session 401 刷新重试成功后不二次刷新；bridge 过期时关连接、signed-out、只发一次 4401、只刷新一次。
+- 回归：4 个 web 云端 e2e（8 条）全过；6 个相关 vitest 文件 46 条全过。
+
+**主会话独立验收**：6 个 vitest 文件 **46 条全过**；4 个 web e2e **8 条全过**；`tsc tc.web` 0 错、`tsc cloud-e2e` 0 错；`check:code-quality:changed` 0 新发现。
+
+**主会话独立负向对照**：让 `authorizedRequest` 在 401 时直接抛 `SESSION_EXPIRED`（不刷新不重试）→ renewal e2e **变红**，恢复后 1/1 绿。
+
+**如实记录 / 剩余**：
+1. 浏览器没有保活定时器：标签页休眠恢复时靠 `ensureFresh` 或首个 401 刷新，多一次往返。
+2. refresh token 只在内存，**刷新页面/重载需重新登录**；Orca Web 的会话持久化不在本轮范围。
+3. 刷新成功但平台持续 401 时不锁定（只有刷新失败才结束会话），会每次重试一次刷新——可接受，但极端情况下多打平台。
+4. e2e 依赖本地 `openssl` 与真实平台进程（沿用既有 harness）。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M61（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M62（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步（按缺口排序）**：
-1. **浏览器会话页续期**：管理员页复用平台的 refresh 流程，避免 30 分钟后掉线。
-2. **主机断连清理**：云设备 token 仅在注册表淘汰，不随 socket 关闭释放。
-3. **签到准备并行化**：`registerProjects` 逐项目串行准备，多仓库首屏被最长 clone 拖慢。
-4. **项目删除/重命名**：创建失败或废弃的项目会永久占用 key 与 `projectsRoot/<key>` 路径。
+1. **主机断连清理**：云设备 token 仅在注册表淘汰，不随 socket 关闭释放。
+2. **签到准备并行化**：`registerProjects` 逐项目串行准备，多仓库首屏被最长 clone 拖慢。
+3. **项目删除/重命名**：创建失败或废弃的项目会永久占用 key 与 `projectsRoot/<key>` 路径。
+4. **Refresh token 持久化**：桌面重启与浏览器重载都需重新登录；需要安全存储方案。
 5. **`agent.launch` 在本人工作区的真实执行**未被实际验证（历史仅覆盖拒绝路径）。

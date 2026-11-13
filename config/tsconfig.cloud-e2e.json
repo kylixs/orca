@@ -16,11 +16,12 @@
     "../config/scripts/vitest-host-ports-setup.ts",
     // Ambient renderer declarations (vite client types, build-time defines) the specs rely on.
     "../src/renderer/src/env.d.ts",
-    // The six specs, plus the renderer modules they import; everything transitive follows.
+    // The seven specs, plus the renderer modules they import; everything transitive follows.
     "../src/renderer/src/cloud-admin/cloud-admin-session.e2e.test.ts",
     "../src/renderer/src/web/web-cloud-connect.e2e.test.ts",
     "../src/renderer/src/web/web-cloud-handoff.e2e.test.ts",
     "../src/renderer/src/web/web-cloud-session-recovery.e2e.test.ts",
+    "../src/renderer/src/web/web-cloud-session-renewal.e2e.test.ts",
     "../src/renderer/src/web/web-cloud-session.e2e.test.ts",
     "../src/renderer/src/web/web-cloud-transport.e2e.test.ts",
     "../src/renderer/src/cloud/cloud-browser-bridge.ts",
