@@ -882,9 +882,33 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 3. 未做：令牌刷新（`/v1/auth/refresh`）、会话持久化、IndexedDB 迁移、启动期重取票、真实 DOM 页面上下文验证（e2e 用 Node `ws`）。
 4. `VITE_ORCA_CLOUD_API_URL` 是构建期变量，尚无运行时配置发现。
 
+## M50 云会话交接：登录后的连接直接服务 App（本轮，开发子代理执行）
+
+**问题**（M49 记录的阻断）：登录时用一次 `status.get` 校验，**这一次校验就消费了一次性票据**；`WebConnect` 随后关闭客户端、保存一个没有 `cloud` 绑定的环境、挂载 App。App 的 preload 层再自建 `WebRuntimeClient`，升级必然被拒——用户"进了界面但运行时是死的"。云端登录对用户毫无价值。
+
+**做法**：把校验用的**同一条活连接**交给 App，不再二次升级。
+
+| 改动 | 内容 |
+|---|---|
+| `preload-api/web-runtime-session.ts` | 新增 `adoptWebRuntimeClient(client, environment)`：安装为 `activeClient`、记录环境 id、写 `activeEnvironment`、清 worktree 缓存、挂接状态发布；**同一客户端重复采纳不关闭**，换成不同客户端才关闭旧的。`getClientForEnvironment` 按 id 返回已采纳的客户端，普通环境走原路径不变 |
+| `web-cloud-connect.ts` | 成功后**不关闭**客户端，连环境一起返回；所有失败路径仍在 `catch` 中关闭。使用窄接口 `WebRuntimeSessionClient`，不需要类型断言 |
+| `WebConnectCloudForm.tsx` | 先 `saveStoredWebRuntimeEnvironment`（保留 `cloudLoginRequired` 标记）再 `adoptWebRuntimeClient`，然后才 `onConnected()`；保存失败则先关闭客户端 |
+| 断线语义 | 云环境的票据已用尽，`reconnect: false`。断线时状态层如实报告 `disconnected`/`unavailable`，`getClientForEnvironment`/`observeWebRuntimeStatus` 返回 `runtime_cloud_session_ended`（"云会话已结束，请重新登录"），**不再对已作废的 offer 静默重连** |
+
+**验证（`evidence/m50-web-cloud-handoff/`）**：真实端到端 1 条 —— 真实平台进程 + 真实注册主机 + 真实 TLS Runtime：`connectCloudProject` → 采纳 → 通过 **preload 层**取客户端并发真实 RPC，返回真实 `runtimeId`；断言 preload 返回的**就是**校验时那个客户端对象（`preloadClientIsAdoptedClient: true`），并额外证明同一票据再次升级被拒（`401 replayed`），即票据只被消费一次、没有第二次升级。另有采纳语义单测（含真实 socket 断线状态发布）、`connectCloudProject` 成功/各失败路径的开启与关闭断言、界面"先采纳再 onConnected"断言。
+
+**主会话独立负向对照**：让 `getClientForEnvironment` 忽略已采纳客户端、总是新建 → e2e 变红（`expected WebRuntimeClient{…} to be WebRuntimeClient{…}`，且新客户端没有 credential/deviceSecret/scope），恢复后通过。浏览器侧 48 文件 335 条全过；`tsc` web/node 0 错；门禁 7 项 0 新发现。
+
+**如实记录 / 剩余**：
+1. **断线后不能自动恢复**：票据已作废，只有重新登录能拿新票。目前用户看到"云会话已结束"的错误，需要刷新（`main.tsx` 会回到登录页）或重新打开连接页；**没有自动跳回登录的 UX**。
+2. 真实浏览器里 `<App/>` 挂载后的完整交互未验证：e2e 证明了 preload 会话状态与真实 socket 上的 RPC，React 宿主仅由组件测试覆盖。
+3. 配对码路径未变（其 offer 可复用，仍自带校验客户端）。
+4. 采纳的连接保持 `reconnect: false`；将来要支持断线重连必须重新登录取票，而不是传输层重试。
+
 ## 下一步
 
-**M50 云会话交接**：让云端登录的**同一条连接**服务 App（把 WebConnect 的已验证传输/客户端交给 preload API），或实现 App 侧按需重取票；验收标准是"登录后终端面板可用"，而不是"能进界面"。完成后删除自造的 `cloud-file-panel.tsx` 与云端壳子工作区页。
+1. **M51 断线后自动回到登录（带提示）**：云环境断线/`runtime_cloud_session_ended` 时自动卸载 App 并展示登录页与原因，而不是让用户停在死界面。
+2. 随后：删除自造的 `cloud-file-panel.tsx` 与云端壳子工作区页，让浏览器完全走 Orca 原生界面。
 
 **界面方向修正（用户决定）**：不再自造云端面板。Orca 自带浏览器客户端（`src/renderer/src/web/`，约 1.1 万行，入口 `web-index.html`，在浏览器内重建 `window.api` 并挂载同一个 `App`）才是"统一工作界面"；它目前只接受**配对码**，没有云票据支持。改造顺序：
 

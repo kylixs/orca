@@ -152,6 +152,11 @@ function fakeClientFactory(reply: RuntimeRpcResponse<unknown>): {
   const calls: { method: string; options: unknown }[] = []
   const close = vi.fn()
   const client: WebCloudConnectClient = {
+    connectionState: 'connected',
+    attachStatusOwner: () => undefined,
+    subscribe: async () => {
+      throw new Error('unit fake does not subscribe')
+    },
     call: async (method, _params, options) => {
       calls.push({ method, options })
       return reply
@@ -239,7 +244,15 @@ describe('connectCloudProject', () => {
     expect(result.deviceSecretKeyB64).toBe(identity.secretKeyB64)
     expect(fake.secrets).toEqual([identity.secretKeyB64])
     expect(fake.client.calls).toEqual([{ method: 'status.get', options: { timeoutMs: 15_000 } }])
-    expect(fake.client.close).toHaveBeenCalledTimes(1)
+    // The validated socket stays open: its ticket is already spent.
+    expect(result.client).toBe(fake.client.client)
+    expect(fake.client.close).not.toHaveBeenCalled()
+    expect(result.environment).toMatchObject({
+      name: 'Payments (cloud session)',
+      runtimeId: 'runtime-42',
+      cloudLoginRequired: true
+    })
+    expect(result.environment.endpoints[0]?.endpoint).toBe('wss://runtime.example')
     // The secret must never ride on the offer or anything the offer serialises to.
     expect(JSON.stringify(result.offer)).not.toContain(identity.secretKeyB64)
     expect(JSON.stringify(result.offer)).not.toContain('secretKeyB64')
@@ -339,6 +352,35 @@ describe('connectCloudProject', () => {
     }
     expect(error.code).toBe(WEB_CLOUD_CONNECT_ERROR_CODE.connectFailed)
     expect(error.message).toContain('runtime exploded')
+    expect(fake.client.close).toHaveBeenCalledTimes(1)
+  })
+
+  it('closes the client when status.get itself throws', async () => {
+    const store = new MemoryStorage()
+    const platform = scriptedPlatform()
+    const close = vi.fn()
+    const factory: WebCloudConnectClientFactory = () => ({
+      connectionState: 'connected',
+      attachStatusOwner: () => undefined,
+      subscribe: async () => {
+        throw new Error('unit fake does not subscribe')
+      },
+      call: async () => {
+        throw new Error('socket unavailable')
+      },
+      close
+    })
+
+    const error = await captureError(() =>
+      connectCloudProject(input(store, { fetchImpl: platform.fetchImpl, clientFactory: factory }))
+    )
+
+    expect(error).toBeInstanceOf(WebCloudConnectError)
+    if (!(error instanceof WebCloudConnectError)) {
+      throw new Error('expected WebCloudConnectError')
+    }
+    expect(error.code).toBe(WEB_CLOUD_CONNECT_ERROR_CODE.connectFailed)
+    expect(close).toHaveBeenCalledTimes(1)
   })
 
   it('maps a throwing client to CONNECT_FAILED', async () => {

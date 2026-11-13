@@ -181,6 +181,11 @@ const probeStatusReply: RuntimeRpcResponse<unknown> = {
 }
 
 const probeFactory: WebCloudConnectClientFactory = () => ({
+  connectionState: 'connected',
+  attachStatusOwner: () => undefined,
+  subscribe: async () => {
+    throw new Error('probe does not subscribe')
+  },
   call: async () => probeStatusReply,
   close: () => undefined
 })
@@ -216,6 +221,8 @@ describe('浏览器云端登录入口（真实平台 + 真实 TLS Runtime）', (
       },
       secretLeakedIntoOffer: serializedOffer.includes(identity.secretKeyB64)
     })
+    // The handoff now owns the socket; this test only validated it.
+    result.client.close()
   }, 30_000)
 
   it('M49-2 连续调用换新票据，返回的 offer 被真实传输接受', async () => {
@@ -262,6 +269,9 @@ describe('浏览器云端登录入口（真实平台 + 真实 TLS Runtime）', (
       })
     } finally {
       transport.close()
+      first.client.close()
+      second.client.close()
+      accepted.client.close()
     }
   }, 45_000)
 })

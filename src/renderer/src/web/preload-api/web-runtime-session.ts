@@ -1,16 +1,19 @@
-import type {
-  RuntimeHostStatusSnapshot,
-  RuntimeHostStatusResponse
+import {
+  runtimeHostStatusFailure,
+  type RuntimeHostStatusSnapshot,
+  type RuntimeHostStatusResponse
 } from '../../../../shared/runtime-host-status'
 import type { ZcodePlanSite } from '../../../../shared/zcode-plan-sites'
 import type { WorktreeVisibilityDefaults } from '../../../../shared/global-settings-types'
 import { RuntimeRpcCallQueuePool } from '../../../../shared/runtime-rpc-call-queue'
 import type { RuntimeRpcResponse } from '../../../../shared/runtime-rpc-envelope'
 import type { Worktree } from '../../../../shared/worktree/types'
+import type { WebRuntimeSessionClient } from '../web-runtime-client'
 import { WebRuntimeClient } from '../web-runtime-client'
 import {
   clearStoredWebRuntimeEnvironment,
   getPreferredWebPairingOffer,
+  isCloudSessionWebEnvironment,
   readStoredWebRuntimeEnvironment,
   updateStoredEnvironmentRuntimeId
 } from '../web-runtime-environment'
@@ -23,7 +26,7 @@ export const webRuntimeState: {
   zcodePlanSiteRuntimeValue: ZcodePlanSite | null
   worktreeVisibilityDefaultsRuntimeEnvironmentId: string | null
   worktreeVisibilityDefaultsRuntimeValue: WorktreeVisibilityDefaults | null
-  activeClient: WebRuntimeClient | null
+  activeClient: WebRuntimeSessionClient | null
   activeClientEnvironmentId: string | null
   cachedWorktrees: { loadedAt: number; worktrees: Worktree[] } | null
   cachedDetectedWorktrees: { loadedAt: number; worktrees: Worktree[] } | null
@@ -48,6 +51,11 @@ export function subscribeWebRuntimeStatus(
     statusListeners.delete(callback)
   }
 }
+function publishRuntimeStatus(snapshot: RuntimeHostStatusSnapshot): void {
+  for (const listener of statusListeners) {
+    listener(snapshot)
+  }
+}
 export function readWebRuntimeStatusSnapshots(): RuntimeHostStatusSnapshot[] {
   const snapshot = webRuntimeState.activeClient?.statusOwner?.read()
   return snapshot ? [snapshot] : []
@@ -59,6 +67,11 @@ export async function observeWebRuntimeStatus(
   const environment = resolveEnvironment(selector)
   if (manuallyDisconnectedEnvironmentIds.has(environment.id)) {
     return manuallyDisconnectedResponse(environment)
+  }
+  if (isCloudSessionEnded(environment)) {
+    // Why: the ticket was spent by the login probe. Dialing the stored offer again
+    // would only hang; answer with the truth the status plumbing would publish.
+    return runtimeHostStatusFailure('runtime_unavailable', cloudSessionEndedError().message)
   }
   const existing = webRuntimeState.activeClient?.statusOwner
   if (existing) {
@@ -85,11 +98,64 @@ export function invalidateRuntimeWorktreeCaches(): void {
   webRuntimeState.cachedDetectedWorktrees = null
 }
 
+/**
+ * Install the already-validated client as this environment's owner. A cloud ticket
+ * is single-use, so the login probe's live socket is the only one that can work.
+ */
+export function adoptWebRuntimeClient(
+  client: WebRuntimeSessionClient,
+  environment: StoredWebRuntimeEnvironment
+): void {
+  const previous = webRuntimeState.activeClient
+  webRuntimeState.activeClient = client
+  webRuntimeState.activeClientEnvironmentId = environment.id
+  webRuntimeState.activeEnvironment = environment
+  invalidateRuntimeWorktreeCaches()
+  client.attachStatusOwner({
+    environmentId: environment.id,
+    pairingRevision: environment.pairingRevision ?? environment.createdAt,
+    publish: publishRuntimeStatus,
+    verified: (response) => updateEnvironmentFromResponse(environment, response)
+  })
+  // Why: ownership moved, so an older client's socket must not linger unread.
+  if (previous && previous !== client) {
+    previous.close()
+  }
+}
+
+function isCloudSessionEnded(environment: StoredWebRuntimeEnvironment): boolean {
+  if (!isCloudSessionWebEnvironment(environment)) {
+    return false
+  }
+  const active =
+    webRuntimeState.activeClientEnvironmentId === environment.id
+      ? webRuntimeState.activeClient
+      : null
+  if (!active) {
+    return true
+  }
+  return active.connectionState === 'disconnected' || active.connectionState === 'auth-failed'
+}
+
+function cloudSessionEndedError(): Error {
+  return new Error(
+    translate(
+      'auto.web.webPreloadApi.runtimeCloudSessionEnded',
+      'Your cloud session ended. Sign in again to reconnect.'
+    )
+  )
+}
+
 export function getClientForEnvironment(
   environment: StoredWebRuntimeEnvironment
-): WebRuntimeClient {
+): WebRuntimeSessionClient {
   if (manuallyDisconnectedEnvironmentIds.has(environment.id)) {
     throw new Error('runtime_manually_disconnected')
+  }
+  if (isCloudSessionEnded(environment)) {
+    // Why: never construct a second client for a spent cloud ticket — it cannot
+    // upgrade, so report the ended session instead of a silent reconnect loop.
+    throw cloudSessionEndedError()
   }
   if (
     !webRuntimeState.activeClient ||
@@ -100,11 +166,7 @@ export function getClientForEnvironment(
       status: {
         environmentId: environment.id,
         pairingRevision: environment.pairingRevision ?? environment.createdAt,
-        publish: (snapshot) => {
-          for (const listener of statusListeners) {
-            listener(snapshot)
-          }
-        },
+        publish: publishRuntimeStatus,
         verified: (response) => updateEnvironmentFromResponse(environment, response)
       }
     })

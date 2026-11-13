@@ -25,13 +25,30 @@ export type SubscribeOptions = WebRuntimeSubscribeOptions
 
 const SHARED_CONNECTION_SUBSCRIPTION_METHODS = new Set(['files.watch'])
 
+export type WebRuntimeClientStatusOptions = {
+  environmentId: string
+  pairingRevision: number
+  publish: (snapshot: RuntimeHostStatusSnapshot) => void
+  verified: (response: RuntimeHostStatusResponse) => void
+}
+
+/**
+ * The client surface the preload session relies on. A cloud handoff adopts a client
+ * that was created before the environment existed, so the session attaches status
+ * wiring afterwards instead of constructing a second client.
+ */
+export type WebRuntimeSessionClient = Pick<
+  WebRuntimeClient,
+  'call' | 'subscribe' | 'close' | 'attachStatusOwner' | 'statusOwner' | 'connectionState'
+>
+
 export class WebRuntimeClient {
   private readonly transport: WebRuntimeConnectionTransport
   private readonly fileWatchTeardownRetries = new Map<string, Set<() => Promise<void>>>()
   private readonly childClients = new Set<WebRuntimeClient>()
   private readonly deviceSecretKeyB64: string | undefined
 
-  readonly statusOwner?: RuntimeHostStatusOwner
+  statusOwner?: RuntimeHostStatusOwner
 
   constructor(
     private readonly pairing: WebPairingOffer,
@@ -39,12 +56,7 @@ export class WebRuntimeClient {
       reconnect?: boolean
       /** Cloud offers only: the persisted device secret the host's E2EE proof needs. */
       deviceSecretKeyB64?: string
-      status?: {
-        environmentId: string
-        pairingRevision: number
-        publish: (snapshot: RuntimeHostStatusSnapshot) => void
-        verified: (response: RuntimeHostStatusResponse) => void
-      }
+      status?: WebRuntimeClientStatusOptions
     } = {}
   ) {
     this.deviceSecretKeyB64 = options.deviceSecretKeyB64
@@ -72,25 +84,35 @@ export class WebRuntimeClient {
       options.deviceSecretKeyB64 ? { deviceSecretKeyB64: options.deviceSecretKeyB64 } : {}
     )
     if (options.status) {
-      const status = options.status
-      this.statusOwner = new RuntimeHostStatusOwner({
-        ...status,
-        persistent: true,
-        request: (signal) =>
-          this.transport.call('status.get', undefined, {
-            timeoutMs: 15_000,
-            signal
-          }) as Promise<RuntimeHostStatusResponse>,
-        verified: (response) => {
-          status.verified(response)
-          return true
-        }
-      })
-      this.statusOwner.connectionChanged(
-        this.transport.state === 'connected' ? 'ready' : 'connecting'
-      )
-      this.statusOwner.activate()
+      this.attachStatusOwner(options.status)
     }
+  }
+
+  get connectionState(): WebRuntimeConnectionState {
+    return this.transport.state
+  }
+
+  /** Attach status publication once; an adopted cloud client arrives without one. */
+  attachStatusOwner(status: WebRuntimeClientStatusOptions): void {
+    if (this.statusOwner) {
+      return
+    }
+    const owner = new RuntimeHostStatusOwner({
+      ...status,
+      persistent: true,
+      request: (signal) =>
+        this.transport.call('status.get', undefined, {
+          timeoutMs: 15_000,
+          signal
+        }) as Promise<RuntimeHostStatusResponse>,
+      verified: (response) => {
+        status.verified(response)
+        return true
+      }
+    })
+    owner.connectionChanged(this.transport.state === 'connected' ? 'ready' : 'connecting')
+    owner.activate()
+    this.statusOwner = owner
   }
 
   call(

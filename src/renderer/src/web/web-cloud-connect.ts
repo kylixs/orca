@@ -14,13 +14,17 @@ import {
   type WebCloudDeviceKeyStorage
 } from './web-cloud-device-key'
 import type { WebPairingOffer } from './web-pairing'
-import { WebRuntimeClient } from './web-runtime-client'
+import { WebRuntimeClient, type WebRuntimeSessionClient } from './web-runtime-client'
+import {
+  createStoredWebRuntimeEnvironment,
+  type StoredWebRuntimeEnvironment
+} from './web-runtime-environment'
 
 /**
  * The browser's cloud entry: login, pick a visible project, redeem a ticket, and
  * prove the resulting offer reaches the runtime before the UI mounts the App.
- * The ticket is single-use, so validation consumes it; callers must not reuse the
- * returned offer for a second upgrade.
+ * The ticket is single-use, so validation consumes it; the validated client is
+ * returned open for the App to adopt, never rebuilt from the stored offer.
  */
 
 export const WEB_CLOUD_CONNECT_ERROR_CODE = {
@@ -39,15 +43,11 @@ export class WebCloudConnectError extends Error {
   }
 }
 
-/** The slice of WebRuntimeClient this flow needs, so tests can drive a real transport. */
-export type WebCloudConnectClient = {
-  call(
-    method: string,
-    params?: unknown,
-    options?: { timeoutMs?: number }
-  ): Promise<RuntimeRpcResponse<unknown>>
-  close(): void
-}
+/**
+ * The slice of WebRuntimeClient this flow needs: enough to probe the real transport
+ * and enough for the App's session layer to adopt the same live connection.
+ */
+export type WebCloudConnectClient = WebRuntimeSessionClient
 
 export type WebCloudConnectClientFactory = (
   offer: WebPairingOffer,
@@ -65,6 +65,8 @@ export type ConnectCloudProjectInput = {
   now?: () => number
   endpointUrl?: string
   clientFactory?: WebCloudConnectClientFactory
+  /** Keeps compatibility ids across a re-login of the same server. */
+  previousEnvironment?: StoredWebRuntimeEnvironment | null
 }
 
 export type WebCloudProjectConnection = {
@@ -74,9 +76,32 @@ export type WebCloudProjectConnection = {
   projectName: string
   /** Hand to the transport; never persisted and never placed on the offer. */
   deviceSecretKeyB64: string
+  /** The live, already-upgraded client; ownership passes to the App on success. */
+  client: WebCloudConnectClient
+  /** Saved with `cloudLoginRequired`; a reload must still return to sign-in. */
+  environment: StoredWebRuntimeEnvironment
 }
 
 const STATUS_TIMEOUT_MS = 15_000
+
+type WebCloudValidatedConnection = Omit<WebCloudProjectConnection, 'client' | 'environment'>
+
+function toCloudEnvironment(
+  connection: WebCloudValidatedConnection,
+  previousEnvironment: StoredWebRuntimeEnvironment | null
+): StoredWebRuntimeEnvironment {
+  return {
+    ...createStoredWebRuntimeEnvironment({
+      name: `${connection.environmentName} (cloud session)`,
+      offer: connection.offer,
+      previousEnvironment
+    }),
+    // Why: a reload cannot reuse the spent ticket, so startup must sign in again.
+    cloudLoginRequired: true,
+    runtimeId: connection.runtimeId,
+    lastUsedAt: Date.now()
+  }
+}
 
 function createValidationClient(
   offer: WebPairingOffer,
@@ -115,7 +140,7 @@ function connectionFromStatus(
   offer: WebPairingOffer,
   project: WebCloudProject,
   deviceSecretKeyB64: string
-): WebCloudProjectConnection {
+): WebCloudValidatedConnection {
   if (!reply.ok) {
     throw new WebCloudConnectError(
       WEB_CLOUD_CONNECT_ERROR_CODE.connectFailed,
@@ -187,14 +212,21 @@ export async function connectCloudProject(
   // project/display name to refresh here.
   let client: WebCloudConnectClient | null = null
   try {
-    client = (input.clientFactory ?? createValidationClient)(offer, identity.secretKeyB64)
-    const reply = await client.call('status.get', undefined, {
+    const validated = (input.clientFactory ?? createValidationClient)(offer, identity.secretKeyB64)
+    client = validated
+    const reply = await validated.call('status.get', undefined, {
       timeoutMs: STATUS_TIMEOUT_MS
     })
-    return connectionFromStatus(reply, offer, project, identity.secretKeyB64)
+    const connection = connectionFromStatus(reply, offer, project, identity.secretKeyB64)
+    // Why keep it open: its ticket is already spent; rebuilding from the stored
+    // offer can never upgrade, so this socket is the App's only live connection.
+    return {
+      ...connection,
+      client: validated,
+      environment: toCloudEnvironment(connection, input.previousEnvironment ?? null)
+    }
   } catch (error) {
-    throw mapConnectError(error)
-  } finally {
     client?.close()
+    throw mapConnectError(error)
   }
 }

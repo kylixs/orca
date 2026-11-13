@@ -8,6 +8,7 @@ import WebConnect from './WebConnect'
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
 const cloudMock = vi.hoisted(() => ({ connectCloudProject: vi.fn() }))
+const sessionMock = vi.hoisted(() => ({ adoptWebRuntimeClient: vi.fn() }))
 const runtimeMock = vi.hoisted(() => ({ call: vi.fn(), close: vi.fn() }))
 
 vi.mock('./web-cloud-connect', () => ({
@@ -17,6 +18,10 @@ vi.mock('./web-cloud-connect', () => ({
     mobileScopeRejected: 'MOBILE_SCOPE_REJECTED',
     noProjects: 'NO_PROJECTS'
   }
+}))
+
+vi.mock('./preload-api/web-runtime-session', () => ({
+  adoptWebRuntimeClient: sessionMock.adoptWebRuntimeClient
 }))
 
 vi.mock('./web-runtime-client', () => ({
@@ -68,7 +73,7 @@ function submitCloudForm(container: HTMLElement): Promise<void> {
 describe('WebConnect cloud login', () => {
   let root: Root | null = null
   let container: HTMLDivElement | null = null
-  let onConnected: () => void
+  let onConnected: ReturnType<typeof vi.fn<() => void>>
 
   const render = (initialPairingInput: string | null = null): void => {
     container = document.createElement('div')
@@ -84,9 +89,10 @@ describe('WebConnect cloud login', () => {
   beforeEach(() => {
     window.localStorage.clear()
     cloudMock.connectCloudProject.mockReset()
+    sessionMock.adoptWebRuntimeClient.mockReset()
     runtimeMock.call.mockReset()
     runtimeMock.close.mockReset()
-    onConnected = vi.fn()
+    onConnected = vi.fn<() => void>()
   })
 
   afterEach(() => {
@@ -100,6 +106,27 @@ describe('WebConnect cloud login', () => {
   })
 
   it('signs in with the platform credentials and reaches onConnected', async () => {
+    const client = { close: vi.fn() }
+    const environment = {
+      id: 'web-cloud-1',
+      name: 'Payments (cloud session)',
+      createdAt: 1,
+      updatedAt: 1,
+      lastUsedAt: 2,
+      runtimeId: 'runtime-42',
+      cloudLoginRequired: true,
+      preferredEndpointId: 'ws-web-cloud-1',
+      endpoints: [
+        {
+          id: 'ws-web-cloud-1',
+          kind: 'websocket',
+          label: 'WebSocket',
+          endpoint: 'wss://runtime.example/socket',
+          deviceToken: 'device-token-1',
+          publicKeyB64: HOST_KEY_B64
+        }
+      ]
+    }
     cloudMock.connectCloudProject.mockResolvedValue({
       offer: {
         v: 2,
@@ -112,7 +139,9 @@ describe('WebConnect cloud login', () => {
       environmentName: 'Payments',
       projectName: 'Payments',
       runtimeId: 'runtime-42',
-      deviceSecretKeyB64: Buffer.alloc(32, 0x01).toString('base64')
+      deviceSecretKeyB64: Buffer.alloc(32, 0x01).toString('base64'),
+      client,
+      environment
     })
 
     render()
@@ -134,12 +163,17 @@ describe('WebConnect cloud login', () => {
         deviceName: 'm49-browser'
       })
     )
+    expect(sessionMock.adoptWebRuntimeClient).toHaveBeenCalledWith(client, environment)
     expect(onConnected).toHaveBeenCalledTimes(1)
+    expect(sessionMock.adoptWebRuntimeClient.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(onConnected).mock.invocationCallOrder[0]
+    )
 
     const stored: unknown = JSON.parse(
       window.localStorage.getItem('orca.web.runtimeEnvironment.v1') ?? 'null'
     )
     expect(stored).toMatchObject({
+      id: 'web-cloud-1',
       name: 'Payments (cloud session)',
       runtimeId: 'runtime-42',
       cloudLoginRequired: true

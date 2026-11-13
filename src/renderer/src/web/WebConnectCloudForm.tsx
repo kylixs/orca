@@ -6,8 +6,8 @@ import { Label } from '@/components/ui/label'
 import { errorCodeOf } from '../../../shared/json-fields'
 import { connectCloudProject, WEB_CLOUD_CONNECT_ERROR_CODE } from './web-cloud-connect'
 import { createLocalStorageWebCloudDeviceKey } from './web-cloud-device-key'
+import { adoptWebRuntimeClient } from './preload-api/web-runtime-session'
 import {
-  createStoredWebRuntimeEnvironment,
   saveStoredWebRuntimeEnvironment,
   type StoredWebRuntimeEnvironment
 } from './web-runtime-environment'
@@ -51,22 +51,19 @@ export default function WebConnectCloudForm({
         username: username.trim(),
         password,
         deviceName: deviceName.trim() || 'Orca Web',
-        deviceKeyStore: createLocalStorageWebCloudDeviceKey()
+        deviceKeyStore: createLocalStorageWebCloudDeviceKey(),
+        previousEnvironment: existingEnvironment
       })
-      const environment: StoredWebRuntimeEnvironment = {
-        ...createStoredWebRuntimeEnvironment({
-          name: `${connection.environmentName} (cloud session)`,
-          offer: connection.offer,
-          previousEnvironment: existingEnvironment
-        }),
-        cloudLoginRequired: true,
-        runtimeId: connection.runtimeId,
-        lastUsedAt: Date.now()
+      try {
+        // Why persist before mounting: the App's preload layer reads this record.
+        saveStoredWebRuntimeEnvironment(connection.environment)
+      } catch (err) {
+        connection.client.close()
+        throw err
       }
-      // Why (option a): the ticket is single-use and is deliberately not stored.
-      // This record only keeps the current page mounted; `cloudLoginRequired`
-      // makes the next startup sign in again instead of reconnecting blind.
-      saveStoredWebRuntimeEnvironment(environment)
+      // Why adopt: the ticket was consumed by the validation probe, so the App
+      // must use this exact live socket instead of upgrading the stored offer again.
+      adoptWebRuntimeClient(connection.client, connection.environment)
       onConnected()
     } catch (err) {
       setError({
