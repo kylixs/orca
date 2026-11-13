@@ -26,7 +26,7 @@
 | AC-19 | PASS | `m78-web-release/web-release.json` | 648 B |
 | AC-20 | PASS | `e2e-platform/E8-platform-down.json`<br>`m75-platform-unavailable/m75-outage.json` | 345 B<br>152 B |
 | AC-21 | PASS | `m70-acceptance/ac-21-forged-credential.json`<br>`m46-browser-upgrade/m46-2-wrong-device-key.json`<br>`m73-host-audit/m73-host-refusals.json` | 44 B<br>50 B<br>2065 B |
-| AC-22 | UNVERIFIED | — | — |
+| AC-22 | PASS(部分) | `m110-load-300/result-300x1800s.json` | 469 B |
 | AC-23 | PASS | `m83-relay-failover/relay-failover.json` | 351 B |
 | AC-24 | PASS | `m10-relay/connection-metadata.json`<br>`m85-platform-data-path/platform-not-in-data-path.json`<br>`m86-relay-data-path/relay-ciphertext-only.json`<br>`m46-browser-upgrade/m46-1-subprotocol-upgrade.json` | 1192 B<br>240 B<br>214 B<br>6865 B |
 | AC-25 | PASS | `m70-acceptance/ac-25-token-revocation.json`<br>`m11-revocation/device-revoke-closes-session.json` | 212 B<br>280 B |
@@ -38,6 +38,6 @@
 | AC-31 | PASS | `m76-signing-key-rotation/ac-31-rotation.json` | 928 B |
 | AC-32 | UNVERIFIED | — | — |
 
-合计 32 条：PASS 30、UNVERIFIED 2
+合计 32 条：PASS 30、PASS(部分) 1、UNVERIFIED 1
 
 未被 test-plan 引用的证据目录（历史模块，未删除）：m102-terminal-echo-latency、m103-file-listing-latency、m104-connection-latency、m105-audit-query-latency、m106-workbench-project-list-latency、m109-host-tls-pinning、m12-control-plane-resilience、m13-orca-admission、m14-cloud-agent、m15-cloud-session-revocation、m17-review07-gaps、m18-host-enrollment、m19-desktop-connect、m20-cloud-ipc、m21-cloud-ui、m22-project-link、m23-quality-gate、m24-project-workspace、m25-cloud-environment、m27-jwks-staleness、m28-device-pop、m30-project-root、m33-session-limits、m37-git-boundary、m38-worktree-boundary、m39-managed-worktree、m40-ensure-workspace、m41-file-panel、m42-file-panel、m44-agent-boundary、m45-workspace-path-sidecar、m47-web-cloud-transport、m48-web-cloud-session、m49-web-cloud-connect、m50-web-cloud-handoff、m51-cloud-session-recovery、m52-cloud-native-entry、m52-cloud-repo-registration、m53-multi-project、m54-admin-session-page、m55-initial-worktree、m57-project-provisioning、m58-provision-recovery、m59-self-service-projects、m60-create-failure-recovery、m61-session-renewal、m62-web-session-renewal、m63-cloud-device-release、m64-parallel-prepare、m65-project-archive、m67-cloud-agent-launch、m68-milestone-l3、m69-cloud-structured-agent、m9-mtls、web-ui
