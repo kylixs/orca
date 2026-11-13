@@ -46,16 +46,20 @@ CloudProjectWorkspace 接入终端面板（复用 web 客户端终端管线 + cl
 
 平台：`POST /v1/projects/{id}/web-handoff`（open 权限，审计 `web_handoff`）→ 一次性 ≤60s code + URL（`<browserEntryUrl 或直连 web-index>#handoff=<code>&project=<id>`）；`POST /v1/web/handoff` 换正式会话（复用设备会话签发；二次/过期 410、无权限 403）。orca web：启动读 hash → 换会话 → 自动打开指定项目；失败回落登录表单（预填平台地址）；hash 用后即清。Web 项目行「Orca Web」按钮激活（调 web-handoff 并 window.open）。e2e：签发→换发→二次 410→过期 410→无权限 403 + web 端自动进入。提交 `feat(cloud): one-time web handoff auto-entry`。
 
-## W10 · 客户端首启零环境变量（M119，用户反馈，排在 W9 之后）
+## W10 · 客户端安装即可用：登录界面 + 配置入口 + 命令行 + 初始化脚本（M119，用户需求细化，排在 W9 之后）
 
-用户反馈：本地启动客户端失败，提示需要环境变量——不符合真实使用场景。目标：**无任何环境变量也能正常启动并使用云端功能**。
+用户细化（2026-11-14）：**用户不会配置环境变量**。四项要求：
+1. **安装完成后直接打开登录界面**——启动不得因缺少环境变量而失败或卡死；登录界面默认可用。
+2. **登录界面带配置入口**——登录页提供「配置」入口（如齿轮/链接）打开配置面板：平台地址等；改完回登录页即可登录。
+3. **命令行查看/修改配置**——CLI（既有 orca cli 工程）新增 `orca config list|get <key>|set <key> <value>`（至少平台地址），读写同一份持久化配置（JSON，受用户目录权限保护），GUI 与 CLI 改动互相可见。
+4. **初始化脚本**——`orca init`（或安装脚本尾部）支持一键写配置：`orca init --platform-url <平台>`；平台 `/install/host.sh` 类脚本可在装机时顺手完成配置，用户零输入。
 
 设计要点（设计先行，派发设计代理细化）：
-- 现状：云端模式由 ORCA_CLOUD_API_URL/HOST_TOKEN 等环境变量驱动，未设则无云入口；构建时 VITE/ORCA 默认值不存在。
-- 目标形态：① 无 env 启动 → 正常进入首启界面，云端登录表单含「平台地址」输入（默认值=构建注入的默认平台地址，其次取上次成功使用的地址——持久化）；② 填地址+域账号即可登录，地址保存；③ env 存在时仅作**预填/覆盖**，不阻塞启动；④ 设置界面新增「云平台地址」项，改后下次登录生效；⑤ 托管构建（ORCA_MANAGED_BUILD）锁定地址语义不变。
-- 涉及：src/main/orca-profiles/profile-cloud-auth-config.ts（云端模式判定）、首启登录链、renderer 登录表单（cloud-login-panel）地址字段、设置持久化。
-- 错误处理：地址不可达 → 登录表单内联错误；地址格式非法 → 校验拒绝。
-- 测试：真实平台三例（无 env 填地址登录成功；env 预填覆盖；设置修改持久化重登录生效）+ 非云端构建零回归。提交 `feat(cloud): first-run client works without env vars`。
+- 现状：云端模式由 ORCA_CLOUD_API_URL/HOST_TOKEN 等环境变量驱动，未设则无云入口。
+- 目标形态：持久化配置文件为唯一事实源（路径如用户数据目录/config.json）；优先级=显式 env > 持久化配置 > 构建默认值 > 登录界面输入；env 存在时仅预填/覆盖且不阻塞启动；托管构建（ORCA_MANAGED_BUILD）锁定地址语义不变。
+- 涉及：src/main/orca-profiles/profile-cloud-auth-config.ts（模式判定改读配置源）、CLI 工程（config 子命令）、登录页（cloud-login-panel）配置入口与面板、设置持久化、安装脚本（cloud-platform /install/host.sh 尾部追加 orca init 调用）。
+- 错误处理：地址不可达/非法格式内联报错；配置文件损坏 → 忽略并回落默认，CLI set 重建；并发写以单写者（主进程）为准。
+- 测试：真实平台五例（无 env 直接出现登录界面并可登录；登录页改地址成功登录；CLI set 后 GUI 登录使用新地址；orca init 幂等；env 优先级覆盖）+ 非云端构建零回归。提交 `feat(cloud): install-to-login with config UI, CLI and init`。
 
 ## W9 · 黄金旅程端到端（用户要求：加主机→建项目→开项目→终端输入→看文件 一条串起来）
 
