@@ -38,7 +38,7 @@ import { appendHostAuditReports, parseHostAuditReports } from './host-audit-inge
 const ACCESS_TTL_MS = 30 * 60_000
 const REFRESH_TTL_MS = 12 * 60 * 60_000
 const CREDENTIAL_TTL_S = 60
-const HOST_OFFLINE_MS = 60_000
+const HOST_OFFLINE_DEFAULT_MS = 60_000
 const WEB_ROOT = new URL('../../web/', import.meta.url).pathname
 
 export type ApiConfig = {
@@ -50,6 +50,8 @@ export type ApiConfig = {
   accessTtlMs?: number
   /** Refresh-token lifetime; tests shrink it to exercise expiry. */
   refreshTtlMs?: number
+  /** How long a host stays "online" without a heartbeat; tests shrink it to observe the flip. */
+  hostOfflineMs?: number
   /** Append-only audit log; absent keeps the chain in memory (tests). */
   auditLogPath?: string
   /** Enables the dedicated mTLS listener for platform → relay/runtime control traffic. */
@@ -127,6 +129,8 @@ export function createApp(config: ApiConfig): ApiHandle {
   const now = config.now ?? (() => Date.now())
   const accessTtlMs = config.accessTtlMs ?? ACCESS_TTL_MS
   const refreshTtlMs = config.refreshTtlMs ?? REFRESH_TTL_MS
+  const hostOfflineMs =
+    config.hostOfflineMs ?? Number(process.env.ORCA_CLOUD_HOST_OFFLINE_MS ?? HOST_OFFLINE_DEFAULT_MS)
   const expiresInSeconds = Math.ceil(accessTtlMs / 1000)
   const auditLogPath = config.auditLogPath ?? process.env.AUDIT_LOG_PATH ?? null
   const store = new Store()
@@ -344,8 +348,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       repoUrl: p.repoUrl,
       hostId: p.hostId,
       hostName: host?.name ?? null,
-      // Why: a revoked host must never look online, whatever a later status write says.
-      hostStatus: host && host.revokedAt === null ? host.status : 'offline',
+      hostStatus: hostStatusView(host),
       path: p.path,
       defaultBranch: p.defaultBranch,
       downloadPolicy: p.downloadPolicy,
@@ -406,9 +409,20 @@ export function createApp(config: ApiConfig): ApiHandle {
     return p
   }
 
+  /**
+   * What a client may act on, not what the host last reported: a host on which
+   * the heartbeat window has lapsed is offline even if its last beat said online
+   * (AC-08). Maintenance stays distinct so the workbench can explain it.
+   */
+  function hostStatusView(h: Host | undefined): string {
+    if (!h || h.revokedAt !== null) return 'offline'
+    if (h.status === 'maintenance') return 'maintenance'
+    return hostOnline(h) ? 'online' : 'offline'
+  }
+
   function hostOnline(h: Host): boolean {
     return (
-      h.revokedAt === null && h.status === 'online' && now() - h.lastHeartbeatAt <= HOST_OFFLINE_MS
+      h.revokedAt === null && h.status === 'online' && now() - h.lastHeartbeatAt <= hostOfflineMs
     )
   }
 

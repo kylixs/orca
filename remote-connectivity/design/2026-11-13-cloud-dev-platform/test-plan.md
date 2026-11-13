@@ -4,7 +4,7 @@
 > 需求基线：`requirements.md` §8（AC-01 ~ AC-32）
 > 流程基线：`remote-connectivity/design/DEVELOPMENT_PROCESS.md` §4.1、G8
 > 证据根目录：`cloud-platform/evidence/`（gitignore）
-> 本轮新增证据：`cloud-platform/evidence/m70-acceptance/`
+> 本轮新增证据：`cloud-platform/evidence/m70-acceptance/`、`cloud-platform/evidence/m72-denial-details/`、`cloud-platform/evidence/m73-host-audit/`、`cloud-platform/evidence/m74-offline-host/`
 
 ## 1. 目的与范围
 
@@ -55,6 +55,7 @@
 
 - `P-E2E` = `cloud-platform/test/e2e/platform.e2e.test.ts`
 - `P-M70` = `cloud-platform/test/e2e/m70-acceptance.e2e.test.ts`
+- `P-E2E-HOST-OFFLINE` = `cloud-platform/test/e2e/host-offline.e2e.test.ts`
 - `V-M70` = `src/main/cloud-platform/m70-acceptance.test.ts`
 
 ### 4.1 功能验收
@@ -68,7 +69,7 @@
 | AC-05 | 直连可达：预检选直连、显示线路、终端可交互、平台无业务流量 | 真实 e2e | `P-E2E::E1`；`src/main/cloud-platform/cloud-connect-client.test.ts::登录 → 项目列表 → 直连打开 → 加密 RPC`；`src/main/cloud-platform/cloud-terminal-session.test.ts::M43-1 在工作区内创建终端、订阅流并读到 shell 真实输出` | `e2e-platform/E1-direct.json`；`m43-cloud-terminal/m43-1-stream.json` | PASS(部分) | 直连路由、加密 RPC、真实 PTY 输出已验证；未抓包证明平台侧无该会话业务流量 |
 | AC-06 | 直连不可达自动回落中继，线路可见，终端可交互 | 真实 e2e | `P-E2E::E2 直连不可达 → 自动回落中继（SNI 转发）`；`cloud-platform/test/e2e/relay-hardening.e2e.test.ts::白名单内 SNI 正常转发并完成 TLS 握手` | `e2e-platform/E2-relay.json`；`m10-relay/whitelisted-sni-forwarded.json` | PASS(部分) | 路由 relay + RPC 通过中继已验证；中继下的终端交互未单独复测 |
 | AC-07 | 直连与中继均不可达：错误码、分步诊断、可重试 | 单元/组件 | `src/main/cloud-platform/cloud-connect-client.test.ts::直连不可达时回落中继；两者都不可达时明确报错` | `m19-desktop-connect/cases.txt` | PASS(部分) | `chooseRoute` 返回 null，`prepareProjectLink` 抛 `ENDPOINT_UNREACHABLE`；用例未断言该错误码，无分步诊断/重试 UI 测试 |
-| AC-08 | 主机 60 秒无心跳：标记离线，项目打开禁用并说明原因 | 真实 e2e（注入时钟） | `P-M70::AC-08 60 秒无心跳后连接被拒；项目行仍显示 online（缺口）` | `m70-acceptance/ac-08-heartbeat-offline.json` | PASS(部分) | `/v1/hosts` 已离线、connect 409 `HOST_OFFLINE`；项目列表仍用持久化 status 显示 online，工作台“打开”未禁用（见 G-04） |
+| AC-08 | 主机 60 秒无心跳：标记离线，项目打开禁用并说明原因 | 真实 e2e（真实平台进程 + 真实注册/心跳） | `P-E2E-HOST-OFFLINE::心跳过期后项目行转 offline 并拒绝打开…`（`host-offline.e2e.test.ts`，缩短 400ms 窗口）；`P-M70::AC-08 60 秒无心跳后连接被拒，项目行转为 offline`；`use-cloud-session.test.tsx::登录后列出项目：离线标注…离线项目不可打开` | `m74-offline-host/host-offline.json`；`m70-acceptance/ac-08-heartbeat-offline.json` | PASS | `hostStatus` 改为按心跳窗口推导（维护中单独为 `maintenance`）：过期后项目行 `offline`、`/v1/hosts.online=false`、connect 409 `HOST_OFFLINE`；恢复心跳立即回到 online；工作台按 `hostStatus` 禁用「打开」并显示「主机离线」徽标 |
 | AC-09 | 主机维护：新连接拒绝，已有会话不中断 | 真实 e2e（真实 Runtime） | `V-M70::M70 AC-09 主机维护模式::新连接被 409 HOST_MAINTENANCE 拒绝，已建立会话 RPC 继续可用` | `m70-acceptance/ac-09-maintenance.json` | PASS | 维护中新建票据 409 `HOST_MAINTENANCE`；同一已建会话 `status.get` 前后均成功 |
 | AC-10 | 托管项目下载：无入口；专用 RPC 拒绝；readChunk 记账限速 | 真实 e2e | `P-E2E::E5 导出类方法一律拒绝（下载策略 deny）`；`src/main/cloud-platform/cloud-download-policy.test.ts::M35-1 默认为拒绝…`、`M35-2 读取按滚动小时记账…`；`src/renderer/src/cloud/use-cloud-session.test.tsx::登录后列出项目：离线标注、下载受限单独标注…` | `e2e-platform/E5-export-denied.json`；`m35-download-policy/m35-1-download-policy.json`、`m35-2-read-budget.json`；`m21-cloud-ui/cases.txt` | PASS(部分) | 主机侧 `EXPORT_DENIED`/策略拒绝与读预算已验证；未断言受管 UI 完全无下载/导出入口 |
 | AC-11 | 路径穿越 `../../etc/passwd` 拒绝并记安全事件 | 真实 e2e + 单元 | `P-E2E::E6 路径穿越与跨用户写越界被拒`；`cloud-platform/test/contract.test.ts::路径边界：拒绝穿越与绝对逃逸`；`cloud-platform/test/e2e/file-contract.e2e.test.ts::M29-3/M29-5`；`src/main/cloud-platform/cloud-workspace-boundary.test.ts::M36-1/M36-2`；`cloud-host-audit.test.ts::M73-1` | `e2e-platform/E6-path-boundary.json`；`m29-file-contract/m29-3-boundaries.json`、`m29-5-symlink.json`；`m36-workspace-boundary/m36-1-read-scope.json`；`m73-host-audit/m73-host-refusals.json` | PASS | 穿越/符号链接/跨根均拒绝；M73 起越界路径写入平台审计链（`host.path_denied`，含 `denial`/`reason`/`method`/设备与项目） |

@@ -1493,13 +1493,32 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 4. 成功/计量类事件（读预算、导出放行）未上报，本轮只覆盖拒绝类。
 5. 平台审计链损坏时主机事件静默丢弃（`appendBestEffort`），心跳不断——与「审计不可写则敏感操作 fail-closed」不同，因为心跳本身不是授权动作。
 
+## M74 修复 G-05：项目列表按心跳窗口显示离线并禁用打开（AC-08）（本轮，主会话执行）
+
+**问题（M70 验收映射发现）**：`projectView.hostStatus` 直接返回持久化的 `host.status`，主机 60 秒无心跳后仍显示 `online`，工作台的「打开」按钮因此保持可用，用户直到 connect 才收到 409。
+
+| 改动 | 内容 |
+|---|---|
+| `server.ts` | 新增 `hostStatusView()`：吊销 → `offline`；维护中 → `maintenance`；否则按 `hostOnline()`（状态 + 心跳窗口）判定 `online`/`offline`。`projectView` 改用它，`/v1/hosts.online`、connect 的 `HOST_OFFLINE` 本就按 `hostOnline()`，三者口径统一 |
+| 离线窗口可配 | `ApiConfig.hostOfflineMs` + 环境变量 `ORCA_CLOUD_HOST_OFFLINE_MS`（默认仍 60s），测试用真实进程缩短窗口观测翻转 |
+| 测试 | 新增平台 e2e `host-offline.e2e.test.ts`：真实平台进程 + 真实主机注册/心跳 + 真实登录，窗口 400ms；`m70-acceptance.e2e.test.ts::AC-08` 从「记录缺口」改为断言 `offline` |
+
+**验证（`evidence/m74-offline-host/host-offline.json`）**：心跳后 `hostStatus=online`、`/v1/hosts.online=true`、connect 200；静默 > 窗口后 `hostStatus=offline`、`online=false`、connect **409 `HOST_OFFLINE`**；再次心跳立即恢复 `online`。
+- 平台测试 **127/127** 通过；渲染层 `use-cloud-session.test.tsx` 11/11（离线项目列出但「打开」禁用 + 「主机离线」徽标）；`tsc node` 0；`check:code-quality:changed` 0 新发现。
+
+**负向对照**：把 `hostStatus` 改回 `host.status` → `host-offline.e2e.test.ts` 转红（`actual: 'online'` vs `expected: 'offline'`）；恢复后全绿。
+
+**如实记录 / 剩余**：
+1. 判定仍是**请求时**推导，不是后台定时把主机改离线：`/v1/hosts` 的 `status` 字段仍为最后一次上报值（`online` 布尔已正确）。不改变行为，仅字段语义差异。
+2. 维护中的主机对工作台同样不可打开，徽标文案统一为「主机离线」，未区分「维护中」。
+3. 客户端（桌面/浏览器）在自己的连接缓存里不会主动失效已打开的会话；仅有新列表数据时更新。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M73（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M74（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步**：
-1. **G-05 离线主机禁用**（MAJOR）：工作台按心跳超时把项目标为离线并禁用「打开」。
-2. **G-09 `PLATFORM_UNAVAILABLE`**（MAJOR）：平台停机时新建/重连映射该错误码，并断言不做无凭证重连。
+1. **G-09 `PLATFORM_UNAVAILABLE`**（MAJOR）：平台停机时新建/重连映射该错误码，并断言不做无凭证重连。
 3. **人工验收**：按 design/test-plan 逐条核对验收标准；重点看桌面真实界面（登录 → 侧栏项目 → 本人 checkout → 终端/文件/git/agent）与管理员浏览器会话页。
 4. 真机/跨平台：Windows、WSL、SSH 主机各跑一遍关键路径（provisioning、路径边界、PTY、会话持久化权限位）。
 5. L4 全量回归：发版前单独执行，含桌面 Electron 渲染验证。

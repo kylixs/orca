@@ -217,7 +217,7 @@ test('AC-04 管理员登记并授权组后，成员刷新即可见并可取到�
   })
 })
 
-test('AC-08 60 秒无心跳后连接被拒；项目行仍显示 online（缺口）', async () => {
+test('AC-08 60 秒无心跳后连接被拒，项目行转为 offline（工作台据此禁用打开）', async () => {
   const { url } = await startApp()
   const admin = await adminToken(url)
   const dev = (await (await login(url, 'zhangsan', 'Passw0rd!', 'm70-offline')).json()) as LoginBody
@@ -251,9 +251,11 @@ test('AC-08 60 秒无心跳后连接被拒；项目行仍显示 online（缺口�
     connectStatus: connect.status,
     connectError: connectBody.error,
     hostsEndpointOnline: row?.online,
-    projectListHostStatus: projects[0]?.hostStatus,
-    gap: '项目列表使用持久化 status，未按心跳超时显示离线；工作台「打开」按钮因此未禁用'
+    projectListHostStatus: projects[0]?.hostStatus
   })
+  // Why: the workbench only enables 「打开」 for hostStatus === 'online'; a row that
+  // still says online after the heartbeat window is what let users dial a dead host.
+  assert.equal(projects[0]?.hostStatus, 'offline')
 })
 
 test('AC-01 登录到项目列表 50 次采样 P95 ≤ 1.5s（API 段）', async () => {
