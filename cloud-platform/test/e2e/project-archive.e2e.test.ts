@@ -95,6 +95,7 @@ describe('M65 项目归档闭环（真实平台进程）', () => {
     const created = await createSelf(devToken, {
       name: 'Archive Demo',
       key: 'archive-demo',
+      dir: 'archive-demo',
       repoUrl: REPO_URL
     })
     assert.equal(created.status, 201, JSON.stringify(created.body))
@@ -117,6 +118,7 @@ describe('M65 项目归档闭环（真实平台进程）', () => {
     const target = await createSelf(devToken, {
       name: 'Admin Target',
       key: 'admin-target',
+      dir: 'admin-target',
       repoUrl: REPO_URL
     })
     assert.equal(target.status, 201, JSON.stringify(target.body))
@@ -161,6 +163,7 @@ describe('M65 项目归档闭环（真实平台进程）', () => {
     const reborn = await createSelf(devToken, {
       name: 'Archive Demo Reborn',
       key: 'archive-demo',
+      dir: 'archive-demo',
       repoUrl: REPO_URL
     })
     assert.equal(reborn.status, 201, JSON.stringify(reborn.body))
@@ -171,6 +174,7 @@ describe('M65 项目归档闭环（真实平台进程）', () => {
     const duplicate = await createSelf(devToken, {
       name: 'Archive Demo Duplicate',
       key: 'archive-demo',
+      dir: 'archive-demo',
       repoUrl: REPO_URL
     })
     assert.equal(duplicate.status, 409)
