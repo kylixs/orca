@@ -925,10 +925,16 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 3. 刷新路径（启动期提示）沿用既有实现，本轮未重复验证。
 4. 断线后**不会自动重登**——只回到登录页；自动续期需要保存平台会话（安全范围更大），未做。
 
-## 下一步
+## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-1. **M52 删除自造的云端界面**：移除 `renderer/cloud/cloud-file-panel.tsx`、`cloud-project-workspace.tsx` 的云端壳子路径与 `shared/cloud-file-browser.ts` 的 UI 用途，让浏览器与桌面都只用 Orca 原生界面；保留服务端边界模块（M36–M44）不动。
-2. 随后评估：云端登录后 `workspacePath`（M45 已写入侧车）如何被原生工作区视图用于初始导航。
+**用户决策**：普通开发者登录后直接进入 Orca 原生工作界面（左侧项目列表，用法不变）；自造的云端会话页**保留给管理员**，从平台项目列表页打开、可单独用 PC 浏览器访问；侧栏多项目**每项目独立连接**；文件面板随管理员页保留。
+
+1. **M52 桌面回归原生界面**：移除 `CloudModeGate` 对整壳的替换；`api.cloud` 仅在云端构建暴露；登录成功后把云项目注册为 repo（`executionHostId: 'runtime:<envId>'`，侧栏数据源即 `repos`）并自动打开默认项目；桌面端不再引用 `CloudApp`。验收：普通桌面构建行为不变（回归测试），云端构建登录后侧栏出现项目。
+2. **M53 多项目连接**：`CloudSessionService` 改为按 projectId 的多客户端；`cloud:rpc(method, params, projectId)` 与 `cloud:closeProject(projectId)` 显式路由；断线按项目标记"需重新登录"。验收：两个项目同时在线、各自 RPC 成功、断开一个不影响另一个。
+3. **M54 管理员浏览器会话页**：新增独立 web 入口 + 浏览器版 `CloudBridge`（复用 `web-cloud-session` / `WebRuntimeConnectionTransport` / `cloud-file-browser`），平台管理台项目行加"打开会话页"链接；会话页独立登录，令牌不经过 URL。验收：浏览器打开会话页 → 登录 → 列项目 → 打开项目 → 文件面板列出真实文件、越界被拒。
+4. **M55 原生初始导航**：原生工作区视图读取侧车 `workspacePath`（M45），进入项目即定位到本人 checkout。
+
+遗留（不阻塞）：`agent.launch` 在本人工作区未被实际执行（只断言拒绝路径）；断线后不自动重登，只回登录页。
 
 **界面方向修正（用户决定）**：不再自造云端面板。Orca 自带浏览器客户端（`src/renderer/src/web/`，约 1.1 万行，入口 `web-index.html`，在浏览器内重建 `window.api` 并挂载同一个 `App`）才是"统一工作界面"；它目前只接受**配对码**，没有云票据支持。改造顺序：
 
