@@ -1,6 +1,7 @@
 # 云端开发平台 · 工作令（2026-11-14，规范化版）
 
 > 纪律：**一个子代理只执行一个工作令**；主会话串行派发、逐个核验后再派下一个。
+> **设计先行**：复杂令（W3/W5/W6/W7）分两步——先派「设计代理」产出设计方案（组件改动、数据流、边界与错误处理、测试点、风险），主会话确认后再派「实现代理」；简单令（W2/W4）设计方案已在本文件内，直接实现。
 > 每令一次提交、一次测试报告、证据入 `cloud-platform/evidence/<work-order>/`（gitignored）。
 > 设计依据以 requirements.md（v1.3+FR 修订）、design.md、deployment-real-link.md、test-plan.md 为准；与本文件冲突时先在交付说明中指出，不要自行改文档。
 > 工作区内与平台无关的改动（claude-auto-resume、acceptance-index 等）**不要触碰、不要提交**。
@@ -48,3 +49,30 @@ CloudProjectWorkspace 接入终端面板（复用 web 客户端终端管线 + cl
 ## M120（功能缺口，暂缓待排）
 
 管理台项目登记弹层（QA-013）、权限矩阵可配置（QA-014）、项目级下载策略（QA-015）——FR-3.1/9.3/9.4 的 Web 呈现补齐。依赖 W3 布局稳定后再派发。
+
+
+---
+
+## 附：复杂令设计要点（设计代理在此框架内细化，主会话确认）
+
+### W3 设计要点（M117 详情入口 + 双入口）
+- 数据流：/v1/hosts 已有 directAddrs → 平台在项目 payload 组装 sessionPageUrl（仅宿主在线且 TLS 首址存在）；前端按角色/权限渲染按钮，不加新接口。
+- 错误处理：宿主离线/无 TLS → 入口置灰；URL 生成失败 → 空值隐藏。
+- 测试：字段正反例、按钮可见性矩阵（admin×online/offline、developer×online/offline）、引导文案。
+
+### W5 设计要点（M118 详情页终端）
+- 组件：CloudProjectWorkspace 增终端区（懒加载避免首屏回归）；数据流 cloud-browser-bridge.rpc → 宿主 pty 方法族；WebGL addon 在 cloud-admin/main.tsx prime（同 web/main.tsx 注释理由）。
+- 错误处理：断线重连保留缓冲语义对齐 web 客户端；无 terminal 授权 → 占位卡（非报错）；rpc 超时 → 终端区错误态+重试。
+- 测试：真实 PTY 回显、授权负向、文件面板不回归；风险：终端组件对 DOM 环境假设（e2e 内验证）。
+
+### W6 设计要点（M121 中继双模式）
+- 中继：新监听器（TLS 终结）与既有 SNI 监听完全隔离；路径解析 → 路由表查 target → HTTP 反代（剥 /h/<routeKey>、X-Forwarded-*）+ WSS 升级透传；路由表复用现有同步机制，未命中 404。
+- 平台/前端：browserHost 注册字段（可选、线兼容）→ browserEntryUrl 拼装；web 包相对 base（vite base './'）+ 运行时 WSS 前缀从 location.pathname 推导（无前缀行为不变）。
+- 安全语义：浏览器模式下中继可见传输层头部/路径，E2EE 载荷不可读；中继元数据记录 routeKey。风险：升级请求头透传差异、相对 base 对 verify-web-build 的影响。
+- 测试：端到端三进程（平台+浏览器模式中继+宿主）转发伺服、未知 404、SNI 模式全绿回归、未配置不启用。
+
+### W7 设计要点（M122 handoff 自动进入）
+- 平台：code 存内存 map（code→{userId, projectId, exp}，单次消费），换发走既有设备会话签发；审计 web_handoff 含 code 指纹（不含明文）。
+- web 端：hash 读取 → 换发 → 存会话 → 自动打开项目；失败清 hash 回登录表单（预填平台地址）；与既有 web-cloud-session 恢复逻辑的优先级：handoff 显式优先。
+- 错误处理：410/403/网络失败分别提示；防重放（消费即删）。
+- 测试：平台五步负向链 + web e2e 自动进入 + 审计断言。
