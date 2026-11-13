@@ -1,5 +1,10 @@
 import { createHash } from 'node:crypto'
 import { readNumber, readString } from '../../shared/json-fields'
+import {
+  PLATFORM_UNAVAILABLE,
+  platformRequest,
+  platformUnavailableError
+} from './cloud-platform-unavailable'
 
 /**
  * One platform login's bearer credentials. Every forked project client shares
@@ -72,11 +77,19 @@ export function createCloudAuthSession(init: CloudAuthSessionInit): CloudAuthSes
       throw cloudSessionExpiredError()
     }
     try {
-      const res = await fetchImpl(`${init.apiUrl}/v1/auth/refresh`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ refreshToken })
-      })
+      // Why outside the expiry latch: an unreachable platform says nothing about
+      // whether this refresh token is still good, so the next attempt must retry.
+      const res = await platformRequest(() =>
+        fetchImpl(`${init.apiUrl}/v1/auth/refresh`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ refreshToken })
+        })
+      )
+      // A platform that answers 5xx is unreachable for our purposes, not rejecting us.
+      if (res.status >= 500) {
+        throw platformUnavailableError()
+      }
       const body: unknown = await res.json().catch(() => null)
       const nextAccess = res.ok ? readString(body, 'accessToken') : null
       if (nextAccess === null) {
@@ -93,7 +106,10 @@ export function createCloudAuthSession(init: CloudAuthSessionInit): CloudAuthSes
       } catch {
         // Best-effort persistence only.
       }
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && Reflect.get(error, 'code') === PLATFORM_UNAVAILABLE) {
+        throw error
+      }
       expired = true
       throw cloudSessionExpiredError()
     }

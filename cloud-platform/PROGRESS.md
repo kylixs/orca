@@ -1513,12 +1513,38 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 2. 维护中的主机对工作台同样不可打开，徽标文案统一为「主机离线」，未区分「维护中」。
 3. 客户端（桌面/浏览器）在自己的连接缓存里不会主动失效已打开的会话；仅有新列表数据时更新。
 
+## M75 修复 G-09：平台停机映射 `PLATFORM_UNAVAILABLE`，且不无凭证重连（AC-20）（本轮，主会话执行）
+
+**问题（M70 验收映射发现）**：平台停机时 `fetch` 的 `TypeError: fetch failed` 原样抛出，调用方无法按码分支；更严重的是 `cloud-auth-session` 的刷新把**任何**异常都当成会话失效并永久锁死（`expired = true`）——一次网络抖动就会把用户登出，与 AC-20「已有会话继续、不无凭证重连」相反。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-platform-unavailable.ts`（新） | `PLATFORM_UNAVAILABLE` 码；`isPlatformUnreachable()` 沿 `cause` 链识别 `ECONNREFUSED`/`ENOTFOUND`/`ECONNRESET`/`ETIMEDOUT`/`EAI_AGAIN`/`EHOSTUNREACH`/`ENETUNREACH`/`EPIPE`/`UND_ERR_*`、`AbortError`/`TimeoutError` 与 `TypeError: fetch failed`；`platformRequest()` 只转换传输失败，其余错误原样抛出 |
+| `cloud-auth-session.ts` | 刷新请求走 `platformRequest`；**5xx 也视为不可用**；只有平台真的拒绝（无 `accessToken`）才置 `expired` 并抛 `SESSION_EXPIRED`。不可用时不锁死，下次请求重试 |
+| `cloud-authorized-request.ts` | `ensureFresh`、首发请求、强制刷新、重试请求全部经 `platformRequest`；`throwCloudPlatformError` 对 5xx 直接给 `PLATFORM_UNAVAILABLE` |
+| `cloud-connect-client.ts` | `login()` 的传输失败同样映射 |
+| 测试辅助 | `cloud-tcp-proxy-fixture.ts`：可暂停的 TCP 前置代理，断网但平台进程与内存状态保留 |
+
+**验证（`evidence/m75-platform-unavailable/`）**：真实平台进程（`accessTtlMs=2000`，使每次请求都先刷新，确保断网打在刷新路径上）+ 可暂停代理 + 真实 TLS Runtime + 真实 WSS：
+- 断网期间：已建立的会话 `status.get` 仍成功（数据面独立）；新客户端登录、`listProjects`、`openProject` 全部得 **`PLATFORM_UNAVAILABLE`**（不是 `SESSION_EXPIRED`，也不是裸 `TypeError`）；未取到票据即未尝试升级 socket。
+- 恢复后：**同一会话不重新登录**即可重新列出项目、重新取票、直连打开并 RPC 成功 → 会话未被判死。
+- 单元（`cloud-platform-unavailable-unit.test.ts`）：三层 `cause` 链、`TimeoutError`、裸 `{code}` 均识别；`SESSION_EXPIRED` 不被误判；`platformRequest` 只转换传输失败。
+- 回归：`cloud-auth-session.test.ts`、`cloud-connect-client.test.ts`、`cloud-session-renewal.test.ts`、M73/M72/M36/M66 相关 4 个文件全过；渲染层 `use-cloud-session.test.tsx` 11/11；`tsc node` 0；`check:code-quality:changed` 0 新发现。
+
+**负向对照**：把刷新异常处理改回「任何异常都置 `expired`」→ M75-1 得 `SESSION_EXPIRED` 而非 `PLATFORM_UNAVAILABLE`、M75-2 恢复后仍失败（会话被锁死）；恢复后全绿。第一次对照未触发刷新路径（TTL 30 分钟），因此把测试平台改成 2s 访问令牌重做对照。
+
+**如实记录 / 剩余**：
+1. 不做自动重连/退避重试：客户端在用户再次打开或下一次列表刷新时重试；「无凭证重连」因此不成立（结构上取票在升级之前）。
+2. 平台 5xx 一律按不可用处理，包括平台真的有 bug 时的 500——客户端会重试而不是登出，这是有意的方向。
+3. 断网检测依赖 `fetch` 的错误形状；未来 Node 改变 `TypeError: fetch failed` 文案时需同步（`code` 分支不受影响）。
+4. 心跳/控制面侧（主机）已有独立退避，不在本轮范围。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M74（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M75（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步**：
-1. **G-09 `PLATFORM_UNAVAILABLE`**（MAJOR）：平台停机时新建/重连映射该错误码，并断言不做无凭证重连。
+1. **人工验收准备**：MAJOR（G-05…G-09）已全部关闭，整理验收清单与证据索引；剩余 BLOCKER（G-02/G-03/G-04）需设计决策。
 3. **人工验收**：按 design/test-plan 逐条核对验收标准；重点看桌面真实界面（登录 → 侧栏项目 → 本人 checkout → 终端/文件/git/agent）与管理员浏览器会话页。
 4. 真机/跨平台：Windows、WSL、SSH 主机各跑一遍关键路径（provisioning、路径边界、PTY、会话持久化权限位）。
 5. L4 全量回归：发版前单独执行，含桌面 Electron 渲染验证。

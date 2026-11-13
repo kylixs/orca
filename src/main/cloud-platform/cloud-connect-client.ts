@@ -21,6 +21,7 @@ import {
   type CloudAuthTokens
 } from './cloud-auth-session'
 import { cloudAuthorizedFetch, throwCloudPlatformError } from './cloud-authorized-request'
+import { platformRequest } from './cloud-platform-unavailable'
 import { upgradeCloudSocket, type CloudSocket } from './cloud-socket-handshake'
 
 /** Desktop-side cloud connection: the platform is a registry, never the data path (D1). */
@@ -142,16 +143,18 @@ export class CloudConnectClient {
     username: string,
     password: string
   ): Promise<{ displayName: string; permissions: string[] }> {
-    const res = await this.fetchImpl(`${this.options.apiUrl}/v1/auth/login`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        username,
-        password,
-        devicePubKey: this.devicePubKeyB64,
-        deviceName: 'orca-desktop'
+    const res = await platformRequest(() =>
+      this.fetchImpl(`${this.options.apiUrl}/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          username,
+          password,
+          devicePubKey: this.devicePubKeyB64,
+          deviceName: 'orca-desktop'
+        })
       })
-    })
+    )
     const body: unknown = await res.json()
     if (!res.ok) {
       const code = readString(readField(body, 'error'), 'code')
