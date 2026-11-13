@@ -110,7 +110,7 @@
 | 工作台项目列表（≤ 200 项目） | P95 ≤ 500ms | 无 | 无 | UNVERIFIED | 现测的是少量项目的工作台渲染，未做 200 项目规模 |
 | 连接建立（凭证 → 工作区可交互） | 直连 P95 ≤ 2s；中继 P95 ≤ 3s | 无 | 无 | UNVERIFIED | M101 记录的是单次探测耗时，不是完整建连到可交互 |
 | 终端输入回显（同城网络） | P95 ≤ 120ms | `cloud-terminal-echo-latency.test.ts::M102-1`（真实中继进程 + 真实 TLS + E2EE + 真实 PTY） | `m102-terminal-echo-latency/terminal-echo-latency.json` | PASS（本机） | 中继线路 50 次采样，多次运行 P95 **7.5–9.1ms**（当前证据 9.05ms）；注入 150ms 后同一预算断言转红（P95 306.9ms），撤销后恢复 9.87ms。客户端与主机同机，未计入同城网络 RTT |
-| 文件目录读取（1000 项） | P95 ≤ 400ms | `cloud-file-listing-latency.test.ts::M103-1`（真实中继进程 + 真实 TLS + E2EE + 真实 Runtime） | `m103-file-listing-latency/file-listing-latency.json` | PASS（本机） | 中继线路下返回 1000 条目，30 次采样 P95 **3.25ms**、中位 2.6ms；注入 450ms 后同一预算断言转红（P95 915.19ms），撤销后恢复 3.89ms。平铺目录、客户端与主机同机，未含真实网络 RTT 与 SSH 文件系统 |
+| 文件目录读取（1000 项） | P95 ≤ 400ms | `cloud-file-listing-latency.test.ts::M103-1`（真实中继进程 + 真实 TLS + E2EE + 真实 Runtime） | `m103-file-listing-latency/file-listing-latency.json` | PASS（本机） | 中继线路下返回 1000 条目，30 次采样，多次运行 P95 **3.3–5.1ms**（当前证据 5.07ms）；注入 450ms 后同一预算断言转红（P95 914.06ms），撤销后恢复。平铺目录、客户端与主机同机，未含真实网络 RTT 与 SSH 文件系统 |
 | 审计查询（31 天窗口） | P95 ≤ 2s | 无 | 无 | UNVERIFIED | 待补 |
 
 ## 5. 不可验证项与前置条件
