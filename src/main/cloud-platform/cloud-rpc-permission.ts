@@ -69,6 +69,12 @@ const DOWNLOAD_METHODS: ReadonlySet<string> = new Set([
   'browser.savePage'
 ])
 
+/**
+ * Methods that only ever touch the ticket's own project root. `open` is the
+ * permission every admitted session carries; the path guard pins the argument.
+ */
+const PROJECT_METHODS: ReadonlySet<string> = new Set(['repo.add'])
+
 const WORKTREE_METHODS: ReadonlySet<string> = new Set([
   'worktree.create',
   'worktree.createManaged',
@@ -97,6 +103,9 @@ export function cloudMethodAccess(method: string): CloudMethodAccess {
   }
   if (WORKTREE_METHODS.has(method)) {
     return 'terminal'
+  }
+  if (PROJECT_METHODS.has(method)) {
+    return 'open'
   }
   // Browser navigation is the panel's own permission; its exports are not.
   if (method.startsWith('browser.')) {

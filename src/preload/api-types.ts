@@ -159,7 +159,8 @@ export type PreloadApi = {
   gitBash: RuntimeApi['gitBash']
   plugins: PluginsApi
   agentStatus: AgentStatusApi
-  cloud: CloudPlatformApi
+  /** Present only when the main process runs in cloud mode (ORCA_CLOUD_API_URL). */
+  cloud?: CloudPlatformApi
   mobile: MobileApi
   speech: SpeechApi
 }

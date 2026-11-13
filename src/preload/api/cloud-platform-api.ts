@@ -1,6 +1,7 @@
 import type {
   CloudConnectionEvent,
   CloudOpenResult,
+  CloudProjectEnvironment,
   CloudProjectSummary,
   CloudRpcOutcome,
   CloudSessionState
@@ -14,6 +15,8 @@ export type CloudPlatformApi = {
   openProject: (projectId: string) => Promise<CloudOpenResult>
   /** Open and register the project as a runtime environment panes can address. */
   openWorkspace: (projectId: string) => Promise<CloudOpenResult>
+  /** Register one runtime environment per visible project (no checkout). */
+  registerProjects: () => Promise<CloudProjectEnvironment[]>
   /** Leave the workspace; the platform session survives. */
   closeProject: () => Promise<{ ok: boolean }>
   rpc: (method: string, params?: Record<string, unknown>) => Promise<CloudRpcOutcome>

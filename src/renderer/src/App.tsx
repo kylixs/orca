@@ -13,7 +13,7 @@ import { useUnreadDockBadge } from './hooks/useUnreadDockBadge'
 import { AppBackgroundServices } from './app-shell/AppBackgroundServices'
 import { AppRootSurfaces } from './app-shell/AppRootSurfaces'
 import { AppWorkspaceShell } from './app-shell/AppWorkspaceShell'
-import { CloudModeGate } from './cloud/cloud-mode-gate'
+import { CloudWorkspaceEntry } from './cloud/cloud-workspace-entry'
 import { WindowControls } from './app-shell/WindowControls'
 import {
   MAC_TRAFFIC_LIGHTS_WIDTH,
@@ -94,13 +94,13 @@ function App(): React.JSX.Element {
           <DocPreviewExternalLinkConfirmation />
           <LinkRoutingPreferenceDialogProvider>
             <AppBackgroundServices />
-            <CloudModeGate>
+            <CloudWorkspaceEntry>
               <AppWorkspaceShell layout={layout} floatingWorkspace={floatingWorkspace} />
               <AppRootSurfaces
                 floatingWorkspace={floatingWorkspace}
                 onboardingGate={onboardingGate}
               />
-            </CloudModeGate>
+            </CloudWorkspaceEntry>
             <BrowserWebAuthnAccountDialog />
           </LinkRoutingPreferenceDialogProvider>
         </ConfirmationDialogProvider>

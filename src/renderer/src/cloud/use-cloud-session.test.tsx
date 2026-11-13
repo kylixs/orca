@@ -96,6 +96,7 @@ function makeBridge(script: Script = {}): TestBridge {
       }
       return result.ok ? { ...result, environmentId: `cloud-${projectId}` } : result
     },
+    registerProjects: async () => [],
     closeProject: async () => {
       bridge.closedProjects += 1
       return { ok: true }

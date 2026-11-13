@@ -8,7 +8,7 @@ import {
   isWithinRoot,
   resolveRealPath
 } from './cloud-path-boundary'
-import { checkCloudRpcPath } from './cloud-path-guard'
+import { checkCloudRpcPath, isCloudPathGuardedMethod } from './cloud-path-guard'
 
 /**
  * Design §8.3 / AC-11 / AC-27. These pin the boundary arithmetic on a real
@@ -135,6 +135,56 @@ describe('RPC 路径检查', () => {
       }
     })
     expect(decision).toMatchObject({ ok: false, reason: 'workspace_scope' })
+  })
+
+  it('repo.add 只能注册项目根本身，符号链接的越界写法也被拒', async () => {
+    const { projectRoot, workspaceRoot, otherProject } = fixture()
+    const roots = { projectRoot, workspaceRoot }
+    expect(
+      await checkCloudRpcPath({
+        runtime,
+        roots,
+        method: 'repo.add',
+        params: { path: projectRoot, kind: 'git' }
+      })
+    ).toEqual({ ok: true })
+    expect(
+      await checkCloudRpcPath({
+        runtime,
+        roots,
+        method: 'repo.add',
+        params: { path: join(projectRoot, 'src') }
+      })
+    ).toMatchObject({ ok: false, reason: 'project_scope' })
+    // The link inside the project resolves outside it, so registering it would grant another repo.
+    expect(
+      await checkCloudRpcPath({
+        runtime,
+        roots,
+        method: 'repo.add',
+        params: { path: join(projectRoot, 'escape') }
+      })
+    ).toEqual({ ok: false, reason: 'project_scope', message: expect.any(String) })
+    expect(
+      await checkCloudRpcPath({
+        runtime,
+        roots,
+        method: 'repo.add',
+        params: { path: otherProject }
+      })
+    ).toMatchObject({ ok: false, reason: 'project_scope' })
+    expect(
+      await checkCloudRpcPath({ runtime, roots, method: 'repo.add', params: { path: 'relative' } })
+    ).toMatchObject({ ok: false, reason: 'absolute_path' })
+    expect(
+      await checkCloudRpcPath({
+        runtime,
+        roots,
+        method: 'repo.add',
+        params: { path: projectRoot, kind: 'folder' }
+      })
+    ).toMatchObject({ ok: false, reason: 'repo_add_incomplete' })
+    expect(isCloudPathGuardedMethod('repo.add')).toBe(true)
   })
 
   it('选择器无法解析时明确返回 worktree_unknown', async () => {

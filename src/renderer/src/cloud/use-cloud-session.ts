@@ -3,6 +3,7 @@ import { errorCodeOf, readField } from '../../../shared/json-fields'
 import type {
   CloudConnectionEvent,
   CloudOpenResult,
+  CloudProjectEnvironment,
   CloudProjectSummary,
   CloudProjectPermission,
   CloudRpcOutcome,
@@ -19,6 +20,7 @@ import type {
 export type CloudBridge = {
   login: (username: string, password: string) => Promise<CloudSessionState>
   openWorkspace: (projectId: string) => Promise<CloudOpenResult>
+  registerProjects: () => Promise<CloudProjectEnvironment[]>
   closeProject: () => Promise<{ ok: boolean }>
   logout: () => Promise<CloudSessionState>
   getState: () => Promise<CloudSessionState>

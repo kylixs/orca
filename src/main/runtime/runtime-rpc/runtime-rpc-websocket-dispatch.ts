@@ -125,13 +125,14 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
     // refused by the dispatcher, and its message ("needs 'file:write'") is the one
     // the user needs — not a path verdict for a call that was never allowed.
     // Git needs `terminal`, files need the matching `file:` permission.
+    // `open` is checked like any other permission when the method declares a path
+    // rule: repo.add registers the project root and nothing else.
     const cloudAccess = cloudSession === undefined ? null : cloudMethodAccess(request.method)
     const pathChecked =
       cloudSession !== undefined &&
       isCloudPathGuardedMethod(request.method) &&
       cloudAccess !== null &&
       cloudAccess !== 'session' &&
-      cloudAccess !== 'open' &&
       cloudSession.permissions.includes(cloudAccess)
     if (cloudSession && pathChecked) {
       const pathDecision = await checkCloudRpcPath({

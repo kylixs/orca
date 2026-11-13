@@ -7,6 +7,7 @@ import {
   type CloudFilePaths
 } from './cloud-file-path-params'
 import { cloudGitAccessOf, cloudGitPathsOf } from './cloud-git-scope'
+import { PROJECT_ROOT_METHODS, checkProjectRootTarget } from './cloud-repo-add-scope'
 import { checkCloudAgentScope, cloudAgentScopeOf } from './cloud-agent-scope'
 import {
   cloudTerminalHandleOf,
@@ -96,6 +97,7 @@ export function cloudPathAccessOf(method: string): 'read' | 'write' | null {
 /** Whether a cloud session's call must pass the workspace boundary at all. */
 export function isCloudPathGuardedMethod(method: string): boolean {
   return (
+    PROJECT_ROOT_METHODS.has(method) ||
     cloudPathAccessOf(method) !== null ||
     cloudWorktreeAccessOf(method) !== null ||
     cloudTerminalScopeOf(method) !== null ||
@@ -129,6 +131,9 @@ export async function checkCloudRpcPath(args: {
   const denial = cloudWorktreeDenial(args.method)
   if (denial) {
     return { ok: false, reason: 'worktree_scope', message: denial.message }
+  }
+  if (PROJECT_ROOT_METHODS.has(args.method)) {
+    return checkProjectRootTarget(args)
   }
   if (args.method === MANAGED_CREATE_METHOD) {
     return await checkManagedCreate(args)

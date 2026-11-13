@@ -925,6 +925,28 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 3. 刷新路径（启动期提示）沿用既有实现，本轮未重复验证。
 4. 断线后**不会自动重登**——只回到登录页；自动续期需要保存平台会话（安全范围更大），未做。
 
+## M52 桌面端回归 Orca 原生界面：云项目注册为 repo（本轮，开发子代理执行）
+
+**问题**：`App.tsx` 用 `CloudModeGate` 把整个工作区壳子替换成自造页面；云项目只注册了运行时环境、**没有注册成 repo**，所以原生侧栏不会列出它们。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-workspace-entry.tsx`（新） | 替换 `CloudModeGate`：云端构建未登录时显示登录面板，登录后**照常渲染原生 `AppWorkspaceShell`**；每个项目注册环境后再同步为侧栏 repo |
+| `cloud-project-repos.ts`（新） | 无 DOM 的同步计划：按 `(executionHostId, path)` 幂等，重登录不重复；平台名称变化只改显示名；登出先由主进程回收环境、再删除行 |
+| `cloud:registerProjects`（新通道） | 为每个可见项目 `prepareProjectLink` + 注册环境，返回 `projectId/projectName/projectRoot/environmentId`。**不创建 checkout、不占用唯一连接**（列侧栏不该建工作区） |
+| `cloud-rpc-permission.ts` / `cloud-path-guard.ts` | 新增 `repo.add`（归 `open` 权限），路径守卫**只允许票据里的 `projectRoot` 本身**（含 realpath），其他路径与符号链接写法一律拒绝 |
+| `preload` | `api.cloud` 仅当 `ORCA_CLOUD_API_URL` 设置时暴露（与主进程注册 handler 的条件一致）；此前无条件暴露会让普通桌面构建误判为云端模式 |
+| `cloud:logout` | 回收全部云环境（此前只关当前项目） |
+
+**验证（`evidence/m52-cloud-repo-registration/`、`evidence/m52-cloud-native-entry/`）**：真实端到端 4 条（真实平台 + 真实 TLS Runtime + 真实 git 仓库 + 真实客户端）：repo 行 `executionHostId=runtime:<envId>`、路径为项目根；重复同步不产生第二行；通过注册环境发真实 RPC 成功；原生入口路径同样有真实用例。另有 10 条单测（幂等/改名/登出清理/preload 暴露条件/界面回归）。
+
+**主会话独立验收**：`tsc` node/web 0 错；changed-code 门禁 7 项 0 新发现；相关 41 条测试全过；`repo.add` 的路径守卫有专门用例（越界与符号链接均拒）。
+
+**如实记录 / 本轮踩到的坑**：
+1. 一次全量 `src/renderer/src/` + `src/main/cloud-platform/` 套件（约 4700 文件 / 41k 用例）与子代理的全量运行**并发**执行，机器 load average 冲到 50，两边结果都不可信，已终止。**后续规矩**：默认只跑受影响文件；全量只在需要时单跑且不与子代理同时跑。两个失败用例（`palette-match-performance`、`terminal-search-long-wrapped-line`）在空闲机器上单跑通过，属负载导致的时序抖动，与本模块无关。
+2. 本轮只做"列出 + 默认打开第一个项目"，**每项目独立连接尚未实现**（M53）：`CloudSessionService` 仍是单客户端，切换项目会断开上一个。
+3. `repo.add` 对云端开放是新增攻击面：目前仅由"只能添加项目根"限定；"添加后能否读到项目根之外"由既有工作区边界（M36）兜底，值得在 M53 补一条组合用例。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
 **用户决策**：普通开发者登录后直接进入 Orca 原生工作界面（左侧项目列表，用法不变）；自造的云端会话页**保留给管理员**，从平台项目列表页打开、可单独用 PC 浏览器访问；侧栏多项目**每项目独立连接**；文件面板随管理员页保留。
@@ -935,15 +957,3 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 4. **M55 原生初始导航**：原生工作区视图读取侧车 `workspacePath`（M45），进入项目即定位到本人 checkout。
 
 遗留（不阻塞）：`agent.launch` 在本人工作区未被实际执行（只断言拒绝路径）；断线后不自动重登，只回登录页。
-
-**界面方向修正（用户决定）**：不再自造云端面板。Orca 自带浏览器客户端（`src/renderer/src/web/`，约 1.1 万行，入口 `web-index.html`，在浏览器内重建 `window.api` 并挂载同一个 `App`）才是"统一工作界面"；它目前只接受**配对码**，没有云票据支持。改造顺序：
-
-1. 给 `web-runtime-connection-transport` 接入 cloud ticket（`shared/remote-runtime-request-socket.ts` 的 `cloudUpgrade` 已铺好一半）；浏览器内生成设备密钥并完成设备绑定证明。
-2. 浏览器 → 平台登录 → 票据选路（直连/中继）→ 连上远端 Runtime → 渲染同一个 `App`。
-3. 删除 `renderer/cloud/cloud-file-panel.tsx` 与云端壳子的工作区页；`shared/cloud-file-browser.ts` 仅保留给既有 e2e，或随面板一并移除。
-4. `cloud-runtime-environment` 侧车补 `workspacePath`，让复用后的面板直接寻址用户 checkout。
-5. 管理台（`cloud-platform/apps/web/`）保持独立，仅管理员可见主机/成员/审计/设置。
-
-遗留风险：`agent.launch` 在本人工作区**未被实际执行**（会真的拉起 agent 进程），目前只断言了拒绝路径。
-2. 遗留：M4 `isInsideRoot` 对 Windows 段大小写敏感（fail-closed，误拒而非误放；按需放宽）。
-3. 并发上限目前只统计云会话；本地配对连接不占这 32 个名额（设计表只约束云端会话），如运营需要主机总量配额再扩展。

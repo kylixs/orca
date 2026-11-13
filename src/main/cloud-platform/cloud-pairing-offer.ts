@@ -21,6 +21,8 @@ export type CloudProjectLink = {
   }
   route: 'direct' | 'relay'
   workspaceRoot: string
+  /** The repository root the host signs into the ticket; the native row's path. */
+  projectRoot: string
   expiresIn: number
 }
 
@@ -64,6 +66,7 @@ export function buildCloudProjectLink(input: {
     },
     route,
     workspaceRoot: ticket.workspace.workspaceRoot,
+    projectRoot: ticket.workspace.projectRoot,
     expiresIn: ticket.expiresIn
   }
 }

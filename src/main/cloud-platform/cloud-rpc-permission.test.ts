@@ -85,6 +85,14 @@ describe('云端调用方作用域', () => {
     expect(denyRpcMethodForCaller(cloud([]), 'status.get', 'workspace')).toBeNull()
   })
 
+  it('repo.add 只注册票据里的项目根，归 open 权限', () => {
+    expect(cloudMethodAccess('repo.add')).toBe('open')
+    expect(denyRpcMethodForCaller(cloud(['open']), 'repo.add', 'workspace')).toBeNull()
+    expect(denyRpcMethodForCaller(cloud([]), 'repo.add', 'workspace')).toContain(
+      "needs the 'open' project permission"
+    )
+  })
+
   it('未登记方法与不存在的权限集都拒绝，而不是退化为放行', () => {
     expect(denyRpcMethodForCaller(cloud(['open']), 'settings.update', 'workspace')).toContain(
       'not available to cloud sessions'

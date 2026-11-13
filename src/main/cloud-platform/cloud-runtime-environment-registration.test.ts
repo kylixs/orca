@@ -8,7 +8,10 @@ import { getRuntimeEnvironmentSidecarPath } from '../../shared/runtime-environme
 import { readEnvironmentStore } from '../../shared/runtime-environment-store-file'
 import { cloudWorkspacePathOf } from '../../shared/runtime-environments'
 import type { CloudProjectLink } from './cloud-pairing-offer'
-import { registerCloudRuntimeEnvironment } from './cloud-runtime-environment'
+import {
+  registerCloudRuntimeEnvironment,
+  removeCloudRuntimeEnvironments
+} from './cloud-runtime-environment'
 
 /** Registration only persists the link, so a fixed offer stands in for a prepared ticket. */
 
@@ -23,6 +26,7 @@ const link: CloudProjectLink = {
   cloudUpgrade: { credential: 'ticket', devicePubKey: 'device-key' },
   route: 'direct',
   workspaceRoot: '/srv/work',
+  projectRoot: '/srv/payment-service',
   expiresIn: 60
 }
 
@@ -70,6 +74,36 @@ describe('cloud environment registration carries the checkout path', () => {
     expect(ownEntries(sidecarCloudProject(environment.id)).map(([key]) => key)).not.toContain(
       'workspacePath'
     )
+  })
+
+  it('a re-registration without a checkout keeps the path a previous open recorded', () => {
+    const first = registerCloudRuntimeEnvironment(
+      userDataPath,
+      registration('/home/zhangsan/work/checkout-svc'),
+      100
+    )
+    // Signing in again registers environments without opening a workspace.
+    const second = registerCloudRuntimeEnvironment(userDataPath, registration(), 200)
+    expect(second.id).toBe(first.id)
+    expect(cloudWorkspacePathOf(stored(first.id))).toBe('/home/zhangsan/work/checkout-svc')
+  })
+
+  it('sign-out retires every cloud environment', () => {
+    registerCloudRuntimeEnvironment(userDataPath, registration(), 100)
+    registerCloudRuntimeEnvironment(
+      userDataPath,
+      {
+        ...registration(),
+        projectId: 'project-2',
+        projectKey: 'payments',
+        projectName: 'Payments'
+      },
+      200
+    )
+    expect(removeCloudRuntimeEnvironments(userDataPath).sort()).toEqual(['project-1', 'project-2'])
+    expect(readEnvironmentStore(userDataPath).environments).toEqual([])
+    // Idempotent: nothing left to remove.
+    expect(removeCloudRuntimeEnvironments(userDataPath)).toEqual([])
   })
 
   it('updates the stored path on reopen and keeps the environment id', () => {

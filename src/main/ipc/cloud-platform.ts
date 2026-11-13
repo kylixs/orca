@@ -2,6 +2,7 @@ import { BrowserWindow, ipcMain, type WebContents } from 'electron'
 import {
   CLOUD_PLATFORM_IPC,
   type CloudOpenResult,
+  type CloudProjectEnvironment,
   type CloudRpcOutcome,
   type CloudSessionState
 } from '../../shared/cloud-platform-ipc'
@@ -9,7 +10,8 @@ import { readTicketClaims } from '../cloud-platform/cloud-connect-response'
 import { CloudSessionService } from '../cloud-platform/cloud-session-service'
 import {
   registerCloudRuntimeEnvironment,
-  removeCloudRuntimeEnvironment
+  removeCloudRuntimeEnvironment,
+  removeCloudRuntimeEnvironments
 } from '../cloud-platform/cloud-runtime-environment'
 import { setActiveCloudSession } from '../cloud-platform/cloud-runtime-session'
 import { getCanonicalUserDataPath } from '../persistence/loading-store/user-data-path'
@@ -39,7 +41,14 @@ export function registerCloudPlatformHandlers(
   handle<CloudSessionState>(CLOUD_PLATFORM_IPC.login, async (username: string, password: string) =>
     session.login(username, password)
   )
-  handle<CloudSessionState>(CLOUD_PLATFORM_IPC.logout, () => session.logout())
+  handle<CloudSessionState>(CLOUD_PLATFORM_IPC.logout, () => {
+    // Why: the native shell owns one environment per project, so signing out
+    // must retire all of them — `closeProject` only knows the connected one.
+    if (options.userDataPath) {
+      removeCloudRuntimeEnvironments(options.userDataPath)
+    }
+    return session.logout()
+  })
   handle(CLOUD_PLATFORM_IPC.listProjects, () => session.listProjects())
   handle<CloudOpenResult>(CLOUD_PLATFORM_IPC.openProject, (projectId: string) =>
     session.openProject(projectId)
@@ -80,6 +89,41 @@ export function registerCloudPlatformHandlers(
       permissions: readTicketClaims(prepared.link.cloudUpgrade.credential).permissions,
       environmentId: environment.id
     }
+  })
+  handle<CloudProjectEnvironment[]>(CLOUD_PLATFORM_IPC.registerProjects, async () => {
+    const state = session.getState()
+    if (state.status !== 'signed-in' || !options.userDataPath) {
+      return []
+    }
+    const environments: CloudProjectEnvironment[] = []
+    for (const project of state.projects) {
+      // Why a prepared link, not openWorkspace: listing a project in the sidebar
+      // must not create a checkout or consume the one live connection.
+      let prepared = await session.prepareProjectLink(project.id)
+      if (!prepared.ok) {
+        // Why retry once: route selection is a raw TCP probe, which can lose one
+        // race at sign-in while the host is otherwise reachable.
+        prepared = await session.prepareProjectLink(project.id)
+      }
+      if (!prepared.ok) {
+        console.warn(`[cloud] could not prepare ${project.key}: ${prepared.code}`)
+        continue
+      }
+      const environment = registerCloudRuntimeEnvironment(options.userDataPath, {
+        projectId: project.id,
+        projectKey: project.key,
+        projectName: project.name,
+        hostId: project.hostName ?? '',
+        link: prepared.link
+      })
+      environments.push({
+        projectId: project.id,
+        projectName: project.name,
+        projectRoot: prepared.link.projectRoot,
+        environmentId: environment.id
+      })
+    }
+    return environments
   })
   handle(CLOUD_PLATFORM_IPC.closeProject, () => {
     const openProjectId = session.connectedProjectId

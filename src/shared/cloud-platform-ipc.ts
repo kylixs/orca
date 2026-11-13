@@ -14,6 +14,8 @@ export const CLOUD_PLATFORM_IPC = {
   openProject: 'cloud:openProject',
   closeProject: 'cloud:closeProject',
   openWorkspace: 'cloud:openWorkspace',
+  /** Registers one runtime environment per visible project (no checkout). */
+  registerProjects: 'cloud:registerProjects',
   rpc: 'cloud:rpc',
   connectionChanged: 'cloud:connectionChanged'
 } as const
@@ -67,6 +69,18 @@ export type CloudOpenResult =
       environmentId?: string
     }
   | { ok: false; code: string; message?: string }
+
+/**
+ * One cloud project as a native runtime host. The renderer turns this into a
+ * sidebar repo row owned by `runtime:<environmentId>`.
+ */
+export type CloudProjectEnvironment = {
+  projectId: string
+  projectName: string
+  /** The repo root the host signs into the ticket; this is the row's `path`. */
+  projectRoot: string
+  environmentId: string
+}
 
 export type CloudRpcOutcome =
   | { ok: true; result: unknown }

@@ -8,6 +8,7 @@ import {
 } from '../../shared/runtime-environment-store-file'
 import { writeRuntimeEnvironmentSidecarEntry } from '../../shared/runtime-environment-sidecar'
 import {
+  cloudWorkspacePathOf,
   createEnvironmentFromPairingOffer,
   type KnownRuntimeEnvironment
 } from '../../shared/runtime-environments'
@@ -174,6 +175,9 @@ export function registerCloudRuntimeEnvironment(
 ): KnownRuntimeEnvironment {
   const known = readEnvironmentStore(userDataPath).environments
   const existing = known.find((entry) => entry.cloudProject?.projectId === input.projectId)
+  // Why: a sign-in registers environments without opening a workspace; that must
+  // not erase the checkout path a previous open recorded (M45/M55 navigation).
+  const workspacePath = input.workspacePath ?? (existing ? cloudWorkspacePathOf(existing) : null)
   const environment = createEnvironmentFromPairingOffer({
     id: existing?.id ?? `cloud-${randomUUID()}`,
     name: existing?.name ?? input.projectName,
@@ -197,10 +201,18 @@ export function registerCloudRuntimeEnvironment(
       hostId: input.hostId,
       registeredAt: now,
       // Omitted while unknown, so an old sidecar shape stays byte-identical.
-      ...(input.workspacePath ? { workspacePath: input.workspacePath } : {})
+      ...(workspacePath ? { workspacePath } : {})
     }
   })
   return environment
+}
+
+/** Drops every cloud environment (sign-out); returns the project ids removed. */
+export function removeCloudRuntimeEnvironments(userDataPath: string): string[] {
+  const projectIds = readEnvironmentStore(userDataPath).environments.flatMap((entry) =>
+    entry.cloudProject ? [entry.cloudProject.projectId] : []
+  )
+  return projectIds.filter((projectId) => removeCloudRuntimeEnvironment(userDataPath, projectId))
 }
 
 /** Drops the environment for a project; the next open registers it again. */
