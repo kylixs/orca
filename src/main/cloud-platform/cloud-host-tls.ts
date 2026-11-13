@@ -17,8 +17,17 @@ export type CloudHostTls = {
 
 /** SHA-256 of the DER body; PEM re-encoding and line endings cannot change it. */
 export function tlsCertificateFingerprint(certPem: string): string {
-  const der = new X509Certificate(certPem).raw
+  return derCertificateFingerprint(new X509Certificate(certPem).raw)
+}
+
+/** The form the platform publishes and the client compares the live cert against. */
+export function derCertificateFingerprint(der: Buffer): string {
   return `sha256:${createHash('sha256').update(der).digest('hex')}`
+}
+
+/** Legacy platforms publish a fallback name here; only real fingerprints pin. */
+export function isSha256Fingerprint(value: string | undefined): value is string {
+  return value !== undefined && /^sha256:[0-9a-f]{64}$/.test(value)
 }
 
 /**

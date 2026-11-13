@@ -131,6 +131,7 @@
 | 文件 | 覆盖 AC | 说明 |
 |---|---|---|
 | `cloud-platform/test/e2e/m70-acceptance.e2e.test.ts` | AC-01、AC-02、AC-03、AC-04、AC-08、AC-25 | 进程内真实 API + 注入时钟；不等待 15 分钟/60 秒 |
+| `src/main/cloud-platform/cloud-host-tls-pinning.test.ts`（M109，§5.3 传输） | AC-29 邻接 | 真实平台 + 真实 TLS Runtime + MITM（另一张自签证书终结后转发）：真端点可连、换证书 `TLS_FINGERPRINT_MISMATCH` 被拒、无指纹不校验（旧平台兼容）；证据 `m109-host-tls-pinning/host-tls-pinning.json` |
 | `src/main/cloud-platform/m70-acceptance.test.ts` | AC-09 | 真实平台进程 + 真实 Orca Runtime + 真实加密 RPC |
 | `cloud-platform/test/e2e/platform.e2e.test.ts::E3` | AC-21 | 加强断言：必须 401 且带 `x-orca-reject`，并输出到 `m70-acceptance` |
 

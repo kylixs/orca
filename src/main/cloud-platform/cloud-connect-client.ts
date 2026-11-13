@@ -12,7 +12,7 @@ import {
   listProvisionableHosts as fetchProvisionableHosts
 } from './cloud-self-service-api'
 import { chooseRoute, probeEndpoint } from './cloud-route-selection'
-import { endpointUnreachableError } from './cloud-endpoint-probe'
+import { endpointUnreachableError, type EndpointProbe } from './cloud-endpoint-probe'
 import { parseConnectTicket, parseProjectList } from './cloud-connect-response'
 import type { CloudStreamEvent, CloudSubscription } from './cloud-rpc-multiplexer'
 import {
@@ -38,7 +38,8 @@ export type CloudRpcResult =
       ok: false
       code: string
       message?: string
-      /** Machine-readable denial details. */ data?: unknown
+      /** Machine-readable denial details. */
+      data?: unknown
     }
 
 export type CloudDeviceKeyPair = {
@@ -84,7 +85,6 @@ const DEFAULT_PROBE_TIMEOUT_MS = 800
 const DEFAULT_MAX_DIRECT = 2
 export { chooseRoute, probeEndpoint } from './cloud-route-selection'
 export type { EndpointProbe, RouteChoice } from './cloud-route-selection'
-import type { EndpointProbe } from './cloud-endpoint-probe'
 
 export class CloudConnectClient {
   private readonly options: CloudConnectOptions
@@ -326,6 +326,7 @@ export class CloudConnectClient {
       devicePubKeyB64: this.devicePubKeyB64,
       deviceKeys: this.deviceKeys,
       tlsRejectUnauthorized: this.options.tlsRejectUnauthorized ?? true,
+      expectedTlsFingerprint: prepared.ticket.host.tlsFingerprint || undefined,
       onClose: (code, reason) => this.closeListener?.(code, reason)
     })
     return { route: prepared.route, ticket: prepared.ticket, probes: prepared.probes }

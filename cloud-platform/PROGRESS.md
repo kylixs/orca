@@ -2292,9 +2292,31 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 2. 平台目前只**发布** TLS 指纹，客户端尚未据此做 TLS 证书固定（E2EE 公钥固定另有实现，AC-29）；目标网络部署时以平台 CA 校验为主。
 3. 采样使用自签证书 + `ORCA_CLOUD_TLS_INSECURE=1`；真实证书链校验仍需在部署环境验证。
 
+## M109 客户端按平台指纹校验宿主 TLS 证书（M108 的闭环）（本轮，主会话执行）
+
+**问题**：M108 之后平台会发布宿主 TLS 证书指纹（`tlsFingerprint`），票据也带给客户端，但客户端没有校验——自签场景 `rejectUnauthorized` 为关，任何人换成自己的证书客户端照连。设计 §5.3 的「平台是信任根」在传输层还差最后一跳。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-socket-handshake.ts` | `upgradeCloudSocket` 新增 `expectedTlsFingerprint`：在 `open`（TLS 已完成、E2EE hello **之前**）用受检读取取对端证书 DER，与票据指纹比对；不匹配以 `TLS_FINGERPRINT_MISMATCH` 拒绝并立即断开（凭证派生的字节一个都不发出去）。只有 `sha256:<64hex>` 形态的期望值才校验——旧平台填的是回落名，强制比对会破坏混版（兼容规则） |
+| `cloud-connect-client.ts` | `openProject` 把票据里的 `tlsFingerprint` 传给握手 |
+| `cloud-host-tls.ts` | 抽出 `derCertificateFingerprint` / `isSha256Fingerprint` 供握手复用 |
+
+**验证（`evidence/m109-host-tls-pinning/host-tls-pinning.json`）**：
+- 真实平台 + 真实 TLS Runtime：平台发布的指纹与磁盘证书计算值一致；真实端点直连打开成功（`route=direct`，固定逻辑开启下）。
+- **MITM 负向对照**：TLS 终结代理持**另一张**自签证书、向真实 Runtime 转发字节；客户端带票据连接该端点 → `TLS_FINGERPRINT_MISMATCH`，代理记录到这次连接（说明拒绝发生在客户端、不是连不上）。
+- **兼容对照**：同一假端点、不带期望指纹（旧平台形态）→ 连接成功——校验严格增量，混版不受影响。
+- 每次尝试用 `prepareProjectLink` 取新票据：宿主对票据 jti 有一次性保护，重放旧票据会在固定校验之前被拒。
+- 回归：`cloud-host-tls` / `cloud-connect-client` / `cloud-open-route-diagnostics` / `cloud-session-multi-project` / `cloud-admin-grant-open` / `cloud-terminal-relay` 全绿；`tc:node` 0；`check:code-quality:changed` 0。
+
+**如实记录 / 剩余**：
+1. 管理员浏览器页（`cloud-browser-bridge`）无法做此校验：浏览器 JS 读不到对端证书；该面以平台 CA 部署为主。
+2. 拒绝码目前到达失败面板（错误码 `TLS_FINGERPRINT_MISMATCH`）；未复用 AC-29 的「重新核对」对话框——TLS 证书与平台绑定，不是用户可确认的 TOFU 对象。
+3. 不匹配时客户端立即断开；没有把「期望/实际指纹」带进失败诊断 UI（错误 message 里有，IPC 面板暂只显示错误码）。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M108（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话、终端回显 P95、目录读取 P95、连接建立 P95、审计查询 P95、200 项目列表 P95）（含 M107 原生首屏 P95 与 M108 宿主 TLS/证书指纹）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M109（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话、终端回显 P95、目录读取 P95、连接建立 P95、审计查询 P95、200 项目列表 P95）（含 M107 原生首屏 P95、M108 宿主 TLS/证书指纹与 M109 客户端 TLS 指纹校验）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步**：
 1. **G-12 已收口**：平台无业务流量（M85）、中继无明文（M86）、浏览器渲染 P95（M97）均已有证据；原生 Electron 界面的首屏 P95 已由 M107-1 实测（20 次采样 P95 245ms，预算 1500ms），前提是 M108 补齐的宿主 TLS 监听与证书指纹上报。requirements §5.1 的终端输入回显（M102，本机中继路径 P95 7.5–9.1ms）、1000 项目录读取（M103，P95 3.3–5.1ms）、连接建立（M104，直连 6.3ms / 中继 6.1ms）、31 天窗口审计查询（M105，20 万条约 6.6ms）与 200 项目列表（M106，P95 75ms）也已实测——requirements §5.1 六项指标本机全部有证据，共同限制是未含真实网络 RTT。

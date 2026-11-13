@@ -11,6 +11,7 @@ import { parseJsonText, readString } from '../../shared/json-fields'
 import type { CloudEndpoint, CloudConnectTicket, CloudDeviceKeyPair } from './cloud-connect-client'
 import { readTicketClaims } from './cloud-connect-response'
 import { CloudRpcMultiplexer } from './cloud-rpc-multiplexer'
+import { derCertificateFingerprint, isSha256Fingerprint } from './cloud-host-tls'
 
 /** Probe→ticket→upgrade→E2EE: the socket half of a cloud project connection. */
 
@@ -37,6 +38,13 @@ export type CloudSocketInput = {
   devicePubKeyB64: string
   deviceKeys: CloudDeviceKeyPair
   tlsRejectUnauthorized: boolean
+  /**
+   * The TLS certificate the platform says this host serves, compared against the
+   * live certificate after the handshake. With self-signed hosts
+   * `rejectUnauthorized` is off — and Node then skips `checkServerIdentity` — so
+   * this comparison is what makes the platform's `tlsFingerprint` mean anything.
+   */
+  expectedTlsFingerprint?: string
   onClose: (code: number, reason: string) => void
 }
 
@@ -46,6 +54,32 @@ export type CloudSocket = {
   ticketDevicePubKey: string | null
   /** A caller-side refusal (e.g. a changed host key) must reach the peer as a close code. */
   close: (code?: number, reason?: string) => void
+}
+
+/** The live certificate's DER, via the socket the ws types keep private. */
+function peerCertificateRaw(websocket: unknown): Buffer | undefined {
+  if (websocket === null || typeof websocket !== 'object') {
+    return undefined
+  }
+  const socket: unknown = Reflect.get(websocket, '_socket')
+  if (socket === null || typeof socket !== 'object') {
+    return undefined
+  }
+  const getPeerCertificate = Reflect.get(socket, 'getPeerCertificate')
+  if (typeof getPeerCertificate !== 'function') {
+    return undefined
+  }
+  try {
+    const cert: unknown = Reflect.apply(getPeerCertificate, socket, [])
+    if (cert === null || typeof cert !== 'object') {
+      return undefined
+    }
+    const raw = Reflect.get(cert, 'raw')
+    return raw instanceof Buffer ? raw : undefined
+  } catch {
+    // A socket whose handshake never settled has no certificate to compare.
+    return undefined
+  }
 }
 
 export function upgradeCloudSocket(input: CloudSocketInput): Promise<CloudSocket> {
@@ -128,6 +162,44 @@ export function upgradeCloudSocket(input: CloudSocketInput): Promise<CloudSocket
       )
     })
     ws.once('open', () => {
+      // Only the new `sha256:<hex>` form pins. Older platforms fill this field
+      // with a legacy fallback name; enforcing against that would break them, so
+      // they keep today's (CA-less) behavior — the mixed-version rule.
+      const expected = isSha256Fingerprint(input.expectedTlsFingerprint)
+        ? input.expectedTlsFingerprint
+        : undefined
+      if (endpoint.url.startsWith('wss:') && expected) {
+        // Checked reads: the ws types do not expose the underlying socket, and a
+        // plain `ws://` hop has no certificate to compare. Reflect.apply keeps the
+        // TLSSocket as the receiver (getPeerCertificate reads `this._handle`).
+        const raw = peerCertificateRaw(ws)
+        if (raw === undefined) {
+          reject(
+            Object.assign(new Error('no peer certificate on a wss connection'), {
+              code: 'TLS_CERTIFICATE_MISSING'
+            })
+          )
+          ws.terminate()
+          return
+        }
+        const seen = derCertificateFingerprint(raw)
+        if (seen !== expected) {
+          // Interrupt before any credential-derived byte leaves the client; the
+          // platform named a different certificate than the one being served.
+          reject(
+            Object.assign(
+              new Error(`host TLS certificate mismatch: expected ${expected}, saw ${seen}`),
+              {
+                code: 'TLS_FINGERPRINT_MISMATCH',
+                expectedTlsFingerprint: expected,
+                seenFingerprint: seen
+              }
+            )
+          )
+          ws.terminate()
+          return
+        }
+      }
       ws.send(
         JSON.stringify({
           type: 'e2ee_hello',
