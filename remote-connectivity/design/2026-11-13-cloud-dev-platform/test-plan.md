@@ -74,7 +74,7 @@
 | AC-11 | 路径穿越 `../../etc/passwd` 拒绝并记安全事件 | 真实 e2e + 单元 | `P-E2E::E6 路径穿越与跨用户写越界被拒`；`cloud-platform/test/contract.test.ts::路径边界：拒绝穿越与绝对逃逸`；`cloud-platform/test/e2e/file-contract.e2e.test.ts::M29-3/M29-5`；`src/main/cloud-platform/cloud-workspace-boundary.test.ts::M36-1/M36-2` | `e2e-platform/E6-path-boundary.json`；`m29-file-contract/m29-3-boundaries.json`、`m29-5-symlink.json`；`m36-workspace-boundary/m36-1-read-scope.json` | PASS(部分) | 穿越/符号链接/跨根均拒绝；主机侧没有安全事件审计（见 G-08） |
 | AC-12 | 权限收回 60 秒内断连；重新打开 404；降级恢复后立即生效 | 真实 e2e | `P-E2E::E7 权限收回后：旧凭证在心跳窗口内被拒，新登录看不到项目`；`cloud-platform/test/e2e/control-plane-isolation.e2e.test.ts::F1/F2`；`src/main/cloud-platform/cloud-revocation-precision.test.ts::撤销前签发的票据在撤销后被拒…`；`src/main/cloud-platform/cloud-project-archive.test.ts::归档释放 key…让主机关闭 Live 会话` | `e2e-platform/E7-revocation.json`；`m16-control-plane-isolation/policy-hang-still-revokes.json`；`m26-revocation-precision/cases.txt`；`m65-project-archive/m65-archive.json` | PASS(部分) | 旧票据拒绝、新登录 404、控制面挂起时仍撤销已验证；项目级撤销关闭 Live 会话（归档路径，4403）已验证，授权收回走同一 `revokeProjectCredentials` 机制但**无直接用例断言 60 秒内断开** |
 | AC-13 | 审计员查近 7 天事件链，traceId 可关联连接日志 | 真实 e2e + 单元 | `cloud-platform/test/e2e/audit-verify.e2e.test.ts::M31-1/M31-3/M31-5/M31-6`；`cloud-platform/test/audit-integrity.test.ts`；`admin-gating.e2e.test.ts::被拒的管理操作写入审计` | `m31-audit-verify/m31-1-verify.json`、`m31-3-continuity.json`、`m31-6-tampered.json`；`m8-admin-gating/denied-audit.json` | PASS(部分) | 链校验、分页、重启续链、篡改定位已验证；7 天 `since` 过滤与 traceId→连接日志关联无断言 |
-| AC-14 | 管理员吊销主机：新连接立即失败，已有连接 60 秒内断开 | 未覆盖 | 无主机吊销用例；`cloud-platform/test/e2e/revocation.e2e.test.ts` 只覆盖设备吊销 | 无 | UNVERIFIED | `DELETE /v1/hosts/:id` 已实现（清凭证、删路由、撤销项目票据），但主机失去心跳凭证后是否/如何关闭已建直连会话未验证（见 G-10） |
+| AC-14 | 管理员吊销主机：新连接立即失败，已有连接 60 秒内断开 | — | `cloud-platform/test/e2e/host-revocation.e2e.test.ts`（心跳 `hostRevoked` + 409 `HOST_REVOKED`）；`src/main/cloud-platform/cloud-host-revocation.test.ts`（真实 WSS 9.9s 内 4403） | `m71-host-revocation/platform-revocation.json`、`m71-revocation.json` | PASS | M71 修复：`DELETE` 保留心跳凭证只置 `revokedAt`，主机收到 `hostRevoked` 后关闭全部已准入会话并停止轮询 |
 | AC-15 | 客户端版本过低：登录成功，打开项目 426 提示升级 | 真实 e2e | `P-E2E::E7c 客户端版本过低被平台拒绝（426）` | `e2e-platform/E7c-version-gate.json` | PASS | 登录后可登录；connect 返回 426 `VERSION_UNSUPPORTED`，带 `min/offered` |
 | AC-16 | 重启客户端且刷新令牌有效：免密进入工作台 | 真实 e2e | `src/main/cloud-platform/cloud-session-restart.test.ts::M66-1 三次重启都免登录…`；`cloud-session-persistence.test.ts` | `m66-session-persistence/desktop-restart.json` | PASS | 三次新进程恢复均 signed-in，设备身份不变；登出后恢复为 signed-out 并删文件 |
 | AC-17 | 管理员改下载策略：30 秒内生效并审计 | 真实 e2e | `cloud-download-policy.test.ts::M35-1 默认为拒绝…` | `m35-download-policy/m35-1-download-policy.json` | PASS(部分) | 策略变更 + 审计 + 链校验已验证；用例通过手动 `refresh()` 立即生效，未测 10s 轮询在 30s 内的端到端时延 |
@@ -103,7 +103,7 @@
 
 | AC | 缺什么 | 建议验证环境 |
 |---|---|---|
-| AC-14 | 主机吊销后新连接/已有连接的端到端演练 | 已注册主机 + 真实直连 WSS + 管理端吊销；观察 60 秒内关闭（若心跳凭证同时失效，需先确定关闭通道） |
+| AC-14 | ~~已修复~~ | M71 已用真实 WSS 验证（9.9s 内 4403），无需独立环境 |
 | AC-19 | 旧前端 bundle 与新 API 的兼容部署 | 静态资源与 API 分开部署；保留 N-1 前端产物，在 API 升级后回归登录/工作台/打开项目 |
 | AC-22 | 300 并发、30 分钟、P95 指标 | 独立压测环境；k6/artillery 驱动真实 Runtime + relay；采集连接成功率、直连/中继 P95 |
 | AC-23 | 多中继节点故障切换 | 至少 2 个中继节点；杀其中一个，验证客户端 5 次退避内重连且新开会话成功率 ≥99% |

@@ -252,7 +252,8 @@ export function createApp(config: ApiConfig): ApiHandle {
     status: 'online',
     maintenanceReason: null,
     lastHeartbeatAt: now(),
-    credentialHash: null
+    credentialHash: null,
+    revokedAt: null
   }
   store.hosts.set(host.id, host)
   store.hostsByName.set(host.name, host)
@@ -334,14 +335,16 @@ export function createApp(config: ApiConfig): ApiHandle {
 
   function projectView(p: Project, user: User): Record<string, unknown> {
     const permissions = store.effectivePermissions(p.id, user)
+    const host = store.hosts.get(p.hostId)
     return {
       id: p.id,
       key: p.key,
       name: p.name,
       repoUrl: p.repoUrl,
       hostId: p.hostId,
-      hostName: store.hosts.get(p.hostId)?.name ?? null,
-      hostStatus: store.hosts.get(p.hostId)?.status ?? 'offline',
+      hostName: host?.name ?? null,
+      // Why: a revoked host must never look online, whatever a later status write says.
+      hostStatus: host && host.revokedAt === null ? host.status : 'offline',
       path: p.path,
       defaultBranch: p.defaultBranch,
       downloadPolicy: p.downloadPolicy,
@@ -403,7 +406,9 @@ export function createApp(config: ApiConfig): ApiHandle {
   }
 
   function hostOnline(h: Host): boolean {
-    return h.status === 'online' && now() - h.lastHeartbeatAt <= HOST_OFFLINE_MS
+    return (
+      h.revokedAt === null && h.status === 'online' && now() - h.lastHeartbeatAt <= HOST_OFFLINE_MS
+    )
   }
 
   /** A bad root is ignored on its own; it must not fail registration or a heartbeat. */
@@ -1308,7 +1313,8 @@ export function createApp(config: ApiConfig): ApiHandle {
         status: 'online',
         maintenanceReason: null,
         lastHeartbeatAt: now(),
-        credentialHash: null
+        credentialHash: null,
+        revokedAt: null
       }
       target.fingerprint = String(body.fingerprint ?? '')
       target.tlsFingerprint = String(body.tlsFingerprint ?? '') || null
@@ -1367,22 +1373,27 @@ export function createApp(config: ApiConfig): ApiHandle {
           return error(res, 401, 'HOST_CREDENTIAL_INVALID', '主机凭证无效。', traceId)
         }
         const body = await readJson(req)
-        if (Array.isArray(body.directAddrs) && body.directAddrs.length > 0) {
-          target.directAddrs = body.directAddrs as string[]
+        // Why: a revoked host keeps its credential so this beat can deliver the
+        // revocation; it must not look alive or accept any more reported state.
+        if (target.revokedAt === null) {
+          if (Array.isArray(body.directAddrs) && body.directAddrs.length > 0) {
+            target.directAddrs = body.directAddrs as string[]
+          }
+          // A host learns its own E2EE key only once its runtime has started, so the
+          // heartbeat is where it first becomes reportable.
+          if (typeof body.e2eePublicKeyB64 === 'string' && body.e2eePublicKeyB64.length > 0) {
+            target.e2eePublicKey = body.e2eePublicKeyB64
+          }
+          if (typeof body.status === 'string' && target.status !== 'maintenance') {
+            target.status = body.status === 'online' ? 'online' : 'offline'
+          }
+          applyProjectsRoot(target, body.projectsRoot, traceId)
+          applyProjectProvisionReports(target.id, body.provisioned, traceId)
+          target.lastHeartbeatAt = now()
         }
-        // A host learns its own E2EE key only once its runtime has started, so the
-        // heartbeat is where it first becomes reportable.
-        if (typeof body.e2eePublicKeyB64 === 'string' && body.e2eePublicKeyB64.length > 0) {
-          target.e2eePublicKey = body.e2eePublicKeyB64
-        }
-        if (typeof body.status === 'string' && target.status !== 'maintenance') {
-          target.status = body.status === 'online' ? 'online' : 'offline'
-        }
-        applyProjectsRoot(target, body.projectsRoot, traceId)
-        applyProjectProvisionReports(target.id, body.provisioned, traceId)
-        target.lastHeartbeatAt = now()
         const revoked = store.revocations.filter((r) => r.targetType !== 'jti')
         return json(res, 200, {
+          ...(target.revokedAt !== null ? { hostRevoked: true } : {}),
           policyVersion: store.policies.version,
           policies: {
             downloadDefault: store.policies.downloadDefault,
@@ -1450,8 +1461,9 @@ export function createApp(config: ApiConfig): ApiHandle {
         if (!authed || !isAdmin(authed.user)) {
           return error(res, 403, 'PERMISSION_DENIED', '需要平台管理权限。', traceId)
         }
+        const revokedAt = now()
         target.status = 'offline'
-        target.credentialHash = null
+        target.revokedAt = revokedAt
         if (target.relayRoute) store.relayRoutes.delete(target.relayRoute)
         for (const p of store.projects.values()) {
           if (p.hostId === hostId) revokeProjectCredentials(p.id, 'host_revoked')
@@ -1462,7 +1474,8 @@ export function createApp(config: ApiConfig): ApiHandle {
           targetType: 'host',
           targetId: hostId,
           result: 'success',
-          traceId
+          traceId,
+          metadata: { revokedAt }
         })
         return json(res, 200, { ok: true })
       }
@@ -1667,6 +1680,9 @@ export function createApp(config: ApiConfig): ApiHandle {
     const body = await readJson(req)
     const host = store.hosts.get(project.hostId)
     if (!host) return error(res, 404, 'HOST_NOT_FOUND', '主机不存在。', traceId)
+    if (host.revokedAt !== null) {
+      return error(res, 409, 'HOST_REVOKED', '主机已被吊销，无法打开项目。', traceId)
+    }
     if (host.status === 'maintenance') {
       return error(res, 409, 'HOST_MAINTENANCE', '主机维护中，暂时无法打开项目。', traceId, {
         reason: host.maintenanceReason

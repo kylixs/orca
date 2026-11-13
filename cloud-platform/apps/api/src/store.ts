@@ -48,6 +48,8 @@ export type Host = {
   maintenanceReason: string | null
   lastHeartbeatAt: number
   credentialHash: string | null
+  /** Set once revoked; the credential stays valid so the host can learn of it. */
+  revokedAt: number | null
 }
 
 export type Project = {

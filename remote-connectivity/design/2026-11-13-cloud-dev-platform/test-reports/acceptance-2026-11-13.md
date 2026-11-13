@@ -123,3 +123,9 @@ UNVERIFIED 原因：
 - 首版 AC-09 用例缺少设备注册与访问守卫，真实握手返回 `e2ee_error unauthorized`；补 `DeviceRegistry.adoptCloudDevice` 与 `installCloudAccessGuard` 后通过。属测试夹具问题，不是产品缺陷。
 - 运行期间主机负载一度达到 14（10 核），已按 DEVELOPMENT_PROCESS §4.1 改为单文件、`--test-concurrency=1` / `--maxWorkers=1`，未并行拉起 e2e。
 - 现场有一个 `cloud-platform/apps/api/src/server.ts` 进程（PID 81945，PPID=1，已运行 6 小时以上），不是本轮测试启动的；本轮创建的 API 子进程均随用例关闭。
+
+## 附录：M71 后 AC-14 状态更新（2026-11-13）
+
+- **AC-14 由 UNVERIFIED → PASS**：`DELETE /v1/hosts/:id` 不再清空 `credentialHash`，改为置 `revokedAt`；主机心跳仍 200 并携带 `hostRevoked: true`，主机据此关闭全部已准入云会话（真实 WSS 实测 **9.9s** 内 4403）并停止轮询；新票据 connect 返回 409 `HOST_REVOKED`。
+- 证据：`cloud-platform/evidence/m71-host-revocation/`（`platform-revocation.json`、`m71-revocation.json`、`negative-control.json`）。
+- **G-01 关闭**。剩余 BLOCKER：G-02（4433 公钥固定）、G-03（密钥轮换）、G-04（多副本审计）；MAJOR 6 项不变。

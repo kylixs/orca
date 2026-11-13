@@ -134,6 +134,8 @@ export type HeartbeatResult = {
   policies: unknown
   revoked: unknown
   maintenance: { reason: string } | null
+  /** The platform has revoked this host; every session it hosts must be closed. */
+  hostRevoked: boolean
 }
 
 export async function sendHeartbeat(
@@ -164,7 +166,9 @@ export async function sendHeartbeat(
       policyVersion,
       policies: readField(parsed, 'policies'),
       revoked: readField(parsed, 'revoked'),
-      maintenance: maintenance === null ? null : { reason: readString(maintenance, 'reason') ?? '' }
+      maintenance:
+        maintenance === null ? null : { reason: readString(maintenance, 'reason') ?? '' },
+      hostRevoked: readField(parsed, 'hostRevoked') === true
     }
   } catch {
     return null

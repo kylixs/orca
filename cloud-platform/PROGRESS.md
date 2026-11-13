@@ -1409,12 +1409,39 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 2. 8 条 UNVERIFIED 需要独立环境（压测、多中继、多副本审计、MITM、跨轮换窗口、WAF）。
 3. 本轮未修任何产品缺口（映射任务范围），下一模块应优先修 G-01。
 
+## M71 修复 G-01：主机吊销能到达主机并关闭已建会话（AC-14）（本轮，开发子代理执行 + 主会话补测）
+
+**问题（M70 验收映射发现）**：`DELETE /v1/hosts/:id` 把 `credentialHash` 清空，主机下一次心跳直接 401 → **永远收不到撤销集合**；已建云会话不会在 60 秒内断开，AC-14 无法满足。
+
+| 改动 | 内容 |
+|---|---|
+| 平台 `store.ts` / `server.ts` | `Host.revokedAt`（旧数据缺省 `null`）；`DELETE` 改为置 `revokedAt`、**保留 `credentialHash`**（只为继续送达吊销）、删 relay 路由、沿用项目撤销、审计带 `revokedAt`；心跳鉴权通过后若已吊销 → **仍 200** 并返回 `hostRevoked: true`，但不刷新 status/directAddrs/e2ee/projectsRoot/lastHeartbeatAt；`handleConnect` 先判 `409 HOST_REVOKED`；`hostOnline` 与 `projectView.hostStatus` 对吊销主机一律 offline |
+| 主机 `cloud-host-enrollment.ts` / `cloud-agent-client.ts` | 解析 `hostRevoked`；收到后置 `hostRevoked`/`lastError='host_revoked'`，对**所有已准入 ticket** 触发撤销回调（运行时以 4403 关闭已建会话），`refresh()`/`start()` 不再发请求，`admit` 直接拒绝（401 + `x-orca-reject: host_revoked`），并停止心跳定时器 |
+| 测试 | 平台 e2e `host-revocation.e2e.test.ts`；真实端到端 `cloud-host-revocation.test.ts`；主会话补 `cloud-agent-revocation-stop.test.ts`（吊销后不再心跳、admit 拒绝） |
+
+**验证（`evidence/m71-host-revocation/`）**：
+- 平台 e2e（真实平台进程 + 真实注册主机）：注册 → 心跳 200 无标记 → 管理员 DELETE → 心跳 **200 + `hostRevoked: true`** 且仍带项目撤销集合 → 管理端 `status: offline`、`revokedAt` 非空、无 `credentialHash` → 项目 `hostStatus: offline` → connect **409 `HOST_REVOKED`**。
+- 真实端到端（真实平台 + 注册主机/心跳 + TLS Runtime + 真实 WSS）：开发者建立云会话 → 吊销 → **9.9s 内以 4403 `session_revoked` 关闭**（远低于 60s）；随后新票据 `HOST_REVOKED`；旧票据在主机预握手被 `401 host_revoked` 拒绝。
+- 主会话补测：吊销后 `heartbeats === 1`（不再轮询）、`admit` 返回 `host_revoked`。
+
+**主会话独立验收**：平台 e2e 1/1；真实端到端 1/1；补测 1/1；回归 5 个文件 11 条全过；`tsc node` 0、`tsc tc.web` 0；`check:code-quality:changed` 0 新发现。
+
+**主会话独立负向对照**：子代理把 `DELETE` 改回清空 `credentialHash` → 平台 e2e 心跳 `401 !== 200`、真实端到端 **55s 未关闭**（`expected -1 to be 4403`），恢复后全绿。
+
+**如实记录 / 剩余**：
+1. 吊销主机的 `credentialHash` 保持有效（仅为送达吊销）；它仍可拉公开 JWKS，`/v1/internal/*` 走独立 token 不受影响——有意的取舍。
+2. 用同一 `name` 重新注册会复用原记录且**保留 `revokedAt`**（fail-closed）；“解除吊销”未定义，需另开需求。
+3. 平台 `store` 仍是进程内内存：撤销只在处理 DELETE 的实例生效（与既有撤销设计一致，多副本同步未实现，AC-26 仍 UNVERIFIED）。
+4. 吊销后主机重启：持久化凭证仍指向已吊销主机，首次 refresh 即得知并停止，不会自动重新注册。
+5. 心跳定时器停止属卫生性改动：`refresh()` 本身已短路，测试无法单独区分，已在证据中注明。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
 **已完成**：M41–M69（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步**：
-1. **G-01 主机吊销通道**（BLOCKER）：让管理员吊销主机后，已登记主机仍能收到撤销集合并在 60 秒内关闭已建会话（真实 e2e 验证 AC-14）。
-2. **人工验收**：按 design/test-plan 逐条核对验收标准；重点看桌面真实界面（登录 → 侧栏项目 → 本人 checkout → 终端/文件/git/agent）与管理员浏览器会话页。
-3. 真机/跨平台：Windows、WSL、SSH 主机各跑一遍关键路径（provisioning、路径边界、PTY、会话持久化权限位）。
-4. L4 全量回归：发版前单独执行，含桌面 Electron 渲染验证。
+1. **G-06/G-07 语义与错误码统一**（MAJOR）：确认 AC-27「读允许」的产品语义，并让主机对越界/缺权限返回文档约定的错误码（或在文档中正式修订），避免验收时对不上。
+2. **G-08 主机侧拒绝审计** + **G-05 离线禁用** + **G-09 `PLATFORM_UNAVAILABLE`**（其余 MAJOR）。
+3. **人工验收**：按 design/test-plan 逐条核对验收标准；重点看桌面真实界面（登录 → 侧栏项目 → 本人 checkout → 终端/文件/git/agent）与管理员浏览器会话页。
+4. 真机/跨平台：Windows、WSL、SSH 主机各跑一遍关键路径（provisioning、路径边界、PTY、会话持久化权限位）。
+5. L4 全量回归：发版前单独执行，含桌面 Electron 渲染验证。

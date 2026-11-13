@@ -13,6 +13,13 @@ import { createCloudConnectionSessions } from './cloud-connection-sessions'
 import { parseCloudPolicies, type CloudPolicies } from './cloud-policies'
 import type { CloudProvisionReport } from './cloud-project-provision'
 import { createCloudProvisionReportQueue } from './cloud-provision-report-queue'
+import { fetchControlPlaneReads } from './cloud-agent-endpoint-fetch'
+import {
+  createCloudAdmissionLedger,
+  isRevokedTicket,
+  notifyRevokedTokens,
+  type AdmittedTicket
+} from './cloud-admission-ledger'
 
 /**
  * Host-side client for the cloud platform's control plane.
@@ -73,6 +80,8 @@ export type CloudAgentSnapshot = {
   lastError: string | null
   /** Set while the platform reports the host in maintenance. */
   maintenance: { reason: string } | null
+  /** True once the platform revoked this host; it never clears. */
+  hostRevoked: boolean
 }
 
 /**
@@ -96,6 +105,8 @@ export type CloudAgentClient = {
   /** Emits E2EE device tokens whose live sessions must be closed. */
   onRevoke: (listener: (deviceTokens: string[]) => void) => () => void
   admittedCount: () => number
+  /** True after the platform revoked this host; admission refuses everything. */
+  isHostRevoked: () => boolean
   /** Queues a provisioning outcome for the next heartbeat; no-op in poll mode. */
   reportProvisioned: (report: CloudProvisionReport) => void
   start: () => void
@@ -118,6 +129,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
   let lastRefreshAt: number | null = null
   let lastError: string | null = null
   let lastMaintenance: { reason: string } | null = null
+  let hostRevoked = false
   let policies: CloudPolicies | null = null
   let policyVersion: number | null = null
   let timer: ReturnType<typeof setInterval> | null = null
@@ -127,19 +139,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
   const revokeListeners = new Set<(deviceTokens: string[]) => void>()
   // Why: revocation arrives as platform device/user/project ids, but the socket is
   // keyed by the E2EE device token from the ticket — keep the mapping from admission.
-  const usedJtis = new Map<string, number>()
-  const admitted = new Map<
-    string,
-    {
-      deviceToken: string
-      deviceId: string
-      sub: string
-      project: string
-      iatMs: number
-      /** The ticket text as carried in the subprotocol; the socket's handle. */
-      credential: string
-    }
-  >()
+  const ledger = createCloudAdmissionLedger(now)
   // Why: the socket is identified by its ticket, so an admitted ticket's identity
   // must outlive `admit` for the connection gate and its close path.
   const sessions = createCloudConnectionSessions({
@@ -154,34 +154,20 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
     policyVersion,
     lastRefreshAt,
     lastError,
-    maintenance: lastMaintenance
+    maintenance: lastMaintenance,
+    hostRevoked
   })
 
   async function refreshOnce(): Promise<void> {
-    // Per-request signals: a shared one would abort the healthy response when the
-    // other endpoint hangs (review-07 F1).
-    const headers = { 'x-internal-token': config.internalToken }
-    // Independent outcomes: a broken JWKS endpoint must not stop revocation from
-    // being applied, or an unreachable key endpoint would keep a revoked device
-    // online (review-07 F1).
-    const [jwksRes, revokedRes, policyRes] = await Promise.allSettled([
-      fetchImpl(`${config.apiUrl}/v1/jwks`, { signal: AbortSignal.timeout(timeoutMs) }),
-      config.heartbeat
-        ? Promise.resolve(null)
-        : fetchImpl(`${internalUrl}/v1/internal/revocations`, {
-            signal: AbortSignal.timeout(timeoutMs),
-            headers
-          }),
-      // Poll-mode hosts have no heartbeat, so this is their only policy channel.
-      config.heartbeat
-        ? Promise.resolve(null)
-        : fetchImpl(`${internalUrl}/v1/internal/policy`, {
-            signal: AbortSignal.timeout(timeoutMs),
-            headers
-          })
-    ]).then((results) =>
-      results.map((result) => (result.status === 'fulfilled' ? result.value : null))
-    )
+    const reads = await fetchControlPlaneReads({
+      fetchImpl,
+      apiUrl: config.apiUrl,
+      internalUrl,
+      internalToken: config.internalToken,
+      timeoutMs,
+      heartbeatMode: config.heartbeat !== undefined
+    })
+    const jwksRes = reads.jwks
     if (jwksRes === null) {
       lastError = 'jwks fetch failed'
     } else if (!jwksRes.ok) {
@@ -231,17 +217,24 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
         }
         policyVersion = beat.policyVersion
         lastMaintenance = beat.maintenance
+        if (beat.hostRevoked) {
+          // Why: a host-wide revocation has no per-ticket `since`; every admitted
+          // ticket is dead, and the platform will never admit another.
+          hostRevoked = true
+          lastError = 'host_revoked'
+          revokeAllAdmitted()
+        }
       } else {
         lastError = 'heartbeat failed'
       }
-    } else if (revokedRes?.ok) {
-      const parsed = parseRevocations(await revokedRes.json())
+    } else if (reads.revoked?.ok) {
+      const parsed = parseRevocations(await reads.revoked.json())
       if (parsed) {
         revocations = parsed
       }
     }
-    if (!config.heartbeat && policyRes?.ok) {
-      const parsed = parsePolicyResponse(await policyRes.json())
+    if (!config.heartbeat && reads.policy?.ok) {
+      const parsed = parsePolicyResponse(await reads.policy.json())
       if (parsed) {
         policies = parsed.policies
         policyVersion = parsed.version
@@ -253,6 +246,9 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
       listener(current)
     }
     emitRevokedSessions()
+    if (hostRevoked) {
+      stopClient()
+    }
   }
 
   /**
@@ -261,34 +257,46 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
    */
   function emitRevokedSessions(): void {
     const revokedTokens: string[] = []
-    for (const [jti, ticket] of admitted) {
-      const deviceSince = revocations.devices.find((entry) => entry.id === ticket.deviceId)?.since
-      const userSince = revocations.users.find(
-        (entry) => entry.id === ticket.sub.replace(/^user:/, '')
-      )?.since
-      const projectSince = revocations.projects.find((entry) => entry.id === ticket.project)?.since
-      const dead =
-        (deviceSince !== undefined && ticket.iatMs <= deviceSince) ||
-        (userSince !== undefined && ticket.iatMs <= userSince) ||
-        (projectSince !== undefined && ticket.iatMs <= projectSince) ||
-        revocations.jtis.includes(jti)
-      if (!dead) {
+    for (const [jti, ticket] of ledger.entries()) {
+      if (!isRevokedTicket(jti, ticket, revocations)) {
         continue
       }
-      admitted.delete(jti)
+      ledger.forget(jti)
       sessions.forget(ticket.credential)
       revokedTokens.push(ticket.deviceToken)
     }
-    if (revokedTokens.length === 0) {
-      return
+    notifyRevokedTokens(revokeListeners, revokedTokens)
+  }
+
+  /** Host-wide revocation: close every admitted socket, regardless of its ticket age. */
+  function revokeAllAdmitted(): void {
+    const drained = ledger.drain()
+    for (const ticket of drained) {
+      sessions.forget(ticket.credential)
     }
-    for (const listener of revokeListeners) {
-      listener(revokedTokens)
+    notifyRevokedTokens(
+      revokeListeners,
+      drained.map((ticket: AdmittedTicket) => ticket.deviceToken)
+    )
+  }
+
+  function stopClient(): void {
+    if (timer) {
+      clearInterval(timer)
+      timer = null
     }
+    sessions.releaseAll()
+    listeners.clear()
+    revokeListeners.clear()
   }
 
   /** Single-flight: a hung platform must not stack one request per tick. */
   function refresh(): Promise<void> {
+    // Why: after revocation the heartbeat is useless and the timer is stopped;
+    // a stray manual call must not resurrect it.
+    if (hostRevoked) {
+      return Promise.resolve()
+    }
     if (inFlight) {
       return inFlight
     }
@@ -304,6 +312,10 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
 
   return {
     admit: (headers) => {
+      // A revoked host refuses upgrades even with a still-fresh ticket.
+      if (hostRevoked) {
+        return rejectCloudUpgrade('host_revoked', '主机已被吊销。')
+      }
       const decision = createCloudUpgradeAdmission({
         hostId: config.hostId,
         hostName: config.hostName,
@@ -318,15 +330,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
       }
       const { jti, deviceToken, deviceId, sub, project, exp } = decision.payload
       const iatMs = decision.payload.iatMs ?? decision.payload.iat * 1000
-      // A ticket is a bearer credential: without this cache a copied one upgrades
-      // again until it expires, even though the platform minted it once.
-      const nowMs = now()
-      for (const [used, expiresAtMs] of usedJtis) {
-        if (expiresAtMs <= nowMs) {
-          usedJtis.delete(used)
-        }
-      }
-      if (usedJtis.has(jti)) {
+      if (ledger.isReplayed(jti)) {
         return rejectCloudUpgrade('replayed', '该连接凭证已被使用。')
       }
       // The ticket text is what the socket carries, so it is the handle the
@@ -335,8 +339,11 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
       if (credential === null) {
         return rejectCloudUpgrade('credential_missing', '缺少连接凭证。')
       }
-      usedJtis.set(jti, exp * 1000 + 5_000)
-      admitted.set(jti, { deviceToken, deviceId, sub, project, iatMs, credential })
+      ledger.remember({
+        jti,
+        ticket: { deviceToken, deviceId, sub, project, iatMs, credential },
+        expiresAtMs: exp * 1000 + 5_000
+      })
       sessions.remember(credential, { user: sub, project, token: deviceToken })
       return decision
     },
@@ -346,7 +353,8 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
       revokeListeners.add(listener)
       return () => revokeListeners.delete(listener)
     },
-    admittedCount: () => admitted.size,
+    admittedCount: () => ledger.size(),
+    isHostRevoked: () => hostRevoked,
     reportProvisioned: provisionReports.queue,
     refresh,
     snapshot,
@@ -355,7 +363,8 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
       return () => listeners.delete(listener)
     },
     start: () => {
-      if (timer) {
+      // A revoked host that restarts must not resume polling.
+      if (timer || hostRevoked) {
         return
       }
       void refresh()
@@ -365,14 +374,6 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
       // Why: the host must not stay alive only to poll a control plane.
       timer.unref?.()
     },
-    stop: () => {
-      if (timer) {
-        clearInterval(timer)
-        timer = null
-      }
-      sessions.releaseAll()
-      listeners.clear()
-      revokeListeners.clear()
-    }
+    stop: stopClient
   }
 }
