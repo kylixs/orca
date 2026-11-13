@@ -2408,6 +2408,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W6a 独立测试完成（1 缺陷 + 2 观察项，2026-11-14）
+
+测试代理独立复跑全绿（新套件 6/0 + SNI 回归 70/0 + 边界探针 7/7），线兼容与 HEAD^ 逐字段一致对比通过。**发现缺陷 D-W6a**：路由表过期时 WSS 升级返回 404（`refuse()` 恒写 404），规格要求 503 fail-closed（HTTP 侧符合）。观察项 2 条：① 浏览器端口未套用 per-IP 限速（恰是公网暴露面）；② routeKey 后的路径不归一化原样转发（宿主侧需自行处理）。证据 `evidence/w6a-verify/`（探针 8 件 + 线兼容产物）。处置：等 W6a 审计代理返回后**合并一次回派**实现代理（升级 503 + 视审计结果纳入限速/归一化决策），修复后复验。
+
 ### W8 完成（降级版回归断言，2026-11-14）
 
 提交 `c50ffe41ccd`（仅测试文件 +31 行）：M115 dir 语义套件内新增「管理员按 hostId+path 登记无需 dir」用例（201、path 原样、无 dir 键、ready），并用**变异验证**证明防护有效（临时把 validateProjectDir 注入管理员路由 → 断言如期变红 → 还原）。6/6 过，证据 `evidence/w8-regression/`。轻量审计代理已派（报告 `test-reports/w8-audit.md`）。
