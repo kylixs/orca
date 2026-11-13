@@ -97,6 +97,8 @@ declare global {
     __monacoEditorE2E?: MonacoE2EProbe
     __e2ePtyAppliedSizeReadDelayMs?: number
     __terminalPtyPreSpawnE2EBarrier?: TerminalPtyPreSpawnE2EBarrier
+    /** Deployment-injected platform address for the standalone admin session page. */
+    __ORCA_CLOUD_ADMIN_API_URL__?: string
   }
 }
 

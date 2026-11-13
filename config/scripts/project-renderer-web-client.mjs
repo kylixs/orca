@@ -17,7 +17,10 @@ const webOutput = resolve('out/web')
 const stagingOutput = resolve(dirname(webOutput), `.web-projection-${process.pid}`)
 const manifestPath = join(rendererOutput, '.vite', 'manifest.json')
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
-const selectedFiles = new Set(['web-index.html'])
+// Why both: the host serves the web client and the admin session page from one
+// static root, so the projection must publish every entry it allows.
+const WEB_CLIENT_ENTRIES = ['web-index.html', 'cloud-admin.html']
+const selectedFiles = new Set(WEB_CLIENT_ENTRIES)
 const visitedEntries = new Set()
 const PDFJS_VIEWER_ASSET_DIRS = ['cmaps', 'standard_fonts', 'wasm']
 const TEXT_REFERENCE_OUTPUT = /\.(?:css|html|m?js|svg)$/
@@ -166,7 +169,9 @@ async function minifyWebOutput() {
 }
 
 assertEntryIsolation()
-visitManifestEntry('web-index.html')
+for (const entry of WEB_CLIENT_ENTRIES) {
+  visitManifestEntry(entry)
+}
 includeReferencedOutputs()
 includePdfjsViewerAssets()
 

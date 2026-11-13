@@ -3,7 +3,9 @@ import { stat } from 'node:fs/promises'
 import type { IncomingMessage, RequestListener, ServerResponse } from 'node:http'
 import { extname, isAbsolute, posix, relative, resolve } from 'node:path'
 
-const STATIC_WEB_ALLOWED_PATHS = new Set(['/web-index.html'])
+const STATIC_WEB_ALLOWED_PATHS = new Set(['/web-index.html', '/cloud-admin.html'])
+/** Top-level HTML entries a reverse proxy may forward under an added path prefix. */
+const STATIC_WEB_ENTRY_HTML = ['web-index.html', 'cloud-admin.html'] as const
 const STATIC_WEB_ALLOWED_PREFIXES = ['/assets/', '/cmaps/', '/standard_fonts/', '/wasm/']
 const STATIC_WEB_CONTENT_TYPES = new Map([
   ['.css', 'text/css; charset=utf-8'],
@@ -133,8 +135,10 @@ function parseStaticPathname(rawUrl: string | undefined): string | null {
 }
 
 function mapProxyPrefixedStaticPathname(pathname: string): string {
-  if (pathname === '/web-index.html' || pathname.endsWith('/web-index.html')) {
-    return '/web-index.html'
+  for (const entry of STATIC_WEB_ENTRY_HTML) {
+    if (pathname === `/${entry}` || pathname.endsWith(`/${entry}`)) {
+      return `/${entry}`
+    }
   }
   const prefixIndex = STATIC_WEB_ALLOWED_PREFIXES.reduce(
     (deepest, prefix) => Math.max(deepest, pathname.indexOf(prefix)),

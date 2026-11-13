@@ -353,7 +353,9 @@ export const electronViteConfig: UserConfig = {
         input: {
           index: resolve('src/renderer/index.html'),
           popout: resolve('src/renderer/popout.html'),
-          web: resolve('src/renderer/web-index.html')
+          web: resolve('src/renderer/web-index.html'),
+          // Admin-only session page (design §4.2), served by the host's static web root.
+          'cloud-admin': resolve('src/renderer/cloud-admin.html')
         }
       }
     }

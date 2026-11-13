@@ -202,6 +202,24 @@ function projectCard(p) {
     </div>`
 }
 
+function sessionPageUrl() {
+  const base = String(window.__ORCA_CLOUD_SESSION_URL__ ?? '').trim()
+  if (!base) return null
+  try {
+    return new URL(base, window.location.href).toString()
+  } catch {
+    return null
+  }
+}
+
+/** Hidden when the deployment has not configured a session page: no dead links. */
+function sessionPageLink() {
+  const url = sessionPageUrl()
+  return url
+    ? `<a class="btn sm" href="${esc(url)}" target="_blank" rel="noopener">打开会话页</a>`
+    : ''
+}
+
 function projectRow(p) {
   const offline = p.hostStatus !== 'online'
   return `<tr>
@@ -212,6 +230,7 @@ function projectRow(p) {
     <td><span class="dot ${offline ? 'offline' : 'online'}"></span> ${offline ? '主机离线' : '可打开'}</td>
     <td class="actions">
       <button class="btn sm" data-open="${p.id}" ${offline ? 'disabled' : ''}>打开</button>
+      ${sessionPageLink()}
     </td>
   </tr>`
 }
@@ -279,7 +298,7 @@ async function renderProjects() {
         <td>${esc(p.hostName)} <span class="dot ${p.hostStatus === 'online' ? 'online' : 'offline'}"></span></td>
         <td class="muted">${esc(p.permissions.join(' · '))}</td>
         <td>${p.downloadPolicy === 'deny' ? '<span class="badge lock">禁止</span>' : '<span class="badge">允许</span>'}</td>
-        <td class="actions"><button class="btn sm" data-open="${p.id}">打开</button></td>
+        <td class="actions"><button class="btn sm" data-open="${p.id}">打开</button> ${sessionPageLink()}</td>
       </tr>`).join('') || '<tr><td colspan="6" class="table-empty">没有匹配的项目</td></tr>'
     wireProjectActions()
   }

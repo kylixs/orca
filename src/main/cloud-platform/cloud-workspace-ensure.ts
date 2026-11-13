@@ -1,13 +1,9 @@
-import { readArray, readField, readString } from '../../shared/json-fields'
+import { openCloudWorkspaceOverRpc } from '../../shared/cloud-workspace-open'
 import type { CloudConnectClient } from './cloud-connect-client'
 
 /**
- * Design §8.3 step 3: after connecting, open the user's existing checkout for the
- * branch, or create it with `worktree.createManaged`.
- *
- * Both calls are repo-scoped, so the host answers them only for this project
- * (M38/M40 boundaries). The chosen worktree is filtered to the ticket's
- * workspace root, because listing a repo also returns teammates' checkouts.
+ * Design §8.3 step 3, desktop binding: connect through a fresh ticket, then hand
+ * the ticket's roots to the shared checkout-selection logic.
  */
 
 export type EnsureWorkspaceResult =
@@ -20,29 +16,6 @@ export type EnsureWorkspaceResult =
       route: 'direct' | 'relay'
     }
   | { ok: false; code: string; message?: string }
-
-function isInside(root: string, candidate: string): boolean {
-  if (candidate === root) {
-    return true
-  }
-  const separator = root.endsWith('/') || root.endsWith('\\') ? '' : '/'
-  return candidate.startsWith(`${root}${separator}`)
-}
-
-/** Branch names may contain `/`; the directory cannot. */
-function worktreeNameForBranch(branch: string): string {
-  return branch.replace(/[/\\]+/g, '-').replace(/^-+|-+$/g, '')
-}
-
-function existingWorkspacePath(result: unknown, workspaceRoot: string): string | null {
-  for (const record of readArray(result, 'worktrees') ?? []) {
-    const path = readString(record, 'path')
-    if (path !== null && isInside(workspaceRoot, path)) {
-      return path
-    }
-  }
-  return null
-}
 
 export async function ensureCloudWorkspace(
   client: CloudConnectClient,
@@ -60,46 +33,12 @@ export async function ensureCloudWorkspace(
     }
   }
 
-  const { projectRoot, workspaceRoot, defaultBranch } = ticket.ticket.workspace
-  const capabilities = ticket.ticket.host.capabilities
-  const route = ticket.route
-  const repo = `path:${projectRoot}`
-  const branch = defaultBranch || 'main'
-
-  const listed = await client.rpc('worktree.list', { repo }, 15_000)
-  if (listed.ok) {
-    const existing = existingWorkspacePath(listed.result, workspaceRoot)
-    if (existing !== null) {
-      return { ok: true, workspacePath: existing, created: false, capabilities, route }
-    }
-  }
-
-  const created = await client.rpc(
-    'worktree.createManaged',
-    {
-      repo,
-      workspaceRoot,
-      name: worktreeNameForBranch(branch),
-      baseBranch: branch,
-      // A retried open must not mint a second checkout for the same user+branch.
-      idempotencyKey: `cloud-open:${projectId}:${branch}`
-    },
-    120_000
+  const ensured = await openCloudWorkspaceOverRpc(
+    (method, params, timeoutMs) => client.rpc(method, params, timeoutMs),
+    projectId,
+    ticket.ticket.workspace
   )
-  if (created.ok) {
-    const path = readString(readField(created.result, 'worktree'), 'path')
-    return path === null
-      ? { ok: false, code: 'WORKSPACE_PATH_MISSING' }
-      : { ok: true, workspacePath: path, created: true, capabilities, route }
-  }
-  // A racer may have created it between the listing and the create; re-list once
-  // so a concurrent open of the same project still lands on a real checkout.
-  const recheck = await client.rpc('worktree.list', { repo }, 15_000)
-  if (recheck.ok) {
-    const existing = existingWorkspacePath(recheck.result, workspaceRoot)
-    if (existing !== null) {
-      return { ok: true, workspacePath: existing, created: false, capabilities, route }
-    }
-  }
-  return { ok: false, code: created.code, message: created.message }
+  return ensured.ok
+    ? { ...ensured, capabilities: ticket.ticket.host.capabilities, route: ticket.route }
+    : ensured
 }

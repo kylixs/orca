@@ -971,6 +971,27 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 2. 管理页 `CloudApp` 仍是"同一时刻打开一个项目"的页面（现在按 projectId 显式路由）；多项目同屏展示不在本轮范围。
 3. 本轮未做 L4 全量：按分级规范，全量留到里程碑收口/最终验收单跑。
 
+## M54 管理员浏览器会话页（本轮，开发子代理执行）
+
+**问题**：管理员用的云端会话页只存在于 Electron 内（依赖 `window.api.cloud`），无法按设计"从平台项目列表打开、单独用 PC 浏览器访问"。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-browser-bridge.ts`（新） | 浏览器版 `CloudBridge`：登录/列项目/取票复用 `web-cloud-session`，每项目一个 `WebRuntimeClient`（共享持久化设备身份），`rpc(method, params, projectId)` 显式路由，`closeProject(projectId)` 只关一个，`logout` 关全部；offer 与 `getState()` 都不含设备私钥 |
+| `shared/cloud-workspace-open.ts`（新） | 把"选已有检出 / 否则 `worktree.createManaged`"的逻辑抽成传输无关实现；桌面 `ensureCloudWorkspace` 改为复用它，避免浏览器与桌面两套选择逻辑 |
+| 独立入口 | `src/renderer/cloud-admin.html` + `src/renderer/src/cloud-admin/main.tsx` 挂载现有 `CloudApp`；`electron.vite.config.ts` 新增 `cloud-admin` 入口，投影脚本与构建校验同步覆盖两个 HTML 入口 |
+| 静态服务 | `static-web-client-handler.ts` 放行 `/cloud-admin.html`，反向代理前缀映射覆盖两个入口；`/`、目录穿越、未知路径与 `/web-index.html` 规则不变 |
+| 管理台入口 | `cloud-platform/apps/web/config.js` 提供 `window.__ORCA_CLOUD_SESSION_URL__`；配置存在时项目行显示"打开会话页"（新标签、`rel=noopener`），未配置则不渲染，**URL 中不含任何令牌** |
+
+**验证（`evidence/m54-admin-session-page/`）**：真实端到端 1 条（真实平台 + 真实注册主机 + 两个项目 + 真实 TLS Runtime）：浏览器 bridge 登录 → 打开两个项目 → 两个项目各自真实 `status.get`（`runtimeId` 相同，同一主机）；目录浏览分别列出各自的真实文件（`alpha-marker.txt` / `beta-marker.txt`，互不可见）；A 跨项目访问与绝对路径均 `forbidden`。另有 5 条 bridge 单测与静态服务测试（放行新入口、其余规则不变）。
+
+**主会话独立验收**：`npx tsc -p config/tsconfig.web.json` / `tsconfig.node.json` 均 0 错；`changed-code` 门禁 7 项 0 新发现；相关 5 文件 14 条全过（含 `cloud-workspace-ensure` 与 `cloud-file-panel`，确认共享抽取未破坏桌面路径）。**独立负向对照**：让 bridge 的 `rpc` 忽略 projectId → e2e 与单测双双变红（跨项目 `forbidden`、路由序列不符），恢复后通过。
+
+**如实记录 / 剩余**：
+1. 未执行完整 electron-vite 构建，也未在真实浏览器渲染 `cloud-admin.html`；静态规则由 handler 级测试覆盖。部署需填写 `config.js` 的会话页地址，并给会话页注入平台 API 地址（`window.__ORCA_CLOUD_ADMIN_API_URL__` 或 `VITE_ORCA_CLOUD_API_URL`）。
+2. **`pnpm tc:web` 本来就是红的**：`config/tsconfig.tc.web.json` 在 HEAD 上已有 4165 条 TS6307（渲染侧 e2e 测试 import 了 `src/main/**` 的测试夹具），M47–M54 新增的渲染侧 e2e 各累加若干条（本轮 +3，共 4168）。`npx tsc -p config/tsconfig.web.json` 仍为 0 错，所以没有类型错误被掩盖，但项目自带的严格门禁是脏的——需要在后续轮次统一清理（把渲染侧 e2e 移到 `src/main/cloud-platform/`，或为渲染 e2e 单独建 tsconfig）。
+3. 管理页 UI 直接复用现有 `CloudApp` 组件，未做视觉打磨。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
 **用户决策**：普通开发者登录后直接进入 Orca 原生工作界面（左侧项目列表，用法不变）；自造的云端会话页**保留给管理员**，从平台项目列表页打开、可单独用 PC 浏览器访问；侧栏多项目**每项目独立连接**；文件面板随管理员页保留。

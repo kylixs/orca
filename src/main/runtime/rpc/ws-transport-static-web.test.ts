@@ -64,6 +64,41 @@ describe('WebSocketTransport static web client', () => {
     await expect(assetResponse.text()).resolves.toBe('console.log("prefixed")')
   })
 
+  it('serves the admin session entry without widening the other path rules', async () => {
+    const staticRoot = mkdtempSync(join(tmpdir(), 'ws-transport-static-'))
+    mkdirSync(join(staticRoot, 'assets'))
+    writeFileSync(join(staticRoot, 'web-index.html'), '<html>web</html>')
+    writeFileSync(join(staticRoot, 'cloud-admin.html'), '<html>admin</html>')
+    writeFileSync(join(staticRoot, 'package.json'), '{}')
+    const transport = createStaticTransport(staticRoot)
+
+    await transport.start()
+    const base = `http://127.0.0.1:${transport.resolvedPort}`
+
+    const admin = await fetch(`${base}/cloud-admin.html`)
+    expect(admin.status).toBe(200)
+    expect(admin.headers.get('content-type')).toContain('text/html')
+    await expect(admin.text()).resolves.toBe('<html>admin</html>')
+
+    // Same mapping the web client gets when a reverse proxy forwards a prefix.
+    const prefixed = await fetch(`${base}/orca/cloud-admin.html`)
+    expect(prefixed.status).toBe(200)
+    await expect(prefixed.text()).resolves.toBe('<html>admin</html>')
+
+    const web = await fetch(`${base}/web-index.html`)
+    expect(web.status).toBe(200)
+    await expect(web.text()).resolves.toBe('<html>web</html>')
+
+    const unknown = await fetch(`${base}/admin.html`)
+    expect(unknown.status).toBe(404)
+
+    const traversal = await fetch(`${base}/assets/%2e%2e%2fpackage.json`)
+    expect(traversal.status).toBe(400)
+
+    const traversalBackslash = await fetch(`${base}/cloud-admin.html%5C..%5Cpackage.json`)
+    expect(traversalBackslash.status).toBe(400)
+  })
+
   it('does not expose arbitrary files from the static root', async () => {
     const staticRoot = mkdtempSync(join(tmpdir(), 'ws-transport-static-'))
     writeFileSync(join(staticRoot, 'package.json'), '{}')
