@@ -1455,7 +1455,17 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
 
       if (req.method === 'GET' && action === '/grants') {
-        const grants = store.grants.filter((g) => g.projectId === projectId)
+        // User rows carry the username so the console can show who was granted
+        // instead of an opaque id; a legacy username-keyed row has no user to name.
+        const grants = store.grants
+          .filter((g) => g.projectId === projectId)
+          .map((g) => {
+            if (g.subjectType !== 'user') {
+              return g
+            }
+            const user = store.users.get(g.subjectId)
+            return user ? { ...g, username: user.username } : g
+          })
         return json(res, 200, { grants })
       }
 
@@ -1466,10 +1476,23 @@ export function createApp(config: ApiConfig): ApiHandle {
         }
         const body = await readJson(req)
         const subjectType = body.subjectType === 'group' ? 'group' : 'user'
-        const subjectId = String(body.subjectId ?? '')
+        const submitted = String(body.subjectId ?? '').trim()
         const permissions = Array.isArray(body.permissions)
           ? (body.permissions as Permission[])
           : []
+        // The ACL matches on the user id, so a username has to be resolved here:
+        // storing it verbatim would mint a grant that reads as granted and never
+        // fires (M116-QA-001). An unknown user is refused, not stored dead.
+        let subjectId = submitted
+        let username: string | null = null
+        if (subjectType === 'user') {
+          const user = store.users.get(submitted) ?? store.usersByName.get(submitted)
+          if (!user) {
+            return error(res, 400, 'USER_NOT_FOUND', '用户不存在。', traceId)
+          }
+          subjectId = user.id
+          username = user.username
+        }
         if (
           !(await recordAudit(
             res,
@@ -1480,7 +1503,7 @@ export function createApp(config: ApiConfig): ApiHandle {
               targetId: projectId,
               result: 'success',
               traceId,
-              metadata: { subjectType, subjectId, permissions }
+              metadata: { subjectType, subjectId, ...(username ? { username } : {}), permissions }
             },
             traceId
           ))
@@ -1492,7 +1515,10 @@ export function createApp(config: ApiConfig): ApiHandle {
             !(
               g.projectId === projectId &&
               g.subjectType === subjectType &&
-              g.subjectId === subjectId
+              // A pre-fix row may still be keyed by the submitted username; a
+              // re-grant retires it too, or the matrix keeps showing a dead
+              // duplicate that matches nobody (M116-QA-001).
+              (g.subjectId === subjectId || g.subjectId === submitted)
             )
         )
         if (permissions.length > 0) {

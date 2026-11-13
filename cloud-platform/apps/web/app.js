@@ -482,7 +482,7 @@ async function showGrants(projectId) {
   const rows = body.grants
     .map(
       (g) => `<tr>
-        <td>${esc(g.subjectId)}</td>
+        <td>${esc(g.username ?? g.subjectId)}</td>
         <td class="muted">${g.subjectType === 'group' ? '组' : '用户'}</td>
         ${permissionSet
           .map((p) =>
