@@ -9,6 +9,7 @@ export const cloudPlatformApi: CloudPlatformApi = {
   listProjects: () => ipcRenderer.invoke(CLOUD_PLATFORM_IPC.listProjects),
   openProject: (projectId) => ipcRenderer.invoke(CLOUD_PLATFORM_IPC.openProject, projectId),
   openWorkspace: (projectId) => ipcRenderer.invoke(CLOUD_PLATFORM_IPC.openWorkspace, projectId),
+  trustHostKey: (hostId) => ipcRenderer.invoke(CLOUD_PLATFORM_IPC.trustHostKey, hostId),
   registerProjects: () => ipcRenderer.invoke(CLOUD_PLATFORM_IPC.registerProjects),
   retryPrepare: (projectId) => ipcRenderer.invoke(CLOUD_PLATFORM_IPC.retryPrepare, projectId),
   createProject: (input) => ipcRenderer.invoke(CLOUD_PLATFORM_IPC.createProject, input),

@@ -55,6 +55,11 @@ export type CloudDeviceIdentity = {
   auth: CloudAuthSession
   deviceId: string
   keyPair: CloudDeviceKeyPair
+  /**
+   * Shared with every forked client: a fork that hits a changed host key must
+   * move the same pin the session's own client reads (AC-29).
+   */
+  hostKeys?: HostKeyGuard
 }
 
 export type CloudConnectOptions = {
@@ -93,13 +98,15 @@ export class CloudConnectClient {
     this.options = options
     this.fetchImpl = options.fetchImpl ?? fetch
     this.deviceKeys = identity?.keyPair ?? generateKeyPair()
-    this.hostKeys = createHostKeyGuard({
-      ...(options.userDataPath !== undefined ? { userDataPath: options.userDataPath } : {}),
-      closeConnection: (code, reason) => {
-        this.connection?.close(code, reason)
-        this.connection = null
-      }
-    })
+    this.hostKeys =
+      identity?.hostKeys ??
+      createHostKeyGuard({
+        ...(options.userDataPath !== undefined ? { userDataPath: options.userDataPath } : {}),
+        closeConnection: (code, reason) => {
+          this.connection?.close(code, reason)
+          this.connection = null
+        }
+      })
     this.auth = identity?.auth ?? this.blankAuth()
     if (identity) {
       this.deviceId = identity.deviceId
@@ -137,7 +144,12 @@ export class CloudConnectClient {
 
   /** Credentials a per-project connection forks; never exposed to a renderer. */
   deviceIdentity(): CloudDeviceIdentity {
-    return { auth: this.auth, deviceId: this.deviceId, keyPair: this.deviceKeys }
+    return {
+      auth: this.auth,
+      deviceId: this.deviceId,
+      keyPair: this.deviceKeys,
+      hostKeys: this.hostKeys
+    }
   }
 
   /** Main-process only: non-reversible digests for rotation diagnostics. */
@@ -282,6 +294,11 @@ export class CloudConnectClient {
   /** The user re-verified a changed host key; the new key replaces the pinned one. */
   trustHostKey(hostId: string, e2eePublicKeyB64: string): void {
     this.hostKeys.trust(hostId, e2eePublicKeyB64)
+  }
+
+  /** Pins the key a `FINGERPRINT_MISMATCH` just exposed, without crossing IPC. */
+  trustPendingHostKey(hostId: string): boolean {
+    return this.hostKeys.trustPending(hostId)
   }
 
   /** What the confirmation dialog shows; null when this host was never seen. */

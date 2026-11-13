@@ -1662,13 +1662,38 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 4. 10 万条规模测试由 3 个并发客户端直接打 append 端点完成（与副本同一条路径），副本侧只做了端到端集成验证——用 10 万次用户操作驱动会超出单轮时间预算，此处如实说明。
 5. `appendBestEffort` 在远端模式下立即返回 true（失败只在健康状态里体现），与本地模式语义略有差异。
 
+## M81 补齐 AC-29 的确认与重新核对 UI（本轮，主会话执行）
+
+**问题**：M77 让主机公钥固定生效，但界面上没有任何确认环节——设计 §10.4 要求「首次连接展示主机指纹并固定（TOFU）」「不匹配即 4433 中断并强提示」，而实际是静默固定、错误码只落在日志里；用户无法完成「重新核对」。
+
+| 改动 | 内容 |
+|---|---|
+| `cloud-host-key-guard.ts` | 记录 mismatch 时看到的公钥（只在主进程），`trustPending(hostId)` 是唯一消费入口；抛出物新增 `hostId`；新增 `hostKeyDetails()` / `trustPendingHostKey()` 供服务层与 IPC 复用 |
+| `cloud-project-open-result.ts`（新） | 打开结果的构造与失败映射（含 `hostKey` 明细），从服务类抽出以守住行数上限 |
+| `cloud-session-service.ts` | 打开成功携带 `hostFingerprint`；失败携带 `hostKey { hostId, pinnedFingerprint, seenFingerprint }`；新增 `trustHostKey(hostId)`；fork 出的客户端共享同一个 guard（`deviceIdentity().hostKeys`），否则 mismatch 记在临时客户端上、主会话看不到 |
+| IPC / preload | 新通道 `cloud:trustHostKey(hostId)`——渲染进程只说「用户已核对」，公钥不跨进程 |
+| 渲染进程 | `useCloudSession` 暴露 `hostKeyMismatch` / `confirmHostKey()` / `dismissHostKeyMismatch()`；新增阻塞对话框 `cloud-host-key-dialog.tsx`（同时显示两个指纹）；`CloudApp` 挂载它 |
+| 文档 | `test-plan.md` AC-29 补充 M81 证据与浏览器路径的未做项 |
+
+**验证（`evidence/m81-host-key-confirmation/m81-host-key-confirmation.json`）**：
+- 主进程（真实平台 + 真实主机心跳 + 真实 TLS Runtime + 真实 WSS，`cloud-session-service.test.ts` 新增用例）：首次打开固定指纹 → 改写平台侧公钥 → `openProject` 返回 `FINGERPRINT_MISMATCH` 且带 `hostId`/两个指纹 → `trustHostKey` 首次 `ok`、再次 `HOST_KEY_NOT_PENDING` → 恢复真实公钥后仍判 mismatch（固定值未动）→ 再次核对后打开成功、`hostFingerprint` 回到原值。
+- 渲染层（`use-cloud-session.test.tsx` 新增 2 条）：被拒时出现 `alertdialog` 并展示两个指纹；「我已核对，信任新公钥」→ 调用 `trustHostKey('host-1')` 并自动重开、对话框消失；「取消」→ 不固定、留在工作台。
+- 回归：渲染层 4 个文件 **27/27**；主进程 4 个文件 **26/26**；`tsc node` 0、`tsc tc.web` 0；`check:code-quality:changed` 0 新发现。
+
+**负向对照**：把对话框的确认按钮改成执行「取消」→ 渲染层用例失败（12 passed / 1 failed）；恢复后 13/13。
+
+**如实记录 / 剩余**：
+1. 浏览器（管理员会话页）走的是另一套取票路径（`requestCloudTicket` + web 客户端），**没有公钥固定**；`CloudBridge.trustHostKey` 在该桥接上缺失，UI 只能返回 `HOST_KEY_PINNING_UNSUPPORTED`。补齐需要浏览器侧固定值存储（localStorage）与独立测试。
+2. 首次连接仍是「静默固定 + 打开成功后可见指纹」：没有在首次连接时强制用户点确认（那会让所有既有云会话首次打开都被拦一次，影响面大，未在本轮改）。
+3. 重新核对后若新公钥无法完成 E2EE（如平台被攻击者指向假主机），打开会以握手失败结束——这一层由 TLS/E2EE 自身兜底。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M80（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M81（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期、浏览器会话续期、云设备 token 清理、签到准备有界并行、项目归档闭环、云端会话持久化、云端 agent.launch 真实执行、里程碑 L3 收口、云端结构化 agent 会话）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步**：
 1. **剩余 MINOR**：G-11（登录失败锁计数在进程内存，多副本各算 5 次）、G-12（浏览器渲染 P95 与「平台无业务流量」抓包证明，需独立环境）。
-2. **人工验收准备**：整理验收清单与证据索引；`AC-29` 首次连接确认弹窗 UI 未做。
+2. **人工验收准备**：整理验收清单与证据索引；`AC-29` 的浏览器（管理员会话页）路径仍无公钥固定。
 3. **G-04 部署形态**：写入者 standby/leader 选举、Redis Stream 队列、PostgreSQL/对象存储归档与签名锚点仍待部署阶段实现（本轮已完成单写入者定序与 fail-closed）。
 4. **人工验收**：按 design/test-plan 逐条核对验收标准；重点看桌面真实界面（登录 → 侧栏项目 → 本人 checkout → 终端/文件/git/agent）与管理员浏览器会话页。
 4. 真机/跨平台：Windows、WSL、SSH 主机各跑一遍关键路径（provisioning、路径边界、PTY、会话持久化权限位）。

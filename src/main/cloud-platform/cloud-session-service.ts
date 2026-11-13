@@ -9,6 +9,8 @@ import type {
 } from '../../shared/cloud-platform-ipc'
 import { CloudConnectClient, type CloudProject } from './cloud-connect-client'
 import type { CloudAuthFingerprints } from './cloud-auth-session'
+import { hostKeyDetails, trustPendingHostKey } from './cloud-host-key-guard'
+import { failedProvision, openCloudProject } from './cloud-project-open-result'
 import { CloudSessionSavedLogin } from './cloud-session-saved-login'
 import {
   archiveSessionProject,
@@ -74,7 +76,7 @@ export class CloudSessionService {
   }
 
   /** Main-process only (never over IPC): the device key the host demands proof of. */
-  deviceKeyPair(): { publicKey: Uint8Array; secretKey: Uint8Array } | null {
+  deviceKeyPair() {
     return this.client?.deviceKeyPair() ?? null
   }
 
@@ -86,6 +88,9 @@ export class CloudSessionService {
   authTokenFingerprints(): CloudAuthFingerprints | null {
     return this.client?.authTokenFingerprints() ?? null
   }
+
+  /** Which device each live connection's ticket proved; ids only. */
+  connectionIdentities = (): CloudConnectionIdentity[] => this.connections.identities()
 
   /** A dead platform session signs out and asks the renderer to show the login page. */
   private expireSession(): void {
@@ -99,12 +104,11 @@ export class CloudSessionService {
 
   /** Returns the code for callers that must map it into their own result. */
   private expiredCode(error: unknown): string | null {
-    const code = errorCodeOf(error)
-    if (code === 'SESSION_EXPIRED') {
-      this.expireSession()
-      return code
+    if (errorCodeOf(error) !== 'SESSION_EXPIRED') {
+      return null
     }
-    return null
+    this.expireSession()
+    return 'SESSION_EXPIRED'
   }
 
   /** Rebuilds a login saved by a previous process; the first platform call validates it. */
@@ -119,20 +123,26 @@ export class CloudSessionService {
   }
 
   private async performRestore(): Promise<CloudSessionState> {
-    if (this.state.status === 'signed-in') {
-      return this.state
+    if (this.state.status !== 'signed-in') {
+      const restored = await this.savedLogin.restore()
+      if (restored.kind === 'ready') {
+        this.applyRestored(restored)
+      }
     }
-    const restored = await this.savedLogin.restore()
-    if (restored.kind !== 'ready') {
-      return this.state
-    }
+    return this.state
+  }
+
+  private applyRestored(restored: {
+    client: CloudConnectClient
+    displayName: string
+    projects: CloudProject[]
+  }): void {
     this.client = restored.client
     this.state = {
       status: 'signed-in',
       displayName: restored.displayName,
       projects: restored.projects.map(summarizeCloudProject)
     }
-    return this.state
   }
 
   async login(username: string, password: string): Promise<CloudSessionState> {
@@ -161,20 +171,20 @@ export class CloudSessionService {
     return this.state
   }
 
-  /** Leaves one workspace without ending the platform session or other projects. */
+  /** Leaves one workspace; tokens and device keys stay so reopening needs no login. */
   closeProject(projectId: string): { ok: true } {
-    // Keeps the token and device keys: reopening must not need a re-login.
     this.connections.close(projectId)
     return { ok: true }
   }
 
   async listProjects(): Promise<CloudProjectSummary[]> {
-    if (!this.client) {
+    const client = this.client
+    if (!client) {
       throw Object.assign(new Error('not signed in'), { code: 'NOT_SIGNED_IN' })
     }
     let projects: CloudProject[]
     try {
-      projects = await this.client.listProjects()
+      projects = await client.listProjects()
     } catch (error) {
       const code = this.expiredCode(error) ?? errorCodeOf(error) ?? 'LIST_PROJECTS_FAILED'
       throw Object.assign(error instanceof Error ? error : new Error(code), { code })
@@ -188,20 +198,18 @@ export class CloudSessionService {
 
   /** Self-service creation; the refreshed list is what the renderer re-reads later. */
   async createProject(input: CloudCreateProjectInput): Promise<CreateProjectOutcome> {
-    if (!this.client) {
-      return { ok: false, code: 'NOT_SIGNED_IN' }
-    }
-    return createSessionProject(this.client, this.projectAdminHooks(), input)
+    return this.client
+      ? createSessionProject(this.client, this.projectAdminHooks(), input)
+      : { ok: false, code: 'NOT_SIGNED_IN' }
   }
 
   /** Archive, retire this project's socket, then refresh the visible list. */
   async archiveProject(
     projectId: string
   ): Promise<{ ok: true } | { ok: false; code: string; message?: string }> {
-    if (!this.client) {
-      return { ok: false, code: 'NOT_SIGNED_IN' }
-    }
-    return archiveSessionProject(this.client, this.projectAdminHooks(), projectId)
+    return this.client
+      ? archiveSessionProject(this.client, this.projectAdminHooks(), projectId)
+      : { ok: false, code: 'NOT_SIGNED_IN' }
   }
 
   private projectAdminHooks(): ProjectAdminHooks {
@@ -212,9 +220,7 @@ export class CloudSessionService {
           this.state = { ...this.state, projects }
         }
       },
-      closeProjectSocket: (projectId) => {
-        this.connections.close(projectId)
-      }
+      closeProjectSocket: (projectId) => this.connections.close(projectId)
     }
   }
 
@@ -230,30 +236,27 @@ export class CloudSessionService {
     }
   }
 
-  async openProject(projectId: string): Promise<CloudOpenResult> {
-    if (!this.client) {
-      return { ok: false, code: 'NOT_SIGNED_IN' }
-    }
-    try {
-      const { connection, ticket } = await this.connections.open(projectId)
-      return {
-        ok: true,
-        projectId,
-        route: connection.route,
-        workspaceRoot: ticket.workspace.workspaceRoot,
-        capabilities: ticket.host.capabilities
-      }
-    } catch (error) {
-      const code = this.expiredCode(error) ?? errorCodeOf(error) ?? 'OPEN_FAILED'
-      return { ok: false, code, message: error instanceof Error ? error.message : String(error) }
-    }
+  /** Pins the key a mismatch exposed (AC-29); the key never leaves the main process. */
+  trustHostKey(hostId: string) {
+    return trustPendingHostKey(this.client, hostId)
   }
 
-  /**
-   * Opens the project and makes sure the user's checkout exists (design §8.3):
-   * an existing worktree in their workspace root is reused, otherwise one is
-   * created through `worktree.createManaged`.
-   */
+  async openProject(projectId: string): Promise<CloudOpenResult> {
+    const client = this.client
+    if (!client) {
+      return { ok: false, code: 'NOT_SIGNED_IN' }
+    }
+    return openCloudProject(
+      {
+        open: (id) => this.connections.open(id),
+        pinnedFingerprint: (hostId) => client.pinnedHostFingerprint(hostId),
+        failureCode: (error) => this.expiredCode(error) ?? errorCodeOf(error) ?? 'OPEN_FAILED'
+      },
+      projectId
+    )
+  }
+
+  /** Opens with the checkout created if needed (design §8.3); pins ride along (AC-29). */
   async ensureWorkspace(projectId: string): Promise<EnsureWorkspaceResult> {
     const identity = this.client?.deviceIdentity()
     if (!identity) {
@@ -275,10 +278,7 @@ export class CloudSessionService {
     return result
   }
 
-  /**
-   * Prepares the project's checkout without disturbing a live socket: reuse the
-   * one this session already tracks, otherwise open a throwaway ticket. Idempotent.
-   */
+  /** Prepares the checkout without disturbing a live socket. Idempotent. */
   async ensureProjectPrepared(projectId: string): Promise<ProvisionCloudProjectResult> {
     const identity = this.client?.deviceIdentity()
     if (!identity) {
@@ -297,21 +297,13 @@ export class CloudSessionService {
         client.rpc(method, params, timeoutMs)
       )
     } catch (error) {
-      return {
-        ok: false,
-        code: this.expiredCode(error) ?? errorCodeOf(error) ?? 'OPEN_FAILED',
-        message: error instanceof Error ? error.message : String(error)
-      }
+      return failedProvision(this.expiredCode(error) ?? errorCodeOf(error) ?? 'OPEN_FAILED', error)
     } finally {
       client.close()
     }
   }
 
-  /**
-   * Material for the renderer's own Orca workspace connection. The main process
-   * does not open a socket here: the ticket is single-use and belongs to whoever
-   * connects with it.
-   */
+  /** Ticket material for the renderer's own connection; nothing opens a socket here. */
   async prepareProjectLink(projectId: string): Promise<CloudProjectLinkResult> {
     if (!this.client) {
       return { ok: false, code: 'NOT_SIGNED_IN' }
@@ -330,7 +322,12 @@ export class CloudSessionService {
       return { ok: true, link }
     } catch (error) {
       const code = this.expiredCode(error) ?? errorCodeOf(error) ?? 'OPEN_FAILED'
-      return { ok: false, code, message: error instanceof Error ? error.message : String(error) }
+      return {
+        ok: false,
+        code,
+        message: error instanceof Error ? error.message : String(error),
+        ...hostKeyDetails(error)
+      }
     }
   }
 
@@ -354,14 +351,7 @@ export class CloudSessionService {
     return this.connections.projectIds()
   }
 
-  /** Main-process only: which device each live connection's ticket proved. */
-  connectionIdentities(): CloudConnectionIdentity[] {
-    return this.connections.identities()
-  }
-
   private emit(event: CloudConnectionEvent): void {
-    for (const listener of this.listeners) {
-      listener(event)
-    }
+    this.listeners.forEach((listener) => listener(event))
   }
 }

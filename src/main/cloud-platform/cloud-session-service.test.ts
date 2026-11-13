@@ -218,6 +218,71 @@ describe('云端会话服务（渲染进程可见面）', () => {
     expect(typeof status.result).toBe('object')
   }, 20000)
 
+  it('主机公钥被替换：打开返回 FINGERPRINT_MISMATCH 与两个指纹，确认后才重新固定', async () => {
+    const userDataPath = mkdtempSync(join(tmpdir(), 'orca-m81-trust-'))
+    const session = new CloudSessionService({
+      apiUrl: platform.url,
+      tlsRejectUnauthorized: false,
+      userDataPath
+    })
+    await session.login('zhangsan', 'Passw0rd!')
+
+    const first = await session.openProject(projectId)
+    expect(first).toMatchObject({ ok: true })
+    if (!first.ok) {
+      throw new Error('expected first open to succeed')
+    }
+    const realFingerprint = first.hostFingerprint
+    expect(realFingerprint).toMatch(/^sha256:[0-9a-f]{64}$/)
+
+    const host = admission.host()!
+    const realKey = runtime.getE2EEPublicKey()
+    const rogueKey = Buffer.alloc(32, 9).toString('base64')
+    const advertise = (key: string): Promise<Response> =>
+      fetch(`${platform.url}/v1/hosts/${host.hostId}/heartbeat`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${host.credential}` },
+        body: JSON.stringify({ status: 'online', e2eePublicKeyB64: key })
+      })
+
+    // The platform now hands out a different host key (AC-29's substitution case).
+    expect((await advertise(rogueKey)).status).toBe(200)
+    session.closeProject(projectId)
+
+    const refused = await session.openProject(projectId)
+    expect(refused.ok).toBe(false)
+    if (refused.ok) {
+      throw new Error('expected a refusal')
+    }
+    expect(refused.code).toBe('FINGERPRINT_MISMATCH')
+    expect(refused.hostKey?.hostId).toBe(host.hostId)
+    expect(refused.hostKey?.pinnedFingerprint).toBe(realFingerprint)
+    expect(refused.hostKey?.seenFingerprint).not.toBe(realFingerprint)
+
+    // Re-verification is explicit and consumes the pending key exactly once.
+    expect(session.trustHostKey(host.hostId)).toEqual({ ok: true })
+    expect(session.trustHostKey(host.hostId)).toEqual({ ok: false, code: 'HOST_KEY_NOT_PENDING' })
+
+    // Back to the real key: the pin is now the rogue one, so this is a second
+    // mismatch, and re-verifying again restores the original pin.
+    expect((await advertise(realKey!)).status).toBe(200)
+    const second = await session.openProject(projectId)
+    expect(second.ok).toBe(false)
+    if (second.ok) {
+      throw new Error('expected a second refusal')
+    }
+    expect(second.hostKey?.pinnedFingerprint).toBe(refused.hostKey?.seenFingerprint)
+    expect(second.hostKey?.seenFingerprint).toBe(realFingerprint)
+    expect(session.trustHostKey(host.hostId)).toEqual({ ok: true })
+
+    const reopened = await session.openProject(projectId)
+    expect(reopened).toMatchObject({ ok: true })
+    if (!reopened.ok) {
+      throw new Error('expected reopen to succeed')
+    }
+    expect(reopened.hostFingerprint).toBe(realFingerprint)
+  }, 60000)
+
   it('吊销后向渲染进程推送关闭事件，并清空当前项目', async () => {
     const session = makeSession()
     await session.login('zhangsan', 'Passw0rd!')

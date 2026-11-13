@@ -15,7 +15,13 @@ export type EnsureWorkspaceResult =
       /** The route the live connection used; the session tracks the socket by it. */
       route: 'direct' | 'relay'
     }
-  | { ok: false; code: string; message?: string }
+  | {
+      ok: false
+      code: string
+      message?: string
+      /** Carried through for `FINGERPRINT_MISMATCH` (AC-29). */
+      hostKey?: { hostId: string; pinnedFingerprint: string; seenFingerprint: string }
+    }
 
 export async function ensureCloudWorkspace(
   client: CloudConnectClient,

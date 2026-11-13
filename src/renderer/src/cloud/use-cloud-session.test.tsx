@@ -57,6 +57,8 @@ const projects: CloudProjectSummary[] = [
 type Script = {
   loginError?: string
   openResult?: CloudOpenResult
+  /** Result after the user re-verifies a changed host key. */
+  openResultAfterTrust?: CloudOpenResult
   rpcResult?: CloudRpcOutcome
 }
 
@@ -64,6 +66,7 @@ type TestBridge = CloudBridge & {
   emitClose: (event: CloudConnectionEvent) => void
   signedOut: boolean
   closedProjects: number
+  trustedHosts: string[]
 }
 
 function makeBridge(script: Script = {}): TestBridge {
@@ -71,6 +74,7 @@ function makeBridge(script: Script = {}): TestBridge {
   const bridge: TestBridge = {
     signedOut: false,
     closedProjects: 0,
+    trustedHosts: [],
     emitClose: (event) => listener?.(event),
     login: async (username: string): Promise<CloudSessionState> => {
       if (script.loginError) {
@@ -92,6 +96,11 @@ function makeBridge(script: Script = {}): TestBridge {
         workspaceRoot: `/srv/work/${projectId}`,
         capabilities: ['pty']
       },
+    trustHostKey: async (hostId: string) => {
+      bridge.trustedHosts.push(hostId)
+      script.openResult = script.openResultAfterTrust ?? script.openResult
+      return { ok: true as const }
+    },
     openWorkspace: async (projectId: string): Promise<CloudOpenResult> => {
       const result = script.openResult ?? {
         ok: true,
@@ -297,5 +306,69 @@ describe('云端工作台界面', () => {
     })
     await waitFor(() => expect(screen.getByLabelText('域账号')).toBeTruthy())
     expect(bridge.signedOut).toBe(true)
+  })
+})
+
+describe('AC-29 主机公钥变更确认', () => {
+  const mismatch: CloudOpenResult = {
+    ok: false,
+    code: 'FINGERPRINT_MISMATCH',
+    message: 'host public key changed',
+    hostKey: {
+      hostId: 'host-1',
+      pinnedFingerprint: 'sha256:aaaa',
+      seenFingerprint: 'sha256:bbbb'
+    }
+  }
+
+  it('打开被 4433 拒绝时弹出确认框，显示两个指纹；确认后重新固定并重新打开', async () => {
+    const bridge = makeBridge({
+      openResult: mismatch,
+      openResultAfterTrust: {
+        ok: true,
+        projectId: 'p1',
+        route: 'direct',
+        workspaceRoot: '/srv/work/p1',
+        capabilities: ['pty'],
+        hostFingerprint: 'sha256:bbbb'
+      }
+    })
+    await signIn(bridge)
+    await waitFor(() => expect(screen.getByText('工作台')).toBeTruthy())
+
+    await act(async () => {
+      await userEvent.click(firstEnabledOpenButton())
+    })
+
+    const dialog = await screen.findByRole('alertdialog')
+    expect(dialog.textContent).toContain('主机公钥已变更')
+    expect(screen.getByTestId('cloud-host-key-pinned').textContent).toBe('sha256:aaaa')
+    expect(screen.getByTestId('cloud-host-key-seen').textContent).toBe('sha256:bbbb')
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: '我已核对，信任新公钥' }))
+    })
+
+    await waitFor(() => expect(screen.getByText('工作区根目录')).toBeTruthy())
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(bridge.trustedHosts).toEqual(['host-1'])
+  })
+
+  it('取消后不固定任何密钥，停留在工作台', async () => {
+    const bridge = makeBridge({ openResult: mismatch })
+    await signIn(bridge)
+    await waitFor(() => expect(screen.getByText('工作台')).toBeTruthy())
+
+    await act(async () => {
+      await userEvent.click(firstEnabledOpenButton())
+    })
+    await screen.findByRole('alertdialog')
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: '取消' }))
+    })
+
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(bridge.trustedHosts).toEqual([])
+    expect(screen.getByText('工作台')).toBeTruthy()
   })
 })

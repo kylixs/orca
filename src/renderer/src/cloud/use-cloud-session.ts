@@ -11,6 +11,7 @@ import type {
   CloudProjectPermission,
   CloudProvisionableHost,
   CloudRetryPrepareResult,
+  CloudHostKeyMismatch,
   CloudRpcOutcome,
   CloudSessionState
 } from '../../../shared/cloud-platform-ipc'
@@ -31,6 +32,11 @@ export type CloudBridge = {
   archiveProject: (projectId: string) => Promise<CloudArchiveProjectResult>
   listProvisionableHosts: () => Promise<CloudProvisionableHost[]>
   closeProject: (projectId: string) => Promise<{ ok: boolean }>
+  /**
+   * Absent in the browser bridge: that path has no host-key pinning yet, so it
+   * can neither detect nor re-verify a changed key (documented gap, M81).
+   */
+  trustHostKey?: (hostId: string) => Promise<{ ok: true } | { ok: false; code: string }>
   logout: () => Promise<CloudSessionState>
   getState: () => Promise<CloudSessionState>
   listProjects: () => Promise<CloudProjectSummary[]>
@@ -69,6 +75,14 @@ export type CloudSessionView = {
   /** Set when the host closed the socket (revocation, maintenance, network). */
   notice: { code: number | null; reason: string | null } | null
   error: string | null
+  /**
+   * Set when an open was refused because the host's key changed (AC-29); the UI
+   * blocks on it until the user confirms or cancels.
+   */
+  hostKeyMismatch: (CloudHostKeyMismatch & { projectId: string }) | null
+  /** Pins the key the user just verified and retries the open. */
+  confirmHostKey: () => Promise<CloudOpenResult | null>
+  dismissHostKeyMismatch: () => void
   signIn: (username: string, password: string) => Promise<void>
   signOut: () => Promise<void>
   openProject: (projectId: string) => Promise<CloudOpenResult | null>
@@ -89,6 +103,9 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
   const [route, setRoute] = useState<'direct' | 'relay' | null>(null)
   const [notice, setNotice] = useState<CloudSessionView['notice']>(null)
   const [error, setError] = useState<string | null>(null)
+  const [hostKeyMismatch, setHostKeyMismatch] = useState<
+    (CloudHostKeyMismatch & { projectId: string }) | null
+  >(null)
   const bridgeRef = useRef(bridge)
   bridgeRef.current = bridge
 
@@ -186,6 +203,10 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
     setNotice(null)
   }, [applyState])
 
+  const openProjectRef = useRef<(projectId: string) => Promise<CloudOpenResult | null>>(
+    async () => null
+  )
+
   const openProject = useCallback(async (projectId: string) => {
     const active = bridgeRef.current
     if (!active) {
@@ -208,9 +229,34 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
       setStatus('signed-in')
     } else {
       setError(result.code)
+      setHostKeyMismatch(result.hostKey ? { ...result.hostKey, projectId } : null)
     }
     return result
   }, [])
+
+  /** The user re-verified a changed host key: pin it, then retry the same open. */
+  const confirmHostKey = useCallback(async () => {
+    const pending = hostKeyMismatch
+    const active = bridgeRef.current
+    if (!pending || !active) {
+      return null
+    }
+    if (!active.trustHostKey) {
+      setError('HOST_KEY_PINNING_UNSUPPORTED')
+      return { ok: false as const, code: 'HOST_KEY_PINNING_UNSUPPORTED' }
+    }
+    const trusted = await active.trustHostKey(pending.hostId)
+    if (!trusted.ok) {
+      setError(trusted.code)
+      return { ok: false as const, code: trusted.code }
+    }
+    setHostKeyMismatch(null)
+    return openProjectRef.current(pending.projectId)
+  }, [hostKeyMismatch])
+
+  const dismissHostKeyMismatch = useCallback(() => setHostKeyMismatch(null), [])
+
+  openProjectRef.current = openProject
 
   const closeProject = useCallback(async (projectId: string) => {
     const active = bridgeRef.current
@@ -234,6 +280,9 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
     route,
     notice,
     error,
+    hostKeyMismatch,
+    confirmHostKey,
+    dismissHostKeyMismatch,
     signIn,
     signOut,
     openProject,

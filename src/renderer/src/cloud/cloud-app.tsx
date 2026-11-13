@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { CloudHostKeyDialog } from './cloud-host-key-dialog'
 import { CloudLoginPanel } from './cloud-login-panel'
 import { CloudProjectWorkspace, openedProjectSummary } from './cloud-project-workspace'
 import { CloudWorkbench } from './cloud-workbench'
@@ -10,6 +11,7 @@ import { useCloudSession, type CloudBridge } from './use-cloud-session'
  */
 export function CloudApp({ bridge }: { bridge: CloudBridge | null }): React.JSX.Element {
   const session = useCloudSession(bridge)
+  const [confirmingKey, setConfirmingKey] = React.useState(false)
 
   if (session.status === 'unavailable') {
     return (
@@ -42,9 +44,22 @@ export function CloudApp({ bridge }: { bridge: CloudBridge | null }): React.JSX.
   }
 
   return (
-    <CloudWorkbench
-      session={session}
-      onOpenProject={(projectId: string) => void session.openProject(projectId)}
-    />
+    <>
+      <CloudWorkbench
+        session={session}
+        onOpenProject={(projectId: string) => void session.openProject(projectId)}
+      />
+      {session.hostKeyMismatch ? (
+        <CloudHostKeyDialog
+          mismatch={session.hostKeyMismatch}
+          busy={confirmingKey}
+          onCancel={() => session.dismissHostKeyMismatch()}
+          onConfirm={() => {
+            setConfirmingKey(true)
+            void session.confirmHostKey().finally(() => setConfirmingKey(false))
+          }}
+        />
+      ) : null}
+    </>
   )
 }

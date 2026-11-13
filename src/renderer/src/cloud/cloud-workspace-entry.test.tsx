@@ -52,6 +52,7 @@ function makeBridge(
   overrides: Partial<CloudBridge> = {}
 ): CloudBridge {
   return {
+    trustHostKey: async () => ({ ok: true as const }),
     login: async (): Promise<CloudSessionState> => ({
       status: 'signed-in',
       displayName: '张伟',

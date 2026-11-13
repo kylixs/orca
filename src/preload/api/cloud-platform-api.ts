@@ -9,7 +9,8 @@ import type {
   CloudProvisionableHost,
   CloudRetryPrepareResult,
   CloudRpcOutcome,
-  CloudSessionState
+  CloudSessionState,
+  CloudTrustHostKeyResult
 } from '../../shared/cloud-platform-ipc'
 
 export type CloudPlatformApi = {
@@ -20,6 +21,8 @@ export type CloudPlatformApi = {
   openProject: (projectId: string) => Promise<CloudOpenResult>
   /** Open and register the project as a runtime environment panes can address. */
   openWorkspace: (projectId: string) => Promise<CloudOpenResult>
+  /** Pin the host key the user just re-verified after a mismatch (AC-29). */
+  trustHostKey: (hostId: string) => Promise<CloudTrustHostKeyResult>
   /** Register one runtime environment per visible project (no checkout). */
   registerProjects: () => Promise<CloudProjectRegistration>
   /** Re-run provisioning and linking for one project that failed to register. */

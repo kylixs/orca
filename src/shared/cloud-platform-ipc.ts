@@ -27,6 +27,8 @@ export const CLOUD_PLATFORM_IPC = {
   listProvisionableHosts: 'cloud:listProvisionableHosts',
   /** Args: `(method, params, projectId)`. Routes to that project's own socket. */
   rpc: 'cloud:rpc',
+  /** Args: `(hostId)`. Pins the host key the user just re-verified (AC-29). */
+  trustHostKey: 'cloud:trustHostKey',
   connectionChanged: 'cloud:connectionChanged'
 } as const
 
@@ -81,8 +83,28 @@ export type CloudOpenResult =
        * project was opened for a workspace (`cloud:openWorkspace`).
        */
       environmentId?: string
+      /** Pinned fingerprint of the host this project runs on; the UI shows it (AC-29). */
+      hostFingerprint?: string
     }
-  | { ok: false; code: string; message?: string }
+  | {
+      ok: false
+      code: string
+      message?: string
+      /**
+       * Set when `code` is `FINGERPRINT_MISMATCH`: what was pinned, what the
+       * platform now hands out, and the host it belongs to. The user must
+       * re-verify before the new key replaces the pin.
+       */
+      hostKey?: CloudHostKeyMismatch
+    }
+
+export type CloudHostKeyMismatch = {
+  hostId: string
+  pinnedFingerprint: string
+  seenFingerprint: string
+}
+
+export type CloudTrustHostKeyResult = { ok: true } | { ok: false; code: string }
 
 /**
  * One cloud project as a native runtime host. The renderer turns this into a

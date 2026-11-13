@@ -9,7 +9,8 @@ import {
   type CloudProvisionableHost,
   type CloudRetryPrepareResult,
   type CloudRpcOutcome,
-  type CloudSessionState
+  type CloudSessionState,
+  type CloudTrustHostKeyResult
 } from '../../shared/cloud-platform-ipc'
 import { readTicketClaims } from '../cloud-platform/cloud-connect-response'
 import { CloudSessionService } from '../cloud-platform/cloud-session-service'
@@ -66,6 +67,11 @@ export function registerCloudPlatformHandlers(
   handle<CloudOpenResult>(CLOUD_PLATFORM_IPC.openProject, (projectId: string) =>
     session.openProject(projectId)
   )
+  // Why no key argument: the main process already holds the key the mismatch
+  // exposed, so the renderer only says "the user verified this host".
+  handle<CloudTrustHostKeyResult>(CLOUD_PLATFORM_IPC.trustHostKey, (hostId: string) =>
+    session.trustHostKey(hostId)
+  )
   handle<CloudOpenResult>(CLOUD_PLATFORM_IPC.openWorkspace, async (projectId: string) => {
     // Why ensure rather than open: a first-time user has no checkout yet, and
     // design §8.3 says opening the project creates it (managed worktree).
@@ -73,7 +79,12 @@ export function registerCloudPlatformHandlers(
     if (!ensured.ok || !options.userDataPath) {
       return ensured.ok
         ? { ok: false, code: 'WORKSPACE_UNAVAILABLE' }
-        : { ok: false, code: ensured.code, message: ensured.message }
+        : {
+            ok: false,
+            code: ensured.code,
+            message: ensured.message,
+            ...(ensured.hostKey ? { hostKey: ensured.hostKey } : {})
+          }
     }
     const prepared = await session.prepareProjectLink(projectId)
     if (!prepared.ok) {
