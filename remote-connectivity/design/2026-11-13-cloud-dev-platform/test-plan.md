@@ -107,7 +107,7 @@
 | 指标 | 目标 | 测试文件::用例 | 证据 | 结论 | 说明 |
 |---|---|---|---|---|---|
 | 登录 → 工作台可交互 | P95 ≤ 1.5s | `web-workbench-latency.e2e.test.ts::AC-01` | `m97-workbench-latency/workbench-latency.json` | PASS | 真实 Chromium，50 次采样 P95 71ms |
-| 工作台项目列表（≤ 200 项目） | P95 ≤ 500ms | 无 | 无 | UNVERIFIED | 现测的是少量项目的工作台渲染，未做 200 项目规模 |
+| 工作台项目列表（≤ 200 项目） | P95 ≤ 500ms | `cloud-platform/test/e2e/workbench-project-list-latency.e2e.test.ts::M106-1`（真实平台进程 + 真实 Chrome） | `m106-workbench-project-list-latency/project-list-latency.json` | PASS（本机） | 200 个已授权项目，每个样本从点击「我的项目」到 200 行全部渲染：30 次采样 P95 **75–78ms**（中位 66–72ms）；注入 700ms 端点延迟后 P95 745–749ms，同一预算断言转红，撤销后恢复 76ms。表中同时含 `payment-service` 与 `service-199`。所有项目同主机同组，未覆盖多主机/多团队 ACL |
 | 连接建立（凭证 → 工作区可交互） | 直连 P95 ≤ 2s；中继 P95 ≤ 3s | `cloud-connection-establish-latency.test.ts::M104-1/M104-2`（真实平台 + 真实中继进程 + 真实 TLS Runtime + 真实 WSS） | `m104-connection-latency/connection-latency-direct.json`、`connection-latency-relay.json` | PASS（本机） | 每条线路 20 次采样，每次全新客户端与 socket；计时从取凭证到工作区 `status.get` 成功：直连 P95 **6.26ms**、中继 P95 **6.09ms**。注入 800ms 延迟后 P95 分别升到 6432/6428ms，同一预算断言转红；撤销后恢复。客户端与主机同机，未含真实网络 RTT；已登录会话，登录不计时 |
 | 终端输入回显（同城网络） | P95 ≤ 120ms | `cloud-terminal-echo-latency.test.ts::M102-1`（真实中继进程 + 真实 TLS + E2EE + 真实 PTY） | `m102-terminal-echo-latency/terminal-echo-latency.json` | PASS（本机） | 中继线路 50 次采样，多次运行 P95 **7.5–9.1ms**（当前证据 9.05ms）；注入 150ms 后同一预算断言转红（P95 306.9ms），撤销后恢复 9.87ms。客户端与主机同机，未计入同城网络 RTT |
 | 文件目录读取（1000 项） | P95 ≤ 400ms | `cloud-file-listing-latency.test.ts::M103-1`（真实中继进程 + 真实 TLS + E2EE + 真实 Runtime） | `m103-file-listing-latency/file-listing-latency.json` | PASS（本机） | 中继线路下返回 1000 条目，30 次采样，多次运行 P95 **3.3–5.1ms**（当前证据 5.07ms）；注入 450ms 后同一预算断言转红（P95 914.06ms），撤销后恢复。平铺目录、客户端与主机同机，未含真实网络 RTT 与 SSH 文件系统 |
