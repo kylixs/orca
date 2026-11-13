@@ -8,6 +8,8 @@ import type {
   CloudSessionState
 } from '../../shared/cloud-platform-ipc'
 import { CloudConnectClient, type CloudProject } from './cloud-connect-client'
+import type { CloudAuthFingerprints } from './cloud-auth-session'
+import { summarizeCloudProject } from './cloud-project-summary'
 import { buildCloudProjectLink, type CloudProjectLink } from './cloud-pairing-offer'
 import { errorCodeOf } from '../../shared/json-fields'
 import {
@@ -36,23 +38,6 @@ export type CloudProjectLinkResult =
 
 export type CloudSessionDeps = {
   createClient?: CreateCloudClient
-}
-
-function summarize(project: CloudProject): CloudProjectSummary {
-  return {
-    id: project.id,
-    key: project.key,
-    name: project.name,
-    hostName: project.hostName,
-    hostStatus: project.hostStatus,
-    // Never guess `ready`: an older platform omits the field, and the UI must
-    // treat that as unknown rather than claim the project is prepared.
-    status: project.status,
-    provisioningError: project.provisioningError,
-    // Managed projects deny export by default; the host enforces it, this only
-    // drives whether the UI offers the action at all (FR-7.3).
-    downloadRestricted: !project.permissions.includes('download')
-  }
 }
 
 export class CloudSessionService {
@@ -94,6 +79,31 @@ export class CloudSessionService {
     return this.state
   }
 
+  /** Main-process diagnostics: non-reversible token digests, never the tokens. */
+  authTokenFingerprints(): CloudAuthFingerprints | null {
+    return this.client?.authTokenFingerprints() ?? null
+  }
+
+  /** A dead platform session signs out and asks the renderer to show the login page. */
+  private expireSession(): void {
+    // Why once: concurrent platform calls can all fail after the first one signed out.
+    if (this.state.status !== 'signed-in') {
+      return
+    }
+    this.logout()
+    this.emit({ projectId: null, route: null, closeCode: 4401, reason: 'session_expired' })
+  }
+
+  /** Returns the code for callers that must map it into their own result. */
+  private expiredCode(error: unknown): string | null {
+    const code = errorCodeOf(error)
+    if (code === 'SESSION_EXPIRED') {
+      this.expireSession()
+      return code
+    }
+    return null
+  }
+
   async login(username: string, password: string): Promise<CloudSessionState> {
     this.connections.closeAll()
     this.client?.close()
@@ -105,7 +115,7 @@ export class CloudSessionService {
     this.state = {
       status: 'signed-in',
       displayName: user.displayName,
-      projects: projects.map(summarize)
+      projects: projects.map(summarizeCloudProject)
     }
     return this.state
   }
@@ -129,8 +139,14 @@ export class CloudSessionService {
     if (!this.client) {
       throw Object.assign(new Error('not signed in'), { code: 'NOT_SIGNED_IN' })
     }
-    const projects = await this.client.listProjects()
-    const summaries = projects.map(summarize)
+    let projects: CloudProject[]
+    try {
+      projects = await this.client.listProjects()
+    } catch (error) {
+      const code = this.expiredCode(error) ?? errorCodeOf(error) ?? 'LIST_PROJECTS_FAILED'
+      throw Object.assign(error instanceof Error ? error : new Error(code), { code })
+    }
+    const summaries = projects.map(summarizeCloudProject)
     if (this.state.status === 'signed-in') {
       this.state = { ...this.state, projects: summaries }
     }
@@ -152,23 +168,32 @@ export class CloudSessionService {
       try {
         const projects = await this.client.listProjects()
         if (this.state.status === 'signed-in') {
-          this.state = { ...this.state, projects: projects.map(summarize) }
+          this.state = { ...this.state, projects: projects.map(summarizeCloudProject) }
         }
-      } catch {
+      } catch (error) {
         // The project exists; a stale list must not turn creation into a failure.
+        this.expiredCode(error)
       }
-      return { ok: true, projectId: created.id, project: summarize(created) }
+      return { ok: true, projectId: created.id, project: summarizeCloudProject(created) }
     } catch (error) {
       return {
         ok: false,
-        code: errorCodeOf(error) ?? 'CREATE_PROJECT_FAILED',
+        code: this.expiredCode(error) ?? errorCodeOf(error) ?? 'CREATE_PROJECT_FAILED',
         message: error instanceof Error ? error.message : String(error)
       }
     }
   }
 
   async listProvisionableHosts(): Promise<CloudProvisionableHost[]> {
-    return this.client ? this.client.listProvisionableHosts() : []
+    if (!this.client) {
+      return []
+    }
+    try {
+      return await this.client.listProvisionableHosts()
+    } catch (error) {
+      this.expiredCode(error)
+      throw error
+    }
   }
 
   async openProject(projectId: string): Promise<CloudOpenResult> {
@@ -185,7 +210,7 @@ export class CloudSessionService {
         capabilities: ticket.host.capabilities
       }
     } catch (error) {
-      const code = errorCodeOf(error) ?? 'OPEN_FAILED'
+      const code = this.expiredCode(error) ?? errorCodeOf(error) ?? 'OPEN_FAILED'
       return { ok: false, code, message: error instanceof Error ? error.message : String(error) }
     }
   }
@@ -207,6 +232,9 @@ export class CloudSessionService {
     const result = await ensureCloudWorkspace(client, projectId)
     if (!result.ok) {
       client.close()
+      if (result.code === 'SESSION_EXPIRED') {
+        this.expireSession()
+      }
       return result
     }
     this.connections.track(projectId, client, result.route)
@@ -237,7 +265,7 @@ export class CloudSessionService {
     } catch (error) {
       return {
         ok: false,
-        code: errorCodeOf(error) ?? 'OPEN_FAILED',
+        code: this.expiredCode(error) ?? errorCodeOf(error) ?? 'OPEN_FAILED',
         message: error instanceof Error ? error.message : String(error)
       }
     } finally {
@@ -267,7 +295,7 @@ export class CloudSessionService {
       }
       return { ok: true, link }
     } catch (error) {
-      const code = errorCodeOf(error) ?? 'OPEN_FAILED'
+      const code = this.expiredCode(error) ?? errorCodeOf(error) ?? 'OPEN_FAILED'
       return { ok: false, code, message: error instanceof Error ? error.message : String(error) }
     }
   }

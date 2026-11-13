@@ -1,5 +1,8 @@
 /** Host-initiated cloud closes carry a code the user can act on. */
 export function cloudCloseNotice(code: number | null): string {
+  if (code === 4401) {
+    return '登录状态已过期，请重新登录。'
+  }
   if (code === 4403) {
     return '当前连接已被管理员收回，请重新登录或联系平台管理员。'
   }

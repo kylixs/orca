@@ -132,6 +132,22 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
         setRoute(null)
         setNotice({ code: event.closeCode, reason: event.reason })
       }
+      if (event.reason === 'session_expired') {
+        // Why re-read: main already signed out; trusting cached state would strand
+        // the user on a workbench whose every action now fails.
+        void active
+          .getState()
+          .then((state) => {
+            if (!cancelled && isCloudState(state)) {
+              applyState(state)
+            }
+          })
+          .catch(() => {
+            if (!cancelled) {
+              applyState({ status: 'signed-out' })
+            }
+          })
+      }
     })
     return () => {
       cancelled = true

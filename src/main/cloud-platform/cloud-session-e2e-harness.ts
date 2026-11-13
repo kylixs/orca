@@ -49,10 +49,27 @@ export function makeSelfSignedTls(commonName = 'dev-cloud'): { cert: string; key
 
 export type Platform = { url: string; stop: () => Promise<void> }
 
-export async function startPlatform(): Promise<Platform> {
+export type PlatformOptions = {
+  /** Shortens the access token so a test can observe expiry. */
+  accessTtlMs?: number
+  refreshTtlMs?: number
+}
+
+export async function startPlatform(options: PlatformOptions = {}): Promise<Platform> {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    PORT: '0',
+    INTERNAL_TOKEN: DEFAULT_INTERNAL_TOKEN
+  }
+  if (options.accessTtlMs !== undefined) {
+    env.ORCA_CLOUD_ACCESS_TTL_MS = String(options.accessTtlMs)
+  }
+  if (options.refreshTtlMs !== undefined) {
+    env.ORCA_CLOUD_REFRESH_TTL_MS = String(options.refreshTtlMs)
+  }
   const proc: ChildProcess = spawn(process.execPath, ['cloud-platform/apps/api/src/server.ts'], {
     cwd: REPO_ROOT,
-    env: { ...process.env, PORT: '0', INTERNAL_TOKEN: DEFAULT_INTERNAL_TOKEN },
+    env,
     stdio: ['ignore', 'pipe', 'pipe']
   })
   const url = await new Promise<string>((resolve, reject) => {

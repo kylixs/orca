@@ -84,6 +84,8 @@
 
 | M60 | 创建成功但准备失败的项目并入失败横幅：IPC 失败结果带 `projectId`，对话框关闭，条目可走 M58 重试 | 真实平台 + 主机 + TLS + git：坏 repoUrl 创建 → 失败条目含 projectId → 管理员修正 → 重试 clone 成功 → `ready` + 侧栏行 |
 
+| M61 | 会话自动续期：桌面客户端保存 refresh token，access token 过期/401 时透明刷新一次；refresh 失效则置为 signed-out 并发 `session_expired` | 真实平台（短 TTL）+ 主机 + TLS + git：过期后打开项目仍成功；会话作废后返回 `SESSION_EXPIRED`、回到登录页 |
+
 ### 5.1 M57 项目创建 provisioning（平台不在数据通道）
 
 - **平台**：`POST /v1/projects` 仍 admin-only；有 `repoUrl` → `status: 'provisioning'`，无 → `ready`（路径由管理员备好）。连接票据新增可选 claim `repoUrl`、`defaultBranch`（旧主机忽略未知 claim）。

@@ -264,6 +264,25 @@ describe('云端工作台界面', () => {
     expect(screen.queryByTestId('cloud-route')).toBeNull()
   })
 
+  it('会话过期事件后回到登录页并提示重新登录', async () => {
+    const bridge = makeBridge()
+    await signIn(bridge)
+    await waitFor(() => expect(screen.getByText('工作台')).toBeTruthy())
+
+    await act(async () => {
+      bridge.emitClose({
+        projectId: null,
+        route: null,
+        closeCode: 4401,
+        reason: 'session_expired'
+      })
+    })
+
+    await waitFor(() => expect(screen.getByLabelText('域账号')).toBeTruthy())
+    expect(screen.getByRole('status').textContent).toContain('登录状态已过期')
+    expect(screen.queryByText('工作台')).toBeNull()
+  })
+
   it('退出登录回到登录页', async () => {
     const bridge = makeBridge()
     await signIn(bridge)

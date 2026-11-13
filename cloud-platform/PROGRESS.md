@@ -1141,12 +1141,40 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 2. 对话框关闭后靠 toast 与底部横幅说明，未做逐项目状态图标。
 3. 组件测试用 bridge 打桩；真实 IPC 全链路只由 e2e 覆盖。
 
+## M61 云端会话自动续期（本轮，开发子代理执行）
+
+**问题**：平台 access token TTL 30 分钟、refresh token 12 小时（滑动、旋转），但桌面客户端 `CloudConnectClient.login` **直接丢弃 `refreshToken`**，所有平台请求只带 access token。登录 30 分钟后，任何需要新票据/项目列表的操作都 401 `SESSION_EXPIRED`，用户只能重新登录——长会话不可用。
+
+| 改动 | 内容 |
+|---|---|
+| 平台 `server.ts` | `ApiConfig.accessTtlMs`/`refreshTtlMs`（测试可缩短，入口支持 `ORCA_CLOUD_ACCESS_TTL_MS`/`ORCA_CLOUD_REFRESH_TTL_MS`）；登录与刷新响应新增 `expiresIn`（秒）。刷新时**保留旧 refresh token 映射**，使旧 token 重放命中 `refreshHash` 不匹配分支并作废整个会话（旋转 + 盗用检测） |
+| `cloud-auth-session.ts`（新）/ `cloud-authorized-request.ts`（新） | 每个登录一份共享凭据对象：提前 60s 刷新、单飞、失败锁定 `SESSION_EXPIRED`、无 `expiresIn` 的旧平台按 401 刷新；所有平台请求先 `ensureFresh()`，401 时强制刷新并**只重试一次**；只暴露不可逆指纹用于诊断 |
+| `cloud-connect-client.ts` / `cloud-project-connections.ts` / `cloud-self-service-api.ts` | `CloudDeviceIdentity` 携带共享 `auth`（所有 fork 的项目连接看到同一次刷新）；握手逻辑抽到 `cloud-socket-handshake.ts` 保持单文件 ≤300 行 |
+| `cloud-session-service.ts` | 任何平台调用 `SESSION_EXPIRED` → `logout()` 关闭全部连接并推送 `{closeCode:4401, reason:'session_expired'}`；并发失败只登出一次 |
+| `renderer/use-cloud-session.ts` + `cloud-close-notice.ts` + 登录面板 | 收到 `session_expired` 重新读取主进程状态（已 signed-out）回到登录页，显示“登录状态已过期，请重新登录。” |
+
+**验证（`evidence/m61-session-renewal/`）**：
+- 平台 e2e 2 条（真实 `createApp` + HTTP）：短 TTL 过期 → 401 `SESSION_EXPIRED` → 刷新成功且新 token 可用 → **旧 refresh token 重放 → 401 且新 token 一并失效**；refresh TTL 过期 → 401。
+- 主机端到端 1 条（真实平台进程 `accessTtlMs: 1200` + 真实注册主机/心跳 + 真实 TLS Runtime + 真实 bare git）：等 access token 过期后 `ensureWorkspace` **仍成功**（内部刷新 2 次，access/refresh 指纹均变化，票据与真实 checkout 正常）；随后该用户会话被另一登录撤销 → `prepareProjectLink` 返回 `SESSION_EXPIRED`、`getState()` 为 `signed-out`、连接清空、收到 `4401/session_expired`。
+- 单测 8 条（提前刷新阈值、单飞、失败锁定、旋转、旧平台无 `expiresIn`）+ 渲染钩子用例（`session_expired` → signed-out + notice）。
+
+**主会话独立验收**：11 个相关 vitest 文件 **49 条全过**；平台 e2e **全套 89 条全过**（16 suites）；`tsc tc.web` 0 错；`tsc node` 仅 2 条既有 TS6307；`check:code-quality:changed` 0 新发现。
+
+**主会话独立负向对照**：让 `cloudAuthorizedFetch` 在 401 后不刷新不重试（直接返回首个响应）→ renewal e2e **变红**（`expected { ok: false } to match object { ok: true, route: 'direct' }`），恢复后 1/1 绿。
+
+**如实记录 / 剩余**：
+1. **仅桌面主进程**做了续期；管理员浏览器会话页（`src/renderer/src/web/*`）仍无刷新流程，30 分钟后回到登录页。
+2. refresh token 只在内存，**进程重启需重新登录**（未落盘，避免新增凭据文件）。
+3. 刷新失败的判定较粗：任何刷新错误（含瞬时网络抖动）都视为 `SESSION_EXPIRED` 并登出，可能在弱网下放大影响；仍符合“宁可让用户重登，不可长期半死”的取向。
+4. 旧 refresh token 映射为支持重放检测而保留，未按会话清理；条目数受刷新次数约束（每会话每 30 分钟一条，12 小时内 ≤24）。
+5. 会话过期时主进程直接 `logout()`，未走 IPC 层的 `removeCloudRuntimeEnvironments`；重新登录时 `registerProjects` 会按 projectId 覆盖环境，但登出瞬间侧栏环境记录残留（界面已切回登录页，不可见）。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
-**已完成**：M41–M60（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
+**已完成**：M41–M61（路径边界、文件面板、终端/agent 边界、工作区侧车、浏览器取票与 E2EE、原生界面回归、多项目连接、管理员会话页、初始导航、类型工程边界、项目创建 provisioning、准备失败可见与重试、开发者自助创建项目、创建后失败并入重试、会话自动续期）。**用户决策**（普通开发者直接进入原生界面、管理员用独立浏览器会话页、每项目独立连接、文件面板随管理员页保留）均已落地。
 
 **建议下一步（按缺口排序）**：
-1. **登录后自动重登**：断线仍只回登录页（M51 范围），长会话需要自动续期。
+1. **浏览器会话页续期**：管理员页复用平台的 refresh 流程，避免 30 分钟后掉线。
 2. **主机断连清理**：云设备 token 仅在注册表淘汰，不随 socket 关闭释放。
 3. **签到准备并行化**：`registerProjects` 逐项目串行准备，多仓库首屏被最长 clone 拖慢。
 4. **项目删除/重命名**：创建失败或废弃的项目会永久占用 key 与 `projectsRoot/<key>` 路径。

@@ -2,10 +2,13 @@ import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { cloudCloseNotice } from './cloud-close-notice'
 
 export type CloudLoginPanelProps = {
   submitting: boolean
   error: string | null
+  /** Why the user was returned here, e.g. an expired platform session. */
+  notice?: { code: number | null; reason: string | null } | null
   onSignIn: (username: string, password: string) => void
 }
 
@@ -27,6 +30,7 @@ export function cloudErrorMessage(code: string | null): string | null {
 export function CloudLoginPanel({
   submitting,
   error,
+  notice,
   onSignIn
 }: CloudLoginPanelProps): React.JSX.Element {
   const [username, setUsername] = React.useState('')
@@ -71,6 +75,11 @@ export function CloudLoginPanel({
               onChange={(event) => setPassword(event.target.value)}
             />
           </div>
+          {notice ? (
+            <p role="status" className="text-sm text-muted-foreground">
+              {cloudCloseNotice(notice.code)}
+            </p>
+          ) : null}
           {error ? (
             <p role="alert" className="text-sm text-destructive">
               {cloudErrorMessage(error)}

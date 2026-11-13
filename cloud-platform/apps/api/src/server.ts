@@ -44,6 +44,10 @@ export type ApiConfig = {
   ldap?: LdapAdapter
   now?: () => number
   internalToken?: string
+  /** Access-token lifetime; tests shrink it to exercise expiry. */
+  accessTtlMs?: number
+  /** Refresh-token lifetime; tests shrink it to exercise expiry. */
+  refreshTtlMs?: number
   /** Append-only audit log; absent keeps the chain in memory (tests). */
   auditLogPath?: string
   /** Enables the dedicated mTLS listener for platform → relay/runtime control traffic. */
@@ -119,6 +123,9 @@ function isAdmin(user: User): boolean {
 
 export function createApp(config: ApiConfig): ApiHandle {
   const now = config.now ?? (() => Date.now())
+  const accessTtlMs = config.accessTtlMs ?? ACCESS_TTL_MS
+  const refreshTtlMs = config.refreshTtlMs ?? REFRESH_TTL_MS
+  const expiresInSeconds = Math.ceil(accessTtlMs / 1000)
   const auditLogPath = config.auditLogPath ?? process.env.AUDIT_LOG_PATH ?? null
   const store = new Store()
   const auditLog = auditLogPath ? openAuditLogFile(auditLogPath) : null
@@ -305,7 +312,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       deviceId,
       epoch: 1,
       refreshHash: hashToken(refreshToken),
-      refreshExpiresAt: now() + REFRESH_TTL_MS,
+      refreshExpiresAt: now() + refreshTtlMs,
       revokedAt: null
     }
     store.sessions.set(session.id, session)
@@ -313,7 +320,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       sessionId: session.id,
       userId: user.id,
       epoch: session.epoch,
-      expiresAt: now() + ACCESS_TTL_MS
+      expiresAt: now() + accessTtlMs
     })
     store.refreshTokens.set(refreshToken, session.id)
     return { accessToken, refreshToken }
@@ -521,6 +528,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       const permissions = user.roles.flatMap((r) => ROLE_PERMISSIONS[r] ?? [])
       return json(res, 200, {
         ...tokens,
+        expiresIn: expiresInSeconds,
         user: {
           id: user.id,
           username: user.username,
@@ -545,19 +553,20 @@ export function createApp(config: ApiConfig): ApiHandle {
         session.revokedAt = now()
         return error(res, 401, 'SESSION_EXPIRED', '会话已失效，请重新登录。', traceId)
       }
-      store.refreshTokens.delete(token)
+      // Why kept: a replayed old token must still identify this session, so the
+      // hash mismatch below can revoke it instead of reading as an unknown token.
       const accessToken = randomBytes(32).toString('base64url')
       const refreshToken = randomBytes(32).toString('base64url')
       session.refreshHash = hashToken(refreshToken)
-      session.refreshExpiresAt = now() + REFRESH_TTL_MS
+      session.refreshExpiresAt = now() + refreshTtlMs
       store.accessTokens.set(accessToken, {
         sessionId: session.id,
         userId: session.userId,
         epoch: session.epoch,
-        expiresAt: now() + ACCESS_TTL_MS
+        expiresAt: now() + accessTtlMs
       })
       store.refreshTokens.set(refreshToken, session.id)
-      return json(res, 200, { accessToken, refreshToken })
+      return json(res, 200, { accessToken, refreshToken, expiresIn: expiresInSeconds })
     }
 
     if (req.method === 'POST' && path === '/v1/auth/logout') {
@@ -1786,9 +1795,20 @@ export function createApp(config: ApiConfig): ApiHandle {
   }
 }
 
+function ttlFromEnv(name: string): number | undefined {
+  const raw = process.env[name]
+  if (!raw) return undefined
+  const value = Number(raw)
+  return Number.isFinite(value) && value > 0 ? value : undefined
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
+  const accessTtlMs = ttlFromEnv('ORCA_CLOUD_ACCESS_TTL_MS')
+  const refreshTtlMs = ttlFromEnv('ORCA_CLOUD_REFRESH_TTL_MS')
   const app = createApp({
     port: Number(process.env.PORT ?? 18787),
+    ...(accessTtlMs === undefined ? {} : { accessTtlMs }),
+    ...(refreshTtlMs === undefined ? {} : { refreshTtlMs }),
     internalTls:
       process.env.INTERNAL_TLS_KEY && process.env.INTERNAL_TLS_CERT && process.env.INTERNAL_TLS_CA
         ? {

@@ -1,24 +1,26 @@
-import WebSocket from 'ws'
-import { decrypt, deriveSharedKey, encrypt, generateKeyPair } from '../../shared/e2ee-crypto'
+import { generateKeyPair } from '../../shared/e2ee-crypto'
+import { readField, readNumber, readString, readStringArray } from '../../shared/json-fields'
 import type {
   CloudReplyEndpoint,
   CloudReplyHostOption,
   CloudReplyProject,
   CloudReplyTicket
 } from '../../shared/cloud-platform-reply'
+import type { CloudCreateProjectInput } from '../../shared/cloud-platform-ipc'
 import {
   createCloudProject,
   listProvisionableHosts as fetchProvisionableHosts
 } from './cloud-self-service-api'
-import type { CloudCreateProjectInput } from '../../shared/cloud-platform-ipc'
-import { chooseRoute, probeEndpoint, type RouteChoice } from './cloud-route-selection'
-import { parseConnectTicket, parseProjectList, readTicketClaims } from './cloud-connect-response'
+import { chooseRoute, probeEndpoint } from './cloud-route-selection'
+import { parseConnectTicket, parseProjectList } from './cloud-connect-response'
+import type { CloudStreamEvent, CloudSubscription } from './cloud-rpc-multiplexer'
 import {
-  CloudRpcMultiplexer,
-  type CloudStreamEvent,
-  type CloudSubscription
-} from './cloud-rpc-multiplexer'
-import { parseJsonText, readField, readString, readStringArray } from '../../shared/json-fields'
+  createCloudAuthSession,
+  type CloudAuthFingerprints,
+  type CloudAuthSession
+} from './cloud-auth-session'
+import { cloudAuthorizedFetch, throwCloudPlatformError } from './cloud-authorized-request'
+import { upgradeCloudSocket, type CloudSocket } from './cloud-socket-handshake'
 
 /** Desktop-side cloud connection: the platform is a registry, never the data path (D1). */
 
@@ -39,9 +41,10 @@ export type CloudDeviceKeyPair = {
  * The platform identity a project connection must reuse. The device key pair is
  * registered once at login and the host checks the E2EE hello against the ticket
  * that names it, so a second login (new keys ⇒ new device) would break binding.
+ * `auth` is shared so every fork sees the same refreshed tokens.
  */
 export type CloudDeviceIdentity = {
-  accessToken: string
+  auth: CloudAuthSession
   deviceId: string
   keyPair: CloudDeviceKeyPair
 }
@@ -54,6 +57,8 @@ export type CloudConnectOptions = {
   maxDirectAddrs?: number
   /** Test-only: accept the host's self-signed certificate. */
   tlsRejectUnauthorized?: boolean
+  /** Refresh this long before expiry; short-lived test tokens shrink it. */
+  refreshLeadMs?: number
   fetchImpl?: typeof fetch
 }
 
@@ -65,23 +70,32 @@ export type { RouteChoice } from './cloud-route-selection'
 export class CloudConnectClient {
   private readonly options: CloudConnectOptions
   private readonly fetchImpl: typeof fetch
-  private accessToken = ''
+  private auth: CloudAuthSession
   private deviceId = ''
   private readonly deviceKeys: CloudDeviceKeyPair
-  private socket: WebSocket | null = null
-  private sharedKey: Uint8Array | null = null
-  private rpcMux: CloudRpcMultiplexer | null = null
+  private connection: CloudSocket | null = null
   private closeListener: ((code: number, reason: string) => void) | null = null
-  private lastTicketDevicePubKey: string | null = null
 
   constructor(options: CloudConnectOptions, identity?: CloudDeviceIdentity) {
     this.options = options
     this.fetchImpl = options.fetchImpl ?? fetch
     this.deviceKeys = identity?.keyPair ?? generateKeyPair()
+    this.auth = identity?.auth ?? this.blankAuth()
     if (identity) {
-      this.accessToken = identity.accessToken
       this.deviceId = identity.deviceId
     }
+  }
+
+  private blankAuth(): CloudAuthSession {
+    return createCloudAuthSession({
+      apiUrl: this.options.apiUrl,
+      accessToken: '',
+      refreshToken: null,
+      fetchImpl: this.fetchImpl,
+      ...(this.options.refreshLeadMs !== undefined
+        ? { refreshLeadMs: this.options.refreshLeadMs }
+        : {})
+    })
   }
 
   get devicePubKeyB64(): string {
@@ -102,12 +116,17 @@ export class CloudConnectClient {
 
   /** Credentials a per-project connection forks; never exposed to a renderer. */
   deviceIdentity(): CloudDeviceIdentity {
-    return { accessToken: this.accessToken, deviceId: this.deviceId, keyPair: this.deviceKeys }
+    return { auth: this.auth, deviceId: this.deviceId, keyPair: this.deviceKeys }
+  }
+
+  /** Main-process only: non-reversible digests for rotation diagnostics. */
+  authTokenFingerprints(): CloudAuthFingerprints {
+    return this.auth.fingerprints()
   }
 
   /** Main-process only: the device key the host bound the live socket to. */
   get ticketDevicePubKey(): string | null {
-    return this.lastTicketDevicePubKey
+    return this.connection?.ticketDevicePubKey ?? null
   }
 
   async login(
@@ -136,17 +155,29 @@ export class CloudConnectClient {
     if (accessToken === null || deviceId === null || displayName === null || permissions === null) {
       throw new Error('login response malformed')
     }
-    this.accessToken = accessToken
+    this.auth = createCloudAuthSession({
+      apiUrl: this.options.apiUrl,
+      accessToken,
+      refreshToken: readString(body, 'refreshToken'),
+      expiresIn: readNumber(body, 'expiresIn'),
+      fetchImpl: this.fetchImpl,
+      ...(this.options.refreshLeadMs !== undefined
+        ? { refreshLeadMs: this.options.refreshLeadMs }
+        : {})
+    })
     this.deviceId = deviceId
     return { displayName, permissions }
   }
 
   async listProjects(): Promise<CloudProject[]> {
-    const res = await this.fetchImpl(`${this.options.apiUrl}/v1/projects`, {
-      headers: { authorization: `Bearer ${this.accessToken}` }
-    })
+    const res = await cloudAuthorizedFetch(
+      this.fetchImpl,
+      this.options.apiUrl,
+      this.auth,
+      '/v1/projects'
+    )
     if (!res.ok) {
-      throw new Error(`list projects failed: ${res.status}`)
+      return throwCloudPlatformError(res, `list projects failed: ${res.status}`)
     }
     const projects = parseProjectList(await res.json())
     if (projects === null) {
@@ -156,26 +187,31 @@ export class CloudConnectClient {
   }
 
   createProject(input: CloudCreateProjectInput): Promise<CloudProject> {
-    return createCloudProject(this.fetchImpl, this.options.apiUrl, this.accessToken, input)
+    return createCloudProject(this.fetchImpl, this.options.apiUrl, this.auth, input)
   }
 
   listProvisionableHosts(): Promise<CloudReplyHostOption[]> {
-    return fetchProvisionableHosts(this.fetchImpl, this.options.apiUrl, this.accessToken)
+    return fetchProvisionableHosts(this.fetchImpl, this.options.apiUrl, this.auth)
   }
 
   async requestTicket(projectId: string): Promise<CloudConnectTicket> {
-    const res = await this.fetchImpl(`${this.options.apiUrl}/v1/projects/${projectId}/connect`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${this.accessToken}` },
-      body: JSON.stringify({
-        deviceId: this.deviceId,
-        devicePubKey: this.devicePubKeyB64,
-        clientVersion: '1.5.0'
-      })
-    })
+    const res = await cloudAuthorizedFetch(
+      this.fetchImpl,
+      this.options.apiUrl,
+      this.auth,
+      `/v1/projects/${projectId}/connect`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          deviceId: this.deviceId,
+          devicePubKey: this.devicePubKeyB64,
+          clientVersion: '1.5.0'
+        })
+      }
+    )
     if (!res.ok) {
-      const code = readString(readField(await res.json().catch(() => null), 'error'), 'code')
-      throw Object.assign(new Error(code ?? `connect failed: ${res.status}`), { code })
+      return throwCloudPlatformError(res, `connect failed: ${res.status}`)
     }
     const ticket = parseConnectTicket(await res.json())
     if (ticket === null) {
@@ -210,87 +246,16 @@ export class CloudConnectClient {
     projectId: string
   ): Promise<{ route: 'direct' | 'relay'; ticket: CloudConnectTicket }> {
     const prepared = await this.prepareProjectLink(projectId)
-    this.lastTicketDevicePubKey = readTicketClaims(prepared.ticket.credential).devicePubKey
-    await this.upgrade({ endpoint: prepared.endpoint, route: prepared.route }, prepared.ticket)
-    return { route: prepared.route, ticket: prepared.ticket }
-  }
-
-  private upgrade(choice: RouteChoice, ticket: CloudConnectTicket): Promise<void> {
-    const { endpoint } = choice
-    const wsOptions: WebSocket.ClientOptions = {
-      headers: { 'x-orca-device-pubkey': this.devicePubKeyB64 },
-      rejectUnauthorized: this.options.tlsRejectUnauthorized ?? true
-    }
-    if (choice.route === 'relay' && endpoint.sni) {
-      // ws forwards unknown options to tls.connect, where SNI is `servername`.
-      Object.assign(wsOptions, { servername: endpoint.sni })
-    }
-    return new Promise<void>((resolve, reject) => {
-      const ws = new WebSocket(
-        endpoint.url,
-        ['orca-runtime', `orca-cred.${ticket.credential}`],
-        wsOptions
-      )
-      ws.once('unexpected-response', (_req, res) => {
-        reject(
-          Object.assign(new Error(`upgrade rejected: ${res.statusCode}`), {
-            code: res.headers['x-orca-reject'] ?? 'UPGRADE_REJECTED',
-            statusCode: res.statusCode
-          })
-        )
-        ws.terminate()
-      })
-      ws.once('error', reject)
-      ws.once('message', (readyRaw) => {
-        const ready = parseJsonText(readyRaw.toString())
-        if (readString(ready, 'type') !== 'e2ee_ready') {
-          reject(new Error(`expected e2ee_ready, got ${JSON.stringify(ready)}`))
-          ws.terminate()
-          return
-        }
-        // The platform hands the host's E2EE key to the client with the ticket.
-        const hostKey = Uint8Array.from(Buffer.from(ticket.host.e2eePublicKeyB64, 'base64'))
-        if (hostKey.length !== 32) {
-          // A host that has not reported its key yet cannot be talked to. Failing
-          // here is honest; deriving with a short key throws inside ws's listener.
-          reject(
-            Object.assign(new Error('host E2EE key missing or malformed'), {
-              code: 'HOST_KEY_INVALID'
-            })
-          )
-          ws.terminate()
-          return
-        }
-        this.sharedKey = deriveSharedKey(this.deviceKeys.secretKey, hostKey)
-        ws.once('message', (authRaw) => {
-          const auth = parseJsonText(decrypt(authRaw.toString(), this.sharedKey!) ?? '{}')
-          if (readString(auth, 'type') !== 'e2ee_authenticated') {
-            reject(new Error(`expected e2ee_authenticated, got ${JSON.stringify(auth)}`))
-            ws.terminate()
-            return
-          }
-          this.socket = ws
-          this.rpcMux = new CloudRpcMultiplexer(ws, this.sharedKey!)
-          resolve()
-        })
-        const claims = readTicketClaims(ticket.credential)
-        ws.send(
-          encrypt(
-            JSON.stringify({ type: 'e2ee_auth', deviceToken: claims?.deviceToken }),
-            this.sharedKey
-          )
-        )
-      })
-      ws.once('open', () => {
-        ws.send(
-          JSON.stringify({
-            type: 'e2ee_hello',
-            publicKeyB64: Buffer.from(this.deviceKeys.publicKey).toString('base64')
-          })
-        )
-      })
-      ws.once('close', (code, reason) => this.closeListener?.(code, reason.toString()))
+    this.connection?.close()
+    this.connection = await upgradeCloudSocket({
+      endpoint: prepared.endpoint,
+      ticket: prepared.ticket,
+      devicePubKeyB64: this.devicePubKeyB64,
+      deviceKeys: this.deviceKeys,
+      tlsRejectUnauthorized: this.options.tlsRejectUnauthorized ?? true,
+      onClose: (code, reason) => this.closeListener?.(code, reason)
     })
+    return { route: prepared.route, ticket: prepared.ticket }
   }
 
   onClose(listener: (code: number, reason: string) => void): void {
@@ -302,11 +267,10 @@ export class CloudConnectClient {
     params: Record<string, unknown> = {},
     timeoutMs = 5000
   ): Promise<CloudRpcResult> {
-    const mux = this.rpcMux
-    if (!mux) {
-      return Promise.resolve({ ok: false, code: 'NOT_CONNECTED' })
-    }
-    return mux.call(method, params, timeoutMs)
+    const mux = this.connection?.mux
+    return mux
+      ? mux.call(method, params, timeoutMs)
+      : Promise.resolve({ ok: false, code: 'NOT_CONNECTED' })
   }
 
   /**
@@ -321,19 +285,18 @@ export class CloudConnectClient {
     onEvent: (event: CloudStreamEvent) => void,
     timeoutMs = 10_000
   ): CloudSubscription | null {
-    return this.rpcMux?.subscribe(method, params, onEvent, timeoutMs) ?? null
+    return this.connection?.mux.subscribe(method, params, onEvent, timeoutMs) ?? null
   }
 
   /** Stops delivering a stream locally; the host is told separately. */
   forgetSubscription(requestId: string): void {
-    this.rpcMux?.forget(requestId)
+    this.connection?.mux.forget(requestId)
   }
 
   close(): void {
-    this.rpcMux?.close()
-    this.rpcMux = null
-    this.socket?.close()
-    this.socket = null
-    this.sharedKey = null
+    this.connection?.close()
+    this.connection = null
   }
 }
+
+export type { CloudAuthSession } from './cloud-auth-session'

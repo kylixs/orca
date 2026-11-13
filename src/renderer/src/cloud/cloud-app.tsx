@@ -24,6 +24,7 @@ export function CloudApp({ bridge }: { bridge: CloudBridge | null }): React.JSX.
       <CloudLoginPanel
         submitting={session.status === 'signing-in'}
         error={session.error}
+        notice={session.notice}
         onSignIn={(username, password) => void session.signIn(username, password)}
       />
     )

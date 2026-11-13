@@ -30,8 +30,10 @@ import {
   startCloudRuntime,
   startPlatform,
   type CloudRuntime,
-  type Platform
+  type Platform,
+  type PlatformOptions
 } from './cloud-session-e2e-harness'
+import { makeBareRepository } from './cloud-project-provisioning-fixture'
 
 /** Real platform + enrolled host + TLS runtime used by the M58 recovery suite. */
 
@@ -45,11 +47,19 @@ export const RECOVERY_EVIDENCE_DIR = join(
 
 type IpcHandler = (event: unknown, ...args: unknown[]) => Promise<unknown>
 
+export type RecoveryHarnessOptions = PlatformOptions & {
+  /** Start from a clonable bare repo; the renewal suite needs a ready checkout. */
+  provisionRepo?: boolean
+  refreshLeadMs?: number
+  fetchImpl?: typeof fetch
+}
+
 export type RecoveryHarness = {
   store: Store
   session: CloudSessionService
   registrationUserData: string
   base: string
+  platformUrl: string
   projectId: string
   projectRoot: string
   adminFetch: (path: string, init?: RequestInit) => Promise<Response>
@@ -95,7 +105,8 @@ function parseRegistration(raw: unknown): CloudProjectRegistration {
 }
 
 export async function startRecoveryHarness(
-  ipcHandlers: ReadonlyMap<string, IpcHandler>
+  ipcHandlers: ReadonlyMap<string, IpcHandler>,
+  options: RecoveryHarnessOptions = {}
 ): Promise<RecoveryHarness> {
   const base = realpathSync(mkdtempSync(join(tmpdir(), 'orca-m58-recovery-')))
   const projectRoot = join(base, 'checkout', 'recovered-service')
@@ -108,7 +119,10 @@ export async function startRecoveryHarness(
   store.flushOrThrow()
   const service = new OrcaRuntimeService(store)
 
-  const platform: Platform = await startPlatform()
+  const platform: Platform = await startPlatform({
+    ...(options.accessTtlMs === undefined ? {} : { accessTtlMs: options.accessTtlMs }),
+    ...(options.refreshTtlMs === undefined ? {} : { refreshTtlMs: options.refreshTtlMs })
+  })
   const admin = await fetch(`${platform.url}/v1/auth/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -171,7 +185,7 @@ export async function startRecoveryHarness(
       name: 'Recovered Service',
       hostId: admission.host()!.hostId,
       path: projectRoot,
-      repoUrl: join(base, 'missing-source.git'),
+      repoUrl: options.provisionRepo ? makeBareRepository(base) : join(base, 'missing-source.git'),
       defaultBranch: 'main'
     })
   })
@@ -194,7 +208,12 @@ export async function startRecoveryHarness(
   })
   expect(unseeded.status).toBe(200)
 
-  const session = new CloudSessionService({ apiUrl: platform.url, tlsRejectUnauthorized: false })
+  const session = new CloudSessionService({
+    apiUrl: platform.url,
+    tlsRejectUnauthorized: false,
+    ...(options.refreshLeadMs === undefined ? {} : { refreshLeadMs: options.refreshLeadMs }),
+    ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl })
+  })
   await session.login('zhangsan', 'Passw0rd!')
   setActiveCloudSession(session)
   registerCloudPlatformHandlers(session, {
@@ -207,6 +226,7 @@ export async function startRecoveryHarness(
     session,
     registrationUserData,
     base,
+    platformUrl: platform.url,
     projectId,
     projectRoot,
     adminFetch,

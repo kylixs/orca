@@ -14,6 +14,10 @@ export type CloudSessionOptions = {
   apiUrl: string
   tlsRejectUnauthorized?: boolean
   probeTimeoutMs?: number
+  /** Refresh this long before expiry; short-lived test tokens shrink it. */
+  refreshLeadMs?: number
+  /** Test seam: observe/record platform traffic without changing production paths. */
+  fetchImpl?: typeof fetch
 }
 
 export type CreateCloudClient = (

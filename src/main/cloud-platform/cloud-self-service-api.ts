@@ -5,27 +5,26 @@ import {
   type CloudReplyHostOption,
   type CloudReplyProject
 } from '../../shared/cloud-platform-reply'
-import { readField, readString } from '../../shared/json-fields'
+import type { CloudAuthSession } from './cloud-auth-session'
+import { cloudAuthorizedFetch, throwCloudPlatformError } from './cloud-authorized-request'
 
 /** The two platform calls developer self-service creation needs, kept out of the socket client. */
 
 export async function createCloudProject(
   fetchImpl: typeof fetch,
   apiUrl: string,
-  accessToken: string,
+  auth: CloudAuthSession,
   input: CloudCreateProjectInput
 ): Promise<CloudReplyProject> {
-  const res = await fetchImpl(`${apiUrl}/v1/projects/self`, {
+  const res = await cloudAuthorizedFetch(fetchImpl, apiUrl, auth, '/v1/projects/self', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify(input)
   })
-  const body: unknown = await res.json().catch(() => null)
   if (!res.ok) {
-    const code = readString(readField(body, 'error'), 'code')
-    throw Object.assign(new Error(code ?? `create project failed: ${res.status}`), { code })
+    return throwCloudPlatformError(res, `create project failed: ${res.status}`)
   }
-  const project = parseProjectRow(body)
+  const project = parseProjectRow(await res.json())
   if (project === null) {
     throw new Error('create project response malformed')
   }
@@ -35,13 +34,11 @@ export async function createCloudProject(
 export async function listProvisionableHosts(
   fetchImpl: typeof fetch,
   apiUrl: string,
-  accessToken: string
+  auth: CloudAuthSession
 ): Promise<CloudReplyHostOption[]> {
-  const res = await fetchImpl(`${apiUrl}/v1/hosts/available`, {
-    headers: { authorization: `Bearer ${accessToken}` }
-  })
+  const res = await cloudAuthorizedFetch(fetchImpl, apiUrl, auth, '/v1/hosts/available')
   if (!res.ok) {
-    throw new Error(`list provisionable hosts failed: ${res.status}`)
+    return throwCloudPlatformError(res, `list provisionable hosts failed: ${res.status}`)
   }
   const hosts = parseProvisionableHostsReply(await res.json())
   if (hosts === null) {

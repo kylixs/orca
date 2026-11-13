@@ -8,6 +8,7 @@ import {
   type CloudProject,
   type CloudRpcResult
 } from './cloud-connect-client'
+import { createCloudAuthSession } from './cloud-auth-session'
 import { CloudSessionService } from './cloud-session-service'
 
 /**
@@ -16,7 +17,11 @@ import { CloudSessionService } from './cloud-session-service'
  */
 
 const SESSION_IDENTITY: CloudDeviceIdentity = {
-  accessToken: 'access-token',
+  auth: createCloudAuthSession({
+    apiUrl: 'http://platform.invalid',
+    accessToken: 'access-token',
+    refreshToken: 'refresh-token'
+  }),
   deviceId: 'device-1',
   keyPair: { publicKey: new Uint8Array(32).fill(1), secretKey: new Uint8Array(32).fill(2) }
 }
