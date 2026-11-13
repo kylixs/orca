@@ -2408,6 +2408,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W2-M1 修复完成（待独立复验，2026-11-14）
+
+提交 `fd35997a094`（3 文件）：授予/移除入口 try/catch + 失败 toast（不误刷新矩阵、无 unhandled rejection）；无主用户遗留授权行标「已删除用户」且移除禁用（m-2 前端半部）；red-check 验证（还原修复两条新测试变红）。相关套件 13/0 + 4/0。证据 `evidence/w2-m1-fix/`。遗留项如实移交：m-2「允许移除」需服务端支持（对不存在主体清除或删户清理）→ M120；m-1 服务端 denied 审计缺失 → 后续令；空主体静默 return（QA-028/P2）→ P2 批。已派独立复验代理，通过即关闭 W2、放行通道① W7a。
+
 ### W8 关闭（审计通过，2026-11-14）
 
 W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理、无脆弱性、命名合规；minor×2（docstring 未提兼守护语义、saveEvidence 字面量绕过常量）记入 `test-reports/w8-audit.md`，随手折入通道①下一任务（W7a）清单。W8 关闭。
