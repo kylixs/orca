@@ -1,7 +1,10 @@
 // @vitest-environment happy-dom
 import type { ReactNode } from 'react'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { Repo } from '../../shared/repo-types'
+import type { Worktree } from '../../shared/worktree/types'
+import type * as CloudProjectReposModule from './cloud/cloud-project-repos'
 
 vi.mock('@/components/ui/sonner', () => ({ Toaster: () => null }))
 vi.mock('@/components/ui/tooltip', () => ({
@@ -72,22 +75,38 @@ const syncCloudProjectRepos = vi.hoisted(() =>
   vi.fn(async () => ({ added: [], renamed: 0, failed: [] }))
 )
 const signOutCloudProjectRepos = vi.hoisted(() => vi.fn(async () => []))
-vi.mock('./cloud/cloud-project-repos', () => ({
-  syncCloudProjectRepos,
-  signOutCloudProjectRepos,
-  planCloudProjectRepos: vi.fn(() => ({ add: [], rename: [] })),
-  cloudProjectReposOnHosts: vi.fn(() => [])
-}))
+vi.mock('./cloud/cloud-project-repos', async (importOriginal) => {
+  const actual = await importOriginal<typeof CloudProjectReposModule>()
+  return { ...actual, syncCloudProjectRepos, signOutCloudProjectRepos }
+})
 
-vi.mock('@/store', () => {
-  const state = {
+type WorktreeRow = Pick<Worktree, 'id' | 'repoId' | 'path' | 'hostId'>
+
+type StoreMock = {
+  repos: Repo[]
+  worktreesByRepo: Record<string, WorktreeRow[]>
+  addRepoPath: ReturnType<typeof vi.fn>
+  hydrateRuntimeEnvironmentStatuses: ReturnType<typeof vi.fn>
+  purgeStaleRuntimeHostState: ReturnType<typeof vi.fn>
+  fetchWorktrees: ReturnType<typeof vi.fn>
+  setActiveWorktree: ReturnType<typeof vi.fn>
+}
+
+const storeMock: { state: StoreMock } = vi.hoisted(() => ({
+  state: {
     repos: [],
+    worktreesByRepo: {},
     addRepoPath: vi.fn(async () => null),
     hydrateRuntimeEnvironmentStatuses: vi.fn(async () => undefined),
-    purgeStaleRuntimeHostState: vi.fn()
+    purgeStaleRuntimeHostState: vi.fn(),
+    fetchWorktrees: vi.fn(async (_repoId: string) => true),
+    setActiveWorktree: vi.fn()
   }
-  return { useAppStore: { getState: () => state, setState: vi.fn() } }
-})
+}))
+
+vi.mock('@/store', () => ({
+  useAppStore: { getState: () => storeMock.state, setState: vi.fn() }
+}))
 
 import App from './App'
 
@@ -160,10 +179,23 @@ function signIn(): void {
   fireEvent.click(screen.getByRole('button', { name: '登录' }))
 }
 
+function checkoutRepo(): Repo {
+  return {
+    id: 'repo-a',
+    path: '/srv/projects/checkout',
+    displayName: 'Checkout Service',
+    badgeColor: 'gray',
+    addedAt: 1,
+    executionHostId: 'runtime:env-a'
+  }
+}
+
 describe('native cloud entry', () => {
   afterEach(() => {
     cleanup()
     vi.clearAllMocks()
+    storeMock.state.repos = []
+    storeMock.state.worktreesByRepo = {}
     Object.defineProperty(window, 'api', { configurable: true, value: undefined })
   })
 
@@ -196,6 +228,64 @@ describe('native cloud entry', () => {
       )
     )
     expect(screen.queryByLabelText('域账号')).toBeNull()
+  })
+
+  it('activates the sidebar row for the checkout the bridge opened', async () => {
+    storeMock.state.repos = [checkoutRepo()]
+    storeMock.state.fetchWorktrees.mockImplementation(async (repoId: string) => {
+      storeMock.state.worktreesByRepo[repoId] = [
+        { id: 'repo-a::/srv/projects/checkout', repoId: 'repo-a', path: '/srv/projects/checkout' },
+        { id: 'repo-a::/srv/work/project-a', repoId: 'repo-a', path: '/srv/work/project-a' }
+      ]
+      return true
+    })
+    installBridge(
+      cloudBridge({
+        openWorkspace: async (projectId: string) => ({
+          ok: true,
+          projectId,
+          route: 'direct',
+          workspaceRoot: '/srv/work',
+          workspacePath: '/srv/work/project-a',
+          capabilities: ['terminal']
+        })
+      })
+    )
+    render(<App />)
+
+    await waitFor(() => expect(screen.getByLabelText('域账号')).toBeTruthy())
+    signIn()
+
+    await waitFor(() =>
+      expect(storeMock.state.setActiveWorktree).toHaveBeenCalledWith(
+        'repo-a::/srv/work/project-a',
+        'runtime:env-a'
+      )
+    )
+    expect(storeMock.state.fetchWorktrees).toHaveBeenCalledWith('repo-a')
+  })
+
+  it('leaves the default view untouched when the open reply has no checkout path', async () => {
+    storeMock.state.repos = [checkoutRepo()]
+    const openWorkspace = vi.fn(async (projectId: string) => ({
+      ok: true,
+      projectId,
+      route: 'direct',
+      workspaceRoot: '/srv/work',
+      capabilities: ['terminal']
+    }))
+    installBridge(cloudBridge({ openWorkspace }))
+    render(<App />)
+
+    await waitFor(() => expect(screen.getByLabelText('域账号')).toBeTruthy())
+    signIn()
+
+    await waitFor(() => expect(openWorkspace).toHaveBeenCalled())
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(storeMock.state.fetchWorktrees).not.toHaveBeenCalled()
+    expect(storeMock.state.setActiveWorktree).not.toHaveBeenCalled()
   })
 
   it('a failed default open surfaces the platform error code and still renders the shell', async () => {

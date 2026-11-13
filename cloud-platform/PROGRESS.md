@@ -992,6 +992,29 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 2. **`pnpm tc:web` 本来就是红的**：`config/tsconfig.tc.web.json` 在 HEAD 上已有 4165 条 TS6307（渲染侧 e2e 测试 import 了 `src/main/**` 的测试夹具），M47–M54 新增的渲染侧 e2e 各累加若干条（本轮 +3，共 4168）。`npx tsc -p config/tsconfig.web.json` 仍为 0 错，所以没有类型错误被掩盖，但项目自带的严格门禁是脏的——需要在后续轮次统一清理（把渲染侧 e2e 移到 `src/main/cloud-platform/`，或为渲染 e2e 单独建 tsconfig）。
 3. 管理页 UI 直接复用现有 `CloudApp` 组件，未做视觉打磨。
 
+## M55 原生初始导航：进入项目即定位到本人 checkout（本轮，开发子代理执行）
+
+**问题**：M52/M53 之后开发者能登录、侧栏能列出项目、连接可并存，但登录后界面停在"未选择工作区"——主机其实已经建好/复用了本人 checkout（M45 写进侧车），却没有被选中。
+
+| 改动 | 内容 |
+|---|---|
+| `shared/cloud-initial-worktree.ts`（新） | DOM-free 选择规则：在**同一 repo**（`repoId === repo.id`）里找路径**精确等于** checkout 的那一行（路径经跨平台规范化比较），返回该行自己的 id；嵌套在父 worktree 下的 checkout 不会误选父行；无匹配 → `null`；重复路径取侧栏首行（主机异常，按点击行为） |
+| `cloud-workspace-entry.tsx` | 打开项目成功后，用 `openWorkspace` 返回的 `workspacePath` + 注册环境推出 repo 行，调用现有 `setActiveWorktree(id, 'runtime:<envId>')`；若该 repo 的 worktree 尚未加载，先 `fetchWorktrees(repo.id)` 再选一次（**未新增 IPC**）；无 `workspacePath`（旧侧车）时不动默认视图 |
+
+工作树 id 形状：`` `${repo.id}::${gitWorktree.path}` ``（主机 `runtime-managed-worktree-queries.ts:171`，共享 `shared/worktree/id.ts:21`）。
+
+**验证（`evidence/m55-initial-worktree/`）**：真实端到端 1 条（真实平台 + 注册主机 + 真实 TLS Runtime + 真实 git 仓库）：侧车路径与 `openWorkspace` 返回一致；选中的 worktree 行路径的 `git rev-parse --show-toplevel` 与被选中目录**相等**（`equalToplevel: true`），且该 checkout 嵌套在仓库主 worktree 下时仍选嵌套行而非父行。另有 5 条 helper 单测（精确/嵌套/无匹配/跨仓库/重复）+ 5 条入口组件测试。
+
+**主会话独立负向对照**：让 helper 恒返回 `null` → 4 条用例变红（`expected null not to be null`、`expected null to be 'repo-a::/srv/work/feature-x'`），恢复后 13/13 绿。`tsc` web/node 0 错；门禁 7 项 0 新发现。
+
+**如实记录 / 剩余**：
+1. 只处理**第一个项目**；其他项目打开时不会自动定位。
+2. 不恢复上次使用的 worktree/标签布局，只定位到本人 checkout（有意为之）。
+3. 侧车里没有 `workspacePath` 的旧环境不会补选（有意保守）。
+4. 未跑真实 Electron 界面；覆盖为 happy-dom 组件测试 + 真实平台/TLS/git e2e。
+5. Windows/UNC 路径只由共享规范化函数的单测覆盖，无真实 Windows 主机验证。
+6. 子代理报告 `pnpm test`（Bun 运行器）在本机会让所有云端 TLS e2e 报 `TLS handshake failed`（M45 既有用例同样失败），因此 e2e 用 `pnpm test:node` 执行——与本轮改动无关，属于既有环境限制。
+
 ## 下一步（设计已调整：见 `remote-connectivity/design/2026-11-13-cloud-dev-platform/design-adjustment-native-ui.md`）
 
 **用户决策**：普通开发者登录后直接进入 Orca 原生工作界面（左侧项目列表，用法不变）；自造的云端会话页**保留给管理员**，从平台项目列表页打开、可单独用 PC 浏览器访问；侧栏多项目**每项目独立连接**；文件面板随管理员页保留。

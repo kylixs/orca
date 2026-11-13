@@ -1,12 +1,15 @@
 import * as React from 'react'
 import { toast } from 'sonner'
 import { errorCodeOf } from '../../../shared/json-fields'
-import type { CloudProjectEnvironment } from '../../../shared/cloud-platform-ipc'
+import type { CloudOpenResult, CloudProjectEnvironment } from '../../../shared/cloud-platform-ipc'
+import { selectCloudInitialWorktreeId } from '../../../shared/cloud-initial-worktree'
+import { getRepoExecutionHostId } from '../../../shared/execution-host'
 import { useAppStore } from '@/store'
 import { getRepoHostIdentity } from '@/store/slices/repo-host-identity'
 import { translate } from '@/i18n/i18n'
 import { CloudLoginPanel } from './cloud-login-panel'
 import {
+  cloudProjectRepoTarget,
   signOutCloudProjectRepos,
   syncCloudProjectRepos,
   type CloudProjectRepoPorts
@@ -54,6 +57,53 @@ function rendererRepoPorts(bridge: CloudBridge): CloudProjectRepoPorts {
 
 function entryFailureCode(error: unknown): string {
   return errorCodeOf(error) ?? (error instanceof Error ? error.message : String(error))
+}
+
+/**
+ * Lands a signed-in user on their own checkout: the host opened (or created) a
+ * worktree, and the sidebar knows that worktree by `<repoId>::<path>`.
+ */
+async function selectInitialWorktree(args: {
+  opened: CloudOpenResult
+  environments: readonly CloudProjectEnvironment[]
+  projectId: string
+  isCancelled: () => boolean
+}): Promise<void> {
+  const workspacePath = args.opened.ok ? args.opened.workspacePath : undefined
+  if (!workspacePath) {
+    // Why: older sidecars may not record a checkout; leave the default view alone.
+    return
+  }
+  const environment = args.environments.find((entry) => entry.projectId === args.projectId)
+  if (!environment) {
+    return
+  }
+  const target = cloudProjectRepoTarget(environment)
+  const state = () => useAppStore.getState()
+  const repo = state().repos.find(
+    (row) => getRepoExecutionHostId(row) === target.executionHostId && row.path === target.path
+  )
+  if (!repo) {
+    return
+  }
+  const select = (): string | null =>
+    selectCloudInitialWorktreeId({
+      workspacePath,
+      repo,
+      worktrees: state().worktreesByRepo[repo.id] ?? []
+    })
+  let worktreeId = select()
+  if (worktreeId === null) {
+    // Why: the repo row was just added, so its sidebar worktrees are not loaded yet.
+    await state().fetchWorktrees(repo.id)
+    if (args.isCancelled()) {
+      return
+    }
+    worktreeId = select()
+  }
+  if (worktreeId !== null) {
+    state().setActiveWorktree(worktreeId, target.executionHostId)
+  }
 }
 
 export type CloudWorkspaceEntryState = {
@@ -120,9 +170,19 @@ function useCloudWorkspaceEntry(
           return
         }
         const opened = await bridge.openWorkspace(first.id)
-        if (!cancelled && !opened.ok) {
-          fail(opened.code)
+        if (cancelled) {
+          return
         }
+        if (!opened.ok) {
+          fail(opened.code)
+          return
+        }
+        await selectInitialWorktree({
+          opened,
+          environments: registered,
+          projectId: first.id,
+          isCancelled: () => cancelled
+        })
       } catch (error) {
         if (!cancelled) {
           fail(entryFailureCode(error))
