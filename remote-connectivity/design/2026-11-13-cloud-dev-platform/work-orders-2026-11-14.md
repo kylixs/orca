@@ -11,12 +11,15 @@
 | 令 | 内容 | 状态 |
 |---|---|---|
 | W1 | M115 自助建项目目录化 | ✅ 已提交 `7eba67c76cd`（主会话核验中） |
-| W2 | M116 QA 修复：F1（P0）+ F2（P1 快修批） | 工作区有旧代理残留的半成品（server.ts / apps/web/app.js / web-admin-gating.e2e.test.ts），先审阅再续作 |
+| W2 | M116 QA 修复：F1（P0）+ F2（P1 快修批） | 执行中（新纪律首个单任务代理） |
+| W8 | M115 兼容回归（管理员 path 登记） | 待派发（W2 后立即） |
+| W10 | 客户端零 env 登录记忆地址/用户名 | 待派发 |
 | W3 | M117 管理员详情入口 + 项目行双入口布局 | 待派发 |
 | W4 | D1 静态请求 503 兜底 | 待派发 |
 | W5 | M118 管理台详情页实时终端 | 待派发 |
 | W6 | M121 中继双模式（浏览器路径路由） | 待派发 |
 | W7 | M122 一次性 handoff 自动进入工作区 | 待派发 |
+| W9 | 黄金旅程端到端（A 桌面 / B Orca Web 双线） | 待派发（移至 W7 之后，B 线依赖 W6/W7） |
 
 ## W2 · M116 QA 修复（依据 test-reports/exploratory-qa-web.md + evidence/m116-exploratory-web/findings.json）
 
@@ -59,16 +62,13 @@ CloudProjectWorkspace 接入终端面板（复用 web 客户端终端管线 + cl
 
 设计要点：持久化沿用既有会话存储位置（M66 机制旁，键=cloud.lastPlatformUrl/lastUsername，权限保护）；env > 持久化记忆 > 空；地址格式校验内联报错。测试（真实平台）：无 env 首启登录成功并记录；重启后地址+用户名预填；换地址登录后记忆更新；env 覆盖预填；非云端构建零回归。提交 `feat(cloud): remember platform address and username from login`。
 
-## W9 · 黄金旅程端到端（用户要求：加主机→建项目→开项目→终端输入→看文件 一条串起来）
+## W9 · 黄金旅程端到端（A/B 双线，移至 W7 之后执行）
 
-现状是分段覆盖（注册/建项/连接/终端/文件各有真实 e2e），缺单测串联。本令交付**一条连续旅程测试**（真实平台进程 + 真实 Orca 宿主 Electron 实例（TLS+PTY+projectsRoot）+ 真实客户端登录，复用 M113 的启动法与 src e2e 基建）：
-1. 管理员取令牌 → 宿主注册（断言 online、directAddrs、e2eePublicKey、tlsFingerprint）；
-2. 管理员建项目（绑定宿主）+ 授权组；开发者可见；
-3. 开发者真实登录 → 打开项目（断言工作区打开、直连线路徽标）；
-4. 打开终端 → 输入 `echo orca-journey && ls` → 断言回显与文件列表输出；
-5. 文件树浏览（断言 seed 文件可见）→ 打开文件 → 断言内容渲染；
-6. 旅程时间线 JSON（每步耗时）+ 截图入 evidence/journey-golden/。
-文件：tests/e2e/cloud-journey-golden.spec.ts（或并入既有 native e2e 工程，按基建惯例）。不依赖 W5/W7（桌面客户端已有终端/文件面）。提交 `test(e2e): golden journey from host enrollment to terminal and files`。
+完整业务链路见 business-chain-tests.md（链路 A 桌面 / B Orca Web / C 管理员独立链）。本令交付两条连续旅程单测 + 时间线证据：
+- **A 线（桌面）**：宿主注册 → 建项目授权 → 开发者真实登录 → 打开项目（直连徽标）→ 终端 `echo orca-journey && ls` 回显 → 文件树/打开文件 → 时间线 JSON + 截图。
+- **B 线（Orca Web）**：平台登录 → 「Orca Web」→ handoff 新标签自动进工作区 → 终端/文件对等断言 → code 重放 410 → 时间线 JSON + 截图（依赖 W6/W7/W5 已落地）。
+- 管理员链路 C 的 C2/C3/C4(API)/C5(组) 步骤作为两线共同前置串联其中（对应管理员独立链的自动化部分）。
+文件 tests/e2e/cloud-journey-golden.spec.ts（或按基建惯例并入 native e2e 工程）。提交 `test(e2e): golden journey dual-line desktop and orca web`。
 
 ## W8 · M115 兼容性回归修复（全量复测发现，优先级最高，W2 完成后立即派发）
 
