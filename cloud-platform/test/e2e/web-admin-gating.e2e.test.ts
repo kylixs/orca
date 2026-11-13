@@ -1,9 +1,7 @@
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { Window } from 'happy-dom'
-import { ROOT, login, saveEvidence, spawnService, type Service } from './harness.ts'
+import { login, saveEvidence, spawnService, type Service } from './harness.ts'
+import { loadWebConsolePage, type WebConsolePage } from './web-console-page.ts'
 
 /**
  * M93 (AC-18): the managed web console must not offer administration to a
@@ -14,118 +12,10 @@ import { ROOT, login, saveEvidence, spawnService, type Service } from './harness
  */
 
 const EVIDENCE = 'm93-web-admin-gating'
-const WEB_SOURCE = join(ROOT, 'apps/web')
 
-type Page = {
-  window: Window
-  settle: () => Promise<void>
-  clickNav: (route: string) => Promise<void>
-  submitLogin: (username: string, password: string) => Promise<void>
-  text: (selector: string) => string
-  hidden: (selector: string) => boolean
-}
-
-/**
- * Loads the real index.html and app.js into a DOM whose `fetch` goes to the real
- * platform. Scripts are stripped from the markup and injected by hand so the
- * fetch shim exists before the bootstrap IIFE runs.
- */
-function loadPage(platformUrl: string): Page {
-  const window = new Window({ url: 'https://web.m93.local/' })
-  const html = readFileSync(join(WEB_SOURCE, 'index.html'), 'utf8')
-    // Why strip: the markup's script tags point at the server, not at our shim.
-    .replace(/<script[\s\S]*?<\/script>/g, '')
-  window.document.documentElement.innerHTML = html
-
-  const realFetch = globalThis.fetch
-  const fetchToPlatform: typeof fetch = (input, init) => {
-    const path = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url
-    return realFetch(`${platformUrl}${path}`, init)
-  }
-
-  const source = readFileSync(join(WEB_SOURCE, 'app.js'), 'utf8')
-  // Why Function and not eval: app.js is a classic script; this keeps its
-  // declarations out of the test module and lets the DOM globals be injected.
-  const run = new Function(
-    'document',
-    'localStorage',
-    'fetch',
-    'window',
-    'navigator',
-    'location',
-    'confirm',
-    'console',
-    'setTimeout',
-    'clearTimeout',
-    'Date',
-    'URL',
-    'JSON',
-    'Promise',
-    source
-  )
-  run(
-    window.document,
-    window.localStorage,
-    fetchToPlatform,
-    window,
-    window.navigator,
-    window.location,
-    () => true,
-    console,
-    window.setTimeout.bind(window),
-    window.clearTimeout.bind(window),
-    Date,
-    URL,
-    JSON,
-    Promise
-  )
-
-  const settle = async (): Promise<void> => {
-    for (let round = 0; round < 40; round += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 25))
-    }
-  }
-
-  const element = (selector: string): HTMLElement => {
-    const found = window.document.querySelector<HTMLElement>(selector)
-    if (!found) {
-      throw new Error(`missing ${selector}`)
-    }
-    return found
-  }
-
-  return {
-    window,
-    settle,
-    clickNav: async (route) => {
-      // The button exists even inside the hidden group, which is exactly the
-      // "user forces the route" case the guard has to catch.
-      const button = window.document.querySelector<HTMLElement>(
-        `.nav-item[data-route="${route}"]`
-      )
-      if (!button) {
-        throw new Error(`no nav item for ${route}`)
-      }
-      button.click()
-      await settle()
-    },
-    submitLogin: async (username, password) => {
-      window.document.querySelector<HTMLInputElement>('#username')!.value = username
-      window.document.querySelector<HTMLInputElement>('#password')!.value = password
-      const form = window.document.querySelector<HTMLFormElement>('#loginForm')!
-      form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }))
-      for (let round = 0; round < 40; round += 1) {
-        if (!element('#view-app').hidden) {
-          break
-        }
-        await new Promise((resolve) => setTimeout(resolve, 25))
-      }
-      await settle()
-    },
-    text: (selector) => element(selector).textContent ?? '',
-    hidden: (selector) => element(selector).hidden === true
-  }
-}
+/** The console page harness lives in web-console-page.ts, shared by the QA tests. */
+const loadPage = loadWebConsolePage
+type Page = WebConsolePage
 
 let service: Service
 
@@ -219,7 +109,9 @@ test('AC-18 开发者登录 Web 前端：管理导航隐藏，直达管理路由
   assert.ok(
     body.events.some(
       (event) =>
-        event.actor === 'zhangsan' && event.result === 'denied' && event.eventType === 'audit_verify'
+        event.actor === 'zhangsan' &&
+        event.result === 'denied' &&
+        event.eventType === 'audit_verify'
     ),
     JSON.stringify(body.events.slice(0, 5))
   )
@@ -264,9 +156,7 @@ test('M114b 管理员「中继」页：导航可见且渲染 /v1/relays 数据',
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
 
-  const relayNav = page.window.document.querySelector<HTMLElement>(
-    '.nav-item[data-route="relays"]'
-  )
+  const relayNav = page.window.document.querySelector<HTMLElement>('.nav-item[data-route="relays"]')
   assert.ok(relayNav, 'the relay nav item must exist')
   assert.equal(relayNav.hidden, false, 'an admin must see the relay nav item')
   assert.equal(relayNav.textContent?.trim(), '中继')

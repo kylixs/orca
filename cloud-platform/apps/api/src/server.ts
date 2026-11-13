@@ -605,6 +605,8 @@ export function createApp(config: ApiConfig): ApiHandle {
       hostId: p.hostId,
       hostName: host?.name ?? null,
       hostStatus: hostStatusView(host),
+      // Why here: the workbench can only explain a maintenance window it can see.
+      ...(host?.maintenanceReason ? { hostMaintenanceReason: host.maintenanceReason } : {}),
       path: p.path,
       defaultBranch: p.defaultBranch,
       downloadPolicy: p.downloadPolicy,
@@ -2003,6 +2005,11 @@ export function createApp(config: ApiConfig): ApiHandle {
           })
         }
         if (!auditAllowsMutations(res, traceId)) return
+        // Revocation is terminal: maintenance would flip a dead host back to a
+        // live-looking status (M116-QA-006).
+        if (target.revokedAt !== null) {
+          return error(res, 409, 'HOST_REVOKED', '主机已下线，不能再进入维护模式。', traceId)
+        }
         const body = await readJson(req)
         const nextStatus = body.enabled === false ? 'online' : 'maintenance'
         const nextReason = body.reason ? String(body.reason) : '计划维护'

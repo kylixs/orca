@@ -8,7 +8,9 @@ const state = {
   route: 'workbench',
   deviceId: localStorage.getItem('orca.device') ?? '',
   lastHosts: [],
-  auditFilter: {}
+  auditFilter: {},
+  auditEvents: null,
+  auditCursor: null
 }
 
 const $ = (sel) => document.querySelector(sel)
@@ -112,8 +114,25 @@ function navigate(route) {
     audit: renderAudit,
     settings: renderSettings
   }
+  void loadContent(renderers[route] ?? renderWorkbench)
+}
+
+/** One failed fetch must not leave the page stuck on its own spinner (M116-QA-011). */
+async function loadContent(render) {
   content().innerHTML = '<p class="muted">加载中…</p>'
-  ;(renderers[route] ?? renderWorkbench)()
+  try {
+    await render()
+  } catch (err) {
+    content().innerHTML = `
+      <div class="forbidden">
+        <div class="box">
+          <h1>加载失败</h1>
+          <p class="muted">${esc(err.message ?? String(err))}</p>
+          <button class="btn primary" id="retryContent">重试</button>
+        </div>
+      </div>`
+    $('#retryContent').onclick = () => void loadContent(render)
+  }
 }
 
 /* ---------------- views ---------------- */
@@ -187,19 +206,61 @@ function stat(label, value, hint) {
   return `<div class="card stat"><div class="stat-label">${label}</div><div class="stat-value">${value}</div><div class="stat-hint">${hint}</div></div>`
 }
 
+function hostStatusBadge(p) {
+  if (p.hostStatus === 'maintenance') {
+    return '<span class="badge">维护中</span>'
+  }
+  return p.hostStatus === 'online' ? '' : '<span class="badge">主机离线</span>'
+}
+
+function hostStateText(p) {
+  if (p.hostStatus === 'maintenance') {
+    return p.hostMaintenanceReason ? `维护中 · ${p.hostMaintenanceReason}` : '维护中'
+  }
+  return p.hostStatus === 'online' ? '可打开' : '主机离线'
+}
+
+function permissionSummary(p) {
+  // An admin reaches every project without carrying grants; an empty list must
+  // not read as "no permissions" — and the minted credential would carry none
+  // either, so the column says exactly that (M116-QA-010).
+  if (p.permissions.length === 0 && isAdmin()) {
+    return '管理员可见（未授权）'
+  }
+  return p.permissions.join(' · ')
+}
+
+/** Why 打开 is unavailable, or null when the project can be opened (FR-2.4). */
+function openDisabledReason(p) {
+  if (p.hostStatus === 'maintenance') return '主机维护中'
+  if (p.hostStatus !== 'online') return '主机离线'
+  if (p.permissions.length === 0 && isAdmin()) {
+    return '项目未授权给你，请先在「成员与权限」中授权'
+  }
+  return null
+}
+
+/** One reason string drives every 打开 entry, so the three stay consistent. */
+function openDisabledAttr(p) {
+  const reason = openDisabledReason(p)
+  return reason ? `disabled title="${esc(reason)}"` : ''
+}
+
 function projectCard(p) {
+  const offline = p.hostStatus !== 'online'
   return `
     <div class="card project-card">
-      <div class="name"><span class="dot ${p.hostStatus === 'online' ? 'online' : 'offline'}"></span>${esc(p.name)}</div>
+      <div class="name"><span class="dot ${offline ? 'offline' : 'online'}"></span>${esc(p.name)}</div>
       <div class="path">${esc(p.repoUrl || p.path)}</div>
       <div class="meta-row">
         <span>${esc(p.hostName ?? '—')}</span>
         <span class="badge">${esc(p.defaultBranch)}</span>
         <span>创建于 ${relative(p.createdAt ?? Date.now())}</span>
+        ${hostStatusBadge(p)}
       </div>
       <div class="foot">
         <span class="badge ${p.downloadPolicy === 'deny' ? 'lock' : ''}">${p.downloadPolicy === 'deny' ? '下载已禁用' : '允许下载'}</span>
-        <button class="btn primary sm" data-open="${p.id}">打开</button>
+        <button class="btn primary sm" data-open="${p.id}" ${openDisabledAttr(p)}>打开</button>
       </div>
     </div>`
 }
@@ -227,11 +288,11 @@ function projectRow(p) {
   return `<tr>
     <td><strong>${esc(p.name)}</strong><div class="muted mono">${esc(p.path)}</div></td>
     <td class="mono muted">${esc(p.repoUrl)}</td>
-    <td>${esc(p.hostName ?? '—')} ${offline ? '<span class="badge">离线</span>' : ''}</td>
-    <td class="muted">${esc(p.permissions.join(' · '))}</td>
-    <td><span class="dot ${offline ? 'offline' : 'online'}"></span> ${offline ? '主机离线' : '可打开'}</td>
+    <td>${esc(p.hostName ?? '—')} ${hostStatusBadge(p)}</td>
+    <td class="muted">${esc(permissionSummary(p))}</td>
+    <td><span class="dot ${offline ? 'offline' : 'online'}"></span> ${hostStateText(p)}</td>
     <td class="actions">
-      <button class="btn sm" data-open="${p.id}" ${offline ? 'disabled' : ''}>打开</button>
+      <button class="btn sm" data-open="${p.id}" ${openDisabledAttr(p)}>打开</button>
       ${sessionPageLink()}
     </td>
   </tr>`
@@ -294,14 +355,18 @@ async function renderProjects() {
       `${p.name} ${p.repoUrl} ${p.hostName}`.toLowerCase().includes(filter.toLowerCase())
     )
     $('#projectBody').innerHTML =
-      rows.map((p) => `<tr>
+      rows
+        .map(
+          (p) => `<tr>
         <td><strong>${esc(p.name)}</strong><div class="muted mono">${esc(p.path)}</div></td>
         <td class="mono muted">${esc(p.repoUrl)}</td>
-        <td>${esc(p.hostName)} <span class="dot ${p.hostStatus === 'online' ? 'online' : 'offline'}"></span></td>
-        <td class="muted">${esc(p.permissions.join(' · '))}</td>
+        <td>${esc(p.hostName)} ${hostStatusBadge(p)}</td>
+        <td class="muted">${esc(permissionSummary(p))}</td>
         <td>${p.downloadPolicy === 'deny' ? '<span class="badge lock">禁止</span>' : '<span class="badge">允许</span>'}</td>
-        <td class="actions"><button class="btn sm" data-open="${p.id}">打开</button> ${sessionPageLink()}</td>
-      </tr>`).join('') || '<tr><td colspan="6" class="table-empty">没有匹配的项目</td></tr>'
+        <td class="actions"><button class="btn sm" data-open="${p.id}" ${openDisabledAttr(p)}>打开</button> ${sessionPageLink()}</td>
+      </tr>`
+        )
+        .join('') || '<tr><td colspan="6" class="table-empty">没有匹配的项目</td></tr>'
     wireProjectActions()
   }
   draw()
@@ -332,8 +397,22 @@ async function renderHosts() {
 }
 
 function hostRow(h) {
-  const status = h.status === 'online' ? '在线' : h.status === 'maintenance' ? '维护中' : '离线'
-  const dot = h.status === 'online' ? 'online' : h.status === 'maintenance' ? 'warn' : 'offline'
+  // The heartbeat window decides liveness: a stored "online" must not keep a
+  // silent host green (M116-QA-005). Revocation is terminal and labelled.
+  const status = h.revokedAt
+    ? '已吊销'
+    : h.status === 'maintenance'
+      ? '维护中'
+      : h.online
+        ? '在线'
+        : '离线'
+  const dot = h.revokedAt
+    ? 'offline'
+    : h.status === 'maintenance'
+      ? 'warn'
+      : h.online
+        ? 'online'
+        : 'offline'
   return `<tr>
     <td><strong>${esc(h.name)}</strong><div class="muted mono">${esc(h.zone)}</div></td>
     <td class="mono">${esc(h.directAddrs.join('<br>') || '—')}</td>
@@ -382,10 +461,11 @@ async function showHost(hostId) {
       <dt>中继路由</dt><dd class="mono">${esc(host.relayRoute ?? '—')}</dd>
       <dt>能力</dt><dd>${esc(host.capabilities.join(', '))}</dd>
       <dt>最近心跳</dt><dd>${relative(host.lastHeartbeatAt)}</dd>
+      ${host.revokedAt ? `<dt>状态</dt><dd>已吊销（${new Date(host.revokedAt).toLocaleString('zh-CN')}）</dd>` : ''}
     </dl>
     <div class="toolbar" style="margin-top:20px">
-      <button class="btn" id="maintenanceBtn">${host.status === 'maintenance' ? '结束维护' : '进入维护模式'}</button>
-      <button class="btn danger" id="revokeHostBtn">下线主机</button>
+      <button class="btn" id="maintenanceBtn" ${host.revokedAt ? 'disabled title="主机已下线"' : ''}>${host.status === 'maintenance' ? '结束维护' : '进入维护模式'}</button>
+      <button class="btn danger" id="revokeHostBtn" ${host.revokedAt ? 'disabled' : ''}>下线主机</button>
     </div>
     <p class="muted" style="margin-top:12px">下线后该主机的项目立即不可打开，已签发凭证失效。</p>`)
   $('#maintenanceBtn').onclick = async () => {
@@ -537,15 +617,41 @@ async function showGrants(projectId) {
   }
 }
 
-async function renderAudit() {
-  const params = new URLSearchParams({ limit: '50', ...state.auditFilter })
+const AUDIT_PAGE_SIZE = 50
+
+async function renderAudit(loadMore = false) {
+  // Only 「加载更早」 accumulates onto what is shown; a fresh view re-queries, so
+  // leaving and returning can never resurrect a stale accumulation (M116-QA-002).
+  if (!loadMore) {
+    state.auditEvents = null
+    state.auditCursor = null
+  }
+  // Filter controls re-render from state so what they show always matches the
+  // rows below them (M116-QA-003).
+  const filter = state.auditFilter
+  const params = new URLSearchParams({ limit: String(AUDIT_PAGE_SIZE) })
+  for (const [key, value] of Object.entries(filter)) if (value) params.set(key, value)
+  if (state.auditCursor) params.set('cursor', String(state.auditCursor))
   const body = await api(`/v1/audit/events?${params}`)
+  const events = state.auditEvents ? [...state.auditEvents, ...body.events] : body.events
+  state.auditEvents = events
+  state.auditCursor = body.nextCursor
   content().innerHTML = `
-    <div class="page-head"><div><h1>审计日志</h1><p>只追加、哈希链校验；保留 180 天。</p></div></div>
+    <div class="page-head"><div><h1>审计日志</h1><p>只追加、哈希链校验；保留 180 天。已显示 ${events.length} 条。</p></div></div>
     <div class="toolbar">
       <select class="select" id="auditType">
         <option value="">全部事件</option>
-        ${['login', 'logout', 'project_connect', 'project_access', 'grant_update', 'host_register', 'host_revoke', 'policy_update', 'device_revoke']
+        ${[
+          'login',
+          'logout',
+          'project_connect',
+          'project_access',
+          'grant_update',
+          'host_register',
+          'host_revoke',
+          'policy_update',
+          'device_revoke'
+        ]
           .map((t) => `<option value="${t}">${t}</option>`)
           .join('')}
       </select>
@@ -557,34 +663,63 @@ async function renderAudit() {
       </select>
       <input class="input grow" id="auditActor" placeholder="按用户过滤，如 zhangsan">
       <button class="btn primary" id="auditApply">查询</button>
+      <button class="btn" id="auditReset">重置</button>
     </div>
     <div class="table-wrap">
       <table>
         <thead><tr><th>时间</th><th>用户</th><th>事件</th><th>目标</th><th>结果</th><th>traceId</th></tr></thead>
         <tbody>
-          ${body.events
-            .map(
-              (e) => `<tr>
+          ${
+            events
+              .map(
+                (e) => `<tr>
                 <td class="muted">${new Date(e.ts).toLocaleString('zh-CN')}</td>
                 <td>${esc(e.actor ?? '—')}</td>
                 <td class="mono">${esc(e.eventType)}</td>
                 <td class="mono muted">${esc(e.targetId ?? '—')}</td>
                 <td>${{ success: '✓ 成功', failure: '✕ 失败', denied: '⛔ 拒绝' }[e.result]}</td>
-                <td class="mono muted">${esc((e.traceId ?? '').slice(0, 12))}</td>
+                <td class="mono muted"><span title="${esc(e.traceId ?? '')}">${esc(e.traceId ?? '—')}</span>
+                  ${e.traceId ? `<button class="btn sm" data-trace="${esc(e.traceId)}">复制</button>` : ''}
+                </td>
               </tr>`
-            )
-            .join('') || '<tr><td colspan="6" class="table-empty">没有事件</td></tr>'}
+              )
+              .join('') || '<tr><td colspan="6" class="table-empty">没有事件</td></tr>'
+          }
         </tbody>
       </table>
-    </div>`
-  $('#auditApply').onclick = () => {
+    </div>
+    ${body.nextCursor ? `<div class="toolbar"><span class="muted">仅显示最近 ${AUDIT_PAGE_SIZE} 条，还有更早记录。</span><button class="btn" id="auditMore">加载更早</button></div>` : ''}`
+  // The chosen conditions are restored as properties: a parsed `selected`
+  // attribute is not what every DOM picks up on a re-render.
+  $('#auditType').value = filter.eventType ?? ''
+  $('#auditResult').value = filter.result ?? ''
+  $('#auditActor').value = filter.actor ?? ''
+  const apply = () => {
     state.auditFilter = {
       eventType: $('#auditType').value,
       result: $('#auditResult').value,
       actor: $('#auditActor').value.trim()
     }
-    for (const [k, v] of Object.entries(state.auditFilter)) if (!v) delete state.auditFilter[k]
+    for (const [key, value] of Object.entries(state.auditFilter))
+      if (!value) delete state.auditFilter[key]
+    state.auditEvents = null
+    state.auditCursor = null
     renderAudit()
+  }
+  $('#auditApply').onclick = apply
+  $('#auditReset').onclick = () => {
+    state.auditFilter = {}
+    state.auditEvents = null
+    state.auditCursor = null
+    renderAudit()
+  }
+  const more = $('#auditMore')
+  if (more) more.onclick = () => renderAudit(true)
+  for (const btn of document.querySelectorAll('[data-trace]')) {
+    btn.onclick = () => {
+      navigator.clipboard?.writeText(btn.dataset.trace)
+      toast('已复制')
+    }
   }
 }
 
@@ -609,10 +744,18 @@ async function renderSettings() {
     </div>`
   $('#savePolicy').onclick = async () => {
     const value = document.querySelector('input[name=dl]:checked').value
-    await api('/v1/policies/download', {
-      method: 'PUT',
-      body: JSON.stringify({ downloadDefault: value })
-    })
+    try {
+      await api('/v1/policies/download', {
+        method: 'PUT',
+        body: JSON.stringify({ downloadDefault: value })
+      })
+    } catch (err) {
+      // A silent failure would leave the form claiming a policy that never landed
+      // (M116-QA-009): report it and redraw from the value the platform holds.
+      toast(`保存失败：${err.message ?? err}`)
+      renderSettings()
+      return
+    }
     toast('已保存，30 秒内生效')
     renderSettings()
   }
@@ -733,6 +876,15 @@ $('#loginForm').onsubmit = async (event) => {
   errorEl.hidden = true
   $('#username').classList.remove('invalid')
   $('#password').classList.remove('invalid')
+  // An empty submit must not reach the server and burn lockout attempts (M116-QA-012).
+  if (username === '' || password === '') {
+    errorEl.textContent = '请输入域账号和密码。'
+    errorEl.hidden = false
+    $('#username').classList.add('invalid')
+    $('#password').classList.add('invalid')
+    $('#username').focus()
+    return
+  }
   $('#loginBtn').disabled = true
   $('#loginBtn').textContent = '登录中…'
   try {
