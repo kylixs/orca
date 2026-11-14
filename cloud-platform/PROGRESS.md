@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### 终态双线黄金旅程全绿（2026-11-15，最终门禁达成）—— 全部完成
+
+复跑 HEAD=`2fbd8917197`（out/main+out/web 均以 e2e 模式+VITE_EXPOSE_STORE 当日重建，U36 护栏确认）：**A 线 1/1（9 步全绿：登录→直连打开→真实 PTY 回显→文件树→审计钉）+ B 线 2/2（10 步全绿：登录→handoff→W13 工作区视图→流式终端实时回显→文件树 Monaco 命中→410 回落→U35 钉 0→1）**；A7/E2 审计钉全部基线内、F7/F8 门控集严格为零；配套抽查 AA 端到端（admin handoff 201→60s code）+cloud-platform 关键批 34/34；**红项无**（evidence/final-journey-verification/）。shim 断链已由验证代理终态修复。**终局判定：双线生命线全绿+台账 🔴 清零（仅 U45⚪ P2 微项）+全部工作令/缺陷令关闭 → 全部完成，等待人工验收**。
+
 ### U44 落地（2026-11-14，🟢）—— 全部开发令落地
 
 `f23718594a`（14 文件）：preparing 语义三处（IPC 直接返回 preparing 不撞门禁/preparation 结构化/registerPrepared 跳过不写失败横幅）+渲染层 preparing 呈现（真失败路径不变）+3 同因套件复活（M59-1/M60-1/M64-1）+M58 连带绿+node 池注册。主进程 15+渲染 43+复验 24 全绿，tc 双清。**U44→🟢**。台账现 🔴 仅剩 U45⚪（P2 微项）；全部开发/修复令落地。**派终态双线黄金旅程复跑（最终 HEAD）**。
