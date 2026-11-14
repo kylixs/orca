@@ -2741,6 +2741,10 @@ W11 测试代理域外发现：自建项目平台 ready 但客户端持续 PROJE
 
 W9b 中程（代理 1h 检查点回复，协议生效）：B1–B3 ✅（免登自动进入全链，W7c 修复生效）；**B4 ❌ 产品缺口**——orca web 云会话仅空态（workspace.info 宿主无实现=O2 已知边界），终端/文件树浏览器面当前仅在 cloud-admin.html。**裁定：B4 红线收尾，不走 repo.add hack**（绕过平台登记语义）；B5 继续验证。**W13 立项**（U16🟡）：Orca Web 云工作区视图（宿主 workspace.info + web 视图挂文件树/终端，复用 W5c 重签订阅与 W9A-7 multiplex 边界），回归=B 线旅程 B4–B6 全绿。W13 设计代理已派（产出 `work-orders/w13-cloud-workspace-view-design.md` 供审定）。
 
+### W13 设计交付并审定通过（2026-11-14）
+
+设计代理交付 `work-orders/w13-cloud-workspace-view-design.md`（351 行 10 节）。主会话审定：**通过**。要点：宿主 `workspace.info` 镜像 project.provision 范本（独立方法表扩展、云权限表零改动）；返回值=字段即白名单；web 三阶段 bootstrap 复用共享 `openCloudWorkspaceOverRpc`（不新造组件，原生侧栏/explorer/终端点亮）；**Q1–Q3 裁定**——Q1 云 bootstrap 态 UX 从简（空态→视图过渡不 designs）；Q2 云会话隐藏非项目供面（最小表面）；Q3 宿主侧 worktree.list 过滤**不做**（超范围，记开放问题随 M120 复审）。切分 W13a 宿主（真栈套件强制入 node 池）→ W13b web+翻转 → W13c 负向/零回归。已派 W13a 实现代理。
+
 ### W9b 审计有条件通过（1 major 回派 + W13 设计补充，2026-11-14）
 
 审计（`test-reports/w9b-audit.md`）：blocker 0、major 1——「翻转 W13 标志即启用」不成立：B4 编辑器 oracle `window.__monacoEditorE2E` 仅 `--mode e2e` 安装、web 构建从不传 → W13 落地后断言仍必超时，且翻转先打红主旅程 B4 tripwire（全仓首例 web bundle 用该探针）。B4 三项根因核实为真、红线定位质量高；CORS/handoff/零回归复核全过。已回派 W9b 代理（修法 a/b 自选：web 构建补 e2e mode 或改 DOM oracle + tripwire 可配置 + 措辞/证据引用更正）；两个**翻转前提**已转发 W13 设计代理纳入验收口径（web bundle e2e 可观测性 + 主旅程 tripwire 联动）。
