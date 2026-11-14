@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### U44 落地（2026-11-14，🟢）—— 全部开发令落地
+
+`f23718594a`（14 文件）：preparing 语义三处（IPC 直接返回 preparing 不撞门禁/preparation 结构化/registerPrepared 跳过不写失败横幅）+渲染层 preparing 呈现（真失败路径不变）+3 同因套件复活（M59-1/M60-1/M64-1）+M58 连带绿+node 池注册。主进程 15+渲染 43+复验 24 全绿，tc 双清。**U44→🟢**。台账现 🔴 仅剩 U45⚪（P2 微项）；全部开发/修复令落地。**派终态双线黄金旅程复跑（最终 HEAD）**。
+
 ### AA7 收口 + AA 批关闭（2026-11-14）
 
 §7 回归门 **81/81 全绿**（13 套件聚合+逐套双通过）；双向断言核对 12 格=9 COVERED/3 PARTIAL/**0 完全缺格**（PARTIAL 均门外套件承载；1 真实 GAP=被授权开发者管理被拒无显式断言→U45⚪挂 P2 微项）；变异抽查两处（目录 admin-only 门禁、restricted 开关）均证明断言真实有效且已还原工作树零残留。**AA 批（AA1-AA7）全部关闭**：管理授权功能面=目录端点+主体解析校验+HostGrant 三位+provisionPolicy+自授入口+主体选择器+主机 drawer 齐备。剩余：U44 → 终态双线旅程 → 宣告。
