@@ -46,6 +46,10 @@ import type { WebCloudDeviceKeyStorage } from '../web/web-cloud-device-key'
  * method table (project.provision included), a real PTY behind the terminal
  * panel's RPCs, the file tree's read-only preview, and the no-terminal grant
  * that renders the placeholder — its refusal audited, never bare forbidden.
+ *
+ * Runner: node (declared in config/scripts/vitest-node-runtime-files.mjs). The
+ * echo assertions read a real PTY's output, and node-pty delivers no data in a
+ * bun worker — under bun every echo would (honestly) time out.
  */
 
 const EVIDENCE_DIR = join(REPO_ROOT, 'cloud-platform', 'evidence', 'm54-admin-session-page')

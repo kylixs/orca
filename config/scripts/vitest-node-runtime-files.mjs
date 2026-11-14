@@ -12,6 +12,10 @@ export const NODE_RUNTIME_INCLUDE = [
   'src/main/ai-vault-search/session-search-index-writer.test.ts',
   'src/main/ai-vault/session-scanner-unlimited-dedup.test.ts',
   'src/renderer/src/components/terminal-pane/pty-input-write-queue.test.ts',
+  // Why: the admin-workspace cloud e2e's echo assertions read a real PTY's
+  // output, and node-pty delivers no data in the bun worker — the suite must run
+  // in node or every echo would time out (W5b defect B).
+  'src/renderer/src/cloud-admin/cloud-admin-session.e2e.test.ts',
   'src/renderer/src/lib/react-commit-cascade-observer.test.ts',
   'src/renderer/src/lib/react-commit-cascade-telemetry.test.ts',
   ...SQLITE_RUNTIME_INCLUDE,

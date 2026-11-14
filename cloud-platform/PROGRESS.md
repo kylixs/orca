@@ -2633,6 +2633,10 @@ TTL 先改 5 分钟后经再评估**改回 60 秒**（单次消费+绑定不变�
 
 提交 `903e8e80ad4`（10 文件 +461/−138）：MAJ-1 登录入口改**状态栏 in-flow segment**（悬浮终端开关之后，结构上不可能遮挡/拦截原生点击，远离 Toast 角；隐藏状态栏为显式选择的取舍入档）+ **突变测试红证明**（改回 fixed chip → regression 前两例立红）；MAJ-2 回归断言渲染真实 StatusBar→StatusBarSurface（不再桩掉），断言 segment 为状态栏 DOM 子节点、原生开关同行的 TOGGLE 事件仍派发、无桥时原生结构照旧（happy-dom 无布局引擎故用结构不变量替代几何断言，已说明）；登出链单轮+失败 toast 不伪装；m3/m4 补齐。128 用例全绿；本域 tc/lint/gate 0 finding（剩余项均属 W7b/W5b 在途文件）。已追问构建门槛语义更新（W10 verify-cloud-build-defines 前置条件过期挡企业分发构建）是否在本轮补齐。
 
+### W9a 生命线第一次读数：A3 红（桌面水合缺口，2026-11-14）
+
+旅程六步：S0–S2+A2 ✅（宿主注册含 TLS 指纹、建项授权、纯客户端登录——U6 修复在 e2e 构建确认）；**A3 ❌**：连接成功（direct、宿主已建 checkout）但登录后 ~500ms 云端项目行被剪除（store repos 1→0），工作区永不激活，A4/A5 阻塞。**根因（W9A-1）**：宿主拒绝云会话 `repo.list`（cloud-rpc-permission 未映射），渲染层 all-host 仓库目录水合随即剪行——U7 同族、桌面路径新暴露。另有 W9A-2（hostedReview/github.prForBranch/lineageList 同拒）、W9A-3（重试风暴偶发 4431）、W9A-4（种子项目授权指向占位宿主，测试侧清理）。**提交归属注记**：旅程 spec `tests/e2e/cloud-golden-journey-desktop.spec.ts` 被并发卷入我的 docs 提交 `48939e14c83`（消息标 docs 实含测试文件）——内容正确，多代理提交中不做历史重写，以此注记为准。证据 `evidence/journey-golden-a/`（timeline+findings+2 截图+run log）。
+
 ### 父子会话沟通机制文档（用户指令，2026-11-14）
 
 新增 `parent-child-session-protocol.md` 并挂入 DEVELOPMENT_PROCESS.md：① **询问子代理必须写明回复方式**（SendMessage 回复 main——后台代理直接输出无感知）；② 看护按最后消息/证据时间（正常推进不打扰、>1h 才询问、卡死 TaskStop）；③ 一令一代理/三权分立/15 分钟预算/隔离与暂存纪律；④ 拆分与并发上限（≤4、通道内串行）；⑤ 回收核验四件套；⑥ 事故预案（index 冲突/额度中断/磁盘满）。cron 已同步引用。
