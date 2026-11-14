@@ -2701,6 +2701,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 审计（`test-reports/w5c-audit.md`）：blocker 0、**major 1（安全）**——重签票据绕过 AC-29 主机键钉扎：`webHostKeyVerdict` 唯一调用点在 BrowserProjectConnections.open，两条取票接线重签的新票对宿主自报的新 `host.e2eePublicKeyB64` 不比对 → 换键宿主可让存活会话新订阅静默建链（E2EE+deviceToken 流向换键方）。修法一行 fail-closed（重签 offer host key 与父钉扎值比对）+ 换键回归断言，已回派原代理。minor 6（legacy 重连无钉、§8.4 会话槽 2/3 撞 4431 无测试、e2e 只过滤 replayed 等）+ note 10（两个中间提交不可构建已按披露计 minor）。D6 未削弱实证：重放负向对照测试把一次性语义钉成可回归断言。归属核实 8/8 文件干净、与 a740b953faf 注记一致。
 
+### W13a 审计通过（0 blocker/0 major，2026-11-14）
+
+审计（`test-reports/w13a-audit.md`）：信息边界由构造保证（handler 只读验签票据副本+票据根内过滤、params null 零寻址通道、应答显式字面量）；云权限表零改动经 git log -S 核实；CLOUD_SESSION_REQUIRED 不可伪造绕过（owner/paired in-band、mobile allowlist）；非云拒绝零审计实证。minor 4（常量提升漂移面/扫描失败 catch 静默/权限联合第三份拷贝无 parity 钉/§5.2.1 三条负向）——MIN-4 按设计划归 W13c，其余随 W13c 顺带。计数勘误：实际新增 28 例（非 26）。等待独立测试代理回收后关闭 W13a。
+
 ### W13a 开发完成（待独立测试+审计，2026-11-14）
 
 提交 `f160524e19d`（12 文件 +969/−6）：宿主 `workspace.info` 按 W13 设计落地——镜像 project.provision 范本（`WORKSPACE_INFO_METHODS` 独立注册、仅进 `cloudAdmissionOption` 云方法表扩展、云权限表零改动）；返回值字段即白名单（只从票据字段+workspaceRoot 内 checkout 查询）；非云调用方 CLOUD_SESSION_REQUIRED；`CLOUD_HOST_METHODS` 常量提升（生产装配逐字节不变）；`perms` 注入 CloudRpcSession（宿主内部类型）。测试：宿主 10 例+读取器 11 例+真栈 5 例（**强制入 NODE_RUNTIME_INCLUDE**）+目录 351 例全绿；tc:node 0 错。Q3 按裁定未做。已派独立测试+审计。
