@@ -19,6 +19,8 @@ import { selectWorktreeListReviewCacheInputs } from './worktree-list/listing/rev
 import type { VirtualizedScrollAnchor } from '@/hooks/useVirtualizedScrollAnchor'
 import { SidebarWorktreeListDialogs } from './worktree-list/rows/ProjectGroupDialogs'
 import { SidebarWorktreeListEmptyState } from './worktree-list/listing/EmptyState'
+import { SidebarCloudSessionEmptyState } from './worktree-list/listing/CloudSessionEmptyState'
+import { isActiveWebClientCloudSession } from '@/web/web-cloud-session-scope'
 import { VirtualizedWorktreeViewport } from './worktree-list/viewport/VirtualizedWorktreeViewport'
 import { markSidebarWorktreeActiveImmediately } from './worktree-list/rows/option-dom'
 import { EMPTY_PROJECT_GROUPS } from './worktree-list/viewport/viewport-props'
@@ -262,6 +264,9 @@ const WorktreeList = React.memo(function WorktreeList({
   })
   // Why: when active filters hide every row, the Clear Filters empty state must win over Project Group headers.
   if (rowModel.rows.length === 0 || filtersHideAllRows) {
+    if (isActiveWebClientCloudSession()) {
+      return <SidebarCloudSessionEmptyState />
+    }
     return <SidebarWorktreeListEmptyState hasFilters={hasFilters} onClearFilters={clearFilters} />
   }
 

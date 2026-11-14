@@ -22,6 +22,8 @@ import {
 import { recoverFromDegradedStartup } from '../startup/startup-degraded-recovery'
 import { restoreSshConnectionsForStartup } from '../startup/startup-ssh-connection-restore'
 import { collectActiveWorkspaceSshTargetIds } from '../startup/active-workspace-ssh-targets'
+import { startDeferredRemoteStartupRefresh } from './startup-remote-catalog-refresh'
+import { isActiveWebClientCloudSession } from '../web/web-cloud-session-scope'
 import { publishTerminalViewAttributesAtAppStart } from '../components/terminal-pane/terminal-appearance'
 import { getSystemPrefersDark } from '../lib/terminal-theme'
 import {
@@ -86,6 +88,11 @@ export function useAppStartupHydration(onOnboardingLoaded: (state: OnboardingSta
     void (async () => {
       const startupStartedAt = performance.now()
       logRendererStartupDiagnostic('startup-chain-start')
+      // Why: a cloud (ticket) session's host refuses every native-catalog RPC — the repo
+      // list, SSH targets, project groups, folder workspaces and worktree lineage are
+      // desktop-owned state the ticket never carries — so skip them instead of booting
+      // degraded on a call that can only be denied.
+      const cloudRuntimeSession = isActiveWebClientCloudSession()
       try {
         // Why: nothing in the hydration chain reads profile state synchronously, so don't let it add a serial IPC round-trip before fetchSettings.
         void actions.fetchOrcaProfiles()
@@ -126,22 +133,26 @@ export function useAppStartupHydration(onOnboardingLoaded: (state: OnboardingSta
         )
         runtimeHostsPromise.catch(() => {})
         // Why: saved remote runtimes can spend the full connect timeout; load only the local catalog for first paint and refresh remotes after hydration.
-        await timeRendererStartupStep('fetch-repos-local', () =>
-          actions.fetchReposForAllHosts({ remoteHosts: 'skip' })
-        )
-        await timeRendererStartupStep('repo-catalog-settlement', () =>
-          actions.awaitLocalRepoCatalogSettlement()
-        )
+        if (!cloudRuntimeSession) {
+          await timeRendererStartupStep('fetch-repos-local', () =>
+            actions.fetchReposForAllHosts({ remoteHosts: 'skip' })
+          )
+          await timeRendererStartupStep('repo-catalog-settlement', () =>
+            actions.awaitLocalRepoCatalogSettlement()
+          )
+        }
         // Why: folder workspaces merge against projectGroups (repos.ts fetchFolderWorkspacesForAllHosts),
         // so keep this chain ordered while overlapping it with session-scoped hydration.
-        const localCatalogChain = (async () => {
-          await timeRendererStartupStep('fetch-project-groups-local', () =>
-            actions.fetchProjectGroupsForAllHosts({ remoteHosts: 'skip' })
-          )
-          await timeRendererStartupStep('fetch-folder-workspaces-local', () =>
-            actions.fetchFolderWorkspacesForAllHosts({ remoteHosts: 'skip' })
-          )
-        })()
+        const localCatalogChain = cloudRuntimeSession
+          ? Promise.resolve()
+          : (async () => {
+              await timeRendererStartupStep('fetch-project-groups-local', () =>
+                actions.fetchProjectGroupsForAllHosts({ remoteHosts: 'skip' })
+              )
+              await timeRendererStartupStep('fetch-folder-workspaces-local', () =>
+                actions.fetchFolderWorkspacesForAllHosts({ remoteHosts: 'skip' })
+              )
+            })()
         const sessionReadPromise = runtimeHostsPromise.then((startupRuntimeHostIds) =>
           // Why: include saved runtime host ids so per-host worktree session slices restore from local settings without waiting on network reachability; unreadable partitions skip.
           timeRendererStartupStep('session-get', () =>
@@ -241,9 +252,11 @@ export function useAppStartupHydration(onOnboardingLoaded: (state: OnboardingSta
 
           // Why: re-establish SSH before terminal reconnect so SSH-backed tabs route through pty.attach; passphrase targets defer to tab focus to avoid stacked credential dialogs.
           // Why: never dial runtime-owned (ephemeral-VM) targets from the renderer — ssh.connect would dispose the runtime layer's live relay session; filter them out here too.
-          const connectionIds = (sessionRead.session.activeConnectionIdsAtShutdown ?? []).filter(
-            (targetId) => !isRuntimeOwnedSshTargetId(targetId)
-          )
+          const connectionIds = cloudRuntimeSession
+            ? []
+            : (sessionRead.session.activeConnectionIdsAtShutdown ?? []).filter(
+                (targetId) => !isRuntimeOwnedSshTargetId(targetId)
+              )
           if (connectionIds.length > 0) {
             try {
               // Why scoped: an unreachable host used to hold every restored terminal — local ones
@@ -309,42 +322,12 @@ export function useAppStartupHydration(onOnboardingLoaded: (state: OnboardingSta
           logRendererStartupDiagnostic('startup-hydration-done', {
             durationMs: Math.round(performance.now() - startupStartedAt)
           })
-          void (async () => {
-            try {
-              try {
-                // Why: remote rows must not render under a fallback visibility while their owner default is still loading.
-                await timeRendererStartupStep('owner-visibility-defaults', () =>
-                  actions.awaitOwnerWorktreeVisibilityDefaultsHydration()
-                )
-                await timeRendererStartupStep('remote-catalog-refresh', async () => {
-                  await actions.fetchReposForAllHosts()
-                  await actions.fetchProjectGroupsForAllHosts()
-                  await actions.fetchFolderWorkspacesForAllHosts()
-                })
-              } catch (err) {
-                console.warn('Remote startup catalog refresh failed:', err)
-              }
-              if (!cancelled) {
-                try {
-                  await timeRendererStartupStep('remote-worktree-refresh', async () => {
-                    // Why: the full scan is not required for session recovery, so keep it off the startup-critical path.
-                    await actions.fetchAllWorktrees()
-                    // Why: the startup prune only saw session-referenced repos; use the deferred scan's
-                    // authoritative results to drop deleted-worktree visit timestamps that would
-                    // otherwise accumulate unbounded (disconnected SSH stays non-authoritative and is kept).
-                    actions.pruneLastVisitedTimestamps()
-                    await actions.fetchWorktreeLineage()
-                  })
-                } catch (err) {
-                  console.warn('Deferred startup worktree refresh failed:', err)
-                }
-              }
-            } finally {
-              if (!cancelled) {
-                useAppStore.setState({ startupWorktreeRefreshCompleted: true })
-              }
-            }
-          })()
+          startDeferredRemoteStartupRefresh({
+            cloudRuntimeSession,
+            isCancelled: () => cancelled,
+            actions,
+            onSettled: () => useAppStore.setState({ startupWorktreeRefreshCompleted: true })
+          })
         }
       } catch (error) {
         await recoverFromDegradedStartup({

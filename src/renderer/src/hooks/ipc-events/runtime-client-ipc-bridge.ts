@@ -17,6 +17,7 @@ import { getRepoExecutionHostId, toRuntimeExecutionHostId } from '../../../../sh
 import type { RuntimeClientEvent } from '../../../../shared/runtime-client-events'
 import { navigationTargetsClients } from '../../../../shared/runtime-navigation'
 import { useAppStore } from '../../store'
+import { isActiveWebClientCloudSession } from '@/web/web-cloud-session-scope'
 import { createRuntimeClientEventsSync } from '../runtime-client-events-sync'
 import {
   createRuntimeProjectRefreshScheduler,
@@ -27,7 +28,8 @@ import {
   createRuntimeEnvironmentStoreSyncSubscriber,
   getReachableRuntimeEnvironmentIds,
   getRuntimeClientEventEnvironmentIds,
-  invalidateRuntimeClientEventReplay
+  invalidateRuntimeClientEventReplay,
+  type RuntimeEnvironmentStoreSyncState
 } from './runtime-environment-subscription-selection'
 import type { WorktreeEventRuntime } from './worktree-event-runtime'
 
@@ -169,8 +171,14 @@ export function registerRuntimeClientIpcBridge(
     useAppStore.getState().setRuntimeEnvironments(await window.api.runtimeEnvironments.list())
   })
   unsubs.push(() => setRuntimeEnvironmentCatalogRefresher(null))
+  // Why: a cloud session's host refuses `runtime.clientEvents.subscribe` and every catalog
+  // refresh it would trigger (repo.list, projectGroup.list, folderWorkspace.list,
+  // worktree.lineageList), so the mirror stays off instead of retrying refused calls.
+  const cloudRuntimeSession = isActiveWebClientCloudSession()
+  const desiredEnvironmentIds = (state: RuntimeEnvironmentStoreSyncState): string[] =>
+    cloudRuntimeSession ? [] : getRuntimeClientEventEnvironmentIds(state)
   const runtimeClientEventsSync = createRuntimeClientEventsSync({
-    getDesiredEnvironmentIds: () => getRuntimeClientEventEnvironmentIds(useAppStore.getState()),
+    getDesiredEnvironmentIds: () => desiredEnvironmentIds(useAppStore.getState()),
     getSubscriptionKey: (environmentId) => buildRuntimeClientEventEnvironmentKey([environmentId]),
     subscribe: (environmentId, onEvent, onError, isCurrent) => {
       const sshGeneration = getEnvironmentSshStateGeneration(environmentId)
@@ -217,21 +225,20 @@ export function registerRuntimeClientIpcBridge(
 
   // Why: no on-connect repo fetch (PR #2); seed discovery for connected runtimes or remote projects hide until Add-Project.
   const initialRuntimeEnvironmentState = useAppStore.getState()
-  const runtimeClientEventEnvironmentIds = getRuntimeClientEventEnvironmentIds(
-    initialRuntimeEnvironmentState
-  )
+  const runtimeClientEventEnvironmentIds = desiredEnvironmentIds(initialRuntimeEnvironmentState)
   for (const environmentId of runtimeClientEventEnvironmentIds) {
     runtimeProjectRefreshScheduler.request(environmentId)
   }
-  const reachableRuntimeEnvironmentIds = getReachableRuntimeEnvironmentIds(
-    initialRuntimeEnvironmentState
-  )
+  const reachableRuntimeEnvironmentIds = cloudRuntimeSession
+    ? []
+    : getReachableRuntimeEnvironmentIds(initialRuntimeEnvironmentState)
   const handleRuntimeEnvironmentStoreWrite = createRuntimeEnvironmentStoreSyncSubscriber({
     initialDesiredEnvironmentIds: runtimeClientEventEnvironmentIds,
     initialReachableEnvironmentIds: reachableRuntimeEnvironmentIds,
     buildEnvironmentKey: buildRuntimeClientEventEnvironmentKey,
-    getDesiredEnvironmentIds: getRuntimeClientEventEnvironmentIds,
-    getReachableEnvironmentIds: getReachableRuntimeEnvironmentIds,
+    getDesiredEnvironmentIds: desiredEnvironmentIds,
+    getReachableEnvironmentIds: (state) =>
+      cloudRuntimeSession ? [] : getReachableRuntimeEnvironmentIds(state),
     requestProjectRefresh: (environmentId) =>
       // The scheduler coalesces bursts per environment.
       runtimeProjectRefreshScheduler.request(environmentId),

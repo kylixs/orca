@@ -1,6 +1,7 @@
 import { canConnectSshStatus } from '@/ssh/ssh-connection-recoverability'
 import type { DirectSshAuthority, SshConnectionState } from '../../../../shared/ssh-types'
 import { useAppStore } from '../../store'
+import { isActiveWebClientCloudSession } from '@/web/web-cloud-session-scope'
 import { isDirectSshReconnectCoordinatorRoutingEnabled } from '../direct-ssh-reconnect-rollout'
 import { directSshAuthoritiesEqual } from '../direct-ssh-reconnect-tokens'
 import {
@@ -58,9 +59,13 @@ export function registerDirectSshStateIpcBridge(
     state: SshConnectionState,
     origin: DirectSshConnectedStateOrigin
   ) => void
-  void hydrateDirectSshInitialState(runtime, sshStateWatermarkByTargetId, (targetId, state) =>
-    applySshConnectionStateChange(targetId, state, 'initial-hydration')
-  )
+  // Why: a cloud session's host refuses `ssh.listTargets`/`ssh.getState` — SSH targets are
+  // desktop-owned state the ticket never carries — so the hydration walk never starts.
+  if (!isActiveWebClientCloudSession()) {
+    void hydrateDirectSshInitialState(runtime, sshStateWatermarkByTargetId, (targetId, state) =>
+      applySshConnectionStateChange(targetId, state, 'initial-hydration')
+    )
+  }
   unsubs.push(
     window.api.ssh.onCredentialRequest((data) => {
       useAppStore.getState().enqueueSshCredentialRequest(data)
