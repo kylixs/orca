@@ -2564,6 +2564,12 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W3 修复完成 + 索引冲突第四次（终态已恢复，2026-11-14）
+
+修复代理交付 `e5d0f68721a`（7 文件）：j-1 `sessionPageUrlFor` 拼 `?api=<requestOrigin>`（新抽共享 helper，与 /install 同推导；取舍 query 优先于部署显式注入，记录进 deployment §4c）；m-1 删 config.js + index.html script + web-release 条目；m-2 四条补例逐条变异变红。web-project-entry 10/10 + 六回归套件全绿。
+
+**事故与恢复**：主会话随后的 docs 提交携带暂存区陈旧副本，把 7 路径回退（config.js 复活、?api= 删、4 用例删）；修复代理重落地 `a069482b23a`；主会话恢复时又把 PROGRESS checkout 到旧快照顶掉一节记录（本段即补写）。终态恢复提交 `d5a00712179`：5 路径自 a069 恢复 + config.js 删除入档 + PROGRESS 保留最新。**恢复后验证**：config.js 不存在于 HEAD；`sessionPageUrlFor`/`searchParams.set('api', platformOrigin)` 在位（server.ts:677/683/698）；维护态双入口补例在位。**防再发规则**：主会话提交前必须核对暂存集=预期文件（本次恢复中已实践：PROGRESS 取消暂存保最新版）；F3 计数笔误更正：W3 段 exploratory 16 实为 13。
+
 ### W3 独立测试通过（2026-11-14）
 
 测试代理（detached worktree 固定 `cd36987d7a0` 验证）：套件 6/6 + 13/13 + 3/3 + 9/9；自有 UI 探针 **11/11**——admin 双入口 href 与 payload 逐字一致、developer 无详情/有 open 才有 Orca Web、离线/维护/无浏览器边缘三态置灰 title 各异且零死链、对话框引导逐字、详情链接真实新开 TLS cloud-admin 200 且带注入地址渲染登录页；两页 actions 单元格逐字节相等。发现 F1（config.js 死配置残留）与 F2（裸链接依赖部署注入）**与在途 W3-fix（j-1+m-1）恰好收敛**；F3 记一处 PROGRESS 计数笔误（16 实为 13，关闭时更正）。探针纪律：初版假 FAIL 自查为心跳窗口时序后改等 derived 翻转再断言（F4 记录在案）。
