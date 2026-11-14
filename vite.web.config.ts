@@ -25,7 +25,12 @@ export default defineConfig({
     outDir: resolve('out/web'),
     emptyOutDir: true,
     rollupOptions: {
-      input: resolve('src/renderer/web-index.html')
+      // Why both: verify-web-build checks every entry the host serves under the
+      // shared static root, and this build must produce the same set.
+      input: {
+        web: resolve('src/renderer/web-index.html'),
+        'cloud-admin': resolve('src/renderer/cloud-admin.html')
+      }
     }
   },
   worker: {

@@ -17,6 +17,7 @@ import {
 } from './web-e2ee'
 import { resolveWebCloudDeviceSecretKey } from './web-cloud-device-key'
 import { webRuntimeSubprotocols, type WebPairingOffer } from './web-pairing'
+import { webSocketUrlForPage, type WebPageLocation } from './web-path-prefix'
 import type { WebRuntimeTransportSubscription } from './web-runtime-subscription-contract'
 import { WebRuntimeSubscriptionRegistry } from './web-runtime-subscription-registry'
 import { WebRuntimeRequestRegistry } from './web-runtime-request-registry'
@@ -31,6 +32,8 @@ export type WebRuntimeTransportRuntime = {
   WebSocketImpl?: typeof WebSocket
   setTimeout?: (callback: () => void, timeoutMs: number) => number
   clearTimeout?: (handle: number) => void
+  /** Test seam; production reads the browser page location. */
+  pageLocation?: WebPageLocation
   /**
    * Cloud offers only: the persisted device secret. The host verifies the E2EE
    * hello key equals the ticket's device key, so the handshake must use this pair
@@ -60,6 +63,7 @@ export class WebRuntimeConnectionTransport {
   private readonly clearTimeoutFn: (handle: number) => void
   private readonly subprotocols: string[] | null
   private readonly deviceSecretKey: Uint8Array | null
+  private readonly socketUrl: string
 
   constructor(
     private readonly pairing: WebPairingOffer,
@@ -76,6 +80,10 @@ export class WebRuntimeConnectionTransport {
     this.setTimeoutFn =
       runtime.setTimeout ?? ((callback, timeoutMs) => window.setTimeout(callback, timeoutMs))
     this.clearTimeoutFn = runtime.clearTimeout ?? ((handle) => window.clearTimeout(handle))
+    const pageLocation = runtime.pageLocation ?? globalThis.window?.location
+    this.socketUrl = pageLocation
+      ? webSocketUrlForPage(pairing.endpoint, pageLocation)
+      : pairing.endpoint
     // Throws on a malformed cloud device key: falling back to a headerless
     // upgrade would only surface later as an opaque host refusal.
     this.subprotocols = webRuntimeSubprotocols(pairing)
@@ -200,8 +208,8 @@ export class WebRuntimeConnectionTransport {
       // A cloud offer must carry the ticket and device key in the protocol list;
       // a legacy offer keeps the protocol-less connect.
       socket = this.subprotocols
-        ? new this.WebSocketImpl(this.pairing.endpoint, this.subprotocols)
-        : new this.WebSocketImpl(this.pairing.endpoint)
+        ? new this.WebSocketImpl(this.socketUrl, this.subprotocols)
+        : new this.WebSocketImpl(this.socketUrl)
     } catch (error) {
       this.requestRegistry.rejectAll(error instanceof Error ? error.message : String(error))
       this.scheduleReconnect()

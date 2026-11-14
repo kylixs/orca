@@ -93,6 +93,30 @@ describe('WebRuntimeClient', () => {
     client.close()
   })
 
+  it('opens the runtime socket through the page route prefix', () => {
+    vi.stubGlobal('window', {
+      setTimeout,
+      clearTimeout,
+      setInterval,
+      clearInterval,
+      location: {
+        protocol: 'https:',
+        host: 'relay.example',
+        pathname: '/h/route-key/web-index.html'
+      },
+      atob: (value: string) => Buffer.from(value, 'base64').toString('binary'),
+      btoa: (value: string) => Buffer.from(value, 'binary').toString('base64')
+    })
+    const client = new WebRuntimeClient({
+      v: 2,
+      endpoint: 'wss://host.example:6768/',
+      deviceToken: 'token',
+      publicKeyB64: Buffer.alloc(32).toString('base64')
+    })
+    expect(fakeSockets[0]?._url).toBe('wss://relay.example/h/route-key/')
+    client.close()
+  })
+
   it('advertises explicit close intent support in encrypted authentication', async () => {
     const client = new WebRuntimeClient({
       v: 2,
