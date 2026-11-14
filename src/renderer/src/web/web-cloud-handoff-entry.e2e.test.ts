@@ -48,7 +48,7 @@ const PROJECT_KEY = 'w7b-handoff-project'
  */
 const browserStorage = vi.hoisted(() => {
   const values = new Map<string, string>()
-  const localStorage = {
+  const localStorage: Storage = {
     getItem: (key: string): string | null => values.get(key) ?? null,
     setItem: (key: string, value: string): void => {
       values.set(key, value)
@@ -56,7 +56,11 @@ const browserStorage = vi.hoisted(() => {
     removeItem: (key: string): void => {
       values.delete(key)
     },
-    clear: (): void => values.clear()
+    clear: (): void => values.clear(),
+    get length(): number {
+      return values.size
+    },
+    key: (index: number): string | null => Array.from(values.keys())[index] ?? null
   }
   vi.stubGlobal('window', {
     setTimeout,
