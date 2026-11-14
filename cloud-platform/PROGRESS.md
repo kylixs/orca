@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### M120 设计审定通过（2026-11-14）
+
+设计代理产出 `work-orders/m120-admin-console-design.md`（246 行）：三缺口全部以既有端点粒度实现——a 登记弹层（管理员 POST /v1/projects 发绝对 path 不发 dir=W8 语义；错误码映射逐一对到 server.ts 行号，注意管理员路由重复 key 是 PROJECT_EXISTS 非自助路由的 PROJECT_KEY_TAKEN）；b 权限矩阵（7 权限位含 QA-014 漏掉的 browser 列；项目级增量 diff+行内全量替换）；c 下载策略（全 M120 唯一线变更：projectView 增 downloadPolicyExplicit 读字段 + PUT policy 增可选 inherit:true 清覆盖，均加性线兼容；修正工作台在全局 allow 时对显式覆盖误报的既有缺陷）。切 **M120a→M120b→M120c1(server)→M120c2(web) 四串行令**（管理台通道，app.js 串行）。已派 M120a。
+
 ### W3c 关闭（审计 PASS，2026-11-14）
 
 审计（test-reports/w3c-audit.md）：**PASS，0 blocker/0 major**、minor 2/note 5。规格三条全落地（openProjectWorkspace 合一走 W7b handoff 语义、noopener 逐字保留、对话框删净无死代码）、置灰零放松（git show -w 逐 hunk）、交接码 32 字节仅入 fragment+单次消费+60s+审计指纹、线兼容成立（旧归档走 /connect 仍可用、AC-19 6/0）。minor 处置：m-1 test-plan.md:137 陈旧行已由主会话修正（本提交）；m-2 URL 断言加严挂 P2（组合语义已由 W7b-url 钉住）。**W3c 关闭**（`085599b77c9`+实现测试 48/0+审计 PASS）。
