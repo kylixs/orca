@@ -1,5 +1,9 @@
 import { connect, createServer, type Socket } from 'node:net'
-import { createServer as createTlsServer, request as tlsRequest, type Server as TlsServer } from 'node:https'
+import {
+  createServer as createTlsServer,
+  request as tlsRequest,
+  type Server as TlsServer
+} from 'node:https'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
 import { readFileSync } from 'node:fs'
@@ -93,6 +97,8 @@ const HOP_BY_HOP = new Set([
   'transfer-encoding',
   'upgrade'
 ])
+/** Hop-by-hop names a WebSocket handshake still needs at the next hop. */
+const UPGRADE_KEEP_HEADERS = new Set(['connection', 'upgrade'])
 
 function parseTarget(target: string): { host: string; port: number } | null {
   const [host, portText] = target.split(':')
@@ -116,11 +122,20 @@ export function parseBrowserPath(url: string): { routeKey: string; path: string 
   return { routeKey, path: remainder.slice(separator) }
 }
 
-/** Request headers for the host hop: hop-by-hop dropped, proxy trail appended. */
-function forwardedHeaders(req: IncomingMessage, sourceIp: string, keepUpgrade: boolean): Record<string, string | string[] | undefined> {
+/**
+ * Request headers for the host hop: hop-by-hop dropped, proxy trail appended.
+ * An upgrade keeps only `connection`/`upgrade` of that set — without
+ * `Connection: Upgrade` the host never answers 101 — while `proxy-authorization`
+ * and friends still die at the hop, exactly as on the plain HTTP path.
+ */
+function forwardedHeaders(
+  req: IncomingMessage,
+  sourceIp: string,
+  keepUpgrade: boolean
+): Record<string, string | string[] | undefined> {
   const headers: Record<string, string | string[] | undefined> = {}
   for (const [name, value] of Object.entries(req.headers)) {
-    if (!keepUpgrade && HOP_BY_HOP.has(name)) continue
+    if (HOP_BY_HOP.has(name) && !(keepUpgrade && UPGRADE_KEEP_HEADERS.has(name))) continue
     headers[name] = value
   }
   const prior = req.headers['x-forwarded-for']
@@ -198,6 +213,30 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
     socket.destroy()
   }
 
+  /**
+   * Admission shared by both listeners: one per-IP budget, one active count.
+   * The browser edge faces untrusted browsers, so it must not be the listener
+   * that lets a single IP hold unlimited sockets (design.md §4.3.2).
+   */
+  function admitPerIp(socket: Socket, sourceIp: string): boolean {
+    const current = perIp.get(sourceIp) ?? 0
+    if (current >= perIpMax) {
+      drop(socket, sourceIp, null, 'per-ip-limit')
+      return false
+    }
+    perIp.set(sourceIp, current + 1)
+    stats.active += 1
+    connections.add(socket)
+    socket.on('close', () => {
+      connections.delete(socket)
+      stats.active = Math.max(0, stats.active - 1)
+      const remaining = (perIp.get(sourceIp) ?? 1) - 1
+      if (remaining <= 0) perIp.delete(sourceIp)
+      else perIp.set(sourceIp, remaining)
+    })
+    return true
+  }
+
   let refreshInFlight: Promise<void> | null = null
 
   /** Single-flight: 2s ticks must not stack hung requests against a dead platform. */
@@ -268,21 +307,7 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
     inbound.add(socket)
     socket.once('close', () => inbound.delete(socket))
     const sourceIp = socket.remoteAddress?.replace(/^::ffff:/, '') ?? 'unknown'
-    const current = perIp.get(sourceIp) ?? 0
-    if (current >= perIpMax) {
-      drop(socket, sourceIp, null, 'per-ip-limit')
-      return
-    }
-    perIp.set(sourceIp, current + 1)
-    stats.active += 1
-    connections.add(socket)
-    socket.on('close', () => {
-      connections.delete(socket)
-      stats.active = Math.max(0, stats.active - 1)
-      const remaining = (perIp.get(sourceIp) ?? 1) - 1
-      if (remaining <= 0) perIp.delete(sourceIp)
-      else perIp.set(sourceIp, remaining)
-    })
+    if (!admitPerIp(socket, sourceIp)) return
     socket.on('error', () => socket.destroy())
 
     // Read only until the TLS ClientHello is complete, then pick a route.
@@ -375,7 +400,15 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
           const reason = stale ? 'browser-stale-route-table' : 'browser-route-miss'
           stats.dropped += 1
           stats.dropsByReason[reason] = (stats.dropsByReason[reason] ?? 0) + 1
-          record({ at: Date.now(), sourceIp, sni: null, routeKey: null, target: null, outcome: 'drop', reason })
+          record({
+            at: Date.now(),
+            sourceIp,
+            sni: null,
+            routeKey: null,
+            target: null,
+            outcome: 'drop',
+            reason
+          })
           res.writeHead(stale ? 503 : 404, { connection: 'close' })
           res.end()
           return
@@ -386,13 +419,28 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
           stats.dropped += 1
           stats.dropsByReason['browser-unknown-route'] =
             (stats.dropsByReason['browser-unknown-route'] ?? 0) + 1
-          record({ at: Date.now(), sourceIp, sni: null, routeKey: null, target: null, outcome: 'drop', reason: 'browser-unknown-route' })
+          record({
+            at: Date.now(),
+            sourceIp,
+            sni: null,
+            routeKey: null,
+            target: null,
+            outcome: 'drop',
+            reason: 'browser-unknown-route'
+          })
           res.writeHead(404, { connection: 'close' })
           res.end()
           return
         }
         stats.routed += 1
-        record({ at: Date.now(), sourceIp, sni: null, routeKey: route.routeKey, target: route.target, outcome: 'routed' })
+        record({
+          at: Date.now(),
+          sourceIp,
+          sni: null,
+          routeKey: route.routeKey,
+          target: route.target,
+          outcome: 'routed'
+        })
         const upstream = tlsRequest(
           {
             host: target.host,
@@ -417,6 +465,10 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
             res.end()
           }
         })
+        // A client gone mid-flight must take its upstream socket with it, or every
+        // abandoned request parks a half-open dial on the host until its timeout.
+        res.on('close', () => upstream.destroy())
+        req.on('error', () => upstream.destroy())
         req.pipe(upstream)
       }
     )
@@ -424,35 +476,62 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
       const sourceIp = req.socket.remoteAddress?.replace(/^::ffff:/, '') ?? 'unknown'
       const stale = Date.now() - lastSyncAt > staleMax
       const parsed = stale ? null : parseBrowserPath(req.url ?? '/')
-      const refuse = (reason: string): void => {
+      // Same status contract as the HTTP path: stale means "retry soon", not
+      // "no such host" — an upgrade must not lie about which one it hit.
+      const refuse = (reason: string, status: 404 | 503): void => {
         stats.dropped += 1
         stats.dropsByReason[reason] = (stats.dropsByReason[reason] ?? 0) + 1
-        record({ at: Date.now(), sourceIp, sni: null, routeKey: null, target: null, outcome: 'drop', reason })
-        clientSocket.write('HTTP/1.1 404 Not Found\r\nconnection: close\r\n\r\n')
+        record({
+          at: Date.now(),
+          sourceIp,
+          sni: null,
+          routeKey: null,
+          target: null,
+          outcome: 'drop',
+          reason
+        })
+        clientSocket.write(
+          `HTTP/1.1 ${status} ${status === 503 ? 'Service Unavailable' : 'Not Found'}\r\nconnection: close\r\n\r\n`
+        )
         clientSocket.destroy()
       }
       if (!parsed) {
-        refuse(stale ? 'browser-stale-route-table' : 'browser-route-miss')
+        refuse(stale ? 'browser-stale-route-table' : 'browser-route-miss', stale ? 503 : 404)
         return
       }
       const route = routes.get(parsed.routeKey)
       const target = route ? parseTarget(route.target) : null
       if (!route || !target) {
-        refuse('browser-unknown-route')
+        refuse('browser-unknown-route', 404)
         return
       }
       stats.routed += 1
-      record({ at: Date.now(), sourceIp, sni: null, routeKey: route.routeKey, target: route.target, outcome: 'routed' })
+      record({
+        at: Date.now(),
+        sourceIp,
+        sni: null,
+        routeKey: route.routeKey,
+        target: route.target,
+        outcome: 'routed'
+      })
       const upstream = tlsRequest({
         host: target.host,
         port: target.port,
         path: parsed.path,
-        // Upgrade headers stay: without `Connection: Upgrade` the host never answers 101.
         headers: forwardedHeaders(req, sourceIp, true),
         agent: false,
         rejectUnauthorized: false
       })
+      // Until the 101 lands nobody watches this dial: a client that disappears
+      // here would otherwise leave it half-open on the host until its timeout.
+      const abortDial = (): void => {
+        upstream.destroy()
+      }
+      clientSocket.once('close', abortDial)
+      clientSocket.once('error', abortDial)
       upstream.on('upgrade', (upstreamRes, upstreamSocket: Duplex, upstreamHead: Buffer) => {
+        clientSocket.off('close', abortDial)
+        clientSocket.off('error', abortDial)
         clientSocket.write(
           rawHead(upstreamRes.statusCode ?? 101, upstreamRes.statusMessage ?? '', upstreamRes, true)
         )
@@ -470,7 +549,9 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
       })
       // The host refused the upgrade: its answer is the client's answer.
       upstream.on('response', (upstreamRes) => {
-        clientSocket.write(rawHead(upstreamRes.statusCode ?? 502, upstreamRes.statusMessage ?? '', upstreamRes))
+        clientSocket.write(
+          rawHead(upstreamRes.statusCode ?? 502, upstreamRes.statusMessage ?? '', upstreamRes)
+        )
         clientSocket.end()
       })
       upstream.on('error', () => clientSocket.destroy())
@@ -480,10 +561,16 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
       // close() reaps browser sockets through the same set as the SNI listener.
       inbound.add(socket)
       socket.once('close', () => inbound.delete(socket))
+      // A refused socket is destroyed here, so it must never surface as uncaught.
+      socket.on('error', () => socket.destroy())
+      admitPerIp(socket, socket.remoteAddress?.replace(/^::ffff:/, '') ?? 'unknown')
     })
-    await new Promise<void>((resolve) => browserServer.listen(browser.port, '0.0.0.0', () => resolve()))
+    await new Promise<void>((resolve) =>
+      browserServer.listen(browser.port, '0.0.0.0', () => resolve())
+    )
     const browserAddress = browserServer.address()
-    browserPort = typeof browserAddress === 'object' && browserAddress ? browserAddress.port : browser.port
+    browserPort =
+      typeof browserAddress === 'object' && browserAddress ? browserAddress.port : browser.port
     console.log(`[relay] browser mode listening on :${browserPort}`)
   }
 
@@ -529,7 +616,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     maxConnectionsPerIp: process.env.RELAY_MAX_CONN_PER_IP
       ? Number(process.env.RELAY_MAX_CONN_PER_IP)
       : undefined,
-    controlTimeoutMs: process.env.CONTROL_TIMEOUT_MS ? Number(process.env.CONTROL_TIMEOUT_MS) : undefined,
+    controlTimeoutMs: process.env.CONTROL_TIMEOUT_MS
+      ? Number(process.env.CONTROL_TIMEOUT_MS)
+      : undefined,
     browser: browserOptionsFromEnv()
   })
   console.log(`[relay] listening on :${relay.port}, routes=${relay.routes().size}`)
