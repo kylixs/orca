@@ -2649,6 +2649,10 @@ MAJ-1 修复 `5079fb63497`（2 文件）：handoff e2e spec 进 cloud-e2e includ
 
 提交 `4ffbc3860dc`：缺陷 B 实为两个叠加真 bug——B1 bun worker 静默 PTY（e2e 列入 vitest-node-runtime 池以 node 执行+文件头声明 runner）+ **B2 嵌套读取**（`terminal.read` 回包在 `result.terminal` 下，原 helper 读 `result.tail` 永远 undefined——任何 runner 下断言都不可能匹配，超时分支被 ok 检查放行=假阴性）。修复后 RED/GREEN：默认跑法（node 池）4/4 绿且回显真实（`echo ORCA_W5B_PTY_ECHO_OK`）；去掉池声明 RED（ECHO_TIMEOUT）；暂存态（无 W5c 代码）3/3。缺陷 A（bun ws 自签 TLS 既有问题）记入说明。已派 W5b 审计（含空断言修复验证）。
 
+### W9A-5 修复完成：A3 绿（2.1s）；新阻断 W9A-6 立项（2026-11-14）
+
+提交 `7bb66c0da89`（5 文件）：选方向 a（写端不轮换身份）——同项目+同 host E2EE key → 复用已存持久行（只刷新 sidecar checkout 路径）；host key 变化仍轮换 → retire/purge 语义原样保留（负向测试钉死）；orcadDeployment 原生路径逐字节未动。新测试两例修复前均红（stash 验证）+ 幂等/负向断言 + 90 用例全绿。**旅程回归**：A2 ✅ → **A3 ✅（2.1s，修复前 3.6m 超时+行被清算；checkout 激活、route=direct）**——`02-workspace-opened.png` 为修复前不存在的状态。**新阻断 W9A-6**：A4 终端 4431 Too many sessions——云每连接一票一 socket，入口并发多条触顶 §8.4 上限 3（与 W5c 观察同源）。已派诊断修复代理。
+
 ### W9a 重跑读数：A2 绿（W11 路径）、A3 根因精确到文件（W9A-5，2026-11-14）
 
 旅程适配重跑（spec 改为状态栏 segment→弹框的真实用户路径，提交 `af6555b3276` 含 M107-1 同步与新共享驱动）：S0–S2 ✅、**A2 ✅**（segment 可见→弹框预填→登录→已登录态，33s 含冷启动）、**A3 ❌ 180s 超时**——但根因已定位到文件级（`a3-repair-erasure-trace.md`）：**W9A-5** = openWorkspace IPC 重复 `registerCloudRuntimeEnvironment` 轮换 pairing 身份（R1→R2），`classifyPeerReplacements` 无法证明同机（sameRegistration 只认 orcadDeployment）→ retire → purge 清算云项目行。A4/A5 阻塞；M107-1 同因待适配（已随本令）。已派 **W9A-5 修复代理**（幂等身份或 cloudProject 识别，含真换机负向断言）。
