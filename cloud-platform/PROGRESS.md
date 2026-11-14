@@ -2649,13 +2649,17 @@ MAJ-1 修复 `5079fb63497`（2 文件）：handoff e2e spec 进 cloud-e2e includ
 
 提交 `4ffbc3860dc`：缺陷 B 实为两个叠加真 bug——B1 bun worker 静默 PTY（e2e 列入 vitest-node-runtime 池以 node 执行+文件头声明 runner）+ **B2 嵌套读取**（`terminal.read` 回包在 `result.terminal` 下，原 helper 读 `result.tail` 永远 undefined——任何 runner 下断言都不可能匹配，超时分支被 ok 检查放行=假阴性）。修复后 RED/GREEN：默认跑法（node 池）4/4 绿且回显真实（`echo ORCA_W5B_PTY_ECHO_OK`）；去掉池声明 RED（ECHO_TIMEOUT）；暂存态（无 W5c 代码）3/3。缺陷 A（bun ws 自签 TLS 既有问题）记入说明。已派 W5b 审计（含空断言修复验证）。
 
+### W9A-7 修复完成：桌面云终端打通，旅程 A2–A6 全绿（2026-11-14）
+
+提交 `9f983c595d15`（15 文件）：宿主对云会话放行 `terminal.multiplex`，工作区边界随帧走——信封不带地址（params `{}`）故信封放行（`cloudTerminalScopeOf` 新增 `multiplex` 类，替代原 DENIED 表整拒）；**每个订阅帧**在宿主把句柄解析为活 PTY 的唯一点（`finalizeResolvedMultiplexPty`）做与一元 terminal 方法相同的 write-root 判定（抽 `cloud-terminal-handle-scope.ts` 共用，未重写第二套边界），越界 → 流错误 `terminal_workspace_scope` + 流结束 + `path_denied/PATH_OUTSIDE_ROOT` 审计（`onCloudDenial` 由 dispatch 选项接入 RpcContext；`PATH_OUTSIDE_ROOT` 记 `path_denied`，权限类仍 `method_denied`）。检查点选在订阅帧而非逐帧的理由：multiplex 其余帧（input/ack/resize/snapshot）只寻址 streamId，其 PTY 绑定是宿主侧状态、只能经一次已过边界的订阅建立——对每个按键重复解析同一句柄只增加成本不增加安全；无边界安装时解析路径保持同步返回，容量/交错语义零回归（capacity 套件实证）。测试：W9A7-1 真栈（平台+TLS+真 PTY）信封 ready + 快照帧 + 回显经真实二进制帧往返；W9A7-2 跨工作区 PTY 目标（宿主共享检出区的 shell）→ 流拒绝 + 审计记录（`evidence/w9a7-multiplex/w9a7-2-cross-workspace-denied.json`）；node 池 117 文件 496 例绿（`runtime-rpc-mobile-terminal-streaming` 2 例在该池经 stash 对照 HEAD 同红=既有、标准 bun 池 5/5 绿）；bun 池另证渲染端多路复用 4 套件 37 例绿；cloud-platform 全目录 node 池 84 文件 345 例全绿；bun 池下云真栈套件的自签 TLS 握手失败为既有环境项（W5b 缺陷 A 同源，与本改动无关）。production 方法表断言（cloud-rpc-permission）原样保留全绿。**旅程实跑 A2–A6 全绿**（A4 364ms：pane 绑定 `remote:` 句柄、`pty.hasPty` 如实答 null、回显 168ms 经 multiplex 流；`evidence/w9a7-multiplex/journey-golden-a/`）。A4 断言改远端语义（`remote:` 前缀 + hasPty null + 流回显三合一），并更正 W9A-5 复验的「4431 ⇒ hasPty null」错误归因（见该节补注）。测试夹具补充：`cloud-session-e2e-harness.ts` 客户端支持加密二进制帧收发（复刻 e2ee 通道的字节路径，含 `isBinary` 判别）。门禁 tc:node / tc:web 0 错、改动文件 oxlint 0 告警、max-lines ratchet 无新豁免。
+
 ### W9A-6 修复完成：入口 4 连接全准入、A3 保持绿；W9A-7 派发（2026-11-14）
 
 提交 `d59fa8bac4da`（9 文件）：槽位改按**逻辑会话（设备）**记账——(user, project, device) 1 槽（票据 deviceId 稳定），新增 `MAX_SOCKETS_PER_DEVICE_SESSION=12` 防单设备散发（入口实测峰值 4）；主机 32 仍按 socket；4431/jti/吊销链不变；真手机/配对桌面（无 orca-cred 子协议）逐字节未动。测试：W9A6-1 真栈 4 连接全准入+真回显（A4 形态）、第 4 台设备仍 4431+释放可复用、RED 复验、158 文件 153 绿（7 败经 stash 对照=既有/环境）。**旅程实跑：S0–S3 全绿、全程零 4431**。A4 仍红=两个新缺口（如实停手）：① 宿主对云会话拒 `terminal.multiplex`（需工作区边界检查，安全面变更）→ 已派 **W9A-7**；② 旅程 A4 断言用 `pty.hasPty` 对 `remote:` 句柄结构性不可满足 → 随 W9A-7 适配远端语义断言。
 
 ### W9A-5 修复完成：A3 绿（2.1s）；新阻断 W9A-6 立项（2026-11-14）
 
-提交 `7bb66c0da89`（5 文件）：选方向 a（写端不轮换身份）——同项目+同 host E2EE key → 复用已存持久行（只刷新 sidecar checkout 路径）；host key 变化仍轮换 → retire/purge 语义原样保留（负向测试钉死）；orcadDeployment 原生路径逐字节未动。新测试两例修复前均红（stash 验证）+ 幂等/负向断言 + 90 用例全绿。**旅程回归**：A2 ✅ → **A3 ✅（2.1s，修复前 3.6m 超时+行被清算；checkout 激活、route=direct）**——`02-workspace-opened.png` 为修复前不存在的状态。**新阻断 W9A-6**：A4 终端 4431 Too many sessions——云每连接一票一 socket，入口并发多条触顶 §8.4 上限 3（与 W5c 观察同源）。已派诊断修复代理。
+提交 `7bb66c0da89`（5 文件）：选方向 a（写端不轮换身份）——同项目+同 host E2EE key → 复用已存持久行（只刷新 sidecar checkout 路径）；host key 变化仍轮换 → retire/purge 语义原样保留（负向测试钉死）；orcadDeployment 原生路径逐字节未动。新测试两例修复前均红（stash 验证）+ 幂等/负向断言 + 90 用例全绿。**旅程回归**：A2 ✅ → **A3 ✅（2.1s，修复前 3.6m 超时+行被清算；checkout 激活、route=direct）**——`02-workspace-opened.png` 为修复前不存在的状态。**新阻断 W9A-6**：A4 终端 4431 Too many sessions——云每连接一票一 socket，入口并发多条触顶 §8.4 上限 3（与 W5c 观察同源）。已派诊断修复代理。**归因更正（W9A-7）**：本段把 A4 红归到 4431 不完整——`pty.hasPty` 对 `remote:` 句柄恒返 null（远端句柄诚实 unverifiable，`inspect.ts`）是独立于 4431 的结构性断言缺口，4431 修复后 A4 也曾因此仍红；A4 断言已随 W9A-7 改为远端语义。
 
 ### W9a 重跑读数：A2 绿（W11 路径）、A3 根因精确到文件（W9A-5，2026-11-14）
 
