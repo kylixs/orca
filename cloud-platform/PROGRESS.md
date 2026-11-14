@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### U33 落地（2026-11-14，🟢）
+
+`f5df3142d93`（5 文件 +63/−10）：bootstrap 从 info.perms 派生 fileReadGranted→mountExplorer 门（W13b 审计 MIN-1 收口：terminal-only 票据不再揭示 explorer，激活管道唯一 file-RPC 触发点被抑制=零被拒调用）；MIN-2 两旅程披露补播种项。16 单测+B 线 2/2 复跑绿（真栈，重建 bundle 后）。再次实证 U36 隐患（旧 bundle 无新门）——O1-g 护栏在途。**U33→🟢**。空槽派 U39 诊断。
+
 ### 中继注册完成（2026-11-14）+ U38/U39 登记
 
 100.67.197.59 节点上线（relay:18443 SNI+18444 浏览器模式，nohup 长驻）：`/v1/relays` 真数据 ✓、connect 应答含回落端点（routeKey=dev-local-02 + browserEntryUrl）✓、浏览器模式 TLS 终结+路径路由 ✓。**U38**（安装脚本 env 名不一致→新部署必踩，修复令已派）+**U39**（中继路由表 n=0：宿主注册拍未形成 relayRoutes 表项，回落数据面断裂，待诊断）。
