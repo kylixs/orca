@@ -2681,6 +2681,10 @@ MAJ-1 修复 `5079fb63497`（2 文件）：handoff e2e spec 进 cloud-e2e includ
 
 cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未空闲/未堵塞）**不打扰**；超过 1 小时无最后消息才 SendMessage 了解；确认卡死才 TaskStop 重派；任务较多拆分多轮执行（不一次压给单个代理或单轮全派）。此前对 W9a 的催办属过早干扰（其当时正按自己节奏收尾并已主动回报）——已记为反例。
 
+### W5c 关闭（键钉扎复验五项全过，2026-11-14）
+
+复验经 SendMessage 回流（回复方式协议首次实战验证成功）：① 换键 fail-closed（FINGERPRINT_MISMATCH、恰 1 次取票、零 socket、父连接存活）；② 同键流式（三票互异、真回显）；③ 管理台真实换钥重验流（挂起→trustHostKey→重开+重签订阅命中新键，合法换钥不误伤）；④ D6 重放仍 401（审计链恰 2 条均为主动重放）；⑤ 双 runner 套件全绿（6+17+7+4 例）。**W5c 关闭**（`a68a755488c`+`512eaacdfb1`+独立测试 PASS+审计回派+复验五项）。**通道③全部完成**（W7b/W7c/W5c）。观察挂 P2：订阅级 mismatch 的 UI 接线缺口（fail-closed 不受影响）+ 面板重连烧票。
+
 ### W5c 审计有条件通过（1 major 安全回派，2026-11-14）
 
 审计（`test-reports/w5c-audit.md`）：blocker 0、**major 1（安全）**——重签票据绕过 AC-29 主机键钉扎：`webHostKeyVerdict` 唯一调用点在 BrowserProjectConnections.open，两条取票接线重签的新票对宿主自报的新 `host.e2eePublicKeyB64` 不比对 → 换键宿主可让存活会话新订阅静默建链（E2EE+deviceToken 流向换键方）。修法一行 fail-closed（重签 offer host key 与父钉扎值比对）+ 换键回归断言，已回派原代理。minor 6（legacy 重连无钉、§8.4 会话槽 2/3 撞 4431 无测试、e2e 只过滤 replayed 等）+ note 10（两个中间提交不可构建已按披露计 minor）。D6 未削弱实证：重放负向对照测试把一次性语义钉成可回归断言。归属核实 8/8 文件干净、与 a740b953faf 注记一致。
