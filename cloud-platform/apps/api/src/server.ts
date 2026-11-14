@@ -324,6 +324,58 @@ function isAdmin(user: User): boolean {
   return user.roles.includes('platform:admin')
 }
 
+/** The credential contract's permission bits; anything else is a dead grant bit. */
+const GRANT_PERMISSION_SET = new Set<string>([
+  'open',
+  'terminal',
+  'agent',
+  'file:read',
+  'file:write',
+  'browser',
+  'download'
+])
+
+/**
+ * Groups the platform has seen: the union of logged-in users' LDAP groups and
+ * groups already referenced by a grant, sorted and de-duplicated. No LDAP search
+ * exists, so this is the whole known set (design A1).
+ */
+function knownGroups(store: Store): string[] {
+  const groups = new Set<string>()
+  for (const user of store.users.values()) for (const group of user.groups) groups.add(group)
+  for (const grant of store.grants) {
+    if (grant.subjectType === 'group') groups.add(grant.subjectId)
+  }
+  return [...groups].sort()
+}
+
+type GrantSubjectVerdict =
+  | { ok: true; subjectType: 'user'; subjectId: string; username: string }
+  | { ok: true; subjectType: 'group'; subjectId: string }
+  | { ok: false; code: 'USER_NOT_FOUND' | 'GROUP_NOT_FOUND'; message: string }
+
+/**
+ * One resolver for the directory and grant writes: the ACL matches user ids and
+ * exact group names, so a typo must be refused instead of stored as a row that
+ * reads as granted and never fires.
+ */
+function resolveGrantSubject(
+  store: Store,
+  subjectType: 'user' | 'group',
+  submitted: string
+): GrantSubjectVerdict {
+  const subjectId = submitted.trim()
+  if (subjectType === 'group') {
+    return knownGroups(store).includes(subjectId)
+      ? { ok: true, subjectType, subjectId }
+      : { ok: false, code: 'GROUP_NOT_FOUND', message: '组不存在或平台未见过该组。' }
+  }
+  const user = store.users.get(subjectId) ?? store.usersByName.get(subjectId)
+  return user
+    ? { ok: true, subjectType, subjectId: user.id, username: user.username }
+    : { ok: false, code: 'USER_NOT_FOUND', message: '用户不存在。' }
+}
+
 export function createApp(config: ApiConfig): ApiHandle {
   const now = config.now ?? (() => Date.now())
   const accessTtlMs = config.accessTtlMs ?? ACCESS_TTL_MS
@@ -1886,29 +1938,41 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
 
       if (req.method === 'PUT' && action === '/grants') {
-        if (!auditAllowsMutations(res, traceId)) return
         if (!isAdmin(authed.user) && !authed.user.roles.includes('project:owner')) {
-          return error(res, 403, 'PERMISSION_DENIED', '需要平台管理权限。', traceId)
+          // AC-18: a refused grant write is a 403 *and* an audit event.
+          return denyPrivileged(res, traceId, authed.user, {
+            eventType: 'grant_update',
+            targetType: 'project',
+            targetId: projectId,
+            permission: 'platform:admin'
+          })
         }
+        if (!auditAllowsMutations(res, traceId)) return
         const body = await readJson(req)
         const subjectType = body.subjectType === 'group' ? 'group' : 'user'
         const submitted = String(body.subjectId ?? '').trim()
-        const permissions = Array.isArray(body.permissions)
-          ? (body.permissions as Permission[])
+        const submittedPermissions: unknown[] = Array.isArray(body.permissions)
+          ? body.permissions
           : []
+        // PUT is a whole-row replacement, so an out-of-contract bit rejects the
+        // row instead of silently storing a bit no host rule reads.
+        const permissions = submittedPermissions.filter(
+          (permission): permission is Permission =>
+            typeof permission === 'string' && GRANT_PERMISSION_SET.has(permission)
+        )
+        if (permissions.length !== submittedPermissions.length) {
+          return error(res, 400, 'GRANT_PERMISSION_INVALID', '权限位不在允许范围内。', traceId)
+        }
         // The ACL matches on the user id, so a username has to be resolved here:
         // storing it verbatim would mint a grant that reads as granted and never
-        // fires (M116-QA-001). An unknown user is refused, not stored dead.
-        let subjectId = submitted
-        let username: string | null = null
-        if (subjectType === 'user') {
-          const user = store.users.get(submitted) ?? store.usersByName.get(submitted)
-          if (!user) {
-            return error(res, 400, 'USER_NOT_FOUND', '用户不存在。', traceId)
-          }
-          subjectId = user.id
-          username = user.username
+        // fires (M116-QA-001). A group nobody has been seen in is the same dead
+        // row, so it is refused too (A2).
+        const resolved = resolveGrantSubject(store, subjectType, submitted)
+        if (!resolved.ok) {
+          return error(res, 400, resolved.code, resolved.message, traceId)
         }
+        const subjectId = resolved.subjectId
+        const username = resolved.subjectType === 'user' ? resolved.username : null
         if (
           !(await recordAudit(
             res,
@@ -2119,6 +2183,30 @@ export function createApp(config: ApiConfig): ApiHandle {
           version: store.policies.version
         })
       }
+    }
+
+    // ---- authorization directory (A1) ----
+    // Derived from what the platform already knows, so Mock and production share
+    // one implementation (no LDAP search adapter exists).
+    if (req.method === 'GET' && path === '/v1/directory') {
+      const authed = requireAuth()
+      if (!authed) return
+      if (!isAdmin(authed.user)) {
+        return denyPrivileged(res, traceId, authed.user, {
+          eventType: 'directory_read',
+          targetType: 'directory',
+          permission: 'platform:admin'
+        })
+      }
+      return json(res, 200, {
+        users: [...store.users.values()].map((user) => ({
+          id: user.id,
+          username: user.username,
+          displayName: user.displayName,
+          dept: user.dept
+        })),
+        groups: knownGroups(store)
+      })
     }
 
     // ---- hosts ----
