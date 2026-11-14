@@ -81,6 +81,18 @@ describe('multiplex 订阅帧的工作区边界（W9A-7）', () => {
     ])
   })
 
+  it('客户端作用域复合句柄先归一化（term:c1 寻址 term），与一元边界同一输入规整', async () => {
+    const { boundary, denials } = boundaryWith({})
+    await expect(boundary('term-own:client-1')).resolves.toEqual({ ok: true })
+    await expect(boundary('term-teammate:client-1')).resolves.toMatchObject({ ok: false })
+    expect(denials).toEqual([
+      {
+        details: { denial: 'PATH_OUTSIDE_ROOT', reason: 'workspace_scope' },
+        method: 'terminal.multiplex'
+      }
+    ])
+  })
+
   it('已退出（未知）句柄 fail-closed，审计 reason 指向句柄不可归属', async () => {
     const { boundary, denials } = boundaryWith({})
     await expect(boundary('term-exited')).resolves.toMatchObject({ ok: false })

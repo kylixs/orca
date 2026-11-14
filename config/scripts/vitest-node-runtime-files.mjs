@@ -20,6 +20,11 @@ export const NODE_RUNTIME_INCLUDE = [
   // runtime; bun's ws fails the throwaway certificate handshake and its worker
   // starves node-pty, so the echo could never arrive (same family as W5b defect B).
   'src/main/cloud-platform/cloud-entry-session-slots.test.ts',
+  // Why: the multiplex scope e2e is the only end-to-end proof of the cloud
+  // multiplex boundary (admit + cross-workspace refuse + audit) and drives the
+  // same real TLS runtime and real PTY, so bun would red it and silently retire
+  // the proof (W9A-7 audit MAJ-1, same family as W5b defect B).
+  'src/main/cloud-platform/cloud-terminal-multiplex-scope.test.ts',
   'src/renderer/src/lib/react-commit-cascade-observer.test.ts',
   'src/renderer/src/lib/react-commit-cascade-telemetry.test.ts',
   ...SQLITE_RUNTIME_INCLUDE,

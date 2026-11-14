@@ -43,6 +43,10 @@ import { TERMINAL_MULTIPLEX_WORKSPACE_SCOPE_ERROR } from './cloud-terminal-multi
  * into it. These drive the real stack (platform + TLS runtime + real PTY) with
  * real binary frames: an in-workspace subscribe must carry a live echo, and a
  * subscribe naming the shared checkout's PTY must be refused and audited.
+ *
+ * Runs in the node runtime pool (`vitest-node-runtime-files.mjs`): bun's ws
+ * fails the throwaway TLS certificate handshake, which would red the suite and
+ * retire this boundary's only end-to-end proof (W9A-7 audit MAJ-1).
  */
 
 const EVIDENCE_DIR = join(REPO_ROOT, 'cloud-platform', 'evidence', 'w9a7-multiplex')

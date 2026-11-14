@@ -28,14 +28,23 @@ function finalizeResolvedMultiplexPty(
   if (state.checkStreamTarget) {
     // Why before the capacity check: an out-of-scope probe must meet the
     // boundary, not consume a slot on its way to a quota error.
-    return state.checkStreamTarget(request.terminal).then((verdict) => {
-      if (!verdict.ok) {
-        state.sendStreamError(request.streamId, verdict.code)
+    return state.checkStreamTarget(request.terminal).then(
+      (verdict) => {
+        if (!verdict.ok) {
+          state.sendStreamError(request.streamId, verdict.code)
+          state.emit({ type: 'end', streamId: request.streamId })
+          return null
+        }
+        return admitIfCapacityAllows(state, request, ptyId)
+      },
+      // Why: a boundary that cannot answer (a throwing runtime resolver) must
+      // still end the stream — same answer as a handle the host cannot resolve.
+      () => {
+        state.sendStreamError(request.streamId, 'terminal_handle_stale')
         state.emit({ type: 'end', streamId: request.streamId })
         return null
       }
-      return admitIfCapacityAllows(state, request, ptyId)
-    })
+    )
   }
   return admitIfCapacityAllows(state, request, ptyId)
 }

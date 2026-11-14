@@ -1,5 +1,6 @@
 import type { CloudPathRoots } from './cloud-path-boundary'
 import { checkCloudTerminalHandleScope } from './cloud-terminal-handle-scope'
+import { cloudTerminalHandleOf } from './cloud-terminal-scope'
 import { pathDenialDetails, type CloudDenialDetails } from './cloud-denial-details'
 
 /**
@@ -35,10 +36,11 @@ export function createCloudMultiplexStreamBoundary(deps: {
   onCloudDenial?: CloudMultiplexDenialReporter
 }): CloudMultiplexStreamBoundary {
   return async (terminalHandle) => {
+    // Same input shaping as the unary handle guard: `term_x:c1` addresses `term_x`.
     const decision = await checkCloudTerminalHandleScope({
       runtime: deps.runtime,
       roots: deps.roots,
-      terminalHandle
+      terminalHandle: cloudTerminalHandleOf(terminalHandle)
     })
     if (decision.ok) {
       return { ok: true }
