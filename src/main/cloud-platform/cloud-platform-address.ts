@@ -22,7 +22,9 @@ export type CloudPlatformAddress = {
 
 /**
  * Resolves the address without ever throwing: an unusable value is skipped in
- * favour of the next tier, and a client with nothing resolves to null.
+ * favour of the next tier, and a client with nothing resolves to null. A managed
+ * build never reads the memory tier — a remembered address would otherwise pin
+ * the client to a platform its administrator did not choose.
  */
 export function resolveCloudPlatformAddress(input: {
   envApiUrl?: string
@@ -30,17 +32,25 @@ export function resolveCloudPlatformAddress(input: {
   packaged?: boolean
 }): CloudPlatformAddress {
   const allowLoopbackHttp = input.packaged !== true
+  const managed = isManagedOrcaBuild()
   const clean = (value: string | null | undefined): string | null =>
     cleanCloudServiceUrl(value ?? undefined, allowLoopbackHttp)
 
   const fromEnv = clean(input.envApiUrl)
   const fromMemory = clean(input.memoryApiUrl)
   const fromBuild = clean(builtInDefaultPlatformUrl())
-  const tiers: [CloudPlatformAddressSource, string | null][] = [
-    ['env', fromEnv],
-    ['memory', fromMemory],
-    ['build', fromBuild]
-  ]
+  // Why memory is skipped on a managed build: the pin must come from the build,
+  // not from whatever this OS account last signed in to.
+  const tiers: [CloudPlatformAddressSource, string | null][] = managed
+    ? [
+        ['env', fromEnv],
+        ['build', fromBuild]
+      ]
+    : [
+        ['env', fromEnv],
+        ['memory', fromMemory],
+        ['build', fromBuild]
+      ]
   const resolved = tiers.find(([, value]) => value !== null)
   const apiUrl = resolved?.[1] ?? null
 
@@ -49,7 +59,7 @@ export function resolveCloudPlatformAddress(input: {
     source: resolved?.[0] ?? 'none',
     // Why null-check apiUrl: a locked build with no resolvable address must still
     // let the user type one rather than dead-end the login screen.
-    locked: isManagedOrcaBuild() && apiUrl !== null
+    locked: managed && apiUrl !== null
   }
 }
 

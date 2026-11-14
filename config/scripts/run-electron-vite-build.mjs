@@ -4,6 +4,7 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 import { appendBuildOldSpaceOption } from './node-old-space-limit.mjs'
 import { RENDERER_BUILD_DIR, verifyRendererBootGraph } from './renderer-boot-graph.mjs'
+import { verifyCloudBuildDefines } from './verify-cloud-build-defines.mjs'
 
 const require = createRequire(import.meta.url)
 const electronVitePackageJson = require.resolve('electron-vite/package.json')
@@ -38,5 +39,15 @@ child.on('exit', (code, signal) => {
   const target = process.env.ORCA_ELECTRON_VITE_TARGET
   const builtRenderer =
     (!target || target === 'renderer') && fs.existsSync(path.join(RENDERER_BUILD_DIR, 'index.html'))
-  process.exit(builtRenderer ? verifyRendererBootGraph() : 0)
+  // Why only a full build: per-target children run concurrently, so neither may
+  // audit the bundle a sibling is still writing; the parallel runner audits once
+  // after every target has finished.
+  let exitCode = 0
+  if (!target) {
+    exitCode = verifyCloudBuildDefines()
+  }
+  if (exitCode === 0 && builtRenderer) {
+    exitCode = verifyRendererBootGraph()
+  }
+  process.exit(exitCode)
 })

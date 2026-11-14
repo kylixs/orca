@@ -93,7 +93,9 @@ function makeHarness(input: { apiUrl?: string; loginError?: Error } = {}): {
     {
       createClient: (options) => {
         const client = new FakeClient(options)
-        if (input.loginError) {
+        // Why the first client only: a scripted failure must not also fail the
+        // retry a later assertion signs in with.
+        if (input.loginError && created.length === 0) {
           client.loginError = input.loginError
         }
         created.push(client)
@@ -161,5 +163,34 @@ describe('登录携带平台地址（M119/W10）', () => {
       lastPlatformUrl: null,
       lastUsername: null
     })
+  })
+
+  it('登录失败不改写会话地址：同进程重试仍指向原平台', async () => {
+    const { session, created, userDataPath } = makeHarness({
+      loginError: Object.assign(new Error('bad credentials'), { code: 'INVALID_CREDENTIALS' })
+    })
+
+    await expect(session.login('zhangsan', 'wrong', TYPED_API_URL)).rejects.toMatchObject({
+      code: 'INVALID_CREDENTIALS'
+    })
+    await session.login('zhangsan', 'Passw0rd!')
+
+    expect(created).toHaveLength(2)
+    expect(created[0].optionsSeen.apiUrl).toBe(TYPED_API_URL)
+    // 失败的地址不残留：不带地址的第二次登录回到启动地址。
+    expect(created[1].optionsSeen.apiUrl).toBe(BOOT_API_URL)
+    expect(readCloudLoginMemory(userDataPath)).toEqual({
+      lastPlatformUrl: BOOT_API_URL,
+      lastUsername: 'zhangsan'
+    })
+  })
+
+  it('表单地址带 URL 凭据时剥离后再登录与记忆', async () => {
+    const { session, created, userDataPath } = makeHarness()
+
+    await session.login('zhangsan', 'Passw0rd!', 'https://user:secret@typed.example.com')
+
+    expect(created[0].optionsSeen.apiUrl).toBe(TYPED_API_URL)
+    expect(readCloudLoginMemory(userDataPath).lastPlatformUrl).toBe(TYPED_API_URL)
   })
 })

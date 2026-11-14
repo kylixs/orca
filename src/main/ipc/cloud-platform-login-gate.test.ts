@@ -183,6 +183,21 @@ describe('云端 IPC 装配（M119/W10）', () => {
     installed?.dispose()
   })
 
+  it('拒绝错误以错误码为消息：Electron 丢掉 code 属性后仍可映射文案', async () => {
+    await stubBuildFlags({ defaultUrl: 'https://build.example.com' })
+    const { installCloudPlatformIpc } = await import('./cloud-platform')
+    const installed = installCloudPlatformIpc({}, { userDataPath: makeUserDataPath() })
+
+    const failure = await loginReply('zhangsan', 'Passw0rd!', 'not a url').then(
+      () => null,
+      (error: unknown) => error
+    )
+
+    expect(failure).toBeInstanceOf(Error)
+    expect(failure).toHaveProperty('message', 'PLATFORM_ADDRESS_INVALID')
+    installed?.dispose()
+  })
+
   it('托管构建锁定地址：表单输入被忽略，登录始终指向锁定地址', async () => {
     await stubBuildFlags({ managed: true, defaultUrl: 'https://pinned.example.com' })
     const { installCloudPlatformIpc } = await import('./cloud-platform')
@@ -190,6 +205,31 @@ describe('云端 IPC 装配（M119/W10）', () => {
     expect(await loginContextReply()).toMatchObject({ locked: true })
 
     await loginReply('zhangsan', 'Passw0rd!', 'https://evil.example.com')
+
+    expect(sessions[0]?.logins).toEqual([
+      { username: 'zhangsan', password: 'Passw0rd!', apiUrl: 'https://pinned.example.com' }
+    ])
+    installed?.dispose()
+  })
+
+  it('托管构建无视登录记忆：本地残留的他平台地址改写不了锁定地址', async () => {
+    await stubBuildFlags({ managed: true, defaultUrl: 'https://pinned.example.com' })
+    const userDataPath = makeUserDataPath()
+    writeCloudLoginMemory(userDataPath, {
+      platformUrl: 'https://remembered-evil.example.com',
+      username: 'zhangsan'
+    })
+    const { installCloudPlatformIpc } = await import('./cloud-platform')
+    const installed = installCloudPlatformIpc({}, { userDataPath })
+
+    expect(await loginContextReply()).toEqual({
+      platformUrl: 'https://pinned.example.com',
+      // 记忆仍只用于用户名预填，不参与托管地址解析。
+      username: 'zhangsan',
+      locked: true
+    })
+
+    await loginReply('zhangsan', 'Passw0rd!', 'https://remembered-evil.example.com')
 
     expect(sessions[0]?.logins).toEqual([
       { username: 'zhangsan', password: 'Passw0rd!', apiUrl: 'https://pinned.example.com' }

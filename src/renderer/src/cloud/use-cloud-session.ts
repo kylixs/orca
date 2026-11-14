@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { errorCodeOf, readField } from '../../../shared/json-fields'
+import { readIpcErrorMessage } from '@/lib/ipc-error'
 import type * as cloudSubscription from './cloud-browser-bridge-subscription'
 import type {
   CloudArchiveProjectResult,
@@ -225,7 +226,12 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
       try {
         applyState(await active.login(username, password, platformUrl))
       } catch (cause) {
-        const code = errorCodeOf(cause) ?? (cause instanceof Error ? cause.message : '登录失败')
+        // Why the IPC read: Electron drops a main-process error's `code` property
+        // at the boundary, so the code survives only in the wrapped message.
+        const code =
+          errorCodeOf(cause) ??
+          readIpcErrorMessage(cause) ??
+          (cause instanceof Error ? cause.message : '登录失败')
         setError(code)
         setStatus('signed-out')
       }

@@ -103,6 +103,30 @@ describe('平台地址默认值优先级', () => {
     stubBuildFlags({ managed: true })
     expect(resolveCloudPlatformAddress({}).locked).toBe(false)
   })
+
+  it('托管构建忽略登录记忆：残留的他平台地址改写不了锁定地址', () => {
+    stubBuildFlags({ managed: true, defaultUrl: 'https://pinned.example.com' })
+    expect(
+      resolveCloudPlatformAddress({ memoryApiUrl: 'https://remembered-evil.example.com' })
+    ).toEqual({ apiUrl: 'https://pinned.example.com', source: 'build', locked: true })
+    // 运行时 env 的预填/覆盖语义在托管下不变。
+    expect(
+      resolveCloudPlatformAddress({
+        envApiUrl: 'https://env.example.com',
+        memoryApiUrl: 'https://remembered-evil.example.com'
+      })
+    ).toEqual({ apiUrl: 'https://env.example.com', source: 'env', locked: true })
+  })
+
+  it('env 或记忆里的地址带 URL 凭据时剥离后再使用', () => {
+    stubBuildFlags({ defaultUrl: 'https://build.example.com' })
+    expect(
+      resolveCloudPlatformAddress({ memoryApiUrl: 'https://user:secret@memory.example.com' })
+    ).toMatchObject({ apiUrl: 'https://memory.example.com', source: 'memory' })
+    expect(
+      resolveCloudPlatformAddress({ envApiUrl: 'https://user:secret@env.example.com' })
+    ).toMatchObject({ apiUrl: 'https://env.example.com', source: 'env' })
+  })
 })
 
 describe('登录使用的地址', () => {
@@ -119,6 +143,13 @@ describe('登录使用的地址', () => {
 
   it('非托管构建使用表单地址并去掉多余斜杠', () => {
     expect(loginPlatformAddress(RESOLVED, ' https://typed.example.com/ ', true)).toEqual({
+      ok: true,
+      apiUrl: 'https://typed.example.com'
+    })
+  })
+
+  it('表单地址里的 URL 凭据被剥离：密码不进地址，更不会进登录记忆', () => {
+    expect(loginPlatformAddress(RESOLVED, 'https://user:secret@typed.example.com/', true)).toEqual({
       ok: true,
       apiUrl: 'https://typed.example.com'
     })

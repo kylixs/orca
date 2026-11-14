@@ -57,6 +57,11 @@ const projects: CloudProjectSummary[] = [
 
 type Script = {
   loginError?: string
+  /**
+   * A login failure shaped the way Electron hands it over: the main-process
+   * error's `code` property is dropped and only the wrapped message survives.
+   */
+  loginErrorIpcMessage?: string
   /** What the bridge answers for the login form's prefill. */
   loginContext?: CloudLoginContext | null
   openResult?: CloudOpenResult
@@ -88,6 +93,9 @@ function makeBridge(script: Script = {}): TestBridge {
       platformUrl?: string
     ): Promise<CloudSessionState> => {
       bridge.loginPlatformUrl = platformUrl ?? null
+      if (script.loginErrorIpcMessage) {
+        throw new Error(script.loginErrorIpcMessage)
+      }
       if (script.loginError) {
         throw Object.assign(new Error(script.loginError), { code: script.loginError })
       }
@@ -214,6 +222,18 @@ describe('云端工作台界面', () => {
   it('未知错误码回退到原始码，便于排查而不是吞掉', async () => {
     await signIn(makeBridge({ loginError: 'SOME_NEW_CODE' }))
     await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('SOME_NEW_CODE'))
+  })
+
+  it('IPC 包裹的主进程错误码仍映射为可读提示（code 属性在边界丢失）', async () => {
+    await signIn(
+      makeBridge({
+        loginErrorIpcMessage:
+          "Error invoking remote method 'cloud:login': Error: PLATFORM_ADDRESS_INVALID"
+      })
+    )
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toContain('平台地址格式不正确')
+    )
   })
 
   it('登录后列出项目：离线标注、下载受限单独标注、可导出项目不标注', async () => {

@@ -1,5 +1,6 @@
 import { keyPairFromSecretKey } from '../../shared/e2ee-crypto'
 import { errorCodeOf } from '../../shared/json-fields'
+import { stripCloudUrlUserinfo } from '../../shared/cloud-service-url'
 import { createCloudAuthSession, type CloudAuthTokens } from './cloud-auth-session'
 import { writeCloudLoginMemory } from './cloud-login-memory'
 import type {
@@ -41,7 +42,7 @@ export class CloudSessionSavedLogin {
 
   /**
    * Options a manually logging-in client must use so its rotations are persisted.
-   * Why read live: a login that typed its own platform address re-points the
+   * Why read live: a login that committed its own platform address re-points the
    * shared options object, and this client must target the new address.
    */
   get restoredClientOptions(): CloudConnectOptions {
@@ -50,18 +51,28 @@ export class CloudSessionSavedLogin {
 
   /**
    * Starts a login, honouring the platform address the user typed (M119/W10):
-   * it re-points the shared session options, so every later client call and the
-   * saved login follow it. An address-less client with no typed one is a bug in
-   * the caller, not a request worth sending.
+   * the request targets it, while the shared session options keep the old
+   * address until the sign-in succeeded (`commitLoginAddress`) — a failed login
+   * must not leave the session pointed at a platform it never reached. The typed
+   * value is credential-stripped because a `user:pass@` paste would otherwise
+   * reach the login memory verbatim. An address-less client with no typed one is
+   * a bug in the caller, not a request worth sending.
    */
-  beginLogin(platformUrl?: string): CloudConnectOptions {
-    this.options.apiUrl = platformUrl?.trim() || this.options.apiUrl
-    if (!this.options.apiUrl) {
-      throw Object.assign(new Error('platform address required'), {
+  beginLogin(platformUrl?: string): { options: CloudConnectOptions; apiUrl: string } {
+    const apiUrl = stripCloudUrlUserinfo(platformUrl?.trim() || '') || this.options.apiUrl
+    if (!apiUrl) {
+      // Why the message is the code: Electron drops custom error properties at
+      // the IPC boundary, and the renderer maps the surviving message to copy.
+      throw Object.assign(new Error('PLATFORM_ADDRESS_REQUIRED'), {
         code: 'PLATFORM_ADDRESS_REQUIRED'
       })
     }
-    return this.restoredClientOptions
+    return { options: { ...this.restoredClientOptions, apiUrl }, apiUrl }
+  }
+
+  /** Re-points the shared session options once the sign-in actually succeeded. */
+  commitLoginAddress(apiUrl: string): void {
+    this.options.apiUrl = apiUrl
   }
 
   /** After a manual login: remember what a later rotation must write and do the first write. */

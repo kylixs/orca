@@ -156,10 +156,14 @@ export class CloudSessionService {
     this.connections.closeAll()
     this.client?.close()
     this.client = null
-    const client = this.createClient(this.savedLogin.beginLogin(platformUrl))
+    const started = this.savedLogin.beginLogin(platformUrl)
+    const client = this.createClient(started.options)
     const user = await client.login(username, password)
     const projects = await client.listProjects()
     this.client = client
+    // Why not earlier: only a successful sign-in may re-point the session, the
+    // saved login and every later rotation at the typed address.
+    this.savedLogin.commitLoginAddress(started.apiUrl)
     this.savedLogin.attach(client.deviceIdentity(), user.displayName, username)
     this.state = {
       status: 'signed-in',

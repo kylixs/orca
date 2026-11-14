@@ -79,7 +79,9 @@ export function registerCloudPlatformHandlers(
       }
       const address = options.loginAddress(platformUrl)
       if (!address.ok) {
-        throw Object.assign(new Error('platform address rejected'), { code: address.code })
+        // Why the message is the code: Electron drops custom error properties at
+        // the IPC boundary, and the renderer maps the surviving message to copy.
+        throw Object.assign(new Error(address.code), { code: address.code })
       }
       return session.login(username, password, address.apiUrl)
     }

@@ -78,6 +78,16 @@ const ORCA_DEFAULT_PLATFORM_URL_LITERAL = JSON.stringify(
 )
 const ORCA_MANAGED_BUILD_LITERAL = String(process.env.ORCA_MANAGED_BUILD === '1')
 
+// Why both targets: electron-vite merges each target's config separately, so a
+// define that lives only on `main` leaves `src/shared/cloud-build-flags.ts` with
+// free identifiers in the preload bundle — the exposure predicate then sees no
+// cloud build and never exposes window.api.cloud (W10 B-1). The renderer never
+// imports that module, so it needs no entry.
+const ORCA_CLOUD_PLATFORM_DEFINES = {
+  ORCA_DEFAULT_PLATFORM_URL: ORCA_DEFAULT_PLATFORM_URL_LITERAL,
+  ORCA_MANAGED_BUILD: ORCA_MANAGED_BUILD_LITERAL
+}
+
 function createStartupDiagnosticsBanner(chunkName: string): string {
   return `
 ;(() => {
@@ -314,8 +324,7 @@ export const electronViteConfig: UserConfig = {
       ORCA_BUILD_IDENTITY: ORCA_BUILD_IDENTITY_LITERAL,
       ORCA_POSTHOG_WRITE_KEY: ORCA_POSTHOG_WRITE_KEY_LITERAL,
       ORCA_DIAGNOSTICS_TOKEN_URL: ORCA_DIAGNOSTICS_TOKEN_URL_LITERAL,
-      ORCA_DEFAULT_PLATFORM_URL: ORCA_DEFAULT_PLATFORM_URL_LITERAL,
-      ORCA_MANAGED_BUILD: ORCA_MANAGED_BUILD_LITERAL
+      ...ORCA_CLOUD_PLATFORM_DEFINES
     },
     // Why: @xterm/headless declares "exports": null in package.json, which
     // prevents Vite's default resolver from finding the CJS entry. Point
@@ -330,11 +339,9 @@ export const electronViteConfig: UserConfig = {
     }
   },
   preload: {
-    build: {
-      externalizeDeps: {
-        exclude: ['zod']
-      }
-    }
+    build: { externalizeDeps: { exclude: ['zod'] } },
+    // Why: the exposure predicate reads them; see ORCA_CLOUD_PLATFORM_DEFINES.
+    define: { ...ORCA_CLOUD_PLATFORM_DEFINES }
   },
   renderer: {
     resolve: {

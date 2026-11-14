@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { cleanCloudServiceOrigin } from './cloud-service-url'
+import { cleanCloudServiceOrigin, cleanCloudServiceUrl } from './cloud-service-url'
 it.each(['ftp://localhost', 'file://localhost', 'ws://localhost', 'http://example.com'])(
   'rejects %s even with the development loopback exception',
   (url) => {
@@ -10,4 +10,15 @@ it('allows HTTP only for explicitly enabled loopback development', () => {
   expect(cleanCloudServiceOrigin('http://localhost:8080', true)).toBe('http://localhost:8080')
   expect(cleanCloudServiceOrigin('http://localhost:8080', false)).toBeNull()
   expect(cleanCloudServiceOrigin('https://push.onorca.dev', false)).toBe('https://push.onorca.dev')
+})
+it('strips URL credentials so none ever reaches a stored platform address', () => {
+  expect(cleanCloudServiceUrl('https://user:secret@cloud.example.com', false)).toBe(
+    'https://cloud.example.com'
+  )
+  expect(cleanCloudServiceUrl('https://user@cloud.example.com', false)).toBe(
+    'https://cloud.example.com'
+  )
+  expect(cleanCloudServiceOrigin('https://user:secret@cloud.example.com', false)).toBe(
+    'https://cloud.example.com'
+  )
 })

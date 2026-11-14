@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { verifyCloudBuildDefines } from './verify-cloud-build-defines.mjs'
 
 const buildScript = fileURLToPath(new URL('./run-electron-vite-build.mjs', import.meta.url))
 // Keep this wrapper CommonJS (the `.cts` extension) so electron-vite can load
@@ -43,3 +44,7 @@ if (failures.length > 0) {
   }
   process.exit(1)
 }
+
+// Why here and not in each child: the per-target builds share out/, so only a
+// run where every target has finished may audit the merged bundles.
+process.exit(verifyCloudBuildDefines())
