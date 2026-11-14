@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import {
   _electron as electron,
@@ -34,6 +34,11 @@ import {
   waitForActiveTerminalManager
 } from './helpers/terminal'
 import { clickFileInExplorer, openFileExplorer } from './helpers/file-explorer'
+import {
+  fillCloudLoginDialog,
+  openCloudLoginDialog,
+  submitCloudLoginDialog
+} from './helpers/cloud-status-bar-sign-in'
 
 /**
  * W9a: the desktop golden journey (business-chain-tests §1, line A) as one
@@ -41,6 +46,10 @@ import { clickFileInExplorer, openFileExplorer } from './helpers/file-explorer'
  * (TLS + PTY + projectsRoot) and a real client signing in. The admin half is
  * the C3/C4/C5 chain the journey depends on, driven over the platform API the
  * same way the install wizard and the admin console drive it.
+ *
+ * Sign-in follows the W11 user path: the workspace shell lands first and the
+ * status bar's cloud segment opens the sign-in dialog — there is no full-page
+ * login takeover any more.
  *
  * Every step is timed into a timeline JSON and key moments are screenshotted,
  * so a run leaves `cloud-platform/evidence/journey-golden-a/` behind.
@@ -50,6 +59,8 @@ const HOST_NAME = 'journey-a-host'
 const PROJECT_KEY = 'journey-payment'
 const PROJECT_NAME = 'journey-payment'
 const DEVELOPER = 'zhangsan'
+/** The platform seed's profile for the developer account; the signed-in segment shows it. */
+const DEVELOPER_DISPLAY_NAME = '张伟'
 const PASSWORD = 'Passw0rd!'
 const RUN_MARKER = `orca-journey-${Date.now()}`
 const FILE_NAME = 'journey-note.txt'
@@ -338,10 +349,10 @@ test('W9a 桌面黄金旅程：登录 → 打开项目（直连）→ 终端 →
   expect(stack, 'stack must have started').toBeTruthy()
   const session = stack!
 
-  // ── A2 · 开发者登录 ────────────────────────────────────────────────
+  // ── A2 · 开发者登录（W11：状态栏 segment → 弹框）───────────────────
   const entered = await journeyStep(
     'A2-login',
-    '开发者登录（真实平台账号，平台地址预填）',
+    '开发者登录（状态栏「登录云端平台」segment → 弹框，平台地址预填）',
     async () => {
       const client = await launchOrca(
         cloudClientEnv(session.platform.url),
@@ -350,21 +361,23 @@ test('W9a 桌面黄金旅程：登录 → 打开项目（直连）→ 终端 →
       )
       const page = await client.firstWindow({ timeout: 120_000 })
       await page.waitForLoadState('domcontentloaded')
-      await page.waitForSelector('#cloud-username', { state: 'visible', timeout: 60_000 })
-      expect(
-        await page.inputValue('#cloud-platform-address'),
-        'platform address must be prefilled from the runtime env'
-      ).toBe(session.platform.url)
-      await shoot(page, '01-login-form')
-      await page.fill('#cloud-username', DEVELOPER)
-      await page.fill('#cloud-password', PASSWORD)
-      await page.click('button[type="submit"]')
-      // The login form unmounting is the sign-in boundary; the workspace entry
-      // then registers projects and opens the first one.
-      await page.waitForSelector('#cloud-username', { state: 'detached', timeout: 120_000 })
+      // W11: the workspace shell lands first; the sign-in dialog hangs off the
+      // status bar segment, and the address comes from the runtime login context.
+      const shownAddress = await openCloudLoginDialog(page)
+      expect(shownAddress, 'platform address must be prefilled from the runtime env').toBe(
+        session.platform.url
+      )
+      await shoot(page, '01-login-dialog')
+      await fillCloudLoginDialog(page, { username: DEVELOPER, password: PASSWORD })
+      await submitCloudLoginDialog(page, { displayName: DEVELOPER_DISPLAY_NAME })
+      await shoot(page, '02-signed-in')
       return { client, page }
     },
-    () => ({ platformUrl: session.platform.url, developer: DEVELOPER })
+    () => ({
+      platformUrl: session.platform.url,
+      developer: DEVELOPER,
+      entry: 'status-bar-segment-dialog'
+    })
   )
   const { client, page } = entered
 
@@ -464,6 +477,17 @@ test('W9a 桌面黄金旅程：登录 → 打开项目（直连）→ 终端 →
           Array.isArray((result.open?.connectDiagnostics as { probes?: unknown[] })?.probes),
           'connect diagnostics must carry the probe list'
         ).toBe(true)
+        // W9A-1 regression: the row appeared and vanished moments after sign-in
+        // once the startup catalog load pruned it — it has to survive the settle.
+        await page.waitForTimeout(2_000)
+        expect(
+          await page.evaluate(
+            (projectPath) =>
+              (window.__store?.getState()?.repos ?? []).some((repo) => repo.path === projectPath),
+            session.projectPath
+          ),
+          'the cloud project row must survive the post-open settle window'
+        ).toBe(true)
         await shoot(page, '02-workspace-opened')
         return result
       },
@@ -551,6 +575,18 @@ test('W9a 桌面黄金旅程：登录 → 打开项目（直连）→ 终端 →
         return { file: FILE_NAME }
       },
       (result) => ({ file: result.file, expectedContent: FILE_MARKER })
+    )
+
+    // ── A6 · 旅程证据落盘（时间线 + 关键截图）────────────────────────
+    await journeyStep(
+      'A6-evidence',
+      '旅程证据落盘：时间线与关键截图齐备',
+      async () => {
+        const missing = shots.filter((name) => !existsSync(path.join(EVIDENCE_DIR, name)))
+        expect(missing, `screenshots missing on disk: ${missing.join(', ')}`).toEqual([])
+        return { screenshots: shots.length, timelineSteps: timeline.length }
+      },
+      (result) => result
     )
   } finally {
     await closeElectronAppForE2E(client).catch(() => undefined)

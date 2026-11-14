@@ -5,8 +5,7 @@ import {
   _electron as electron,
   expect,
   test,
-  type ElectronApplication,
-  type Page
+  type ElectronApplication
 } from '@stablyai/playwright-test'
 import { closeElectronAppForE2E } from './helpers/electron-process-shutdown'
 import { createElectronHomeIsolation } from './helpers/electron-home-isolation'
@@ -25,6 +24,11 @@ import {
   type CloudPlatform,
   type TcpDelayHop
 } from './helpers/cloud-platform-stack'
+import {
+  fillCloudLoginDialog,
+  openCloudLoginDialog,
+  submitCloudLoginDialog
+} from './helpers/cloud-status-bar-sign-in'
 
 /**
  * M107 (AC-01 / G-12 remainder): the developer's native window — not the admin
@@ -34,7 +38,8 @@ import {
  * The first run of this stack found the host serving plain `ws://` while the
  * platform hands out `wss://`, so a developer's projects failed with EPROTO.
  * M107-0 now proves the host serves TLS and publishes the certificate it serves;
- * M107-1 measures the sign-in to project-row budget on that stack.
+ * M107-1 measures the sign-in to project-row budget on that stack, signing in
+ * through the W11 status-bar segment dialog like a user does.
  */
 
 const CLIENT_BUDGET_MS = 1_500
@@ -186,10 +191,14 @@ async function signIn(
   try {
     const page = await app.firstWindow({ timeout: 120_000 })
     await page.waitForLoadState('domcontentloaded')
-    await page.waitForSelector('#cloud-username', { state: 'visible', timeout: 60_000 })
-    await fillCredentials(page)
+    // W11: sign-in lives in the status bar segment's dialog, not a full page.
+    await openCloudLoginDialog(page)
+    await fillCloudLoginDialog(page, { username: 'zhangsan', password: 'Passw0rd!' })
     const started = Date.now()
-    await page.click('button[type="submit"]')
+    await submitCloudLoginDialog(page, {
+      displayName: DEVELOPER_DISPLAY_NAME,
+      timeoutMs: 60_000
+    })
     // User-visible signal: the project row is on screen. A failure banner names the
     // project with a trailing code in full-width parentheses, so that does not count.
     await page.waitForFunction(
@@ -215,22 +224,10 @@ async function signIn(
 }
 
 /**
- * The panel remounts once session restore settles (loading → signed-out), which
- * drops anything typed before it; type until the submit button accepts the form.
+ * The platform seed's profile for the developer account; the signed-in segment
+ * shows it, which is how a sample knows the dialog round really signed in.
  */
-async function fillCredentials(page: Page): Promise<void> {
-  const enabled = (): boolean =>
-    !document.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled
-  for (let attempt = 0; attempt < 10; attempt += 1) {
-    await page.fill('#cloud-username', 'zhangsan')
-    await page.fill('#cloud-password', 'Passw0rd!')
-    await page.waitForTimeout(100)
-    if (await page.evaluate(enabled)) {
-      return
-    }
-  }
-  throw new Error('login form never became submittable')
-}
+const DEVELOPER_DISPLAY_NAME = '张伟'
 
 let stack: Stack | null = null
 
