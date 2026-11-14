@@ -1,11 +1,13 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  BROWSER_ROUTE_KEY_PATTERN,
   createRelayNodeRegistry,
   ipOfDirectAddr,
   parseRelayRegistration,
   routeKeyFromDirectAddrs
 } from '../apps/api/src/relay-nodes.ts'
+import { parseBrowserPath } from '../apps/relay/src/relay.ts'
 
 /**
  * M114b: a relay's dialable address decides what `/connect` hands a client, so
@@ -85,6 +87,60 @@ describe('中继注册体解析：browserHost 白名单（W6b）', () => {
         undefined,
         bad
       )
+    }
+  })
+
+  test('白名单外的宣告打 warn：含形状不含值，同一值不重复刷屏', () => {
+    const warns: string[] = []
+    const original = console.warn
+    console.warn = (...parts: unknown[]) => {
+      warns.push(parts.map(String).join(' '))
+    }
+    try {
+      const bad = 'https://warn-probe.example.test'
+      parseRelayRegistration({ port: 18443, browserHost: bad })
+      parseRelayRegistration({ port: 18443, browserHost: bad })
+      parseRelayRegistration({ port: 18443 })
+      parseRelayRegistration({ port: 18443, browserHost: '   ' })
+    } finally {
+      console.warn = original
+    }
+    assert.equal(warns.length, 1, warns.join('\n'))
+    assert.match(warns[0], /not a bare host\[:port\]/)
+    assert.equal(
+      warns[0].includes('warn-probe.example.test'),
+      false,
+      'the untrusted value must not reach the log'
+    )
+  })
+})
+
+describe('routeKey 形状契约：平台闸门与中继 /h/ 解析器对拍（MIN-3）', () => {
+  // The two deployment units each hold their own copy of `^[A-Za-z0-9_-]+$`;
+  // a one-sided tightening would mint entry URLs the relay answers with 404.
+  // Keys containing `/` are out of scope: the relay splits the URL path on it,
+  // so such input is never a single key on that side.
+  const samples = [
+    ['dev-001', true],
+    ['ip-10-0-0-8', true],
+    ['a_b', true],
+    ['W6b_Entry-1', true],
+    ['-lead', true],
+    ['w6b.bad.key', false],
+    ['a b', false],
+    ['a%2Fb', false],
+    ['trail.', false],
+    ['..', false],
+    ['', false],
+    ['键', false]
+  ] as const
+
+  test('同一组样本两侧判定一致', () => {
+    for (const [key, accepted] of samples) {
+      const platform = BROWSER_ROUTE_KEY_PATTERN.test(key)
+      const relay = parseBrowserPath(`/h/${key}/web-index.html`) !== null
+      assert.equal(platform, relay, `both sides must agree on ${JSON.stringify(key)}`)
+      assert.equal(platform, accepted, `verdict for ${JSON.stringify(key)}`)
     }
   })
 })

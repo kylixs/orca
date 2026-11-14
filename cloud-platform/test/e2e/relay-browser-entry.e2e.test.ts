@@ -20,15 +20,25 @@ const DEVICE_PUBKEY = Buffer.from('w6b-browser-entry').toString('base64')
 
 let api: Service
 let quietApi: Service
+let lapseApi: Service | null = null
 let announcingRelay: Service
 let silentRelay: Service
+let lapseRelay: Service | null = null
 let bareRelay: RelayHandle | null = null
 let quietRelay: RelayHandle | null = null
 let adminToken = ''
 let devToken = ''
 let devDeviceId = ''
+/** Runner's own RELAY_BROWSER_PUBLIC_HOST, put back in after(). */
+let exportedPublicHost: string | undefined
 
-type RelayRow = { id: string; browserHost: string; host: string; port: number }
+type RelayRow = {
+  id: string
+  browserHost: string
+  host: string
+  port: number
+  online: boolean
+}
 type HostRow = { id: string; name: string; browserEntryUrl: string }
 type ProjectRow = { id: string; key: string; browserEntryUrl: string }
 type ConnectBody = { host?: { browserEntryUrl?: string }; error?: { code: string } }
@@ -37,8 +47,8 @@ function auth(token: string): Record<string, string> {
   return { 'content-type': 'application/json', authorization: `Bearer ${token}` }
 }
 
-async function relayList(token = adminToken): Promise<RelayRow[]> {
-  const res = await fetch(`${api.url}/v1/relays`, { headers: auth(token) })
+async function relayList(base = api.url, token = adminToken): Promise<RelayRow[]> {
+  const res = await fetch(`${base}/v1/relays`, { headers: auth(token) })
   assert.equal(res.status, 200)
   return ((await res.json()) as { relays: RelayRow[] }).relays
 }
@@ -63,8 +73,8 @@ async function waitForRelay(
   }
 }
 
-async function hostRows(base = api.url): Promise<HostRow[]> {
-  const res = await fetch(`${base}/v1/hosts`, { headers: auth(adminToken) })
+async function hostRows(base = api.url, token = adminToken): Promise<HostRow[]> {
+  const res = await fetch(`${base}/v1/hosts`, { headers: auth(token) })
   assert.equal(res.status, 200)
   return ((await res.json()) as { hosts: HostRow[] }).hosts
 }
@@ -75,15 +85,20 @@ async function projectRows(base = api.url): Promise<ProjectRow[]> {
   return ((await res.json()) as { projects: ProjectRow[] }).projects
 }
 
-async function registerHost(name: string, relayRoute: string, base = api.url): Promise<HostRow> {
+async function registerHost(
+  name: string,
+  relayRoute: string,
+  base = api.url,
+  token = adminToken
+): Promise<HostRow> {
   const tokenRes = await fetch(`${base}/v1/hosts/tokens`, {
     method: 'POST',
-    headers: auth(adminToken)
+    headers: auth(token)
   })
-  const { token } = (await tokenRes.json()) as { token: string }
+  const { token: hostToken } = (await tokenRes.json()) as { token: string }
   const res = await fetch(`${base}/v1/hosts/register`, {
     method: 'POST',
-    headers: auth(token),
+    headers: auth(hostToken),
     body: JSON.stringify({
       name,
       fingerprint: `sha256:${name}`,
@@ -98,12 +113,17 @@ async function registerHost(name: string, relayRoute: string, base = api.url): P
     })
   })
   assert.equal(res.status, 201, await res.text())
-  const view = (await hostRows(base)).find((h) => h.name === name)
+  const view = (await hostRows(base, token)).find((h) => h.name === name)
   assert.ok(view, `host ${name} missing`)
   return view
 }
 
 before(async () => {
+  // spawnService forwards process.env and in-process relays read this var at
+  // announce time, so a developer's exported RELAY_BROWSER_PUBLIC_HOST would
+  // leak into the "silent" relays below and fake a failure. Restored in after().
+  exportedPublicHost = process.env.RELAY_BROWSER_PUBLIC_HOST
+  delete process.env.RELAY_BROWSER_PUBLIC_HOST
   api = await spawnService(
     'apps/api/src/server.ts',
     { PORT: '0', INTERNAL_TOKEN },
@@ -159,6 +179,8 @@ before(async () => {
     'relay-w6b-silent'
   )
   // Browser mode entirely off: the pre-W6b body, which must stay wire compatible.
+  // It never reads the public-host env — the absent options.browser short-circuits
+  // the announce branch — so the sanitization above is belt-and-braces here.
   bareRelay = await startRelay({
     port: 0,
     id: 'relay-w6b-bare',
@@ -168,12 +190,15 @@ before(async () => {
 }, 120_000)
 
 after(async () => {
+  if (exportedPublicHost !== undefined) process.env.RELAY_BROWSER_PUBLIC_HOST = exportedPublicHost
   await bareRelay?.close()
   await quietRelay?.close()
+  await lapseRelay?.stop()
   await announcingRelay?.stop()
   await silentRelay?.stop()
   await api?.stop()
   await quietApi?.stop()
+  await lapseApi?.stop()
 })
 
 describe('W6b 平台浏览器入口字段', () => {
@@ -323,5 +348,75 @@ describe('W6b 平台浏览器入口字段', () => {
     } finally {
       adminToken = previousToken
     }
+  }, 60_000)
+
+  test('宣告中继掉线超窗：last-known 死宣告不再拼出入口 URL', async () => {
+    // Alive window 6s against the 2s announce beat: a live relay stays
+    // comfortably healthy, a stopped one lapses within one window.
+    lapseApi = await spawnService(
+      'apps/api/src/server.ts',
+      { PORT: '0', INTERNAL_TOKEN, ORCA_CLOUD_RELAY_ALIVE_MS: '6000' },
+      /\[api\] listening on http:\/\/127\.0\.0\.1:(\d+)/,
+      'api-w6b-lapse'
+    )
+    const admin = await fetch(`${lapseApi.url}/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password: 'Adm1n!', deviceName: 'w6b-lapse-admin' })
+    })
+    const lapseToken = ((await admin.json()) as { accessToken?: string }).accessToken ?? ''
+    assert.notEqual(lapseToken, '')
+    const certs = makeTlsCerts()
+    const relay = await spawnService(
+      'apps/relay/src/relay.ts',
+      {
+        PORT: '0',
+        API_URL: lapseApi.url,
+        INTERNAL_TOKEN,
+        RELAY_BROWSER_TLS_CERT: certs.cert,
+        RELAY_BROWSER_TLS_KEY: certs.key,
+        RELAY_BROWSER_PORT: '0',
+        RELAY_BROWSER_PUBLIC_HOST: BROWSER_PUBLIC_HOST
+      },
+      /\[relay\] listening on :(\d+)/,
+      'relay-w6b-lapse'
+    )
+    lapseRelay = relay
+    const announced = await waitForRelay(
+      (row) => row.port === relay.port,
+      'lapse',
+      lapseApi.url,
+      lapseToken
+    )
+    assert.equal(announced.browserHost, BROWSER_PUBLIC_HOST)
+    const live = await registerHost('w6b-lapse-host', 'w6b-lapse-host', lapseApi.url, lapseToken)
+    assert.equal(
+      live.browserEntryUrl,
+      `https://${BROWSER_PUBLIC_HOST}/h/w6b-lapse-host/web-index.html`,
+      'a live announcement still names the entry'
+    )
+
+    await relay.stop()
+    // The registry never evicts, so the row stays listed with its stale
+    // announcement — it is the entry URL that must go, not the row.
+    const deadline = Date.now() + 20_000
+    let lapsed: RelayRow | undefined
+    for (;;) {
+      const rows = await relayList(lapseApi.url, lapseToken)
+      const row = rows.find((candidate) => candidate.port === relay.port)
+      if (row && !row.online) {
+        lapsed = row
+        break
+      }
+      if (Date.now() > deadline) assert.fail(`relay never lapsed: ${JSON.stringify(rows)}`)
+      await new Promise((resolve) => setTimeout(resolve, 300))
+    }
+    assert.equal(lapsed.browserHost, BROWSER_PUBLIC_HOST, 'last-known announcement stays listed')
+    const after = (await hostRows(lapseApi.url, lapseToken)).find(
+      (h) => h.name === 'w6b-lapse-host'
+    )
+    assert.ok(after, 'host missing')
+    assert.equal(after.browserEntryUrl, '', 'a dead announcement must not mint an entry URL')
+    saveEvidence(EVIDENCE, 'lapsed-relay-entry.json', { lapsed, host: after })
   }, 60_000)
 })

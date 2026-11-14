@@ -644,13 +644,13 @@ export function createApp(config: ApiConfig): ApiHandle {
    */
   function browserEntryUrlFor(routeKey: string | null): string {
     if (!routeKey || !BROWSER_ROUTE_KEY_PATTERN.test(routeKey)) return ''
-    const nowMs = now()
-    const live = relayNodes.healthy(nowMs, relayAliveMs)
-    const chosen = live.length > 0 ? live : relayNodes.all().slice(-1)
-    const edge = chosen.find((node) => node.browserHost !== '')
+    // Why no last-known fallback, unlike relayEndpointsFor: a desktop client
+    // probes its endpoints and can fail over to a direct address, a browser
+    // cannot — a dead relay's URL is only an error page. Accepted cost: a
+    // control-plane blip hides the entry for one announce cycle (<=2s).
+    const edge = relayNodes.healthy(now(), relayAliveMs).find((node) => node.browserHost !== '')
     return edge ? `https://${edge.browserHost}/h/${routeKey}/web-index.html` : ''
   }
-
 
   /**
    * Per-project admin entry (FR-3.8): the host's first TLS direct address serves

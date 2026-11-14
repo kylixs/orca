@@ -116,6 +116,20 @@ function isBrowserHostForm(value: string): boolean {
   return port === undefined || (Number(port) >= 1 && Number(port) <= 65535)
 }
 
+/**
+ * A rejected announcement silently removes every entry URL, so it must be
+ * visible. Deduped because the announce loop re-registers every 2s.
+ */
+let lastRejectedBrowserHost: string | undefined
+function warnRejectedBrowserHost(value: string): void {
+  if (value === lastRejectedBrowserHost) return
+  lastRejectedBrowserHost = value
+  // The value is untrusted input, so only its shape reaches the log.
+  console.warn(
+    `[relay-nodes] rejected browserHost announcement: not a bare host[:port] (${value.length} chars); entry URLs stay empty`
+  )
+}
+
 /** Reads a relay registration body; a bad port is the only thing that invalidates it. */
 export function parseRelayRegistration(
   body: unknown
@@ -128,10 +142,13 @@ export function parseRelayRegistration(
   const rawHost = field(body, 'host')
   const host = typeof rawHost === 'string' && rawHost.trim().length > 0 ? rawHost.trim() : undefined
   const rawBrowserHost = field(body, 'browserHost')
-  const browserHost =
-    typeof rawBrowserHost === 'string' && isBrowserHostForm(rawBrowserHost.trim())
-      ? rawBrowserHost.trim()
-      : undefined
+  let browserHost: string | undefined
+  if (typeof rawBrowserHost === 'string') {
+    const trimmed = rawBrowserHost.trim()
+    // Only a stated-but-rejected value warns: an absent field is "edge off".
+    if (isBrowserHostForm(trimmed)) browserHost = trimmed
+    else if (trimmed !== '') warnRejectedBrowserHost(trimmed)
+  }
   const rawId = field(body, 'id')
   const id = typeof rawId === 'string' ? rawId : ''
   return id === '' ? { host, browserHost, port } : { id, host, browserHost, port }
