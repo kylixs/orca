@@ -2564,6 +2564,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W7a 关闭（复验全过，2026-11-14）
+
+复验（`evidence/w7a-fix-verify/`）：两套件各跑两遍（树内 HEAD + `git archive` 快照隔离，数字一致）9/0 + 6/0；自有探针 35 断言 0 失败——无 grant admin 签发 403 permission_lost（用无 grant 行宿主证明 403 只能归因新授权门）、授 open 后 201、非法直连地址 400 HOST_UNAVAILABLE（ denied 审计 reason=host_unavailable）、合法恢复 201；既有 admin 有 grant 流程零破坏；code 明文零入审计。**W7a 关闭**（`2f0b9657217` + `8fc140952e9` + 独立测试 33 探针 + 审计 + 复验，三方齐备）。通道①放行 **W3**（详情入口+双入口布局），已派实现代理；其观察到并行 agent 已对 server.ts 落 browser-mode 入口 URL（W6b 接近完成）。运行时观察挂账：26 个 PPID=1 孤儿 api server（并行验证代理遗留，待统一清理）；isDirectAddrForm 仅校验首地址为保守取向。
+
 ### W7a 修复完成（待独立复验，2026-11-14）
 
 提交 `8fc140952e9`（2 文件 +141/−28）：j-1 签发侧与换发侧逐字同谓词 open 检查（admin/auditor 旁路也拒，403 permission_lost + denied 审计，宿主门之前保证轨迹确定）；`isDirectAddrForm()` 校验（6 种非法地址注入逐个 400、`[::1]:port` 合法恢复）；oxfmt 2 行。web-handoff 9/0 + dir 套件 6/0。遗留如实：限流/审计灌水面/抽取 web-handoff.ts → M120 清理令；换发设备三元组 → W7b；入库侧地址校验与 /connect 同类问题 → W6b/M120。**索引冲突第三次**：修复代理提交时我的 docs 快照提交卷入其暂存，代理 soft-reset 拆分（fix `8fc140952e9` + docs `536029c6c60`），树逐字节一致。已派独立复验，通过即关闭 W7a 放行①的 W3。
