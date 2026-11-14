@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### 本地环境重建完成（2026-11-14，人工验收就绪）
+
+五步全过：① 平台 PID 32632 :18787（种子 admin/Adm1n!、zhangsan/Passw0rd!+team-payment）；② out/web 重建含 W13b 云工作区+O1-c 短路标记；③ 宿主重注册 **dev-local-02=host_017a51a6 online**（新一次性令牌+清旧凭据+HOME 边界重启，TLS 沿用）；④ 演示项目 **proj_433e52ea**（demo-app，team-payment）+ **proj_a7542b5d**（zhangsan 自建=U15 修复手测样本）；⑤ 终验：zhangsan 登录→3 项目可见→connect 200 双过（注意 connect 须带 clientVersion/deviceId 否则 426）。**用户手测指引**：http://127.0.0.1:18787 管理台/登录；遗留=forwarder 自环僵死连接（客户端卡旧连接就重启该进程）、全内存 store（平台重启即重置）、无 relay 节点（仅 direct）。证据 evidence/env-rebuild-2026-11-14/。空槽暂候 W13c-2 落地（O1-g 与其同域串行）。
+
 ### U30 落地（2026-11-14）+ 批次边界完整
 
 `830119d7ee7`（7 文件 +315/−4）：六项全交付（m-1 select.invalid、m-2 blur 即校、m-4 dirty 行高亮用既有警示色、m-5 批存冻结 14 行控件、m-7 策略行重绘保 scrollTop+焦点、m-6 设计文档对齐实现）；新 4 行为断言+harness hold/release 边界挂请求；37/37 绿+红证（还原三处修复→恰 3 红）。styles.css 残留处置：基于 HEAD 仅加两规则、残留原样还原工作树（注记：残留不被当前 prettier 配置复现，来源待查——挂 P2 观察项）。**批次边界完整**：本波全部功能提交（W3c/M120×4/W12b×2/U18-U22/U25-U29/O1 a-f/W13a-c1/W13b/U30）均已入库。空槽发**首批批量验收**。
