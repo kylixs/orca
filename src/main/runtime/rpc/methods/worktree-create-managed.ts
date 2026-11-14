@@ -17,21 +17,27 @@ export const MANAGED_WORKTREE_METHODS = [
     permission: 'workspace',
     params: WorktreeManagedCreate,
     handler: async (params, { runtime }) =>
-      runtime.dedupeWorktreeCreate(params.repo, params.idempotencyKey, async () => {
-        const repo = await runtime.showRepo(params.repo)
-        if (repo.connectionId) {
-          throw new Error('managed_workspace_remote_unsupported')
-        }
-        return runtime.createManagedWorktree({
-          repoSelector: params.repo,
-          workspaceRoot: params.workspaceRoot,
-          name: params.name ?? '',
-          ...(params.baseBranch ? { baseBranch: params.baseBranch } : {}),
-          ...(params.compareBaseRef ? { compareBaseRef: params.compareBaseRef } : {}),
-          ...(params.branchNameOverride ? { branchNameOverride: params.branchNameOverride } : {}),
-          ...(params.displayName ? { displayName: params.displayName } : {}),
-          telemetrySource: 'unknown'
-        })
-      })
+      runtime.dedupeWorktreeCreate(
+        params.repo,
+        params.idempotencyKey,
+        async () => {
+          const repo = await runtime.showRepo(params.repo)
+          if (repo.connectionId) {
+            throw new Error('managed_workspace_remote_unsupported')
+          }
+          return runtime.createManagedWorktree({
+            repoSelector: params.repo,
+            workspaceRoot: params.workspaceRoot,
+            name: params.name ?? '',
+            ...(params.baseBranch ? { baseBranch: params.baseBranch } : {}),
+            ...(params.compareBaseRef ? { compareBaseRef: params.compareBaseRef } : {}),
+            ...(params.branchNameOverride ? { branchNameOverride: params.branchNameOverride } : {}),
+            ...(params.displayName ? { displayName: params.displayName } : {}),
+            telemetrySource: 'unknown'
+          })
+        },
+        // A joiner rides the winner's create, so only the winner may report it as built here.
+        (result) => ({ ...result, createdByThisCall: false })
+      )
   })
 ] as const

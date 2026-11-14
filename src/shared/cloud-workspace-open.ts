@@ -141,9 +141,18 @@ export async function openCloudWorkspaceOverRpc(
   )
   if (created.ok) {
     const path = readString(readField(created.result, 'worktree'), 'path')
-    return path === null
-      ? { ok: false, code: 'WORKSPACE_PATH_MISSING' }
-      : { ok: true, workspacePath: path, created: true, provisioned: provision.provisioned }
+    if (path === null) {
+      return { ok: false, code: 'WORKSPACE_PATH_MISSING' }
+    }
+    // A racer that joined the winner's in-flight create gets the same worktree
+    // back; the host says so, and only the winner may claim it built the checkout.
+    const createdByThisCall = readField(created.result, 'createdByThisCall') !== false
+    return {
+      ok: true,
+      workspacePath: path,
+      created: createdByThisCall,
+      provisioned: provision.provisioned
+    }
   }
   // A racer may have created it between the listing and the create; re-list once
   // so a concurrent open of the same project still lands on a real checkout.

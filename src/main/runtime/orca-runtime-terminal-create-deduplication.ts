@@ -198,7 +198,10 @@ export class OrcaRuntimeWithTerminalCreateDeduplication extends OrcaRuntimeWithC
   dedupeWorktreeCreate<T>(
     repoSelector: string,
     clientMutationId: string | undefined,
-    run: () => Promise<T>
+    run: () => Promise<T>,
+    /** Applied only to a caller that joined an existing in-flight create, so it can
+     *  report that it did not build the checkout. */
+    markJoined?: (value: T) => T
   ): Promise<T> {
     if (!clientMutationId) {
       return run()
@@ -206,7 +209,8 @@ export class OrcaRuntimeWithTerminalCreateDeduplication extends OrcaRuntimeWithC
     const key = `${repoSelector}\0${clientMutationId}`
     const inflight = this.worktreeCreateByMutationId.get(key)
     if (inflight) {
-      return inflight as Promise<T>
+      const joined = inflight as Promise<T>
+      return markJoined ? joined.then(markJoined) : joined
     }
     const created = run()
     this.worktreeCreateByMutationId.set(key, created)

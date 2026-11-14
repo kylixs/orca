@@ -124,6 +124,19 @@ class OrcaRuntimeService extends OrcaRuntimeWithMigrationCatalog {
       hasRepoUrl: input.repoUrl.trim() !== ''
     })
     if (plan.kind === 'already-provisioned') {
+      // The checkout predates the ticket, so no clone or init ran the tail that
+      // registers it; without the row `worktree.*` cannot resolve `path:<root>`
+      // and every open dies as a false "repository not available" forbidden.
+      try {
+        await this.repositoryClones.registerExistingCheckout(input.projectRoot)
+      } catch (error) {
+        console.warn('[cloud] project registration failed:', error)
+        return {
+          ok: false,
+          code: 'REGISTER_FAILED',
+          message: provisionFailureMessage('REGISTER_FAILED')
+        }
+      }
       return { ok: true, provisioned: false }
     }
     if (plan.kind === 'init') {

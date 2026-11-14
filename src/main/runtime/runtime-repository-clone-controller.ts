@@ -36,6 +36,19 @@ type RuntimeRepositoryCloneDependencies = {
   notifyReposChanged: () => void
 }
 
+/** Every entry here names the ticket's exact path, so all three demand the same shape. */
+function requireAbsoluteCheckoutPath(checkoutPath: string, label: string): string {
+  const target = checkoutPath.trim()
+  if (
+    !target ||
+    !isAbsolute(target) ||
+    (process.platform !== 'win32' && isWindowsAbsolutePathLike(target))
+  ) {
+    throw new Error(`${label} checkout path must be an absolute path`)
+  }
+  return target
+}
+
 export class RuntimeRepositoryCloneController {
   private readonly inFlightByPath = new Map<string, Promise<void>>()
 
@@ -83,14 +96,7 @@ export class RuntimeRepositoryCloneController {
       throw new Error('runtime_unavailable')
     }
     const trimmedUrl = url.trim()
-    const target = checkoutPath.trim()
-    if (
-      !target ||
-      !isAbsolute(target) ||
-      (process.platform !== 'win32' && isWindowsAbsolutePathLike(target))
-    ) {
-      throw new Error('Clone checkout path must be an absolute path')
-    }
+    const target = requireAbsoluteCheckoutPath(checkoutPath, 'Clone')
     const clonePathKey = getClonePathComparisonKey(target)
     return this.withPathLock(clonePathKey, () =>
       runWithGitReadCacheInvalidation(async () => {
@@ -115,14 +121,7 @@ export class RuntimeRepositoryCloneController {
     if (!this.deps.getStore()) {
       throw new Error('runtime_unavailable')
     }
-    const target = checkoutPath.trim()
-    if (
-      !target ||
-      !isAbsolute(target) ||
-      (process.platform !== 'win32' && isWindowsAbsolutePathLike(target))
-    ) {
-      throw new Error('Init checkout path must be an absolute path')
-    }
+    const target = requireAbsoluteCheckoutPath(checkoutPath, 'Init')
     const clonePathKey = getClonePathComparisonKey(target)
     return this.withPathLock(clonePathKey, () =>
       runWithGitReadCacheInvalidation(async () => {
@@ -141,6 +140,24 @@ export class RuntimeRepositoryCloneController {
         }
         return this.registerCheckout(target, clonePathKey, LOCAL_EXECUTION_HOST_ID)
       })
+    )
+  }
+
+  /**
+   * Registers a checkout that already existed before the cloud ticket: the store
+   * row and caches only — the checkout's HEAD and files are never touched. The
+   * `already-provisioned` plan needs this because nothing ran the clone or init
+   * tail that would have registered it, and without the row `worktree.*` cannot
+   * resolve `path:<root>`. Already registered, this is an idempotent no-op.
+   */
+  async registerExistingCheckout(checkoutPath: string): Promise<Repo> {
+    if (!this.deps.getStore()) {
+      throw new Error('runtime_unavailable')
+    }
+    const target = requireAbsoluteCheckoutPath(checkoutPath, 'Register')
+    const clonePathKey = getClonePathComparisonKey(target)
+    return this.withPathLock(clonePathKey, () =>
+      this.registerCheckout(target, clonePathKey, LOCAL_EXECUTION_HOST_ID)
     )
   }
 

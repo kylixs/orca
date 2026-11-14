@@ -165,6 +165,12 @@ export type AdoptProvisionedRootArgs = CreateWorktreeArgs & {
 export type CreateWorktreeResult = {
   /** The catalog this create produced; additive, older hosts omit it. */
   catalogVersion?: WorktreeCatalogVersion
+  /**
+   * Whether this call is the one that ran the create, rather than a caller that
+   * joined the same in-flight create through its idempotency key; additive, and
+   * older hosts omit it (treated as true).
+   */
+  createdByThisCall?: boolean
   worktree: Worktree & {
     parentWorktreeId?: string | null
     childWorktreeIds?: string[]
