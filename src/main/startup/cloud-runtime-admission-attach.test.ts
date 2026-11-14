@@ -24,6 +24,7 @@ import { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
 import {
   attachCloudRuntime,
+  CLOUD_HOST_METHODS,
   cloudAdmissionOption,
   cloudRuntimeAdmission,
   startCloudRuntimeAdmission,
@@ -412,6 +413,9 @@ beforeAll(async () => {
     ORCA_CLOUD_HOST_NAME: HOST_NAME
   }
   const options = cloudAdmissionOption(env, { userDataPath: hostDataDir })
+  // W13a audit MIN-1③: the production option must carry the constant itself, so a
+  // reverted in-line composition drifts red here instead of silently.
+  expect(options.methods).toBe(CLOUD_HOST_METHODS)
   admission = cloudRuntimeAdmission(env, { userDataPath: hostDataDir })
   if (!admission || !options.upgradeAdmission) {
     throw new Error('cloud admission not enabled')

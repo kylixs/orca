@@ -104,6 +104,7 @@ beforeAll(async () => {
     userDataPrefix: 'orca-m57-provision-',
     service,
     tls: makeSelfSignedTls('dev-m57-provision'),
+    // Pre-W13a host table, on purpose: this suite predates workspace.info and never calls it.
     methods: [...ALL_RPC_METHODS, ...MANAGED_WORKTREE_METHODS, ...PROJECT_PROVISION_METHODS]
   })
   admission.bindRuntime(cloud.runtime)

@@ -12,6 +12,7 @@ import {
 } from '../../../../shared/json-fields'
 import type { RuntimeWorktreeListResult } from '../../../../shared/runtime-worktree-contracts'
 import { WORKSPACE_INFO_METHODS } from './workspace-info'
+import type { RpcCallerScope } from '../rpc-caller-scope'
 
 /**
  * W13 §3.2/§3.3: the answer is derived from the ticket plus one workspaceRoot
@@ -82,16 +83,18 @@ type Reply = { ok: true; result: unknown } | { ok: false; error: { code: string;
 function call(
   runtime: OrcaRuntimeService,
   cloud: CloudRpcSession | undefined,
-  onCloudDenial?: (details: CloudDenialDetails, method: string) => void
+  onCloudDenial?: (details: CloudDenialDetails, method: string) => void,
+  callerScope?: RpcCallerScope
 ): Promise<Reply> {
   const dispatcher = new RpcDispatcher({ runtime, methods: WORKSPACE_INFO_METHODS })
   const request: RpcRequest = { id: 'req-1', authToken: 'tok', method: 'workspace.info' }
   return dispatcher
     .dispatch(request, {
       callerScope:
-        cloud === undefined
+        callerScope ??
+        (cloud === undefined
           ? { kind: 'owner' }
-          : { kind: 'cloud', permissions: [...CLOUD.perms], downloadAllowed: true },
+          : { kind: 'cloud', permissions: [...CLOUD.perms], downloadAllowed: true }),
       ...(cloud === undefined ? {} : { cloud }),
       ...(onCloudDenial ? { onCloudDenial } : {})
     })
@@ -231,6 +234,41 @@ describe('workspace.info（云会话工作区自省）', () => {
     })
   })
 
+  it('repo 未注册（repo_not_found）是预期形态：按未 ensure 应答且不留告警日志', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { runtime } = makeRuntime(new Error('repo_not_found'))
+
+    try {
+      const workspace = workspaceOf(resultOf(await call(runtime, CLOUD)))
+
+      expect(workspace.path).toBeNull()
+      expect(warn).not.toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it.each([
+    ['selector_ambiguous', new Error('selector_ambiguous')],
+    ['存储错误', new Error('SQLite disk I/O error')]
+  ])('意外扫描失败（%s）仍按未 ensure 应答，但宿主侧 warn 一行', async (_label, error) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { runtime } = makeRuntime(error)
+
+    try {
+      const workspace = workspaceOf(resultOf(await call(runtime, CLOUD)))
+
+      expect(workspace.path).toBeNull()
+      expect(workspace.branch).toBeNull()
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(warn.mock.calls[0]?.[0]).toBe(
+        '[cloud] workspace.info checkout scan failed unexpectedly:'
+      )
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
   it('detached HEAD（porcelain 无分支行）返回 branch=null', async () => {
     const { runtime } = makeRuntime({
       worktrees: [worktree(`${CLOUD.workspaceRoot}/main`, '')],
@@ -270,6 +308,65 @@ describe('workspace.info（云会话工作区自省）', () => {
       }
     })
     expect(onCloudDenial).not.toHaveBeenCalled()
+  })
+
+  it('mobile 调用被 allowlist 拒绝为 forbidden，handler 不执行也不入云拒绝审计', async () => {
+    const { runtime, listManagedWorktrees } = makeRuntime(EMPTY_LISTING)
+    const onCloudDenial = vi.fn()
+
+    const reply = await call(runtime, undefined, onCloudDenial, { kind: 'mobile' })
+
+    expect(reply).toMatchObject({ ok: false, error: { code: 'forbidden' } })
+    expect(listManagedWorktrees).not.toHaveBeenCalled()
+    expect(onCloudDenial).not.toHaveBeenCalled()
+  })
+
+  it('runtime-paired 配对桌面通过准入后得到 in-band CLOUD_SESSION_REQUIRED，不入云拒绝审计', async () => {
+    const { runtime, listManagedWorktrees } = makeRuntime(EMPTY_LISTING)
+    const onCloudDenial = vi.fn()
+
+    const reply = await call(runtime, undefined, onCloudDenial, {
+      kind: 'runtime-paired',
+      grants: []
+    })
+
+    expect(reply).toEqual({
+      ok: true,
+      result: {
+        ok: false,
+        code: 'CLOUD_SESSION_REQUIRED',
+        message: 'This method is only available to a cloud session.'
+      }
+    })
+    expect(listManagedWorktrees).not.toHaveBeenCalled()
+    expect(onCloudDenial).not.toHaveBeenCalled()
+  })
+
+  it('ssh-bridge 上的 orca CLI：开 remoteCliControl 得 in-band 拒绝，未开得 forbidden', async () => {
+    const opted = makeRuntime(EMPTY_LISTING)
+    const optedReply = await call(opted.runtime, undefined, vi.fn(), {
+      kind: 'ssh-bridge',
+      targetId: 'ssh-1',
+      remoteCliControl: true
+    })
+    expect(optedReply).toEqual({
+      ok: true,
+      result: {
+        ok: false,
+        code: 'CLOUD_SESSION_REQUIRED',
+        message: 'This method is only available to a cloud session.'
+      }
+    })
+    expect(opted.listManagedWorktrees).not.toHaveBeenCalled()
+
+    const unopted = makeRuntime(EMPTY_LISTING)
+    const unoptedReply = await call(unopted.runtime, undefined, vi.fn(), {
+      kind: 'ssh-bridge',
+      targetId: 'ssh-1',
+      remoteCliControl: false
+    })
+    expect(unoptedReply).toMatchObject({ ok: false, error: { code: 'forbidden' } })
+    expect(unopted.listManagedWorktrees).not.toHaveBeenCalled()
   })
 
   it('云会话的成功应答同样不产生云拒绝审计', async () => {

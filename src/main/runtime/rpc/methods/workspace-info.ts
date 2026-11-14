@@ -70,10 +70,18 @@ async function findWorkspaceCheckout(
   let listed: RuntimeWorktreeListResult
   try {
     listed = await runtime.listManagedWorktrees(`path:${projectRoot}`)
-  } catch {
+  } catch (error) {
+    if (!isUnregisteredRepoError(error)) {
+      console.warn('[cloud] workspace.info checkout scan failed unexpectedly:', error)
+    }
     return null
   }
   return listed.worktrees.find((row) => isInsideWorkspaceRoot(workspaceRoot, row.git.path)) ?? null
+}
+
+/** The designed "nothing ensured yet" answer (W13a audit MIN-2 keeps the rest loud). */
+function isUnregisteredRepoError(error: unknown): boolean {
+  return error instanceof Error && error.message === 'repo_not_found'
 }
 
 /** Porcelain ref → branch name; a detached HEAD or folder workspace has none. */

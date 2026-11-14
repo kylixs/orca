@@ -140,6 +140,7 @@ export async function startSelfServiceHarness(
     userDataPrefix: 'orca-m59-self-service-',
     service,
     tls: makeSelfSignedTls('dev-m59-self-service'),
+    // Pre-W13a host table, on purpose: this suite predates workspace.info and never calls it.
     methods: [...ALL_RPC_METHODS, ...MANAGED_WORKTREE_METHODS, ...PROJECT_PROVISION_METHODS]
   })
   admission.bindRuntime(cloud.runtime)

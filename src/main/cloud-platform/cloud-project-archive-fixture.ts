@@ -160,6 +160,7 @@ export async function startArchiveHarness(
     userDataPrefix: 'orca-m65-archive-',
     service,
     tls: makeSelfSignedTls('dev-m65-archive'),
+    // Pre-W13a host table, on purpose: this suite predates workspace.info and never calls it.
     methods: [...ALL_RPC_METHODS, ...MANAGED_WORKTREE_METHODS, ...PROJECT_PROVISION_METHODS]
   })
   admission.bindRuntime(cloud.runtime)

@@ -165,6 +165,7 @@ export async function startRecoveryHarness(
     userDataPrefix: 'orca-m58-recovery-',
     service,
     tls: makeSelfSignedTls('dev-m58-recovery'),
+    // Pre-W13a host table, on purpose: this suite predates workspace.info and never calls it.
     methods: [...ALL_RPC_METHODS, ...MANAGED_WORKTREE_METHODS, ...PROJECT_PROVISION_METHODS]
   })
   admission.bindRuntime(cloud.runtime)

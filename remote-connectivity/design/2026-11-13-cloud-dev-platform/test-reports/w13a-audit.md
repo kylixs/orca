@@ -127,3 +127,16 @@
 2. MIN-2（`catch` 内区分预期/非预期 + 一行 warn）。
 3. MIN-3（parity 断言）与 MIN-4（mobile/runtime-paired 两例）随 W13c 越权负向批次。
 4. NOTE-5/6（max-lines 余量、branch 取法偏差记档）在 W13b 动工前知会即可。
+
+---
+
+## W13c-1 收口注记（实现侧，2026-11-14；不改审计正文，只补各 MIN 的落点）
+
+| MIN | 状态 | 落点 |
+| --- | --- | --- |
+| MIN-4（§5.2.1 三条非云负向） | 已收口 | `src/main/runtime/rpc/methods/workspace-info.test.ts` 新增 4 例：mobile → `forbidden`（allowlist，handler 不执行）；runtime-paired → in-band `CLOUD_SESSION_REQUIRED`；ssh-bridge CLI 开 `remoteCliControl` → in-band 拒绝、未开 → `forbidden`；三形态均断言零云拒绝审计、扫描查询零次 |
+| MIN-1 漂移面 | 已收口（③）/ 已注记（②）/ 越界待办（①） | ③：`src/main/startup/cloud-runtime-admission-attach.test.ts` 生产时序复刻处加 `expect(options.methods).toBe(CLOUD_HOST_METHODS)` 恒等断言（env 级单测无法在无平台环境驱动 `cloudAdmissionOption`，故落在已驱动它的真栈套件）；②：四处 src/main 夹具（provisioning/archive/self-service/recovery）各加一行「pre-W13a host table，有意旧形态」注释；①：`src/renderer/src/cloud-admin/cloud-admin-session.e2e.test.ts:305` 在 W13c-1 禁碰域（src/renderer），留待 W13b/W13c-2 |
+| MIN-2（catch 静默） | 已收口 | `src/main/runtime/rpc/methods/workspace-info.ts`：catch 区分 `repo_not_found`（设计授权的未 ensure，零日志）与其余（一行 `console.warn`）；测试 2 组：repo_not_found 零告警、`selector_ambiguous`/存储错误各 warn 恰一次 |
+| MIN-3（权限联合第三份拷贝无 parity 钉） | 已收口 | 新套件 `src/main/cloud-platform/cloud-workspace-info-permission-parity.test.ts`：值级——`validCloudSession`（注册表准入）与 `readCloudWorkspaceInfo`（读取器转发）对含未知的候选集接受结果恰等；类型级——`SamePermissionUnion<CloudPermission, CloudWorkspacePermission>` 双向钉（tc:node 门）。变异红已实证（读取器集合删 `browser` → 红） |
+
+门禁记录：workspace-info 16 例 + parity 1 例全绿；真栈 W13a 5/5（node 池）；`pnpm tc:node` 0 错；证据 `cloud-platform/evidence/w13c1-audit-minors/`。邻接既有红（与本令无关、stash 复现归因）：`cloud-runtime-admission-attach.test.ts` 2 例与 `cloud-project-provisioning.test.ts` 2 例在 HEAD 即红（审计 NOTE-9 bun/真栈环境家族）。
