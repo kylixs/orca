@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### U41+U40 落地（2026-11-14，浏览器链解锁）
+
+平台 TLS：PLATFORM_TLS_CERT/KEY_PATH 可选监听（包裹同 handler）+requestOrigin 读 socket.encrypted ⇒ ?api=/install 脚本地址自动 https；证书=U2 钥匙串可信 CA 签（SAN=100.103.213.12/127.0.0.1/localhost）——**curl 不带 -k 三地址全 200，本机浏览器零警告**；forwarder L4 透传无需改。重播种：平台 PID 93461（https://127.0.0.1:18787）、宿主 host_7967dbba（广告 100.103.213.12:56155）、**proj_a3f54f0f**（demo-app）+**proj_9a149498**（zhangsan 自建）、矩阵含 **admin 全量（U40）**；admin handoff 403→201→换发 200→重放 410 实测。C 线 303/303+新 TLS e2e。遗留：远端中继 env 仍指 http（重指向已派）；宿主证书 SAN 不含 tailnet IP（浏览器名匹配告警挂账）；平台内存 store（重播种脚本已留 evidence/env-tls-u41/）。
+
 ### O1-g 落地 + O1 工作令完成（2026-11-14）
 
 `15e5aa429cf`（7 文件 +304/−11）：①旅程审计钉=已知集合形态（实证零不变量不成立：B 线 19 条/12 方法，部分设计性+~10 残余未门控点，钉「不得新增」使漂移可见；A 线对 F7/F8 门控方法断言严格为零——O1-a/b 实测成立）；②U35 常设钉（lineageList 成员钉+逐字拒绝+平台审计 0→恰 1）；③U36 构建护栏（global-setup 校验仪器化标记缺失即 exit 1）；④两 e2e 换 CLOUD_HOST_METHODS 生产表。双线旅程复跑绿（B 2/2、A 1/1）。**O1 工作令全部完成**（a-h）。残余账登记 **U42** 已派（~10 调用点清理）。
@@ -2732,6 +2736,10 @@ cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 �
 ### U39 落地（2026-11-14）
 
 `0b968b18a07`（2 文件 +47/−0）：定性=宿主注册在监听端口之前（注册拍空地址）+心跳对主机名键 return ⇒ relayRoutes 永缺；修复=心跳 ensureHostRoute 补写（幂等、注册拍显式目标权威）。红绿实证（真实中继 n=1）+relay 域 67 例零回归。中继晚注册无需补写机制（/v1/internal/relay-routes 全量+2s 清空重建）。卷入事故已 amend 自愈（U38 同文件并行）。**U39→🟡 待平台重启实测后转 🟢**（U41 重启顺带生效）。
+
+### U41+U40 落地（2026-11-14，平台 TLS + admin 授权种子）
+
+U41=平台公网口可选 TLS：`server.ts` 新增 `publicTls` 配置（env `PLATFORM_TLS_CERT_PATH`/`PLATFORM_TLS_KEY_PATH` 双在→`https.createServer` 包裹**同一 handler**，路由/port 语义零改动；缺省保持 HTTP 零回归）+ `requestOrigin` 无代理头时读 `socket.encrypted` 推导 https（`?api=`/install 脚本 platformUrl 全跟随）；两形态各有断言（`test/e2e/platform-public-tls.e2e.test.ts`），全套件 303/303 + typecheck:cloud-e2e 过 + oxlint 对 HEAD 零新增。证书复用 U2 本地 CA（`/tmp/m114-host/tls/ca.*`，钥匙串指纹一致 `B9:5C:C6…`）签 `/tmp/m114-platform-tls/cert.pem`，SAN=IP:100.103.213.12+IP:127.0.0.1+DNS:localhost——**curl 不带 -k 三地址全 200**（forwarder L4 透传未改）。U40=环境侧补 admin 全量授权。重启即重播种：平台 PID 19188→**93461**（https://127.0.0.1:18787），dev-local-02→**host_7967dbba** online（广告 100.103.213.12:56155，宿主 TLS 指纹不变未重签；其 env ORCA_CLOUD_API_URL 改 https+NODE_EXTRA_CA_CERTS），demo-app→**proj_a3f54f0f**、zhangsan-demo→**proj_9a149498**，矩阵 team-payment/zhangsan 全量+lisi 最小+**admin 全量**，策略全局 allow+demo-app 显式 deny。终验：admin web-handoff **201**（原 403）→换发 200（真 access/refresh token）→重放 410；out/web 无平台地址（?api= 注入）零重建；审计链完整。证据 `evidence/env-tls-u41/`。遗留：admin 隐式 open 语义挂设计评估；远端中继节点 env 仍指旧 http 地址需改 https+CA（U38/U39 域）；宿主侧证书 SAN 不含 tailnet IP 单独挂账。
 
 ### U33 落地（2026-11-14，🟢）
 
