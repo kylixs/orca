@@ -2743,6 +2743,33 @@ export function createApp(config: ApiConfig): ApiHandle {
         lastHeartbeatAt: new Date(host.lastHeartbeatAt).toISOString()
       })
     }
+    // Why here: the host's provision reports are trustworthy (W12b-2), so a
+    // non-ready project must fail at the platform, not at the host's provision RPC.
+    if (project.status === 'failed') {
+      await audit.append({
+        eventType: 'project_connect',
+        actor: user.username,
+        targetType: 'project',
+        targetId: project.id,
+        result: 'denied',
+        traceId,
+        metadata: {
+          reason: 'PROJECT_NOT_PREPARED',
+          status: project.status,
+          ...(project.provisioningError ? { error: project.provisioningError } : {})
+        }
+      })
+      // Why the error travels: the project list already shows the same field.
+      return error(res, 409, 'PROJECT_NOT_PREPARED', '项目准备失败，暂无法打开。', traceId, {
+        status: project.status,
+        ...(project.provisioningError ? { provisioningError: project.provisioningError } : {})
+      })
+    }
+    if (project.status === 'provisioning') {
+      return error(res, 409, 'PROJECT_PROVISIONING', '项目正在准备中，请稍后重试。', traceId, {
+        status: project.status
+      })
+    }
     const minClientVersion = '1.5.0'
     const offeredVersion = String(body.clientVersion ?? '0.0.0')
     const compareVersions = (a: string, b: string): number => {

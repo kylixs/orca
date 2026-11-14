@@ -151,7 +151,7 @@ test('AC-03 无权限项目统一 404、响应不含项目名并写审计', asyn
 })
 
 test('AC-04 管理员登记并授权组后，成员刷新即可见并可取到连接票据', async () => {
-  const { url } = await startApp()
+  const { app: started, url } = await startApp()
   const admin = await adminToken(url)
   const created = await fetch(`${url}/v1/projects`, {
     method: 'POST',
@@ -188,6 +188,13 @@ test('AC-04 管理员登记并授权组后，成员刷新即可见并可取到�
   })
   const projects = ((await list.json()) as { projects: { id: string }[] }).projects
   assert.ok(projects.some((project) => project.id === projectId))
+
+  // U20: a repo-backed project stays provisioning until the host reports success.
+  // The seeded host has no heartbeat credential, so apply its ok report directly.
+  const reported = started.store.projects.get(projectId)
+  if (reported) {
+    reported.status = 'ready'
+  }
 
   const connect = await fetch(`${url}/v1/projects/${projectId}/connect`, {
     method: 'POST',
