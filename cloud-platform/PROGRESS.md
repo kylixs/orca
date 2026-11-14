@@ -2570,6 +2570,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **事故与恢复**：主会话随后的 docs 提交携带暂存区陈旧副本，把 7 路径回退（config.js 复活、?api= 删、4 用例删）；修复代理重落地 `a069482b23a`；主会话恢复时又把 PROGRESS checkout 到旧快照顶掉一节记录（本段即补写）。终态恢复提交 `d5a00712179`：5 路径自 a069 恢复 + config.js 删除入档 + PROGRESS 保留最新。**恢复后验证**：config.js 不存在于 HEAD；`sessionPageUrlFor`/`searchParams.set('api', platformOrigin)` 在位（server.ts:677/683/698）；维护态双入口补例在位。**防再发规则**：主会话提交前必须核对暂存集=预期文件（本次恢复中已实践：PROGRESS 取消暂存保最新版）；F3 计数笔误更正：W3 段 exploratory 16 实为 13。
 
+### W5a 修复完成（待独立复验，2026-11-14）
+
+提交 `8ce21cb7f1e`（6 文件 +598/−24）：MAJ-1 重连快照改用共享常量 RELEASE_SYNCHRONIZED_OUTPUT+清屏序（不再手抄，M118-3 断言同步修正为从常量引用）；MAJ-2 桥接订阅 5+1 例测试补齐（帧映射/end/onError/NOT_CONNECTED/STREAM_UNSUPPORTED/释放/抛错兜底）；P5 scheduleReconnect 加 pending 守卫（更强方案：不双发布防+不双跳退避）+双报用例；MIN-3 终端槽包既有 RecoverableRenderErrorBoundary（降级卡+re-key 重试，含 why 注释）；MIN-4 create 在途卸载迟到回执补发 close。77 用例全绿（基线 68+9）；tc:web 对本域 0 错误（A/B 验证 4194 条 TS6307 与 5 条 renderer 错误全部来自并发 W7b 在途文件，stash 对照逐条相同）；暂存前 diff --cached 核对仅 6 个本任务文件。已派独立复验，通过即关闭 W5a 放行 W5b。
+
 ### W3 关闭（修复复验三项全过，2026-11-14）
 
 复验（`evidence/w3-fix-verify/`）：e2e 10/0 + gating 3/0（pinned 检出）；跨 origin 三形态探针——api 参数跟随浏览器所见平台 origin（直连/反代/反代+xfp），页面 origin 始终宿主；真实点击「详情」新开 `cloud-admin.html?api=…` 直达登录表单（对照去掉参数即「未配置」态，参数即成因）；变异抽查真做（删 isDirectAddrForm 门 → 10/10 红）；config.js 死旋钮全仓清零。**如实记录的部署前提缺陷**：平台无 CORS 头——跨 origin 页面提交登录预检被拦（`network_error`）；与 W5a 测试的 CORS 发现互证，已并入 **W7b** 范围（受控 CORS：仅浏览器必需路由对 ?api= 来源开放，负向用例防全开）。**W3 关闭**（`cd36987d7a0` + `e5d0f68721a`/`a069482b23a` + 独立测试 11 探针 + 审计 + 复验，三方齐备；索引冲突第四次在其间发生并闭环）。通道①放行 **W7b**（已派，brief 含 CORS 项）。
