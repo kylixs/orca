@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### W12b-1 关闭（审计 PASS，2026-11-14）
+
+审计（test-reports/w12b1-audit.md）：**PASS 0 blocker/0 major**、minor 2/note 5。四态计划/Git 2.25 基线（空仓库 worktree 探针实证）/身份兜底 locale 钉/并发护栏（路径锁+锁内复检+claimCloneTarget 身份护栏）/测试无恒真——全核验；U23/U24 确认为本提交遗留且已由 `108bf8bb832` 处理不计入。**W12b-1 关闭**（`09c5c9a3e19`+独立测试 9 探针+审计 PASS）。M-1=U28（sqlite 池 29 项批量缺失，历史欠账）**修复令已派**；M-2 注释一致性随令顺带。
+
 ### U25 修复落地（2026-11-14，🟢）
 
 `f94af5a4523`（4 文件）：contract `validateProjectDefaultBranch` 补宿主同款 git-ref 规则；**管理员创建路径此前完全无分支校验**已补（审计 deny+400）；self-service/PUT 原有调用点自动收紧。测试：新 contract 2+既有 11+新 e2e 5（17 类非法 400/合法 201 缺省回落 main/两登记路径+更新全覆盖）+零回归 20+25（真实平台进程）。规范点：避开含格式化残留的 contract.test.ts 新建 branch-name-contract.test.ts 防部分暂存。15 分钟 ✓。**U25→🟢**（平台进程级验证+宿主未动）。空槽回填 U18+U19。
