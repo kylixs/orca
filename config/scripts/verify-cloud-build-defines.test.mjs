@@ -2,19 +2,29 @@ import { describe, expect, it } from 'vitest'
 import { auditCloudDefineBundles } from './verify-cloud-build-defines.mjs'
 
 /**
- * W10 B-1: the cloud build constants must be substituted in the bundles of both
- * electron-vite targets that read them. electron-vite merges each target's
- * config separately, so a define that only covers `main` leaves the free
- * identifiers in preload — the exposure predicate then never shows the login
- * screen of a build-injected cloud install, while every test stays green
- * because tests stub the constants through a module seam.
+ * W10 B-1, semantics updated by W11: main owns the cloud constants (the address
+ * resolution lives in cloud-build-flags.ts), so a build-injected platform
+ * address has to land in the main bundle. The preload exposes the bridge
+ * unconditionally and no longer reads the constants, so it must not demand the
+ * literal — but if any bundle ever carries an unsubstituted `typeof` read (a
+ * define that stopped covering its target), the gate must go red.
  */
 
 const MAIN_BUNDLE = 'var t="https://baked.example.com"==null?null:"https://baked.example.com"'
-const PRELOAD_BUNDLE = 'if(typeof "https://baked.example.com"!=="undefined"){exposeCloud()}'
+const PRELOAD_BUNDLE = 'const api={cloud:exposure()}'
 
 describe('auditCloudDefineBundles', () => {
   it('substituted bundles pass with no findings', () => {
+    expect(
+      auditCloudDefineBundles({
+        mainBundleCodes: { 'index.js': MAIN_BUNDLE },
+        preloadBundleCodes: { 'index.js': PRELOAD_BUNDLE },
+        bakedDefaultUrl: 'https://baked.example.com'
+      })
+    ).toEqual([])
+  })
+
+  it('a preload without the baked address passes: the entry is unconditional now (W11)', () => {
     expect(
       auditCloudDefineBundles({
         mainBundleCodes: { 'index.js': MAIN_BUNDLE },
@@ -36,31 +46,40 @@ describe('auditCloudDefineBundles', () => {
     expect(problems).toEqual([
       expect.stringContaining(
         'preload/index.js still reads the unsubstituted constant ORCA_DEFAULT_PLATFORM_URL'
-      ),
-      expect.stringContaining('no preload bundle contains the build-injected platform address')
+      )
     ])
   })
 
-  it('both guarded constants are checked', () => {
+  it('negative control: a main define gap leaves the free identifier and drops the address', () => {
+    const problems = auditCloudDefineBundles({
+      mainBundleCodes: {
+        'index.js':
+          'if(typeof ORCA_DEFAULT_PLATFORM_URL!=="undefined"){return ORCA_DEFAULT_PLATFORM_URL}'
+      },
+      preloadBundleCodes: { 'index.js': PRELOAD_BUNDLE },
+      bakedDefaultUrl: 'https://baked.example.com'
+    })
+    expect(problems).toEqual([
+      expect.stringContaining(
+        'main/index.js still reads the unsubstituted constant ORCA_DEFAULT_PLATFORM_URL'
+      ),
+      expect.stringContaining('no main bundle contains the build-injected platform address')
+    ])
+  })
+
+  it('both guarded constants are checked in every target', () => {
     const problems = auditCloudDefineBundles({
       mainBundleCodes: { 'index.js': 'x=typeof ORCA_MANAGED_BUILD!=="undefined"' },
-      preloadBundleCodes: { 'index.js': PRELOAD_BUNDLE },
+      preloadBundleCodes: { 'index.js': 'y=typeof ORCA_MANAGED_BUILD!=="undefined"' },
       bakedDefaultUrl: null
     })
-    expect(problems).toHaveLength(1)
-    expect(problems[0]).toContain('ORCA_MANAGED_BUILD')
+    expect(problems).toHaveLength(2)
+    for (const problem of problems) {
+      expect(problem).toContain('ORCA_MANAGED_BUILD')
+    }
   })
 
-  it('a baked platform address must land in both targets', () => {
-    expect(
-      auditCloudDefineBundles({
-        mainBundleCodes: { 'index.js': MAIN_BUNDLE },
-        preloadBundleCodes: { 'index.js': 'var a=1' },
-        bakedDefaultUrl: 'https://baked.example.com'
-      })
-    ).toEqual([
-      expect.stringContaining('no preload bundle contains the build-injected platform address')
-    ])
+  it('a baked platform address must land in the main bundle', () => {
     expect(
       auditCloudDefineBundles({
         mainBundleCodes: { 'index.js': 'var a=1' },

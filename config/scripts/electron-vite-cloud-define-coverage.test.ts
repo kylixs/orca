@@ -5,9 +5,10 @@ import { electronViteConfig } from '../../electron.vite.config'
  * W10 B-1 regression guard: `ORCA_DEFAULT_PLATFORM_URL` and `ORCA_MANAGED_BUILD`
  * must be defined for every electron-vite target that reads them. electron-vite
  * merges each target's config separately, so a define that lives only on `main`
- * leaves the free identifiers in the preload bundle and a build-injected cloud
- * install never exposes window.api.cloud. The built bundles themselves are
- * audited after every build by verify-cloud-build-defines.mjs.
+ * leaves free identifiers wherever a bundle still reads the flags. Since W11 the
+ * preload exposes the bridge unconditionally and reads none of them (main owns
+ * the address resolution); its define entry stays as a canary. The built bundles
+ * themselves are audited after every build by verify-cloud-build-defines.mjs.
  */
 
 describe('electron-vite 云端构建常量注入', () => {

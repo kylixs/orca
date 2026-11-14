@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 
 // Asserts the cloud-platform build constants were substituted into the shipped
-// bundles of both electron-vite targets that read them (W10 B-1). electron-vite
-// merges each target's config separately, so a `define` that only covers `main`
-// leaves `typeof ORCA_DEFAULT_PLATFORM_URL` in the preload bundle — the preload
-// exposure predicate then reports an ordinary desktop build and a build-injected
-// cloud install never shows its login screen, while every test stays green
-// because the tests stub the constants through a module seam.
+// bundles (W10 B-1, semantics updated by W11). Since the shell's sign-in entry
+// is permanent in every build, the preload exposes the bridge unconditionally
+// and no longer reads the constants at all — main owns the address resolution
+// (cloud-build-flags.ts via cloud-platform-address.ts), so the build-injected
+// platform address has to land in the main bundle. electron-vite merges each
+// target's config separately, so a `define` that only covers `main` would still
+// leave `typeof ORCA_DEFAULT_PLATFORM_URL` unsubstituted wherever a bundle
+// reads the flags; that check stays on both targets as a canary for a future
+// preload-side read, while every test stays green because tests stub the
+// constants through a module seam.
 //
 // Runs after every full electron-vite build (run-electron-vite-build.mjs) and
 // after the parallel target runner (run-electron-vite-targets-in-parallel.mjs —
@@ -44,11 +48,16 @@ export function auditCloudDefineBundles({ mainBundleCodes, preloadBundleCodes, b
         problems.push(`${target}/${file} still reads the unsubstituted constant ${name}`)
       }
     }
-    if (bakedDefaultUrl && !Object.values(codes).some((code) => code.includes(bakedDefaultUrl))) {
-      problems.push(
-        `no ${target} bundle contains the build-injected platform address (ORCA_DEFAULT_PLATFORM_URL)`
-      )
-    }
+  }
+  // Why main only: the preload no longer reads the constants (W11), so requiring
+  // the literal there would fail every build of an ordinary desktop install.
+  if (
+    bakedDefaultUrl &&
+    !Object.values(mainBundleCodes).some((code) => code.includes(bakedDefaultUrl))
+  ) {
+    problems.push(
+      `no main bundle contains the build-injected platform address (ORCA_DEFAULT_PLATFORM_URL)`
+    )
   }
   return problems
 }

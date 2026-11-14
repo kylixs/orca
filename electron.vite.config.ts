@@ -80,9 +80,10 @@ const ORCA_MANAGED_BUILD_LITERAL = String(process.env.ORCA_MANAGED_BUILD === '1'
 
 // Why both targets: electron-vite merges each target's config separately, so a
 // define that lives only on `main` leaves `src/shared/cloud-build-flags.ts` with
-// free identifiers in the preload bundle — the exposure predicate then sees no
-// cloud build and never exposes window.api.cloud (W10 B-1). The renderer never
-// imports that module, so it needs no entry.
+// free identifiers in the preload bundle. Since W11 the preload exposes the
+// bridge unconditionally and no longer reads the flags (main owns the address
+// resolution), so the preload entry is a canary for a future preload-side read;
+// the renderer never imports that module, so it needs no entry.
 const ORCA_CLOUD_PLATFORM_DEFINES = {
   ORCA_DEFAULT_PLATFORM_URL: ORCA_DEFAULT_PLATFORM_URL_LITERAL,
   ORCA_MANAGED_BUILD: ORCA_MANAGED_BUILD_LITERAL
@@ -340,7 +341,7 @@ export const electronViteConfig: UserConfig = {
   },
   preload: {
     build: { externalizeDeps: { exclude: ['zod'] } },
-    // Why: the exposure predicate reads them; see ORCA_CLOUD_PLATFORM_DEFINES.
+    // Why: canary for a future preload-side read of the flags; see ORCA_CLOUD_PLATFORM_DEFINES.
     define: { ...ORCA_CLOUD_PLATFORM_DEFINES }
   },
   renderer: {
