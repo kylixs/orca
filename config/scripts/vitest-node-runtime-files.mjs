@@ -16,6 +16,11 @@ export const NODE_RUNTIME_INCLUDE = [
   // output, and node-pty delivers no data in the bun worker — the suite must run
   // in node or every echo would time out (W5b defect B).
   'src/renderer/src/cloud-admin/cloud-admin-session.e2e.test.ts',
+  // Why: the M72 denial-details suite proves cloud denials over a real TLS
+  // runtime; bun's ws fails the throwaway-certificate handshake, so the fixture's
+  // beforeAll OPEN_FAILEDs and both M72 proofs would silently retire (U31, same
+  // family as W5b defect B / W9A-7 audit MAJ-1).
+  'src/main/cloud-platform/cloud-denial-details.test.ts',
   // Why: the entry-chain slot e2e drives a real PTY's echo over a real TLS
   // runtime; bun's ws fails the throwaway certificate handshake and its worker
   // starves node-pty, so the echo could never arrive (same family as W5b defect B).
