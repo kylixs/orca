@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### W12b-1 实现完成（2026-11-14，待独立测试+审计）
+
+`09c5c9a3e19`（8 文件 +580/−14，暂存集核对通过）：① `not-prepared` 计划态改为 `init`（四态全覆盖）；② 新 `runtime-repository-init.ts`：git init（无 -b，Git 2.25 基线）→ symbolic-ref 钉票面分支 → 空初始提交（身份 -c 兜底仅对 who-are-you 错误重试）；③ clone 控制器增 initToPath：共用路径锁+锁内复检 isGitRepo、claimCloneTarget 记目录归属失败清理（防半成品被误判 already-provisioned）、共享尾部 registerCheckout（验证中发现关键前提：worktree.* 只解析 store 已登记行）；④ 幂等：二次 open⇒already-provisioned、重试横幅仍 1 提交 2 worktree 行。**空仓库验证**：设计担忧属实（空仓库 worktree add 报 invalid reference）→ init+空提交序列后 createManaged 完全可用（已钉进服务链用例）。测试：新 3 文件 57 例（含真平台+自注册宿主+TLS 全链用户场景）+ 既有 12 文件 52 例全绿；tc:node 本域 0 错；node 池已注册（MAJ-1 教训）。fixture 零改动（repo-less 由省略 repoUrl 字段实现）。**已派独立测试**（隔离 worktree 固定提交）。W12b-2 的平台侧回报断言按约定不在本令断言（该链路另一代理在修）。
+
 ### M120 设计审定通过（2026-11-14）
 
 设计代理产出 `work-orders/m120-admin-console-design.md`（246 行）：三缺口全部以既有端点粒度实现——a 登记弹层（管理员 POST /v1/projects 发绝对 path 不发 dir=W8 语义；错误码映射逐一对到 server.ts 行号，注意管理员路由重复 key 是 PROJECT_EXISTS 非自助路由的 PROJECT_KEY_TAKEN）；b 权限矩阵（7 权限位含 QA-014 漏掉的 browser 列；项目级增量 diff+行内全量替换）；c 下载策略（全 M120 唯一线变更：projectView 增 downloadPolicyExplicit 读字段 + PUT policy 增可选 inherit:true 清覆盖，均加性线兼容；修正工作台在全局 allow 时对显式覆盖误报的既有缺陷）。切 **M120a→M120b→M120c1(server)→M120c2(web) 四串行令**（管理台通道，app.js 串行）。已派 M120a。
