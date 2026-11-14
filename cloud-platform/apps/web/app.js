@@ -614,6 +614,18 @@ async function registerProjectDialog() {
     hint.textContent = root ? `主机项目根：${root}` : ''
     hint.hidden = !root
   }
+  // 失焦即校（§3.2）：key 单字段跑与提交同一份规则，只做即时反馈；拦截仍在提交时。
+  $('#regKey').onblur = () => {
+    const error = registrationFieldErrors(readForm()).find(([id]) => id === 'regKey')
+    if (error) {
+      setRegistrationError('regKey', error[1])
+      return
+    }
+    $('#regKey').classList.remove('invalid')
+    const line = $('#regKeyError')
+    line.hidden = true
+    line.textContent = ''
+  }
 }
 
 async function renderHosts() {
@@ -914,6 +926,14 @@ async function showGrants(projectId) {
     // A double click would double-send the batch: the buttons stay dead until the redraw.
     $('#grantSave').disabled = true
     $('#grantDiscard').disabled = true
+    // The whole batch window freezes: an edit to a not-yet-queued row would be
+    // silently dropped by the post-batch redraw (m-5). The redraw rebuilds the
+    // panel, so nothing needs re-enabling on either exit path.
+    for (const control of panel.querySelectorAll(
+      'input[type="checkbox"][data-perm], [data-remove], #grantAdd, #grantSubject, #grantType'
+    )) {
+      control.disabled = true
+    }
     let saved = 0
     for (const g of dirty) {
       try {
@@ -1199,6 +1219,12 @@ async function renderSettings() {
 /** 行内选择即保存：「禁止/允许」钉住一个覆盖，「跟随全局」清掉钉住回到继承。 */
 async function saveProjectPolicy(projectId, value) {
   const inherit = value === 'inherit'
+  // A row save redraws the whole page, which used to throw the admin back to the
+  // top and drop the select: carry both over (m-7). The failure path redraws to
+  // roll back (QA-009) and deliberately skips the restore.
+  const scroller = content()
+  const scrollTop = scroller.scrollTop
+  const focusedId = document.activeElement?.getAttribute?.('data-policy-select') ?? ''
   try {
     await api(`/v1/projects/${projectId}/policy`, {
       method: 'PUT',
@@ -1212,7 +1238,10 @@ async function saveProjectPolicy(projectId, value) {
     return
   }
   toast(inherit ? '已恢复跟随全局默认' : '已保存项目下载策略')
-  renderSettings()
+  await renderSettings()
+  scroller.scrollTop = scrollTop
+  const refocus = focusedId ? document.querySelector(`[data-policy-select="${focusedId}"]`) : null
+  refocus?.focus()
 }
 
 /* ---------------- overlays ---------------- */

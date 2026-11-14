@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { login, registerHost, saveEvidence, spawnService, type Service } from './harness.ts'
+import { ROOT, login, registerHost, saveEvidence, spawnService, type Service } from './harness.ts'
 import { loadWebConsolePage, type WebConsolePage } from './web-console-page.ts'
 
 /**
@@ -146,6 +148,12 @@ function dialogError(page: WebConsolePage): string {
   const el = page.window.document.querySelector<HTMLElement>('#regError')
   assert.ok(el, 'the dialog must render #regError')
   return el.hidden ? '' : (el.textContent ?? '').trim()
+}
+
+/** The declarations of one stylesheet rule, so a CSS fix is pinned, not assumed. */
+function cssRule(css: string, selector: string): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return css.match(new RegExp(`^${escaped}\\s*\\{([^}]*)\\}`, 'm'))?.[1] ?? ''
 }
 
 type RegistrationForm = {
@@ -562,5 +570,57 @@ test('M120a-8 兜底错误映射：HOST_NOT_FOUND 落主机字段，其余落在
   record(
     'error-fallback',
     'HOST_NOT_FOUND → hostId 字段；无字段可归的失败 → 弹层顶部错误行，弹层保持可重试'
+  )
+}, 120_000)
+
+test('M120a-9 Key 失焦即校（§3.2）：blur 置错/合法清错、提交校验保留；主机字段错误控件变红', async () => {
+  const page = loadWebConsolePage(service.url)
+  await openRegisterDialog(page, 'admin', 'Adm1n!')
+  const key = page.window.document.querySelector<HTMLInputElement>('#regKey')!
+  const host = page.window.document.querySelector<HTMLSelectElement>('#regHost')!
+  const blurKey = () => key.dispatchEvent(new page.window.FocusEvent('blur'))
+  const before = postCount(page)
+
+  // The host select is a <select class="select">: it carries the invalid state
+  // like an input does, and styles.css gives that state the same red border.
+  submitRegistration(page)
+  assert.equal(fieldError(page, 'regHost'), '请选择目标主机。')
+  assert.equal(host.classList.contains('invalid'), true, 'the host field is marked invalid')
+  assert.match(
+    cssRule(readFileSync(join(ROOT, 'apps/web/styles.css'), 'utf8'), '.select.invalid'),
+    /border-color:\s*var\(--danger\)/,
+    'the select must turn red, not only the line under it (m-1)'
+  )
+
+  // Blur runs the very same rule submit runs, and never leaves the page.
+  fillRegistration(page, { key: 'Payment_Service' })
+  blurKey()
+  assert.match(fieldError(page, 'regKey'), /必须以小写字母或数字开头/)
+  assert.equal(key.classList.contains('invalid'), true)
+  assert.equal(postCount(page), before, 'blur validation is local only')
+
+  fillRegistration(page, { key: 'reg-blur-ok' })
+  blurKey()
+  assert.equal(fieldError(page, 'regKey'), '', 'a legal key clears its inline error on blur')
+  assert.equal(key.classList.contains('invalid'), false)
+
+  // The submit gate is untouched by the blur feedback.
+  fillRegistration(page, { key: 'reg.dot.' })
+  submitRegistration(page)
+  assert.match(fieldError(page, 'regKey'), /不能以 “.” 结尾/)
+  assert.equal(postCount(page), before, 'nothing reached the platform in this case')
+
+  saveEvidence(EVIDENCE, 'key-blur-validation.json', {
+    blurInvalid: 'Payment_Service → 必须以小写字母或数字开头 + .invalid',
+    blurLegal: 'reg-blur-ok → 清错',
+    submitGateKept: 'reg.dot. 仍在提交时拦截',
+    selectInvalidRule: cssRule(
+      readFileSync(join(ROOT, 'apps/web/styles.css'), 'utf8'),
+      '.select.invalid'
+    ).trim()
+  })
+  record(
+    'key-blur',
+    'Key 失焦即校（非法置错/合法清错，0 请求），提交校验保留；.select.invalid 红边规则落地（m-1/m-2）'
   )
 }, 120_000)

@@ -144,7 +144,7 @@ FR-3.1 列「负责人组、可见组」，但 `POST /v1/projects` **不接受�
 ### 4.4 组件改动点与错误处理
 
 - `app.js`：`showGrants()` 渲染层 + `draft` 状态 + diff/保存/确认（约 120–150 行）；CSS 复用复选框原生渲染（`.table-wrap` 内），新增 ≤1 个 `.dirty` 高亮类。
-- 错误处理矩阵：单行 PUT 失败 → 中止 + toast（含失败主体）+ 重绘；`USER_NOT_FOUND`（新增授权）→ toast；确认框取消 → 丢弃草稿保留服务端值；批量期间「保存变更」禁用防双击。
+- 错误处理矩阵：单行 PUT 失败 → 中止 + toast（含失败主体）+ 重绘；`USER_NOT_FOUND`（新增授权）→ toast；确认框取消 → 不落盘，草稿保留待修订（「放弃修改」才回服务端值）；批量期间「保存变更」禁用防双击。
 - 审计：`grant_update` 既有写入（含 `subjectType/subjectId/permissions`，`server.ts:1753-1769`），审计页筛选已含该事件，零改动。
 
 ---

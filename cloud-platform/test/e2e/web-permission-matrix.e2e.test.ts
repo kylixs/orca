@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { login, saveEvidence, spawnService, type Service } from './harness.ts'
+import { ROOT, login, saveEvidence, spawnService, type Service } from './harness.ts'
 import { loadWebConsolePage, type WebConsolePage } from './web-console-page.ts'
 
 /**
@@ -153,6 +155,12 @@ function clickDialogAction(page: WebConsolePage, action: 'confirm' | 'close'): v
   )
   assert.ok(button, `the confirmation must render ${action}`)
   button.click()
+}
+
+/** The declarations of one stylesheet rule, so a CSS fix is pinned, not assumed. */
+function cssRule(css: string, selector: string): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return css.match(new RegExp(`^${escaped}\\s*\\{([^}]*)\\}`, 'm'))?.[1] ?? ''
 }
 
 /** Logs in, opens 成员与权限 and selects the seeded project's matrix. */
@@ -517,5 +525,117 @@ test('M120b-6 非管理员不可见矩阵，直调 PUT /grants 403 且服务端�
   record(
     'gating',
     '开发者：成员与权限路由 → 无权访问、矩阵不加载；直调 PUT /grants → 403 PERMISSION_DENIED，服务端状态不变'
+  )
+}, 120_000)
+
+test('M120b-7 脏行 .dirty 高亮：改勾加类、还原去类，样式表有对应警示底色', async () => {
+  await resetGrants('both-user-first')
+  const page = loadWebConsolePage(service.url)
+  await openMatrix(page, 'admin', 'Adm1n!')
+  const groupId = (await getGrants()).find((g) => g.subjectType === 'group')!.subjectId
+  const row = rowFor(page, GROUP)
+
+  toggle(page, 'group', groupId, 'browser', true)
+  assert.equal(row.classList.contains('dirty'), true, 'editing a row marks it dirty')
+  assert.equal(row.querySelector('[data-unsaved]')?.hidden, false, 'the 未保存 badge shows')
+
+  // Back to the stored value: the draft equals the platform again, so the row
+  // must unmark rather than stay flagged forever.
+  toggle(page, 'group', groupId, 'browser', false)
+  assert.equal(row.classList.contains('dirty'), false, 'reverting the edit unmarks the row')
+  assert.equal(row.querySelector('[data-unsaved]')?.hidden, true, 'the badge hides again')
+  assert.equal(saveButton(page).disabled, true, 'a reverted draft leaves nothing to save')
+
+  // The class is not a dead one: styles.css tints the row with the warn tone.
+  assert.match(
+    cssRule(readFileSync(join(ROOT, 'apps/web/styles.css'), 'utf8'), 'tbody tr.dirty'),
+    /background:\s*#fffbeb/,
+    'a dirty row must be visibly tinted, not badge-only (m-4)'
+  )
+
+  saveEvidence(EVIDENCE, 'dirty-row.json', {
+    dirtyOnEdit: true,
+    cleanOnRevert: true,
+    rule: 'tbody tr.dirty { background: #fffbeb; }'
+  })
+  record(
+    'dirty-row',
+    '改勾加 .dirty、还原去类、未保存徽标随之显隐；styles.css 补 tbody tr.dirty 警示底色（m-4）'
+  )
+}, 120_000)
+
+test('M120b-8 批量保存期间矩阵冻结：复选框/添加/移除全部禁用，批后重绘恢复', async () => {
+  await resetGrants('both-user-first')
+  const page = loadWebConsolePage(service.url)
+  await openMatrix(page, 'admin', 'Adm1n!')
+  const grants = await getGrants()
+  const userId = grants.find((g) => g.username === USER)!.subjectId
+  const groupId = grants.find((g) => g.subjectType === 'group')!.subjectId
+  const putsBefore = putCount(page)
+
+  toggle(page, 'user', userId, 'terminal', true)
+  toggle(page, 'group', groupId, 'download', true)
+
+  // Holding the first PUT is the only way to stand inside the in-flight window.
+  page.hold('PUT', GRANTS_PATH)
+  saveButton(page).click()
+  clickDialogAction(page, 'confirm')
+  for (let round = 0; round < 20 && putCount(page) === putsBefore; round += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  assert.equal(putCount(page), putsBefore + 1, 'the first PUT of the batch is in flight')
+
+  const boxes = [
+    ...page.window.document.querySelectorAll<HTMLInputElement>('#grantPanel input[data-perm]')
+  ]
+  assert.equal(boxes.length, 14, 'two rows times seven bits are on the table')
+  for (const box of boxes) {
+    assert.equal(box.disabled, true, `${box.dataset.subjectId} ${box.dataset.perm} is frozen`)
+  }
+  for (const selector of ['#grantAdd', '#grantSubject', '#grantType']) {
+    assert.equal(
+      page.window.document.querySelector<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>(
+        selector
+      )!.disabled,
+      true,
+      `${selector} is frozen too`
+    )
+  }
+  for (const button of page.window.document.querySelectorAll<HTMLButtonElement>(
+    '#grantPanel [data-remove]'
+  )) {
+    assert.equal(button.disabled, true, 'removal cannot run mid-batch')
+  }
+  assert.equal(saveButton(page).disabled, true, 'saving cannot be re-entered mid-batch')
+
+  await page.release()
+  await page.settle()
+
+  assert.equal(putCount(page), putsBefore + 2, 'the batch resumes and finishes after the release')
+  const saved = await getGrants()
+  assert.deepEqual([...saved.find((g) => g.username === USER)!.permissions].sort(), [
+    'open',
+    'terminal'
+  ])
+  assert.deepEqual(
+    [...saved.find((g) => g.subjectType === 'group')!.permissions].sort(),
+    [...BASE, 'download'].sort(),
+    'the frozen window stored exactly what was drafted, nothing else'
+  )
+  assert.equal(
+    checkbox(page, 'user', userId, 'terminal').disabled,
+    false,
+    'the post-batch redraw re-opens the matrix'
+  )
+  assert.equal(saveButton(page).disabled, true, 'nothing left to save once the batch lands')
+
+  saveEvidence(EVIDENCE, 'batch-freeze.json', {
+    frozenMidBatch: { checkboxes: boxes.length, addRow: true, removeButtons: true },
+    putsAfterRelease: 2,
+    serverReadBack: { user: ['open', 'terminal'], group: [...BASE, 'download'].sort() }
+  })
+  record(
+    'batch-freeze',
+    '2 脏行批量保存：首行 PUT 在途时 14 个复选框/添加授权/主体与类型/移除全禁用，释放后批完重绘恢复（m-5）'
   )
 }, 120_000)

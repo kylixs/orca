@@ -51,6 +51,7 @@ input, select { font: inherit; color: inherit; }
 }
 .field input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
 .field input.invalid { border-color: var(--danger); }
+.select.invalid { border-color: var(--danger); }
 .password-row { position: relative; }
 .password-row input { padding-right: 40px; }
 .icon-btn { position: absolute; right: 4px; top: 4px; width: 28px; height: 28px; display: grid; place-items: center; border: 0; background: transparent; border-radius: 6px; color: var(--text-3); }
@@ -138,6 +139,7 @@ th {
 td { padding: 11px 16px; border-bottom: 1px solid var(--divider); vertical-align: middle; }
 tbody tr:hover { background: #fafafa; }
 tbody tr.current { background: var(--brand-soft); }
+tbody tr.dirty { background: #fffbeb; }
 td.actions { text-align: right; }
 .table-wrap { overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-card); background: #fff; }
 .table-empty { padding: 40px 16px; text-align: center; color: var(--text-3); }

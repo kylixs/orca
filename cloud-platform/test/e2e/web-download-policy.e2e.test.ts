@@ -411,3 +411,65 @@ test('M120c2-6 非管理员不可见：设置路由拒绝、不发策略写请�
     '开发者：平台设置路由 → 无权访问、无覆盖卡、零策略写请求；直调 PUT /policy → 403 PERMISSION_DENIED 且状态不变'
   )
 }, 120_000)
+
+test('M120c2-7 行级保存整页重绘保留滚动与焦点：连续改行不被弹回页顶', async () => {
+  await setOverride('deny')
+  const created = await adminApi('/v1/projects', {
+    method: 'POST',
+    body: JSON.stringify({
+      key: 'viewport-check',
+      name: 'viewport-check',
+      hostId: 'host_dev001',
+      path: '/srv/work/viewport-check'
+    })
+  })
+  assert.equal(created.status, 201, JSON.stringify(created.body))
+  const otherId = (created.body as ProjectView).id
+  const pinOther = await adminApi(`/v1/projects/${otherId}/policy`, {
+    method: 'PUT',
+    body: JSON.stringify({ downloadPolicy: 'deny' })
+  })
+  assert.equal(pinOther.status, 200, JSON.stringify(pinOther.body))
+
+  const page = await openSettings('admin', 'Adm1n!')
+  assert.equal(overrideSelects(page).length, 2, 'both pinned rows are listed')
+  const scroller = page.window.document.querySelector<HTMLElement>('#content')!
+  scroller.scrollTop = 640
+  const target = selectFor(page, otherId)
+  target.focus()
+  assert.equal(page.window.document.activeElement, target, 'precondition: the admin is on the row')
+  const putsBefore = policyPuts(page, otherId)
+
+  choose(page, otherId, 'allow')
+  await page.settle()
+
+  assert.equal(policyPuts(page, otherId), putsBefore + 1, 'exactly one policy write for the row')
+  assert.equal(
+    scroller.scrollTop,
+    640,
+    'the redraw must not throw the admin back to the top (m-7)'
+  )
+  const refocused = selectFor(page, otherId)
+  assert.notEqual(refocused, target, 'the redraw really did build a fresh row')
+  assert.equal(
+    page.window.document.activeElement,
+    refocused,
+    'focus lands back on the row that was saved'
+  )
+  assert.equal(overrideSelects(page).length, 2, 'both rows survive the redraw')
+  const view = await projectView(otherId)
+  assert.equal(view.downloadPolicyExplicit, true, 'the pin landed server-side')
+  assert.equal(view.downloadPolicy, 'allow')
+
+  saveEvidence(EVIDENCE, 'row-save-viewport.json', {
+    scrollTopBefore: 640,
+    scrollTopAfter: scroller.scrollTop,
+    focusRestoredOnRow: otherId,
+    putRequests: 1,
+    serverPin: { downloadPolicy: view.downloadPolicy, explicit: view.downloadPolicyExplicit }
+  })
+  record(
+    'row-save-viewport',
+    '行级保存整页重绘后滚动位置保持（640）、焦点回到所改行；服务端钉住 allow（m-7）'
+  )
+}, 120_000)

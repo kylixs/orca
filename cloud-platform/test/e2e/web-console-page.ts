@@ -18,6 +18,14 @@ export type WebConsolePage = {
    */
   fail: (method: string, path: string, respond?: { status: number; body: unknown }) => void
   clearFails: () => void
+  /**
+   * Makes the NEXT request to `METHOD path` hang at the page boundary until
+   * `release()` — the only way to observe a mid-batch window such as the matrix
+   * save freeze (M120b-8). The held request is paused, never answered here.
+   */
+  hold: (method: string, path: string) => void
+  /** Sends every held request on to the platform and lets the page settle. */
+  release: () => Promise<void>
   /** Every request the page made, as `METHOD path`. */
   calls: () => string[]
 }
@@ -38,12 +46,24 @@ export function loadWebConsolePage(platformUrl: string): WebConsolePage {
   const failing = new Map<string, number>()
   const stubbed = new Map<string, { status: number; body: unknown }>()
   const requests: string[] = []
+  const heldPaths = new Set<string>()
+  const held = new Map<
+    string,
+    { input: string; init: RequestInit | undefined; resolve: (response: Response) => void }[]
+  >()
   const fetchToPlatform: typeof fetch = (input, init) => {
     const path =
       typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url
     const method = (init?.method ?? 'GET').toUpperCase()
     requests.push(`${method} ${path}`)
     const key = `${method} ${path}`
+    if (heldPaths.delete(key)) {
+      return new Promise((resolve) => {
+        const waiters = held.get(key) ?? []
+        waiters.push({ input: `${platformUrl}${path}`, init, resolve })
+        held.set(key, waiters)
+      })
+    }
     const failure = failing.get(key)
     const stub = stubbed.get(key)
     if (failure !== undefined || stub !== undefined) {
@@ -154,6 +174,24 @@ export function loadWebConsolePage(platformUrl: string): WebConsolePage {
     clearFails: () => {
       failing.clear()
       stubbed.clear()
+    },
+    hold: (method, path) => {
+      heldPaths.add(`${method.toUpperCase()} ${path}`)
+    },
+    release: async () => {
+      const pending: Promise<void>[] = []
+      for (const waiters of held.values()) {
+        for (const waiter of waiters.splice(0)) {
+          pending.push(
+            realFetch(waiter.input, waiter.init)
+              .catch(() => new Response(null, { status: 503 }))
+              .then((response) => waiter.resolve(response))
+          )
+        }
+      }
+      held.clear()
+      await Promise.all(pending)
+      await new Promise((resolve) => setTimeout(resolve, 25))
     },
     calls: () => [...requests]
   }
