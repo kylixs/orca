@@ -2701,6 +2701,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 审计（`test-reports/w5c-audit.md`）：blocker 0、**major 1（安全）**——重签票据绕过 AC-29 主机键钉扎：`webHostKeyVerdict` 唯一调用点在 BrowserProjectConnections.open，两条取票接线重签的新票对宿主自报的新 `host.e2eePublicKeyB64` 不比对 → 换键宿主可让存活会话新订阅静默建链（E2EE+deviceToken 流向换键方）。修法一行 fail-closed（重签 offer host key 与父钉扎值比对）+ 换键回归断言，已回派原代理。minor 6（legacy 重连无钉、§8.4 会话槽 2/3 撞 4431 无测试、e2e 只过滤 replayed 等）+ note 10（两个中间提交不可构建已按披露计 minor）。D6 未削弱实证：重放负向对照测试把一次性语义钉成可回归断言。归属核实 8/8 文件干净、与 a740b953faf 注记一致。
 
+### W12a 诊断回收 + 审定（2026-11-14）
+
+诊断（置信度高，隔离实例四场景矩阵命中全部观测）：主脱节点=平台「无 repoUrl⇒ready」×宿主「非 git⇒not-prepared」恒等错位（UI 承诺的直接使用目录未实现）；次生=首启宿主回报器/策略门时序缺口（U17 新入台账）。**裁定**：W12b=方向 B（宿主 init+初始提交语义，Git 2.25 基线禁 `init -b`）+ 必修时序缺口，拆两代理并行（cloud-project-provision/orca-runtime 域 ∥ cloud-runtime-admission 域）；方向 A（平台 ready 收敛+connect 门禁）与 C（UI 防御）挂 P2。
+
 ### 本轮调度（2026-11-14，三通道并行）
 
 通道域互不相交，三个子代理并发：**W13b**（web 云工作区视图+翻转，src/renderer/web+旅程 spec 域）、**W3c**（「打开」=handoff 新标签进工作区，apps/web/app.js+平台 e2e 域）、**W12a 诊断**（U15 PROJECT_NOT_PREPARED 只读定位，产诊断文档不修码不提交）。W12 实现等诊断审定后另派（W12b）；W13c 排 W13b 后。
