@@ -2564,6 +2564,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W5a 开发完成（通道④，桥接文件待落库，2026-11-14）
+
+提交 `7058a99dd1c`（5 文件）：详情页终端面板（懒加载 + `terminal.create/send/updateViewport/close`/`terminal.subscribe` 流式、xterm 跨断线保留按快照重绘、0.5–8s 退避失败态可重试、`terminal` 授权占位卡、CloudFilePanel 零改动）；cloud-admin/main.tsx WebGL prime 同 web 客户端模式。组件测试 9 例 + cloud 回归 68 例全绿，tc:web/lint/format 过。收尾修正两处规格偏差：重连快照清屏序对齐 web replay；订阅参数补 client+viewport（否则 updateViewport 无 floor 永不生效）。**依赖项**：5 个 subscribe 桥接 seam 文件仍在工作区未落库（更早中断代理所写），已派小任务验证后补提交；落库后 W5a 走独立测试+审计。
+
 ### 模型配额中断与恢复（2026-11-14）
 
 六个在途子代理（W5a/W6a修复/W7a/W6c/W10测试/W10审计）因 Flash 模型日额度 402 全部中断，各留未提交部分改动。用户指令：子代理改用 deepseek-flash[1m] 模型；**主会话职责不变（仅编排调度），执行全部归子代理**。已按新模型续派六路：W6a 修复续作（中断前测试 14+8 已过，收尾 typecheck/lint+提交）、W7a 续作、W5a 续作（中断时已在最后验证）、W6c 续作、W10 独立测试、W10 独立审计——每路均要求先审阅工作区自己域的遗留 diff 续用、只提交自己域文件（全仓 format 噪声与无关文档改动不碰不提交）。工作区甄别要点（交由各执行代理落实，主会话不动手）：四通道真实改动 + 全仓 format 噪声混杂；另发现与云端平台无关的设计文档（2026-11-10-mobile 系列等）也在改动列表，归属待确认，未授权不动。
