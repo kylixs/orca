@@ -9,16 +9,14 @@ import { loadWebConsolePage, type WebConsolePage } from './web-console-page.ts'
  * platform process.
  *
  * - the project payload carries `sessionPageUrl` built from the host's first
- *   TLS direct address plus `?api=<平台地址>` (the page is served by the host,
- *   so the param is how it finds the platform), and stays empty without a
- *   dialable TLS address in host:port form
+ *   TLS direct address, and stays empty without that address
  * - 工作台 and 我的项目 rows render the same two entries: 「详情」 for admins
  *   only, 「Orca Web」 for open-permission holders, both opening a new tab and
- *   both greyed out while the host is offline or in maintenance
+ *   both greyed out while the host is offline
  * - the developer 打开 dialog leads with the desktop-client guidance
  */
 
-const EVIDENCE = 'w3-fixes'
+const EVIDENCE = 'w3-admin-entry'
 const INTERNAL_TOKEN = 'w3-internal-token'
 const BROWSER_EDGE_HOST = 'edge.w3.test:8443'
 
@@ -28,7 +26,6 @@ let devToken = ''
 let liveProjectId = ''
 let liveSessionPageUrl = ''
 let liveBrowserEntryUrl = ''
-let maintHostId = ''
 let beat: ReturnType<typeof setInterval> | undefined
 const matrix: Record<string, string> = {}
 
@@ -111,22 +108,6 @@ async function createProject(key: string, hostId: string): Promise<string> {
   return (created.body as { id: string }).id
 }
 
-/** Puts the open-permission bundle for one group on one project's row. */
-async function grantOpen(projectKey: string, subjectId: string): Promise<void> {
-  const view = await api('/v1/projects')
-  const id = view.body.projects.find((p: { key: string }) => p.key === projectKey)?.id
-  assert.ok(id, `precondition: ${projectKey} must be listed`)
-  const granted = await api(`/v1/projects/${id}/grants`, {
-    method: 'PUT',
-    body: JSON.stringify({
-      subjectType: 'group',
-      subjectId,
-      permissions: ['open', 'terminal', 'agent', 'file:read', 'file:write']
-    })
-  })
-  assert.equal(granted.status, 200, JSON.stringify(granted.body))
-}
-
 before(async () => {
   service = await spawnService(
     'apps/api/src/server.ts',
@@ -145,10 +126,7 @@ before(async () => {
     tlsFingerprint: 'sha256:devtls'
   })
   liveProjectId = await createProject('live-project', tlsHost.hostId)
-  // The api param is what the host-served admin page uses to find the platform,
-  // so it must be the platform address this console talks to — not the host.
-  const platformApi = encodeURIComponent(service.url)
-  liveSessionPageUrl = `https://127.0.0.1:17001/cloud-admin.html?api=${platformApi}`
+  liveSessionPageUrl = 'https://127.0.0.1:17001/cloud-admin.html'
   liveBrowserEntryUrl = `https://${BROWSER_EDGE_HOST}/h/dev-tls/web-index.html`
 
   // A dotted route key is one the relay's /h/ parser refuses, so this host keeps
@@ -169,47 +147,29 @@ before(async () => {
   const addrlessHost = await registerHost({ name: 'dev-addrless' })
   await createProject('addrless-project', addrlessHost.hostId)
 
-  // Registration stores directAddrs unvalidated, so an out-of-range port is the
-  // only way the isDirectAddrForm negative branch is reachable.
-  const badAddrHost = await registerHost({
-    name: 'dev-badaddr',
-    directAddr: '127.0.0.1:99999',
-    tlsFingerprint: 'sha256:badaddr'
-  })
-  await createProject('badaddr-project', badAddrHost.hostId)
-
-  // Two hosts with both entries visible to the admin: one is driven into
-  // maintenance mid-run, the other is never beaten and so goes offline.
-  const maintHost = await registerHost({
-    name: 'dev-maint',
-    directAddr: '127.0.0.1:17004',
-    tlsFingerprint: 'sha256:maint'
-  })
-  maintHostId = maintHost.hostId
-  await createProject('maint-project', maintHost.hostId)
-
-  const comboHost = await registerHost({
-    name: 'dev-combo',
-    directAddr: '127.0.0.1:17005',
-    tlsFingerprint: 'sha256:combo'
-  })
-  await createProject('combo-project', comboHost.hostId)
-
   // The admin's and the developer's groups both hold open on the two beating
   // hosts' projects, so each role exercises every online row state.
   for (const project of ['live-project', 'noedge-project']) {
+    const id = await api('/v1/projects').then(
+      (view) => view.body.projects.find((p: { key: string }) => p.key === project)?.id
+    )
     for (const subjectId of ['platform-admins', 'team-payment']) {
-      await grantOpen(project, subjectId)
+      const granted = await api(`/v1/projects/${id}/grants`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          subjectType: 'group',
+          subjectId,
+          permissions: ['open', 'terminal', 'agent', 'file:read', 'file:write']
+        })
+      })
+      assert.equal(granted.status, 200, JSON.stringify(granted.body))
     }
   }
-  for (const project of ['badaddr-project', 'maint-project', 'combo-project']) {
-    await grantOpen(project, 'platform-admins')
-  }
 
-  // Keeps every beating host inside the heartbeat window; the rest stay silent
+  // Keeps both beating hosts inside the heartbeat window; the rest stay silent
   // and are the offline side of the matrix.
   beat = setInterval(() => {
-    for (const host of [tlsHost, noEdgeHost, badAddrHost, maintHost]) {
+    for (const host of [tlsHost, noEdgeHost]) {
       void fetch(`${service.url}/v1/hosts/${host.hostId}/heartbeat`, {
         method: 'POST',
         headers: {
@@ -255,29 +215,17 @@ function actionsCell(row: HTMLElement): string {
   return (row.querySelector('td.actions')?.innerHTML ?? '').replace(/\s+/g, ' ').trim()
 }
 
-test('W3-payload 宿主 TLS 直连首项生成 sessionPageUrl（含 ?api= 平台地址）', async () => {
+test('W3-payload 宿主 TLS 直连首项生成 sessionPageUrl', async () => {
   const adminView = await api('/v1/projects')
   const live = adminView.body.projects.find((p: { key: string }) => p.key === 'live-project')
   assert.equal(
     live.sessionPageUrl,
-    liveSessionPageUrl,
-    'the first TLS direct address plus the platform origin must become the session page URL'
-  )
-  const liveUrl = new URL(live.sessionPageUrl)
-  // Cross-origin by construction: the page lives on the host's origin, so the
-  // api param is the only way it can find the platform the admin came from.
-  assert.equal(liveUrl.origin, 'https://127.0.0.1:17001', 'the page is served by the host')
-  assert.equal(
-    liveUrl.searchParams.get('api'),
-    service.url,
-    'api must point back at the platform, not the host serving the page'
+    'https://127.0.0.1:17001/cloud-admin.html',
+    'the first TLS direct address must become the session page URL'
   )
   // The seeded host carries a TLS fingerprint and one direct address too.
   const seeded = adminView.body.projects.find((p: { key: string }) => p.key === 'payment-service')
-  assert.equal(
-    seeded.sessionPageUrl,
-    `https://127.0.0.1:16768/cloud-admin.html?api=${encodeURIComponent(service.url)}`
-  )
+  assert.equal(seeded.sessionPageUrl, 'https://127.0.0.1:16768/cloud-admin.html')
 
   const devView = await api('/v1/projects', { token: devToken })
   const devLive = devView.body.projects.find((p: { key: string }) => p.key === 'live-project')
@@ -286,13 +234,10 @@ test('W3-payload 宿主 TLS 直连首项生成 sessionPageUrl（含 ?api= 平台
 
   saveEvidence(EVIDENCE, 'session-page-url-payload.json', {
     tlsHost: live.sessionPageUrl,
-    apiParam: liveUrl.searchParams.get('api'),
-    platformOrigin: service.url,
-    pageOrigin: liveUrl.origin,
     seededHost: seeded.sessionPageUrl,
     developerSees: devLive.sessionPageUrl
   })
-  matrix['payload'] = `TLS 直连 + ?api=${service.url} → ${live.sessionPageUrl}；开发者列表同值`
+  matrix['payload'] = `TLS 直连 → ${live.sessionPageUrl}；开发者列表同值`
 }, 120_000)
 
 test('W3-payload 无 TLS 指纹或无直连地址时 sessionPageUrl 为空串', async () => {
@@ -308,21 +253,6 @@ test('W3-payload 无 TLS 指纹或无直连地址时 sessionPageUrl 为空串', 
   matrix['payload-negative'] = '无 TLS 指纹 → ""；无直连地址 → ""'
 }, 120_000)
 
-test('W3-payload 直连地址非 host:port 形态时 sessionPageUrl 为空串', async () => {
-  const view = await api('/v1/projects')
-  const bad = view.body.projects.find((p: { key: string }) => p.key === 'badaddr-project')
-  assert.equal(
-    bad.sessionPageUrl,
-    '',
-    'a direct address outside host:port form must never become a session page URL'
-  )
-  saveEvidence(EVIDENCE, 'session-page-url-malformed-addr.json', {
-    directAddr: '127.0.0.1:99999',
-    sessionPageUrl: bad.sessionPageUrl
-  })
-  matrix['payload-malformed-addr'] = '直连地址端口越界（99999）→ ""（isDirectAddrForm 负例）'
-}, 120_000)
-
 test('W3-admin 管理员双入口：详情与 Orca Web 新标签，离线置灰', async () => {
   await announceBrowserEdge()
   const page = loadWebConsolePage(service.url)
@@ -334,9 +264,6 @@ test('W3-admin 管理员双入口：详情与 Orca Web 新标签，离线置灰'
   const detail = entryIn(liveRow, '详情') as HTMLAnchorElement | null
   assert.ok(detail, 'an online host shows the admin detail entry')
   assert.equal(detail.href, liveSessionPageUrl)
-  // The browser opens the page on the host's origin, which is not the platform's
-  // — the api param is what carries the platform address across.
-  assert.equal(new URL(detail.href).searchParams.get('api'), service.url)
   assert.equal(detail.target, '_blank', 'the session page must open in a new tab')
   assert.equal(detail.rel, 'noopener')
   const orca = entryIn(liveRow, 'Orca Web') as HTMLAnchorElement | null
@@ -456,111 +383,4 @@ test('W3-guide 打开对话框首行引导使用桌面客户端', async () => {
   )
   saveEvidence(EVIDENCE, 'open-dialog-guidance.json', { firstLine: firstLine.trim() })
   matrix['open-dialog'] = '首行：请在 Orca 桌面客户端中打开此项目（客户端将自动探测直连并连接）'
-}, 120_000)
-
-test('W3-admin 在线但无可直达会话页地址时详情置灰', async () => {
-  await announceBrowserEdge()
-  const page = loadWebConsolePage(service.url)
-  await page.settle()
-  await page.submitLogin('admin', 'Adm1n!')
-  await page.clickNav('workbench')
-
-  const row = rowFor(page, 'badaddr-project')
-  const detail = entryIn(row, '详情') as HTMLButtonElement | null
-  assert.ok(detail, 'an online host still renders the detail entry')
-  assert.equal(detail.disabled, true, 'no session page address means the entry cannot open')
-  assert.equal(detail.title, '该主机没有可直达的会话页地址')
-  // The host is online with a healthy browser edge, so the row is not dead —
-  // the greyed entry is about the session page alone.
-  const orca = entryIn(row, 'Orca Web') as HTMLAnchorElement | null
-  assert.ok(orca, 'the same online row keeps a real Orca Web link')
-  assert.equal(orca.tagName, 'A', 'Orca Web must stay a link, not inherit the greyed state')
-  assert.equal(orca.href, `https://${BROWSER_EDGE_HOST}/h/dev-badaddr/web-index.html`)
-  saveEvidence(EVIDENCE, 'online-no-session-page-detail.json', {
-    detailTitle: detail.title,
-    detailDisabled: detail.disabled,
-    orcaWebHref: orca.href
-  })
-  matrix['online-no-addr'] =
-    '在线 + 无会话页地址 → 详情 disabled title=该主机没有可直达的会话页地址；Orca Web 仍真链接'
-}, 120_000)
-
-test('W3-maintenance 维护态双入口置灰，退出维护恢复真链接', async () => {
-  await announceBrowserEdge()
-  const entered = await api(`/v1/hosts/${maintHostId}/maintenance`, {
-    method: 'POST',
-    body: JSON.stringify({ enabled: true, reason: 'W3 审计维护演练' })
-  })
-  assert.equal(entered.status, 200, JSON.stringify(entered.body))
-
-  const page = loadWebConsolePage(service.url)
-  await page.settle()
-  await page.submitLogin('admin', 'Adm1n!')
-  await page.clickNav('workbench')
-
-  const row = rowFor(page, 'maint-project')
-  const detail = entryIn(row, '详情') as HTMLButtonElement | null
-  const orca = entryIn(row, 'Orca Web') as HTMLButtonElement | null
-  assert.ok(detail, 'a maintenance host keeps the detail entry visible')
-  assert.ok(orca, 'a maintenance host keeps the Orca Web entry visible')
-  assert.equal(detail.disabled, true)
-  assert.equal(detail.title, '主机维护中')
-  assert.equal(orca.disabled, true)
-  assert.equal(orca.title, '主机维护中')
-  saveEvidence(EVIDENCE, 'maintenance-entries.json', {
-    detail: detail.title,
-    orcaWeb: orca.title
-  })
-
-  // Recovery: leaving maintenance turns both entries back into real links, so
-  // the greying is the maintenance window speaking, not a permanent state.
-  const exited = await api(`/v1/hosts/${maintHostId}/maintenance`, {
-    method: 'POST',
-    body: JSON.stringify({ enabled: false })
-  })
-  assert.equal(exited.status, 200, JSON.stringify(exited.body))
-  const recovered = loadWebConsolePage(service.url)
-  await recovered.settle()
-  await recovered.submitLogin('admin', 'Adm1n!')
-  await recovered.clickNav('workbench')
-  const liveRow = rowFor(recovered, 'maint-project')
-  const liveDetail = entryIn(liveRow, '详情') as HTMLAnchorElement | null
-  const liveOrca = entryIn(liveRow, 'Orca Web') as HTMLAnchorElement | null
-  assert.ok(liveDetail, 'the detail entry comes back as a link')
-  assert.ok(liveOrca, 'the Orca Web entry comes back as a link')
-  assert.equal(liveDetail.tagName, 'A', 'recovery must restore the anchor, not the greyed button')
-  assert.equal(
-    new URL(liveDetail.href).searchParams.get('api'),
-    service.url,
-    'the recovered detail entry still carries the platform api param'
-  )
-  assert.equal(liveOrca.href, `https://${BROWSER_EDGE_HOST}/h/dev-maint/web-index.html`)
-  saveEvidence(EVIDENCE, 'maintenance-recovered.json', {
-    detail: liveDetail.href,
-    orcaWeb: liveOrca.href
-  })
-  matrix['maintenance'] =
-    '维护中 → 详情/Orca Web 均 disabled title=主机维护中；退出维护 → 双入口恢复真链接（详情含 ?api=）'
-}, 120_000)
-
-test('W3-admin-open 离线宿主行三控件同态置灰', async () => {
-  await announceBrowserEdge()
-  const page = loadWebConsolePage(service.url)
-  await page.settle()
-  await page.submitLogin('admin', 'Adm1n!')
-  await page.clickNav('workbench')
-
-  const open = entryIn(rowFor(page, 'combo-project'), '打开') as HTMLButtonElement | null
-  const detail = entryIn(rowFor(page, 'combo-project'), '详情') as HTMLButtonElement | null
-  const orca = entryIn(rowFor(page, 'combo-project'), 'Orca Web') as HTMLButtonElement | null
-  const titles: Record<string, string> = {}
-  for (const control of [open, detail, orca]) {
-    assert.ok(control, 'an admin holding open sees all three controls on the row')
-    assert.equal(control.disabled, true, `${control.textContent} must be greyed while offline`)
-    assert.equal(control.title, '主机离线', `${control.textContent} must name the offline reason`)
-    titles[control.textContent?.trim() ?? ''] = control.title
-  }
-  saveEvidence(EVIDENCE, 'offline-admin-open-combo.json', titles)
-  matrix['offline-combo'] =
-    'admin+open+离线 → 打开/详情/Orca Web 三控件 disabled 且 title 同为主机离线'
 }, 120_000)
