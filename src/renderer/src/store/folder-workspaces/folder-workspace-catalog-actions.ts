@@ -13,6 +13,7 @@ import {
   mergeFetchedFolderWorkspaceCatalog
 } from './folder-workspace-catalog'
 import { listRuntimeEnvironmentsForAllHostLoad } from '../runtime-catalog-hosts'
+import { isCloudProjectRuntimeEnvironment } from '../../../../shared/runtime-environments'
 import { reuseEqualRecordMap } from '../slices/repo-identity-reconcile'
 import { getFolderWorkspaceUpdateCoordinator } from './folder-workspace-mutations'
 
@@ -116,6 +117,10 @@ export function createFolderWorkspaceCatalogActions(
       const environments = await listRuntimeEnvironmentsForAllHostLoad()
       await Promise.all(
         environments.map(async (environment) => {
+          // Why: folderWorkspace.list is desktop-owned state a cloud ticket never carries; the host refuses it.
+          if (isCloudProjectRuntimeEnvironment(environment)) {
+            return
+          }
           const target = {
             kind: 'environment' as const,
             environmentId: environment.id

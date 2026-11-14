@@ -1,4 +1,11 @@
-export async function listRuntimeEnvironmentsForAllHostLoad(): Promise<{ id: string }[]> {
+import type { PublicKnownRuntimeEnvironment } from '../../../shared/runtime-environments'
+
+/** The fields the all-host catalog loads need: which host, and whether it is cloud-backed. */
+export type AllHostCatalogEnvironment = Pick<PublicKnownRuntimeEnvironment, 'id' | 'cloudProject'>
+
+export async function listRuntimeEnvironmentsForAllHostLoad(): Promise<
+  AllHostCatalogEnvironment[]
+> {
   try {
     return (await window.api.runtimeEnvironments.list()) ?? []
   } catch (err) {

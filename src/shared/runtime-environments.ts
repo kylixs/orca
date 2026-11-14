@@ -246,6 +246,17 @@ export function cloudWorkspacePathOf(
   return environment.cloudProject?.workspacePath ?? null
 }
 
+/**
+ * True for an environment the cloud platform registered (a project opened over the platform).
+ * Its host refuses every desktop-catalog RPC (repo.list, projectGroup.list, folderWorkspace.list,
+ * worktree.lineageList), so callers must not treat those catalogs as its source of truth.
+ */
+export function isCloudProjectRuntimeEnvironment(
+  environment: Pick<PublicKnownRuntimeEnvironment, 'cloudProject'>
+): boolean {
+  return environment.cloudProject !== undefined
+}
+
 /** The tunnel a server is reached through; only orcadDeployment also grants lifecycle ownership. */
 export function getRuntimeSshAccess(
   environment: Pick<KnownRuntimeEnvironment, 'orcadDeployment' | 'sshAccess'>

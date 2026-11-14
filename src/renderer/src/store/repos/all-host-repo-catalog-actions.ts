@@ -33,6 +33,7 @@ import {
 } from './repo-catalog-merge'
 import { getRuntimeTargetHostId } from '../runtime-target-host'
 import { listRuntimeEnvironmentsForAllHostLoad } from '../runtime-catalog-hosts'
+import { isCloudProjectRuntimeEnvironment } from '../../../../shared/runtime-environments'
 import { mergeFetchedProjectCompatibilityForHost } from '../projects/project-compatibility-host-merge'
 import { scheduleSafeAutoForkSync } from './safe-auto-fork-sync'
 
@@ -153,6 +154,12 @@ export function createAllHostRepoCatalogActions(
       // Why: unreachable remotes can spend the full connect timeout; merge each resolved host via the state updater so parallel loads don't clobber.
       await Promise.all(
         environments.map(async (environment) => {
+          // Why: a cloud host refuses repo.list (the catalog is desktop-owned state the ticket
+          // never carries), and its sidebar rows come from the platform project list — skip the
+          // doomed read instead of failing the load on an answer it can never give.
+          if (isCloudProjectRuntimeEnvironment(environment)) {
+            return
+          }
           const target = {
             kind: 'environment' as const,
             environmentId: environment.id

@@ -11,6 +11,7 @@ import {
   mergeFetchedProjectGroupCatalog
 } from './project-group-catalog'
 import { listRuntimeEnvironmentsForAllHostLoad } from '../runtime-catalog-hosts'
+import { isCloudProjectRuntimeEnvironment } from '../../../../shared/runtime-environments'
 
 export function createProjectGroupCatalogActions(
   set: Parameters<StateCreator<AppState>>[0],
@@ -83,6 +84,10 @@ export function createProjectGroupCatalogActions(
       const environments = await listRuntimeEnvironmentsForAllHostLoad()
       await Promise.all(
         environments.map(async (environment) => {
+          // Why: projectGroup.list is desktop-owned state a cloud ticket never carries; the host refuses it.
+          if (isCloudProjectRuntimeEnvironment(environment)) {
+            return
+          }
           const target = {
             kind: 'environment' as const,
             environmentId: environment.id
