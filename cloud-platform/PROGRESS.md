@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### U20 修复落地（2026-11-14，🟢）
+
+`43c79e1978b`（3 文件 +271/−1）：connect 项目就绪门禁（failed→409 PROJECT_NOT_PREPARED 附 provisioningError+denied 审计；provisioning→409 PROJECT_PROVISIONING 不写审计防轮询刷链；ready/归档/快路径零变化）；m70-acceptance AC-04 依赖旧缺口的「provisioning 可取票」断言修正为宿主 provision ok 后取票（验收语义不变）。红绿：回退→恰 2 红；回归 9 套件 45/45。18 分钟 ✓。**U20→🟢**（W12 方向 A 的 connect 半边就此落地）。空槽回填 U21。
+
 ### M120 批量审计 PASS（2026-11-14）
 
 审计（test-reports/m120-batch-audit.md）：**PASS 0 blocker/0 major**、minor 7/note 6；四令互不回退（app.js blob 链线性，sha256 复核），QA-013/014/015 三缺口在提交本体闭合，唯一线变更（c1）加性安全；两条变异抽查被恰现有例打红。minor 7 条归并登记 **U30**（UI 打磨批，排 P2；m-3 已由 U25 解决、m-6 改设计文档一行）。**M120 整体：设计+四实现+批量审计齐备，主体关闭**（U30 打磨挂账）。
