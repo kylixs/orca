@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### U22 落地（2026-11-14，🟢）
+
+`201de9e7696`（1 文件 +8）：W3c-open 用例补 project=<id> 值+入口 origin（=中继边缘，按台账语义而非派发令的措辞——代理核实 evidence 与 server.ts:664 URL 构造后纠正，取舍正确）；门禁 10/10+5+6。**U22→🟢**。空槽回填 O1-a（云环境过滤谓词地基）。
+
 ### O1 设计审定通过（2026-11-14）
 
 `work-orders/o1-cloud-startup-rpc-design.md`（262 行）：云宿主登记 674 方法、拒绝 430、其中 249 在 mobile 清单外；启动链残余被拒 **9 族**（W7c 挂账 7 全部成立+新发现 2 族桌面未门控面）。逐族裁定：F1/F2/F4/F7/F8=客户端云环境短路（b）；F3=宿主登记 agent 权限+agent-scope 钉 workspaceRoot（a）；F6=nativeChat 走 (a) 候选（sessionId 归属证明不了退 b）；F5/F9=保持拒绝+占位/隐藏（c）。**mobile 清单外钉子修正**：session.tabs.listAll/worktree.activate/ui.get/settings.get 在清单内不能当钉，正确钉=worktree.lineageList/skills.discover/preflight.refreshAgents 等+逐字断言云层文案。切 O1-a…h 八令（O1-a 最大 ~20 分钟；O1-d/f 同域必须串行）。调度约束：**O1-c 与 W13b 同域必须等其落地**；先派 O1-d（src/main 域自由）。
