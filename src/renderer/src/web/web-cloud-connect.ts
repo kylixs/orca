@@ -36,6 +36,16 @@ export const WEB_CLOUD_CONNECT_ERROR_CODE = {
   noProjects: 'NO_PROJECTS'
 } as const
 
+/** The stored environment name marks a cloud session with this suffix (see `toCloudEnvironment`). */
+export const CLOUD_SESSION_ENVIRONMENT_NAME_SUFFIX = ' (cloud session)'
+
+/** The sidebar repo row shows the platform project name, not the session marker. */
+export function cloudSessionProjectDisplayName(environmentName: string): string {
+  return environmentName.endsWith(CLOUD_SESSION_ENVIRONMENT_NAME_SUFFIX)
+    ? environmentName.slice(0, -CLOUD_SESSION_ENVIRONMENT_NAME_SUFFIX.length)
+    : environmentName
+}
+
 export class WebCloudConnectError extends Error {
   readonly code: string
 
@@ -113,7 +123,7 @@ function toCloudEnvironment(
 ): StoredWebRuntimeEnvironment {
   return {
     ...createStoredWebRuntimeEnvironment({
-      name: `${connection.environmentName} (cloud session)`,
+      name: `${connection.environmentName}${CLOUD_SESSION_ENVIRONMENT_NAME_SUFFIX}`,
       offer: connection.offer,
       previousEnvironment
     }),

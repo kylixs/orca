@@ -24,6 +24,7 @@ import { restoreSshConnectionsForStartup } from '../startup/startup-ssh-connecti
 import { collectActiveWorkspaceSshTargetIds } from '../startup/active-workspace-ssh-targets'
 import { startDeferredRemoteStartupRefresh } from './startup-remote-catalog-refresh'
 import { isActiveWebClientCloudSession } from '../web/web-cloud-session-scope'
+import { startWebCloudWorkspaceBootstrap } from '../web/web-cloud-workspace-bootstrap'
 import { publishTerminalViewAttributesAtAppStart } from '../components/terminal-pane/terminal-appearance'
 import { getSystemPrefersDark } from '../lib/terminal-theme'
 import {
@@ -93,6 +94,11 @@ export function useAppStartupHydration(onOnboardingLoaded: (state: OnboardingSta
       // desktop-owned state the ticket never carries — so skip them instead of booting
       // degraded on a call that can only be denied.
       const cloudRuntimeSession = isActiveWebClientCloudSession()
+      if (cloudRuntimeSession) {
+        // Why not awaited: an ensure (a first open clones) can run for minutes, and the
+        // boot chain must not wait on it. The sidebar's cloud card carries the progress.
+        void startWebCloudWorkspaceBootstrap()
+      }
       try {
         // Why: nothing in the hydration chain reads profile state synchronously, so don't let it add a serial IPC round-trip before fetchSettings.
         void actions.fetchOrcaProfiles()

@@ -17,6 +17,7 @@ import {
   shouldApplyDivergedLinkedPRClear,
   shouldClearDivergedLinkedMergedPR
 } from './worktree-refresh'
+import { isActiveWebClientCloudSession } from '@/web/web-cloud-session-scope'
 import { startPullRequestLookup } from './pull-request-execution'
 
 export const createPullRequestActions = (
@@ -24,6 +25,11 @@ export const createPullRequestActions = (
   get: Parameters<StateCreator<AppState>>[1]
 ): Pick<GitHubSlice, 'fetchPRForBranch'> => ({
   fetchPRForBranch: async (repoPath, branch, options): Promise<PRInfo | null> => {
+    // Why: a cloud (ticket) session's host refuses this desktop-owned surface, so
+    // asking for it would only log a denial; the surface stays blank instead (W13).
+    if (isActiveWebClientCloudSession()) {
+      return null
+    }
     const repoLookup = getGitHubRepoLookupIndex(get().repos)
     const repo = options?.repoId
       ? repoLookup.findById(options.repoId)

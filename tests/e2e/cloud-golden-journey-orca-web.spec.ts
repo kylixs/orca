@@ -14,6 +14,8 @@ import { chromium } from 'playwright'
 import { closeElectronAppForE2E } from './helpers/electron-process-shutdown'
 import { createElectronHomeIsolation } from './helpers/electron-home-isolation'
 import { getOrcaElectronLaunchArgs } from './helpers/electron-launch-args'
+import { getE2ECompletedOnboardingProfile } from './helpers/e2e-completed-onboarding-profile'
+import { getTerminalContent } from './helpers/terminal'
 import {
   adminTokenOf,
   cloudHostEnv,
@@ -41,10 +43,10 @@ import {
  *       the issued URL (`#handoff=<code>&project=<id>`) in a new tab
  *   B3  the new tab trades the code, wipes the hash and mounts the workspace
  *       with no sign-in form and no degraded-startup toast (W7c)
- *   B4  the cloud-session workspace boundary, recorded as red-line evidence —
- *       the web cloud session has no workspace view yet, so no terminal or file
- *       tree can be driven; the streaming half of this step lives in the
- *       dedicated case below and stays skipped until W13 lands
+ *   B4  the cloud workspace view (W13): the session's bootstrap registers the
+ *       project row and activates the host-managed checkout, while the desktop
+ *       catalog RPC stays refused — the terminal/file-tree half of this step
+ *       is the dedicated case below
  *   B5  the same link in a fresh browser profile redeems 410 and falls back to
  *       the sign-in form with the platform address pre-filled
  *   E1  every step is timed into a timeline JSON and key moments screenshotted
@@ -55,33 +57,31 @@ import {
  * (relay access, `/h/<routeKey>/`) is the W6 relay domain and is not part of
  * this journey — the entry here is the host's direct TLS address. §2-B3's
  * 「线路徽标正常」 renders with the workspace view, so it sits downstream of
- * the B4 red line below. §2-B7/B8 are covered by the W7b suites
+ * the B4 workspace step below. §2-B7/B8 are covered by the W7b suites
  * (web-handoff/web-handoff-entry and the web session restore/renewal specs).
  * Evidence lands as step `E1-journey-evidence`, deliberately not numbered B6.
  *
  * Disclosure — the journey's shortcuts, none silent: the host TLS is
  * self-signed and ignored (production trust lives in the desktop/platform
  * fingerprint pinning, M108/M109), the platform runs plain http, the served
- * web bundle is the instrumented e2e build (VITE_EXPOSE_STORE), the C4/C5
- * front matter rides the platform API instead of the wizards, and the host is
- * headless. Every assertion beyond those setup reductions runs the real
+ * web bundle is the instrumented e2e build (VITE_EXPOSE_STORE, which is also
+ * what installs the editor probe the streaming case asserts through), the
+ * C4/C5 front matter rides the platform API instead of the wizards, and the
+ * host is headless. Every assertion beyond those setup reductions runs the real
  * product paths.
  */
 
 /**
- * W13 owns the web cloud workspace view (host workspace.info implementation +
- * web file tree/terminal; defect-ledger U16). Flipping this flag changes two
- * things and needs one build prerequisite:
- *   1. the B4 boundary step below stops asserting the pre-W13 boundary (it
- *      never reddens the main journey — the boundary is what the flag gates);
- *   2. the pending case below stops skipping and drives the workspace.
- * The prerequisite: the case's oracles assume the instrumented web bundle the
- * e2e build recipe produces (VITE_EXPOSE_STORE), so W13's delivery must build
- * it that way; the oracles themselves are DOM-based on purpose, because the
- * web bundle ships in production mode and never installs the Electron e2e
- * probes.
+ * W13b landed the web cloud workspace view (host `workspace.info` + the
+ * three-phase bootstrap; defect-ledger U16), so B4 asserts the workspace
+ * surface instead of the pre-W13 boundary it used to record, and the
+ * streaming + file-tree case below runs. The former
+ * `W13_CLOUD_WORKSPACE_VIEW_LANDED` gate was deleted with this flip rather
+ * than left `true` — a permanent flag would only invite a second one. The
+ * boundary evidence it retired stays on record:
+ * `cloud-platform/evidence/journey-golden-b/findings.json` (B4) and
+ * `cloud-platform/evidence/w7c-startup-scope/w7c-change-manifest.json`.
  */
-const W13_CLOUD_WORKSPACE_VIEW_LANDED = false
 
 const HOST_NAME = 'journey-b-host'
 const PROJECT_KEY = 'journey-web'
@@ -187,6 +187,12 @@ async function launchHost(
   const { ELECTRON_RUN_AS_NODE: _unused, ...cleanEnv } = process.env
   void _unused
   mkdirSync(path.join(userDataDir, 'home'), { recursive: true })
+  // The developer's machine has Orca set up already: the first-run wizard must
+  // not cover the workspace this journey drives (same seed as the A line).
+  writeFileSync(
+    path.join(userDataDir, 'orca-data.json'),
+    `${JSON.stringify(getE2ECompletedOnboardingProfile(), null, 2)}\n`
+  )
   const isolation = createElectronHomeIsolation({
     inheritedEnv: cleanEnv,
     launchEnv: { NODE_ENV: 'development' },
@@ -535,63 +541,75 @@ test('W9b Orca Web 黄金旅程：平台登录 → handoff 新标签自动进入
       })
     )
 
-    // ── B4 · 云会话工作区边界（红线证据：W13 前无终端/文件树用户路径）──
+    // ── B4 · 云工作区视图点亮（W13b：宿主 workspace.info + web 三阶段 bootstrap）──
     await journeyStep(
-      'B4-cloud-workspace-boundary',
-      'B4 边界（红线）：Orca Web 云会话暂无工作区视图——侧栏为云空态、目录与工作树为空、目录 RPC 按票据范围被拒',
+      'B4-cloud-workspace-view',
+      'B4 工作区视图：bootstrap 登记项目行并激活宿主管理的本人 checkout，桌面目录仍按票据范围被拒',
       async () => {
-        if (W13_CLOUD_WORKSPACE_VIEW_LANDED) {
-          // Why a record and not a tripwire: the flag flips W13's delivery on,
-          // and this step's assertions describe the pre-W13 boundary — failing
-          // here would only redden the journey the flag just enabled. The
-          // workspace surface is driven by the pending case below.
-          const tab = issued.entryTab
-          await shoot(tab, '04-cloud-session-with-workspace-view')
-          return {
-            mode: 'w13',
-            note: 'W13 landed: the boundary assertions are retired; the terminal-streaming case drives the workspace view.'
-          }
-        }
         const tab = issued.entryTab
-        const state = await tab.evaluate(async () => {
-          const storeState = window.__store?.getState?.() ?? null
-          const catalogRefusal = await window.api.repos.list().then(
+        const workspaceState = () =>
+          tab.evaluate(() => {
+            const storeState = window.__store?.getState?.() ?? null
+            return {
+              sidebarCloudEmptyState:
+                document.querySelector('[data-worktree-sidebar-container] svg.lucide-cloud') !==
+                null,
+              repoCount: storeState?.repos?.length ?? null,
+              activeWorktreeId: storeState?.activeWorktreeId ?? null,
+              activeWorktreePath:
+                Object.values(storeState?.worktreesByRepo ?? {})
+                  .flat()
+                  .find((entry) => entry.id === storeState?.activeWorktreeId)?.path ?? null,
+              explorerShellMounted: document.querySelector('[data-orca-explorer-shell]') !== null
+            }
+          })
+        // The bootstrap runs beside the boot chain and a first open clones, so the
+        // wait has to cover a cold checkout, not just an already-ensured one.
+        await expect
+          .poll(
+            async () => {
+              const state = await workspaceState()
+              return state.repoCount === 1 && state.activeWorktreeId !== null
+            },
+            {
+              timeout: 180_000,
+              message: 'the cloud workspace bootstrap never activated the checkout'
+            }
+          )
+          .toBe(true)
+        const state = await workspaceState()
+        expect(
+          state.sidebarCloudEmptyState,
+          'the cloud card retires once the project row lands'
+        ).toBe(false)
+        expect(state.repoCount, 'the ticket registers exactly its own project').toBe(1)
+        expect(state.activeWorktreeId, 'a checkout activates as the workspace').toBeTruthy()
+        expect(
+          state.activeWorktreePath ?? '',
+          'the activated checkout is the host-managed per-user one'
+        ).toContain(`${session.projectPath}/.orca-worktrees/${DEVELOPER}`)
+        // The W7c boundary holds underneath: the row came from `repo.add` with the
+        // ticket-pinned path, never from the desktop catalog.
+        const catalogRefusal = await tab.evaluate(async () =>
+          window.api.repos.list().then(
             () => 'unexpectedly allowed',
             (error: unknown) => (error instanceof Error ? error.message : String(error))
           )
-          const worktreeCatalog = await window.api.worktrees.listAll().then(
-            (value: unknown) => `listed:${JSON.stringify(value).length}`,
-            (error: unknown) => (error instanceof Error ? error.message : String(error))
-          )
-          return {
-            sidebarCloudEmptyState:
-              document.querySelector('[data-worktree-sidebar-container] svg.lucide-cloud') !== null,
-            repoCount: storeState?.repos?.length ?? null,
-            activeWorktreeId: storeState?.activeWorktreeId ?? null,
-            worktreeCatalogs: Object.keys(storeState?.worktreesByRepo ?? {}),
-            catalogRefusal,
-            worktreeCatalog
-          }
-        })
-        expect(state.sidebarCloudEmptyState, 'the sidebar presents the cloud empty state').toBe(
-          true
         )
-        expect(state.repoCount, 'the ticket carries no desktop catalog').toBe(0)
-        expect(state.activeWorktreeId, 'no workspace opens in a cloud session today').toBeNull()
-        expect(
-          state.catalogRefusal,
-          'repo.list is cloud-refused by design (W7c boundary)'
-        ).toContain("Method 'repo.list' is not available to cloud sessions")
-        await shoot(tab, '04-cloud-session-without-workspace-view')
+        expect(catalogRefusal, 'repo.list stays cloud-refused by design (W7c boundary)').toContain(
+          "Method 'repo.list' is not available to cloud sessions"
+        )
+        const denialLogs = entryTabConsoleLogs.filter((line) =>
+          line.includes('not available to cloud sessions')
+        )
+        expect(denialLogs, 'the workspace view must not call cloud-refused RPCs').toEqual([])
+        await shoot(tab, '04-cloud-session-with-workspace-view')
         return {
-          mode: 'boundary',
+          mode: 'w13',
           ...state,
-          rootCause: [
-            '宿主无 workspace.info 实现：cloud-rpc-permission.ts 把它列为 session 方法，但 runtime 方法表没有该方法，云会话拿不到项目工作区信息',
-            'web 云会话未挂工作区视图：web-index 的 App 仅有侧栏云空态（CloudSessionEmptyState），无文件树/终端入口（W13）',
-            '已知边界来源：defect-ledger U16（remote-connectivity/design/2026-11-13-cloud-dev-platform/defect-ledger.md，已入库）；运行时佐证：cloud-platform/evidence/w7c-startup-scope/w7c-change-manifest.json（cloudMethodTable.extended=false 的裁定）'
-          ],
-          pendingWorkOrder: 'W13 orca web 云工作区视图（宿主 workspace.info 实现 + web 工作区视图）'
+          catalogRefusal,
+          denialLogCount: denialLogs.length,
+          consoleErrorWarningCount: entryTabConsoleLogs.length
         }
       },
       (state) => state
@@ -650,15 +668,7 @@ test('W9b Orca Web 黄金旅程：平台登录 → handoff 新标签自动进入
   }
 })
 
-test('W9b-B4 终端流式回显与文件树打开（待 W13 云工作区视图落地后启用）', async () => {
-  test.skip(
-    !W13_CLOUD_WORKSPACE_VIEW_LANDED,
-    '待 W13（orca web 云工作区视图：宿主 workspace.info 实现 + web 工作区视图挂文件树/终端）落地后启用；' +
-      '已入库记录：defect-ledger U16（remote-connectivity/design/2026-11-13-cloud-dev-platform/defect-ledger.md）；' +
-      '运行时佐证：cloud-platform/evidence/journey-golden-b/journey-timeline.json 的 B4 步与 ' +
-      'cloud-platform/evidence/w7c-startup-scope/w7c-change-manifest.json（gitignored，本机跑后生成）。' +
-      '启用前提：W13 的 web bundle 用仪表化 e2e 配方构建（VITE_EXPOSE_STORE），见文件头披露。'
-  )
+test('W9b-B4 终端流式回显与文件树打开（W13 云工作区视图）', async () => {
   test.setTimeout(300_000)
   expect(stack, 'stack must have started').toBeTruthy()
   const session = stack!
@@ -702,15 +712,28 @@ test('W9b-B4 终端流式回显与文件树打开（待 W13 云工作区视图�
               call.method === 'POST' && call.path === `/v1/projects/${session.projectId}/connect`
           ).length,
         {
-          timeout: 60_000,
+          // Why as long as B4's wait: a first open clones the project before any
+          // pane exists to subscribe.
+          timeout: 180_000,
           message: 'the terminal subscription must re-sign its own ticket (W5c)'
         }
       )
       .toBeGreaterThanOrEqual(2)
+    // A first-run feature tip can still cover the workspace; the user reads it,
+    // dismisses it, and moves on.
+    await tab
+      .getByRole('button', { name: 'Got it' })
+      .click({ timeout: 10_000 })
+      .catch(() => undefined)
+    // The user's first act is clicking the pane; keystrokes go to the xterm
+    // input only once it has focus.
+    await tab.locator('.xterm').first().click()
     await tab.keyboard.type(`echo ${RUN_MARKER}`)
     await tab.keyboard.press('Enter')
+    // The buffer oracle is the pane's SerializeAddon (exposed by the instrumented
+    // bundle); xterm paints rows on a canvas here, so the DOM rows carry no text.
     await expect
-      .poll(async () => tab.locator('.xterm-rows').innerText(), {
+      .poll(async () => getTerminalContent(tab, 8000), {
         timeout: 30_000,
         message: 'the streamed echo never reached the terminal pane'
       })
@@ -734,9 +757,16 @@ test('W9b-B4 终端流式回显与文件树打开（待 W13 云工作区视图�
     await expect(tab.locator('.editor-header-path').first()).toContainText(FILE_NAME, {
       timeout: 30_000
     })
-    // Why a DOM oracle and not window.__monacoEditorE2E: the web bundle ships
-    // in production mode, so the Electron e2e probe is never installed there
-    // (MAJ-1) — the rendered lines are the artifact the user reads.
+    // The editor oracle is the probe: the instrumented web build defines
+    // VITE_EXPOSE_STORE, which installs it (W13b) where the production bundle
+    // never would. The rendered lines stay asserted too — that is the artifact
+    // the user reads, and Monaco only paints the viewport.
+    await expect
+      .poll(
+        async () => await tab.evaluate(() => window.__monacoEditorE2E?.snapshot().valueTail ?? ''),
+        { timeout: 30_000, message: 'the editor model never received the file content' }
+      )
+      .toContain(FILE_MARKER)
     await expect
       .poll(async () => tab.locator('.view-lines').innerText(), {
         timeout: 30_000,

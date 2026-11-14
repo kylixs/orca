@@ -23,6 +23,12 @@ export type StoredWebRuntimeEnvironment = Omit<PublicKnownRuntimeEnvironment, 'e
 const ENVIRONMENT_STORAGE_KEY = 'orca.web.runtimeEnvironment.v1'
 
 export function readStoredWebRuntimeEnvironment(): StoredWebRuntimeEnvironment | null {
+  // Why the guard: this module is in the CloudSessionEmptyState import graph, which
+  // node-env component suites evaluate without a window; there is no stored
+  // environment to read there.
+  if (typeof window === 'undefined') {
+    return null
+  }
   const raw = window.localStorage.getItem(ENVIRONMENT_STORAGE_KEY)
   if (!raw) {
     return null

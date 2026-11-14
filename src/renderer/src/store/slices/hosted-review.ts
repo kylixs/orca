@@ -41,6 +41,7 @@ import {
   queueHostedReviewRevalidation,
   registerInflightHostedReviewRequest
 } from './hosted-review-request-state'
+import { isActiveWebClientCloudSession } from '@/web/web-cloud-session-scope'
 
 export type HostedReviewSlice = {
   hostedReviewCache: Record<string, HostedReviewCacheEntry<HostedReviewInfo>>
@@ -156,7 +157,9 @@ export const createHostedReviewSlice: StateCreator<AppState, [], [], HostedRevie
     options
   ): Promise<HostedReviewInfo | null> => {
     const repo = findHostedReviewRepoForFetch(get().repos, repoPath, options)
-    if (repo === null) {
+    // Why the second disjunct: a cloud (ticket) session's host refuses this
+    // desktop-owned surface, so asking would only log a denial (W13).
+    if (repo === null || isActiveWebClientCloudSession()) {
       return null
     }
     const ownerSettings = settingsForHostedReviewRepoOwner(get().settings, repo)

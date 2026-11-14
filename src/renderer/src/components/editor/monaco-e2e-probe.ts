@@ -28,7 +28,10 @@ export function installMonacoE2EProbe(
   editorInstance: editor.IStandaloneCodeEditor,
   filePath: string
 ): () => void {
-  if (import.meta.env.MODE !== 'e2e') {
+  // Why the second signal: the web bundle never builds with --mode e2e, so the
+  // instrumented web recipe (VITE_EXPOSE_STORE, the same gate web-e2e-config
+  // reads) is what installs the probe there. Production bundles define neither.
+  if (import.meta.env.MODE !== 'e2e' && String(import.meta.env.VITE_EXPOSE_STORE) !== 'true') {
     return () => {}
   }
   let legacyControlOriginalValue: string | null = null

@@ -38,6 +38,8 @@ import type { BitbucketApi, HostedReviewApi } from './api/hosted-review-api'
 import type { JiraApi } from './api/jira-api'
 import type { LinearApi } from './api/linear-api'
 import type { CloudPlatformApi } from './api/cloud-platform-api'
+import type { CloudWorkspaceInfoResponse } from '../shared/cloud-workspace-info'
+import type { CloudWorkspaceRoots, OpenCloudWorkspaceResult } from '../shared/cloud-workspace-open'
 import type { MobileApi } from './api/mobile-api'
 import type { NativeChatApi } from './api/native-chat-api'
 import type { OnboardingApi, StarNagApi } from './api/onboarding-api'
@@ -161,6 +163,14 @@ export type PreloadApi = {
   agentStatus: AgentStatusApi
   /** Present only when the main process runs in cloud mode (ORCA_CLOUD_API_URL). */
   cloud?: CloudPlatformApi
+  /** Web client only: the cloud session's own workspace facts and the shared ensure flow (W13). */
+  cloudWorkspace?: {
+    info: () => Promise<CloudWorkspaceInfoResponse>
+    ensure: (input: {
+      projectId: string
+      roots: CloudWorkspaceRoots
+    }) => Promise<OpenCloudWorkspaceResult>
+  }
   mobile: MobileApi
   speech: SpeechApi
 }
