@@ -33,6 +33,11 @@ export const NODE_RUNTIME_INCLUDE = [
   // host and its TLS runtime, so bun would red the handshake and silently retire
   // the W12b-1 proof (same family as W5b defect B / W9A-7 audit MAJ-1).
   'src/main/cloud-platform/cloud-repo-less-project.test.ts',
+  // Why: the agent-probe real-host suite drives the production cloud method
+  // table over a real TLS runtime, so bun's ws would fail the throwaway
+  // certificate handshake and silently retire the O1-d proof (same family as
+  // W5b defect B / W9A-7 audit MAJ-1).
+  'src/main/cloud-platform/cloud-preflight-probe-real-host.test.ts',
   'src/renderer/src/lib/react-commit-cascade-observer.test.ts',
   'src/renderer/src/lib/react-commit-cascade-telemetry.test.ts',
   ...SQLITE_RUNTIME_INCLUDE,

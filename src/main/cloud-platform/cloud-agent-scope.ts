@@ -1,5 +1,6 @@
 import { isAbsolute, join } from 'node:path'
 import { readField, readString } from '../../shared/json-fields'
+import { parseWorkspaceKey } from '../../shared/workspace-scope'
 import {
   checkCloudTargetScope,
   type CloudPathDecision,
@@ -25,6 +26,7 @@ import {
 export type CloudAgentScope =
   | { kind: 'create' }
   | { kind: 'session' }
+  | { kind: 'probe' }
   | { kind: 'deny'; message: string }
 
 /** Starts work; the target worktree must resolve inside the caller's workspace root. */
@@ -64,6 +66,16 @@ export const CLOUD_AGENT_SESSION_METHODS: ReadonlySet<string> = new Set([
   'agentSession.commands',
   'agentSession.options',
   'agentSession.handoffStatus'
+])
+
+/**
+ * Probes the agent CLIs a workspace runs. The id must resolve to a checkout
+ * inside the caller's workspace root: an omitted or unresolvable one makes the
+ * host answer with its own default, which lists the whole host's PATH.
+ */
+export const CLOUD_AGENT_PROBE_METHODS: ReadonlySet<string> = new Set([
+  'preflight.detectAgents',
+  'preflight.refreshAgents'
 ])
 
 /**
@@ -107,6 +119,9 @@ export function cloudAgentScopeOf(method: string): CloudAgentScope | null {
   if (CLOUD_AGENT_SESSION_METHODS.has(method)) {
     return { kind: 'session' }
   }
+  if (CLOUD_AGENT_PROBE_METHODS.has(method)) {
+    return { kind: 'probe' }
+  }
   if (CLOUD_AGENT_DENIED_METHODS.has(method)) {
     return { kind: 'deny', message: deniedMessage(method) }
   }
@@ -143,6 +158,13 @@ export type CloudAgentScopeRuntime = {
   ) => { worktreeId: string; connectionId: string | null } | null
 }
 
+/** What every scope check reads: the host's resolvers, the ticket's roots, the call. */
+type CloudAgentScopeCall = {
+  runtime: CloudAgentScopeRuntime
+  roots: CloudPathRoots
+  params: unknown
+}
+
 export async function checkCloudAgentScope(
   args: { runtime: CloudAgentScopeRuntime; roots: CloudPathRoots; method: string; params: unknown },
   scope: CloudAgentScope
@@ -153,7 +175,33 @@ export async function checkCloudAgentScope(
   if (scope.kind === 'session') {
     return await checkSession(args)
   }
+  if (scope.kind === 'probe') {
+    return await checkProbe(args)
+  }
   return await checkCreate(args)
+}
+
+/**
+ * The probe runs where the named workspace runs, so its id must land inside the
+ * caller's workspace root — the same boundary a launch in that workspace gets.
+ */
+async function checkProbe(args: CloudAgentScopeCall): Promise<CloudPathDecision> {
+  const worktreeId = readString(args.params, 'worktreeId')
+  if (worktreeId === null) {
+    // Why refuse rather than take the host default: an unnamed probe answers with
+    // every CLI on the host, which is what a ticket may not learn.
+    return {
+      ok: false,
+      reason: 'agent_worktree_required',
+      message: 'A cloud agent detection must name the workspace it probes.'
+    }
+  }
+  // Why this selector shape: the host's own detection resolution treats folder
+  // keys as themselves and everything else through the `id:` selector.
+  return await checkWorkspace(
+    args,
+    parseWorkspaceKey(worktreeId)?.type === 'folder' ? worktreeId : `id:${worktreeId}`
+  )
 }
 
 /** A launch names its target; a session create names a worktree or an attached workspace id. */
@@ -224,11 +272,7 @@ function createWorktreeSelector(params: unknown): string | null {
   return workspaceId === null ? null : `id:${workspaceId}`
 }
 
-async function checkSession(args: {
-  runtime: CloudAgentScopeRuntime
-  roots: CloudPathRoots
-  params: unknown
-}): Promise<CloudPathDecision> {
+async function checkSession(args: CloudAgentScopeCall): Promise<CloudPathDecision> {
   const sessionId =
     readString(args.params, 'sessionId') ??
     readString(readField(args.params, 'envelope'), 'sessionId')
@@ -251,12 +295,7 @@ async function checkSession(args: {
 }
 
 async function checkWorkspace(
-  args: {
-    runtime: CloudAgentScopeRuntime
-    roots: CloudPathRoots
-    method: string
-    params: unknown
-  },
+  args: CloudAgentScopeCall,
   selector: string
 ): Promise<CloudPathDecision> {
   let worktreePath: string

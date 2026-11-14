@@ -1,12 +1,24 @@
 import { describe, expect, it } from 'vitest'
 import { cloudMethodAccess } from './cloud-rpc-permission'
 import { denyRpcMethodForCaller } from '../runtime/rpc/rpc-caller-scope'
+import { MOBILE_RPC_METHOD_ALLOWLIST } from '../runtime/runtime-rpc/runtime-rpc-mobile-method-allowlist'
 
 /**
  * Design §7.3: the platform signs the caller's project permissions into the
  * ticket and the host executes that set. These pin the mapping itself, including
  * the deny-by-default edge that keeps newly added RPCs out of cloud sessions.
  */
+
+/** Every permission the platform can sign, so a refusal names the rule, not a missing grant. */
+const ALL_PERMISSIONS = [
+  'open',
+  'terminal',
+  'agent',
+  'file:read',
+  'file:write',
+  'browser',
+  'download'
+] as const
 
 describe('云端方法 → 项目权限映射', () => {
   it('终端与 git/worktree 归 terminal', () => {
@@ -27,6 +39,21 @@ describe('云端方法 → 项目权限映射', () => {
   it('agent 家族归 agent', () => {
     for (const method of ['agent.launch', 'agentSession.send', 'agentProvider.list']) {
       expect(cloudMethodAccess(method), method).toBe('agent')
+    }
+  })
+
+  it('宿主 agent 探测归 agent 权限：composer 的 agent 选择器靠它点亮', () => {
+    expect(cloudMethodAccess('preflight.detectAgents')).toBe('agent')
+    expect(cloudMethodAccess('preflight.refreshAgents')).toBe('agent')
+  })
+
+  it('宿主全域诊断不在云表内：check/detectRemoteAgents 是主机渠道事实', () => {
+    for (const method of [
+      'preflight.check',
+      'preflight.detectRemoteAgents',
+      'preflight.detectRemoteWindowsTerminalCapabilities'
+    ]) {
+      expect(cloudMethodAccess(method), method).toBeNull()
     }
   })
 
@@ -83,6 +110,26 @@ describe('云端调用方作用域', () => {
 
   it('自省方法不受权限集限制', () => {
     expect(denyRpcMethodForCaller(cloud([]), 'status.get', 'workspace')).toBeNull()
+  })
+
+  it('agent 探测需要 agent 权限位，拒绝文案指明缺哪一个', () => {
+    expect(
+      denyRpcMethodForCaller(cloud(['open']), 'preflight.detectAgents', 'workspace')
+    ).toContain("needs the 'agent' project permission")
+    expect(
+      denyRpcMethodForCaller(cloud(['agent']), 'preflight.refreshAgents', 'workspace')
+    ).toBeNull()
+  })
+
+  it('宿主全域诊断逐字拒绝：文案是云层的，不是 mobile 允许清单的', () => {
+    // Verbatim: a cloud session demoted to a mobile row would answer the
+    // allowlist's wording instead, so pinning the sentence pins the layer.
+    expect(MOBILE_RPC_METHOD_ALLOWLIST.has('preflight.refreshAgents')).toBe(false)
+    for (const method of ['preflight.check', 'preflight.detectRemoteAgents']) {
+      expect(denyRpcMethodForCaller(cloud([...ALL_PERMISSIONS]), method, 'workspace'), method).toBe(
+        `Method '${method}' is not available to cloud sessions`
+      )
+    }
   })
 
   it('repo.add 只注册票据里的项目根，归 open 权限', () => {

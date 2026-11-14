@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CLOUD_AGENT_CREATE_METHODS,
   CLOUD_AGENT_DENIED_METHODS,
+  CLOUD_AGENT_PROBE_METHODS,
   CLOUD_AGENT_SESSION_METHODS,
   cloudAgentScopeOf
 } from './cloud-agent-scope'
@@ -55,6 +56,10 @@ const runtime: CloudPathGuardRuntime = {
     if (path !== undefined) {
       return path
     }
+    // A folder workspace keeps its own key form, which the host resolves directly.
+    if (selector === 'folder:folder-own') {
+      return workspaceRoot
+    }
     if (selector === `path:${projectRoot}`) {
       return projectRoot
     }
@@ -88,7 +93,8 @@ describe('agent 方法分类', () => {
     const sets = [
       CLOUD_AGENT_CREATE_METHODS,
       CLOUD_AGENT_SESSION_METHODS,
-      CLOUD_AGENT_DENIED_METHODS
+      CLOUD_AGENT_DENIED_METHODS,
+      CLOUD_AGENT_PROBE_METHODS
     ]
     for (const [index, methodSet] of sets.entries()) {
       for (const method of methodSet) {
@@ -107,6 +113,9 @@ describe('agent 方法分类', () => {
     }
     for (const method of CLOUD_AGENT_DENIED_METHODS) {
       expect(cloudAgentScopeOf(method), method).toMatchObject({ kind: 'deny' })
+    }
+    for (const method of CLOUD_AGENT_PROBE_METHODS) {
+      expect(cloudAgentScopeOf(method), method).toEqual({ kind: 'probe' })
     }
   })
 
@@ -265,6 +274,44 @@ describe('会话类：按会话所属工作区判断', () => {
         params: { sessionId: 'sess-own' }
       })
     ).toMatchObject({ ok: false, reason: 'agent_session_unknown' })
+  })
+})
+
+describe('探测类：preflight.detectAgents/refreshAgents 钉在 workspaceRoot 内', () => {
+  it('探测方法都要求经过边界检查', () => {
+    for (const method of CLOUD_AGENT_PROBE_METHODS) {
+      expect(isCloudPathGuardedMethod(method), method).toBe(true)
+    }
+  })
+
+  it('本人工作区放行（含 folder 形式），并探不出票据根', async () => {
+    for (const method of CLOUD_AGENT_PROBE_METHODS) {
+      expect(await check(method, { worktreeId: 'workspace-root' }), method).toEqual({ ok: true })
+      expect(await check(method, { worktreeId: 'folder:folder-own' }), method).toEqual({ ok: true })
+    }
+
+    const shared = await check('preflight.detectAgents', { worktreeId: 'shared-checkout' })
+    expect(shared).toMatchObject({ ok: false, reason: 'workspace_scope' })
+    const teammate = await check('preflight.refreshAgents', { worktreeId: 'other-team' })
+    expect(teammate).toMatchObject({ ok: false, reason: 'workspace_scope' })
+  })
+
+  it('缺 worktreeId 拒绝：无名探测会让宿主答出全机 PATH', async () => {
+    for (const method of CLOUD_AGENT_PROBE_METHODS) {
+      expect(await check(method, {}), method).toMatchObject({
+        ok: false,
+        reason: 'agent_worktree_required'
+      })
+    }
+  })
+
+  it('宿主解析不了的工作区拒绝，而不是退回宿主默认探测', async () => {
+    for (const method of CLOUD_AGENT_PROBE_METHODS) {
+      expect(await check(method, { worktreeId: 'no-such-workspace' }), method).toMatchObject({
+        ok: false,
+        reason: 'worktree_unknown'
+      })
+    }
   })
 })
 

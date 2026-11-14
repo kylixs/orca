@@ -75,6 +75,17 @@ const DOWNLOAD_METHODS: ReadonlySet<string> = new Set([
  */
 const PROJECT_METHODS: ReadonlySet<string> = new Set(['repo.add', 'project.provision'])
 
+/**
+ * Host probes answering "which agent CLIs does this workspace run" — the input
+ * every launch needs, so they ride the `agent` permission like the launches they
+ * feed. `preflight.check`/`detectRemoteAgents` stay out: they report host-wide
+ * OS/shell/SSH facts no project ticket should carry.
+ */
+const AGENT_PROBE_METHODS: ReadonlySet<string> = new Set([
+  'preflight.detectAgents',
+  'preflight.refreshAgents'
+])
+
 const WORKTREE_METHODS: ReadonlySet<string> = new Set([
   'worktree.create',
   'worktree.createManaged',
@@ -106,6 +117,9 @@ export function cloudMethodAccess(method: string): CloudMethodAccess {
   }
   if (PROJECT_METHODS.has(method)) {
     return 'open'
+  }
+  if (AGENT_PROBE_METHODS.has(method)) {
+    return 'agent'
   }
   // Browser navigation is the panel's own permission; its exports are not.
   if (method.startsWith('browser.')) {
