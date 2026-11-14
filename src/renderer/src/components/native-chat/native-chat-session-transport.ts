@@ -1,5 +1,8 @@
 import type { NativeChatApi, NativeChatAppendedMessages } from '../../../../preload/api-types'
+import { isCloudSessionRuntimeEnvironment } from '../../../../shared/runtime-environments'
 import { isWebClientLocation } from '@/lib/web-client-location'
+import { readStoredWebRuntimeEnvironment } from '@/web/web-runtime-environment'
+import { useAppStore } from '@/store'
 import {
   callRuntimeRpc,
   RuntimeRpcCallError,
@@ -264,12 +267,59 @@ function createRuntimeNativeChatTransport(environmentId: string): NativeChatSess
 
 /** Select the read/subscribe transport for a pane. Route to the remote runtime
  *  only for a `runtime:`-owned pane on a non-web client (KTD-2); web and
- *  local/`ssh:`-owned panes keep the local adapter. */
+ *  local/`ssh:`-owned panes keep the local adapter. A cloud session's host
+ *  refuses the whole family, so its panes get the skip adapter instead. */
 export function getNativeChatSessionTransport(
   runtimeEnvironmentId: string | null
 ): NativeChatSessionTransport {
+  if (runtimeEnvironmentId && isCloudSessionChatEnvironment(runtimeEnvironmentId)) {
+    return cloudSessionNativeChatTransport
+  }
   if (runtimeEnvironmentId && !isWebClientLocation()) {
     return createRuntimeNativeChatTransport(runtimeEnvironmentId)
   }
   return localNativeChatTransport
+}
+
+/**
+ * Why the host cannot answer these calls (O1-f decision): a chat pane addresses
+ * its session by the provider session id (`providerSession.id`), and the host's
+ * only session-ownership resolver keys the Orca record store and live terminal
+ * handles — a provider id resolves to no worktree, so the cloud scope check
+ * would refuse every legitimate read. Judged per environment row: a desktop
+ * client can pair cloud projects beside native hosts, and the web client keeps
+ * its (ticket-marked) row in localStorage.
+ */
+function isCloudSessionChatEnvironment(environmentId: string): boolean {
+  const environment = isWebClientLocation()
+    ? readWebCloudRow()
+    : (useAppStore.getState().runtimeEnvironments ?? []).find((row) => row.id === environmentId)
+  return environment?.id === environmentId && isCloudSessionRuntimeEnvironment(environment)
+}
+
+function readWebCloudRow(): ReturnType<typeof readStoredWebRuntimeEnvironment> {
+  try {
+    return readStoredWebRuntimeEnvironment()
+  } catch {
+    // A web marker without usable storage (test doubles, blocked storage) has no row to judge.
+    return null
+  }
+}
+
+/** A doc-type state instead of a doomed RPC: the copy names the boundary rather
+ *  than looking like an empty transcript (O1 design §3 principle 3). */
+export const CLOUD_SESSION_CHAT_UNAVAILABLE =
+  'Agent chat history is not available in a cloud session.'
+
+const cloudSessionNativeChatTransport: NativeChatSessionTransport = {
+  readSession: async () => ({ error: CLOUD_SESSION_CHAT_UNAVAILABLE }),
+  subscribe: (_args, onFrame) => {
+    onFrame({
+      type: 'snapshot',
+      messages: [],
+      hasMore: false,
+      error: CLOUD_SESSION_CHAT_UNAVAILABLE
+    })
+    return () => undefined
+  }
 }
