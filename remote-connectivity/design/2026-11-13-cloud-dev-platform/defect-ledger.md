@@ -11,7 +11,7 @@
 | U3 | 🟢 | cloud-admin 页面无响应（挂起） | **D1**：`out/web` 未构建时宿主静态请求 0 字节挂起 | `pnpm build:web` + 提交 `fix`：无 bundle 返回 503（W4 令） |
 | U4 | 🟢 | 「连接信息已就绪」无引导、无浏览器使用路径 | 设计内行为但 UX 缺口 | W3（详情入口+引导）+ W7b（handoff 自动进入）已提交 |
 | U5 | 🟢 | 开发者打开项目弹原始地址对话框（截图反馈） | FR-3.11 旧设计 | **W3c**：打开=进入工作区，对话框取消（排 W7b 后，未执行） |
-| U6 | 🟡 | **客户端启动失败：missing ORCA_CLOUD_INTERNAL_TOKEN/HOST_ID/HOST_NAME（**首次报告=昨晚，多次复现，非新问题**）** | `cloud-runtime-admission` 把 `ORCA_CLOUD_API_URL` 单独出现当宿主信号 → startPolling 强制宿主变量（长期存在的准入语义）；主会话早前指引「带 env 启动」持续触发它 | **P0 修复在途**：仅显式宿主信号（HOST_TOKEN/INTERNAL_TOKEN）进宿主准入；API_URL 单独 → 客户端预填不阻塞；回归=复现用户精确场景。**临时解法：不带任何 env 启动，登录表单里填平台地址** |
+| U6 | 🟢 | **客户端启动失败：missing ORCA_CLOUD_INTERNAL_TOKEN/HOST_ID/HOST_NAME（**首次报告=昨晚，多次复现，非新问题**）** | `cloud-runtime-admission` 把 `ORCA_CLOUD_API_URL` 单独出现当宿主信号 → startPolling 强制宿主变量（长期存在的准入语义）；主会话早前指引「带 env 启动」持续触发它 | **P0 已修并回归**：准入只认显式宿主信号（HOST_TOKEN/INTERNAL_TOKEN）；API_URL 单独 → 返回 null 不装配宿主运行时，登录 UI 照常装配并预填（W10 链路本就不读准入）。回归 `cloud-runtime-admission-env.test.ts` 6 条（含用户精确场景复现）+ 轮询消费者 2 套件 5 条 + login-gate 9 条全绿；既有 TLS 沙箱失败与 stash 基线逐条一致（非回归）。证据 `cloud-platform/evidence/w10-p0-admission/` |
 | U7 | 🟡 | 管理台进入项目工作区 forbidden | 宿主对云会话方法走 mobile 允许清单回退裸拒绝 | **W5b 在途**（方法映射+审计+真实 PTY e2e） |
 | U8 | 🟢 | 跨源登录 network_error（预检被拦） | 平台无 CORS 头 | W7b 受控 CORS（白名单=宿主页来源，负向用例防全开）已提交 |
 | U9 | 🟢 | 授权码有效期反复（60s→5min→60s） | 需求往返 | 60s 定稿；TTL 试验完整回滚，HEAD 复跑 9/9 |

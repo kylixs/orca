@@ -59,6 +59,8 @@ describe('每用户每项目并发上限 3（真实平台 + 真实 Runtime）', 
     if (!started) {
       throw new Error('cloud admission not enabled')
     }
+    // Poll-mode contract: env identity, client live immediately, no enrolment round-trip.
+    expect(started.client).not.toBeNull()
     admission = started
     const client = started.client
     if (!client) {

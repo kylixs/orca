@@ -144,6 +144,12 @@ export function startCloudRuntimeAdmission(
   if (hostToken) {
     return startEnrolled(env, apiUrl, hostToken, options)
   }
+  // Only an explicit host token means "serve as a host": `ORCA_CLOUD_API_URL`
+  // alone is the client's prefilled platform address (W10), and demanding host
+  // identity for it refused to start plain clients.
+  if (!env.ORCA_CLOUD_INTERNAL_TOKEN) {
+    return null
+  }
   return startPolling(env)
 }
 
