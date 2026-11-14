@@ -130,13 +130,45 @@ async function registerNoDirectHost(name: string): Promise<string> {
   return body.credential ?? ''
 }
 
-async function heartbeatOnline(hostId: string, credential: string): Promise<void> {
+async function heartbeatOnline(
+  hostId: string,
+  credential: string,
+  directAddrs?: string[]
+): Promise<void> {
   const res = await fetch(`${api.url}/v1/hosts/${hostId}/heartbeat`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${credential}` },
-    body: JSON.stringify({ status: 'online' })
+    body: JSON.stringify({ status: 'online', ...(directAddrs ? { directAddrs } : {}) })
   })
   assert.equal(res.status, 200)
+}
+
+/** Issuance demands `open` even from admin/auditor, so host-gate probes grant it first. */
+async function grantAdminOpen(projectId: string): Promise<void> {
+  const res = await fetch(`${api.url}/v1/projects/${projectId}/grants`, {
+    method: 'PUT',
+    headers: auth(adminToken),
+    body: JSON.stringify({
+      subjectType: 'user',
+      subjectId: 'admin',
+      permissions: ['open', 'terminal', 'agent', 'file:read', 'file:write']
+    })
+  })
+  assert.equal(res.status, 200)
+}
+
+/** Creates an admin-owned project on a host and grants admin the `open` it now needs. */
+async function createProjectOnHost(key: string, hostId: string): Promise<string> {
+  const res = await fetch(`${api.url}/v1/projects`, {
+    method: 'POST',
+    headers: auth(adminToken),
+    body: JSON.stringify({ key, name: key, hostId, path: `/srv/work/${key}` })
+  })
+  const body = (await res.json()) as { id?: string; error?: { code: string } }
+  assert.equal(res.status, 201, JSON.stringify(body))
+  const projectId = body.id ?? ''
+  await grantAdminOpen(projectId)
+  return projectId
 }
 
 before(async () => {
@@ -267,21 +299,9 @@ describe('W7a web handoff：一次性 code 签发与换发', () => {
   })
 
   test('无直连地址 400 HOST_UNAVAILABLE；维护与吊销宿主 409 拒签', async () => {
-    const created = await fetch(`${api.url}/v1/projects`, {
-      method: 'POST',
-      headers: auth(adminToken),
-      body: JSON.stringify({
-        key: 'handoff-no-direct',
-        name: 'Handoff No Direct',
-        hostId: noDirectHostId,
-        path: '/srv/work/handoff-no-direct'
-      })
-    })
-    const createdBody = (await created.json()) as { id?: string; error?: { code: string } }
-    assert.equal(created.status, 201, JSON.stringify(createdBody))
-    const project = { id: createdBody.id ?? '' }
+    const projectId = await createProjectOnHost('handoff-no-direct', noDirectHostId)
 
-    const noDirect = await issueHandoff(adminToken, project.id)
+    const noDirect = await issueHandoff(adminToken, projectId)
     assert.equal(noDirect.status, 400)
 
     const maintained = await fetch(`${api.url}/v1/hosts/${noDirectHostId}/maintenance`, {
@@ -290,7 +310,7 @@ describe('W7a web handoff：一次性 code 签发与换发', () => {
       body: JSON.stringify({ enabled: true, reason: 'w7a window' })
     })
     assert.equal(maintained.status, 200)
-    const maintenance = await issueHandoff(adminToken, project.id)
+    const maintenance = await issueHandoff(adminToken, projectId)
     assert.equal(maintenance.status, 409)
 
     const revokedHost = await fetch(`${api.url}/v1/hosts/${noDirectHostId}`, {
@@ -298,13 +318,80 @@ describe('W7a web handoff：一次性 code 签发与换发', () => {
       headers: auth(adminToken)
     })
     assert.equal(revokedHost.status, 200)
-    const revoked = await issueHandoff(adminToken, project.id)
+    const revoked = await issueHandoff(adminToken, projectId)
     assert.equal(revoked.status, 409)
 
     saveEvidence(EVIDENCE, 'host-entry-gates.json', {
       noDirect: { status: noDirect.status },
       maintenance: { status: maintenance.status },
       revoked: { status: revoked.status }
+    })
+  })
+
+  test('直连地址形态非法：400 HOST_UNAVAILABLE，不产出错位入口 URL', async () => {
+    const credential = await registerNoDirectHost('w7a-malformed-addr')
+    const projectId = await createProjectOnHost('handoff-bad-addr', noDirectHostId)
+
+    // A host-supplied string is spliced verbatim into `https://<addr>/...`, so a
+    // scheme, path, bad port, or unbracketed IPv6 must be refused, not pointed at.
+    const malformed = [
+      'https://attacker.example/web-index.html',
+      'dev-001.example/web-index.html',
+      '127.0.0.1:0',
+      '127.0.0.1:99999',
+      '::1',
+      'dev-001 example'
+    ]
+    for (const addr of malformed) {
+      await heartbeatOnline(noDirectHostId, credential, [addr])
+      const issued = await issueHandoff(adminToken, projectId)
+      assert.equal(issued.status, 400, addr)
+      assert.equal(issued.url, '', `no entry URL may be built from ${addr}`)
+    }
+
+    // The same host recovers the moment it reports a well-formed address.
+    await heartbeatOnline(noDirectHostId, credential, ['[::1]:16768'])
+    const recovered = await issueHandoff(adminToken, projectId)
+    assert.equal(recovered.status, 201, recovered.url)
+    assert.match(recovered.url, /^https:\/\/\[::1\]:16768\/web-index\.html#handoff=/)
+
+    saveEvidence(EVIDENCE, 'malformed-direct-addr-400.json', {
+      rejected: malformed,
+      accepted: '[::1]:16768',
+      recoveredStatus: recovered.status
+    })
+  })
+
+  test('无 grant 的 admin 签发 403 permission_lost，不再签出死 code', async () => {
+    // adminAccess lets the admin see proj_payment but grants no `open`, so the
+    // code could only ever redeem 403 — it must be refused at mint time.
+    const res = await fetch(`${api.url}/v1/projects/proj_payment/web-handoff`, {
+      method: 'POST',
+      headers: auth(adminToken)
+    })
+    const body = (await res.json()) as { url?: string; error?: { code?: string } }
+    assert.equal(res.status, 403)
+    assert.equal(body.error?.code, 'PROJECT_FORBIDDEN')
+    assert.equal(body.url, undefined, 'a refused issuance must not carry an entry URL')
+
+    const denied = await auditEvents('eventType=web_handoff&result=denied&limit=200')
+    const refusal = denied.find(
+      (event) => event.actor === 'admin' && event.targetId === 'proj_payment'
+    )
+    assert.equal(refusal?.metadata?.reason, 'permission_lost', 'the refusal must be audited')
+
+    const issued = await auditEvents('eventType=web_handoff&result=success&limit=200')
+    assert.equal(
+      issued.filter((event) => event.actor === 'admin' && event.targetId === 'proj_payment').length,
+      0,
+      'no dead code may be minted for a project the issuer cannot open'
+    )
+
+    saveEvidence(EVIDENCE, 'admin-no-grant-issue-403.json', {
+      status: res.status,
+      code: body.error?.code,
+      auditedReason: refusal?.metadata?.reason,
+      deadCodeIssued: false
     })
   })
 
@@ -371,8 +458,12 @@ describe('W7a web handoff：一次性 code 签发与换发', () => {
     assert.equal(shortTtlRes.status, 200)
     const shortTtlEvents = ((await shortTtlRes.json()) as { events: AuditEvent[] }).events
     const all = [...events, ...shortTtlEvents]
-    const issued = all.filter((event) => event.result === 'success' && event.targetType === 'project')
-    const exchanged = all.filter((event) => event.result === 'success' && event.targetType === 'session')
+    const issued = all.filter(
+      (event) => event.result === 'success' && event.targetType === 'project'
+    )
+    const exchanged = all.filter(
+      (event) => event.result === 'success' && event.targetType === 'session'
+    )
     const denied = all.filter((event) => event.result === 'denied')
     assert.ok(issued.length >= 3, `issuance must be audited: ${JSON.stringify(events)}`)
     assert.ok(exchanged.length >= 1, 'the exchange must be audited like a login')

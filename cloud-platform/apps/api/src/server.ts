@@ -152,6 +152,18 @@ function codeFingerprint(code: string): string {
   return `sha256:${createHash('sha256').update(code).digest('hex').slice(0, 16)}`
 }
 
+/**
+ * A direct address must be a bare `host[:port]` (IPv6 bracketed), because it is
+ * spliced verbatim into `https://<addr>/web-index.html`: a scheme, path, or
+ * unbracketed IPv6 would move the handoff code onto a different origin or path.
+ */
+function isDirectAddrForm(addr: string): boolean {
+  const match = addr.match(/^(\[[0-9A-Fa-f:]+\]|[^:[\]/?#\s]+)(?::(\d{1,5}))?$/)
+  if (!match) return false
+  const port = match[2]
+  return port === undefined || (Number(port) >= 1 && Number(port) <= 65535)
+}
+
 function safeEqual(a: string, b: string): boolean {
   const left = Buffer.from(a)
   const right = Buffer.from(b)
@@ -2439,9 +2451,10 @@ export function createApp(config: ApiConfig): ApiHandle {
 
   /**
    * FR-3.10: mints the one-time code a browser trades at /v1/web/handoff, so no
-   * access token ever rides in a URL. The entry is the host's TLS direct address
-   * in its web-index form; a host without one gets a 400 instead of handing the
-   * developer a link that can never load.
+   * access token ever rides in a URL. Only a caller who could redeem the code
+   * may mint one, and the entry is the host's TLS direct address in its
+   * web-index form; anything short of that gets a 4xx instead of handing the
+   * developer a dead or mispointed link.
    */
   function handleWebHandoff(
     res: ServerResponse,
@@ -2449,6 +2462,23 @@ export function createApp(config: ApiConfig): ApiHandle {
     project: Project,
     traceId: string
   ): void {
+    // Same grant predicate as redemption: adminAccess only widens which projects
+    // a caller can see, never the right to open one, so a code that could only
+    // ever redeem 403 is refused here instead of minting a dead entry.
+    if (!store.effectivePermissions(project.id, user).includes('open')) {
+      audit.appendBestEffort({
+        eventType: 'web_handoff',
+        actor: user.username,
+        targetType: 'project',
+        targetId: project.id,
+        result: 'denied',
+        traceId,
+        metadata: { reason: 'permission_lost' }
+      })
+      return error(res, 403, 'PROJECT_FORBIDDEN', '项目无权限，无法打开。', traceId, {
+        reason: 'permission_lost'
+      })
+    }
     const host = store.hosts.get(project.hostId)
     if (!host) return error(res, 404, 'HOST_NOT_FOUND', '主机不存在。', traceId)
     if (host.revokedAt !== null) {
@@ -2465,7 +2495,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       })
     }
     const directAddr = host.directAddrs[0]
-    if (!directAddr) {
+    if (!directAddr || !isDirectAddrForm(directAddr)) {
       audit.appendBestEffort({
         eventType: 'web_handoff',
         actor: user.username,
