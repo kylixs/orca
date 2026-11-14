@@ -15,7 +15,7 @@ export const WEB_CONTRACT_VERSION = 1
 export const MIN_WEB_CONTRACT_VERSION = 1
 
 const HASH_LENGTH = 12
-const STATIC_FILES: readonly string[] = ['index.html', 'app.js', 'config.js', 'styles.css']
+const STATIC_FILES: readonly string[] = ['index.html', 'app.js', 'styles.css']
 
 export type WebAsset = { name: string; sha256: string; bytes: Buffer; contentType: string }
 

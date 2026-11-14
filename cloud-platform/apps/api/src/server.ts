@@ -165,6 +165,18 @@ function isDirectAddrForm(addr: string): boolean {
   return port === undefined || (Number(port) >= 1 && Number(port) <= 65535)
 }
 
+/**
+ * The platform origin as the caller's browser sees it (proxy scheme + request
+ * Host): a link the platform hands out must reach the platform the caller is
+ * actually talking to, which a configured constant cannot know.
+ */
+function requestOrigin(req: IncomingMessage): string {
+  const forwardedScheme = req.headers['x-forwarded-proto']?.toString().split(',')[0]?.trim()
+  return `${forwardedScheme || 'http'}://${
+    req.headers.host ?? `127.0.0.1:${req.socket.localPort ?? 0}`
+  }`
+}
+
 function safeEqual(a: string, b: string): boolean {
   const left = Buffer.from(a)
   const right = Buffer.from(b)
@@ -657,16 +669,22 @@ export function createApp(config: ApiConfig): ApiHandle {
    * `cloud-admin.html`. Empty rather than dangling — no dialable TLS address
    * means no URL a browser could load. Offline stays out of the decision: the
    * entry must still render (greyed) while the host is down.
+   *
+   * The page is served by the host, so it cannot learn the platform address from
+   * its own origin: `?api=` carries it along (searchParams keeps a later query
+   * joinable and percent-encodes the origin).
    */
-  function sessionPageUrlFor(h: Host | undefined): string {
+  function sessionPageUrlFor(h: Host | undefined, platformOrigin: string): string {
     const addr = h?.directAddrs[0]
     if (!h || !addr || !h.tlsFingerprint || !isDirectAddrForm(addr)) {
       return ''
     }
-    return `https://${addr}/cloud-admin.html`
+    const page = new URL(`https://${addr}/cloud-admin.html`)
+    page.searchParams.set('api', platformOrigin)
+    return page.toString()
   }
 
-  function projectView(p: Project, user: User): Record<string, unknown> {
+  function projectView(p: Project, user: User, platformOrigin: string): Record<string, unknown> {
     const permissions = store.effectivePermissions(p.id, user)
     const host = store.hosts.get(p.hostId)
     return {
@@ -677,7 +695,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       hostId: p.hostId,
       hostName: host?.name ?? null,
       hostStatus: hostStatusView(host),
-      sessionPageUrl: sessionPageUrlFor(host),
+      sessionPageUrl: sessionPageUrlFor(host, platformOrigin),
       browserEntryUrl: browserEntryUrlFor(host?.relayRoute ?? null),
       // Why here: the workbench can only explain a maintenance window it can see.
       ...(host?.maintenanceReason ? { hostMaintenanceReason: host.maintenanceReason } : {}),
@@ -822,6 +840,8 @@ export function createApp(config: ApiConfig): ApiHandle {
     const url = new URL(req.url ?? '/', 'http://localhost')
     const path = url.pathname
     const traceId = req.headers['x-trace-id']?.toString() ?? randomUUID()
+    // Where every link this response hands out should point the caller back to.
+    const platformOrigin = requestOrigin(req)
 
     // Second line of defence behind the WAF allowlist: once a dedicated mTLS
     // channel exists, control-plane reads are only served there (review-06 N6).
@@ -1133,12 +1153,9 @@ export function createApp(config: ApiConfig): ApiHandle {
         })
       }
       const kind = path === '/install/host.sh' ? 'host' : 'relay'
-      // The operator pastes this address on the target machine, so it is echoed
-      // the same way the wizard page saw it (proxy scheme + request Host).
-      const forwardedScheme = req.headers['x-forwarded-proto']?.toString().split(',')[0]?.trim()
-      const platformUrl = `${forwardedScheme || 'http'}://${
-        req.headers.host ?? `127.0.0.1:${req.socket.localPort ?? 0}`
-      }`
+      // The operator pastes this command on the target machine, so the embedded
+      // address must be the one the wizard page saw.
+      const platformUrl = requestOrigin(req)
       let script: string
       let tokenEmbedded = false
       if (kind === 'host') {
@@ -1298,7 +1315,7 @@ export function createApp(config: ApiConfig): ApiHandle {
             (includeArchived || p.status !== 'archived') &&
             (isAdmin(authed.user) || store.effectivePermissions(p.id, authed.user).includes('open'))
         )
-        .map((p) => projectView(p, authed.user))
+        .map((p) => projectView(p, authed.user, platformOrigin))
       return json(res, 200, { projects: visible })
     }
 
@@ -1388,7 +1405,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
       store.projects.set(created.id, created)
       store.projectsByKey.set(created.key, created)
-      return json(res, 201, projectView(created, authed.user))
+      return json(res, 201, projectView(created, authed.user, platformOrigin))
     }
 
     if (req.method === 'POST' && path === '/v1/projects/self') {
@@ -1511,7 +1528,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         // Why no download: self-service projects keep the platform default policy.
         permissions: ['open', 'terminal', 'agent', 'file:read', 'file:write']
       })
-      return json(res, 201, projectView(created, authed.user))
+      return json(res, 201, projectView(created, authed.user, platformOrigin))
     }
 
     // Hyphenated actions share the guard block below; the common ones are
@@ -1548,7 +1565,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
 
       if (req.method === 'GET' && action === '')
-        return json(res, 200, projectView(found, authed.user))
+        return json(res, 200, projectView(found, authed.user, platformOrigin))
 
       if (req.method === 'PUT' && action === '') {
         if (!isAdmin(authed.user)) {
@@ -1630,7 +1647,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         // A repo URL means the host must clone it before the next open.
         found.status = nextRepoUrl ? 'provisioning' : 'ready'
         delete found.provisioningError
-        return json(res, 200, projectView(found, authed.user))
+        return json(res, 200, projectView(found, authed.user, platformOrigin))
       }
 
       if (req.method === 'POST' && action === '/connect') {
@@ -1755,7 +1772,7 @@ export function createApp(config: ApiConfig): ApiHandle {
             // Why: live host sockets only learn about an archived project here.
             revokeProjectCredentials(projectId, 'project_archived')
           }
-          return json(res, 200, projectView(found, authed.user))
+          return json(res, 200, projectView(found, authed.user, platformOrigin))
         }
         const conflict = projectKeyTaken(store, found.key, found.id)
           ? ('PROJECT_KEY_TAKEN' as const)
@@ -1810,7 +1827,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         found.status = found.repoUrl ? 'provisioning' : 'ready'
         delete found.provisioningError
         store.projectsByKey.set(found.key, found)
-        return json(res, 200, projectView(found, authed.user))
+        return json(res, 200, projectView(found, authed.user, platformOrigin))
       }
 
       if (req.method === 'GET' && action === '/policy') {
