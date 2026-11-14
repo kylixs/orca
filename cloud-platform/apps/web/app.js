@@ -8,6 +8,8 @@ const state = {
   route: 'workbench',
   deviceId: localStorage.getItem('orca.device') ?? '',
   lastHosts: [],
+  /** Admin-only subject directory (A1), cached for the members matrix. */
+  directory: null,
   auditFilter: {},
   auditEvents: null,
   auditCursor: null
@@ -852,8 +854,19 @@ function relayRow(r) {
   </tr>`
 }
 
+/** The subject picker is an enhancement: a failed directory read keeps free text. */
+async function loadDirectory() {
+  try {
+    return await api('/v1/directory')
+  } catch {
+    return null
+  }
+}
+
 async function renderMembers() {
   const projects = await loadProjects()
+  // Only an admin reaches this route; guard anyway so a non-admin never asks.
+  state.directory = isAdmin() ? await loadDirectory() : null
   const selected = projects[0]
   content().innerHTML = `
     <div class="page-head"><div><h1>成员与权限</h1><p>按项目管理成员/组的权限。下载权限需在平台设置中单独开启。</p></div></div>
@@ -892,6 +905,14 @@ const GRANT_PERMISSIONS = [
   'download'
 ]
 
+/** Server verdicts the matrix must explain, not echo as a raw code (AA4). */
+const GRANT_ERROR_TEXT = {
+  GROUP_NOT_FOUND: '组不存在或平台未见过该组。',
+  GRANT_PERMISSION_INVALID:
+    '权限位无效：仅支持 open、terminal、agent、file:read、file:write、browser、download。'
+}
+const grantErrorText = (err) => GRANT_ERROR_TEXT[err?.code] ?? (err?.message ?? String(err))
+
 const grantKey = (g) => `${g.subjectType}:${g.subjectId}`
 const subjectLabel = (g) => g.username ?? g.subjectId
 
@@ -928,6 +949,18 @@ async function showGrants(projectId) {
       </tr>`
     })
     .join('')
+  const directory = state.directory
+  // Value must be what the platform resolves (username / exact group name);
+  // display name and department only help the admin pick it (AA4).
+  const userOptions = (directory?.users ?? [])
+    .map(
+      (user) =>
+        `<option value="${esc(user.username)}">${esc(user.displayName)}${user.dept ? ` · ${esc(user.dept)}` : ''}</option>`
+    )
+    .join('')
+  const groupOptions = (directory?.groups ?? [])
+    .map((group) => `<option value="${esc(group)}"></option>`)
+    .join('')
   const panel = $('#grantPanel')
   panel.innerHTML = `
     <div class="section-head" style="margin-top:0"><h2>授权矩阵</h2></div>
@@ -944,10 +977,19 @@ async function showGrants(projectId) {
       <span class="muted">勾选先暂存，「保存变更」才落盘。</span>
     </div>
     <div class="toolbar" style="margin-top:12px">
-      <input class="input" id="grantSubject" style="min-width:240px" placeholder="用户名或组 ID，如 zhangsan / team-payment">
+      <input class="input" id="grantSubject" style="min-width:240px"${directory ? ' list="grantGroupOptions"' : ''} placeholder="组名，如 team-payment">
       <select class="select" id="grantType"><option value="group">组</option><option value="user">用户</option></select>
       <button class="btn" id="grantAdd">添加授权</button>
-    </div>`
+    </div>
+    ${directory ? `<datalist id="grantUserOptions">${userOptions}</datalist><datalist id="grantGroupOptions">${groupOptions}</datalist>` : ''}`
+
+  if (directory) {
+    $('#grantType').onchange = () => {
+      const isUser = $('#grantType').value === 'user'
+      $('#grantSubject').setAttribute('list', isUser ? 'grantUserOptions' : 'grantGroupOptions')
+      $('#grantSubject').placeholder = isUser ? '用户名，如 zhangsan' : '组名，如 team-payment'
+    }
+  }
 
   const syncDraftUi = (tr) => {
     const dirty = body.grants.some((g) => grantKey(g) === tr.dataset.row && isDirty(g))
@@ -1016,7 +1058,7 @@ async function showGrants(projectId) {
         saved += 1
       } catch (err) {
         toast(
-          `已保存 ${saved} 项，${dirty.length - saved} 项失败：${subjectLabel(g)}（${err.message ?? err}）`
+          `已保存 ${saved} 项，${dirty.length - saved} 项失败：${subjectLabel(g)}（${grantErrorText(err)}）`
         )
         // Applied rows persist server-side; the rest falls back to what it holds.
         showGrants(projectId)
@@ -1066,7 +1108,8 @@ async function showGrants(projectId) {
     } catch (err) {
       // A refused grant (a mistyped name → 400 USER_NOT_FOUND) used to vanish
       // silently: report it and leave the matrix as the platform holds it (W2-M-1).
-      toast(`授予失败：${err.message ?? err}`)
+      // The typed subject stays in the input so it can be corrected (AA4).
+      toast(`授予失败：${grantErrorText(err)}`)
       return
     }
     toast('已授予，默认 open，可在矩阵中调整')
@@ -1083,7 +1126,7 @@ async function showGrants(projectId) {
           body: JSON.stringify({ subjectType, subjectId, permissions: [] })
         })
       } catch (err) {
-        toast(`移除失败：${err.message ?? err}`)
+        toast(`移除失败：${grantErrorText(err)}`)
         return
       }
       toast('已移除')
@@ -1393,6 +1436,7 @@ function logout() {
   state.accessToken = ''
   state.refreshToken = ''
   state.user = null
+  state.directory = null
   localStorage.removeItem('orca.access')
   localStorage.removeItem('orca.refresh')
   localStorage.removeItem('orca.user')
