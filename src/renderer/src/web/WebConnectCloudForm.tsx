@@ -15,6 +15,8 @@ import { translate } from '@/i18n/i18n'
 
 type WebConnectCloudFormProps = {
   existingEnvironment: StoredWebRuntimeEnvironment | null
+  /** Pre-fills the platform address, e.g. from a handoff entry URL's `?api=`. */
+  initialApiUrl?: string | null
   onConnected: () => void
 }
 
@@ -26,9 +28,11 @@ function defaultCloudApiUrl(): string {
 
 export default function WebConnectCloudForm({
   existingEnvironment,
+  initialApiUrl = null,
   onConnected
 }: WebConnectCloudFormProps): React.JSX.Element {
-  const [apiUrl, setApiUrl] = useState(defaultCloudApiUrl)
+  // The handoff entry URL's ?api= wins: it is the platform the code came from.
+  const [apiUrl, setApiUrl] = useState(() => initialApiUrl?.trim() || defaultCloudApiUrl())
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [deviceName, setDeviceName] = useState('Orca Web')

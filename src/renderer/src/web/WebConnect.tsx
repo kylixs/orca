@@ -21,6 +21,8 @@ type WebConnectProps = {
   initialPairingInput: string | null
   /** Explains why a previously saved cloud environment is no longer usable. */
   initialNotice?: string | null
+  /** Pre-fills the platform address, e.g. from a spent handoff entry URL. */
+  initialCloudApiUrl?: string | null
   onConnected: () => void
 }
 
@@ -29,6 +31,7 @@ type ConnectMode = 'cloud' | 'pairing'
 export default function WebConnect({
   initialPairingInput,
   initialNotice = null,
+  initialCloudApiUrl = null,
   onConnected
 }: WebConnectProps): React.JSX.Element {
   const existingEnvironment = readStoredWebRuntimeEnvironment()
@@ -160,6 +163,7 @@ export default function WebConnect({
           <TabsContent value="cloud">
             <WebConnectCloudForm
               existingEnvironment={existingEnvironment}
+              initialApiUrl={initialCloudApiUrl}
               onConnected={onConnected}
             />
           </TabsContent>

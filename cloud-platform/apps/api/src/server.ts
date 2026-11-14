@@ -665,6 +665,36 @@ export function createApp(config: ApiConfig): ApiHandle {
   }
 
   /**
+   * The origins the platform itself hands browser pages out on: the hosts' TLS
+   * direct addresses serve cloud-admin.html / web-index.html, and a relay browser
+   * edge serves the same pages under /h/<routeKey>/. Exactly these pages call
+   * this API from another origin, so exactly these may read replies cross-origin
+   * (W7b CORS) — any other page gets no header and the browser blocks it.
+   */
+  function browserPageOrigins(): Set<string> {
+    const origins = new Set<string>()
+    for (const host of store.hosts.values()) {
+      for (const addr of host.directAddrs) {
+        if (isDirectAddrForm(addr)) origins.add(`https://${addr}`)
+      }
+    }
+    for (const node of relayNodes.all()) {
+      if (node.browserHost !== '') origins.add(`https://${node.browserHost}`)
+    }
+    return origins
+  }
+
+  /**
+   * The request's Origin when it is one of those page origins, else null. Exact
+   * match, never a wildcard: a bearer token rides the Authorization header,
+   * which CORS does not protect — this only decides who may read the reply.
+   */
+  function corsAllowOriginFor(req: IncomingMessage): string | null {
+    const origin = req.headers.origin?.toString().trim() ?? ''
+    return origin !== '' && browserPageOrigins().has(origin) ? origin : null
+  }
+
+  /**
    * Per-project admin entry (FR-3.8): the host's first TLS direct address serves
    * `cloud-admin.html`. Empty rather than dangling — no dialable TLS address
    * means no URL a browser could load. Offline stays out of the decision: the
@@ -842,6 +872,29 @@ export function createApp(config: ApiConfig): ApiHandle {
     const traceId = req.headers['x-trace-id']?.toString() ?? randomUUID()
     // Where every link this response hands out should point the caller back to.
     const platformOrigin = requestOrigin(req)
+
+    // Host-served pages (W3 `?api=`, W7b handoff) call this API from another
+    // origin, so a listed origin reads replies and anything else gets no header
+    // at all — the browser then refuses the request before it is sent. Internal
+    // routes have no browser caller, so they stay out of the handshake.
+    const corsOrigin = path.startsWith('/v1/internal/') ? null : corsAllowOriginFor(req)
+    if (corsOrigin !== null) {
+      res.setHeader('access-control-allow-origin', corsOrigin)
+      // Why vary: the headers differ per Origin, so a shared cache must not hand
+      // one origin's reply to another.
+      res.setHeader('vary', 'Origin')
+    }
+    if (req.method === 'OPTIONS' && path.startsWith('/v1/')) {
+      if (corsOrigin !== null) {
+        // Only what the browser pages send: a bearer token and a JSON body.
+        res.setHeader('access-control-allow-methods', 'GET, POST, OPTIONS')
+        res.setHeader('access-control-allow-headers', 'authorization, content-type')
+        res.setHeader('access-control-max-age', '600')
+      }
+      res.writeHead(204)
+      res.end()
+      return
+    }
 
     // Second line of defence behind the WAF allowlist: once a dedicated mTLS
     // channel exists, control-plane reads are only served there (review-06 N6).
@@ -1655,7 +1708,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
 
       if (req.method === 'POST' && action === '/web-handoff') {
-        return handleWebHandoff(res, authed.user, found, traceId)
+        return handleWebHandoff(res, authed.user, found, traceId, platformOrigin)
       }
 
       if (req.method === 'GET' && action === '/grants') {
@@ -2504,15 +2557,17 @@ export function createApp(config: ApiConfig): ApiHandle {
   /**
    * FR-3.10: mints the one-time code a browser trades at /v1/web/handoff, so no
    * access token ever rides in a URL. Only a caller who could redeem the code
-   * may mint one, and the entry is the host's TLS direct address in its
-   * web-index form; anything short of that gets a 4xx instead of handing the
-   * developer a dead or mispointed link.
+   * may mint one, and the entry is a relay browser edge when one is alive (a
+   * browser cannot fail over the way a desktop client probes its endpoints),
+   * else the host's TLS direct address in its web-index form; anything short of
+   * that gets a 4xx instead of handing the developer a dead or mispointed link.
    */
   function handleWebHandoff(
     res: ServerResponse,
     user: User,
     project: Project,
-    traceId: string
+    traceId: string,
+    platformOrigin: string
   ): void {
     // Same grant predicate as redemption: adminAccess only widens which projects
     // a caller can see, never the right to open one, so a code that could only
@@ -2546,8 +2601,11 @@ export function createApp(config: ApiConfig): ApiHandle {
         lastHeartbeatAt: new Date(host.lastHeartbeatAt).toISOString()
       })
     }
+    // A live browser edge serves the page through the relay, so the host's own
+    // direct address stops being a precondition (a relayed host may list none).
+    const browserEntry = browserEntryUrlFor(host.relayRoute)
     const directAddr = host.directAddrs[0]
-    if (!directAddr || !isDirectAddrForm(directAddr)) {
+    if (browserEntry === '' && (!directAddr || !isDirectAddrForm(directAddr))) {
       audit.appendBestEffort({
         eventType: 'web_handoff',
         actor: user.username,
@@ -2579,8 +2637,13 @@ export function createApp(config: ApiConfig): ApiHandle {
         ttlSeconds: Math.ceil(handoffTtlMs / 1000)
       }
     })
+    const entry = browserEntry !== '' ? browserEntry : `https://${directAddr}/web-index.html`
+    const page = new URL(entry)
+    // The page is served by the host or relay, so `?api=` is how it finds the
+    // platform to trade the code on (same channel as the admin session page).
+    page.searchParams.set('api', platformOrigin)
     return json(res, 201, {
-      url: `https://${directAddr}/web-index.html#handoff=${code}&project=${project.id}`,
+      url: `${page.toString()}#handoff=${code}&project=${project.id}`,
       expiresIn: Math.ceil(handoffTtlMs / 1000)
     })
   }

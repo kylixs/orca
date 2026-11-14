@@ -1,6 +1,6 @@
 import '../assets/main.css'
 
-import { Suspense, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useWebSessionRecovery } from './web-session-recovery'
 import { lazyWithRetry as lazy } from '@/lib/lazy-with-retry'
 import ReactDOM from 'react-dom/client'
@@ -12,6 +12,11 @@ import {
   decideWebPairingStartup,
   readPairingInputFromLocation
 } from './web-pairing'
+import {
+  clearWebHandoffFromAddressBar,
+  readWebCloudHandoffEntry,
+  useWebCloudHandoffEntry
+} from './web-cloud-handoff-entry'
 import {
   clearStoredWebRuntimeEnvironment,
   createStoredWebRuntimeEnvironment,
@@ -32,6 +37,13 @@ function WebRoot(): React.JSX.Element {
   // Why here, once: startup routing must see the same stored environment the App
   // will install, including whether a cloud ticket (already consumed) produced it.
   const startup = useMemo(() => {
+    // FR-3.10: an explicit handoff outranks every stored environment, and its
+    // code leaves the address bar before anything can record it again.
+    const handoffEntry = readWebCloudHandoffEntry(window.location)
+    if (handoffEntry) {
+      clearWebHandoffFromAddressBar()
+      return { decision: null, cloudSessionEnded: false, handoffEntry }
+    }
     const initialPairingInput = readPairingInputFromLocation(window.location)
     const storedEnvironment = readStoredWebRuntimeEnvironment()
     const cloudSessionEnded =
@@ -53,11 +65,11 @@ function WebRoot(): React.JSX.Element {
     ) {
       clearPairingInputFromAddressBar()
     }
-    return { decision, cloudSessionEnded }
+    return { decision, cloudSessionEnded, handoffEntry: null }
   }, [])
   const startupDecision = startup.decision
   const [hasEnvironment, setHasEnvironment] = useState(() => {
-    if (startupDecision.kind === 'auto-save-runtime-offer') {
+    if (startupDecision?.kind === 'auto-save-runtime-offer') {
       saveStoredWebRuntimeEnvironment(
         createStoredWebRuntimeEnvironment({
           name: 'Orca Server',
@@ -67,30 +79,52 @@ function WebRoot(): React.JSX.Element {
       )
       return true
     }
-    return startupDecision.kind === 'use-stored-environment'
+    return startupDecision?.kind === 'use-stored-environment'
   })
   // Why here, unconditionally: a cloud client can die before the App ever mounts,
   // and a lost ticket must never leave the user on a dead screen.
   const sessionRecovery = useWebSessionRecovery(() => setHasEnvironment(false))
+  const handoff = useWebCloudHandoffEntry(() => setHasEnvironment(true))
+  const handoffStarted = useRef(false)
+  useEffect(() => {
+    if (!startup.handoffEntry || handoffStarted.current) {
+      return
+    }
+    handoffStarted.current = true
+    handoff.begin(startup.handoffEntry)
+  }, [startup.handoffEntry, handoff])
 
   if (!hasEnvironment) {
+    if (handoff.state.status === 'entering') {
+      return (
+        <div className="flex min-h-dvh items-center justify-center bg-background px-4 text-foreground">
+          <p className="text-sm text-muted-foreground">
+            {translate('auto.web.WebConnect.handoffEntering', 'Opening the project workspace…')}
+          </p>
+        </div>
+      )
+    }
+    const handoffFailure = handoff.state.status === 'failed' ? handoff.state : null
     return (
       <WebConnect
         initialPairingInput={
-          startupDecision.kind === 'show-connect' ? startupDecision.initialPairingInput : null
+          startupDecision?.kind === 'show-connect' ? startupDecision.initialPairingInput : null
         }
         initialNotice={
           sessionRecovery.status === 'signed-out'
             ? sessionRecovery.notice
-            : startup.cloudSessionEnded &&
-                startupDecision.kind === 'show-connect' &&
-                startupDecision.initialPairingInput === null
-              ? translate(
-                  'auto.web.WebConnect.cloudSessionEnded',
-                  'Your cloud session ended when this page closed. Sign in again to continue.'
-                )
-              : null
+            : handoffFailure
+              ? handoffFailure.notice
+              : startup.cloudSessionEnded &&
+                  startupDecision?.kind === 'show-connect' &&
+                  startupDecision.initialPairingInput === null
+                ? translate(
+                    'auto.web.WebConnect.cloudSessionEnded',
+                    'Your cloud session ended when this page closed. Sign in again to continue.'
+                  )
+                : null
         }
+        initialCloudApiUrl={handoffFailure?.apiUrl ?? null}
         onConnected={() => setHasEnvironment(true)}
       />
     )

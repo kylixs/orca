@@ -202,9 +202,15 @@ describe('W7a web handoff：一次性 code 签发与换发', () => {
     assert.equal(issued.status, 201, issued.url)
     assert.equal(issued.expiresIn, 60)
     assert.ok(issued.code, 'the entry URL must carry the handoff code in its hash')
+    // W7b: the page is served by the host, so ?api= is how it finds the platform
+    // to trade the code on (same channel as the admin session page).
+    const entryPrefix = `https://127.0.0.1:16768/web-index.html?api=${encodeURIComponent(api.url)}#handoff=`
+    assert.ok(issued.url.startsWith(entryPrefix), issued.url)
+    assert.ok(issued.url.endsWith('&project=proj_payment'), issued.url)
     assert.match(
-      issued.url,
-      /^https:\/\/127\.0\.0\.1:16768\/web-index\.html#handoff=[A-Za-z0-9_-]+&project=proj_payment$/
+      issued.url.slice(entryPrefix.length, -'&project=proj_payment'.length),
+      /^[A-Za-z0-9_-]+$/,
+      'the hash code stays base64url'
     )
 
     const exchanged = await redeem(api, issued.code ?? '')
@@ -353,7 +359,11 @@ describe('W7a web handoff：一次性 code 签发与换发', () => {
     await heartbeatOnline(noDirectHostId, credential, ['[::1]:16768'])
     const recovered = await issueHandoff(adminToken, projectId)
     assert.equal(recovered.status, 201, recovered.url)
-    assert.match(recovered.url, /^https:\/\/\[::1\]:16768\/web-index\.html#handoff=/)
+    assert.match(
+      recovered.url,
+      /^https:\/\/\[::1\]:16768\/web-index\.html\?api=[^#]+#handoff=/,
+      'the recovered direct entry still carries the platform api param'
+    )
 
     saveEvidence(EVIDENCE, 'malformed-direct-addr-400.json', {
       rejected: malformed,

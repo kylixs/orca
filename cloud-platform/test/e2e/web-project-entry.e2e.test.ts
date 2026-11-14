@@ -13,8 +13,9 @@ import { loadWebConsolePage, type WebConsolePage } from './web-console-page.ts'
  *   so the param is how it finds the platform), and stays empty without a
  *   dialable TLS address in host:port form
  * - 工作台 and 我的项目 rows render the same two entries: 「详情」 for admins
- *   only, 「Orca Web」 for open-permission holders, both opening a new tab and
- *   both greyed out while the host is offline or in maintenance
+ *   only (a link, opening a new tab), 「Orca Web」 for open-permission holders
+ *   (an action button since M122: it mints a one-time handoff URL per click);
+ *   both grey out while the host is offline or in maintenance
  * - the developer 打开 dialog leads with the desktop-client guidance
  */
 
@@ -27,7 +28,6 @@ let adminToken = ''
 let devToken = ''
 let liveProjectId = ''
 let liveSessionPageUrl = ''
-let liveBrowserEntryUrl = ''
 let maintHostId = ''
 let beat: ReturnType<typeof setInterval> | undefined
 const matrix: Record<string, string> = {}
@@ -149,7 +149,6 @@ before(async () => {
   // so it must be the platform address this console talks to — not the host.
   const platformApi = encodeURIComponent(service.url)
   liveSessionPageUrl = `https://127.0.0.1:17001/cloud-admin.html?api=${platformApi}`
-  liveBrowserEntryUrl = `https://${BROWSER_EDGE_HOST}/h/dev-tls/web-index.html`
 
   // A dotted route key is one the relay's /h/ parser refuses, so this host keeps
   // beating yet never gets a browser entry: the placeholder side of the matrix.
@@ -339,15 +338,18 @@ test('W3-admin 管理员双入口：详情与 Orca Web 新标签，离线置灰'
   assert.equal(new URL(detail.href).searchParams.get('api'), service.url)
   assert.equal(detail.target, '_blank', 'the session page must open in a new tab')
   assert.equal(detail.rel, 'noopener')
-  const orca = entryIn(liveRow, 'Orca Web') as HTMLAnchorElement | null
+  // M122: the entry mints a handoff URL per click, so it is an action button.
+  const orca = entryIn(liveRow, 'Orca Web') as HTMLButtonElement | null
   assert.ok(orca, 'an open-permission admin gets the Orca Web entry')
-  assert.equal(orca.href, liveBrowserEntryUrl, 'the entry carries the platform browser entry URL')
-  assert.equal(orca.target, '_blank')
+  assert.equal(orca.tagName, 'BUTTON', 'Orca Web mints its URL per click, so it is not a link')
+  assert.equal(orca.dataset.orcaWeb, liveProjectId)
+  assert.equal(orca.disabled, false)
 
-  // Beating host, but its route key never serves a browser edge.
+  // Beating host, but its route key never serves a browser edge: M122 leaves the
+  // click to the platform, which still serves the host's direct web-index entry.
   const noEdgeOrca = entryIn(rowFor(page, 'noedge-project'), 'Orca Web') as HTMLButtonElement | null
-  assert.ok(noEdgeOrca?.disabled, 'a host without a browser edge keeps the entry greyed')
-  assert.match(noEdgeOrca.title, /暂无浏览器入口/)
+  assert.ok(noEdgeOrca, 'a host without a browser edge keeps the entry clickable')
+  assert.equal(noEdgeOrca.disabled, false, 'the platform, not the console, decides per click')
 
   const offlineRow = rowFor(page, 'payment-service')
   const offlineDetail = entryIn(offlineRow, '详情') as HTMLButtonElement | null
@@ -366,12 +368,12 @@ test('W3-admin 管理员双入口：详情与 Orca Web 新标签，离线置灰'
     'the projects page greys the detail entry the same way'
   )
   saveEvidence(EVIDENCE, 'admin-entries.json', {
-    live: { detail: detail.href, orcaWeb: orca.href },
-    noBrowserEdge: noEdgeOrca.title,
+    live: { detail: detail.href, orcaWeb: `action:${orca.dataset.orcaWeb}` },
+    noBrowserEdge: `clickable:${noEdgeOrca.disabled === false}`,
     offlineDetail: offlineDetail.title
   })
   matrix['admin'] =
-    '在线 → 详情指向 sessionPageUrl、Orca Web 指向 browserEntryUrl（均新标签）；无浏览器入口 → 占位禁用；离线 → 详情禁用 title=主机离线'
+    '在线 → 详情指向 sessionPageUrl（新标签）、Orca Web 为 mint-per-click 动作按钮；无浏览器入口 → 仍可点击由平台裁定；离线 → 详情禁用 title=主机离线'
 }, 120_000)
 
 test('W3-orca-web 无 open 权限不渲染 Orca Web 入口', async () => {
@@ -400,16 +402,16 @@ test('W3-developer 开发者无详情入口，Orca Web 随权限与浏览器入�
 
   const liveRow = rowFor(page, 'live-project')
   assert.equal(entryIn(liveRow, '详情'), null, 'developers never get the detail entry')
-  const orca = entryIn(liveRow, 'Orca Web') as HTMLAnchorElement | null
+  const orca = entryIn(liveRow, 'Orca Web') as HTMLButtonElement | null
   assert.ok(orca, 'an open-permission holder sees the Orca Web entry')
-  assert.equal(orca.href, liveBrowserEntryUrl)
-  assert.equal(orca.target, '_blank')
+  assert.equal(orca.dataset.orcaWeb, liveProjectId)
+  assert.equal(orca.disabled, false)
   const openBtn = entryIn(liveRow, '打开') as HTMLButtonElement | null
   assert.equal(openBtn?.disabled, false, 'the developer can still open the project')
 
   const noEdgeOrca = entryIn(rowFor(page, 'noedge-project'), 'Orca Web') as HTMLButtonElement | null
-  assert.ok(noEdgeOrca?.disabled)
-  assert.match(noEdgeOrca.title, /暂无浏览器入口/)
+  assert.ok(noEdgeOrca)
+  assert.equal(noEdgeOrca.disabled, false, 'a host without a browser edge still mints an entry')
   const offlineOrca = entryIn(
     rowFor(page, 'payment-service'),
     'Orca Web'
@@ -426,13 +428,13 @@ test('W3-developer 开发者无详情入口，Orca Web 随权限与浏览器入�
     '工作台 and 我的项目 must render identical row entries'
   )
   saveEvidence(EVIDENCE, 'developer-entries.json', {
-    live: { orcaWeb: orca.href, openEnabled: openBtn?.disabled === false },
-    noBrowserEdge: noEdgeOrca.title,
+    live: { orcaWeb: `action:${orca.dataset.orcaWeb}`, openEnabled: openBtn?.disabled === false },
+    noBrowserEdge: `clickable:${noEdgeOrca.disabled === false}`,
     offline: offlineOrca.title,
     pagesIdentical: actionsCell(projectsRow) === actionsCell(liveRow)
   })
   matrix['developer'] =
-    '无详情入口；Orca Web 在线真链接、无浏览器入口占位、离线 title=主机离线；两页 actions 一致'
+    '无详情入口；Orca Web 在线为动作按钮、无浏览器入口仍可点击、离线 title=主机离线；两页 actions 一致'
 }, 120_000)
 
 test('W3-guide 打开对话框首行引导使用桌面客户端', async () => {
@@ -472,17 +474,21 @@ test('W3-admin 在线但无可直达会话页地址时详情置灰', async () =>
   assert.equal(detail.title, '该主机没有可直达的会话页地址')
   // The host is online with a healthy browser edge, so the row is not dead —
   // the greyed entry is about the session page alone.
-  const orca = entryIn(row, 'Orca Web') as HTMLAnchorElement | null
-  assert.ok(orca, 'the same online row keeps a real Orca Web link')
-  assert.equal(orca.tagName, 'A', 'Orca Web must stay a link, not inherit the greyed state')
-  assert.equal(orca.href, `https://${BROWSER_EDGE_HOST}/h/dev-badaddr/web-index.html`)
+  const orca = entryIn(row, 'Orca Web') as HTMLButtonElement | null
+  assert.ok(orca, 'the same online row keeps a live Orca Web entry')
+  assert.equal(
+    orca.tagName,
+    'BUTTON',
+    'Orca Web must stay an action button, not inherit the greyed state'
+  )
+  assert.equal(orca.disabled, false)
   saveEvidence(EVIDENCE, 'online-no-session-page-detail.json', {
     detailTitle: detail.title,
     detailDisabled: detail.disabled,
-    orcaWebHref: orca.href
+    orcaWebClickable: orca.disabled === false
   })
   matrix['online-no-addr'] =
-    '在线 + 无会话页地址 → 详情 disabled title=该主机没有可直达的会话页地址；Orca Web 仍真链接'
+    '在线 + 无会话页地址 → 详情 disabled title=该主机没有可直达的会话页地址；Orca Web 仍可点击'
 }, 120_000)
 
 test('W3-maintenance 维护态双入口置灰，退出维护恢复真链接', async () => {
@@ -525,22 +531,22 @@ test('W3-maintenance 维护态双入口置灰，退出维护恢复真链接', as
   await recovered.clickNav('workbench')
   const liveRow = rowFor(recovered, 'maint-project')
   const liveDetail = entryIn(liveRow, '详情') as HTMLAnchorElement | null
-  const liveOrca = entryIn(liveRow, 'Orca Web') as HTMLAnchorElement | null
+  const liveOrca = entryIn(liveRow, 'Orca Web') as HTMLButtonElement | null
   assert.ok(liveDetail, 'the detail entry comes back as a link')
-  assert.ok(liveOrca, 'the Orca Web entry comes back as a link')
+  assert.ok(liveOrca, 'the Orca Web entry comes back clickable')
   assert.equal(liveDetail.tagName, 'A', 'recovery must restore the anchor, not the greyed button')
   assert.equal(
     new URL(liveDetail.href).searchParams.get('api'),
     service.url,
     'the recovered detail entry still carries the platform api param'
   )
-  assert.equal(liveOrca.href, `https://${BROWSER_EDGE_HOST}/h/dev-maint/web-index.html`)
+  assert.equal(liveOrca.disabled, false, 'recovery must restore the Orca Web action')
   saveEvidence(EVIDENCE, 'maintenance-recovered.json', {
     detail: liveDetail.href,
-    orcaWeb: liveOrca.href
+    orcaWeb: `clickable:${liveOrca.disabled === false}`
   })
   matrix['maintenance'] =
-    '维护中 → 详情/Orca Web 均 disabled title=主机维护中；退出维护 → 双入口恢复真链接（详情含 ?api=）'
+    '维护中 → 详情/Orca Web 均 disabled title=主机维护中；退出维护 → 详情恢复真链接（含 ?api=）、Orca Web 恢复可点击'
 }, 120_000)
 
 test('W3-admin-open 离线宿主行三控件同态置灰', async () => {

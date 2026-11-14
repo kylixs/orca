@@ -7,7 +7,8 @@ import {
   loginToCloud,
   requestCloudTicket,
   WebCloudSessionError,
-  type WebCloudProject
+  type WebCloudProject,
+  type WebCloudSession
 } from './web-cloud-session'
 import {
   loadOrCreateWebCloudDeviceKey,
@@ -66,6 +67,24 @@ export type ConnectCloudProjectInput = {
   endpointUrl?: string
   clientFactory?: WebCloudConnectClientFactory
   /** Keeps compatibility ids across a re-login of the same server. */
+  previousEnvironment?: StoredWebRuntimeEnvironment | null
+}
+
+/**
+ * The validated-entry tail both entrances share: a ready platform session (from
+ * a password login or a handoff exchange) is turned into one project's live
+ * runtime connection.
+ */
+export type ConnectCloudProjectWithSessionInput = {
+  session: WebCloudSession
+  /** The device identity the platform enrols the ticket for, and the E2EE half. */
+  devicePublicKeyB64: string
+  /** Half of the device identity the E2EE handshake needs; never persisted. */
+  deviceSecretKeyB64: string
+  projectId?: string
+  fetchImpl?: typeof fetch
+  endpointUrl?: string
+  clientFactory?: WebCloudConnectClientFactory
   previousEnvironment?: StoredWebRuntimeEnvironment | null
 }
 
@@ -185,6 +204,50 @@ function mapConnectError(error: unknown): unknown {
   )
 }
 
+export async function connectCloudProjectWithSession(
+  input: ConnectCloudProjectWithSessionInput
+): Promise<WebCloudProjectConnection> {
+  const fetchOptions = input.fetchImpl ? { fetchImpl: input.fetchImpl } : {}
+  const { session } = input
+  const projects = await listCloudProjects(session, fetchOptions)
+  const project = selectProject(projects, input.projectId)
+  const ticket = await requestCloudTicket(
+    session,
+    project.id,
+    input.devicePublicKeyB64,
+    fetchOptions
+  )
+  const offer = cloudPairingOfferFromTicket(
+    ticket,
+    input.devicePublicKeyB64,
+    input.endpointUrl ? { endpointUrl: input.endpointUrl } : {}
+  )
+  // The key storage seam holds only the device blob, so there is no cached
+  // project/display name to refresh here.
+  let client: WebCloudConnectClient | null = null
+  try {
+    const validated = (input.clientFactory ?? createValidationClient)(
+      offer,
+      input.deviceSecretKeyB64
+    )
+    client = validated
+    const reply = await validated.call('status.get', undefined, {
+      timeoutMs: STATUS_TIMEOUT_MS
+    })
+    const connection = connectionFromStatus(reply, offer, project, input.deviceSecretKeyB64)
+    // Why keep it open: its ticket is already spent; rebuilding from the stored
+    // offer can never upgrade, so this socket is the App's only live connection.
+    return {
+      ...connection,
+      client: validated,
+      environment: toCloudEnvironment(connection, input.previousEnvironment ?? null)
+    }
+  } catch (error) {
+    client?.close()
+    throw mapConnectError(error)
+  }
+}
+
 export async function connectCloudProject(
   input: ConnectCloudProjectInput
 ): Promise<WebCloudProjectConnection> {
@@ -200,33 +263,16 @@ export async function connectCloudProject(
     ...fetchOptions,
     ...(input.now ? { now: input.now } : {})
   })
-  const projects = await listCloudProjects(session, fetchOptions)
-  const project = selectProject(projects, input.projectId)
-  const ticket = await requestCloudTicket(session, project.id, identity.publicKeyB64, fetchOptions)
-  const offer = cloudPairingOfferFromTicket(
-    ticket,
-    identity.publicKeyB64,
-    input.endpointUrl ? { endpointUrl: input.endpointUrl } : {}
-  )
-  // The key storage seam holds only the device blob, so there is no cached
-  // project/display name to refresh here.
-  let client: WebCloudConnectClient | null = null
-  try {
-    const validated = (input.clientFactory ?? createValidationClient)(offer, identity.secretKeyB64)
-    client = validated
-    const reply = await validated.call('status.get', undefined, {
-      timeoutMs: STATUS_TIMEOUT_MS
-    })
-    const connection = connectionFromStatus(reply, offer, project, identity.secretKeyB64)
-    // Why keep it open: its ticket is already spent; rebuilding from the stored
-    // offer can never upgrade, so this socket is the App's only live connection.
-    return {
-      ...connection,
-      client: validated,
-      environment: toCloudEnvironment(connection, input.previousEnvironment ?? null)
-    }
-  } catch (error) {
-    client?.close()
-    throw mapConnectError(error)
-  }
+  return connectCloudProjectWithSession({
+    session,
+    devicePublicKeyB64: identity.publicKeyB64,
+    deviceSecretKeyB64: identity.secretKeyB64,
+    ...(input.projectId === undefined ? {} : { projectId: input.projectId }),
+    ...(input.fetchImpl === undefined ? {} : { fetchImpl: input.fetchImpl }),
+    ...(input.endpointUrl === undefined ? {} : { endpointUrl: input.endpointUrl }),
+    ...(input.clientFactory === undefined ? {} : { clientFactory: input.clientFactory }),
+    ...(input.previousEnvironment === undefined
+      ? {}
+      : { previousEnvironment: input.previousEnvironment })
+  })
 }

@@ -91,19 +91,20 @@ export type WebCloudLoginInput = {
   onTokensChanged?: (tokens: WebCloudAuthTokens) => void
 }
 
-export async function loginToCloud(input: WebCloudLoginInput): Promise<WebCloudSession> {
-  const apiUrl = trimApiUrl(input.apiUrl)
-  const body = await requestJson({
-    url: `${apiUrl}/v1/auth/login`,
-    method: 'POST',
-    fetchImpl: input.fetchImpl,
-    body: {
-      username: input.username,
-      password: input.password,
-      devicePubKey: input.devicePublicKeyB64,
-      deviceName: input.deviceName
-    }
-  })
+/** The parts of an enrolment reply the session build needs; login and handoff share it. */
+type WebCloudAuthReplyOptions = {
+  apiUrl: string
+  fetchImpl?: typeof fetch
+  now?: () => number
+  refreshLeadMs?: number
+  onTokensChanged?: (tokens: WebCloudAuthTokens) => void
+}
+
+/** Both the login and the handoff exchange return this exact enrolment shape. */
+function webCloudSessionFromAuthReply(
+  body: unknown,
+  options: WebCloudAuthReplyOptions
+): WebCloudSession {
   const accessToken = readString(body, 'accessToken')
   const refreshToken = readString(body, 'refreshToken')
   const user = readField(body, 'user')
@@ -119,21 +120,21 @@ export async function loginToCloud(input: WebCloudLoginInput): Promise<WebCloudS
     displayName === null ||
     deviceId === null
   ) {
-    throw malformed('login reply did not match the platform contract')
+    throw malformed('auth reply did not match the platform contract')
   }
   const expiresIn = readNumber(body, 'expiresIn')
   const auth = createWebCloudAuth({
-    apiUrl,
+    apiUrl: options.apiUrl,
     accessToken,
     refreshToken,
     ...(expiresIn === null ? {} : { expiresIn }),
-    ...(input.fetchImpl ? { fetchImpl: input.fetchImpl } : {}),
-    ...(input.now ? { now: input.now } : {}),
-    ...(input.refreshLeadMs === undefined ? {} : { refreshLeadMs: input.refreshLeadMs }),
-    ...(input.onTokensChanged ? { onTokensChanged: input.onTokensChanged } : {})
+    ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+    ...(options.now ? { now: options.now } : {}),
+    ...(options.refreshLeadMs === undefined ? {} : { refreshLeadMs: options.refreshLeadMs }),
+    ...(options.onTokensChanged ? { onTokensChanged: options.onTokensChanged } : {})
   })
   return {
-    apiUrl,
+    apiUrl: options.apiUrl,
     accessToken,
     refreshToken,
     user: {
@@ -145,10 +146,75 @@ export async function loginToCloud(input: WebCloudLoginInput): Promise<WebCloudS
       permissions: readStringArray(user, 'permissions') ?? []
     },
     deviceId,
-    obtainedAtMs: (input.now ?? Date.now)(),
+    obtainedAtMs: (options.now ?? Date.now)(),
     expiresIn,
     auth
   }
+}
+
+export async function loginToCloud(input: WebCloudLoginInput): Promise<WebCloudSession> {
+  const apiUrl = trimApiUrl(input.apiUrl)
+  const body = await requestJson({
+    url: `${apiUrl}/v1/auth/login`,
+    method: 'POST',
+    fetchImpl: input.fetchImpl,
+    body: {
+      username: input.username,
+      password: input.password,
+      devicePubKey: input.devicePublicKeyB64,
+      deviceName: input.deviceName
+    }
+  })
+  return webCloudSessionFromAuthReply(body, {
+    apiUrl,
+    fetchImpl: input.fetchImpl,
+    now: input.now,
+    refreshLeadMs: input.refreshLeadMs,
+    onTokensChanged: input.onTokensChanged
+  })
+}
+
+export type WebCloudHandoffInput = {
+  apiUrl: string
+  /** The one-time code from the entry URL's hash (FR-3.10); spent on success. */
+  code: string
+  /** Standard base64, 32 bytes: the device the platform enrols or reuses. */
+  devicePublicKeyB64: string
+  deviceName: string
+  /** An earlier enrolment of this browser, so the device list stays one row. */
+  deviceId?: string
+  fetchImpl?: typeof fetch
+  now?: () => number
+  refreshLeadMs?: number
+  onTokensChanged?: (tokens: WebCloudAuthTokens) => void
+}
+
+/**
+ * Trades the one-time handoff code for a real session — the same shape a
+ * password login returns, so the browser enters with exactly the access a
+ * desktop client would have. Expired/spent codes come back 410 HANDOFF_GONE,
+ * a lost grant 403 PROJECT_FORBIDDEN, an unreachable platform `network_error`.
+ */
+export async function redeemWebHandoff(input: WebCloudHandoffInput): Promise<WebCloudSession> {
+  const apiUrl = trimApiUrl(input.apiUrl)
+  const body = await requestJson({
+    url: `${apiUrl}/v1/web/handoff`,
+    method: 'POST',
+    fetchImpl: input.fetchImpl,
+    body: {
+      code: input.code,
+      devicePubKey: input.devicePublicKeyB64,
+      deviceName: input.deviceName,
+      ...(input.deviceId ? { deviceId: input.deviceId } : {})
+    }
+  })
+  return webCloudSessionFromAuthReply(body, {
+    apiUrl,
+    fetchImpl: input.fetchImpl,
+    now: input.now,
+    refreshLeadMs: input.refreshLeadMs,
+    onTokensChanged: input.onTokensChanged
+  })
 }
 
 function toWebProject(project: CloudReplyProject): WebCloudProject {
