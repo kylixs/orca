@@ -2701,6 +2701,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 审计（`test-reports/w5c-audit.md`）：blocker 0、**major 1（安全）**——重签票据绕过 AC-29 主机键钉扎：`webHostKeyVerdict` 唯一调用点在 BrowserProjectConnections.open，两条取票接线重签的新票对宿主自报的新 `host.e2eePublicKeyB64` 不比对 → 换键宿主可让存活会话新订阅静默建链（E2EE+deviceToken 流向换键方）。修法一行 fail-closed（重签 offer host key 与父钉扎值比对）+ 换键回归断言，已回派原代理。minor 6（legacy 重连无钉、§8.4 会话槽 2/3 撞 4431 无测试、e2e 只过滤 replayed 等）+ note 10（两个中间提交不可构建已按披露计 minor）。D6 未削弱实证：重放负向对照测试把一次性语义钉成可回归断言。归属核实 8/8 文件干净、与 a740b953faf 注记一致。
 
+### 本轮调度（2026-11-14，三通道并行）
+
+通道域互不相交，三个子代理并发：**W13b**（web 云工作区视图+翻转，src/renderer/web+旅程 spec 域）、**W3c**（「打开」=handoff 新标签进工作区，apps/web/app.js+平台 e2e 域）、**W12a 诊断**（U15 PROJECT_NOT_PREPARED 只读定位，产诊断文档不修码不提交）。W12 实现等诊断审定后另派（W12b）；W13c 排 W13b 后。
+
 ### W13a 关闭（独立测试 4/4 PASS，2026-11-14）
 
 独立测试（隔离 worktree 固定 `f160524e19d`）：提交套件双 runner 全绿（10+11+8+1+5）+ 邻接 92 例；自有探针 **7/7**——未 ensure 正常态、ensure 后真实 path/branch（与 git rev-parse 对照）、**越权检出不返回有牙验证**（owner 真实建出队友 managed 检出后仍未 ensure 应答恰为 workspaceRoot 内一行）、非云调用方三形态拒绝、幂等 5 应答逐字节一致；白名单三层键集恰等；安全抽查（回包序列化无宿主全域信息、绝对路径全在票据根内）。OBS：repoUrl 逐字回显（凭据脱敏候选挂账）、非 Orca 检出对 workspace.info 不可见（Q3 参考）。**W13a 关闭**（`f160524e19d`+独立测试 4/4+审计 PASS）。通道③派 **W13b**（web 视图+翻转）。
