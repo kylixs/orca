@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### 中继注册完成（2026-11-14）+ U38/U39 登记
+
+100.67.197.59 节点上线（relay:18443 SNI+18444 浏览器模式，nohup 长驻）：`/v1/relays` 真数据 ✓、connect 应答含回落端点（routeKey=dev-local-02 + browserEntryUrl）✓、浏览器模式 TLS 终结+路径路由 ✓。**U38**（安装脚本 env 名不一致→新部署必踩，修复令已派）+**U39**（中继路由表 n=0：宿主注册拍未形成 relayRoutes 表项，回落数据面断裂，待诊断）。
+
 ### 环境修复+真实数据种子完成（2026-11-14）
 
 五步全过+扩展种子全过（evidence/env-repair-2026-11-14/env-repair-result.json，含 9 功能面 data-coverage 清单）：宿主 **dev-local-02=host_452e28b8 online，广告地址=100.103.213.12:62797**（tailnet 可达，dev-001 残留已吊销）；项目 **proj_032747e7**（demo-app，ready，矩阵 3 行=team-payment/zhangsan 全量+lisi 仅 open+file:read，策略=全局 allow+demo-app 显式 deny）+ **proj_8aad2086**（zhangsan 自建，U15 链路）；两仓库各 5 提交+main/feature 双分支+真实内容；orca web `https://100.103.213.12:62797/web-index.html` 200（**证书 SAN 不含 tailnet IP**→浏览器名称不匹配警告，客户端指纹钉扎不受影响）；lisi 登录只见 demo-app ✓。connect 配方修正：clientVersion 须为 "1.5.0" 具体值、deviceId 须用登录返回值。**平台归属澄清**：18787 即 19:58 长驻 PID 19188（lsof 确证），「20:32 新实例」系代理误读转发器行；演示数据不会随测试会话丢失。待办挂账：证书重签（含 IP SAN）、平台落盘化。
