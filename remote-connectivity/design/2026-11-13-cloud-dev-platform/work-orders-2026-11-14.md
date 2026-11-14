@@ -179,6 +179,10 @@ orca web：hash 读码→换发→自动打开项目→hash 即清；410/403/网
 W9a：A 线（桌面）按 business-chain-tests §1，含 C2/C3/C4(API)/C5(组) 前置串联，时间线 JSON+截图，证据 `evidence/journey-golden-a/`，提交 `test(e2e): golden journey desktop line`。
 W9b：B 线（Orca Web）按 §2（依赖 W7b/W6c 已落地），code 重放 410 纳入旅程，证据 `evidence/journey-golden-b/`，提交 `test(e2e): golden journey orca web line`。
 
-### M120（先设计，再 a/b/c 三任务）
+### W5c · 浏览器终端订阅票据（U14，排 W5b 后）
+
+`WebRuntimeClient.subscribe`（renderer web 传输）为每条订阅开子 socket 时复用同一张一次性 upgrade 票据 → 宿主按一次性语义拒 `replayed`。修在消费端：每条子连接向平台重签一张短票（或扩展单票多连接语义——选前者，不动宿主 D6 安全回归）。测试：订阅建立成功、宿主侧无 replayed 拒绝、流式输出到达面板；既有一次性票据回归全绿。提交 `fix(web): re-sign tickets for terminal subscriptions`。证据 `evidence/w5c-subscribe-ticket/`。
+
+## M120（先设计，再 a/b/c 三任务）
 
 设计代理出方案（登记表单字段与校验、权限矩阵交互模型、项目级策略 UI 与接口映射）→ 主会话确认 → M120a 登记表单 / M120b 权限矩阵 / M120c 项目级策略，各自独立提交与证据。

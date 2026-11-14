@@ -2624,6 +2624,10 @@ TTL 先改 5 分钟后经再评估**改回 60 秒**（单次消费+绑定不变�
 
 **事故与恢复**：主会话随后的 docs 提交携带暂存区陈旧副本，把 7 路径回退（config.js 复活、?api= 删、4 用例删）；修复代理重落地 `a069482b23a`；主会话恢复时又把 PROGRESS checkout 到旧快照顶掉一节记录（本段即补写）。终态恢复提交 `d5a00712179`：5 路径自 a069 恢复 + config.js 删除入档 + PROGRESS 保留最新。**恢复后验证**：config.js 不存在于 HEAD；`sessionPageUrlFor`/`searchParams.set('api', platformOrigin)` 在位（server.ts:677/683/698）；维护态双入口补例在位。**防再发规则**：主会话提交前必须核对暂存集=预期文件（本次恢复中已实践：PROGRESS 取消暂存保最新版）；F3 计数笔误更正：W3 段 exploratory 16 实为 13。
 
+### W5b 开发完成（通道④收口，待独立测试+审计，2026-11-14）
+
+提交 `5a1746b869e`（4 文件）：**宿主侧根因修复**——`runtime-rpc-websocket-dispatch` 把 `cloudSession` 判定提到 mobile scope 之前（云票据设备行陈旧 `scope:'mobile'` 时票据 perms 被电话允许清单整体接管 → 裸 forbidden 零审计），票据 perms 经既有 `cloudMethodAccess` 映射（terminal.→terminal、worktree.*→terminal、files.*→读写、project.provision→open），拒绝带 `method_denied` 审计；真手机/配对桌面路径零变化（mobile 套件全绿背书）。e2e：cloud-admin-session 3/3（含 W5b-1 真 PTY 全链路：打开→provision→终端 send→read 回显→越权 PERMISSION_MISSING 带审计；W5b-2 无授权占位+拒绝审计）+ cloud-rpc-scope 5/5（新回归修复前红）+ tc:web/tc:node 绿（ENV-1 exclude 已落）。**新发现 U14**：终端流式订阅被子连接复用一次性票据宿主拒 `replayed`（e2e 已改缓冲读证全链路）→ 立 W5c 派发。已派 W5b 独立测试。
+
 ### W5a 修复完成（待独立复验，2026-11-14）
 
 提交 `8ce21cb7f1e`（6 文件 +598/−24）：MAJ-1 重连快照改用共享常量 RELEASE_SYNCHRONIZED_OUTPUT+清屏序（不再手抄，M118-3 断言同步修正为从常量引用）；MAJ-2 桥接订阅 5+1 例测试补齐（帧映射/end/onError/NOT_CONNECTED/STREAM_UNSUPPORTED/释放/抛错兜底）；P5 scheduleReconnect 加 pending 守卫（更强方案：不双发布防+不双跳退避）+双报用例；MIN-3 终端槽包既有 RecoverableRenderErrorBoundary（降级卡+re-key 重试，含 why 注释）；MIN-4 create 在途卸载迟到回执补发 close。77 用例全绿（基线 68+9）；tc:web 对本域 0 错误（A/B 验证 4194 条 TS6307 与 5 条 renderer 错误全部来自并发 W7b 在途文件，stash 对照逐条相同）；暂存前 diff --cached 核对仅 6 个本任务文件。已派独立复验，通过即关闭 W5a 放行 W5b。
