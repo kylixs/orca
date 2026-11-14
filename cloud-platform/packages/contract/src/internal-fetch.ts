@@ -14,6 +14,39 @@ function abortReason(signal: AbortSignal): Error {
 }
 
 /**
+ * node:https needs concrete bytes; dropping the body would turn every POST into
+ * an empty one (U43), and an unknown streaming body must fail loudly, not become
+ * an empty request.
+ */
+async function toRequestBody(body: RequestInit['body']): Promise<Uint8Array | undefined> {
+  if (body == null) return undefined
+  if (typeof body === 'string') return Buffer.from(body, 'utf8')
+  if (body instanceof Uint8Array) return body
+  if (body instanceof ArrayBuffer) return new Uint8Array(body)
+  if (body instanceof DataView) return new Uint8Array(body.buffer, body.byteOffset, body.byteLength)
+  if (body instanceof URLSearchParams) return Buffer.from(body.toString(), 'utf8')
+  if (typeof Blob !== 'undefined' && body instanceof Blob) {
+    return new Uint8Array(await body.arrayBuffer())
+  }
+  throw new TypeError('mtlsFetch only supports string/buffer request bodies on its TLS path')
+}
+
+/** Adds Content-Length for a written body unless the caller pinned framing. */
+function withFraming(
+  headers: Record<string, string>,
+  bodyBytes: Uint8Array | undefined
+): Record<string, string> {
+  if (!bodyBytes) return headers
+  const pinned = Object.keys(headers).some((name) => {
+    const lower = name.toLowerCase()
+    if (lower === 'content-length') return true
+    return lower === 'transfer-encoding' && headers[name].toLowerCase().includes('chunked')
+  })
+  if (!pinned) headers['content-length'] = String(bodyBytes.byteLength)
+  return headers
+}
+
+/**
  * Fetches a control-plane resource over mTLS. Kept dependency-free so the
  * relay and runtime can share it without pulling in a TLS stack.
  *
@@ -42,6 +75,7 @@ export async function mtlsFetch(
   const { request } = await import('node:https')
   const { readFileSync } = await import('node:fs')
   const url = new URL(`${config.internalUrl}${path}`)
+  const bodyBytes = await toRequestBody(init.body)
   return new Promise<Response>((resolve, reject) => {
     const req = request(
       {
@@ -49,7 +83,7 @@ export async function mtlsFetch(
         port: url.port,
         path: `${url.pathname}${url.search}`,
         method: init.method ?? 'GET',
-        headers: options.headers as Record<string, string>,
+        headers: withFraming(options.headers as Record<string, string>, bodyBytes),
         key: config.keyPath ? readFileSync(config.keyPath) : undefined,
         cert: config.certPath ? readFileSync(config.certPath) : undefined,
         ca: config.caPath ? readFileSync(config.caPath) : undefined,
@@ -89,6 +123,7 @@ export async function mtlsFetch(
       cleanup()
       reject(err)
     })
+    if (bodyBytes) req.write(bodyBytes)
     req.end()
   })
 }

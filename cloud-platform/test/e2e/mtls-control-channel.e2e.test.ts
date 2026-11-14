@@ -306,6 +306,31 @@ describe('M9 内部通道 mTLS', () => {
     saveEvidence(EVIDENCE, 'relay-sync-log.json', { lines: synced.slice(-5) })
   })
 
+  test('U43: announce POST 经 mTLS 携带请求体，平台收到并登记健康中继', async () => {
+    // The relay announce used to arrive as an empty body -> 400 RELAY_PORT_INVALID.
+    const res = await mtlsFetch(
+      {
+        internalUrl: `https://127.0.0.1:${internalPort}`,
+        token: 'internal-test-token',
+        keyPath: certs.relayKey,
+        certPath: certs.relayCert,
+        caPath: certs.ca
+      },
+      '/v1/internal/relay-endpoint',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: 'relay:18999', host: '127.0.0.1', port: 18999 })
+      }
+    )
+    assert.equal(res.status, 200)
+    const body = (await res.json()) as { ok: boolean; id: string; healthyRelays: number }
+    assert.equal(body.ok, true)
+    assert.equal(body.id, 'relay:18999')
+    assert.ok(body.healthyRelays >= 1)
+    saveEvidence(EVIDENCE, 'u43-announce-body-received.json', body)
+  })
+
   test('Runtime 经 mTLS 拉取策略并保持运行', async () => {
     await waitForLog(runtime, /policy synced v=\d+/, 12000)
     assert.equal(runtime.proc.exitCode, null)
