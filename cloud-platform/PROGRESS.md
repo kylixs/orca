@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### O1-f 落地（2026-11-14，裁定退档 (b)）
+
+`1c461b91689`（2 文件 +240/−1，宿主零改动零 wire）：设计关键决策点验证否定 (a)——nativeChat 会话 id 是 provider session id（agent CLI UUID），resolveAgentSessionContext 只认 Orca 结构化会话 id，登记必致每条合法读取 agent_session_unknown；替代证明需新 runtime 能力且孤儿会话无解（=设计写明的退档条件）→ **退 (b)**：transport 选择入口按 O1-a 谓词云分支（readSession 文档型文案、subscribe 单帧 no-op），原生/web 非云零变化。78/78 绿（359/10 中 10 败=stash 验证的环境性既有）。附带发现登记 **U32**（transcriptPath 无 attestation 观察，暴露有限挂 P2）。空槽回填 O1-h。
+
 ### O1-a 落地（2026-11-14）
 
 `b08c5ec3ad3`（8 文件 +424/−20）：共享谓词 `isCloudSessionRuntimeEnvironment`（对齐 `9a27c7963de` 形态，cloudProject/cloudLoginRequired 双事实）；web-session-tabs-sync 双 installer 镜像订阅按谓词过滤（云会话零订阅）；bridge 三处门收进 runtime-environment-subscription-selection 两个选择器（桌面同生效，顺带掐断云环境新连接触发的目录刷新拒绝级联）；W7c web-only 门升级为按环境判定（保险门保留）。测试：新 10 例（零调用断言打 mock 传输层）+57 文件 426 例全绿，tc 双清，零宿主/零 wire。注：吸收了工作树中 W7c web-only 未提交行为谓词版（净 diff 即谓词门控，既有 cloud-session 测试原样过）。跨域瞬时破坏两处均由各令所有者当场修复。空槽回填 O1-b。
