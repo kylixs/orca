@@ -56,6 +56,10 @@ export function cloudPlatformAddressError(value: string): string | null {
   }
 }
 
+/** One copy source for the full-page login and the shell's sign-in dialog. */
+export const CLOUD_LOGIN_TITLE = '登录云端开发平台'
+export const CLOUD_LOGIN_DESCRIPTION = '使用公司域账号登录后选择项目。'
+
 export function CloudLoginPanel(props: CloudLoginPanelProps): React.JSX.Element {
   const {
     submitting,
@@ -70,8 +74,8 @@ export function CloudLoginPanel(props: CloudLoginPanelProps): React.JSX.Element 
     <div className="flex h-full w-full items-center justify-center bg-background">
       <div className="flex w-full max-w-sm flex-col gap-6 rounded-xl border border-border/50 bg-card p-8 shadow-sm">
         <div className="flex flex-col gap-1">
-          <h1 className="text-lg font-medium text-foreground">登录云端开发平台</h1>
-          <p className="text-sm text-muted-foreground">使用公司域账号登录后选择项目。</p>
+          <h1 className="text-lg font-medium text-foreground">{CLOUD_LOGIN_TITLE}</h1>
+          <p className="text-sm text-muted-foreground">{CLOUD_LOGIN_DESCRIPTION}</p>
         </div>
         <CloudLoginForm
           submitting={submitting}

@@ -1,16 +1,18 @@
 // @vitest-environment happy-dom
+import * as React from 'react'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { CloudLoginEntry } from './cloud-login-entry'
+import { CloudLoginEntryProvider, CloudLoginStatusSegment } from './cloud-login-entry'
 import type { CloudSessionView } from './use-cloud-session'
 
 /**
  * W11 (FR-2.7 revision): the native shell keeps a permanent cloud entry in every
- * build. Signed out, the chip opens the login dialog (address prefilled from the
- * login context, read-only on a managed build); signed in, it shows the account
- * and the way out. The dialog is the only place the form lives, so the native
- * workflow never disappears behind a login page.
+ * build, as an in-flow status bar segment. Signed out, the segment opens the
+ * login dialog (address prefilled from the login context, read-only on a managed
+ * build); signed in, it shows the account and the way out. The dialog is the
+ * only place the form lives, so the native workflow never disappears behind a
+ * login page.
  */
 
 function sessionView(overrides: Partial<CloudSessionView> = {}): CloudSessionView {
@@ -38,9 +40,34 @@ function sessionView(overrides: Partial<CloudSessionView> = {}): CloudSessionVie
   }
 }
 
-function renderEntry(overrides: Partial<CloudSessionView> = {}): void {
-  render(<CloudLoginEntry session={sessionView(overrides)} onSignOut={vi.fn(async () => {})} />)
+/** Why a factory: the segment derives from the session object, so failure and
+ * signed-in transitions are driven by re-rendering with the mutated session. */
+function makeSegment(
+  session: CloudSessionView,
+  options: { requestSignOut?: () => void; leading?: React.ReactNode } = {}
+): () => React.JSX.Element {
+  return () => (
+    <CloudLoginEntryProvider
+      session={session}
+      requestSignOut={options.requestSignOut ?? vi.fn()}
+      {...(options.leading !== undefined ? { leading: options.leading } : {})}
+    >
+      <div data-testid="native-shell">native shell stays mounted</div>
+      <CloudLoginStatusSegment />
+    </CloudLoginEntryProvider>
+  )
 }
+
+function renderSegment(
+  session: CloudSessionView,
+  options: { requestSignOut?: () => void; leading?: React.ReactNode } = {}
+): { rerender: (next: CloudSessionView) => void } {
+  const view = makeSegment(session, options)
+  const { rerender } = render(view())
+  return { rerender: (next: CloudSessionView) => rerender(makeSegment(next, options)()) }
+}
+
+afterEach(cleanup)
 
 async function openDialog(): Promise<void> {
   await act(async () => {
@@ -49,20 +76,25 @@ async function openDialog(): Promise<void> {
   await screen.findByLabelText('域账号')
 }
 
-afterEach(cleanup)
-
 describe('原生界面的常驻登录入口（W11）', () => {
-  it('零 env 开发模式（无预填地址）也有按钮，弹框打开且地址留空待填', async () => {
-    renderEntry()
+  it('零 env（无预填地址）也有按钮，弹框打开且地址留空待填', async () => {
+    renderSegment(sessionView())
 
     await openDialog()
 
     expect(screen.getByLabelText<HTMLInputElement>('平台地址').value).toBe('')
     expect(screen.getByText('使用公司域账号登录后选择项目。')).toBeTruthy()
+    expect(screen.getByTestId('native-shell')).toBeTruthy()
+  })
+
+  it('没有云端会话提供者（浏览器管理页/Orca Web）时整段不渲染', () => {
+    render(<CloudLoginStatusSegment />)
+
+    expect(screen.queryByRole('button', { name: '登录云端平台' })).toBeNull()
   })
 
   it('弹框可通过 Escape 与遮罩点击关闭', async () => {
-    renderEntry()
+    renderSegment(sessionView())
     await openDialog()
 
     await act(async () => {
@@ -93,9 +125,7 @@ describe('原生界面的常驻登录入口（W11）', () => {
       }
     })
     const signIn = vi.fn(async () => undefined)
-    const { rerender } = render(
-      <CloudLoginEntry session={session} onSignOut={vi.fn(async () => {})} />
-    )
+    const { rerender } = renderSegment(session)
     await act(async () => {
       await userEvent.click(screen.getByRole('button', { name: '登录云端平台' }))
     })
@@ -105,9 +135,9 @@ describe('原生界面的常驻登录入口（W11）', () => {
     expect(screen.getByLabelText<HTMLInputElement>('域账号').value).toBe('zhangsan')
 
     session.signIn = signIn
-    rerender(<CloudLoginEntry session={session} onSignOut={vi.fn(async () => {})} />)
+    rerender(session)
+    await userEvent.type(screen.getByLabelText('密码'), 'Passw0rd!')
     await act(async () => {
-      await userEvent.type(screen.getByLabelText('密码'), 'Passw0rd!')
       await userEvent.click(screen.getByRole('button', { name: '登录' }))
     })
 
@@ -116,7 +146,7 @@ describe('原生界面的常驻登录入口（W11）', () => {
     session.status = 'signed-in'
     session.displayName = '张伟'
     await act(async () => {
-      rerender(<CloudLoginEntry session={session} onSignOut={vi.fn(async () => {})} />)
+      rerender(session)
     })
     await waitFor(() => expect(screen.queryByLabelText('域账号')).toBeNull())
     expect(screen.getByText('张伟')).toBeTruthy()
@@ -127,20 +157,18 @@ describe('原生界面的常驻登录入口（W11）', () => {
     const signIn = vi.fn(async () => {
       session.error = 'INVALID_CREDENTIALS'
     })
-    const { rerender } = render(
-      <CloudLoginEntry session={session} onSignOut={vi.fn(async () => {})} />
-    )
+    const { rerender } = renderSegment(session)
     await openDialog()
 
     session.signIn = signIn
-    rerender(<CloudLoginEntry session={session} onSignOut={vi.fn(async () => {})} />)
+    rerender(session)
     await userEvent.type(screen.getByLabelText('平台地址'), 'https://cloud.example.com')
     await userEvent.type(screen.getByLabelText('域账号'), 'zhangsan')
     await userEvent.type(screen.getByLabelText('密码'), 'Passw0rd!')
     await act(async () => {
       await userEvent.click(screen.getByRole('button', { name: '登录' }))
     })
-    rerender(<CloudLoginEntry session={session} onSignOut={vi.fn(async () => {})} />)
+    rerender(session)
 
     expect(signIn).toHaveBeenCalledOnce()
     expect(screen.getByRole('alert').textContent).toContain('账号或密码不正确')
@@ -148,13 +176,15 @@ describe('原生界面的常驻登录入口（W11）', () => {
   })
 
   it('托管构建：弹框地址只读并说明由管理员指定', async () => {
-    renderEntry({
-      loginContext: {
-        platformUrl: 'https://pinned.example.com',
-        username: 'zhangsan',
-        locked: true
-      }
-    })
+    renderSegment(
+      sessionView({
+        loginContext: {
+          platformUrl: 'https://pinned.example.com',
+          username: 'zhangsan',
+          locked: true
+        }
+      })
+    )
     await openDialog()
 
     const field = screen.getByLabelText<HTMLInputElement>('平台地址')
@@ -163,20 +193,22 @@ describe('原生界面的常驻登录入口（W11）', () => {
     expect(screen.getByText('平台地址由企业管理员指定。')).toBeTruthy()
   })
 
-  it('已登录显示用户名与登出；登出先清理云端仓库再结束会话', async () => {
-    const onSignOut = vi.fn(async () => {})
-    const sessionSignOut = vi.fn(async () => undefined)
-    render(
-      <CloudLoginEntry
-        session={sessionView({
-          status: 'signed-in',
-          displayName: '张伟',
-          signOut: sessionSignOut
-        })}
-        onSignOut={onSignOut}
-      />
+  it('已登录显示共享动作、用户名与登出，登出走提供者的统一入口', async () => {
+    const requestSignOut = vi.fn()
+    renderSegment(
+      sessionView({
+        status: 'signed-in',
+        displayName: '张伟',
+        loginContext: {
+          platformUrl: 'https://cloud.example.com',
+          username: 'zhangsan',
+          locked: false
+        }
+      }),
+      { requestSignOut, leading: <button type="button">新建云端项目</button> }
     )
 
+    expect(screen.getByRole('button', { name: '新建云端项目' })).toBeTruthy()
     expect(screen.getByText('张伟')).toBeTruthy()
     expect(screen.queryByRole('button', { name: '登录云端平台' })).toBeNull()
 
@@ -184,10 +216,6 @@ describe('原生界面的常驻登录入口（W11）', () => {
       await userEvent.click(screen.getByRole('button', { name: '登出' }))
     })
 
-    expect(onSignOut).toHaveBeenCalledOnce()
-    expect(sessionSignOut).toHaveBeenCalledOnce()
-    expect(onSignOut.mock.invocationCallOrder[0]).toBeLessThan(
-      sessionSignOut.mock.invocationCallOrder[0]
-    )
+    expect(requestSignOut).toHaveBeenCalledOnce()
   })
 })

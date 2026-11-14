@@ -1,9 +1,10 @@
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { writeCloudLoginMemory } from '../cloud-platform/cloud-login-memory'
 import { CLOUD_PLATFORM_IPC, type CloudSessionState } from '../../shared/cloud-platform-ipc'
+import { CLOUD_SESSION_FILENAME } from '../cloud-platform/cloud-session-persistence'
 
 /**
  * W11 at the IPC boundary: every build carries the cloud login surface, the
@@ -147,6 +148,22 @@ describe('云端 IPC 装配（W11：全构建装配登录门）', () => {
     await stubBuildFlags({})
     const { installCloudPlatformIpc } = await import('./cloud-platform')
     const installed = installCloudPlatformIpc({}, { userDataPath: makeUserDataPath() })
+
+    await stateReply()
+
+    expect(sessions[0]?.restoreCalls).toBe(0)
+    expect(await stateReply()).toEqual({ status: 'signed-out' })
+    installed.dispose()
+  })
+
+  it('非云端构建磁盘上留有上次会话也不恢复：零网络进入 signed-out', async () => {
+    await stubBuildFlags({})
+    const userDataPath = makeUserDataPath()
+    // A previous cloud login left its saved session behind; without the platform
+    // entry the build must not revive it.
+    writeFileSync(join(userDataPath, CLOUD_SESSION_FILENAME), '{}')
+    const { installCloudPlatformIpc } = await import('./cloud-platform')
+    const installed = installCloudPlatformIpc({}, { userDataPath })
 
     await stateReply()
 

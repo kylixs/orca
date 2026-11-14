@@ -28,7 +28,18 @@ vi.mock('./components/terminal-pane/RunningTerminalCloseDialog', () => ({ defaul
 vi.mock('./components/WorktreeBaseFallbackDialog', () => ({ default: () => null }))
 vi.mock('./hooks/useUnreadDockBadge', () => ({ useUnreadDockBadge: () => () => undefined }))
 vi.mock('./app-shell/AppBackgroundServices', () => ({ AppBackgroundServices: () => null }))
-vi.mock('./app-shell/AppRootSurfaces', () => ({ AppRootSurfaces: () => null }))
+// The permanent sign-in entry lives in the status bar's segment row (W11), so the
+// flow tests host the real segment where the bar would.
+vi.mock('./app-shell/AppRootSurfaces', async () => {
+  const { CloudLoginStatusSegment } = await import('./cloud/cloud-login-entry')
+  return {
+    AppRootSurfaces: () => (
+      <div data-testid="root-surfaces">
+        <CloudLoginStatusSegment />
+      </div>
+    )
+  }
+})
 vi.mock('./app-shell/AppWorkspaceShell', () => ({
   AppWorkspaceShell: () => <div data-testid="workspace-shell" />
 }))

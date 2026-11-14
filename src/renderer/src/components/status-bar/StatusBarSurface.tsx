@@ -34,6 +34,7 @@ import {
 } from './usage-unit-label'
 import { useStatusBarController } from './use-status-bar-controller'
 import { StatusBarVisibilityMenu } from './StatusBarVisibilityMenu'
+import { CloudLoginStatusSegment } from '@/cloud/cloud-login-entry'
 import { isPairedWebClientWindow } from '@/lib/desktop-window-chrome'
 
 const PetStatusSegment = lazyWithRetry(() =>
@@ -107,6 +108,7 @@ export function StatusBarSurface({
   return (
     <div
       ref={barRef}
+      data-status-bar=""
       // Why: one line at any width — density steps down first. overflow-clip (not hidden) so focus can't scroll the bar; the clip margin spares focus rings and badge dots.
       className="flex items-center h-6 min-h-[24px] px-3 gap-4 overflow-clip [overflow-clip-margin:3px] whitespace-nowrap border-t border-border bg-[var(--bg-titlebar,var(--card))] text-xs select-none shrink-0 relative"
       onContextMenuCapture={(event) => {
@@ -339,6 +341,9 @@ export function StatusBarSurface({
               </Tooltip>
             </FloatingTerminalIconContextMenu>
           )}
+          {/* Why last: the cloud sign-in lives in this row instead of a floating
+          corner, so it can never cover a native control (W11 audit M1). */}
+          <CloudLoginStatusSegment />
         </div>
       </div>
 

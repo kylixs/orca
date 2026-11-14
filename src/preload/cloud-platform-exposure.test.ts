@@ -44,6 +44,9 @@ describe('cloud platform preload exposure', () => {
     await cloud.getLoginContext()
     expect(ipc.invoke).toHaveBeenCalledWith(CLOUD_PLATFORM_IPC.loginContext)
 
+    await cloud.openWorkspace('project-1')
+    expect(ipc.invoke).toHaveBeenCalledWith(CLOUD_PLATFORM_IPC.openWorkspace, 'project-1')
+
     const unsubscribe = cloud.onConnectionChanged(() => undefined)
     expect(ipc.on).toHaveBeenCalledWith(CLOUD_PLATFORM_IPC.connectionChanged, expect.any(Function))
     unsubscribe()

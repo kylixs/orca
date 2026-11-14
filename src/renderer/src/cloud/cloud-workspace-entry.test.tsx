@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import type {
@@ -12,7 +13,14 @@ import type {
   CloudSessionState
 } from '../../../shared/cloud-platform-ipc'
 import { CloudWorkspaceEntry } from './cloud-workspace-entry'
+import { CloudLoginStatusSegment } from './cloud-login-entry'
 import type { CloudBridge } from './use-cloud-session'
+
+/** Why mocked: the sign-out failure path must be observable without a Toaster. */
+const toastError = vi.hoisted(() => vi.fn())
+vi.mock('sonner', () => ({
+  toast: { error: toastError, success: vi.fn(), info: vi.fn() }
+}))
 
 const PROJECTS: CloudProjectSummary[] = [
   {
@@ -99,9 +107,12 @@ function renderEntry(bridge: CloudBridge): void {
       runtimeEnvironments: { list: async () => [] }
     }
   })
+  // Why the real segment: the sign-in/new-project controls live in the status
+  // bar's cloud segment (W11), which is a child of this entry's provider.
   render(
     <CloudWorkspaceEntry>
       <div data-testid="workspace-shell" />
+      <CloudLoginStatusSegment />
     </CloudWorkspaceEntry>
   )
 }
@@ -304,5 +315,75 @@ describe('云端原生入口', () => {
     })
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
     expect(screen.getByTestId('workspace-shell')).toBeTruthy()
+  })
+
+  it('登出一轮完成：main 登出一次、侧栏行清理、入口回到登录态', async () => {
+    const purge = vi.spyOn(useAppStore.getState(), 'purgeStaleRuntimeHostState')
+    const hydrate = vi
+      .spyOn(useAppStore.getState(), 'hydrateRuntimeEnvironmentStatuses')
+      .mockResolvedValue(undefined)
+    const logout = vi.fn(async (): Promise<CloudSessionState> => ({ status: 'signed-out' }))
+    const environment = {
+      projectId: 'proj_1',
+      projectName: 'Payment Service',
+      projectRoot: '/srv/projects/payment-service',
+      environmentId: 'env-1'
+    }
+    const bridge = makeBridge(
+      Promise.resolve({
+        environments: [environment],
+        failures: [],
+        removedEnvironmentIds: []
+      }),
+      async () => ({ ok: true, environment }),
+      { logout }
+    )
+    renderEntry(bridge)
+    await waitFor(() => expect(screen.getByRole('button', { name: '登出' })).toBeTruthy())
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: '登出' }))
+    })
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '登录云端平台' })).toBeTruthy())
+    // One logout round: the repo-sync chain reuses the session's sign-out.
+    expect(logout).toHaveBeenCalledOnce()
+    expect(purge).toHaveBeenCalledWith(['env-1'])
+    expect(hydrate).toHaveBeenCalled()
+    purge.mockRestore()
+    hydrate.mockRestore()
+  })
+
+  it('登出失败有可见提示，且不把会话伪装成已登出', async () => {
+    const logout = vi.fn(async (): Promise<CloudSessionState> => {
+      throw new Error('LOGOUT_FAILED')
+    })
+    const environment = {
+      projectId: 'proj_1',
+      projectName: 'Payment Service',
+      projectRoot: '/srv/projects/payment-service',
+      environmentId: 'env-1'
+    }
+    const bridge = makeBridge(
+      Promise.resolve({
+        environments: [environment],
+        failures: [],
+        removedEnvironmentIds: []
+      }),
+      async () => ({ ok: true, environment }),
+      { logout }
+    )
+    renderEntry(bridge)
+    await waitFor(() => expect(screen.getByRole('button', { name: '登出' })).toBeTruthy())
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: '登出' }))
+    })
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith('登出失败，请重试。', expect.anything())
+    )
+    expect(screen.getByRole('button', { name: '登出' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '登录云端平台' })).toBeNull()
   })
 })

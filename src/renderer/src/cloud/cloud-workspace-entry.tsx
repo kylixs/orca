@@ -9,7 +9,7 @@ import type {
 } from '../../../shared/cloud-platform-ipc'
 import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
-import { CloudLoginEntry } from './cloud-login-entry'
+import { CloudLoginEntryProvider } from './cloud-login-entry'
 import {
   CloudProjectFailureBanner,
   NewCloudProjectButton,
@@ -248,20 +248,26 @@ export function useCloudWorkspaceEntry(
     [bridge]
   )
 
+  // Why lifted: the repo-sync chain reuses the session's own sign-out, so the
+  // whole flow is one logout round instead of two.
+  const endSession = session.signOut
   const signOut = React.useCallback(async () => {
     const registered = environments.current
     await signOutCloudProjectRepos({
       environments: registered,
       repos: useAppStore.getState().repos,
       ports: {
-        signOut: () => rendererRepoPorts(bridge).signOut(),
+        signOut: async () => {
+          await endSession()
+          await useAppStore.getState().hydrateRuntimeEnvironmentStatuses()
+        },
         purgeRepos: (environmentIds) =>
           useAppStore.getState().purgeStaleRuntimeHostState(environmentIds)
       }
     })
     environments.current = []
     setFailures([])
-  }, [bridge])
+  }, [endSession])
 
   return {
     entryError,
@@ -285,18 +291,41 @@ function CloudWorkspaceSession({
   const session = useCloudSession(bridge)
   const entry = useCloudWorkspaceEntry(bridge, session)
   const signedIn = session.status === 'signed-in'
+  const [signingOut, setSigningOut] = React.useState(false)
 
-  // Why entry first: the signed-in account's repos and environments must go
-  // before the session itself ends, or the sidebar keeps dead cloud rows.
-  const signOut = React.useCallback(async () => {
-    await entry.signOut()
-    await session.signOut()
-  }, [entry, session])
+  // Why one round: entry.signOut ends the session itself (main retires the
+  // environments, the view flips), then drops the account's rows. A failure is
+  // announced, never swallowed — the chip stays truthful about the session.
+  const requestSignOut = React.useCallback(() => {
+    if (signingOut) {
+      return
+    }
+    setSigningOut(true)
+    void (async () => {
+      try {
+        await entry.signOut()
+      } catch (error) {
+        toast.error(translate('auto.cloud.signOutFailed', '登出失败，请重试。'), {
+          description: entryFailureCode(error)
+        })
+      } finally {
+        setSigningOut(false)
+      }
+    })()
+  }, [entry, signingOut])
 
   // Why the shell always renders (W11): startup lands in the native interface in
-  // every build; the cloud platform is the additive channel behind the chip.
+  // every build; the cloud platform is the additive channel behind the segment.
   return (
-    <>
+    <CloudLoginEntryProvider
+      session={session}
+      requestSignOut={requestSignOut}
+      leading={
+        signedIn ? (
+          <NewCloudProjectButton bridge={bridge} onCreated={entry.registerCreatedProject} />
+        ) : null
+      }
+    >
       {signedIn && entry.preparing ? <PreparingCloudProjectBanner /> : null}
       {signedIn ? (
         <CloudProjectFailureBanner
@@ -306,16 +335,7 @@ function CloudWorkspaceSession({
         />
       ) : null}
       {children}
-      <CloudLoginEntry
-        session={session}
-        leading={
-          signedIn ? (
-            <NewCloudProjectButton bridge={bridge} onCreated={entry.registerCreatedProject} />
-          ) : null
-        }
-        onSignOut={signOut}
-      />
-    </>
+    </CloudLoginEntryProvider>
   )
 }
 
