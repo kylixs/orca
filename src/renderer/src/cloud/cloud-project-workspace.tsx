@@ -9,13 +9,18 @@ import { cloudCloseNotice } from './cloud-close-notice'
 import { translate } from '@/i18n/i18n'
 import { CloudConnectionDiagnosticsDialog, chosenProbe } from './cloud-connection-diagnostics'
 import { CloudFilePanel } from './cloud-file-panel'
-import type { CloudTerminalSubscribe } from './cloud-terminal-panel'
+import { RecoverableRenderErrorBoundary } from '../components/error-boundaries/RecoverableRenderErrorBoundary'
+import type { CloudTerminalPanelProps, CloudTerminalSubscribe } from './cloud-terminal-panel'
 
 // Why lazy: the xterm chunk must stay out of the admin entry's first paint, and
 // the pane only mounts once the panel actually streams (M118/W5a).
-const CloudTerminalPanel = React.lazy(() =>
-  import('./cloud-terminal-panel').then((module) => ({ default: module.CloudTerminalPanel }))
-)
+function loadTerminalPanelChunk(): Promise<{
+  default: React.ComponentType<CloudTerminalPanelProps>
+}> {
+  return import('./cloud-terminal-panel').then((module) => ({
+    default: module.CloudTerminalPanel
+  }))
+}
 
 export type CloudProjectWorkspaceProps = {
   session: CloudSessionView
@@ -39,6 +44,31 @@ function runtimeIdOf(outcome: CloudRpcOutcome): string | null {
   return outcome.ok ? readString(outcome.result, 'runtimeId') : null
 }
 
+/** Degraded terminal slot when the lazy chunk itself fails to load (W5a MIN-3). */
+function TerminalChunkFailedState({ onRetry }: { onRetry: () => void }): React.JSX.Element {
+  return (
+    <section
+      role="alert"
+      className="flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-3 rounded border border-border bg-card p-3 text-center"
+    >
+      <p
+        className="text-xs leading-relaxed text-muted-foreground"
+        data-testid="cloud-terminal-chunk-failed"
+      >
+        终端模块加载失败，页面其余部分不受影响。
+      </p>
+      <Button
+        variant="outline"
+        size="sm"
+        data-testid="cloud-terminal-chunk-retry"
+        onClick={onRetry}
+      >
+        重试
+      </Button>
+    </section>
+  )
+}
+
 export function CloudProjectWorkspace({
   session,
   project,
@@ -47,6 +77,19 @@ export function CloudProjectWorkspace({
 }: CloudProjectWorkspaceProps): React.JSX.Element {
   const [live, setLive] = React.useState<LiveState>({ kind: 'checking' })
   const [diagnosticsOpen, setDiagnosticsOpen] = React.useState(false)
+  // Why re-keyable: React.lazy caches a rejected import forever, so a chunk
+  // failure's retry must build a fresh loader instead of re-rendering the dead one.
+  const [terminalChunk, setTerminalChunk] = React.useState(0)
+  const retryTerminalChunk = React.useCallback(() => setTerminalChunk((attempt) => attempt + 1), [])
+  const renderChunkFailure = React.useCallback(
+    () => <TerminalChunkFailedState onRetry={retryTerminalChunk} />,
+    [retryTerminalChunk]
+  )
+  const LazyTerminalPanel = React.useMemo(
+    () => React.lazy(loadTerminalPanelChunk),
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- The counter only re-keys the loader; the value is intentionally unread.
+    [terminalChunk]
+  )
   const opened = session.opened
   const diagnostics = opened?.connectDiagnostics
   const chosen = chosenProbe(diagnostics)
@@ -198,19 +241,29 @@ export function CloudProjectWorkspace({
         ) : (
           <div className="flex min-h-[26rem] flex-1 gap-4">
             {opened?.workspacePath && canUseTerminal ? (
-              <React.Suspense
-                fallback={
-                  <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center rounded border border-border bg-card">
-                    <span className="text-xs text-muted-foreground">正在加载终端…</span>
-                  </div>
-                }
+              <RecoverableRenderErrorBoundary
+                boundaryId="cloud.workspace-terminal"
+                surface="page"
+                // Why no crash report: this page has no preload sink, and the report's
+                // context import would pull the desktop store graph into the admin bundle.
+                reportAsCrash={false}
+                resetKey={terminalChunk}
+                fallback={renderChunkFailure}
               >
-                <CloudTerminalPanel
-                  rpc={rpc}
-                  subscribe={subscribe}
-                  workspacePath={opened.workspacePath}
-                />
-              </React.Suspense>
+                <React.Suspense
+                  fallback={
+                    <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center rounded border border-border bg-card">
+                      <span className="text-xs text-muted-foreground">正在加载终端…</span>
+                    </div>
+                  }
+                >
+                  <LazyTerminalPanel
+                    rpc={rpc}
+                    subscribe={subscribe}
+                    workspacePath={opened.workspacePath}
+                  />
+                </React.Suspense>
+              </RecoverableRenderErrorBoundary>
             ) : (
               <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 rounded border border-border bg-card p-3">
                 <h2 className="text-sm font-medium text-foreground">终端</h2>

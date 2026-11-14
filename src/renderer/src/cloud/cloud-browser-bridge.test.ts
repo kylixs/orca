@@ -1,9 +1,11 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ownEntries, parseJsonText, readString } from '../../../shared/json-fields'
 import type { CloudConnectionEvent } from '../../../shared/cloud-platform-ipc'
+import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
 import type { WebCloudDeviceKeyStorage } from '../web/web-cloud-device-key'
 import type { WebPairingOffer } from '../web/web-pairing'
+import type { WebRuntimeSubscriptionCallbacks } from '../web/web-runtime-subscription-contract'
 import { createCloudBrowserBridge, type BrowserCloudClient } from './cloud-browser-bridge'
 
 /** The bridge's contract: project-scoped routing, one client per open project. */
@@ -154,7 +156,23 @@ function scriptedPlatform(): ScriptedPlatform {
 
 type FakeCall = { projectId: string; method: string; params: unknown }
 
-function scriptedFactory(offers: WebPairingOffer[], calls: FakeCall[], closed: string[]) {
+/** One live stream a scripted client opened, driven like the frame router does. */
+type FakeStream = {
+  projectId: string
+  method: string
+  params: unknown
+  emit: (response: RuntimeRpcResponse<unknown>) => void
+  end: () => void
+  /** A spy in practice; typed as the real handle's releasable surface. */
+  unsubscribe: () => void
+}
+
+function scriptedFactory(
+  offers: WebPairingOffer[],
+  calls: FakeCall[],
+  closed: string[],
+  streams: FakeStream[] = []
+) {
   return (offer: WebPairingOffer): BrowserCloudClient => {
     offers.push(offer)
     const projectId = offer.deviceToken.replace('device-token-', '')
@@ -168,6 +186,22 @@ function scriptedFactory(offers: WebPairingOffer[], calls: FakeCall[], closed: s
           result: { runtimeId: 'runtime-1', projectId },
           _meta: { runtimeId: 'runtime-1' }
         }
+      },
+      subscribe: async (
+        method: string,
+        params: unknown,
+        callbacks: WebRuntimeSubscriptionCallbacks
+      ) => {
+        const stream: FakeStream = {
+          projectId,
+          method,
+          params,
+          emit: (response) => callbacks.onResponse(response),
+          end: () => callbacks.onClose?.(),
+          unsubscribe: vi.fn<() => void>()
+        }
+        streams.push(stream)
+        return { unsubscribe: stream.unsubscribe, sendBinary: () => undefined }
       },
       close: () => {
         closed.push(projectId)
@@ -195,6 +229,7 @@ function makeBridge(hostTrustStorage = new MemoryStore()): {
   offers: WebPairingOffer[]
   calls: FakeCall[]
   closed: string[]
+  streams: FakeStream[]
   platform: ScriptedPlatform
   hostTrustStorage: MemoryStore
 } {
@@ -202,16 +237,17 @@ function makeBridge(hostTrustStorage = new MemoryStore()): {
   const offers: WebPairingOffer[] = []
   const calls: FakeCall[] = []
   const closed: string[] = []
+  const streams: FakeStream[] = []
   const platform = scriptedPlatform()
   const bridge = createCloudBrowserBridge({
     apiUrl: 'http://platform.test',
     deviceName: 'm54-admin',
     deviceKeyStore: storage,
     fetchImpl: platform.fetchImpl,
-    clientFactory: scriptedFactory(offers, calls, closed),
+    clientFactory: scriptedFactory(offers, calls, closed, streams),
     hostTrustStorage
   })
-  return { bridge, storage, offers, calls, closed, platform, hostTrustStorage }
+  return { bridge, storage, offers, calls, closed, streams, platform, hostTrustStorage }
 }
 
 describe('浏览器 CloudBridge', () => {
@@ -308,6 +344,75 @@ describe('浏览器 CloudBridge', () => {
     ).toHaveLength(1)
     await expect(bridge.listProjects()).rejects.toMatchObject({ code: 'NOT_SIGNED_IN' })
     unsubscribe()
+  })
+
+  it('subscribe 按项目路由：未登录 NOT_SIGNED_IN，帧与 end 帧透传，退订释放该项目的流', async () => {
+    const { bridge, streams } = makeBridge()
+    const callbacks = {
+      onEvent: vi.fn(),
+      onError: vi.fn(),
+      onClose: vi.fn()
+    }
+    if (!bridge.subscribe) {
+      throw new Error('the browser bridge must expose subscribe')
+    }
+    const subscribe = bridge.subscribe
+
+    expect(await subscribe('proj-1', 'terminal.subscribe', {}, callbacks)).toEqual({
+      ok: false,
+      code: 'NOT_SIGNED_IN'
+    })
+    expect(streams).toEqual([])
+
+    await bridge.login('zhangsan', 'Passw0rd!')
+    await bridge.openProject('proj-1')
+    await bridge.openProject('proj-2')
+
+    const outcome = await subscribe(
+      'proj-2',
+      'terminal.subscribe',
+      { terminal: 'term_1', client: { id: 'browser-1', type: 'desktop' } },
+      callbacks
+    )
+    expect(outcome.ok).toBe(true)
+    // Exactly the named project's socket opened a stream, and the params crossed intact.
+    expect(streams).toHaveLength(1)
+    expect(streams[0]).toMatchObject({
+      projectId: 'proj-2',
+      method: 'terminal.subscribe',
+      params: { terminal: 'term_1' }
+    })
+
+    const reply = (result: unknown): RuntimeRpcResponse<unknown> => ({
+      id: 'stream-1',
+      ok: true,
+      result,
+      _meta: { runtimeId: 'runtime-1' }
+    })
+    streams[0].emit(reply({ type: 'streaming' }))
+    streams[0].emit(reply({ type: 'data', chunk: 'ls\r\n' }))
+    expect(callbacks.onEvent).toHaveBeenNthCalledWith(1, { type: 'streaming' })
+    expect(callbacks.onEvent).toHaveBeenNthCalledWith(2, { type: 'data', chunk: 'ls\r\n' })
+    expect(callbacks.onError).not.toHaveBeenCalled()
+
+    const refusal: RuntimeRpcResponse<unknown> = {
+      id: 'stream-1',
+      ok: false,
+      error: { code: 'missing_permission', message: 'terminal revoked' }
+    }
+    streams[0].emit(refusal)
+    expect(callbacks.onError).toHaveBeenCalledWith({
+      code: 'missing_permission',
+      message: 'terminal revoked'
+    })
+
+    streams[0].end()
+    expect(callbacks.onClose).toHaveBeenCalledTimes(1)
+
+    if (outcome.ok) {
+      outcome.subscription.unsubscribe()
+    }
+    expect(streams[0].unsubscribe).toHaveBeenCalledTimes(1)
   })
 })
 

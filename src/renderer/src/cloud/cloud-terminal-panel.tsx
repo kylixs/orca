@@ -14,6 +14,7 @@ import {
   readString,
   readStringArray
 } from '../../../shared/json-fields'
+import { RELEASE_SYNCHRONIZED_OUTPUT } from '../../../shared/terminal-mode-reset-profiles'
 import type {
   CloudSubscribeOutcome,
   CloudSubscription,
@@ -202,7 +203,7 @@ export function CloudTerminalPanel({
         // authoritative image of it (it carries the history too), so clear the
         // screen and scrollback and repaint, as the web client's replay does,
         // rather than append a second copy of the history.
-        termRef.current?.write('\x1b[2J\x1b[3J\x1b[H')
+        termRef.current?.write(`${RELEASE_SYNCHRONIZED_OUTPUT}\x1b[2J\x1b[3J\x1b[H`)
         paint(framePayloadOf(event) ?? '', frameSizeOf(event))
         pushViewport()
         return
@@ -281,7 +282,10 @@ export function CloudTerminalPanel({
     }
 
     const scheduleReconnect = (code: string | null): void => {
-      if (disposed) {
+      // Why one timer: onError and onClose can both report one drop, and a
+      // second timer would supersede the epoch of the stream the first retry
+      // opened, leaking its live subscription.
+      if (disposed || timer !== undefined) {
         return
       }
       const attempt = attempts
@@ -291,7 +295,10 @@ export function CloudTerminalPanel({
         return
       }
       setState({ kind: 'reconnecting', code })
-      timer = setTimeout(connect, RECONNECT_DELAYS_MS[attempt])
+      timer = setTimeout(() => {
+        timer = undefined
+        connect()
+      }, RECONNECT_DELAYS_MS[attempt])
     }
 
     const boot = (): void => {
@@ -301,6 +308,14 @@ export function CloudTerminalPanel({
           title: 'cloud-admin'
         })
         if (disposed) {
+          // Unmount raced this rpc: the cleanup saw no handle yet, so the shell
+          // the host already built is closed here instead of leaking.
+          if (created.ok) {
+            const orphaned = terminalHandleOf(created.result)
+            if (orphaned !== null) {
+              void rpc('terminal.close', { terminal: orphaned })
+            }
+          }
           return
         }
         if (!created.ok) {

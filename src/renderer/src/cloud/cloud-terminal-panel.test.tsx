@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CloudRpcOutcome } from '../../../shared/cloud-platform-ipc'
+import { RELEASE_SYNCHRONIZED_OUTPUT } from '../../../shared/terminal-mode-reset-profiles'
 import { CloudTerminalPanel, type CloudTerminalSubscribe } from './cloud-terminal-panel'
 import type { CloudSubscribeOutcome } from './use-cloud-session'
 
@@ -233,7 +234,9 @@ describe('云端终端面板（FR-3.9）', () => {
     act(() => {
       stream.emit({ type: 'scrollback', lines: [], serialized: '\x1b[2K$ ', cols: 80, rows: 24 })
     })
-    expect(term?.write).toHaveBeenCalledWith('\x1b[2J\x1b[3J\x1b[H')
+    // The release must precede the clear: \x1b[2J does not clear mode 2026, so a
+    // pane latched by the dropped stream would never paint this snapshot at all.
+    expect(term?.write).toHaveBeenCalledWith(`${RELEASE_SYNCHRONIZED_OUTPUT}\x1b[2J\x1b[3J\x1b[H`)
     expect(term?.write).toHaveBeenCalledWith('\x1b[2K$ ')
 
     // Another drop, now with the host refusing: four more backoff steps spend
@@ -298,5 +301,80 @@ describe('云端终端面板（FR-3.9）', () => {
     await flush()
 
     expect(screen.getByTestId('cloud-terminal-state').textContent).toContain('正在重连')
+  })
+
+  it('M118-7 同一断开被 onError 与 onClose 双报时只布防一次重连（W5a P5）', async () => {
+    const host = scriptedHost({ 'terminal.create': () => createdHandle() })
+    const secondUnsubscribe = vi.fn()
+    const stream = scriptedStream(subscribeOk())
+
+    const view = panel(host, stream)
+    await flush()
+    expect(stream.calls).toHaveLength(1)
+
+    act(() => {
+      stream.fail({ code: 'HOST_CLOSED', message: 'frame error' })
+      stream.close()
+    })
+    expect(screen.getByTestId('cloud-terminal-state').textContent).toContain('正在重连')
+
+    // One drop arms one timer: the retry lands on the first backoff step, and no
+    // second timer fires behind it to supersede the epoch of the stream it opened
+    // (which would orphan its live subscription forever).
+    stream.setOutcome({ ok: true, subscription: { unsubscribe: secondUnsubscribe } })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(499)
+    })
+    expect(stream.calls).toHaveLength(1)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+    })
+    expect(stream.calls).toHaveLength(2)
+    expect(stream.calls[1]?.params).toMatchObject({ terminal: 'term_1' })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000)
+    })
+    expect(stream.calls).toHaveLength(2)
+    expect(screen.getByTestId('cloud-terminal-state').textContent).toBe('实时')
+
+    view.unmount()
+    expect(secondUnsubscribe).toHaveBeenCalled()
+  })
+
+  it('M118-8 create 在途时卸载仍关闭宿主侧 shell，不泄漏（W5a MIN-4）', async () => {
+    let resolveCreate: (outcome: CloudRpcOutcome) => void = () => undefined
+    const calls: Call[] = []
+    const rpc = async (
+      method: string,
+      params?: Record<string, unknown>
+    ): Promise<CloudRpcOutcome> => {
+      calls.push({ method, params })
+      if (method === 'terminal.create') {
+        return new Promise((resolve) => {
+          resolveCreate = resolve
+        })
+      }
+      return { ok: false, code: 'method_not_found' }
+    }
+    const stream = scriptedStream(subscribeOk())
+
+    const view = render(
+      <CloudTerminalPanel rpc={rpc} subscribe={stream.subscribe} workspacePath="/srv/checkout" />
+    )
+    await flush()
+    expect(calls.map((call) => call.method)).toEqual(['terminal.create'])
+
+    // The cleanup runs before the handle was ever registered.
+    view.unmount()
+    expect(calls.map((call) => call.method)).toEqual(['terminal.create'])
+
+    await act(async () => {
+      resolveCreate(createdHandle())
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(calls.at(-1)).toEqual({ method: 'terminal.close', params: { terminal: 'term_1' } })
+    expect(stream.calls).toEqual([])
   })
 })
