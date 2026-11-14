@@ -4,7 +4,8 @@ const WEB_ROUTE_KEY = /^[A-Za-z0-9_-]+$/
 export type WebPageLocation = {
   protocol: string
   host: string
-  pathname: string
+  /** Absent on the admin entry and bare harnesses, which are never prefixed. */
+  pathname?: string | undefined
 }
 
 /**
@@ -12,7 +13,11 @@ export type WebPageLocation = {
  * an empty string for a direct (unprefixed) page. The key shape matches the
  * relay's own rule so a prefix it would 404 is never fabricated.
  */
-export function deriveWebRoutePathPrefix(pathname: string): string {
+export function deriveWebRoutePathPrefix(pathname: string | undefined): string {
+  // The admin entry and bare harnesses expose a location without a pathname.
+  if (typeof pathname !== 'string') {
+    return ''
+  }
   const segments = pathname.split('/')
   if (segments.length < 3 || segments[1] !== WEB_ROUTE_SEGMENT) {
     return ''

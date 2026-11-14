@@ -16,6 +16,10 @@ describe('deriveWebRoutePathPrefix', () => {
     expect(deriveWebRoutePathPrefix('/')).toBe('')
   })
 
+  it('returns empty when the page exposes no pathname (admin entry, bare harness)', () => {
+    expect(deriveWebRoutePathPrefix(undefined)).toBe('')
+  })
+
   it('decodes an encoded route key the relay would accept', () => {
     expect(deriveWebRoutePathPrefix('/h/route%5Fkey/web-index.html')).toBe('/h/route_key')
   })
@@ -33,6 +37,17 @@ describe('webSocketUrlForPage', () => {
   it('leaves a direct page endpoint byte for byte', () => {
     const endpoint = 'wss://host.example:6768/'
     expect(webSocketUrlForPage(endpoint, direct)).toBe(endpoint)
+  })
+
+  it('leaves the endpoint byte for byte when the page location has no pathname', () => {
+    const endpoint = 'wss://host.example:6768/'
+    expect(
+      webSocketUrlForPage(endpoint, {
+        protocol: 'https:',
+        host: 'host.example:6768',
+        pathname: undefined
+      })
+    ).toBe(endpoint)
   })
 
   it('targets the relay origin and re-adds the prefix on a prefixed page', () => {
