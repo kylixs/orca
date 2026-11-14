@@ -1395,7 +1395,54 @@ export function createApp(config: ApiConfig): ApiHandle {
       const hostId = String(body.hostId ?? '')
       const target = store.hosts.get(hostId)
       if (!target) return error(res, 400, 'HOST_NOT_FOUND', '主机不存在。', traceId)
-      const key = String(body.key ?? '')
+      // FR-3.2: a project born on an offline host can never be opened, so the
+      // heartbeat decides at creation time, not at first connect.
+      if (!hostOnline(target)) {
+        await audit.append({
+          eventType: 'project_create',
+          actor: authed.user.username,
+          targetType: 'project',
+          targetId: null,
+          result: 'denied',
+          traceId,
+          metadata: { reason: 'HOST_OFFLINE', hostId }
+        })
+        return error(res, 409, 'HOST_OFFLINE', '目标主机已离线，暂时无法登记项目。', traceId)
+      }
+      const keyVerdict = validateProjectKey(body.key)
+      if (!keyVerdict.ok) {
+        await audit.append({
+          eventType: 'project_create',
+          actor: authed.user.username,
+          targetType: 'project',
+          targetId: null,
+          result: 'denied',
+          traceId,
+          metadata: { reason: keyVerdict.code, key: String(body.key ?? '') }
+        })
+        return error(res, 400, keyVerdict.code, keyVerdict.message, traceId)
+      }
+      const key = keyVerdict.key
+      // Why fall back to the key: admins omitting a name keep the key as the label.
+      const name = typeof body.name === 'string' ? body.name.trim() : key
+      if (name === '' || name.length > 200) {
+        await audit.append({
+          eventType: 'project_create',
+          actor: authed.user.username,
+          targetType: 'project',
+          targetId: null,
+          result: 'denied',
+          traceId,
+          metadata: { reason: 'PROJECT_NAME_INVALID', key }
+        })
+        return error(
+          res,
+          400,
+          'PROJECT_NAME_INVALID',
+          '项目名称不能为空且不能超过 200 个字符。',
+          traceId
+        )
+      }
       if (projectKeyTaken(store, key)) {
         return error(res, 409, 'PROJECT_EXISTS', '项目 Key 已存在。', traceId)
       }
@@ -1444,7 +1491,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       const created: Project = {
         id: `proj_${randomBytes(4).toString('hex')}`,
         key,
-        name: String(body.name ?? key),
+        name,
         repoUrl: repoUrlVerdict.repoUrl,
         hostId,
         path: pathVerdict.path,

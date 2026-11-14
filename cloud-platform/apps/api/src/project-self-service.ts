@@ -82,6 +82,15 @@ export function selectSelfServiceHost(args: {
         message: '该主机未声明可创建项目的目录。'
       }
     }
+    // FR-3.2: the web console only lists live hosts; the server enforces it too.
+    if (!args.isOnline(host)) {
+      return {
+        ok: false,
+        status: 409,
+        code: 'HOST_OFFLINE',
+        message: '目标主机已离线，暂时无法登记项目。'
+      }
+    }
     return { ok: true, host }
   }
   const candidates = hosts.filter((host) => args.isOnline(host) && Boolean(host.projectsRoot))
