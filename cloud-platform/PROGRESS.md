@@ -2745,6 +2745,10 @@ W9b 中程（代理 1h 检查点回复，协议生效）：B1–B3 ✅（免登�
 
 设计代理交付 `work-orders/w13-cloud-workspace-view-design.md`（351 行 10 节）。主会话审定：**通过**。要点：宿主 `workspace.info` 镜像 project.provision 范本（独立方法表扩展、云权限表零改动）；返回值=字段即白名单；web 三阶段 bootstrap 复用共享 `openCloudWorkspaceOverRpc`（不新造组件，原生侧栏/explorer/终端点亮）；**Q1–Q3 裁定**——Q1 云 bootstrap 态 UX 从简（空态→视图过渡不 designs）；Q2 云会话隐藏非项目供面（最小表面）；Q3 宿主侧 worktree.list 过滤**不做**（超范围，记开放问题随 M120 复审）。切分 W13a 宿主（真栈套件强制入 node 池）→ W13b web+翻转 → W13c 负向/零回归。已派 W13a 实现代理。
 
+### W9b 关闭（回派整改落地，2026-11-14）
+
+回派提交 `069b84c6154`：MAJ-1 选方案 b（DOM oracle——web bundle 为生产工件不为单个 oracle 改构建配方；断言用户真正读到的内容且不会静默假绿）+ tripwire 改 flag 可配置（W13 未落地前 skip 不打红主旅程）+ MIN 全清（console sink 提前挂、locale 钉 en-US、证据引用首指 U16、编号消解、命令头、如实披露全部缩减项）。门禁：旅程改造态全绿（B4 43ms boundary 态）+ 零回归 493+4/4+24/24 带命令头。**W9b 关闭**（执行证据+审计回派闭环；W13 落地后翻转 B4–B6 启用）。
+
 ### W9b 审计有条件通过（1 major 回派 + W13 设计补充，2026-11-14）
 
 审计（`test-reports/w9b-audit.md`）：blocker 0、major 1——「翻转 W13 标志即启用」不成立：B4 编辑器 oracle `window.__monacoEditorE2E` 仅 `--mode e2e` 安装、web 构建从不传 → W13 落地后断言仍必超时，且翻转先打红主旅程 B4 tripwire（全仓首例 web bundle 用该探针）。B4 三项根因核实为真、红线定位质量高；CORS/handoff/零回归复核全过。已回派 W9b 代理（修法 a/b 自选：web 构建补 e2e mode 或改 DOM oracle + tripwire 可配置 + 措辞/证据引用更正）；两个**翻转前提**已转发 W13 设计代理纳入验收口径（web bundle e2e 可观测性 + 主旅程 tripwire 联动）。
