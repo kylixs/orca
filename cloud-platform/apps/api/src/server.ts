@@ -732,6 +732,9 @@ export function createApp(config: ApiConfig): ApiHandle {
       path: p.path,
       defaultBranch: p.defaultBranch,
       downloadPolicy: p.downloadPolicy,
+      // Additive optional read field: lets the console tell a pinned override
+      // from a project following the global default; old peers ignore it.
+      downloadPolicyExplicit: p.downloadPolicyExplicit === true,
       status: p.status,
       ...(p.provisioningError ? { provisioningError: p.provisioningError } : {}),
       createdAt: p.createdAt,
@@ -1909,6 +1912,10 @@ export function createApp(config: ApiConfig): ApiHandle {
         }
         const body = await readJson(req)
         if (!auditAllowsMutations(res, traceId)) return
+        // `inherit: true` is the only way back to following the global default:
+        // it drops the explicit flag and ignores any downloadPolicy in the body.
+        // Old clients never send it, so their requests take the pinned branch.
+        const inherit = body.inherit === true
         const nextPolicy = body.downloadPolicy === 'allow' ? 'allow' : 'deny'
         const rate = parseReadRate(body.readRatePerHour)
         if (rate.kind === 'invalid') {
@@ -1927,7 +1934,8 @@ export function createApp(config: ApiConfig): ApiHandle {
               result: 'success',
               traceId,
               metadata: {
-                downloadPolicy: nextPolicy,
+                // An inherit must not log the ignored downloadPolicy as if it applied.
+                ...(inherit ? { inherited: true } : { downloadPolicy: nextPolicy }),
                 ...(rate.kind === 'set' ? { readRatePerHour: rate.rate } : {}),
                 ...(rate.kind === 'clear' ? { readRatePerHour: null } : {})
               }
@@ -1937,8 +1945,12 @@ export function createApp(config: ApiConfig): ApiHandle {
         ) {
           return
         }
-        found.downloadPolicy = nextPolicy
-        found.downloadPolicyExplicit = true
+        if (inherit) {
+          delete found.downloadPolicyExplicit
+        } else {
+          found.downloadPolicy = nextPolicy
+          found.downloadPolicyExplicit = true
+        }
         if (rate.kind === 'set') {
           found.readRatePerHour = rate.rate
         } else if (rate.kind === 'clear') {
