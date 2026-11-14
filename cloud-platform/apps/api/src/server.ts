@@ -809,14 +809,21 @@ export function createApp(config: ApiConfig): ApiHandle {
     )
   }
 
-  /** A bad root is ignored on its own; it must not fail registration or a heartbeat. */
-  function applyProjectsRoot(target: Host, value: unknown, traceId: string): void {
+  /**
+   * A bad root is ignored on its own; it must not fail registration or a heartbeat.
+   * Returns false when the reported root was refused. A change of root is refused
+   * while the host still owns non-archived projects: their recorded paths — and
+   * every ticket minted from them — point at the old root, so silently moving it
+   * presents each project as not-prepared with nothing to explain why. Rewriting
+   * those paths across roots is a guess about an operator's intent, so refusing
+   * and saying so is the safe minimal semantics.
+   */
+  function applyProjectsRoot(target: Host, value: unknown, traceId: string): boolean {
     if (value === undefined) {
-      return
+      return true
     }
     if (value === '' || value === null) {
-      target.projectsRoot = null
-      return
+      return commitProjectsRoot(target, null, traceId)
     }
     const verdict = validateProjectPath(value)
     if (!verdict.ok) {
@@ -829,9 +836,39 @@ export function createApp(config: ApiConfig): ApiHandle {
         traceId,
         metadata: { reason: verdict.code }
       })
-      return
+      return true
     }
-    target.projectsRoot = verdict.path
+    return commitProjectsRoot(target, verdict.path, traceId)
+  }
+
+  /** Applies a validated root unless live projects still hang off the current one. */
+  function commitProjectsRoot(target: Host, nextRoot: string | null, traceId: string): boolean {
+    if (nextRoot === target.projectsRoot) {
+      return true
+    }
+    const conflicts = [...store.projects.values()].filter(
+      (p) => p.hostId === target.id && p.status !== 'archived'
+    )
+    if (conflicts.length > 0) {
+      audit.appendBestEffort({
+        eventType: 'projects_root_change',
+        actor: 'agent',
+        targetType: 'host',
+        targetId: target.id,
+        result: 'denied',
+        traceId,
+        metadata: {
+          reason: 'PROJECTS_ROOT_CONFLICT',
+          requested: nextRoot,
+          current: target.projectsRoot,
+          conflictCount: conflicts.length,
+          sampleKeys: conflicts.slice(0, 3).map((p) => p.key)
+        }
+      })
+      return false
+    }
+    target.projectsRoot = nextRoot
+    return true
   }
 
   /**
@@ -2223,6 +2260,9 @@ export function createApp(config: ApiConfig): ApiHandle {
         const body = await readJson(req)
         // Why: a revoked host keeps its credential so this beat can deliver the
         // revocation; it must not look alive or accept any more reported state.
+        // A refused root keeps the old one; the beat still answers so the host
+        // can report why its own view of the root no longer matches.
+        let projectsRootAccepted = true
         if (target.revokedAt === null) {
           if (Array.isArray(body.directAddrs) && body.directAddrs.length > 0) {
             target.directAddrs = body.directAddrs as string[]
@@ -2276,7 +2316,7 @@ export function createApp(config: ApiConfig): ApiHandle {
           if (typeof body.status === 'string' && target.status !== 'maintenance') {
             target.status = body.status === 'online' ? 'online' : 'offline'
           }
-          applyProjectsRoot(target, body.projectsRoot, traceId)
+          projectsRootAccepted = applyProjectsRoot(target, body.projectsRoot, traceId)
           applyProjectProvisionReports(target.id, body.provisioned, traceId)
           target.lastHeartbeatAt = now()
         }
@@ -2288,6 +2328,8 @@ export function createApp(config: ApiConfig): ApiHandle {
         const revoked = store.revocations.filter((r) => r.targetType !== 'jti')
         return json(res, 200, {
           ...(target.revokedAt !== null ? { hostRevoked: true } : {}),
+          // Optional so older hosts that ignore it stay on the wire untouched.
+          ...(projectsRootAccepted ? {} : { projectsRootRejected: 'PROJECTS_ROOT_CONFLICT' }),
           policyVersion: store.policies.version,
           policies: {
             downloadDefault: store.policies.downloadDefault,
