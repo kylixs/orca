@@ -2705,6 +2705,14 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### AA3 落地（2026-11-14）
+
+`3f7c076d50a`+`979e6044df2`：逐分支核对确认 AA2 三消费点与设计 §B3 一致（**零生产码改动**），补强 9 分支用例（用户直授/吊销即时生效/按位判定/策略回切/组名大小写/门禁次序/available 整对象 deepEqual/离线与无 projectsRoot 取值/吊销后委派不复活 409 HOST_REVOKED）；host-authorization 5→8 条+回归 63 绿。命名偏差记录：provisionPolicy 替代设计的 selfServiceProvision（行为等价，保留防破坏）。空槽保持——AA7 等 AA6。
+
+### U42 落地（2026-11-14，🟢）
+
+`4f879f6c873`+`e66ff4e993d`（8+2 文件）：12 调用点判定表（7 清理/5 设计性保留）；关键发现=web 云会话 store 行不带云标记→desktop 谓词门对 web 不可见，按 O1-c 先例预载层 isActiveWebClientCloudSession 短路；A 线 denial 7→3/B 线 19→6（=纯设计性：host.*×4+repo.list 探针+preflight.check）；基线按实测更新（wsl.isAvailable 第二轮实测触发如实并入）；双线旅程复跑绿。**U42→🟢，O1 治理账全清**。空槽派 U44（创建流 UX，域不相交）。
+
 ### AA4 落地（2026-11-14）
 
 `5761b98957e`（2 文件）：矩阵「添加授权」接 GET /v1/directory datalist（admin 拉一次缓存+登出清空；失败降级自由文本；用户 value=username 提示 displayName·dept，组按类型切换）+GRANT_ERROR_TEXT 新错误码 toast 三路径统一（GROUP_NOT_FOUND/GRANT_PERMISSION_INVALID，输入保留）。新 3/3+回归 25/25。空槽回填 AA6。
