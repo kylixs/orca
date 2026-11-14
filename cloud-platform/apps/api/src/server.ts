@@ -902,6 +902,24 @@ export function createApp(config: ApiConfig): ApiHandle {
     }
   }
 
+  /**
+   * A host enrols before anything listens on it, so registration can name a key
+   * with no address behind it; the beat is where that address first appears, and
+   * an explicitly named (non-`ip-`) key gets no rename from syncHostRoute.
+   */
+  function ensureHostRoute(target: Host): void {
+    const routeTarget = target.directAddrs[0]
+    if (!target.relayRoute || !routeTarget) return
+    // Registration's explicit relayTarget stays authoritative; only fill the gap.
+    if (store.relayRoutes.has(target.relayRoute)) return
+    store.relayRoutes.set(target.relayRoute, {
+      routeKey: target.relayRoute,
+      hostId: target.id,
+      target: routeTarget,
+      version: store.policies.version
+    })
+  }
+
   async function handle(
     req: IncomingMessage,
     res: ServerResponse,
@@ -2268,6 +2286,7 @@ export function createApp(config: ApiConfig): ApiHandle {
             target.directAddrs = body.directAddrs as string[]
             // A host that moved keeps its derived label resolvable (M114a).
             syncHostRoute(target)
+            ensureHostRoute(target)
           }
           if (Array.isArray(body.projectDirs)) {
             target.projectDirs = parseProjectDirs(body.projectDirs)

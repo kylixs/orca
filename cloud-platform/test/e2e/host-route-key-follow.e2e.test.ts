@@ -205,4 +205,32 @@ describe('M114a 默认路由键取上报 IP 并随心跳跟随', () => {
     assert.equal(endpoints[0]?.sni, 'ip-192-168-2-77.relay.local')
     saveEvidence(EVIDENCE, 'route-key-follows.json', { before: original, view, moved, endpoint: endpoints[0] })
   })
+
+  test('注册拍无地址的宿主由心跳补齐路由表项，晚同步的中继拉取即得', async () => {
+    // The real enrolment order: a host registers before anything listens, so it
+    // names a route key with no address behind it yet.
+    const host = await registerHost({ name: 'm114-late-addr' })
+    assert.equal(
+      (await routeTable()).some((route) => route.routeKey === 'm114-late-addr'),
+      false
+    )
+
+    await heartbeat(host.hostId, host.credential, ['10.0.0.7:5210'])
+
+    const routes = await routeTable()
+    const entry = routes.find((route) => route.routeKey === 'm114-late-addr')
+    assert.ok(entry, JSON.stringify(routes))
+    assert.equal(entry.hostId, host.hostId)
+    assert.equal(entry.target, '10.0.0.7:5210')
+
+    // A relay that joined later pulls the full table on its 2s tick; until the
+    // entry exists it drops this host's traffic as unknown-route.
+    await relay.refresh()
+    assert.equal(relay.routes().get('m114-late-addr')?.target, '10.0.0.7:5210')
+    assert.ok(relay.routes().size >= 1)
+    saveEvidence(EVIDENCE, 'route-backfilled-by-heartbeat.json', {
+      entry,
+      relayRoutes: [...relay.routes().values()]
+    })
+  })
 })
