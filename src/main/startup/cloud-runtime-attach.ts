@@ -66,8 +66,9 @@ export function attachRuntimeToCloudAdmission(
     // client already: install now, exactly as before.
     installRuntimeCloudSurfaces(runtime, admission.client)
   } else {
-    // Why the rejection handler: an enrolment failure already fails the launch
-    // visibly, and the not-enrolled admission refuses every upgrade anyway.
+    // Why the rejection handler: no launch-path consumer awaits `ready`, and the
+    // not-enrolled admission refuses every upgrade anyway, so this log line is
+    // the failure's only trace.
     void admission.ready.then(
       () => {
         const client = admission.client
@@ -75,7 +76,7 @@ export function attachRuntimeToCloudAdmission(
           installRuntimeCloudSurfaces(runtime, client)
         }
       },
-      () => undefined
+      (error: unknown) => console.error('[cloud] host enrolment failed:', error)
     )
   }
   installCloudPlatformIpc()

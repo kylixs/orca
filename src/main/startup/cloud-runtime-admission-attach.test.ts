@@ -202,15 +202,24 @@ describe('attach 装机时序（桩准入）', () => {
     expect(fake.audits).toEqual([{ eventType: 'method_denied', method: 'browser.download' }])
   })
 
-  it('enrollment 失败：不装机，也不留 unhandled rejection', async () => {
+  it('enrollment 失败：不装机、留一行错误日志，也不留 unhandled rejection', async () => {
     const enrolment = deferred()
     const { admission } = stubAdmission(null, enrolment.promise)
     const target = recordingTarget()
 
-    attachRuntimeToCloudAdmission(target, admission)
-    enrolment.reject(new Error('cloud host enrolment failed: boom'))
-    await expect(enrolment.promise).rejects.toThrow('boom')
-    expect(target.installed).toEqual([])
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      attachRuntimeToCloudAdmission(target, admission)
+      enrolment.reject(new Error('cloud host enrolment failed: boom'))
+      await expect(enrolment.promise).rejects.toThrow('boom')
+      expect(target.installed).toEqual([])
+      expect(consoleError).toHaveBeenCalledWith(
+        '[cloud] host enrolment failed:',
+        expect.objectContaining({ message: expect.stringContaining('boom') })
+      )
+    } finally {
+      consoleError.mockRestore()
+    }
   })
 
   it('已有 client（poll 模式 / stored credential 重启）：attach 当刻同步装机，ready 兑现后不重复', async () => {
