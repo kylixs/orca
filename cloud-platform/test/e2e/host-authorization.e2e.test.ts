@@ -547,12 +547,25 @@ test('AA3 available 判定：其余字段逐字不变，用户直授计数，离
     true
   )
 
+  // No projectsRoot means not provisionable, so no one is allowed — even admin.
+  const noRootHost = await registerHost({
+    apiUrl: service.url,
+    adminToken,
+    name: 'dev-aa3-noroot',
+    directAddr: '127.0.0.1:5',
+    relayTarget: '127.0.0.1:5'
+  })
+  const noRoot = (await available(adminToken)).find((host) => host.id === noRootHost.hostId)
+  assert.equal(noRoot?.provisionable, false)
+  assert.equal(noRoot?.provisionAllowed, false)
+
   saveEvidence(AA3_EVIDENCE, 'available-matrix.json', {
     restricted,
     offlineOpen,
     ungrantedAfterRevoke: (await available(otherToken)).find(
       (host) => host.id === offlineHost.hostId
-    )
+    ),
+    noRoot
   })
 }, 120_000)
 
