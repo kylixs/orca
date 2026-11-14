@@ -282,8 +282,8 @@ function detailDisabledReason(p) {
 /**
  * The per-project row entries (FR-3.11) come from one builder so 工作台 and
  * 我的项目 stay identical. 「详情」 is admin-only and opens the host session
- * page in a new tab; 「Orca Web」 opens the host's browser entry for open
- * holders (M122 will switch it to the one-time handoff auto-entry).
+ * page in a new tab; 「Orca Web」 (M122, FR-3.10) mints a one-time handoff URL
+ * and opens it, so the new tab lands straight in the project workspace.
  */
 function projectRowActions(p) {
   return `<button class="btn sm" data-open="${p.id}" ${openDisabledAttr(p)}>打开</button>${detailEntry(p)}${orcaWebEntry(p)}`
@@ -299,16 +299,13 @@ function detailEntry(p) {
     : `<a class="btn sm" href="${esc(p.sessionPageUrl)}" target="_blank" rel="noopener" title="在新标签打开会话详情">详情</a>`
 }
 
-/** Why the Orca Web entry cannot open, or null when it is a plain link. */
+/** Why the Orca Web entry cannot open. */
 function orcaWebDisabledReason(p) {
   if (p.hostStatus === 'maintenance') {
     return '主机维护中'
   }
   if (p.hostStatus !== 'online') {
     return '主机离线'
-  }
-  if (!p.browserEntryUrl) {
-    return '该主机暂无浏览器入口，请先在 Orca 桌面客户端中打开此项目'
   }
   return null
 }
@@ -318,9 +315,11 @@ function orcaWebEntry(p) {
     return ''
   }
   const reason = orcaWebDisabledReason(p)
+  // Why an action button, not a link: the entry URL is minted per click, so a
+  // host with no browser edge may still serve its direct web-index entry.
   return reason
     ? `<button class="btn sm" disabled title="${esc(reason)}">Orca Web</button>`
-    : `<a class="btn sm" href="${esc(p.browserEntryUrl)}" target="_blank" rel="noopener" title="在新标签打开 Orca Web">Orca Web</a>`
+    : `<button class="btn sm" data-orca-web="${esc(p.id)}" title="在新标签打开 Orca Web 工作区">Orca Web</button>`
 }
 
 function projectRow(p) {
@@ -341,8 +340,24 @@ function wireProjectActions() {
   for (const btn of document.querySelectorAll('[data-open]')) {
     btn.onclick = () => openProject(btn.dataset.open)
   }
+  for (const btn of document.querySelectorAll('[data-orca-web]')) {
+    btn.onclick = () => openOrcaWeb(btn.dataset.orcaWeb)
+  }
   for (const btn of document.querySelectorAll('[data-go]')) {
     btn.onclick = () => navigate(btn.dataset.go)
+  }
+}
+
+/**
+ * M122 (FR-3.10): the platform mints a one-time, 60-second handoff code bound
+ * to this session, and the new tab trades it for a workspace — no second login.
+ */
+async function openOrcaWeb(projectId) {
+  try {
+    const body = await api(`/v1/projects/${projectId}/web-handoff`, { method: 'POST' })
+    window.open(body.url, '_blank', 'noopener')
+  } catch (err) {
+    toast(`打开失败：${err.message ?? err}`)
   }
 }
 
