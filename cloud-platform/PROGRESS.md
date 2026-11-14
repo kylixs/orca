@@ -2564,6 +2564,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### 模型配额中断与恢复（2026-11-14）
+
+六个在途子代理（W5a/W6a修复/W7a/W6c/W10测试/W10审计）因 Flash 模型日额度 402 全部中断，各留未提交部分改动。用户指令：子代理改用 deepseek-flash[1m] 模型；**主会话职责不变（仅编排调度），执行全部归子代理**。已按新模型续派六路：W6a 修复续作（中断前测试 14+8 已过，收尾 typecheck/lint+提交）、W7a 续作、W5a 续作（中断时已在最后验证）、W6c 续作、W10 独立测试、W10 独立审计——每路均要求先审阅工作区自己域的遗留 diff 续用、只提交自己域文件（全仓 format 噪声与无关文档改动不碰不提交）。工作区甄别要点（交由各执行代理落实，主会话不动手）：四通道真实改动 + 全仓 format 噪声混杂；另发现与云端平台无关的设计文档（2026-11-10-mobile 系列等）也在改动列表，归属待确认，未授权不动。
+
 ### W10 开发完成（通道③，待独立测试+审计，2026-11-14）
 
 提交 `af75dc475ea`（29 文件，全部客户端域）：编译期 `ORCA_DEFAULT_PLATFORM_URL`/`ORCA_MANAGED_BUILD` 注入（vite define，同遥测常量机制）；地址优先级 env>记忆>构建默认>空、逐档降级永不抛错；托管锁定语义（锁定已解析地址、无地址仍可手填、表单输入被无视）；登录记忆落盘 M66 同款受保护文件（登出保留记忆）；`installCloudPlatformIpc` 改「云端构建即装配」实现无 env 启动出登录界面（零回归：判定保持）；登录表单「平台地址」输入（晚到预填不覆盖用户输入、托管只读、`PLATFORM_ADDRESS_INVALID` 内联错误）。专项 52 用例 + 回归批 93 用例全绿；typecheck/oxlint/design-system 门 0 项。`cloud-session-service.test.ts` 4 失败为既有环境问题（stash 对照 HEAD 复现）。偏差如实：工作令误指 orca-profiles（实改 ipc/cloud-platform.ts），判定语义不受影响；真实平台首启 e2e 超预算，已留 6 步脚本建议给测试代理。**注意**：该代理曾跑全仓 pnpm format，把在途代理的未提交文件做了纯格式化——核验各通道提交时留意格式化噪声。已派独立测试（首启 6 步旅程）与审计代理；通道③放行 **W6c**。
