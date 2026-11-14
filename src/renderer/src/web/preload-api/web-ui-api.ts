@@ -24,6 +24,7 @@ import {
 } from './web-preference-normalization'
 import { readLocalWebUIState } from './web-preferences-store'
 import { callRuntimeResult } from './web-runtime-calls'
+import { isCloudSessionStoredEnvironment } from '../web-cloud-session-scope'
 import { requireActiveEnvironmentOrNull } from './web-runtime-session'
 import { UI_STORAGE_KEY, noopUnsubscribe, writeJson } from './web-storage'
 
@@ -41,6 +42,9 @@ export function createWebUiApi(): NonNullable<Partial<PreloadApi>['ui']> {
   return {
     /** Hydrates from the active host after replaying pending roots, falling back to local state on failure or host changes. */
     get: async () => {
+      if (isCloudSessionStoredEnvironment(requireActiveEnvironmentOrNull())) {
+        return readLocalWebUIState()
+      }
       try {
         const environmentId = requireActiveEnvironmentOrNull()?.id
         const result = await callRuntimeResult<{ ui: PairedUiState }>('ui.get', undefined, 15_000)
@@ -76,6 +80,9 @@ export function createWebUiApi(): NonNullable<Partial<PreloadApi>['ui']> {
       const next = mergeWebUIState(readLocalWebUIState(), updates)
       writeJson(UI_STORAGE_KEY, next)
       zoomLevel = next.uiZoomLevel
+      if (isCloudSessionStoredEnvironment(requireActiveEnvironmentOrNull())) {
+        return
+      }
       // Why strip here too when the host also strips: an old host predating that strip would
       // otherwise persist this browser's runtime:web-* keys over the desktop profile's order.
       const { environmentId, hostUpdates } = prepareHostUpdates(updates)
@@ -91,6 +98,11 @@ export function createWebUiApi(): NonNullable<Partial<PreloadApi>['ui']> {
       const next = mergeWebUIState(readLocalWebUIState(), updates)
       writeJson(UI_STORAGE_KEY, next)
       zoomLevel = next.uiZoomLevel
+      // Why resolve: the host would refuse the write, and a rejection makes the
+      // preference diff writer re-send the same doomed patch on every startup.
+      if (isCloudSessionStoredEnvironment(requireActiveEnvironmentOrNull())) {
+        return
+      }
       const { environmentId, hostUpdates } = prepareHostUpdates(updates)
       await callRuntimeResult('ui.set', hostUpdates, 15_000)
       explorerRoots.acknowledge(environmentId, hostUpdates)
@@ -115,6 +127,9 @@ export function createWebUiApi(): NonNullable<Partial<PreloadApi>['ui']> {
         }
       })
       writeJson(UI_STORAGE_KEY, optimistic)
+      if (isCloudSessionStoredEnvironment(requireActiveEnvironmentOrNull())) {
+        return optimistic
+      }
       try {
         const result = await callRuntimeResult<{ ui: PairedUiState }>(
           'ui.recordFeatureInteraction',

@@ -1,7 +1,9 @@
 import { isWebClientLocation } from '@/lib/web-client-location'
+import { isCloudSessionRuntimeEnvironment } from '../../../shared/runtime-environments'
 import {
   isCloudSessionWebEnvironment,
-  readStoredWebRuntimeEnvironment
+  readStoredWebRuntimeEnvironment,
+  type StoredWebRuntimeEnvironment
 } from './web-runtime-environment'
 
 /**
@@ -39,4 +41,15 @@ export function isActiveWebClientCloudSession(): boolean {
 /** Test seam: the next read re-derives the scope from the stored environment. */
 export function resetWebCloudSessionScope(): void {
   cached = null
+}
+
+/**
+ * Whether this paired web environment is a cloud (ticket) session, whose host refuses the
+ * client-preference families (`ui.*`, `settings.*`): browser-local state is the only peer.
+ * Nothing paired yet is not a cloud session, so callers keep their paired behavior.
+ */
+export function isCloudSessionStoredEnvironment(
+  environment: StoredWebRuntimeEnvironment | null
+): boolean {
+  return environment !== null && isCloudSessionRuntimeEnvironment(environment)
 }

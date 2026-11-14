@@ -16,6 +16,7 @@ import {
   applyPRBotAuthorOverride,
   normalizePRBotAuthorOverrides
 } from '../../../../shared/pr-bot-author-overrides'
+import { isCloudSessionStoredEnvironment } from '../web-cloud-session-scope'
 import { normalizeTerminalCursorStyleDefault } from '../../../../shared/terminal-cursor-style-settings'
 import { normalizeTerminalCustomThemes } from '../../../../shared/terminal-custom-themes'
 import { normalizeUiLanguage } from '../../../../shared/ui-language'
@@ -268,7 +269,8 @@ export async function updateRuntimePRBotAuthorOverride(args: {
   isBot: boolean
 }): Promise<GlobalSettings> {
   const local = getStoredSettings()
-  if (requireActiveEnvironmentOrNull()) {
+  const environment = requireActiveEnvironmentOrNull()
+  if (environment !== null && !isCloudSessionStoredEnvironment(environment)) {
     // Why: don't report a successful mark the authoritative runtime failed to persist and will later overwrite.
     const result = await callRuntimeResult<{ settings: Partial<GlobalSettings> }>(
       'settings.updatePRBotAuthorOverride',

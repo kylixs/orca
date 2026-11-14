@@ -4,6 +4,7 @@ import {
   normalizeComputerAwakeMode
 } from '../../../../shared/computer-awake-mode'
 import { normalizeTerminalCursorStyleDefault } from '../../../../shared/terminal-cursor-style-settings'
+import { isCloudSessionStoredEnvironment } from '../web-cloud-session-scope'
 import { mergeSettings } from './web-preference-normalization'
 import {
   getRuntimeBackedStoredSettings,
@@ -24,7 +25,14 @@ import { noopUnsubscribe } from './web-storage'
 export function createWebSettingsApi(): Partial<PreloadApi> {
   return {
     settings: {
-      get: async () => getRuntimeBackedStoredSettings(),
+      get: async () => {
+        if (isCloudSessionStoredEnvironment(requireActiveEnvironmentOrNull())) {
+          // Why: runtime-backed keys are paired-desktop↔host shared state; a cloud ticket has no
+          // paired peer, so the doomed read is never dialed and local storage is the authority.
+          return settingsForActiveVisibilityOwner(getStoredSettings())
+        }
+        return getRuntimeBackedStoredSettings()
+      },
       // Why: localStorage-backed settings are synchronous, so the pre-hydration kill-switch read works the same as desktop.
       getSync: () => settingsForActiveVisibilityOwner(getStoredSettings()),
       set: async (updates) => {
@@ -82,6 +90,10 @@ export function createWebSettingsApi(): Partial<PreloadApi> {
           preserveAutoRenameBranchFromWorkUpdate: 'autoRenameBranchFromWork' in sanitizedUpdates
         })
         writeStoredSettings(next)
+        if (isCloudSessionStoredEnvironment(runtimeEnvironment)) {
+          // Why: no paired host to sync to, so the local write above is final.
+          return settingsForActiveVisibilityOwner(next)
+        }
         return settingsForActiveVisibilityOwner(
           await syncRuntimeBackedSettings(sanitizedUpdates, next)
         )

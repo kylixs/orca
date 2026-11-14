@@ -67,7 +67,11 @@ export async function installApi(userAgent?: string): Promise<{
   }
 }
 
-export function writeStoredRuntimeEnvironment(storage: Storage, environmentId = 'web-env-1'): void {
+export function writeStoredRuntimeEnvironment(
+  storage: Storage,
+  environmentId = 'web-env-1',
+  overrides: Record<string, unknown> = {}
+): void {
   storage.setItem(
     'orca.web.runtimeEnvironment.v1',
     JSON.stringify({
@@ -87,9 +91,15 @@ export function writeStoredRuntimeEnvironment(storage: Storage, environmentId = 
           deviceToken: 'token',
           publicKeyB64: 'public-key'
         }
-      ]
+      ],
+      ...overrides
     })
   )
+}
+
+/** Marks the stored row as a spent cloud ticket, the web row's only cloud marker. */
+export function writeStoredCloudRuntimeEnvironment(storage: Storage, environmentId?: string): void {
+  writeStoredRuntimeEnvironment(storage, environmentId, { cloudLoginRequired: true })
 }
 
 export function encodePairingCode(overrides: Record<string, unknown> = {}): string {
