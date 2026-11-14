@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### 中继重指向完成（2026-11-14）+ U43 登记
+
+CA 分发+env 双名改 https+NODE_EXTRA_CA_CERTS+重启（新 PID 3105266）：**U39 终证成立**（routes synced n=1，ensureHostRoute 端到端）；**浏览器模式 404→200**（/h/dev-local-02/web-index.html 伺服 Orca Web）。**U43 登记**：mtlsFetch TLS 分支丢请求体→announce 空体被 400 静默吞（HEAD 同病）→修复令已派（补 req.write+节点副本同步+重启）。
+
 ### U41+U40 落地（2026-11-14，浏览器链解锁）
 
 平台 TLS：PLATFORM_TLS_CERT/KEY_PATH 可选监听（包裹同 handler）+requestOrigin 读 socket.encrypted ⇒ ?api=/install 脚本地址自动 https；证书=U2 钥匙串可信 CA 签（SAN=100.103.213.12/127.0.0.1/localhost）——**curl 不带 -k 三地址全 200，本机浏览器零警告**；forwarder L4 透传无需改。重播种：平台 PID 93461（https://127.0.0.1:18787）、宿主 host_7967dbba（广告 100.103.213.12:56155）、**proj_a3f54f0f**（demo-app）+**proj_9a149498**（zhangsan 自建）、矩阵含 **admin 全量（U40）**；admin handoff 403→201→换发 200→重放 410 实测。C 线 303/303+新 TLS e2e。遗留：远端中继 env 仍指 http（重指向已派）；宿主证书 SAN 不含 tailnet IP（浏览器名匹配告警挂账）；平台内存 store（重播种脚本已留 evidence/env-tls-u41/）。
