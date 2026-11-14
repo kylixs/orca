@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### U23+U24 修复落地（2026-11-14）
+
+`108bf8bb832`（8 文件 +315/−37）：already-provisioned 分支补 registerExistingCheckout（复用 W12b-1 共享尾，零触碰、幂等、失败 REGISTER_FAILED 假成功不再）；U24=dedupeWorktreeCreate markJoined→createdByThisCall（shared 两文件 wire-additive 最小触碰，旧客户端忽略/新对旧宿主缺省 true 双向兼容）。红绿对照：回退→恰 2 红（用户场景+幂等）；新 4 例+域内 10 套件绿；4 套红=stash 基线同红既有环境失败（bun 真 TLS 家族）。max-lines 顶爆按规约消重压回未加抑制 ✓。运行 ~35 分钟超控制线（超时部分为红绿对照与基线取证）。U23/U24→🟡：平台级终证挂首批批量验收（真 TLS 端到端 open）后转 🟢。空槽回填 U25 修复。
+
 ### U26 落地（2026-11-14）
 
 `41b01a56516`（2 文件 +18/−8，暂存集核对）：拒绝分支 `() => undefined`→`console.error('[cloud] host enrolment failed:', error)`（仓内既有 [cloud] 前缀约定，无新结构）；注释改与实现一致（no launch-path consumer awaits ready—此日志即失败唯一痕迹）；套件 8/8（含 spy 断言前缀与 Error 内容，try/finally 恢复）+真实平台 3 例零回归+tc:node 0 错。运行 1.3 分钟。**U26→🟢，W12b 系全部关闭**。空槽回填 W12b-1 审计。

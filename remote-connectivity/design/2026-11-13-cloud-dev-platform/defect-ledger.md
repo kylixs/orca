@@ -27,8 +27,8 @@
 | U20 | 🔴 | connect 不校验 project.status：failed/provisioning 项目照常发票据，失败暴露点过晚 | W12a 诊断 §2-D-2 | 挂 P2（W12 方向 A 一并裁定） |
 | U21 | 🔴 | projectsRoot 变更不迁移已建项目 path：旧票据指向旧根，宿主以 not-prepared 呈现 | W12a 诊断 §2-D-1 | 挂 P2 |
 | U22 | 🔴 | W3c handoff 新标签 e2e 断言可加严（未断 project= 值与入口 origin；组合语义暂由 W7b-url 钉住） | W3c 审计 minor m-2 | 挂 P2 测试加严 |
-| U23 | 🔴 | **自建项目选「已是 git 仓库」目录 → open 永久 forbidden**：`isGitRepo=true` 即 already-provisioned 短路，宿主不把该检出登记进 store → `worktree.*` 无法解析 → prepare 假成功且侧车已写入，open 报 `forbidden "That repository is not available"`（死路+把登记缺口报成越权；对话框明示「选择已有目录」且 projectDirs 不过滤 git 仓库，可达性成立；非 W12b-1 引入，FR-3.7 承诺内未覆盖） | W12b-1 独立测试探针 5/6（evidence/w12b1-verify/probes/） | **修复令已派**（already-provisioned 时补 registerCheckout 登记） |
-| U24 | 🔴 | 并发 open 双方都返回 `created:true`（实际仅 1 检出，幂等去重生效，标志语义失真） | 同上探针 4 | 随 U23 修复令顺带 |
+| U23 | 🟡 | **自建项目选「已是 git 仓库」目录 → open 永久 forbidden**：`isGitRepo=true` 即 already-provisioned 短路，宿主不把该检出登记进 store → `worktree.*` 无法解析 → prepare 假成功且侧车已写入，open 报 `forbidden "That repository is not available"`（死路+把登记缺口报成越权；对话框明示「选择已有目录」且 projectDirs 不过滤 git 仓库，可达性成立；非 W12b-1 引入，FR-3.7 承诺内未覆盖） | W12b-1 独立测试探针 5/6（evidence/w12b1-verify/probes/） | 已修 `108bf8bb832`（registerExistingCheckout 复用共享尾，登记零触碰 provisioned:false=M39 语义，失败 REGISTER_FAILED 不再假成功；U24 顺带=markJoined 标志 wire-additive，未建出方 created:false 双向兼容）。红证：回退运行时文件→恰用户场景+幂等红；新 2 套件 4 例+域内 10 套件绿（4 套红=stash 基线同红的既有环境失败）。**平台级终证挂首批批量验收后转 🟢** |
+| U24 | 🟡 | 并发 open 双方都返回 `created:true`（实际仅 1 检出，幂等去重生效，标志语义失真） | 同上探针 4 | 随 U23 修复令顺带 |
 | U25 | 🔴 | 平台 branch 校验与宿主不一致：contract 层 201 接受 `bad..branch`，宿主恒 `BRANCH_INVALID` 无自愈（clone 路径同族既有） | W12b-1 独立测试 OBS | 挂 P2（平台侧 contract 校验补齐） |
 | U26 | 🟢 | **enrollment 失败可观测性回退**（W12b-2 审计 M-1）：cloud-runtime-attach.ts:69 注释称「失败已可见地让启动失败」但无实现——生产无人 await ready，且 `() => undefined` 吞掉原本会落入 `main_unhandled_rejection` 持久记录的 rejection（记录→静默）；fail-closed 不受影响 | W12b-2 审计（test-reports/w12b2-audit.md） | 已修：`41b01a56516`（console.error [cloud] 前缀日志+注释与实现一致；套件 8/8 含真实平台 3 例零回归，tc:node 0 错，1.3 分钟微任务） |
 | U27 | ⚪→🔧 | 变异证据不可从提交复现：run-log.json 只记预期未记观察输出 + evidence/ 整目录 gitignore | W12b-2 审计 M-2 | 审计已独立复现补证；流程记档——后续证据 JSON 必须含观察输出原文 |
