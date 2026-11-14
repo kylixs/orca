@@ -508,8 +508,14 @@ test('W9a 桌面黄金旅程：登录 → 打开项目（直连）→ 终端 →
         await ensureTerminalVisible(page, 30_000)
         await waitForActiveTerminalManager(page, 30_000)
         const ptyId = await waitForActivePanePtyId(page, 60_000)
-        const bound = await page.evaluate((id) => window.api.pty.hasPty(id), ptyId)
-        expect(bound, 'the pane must hold a live PTY binding').toBe(true)
+        // A runtime-backed workspace keeps its shell on the host, so the pane binds
+        // a `remote:` handle and `pty:hasPty` honestly answers null for it — the
+        // local daemon can never verify another host's PTY (inspect.ts). Liveness
+        // is what the stream below proves: the typed line must come back echoed,
+        // with its output, through the workspace's terminal.multiplex stream.
+        expect(ptyId, 'the pane must bind a remote-runtime PTY handle').toMatch(/^remote:/)
+        const localVerdict = await page.evaluate((id) => window.api.pty.hasPty(id), ptyId)
+        expect(localVerdict, 'a remote handle must be unverifiable locally, not dead').toBeNull()
         await focusActiveTerminalInput(page)
         const sentAt = Date.now()
         await page.keyboard.type(`echo ${RUN_MARKER} && ls`)

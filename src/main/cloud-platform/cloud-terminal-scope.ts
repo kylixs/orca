@@ -7,13 +7,15 @@
  * against the ticket's workspace root rather than trusted.
  *
  * Methods that act on the host's own window (tabs, focus, global close, fit
- * preferences) and the multiplex transport are refused: a headless cloud host has
- * no window for them to act on, and their answers describe other users' work.
+ * preferences) are refused: a headless cloud host has no window for them to act
+ * on, and their answers describe other users' work.
  */
 
 export type CloudTerminalScope =
   | { kind: 'create' }
   | { kind: 'handle' }
+  /** A stream transport: the envelope names no terminal, so every subscribe frame is checked instead. */
+  | { kind: 'multiplex' }
   | { kind: 'deny'; message: string }
 
 /** Creates a PTY; `worktree` must resolve inside the caller's workspace root. */
@@ -44,9 +46,15 @@ export const CLOUD_TERMINAL_HANDLE_METHODS: ReadonlySet<string> = new Set([
 ])
 
 /**
- * Host-desktop or host-global methods. `terminal.multiplex` is a second transport
- * whose frames are not covered by this table, so it stays closed until it is.
+ * The desktop workspace pane's second transport. Its envelope carries no
+ * terminal, so admission is unconditional here and the boundary moves to the
+ * frames: every subscribe names a handle, and that handle is checked against the
+ * ticket's workspace root where the host resolves it
+ * (`cloud-terminal-multiplex-boundary.ts`).
  */
+export const CLOUD_TERMINAL_MULTIPLEX_METHODS: ReadonlySet<string> = new Set(['terminal.multiplex'])
+
+/** Host-desktop or host-global methods, refused regardless of their selector. */
 export const CLOUD_TERMINAL_DENIED_METHODS: ReadonlySet<string> = new Set([
   'terminal.split',
   'terminal.closeAll',
@@ -59,7 +67,6 @@ export const CLOUD_TERMINAL_DENIED_METHODS: ReadonlySet<string> = new Set([
   'terminal.resolvePane',
   'terminal.recoverPane',
   'terminal.resolveIdentity',
-  'terminal.multiplex',
   'terminal.getAutoRestoreFit',
   'terminal.setAutoRestoreFit'
 ])
@@ -70,6 +77,9 @@ export function cloudTerminalScopeOf(method: string): CloudTerminalScope | null 
   }
   if (CLOUD_TERMINAL_HANDLE_METHODS.has(method)) {
     return { kind: 'handle' }
+  }
+  if (CLOUD_TERMINAL_MULTIPLEX_METHODS.has(method)) {
+    return { kind: 'multiplex' }
   }
   if (CLOUD_TERMINAL_DENIED_METHODS.has(method)) {
     return { kind: 'deny', message: deniedMessage(method) }
@@ -82,7 +92,7 @@ export function cloudTerminalScopeOf(method: string): CloudTerminalScope | null 
 }
 
 function deniedMessage(method: string): string {
-  const hostWindow = method !== 'terminal.multiplex' && method !== 'terminal.list'
+  const hostWindow = method !== 'terminal.list'
   return hostWindow
     ? `Method '${method}' acts on the host's own window and is not available to cloud sessions.`
     : `Method '${method}' is not available to cloud sessions.`

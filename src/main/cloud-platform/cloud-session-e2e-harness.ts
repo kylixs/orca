@@ -5,7 +5,14 @@ import WebSocket from 'ws'
 import { parseJsonText, readArray, readField, readString } from '../../shared/json-fields'
 import { parsePairingCode } from '../../shared/pairing'
 import { readTicketClaims } from './cloud-connect-response'
-import { decrypt, deriveSharedKey, encrypt, generateKeyPair } from '../runtime/rpc/e2ee-crypto'
+import {
+  decrypt,
+  decryptBytes,
+  deriveSharedKey,
+  encrypt,
+  encryptBytes,
+  generateKeyPair
+} from '../runtime/rpc/e2ee-crypto'
 import { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
 import type { OrcaRuntimeRpcServerOptions } from '../runtime/runtime-rpc/runtime-rpc-pairing-types'
@@ -111,6 +118,8 @@ export type CloudConnection =
       close: Promise<CloseInfo>
       /** Sends an encrypted RPC over the admitted session and awaits its reply. */
       rpc: (method: string, params?: unknown) => Promise<CloudRpcReply>
+      /** Sends an encrypted binary frame (terminal multiplex streams). */
+      sendBinaryFrame: (bytes: Uint8Array<ArrayBufferLike>) => void
     }
   | { status: 'refused'; close: CloseInfo }
 
@@ -127,6 +136,8 @@ export type CloudConnectTransport = {
    * they arrive repeatedly under the open call's id, so only this hook sees them.
    */
   onStreamEvent?: (result: unknown) => void
+  /** Decrypted binary frames the host streams back (terminal multiplex). */
+  onBinaryFrame?: (bytes: Uint8Array<ArrayBufferLike>) => void
 }
 
 /** The `orca-device.<base64url>` token a header-less client offers. */
@@ -176,7 +187,16 @@ export function connectCloudSession(
     let sentAuth = false
     const pending = new Map<string, (reply: CloudRpcReply) => void>()
     let nextId = 0
-    ws.on('message', (raw) => {
+    ws.on('message', (raw, isBinary) => {
+      // Why the flag, not Buffer sniffing: `ws` delivers text frames as Buffers too.
+      if (isBinary) {
+        const bytes = Array.isArray(raw) ? Buffer.concat(raw) : new Uint8Array(raw)
+        const plaintext = decryptBytes(bytes, sharedKey)
+        if (plaintext !== null) {
+          transport.onBinaryFrame?.(plaintext)
+        }
+        return
+      }
       const text = raw.toString()
       const type = readString(parseJsonText(text), 'type')
       if (type === 'e2ee_ready') {
@@ -198,7 +218,7 @@ export function connectCloudSession(
           return
         }
         authenticated = true
-        resolve({ status: 'authenticated', ws, close, rpc })
+        resolve({ status: 'authenticated', ws, close, rpc, sendBinaryFrame })
         return
       }
       const id = readString(decoded, 'id')
@@ -228,6 +248,9 @@ export function connectCloudSession(
         pending.set(id, settle)
         ws.send(encrypt(JSON.stringify({ id, method, params }), sharedKey))
       })
+    }
+    const sendBinaryFrame = (bytes: Uint8Array<ArrayBufferLike>): void => {
+      ws.send(Buffer.from(encryptBytes(bytes, sharedKey)), { binary: true })
     }
     ws.once('open', () => {
       ws.send(

@@ -13,7 +13,7 @@ function finalizeResolvedMultiplexPty(
   state: TerminalMultiplexConnection,
   request: MultiplexSubscribeRequest,
   leaf: { ptyId: string | null } | null
-): string | null {
+): string | null | Promise<string | null> {
   if (!leaf?.ptyId) {
     state.sendStreamError(request.streamId, 'no_connected_pty')
     state.emit({ type: 'end', streamId: request.streamId })
@@ -22,14 +22,35 @@ function finalizeResolvedMultiplexPty(
   if (state.closed) {
     return null
   }
+  const ptyId = leaf.ptyId
   // Why: a competing subscribe may own this streamId after the PTY await; detach it so an orphaned view subscriber can't silence the model responder (terminal-query-authority.md).
   state.detachStream(request.streamId, null)
+  if (state.checkStreamTarget) {
+    // Why before the capacity check: an out-of-scope probe must meet the
+    // boundary, not consume a slot on its way to a quota error.
+    return state.checkStreamTarget(request.terminal).then((verdict) => {
+      if (!verdict.ok) {
+        state.sendStreamError(request.streamId, verdict.code)
+        state.emit({ type: 'end', streamId: request.streamId })
+        return null
+      }
+      return admitIfCapacityAllows(state, request, ptyId)
+    })
+  }
+  return admitIfCapacityAllows(state, request, ptyId)
+}
+
+function admitIfCapacityAllows(
+  state: TerminalMultiplexConnection,
+  request: MultiplexSubscribeRequest,
+  ptyId: string
+): string | null {
   if (state.streams.size >= TERMINAL_MULTIPLEX_MAX_ACTIVE_STREAMS_PER_CONNECTION) {
     state.sendStreamError(request.streamId, TERMINAL_MULTIPLEX_STREAM_LIMIT_ERROR)
     state.emit({ type: 'end', streamId: request.streamId })
     return null
   }
-  return leaf.ptyId
+  return ptyId
 }
 
 export function resolveMultiplexSubscribePty(

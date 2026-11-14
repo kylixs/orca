@@ -227,9 +227,11 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
         // Why: gates the mobile-only payload diet so full-screen web/desktop clients aren't truncated.
         clientKind: device.scope,
         callerScope,
+        // Why the split: a boundary verdict (a frame naming a path outside the
+        // ticket) is a path denial; only permission/policy refusals are method denials.
         onCloudDenial: (details, method) =>
           this.cloudAuditSink?.({
-            eventType: 'method_denied',
+            eventType: details.denial === 'PATH_OUTSIDE_ROOT' ? 'path_denied' : 'method_denied',
             deviceId: device.deviceId,
             subject: device.name,
             projectId: cloudSession?.projectId,

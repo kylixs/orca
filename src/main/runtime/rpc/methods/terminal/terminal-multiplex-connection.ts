@@ -18,6 +18,14 @@ export type MultiplexSubscribeRequest = z.infer<typeof TerminalMultiplexSubscrib
 export type MultiplexSnapshotRequest = z.infer<typeof TerminalMultiplexSnapshotRequestFrame>
 export type MultiplexEmit = (result: unknown) => void
 
+/**
+ * Cloud sessions only: whether a subscribe's target handle may be driven at all
+ * (`createCloudMultiplexStreamBoundary`). Absent for every other caller kind.
+ */
+export type MultiplexStreamTargetCheck = (
+  terminalHandle: string
+) => Promise<{ ok: true } | { ok: false; code: string }>
+
 export type TerminalMultiplexConnectionBase = {
   runtime: RpcContext['runtime']
   connectionId: string
@@ -25,6 +33,7 @@ export type TerminalMultiplexConnectionBase = {
   registerBinaryStreamHandler: NonNullable<RpcContext['registerBinaryStreamHandler']>
   signal: RpcContext['signal']
   emit: MultiplexEmit
+  checkStreamTarget?: MultiplexStreamTargetCheck
   closed: boolean
   cursor: number
   streams: Map<number, TerminalMultiplexStream>

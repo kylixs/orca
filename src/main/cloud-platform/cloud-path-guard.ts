@@ -15,6 +15,7 @@ import {
   cloudTerminalScopeOf,
   type CloudTerminalScope
 } from './cloud-terminal-scope'
+import { checkCloudTerminalHandleScope } from './cloud-terminal-handle-scope'
 import {
   MANAGED_CREATE_METHOD,
   cloudWorktreeAccessOf,
@@ -120,6 +121,11 @@ export async function checkCloudRpcPath(args: {
   const terminalScope = cloudTerminalScopeOf(args.method)
   if (terminalScope?.kind === 'deny') {
     return { ok: false, reason: 'terminal_host_scope', message: terminalScope.message }
+  }
+  if (terminalScope?.kind === 'multiplex') {
+    // The envelope names no terminal (`TerminalMultiplex` params are `{}`); the
+    // stream's own frames are bounded per subscribe by the multiplex boundary.
+    return { ok: true }
   }
   if (terminalScope) {
     return await checkCloudTerminal(args, terminalScope)
@@ -330,25 +336,9 @@ async function checkCloudTerminal(
       message: 'This call names no terminal.'
     }
   }
-  // A host that cannot say which worktree a handle belongs to cannot prove the
-  // handle is the caller's, so the call is refused rather than assumed in scope.
-  const context = args.runtime.resolveTerminalContext?.(cloudTerminalHandleOf(handle)) ?? null
-  if (context === null) {
-    return {
-      ok: false,
-      reason: 'terminal_unknown',
-      message: 'This terminal is not available to the cloud session.'
-    }
-  }
-  let worktreePath: string
-  try {
-    worktreePath = await args.runtime.resolveWorktreeRootPath(`id:${context.worktreeId}`)
-  } catch {
-    return {
-      ok: false,
-      reason: 'terminal_unknown',
-      message: 'This terminal is not available to the cloud session.'
-    }
-  }
-  return checkCloudTargetScope(args.roots, 'write', worktreePath)
+  return checkCloudTerminalHandleScope({
+    runtime: args.runtime,
+    roots: args.roots,
+    terminalHandle: cloudTerminalHandleOf(handle)
+  })
 }

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CLOUD_TERMINAL_HANDLE_METHODS,
   CLOUD_TERMINAL_DENIED_METHODS,
+  CLOUD_TERMINAL_MULTIPLEX_METHODS,
   cloudTerminalScopeOf
 } from './cloud-terminal-scope'
 import {
@@ -68,13 +69,18 @@ async function check(method: string, params: unknown) {
 }
 
 describe('终端方法分类', () => {
-  it('三类互斥，且已分类的方法都真的归入其中一类', () => {
+  it('各类互斥，且已分类的方法都真的归入其中一类', () => {
     for (const method of CLOUD_TERMINAL_HANDLE_METHODS) {
       expect(CLOUD_TERMINAL_DENIED_METHODS.has(method), method).toBe(false)
+      expect(CLOUD_TERMINAL_MULTIPLEX_METHODS.has(method), method).toBe(false)
       expect(cloudTerminalScopeOf(method), method).toEqual({ kind: 'handle' })
     }
     for (const method of CLOUD_TERMINAL_DENIED_METHODS) {
       expect(cloudTerminalScopeOf(method), method).toMatchObject({ kind: 'deny' })
+    }
+    for (const method of CLOUD_TERMINAL_MULTIPLEX_METHODS) {
+      expect(CLOUD_TERMINAL_DENIED_METHODS.has(method), method).toBe(false)
+      expect(cloudTerminalScopeOf(method), method).toEqual({ kind: 'multiplex' })
     }
   })
 
@@ -87,6 +93,7 @@ describe('终端方法分类', () => {
     expect(isCloudPathGuardedMethod('terminal.create')).toBe(true)
     expect(isCloudPathGuardedMethod('terminal.subscribe')).toBe(true)
     expect(isCloudPathGuardedMethod('terminal.list')).toBe(true)
+    expect(isCloudPathGuardedMethod('terminal.multiplex')).toBe(true)
   })
 })
 
@@ -172,5 +179,9 @@ describe('终端地址边界', () => {
       const decision = await check(method, {})
       expect(decision, method).toMatchObject({ ok: false, reason: 'terminal_host_scope' })
     }
+  })
+
+  it('multiplex 信封不带地址，按帧检查：信封放行，逐帧边界在订阅时执行', async () => {
+    expect(await check('terminal.multiplex', {})).toEqual({ ok: true })
   })
 })

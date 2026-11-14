@@ -47,6 +47,7 @@ export function rpcContextFromTransport(
       : undefined,
     clientId: options?.clientId,
     cloud: options?.cloud,
+    onCloudDenial: options?.onCloudDenial,
     cloudReportProvision: options?.cloudReportProvision,
     pairedDeviceId: options?.pairedDeviceId,
     caller: resolveRpcCallerIdentity(options),

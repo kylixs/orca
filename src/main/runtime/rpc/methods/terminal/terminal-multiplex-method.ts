@@ -3,6 +3,7 @@ import { TerminalStreamOpcode } from '../../../../../shared/terminal-stream-prot
 import { TERMINAL_MULTIPLEX_ACK_TOTAL_INITIAL_WINDOW_BYTES } from '../../../../../shared/terminal-multiplex-flow-control'
 import { TerminalSourceRangeRegistry } from '../../terminal-source-range-registry'
 import { TerminalMultiplex } from '../../../../../shared/rpc-contract/terminal-stream-params'
+import { createCloudMultiplexStreamBoundary } from '../../../../cloud-platform/cloud-terminal-multiplex-boundary'
 import type { TerminalMultiplexConnection } from './terminal-multiplex-connection'
 import type { TerminalMultiplexStream } from './terminal-stream-types'
 import { installMultiplexFrameDelivery } from './terminal-multiplex-frame-delivery'
@@ -18,7 +19,15 @@ export const TERMINAL_MULTIPLEX_METHODS = [
     params: TerminalMultiplex,
     handler: async (
       _params,
-      { runtime, connectionId, sendBinary, registerBinaryStreamHandler, signal },
+      {
+        runtime,
+        connectionId,
+        sendBinary,
+        registerBinaryStreamHandler,
+        signal,
+        cloud,
+        onCloudDenial
+      },
       emit
     ) => {
       if (!sendBinary || !registerBinaryStreamHandler || !connectionId) {
@@ -37,6 +46,15 @@ export const TERMINAL_MULTIPLEX_METHODS = [
         registerBinaryStreamHandler,
         signal,
         emit,
+        // Why per subscribe, not per frame: subscribe is the only frame that names a
+        // target; the rest address a streamId bound by an already-checked subscribe.
+        checkStreamTarget: cloud
+          ? createCloudMultiplexStreamBoundary({
+              runtime,
+              roots: { projectRoot: cloud.projectRoot, workspaceRoot: cloud.workspaceRoot },
+              onCloudDenial
+            })
+          : undefined,
         closed: false,
         cursor: 0,
         streams: new Map<number, TerminalMultiplexStream>(),

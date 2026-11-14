@@ -13,6 +13,7 @@ import type { OrchestrationCompatibilityEvidence } from '../../../shared/orchest
 import type { OrchestrationSessionCaller } from '../orchestration/orchestration-caller-identity'
 import type { RpcCallerIdentity } from './rpc-caller-identity'
 import type { RpcMethodPermission } from './rpc-method-permission'
+import type { CloudDenialDetails } from '../../cloud-platform/cloud-denial-details'
 import type { CloudProvisionReport } from '../../cloud-platform/cloud-project-provision'
 
 export type PairingRpcContext = {
@@ -127,6 +128,9 @@ export type RpcContext = {
   pairing?: PairingRpcContext
   // Why: cloud-only methods execute the ticket's project, never a path supplied in params.
   cloud?: CloudRpcSession
+  // Why: refusals the dispatcher never sees — a stream frame naming an out-of-scope
+  // target — ride the same security audit as the envelope-level denials.
+  onCloudDenial?: (details: CloudDenialDetails, method: string) => void
   // Why: the platform learns the outcome on the next heartbeat, not from a client report.
   cloudReportProvision?: (report: CloudProvisionReport) => void
   // Why: mobile terminal traffic bypasses JSON streaming; undefined on Unix/socket and non-E2EE WebSocket paths.
