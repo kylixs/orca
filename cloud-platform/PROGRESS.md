@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### W12b-1 独立测试 PASS + M120c1 落地（2026-11-14）
+
+**W12b-1 独立测试**（隔离树 `09c5c9a3e19`，零实现改动）：声明套件复跑 57/0 一致 + 超集 21 文件 107 例绿（1 例路由 TCP 竞态偶发单独复跑绿）；自有探针 9 例 8 过 1 缺陷——U15 精确场景 PASS（**U15→🟢**）；**新发现 MAJOR=U23**（选已是 git 仓库的目录→open 永久 forbidden，死路）+U24（created 标志失真）+U25（平台/宿主 branch 校验不一致），均按「先登记后派修」入台账，**U23 修复令已派**（W12b-1 实现域空出）。bun 真 TLS 套件握手失败为既有暴露（W5b-B 同族，node 池规避）。**M120c1 落地** `5a9df0154ce`（server.ts +15/−3）：downloadPolicyExplicit 读字段+inherit 写参，9 断言+24/15/16 回归全绿，全量 e2e 237/238（唯一红=web-workbench-latency 并行负载下既有 flake，单跑过）。
+
 ### M120a 实现完成（2026-11-14）
 
 `4c3d7a87a81`（恰 2 文件 app.js+新套件，+752/−1，暂存集核对）：管理员「登记项目」弹层——字段 name/key/hostId/path/repoUrl?/defaultBranch?，hostId 下拉过滤已吊销并标注离线/维护，预校验与 project-key/project-path 同款（0 请求拦截+字段级 inline error+focus 首错），W8 语义直供 path 不发 dir，错误码逐字段映射（PROJECT_EXISTS→key 等）失败不关弹层输入保留，成功 toast 含克隆中提示与授权指引；审计筛选项补 project_create。测试：新套件 8 条 + 门禁 34 例 + 回归 24 例全 0 败（真实平台 PORT=0）。全程复用既有 dialog/field 样式零新 CSS，index.html/styles.css 格式化残留未被纠缠。运行 16.2 分钟（20 分钟控制线内 ✓）。**已派 M120b**（权限矩阵，app.js 域）。
