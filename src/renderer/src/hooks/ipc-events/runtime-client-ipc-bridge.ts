@@ -173,7 +173,10 @@ export function registerRuntimeClientIpcBridge(
   unsubs.push(() => setRuntimeEnvironmentCatalogRefresher(null))
   // Why: a cloud session's host refuses `runtime.clientEvents.subscribe` and every catalog
   // refresh it would trigger (repo.list, projectGroup.list, folderWorkspace.list,
-  // worktree.lineageList), so the mirror stays off instead of retrying refused calls.
+  // worktree.lineageList), so the mirror stays off instead of retrying refused calls. The
+  // selectors below drop cloud environments per row (a desktop client can pair them beside
+  // native hosts); the web check is the belt for the window before any environment row is
+  // published to the store.
   const cloudRuntimeSession = isActiveWebClientCloudSession()
   const desiredEnvironmentIds = (state: RuntimeEnvironmentStoreSyncState): string[] =>
     cloudRuntimeSession ? [] : getRuntimeClientEventEnvironmentIds(state)

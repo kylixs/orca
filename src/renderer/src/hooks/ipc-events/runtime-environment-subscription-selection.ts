@@ -5,6 +5,7 @@ import {
 } from '@/runtime/runtime-host-connection-state'
 import { getEnvironmentSshStateGeneration } from '@/store/slices/runtime-environment-ssh'
 import { getRuntimeEnvironmentConnectionGeneration } from '@/store/slices/runtime-status'
+import { isCloudSessionRuntimeEnvironment } from '../../../../shared/runtime-environments'
 import type { AppState } from '../../store/types'
 
 export type RuntimeEnvironmentStoreSyncState = Pick<
@@ -14,6 +15,22 @@ export type RuntimeEnvironmentStoreSyncState = Pick<
 
 function getActiveRuntimeEnvironmentId(state: RuntimeEnvironmentStoreSyncState): string | null {
   return state.settings?.activeRuntimeEnvironmentId?.trim() || null
+}
+
+/**
+ * Why: a cloud session's host refuses `runtime.clientEvents.subscribe` and every catalog
+ * refresh a delivery would trigger (repo.list, projectGroup.list, folderWorkspace.list,
+ * worktree.lineageList), so its environments are never mirror candidates. Judged per
+ * environment: a desktop client can pair cloud projects beside native hosts.
+ */
+function filterCloudSessionEnvironmentIds(
+  state: RuntimeEnvironmentStoreSyncState,
+  environmentIds: readonly string[]
+): string[] {
+  const cloudEnvironmentIds = new Set(
+    (state.runtimeEnvironments ?? []).filter(isCloudSessionRuntimeEnvironment).map(({ id }) => id)
+  )
+  return environmentIds.filter((environmentId) => !cloudEnvironmentIds.has(environmentId))
 }
 
 export function getRuntimeClientEventEnvironmentIds(
@@ -29,7 +46,7 @@ export function getRuntimeClientEventEnvironmentIds(
       ids.add(environment.id)
     }
   }
-  return [...ids]
+  return filterCloudSessionEnvironmentIds(state, [...ids])
 }
 
 /**
@@ -56,7 +73,7 @@ export function getReachableRuntimeEnvironmentIds(
       ids.push(environmentId)
     }
   }
-  return ids
+  return filterCloudSessionEnvironmentIds(state, ids)
 }
 
 export function canSkipRuntimeEnvironmentStoreSync(

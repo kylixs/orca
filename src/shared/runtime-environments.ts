@@ -257,6 +257,20 @@ export function isCloudProjectRuntimeEnvironment(
   return environment.cloudProject !== undefined
 }
 
+/**
+ * True when the environment is a cloud session, so its host refuses the paired-desktop mirror
+ * families (`session.tabs.*`, `runtime.clientEvents.subscribe`) and subscribers must not arm
+ * them. Both cloud facts qualify: a platform-registered project row (`cloudProject`) and a
+ * browser row saved from a spent cloud ticket (`cloudLoginRequired`, the web row's only marker).
+ */
+export function isCloudSessionRuntimeEnvironment(
+  environment: Pick<PublicKnownRuntimeEnvironment, 'cloudProject'> & {
+    cloudLoginRequired?: boolean
+  }
+): boolean {
+  return environment.cloudProject !== undefined || environment.cloudLoginRequired === true
+}
+
 /** The tunnel a server is reached through; only orcadDeployment also grants lifecycle ownership. */
 export function getRuntimeSshAccess(
   environment: Pick<KnownRuntimeEnvironment, 'orcadDeployment' | 'sshAccess'>

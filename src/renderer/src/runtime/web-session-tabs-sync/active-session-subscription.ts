@@ -1,4 +1,5 @@
 import type { RuntimeRpcResponse } from '../../../../shared/runtime-rpc-envelope'
+import { isCloudSessionRuntimeEnvironment } from '../../../../shared/runtime-environments'
 import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-types'
 import { isRuntimeSubscriptionReplayResponse } from '../../../../shared/runtime-subscription-replay'
 import { useAppStore } from '../../store'
@@ -79,6 +80,14 @@ export function installActiveSessionTabsSubscription({
     !environmentId ||
     !activeWorktreeId
   ) {
+    return undefined
+  }
+  // Why: a cloud session's host refuses the paired-desktop `session.tabs.*` family, so the
+  // mirror has no surface to sync there; subscribing would only warn-loop on the refusal.
+  const environment = useAppStore
+    .getState()
+    .runtimeEnvironments.find(({ id }) => id === environmentId)
+  if (environment !== undefined && isCloudSessionRuntimeEnvironment(environment)) {
     return undefined
   }
   const expectedTrackingGeneration = getWebSessionTabsTrackingGeneration(environmentId)
