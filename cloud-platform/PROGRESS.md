@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### U28 落地（2026-11-14，🟢）+ U29 登记 + O1 派设计
+
+`fc8ca081ed`（恰 1 文件 +29）：sqlite 池显式清单补 29 项，门禁 11/11 绿、兄弟门禁 29/29、池内抽验绿。**运行须知入档**：真 TLS 套件必须经 `run-vitest.mjs`（bun 直跑 vitest 缺 ORCA_TEST_NODE_EXECUTABLE → 池子进程落 bun → 握手伪红）——此为「bun TLS 失败家族」的定性，批量验收必须走该入口。**U29 登记**：harness 泄漏平台进程（PPID=1 孤儿，单次 25+ 随套件再生），波后派修+集中清扫（进程清理主会话已尽 Kill -9，再生率>清扫率）。空槽派 **O1 设计**（云启动残余被拒 RPC 族诊断，只读）。
+
 ### M120 四令全部落地（2026-11-14）
 
 M120c2 `00f479d1d9a`（app.js +94/−9 + 新套件）：设置页「项目级覆盖」卡（仅列 explicit 项目、行内即存 禁止/允许/跟随全局=PUT inherit）、`effectiveDownloadPolicy` 统一修掉全局 allow 时跟随项目误报禁用（§5.1-1）、失败 QA-009 回滚、副标题与影响数 toast。测试 6/6+22/22+35/35 绿；index.html/styles.css 格式化残留未触碰 ✓。**M120a/b/c1/c2 全部落地**（`4c3d7a87a81`/`bf34abed505`/`5a9df0154ce`/`00f479d1d9a`）。已派 **M120 批量审计**（四提交一令）。代理注记：本机 3 个 16:57 孤儿 server.ts 进程（PPID=1），主会话核验后清理。
