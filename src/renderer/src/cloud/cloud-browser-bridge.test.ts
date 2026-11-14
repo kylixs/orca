@@ -176,8 +176,14 @@ function scriptedFactory(
   return (offer: WebPairingOffer): BrowserCloudClient => {
     offers.push(offer)
     const projectId = offer.deviceToken.replace('device-token-', '')
+    let reSigner: (() => Promise<WebPairingOffer>) | null = null
     return {
       connectionState: 'connected',
+      // Like the real client: a stream's child socket dials with the re-signed
+      // offer, so the pin check inside it is what the bridge-level test observes.
+      attachTicketReSigner: (next) => {
+        reSigner = next
+      },
       call: async (method: string, params?: unknown) => {
         calls.push({ projectId, method, params })
         return {
@@ -192,6 +198,9 @@ function scriptedFactory(
         params: unknown,
         callbacks: WebRuntimeSubscriptionCallbacks
       ) => {
+        if (reSigner) {
+          offers.push(await reSigner())
+        }
         const stream: FakeStream = {
           projectId,
           method,
@@ -462,6 +471,45 @@ describe('AC-29 浏览器侧主机公钥固定', () => {
     expect(reopened.hostFingerprint).toBe(refused.hostKey?.seenFingerprint)
     // The pin survives in storage, so a fresh bridge refuses the original key.
     expect(hostTrustStorage.value).toContain(refused.hostKey?.seenFingerprint ?? '')
+  })
+
+  it('重签订阅换键 fail-closed：不建子 socket，且挂起待重验', async () => {
+    const { bridge, platform, offers, streams } = makeBridge()
+    await bridge.login('zhangsan', 'Passw0rd!')
+    const opened = await bridge.openProject('proj-1')
+    expect(opened).toMatchObject({ ok: true, projectId: 'proj-1' })
+    const clientsBefore = offers.length
+
+    // The host key the platform hands the STREAM's re-signed ticket changes.
+    platform.setHostKey(Buffer.alloc(32, 0x33).toString('base64'))
+
+    if (!bridge.subscribe) {
+      throw new Error('the bridge must expose subscribe')
+    }
+    const callbacks = { onEvent: () => undefined, onClose: () => undefined }
+    const refused = await bridge.subscribe('proj-1', 'terminal.subscribe', {}, callbacks)
+    expect(refused).toMatchObject({
+      ok: false,
+      code: 'FINGERPRINT_MISMATCH',
+      message: 'host public key changed'
+    })
+    // The stream never opened: no child client, no stream on the live socket.
+    expect(offers.length).toBe(clientsBefore)
+    expect(streams).toHaveLength(0)
+
+    // The mismatch rides the same re-verify prompt path as a refused open.
+    expect(await bridge.trustHostKey?.('host-1')).toEqual({ ok: true })
+    expect(await bridge.trustHostKey?.('host-1')).toEqual({
+      ok: false,
+      code: 'HOST_KEY_NOT_PENDING'
+    })
+
+    // Recovery is the open path's: a fresh client re-pins and re-anchors, and a
+    // subscription's re-signed ticket now names the key the parent verified.
+    await bridge.closeProject('proj-1')
+    expect(await bridge.openProject('proj-1')).toMatchObject({ ok: true })
+    const streamed = await bridge.subscribe('proj-1', 'terminal.subscribe', {}, callbacks)
+    expect(streamed).toMatchObject({ ok: true })
   })
 
   it('取消后固定值不变：同一平台状态再次打开仍被拒', async () => {

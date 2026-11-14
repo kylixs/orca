@@ -238,7 +238,10 @@ export async function connectCloudProjectWithSession(
     validated.attachTicketReSigner?.(() =>
       requestCloudPairingOffer(session, project.id, input.devicePublicKeyB64, {
         ...fetchOptions,
-        ...(input.endpointUrl ? { endpointUrl: input.endpointUrl } : {})
+        ...(input.endpointUrl ? { endpointUrl: input.endpointUrl } : {}),
+        // Why pinned: a stream's ticket is host-reported, and only the key this
+        // connection was verified against may open its child socket (AC-29).
+        expectedHostKeyB64: offer.publicKeyB64
       })
     )
     const reply = await validated.call('status.get', undefined, {

@@ -8,7 +8,10 @@ import {
   WebCloudSessionError,
   type WebCloudSession
 } from './web-cloud-session'
-import { requestCloudPairingOffer } from './web-cloud-connection-offer'
+import {
+  requestCloudPairingOffer,
+  WebCloudHostKeyMismatchError
+} from './web-cloud-connection-offer'
 import { webRuntimeSubprotocols } from './web-pairing'
 
 /** Standard base64 with `+`, `/` and padding, to prove canonicalisation. */
@@ -53,7 +56,7 @@ const SECOND_TICKET_CREDENTIAL = jwt({
   perms: ['open', 'terminal']
 })
 
-function ticketBody(): Record<string, unknown> {
+function ticketBody(hostKeyB64 = HOST_KEY_B64): Record<string, unknown> {
   return {
     credential: TICKET_CREDENTIAL,
     expiresIn: 300,
@@ -62,7 +65,7 @@ function ticketBody(): Record<string, unknown> {
       name: 'dev-m48',
       fingerprint: 'fp',
       tlsFingerprint: 'tf',
-      e2eePublicKeyB64: HOST_KEY_B64,
+      e2eePublicKeyB64: hostKeyB64,
       capabilities: ['terminal']
     },
     endpoints: {
@@ -283,6 +286,41 @@ describe('browser cloud login, project list and ticket', () => {
       'POST http://platform.test/v1/projects/proj-1/connect',
       'POST http://platform.test/v1/projects/proj-1/connect'
     ])
+  })
+
+  it('AC-29: a re-signed ticket naming another host key is refused before any socket', async () => {
+    const rogueKeyB64 = Buffer.alloc(32, 0x33).toString('base64')
+    const { fetchImpl } = scriptedFetch([
+      jsonReply(ticketBody()),
+      jsonReply(ticketBody(rogueKeyB64))
+    ])
+    const parent = await requestCloudPairingOffer(signedInSession(), 'proj-1', DEVICE_KEY_B64, {
+      fetchImpl
+    })
+
+    const refused = await requestCloudPairingOffer(signedInSession(), 'proj-1', DEVICE_KEY_B64, {
+      fetchImpl,
+      expectedHostKeyB64: parent.publicKeyB64
+    }).then(
+      () => null,
+      (reason: unknown) => reason
+    )
+    expect(refused).toBeInstanceOf(WebCloudHostKeyMismatchError)
+    if (!(refused instanceof WebCloudHostKeyMismatchError)) {
+      throw new Error('expected the pin refusal')
+    }
+    expect(refused.code).toBe('FINGERPRINT_MISMATCH')
+    expect(refused.message).toBe('host public key changed')
+    expect(refused.seenHostKeyB64).toBe(rogueKeyB64)
+
+    // The same mint with the pin satisfied still streams: the check is on the
+    // key, never on re-signing itself.
+    const { fetchImpl: matchingFetch } = scriptedFetch([jsonReply(ticketBody())])
+    const ok = await requestCloudPairingOffer(signedInSession(), 'proj-1', DEVICE_KEY_B64, {
+      fetchImpl: matchingFetch,
+      expectedHostKeyB64: parent.publicKeyB64
+    })
+    expect(ok.publicKeyB64).toBe(parent.publicKeyB64)
   })
 
   it('surfaces a platform ticket failure from the re-signing path', async () => {

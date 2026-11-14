@@ -1,7 +1,6 @@
 import { throwIfSignalAborted, waitForPromiseWithSignal } from '../../../shared/abort-signal-reason'
 import { RuntimeHostStatusOwner } from '../../../shared/runtime-host-status-owner'
 import type { RuntimeHostStatusResponse } from '../../../shared/runtime-host-status'
-
 import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
 import { WebRuntimeConnectionTransport } from './web-runtime-connection-transport'
 import { subscribeWebRuntimeFileWatch } from './web-runtime-file-watch-subscription'
@@ -211,9 +210,9 @@ export class WebRuntimeClient {
   ): Promise<WebRuntimeTransportSubscriptionHandle> {
     await waitForPromiseWithSignal(this.waitForConnected(options?.timeoutMs), options?.signal)
     throwIfSignalAborted(options?.signal)
-    const id = this.nextId()
+    const id = this.transport.nextId()
     const subscription = { id, method, params, callbacks, needsReplay: false }
-    this.subscriptions.set(id, subscription)
+    this.transport.subscriptions.set(id, subscription)
     if (
       !this.sendEncrypted({
         id,
@@ -222,7 +221,7 @@ export class WebRuntimeClient {
         params
       })
     ) {
-      this.subscriptions.delete(id)
+      this.transport.subscriptions.delete(id)
       throw new Error('Remote Orca runtime is not connected.')
     }
     return {
@@ -231,7 +230,7 @@ export class WebRuntimeClient {
         const teardown = options?.buildUnsubscribe?.(params)
         if (teardown) {
           this.sendEncrypted({
-            id: this.nextId(),
+            id: this.transport.nextId(),
             deviceToken: this.pairing.deviceToken,
             method: teardown.method,
             params: teardown.params
@@ -274,10 +273,6 @@ export class WebRuntimeClient {
 
   protected set state(state: WebRuntimeConnectionState) {
     this.transport.state = state
-  }
-
-  private get subscriptions(): Map<string, WebRuntimeTransportSubscription> {
-    return this.transport.subscriptions
   }
 
   protected get lastInboundFrameAt(): number {
@@ -324,6 +319,10 @@ export class WebRuntimeClient {
     this.transport.setState(state)
   }
 
+  private get subscriptions(): Map<string, WebRuntimeTransportSubscription> {
+    return this.transport.subscriptions
+  }
+
   private waitForConnected(timeoutMs?: number): Promise<void> {
     return this.transport.waitForConnected(timeoutMs)
   }
@@ -334,9 +333,5 @@ export class WebRuntimeClient {
 
   private sendEncryptedBinary(bytes: Uint8Array<ArrayBufferLike>): boolean {
     return this.transport.sendEncryptedBinary(bytes)
-  }
-
-  private nextId(): string {
-    return this.transport.nextId()
   }
 }

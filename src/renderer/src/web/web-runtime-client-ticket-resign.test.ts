@@ -187,7 +187,7 @@ describe('WebRuntimeClient ticket re-signing (W5c)', () => {
     // The signer's own failure is the subscription's failure — the caller's
     // onError/reconnect path sees the platform reason, not a socket hang.
     expect(error).toBeInstanceOf(Error)
-    expect((error as Error).message).toBe('platform session expired')
+    expect(error instanceof Error ? error.message : String(error)).toBe('platform session expired')
     expect(reSigner).toHaveBeenCalledTimes(1)
     // No child socket dialled the host with a spent ticket.
     expect(fakeSockets).toHaveLength(socketsBefore)
@@ -215,7 +215,7 @@ describe('WebRuntimeClient ticket re-signing (W5c)', () => {
       )
 
     expect(error).toBeInstanceOf(Error)
-    expect((error as Error).message).toContain('one-time ticket')
+    expect(error instanceof Error ? error.message : String(error)).toContain('one-time ticket')
     expect(fakeSockets).toHaveLength(socketsBefore)
     client.close()
   })

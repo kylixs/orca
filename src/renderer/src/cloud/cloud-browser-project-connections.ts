@@ -8,7 +8,10 @@ import { loadWebHostTrust, pinWebHostKey, webHostKeyVerdict } from '../web/web-h
 import type { WebCloudSessionStorage } from '../web/web-cloud-session-storage'
 import type { WebCloudDeviceIdentity } from '../web/web-cloud-device-key'
 import type { WebPairingOffer } from '../web/web-pairing'
-import { requestCloudPairingOffer } from '../web/web-cloud-connection-offer'
+import {
+  requestCloudPairingOffer,
+  WebCloudHostKeyMismatchError
+} from '../web/web-cloud-connection-offer'
 import {
   cloudPairingOfferFromTicket,
   requestCloudTicket,
@@ -93,12 +96,24 @@ export class BrowserProjectConnections {
       const client = this.host.createClient(offer, identity.secretKeyB64)
       // Why here: only this frame holds the session and project a stream's child
       // socket signs its own one-time ticket from — this offer's is spent above.
-      client.attachTicketReSigner?.(() =>
-        requestCloudPairingOffer(session, projectId, identity.publicKeyB64, {
-          ...(this.host.fetchImpl ? { fetchImpl: this.host.fetchImpl } : {}),
-          ...(this.host.endpointUrl ? { endpointUrl: this.host.endpointUrl } : {})
-        })
-      )
+      client.attachTicketReSigner?.(async () => {
+        try {
+          return await requestCloudPairingOffer(session, projectId, identity.publicKeyB64, {
+            ...(this.host.fetchImpl ? { fetchImpl: this.host.fetchImpl } : {}),
+            ...(this.host.endpointUrl ? { endpointUrl: this.host.endpointUrl } : {}),
+            // Why pinned: the stream's ticket is host-reported, and only the key
+            // this connection was verified against may open its child socket.
+            expectedHostKeyB64: offer.publicKeyB64
+          })
+        } catch (error) {
+          // The same substitution AC-29 refuses at open: hold the seen key so the
+          // existing re-verify prompt lights up.
+          if (error instanceof WebCloudHostKeyMismatchError) {
+            this.pendingKeys.set(ticket.host.id, error.seenHostKeyB64)
+          }
+          throw error
+        }
+      })
       const probe = await client.call('status.get', undefined, { timeoutMs: STATUS_TIMEOUT_MS })
       if (!probe.ok) {
         client.close()
