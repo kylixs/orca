@@ -2564,6 +2564,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W7a 审计通过（带 1 major 回派，2026-11-14）
+
+审计（`test-reports/w7a-audit.md`）：blocker 0、major 1（j-1：签发侧 adminAccess 旁路可为无 grant 项目签出必然 403 的死 code，与换发侧 open 要求相反——裁定签发就拒）、minor 5（换发无限流、directAddrs[0] 未校验拼 URL、审计灌水面、server.ts 2816 行宜抽 web-handoff.ts、测试 2 行 oxfmt）、note 7（多副本内存 map 为设计自带、browserEntryUrl 待 W6b、W7b 换发应带设备三元组等）。安全基线全部成立：code 256-bit、指纹不可反推、先删后验无并发双花、设备语义与密码登录逐字一致、无 TOCTOU、审计四向零明文。已派小修复（j-1 + directAddrs 校验 + oxfmt；限流/抽取挂账 M120/清理令）。
+
 ### W6c 跨通道回归修复完成（待独立复验，2026-11-14）
 
 提交 `ebe7d9def45`（2 文件 +22）：根因=transport 构造用 `pathname.split` 未守卫缺失 pathname（cloud-admin 入口与 e2e stub 的 location 无 pathname）→ TypeError 被 open 包装成 OPEN_FAILED。修复=derive 对非 string 返回空串走无前缀回退（W6c 前行为逐字节），`WebPageLocation.pathname` 改可选；前缀语义未削弱（真实 `/h/<key>` 推导逐字节不变 + 两条新守卫用例）。原 failing e2e 转绿、W6c 单测 30 例绿、tc:web 过、附带三套传输/桥接测试 14+5 绿。已派独立复验（三组复跑 + 前缀语义保真探针 + 构建产物检查），通过即关闭通道③的 W6c。
