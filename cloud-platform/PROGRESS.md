@@ -2564,6 +2564,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W6a 关闭（独立复验全过，2026-11-14）
+
+复验（`evidence/w6a-reverify/`）：套件 27/27；自有探针四项全过且含**红跑验证**——升级半开探针对 `3e0c9f970d2^`（修复前）如实超时失败，证明探针非空转；per-IP 上限用 **en0 真实第二源 IP 192.168.2.157** 验证跨源不受影响；stale 升级实测 `HTTP/1.1 503`（对照修复前记录的 404 偏差已修）；hop-by-hop 矩阵（proxy-authorization/te 剥除、sec-websocket-* 保留）；线兼容 HEAD vs HEAD^ 8 项 SNI 探针逐字段一致。附加确认：新回归套件对坏代码 5/5 全红（真回归网非摆设）。**W6a 关闭**（`a9e1fc5e96e` + `3e0c9f970d2` + 独立测试 w6a-verify + 审计回派 + 独立复验，三方齐备）。通道②放行 **W6b**（平台 browserEntryUrl），已派实现代理。
+
 ### W5a 审计有条件通过（2 major 待回派，2026-11-14）
 
 审计（`test-reports/w5a-audit.md`）：blocker 0、major 2——MAJ-1 重连快照重绘缺 `[?2026l`（仓库既有清屏+重绘位置均先发 synchronized-output 释放；agent CLI 掉线停在 2026h 时 xterm 被闩锁，清屏/快照/live 全不上屏而徽标仍「实时」，且 M118-3 断言钉了错误序列需同步改）；MAJ-2 桥接 79 行新传输逻辑（subscribeOverConnection 帧映射/end/onError/NOT_CONNECTED/释放）零测试。minor 5：MIN-1 快照后网格自锁回路、MIN-2 窄窗静默拒、MIN-3 懒加载失败无错误边界白屏、MIN-4 create 在途卸载泄漏宿主 shell、N7 顺序断言缺失。安全面干净：无授权不发调用不订阅不加载、宿主独立 fail-closed、viewport zod+宿主 clamp 双封顶无注入面；三生命周期路径释放已验证（除 MIN-4）；diff 归属干净、max-lines 合规。审计明确不阻塞 W5b 派发。处置：等在途 W5a 独立测试回收后合并一次回派（MAJ-1/2 + MIN-3/4，MIN-1/2 记账），修复后复验再关闭④。
