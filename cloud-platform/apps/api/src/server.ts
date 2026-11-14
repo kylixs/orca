@@ -1,6 +1,8 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { createServer as createHttpsServer } from 'node:https'
 import { readFile } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
 import { join, normalize } from 'node:path'
 import { validateProjectPath } from '../../../packages/contract/src/project-path.ts'
 import { validateProjectRepoUrl } from '../../../packages/contract/src/repo-url.ts'
@@ -96,6 +98,12 @@ export type ApiConfig = {
     caPath: string
     allowedCNs?: string[]
   }
+  /**
+   * Optional TLS on the public listener (U41): when set, the public port speaks
+   * HTTPS with the same routes and handler — a pure transport swap, so an HTTPS
+   * host page can call this API without Mixed Content blocking. Absent keeps HTTP.
+   */
+  publicTls?: { certPath: string; keyPath: string }
 }
 
 export type ApiHandle = {
@@ -172,7 +180,10 @@ function isDirectAddrForm(addr: string): boolean {
  */
 function requestOrigin(req: IncomingMessage): string {
   const forwardedScheme = req.headers['x-forwarded-proto']?.toString().split(',')[0]?.trim()
-  return `${forwardedScheme || 'http'}://${
+  // When this listener terminates TLS itself (U41) there is no proxy to announce
+  // the scheme, so the encrypted socket is the only signal.
+  const ownScheme = 'encrypted' in req.socket && req.socket.encrypted === true ? 'https' : 'http'
+  return `${forwardedScheme ?? ownScheme}://${
     req.headers.host ?? `127.0.0.1:${req.socket.localPort ?? 0}`
   }`
 }
@@ -3029,11 +3040,22 @@ export function createApp(config: ApiConfig): ApiHandle {
     }
   }
 
-  const server = createServer((req, res) => {
+  const requestListener = (req: IncomingMessage, res: ServerResponse): void => {
     handle(req, res).catch((err: unknown) => {
       error(res, 500, 'INTERNAL_ERROR', err instanceof Error ? err.message : 'unknown error')
     })
-  })
+  }
+  // U41: TLS only swaps the transport — the handler, routes and port stay as-is.
+  const server = config.publicTls
+    ? createHttpsServer(
+        {
+          key: readFileSync(config.publicTls.keyPath),
+          cert: readFileSync(config.publicTls.certPath),
+          minVersion: 'TLSv1.2'
+        },
+        requestListener
+      )
+    : createServer(requestListener)
 
   const isInternalPath = (path: string): boolean => path.startsWith('/v1/internal/')
   let internalChannel: { port: number; close: () => Promise<void> } | null = null
@@ -3115,6 +3137,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
             caPath: process.env.INTERNAL_TLS_CA,
             allowedCNs: (process.env.INTERNAL_TLS_ALLOWED_CNS ?? '').split(',').filter(Boolean)
           }
+        : undefined,
+    publicTls:
+      process.env.PLATFORM_TLS_CERT_PATH && process.env.PLATFORM_TLS_KEY_PATH
+        ? {
+            certPath: process.env.PLATFORM_TLS_CERT_PATH,
+            keyPath: process.env.PLATFORM_TLS_KEY_PATH
+          }
         : undefined
   })
   app.setRelayPort(Number(process.env.RELAY_PORT ?? 18080))
@@ -3125,6 +3154,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   } else {
     console.log(`[api] ready public=${port} internal=none`)
   }
-  console.log(`[api] listening on http://127.0.0.1:${port} (kid=${app.signingKey.kid})`)
+  console.log(
+    `[api] listening on ${process.env.PLATFORM_TLS_CERT_PATH ? 'https' : 'http'}://127.0.0.1:${port} (kid=${app.signingKey.kid})`
+  )
   if (internal) console.log(`[api] internal mTLS on https://127.0.0.1:${internal}`)
 }
