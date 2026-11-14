@@ -29,6 +29,10 @@ export const NODE_RUNTIME_INCLUDE = [
   // fails the throwaway-certificate handshake, so the proof would silently retire
   // from the bun pool (same family as W5b defect B / W9A-7 audit MAJ-1).
   'src/main/cloud-platform/cloud-workspace-info-real-host.test.ts',
+  // Why: the repo-less project suite opens projects through the real enrolled
+  // host and its TLS runtime, so bun would red the handshake and silently retire
+  // the W12b-1 proof (same family as W5b defect B / W9A-7 audit MAJ-1).
+  'src/main/cloud-platform/cloud-repo-less-project.test.ts',
   'src/renderer/src/lib/react-commit-cascade-observer.test.ts',
   'src/renderer/src/lib/react-commit-cascade-telemetry.test.ts',
   ...SQLITE_RUNTIME_INCLUDE,

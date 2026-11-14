@@ -20,10 +20,11 @@ import {
 import { gitSpawnAfterWindowsEnvironmentReady, promptGuardGitEnv } from '../git/runner'
 import { reuseSavedCloneTarget } from '../git/saved-clone-target'
 import { runWithGitReadCacheInvalidation } from '../git/status'
+import { initializeEmptyRepositoryAt } from './runtime-repository-init'
 import { invalidateAuthorizedRootsCache } from '../ipc/filesystem-auth'
 import { isFolderRepo } from '../../shared/repo-kind'
 import { detectRepoIconAndUpstream } from '../repo-icon-autodetect'
-import { getRepoName } from '../git/repo'
+import { getRepoName, isGitRepo } from '../git/repo'
 import { prepareLocalWorktreeRootForRepo } from '../worktree-root-preparation'
 import type { RuntimeStore } from './runtime-store-contract'
 import { runtimeRepoMatchesExecutionHost } from './runtime-worktree-selection'
@@ -98,7 +99,47 @@ export class RuntimeRepositoryCloneController {
         await mkdir(dirname(target), { recursive: true })
         const claimedTarget = await claimCloneTarget(target)
         await this.runGitClone(trimmedUrl, target, dirname(target), claimedTarget, options.branch)
-        return this.finishClone(target, clonePathKey, LOCAL_EXECUTION_HOST_ID)
+        return this.registerCheckout(target, clonePathKey, LOCAL_EXECUTION_HOST_ID)
+      })
+    )
+  }
+
+  /**
+   * Cloud provisioning initializes the ticket's exact path as a repository: the
+   * directory is created when missing, `git init` + one empty commit land on the
+   * ticket branch, and the checkout is registered exactly like a clone so
+   * `worktree.*` resolves `path:<root>`. Re-entry (concurrent opens, or a retry
+   * after a registration failure) skips the init instead of re-pinning HEAD.
+   */
+  async initToPath(checkoutPath: string, options: { branch: string }): Promise<Repo> {
+    if (!this.deps.getStore()) {
+      throw new Error('runtime_unavailable')
+    }
+    const target = checkoutPath.trim()
+    if (
+      !target ||
+      !isAbsolute(target) ||
+      (process.platform !== 'win32' && isWindowsAbsolutePathLike(target))
+    ) {
+      throw new Error('Init checkout path must be an absolute path')
+    }
+    const clonePathKey = getClonePathComparisonKey(target)
+    return this.withPathLock(clonePathKey, () =>
+      runWithGitReadCacheInvalidation(async () => {
+        // Re-checked under the path lock: the caller's verdict predates it.
+        if (!isGitRepo(target)) {
+          await mkdir(dirname(target), { recursive: true })
+          const claimedTarget = await claimCloneTarget(target)
+          try {
+            await initializeEmptyRepositoryAt(target, options.branch)
+          } catch (error) {
+            // A repo with no commit still answers `rev-parse`, so leaving a half
+            // init behind would poison the next open as already-provisioned.
+            await cleanupClaimedCloneTarget(target, claimedTarget)
+            throw error
+          }
+        }
+        return this.registerCheckout(target, clonePathKey, LOCAL_EXECUTION_HOST_ID)
       })
     )
   }
@@ -163,7 +204,7 @@ export class RuntimeRepositoryCloneController {
     await mkdir(trimmedDestination, { recursive: true })
     const claimedTarget = await claimCloneTarget(clonePath)
     await this.runGitClone(trimmedUrl, clonePath, trimmedDestination, claimedTarget)
-    return this.finishClone(clonePath, clonePathKey, executionHostId)
+    return this.registerCheckout(clonePath, clonePathKey, executionHostId)
   }
 
   private async runGitClone(
@@ -222,7 +263,8 @@ export class RuntimeRepositoryCloneController {
     })
   }
 
-  private async finishClone(
+  /** Shared tail of both ways a cloud checkout comes to exist: clone or init. */
+  private async registerCheckout(
     clonePath: string,
     clonePathKey: string,
     executionHostId?: ExecutionHostId | null

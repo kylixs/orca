@@ -28,7 +28,8 @@ export type CloudProvisionReporter = (report: CloudProvisionReport) => void
 export type CloudProvisionPlan =
   | { kind: 'already-provisioned' }
   | { kind: 'clone' }
-  | { kind: 'not-prepared' }
+  /** No repo and no URL: the ticket's directory is initialized on the host. */
+  | { kind: 'init' }
 
 export function planCloudProjectProvision(input: {
   hasRepo: boolean
@@ -37,7 +38,7 @@ export function planCloudProjectProvision(input: {
   if (input.hasRepo) {
     return { kind: 'already-provisioned' }
   }
-  return input.hasRepoUrl ? { kind: 'clone' } : { kind: 'not-prepared' }
+  return input.hasRepoUrl ? { kind: 'clone' } : { kind: 'init' }
 }
 
 export type CloudProvisionValidation<T> =
@@ -139,6 +140,8 @@ export function provisionFailureMessage(code: string): string {
   switch (code) {
     case 'PROJECT_NOT_PREPARED':
       return '项目尚未准备：缺少仓库地址，且目标路径不是 git 仓库。'
+    case 'INIT_FAILED':
+      return '项目目录初始化失败，请查看主机日志。'
     case 'CLONE_URL_INVALID':
       return '仓库地址无效。'
     case 'BRANCH_INVALID':

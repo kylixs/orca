@@ -77,8 +77,11 @@ describe('云项目准备：分支名校验', () => {
 })
 
 describe('云项目准备：决策', () => {
-  it('已是仓库时跳过 clone', () => {
+  it('已是仓库时跳过 clone（即使票据带地址）', () => {
     expect(planCloudProjectProvision({ hasRepo: true, hasRepoUrl: true })).toEqual({
+      kind: 'already-provisioned'
+    })
+    expect(planCloudProjectProvision({ hasRepo: true, hasRepoUrl: false })).toEqual({
       kind: 'already-provisioned'
     })
   })
@@ -89,9 +92,9 @@ describe('云项目准备：决策', () => {
     })
   })
 
-  it('不是仓库且无 repoUrl 时报告未准备', () => {
+  it('不是仓库且无 repoUrl 时在宿主上初始化目录', () => {
     expect(planCloudProjectProvision({ hasRepo: false, hasRepoUrl: false })).toEqual({
-      kind: 'not-prepared'
+      kind: 'init'
     })
   })
 })

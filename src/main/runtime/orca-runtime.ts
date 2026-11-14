@@ -126,12 +126,21 @@ class OrcaRuntimeService extends OrcaRuntimeWithMigrationCatalog {
     if (plan.kind === 'already-provisioned') {
       return { ok: true, provisioned: false }
     }
-    if (plan.kind === 'not-prepared') {
-      return {
-        ok: false,
-        code: 'PROJECT_NOT_PREPARED',
-        message: provisionFailureMessage('PROJECT_NOT_PREPARED')
+    if (plan.kind === 'init') {
+      // The platform always signs a branch into the ticket; `main` is what the
+      // client open flow assumes when a legacy host omits it.
+      const branch = input.defaultBranch.trim() || 'main'
+      const verdict = validateCloudBranchName(branch)
+      if (!verdict.ok) {
+        return { ok: false, code: verdict.code, message: provisionFailureMessage(verdict.code) }
       }
+      try {
+        await this.repositoryClones.initToPath(input.projectRoot, { branch })
+      } catch (error) {
+        console.warn('[cloud] project provisioning init failed:', error)
+        return { ok: false, code: 'INIT_FAILED', message: provisionFailureMessage('INIT_FAILED') }
+      }
+      return { ok: true, provisioned: true }
     }
     const url = validateCloudCloneUrl(input.repoUrl)
     if (!url.ok) {
