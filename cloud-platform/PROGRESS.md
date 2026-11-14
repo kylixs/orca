@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### M120 批量审计 PASS（2026-11-14）
+
+审计（test-reports/m120-batch-audit.md）：**PASS 0 blocker/0 major**、minor 7/note 6；四令互不回退（app.js blob 链线性，sha256 复核），QA-013/014/015 三缺口在提交本体闭合，唯一线变更（c1）加性安全；两条变异抽查被恰现有例打红。minor 7 条归并登记 **U30**（UI 打磨批，排 P2；m-3 已由 U25 解决、m-6 改设计文档一行）。**M120 整体：设计+四实现+批量审计齐备，主体关闭**（U30 打磨挂账）。
+
 ### U18+U19 修复落地（2026-11-14，🟢）
 
 `1a1f8ac72af`（3 文件 +362/−2，18 分钟控制线内）：U18 管理员创建接 validateProjectKey（400 PROJECT_KEY_INVALID）+name 非空≤200（400 PROJECT_NAME_INVALID，缺省回落 key 不变），语法校验先于查重；U19 两登记路径 hostOnline 判定（复用 HOST_OFFLINE_DEFAULT_MS 心跳窗，self-service 判定次序保持 HOST_NOT_PROVISIONABLE 先行）。红绿对照恰 4 红；新 6/6+登记系 24+其余 68+latency+platform 17 合计 **118 e2e+49 单测全绿**（真实平台进程，证据含 25 条观察输出原文）。共存纪律良好（基于工作树改不回退在途行；他人暂存的 PROGRESS 用 --only 隔离）。**U18/U19→🟢**（代理改台账工作树，主会话核对恰 2 行后提交）。空槽回填 U20。
