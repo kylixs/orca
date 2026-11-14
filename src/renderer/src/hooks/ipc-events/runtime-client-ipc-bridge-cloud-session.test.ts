@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store'
 import { createCompatibleRuntimeStatusResponse } from '@/runtime/runtime-compatibility-test-fixture'
 import { registerRuntimeClientIpcBridge } from './runtime-client-ipc-bridge'
+import type * as RuntimeClientEventsSyncModule from '../runtime-client-events-sync'
+import type * as SubscriptionSelectionModule from './runtime-environment-subscription-selection'
 
 const cloudScope = vi.hoisted(() => ({ active: false }))
 vi.mock('@/web/web-cloud-session-scope', () => ({
@@ -19,9 +21,16 @@ type SyncDeps = {
   onEvent: unknown
 }
 
-const syncDeps: { current: SyncDeps | null } = vi.hoisted(() => ({ current: null }))
+type StoreSyncDeps = {
+  initialDesiredEnvironmentIds: string[]
+  initialReachableEnvironmentIds: string[]
+  getDesiredEnvironmentIds: (state: unknown) => string[]
+  getReachableEnvironmentIds: (state: unknown) => string[]
+}
+
+const syncDeps = vi.hoisted((): { current: SyncDeps | null } => ({ current: null }))
 vi.mock('../runtime-client-events-sync', async (importOriginal) => {
-  const actual = await importOriginal<object>()
+  const actual = await importOriginal<typeof RuntimeClientEventsSyncModule>()
   return {
     ...actual,
     createRuntimeClientEventsSync: (deps: SyncDeps) => {
@@ -30,6 +39,18 @@ vi.mock('../runtime-client-events-sync', async (importOriginal) => {
         sync: () => undefined,
         stop: () => undefined
       }
+    }
+  }
+})
+
+const storeSyncDeps = vi.hoisted((): { current: StoreSyncDeps | null } => ({ current: null }))
+vi.mock('./runtime-environment-subscription-selection', async (importOriginal) => {
+  const actual = await importOriginal<typeof SubscriptionSelectionModule>()
+  return {
+    ...actual,
+    createRuntimeEnvironmentStoreSyncSubscriber: (deps: StoreSyncDeps) => {
+      storeSyncDeps.current = deps
+      return () => undefined
     }
   }
 })
@@ -78,6 +99,7 @@ describe('runtime client-event mirror under a cloud session', () => {
   afterEach(() => {
     useAppStore.setState(initialState, true)
     syncDeps.current = null
+    storeSyncDeps.current = null
     subscribeRuntimeClientEvents.mockClear()
     cloudScope.active = false
   })
@@ -95,12 +117,35 @@ describe('runtime client-event mirror under a cloud session', () => {
     }
   })
 
-  it('keeps the mirror on a paired (non-cloud) client', () => {
+  it('gates both reachable-id readers off in a cloud session', () => {
+    cloudScope.active = true
+    setStateForRuntimeHost()
+    const stop = register()
+    try {
+      // The registration-time set (which seeds the project refresh scheduler)
+      // and the store-sync dep must both answer empty.
+      expect(storeSyncDeps.current!.initialReachableEnvironmentIds).toEqual([])
+      expect(storeSyncDeps.current!.initialDesiredEnvironmentIds).toEqual([])
+      expect(storeSyncDeps.current!.getReachableEnvironmentIds(useAppStore.getState())).toEqual([])
+      expect(storeSyncDeps.current!.getDesiredEnvironmentIds(useAppStore.getState())).toEqual([])
+    } finally {
+      stop()
+    }
+  })
+
+  it('keeps the mirror and both reachable-id readers on a paired (non-cloud) client', () => {
     cloudScope.active = false
     setStateForRuntimeHost()
     const stop = register()
     try {
       expect(syncDeps.current!.getDesiredEnvironmentIds()).toEqual(['host-a'])
+      expect(storeSyncDeps.current!.initialReachableEnvironmentIds).toEqual(['host-a'])
+      expect(storeSyncDeps.current!.getReachableEnvironmentIds(useAppStore.getState())).toEqual([
+        'host-a'
+      ])
+      expect(storeSyncDeps.current!.getDesiredEnvironmentIds(useAppStore.getState())).toEqual([
+        'host-a'
+      ])
     } finally {
       stop()
     }

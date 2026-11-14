@@ -67,13 +67,42 @@ describe('isActiveWebClientCloudSession', () => {
     expect(isActiveWebClientCloudSession()).toBe(false)
   })
 
-  it('keeps the boot-time answer even after the stored record is cleared', () => {
+  it('re-derives to false once the dead cloud session clears its record', () => {
     window.localStorage.setItem(
       ENVIRONMENT_STORAGE_KEY,
       storedEnvironment({ cloudLoginRequired: true })
     )
     expect(isActiveWebClientCloudSession()).toBe(true)
+    // Session end: the spent ticket's record is wiped on the same page.
     window.localStorage.removeItem(ENVIRONMENT_STORAGE_KEY)
+    expect(isActiveWebClientCloudSession()).toBe(false)
+  })
+
+  it('re-derives to false when the same page pairs a non-cloud runtime afterwards', () => {
+    window.localStorage.setItem(
+      ENVIRONMENT_STORAGE_KEY,
+      storedEnvironment({ id: 'web-cloud-session', cloudLoginRequired: true })
+    )
+    expect(isActiveWebClientCloudSession()).toBe(true)
+    // WebConnect pairing saves a fresh paired environment under a new id.
+    window.localStorage.setItem(
+      ENVIRONMENT_STORAGE_KEY,
+      storedEnvironment({ id: 'web-paired-runtime', name: 'Dev host' })
+    )
+    expect(isActiveWebClientCloudSession()).toBe(false)
+  })
+
+  it('stays true while the same cloud environment is refreshed in place', () => {
+    window.localStorage.setItem(
+      ENVIRONMENT_STORAGE_KEY,
+      storedEnvironment({ cloudLoginRequired: true })
+    )
+    expect(isActiveWebClientCloudSession()).toBe(true)
+    // Status verification rewrites runtimeId/lastUsedAt but keeps the id.
+    window.localStorage.setItem(
+      ENVIRONMENT_STORAGE_KEY,
+      storedEnvironment({ cloudLoginRequired: true, runtimeId: 'runtime-1', lastUsedAt: 1 })
+    )
     expect(isActiveWebClientCloudSession()).toBe(true)
   })
 })

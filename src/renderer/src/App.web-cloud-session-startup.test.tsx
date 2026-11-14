@@ -129,11 +129,7 @@ type StartupActionName =
 
 type MockStoreState = Record<StartupActionName, ReturnType<typeof vi.fn>> & { repos: never[] }
 
-const storeState = vi.hoisted((): { current: MockStoreState | undefined } => ({
-  current: undefined
-}))
-
-function makeStartupActions(): Record<StartupActionName, ReturnType<typeof vi.fn>> {
+function makeStartupActions(): MockStoreState {
   const noop = () => vi.fn()
   const resolve = () => vi.fn(async () => undefined)
   return {
@@ -163,9 +159,14 @@ function makeStartupActions(): Record<StartupActionName, ReturnType<typeof vi.fn
     setHydrationSucceeded: noop(),
     pruneLastVisitedTimestamps: noop(),
     seedActiveWorktreeLastVisitedIfMissing: noop(),
-    reconcileWorktreeTabModels: noop()
+    reconcileWorktreeTabModels: noop(),
+    repos: []
   }
 }
+
+const storeState = vi.hoisted((): { current: MockStoreState } => ({
+  current: makeStartupActions()
+}))
 
 const storeSetState = vi.hoisted(() => vi.fn())
 
@@ -180,16 +181,22 @@ vi.mock('@/store', () => ({
   )
 }))
 
-import {
-  getDefaultUIState,
-  getDefaultWorkspaceSession,
-  type WorkspaceSessionState
-} from '../../shared/constants'
+import { getDefaultUIState, getDefaultWorkspaceSession } from '../../shared/constants'
+import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import App from './App'
 
 function emptySession(): WorkspaceSessionState {
   return { ...getDefaultWorkspaceSession(), activeConnectionIdsAtShutdown: ['ssh-desktop-target'] }
 }
+
+const sshConnect = vi.hoisted(() =>
+  vi.fn(async (args: { targetId: string }) => ({
+    targetId: args.targetId,
+    status: 'connected',
+    error: null,
+    reconnectAttempt: 0
+  }))
+)
 
 function installWindowApi(): void {
   Object.defineProperty(window, 'api', {
@@ -210,15 +217,28 @@ function installWindowApi(): void {
         listHostIds: vi.fn(async () => [])
       },
       runtimeEnvironments: { list: vi.fn(async () => []) },
-      pty: { getAuthoritativeBufferSnapshotCapabilities: vi.fn(async () => []) }
+      pty: { getAuthoritativeBufferSnapshotCapabilities: vi.fn(async () => []) },
+      ssh: {
+        listTargets: vi.fn(async () => [
+          { id: 'ssh-desktop-target', label: 'Desktop', lastRequiredPassphrase: false }
+        ]),
+        connect: sshConnect,
+        getState: vi.fn(async (args: { targetId: string }) => ({
+          targetId: args.targetId,
+          status: 'connected',
+          error: null,
+          reconnectAttempt: 0
+        }))
+      }
     }
   })
 }
 
 beforeEach(() => {
-  storeState.current = { ...makeStartupActions(), repos: [] }
+  storeState.current = makeStartupActions()
   cloudScope.active = false
   storeSetState.mockClear()
+  sshConnect.mockClear()
   installWindowApi()
 })
 
@@ -254,6 +274,7 @@ describe('web cloud-session startup (W7c)', () => {
     expect(storeState.current.fetchWorktreeLineage).not.toHaveBeenCalled()
     expect(storeState.current.awaitOwnerWorktreeVisibilityDefaultsHydration).not.toHaveBeenCalled()
     // A doomed SSH reconnect is skipped even if a stale partition names one.
+    expect(sshConnect).not.toHaveBeenCalled()
     expect(storeState.current.setSshConnectionState).not.toHaveBeenCalled()
 
     // The session itself still hydrates, and the boot is a success, not degraded.
@@ -278,6 +299,8 @@ describe('web cloud-session startup (W7c)', () => {
     expect(storeState.current.fetchFolderWorkspacesForAllHosts).toHaveBeenCalledWith({
       remoteHosts: 'skip'
     })
+    // The persisted shutdown target still reconnects on a native/paired boot.
+    await waitFor(() => expect(sshConnect).toHaveBeenCalledWith({ targetId: 'ssh-desktop-target' }))
     expect(toastError).not.toHaveBeenCalled()
   }, 15_000)
 })
