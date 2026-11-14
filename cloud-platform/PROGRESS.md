@@ -2564,6 +2564,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W3 开发完成（通道①，待独立测试+审计，2026-11-14）
+
+提交 `cd36987d7a0`（3 文件 +459/−17）：`projectView.sessionPageUrl`（TLS 直连首项、形态/指纹校验、离线置灰不消失）；`projectRowActions` 共享 builder——工作台与我的项目双入口完全一致，「详情」仅管理员、「Orca Web」有 open 权限者（**已接 W6b 真实 browserEntryUrl**，离线/维护/无边缘置灰占位，M122 切 handoff）；开发者打开对话框补桌面客户端引导；删除旧全局「打开会话页」入口。新 e2e 6/6 + 回归批（exploratory 16、gating 3、handoff 9、relay-entry 5、单测 45、platform 18、ui 5）全绿。**暂存纪律示范**：并行 hunk 混入暂存后用 hash-object/update-index 重建 + `/tmp` 隔离树逐字节验证后提交。已派独立测试（含详情链接真实打开 cloud-admin 200）与审计（URL 形态校验一致性/删除入口全仓引用/diff 归属复核）。
+
 ### W10 关闭（修复复验五项全过，2026-11-14）
 
 复验（`evidence/w10-fix-verify/`）：① 原失败点转 PASS——真实构建烤入默认地址，产物门禁 `verified across 216 bundle(s)`，preload 零未替换标识符，**无 env 启动登录界面出现且预填构建默认**（前轮 FAIL 步），负对照（换回修复前产物）门禁如实 exit 1；② M-1 托管锁定真实 UI 验证（地址字段禁用+提示+IPC 打到锁定地址而非 evil）；③ M-2 凭据剥离 https/http 双 scheme 实测（记忆文件无 secret、0600）；④ 错误文案映射精确显示；⑤ 专项 72 用例全过 + cloud-session 4 失败基线对照仍为既有。**W10 关闭**（`af75dc475ea` + `f0665d6b0eb` + 独立测试六步旅程 + 审计 + 复验；两次回派闭环）。遗留挂账：m-4 渲染层内联校验镜像主进程、登出后预填刷新、platform unavailable 兜底文案 → P2/后续。通道③下一步 W7b 需①的 W3 提交（在途）。
