@@ -22,11 +22,16 @@
 | U15 | 🟡    | **自建项目（FR-3.7）平台 ready 但客户端持续 PROJECT_NOT_PREPARED**，环境不落侧车（3 次复现；W11 测试代理域外发现） | provisioning 回报与客户端就绪判定脱节（M57/M59/M60 域）                                                                                                                                                                                                                                                                                                                                 | **W12a 诊断完成**（work-orders/w12-provisioning-readiness-diagnosis.md，置信度高）：主脱节点=平台「无 repoUrl⇒创建即 ready」×宿主「非 git 仓库⇒not-prepared」语义矛盾（UI 承诺的直接使用目录路径从未实现）；次生=首启自注册宿主回报器/策略门从未安装。**裁定：W12b=B（宿主 init 语义）+必修（时序缺口）并行实施，A/C 缓议挂 P2**                                                                                                                                                                                                                                                                                                                      |
 | U16 | 🟡 | **Orca Web 云会话无工作区视图**（B 线旅程 B4 红线）：handoff 免登自动进入后仅「Cloud project session」空态，无终端/文件树入口（repo.list 按设计被拒、workspace.info 宿主无实现）——FR-3.12 功能对等缺口 | O2 后续工单：W13 = 宿主 workspace.info 实现 + web 云会话工作区视图（挂文件树/终端，复用 W5c 重签订阅与 W9A-7 multiplex 准入） | 待派 **W13**（W9b 红线收尾后派发，回归=B 线旅程 B4–B6 全绿） |
 | U17 | 🟡 | 首启自注册宿主的 provision 回报器与云策略门从未安装（W12a 诊断发现）：enrollment 异步在途时 `attachCloudRuntime` 的 `if (admission?.client)` 恒假跳过安装且无补装时机——provision 结果永不上报（平台永停 ready/provisioning）+ 云会话下载 fail-closed 全拒、预算不计量 | `src/main/startup/cloud-runtime-admission.ts:309` 时序缺口（诊断 §2-B） | **W12b-2 在途**（enrollment ready 后补装，poll 模式不回退）
+| U18 | 🔴 | 管理员项目登记对 key 语法/name 不设防（服务端仅查重，语法校验只在 M120a 客户端预校验） | M120 设计发现（server.ts:1396 区） | 挂 P2 后端校验补齐令 |
+| U19 | 🔴 | 项目登记不校验目标主机在线（FR-3.2 差距：离线主机也能登记） | M120 设计发现 | 挂 P2 |
+| U20 | 🔴 | connect 不校验 project.status：failed/provisioning 项目照常发票据，失败暴露点过晚 | W12a 诊断 §2-D-2 | 挂 P2（W12 方向 A 一并裁定） |
+| U21 | 🔴 | projectsRoot 变更不迁移已建项目 path：旧票据指向旧根，宿主以 not-prepared 呈现 | W12a 诊断 §2-D-1 | 挂 P2 |
+| U22 | 🔴 | W3c handoff 新标签 e2e 断言可加严（未断 project= 值与入口 origin；组合语义暂由 W7b-url 钉住） | W3c 审计 minor m-2 | 挂 P2 测试加严 |
 | U13 | 🟢    | **开发模式带 ORCA_CLOUD_API_URL 启动也看不到登录页**                                                               | 装配链无罪：dev 两种形态（electron-vite dev / electron-vite preview=npm start）在 W10 全屏登录页与 W11 常驻按钮两个已提交形态下均实测出现登录 UI 且地址预填，三嫌疑（define 注入 / env 不可达 / 挂载条件）全部排除。真凶是 dev 单实例锁：同 `orca-dev` profile 已有无 env 实例在跑时，带 env 的启动 exit 3 让位，用户看到的是旧实例的普通桌面（已实测复现）；旧实例无从得知新启动的 env | 锁拒绝消息点名被丢弃的 `ORCA_CLOUD_API_URL` 与补救（退出旧实例重启，或 ORCA_DEV_USER_DATA_PATH 隔离 profile）；回归 `single-instance-lock.test.ts` 新增 3 条。证据 `cloud-platform/evidence/w10-dev-login/`（两形态×两提交的 UI JSON+截图、单实例复现 JSON+日志）                                                                                                                        |
 
 ## 流程整改（用户指令驱动）
 
-1. **缺陷台账**：本文件为唯一登记处，新问题先进台账再派修。
+1. **缺陷台账**：本文件为唯一登记处，新问题先进台账再派修（用户 2026-11-14 指令定型）：**测试/审计/诊断的一切发现——先登记本台账（含编号与状态），再安排修复令；修复必要超出局部修补时先重构设计（复杂令设计代理出方案→主会话审定→再实现）**。P2 挂账项也须有台账编号，不允许只留在 PROGRESS 叙述里。
 2. **链路优先**：W9 双线（桌面/Orca Web 黄金旅程）从收口位提为集成先锋；每波集成后先跑链路冒烟。
 3. **分层规则**：mock 层测试不得作为链路步骤覆盖依据（自查审计 agent 产正式方案中）。
 4. **不让用户重复挫败**：每个用户报告的问题，修复回归绿之前在台账保持🔴/🟡；给用户的操作指引必须先在主会话侧实测验证再给出。
