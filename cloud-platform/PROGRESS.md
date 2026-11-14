@@ -2564,6 +2564,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W6c 跨通道回归修复完成（待独立复验，2026-11-14）
+
+提交 `ebe7d9def45`（2 文件 +22）：根因=transport 构造用 `pathname.split` 未守卫缺失 pathname（cloud-admin 入口与 e2e stub 的 location 无 pathname）→ TypeError 被 open 包装成 OPEN_FAILED。修复=derive 对非 string 返回空串走无前缀回退（W6c 前行为逐字节），`WebPageLocation.pathname` 改可选；前缀语义未削弱（真实 `/h/<key>` 推导逐字节不变 + 两条新守卫用例）。原 failing e2e 转绿、W6c 单测 30 例绿、tc:web 过、附带三套传输/桥接测试 14+5 绿。已派独立复验（三组复跑 + 前缀语义保真探针 + 构建产物检查），通过即关闭通道③的 W6c。
+
 ### W10 测试+审计交叉确认 blocker → 回派修复（2026-11-14）
 
 **测试代理**（真实 Electron 双平台实例，六步旅程）：① **FAIL=D1/P1**——vite define 只注入 main 段，preload 未注入 → 无 env 云构建 `window.api.cloud` 缺失、登录界面不出现（`out/preload/index.js` 残留未替换标识符实证）；②-⑥ 全 PASS（登录成功/记忆 0600 生成/主进程层重启预填/换地址记忆更新/env 覆盖）。59 单测非空壳复核；`cloud-session-service` 4 失败用父提交工作树对照确认为既有 TLS 环境问题。**审计代理**交叉确认同点为 blocker B-1，另报 major M-1（托管锁定地址被登录记忆覆盖）+ M-2（`user:secret@` 地址连凭据写入记忆文件，违反「记忆绝无密码」边界）+ minor×5。sonnet 批次归属审计：**本提交内无关格式化改动为空**（全仓 format 噪声仍在工作区未入提交）。已派合并回派修复（B-1 三段 define + M-1 托管优先 + M-2 剥离 userinfo + 错误码 IPC 透传 + beginLogin 时序，各配断言）。
