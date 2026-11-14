@@ -2701,6 +2701,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 审计（`test-reports/w5c-audit.md`）：blocker 0、**major 1（安全）**——重签票据绕过 AC-29 主机键钉扎：`webHostKeyVerdict` 唯一调用点在 BrowserProjectConnections.open，两条取票接线重签的新票对宿主自报的新 `host.e2eePublicKeyB64` 不比对 → 换键宿主可让存活会话新订阅静默建链（E2EE+deviceToken 流向换键方）。修法一行 fail-closed（重签 offer host key 与父钉扎值比对）+ 换键回归断言，已回派原代理。minor 6（legacy 重连无钉、§8.4 会话槽 2/3 撞 4431 无测试、e2e 只过滤 replayed 等）+ note 10（两个中间提交不可构建已按披露计 minor）。D6 未削弱实证：重放负向对照测试把一次性语义钉成可回归断言。归属核实 8/8 文件干净、与 a740b953faf 注记一致。
 
+### 本地环境状态：平台后端已停，待验收前重建（2026-11-14）
+
+cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
+
 ### W3c 实现完成（2026-11-14，待审计）
 
 `085599b77c9`（恰 2 文件核验通过）：「打开」与「Orca Web」统一走 W7b handoff 新标签进工作区（`openProjectWorkspace` 合并两套实现）；「连接信息已就绪」地址对话框删除（能力保留在管理员详情+连接诊断）；置灰语义逐字未动。e2e：web-project-entry/handoff 系列 40 过 + release/wizard/screenshots 6 过 + 真实 Chrome 工作台 2 过，0 败（PORT=0 自起真实平台）。app.js 携带 4 个既有 oxfmt 格式 hunk（14:51 格式化波，已在提交信息披露）。保守读法保留「Orca Web」按钮（与「打开」同行为；产品上合并需另立工单）。代理 curl 探测 18787 失败系探测方式误——实测平台在运行（node PID 91520 :18787，宿主 Electron :53156）。**已派审计代理**（只读）。
