@@ -2657,6 +2657,10 @@ TTL 先改 5 分钟后经再评估**改回 60 秒**（单次消费+绑定不变�
 
 cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未空闲/未堵塞）**不打扰**；超过 1 小时无最后消息才 SendMessage 了解；确认卡死才 TaskStop 重派；任务较多拆分多轮执行（不一次压给单个代理或单轮全派）。此前对 W9a 的催办属过早干扰（其当时正按自己节奏收尾并已主动回报）——已记为反例。
 
+### 归属注记：a740b953faf 混入 W5c 传输层文件（2026-11-14）
+
+主会话拆分 6e5d05027ff 时仍有 5 个 W5c 传输层文件（web-runtime-client.ts、web-runtime-session-client.ts、preload-api/web-runtime-session.*、web-session-recovery.test）留在提交内——继续 reset 会与在途 W5c 代理竞争索引，故停止历史手术。**归属裁定**：`a740b953faf`=主会话 docs（PROGRESS+w5b-audit）+ W5c 传输层部分实现（内容为 W5c 在途真实改动）；W5c 代理收尾时以最终提交补齐剩余文件并在交付说明引用本注记。
+
 ### W12 立项（U15🔴，2026-11-14）
 
 W11 测试代理域外发现：自建项目平台 ready 但客户端持续 PROJECT_NOT_PREPARED、环境不落侧车（3 次复现）——provisioning 闭环缺口（M57/M59/M60 域）。立账 U15🔴 + W12（排 W5c 后派发，回归=用户精确场景全程）。W3c 工作令节同批补录（此前锚点失败漏写 work-orders，行为定义以 FR-3.11 修订为准）。
