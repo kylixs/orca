@@ -2564,6 +2564,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W5a 审计有条件通过（2 major 待回派，2026-11-14）
+
+审计（`test-reports/w5a-audit.md`）：blocker 0、major 2——MAJ-1 重连快照重绘缺 `[?2026l`（仓库既有清屏+重绘位置均先发 synchronized-output 释放；agent CLI 掉线停在 2026h 时 xterm 被闩锁，清屏/快照/live 全不上屏而徽标仍「实时」，且 M118-3 断言钉了错误序列需同步改）；MAJ-2 桥接 79 行新传输逻辑（subscribeOverConnection 帧映射/end/onError/NOT_CONNECTED/释放）零测试。minor 5：MIN-1 快照后网格自锁回路、MIN-2 窄窗静默拒、MIN-3 懒加载失败无错误边界白屏、MIN-4 create 在途卸载泄漏宿主 shell、N7 顺序断言缺失。安全面干净：无授权不发调用不订阅不加载、宿主独立 fail-closed、viewport zod+宿主 clamp 双封顶无注入面；三生命周期路径释放已验证（除 MIN-4）；diff 归属干净、max-lines 合规。审计明确不阻塞 W5b 派发。处置：等在途 W5a 独立测试回收后合并一次回派（MAJ-1/2 + MIN-3/4，MIN-1/2 记账），修复后复验再关闭④。
+
 ### W6c 关闭（独立复验全过，2026-11-14）
 
 复验（`evidence/w6c-reverify/` 14 件）：三组复跑全绿（W6c 单测 30/0、原 failing cloud-admin-session e2e 1/1、tc:web exit 0）；**前缀语义保真穷尽探针**——伺服器逐字复制真实 relay `parseBrowserPath`，`out/web` 全部 **1410 文件**在 `/h/route-key/` 挂载逐个请求零 404 且与直连**逐字节一致**；headless 真实产物加载（web-index 29 请求 / cloud-admin 32 请求）全 200 零 console 错误；无 pathname 回退在 transport 级以真实源验证（修复前构造即抛，修复后拨号 URL 与 offer 逐字节相同）；`build:web` 产物双入口全相对引用。观察项（门禁覆盖面）记录：verify-web-build 不查 CSS/JS 内绝对引用——当前产物无此问题，挂 P2。W6c 关闭（`c615adee2f4` + `ebe7d9def45`）。通道③下一步 W7b 需①的 W3 提交（app.js 双入口）。
