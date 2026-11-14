@@ -1025,7 +1025,7 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 | `shared/cloud-workspace-open.ts`（新） | 把"选已有检出 / 否则 `worktree.createManaged`"的逻辑抽成传输无关实现；桌面 `ensureCloudWorkspace` 改为复用它，避免浏览器与桌面两套选择逻辑                                                                                                                  |
 | 独立入口                               | `src/renderer/cloud-admin.html` + `src/renderer/src/cloud-admin/main.tsx` 挂载现有 `CloudApp`；`electron.vite.config.ts` 新增 `cloud-admin` 入口，投影脚本与构建校验同步覆盖两个 HTML 入口                                                                  |
 | 静态服务                               | `static-web-client-handler.ts` 放行 `/cloud-admin.html`，反向代理前缀映射覆盖两个入口；`/`、目录穿越、未知路径与 `/web-index.html` 规则不变                                                                                                                 |
-| 管理台入口                             | `cloud-platform/apps/web/config.js` 提供 `window.__ORCA_CLOUD_SESSION_URL__`；配置存在时项目行显示"打开会话页"（新标签、`rel=noopener`），未配置则不渲染，**URL 中不含任何令牌**                                                                            |
+| 管理台入口                             | （W3 更正：此机制已删除——M117 的按项目入口取代了全局「打开会话页」，死旋钮 `config.js` 与 `index.html`/`STATIC_FILES` 引用一并移除。）当时：`cloud-platform/apps/web/config.js` 提供 `window.__ORCA_CLOUD_SESSION_URL__`；配置存在时项目行显示"打开会话页"（新标签、`rel=noopener`），未配置则不渲染，**URL 中不含任何令牌** |
 
 **验证（`evidence/m54-admin-session-page/`）**：真实端到端 1 条（真实平台 + 真实注册主机 + 两个项目 + 真实 TLS Runtime）：浏览器 bridge 登录 → 打开两个项目 → 两个项目各自真实 `status.get`（`runtimeId` 相同，同一主机）；目录浏览分别列出各自的真实文件（`alpha-marker.txt` / `beta-marker.txt`，互不可见）；A 跨项目访问与绝对路径均 `forbidden`。另有 5 条 bridge 单测与静态服务测试（放行新入口、其余规则不变）。
 
@@ -1033,7 +1033,7 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 
 **如实记录 / 剩余**：
 
-1. 未执行完整 electron-vite 构建，也未在真实浏览器渲染 `cloud-admin.html`；静态规则由 handler 级测试覆盖。部署需填写 `config.js` 的会话页地址，并给会话页注入平台 API 地址（`window.__ORCA_CLOUD_ADMIN_API_URL__` 或 `VITE_ORCA_CLOUD_API_URL`）。
+1. 未执行完整 electron-vite 构建，也未在真实浏览器渲染 `cloud-admin.html`；静态规则由 handler 级测试覆盖。（W3 更正：`config.js` 死旋钮已删除，部署无需再填写会话页地址；平台 API 地址由平台拼进 `sessionPageUrl` 的 `?api=` 下发，页面仍接受 `?api=`、`window.__ORCA_CLOUD_ADMIN_API_URL__` 或构建期 `VITE_ORCA_CLOUD_API_URL`。）
 2. **`pnpm tc:web` 本来就是红的**：`config/tsconfig.tc.web.json` 在 HEAD 上已有 4165 条 TS6307（渲染侧 e2e 测试 import 了 `src/main/**` 的测试夹具），M47–M54 新增的渲染侧 e2e 各累加若干条（本轮 +3，共 4168）。`npx tsc -p config/tsconfig.web.json` 仍为 0 错，所以没有类型错误被掩盖，但项目自带的严格门禁是脏的——需要在后续轮次统一清理（把渲染侧 e2e 移到 `src/main/cloud-platform/`，或为渲染 e2e 单独建 tsconfig）。
 3. 管理页 UI 直接复用现有 `CloudApp` 组件，未做视觉打磨。
 
@@ -2571,6 +2571,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 ### W3 审计通过（1 major 回派，2026-11-14）
 
 审计（`test-reports/w3-audit.md`）：blocker 0、major 1（j-1：cloud-admin.html 平台地址无运行时来源——`?api=` 未拼，未配置部署里「详情」落到页面未配置态；W3 使其首次用户可见，建议平台拼 `?api=<平台地址>` 增量线兼容）、minor 2（m-1 config.js 死旋钮+PROGRESS 残留、m-2 四分支不可变红/6 条补例建议）、note 7。安全面确认：复用 W7a isDirectAddrForm 同 helper 同拼装点（注册路径不做 directAddrs 格式校验，该校验是必要防线）；前端隐藏非安全边界无放大（handoff/connect 后端各拒）；四态穷举零死链；diff 归属与代理自述相符（W6b 整改确为独立提交）。已派回派修复（j-1 + m-1 + m-2 补例）。
+
+### W3 审计修复完成（待独立复验，2026-11-14）
+
+j-1 + m-1 + m-2 一并修复。**j-1**：`sessionPageUrl` 追加 `?api=<平台对外地址>`——`requestOrigin`（代理 scheme + 请求 Host，抽成共享 helper，`/install/*.sh` 的同源推导改为复用）经 `projectView` 传入，`URL.searchParams` 拼接并百分号编码。页面由宿主伺服，浏览器在该源上发现不了平台地址，参数是唯一携带渠道（跨源场景 e2e 钉死：页面源=宿主、api=平台）。**取舍**：页面解析顺序为 `?api=` → 注入全局 → 构建期变量，既有部署显式注入的全局在「详情」进入时被 query 优先（同部署内应指向同一平台；直开页面注入仍生效），已写入 `deployment-real-link.md` §4c。**m-1**：删除 `apps/web/config.js` 死旋钮（`index.html` 加载与 `STATIC_FILES` 条目同步移除——只删文件会让新构建每次 404 一个 script）；M54 两处残留表述就地加「W3 更正」标记，不改写历史。**m-2**：补 4 例并逐条变异验证变红（isDirectAddrForm 负例 99999 端口、在线无地址详情置灰、维护态双入口 title + 退出恢复翻转、admin+open+离线三控件同态）。套件 10/10；回归 exploratory 13、platform 17、install-wizard 4、web-release 1、project-update 4、project-archive 5 全绿。证据 `evidence/w3-fixes/`。
 
 ### W6b 修复完成（待独立复验，2026-11-14）
 
