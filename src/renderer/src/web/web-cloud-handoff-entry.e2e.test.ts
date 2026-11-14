@@ -14,6 +14,7 @@ import {
   type Platform
 } from '../../../main/cloud-platform/cloud-session-e2e-harness'
 import {
+  CLOUD_HOST_METHODS,
   startCloudRuntimeAdmission,
   type CloudRuntimeAdmission
 } from '../../../main/startup/cloud-runtime-admission'
@@ -163,6 +164,10 @@ beforeAll(async () => {
     admission: admission.admission,
     connectionGate: admission.connectionGate,
     userDataPrefix: 'orca-w7b-',
+    // The production table (chain-coverage B3): the harness default is the
+    // paired-client surface only, so the entry's host must not stand in for a
+    // cloud host with the cloud-only methods missing.
+    methods: CLOUD_HOST_METHODS,
     tls: makeSelfSignedTls('dev-w7b-handoff')
   })
   admission.bindRuntime(cloud.runtime)

@@ -16,10 +16,8 @@ import { installFakeAppEnvironment } from '../../../../config/scripts/vitest-hos
 import { Store } from '../../../main/persistence/loading-store/store'
 import { closeTestStores, createSqliteTestStore } from '../../../main/persistence-test-harness'
 import { OrcaRuntimeService } from '../../../main/runtime/orca-runtime'
-import { ALL_RPC_METHODS } from '../../../main/runtime/rpc/methods'
-import { MANAGED_WORKTREE_METHODS } from '../../../main/runtime/rpc/methods/worktree-create-managed'
-import { PROJECT_PROVISION_METHODS } from '../../../main/runtime/rpc/methods/project-provision'
 import {
+  CLOUD_HOST_METHODS,
   startCloudRuntimeAdmission,
   type CloudRuntimeAdmission
 } from '../../../main/startup/cloud-runtime-admission'
@@ -42,8 +40,8 @@ import type { WebCloudDeviceKeyStorage } from '../web/web-cloud-device-key'
  * Proves the routing that a single-project smoke test cannot: B's workspace is
  * readable through B and refused through A, and a path outside A is refused.
  *
- * W5b extends it with the workspace's live surface (FR-3.9): the real host
- * method table (project.provision included), a real PTY behind the terminal
+ * W5b extends it with the workspace's live surface (FR-3.9): the production
+ * host method table (CLOUD_HOST_METHODS), a real PTY behind the terminal
  * panel's RPCs, the file tree's read-only preview, and the no-terminal grant
  * that renders the placeholder — its refusal audited, never bare forbidden.
  *
@@ -301,11 +299,10 @@ beforeAll(async () => {
     userDataPrefix: 'orca-m54-',
     service,
     tls: makeSelfSignedTls('dev-m54'),
-    // Pre-W13a host table, on purpose: this suite predates workspace.info and never
-    // calls it. Not the production table (cloudAdmissionOption -> CLOUD_HOST_METHODS
-    // also installs workspace.info), so a future workspace.info call would answer
-    // method_not_found here — switch to CLOUD_HOST_METHODS first (W13a audit MIN-1①).
-    methods: [...ALL_RPC_METHODS, ...MANAGED_WORKTREE_METHODS, ...PROJECT_PROVISION_METHODS]
+    // The production table (chain-coverage B3/C10): the suite predates
+    // workspace.info and never calls it, but the host it stands in for installs
+    // the full constant, so the table must not drift from it either.
+    methods: CLOUD_HOST_METHODS
   })
   admission.bindRuntime(cloud.runtime)
   // Production wiring (attachCloudRuntime): host refusals reach the platform chain.

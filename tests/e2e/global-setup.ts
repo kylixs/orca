@@ -16,6 +16,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 
 import path from 'node:path'
 import os from 'node:os'
 import { prepareDockerSshRelayImage } from './helpers/docker-ssh-relay-image'
+import { webBundleExposesStore } from './helpers/web-bundle-store-oracle'
 
 export const E2E_TEST_REPO_PATH_FILE_ENV = 'ORCA_E2E_TEST_REPO_PATH_FILE'
 const RUN_TEST_REPO_PATH_FILE =
@@ -97,6 +98,16 @@ export default function globalSetup(): void {
         timeout: WEB_E2E_BUILD_TIMEOUT_MS
       })
       console.error('[e2e] Web client build complete.')
+    }
+    // U36: a stale or env-drifted out/web folds the store/editor oracles out at
+    // compile time, so the web specs go red on symptoms that name no cause.
+    if (!webBundleExposesStore(path.dirname(outWeb))) {
+      console.error(
+        '[e2e] out/web was built without VITE_EXPOSE_STORE=true — the window.__store / ' +
+          'window.__monacoEditorE2E oracles are folded out of the bundle (defect-ledger U36). ' +
+          'Rebuild it with: VITE_EXPOSE_STORE=true pnpm run build:web'
+      )
+      process.exit(1)
     }
   }
   if (

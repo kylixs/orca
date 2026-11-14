@@ -11,10 +11,13 @@ import {
   type Page
 } from '@stablyai/playwright-test'
 import { chromium } from 'playwright'
+import { MOBILE_RPC_METHOD_ALLOWLIST } from '../../src/main/runtime/runtime-rpc/runtime-rpc-mobile-method-allowlist'
 import { closeElectronAppForE2E } from './helpers/electron-process-shutdown'
 import { createElectronHomeIsolation } from './helpers/electron-home-isolation'
 import { getOrcaElectronLaunchArgs } from './helpers/electron-launch-args'
 import { getE2ECompletedOnboardingProfile } from './helpers/e2e-completed-onboarding-profile'
+import { countDenialsByMethod, fetchHostMethodDenials } from './helpers/cloud-host-audit-events'
+import { webBundleExposesStore } from './helpers/web-bundle-store-oracle'
 import { getTerminalContent } from './helpers/terminal'
 import {
   adminTokenOf,
@@ -95,6 +98,38 @@ const FILE_NAME = 'journey-web-note.txt'
 const FILE_MARKER = `${RUN_MARKER}-file`
 /** A cold host heartbeats before it is usable; enrolment waits that full window. */
 const HOST_ONLINE_TIMEOUT_MS = 120_000
+
+/**
+ * O1-g's host-audit pin (business-chain §4.2 ①): the journey may audit a KNOWN
+ * set of `method_denied` events and never a new one. The set's one deliberate
+ * member is B4's `repo.list` call — the W7c boundary probe, whose audit entry
+ * is the point of E2. The rest was audited by the 2026-11-14 post-O1 baseline
+ * run (`cloud-platform/evidence/o1-g-audit-pins/`); each is either
+ * design-refused by Appendix A (`host.*` host-shape facts, `preflight.check`)
+ * or an ungated call site still on the O1 cleanup ledger. A NEW name here means
+ * a call site started hitting a refused method again — extend the set
+ * deliberately, never silently. Counts are not pinned: how many times a panel
+ * fires is UI timing, which methods fire is the governance fact.
+ */
+const BASELINE_JOURNEY_DENIALS: ReadonlySet<string> = new Set([
+  'repo.list',
+  'preflight.check',
+  'repo.hooksCheck',
+  'session.tabs.list',
+  'settings.getTerminalQuickCommands',
+  'skills.discover',
+  'workspacePorts.scan',
+  'host.gitBash.isAvailable',
+  'host.pwsh.isAvailable',
+  'host.wsl.isAvailable',
+  'host.wsl.listDistros',
+  'linear.status'
+])
+
+/** Denials only the streaming half adds on top of the journey baseline. */
+const STREAMING_TEST_DENIALS: ReadonlySet<string> = new Set([
+  'orchestration.workerTerminalUserInput'
+])
 
 const EVIDENCE_DIR =
   process.env.ORCA_JOURNEY_GOLDEN_B_EVIDENCE_DIR ??
@@ -216,6 +251,13 @@ async function launchHost(
 let stack: Stack | null = null
 
 test.beforeAll(async () => {
+  // U36: the B3/B4 store oracles fold out of a web bundle built without
+  // VITE_EXPOSE_STORE=true and their failures name no cause — refuse to run
+  // against such an artifact (the playwright globalSetup enforces the same).
+  expect(
+    webBundleExposesStore(path.join(process.cwd(), 'out', 'web')),
+    'out/web lacks the instrumented-build marker — rebuild with: VITE_EXPOSE_STORE=true pnpm run build:web'
+  ).toBe(true)
   // Why /tmp: macOS caps Unix socket paths at 104 bytes; deep TMPDIRs break the
   // runtime's RPC socket and the host then heartbeats an empty endpoint.
   const root = realpathSync(mkdtempSync('/tmp/w9b-journey-'))
@@ -665,6 +707,38 @@ test('W9b Orca Web 黄金旅程：平台登录 → handoff 新标签自动进入
       },
       (result) => result
     )
+
+    // ── E2 · 宿主审计收口（O1-g）：旅程审计的 method_denied 已知集合 ──
+    await journeyStep(
+      'E2-host-audit',
+      '宿主审计计数：全程 method_denied 落在已知基线集合内（B4 repo.list 探针在链可闻），零新增拒绝',
+      async () => {
+        // Reports ride the host's heartbeat, so the probe's own entry converges
+        // over a beat — wait for it before reading the final set.
+        await expect
+          .poll(
+            async () =>
+              (await fetchHostMethodDenials(session.platform.url, session.adminToken)).some(
+                (denial) => denial.method === 'repo.list'
+              ),
+            {
+              timeout: 30_000,
+              message: 'the B4 repo.list probe never became audible in the host audit chain'
+            }
+          )
+          .toBe(true)
+        const denials = await fetchHostMethodDenials(session.platform.url, session.adminToken)
+        const additions = denials
+          .map((denial) => denial.method ?? '<none>')
+          .filter((method) => !BASELINE_JOURNEY_DENIALS.has(method))
+        expect(
+          [...new Set(additions)],
+          'a refused method joined the journey since the O1 baseline — extend the known set deliberately (see evidence/o1-g-audit-pins/)'
+        ).toEqual([])
+        return { denialCount: denials.length, byMethod: countDenialsByMethod(denials) }
+      },
+      (result) => result
+    )
   } finally {
     await browser.close()
   }
@@ -776,6 +850,65 @@ test('W9b-B4 终端流式回显与文件树打开（W13 云工作区视图）', 
       })
       .toContain(FILE_MARKER)
     await shoot(tab, '06-b4-terminal-stream-and-file')
+
+    // ── U35 钉（O1-g）：mobile 允许清单外方法真宿主拒绝 + 审计恰增 ──
+    // The acceptance batch's one-off platform probe, made standing: the same
+    // real host must refuse an out-of-allowlist method AND record exactly one
+    // more method_denied for it in the platform audit chain.
+    expect(
+      MOBILE_RPC_METHOD_ALLOWLIST.has('worktree.lineageList'),
+      'the probe method must sit outside the mobile allowlist'
+    ).toBe(false)
+    const denialsBefore = (
+      await fetchHostMethodDenials(session.platform.url, session.adminToken)
+    ).filter((denial) => denial.method === 'worktree.lineageList').length
+    const refusal = await tab.evaluate(async () =>
+      window.api.worktrees.listLineage().then(
+        () => 'unexpectedly allowed',
+        (error: unknown) => (error instanceof Error ? error.message : String(error))
+      )
+    )
+    expect(refusal, 'worktree.lineageList must stay refused for a cloud session').toContain(
+      "Method 'worktree.lineageList' is not available to cloud sessions"
+    )
+    // Reports ride the host's heartbeat, so the increment converges over a beat.
+    await expect
+      .poll(
+        async () =>
+          (await fetchHostMethodDenials(session.platform.url, session.adminToken)).filter(
+            (denial) => denial.method === 'worktree.lineageList'
+          ).length,
+        { timeout: 30_000, message: 'the refused lineageList call never reached the audit chain' }
+      )
+      .toBe(denialsBefore + 1)
+
+    // The whole B line stays inside its known denial set: the E2 baseline plus
+    // this test's own streaming-flow additions and the pin's deliberate
+    // lineageList refusal, nothing else.
+    const lineDenials = await fetchHostMethodDenials(session.platform.url, session.adminToken)
+    const unattributed = lineDenials
+      .map((denial) => denial.method ?? '<none>')
+      .filter(
+        (method) =>
+          !BASELINE_JOURNEY_DENIALS.has(method) &&
+          !STREAMING_TEST_DENIALS.has(method) &&
+          method !== 'worktree.lineageList'
+      )
+    expect(
+      [...new Set(unattributed)],
+      'a refused method joined the B line since the O1 baseline — extend the known set deliberately (see evidence/o1-g-audit-pins/)'
+    ).toEqual([])
+    writeEvidence('u35-lineage-audit-pin.json', {
+      probeMethod: 'worktree.lineageList',
+      outsideMobileAllowlist: true,
+      refusal,
+      auditCountBefore: denialsBefore,
+      auditCountAfter: lineDenials.filter((denial) => denial.method === 'worktree.lineageList')
+        .length,
+      // Under fullyParallel this test's close may precede the main test's probe,
+      // so this is the chain as of this test's close, not the whole line's.
+      auditDenialsAtPinClose: countDenialsByMethod(lineDenials)
+    })
     await context.close()
   } finally {
     await browser.close()

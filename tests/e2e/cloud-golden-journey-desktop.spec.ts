@@ -34,6 +34,7 @@ import {
   waitForActiveTerminalManager
 } from './helpers/terminal'
 import { clickFileInExplorer, openFileExplorer } from './helpers/file-explorer'
+import { fetchHostMethodDenials } from './helpers/cloud-host-audit-events'
 import {
   fillCloudLoginDialog,
   openCloudLoginDialog,
@@ -73,6 +74,24 @@ const FILE_NAME = 'journey-note.txt'
 const FILE_MARKER = `${RUN_MARKER}-file`
 /** First open provisions the checkout on a real host; a cold host can be slow. */
 const CHECKOUT_TIMEOUT_MS = 180_000
+
+/**
+ * O1-g's host-audit baseline for the desktop line: the methods the 2026-11-14
+ * post-O1 baseline run audited (`cloud-platform/evidence/o1-g-audit-pins/`) —
+ * host-shape facts Appendix A keeps refused, plus not-yet-gated call sites on
+ * the O1 cleanup ledger. A NEW name in A7 means a call site started hitting a
+ * refused method again — extend the set deliberately, never silently. Counts
+ * are not pinned: which methods fire is the governance fact, not how often.
+ */
+const BASELINE_DESKTOP_JOURNEY_DENIALS: ReadonlySet<string> = new Set([
+  'host.gitBash.isAvailable',
+  'host.pwsh.isAvailable',
+  'host.wsl.isAvailable',
+  'host.wsl.listDistros',
+  'settings.getTerminalQuickCommands',
+  'workspacePorts.scan',
+  'hostedReview.forBranch'
+])
 
 const EVIDENCE_DIR =
   process.env.ORCA_JOURNEY_GOLDEN_A_EVIDENCE_DIR ??
@@ -172,6 +191,8 @@ type Stack = {
   projectId: string
   hostDirectAddr: string
   hostTlsFingerprint: string
+  /** Reads the host audit chain back at the journey's close (A7). */
+  adminToken: string
 }
 
 function git(cwd: string, ...args: string[]): void {
@@ -331,7 +352,8 @@ test.beforeAll(async () => {
     projectPath,
     projectId,
     hostDirectAddr: enrolled.directAddr,
-    hostTlsFingerprint: enrolled.tlsFingerprint
+    hostTlsFingerprint: enrolled.tlsFingerprint,
+    adminToken
   }
 })
 
@@ -597,6 +619,54 @@ test('W9a 桌面黄金旅程：登录 → 打开项目（直连）→ 终端 →
         const missing = shots.filter((name) => !existsSync(path.join(EVIDENCE_DIR, name)))
         expect(missing, `screenshots missing on disk: ${missing.join(', ')}`).toEqual([])
         return { screenshots: shots.length, timelineSteps: timeline.length }
+      },
+      (result) => result
+    )
+
+    // ── A7 · 宿主审计收口（O1-g）：method_denied 已知集合 + F7/F8 严格为零 ──
+    // The desktop journey provokes no refusal on purpose, but the post-O1
+    // baseline still audits host-shape facts and not-yet-gated call sites
+    // (`cloud-platform/evidence/o1-g-audit-pins/`). Those stay pinned as a
+    // closed known set; what must be strictly zero is the F7/F8 pair O1-a/O1-b
+    // client-gated for cloud targets (`session.tabs.*`,
+    // `runtime.clientEvents.subscribe`, `worktree.activate`,
+    // `worktree.lineageList`) — the desktop was the ungated surface they fixed.
+    const GATED_F7_F8_METHODS = [
+      'session.tabs.list',
+      'runtime.clientEvents.subscribe',
+      'worktree.activate',
+      'worktree.lineageList'
+    ]
+    await journeyStep(
+      'A7-host-audit',
+      '宿主审计计数：F7/F8 门控方法严格为零，其余落在已知基线集合内（O1 治理不变量）',
+      async () => {
+        // Two reads bracket the window the host's heartbeat needs to land a
+        // late report, so a near-miss cannot read as a quiet chain.
+        const first = await fetchHostMethodDenials(session.platform.url, session.adminToken)
+        await page.waitForTimeout(2_000)
+        const second = await fetchHostMethodDenials(session.platform.url, session.adminToken)
+        for (const denials of [first, second]) {
+          const gated = denials
+            .map((denial) => denial.method ?? '<none>')
+            .filter((method) => GATED_F7_F8_METHODS.includes(method))
+          expect(
+            gated,
+            'an F7/F8 method reached the host un-gated — the O1-a/O1-b cloud gate regressed'
+          ).toEqual([])
+          const additions = denials
+            .map((denial) => denial.method ?? '<none>')
+            .filter(
+              (method) =>
+                !GATED_F7_F8_METHODS.includes(method) &&
+                !BASELINE_DESKTOP_JOURNEY_DENIALS.has(method)
+            )
+          expect(
+            [...new Set(additions)],
+            'a refused method joined the desktop journey since the O1 baseline — extend the known set deliberately (see evidence/o1-g-audit-pins/)'
+          ).toEqual([])
+        }
+        return { denialCount: second.length }
       },
       (result) => result
     )
