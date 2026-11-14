@@ -171,6 +171,11 @@ export type HeartbeatResult = {
   maintenance: { reason: string } | null
   /** The platform has revoked this host; every session it hosts must be closed. */
   hostRevoked: boolean
+  /**
+   * Raw U37 provision assignments; parsed defensively by the client. Absent on
+   * platforms older than the field, which reads as no assignments.
+   */
+  provisionAssignments: unknown
 }
 
 export async function sendHeartbeat(
@@ -203,7 +208,8 @@ export async function sendHeartbeat(
       revoked: readField(parsed, 'revoked'),
       maintenance:
         maintenance === null ? null : { reason: readString(maintenance, 'reason') ?? '' },
-      hostRevoked: readField(parsed, 'hostRevoked') === true
+      hostRevoked: readField(parsed, 'hostRevoked') === true,
+      provisionAssignments: readField(parsed, 'provisionAssignments')
     }
   } catch {
     return null

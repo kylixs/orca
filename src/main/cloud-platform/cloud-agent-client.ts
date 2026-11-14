@@ -14,6 +14,10 @@ import {
 import { createCloudConnectionSessions } from './cloud-connection-sessions'
 import { parseCloudPolicies, type CloudPolicies } from './cloud-policies'
 import type { CloudProvisionReport } from './cloud-project-provision'
+import {
+  notifyProvisionAssignments,
+  type CloudProvisionAssignment
+} from './cloud-provision-assignment'
 import { createCloudProvisionReportQueue } from './cloud-provision-report-queue'
 import { createCloudHostAuditQueue, type CloudHostAuditSink } from './cloud-host-audit'
 import { fetchControlPlaneReads } from './cloud-agent-endpoint-fetch'
@@ -66,6 +70,8 @@ export type CloudAgentClient = {
   onRefresh: (listener: (snapshot: CloudAgentSnapshot) => void) => () => void
   /** Emits E2EE device tokens whose live sessions must be closed. */
   onRevoke: (listener: (deviceTokens: string[]) => void) => () => void
+  /** Emits one U37 provision assignment per heartbeat entry; never fires in poll mode (no beat). */
+  onProvisionAssignment: (listener: (assignment: CloudProvisionAssignment) => void) => () => void
   admittedCount: () => number
   /** True after the platform revoked this host; admission refuses everything. */
   isHostRevoked: () => boolean
@@ -102,6 +108,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
   const auditEvents = createCloudHostAuditQueue(config.heartbeat !== undefined)
   const listeners = new Set<(snapshot: CloudAgentSnapshot) => void>()
   const revokeListeners = new Set<(deviceTokens: string[]) => void>()
+  const provisionAssignmentListeners = new Set<(assignment: CloudProvisionAssignment) => void>()
   // Why: revocation arrives as platform device/user/project ids, but the socket is
   // keyed by the E2EE device token from the ticket — keep the mapping from admission.
   const ledger = createCloudAdmissionLedger(now)
@@ -177,6 +184,10 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
         }
         policyVersion = beat.policyVersion
         lastMaintenance = beat.maintenance
+        // U37: assignments ride the beat; a revoked host takes none, a bad listener breaks nothing.
+        if (!beat.hostRevoked) {
+          notifyProvisionAssignments(provisionAssignmentListeners, beat.provisionAssignments)
+        }
         if (beat.hostRevoked) {
           // Why: a host-wide revocation has no per-ticket `since`; every admitted
           // ticket is dead, and the platform will never admit another.
@@ -248,6 +259,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
     sessions.releaseAll()
     listeners.clear()
     revokeListeners.clear()
+    provisionAssignmentListeners.clear()
   }
 
   /** Single-flight: a hung platform must not stack one request per tick. */
@@ -319,6 +331,10 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
     onRevoke: (listener) => {
       revokeListeners.add(listener)
       return () => revokeListeners.delete(listener)
+    },
+    onProvisionAssignment: (listener) => {
+      provisionAssignmentListeners.add(listener)
+      return () => provisionAssignmentListeners.delete(listener)
     },
     admittedCount: () => ledger.size(),
     isHostRevoked: () => hostRevoked,

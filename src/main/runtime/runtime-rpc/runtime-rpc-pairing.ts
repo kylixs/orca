@@ -13,7 +13,11 @@ import type { RuntimePairingReach } from '../../../shared/runtime-pairing-reach'
 import { resolveAdvertisedPairingEndpoint } from '../pairing-endpoint'
 import { RuntimeRpcNetworkExposure } from './runtime-rpc-network-exposure'
 import type { CloudAccessGuard } from '../../cloud-platform/cloud-access-guard'
-import type { CloudProvisionReporter } from '../../cloud-platform/cloud-project-provision'
+import type {
+  CloudProjectProvisionInput,
+  CloudProjectProvisionResult,
+  CloudProvisionReporter
+} from '../../cloud-platform/cloud-project-provision'
 import type { CloudHostAuditSink } from '../../cloud-platform/cloud-host-audit'
 import {
   createWebClientUrl,
@@ -139,6 +143,14 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
   /** Session refusals ride the same heartbeat; installed with the cloud client. */
   setCloudHostAudit(sink: CloudHostAuditSink | null): void {
     this.cloudAuditSink = sink
+  }
+
+  /**
+   * U37 provision assignments run against the runtime itself (no ticket), so the
+   * server exposes the service's method as the surface `attachCloudRuntime` reads.
+   */
+  provisionCloudProject(input: CloudProjectProvisionInput): Promise<CloudProjectProvisionResult> {
+    return this.runtime.provisionCloudProject(input)
   }
 
   closeCloudDeviceSessions(deviceTokens: readonly string[]): number {

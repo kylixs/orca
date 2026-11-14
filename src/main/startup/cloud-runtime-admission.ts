@@ -22,7 +22,11 @@ import type {
   CloudUpgradeDecision,
   CloudUpgradeHeaders
 } from '../cloud-platform/cloud-upgrade-admission'
-import type { CloudProvisionReporter } from '../cloud-platform/cloud-project-provision'
+import type {
+  CloudProjectProvisionInput,
+  CloudProjectProvisionResult,
+  CloudProvisionReporter
+} from '../cloud-platform/cloud-project-provision'
 import type { CloudHostAuditSink } from '../cloud-platform/cloud-host-audit'
 
 export type CloudRuntimeTarget = {
@@ -33,6 +37,13 @@ export type CloudRuntimeTarget = {
   setCloudProvisionReporter?: (reporter: CloudProvisionReporter | null) => void
   /** Installs the refusal sink; optional for the same reason. */
   setCloudHostAudit?: (sink: CloudHostAuditSink | null) => void
+  /**
+   * Executes a U37 assignment's clone/init outside any ticket. Optional so tests
+   * can drive a bare runtime; a host without it silently skips its assignments.
+   */
+  provisionCloudProject?: (
+    input: CloudProjectProvisionInput
+  ) => Promise<CloudProjectProvisionResult>
   getDeviceRegistry: () => DeviceRegistry | null
   getWebSocketEndpoint: () => string | null
   getE2EEPublicKey: () => string | null

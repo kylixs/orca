@@ -1,5 +1,6 @@
 import { createCloudAccessGuard } from '../cloud-platform/cloud-access-guard'
 import type { CloudAgentClient } from '../cloud-platform/cloud-agent-client'
+import { createCloudProvisionAssignmentExecutor } from '../cloud-platform/cloud-provision-assignment'
 import { installCloudPlatformIpc } from '../ipc/cloud-platform'
 import type { CloudRuntimeAdmission, CloudRuntimeTarget } from './cloud-runtime-admission'
 
@@ -23,7 +24,10 @@ export function installCloudAccessGuard(
 }
 
 /** What installing the surfaces needs from the client; narrow so stubs can drive it. */
-type CloudSurfacesClient = Pick<CloudAgentClient, 'snapshot' | 'reportProvisioned' | 'reportAudit'>
+type CloudSurfacesClient = Pick<
+  CloudAgentClient,
+  'snapshot' | 'reportProvisioned' | 'reportAudit' | 'onProvisionAssignment'
+>
 
 /** The slice of an admission `attach` consumes; `CloudRuntimeAdmission` satisfies it. */
 export type AttachableCloudAdmission = {
@@ -41,6 +45,16 @@ function installRuntimeCloudSurfaces(
   installCloudAccessGuard(runtime, client)
   runtime.setCloudProvisionReporter?.((report) => client.reportProvisioned(report))
   runtime.setCloudHostAudit?.((event) => client.reportAudit(event))
+  // U37: assignments are cloned outside any ticket, so a repo-ful project can
+  // reach `ready` without a first `/connect`. Same install point as the reporter,
+  // so the W12b-2 first-start timing fix covers the executor too.
+  client.onProvisionAssignment(
+    createCloudProvisionAssignmentExecutor({
+      provision: runtime.provisionCloudProject?.bind(runtime) ?? null,
+      report: (report) => client.reportProvisioned(report),
+      inMaintenance: () => client.snapshot().maintenance !== null
+    })
+  )
 }
 
 /**

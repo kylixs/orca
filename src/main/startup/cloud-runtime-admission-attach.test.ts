@@ -92,9 +92,11 @@ function stubClient(): {
   client: SurfacesClient
   reports: CloudProvisionReport[]
   audits: CloudHostAuditInput[]
+  installedProvisionExecutors: () => number
 } {
   const reports: CloudProvisionReport[] = []
   const audits: CloudHostAuditInput[] = []
+  let provisionExecutors = 0
   return {
     client: {
       snapshot: emptySnapshot,
@@ -103,10 +105,17 @@ function stubClient(): {
       },
       reportAudit: (event) => {
         audits.push(event)
+      },
+      onProvisionAssignment: () => {
+        provisionExecutors += 1
+        return () => {
+          provisionExecutors -= 1
+        }
       }
     },
     reports,
-    audits
+    audits,
+    installedProvisionExecutors: () => provisionExecutors
   }
 }
 
@@ -186,6 +195,8 @@ describe('attach 装机时序（桩准入）', () => {
     enrolment.resolve()
     await enrolment.promise
     expect(target.installed).toEqual(['guard', 'provision-reporter', 'audit-sink'])
+    // U37: the kick executor rides the same install point as the reporter.
+    expect(fake.installedProvisionExecutors()).toBe(1)
 
     // 补装的回报器确实把 provision 结果与审计事件交给客户端（心跳携带）。
     target.reportProvisioned?.({
