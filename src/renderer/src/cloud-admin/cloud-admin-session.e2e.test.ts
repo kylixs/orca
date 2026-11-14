@@ -301,8 +301,10 @@ beforeAll(async () => {
     userDataPrefix: 'orca-m54-',
     service,
     tls: makeSelfSignedTls('dev-m54'),
-    // The table a cloud-admitted host installs (cloudAdmissionOption): without
-    // the provision methods the open flow only ever saw method_not_found.
+    // Pre-W13a host table, on purpose: this suite predates workspace.info and never
+    // calls it. Not the production table (cloudAdmissionOption -> CLOUD_HOST_METHODS
+    // also installs workspace.info), so a future workspace.info call would answer
+    // method_not_found here — switch to CLOUD_HOST_METHODS first (W13a audit MIN-1①).
     methods: [...ALL_RPC_METHODS, ...MANAGED_WORKTREE_METHODS, ...PROJECT_PROVISION_METHODS]
   })
   admission.bindRuntime(cloud.runtime)
