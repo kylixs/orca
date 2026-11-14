@@ -2,8 +2,18 @@ import { useCallback, useRef, useState } from 'react'
 import { translate } from '@/i18n/i18n'
 import { adoptWebRuntimeClient } from './preload-api/web-runtime-session'
 import type { WebCloudAuthTokens } from './web-cloud-auth'
-import { createLocalStorageWebCloudDeviceKey } from './web-cloud-device-key'
-import { createBrowserWebCloudSessionStorage } from './web-cloud-session-storage'
+import {
+  createLocalStorageWebCloudDeviceKey,
+  loadOrCreateWebCloudDeviceKey,
+  type WebCloudDeviceIdentity,
+  type WebCloudDeviceKeyStorage
+} from './web-cloud-device-key'
+import {
+  createBrowserWebCloudSessionStorage,
+  readPersistedWebCloudSession,
+  writePersistedWebCloudSession,
+  type WebCloudSessionStorage
+} from './web-cloud-session-storage'
 import {
   redeemWebHandoff,
   WEB_CLOUD_ERROR_CODE,
@@ -13,18 +23,9 @@ import {
 import {
   connectCloudProjectWithSession,
   WEB_CLOUD_CONNECT_ERROR_CODE,
+  WebCloudConnectError,
   type WebCloudConnectClient
 } from './web-cloud-connect'
-import {
-  loadOrCreateWebCloudDeviceKey,
-  type WebCloudDeviceIdentity,
-  type WebCloudDeviceKeyStorage
-} from './web-cloud-device-key'
-import {
-  readPersistedWebCloudSession,
-  writePersistedWebCloudSession,
-  type WebCloudSessionStorage
-} from './web-cloud-session-storage'
 import {
   readStoredWebRuntimeEnvironment,
   saveStoredWebRuntimeEnvironment,
@@ -99,9 +100,8 @@ export function webCloudHandoffFailureNotice(error: unknown): string {
     }
   }
   if (
-    error instanceof Error &&
-    'code' in error &&
-    (error as { code?: unknown }).code === WEB_CLOUD_CONNECT_ERROR_CODE.noProjects
+    error instanceof WebCloudConnectError &&
+    error.code === WEB_CLOUD_CONNECT_ERROR_CODE.noProjects
   ) {
     return translate(
       'auto.web.WebConnect.handoffNoProject',
@@ -120,11 +120,28 @@ export type EnterWorkspaceViaHandoffInput = {
   sessionStorage: WebCloudSessionStorage
   fetchImpl?: typeof fetch
   now?: () => number
+  /** Tests shrink it; production uses `WEB_CLOUD_HANDOFF_ENTRY_TIMEOUT_MS`. */
+  timeoutMs?: number
 }
 
 export type EnterWorkspaceViaHandoffResult =
   | { status: 'entered'; projectName: string; runtimeId: string }
   | { status: 'failed'; notice: string; apiUrl: string }
+
+/** How long the entry screen waits for the platform before falling back to sign-in. */
+export const WEB_CLOUD_HANDOFF_ENTRY_TIMEOUT_MS = 10_000
+
+/** Set when the deadline fires, so the losing flow only unwinds, never touches the page. */
+type WebHandoffEntryTimeout = { fired: boolean }
+
+const handoffTimeoutResult = (apiUrl: string): EnterWorkspaceViaHandoffResult => ({
+  status: 'failed',
+  // A hung platform reads like an unreachable one: back to the sign-in form.
+  notice: webCloudHandoffFailureNotice(
+    new WebCloudSessionError(WEB_CLOUD_ERROR_CODE.network, 'handoff entry timed out', null)
+  ),
+  apiUrl
+})
 
 /**
  * The whole M122 journey in one call: trade the code, persist the session, open
@@ -132,8 +149,9 @@ export type EnterWorkspaceViaHandoffResult =
  * leaves no socket behind — the connect tail closes its own, and an exchange
  * failure never opened one — and the caller falls back to the sign-in form.
  */
-export async function enterWorkspaceViaWebHandoff(
-  input: EnterWorkspaceViaHandoffInput
+async function openWorkspaceViaWebHandoff(
+  input: EnterWorkspaceViaHandoffInput,
+  timeout: WebHandoffEntryTimeout
 ): Promise<EnterWorkspaceViaHandoffResult> {
   const { entry } = input
   const failed = (error: unknown): EnterWorkspaceViaHandoffResult => ({
@@ -177,6 +195,10 @@ export async function enterWorkspaceViaWebHandoff(
       ...(input.fetchImpl ? { fetchImpl: input.fetchImpl } : {}),
       ...(input.now ? { now: input.now } : {})
     })
+    if (timeout.fired) {
+      // The page already fell back; a late exchange persists and connects nothing.
+      return handoffTimeoutResult(entry.apiUrl)
+    }
     persistTokens(session, {
       accessToken: session.accessToken,
       refreshToken: session.refreshToken
@@ -204,6 +226,11 @@ export async function enterWorkspaceViaWebHandoff(
   } catch (error) {
     return failed(error)
   }
+  if (timeout.fired) {
+    // The page already fell back; close the socket it will never be handed.
+    client.close()
+    return handoffTimeoutResult(entry.apiUrl)
+  }
   try {
     // Why persist before mounting: the App's preload layer reads this record.
     saveStoredWebRuntimeEnvironment(environment)
@@ -215,6 +242,26 @@ export async function enterWorkspaceViaWebHandoff(
   // use this exact live socket instead of upgrading the stored offer again.
   adoptWebRuntimeClient(client, environment)
   return { status: 'entered', projectName, runtimeId }
+}
+
+/**
+ * Races the entry journey against the deadline. Whatever the flow still does
+ * after the deadline only unwinds behind the sign-in form (see the `timeout`
+ * checks in `openWorkspaceViaWebHandoff`).
+ */
+export async function enterWorkspaceViaWebHandoff(
+  input: EnterWorkspaceViaHandoffInput
+): Promise<EnterWorkspaceViaHandoffResult> {
+  const timeout: WebHandoffEntryTimeout = { fired: false }
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const flow = openWorkspaceViaWebHandoff(input, timeout).finally(() => clearTimeout(timer))
+  const deadline = new Promise<EnterWorkspaceViaHandoffResult>((resolve) => {
+    timer = setTimeout(() => {
+      timeout.fired = true
+      resolve(handoffTimeoutResult(input.entry.apiUrl))
+    }, input.timeoutMs ?? WEB_CLOUD_HANDOFF_ENTRY_TIMEOUT_MS)
+  })
+  return Promise.race([flow, deadline])
 }
 
 export type WebCloudHandoffEntryState =

@@ -13,6 +13,7 @@ import type * as WebCloudSessionModule from './web-cloud-session'
 import type * as WebCloudConnectModule from './web-cloud-connect'
 import type * as WebCloudSessionStorageModule from './web-cloud-session-storage'
 import { WEB_CLOUD_SESSION_STORAGE_KEY as SESSION_KEY } from './web-cloud-session-storage'
+import { readStoredWebRuntimeEnvironment } from './web-runtime-environment'
 import { WebCloudConnectError, WEB_CLOUD_CONNECT_ERROR_CODE } from './web-cloud-connect'
 
 const redeemMock = vi.hoisted(() => ({ redeemWebHandoff: vi.fn() }))
@@ -287,6 +288,81 @@ describe('enterWorkspaceViaWebHandoff（换发→打开项目→落存储）', (
       apiUrl: ''
     })
     expect(redeemMock.redeemWebHandoff).not.toHaveBeenCalled()
+  })
+})
+
+describe('enterWorkspaceViaWebHandoff 超时（平台挂起回落登录表单，不在进入屏无限等待）', () => {
+  const lateSession = {
+    apiUrl: ENTRY.apiUrl,
+    accessToken: 'access-late',
+    refreshToken: 'refresh-late',
+    deviceId: 'device-late',
+    user: { displayName: '张三' }
+  }
+
+  it('gives up on a hung platform and falls back to the sign-in form', async () => {
+    let resolveRedeem!: (value: unknown) => void
+    redeemMock.redeemWebHandoff.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRedeem = resolve
+        })
+    )
+    const stores = storages()
+
+    const result = await enterWorkspaceViaWebHandoff({
+      entry: ENTRY,
+      deviceKeyStore: stores.device,
+      sessionStorage: stores.session,
+      timeoutMs: 10
+    })
+
+    expect(result.status).toBe('failed')
+    if (result.status === 'failed') {
+      expect(result.notice).toContain('cannot be reached')
+      expect(result.apiUrl).toBe(ENTRY.apiUrl)
+    }
+
+    // A late exchange lands behind the fallback form and works on nothing.
+    resolveRedeem(lateSession)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(connectMock.connectCloudProjectWithSession).not.toHaveBeenCalled()
+    expect(adoptMock.adoptWebRuntimeClient).not.toHaveBeenCalled()
+    expect(stores.session.values.has(SESSION_KEY)).toBe(false)
+  })
+
+  it('closes a workspace socket that opens after the deadline', async () => {
+    redeemMock.redeemWebHandoff.mockResolvedValue(lateSession)
+    let resolveConnect!: (value: unknown) => void
+    connectMock.connectCloudProjectWithSession.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveConnect = resolve
+        })
+    )
+    const client = { close: vi.fn() }
+    const stores = storages()
+
+    const result = await enterWorkspaceViaWebHandoff({
+      entry: ENTRY,
+      deviceKeyStore: stores.device,
+      sessionStorage: stores.session,
+      timeoutMs: 10
+    })
+    expect(result.status).toBe('failed')
+
+    resolveConnect({
+      projectName: 'Payment Service',
+      runtimeId: 'runtime-late',
+      client,
+      environment: { id: 'web-env-late', name: 'Payment Service (cloud session)' }
+    })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(client.close).toHaveBeenCalledTimes(1)
+    expect(adoptMock.adoptWebRuntimeClient).not.toHaveBeenCalled()
+    // The workspace that lost the race never reaches the App's preload layer.
+    expect(readStoredWebRuntimeEnvironment()).toBeNull()
   })
 })
 

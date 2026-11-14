@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import WebSocket from 'ws'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { readString } from '../../../shared/json-fields'
+import { readArray, readString } from '../../../shared/json-fields'
 import {
   REPO_ROOT,
   makeSelfSignedTls,
@@ -229,12 +229,14 @@ describe('orca web 一次性 handoff 自动进入（真实平台 + 真实 TLS Ru
       headers: auth(persisted!.accessToken)
     })
     expect(devicesRes.status).toBe(200)
-    const devices = (await devicesRes.json()) as {
-      devices: { id: string; name: string; revokedAt: string | null }[]
-    }
-    expect(
-      devices.devices.some((device) => device.name === 'Orca Web' && device.revokedAt === null)
-    ).toBe(true)
+    // Shape-checked reads: a mistyped reply fails the assertions below, not the parse.
+    const devices = (readArray(await devicesRes.json(), 'devices') ?? []).map((device) => ({
+      name: readString(device, 'name'),
+      revokedAt: readString(device, 'revokedAt')
+    }))
+    expect(devices.some((device) => device.name === 'Orca Web' && device.revokedAt === null)).toBe(
+      true
+    )
 
     saveEvidence('w7b-1-auto-entry.json', {
       issuedUrlHost: pageUrl.host,
@@ -246,7 +248,7 @@ describe('orca web 一次性 handoff 自动进入（真实平台 + 真实 TLS Ru
       runtimeId: result.runtimeId,
       environmentName: environment?.name,
       persistedDeviceId: persisted?.deviceId,
-      enrolledDeviceNames: devices.devices.map((device) => device.name)
+      enrolledDeviceNames: devices.map((device) => device.name)
     })
   }, 30_000)
 
