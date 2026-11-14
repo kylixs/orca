@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### 环境持久化重建完成（2026-11-14，防复发达成）
+
+`153166c9703`（5 运维脚本入库，幂等——连续两次全量运行 exit 0 验证）：资产全迁 **~/orca-local-env/**（CA/平台/宿主证书、宿主边界、supervisor——dev 宿主 watchdog 需持久父进程，已用 supervisor 持有），/tmp/m114-* 清空；**新 CA 入钥匙串可信**（verify-cert successful，浏览器零警告恢复；旧孤立 CA 可手动删不影响）；重播种：平台 PID 70112（https 双地址 200）、宿主 **host_738ecb89** online（100.103.213.12:51572）、**proj_3e977df5**（demo-app）+**proj_dabe8e2c**（zhangsan-demo，各 5 提交双分支）、矩阵三行+lisi 最小、策略覆盖；终验全过（三身份可见性各自正确/admin handoff 201/浏览器模式 200/中继 online）。已知产品行为入档：平台重启需连带宿主重建（中继路由不自动跟随新宿主端口），脚本幂等处理。
+
 ### AA6 落地（2026-11-14）
 
 `ea8ee6d53e8`（2 文件）：主机 drawer「权限分配」区（三位矩阵复用项目矩阵草稿形态+AA4 datalist+provisionPolicy 开关；单一保存=逐行 PUT grants+策略 PUT，失败报计数+QA-009 回滚；主机位提示「不进凭证，保存无需断开会话」）。新 5/5（含真端点联动：restricted→lisi 403、组授权→zhangsan 201）+回归 31/31。**AA1-AA6 全落**。派 AA7 收口。
