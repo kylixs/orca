@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### M120b 实现完成（2026-11-14）
+
+`bf34abed505`（恰 app.js+新套件 2 文件，暂存集核对）：权限矩阵改 7 权限位复选框（补 QA-014 漏的 browser 列；download 锁徽标移除改真话注释）；草稿 diff 模型（脏行 dirty+未保存徽标，保存仅脏行按序 PUT 行内全量位，首败中止+部分成功 toast+按服务端值重绘）；撤销二次确认按行给差量与规则性断开文案（用户行点名/组行不点名，如实无在线会话端点）；「授予基础权限」改「添加授权」保持 W2-M-1 语义。测试：新套件 6/6 + 回归 36/0（PORT=0 双轨真实平台）。零新 CSS，index.html/styles.css 格式化残留未被纠缠。运行 11.5 分钟 ✓。**已派 M120c2**（设置页下载策略覆盖清单 UI）。
+
 ### W12b-2 审计 PASS（2026-11-14）+ U26 派修
 
 审计（test-reports/w12b2-audit.md）：**PASS，0 blocker/0 major**、minor 2/note 5。变异声明经审计**独立复现**证实（还原旧时序恰 3 红且症状逐字对应 U17 症状①②）。M-1=U26（enrollment 失败可观测性回退：注释无实现+rejection 被吞失去持久记录）**修复令已派**；M-2=U27（证据只记预期+gitignore，审计已补证，流程记档）。N-1 注记：派发令文件清单笔误（第三文件实为测试套件），PROGRESS 记录无误。
