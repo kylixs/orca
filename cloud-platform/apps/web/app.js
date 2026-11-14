@@ -302,7 +302,7 @@ function detailDisabledReason(p) {
  * handoff URL and open it, landing straight in the project workspace.
  */
 function projectRowActions(p) {
-  return `<button class="btn sm" data-open="${p.id}" ${openDisabledAttr(p)}>打开</button>${detailEntry(p)}${orcaWebEntry(p)}`
+  return `<button class="btn sm" data-open="${p.id}" ${openDisabledAttr(p)}>打开</button>${selfGrantEntry(p)}${detailEntry(p)}${orcaWebEntry(p)}`
 }
 
 function detailEntry(p) {
@@ -338,6 +338,69 @@ function orcaWebEntry(p) {
     : `<button class="btn sm" data-orca-web="${esc(p.id)}" title="在新标签打开 Orca Web 工作区">Orca Web</button>`
 }
 
+/* ---------------- admin 自授并打开（U40 · AA5） ---------------- */
+
+/** The set a self-service project is born with, so a self-grant reads as one. */
+const SELF_GRANT_PERMISSIONS = ['open', 'terminal', 'agent', 'file:read', 'file:write']
+
+/**
+ * An admin sees every project but carries no grant row, so 打开 mints a
+ * credential the host refuses outright (U40 403). The entry is additive: the
+ * greyed 打开 keeps stating why, and 「授权并打开」 writes a real grant for the
+ * admin themself before handing off — use rights stay explicit (default deny).
+ */
+function selfGrantEntry(p) {
+  if (!isAdmin() || p.permissions.includes('open')) {
+    return ''
+  }
+  // Same host gate as the other handoff entries: the grant could land anyway,
+  // but the open it enables would just fail.
+  const reason = orcaWebDisabledReason(p)
+  return reason
+    ? `<button class="btn sm" disabled title="${esc(reason)}">授权并打开</button>`
+    : `<button class="btn sm" data-self-grant="${esc(p.id)}" title="先给自己授权，再进入项目工作区">授权并打开</button>`
+}
+
+async function selfGrantAndOpen(projectId) {
+  const subjectId = state.user?.username ?? ''
+  try {
+    await api(`/v1/projects/${projectId}/grants`, {
+      method: 'PUT',
+      // A username is all the server needs: it resolves it to the user id that
+      // the ACL matches on, so the row is named and live.
+      body: JSON.stringify({ subjectType: 'user', subjectId, permissions: SELF_GRANT_PERMISSIONS })
+    })
+  } catch (err) {
+    toast(`授权失败：${err.message ?? err}`)
+    return
+  }
+  toast('已授权，正在打开…')
+  await openProjectWorkspace(projectId)
+}
+
+function confirmSelfGrant(projectId) {
+  const project = state.projects.find((p) => p.id === projectId)
+  if (!project) {
+    return
+  }
+  dialog(
+    '授权并打开',
+    `
+    <p>项目「${esc(project.name)}」尚未授权给你。确认把以下权限授予你的账号：</p>
+    <p class="mono">${esc(SELF_GRANT_PERMISSIONS.join(' · '))}</p>
+    <p class="muted">保存将断开你当前全部云会话（含其他项目），重新打开项目即按新权限签发凭证。</p>`,
+    [
+      {
+        label: '授权并打开',
+        primary: true,
+        onClick: () => {
+          void selfGrantAndOpen(projectId)
+        }
+      }
+    ]
+  )
+}
+
 function projectRow(p) {
   const offline = p.hostStatus !== 'online'
   return `<tr>
@@ -358,6 +421,9 @@ function wireProjectActions() {
   for (const btn of document.querySelectorAll('[data-open], [data-orca-web]')) {
     const projectId = btn.dataset.open ?? btn.dataset.orcaWeb
     btn.onclick = () => openProjectWorkspace(projectId)
+  }
+  for (const btn of document.querySelectorAll('[data-self-grant]')) {
+    btn.onclick = () => confirmSelfGrant(btn.dataset.selfGrant ?? '')
   }
   for (const btn of document.querySelectorAll('[data-go]')) {
     btn.onclick = () => navigate(btn.dataset.go)
