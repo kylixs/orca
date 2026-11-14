@@ -13,6 +13,7 @@ import type { SkillDeletePlan, SkillDeleteResult } from '../../../../shared/skil
 import { SKILL_DELETE_CAPABILITY } from '../../../../shared/skill-install-capability'
 import { callRuntimeResult, getRemoteRuntimeStatus } from './web-runtime-calls'
 import { requireActiveEnvironmentOrNull } from './web-runtime-session'
+import { isActiveWebClientCloudSession } from '../web-cloud-session-scope'
 import { getBrowserPlatform } from './web-storage'
 
 export function createPreflightApi(): NonNullable<Partial<PreloadApi>['preflight']> {
@@ -147,8 +148,15 @@ export function createComputerUsePermissionsApi(): NonNullable<
 
 export function createSkillsApi(): NonNullable<Partial<PreloadApi>['skills']> {
   return {
-    discover: (target) =>
-      callRuntimeResult<SkillDiscoveryResult>('skills.discover', target, 15_000),
+    discover: (target) => {
+      // Why: the skill directory is the host's global user catalog (~/.claude/skills)
+      // — a cross-project surface the ticket never carries (O1 F4). Report an empty
+      // scan instead of a denial.
+      if (isActiveWebClientCloudSession()) {
+        return Promise.resolve({ skills: [], sources: [], scannedAt: Date.now() })
+      }
+      return callRuntimeResult<SkillDiscoveryResult>('skills.discover', target, 15_000)
+    },
     // Why: browser clients have no local skill homes; remote-host freshness stays off until its update rail covers it.
     freshnessInventory: (): Promise<SkillFreshnessInventory> =>
       Promise.resolve({

@@ -28,6 +28,7 @@ export function useLinearSourceConnection(args: {
     const runtime = environmentId ? state.runtimeStatusByEnvironmentId?.get(environmentId) : null
     return `${runtime?.connectionGeneration ?? 0}:${runtime?.hostContactEpoch ?? 0}`
   })
+  const runtimeEnvironments = useAppStore((state) => state.runtimeEnvironments)
   const statusContextKey = getProviderRuntimeContextKey(runtimeSettings)
   const sourceStoreStatus = useAppStore((state) =>
     scope && state.linearStatusContextKey === statusContextKey ? state.linearStatus : null
@@ -42,6 +43,11 @@ export function useLinearSourceConnection(args: {
     sourceStoreStatus: LinearConnectionStatus | null
     status: LinearConnectionStatus | null
   }>({ scope: null, runtimeRevision, sourceStoreStatus, status: null })
+  // Why: a cloud session's host refuses linear.* — the credentials are host account
+  // assets the ticket never carries (O1 F5). Report "not connected" without asking.
+  const cloudSession =
+    environmentId !== null &&
+    isCloudSessionEnvironmentId(runtimeEnvironments, environmentId)
 
   useEffect(() => {
     const source = sourceRef.current
@@ -49,11 +55,6 @@ export function useLinearSourceConnection(args: {
       return
     }
     let stale = false
-    // Why: a cloud session's host refuses linear.* — the credentials are host account
-    // assets the ticket never carries (O1 F5). Report "not connected" without asking.
-    const cloudSession =
-      environmentId !== null &&
-      isCloudSessionEnvironmentId(useAppStore.getState().runtimeEnvironments, environmentId)
     if (cloudSession) {
       setState({ scope, runtimeRevision, sourceStoreStatus, status: { connected: false, viewer: null } })
       return
@@ -77,7 +78,7 @@ export function useLinearSourceConnection(args: {
     return () => {
       stale = true
     }
-  }, [args.enabled, scope, runtimeRevision, sourceStoreStatus])
+  }, [args.enabled, cloudSession, scope, runtimeRevision, sourceStoreStatus])
 
   return useMemo(
     () =>

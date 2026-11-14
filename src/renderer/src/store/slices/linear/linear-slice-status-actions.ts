@@ -1,6 +1,7 @@
 import type { LinearConnectionStatus } from '../../../../../shared/linear/workspace-types'
 import type { LinearSlice, LinearSliceGet, LinearSliceSet } from './linear-slice-contract'
-import { linearStatus, getLinearRuntimeTarget } from '@/runtime/runtime-linear-client'
+import { linearStatus } from '@/runtime/runtime-linear-client'
+import { getActiveRuntimeTarget } from '@/runtime/runtime-client-target'
 import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 import { getProviderRuntimeContextKey } from '@/lib/provider-runtime-context'
 import {
@@ -32,7 +33,7 @@ export function createLinearStatusActions(
       const mutationGeneration = getLinearMutationGeneration()
       const statusReadGeneration = nextLinearStatusReadGeneration()
       const request = (async () => {
-        const target = getLinearRuntimeTarget(get().settings)
+        const target = getActiveRuntimeTarget(get().settings)
         if (
           target.kind === 'environment' &&
           isCloudSessionEnvironmentId(get().runtimeEnvironments, target.environmentId)

@@ -103,10 +103,12 @@ const HOST_ONLINE_TIMEOUT_MS = 120_000
  * O1-g's host-audit pin (business-chain §4.2 ①): the journey may audit a KNOWN
  * set of `method_denied` events and never a new one. The set's one deliberate
  * member is B4's `repo.list` call — the W7c boundary probe, whose audit entry
- * is the point of E2. The rest was audited by the 2026-11-14 post-O1 baseline
- * run (`cloud-platform/evidence/o1-g-audit-pins/`); each is either
- * design-refused by Appendix A (`host.*` host-shape facts, `preflight.check`)
- * or an ungated call site still on the O1 cleanup ledger. A NEW name here means
+ * is the point of E2. U42 cleared the residual ungated call sites the
+ * 2026-11-14 post-O1 baseline still audited (`repo.hooksCheck`,
+ * `session.tabs.list`, `settings.getTerminalQuickCommands`, `skills.discover`,
+ * `workspacePorts.scan`, `linear.status` — see
+ * `cloud-platform/evidence/u42-residual/`); what remains is the design-refusal
+ * subset (`host.*` host-shape facts, `preflight.check`). A NEW name here means
  * a call site started hitting a refused method again — extend the set
  * deliberately, never silently. Counts are not pinned: how many times a panel
  * fires is UI timing, which methods fire is the governance fact.
@@ -114,16 +116,10 @@ const HOST_ONLINE_TIMEOUT_MS = 120_000
 const BASELINE_JOURNEY_DENIALS: ReadonlySet<string> = new Set([
   'repo.list',
   'preflight.check',
-  'repo.hooksCheck',
-  'session.tabs.list',
-  'settings.getTerminalQuickCommands',
-  'skills.discover',
-  'workspacePorts.scan',
   'host.gitBash.isAvailable',
   'host.pwsh.isAvailable',
   'host.wsl.isAvailable',
-  'host.wsl.listDistros',
-  'linear.status'
+  'host.wsl.listDistros'
 ])
 
 /** Denials only the streaming half adds on top of the journey baseline. */

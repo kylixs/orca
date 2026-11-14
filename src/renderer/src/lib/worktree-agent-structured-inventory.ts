@@ -1,6 +1,11 @@
 import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-types'
+import { parseExecutionHostId } from '../../../shared/execution-host'
 import { toRuntimeWorktreeSelector } from '@/runtime/runtime-worktree-selector'
 import { worktreeIdsEqual } from '../../../shared/worktree/id'
+import { useAppStore } from '@/store'
+import { getExecutionHostIdForWorktree } from '@/lib/worktree-runtime-owner'
+import { isActiveWebClientCloudSession } from '@/web/web-cloud-session-scope'
+import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 
 export type StructuredActivationInventory = {
   snapshot: RuntimeMobileSessionTabsResult
@@ -11,6 +16,17 @@ export async function readWorktreeStructuredActivationInventory(
   worktreeId: string
 ): Promise<false | StructuredActivationInventory> {
   if (typeof window === 'undefined') {
+    return false
+  }
+  // Why: a cloud session's host refuses session.tabs.* (O1 F7) — the structured
+  // mirror inventory has no paired end to read. Report none instead of a denial.
+  const state = useAppStore.getState()
+  const ownerHost = parseExecutionHostId(getExecutionHostIdForWorktree(state, worktreeId))
+  if (
+    isActiveWebClientCloudSession() ||
+    (ownerHost?.kind === 'runtime' &&
+      isCloudSessionEnvironmentId(state.runtimeEnvironments, ownerHost.environmentId))
+  ) {
     return false
   }
   const response = await window.api.runtime.call({

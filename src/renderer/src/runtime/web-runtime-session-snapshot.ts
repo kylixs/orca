@@ -2,6 +2,8 @@ import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
 import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-types'
 import { getRuntimeEnvironmentConnectionGeneration } from '@/store/slices/runtime-status'
 import { useAppStore } from '../store'
+import { isActiveWebClientCloudSession } from '@/web/web-cloud-session-scope'
+import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 import {
   listRemoteRuntimeSessionTabsAfterCurrentInFlight,
   listRemoteRuntimeSessionTabsDeduped
@@ -39,6 +41,15 @@ export async function refreshWebRuntimeSessionTabsSnapshot(
     errorMode?: 'warn' | 'throw'
   } = {}
 ): Promise<void> {
+  // Why: a cloud session's host refuses session.tabs.* — the mirror protocol has no
+  // second paired end to converge (O1 F7). Skip every eager refresh instead of
+  // logging a doomed list; the multiplex stream itself carries the live state.
+  if (
+    isActiveWebClientCloudSession() ||
+    isCloudSessionEnvironmentId(useAppStore.getState().runtimeEnvironments, environmentId)
+  ) {
+    return
+  }
   const webSessionTabsSync = await import('./web-session-tabs-sync')
   const expectedEnvironmentPairingRevision =
     options.expectedEnvironmentPairingRevision ?? getRuntimeEnvironmentRevision(environmentId)

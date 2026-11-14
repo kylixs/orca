@@ -34,7 +34,7 @@ import {
   waitForActiveTerminalManager
 } from './helpers/terminal'
 import { clickFileInExplorer, openFileExplorer } from './helpers/file-explorer'
-import { fetchHostMethodDenials } from './helpers/cloud-host-audit-events'
+import { countDenialsByMethod, fetchHostMethodDenials } from './helpers/cloud-host-audit-events'
 import {
   fillCloudLoginDialog,
   openCloudLoginDialog,
@@ -83,14 +83,20 @@ const CHECKOUT_TIMEOUT_MS = 180_000
  * refused method again — extend the set deliberately, never silently. Counts
  * are not pinned: which methods fire is the governance fact, not how often.
  */
+/**
+ * U42 cleared the residual surfaces the O1-g baseline still audited
+ * (`settings.getTerminalQuickCommands`, `workspacePorts.scan`,
+ * `hostedReview.forBranch` — cloud-gated call sites, see
+ * `cloud-platform/evidence/u42-residual/`). What remains is the Appendix A
+ * design-refusal subset: `host.*` host-shape facts the ticket never carries.
+ * `host.wsl.isAvailable` is Windows-only probing and may not fire on a macOS
+ * run; the set pins governance facts, not per-run firing counts.
+ */
 const BASELINE_DESKTOP_JOURNEY_DENIALS: ReadonlySet<string> = new Set([
   'host.gitBash.isAvailable',
   'host.pwsh.isAvailable',
   'host.wsl.isAvailable',
-  'host.wsl.listDistros',
-  'settings.getTerminalQuickCommands',
-  'workspacePorts.scan',
-  'hostedReview.forBranch'
+  'host.wsl.listDistros'
 ])
 
 const EVIDENCE_DIR =
@@ -624,11 +630,11 @@ test('W9a 桌面黄金旅程：登录 → 打开项目（直连）→ 终端 →
     )
 
     // ── A7 · 宿主审计收口（O1-g）：method_denied 已知集合 + F7/F8 严格为零 ──
-    // The desktop journey provokes no refusal on purpose, but the post-O1
-    // baseline still audits host-shape facts and not-yet-gated call sites
-    // (`cloud-platform/evidence/o1-g-audit-pins/`). Those stay pinned as a
-    // closed known set; what must be strictly zero is the F7/F8 pair O1-a/O1-b
-    // client-gated for cloud targets (`session.tabs.*`,
+    // The desktop journey provokes no refusal on purpose; U42 cleared the
+    // not-yet-gated call sites the post-O1 baseline audited, so what remains is
+    // the Appendix A host-shape subset (`cloud-platform/evidence/u42-residual/`).
+    // Those stay pinned as a closed known set; what must be strictly zero is the
+    // F7/F8 pair O1-a/O1-b client-gated for cloud targets (`session.tabs.*`,
     // `runtime.clientEvents.subscribe`, `worktree.activate`,
     // `worktree.lineageList`) — the desktop was the ungated surface they fixed.
     const GATED_F7_F8_METHODS = [
@@ -666,7 +672,7 @@ test('W9a 桌面黄金旅程：登录 → 打开项目（直连）→ 终端 →
             'a refused method joined the desktop journey since the O1 baseline — extend the known set deliberately (see evidence/o1-g-audit-pins/)'
           ).toEqual([])
         }
-        return { denialCount: second.length }
+        return { denialCount: second.length, byMethod: countDenialsByMethod(second) }
       },
       (result) => result
     )
