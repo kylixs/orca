@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### AA1 落地（2026-11-14）
+
+`fdfd75a4c4f`（2 文件）：GET /v1/directory（admin-only，store 派生用户+组清单零 LDAP 依赖，403+denied 审计）+ resolveGrantSubject/knownGroups 统一主体解析（未知组 400 GROUP_NOT_FOUND 不落死行）+权限位白名单校验（越界 400 整行拒绝）+PUT /grants 403 补 AC-18 denied 审计。新 5/5+回归 31/31。空槽回填 AA2。
+
 ### U43 落地（2026-11-14，🟢）+ 机器重启事件
 
 `30956d7f9b7`（3 文件）：mtlsFetch TLS 分支补请求体（toRequestBody 多形态+流式显式 TypeError 拒绝+withFraming CL 补齐；唯一丢写点，全文件其余构造点逐一核对无同型）；测试 5+9+59+tsc 0；**终验三连过**（relays online:true / announce 0 失败 / connect 下发中继端点）——U38（env 双名）→U39（路由回填）→U43（announce 落库）三环闭合，中继链路数据面全通。**机器重启事件**：本机 21:32 重启（uptime 证实），/tmp 资产（平台/宿主/证书/store）全失；U43 代理按配方应急重建（平台 https 200+中继重连 online），但宿主离线/演示项目丢/新 CA 未入钥匙串——**持久化重建已派**（资产迁 ~/orca-local-env+重建脚本入库 local-env-reseed.mjs+CA 入钥匙串），根治「重启即丢」。
