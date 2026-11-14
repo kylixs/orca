@@ -2564,6 +2564,16 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### 并发落地潮与索引冲突二次实录（2026-11-14）
+
+四路完成交错落库 + W6a 修复代理发现 docs 提交卷入 relay 文件，用 plumbing 重建历史（两个 docs 提交哈希变更：W5a→`e2b9250fd90`、W7a→`16e324632c9`，树内容不变；reflog 残留报错为表面现象，三个功能提交均已核实 ON-BRANCH）。**已核实的分支线性状态**：`c615adee2f4` W6c → `b0665d848a7` W5a-seam → `3e0c9f970d2` W6a-fix → `16e324632c9` → `e2b9250fd90` → `2f0b9657217` W7a → `7058a99dd1c` W5a-panel。索引冲突根因=四代理+主会话共享一个 worktree 的 git index；现行缓解=代理提交前自检暂存区 + 冲突后 plumbing 修复（本次有效）；若再发，评估改用隔离 worktree 派发。
+
+### 本轮完成明细（2026-11-14）
+- **W5a-seam**（`b0665d848a7`，5 文件 +79/−1）：terminal subscribe 桥接 seam 落库（类型+桥方法+订阅路由+app 绑定），无 rpc/opcode 变更；tc:web 过、cloud 67 测试全绿。
+- **W6c**（`c615adee2f4`，6 文件）：web 相对 base（含补 cloud-admin 入口——发现 `build:web` 在 HEAD 本就因缺该入口失败并修复）；`web-path-prefix.ts` 前缀推导（编码安全、无前缀逐字节不变）；31 用例 + tc:web + build 全过；真实前缀加载 96 URL 全 200。**遗留回归**：cloud-admin-session e2e 挂（`pathname.split` undefined，W6c 未提交态被他代理发现），已派修复代理。
+- **W6a-fix**（`3e0c9f970d2`，2 文件）：MAJ-1 半开泄漏（HTTP/升级双路径 abort 传播）、MAJ-2 per-IP 限速共用预算、MIN-1 stale 升级 503、MIN-3 升级 hop-by-hop 对齐；27/27 全绿（含 5 条新回归）。
+- 在途：W6a 独立复验、W5a 独立测试+审计、W6c 回归修复、W7a 测试+审计（前派）。
+
 ### W7a 开发完成（通道①，待独立测试+审计，2026-11-14）
 
 提交 `2f0b9657217`（4 文件 +692/−29）：`POST /v1/projects/{id}/web-handoff`（既有项目守卫、内存 map 绑定 userId+projectId、默认 60s、无直连 400 HOST_UNAVAILABLE、审计记 sha256 指纹）+ `POST /v1/web/handoff`（先删后校验单次消费、复用抽取的 `issueDeviceSession` 与密码登录同路径、撤权换发 403 permission_lost、审计两向无明文）；顺手项（W8 兼守护 docstring、W8_EVIDENCE 常量）已落。e2e 7/0（签发换发/重放/过期/无直连/无权签发/撤权/审计）+ dir 套件 6/0。前轮遗留 diff 审阅后全量续用未重写。已派独立测试（自有探针：双换发并发恰一成功、令牌真实可用性、契约 diff）与审计（code 熵/内存边界/设备绑定/TOCTOU/issueDeviceSession 零回归/正则影响面）。
