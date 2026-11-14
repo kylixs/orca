@@ -2649,6 +2649,10 @@ MAJ-1 修复 `5079fb63497`（2 文件）：handoff e2e spec 进 cloud-e2e includ
 
 提交 `4ffbc3860dc`：缺陷 B 实为两个叠加真 bug——B1 bun worker 静默 PTY（e2e 列入 vitest-node-runtime 池以 node 执行+文件头声明 runner）+ **B2 嵌套读取**（`terminal.read` 回包在 `result.terminal` 下，原 helper 读 `result.tail` 永远 undefined——任何 runner 下断言都不可能匹配，超时分支被 ok 检查放行=假阴性）。修复后 RED/GREEN：默认跑法（node 池）4/4 绿且回显真实（`echo ORCA_W5B_PTY_ECHO_OK`）；去掉池声明 RED（ECHO_TIMEOUT）；暂存态（无 W5c 代码）3/3。缺陷 A（bun ws 自签 TLS 既有问题）记入说明。已派 W5b 审计（含空断言修复验证）。
 
+### W9a 重跑读数：A2 绿（W11 路径）、A3 根因精确到文件（W9A-5，2026-11-14）
+
+旅程适配重跑（spec 改为状态栏 segment→弹框的真实用户路径，提交 `af6555b3276` 含 M107-1 同步与新共享驱动）：S0–S2 ✅、**A2 ✅**（segment 可见→弹框预填→登录→已登录态，33s 含冷启动）、**A3 ❌ 180s 超时**——但根因已定位到文件级（`a3-repair-erasure-trace.md`）：**W9A-5** = openWorkspace IPC 重复 `registerCloudRuntimeEnvironment` 轮换 pairing 身份（R1→R2），`classifyPeerReplacements` 无法证明同机（sameRegistration 只认 orcadDeployment）→ retire → purge 清算云项目行。A4/A5 阻塞；M107-1 同因待适配（已随本令）。已派 **W9A-5 修复代理**（幂等身份或 cloudProject 识别，含真换机负向断言）。
+
 ### W9a 生命线第一次读数：A3 红（桌面水合缺口，2026-11-14）
 
 旅程六步：S0–S2+A2 ✅（宿主注册含 TLS 指纹、建项授权、纯客户端登录——U6 修复在 e2e 构建确认）；**A3 ❌**：连接成功（direct、宿主已建 checkout）但登录后 ~500ms 云端项目行被剪除（store repos 1→0），工作区永不激活，A4/A5 阻塞。**根因（W9A-1）**：宿主拒绝云会话 `repo.list`（cloud-rpc-permission 未映射），渲染层 all-host 仓库目录水合随即剪行——U7 同族、桌面路径新暴露。另有 W9A-2（hostedReview/github.prForBranch/lineageList 同拒）、W9A-3（重试风暴偶发 4431）、W9A-4（种子项目授权指向占位宿主，测试侧清理）。**提交归属注记**：旅程 spec `tests/e2e/cloud-golden-journey-desktop.spec.ts` 被并发卷入我的 docs 提交 `48939e14c83`（消息标 docs 实含测试文件）——内容正确，多代理提交中不做历史重写，以此注记为准。证据 `evidence/journey-golden-a/`（timeline+findings+2 截图+run log）。
