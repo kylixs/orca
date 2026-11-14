@@ -2564,6 +2564,14 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### 链路覆盖审计回收——三个叠加机制解释「全绿却断链」（2026-11-14）
+
+审计（`test-reports/chain-coverage-audit.md`）：34 步中 **9 步标红**（B2/B3/B4/B6/C4 表单/C5 矩阵/C6 项目级策略/C10/D6），W9 双线此前零 spec 零执行。**三个叠加机制**：
+1. **测试宿主方法表≠生产**：`project.provision` 被刻意排除在测试 `ALL_RPC_METHODS` 外，e2e 打开工作区走了「旧宿主」容错分支照样成功；
+2. **浏览器测试选的方法恰在 mobile 允许清单内**（scope 判定 mobile 先于 cloud）：只调 `status.get`/`files.readDir` 的用例全绿，allowlist 外方法（`project.provision`/`worktree.*`）才裸 forbidden；
+3. **cloud-platform 测试套件无 CI 挂钩**，验收索引只验证据文件存在不验时效——AC 的 PASS 可无限期陈旧（M113 后 8 波集成期间链路断而无人知）。
+**改进落地**：常驻冒烟套件按审计设计实现（真实平台+**production 方法表**真宿主+真 PTY，Electron+Chromium 双驱动，S1–S7，≤5 分钟）；硬约束三条——方法表守卫断言、至少一条断言打在 mobile 允许清单之外、必须真浏览器驱动管理台/web-index；分层规则 R3（mock/scripted host）不得作为链路步骤覆盖依据、截图不构成链路验证。W9a（在途）交付桌面线后即扩展为该常驻套件；CI 挂钩缺口挂账（README/运维章节 + 后续 CI 任务）。
+
 ### W9a 桌面黄金旅程提前派发（用户指令：两主链路优先验证，2026-11-14）
 
 用户指令：两种远程开发主链路（A 桌面 / B Orca Web）优先测试验证。W9a 即刻派发（隔离 worktree 锁定 HEAD 构建运行，避免在途 W7b/W5b 未提交代码污染；主树只写 evidence）；**W9b 在 W7b+W5b 落地后立即接续**（其依赖：handoff 消费 + 宿主方法映射）。W9 从收口位改为集成验证先锋位。
