@@ -2564,6 +2564,14 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W10 测试+审计交叉确认 blocker → 回派修复（2026-11-14）
+
+**测试代理**（真实 Electron 双平台实例，六步旅程）：① **FAIL=D1/P1**——vite define 只注入 main 段，preload 未注入 → 无 env 云构建 `window.api.cloud` 缺失、登录界面不出现（`out/preload/index.js` 残留未替换标识符实证）；②-⑥ 全 PASS（登录成功/记忆 0600 生成/主进程层重启预填/换地址记忆更新/env 覆盖）。59 单测非空壳复核；`cloud-session-service` 4 失败用父提交工作树对照确认为既有 TLS 环境问题。**审计代理**交叉确认同点为 blocker B-1，另报 major M-1（托管锁定地址被登录记忆覆盖）+ M-2（`user:secret@` 地址连凭据写入记忆文件，违反「记忆绝无密码」边界）+ minor×5。sonnet 批次归属审计：**本提交内无关格式化改动为空**（全仓 format 噪声仍在工作区未入提交）。已派合并回派修复（B-1 三段 define + M-1 托管优先 + M-2 剥离 userinfo + 错误码 IPC 透传 + beginLogin 时序，各配断言）。
+
+### W7a 独立测试通过（2026-11-14）
+
+测试代理：两套件复跑 7/0 + 6/0；自有探针 **33 项断言 0 失败**——无权限签发 404 不泄露且有 denied 审计；换发令牌真实可用（GET /projects 只见授权项目）；30/30 并发双换发恰一 200；42 code 指纹在审计 API+磁盘双载体 100% 命中且明文零泄漏；换发响应与密码登录字段集合完全一致。观察 2 条：路由正则放宽使未知连字符动作 404→401（无泄露，与既有对齐）；入口 URL 待 W6b browserEntryUrl 落库后补中继场景组装（W7b 范围）。审计代理仍在跑。
+
 ### 并发落地潮与索引冲突二次实录（2026-11-14）
 
 四路完成交错落库 + W6a 修复代理发现 docs 提交卷入 relay 文件，用 plumbing 重建历史（两个 docs 提交哈希变更：W5a→`e2b9250fd90`、W7a→`16e324632c9`，树内容不变；reflog 残留报错为表面现象，三个功能提交均已核实 ON-BRANCH）。**已核实的分支线性状态**：`c615adee2f4` W6c → `b0665d848a7` W5a-seam → `3e0c9f970d2` W6a-fix → `16e324632c9` → `e2b9250fd90` → `2f0b9657217` W7a → `7058a99dd1c` W5a-panel。索引冲突根因=四代理+主会话共享一个 worktree 的 git index；现行缓解=代理提交前自检暂存区 + 冲突后 plumbing 修复（本次有效）；若再发，评估改用隔离 worktree 派发。
