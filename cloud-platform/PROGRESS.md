@@ -2564,6 +2564,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W10 关闭（修复复验五项全过，2026-11-14）
+
+复验（`evidence/w10-fix-verify/`）：① 原失败点转 PASS——真实构建烤入默认地址，产物门禁 `verified across 216 bundle(s)`，preload 零未替换标识符，**无 env 启动登录界面出现且预填构建默认**（前轮 FAIL 步），负对照（换回修复前产物）门禁如实 exit 1；② M-1 托管锁定真实 UI 验证（地址字段禁用+提示+IPC 打到锁定地址而非 evil）；③ M-2 凭据剥离 https/http 双 scheme 实测（记忆文件无 secret、0600）；④ 错误文案映射精确显示；⑤ 专项 72 用例全过 + cloud-session 4 失败基线对照仍为既有。**W10 关闭**（`af75dc475ea` + `f0665d6b0eb` + 独立测试六步旅程 + 审计 + 复验；两次回派闭环）。遗留挂账：m-4 渲染层内联校验镜像主进程、登出后预填刷新、platform unavailable 兜底文案 → P2/后续。通道③下一步 W7b 需①的 W3 提交（在途）。
+
 ### W6b 独立测试通过（2026-11-14）
 
 测试代理（隔离纪律佳例：临时 detached worktree 固定到 `8cdfdd02902` 验证，避开主树并发改动）：套件 23/23 + 回归 30/30；自有探针 14/14——宣告/清空（非粘连实测：同 id 重启不宣告即空）/带点 routeKey 置空/双中继取宣告者；**URL 可达性串联验证**：按平台发布的字面 URL 请求（CA 信任 + SAN 校验未关）→ 200 宿主 web-index 内容且宿主侧收到剥前缀后的 path 与 x-forwarded-proto——证明端到端经中继 `/h/` 转发真实可用，非字符串断言。观察项（存活窗口内旧值保留 ~30s，与 AC-23 语义一致，非缺陷）。证据 `evidence/w6b-verify/`（探针脚本可复跑）。
