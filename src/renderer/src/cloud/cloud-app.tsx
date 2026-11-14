@@ -40,11 +40,17 @@ export function CloudApp({ bridge }: { bridge: CloudBridge | null }): React.JSX.
 
   const openedProject = openedProjectSummary(session)
   if (bridge && openedProject) {
+    const { subscribe } = bridge
     return (
       <CloudProjectWorkspace
         session={session}
         project={openedProject}
         rpc={(method, params) => bridge.rpc(method, params ?? {}, openedProject.id)}
+        subscribe={
+          subscribe
+            ? (method, params, callbacks) => subscribe(openedProject.id, method, params, callbacks)
+            : null
+        }
       />
     )
   }

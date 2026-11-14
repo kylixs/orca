@@ -38,6 +38,7 @@ import {
   type BrowserSavedSession
 } from './cloud-browser-saved-session'
 import { browserUnsupportedAdminMethods } from './cloud-browser-bridge-unsupported'
+import { subscribeOverConnection } from './cloud-browser-bridge-subscription'
 import { BrowserProjectConnections } from './cloud-browser-project-connections'
 import type { CloudBridge } from './use-cloud-session'
 
@@ -319,6 +320,11 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
         return failure(error, 'RPC_FAILED')
       }
     },
+
+    subscribe: (projectId, method, params, callbacks) =>
+      session
+        ? subscribeOverConnection(projectConnections.get(projectId), method, params, callbacks)
+        : Promise.resolve({ ok: false as const, code: 'NOT_SIGNED_IN' }),
 
     onConnectionChanged(listener: (event: CloudConnectionEvent) => void): () => void {
       listeners.add(listener)

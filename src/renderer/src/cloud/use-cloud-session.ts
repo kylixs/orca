@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { errorCodeOf, readField } from '../../../shared/json-fields'
+import type * as cloudSubscription from './cloud-browser-bridge-subscription'
 import type {
   CloudArchiveProjectResult,
   CloudConnectionEvent,
@@ -17,6 +18,8 @@ import type {
   CloudRpcOutcome,
   CloudSessionState
 } from '../../../shared/cloud-platform-ipc'
+
+export type * from './cloud-browser-bridge-subscription'
 
 /**
  * Renderer-side cloud session state.
@@ -50,6 +53,13 @@ export type CloudBridge = {
     params: Record<string, unknown>,
     projectId: string
   ) => Promise<CloudRpcOutcome>
+  /** Streams one subscription over the project's live link; absent hides the terminal pane. */
+  subscribe?: (
+    projectId: string,
+    method: string,
+    params: Record<string, unknown>,
+    callbacks: cloudSubscription.CloudSubscriptionCallbacks
+  ) => Promise<cloudSubscription.CloudSubscribeOutcome>
   onConnectionChanged: (listener: (event: CloudConnectionEvent) => void) => () => void
 }
 

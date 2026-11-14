@@ -12,7 +12,10 @@ import type { WebPairingOffer } from '../web/web-pairing'
 
 /** Reply-shaped values the browser bridge hands back; no platform calls happen here. */
 
-export type BrowserCloudClient = Pick<WebRuntimeClient, 'call' | 'close' | 'connectionState'>
+export type BrowserCloudClient = Pick<WebRuntimeClient, 'call' | 'close' | 'connectionState'> & {
+  /** Streams a runtime subscription on a child socket; scripted doubles may omit it. */
+  subscribe?: WebRuntimeClient['subscribe']
+}
 
 export type OpenConnection = {
   client: BrowserCloudClient
