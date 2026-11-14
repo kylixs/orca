@@ -2624,6 +2624,10 @@ TTL 先改 5 分钟后经再评估**改回 60 秒**（单次消费+绑定不变�
 
 **事故与恢复**：主会话随后的 docs 提交携带暂存区陈旧副本，把 7 路径回退（config.js 复活、?api= 删、4 用例删）；修复代理重落地 `a069482b23a`；主会话恢复时又把 PROGRESS checkout 到旧快照顶掉一节记录（本段即补写）。终态恢复提交 `d5a00712179`：5 路径自 a069 恢复 + config.js 删除入档 + PROGRESS 保留最新。**恢复后验证**：config.js 不存在于 HEAD；`sessionPageUrlFor`/`searchParams.set('api', platformOrigin)` 在位（server.ts:677/683/698）；维护态双入口补例在位。**防再发规则**：主会话提交前必须核对暂存集=预期文件（本次恢复中已实践：PROGRESS 取消暂存保最新版）；F3 计数笔误更正：W3 段 exploratory 16 实为 13。
 
+### W7b 独立测试通过（handoff 链全通）+ 新缺口 W7c 立项（2026-11-14）
+
+测试代理（隔离 worktree 固定提交 + 现构建 web bundle）：套件全绿（handoff 10/0、web 目录 384 例、平台全量 240/241——1 失败为隔离缺 evidence 的环境项）；**端到端旅程 13/13**：点「Orca Web」真实发 web-handoff、新标签 URL 正确、换发 200+ACAO、hash 清空、无登录表单直达工作区壳、会话持久化；重放 410 回落表单预填；CORS 双向 4/4（非白名单零头+浏览器 TypeError 实证）；离线/维护置灰 toast 3/3。**新缺口 W7c**：自动进入后工作区**降级启动**（空白+Session restore failed 粘性 toast）——web 启动链按原生假设调用被云方法表拒绝的 RPC（repo.list/ssh.*/projectGroup.*/worktree.lineageList/folderWorkspace.list）+App 自身 socket 认证失败；handoff 链本身全通。已派 **W7c**（启动链云会话感知降级：跳过原生专属调用、呈现已采纳项目工作区、必要时按 FR-3.9 扩只读云方法表）。W7b 本令范围（handoff 消费+CORS+按钮）三方齐备待关闭。
+
 ### W5b 开发完成（通道④收口，待独立测试+审计，2026-11-14）
 
 提交 `5a1746b869e`（4 文件）：**宿主侧根因修复**——`runtime-rpc-websocket-dispatch` 把 `cloudSession` 判定提到 mobile scope 之前（云票据设备行陈旧 `scope:'mobile'` 时票据 perms 被电话允许清单整体接管 → 裸 forbidden 零审计），票据 perms 经既有 `cloudMethodAccess` 映射（terminal.→terminal、worktree.*→terminal、files.*→读写、project.provision→open），拒绝带 `method_denied` 审计；真手机/配对桌面路径零变化（mobile 套件全绿背书）。e2e：cloud-admin-session 3/3（含 W5b-1 真 PTY 全链路：打开→provision→终端 send→read 回显→越权 PERMISSION_MISSING 带审计；W5b-2 无授权占位+拒绝审计）+ cloud-rpc-scope 5/5（新回归修复前红）+ tc:web/tc:node 绿（ENV-1 exclude 已落）。**新发现 U14**：终端流式订阅被子连接复用一次性票据宿主拒 `replayed`（e2e 已改缓冲读证全链路）→ 立 W5c 派发。已派 W5b 独立测试。
