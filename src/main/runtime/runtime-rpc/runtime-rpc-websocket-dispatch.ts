@@ -247,7 +247,9 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
               projectRoot: cloudSession.projectRoot,
               workspaceRoot: cloudSession.workspaceRoot,
               repoUrl: cloudSession.repoUrl ?? '',
-              defaultBranch: cloudSession.defaultBranch ?? ''
+              defaultBranch: cloudSession.defaultBranch ?? '',
+              // Copy: the registry row's array must not alias a handler-visible reply.
+              perms: [...cloudSession.permissions]
             }
           : undefined,
         // Why: the handler only asks this server to queue the outcome; it never

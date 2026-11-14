@@ -14,6 +14,7 @@ import { createCloudAccessGuard } from '../cloud-platform/cloud-access-guard'
 import { ALL_RPC_METHODS } from '../runtime/rpc/methods'
 import { MANAGED_WORKTREE_METHODS } from '../runtime/rpc/methods/worktree-create-managed'
 import { PROJECT_PROVISION_METHODS } from '../runtime/rpc/methods/project-provision'
+import { WORKSPACE_INFO_METHODS } from '../runtime/rpc/methods/workspace-info'
 import type { RpcAnyMethodDeclaration } from '../runtime/rpc/core'
 import type { DeviceRegistry } from '../runtime/device-registry'
 import type { UpgradeAdmission, WebSocketConnectionGate } from '../runtime/rpc/ws-transport'
@@ -328,6 +329,18 @@ export function cloudRuntimeAdmission(
   return pending
 }
 
+/**
+ * The table a cloud-admitted host installs: the paired-client surface plus the
+ * cloud-only methods that exist to answer from a ticket. A non-cloud build
+ * never registers them, so no caller can reach them without admission.
+ */
+export const CLOUD_HOST_METHODS: readonly RpcAnyMethodDeclaration[] = [
+  ...ALL_RPC_METHODS,
+  ...MANAGED_WORKTREE_METHODS,
+  ...PROJECT_PROVISION_METHODS,
+  ...WORKSPACE_INFO_METHODS
+]
+
 export function cloudAdmissionOption(
   env: NodeJS.ProcessEnv = process.env,
   options: CloudAdmissionOptions = {}
@@ -346,11 +359,10 @@ export function cloudAdmissionOption(
   }
   // Design §8.3: managed creation exists only in cloud builds, so the method
   // table is extended here rather than in ALL_RPC_METHODS.
-  const methods = [...ALL_RPC_METHODS, ...MANAGED_WORKTREE_METHODS, ...PROJECT_PROVISION_METHODS]
   return {
     ...webSocketTls,
     upgradeAdmission: runtime.admission,
     connectionGate: runtime.connectionGate,
-    methods
+    methods: CLOUD_HOST_METHODS
   }
 }

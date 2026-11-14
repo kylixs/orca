@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  isInsideWorkspaceRoot,
   openCloudWorkspaceOverRpc,
   provisionCloudProjectOverRpc,
   type CloudWorkspaceRpc,
@@ -126,5 +127,21 @@ describe('云端工作区打开：项目准备', () => {
       code: 'CLONE_FAILED',
       message: 'clone failed'
     })
+  })
+})
+
+describe('工作区根包含判定（workspace.info 与打开流程共用）', () => {
+  it('根自身与其下路径算内部，兄弟目录与前缀伪装不算', () => {
+    const root = '/srv/work/payment-service/.orca-worktrees/zhangsan'
+    expect(isInsideWorkspaceRoot(root, root)).toBe(true)
+    expect(isInsideWorkspaceRoot(root, `${root}/main`)).toBe(true)
+    expect(isInsideWorkspaceRoot(root, `${root}/feature/cloud`)).toBe(true)
+    expect(isInsideWorkspaceRoot(root, `${root}-sibling/main`)).toBe(false)
+    expect(isInsideWorkspaceRoot(root, '/srv/work/other/main')).toBe(false)
+  })
+
+  it('带尾分隔符的根同样判定', () => {
+    expect(isInsideWorkspaceRoot('/srv/root/', '/srv/root/main')).toBe(true)
+    expect(isInsideWorkspaceRoot('/srv/root/', '/srv/roo/main')).toBe(false)
   })
 })

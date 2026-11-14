@@ -15,6 +15,7 @@ import type { RpcCallerIdentity } from './rpc-caller-identity'
 import type { RpcMethodPermission } from './rpc-method-permission'
 import type { CloudDenialDetails } from '../../cloud-platform/cloud-denial-details'
 import type { CloudProvisionReport } from '../../cloud-platform/cloud-project-provision'
+import type { CloudPermission } from '../../cloud-platform/cloud-credential'
 
 export type PairingRpcContext = {
   getEndpoints(params: PairingGetEndpointsParams): Promise<PairingGetEndpointsResult>
@@ -35,6 +36,8 @@ export type CloudRpcSession = {
   workspaceRoot: string
   repoUrl: string
   defaultBranch: string
+  /** The ticket's signed permission set, echoed by `workspace.info`. */
+  perms: readonly CloudPermission[]
 }
 
 export type RpcSuccess = {

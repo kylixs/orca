@@ -23,7 +23,8 @@ const cloudSession = {
   projectRoot: '/tmp/payment-service',
   workspaceRoot: '/tmp/payment-service/.orca-worktrees/zhangsan',
   repoUrl: '',
-  defaultBranch: ''
+  defaultBranch: '',
+  perms: ['open', 'terminal'] as const
 }
 
 function startCloudMultiplex(runtimeOverrides: NonNullable<Parameters<typeof stubRuntime>[0]>) {

@@ -25,6 +25,10 @@ export const NODE_RUNTIME_INCLUDE = [
   // same real TLS runtime and real PTY, so bun would red it and silently retire
   // the proof (W9A-7 audit MAJ-1, same family as W5b defect B).
   'src/main/cloud-platform/cloud-terminal-multiplex-scope.test.ts',
+  // Why: the workspace.info real-host suite drives a real TLS runtime; bun's ws
+  // fails the throwaway-certificate handshake, so the proof would silently retire
+  // from the bun pool (same family as W5b defect B / W9A-7 audit MAJ-1).
+  'src/main/cloud-platform/cloud-workspace-info-real-host.test.ts',
   'src/renderer/src/lib/react-commit-cascade-observer.test.ts',
   'src/renderer/src/lib/react-commit-cascade-telemetry.test.ts',
   ...SQLITE_RUNTIME_INCLUDE,

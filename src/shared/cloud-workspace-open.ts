@@ -36,7 +36,11 @@ export type ProvisionCloudProjectResult =
 /** Clone can take minutes on a large repository; keep the RPC alive well past a probe. */
 const PROVISION_TIMEOUT_MS = 600_000
 
-function isInside(root: string, candidate: string): boolean {
+/**
+ * The workspace containment verdict shared by the open flow and the host's
+ * `workspace.info`, so both answer "is this the ticket's own checkout" alike.
+ */
+export function isInsideWorkspaceRoot(root: string, candidate: string): boolean {
   if (candidate === root) {
     return true
   }
@@ -52,7 +56,7 @@ function worktreeNameForBranch(branch: string): string {
 function existingWorkspacePath(result: unknown, workspaceRoot: string): string | null {
   for (const record of readArray(result, 'worktrees') ?? []) {
     const path = readString(record, 'path')
-    if (path !== null && isInside(workspaceRoot, path)) {
+    if (path !== null && isInsideWorkspaceRoot(workspaceRoot, path)) {
       return path
     }
   }
