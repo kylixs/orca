@@ -46,6 +46,7 @@ import {
   createRelayNodeRegistry,
   parseRelayRegistration,
   routeKeyFromDirectAddrs,
+  BROWSER_ROUTE_KEY_PATTERN,
   RELAY_ALIVE_DEFAULT_MS
 } from './relay-nodes.ts'
 import {
@@ -635,6 +636,21 @@ export function createApp(config: ApiConfig): ApiHandle {
     }))
   }
 
+  /**
+   * The browser-mode entry for one host route: the first live relay that
+   * announced a browser edge serves `/h/<routeKey>/`. Empty rather than broken —
+   * no announcing relay, no route, or a key the relay's `/h/` parser refuses
+   * (it drops dotted keys) must not hand out a URL no browser can load.
+   */
+  function browserEntryUrlFor(routeKey: string | null): string {
+    if (!routeKey || !BROWSER_ROUTE_KEY_PATTERN.test(routeKey)) return ''
+    const nowMs = now()
+    const live = relayNodes.healthy(nowMs, relayAliveMs)
+    const chosen = live.length > 0 ? live : relayNodes.all().slice(-1)
+    const edge = chosen.find((node) => node.browserHost !== '')
+    return edge ? `https://${edge.browserHost}/h/${routeKey}/web-index.html` : ''
+  }
+
   function projectView(p: Project, user: User): Record<string, unknown> {
     const permissions = store.effectivePermissions(p.id, user)
     const host = store.hosts.get(p.hostId)
@@ -646,6 +662,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       hostId: p.hostId,
       hostName: host?.name ?? null,
       hostStatus: hostStatusView(host),
+      browserEntryUrl: browserEntryUrlFor(host?.relayRoute ?? null),
       // Why here: the workbench can only explain a maintenance window it can see.
       ...(host?.maintenanceReason ? { hostMaintenanceReason: host.maintenanceReason } : {}),
       path: p.path,
@@ -1866,6 +1883,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         relays: relayNodes.all().map((node) => ({
           id: node.id,
           host: node.host,
+          browserHost: node.browserHost,
           port: node.port,
           online: now() - node.lastSeenAt <= relayAliveMs,
           lastSeenAt: node.lastSeenAt
@@ -1887,7 +1905,8 @@ export function createApp(config: ApiConfig): ApiHandle {
         hosts: [...store.hosts.values()].map((h) => ({
           ...h,
           credentialHash: undefined,
-          online: hostOnline(h)
+          online: hostOnline(h),
+          browserEntryUrl: browserEntryUrlFor(h.relayRoute)
         }))
       })
     }
@@ -2637,7 +2656,8 @@ export function createApp(config: ApiConfig): ApiHandle {
         fingerprint: host.fingerprint,
         tlsFingerprint: host.tlsFingerprint ?? host.fingerprint,
         e2eePublicKeyB64: host.e2eePublicKey,
-        capabilities: host.capabilities
+        capabilities: host.capabilities,
+        browserEntryUrl: browserEntryUrlFor(host.relayRoute)
       },
       endpoints: {
         direct: host.directAddrs.map((url, index) => ({

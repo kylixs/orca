@@ -17,10 +17,12 @@ describe('中继注册体解析：host 三种情况', () => {
   test('显式 host 保留（并去掉首尾空白）', () => {
     assert.deepEqual(parseRelayRegistration({ port: 18443, host: 'relay.example.test' }), {
       host: 'relay.example.test',
+      browserHost: undefined,
       port: 18443
     })
     assert.deepEqual(parseRelayRegistration({ port: 18443, host: '  relay.example.test  ' }), {
       host: 'relay.example.test',
+      browserHost: undefined,
       port: 18443
     })
   })
@@ -33,6 +35,7 @@ describe('中继注册体解析：host 三种情况', () => {
     assert.deepEqual(parseRelayRegistration({ id: 'relay-a', port: 18443 }), {
       id: 'relay-a',
       host: undefined,
+      browserHost: undefined,
       port: 18443
     })
   })
@@ -46,6 +49,43 @@ describe('中继注册体解析：host 三种情况', () => {
     assert.equal(parseRelayRegistration({ host: 'relay.example.test' }), null)
     assert.equal(parseRelayRegistration({ port: 0, host: 'relay.example.test' }), null)
     assert.equal(parseRelayRegistration({ port: 70000, host: 'relay.example.test' }), null)
+  })
+})
+
+describe('中继注册体解析：browserHost 白名单（W6b）', () => {
+  test('合法 host[:port] 保留（并去掉首尾空白）', () => {
+    const plain = parseRelayRegistration({ port: 18443, browserHost: 'relay-browser.example.test' })
+    assert.equal(plain?.browserHost, 'relay-browser.example.test')
+    const withPort = parseRelayRegistration({
+      port: 18443,
+      browserHost: ' relay.example.test:8443 '
+    })
+    assert.equal(withPort?.browserHost, 'relay.example.test:8443')
+  })
+
+  test('缺字段、旧注册体、空白串、非字符串都是 undefined', () => {
+    assert.equal(parseRelayRegistration({ port: 18443 })?.browserHost, undefined)
+    assert.equal(
+      parseRelayRegistration({ port: 18443, browserHost: '   ' })?.browserHost,
+      undefined
+    )
+    assert.equal(parseRelayRegistration({ port: 18443, browserHost: 42 })?.browserHost, undefined)
+  })
+
+  test('白名单外字符置空：scheme、路径、空白、越界端口都不收', () => {
+    for (const bad of [
+      'https://relay.example.test',
+      'relay.example.test/h/dev-001',
+      'relay example.test',
+      'relay.example.test:0',
+      'relay.example.test:99999'
+    ]) {
+      assert.equal(
+        parseRelayRegistration({ port: 18443, browserHost: bad })?.browserHost,
+        undefined,
+        bad
+      )
+    }
   })
 })
 
@@ -68,7 +108,10 @@ describe('中继注册表：host 的保留与更新', () => {
   test('再次注册报新 host：地址更新', () => {
     const registry = createRelayNodeRegistry()
     registry.register({ id: 'relay-a', host: '10.0.0.8', port: 18443 }, 1_000)
-    const moved = registry.register({ id: 'relay-a', host: 'relay.example.test', port: 18443 }, 2_000)
+    const moved = registry.register(
+      { id: 'relay-a', host: 'relay.example.test', port: 18443 },
+      2_000
+    )
     assert.equal(moved.host, 'relay.example.test')
   })
 
@@ -76,10 +119,42 @@ describe('中继注册表：host 的保留与更新', () => {
     const registry = createRelayNodeRegistry()
     registry.register({ id: 'relay-a', host: '10.0.0.1', port: 18441 }, 1_000)
     registry.register({ id: 'relay-b', host: '10.0.0.2', port: 18442 }, 2_000)
-    assert.deepEqual(registry.healthy(2_500).map((node) => node.id), ['relay-a', 'relay-b'])
+    assert.deepEqual(
+      registry.healthy(2_500).map((node) => node.id),
+      ['relay-a', 'relay-b']
+    )
 
-    assert.deepEqual(registry.healthy(32_000, 30_000).map((node) => node.id), ['relay-b'])
-    assert.deepEqual(registry.all().map((node) => node.id), ['relay-a', 'relay-b'])
+    assert.deepEqual(
+      registry.healthy(32_000, 30_000).map((node) => node.id),
+      ['relay-b']
+    )
+    assert.deepEqual(
+      registry.all().map((node) => node.id),
+      ['relay-a', 'relay-b']
+    )
+  })
+})
+
+describe('中继注册表：browserHost 随最新注册体（W6b）', () => {
+  test('首注册无 browserHost 为空串，报了才有值', () => {
+    const registry = createRelayNodeRegistry()
+    const bare = registry.register({ id: 'relay-a', port: 18443 }, 1_000)
+    assert.equal(bare.browserHost, '')
+    const edged = registry.register(
+      { id: 'relay-b', browserHost: 'relay-browser.example.test', port: 18444 },
+      2_000
+    )
+    assert.equal(edged.browserHost, 'relay-browser.example.test')
+  })
+
+  test('再次注册未报 browserHost：清空（关闭浏览器模式必须停止被推荐）', () => {
+    const registry = createRelayNodeRegistry()
+    registry.register(
+      { id: 'relay-a', browserHost: 'relay-browser.example.test', port: 18443 },
+      1_000
+    )
+    const refreshed = registry.register({ id: 'relay-a', port: 18443 }, 2_000)
+    assert.equal(refreshed.browserHost, '', 'a disabled edge must not stay advertised')
   })
 })
 

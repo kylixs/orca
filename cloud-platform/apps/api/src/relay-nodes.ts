@@ -1,4 +1,3 @@
-
 /**
  * The relays clients may be sent to (AC-23). A relay re-registers on every route
  * sync, so "recently seen" means "still serving"; one that stops beating drops
@@ -6,6 +5,12 @@
  */
 
 export const RELAY_ALIVE_DEFAULT_MS = 30_000
+
+/**
+ * The route-key shape a browser path `/h/<key>/` may carry: the relay refuses
+ * dotted keys, so anything else would only mint an entry URL that cannot load.
+ */
+export const BROWSER_ROUTE_KEY_PATTERN = /^[A-Za-z0-9_-]+$/
 
 export type RelayNode = {
   id: string
@@ -15,6 +20,12 @@ export type RelayNode = {
    * predating the field keep working.
    */
   host: string
+  /**
+   * Where a browser reaches this relay's `/h/<key>/` edge. Empty unless the
+   * relay runs browser mode and announced a public host, so a relay that turns
+   * the edge off stops being advertised at its next registration.
+   */
+  browserHost: string
   port: number
   lastSeenAt: number
   /** Order of first registration; it is the priority clients fall back in. */
@@ -23,7 +34,15 @@ export type RelayNode = {
 
 export type RelayNodeRegistry = {
   /** Registers or refreshes one relay; the id lets the same node re-check in. */
-  register: (input: { id?: string | undefined; host?: string | undefined; port: number }, nowMs: number) => RelayNode
+  register: (
+    input: {
+      id?: string | undefined
+      host?: string | undefined
+      browserHost?: string | undefined
+      port: number
+    },
+    nowMs: number
+  ) => RelayNode
   /** Live relays, priority order. */
   healthy: (nowMs: number, aliveMs?: number) => RelayNode[]
   all: () => RelayNode[]
@@ -38,10 +57,12 @@ export function createRelayNodeRegistry(): RelayNodeRegistry {
       // Why derive when absent: relays predating the id field still must register.
       const id = input.id && input.id.length > 0 ? input.id : `relay:${input.port}`
       const existing = nodes.get(id)
-      const host = input.host && input.host.length > 0 ? input.host : existing?.host ?? ''
+      const host = input.host && input.host.length > 0 ? input.host : (existing?.host ?? '')
+      // Not sticky on purpose: an absent browserHost means the edge is off now.
+      const browserHost = input.browserHost ?? ''
       const node: RelayNode = existing
-        ? { ...existing, host, port: input.port, lastSeenAt: nowMs }
-        : { id, host, port: input.port, lastSeenAt: nowMs, order: nextOrder++ }
+        ? { ...existing, host, browserHost, port: input.port, lastSeenAt: nowMs }
+        : { id, host, browserHost, port: input.port, lastSeenAt: nowMs, order: nextOrder++ }
       nodes.set(id, node)
       return node
     },
@@ -83,10 +104,22 @@ export function routeKeyFromDirectAddrs(directAddrs: string[], hostName: string)
   return addr ? `ip-${addr.replace(/[.:]/g, '-')}` : hostName
 }
 
+/**
+ * A browser host is spliced verbatim into `https://<browserHost>/h/...`, so only
+ * a bare `host[:port]` is accepted: a scheme, path, or whitespace would move the
+ * entry onto an origin the relay never serves.
+ */
+function isBrowserHostForm(value: string): boolean {
+  const match = value.match(/^([A-Za-z0-9.-]+)(?::(\d{1,5}))?$/)
+  if (!match) return false
+  const port = match[2]
+  return port === undefined || (Number(port) >= 1 && Number(port) <= 65535)
+}
+
 /** Reads a relay registration body; a bad port is the only thing that invalidates it. */
 export function parseRelayRegistration(
   body: unknown
-): { id?: string; host?: string; port: number } | null {
+): { id?: string; host?: string; browserHost?: string; port: number } | null {
   const rawPort = field(body, 'port')
   const port = typeof rawPort === 'number' ? rawPort : Number(rawPort)
   if (!Number.isInteger(port) || port <= 0 || port > 65535) {
@@ -94,7 +127,12 @@ export function parseRelayRegistration(
   }
   const rawHost = field(body, 'host')
   const host = typeof rawHost === 'string' && rawHost.trim().length > 0 ? rawHost.trim() : undefined
+  const rawBrowserHost = field(body, 'browserHost')
+  const browserHost =
+    typeof rawBrowserHost === 'string' && isBrowserHostForm(rawBrowserHost.trim())
+      ? rawBrowserHost.trim()
+      : undefined
   const rawId = field(body, 'id')
   const id = typeof rawId === 'string' ? rawId : ''
-  return id === '' ? { host, port } : { id, host, port }
+  return id === '' ? { host, browserHost, port } : { id, host, browserHost, port }
 }

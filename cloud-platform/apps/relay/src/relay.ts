@@ -289,7 +289,12 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
           // Where clients should dial us: an explicit advertise wins (NAT),
           // otherwise the platform falls back to the registration's source IP.
           ...(options.publicHost ? { host: options.publicHost } : {}),
-          port: announcedPort
+          port: announcedPort,
+          // Only a live browser edge may name one, and the platform blanks
+          // anything that is not a bare host[:port].
+          ...(options.browser && process.env.RELAY_BROWSER_PUBLIC_HOST?.trim()
+            ? { browserHost: process.env.RELAY_BROWSER_PUBLIC_HOST.trim() }
+            : {})
         }),
         signal: AbortSignal.timeout(options.controlTimeoutMs ?? 3000)
       }
