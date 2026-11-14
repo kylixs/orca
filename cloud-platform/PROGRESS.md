@@ -2570,6 +2570,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **事故与恢复**：主会话随后的 docs 提交携带暂存区陈旧副本，把 7 路径回退（config.js 复活、?api= 删、4 用例删）；修复代理重落地 `a069482b23a`；主会话恢复时又把 PROGRESS checkout 到旧快照顶掉一节记录（本段即补写）。终态恢复提交 `d5a00712179`：5 路径自 a069 恢复 + config.js 删除入档 + PROGRESS 保留最新。**恢复后验证**：config.js 不存在于 HEAD；`sessionPageUrlFor`/`searchParams.set('api', platformOrigin)` 在位（server.ts:677/683/698）；维护态双入口补例在位。**防再发规则**：主会话提交前必须核对暂存集=预期文件（本次恢复中已实践：PROGRESS 取消暂存保最新版）；F3 计数笔误更正：W3 段 exploratory 16 实为 13。
 
+### W3 关闭（修复复验三项全过，2026-11-14）
+
+复验（`evidence/w3-fix-verify/`）：e2e 10/0 + gating 3/0（pinned 检出）；跨 origin 三形态探针——api 参数跟随浏览器所见平台 origin（直连/反代/反代+xfp），页面 origin 始终宿主；真实点击「详情」新开 `cloud-admin.html?api=…` 直达登录表单（对照去掉参数即「未配置」态，参数即成因）；变异抽查真做（删 isDirectAddrForm 门 → 10/10 红）；config.js 死旋钮全仓清零。**如实记录的部署前提缺陷**：平台无 CORS 头——跨 origin 页面提交登录预检被拦（`network_error`）；与 W5a 测试的 CORS 发现互证，已并入 **W7b** 范围（受控 CORS：仅浏览器必需路由对 ?api= 来源开放，负向用例防全开）。**W3 关闭**（`cd36987d7a0` + `e5d0f68721a`/`a069482b23a` + 独立测试 11 探针 + 审计 + 复验，三方齐备；索引冲突第四次在其间发生并闭环）。通道①放行 **W7b**（已派，brief 含 CORS 项）。
+
 ### W5a 独立测试回收（8/9 过 + 1 潜伏缺陷 + 2 环境发现，2026-11-14）
 
 测试代理：67 用例全绿 + tc:web 过；组件行为探针 8/9——授权门零调用零加载（G1）、create 先于 subscribe（P1）、退避 500/1000/2000/4000/8000ms 逐档精确且复用 term_1（P3）、卸载顺序 unsubscribe→close→dispose 且迟到订阅被退订不复活（P2/P4）。**发现 P5（潜伏）**：onError/onClose 双触发时 scheduleReconnect 定时器被覆盖未清除（观测 3 次订阅、句柄泄漏）；现传输层三处互斥保证不可达，换传输即触发——一句修（先 clearTimeout）。**浏览器真实验证部分阻塞=如实划入 W5b**：宿主对云会话回退 mobile 允许清单拒绝 `project.provision`/`worktree.*`（裸 forbidden 且无审计）——W5b 要打通的宿主侧环节。**环境级发现两项**：① 平台无 CORS 头，`?api=` 跨源登录会被预检拦截（W3/M117↔W7b 集成缺口，归 W7b 处理）；② 共享 `out/` 并发构建曾产坏包（cloud-admin 入口混入 web 挂载副作用）——共享 worktree 风险实证，核验一律以重建后干净构建为准。已派合并回派修复（MAJ-1/2 + P5 + MIN-3/4）。
