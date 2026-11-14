@@ -2649,6 +2649,10 @@ MAJ-1 修复 `5079fb63497`（2 文件）：handoff e2e spec 进 cloud-e2e includ
 
 提交 `4ffbc3860dc`：缺陷 B 实为两个叠加真 bug——B1 bun worker 静默 PTY（e2e 列入 vitest-node-runtime 池以 node 执行+文件头声明 runner）+ **B2 嵌套读取**（`terminal.read` 回包在 `result.terminal` 下，原 helper 读 `result.tail` 永远 undefined——任何 runner 下断言都不可能匹配，超时分支被 ok 检查放行=假阴性）。修复后 RED/GREEN：默认跑法（node 池）4/4 绿且回显真实（`echo ORCA_W5B_PTY_ECHO_OK`）；去掉池声明 RED（ECHO_TIMEOUT）；暂存态（无 W5c 代码）3/3。缺陷 A（bun ws 自签 TLS 既有问题）记入说明。已派 W5b 审计（含空断言修复验证）。
 
+### W9A-6 修复完成：入口 4 连接全准入、A3 保持绿；W9A-7 派发（2026-11-14）
+
+提交 `d59fa8bac4da`（9 文件）：槽位改按**逻辑会话（设备）**记账——(user, project, device) 1 槽（票据 deviceId 稳定），新增 `MAX_SOCKETS_PER_DEVICE_SESSION=12` 防单设备散发（入口实测峰值 4）；主机 32 仍按 socket；4431/jti/吊销链不变；真手机/配对桌面（无 orca-cred 子协议）逐字节未动。测试：W9A6-1 真栈 4 连接全准入+真回显（A4 形态）、第 4 台设备仍 4431+释放可复用、RED 复验、158 文件 153 绿（7 败经 stash 对照=既有/环境）。**旅程实跑：S0–S3 全绿、全程零 4431**。A4 仍红=两个新缺口（如实停手）：① 宿主对云会话拒 `terminal.multiplex`（需工作区边界检查，安全面变更）→ 已派 **W9A-7**；② 旅程 A4 断言用 `pty.hasPty` 对 `remote:` 句柄结构性不可满足 → 随 W9A-7 适配远端语义断言。
+
 ### W9A-5 修复完成：A3 绿（2.1s）；新阻断 W9A-6 立项（2026-11-14）
 
 提交 `7bb66c0da89`（5 文件）：选方向 a（写端不轮换身份）——同项目+同 host E2EE key → 复用已存持久行（只刷新 sidecar checkout 路径）；host key 变化仍轮换 → retire/purge 语义原样保留（负向测试钉死）；orcadDeployment 原生路径逐字节未动。新测试两例修复前均红（stash 验证）+ 幂等/负向断言 + 90 用例全绿。**旅程回归**：A2 ✅ → **A3 ✅（2.1s，修复前 3.6m 超时+行被清算；checkout 激活、route=direct）**——`02-workspace-opened.png` 为修复前不存在的状态。**新阻断 W9A-6**：A4 终端 4431 Too many sessions——云每连接一票一 socket，入口并发多条触顶 §8.4 上限 3（与 W5c 观察同源）。已派诊断修复代理。
