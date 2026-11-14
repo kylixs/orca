@@ -9,8 +9,8 @@ import {
 } from '../cloud-platform/cloud-host-enrollment'
 import { resolveCloudHostTls } from '../cloud-platform/cloud-host-tls'
 import { listProjectDirs } from '../cloud-platform/cloud-project-dirs'
-import { installCloudPlatformIpc } from '../ipc/cloud-platform'
-import { createCloudAccessGuard } from '../cloud-platform/cloud-access-guard'
+import type { CloudAccessGuard } from '../cloud-platform/cloud-access-guard'
+import { attachRuntimeToCloudAdmission } from './cloud-runtime-attach'
 import { ALL_RPC_METHODS } from '../runtime/rpc/methods'
 import { MANAGED_WORKTREE_METHODS } from '../runtime/rpc/methods/worktree-create-managed'
 import { PROJECT_PROVISION_METHODS } from '../runtime/rpc/methods/project-provision'
@@ -28,7 +28,7 @@ import type { CloudHostAuditSink } from '../cloud-platform/cloud-host-audit'
 export type CloudRuntimeTarget = {
   closeCloudDeviceSessions: (tokens: readonly string[]) => number
   /** Installs the policy/read-budget guard; optional so tests can drive a bare runtime. */
-  setCloudAccessGuard?: (guard: ReturnType<typeof createCloudAccessGuard> | null) => void
+  setCloudAccessGuard?: (guard: CloudAccessGuard | null) => void
   /** Installs the heartbeat reporter; optional for the same reason. */
   setCloudProvisionReporter?: (reporter: CloudProvisionReporter | null) => void
   /** Installs the refusal sink; optional for the same reason. */
@@ -292,28 +292,20 @@ function startPolling(env: NodeJS.ProcessEnv): CloudRuntimeAdmission {
  * Post-start wiring: revocation → live sockets, and the renderer IPC surface.
  * One call so the runtime launch path stays a single line.
  */
-export function installCloudAccessGuard(
-  runtime: Pick<CloudRuntimeTarget, 'setCloudAccessGuard'>,
-  client: Pick<CloudAgentClient, 'snapshot'>
-): void {
-  // Why resolve per call: a policy change must reach existing sessions, and the
-  // snapshot is refreshed on the heartbeat timer.
-  runtime.setCloudAccessGuard?.(
-    createCloudAccessGuard(() => ({ policies: client.snapshot().policies }))
-  )
+export function attachCloudRuntime(runtime: CloudRuntimeTarget): void {
+  attachRuntimeToCloudAdmission(runtime, cloudRuntimeAdmission())
 }
 
-export function attachCloudRuntime(runtime: CloudRuntimeTarget): void {
-  const admission = cloudRuntimeAdmission()
-  admission?.bindRuntime(runtime)
-  if (admission?.client) {
-    installCloudAccessGuard(runtime, admission.client)
-    const client = admission.client
-    runtime.setCloudProvisionReporter?.((report) => client.reportProvisioned(report))
-    runtime.setCloudHostAudit?.((event) => client.reportAudit(event))
-  }
-  installCloudPlatformIpc()
-}
+/**
+ * Injectable core of `attachCloudRuntime`: binds revocations and installs the
+ * access guard plus the provision/audit reporters.
+ *
+ * A first start enrols over the network, so the client does not exist yet when
+ * the RPC server is constructed and attached; the wiring then follows `ready`.
+ * Skipping it there left enrolled hosts permanently without a provision reporter
+ * (the platform never saw `failed`) and without the download guard.
+ */
+export { attachRuntimeToCloudAdmission, installCloudAccessGuard } from './cloud-runtime-attach'
 
 // Why: the RPC server reads its options synchronously and the gate needs the server
 // itself, so the admission is memoised until the server exists to be bound.
