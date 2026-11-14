@@ -47,11 +47,40 @@ import {
  *       dedicated case below and stays skipped until W13 lands
  *   B5  the same link in a fresh browser profile redeems 410 and falls back to
  *       the sign-in form with the platform address pre-filled
- *   B6  every step is timed into a timeline JSON and key moments screenshotted
+ *   E1  every step is timed into a timeline JSON and key moments screenshotted
  *       into `cloud-platform/evidence/journey-golden-b/`
+ *
+ * Coverage map against business-chain-tests §2 (line B), so the two numbering
+ * schemes are never conflated: this journey's B1–B5 are §2's B1–B5. §2-B6
+ * (relay access, `/h/<routeKey>/`) is the W6 relay domain and is not part of
+ * this journey — the entry here is the host's direct TLS address. §2-B3's
+ * 「线路徽标正常」 renders with the workspace view, so it sits downstream of
+ * the B4 red line below. §2-B7/B8 are covered by the W7b suites
+ * (web-handoff/web-handoff-entry and the web session restore/renewal specs).
+ * Evidence lands as step `E1-journey-evidence`, deliberately not numbered B6.
+ *
+ * Disclosure — the journey's shortcuts, none silent: the host TLS is
+ * self-signed and ignored (production trust lives in the desktop/platform
+ * fingerprint pinning, M108/M109), the platform runs plain http, the served
+ * web bundle is the instrumented e2e build (VITE_EXPOSE_STORE), the C4/C5
+ * front matter rides the platform API instead of the wizards, and the host is
+ * headless. Every assertion beyond those setup reductions runs the real
+ * product paths.
  */
 
-/** W13 owns the web cloud workspace view (host workspace.info + web file tree/terminal). */
+/**
+ * W13 owns the web cloud workspace view (host workspace.info implementation +
+ * web file tree/terminal; defect-ledger U16). Flipping this flag changes two
+ * things and needs one build prerequisite:
+ *   1. the B4 boundary step below stops asserting the pre-W13 boundary (it
+ *      never reddens the main journey — the boundary is what the flag gates);
+ *   2. the pending case below stops skipping and drives the workspace.
+ * The prerequisite: the case's oracles assume the instrumented web bundle the
+ * e2e build recipe produces (VITE_EXPOSE_STORE), so W13's delivery must build
+ * it that way; the oracles themselves are DOM-based on purpose, because the
+ * web bundle ships in production mode and never installs the Electron e2e
+ * probes.
+ */
 const W13_CLOUD_WORKSPACE_VIEW_LANDED = false
 
 const HOST_NAME = 'journey-b-host'
@@ -309,7 +338,10 @@ test.afterAll(async () => {
   })
 })
 
-/** A real Chrome run; ignoring the self-signed host TLS is the journey's only shortcut. */
+/**
+ * A real Chrome run. Shortcuts (all disclosed in the header): the self-signed
+ * host TLS is ignored, and the browser runs headless under an isolated profile.
+ */
 async function launchBrowser(): Promise<Browser> {
   return chromium.launch({
     channel: 'chrome',
@@ -319,7 +351,14 @@ async function launchBrowser(): Promise<Browser> {
 }
 
 function newProfile(browser: Browser): Promise<BrowserContext> {
-  return browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1440, height: 900 } })
+  // Why the locale pin: the degraded-startup toast and other surfaced strings
+  // are localized, so the text assertions must not depend on the host OS
+  // locale (MIN-2).
+  return browser.newContext({
+    ignoreHTTPSErrors: true,
+    viewport: { width: 1440, height: 900 },
+    locale: 'en-US'
+  })
 }
 
 /** Records every /v1 exchange a context makes, whatever page it came from. */
@@ -382,6 +421,10 @@ test('W9b Orca Web 黄金旅程：平台登录 → handoff 新标签自动进入
     )
 
     // ── B2 · 点击入口：真实签发 handoff，新标签打开带 hash 的入口 URL ──
+    // Why the log sink lives here: the entry tab's console must be recorded
+    // from the moment the tab exists, so the B3 boot-chain observations cover
+    // the bundle-evaluation window too (MIN-1).
+    const entryTabConsoleLogs: string[] = []
     const issued = await journeyStep(
       'B2-handoff-new-tab',
       '点击「Orca Web」：真实调用 web-handoff，新标签打开 #handoff=<code>&project=<id> 入口',
@@ -402,6 +445,11 @@ test('W9b Orca Web 黄金旅程：平台登录 → handoff 新标签自动进入
         }
         expect(popup, 'clicking Orca Web must open the entry in a new tab').toBeTruthy()
         const entryTab = popup!
+        entryTab.on('console', (message) => {
+          if (message.type() === 'error' || message.type() === 'warning') {
+            entryTabConsoleLogs.push(message.text())
+          }
+        })
         await entryTab.waitForLoadState('domcontentloaded')
         const url = new URL(entryTab.url())
         const handoffCall = traffic.requests.find(
@@ -432,12 +480,6 @@ test('W9b Orca Web 黄金旅程：平台登录 → handoff 新标签自动进入
       '新标签换码自动进入工作区：hash 清空、无登录表单、降级 toast=false、云侧栏空态、会话持久化',
       async () => {
         const tab = issued.entryTab
-        const logs: string[] = []
-        tab.on('console', (message) => {
-          if (message.type() === 'error' || message.type() === 'warning') {
-            logs.push(message.text())
-          }
-        })
         await tab.waitForSelector('.app-layout', { timeout: 90_000 })
         // Why the settle: the degraded-startup toast (W7c) is sticky and fires
         // with the boot chain, so the pass has to survive the window it would
@@ -471,17 +513,25 @@ test('W9b Orca Web 黄金旅程：平台登录 → handoff 新标签自动进入
           state.environment?.name ?? '',
           'the adopted environment is the minted project'
         ).toContain(PROJECT_NAME)
-        const denialLogs = logs.filter((line) => line.includes('not available to cloud sessions'))
+        const denialLogs = entryTabConsoleLogs.filter((line) =>
+          line.includes('not available to cloud sessions')
+        )
         expect(denialLogs, 'the boot chain must not call cloud-refused RPCs (W7c)').toEqual([])
         await shoot(tab, '03-web-workspace-entered')
-        return state
+        return {
+          ...state,
+          denialLogCount: denialLogs.length,
+          consoleLogCount: entryTabConsoleLogs.length
+        }
       },
       (state) => ({
         hash: state.hash,
         signInForm: state.hasSignInForm,
         degradedToast: state.degradedToast,
         sessionPersisted: state.cloudSessionPersisted,
-        environmentName: state.environment?.name ?? null
+        environmentName: state.environment?.name ?? null,
+        cloudDenialConsoleLogs: state.denialLogCount,
+        consoleErrorWarningCount: state.consoleLogCount
       })
     )
 
@@ -491,8 +541,16 @@ test('W9b Orca Web 黄金旅程：平台登录 → handoff 新标签自动进入
       'B4 边界（红线）：Orca Web 云会话暂无工作区视图——侧栏为云空态、目录与工作树为空、目录 RPC 按票据范围被拒',
       async () => {
         if (W13_CLOUD_WORKSPACE_VIEW_LANDED) {
-          // W13 落地后本步改为要求工作区表面存在；流式与文件断言由下方专用用例驱动。
-          throw new Error('W13 landed: flip this step to assert the workspace view surface')
+          // Why a record and not a tripwire: the flag flips W13's delivery on,
+          // and this step's assertions describe the pre-W13 boundary — failing
+          // here would only redden the journey the flag just enabled. The
+          // workspace surface is driven by the pending case below.
+          const tab = issued.entryTab
+          await shoot(tab, '04-cloud-session-with-workspace-view')
+          return {
+            mode: 'w13',
+            note: 'W13 landed: the boundary assertions are retired; the terminal-streaming case drives the workspace view.'
+          }
         }
         const tab = issued.entryTab
         const state = await tab.evaluate(async () => {
@@ -526,23 +584,17 @@ test('W9b Orca Web 黄金旅程：平台登录 → handoff 新标签自动进入
         ).toContain("Method 'repo.list' is not available to cloud sessions")
         await shoot(tab, '04-cloud-session-without-workspace-view')
         return {
+          mode: 'boundary',
           ...state,
           rootCause: [
             '宿主无 workspace.info 实现：cloud-rpc-permission.ts 把它列为 session 方法，但 runtime 方法表没有该方法，云会话拿不到项目工作区信息',
             'web 云会话未挂工作区视图：web-index 的 App 仅有侧栏云空态（CloudSessionEmptyState），无文件树/终端入口（W13）',
-            '已知边界来源：cloud-platform/evidence/w7c-startup-scope/w7c-change-manifest.json（cloudMethodTable.extended=false 的裁定）'
+            '已知边界来源：defect-ledger U16（remote-connectivity/design/2026-11-13-cloud-dev-platform/defect-ledger.md，已入库）；运行时佐证：cloud-platform/evidence/w7c-startup-scope/w7c-change-manifest.json（cloudMethodTable.extended=false 的裁定）'
           ],
           pendingWorkOrder: 'W13 orca web 云工作区视图（宿主 workspace.info 实现 + web 工作区视图）'
         }
       },
-      (state) => ({
-        repoCount: state.repoCount,
-        activeWorktreeId: state.activeWorktreeId,
-        catalogRefusal: state.catalogRefusal,
-        worktreeCatalog: state.worktreeCatalog,
-        rootCause: state.rootCause,
-        pendingWorkOrder: state.pendingWorkOrder
-      })
+      (state) => state
     )
 
     // ── B5 · 同一链接新 context 重放：410 回落登录表单（预填平台地址）──
@@ -582,10 +634,10 @@ test('W9b Orca Web 黄金旅程：平台登录 → handoff 新标签自动进入
       })
     )
 
-    // ── B6 · 旅程证据落盘 ───────────────────────────────────────────
+    // ── E1 · 旅程证据落盘（不占 §2-B6 编号：那是中继访问，属 W6 域）──
     await journeyStep(
-      'B6-evidence',
-      '旅程证据落盘：时间线与关键截图齐备',
+      'E1-journey-evidence',
+      '旅程证据落盘：时间线与关键截图齐备（编号 E1，避开 §2-B6 中继步骤）',
       async () => {
         const missing = shots.filter((name) => !existsSync(path.join(EVIDENCE_DIR, name)))
         expect(missing, `screenshots missing on disk: ${missing.join(', ')}`).toEqual([])
@@ -602,8 +654,10 @@ test('W9b-B4 终端流式回显与文件树打开（待 W13 云工作区视图�
   test.skip(
     !W13_CLOUD_WORKSPACE_VIEW_LANDED,
     '待 W13（orca web 云工作区视图：宿主 workspace.info 实现 + web 工作区视图挂文件树/终端）落地后启用；' +
-      '边界证据见 cloud-platform/evidence/journey-golden-b/journey-timeline.json 的 B4 步，' +
-      '与 cloud-platform/evidence/w7c-startup-scope/w7c-change-manifest.json'
+      '已入库记录：defect-ledger U16（remote-connectivity/design/2026-11-13-cloud-dev-platform/defect-ledger.md）；' +
+      '运行时佐证：cloud-platform/evidence/journey-golden-b/journey-timeline.json 的 B4 步与 ' +
+      'cloud-platform/evidence/w7c-startup-scope/w7c-change-manifest.json（gitignored，本机跑后生成）。' +
+      '启用前提：W13 的 web bundle 用仪表化 e2e 配方构建（VITE_EXPOSE_STORE），见文件头披露。'
   )
   test.setTimeout(300_000)
   expect(stack, 'stack must have started').toBeTruthy()
@@ -680,20 +734,18 @@ test('W9b-B4 终端流式回显与文件树打开（待 W13 云工作区视图�
     await expect(tab.locator('.editor-header-path').first()).toContainText(FILE_NAME, {
       timeout: 30_000
     })
+    // Why a DOM oracle and not window.__monacoEditorE2E: the web bundle ships
+    // in production mode, so the Electron e2e probe is never installed there
+    // (MAJ-1) — the rendered lines are the artifact the user reads.
     await expect
-      .poll(async () => window_snapshotEditorValueTail(tab), {
+      .poll(async () => tab.locator('.view-lines').innerText(), {
         timeout: 30_000,
         message: 'editor never rendered the file content'
       })
-      .toBe(FILE_MARKER)
+      .toContain(FILE_MARKER)
     await shoot(tab, '06-b4-terminal-stream-and-file')
     await context.close()
   } finally {
     await browser.close()
   }
 })
-
-/** The editor's rendered tail, read through the E2E probe the web build exposes. */
-async function window_snapshotEditorValueTail(tab: Page): Promise<string> {
-  return tab.evaluate(() => window.__monacoEditorE2E?.snapshot().valueTail ?? '')
-}
