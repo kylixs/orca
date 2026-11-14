@@ -17,8 +17,9 @@ const $ = (sel) => document.querySelector(sel)
 const content = () => $('#content')
 
 function esc(value) {
-  return String(value ?? '').replace(/[&<>"']/g, (c) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
+  return String(value ?? '').replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
   )
 }
 
@@ -282,8 +283,8 @@ function detailDisabledReason(p) {
 /**
  * The per-project row entries (FR-3.11) come from one builder so 工作台 and
  * 我的项目 stay identical. 「详情」 is admin-only and opens the host session
- * page in a new tab; 「Orca Web」 (M122, FR-3.10) mints a one-time handoff URL
- * and opens it, so the new tab lands straight in the project workspace.
+ * page in a new tab; 「打开」 and 「Orca Web」 (M122, FR-3.10) mint a one-time
+ * handoff URL and open it, landing straight in the project workspace.
  */
 function projectRowActions(p) {
   return `<button class="btn sm" data-open="${p.id}" ${openDisabledAttr(p)}>打开</button>${detailEntry(p)}${orcaWebEntry(p)}`
@@ -337,11 +338,11 @@ function projectRow(p) {
 }
 
 function wireProjectActions() {
-  for (const btn of document.querySelectorAll('[data-open]')) {
-    btn.onclick = () => openProject(btn.dataset.open)
-  }
-  for (const btn of document.querySelectorAll('[data-orca-web]')) {
-    btn.onclick = () => openOrcaWeb(btn.dataset.orcaWeb)
+  // 「打开」 and 「Orca Web」 are the same handoff entry (FR-3.11 revision):
+  // both land the open-permission holder straight in the project workspace.
+  for (const btn of document.querySelectorAll('[data-open], [data-orca-web]')) {
+    const projectId = btn.dataset.open ?? btn.dataset.orcaWeb
+    btn.onclick = () => openProjectWorkspace(projectId)
   }
   for (const btn of document.querySelectorAll('[data-go]')) {
     btn.onclick = () => navigate(btn.dataset.go)
@@ -349,35 +350,17 @@ function wireProjectActions() {
 }
 
 /**
- * M122 (FR-3.10): the platform mints a one-time, 60-second handoff code bound
- * to this session, and the new tab trades it for a workspace — no second login.
+ * The platform mints a one-time, 60-second handoff code bound to this session,
+ * and the new tab trades it for a workspace — no second login (FR-3.10). The
+ * raw connection info stays with the 详情 entry and the workspace's connection
+ * diagnostics, so the old「连接信息已就绪」dialog has nothing left to add.
  */
-async function openOrcaWeb(projectId) {
+async function openProjectWorkspace(projectId) {
   try {
     const body = await api(`/v1/projects/${projectId}/web-handoff`, { method: 'POST' })
     window.open(body.url, '_blank', 'noopener')
   } catch (err) {
     toast(`打开失败：${err.message ?? err}`)
-  }
-}
-
-async function openProject(projectId) {
-  try {
-    const body = await api(`/v1/projects/${projectId}/connect`, {
-      method: 'POST',
-      body: JSON.stringify({ deviceId: currentDeviceId(), clientVersion: '1.5.0' })
-    })
-    const direct = body.endpoints.direct.map((e) => e.url).join('\n') || '（无直连地址）'
-    const relay = body.endpoints.relay.map((e) => e.url).join('\n') || '（无中继地址）'
-    dialog(
-      '连接信息已就绪',
-      `<p><strong>请在 Orca 桌面客户端中打开此项目</strong>（客户端将自动探测直连并连接）</p>
-       <p>桌面客户端会先探测直连地址，全部失败后经中继连接。凭证 ${body.expiresIn} 秒内有效且只能使用一次。</p>
-       <p class="muted">主机：${esc(body.host.name)} · 指纹 ${esc(body.host.fingerprint)}</p>
-       <pre>${esc(`直连:\n${direct}\n\n中继:\n${relay}\n\n工作区:\n${body.workspace.workspaceRoot}`)}</pre>`
-    )
-  } catch (err) {
-    dialog('无法打开项目', `<p>${esc(err.message)}</p><p class="muted mono">${esc(err.code ?? '')}</p>`)
   }
 }
 
@@ -505,7 +488,9 @@ async function registerHostDialog() {
 async function showHost(hostId) {
   const host = state.lastHosts.find((h) => h.id === hostId)
   if (!host) return
-  const drawer = openDrawer(`主机 ${host.name}`, `
+  const drawer = openDrawer(
+    `主机 ${host.name}`,
+    `
     <dl class="kv">
       <dt>主机 ID</dt><dd class="mono">${esc(host.id)}</dd>
       <dt>指纹</dt><dd class="mono">${esc(host.fingerprint)}</dd>
@@ -522,7 +507,8 @@ async function showHost(hostId) {
       <button class="btn" id="maintenanceBtn" ${host.revokedAt ? 'disabled title="主机已下线"' : ''}>${host.status === 'maintenance' ? '结束维护' : '进入维护模式'}</button>
       <button class="btn danger" id="revokeHostBtn" ${host.revokedAt ? 'disabled' : ''}>下线主机</button>
     </div>
-    <p class="muted" style="margin-top:12px">下线后该主机的项目立即不可打开，已签发凭证失效。</p>`)
+    <p class="muted" style="margin-top:12px">下线后该主机的项目立即不可打开，已签发凭证失效。</p>`
+  )
   $('#maintenanceBtn').onclick = async () => {
     await api(`/v1/hosts/${host.id}/maintenance`, {
       method: 'POST',
@@ -603,7 +589,8 @@ async function renderMembers() {
     .join('')
   for (const btn of document.querySelectorAll('[data-material]')) {
     btn.onclick = () => {
-      for (const other of document.querySelectorAll('[data-material]')) other.classList.remove('active')
+      for (const other of document.querySelectorAll('[data-material]'))
+        other.classList.remove('active')
       btn.classList.add('active')
       showGrants(btn.dataset.material)
     }

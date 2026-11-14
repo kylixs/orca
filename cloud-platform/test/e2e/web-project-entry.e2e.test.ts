@@ -16,7 +16,9 @@ import { loadWebConsolePage, type WebConsolePage } from './web-console-page.ts'
  *   only (a link, opening a new tab), 「Orca Web」 for open-permission holders
  *   (an action button since M122: it mints a one-time handoff URL per click);
  *   both grey out while the host is offline or in maintenance
- * - the developer 打开 dialog leads with the desktop-client guidance
+ * - W3c (FR-3.11 revision): 「打开」 is the same handoff entry — it mints a
+ *   one-time URL and opens the workspace in a new tab, and the raw-address
+ *   「连接信息已就绪」 dialog is gone
  */
 
 const EVIDENCE = 'w3-fixes'
@@ -390,7 +392,12 @@ test('W3-orca-web 无 open 权限不渲染 Orca Web 入口', async () => {
     null,
     'a user without open must not see the Orca Web entry at all'
   )
-  matrix['orca-web-visibility'] = '有 open → 渲染；无 open（未授权管理员）→ 不渲染'
+  // W3c: 打开 mints a handoff now, so it greys out for the same reason — the
+  // platform would refuse the mint (403 PROJECT_FORBIDDEN) without the grant.
+  const openBtn = entryIn(lockedRow, '打开') as HTMLButtonElement | null
+  assert.equal(openBtn?.disabled, true, 'a user without open cannot open the project')
+  assert.match(openBtn?.title ?? '', /未授权/)
+  matrix['orca-web-visibility'] = '有 open → 渲染；无 open（未授权管理员）→ 不渲染且打开置灰'
 }, 120_000)
 
 test('W3-developer 开发者无详情入口，Orca Web 随权限与浏览器入口渲染', async () => {
@@ -437,27 +444,47 @@ test('W3-developer 开发者无详情入口，Orca Web 随权限与浏览器入�
     '无详情入口；Orca Web 在线为动作按钮、无浏览器入口仍可点击、离线 title=主机离线；两页 actions 一致'
 }, 120_000)
 
-test('W3-guide 打开对话框首行引导使用桌面客户端', async () => {
+test('W3c-open 打开走 web-handoff 新标签进入工作区，不再弹连接信息对话框', async () => {
+  await announceBrowserEdge()
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('zhangsan', 'Passw0rd!')
   await page.clickNav('workbench')
 
+  const opened: string[] = []
+  page.window.open = ((url?: string | URL) => {
+    opened.push(String(url))
+    return null
+    // oxlint-disable-next-line typescript/no-explicit-any -- happy-dom's open signature is wider than the stub needs
+  }) as any
+
   const openBtn = entryIn(rowFor(page, 'live-project'), '打开') as HTMLButtonElement
+  assert.equal(openBtn.disabled, false, 'an open-permission holder can open the project')
   openBtn.click()
   await page.settle()
 
-  const body = page.window.document.querySelector('.dialog .body')
-  assert.ok(body, 'opening a project must show the connect dialog')
-  const firstLine = body.querySelector('p')?.textContent ?? ''
-  assert.match(firstLine, /请在 Orca 桌面客户端中打开此项目/)
-  assert.match(firstLine, /客户端将自动探测直连并连接/)
-  assert.ok(
-    page.calls().some((call) => call === `POST /v1/projects/${liveProjectId}/connect`),
-    'the guidance rides on a real connect call'
+  assert.equal(
+    page.window.document.querySelector('.dialog'),
+    null,
+    'the raw-address「连接信息已就绪」dialog must be gone'
   )
-  saveEvidence(EVIDENCE, 'open-dialog-guidance.json', { firstLine: firstLine.trim() })
-  matrix['open-dialog'] = '首行：请在 Orca 桌面客户端中打开此项目（客户端将自动探测直连并连接）'
+  assert.deepEqual(
+    page.calls().filter((call) => call.endsWith('/connect') || call.includes('/web-handoff')),
+    [`POST /v1/projects/${liveProjectId}/web-handoff`],
+    '打开 mints a handoff and never calls the desktop /connect'
+  )
+  assert.equal(opened.length, 1, 'the issued URL opens exactly one new tab')
+  const openedUrl = new URL(opened[0])
+  assert.equal(openedUrl.searchParams.get('api'), service.url)
+  assert.match(openedUrl.hash, /^#handoff=[A-Za-z0-9_-]+&project=/)
+
+  saveEvidence(EVIDENCE, 'open-handoff-entry.json', {
+    call: `POST /v1/projects/${liveProjectId}/web-handoff`,
+    opened: opened[0].replace(/#handoff=[A-Za-z0-9_-]+/, '#handoff=<redacted>'),
+    dialogShown: page.window.document.querySelector('.dialog') !== null
+  })
+  matrix['open-entry'] =
+    '有 open 权限点「打开」→ POST web-handoff → window.open(一次性 URL) 进工作区；无连接信息对话框、无 /connect 调用'
 }, 120_000)
 
 test('W3-admin 在线但无可直达会话页地址时详情置灰', async () => {
