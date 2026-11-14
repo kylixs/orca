@@ -475,8 +475,16 @@ test('W3c-open 打开走 web-handoff 新标签进入工作区，不再弹连接�
   )
   assert.equal(opened.length, 1, 'the issued URL opens exactly one new tab')
   const openedUrl = new URL(opened[0])
+  // U22: the entry lives on the relay edge serving /h/dev-tls/ — the platform
+  // address only ever appears as the ?api= param, never as the origin.
+  assert.equal(openedUrl.origin, `https://${BROWSER_EDGE_HOST}`)
   assert.equal(openedUrl.searchParams.get('api'), service.url)
   assert.match(openedUrl.hash, /^#handoff=[A-Za-z0-9_-]+&project=/)
+  assert.equal(
+    new URLSearchParams(openedUrl.hash.slice(1)).get('project'),
+    liveProjectId,
+    'the handoff must carry the id of the clicked project'
+  )
 
   saveEvidence(EVIDENCE, 'open-handoff-entry.json', {
     call: `POST /v1/projects/${liveProjectId}/web-handoff`,
