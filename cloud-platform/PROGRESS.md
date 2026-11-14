@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### W13c-1 落地（2026-11-14）
+
+`51f04a1d092`（9 文件 +201/−4）：W13a 四 MIN 收口——MIN-4 §5.2.1 三非云负向（mobile/runtime-paired/ssh-bridge 三形态，零云拒绝审计+零检出查询断言）；MIN-1③ 准入 methods 与 CLOUD_HOST_METHODS 恒等绑定（生产时序复刻处，env 级单测无 methods 已实证归因）+②四处夹注重释+①（renderer 失真注释）越界留 W13c-2；MIN-2 catch 区分 repo_not_found（设计授权零日志）与其余 console.warn 恰一次；MIN-3 权限联合 parity 值级+类型级双钉（变异红实证）。36/36+真栈 5/5 绿，tc:node 0。竞态注记：与 W13b/O1-c 三次提交竞争+曾清并发暂存保护自己提交（对方可重 add）。**W13c-1 关闭**。槽位暂候 W13b 落地（W13c-2∥验收∥环境重建三连发）。
+
 ### O1-h 落地 + 索引竞态第 6 次事故与恢复（2026-11-14）
 
 O1-h `f9f16b00baa`（3 文件 +200/−1）：composer「添加目录」入口按 O1-a 谓词隐藏（复用 O1-e 包装 isCloudSessionEnvironmentId，**双表面**——工具栏按钮+ProjectCombobox pinned 行关 onAddProject，防下拉可达）；新增 4 例，组件域 9 文件 82 例全绿，tc:web 清；路径守卫族其余零改动验证结论已记录（quick open 回退链/云 scrollback multiplex 逐行复核无缺口）。**事故**：主会话提交 O1-b 入档时未核对暂存集，卷入 O1-h 在途暂存的 3 文件（`62addf1b013`）——soft-reset 拆分恢复（`7a51afcc77d` 仅 PROGRESS），O1-h 内容零损失随后正常提交。**加固**：主会话一切提交（含 docs）先 `git diff --cached --name-only` 核对。空槽回填 O1-c∥W13c-1。
