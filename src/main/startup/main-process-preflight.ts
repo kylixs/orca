@@ -270,7 +270,8 @@ function initializeMainProcessPreflight(options: MainProcessPreflightOptions): b
     // In dev it is the line `pnpm dev` prints before exiting.
     logSingleInstanceLockFailure({
       isDevDesktop: isDev && !state.isServeMode,
-      userDataPath: app.getPath('userData')
+      userDataPath: app.getPath('userData'),
+      env: process.env
     })
     // Why: a graceful quit is deferred pre-ready, so this launch would still walk into Linux display init and SIGSEGV (#11935).
     app.exit(SINGLE_INSTANCE_ALREADY_RUNNING_EXIT_CODE)

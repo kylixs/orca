@@ -83,15 +83,23 @@ export function shouldSkipSingleInstanceLock(options: {
 export function singleInstanceLockFailureMessage(options: {
   isDevDesktop: boolean
   userDataPath: string
+  /** Read for the cloud platform signal the refused launch carried (W10 dev report). */
+  env?: NodeJS.ProcessEnv
 }): string {
   if (!options.isDevDesktop) {
     return SINGLE_INSTANCE_LOCK_FAILURE_MESSAGE
   }
-  return `[single-instance] Another Orca dev instance is already running on the profile at ${options.userDataPath}; exiting this launch after passing it this launch's request. To run another dev copy at the same time, give it its own profile: ORCA_DEV_USER_DATA_PATH=<another directory> pnpm dev`
+  const base = `[single-instance] Another Orca dev instance is already running on the profile at ${options.userDataPath}; exiting this launch after passing it this launch's request. To run another dev copy at the same time, give it its own profile: ORCA_DEV_USER_DATA_PATH=<another directory> pnpm dev`
+  const platformUrl = options.env?.ORCA_CLOUD_API_URL?.trim()
+  // Why: the window this launch was meant to show is the running instance's, so
+  // the cloud login never appears and the env var looks ignored.
+  return platformUrl
+    ? `${base} This launch's ORCA_CLOUD_API_URL=${platformUrl} is not applied to the running instance — quit that instance and relaunch to get the cloud login prefilled with it.`
+    : base
 }
 
 export function logSingleInstanceLockFailure(
-  options: { isDevDesktop: boolean; userDataPath: string },
+  options: { isDevDesktop: boolean; userDataPath: string; env?: NodeJS.ProcessEnv },
   write?: StartupDiagnosticSink
 ): void {
   writeStartupDiagnosticLine(singleInstanceLockFailureMessage(options), write)

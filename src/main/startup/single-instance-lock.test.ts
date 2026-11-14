@@ -165,6 +165,36 @@ describe('logSingleInstanceLockFailure', () => {
     // A background or serve instance shows no window, so the line claims none.
     expect(line).not.toMatch(/focus|window/i)
   })
+
+  it('names the cloud platform address a refused dev launch can no longer prefill', () => {
+    // W10 dev report: `ORCA_CLOUD_API_URL=… pnpm dev` while an env-less dev
+    // instance holds the profile hands the window to that instance, and the
+    // expected cloud login never appears — the env var looks ignored.
+    const line = singleInstanceLockFailureMessage({
+      isDevDesktop: true,
+      userDataPath: '/Users/dev/Library/Application Support/orca-dev',
+      env: { ORCA_CLOUD_API_URL: 'http://127.0.0.1:18787' }
+    })
+
+    expect(line).toContain('ORCA_CLOUD_API_URL=http://127.0.0.1:18787')
+    expect(line).toContain('not applied to the running instance')
+    expect(line).toContain('quit that instance')
+    expect(line.trimEnd()).not.toContain('\n')
+  })
+
+  it('leaves the dev refusal unchanged when the launch carries no platform address', () => {
+    const userDataPath = '/Users/dev/Library/Application Support/orca-dev'
+
+    const withEmptyEnv = singleInstanceLockFailureMessage({
+      isDevDesktop: true,
+      userDataPath,
+      env: { ORCA_CLOUD_API_URL: '' }
+    })
+    const withoutEnvOption = singleInstanceLockFailureMessage({ isDevDesktop: true, userDataPath })
+
+    expect(withEmptyEnv).toBe(withoutEnvOption)
+    expect(withEmptyEnv).not.toContain('ORCA_CLOUD_API_URL')
+  })
 })
 
 describe('shouldBypassSingleInstanceLock', () => {
