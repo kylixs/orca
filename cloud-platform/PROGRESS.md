@@ -2570,6 +2570,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **事故与恢复**：主会话随后的 docs 提交携带暂存区陈旧副本，把 7 路径回退（config.js 复活、?api= 删、4 用例删）；修复代理重落地 `a069482b23a`；主会话恢复时又把 PROGRESS checkout 到旧快照顶掉一节记录（本段即补写）。终态恢复提交 `d5a00712179`：5 路径自 a069 恢复 + config.js 删除入档 + PROGRESS 保留最新。**恢复后验证**：config.js 不存在于 HEAD；`sessionPageUrlFor`/`searchParams.set('api', platformOrigin)` 在位（server.ts:677/683/698）；维护态双入口补例在位。**防再发规则**：主会话提交前必须核对暂存集=预期文件（本次恢复中已实践：PROGRESS 取消暂存保最新版）；F3 计数笔误更正：W3 段 exploratory 16 实为 13。
 
+### W5a 独立测试回收（8/9 过 + 1 潜伏缺陷 + 2 环境发现，2026-11-14）
+
+测试代理：67 用例全绿 + tc:web 过；组件行为探针 8/9——授权门零调用零加载（G1）、create 先于 subscribe（P1）、退避 500/1000/2000/4000/8000ms 逐档精确且复用 term_1（P3）、卸载顺序 unsubscribe→close→dispose 且迟到订阅被退订不复活（P2/P4）。**发现 P5（潜伏）**：onError/onClose 双触发时 scheduleReconnect 定时器被覆盖未清除（观测 3 次订阅、句柄泄漏）；现传输层三处互斥保证不可达，换传输即触发——一句修（先 clearTimeout）。**浏览器真实验证部分阻塞=如实划入 W5b**：宿主对云会话回退 mobile 允许清单拒绝 `project.provision`/`worktree.*`（裸 forbidden 且无审计）——W5b 要打通的宿主侧环节。**环境级发现两项**：① 平台无 CORS 头，`?api=` 跨源登录会被预检拦截（W3/M117↔W7b 集成缺口，归 W7b 处理）；② 共享 `out/` 并发构建曾产坏包（cloud-admin 入口混入 web 挂载副作用）——共享 worktree 风险实证，核验一律以重建后干净构建为准。已派合并回派修复（MAJ-1/2 + P5 + MIN-3/4）。
+
 ### W3 独立测试通过（2026-11-14）
 
 测试代理（detached worktree 固定 `cd36987d7a0` 验证）：套件 6/6 + 13/13 + 3/3 + 9/9；自有 UI 探针 **11/11**——admin 双入口 href 与 payload 逐字一致、developer 无详情/有 open 才有 Orca Web、离线/维护/无浏览器边缘三态置灰 title 各异且零死链、对话框引导逐字、详情链接真实新开 TLS cloud-admin 200 且带注入地址渲染登录页；两页 actions 单元格逐字节相等。发现 F1（config.js 死配置残留）与 F2（裸链接依赖部署注入）**与在途 W3-fix（j-1+m-1）恰好收敛**；F3 记一处 PROGRESS 计数笔误（16 实为 13，关闭时更正）。探针纪律：初版假 FAIL 自查为心跳窗口时序后改等 derived 翻转再断言（F4 记录在案）。
