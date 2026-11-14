@@ -111,9 +111,9 @@ vi.mock('@/store', () => ({
 import App from './App'
 
 /**
- * M52: a cloud build signs in on its own screen and then lands in the ordinary
- * workspace shell. The old gate replaced the whole shell with the custom cloud
- * pages — that must never happen again.
+ * W11 (FR-2.7 revision): the app always starts in the native shell — signed in
+ * or not — and the cloud platform joins it through the persistent sign-in chip
+ * and its dialog. Cloud projects then land in the sidebar as extra repos.
  */
 
 const projects = [
@@ -190,7 +190,10 @@ function installBridge(bridge: ReturnType<typeof cloudBridge>): void {
   Object.defineProperty(window, 'api', { configurable: true, value: { cloud: bridge } })
 }
 
-function signIn(): void {
+async function signIn(): Promise<void> {
+  // W11: the sign-in form lives in the chip's dialog, not on a full-page screen.
+  fireEvent.click(screen.getByRole('button', { name: '登录云端平台' }))
+  await waitFor(() => expect(screen.getByLabelText('平台地址')).toBeTruthy())
   fireEvent.change(screen.getByLabelText('平台地址'), {
     target: { value: 'https://cloud.example.com' }
   })
@@ -219,22 +222,29 @@ describe('native cloud entry', () => {
     Object.defineProperty(window, 'api', { configurable: true, value: undefined })
   })
 
-  it('shows the sign-in screen while signed out, never the workspace shell', async () => {
+  it('starts in the native shell while signed out, with the sign-in chip present', async () => {
     installBridge(cloudBridge())
     render(<App />)
 
-    await waitFor(() => expect(screen.getByLabelText('域账号')).toBeTruthy())
-    expect(screen.getByRole('button', { name: '登录' })).toBeTruthy()
-    expect(screen.queryByTestId('workspace-shell')).toBeNull()
+    await waitFor(() => expect(screen.getByRole('button', { name: '登录云端平台' })).toBeTruthy())
+    expect(screen.getByTestId('workspace-shell')).toBeTruthy()
+    // Signed out: nothing may reach for the platform on its own.
     expect(syncCloudProjectRepos).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: '登录云端平台' }))
+    await waitFor(() => expect(screen.getByLabelText('域账号')).toBeTruthy())
+    expect(screen.getByLabelText<HTMLInputElement>('平台地址').value).toBe(
+      'https://cloud.example.com'
+    )
+    expect(screen.getByTestId('workspace-shell')).toBeTruthy()
   })
 
   it('after sign-in renders the native shell and registers every project as a repo', async () => {
     installBridge(cloudBridge())
     render(<App />)
 
-    await waitFor(() => expect(screen.getByLabelText('域账号')).toBeTruthy())
-    signIn()
+    await waitFor(() => expect(screen.getByRole('button', { name: '登录云端平台' })).toBeTruthy())
+    await signIn()
 
     await waitFor(() => expect(screen.getByTestId('workspace-shell')).toBeTruthy())
     await waitFor(() =>
@@ -247,7 +257,10 @@ describe('native cloud entry', () => {
         })
       )
     )
-    expect(screen.queryByLabelText('域账号')).toBeNull()
+    // The dialog closed and the chip now shows the account with its way out.
+    await waitFor(() => expect(screen.queryByLabelText('域账号')).toBeNull())
+    expect(screen.getByText('zhangsan')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '登出' })).toBeTruthy()
   })
 
   it('activates the sidebar row for the checkout the bridge opened', async () => {
@@ -273,8 +286,7 @@ describe('native cloud entry', () => {
     )
     render(<App />)
 
-    await waitFor(() => expect(screen.getByLabelText('域账号')).toBeTruthy())
-    signIn()
+    await signIn()
 
     await waitFor(() =>
       expect(storeMock.state.setActiveWorktree).toHaveBeenCalledWith(
@@ -297,8 +309,7 @@ describe('native cloud entry', () => {
     installBridge(cloudBridge({ openWorkspace }))
     render(<App />)
 
-    await waitFor(() => expect(screen.getByLabelText('域账号')).toBeTruthy())
-    signIn()
+    await signIn()
 
     await waitFor(() => expect(openWorkspace).toHaveBeenCalled())
     await act(async () => {
@@ -316,8 +327,7 @@ describe('native cloud entry', () => {
     )
     render(<App />)
 
-    await waitFor(() => expect(screen.getByLabelText('域账号')).toBeTruthy())
-    signIn()
+    await signIn()
 
     await waitFor(() => expect(screen.getByTestId('workspace-shell')).toBeTruthy())
     await waitFor(() =>

@@ -182,7 +182,7 @@ const api = {
   automations: automationsApi,
   e2e: e2eApi,
   mobile: mobileApi,
-  ...cloudPlatformExposure(process.env),
+  ...cloudPlatformExposure(),
   agentStatus: agentStatusApi,
   speech: speechApi
 } satisfies PreloadApi

@@ -9,7 +9,7 @@ import type {
 } from '../../../shared/cloud-platform-ipc'
 import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
-import { CloudLoginPanel } from './cloud-login-panel'
+import { CloudLoginEntry } from './cloud-login-entry'
 import {
   CloudProjectFailureBanner,
   NewCloudProjectButton,
@@ -25,9 +25,10 @@ import { signOutCloudProjectRepos, syncCloudProjectRepos } from './cloud-project
 import { useCloudSession, type CloudBridge, type CloudSessionView } from './use-cloud-session'
 
 /**
- * Native cloud entry: a cloud build signs in here and then lands in the ordinary
- * workspace shell, with every signed-in project registered as a sidebar repo.
- * The custom cloud pages are only for the admin browser surface (M54).
+ * Native cloud entry: the ordinary workspace shell always renders, and the
+ * cloud platform joins it as an additive channel — a persistent sign-in chip
+ * (W11) whose projects land in the sidebar as extra repos next to the native
+ * ones. The custom cloud pages are only for the admin browser surface (M54).
  */
 
 function useCloudBridge(): CloudBridge | null {
@@ -283,37 +284,38 @@ function CloudWorkspaceSession({
 }): React.JSX.Element {
   const session = useCloudSession(bridge)
   const entry = useCloudWorkspaceEntry(bridge, session)
+  const signedIn = session.status === 'signed-in'
 
-  if (session.status === 'signed-in') {
-    return (
-      <>
-        {entry.preparing ? <PreparingCloudProjectBanner /> : null}
+  // Why entry first: the signed-in account's repos and environments must go
+  // before the session itself ends, or the sidebar keeps dead cloud rows.
+  const signOut = React.useCallback(async () => {
+    await entry.signOut()
+    await session.signOut()
+  }, [entry, session])
+
+  // Why the shell always renders (W11): startup lands in the native interface in
+  // every build; the cloud platform is the additive channel behind the chip.
+  return (
+    <>
+      {signedIn && entry.preparing ? <PreparingCloudProjectBanner /> : null}
+      {signedIn ? (
         <CloudProjectFailureBanner
           failures={entry.failures}
           retrying={entry.retrying}
           onRetry={() => void entry.retryFailures()}
         />
-        <NewCloudProjectButton bridge={bridge} onCreated={entry.registerCreatedProject} />
-        {children}
-      </>
-    )
-  }
-  if (session.status === 'loading') {
-    // Why: the cloud build must not flash the local shell before the session is known.
-    return <div className="flex h-full w-full items-center justify-center bg-background" />
-  }
-  return (
-    <CloudLoginPanel
-      submitting={session.status === 'signing-in'}
-      error={session.error}
-      notice={session.notice}
-      defaultPlatformUrl={session.loginContext?.platformUrl ?? null}
-      defaultUsername={session.loginContext?.username ?? null}
-      addressLocked={session.loginContext?.locked ?? false}
-      onSignIn={(username, password, platformUrl) =>
-        void session.signIn(username, password, platformUrl)
-      }
-    />
+      ) : null}
+      {children}
+      <CloudLoginEntry
+        session={session}
+        leading={
+          signedIn ? (
+            <NewCloudProjectButton bridge={bridge} onCreated={entry.registerCreatedProject} />
+          ) : null
+        }
+        onSignOut={signOut}
+      />
+    </>
   )
 }
 
@@ -323,7 +325,8 @@ export function CloudWorkspaceEntry({
   children: React.ReactNode
 }): React.JSX.Element {
   const bridge = useCloudBridge()
-  // Ordinary desktop builds have no cloud bridge: nothing here may affect them.
+  // No bridge means no main-process cloud surface (e.g. the browser admin page):
+  // nothing here may affect that shell.
   if (!bridge) {
     return <>{children}</>
   }

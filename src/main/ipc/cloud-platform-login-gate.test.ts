@@ -6,10 +6,10 @@ import { writeCloudLoginMemory } from '../cloud-platform/cloud-login-memory'
 import { CLOUD_PLATFORM_IPC, type CloudSessionState } from '../../shared/cloud-platform-ipc'
 
 /**
- * M119/W10 at the IPC boundary: the login screen exists for cloud builds even
- * with no environment variable, the loginContext reply carries the resolved
- * address and remembered username, and a managed build signs in to its pinned
- * address no matter what the form sent.
+ * W11 at the IPC boundary: every build carries the cloud login surface, the
+ * loginContext reply carries the resolved address and remembered username, a
+ * managed build signs in to its pinned address no matter what the form sent,
+ * and only a cloud build restores the last saved session at startup.
  */
 
 type IpcHandler = (event: unknown, ...args: unknown[]) => Promise<unknown>
@@ -17,6 +17,7 @@ type IpcHandler = (event: unknown, ...args: unknown[]) => Promise<unknown>
 type RecordedSession = {
   options: { apiUrl: string; userDataPath?: string }
   logins: { username: string; password: string; apiUrl?: string }[]
+  restoreCalls: number
 }
 
 const ipcHandlers = vi.hoisted(() => new Map<string, IpcHandler>())
@@ -39,6 +40,7 @@ vi.mock('../cloud-platform/cloud-session-service', () => ({
   CloudSessionService: class {
     readonly options: { apiUrl: string; userDataPath?: string }
     readonly logins: { username: string; password: string; apiUrl?: string }[] = []
+    restoreCalls = 0
     private state: CloudSessionState = { status: 'signed-out' }
 
     constructor(options: { apiUrl: string; userDataPath?: string }) {
@@ -51,6 +53,7 @@ vi.mock('../cloud-platform/cloud-session-service', () => ({
     }
 
     restoreSession(): Promise<CloudSessionState> {
+      this.restoreCalls += 1
       return Promise.resolve(this.state)
     }
 
@@ -95,6 +98,14 @@ async function loginContextReply(): Promise<unknown> {
   return handler(undefined)
 }
 
+async function stateReply(): Promise<unknown> {
+  const handler = ipcHandlers.get(CLOUD_PLATFORM_IPC.state)
+  if (!handler) {
+    throw new Error('state handler not registered')
+  }
+  return handler(undefined)
+}
+
 async function loginReply(
   username: string,
   password: string,
@@ -116,25 +127,55 @@ afterEach(async () => {
   vi.resetModules()
 })
 
-describe('云端 IPC 装配（M119/W10）', () => {
-  it('普通桌面构建不装配任何云端处理器（零回归）', async () => {
+describe('云端 IPC 装配（W11：全构建装配登录门）', () => {
+  it('零 env 的开发构建也装配云端 IPC：无地址时登录上下文为空、登录要求填地址', async () => {
     await stubBuildFlags({})
     const { installCloudPlatformIpc } = await import('./cloud-platform')
-    expect(installCloudPlatformIpc({}, { userDataPath: makeUserDataPath() })).toBeNull()
+    const installed = installCloudPlatformIpc({}, { userDataPath: makeUserDataPath() })
+
+    expect(await loginContextReply()).toEqual({ platformUrl: null, username: null, locked: false })
+    await expect(loginReply('zhangsan', 'Passw0rd!')).rejects.toMatchObject({
+      code: 'PLATFORM_ADDRESS_REQUIRED'
+    })
+    expect(sessions[0]?.logins).toHaveLength(0)
+
+    installed.dispose()
     expect(ipcHandlers.size).toBe(0)
+  })
+
+  it('非云端构建不自动登录：不恢复上次会话，状态保持 signed-out', async () => {
+    await stubBuildFlags({})
+    const { installCloudPlatformIpc } = await import('./cloud-platform')
+    const installed = installCloudPlatformIpc({}, { userDataPath: makeUserDataPath() })
+
+    await stateReply()
+
+    expect(sessions[0]?.restoreCalls).toBe(0)
+    expect(await stateReply()).toEqual({ status: 'signed-out' })
+    installed.dispose()
+  })
+
+  it('云端构建启动时恢复上次会话（后台，不阻塞状态读取）', async () => {
+    await stubBuildFlags({ defaultUrl: 'https://build.example.com' })
+    const { installCloudPlatformIpc } = await import('./cloud-platform')
+    const installed = installCloudPlatformIpc({}, { userDataPath: makeUserDataPath() })
+
+    await stateReply()
+
+    expect(sessions[0]?.restoreCalls).toBe(1)
+    installed.dispose()
   })
 
   it('无 env 启动也装配登录界面：构建默认地址成为预填值', async () => {
     await stubBuildFlags({ defaultUrl: 'https://build.example.com' })
     const { installCloudPlatformIpc } = await import('./cloud-platform')
     const installed = installCloudPlatformIpc({}, { userDataPath: makeUserDataPath() })
-    expect(installed).not.toBeNull()
     expect(await loginContextReply()).toEqual({
       platformUrl: 'https://build.example.com',
       username: null,
       locked: false
     })
-    installed?.dispose()
+    installed.dispose()
     expect(ipcHandlers.size).toBe(0)
   })
 
@@ -152,7 +193,7 @@ describe('云端 IPC 装配（M119/W10）', () => {
       username: 'zhangsan',
       locked: false
     })
-    installed?.dispose()
+    installed.dispose()
   })
 
   it('运行时 env 覆盖记忆，仍然只是预填值', async () => {
@@ -168,7 +209,7 @@ describe('云端 IPC 装配（M119/W10）', () => {
     )
     expect(await loginContextReply()).toMatchObject({ platformUrl: 'https://env.example.com' })
     expect(sessions[0]?.options.apiUrl).toBe('https://env.example.com')
-    installed?.dispose()
+    installed.dispose()
   })
 
   it('登录地址非法时拒绝并给出错误码，不再触碰会话', async () => {
@@ -180,7 +221,7 @@ describe('云端 IPC 装配（M119/W10）', () => {
       code: 'PLATFORM_ADDRESS_INVALID'
     })
     expect(sessions[0]?.logins).toHaveLength(0)
-    installed?.dispose()
+    installed.dispose()
   })
 
   it('拒绝错误以错误码为消息：Electron 丢掉 code 属性后仍可映射文案', async () => {
@@ -195,7 +236,7 @@ describe('云端 IPC 装配（M119/W10）', () => {
 
     expect(failure).toBeInstanceOf(Error)
     expect(failure).toHaveProperty('message', 'PLATFORM_ADDRESS_INVALID')
-    installed?.dispose()
+    installed.dispose()
   })
 
   it('托管构建锁定地址：表单输入被忽略，登录始终指向锁定地址', async () => {
@@ -209,7 +250,7 @@ describe('云端 IPC 装配（M119/W10）', () => {
     expect(sessions[0]?.logins).toEqual([
       { username: 'zhangsan', password: 'Passw0rd!', apiUrl: 'https://pinned.example.com' }
     ])
-    installed?.dispose()
+    installed.dispose()
   })
 
   it('托管构建无视登录记忆：本地残留的他平台地址改写不了锁定地址', async () => {
@@ -234,7 +275,7 @@ describe('云端 IPC 装配（M119/W10）', () => {
     expect(sessions[0]?.logins).toEqual([
       { username: 'zhangsan', password: 'Passw0rd!', apiUrl: 'https://pinned.example.com' }
     ])
-    installed?.dispose()
+    installed.dispose()
   })
 
   it('登录成功即写入登录记忆，下次启动预填', async () => {
@@ -254,6 +295,6 @@ describe('云端 IPC 装配（M119/W10）', () => {
     // The memory write belongs to the real service (covered there); the install
     // path only has to hand the session a writable userDataPath.
     expect(sessions[0]?.options.userDataPath).toBe(userDataPath)
-    installed?.dispose()
+    installed.dispose()
   })
 })

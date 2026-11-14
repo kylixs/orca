@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import type { ReactNode } from 'react'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/components/ui/sonner', () => ({ Toaster: () => null }))
@@ -66,25 +66,46 @@ vi.mock('./app-shell/use-window-visibility-effects', () => ({
 import App from './App'
 
 /**
- * Regression: the preload used to advertise `window.api.cloud` in every build,
- * and the old gate treated that as "cloud build", replacing the workspace shell
- * with the cloud pages. An ordinary desktop build (no bridge) must render the
- * native shell and nothing cloud-shaped; the signed-out cloud case is covered in
- * App.cloud-workspace-entry.test.tsx.
+ * W11 (FR-2.7 revision): every build — including a dev build whose platform
+ * address is unset — starts in the native shell and never auto-signs in. The
+ * cloud platform shows up only as the persistent sign-in chip; the shell is
+ * never replaced by a login page or the custom cloud pages.
  */
-describe('ordinary desktop build', () => {
+describe('native shell with an unsigned-in cloud entry', () => {
   afterEach(() => {
     cleanup()
     Object.defineProperty(window, 'api', { configurable: true, value: undefined })
   })
 
-  it('renders the workspace shell without a cloud bridge', () => {
+  it('renders the workspace shell and the sign-in chip, and touches nothing', async () => {
+    const cloud = {
+      getState: vi.fn(async () => ({ status: 'signed-out' })),
+      getLoginContext: vi.fn(async () => ({ platformUrl: null, username: null, locked: false })),
+      login: vi.fn(),
+      registerProjects: vi.fn(),
+      onConnectionChanged: vi.fn(() => () => undefined)
+    }
+    Object.defineProperty(window, 'api', { configurable: true, value: { cloud } })
+
+    render(<App />)
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '登录云端平台' })).toBeTruthy())
+    expect(screen.getByTestId('workspace-shell')).toBeTruthy()
+    // The dialog stays closed until the user asks for it.
+    expect(screen.queryByLabelText('域账号')).toBeNull()
+    // No auto-login, no project registration, no full-page cloud takeover.
+    expect(cloud.login).not.toHaveBeenCalled()
+    expect(cloud.registerProjects).not.toHaveBeenCalled()
+    expect(screen.queryByText('登录云端开发平台')).toBeNull()
+  })
+
+  it('still renders the native shell when no cloud bridge is exposed at all', () => {
     Object.defineProperty(window, 'api', { configurable: true, value: {} })
 
     render(<App />)
 
     expect(screen.getByTestId('workspace-shell')).toBeTruthy()
-    expect(screen.queryByText('域账号')).toBeNull()
+    expect(screen.queryByRole('button', { name: '登录云端平台' })).toBeNull()
     expect(screen.queryByText(/未配置云端开发平台地址/)).toBeNull()
   })
 })

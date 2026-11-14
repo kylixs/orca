@@ -23,7 +23,10 @@ export function PreparingCloudProjectBanner(): React.JSX.Element {
   )
 }
 
-/** Bottom-right, below the z-50 failure banner that owns the bottom centre. */
+/**
+ * Positioned by the caller (the login entry shares the bottom-right corner), so
+ * the two chips stay in one row instead of stacking over each other.
+ */
 export function NewCloudProjectButton({
   bridge,
   onCreated
@@ -34,11 +37,9 @@ export function NewCloudProjectButton({
   const [open, setOpen] = React.useState(false)
   return (
     <>
-      <div className="fixed bottom-3 right-3 z-40">
-        <Button variant="outline" size="xs" onClick={() => setOpen(true)}>
-          {translate('auto.cloud.newProject', '新建云端项目')}
-        </Button>
-      </div>
+      <Button variant="outline" size="xs" onClick={() => setOpen(true)}>
+        {translate('auto.cloud.newProject', '新建云端项目')}
+      </Button>
       <CloudNewProjectDialog
         bridge={bridge}
         open={open}

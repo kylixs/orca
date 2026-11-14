@@ -14,9 +14,9 @@ import { startCloudRuntimeAdmission, type CloudRuntimeAdmission } from './cloud-
 type IpcHandler = (event: unknown, ...args: unknown[]) => Promise<unknown>
 
 const ipcHandlers = vi.hoisted(() => new Map<string, IpcHandler>())
-const sessions = vi.hoisted(() => ({
-  installed: [] as { options: { apiUrl: string; userDataPath?: string } }[]
-}))
+const sessions = vi.hoisted((): { installed: InstalledCloudSession[] } => ({ installed: [] }))
+
+type InstalledCloudSession = { options: { apiUrl: string; userDataPath?: string } }
 
 vi.mock('electron', () => ({
   ipcMain: {
@@ -94,21 +94,22 @@ describe('云端准入的宿主信号判定（U6）', () => {
 
     const { installCloudPlatformIpc } = await import('../ipc/cloud-platform')
     const installed = installCloudPlatformIpc(env, { userDataPath: makeUserDataPath() })
-    expect(installed).not.toBeNull()
     expect(await loginContextReply()).toEqual({
       platformUrl: 'https://platform.example.com',
       username: null,
       locked: false
     })
-    installed?.dispose()
+    installed.dispose()
     expect(ipcHandlers.size).toBe(0)
   })
 
-  it('无任何 cloud env：返回 null，桌面构建不装配云端处理器（零回归）', async () => {
+  it('无任何 cloud env：仍不进宿主准入；登录入口照常装配（W11），无地址可预填', async () => {
     expect(startTracked({})).toBeNull()
 
     const { installCloudPlatformIpc } = await import('../ipc/cloud-platform')
-    expect(installCloudPlatformIpc({}, { userDataPath: makeUserDataPath() })).toBeNull()
+    const installed = installCloudPlatformIpc({}, { userDataPath: makeUserDataPath() })
+    expect(await loginContextReply()).toEqual({ platformUrl: null, username: null, locked: false })
+    installed.dispose()
     expect(ipcHandlers.size).toBe(0)
   })
 
@@ -131,7 +132,10 @@ describe('云端准入的宿主信号判定（U6）', () => {
       (error: unknown) => error
     )
     expect(failure).toBeInstanceOf(Error)
-    expect((failure as Error).message).toContain('cloud host enrolment failed')
+    expect(failure).toHaveProperty(
+      'message',
+      expect.stringContaining('cloud host enrolment failed')
+    )
   })
 
   it('ORCA_CLOUD_INTERNAL_TOKEN（无 HOST_TOKEN）：保留轮询路径，凭证即刻生效', async () => {

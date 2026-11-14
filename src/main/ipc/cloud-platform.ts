@@ -243,22 +243,18 @@ export function registerCloudPlatformHandlers(
 }
 
 /**
- * Registers the IPC surface when the app runs in cloud mode. Returns null in
- * ordinary desktop mode, which has no platform to talk to.
+ * Registers the IPC surface in every build (W11): the native shell keeps a
+ * permanent sign-in button, so even a dev build with no environment variable can
+ * log in by typing the platform address. Without any address the login IPC
+ * answers `PLATFORM_ADDRESS_REQUIRED` instead of failing to register.
  *
- * A cloud build is one that ships the platform entry at all: the runtime env
- * address (today's signal, unchanged), or a build-injected default, or the
- * managed-build switch. Once that holds, the login screen appears even with no
- * environment variable — the user types the address there (M119/W10) — and the
- * default comes from env > last successful login > the build-injected constant.
+ * A cloud build additionally restores the last saved session at startup; other
+ * builds stay signed out and never touch the network on boot.
  */
 export function installCloudPlatformIpc(
   env: NodeJS.ProcessEnv = process.env,
   deps: { userDataPath?: string; packaged?: boolean } = {}
-): CloudPlatformHandlers | null {
-  if (!isCloudPlatformBuild(env)) {
-    return null
-  }
+): CloudPlatformHandlers {
   const userDataPath = deps.userDataPath ?? getCanonicalUserDataPath()
   const packaged = deps.packaged ?? isPackagedOrcaBuild()
   const memory = readCloudLoginMemory(userDataPath)
@@ -278,9 +274,13 @@ export function installCloudPlatformIpc(
   })
   setActiveCloudSession(session)
   // Why background: startup must not wait on a platform round-trip; the state IPC awaits it.
-  void session
-    .restoreSession()
-    .catch((error: unknown) => console.warn('[cloud] session restore did not complete', error))
+  // Why the gate: a build without the platform entry must not sign itself in —
+  // its user opts in through the shell's sign-in button instead.
+  if (isCloudPlatformBuild(env)) {
+    void session
+      .restoreSession()
+      .catch((error: unknown) => console.warn('[cloud] session restore did not complete', error))
+  }
   const handlers = registerCloudPlatformHandlers(session, {
     userDataPath,
     loginContext: {
