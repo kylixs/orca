@@ -2564,6 +2564,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W7a 开发完成（通道①，待独立测试+审计，2026-11-14）
+
+提交 `2f0b9657217`（4 文件 +692/−29）：`POST /v1/projects/{id}/web-handoff`（既有项目守卫、内存 map 绑定 userId+projectId、默认 60s、无直连 400 HOST_UNAVAILABLE、审计记 sha256 指纹）+ `POST /v1/web/handoff`（先删后校验单次消费、复用抽取的 `issueDeviceSession` 与密码登录同路径、撤权换发 403 permission_lost、审计两向无明文）；顺手项（W8 兼守护 docstring、W8_EVIDENCE 常量）已落。e2e 7/0（签发换发/重放/过期/无直连/无权签发/撤权/审计）+ dir 套件 6/0。前轮遗留 diff 审阅后全量续用未重写。已派独立测试（自有探针：双换发并发恰一成功、令牌真实可用性、契约 diff）与审计（code 熵/内存边界/设备绑定/TOCTOU/issueDeviceSession 零回归/正则影响面）。
+
 ### W5a 开发完成（通道④，桥接文件待落库，2026-11-14）
 
 提交 `7058a99dd1c`（5 文件）：详情页终端面板（懒加载 + `terminal.create/send/updateViewport/close`/`terminal.subscribe` 流式、xterm 跨断线保留按快照重绘、0.5–8s 退避失败态可重试、`terminal` 授权占位卡、CloudFilePanel 零改动）；cloud-admin/main.tsx WebGL prime 同 web 客户端模式。组件测试 9 例 + cloud 回归 68 例全绿，tc:web/lint/format 过。收尾修正两处规格偏差：重连快照清屏序对齐 web replay；订阅参数补 client+viewport（否则 updateViewport 无 floor 永不生效）。**依赖项**：5 个 subscribe 桥接 seam 文件仍在工作区未落库（更早中断代理所写），已派小任务验证后补提交；落库后 W5a 走独立测试+审计。
