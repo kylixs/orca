@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### U37 设计审定通过（2026-11-14）
+
+`work-orders/u37-provision-kick-design.md`（311 行，置信度 ~92%）：宿主主动 provision kick——心跳响应 wire-additive `provisionAssignments[]`（平台按 本宿主+provisioning+repoUrl 非空 即时派生，无新 store 字段），宿主票据外复用 provisionCloudProject→cloneToPath 全链克隆，沿既有 provisioned[] 回报翻 ready/failed；U20 门禁一字不动；旧宿主结构上读不到新字段=行为不变（U21 先例）。§7 四项已裁定（maintenance 拦截/轻量指派审计/已有检出不强制重克隆/不预置回退开关）。实现 A（平台下行）/B（宿主执行）以契约为界可并行，C（测试回归+U34 套件 2 还原+M57 复活）随后。等空槽即派。
+
 ### 用户手测报告 → U40/U41 登记（2026-11-14，浏览器链总根因）
 
 用户报：①「打开项目的 orca web 不能自动登录」实为 admin 对 demo-app 无 open（web-handoff 实测 403 permission_lost）→ 仅「详情」可点=cloud-admin.html 独立登录页（设计如此）；②该页登录报网络错误=Mixed Content（HTTPS 宿主页 + HTTP 平台 API）。**U41=总根因（平台公网口无 TLS）**：修复=平台 TLS 监听（env 可选加性）+复用 U2 本地 CA（钥匙串可信）签含 100.103.213.12 SAN 证书→?api= 自动变 https、浏览器零警告；forwarder 为 L4 透传无需改。**U40**：环境侧补 admin 授权；admin 隐式 open 的产品语义挂设计评估。中继浏览器模式 404=U39 在修。
