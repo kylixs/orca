@@ -3,6 +3,8 @@ import type { OrcaHooks } from '../../../shared/orca-yaml-hook-types'
 import { parseExecutionHostId, type ExecutionHostId } from '../../../shared/execution-host'
 import type { SetupScriptImportCandidate } from '../../../shared/setup-script-imports'
 import { callRuntimeRpc, getActiveRuntimeTarget } from './runtime-rpc-client'
+import { useAppStore } from '@/store'
+import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 
 function getHookInspectionTarget(
   settings: Pick<GlobalSettings, 'activeRuntimeEnvironmentId'> | null | undefined,
@@ -39,6 +41,11 @@ export async function checkRuntimeHooks(
   const target = getHookInspectionTarget(settings, hostId)
   if (target.kind !== 'environment') {
     return window.api.hooks.check({ repoId, ...(hostId ? { hostId } : {}) })
+  }
+  if (isCloudSessionEnvironmentId(useAppStore.getState().runtimeEnvironments, target.environmentId)) {
+    // Why: a cloud session's host refuses repo.hooksCheck — hook inspection is a
+    // desktop maintenance surface, so report "no hooks" instead of a denial.
+    return { hasHooks: false, hooks: null, mayNeedUpdate: false }
   }
   return callRuntimeRpc<HookCheckResult>(
     target,

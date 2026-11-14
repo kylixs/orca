@@ -42,6 +42,7 @@ import {
   registerInflightHostedReviewRequest
 } from './hosted-review-request-state'
 import { isActiveWebClientCloudSession } from '@/web/web-cloud-session-scope'
+import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 
 export type HostedReviewSlice = {
   hostedReviewCache: Record<string, HostedReviewCacheEntry<HostedReviewInfo>>
@@ -164,6 +165,14 @@ export const createHostedReviewSlice: StateCreator<AppState, [], [], HostedRevie
     }
     const ownerSettings = settingsForHostedReviewRepoOwner(get().settings, repo)
     const target = getActiveRuntimeTarget(ownerSettings)
+    // Why: the same refusal judged by environment — a desktop client signed into a
+    // cloud project skips it too (design principle 1, not a web-only branch).
+    if (
+      target.kind === 'environment' &&
+      isCloudSessionEnvironmentId(get().runtimeEnvironments, target.environmentId)
+    ) {
+      return null
+    }
     const cacheKey =
       options?.exactReviewKey ??
       getHostedReviewCacheKey(

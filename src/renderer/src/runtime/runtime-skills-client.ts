@@ -14,6 +14,8 @@ import {
   runtimeEnvironmentSupportsCapability,
   type RuntimeClientTarget
 } from './runtime-rpc-client'
+import { useAppStore } from '@/store'
+import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 
 const SKILL_DISCOVERY_TIMEOUT_MS = 15_000
 
@@ -42,6 +44,14 @@ export async function discoverSkillsForRuntimeTarget(
 ): Promise<SkillDiscoveryResult> {
   if (runtimeTarget.kind === 'local') {
     return window.api.skills.discover(target)
+  }
+  if (
+    isCloudSessionEnvironmentId(useAppStore.getState().runtimeEnvironments, runtimeTarget.environmentId)
+  ) {
+    // Why: the skill directory is the host's global user catalog (~/.claude/skills) —
+    // a cross-project surface the ticket never carries (O1 F4). Report an empty scan
+    // instead of a denial; the chat pane already renders its own cloud empty state.
+    return { skills: [], sources: [], scannedAt: Date.now() }
   }
   return callRuntimeRpc<SkillDiscoveryResult>(
     runtimeTarget,

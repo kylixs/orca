@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { linearStatus } from '@/runtime/runtime-linear-client'
 import { useAppStore } from '@/store'
+import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 import { getProviderRuntimeContextKey } from '@/lib/provider-runtime-context'
 import {
   getTaskSourceCacheScope,
@@ -48,6 +49,15 @@ export function useLinearSourceConnection(args: {
       return
     }
     let stale = false
+    // Why: a cloud session's host refuses linear.* — the credentials are host account
+    // assets the ticket never carries (O1 F5). Report "not connected" without asking.
+    const cloudSession =
+      environmentId !== null &&
+      isCloudSessionEnvironmentId(useAppStore.getState().runtimeEnvironments, environmentId)
+    if (cloudSession) {
+      setState({ scope, runtimeRevision, sourceStoreStatus, status: { connected: false, viewer: null } })
+      return
+    }
     void linearStatus(source)
       .then((status) => {
         if (!stale) {

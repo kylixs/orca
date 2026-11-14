@@ -10,6 +10,7 @@ import {
 import { parseExecutionHostId, type ExecutionHostId } from '../../../../shared/execution-host'
 import { TERMINAL_QUICK_COMMANDS_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
 import { callRuntimeRpc, runtimeEnvironmentSupportsCapability } from '@/runtime/runtime-rpc-client'
+import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 import { translate } from '@/i18n/i18n'
 import { getRuntimeEnvironmentConnectionGeneration } from './runtime-status'
 
@@ -155,6 +156,20 @@ export const createTerminalQuickCommandHostsSlice: StateCreator<
   loadRuntimeTerminalQuickCommands: async (environmentId, options) => {
     const trimmed = environmentId.trim()
     if (!trimmed) {
+      return
+    }
+    // Why: a cloud session's host refuses settings.* — quick commands are a paired
+    // desktop ↔ host store the ticket never carries, so the read is a guaranteed
+    // denial. Report the same shape the unsupported-capability branch does.
+    if (isCloudSessionEnvironmentId(get().runtimeEnvironments, trimmed)) {
+      updateEntry(set, trimmed, () => ({
+        commands: [],
+        connectionGeneration: getRuntimeEnvironmentConnectionGeneration(trimmed),
+        error: null,
+        loading: false,
+        ready: true,
+        supported: false
+      }))
       return
     }
     const connectionGeneration = getRuntimeEnvironmentConnectionGeneration(trimmed)

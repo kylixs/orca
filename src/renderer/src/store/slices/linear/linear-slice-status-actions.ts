@@ -1,6 +1,7 @@
 import type { LinearConnectionStatus } from '../../../../../shared/linear/workspace-types'
 import type { LinearSlice, LinearSliceGet, LinearSliceSet } from './linear-slice-contract'
-import { linearStatus } from '@/runtime/runtime-linear-client'
+import { linearStatus, getLinearRuntimeTarget } from '@/runtime/runtime-linear-client'
+import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 import { getProviderRuntimeContextKey } from '@/lib/provider-runtime-context'
 import {
   getInflightStatusRequest,
@@ -30,8 +31,18 @@ export function createLinearStatusActions(
 
       const mutationGeneration = getLinearMutationGeneration()
       const statusReadGeneration = nextLinearStatusReadGeneration()
-      const request = linearStatus(get().settings)
-        .then((status) => {
+      const request = (async () => {
+        const target = getLinearRuntimeTarget(get().settings)
+        if (
+          target.kind === 'environment' &&
+          isCloudSessionEnvironmentId(get().runtimeEnvironments, target.environmentId)
+        ) {
+          // Why: a cloud session's host refuses linear.* — the credentials are host
+          // account assets the ticket never carries (O1 F5). Report "not connected".
+          return { connected: false, viewer: null } satisfies LinearConnectionStatus
+        }
+        return linearStatus(get().settings)
+      })().then((status) => {
           if (
             mutationGeneration !== getLinearMutationGeneration() ||
             !isCurrentLinearStatusRead(statusReadGeneration) ||

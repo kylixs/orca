@@ -3,6 +3,8 @@ import {
   RuntimeRpcCallError,
   type RuntimeClientTarget
 } from '@/runtime/runtime-rpc-client'
+import { useAppStore } from '@/store'
+import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 import type { WorkspacePort, WorkspacePortScanResult } from '../../../shared/workspace-ports'
 
 const WORKSPACE_PORT_PLATFORMS = new Set<NodeJS.Platform | 'unknown'>([
@@ -90,6 +92,19 @@ export async function runWorkspacePortScanForTarget(
   const params = repoId ? { repoId } : {}
   if (target.kind === 'local') {
     return requireWorkspacePortScanResult(await window.api.workspacePorts.scan(params))
+  }
+  // Why: a cloud session's host refuses workspacePorts.scan — the port table is the
+  // host's whole-machine listener set, not a ticket-domain fact. Report the same
+  // "unavailable" result an unsupported runtime gets instead of logging a denial.
+  if (
+    isCloudSessionEnvironmentId(useAppStore.getState().runtimeEnvironments, target.environmentId)
+  ) {
+    return {
+      platform: 'unknown',
+      scannedAt: Date.now(),
+      ports: [],
+      unavailableReason: 'Cloud sessions do not scan the host machine port table.'
+    }
   }
   try {
     const result = await callRuntimeRpc<WorkspacePortScanResult>(

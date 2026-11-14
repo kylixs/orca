@@ -21,6 +21,7 @@ import type { WorkspaceAttachment, Worktree } from '../../../../../../shared/wor
 import { findKnownWorktreeById } from '../listing/detected-worktree-meta'
 import { findRepoForHost } from '../../repo-host-identity'
 import { readHostedReviewForRepo } from '@/lib/hosted-review-repo-read'
+import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 import { lookupGitHubWorkItemByOwnerRepoForSource } from '@/lib/github-work-item-source-lookup'
 import { buildTaskSourceContextFromRepo } from '../../../../../../shared/task-source-context'
 import { PrioritySemaphore } from '../../../../../../shared/priority-semaphore'
@@ -222,6 +223,15 @@ export function createObserveTerminalGitHubPullRequestLink(
         }
       }
       // Older hosts may omit exact head evidence; retain their branch-confirmation path.
+      // Why the gate: a cloud session's host refuses this desktop-owned surface, so
+      // asking would only log a denial (W13) — the branch confirmation stays unproven.
+      const ownerHost = parseExecutionHostId(getRepoExecutionHostId(repo))
+      if (
+        ownerHost?.kind === 'runtime' &&
+        isCloudSessionEnvironmentId(get().runtimeEnvironments, ownerHost.environmentId)
+      ) {
+        return false
+      }
       const pr = await readHostedReviewForRepo(repo, get().settings, {
         branch,
         force: true,
