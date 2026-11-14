@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### O1-g 落地 + O1 工作令完成（2026-11-14）
+
+`15e5aa429cf`（7 文件 +304/−11）：①旅程审计钉=已知集合形态（实证零不变量不成立：B 线 19 条/12 方法，部分设计性+~10 残余未门控点，钉「不得新增」使漂移可见；A 线对 F7/F8 门控方法断言严格为零——O1-a/b 实测成立）；②U35 常设钉（lineageList 成员钉+逐字拒绝+平台审计 0→恰 1）；③U36 构建护栏（global-setup 校验仪器化标记缺失即 exit 1）；④两 e2e 换 CLOUD_HOST_METHODS 生产表。双线旅程复跑绿（B 2/2、A 1/1）。**O1 工作令全部完成**（a-h）。残余账登记 **U42** 已派（~10 调用点清理）。
+
 ### U37 设计审定通过（2026-11-14）
 
 `work-orders/u37-provision-kick-design.md`（311 行，置信度 ~92%）：宿主主动 provision kick——心跳响应 wire-additive `provisionAssignments[]`（平台按 本宿主+provisioning+repoUrl 非空 即时派生，无新 store 字段），宿主票据外复用 provisionCloudProject→cloneToPath 全链克隆，沿既有 provisioned[] 回报翻 ready/failed；U20 门禁一字不动；旧宿主结构上读不到新字段=行为不变（U21 先例）。§7 四项已裁定（maintenance 拦截/轻量指派审计/已有检出不强制重克隆/不预置回退开关）。实现 A（平台下行）/B（宿主执行）以契约为界可并行，C（测试回归+U34 套件 2 还原+M57 复活）随后。等空槽即派。
