@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### U31 修复落地（2026-11-14，🟢）
+
+`a7f400aceb2`（1 文件 +5）：cloud-denial-details.test.ts 入 NODE_RUNTIME_INCLUDE；改后 run-vitest（带 --config）2/2 绿（RSA/真 TLS fixture 正常）、兄弟三门禁 17/17、内部 M72 断言原样过=纯环境伪红确证。**U31→🟢**。空槽回填 U29。
+
 ### O1-e 落地（2026-11-14）
 
 `9642bca9750`（12 文件 +374/−14）：F5=owner 环境为云会话不发 `github.prForBranch`+PR 区整体占位卡（如实「凭据属宿主账号资产」，替代「No pull request found」假空态与注定被拒的按钮）；F4=skills.discover 云 pane 跳过+`errorKind:'cloud'`+技能面板文档型空态（无 Retry，对齐 SSH unavailable 先例）；复用 O1-a 谓词新增 isCloudSessionEnvironmentId（缺行=非云放行真实拒绝）。新 7 例+域内 379 文件 3876 例全绿，tc:web 清。超预算余项入 O1-g（linear.status 按需触发既有错误处理/SkillsPage 占位/真栈 R1 审计断言）。空槽回填 U31（微型）。
