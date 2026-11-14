@@ -118,7 +118,9 @@ export function NewWorkspaceComposerProjectSection({
             value={selectedProjectId}
             onValueChange={onProjectChange}
             onValueSelected={focusNameInput}
-            onAddProject={onAddProject}
+            // One switch owns the whole add-project entry: the toolbar button and the
+            // picker's pinned row must appear and disappear together.
+            onAddProject={showAddProjectButton ? onAddProject : undefined}
             placeholder={
               projectPlaceholder ??
               translate('auto.components.NewWorkspaceComposerCard.dccd26d4e4', 'Choose project')

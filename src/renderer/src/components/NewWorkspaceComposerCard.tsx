@@ -12,6 +12,8 @@ import {
   type AddRemoteHostMode
 } from '@/components/sidebar/AddRemoteHostDialog'
 import { lazyWithRetry } from '@/lib/lazy-with-retry'
+import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
+import { getExplicitRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import type * as SetProjectLocationDialogModule from '@/components/new-workspace/SetProjectLocationDialog'
 import { unwrapRuntimeRpcResult } from '@/runtime/runtime-rpc-client'
 import { withUiConnectTimeout } from '@/ssh/ssh-connect-ui-timeout'
@@ -99,6 +101,15 @@ export default function NewWorkspaceComposerCard(
   const updateSettings = useAppStore((state) => state.updateSettings)
   const projects = useAppStore((state) => state.projects)
   const repos = useAppStore((state) => state.repos)
+  // Why: a cloud ticket pins only the project root, so its host refuses the
+  // add-directory flow's `files.browseServerDir` — adding a directory there belongs
+  // to the platform's self-service project creation, not the composer.
+  const addProjectHiddenByCloudSession = useAppStore((state) =>
+    isCloudSessionEnvironmentId(
+      state.runtimeEnvironments,
+      getExplicitRuntimeEnvironmentIdForWorktree(state, state.activeWorktreeId)
+    )
+  )
   const nameInputFocusFrameRef = React.useRef<number | null>(null)
   const branchNameInputId = React.useId()
   const projectDescriptionId = React.useId()
@@ -313,6 +324,9 @@ export default function NewWorkspaceComposerCard(
         <NewWorkspaceComposerProjectSection
           {...props}
           disabled={sparseEditing}
+          showAddProjectButton={
+            props.showAddProjectButton !== false && !addProjectHiddenByCloudSession
+          }
           projectOptions={projectOptions}
           projectHostSetupOptions={projectHostSetupOptions}
           ephemeralVmRecipes={ephemeralVmRecipes}
