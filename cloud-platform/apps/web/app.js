@@ -377,7 +377,10 @@ async function renderProjects() {
   content().innerHTML = `
     <div class="page-head">
       <div><h1>我的项目</h1><p>仅展示你有「打开项目」权限的项目。</p></div>
-      <button class="btn" onclick="location.reload()">刷新</button>
+      <div style="display:flex;gap:8px">
+        ${isAdmin() ? '<button class="btn primary" id="registerProjectBtn">登记项目</button>' : ''}
+        <button class="btn" onclick="location.reload()">刷新</button>
+      </div>
     </div>
     <div class="toolbar">
       <input class="input grow" id="projectSearch" placeholder="搜索项目名、仓库或主机">
@@ -409,6 +412,187 @@ async function renderProjects() {
   }
   draw()
   $('#projectSearch').oninput = (e) => draw(e.target.value)
+  const registerBtn = $('#registerProjectBtn')
+  if (registerBtn) {
+    registerBtn.onclick = () =>
+      void registerProjectDialog().catch((err) => toast(`打开登记弹层失败：${err.message ?? err}`))
+  }
+}
+
+/* ---------------- 项目登记弹层（M120a · QA-013） ---------------- */
+
+/** 管理员路由对 key 只查重不校验语法（R1），语法守门只能由控制台补位。 */
+const REGISTRATION_FIELD_BY_CODE = {
+  HOST_NOT_FOUND: 'regHost',
+  PROJECT_EXISTS: 'regKey',
+  PROJECT_PATH_TAKEN: 'regPath',
+  PROJECT_PATH_INVALID: 'regPath',
+  REPO_URL_INVALID: 'regRepo',
+  BRANCH_INVALID: 'regBranch'
+}
+
+const PROJECT_KEY_PATTERN = /^[a-z0-9][a-z0-9._-]*$/
+
+/** 与 project-key.ts / project-path.ts 同规则的客户端软校验，服务端仍是权威。 */
+function registrationFieldErrors(fields) {
+  const errors = []
+  if (fields.name === '') {
+    errors.push(['regName', '项目名称不能为空。'])
+  } else if (fields.name.length > 200) {
+    errors.push(['regName', '项目名称不能超过 200 个字符。'])
+  }
+  if (fields.key === '' || fields.key.length > 64) {
+    errors.push(['regKey', '项目 Key 长度必须为 1–64 个字符。'])
+  } else if (!PROJECT_KEY_PATTERN.test(fields.key)) {
+    errors.push([
+      'regKey',
+      '项目 Key 必须以小写字母或数字开头，且只能包含小写字母、数字、点、下划线或连字符。'
+    ])
+  } else if (fields.key.endsWith('.')) {
+    errors.push(['regKey', '项目 Key 不能是 “.” 或 “..”，也不能以 “.” 结尾。'])
+  }
+  if (fields.hostId === '') {
+    errors.push(['regHost', '请选择目标主机。'])
+  }
+  const path = fields.path
+  if (path === '') {
+    errors.push(['regPath', '项目路径不能为空。'])
+  } else if (!path.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(path)) {
+    errors.push(['regPath', '项目路径必须是绝对路径。'])
+  } else if (path.split(/[\\/]/).includes('..')) {
+    errors.push(['regPath', '项目路径不能包含 “.” 或 “..” 段。'])
+  } else if (path !== '/' && !/^[A-Za-z]:[\\/]$/.test(path) && /[\\/]$/.test(path)) {
+    errors.push(['regPath', '项目路径不能以分隔符结尾。'])
+  }
+  return errors
+}
+
+function setRegistrationError(inputId, message) {
+  $(`#${inputId}`).classList.add('invalid')
+  const line = $(`#${inputId}Error`)
+  line.textContent = message
+  line.hidden = false
+}
+
+function hostOptionLabel(h) {
+  if (h.status === 'maintenance') {
+    return `${h.name}（维护中）`
+  }
+  return h.online ? h.name : `${h.name}（离线）`
+}
+
+async function registerProjectDialog() {
+  const hosts = (await api('/v1/hosts')).hosts.filter((h) => !h.revokedAt)
+  let backdrop = null
+
+  const clearErrors = () => {
+    for (const line of backdrop.querySelectorAll('.inline-error')) {
+      line.hidden = true
+      line.textContent = ''
+    }
+    for (const control of backdrop.querySelectorAll('input, select')) {
+      control.classList.remove('invalid')
+    }
+  }
+
+  const readForm = () => ({
+    name: $('#regName').value.trim(),
+    key: $('#regKey').value.trim(),
+    hostId: $('#regHost').value,
+    path: $('#regPath').value.trim(),
+    repoUrl: $('#regRepo').value.trim(),
+    defaultBranch: $('#regBranch').value.trim()
+  })
+
+  const submitRegistration = () => {
+    clearErrors()
+    const fields = readForm()
+    const errors = registrationFieldErrors(fields)
+    if (errors.length > 0) {
+      for (const [id, message] of errors) {
+        setRegistrationError(id, message)
+      }
+      $(`#${errors[0][0]}`).focus()
+      return false
+    }
+    const button = backdrop.querySelector('[data-action="0"]')
+    button.disabled = true
+    void (async () => {
+      let created
+      try {
+        created = await api('/v1/projects', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: fields.name,
+            key: fields.key,
+            hostId: fields.hostId,
+            // 管理员路由是 path 直供语义（W8）：不发 dir，缺省项不进请求体。
+            path: fields.path,
+            ...(fields.repoUrl ? { repoUrl: fields.repoUrl } : {}),
+            ...(fields.defaultBranch ? { defaultBranch: fields.defaultBranch } : {})
+          })
+        })
+      } catch (err) {
+        button.disabled = false
+        const fieldId = REGISTRATION_FIELD_BY_CODE[err.code ?? '']
+        if (fieldId) {
+          setRegistrationError(fieldId, err.message ?? '登记失败。')
+        } else {
+          const top = $('#regError')
+          top.textContent = err.message ?? '登记失败。'
+          top.hidden = false
+        }
+        return
+      }
+      backdrop.remove()
+      toast(
+        `项目已登记${created.repoUrl ? '，克隆中，就绪后可打开' : ''}。授权请在「成员与权限」中配置。`
+      )
+      await renderProjects()
+    })()
+    return false
+  }
+
+  backdrop = dialog(
+    '登记项目',
+    `
+    <p class="inline-error" id="regError" hidden></p>
+    <div class="field"><span>项目名称</span>
+      <input id="regName" placeholder="如 支付服务">
+      <p class="inline-error" id="regNameError" hidden></p>
+    </div>
+    <div class="field"><span>项目 Key</span>
+      <input id="regKey" placeholder="如 payment-service（小写字母、数字、点、下划线、连字符）">
+      <p class="inline-error" id="regKeyError" hidden></p>
+    </div>
+    <div class="field"><span>目标主机</span>
+      <select class="select" id="regHost" style="width:100%">
+        <option value="">请选择主机</option>
+        ${hosts.map((h) => `<option value="${esc(h.id)}">${esc(hostOptionLabel(h))}</option>`).join('')}
+      </select>
+      <p class="inline-error" id="regHostError" hidden></p>
+    </div>
+    <div class="field"><span>目标路径</span>
+      <input id="regPath" placeholder="主机上的绝对路径，如 /srv/work/payment-service">
+      <p class="muted mono" id="regRootHint" style="margin:6px 0 0" hidden></p>
+      <p class="inline-error" id="regPathError" hidden></p>
+    </div>
+    <div class="field"><span>仓库地址（可选）</span>
+      <input id="regRepo" placeholder="留空则登记即就绪，不触发克隆">
+      <p class="inline-error" id="regRepoError" hidden></p>
+    </div>
+    <div class="field"><span>默认分支（可选）</span>
+      <input id="regBranch" placeholder="留空使用远端默认分支">
+      <p class="inline-error" id="regBranchError" hidden></p>
+    </div>`,
+    [{ label: '登记', primary: true, onClick: submitRegistration }]
+  )
+  $('#regHost').onchange = () => {
+    const hint = $('#regRootHint')
+    const root = hosts.find((h) => h.id === $('#regHost').value)?.projectsRoot
+    hint.textContent = root ? `主机项目根：${root}` : ''
+    hint.hidden = !root
+  }
 }
 
 async function renderHosts() {
@@ -702,6 +886,7 @@ async function renderAudit(loadMore = false) {
         ${[
           'login',
           'logout',
+          'project_create',
           'project_connect',
           'project_access',
           'grant_update',
