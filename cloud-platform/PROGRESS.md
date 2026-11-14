@@ -2564,6 +2564,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W6b 开发完成（通道②，待独立测试+审计，2026-11-14）
+
+提交 `8cdfdd02902`（5 文件 +479/−14）：中继注册体浏览器监听启用时附 `browserHost`（env，trim；旧注册体线兼容不变）；平台解析白名单（裸 host[:port]、端口 1-65535）且**非粘连**（再注册未带即清空——中继关浏览器模式必须停止被推荐；与 `host` 拨号地址粘连语义有意区分）；`browserEntryUrlFor` 取首个宣告 browserHost 的存活中继拼 `https://<host>/h/<routeKey>/web-index.html`（routeKey 非法/DNS 不安全 → 空），挂载 /v1/relays、/v1/hosts、projectView、/connect 四处。新增 e2e 5 用例 23/23 + 中继回归 30/30 + 全量套件 exit 0。并发卫生良好：W3 的 sessionPageUrl 未提交行完整隔离在其工作区。已派独立测试（含 URL 真实可达串联验证）与审计（白名单绕过面/非粘连语义/四处挂载契约/diff 归属复核）。
+
 ### W10 修复完成（待独立复验，2026-11-14）
 
 提交 `f0665d6b0eb`（17 文件 +457/−29）：B-1 双段 define 收拢 `ORCA_CLOUD_PLATFORM_DEFINES`（main+preload 同时注入）+ 双层防回归（单测断言配置覆盖 + 真实产物审计脚本接入全量构建尾，负向对照实测 exit 1 报同款签名）；M-1 托管跳过 memory 档（env>build，记忆仅用户名预填）；M-2 选剥离 userinfo（理由注释：粘贴地址仍指目标平台、登录不读 URL 凭据、拒绝即死路）双入口剥除；m-3/m-5 错误码 IPC 透传 + beginLogin 不再预改写共享 options（成功后 commitLoginAddress）。W10 专项 72/72、复跑 119/119；回归批 44 失败经 stash 对照逐文件一致=既有沙箱 TLS 环境失败（均不 import 本改动模块）。已派独立复验（重点复现原失败步骤①）。遗留：m-4 内联校验镜像、m-2 登出预填刷新 → 后续。
