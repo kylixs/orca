@@ -2564,6 +2564,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W6c 关闭（独立复验全过，2026-11-14）
+
+复验（`evidence/w6c-reverify/` 14 件）：三组复跑全绿（W6c 单测 30/0、原 failing cloud-admin-session e2e 1/1、tc:web exit 0）；**前缀语义保真穷尽探针**——伺服器逐字复制真实 relay `parseBrowserPath`，`out/web` 全部 **1410 文件**在 `/h/route-key/` 挂载逐个请求零 404 且与直连**逐字节一致**；headless 真实产物加载（web-index 29 请求 / cloud-admin 32 请求）全 200 零 console 错误；无 pathname 回退在 transport 级以真实源验证（修复前构造即抛，修复后拨号 URL 与 offer 逐字节相同）；`build:web` 产物双入口全相对引用。观察项（门禁覆盖面）记录：verify-web-build 不查 CSS/JS 内绝对引用——当前产物无此问题，挂 P2。W6c 关闭（`c615adee2f4` + `ebe7d9def45`）。通道③下一步 W7b 需①的 W3 提交（app.js 双入口）。
+
 ### W7a 审计通过（带 1 major 回派，2026-11-14）
 
 审计（`test-reports/w7a-audit.md`）：blocker 0、major 1（j-1：签发侧 adminAccess 旁路可为无 grant 项目签出必然 403 的死 code，与换发侧 open 要求相反——裁定签发就拒）、minor 5（换发无限流、directAddrs[0] 未校验拼 URL、审计灌水面、server.ts 2816 行宜抽 web-handoff.ts、测试 2 行 oxfmt）、note 7（多副本内存 map 为设计自带、browserEntryUrl 待 W6b、W7b 换发应带设备三元组等）。安全基线全部成立：code 256-bit、指纹不可反推、先删后验无并发双花、设备语义与密码登录逐字一致、无 TOCTOU、审计四向零明文。已派小修复（j-1 + directAddrs 校验 + oxfmt；限流/抽取挂账 M120/清理令）。
