@@ -2713,6 +2713,10 @@ cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 �
 
 用户报：①「打开项目的 orca web 不能自动登录」实为 admin 对 demo-app 无 open（web-handoff 实测 403 permission_lost）→ 仅「详情」可点=cloud-admin.html 独立登录页（设计如此）；②该页登录报网络错误=Mixed Content（HTTPS 宿主页 + HTTP 平台 API）。**U41=总根因（平台公网口无 TLS）**：修复=平台 TLS 监听（env 可选加性）+复用 U2 本地 CA（钥匙串可信）签含 100.103.213.12 SAN 证书→?api= 自动变 https、浏览器零警告；forwarder 为 L4 透传无需改。**U40**：环境侧补 admin 授权；admin 隐式 open 的产品语义挂设计评估。中继浏览器模式 404=U39 在修。
 
+### 管理授权设计审定通过（2026-11-14）
+
+`work-orders/admin-authorization-design.md`（290 行）：现状=服务端分配权已完备（PUT /grants 仅查 isAdmin）；缺口=主体目录/组与位校验/拒绝审计/主机域零授权模型/admin 自身打开路径（perms:[] 票据被宿主全拒）。**审定**：U40=自授流程（web「授权并打开」，否决隐式 open）；HostGrant 三位+provisionPolicy 开关（纯平台侧，缺省 open 零回归）；GET /v1/directory store 派生；5 审计事件；切 AA1-AA7（①通道 server 串行等 U41，③通道 app.js 串行，**AA5 自授入口先行**——已派）。
+
 ### 用户指令：管理授权补全（2026-11-14）
 
 「管理员有任何资源的分配权限，目前缺少项目、主机权限分配相关功能」→ 派设计代理（现状盘点 admin 能力全集/组管理缺口/主机权限语义空白/U40 的 admin-open 裁定方向）。U40 环境侧补 admin 授权照旧（U41 令重播种含），产品语义由本设计定。
