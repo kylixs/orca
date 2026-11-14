@@ -2713,6 +2713,10 @@ cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 �
 
 用户报：①「打开项目的 orca web 不能自动登录」实为 admin 对 demo-app 无 open（web-handoff 实测 403 permission_lost）→ 仅「详情」可点=cloud-admin.html 独立登录页（设计如此）；②该页登录报网络错误=Mixed Content（HTTPS 宿主页 + HTTP 平台 API）。**U41=总根因（平台公网口无 TLS）**：修复=平台 TLS 监听（env 可选加性）+复用 U2 本地 CA（钥匙串可信）签含 100.103.213.12 SAN 证书→?api= 自动变 https、浏览器零警告；forwarder 为 L4 透传无需改。**U40**：环境侧补 admin 授权；admin 隐式 open 的产品语义挂设计评估。中继浏览器模式 404=U39 在修。
 
+### U38 落地（2026-11-14，🟢）
+
+`00f8354c48f`（4 文件 +165/−11，hunk 级选择性暂存与并行令隔离）：relay env 双读+三处消音；**同族发现**：host.sh 裸 env 名宿主不读（照装无法注册）+TLS 行名不符——均加性双写修复（install 脚本产物首次真正可用）。25+54+34 测试绿+三形态真实入口冒烟。**U38→🟢**。空槽回填 U37-B。
+
 ### U39 落地（2026-11-14）
 
 `0b968b18a07`（2 文件 +47/−0）：定性=宿主注册在监听端口之前（注册拍空地址）+心跳对主机名键 return ⇒ relayRoutes 永缺；修复=心跳 ensureHostRoute 补写（幂等、注册拍显式目标权威）。红绿实证（真实中继 n=1）+relay 域 67 例零回归。中继晚注册无需补写机制（/v1/internal/relay-routes 全量+2s 清空重建）。卷入事故已 amend 自愈（U38 同文件并行）。**U39→🟡 待平台重启实测后转 🟢**（U41 重启顺带生效）。
