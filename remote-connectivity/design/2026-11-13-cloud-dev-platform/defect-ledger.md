@@ -18,6 +18,7 @@
 | U10 | 🟢 | 多次索引冲突致提交互相污染/回退 | 并发代理共享 git index | 代理侧 soft-reset/plumbing 修复；主会话侧「提交前核对暂存集」规则生效；第四次事故已完整恢复并验证 |
 | U11 | ⚪→🔧 | 模型额度 402/503 中断六代理 | 网关配额与模型可用性 | 切换模型恢复；过程记录在案 |
 | U12 | ⚪ | 授权码 5 分钟外发风险 | 码即凭据 | 单次消费+打开即清 hash+设备行可检测可吊销（web-index-adaptation-plan §5） |
+| U13 | 🟡 | **开发模式带 ORCA_CLOUD_API_URL 启动也看不到登录页** | 开发模式装配链断点待诊断（preload 暴露谓词/vite dev define/挂载条件三嫌疑）；打包形态已验证正常 | 诊断+修复代理在途；**临时可用路径**：`ORCA_DEFAULT_PLATFORM_URL=http://127.0.0.1:18787 pnpm build:electron-vite` 后 `npx electron out/main/index.js`（打包形态，地址预填已实测） |
 
 ## 流程整改（用户指令驱动）
 
