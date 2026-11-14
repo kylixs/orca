@@ -57,6 +57,8 @@ export type SelfServiceHarness = {
   retryPrepare: (id: string) => Promise<unknown>
   listPlatformProjects: () => Promise<unknown[]>
   beat: () => Promise<void>
+  /** Beats until the kick clone's report flips the project ready (U37/U44). */
+  beatUntilReady: (projectId: string) => Promise<void>
   /** One heartbeat; U37-C needs the assignment beat and the report beat separated. */
   beatOnce: () => Promise<void>
   saveEvidence: (file: string, content: unknown) => void
@@ -220,6 +222,21 @@ export async function startSelfServiceHarness(
       await admission.client!.refresh()
       await new Promise((resolve) => setTimeout(resolve, 50))
       await admission.client!.refresh()
+    },
+    beatUntilReady: async (projectId) => {
+      const deadline = Date.now() + 60_000
+      while (Date.now() < deadline) {
+        await admission.client!.refresh()
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        await admission.client!.refresh()
+        const res = await fetch(`${platform.url}/v1/projects/${projectId}`, {
+          headers: { authorization: `Bearer ${adminToken}` }
+        })
+        if (readString(await res.json(), 'status') === 'ready') {
+          return
+        }
+      }
+      throw new Error(`project ${projectId} never became ready`)
     },
     beatOnce: () => admission.client!.refresh(),
     saveEvidence: (file, content) => {

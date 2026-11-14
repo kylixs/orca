@@ -18,8 +18,9 @@ import type { CloudBridge } from './use-cloud-session'
 
 /** Why mocked: the sign-out failure path must be observable without a Toaster. */
 const toastError = vi.hoisted(() => vi.fn())
+const toastInfo = vi.hoisted(() => vi.fn())
 vi.mock('sonner', () => ({
-  toast: { error: toastError, success: vi.fn(), info: vi.fn() }
+  toast: { error: toastError, success: vi.fn(), info: toastInfo }
 }))
 
 const PROJECTS: CloudProjectSummary[] = [
@@ -268,6 +269,55 @@ describe('云端原生入口', () => {
       screen.getByRole('button', { name: '重试' }).click()
     })
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+    expect(screen.getByTestId('workspace-shell')).toBeTruthy()
+  })
+
+  it('U44 创建后仍在准备：显示准备中文案，不挂失败横幅', async () => {
+    const preparingProject: CloudProjectSummary = {
+      id: 'proj_new',
+      key: 'payment-service',
+      name: 'Payment Service',
+      hostName: 'dev-001',
+      hostStatus: 'online',
+      downloadRestricted: false,
+      status: 'provisioning',
+      provisioningError: null
+    }
+    toastInfo.mockClear()
+    const bridge = makeBridge(Promise.resolve(EMPTY_REGISTRATION), undefined, {
+      listProvisionableHosts: async () => [
+        {
+          id: 'host_1',
+          name: 'dev-001',
+          online: true,
+          provisionable: true,
+          projectDirs: []
+        }
+      ],
+      createProject: async () => ({
+        ok: true,
+        preparing: true,
+        projectId: 'proj_new',
+        project: preparingProject
+      })
+    })
+    renderEntry(bridge)
+
+    fireEvent.click(await screen.findByRole('button', { name: '新建云端项目' }))
+    await screen.findByText('dev-001')
+    fireEvent.change(screen.getByLabelText('名称'), { target: { value: 'Payment Service' } })
+    fireEvent.change(screen.getByLabelText('目录'), { target: { value: 'payment-service' } })
+    fireEvent.change(screen.getByLabelText('仓库地址'), { target: { value: '/srv/payment.git' } })
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '创建' }).hasAttribute('disabled')).toBe(false)
+    )
+    fireEvent.click(screen.getByRole('button', { name: '创建' }))
+
+    await waitFor(() =>
+      expect(toastInfo).toHaveBeenCalledWith('宿主正在准备环境，就绪后可打开', expect.anything())
+    )
+    expect(screen.queryByRole('alert')).toBeNull()
+    await waitFor(() => expect(screen.queryByLabelText('名称')).toBeNull())
     expect(screen.getByTestId('workspace-shell')).toBeTruthy()
   })
 

@@ -23,6 +23,7 @@ import {
 } from '../startup/cloud-runtime-admission'
 import { registerCloudPlatformHandlers } from '../ipc/cloud-platform'
 import { CloudSessionService } from './cloud-session-service'
+import { createCloudProvisionAssignmentExecutor } from './cloud-provision-assignment'
 import { setActiveCloudSession } from './cloud-runtime-session'
 import {
   REPO_ROOT,
@@ -170,6 +171,14 @@ export async function startRecoveryHarness(
   })
   admission.bindRuntime(cloud.runtime)
   cloud.runtime.setCloudProvisionReporter((report) => admission.client!.reportProvisioned(report))
+  // U37/U44: the recovery retry now waits for the heartbeat kick, not a ticket.
+  admission.client!.onProvisionAssignment(
+    createCloudProvisionAssignmentExecutor({
+      provision: cloud.runtime.provisionCloudProject.bind(cloud.runtime),
+      report: (report) => admission.client!.reportProvisioned(report),
+      inMaintenance: () => admission.client!.snapshot().maintenance !== null
+    })
+  )
   await admission.client!.refresh()
 
   const adminFetch = (path: string, init: RequestInit = {}): Promise<Response> =>

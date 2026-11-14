@@ -19,6 +19,7 @@ import {
 } from '../startup/cloud-runtime-admission'
 import { registerCloudPlatformHandlers } from '../ipc/cloud-platform'
 import { CloudSessionService } from './cloud-session-service'
+import { createCloudProvisionAssignmentExecutor } from './cloud-provision-assignment'
 import { setActiveCloudSession } from './cloud-runtime-session'
 import {
   REPO_ROOT,
@@ -56,6 +57,8 @@ export type ParallelPrepareHarness = {
   projects: ParallelPrepareProject[]
   session: CloudSessionService
   registrationUserData: string
+  /** Beats until each project's kick clone reports ready or failed (U37/U44). */
+  beatUntilSettled: () => Promise<void>
   registerProjects: () => Promise<CloudProjectRegistration>
   saveEvidence: (file: string, content: unknown) => void
   stop: () => Promise<void>
@@ -154,6 +157,14 @@ export async function startParallelPrepareHarness(
   })
   admission.bindRuntime(cloud.runtime)
   cloud.runtime.setCloudProvisionReporter((report) => admission.client!.reportProvisioned(report))
+  // U37: the heartbeat assignment is what clones a repo-ful project before any ticket.
+  admission.client!.onProvisionAssignment(
+    createCloudProvisionAssignmentExecutor({
+      provision: cloud.runtime.provisionCloudProject.bind(cloud.runtime),
+      report: (report) => admission.client!.reportProvisioned(report),
+      inMaintenance: () => admission.client!.snapshot().maintenance !== null
+    })
+  )
   await admission.client!.refresh()
 
   const adminFetch = (path: string, init: RequestInit = {}): Promise<Response> =>
@@ -241,6 +252,24 @@ export async function startParallelPrepareHarness(
     projects,
     session,
     registrationUserData,
+    beatUntilSettled: async () => {
+      const deadline = Date.now() + 60_000
+      while (Date.now() < deadline) {
+        await admission.client!.refresh()
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        await admission.client!.refresh()
+        const statuses = await Promise.all(
+          projects.map(async (project) => {
+            const res = await adminFetch(`/v1/projects/${project.projectId}`)
+            return readString(await res.json(), 'status')
+          })
+        )
+        if (statuses.every((status) => status === 'ready' || status === 'failed')) {
+          return
+        }
+      }
+      throw new Error('projects never settled after the kick report')
+    },
     registerProjects: async () =>
       parseCloudProjectRegistration(
         await requireHandler(ipcHandlers, CLOUD_PLATFORM_IPC.registerProjects)(null)

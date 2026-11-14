@@ -67,6 +67,10 @@ describe('签到准备的网络/clone 阶段有界并行（真实平台 + 真实
       sessionState.status === 'signed-in' ? sessionState.projects.map((entry) => entry.id) : []
     expect(projectOrder).toHaveLength(3)
 
+    // U44: sign-in registration happens after the kick settles, so a provisioning
+    // project is no longer reported as a failure.
+    await harness.beatUntilSettled()
+
     const spans: PrepareSpan[] = []
     // Why delay: tiny local repos can finish in a few ms, which would hide real overlap.
     const realEnsure = harness.session.ensureProjectPrepared.bind(harness.session)
@@ -116,13 +120,14 @@ describe('签到准备的网络/clone 阶段有界并行（真实平台 + 真实
     // Environments come out in `state.projects` order, minus the failed project.
     expect(registration.environments.map((entry) => entry.projectId)).toEqual(successfulOrder)
 
-    // Failure stays isolated and keeps the M58 error contract.
+    // Failure stays isolated and keeps the retry contract; the failed project is
+    // now rejected by the connect gate before any ticket exists (U20).
     expect(registration.failures).toHaveLength(1)
     expect(registration.failures[0]).toMatchObject({
       projectId: broken[0].projectId,
       projectKey: broken[0].key,
       projectName: broken[0].name,
-      code: 'CLONE_FAILED'
+      code: 'PROJECT_NOT_PREPARED'
     })
     expect(existsSync(broken[0].root)).toBe(false)
 

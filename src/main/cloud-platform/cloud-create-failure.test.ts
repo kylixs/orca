@@ -59,8 +59,10 @@ describe('创建成功但准备失败的项目可恢复（真实平台 + 主机 
       repoUrl: missingRepo,
       defaultBranch: 'main'
     })
-    expect(readField(created, 'ok')).toBe(false)
-    expect(readString(created, 'code')).toBe('CLONE_FAILED')
+    // U44: creation itself reports "preparing"; the clone failure arrives with
+    // the kick report, so it stays a real failure the retry banner can recover.
+    expect(readField(created, 'ok')).toBe(true)
+    expect(readField(created, 'preparing')).toBe(true)
     const projectId = readString(created, 'projectId')
     expect(projectId).not.toBeNull()
     const createdProject = readField(created, 'project')
@@ -80,6 +82,7 @@ describe('创建成功但准备失败的项目可恢复（真实平台 + 主机 
     expect(updated.status).toBe(200)
     expect(readString(await updated.json(), 'status')).toBe('provisioning')
 
+    await harness.beatUntilReady(projectId ?? '')
     const retried = await harness.retryPrepare(projectId ?? '')
     expect(readField(retried, 'ok')).toBe(true)
     const environment = parseEnvironment(readField(retried, 'environment'))
@@ -102,8 +105,16 @@ describe('创建成功但准备失败的项目可恢复（真实平台 + 主机 
     })
     expect(plan.add.map((target) => target.path)).toEqual([projectRoot])
 
+    const u44Dir = join(REPO_ROOT, 'cloud-platform', 'evidence', 'u44-preparing-ux')
+    mkdirSync(u44Dir, { recursive: true })
+    writeFileSync(
+      join(u44Dir, 'm60-kick-failure.json'),
+      JSON.stringify({ created, failedRow, retried }, null, 2)
+    )
+
     saveEvidence('m60-create-failure.json', {
-      created: { ok: false, code: 'CLONE_FAILED', projectId, project: createdProject },
+      created: { ok: true, preparing: true, projectId, project: createdProject },
+      failedRow,
       failedPlatformProject: failedRow,
       updatedPlatformProject: {
         status: 'provisioning',

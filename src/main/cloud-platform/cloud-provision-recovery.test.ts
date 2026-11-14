@@ -42,20 +42,30 @@ afterAll(async () => {
 describe('云端项目准备失败可恢复（真实平台 + 真实 TLS Runtime + 真实 git）', () => {
   it('M58-1 失败可见 → 管理员修正 → 重试真实 clone → 心跳 ready → 侧栏 repo', async () => {
     const { projectId, projectRoot } = harness
+    // U44: a provisioning project is "preparing", not a failure.
     const first = await harness.registerProjects()
     expect(first.environments).toEqual([])
-    expect(first.failures).toHaveLength(1)
-    expect(first.failures[0]).toMatchObject({ projectId, code: 'CLONE_FAILED' })
-    expect(first.failures[0].projectName).toBe('Recovered Service')
+    expect(first.failures).toEqual([])
 
-    await harness.beat()
-    const failed = await harness.getProject(projectId)
+    const failedDeadline = Date.now() + 60_000
+    let failed = await harness.getProject(projectId)
+    while (readString(failed, 'status') !== 'failed' && Date.now() < failedDeadline) {
+      await harness.beat()
+      failed = await harness.getProject(projectId)
+    }
     expect(readString(failed, 'status')).toBe('failed')
     expect(readString(failed, 'provisioningError')).toContain('CLONE_FAILED')
     const summaries = await harness.session.listProjects()
     const failedSummary = summaries.find((entry) => entry.id === projectId)
     expect(failedSummary?.status).toBe('failed')
     expect(failedSummary?.provisioningError).toContain('CLONE_FAILED')
+
+    // The failure is visible once the kick reports it; the connect gate names it.
+    const blocked = await harness.registerProjects()
+    expect(blocked.environments).toEqual([])
+    expect(blocked.failures).toHaveLength(1)
+    expect(blocked.failures[0]).toMatchObject({ projectId, code: 'PROJECT_NOT_PREPARED' })
+    expect(blocked.failures[0].projectName).toBe('Recovered Service')
 
     const bareRepo = makeBareRepository(harness.base)
     const updated = await harness.adminFetch(`/v1/projects/${projectId}`, {
@@ -66,6 +76,15 @@ describe('云端项目准备失败可恢复（真实平台 + 真实 TLS Runtime 
     const updatedBody: unknown = await updated.json()
     expect(readString(updatedBody, 'status')).toBe('provisioning')
     expect(readString(updatedBody, 'provisioningError')).toBeNull()
+
+    // U37: the next beats assign the fixed repo to the host and report it ready.
+    const deadline = Date.now() + 60_000
+    while (Date.now() < deadline) {
+      await harness.beat()
+      if (readString(await harness.getProject(projectId), 'status') === 'ready') {
+        break
+      }
+    }
 
     const retried = await harness.retryPrepare(projectId)
     expect(readField(retried, 'ok')).toBe(true)

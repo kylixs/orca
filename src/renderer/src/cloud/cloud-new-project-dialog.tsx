@@ -155,6 +155,15 @@ export function CloudNewProjectDialog({
         defaultBranch: branch.trim() || 'main',
         hostId
       })
+      if (result.ok && 'preparing' in result) {
+        // U44: the platform row exists and the host's kick clone is running.
+        toast.info(translate('auto.cloud.projectPreparing', '宿主正在准备环境，就绪后可打开'), {
+          description: result.project.name
+        })
+        await onCreated(result)
+        onOpenChange(false)
+        return
+      }
       if (!result.ok) {
         if (result.projectId && result.project) {
           await onCreated(result)

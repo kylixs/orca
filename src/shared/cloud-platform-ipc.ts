@@ -179,6 +179,8 @@ export type CloudArchiveProjectResult =
 
 export type CloudRetryPrepareResult =
   | { ok: true; environment: CloudProjectEnvironment }
+  /** The host is still provisioning; the offer is valid, just not openable yet. */
+  | { ok: true; preparing: true }
   | { ok: false; code: string; message?: string }
 
 export type CloudCreateProjectInput = {
@@ -205,6 +207,8 @@ export type CloudProvisionableHost = {
 
 export type CloudCreateProjectResult =
   | { ok: true; projectId: string; environment: CloudProjectEnvironment }
+  /** Created on the platform; the host's kick clone is still running (U44). */
+  | { ok: true; preparing: true; projectId: string; project: CloudProjectSummary }
   | {
       ok: false
       code: string

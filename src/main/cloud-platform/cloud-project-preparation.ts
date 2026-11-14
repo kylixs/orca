@@ -14,12 +14,18 @@ import type { CloudSessionService } from './cloud-session-service'
 
 // Clone/probe work may overlap; the environment sidecar registration may not.
 
+/** The platform's U20 gate answer while the host's kick clone is still running. */
+const PROJECT_PROVISIONING = 'PROJECT_PROVISIONING'
+
 export type PreparedEnvironment =
   | { ok: true; environment: CloudProjectEnvironment }
+  /** Not a failure: the platform created the project and the host is still preparing it. */
+  | { ok: true; preparing: true }
   | { ok: false; code: string; message?: string }
 
 export type PreparedCloudProjectLink =
   | { ok: true; project: CloudProjectSummary; link: CloudProjectLink }
+  | { ok: true; preparing: true }
   | { ok: false; code: string; message?: string }
 
 export const DEFAULT_PREPARE_CONCURRENCY = 3
@@ -33,6 +39,11 @@ export async function prepareCloudProjectLink(
   // `worktree.*`, and preparing it here is what makes the sidebar row real.
   const provisioned = await session.ensureProjectPrepared(project.id)
   if (!provisioned.ok) {
+    // Why not a failure: U37's kick clone finishes in seconds, and retrying now
+    // would only race the same gate; the caller shows "preparing" instead.
+    if (provisioned.code === PROJECT_PROVISIONING) {
+      return { ok: true, preparing: true }
+    }
     return { ok: false, code: provisioned.code, message: provisioned.message }
   }
   // Why a prepared link, not openWorkspace: listing a project in the sidebar
@@ -44,6 +55,9 @@ export async function prepareCloudProjectLink(
     prepared = await session.prepareProjectLink(project.id)
   }
   if (!prepared.ok) {
+    if (prepared.code === PROJECT_PROVISIONING) {
+      return { ok: true, preparing: true }
+    }
     return { ok: false, code: prepared.code, message: prepared.message }
   }
   return { ok: true, project, link: prepared.link }
@@ -77,6 +91,9 @@ export async function prepareProjectEnvironment(
 ): Promise<PreparedEnvironment> {
   const prepared = await prepareCloudProjectLink(session, project)
   if (!prepared.ok) {
+    return prepared
+  }
+  if ('preparing' in prepared) {
     return prepared
   }
   return {
@@ -118,6 +135,11 @@ export async function registerProjectEnvironments(
         code: candidate.code,
         ...(candidate.message !== undefined ? { message: candidate.message } : {})
       })
+      continue
+    }
+    // Why skip silently: provisioning is not a failure; the project row already
+    // shows its status, and its sidebar row lands on the next registration.
+    if ('preparing' in candidate) {
       continue
     }
     environments.push(registerPreparedEnvironment(userDataPath, project, candidate.link))

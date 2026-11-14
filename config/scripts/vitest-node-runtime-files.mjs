@@ -41,6 +41,13 @@ export const NODE_RUNTIME_INCLUDE = [
   // Why: U37-C proves the heartbeat kick over a real TLS runtime and real git;
   // bun's ws fails the throwaway-certificate handshake (same family as W5b defect B).
   'src/main/cloud-platform/cloud-provision-kick-endtoend.test.ts',
+  // Why: U44 revives the create-flow suites on the same kick/TLS stack; under
+  // bun's ws the connect handshake fails and the proofs would silently retire.
+  'src/main/cloud-platform/cloud-self-service-project.test.ts',
+  'src/main/cloud-platform/cloud-create-failure.test.ts',
+  'src/main/cloud-platform/cloud-parallel-prepare.test.ts',
+  // Why: M58's recovery retry now waits for the same kick clone over TLS.
+  'src/main/cloud-platform/cloud-provision-recovery.test.ts',
   // Why: M57 is the same real-platform + TLS-runtime + git stack, now driven by
   // the U37 kick, so it belongs in the node-runtime pool with its siblings.
   'src/main/cloud-platform/cloud-project-provisioning.test.ts',

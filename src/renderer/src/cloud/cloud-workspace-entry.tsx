@@ -171,6 +171,11 @@ export function useCloudWorkspaceEntry(
             })
             continue
           }
+          // U44: the retry found the kick clone still running; the row is no
+          // longer a failure, and the next registration adds its environment.
+          if ('preparing' in result) {
+            continue
+          }
           recovered.push(result.environment)
         } catch (error) {
           remaining.push({ ...failure, code: entryFailureCode(error) })
@@ -199,6 +204,10 @@ export function useCloudWorkspaceEntry(
 
   const registerCreatedProject = React.useCallback(
     async (result: CloudCreateProjectResult) => {
+      // U44: created and kicked, not failed — no banner, no environment yet.
+      if (result.ok && 'preparing' in result) {
+        return
+      }
       if (!result.ok) {
         // Why: the platform already has the project; a dialog stuck on the error
         // would leave no way to retry after an admin fixes the repo URL.

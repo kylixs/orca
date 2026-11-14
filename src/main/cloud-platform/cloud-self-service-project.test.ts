@@ -1,7 +1,8 @@
-import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { readField, readString } from '../../shared/json-fields'
+import { REPO_ROOT } from './cloud-session-e2e-harness'
 import { callRuntimeEnvironment } from '../ipc/runtime-environment-transport-routing'
 import {
   planCloudProjectRepos,
@@ -59,12 +60,42 @@ describe('开发者自助创建云端项目（真实平台 + 主机 + TLS Runtim
       repoUrl: harness.repoUrl,
       defaultBranch: 'main'
     })
+    // U44: the provisioning gate is not a creation failure.
     expect(readField(created, 'ok')).toBe(true)
+    expect(readField(created, 'preparing')).toBe(true)
     const projectId = readString(created, 'projectId')
     expect(projectId).not.toBeNull()
-    const environment = parseEnvironment(readField(created, 'environment'))
-    expect(environment).not.toBeNull()
+    expect(parseEnvironment(readField(created, 'environment'))).toBeNull()
     const projectRoot = join(harness.projectsRoot, 'self-service-demo')
+
+    const createdProject = await harness.getProject(projectId ?? '')
+    expect(readString(createdProject, 'path')).toBe(projectRoot)
+    expect(readString(createdProject, 'status')).toBe('provisioning')
+    expect(existsSync(join(projectRoot, 'README.md'))).toBe(false)
+
+    // U37-C's kick sequence: one beat assigns, the host clones, the next reports.
+    await harness.beatOnce()
+    const deadline = Date.now() + 30_000
+    while (!existsSync(join(projectRoot, 'README.md')) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    while (
+      !harness.store.getRepos().some((repo) => repo.path === projectRoot) &&
+      Date.now() < deadline
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    await harness.beatOnce()
+    const ready = await harness.getProject(projectId ?? '')
+    expect(readString(ready, 'status')).toBe('ready')
+    expect(readString(ready, 'provisioningError')).toBeNull()
+    await harness.beatOnce()
+
+    const retried = await harness.retryPrepare(projectId ?? '')
+    expect(readField(retried, 'ok')).toBe(true)
+    const environment = parseEnvironment(readField(retried, 'environment'))
+    expect(environment).not.toBeNull()
     expect(environment?.projectRoot).toBe(projectRoot)
     expect(environment?.projectName).toBe('Self Service Demo')
 
@@ -73,15 +104,6 @@ describe('开发者自助创建云端项目（真实平台 + 主机 + TLS Runtim
     expect(realpathSync(git(projectRoot, 'rev-parse', '--show-toplevel').trim())).toBe(
       realpathSync(projectRoot)
     )
-
-    const createdProject = await harness.getProject(projectId ?? '')
-    expect(readString(createdProject, 'path')).toBe(projectRoot)
-    expect(readString(createdProject, 'status')).toBe('provisioning')
-
-    await harness.beat()
-    const ready = await harness.getProject(projectId ?? '')
-    expect(readString(ready, 'status')).toBe('ready')
-    expect(readString(ready, 'provisioningError')).toBeNull()
 
     const summaries = await harness.session.listProjects()
     const summary = summaries.find((entry) => entry.id === projectId)
@@ -118,9 +140,17 @@ describe('开发者自助创建云端项目（真实平台 + 主机 + TLS Runtim
     expect(sync.added[0].displayName).toBe('Self Service Demo')
     expect(added).toEqual([projectId])
 
+    const u44Dir = join(REPO_ROOT, 'cloud-platform', 'evidence', 'u44-preparing-ux')
+    mkdirSync(u44Dir, { recursive: true })
+    writeFileSync(
+      join(u44Dir, 'm59-create-preparing.json'),
+      JSON.stringify({ created, createdProject, ready, retried }, null, 2)
+    )
+
     harness.saveEvidence('m59-self-service.json', {
       provisionableHosts: hosts,
       created: { ok: true, projectId, environment },
+      createReply: created,
       createdProject,
       readyProject: ready,
       summary,

@@ -184,6 +184,16 @@ export function registerCloudPlatformHandlers(
       if (!created.ok) {
         return created
       }
+      // U44: provisioning means the host's kick clone is already running. Connect
+      // would only hit the U20 gate, so report the real state instead of a failure.
+      if (created.project.status === 'provisioning') {
+        return {
+          ok: true,
+          preparing: true,
+          projectId: created.projectId,
+          project: created.project
+        }
+      }
       const prepared = await prepareProjectEnvironment(
         session,
         options.userDataPath,
@@ -191,6 +201,15 @@ export function registerCloudPlatformHandlers(
       )
       // Why carry the project: the platform row exists, so the renderer must be
       // able to retry preparation after an admin fixes the repo URL.
+      if (prepared.ok && 'preparing' in prepared) {
+        // U44: the host's kick clone is still running; this is not a failure.
+        return {
+          ok: true,
+          preparing: true,
+          projectId: created.projectId,
+          project: created.project
+        }
+      }
       return prepared.ok
         ? { ok: true, projectId: created.projectId, environment: prepared.environment }
         : { ...prepared, projectId: created.projectId, project: created.project }
