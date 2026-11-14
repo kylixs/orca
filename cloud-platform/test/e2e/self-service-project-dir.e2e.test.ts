@@ -10,9 +10,13 @@ import { saveEvidence, spawnService, type Service } from './harness.ts'
  * is optional. The directory is a single relative segment under the host's
  * projects root — the platform joins and contains it, so nothing outside the
  * root can ever be registered, and a repo-less project is ready immediately.
+ * Also guards the admin registration route's own dir semantics (W8): dir stays
+ * optional there, where the operator supplies the path verbatim.
  */
 
 const EVIDENCE = 'm115-self-service-dir'
+// The W8 regression probe keeps its own evidence set, separable from the M115 run.
+const W8_EVIDENCE = 'w8-regression'
 const REPO_URL = 'https://git.example.com/pay/dir-demo.git'
 
 let api: Service
@@ -35,7 +39,10 @@ function auth(token: string): Record<string, string> {
   return { 'content-type': 'application/json', authorization: `Bearer ${token}` }
 }
 
-async function login(username: string, password: string): Promise<{ token: string; deviceId: string }> {
+async function login(
+  username: string,
+  password: string
+): Promise<{ token: string; deviceId: string }> {
   const res = await fetch(`${api.url}/v1/auth/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -148,7 +155,11 @@ describe('M115 自助建项目：名称+目录必填，仓库地址可选', () =
   test('名称或目录缺一返回 400', async () => {
     const host = await registerHost('m115-host-a')
 
-    const noName = await createSelfService({ dir: 'dir-demo', repoUrl: REPO_URL, hostId: host.hostId })
+    const noName = await createSelfService({
+      dir: 'dir-demo',
+      repoUrl: REPO_URL,
+      hostId: host.hostId
+    })
     assert.equal(noName.status, 400)
     assert.equal(errorCode(noName.body), 'PROJECT_NAME_INVALID')
 
@@ -169,7 +180,11 @@ describe('M115 自助建项目：名称+目录必填，仓库地址可选', () =
     const host = await registerHost('m115-host-b')
     await heartbeat(host.hostId, host.credential, { projectDirs: ['dir-demo'] })
 
-    const result = await createSelfService({ name: 'Dir Demo', dir: 'dir-demo', hostId: host.hostId })
+    const result = await createSelfService({
+      name: 'Dir Demo',
+      dir: 'dir-demo',
+      hostId: host.hostId
+    })
     assert.equal(result.status, 201, JSON.stringify(result.body))
     const created = result.body as Created
     assert.equal(created.status, 'ready')
@@ -205,10 +220,10 @@ describe('M115 自助建项目：名称+目录必填，仓库地址可选', () =
     const body = (await available.json()) as {
       hosts: { id: string; projectDirs: string[] }[]
     }
-    assert.deepEqual(
-      body.hosts.find((entry) => entry.id === host.hostId)?.projectDirs,
-      ['alpha', 'zeta']
-    )
+    assert.deepEqual(body.hosts.find((entry) => entry.id === host.hostId)?.projectDirs, [
+      'alpha',
+      'zeta'
+    ])
     saveEvidence(EVIDENCE, 'host-project-dirs.json', { admin: row, available: body.hosts })
   })
 
@@ -228,7 +243,9 @@ describe('M115 自助建项目：名称+目录必填，仓库地址可选', () =
 
     assert.deepEqual(readdirSync(projectsRoot).sort(), before, 'no directory may be created')
     assert.equal(existsSync(join(projectsRoot, '..', 'escape')), false)
-    saveEvidence(EVIDENCE, 'path-escape-rejected.json', { rejected: ['../escape', '/etc/cron.d', 'a/b', '..'] })
+    saveEvidence(EVIDENCE, 'path-escape-rejected.json', {
+      rejected: ['../escape', '/etc/cron.d', 'a/b', '..']
+    })
   })
 
   test('同主机重复目录返回 409 PROJECT_PATH_TAKEN', async () => {
@@ -276,8 +293,13 @@ describe('M115 自助建项目：名称+目录必填，仓库地址可选', () =
     assert.equal(body.path, targetPath, 'admin path must not be joined onto projectsRoot')
     assert.equal('dir' in body, false)
     assert.equal(body.status, 'ready')
-    saveEvidence('w8-regression', 'admin-path-registration-dir-free.json', {
-      request: { key: 'admin-no-dir-demo', name: 'Admin No Dir Demo', hostId: host.hostId, path: targetPath },
+    saveEvidence(W8_EVIDENCE, 'admin-path-registration-dir-free.json', {
+      request: {
+        key: 'admin-no-dir-demo',
+        name: 'Admin No Dir Demo',
+        hostId: host.hostId,
+        path: targetPath
+      },
       requestHadDir: false,
       status: created.status,
       response: body,

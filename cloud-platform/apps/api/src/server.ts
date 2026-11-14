@@ -33,7 +33,7 @@ import type { AuditEventInput } from './store.ts'
 import { openAuditLogFile } from './audit-log-file.ts'
 import { startInternalChannel } from './internal-channel.ts'
 import { ldapProfile, MockLdapAdapter, type LdapAdapter } from './ldap.ts'
-import { Store, type Host, type Project, type User } from './store.ts'
+import { Store, type Device, type Host, type Project, type User } from './store.ts'
 import { parseReadRate } from './policy-rate.ts'
 import { appendHostAuditReports, parseHostAuditReports } from './host-audit-ingest.ts'
 import {
@@ -59,6 +59,7 @@ const ACCESS_TTL_MS = 30 * 60_000
 const REFRESH_TTL_MS = 12 * 60 * 60_000
 const CREDENTIAL_TTL_S = 60
 const HOST_OFFLINE_DEFAULT_MS = 60_000
+const HANDOFF_TTL_MS = 60_000
 const WEB_ROOT = new URL('../../web/', import.meta.url).pathname
 
 export type ApiConfig = {
@@ -72,6 +73,8 @@ export type ApiConfig = {
   refreshTtlMs?: number
   /** How long a host stays "online" without a heartbeat; tests shrink it to observe the flip. */
   hostOfflineMs?: number
+  /** One-time web-handoff code lifetime (FR-3.10); tests shrink it to exercise expiry. */
+  handoffTtlMs?: number
   /** Append-only audit log; absent keeps the chain in memory (tests). */
   auditLogPath?: string
   /** Single audit writer shared by replicas; absent keeps the local chain. */
@@ -142,6 +145,11 @@ function e2eeKeyFingerprint(e2eePublicKeyB64: string): string {
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex')
+}
+
+/** The audit records a handoff code's fingerprint, never the code itself (FR-3.10). */
+function codeFingerprint(code: string): string {
+  return `sha256:${createHash('sha256').update(code).digest('hex').slice(0, 16)}`
 }
 
 function safeEqual(a: string, b: string): boolean {
@@ -275,7 +283,9 @@ export function createApp(config: ApiConfig): ApiHandle {
   const accessTtlMs = config.accessTtlMs ?? ACCESS_TTL_MS
   const refreshTtlMs = config.refreshTtlMs ?? REFRESH_TTL_MS
   const hostOfflineMs =
-    config.hostOfflineMs ?? Number(process.env.ORCA_CLOUD_HOST_OFFLINE_MS ?? HOST_OFFLINE_DEFAULT_MS)
+    config.hostOfflineMs ??
+    Number(process.env.ORCA_CLOUD_HOST_OFFLINE_MS ?? HOST_OFFLINE_DEFAULT_MS)
+  const handoffTtlMs = config.handoffTtlMs ?? HANDOFF_TTL_MS
   const expiresInSeconds = Math.ceil(accessTtlMs / 1000)
   const auditLogPath = config.auditLogPath ?? process.env.AUDIT_LOG_PATH ?? null
   const store = new Store()
@@ -571,6 +581,25 @@ export function createApp(config: ApiConfig): ApiHandle {
     return { accessToken, refreshToken }
   }
 
+  /**
+   * One device plus one session, shared by password login and the web handoff
+   * exchange (FR-3.10): a browser enters with exactly the session a desktop gets.
+   * A foreign or revoked device id is ignored, not adopted.
+   */
+  function issueDeviceSession(
+    user: User,
+    body: Record<string, unknown>
+  ): { device: Device; tokens: { accessToken: string; refreshToken: string } } {
+    const devicePubKey = String(body.devicePubKey ?? '')
+    const deviceName = String(body.deviceName ?? 'unknown')
+    const existingDevice = body.deviceId ? store.devices.get(String(body.deviceId)) : undefined
+    const device =
+      existingDevice && existingDevice.userId === user.id && !existingDevice.revokedAt
+        ? existingDevice
+        : store.createDevice(user.id, deviceName, devicePubKey)
+    return { device, tokens: issueSession(user, device.id) }
+  }
+
   function bumpEpoch(sessionId: string): void {
     const session = store.sessions.get(sessionId)
     if (session) session.epoch += 1
@@ -775,7 +804,10 @@ export function createApp(config: ApiConfig): ApiHandle {
             .filter((name) => name !== 'index.html')
             .map((name) => [
               name,
-              { path: webReleases.assetPath(release.build, name), sha256: release.files.get(name)?.sha256 }
+              {
+                path: webReleases.assetPath(release.build, name),
+                sha256: release.files.get(name)?.sha256
+              }
             ])
         )
       })
@@ -784,16 +816,28 @@ export function createApp(config: ApiConfig): ApiHandle {
     if (path.startsWith('/v1/')) {
       const contract = checkWebContract(readWebContract(req.headers))
       if (!contract.ok) {
-        return error(res, 426, 'WEB_CONTRACT_UNSUPPORTED', '前端版本过旧或过新，请刷新页面获取最新版本。', traceId, {
-          offered: contract.offered,
-          minContract: contract.min,
-          maxContract: contract.max
-        })
+        return error(
+          res,
+          426,
+          'WEB_CONTRACT_UNSUPPORTED',
+          '前端版本过旧或过新，请刷新页面获取最新版本。',
+          traceId,
+          {
+            offered: contract.offered,
+            minContract: contract.min,
+            maxContract: contract.max
+          }
+        )
       }
     }
 
     // /install/*.sh is gated below (after session resolution), never served as a file.
-    if (req.method === 'GET' && !path.startsWith('/v1/') && !path.startsWith('/install/') && path !== '/health') {
+    if (
+      req.method === 'GET' &&
+      !path.startsWith('/v1/') &&
+      !path.startsWith('/install/') &&
+      path !== '/health'
+    ) {
       return serveStatic(path, res)
     }
 
@@ -854,14 +898,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         })
       }
       user.groups = [...new Set([...user.groups, ...result.profile.groups])]
-      const devicePubKey = String(body.devicePubKey ?? '')
-      const deviceName = String(body.deviceName ?? 'unknown')
-      const existingDevice = body.deviceId ? store.devices.get(String(body.deviceId)) : undefined
-      const device =
-        existingDevice && existingDevice.userId === user.id && !existingDevice.revokedAt
-          ? existingDevice
-          : store.createDevice(user.id, deviceName, devicePubKey)
-      const tokens = issueSession(user, device.id)
+      const { device, tokens } = issueDeviceSession(user, body)
       // Why best-effort: an operator must still be able to sign in and diagnose a
       // full audit disk; mutations are what fail closed, not authentication.
       audit.appendBestEffort({
@@ -914,6 +951,100 @@ export function createApp(config: ApiConfig): ApiHandle {
       })
       store.refreshTokens.set(refreshToken, session.id)
       return json(res, 200, { accessToken, refreshToken, expiresIn: expiresInSeconds })
+    }
+
+    // ---- web handoff (FR-3.10): a browser trades its one-time code for a session ----
+    // Deliberately before token resolution: the caller has no session yet.
+    if (req.method === 'POST' && path === '/v1/web/handoff') {
+      const body = await readJson(req)
+      const code = String(body.code ?? '')
+      const fingerprint = codeFingerprint(code)
+      const deny = async (
+        status: number,
+        errorCode: string,
+        message: string,
+        reason: string,
+        actor: string | null,
+        target: { targetType: 'session' | 'project'; targetId: string | null } = {
+          targetType: 'session',
+          targetId: null
+        }
+      ): Promise<void> => {
+        audit.appendBestEffort({
+          eventType: 'web_handoff',
+          actor,
+          targetType: target.targetType,
+          targetId: target.targetId,
+          result: 'denied',
+          traceId,
+          metadata: { reason, codeFingerprint: fingerprint }
+        })
+        // Why the reason is exposed: the web client falls back to the login form
+        // either way, and an operator reading the console sees which case it was.
+        error(res, status, errorCode, message, traceId, { reason })
+      }
+      const consumed = store.consumeWebHandoff(code, now())
+      if (!consumed.ok) {
+        const expired = consumed.reason === 'expired'
+        await deny(
+          410,
+          'HANDOFF_GONE',
+          expired ? '交接码已过期，请重新获取。' : '交接码无效或已使用。',
+          expired ? 'code_expired' : 'code_invalid',
+          null
+        )
+        return
+      }
+      const user = store.users.get(consumed.entry.userId)
+      const project = store.projects.get(consumed.entry.projectId)
+      if (!user || user.status !== 'active' || !project || project.status === 'archived') {
+        await deny(
+          410,
+          'HANDOFF_GONE',
+          '交接码无效或已使用。',
+          user && project ? 'project_archived' : 'subject_gone',
+          user?.username ?? null
+        )
+        return
+      }
+      // The code is bound to a user, not a permission: a grant pulled between
+      // issue and redeem must still stop the entry here.
+      if (!store.effectivePermissions(project.id, user).includes('open')) {
+        await deny(
+          403,
+          'PROJECT_FORBIDDEN',
+          '项目无权限，无法打开。',
+          'permission_lost',
+          user.username,
+          { targetType: 'project', targetId: project.id }
+        )
+        return
+      }
+      const { device, tokens } = issueDeviceSession(user, body)
+      // Same shape as a login event, so an auditor reads a handoff as a sign-in.
+      audit.appendBestEffort({
+        eventType: 'web_handoff',
+        actor: user.username,
+        targetType: 'session',
+        targetId: device.id,
+        result: 'success',
+        traceId,
+        metadata: { projectId: project.id, codeFingerprint: fingerprint }
+      })
+      const permissions = user.roles.flatMap((r) => ROLE_PERMISSIONS[r] ?? [])
+      return json(res, 200, {
+        ...tokens,
+        expiresIn: expiresInSeconds,
+        user: {
+          id: user.id,
+          username: user.username,
+          displayName: user.displayName,
+          dept: user.dept,
+          roles: user.roles,
+          permissions
+        },
+        device: { id: device.id, name: device.name }
+      })
     }
 
     if (req.method === 'POST' && path === '/v1/auth/logout') {
@@ -1091,7 +1222,10 @@ export function createApp(config: ApiConfig): ApiHandle {
             targetId: rotated.current.kid,
             result: 'success',
             traceId,
-            metadata: { previousKid: rotated.retired.kid, retiredKids: signingKeys.retired().length }
+            metadata: {
+              previousKid: rotated.retired.kid,
+              retiredKids: signingKeys.retired().length
+            }
           },
           traceId
         ))
@@ -1335,7 +1469,9 @@ export function createApp(config: ApiConfig): ApiHandle {
       return json(res, 201, projectView(created, authed.user))
     }
 
-    const projectPath = path.match(/^\/v1\/projects\/([\w-]+)(\/[a-z]+)?$/)
+    // Hyphenated actions share the guard block below; the common ones are
+    // /connect and /web-handoff (FR-3.10).
+    const projectPath = path.match(/^\/v1\/projects\/([\w-]+)(\/[a-z-]+)?$/)
     if (projectPath) {
       const authed = requireAuth()
       if (!authed) return
@@ -1454,6 +1590,10 @@ export function createApp(config: ApiConfig): ApiHandle {
 
       if (req.method === 'POST' && action === '/connect') {
         return handleConnect(req, res, authed.user, found, traceId)
+      }
+
+      if (req.method === 'POST' && action === '/web-handoff') {
+        return handleWebHandoff(res, authed.user, found, traceId)
       }
 
       if (req.method === 'GET' && action === '/grants') {
@@ -2297,6 +2437,72 @@ export function createApp(config: ApiConfig): ApiHandle {
     return error(res, 404, 'NOT_FOUND', '接口不存在。', traceId)
   }
 
+  /**
+   * FR-3.10: mints the one-time code a browser trades at /v1/web/handoff, so no
+   * access token ever rides in a URL. The entry is the host's TLS direct address
+   * in its web-index form; a host without one gets a 400 instead of handing the
+   * developer a link that can never load.
+   */
+  function handleWebHandoff(
+    res: ServerResponse,
+    user: User,
+    project: Project,
+    traceId: string
+  ): void {
+    const host = store.hosts.get(project.hostId)
+    if (!host) return error(res, 404, 'HOST_NOT_FOUND', '主机不存在。', traceId)
+    if (host.revokedAt !== null) {
+      return error(res, 409, 'HOST_REVOKED', '主机已被吊销，无法打开项目。', traceId)
+    }
+    if (host.status === 'maintenance') {
+      return error(res, 409, 'HOST_MAINTENANCE', '主机维护中，暂时无法打开项目。', traceId, {
+        reason: host.maintenanceReason
+      })
+    }
+    if (!hostOnline(host)) {
+      return error(res, 409, 'HOST_OFFLINE', '开发机已离线，暂时无法打开项目。', traceId, {
+        lastHeartbeatAt: new Date(host.lastHeartbeatAt).toISOString()
+      })
+    }
+    const directAddr = host.directAddrs[0]
+    if (!directAddr) {
+      audit.appendBestEffort({
+        eventType: 'web_handoff',
+        actor: user.username,
+        targetType: 'project',
+        targetId: project.id,
+        result: 'denied',
+        traceId,
+        metadata: { reason: 'host_unavailable', hostId: host.id }
+      })
+      return error(res, 400, 'HOST_UNAVAILABLE', '开发机没有可直达的 Web 入口地址。', traceId)
+    }
+    store.pruneExpiredWebHandoffs(now())
+    const code = randomBytes(32).toString('base64url')
+    store.webHandoffs.set(code, {
+      userId: user.id,
+      projectId: project.id,
+      expiresAt: now() + handoffTtlMs
+    })
+    audit.appendBestEffort({
+      eventType: 'web_handoff',
+      actor: user.username,
+      targetType: 'project',
+      targetId: project.id,
+      result: 'success',
+      traceId,
+      metadata: {
+        hostId: host.id,
+        codeFingerprint: codeFingerprint(code),
+        ttlSeconds: Math.ceil(handoffTtlMs / 1000)
+      }
+    })
+    return json(res, 201, {
+      url: `https://${directAddr}/web-index.html#handoff=${code}&project=${project.id}`,
+      expiresIn: Math.ceil(handoffTtlMs / 1000)
+    })
+  }
+
   async function handleConnect(
     req: IncomingMessage,
     res: ServerResponse,
@@ -2567,10 +2773,12 @@ function ttlFromEnv(name: string): number | undefined {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const accessTtlMs = ttlFromEnv('ORCA_CLOUD_ACCESS_TTL_MS')
   const refreshTtlMs = ttlFromEnv('ORCA_CLOUD_REFRESH_TTL_MS')
+  const handoffTtlMs = ttlFromEnv('ORCA_CLOUD_HANDOFF_TTL_MS')
   const app = createApp({
     port: Number(process.env.PORT ?? 18787),
     ...(accessTtlMs === undefined ? {} : { accessTtlMs }),
     ...(refreshTtlMs === undefined ? {} : { refreshTtlMs }),
+    ...(handoffTtlMs === undefined ? {} : { handoffTtlMs }),
     ...(process.env.ORCA_CLOUD_LOGIN_LOCKOUT_URL
       ? { loginLockoutUrl: process.env.ORCA_CLOUD_LOGIN_LOCKOUT_URL }
       : {}),

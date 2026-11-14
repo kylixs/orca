@@ -114,6 +114,9 @@ export type RelayRoute = { routeKey: string; hostId: string; target: string; ver
 
 export type HostToken = { tokenHash: string; expiresAt: number; usedAt: number | null }
 
+/** A one-time web handoff code (FR-3.10), bound to its user and project. */
+export type WebHandoff = { userId: string; projectId: string; expiresAt: number }
+
 export class Store {
   users = new Map<string, User>()
   usersByName = new Map<string, User>()
@@ -132,6 +135,7 @@ export class Store {
   revocations: Revocation[] = []
   relayRoutes = new Map<string, RelayRoute>()
   hostTokens: HostToken[] = []
+  webHandoffs = new Map<string, WebHandoff>()
   policies = {
     downloadDefault: 'deny' as 'deny' | 'allow',
     version: 1,
@@ -172,6 +176,29 @@ export class Store {
     const merged = new Set<Permission>()
     for (const grant of grants) for (const p of grant.permissions) merged.add(p)
     return [...merged]
+  }
+
+  /**
+   * Consumes at most once and says which kind of miss it was: the audit splits
+   * "expired" from "unknown/replayed" while the caller sees the same 410 either
+   * way. The entry is removed before it is validated, so a second redemption of
+   * the same code can never read as a fresh success.
+   */
+  consumeWebHandoff(
+    code: string,
+    now: number
+  ): { ok: true; entry: WebHandoff } | { ok: false; reason: 'unknown' | 'expired' } {
+    const entry = this.webHandoffs.get(code)
+    if (!entry) return { ok: false, reason: 'unknown' }
+    this.webHandoffs.delete(code)
+    return entry.expiresAt > now ? { ok: true, entry } : { ok: false, reason: 'expired' }
+  }
+
+  /** Codes nobody redeemed are dropped on the next issuance instead of piling up. */
+  pruneExpiredWebHandoffs(now: number): void {
+    for (const [code, entry] of this.webHandoffs) {
+      if (entry.expiresAt <= now) this.webHandoffs.delete(code)
+    }
   }
 
   recordLoginFailure(username: string, now: number): { locked: boolean; remaining: number } {
