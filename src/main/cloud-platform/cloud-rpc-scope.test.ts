@@ -74,6 +74,9 @@ let platform: Platform
 let cloud: CloudRuntime
 let client: ReturnType<typeof createCloudAgentClient>
 let registry: DeviceRegistry | null = null
+/** The one project whose ticket device is adopted with a mobile-scoped row. */
+let mobileRowProjectId = ''
+const hostMethodDenials: { method: string; denial: string | null }[] = []
 
 beforeAll(async () => {
   platform = await startPlatform()
@@ -81,6 +84,10 @@ beforeAll(async () => {
   // Two projects whose grants differ in exactly the file permissions under test.
   await createProject(platform, adminToken, 'scope-readonly', ['open', 'file:read'])
   await createProject(platform, adminToken, 'scope-terminal', ['open', 'terminal'])
+  mobileRowProjectId = await createProject(platform, adminToken, 'scope-mobile-row', [
+    'open',
+    'terminal'
+  ])
 
   client = createCloudAgentClient({
     apiUrl: platform.url,
@@ -101,7 +108,8 @@ beforeAll(async () => {
           project: decision.payload.project,
           permissions: decision.payload.perms,
           projectRoot: decision.payload.projectRoot,
-          workspaceRoot: decision.payload.workspaceRoot
+          workspaceRoot: decision.payload.workspaceRoot,
+          ...(decision.payload.project === mobileRowProjectId ? ({ scope: 'mobile' } as const) : {})
         })
       }
       return decision
@@ -110,6 +118,13 @@ beforeAll(async () => {
     userDataPrefix: 'orca-cloud-scope-'
   })
   registry = cloud.runtime.getDeviceRegistry()
+  // Mirrors attachCloudRuntime's production wiring; captured locally so the test
+  // can prove a refusal reached the security log instead of dying as bare forbidden.
+  cloud.runtime.setCloudHostAudit((event) => {
+    if (event.eventType === 'method_denied') {
+      hostMethodDenials.push({ method: event.method ?? '', denial: event.denial ?? null })
+    }
+  })
 })
 
 afterAll(async () => {
@@ -258,6 +273,47 @@ describe('云端会话的 RPC 权限（真实平台票据 + 真实 Runtime）', 
     } finally {
       readonly.ws.close()
       terminal.ws.close()
+    }
+  }, 30000)
+
+  it('W5b-1 mobile-scoped 云会话行仍按票据权限判定，拒绝带审计而非裸 forbidden', async () => {
+    const session = authenticated(await connect('scope-mobile-row', 'scope-mobile-row-1'))
+    try {
+      // The ticket grants terminal, and the phone allowlist has no worktree.list —
+      // so before the ticket outranked the row's scope this died with
+      // "Method 'worktree.list' is not available to mobile clients", the exact
+      // refusal that stranded the admin workspace's first workspace RPC.
+      const list = await session.rpc('worktree.list', {
+        repo: 'path:/srv/work/scope-mobile-row'
+      })
+      expect(list.ok).toBe(false)
+      if (!list.ok) {
+        expect(list.message).not.toContain('not available to mobile clients')
+      }
+
+      // The terminal family is phone-allowlisted, so the old gate passed it too;
+      // the answer must still come from the host's own boundary, not by name.
+      const terminal = await session.rpc('terminal.create', { worktree: 'scope-mobile-row' })
+      expect(terminal.ok).toBe(false)
+      if (!terminal.ok) {
+        expect(terminal.message).not.toContain('not available to mobile clients')
+      }
+
+      // Host admin stays out of reach, and the answer must name the cloud rule.
+      const settings = await session.rpc('settings.update', {})
+      expect(settings.ok).toBe(false)
+      if (!settings.ok) {
+        expect(settings.code).toBe('forbidden')
+        expect(settings.message).toContain('not available to cloud sessions')
+      }
+
+      expect(hostMethodDenials).toEqual(
+        expect.arrayContaining([{ method: 'settings.update', denial: 'METHOD_NOT_AVAILABLE' }])
+      )
+
+      saveEvidence('w5b-1-mobile-scoped-row.json', { list, terminal, settings, hostMethodDenials })
+    } finally {
+      session.ws.close()
     }
   }, 30000)
 })

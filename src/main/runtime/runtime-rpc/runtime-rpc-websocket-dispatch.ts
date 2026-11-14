@@ -80,19 +80,23 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
     // Why: the dispatcher enforces this scope's permissions; it never trusts a request field.
     // A cloud device carries the platform's signed permission set; it is never
     // granted the paired-runtime UI powers (settings, accounts, host admin).
+    // Why before the mobile check: the ticket is the authority for a session the
+    // platform admitted, so a row that also says `mobile` (a stale or downgraded
+    // registry entry) must not demote the project methods to the phone allowlist —
+    // that fallback answers bare `forbidden` with no denial details, which is what
+    // stranded the admin workspace's first workspace RPC (W5a evidence).
     const cloudSession = device.cloudSession
     const cloudGuard = this.cloudAccessGuard
-    const callerScope: RpcCallerScope =
-      device.scope === 'mobile'
+    const callerScope: RpcCallerScope = cloudSession
+      ? {
+          kind: 'cloud',
+          permissions: cloudSession.permissions,
+          // Unknown policy means export stays closed (design §9.3).
+          downloadAllowed: cloudGuard?.downloadAllowed(cloudSession.projectId) ?? false
+        }
+      : device.scope === 'mobile'
         ? { kind: 'mobile' }
-        : cloudSession
-          ? {
-              kind: 'cloud',
-              permissions: cloudSession.permissions,
-              // Unknown policy means export stays closed (design §9.3).
-              downloadAllowed: cloudGuard?.downloadAllowed(cloudSession.projectId) ?? false
-            }
-          : { kind: 'runtime-paired', grants: device.grants ?? [] }
+        : { kind: 'runtime-paired', grants: device.grants ?? [] }
 
     // Why: reads are metered, not blocked (design §9.1) — the client may rebuild a
     // file from the bytes, so the control is accounting plus a spent budget.
