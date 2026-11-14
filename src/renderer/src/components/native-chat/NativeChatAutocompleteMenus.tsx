@@ -43,13 +43,19 @@ export const NativeChatPickerMenu = memo(function NativeChatPickerMenu({
   const collision = commands.find((item) => item.skillCollision)
   const duplicate = skills.find((item) => item.sources.length > 1)
   // One sentence for the line and the screen reader, so the two never disagree.
+  // The host-scope kinds are documented facts, so neither offers Retry.
   const skillErrorText =
-    autocomplete.skillErrorKind === 'unavailable'
+    autocomplete.skillErrorKind === 'cloud'
       ? translate(
-          'components.native-chat.composer.skillsUnavailableHost',
-          "Skills can't be listed in SSH chats"
+          'auto.components.native-chat.composer.skillsUnavailableCloud',
+          'Cloud sessions do not load this host’s skills'
         )
-      : translate('components.native-chat.composer.skillsLoadFailed', "Couldn't load skills")
+      : autocomplete.skillErrorKind === 'unavailable'
+        ? translate(
+            'components.native-chat.composer.skillsUnavailableHost',
+            "Skills can't be listed in SSH chats"
+          )
+        : translate('components.native-chat.composer.skillsLoadFailed', "Couldn't load skills")
 
   let optionIndex = 0
   return (
@@ -79,7 +85,8 @@ export const NativeChatPickerMenu = memo(function NativeChatPickerMenu({
       {autocomplete.skillStatus === 'error' ? (
         <PickerStatus>
           <span className="min-w-0 flex-1">{skillErrorText}</span>
-          {autocomplete.skillErrorKind !== 'unavailable' ? (
+          {autocomplete.skillErrorKind !== 'unavailable' &&
+          autocomplete.skillErrorKind !== 'cloud' ? (
             <button
               type="button"
               onPointerDown={(event) => event.preventDefault()}

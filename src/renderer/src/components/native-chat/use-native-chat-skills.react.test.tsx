@@ -22,7 +22,9 @@ vi.mock('@/runtime/runtime-rpc-client', () => ({
 vi.mock('@/lib/local-preflight-context', () => ({
   getLocalProjectExecutionRuntimeContext: () => undefined
 }))
-vi.mock('@/lib/native-chat-telemetry', () => ({ emitNativeChatSkillDiscovery: vi.fn() }))
+vi.mock('@/lib/native-chat-telemetry', () => ({
+  emitNativeChatSkillDiscovery: vi.fn()
+}))
 
 import {
   resetNativeChatSkillDiscoveryCacheForTests,
@@ -45,6 +47,7 @@ function stateForHost(hostId: string) {
       }
     ],
     restoredRuntimeHostIdByWorkspaceSessionKey: {},
+    runtimeEnvironments: [],
     settings: { activeRuntimeEnvironmentId: null },
     tabsByWorktree: { 'worktree-1': [{ id: 'tab-1' }] },
     unifiedTabsByWorktree: {},
@@ -227,6 +230,53 @@ describe('useNativeChatSkills', () => {
     render(<Probe enabled />)
     await waitFor(() => expect(mocks.snapshots.at(-1)?.errorKind).toBe('unavailable'))
     expect(mocks.callRuntimeRpc).not.toHaveBeenCalled()
+  })
+
+  it('marks cloud-session panes unavailable without sending the doomed discover call', async () => {
+    mocks.state = {
+      ...stateForHost('runtime:env-cloud'),
+      runtimeEnvironments: [
+        {
+          id: 'env-cloud',
+          name: 'Payment',
+          cloudProject: {
+            projectId: 'proj_1',
+            projectKey: 'payment',
+            hostId: 'host_1'
+          }
+        }
+      ]
+    }
+    render(<Probe enabled />)
+    await waitFor(() => expect(mocks.snapshots.at(-1)?.errorKind).toBe('cloud'))
+    expect(mocks.snapshots.at(-1)?.status).toBe('error')
+    expect(mocks.callRuntimeRpc).not.toHaveBeenCalled()
+  })
+
+  it('keeps scanning a native runtime pane beside a cloud session environment', async () => {
+    mocks.state = {
+      ...stateForHost('runtime:env-native'),
+      runtimeEnvironments: [
+        {
+          id: 'env-cloud',
+          name: 'Payment',
+          cloudProject: {
+            projectId: 'proj_1',
+            projectKey: 'payment',
+            hostId: 'host_1'
+          }
+        },
+        { id: 'env-native', name: 'Native' }
+      ]
+    }
+    render(<Probe enabled />)
+    await waitFor(() => expect(mocks.snapshots.at(-1)?.status).toBe('ready'))
+    expect(mocks.callRuntimeRpc).toHaveBeenCalledWith(
+      { kind: 'environment', environmentId: 'env-native' },
+      'skills.discover',
+      { cwd: '/repo/worktree', worktreeId: 'worktree-1' },
+      { timeoutMs: 10_000 }
+    )
   })
 
   it('makes Retry reach disk instead of the host shared scan', async () => {

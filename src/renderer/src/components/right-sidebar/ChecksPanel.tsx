@@ -37,7 +37,11 @@ import { useChecksPanelBranchActions } from './checks-panel/use-checks-panel-bra
 import { useChecksPanelCreateReview } from './checks-panel/use-checks-panel-create-review'
 import { ChecksPanelEmptyContent } from './checks-panel/empty-content'
 import { ChecksPanelActiveContent } from './checks-panel/active-content'
+import { CloudSessionReviewPlaceholder } from './checks-panel/cloud-session-review-placeholder'
 import { HostedReviewUnlinkMenuItem } from '@/components/HostedReviewUnlinkMenuItem'
+import { useAppStore } from '@/store'
+import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
+import { getExplicitRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 
 type ChecksPanelReviewHeaderProps = {
   review: ChecksPanelReview
@@ -148,6 +152,15 @@ export function ChecksPanelReviewHeader({
 }
 
 export default function ChecksPanel(): React.JSX.Element {
+  const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
+  // Why: a cloud session's worktree can never produce review data (the host refuses
+  // github.*), so the panel presents the scope instead of a doomed "no PR" empty state.
+  const cloudSessionReviewUnavailable = useAppStore((s) =>
+    isCloudSessionEnvironmentId(
+      s.runtimeEnvironments,
+      getExplicitRuntimeEnvironmentIdForWorktree(s, activeWorktreeId)
+    )
+  )
   const baseModel = useChecksPanelControllerState()
   const contextModel = Object.assign(baseModel, useChecksPanelContextState(baseModel))
   const reviewModel = Object.assign(contextModel, useChecksPanelReviewState(contextModel))
@@ -183,7 +196,13 @@ export default function ChecksPanel(): React.JSX.Element {
   )
   const model = Object.assign(branchActionsModel, useChecksPanelCreateReview(branchActionsModel))
 
-  if (!model.activeWorktree || model.isFolder || !model.activeReview) {
+  if (!model.activeWorktree || model.isFolder) {
+    return <ChecksPanelEmptyContent model={model} />
+  }
+  if (cloudSessionReviewUnavailable) {
+    return <CloudSessionReviewPlaceholder />
+  }
+  if (!model.activeReview) {
     return <ChecksPanelEmptyContent model={model} />
   }
 

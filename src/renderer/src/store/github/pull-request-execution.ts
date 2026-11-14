@@ -13,6 +13,7 @@ import type {
 import { normalizeGitHubPRForBranchOutcome } from '../../../../shared/github/pull-request-for-branch-outcome'
 import { getRepoExecutionHostId, LOCAL_EXECUTION_HOST_ID } from '../../../../shared/execution-host'
 import { callRuntimeRpc } from '../../runtime/runtime-rpc-client'
+import { isCloudSessionEnvironmentId } from '../../lib/cloud-session-environment-membership'
 import { debouncedSaveCache } from './cache-persistence'
 import { inflightPRRequests, prRequestGenerations } from './request-coordination'
 import { getRuntimeRepoTarget } from './repository-routing'
@@ -67,6 +68,15 @@ export function startPullRequestLookup(args: {
   const request = (async () => {
     try {
       const runtimeRepo = getRuntimeRepoTarget(get(), repoPath, requestSettings)
+      // Why: a cloud session's host refuses github.* — the review credentials are host
+      // account assets the ticket never carries — so this probe can only come back as a
+      // denial that reads as "this branch has no PR".
+      if (
+        runtimeRepo &&
+        isCloudSessionEnvironmentId(get().runtimeEnvironments, runtimeRepo.target.environmentId)
+      ) {
+        return cached?.data ?? null
+      }
       const candidateWorktree = options?.worktreeId
         ? findWorktreeById(get(), options.worktreeId)
         : null

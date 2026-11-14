@@ -119,7 +119,11 @@ describe('resolveNativeChatSkillDiscoveryCwd', () => {
     floatingWorkspacePath: null,
     folderWorkspaces: [],
     worktreesByRepo: {
-      'repo-1': [worktreeFixture('repo-1::/repo/worktree', '/repo/worktree', { repoId: 'repo-1' })]
+      'repo-1': [
+        worktreeFixture('repo-1::/repo/worktree', '/repo/worktree', {
+          repoId: 'repo-1'
+        })
+      ]
     }
   }
 
@@ -207,8 +211,12 @@ describe('floating workspace skill discovery', () => {
     projects: [],
     repos: [],
     restoredRuntimeHostIdByWorkspaceSessionKey: {},
+    runtimeEnvironments: [],
     // Why a focused runtime: floating must stay local even when one is selected.
-    settings: { ...getDefaultSettings('/home/me'), activeRuntimeEnvironmentId: 'env-1' },
+    settings: {
+      ...getDefaultSettings('/home/me'),
+      activeRuntimeEnvironmentId: 'env-1'
+    },
     structuredSessionLaunchDirectoryByTabId: {},
     tabsByWorktree: {},
     unifiedTabsByWorktree: { [FLOATING_TERMINAL_WORKTREE_ID]: [floatingTab] },
@@ -228,7 +236,10 @@ describe('floating workspace skill discovery', () => {
       ...floatingInputs,
       floatingWorkspacePath: '/home/me/changed-setting',
       structuredSessionLaunchDirectoryByTabId: {
-        'floating-chat-1': { sessionId: 'session-1', launchDirectory: '/home/me/pinned' }
+        'floating-chat-1': {
+          sessionId: 'session-1',
+          launchDirectory: '/home/me/pinned'
+        }
       }
     }
     expect(isNativeChatSkillDiscoveryAwaitingDirectory(pinned, 'floating-chat-1')).toBe(false)
@@ -236,7 +247,10 @@ describe('floating workspace skill discovery', () => {
       cwd: '/home/me/pinned',
       executionHostKind: 'local',
       runtimeTarget: { kind: 'local' },
-      discoveryTarget: { cwd: '/home/me/pinned', worktreeId: FLOATING_TERMINAL_WORKTREE_ID }
+      discoveryTarget: {
+        cwd: '/home/me/pinned',
+        worktreeId: FLOATING_TERMINAL_WORKTREE_ID
+      }
     })
   })
 

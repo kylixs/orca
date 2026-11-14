@@ -6,6 +6,7 @@ import type { DiscoveredSkill, SkillDiscoveryResult } from '../../../../shared/s
 import { getNativeChatAgentProfile } from '../../../../shared/native-chat-agent-profiles'
 import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
 import { emitNativeChatSkillDiscovery } from '@/lib/native-chat-telemetry'
+import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 import {
   isNativeChatSkillDiscoveryAwaitingDirectory,
   resolveNativeChatSkillDiscoveryContext,
@@ -30,7 +31,7 @@ export type NativeChatSkillDiscovery = {
   status: 'idle' | 'loading' | 'ready' | 'error'
   skills: DiscoveredSkill[]
   error: Error | null
-  errorKind?: 'unavailable' | 'timeout' | 'host' | 'unknown'
+  errorKind?: 'unavailable' | 'cloud' | 'timeout' | 'host' | 'unknown'
   retry: () => void
 }
 
@@ -106,6 +107,14 @@ export function useNativeChatSkills(
   // keying off the generation counter would keep forcing after a pane switch.
   const forceNextDiscovery = useRef(false)
   const profile = getNativeChatAgentProfile(agent)
+  // Why: the skill directories are the host's global user assets, which a cloud
+  // ticket deliberately does not carry — its host refuses `skills.discover`.
+  const cloudSessionPane = useMemo(
+    () =>
+      context?.runtimeTarget.kind === 'environment' &&
+      isCloudSessionEnvironmentId(inputs.runtimeEnvironments, context.runtimeTarget.environmentId),
+    [context, inputs.runtimeEnvironments]
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -127,6 +136,21 @@ export function useNativeChatSkills(
         skills: [],
         error: new Error('Skill discovery is unavailable for SSH hosts.'),
         errorKind: 'unavailable',
+        contextKey: context.key
+      })
+      return
+    }
+    if (cloudSessionPane) {
+      emitNativeChatSkillDiscovery({
+        agent,
+        outcome: 'unavailable',
+        executionHostKind: context.executionHostKind
+      })
+      setState({
+        status: 'error',
+        skills: [],
+        error: new Error('Skill discovery is unavailable in cloud sessions.'),
+        errorKind: 'cloud',
         contextKey: context.key
       })
       return
@@ -190,7 +214,7 @@ export function useNativeChatSkills(
     return () => {
       cancelled = true
     }
-  }, [agent, context, enabled, profile, retryGeneration])
+  }, [agent, cloudSessionPane, context, enabled, profile, retryGeneration])
 
   const effectiveState = useMemo(
     () =>

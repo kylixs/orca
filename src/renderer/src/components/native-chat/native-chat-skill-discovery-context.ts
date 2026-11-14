@@ -23,6 +23,7 @@ export type NativeChatSkillStateInputs = Pick<
   | 'projects'
   | 'repos'
   | 'restoredRuntimeHostIdByWorkspaceSessionKey'
+  | 'runtimeEnvironments'
   | 'settings'
   | 'structuredSessionLaunchDirectoryByTabId'
   | 'tabsByWorktree'
@@ -54,6 +55,7 @@ export function selectNativeChatSkillStateInputs(state: AppState): NativeChatSki
     projects: state.projects,
     repos: state.repos,
     restoredRuntimeHostIdByWorkspaceSessionKey: state.restoredRuntimeHostIdByWorkspaceSessionKey,
+    runtimeEnvironments: state.runtimeEnvironments,
     settings: state.settings,
     structuredSessionLaunchDirectoryByTabId: state.structuredSessionLaunchDirectoryByTabId,
     tabsByWorktree: state.tabsByWorktree,

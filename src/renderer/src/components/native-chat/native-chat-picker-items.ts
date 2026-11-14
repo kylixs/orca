@@ -37,7 +37,7 @@ export type NativeChatPickerItem =
 export type NativeChatSkillDiscoverySnapshot = {
   status: 'idle' | 'loading' | 'ready' | 'error'
   skills: readonly DiscoveredSkill[]
-  errorKind?: 'unavailable' | 'timeout' | 'host' | 'unknown'
+  errorKind?: 'unavailable' | 'cloud' | 'timeout' | 'host' | 'unknown'
 }
 
 const PICKER_RESULT_LIMIT = 50
