@@ -1019,12 +1019,12 @@ F7-d 顺带确认了一条容易漏的语义：**allow 需要策略与授权两�
 
 **问题**：管理员用的云端会话页只存在于 Electron 内（依赖 `window.api.cloud`），无法按设计"从平台项目列表打开、单独用 PC 浏览器访问"。
 
-| 改动                                   | 内容                                                                                                                                                                                                                                                        |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cloud-browser-bridge.ts`（新）        | 浏览器版 `CloudBridge`：登录/列项目/取票复用 `web-cloud-session`，每项目一个 `WebRuntimeClient`（共享持久化设备身份），`rpc(method, params, projectId)` 显式路由，`closeProject(projectId)` 只关一个，`logout` 关全部；offer 与 `getState()` 都不含设备私钥 |
-| `shared/cloud-workspace-open.ts`（新） | 把"选已有检出 / 否则 `worktree.createManaged`"的逻辑抽成传输无关实现；桌面 `ensureCloudWorkspace` 改为复用它，避免浏览器与桌面两套选择逻辑                                                                                                                  |
-| 独立入口                               | `src/renderer/cloud-admin.html` + `src/renderer/src/cloud-admin/main.tsx` 挂载现有 `CloudApp`；`electron.vite.config.ts` 新增 `cloud-admin` 入口，投影脚本与构建校验同步覆盖两个 HTML 入口                                                                  |
-| 静态服务                               | `static-web-client-handler.ts` 放行 `/cloud-admin.html`，反向代理前缀映射覆盖两个入口；`/`、目录穿越、未知路径与 `/web-index.html` 规则不变                                                                                                                 |
+| 改动                                   | 内容                                                                                                                                                                                                                                                                                                                         |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cloud-browser-bridge.ts`（新）        | 浏览器版 `CloudBridge`：登录/列项目/取票复用 `web-cloud-session`，每项目一个 `WebRuntimeClient`（共享持久化设备身份），`rpc(method, params, projectId)` 显式路由，`closeProject(projectId)` 只关一个，`logout` 关全部；offer 与 `getState()` 都不含设备私钥                                                                  |
+| `shared/cloud-workspace-open.ts`（新） | 把"选已有检出 / 否则 `worktree.createManaged`"的逻辑抽成传输无关实现；桌面 `ensureCloudWorkspace` 改为复用它，避免浏览器与桌面两套选择逻辑                                                                                                                                                                                   |
+| 独立入口                               | `src/renderer/cloud-admin.html` + `src/renderer/src/cloud-admin/main.tsx` 挂载现有 `CloudApp`；`electron.vite.config.ts` 新增 `cloud-admin` 入口，投影脚本与构建校验同步覆盖两个 HTML 入口                                                                                                                                   |
+| 静态服务                               | `static-web-client-handler.ts` 放行 `/cloud-admin.html`，反向代理前缀映射覆盖两个入口；`/`、目录穿越、未知路径与 `/web-index.html` 规则不变                                                                                                                                                                                  |
 | 管理台入口                             | （W3 更正：此机制已删除——M117 的按项目入口取代了全局「打开会话页」，死旋钮 `config.js` 与 `index.html`/`STATIC_FILES` 引用一并移除。）当时：`cloud-platform/apps/web/config.js` 提供 `window.__ORCA_CLOUD_SESSION_URL__`；配置存在时项目行显示"打开会话页"（新标签、`rel=noopener`），未配置则不渲染，**URL 中不含任何令牌** |
 
 **验证（`evidence/m54-admin-session-page/`）**：真实端到端 1 条（真实平台 + 真实注册主机 + 两个项目 + 真实 TLS Runtime）：浏览器 bridge 登录 → 打开两个项目 → 两个项目各自真实 `status.get`（`runtimeId` 相同，同一主机）；目录浏览分别列出各自的真实文件（`alpha-marker.txt` / `beta-marker.txt`，互不可见）；A 跨项目访问与绝对路径均 `forbidden`。另有 5 条 bridge 单测与静态服务测试（放行新入口、其余规则不变）。
@@ -2571,10 +2571,11 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 ### 链路覆盖审计回收——三个叠加机制解释「全绿却断链」（2026-11-14）
 
 审计（`test-reports/chain-coverage-audit.md`）：34 步中 **9 步标红**（B2/B3/B4/B6/C4 表单/C5 矩阵/C6 项目级策略/C10/D6），W9 双线此前零 spec 零执行。**三个叠加机制**：
+
 1. **测试宿主方法表≠生产**：`project.provision` 被刻意排除在测试 `ALL_RPC_METHODS` 外，e2e 打开工作区走了「旧宿主」容错分支照样成功；
 2. **浏览器测试选的方法恰在 mobile 允许清单内**（scope 判定 mobile 先于 cloud）：只调 `status.get`/`files.readDir` 的用例全绿，allowlist 外方法（`project.provision`/`worktree.*`）才裸 forbidden；
 3. **cloud-platform 测试套件无 CI 挂钩**，验收索引只验证据文件存在不验时效——AC 的 PASS 可无限期陈旧（M113 后 8 波集成期间链路断而无人知）。
-**改进落地**：常驻冒烟套件按审计设计实现（真实平台+**production 方法表**真宿主+真 PTY，Electron+Chromium 双驱动，S1–S7，≤5 分钟）；硬约束三条——方法表守卫断言、至少一条断言打在 mobile 允许清单之外、必须真浏览器驱动管理台/web-index；分层规则 R3（mock/scripted host）不得作为链路步骤覆盖依据、截图不构成链路验证。W9a（在途）交付桌面线后即扩展为该常驻套件；CI 挂钩缺口挂账（README/运维章节 + 后续 CI 任务）。
+   **改进落地**：常驻冒烟套件按审计设计实现（真实平台+**production 方法表**真宿主+真 PTY，Electron+Chromium 双驱动，S1–S7，≤5 分钟）；硬约束三条——方法表守卫断言、至少一条断言打在 mobile 允许清单之外、必须真浏览器驱动管理台/web-index；分层规则 R3（mock/scripted host）不得作为链路步骤覆盖依据、截图不构成链路验证。W9a（在途）交付桌面线后即扩展为该常驻套件；CI 挂钩缺口挂账（README/运维章节 + 后续 CI 任务）。
 
 ### W9a 桌面黄金旅程提前派发（用户指令：两主链路优先验证，2026-11-14）
 
@@ -2624,13 +2625,17 @@ TTL 先改 5 分钟后经再评估**改回 60 秒**（单次消费+绑定不变�
 
 **事故与恢复**：主会话随后的 docs 提交携带暂存区陈旧副本，把 7 路径回退（config.js 复活、?api= 删、4 用例删）；修复代理重落地 `a069482b23a`；主会话恢复时又把 PROGRESS checkout 到旧快照顶掉一节记录（本段即补写）。终态恢复提交 `d5a00712179`：5 路径自 a069 恢复 + config.js 删除入档 + PROGRESS 保留最新。**恢复后验证**：config.js 不存在于 HEAD；`sessionPageUrlFor`/`searchParams.set('api', platformOrigin)` 在位（server.ts:677/683/698）；维护态双入口补例在位。**防再发规则**：主会话提交前必须核对暂存集=预期文件（本次恢复中已实践：PROGRESS 取消暂存保最新版）；F3 计数笔误更正：W3 段 exploratory 16 实为 13。
 
+### U13 关闭：dev 无登录页根因=单实例锁（2026-11-14）
+
+诊断代理三嫌疑全部实测排除（exposure 谓词 dev 可读 env、vite dev 同样应用 define、bridge 存在必渲染登录 UI）。**真根因**：`pnpm dev`/`npm start` 共享 orca-dev profile——已有一个无 env 的 dev 实例在跑时，带 `ORCA_CLOUD_API_URL` 的新启动 exit 3 让位旧实例，用户看到的是旧实例普通桌面，env「像被忽略」。修复 `b5e697a3fd8`（3 文件）：锁拒绝消息点名被丢弃的平台地址与补救路径（无 env 消息逐字节不变，有测试钉住）。单实例 15/15（新增 3）+ 云链路 21/21 + 提交后复跑 33/33；tc:node 0 错。台账 U13 → 🟢。**用户操作**：退出在跑的 dev 实例再 `ORCA_CLOUD_API_URL=… npm start`（或撞锁时看终端明示）。另注：W11 形态落地后 dev 登录入口已是 shell 常驻按钮+弹框（诊断实测确认）。
+
 ### W11 审计有条件通过（2 major 回派，2026-11-14）
 
 审计（`test-reports/w11-audit.md`）：blocker 0、major 2——MAJ-1 登录 chip（fixed 右下）**遮蔽原生状态栏**（拦截点击+与 Toast 同角互盖），违反「云端 UI 不得遮蔽原生入口」；MAJ-2 「主工作流不变」断言把 shell mock 成单 div，遮蔽类回归无法变红。安全面全过（记忆文件未触碰、密码不落盘、托管三层只读、装配成本无网络）；契约零回归；规范全过（ui 原语未动、max-lines 296/400、13/13 归属）。已回派原实现代理（chip 改 in-flow/标题栏方案自选 + 真实结构遮挡断言 + 登出异步 catch 等顺带）。
 
 ### W7b 独立测试通过（handoff 链全通）+ 新缺口 W7c 立项（2026-11-14）
 
-测试代理（隔离 worktree 固定提交 + 现构建 web bundle）：套件全绿（handoff 10/0、web 目录 384 例、平台全量 240/241——1 失败为隔离缺 evidence 的环境项）；**端到端旅程 13/13**：点「Orca Web」真实发 web-handoff、新标签 URL 正确、换发 200+ACAO、hash 清空、无登录表单直达工作区壳、会话持久化；重放 410 回落表单预填；CORS 双向 4/4（非白名单零头+浏览器 TypeError 实证）；离线/维护置灰 toast 3/3。**新缺口 W7c**：自动进入后工作区**降级启动**（空白+Session restore failed 粘性 toast）——web 启动链按原生假设调用被云方法表拒绝的 RPC（repo.list/ssh.*/projectGroup.*/worktree.lineageList/folderWorkspace.list）+App 自身 socket 认证失败；handoff 链本身全通。已派 **W7c**（启动链云会话感知降级：跳过原生专属调用、呈现已采纳项目工作区、必要时按 FR-3.9 扩只读云方法表）。W7b 本令范围（handoff 消费+CORS+按钮）三方齐备待关闭。
+测试代理（隔离 worktree 固定提交 + 现构建 web bundle）：套件全绿（handoff 10/0、web 目录 384 例、平台全量 240/241——1 失败为隔离缺 evidence 的环境项）；**端到端旅程 13/13**：点「Orca Web」真实发 web-handoff、新标签 URL 正确、换发 200+ACAO、hash 清空、无登录表单直达工作区壳、会话持久化；重放 410 回落表单预填；CORS 双向 4/4（非白名单零头+浏览器 TypeError 实证）；离线/维护置灰 toast 3/3。**新缺口 W7c**：自动进入后工作区**降级启动**（空白+Session restore failed 粘性 toast）——web 启动链按原生假设调用被云方法表拒绝的 RPC（repo.list/ssh._/projectGroup._/worktree.lineageList/folderWorkspace.list）+App 自身 socket 认证失败；handoff 链本身全通。已派 **W7c**（启动链云会话感知降级：跳过原生专属调用、呈现已采纳项目工作区、必要时按 FR-3.9 扩只读云方法表）。W7b 本令范围（handoff 消费+CORS+按钮）三方齐备待关闭。
 
 ### W5b 开发完成（通道④收口，待独立测试+审计，2026-11-14）
 
@@ -2733,6 +2738,7 @@ j-1 + m-1 + m-2 一并修复。**j-1**：`sessionPageUrl` 追加 `?api=<平台�
 四路完成交错落库 + W6a 修复代理发现 docs 提交卷入 relay 文件，用 plumbing 重建历史（两个 docs 提交哈希变更：W5a→`e2b9250fd90`、W7a→`16e324632c9`，树内容不变；reflog 残留报错为表面现象，三个功能提交均已核实 ON-BRANCH）。**已核实的分支线性状态**：`c615adee2f4` W6c → `b0665d848a7` W5a-seam → `3e0c9f970d2` W6a-fix → `16e324632c9` → `e2b9250fd90` → `2f0b9657217` W7a → `7058a99dd1c` W5a-panel。索引冲突根因=四代理+主会话共享一个 worktree 的 git index；现行缓解=代理提交前自检暂存区 + 冲突后 plumbing 修复（本次有效）；若再发，评估改用隔离 worktree 派发。
 
 ### 本轮完成明细（2026-11-14）
+
 - **W5a-seam**（`b0665d848a7`，5 文件 +79/−1）：terminal subscribe 桥接 seam 落库（类型+桥方法+订阅路由+app 绑定），无 rpc/opcode 变更；tc:web 过、cloud 67 测试全绿。
 - **W6c**（`c615adee2f4`，6 文件）：web 相对 base（含补 cloud-admin 入口——发现 `build:web` 在 HEAD 本就因缺该入口失败并修复）；`web-path-prefix.ts` 前缀推导（编码安全、无前缀逐字节不变）；31 用例 + tc:web + build 全过；真实前缀加载 96 URL 全 200。**遗留回归**：cloud-admin-session e2e 挂（`pathname.split` undefined，W6c 未提交态被他代理发现），已派修复代理。
 - **W6a-fix**（`3e0c9f970d2`，2 文件）：MAJ-1 半开泄漏（HTTP/升级双路径 abort 传播）、MAJ-2 per-IP 限速共用预算、MIN-1 stale 升级 503、MIN-3 升级 hop-by-hop 对齐；27/27 全绿（含 5 条新回归）。
