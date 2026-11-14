@@ -2564,6 +2564,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W10 修复完成（待独立复验，2026-11-14）
+
+提交 `f0665d6b0eb`（17 文件 +457/−29）：B-1 双段 define 收拢 `ORCA_CLOUD_PLATFORM_DEFINES`（main+preload 同时注入）+ 双层防回归（单测断言配置覆盖 + 真实产物审计脚本接入全量构建尾，负向对照实测 exit 1 报同款签名）；M-1 托管跳过 memory 档（env>build，记忆仅用户名预填）；M-2 选剥离 userinfo（理由注释：粘贴地址仍指目标平台、登录不读 URL 凭据、拒绝即死路）双入口剥除；m-3/m-5 错误码 IPC 透传 + beginLogin 不再预改写共享 options（成功后 commitLoginAddress）。W10 专项 72/72、复跑 119/119；回归批 44 失败经 stash 对照逐文件一致=既有沙箱 TLS 环境失败（均不 import 本改动模块）。已派独立复验（重点复现原失败步骤①）。遗留：m-4 内联校验镜像、m-2 登出预填刷新 → 后续。
+
 ### W7a 关闭（复验全过，2026-11-14）
 
 复验（`evidence/w7a-fix-verify/`）：两套件各跑两遍（树内 HEAD + `git archive` 快照隔离，数字一致）9/0 + 6/0；自有探针 35 断言 0 失败——无 grant admin 签发 403 permission_lost（用无 grant 行宿主证明 403 只能归因新授权门）、授 open 后 201、非法直连地址 400 HOST_UNAVAILABLE（ denied 审计 reason=host_unavailable）、合法恢复 201；既有 admin 有 grant 流程零破坏；code 明文零入审计。**W7a 关闭**（`2f0b9657217` + `8fc140952e9` + 独立测试 33 探针 + 审计 + 复验，三方齐备）。通道①放行 **W3**（详情入口+双入口布局），已派实现代理；其观察到并行 agent 已对 server.ts 落 browser-mode 入口 URL（W6b 接近完成）。运行时观察挂账：26 个 PPID=1 孤儿 api server（并行验证代理遗留，待统一清理）；isDirectAddrForm 仅校验首地址为保守取向。
