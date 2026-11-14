@@ -2633,6 +2633,10 @@ TTL 先改 5 分钟后经再评估**改回 60 秒**（单次消费+绑定不变�
 
 提交 `903e8e80ad4`（10 文件 +461/−138）：MAJ-1 登录入口改**状态栏 in-flow segment**（悬浮终端开关之后，结构上不可能遮挡/拦截原生点击，远离 Toast 角；隐藏状态栏为显式选择的取舍入档）+ **突变测试红证明**（改回 fixed chip → regression 前两例立红）；MAJ-2 回归断言渲染真实 StatusBar→StatusBarSurface（不再桩掉），断言 segment 为状态栏 DOM 子节点、原生开关同行的 TOGGLE 事件仍派发、无桥时原生结构照旧（happy-dom 无布局引擎故用结构不变量替代几何断言，已说明）；登出链单轮+失败 toast 不伪装；m3/m4 补齐。128 用例全绿；本域 tc/lint/gate 0 finding（剩余项均属 W7b/W5b 在途文件）。已追问构建门槛语义更新（W10 verify-cloud-build-defines 前置条件过期挡企业分发构建）是否在本轮补齐。
 
+### 流程修正：主动检查超时子代理（用户指令，2026-11-14）
+
+用户指出 W5a 修复复验代理早已完成但主会话被动等通知。**新规则入 cron（054f0c4f）**：每轮开始盘点派出超 30 分钟未回报的子代理——查证据目录最新文件时间与 git log；有最终证据按完成收口；无进展催办并给「如实记录失败后收尾」指引；确认卡死 TaskStop 重派。本轮盘点结果：W11 构建门槛修复已静默落地（`0d3178541ad` fix(cloud): build gate expects the baked address in main only——W11 构建门槛项闭合）；W9a 卡在旅程第一步后无进展已催办并给收尾指引；W5c 早期证据已落（1 件）；W5b/W7c 回派在途正常。
+
 ### W5b/W7c 验证回收 + 各自回派（磁盘 99% 清理，2026-11-14）
 
 **W5b 独立测试**：node 下 RED/GREEN 配对完整（全权限票据真 PTY 回显、viewer 拒绝带 PERMISSION_MISSING+method_denied 审计入平台链、mobile 无 cloudSession 语义 pre/post 逐字段 identical）。**缺陷 B 回派**：bun 启动器下 node-pty onData 永不触发 → 提交的 W5b-1 e2e 回显断言为空断言（超时分支掩盖），修复=订阅流断言或显式 node runner。**A 细化**（既有）：bun TLS 路径两类签名。**运维 C**：$TMPDIR 1.4 万 orca-* 目录 ~9GB，代理已清 12,349 个。
