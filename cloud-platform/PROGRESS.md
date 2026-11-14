@@ -2633,6 +2633,12 @@ TTL 先改 5 分钟后经再评估**改回 60 秒**（单次消费+绑定不变�
 
 提交 `903e8e80ad4`（10 文件 +461/−138）：MAJ-1 登录入口改**状态栏 in-flow segment**（悬浮终端开关之后，结构上不可能遮挡/拦截原生点击，远离 Toast 角；隐藏状态栏为显式选择的取舍入档）+ **突变测试红证明**（改回 fixed chip → regression 前两例立红）；MAJ-2 回归断言渲染真实 StatusBar→StatusBarSurface（不再桩掉），断言 segment 为状态栏 DOM 子节点、原生开关同行的 TOGGLE 事件仍派发、无桥时原生结构照旧（happy-dom 无布局引擎故用结构不变量替代几何断言，已说明）；登出链单轮+失败 toast 不伪装；m3/m4 补齐。128 用例全绿；本域 tc/lint/gate 0 finding（剩余项均属 W7b/W5b 在途文件）。已追问构建门槛语义更新（W10 verify-cloud-build-defines 前置条件过期挡企业分发构建）是否在本轮补齐。
 
+### W5b/W7c 验证回收 + 各自回派（磁盘 99% 清理，2026-11-14）
+
+**W5b 独立测试**：node 下 RED/GREEN 配对完整（全权限票据真 PTY 回显、viewer 拒绝带 PERMISSION_MISSING+method_denied 审计入平台链、mobile 无 cloudSession 语义 pre/post 逐字段 identical）。**缺陷 B 回派**：bun 启动器下 node-pty onData 永不触发 → 提交的 W5b-1 e2e 回显断言为空断言（超时分支掩盖），修复=订阅流断言或显式 node runner。**A 细化**（既有）：bun TLS 路径两类签名。**运维 C**：$TMPDIR 1.4 万 orca-* 目录 ~9GB，代理已清 12,349 个。
+
+**W7c 审计**：通过（1 major）——MAJ-1 scope 记忆化不重置（登出→配对路径 stale 套已配对客户端，一行修+反转第 5 例）+4 minor 测试缺口；**附加渠道语义/方法表不扩充取舍/跳过清单完备性全部成立**。已回派。审计曾因**磁盘 100% 满**无法做执行式变异——主会话清理 /tmp（orca-ios-derived 4GB、w7b-verify worktree 422MB）释放空间；W9a worktree（2.2GB）运行中保留。
+
 ### W7c 开发完成（通道③，待独立测试+审计，2026-11-14）
 
 提交 `679f24c1b6d`（12 文件 +778/−66）：web 启动链云会话感知——跳过原生目录加载/SSH 水合/client-event 镜像/延迟远端刷新（不再发起注定被拒的 RPC），链以 hydrationSucceeded 正常收尾（不再降级粘性 toast+空白壳）；云会话侧栏云范围空态说明（原生骨架不动，附加渠道语义）；**云方法表未扩充**（防宿主全目录/SSH 目标泄露，理由入 manifest）。新增 12 例；受影响 3560+109+50+9 例全绿；端到端 handoff 旅程实测：降级 toast=false、壳 36588 字节（W7b 基线 2610）、零 cloud-denial 控制台错误。**已知边界如实入账**：workspace.info 宿主无实现（云会话挂文件树/终端需后续工单）；流式订阅=W5c 在途。已派独立测试+审计。
