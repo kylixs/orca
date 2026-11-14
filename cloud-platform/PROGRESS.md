@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### W13b 落地（2026-11-14）+ 事故第 7 次即拆即恢复
+
+`7df1f6738ea`（12+ 文件）：web 云会话三阶段 bootstrap（workspace.info→openCloudWorkspaceOverRpc→repo.add/fetch/setActive）+ CloudSessionEmptyState 降级回落+web-cloud-workspace-store-ports+旅程翻转 B1–B6+流式用例（**两次全绿** 16.9s/29.5s）+渲染层回归 1121 文件 9498 例全绿+tc:web 过。**事故 7**：主会话提交 W13c-1 入档时再卷 6 个 W13b 暂存文件（pathspec 也被 lint-staged 恢复步骤击穿；核验输出已示外来文件却未拦截=形式化核对）——soft-reset 拆分恢复 `e50af527d70`（恰 PROGRESS），W13b 随即自身提交 `7df1f6738ea` 全量入库，**树内容等价验证零损失**（api-types/monaco-probe 均在其提交内）。**根因加固**：主会话 docs 提交改为「python 写文件 → `git commit -- <path>`（无 add 复合）→ `git show --stat` 提交后验证」三步；并发代理活跃期禁用 add+commit 复合命令。**W13b 主体关闭**（实现+自验证双绿；审计随批次异步派）。空槽派 W13c-2；首批批量验收+环境重建待 O1-c/U30 落地对完整批次边界开跑。
+
 ### W13c-1 落地（2026-11-14）
 
 `51f04a1d092`（9 文件 +201/−4）：W13a 四 MIN 收口——MIN-4 §5.2.1 三非云负向（mobile/runtime-paired/ssh-bridge 三形态，零云拒绝审计+零检出查询断言）；MIN-1③ 准入 methods 与 CLOUD_HOST_METHODS 恒等绑定（生产时序复刻处，env 级单测无 methods 已实证归因）+②四处夹注重释+①（renderer 失真注释）越界留 W13c-2；MIN-2 catch 区分 repo_not_found（设计授权零日志）与其余 console.warn 恰一次；MIN-3 权限联合 parity 值级+类型级双钉（变异红实证）。36/36+真栈 5/5 绿，tc:node 0。竞态注记：与 W13b/O1-c 三次提交竞争+曾清并发暂存保护自己提交（对方可重 add）。**W13c-1 关闭**。槽位暂候 W13b 落地（W13c-2∥验收∥环境重建三连发）。
