@@ -2584,6 +2584,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 用户实测：管理控制台进入项目工作区也不通（`forbidden`）——与 W5a 浏览器探针发现一致（宿主对云会话方法走 mobile 允许清单回退裸拒绝），W5b 在修。**用户质疑成立**：分段测试全绿但核心链路断裂。根因自查：①组件测试 mock 桥接层、平台 e2e 只到 HTTP 层，跨层链（页面→CORS→宿主准入→方法映射→PTY）无常驻测试；②探针发现过但按切片排期顺延，未当核心断裂提升；③M116 探索测试未驱动浏览器工作区对接真实宿主；④W9 黄金旅程排在最后（顺序错误）。**改进**：已派链路覆盖自查审计（步骤×真实度矩阵+红名单+常驻冒烟套件设计）；W9 双线提前至本轮集成后立即执行（不再压轴）；新增分层规则草案——mock 层测试不得作为链路步骤的覆盖依据。
 
+### W7b 门禁整改完成（待独立测试回收后关闭，2026-11-14）
+
+提交 `4be77d3ce55`（3 文件 +150/−25）：j-1 四条 finding 全消——2 处类型断言改**受检解析**（instanceof WebCloudConnectError / readArray+readString，零 SAFETY 抑制）+ 2 组重复 import 合并；m-3 进入屏 10s 超时赛跑（超时只收尾不越权：迟到换发不落存储、迟到 socket close 不 adopt）+2 断言。本域门禁 0 finding；单测 12/0、renderer e2e 5/0、平台 handoff 9/0。索引冲突第五次（并行全量 index 提交卷入其暂存）——代理间自行 soft-reset 拆分闭环，无内容损伤。W7b 关闭待独立测试代理（在途）回收。
+
 ### W7b 审计通过（1 major 门禁整改回派，2026-11-14）
 
 审计（`test-reports/w7b-audit.md`）：blocker 0、major 1（j-1=CI 门禁 4 条 finding：2 处无 SAFETY 类型断言 + 重复 import，机械修复）、minor 3（B7/B8 e2e 零覆盖且持久化为单槽存储——plan §4.4 措辞需澄清、回落表单预填无组件断言、进入屏无超时）、note 9。**安全重点全过**：CORS 白名单精确匹配/无 wildcard/无 credentials/internal 排除/fail-closed；handoff hash 同步清除零残留；deviceId 复用落实 w7a n-3（e2e 实证）；契约抽取零回归；与 W6b 健康门/W7a n-2 衔接正确。已派门禁整改（4 finding + m-3 超时顺带）。
