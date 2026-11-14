@@ -2564,6 +2564,12 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W3 修复完成 + 索引冲突第四次（最严重，已修复，2026-11-14）
+
+修复代理交付 `e5d0f68721a`（7 文件 +248/−52）：j-1 `sessionPageUrlFor` 用 `searchParams.set('api', requestOrigin)`（新抽共享 helper，与 /install 同推导，代理 x-forwarded-proto+Host；取舍：query 优先于部署显式注入，记录进 deployment §4c）；m-1 删 config.js + index.html script 引用 + web-release STATIC_FILES 条目（避免 404）；m-2 四条补例**逐条变异验证变红**（isDirectAddrForm 门/详情置灰支/维护支/离线组合支）。web-project-entry 10/10 + 六个回归套件全绿。
+
+**事故**：主会话紧随其后的 docs 提交（7304007841f）使用了暂存区里的修复前文件副本，把 7 个路径整体回退（config.js 复活、?api= 删、4 用例删）。根因=主会话 `git add` 单文件提交时，暂存区已含他人早前 add 的陈旧版本。修复代理已在现 HEAD 重落地（`a069482b23a`，7 路径树逐字节等同首轮）。**防再发规则（即刻生效）**：主会话任何提交前必须 `git diff --cached --stat` 核对暂存集=本次预期文件，非预期一律 `git restore --staged` 后再提交。F3 计数笔误更正：W3 段「exploratory 16」实为 13。
+
 ### W3 独立测试通过（2026-11-14）
 
 测试代理（detached worktree 固定 `cd36987d7a0` 验证）：套件 6/6 + 13/13 + 3/3 + 9/9；自有 UI 探针 **11/11**——admin 双入口 href 与 payload 逐字一致、developer 无详情/有 open 才有 Orca Web、离线/维护/无浏览器边缘三态置灰 title 各异且零死链、对话框引导逐字、详情链接真实新开 TLS cloud-admin 200 且带注入地址渲染登录页；两页 actions 单元格逐字节相等。发现 F1（config.js 死配置残留）与 F2（裸链接依赖部署注入）**与在途 W3-fix（j-1+m-1）恰好收敛**；F3 记一处 PROGRESS 计数笔误（16 实为 13，关闭时更正）。探针纪律：初版假 FAIL 自查为心跳窗口时序后改等 derived 翻转再断言（F4 记录在案）。

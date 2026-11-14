@@ -104,10 +104,6 @@ flowchart LR
 
 **自动进入工作区（M122）**：平台项目行「Web 打开」→ 平台签发一次性短 TTL handoff code → 新标签 `<web入口>#handoff=<code>&project=<id>` → orca web 以 code 换会话（令牌不经 URL）→ 自动打开该项目工作区；code 失效回落登录表单。
 
-### 4c. 管理员会话页（M117「详情」入口）的平台地址（W3 审计 j-1）
-
-会话页由**宿主** TLS 直连地址伺服（`https://<宿主>:<port>/cloud-admin.html`），浏览器在该源上无法自己发现平台地址。平台在下发的 `sessionPageUrl` 末尾追加 `?api=<平台对外地址>`（按代理 scheme + 请求 Host 推导，与 `/install/*.sh` 内嵌平台地址同源），页面按 `?api=` → `window.__ORCA_CLOUD_ADMIN_API_URL__` → 构建期 `VITE_ORCA_CLOUD_API_URL` 顺序解析。取舍：既有部署若已显式注入全局变量，经「详情」进入时 query 参数优先（同一部署内两者应指向同一平台；直开页面时注入仍生效）。宿主证书须受浏览器信任（M121 前提）对「详情」入口同样成立。
-
 ## 5. 已知限制 / 风险
 
 - 平台跑在本机 Docker：本机休眠/网络切换 = 全链路控制面下线；仅作联调，不作长驻。
