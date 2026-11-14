@@ -2633,6 +2633,10 @@ TTL 先改 5 分钟后经再评估**改回 60 秒**（单次消费+绑定不变�
 
 提交 `903e8e80ad4`（10 文件 +461/−138）：MAJ-1 登录入口改**状态栏 in-flow segment**（悬浮终端开关之后，结构上不可能遮挡/拦截原生点击，远离 Toast 角；隐藏状态栏为显式选择的取舍入档）+ **突变测试红证明**（改回 fixed chip → regression 前两例立红）；MAJ-2 回归断言渲染真实 StatusBar→StatusBarSurface（不再桩掉），断言 segment 为状态栏 DOM 子节点、原生开关同行的 TOGGLE 事件仍派发、无桥时原生结构照旧（happy-dom 无布局引擎故用结构不变量替代几何断言，已说明）；登出链单轮+失败 toast 不伪装；m3/m4 补齐。128 用例全绿；本域 tc/lint/gate 0 finding（剩余项均属 W7b/W5b 在途文件）。已追问构建门槛语义更新（W10 verify-cloud-build-defines 前置条件过期挡企业分发构建）是否在本轮补齐。
 
+### W11 关闭（收口复验四项全过，2026-11-14）
+
+复验（`evidence/w11-final-verify/`）：① 测试 16 文件 86 例 + App 回归 35 例全绿；② **MAJ-1 真机复核成立**——入口为状态栏 in-flow segment（非 fixed）、与悬浮终端开关同排、真机 elementFromPoint=入口自身、TOGGLE 事件派发恰 1 次、双形态截图；③ **构建门槛正负双验证**——baked 构建 exit 0（216 bundle + 字面量在 main）、负向（缺 define / 缺 canary）exit 1、中性构建恢复零残留；④ 三形态启动矩阵全过（无 env/API_URL/打包默认均按钮可见+预填正确+无自动登录）。**W11 关闭**（`a82aa84c082`+`903e8e80ad4`+`0d3178541ad`+独立测试+审计回派+收口复验）。遗留入 P2：F1 失败横幅 fixed 浮压状态栏（先于 W11 链存在）、F2 横幅注释过时、F3 vitest 层 shell 仍为桩（遮挡断言在结构层已可红）、U15/W12 自建项目闭环。
+
 ### W5b 回派完成（发现第二个真 bug B2，2026-11-14）
 
 提交 `4ffbc3860dc`：缺陷 B 实为两个叠加真 bug——B1 bun worker 静默 PTY（e2e 列入 vitest-node-runtime 池以 node 执行+文件头声明 runner）+ **B2 嵌套读取**（`terminal.read` 回包在 `result.terminal` 下，原 helper 读 `result.tail` 永远 undefined——任何 runner 下断言都不可能匹配，超时分支被 ok 检查放行=假阴性）。修复后 RED/GREEN：默认跑法（node 池）4/4 绿且回显真实（`echo ORCA_W5B_PTY_ECHO_OK`）；去掉池声明 RED（ECHO_TIMEOUT）；暂存态（无 W5c 代码）3/3。缺陷 A（bun ws 自签 TLS 既有问题）记入说明。已派 W5b 审计（含空断言修复验证）。
