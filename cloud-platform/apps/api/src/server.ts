@@ -1428,6 +1428,19 @@ export function createApp(config: ApiConfig): ApiHandle {
         })
         return error(res, 400, repoUrlVerdict.code, repoUrlVerdict.message, traceId)
       }
+      const branchVerdict = validateProjectDefaultBranch(body.defaultBranch)
+      if (!branchVerdict.ok) {
+        await audit.append({
+          eventType: 'project_create',
+          actor: authed.user.username,
+          targetType: 'project',
+          targetId: null,
+          result: 'denied',
+          traceId,
+          metadata: { reason: branchVerdict.code }
+        })
+        return error(res, 400, branchVerdict.code, branchVerdict.message, traceId)
+      }
       const created: Project = {
         id: `proj_${randomBytes(4).toString('hex')}`,
         key,
@@ -1435,7 +1448,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         repoUrl: repoUrlVerdict.repoUrl,
         hostId,
         path: pathVerdict.path,
-        defaultBranch: String(body.defaultBranch ?? 'main'),
+        defaultBranch: branchVerdict.defaultBranch || 'main',
         downloadPolicy: body.downloadPolicy === 'allow' ? 'allow' : 'deny',
         // Why: a repo URL means the host must clone it before the first open.
         status: repoUrlVerdict.repoUrl ? 'provisioning' : 'ready',

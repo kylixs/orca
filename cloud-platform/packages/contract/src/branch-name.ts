@@ -1,7 +1,11 @@
 /**
- * Minimal guard for an admin-edited default branch. The host validates the full
- * git-ref grammar at clone time; the platform only rejects the shapes that are
- * obviously unsafe to store or echo back.
+ * Guard for a registered default branch, mirroring the host's git-ref grammar
+ * (src/main/cloud-platform/cloud-project-provision.ts validateCloudBranchName).
+ * The platform rejects the same shapes so a project cannot register ready and
+ * then fail provisioning on every open with BRANCH_INVALID.
+ *
+ * Difference from the host: empty is valid — the host then clones the remote's
+ * default branch, and registration stores 'main'.
  */
 
 export type ProjectDefaultBranchVerdict =
@@ -39,11 +43,20 @@ export function validateProjectDefaultBranch(value: unknown): ProjectDefaultBran
   if (branch.length > MAX_BRANCH_LENGTH) {
     return reject('默认分支名过长。')
   }
-  if (branch.startsWith('-')) {
-    return reject('默认分支名不能以 “-” 开头。')
+  if (branch.startsWith('-') || branch.startsWith('/') || branch.startsWith('.')) {
+    return reject('默认分支名不能以 “-”、“/” 或 “.” 开头。')
   }
-  if (/\s/.test(branch) || hasControlCharacter(branch)) {
-    return reject('默认分支名不能包含空白或控制字符。')
+  if (branch.endsWith('/') || branch.endsWith('.')) {
+    return reject('默认分支名不能以 “/” 或 “.” 结尾。')
+  }
+  if (branch.includes('..') || branch.includes('//') || branch.includes('@{')) {
+    return reject('默认分支名包含无效的引用序列。')
+  }
+  if (/[\s~^:?*[\\]/.test(branch) || hasControlCharacter(branch)) {
+    return reject('默认分支名不能包含空白或无效字符。')
+  }
+  if (branch === '@') {
+    return reject('默认分支名不能是 “@”。')
   }
   return { ok: true, defaultBranch: branch }
 }
