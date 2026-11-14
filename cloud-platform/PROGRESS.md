@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### U37-C 落地（2026-11-14，🟢）—— P1 死锁闭环
+
+`a2c9db6fb45`（5 文件）：端到端套件 3 轮全绿（创建 repo-ful→心跳下行指派→宿主票据外克隆→上行回报→provisioning→ready→connect 200→already-provisioned→工作区建成；审计 provision_assign 恰 1+project_provision success）；U34 套件 2 还原宿主亲手克隆语义（删预置 hack）；M57 2/2 复活；U37-A/B 回归 30 例绿。**U37 →🟢（P1 闭环）**。披露处置：①createProject 同步 prepare 撞 409 的 UX 缺口→U44（P2，kick 使其自愈但语义错位）；②审计跨拍不去重=符合 §8② 字面；③三个同因套件复活挂 U44。**U37 全案关闭**（设计 92% 置信度+四项审定+A/B/C 三令+端到端回归）。
+
 ### AA1 落地（2026-11-14）
 
 `fdfd75a4c4f`（2 文件）：GET /v1/directory（admin-only，store 派生用户+组清单零 LDAP 依赖，403+denied 审计）+ resolveGrantSubject/knownGroups 统一主体解析（未知组 400 GROUP_NOT_FOUND 不落死行）+权限位白名单校验（越界 400 整行拒绝）+PUT /grants 403 补 AC-18 denied 审计。新 5/5+回归 31/31。空槽回填 AA2。
