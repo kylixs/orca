@@ -265,22 +265,62 @@ function projectCard(p) {
     </div>`
 }
 
-function sessionPageUrl() {
-  const base = String(window.__ORCA_CLOUD_SESSION_URL__ ?? '').trim()
-  if (!base) return null
-  try {
-    return new URL(base, window.location.href).toString()
-  } catch {
-    return null
+/** Why the 详情 entry cannot open, or null when it is a plain link (FR-3.8). */
+function detailDisabledReason(p) {
+  if (p.hostStatus === 'maintenance') {
+    return '主机维护中'
   }
+  if (p.hostStatus !== 'online') {
+    return '主机离线'
+  }
+  if (!p.sessionPageUrl) {
+    return '该主机没有可直达的会话页地址'
+  }
+  return null
 }
 
-/** Hidden when the deployment has not configured a session page: no dead links. */
-function sessionPageLink() {
-  const url = sessionPageUrl()
-  return url
-    ? `<a class="btn sm" href="${esc(url)}" target="_blank" rel="noopener">打开会话页</a>`
-    : ''
+/**
+ * The per-project row entries (FR-3.11) come from one builder so 工作台 and
+ * 我的项目 stay identical. 「详情」 is admin-only and opens the host session
+ * page in a new tab; 「Orca Web」 opens the host's browser entry for open
+ * holders (M122 will switch it to the one-time handoff auto-entry).
+ */
+function projectRowActions(p) {
+  return `<button class="btn sm" data-open="${p.id}" ${openDisabledAttr(p)}>打开</button>${detailEntry(p)}${orcaWebEntry(p)}`
+}
+
+function detailEntry(p) {
+  if (!isAdmin()) {
+    return ''
+  }
+  const reason = detailDisabledReason(p)
+  return reason
+    ? `<button class="btn sm" disabled title="${esc(reason)}">详情</button>`
+    : `<a class="btn sm" href="${esc(p.sessionPageUrl)}" target="_blank" rel="noopener" title="在新标签打开会话详情">详情</a>`
+}
+
+/** Why the Orca Web entry cannot open, or null when it is a plain link. */
+function orcaWebDisabledReason(p) {
+  if (p.hostStatus === 'maintenance') {
+    return '主机维护中'
+  }
+  if (p.hostStatus !== 'online') {
+    return '主机离线'
+  }
+  if (!p.browserEntryUrl) {
+    return '该主机暂无浏览器入口，请先在 Orca 桌面客户端中打开此项目'
+  }
+  return null
+}
+
+function orcaWebEntry(p) {
+  if (!p.permissions.includes('open')) {
+    return ''
+  }
+  const reason = orcaWebDisabledReason(p)
+  return reason
+    ? `<button class="btn sm" disabled title="${esc(reason)}">Orca Web</button>`
+    : `<a class="btn sm" href="${esc(p.browserEntryUrl)}" target="_blank" rel="noopener" title="在新标签打开 Orca Web">Orca Web</a>`
 }
 
 function projectRow(p) {
@@ -292,8 +332,7 @@ function projectRow(p) {
     <td class="muted">${esc(permissionSummary(p))}</td>
     <td><span class="dot ${offline ? 'offline' : 'online'}"></span> ${hostStateText(p)}</td>
     <td class="actions">
-      <button class="btn sm" data-open="${p.id}" ${openDisabledAttr(p)}>打开</button>
-      ${sessionPageLink()}
+      ${projectRowActions(p)}
     </td>
   </tr>`
 }
@@ -317,7 +356,8 @@ async function openProject(projectId) {
     const relay = body.endpoints.relay.map((e) => e.url).join('\n') || '（无中继地址）'
     dialog(
       '连接信息已就绪',
-      `<p>桌面客户端会先探测直连地址，全部失败后经中继连接。凭证 ${body.expiresIn} 秒内有效且只能使用一次。</p>
+      `<p><strong>请在 Orca 桌面客户端中打开此项目</strong>（客户端将自动探测直连并连接）</p>
+       <p>桌面客户端会先探测直连地址，全部失败后经中继连接。凭证 ${body.expiresIn} 秒内有效且只能使用一次。</p>
        <p class="muted">主机：${esc(body.host.name)} · 指纹 ${esc(body.host.fingerprint)}</p>
        <pre>${esc(`直连:\n${direct}\n\n中继:\n${relay}\n\n工作区:\n${body.workspace.workspaceRoot}`)}</pre>`
     )
@@ -363,7 +403,7 @@ async function renderProjects() {
         <td>${esc(p.hostName)} ${hostStatusBadge(p)}</td>
         <td class="muted">${esc(permissionSummary(p))}</td>
         <td>${p.downloadPolicy === 'deny' ? '<span class="badge lock">禁止</span>' : '<span class="badge">允许</span>'}</td>
-        <td class="actions"><button class="btn sm" data-open="${p.id}" ${openDisabledAttr(p)}>打开</button> ${sessionPageLink()}</td>
+        <td class="actions">${projectRowActions(p)}</td>
       </tr>`
         )
         .join('') || '<tr><td colspan="6" class="table-empty">没有匹配的项目</td></tr>'

@@ -651,6 +651,21 @@ export function createApp(config: ApiConfig): ApiHandle {
     return edge ? `https://${edge.browserHost}/h/${routeKey}/web-index.html` : ''
   }
 
+
+  /**
+   * Per-project admin entry (FR-3.8): the host's first TLS direct address serves
+   * `cloud-admin.html`. Empty rather than dangling — no dialable TLS address
+   * means no URL a browser could load. Offline stays out of the decision: the
+   * entry must still render (greyed) while the host is down.
+   */
+  function sessionPageUrlFor(h: Host | undefined): string {
+    const addr = h?.directAddrs[0]
+    if (!h || !addr || !h.tlsFingerprint || !isDirectAddrForm(addr)) {
+      return ''
+    }
+    return `https://${addr}/cloud-admin.html`
+  }
+
   function projectView(p: Project, user: User): Record<string, unknown> {
     const permissions = store.effectivePermissions(p.id, user)
     const host = store.hosts.get(p.hostId)
@@ -662,6 +677,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       hostId: p.hostId,
       hostName: host?.name ?? null,
       hostStatus: hostStatusView(host),
+      sessionPageUrl: sessionPageUrlFor(host),
       browserEntryUrl: browserEntryUrlFor(host?.relayRoute ?? null),
       // Why here: the workbench can only explain a maintenance window it can see.
       ...(host?.maintenanceReason ? { hostMaintenanceReason: host.maintenanceReason } : {}),
