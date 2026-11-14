@@ -2737,6 +2737,14 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 W11 测试代理域外发现：自建项目平台 ready 但客户端持续 PROJECT_NOT_PREPARED、环境不落侧车（3 次复现）——provisioning 闭环缺口（M57/M59/M60 域）。立账 U15🔴 + W12（排 W5c 后派发，回归=用户精确场景全程）。W3c 工作令节同批补录（此前锚点失败漏写 work-orders，行为定义以 FR-3.11 修订为准）。
 
+### W9b 中程读数 + W13 立项（U16🟡，2026-11-14）
+
+W9b 中程（代理 1h 检查点回复，协议生效）：B1–B3 ✅（免登自动进入全链，W7c 修复生效）；**B4 ❌ 产品缺口**——orca web 云会话仅空态（workspace.info 宿主无实现=O2 已知边界），终端/文件树浏览器面当前仅在 cloud-admin.html。**裁定：B4 红线收尾，不走 repo.add hack**（绕过平台登记语义）；B5 继续验证。**W13 立项**（U16🟡）：Orca Web 云工作区视图（宿主 workspace.info + web 视图挂文件树/终端，复用 W5c 重签订阅与 W9A-7 multiplex 边界），回归=B 线旅程 B4–B6 全绿。W13 设计代理已派（产出 `work-orders/w13-cloud-workspace-view-design.md` 供审定）。
+
+### W9b 交付（红线收尾完成，2026-11-14）
+
+提交 `c68dbaae334`（旅程 spec，worktree 构建+cherry-pick，暂存核对仅该文件）：**B1–B3+B5 ✅、B4 ⚠️ 红线如实记录**（云空态、repo.list 按票据范围拒、无终端/文件树路径；根因=宿主无 workspace.info 实现+web 未挂工作区视图，边界出处 w7c-change-manifest）；B4 流式+文件树用例已写好并以 skip 引用 W13（`W13_CLOUD_WORKSPACE_VIEW_LANDED` 翻转即启用，含 W5c 重签订阅断言）。门禁：旅程两次全绿（1 passed+1 skipped）+ 零回归（493 用例+24/24）。证据 `evidence/journey-golden-b/`（timeline+5 截图+findings+回归日志；隔离 worktree 保留供复跑）。W9b 审计代理已派。
+
 ### 流程修正：主动检查超时子代理（用户指令，2026-11-14）
 
 用户指出 W5a 修复复验代理早已完成但主会话被动等通知。**新规则入 cron（054f0c4f）**：每轮开始盘点派出超 30 分钟未回报的子代理——查证据目录最新文件时间与 git log；有最终证据按完成收口；无进展催办并给「如实记录失败后收尾」指引；确认卡死 TaskStop 重派。本轮盘点结果：W11 构建门槛修复已静默落地（`0d3178541ad` fix(cloud): build gate expects the baked address in main only——W11 构建门槛项闭合）；W9a 卡在旅程第一步后无进展已催办并给收尾指引；W5c 早期证据已落（1 件）；W5b/W7c 回派在途正常。
