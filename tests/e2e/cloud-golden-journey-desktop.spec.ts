@@ -53,6 +53,12 @@ import {
  *
  * Every step is timed into a timeline JSON and key moments are screenshotted,
  * so a run leaves `cloud-platform/evidence/journey-golden-a/` behind.
+ *
+ * Disclosure — the journey's shortcuts, none silent: the host and client are
+ * seeded with a completed-onboarding profile (`orca-data.json`, the same seed
+ * the B line uses) so the first-run wizard never covers the workspace the
+ * assertions drive, and both processes launch headless under one OS login.
+ * Every assertion beyond those setup reductions runs the real product paths.
  */
 
 const HOST_NAME = 'journey-a-host'

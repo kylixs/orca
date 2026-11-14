@@ -37,7 +37,12 @@ export type WebCloudWorkspaceBootstrapPorts = {
   }) => Promise<Repo | null>
   worktreesForRepo: (repoId: string) => readonly Worktree[]
   fetchWorktrees: (repoId: string, executionHostId: ExecutionHostId) => Promise<unknown>
-  activateWorkspace: (input: { worktreeId: string; executionHostId: ExecutionHostId }) => void
+  activateWorkspace: (input: {
+    worktreeId: string
+    executionHostId: ExecutionHostId
+    /** §4.3: only a `file:read` grant may reveal the explorer (and its file RPCs). */
+    mountExplorer: boolean
+  }) => void
 }
 
 /** The sidebar row shows the project name, falling back to the checkout's own. */
@@ -73,7 +78,7 @@ export function defaultWebCloudWorkspacePorts(): WebCloudWorkspaceBootstrapPorts
     worktreesForRepo: (repoId) => useAppStore.getState().worktreesByRepo[repoId] ?? [],
     fetchWorktrees: (repoId, executionHostId) =>
       useAppStore.getState().fetchWorktrees(repoId, { executionHostId }),
-    activateWorkspace: ({ worktreeId, executionHostId }) => {
+    activateWorkspace: ({ worktreeId, executionHostId, mountExplorer }) => {
       const state = useAppStore.getState()
       // Why the local pipeline and not activateAndRevealWorktree: a cloud ticket's
       // host refuses both host-notify paths (`worktree.activate`, `session.tabs.*`)
@@ -88,7 +93,7 @@ export function defaultWebCloudWorkspacePorts(): WebCloudWorkspaceBootstrapPorts
         state.setActiveTab(tab.id)
       }
       const ui = useAppStore.getState()
-      if (!ui.rightSidebarOpen || ui.rightSidebarTab !== 'explorer') {
+      if (mountExplorer && (!ui.rightSidebarOpen || ui.rightSidebarTab !== 'explorer')) {
         ui.setRightSidebarTab('explorer')
         ui.setRightSidebarOpen(true)
       }

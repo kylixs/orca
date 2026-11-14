@@ -166,6 +166,9 @@ async function runBootstrap(
     }
     const executionHostId = toRuntimeExecutionHostId(environment.id)
     const terminalGranted = info.perms.includes('terminal')
+    // §4.3: the explorer is a file-tree surface, so it mounts only on a read
+    // grant — without one its mounts would fire refused file RPCs.
+    const fileReadGranted = info.perms.includes('file:read')
 
     // Why wait: hydrateWorkspaceSession rewrites activeWorktreeId and the tab map
     // from the persisted session, so state written before it would be silently cleared.
@@ -237,7 +240,7 @@ async function runBootstrap(
       })
       return
     }
-    ports.activateWorkspace({ worktreeId, executionHostId })
+    ports.activateWorkspace({ worktreeId, executionHostId, mountExplorer: fileReadGranted })
     setStatus({ ...IDLE, phase: 'done' })
   } catch (error) {
     if (!isCancelled()) {

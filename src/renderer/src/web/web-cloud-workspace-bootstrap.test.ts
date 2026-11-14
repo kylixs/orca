@@ -83,7 +83,9 @@ type Harness = {
   >
   fetchWorktrees: ReturnType<typeof vi.fn<(repoId: string, hostId: string) => Promise<boolean>>>
   activateWorkspace: ReturnType<
-    typeof vi.fn<(input: { worktreeId: string; executionHostId: string }) => void>
+    typeof vi.fn<
+      (input: { worktreeId: string; executionHostId: string; mountExplorer: boolean }) => void
+    >
   >
   emitTransport: (transport: RuntimeHostStatusSnapshot['transport']) => void
   setHydrationSettled: (settled: boolean) => void
@@ -121,7 +123,9 @@ function makeHarness(args?: {
     async () => true
   )
   const activateWorkspace =
-    vi.fn<(input: { worktreeId: string; executionHostId: string }) => void>()
+    vi.fn<
+      (input: { worktreeId: string; executionHostId: string; mountExplorer: boolean }) => void
+    >()
   const ports: WebCloudWorkspaceBootstrapPorts = {
     api: () => api,
     environment: () => ({ id: 'web-bootstrap-env', name: 'payment-service (cloud session)' }),
@@ -207,7 +211,13 @@ describe('web cloud workspace bootstrap (W13b)', () => {
     ])
     expect(harness.fetchWorktrees.mock.calls).toEqual([['repo_1', EXECUTION_HOST_ID]])
     expect(harness.activateWorkspace.mock.calls).toEqual([
-      [{ worktreeId: `repo_1::${WORKSPACE_PATH}`, executionHostId: EXECUTION_HOST_ID }]
+      [
+        {
+          worktreeId: `repo_1::${WORKSPACE_PATH}`,
+          executionHostId: EXECUTION_HOST_ID,
+          mountExplorer: true
+        }
+      ]
     ])
     expect(readWebCloudWorkspaceBootstrapStatus().terminalNotGranted).toBe(false)
   })
@@ -315,6 +325,33 @@ describe('web cloud workspace bootstrap (W13b)', () => {
     expect(harness.ensureRepoRow).toHaveBeenCalledTimes(1)
     expect(harness.fetchWorktrees).not.toHaveBeenCalled()
     expect(harness.activateWorkspace).not.toHaveBeenCalled()
+  })
+
+  it('activates a terminal-only ticket with the explorer withheld (§4.3)', async () => {
+    // A platform grant may carry `terminal` without `file:read`, so the workspace
+    // still activates — the explorer reveal is the only file-RPC trigger the
+    // bootstrap owns, and withholding it is what keeps the console denial-free.
+    const harness = makeHarness({
+      info: async () => workspaceInfo({ perms: ['open', 'terminal'] })
+    })
+    await startWebCloudWorkspaceBootstrapForTests(harness.ports)
+
+    expect(readWebCloudWorkspaceBootstrapStatus()).toMatchObject({
+      phase: 'done',
+      terminalNotGranted: false
+    })
+    expect(harness.ensure).toHaveBeenCalledTimes(1)
+    expect(harness.ensureRepoRow).toHaveBeenCalledTimes(1)
+    expect(harness.activateWorkspace).toHaveBeenCalledTimes(1)
+    expect(harness.activateWorkspace.mock.calls).toEqual([
+      [
+        {
+          worktreeId: `repo_1::${WORKSPACE_PATH}`,
+          executionHostId: EXECUTION_HOST_ID,
+          mountExplorer: false
+        }
+      ]
+    ])
   })
 
   it('falls back retryable when the checkout is missing from the workspace catalog', async () => {

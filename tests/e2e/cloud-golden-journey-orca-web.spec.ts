@@ -66,9 +66,11 @@ import {
  * fingerprint pinning, M108/M109), the platform runs plain http, the served
  * web bundle is the instrumented e2e build (VITE_EXPOSE_STORE, which is also
  * what installs the editor probe the streaming case asserts through), the
- * C4/C5 front matter rides the platform API instead of the wizards, and the
- * host is headless. Every assertion beyond those setup reductions runs the real
- * product paths.
+ * C4/C5 front matter rides the platform API instead of the wizards, the host
+ * is seeded with a completed-onboarding profile (`orca-data.json`, the same
+ * seed the A line uses) so the first-run wizard never covers the workspace
+ * the assertions drive, and the host is headless. Every assertion beyond
+ * those setup reductions runs the real product paths.
  */
 
 /**
