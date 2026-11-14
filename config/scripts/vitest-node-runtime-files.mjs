@@ -16,6 +16,10 @@ export const NODE_RUNTIME_INCLUDE = [
   // output, and node-pty delivers no data in the bun worker — the suite must run
   // in node or every echo would time out (W5b defect B).
   'src/renderer/src/cloud-admin/cloud-admin-session.e2e.test.ts',
+  // Why: the entry-chain slot e2e drives a real PTY's echo over a real TLS
+  // runtime; bun's ws fails the throwaway certificate handshake and its worker
+  // starves node-pty, so the echo could never arrive (same family as W5b defect B).
+  'src/main/cloud-platform/cloud-entry-session-slots.test.ts',
   'src/renderer/src/lib/react-commit-cascade-observer.test.ts',
   'src/renderer/src/lib/react-commit-cascade-telemetry.test.ts',
   ...SQLITE_RUNTIME_INCLUDE,

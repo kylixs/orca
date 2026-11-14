@@ -4,7 +4,7 @@ import { createCloudSessionLimits, type CloudSessionIdentity } from './cloud-ses
 /**
  * Bookkeeping between the pre-handshake ticket check and the live socket it
  * becomes. The ticket text is what the socket carries, so it keys the identity;
- * the identity's device token keys the cap.
+ * the identity's device token keys the socket and its device the session cap.
  */
 
 export type CloudConnectionSessions = {
@@ -20,7 +20,11 @@ export type CloudConnectionSessions = {
 }
 
 export function createCloudConnectionSessions(
-  options: { perUserProject?: number; perHost?: number } = {}
+  options: {
+    perUserProject?: number
+    perHost?: number
+    perDeviceSockets?: number
+  } = {}
 ): CloudConnectionSessions {
   const limits = createCloudSessionLimits(options)
   const identities = new Map<string, CloudSessionIdentity>()

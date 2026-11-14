@@ -109,7 +109,8 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
   // must outlive `admit` for the connection gate and its close path.
   const sessions = createCloudConnectionSessions({
     perUserProject: config.maxSessionsPerUserProject,
-    perHost: config.maxSessionsPerHost
+    perHost: config.maxSessionsPerHost,
+    perDeviceSockets: config.maxSocketsPerDeviceSession
   })
 
   const snapshot = (): CloudAgentSnapshot => ({
@@ -310,7 +311,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
         ticket: { deviceToken, deviceId, sub, project, iatMs, credential },
         expiresAtMs: exp * 1000 + 5_000
       })
-      sessions.remember(credential, { user: sub, project, token: deviceToken })
+      sessions.remember(credential, { user: sub, project, token: deviceToken, device: deviceId })
       return decision
     },
     connectionGate: sessions.gate,

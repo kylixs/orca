@@ -25,6 +25,8 @@ export type CloudAgentConfig = {
   /** Design §8.4 caps; overrides exist for tests, production uses the defaults. */
   maxSessionsPerUserProject?: number
   maxSessionsPerHost?: number
+  /** Live sockets one device may hold per user and project (the session's fan-out). */
+  maxSocketsPerDeviceSession?: number
   /**
    * Enrolled-host mode: revocations and policy come from the heartbeat response
    * instead of `/v1/internal/*`. This is the normal path for a registered host;

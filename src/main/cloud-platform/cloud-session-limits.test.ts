@@ -8,6 +8,7 @@ import {
   type CloudRuntimeAdmission
 } from '../startup/cloud-runtime-admission'
 import { createCloudAgentClient } from './cloud-agent-client'
+import { createCloudSessionLimits } from './cloud-session-limits'
 import {
   DEFAULT_INTERNAL_TOKEN,
   REPO_ROOT,
@@ -23,9 +24,68 @@ import {
  * Design §8.4: at most 3 live sessions per user per project and 32 per host.
  * The cap has to be enforced where the sockets are — the platform never sees
  * them — so these cases drive a real runtime, real tickets, and real handshakes.
+ * A session is one client device (every ticket it mints carries its deviceId),
+ * not one socket; the pure-accounting cases below pin that grouping.
  */
 
 const EVIDENCE_DIR = join(REPO_ROOT, 'cloud-platform', 'evidence', 'm33-session-limits')
+
+/**
+ * W9A-6: the §8.4 session is the client device, not the socket. One entry chain
+ * holds several sockets (project socket, one per stream, one per short RPC), all
+ * minted from one device, so they must fit inside a single session slot — while
+ * a fourth device and an unbounded fan-out stay refused.
+ */
+describe('会话槽按逻辑会话（设备）记账，socket 只受散发上限约束', () => {
+  const user = 'user:zhangsan'
+  const project = 'proj_payment'
+  const socket = (device: string, token: string) => ({ user, project, token, device })
+
+  it('W9A6-U1 同一设备的多条 socket 记 1 个会话：入口链并发连接互不挤占', () => {
+    const limits = createCloudSessionLimits({ perDeviceSockets: 4 })
+    for (const token of ['t-project', 't-terminal', 't-watch', 't-rpc']) {
+      expect(limits.tryOpen(socket('dev-desktop', token))).toBe(true)
+    }
+    expect(limits.activeSessionCountFor(user, project)).toBe(1)
+    expect(limits.activeFor(user, project)).toBe(4)
+  })
+
+  it('W9A6-U2 第 4 台设备仍被拒绝；释放一路后恢复', () => {
+    const limits = createCloudSessionLimits()
+    for (const device of ['dev-a', 'dev-b', 'dev-c']) {
+      expect(limits.tryOpen(socket(device, `t-${device}`))).toBe(true)
+    }
+    expect(limits.tryOpen(socket('dev-d', 't-dev-d'))).toBe(false)
+    expect(limits.activeSessionCountFor(user, project)).toBe(3)
+    limits.release('t-dev-b')
+    expect(limits.tryOpen(socket('dev-d', 't-dev-d'))).toBe(true)
+    expect(limits.activeSessionCountFor(user, project)).toBe(3)
+  })
+
+  it('W9A6-U3 单设备散发超上限仍拒绝，与设备数无关', () => {
+    const limits = createCloudSessionLimits({ perDeviceSockets: 2 })
+    expect(limits.tryOpen(socket('dev-a', 't-1'))).toBe(true)
+    expect(limits.tryOpen(socket('dev-a', 't-2'))).toBe(true)
+    expect(limits.tryOpen(socket('dev-a', 't-3'))).toBe(false)
+    // A refused socket took no slot, so the next open is not penalised.
+    expect(limits.activeFor(user, project)).toBe(2)
+    limits.release('t-1')
+    expect(limits.tryOpen(socket('dev-a', 't-3'))).toBe(true)
+  })
+
+  it('W9A6-U4 同 token 重开替换不叠占；主机上限仍按 socket 计', () => {
+    const limits = createCloudSessionLimits({ perDeviceSockets: 4 })
+    expect(limits.tryOpen(socket('dev-a', 't-1'))).toBe(true)
+    expect(limits.tryOpen(socket('dev-a', 't-1'))).toBe(true)
+    expect(limits.activeFor(user, project)).toBe(1)
+
+    const hostBounded = createCloudSessionLimits({ perHost: 2, perDeviceSockets: 4 })
+    expect(hostBounded.tryOpen(socket('dev-a', 'h-1'))).toBe(true)
+    expect(hostBounded.tryOpen(socket('dev-b', 'h-2'))).toBe(true)
+    expect(hostBounded.tryOpen(socket('dev-c', 'h-3'))).toBe(false)
+    expect(hostBounded.activeCount()).toBe(2)
+  })
+})
 
 function saveEvidence(file: string, content: unknown): void {
   mkdirSync(EVIDENCE_DIR, { recursive: true })
