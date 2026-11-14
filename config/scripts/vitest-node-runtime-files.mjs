@@ -38,6 +38,12 @@ export const NODE_RUNTIME_INCLUDE = [
   // host and its TLS runtime, so bun would red the handshake and silently retire
   // the W12b-1 proof (same family as W5b defect B / W9A-7 audit MAJ-1).
   'src/main/cloud-platform/cloud-repo-less-project.test.ts',
+  // Why: U37-C proves the heartbeat kick over a real TLS runtime and real git;
+  // bun's ws fails the throwaway-certificate handshake (same family as W5b defect B).
+  'src/main/cloud-platform/cloud-provision-kick-endtoend.test.ts',
+  // Why: M57 is the same real-platform + TLS-runtime + git stack, now driven by
+  // the U37 kick, so it belongs in the node-runtime pool with its siblings.
+  'src/main/cloud-platform/cloud-project-provisioning.test.ts',
   // Why: the agent-probe real-host suite drives the production cloud method
   // table over a real TLS runtime, so bun's ws would fail the throwaway
   // certificate handshake and silently retire the O1-d proof (same family as

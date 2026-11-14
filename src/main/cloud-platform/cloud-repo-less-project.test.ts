@@ -19,8 +19,8 @@ import {
  * + TLS runtime + real git, with a repo-ful clone and an admin-registered
  * checkout as the zero-regression controls.
  *
- * Why no platform `status` assertions: the provision-report path is owned
- * elsewhere; these tests pin host-side facts only.
+ * W12b-3 now also pins the platform state machine: U37's heartbeat assignment
+ * is what lets the host clone a repo-ful project without a first ticket.
  */
 
 type IpcHandler = (event: unknown, ...args: unknown[]) => Promise<unknown>
@@ -63,6 +63,19 @@ function sidecarEntryFor(projectId: string) {
   return readEnvironmentStore(harness.registrationUserData).environments.find(
     (entry) => entry.cloudProject?.projectId === projectId
   )
+}
+
+/** Beats until the platform reports the project ready (the kick clone's report). */
+async function beatUntilReady(projectId: string): Promise<void> {
+  const deadline = Date.now() + 60_000
+  while (Date.now() < deadline) {
+    await harness.beat()
+    const status = readString(await harness.getProject(projectId), 'status')
+    if (status === 'ready') {
+      return
+    }
+  }
+  throw new Error(`project ${projectId} never became ready`)
 }
 
 describe('无仓库地址的云端项目（真实平台 + 主机 init + TLS Runtime + git）', () => {
@@ -185,25 +198,40 @@ describe('无仓库地址的云端项目（真实平台 + 主机 init + TLS Runt
     })
   }, 240_000)
 
-  it('W12b-3 对照：repo-ful 克隆路径零回归', async () => {
+  it('W12b-3 对照：repo-ful 克隆由宿主经心跳指派亲手执行', async () => {
     const dir = 'w12b1-clone-control'
     const projectRoot = join(harness.projectsRoot, dir)
-    // U20 只放行 ready 项目取票，而宿主只在票据内克隆——repo-ful 项目永远等不到第一次
-    // 克隆机会。对照改为票据外预置同一份克隆内容，项目走 ready 创建，钉住 repo-ful
-    // 检出的内容与打开路径零回归。
-    git(harness.projectsRoot, 'clone', '-q', harness.repoUrl, projectRoot)
-    const created = await harness.createProject({
+    // U37: the heartbeat downlink assigns a repo-ful provisioning project to its
+    // host, so the host clones outside any ticket; the pre-seeded clone hack is gone.
+    const created = await harness.session.createProject({
       name: 'W12b1 Clone Control',
       dir,
+      repoUrl: harness.repoUrl,
       defaultBranch: 'main'
     })
-    expect(readField(created, 'ok')).toBe(true)
-    const projectId = readString(created, 'projectId')
-    const environment = parseEnvironment(readField(created, 'environment'))
-    expect(environment?.projectRoot).toBe(projectRoot)
-    expect(readFileSyncText(join(projectRoot, 'README.md'))).toBe(PROVISIONING_README)
+    expect(created.ok).toBe(true)
+    if (!created.ok) {
+      throw new Error(created.code)
+    }
+    const projectId = created.projectId
+    expect(created.project.status).toBe('provisioning')
+    expect(existsSync(join(projectRoot, 'README.md'))).toBe(false)
 
-    const ensured = await harness.session.ensureWorkspace(projectId ?? '')
+    await beatUntilReady(projectId)
+    expect(readString(await harness.getProject(projectId), 'status')).toBe('ready')
+
+    // The checkout under projectsRoot came from the host's kick clone.
+    expect(readFileSyncText(join(projectRoot, 'README.md'))).toBe(PROVISIONING_README)
+    expect(realpathSync(git(projectRoot, 'rev-parse', '--show-toplevel').trim())).toBe(
+      realpathSync(projectRoot)
+    )
+    // The banner retry now mints the environment (a ticket is reachable once ready).
+    const prepared = await harness.retryPrepare(projectId)
+    expect(readField(prepared, 'ok')).toBe(true)
+    const environment = parseEnvironment(readField(prepared, 'environment'))
+    expect(environment?.projectRoot).toBe(projectRoot)
+
+    const ensured = await harness.session.ensureWorkspace(projectId)
     expect(ensured, JSON.stringify(ensured)).toMatchObject({ ok: true, created: true })
     if (!ensured.ok) {
       throw new Error(ensured.code)

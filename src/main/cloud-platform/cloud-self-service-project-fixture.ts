@@ -19,6 +19,7 @@ import {
 } from '../startup/cloud-runtime-admission'
 import { registerCloudPlatformHandlers } from '../ipc/cloud-platform'
 import { CloudSessionService } from './cloud-session-service'
+import { createCloudProvisionAssignmentExecutor } from './cloud-provision-assignment'
 import { setActiveCloudSession } from './cloud-runtime-session'
 import {
   REPO_ROOT,
@@ -56,6 +57,8 @@ export type SelfServiceHarness = {
   retryPrepare: (id: string) => Promise<unknown>
   listPlatformProjects: () => Promise<unknown[]>
   beat: () => Promise<void>
+  /** One heartbeat; U37-C needs the assignment beat and the report beat separated. */
+  beatOnce: () => Promise<void>
   saveEvidence: (file: string, content: unknown) => void
   repoOf: (result: unknown) => Repo | null
   stop: () => Promise<void>
@@ -145,6 +148,15 @@ export async function startSelfServiceHarness(
   })
   admission.bindRuntime(cloud.runtime)
   cloud.runtime.setCloudProvisionReporter((report) => admission.client!.reportProvisioned(report))
+  // U37: production installs this beside the reporter in installRuntimeCloudSurfaces;
+  // the harness owns the pieces separately, so a repo-ful project can kick-clone.
+  admission.client!.onProvisionAssignment(
+    createCloudProvisionAssignmentExecutor({
+      provision: cloud.runtime.provisionCloudProject.bind(cloud.runtime),
+      report: (report) => admission.client!.reportProvisioned(report),
+      inMaintenance: () => admission.client!.snapshot().maintenance !== null
+    })
+  )
   await admission.client!.refresh()
 
   const adminFetch = (path: string, init: RequestInit = {}): Promise<Response> =>
@@ -209,6 +221,7 @@ export async function startSelfServiceHarness(
       await new Promise((resolve) => setTimeout(resolve, 50))
       await admission.client!.refresh()
     },
+    beatOnce: () => admission.client!.refresh(),
     saveEvidence: (file, content) => {
       mkdirSync(SELF_SERVICE_EVIDENCE_DIR, { recursive: true })
       writeFileSync(join(SELF_SERVICE_EVIDENCE_DIR, file), JSON.stringify(content, null, 2))

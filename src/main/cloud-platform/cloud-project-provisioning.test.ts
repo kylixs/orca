@@ -20,6 +20,7 @@ import {
   makeBareRepository,
   saveProvisioningEvidence
 } from './cloud-project-provisioning-fixture'
+import { createCloudProvisionAssignmentExecutor } from './cloud-provision-assignment'
 import { CloudSessionService } from './cloud-session-service'
 import {
   makeSelfSignedTls,
@@ -31,8 +32,9 @@ import {
 
 /**
  * M57: a platform-created project with a repo URL is cloned by the enrolled host
- * on first open, and the host reports the outcome on its next heartbeat. Real
- * platform process, real enrolled host, real TLS runtime, real bare git repo.
+ * from the heartbeat's U37 assignment, reported on the next heartbeat, and only
+ * then opened — the ticket's project.provision is the idempotent short circuit.
+ * Real platform process, real enrolled host, real TLS runtime, real bare git.
  */
 
 const PERMISSIONS = ['open', 'terminal', 'agent', 'file:read', 'file:write']
@@ -110,6 +112,15 @@ beforeAll(async () => {
   admission.bindRuntime(cloud.runtime)
   // Production wires this in attachCloudRuntime; the harness owns the pieces separately.
   cloud.runtime.setCloudProvisionReporter((report) => admission.client!.reportProvisioned(report))
+  // U37: same point in production (installRuntimeCloudSurfaces); the kick clone
+  // happens outside the ticket so a repo-ful project can reach ready on its own.
+  admission.client!.onProvisionAssignment(
+    createCloudProvisionAssignmentExecutor({
+      provision: cloud.runtime.provisionCloudProject.bind(cloud.runtime),
+      report: (report) => admission.client!.reportProvisioned(report),
+      inMaintenance: () => admission.client!.snapshot().maintenance !== null
+    })
+  )
   await admission.client!.refresh()
 
   projectId = await createProvisioningProject({
@@ -195,6 +206,18 @@ async function beat(): Promise<void> {
   await admission.client!.refresh()
 }
 
+/** Beats until a heartbeat assignment makes the host clone and report; then the platform flips. */
+async function beatUntilStatus(id: string, status: string): Promise<void> {
+  const deadline = Date.now() + 60_000
+  while (Date.now() < deadline) {
+    await beat()
+    if (readString(await getProject(id), 'status') === status) {
+      return
+    }
+  }
+  throw new Error(`project ${id} never became ${status}`)
+}
+
 async function provisionAuditEvents(id: string): Promise<unknown[]> {
   const res = await adminFetch('/v1/audit/events?eventType=project_provision&limit=100')
   expect(res.status).toBe(200)
@@ -204,7 +227,15 @@ async function provisionAuditEvents(id: string): Promise<unknown[]> {
 }
 
 describe('云端项目 provisioning（真实平台 + 真实 TLS Runtime + 真实 git）', () => {
-  it('M57-1 首次打开：主机真实 clone 到票据路径、创建工作区，心跳后平台变 ready', async () => {
+  it('M57-1 心跳指派先克隆：首次打开时票据内 provision 幂等短路、创建工作区', async () => {
+    // U37: the first clone is no longer ticket-bound. Beats carry the assignment,
+    // the host clones, and the report flips the platform ready before any open.
+    await beatUntilStatus(projectId, 'ready')
+
+    // The ticket's project.provision is now the already-provisioned short circuit.
+    const prepared = await session.ensureProjectPrepared(projectId)
+    expect(prepared).toEqual({ ok: true, provisioned: false })
+
     const ensured = await session.ensureWorkspace(projectId)
     expect(ensured, JSON.stringify(ensured)).toMatchObject({ ok: true, created: true })
     if (!ensured.ok) {
@@ -232,6 +263,7 @@ describe('云端项目 provisioning（真实平台 + 真实 TLS Runtime + 真实
 
     saveProvisioningEvidence('m57-1-success.json', {
       ensured,
+      provisionRpc: prepared,
       checkout: {
         path: checkoutPath,
         toplevel: git(checkoutPath, 'rev-parse', '--show-toplevel').trim(),
@@ -247,16 +279,11 @@ describe('云端项目 provisioning（真实平台 + 真实 TLS Runtime + 真实
     })
   }, 180_000)
 
-  it('M57-2 失败：clone 目标不存在时返回明确错误码、清理半成品、心跳后平台 failed', async () => {
-    const ensured = await session.ensureWorkspace(failedProjectId)
-    expect(ensured).toMatchObject({ ok: false })
-    if (ensured.ok) {
-      throw new Error('provisioning unexpectedly succeeded')
-    }
-    expect(ensured.code).toBe('CLONE_FAILED')
+  it('M57-2 失败：心跳指派克隆失败即回报、清理半成品、平台 failed、打开被门禁拒绝', async () => {
+    // U37: the failure surfaces from the kick, before any ticket could open.
+    await beatUntilStatus(failedProjectId, 'failed')
     expect(existsSync(failedCheckoutPath)).toBe(false)
 
-    await beat()
     const project = await getProject(failedProjectId)
     expect(readString(project, 'status')).toBe('failed')
     const provisioningError = readString(project, 'provisioningError')
@@ -265,6 +292,14 @@ describe('云端项目 provisioning（真实平台 + 真实 TLS Runtime + 真实
 
     const events = await provisionAuditEvents(failedProjectId)
     expect(readString(events[0], 'result')).toBe('failure')
+
+    // U20 gate: a failed project cannot mint a ticket, so the open stops at the platform.
+    const ensured = await session.ensureWorkspace(failedProjectId)
+    expect(ensured).toMatchObject({ ok: false })
+    if (ensured.ok) {
+      throw new Error('provisioning unexpectedly succeeded')
+    }
+    expect(ensured.code).toBe('PROJECT_NOT_PREPARED')
 
     saveProvisioningEvidence('m57-2-failure.json', {
       ensured,
