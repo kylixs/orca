@@ -10,12 +10,14 @@ import {
   type WebCloudProject,
   type WebCloudSession
 } from './web-cloud-session'
+import { requestCloudPairingOffer } from './web-cloud-connection-offer'
 import {
   loadOrCreateWebCloudDeviceKey,
   type WebCloudDeviceKeyStorage
 } from './web-cloud-device-key'
 import type { WebPairingOffer } from './web-pairing'
-import { WebRuntimeClient, type WebRuntimeSessionClient } from './web-runtime-client'
+import { WebRuntimeClient } from './web-runtime-client'
+import type { WebRuntimeSessionClient } from './web-runtime-session-client'
 import {
   createStoredWebRuntimeEnvironment,
   type StoredWebRuntimeEnvironment
@@ -231,6 +233,14 @@ export async function connectCloudProjectWithSession(
       input.deviceSecretKeyB64
     )
     client = validated
+    // Why here: this flow owns the session a stream's child socket signs its own
+    // ticket from — the offer above is spent by this very probe (W5c).
+    validated.attachTicketReSigner?.(() =>
+      requestCloudPairingOffer(session, project.id, input.devicePublicKeyB64, {
+        ...fetchOptions,
+        ...(input.endpointUrl ? { endpointUrl: input.endpointUrl } : {})
+      })
+    )
     const reply = await validated.call('status.get', undefined, {
       timeoutMs: STATUS_TIMEOUT_MS
     })

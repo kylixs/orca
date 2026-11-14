@@ -8,6 +8,7 @@ import {
   WebCloudSessionError,
   type WebCloudSession
 } from './web-cloud-session'
+import { requestCloudPairingOffer } from './web-cloud-connection-offer'
 import { webRuntimeSubprotocols } from './web-pairing'
 
 /** Standard base64 with `+`, `/` and padding, to prove canonicalisation. */
@@ -41,6 +42,15 @@ const TICKET_CREDENTIAL = jwt({
   devicePubKey: DEVICE_KEY_B64,
   host: 'host-1',
   perms: ['open', 'terminal', 'bogus']
+})
+
+/** A second, freshly signed ticket: the one a child socket would present. */
+const SECOND_TICKET_CREDENTIAL = jwt({
+  deviceToken: 'device-token-2',
+  deviceId: 'device-1',
+  devicePubKey: DEVICE_KEY_B64,
+  host: 'host-1',
+  perms: ['open', 'terminal']
 })
 
 function ticketBody(): Record<string, unknown> {
@@ -248,6 +258,39 @@ describe('browser cloud login, project list and ticket', () => {
       `orca-cred.${TICKET_CREDENTIAL}`,
       `orca-device.${DEVICE_KEY_B64_URL}`
     ])
+  })
+
+  it('signs each offer from its own ticket: two calls, two connect requests', async () => {
+    const { fetchImpl, calls } = scriptedFetch([
+      jsonReply(ticketBody()),
+      jsonReply({ ...ticketBody(), credential: SECOND_TICKET_CREDENTIAL })
+    ])
+
+    const first = await requestCloudPairingOffer(signedInSession(), 'proj-1', DEVICE_KEY_B64, {
+      fetchImpl
+    })
+    const second = await requestCloudPairingOffer(signedInSession(), 'proj-1', DEVICE_KEY_B64, {
+      fetchImpl
+    })
+
+    // A child socket signs its own short-lived ticket, so two subscriptions never
+    // share a credential (the U14 replay failure).
+    expect(first.cloud?.credential).toBe(TICKET_CREDENTIAL)
+    expect(second.cloud?.credential).toBe(SECOND_TICKET_CREDENTIAL)
+    expect(second.endpoint).toBe(first.endpoint)
+    expect(second.deviceToken).not.toBe(first.deviceToken)
+    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
+      'POST http://platform.test/v1/projects/proj-1/connect',
+      'POST http://platform.test/v1/projects/proj-1/connect'
+    ])
+  })
+
+  it('surfaces a platform ticket failure from the re-signing path', async () => {
+    const { fetchImpl } = scriptedFetch([errorReply('SESSION_EXPIRED', 401)])
+    const error = await captureError(() =>
+      requestCloudPairingOffer(signedInSession(), 'proj-1', DEVICE_KEY_B64, { fetchImpl })
+    )
+    expect(error.code).toBe('SESSION_EXPIRED')
   })
 
   it('drops malformed project rows instead of failing the whole list', async () => {

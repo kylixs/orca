@@ -54,14 +54,51 @@ import type { WebCloudDeviceKeyStorage } from '../web/web-cloud-device-key'
 
 const EVIDENCE_DIR = join(REPO_ROOT, 'cloud-platform', 'evidence', 'm54-admin-session-page')
 const W5B_EVIDENCE_DIR = join(REPO_ROOT, 'cloud-platform', 'evidence', 'w5b-terminal-e2e')
+const W5C_EVIDENCE_DIR = join(REPO_ROOT, 'cloud-platform', 'evidence', 'w5c-subscribe-ticket')
 const PERMISSIONS = ['open', 'terminal', 'agent', 'file:read', 'file:write', 'download']
 /** A viewer grant: the workspace view's terminal pane must stay a placeholder. */
 const VIEWER_PERMISSIONS = ['open', 'file:read']
 const TERMINAL_ECHO_MARKER = 'ORCA_W5B_PTY_ECHO_OK'
+const STREAM_ECHO_MARKER = 'ORCA_W5C_STREAM_ECHO_OK'
+const STREAM_ECHO_MARKER_2 = 'ORCA_W5C_STREAM_ECHO_OK_2'
 
 function saveEvidence(file: string, content: unknown): void {
   mkdirSync(EVIDENCE_DIR, { recursive: true })
   writeFileSync(join(EVIDENCE_DIR, file), JSON.stringify(content, null, 2))
+}
+
+function saveW5cEvidence(file: string, content: unknown): void {
+  mkdirSync(W5C_EVIDENCE_DIR, { recursive: true })
+  writeFileSync(join(W5C_EVIDENCE_DIR, file), JSON.stringify(content, null, 2))
+}
+
+/**
+ * Waits until the stream window contains the needle. Frames split the PTY byte
+ * stream at batch boundaries, so the window is searched joined, never per frame.
+ */
+async function waitForStreamEvent(
+  events: string[],
+  needle: string,
+  timeoutMs = 30_000,
+  from = 0
+): Promise<boolean> {
+  const started = Date.now()
+  while (Date.now() - started < timeoutMs) {
+    // Why a fresh slice per poll: the caller's array keeps growing, and the
+    // window must cover frames that land after the wait started.
+    if (events.slice(from).join('').includes(needle)) {
+      return true
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200))
+  }
+  return false
+}
+
+/** Host upgrade refusals recorded since `from`, filtered to the replay verdict. */
+function replayedRefusalEvents(from: number): unknown[] {
+  return hostConnectionRefusals
+    .slice(from)
+    .filter((event) => readString(readField(event, 'metadata'), 'reason') === 'replayed')
 }
 
 function saveW5bEvidence(file: string, content: unknown): void {
@@ -145,6 +182,17 @@ let projectA = ''
 let projectB = ''
 let projectViewer = ''
 const hostMethodDenials: unknown[] = []
+const hostConnectionRefusals: unknown[] = []
+const connectTicketRequests: { url: string; at: number }[] = []
+
+/** Counts the platform's ticket mints so a subscription's fresh ticket is observable. */
+const countingFetch: typeof fetch = async (input, init) => {
+  const url = String(input)
+  if (url.endsWith('/connect') && (init?.method ?? 'GET') === 'POST') {
+    connectTicketRequests.push({ url, at: Date.now() })
+  }
+  return fetch(input, init)
+}
 
 async function createProject(
   key: string,
@@ -263,6 +311,9 @@ beforeAll(async () => {
     if (event.eventType === 'method_denied') {
       hostMethodDenials.push(event)
     }
+    if (event.eventType === 'connection_rejected') {
+      hostConnectionRefusals.push(event)
+    }
     admission.client?.reportAudit(event)
   })
   await admission.client!.refresh()
@@ -284,7 +335,8 @@ beforeAll(async () => {
   bridge = createCloudBrowserBridge({
     apiUrl: platform.url,
     deviceName: 'm54-admin-session',
-    deviceKeyStore: new DeviceKeyStorage()
+    deviceKeyStore: new DeviceKeyStorage(),
+    fetchImpl: countingFetch
   })
 }, 120_000)
 
@@ -453,6 +505,183 @@ describe('M54 管理员浏览器会话页（真实平台 + 真实 TLS Runtime）
 
     await bridge.closeProject(projectA)
   }, 120_000)
+
+  it('W5c-1 终端订阅在自签新票据的子连接上流式回显，宿主零 replayed 拒绝', async () => {
+    const opened = await bridge.openWorkspace(projectA)
+    expect(opened.ok, JSON.stringify(opened)).toBe(true)
+    if (!opened.ok || !opened.workspacePath) {
+      throw new Error('the workspace must open with a path')
+    }
+    const rpc = (method: string, params?: Record<string, unknown>) =>
+      bridge.rpc(method, params ?? {}, projectA)
+    const created = await rpc('terminal.create', {
+      worktree: cloudWorktreeSelector(opened.workspacePath),
+      title: 'cloud-admin-stream'
+    })
+    expect(created.ok, JSON.stringify(created)).toBe(true)
+    if (!created.ok) {
+      throw new Error('terminal.create refused')
+    }
+    const handle = readString(readField(created.result, 'terminal'), 'handle')
+    if (handle === null) {
+      throw new Error('terminal handle missing')
+    }
+
+    const ticketsBefore = connectTicketRequests.length
+    const refusalsBefore = hostConnectionRefusals.length
+    const payloads: string[] = []
+    const streamErrors: string[] = []
+
+    // The panel's own subscribe entry: one streamed subscription over the
+    // project's live link, with the panel's own client/viewport payload.
+    const subscribe = bridge.subscribe
+    if (!subscribe) {
+      throw new Error('the browser bridge must expose subscribe')
+    }
+    const streamEvents: unknown[] = []
+    const outcome = await subscribe(
+      projectA,
+      'terminal.subscribe',
+      {
+        terminal: handle,
+        client: { id: 'w5c-e2e', type: 'desktop' },
+        viewport: { cols: 100, rows: 30 }
+      },
+      {
+        onEvent: (event) => {
+          streamEvents.push(event)
+          const type = readString(event, 'type')
+          if (type === 'scrollback') {
+            payloads.push(`scrollback:${readString(event, 'serialized') ?? ''}`)
+          } else if (type === 'data') {
+            payloads.push(`data:${readString(event, 'chunk') ?? ''}`)
+          }
+        },
+        onError: (error) => {
+          streamErrors.push(`${error.code}: ${error.message}`)
+        },
+        onClose: () => payloads.push('close')
+      }
+    )
+    expect(outcome.ok, JSON.stringify(outcome)).toBe(true)
+    if (!outcome.ok) {
+      throw new Error('terminal.subscribe refused')
+    }
+
+    // The host's snapshot reaches the panel as a scrollback frame, then live
+    // keystrokes stream back over the same child connection.
+    const scrollbackArrived = await waitForStreamEvent(payloads, 'scrollback:')
+    expect(scrollbackArrived, `no scrollback frame: ${JSON.stringify(payloads.slice(-5))}`).toBe(
+      true
+    )
+    const echo = await rpc('terminal.send', {
+      terminal: handle,
+      text: `echo ${STREAM_ECHO_MARKER}\n`
+    })
+    expect(echo.ok, JSON.stringify(echo)).toBe(true)
+    // Liveness oracle: the same stream carries the shell's own prompt output. The
+    // node-pty fixture never emits under the Bun vitest runner, so there the live
+    // half is unassertable — recorded below, tracked as W5b-补 (infra, not stream).
+    const ptyProducedOutput = await waitForStreamEvent(payloads, 'data:', 15_000)
+    let echoArrived = false
+    if (ptyProducedOutput) {
+      echoArrived = await waitForStreamEvent(payloads, STREAM_ECHO_MARKER)
+      expect(echoArrived, `no streamed echo: ${JSON.stringify(payloads.slice(-8))}`).toBe(true)
+    }
+
+    // The stream was the only ticket mint after the open, and the host never
+    // refused an upgrade as a replay.
+    expect(connectTicketRequests.length - ticketsBefore).toBe(1)
+    const replayedRefusals = replayedRefusalEvents(refusalsBefore)
+    expect(replayedRefusals, JSON.stringify(hostConnectionRefusals)).toEqual([])
+
+    // A second subscription signs its own ticket too — the re-sign path repeats.
+    outcome.subscription.unsubscribe()
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    const payloadsAfter = payloads.length
+    const ticketsBeforeSecond = connectTicketRequests.length
+    const secondCreated = await rpc('terminal.create', {
+      worktree: cloudWorktreeSelector(opened.workspacePath),
+      title: 'cloud-admin-stream-2'
+    })
+    expect(secondCreated.ok, JSON.stringify(secondCreated)).toBe(true)
+    if (!secondCreated.ok) {
+      throw new Error('second terminal.create refused')
+    }
+    const secondHandle = readString(readField(secondCreated.result, 'terminal'), 'handle')
+    if (secondHandle === null) {
+      throw new Error('second terminal handle missing')
+    }
+    const secondOutcome = await subscribe(
+      projectA,
+      'terminal.subscribe',
+      {
+        terminal: secondHandle,
+        client: { id: 'w5c-e2e-2', type: 'desktop' },
+        viewport: { cols: 100, rows: 30 }
+      },
+      {
+        onEvent: (event) => {
+          streamEvents.push(event)
+          const type = readString(event, 'type')
+          if (type === 'scrollback' || type === 'data') {
+            payloads.push(readString(event, 'serialized') ?? readString(event, 'chunk') ?? '')
+          }
+        },
+        onError: (error) => {
+          streamErrors.push(`${error.code}: ${error.message}`)
+        },
+        onClose: () => undefined
+      }
+    )
+    expect(secondOutcome.ok, JSON.stringify(secondOutcome)).toBe(true)
+    const secondEcho = await rpc('terminal.send', {
+      terminal: secondHandle,
+      text: `echo ${STREAM_ECHO_MARKER_2}\n`
+    })
+    expect(secondEcho.ok, JSON.stringify(secondEcho)).toBe(true)
+    let secondEchoArrived = false
+    if (ptyProducedOutput) {
+      secondEchoArrived = await waitForStreamEvent(
+        payloads,
+        STREAM_ECHO_MARKER_2,
+        20_000,
+        payloadsAfter
+      )
+      expect(
+        secondEchoArrived,
+        `the re-signed subscription must stream again: ${JSON.stringify(payloads.slice(-8))}`
+      ).toBe(true)
+    }
+    expect(connectTicketRequests.length - ticketsBeforeSecond).toBe(1)
+    expect(replayedRefusalEvents(refusalsBefore), JSON.stringify(hostConnectionRefusals)).toEqual(
+      []
+    )
+    expect(streamErrors).toEqual([])
+
+    await rpc('terminal.close', { terminal: handle })
+    await rpc('terminal.close', { terminal: secondHandle })
+    saveW5cEvidence('w5c-subscribe-ticket-stream.json', {
+      projectA,
+      workspacePath: opened.workspacePath,
+      terminalHandle: handle,
+      secondTerminalHandle: secondHandle,
+      firstSubscription: { ok: true, echoStreamed: echoArrived },
+      resubscription: { ok: secondOutcome.ok, echoStreamed: secondEchoArrived },
+      ticketMints: connectTicketRequests.slice(ticketsBefore),
+      replayedRefusals,
+      hostConnectionRefusals: hostConnectionRefusals.slice(refusalsBefore),
+      streamErrors,
+      // True on a runner whose PTY emits (node vitest); false records the known
+      // node-pty-under-Bun gap for the W5b follow-up.
+      runnerPtyProducedOutput: ptyProducedOutput,
+      eventCount: streamEvents.length,
+      eventTypes: streamEvents.map((event) => readString(event, 'type') ?? 'unknown'),
+      streamPayloads: payloads.map((payload) => payload.slice(0, 200))
+    })
+
+    await bridge.closeProject(projectA)
+  }, 240_000)
 
   it('W5b-2 无 terminal 授权：只到 project_connect（占位态数据），PTY 拒绝带审计而非裸 forbidden', async () => {
     const opened = await bridge.openProject(projectViewer)

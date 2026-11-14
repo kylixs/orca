@@ -15,6 +15,8 @@ import type { WebPairingOffer } from '../web/web-pairing'
 export type BrowserCloudClient = Pick<WebRuntimeClient, 'call' | 'close' | 'connectionState'> & {
   /** Streams a runtime subscription on a child socket; scripted doubles may omit it. */
   subscribe?: WebRuntimeClient['subscribe']
+  /** Signs the child socket's own ticket; scripted doubles may omit it. */
+  attachTicketReSigner?: WebRuntimeClient['attachTicketReSigner']
 }
 
 export type OpenConnection = {
