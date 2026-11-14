@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### O1-b 落地（2026-11-14）
+
+`718db425951`（8 文件 +596/−29）：O1-a 谓词增 id 键形式 `isCloudSessionRuntimeEnvironmentId`（无行=非云放行）；激活管线宿主通知三条件门（云会话零 `worktree.activate`）；lineage 云聚焦目标直接回答空谱系图（三入口零 `worktree.lineageList`）；启动延迟刷新 lineage 步跳过；`worktree.set` 按裁定不改。新 13 例+谓词 +2（零调用断言打 mock 传输层），红绿验证（stash→恰 4 红云断言），回归 56 文件 491 例全绿，tc 双清；两文件顶 max-lines 以行为无关压缩压回未加抑制 ✓。注：吸收工作树同域在途 web 保险行一并入库（已在证据注明）。**O1 剩 c（等 W13b）/g（收口）**。
+
 ### U29 修复落地（2026-11-14，🟢）
 
 `53d2969ff4e`（恰 1 文件 harness.ts）：泄漏面四类定位（harness 就绪超时不杀=主因+无 after 套件 3+中段局部 spawn 10 处+硬崩溃跳过钩子）；修法=harness 单点收口（registry 登记、显式 stop 先注销防双杀、after+exit 双保险、超时先杀、ready 行累积匹配）；存量 **41 孤儿/1.9GB→0**，硬退出探针 2→0，跑后复扫 0 新增，门禁 28/28 绿。（勘误：此前 kill「未生效」实为 zsh 不分词，xargs 后清零。）**U29→🟢**。空槽回填 U30。
