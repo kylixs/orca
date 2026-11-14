@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### AA6 落地（2026-11-14）
+
+`ea8ee6d53e8`（2 文件）：主机 drawer「权限分配」区（三位矩阵复用项目矩阵草稿形态+AA4 datalist+provisionPolicy 开关；单一保存=逐行 PUT grants+策略 PUT，失败报计数+QA-009 回滚；主机位提示「不进凭证，保存无需断开会话」）。新 5/5（含真端点联动：restricted→lisi 403、组授权→zhangsan 201）+回归 31/31。**AA1-AA6 全落**。派 AA7 收口。
+
 ### AA3 落地（2026-11-14）
 
 `3f7c076d50a`+`979e6044df2`：逐分支核对确认 AA2 三消费点与设计 §B3 一致（**零生产码改动**），补强 9 分支用例（用户直授/吊销即时生效/按位判定/策略回切/组名大小写/门禁次序/available 整对象 deepEqual/离线与无 projectsRoot 取值/吊销后委派不复活 409 HOST_REVOKED）；host-authorization 5→8 条+回归 63 绿。命名偏差记录：provisionPolicy 替代设计的 selfServiceProvision（行为等价，保留防破坏）。空槽保持——AA7 等 AA6。
