@@ -2721,6 +2721,10 @@ cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 �
 
 `7df1f6738ea`（12+ 文件）：web 云会话三阶段 bootstrap（workspace.info→openCloudWorkspaceOverRpc→repo.add/fetch/setActive）+ CloudSessionEmptyState 降级回落+web-cloud-workspace-store-ports+旅程翻转 B1–B6+流式用例（**两次全绿** 29.5s/19.0s，订正：16.9s 为首跑未留档口径）+渲染层回归 1123 文件 9507 例全绿（订正：入档时误转 SendMessage 期数字）+tc:web 过。**事故 7**：主会话提交 W13c-1 入档时再卷 6 个 W13b 暂存文件（pathspec 也被 lint-staged 恢复步骤击穿；核验输出已示外来文件却未拦截=形式化核对）——soft-reset 拆分恢复 `e50af527d70`（恰 PROGRESS），W13b 随即自身提交 `7df1f6738ea` 全量入库，**树内容等价验证零损失**（api-types/monaco-probe 均在其提交内）。**根因加固**：主会话 docs 提交改为「python 写文件 → `git commit -- <path>`（无 add 复合）→ `git show --stat` 提交后验证」三步；并发代理活跃期禁用 add+commit 复合命令。**W13b 主体关闭**（实现+自验证双绿；审计随批次异步派）。空槽派 W13c-2；首批批量验收+环境重建待 O1-c/U30 落地对完整批次边界开跑。
 
+### W13c-2 落地（2026-11-14）+ U36 登记
+
+`5d18bc786bf`（2 文件 +573/−2）：负向三条全绿（workspace.info 故障注入接缝=init-script 拦 preload 装配、非云会话判别面+原生空态结构 oracle、handoff 缺失/伪造 410 全语义）；双线旅程 HEAD 态 B 2/2+A 1/1 绿；MIN-1① 失真注释按审计原文修正。**U36 登记**：out/web 无 VITE_EXPOSE_STORE 重建静默废 B4 oracle（env 重建实证）→ 并入 O1-g（global-setup 断言/构建告警）。运行 55 分钟超预算（耗在环境取证与红项归因）。**W13c 两条全落**。空槽发 O1-g(+U35) ∥ U33。
+
 ### 首批批量验收：双线全绿（2026-11-14）
 
 隔离树 HEAD 全量验收（evidence/acceptance-batch-1/）：**A 线 1/1 PASS（8/8 步：裸宿主→TLS→项目授权→真实表单登录→直连打开→终端回显→文件树→证据）+ B 线 2/2 PASS（9/9 步：登录→handoff→W13 工作区视图→410 回落；流式+文件树 W5c 重签零 replayed；无残留跳过；B6 中继路径按 spec 头注记由 C 线 W6a/W6b 承载且绿）+ C 线 70 文件 295/295 全绿（首跑 2 环境件复跑清零）**。**U23/U24 平台级终证成立**（3/3：既有 git 目录自建→provisioned:false 零触碰→侧车→open 成功→幂等；并发 created=[true,false] 单检出）。生产一致性：真表宿主成立，清单外钉缺常设断言=**U35**（并入 O1-g）。红项 2 条=测试适配（**U34** 已派修）：U20 门禁晚于两套件书写。**双线生命线本批次达成**。
