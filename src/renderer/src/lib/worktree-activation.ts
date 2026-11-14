@@ -11,6 +11,7 @@ import { workspaceHasSleepingAgentSessions } from '@/lib/worktree-agent-activati
 import { resumeSleepingAgentSessionsForWorktree } from '@/lib/resume-sleeping-agent-session'
 import { shouldAutoCreateInitialTerminal } from '@/components/terminal/initial-terminal'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
+import { isCloudSessionRuntimeEnvironmentId } from '../../../shared/runtime-environments'
 import { folderWorkspaceKey, parseWorkspaceKey } from '../../../shared/workspace-scope'
 import {
   folderWorkspaceActivationBlocked,
@@ -55,11 +56,9 @@ function ensureFolderWorkspaceInitialTerminal(
   if (providesInitialSurface === true && startup === undefined) {
     return null
   }
-  const state = useAppStore.getState()
-  const workspaceKey = folderWorkspaceKey(folderWorkspace.id)
-  const primaryTabId = ensureWorktreeHasInitialTerminal(
-    state,
-    workspaceKey,
+  return ensureWorktreeHasInitialTerminal(
+    useAppStore.getState(),
+    folderWorkspaceKey(folderWorkspace.id),
     startup,
     undefined,
     undefined,
@@ -69,16 +68,12 @@ function ensureFolderWorkspaceInitialTerminal(
       ...(seedUserDefaultSurface ? { seedUserDefaultSurface: true } : {})
     }
   )
-  return primaryTabId
 }
 
-function canInspectAgentActivationInventory(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    typeof window.api?.runtime?.call === 'function' &&
-    typeof window.api?.pty?.listSessions === 'function'
-  )
-}
+const canInspectAgentActivationInventory = (): boolean =>
+  typeof window !== 'undefined' &&
+  typeof window.api?.runtime?.call === 'function' &&
+  typeof window.api?.pty?.listSessions === 'function'
 
 export function activateAndRevealFolderWorkspace(
   folderWorkspaceId: string,
@@ -229,7 +224,13 @@ export function activateAndRevealWorktree(
   state.setActiveWorktree(worktreeId, opts?.executionHostId)
   const postActivationState = useAppStore.getState()
   const ownerRuntimeEnvironmentId = getRuntimeEnvironmentIdForWorktree(postActivationState, wt.id)
-  if (opts?.notifyHostRuntime !== false && isWebRuntimeSessionActive(ownerRuntimeEnvironmentId)) {
+  const { runtimeEnvironments } = postActivationState
+  // Why: a cloud (ticket) environment has no paired desktop to notify — its host refuses worktree.activate.
+  const notifyHostRuntime =
+    opts?.notifyHostRuntime !== false &&
+    isWebRuntimeSessionActive(ownerRuntimeEnvironmentId) &&
+    !isCloudSessionRuntimeEnvironmentId(runtimeEnvironments, ownerRuntimeEnvironmentId)
+  if (notifyHostRuntime) {
     // Why: paired web clients own only local selection, so the desktop host publishes session surfaces without treating it as a nav command.
     void activateWebRuntimeSessionWorktree({
       worktreeId,

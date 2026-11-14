@@ -1,4 +1,7 @@
 import { timeRendererStartupStep } from '../startup/startup-diagnostics'
+import { useAppStore } from '../store'
+import { getActiveRuntimeTarget } from '../runtime/runtime-rpc-client'
+import { isCloudSessionRuntimeEnvironmentId } from '../../../shared/runtime-environments'
 import type { StartupActions } from './startup-actions-selector'
 
 type DeferredStartupRefreshActions = Pick<
@@ -11,6 +14,20 @@ type DeferredStartupRefreshActions = Pick<
   | 'pruneLastVisitedTimestamps'
   | 'fetchWorktreeLineage'
 >
+
+/**
+ * Whether the focused runtime target is a cloud (ticket) environment, whose host refuses
+ * `worktree.lineageList` — the graph is desktop-owned state the ticket never carries (W13).
+ * A missing row is not a cloud session, so callers proceed and let a real refusal surface.
+ */
+function focusedRuntimeTargetIsCloudSession(): boolean {
+  const state = useAppStore.getState()
+  const target = getActiveRuntimeTarget(state.settings)
+  return (
+    target.kind === 'environment' &&
+    isCloudSessionRuntimeEnvironmentId(state.runtimeEnvironments, target.environmentId)
+  )
+}
 
 /**
  * Runs the post-hydration refresh the boot chain only starts (never awaits):
@@ -51,7 +68,11 @@ export function startDeferredRemoteStartupRefresh(args: {
               // authoritative results to drop deleted-worktree visit timestamps that would
               // otherwise accumulate unbounded (disconnected SSH stays non-authoritative and is kept).
               actions.pruneLastVisitedTimestamps()
-              await actions.fetchWorktreeLineage()
+              // Why: lineage targets the focused host only, and a cloud target's host refuses the
+              // call (the catalog scans above already skip cloud rows themselves).
+              if (!focusedRuntimeTargetIsCloudSession()) {
+                await actions.fetchWorktreeLineage()
+              }
             })
           } catch (err) {
             console.warn('Deferred startup worktree refresh failed:', err)

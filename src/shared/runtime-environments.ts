@@ -271,6 +271,18 @@ export function isCloudSessionRuntimeEnvironment(
   return environment.cloudProject !== undefined || environment.cloudLoginRequired === true
 }
 
+/**
+ * Id-keyed form of {@link isCloudSessionRuntimeEnvironment}. A row the catalog does not list
+ * (yet) is not a cloud session, so callers proceed and let a real refusal surface.
+ */
+export function isCloudSessionRuntimeEnvironmentId(
+  environments: readonly PublicKnownRuntimeEnvironment[] | undefined,
+  environmentId: string | null | undefined
+): boolean {
+  const environment = environments?.find((row) => row.id === environmentId)
+  return environment !== undefined && isCloudSessionRuntimeEnvironment(environment)
+}
+
 /** The tunnel a server is reached through; only orcadDeployment also grants lifecycle ownership. */
 export function getRuntimeSshAccess(
   environment: Pick<KnownRuntimeEnvironment, 'orcadDeployment' | 'sshAccess'>

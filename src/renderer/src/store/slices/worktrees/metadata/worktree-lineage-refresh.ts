@@ -5,6 +5,8 @@ import type {
   WorktreeLineage
 } from '../../../../../../shared/worktree/lineage-types'
 import type { Worktree } from '../../../../../../shared/worktree/types'
+import { isActiveWebClientCloudSession } from '@/web/web-cloud-session-scope'
+import { isCloudSessionRuntimeEnvironmentId } from '../../../../../../shared/runtime-environments'
 import { callRuntimeRpc, getActiveRuntimeTarget } from '../../../../runtime/runtime-rpc-client'
 import { toRuntimeWorktreeSelector } from '../../../../runtime/runtime-worktree-selector'
 import { worktreeWorkspaceKey } from '../../../../../../shared/workspace-scope'
@@ -22,15 +24,19 @@ import type {
   WorktreeWithLineage
 } from '../listing/worktree-slice-types'
 
+/** Store view a lineage refresh reads: the graphs to merge against, plus the environment catalog. */
+type LineageRefreshState = Pick<
+  AppState,
+  'worktreeLineageById' | 'workspaceLineageByChildKey' | 'runtimeEnvironments'
+>
+
 /** Per-row baseline the reply is merged against, so any local write since then outranks it. */
 type LineageAtRequestStart = {
   worktreeLineageById: Readonly<Record<string, WorktreeLineage>>
   workspaceLineageByChildKey: Readonly<Record<string, WorkspaceLineage>>
 }
 
-function captureLineageAtRequestStart(
-  state: Pick<AppState, 'worktreeLineageById' | 'workspaceLineageByChildKey'>
-): LineageAtRequestStart {
+function captureLineageAtRequestStart(state: LineageRefreshState): LineageAtRequestStart {
   return {
     worktreeLineageById: state.worktreeLineageById,
     workspaceLineageByChildKey: state.workspaceLineageByChildKey
@@ -39,12 +45,21 @@ function captureLineageAtRequestStart(
 
 export async function listWorktreeLineageForRuntime(
   settings: AppState['settings'],
-  options: BackgroundRuntimeRefreshOptions = {}
+  options: BackgroundRuntimeRefreshOptions = {},
+  environments?: AppState['runtimeEnvironments']
 ): Promise<{
   worktreeLineageById: Readonly<Record<string, WorktreeLineage>>
   workspaceLineageByChildKey: Readonly<Record<string, WorkspaceLineage>>
 }> {
   const target = getActiveRuntimeTarget(settings)
+  // Why: a cloud (ticket) environment's host refuses `worktree.lineageList`; the graph is
+  // desktop-owned state the ticket never carries (W13), so answer the empty graph instead.
+  if (
+    target.kind === 'environment' &&
+    isCloudSessionRuntimeEnvironmentId(environments, target.environmentId)
+  ) {
+    return { worktreeLineageById: {}, workspaceLineageByChildKey: {} }
+  }
   type LineageListResponse = {
     lineage?: Record<string, WorktreeLineage>
     workspaceLineage?: Record<string, WorkspaceLineage>
@@ -252,11 +267,16 @@ export function applyHostLineageRefresh(
 export async function refreshWorktreeLineageForSettings(
   settings: AppState['settings'],
   set: Parameters<StateCreator<AppState>>[0],
-  getState: () => Pick<AppState, 'worktreeLineageById' | 'workspaceLineageByChildKey'>,
+  getState: () => LineageRefreshState,
   options: BackgroundRuntimeRefreshOptions = {}
 ): Promise<void> {
-  const lineageAtRequestStart = captureLineageAtRequestStart(getState())
-  const lineage = await listWorktreeLineageForRuntime(settings, options)
+  const stateAtRequestStart = getState()
+  const lineageAtRequestStart = captureLineageAtRequestStart(stateAtRequestStart)
+  const lineage = await listWorktreeLineageForRuntime(
+    settings,
+    options,
+    stateAtRequestStart.runtimeEnvironments
+  )
   applyHostLineageRefresh(
     set,
     getSettingsFocusedExecutionHostId(settings),
@@ -268,21 +288,29 @@ export async function refreshWorktreeLineageForSettings(
 export async function refreshRemoteWorktreeLineageBestEffort(
   settings: AppState['settings'],
   set: (partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void,
-  getState: () => Pick<AppState, 'worktreeLineageById' | 'workspaceLineageByChildKey'>
+  getState: () => LineageRefreshState
 ): Promise<void> {
   if (getActiveRuntimeTarget(settings).kind === 'local') {
     return
   }
+  // Why: a cloud (ticket) session's host refuses `worktree.lineageList`; the graph
+  // is desktop-owned state the ticket never carries (W13). The web check is the belt
+  // for the window before any environment row is published to the store.
+  if (isActiveWebClientCloudSession()) {
+    return
+  }
   try {
-    const lineageAtRequestStart = captureLineageAtRequestStart(getState())
-    const lineage = await listWorktreeLineageForRuntime(settings, {
-      reuseRecentCompatibilityFailure: true
-    })
+    const stateAtRequestStart = getState()
+    const lineage = await listWorktreeLineageForRuntime(
+      settings,
+      { reuseRecentCompatibilityFailure: true },
+      stateAtRequestStart.runtimeEnvironments
+    )
     applyHostLineageRefresh(
       set,
       getSettingsFocusedExecutionHostId(settings),
       lineage,
-      lineageAtRequestStart
+      captureLineageAtRequestStart(stateAtRequestStart)
     )
   } catch (err) {
     // Why: lineage is supplemental, so a remote timeout here must not discard a successful worktree refresh.
