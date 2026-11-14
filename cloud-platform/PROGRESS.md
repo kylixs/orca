@@ -2564,6 +2564,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W6b 独立测试通过（2026-11-14）
+
+测试代理（隔离纪律佳例：临时 detached worktree 固定到 `8cdfdd02902` 验证，避开主树并发改动）：套件 23/23 + 回归 30/30；自有探针 14/14——宣告/清空（非粘连实测：同 id 重启不宣告即空）/带点 routeKey 置空/双中继取宣告者；**URL 可达性串联验证**：按平台发布的字面 URL 请求（CA 信任 + SAN 校验未关）→ 200 宿主 web-index 内容且宿主侧收到剥前缀后的 path 与 x-forwarded-proto——证明端到端经中继 `/h/` 转发真实可用，非字符串断言。观察项（存活窗口内旧值保留 ~30s，与 AC-23 语义一致，非缺陷）。证据 `evidence/w6b-verify/`（探针脚本可复跑）。
+
 ### W6b 审计有条件通过（1 major 回派，2026-11-14）
 
 审计（`test-reports/w6b-audit.md`）：blocker 0、major 1（MAJ-1：无存活中继时 last-known **死**宣告被无限期推荐，browserEntryUrl 与「Empty string over a dead link」自述相悖——单中继真实部署常态故障形态；桌面客户端有探测/failover，浏览器入口没有）、minor 4（MIN-1 畸形 env 静默置空无警示、MIN-3 两份 routeKey 白名单无对拍、MIN-4 e2e 读本机 env 可假红、测试口径 23=13 旧+5 新单测+5 e2e）。安全面实测背书：browserHost 白名单 25 边界值全拒恶意形态、routeKey 两侧正则逐字符对拍相同、线兼容双向零破坏、diff 归属干净（W3 零混入）。已派回派修复（MAJ-1 健康门 + MIN-1/3/4），须在 W7b 接按钮前落地。
