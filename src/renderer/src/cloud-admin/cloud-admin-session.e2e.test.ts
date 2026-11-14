@@ -100,7 +100,13 @@ function runtimeIdOf(outcome: CloudRpcOutcome): string | null {
   return outcome.ok ? readString(outcome.result, 'runtimeId') : null
 }
 
-/** Polls the host's buffer read until the PTY echoed the marker back. */
+/**
+ * Polls the host's buffer read until the PTY echoed the marker back.
+ *
+ * The read rides inside `result.terminal`, and the poll fails closed: an ok
+ * reply without the marker is a silence, not a pass — the failure carries the
+ * last tail so the report names what the shell never said.
+ */
 async function waitForTerminalLine(
   rpc: (method: string, params?: Record<string, unknown>) => Promise<CloudRpcOutcome>,
   handle: string,
@@ -110,16 +116,21 @@ async function waitForTerminalLine(
   const started = Date.now()
   let last: CloudRpcOutcome | null = null
   while (Date.now() - started < timeoutMs) {
-    last = await rpc('terminal.read', { terminal: handle, screen: true, limit: 200 })
+    last = await rpc('terminal.read', { terminal: handle, limit: 200 })
     if (last.ok) {
-      const tail = readField(last.result, 'tail')
+      const tail = readField(readField(last.result, 'terminal'), 'tail')
       if (Array.isArray(tail) && tail.some((line) => String(line).includes(needle))) {
         return last
       }
     }
     await new Promise((resolve) => setTimeout(resolve, 200))
   }
-  return last ?? { ok: false, code: 'terminal_read_timeout', message: `no echo of ${needle}` }
+  const lastTail = last?.ok ? readField(readField(last.result, 'terminal'), 'tail') : null
+  return {
+    ok: false,
+    code: 'ECHO_TIMEOUT',
+    message: `the PTY never echoed '${needle}' within ${timeoutMs}ms; last tail=${JSON.stringify(lastTail)}`
+  }
 }
 
 let platform: Platform
@@ -393,15 +404,22 @@ describe('M54 管理员浏览器会话页（真实平台 + 真实 TLS Runtime）
 
     // The shell is real: keystrokes go to a PTY and the echo comes back through
     // the host's own buffer read. (The panel's stream itself rides a second
-    // socket, which today's one-shot ticket refuses — recorded in the W5b
-    // evidence, dispatched separately.)
-    const sent = await rpc('terminal.send', {
-      terminal: handle,
-      text: `echo ${TERMINAL_ECHO_MARKER}\n`
-    })
+    // socket — W5c-1 below proves it streams on its own freshly signed ticket.)
+    // Why re-send on silence: the first line can land while zsh is still booting
+    // its line editor, so the marker is retried on a fresh line until it shows —
+    // a PTY that never produces output still times out into a failure.
+    const send = (text: string) => rpc('terminal.send', { terminal: handle, text })
+    let sent = await send(`echo ${TERMINAL_ECHO_MARKER}\n`)
     expect(sent.ok, JSON.stringify(sent)).toBe(true)
-    const read = await waitForTerminalLine(rpc, handle, TERMINAL_ECHO_MARKER)
+    let read = await waitForTerminalLine(rpc, handle, TERMINAL_ECHO_MARKER, 8_000)
+    for (let attempt = 0; !read.ok && attempt < 3; attempt += 1) {
+      sent = await send(`\necho ${TERMINAL_ECHO_MARKER}\n`)
+      expect(sent.ok, JSON.stringify(sent)).toBe(true)
+      read = await waitForTerminalLine(rpc, handle, TERMINAL_ECHO_MARKER, 8_000)
+    }
     expect(read.ok, JSON.stringify(read)).toBe(true)
+    // Belt and braces: a pass must name the marker the shell actually printed.
+    expect(JSON.stringify(read), JSON.stringify(read)).toContain(TERMINAL_ECHO_MARKER)
 
     // The panel's resize path keeps the host grid in step with the pane.
     const resized = await rpc('terminal.updateViewport', {
