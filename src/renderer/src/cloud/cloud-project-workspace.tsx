@@ -9,12 +9,24 @@ import { cloudCloseNotice } from './cloud-close-notice'
 import { translate } from '@/i18n/i18n'
 import { CloudConnectionDiagnosticsDialog, chosenProbe } from './cloud-connection-diagnostics'
 import { CloudFilePanel } from './cloud-file-panel'
+import type { CloudTerminalSubscribe } from './cloud-terminal-panel'
+
+// Why lazy: the xterm chunk must stay out of the admin entry's first paint, and
+// the pane only mounts once the panel actually streams (M118/W5a).
+const CloudTerminalPanel = React.lazy(() =>
+  import('./cloud-terminal-panel').then((module) => ({ default: module.CloudTerminalPanel }))
+)
 
 export type CloudProjectWorkspaceProps = {
   session: CloudSessionView
   project: CloudProjectSummary
   /** RPC over the open cloud link; injected so the view stays testable. */
   rpc: CloudRpc
+  /**
+   * Terminal stream seam; null (or absent) hides the terminal pane, which is
+   * the desktop preload's state today.
+   */
+  subscribe?: CloudTerminalSubscribe | null
 }
 
 type LiveState =
@@ -30,7 +42,8 @@ function runtimeIdOf(outcome: CloudRpcOutcome): string | null {
 export function CloudProjectWorkspace({
   session,
   project,
-  rpc
+  rpc,
+  subscribe = null
 }: CloudProjectWorkspaceProps): React.JSX.Element {
   const [live, setLive] = React.useState<LiveState>({ kind: 'checking' })
   const [diagnosticsOpen, setDiagnosticsOpen] = React.useState(false)
@@ -56,6 +69,7 @@ export function CloudProjectWorkspace({
   // Absent means the reply predates the field; the host still enforces, so show
   // the panel and let a refusal surface rather than hiding a usable pane.
   const canReadFiles = opened?.permissions?.includes('file:read') ?? true
+  const canUseTerminal = opened?.permissions?.includes('terminal') ?? true
 
   return (
     <div className="flex h-full flex-col bg-background">
@@ -169,14 +183,59 @@ export function CloudProjectWorkspace({
           </Button>
         </div>
 
-        {opened?.workspacePath && canReadFiles ? (
-          <CloudFilePanel rpc={rpc} workspacePath={opened.workspacePath} />
+        {subscribe === null ? (
+          <>
+            {opened?.workspacePath && canReadFiles ? (
+              <CloudFilePanel rpc={rpc} workspacePath={opened.workspacePath} />
+            ) : (
+              <p className="max-w-prose text-xs leading-relaxed text-muted-foreground">
+                {opened?.workspacePath
+                  ? '当前项目未授予文件读取权限，文件面板不可用。'
+                  : '工作区尚未创建，无法打开文件面板。'}
+              </p>
+            )}
+          </>
         ) : (
-          <p className="max-w-prose text-xs leading-relaxed text-muted-foreground">
-            {opened?.workspacePath
-              ? '当前项目未授予文件读取权限，文件面板不可用。'
-              : '工作区尚未创建，无法打开文件面板。'}
-          </p>
+          <div className="flex min-h-[26rem] flex-1 gap-4">
+            {opened?.workspacePath && canUseTerminal ? (
+              <React.Suspense
+                fallback={
+                  <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center rounded border border-border bg-card">
+                    <span className="text-xs text-muted-foreground">正在加载终端…</span>
+                  </div>
+                }
+              >
+                <CloudTerminalPanel
+                  rpc={rpc}
+                  subscribe={subscribe}
+                  workspacePath={opened.workspacePath}
+                />
+              </React.Suspense>
+            ) : (
+              <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 rounded border border-border bg-card p-3">
+                <h2 className="text-sm font-medium text-foreground">终端</h2>
+                <p
+                  className="text-xs leading-relaxed text-muted-foreground"
+                  data-testid="cloud-terminal-placeholder"
+                >
+                  {opened?.workspacePath
+                    ? '当前项目未授予终端权限，终端面板不可用。'
+                    : '工作区尚未创建，无法打开终端。'}
+                </p>
+              </section>
+            )}
+            <div className="flex w-72 shrink-0 flex-col lg:w-80">
+              {opened?.workspacePath && canReadFiles ? (
+                <CloudFilePanel rpc={rpc} workspacePath={opened.workspacePath} />
+              ) : (
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  {opened?.workspacePath
+                    ? '当前项目未授予文件读取权限，文件面板不可用。'
+                    : '工作区尚未创建，无法打开文件面板。'}
+                </p>
+              )}
+            </div>
+          </div>
         )}
       </div>
     </div>

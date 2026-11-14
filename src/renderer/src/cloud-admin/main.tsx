@@ -30,3 +30,10 @@ const bridge = apiUrl
   : null
 
 ReactDOM.createRoot(root).render(<CloudApp bridge={bridge} />)
+
+// Why: the admin session page hosts terminals too, so it starts the deferred
+// WebGL addon load itself (same reason as web/main.tsx). Dynamic because this
+// entry keeps the pane-manager graph out of its own startup chunk.
+void import('../lib/pane-manager/pane-webgl-renderer').then((module) =>
+  module.primeTerminalWebglAddon()
+)
