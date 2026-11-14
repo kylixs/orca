@@ -2564,6 +2564,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W6b 修复完成（待独立复验，2026-11-14）
+
+提交 `843c3d6c382`（4 文件 +187/−19）：MAJ-1 删 last-known 兜底只认 healthy 存活宣告（全部中继掉线超窗 → 空串；抖动期入口消失 ≤2s 的代价写进闸门注释）+ **变异验证**（临时换回 HEAD~1 实现该用例确实红）；MIN-1 畸形 browserHost 按值去重 warn（不含不可信值本身）；MIN-3 平台/中继 routeKey 白名单 12 样本对拍封单向收紧；MIN-4 e2e env 保存/还原消毒。W6b 套件 26/26 + 中继回归 30/30。并发处理：与 W3 同函数相邻改动，路径限定 `git commit -- <files>` 隔离提交。已派独立复验，通过即关闭②。
+
 ### W3 开发完成（通道①，待独立测试+审计，2026-11-14）
 
 提交 `cd36987d7a0`（3 文件 +459/−17）：`projectView.sessionPageUrl`（TLS 直连首项、形态/指纹校验、离线置灰不消失）；`projectRowActions` 共享 builder——工作台与我的项目双入口完全一致，「详情」仅管理员、「Orca Web」有 open 权限者（**已接 W6b 真实 browserEntryUrl**，离线/维护/无边缘置灰占位，M122 切 handoff）；开发者打开对话框补桌面客户端引导；删除旧全局「打开会话页」入口。新 e2e 6/6 + 回归批（exploratory 16、gating 3、handoff 9、relay-entry 5、单测 45、platform 18、ui 5）全绿。**暂存纪律示范**：并行 hunk 混入暂存后用 hash-object/update-index 重建 + `/tmp` 隔离树逐字节验证后提交。已派独立测试（含详情链接真实打开 cloud-admin 200）与审计（URL 形态校验一致性/删除入口全仓引用/diff 归属复核）。
