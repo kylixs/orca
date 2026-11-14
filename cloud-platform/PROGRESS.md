@@ -2564,6 +2564,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W3 审计通过（1 major 回派，2026-11-14）
+
+审计（`test-reports/w3-audit.md`）：blocker 0、major 1（j-1：cloud-admin.html 平台地址无运行时来源——`?api=` 未拼，未配置部署里「详情」落到页面未配置态；W3 使其首次用户可见，建议平台拼 `?api=<平台地址>` 增量线兼容）、minor 2（m-1 config.js 死旋钮+PROGRESS 残留、m-2 四分支不可变红/6 条补例建议）、note 7。安全面确认：复用 W7a isDirectAddrForm 同 helper 同拼装点（注册路径不做 directAddrs 格式校验，该校验是必要防线）；前端隐藏非安全边界无放大（handoff/connect 后端各拒）；四态穷举零死链；diff 归属与代理自述相符（W6b 整改确为独立提交）。已派回派修复（j-1 + m-1 + m-2 补例）。
+
 ### W6b 修复完成（待独立复验，2026-11-14）
 
 提交 `843c3d6c382`（4 文件 +187/−19）：MAJ-1 删 last-known 兜底只认 healthy 存活宣告（全部中继掉线超窗 → 空串；抖动期入口消失 ≤2s 的代价写进闸门注释）+ **变异验证**（临时换回 HEAD~1 实现该用例确实红）；MIN-1 畸形 browserHost 按值去重 warn（不含不可信值本身）；MIN-3 平台/中继 routeKey 白名单 12 样本对拍封单向收紧；MIN-4 e2e env 保存/还原消毒。W6b 套件 26/26 + 中继回归 30/30。并发处理：与 W3 同函数相邻改动，路径限定 `git commit -- <files>` 隔离提交。已派独立复验，通过即关闭②。
