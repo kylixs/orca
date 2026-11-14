@@ -198,11 +198,19 @@ mkdir -p "\$(dirname "\$ORCA_ENV_FILE")"
 umask 077
 
 echo ">> 写入环境配置 \$ORCA_ENV_FILE"
+ORCA_HOST_NAME="\$(hostname -s 2>/dev/null || hostname)"
+ORCA_ADVERTISE="\${ADVERTISE_HOST:-\$(hostname -I 2>/dev/null | awk '{print \$1}')}"
 {
+  # ORCA_CLOUD_* is what the host binary reads; the bare aliases stay for env
+  # files and docs written before the rename (same family as U38).
   echo "ORCA_CLOUD_API_URL=${input.platformUrl}"
+  echo "ORCA_CLOUD_HOST_TOKEN=${input.token}"
+  echo "ORCA_CLOUD_HOST_NAME=\$ORCA_HOST_NAME"
+  echo "ORCA_CLOUD_ADVERTISE_HOST=\$ORCA_ADVERTISE"
+  echo "ORCA_CLOUD_PROJECTS_ROOT=\${PROJECTS_ROOT:-/srv/work}"
   echo "HOST_TOKEN=${input.token}"
-  echo "HOST_NAME=\$(hostname -s 2>/dev/null || hostname)"
-  echo "ADVERTISE_HOST=\${ADVERTISE_HOST:-\$(hostname -I 2>/dev/null | awk '{print \$1}')}"
+  echo "HOST_NAME=\$ORCA_HOST_NAME"
+  echo "ADVERTISE_HOST=\$ORCA_ADVERTISE"
   echo "PROJECTS_ROOT=\${PROJECTS_ROOT:-/srv/work}"
 } > "\$ORCA_ENV_FILE"
 
@@ -215,7 +223,7 @@ if [ ! -s "\$ORCA_TLS_CERT" ] || [ ! -s "\$ORCA_TLS_KEY" ]; then
     -keyout "\$ORCA_TLS_KEY" -out "\$ORCA_TLS_CERT" \\
     -subj "/CN=\$(hostname -s 2>/dev/null || hostname)" \\
     -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" >/dev/null 2>&1
-  printf 'ORCA_CLOUD_TLS_CERT=%s\\nORCA_CLOUD_TLS_KEY=%s\\n' "\$ORCA_TLS_CERT" "\$ORCA_TLS_KEY" >> "\$ORCA_ENV_FILE"
+  printf 'ORCA_CLOUD_TLS_CERT_PATH=%s\\nORCA_CLOUD_TLS_KEY_PATH=%s\\n' "\$ORCA_TLS_CERT" "\$ORCA_TLS_KEY" >> "\$ORCA_ENV_FILE"
 fi
 
 echo ">> 平台连通性检查"

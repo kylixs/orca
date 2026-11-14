@@ -7,7 +7,7 @@ import {
   parseRelayRegistration,
   routeKeyFromDirectAddrs
 } from '../apps/api/src/relay-nodes.ts'
-import { parseBrowserPath } from '../apps/relay/src/relay.ts'
+import { parseBrowserPath, resolveRelayEnv } from '../apps/relay/src/relay.ts'
 
 /**
  * M114b: a relay's dialable address decides what `/connect` hands a client, so
@@ -244,5 +244,63 @@ describe('默认路由键：取上报 IP 而非主机名', () => {
     for (const addr of ['192.168.2.202:5210', '[fe80::1]:5210', 'fe80::1']) {
       assert.equal(routeKeyFromDirectAddrs([addr], 'dev-001').includes('.'), false)
     }
+  })
+})
+
+/**
+ * U38: `/install/relay.sh` writes `ORCA_CLOUD_*`, while the entry used to read
+ * only the bare names — a copy-of-the-script deployment silently dialed the
+ * loopback default. The resolver must prefer the new names, keep the old ones
+ * alive, and say out loud whenever it had to degrade.
+ */
+describe('中继 env 解析：安装脚本名优先，旧名兼容，降级必告警', () => {
+  test('安装脚本写入的 ORCA_CLOUD_* 名被读取', () => {
+    const resolved = resolveRelayEnv({
+      ORCA_CLOUD_API_URL: 'http://100.103.213.12:18787',
+      ORCA_CLOUD_INTERNAL_TOKEN: 'token-a'
+    })
+    assert.equal(resolved.apiUrl, 'http://100.103.213.12:18787')
+    assert.equal(resolved.internalToken, 'token-a')
+    assert.deepEqual(resolved.warnings, [], 'a complete env must stay silent')
+  })
+
+  test('两套名字都在时 ORCA_CLOUD_* 胜出并告警分歧', () => {
+    const resolved = resolveRelayEnv({
+      ORCA_CLOUD_API_URL: 'http://new:18787',
+      API_URL: 'http://old:18787',
+      ORCA_CLOUD_INTERNAL_TOKEN: 'new-token',
+      INTERNAL_TOKEN: 'old-token'
+    })
+    assert.equal(resolved.apiUrl, 'http://new:18787')
+    assert.equal(resolved.internalToken, 'new-token')
+    assert.equal(resolved.warnings.length, 2)
+    assert.match(resolved.warnings[0], /ORCA_CLOUD_API_URL/)
+    assert.match(resolved.warnings[1], /ORCA_CLOUD_INTERNAL_TOKEN/)
+  })
+
+  test('照抄旧 env 名仍可用（既有部署零破坏），但点名将改写', () => {
+    const resolved = resolveRelayEnv({
+      API_URL: 'http://100.103.213.12:18787',
+      INTERNAL_TOKEN: 'legacy-token'
+    })
+    assert.equal(resolved.apiUrl, 'http://100.103.213.12:18787')
+    assert.equal(resolved.internalToken, 'legacy-token')
+    assert.equal(resolved.warnings.length, 2)
+    assert.match(resolved.warnings[0], /ORCA_CLOUD_API_URL unset/)
+  })
+
+  test('全缺省回落默认值，且告警点名期望的 env 名（不再静默吞掉）', () => {
+    const resolved = resolveRelayEnv({})
+    assert.equal(resolved.apiUrl, 'http://127.0.0.1:18787')
+    assert.equal(resolved.internalToken, 'internal-test-token')
+    assert.equal(resolved.warnings.length, 2)
+    assert.match(resolved.warnings[0], /ORCA_CLOUD_API_URL unset; defaulting to http:\/\/127\.0\.0\.1:18787/)
+    assert.match(resolved.warnings[1], /ORCA_CLOUD_INTERNAL_TOKEN unset/)
+  })
+
+  test('空白串视为未设置，同样走回落并告警', () => {
+    const resolved = resolveRelayEnv({ ORCA_CLOUD_API_URL: '   ', ORCA_CLOUD_INTERNAL_TOKEN: '  ' })
+    assert.equal(resolved.warnings.length, 2)
+    assert.equal(resolved.internalToken, 'internal-test-token')
   })
 })

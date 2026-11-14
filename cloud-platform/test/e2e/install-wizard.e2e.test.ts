@@ -180,10 +180,25 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     for (const variable of ['HOST_NAME=', 'ADVERTISE_HOST=', 'PROJECTS_ROOT=']) {
       assert.ok(script.includes(variable), `${variable} must be written`)
     }
+    // The host binary reads only the ORCA_CLOUD_* names (U38 family): a script
+    // that wrote just the bare aliases could never enrol a host.
+    for (const variable of [
+      `ORCA_CLOUD_HOST_TOKEN=${token}`,
+      'ORCA_CLOUD_HOST_NAME=',
+      'ORCA_CLOUD_ADVERTISE_HOST=',
+      'ORCA_CLOUD_PROJECTS_ROOT=',
+      'ORCA_CLOUD_TLS_CERT_PATH=',
+      'ORCA_CLOUD_TLS_KEY_PATH='
+    ]) {
+      assert.ok(script.includes(variable), `${variable} must be written`)
+    }
     assert.match(script, /openssl req -x509/)
     assert.match(script, /systemd|orca --host-mode/)
     saveEvidence(EVIDENCE, 'install-host-script.txt', script)
-    saveEvidence(EVIDENCE, 'install-token-required.json', { missing: missing.status, invalid: used.status })
+    saveEvidence(EVIDENCE, 'install-token-required.json', {
+      missing: missing.status,
+      invalid: used.status
+    })
   })
 
   test('开发者拉取脚本 403，拒绝与成功都写入 install_script 审计且不含令牌明文', async () => {

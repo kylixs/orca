@@ -80,6 +80,8 @@ export type RelayHandle = {
   close: () => Promise<void>
 }
 
+const DEFAULT_API_URL = 'http://127.0.0.1:18787'
+const DEFAULT_INTERNAL_TOKEN = 'internal-test-token'
 const DEFAULT_STALE_MS = 300_000
 const DEFAULT_SNI_SUFFIX = '.relay.local'
 const DEFAULT_PER_IP = 100
@@ -170,6 +172,67 @@ function allResponseHeaders(res: IncomingMessage): [string, string][] {
     pairs.push([res.rawHeaders[index], res.rawHeaders[index + 1]])
   }
   return pairs
+}
+
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+export type RelayEnvResolution = {
+  apiUrl: string
+  internalToken: string
+  /** Every degraded choice, in order; empty when the env is complete. */
+  warnings: string[]
+}
+
+/**
+ * `/install/relay.sh` writes `ORCA_CLOUD_*`; deployments from before that name
+ * (and local dev) still carry the bare names, so both are read — new name first,
+ * legacy as fallback. Every degradation is reported instead of swallowed: a relay
+ * that quietly dials the loopback default stays "listening" while syncing
+ * nothing, which is the failure mode U38 shipped with.
+ */
+export function resolveRelayEnv(env: Record<string, string | undefined> = process.env): RelayEnvResolution {
+  const warnings: string[] = []
+  const preferredApi = env.ORCA_CLOUD_API_URL?.trim()
+  const legacyApi = env.API_URL?.trim()
+  let apiUrl: string
+  if (preferredApi) {
+    apiUrl = preferredApi
+    if (legacyApi && legacyApi !== preferredApi) {
+      warnings.push(
+        `[relay] ORCA_CLOUD_API_URL and legacy API_URL disagree; using ORCA_CLOUD_API_URL=${preferredApi}`
+      )
+    }
+  } else if (legacyApi) {
+    apiUrl = legacyApi
+    warnings.push(
+      `[relay] ORCA_CLOUD_API_URL unset; using legacy API_URL=${legacyApi} — rename the key in the env file`
+    )
+  } else {
+    apiUrl = DEFAULT_API_URL
+    warnings.push(
+      `[relay] ORCA_CLOUD_API_URL unset; defaulting to ${DEFAULT_API_URL} — set ORCA_CLOUD_API_URL to the platform address or route sync keeps failing`
+    )
+  }
+  const preferredToken = env.ORCA_CLOUD_INTERNAL_TOKEN?.trim()
+  const legacyToken = env.INTERNAL_TOKEN?.trim()
+  let internalToken: string
+  if (preferredToken) {
+    internalToken = preferredToken
+    if (legacyToken && legacyToken !== preferredToken) {
+      warnings.push('[relay] ORCA_CLOUD_INTERNAL_TOKEN and legacy INTERNAL_TOKEN disagree; using ORCA_CLOUD_INTERNAL_TOKEN')
+    }
+  } else if (legacyToken) {
+    internalToken = legacyToken
+    warnings.push('[relay] ORCA_CLOUD_INTERNAL_TOKEN unset; using legacy INTERNAL_TOKEN — rename the key in the env file')
+  } else {
+    internalToken = DEFAULT_INTERNAL_TOKEN
+    warnings.push(
+      `[relay] ORCA_CLOUD_INTERNAL_TOKEN unset; defaulting to '${DEFAULT_INTERNAL_TOKEN}' — the platform will reject every route sync`
+    )
+  }
+  return { apiUrl, internalToken, warnings }
 }
 
 /** All three env vars must be set: a half-configured browser listener is worse than none. */
@@ -267,7 +330,10 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
     lastSyncAt = Date.now()
     // Why here: a successful sync proves both that this relay is alive and that the
     // platform can be reached, which is exactly when re-registering is meaningful.
-    await announce().catch(() => undefined)
+    // A failed announce must still be loud: the node silently ages off the live list.
+    await announce().catch((error: unknown) => {
+      console.warn(`[relay] announce failed (node may drop off the live list): ${describeError(error)}`)
+    })
   }
 
   /** AC-23: keeps this node in the platform's live relay list, or lets it lapse. */
@@ -305,7 +371,9 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
   const timer = setInterval(() => {
     void refresh()
       .then(() => console.log(`[relay] routes synced n=${routes.size}`))
-      .catch(() => undefined)
+      .catch((error: unknown) =>
+        console.warn(`[relay] route sync failed, retrying in 2s: ${describeError(error)}`)
+      )
   }, 2_000)
 
   const server = createServer((socket) => {
@@ -587,7 +655,9 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
   announcedPort = port
   await refresh()
     .then(() => console.log(`[relay] routes synced n=${routes.size}`))
-    .catch(() => console.log('[relay] api not ready, will retry'))
+    .catch((error: unknown) =>
+      console.warn(`[relay] platform not reachable yet, retrying every 2s: ${describeError(error)}`)
+    )
 
   return {
     port,
@@ -608,11 +678,14 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  // Print the resolution verdicts before listening: a degraded env must be the
+  // first thing in the log, not a mystery behind a silent sync failure (U38).
+  const envConfig = resolveRelayEnv()
+  for (const line of envConfig.warnings) console.warn(line)
   const relay = await startRelay({
     port: Number(process.env.PORT ?? 18443),
-    apiUrl: process.env.API_URL ?? 'http://127.0.0.1:18787',
-    internalToken:
-      process.env.INTERNAL_TOKEN ?? process.env.ORCA_CLOUD_INTERNAL_TOKEN ?? 'internal-test-token',
+    apiUrl: envConfig.apiUrl,
+    internalToken: envConfig.internalToken,
     keyPath: process.env.INTERNAL_TLS_KEY,
     certPath: process.env.INTERNAL_TLS_CERT,
     caPath: process.env.INTERNAL_TLS_CA,
