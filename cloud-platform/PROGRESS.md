@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### U21 修复落地（2026-11-14，🟢）
+
+`9a4dc9007ab`（2 文件 +323/−8）：applyProjectsRoot 拆 commitProjectsRoot——活跃项目在册拒绝换根（审计 denied metadata 含 requested/current/conflictCount/sampleKeys）+心跳响应可选 `projectsRootRejected`（wire-additive，无错误通道处按裁定最小化）；同根重报静默、清空根同拒、归档不阻塞、拍内其余字段照常。变异校验（禁用→恰 3/4 红）+新 4/4+回归 30/30+全量 e2e 179+63+单测 49 全绿。**U21→🟢**。范围外挂账：宿主侧对 projectsRootRejected 的消费与重报退避、管理台 denied 审计展示（P2）。空槽回填 O1-e。
+
 ### U22 落地（2026-11-14，🟢）
 
 `201de9e7696`（1 文件 +8）：W3c-open 用例补 project=<id> 值+入口 origin（=中继边缘，按台账语义而非派发令的措辞——代理核实 evidence 与 server.ts:664 URL 构造后纠正，取舍正确）；门禁 10/10+5+6。**U22→🟢**。空槽回填 O1-a（云环境过滤谓词地基）。
