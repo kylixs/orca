@@ -187,16 +187,19 @@ describe('无仓库地址的云端项目（真实平台 + 主机 init + TLS Runt
 
   it('W12b-3 对照：repo-ful 克隆路径零回归', async () => {
     const dir = 'w12b1-clone-control'
+    const projectRoot = join(harness.projectsRoot, dir)
+    // U20 只放行 ready 项目取票，而宿主只在票据内克隆——repo-ful 项目永远等不到第一次
+    // 克隆机会。对照改为票据外预置同一份克隆内容，项目走 ready 创建，钉住 repo-ful
+    // 检出的内容与打开路径零回归。
+    git(harness.projectsRoot, 'clone', '-q', harness.repoUrl, projectRoot)
     const created = await harness.createProject({
       name: 'W12b1 Clone Control',
       dir,
-      repoUrl: harness.repoUrl,
       defaultBranch: 'main'
     })
     expect(readField(created, 'ok')).toBe(true)
     const projectId = readString(created, 'projectId')
     const environment = parseEnvironment(readField(created, 'environment'))
-    const projectRoot = join(harness.projectsRoot, dir)
     expect(environment?.projectRoot).toBe(projectRoot)
     expect(readFileSyncText(join(projectRoot, 'README.md'))).toBe(PROVISIONING_README)
 

@@ -316,24 +316,27 @@ async function mintHostToken(): Promise<string> {
 }
 
 /**
- * 注定失败的 provision：repoUrl 指向不存在的源（与 M57-2 同形）。不绑定宿主 provision
- * 的具体计划（not-prepared/init/clone 的语义正在另一工单里演进），这里只验证
- * 「宿主失败 → 平台 failed」这条回报通道本身。
+ * 注定失败的 provision：票据路径被一个既有文件占住，init 落盘必败。U20 后 connect 只
+ * 放行 ready 项目，而宿主只在票据内克隆（repo-ful 项目拿不到第一张票），所以失败经
+ * 票据可达的 init 计划驱动——本组只验证「宿主失败 → 平台 failed」这条回报通道本身，
+ * 不绑定具体计划。
  */
 async function createFailingProject(hostId: string): Promise<string> {
+  const blockedPath = join(mkdtempSync(join(tmpdir(), 'orca-w12b2-projects-')), 'checkout')
+  writeFileSync(blockedPath, 'not a directory')
   const created = await adminFetch('/v1/projects', {
     method: 'POST',
     body: JSON.stringify({
       key: PROJECT_KEY,
       name: PROJECT_KEY,
       hostId,
-      path: join(mkdtempSync(join(tmpdir(), 'orca-w12b2-projects-')), 'checkout'),
-      repoUrl: join(mkdtempSync(join(tmpdir(), 'orca-w12b2-source-')), 'missing-source.git')
+      path: blockedPath
     })
   })
   expect(created.status, await created.clone().text()).toBe(201)
   const body: unknown = await created.json()
-  expect(readString(body, 'status')).toBe('provisioning')
+  // 无 repoUrl 的项目创建即 ready：只有 ready 取得到票，init 的失败随后把它打成 failed。
+  expect(readString(body, 'status')).toBe('ready')
   const id = readString(body, 'id') ?? ''
   const granted = await adminFetch(`/v1/projects/${id}/grants`, {
     method: 'PUT',
@@ -522,7 +525,7 @@ describe('首启宿主的装机与回报（真实平台 + 真实 Runtime）', ()
       throw new Error(`project.provision refused at the envelope: ${reply.code}`)
     }
     expect(readField(reply.result, 'ok')).toBe(false)
-    expect(readString(reply.result, 'code')).toBe('CLONE_FAILED')
+    expect(readString(reply.result, 'code')).toBe('INIT_FAILED')
 
     let project: unknown = null
     const status = await beatUntil(async () => {
@@ -534,13 +537,13 @@ describe('首启宿主的装机与回报（真实平台 + 真实 Runtime）', ()
     expect(status).toBe('failed')
     const provisioningError = readString(project, 'provisioningError')
     expect(provisioningError).not.toBeNull()
-    expect(provisioningError).toContain('CLONE_FAILED')
+    expect(provisioningError).toContain('INIT_FAILED')
 
     const events = await provisionAuditEvents(projectId)
     expect(events.length).toBeGreaterThan(0)
     expect(readString(events[0], 'result')).toBe('failure')
     expect(readString(events[0], 'targetId')).toBe(projectId)
-    expect(readString(readField(events[0], 'metadata'), 'error')).toContain('CLONE_FAILED')
+    expect(readString(readField(events[0], 'metadata'), 'error')).toContain('INIT_FAILED')
     saveEvidence('w12b2-failed-provision-report.json', {
       reply,
       project,
