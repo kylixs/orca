@@ -31,7 +31,8 @@
     "../src/main/cloud-platform/cloud-project-archive.test.ts",
     "../src/main/cloud-platform/cloud-provision-recovery.test.ts",
     "../src/main/cloud-platform/cloud-repo-registration.test.ts",
-    "../src/main/cloud-platform/cloud-self-service-project.test.ts"
+    "../src/main/cloud-platform/cloud-self-service-project.test.ts",
+    "../src/main/cloud-platform/cloud-runtime-environment-pairing-continuity.test.ts"
   ],
   "compilerOptions": {
     "composite": true,

@@ -70,6 +70,45 @@ describe('which re-paired environments name a different machine', () => {
   })
 })
 
+describe('which re-paired cloud projects name a different machine', () => {
+  // A cloud project carries no orcadDeployment, so a registration alone proves
+  // nothing: only an unchanged pairing revision does (W9A-5).
+  function cloud(overrides: { pairingRevision?: number } = {}) {
+    return {
+      id: 'cloud-1',
+      createdAt: 1,
+      pairingRevision: overrides.pairingRevision ?? 1,
+      hostKeyFingerprint: 'host-key-a',
+      cloudProject: {
+        projectId: 'proj_1',
+        projectKey: 'checkout-svc',
+        hostId: 'host-1',
+        registeredAt: 1
+      }
+    }
+  }
+
+  it('keeps a project whose reopen did not rotate its pairing', () => {
+    expect(replacedRuntimeEnvironmentIds([cloud()], [cloud()])).toEqual([])
+    expect(
+      classifyPeerReplacements(
+        [cloud()],
+        [cloud()],
+        replacedRuntimeEnvironmentIds([cloud()], [cloud()])
+      )
+    ).toEqual({ retired: [], sameHost: [] })
+  })
+
+  it('retires a project whose pairing rotated instead of trusting its registration', () => {
+    const ids = replacedRuntimeEnvironmentIds([cloud()], [cloud({ pairingRevision: 2 })])
+    expect(ids).toEqual(['cloud-1'])
+    expect(classifyPeerReplacements([cloud()], [cloud({ pairingRevision: 2 })], ids)).toEqual({
+      retired: ['cloud-1'],
+      sameHost: []
+    })
+  })
+})
+
 describe('which re-pairs a live pane may follow', () => {
   const classify = (previous: ReturnType<typeof managed>, next: ReturnType<typeof managed>) =>
     classifyPeerReplacements([previous], [next], replacedRuntimeEnvironmentIds([previous], [next]))

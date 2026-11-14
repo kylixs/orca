@@ -10,7 +10,8 @@ import { writeRuntimeEnvironmentSidecarEntry } from '../../shared/runtime-enviro
 import {
   cloudWorkspacePathOf,
   createEnvironmentFromPairingOffer,
-  type KnownRuntimeEnvironment
+  type KnownRuntimeEnvironment,
+  type PersistedRuntimeEnvironment
 } from '../../shared/runtime-environments'
 import {
   sendRemoteRuntimeRequest,
@@ -164,6 +165,14 @@ type RegistrationInput = {
   workspacePath?: string
 }
 
+/** The host key the stored pairing carries; a cloud ticket always presents its host's key. */
+function storedPairingHostKey(environment: PersistedRuntimeEnvironment): string | null {
+  const endpoint =
+    environment.endpoints.find((entry) => entry.id === environment.preferredEndpointId) ??
+    environment.endpoints[0]
+  return endpoint?.publicKeyB64 ?? null
+}
+
 /**
  * Creates or refreshes the environment for a project. Returns the id panes
  * should address; reopening the same project keeps that id stable.
@@ -178,6 +187,24 @@ export function registerCloudRuntimeEnvironment(
   // Why: a sign-in registers environments without opening a workspace; that must
   // not erase the checkout path a previous open recorded (M45/M55 navigation).
   const workspacePath = input.workspacePath ?? (existing ? cloudWorkspacePathOf(existing) : null)
+  const cloudProject = {
+    projectId: input.projectId,
+    projectKey: input.projectKey,
+    hostId: input.hostId,
+    registeredAt: now,
+    // Omitted while unknown, so an old sidecar shape stays byte-identical.
+    ...(workspacePath ? { workspacePath } : {})
+  }
+  const store = readPersistedEnvironmentStore(userDataPath)
+  const stored = existing ? store.environments.find((entry) => entry.id === existing.id) : undefined
+  // Why the pairing is not rotated: the stored offer is a placeholder (every
+  // connection re-issues a ticket), so only its host key says anything, and a new
+  // revision makes the renderer read the same id as another machine and retire the
+  // project's rows (W9A-5). A new host key is a real re-pair and still rotates.
+  if (existing && stored && storedPairingHostKey(stored) === input.link.offer.publicKeyB64) {
+    writeRuntimeEnvironmentSidecarEntry(userDataPath, store.environments, stored, { cloudProject })
+    return { ...existing, cloudProject }
+  }
   const environment = createEnvironmentFromPairingOffer({
     id: existing?.id ?? `cloud-${randomUUID()}`,
     name: existing?.name ?? input.projectName,
@@ -185,7 +212,6 @@ export function registerCloudRuntimeEnvironment(
     offer: { ...input.link.offer, v: PAIRING_OFFER_VERSION, scope: 'runtime' },
     runtimeId: existing?.runtimeId ?? null
   })
-  const store = readPersistedEnvironmentStore(userDataPath)
   const next = {
     version: 1 as const,
     environments: [
@@ -195,14 +221,7 @@ export function registerCloudRuntimeEnvironment(
   }
   writeEnvironmentStore(userDataPath, next)
   writeRuntimeEnvironmentSidecarEntry(userDataPath, next.environments, environment, {
-    cloudProject: {
-      projectId: input.projectId,
-      projectKey: input.projectKey,
-      hostId: input.hostId,
-      registeredAt: now,
-      // Omitted while unknown, so an old sidecar shape stays byte-identical.
-      ...(workspacePath ? { workspacePath } : {})
-    }
+    cloudProject
   })
   return environment
 }

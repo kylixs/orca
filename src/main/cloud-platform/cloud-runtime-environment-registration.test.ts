@@ -116,4 +116,34 @@ describe('cloud environment registration carries the checkout path', () => {
     expect(second.id).toBe(first.id)
     expect(cloudWorkspacePathOf(stored(first.id))).toBe('/home/zhangsan/work/checkout-svc')
   })
+
+  it('a reopen keeps the stored pairing, so the catalog never sees a second revision', () => {
+    const first = registerCloudRuntimeEnvironment(userDataPath, registration(), 100)
+    const second = registerCloudRuntimeEnvironment(
+      userDataPath,
+      registration('/home/zhangsan/work/checkout-svc'),
+      200
+    )
+    expect(second.id).toBe(first.id)
+    // The revision is what the renderer reads as "this id now names another machine";
+    // rotating it on an open retired the project's rows seconds after they appeared (W9A-5).
+    expect(stored(first.id).pairingRevision).toBe(first.pairingRevision)
+    expect(stored(first.id).endpoints).toEqual(first.endpoints)
+  })
+
+  it('a re-pair whose host key changed still rotates the pairing identity', () => {
+    const first = registerCloudRuntimeEnvironment(userDataPath, registration(), 100)
+    const reinstalledHost = {
+      ...link,
+      offer: { ...link.offer, publicKeyB64: Buffer.alloc(32, 2).toString('base64') }
+    }
+    const second = registerCloudRuntimeEnvironment(
+      userDataPath,
+      { ...registration(), link: reinstalledHost },
+      200
+    )
+    expect(second.id).toBe(first.id)
+    expect(stored(first.id).pairingRevision).toBe(200)
+    expect(stored(first.id).endpoints).toEqual(second.endpoints)
+  })
 })
