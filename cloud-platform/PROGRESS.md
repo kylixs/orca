@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### W12b-2 实现完成（2026-11-14，U17 修复）
+
+`a6d8d1fc7fa`（恰 3 文件 src/main/startup/，暂存集核对）：新 `cloud-runtime-attach.ts`——client 已在（poll/stored-credential）同步装机原行为不回退；否则 `admission.ready` 兑现后补装 setCloudAccessGuard/setCloudProvisionReporter/setCloudHostAudit；enrollment 失败不装机且 fail-closed 不变（无 unhandled rejection）。拆新文件因 admission 模块 max-lines 预算仅剩 ~8 行（300 上限合规）。**变异验证**：临时还原旧时序→恰好 3 红且症状逐条对应 U17（回报缺失→平台永停 provisioning；guard 缺失→下载恒拒），恢复→全绿。测试：新套件 8/8 三连稳定 + env 合跑 14/14 + 真实平台/Runtimme 3 例（策略门生效、失败 provision 上报 status:failed+provisioningError、对照同步路径）+ 42 依赖套件 113 例绿；tc:node 0 错。注：运行 24.4 分钟略超 20 分钟控制线（派发早于指令；按新粒度应拆）。U17 台账维持 🟡 待审计+批量验收确认。
+
 ### 任务粒度控制线修订 + W13c 预拆（2026-11-14 用户指令）
 
 用户指令「合理拆分任务粒度，控制在 20 分钟内完成」→ 工作令与协议时长预算 15→**20 分钟控制线**（超时必须再拆）。W13b 实测 ~30 分钟即反例——其遗留的负向/清单部分按粒度预拆：**W13c-1**=W13a 审计 MIN 项落地（workspace.info §5.2.1 三条负向 + MIN-1 漂移面/MIN-2 catch 日志/MIN-3 parity 钉，域=src/main+shared 测试）；**W13c-2**=W13b 视图负向+链路清单零回归（域=tests/e2e）。两令可并行（域不相交）。
