@@ -161,10 +161,25 @@ async function loadProjects() {
   return body.projects
 }
 
+/**
+ * What the platform enforces: a pinned per-project override wins, everything
+ * else follows the global default. The stored value alone misreads a
+ * follow-global project as pinned (M120c §5.1-1, needs downloadPolicyExplicit).
+ */
+function effectiveDownloadPolicy(p, globalDefault) {
+  return p.downloadPolicyExplicit === true ? p.downloadPolicy : globalDefault
+}
+
+function downloadBadge(p, globalDefault) {
+  const deny = effectiveDownloadPolicy(p, globalDefault) === 'deny'
+  return `<span class="badge ${deny ? 'lock' : ''}">${deny ? '下载已禁用' : '允许下载'}</span>`
+}
+
 async function renderWorkbench() {
   const [projects, policy] = await Promise.all([loadProjects(), api('/v1/policies/download')])
+  const globalDefault = policy.downloadDefault
   const online = projects.filter((p) => p.hostStatus === 'online').length
-  const denied = projects.filter((p) => p.downloadPolicy === 'deny').length
+  const denied = projects.filter((p) => effectiveDownloadPolicy(p, globalDefault) === 'deny').length
   const recent = projects.slice(0, 3)
   content().innerHTML = `
     <div class="page-head">
@@ -181,7 +196,7 @@ async function renderWorkbench() {
     </div>
     <div class="section-head"><h2>最近项目</h2><button class="btn ghost" data-go="projects">查看全部</button></div>
     <div class="grid-3">
-      ${recent.map(projectCard).join('') || '<div class="card pad muted">暂无项目。请联系项目负责人或平台管理员。</div>'}
+      ${recent.map((p) => projectCard(p, globalDefault)).join('') || '<div class="card pad muted">暂无项目。请联系项目负责人或平台管理员。</div>'}
     </div>
     <div class="section-head"><h2>全部项目</h2></div>
     <div class="table-wrap">
@@ -247,7 +262,7 @@ function openDisabledAttr(p) {
   return reason ? `disabled title="${esc(reason)}"` : ''
 }
 
-function projectCard(p) {
+function projectCard(p, globalDefault) {
   const offline = p.hostStatus !== 'online'
   return `
     <div class="card project-card">
@@ -260,7 +275,7 @@ function projectCard(p) {
         ${hostStatusBadge(p)}
       </div>
       <div class="foot">
-        <span class="badge ${p.downloadPolicy === 'deny' ? 'lock' : ''}">${p.downloadPolicy === 'deny' ? '下载已禁用' : '允许下载'}</span>
+        ${downloadBadge(p, globalDefault)}
         <button class="btn primary sm" data-open="${p.id}" ${openDisabledAttr(p)}>打开</button>
       </div>
     </div>`
@@ -373,7 +388,9 @@ function currentDeviceId() {
 }
 
 async function renderProjects() {
-  const projects = await loadProjects()
+  // 生效值 = 显式覆盖 ? 项目值 : 全局默认；列与徽标都按生效值渲染（M120c §5.4）。
+  const [projects, policy] = await Promise.all([loadProjects(), api('/v1/policies/download')])
+  const globalDefault = policy.downloadDefault
   content().innerHTML = `
     <div class="page-head">
       <div><h1>我的项目</h1><p>仅展示你有「打开项目」权限的项目。</p></div>
@@ -403,7 +420,11 @@ async function renderProjects() {
         <td class="mono muted">${esc(p.repoUrl)}</td>
         <td>${esc(p.hostName)} ${hostStatusBadge(p)}</td>
         <td class="muted">${esc(permissionSummary(p))}</td>
-        <td>${p.downloadPolicy === 'deny' ? '<span class="badge lock">禁止</span>' : '<span class="badge">允许</span>'}</td>
+        <td>${
+          effectiveDownloadPolicy(p, globalDefault) === 'deny'
+            ? '<span class="badge lock">禁止</span>'
+            : '<span class="badge">允许</span>'
+        }</td>
         <td class="actions">${projectRowActions(p)}</td>
       </tr>`
         )
@@ -1092,10 +1113,36 @@ async function renderAudit(loadMore = false) {
   }
 }
 
+/* ---------------- 项目级下载策略覆盖（M120c · QA-015） ---------------- */
+
+/** 统计与覆盖表都只看在营项目：已归档行是历史，不再参与策略管理（§5.3）。 */
+function policyOverrides(projects) {
+  const live = projects.filter((p) => p.status !== 'archived')
+  const overrides = live.filter((p) => p.downloadPolicyExplicit === true)
+  return { following: live.length - overrides.length, overrides }
+}
+
 async function renderSettings() {
-  const policy = await api('/v1/policies/download')
+  const [policy, projects] = await Promise.all([api('/v1/policies/download'), loadProjects()])
+  const globalDefault = policy.downloadDefault
+  const { following, overrides } = policyOverrides(projects)
+  const rows = overrides
+    .map(
+      (p) => `<tr data-policy-row="${esc(p.id)}">
+        <td><strong>${esc(p.name)}</strong> <span class="badge">覆盖</span><div class="muted mono">${esc(p.path)}</div></td>
+        <td>
+          <select class="select" data-policy-select="${esc(p.id)}" aria-label="${esc(p.name)} 下载策略" style="width:auto">
+            <option value="deny" ${p.downloadPolicy === 'deny' ? 'selected' : ''}>禁止</option>
+            <option value="allow" ${p.downloadPolicy === 'allow' ? 'selected' : ''}>允许</option>
+            <option value="inherit">跟随全局</option>
+          </select>
+        </td>
+        <td class="muted">当前生效：${effectiveDownloadPolicy(p, globalDefault) === 'deny' ? '禁止' : '允许'}</td>
+      </tr>`
+    )
+    .join('')
   content().innerHTML = `
-    <div class="page-head"><div><h1>平台设置</h1><p>下载策略与客户端最低版本。</p></div></div>
+    <div class="page-head"><div><h1>平台设置</h1><p>下载策略：全局默认与项目覆盖。</p></div></div>
     <div class="card pad" style="max-width:640px">
       <h2 style="font-size:14px;margin:0 0 4px">全局下载策略</h2>
       <p class="muted" style="margin:0 0 16px">项目级策略可覆盖全局；托管项目默认禁止下载。</p>
@@ -1110,6 +1157,19 @@ async function renderSettings() {
       <div class="note warn">内容级 DLP（终端复制、文件内容读取）一期不做阻断，仅限速与审计。</div>
       <button class="btn primary" id="savePolicy">保存</button>
       <span class="muted" style="margin-left:8px">当前版本 v${policy.version}</span>
+    </div>
+    <div class="card pad" style="max-width:640px;margin-top:16px">
+      <h2 style="font-size:14px;margin:0 0 4px">项目级覆盖</h2>
+      <p class="muted" style="margin:0 0 12px">独立覆盖钉住该项目的下载策略，全局默认翻转时不随之变化；选「跟随全局」即恢复。</p>
+      <p class="muted" style="margin:0 0 12px" id="policyScope">跟随全局默认 <strong>${following}</strong> 个项目 · 独立覆盖 <strong>${overrides.length}</strong> 个项目</p>
+      ${
+        rows
+          ? `<div class="table-wrap"><table>
+              <thead><tr><th>项目</th><th>覆盖策略</th><th>当前生效</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table></div>`
+          : '<p class="muted">暂无项目覆盖，全部项目跟随全局默认。</p>'
+      }
     </div>`
   $('#savePolicy').onclick = async () => {
     const value = document.querySelector('input[name=dl]:checked').value
@@ -1125,9 +1185,34 @@ async function renderSettings() {
       renderSettings()
       return
     }
-    toast('已保存，30 秒内生效')
+    // FR-9.4 的生效范围：翻转全局时告诉管理员谁跟着走、谁被钉住不受影响。
+    toast(
+      `已保存，30 秒内生效；跟随全局 ${following} 个项目，独立覆盖 ${overrides.length} 个不受影响`
+    )
     renderSettings()
   }
+  for (const select of content().querySelectorAll('[data-policy-select]')) {
+    select.onchange = () => void saveProjectPolicy(select.dataset.policySelect ?? '', select.value)
+  }
+}
+
+/** 行内选择即保存：「禁止/允许」钉住一个覆盖，「跟随全局」清掉钉住回到继承。 */
+async function saveProjectPolicy(projectId, value) {
+  const inherit = value === 'inherit'
+  try {
+    await api(`/v1/projects/${projectId}/policy`, {
+      method: 'PUT',
+      body: JSON.stringify(inherit ? { inherit: true } : { downloadPolicy: value })
+    })
+  } catch (err) {
+    // Same rule as the global card (M116-QA-009): report it and redraw from the
+    // platform's value, so no row keeps claiming a policy that never landed.
+    toast(`保存失败：${err.message ?? err}`)
+    renderSettings()
+    return
+  }
+  toast(inherit ? '已恢复跟随全局默认' : '已保存项目下载策略')
+  renderSettings()
 }
 
 /* ---------------- overlays ---------------- */
