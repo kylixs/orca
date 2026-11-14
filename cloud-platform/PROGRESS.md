@@ -2564,6 +2564,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W6b 关闭（修复复验全过，2026-11-14）
+
+复验（`evidence/w6b-fix-verify/`）：套件 26/26 + 回归 30/30（throwaway worktree 隔离）；变异红复核；MAJ-1 自有探针 33 检查全过且**不变式成立**（16 采样点「URL 非空 ⟺ 存在 online 且宣告 browserHost 的中继」无一违例；同 id 生→死→生仍单行、lastSeenAt 刷新）；MIN-1 warn 恰一次去重生效且值不落日志；MIN-4 被反证必要（探针自己先踩中 env 透传坑）。**W6b 关闭**（`8cdfdd02902` + `843c3d6c382` + 独立测试 14 探针 + 审计 + 复验，三方齐备）。**通道②全部完成**（W6a+W6b）。
+
 ### W3 审计通过（1 major 回派，2026-11-14）
 
 审计（`test-reports/w3-audit.md`）：blocker 0、major 1（j-1：cloud-admin.html 平台地址无运行时来源——`?api=` 未拼，未配置部署里「详情」落到页面未配置态；W3 使其首次用户可见，建议平台拼 `?api=<平台地址>` 增量线兼容）、minor 2（m-1 config.js 死旋钮+PROGRESS 残留、m-2 四分支不可变红/6 条补例建议）、note 7。安全面确认：复用 W7a isDirectAddrForm 同 helper 同拼装点（注册路径不做 directAddrs 格式校验，该校验是必要防线）；前端隐藏非安全边界无放大（handoff/connect 后端各拒）；四态穷举零死链；diff 归属与代理自述相符（W6b 整改确为独立提交）。已派回派修复（j-1 + m-1 + m-2 补例）。
