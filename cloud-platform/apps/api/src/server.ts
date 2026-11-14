@@ -62,6 +62,8 @@ const ACCESS_TTL_MS = 30 * 60_000
 const REFRESH_TTL_MS = 12 * 60 * 60_000
 const CREDENTIAL_TTL_S = 60
 const HOST_OFFLINE_DEFAULT_MS = 60_000
+/** U37: per-beat cap on the heartbeat's provision kick; the rest waits for the next beat. */
+const MAX_PROVISION_ASSIGNMENTS_PER_BEAT = 16
 const HANDOFF_TTL_MS = 60_000
 const WEB_ROOT = new URL('../../web/', import.meta.url).pathname
 
@@ -801,6 +803,26 @@ export function createApp(config: ApiConfig): ApiHandle {
         metadata: { hostId, ...(error ? { error } : {}) }
       })
     }
+  }
+
+  /**
+   * U37: the heartbeat downlink's provision kick. A repo-ful `provisioning`
+   * project has no path to a ticket (connect is gated on ready), so each beat
+   * re-derives the host's own pending set from the store — state-driven, so a
+   * dropped or ignored assignment only costs one beat of latency. Derived, not
+   * stored: no new store field.
+   */
+  function pendingProvisionAssignments(hostId: string) {
+    return [...store.projects.values()]
+      .filter((p) => p.hostId === hostId && p.status === 'provisioning' && p.repoUrl !== '')
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .slice(0, MAX_PROVISION_ASSIGNMENTS_PER_BEAT)
+      .map((p) => ({
+        projectId: p.id,
+        path: p.path,
+        repoUrl: p.repoUrl,
+        defaultBranch: p.defaultBranch
+      }))
   }
 
   function visibleProject(projectId: string, user: User): Project | null {
@@ -2364,10 +2386,39 @@ export function createApp(config: ApiConfig): ApiHandle {
         // off still belongs in the chain, and this never fails the beat.
         appendHostAuditReports(audit, target, parseHostAuditReports(body.audit), traceId)
         const revoked = store.revocations.filter((r) => r.targetType !== 'jti')
+        // U37 downlink. Derived after the provision reports above are applied, so a
+        // clone reported ok in this same beat is never re-assigned. Revoked hosts
+        // must not look alive, and maintenance hosts take no new assignments (§8①)
+        // — both resume with the next beat after restoration.
+        const provisionAssignments =
+          target.revokedAt === null && target.status !== 'maintenance'
+            ? pendingProvisionAssignments(target.id)
+            : []
+        if (provisionAssignments.length > 0) {
+          // One batched audit per non-empty beat (§8②), never one per assignment.
+          audit.appendBestEffort({
+            eventType: 'provision_assign',
+            actor: null,
+            targetType: 'host',
+            targetId: target.id,
+            result: 'success',
+            traceId,
+            metadata: {
+              count: provisionAssignments.length,
+              projectIds: provisionAssignments.map((a) => a.projectId)
+            }
+          })
+        }
         return json(res, 200, {
           ...(target.revokedAt !== null ? { hostRevoked: true } : {}),
           // Optional so older hosts that ignore it stay on the wire untouched.
           ...(projectsRootAccepted ? {} : { projectsRootRejected: 'PROJECTS_ROOT_CONFLICT' }),
+          // Same wire-additive guarantee as projectsRootRejected above (U21
+          // precedent): an old host's sendHeartbeat whitelists the fields it knows
+          // (cloud-host-enrollment.ts), so a key it has never heard of is structurally
+          // invisible to it and its behaviour is byte-for-byte unchanged; the U37-B
+          // executor picks it up via readField and parses it defensively.
+          ...(provisionAssignments.length > 0 ? { provisionAssignments } : {}),
           policyVersion: store.policies.version,
           policies: {
             downloadDefault: store.policies.downloadDefault,
