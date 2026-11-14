@@ -2564,6 +2564,12 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W5a 关闭（修复复验五项全过，2026-11-14）+ W5b 派发
+
+复验（`evidence/w5a-fix-verify/`）：77 用例全绿；五项自有探针 11/11（2026l 释放逐字节与 desktop replay 同位、桥接 5 分支独立复驱、双报恰一次布防、chunk 失败仅降级终端区、迟到回执补发 close）；**6 项变异全红**坐实测试非空壳；M118-3 断言确认从共享常量引用（cloud 目录零手抄 2026 转义）。ENV-1（未跟踪 handoff e2e 拖垮 tc:web）折入 W5b。**W5a 关闭**（`7058a99dd1c`+`b0665d848a7`+`8ce21cb7f1e`+独立测试+审计+复验）。通道④放行 **W5b**（宿主侧云会话方法映射打通 + 真实 PTY e2e + ENV-1），已派。
+
+**本地环境重建（用户测试用，2026-11-14）**：平台以当前代码重启（18787，含 W7a/W3/W6b/W7b——handoff 端点 curl 实测可用）；web 包重建（1528 文件，含 cloud-admin 入口与 handoff 消费）；宿主 `dev-local-02` 在线（127.0.0.1:53156，TLS 证书已被钥匙串信任）；演示项目 `proj_7d0651e6` 授权 team-payment。桌面端 `out/main` 为 W10 验证构建（烤入死地址 19902）——测试桌面客户端前需 `pnpm build:electron-vite` 重建或用 `ORCA_CLOUD_API_URL` env 覆盖。
+
 ### W3 修复完成 + 索引冲突第四次（终态已恢复，2026-11-14）
 
 修复代理交付 `e5d0f68721a`（7 文件）：j-1 `sessionPageUrlFor` 拼 `?api=<requestOrigin>`（新抽共享 helper，与 /install 同推导；取舍 query 优先于部署显式注入，记录进 deployment §4c）；m-1 删 config.js + index.html script + web-release 条目；m-2 四条补例逐条变异变红。web-project-entry 10/10 + 六回归套件全绿。
