@@ -2701,6 +2701,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 审计（`test-reports/w5c-audit.md`）：blocker 0、**major 1（安全）**——重签票据绕过 AC-29 主机键钉扎：`webHostKeyVerdict` 唯一调用点在 BrowserProjectConnections.open，两条取票接线重签的新票对宿主自报的新 `host.e2eePublicKeyB64` 不比对 → 换键宿主可让存活会话新订阅静默建链（E2EE+deviceToken 流向换键方）。修法一行 fail-closed（重签 offer host key 与父钉扎值比对）+ 换键回归断言，已回派原代理。minor 6（legacy 重连无钉、§8.4 会话槽 2/3 撞 4431 无测试、e2e 只过滤 replayed 等）+ note 10（两个中间提交不可构建已按披露计 minor）。D6 未削弱实证：重放负向对照测试把一次性语义钉成可回归断言。归属核实 8/8 文件干净、与 a740b953faf 注记一致。
 
+### W13a 开发完成（待独立测试+审计，2026-11-14）
+
+提交 `f160524e19d`（12 文件 +969/−6）：宿主 `workspace.info` 按 W13 设计落地——镜像 project.provision 范本（`WORKSPACE_INFO_METHODS` 独立注册、仅进 `cloudAdmissionOption` 云方法表扩展、云权限表零改动）；返回值字段即白名单（只从票据字段+workspaceRoot 内 checkout 查询）；非云调用方 CLOUD_SESSION_REQUIRED；`CLOUD_HOST_METHODS` 常量提升（生产装配逐字节不变）；`perms` 注入 CloudRpcSession（宿主内部类型）。测试：宿主 10 例+读取器 11 例+真栈 5 例（**强制入 NODE_RUNTIME_INCLUDE**）+目录 351 例全绿；tc:node 0 错。Q3 按裁定未做。已派独立测试+审计。
+
 ### W7c 关闭（回派复验全过，2026-11-14）
 
 复验（`evidence/w7c-fix-verify/`）：提交套件 14/14 + 邻接 52 例全绿；MAJ-1 自有探针 6/6——sign-out→同页配对→重推导为非云（全程真实生产写入方、零次 reset 调用）+ 同记录原地刷新 memo 稳定；**双组变异红**（还原旧 memo→5 红；去掉 web-client 检查顺序→2 红），还原后复绿。边界如实：同 id 原地改标志为理论盲区（生产无此写入方，grep 证实）。**W7c 关闭**（`679f24c1b6d`+`e9cd133b527`+独立测试 PASS+审计回派+复验）。通道③剩余：W5c 测试+审计（在途）。
