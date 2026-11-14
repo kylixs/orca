@@ -2677,6 +2677,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 测试代理（隔离 worktree 固定 `679f24c1b6d`）：新增 12/12 + 受影响 3555 例 + 权限层 50/50 + 云 e2e 9/9；端到端旅程四项验收全过（无降级 toast、壳 37342 字节、零 cloud-denial 控制台错、侧栏云说明呈现）；**原生零变化对跑**：父/子提交 Δ 恰为 +3 文件/+5 例（即 3 个新测试文件），原生用例无一变化；越权负向 5 方法全拒带 method_denied 审计、方法表未扩充确认。**挂账**：O1=云工作区启动仍有 7 个被拒 RPC（skills/ui/settings/preflight/linear 族，被吞不降级——W7c 跳过清单只覆盖目录族，余族入后续清理工单）；O2=workspace.info 宿主无实现（云会话工作区视图=已知后续工单）。回派修复（e9cd133b527）已派独立轻复验。
 
+### 归属注记：9a27c7963de 卷入 W9A-1 在途改动（同型事故第五次，2026-11-14）
+
+主会话 docs 提交（PROGRESS+w5c-audit）卷入 W9A-1 修复代理的在途改动 6 文件（catalog skip 实现+测试 +371 行）——该代理仍在活跃写入。**处置**：不做历史手术（避免与其直接竞争索引）；W9A-1 代理完成时会发现改动已入库，由其最终交付说明确认内容完整性，PROGRESS 以本注记为准。**主会话违规根因修正**：此前提交前核对用的是 `git diff --cached --stat | tail -1`——恰好把文件清单藏掉只剩汇总行。即日起核对必须 `git diff --cached --name-only` 全列表逐一比对预期，不一致即 `git restore --staged <非预期>` 后重提交。本注记提交本身已按新方式执行核对（暂存=PROGRESS.md 单文件）。
+
 ### 归属注记：a740b953faf 混入 W5c 传输层文件（2026-11-14）
 
 主会话拆分 6e5d05027ff 时仍有 5 个 W5c 传输层文件（web-runtime-client.ts、web-runtime-session-client.ts、preload-api/web-runtime-session.*、web-session-recovery.test）留在提交内——继续 reset 会与在途 W5c 代理竞争索引，故停止历史手术。**归属裁定**：`a740b953faf`=主会话 docs（PROGRESS+w5b-audit）+ W5c 传输层部分实现（内容为 W5c 在途真实改动）；W5c 代理收尾时以最终提交补齐剩余文件并在交付说明引用本注记。
