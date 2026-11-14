@@ -2719,7 +2719,11 @@ cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 �
 
 ### W13b 落地（2026-11-14）+ 事故第 7 次即拆即恢复
 
-`7df1f6738ea`（12+ 文件）：web 云会话三阶段 bootstrap（workspace.info→openCloudWorkspaceOverRpc→repo.add/fetch/setActive）+ CloudSessionEmptyState 降级回落+web-cloud-workspace-store-ports+旅程翻转 B1–B6+流式用例（**两次全绿** 16.9s/29.5s）+渲染层回归 1121 文件 9498 例全绿+tc:web 过。**事故 7**：主会话提交 W13c-1 入档时再卷 6 个 W13b 暂存文件（pathspec 也被 lint-staged 恢复步骤击穿；核验输出已示外来文件却未拦截=形式化核对）——soft-reset 拆分恢复 `e50af527d70`（恰 PROGRESS），W13b 随即自身提交 `7df1f6738ea` 全量入库，**树内容等价验证零损失**（api-types/monaco-probe 均在其提交内）。**根因加固**：主会话 docs 提交改为「python 写文件 → `git commit -- <path>`（无 add 复合）→ `git show --stat` 提交后验证」三步；并发代理活跃期禁用 add+commit 复合命令。**W13b 主体关闭**（实现+自验证双绿；审计随批次异步派）。空槽派 W13c-2；首批批量验收+环境重建待 O1-c/U30 落地对完整批次边界开跑。
+`7df1f6738ea`（12+ 文件）：web 云会话三阶段 bootstrap（workspace.info→openCloudWorkspaceOverRpc→repo.add/fetch/setActive）+ CloudSessionEmptyState 降级回落+web-cloud-workspace-store-ports+旅程翻转 B1–B6+流式用例（**两次全绿** 29.5s/19.0s，订正：16.9s 为首跑未留档口径）+渲染层回归 1123 文件 9507 例全绿（订正：入档时误转 SendMessage 期数字）+tc:web 过。**事故 7**：主会话提交 W13c-1 入档时再卷 6 个 W13b 暂存文件（pathspec 也被 lint-staged 恢复步骤击穿；核验输出已示外来文件却未拦截=形式化核对）——soft-reset 拆分恢复 `e50af527d70`（恰 PROGRESS），W13b 随即自身提交 `7df1f6738ea` 全量入库，**树内容等价验证零损失**（api-types/monaco-probe 均在其提交内）。**根因加固**：主会话 docs 提交改为「python 写文件 → `git commit -- <path>`（无 add 复合）→ `git show --stat` 提交后验证」三步；并发代理活跃期禁用 add+commit 复合命令。**W13b 主体关闭**（实现+自验证双绿；审计随批次异步派）。空槽派 W13c-2；首批批量验收+环境重建待 O1-c/U30 落地对完整批次边界开跑。
+
+### W13b 审计 PASS（2026-11-14）
+
+审计（test-reports/w13b-audit.md）：**PASS 0 blocker/0 major**、minor 3/note 7；16 文件与 HEAD 逐字节一致；三偏差全部裁定成立（NOTE-1 限定偏差 1 论证强度：ensure 本身已保证 worktree 解析，register-first 真实价值=桌面同构+失败归因提前）。MIN-1/MIN-2→**U33**（explorer file:read 门+旅程披露，排队待 W13c-2 域释放）；MIN-3 计数漂移=主会话转抄误差已订正（本提交）。**W13b 关闭**（实现+双绿旅程+9507 回归+审计 PASS）。
 
 ### W13c-1 落地（2026-11-14）
 
