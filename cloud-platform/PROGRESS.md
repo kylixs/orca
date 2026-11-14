@@ -2629,6 +2629,10 @@ TTL 先改 5 分钟后经再评估**改回 60 秒**（单次消费+绑定不变�
 
 诊断代理三嫌疑全部实测排除（exposure 谓词 dev 可读 env、vite dev 同样应用 define、bridge 存在必渲染登录 UI）。**真根因**：`pnpm dev`/`npm start` 共享 orca-dev profile——已有一个无 env 的 dev 实例在跑时，带 `ORCA_CLOUD_API_URL` 的新启动 exit 3 让位旧实例，用户看到的是旧实例普通桌面，env「像被忽略」。修复 `b5e697a3fd8`（3 文件）：锁拒绝消息点名被丢弃的平台地址与补救路径（无 env 消息逐字节不变，有测试钉住）。单实例 15/15（新增 3）+ 云链路 21/21 + 提交后复跑 33/33；tc:node 0 错。台账 U13 → 🟢。**用户操作**：退出在跑的 dev 实例再 `ORCA_CLOUD_API_URL=… npm start`（或撞锁时看终端明示）。另注：W11 形态落地后 dev 登录入口已是 shell 常驻按钮+弹框（诊断实测确认）。
 
+### W11 续修完成（MAJ×2+minor 落地；构建门槛追问中，2026-11-14）
+
+提交 `903e8e80ad4`（10 文件 +461/−138）：MAJ-1 登录入口改**状态栏 in-flow segment**（悬浮终端开关之后，结构上不可能遮挡/拦截原生点击，远离 Toast 角；隐藏状态栏为显式选择的取舍入档）+ **突变测试红证明**（改回 fixed chip → regression 前两例立红）；MAJ-2 回归断言渲染真实 StatusBar→StatusBarSurface（不再桩掉），断言 segment 为状态栏 DOM 子节点、原生开关同行的 TOGGLE 事件仍派发、无桥时原生结构照旧（happy-dom 无布局引擎故用结构不变量替代几何断言，已说明）；登出链单轮+失败 toast 不伪装；m3/m4 补齐。128 用例全绿；本域 tc/lint/gate 0 finding（剩余项均属 W7b/W5b 在途文件）。已追问构建门槛语义更新（W10 verify-cloud-build-defines 前置条件过期挡企业分发构建）是否在本轮补齐。
+
 ### W7c 开发完成（通道③，待独立测试+审计，2026-11-14）
 
 提交 `679f24c1b6d`（12 文件 +778/−66）：web 启动链云会话感知——跳过原生目录加载/SSH 水合/client-event 镜像/延迟远端刷新（不再发起注定被拒的 RPC），链以 hydrationSucceeded 正常收尾（不再降级粘性 toast+空白壳）；云会话侧栏云范围空态说明（原生骨架不动，附加渠道语义）；**云方法表未扩充**（防宿主全目录/SSH 目标泄露，理由入 manifest）。新增 12 例；受影响 3560+109+50+9 例全绿；端到端 handoff 旅程实测：降级 toast=false、壳 36588 字节（W7b 基线 2610）、零 cloud-denial 控制台错误。**已知边界如实入账**：workspace.info 宿主无实现（云会话挂文件树/终端需后续工单）；流式订阅=W5c 在途。已派独立测试+审计。
