@@ -2564,6 +2564,10 @@ HEAD 快照隔离实例 + 真实 runtime-sim 宿主 + 双真实中继，双角�
 
 **163 过 / 8 失败**。3 个失败为快照环境产物（2 个：git archive 不含 gitignored evidence/ → 验收索引/指引；1 个：快照只导出 cloud-platform/ 缺 src/ 跨目录依赖 → admission-parity）。**4 个失败为真回归（M115 7eba67c76cd）**：管理员按 path 登记项目被 400 INVALID_DIR 拒绝（dir 必填误伤管理员路径），archive e2e 级联失败。已立 **W8**（最高优先，W2 后派发）：目录必填仅约束自助路径，管理员 path 语义保持。日志 /tmp/m116-retest-full.log。
 
+### W7a 修复完成（待独立复验，2026-11-14）
+
+提交 `8fc140952e9`（2 文件 +141/−28）：j-1 签发侧与换发侧逐字同谓词 open 检查（admin/auditor 旁路也拒，403 permission_lost + denied 审计，宿主门之前保证轨迹确定）；`isDirectAddrForm()` 校验（6 种非法地址注入逐个 400、`[::1]:port` 合法恢复）；oxfmt 2 行。web-handoff 9/0 + dir 套件 6/0。遗留如实：限流/审计灌水面/抽取 web-handoff.ts → M120 清理令；换发设备三元组 → W7b；入库侧地址校验与 /connect 同类问题 → W6b/M120。**索引冲突第三次**：修复代理提交时我的 docs 快照提交卷入其暂存，代理 soft-reset 拆分（fix `8fc140952e9` + docs `536029c6c60`），树逐字节一致。已派独立复验，通过即关闭 W7a 放行①的 W3。
+
 ### W6a 关闭（独立复验全过，2026-11-14）
 
 复验（`evidence/w6a-reverify/`）：套件 27/27；自有探针四项全过且含**红跑验证**——升级半开探针对 `3e0c9f970d2^`（修复前）如实超时失败，证明探针非空转；per-IP 上限用 **en0 真实第二源 IP 192.168.2.157** 验证跨源不受影响；stale 升级实测 `HTTP/1.1 503`（对照修复前记录的 404 偏差已修）；hop-by-hop 矩阵（proxy-authorization/te 剥除、sec-websocket-* 保留）；线兼容 HEAD vs HEAD^ 8 项 SNI 探针逐字段一致。附加确认：新回归套件对坏代码 5/5 全红（真回归网非摆设）。**W6a 关闭**（`a9e1fc5e96e` + `3e0c9f970d2` + 独立测试 w6a-verify + 审计回派 + 独立复验，三方齐备）。通道②放行 **W6b**（平台 browserEntryUrl），已派实现代理。
