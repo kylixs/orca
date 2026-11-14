@@ -1,5 +1,5 @@
 import { validateProjectPath } from '../../../packages/contract/src/project-path.ts'
-import type { Host, Project } from './store.ts'
+import type { Host, HostPermission, Project, Store, User } from './store.ts'
 
 /** Developer self-service project policy: host selection, derived path, quota. */
 
@@ -128,6 +128,25 @@ export function joinProjectPath(root: string, key: string): string | null {
   const separator = root.includes('\\') && !root.includes('/') ? '\\' : '/'
   const path = `${root}${separator}${key}`
   return validateProjectPath(path).ok ? path : null
+}
+
+/**
+ * Host delegation match: a direct user row or one of the user's LDAP groups.
+ * Admin bypass stays with the caller, and host bits never enter a credential.
+ */
+export function hasHostPermission(
+  store: Store,
+  hostId: string,
+  user: User,
+  permission: HostPermission
+): boolean {
+  return store.hostGrants.some(
+    (grant) =>
+      grant.hostId === hostId &&
+      grant.permissions.includes(permission) &&
+      ((grant.subjectType === 'user' && grant.subjectId === user.id) ||
+        (grant.subjectType === 'group' && user.groups.includes(grant.subjectId)))
+  )
 }
 
 export function countActiveProjectsCreatedBy(

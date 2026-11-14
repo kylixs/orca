@@ -47,6 +47,8 @@ export type Host = {
   /** First-level directory names the host reports under that root (FR-3.7). */
   projectDirs: string[]
   status: 'online' | 'offline' | 'maintenance'
+  /** Who may self-service on this host; absent means open (pre-grant behaviour). */
+  provisionPolicy?: 'open' | 'restricted'
   maintenanceReason: string | null
   lastHeartbeatAt: number
   credentialHash: string | null
@@ -83,6 +85,16 @@ export type Grant = {
   subjectType: 'user' | 'group'
   subjectId: string
   permissions: Permission[]
+}
+
+export type HostPermission = 'provision' | 'maintain' | 'view'
+
+/** Platform-only host delegation; nothing here travels to the host (AA2). */
+export type HostGrant = {
+  hostId: string
+  subjectType: 'user' | 'group'
+  subjectId: string
+  permissions: HostPermission[]
 }
 
 export type AuditEventInput = {
@@ -132,6 +144,7 @@ export class Store {
   projects = new Map<string, Project>()
   projectsByKey = new Map<string, Project>()
   grants: Grant[] = []
+  hostGrants: HostGrant[] = []
   revocations: Revocation[] = []
   relayRoutes = new Map<string, RelayRoute>()
   hostTokens: HostToken[] = []

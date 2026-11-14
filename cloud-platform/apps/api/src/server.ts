@@ -14,6 +14,7 @@ import {
 import {
   SELF_SERVICE_PROJECT_LIMIT,
   countActiveProjectsCreatedBy,
+  hasHostPermission,
   joinProjectPath,
   parseProjectDirs,
   selectSelfServiceHost,
@@ -35,7 +36,14 @@ import type { AuditEventInput } from './store.ts'
 import { openAuditLogFile } from './audit-log-file.ts'
 import { startInternalChannel } from './internal-channel.ts'
 import { ldapProfile, MockLdapAdapter, type LdapAdapter } from './ldap.ts'
-import { Store, type Device, type Host, type Project, type User } from './store.ts'
+import {
+  Store,
+  type Device,
+  type Host,
+  type HostPermission,
+  type Project,
+  type User
+} from './store.ts'
 import { parseReadRate } from './policy-rate.ts'
 import { appendHostAuditReports, parseHostAuditReports } from './host-audit-ingest.ts'
 import {
@@ -346,8 +354,14 @@ function knownGroups(store: Store): string[] {
   for (const grant of store.grants) {
     if (grant.subjectType === 'group') groups.add(grant.subjectId)
   }
+  for (const grant of store.hostGrants) {
+    if (grant.subjectType === 'group') groups.add(grant.subjectId)
+  }
   return [...groups].sort()
 }
+
+/** The three host bits; anything else is a dead grant bit (AA2). */
+const HOST_PERMISSION_SET = new Set<string>(['provision', 'maintain', 'view'])
 
 type GrantSubjectVerdict =
   | { ok: true; subjectType: 'user'; subjectId: string; username: string }
@@ -1681,7 +1695,8 @@ export function createApp(config: ApiConfig): ApiHandle {
         status: number,
         code: string,
         message: string,
-        details?: Record<string, unknown>
+        details?: Record<string, unknown>,
+        metadata?: Record<string, unknown>
       ): Promise<void> => {
         await audit.append({
           eventType: 'project_create',
@@ -1690,7 +1705,7 @@ export function createApp(config: ApiConfig): ApiHandle {
           targetId: null,
           result: 'denied',
           traceId,
-          metadata: { reason: code, selfService: true }
+          metadata: { reason: code, selfService: true, ...metadata }
         })
         error(res, status, code, message, traceId, details)
       }
@@ -1730,6 +1745,21 @@ export function createApp(config: ApiConfig): ApiHandle {
       })
       if (!selection.ok) {
         return await deny(selection.status, selection.code, selection.message, selection.details)
+      }
+      // AA2: a restricted host only self-services for admins and granted
+      // subjects; absent policy is 'open', so existing hosts are unchanged.
+      if (
+        selection.host.provisionPolicy === 'restricted' &&
+        !isAdmin(authed.user) &&
+        !hasHostPermission(store, selection.host.id, authed.user, 'provision')
+      ) {
+        return await deny(
+          403,
+          'HOST_PROVISION_FORBIDDEN',
+          '该主机已限制自助建项目，请联系管理员。',
+          undefined,
+          { hostId: selection.host.id }
+        )
       }
       const key = keyVerdict.key
       if (projectKeyTaken(store, key)) {
@@ -2257,13 +2287,20 @@ export function createApp(config: ApiConfig): ApiHandle {
       const authed = requireAuth()
       if (!authed) return
       // Deliberately credential-free: developers may pick a host, not inspect one.
+      // `provisionAllowed` is additive: an old client ignores it and keeps its
+      // pre-grant behaviour; every other field stays byte-for-byte identical.
       return json(res, 200, {
         hosts: [...store.hosts.values()].map((h) => ({
           id: h.id,
           name: h.name,
           online: hostOnline(h),
           provisionable: Boolean(h.projectsRoot),
-          projectDirs: h.projectDirs ?? []
+          projectDirs: h.projectDirs ?? [],
+          provisionAllowed:
+            Boolean(h.projectsRoot) &&
+            (h.provisionPolicy !== 'restricted' ||
+              isAdmin(authed.user) ||
+              hasHostPermission(store, h.id, authed.user, 'provision'))
         }))
       })
     }
@@ -2391,7 +2428,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       })
     }
 
-    const hostAction = path.match(/^\/v1\/hosts\/([\w-]+)(\/[a-z]+)?$/)
+    const hostAction = path.match(/^\/v1\/hosts\/([\w-]+)(\/[a-z-]+)?$/)
     if (hostAction) {
       const authed = resolveToken(req)
       const hostId = hostAction[1]
@@ -2544,7 +2581,12 @@ export function createApp(config: ApiConfig): ApiHandle {
         if (!authed) {
           return error(res, 401, 'SESSION_EXPIRED', '登录已过期，请重新登录。', traceId)
         }
-        if (!isAdmin(authed.user)) {
+        // AA2: admins keep full power; a delegated subject needs the maintain bit.
+        const viaHostGrant = !isAdmin(authed.user)
+        if (
+          viaHostGrant &&
+          !hasHostPermission(store, hostId, authed.user, 'maintain')
+        ) {
           return denyPrivileged(res, traceId, authed.user, {
             eventType: 'host_maintenance',
             targetType: 'host',
@@ -2571,7 +2613,11 @@ export function createApp(config: ApiConfig): ApiHandle {
               targetId: hostId,
               result: 'success',
               traceId,
-              metadata: { enabled: nextStatus === 'maintenance', reason: nextReason }
+              metadata: {
+                enabled: nextStatus === 'maintenance',
+                reason: nextReason,
+                ...(viaHostGrant ? { via: 'host_grant' } : {})
+              }
             },
             traceId
           ))
@@ -2581,6 +2627,152 @@ export function createApp(config: ApiConfig): ApiHandle {
         target.status = nextStatus
         target.maintenanceReason = nextReason
         return json(res, 200, { status: target.status })
+      }
+
+      // ---- host grants (AA2): platform-only delegation, never sent to the host ----
+      if (req.method === 'GET' && action === '/grants') {
+        if (!authed) {
+          return error(res, 401, 'SESSION_EXPIRED', '登录已过期，请重新登录。', traceId)
+        }
+        if (!isAdmin(authed.user)) {
+          return denyPrivileged(res, traceId, authed.user, {
+            eventType: 'host_grant_update',
+            targetType: 'host',
+            targetId: hostId,
+            permission: 'platform:admin'
+          })
+        }
+        // User rows carry the username so the console names who was granted.
+        return json(res, 200, {
+          grants: store.hostGrants
+            .filter((g) => g.hostId === hostId)
+            .map((g) => {
+              if (g.subjectType !== 'user') return g
+              const user = store.users.get(g.subjectId)
+              return user ? { ...g, username: user.username } : g
+            })
+        })
+      }
+
+      if (req.method === 'PUT' && action === '/grants') {
+        if (!authed) {
+          return error(res, 401, 'SESSION_EXPIRED', '登录已过期，请重新登录。', traceId)
+        }
+        if (!isAdmin(authed.user)) {
+          // AC-18: a refused host grant write is a 403 *and* an audit event.
+          return denyPrivileged(res, traceId, authed.user, {
+            eventType: 'host_grant_update',
+            targetType: 'host',
+            targetId: hostId,
+            permission: 'platform:admin'
+          })
+        }
+        if (!auditAllowsMutations(res, traceId)) return
+        const body = await readJson(req)
+        const subjectType = body.subjectType === 'group' ? 'group' : 'user'
+        const submitted = String(body.subjectId ?? '').trim()
+        const submittedPermissions: unknown[] = Array.isArray(body.permissions)
+          ? body.permissions
+          : []
+        // PUT replaces the whole row: one bad bit rejects the row, never partially stores it.
+        const permissions = submittedPermissions.filter(
+          (permission): permission is HostPermission =>
+            typeof permission === 'string' && HOST_PERMISSION_SET.has(permission)
+        )
+        if (permissions.length !== submittedPermissions.length) {
+          return error(
+            res,
+            400,
+            'HOST_GRANT_PERMISSION_INVALID',
+            '主机权限位不在允许范围内。',
+            traceId
+          )
+        }
+        // Same resolver as project grants (AA1): ids and exact group names only.
+        const resolved = resolveGrantSubject(store, subjectType, submitted)
+        if (!resolved.ok) {
+          return error(res, 400, resolved.code, resolved.message, traceId)
+        }
+        const subjectId = resolved.subjectId
+        const username = resolved.subjectType === 'user' ? resolved.username : null
+        if (
+          !(await recordAudit(
+            res,
+            {
+              eventType: 'host_grant_update',
+              actor: authed.user.username,
+              targetType: 'host',
+              targetId: hostId,
+              result: 'success',
+              traceId,
+              metadata: {
+                hostId,
+                subjectType,
+                subjectId,
+                ...(username ? { username } : {}),
+                permissions
+              }
+            },
+            traceId
+          ))
+        ) {
+          return
+        }
+        store.hostGrants = store.hostGrants.filter(
+          (g) =>
+            !(g.hostId === hostId && g.subjectType === subjectType && g.subjectId === subjectId)
+        )
+        if (permissions.length > 0) {
+          store.hostGrants.push({ hostId, subjectType, subjectId, permissions })
+        }
+        // Why no credential revocation: host bits only gate platform endpoints and
+        // are never minted into a ticket, so no live session has to be closed.
+        return json(res, 200, { ok: true })
+      }
+
+      if (req.method === 'PUT' && action === '/provision-policy') {
+        if (!authed) {
+          return error(res, 401, 'SESSION_EXPIRED', '登录已过期，请重新登录。', traceId)
+        }
+        if (!isAdmin(authed.user)) {
+          return denyPrivileged(res, traceId, authed.user, {
+            eventType: 'host_provision_policy_update',
+            targetType: 'host',
+            targetId: hostId,
+            permission: 'platform:admin'
+          })
+        }
+        if (!auditAllowsMutations(res, traceId)) return
+        const body = await readJson(req)
+        const mode = body.mode
+        if (mode !== 'open' && mode !== 'restricted') {
+          return error(
+            res,
+            400,
+            'HOST_PROVISION_POLICY_INVALID',
+            '自助建项目策略只能是 open 或 restricted。',
+            traceId
+          )
+        }
+        if (
+          !(await recordAudit(
+            res,
+            {
+              eventType: 'host_provision_policy_update',
+              actor: authed.user.username,
+              targetType: 'host',
+              targetId: hostId,
+              result: 'success',
+              traceId,
+              metadata: { hostId, mode }
+            },
+            traceId
+          ))
+        ) {
+          return
+        }
+        target.provisionPolicy = mode
+        return json(res, 200, { hostId, mode })
       }
 
       if (req.method === 'DELETE' && action === '') {

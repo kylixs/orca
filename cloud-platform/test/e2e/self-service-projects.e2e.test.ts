@@ -149,7 +149,7 @@ describe('M59 开发者自助创建云端项目（真实平台进程）', () => 
     assert.equal(visibleIds(await listed.json()).includes('self-service-demo'), false)
   })
 
-  test('GET /v1/hosts/available 只返回 id/name/online/provisionable/projectDirs', async () => {
+  test('GET /v1/hosts/available 只返回 id/name/online/provisionable/projectDirs（+AA2 加性 provisionAllowed）', async () => {
     const res = await fetch(`${api.url}/v1/hosts/available`, { headers: auth(devToken) })
     assert.equal(res.status, 200)
     const raw = await res.text()
@@ -157,15 +157,24 @@ describe('M59 开发者自助创建云端项目（真实平台进程）', () => 
     assert.equal(raw.includes('directAddrs'), false)
     assert.equal(raw.includes('e2eePublicKey'), false)
     const body = JSON.parse(raw) as {
-      hosts: { id: string; name: string; online: boolean; provisionable: boolean; projectDirs: string[] }[]
+      hosts: {
+        id: string
+        name: string
+        online: boolean
+        provisionable: boolean
+        projectDirs: string[]
+        provisionAllowed: boolean
+      }[]
     }
     const first = body.hosts.find((host) => host.id === firstHostId)
+    // AA2 adds provisionAllowed; an absent policy is open, so pre-grant behaviour holds.
     assert.deepEqual(first, {
       id: firstHostId,
       name: 'dev-m59-a',
       online: true,
       provisionable: true,
-      projectDirs: []
+      projectDirs: [],
+      provisionAllowed: true
     })
     const seeded = body.hosts.find((host) => host.id === 'host_dev001')
     assert.equal(seeded?.provisionable, false)
