@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### O1-c 落地（2026-11-14）
+
+`c957198bd98`（6 文件 +232/−5）：F1/F2 web 云会话本地短路（ui.get/set/setWithAck/recordFeatureInteraction + settings.get/set/updatePRBotAuthorOverride 零 RPC，setWithAck 回本地成功不再 staging doomed patch 队列；settings.get 保「无宿主→全局默认」语义）；判定=isCloudSessionStoredEnvironment 包装 O1-a 谓词（未新增 web-only 谓词）。新 7 例+web 全域 62 文件 419 例绿，tc:web 清，max-lines 以作用域模块收敛未加抑制。实际 25 分钟（超 15 预估，耗在 curly/max-lines 三次结构收敛）。**O1 仅剩 g（收口）**。空槽回填环境重建。
+
 ### W13b 落地（2026-11-14）+ 事故第 7 次即拆即恢复
 
 `7df1f6738ea`（12+ 文件）：web 云会话三阶段 bootstrap（workspace.info→openCloudWorkspaceOverRpc→repo.add/fetch/setActive）+ CloudSessionEmptyState 降级回落+web-cloud-workspace-store-ports+旅程翻转 B1–B6+流式用例（**两次全绿** 16.9s/29.5s）+渲染层回归 1121 文件 9498 例全绿+tc:web 过。**事故 7**：主会话提交 W13c-1 入档时再卷 6 个 W13b 暂存文件（pathspec 也被 lint-staged 恢复步骤击穿；核验输出已示外来文件却未拦截=形式化核对）——soft-reset 拆分恢复 `e50af527d70`（恰 PROGRESS），W13b 随即自身提交 `7df1f6738ea` 全量入库，**树内容等价验证零损失**（api-types/monaco-probe 均在其提交内）。**根因加固**：主会话 docs 提交改为「python 写文件 → `git commit -- <path>`（无 add 复合）→ `git show --stat` 提交后验证」三步；并发代理活跃期禁用 add+commit 复合命令。**W13b 主体关闭**（实现+自验证双绿；审计随批次异步派）。空槽派 W13c-2；首批批量验收+环境重建待 O1-c/U30 落地对完整批次边界开跑。
