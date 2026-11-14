@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### AA4 落地（2026-11-14）
+
+`5761b98957e`（2 文件）：矩阵「添加授权」接 GET /v1/directory datalist（admin 拉一次缓存+登出清空；失败降级自由文本；用户 value=username 提示 displayName·dept，组按类型切换）+GRANT_ERROR_TEXT 新错误码 toast 三路径统一（GROUP_NOT_FOUND/GRANT_PERMISSION_INVALID，输入保留）。新 3/3+回归 25/25。空槽回填 AA6。
+
 ### AA2 落地（2026-11-14）
 
 `9633f62bfb5`（5 文件）：HostPermission 三位（provision/maintain/view）+HostGrant store+host.provisionPolicy（缺省 open 存量零迁移）；GET/PUT /v1/hosts/{id}/grants（复用 AA1 resolveGrantSubject）+PUT provision-policy；三消费点（self 门禁 403 HOST_PROVISION_FORBIDDEN+denied 审计带 hostId、available 加性 provisionAllowed 旧字段逐字不变、maintenance maintain 委派 via:host_grant）；view 位 v1 仅入模型不接端点；宿主 wire 零改动（设计硬约束）。新 5/5+回归 75/75=80 全绿。空槽回填 AA3（消费点 enforce，server.ts 串行条件满足）。
