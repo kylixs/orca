@@ -782,54 +782,178 @@ async function renderMembers() {
   if (selected) showGrants(selected.id)
 }
 
+/** The full Permission set of the credential contract; the matrix edits exactly these 7 bits. */
+const GRANT_PERMISSIONS = [
+  'open',
+  'terminal',
+  'agent',
+  'file:read',
+  'file:write',
+  'browser',
+  'download'
+]
+
+const grantKey = (g) => `${g.subjectType}:${g.subjectId}`
+const subjectLabel = (g) => g.username ?? g.subjectId
+
 async function showGrants(projectId) {
-  const body = await api(`/v1/projects/${projectId}/grants`)
-  const permissionSet = ['open', 'terminal', 'agent', 'file:read', 'file:write', 'download']
+  const grantsPath = `/v1/projects/${projectId}/grants`
+  const body = await api(grantsPath)
+  // What the platform holds per row, sorted so a draft diff is a plain compare.
+  const serverPerms = new Map(body.grants.map((g) => [grantKey(g), [...g.permissions].sort()]))
+  // Checkbox edits stay a local draft per row: nothing lands until 「保存变更」 (M120b §4.1).
+  const draft = new Map()
+  const draftOf = (g) => draft.get(grantKey(g)) ?? [...g.permissions].sort()
+  const isDirty = (g) => {
+    const next = draft.get(grantKey(g))
+    if (!next) return false
+    const base = serverPerms.get(grantKey(g)) ?? []
+    return next.length !== base.length || next.some((p, i) => p !== base[i])
+  }
+  const dirtyGrants = () => body.grants.filter(isDirty)
+
   const rows = body.grants
     .map((g) => {
       // GET /grants names only user rows it can resolve: an unnamed user row has
       // no live account behind it (a pre-fix row keyed by the typed name), so it
       // grants nothing and its removal is refused server-side (W2 audit m-2).
       const deadUser = g.subjectType === 'user' && !g.username
-      return `<tr>
-        <td>${esc(g.username ?? g.subjectId)}${deadUser ? ' <span class="badge">已删除用户</span>' : ''}</td>
+      return `<tr data-row="${esc(grantKey(g))}">
+        <td>${esc(subjectLabel(g))}${deadUser ? ' <span class="badge">已删除用户</span>' : ''}<span class="badge" data-unsaved hidden>未保存</span></td>
         <td class="muted">${g.subjectType === 'group' ? '组' : '用户'}</td>
-        ${permissionSet
-          .map((p) =>
-            p === 'download'
-              ? '<td><span class="badge lock">锁</span></td>'
-              : `<td>${g.permissions.includes(p) ? '✓' : '—'}</td>`
-          )
-          .join('')}
-        <td class="actions"><button class="btn sm danger" data-remove="${g.subjectType}:${g.subjectId}" ${deadUser ? 'disabled title="该账号已不存在，无法在此移除"' : ''}>移除</button></td>
+        ${GRANT_PERMISSIONS.map(
+          (p) =>
+            `<td><input type="checkbox" aria-label="${esc(subjectLabel(g))} ${p}" data-perm="${p}" data-subject-type="${g.subjectType}" data-subject-id="${esc(g.subjectId)}"${draftOf(g).includes(p) ? ' checked' : ''}${deadUser ? ' disabled title="该账号已不存在"' : ''}></td>`
+        ).join('')}
+        <td class="actions"><button class="btn sm danger" data-remove="${esc(grantKey(g))}" ${deadUser ? 'disabled title="该账号已不存在，无法在此移除"' : ''}>移除</button></td>
       </tr>`
     })
     .join('')
   const panel = $('#grantPanel')
   panel.innerHTML = `
     <div class="section-head" style="margin-top:0"><h2>授权矩阵</h2></div>
-    <div class="note">下载权限在平台策略中控制，一期固定为禁止，审批流二期开放。</div>
+    <div class="note">download 仅在项目下载策略为「允许」时生效（平台设置）；策略为「禁止」时勾选也不放行导出。</div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>主体</th><th>类型</th><th>open</th><th>terminal</th><th>agent</th><th>read</th><th>write</th><th>download</th><th></th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="9" class="table-empty">尚无授权</td></tr>`}</tbody>
+        <thead><tr><th>主体</th><th>类型</th>${GRANT_PERMISSIONS.map((p) => `<th>${p}</th>`).join('')}<th></th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="10" class="table-empty">尚无授权</td></tr>`}</tbody>
       </table>
     </div>
     <div class="toolbar" style="margin-top:16px">
-      <input class="input" id="grantSubject" style="min-width:240px" placeholder="组 ID，如 team-payment">
+      <button class="btn primary" id="grantSave" disabled>保存变更</button>
+      <button class="btn" id="grantDiscard" disabled>放弃修改</button>
+      <span class="muted">勾选先暂存，「保存变更」才落盘。</span>
+    </div>
+    <div class="toolbar" style="margin-top:12px">
+      <input class="input" id="grantSubject" style="min-width:240px" placeholder="用户名或组 ID，如 zhangsan / team-payment">
       <select class="select" id="grantType"><option value="group">组</option><option value="user">用户</option></select>
-      <button class="btn primary" id="grantAdd">授予基础权限</button>
+      <button class="btn" id="grantAdd">添加授权</button>
     </div>`
+
+  const syncDraftUi = (tr) => {
+    const dirty = body.grants.some((g) => grantKey(g) === tr.dataset.row && isDirty(g))
+    tr.classList.toggle('dirty', dirty)
+    tr.querySelector('[data-unsaved]').hidden = !dirty
+    const anyDirty = dirtyGrants().length > 0
+    $('#grantSave').disabled = !anyDirty
+    $('#grantDiscard').disabled = !anyDirty
+  }
+  for (const box of panel.querySelectorAll('input[type="checkbox"][data-perm]')) {
+    box.onchange = () => {
+      const key = `${box.dataset.subjectType}:${box.dataset.subjectId}`
+      const next = new Set(draft.get(key) ?? serverPerms.get(key) ?? [])
+      if (box.checked) next.add(box.dataset.perm)
+      else next.delete(box.dataset.perm)
+      draft.set(key, [...next].sort())
+      syncDraftUi(box.closest('tr'))
+    }
+  }
+
+  // The platform has no online-session listing, so the blast radius is stated as
+  // a rule per row kind, never as named online users (M120b §4.3).
+  const diffLine = (g) => {
+    const base = new Set(g.permissions)
+    const next = new Set(draftOf(g))
+    const added = GRANT_PERMISSIONS.filter((p) => next.has(p) && !base.has(p))
+    const removed = GRANT_PERMISSIONS.filter((p) => base.has(p) && !next.has(p))
+    const changes = [
+      added.length ? `+新增 ${added.join('、')}` : '',
+      removed.length ? `−移除 ${removed.join('、')}` : ''
+    ]
+      .filter(Boolean)
+      .join('；')
+    const blast =
+      g.subjectType === 'user'
+        ? `保存将断开 ${subjectLabel(g)} 当前全部云会话（含其他项目）。`
+        : '宿主无法解析组成员，保存将断开该项目当前全部在线会话。'
+    return `<li>${esc(subjectLabel(g))}（${g.subjectType === 'group' ? '组' : '用户'}）：${esc(changes)}<br><span class="muted">${esc(blast)}</span></li>`
+  }
+
+  const applyChanges = async (dirty) => {
+    // A double click would double-send the batch: the buttons stay dead until the redraw.
+    $('#grantSave').disabled = true
+    $('#grantDiscard').disabled = true
+    let saved = 0
+    for (const g of dirty) {
+      try {
+        await api(grantsPath, {
+          method: 'PUT',
+          // Row-wide replacement: the PUT carries the subject's full array and the
+          // platform rebuilds that row from it, so unticked bits stay unticked (§4.2).
+          body: JSON.stringify({
+            subjectType: g.subjectType,
+            subjectId: g.subjectId,
+            permissions: draftOf(g)
+          })
+        })
+        saved += 1
+      } catch (err) {
+        toast(
+          `已保存 ${saved} 项，${dirty.length - saved} 项失败：${subjectLabel(g)}（${err.message ?? err}）`
+        )
+        // Applied rows persist server-side; the rest falls back to what it holds.
+        showGrants(projectId)
+        return
+      }
+    }
+    toast(`已保存 ${saved} 项授权变更`)
+    showGrants(projectId)
+  }
+
+  $('#grantSave').onclick = () => {
+    const dirty = dirtyGrants()
+    if (dirty.length === 0) return
+    dialog(
+      '确认保存权限变更',
+      `
+      <p>将保存 ${dirty.length} 行权限变更：</p>
+      <ul>${dirty.map(diffLine).join('')}</ul>
+      <p class="muted">断开后重新打开项目即按新权限签发凭证。</p>`,
+      [
+        {
+          label: '确认保存',
+          primary: true,
+          onClick: () => {
+            void applyChanges(dirty)
+          }
+        }
+      ]
+    )
+  }
+  $('#grantDiscard').onclick = () => showGrants(projectId)
+
   $('#grantAdd').onclick = async () => {
     const subjectId = $('#grantSubject').value.trim()
     if (!subjectId) return
     try {
-      await api(`/v1/projects/${projectId}/grants`, {
+      await api(grantsPath, {
         method: 'PUT',
+        // An empty array deletes a row, so a new grant is born with one bit and
+        // the rest is set in the matrix (M120b §4.2).
         body: JSON.stringify({
           subjectType: $('#grantType').value,
           subjectId,
-          permissions: ['open', 'terminal', 'agent', 'file:read', 'file:write']
+          permissions: ['open']
         })
       })
     } catch (err) {
@@ -838,14 +962,16 @@ async function showGrants(projectId) {
       toast(`授予失败：${err.message ?? err}`)
       return
     }
-    toast('已授予')
+    toast('已授予，默认 open，可在矩阵中调整')
     showGrants(projectId)
   }
-  for (const btn of document.querySelectorAll('[data-remove]')) {
+  for (const btn of panel.querySelectorAll('[data-remove]')) {
     btn.onclick = async () => {
-      const [subjectType, subjectId] = btn.dataset.remove.split(':')
+      const sep = btn.dataset.remove.indexOf(':')
+      const subjectType = btn.dataset.remove.slice(0, sep)
+      const subjectId = btn.dataset.remove.slice(sep + 1)
       try {
-        await api(`/v1/projects/${projectId}/grants`, {
+        await api(grantsPath, {
           method: 'PUT',
           body: JSON.stringify({ subjectType, subjectId, permissions: [] })
         })
