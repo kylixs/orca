@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### U37-A 落地 + 环境 shim 修复（2026-11-14）
+
+U37-A `510dd1346cf`（2 文件 +363）：pendingProvisionAssignments 纯函数（本宿主+provisioning+repoUrl 非空，≤16 条/拍，同拍回报 ok 不重派）+心跳响应 wire-additive 仅非空携带+maintenance/revoked 跳过+轻量批量审计（appendBestEffort 恰一条）；旧宿主白名单摘字段结构不可见（U21 先例）。5/5+心跳门禁 29/29+m70/platform 32/32+单元 59/59+tsc 0。**U37-A/B 齐备**。环境：验收代理遗留 node_modules/.bin 断链（指向已删隔离树）已修复（oxlint/lint-staged/oxfmt 重链+全站 0 断链），husky 门禁恢复。空槽派 U37-C。
+
 ### 模型额度中断（二次）与恢复（2026-11-14）
 
 402 Flash 日额度满中断四代理（U11 家族再现；用户切模型后指令恢复）。**U37-B 已在中断前提交**（`b0d15c96d8b`，9 文件 +802：cloud-provision-assignment 执行器+provision-kick 测试+装接线 enrollment/attach 同点——主会话补验 18/18 绿，最终报告未回收以补验兜底）；U37-A/U42/U43 现场保留，已 SendMessage 续派（附现场甄别指引：U37-A 的 MM 状态甄别归属、U42 从 Electron 重建续、U43 从类型检查续；三者均强调「完成即提交」硬规则）。
