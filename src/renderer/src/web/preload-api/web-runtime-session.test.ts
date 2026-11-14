@@ -9,7 +9,8 @@ import {
 } from '../../../../shared/remote-runtime-shared-control-test-server'
 import type { WebRuntimeConnectionState } from '../web-runtime-connection-frame-router'
 import type { StoredWebRuntimeEnvironment } from '../web-runtime-environment'
-import { WebRuntimeClient, type WebRuntimeSessionClient } from '../web-runtime-client'
+import { WebRuntimeClient } from '../web-runtime-client'
+import type { WebRuntimeSessionClient } from '../web-runtime-session-client'
 
 const STATUS_REPLY: RuntimeRpcResponse<unknown> = {
   id: 'status.get',

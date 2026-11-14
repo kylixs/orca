@@ -1,52 +1,35 @@
 import { throwIfSignalAborted, waitForPromiseWithSignal } from '../../../shared/abort-signal-reason'
 import { RuntimeHostStatusOwner } from '../../../shared/runtime-host-status-owner'
-import type {
-  RuntimeHostStatusSnapshot,
-  RuntimeHostStatusResponse
-} from '../../../shared/runtime-host-status'
+import type { RuntimeHostStatusResponse } from '../../../shared/runtime-host-status'
+
 import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
 import { WebRuntimeConnectionTransport } from './web-runtime-connection-transport'
 import { subscribeWebRuntimeFileWatch } from './web-runtime-file-watch-subscription'
+import {
+  WebRuntimeChildTicketOffers,
+  type WebRuntimeTicketReSigner
+} from './web-runtime-child-ticket-offers'
 import type { WebPairingOffer } from './web-pairing'
 import type { WebRuntimeConnectionState } from './web-runtime-connection-frame-router'
 import type {
-  WebRuntimeSubscribeOptions,
   WebRuntimeSubscriptionCallbacks,
   WebRuntimeTransportSubscription,
   WebRuntimeTransportSubscriptionHandle
 } from './web-runtime-subscription-contract'
-
-export type WebRuntimeSubscriptionHandle = {
-  unsubscribe: () => void
-  sendBinary: (bytes: Uint8Array<ArrayBufferLike>) => void
-}
-
-export type SubscribeOptions = WebRuntimeSubscribeOptions
+import type {
+  SubscribeOptions,
+  WebRuntimeClientStatusOptions,
+  WebRuntimeSubscriptionHandle
+} from './web-runtime-session-client'
 
 const SHARED_CONNECTION_SUBSCRIPTION_METHODS = new Set(['files.watch'])
-
-export type WebRuntimeClientStatusOptions = {
-  environmentId: string
-  pairingRevision: number
-  publish: (snapshot: RuntimeHostStatusSnapshot) => void
-  verified: (response: RuntimeHostStatusResponse) => void
-}
-
-/**
- * The client surface the preload session relies on. A cloud handoff adopts a client
- * that was created before the environment existed, so the session attaches status
- * wiring afterwards instead of constructing a second client.
- */
-export type WebRuntimeSessionClient = Pick<
-  WebRuntimeClient,
-  'call' | 'subscribe' | 'close' | 'attachStatusOwner' | 'statusOwner' | 'connectionState'
->
 
 export class WebRuntimeClient {
   private readonly transport: WebRuntimeConnectionTransport
   private readonly fileWatchTeardownRetries = new Map<string, Set<() => Promise<void>>>()
   private readonly childClients = new Set<WebRuntimeClient>()
   private readonly deviceSecretKeyB64: string | undefined
+  private readonly childTicketOffers: WebRuntimeChildTicketOffers
 
   statusOwner?: RuntimeHostStatusOwner
 
@@ -56,10 +39,13 @@ export class WebRuntimeClient {
       reconnect?: boolean
       /** Cloud offers only: the persisted device secret the host's E2EE proof needs. */
       deviceSecretKeyB64?: string
+      /** Cloud offers only: signs the ticket each child connection presents. */
+      ticketReSigner?: WebRuntimeTicketReSigner
       status?: WebRuntimeClientStatusOptions
     } = {}
   ) {
     this.deviceSecretKeyB64 = options.deviceSecretKeyB64
+    this.childTicketOffers = new WebRuntimeChildTicketOffers(options.ticketReSigner ?? null)
     this.transport = new WebRuntimeConnectionTransport(
       pairing,
       {
@@ -90,6 +76,11 @@ export class WebRuntimeClient {
 
   get connectionState(): WebRuntimeConnectionState {
     return this.transport.state
+  }
+
+  /** Attach ticket signing once; the connect flow adopts the client with its session. */
+  attachTicketReSigner(reSigner: WebRuntimeTicketReSigner): void {
+    this.childTicketOffers.attachReSigner(reSigner)
   }
 
   /** Attach status publication once; an adopted cloud client arrives without one. */
@@ -143,10 +134,23 @@ export class WebRuntimeClient {
         teardownRetries: this.fileWatchTeardownRetries
       })
     }
-    const client = new WebRuntimeClient(
-      this.pairing,
-      this.deviceSecretKeyB64 ? { deviceSecretKeyB64: this.deviceSecretKeyB64 } : {}
-    )
+    // Why branch before awaiting: a legacy offer signs nothing, so the child and
+    // its abort listener still attach synchronously, exactly as before.
+    const signed = this.pairing.cloud
+      ? await this.childTicketOffers.offerForNextConnection(options?.signal)
+      : null
+    const offer = signed ?? this.pairing
+    const client = new WebRuntimeClient(offer, {
+      // Why no reconnect on a ticketed child: its ticket burned at this upgrade, so
+      // a dropped socket recovers through the caller's resubscribe — a new ticket.
+      ...(signed ? { reconnect: false } : {}),
+      ...(this.deviceSecretKeyB64 ? { deviceSecretKeyB64: this.deviceSecretKeyB64 } : {}),
+      ...(signed
+        ? {
+            ticketReSigner: () => this.childTicketOffers.offerForNextConnection()
+          }
+        : {})
+    })
     this.childClients.add(client)
     const closeChild = (notifySubscriptions = false): void => {
       options?.signal?.removeEventListener('abort', onAbort)

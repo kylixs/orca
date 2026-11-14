@@ -8,7 +8,7 @@ import type { WorktreeVisibilityDefaults } from '../../../../shared/global-setti
 import { RuntimeRpcCallQueuePool } from '../../../../shared/runtime-rpc-call-queue'
 import type { RuntimeRpcResponse } from '../../../../shared/runtime-rpc-envelope'
 import type { Worktree } from '../../../../shared/worktree/types'
-import type { WebRuntimeSessionClient } from '../web-runtime-client'
+import type { WebRuntimeSessionClient } from '../web-runtime-session-client'
 import { WebRuntimeClient } from '../web-runtime-client'
 import {
   clearStoredWebRuntimeEnvironment,

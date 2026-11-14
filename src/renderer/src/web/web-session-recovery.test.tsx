@@ -7,7 +7,7 @@ import type { WebRuntimeConnectionState } from './web-runtime-connection-frame-r
 import type { StoredWebRuntimeEnvironment } from './web-runtime-environment'
 import type * as WebRuntimeSessionModule from './preload-api/web-runtime-session'
 import type * as WebSessionRecoveryModule from './web-session-recovery'
-import type { WebRuntimeSessionClient } from './web-runtime-client'
+import type { WebRuntimeSessionClient } from './web-runtime-session-client'
 
 function cloudEnvironment(): StoredWebRuntimeEnvironment {
   const id = 'web-cloud-live'

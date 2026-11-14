@@ -2633,6 +2633,10 @@ TTL 先改 5 分钟后经再评估**改回 60 秒**（单次消费+绑定不变�
 
 提交 `903e8e80ad4`（10 文件 +461/−138）：MAJ-1 登录入口改**状态栏 in-flow segment**（悬浮终端开关之后，结构上不可能遮挡/拦截原生点击，远离 Toast 角；隐藏状态栏为显式选择的取舍入档）+ **突变测试红证明**（改回 fixed chip → regression 前两例立红）；MAJ-2 回归断言渲染真实 StatusBar→StatusBarSurface（不再桩掉），断言 segment 为状态栏 DOM 子节点、原生开关同行的 TOGGLE 事件仍派发、无桥时原生结构照旧（happy-dom 无布局引擎故用结构不变量替代几何断言，已说明）；登出链单轮+失败 toast 不伪装；m3/m4 补齐。128 用例全绿；本域 tc/lint/gate 0 finding（剩余项均属 W7b/W5b 在途文件）。已追问构建门槛语义更新（W10 verify-cloud-build-defines 前置条件过期挡企业分发构建）是否在本轮补齐。
 
+### W5b 审计有条件通过（2 major：1 回派 + 1 流程记档，2026-11-14）
+
+审计（`test-reports/w5b-audit.md`）：blocker 0、major 2——**MAJ-1**（一行修复回派）：handoff e2e spec 进了 tc:web exclude 但未进 cloud-e2e include，不被任何 typecheck 工程覆盖；**MAJ-2**（流程记档）：宿主 dispatch 安全路径变更落在 test(e2e) 类型提交内、B1 实际入树点是 docs 标题提交（与 48939e14c83 事故同型）——多代理共享 index 下无法安全重写历史，规则强化：**安全路径变更与测试变更必须分提交且提交前 `git show --stat` 核对类型归属**。安全语义全成立：票据翻转是净收紧（probe3 实证真手机行为不变）、映射默认拒绝完整、`project.provision→open` 与文档一致、回显断言真可红（旧代码双重不可失败代码级证实）。minor 5/note 9 入报告。MAJ-1 修复后 W5b 关闭。
+
 ### W11 关闭（收口复验四项全过，2026-11-14）
 
 复验（`evidence/w11-final-verify/`）：① 测试 16 文件 86 例 + App 回归 35 例全绿；② **MAJ-1 真机复核成立**——入口为状态栏 in-flow segment（非 fixed）、与悬浮终端开关同排、真机 elementFromPoint=入口自身、TOGGLE 事件派发恰 1 次、双形态截图；③ **构建门槛正负双验证**——baked 构建 exit 0（216 bundle + 字面量在 main）、负向（缺 define / 缺 canary）exit 1、中性构建恢复零残留；④ 三形态启动矩阵全过（无 env/API_URL/打包默认均按钮可见+预填正确+无自动登录）。**W11 关闭**（`a82aa84c082`+`903e8e80ad4`+`0d3178541ad`+独立测试+审计回派+收口复验）。遗留入 P2：F1 失败横幅 fixed 浮压状态栏（先于 W11 链存在）、F2 横幅注释过时、F3 vitest 层 shell 仍为桩（遮挡断言在结构层已可红）、U15/W12 自建项目闭环。
