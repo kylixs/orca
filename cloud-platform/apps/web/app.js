@@ -158,7 +158,9 @@ function renderForbidden() {
 }
 
 async function loadProjects() {
-  const body = await api('/v1/projects?includeArchived=1')
+  // Live views only: an archived project is history, so it never enters the
+  // workbench or 「我的项目」 (U53③). includeArchived stays an explicit query.
+  const body = await api('/v1/projects')
   state.projects = body.projects
   return body.projects
 }
@@ -231,6 +233,11 @@ function hostStatusBadge(p) {
   return p.hostStatus === 'online' ? '' : '<span class="badge">主机离线</span>'
 }
 
+/** Fallback for a row that still reaches a live view: archived is never openable. */
+function archivedBadge(p) {
+  return p.status === 'archived' ? '<span class="badge">已归档</span>' : ''
+}
+
 function hostStateText(p) {
   if (p.hostStatus === 'maintenance') {
     return p.hostMaintenanceReason ? `维护中 · ${p.hostMaintenanceReason}` : '维护中'
@@ -250,6 +257,7 @@ function permissionSummary(p) {
 
 /** Why 打开 is unavailable, or null when the project can be opened (FR-2.4). */
 function openDisabledReason(p) {
+  if (p.status === 'archived') return '项目已归档，无法打开'
   if (p.hostStatus === 'maintenance') return '主机维护中'
   if (p.hostStatus !== 'online') return '主机离线'
   if (p.permissions.length === 0 && isAdmin()) {
@@ -268,7 +276,7 @@ function projectCard(p, globalDefault) {
   const offline = p.hostStatus !== 'online'
   return `
     <div class="card project-card">
-      <div class="name"><span class="dot ${offline ? 'offline' : 'online'}"></span>${esc(p.name)}</div>
+      <div class="name"><span class="dot ${offline ? 'offline' : 'online'}"></span>${esc(p.name)} ${archivedBadge(p)}</div>
       <div class="path">${esc(p.repoUrl || p.path)}</div>
       <div class="meta-row">
         <span>${esc(p.hostName ?? '—')}</span>
@@ -389,7 +397,7 @@ function confirmSelfGrant(projectId) {
 function projectRow(p) {
   const offline = p.hostStatus !== 'online'
   return `<tr>
-    <td><strong>${esc(p.name)}</strong><div class="muted mono">${esc(p.path)}</div></td>
+    <td><strong>${esc(p.name)}</strong> ${archivedBadge(p)}<div class="muted mono">${esc(p.path)}</div></td>
     <td class="mono muted">${esc(p.repoUrl)}</td>
     <td>${esc(p.hostName ?? '—')} ${hostStatusBadge(p)}</td>
     <td class="muted">${esc(permissionSummary(p))}</td>
@@ -915,7 +923,7 @@ async function renderProjects() {
       rows
         .map(
           (p) => `<tr>
-        <td><strong>${esc(p.name)}</strong><div class="muted mono">${esc(p.path)}</div></td>
+        <td><strong>${esc(p.name)}</strong> ${archivedBadge(p)}<div class="muted mono">${esc(p.path)}</div></td>
         <td class="mono muted">${esc(p.repoUrl)}</td>
         <td>${esc(p.hostName)} ${hostStatusBadge(p)}</td>
         <td class="muted">${esc(permissionSummary(p))}</td>
@@ -1786,28 +1794,55 @@ async function showGrants(projectId) {
   $('#grantDiscard').onclick = () => showGrants(projectId)
 
   $('#grantAdd').onclick = async () => {
+    const subjectType = $('#grantType').value
     const subjectId = $('#grantSubject').value.trim()
     if (!subjectId) return
-    try {
-      await api(grantsPath, {
-        method: 'PUT',
-        // An empty array deletes a row, so a new grant is born with one bit and
-        // the rest is set in the matrix (M120b §4.2).
-        body: JSON.stringify({
-          subjectType: $('#grantType').value,
-          subjectId,
-          permissions: ['open']
+    const save = async () => {
+      try {
+        await api(grantsPath, {
+          method: 'PUT',
+          // An empty array deletes a row, so a new grant is born with one bit and
+          // the rest is set in the matrix (M120b §4.2).
+          body: JSON.stringify({ subjectType, subjectId, permissions: ['open'] })
         })
-      })
-    } catch (err) {
-      // A refused grant (a mistyped name → 400 USER_NOT_FOUND) used to vanish
-      // silently: report it and leave the matrix as the platform holds it (W2-M-1).
-      // The typed subject stays in the input so it can be corrected (AA4).
-      toast(`授予失败：${grantErrorText(err)}`)
+      } catch (err) {
+        // A refused grant (a mistyped name → 400 USER_NOT_FOUND) used to vanish
+        // silently: report it and leave the matrix as the platform holds it (W2-M-1).
+        // The typed subject stays in the input so it can be corrected (AA4).
+        toast(`授予失败：${grantErrorText(err)}`)
+        return
+      }
+      toast('已授予，默认 open，可在矩阵中调整')
+      showGrants(projectId)
+    }
+    // U53④: PUT replaces the whole row, so an existing subject silently loses
+    // every bit it is not born with. Name the overwrite before sending it.
+    const existing = body.grants.find(
+      (g) =>
+        g.subjectType === subjectType &&
+        // A user row is stored by the resolved id; the input carries the username.
+        (g.subjectId === subjectId || (subjectType === 'user' && g.username === subjectId))
+    )
+    if (!existing) {
+      await save()
       return
     }
-    toast('已授予，默认 open，可在矩阵中调整')
-    showGrants(projectId)
+    dialog(
+      '覆盖现有权限位',
+      `
+      <p>${esc(subjectLabel(existing))}（${subjectType === 'group' ? '组' : '用户'}）已有一条授权。</p>
+      <p>覆盖现有权限位（当前 ${esc(GRANT_PERMISSIONS.filter((p) => existing.permissions.includes(p)).join(' + ') || '无')} → open）</p>
+      <p class="muted">保存将断开该主体当前全部云会话（含其他项目）。</p>`,
+      [
+        {
+          label: '覆盖授权',
+          primary: true,
+          onClick: () => {
+            void save()
+          }
+        }
+      ]
+    )
   }
   for (const btn of panel.querySelectorAll('[data-remove]')) {
     btn.onclick = async () => {
@@ -2175,6 +2210,10 @@ function logout() {
   localStorage.removeItem('orca.access')
   localStorage.removeItem('orca.refresh')
   localStorage.removeItem('orca.user')
+  // U53②: the next user must not find the previous credentials one click away.
+  $('#username').value = ''
+  $('#password').value = ''
+  $('#loginError').hidden = true
   showLogin()
 }
 

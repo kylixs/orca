@@ -582,3 +582,123 @@ test('W2-m-2 无主用户授权行标记已删除用户且不可移除', async (
     liveRows: 'zhangsan / team-payment → 无标记，移除可用'
   })
 }, 120_000)
+
+test('R5-① 退出登录清空登录框凭据', async () => {
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  const username = page.window.document.querySelector<HTMLInputElement>('#username')!
+  const password = page.window.document.querySelector<HTMLInputElement>('#password')!
+  assert.equal(username.value, 'admin', 'precondition: the submitted account stays in the form')
+
+  page.window.document.querySelector<HTMLButtonElement>('#logoutBtn')!.click()
+  await page.settle()
+
+  assert.equal(page.hidden('#view-app'), true, 'logout returns to the login view')
+  assert.equal(username.value, '', 'U53②: the previous account must not be restorable in one click')
+  assert.equal(password.value, '', 'U53②: the previous password must not stay in the form')
+  saveEvidence('r2r5-fix', 'r5-logout-clears-credentials.json', {
+    finding: 'U53② logout credential residue',
+    usernameAfterLogout: username.value,
+    passwordAfterLogout: password.value === '' ? '' : '<non-empty>'
+  })
+}, 120_000)
+
+test('R5-② 工作台/我的项目默认排除归档项目，归档行有徽标且不可打开', async () => {
+  const created = await adminApi('/v1/projects', {
+    method: 'POST',
+    body: JSON.stringify({
+      key: 'r5-archived',
+      name: 'r5-archived',
+      hostId: liveHostId,
+      path: '/srv/work/r5-archived'
+    })
+  })
+  assert.equal(created.status, 201, JSON.stringify(created.body))
+  const archivedId = (created.body as { id: string }).id
+  const archivedAt = await adminApi(`/v1/projects/${archivedId}/archive`, { method: 'POST' })
+  assert.equal(archivedAt.status, 200, JSON.stringify(archivedAt.body))
+
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  assert.doesNotMatch(page.text('#content'), /r5-archived/, 'the workbench must not list an archived project')
+  assert.equal(
+    page.calls().some((call) => call.includes('includeArchived=1')),
+    false,
+    'live views must not ask for archived rows'
+  )
+
+  await page.clickNav('projects')
+  assert.doesNotMatch(page.text('#content'), /r5-archived/, '我的项目 must not list an archived project')
+
+  // Fallback: if an archived row ever reaches a live view (stale/legacy payload),
+  // it is badged and its open entry is disabled rather than silently openable.
+  const listing = await adminApi('/v1/projects?includeArchived=1')
+  const archived = listing.body.projects.find((p: { id: string }) => p.id === archivedId)
+  assert.equal(archived.status, 'archived')
+  page.fail('GET', '/v1/projects', { status: 200, body: { projects: [archived] } })
+  await page.clickNav('workbench')
+  const row = rowFor(page, 'r5-archived')
+  assert.match(row.textContent ?? '', /已归档/, 'an archived row must carry the badge')
+  assert.equal(
+    row.querySelector<HTMLButtonElement>('[data-open]')?.disabled,
+    true,
+    'an archived project cannot be opened'
+  )
+  page.clearFails()
+  saveEvidence('r2r5-fix', 'r5-archived-excluded.json', {
+    finding: 'U53③ archived projects in live views',
+    liveListRequests: 'GET /v1/projects (no includeArchived)',
+    fallback: '已归档 badge + open disabled'
+  })
+}, 120_000)
+
+test('R5-③ 重复添加授权先确认覆盖，确认后才 PUT', async () => {
+  const projectId = 'proj_payment'
+  const grantsPath = `/v1/projects/${projectId}/grants`
+  // Seed a wide row so the overwrite visibly drops bits (open + file:read → open).
+  const seeded = await adminApi(grantsPath, {
+    method: 'PUT',
+    body: JSON.stringify({ subjectType: 'user', subjectId: 'zhangsan', permissions: ['open', 'file:read'] })
+  })
+  assert.equal(seeded.status, 200, JSON.stringify(seeded.body))
+
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  await page.clickNav('members')
+  await openGrantPanel(page, 'payment-service')
+  const putsBefore = page.calls().filter((call) => call === `PUT ${grantsPath}`).length
+
+  page.window.document.querySelector<HTMLInputElement>('#grantSubject')!.value = 'zhangsan'
+  page.window.document.querySelector<HTMLSelectElement>('#grantType')!.value = 'user'
+  page.window.document.querySelector<HTMLButtonElement>('#grantAdd')!.click()
+  await page.settle()
+
+  const dialog = page.window.document.querySelector<HTMLElement>('.dialog')
+  assert.ok(dialog, 'duplicate subject must open a confirmation dialog')
+  assert.match(dialog.textContent ?? '', /覆盖现有权限位/)
+  assert.match(dialog.textContent ?? '', /open \+ file:read → open/)
+  assert.equal(
+    page.calls().filter((call) => call === `PUT ${grantsPath}`).length,
+    putsBefore,
+    'the overwrite must not reach the platform before confirmation'
+  )
+
+  dialog.querySelector<HTMLButtonElement>('[data-action="0"]')!.click()
+  await page.settle()
+  assert.equal(
+    page.calls().filter((call) => call === `PUT ${grantsPath}`).length,
+    putsBefore + 1,
+    'confirming sends exactly one overwrite PUT'
+  )
+  const after = await adminApi(grantsPath)
+  const row = after.body.grants.find((g: GrantRow) => g.username === 'zhangsan')
+  assert.deepEqual([...row.permissions].sort(), ['open'], 'the confirmed overwrite applies the default open')
+  saveEvidence('r2r5-fix', 'r5-grant-overwrite-confirm.json', {
+    finding: 'U53④ silent downgrade on duplicate subject',
+    dialog: '覆盖现有权限位（当前 open + file:read → open）',
+    after: row.permissions
+  })
+}, 120_000)

@@ -1,7 +1,8 @@
 import ReactDOM from 'react-dom/client'
 import { CloudApp } from '../cloud/cloud-app'
 import { createCloudBrowserBridge } from '../cloud/cloud-browser-bridge'
-import { takeCloudAdminEmbedEntry } from '../cloud/cloud-admin-embed'
+import { takeCloudAdminEmbedEntry, type CloudAdminEmbedEntry } from '../cloud/cloud-admin-embed'
+import type { CloudBridge } from '../cloud/use-cloud-session'
 import { createLocalStorageWebCloudDeviceKey } from '../web/web-cloud-device-key'
 import { clearWebHandoffFromAddressBar } from '../web/web-cloud-handoff-entry'
 
@@ -14,6 +15,32 @@ export function resolveCloudAdminApiUrl(location: Location = window.location): s
   const injected = window.__ORCA_CLOUD_ADMIN_API_URL__
   const fromQuery = new URLSearchParams(location.search).get('api')
   return String(fromQuery ?? injected ?? import.meta.env.VITE_ORCA_CLOUD_API_URL ?? '').trim()
+}
+
+/**
+ * U59 P0: an embed entry carrying a one-time code must spend it before the app
+ * mounts. Otherwise the saved session's restore and the code exchange race, the
+ * restored state auto-opens while the exchange has cleared the in-memory
+ * session, and the open fails with NOT_SIGNED_IN. Pre-redeeming also leaves the
+ * exchange's own failure state for the app to report (the code is retried once).
+ */
+export async function prepareCloudAdminEntry(
+  bridge: CloudBridge | null,
+  embed: CloudAdminEmbedEntry | null,
+  mount: (embed: CloudAdminEmbedEntry | null) => void
+): Promise<void> {
+  if (!bridge?.loginWithHandoff || !embed?.handoffCode) {
+    mount(embed)
+    return
+  }
+  try {
+    await bridge.loginWithHandoff(embed.handoffCode)
+    // The session is live in memory now; the app restores it, never the code.
+    mount({ projectId: embed.projectId, handoffCode: null })
+  } catch {
+    // Why keep the code: the app renders the expired/forbidden notice and form.
+    mount(embed)
+  }
 }
 
 /** Side-effect-free module: only mounting renders, so this graph's shared chunks
@@ -35,5 +62,7 @@ export function mountCloudAdmin(): void {
       })
     : null
 
-  ReactDOM.createRoot(root).render(<CloudApp bridge={bridge} embed={embed} />)
+  void prepareCloudAdminEntry(bridge, embed, (entry) =>
+    ReactDOM.createRoot(root).render(<CloudApp bridge={bridge} embed={entry} />)
+  )
 }
