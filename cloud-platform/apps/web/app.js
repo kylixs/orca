@@ -99,8 +99,22 @@ function isAdmin() {
   return Boolean(state.user?.permissions?.includes('platform:admin'))
 }
 
+function isAuditor() {
+  return Boolean(state.user?.permissions?.includes('platform:auditor'))
+}
+
+/** U72：审计路由对 admin 与 auditor 开放（u67 §7.1 审计=审计查询）；其余 admin 路由不变。 */
+function canViewAudit() {
+  return isAdmin() || isAuditor()
+}
+
+function routeAllowed(route) {
+  if (!ADMIN_ROUTES.has(route)) return true
+  return route === 'audit' ? canViewAudit() : isAdmin()
+}
+
 function navigate(route) {
-  if (ADMIN_ROUTES.has(route) && !isAdmin()) {
+  if (!routeAllowed(route)) {
     renderForbidden()
     return
   }
@@ -2029,7 +2043,11 @@ function auditQueryParams(filter, cursor) {
   return params
 }
 
+/** U73: 每次查询持一代号，仅最新一代可落 state/渲染；被取代的查询整体丢弃。 */
+let auditQueryGeneration = 0
+
 async function renderAudit(loadMore = false) {
+  const generation = ++auditQueryGeneration
   // Only 「加载更早」 accumulates onto what is shown; a fresh view re-queries, so
   // leaving and returning can never resurrect a stale accumulation (M116-QA-002).
   if (!loadMore) {
@@ -2040,12 +2058,22 @@ async function renderAudit(loadMore = false) {
   // rows below them (M116-QA-003).
   const filter = state.auditFilter
   const params = auditQueryParams(filter, state.auditCursor)
-  const [body, status, projectsBody, hostsBody] = await Promise.all([
-    api(`/v1/audit/events?${params}`),
-    api('/v1/audit/status').catch(() => null),
-    api('/v1/projects').catch(() => null),
-    api('/v1/hosts').catch(() => null)
-  ])
+  let body
+  let status
+  let projectsBody
+  let hostsBody
+  try {
+    ;[body, status, projectsBody, hostsBody] = await Promise.all([
+      api(`/v1/audit/events?${params}`),
+      api('/v1/audit/status').catch(() => null),
+      api('/v1/projects').catch(() => null),
+      api('/v1/hosts').catch(() => null)
+    ])
+  } catch (err) {
+    if (generation !== auditQueryGeneration) return // superseded: the page moved on
+    throw err
+  }
+  if (generation !== auditQueryGeneration) return
   if (!loadMore) state.auditStatus = status
   const events = state.auditEvents ? [...state.auditEvents, ...body.events] : body.events
   state.auditEvents = events
@@ -2427,11 +2455,17 @@ function logout() {
 function enterApp() {
   $('#view-login').hidden = true
   $('#view-app').hidden = false
-  $('#adminNav').hidden = !isAdmin()
+  const admin = isAdmin()
+  const auditor = isAuditor()
+  $('#adminNav').hidden = !admin && !auditor
+  // U72: an auditor sees only the audit entry; every other admin route stays admin-only.
+  for (const btn of document.querySelectorAll('#adminNav .nav-item[data-route]')) {
+    btn.hidden = btn.dataset.route === 'audit' ? !(admin || auditor) : !admin
+  }
   $('#userName').textContent = state.user.displayName
   $('#userDept').textContent = state.user.dept
   $('#userAvatar').textContent = state.user.displayName.slice(0, 1)
-  $('#roleChip').textContent = isAdmin() ? '平台管理员' : '开发者'
+  $('#roleChip').textContent = admin ? '平台管理员' : auditor ? '审计员' : '开发者'
   navigate('workbench')
 }
 
