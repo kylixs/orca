@@ -3486,6 +3486,12 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **W12 族核实**：U15/U17/U23 早已落地全 🟢（`09c5c9a3e19`/`a6d8d1fc7fa`/`108bf8bb832`），诊断稿状态补注（`d868fef80d3`）。
 - **人工门两项待用户**：U63 全流程重验证据链认可（evidence/man-review/）；U67 原型复核（ui/prototype.html，重点=详情弹框权限 tab 三卡片+chips 无权限尾注）。
 
+### U66 二期落地 + U67 评审回收（2026-11-16 02:06）
+
+- **U66 二期**（`f01bc88272e`，35 分钟单提交）：宿主下载硬拦（readChunk 多窗口重建拦截；真栈 D1 无 download 位→PERMISSION_MISSING / D2 票带 download+策略 deny→DOWNLOAD_DISABLED / D3 allow 完整放行）+ auditGap→host.audit_gap 增量落链（/v1/audit/status 呈现宿主缺口，NF-2 闭环）+ 心跳响应 auditCapabilities 声明与宿主严格门控翻转（wire-additive）+ device resolver（actorSource=subject→device）。新增 e2e 3+pipeline 6+guard 6+协商 11+平台 node 7；零回归（80+38+29+65+7 全绿）；门禁全绿。**残余缺口如实声明→U70 登记**；U68 三件平台后续闭环。
+- **U67 独立评审回收**：CHANGES-REQUIRED 轻量文档轮（`test-reports/u67-doc-review.md`，无 P0+原型五基准 PASS）——M1-M4 文档修订+m1 卡头位徽标裁定删除/m2 文案；修订令已派（修订后免重审），修订稿随用户原型复核呈报。
+- **释放序列**：U66 红项真宿主终复验 + U62/U52 打磨修令已派；LDAP 评审 APPROVED 后放行 LGAA-1a/4（1b/2/3 排 U62 后的 server.ts 队列）。
+
 ### 四通道并发执行（启动，2026-11-14）
 
 按细粒度拆分与三权分立纪律并发起跑：通道② **W6a**（中继浏览器模式，relay.ts 域）、通道③ **W10**（客户端零 env 登录，src/main+renderer 登录域）、通道④ **W5a**（详情页终端组件，cloud-admin 域）三个实现代理并行；通道① 等在途 W2（QA 修复）完成后接 W8。每令完成→独立测试代理→独立审计代理→主会话关闭放行下一个。
