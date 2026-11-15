@@ -72,6 +72,7 @@
 | U65a | 🔴 | **桌面原生链路二进制当文本**（重验 1 D-BINARY-RAW P1）：桌面原生 Explorer→编辑器对 .bin 仍文本打开可编辑（U59② 修复只覆盖 cloud simple-workspace/web embed，桌面原生链路未覆盖——同族路径遗漏实例） | evidence/man-review/desktop/findings.json（step21） | **补修令已派**（与 U55②③ 合并桌面域一令） |
 | U65b | 🔴 | **U55②③ 遗留未修确认**（重验 1 D-REVOKE-UI-STALE P1）：吊销后 getState 陈旧（restorePromise 未失效）UI 僵持 + 跨重启目录不刷新——R1 修复批只修了 U55① P0，②③ 两条 P1 未派 | 重验 1 step30 + 探索 D 双证 | **补修令已派**（桌面域合并） |
 | U65c | ⚪ | aiVault.listSessions denial 暴露 UI（重验 1 P2，应只进日志）——归并 U52 打磨 | 同上 | 挂 P2 |
+| U66 | 🔴 | **审计增强需求（用户 2026-11-15）**：①所有文件下载、文件内容复制必须记录审计；②审计员可按**内容/关键字**查询复制相关记录；③常用查询条件：时间/操作类型/用户/下载文件名；④文档族齐全（需求清单/技术方案/UI 原型）→**独立代理评审→问题修改→评审通过→才安排开发与测试独立验收**（流程纪律） | 用户指令 | **文档族三路在途**（需求/技术方案/原型并行）→独立评审 |
 | U13 | 🟢    | **开发模式带 ORCA_CLOUD_API_URL 启动也看不到登录页**                                                               | 装配链无罪：dev 两种形态（electron-vite dev / electron-vite preview=npm start）在 W10 全屏登录页与 W11 常驻按钮两个已提交形态下均实测出现登录 UI 且地址预填，三嫌疑（define 注入 / env 不可达 / 挂载条件）全部排除。真凶是 dev 单实例锁：同 `orca-dev` profile 已有无 env 实例在跑时，带 env 的启动 exit 3 让位，用户看到的是旧实例的普通桌面（已实测复现）；旧实例无从得知新启动的 env | 锁拒绝消息点名被丢弃的 `ORCA_CLOUD_API_URL` 与补救（退出旧实例重启，或 ORCA_DEV_USER_DATA_PATH 隔离 profile）；回归 `single-instance-lock.test.ts` 新增 3 条。证据 `cloud-platform/evidence/w10-dev-login/`（两形态×两提交的 UI JSON+截图、单实例复现 JSON+日志）                                                                                                                        |
 
 ## 流程整改（用户指令驱动）
