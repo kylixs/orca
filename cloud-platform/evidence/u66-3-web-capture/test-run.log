@@ -1,0 +1,12 @@
+$ pnpm run build:packages && node config/scripts/ensure-native-runtime.mjs --runtime=node && node config/scripts/run-vitest.mjs run --config config/vitest.config.ts src/renderer/src/cloud/cloud-file-copy-audit.test.tsx src/renderer/src/cloud/cloud-workspace-file-tab.test.tsx src/renderer/src/cloud/cloud-workspace-preview-tab.test.tsx
+$ pnpm --filter @orca/process-host build
+$ tsx --conditions=orca-source scripts/build-dist.mjs
+
+ RUN  v5.0.3 /Users/gongdewei/work/projects/orca
+
+
+ Test Files  3 passed (3)
+      Tests  35 passed (35)
+   Start at  21:26:55
+   Duration  1.85s (tests 83%, import 8%, environment 5%, transform 2%, setup 1%)
+

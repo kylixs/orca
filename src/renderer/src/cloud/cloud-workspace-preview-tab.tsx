@@ -14,6 +14,7 @@ import {
   resolveCloudFileFormat,
   type CloudFileMode
 } from './file-renderers/registry'
+import { CloudFileCopyButton, useCloudFileCopyCapture } from './cloud-file-copy-capture'
 
 /**
  * Binary host for the embedded workspace (U46-7b, FS-1).
@@ -76,6 +77,11 @@ function CloudWorkspacePreviewTabBody({
   const [loaded, setLoaded] = React.useState<Loaded>({ status: 'loading' })
   const [retryToken, setRetryToken] = React.useState(0)
   const [htmlMode, setHtmlMode] = React.useState<CloudFileMode>('preview')
+  const copyCapture = useCloudFileCopyCapture(
+    rpc,
+    tab.path,
+    loaded.status === 'ready' ? loaded.preview.content : ''
+  )
 
   React.useEffect(() => {
     if (!canRead) {
@@ -159,12 +165,19 @@ function CloudWorkspacePreviewTabBody({
             </Button>
           </div>
         ) : null}
+        {loaded.status === 'ready' && renderer.source === 'text' ? (
+          <CloudFileCopyButton
+            capture={copyCapture}
+            disabled={loaded.preview.content.length === 0}
+            testId="cloud-workspace-preview-copy"
+          />
+        ) : null}
         <Badge variant="outline" data-testid="cloud-workspace-preview-kind">
           {badgeLabel}
         </Badge>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col" onCopy={copyCapture.captureCopy}>
         {loaded.status === 'loading' ? (
           <p
             data-testid="cloud-workspace-preview-loading"

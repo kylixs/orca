@@ -13,6 +13,8 @@ import {
   writeCloudWorkspaceFile,
   type CloudWorkspaceFileFailure
 } from './cloud-workspace-file-io'
+import { CloudFileCopyButton, useCloudFileCopyCapture } from './cloud-file-copy-capture'
+import { CloudWorkspaceFileConflictBanner } from './cloud-workspace-file-conflict'
 import {
   CLOUD_BINARY_FILE_RENDERER,
   CLOUD_CODE_FILE_RENDERER,
@@ -93,6 +95,7 @@ function CloudWorkspaceFileTabBody({
   const [saving, setSaving] = React.useState(false)
   const [saveError, setSaveError] = React.useState<CloudWorkspaceFileFailure | null>(null)
   const [conflict, setConflict] = React.useState<Conflict | null>(null)
+  const copyCapture = useCloudFileCopyCapture(rpc, tab.path, content)
 
   React.useEffect(() => {
     if (!canRead) {
@@ -264,6 +267,13 @@ function CloudWorkspaceFileTabBody({
             只读
           </Badge>
         ) : null}
+        {loaded.kind === 'ready' ? (
+          <CloudFileCopyButton
+            capture={copyCapture}
+            disabled={content.length === 0}
+            testId="cloud-workspace-file-copy"
+          />
+        ) : null}
         {loaded.kind === 'ready' && !loaded.readOnly ? (
           <Button
             size="sm"
@@ -296,41 +306,14 @@ function CloudWorkspaceFileTabBody({
       ) : null}
 
       {conflict ? (
-        <div
-          role="alertdialog"
-          aria-label="文件已在别处修改"
-          data-testid="cloud-workspace-file-tab-conflict"
-          className="flex flex-wrap items-center gap-2 border-b border-border bg-muted px-3 py-2 text-xs text-foreground"
-        >
-          <span className="min-w-0 flex-1">文件已在别处修改，请选择处理方式。</span>
-          <Button
-            variant="outline"
-            size="sm"
-            data-testid="cloud-workspace-file-tab-conflict-reload"
-            onClick={reloadConflict}
-          >
-            重新加载
-          </Button>
-          <Button
-            variant="destructive"
-            size="sm"
-            data-testid="cloud-workspace-file-tab-conflict-overwrite"
-            onClick={() => void save(true)}
-          >
-            覆盖保存
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            data-testid="cloud-workspace-file-tab-conflict-cancel"
-            onClick={() => setConflict(null)}
-          >
-            取消
-          </Button>
-        </div>
+        <CloudWorkspaceFileConflictBanner
+          onReload={reloadConflict}
+          onOverwrite={() => void save(true)}
+          onCancel={() => setConflict(null)}
+        />
       ) : null}
 
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col" onCopy={copyCapture.captureCopy}>
         {loaded.kind === 'loading' ? (
           <p className="p-3 text-xs text-muted-foreground">正在读取文件…</p>
         ) : loaded.kind === 'binary' ? (
