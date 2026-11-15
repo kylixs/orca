@@ -3492,6 +3492,14 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **U67 独立评审回收**：CHANGES-REQUIRED 轻量文档轮（`test-reports/u67-doc-review.md`，无 P0+原型五基准 PASS）——M1-M4 文档修订+m1 卡头位徽标裁定删除/m2 文案；修订令已派（修订后免重审），修订稿随用户原型复核呈报。
 - **释放序列**：U66 红项真宿主终复验 + U62/U52 打磨修令已派；LDAP 评审 APPROVED 后放行 LGAA-1a/4（1b/2/3 排 U62 后的 server.ts 队列）。
 
+### 终门通过：双线黄金旅程第五轮全绿（2026-11-16 04:1x）
+
+- **A 线 9 PASS / B 线 9 PASS / 0 FAIL，P0=0、P1=0**（journey-round5.md，留盘）：四轮三红站 B4/B5/B6 在标准构建+加固 oracle 下全部转绿。
+- 强制门留档：标准 global-setup 构建（VITE_EXPOSE_STORE=true 全注入，run-b-build-and-spec.log）+加固 oracle 独立复跑 PASS（evidence/final-journey-verification-5/web-bundle-store-oracle-output.json）。
+- 默认态回归：LDAP 未设三账户全 200（E1-E6 6/6）、U72 auditor 入口形态、U73 latest-wins 全绿。
+- P3 挂账：云端 git 面板/桌面 restart 覆盖缺口（继承项）；j4 遗留 daemon 已清。
+- **「全部完成，等待人工验收」机器门达成**：双线全绿+LDAP 四权闭环（调研→评审→六令→审计通过）+持久环境 HEAD 全量种子就绪。剩余=五项人工门：U67 原型复核（拆实现令）/U63 认可/U70 裁定（推荐 C+64KB）/U74 去留/.gitignore 裁定。
+
 ### LDAP 分组准入全交付（2026-11-16 02:5x）
 
 - **六令 6/6**：1a Mock 适配（`6d0202fb695`）→1b 登录链（`d917085a838`）→2 单测 A1-A12（`bf2855de5c5`）→3 e2e E1-E6（`0c55592edf5`）→4 LGA-1 删除（`f1855b4d569`）→5 requirements 措辞（`86e469f4845`）。设计经两轮评审 APPROVED（`3f573bae498`）。
