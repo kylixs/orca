@@ -95,8 +95,8 @@ function captureOpened(page: WebConsolePage): { opened: string[] } {
   return { opened }
 }
 
-async function loginDevWorkbench(): Promise<WebConsolePage> {
-  const page = loadWebConsolePage(service.url)
+async function loginDevWorkbench(timerScale?: number): Promise<WebConsolePage> {
+  const page = loadWebConsolePage(service.url, { timerScale })
   await page.settle()
   await page.submitLogin('zhangsan', 'Passw0rd!')
   await page.clickNav('workbench')
@@ -340,6 +340,93 @@ test('W46-O4 ready/dirty 消息流 + 关闭握手（close→closed→移除）�
     dirty: dirty.textContent,
     closeHandshake: 'close→closed→removed',
     fallback: '300ms'
+  }
+}, 120_000)
+
+async function waitUntil(cond: () => boolean, message: string, timeoutMs = 5000): Promise<void> {
+  const started = Date.now()
+  while (Date.now() - started < timeoutMs) {
+    if (cond()) {
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  assert.fail(message)
+}
+
+test('W46-O6 ready 超时保留失败态：重试重签 handoff+重建 iframe，次数用尽引导独立页', async () => {
+  // 0.05 × 20s = 1s per ready attempt; the real timeout path still runs.
+  const page = await loginDevWorkbench(0.05)
+  const { opened } = captureOpened(page)
+  const handoffs = () => page.calls().filter((call) => call === `POST ${HANDOFF_PATH}`).length
+
+  const hasIframe = () => page.window.document.querySelector('#workspaceOverlay iframe') !== null
+  const hasFailure = () =>
+    page.window.document.querySelector('[data-workspace-ready-failure]') !== null
+
+  await openProject(page)
+  await waitUntil(hasFailure, 'the ready timeout must keep a failure state')
+  let overlay = overlayOf(page)
+  const failureText = overlay.textContent ?? ''
+  assert.match(failureText, /工作区加载超时/)
+  assert.match(failureText, /20 秒内未收到就绪信号/)
+  assert.equal(overlay.querySelector('iframe'), null, 'the timed-out frame is gone')
+  assert.ok(
+    [...overlay.querySelectorAll<HTMLButtonElement>('button')].some(
+      (button) => button.textContent?.trim() === '重试'
+    ),
+    'the failure state offers 重试'
+  )
+  assert.ok(
+    [...overlay.querySelectorAll<HTMLButtonElement>('button')].some(
+      (button) => button.textContent?.trim() === '在新标签打开 Orca Web'
+    ),
+    'the failure state keeps the standalone entry'
+  )
+  assert.equal(handoffs(), 1)
+  assert.equal(
+    page.window.document.querySelector('.toast')?.textContent,
+    undefined,
+    'a timeout is a page state, not a transient toast'
+  )
+
+  // Retry #1: re-mint the admin handoff and rebuild the iframe.
+  overlay.querySelector<HTMLButtonElement>('[data-workspace-retry]')?.click()
+  await waitUntil(hasIframe, 'retry rebuilds iframe')
+  assert.equal(handoffs(), 2, 'the retry re-mints the handoff')
+  const retried = new URL(iframeOf(page).src)
+  assert.equal(retried.pathname, '/cloud-admin.html')
+  assert.equal(retried.searchParams.get('embed'), '1')
+  await waitUntil(hasFailure, 'retry #1 times out again')
+
+  // Retry #2: budget is spent; only the standalone entry remains.
+  overlayOf(page).querySelector<HTMLButtonElement>('[data-workspace-retry]')?.click()
+  await waitUntil(hasIframe, 'retry #2 rebuilds iframe')
+  await waitUntil(hasFailure, 'retry #2 times out again')
+  overlay = overlayOf(page)
+  assert.equal(handoffs(), 3)
+  assert.equal(
+    overlay.querySelector('[data-workspace-retry]'),
+    null,
+    'the retry button is gone once the budget is spent'
+  )
+  assert.match(overlay.textContent ?? '', /已重试 2 次仍未就绪/)
+  assert.match(overlay.textContent ?? '', /在新标签页打开 Orca Web/)
+
+  // The standalone entry still mints a web-surface handoff in a new tab.
+  const fallback = [...overlay.querySelectorAll<HTMLButtonElement>('button')].find(
+    (button) => button.textContent?.trim() === '在新标签打开 Orca Web'
+  )
+  assert.ok(fallback)
+  fallback.click()
+  await waitUntil(() => opened.length === 1, 'the standalone entry opens one tab')
+  assert.equal(new URL(opened[0]).pathname, '/web-index.html')
+
+  matrix.o6 = {
+    failureStateRetained: true,
+    retries: 2,
+    handoffs: handoffs(),
+    standalonePath: new URL(opened[0]).pathname
   }
 }, 120_000)
 

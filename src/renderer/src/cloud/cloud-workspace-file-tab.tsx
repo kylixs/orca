@@ -57,6 +57,7 @@ export type CloudWorkspaceFileTabProps = CloudSimpleWorkspaceTabComponentProps &
 type CloudWorkspaceFileTabBodyProps = {
   tab: EditorTab
   dispatch: CloudSimpleWorkspaceTabComponentProps['dispatch']
+  registerSave?: CloudSimpleWorkspaceTabComponentProps['registerSave']
   rpc: CloudRpc
   workspacePath: string
   permissions?: readonly CloudProjectPermission[] | null
@@ -66,6 +67,7 @@ type CloudWorkspaceFileTabBodyProps = {
 function CloudWorkspaceFileTabBody({
   tab,
   dispatch,
+  registerSave,
   rpc,
   workspacePath,
   permissions,
@@ -121,10 +123,11 @@ function CloudWorkspaceFileTabBody({
     dispatch({ type: 'setDirty', id: tab.id, dirty })
   }, [dirty, dispatch, tab.id])
 
+  // true = the buffer is durably on the host (a dirty close may unmount us).
   const save = React.useCallback(
-    async (overwrite: boolean) => {
+    async (overwrite: boolean): Promise<boolean> => {
       if (loaded.kind !== 'ready' || loaded.readOnly || saving) {
-        return
+        return false
       }
       const pending = content
       setSaving(true)
@@ -134,28 +137,37 @@ function CloudWorkspaceFileTabBody({
           const latest = await readCloudWorkspaceFile(rpc, workspacePath, tab.path)
           if (!latest.ok) {
             setSaveError(latest)
-            return
+            return false
           }
           if (latest.content !== loaded.baseContent) {
             setConflict({ latestContent: latest.content })
-            return
+            return false
           }
         }
         const written = await writeCloudWorkspaceFile(rpc, workspacePath, tab.path, pending)
         if (!written.ok) {
           setSaveError(written)
-          return
+          return false
         }
         setConflict(null)
         setLoaded((current) =>
           current.kind === 'ready' ? { ...current, baseContent: pending } : current
         )
+        return true
       } finally {
         setSaving(false)
       }
     },
     [content, loaded, rpc, saving, tab.path, workspacePath]
   )
+
+  React.useEffect(() => {
+    if (!registerSave) {
+      return
+    }
+    registerSave(tab.id, () => save(false))
+    return () => registerSave(tab.id, null)
+  }, [registerSave, save, tab.id])
 
   function reloadConflict(): void {
     if (conflict === null) {
@@ -320,7 +332,7 @@ function CloudWorkspaceFileTabBody({
 }
 
 export function CloudWorkspaceFileTab(props: CloudWorkspaceFileTabProps): React.JSX.Element {
-  const { tab, dispatch, rpc, workspacePath, permissions, editor } = props
+  const { tab, dispatch, registerSave, rpc, workspacePath, permissions, editor } = props
   if (tab.kind !== 'editor') {
     return (
       <p
@@ -336,6 +348,7 @@ export function CloudWorkspaceFileTab(props: CloudWorkspaceFileTabProps): React.
       key={tab.path}
       tab={tab}
       dispatch={dispatch}
+      registerSave={registerSave}
       rpc={rpc}
       workspacePath={workspacePath}
       permissions={permissions}
@@ -351,9 +364,18 @@ export function createCloudWorkspaceFileTab(
   function CloudWorkspaceFileTabFromApi({
     tab,
     active,
-    dispatch
+    dispatch,
+    registerSave
   }: CloudSimpleWorkspaceTabComponentProps): React.JSX.Element {
-    return <CloudWorkspaceFileTab tab={tab} active={active} dispatch={dispatch} {...api} />
+    return (
+      <CloudWorkspaceFileTab
+        tab={tab}
+        active={active}
+        dispatch={dispatch}
+        registerSave={registerSave}
+        {...api}
+      />
+    )
   }
   return CloudWorkspaceFileTabFromApi
 }

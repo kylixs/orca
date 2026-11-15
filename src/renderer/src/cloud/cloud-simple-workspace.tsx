@@ -1,10 +1,8 @@
 import * as React from 'react'
-import { Button } from '@/components/ui/button'
 import type { CloudProjectPermission } from '../../../shared/cloud-platform-ipc'
 import { readField, readObjectValue, readString } from '../../../shared/json-fields'
 import type { CloudRpc } from '../../../shared/cloud-file-browser'
 import {
-  CLOUD_SIMPLE_WORKSPACE_MAX_TERMINAL_TABS,
   cloudSimpleWorkspaceDiffTab,
   cloudSimpleWorkspaceDirtyCount,
   cloudSimpleWorkspaceFileTab,
@@ -15,6 +13,7 @@ import {
   type CloudSimpleWorkspaceTabKind,
   type CloudSimpleWorkspaceTabsAction
 } from './cloud-simple-workspace-tabs'
+import { CloudSimpleWorkspaceTabStrip } from './cloud-simple-workspace-tab-strip'
 import {
   CloudSimpleWorkspaceStatusBar,
   type CloudSimpleWorkspaceConnection
@@ -35,6 +34,11 @@ import {
   CloudWorkspaceTerminalTabProvider
 } from './cloud-workspace-terminal-tab'
 import { createCloudWorkspaceFileTab } from './cloud-workspace-file-tab'
+import {
+  CloudSimpleWorkspaceCloseConfirm,
+  useCloudSimpleWorkspaceCloseGuard,
+  type CloudSimpleWorkspaceSaveHandler
+} from './cloud-simple-workspace-close-guard'
 import {
   cloudWorkspacePreviewKind,
   createCloudWorkspacePreviewTab
@@ -57,6 +61,8 @@ export type CloudSimpleWorkspaceTabComponentProps = {
   /** False while the tab is mounted but hidden; panes must not fit or poll. */
   active: boolean
   dispatch: React.Dispatch<CloudSimpleWorkspaceTabsAction>
+  /** Lets a dirty close save through this pane before the tab unmounts. */
+  registerSave?: (tabId: string, save: CloudSimpleWorkspaceSaveHandler | null) => void
 }
 
 export type CloudSimpleWorkspaceTabComponents = Partial<
@@ -148,6 +154,7 @@ export function CloudSimpleWorkspace({
   const canReadFiles = permissions?.includes('file:read') ?? true
   const nextTerminal = nextTerminalTab(state.tabs)
   const dirtyCount = cloudSimpleWorkspaceDirtyCount(state)
+  const closeGuard = useCloudSimpleWorkspaceCloseGuard(state.dirty, dispatch)
 
   const openFile = React.useCallback(
     (path: string) => {
@@ -182,72 +189,20 @@ export function CloudSimpleWorkspace({
     >
       <div className="flex min-h-0 flex-1">
         <main data-testid="cloud-simple-workspace-tabs" className="flex min-w-0 flex-1 flex-col">
-          <div className="flex shrink-0 items-center gap-1 border-b border-border px-2 py-1">
-            <div
-              role="tablist"
-              aria-label="工作区标签"
-              className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-sleek"
-            >
-              {state.tabs.map((tab) => {
-                const active = tab.id === state.activeId
-                return (
-                  <div
-                    key={tab.id}
-                    className="flex shrink-0 items-center rounded border border-border bg-card"
-                  >
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={active}
-                      data-testid={`cloud-simple-workspace-tab-${tab.id}`}
-                      className={`px-2 py-1 text-xs ${active ? 'text-foreground' : 'text-muted-foreground'}`}
-                      onClick={() => dispatch({ type: 'activate', id: tab.id })}
-                    >
-                      {tab.title}
-                      {state.dirty[tab.id] ? (
-                        <span
-                          aria-label="未保存"
-                          data-testid={`cloud-simple-workspace-tab-dirty-${tab.id}`}
-                          className="ml-1 text-foreground"
-                        >
-                          ●
-                        </span>
-                      ) : null}
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`关闭 ${tab.title}`}
-                      data-testid={`cloud-simple-workspace-tab-close-${tab.id}`}
-                      className="px-1.5 py-1 text-xs text-muted-foreground hover:text-foreground"
-                      onClick={() => dispatch({ type: 'close', id: tab.id })}
-                    >
-                      ×
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-            {canUseTerminal ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                data-testid="cloud-simple-workspace-new-terminal"
-                disabled={nextTerminal === null}
-                title={
-                  nextTerminal === null
-                    ? `最多 ${CLOUD_SIMPLE_WORKSPACE_MAX_TERMINAL_TABS} 个终端`
-                    : '新建终端'
-                }
-                onClick={() => {
-                  if (nextTerminal) {
-                    dispatch({ type: 'open', tab: nextTerminal })
-                  }
-                }}
-              >
-                + 终端
-              </Button>
-            ) : null}
-          </div>
+          <CloudSimpleWorkspaceTabStrip
+            tabs={state.tabs}
+            activeId={state.activeId}
+            dirty={state.dirty}
+            canUseTerminal={canUseTerminal}
+            nextTerminal={nextTerminal !== null}
+            onActivate={(id) => dispatch({ type: 'activate', id })}
+            onClose={closeGuard.requestClose}
+            onNewTerminal={() => {
+              if (nextTerminal) {
+                dispatch({ type: 'open', tab: nextTerminal })
+              }
+            }}
+          />
 
           <div className="flex min-h-0 flex-1 flex-col">
             {state.tabs.length === 0 ? (
@@ -274,7 +229,12 @@ export function CloudSimpleWorkspace({
                         当前项目未授予终端权限，终端面板不可用。
                       </p>
                     ) : (
-                      <Component tab={tab} active={active} dispatch={dispatch} />
+                      <Component
+                        tab={tab}
+                        active={active}
+                        dispatch={dispatch}
+                        registerSave={closeGuard.registerSave}
+                      />
                     )}
                   </div>
                 )
@@ -302,6 +262,15 @@ export function CloudSimpleWorkspace({
         branch={branch}
         workspacePath={workspacePath}
         dirtyCount={dirtyCount}
+      />
+
+      <CloudSimpleWorkspaceCloseConfirm
+        confirm={closeGuard.confirm}
+        canSave={closeGuard.canSave}
+        saving={closeGuard.saving}
+        onSave={closeGuard.saveAndClose}
+        onDiscard={closeGuard.discard}
+        onCancel={closeGuard.cancel}
       />
     </div>
   )

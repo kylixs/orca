@@ -428,6 +428,8 @@ function wireProjectActions() {
 
 const WORKSPACE_READY_TIMEOUT_MS = 20_000
 const WORKSPACE_CLOSE_TIMEOUT_MS = 300
+/** R9: retry the handoff at most twice, then point at the standalone page. */
+const WORKSPACE_READY_MAX_RETRIES = 2
 let workspaceOverlay = null
 
 /** Only the admin-surface page can host the embed entry (§4.10). */
@@ -445,7 +447,7 @@ function isInlineWorkspaceUrl(url) {
  * cloud-admin.html in a fullscreen overlay, so the workspace document runs on
  * the host/relay edge while the console stays underneath (§4.1/§4.2).
  */
-async function openProjectWorkspace(projectId) {
+async function openProjectWorkspace(projectId, { retries = 0 } = {}) {
   const project = state.projects.find((p) => p.id === projectId)
   let body
   try {
@@ -465,7 +467,7 @@ async function openProjectWorkspace(projectId) {
     toast('当前平台版本不支持内嵌工作区，已在新标签打开')
     return
   }
-  mountWorkspaceOverlay(projectId, project, url)
+  mountWorkspaceOverlay(projectId, project, url, retries)
 }
 
 /** 「Orca Web」 and the overlay's fallback: web surface, new tab, unchanged. */
@@ -511,7 +513,7 @@ function createWorkspaceShell(project) {
   return root
 }
 
-function wireWorkspaceShell(root, projectId) {
+function wireWorkspaceShell(root, projectId, retries = 0) {
   for (const btn of root.querySelectorAll('[data-workspace-close], [data-workspace-back]')) {
     btn.onclick = () => {
       // A failure shell has no iframe to handshake with.
@@ -526,7 +528,8 @@ function wireWorkspaceShell(root, projectId) {
   if (retry) {
     retry.onclick = () => {
       removeWorkspaceOverlay()
-      void openProjectWorkspace(projectId)
+      // R9: a retry re-mints the one-time handoff and rebuilds the iframe.
+      void openProjectWorkspace(projectId, { retries: retries + 1 })
     }
   }
 }
@@ -548,7 +551,46 @@ function mountWorkspaceFailure(projectId, project, reason) {
   document.body.appendChild(root)
 }
 
-function mountWorkspaceOverlay(projectId, project, url) {
+/**
+ * R9/§5.3: an old host bundle never reports ready. Keep the overlay and show a
+ * failure state (not just a toast) with a re-mint retry, then the standalone
+ * Orca Web entry once the retries are spent.
+ */
+function mountWorkspaceReadyFailure(projectId, project, retries) {
+  removeWorkspaceOverlay()
+  const exhausted = retries >= WORKSPACE_READY_MAX_RETRIES
+  const root = createWorkspaceShell(project)
+  root.querySelector('.workspace-body').innerHTML = `
+    <div class="workspace-status" role="alert" data-workspace-ready-failure>
+      <div class="workspace-status-box">
+        <p>工作区加载超时：${WORKSPACE_READY_TIMEOUT_MS / 1000} 秒内未收到就绪信号。</p>
+        <p class="muted">${
+          exhausted
+            ? '已重试 ' + retries + ' 次仍未就绪，请改为在新标签页打开 Orca Web。'
+            : '当前宿主可能不支持内嵌工作区。可以重试，或直接在新标签页打开 Orca Web。'
+        }</p>
+        <div class="workspace-actions">
+          ${exhausted ? '' : '<button class="btn primary sm" data-workspace-retry>重试</button>'}
+          <button class="btn sm" data-workspace-new-tab>在新标签打开 Orca Web</button>
+        </div>
+      </div>
+    </div>`
+  wireWorkspaceShell(root, projectId, retries)
+  // Registered so top-bar close, logout, and a later open all release it.
+  workspaceOverlay = {
+    root,
+    iframe: null,
+    origin: null,
+    dirty: 0,
+    ready: false,
+    readyTimer: null,
+    closeTimer: null,
+    onMessage: null
+  }
+  document.body.appendChild(root)
+}
+
+function mountWorkspaceOverlay(projectId, project, url, retries = 0) {
   removeWorkspaceOverlay()
   const root = createWorkspaceShell(project)
   const body = root.querySelector('.workspace-body')
@@ -595,9 +637,9 @@ function mountWorkspaceOverlay(projectId, project, url) {
   window.addEventListener('message', overlay.onMessage)
   overlay.readyTimer = setTimeout(() => {
     if (overlay.ready) return
-    // R9: an old host bundle never reports ready; do not trap the console.
-    removeWorkspaceOverlay()
-    toast('工作区加载超时，请在 Orca Web 新标签中打开')
+    // R9: an old host bundle never reports ready; keep a failure state with a
+    // re-mint retry and the standalone Orca Web escape hatch.
+    mountWorkspaceReadyFailure(projectId, project, retries)
   }, WORKSPACE_READY_TIMEOUT_MS)
   workspaceOverlay = overlay
   wireWorkspaceShell(root, projectId)

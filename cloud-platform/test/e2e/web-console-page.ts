@@ -35,7 +35,13 @@ export type WebConsolePage = {
  * platform. Scripts are stripped from the markup and injected by hand so the
  * fetch shim exists before the bootstrap IIFE runs.
  */
-export function loadWebConsolePage(platformUrl: string): WebConsolePage {
+export function loadWebConsolePage(
+  platformUrl: string,
+  options: { timerScale?: number } = {}
+): WebConsolePage {
+  // Why scale: the ready timeout is 20s; a test needs to observe it (and two
+  // retries) without waiting a minute. Default 1 keeps every other suite real.
+  const timerScale = options.timerScale ?? 1
   const window = new Window({ url: 'https://web.console.local/' })
   const html = readFileSync(join(WEB_SOURCE, 'index.html'), 'utf8')
     // Why strip: the markup's script tags point at the server, not at our shim.
@@ -113,7 +119,8 @@ export function loadWebConsolePage(platformUrl: string): WebConsolePage {
     window.location,
     () => true,
     console,
-    window.setTimeout.bind(window),
+    (callback: () => void, delay?: number, ...args: unknown[]) =>
+      window.setTimeout(callback, Math.round((delay ?? 0) * timerScale), ...args),
     window.clearTimeout.bind(window),
     Date,
     URL,

@@ -9,6 +9,8 @@ import {
   CloudSimpleWorkspaceSession,
   type CloudSimpleWorkspaceTabComponentProps
 } from './cloud-simple-workspace'
+import { createCloudWorkspaceFileTab } from './cloud-workspace-file-tab'
+import type { CloudWorkspaceEditorProps } from './cloud-workspace-monaco-editor'
 import type { CloudRpc } from '../../../shared/cloud-file-browser'
 
 /** T1 (design §6.2): tab dedupe, switching, close-neighbour, empty state, plus permissions. */
@@ -205,7 +207,7 @@ describe('简易工作区外壳', () => {
     expect(screen.queryByTestId('cloud-simple-workspace-status-bar')).toBeNull()
   })
 
-  it('dirty 状态位同时反映在标签与状态栏，关闭后清除', async () => {
+  it('dirty 标签关闭先确认：取消保留、放弃才关闭并回收 dirty 计数', async () => {
     const user = userEvent.setup()
     function DirtyToggle({ tab, dispatch }: CloudSimpleWorkspaceTabComponentProps) {
       return (
@@ -228,7 +230,93 @@ describe('简易工作区外壳', () => {
     expect(screen.getByTestId('cloud-simple-workspace-status-dirty').textContent).toContain('1')
 
     await user.click(screen.getByTestId('cloud-simple-workspace-tab-close-file:a.ts'))
+    const confirm = screen.getByTestId('cloud-simple-workspace-close-confirm')
+    expect(confirm.textContent).toContain('关闭「a.ts」？')
+    // No save handler was registered by this stub pane.
+    expect(
+      screen.getByTestId('cloud-simple-workspace-close-confirm-save').hasAttribute('disabled')
+    ).toBe(true)
+
+    await user.click(screen.getByTestId('cloud-simple-workspace-close-confirm-cancel'))
+    expect(screen.queryByTestId('cloud-simple-workspace-close-confirm')).toBeNull()
+    expect(screen.getByTestId('cloud-simple-workspace-tab-file:a.ts')).toBeTruthy()
+    expect(screen.getByTestId('cloud-simple-workspace-status-dirty').textContent).toContain('1')
+
+    await user.click(screen.getByTestId('cloud-simple-workspace-tab-close-file:a.ts'))
+    await user.click(screen.getByTestId('cloud-simple-workspace-close-confirm-discard'))
+    expect(screen.queryByTestId('cloud-simple-workspace-tab-file:a.ts')).toBeNull()
     expect(screen.queryByTestId('cloud-simple-workspace-status-dirty')).toBeNull()
+  })
+
+  it('dirty 关闭选「保存」走标签编辑器保存路径后关，父覆盖层计数回 0', async () => {
+    const user = userEvent.setup()
+    const dirtyCounts: number[] = []
+    const writes: Record<string, unknown>[] = []
+    let stored = 'base'
+    const rpc: CloudRpc = async (method, params) => {
+      if (method === 'files.read') {
+        return {
+          ok: true,
+          result: { content: stored, truncated: false, byteLength: stored.length }
+        }
+      }
+      if (method === 'files.write') {
+        writes.push(params ?? {})
+        stored = String(params?.content ?? '')
+        return { ok: true, result: null }
+      }
+      return { ok: false, code: 'method_denied' }
+    }
+
+    function TestEditor({ value, onChange }: CloudWorkspaceEditorProps): React.JSX.Element {
+      return (
+        <textarea
+          data-testid="test-editor-input"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      )
+    }
+
+    renderWorkspace({
+      onDirtyCountChange: (count) => dirtyCounts.push(count),
+      tabComponents: {
+        editor: createCloudWorkspaceFileTab({
+          rpc,
+          workspacePath: '/srv/checkout',
+          permissions: ALL,
+          editor: TestEditor
+        })
+      },
+      renderFileTree: ({ openFile }) => (
+        <button type="button" onClick={() => openFile('src/a.ts')}>
+          open-a
+        </button>
+      )
+    })
+
+    await user.click(screen.getByText('open-a'))
+    const input = await screen.findByTestId('test-editor-input')
+    await user.type(input, '!')
+    expect(screen.getByTestId('cloud-simple-workspace-tab-dirty-file:src/a.ts')).toBeTruthy()
+    expect(dirtyCounts.at(-1)).toBe(1)
+
+    await user.click(screen.getByTestId('cloud-simple-workspace-tab-close-file:src/a.ts'))
+    await user.click(screen.getByTestId('cloud-simple-workspace-close-confirm-save'))
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('cloud-simple-workspace-tab-file:src/a.ts')).toBeNull()
+    )
+    expect(writes).toEqual([
+      {
+        worktree: 'path:/srv/checkout',
+        relativePath: 'src/a.ts',
+        content: 'base!',
+        expectedExecutionHostId: 'local'
+      }
+    ])
+    expect(stored).toBe('base!')
+    await waitFor(() => expect(dirtyCounts.at(-1)).toBe(0))
   })
 })
 
