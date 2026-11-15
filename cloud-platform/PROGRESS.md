@@ -2737,6 +2737,10 @@ A 线 1/1（9 步，**R1 确认**：A4 终端 remote PTY 句柄创建+回显 142
 
 `62c1ce35e8d`（2 文件）：ensureHostRoute 命名键跟随心跳校正 target（漂移收敛 1ms；显式 relayTarget 让位最新心跳；ip- 键不回退）。新 4/4+路由系 55+心跳系 27 全绿。**U64→🟢**——用户报障（打开项目无法连接）全链闭环：报障→定位（端口漂移窗口）→登记→修复（1ms 收敛实证）。重验批在途（逐步截图证据链）。
 
+### Tailscale 远程宿主接入完成（2026-11-16）
+
+4 台真机上线（evidence/tailscale-hosts/result.json）：**dev-remote-01**（jlc-ubuntu host_5cf921e3）、**dev-remote-03**（derp-relay1 host_ecd531d6）、**dev-remote-04**（derp-relay2 host_f16a3cde）、**dev-remote-05**（temp-relay3 host_1a8d6b45）——每台独立边界/端口 1890x/CA 签证书/真实 git 项目/connect 200/跨机 TLS 200/中继路由注册。**共存纪律全程执行**（既有 orca-ide serve/中继进程/数据目录未动；lanmao1 ssh 免密失败跳过、10-185-1-171 磁盘 99%+活动实例跳过、Windows 记后续项）。技术：远端 AppImage 旧构建无 cloud-host 能力→当前仓库 out/+process-host 打 asar 注入同版本 Electron；relay2/3 补装 xvfb。**环境现状：6 台 online 宿主（2 本机模拟+4 Tailscale 真机）**——多主机矩阵达到真实隔离环境形态。
+
 ### U61 落地（2026-11-15，🟢）—— 授权组合批闭环
 
 `3d9dee67131`（5 文件）：D8 connect 对齐 handoff 判定（admin 无 open 403+自授后放行=AA5 闭环；21 套件波及排查无旧口径依赖）；F2 占用键 (hostId,path)（跨主机同路径 201 共存/同主机 409；三调用点适配）；弹层主机切换清 path。新 4/4+回归 114/114。**U61→🟢——授权组合批闭环（E+F 142 用例发现 P2×3 全修）**。验收状态维持：全批绿灯+组合复验（D8/F2 重放）可随时执行。
