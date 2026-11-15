@@ -1811,6 +1811,50 @@ svg { display: block; }
 .host-grant-row .grant-subject { flex: 1; min-width: 0; color: var(--text); font-weight: 500; }
 .host-grant-row .grant-subject small { display: block; font-family: var(--mono); font-weight: 400; font-size: 9.5px; color: var(--text-3); }
 
+/* [U67] 详情弹框 tab 化（信息 | 权限） */
+.detail-tabs {
+  display: flex; gap: 18px;
+  margin: -20px -20px 16px; padding: 0 20px;
+  border-bottom: 1px solid var(--divider); background: var(--sidebar);
+}
+.detail-tab {
+  appearance: none; border: 0; background: transparent; cursor: pointer;
+  padding: 12px 2px 10px; font-size: 12.5px; font-weight: 500;
+  color: var(--text-3); border-bottom: 2px solid transparent;
+}
+.detail-tab:hover { color: var(--text-2); }
+.detail-tab.is-active { color: var(--brand); border-bottom-color: var(--brand); }
+.detail-panel[hidden] { display: none; }
+
+/* [U67] 权限三卡片（查看 / 控制 / 管理） */
+.perm-card { border: 1px solid var(--border); border-radius: 10px; background: #fff; overflow: hidden; }
+.perm-card + .perm-card { margin-top: 10px; }
+.perm-card-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px 6px; }
+.perm-card-title { font-size: 12.5px; font-weight: 600; color: var(--text); }
+.perm-card-count { margin-left: auto; font-size: 10px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.perm-card-desc { padding: 0 12px 9px; font-size: 10.5px; line-height: 1.6; color: var(--text-3); }
+.perm-chip-list { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 10px; }
+.perm-chip {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  padding: 3px 5px 3px 9px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--sidebar); font-size: 11px; color: var(--text);
+}
+.perm-chip small { font-size: 9.5px; color: var(--text-3); }
+.perm-chip button {
+  appearance: none; border: 0; background: transparent; cursor: pointer; padding: 0;
+  width: 16px; height: 16px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-3); font-size: 11px; line-height: 1;
+}
+.perm-chip button:hover { background: var(--danger-soft); color: #b91c1c; }
+.perm-card .perm-empty { padding: 0 12px 10px; font-size: 10.5px; color: var(--text-3); }
+.perm-add-row { display: flex; gap: 6px; padding: 9px 12px; border-top: 1px dashed var(--divider); background: var(--sidebar); }
+.perm-add-row .input { flex: 1; min-width: 0; height: 28px; font-size: 11.5px; }
+.perm-add-row .select { flex: none; width: 66px; height: 28px; font-size: 11.5px; }
+.perm-card.is-derived { background: var(--sidebar); }
+.perm-mixed-note { margin-top: 8px; font-size: 10px; color: var(--text-3); }
+.role-select { min-width: 86px; }
+
 .download-locked-chip {
   display: inline-flex; align-items: center; gap: 5px;
   height: 22px; padding: 0 8px;
@@ -2044,6 +2088,10 @@ svg { display: block; }
         <svg class="icon" aria-hidden="true"><use href="#i-users"/></svg>
         <span>成员与权限</span>
       </button>
+      <button class="nav-item admin-only" data-route="users">
+        <svg class="icon" aria-hidden="true"><use href="#i-user"/></svg>
+        <span>用户管理</span>
+      </button>
       <button class="nav-item admin-only" data-route="audit">
         <svg class="icon" aria-hidden="true"><use href="#i-clipboard-list"/></svg>
         <span>审计日志</span>
@@ -2074,8 +2122,16 @@ svg { display: block; }
         <span class="crumb is-current">工作台</span>
       </div>
       <details class="proto-changelog" id="protoChangelog">
-        <summary><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>原型修订 · U66 审计增强 + U65 · 2026-11-15</summary>
+        <summary><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>原型修订 · U67 授权三卡片 + 用户管理 · 2026-11-15</summary>
         <div class="proto-changelog-panel">
+          <h4>U67 · 授权方案重构（设计稿 · 待评审） <span class="changelog-date">2026-11-15</span></h4>
+          <ul>
+            <li>主机详情抽屉 tab 化（信息 | 权限）：权限 tab 改为「查看 / 控制 / 管理」三卡片，每卡片=权限说明 + 主体 chips + 添加输入（目录 datalist）+ 移除；卡片↔权限位映射：查看=view、控制=view+provision、管理=provision+maintain（U65 语义矩阵，不新增权限语义）。原 U65 级别选择器 / 逐位开关被三卡片取代（收敛形态）。</li>
+            <li>新增项目详情弹框（工作台 / 我的项目行内「详情」，admin）：信息 | 权限双 tab；权限 tab 三卡片同构，项目级映射：查看=open+file:read、控制=terminal/agent/file:write/browser/download（下载仍受策略）、管理=主机授权推导只读视图（FR-9.11③ 不扩大）。</li>
+            <li>交互：添加 / 移除即时保存（PUT 整行替换），覆盖与整行删除弹确认（含 before→after 级别与 ≤60 秒断会话提示，FR-1.7）。</li>
+            <li>新增「用户管理」页（admin）：账号列表 + 平台角色下拉（普通 / 审计 / 管理员）；角色=平台级身份（管控面 / 审计面），与三卡片的资源授权分两层；角色变更写入 role_update 审计，按用户覆盖优先于 LDAP 同步。</li>
+            <li>成员与权限页收敛为跨项目只读总览：行内「移除」改「编辑」（跳项目详情弹框权限 tab），「添加成员」改「编辑授权 · 详情弹框」。</li>
+          </ul>
           <h4>U66 · 审计增强 <span class="changelog-date">2026-11-15 · 按独立评审修订</span></h4>
           <ul>
             <li>关键字改为文件名 / 路径 / 账号 / 项目匹配；内容前缀需摘录开关开启（二期），默认关闭，不再承诺“全文匹配”。[U66-review B-1 M-9 m-13]</li>
@@ -2598,6 +2654,11 @@ svg { display: block; }
       <span><strong>项目授权仅影响当前项目</strong>：不会扩大到该项目所在主机或其它项目。只授权个别项目且没有主机权限时，未授权项目不可见，也不能在该主机上创建项目。</span>
     </div>
 
+    <div class="notice">
+      <svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>
+      <span><strong>写入口收敛（U67 推荐）</strong>：授权的新增 / 移除 / 覆盖统一在<strong>项目详情弹框「权限」tab 的三卡片</strong>（查看 / 控制 / 管理）中操作；本页矩阵保留为跨项目只读总览，行内「编辑」跳转对应弹框。</span>
+    </div>
+
     <section class="card" aria-labelledby="basicInfoTitle">
       <div class="card-head">
         <div>
@@ -2664,9 +2725,9 @@ svg { display: block; }
           <h2 class="card-title" id="membersTitle">成员与组 <span class="section-count" id="authMemberCount">5</span></h2>
           <p class="card-subtitle">用户与组来自 LDAP 同步，权限按项目独立授予。</p>
         </div>
-        <button class="btn btn-secondary" id="addMemberBtn" data-open-modal="addMember">
+        <button class="btn btn-secondary" id="addMemberBtn" title="授权写入口已收敛至项目详情弹框权限 tab">
           <svg class="icon" aria-hidden="true"><use href="#i-user-plus"/></svg>
-          添加成员
+          编辑授权 · 详情弹框
         </button>
       </div>
       <div style="padding:16px 20px 0;display:flex;flex-direction:column;gap:8px">
@@ -2753,6 +2814,55 @@ svg { display: block; }
       </div>
     </section>
   </div>
+</div>
+</section>
+      <section class="page" data-page="users" hidden><div class="page-head">
+  <div>
+    <h1>用户管理</h1>
+    <p>平台账号与角色设置。用户与组来自 LDAP 同步；角色为按用户覆盖，覆盖记录留审计（FR-9.2）。</p>
+  </div>
+  <div class="page-head-actions">
+    <span class="status status-success"><span class="dot dot-success"></span>LDAP 同步正常</span>
+    <span class="status status-muted"><span class="dot dot-gray"></span>7 个账号</span>
+  </div>
+</div>
+
+<div class="notice">
+  <svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>
+  <span><strong>角色 ≠ 资源授权（两层模型）</strong>：本页的「普通 / 审计 / 管理员」是平台级身份——决定管控面与审计面可见性；「谁能用哪些项目、有哪些操作」由项目 / 主机详情弹框权限 tab 的三卡片（资源授权）决定。管理员角色不等于项目内全权：打开项目仍需显式授权（U40 自授语义）。</span>
+</div>
+
+<section class="card table-card">
+  <div class="table-card-head">
+    <div class="table-card-title">
+      <h2>账号与角色</h2>
+      <span class="section-count">角色变更写入 role_update 审计</span>
+    </div>
+  </div>
+  <div class="table-scroll">
+    <table class="data-table" aria-label="用户与角色">
+      <thead>
+        <tr>
+          <th style="width:172px">用户</th>
+          <th style="width:120px">部门</th>
+          <th style="width:150px">LDAP 组</th>
+          <th style="width:130px">角色</th>
+          <th style="width:140px">角色来源</th>
+          <th style="width:96px">状态</th>
+        </tr>
+      </thead>
+      <tbody id="usersBody"></tbody>
+    </table>
+  </div>
+  <div class="table-foot">
+    <span id="usersFoot">共 7 个账号</span>
+    <span>服务端按请求实时判定角色；角色降级会断开当前云会话（≤60 秒），升级即时生效、不断会话</span>
+  </div>
+</section>
+
+<div class="notice">
+  <svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>
+  <span>角色语义：普通 = 项目 / 主机使用面（按资源授权）；审计 = + 审计查询与目录读取，不可管控；管理员 = 全管控面 + 授权卡片写入。LDAP platform-admins 组成员首次登录映射为管理员，此后按用户覆盖优先，再次登录不会被同步覆盖。</span>
 </div>
 </section>
       <section class="page" data-page="audit" hidden><div class="page-head">
@@ -3689,6 +3799,11 @@ svg { display: block; }
         <span class="badge">守护进程运行中</span>
       </div>
 
+      <nav class="detail-tabs" aria-label="主机详情分区">
+        <button type="button" class="detail-tab is-active" data-detail-tab="info">信息</button>
+        <button type="button" class="detail-tab" data-detail-tab="perm">权限</button>
+      </nav>
+      <div class="detail-panel" data-detail-panel="info">
       <section>
         <h3 class="detail-section-title">主机信息</h3>
         <div class="detail-list">
@@ -3718,85 +3833,80 @@ svg { display: block; }
         <p class="muted-note" style="margin-top:10px"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>路由键默认取直连 IP，可显式配置；SNI 只是中继的路由标签，无 DNS 解析。</p>
       </section>
 
-      <section aria-labelledby="hostGrantTitle">
-        <div class="detail-section-head">
-          <h3 class="detail-section-title" id="hostGrantTitle">权限分配</h3>
-          <span class="badge badge-brand">主机级授权</span>
-        </div>
-        <p class="muted-note" style="margin-bottom:2px"><svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>主机授权决定项目可见范围与项目内操作上限；项目授权不扩大到主机级。</p>
-
-        <div class="perm-level-grid" id="hostPermissionLevels" role="radiogroup" aria-label="主机授权级别">
-          <button type="button" class="perm-level-card" data-host-level="full" role="radio" aria-checked="false">
-            <span class="perm-level-head">全权 <span class="badge badge-brand badge-sm">3 / 3</span></span>
-            <span class="perm-level-desc">可见该主机全部项目，可创建 / 登记项目，可维护主机。</span>
-            <span class="perm-level-tags">provision · maintain · view</span>
-          </button>
-          <button type="button" class="perm-level-card is-active" data-host-level="readonly" role="radio" aria-checked="true">
-            <span class="perm-level-head">只读 <span class="badge badge-warning badge-sm">view only</span></span>
-            <span class="perm-level-desc">只能打开查看已授权项目，不能创建 / 编辑 / 运行终端。</span>
-            <span class="perm-level-tags">view</span>
-          </button>
-          <button type="button" class="perm-level-card" data-host-level="custom" role="radio" aria-checked="false">
-            <span class="perm-level-head">自定义 <span class="badge badge-neutral badge-sm">逐位</span></span>
-            <span class="perm-level-desc">按 provision / maintain / view 三个权限位单独组合。</span>
-            <span class="perm-level-tags">custom bits</span>
-          </button>
-        </div>
-
-        <div class="perm-bit-list" id="hostPermissionBits" aria-label="主机权限位">
-          <label class="perm-bit">
-            <input type="checkbox" data-host-bit="provision">
-            <span class="perm-switch" aria-hidden="true"></span>
-            <span class="perm-bit-name">provision</span>
-            <span class="perm-bit-scope">创建 / 登记项目 · 可见该主机全部项目</span>
-          </label>
-          <label class="perm-bit">
-            <input type="checkbox" data-host-bit="maintain">
-            <span class="perm-switch" aria-hidden="true"></span>
-            <span class="perm-bit-name">maintain</span>
-            <span class="perm-bit-scope">进入 / 退出维护模式（吊销主机仍仅管理员）</span>
-          </label>
-          <label class="perm-bit">
-            <input type="checkbox" data-host-bit="view" checked>
-            <span class="perm-switch" aria-hidden="true"></span>
-            <span class="perm-bit-name">view</span>
-            <span class="perm-bit-scope">打开查看项目 · 只读时为项目内操作上限</span>
-          </label>
-        </div>
-        <p class="muted-note perm-derived" id="hostGrantSummary" aria-live="polite"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>当前级别：只读 · view</p>
-
-        <div class="host-grant-subjects" aria-label="当前主机授权">
-          <div class="host-grant-row">
-            <span class="grant-subject">李思（lisi）<small>结算研发组 · 主机只读</small></span>
-            <span class="badge badge-warning badge-sm">只读 · view</span>
-          </div>
-          <div class="host-grant-row">
-            <span class="grant-subject">王芳（wangfang）<small>结算研发组 · 主机全权</small></span>
-            <span class="badge badge-brand badge-sm">全权 · provision / maintain / view</span>
-          </div>
-        </div>
-      </section>
-
-      <section>
-        <h3 class="detail-section-title">连接探测</h3>
-        <div>
-          <div class="latency-row">
-            <span class="latency-name"><span class="dot dot-success"></span>直连</span>
-            <div style="display:flex;align-items:center;gap:10px">
-              <div class="latency-bar"><span id="hostDirectBar" style="width:18%"></span></div>
-              <span class="latency-value" id="hostDirectLatency">18ms</span>
+        <section>
+          <h3 class="detail-section-title">连接探测</h3>
+          <div>
+            <div class="latency-row">
+              <span class="latency-name"><span class="dot dot-success"></span>直连</span>
+              <div style="display:flex;align-items:center;gap:10px">
+                <div class="latency-bar"><span id="hostDirectBar" style="width:18%"></span></div>
+                <span class="latency-value" id="hostDirectLatency">18ms</span>
+              </div>
+            </div>
+            <div class="latency-row">
+              <span class="latency-name"><span class="dot dot-warning"></span>中继</span>
+              <div style="display:flex;align-items:center;gap:10px">
+                <div class="latency-bar is-warn"><span id="hostRelayBar" style="width:62%"></span></div>
+                <span class="latency-value" id="hostRelayLatency">62ms</span>
+              </div>
             </div>
           </div>
-          <div class="latency-row">
-            <span class="latency-name"><span class="dot dot-warning"></span>中继</span>
-            <div style="display:flex;align-items:center;gap:10px">
-              <div class="latency-bar is-warn"><span id="hostRelayBar" style="width:62%"></span></div>
-              <span class="latency-value" id="hostRelayLatency">62ms</span>
-            </div>
+          <p class="muted-note" style="margin-top:10px"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>平台每 30 秒探测一次直连可达性，并自动更新默认路径。</p>
+        </section>
+      </div>
+
+      <div class="detail-panel" data-detail-panel="perm" hidden>
+        <p class="muted-note" style="margin-top:-6px"><svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>三张卡片是主机授权位（view / provision / maintain）的分组视图：同一主体加入多张卡时权限位取并集，行尾徽标显示合成级别（U65 语义矩阵）。项目级授权不扩大到主机级。</p>
+
+        <div class="perm-card" data-host-card="view">
+          <div class="perm-card-head">
+            <span class="perm-card-title">查看</span>
+            <span class="badge badge-warning badge-sm">view</span>
+            <span class="perm-card-count" data-card-count>0</span>
+          </div>
+          <p class="perm-card-desc">主机只读：可见该主机全部非归档项目并打开查看；项目内上限 = 打开 + 文件只读。不能创建 / 维护主机，不能使用终端 / Agent / 编辑 / 浏览器 / 下载。</p>
+          <div class="perm-chip-list" data-card-chips></div>
+          <div class="perm-add-row">
+            <input class="input" data-card-input list="hostCardUserOptions" placeholder="用户名，如 zhangsan" aria-label="添加主体到查看卡">
+            <select class="select" data-card-type aria-label="主体类型"><option value="user">用户</option><option value="group">组</option></select>
+            <button type="button" class="btn btn-secondary btn-sm" data-card-add>添加</button>
           </div>
         </div>
-        <p class="muted-note" style="margin-top:10px"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>平台每 30 秒探测一次直连可达性，并自动更新默认路径。</p>
-      </section>
+
+        <div class="perm-card" data-host-card="ops">
+          <div class="perm-card-head">
+            <span class="perm-card-title">控制</span>
+            <span class="badge badge-brand badge-sm">view + provision</span>
+            <span class="perm-card-count" data-card-count>0</span>
+          </div>
+          <p class="perm-card-desc">主机全权（操作推导）：可见全部项目，项目内终端 / Agent / 文件读写 / 浏览器可用；下载仍按下载策略独立判定。含创建 / 登记项目能力（U65 全权语义，不含主机维护）。</p>
+          <div class="perm-chip-list" data-card-chips></div>
+          <div class="perm-add-row">
+            <input class="input" data-card-input list="hostCardUserOptions" placeholder="用户名，如 zhangsan" aria-label="添加主体到控制卡">
+            <select class="select" data-card-type aria-label="主体类型"><option value="user">用户</option><option value="group">组</option></select>
+            <button type="button" class="btn btn-secondary btn-sm" data-card-add>添加</button>
+          </div>
+        </div>
+
+        <div class="perm-card" data-host-card="admin">
+          <div class="perm-card-head">
+            <span class="perm-card-title">管理</span>
+            <span class="badge badge-mono badge-sm">provision + maintain</span>
+            <span class="perm-card-count" data-card-count>0</span>
+          </div>
+          <p class="perm-card-desc">创建 / 登记项目 + 进入 / 退出维护模式。不推导项目可见性（仅显式授权项目可见），不授予项目内操作位；吊销主机仍仅限平台管理员。</p>
+          <div class="perm-chip-list" data-card-chips></div>
+          <div class="perm-add-row">
+            <input class="input" data-card-input list="hostCardUserOptions" placeholder="用户名，如 zhangsan" aria-label="添加主体到管理卡">
+            <select class="select" data-card-type aria-label="主体类型"><option value="user">用户</option><option value="group">组</option></select>
+            <button type="button" class="btn btn-secondary btn-sm" data-card-add>添加</button>
+          </div>
+        </div>
+
+        <datalist id="hostCardUserOptions"></datalist>
+        <datalist id="hostCardGroupOptions"></datalist>
+        <p class="perm-mixed-note">变更即时保存（PUT 整行替换）；已存在于其它卡片时先弹覆盖确认。降级保存将断开该主体当前全部云会话，≤60 秒生效（FR-1.7）。</p>
+      </div>
     </div>
     <div class="drawer-foot">
       <button class="btn btn-secondary" id="maintenanceHostBtn">进入维护模式</button>
@@ -4139,6 +4249,96 @@ svg { display: block; }
     </div>
   </div>
 
+  <div class="modal modal-xl" role="dialog" aria-modal="true" aria-labelledby="projectDetailTitle" data-modal="projectDetail" hidden>
+    <div class="modal-head">
+      <div class="modal-head-main">
+        <h2 class="modal-title mono" id="projectDetailTitle" style="font-size:14px">payment-service</h2>
+        <p class="modal-sub">项目详情 <span class="mono" id="projectDetailHost">· dev-node-03</span></p>
+      </div>
+      <button class="icon-btn icon-btn-sm modal-close" data-close-modal aria-label="关闭项目详情">
+        <svg class="icon" aria-hidden="true"><use href="#i-x"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <nav class="detail-tabs" style="margin:-4px 0 16px;border-radius:8px" aria-label="项目详情分区">
+        <button type="button" class="detail-tab is-active" data-pd-tab="info">信息</button>
+        <button type="button" class="detail-tab" data-pd-tab="perm">权限</button>
+      </nav>
+
+      <div class="detail-panel" data-pd-panel="info">
+        <div class="detail-list">
+          <div class="detail-row"><span class="detail-key">项目名</span><span class="detail-val" id="pdName">payment-service</span></div>
+          <div class="detail-row"><span class="detail-key">仓库地址</span><span class="detail-val mono" id="pdRepo">git@git.internal:pay/payment-service.git</span></div>
+          <div class="detail-row"><span class="detail-key">主机</span><span class="detail-val mono" id="pdHostVal">dev-node-03</span></div>
+          <div class="detail-row"><span class="detail-key">项目路径</span><span class="detail-val mono" id="pdPath">/srv/orca/projects/payment-service</span></div>
+          <div class="detail-row"><span class="detail-key">负责人组</span><span class="detail-val" id="pdOwner">结算研发组</span></div>
+          <div class="detail-row"><span class="detail-key">项目状态</span><span class="detail-val" id="pdStatus"><span class="dot dot-success"></span>在线</span></div>
+          <div class="detail-row"><span class="detail-key">下载策略</span><span class="detail-val" id="pdPolicy">禁止下载 · 项目覆盖</span></div>
+          <div class="detail-row"><span class="detail-key">我的权限</span><span class="detail-val" id="pdMyPerms">打开 · 终端 · Agent · 文件只读 · 文件写入</span></div>
+        </div>
+        <p class="muted-note" style="margin-top:10px">详情弹框为只读平台信息；授权请在「权限」tab 中维护（U67）。</p>
+      </div>
+
+      <div class="detail-panel" data-pd-panel="perm" hidden>
+        <div class="notice" style="margin:-4px 0 10px">
+          <svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>
+          <span>项目级授权<strong>仅影响当前项目</strong>，不扩大到所在主机或其它项目（FR-9.11③）。下载位仍受项目 / 全局下载策略独立约束。</span>
+        </div>
+
+        <div class="perm-card" data-project-card="view">
+          <div class="perm-card-head">
+            <span class="perm-card-title">查看</span>
+            <span class="badge badge-mono badge-sm">open + file:read</span>
+            <span class="perm-card-count" data-card-count>0</span>
+          </div>
+          <p class="perm-card-desc">打开项目、浏览与预览文件。不含终端 / Agent / 编辑 / 浏览器 / 下载。</p>
+          <div class="perm-chip-list" data-card-chips></div>
+          <div class="perm-add-row">
+            <input class="input" data-card-input list="pdUserOptions" placeholder="用户名，如 zhangsan" aria-label="添加主体到查看卡">
+            <select class="select" data-card-type aria-label="主体类型"><option value="user">用户</option><option value="group">组</option></select>
+            <button type="button" class="btn btn-secondary btn-sm" data-card-add>添加</button>
+          </div>
+        </div>
+
+        <div class="perm-card" data-project-card="ops">
+          <div class="perm-card-head">
+            <span class="perm-card-title">控制</span>
+            <span class="badge badge-mono badge-sm">terminal · agent · file:write · browser · download</span>
+            <span class="perm-card-count" data-card-count>0</span>
+          </div>
+          <p class="perm-card-desc">项目内操作位：终端、Agent、文件写入、浏览器与下载；下载仍需项目 / 全局下载策略为「允许」才放行（FR-7）。</p>
+          <div class="perm-chip-list" data-card-chips></div>
+          <div class="perm-add-row">
+            <input class="input" data-card-input list="pdUserOptions" placeholder="用户名，如 zhangsan" aria-label="添加主体到控制卡">
+            <select class="select" data-card-type aria-label="主体类型"><option value="user">用户</option><option value="group">组</option></select>
+            <button type="button" class="btn btn-secondary btn-sm" data-card-add>添加</button>
+          </div>
+        </div>
+
+        <div class="perm-card is-derived" data-project-card="admin">
+          <div class="perm-card-head">
+            <span class="perm-card-title">管理</span>
+            <span class="badge badge-brand badge-sm">主机授权推导 · 只读</span>
+            <span class="perm-card-count" data-card-count>0</span>
+          </div>
+          <p class="perm-card-desc">项目级无「管理」权限位：归档 / 登记归创建者或平台管理员，主机维护属主机授权。下方为按 U65 推导在本项目获得权限的主机级主体——在主机详情弹框维护，项目授权不扩大到主机级。</p>
+          <div class="perm-chip-list" data-card-chips></div>
+          <div class="perm-add-row" style="border-top-style:solid">
+            <span class="muted-note" style="padding:0">无添加入口 · <button type="button" class="text-link" data-open-host-drawer id="pdHostJump" style="font-size:11px">前往主机详情弹框 →</button></span>
+          </div>
+        </div>
+
+        <datalist id="pdUserOptions"></datalist>
+        <datalist id="pdGroupOptions"></datalist>
+        <p class="perm-mixed-note">变更即时保存（PUT 整行替换）；已存在于其它卡片时先弹覆盖确认。授权收缩将断开该主体当前全部云会话，≤60 秒生效（FR-1.7）。</p>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" data-close-modal>关闭</button>
+      <button class="btn btn-primary" data-open-project id="pdOpenBtn">打开项目</button>
+    </div>
+  </div>
+
   <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="downloadBlockedTitle" data-modal="downloadBlocked" hidden>
     <div class="modal-head">
       <div class="modal-icon-wrap is-warning">
@@ -4309,7 +4509,7 @@ svg { display: block; }
     notificationUnread: 3
   };
 
-  const adminRoutes = new Set(['hosts', 'relays', 'members', 'audit', 'settings']);
+  const adminRoutes = new Set(['hosts', 'relays', 'members', 'users', 'audit', 'settings']);
 
   const routeMeta = {
     workbench: { page: 'workbench', crumb: ['工作台'], search: true, actions: 'workbench', title: '工作台' },
@@ -4317,6 +4517,7 @@ svg { display: block; }
     hosts: { page: 'hosts', crumb: ['平台设置', '主机'], search: false, actions: 'hosts', title: '主机' },
     relays: { page: 'relays', crumb: ['平台设置', '中继'], search: false, actions: 'relays', title: '中继' },
     members: { page: 'members', crumb: ['平台设置', '成员与权限'], search: false, actions: null, title: '项目授权' },
+    users: { page: 'users', crumb: ['平台设置', '用户管理'], search: false, actions: null, title: '用户管理' },
     audit: { page: 'audit', crumb: ['平台设置', '审计日志'], search: false, actions: null, title: '审计日志' },
     settings: { page: 'settings', crumb: ['平台设置', '下载策略'], search: false, actions: null, title: '下载策略' },
     diagnostics: { page: 'diagnostics', crumb: ['工作台', '连接诊断'], search: false, actions: 'diagnostics', title: '连接诊断' },
@@ -4558,6 +4759,34 @@ svg { display: block; }
     { name: '测试组', account: 'grp-qa', meta: 'LDAP 组 · 18 人' },
     { name: '安全审计组', account: 'grp-security-audit', meta: 'LDAP 组 · 6 人' },
     { name: '平台管理员', account: 'grp-platform-admin', meta: 'LDAP 组 · 4 人' }
+  ];
+
+  // [U67] 主机授权三卡片演示数据：bits 为 U65 存储位（view / provision / maintain），卡片按映射表派生
+  const hostGrantsData = {
+    'dev-node-01': [
+      { type: 'group', id: 'grp-pay-platform', name: '支付平台组', bits: ['view', 'provision'] },
+      { type: 'user', id: 'zhaomin', name: '赵敏（zhaomin）', bits: ['view'] }
+    ],
+    'dev-node-03': [
+      { type: 'user', id: 'lisi', name: '李思（lisi）', bits: ['view'] },
+      { type: 'user', id: 'wangfang', name: '王芳（wangfang）', bits: ['view', 'provision'] },
+      { type: 'user', id: 'chenhao', name: '陈昊（chenhao）', bits: ['provision', 'maintain'] },
+      { type: 'group', id: 'grp-qa', name: '测试组', bits: ['view'] }
+    ],
+    'dev-node-09': [
+      { type: 'group', id: 'grp-platform-admin', name: '平台管理员', bits: ['view', 'provision', 'maintain'] }
+    ]
+  };
+
+  // [U67] 用户管理页演示数据：角色为平台级身份（普通/审计/管理员），资源授权在详情弹框三卡片
+  const userDirectory = [
+    { account: 'admin', name: '李静', dept: '平台工程部', group: 'platform-admins', role: 'admin', source: 'LDAP 同步 · platform-admins' },
+    { account: 'zhangwei', name: '张伟', dept: '研发效能部', group: 'developers', role: 'developer', source: 'LDAP 同步' },
+    { account: 'zhaomin', name: '赵敏', dept: '结算研发组', group: 'grp-pay-platform', role: 'developer', source: 'LDAP 同步' },
+    { account: 'qianlei', name: '钱磊', dept: '电商研发组', group: 'grp-commerce', role: 'developer', source: 'LDAP 同步' },
+    { account: 'sunyue', name: '孙悦', dept: '测试组', group: 'grp-qa', role: 'auditor', source: '管理员覆盖' },
+    { account: 'zhouhang', name: '周航', dept: '风控研发组', group: 'grp-risk', role: 'developer', source: 'LDAP 同步' },
+    { account: 'lisi', name: '李思', dept: '结算研发组', group: 'grp-pay-platform', role: 'developer', source: 'LDAP 同步 · 主机只读为资源授权' }
   ];
 
   const auditEvents = [
@@ -4971,6 +5200,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     if (route === 'hosts') renderHosts();
     if (route === 'relays') renderRelays();
     if (route === 'members') renderAuthPage();
+    if (route === 'users') renderUsers();
     if (route === 'audit') renderAuditTable();
     if (route === 'settings') syncPolicyUI();
     if (route === 'forbidden') updateRoleUI();
@@ -5122,7 +5352,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
         <td>${escapeHTML(project.scopeLabel)}</td>
         <td><span title="${escapeHTML(project.lastAbs)}">${escapeHTML(project.last)}</span></td>
         <td>${projectStatusMarkup(project)}</td>
-        <td class="cell-ops">${openAction}</td>
+        <td class="cell-ops">${openAction}<button class="text-link admin-only" data-project-detail="${escapeHTML(project.id)}" style="margin-left:10px">详情</button></td>
       </tr>`;
   }
 
@@ -5357,6 +5587,8 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     offline.disabled = host.status === 'offline';
     offline.textContent = host.status === 'offline' ? '已下线' : '下线主机';
     $('.drawer-body', $('#hostDrawerLayer')).scrollTop = 0;
+    switchDrawerTab('info');
+    renderHostPermCards();
   }
 
   function openHostDrawer(hostId) {
@@ -5418,37 +5650,397 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     copyText(command, '注册命令已复制');
   }
 
-  function hostGrantBits() {
-    return $$('#hostPermissionBits input[data-host-bit]');
+  /* [U67] 主机详情弹框 · 权限 tab 三卡片：查看=view、控制=view+provision、管理=provision+maintain */
+  const HOST_CARDS = {
+    view: { bits: ['view'], label: '查看卡' },
+    ops: { bits: ['view', 'provision'], label: '控制卡' },
+    admin: { bits: ['provision', 'maintain'], label: '管理卡' }
+  };
+  const hostLevelLabel = (bits) => {
+    const set = new Set(bits);
+    if (set.has('view') && set.has('provision')) return set.has('maintain') ? '全权 + 维护' : '全权';
+    if (set.has('view')) return '只读';
+    if (set.has('provision') && set.has('maintain')) return '管理（创建+维护）';
+    if (set.has('maintain')) return '仅维护';
+    if (set.has('provision')) return '仅创建';
+    return '无授权';
+  };
+  const hostLevelBadgeClass = (bits) => {
+    const set = new Set(bits);
+    if (set.has('view') && set.has('provision')) return 'badge-brand';
+    if (set.has('view')) return 'badge-warning';
+    return 'badge-neutral';
+  };
+
+  function hostGrantsOf(hostId) {
+    if (!hostGrantsData[hostId]) hostGrantsData[hostId] = [];
+    return hostGrantsData[hostId];
   }
 
-  function applyHostLevel(level) {
-    if (level !== 'custom') {
-      const wanted = level === 'full' ? ['provision', 'maintain', 'view'] : ['view'];
-      hostGrantBits().forEach((input) => {
-        input.checked = wanted.includes(input.dataset.hostBit);
-      });
-    }
-    syncHostGrantUI(level);
-  }
-
-  function syncHostGrantUI(forcedLevel) {
-    const inputs = hostGrantBits();
-    const checked = inputs.filter((input) => input.checked).map((input) => input.dataset.hostBit);
-    const level = forcedLevel || (checked.length === 3 ? 'full' : checked.length === 1 && checked[0] === 'view' ? 'readonly' : 'custom');
-    $$('#hostPermissionLevels [data-host-level]').forEach((card) => {
-      const active = card.dataset.hostLevel === level;
-      card.classList.toggle('is-active', active);
-      card.setAttribute('aria-checked', String(active));
+  function switchDrawerTab(target) {
+    $$('#hostDrawerLayer .detail-tab').forEach((tab) => tab.classList.toggle('is-active', tab.dataset.detailTab === target));
+    $$('#hostDrawerLayer .detail-panel').forEach((panel) => {
+      panel.hidden = panel.dataset.detailPanel !== target;
     });
-    inputs.forEach((input) => input.closest('.perm-bit').classList.toggle('is-off', !input.checked));
-    const summary = $('#hostGrantSummary');
-    if (summary) {
-      const label = level === 'full' ? '全权 · provision / maintain / view'
-        : level === 'readonly' ? '只读 · view'
-          : `自定义 · ${checked.length ? checked.join(' / ') : '无权限位'}`;
-      summary.innerHTML = `${iconMarkup('info')}当前级别：${label}${level === 'readonly' ? '（项目内编辑 / 终端受上限约束）' : ''}`;
+  }
+
+  function renderHostPermCards() {
+    const host = hostDirectory.find((item) => item.id === state.selectedHostId);
+    const layer = $('#hostDrawerLayer');
+    if (!host || layer.hidden) return;
+    const grants = hostGrantsOf(host.id);
+    $$('#hostDrawerLayer .perm-card[data-host-card]').forEach((card) => {
+      const cardBits = HOST_CARDS[card.dataset.hostCard].bits;
+      const members = grants
+        .map((grant, index) => ({ grant, index }))
+        .filter(({ grant }) => cardBits.every((bit) => grant.bits.includes(bit)));
+      const list = $('[data-card-chips]', card);
+      if (list) {
+        list.innerHTML = members.length
+          ? members.map(({ grant, index }) => `
+            <span class="perm-chip">${escapeHTML(grant.name)}
+              <small>${grant.type === 'group' ? '组' : '用户'} · ${hostLevelLabel(grant.bits)}</small>
+              <button type="button" data-host-remove="${index}:${card.dataset.hostCard}" aria-label="从${HOST_CARDS[card.dataset.hostCard].label}移除 ${escapeHTML(grant.name)}">✕</button>
+            </span>`).join('')
+          : '<span class="perm-empty">暂无主体——在下方输入并添加。</span>';
+      }
+      const count = $('[data-card-count]', card);
+      if (count) count.textContent = `${members.length} 个主体`;
+    });
+    const userList = $('#hostCardUserOptions');
+    if (userList) userList.innerHTML = directoryUsers.map((user) => `<option value="${escapeHTML(user.account)}">${escapeHTML(user.name)} · ${escapeHTML(user.meta)}</option>`).join('');
+    const groupList = $('#hostCardGroupOptions');
+    if (groupList) groupList.innerHTML = directoryGroups.map((group) => `<option value="${escapeHTML(group.account)}"></option>`).join('');
+  }
+
+  function requireAdminForGrants() {
+    if (state.role === 'admin') return true;
+    showToast('仅平台管理员可修改授权', { type: 'warning', sub: '三卡片写入为管理员操作（FR-9.7）' });
+    return false;
+  }
+
+  function applyHostGrantBits(grant, nextBits) {
+    grant.bits = [...new Set(nextBits)].sort();
+  }
+
+  function addHostCardSubject(card) {
+    if (!requireAdminForGrants()) return;
+    const host = hostDirectory.find((item) => item.id === state.selectedHostId);
+    if (!host) return;
+    const input = $('[data-card-input]', card);
+    const type = $('[data-card-type]', card).value;
+    const typed = (input?.value ?? '').trim();
+    if (!typed) {
+      showToast('请输入用户名或组名', { type: 'error' });
+      input?.focus();
+      return;
     }
+    const entry = type === 'user' ? directoryUsers.find((user) => user.account === typed) : directoryGroups.find((group) => group.account === typed);
+    const displayName = entry ? (type === 'user' ? `${entry.name}（${entry.account}）` : entry.name) : typed;
+    const grants = hostGrantsOf(host.id);
+    const existing = grants.find((grant) => grant.type === type && grant.id === typed);
+    const cardBits = HOST_CARDS[card.dataset.hostCard].bits;
+    if (existing && cardBits.every((bit) => existing.bits.includes(bit))) {
+      showToast(`${displayName} 已在该卡片中`, { type: 'info' });
+      return;
+    }
+    const apply = () => {
+      if (existing) applyHostGrantBits(existing, [...existing.bits, ...cardBits]);
+      else grants.push({ type, id: typed, name: displayName, bits: [...cardBits] });
+      renderHostPermCards();
+      showToast(`已添加 ${displayName}`, { sub: `级别：${hostLevelLabel(existing ? existing.bits : cardBits)} · 写入 host_grant_update 审计` });
+    };
+    if (!existing) {
+      apply();
+      input.value = '';
+      return;
+    }
+    const before = hostLevelLabel(existing.bits);
+    const afterBits = [...new Set([...existing.bits, ...cardBits])];
+    openConfirm({
+      title: '覆盖现有授权',
+      sub: '同一主体只有一行主机授权，保存按整行替换权限位。',
+      message: `${displayName} 已有主机授权（当前：${before} → 调整后：${hostLevelLabel(afterBits)}，位并集 ${afterBits.join(' + ')}）。级别提升即时生效，不断开会话。`,
+      confirmLabel: '覆盖授权',
+      danger: false,
+      onConfirm: () => {
+        apply();
+        input.value = '';
+      }
+    });
+  }
+
+  function removeHostCardSubject(token) {
+    if (!requireAdminForGrants()) return;
+    const host = hostDirectory.find((item) => item.id === state.selectedHostId);
+    if (!host) return;
+    const sep = token.indexOf(':');
+    const index = Number(token.slice(0, sep));
+    const cardKey = token.slice(sep + 1);
+    const grants = hostGrantsOf(host.id);
+    const grant = grants[index];
+    const cardBits = HOST_CARDS[cardKey]?.bits;
+    if (!grant || !cardBits) return;
+    const nextBits = grant.bits.filter((bit) => !cardBits.includes(bit));
+    const before = hostLevelLabel(grant.bits);
+    const after = hostLevelLabel(nextBits);
+    const apply = () => {
+      if (nextBits.length === 0) grants.splice(index, 1);
+      else applyHostGrantBits(grant, nextBits);
+      renderHostPermCards();
+      showToast(`已移出${HOST_CARDS[cardKey].label} · ${grant.name}`, { sub: nextBits.length ? `级别：${before} → ${after}` : '授权行已删除，云会话将在 ≤60 秒内断开' });
+    };
+    if (nextBits.length === 0) {
+      openConfirm({
+        title: '移除全部授权',
+        sub: '该主体将失去此主机上的全部授权。',
+        message: `${grant.name} 仅在本卡片持有授权。移除后授权行删除，其当前云会话将在 ≤60 秒内断开（FR-1.7）。`,
+        confirmLabel: '确认移除',
+        danger: true,
+        onConfirm: apply
+      });
+      return;
+    }
+    apply();
+  }
+
+  function syncHostCardInputs(card) {
+    const type = $('[data-card-type]', card)?.value;
+    const input = $('[data-card-input]', card);
+    if (!type || !input) return;
+    input.setAttribute('list', type === 'user' ? 'hostCardUserOptions' : 'hostCardGroupOptions');
+    input.placeholder = type === 'user' ? '用户名，如 zhangsan' : '组名，如 grp-qa';
+  }
+
+  /* [U67] 项目详情弹框 · 权限 tab 三卡片：查看=open+file:read、控制=操作位、管理=主机授权推导（只读） */
+  let pdProjectId = null;
+  const PERM_LABELS = { open: '打开', terminal: '终端', agent: 'Agent', fileRead: '文件只读', fileWrite: '文件写入', download: '下载' };
+  const PROJECT_CARDS = {
+    view: { perms: ['open', 'fileRead'], match: 'all', label: '查看卡' },
+    ops: { perms: ['terminal', 'agent', 'fileWrite', 'download'], match: 'any', label: '控制卡' }
+  };
+
+  function projectPermSummary(perms) {
+    const on = Object.keys(PERM_LABELS).filter((key) => perms[key]);
+    return on.length ? on.map((key) => PERM_LABELS[key]).join(' · ') : '无权限';
+  }
+
+  function matchProjectMember(project, typed, displayName, type) {
+    return project.members.find((member) => {
+      if ((member.type === '组') !== (type === 'group')) return false;
+      const accountMatch = member.subject.match(/（(.*)）$/);
+      const bare = member.subject.replace(/（.*）$/, '');
+      return member.subject === displayName || accountMatch?.[1] === typed || bare === typed;
+    });
+  }
+
+  function switchProjectDetailTab(target) {
+    $$('[data-pd-tab]').forEach((tab) => tab.classList.toggle('is-active', tab.dataset.pdTab === target));
+    $$('[data-pd-panel]').forEach((panel) => {
+      panel.hidden = panel.dataset.pdPanel !== target;
+    });
+  }
+
+  function renderProjectPermCards() {
+    const project = authProjects[pdProjectId];
+    if (!project) return;
+    $$('.perm-card[data-project-card]').forEach((card) => {
+      const key = card.dataset.projectCard;
+      const list = $('[data-card-chips]', card);
+      const count = $('[data-card-count]', card);
+      if (key === 'admin') {
+        const derived = hostGrantsOf(project.host).filter((grant) => grant.bits.includes('view') && grant.bits.includes('provision'));
+        if (list) {
+          list.innerHTML = derived.length
+            ? derived.map((grant) => `<span class="perm-chip">${escapeHTML(grant.name)}<small>主机 ${hostLevelLabel(grant.bits)} → 本项目操作位来源</small></span>`).join('')
+            : '<span class="perm-empty">该主机暂无全权主体。</span>';
+        }
+        if (count) count.textContent = `${derived.length} 个主体`;
+        return;
+      }
+      const cardPerms = PROJECT_CARDS[key].perms;
+      // 查看卡要求两齐（打开+文件只读）；控制卡任一操作位即入卡（download 仍受策略）
+      const members = project.members.filter((member) => PROJECT_CARDS[key].match === 'any'
+        ? cardPerms.some((perm) => member.perms[perm])
+        : cardPerms.every((perm) => member.perms[perm]));
+      if (list) {
+        list.innerHTML = members.length
+          ? members.map((member) => `
+            <span class="perm-chip">${escapeHTML(member.subject)}
+              <small>${member.type} · ${projectPermSummary(member.perms)}</small>
+              <button type="button" data-project-remove="${escapeHTML(member.subject)}:${key}" aria-label="从${PROJECT_CARDS[key].label}移除 ${escapeHTML(member.subject)}">✕</button>
+            </span>`).join('')
+          : '<span class="perm-empty">暂无主体——在下方输入并添加。</span>';
+      }
+      if (count) count.textContent = `${members.length} 个主体`;
+    });
+    const userList = $('#pdUserOptions');
+    if (userList) userList.innerHTML = directoryUsers.map((user) => `<option value="${escapeHTML(user.account)}">${escapeHTML(user.name)} · ${escapeHTML(user.meta)}</option>`).join('');
+    const groupList = $('#pdGroupOptions');
+    if (groupList) groupList.innerHTML = directoryGroups.map((group) => `<option value="${escapeHTML(group.account)}"></option>`).join('');
+  }
+
+  function openProjectDetail(projectId) {
+    const project = authProjects[projectId];
+    if (!project) return;
+    pdProjectId = projectId;
+    state.currentAuthProject = projectId;
+    $('#projectDetailTitle').textContent = project.name;
+    $('#projectDetailHost').textContent = `· ${project.host}`;
+    $('#pdName').textContent = project.name;
+    $('#pdRepo').textContent = project.repo;
+    $('#pdHostVal').textContent = project.host;
+    $('#pdPath').textContent = project.path;
+    $('#pdOwner').textContent = project.owner;
+    $('#pdStatus').innerHTML = project.status === 'online' ? '<span class="dot dot-success"></span>在线' : '<span class="dot dot-gray"></span>主机离线';
+    $('#pdPolicy').textContent = project.policy === 'allow' ? '允许下载' : '禁止下载 · 项目覆盖';
+    $('#pdMyPerms').textContent = '按登录身份返回（演示：打开 · 终端 · Agent · 文件只读）';
+    switchProjectDetailTab('info');
+    renderProjectPermCards();
+    openModal('projectDetail');
+  }
+
+  function addProjectCardSubject(card) {
+    if (!requireAdminForGrants()) return;
+    const project = authProjects[pdProjectId];
+    if (!project) return;
+    const key = card.dataset.projectCard;
+    if (key === 'admin') return; // derived card: read-only
+    const cardPerms = PROJECT_CARDS[key].perms;
+    const input = $('[data-card-input]', card);
+    const type = $('[data-card-type]', card).value;
+    const typed = (input?.value ?? '').trim();
+    if (!typed) {
+      showToast('请输入用户名或组名', { type: 'error' });
+      input?.focus();
+      return;
+    }
+    const entry = type === 'user' ? directoryUsers.find((user) => user.account === typed) : directoryGroups.find((group) => group.account === typed);
+    const displayName = entry ? (type === 'user' ? `${entry.name}（${entry.account}）` : entry.name) : typed;
+    const existing = matchProjectMember(project, typed, displayName, type);
+    if (existing && PROJECT_CARDS[key].perms.every((perm) => existing.perms[perm])) {
+      showToast(`${displayName} 已在该卡片中`, { type: 'info' });
+      return;
+    }
+    const apply = () => {
+      if (existing) {
+        cardPerms.forEach((perm) => { existing.perms[perm] = true; });
+      } else {
+        const perms = { open: false, terminal: false, agent: false, fileRead: false, fileWrite: false, download: false };
+        cardPerms.forEach((perm) => { perms[perm] = true; });
+        project.members.push({ subject: displayName, type: type === 'group' ? '组' : '用户', source: '直接', perms: can(perms) });
+      }
+      renderProjectPermCards();
+      if (state.route === 'members') renderAuthMembers(project);
+      showToast(`已添加 ${displayName}`, { sub: '写入 grant_update 审计 · 授权收缩时 ≤60 秒断开会话' });
+    };
+    if (!existing) {
+      apply();
+      input.value = '';
+      return;
+    }
+    const afterPerms = { ...existing.perms };
+    cardPerms.forEach((perm) => { afterPerms[perm] = true; });
+    openConfirm({
+      title: '覆盖现有授权',
+      sub: '同一主体只有一行项目授权，保存按整行替换权限位。',
+      message: `${displayName} 已有项目授权（当前：${projectPermSummary(existing.perms)} → 调整后：${projectPermSummary(afterPerms)}）。下载位仍受下载策略独立约束。`,
+      confirmLabel: '覆盖授权',
+      danger: true,
+      onConfirm: () => {
+        apply();
+        input.value = '';
+      }
+    });
+  }
+
+  function removeProjectCardSubject(token) {
+    if (!requireAdminForGrants()) return;
+    const project = authProjects[pdProjectId];
+    if (!project) return;
+    const sep = token.lastIndexOf(':');
+    const subject = token.slice(0, sep);
+    const key = token.slice(sep + 1);
+    const member = project.members.find((item) => item.subject === subject);
+    const cardPerms = PROJECT_CARDS[key]?.perms;
+    if (!member || !cardPerms) return;
+    const nextPerms = { ...member.perms };
+    cardPerms.forEach((perm) => { nextPerms[perm] = false; });
+    const hasAny = Object.values(nextPerms).some(Boolean);
+    const apply = () => {
+      if (hasAny) member.perms = nextPerms;
+      else project.members = project.members.filter((item) => item !== member);
+      renderProjectPermCards();
+      if (state.route === 'members') renderAuthMembers(project);
+      showToast(`已移出${PROJECT_CARDS[key].label} · ${subject}`, { sub: hasAny ? undefined : '授权行已删除，云会话将在 ≤60 秒内断开' });
+    };
+    if (!hasAny) {
+      openConfirm({
+        title: '移除全部授权',
+        sub: '该主体将失去本项目的全部授权。',
+        message: `${subject} 仅在本卡片持有权限。移除后授权行删除，其当前云会话将在 ≤60 秒内断开（FR-1.7）。`,
+        confirmLabel: '确认移除',
+        danger: true,
+        onConfirm: apply
+      });
+      return;
+    }
+    apply();
+  }
+
+  function syncProjectCardInputs(card) {
+    const type = $('[data-card-type]', card)?.value;
+    const input = $('[data-card-input]', card);
+    if (!type || !input) return;
+    input.setAttribute('list', type === 'user' ? 'pdUserOptions' : 'pdGroupOptions');
+    input.placeholder = type === 'user' ? '用户名，如 zhangsan' : '组名，如 grp-qa';
+  }
+
+  /* [U67] 用户管理页：平台级角色（普通/审计/管理员），覆盖优先于 LDAP 同步 */
+  const ROLE_OPTIONS = { developer: '普通', auditor: '审计', admin: '管理员' };
+
+  function renderUsers() {
+    const tbody = $('#usersBody');
+    if (!tbody) return;
+    tbody.innerHTML = userDirectory.map((user) => `
+      <tr>
+        <td class="cell-strong">${escapeHTML(user.name)} <span class="cell-mono" style="margin-left:4px">${escapeHTML(user.account)}</span></td>
+        <td>${escapeHTML(user.dept)}</td>
+        <td><span class="cell-mono">${escapeHTML(user.group)}</span></td>
+        <td>
+          <select class="select select-sm role-select" data-role-for="${escapeHTML(user.account)}" aria-label="${escapeHTML(user.name)} 的平台角色">
+            ${Object.entries(ROLE_OPTIONS).map(([value, label]) => `<option value="${value}"${user.role === value ? ' selected' : ''}>${label}</option>`).join('')}
+          </select>
+        </td>
+        <td><span class="muted-note" style="font-size:10px">${escapeHTML(user.source)}</span></td>
+        <td><span class="status status-success"><span class="dot dot-success"></span>活跃</span></td>
+      </tr>`).join('');
+    const foot = $('#usersFoot');
+    if (foot) foot.textContent = `共 ${userDirectory.length} 个账号`;
+  }
+
+  function handleUserRoleChange(event) {
+    const select = event.target.closest('[data-role-for]');
+    if (!select) return;
+    const user = userDirectory.find((item) => item.account === select.dataset.roleFor);
+    const next = select.value;
+    if (!user || next === user.role) return;
+    const previous = user.role;
+    select.value = previous; // revert until confirmed; confirm re-renders the row
+    const demote = previous === 'admin' && next !== 'admin';
+    openConfirm({
+      title: '角色变更',
+      sub: demote ? '降级将断开该用户当前云会话。' : '升级即时生效，不断开会话。',
+      message: `${user.name}（${user.account}）：${ROLE_OPTIONS[previous]} → ${ROLE_OPTIONS[next]}。变更写入 role_update 审计；按用户覆盖优先于 LDAP 同步，再次登录不会被同步覆盖。`,
+      confirmLabel: '确认变更',
+      danger: demote,
+      onConfirm: () => {
+        user.role = next;
+        if (next !== 'developer' && !user.source.startsWith('管理员覆盖')) user.source = '管理员覆盖';
+        renderUsers();
+        showToast(`已将 ${user.name} 的角色更新为${ROLE_OPTIONS[next]}`, { type: demote ? 'warning' : 'info', sub: demote ? '已断开其当前云会话（≤60 秒）' : '服务端按请求实时生效' });
+      }
+    });
   }
 
   /* ------------------------------------------------------------
@@ -5602,7 +6194,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
           <td><span class="perm-lock" title="下载需在下载策略中开启并提交审批"><span class="perm-unchecked"></span>${iconMarkup('lock')}</span></td>
           <td><span class="source-tag${member.source === '继承' ? ' is-inherited' : ''}">${escapeHTML(member.source)}</span></td>
           <td style="text-align:right">
-            <button class="text-link" style="color:var(--danger);font-size:11.5px" data-remove-member="${escapeHTML(member.subject)}">移除</button>
+            <button class="text-link" data-edit-member="${escapeHTML(member.subject)}" title="在项目详情弹框权限 tab 中编辑">编辑</button>
           </td>
         </tr>`;
     }).join('');
@@ -6797,6 +7389,29 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
         return;
       }
 
+      // [U67] 矩阵行「编辑」与详情入口统一跳项目详情弹框权限 tab
+      const editMemberTarget = target.closest('[data-edit-member]');
+      if (editMemberTarget) {
+        openProjectDetail(state.currentAuthProject);
+        switchProjectDetailTab('perm');
+        return;
+      }
+
+      const projectDetailTarget = target.closest('[data-project-detail]');
+      if (projectDetailTarget) {
+        openProjectDetail(projectDetailTarget.dataset.projectDetail);
+        return;
+      }
+
+      const hostDrawerJump = target.closest('[data-open-host-drawer]');
+      if (hostDrawerJump) {
+        const project = authProjects[pdProjectId];
+        closeModal();
+        navigate('hosts');
+        if (project) window.setTimeout(() => openHostDrawer(project.host), 120);
+        return;
+      }
+
       if (!target.closest('.connection-wrap')) closeConnectionPopover();
       if (!target.closest('#notifWrap')) closeNotifPopover();
       if (!target.closest('.topbar-search')) closeSearchResults();
@@ -6872,11 +7487,25 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
       closeModal();
       showToast('注册流程已生成', { sub: '令牌 24 小时内有效，仅可使用一次' });
     });
-    $$('#hostPermissionLevels [data-host-level]').forEach((card) => {
-      card.addEventListener('click', () => applyHostLevel(card.dataset.hostLevel));
+    $$('#hostDrawerLayer .detail-tab').forEach((tab) => {
+      tab.addEventListener('click', () => switchDrawerTab(tab.dataset.detailTab));
     });
-    hostGrantBits().forEach((input) => input.addEventListener('change', () => syncHostGrantUI()));
-    syncHostGrantUI();
+    const hostPermPanel = $('#hostDrawerLayer [data-detail-panel="perm"]');
+    if (hostPermPanel) {
+      hostPermPanel.addEventListener('click', (event) => {
+        const addTrigger = event.target.closest('[data-card-add]');
+        if (addTrigger) {
+          addHostCardSubject(addTrigger.closest('.perm-card'));
+          return;
+        }
+        const removeTrigger = event.target.closest('[data-host-remove]');
+        if (removeTrigger) removeHostCardSubject(removeTrigger.dataset.hostRemove);
+      });
+      hostPermPanel.addEventListener('change', (event) => {
+        const typeSelect = event.target.closest('[data-card-type]');
+        if (typeSelect) syncHostCardInputs(typeSelect.closest('.perm-card'));
+      });
+    }
   }
 
   function bindRelayEvents() {
@@ -6897,8 +7526,10 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
   }
 
   function bindAuthEvents() {
+    // [U67] 收敛：授权写入口移至项目详情弹框权限 tab，矩阵页保留只读总览
     $('#addMemberBtn').addEventListener('click', () => {
-      resetAddMemberModal();
+      openProjectDetail(state.currentAuthProject);
+      switchProjectDetailTab('perm');
     });
     $('#memberTypeSwitch').addEventListener('click', (event) => {
       const button = event.target.closest('[data-member-type]');
@@ -6919,6 +7550,11 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
         }
       });
     });
+  }
+
+  function bindUserEvents() {
+    const usersBody = $('#usersBody');
+    if (usersBody) usersBody.addEventListener('change', handleUserRoleChange);
   }
 
   function bindAuditEvents() {
@@ -7085,6 +7721,28 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
       if (typeof action === 'function') action();
     });
     $('#newProjectForm').addEventListener('submit', handleNewProject);
+    const pdModal = $('.modal[data-modal="projectDetail"]');
+    if (pdModal) {
+      $$('[data-pd-tab]', pdModal).forEach((tab) => {
+        tab.addEventListener('click', () => switchProjectDetailTab(tab.dataset.pdTab));
+      });
+      const pdPermPanel = $('[data-pd-panel="perm"]', pdModal);
+      if (pdPermPanel) {
+        pdPermPanel.addEventListener('click', (event) => {
+          const addTrigger = event.target.closest('[data-card-add]');
+          if (addTrigger) {
+            addProjectCardSubject(addTrigger.closest('.perm-card'));
+            return;
+          }
+          const removeTrigger = event.target.closest('[data-project-remove]');
+          if (removeTrigger) removeProjectCardSubject(removeTrigger.dataset.projectRemove);
+        });
+        pdPermPanel.addEventListener('change', (event) => {
+          const typeSelect = event.target.closest('[data-card-type]');
+          if (typeSelect) syncProjectCardInputs(typeSelect.closest('.perm-card'));
+        });
+      }
+    }
   }
 
   function bindKeyboardEvents() {
@@ -7126,6 +7784,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     bindHostEvents();
     bindRelayEvents();
     bindAuthEvents();
+    bindUserEvents();
     bindAuditEvents();
     bindPolicyEvents();
     bindDiagnosticsEvents();
@@ -7142,6 +7801,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     updateAuditExcerptState();
     renderAuditTable();
     renderAuthPage();
+    renderUsers();
 
     if (!location.hash) {
       history.replaceState(null, '', '#/login');

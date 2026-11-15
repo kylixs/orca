@@ -1,0 +1,433 @@
+# U67 设计 · 授权方案重构（详情弹框权限 tab 三卡片 · 用户管理页 · 三角色权限定义）
+
+> 状态：设计稿 + 可交互原型，**只设计不修码**；原型经用户确认 + 独立评审通过后才拆实现令（用户流程纪律：AA6 drawer 跳过原型评审为流程瑕疵，本令起授权界面一律先原型评审）
+> 日期：2026-11-15 · 缺陷账：U67（defect-ledger.md:77，含用户追加需求：用户管理页 + 三角色权限定义）
+> 需求唯一源：用户指令（台账 U67 行 + 会话追加）——①主机/项目详情弹框增权限 tab（查看/控制/管理三卡片，每卡片可添加用户）；②语义对齐 U65（全权/只读/不扩大，不得发明新权限语义）；③用户管理页（admin 专属：用户列表 + 角色 设置 普通/审计/管理员）+ 三角色权限定义 + 生效机制 + 审计；④与既有入口（成员与权限矩阵 / 主机 drawer 权限区）收敛裁定
+> 语义基线：`work-orders/u65-host-grant-semantics-design.md`（主会话审定：全权不含 maintain、download 不推导、只读=open+file:read 上限、授权收缩撤凭证 ≤60s）+ `requirements.md` FR-9.3 / FR-9.7 / FR-9.10 / FR-9.11 / FR-1.5 / FR-9.2（v1.4）
+> 现状基线：HEAD 工作树实读——`cloud-platform/apps/web/app.js`（主机 drawer 权限区 :1230-1520、项目详情弹框 :695-880、成员矩阵 :1577-1880）、`cloud-platform/apps/api/src/server.ts`（grants 端点 :2493-2582 / :3181-3320、directory :2755-2773、ROLE_PERMISSIONS :333-337、login 种子 :1703-1712、resolveToken :1168-1180、revoke :4005-4017）、`store.ts`（User.roles / HostGrant / Grant）
+> 原型：`ui/prototype.html`（本令修订，含可交互 tab / 三卡片增删 / 角色下拉）；验证截图 `ui/screenshots/u67-{host-drawer-perm-tab,project-dialog-perm-tab,users-page}.png`
+> 范围：管理台 Web × 平台 API 契约（增量）× 测试；**非目标**：不改宿主 wire、不改 U65 语义矩阵、不动票据签发链路、不做 LDAP 定时全量同步（FR-1.5 的登录时增量已够本页用）
+
+---
+
+## 0. 结论摘要
+
+**一句话**：把授权界面收敛为「详情弹框（信息 | 权限 双 tab）→ 权限 tab 内从上到下查看/控制/管理三张卡片」，每张卡片 = 权限说明 + 主体 chips + 添加输入（复用 AA4 目录 datalist）+ 移除；**三卡片是既有权限位的分组视图，不新增任何权限语义**——主机侧映射到 U65 三位（查看=`view`、控制=`view+provision`、管理=`provision+maintain`），项目侧映射到既有七位中的六位（查看=`open+file:read`、控制=`terminal/agent/file:write/browser/download`、管理=项目级无位 → 主机授权推导只读视图）；读写走既有 `GET/PUT /v1/{hosts,projects}/{id}/grants`（**零新增授权端点**）。并行新增「用户管理页」（admin 专属）：账号列表 + 平台角色下拉（普通/审计/管理员），角色=平台级身份、三卡片=资源授权，两层模型分开表述；角色写入走**一条新端点** `PUT /v1/users/{id}/roles` + directory 加性字段。
+
+**与 AA 的核心反转（4 条）**：
+
+| AA 现状 | U67 后 |
+| --- | --- |
+| 主机 drawer「权限分配」= 三位独立勾选矩阵 + provisionPolicy 开关（app.js:1330-1520），逐位暴露内部模型 | drawer tab 化（信息\|权限），权限 tab = 三卡片；级别由卡片组合合成显示，逐位矩阵与策略开关移除 |
+| 项目授权只能在「成员与权限」页的 7 位矩阵里逐格勾选（app.js:1656-1663） | 写入口收敛到项目详情弹框权限 tab 三卡片；矩阵页降级为跨项目只读总览 + 行内「编辑」跳转 |
+| 项目「详情」弹框只读展示直接授权计数（app.js:768-880），授权要去另一个页面 | 详情弹框权限 tab 即写入口：加人/移除/覆盖确认在同一上下文完成 |
+| 角色只存在于 store（`roles: ['platform:admin','developer']`），管理台无任何查看/设置入口（FR-9.2 落空） | 用户管理页可见 + 可改；角色变更留 `role_update` 审计，按用户覆盖优先于 LDAP 种子 |
+
+**置信度：高（约 85%）**。映射表逐格对照 U65 审定语义与既有端点；不确定项集中在 §11 开放问题（项目弹框管理卡只读 vs 需求「每卡片可添加」的字面冲突、控制卡含创建能力的语义确认、成员页收敛裁定）。
+
+---
+
+## 1. 需求与现状对照
+
+### 1.1 需求（逐条，唯一需求源）
+
+| # | 需求 | 本设计落点 |
+| --- | --- | --- |
+| R1 | 主机/项目详情弹框增权限 tab（现有信息字段=信息 tab；tab 化：信息\|权限） | §3.1；原型 hostDrawerLayer / projectDetail modal |
+| R2 | 权限 tab 内从上到下查看/控制/管理三卡片，每卡片可添加用户 | §3.2；§11-Q1 记录项目弹框管理卡的字面冲突 |
+| R3 | 三卡片映射既有权限位，严格对齐 U65 语义矩阵，不发明新语义 | §2 映射表（核心产出） |
+| R4 | 交互：添加/移除/覆盖确认（复用 R5-③ 覆盖警告形态）/保存时机/权限变更 60s 撤凭证提示 | §4 |
+| R5 | 与既有入口关系：矩阵页与 drawer 权限区保留/迁移/收敛（推荐+理由） | §5（推荐收敛） |
+| R6 | 数据面：零新增端点优先；view 拆分按 U65 复用 | §6（零新增授权端点） |
+| R7 | 原型：详情弹框 tab 形态 + 三卡片（对照 AA 实现风格）+ 用户管理页，可交互 | §8（已修订并实测） |
+| R8 | 实现切分 ≤20 分钟令 + e2e 断言（三卡片增删改/映射正确性/双主机组合/四身份矩阵）+ 验收标准 | §9 / §10（**原型确认后才启动**） |
+| R9 | 用户管理页（admin 专属）：用户列表（目录数据）+ 每用户角色设置（普通/审计/管理员，下拉可扩展） | §7.1 |
+| R10 | 三角色权限语义定义 + 角色↔权限位映射 + 生效机制（快照 vs 实时）+ 角色变更审计 + 页面 wire/端点增量 + e2e | §7.2-§7.6 |
+
+### 1.2 AA 现状核实（只读，HEAD 工作树）
+
+| 能力 | 位置 | 现状 |
+| --- | --- | --- |
+| 主机 drawer 权限区 | `app.js:1230-1520` | 三位勾选矩阵（`HOST_GRANT_PERMISSIONS=['provision','maintain','view']`，app.js:1622）+ provisionPolicy 单选 + 批量草稿保存 + 「主机权限位不进凭证」文案（U65 C13/C14 已判改） |
+| 项目详情弹框 | `app.js:695-880` | 只读：基本信息/运行配置/授权与策略三段 + 直接授权计数 + 打开按钮；授权编辑要去成员页 |
+| 成员与权限矩阵 | `app.js:1577-1880` | 左项目列表 + 右 7 位矩阵（`GRANT_PERMISSIONS`，app.js:1603）+ AA4 主体 datalist + 覆盖确认（U53④）+ 行级 PUT |
+| 主机 grants 端点 | `server.ts:3181-3320` | GET/PUT `/v1/hosts/{id}/grants`，admin-only，PUT 整行替换 + `host_grant_update` 审计；**不撤凭证**（U65 C10 判改为「有效位收缩才撤」） |
+| 项目 grants 端点 | `server.ts:2493-2582` | GET/PUT `/v1/projects/{id}/grants`，PUT 整行替换 + `grant_update` 审计 + `revokeUserCredentials`/`revokeProjectCredentials`（server.ts:2576-2581） |
+| 目录 | `server.ts:2755-2773` | GET `/v1/directory` admin-only：users（id/username/displayName/dept）+ groups；**不含 roles** |
+| 角色模型 | `store.ts:11-19`、`server.ts:333-340` | `User.roles: string[]`；`ROLE_PERMISSIONS = { platform:admin:['platform:admin'], platform:auditor:['platform:auditor'], developer:[] }`；`isAdmin()` 判 `platform:admin` |
+| 角色来源 | `server.ts:1703-1712` | 首次登录 seed：`platform-admins` 组 → `['platform:admin','developer']`，否则 `['developer']`；**后续登录不重算角色**（组并集合并、角色冻结——即「种子时一次定角色」先例） |
+| 角色消费 | `server.ts:1168-1180` + 各路由 | `resolveToken` 返回 store 内**活用户对象**→ `isAdmin(user)` 等门禁**每请求实时**；登录/refresh 响应体里的 `user.roles/permissions` 是一次性快照（前端 `isAdmin()` 依据，app.js:99） |
+| 审计拒绝形状 | `server.ts:772-796` | `denyPrivileged`：403 + denied 审计（`requiredPermission`），U67 新端点直接复用 |
+
+### 1.3 与 AA 的差异清单（UI/数据面）
+
+| # | 差异格 | AA 现状 | U67 目标 |
+| --- | --- | --- | --- |
+| D1 | 主机授权的呈现粒度 | 三位独立勾选（内部位直暴露） | 三卡片（查看/控制/管理），级别=位并集合成 |
+| D2 | 主机授权的编辑位置 | drawer 内嵌区 | drawer 权限 tab（同一浮层，tab 化） |
+| D3 | 项目授权编辑位置 | 成员与权限页矩阵（独立页面） | 项目详情弹框权限 tab；矩阵页只读总览+跳转 |
+| D4 | 添加主体的输入 | 每处独立 datalist（AA4） | 卡片内嵌 datalist，复用同一 `/v1/directory` |
+| D5 | 覆盖警告 | U53④ 弹框（当前位→open） | 同形态，diff 文案升级为「当前级别→调整后级别」 |
+| D6 | 断会话提示 | 仅项目矩阵 diff 行有 | 主机/项目卡片统一常驻说明 + 确认弹框内声明（对齐 U65 撤销语义） |
+| D7 | provisionPolicy 开关 | drawer 内单选 | 移除（U65 已裁定弃用；端点保留） |
+| D8 | 角色可见性 | 无任何 UI | 用户管理页列表 + 下拉 |
+| D9 | directory 载荷 | 无 roles | 加性 `roles`/`status`（旧前端忽略） |
+
+---
+
+## 2. 三卡片 ↔ 权限位映射表（设计核心产出）
+
+**原则**：卡片是存储位的**分组视图**；同一主体的授权行仍是既有的一行（HostGrant / Grant，位数组），加入多张卡 = 位取并集，整行 PUT 替换。不新增位、不新增级别、不改 U65 判定顺序（§2.5 判定顺序不变）。
+
+### 2.1 主机详情弹框（写入 `HostGrant.permissions`，主体=用户/组）
+
+| 卡片 | 写入位 | U65 语义（语义矩阵行） | 授予者在该主机的效果 |
+| --- | --- | --- | --- |
+| **查看** | `view` | 主机只读（FR-9.10） | 可见该主机全部非归档项目并打开查看；项目内上限=`open+file:read`；不能创建/维护/终端/Agent/编辑/浏览器/下载 |
+| **控制** | `view + provision` | 主机全权（**U65 审定：不含 maintain**） | 可见全部项目；项目内六操作位（`open/terminal/agent/file:read/file:write/browser`）供给；可创建/登记项目；`download` 不推导（仅继承项目显式位+策略） |
+| **管理** | `provision + maintain` | 混合位行（U65 §2.3「provision+maintain 无 view」） | 可创建/登记 + 可进入/退出维护模式；**不推导项目可见性**（仅显式授权项目可见）、不授予项目内操作位；吊销主机仍仅平台管理员 |
+
+### 2.2 主机卡片组合 → 位并集 → 级别合成表
+
+| 查看卡 | 控制卡 | 管理卡 | 位并集 | 合成级别（UI 徽标） | U65 判定 |
+| --- | --- | --- | --- | --- | --- |
+| – | – | – | `{}` | 无授权 | 行删除 |
+| ✓ | – | – | `view` | 只读 | 只读上限 |
+| – | ✓ | – | `view+provision` | 全权 | 全权（六操作位+可创建） |
+| ✓ | ✓ | – | `view+provision` | 全权 | 同上（查看卡位为子集） |
+| – | – | ✓ | `provision+maintain` | 管理（创建+维护） | 混合位：无可见性推导 |
+| ✓ | – | ✓ | `view+provision+maintain` | 全权+维护 | view+provision 已成全权；maintain 附加 |
+| – | ✓ | ✓ | `view+provision+maintain` | 全权+维护 | 同上 |
+| ✓ | ✓ | ✓ | `view+provision+maintain` | 全权+维护 | 同上 |
+
+**必须文档化的两个组合效应**（不是新语义，是 U65 位模型的固有结果）：
+1. **查看卡 + 管理卡 ⇒ 隐含控制**（`view+provision` 已满足全权判据）。卡片 UI 在行尾徽标显示合成级别（如「全权+维护」），管理员能立即看到并集结果；不做组合禁止。
+2. **控制卡含创建能力**：主机级「控制」在 U65 只能经全权（`view+provision`）表达，「能操作但不能建项目」不可表达（§11-Q2 记录）。卡片说明文案已明写「含创建 / 登记项目能力」。
+
+### 2.3 项目详情弹框（写入 `Grant.permissions`，主体=用户/组）
+
+| 卡片 | 写入位 | 授予者在该项目的效果 | 约束 |
+| --- | --- | --- | --- |
+| **查看** | `open + file:read` | 项目可见、可打开；文件浏览与预览 | — |
+| **控制** | `terminal + agent + file:write + browser + download` | 项目内操作位：终端、Agent、编辑、浏览器、下载 | `download` 仍需项目/全局下载策略为「允许」才放行（FR-7；勾选≠放行，UI 文案注明） |
+| **管理** | **无项目级位**（只读派生视图） | 展示按 U65 推导在本项目获得权限的**主机级主体**（主机全权/只读持有者）与来源 | FR-9.11③ 不扩大：项目授权永不产生主机级；写入口在主机弹框（§11-Q1 记录与需求字面的冲突裁定） |
+
+> 管理（主机推导）卡的 chips 读取 `GET /v1/hosts/{hostId}/grants`（admin-only，已有）并按 §2.1 过滤 `view+provision`（全权）与 `view`（只读，标注「上限」）；若 U65 的加性 `level` 字段（U65 §3.2）已落地则直接消费，未落地则前端按位过滤——两态等价，均零新增端点。
+
+### 2.4 与 U65 语义矩阵的对齐声明
+
+| U65 审定裁定 | 本映射的位置 |
+| --- | --- |
+| 全权不含 maintain | 控制卡=`view+provision`，maintain 只在管理卡 |
+| download 不推导、只继承项目显式位 | 项目控制卡含 `download` 位但独立受 FR-7 策略；主机卡片不含 download |
+| 只读=`open+file:read` 上限（保底+上限） | 主机查看卡说明文案逐字对齐 FR-9.10 |
+| 授权收缩撤凭证 ≤60s（FR-1.7） | 卡片确认弹框与常驻说明统一声明（§4.4）；真实撤销由 U65 C10 落地 |
+| 管理台不暴露第三种有效级别（FR-9.10） | 卡片组合产生的全部级别均可归约到 U65 §2.3 行（含混合位行）；无新级别 |
+| 项目授权不扩大到主机级（FR-9.11③） | 项目弹框管理卡只读派生 + 「前往主机详情弹框」跳转 |
+
+### 2.5 角色 ↔ 资源授权两层模型（与 §7 衔接）
+
+```
+平台角色（用户管理页，§7）＝身份层：管控面/审计面可见性（platform:admin / platform:auditor / developer）
+资源授权（详情弹框三卡片，§2）＝资源层：谁能用哪些项目/主机、有哪些操作（Grant / HostGrant）
+有效权限 = 角色(管控面判据) ⊕ 资源授权(项目内判据)
+管理员角色 ≠ 项目内全权：打开项目仍需显式 open（U40 自授语义，server.ts 现状保留）
+```
+
+---
+
+## 3. UI 结构
+
+### 3.1 详情弹框 tab 化（信息 | 权限）
+
+- **主机详情** = 既有 drawer（`openDrawer` 外壳不变），`drawer-body` 顶部加 `.detail-tabs`（信息 | 权限）；信息 tab = 心跳/主机信息/公钥指纹/路由与中继/连接探测（AA 既有字段全量保留）；权限 tab = §3.2 三卡片。drawer 权限区（三位矩阵+策略开关）**移除**——不是并存两个 UI（收敛形态，§5）。
+- **项目详情** = 既有 dialog（U46-2 的 `openProjectDetail` 外壳），body 顶部同款 tab；信息 tab = 基本信息/运行配置/下载策略/我的权限（AA 既有字段全量保留，含 `detailGrants` 摘要升级为卡片）；权限 tab = §3.2 三卡片 + 「打开项目」主按钮保留在 foot。
+- tab 无路由语义：纯浮层内视图切换，Escape/关闭行为不变；「详情」入口 = 工作台/我的项目行内按钮（admin-only，与 app.js 既有 `data-detail` 一致）。
+
+### 3.2 卡片解剖（每卡片从上到下）
+
+```
+┌ 卡头：卡名（查看/控制/管理） + 位徽标（如 view / view+provision / open+file:read） + 主体计数
+├ 卡说明：权限语义（逐字对齐 §2 表格「效果」列，含 FR-7/F-9.11③ 约束句）
+├ chips 区：每主体一枚 chip = 显示名（账号）· 类型 · 合成级别徽标 · ✕（移除）
+├ 添加行：datalist 输入（复用 AA4：value=username/组名，label=显示名·部门）+ 用户/组类型切换 + 添加按钮
+└ （仅项目弹框管理卡）无添加行 → 「前往主机详情弹框 →」链接
+```
+
+- chips 排序：按授予行存储顺序（对应 GET /grants 返回序）；已删除用户的行沿用 AA 的「已删除用户」徽标与禁用态（app.js deadUser 语义）。
+- datalist 目录加载失败时降级自由输入（AA4 既有行为：`loadDirectory` catch→null）。
+- 混合位行（如仅 `provision`，不属于任何卡片完整组）在卡片列表底部以 muted 行展示「其他位组合（最小降级）」，可整行移除——管理台自身不产生该形态（U65 §2.1），仅为历史/直写数据可见。
+
+### 3.3 文案规范（逐字入实现）
+
+| 位置 | 文案 |
+| --- | --- |
+| 主机权限 tab 头注 | 三张卡片是主机授权位（view / provision / maintain）的分组视图：同一主体加入多张卡时权限位取并集，行尾徽标显示合成级别（U65 语义矩阵）。项目级授权不扩大到主机级。 |
+| 主机查看卡 | 主机只读：可见该主机全部非归档项目并打开查看；项目内上限 = 打开 + 文件只读。不能创建 / 维护主机，不能使用终端 / Agent / 编辑 / 浏览器 / 下载。 |
+| 主机控制卡 | 主机全权（操作推导）：可见全部项目，项目内终端 / Agent / 文件读写 / 浏览器可用；下载仍按下载策略独立判定。含创建 / 登记项目能力（U65 全权语义，不含主机维护）。 |
+| 主机管理卡 | 创建 / 登记项目 + 进入 / 退出维护模式。不推导项目可见性（仅显式授权项目可见），不授予项目内操作位；吊销主机仍仅限平台管理员。 |
+| 项目权限 tab 头注 | 项目级授权仅影响当前项目，不扩大到所在主机或其它项目（FR-9.11③）。下载位仍受项目 / 全局下载策略独立约束。 |
+| 项目控制卡 | 项目内操作位：终端、Agent、文件写入、浏览器与下载；下载仍需项目 / 全局下载策略为「允许」才放行（FR-7）。 |
+| 项目管理卡 | 项目级无「管理」权限位：归档 / 登记归创建者或平台管理员，主机维护属主机授权。下方为按 U65 推导在本项目获得权限的主机级主体——在主机详情弹框维护，项目授权不扩大到主机级。 |
+| 常驻尾注（两处） | 变更即时保存（PUT 整行替换）；已存在于其它卡片时先弹覆盖确认。降级保存将断开该主体当前全部云会话，≤60 秒生效（FR-1.7）。 |
+
+---
+
+## 4. 交互设计
+
+### 4.1 添加
+
+1. 输入主体（datalist 补全）+ 类型（用户/组）→ 点「添加」。
+2. 目标主体**无既有行** → 即时生效：对该卡片位组做整行 PUT（主机=`[cardBits]`；项目=该卡片位组置真），toast 含 `写入 grant_update / host_grant_update 审计`。
+3. 目标主体**已有行**（同资源）→ **覆盖确认**（复用 U53④/AA R5-③ 弹框形态）：
+   - 标题「覆盖现有授权」，副题「同一主体只有一行授权，保存按整行替换权限位」；
+   - 正文 = 当前级别 → 调整后级别（§2.2 合成）+ 位并集展开；
+   - 级别提升（主机加卡）标注「即时生效，不断开会话」；项目加位标注「下载位仍受下载策略独立约束」。
+4. 输入校验沿用服务端契约：未解析用户 → 400 `USER_NOT_FOUND`，toast 报错且保留输入（AA4 W2-M-1 行为）。
+
+### 4.2 移除
+
+- chip ✕ → 计算移除该卡片位组后的剩余位：
+  - 剩余位为空（整行删除）→ **危险确认**：「该主体将失去此主机/项目的全部授权，云会话将在 ≤60 秒内断开（FR-1.7）」→ PUT `permissions: []`；
+  - 剩余位非空 → 即时 PUT 剩余位，toast 显示「级别：X → Y」（可能为收缩，文案声明断会话）。
+- 「已删除用户」行禁用移除（AA 既有服务端拒绝语义）。
+
+### 4.3 保存时机：**即时（逐操作）+ 确认弹框把关破坏性操作**
+
+- 理由（最小改动口径）：AA 的添加/移除路径本就是即时单行 PUT（app.js hostGrantAdd/remove、grantAdd/remove），卡片操作恰好逐卡对应一行 PUT，**不需要引入跨三卡片的批量草稿状态**；批量草稿（矩阵的「保存变更」）在卡片模型下无对应物，强行保留会造出第三种保存语义。
+- 失败回滚沿用 QA-009：PUT 失败 → toast 报错 + 重拉 GET 重绘（以平台为准）。
+- 竞态防护沿用 AA m-5：保存窗口冻结输入控件。
+
+### 4.4 60 秒撤凭证提示（FR-1.7 / U65 §3.3）
+
+- 常驻尾注 + 两个确认弹框（整行删除、项目覆盖）都携带断会话文案；文案分主体类型（对齐 AA §M120b §4.3 规则式表述）：用户主体=「断开该用户当前全部云会话」；组主体=「宿主无法解析组成员，断开该项目/主机当前全部在线会话」。
+- 真实撤销链路归属 U65 C10（主机授权收缩→`revokeUserCredentials`）；项目授权既有撤销不变（server.ts:2576-2581）。U67 只负责 UI 声明与触发路径正确。
+
+### 4.5 门禁
+
+- 三卡片读写入口均 admin-only（端点既有门禁不变，FR-9.7）；非 admin 打开 drawer/弹框时卡片控件禁用（原型中以角色切换演示该门禁）。
+- 授权写操作失败 403 → 既有 `denyPrivileged` denied 审计（无 UI 新增义务）。
+
+---
+
+## 5. 与既有入口的关系（推荐：收敛，写入口单轨化）
+
+### 5.1 推荐
+
+| 入口 | AA 现状 | U67 目标 | 处置 |
+| --- | --- | --- | --- |
+| 主机 drawer 权限区 | 三位矩阵+策略开关（drawer 内嵌） | drawer 权限 tab 三卡片 | **原地收敛**：同一浮层 tab 化，旧权限区移除。不存在「drawer 权限区 + 弹框权限 tab」双轨——drawer 即弹框（详情浮层），tab 化后只有一个授权编辑面 |
+| 成员与权限页矩阵 | 7 位矩阵 + 添加/移除（写入口） | 跨项目只读总览：保留矩阵展示与来源列，行操作改「编辑」→ 跳项目详情弹框权限 tab；「添加成员」→「编辑授权 · 详情弹框」 | **降级收敛**：写入口单轨化到弹框 |
+| 项目详情弹框 | 只读 | 信息\|权限双 tab，权限 tab 可写 | 升级为授权主入口 |
+
+### 5.2 理由
+
+1. **单一写路径** = 一套确认/撤凭证文案、一套 e2e 面、一套失败回滚语义；双轨会把 U67 要修的「界面语义分裂」固化成两处永久 QA 面。
+2. **矩阵的逐位勾选正是 U65 判移除的形态**（U65 C13/C14：管理台不暴露内部位/第三种级别）；三卡片天然表达 U65 级别语义，保留矩阵可写等于保留两套授权心智。
+3. **批量场景的真解是组授权**：一行组授权覆盖全部组成员，卡片下操作成本不变；逐用户批量勾选是伪需求（目录数据下「给 20 人逐个加位」应走组）。
+4. 主机侧本就只有一个授权面（drawer），收敛成本≈0；项目侧矩阵页降级只读后仍保留其独特价值——**跨项目横向视角**（弹框只能看一个项目）。
+
+### 5.3 迁移步骤（实现令内完成，不设双轨过渡期）
+
+1. 弹框权限 tab 上线（写入口）；同一提交内矩阵页移除写操作（行操作改跳转）、drawer 权限区移除。
+2. 探针迁移：AA6（`web-host-permission-drawer`）与 U53④/AA4（`web-permission-matrix`/`web-grant-subject-picker`）断言迁移到卡片选择器（§9.3）；失败回滚断言保留。
+3. 不做路由重定向（成员与权限页保留，仅降级）；「权限分配/授权矩阵」字样从两处文案移除，指向弹框。
+
+---
+
+## 6. 数据面（零新增授权端点）
+
+### 6.1 端点映射
+
+| UI 操作 | 端点（既有） | 变更 |
+| --- | --- | --- |
+| 主机三卡片读 | `GET /v1/hosts/{id}/grants`（server.ts:3181） | 无；加性 `level`（U65 §3.2）可选消费 |
+| 主机三卡片添加/移除/覆盖 | `PUT /v1/hosts/{id}/grants`（server.ts:3206，整行替换） | 无（撤销语义由 U65 C10 补） |
+| 项目查看/控制卡读 | `GET /v1/projects/{id}/grants`（server.ts:2480） | 无 |
+| 项目查看/控制卡写 | `PUT /v1/projects/{id}/grants`（server.ts:2502，整行替换） | 无 |
+| 项目管理卡（主机推导） | `GET /v1/hosts/{hostId}/grants` + 前端过滤 | 无 |
+| 卡片 datalist 目录 | `GET /v1/directory`（server.ts:2755） | 字段加性：users 增 `roles`、`status`（旧前端忽略；同时服务 §7 用户管理页） |
+| 用户管理页列表 | `GET /v1/directory`（同上，扩展后即用户列表数据源，**不新增列表端点**） | 同上 |
+| 用户管理页角色写入 | `PUT /v1/users/{id}/roles`（**唯一新增端点**，§7.4） | 新增，最小契约 |
+
+**view 拆分答复**：不需要拆分。主机查看卡=既有 `view` 位（U65 C1-C7 已接端点：可见性推导+票据上限），项目查看卡=既有 `open+file:read` 位。U67 对 view 的消费完全是复用，无新位、无新拆分。
+
+### 6.2 wire 兼容
+
+- grants 端点请求/响应形状零变化（PUT 仍是 `{subjectType, subjectId, permissions[]}`）；UI 只是改变了位的**分组呈现**。
+- directory 加性字段按 Remote Wire Compatibility 规则（新可选字段安全）；`PUT /v1/users/{id}/roles` 为新端点，不影响旧对端。
+- 管理台与平台 API 版本独立发布（FR-9.8）：旧前端继续写矩阵语义的 PUT，新前端写卡片合成的 PUT——同一契约，无兼容窗口问题。
+
+---
+
+## 7. 用户管理页（追加需求）
+
+### 7.1 页面设计（admin 专属，导航「用户管理」，admin-only 路由）
+
+- **页头**：标题 + LDAP 同步状态徽标 + 账号计数；说明「用户与组来自 LDAP 同步；角色为按用户覆盖，覆盖记录留审计（FR-9.2）」。
+- **两层模型常驻说明**（页面首个 notice，逐字）：「角色 ≠ 资源授权：本页的普通/审计/管理员是平台级身份——决定管控面与审计面可见性；『谁能用哪些项目、有哪些操作』由项目/主机详情弹框权限 tab 的三卡片（资源授权）决定。管理员角色不等于项目内全权：打开项目仍需显式授权（U40 自授语义）。」
+- **表格列**：用户（显示名+账号）/ 部门 / LDAP 组 / **角色下拉**（普通/审计/管理员，`<select>`，后续角色加 option 即扩展）/ 角色来源（`LDAP 同步` / `管理员覆盖` / 复合说明）/ 状态（active/disabled 只读展示）。
+- **角色变更**：下拉 change → 确认弹框（标题「角色变更」；正文 `X：普通 → 审计。变更写入 role_update 审计；按用户覆盖优先于 LDAP 同步，再次登录不会被同步覆盖`；管理员降级为 danger 态 + 「降级将断开该用户当前云会话」副题）→ 确认后 PUT + 重绘 + toast。
+- **页脚语义行**（逐字）：「角色语义：普通 = 项目/主机使用面（按资源授权）；审计 = + 审计查询与目录读取，不可管控；管理员 = 全管控面 + 授权卡片写入。LDAP platform-admins 组成员首次登录映射为管理员，此后按用户覆盖优先，再次登录不会被同步覆盖。」
+
+### 7.2 三角色权限语义（角色 ↔ 权限位映射表）
+
+| 页面角色 | 存储 `roles` | `ROLE_PERMISSIONS` 展开 | 管控面（FR-9.7） | 审计面（FR-9.7/U66） | 项目/主机使用面（资源授权） | 其他 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 普通 | `['developer']` | `[]` | 全部隐藏；直访 403+denied 审计 | 无 | 按三卡片资源授权获得项目可见性与操作位（含主机只读上限等 U65 语义） | 可自助建项目（若持 `provision`） |
+| 审计 | `['developer','platform:auditor']` | `['platform:auditor']` | 不可管控（不放宽 FR-9.7） | `GET /v1/audit/events|status|verify`（server.ts:3382/3476/3512 既有判据）+ 目录读取不放开（directory 仍 admin-only） | 同普通（platform:auditor 不授予任何项目操作位；`projectView.createdBy` 随 admin/auditor 下发为 U46 既有语义，保留） | — |
+| 管理员 | `['developer','platform:admin']` | `['platform:admin']` | 全管控面；三卡片读写、用户管理、策略、主机生命周期 | 同审计可见 | **项目内仍按其资源授权**（admin 旁路=管控面旁路；打开项目仍需显式 `open`，U40 自授语义不变；U65 主机只读上限对 admin 豁免） | LDAP `platform-admins` 组首登映射（既有，保留） |
+
+**不新增角色名**：`developer` / `platform:auditor` / `platform:admin` 为存储值，页面下拉的「普通/审计/管理员」是展示词（映射上表）；后续新角色 = `ROLE_PERMISSIONS` 加键 + 下拉加 option（下拉可扩展性的落点）。
+
+### 7.3 生效机制（token 快照 vs 实时——已核实）
+
+| 面 | 现状机制（代码实证） | 结论 |
+| --- | --- | --- |
+| 服务端门禁 | `resolveToken`（server.ts:1168-1180）返回 store 活用户对象；`isAdmin(user)`/`roles.includes('platform:auditor')` 每请求重算 | **实时生效**。access token 是 opaque 随机键，不内嵌 roles 快照——角色变更后下一个请求即按新角色判定 |
+| 登录/refresh 响应体 | `user.roles/permissions` 在响应时一次性 flatMap（server.ts:1727/1849/1950） | **快照面**：前端 `isAdmin()`（app.js:99）与导航渲染依据它；角色变更后旧页面导航陈旧，直到下次 `/v1/me` 拉取或 403 触发刷新。不为此做推送 |
+| 已签云会话票据 | 票据 `perms` 是**项目/主机资源授权**的快照（E），与平台角色无关 | 角色升降不触碰票据位；但**管理员降级**例外——其旧票据在 admin 旁路下签发（E=P 无上限裁剪，U65 §2.5），降级后必须重算 ⇒ 降级时 `revokeUserCredentials(username,'role_changed')`（server.ts:4013 复用），≤60s 心跳同步闭环；升级不撤销（位只增不减是安全方向） |
+| LDAP 覆盖 | 首登 seed 定角色、后续登录角色冻结（server.ts:1703-1712，组并集合并但角色不重算）——「种子时一次定角色」先例 | 新增 `User.roleOverride?: 'developer'|'auditor'|'admin'|null`（存储加性）：非 null 时登录 seed/重算一律以 override 为准；用户管理页写入即设 override。与既有先例同构，且把「冻结」显式化为可管理字段 |
+
+### 7.4 端点与 wire 增量（最小契约）
+
+```
+PUT /v1/users/{id}/roles            # admin-only；唯一新增端点
+  body: { role: 'developer' | 'auditor' | 'admin' }
+  200: { ok: true, roles: [...], source: 'admin-override' }
+  400 ROLE_INVALID；404 USER_NOT_FOUND；403+denied 审计（denyPrivileged 复用）
+  服务端：role→roles 数组映射（§7.2 表）；写 roleOverride；管理员降级时 revokeUserCredentials(username,'role_changed')
+  审计：eventType 'role_update'，actor=操作者，targetType='user'，targetId=用户id，
+        metadata { from, to, username, revoked: boolean }（fail-closed：recordAudit 先写后改，同 grants 模式）
+
+GET /v1/directory（扩展，wire-additive）
+  users[] 增: roles: string[], status: 'active'|'disabled'
+```
+
+- 防呆：管理员对自己降级允许（自降后当前 token 实时失效于下一请求；响应仍 200）；`admin` 账号自身不设保护锁（演示环境单管理员场景，§11-Q6 登记）。
+
+### 7.5 角色变更审计
+
+- `role_update`（success）：§7.4 metadata；审计页事件类型下拉增「角色变更 · role_update」选项（AUDIT_EVENT_OPTIONS 追加）。
+- 越权写：复用 `denyPrivileged`（`role_update` denied + `requiredPermission: platform:admin`）。
+- 降级触发的会话断开已在 `revokeUserCredentials` 的既有撤销审计链路内（reason=`role_changed`），不重复造事件。
+
+### 7.6 e2e 断言（用户管理页）
+
+| # | 断言 |
+| --- | --- |
+| UG-1 | developer 调 `PUT /v1/users/{id}/roles` → 403 + `role_update` denied 审计（requiredPermission=platform:admin） |
+| UG-2 | admin 将 developer→auditor：200；`GET /v1/directory` 该用户 `roles=['developer','platform:auditor']`；`role_update` 审计 metadata `{from:'developer',to:'auditor'}`；该用户旧 access token 下一个请求即可访问 `/v1/audit/events`（实时生效实证） |
+| UG-3 | admin→developer 降级：200 + 撤销记录（`revocations` 含 user/role_changed）；该用户已签云会话票据在心跳后失效（harness 撤销断言）；再登录取 `['developer']` |
+| UG-4 | override 持久：设 auditor 后重新登录（LDAP 组无 auditor 组）→ roles 仍含 `platform:auditor`（override 优先于 seed） |
+| UG-5 | 目录加性字段：旧字段逐字节不变 + 新增 `roles`/`status`；无 roles 字段的旧前端可忽略（契约测试） |
+| UG-6 | UI：非 admin 角色切到 `#/users` → forbidden 页（原型门禁）；admin 下拉变更出现确认弹框，确认后行内来源翻转为「管理员覆盖」 |
+
+---
+
+## 8. 原型修订点清单（`ui/prototype.html`，已全部实测）
+
+| # | 修订 | 交互验证 |
+| --- | --- | --- |
+| P1 | 主机 drawer tab 化（信息\|权限）：信息 tab 保留心跳/主机信息/指纹/路由/探测全部字段；权限 tab = 三卡片（查看/控制/管理），U65 级别选择器与逐位开关移除 | 点击 权限 tab → 面板切换 ✓；三卡片 chips 按 §2.1 映射渲染（lisi/测试组→查看、wangfang→查看+控制、chenhao→管理）✓ |
+| P2 | 主机卡片添加：datalist（4 用户/4 组演示目录）+ 类型切换 + 添加 | 添加 zhouhang→查看卡 ✓（toast 含审计说明）；整行移除弹危险确认（FR-1.7 文案）✓ |
+| P3 | 项目详情弹框（新增 modal-xl）：信息\|权限双 tab；信息 tab=基本信息/下载策略/我的权限；权限 tab=三卡片 + 管理卡=主机推导只读（wangfang 全权→本项目操作位来源）+ 「前往主机详情弹框 →」跳转 | 工作台/我的项目行内「详情」（admin-only）打开 ✓；tab 切换 ✓；添加 孙悦→查看卡 ✓ |
+| P4 | 用户管理页（`#/users`，admin-only 导航项）：两层模型说明 + 7 账号表格 + 角色下拉 + 来源 + 状态 | 角色 change→确认弹框→确认后角色/来源翻转 + toast ✓；非 admin 角色导航隐藏 ✓ |
+| P5 | 成员与权限页收敛：新增「写入口收敛（U67 推荐）」notice；行操作「移除」→「编辑」（跳弹框权限 tab）；「添加成员」→「编辑授权 · 详情弹框」 | 行内编辑打开弹框并定位权限 tab ✓ |
+| P6 | 原型 changelog 增 U67 节；验证截图 `ui/screenshots/u67-{host-drawer-perm-tab,project-dialog-perm-tab,users-page}.png` | Playwright 无头实测（本地 HTTP serve，`node --check` 语法通过） |
+
+**已修缺陷**：项目控制卡初版按「全部位齐」匹配主体导致恒空（download 位被策略锁定）；修正为查看卡=两齐（open+file:read）、控制卡=任一操作位即入卡（与「卡=位分组」一致）。实测结算研发组/支付平台组/张伟/李明 入控制卡、lisi/测试组 正确排除。
+
+---
+
+## 9. 原型确认后的实现预案（**开发不启动**——用户确认 + 评审通过后按此拆令）
+
+### 9.1 实现令（每令 ≤20 分钟，域不相交）
+
+| 令 | 通道 | 内容 | 预估 | 依赖 |
+| --- | --- | --- | --- | --- |
+| U67-1 | ① API 目录/角色 | directory 加 `roles`/`status`；`PUT /v1/users/{id}/roles` + roleOverride + `role_update` 审计 + 降级撤销；UG-1~5 | 20 | — |
+| U67-2 | ② 管理台·用户管理页 | `#/users` 页（列表+下拉+确认+来源）；`role_update` 审计筛选项；UG-6 | 15 | 1 |
+| U67-3 | ② 管理台·主机 drawer | tab 化 + 三卡片（读 GET grants、写 PUT、覆盖/移除确认、混合位行、策略开关移除） | 20 | — |
+| U67-4 | ② 管理台·项目弹框 | 弹框 tab 化 + 三卡片 + 管理卡主机推导 + 「详情」行内入口 | 20 | 3（共享卡片组件/函数） |
+| U67-5 | ② 管理台·矩阵页收敛 | 矩阵只读化 + 行编辑跳转 + 文案迁移 + AA6/AA4 探针迁移 | 15 | 4 |
+| U67-6 | ③ 测试/证据 | §9.2 平台断言全量 + 四身份/双主机矩阵 + 证据 JSON（`cloud-platform/evidence/u67-authz-refactor/`） | 20 | 全部 |
+
+**通道不交叠**：① `cloud-platform/apps/api/src`；② `cloud-platform/apps/web/app.js`（3/4/5 内部按函数域切分：3=showHost*，4=openProjectDetail*，5=renderMembers/showGrants）；③ `cloud-platform/test/**` + evidence。卡片渲染函数（`permCardHtml`/`syncCardInputs`）由 U67-3 首次引入、U67-4 复用，避免两份实现。
+**超时切分**：U67-3 拆 `3a tab+卡片渲染` / `3b 添加移除确认`；U67-4 拆 `4a 弹框+信息 tab` / `4b 权限 tab`。
+
+### 9.2 e2e 断言（授权三卡片）
+
+**映射正确性（平台面，spawnService 真实进程）**
+
+| # | 操作 | 断言 |
+| --- | --- | --- |
+| HC-1 | 查看卡添加用户（无既有行） | `GET /v1/hosts/{id}/grants` 该主体 `permissions=['view']`；`host_grant_update` 审计 metadata.permissions 逐位一致 |
+| HC-2 | 控制卡添加同一用户 → 覆盖确认后 | `permissions` 含 `view+provision`（=U65 全权位并集）；不含 `maintain` |
+| HC-3 | 管理卡添加另一用户 | `permissions=['provision','maintain']`；该用户 `GET /v1/projects` 仅显式授权项目（不推导可见性，U65 混合位行） |
+| HC-4 | 查看卡 chip 移除（主体仍在他卡） | 剩余位=其余卡位并集；级别收缩时撤销记录/审计符合 U65 §3.3 |
+| HC-5 | 整行移除（PUT []） | 行删除 + denied-free 审计 + 断会话语义与文案一致 |
+| PC-1 | 项目查看卡添加组 | `permissions=['open','file:read']`；组主体撤销走 `revokeProjectCredentials`（既有） |
+| PC-2 | 项目控制卡添加用户 | `permissions` 含 terminal/agent/file:write/browser/download 五位；策略 deny 下该用户下载仍被拒（FR-7 联动） |
+| PC-3 | 位白名单负向 | PUT 非法位 → 400 `GRANT_PERMISSION_INVALID` / `HOST_GRANT_PERMISSION_INVALID`，行不落（既有契约保留） |
+| PC-4 | 非 admin 写 | 403 + denied 审计（既有 denyPrivileged） |
+
+**双主机组合**
+
+| # | 场景 | 断言 |
+| --- | --- | --- |
+| DH-1 | 用户 zhangsan：查看卡@hostA + 控制卡@hostB；两机各 2 项目（无项目级授权） | `/v1/projects` 含 hostB 全部项目 + hostA 全部项目（hostA 项目 `hostAccess='read-only'`、hostB 项目六操作位）；hostA 项目 connect 凭证 `perms=['open','file:read']`；hostB 项目凭证含五位且不含 download |
+| DH-2 | hostB 控制卡撤销（整行） | ≤60s 内 zhangsan 在 hostB 项目会话断开（harness），hostA 只读会话不受影响；审计 `host_grant_update` metadata.revokedUsers=1 |
+| DH-3 | hostA 新登记项目 | zhangsan 刷新即见（view 推导可见性，AC-37 复用） |
+
+**四身份矩阵（UI+平台双面）**
+
+| 身份 | 工作台/我的项目 | 详情弹框 | 权限 tab | 用户管理页 | 平台门禁 |
+| --- | --- | --- | --- | --- | --- |
+| 平台管理员 | 行内「详情」可见 | 可打开 | 三卡片可读写（覆盖/移除确认出现） | 可见可改 | grants/users-roles PUT 200 |
+| 开发者 | 无「详情」按钮 | — | —（无入口） | 导航隐藏 | 直访 grants PUT 403+denied |
+| 只读 lisi（主机查看卡持有者） | 仅 hostA 项目可见、行标「主机只读」 | — | — | 隐藏 | 项目内凭证=`open+file:read`（U65） |
+| 审计员 | 「详情」按钮不显示（非 admin） | — | — | 隐藏 | audit/events 200；grants PUT 403 |
+
+### 9.3 回归门（迁移清单）
+
+`web-host-permission-drawer`（AA6→卡片断言）、`web-permission-matrix`（矩阵只读化+跳转）、`web-grant-subject-picker`（AA4 datalist 迁入卡片）、`user-grant-resolution`、`web-project-detail`（详情 tab 化断言）、`web-admin-gating`（users 路由门禁）、`host-authorization`（AA2 端点契约不变）、`admin-denial-audit`（新增 role_update denied）、`audit-query`（事件类型下拉）。红绿对照同一提交，禁止删断了事。
+
+---
+
+## 10. 验收标准（AC-U67）
+
+| AC | Given/When/Then |
+| --- | --- |
+| AC-U67-1 | Given admin 打开主机详情 → When 切「权限」tab → Then 三卡片从上到下（查看/控制/管理）渲染，每卡片含说明/chips/添加行，位徽标与 §2.1 一致 |
+| AC-U67-2 | Given 主体已在查看卡 → When 在控制卡添加同名主体 → Then 覆盖确认弹框显示「只读→全权（view+provision）」，确认后行徽标=全权 |
+| AC-U67-3 | Given 主体仅在查看卡 → When 移除 → Then 危险确认含「≤60 秒断开」文案，确认后 GET grants 无该行 |
+| AC-U67-4 | Given 项目详情弹框 → When 切「权限」tab → Then 查看/控制卡可写、管理卡=主机推导只读 + 跳转链接，头注含 FR-9.11③ 文案 |
+| AC-U67-5 | Given 开发者/只读 lisi → Then 无「详情」入口、无用户管理导航；直访端点 403+denied 审计 |
+| AC-U67-6 | Given admin 在用户管理页把普通改为审计 → Then 确认弹框（role_update 文案）→ 确认后 directory.roles 更新、来源=管理员覆盖、审计链含 role_update |
+| AC-U67-7 | Given admin 降级自己/他人为普通 → Then 撤销记录 reason=role_changed，≤60s 会话断开（心跳正常前提，FR-1.7） |
+| AC-U67-8 | Given 双主机查看/控制组合（DH-1）→ Then 可见性与凭证位按主机分别正确（hostAccess 徽标可解释） |
+| AC-U67-9 | Given 成员与权限页 → Then 矩阵只读 + 行编辑跳弹框权限 tab；主机 drawer 无旧三位矩阵/策略开关残留 |
+| AC-U67-10 | Given 评审流程 → Then 本原型经用户确认 + 独立评审通过后才开始 §9 令（流程纪律，AA6 瑕疵不复现） |
+
+---
+
+## 11. 开放问题（请主会话裁定）
+
+1. **项目弹框管理卡无添加入口 vs 需求「每张卡片都可以添加用户」字面冲突**：项目级不存在「管理」权限位（7 位之外无存储），且 FR-9.11③ 禁止项目弹框写主机位。本设计取「管理卡=主机推导只读视图」；若坚持字面，唯一不发明语义的选项是隐藏项目管理卡（只留两张卡）——**推荐维持本设计**（信息价值 > 字面一致）。
+2. **主机控制卡含创建能力**（view+provision 才能表达「控制」）：若产品要「能操作全部项目但不能建项目」，需改 U65 全权定义（拆出第四位）——不建议，登记为语义边界。
+3. **查看卡+管理卡 ⇒ 隐含全权**的组合效应（§2.2）：接受并靠合成徽标提示，或在 UI 阻止该组合？**推荐接受**（不产生越权于 U65 矩阵之外的级别）。
+4. **成员与权限页收敛 vs 双轨**（§5）：本设计推荐收敛（写入口单轨）；若用户要保留矩阵可写（双轨），需在 U67-5 改为「保留写 + 双入口提示」，QA 面翻倍由主会话知情选择。
+5. **角色单选 vs roles 数组并存**（如 admin+auditor 同时持有）：本设计下拉=单角色（存储仍是数组，admin/auditor 定义已含 developer 基座）；若需要并存组合，PUT 契约改数组并补组合语义——**推荐一期单选**。
+6. **管理员自降保护**：最后一个管理员把自己降级后无人在管控面（LDAP platform-admins 组成员下次登录仍会映射回 admin，兜底存在）。一期不加锁，仅在确认弹框文案提示兜底路径；是否加「至少保留一名管理员」硬约束待定。
+7. **混合位行的展示深度**（§3.2 尾注）：历史/直写产生的孤立位（如仅 `provision`）在卡片下以 muted 行展示并可移除；是否需要支持「编辑为任意组合」？**推荐否**（管理台只产生卡片语义的组合，U65 §2.1 口径）。
+
+---
+
+## 12. 置信度与验证
+
+- **置信度：约 85%**。高置信项：映射表逐格对齐 U65 审定语义与既有端点契约（无发明语义）；原型全部交互已 Playwright 实测（tab/增删/确认/下拉/门禁）。不确定项：§11 七项开放问题（均为产品裁定而非技术风险）；U67-3/4/5 的 app.js 单文件改动的实际工作量（函数域已切分，风险可控）。
+- 流程纪律：本设计 + 原型为评审物；**未获用户确认与评审通过前不进入 §9 实现**。
+
+## 主会话审定（待填）
+
