@@ -1,6 +1,6 @@
 # LDAP 分组准入设计（memberOf group filter · 单组登录门槛 · 角色与组解耦）
 
-> 状态：已审定（主会话 2026-11-16，见文末审定节），待独立评审；评审通过后才拆实现令
+> 状态：**已交付**（两轮评审 APPROVED 预授权 → LGAA 六令 6/6 落地 → 独立验收审计通过 2026-11-16；全过程见台账 U69a 行）
 > 日期：2026-11-16 · 缺陷账：U69a（defect-ledger.md:81，LDAP 方案方向错误撤回）
 > 需求唯一源：用户澄清（台账 U69a 行 + 本会话指令）——**多系统共用一个 LDAP，每个系统的登录权限对应一个分组，用户加入分组才能登录对应系统**。本系统是其中一个子系统，对应一个分组（组名 env 可配，如 orca-cloud），**只认这个分组的用户**；LDAP 分组=**登录准入门槛**；登录后角色（普通/审计/管理员）仍由平台内管理（U67-3 用户管理页 roleOverride+首登种子）——**与组无关**
 > 用户本会话两次追加指令（裁决记录）：①「memberOf」②「**使用 memberOf group filter 方案**」——准入过滤采用调研**形态 A 正宗**：组条件以 **memberOf** 内嵌用户查找 filter（LDAP 查询侧执行，Gitea User Filter / GitLab user_filter / FAB AUTH_LDAP_SEARCH_FILTER 同款）；**不是** posixGroup member 反查（Gitea 双向形态），**不是** Keycloak 形态 C 的纯应用侧自查
