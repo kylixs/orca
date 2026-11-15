@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### U46-3 落地（2026-11-15）
+
+`e7a12bc0ac`（6 文件）：「打开」三入口统一 surface:'admin'→全屏覆盖层+iframe（embed=1）——postMessage 协议父侧（ready 显线路/dirty 关闭前确认/closed 移除；close 300ms 未回强制移除；logout 先桥后登出）+安全（source=iframe.contentWindow+origin=入口 origin+固定 source 标识）+失败路径（签发失败重试/新标签 Orca Web 回退、20s 未 ready 关+toast、旧平台 web-index 回落 window.open）；「Orca Web」独立入口语义不变。O1-O5 新+适配 D5/W3c-open/AA5=25 过+全量 web+U46 96/96。app.js 域释放。
+
 ### U46-5b 落地（2026-11-15）
 
 `9cd0dcf9c60`（4 文件）：终端标签=一标签一 CloudTerminalPanel（完整复用 W5a/W5c PTY create/subscribe/updateViewport/close 管线）；面板向后兼容小改（可选 title 写入 terminal.create+active 隐藏跳 fit/激活补一次）；Provider 注入 rpc/subscribe/workspacePath/canUseTerminal（U46-8 装配）；懒加载不进首屏；防御占位三态。tabComponents.terminal 两行级注册。新 5+域 147 回归绿，tc:web 清。
