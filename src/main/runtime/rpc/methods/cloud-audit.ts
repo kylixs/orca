@@ -47,6 +47,8 @@ const TEXT_FIELDS: Readonly<Record<string, number>> = {
 }
 const INT_FIELDS = new Set(['sizeBytes', 'copiedChars', 'copiedBytes', 'itemCount', 'occurredAt'])
 const BOOL_FIELDS = new Set(['isBinary', 'truncated'])
+/** §2.5 field dictionary: the fingerprint provenance enum (U69). */
+const SHA256_SOURCES = new Set(['client', 'host'])
 /** A client cannot claim the host wrote its attribution or confidence (§2.5). */
 const FORBIDDEN_FIELDS = new Set(['actorSource', 'subject', 'deviceId'])
 
@@ -67,6 +69,7 @@ export function validateFileEventMetadata(
   input: Record<string, unknown>
 ): { ok: true; metadata: Record<string, unknown> } | { ok: false; field: string; reason: string } {
   const metadata: Record<string, unknown> = {}
+  let declaredSha256Source: string | undefined
   for (const [key, value] of Object.entries(input)) {
     if (FORBIDDEN_FIELDS.has(key)) {
       return { ok: false, field: key, reason: 'platform-written' }
@@ -112,15 +115,28 @@ export function validateFileEventMetadata(
       metadata[key] = value
       continue
     }
+    if (key === 'sha256Source') {
+      // U69: the provenance tag production reporters send with sha256; outside
+      // the dictionary enum the event is refused, not silently fixed.
+      if (typeof value !== 'string' || !SHA256_SOURCES.has(value)) {
+        return { ok: false, field: key, reason: 'not-allowed' }
+      }
+      declaredSha256Source = value
+      continue
+    }
     if (key === 'sha256') {
       // Invalid fingerprints are dropped, not fatal (§2.5).
       if (typeof value === 'string' && /^[0-9a-f]{64}$/.test(value)) {
         metadata.sha256 = value
-        metadata.sha256Source = 'client'
+        metadata.sha256Source = declaredSha256Source ?? 'client'
       }
       continue
     }
     return { ok: false, field: key, reason: 'unknown' }
+  }
+  // The reporter may declare the source before or after the fingerprint.
+  if (metadata.sha256 !== undefined && declaredSha256Source !== undefined) {
+    metadata.sha256Source = declaredSha256Source
   }
   return { ok: true, metadata }
 }

@@ -67,6 +67,8 @@ const FILE_METADATA_INT_FIELDS = new Set([
   'occurredAt'
 ])
 const FILE_METADATA_BOOL_FIELDS = new Set(['isBinary', 'truncated', 'excerptTruncated'])
+/** §2.5 field dictionary: the fingerprint provenance enum (U69). */
+const SHA256_SOURCES = new Set(['client', 'host'])
 
 function isEventType(value: string): value is HostAuditReport['eventType'] {
   return (
@@ -91,8 +93,12 @@ function text(value: unknown): string | undefined {
 /** Relative, forward-slash project path; absolute paths and `..` are refused (OQ-8). */
 function safeEventPath(value: string): string | null {
   const normalized = value.replaceAll('\\', '/')
-  if (normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized)) {return null}
-  if (normalized.split('/').includes('..')) {return null}
+  if (normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized)) {
+    return null
+  }
+  if (normalized.split('/').includes('..')) {
+    return null
+  }
   return normalized.slice(0, 1024)
 }
 
@@ -106,18 +112,27 @@ function parseFileEventMetadata(value: unknown): Record<string, unknown> | null 
     return null
   }
   const metadata: Record<string, unknown> = {}
+  let sha256Source: string | undefined
   for (const [key, raw] of Object.entries(value)) {
     // Excerpts stay off for the first release (AC-53): silently dropped.
-    if (key === 'excerpt' || key === 'excerptBytes') {continue}
+    if (key === 'excerpt' || key === 'excerptBytes') {
+      continue
+    }
     if (FILE_METADATA_TEXT_FIELDS[key] !== undefined) {
-      if (typeof raw !== 'string' || raw.length === 0) {return null}
+      if (typeof raw !== 'string' || raw.length === 0) {
+        return null
+      }
       if (key === 'path') {
         const path = safeEventPath(raw)
-        if (path === null) {return null}
+        if (path === null) {
+          return null
+        }
         metadata.path = path
         continue
       }
-      if ((key === 'fileName' || key === 'savedName') && /[\\/]/.test(raw)) {return null}
+      if ((key === 'fileName' || key === 'savedName') && /[\\/]/.test(raw)) {
+        return null
+      }
       metadata[key] = raw.slice(0, FILE_METADATA_TEXT_FIELDS[key])
       continue
     }
@@ -134,16 +149,33 @@ function parseFileEventMetadata(value: unknown): Record<string, unknown> | null 
       continue
     }
     if (FILE_METADATA_BOOL_FIELDS.has(key)) {
-      if (typeof raw !== 'boolean') {return null}
+      if (typeof raw !== 'boolean') {
+        return null
+      }
       metadata[key] = raw
+      continue
+    }
+    if (key === 'sha256Source') {
+      // U69: provenance from the host's reporter; outside the enum the entry
+      // is dropped whole, like any other bad value.
+      if (typeof raw !== 'string' || !SHA256_SOURCES.has(raw)) {
+        return null
+      }
+      sha256Source = raw
       continue
     }
     if (key === 'sha256') {
       // Invalid fingerprints are dropped, not fatal (§2.5).
-      if (typeof raw === 'string' && /^[0-9a-f]{64}$/.test(raw)) {metadata.sha256 = raw}
+      if (typeof raw === 'string' && /^[0-9a-f]{64}$/.test(raw)) {
+        metadata.sha256 = raw
+      }
       continue
     }
     return null
+  }
+  // The source only co-occurs with a fingerprint that survived (§2.5).
+  if (metadata.sha256 !== undefined && sha256Source !== undefined) {
+    metadata.sha256Source = sha256Source
   }
   if (Buffer.byteLength(JSON.stringify(metadata)) > MAX_METADATA_BYTES) {
     return null

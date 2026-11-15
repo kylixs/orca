@@ -27,10 +27,11 @@ import { startCloudRuntimeAdmission } from '../startup/cloud-runtime-admission'
  */
 
 const EVIDENCE_DIR = join(REPO_ROOT, 'cloud-platform', 'evidence', 'u68-host-audit')
+const U69_EVIDENCE_DIR = join(REPO_ROOT, 'cloud-platform', 'evidence', 'u69-sha256source')
 
-function saveEvidence(file: string, content: unknown): void {
-  mkdirSync(EVIDENCE_DIR, { recursive: true })
-  writeFileSync(join(EVIDENCE_DIR, file), JSON.stringify(content, null, 2))
+function saveEvidence(file: string, content: unknown, dir = EVIDENCE_DIR): void {
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, file), JSON.stringify(content, null, 2))
 }
 
 let platform: Platform
@@ -289,6 +290,76 @@ describe('U68 宿主审计管线（真实平台 + 真实宿主心跳 + 真实 E2
       )
       expect(readString(readField(hostDenied, 'metadata'), 'actorSource')).toBe('subject')
       saveEvidence('u68-2-denial.json', { rpcDenied: denied, hostDenied })
+    } finally {
+      session.ws.close()
+    }
+  }, 60_000)
+
+  it('U69 生产 reporter 形态（sha256+sha256Source:client）经宿主全链落链', async () => {
+    const session = await connectSession('u69-fingerprint')
+    try {
+      // The renderer's copyMetadata output when a fingerprint was computed —
+      // the exact body U66-rfix NF-1 proved was being refused at the host.
+      const copy = await session.rpc('audit.recordFileEvent', {
+        eventType: 'file_copy',
+        result: 'success',
+        traceId: 'tr_u69copy1',
+        metadata: {
+          fileName: 'rules.ts',
+          path: 'src/engine/rules.ts',
+          copyKind: 'content-whole',
+          copiedChars: 1240,
+          copiedBytes: 3720,
+          surface: 'web',
+          capturePoint: 'web-clipboard-api',
+          captureConfidence: 'client-declared',
+          sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+          sha256Source: 'client',
+          occurredAt: Date.now()
+        }
+      })
+      expect(copy.ok, JSON.stringify(copy)).toBe(true)
+
+      // Out-of-enum provenance is refused by the host, naming the field.
+      const forged = await session.rpc('audit.recordFileEvent', {
+        eventType: 'file_copy',
+        result: 'success',
+        metadata: { sha256Source: 'forged' }
+      })
+      expect(forged.ok).toBe(false)
+      if (!forged.ok) {
+        expect(forged.code).toBe('invalid_argument')
+        expect(forged.message).toContain('sha256Source')
+      }
+
+      // Flush the host's queue onto the chain.
+      await admission!.client!.refresh()
+      await admission!.client!.refresh()
+
+      const landed = (await auditEvents('eventTypes=file_copy&limit=100')).filter(
+        (event) => readString(event, 'traceId') === 'tr_u69copy1'
+      )
+      expect(landed).toHaveLength(1)
+      const copyEvent = landed[0]
+      expect(readString(readField(copyEvent, 'metadata'), 'sha256')).toBe(
+        'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+      )
+      expect(readString(readField(copyEvent, 'metadata'), 'sha256Source')).toBe('client')
+      expect(readString(readField(copyEvent, 'metadata'), 'captureConfidence')).toBe(
+        'client-declared'
+      )
+      expect(readString(copyEvent, 'actor')).toBe('zhangsan')
+
+      saveEvidence(
+        'u69-1-fingerprint-chain.json',
+        {
+          generatedAt: new Date().toISOString(),
+          copyReply: copy.ok ? copy.result : copy,
+          forgedReply: forged,
+          chainEvent: copyEvent
+        },
+        U69_EVIDENCE_DIR
+      )
     } finally {
       session.ws.close()
     }

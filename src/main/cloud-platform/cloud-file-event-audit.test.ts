@@ -60,6 +60,30 @@ describe('createCloudFileEventAudit（audit.recordFileEvent 宿主承接）', ()
     expect(sent()[0].metadata?.captureConfidence).toBe('client-declared')
   })
 
+  it('U69 指纹对（sha256+sha256Source）原样通过承接，captureConfidence 仍由宿主固定', () => {
+    const { audit, sent } = setup()
+    const reply = audit(
+      {
+        eventType: 'file_copy',
+        result: 'success',
+        traceId: 'tr_u69',
+        metadata: {
+          path: 'src/engine/rules.ts',
+          captureConfidence: 'client-declared',
+          sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+          sha256Source: 'client'
+        }
+      },
+      identity
+    )
+    expect(reply).toEqual({ queued: true })
+    expect(sent()[0].metadata).toMatchObject({
+      sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      sha256Source: 'client',
+      captureConfidence: 'client-declared'
+    })
+  })
+
   it('能力不支持时抑制并计数（§2.9）', () => {
     const { queue, audit, sent } = setup({ fileEventsCapable: () => false })
     const reply = audit({ eventType: 'file_copy', result: 'success' }, identity)

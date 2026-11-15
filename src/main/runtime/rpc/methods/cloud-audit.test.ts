@@ -82,6 +82,58 @@ describe('audit.recordFileEvent 宿主 RPC（U66 §2.10）', () => {
     })
   })
 
+  it('U69 生产形态：sha256+sha256Source:client 白名单通过并保留（字段序无关）', () => {
+    // The renderer's copyMetadata output when a fingerprint was computed.
+    const production = {
+      fileName: 'rules.ts',
+      path: 'src/engine/rules.ts',
+      copyKind: 'content-whole',
+      copiedChars: 1240,
+      copiedBytes: 3720,
+      surface: 'web',
+      capturePoint: 'web-clipboard-api',
+      captureConfidence: 'client-declared',
+      sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      sha256Source: 'client',
+      occurredAt: 1_700_000_000_000
+    }
+    expect(validateFileEventMetadata(production)).toEqual({ ok: true, metadata: production })
+    // Source declared before the fingerprint applies too.
+    expect(
+      validateFileEventMetadata({
+        sha256Source: 'host',
+        sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+      })
+    ).toEqual({
+      ok: true,
+      metadata: {
+        sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+        sha256Source: 'host'
+      }
+    })
+  })
+
+  it('U69 枚举外 sha256Source 拒绝为 invalid_argument；孤源与坏指纹一起丢弃', () => {
+    expect(validateFileEventMetadata({ sha256Source: 'forged' })).toMatchObject({
+      ok: false,
+      field: 'sha256Source',
+      reason: 'not-allowed'
+    })
+    expect(validateFileEventMetadata({ sha256Source: 7 })).toMatchObject({
+      ok: false,
+      field: 'sha256Source',
+      reason: 'not-allowed'
+    })
+    // An orphan source (no valid fingerprint) is noise, not an error.
+    const orphan = validateFileEventMetadata({ sha256Source: 'client' })
+    expect(orphan).toEqual({ ok: true, metadata: {} })
+    const badFingerprint = validateFileEventMetadata({
+      sha256: 'nothex',
+      sha256Source: 'client'
+    })
+    expect(badFingerprint).toEqual({ ok: true, metadata: {} })
+  })
+
   it('非云会话返回 queued:false non-cloud-session，不入队', () => {
     const reply = method.handler(parse({ eventType: 'file_copy', result: 'success' }), ctxWith())
     expect(reply).toEqual({ queued: false, reason: 'non-cloud-session' })

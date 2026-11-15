@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { AuditChain } from '../apps/api/src/audit.ts'
-import {
-  appendHostAuditReports,
-  parseHostAuditReports
-} from '../apps/api/src/host-audit-ingest.ts'
+import { appendHostAuditReports, parseHostAuditReports } from '../apps/api/src/host-audit-ingest.ts'
 
 /**
  * R-01: the heartbeat `audit[]` ingest accepts the three U66 file event types,
@@ -48,6 +45,59 @@ describe('host-audit-ingest file events (U68)', () => {
     assert.equal(reports[1].eventType, 'download_blocked')
     assert.equal(reports[2].reason, 'client_cancelled')
     assert.equal(reports[3].eventType, 'connection_rejected')
+  })
+
+  it('U69: fingerprint provenance lands with sha256; enum violations drop the entry', () => {
+    const sha256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+    // The production reporter shape the host relays after the U69 whitelist fix.
+    const ok = parseHostAuditReports([
+      {
+        eventType: 'file_copy',
+        result: 'success',
+        subject: 'user:zhangsan',
+        traceId: 'tr_u69',
+        metadata: {
+          fileName: 'rules.ts',
+          captureConfidence: 'client-declared',
+          sha256,
+          sha256Source: 'client'
+        }
+      }
+    ])
+    assert.equal(ok.length, 1)
+    assert.equal(ok[0].metadata?.sha256, sha256)
+    assert.equal(ok[0].metadata?.sha256Source, 'client')
+
+    const { store, audit } = chain()
+    const appended = appendHostAuditReports(
+      audit,
+      host,
+      parseHostAuditReports([
+        {
+          eventType: 'file_copy',
+          result: 'success',
+          metadata: { sha256, sha256Source: 'client' }
+        },
+        // Out-of-enum provenance drops the whole entry (all-or-nothing).
+        {
+          eventType: 'file_copy',
+          result: 'success',
+          metadata: { sha256, sha256Source: 'forged' }
+        },
+        // An orphan source without a surviving fingerprint is scrubbed.
+        {
+          eventType: 'file_copy',
+          result: 'success',
+          metadata: { sha256Source: 'client' }
+        }
+      ]),
+      'beat'
+    )
+    assert.equal(appended, 2)
+    assert.equal(store.audit.length, 2)
+    assert.equal(store.audit[0].metadata.sha256Source, 'client')
+    assert.equal(store.audit[1].metadata.sha256Source, undefined)
+    assert.equal(store.audit[1].metadata.sha256, undefined)
   })
 
   it('appends bare-name events with subject-tier attribution; excerpts never land', () => {
@@ -128,7 +178,12 @@ describe('host-audit-ingest file events (U68)', () => {
       audit,
       host,
       parseHostAuditReports([
-        { eventType: 'method_denied', result: 'denied', subject: 'zhangsan', method: 'settings.update' }
+        {
+          eventType: 'method_denied',
+          result: 'denied',
+          subject: 'zhangsan',
+          method: 'settings.update'
+        }
       ]),
       'beat'
     )
