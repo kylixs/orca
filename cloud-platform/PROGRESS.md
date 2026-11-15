@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### U46-7b 落地（2026-11-15）
+
+`179c38dee15`（6 文件）：预览标签（img 类 buildImageDataUri+缩放、HTML sandbox="" srcDoc 无脚本+预览/源码切换、**drawio 如实降级**=拒绝第三方 viewer 脚本改源码+下载提示、.drawio.svg 走图片路径、PDF 按扩展名占位省读取预算、超限重试）；diff 标签（Monaco DiffEditor 左右/合并切换、工作区行 git.diff staged:false+compareAgainstHead、提交行 commitCompare.parentOid→commitDiff 根提交 null 原样、binary 图片双 dataURL 对比、largeDiffRenderLimit 降级概要卡）；工厂适配器供 U46-8 注册。新 22+域 176 回归绿，tc:web 清。**U46 全部 9 实现令落地**。派 U46-8 收口。
+
 ### U46-6b 落地（2026-11-15）
 
 `c341997cc02`（4 文件）：git 变更面板（上下布局：状态分组上/提交记录下；变更行 onOpenDiff(path,status)、提交行展开经 commitCompare 加载文件同回调、独立加载/失败/重试、无 file:read 降级零 RPC；复用 Source Control 呈现形态 getDominantStatus/STATUS_LABELS/COLORS）。**git RPC 契约核验完成**（五方法：status/history/commitCompare/diff/commitDiff；worktree='path:<signed>'；diff 建议参数=staged:false+compareAgainstHead:true、提交行=commitDiff+summary.parentOid）——U46-7b 契约就绪。新 7/7+域 154 回归绿。
