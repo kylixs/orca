@@ -2761,6 +2761,10 @@ A 线 1/1（9 步，**R1 确认**：A4 终端 remote PTY 句柄创建+回显 142
 
 `bb0a40376df`（8 文件）：F-01 dirty 关闭三选确认（保存=registerSave 真路径写盘成功才关/放弃/取消；覆盖层计数同步回收；tab-strip 抽出防 max-lines）；F-02 ready 超时失败态（保留覆盖层 role=alert+重试≤2 次+独立页退路+失败态登记可释放）。新 O6+close 三选用例，cloud 188+overlay 6+回归 25 全绿。**U51→🟢**。**终局门禁核对**：U46 批 10 令+装配+审计 PASS（2 major 已修）+终态双线旅程二轮全绿+台账 🔴=0（仅 U45/U52⚪ P2 挂账）→ **全部完成，等待人工验收**。
 
+### FS-1 落地 + U65 技术方案审定（2026-11-16）
+
+FS-1 `b6c6e414c72`（14 文件）：file-renderers 注册表 7 descriptor（markdown/html/drawio/image/pdf/binary/code，source/defaultMode/懒 chunk）+md 默认预览+HTML 可编辑源码+未知二进制占位（非只读 Monaco）+切换偏好 sessionStorage。L1 矩阵单测+cloud 212 绿。**U65 技术方案审定**（494 行，90%）：三位推导语义（effective perms 进票据+收缩撤凭证 FR-1.7）+可见性∪推导+自助一律 provision 位+管理台三选一；**额外发现**=orca web 只读会话缺文件树挂载（worktree.list 系归 terminal）→remap 三读方法归 file:read+只读激活分支（审定采纳，安全评审点=只读分支不触写路径）；下载一期前端 advisory/二期宿主硬拦。§开放问题四项裁定完成。10 实现令待评审通过后派（用户流程纪律）。空槽派 FS-2。
+
 ### U46 批审计 PASS（有条件，2026-11-15）+ U51 派修
 
 审计（test-reports/u46-batch-audit.md）：12 提交逐令 PASS、**0 blocker/2 major/7 minor/4 info**——三操作语义与用户裁定一致、安全面无漏洞级（postMessage 三重校验/HTML sandbox/drawio 拒三方脚本/worktree 边界）、复用纪律与兼容矩阵成立；静态变异抽查均有真实断言可捕获。2 major=U51（F-01 dirty 关闭无确认/F-02 ready 超时缺失败态重试）**修复令已派**；minor 7 归并 U52⚪（P2 打磨）；info 记档。**待 U51 落地+复验后宣告**。
