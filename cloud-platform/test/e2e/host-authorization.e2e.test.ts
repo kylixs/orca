@@ -202,15 +202,21 @@ test('AA2 三端点门禁：admin 可用，developer 403 且落 denied 审计', 
   assert.equal(devPolicy.status, 403)
   assert.equal(devPolicy.code, 'PERMISSION_DENIED')
 
+  // U62 B11: the read refusal carries its own event type, not the write type.
   const grantDenied = (await deniedEvents('host_grant_update')).filter(
     (event) => event.actor === 'zhangsan'
   )
-  assert.equal(grantDenied.length, 2, 'GET and PUT refusals are both recorded')
-  for (const event of grantDenied) {
+  assert.equal(grantDenied.length, 1, 'the PUT refusal is recorded as the write type')
+  const readDenied = (await deniedEvents('host_grant_read')).filter(
+    (event) => event.actor === 'zhangsan'
+  )
+  assert.equal(readDenied.length, 1, 'the GET refusal is recorded as a read type')
+  for (const event of [...grantDenied, ...readDenied]) {
     assert.equal(event.targetType, 'host')
     assert.equal(event.targetId, restrictedHostId)
     assert.equal(event.metadata?.reason, 'PERMISSION_DENIED')
     assert.equal(event.metadata?.requiredPermission, 'platform:admin')
+    assert.equal(event.metadata?.hostId, restrictedHostId)
   }
 
   const policyDenied = (await deniedEvents('host_provision_policy_update')).filter(

@@ -68,6 +68,8 @@ export function selectSelfServiceHost(args: {
   /** Empty means the platform picks the only eligible host. */
   hostId: string
   isOnline: (host: Host) => boolean
+  /** U62 C10: auto-selection counts only hosts the caller may provision on. */
+  isProvisionAllowed?: (host: Host) => boolean
 }): SelfServiceHostSelection {
   const hosts = [...args.hosts]
   if (args.hostId !== '') {
@@ -94,7 +96,10 @@ export function selectSelfServiceHost(args: {
     }
     return { ok: true, host }
   }
-  const candidates = hosts.filter((host) => args.isOnline(host) && Boolean(host.projectsRoot))
+  const allowed = args.isProvisionAllowed ?? (() => true)
+  const candidates = hosts.filter(
+    (host) => args.isOnline(host) && Boolean(host.projectsRoot) && allowed(host)
+  )
   if (candidates.length === 0) {
     return {
       ok: false,

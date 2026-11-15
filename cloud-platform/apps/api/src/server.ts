@@ -801,6 +801,8 @@ export function createApp(config: ApiConfig): ApiHandle {
       targetId?: string | null
       /** Exactly the role that was missing, so the event reads on its own. */
       permission: 'platform:admin' | 'platform:auditor'
+      /** U62 G4: endpoint-specific fields (hostId, refused subject) for the denied event. */
+      metadata?: Record<string, unknown>
     }
   ): void {
     audit.appendBestEffort({
@@ -810,7 +812,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       targetId: input.targetId ?? null,
       result: 'denied',
       traceId,
-      metadata: { reason: 'PERMISSION_DENIED', requiredPermission: input.permission }
+      metadata: { reason: 'PERMISSION_DENIED', requiredPermission: input.permission, ...input.metadata }
     })
     error(
       res,
@@ -819,6 +821,24 @@ export function createApp(config: ApiConfig): ApiHandle {
       input.permission === 'platform:admin' ? '需要平台管理权限。' : '需要审计权限。',
       traceId
     )
+  }
+
+  /**
+   * U62 G4: a refused grant write still names the subject it refused. The body
+   * was never trusted (the caller had no say), so every field is best effort.
+   */
+  function deniedGrantMetadata(
+    body: Record<string, unknown>,
+    hostId?: string
+  ): Record<string, unknown> {
+    const subject = {
+      subjectType: typeof body.subjectType === 'string' ? body.subjectType : 'user',
+      subjectId: typeof body.subjectId === 'string' ? body.subjectId : '',
+      permissions: Array.isArray(body.permissions)
+        ? body.permissions.filter((p): p is string => typeof p === 'string')
+        : []
+    }
+    return hostId === undefined ? subject : { hostId, ...subject }
   }
 
   /**
@@ -2367,7 +2387,12 @@ export function createApp(config: ApiConfig): ApiHandle {
       const selection = selectSelfServiceHost({
         hosts: store.hosts.values(),
         hostId: typeof body.hostId === 'string' ? body.hostId : '',
-        isOnline: hostOnline
+        isOnline: hostOnline,
+        // U62 C10: auto-selection counts only hosts this caller may provision
+        // on, so "no usable host" answers NO_PROVISIONABLE_HOST instead of
+        // asking the caller to pick among hosts that would 403 anyway.
+        isProvisionAllowed: (host) =>
+          canCreateProjectOnHost(store, host.id, authed.user, isAdmin(authed.user))
       })
       if (!selection.ok) {
         return await deny(selection.status, selection.code, selection.message, selection.details)
@@ -2594,15 +2619,22 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (req.method === 'PUT' && action === '/grants') {
         if (!isAdmin(authed.user) && !authed.user.roles.includes('project:owner')) {
           // AC-18: a refused grant write is a 403 *and* an audit event.
+          // U62 G4: the event names the refused subject.
+          const body = await readJson(req)
           return denyPrivileged(res, traceId, authed.user, {
             eventType: 'grant_update',
             targetType: 'project',
             targetId: projectId,
-            permission: 'platform:admin'
+            permission: 'platform:admin',
+            metadata: deniedGrantMetadata(body)
           })
         }
         if (!auditAllowsMutations(res, traceId)) return
         const body = await readJson(req)
+        // U62 B12: same contract as host grants — reject unknown subject types.
+        if (body.subjectType !== undefined && body.subjectType !== 'user' && body.subjectType !== 'group') {
+          return error(res, 400, 'GRANT_SUBJECT_TYPE_INVALID', 'subjectType 只支持 user 或 group。', traceId)
+        }
         const subjectType = body.subjectType === 'group' ? 'group' : 'user'
         const submitted = String(body.subjectId ?? '').trim()
         // A non-array used to read as [] and delete the row; reject it instead (U57 G9).
@@ -3374,11 +3406,14 @@ export function createApp(config: ApiConfig): ApiHandle {
           return error(res, 401, 'SESSION_EXPIRED', '登录已过期，请重新登录。', traceId)
         }
         if (!isAdmin(authed.user)) {
+          // AC-18 + U62 B11: a read refusal gets a read event type, not the
+          // write type the refused caller never reached.
           return denyPrivileged(res, traceId, authed.user, {
-            eventType: 'host_grant_update',
+            eventType: 'host_grant_read',
             targetType: 'host',
             targetId: hostId,
-            permission: 'platform:admin'
+            permission: 'platform:admin',
+            metadata: { hostId }
           })
         }
         // User rows carry the username so the console names who was granted.
@@ -3399,15 +3434,30 @@ export function createApp(config: ApiConfig): ApiHandle {
         }
         if (!isAdmin(authed.user)) {
           // AC-18: a refused host grant write is a 403 *and* an audit event.
+          // U62 G4: the event names the refused subject, so the body is read
+          // here even though the caller never reaches the mutation.
+          const body = await readJson(req)
           return denyPrivileged(res, traceId, authed.user, {
             eventType: 'host_grant_update',
             targetType: 'host',
             targetId: hostId,
-            permission: 'platform:admin'
+            permission: 'platform:admin',
+            metadata: deniedGrantMetadata(body, hostId)
           })
         }
         if (!auditAllowsMutations(res, traceId)) return
         const body = await readJson(req)
+        // U62 B12: the contract is user|group; anything else is a caller bug
+        // and must be refused, never silently stored as a user row.
+        if (body.subjectType !== undefined && body.subjectType !== 'user' && body.subjectType !== 'group') {
+          return error(
+            res,
+            400,
+            'HOST_GRANT_SUBJECT_TYPE_INVALID',
+            'subjectType 只支持 user 或 group。',
+            traceId
+          )
+        }
         const subjectType = body.subjectType === 'group' ? 'group' : 'user'
         const submitted = String(body.subjectId ?? '').trim()
         // Same contract as project grants: malformed input must never delete a row.
@@ -3482,11 +3532,18 @@ export function createApp(config: ApiConfig): ApiHandle {
           return error(res, 401, 'SESSION_EXPIRED', '登录已过期，请重新登录。', traceId)
         }
         if (!isAdmin(authed.user)) {
+          // U62 G4: the refused event records the attempted mode, so the body
+          // is read for the record even though the caller never gets a write.
+          const body = await readJson(req)
           return denyPrivileged(res, traceId, authed.user, {
             eventType: 'host_provision_policy_update',
             targetType: 'host',
             targetId: hostId,
-            permission: 'platform:admin'
+            permission: 'platform:admin',
+            metadata: {
+              hostId,
+              mode: typeof body.mode === 'string' ? body.mode : ''
+            }
           })
         }
         if (!auditAllowsMutations(res, traceId)) return
