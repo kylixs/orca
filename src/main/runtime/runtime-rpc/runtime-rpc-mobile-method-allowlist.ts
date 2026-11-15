@@ -3,6 +3,8 @@ import { MOBILE_AGENT_SESSION_RPC_METHODS } from './runtime-rpc-mobile-agent-ses
 export const MOBILE_RPC_METHOD_ALLOWLIST = new Set([
   'accounts.list',
   'accounts.consumeCodexResetCredit',
+  // U66 §2.10: mobile save/copy capture reports through the same channel (AC-56/AC-57).
+  'audit.recordFileEvent',
   'accounts.selectClaude',
   'accounts.selectCodex',
   'accounts.selectCodexForTarget',

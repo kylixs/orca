@@ -19,6 +19,7 @@ import type {
   CloudProvisionReporter
 } from '../../cloud-platform/cloud-project-provision'
 import type { CloudHostAuditSink } from '../../cloud-platform/cloud-host-audit'
+import type { CloudFileEventAudit } from '../../cloud-platform/cloud-file-event-audit'
 import {
   createWebClientUrl,
   DEVICE_REGISTRY_UNAVAILABLE_GUIDANCE,
@@ -143,6 +144,11 @@ export class RuntimeRpcPairing extends RuntimeRpcNetworkExposure {
   /** Session refusals ride the same heartbeat; installed with the cloud client. */
   setCloudHostAudit(sink: CloudHostAuditSink | null): void {
     this.cloudAuditSink = sink
+  }
+
+  /** U66 §2.10 client-declared file events; installed with the cloud client. */
+  setCloudFileEventAudit(audit: CloudFileEventAudit | null): void {
+    this.cloudFileEventAudit = audit
   }
 
   /**

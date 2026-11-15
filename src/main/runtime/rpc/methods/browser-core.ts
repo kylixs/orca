@@ -17,7 +17,6 @@ import {
   Screenshot,
   Scroll,
   Select,
-  SelectorPath,
   TabCurrent,
   TabClose,
   TabList,
@@ -32,6 +31,7 @@ import {
 } from '../../../../shared/rpc-contract/browser-tab-create-params'
 import { BROWSER_TEXT_METHODS } from './browser-text-rpc-methods'
 import { BROWSER_PROFILE_METHODS } from './browser-profile-rpc-methods'
+import { BROWSER_DOWNLOAD_METHOD } from './browser-download-audit'
 import { CertificateProceed } from '../../../../shared/rpc-contract/browser-core-params'
 
 export const BROWSER_CORE_METHODS = [
@@ -274,12 +274,9 @@ export const BROWSER_CORE_METHODS = [
     params: BrowserTarget,
     handler: async (params, { runtime }) => runtime.browserCaptureStop(params)
   }),
-  defineMethod({
-    name: 'browser.download',
-    permission: 'workspace',
-    params: SelectorPath,
-    handler: async (params, { runtime }) => runtime.browserDownload(params)
-  }),
+  // The download method lives in browser-download-audit.ts: it carries the U66
+  // host-attested outcome capture, and this file sits at its line budget.
+  BROWSER_DOWNLOAD_METHOD,
   defineMethod({
     name: 'browser.highlight',
     permission: 'workspace',

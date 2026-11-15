@@ -16,6 +16,7 @@ import { RuntimeBinaryMessageRouter } from '../runtime-binary-message-router'
 import type { CloudAccessGuard } from '../../cloud-platform/cloud-access-guard'
 import type { CloudProvisionReporter } from '../../cloud-platform/cloud-project-provision'
 import type { CloudHostAuditSink } from '../../cloud-platform/cloud-host-audit'
+import type { CloudFileEventAudit } from '../../cloud-platform/cloud-file-event-audit'
 import type { RuntimeMetadataOwnershipWatch } from '../runtime-metadata-ownership-watch'
 import { RUNTIME_METADATA_OWNERSHIP_POLL_MS } from '../runtime-metadata-ownership-watch'
 import {
@@ -66,6 +67,8 @@ export class RuntimeRpcState {
   protected cloudProvisionReporter: CloudProvisionReporter | null = null
   // Why mutable: same lifecycle as the provision reporter — installed with the client.
   protected cloudAuditSink: CloudHostAuditSink | null = null
+  // Why mutable: same lifecycle; the `audit.recordFileEvent` intake (U66 §2.10).
+  protected cloudFileEventAudit: CloudFileEventAudit | null = null
   protected readonly askLongPollCap: number
   protected readonly browserHostLongPollCap: number
   protected readonly browserHostLongPollCapPerDevice: number

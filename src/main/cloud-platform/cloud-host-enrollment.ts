@@ -176,6 +176,12 @@ export type HeartbeatResult = {
    * platforms older than the field, which reads as no assignments.
    */
   provisionAssignments: unknown
+  /**
+   * §2.9 wire-additive capability advertisement. Absent on platforms older than
+   * U66 file events; the client parses it defensively and never gates on the
+   * field being missing (see cloud-file-event-audit.ts for the delivery rule).
+   */
+  auditCapabilities: unknown
 }
 
 export async function sendHeartbeat(
@@ -209,7 +215,8 @@ export async function sendHeartbeat(
       maintenance:
         maintenance === null ? null : { reason: readString(maintenance, 'reason') ?? '' },
       hostRevoked: readField(parsed, 'hostRevoked') === true,
-      provisionAssignments: readField(parsed, 'provisionAssignments')
+      provisionAssignments: readField(parsed, 'provisionAssignments'),
+      auditCapabilities: readField(parsed, 'auditCapabilities')
     }
   } catch {
     return null

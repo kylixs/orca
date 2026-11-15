@@ -13,6 +13,8 @@ export type RpcDispatchStreamingOptions = Pick<
   | 'clientId'
   | 'cloud'
   | 'cloudReportProvision'
+  | 'cloudFileEvent'
+  | 'cloudAuditReport'
   | 'pairedDeviceId'
   | 'caller'
   | 'clientKind'
@@ -49,6 +51,8 @@ export function rpcContextFromTransport(
     cloud: options?.cloud,
     onCloudDenial: options?.onCloudDenial,
     cloudReportProvision: options?.cloudReportProvision,
+    cloudFileEvent: options?.cloudFileEvent,
+    cloudAuditReport: options?.cloudAuditReport,
     pairedDeviceId: options?.pairedDeviceId,
     caller: resolveRpcCallerIdentity(options),
     clientKind: options?.clientKind,

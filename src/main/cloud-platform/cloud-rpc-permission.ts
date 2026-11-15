@@ -10,7 +10,12 @@ import type { CloudPermission } from './cloud-credential'
  */
 
 /** Admitted sessions may always introspect themselves (the workspace view calls this). */
-const SESSION_METHODS: ReadonlySet<string> = new Set(['status.get', 'workspace.info'])
+const SESSION_METHODS: ReadonlySet<string> = new Set([
+  'status.get',
+  'workspace.info',
+  // U66 §2.10: client-declared file audit rides every admitted session.
+  'audit.recordFileEvent'
+])
 
 /** Prefixes granted by a project permission; the design groups git with terminal. */
 const PREFIX_PERMISSIONS: readonly [string, CloudPermission][] = [

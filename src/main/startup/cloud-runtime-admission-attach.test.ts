@@ -106,6 +106,11 @@ function stubClient(): {
       reportAudit: (event) => {
         audits.push(event)
       },
+      fileEvents: {
+        audit: () => ({ queued: false, reason: 'audit-unavailable' as const }),
+        noteCapabilities: () => {},
+        capabilities: () => null
+      },
       onProvisionAssignment: () => {
         provisionExecutors += 1
         return () => {

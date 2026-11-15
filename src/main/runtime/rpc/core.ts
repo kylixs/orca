@@ -16,6 +16,8 @@ import type { RpcMethodPermission } from './rpc-method-permission'
 import type { CloudDenialDetails } from '../../cloud-platform/cloud-denial-details'
 import type { CloudProvisionReport } from '../../cloud-platform/cloud-project-provision'
 import type { CloudPermission } from '../../cloud-platform/cloud-credential'
+import type { CloudFileEventSubmit } from '../../cloud-platform/cloud-file-event-audit'
+import type { CloudHostAuditSink } from '../../cloud-platform/cloud-host-audit'
 
 export type PairingRpcContext = {
   getEndpoints(params: PairingGetEndpointsParams): Promise<PairingGetEndpointsResult>
@@ -136,6 +138,12 @@ export type RpcContext = {
   onCloudDenial?: (details: CloudDenialDetails, method: string) => void
   // Why: the platform learns the outcome on the next heartbeat, not from a client report.
   cloudReportProvision?: (report: CloudProvisionReport) => void
+  // Why: client-declared file events (U66 §2.10) queue on the host's heartbeat; a
+  // non-cloud session has no channel, so the method answers non-cloud-session.
+  cloudFileEvent?: CloudFileEventSubmit
+  // Why: host-attested file events (browser.download, U66 C2) ride the same
+  // security audit queue; absent when no cloud client is attached.
+  cloudAuditReport?: CloudHostAuditSink
   // Why: mobile terminal traffic bypasses JSON streaming; undefined on Unix/socket and non-E2EE WebSocket paths.
   sendBinary?: (bytes: Uint8Array<ArrayBufferLike>) => boolean | void
   // Why: binary terminal frames arrive outside JSON-RPC once a stream is established; handlers register only the stream IDs they created.

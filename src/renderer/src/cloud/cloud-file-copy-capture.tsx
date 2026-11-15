@@ -1,7 +1,12 @@
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import type { CloudRpc } from '../../../shared/cloud-file-browser'
-import { cloudFileUtf8Bytes, createCloudFileCopyReporter } from './cloud-file-copy-audit'
+import {
+  cloudCopyCapturePoint,
+  cloudFileAuditSurface,
+  cloudFileUtf8Bytes,
+  createCloudFileCopyReporter
+} from './cloud-file-copy-audit'
 import { cloudClipboardFailureReason, writeCloudClipboardText } from './cloud-clipboard-write'
 
 /**
@@ -44,6 +49,8 @@ export function useCloudFileCopyCapture(
 
   const copyWholeFile = async (): Promise<void> => {
     explicitCopyAtRef.current = Date.now()
+    const surface = cloudFileAuditSurface()
+    const capturePoint = cloudCopyCapturePoint(surface)
     try {
       await writeCloudClipboardText(wholeText)
     } catch (error) {
@@ -51,7 +58,7 @@ export function useCloudFileCopyCapture(
       void reporter.reportFailure({
         path,
         copyKind: 'content-whole',
-        capturePoint: 'web-clipboard-api',
+        capturePoint,
         sizeBytes: cloudFileUtf8Bytes(wholeText),
         reason: cloudClipboardFailureReason(error)
       })
@@ -62,9 +69,10 @@ export function useCloudFileCopyCapture(
       path,
       text: wholeText,
       copyKind: 'content-whole',
-      capturePoint: 'web-clipboard-api',
+      capturePoint,
       sizeBytes: cloudFileUtf8Bytes(wholeText),
-      isBinary: false
+      isBinary: false,
+      surface
     })
   }
 

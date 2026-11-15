@@ -228,17 +228,49 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
         clientKind: device.scope,
         callerScope,
         // Why the split: a boundary verdict (a frame naming a path outside the
-        // ticket) is a path denial; only permission/policy refusals are method denials.
+        // ticket) is a path denial; only permission/policy refusals are method
+        // denials — except a download-policy refusal, which is the download
+        // outcome it blocked (U66 C1): one action, one event, `file_download`
+        // denied instead of a `method_denied` alias.
         onCloudDenial: (details, method) =>
-          this.cloudAuditSink?.({
-            eventType: details.denial === 'PATH_OUTSIDE_ROOT' ? 'path_denied' : 'method_denied',
-            deviceId: device.deviceId,
-            subject: device.name,
-            projectId: cloudSession?.projectId,
-            method,
-            denial: details.denial,
-            reason: details.reason
-          }),
+          this.cloudAuditSink?.(
+            details.denial === 'DOWNLOAD_DISABLED'
+              ? {
+                  eventType: 'file_download',
+                  result: 'denied',
+                  deviceId: device.deviceId,
+                  // The ticket's sub is already `user:<username>` (§2.1 subject form).
+                  subject: device.name,
+                  projectId: cloudSession?.projectId,
+                  method,
+                  denial: details.denial,
+                  reason: details.reason,
+                  metadata: { captureConfidence: 'host-attested' }
+                }
+              : {
+                  eventType:
+                    details.denial === 'PATH_OUTSIDE_ROOT' ? 'path_denied' : 'method_denied',
+                  deviceId: device.deviceId,
+                  subject: device.name,
+                  projectId: cloudSession?.projectId,
+                  method,
+                  denial: details.denial,
+                  reason: details.reason
+                }
+          ),
+        // Why: the client-declared file audit is cloud-only; the method itself
+        // answers non-cloud-session when this is absent.
+        cloudFileEvent:
+          cloudSession && this.cloudFileEventAudit
+            ? (report) =>
+                this.cloudFileEventAudit!(report, {
+                  deviceId: device.deviceId,
+                  // The ticket's sub is already `user:<username>` (§2.1 subject form).
+                  subject: device.name,
+                  projectId: cloudSession.projectId
+                })
+            : undefined,
+        cloudAuditReport: this.cloudAuditSink ?? undefined,
         // Why: the host-only view of the ticket; provisioning must never read a
         // path or URL out of client-supplied params.
         cloud: cloudSession

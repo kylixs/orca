@@ -1,6 +1,6 @@
 import { heartbeatAddrsField } from './cloud-host-enrollment'
 import type { CloudProvisionReport } from './cloud-project-provision'
-import type { CloudHostAuditRecord } from './cloud-host-audit'
+import type { CloudAuditGap, CloudHostAuditRecord } from './cloud-host-audit'
 
 /** The heartbeat's optional payloads; absent sections are omitted, not sent empty. */
 export type HeartbeatSource = {
@@ -23,10 +23,19 @@ function projectDirsField(configured: string[] | (() => string[]) | undefined): 
   return { projectDirs: value }
 }
 
+/** §2.10.4: carried only when a gap exists, so a quiet beat stays byte-stable. */
+function auditGapField(gap: CloudAuditGap | undefined): { auditGap?: CloudAuditGap } {
+  if (!gap || (gap.dropped <= 0 && gap.suppressed <= 0 && gap.rateLimited <= 0)) {
+    return {}
+  }
+  return { auditGap: gap }
+}
+
 export function cloudHeartbeatBody(
   source: HeartbeatSource,
   provisioned: readonly CloudProvisionReport[],
-  audit: readonly CloudHostAuditRecord[]
+  audit: readonly CloudHostAuditRecord[],
+  auditGap?: CloudAuditGap
 ): Record<string, unknown> {
   const e2eePublicKeyB64 = source.e2eePublicKeyB64?.()
   const tlsFingerprint = source.tlsFingerprint?.()
@@ -38,6 +47,7 @@ export function cloudHeartbeatBody(
     ...(e2eePublicKeyB64 ? { e2eePublicKeyB64 } : {}),
     ...(tlsFingerprint ? { tlsFingerprint } : {}),
     ...(provisioned.length > 0 ? { provisioned } : {}),
-    ...(audit.length > 0 ? { audit } : {})
+    ...(audit.length > 0 ? { audit } : {}),
+    ...auditGapField(auditGap)
   }
 }

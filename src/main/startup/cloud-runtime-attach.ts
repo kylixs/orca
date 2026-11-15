@@ -26,7 +26,7 @@ export function installCloudAccessGuard(
 /** What installing the surfaces needs from the client; narrow so stubs can drive it. */
 type CloudSurfacesClient = Pick<
   CloudAgentClient,
-  'snapshot' | 'reportProvisioned' | 'reportAudit' | 'onProvisionAssignment'
+  'snapshot' | 'reportProvisioned' | 'reportAudit' | 'fileEvents' | 'onProvisionAssignment'
 >
 
 /** The slice of an admission `attach` consumes; `CloudRuntimeAdmission` satisfies it. */
@@ -45,6 +45,7 @@ function installRuntimeCloudSurfaces(
   installCloudAccessGuard(runtime, client)
   runtime.setCloudProvisionReporter?.((report) => client.reportProvisioned(report))
   runtime.setCloudHostAudit?.((event) => client.reportAudit(event))
+  runtime.setCloudFileEventAudit?.(client.fileEvents.audit)
   // U37: assignments are cloned outside any ticket, so a repo-ful project can
   // reach `ready` without a first `/connect`. Same install point as the reporter,
   // so the W12b-2 first-start timing fix covers the executor too.

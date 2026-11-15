@@ -2,7 +2,7 @@ import type { CloudAgentConfig } from './cloud-agent-config'
 import { sendHeartbeat } from './cloud-host-enrollment'
 import { cloudHeartbeatBody } from './cloud-heartbeat-body'
 import { emptyRevocations, parseRevocations } from './cloud-agent-revocations'
-import { parseKeys, parsePolicyResponse } from './cloud-agent-response-parsing'
+import { applyJwksResponse, parsePolicyResponse } from './cloud-agent-response-parsing'
 import {
   createCloudUpgradeAdmission,
   readCloudCredentialFromHeaders,
@@ -20,6 +20,7 @@ import {
 } from './cloud-provision-assignment'
 import { createCloudProvisionReportQueue } from './cloud-provision-report-queue'
 import { createCloudHostAuditQueue, type CloudHostAuditSink } from './cloud-host-audit'
+import { createCloudFileEventDelivery, type CloudFileEventDelivery } from './cloud-file-event-audit'
 import { fetchControlPlaneReads } from './cloud-agent-endpoint-fetch'
 import {
   createCloudAdmissionLedger,
@@ -79,6 +80,8 @@ export type CloudAgentClient = {
   reportProvisioned: (report: CloudProvisionReport) => void
   /** Queues a session refusal for the next heartbeat; no-op in poll mode. */
   reportAudit: CloudHostAuditSink
+  /** U66 §2.10 file-event delivery (intake + capability state), for the runtime. */
+  fileEvents: CloudFileEventDelivery
   start: () => void
   stop: () => void
 }
@@ -106,6 +109,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
   let inFlight: Promise<void> | null = null
   const provisionReports = createCloudProvisionReportQueue(config.heartbeat !== undefined)
   const auditEvents = createCloudHostAuditQueue(config.heartbeat !== undefined)
+  const fileEvents = createCloudFileEventDelivery(auditEvents)
   const listeners = new Set<(snapshot: CloudAgentSnapshot) => void>()
   const revokeListeners = new Set<(deviceTokens: string[]) => void>()
   const provisionAssignmentListeners = new Set<(assignment: CloudProvisionAssignment) => void>()
@@ -140,19 +144,11 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
       timeoutMs,
       heartbeatMode: config.heartbeat !== undefined
     })
-    const jwksRes = reads.jwks
-    if (jwksRes === null) {
-      lastError = 'jwks fetch failed'
-    } else if (!jwksRes.ok) {
-      // Record, never throw: a bad key endpoint must not skip the revocation pass.
-      lastError = `jwks fetch failed: ${jwksRes.status}`
-    } else {
-      const parsedKeys = parseKeys(await jwksRes.json())
-      // Keep the last good keys rather than admitting nothing on a partial body.
-      if (parsedKeys.length > 0) {
-        keys = new Map(parsedKeys.map((entry) => [entry.kid, entry.publicKeyPem]))
-        keysFetchedAt = now()
-      }
+    const jwks = await applyJwksResponse(reads.jwks, keys, keysFetchedAt, now)
+    keys = jwks.keys
+    keysFetchedAt = jwks.fetchedAt
+    if (jwks.error) {
+      lastError = jwks.error
     }
     if (config.heartbeat) {
       // Snapshot before sending; keep the entries until the platform accepts the beat.
@@ -164,7 +160,12 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
         config.apiUrl,
         config.heartbeat.credential,
         config.heartbeat.hostId,
-        cloudHeartbeatBody(config.heartbeat, provisionBatch.reports, auditBatch.events),
+        cloudHeartbeatBody(
+          config.heartbeat,
+          provisionBatch.reports,
+          auditBatch.events,
+          auditEvents.gaps()
+        ),
         fetchImpl,
         timeoutMs
       )
@@ -173,6 +174,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
         // than anything the platform just accepted.
         provisionReports.clearThrough(provisionBatch.seq)
         auditEvents.clearThrough(auditBatch.seq)
+        fileEvents.noteCapabilities(beat.auditCapabilities)
         const parsed = parseRevocations(beat.revoked)
         if (parsed) {
           revocations = parsed
@@ -340,6 +342,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
     isHostRevoked: () => hostRevoked,
     reportProvisioned: provisionReports.queue,
     reportAudit: auditEvents,
+    fileEvents,
     refresh,
     snapshot,
     onRefresh: (listener) => {

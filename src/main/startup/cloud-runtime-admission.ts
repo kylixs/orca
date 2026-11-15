@@ -28,6 +28,7 @@ import type {
   CloudProvisionReporter
 } from '../cloud-platform/cloud-project-provision'
 import type { CloudHostAuditSink } from '../cloud-platform/cloud-host-audit'
+import type { CloudFileEventAudit } from '../cloud-platform/cloud-file-event-audit'
 
 export type CloudRuntimeTarget = {
   closeCloudDeviceSessions: (tokens: readonly string[]) => number
@@ -37,6 +38,8 @@ export type CloudRuntimeTarget = {
   setCloudProvisionReporter?: (reporter: CloudProvisionReporter | null) => void
   /** Installs the refusal sink; optional for the same reason. */
   setCloudHostAudit?: (sink: CloudHostAuditSink | null) => void
+  /** Installs the U66 file-event intake; optional for the same reason. */
+  setCloudFileEventAudit?: (audit: CloudFileEventAudit | null) => void
   /**
    * Executes a U37 assignment's clone/init outside any ticket. Optional so tests
    * can drive a bare runtime; a host without it silently skips its assignments.

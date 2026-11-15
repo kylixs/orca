@@ -17,9 +17,12 @@ export const CLOUD_FILE_COPY_RATE_LIMIT = 120
 export const CLOUD_FILE_COPY_RATE_WINDOW_MS = 60_000
 const DUPLICATE_COPY_WINDOW_MS = 1_500
 
-export type CloudFileAuditSurface = 'web' | 'admin-embed'
-export type CloudFileCopyKind = 'content-whole' | 'content-selection'
-export type CloudFileCopyCapturePoint = 'web-clipboard-api' | 'dom-copy-listener'
+export type CloudFileAuditSurface = 'desktop' | 'web' | 'admin-embed'
+export type CloudFileCopyKind = 'content-whole' | 'content-selection' | 'file-object'
+export type CloudFileCopyCapturePoint =
+  | 'web-clipboard-api'
+  | 'desktop-clipboard-ipc'
+  | 'dom-copy-listener'
 export type CloudFileCopyFailureReason = 'clipboard_denied' | 'clipboard_write_failed'
 
 export type CloudFileCopyInput = {
@@ -51,10 +54,26 @@ export type CloudFileAuditResult =
   | { reported: true }
   | { reported: false; reason: CloudFileAuditSkipReason }
 
-/** The admin console iframe is a distinct `surface` (§2.2/§2.3). */
+/** The admin console iframe is a distinct `surface` (§2.2/§2.3); the desktop shell its own. */
 export function cloudFileAuditSurface(search?: string): CloudFileAuditSurface {
   const query = search ?? (typeof window === 'undefined' ? '' : (window.location?.search ?? ''))
-  return new URLSearchParams(query).get('embed') === '1' ? 'admin-embed' : 'web'
+  if (new URLSearchParams(query).get('embed') === '1') {
+    return 'admin-embed'
+  }
+  // Positive desktop signal only: the full client's preload API without the web flag.
+  // Browsers and tests have neither, so they stay 'web'.
+  const desktop =
+    (globalThis as { __ORCA_WEB_CLIENT__?: boolean }).__ORCA_WEB_CLIENT__ !== true &&
+    typeof window !== 'undefined' &&
+    typeof window.api?.ui?.writeClipboardText === 'function'
+  return desktop ? 'desktop' : 'web'
+}
+
+/** Where the copy actually wrote, so the audit names the real seam (§2.3). */
+export function cloudCopyCapturePoint(
+  surface: CloudFileAuditSurface
+): Extract<CloudFileCopyCapturePoint, 'web-clipboard-api' | 'desktop-clipboard-ipc'> {
+  return surface === 'desktop' ? 'desktop-clipboard-ipc' : 'web-clipboard-api'
 }
 
 export function cloudFileBaseName(relativePath: string): string {

@@ -28,6 +28,10 @@ export const NODE_RUNTIME_INCLUDE = [
   // runtime; bun's ws fails the throwaway certificate handshake and its worker
   // starves node-pty, so the echo could never arrive (same family as W5b defect B).
   'src/main/cloud-platform/cloud-entry-session-slots.test.ts',
+  // Why: the U68 host-side audit pipeline connects real E2EE sessions over the
+  // same throwaway-certificate TLS runtime; bun's ws fails that handshake, so
+  // the pipeline proof would silently retire from the bun pool (same family).
+  'src/main/cloud-platform/cloud-file-event-host-pipeline.test.ts',
   // Why: the multiplex scope e2e is the only end-to-end proof of the cloud
   // multiplex boundary (admit + cross-workspace refuse + audit) and drives the
   // same real TLS runtime and real PTY, so bun would red it and silently retire

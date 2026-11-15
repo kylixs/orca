@@ -19,6 +19,7 @@ import {
 import { toRuntimeWorktreeSelector } from './runtime-worktree-selector'
 import { isAgentSessionAttachmentStorePath } from '../../../shared/agent-session-attachments'
 import type { LocalFileAccess } from '../../../shared/local-file-access'
+import { desktopCloudFileDownloadAudit, localSavedName } from '@/cloud/cloud-file-download-audit'
 
 const REMOTE_DOWNLOAD_CHUNK_BYTES = 384 * 1024
 const REMOTE_DOWNLOAD_UPDATE_REQUIRED_MESSAGE =
@@ -143,9 +144,14 @@ export async function downloadRuntimeFile(
     context.connectionId,
     context.expectedExternalSshTargetId
   )
+  // U66 AC-41: the desktop download outcome is client-declared (§3.2 C3); null
+  // outside a desktop cloud session, so SSH/local downloads stay unreported.
+  const downloadAudit = desktopCloudFileDownloadAudit(getActiveRuntimeTarget(context.settings))
   const remoteArgs = getRemoteFileArgs(context, filePath)
   if (!remoteArgs) {
     if (hasRemoteRuntimeOwner(context)) {
+      // Frontend interception (§2.4): refused before any download RPC reached the host.
+      downloadAudit?.blocked(filePath, suggestedName, 'outside-runtime-worktree')
       throw new Error('Remote file is outside the owning runtime worktree')
     }
     if (context.connectionId) {
@@ -160,11 +166,24 @@ export async function downloadRuntimeFile(
   }
 
   if (!(await remoteChunkedDownloadAvailable(remoteArgs))) {
-    return downloadRemoteFileViaPreview(remoteArgs, suggestedName)
+    const result = await downloadRemoteFileViaPreview(remoteArgs, suggestedName)
+    if (result.canceled) {
+      downloadAudit?.failure(filePath, suggestedName, 'client_cancelled')
+      return result
+    }
+    // The preview fallback hands off to the save dialog, so the delivered byte
+    // count lives there; the outcome is still one client-declared event.
+    downloadAudit?.success({
+      path: filePath,
+      fileName: suggestedName,
+      savedName: localSavedName(result.destinationPath)
+    })
+    return result
   }
 
   const download = await window.api.fs.startDownloadedFile({ suggestedName })
   if (download.canceled) {
+    downloadAudit?.failure(filePath, suggestedName, 'client_cancelled')
     return download
   }
 
@@ -189,7 +208,16 @@ export async function downloadRuntimeFile(
     }
     const result = await window.api.fs.finishDownloadedFile({ transferId: download.transferId })
     finished = true
+    downloadAudit?.success({
+      path: filePath,
+      fileName: suggestedName,
+      sizeBytes: offset,
+      savedName: localSavedName(result.destinationPath)
+    })
     return result
+  } catch (error) {
+    downloadAudit?.failure(filePath, suggestedName, 'read_failed')
+    throw error
   } finally {
     if (!finished) {
       await window.api.fs.cancelDownloadedFile({ transferId: download.transferId }).catch(() => {})
