@@ -2737,6 +2737,10 @@ U66-1 `2c99689d684`（audit.recordFileEvent 端点：三事件骨架/字段白�
 
 第三轮复审 **APPROVED**：N-1~N-7 全关闭、偏离（evt-1040 client-declared）核验成立。非阻断跟踪项 3 条并入开发令（U65 侧端点权属表述同步/O4-O5 同文件改串行/清理×3）。**U66 一期开发批启动**：U66-1（audit.recordFileEvent 端点+事件落链）∥ U66-2（查询扩展：until/fileName/q/eventTypes 多值+auditGap/status）并行派发。
 
+### U68 落地（2026-11-16，🟢）—— U66 宿主侧闭环
+
+`70434b45db9`（34 文件 +2100/−82）：五红项全关——R-01 宿主 RPC 注册+心跳 ingest 三类文件事件+auditGap/auditCapabilities（wire-additive，缺省=投递、严格门控一行翻转）；R-02/R-05 桌面下载/复制捕获接线；R-03 拒绝生产者（host-attested）；R-04 缺口计数回底。端到端真栈 3/3（替换测试桥）。遗留三件平台后续挂 P2（auditGap 落链/auditCapabilities 声明/device resolver）。**U66 宿主侧闭环**——待 U60 修复（连锁套件）回收后 U66 红项复验。
+
 ### Tailscale 接入正式收尾（2026-11-16）
 
 4 台 dev-remote 全部 online（connect 200/跨机 TLS 200/中继路由/证书指纹），跳过台如实记录（lanmao1 免密失败、10-185-1-171 活动实例+磁盘不足、Windows 后续项）。**多主机真机矩阵达成：6 台 online（2 本机+4 Tailscale）**。空槽回填 U66-3（Web 捕获）。
