@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### U46 设计审定通过（2026-11-15）
+
+`work-orders/u46-three-actions-design.md`（424 行，置信度 90%）：**架构 B=宿主伺服 cloud-admin.html 以 iframe 嵌入管理台同页覆盖层**（决定性依据：跨网段必须走中继浏览器边缘、WSS 前缀从页面路径推导——方案 A 需自建第二传输路径+第二客户端；B 下 E2EE/W5c 重签/WebGL/文件 RPC 全复用+iframe 天然状态隔离）。**关键核实**：CLOUD_HOST_METHODS 实为宽集合（ALL+managed+provision+workspaceInfo），worktree 内 files.read/write/readPreview/readDir 可用（编辑器前提成立）；P3 文件点击弹窗→多标签（用户裁定记录）。详情弹框零新增端点+createdBy 唯一增量+离线不置灰。**审定**：Q1 详情保持 admin-only；Q3 文件重命名/删除不做；Q5 Agent 标签不做；wire-additive 两处采纳。切分 U46-1..8（1∥4 并行先发）。
+
 ### U46 组件级拆分预案（2026-11-15 用户二次指令：按页面组件拆分防堵塞）
 
 粒度再细化——简易工作区按**组件**拆（组件间以设计契约为界并行）：
