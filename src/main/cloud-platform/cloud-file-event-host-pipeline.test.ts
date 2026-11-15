@@ -232,7 +232,9 @@ describe('U68 宿主审计管线（真实平台 + 真实宿主心跳 + 真实 E2
 
       const copyEvent = byType('file_copy')[0]
       expect(readString(copyEvent, 'actor')).toBe('zhangsan')
-      expect(readString(readField(copyEvent, 'metadata'), 'actorSource')).toBe('subject')
+      // U66 phase 2: the heartbeat wires the platform's device resolver, so the
+      // ticket's deviceId upgrades attribution to the device tier (§2.1).
+      expect(readString(readField(copyEvent, 'metadata'), 'actorSource')).toBe('device')
       expect(readString(readField(copyEvent, 'metadata'), 'subject')).toBe('user:zhangsan')
       expect(readNumber(readField(copyEvent, 'metadata'), 'copiedBytes')).toBe(3720)
       expect(readString(readField(copyEvent, 'metadata'), 'capturePoint')).toBe('web-clipboard-api')
@@ -288,7 +290,7 @@ describe('U68 宿主审计管线（真实平台 + 真实宿主心跳 + 真实 E2
       expect(readString(readField(hostDenied, 'metadata'), 'captureConfidence')).toBe(
         'host-attested'
       )
-      expect(readString(readField(hostDenied, 'metadata'), 'actorSource')).toBe('subject')
+      expect(readString(readField(hostDenied, 'metadata'), 'actorSource')).toBe('device')
       saveEvidence('u68-2-denial.json', { rpcDenied: denied, hostDenied })
     } finally {
       session.ws.close()
@@ -363,6 +365,78 @@ describe('U68 宿主审计管线（真实平台 + 真实宿主心跳 + 真实 E2
     } finally {
       session.ws.close()
     }
+  }, 60_000)
+
+  it('U66-2a 心跳响应声明 auditCapabilities，宿主严格门控对接（§2.9）', async () => {
+    // The platform declares the capability on the real wire; the delivery gates on it.
+    expect(admission!.client!.fileEvents.capabilities()).toEqual({ fileEvents: true })
+
+    // Explicit false suppresses the client-declared intake and counts the gap.
+    admission!.client!.fileEvents.noteCapabilities({ fileEvents: false })
+    const suppressedSession = await connectSession('u66-capabilities')
+    try {
+      const reply = await suppressedSession.rpc('audit.recordFileEvent', {
+        eventType: 'file_copy',
+        result: 'success',
+        metadata: { path: 'src/cap.ts', fileName: 'cap.ts', copiedBytes: 3, surface: 'web' }
+      })
+      expect(reply.ok).toBe(true)
+      if (reply.ok) {
+        expect(readField(reply.result, 'queued')).toBe(false)
+        expect(readField(reply.result, 'reason')).toBe('capability-unsupported')
+      }
+    } finally {
+      suppressedSession.ws.close()
+    }
+    expect(admission!.client!.fileEvents.capabilities()).toEqual({ fileEvents: false })
+
+    // Restore the declared capability so later beats deliver again.
+    admission!.client!.fileEvents.noteCapabilities({ fileEvents: true })
+    const restored = await connectSession('u66-capabilities-restore')
+    try {
+      const reply = await restored.rpc('audit.recordFileEvent', {
+        eventType: 'file_copy',
+        result: 'success',
+        metadata: { path: 'src/cap2.ts', fileName: 'cap2.ts', copiedBytes: 4, surface: 'web' }
+      })
+      expect(reply.ok).toBe(true)
+      if (reply.ok) {
+        expect(readField(reply.result, 'queued')).toBe(true)
+      }
+    } finally {
+      restored.ws.close()
+    }
+  }, 60_000)
+
+  it('U66-2b 心跳 auditGap 落 host.audit_gap，/v1/audit/status 呈现宿主缺口（NF-2 闭环）', async () => {
+    // The suppression above left suppressed=1 on the host queue; the next beat
+    // must carry auditGap and the platform must turn it into a chain event.
+    await admission!.client!.refresh()
+    await admission!.client!.refresh()
+
+    const chainGaps = (await auditEvents('eventType=host.audit_gap&limit=50')).filter(
+      (event) => Number(readNumber(readField(event, 'metadata'), 'suppressed')) >= 1
+    )
+    expect(chainGaps.length).toBeGreaterThanOrEqual(1)
+    const gapEvent = chainGaps[0]
+    expect(readString(gapEvent, 'eventType')).toBe('host.audit_gap')
+    expect(readString(readField(gapEvent, 'metadata'), 'hostId')).toBe(admission!.host()!.hostId)
+    expect(readString(readField(gapEvent, 'metadata'), 'bootId')).toBeTruthy()
+
+    const statusRes = await fetch(`${platform.url}/v1/audit/status`, {
+      headers: { authorization: `Bearer ${adminToken}` }
+    })
+    expect(statusRes.status).toBe(200)
+    const status = await statusRes.json()
+    const gaps = readField(status, 'gaps')
+    expect(readNumber(gaps, 'hostsWithGap')).toBeGreaterThanOrEqual(1)
+    expect(readNumber(gaps, 'suppressedTotal')).toBeGreaterThanOrEqual(1)
+
+    saveEvidence(
+      'u66-phase2-audit-gap.json',
+      { chainGapEvent: gapEvent, auditStatus: status },
+      join(REPO_ROOT, 'cloud-platform', 'evidence', 'u66-phase2-host')
+    )
   }, 60_000)
 
   it('U68-3 非云方法白名单与坏字段：单条拒绝不影响同会话其他事件；链完整', async () => {

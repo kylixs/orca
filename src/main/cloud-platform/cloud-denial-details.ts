@@ -46,3 +46,14 @@ export function methodDenialDetails(
   }
   return null
 }
+
+/**
+ * U66 phase 2: the readChunk rebuild refusal uses the L1 vocabulary — a ticket
+ * without the `download` bit is a missing permission, a policy refusal stays
+ * `DOWNLOAD_DISABLED`.
+ */
+export function downloadRebuildDenialDetails(hasDownloadPermission: boolean): CloudDenialDetails {
+  return hasDownloadPermission
+    ? { denial: 'DOWNLOAD_DISABLED', permission: 'download' }
+    : { denial: 'PERMISSION_MISSING', permission: 'download' }
+}

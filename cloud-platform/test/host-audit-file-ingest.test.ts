@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { AuditChain } from '../apps/api/src/audit.ts'
-import { appendHostAuditReports, parseHostAuditReports } from '../apps/api/src/host-audit-ingest.ts'
+import {
+  appendHostAuditReports,
+  parseHostAuditGap,
+  parseHostAuditReports
+} from '../apps/api/src/host-audit-ingest.ts'
 
 /**
  * R-01: the heartbeat `audit[]` ingest accepts the three U66 file event types,
@@ -193,5 +197,31 @@ describe('host-audit-ingest file events (U68)', () => {
     assert.equal(event.targetType, 'host')
     assert.equal(event.metadata.subject, 'zhangsan')
     assert.equal(event.metadata.actorSource, undefined)
+  })
+})
+
+describe('parseHostAuditGap (U66 phase 2, §2.10.4)', () => {
+  it('parses the heartbeat auditGap; unknown shapes are ignored', () => {
+    assert.deepEqual(
+      parseHostAuditGap({ bootId: 'b1', pending: 2, dropped: 3, suppressed: 1, rateLimited: 4 }),
+      {
+        bootId: 'b1',
+        pending: 2,
+        dropped: 3,
+        suppressed: 1,
+        rateLimited: 4
+      }
+    )
+    // Missing counters read as zero; negative or non-integer values clamp to 0.
+    assert.deepEqual(parseHostAuditGap({ bootId: 'b2', dropped: -1, rateLimited: 1.5 }), {
+      bootId: 'b2',
+      pending: 0,
+      dropped: 0,
+      suppressed: 0,
+      rateLimited: 0
+    })
+    assert.equal(parseHostAuditGap(undefined), null)
+    assert.equal(parseHostAuditGap('junk'), null)
+    assert.equal(parseHostAuditGap({ pending: 1 }), null)
   })
 })

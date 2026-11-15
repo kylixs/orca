@@ -50,7 +50,13 @@ import {
   type User
 } from './store.ts'
 import { parseReadRate } from './policy-rate.ts'
-import { appendHostAuditReports, parseHostAuditReports } from './host-audit-ingest.ts'
+import {
+  appendHostAuditReports,
+  parseHostAuditGap,
+  parseHostAuditReports,
+  type HostAuditActorResolver,
+  type HostAuditGap
+} from './host-audit-ingest.ts'
 import {
   createWebReleaseStore,
   MIN_WEB_CONTRACT_VERSION,
@@ -851,6 +857,67 @@ export function createApp(config: ApiConfig): ApiHandle {
   const noteFileEventGap = (key: 'dropped' | 'rateLimited' | 'suppressed'): void => {
     fileEventGap[key] += 1
     fileEventGap.lastGapAt = now()
+  }
+
+  // §2.10.4: the heartbeat's auditGap becomes a `host.audit_gap` chain event the
+  // status endpoint's gap summary reads. Aggregated per agent as deltas, so a
+  // host that reports the same counters every 10s beat does not flood the chain;
+  // a restart (new bootId) with undelivered pending counts once as dropped.
+  const hostGapBaseline = new Map<
+    string,
+    { bootId: string; pending: number; dropped: number; suppressed: number; rateLimited: number }
+  >()
+  const noteHostAuditGap = (
+    host: { id: string; name: string },
+    gap: HostAuditGap,
+    traceId: string
+  ): void => {
+    const previous = hostGapBaseline.get(host.id)
+    const lostPending =
+      previous !== undefined && previous.bootId !== gap.bootId ? previous.pending : 0
+    const delta = (key: 'dropped' | 'suppressed' | 'rateLimited'): number =>
+      previous !== undefined && previous.bootId === gap.bootId
+        ? Math.max(0, gap[key] - previous[key])
+        : gap[key]
+    hostGapBaseline.set(host.id, { ...gap })
+    const deltas = {
+      dropped: delta('dropped'),
+      suppressed: delta('suppressed'),
+      rateLimited: delta('rateLimited')
+    }
+    if (
+      lostPending <= 0 &&
+      deltas.dropped <= 0 &&
+      deltas.suppressed <= 0 &&
+      deltas.rateLimited <= 0
+    ) {
+      return
+    }
+    audit.appendBestEffort({
+      eventType: 'host.audit_gap',
+      actor: `host:${host.name}`,
+      targetType: 'host',
+      targetId: host.id,
+      result: 'success',
+      traceId,
+      metadata: {
+        hostId: host.id,
+        hostName: host.name,
+        bootId: gap.bootId,
+        pending: gap.pending,
+        dropped: deltas.dropped + lostPending,
+        suppressed: deltas.suppressed,
+        rateLimited: deltas.rateLimited
+      }
+    })
+  }
+
+  /** §2.1 device-tier attribution: the platform's own device → user tables. */
+  const resolveHostAuditActor: HostAuditActorResolver = (deviceId) => {
+    const device = store.devices.get(deviceId)
+    if (!device) return null
+    const user = store.users.get(device.userId)
+    return user ? { username: user.username } : null
   }
 
   type FileEventOutcome = { status: number; body: Record<string, unknown>; retryAfter?: boolean }
@@ -3165,7 +3232,19 @@ export function createApp(config: ApiConfig): ApiHandle {
         // off still belongs in the chain, and this never fails the beat.
         // Why outside the revoked guard: a host's last refusal before it is cut
         // off still belongs in the chain, and this never fails the beat.
-        appendHostAuditReports(audit, target, parseHostAuditReports(body.audit), traceId)
+        appendHostAuditReports(
+          audit,
+          target,
+          parseHostAuditReports(body.audit),
+          traceId,
+          resolveHostAuditActor
+        )
+        // §2.10.4 (U66-rfix NF-2): the host's own gap counters become visible
+        // chain events; a beat without the field changes nothing.
+        const auditGap = parseHostAuditGap(body.auditGap)
+        if (auditGap) {
+          noteHostAuditGap(target, auditGap, traceId)
+        }
         const revoked = store.revocations.filter((r) => r.targetType !== 'jti')
         // U37 downlink. Derived after the provision reports above are applied, so a
         // clone reported ok in this same beat is never re-assigned. Revoked hosts
@@ -3200,6 +3279,10 @@ export function createApp(config: ApiConfig): ApiHandle {
           // invisible to it and its behaviour is byte-for-byte unchanged; the U37-B
           // executor picks it up via readField and parses it defensively.
           ...(provisionAssignments.length > 0 ? { provisionAssignments } : {}),
+          // §2.9 (U66): declares the ingest understands the file-event families, so
+          // a U68+ host gates delivery on this instead of the legacy absent-field
+          // default; an old host's whitelist never sees the key at all.
+          auditCapabilities: { fileEvents: true },
           policyVersion: store.policies.version,
           policies: {
             downloadDefault: store.policies.downloadDefault,

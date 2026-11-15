@@ -174,19 +174,18 @@ export type CloudFileEventDelivery = {
 }
 
 /**
- * §2.9 capability negotiation. The platform advertises `auditCapabilities` on
- * the heartbeat response; no field yet reads as "the platform predates the
- * field". File events still deliver (the platform ingest in the same release
- * understands them), and only an explicit `fileEvents:false` suppresses —
- * flipping to the design's strict default is a one-line change here once the
- * platform declares the field.
+ * §2.9 capability negotiation. The platform declares `auditCapabilities` on the
+ * heartbeat response (server.ts carries `fileEvents: true` since U66 phase 2),
+ * so gating is strict: only a declared capability delivers, and anything else —
+ * an old platform that predates the field, or an explicit `fileEvents:false` —
+ * is suppressed and counted, never silently dropped.
  */
 export function createCloudFileEventDelivery(queue: CloudHostAuditQueue): CloudFileEventDelivery {
   let capabilities: { fileEvents: boolean } | null = null
   return {
     audit: createCloudFileEventAudit({
       queue,
-      fileEventsCapable: () => capabilities === null || capabilities.fileEvents
+      fileEventsCapable: () => capabilities?.fileEvents === true
     }),
     noteCapabilities: (raw) => {
       capabilities = parseAuditCapabilities(raw)

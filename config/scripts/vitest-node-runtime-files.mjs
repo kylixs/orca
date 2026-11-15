@@ -32,6 +32,9 @@ export const NODE_RUNTIME_INCLUDE = [
   // same throwaway-certificate TLS runtime; bun's ws fails that handshake, so
   // the pipeline proof would silently retire from the bun pool (same family).
   'src/main/cloud-platform/cloud-file-event-host-pipeline.test.ts',
+  // Why: the U66 phase-2 download-enforcement e2e drives the same real enrolled
+  // host over the throwaway-certificate TLS runtime; bun's ws cannot (same family).
+  'src/main/cloud-platform/cloud-download-read-enforcement.test.ts',
   // Why: the multiplex scope e2e is the only end-to-end proof of the cloud
   // multiplex boundary (admit + cross-workspace refuse + audit) and drives the
   // same real TLS runtime and real PTY, so bun would red it and silently retire

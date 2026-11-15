@@ -17,6 +17,7 @@ import type { CloudAccessGuard } from '../../cloud-platform/cloud-access-guard'
 import type { CloudProvisionReporter } from '../../cloud-platform/cloud-project-provision'
 import type { CloudHostAuditSink } from '../../cloud-platform/cloud-host-audit'
 import type { CloudFileEventAudit } from '../../cloud-platform/cloud-file-event-audit'
+import { createCloudDownloadReadGuard } from '../../cloud-platform/cloud-download-read-guard'
 import type { RuntimeMetadataOwnershipWatch } from '../runtime-metadata-ownership-watch'
 import { RUNTIME_METADATA_OWNERSHIP_POLL_MS } from '../runtime-metadata-ownership-watch'
 import {
@@ -69,6 +70,8 @@ export class RuntimeRpcState {
   protected cloudAuditSink: CloudHostAuditSink | null = null
   // Why mutable: same lifecycle; the `audit.recordFileEvent` intake (U66 §2.10).
   protected cloudFileEventAudit: CloudFileEventAudit | null = null
+  // U66 phase 2: per-instance coverage tracking for the readChunk download hard block.
+  protected readonly cloudDownloadReadGuard = createCloudDownloadReadGuard()
   protected readonly askLongPollCap: number
   protected readonly browserHostLongPollCap: number
   protected readonly browserHostLongPollCapPerDevice: number

@@ -14,6 +14,11 @@ import type { RpcCallerScope } from '../rpc/rpc-caller-scope'
 import { cloudMethodAccess } from '../../cloud-platform/cloud-rpc-permission'
 import { checkCloudRpcPath, isCloudPathGuardedMethod } from '../../cloud-platform/cloud-path-guard'
 import { pathDenialDetails } from '../../cloud-platform/cloud-denial-details'
+import {
+  downloadReadRefusal,
+  isDownloadReadEnforcementCandidate,
+  reportDownloadReadRefusal
+} from '../../cloud-platform/cloud-download-read-gate'
 import { limitRuntimeRpcReplySize } from './runtime-rpc-reply-size-limit'
 
 // Why: status.get has no per-connection context in the dispatcher, so stamp the scope here at the transport boundary.
@@ -166,6 +171,36 @@ export class RuntimeRpcWebSocketDispatch extends RuntimeRpcRequestAdmission {
             )
           )
         )
+        return
+      }
+    }
+
+    // U66 phase 2 (OQ-6): the readChunk download hard block (see the gate module).
+    if (
+      cloudSession !== undefined &&
+      cloudGuard !== null &&
+      isDownloadReadEnforcementCandidate(
+        request.method,
+        cloudSession,
+        cloudGuard.downloadAllowed(cloudSession.projectId)
+      )
+    ) {
+      const refusal = await downloadReadRefusal(
+        this.cloudDownloadReadGuard,
+        (worktree, relativePath) => this.runtime.statRuntimeFile(worktree, relativePath),
+        request.params,
+        cloudSession.projectId,
+        device.deviceId,
+        cloudSession.permissions.includes('download')
+      )
+      if (refusal !== null) {
+        reportDownloadReadRefusal(this.cloudAuditSink, refusal, {
+          deviceId: device.deviceId,
+          subject: device.name,
+          projectId: cloudSession.projectId
+        })
+        const error = this.buildError(request.id, 'forbidden', refusal.message, refusal.details)
+        reply(JSON.stringify(error))
         return
       }
     }

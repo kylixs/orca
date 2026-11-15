@@ -230,6 +230,36 @@ export function parseHostAuditReports(value: unknown): HostAuditReport[] {
   return reports
 }
 
+/** §2.10.4: the heartbeat's optional gap counters; unknown shapes are ignored. */
+export type HostAuditGap = {
+  bootId: string
+  pending: number
+  dropped: number
+  suppressed: number
+  rateLimited: number
+}
+
+export function parseHostAuditGap(value: unknown): HostAuditGap | null {
+  if (typeof value !== 'object' || value === null) {
+    return null
+  }
+  const counter = (key: string): number => {
+    const raw = Reflect.get(value, key)
+    return typeof raw === 'number' && Number.isInteger(raw) && raw >= 0 ? raw : 0
+  }
+  const bootId = text(Reflect.get(value, 'bootId'))
+  if (bootId === undefined) {
+    return null
+  }
+  return {
+    bootId,
+    pending: counter('pending'),
+    dropped: counter('dropped'),
+    suppressed: counter('suppressed'),
+    rateLimited: counter('rateLimited')
+  }
+}
+
 /**
  * Optional device-tier actor resolution (§2.1): platform device id → user.
  * The heartbeat route can wire this from its store; without it attribution

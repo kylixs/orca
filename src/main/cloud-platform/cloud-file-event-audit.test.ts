@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createCloudFileEventAudit } from './cloud-file-event-audit'
+import { createCloudFileEventAudit, createCloudFileEventDelivery } from './cloud-file-event-audit'
 import { createCloudHostAuditQueue, type CloudHostAuditInput } from './cloud-host-audit'
 
 /** R-01 §2.10.2: the host intake's delivery policy — capability, rate limit,
@@ -193,5 +193,49 @@ describe('createCloudFileEventAudit（audit.recordFileEvent 宿主承接）', ()
     const event = sent()[0]
     expect(event.metadata?.excerpt).toBeUndefined()
     expect(JSON.stringify(event)).not.toContain('U66_SECRET_MARKER')
+  })
+})
+
+describe('createCloudFileEventDelivery（§2.9 能力协商，U66 二期严格门控）', () => {
+  it('平台声明 fileEvents:true 后投递；显式 false 抑制并计数', () => {
+    const queue = createCloudHostAuditQueue(true)
+    const delivery = createCloudFileEventDelivery(queue)
+    const submit = (report: Parameters<typeof delivery.audit>[0]) =>
+      delivery.audit(report, identity)
+
+    // Before the first beat answer there is no capability: suppressed, counted.
+    expect(submit({ eventType: 'file_copy', result: 'success' })).toEqual({
+      queued: false,
+      reason: 'capability-unsupported'
+    })
+    expect(queue.gaps().suppressed).toBe(1)
+
+    // The platform declares the capability: delivery opens.
+    delivery.noteCapabilities({ fileEvents: true })
+    expect(submit({ eventType: 'file_copy', result: 'success' }).queued).toBe(true)
+    expect(queue.gaps().suppressed).toBe(1)
+
+    // An explicit downgrade suppresses again.
+    delivery.noteCapabilities({ fileEvents: false })
+    expect(submit({ eventType: 'file_copy', result: 'success' })).toEqual({
+      queued: false,
+      reason: 'capability-unsupported'
+    })
+    expect(queue.gaps().suppressed).toBe(2)
+    expect(delivery.capabilities()).toEqual({ fileEvents: false })
+  })
+
+  it('非能力字段（旧平台响应缺字段/坏形态）读作未声明，不投递', () => {
+    const queue = createCloudHostAuditQueue(true)
+    const delivery = createCloudFileEventDelivery(queue)
+    delivery.noteCapabilities(undefined)
+    delivery.noteCapabilities('junk')
+    delivery.noteCapabilities({ noFileEvents: true })
+    expect(delivery.capabilities()).toBeNull()
+    expect(delivery.audit({ eventType: 'file_copy', result: 'success' }, identity)).toEqual({
+      queued: false,
+      reason: 'capability-unsupported'
+    })
+    expect(queue.gaps().suppressed).toBe(1)
   })
 })
