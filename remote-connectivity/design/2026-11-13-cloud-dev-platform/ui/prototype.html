@@ -2084,6 +2084,7 @@ svg { display: block; }
             <li>新增可折叠「覆盖范围与限制」与缺口说明：审计链保证记录不被篡改，不保证记录完整。[U66-review M-4]</li>
             <li>可见性说明改为：审计员 / 管理员可见全部事件；本人自查不在本期；摘录仅在开关开启时可见。[U66-review M-5]</li>
             <li>下载拦截事件统一为 <span class="mono">download_blocked result=denied</span>；新增关键字 / 文件名长度校验提示。[U66-review M-1 m-5]</li>
+            <li>二轮修订（N-1/N-2/N-5/N-6）：<span class="mono">download_blocked</span> 端点权属 U65、本原型仅演示事件语义；下载入口 <span class="mono">downloadAllowed</span> 缺省 fail-closed；下载拦截行补类型徽标并保持客户端自报；文案改为“未产生下载 RPC”。[U66-review-r2]</li>
           </ul>
           <h4 style="margin-top:9px">U65 · 主机授权语义深化 <span class="changelog-date">2026-11-15</span></h4>
           <ul>
@@ -2783,6 +2784,8 @@ svg { display: block; }
       <li>不可捕获：纯客户端浏览器「另存为」、跨域 iframe 内选区、键盘 Ctrl+C（一期）。</li>
       <li>无动作：Web 工作区当前不提供下载；云项目文件树没有「复制文件对象」；<span class="mono">files.download</span> / <span class="mono">terminal.exportArtifact</span> / <span class="mono">browser.savePage</span> 未注册。</li>
       <li>缺口：客户端离线、绕过应用接缝、宿主进程重启可能丢事件；缺口可见性为 best-effort，宿主瞬时崩溃无法精确检测。</li>
+      <!-- [U66-review-r2 N-2] fail-closed -->
+      <li>下载入口仅在宿主显式返回 <span class="mono">downloadAllowed=true</span> 时显示；字段缺失按禁止处理（fail-closed，<span class="mono">workspace.info</span> 为 U65 依赖）。</li>
     </ul>
   </div>
 </details>
@@ -4584,12 +4587,13 @@ svg { display: block; }
     },
     {
       id: 'evt-1040', relative: '27 分钟前', abs: '2026-11-13 14:31:27', hours: 0.45,
-      user: '李明', initials: 'LM', account: 'liming', event: '下载拦截', code: 'download_blocked', target: 'risk-engine', host: 'dev-node-07',
+      // [U66-review-r2 N-5] download_blocked 固定 client-declared（advisory）；kind 使类型/可信度徽标渲染
+      user: '李明', initials: 'LM', account: 'liming', event: '下载拦截', code: 'download_blocked', kind: 'download', target: 'risk-engine', host: 'dev-node-07',
       targetSub: 'release/2.8', result: 'denied', confidence: 'client-declared',
-      method: 'files.download', fileName: 'rules.ts', filePath: 'src/engine/rules.ts', fileSize: '18.4 KB',
+      fileName: 'rules.ts', filePath: 'src/engine/rules.ts', fileSize: '18.4 KB',
       ip: '10.20.9.17', trace: 'tr_01HX7P6C4XK5N3MT',
       session: 'sess_4c8e13ab', path: '中继', duration: '12ms', error: 'DOWNLOAD_DISABLED',
-      note: '前端拦截 · 策略：禁止 · 未产生 RPC（客户端自报，advisory）'
+      note: '前端拦截 · 策略：禁止 · 未产生下载 RPC（客户端自报，advisory）'
     },
     {
       id: 'evt-1039', relative: '46 分钟前', abs: '2026-11-13 14:12:09', hours: 0.77,

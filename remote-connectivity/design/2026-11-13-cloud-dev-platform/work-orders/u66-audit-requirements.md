@@ -1,8 +1,9 @@
 # U66 需求清单 · 文件下载 / 内容复制审计与审计查询增强
 
-> 状态：需求修订稿（已按独立评审修订，待复审；主会话已审定不开放本人自查），只写文档不改码 [U66-review m-12]
+> 状态：需求第二稿（已按二轮复审 N-1~N-7 修订，待复审；主会话已审定不开放本人自查），只写文档不改码 [U66-review m-12] [U66-review-r2]
 > 日期：2026-11-15 · 缺陷账：U66（defect-ledger.md:75）
-> 修订说明（2026-11-15）：依据 `test-reports/u66-doc-review.md`（blocker 3 / major 13 / minor 13）修订；每处修改标 `[U66-review]`。核心变更：AC-41/AC-46 按一期实际捕获面改写、`download_blocked` 统一为 U66 新事件并引用技术方案 §2.10 上报通道、`captureConfidence` 三档统一、surface 补 mobile（新增 AC-56）、关键字字段三族统一（含 `projectKey`）、容量包线自洽、OQ-5/OQ-1/OQ-16/OQ-4 给出裁定。
+> 修订说明（2026-11-15）：依据 `test-reports/u66-doc-review.md`（blocker 3 / major 13 / minor 13）修订；每处修改标 `[U66-review]`。核心变更：AC-41/AC-46 按一期实际捕获面改写、`download_blocked` 统一为 U66 交付的事件语义并引用技术方案 §2.10 上报通道（端点权属 U65）、`captureConfidence` 三档统一、surface 补 mobile（新增 AC-56）、关键字字段三族统一（含 `projectKey`）、容量包线自洽、OQ-5/OQ-1/OQ-16/OQ-4 给出裁定。
+> 二轮修订（2026-11-15，按复审 N-1~N-7）：`download-blocked` 端点权属 U65（U66 仅交付事件语义与 `recordFileEvent` 通道）、`downloadAllowed` 恢复 fail-closed、新增 AC-57（移动端复制）、`savedName` 补报不得新增第二条下载事件、AC-42 精确为“未产生下载 RPC”；逐处标 `[U66-review-r2]`。
 > 需求源（用户 2026-11-15，唯一需求源）：①所有文件下载、文件内容复制必须记录审计；②审计员可按内容/关键字查询复制相关记录；③常用查询条件：时间、操作类型、用户、下载文件名。
 > 素材基线：`requirements.md` FR-7/FR-8/FR-9.12、§5.1/§5.4、O3 · `cloud-platform/apps/api/src/{store,audit,host-audit-ingest,server,audit-writer-client}.ts` · `apps/audit-writer/src/writer.ts` · `test/e2e/audit-trace-window.e2e.test.ts` · `test/e2e/audit-query-latency.e2e.test.ts` · `evidence/m105-audit-query-latency/audit-query-latency.json`
 > 范围：需求清单。技术方案（宿主上报通道、查询索引、摘录存储）与 UI 原型由并行文档裁定；本文只锁定语义、可捕获面与验收口径。
@@ -24,7 +25,7 @@
 **三条不可含糊的边界**（后文 AC 与开放问题均以此为前提）[U66-review M-11]：
 
 1. **下载审计覆盖 Orca 经手且实际发生的动作**：一期真实取数路径是桌面云工作区的 `files.readChunk`（客户端 `client-declared`）与宿主执行的 `browser.download`（`host-attested`）；移动端保存到手机为 `mobile.saveToPhone`（`surface=mobile`，AC-56）。`files.download` / `files.downloadFolder` / `terminal.exportArtifact` / `browser.savePage` **当前不是已注册 RPC**，云会话文件夹下载也不存在，因此不在一期产生事件；专用 `files.download` 的 host-attested 成功属于二期。用户在开发机上用 `scp`、`git push`、`curl`、宿主内 shell `cp` 等带外方式取走文件，平台不可见（C1、FR-7.3）。
-2. **复制审计覆盖应用接缝，不覆盖 OS**：Web 端 `navigator.clipboard` / `execCommand` 接缝、桌面端 `clipboard:writeText` 接缝、移动端 `copyContent` 可捕获；云项目文件树当前**没有**“复制文件对象”动作（`shouldShowCopyFileAction=false`），`clipboard:writeFile` 一期不覆盖。Finder/Explorer、第三方应用、拖拽、截图/OCR、浏览器自行「另存为」不可捕获。客户端自报事件是**检测性证据（advisory，技术方案词表 `client-declared`）**，不是防篡改的完整性证明。
+2. **复制审计覆盖应用接缝，不覆盖 OS**：Web 端 `navigator.clipboard` / `execCommand` 接缝、桌面端 `clipboard:writeText` 接缝、移动端 `copyContent` 可捕获（AC-57）；云项目文件树当前**没有**“复制文件对象”动作（`shouldShowCopyFileAction=false`），`clipboard:writeFile` 一期不覆盖。Finder/Explorer、第三方应用、拖拽、截图/OCR、浏览器自行「另存为」不可捕获。客户端自报事件是**检测性证据（advisory，技术方案词表 `client-declared`）**，不是防篡改的完整性证明。[U66-review-r2 N-3]
 3. **内容关键字查询需要内容表示**：只查文件名/路径/用户不需要存内容；要按文件正文关键字查询，必须存可选摘录（或等价的内容派生索引）。默认关闭，开启后遵守审计只追加与 180 天保留（FR-8.2）。一期关键字白名单为 `fileName/path/actor/subject/projectKey`，不含摘录。
 
 ---
@@ -78,7 +79,7 @@
 
 | 用户要求 | 现状 | 缺口 |
 | --- | --- | --- |
-| 所有下载留审计 | 成功下载没有事件；宿主上报词表只有 denied（`host.method_denied`）；**代码中不存在 `download_blocked`**，只有 U65 提议的可选端点 | 需新增 `file_download` 成功/失败/拒绝事件；`download_blocked` 作为 U66 新事件引入，统一经 `audit.recordFileEvent` 上报（技术方案 §2.10）[U66-review M-1] |
+| 所有下载留审计 | 成功下载没有事件；宿主上报词表只有 denied（`host.method_denied`）；**代码中不存在 `download_blocked`** | 需新增 `file_download` 成功/失败/拒绝事件；`download_blocked` 事件语义由 U66 交付（FR-9.12/U65 已提出），一期经 `audit.recordFileEvent` 上报（技术方案 §2.10）；平台端点 `POST /v1/projects/{id}/download-blocked` 权属 U65（下载拦截二期交付端点），U66 引用而不另建 [U66-review M-1] [U66-review-r2 N-1] |
 | 文件内容复制留审计 | 无任何复制事件 | 需新增 `file_copy`，并在应用接缝埋点 |
 | 按内容/关键字查复制记录 | 只能按 actor/eventType/result/traceId/起点时间等值过滤 | 需新增文件名/路径/账号/`projectKey` 关键字查询；摘录关键字二期 |
 | 时间/操作类型/用户/文件名四条件 | 只有起点时间、单值事件类型、精确 actor；无文件名 | 需补 `until`、事件族/多值、文件名、组合语义 |
@@ -109,7 +110,7 @@
 - **桌面云工作区单文件下载（一期主路径）**：文件树下载 → `downloadRuntimeFile` → `files.readChunk` 分块 → 本地保存。方法记 `files.readChunk`，`captureConfidence=client-declared`，`surface=desktop`；保存完成/失败/取消各一条事件。
 - **移动端保存到手机**：`savePreparedFileToPhone`，方法记 `mobile.saveToPhone`，`surface=mobile`；`saved` 与 `shared` 区分（AC-56）。
 - **浏览器下载**：宿主执行的 `browser.download`（`kind=browser`，host-attested）；`fileName` 无法从 URL/响应头推导时可留空。
-- **被拒绝的下载尝试**：策略禁止或权限不足导致 RPC 被拒，记 `result: denied`（`file_download`，host-attested）；前端先行拦截且没有 RPC 的记 `download_blocked`（client-declared，advisory），二者一个动作只落一条。
+- **被拒绝的下载尝试**：策略禁止或权限不足导致 RPC 被拒，记 `result: denied`（`file_download`，host-attested）；前端先行拦截且没有产生下载 RPC（`files.readChunk`/`files.download`）的记 `download_blocked`（client-declared，advisory），二者一个动作只落一条。前端仅在宿主显式返回 `workspace.info.downloadAllowed===true` 时显示下载入口；字段缺失/`undefined` 按 `false`（fail-closed，U65 依赖），隐藏入口。[U66-review-r2 N-2 N-6]
 - **传输失败**：用户取消保存、网络中断、宿主读取失败，记 `result: failure` 与 `reason`；取消记 `failure`（`reason=client_cancelled`），不计入「成功下载」指标，且不得补报 `savedName`。
 
 **不计入 / 当前无动作**：
@@ -121,7 +122,7 @@
 - 平台自身向浏览器下发管理台静态资源、日志导出（审计导出走 FR-8.5 的独立事件）。
 - 通过 `files.readChunk` 逐步读取但在客户端重建文件、且未由客户端上报的路径——一期无事件；二期由宿主按累计字节推断（`inferred`），见 OQ-6。
 
-**成功语义**：一期桌面路径的 `success` 来自客户端确认“已写入本地”，标记 `client-declared`；宿主能确认的只是「已把字节交付给客户端」，不能确认最终保存路径、是否在保存对话框取消。`captureConfidence` 三档（`host-attested` / `client-declared` / `inferred`）必须原样展示，`client-declared` 不得写成“主机确认”。`savedName` 由客户端 best-effort 补报（同 `traceId` 合并到既有事件，不新增第二条），见 OQ-5 裁定。 [U66-review B-2 M-8 M-13]
+**成功语义**：一期桌面路径的 `success` 来自客户端确认“已写入本地”，标记 `client-declared`；宿主能确认的只是「已把字节交付给客户端」，不能确认最终保存路径、是否在保存对话框取消。`captureConfidence` 三档（`host-attested` / `client-declared` / `inferred`）必须原样展示，`client-declared` 不得写成“主机确认”。`savedName` 由客户端 best-effort 补报（同 `traceId` 合并到既有事件；无法匹配时合并/丢弃，不新增第二条），见 OQ-5 裁定。 [U66-review B-2 M-8 M-13] [U66-review-r2 N-4]
 
 ### 2.2 事件字段
 
@@ -140,7 +141,7 @@
 | `metadata.sizeBytes` | 实际传输字节数 | 文件夹为总字节 |
 | `metadata.method` | `files.readChunk`（一期桌面主路径）/ `browser.download` / `mobile.saveToPhone`；`files.download`、`files.downloadFolder`、`terminal.exportArtifact`、`browser.savePage` 未注册，二期再启 | 与 FR-7.4 对齐；不得把 readChunk 写成 files.download [U66-review B-2 M-11] |
 | `metadata.kind` | `file` / `folder` / `artifact` / `browser` | 查询与展示用 |
-| `metadata.surface` | `desktop` / `web` / `mobile` / `admin-embed` | 客户端形态；mobile 由 AC-56 验收 [U66-review M-7] |
+| `metadata.surface` | `desktop` / `web` / `mobile` / `admin-embed` | 客户端形态；mobile 下载由 AC-56、复制由 AC-57 验收 [U66-review M-7] [U66-review-r2 N-3] |
 | `metadata.captureConfidence` | `host-attested` / `client-declared` / `inferred` | 统一三档；`client-declared` 即 advisory [U66-review M-8] |
 | `metadata.policy` | `allow` / `deny` | 当时的下载策略 |
 | `metadata.reason` | 拒绝/失败码 | 如 `DOWNLOAD_DISABLED`、`PERMISSION_MISSING`、`client_cancelled`、`read_failed` |
@@ -148,7 +149,7 @@
 | `metadata.itemCount` | 文件夹/多文件动作的条目数 | 可选；一期无文件夹动作 |
 | `metadata.truncated` | 文件清单是否被截断 | 仅文件夹清单；**摘录截断统一用 `excerptTruncated`**（AC-54）[U66-review m-7] |
 
-可选字段（技术方案裁定）：`savedName`（用户另存为后的本地文件名；客户端 best-effort 补报，同 `traceId` 合并且不新增事件，取消不补报）、`sha256` / `sha256Source`、`mime` / `isBinary`（解释为何无摘录）、`clientVersion`。[U66-review M-13 m-7 m-11]
+可选字段（技术方案裁定）：`savedName`（用户另存为后的本地文件名；客户端 best-effort 补报，同 `traceId` 合并到既有事件；无法匹配时**合并/丢弃，绝不新增第二条下载事件**，取消不补报）、`sha256` / `sha256Source`、`mime` / `isBinary`（解释为何无摘录）、`clientVersion`。[U66-review M-13 m-7 m-11] [U66-review-r2 N-4]
 
 ### 2.3 用户故事
 
@@ -163,12 +164,14 @@
   - When 他从文件树下载 `src/config/app.ts` 并完成本地保存
   - Then 平台审计中出现且仅出现一条 `file_download` 事件：`actor=zhangsan`、`targetId=P`、`fileName=app.ts`、`path=src/config/app.ts`、`sizeBytes` 与实际分块累计一致、`method=files.readChunk`、`surface=desktop`、`captureConfidence=client-declared`、`result=success`、带 `traceId` 与 `hostId`；审计员在默认 10 秒心跳内（最迟 60 秒）可检索到
   - And success 语义显式区分：客户端确认已写入本地（可带 `savedName`）与仅确认收到字节（`savedName` 缺省）不得混为一谈；`client-declared` 不得展示为“主机确认”
+  - And `savedName` 补报按同 `traceId` 合并到该条事件；平台收到无法匹配的独立补报时合并/丢弃，**绝不新增第二条 `file_download`** [U66-review-r2 N-4]
   - And 专用 `files.download` 的 host-attested 成功不在本 AC 范围，属于二期（技术方案 P1）；同一动作不得因二期改造产生第二条事件
 - **AC-42 拒绝与失败分别记录（三态）** [U66-review M-1 M-2]
   - Given 项目 P 的下载策略为禁止
-  - When 用户经桌面/移动客户端或裸 WebSocket 发起下载（到达宿主）；或前端在入口处先行拦截、没有产生 RPC
+  - When 用户经桌面/移动客户端或裸 WebSocket 发起下载（到达宿主）；或前端在入口处先行拦截、没有产生下载 RPC（`files.readChunk`/`files.download`）
   - Then 到达宿主的动作由宿主拒绝并记一条 `file_download result=denied`（`reason=DOWNLOAD_DISABLED|PERMISSION_MISSING`），不产生 success；前端先行拦截记一条 `download_blocked result=denied`（`captureConfidence=client-declared`）
-  - And 事件名统一为 `download_blocked`（不是 `download_denied`）；`download_blocked` 是 U66 新引入事件，上报经 `audit.recordFileEvent`（技术方案 §2.10），不使用 U65 的 `POST /v1/projects/{id}/download-blocked`
+  - And 事件名统一为 `download_blocked`（不是 `download_denied`）；其事件语义由 U66 交付（FR-9.12/U65 已提出），一期经 `audit.recordFileEvent` 上报（技术方案 §2.10）；平台端点 `POST /v1/projects/{id}/download-blocked` 权属 U65（U65 下载拦截二期交付端点），U66 引用该端点、不另建通道，同一动作不得双报 [U66-review-r2 N-1]
+  - And 前端仅当宿主显式返回 `workspace.info.downloadAllowed===true` 时显示下载入口；字段缺失/`undefined` 按 `false`（fail-closed，与 U65 §5.1/§8 一致，`workspace.info` 为 U65 依赖）并隐藏入口 [U66-review-r2 N-2]
   - And 同一动作只落一条，不得同时产生 `file_download denied` 与 `download_blocked`
 - **AC-43 平台不可达不静默丢失（best-effort 可验证口径）** [U66-review M-10]
   - Given 宿主已产生下载事件时平台 API 不可达
@@ -185,6 +188,12 @@
   - When 他执行“保存到手机”并选择保存或分享
   - Then 平台出现且仅出现一条 `file_download`：`method=mobile.saveToPhone`、`surface=mobile`、`captureConfidence=client-declared`、`result=success`；`saved` 与 `shared` 必须区分，`shared` 不得展示为“已保存到本机”
   - And 用户取消或保存失败记 `result=failure` + `reason`，不产生 success；不在本 AC 内验证 OS 相册/文件管理器层的后续复制
+  - And 本 AC 仅覆盖“保存到手机”（C4），不覆盖移动端复制内容（C7，见 AC-57）[U66-review-r2 N-3]
+- **AC-57 移动端复制内容留痕（一期）** [U66-review-r2 N-3]
+  - Given zhangsan 在移动端云会话打开项目 P 的文本文件 `src/engine/rules.ts`
+  - When 他执行 `copyContent` 复制整份文件内容
+  - Then 平台出现且仅出现一条 `file_copy`：`actor=zhangsan`、`targetId=P`、`fileName=rules.ts`、`path=src/engine/rules.ts`、`copyKind=content-whole`、`surface=mobile`、`capturePoint=mobile-copy-content`、`copiedChars>0` 且 `copiedBytes` 与实际复制长度一致（超过 512KB 记截断后实际长度）、`captureConfidence=client-declared`、`result=success`，最迟 60 秒内可查
+  - And 剪贴板写入失败记 `result=failure` + `reason`，不得静默；复制路径字符串不产生 `file_copy`
 
 ---
 
@@ -231,7 +240,7 @@
 | `metadata.copiedChars` / `copiedBytes` | 实际复制长度 | 选区复制时必填（按字符或 UTF-8 字节，二选一并固定） |
 | `metadata.sha256` | 复制文本或整文件的指纹 | 不存正文也能识别重复复制；成本见 OQ-9 |
 | `metadata.copyKind` | `content-whole` / `content-selection` / `file-object` | 区分复制面；`file-object` 在云项目一期无动作（AC-46 拆分）[U66-review B-3] |
-| `metadata.surface` | `web` / `desktop` / `mobile` / `admin-embed` | 移动端由 AC-56 的下载/复制埋点覆盖 [U66-review M-7] |
+| `metadata.surface` | `web` / `desktop` / `mobile` / `admin-embed` | 移动端下载由 AC-56、复制由 AC-57 分别覆盖（AC-56 不覆盖复制）[U66-review M-7] [U66-review-r2 N-3] |
 | `metadata.capturePoint` | `web-clipboard-api` / `desktop-clipboard-ipc` / `dom-copy-listener` / `mobile-copy-content` | 便于区分可信度 |
 | `metadata.captureConfidence` | `host-attested` / `client-declared` / `inferred` | 三档统一词表；客户端自报固定 `client-declared`（即 advisory），不得自称 host-attested [U66-review M-8] |
 | `metadata.mime` / `isBinary` | 文本 MIME / 是否二进制 | 客户端判定，解释为何无摘录 |
@@ -279,7 +288,7 @@
 | 条件 | 参数（建议） | 语义 | 现状缺口 |
 | --- | --- | --- | --- |
 | 时间 | `since`、新增 `until` | 闭开/闭闭区间由技术方案定；最长 31 天；**管理台默认最近 7 天**；API 对旧客户端保持“无 `since` 即无下界”（AC-52），仅 `q/fileName` 缺省时间时隐式 7 天 | 只有 `since` [U66-review M-3] |
-| 操作类型 | `eventType`（保持）+ 新增 `eventTypes`（逗号分隔）或 `eventFamily` | 单值保持现有行为；多值为 OR；`eventFamily=download` 映射 `file_download,download_blocked`（`download_blocked` 为 U66 新事件），`eventFamily=copy` 映射 `file_copy` | 只有单值 [U66-review M-1] |
+| 操作类型 | `eventType`（保持）+ 新增 `eventTypes`（逗号分隔）或 `eventFamily` | 单值保持现有行为；多值为 OR；`eventFamily=download` 映射 `file_download,download_blocked`（`download_blocked` 事件语义由 U66 交付，端点权属 U65），`eventFamily=copy` 映射 `file_copy` | 只有单值 [U66-review M-1] [U66-review-r2 N-1] |
 | 用户 | `actor`（保持）+ 可选 `subject`/`username` | `actor` 精确；`username` 精确匹配 actor/subject（去 `user:` 前缀）；显示名/用户名子串需用户目录 join，二期（OQ-13）；宿主事件必须按人类用户可查（见 1.1 缺口） | 宿主事件 actor=`host:*`，按用户查不到 |
 | 下载文件名 | 新增 `fileName` | basename，不区分大小写子串匹配；1..128 字符；作用于 `metadata.fileName` | 无 |
 | 关键字 | 新增 `q` | 不区分大小写字面子串，**白名单** `metadata.fileName`、`metadata.path`、`actor`/`subject`、`projectKey`；开关开启时匹配 `metadata.excerpt`；不匹配事件中文名/分支/`reason` 等其他 metadata；不做正则/通配符；2..128 字符（中文按字符计） | 无 [U66-review M-9] |
@@ -373,7 +382,7 @@
 
 | 期 | 范围 | 优先级 | 出口条件 |
 | --- | --- | --- | --- |
-| 一期（P0） | FR-9.13 一期实际可捕获下载面（桌面 `files.readChunk` 客户端上报、宿主 `browser.download`、移动端 `mobile.saveToPhone`、宿主拒绝、前端 `download_blocked`）；FR-9.14 应用接缝（Web `writeWebClipboardText`、桌面 `clipboard:writeText`、移动端 `copyContent`；`clipboard:writeFile` 不覆盖）；FR-9.15 四条件 + `until` + `fileName` + 名称/路径/账号/`projectKey` 关键字；FR-9.16 默认不存正文 | P0 | AC-41 ~ AC-53（含 AC-48、AC-53）、AC-56 通过；不可捕获面文档/提示就位（AC-44/AC-47）；AC-53 负向断言通过 [U66-review M-6 M-7 m-9] |
+| 一期（P0） | FR-9.13 一期实际可捕获下载面（桌面 `files.readChunk` 客户端上报、宿主 `browser.download`、移动端 `mobile.saveToPhone`、宿主拒绝、前端 `download_blocked`）；FR-9.14 应用接缝（Web `writeWebClipboardText`、桌面 `clipboard:writeText`、移动端 `copyContent`；`clipboard:writeFile` 不覆盖）；FR-9.15 四条件 + `until` + `fileName` + 名称/路径/账号/`projectKey` 关键字；FR-9.16 默认不存正文 | P0 | AC-41 ~ AC-53（含 AC-48、AC-53）、AC-56、AC-57 通过；不可捕获面文档/提示就位（AC-44/AC-47）；AC-53 负向断言通过 [U66-review M-6 M-7 m-9] [U66-review-r2 N-3] |
 | 二期（P1） | FR-9.14 选区复制捕获（DOM `copy` 监听，标记 advisory）；专用 `files.download`（host-attested）；读字节推断；文件夹下载有界清单（OQ-4）；FR-9.15 摘录关键字；FR-9.16 摘录开关、上限、容量预算、查询自审计 | P1 | AC-54 ~ AC-55 通过；性能在开启摘录后重新测量仍满足 P95 ≤2s；容量超 5k/日时存储立项先行 |
 | 三期（P2，另立项） | 内容级 DLP、终端复制审计、跨归档检索、异常复制行为分析 | P2 | 不在 U66 范围；C1 未解除前不做内容级阻断 |
 
@@ -393,12 +402,12 @@
 | OQ-2 | 摘录上限、编码与格式：多少字节？按行还是按字符截断？是否保留换行？ | 体积、关键字命中率 | UTF-8 字节上限（建议 1KB），按字符边界截断，保留换行并标 `truncated`；二进制/图片不摘录 |
 | OQ-3 | 关键字查询的索引方案：内存线性扫描 / PostgreSQL `pg_trgm` / 倒排；180 天归档是否可查 | 性能预算、存储成本 | 一期沿用线性扫描并在 20 万条语料验证；二期上索引；归档检索另立项 |
 | OQ-4 | 文件夹下载粒度：一次动作一条事件，还是每个文件一条？文件名查询如何覆盖文件夹内文件？ | 事件体积、文件名查询完整性 | **裁定：一期云会话无文件夹下载动作，不产生事件；二期若实现 `files.downloadFolder`，按“一次动作一条 + `itemCount`/`totalBytes` + 有界清单（如首 100 个文件名）”实现，超出标清单截断。已登记到二期需求池（技术方案 §6.2/O-10）。** [U66-review OQ-4] |
-| OQ-5 | 宿主只知传输完成、不知本地保存结果：是否需要客户端补报 `savedName`/保存失败？用户取消保存、传输失败如何记？ | 审计语义、指标口径、跨进程可靠性 | **裁定：客户端 best-effort 补报 `savedName`**（同 `traceId` 合并到既有事件，不新增第二条下载事件；未补报展示“本地保存结果未知”，不推断失败）；**取消不计成功**：记 `failure` + `reason=client_cancelled`，且不得补报 `savedName`；宿主 success 只表示“字节已交付”，不得展示为“已保存”。补报不是 P0 验收条件；详见技术方案 §2.10.3 [U66-review M-13] |
+| OQ-5 | 宿主只知传输完成、不知本地保存结果：是否需要客户端补报 `savedName`/保存失败？用户取消保存、传输失败如何记？ | 审计语义、指标口径、跨进程可靠性 | **裁定：客户端 best-effort 补报 `savedName`**（同 `traceId` 合并到既有事件，不新增第二条下载事件；平台收到无法匹配同 `traceId` 的独立补报时合并/丢弃，**绝不新增第二条**；未补报展示“本地保存结果未知”，不推断失败）；**取消不计成功**：记 `failure` + `reason=client_cancelled`，且不得补报 `savedName`；宿主 success 只表示“字节已交付”，不得展示为“已保存”。补报不是 P0 验收条件；详见技术方案 §2.10.3 [U66-review M-13] [U66-review-r2 N-4] |
 | OQ-6 | `files.readChunk` 累计读取重建整文件，是否升级为「下载等价」事件？ | 漏审风险、读取限速语义 | 达到「文件大小」或阈值时记一条 `file_download`（`method=files.readChunk`，`result=success`），与 FR-7.3 的限速并行；避免与单次读取重复计数 |
 | OQ-7 | 时间语义：`ts` 用平台入库时间，动作时间放 `occurredAt`；查询条件按哪个过滤？ | 窗口边界、时钟偏差（C8） | `ts` 保持链上平台时钟；`occurredAt` 仅展示与辅助过滤；查询默认按 `ts`，文档说明投递延迟 |
 | OQ-8 | 路径是否写开发机绝对路径？ | 主机布局泄露、定位精度 | 只写项目内相对路径 + `projectId`；绝对路径仅管理员按需展开（如需） |
 | OQ-9 | `sha256` 的计算成本与时机：下载/复制时是否值得计算？选区复制如何算？ | 宿主/客户端 CPU、事件延迟 | 下载产物与整文件复制建议算；选区复制对复制文本算；成本高时先只记长度，指纹列为可选 |
-| OQ-10 | 事件命名：`file_download` 与 `download_blocked` 的关系；`file_copy` 是否用 `content_copy` | 查询兼容、既有 AC-39/40 | **裁定：三族统一用 `download_blocked`**（不是 `download_denied`）。`file_download` 为规范事件（success/failure/denied 三态）；`download_blocked` 是 **U66 新事件**（前端拦截、client-declared），不是既有事件/遗留别名；动作到达宿主被拒 → `file_download result=denied`，前端先拦且无 RPC → `download_blocked`，一个动作只落一条；上报统一经 `audit.recordFileEvent`（技术方案 §2.10），不采用 U65 的平台端点；`file_copy` 固定 [U66-review M-1] |
+| OQ-10 | 事件命名：`file_download` 与 `download_blocked` 的关系；`file_copy` 是否用 `content_copy` | 查询兼容、既有 AC-39/40 | **裁定：三族统一用 `download_blocked`**（不是 `download_denied`）。`file_download` 为规范事件（success/failure/denied 三态）；`download_blocked` 的事件语义由 U66 交付（前端拦截、client-declared；FR-9.12/U65 已提出），不是遗留别名；动作到达宿主被拒 → `file_download result=denied`，前端先拦且无下载 RPC → `download_blocked`，一个动作只落一条；一期统一经 `audit.recordFileEvent`（技术方案 §2.10），平台端点 `POST /v1/projects/{id}/download-blocked` 权属 U65（下载拦截二期交付端点）、U66 引用而不另建；`file_copy` 固定 [U66-review M-1] [U66-review-r2 N-1] |
 | OQ-11 | 终端内容复制是否纳入 `file_copy`？ | FR-8.6 冲突、审计完整性 | 本需求不纳入；如纳入只记长度/时间/会话，不记内容，另立 FR 并显式修订 FR-8.6 |
 | OQ-12 | 复制失败（剪贴板权限拒绝）是否必须落平台事件？ | 噪声、隐私、实现成本 | **裁定：一期记 `file_copy result=failure` + `reason`（或至少平台可见的失败计数），不重试、不阻断；AC-48 随之进入一期出口。** [U66-review m-9] |
 | OQ-13 | 用户条件是否支持显示名/用户名子串？ | 查询易用性、索引 | 一期保持 `actor` 精确 + `q` 可匹配用户名子串；显示名需平台用户目录 join，二期再定 |
@@ -423,7 +432,7 @@
 | FR-8.5 | 审计导出仍单独审计；关键字查询本身是否留痕见 OQ-17 |
 | FR-8.6 | 默认不记录文件内容不变；FR-9.16 是可选的、默认关闭的显式例外 |
 | FR-7.3 / FR-7.4 | 下载拒绝字段（user/project/path/size/method/result/traceId）与 `file_download` 对齐；读取仍不阻断，仅限速与审计 |
-| FR-9.12 | 宿主拒绝并入 `file_download result=denied`；前端拦截用 U66 新增的 `download_blocked`（不是既有事件/别名），一个动作只落一条；二期宿主硬拦的拒绝沿用同一事件模型（OQ-10）[U66-review M-1] |
+| FR-9.12 | 宿主拒绝并入 `file_download result=denied`；前端拦截用 `download_blocked`（FR-9.12/U65 已提出、U66 交付事件语义），一个动作只落一条；平台端点 `POST /v1/projects/{id}/download-blocked` 权属 U65，U66 引用而不另建；二期宿主硬拦的拒绝沿用同一事件模型（OQ-10）[U66-review M-1] [U66-review-r2 N-1] |
 | §5.1 | 审计查询 P95 ≤2s 的 31 天窗口预算同样适用于新增条件与关键字查询（AC-51） |
 | §5.4 / C1 | 不做内容级 DLP；带外传输不可见，必须在覆盖说明中声明 |
 | O3 | 复制默认允许文本；本需求只增加审计，不改变允许性 |
@@ -433,7 +442,7 @@
 
 ## 9. 需求自查清单（交付评审用；按独立评审复核） [U66-review m-12]
 
-- [x] 每个 FR 都有用户故事与 Given/When/Then AC，且 AC 可被真实 e2e 验证（含真实 API/宿主/客户端形态）。AC-41/46 已按一期实际捕获面改写；移动端新增 AC-56。
+- [x] 每个 FR 都有用户故事与 Given/When/Then AC，且 AC 可被真实 e2e 验证（含真实 API/宿主/客户端形态）。AC-41/46 已按一期实际捕获面改写；移动端新增 AC-56（保存）与 AC-57（复制）。[U66-review-r2 N-3]
 - [x] 明确回答「谁/何时/哪个项目/文件名/路径/大小/结果」，并给出字段级定义。
 - [x] 明确区分「下载 / 保存导出 / 剪贴板复制」三类内容外流，不重复计数；`file-object` 在云项目无动作已声明。
 - [x] 可捕获面与不可捕获面逐项列出（§1.3 已按代码实查修订）；未把客户端自报事件宣称为完整审计；`captureConfidence` 三档统一。
@@ -442,5 +451,5 @@
 - [x] 隐私默认值明确（不存正文），摘录开关默认关闭、上限、保留与删除冲突已裁定（OQ-16 owner/前置条件）。
 - [x] 混合版本与旧客户端兼容有交代（宿主上报、查询参数）。
 - [x] 所有未决技术选择进入第 7 节，未在需求层偷做实现决定；OQ-5/OQ-1/OQ-4/OQ-10/OQ-16 已给出裁定。
-- [x] `download_blocked` 命名/既有性/上报通道唯一确定（U66 新事件，经 `audit.recordFileEvent`，技术方案 §2.10）。
-- [ ] `ui/README.md` P6 与 changelog 的同步为独立文档项，不在本次三文档修订范围，列入复审待办（m-13）。
+- [x] `download_blocked` 命名/归属/上报通道唯一确定（事件语义归 U66、端点权属 U65，一期经 `audit.recordFileEvent`，技术方案 §2.10）。[U66-review-r2 N-1]
+- [x] `ui/README.md` P6 与 changelog 已同步为三态 / 起止时间（默认 7 天）/ 新列口径（m-13）。[U66-review-r2 N-7]
