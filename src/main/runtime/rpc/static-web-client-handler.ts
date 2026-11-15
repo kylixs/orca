@@ -2,6 +2,14 @@ import { createReadStream } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import type { IncomingMessage, RequestListener, ServerResponse } from 'node:http'
 import { extname, isAbsolute, posix, relative, resolve } from 'node:path'
+import { createGzip } from 'node:zlib'
+import {
+  acceptsGzip,
+  ifNoneMatchMatches,
+  isCompressibleStaticPath,
+  staticCacheControl,
+  weakStaticEtag
+} from './static-web-response'
 
 const STATIC_WEB_ALLOWED_PATHS = new Set(['/web-index.html', '/cloud-admin.html'])
 /** Top-level HTML entries a reverse proxy may forward under an added path prefix. */
@@ -72,32 +80,48 @@ async function handleStaticRequest(
     return
   }
 
+  const requestHeaders = request.headers ?? {}
+  const etag = weakStaticEtag(fileStat.size, fileStat.mtimeMs)
+  const compressible = isCompressibleStaticPath(absolutePath)
   response.statusCode = 200
   response.setHeader(
     'Content-Type',
     STATIC_WEB_CONTENT_TYPES.get(extname(absolutePath)) ?? 'application/octet-stream'
   )
-  response.setHeader('Content-Length', fileStat.size)
-  response.setHeader(
-    'Cache-Control',
-    pathname.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache'
-  )
+  response.setHeader('Cache-Control', staticCacheControl(pathname))
+  response.setHeader('ETag', etag)
+  if (compressible) {
+    response.setHeader('Vary', 'Accept-Encoding')
+  }
+  if (ifNoneMatchMatches(requestHeaders['if-none-match'], etag)) {
+    response.statusCode = 304
+    response.end()
+    return
+  }
+  // HEAD advertises the identity representation; only GET has a body to negotiate.
+  const gzip =
+    compressible && request.method === 'GET' && acceptsGzip(requestHeaders['accept-encoding'])
+  if (gzip) {
+    response.setHeader('Content-Encoding', 'gzip')
+  } else {
+    response.setHeader('Content-Length', fileStat.size)
+  }
   if (request.method === 'HEAD') {
     response.end()
     return
   }
 
-  const stream = createReadStream(absolutePath)
+  const source = createReadStream(absolutePath)
+  const compressor = gzip ? createGzip() : null
   const stopReading = (): void => {
-    stream.destroy()
+    source.destroy()
+    compressor?.destroy()
   }
   response.once('close', stopReading)
   response.once('error', stopReading)
-  stream.once('close', () => {
-    response.off('close', stopReading)
-    response.off('error', stopReading)
-  })
-  stream.on('error', () => {
+  const onError = (): void => {
+    source.destroy()
+    compressor?.destroy()
     if (response.destroyed) {
       return
     }
@@ -108,8 +132,19 @@ async function handleStaticRequest(
       return
     }
     response.destroy()
+  }
+  source.on('error', onError)
+  compressor?.on('error', onError)
+  const terminal = compressor ?? source
+  terminal.once('close', () => {
+    response.off('close', stopReading)
+    response.off('error', stopReading)
   })
-  stream.pipe(response)
+  if (compressor) {
+    source.pipe(compressor).pipe(response)
+  } else {
+    source.pipe(response)
+  }
 }
 
 function parseStaticPathname(rawUrl: string | undefined): string | null {

@@ -57,7 +57,7 @@ test('AC-19 前端独立发布：旧构建资源仍可取、旧契约可用、�
     const index = await fetch(`${first.url}/`)
     const indexHtml = await index.text()
     assert.equal(index.status, 200)
-    assert.equal(index.headers.get('cache-control'), 'no-store')
+    assert.equal(index.headers.get('cache-control'), 'no-cache')
     assert.equal(index.headers.get('x-orca-web-build'), releaseA.build)
     assert.ok(indexHtml.includes(appPathA), 'index must reference the hashed asset')
     assert.ok(indexHtml.includes(`/assets/${releaseA.build}/styles.css`))
@@ -71,7 +71,7 @@ test('AC-19 前端独立发布：旧构建资源仍可取、旧契约可用、�
     // Legacy unhashed path stays valid: a page cached before hashing existed.
     const legacy = await fetch(`${first.url}/app.js`)
     assert.equal(legacy.status, 200)
-    assert.equal(legacy.headers.get('cache-control'), 'no-cache')
+    assert.equal(legacy.headers.get('cache-control'), 'max-age=300')
     assert.ok((legacy.headers.get('etag') ?? '').length > 2)
 
     // An old frontend (contract 1) still calls the endpoints it was built against.

@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
-import { readFile } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
 import { join, normalize } from 'node:path'
 import { validateProjectPath } from '../../../packages/contract/src/project-path.ts'
@@ -51,6 +51,14 @@ import {
   MIN_WEB_CONTRACT_VERSION,
   WEB_CONTRACT_VERSION
 } from './web-release.ts'
+import {
+  cacheControlForStaticName,
+  sendStaticAsset,
+  STATIC_HASHED_CACHE_CONTROL,
+  STATIC_HTML_CACHE_CONTROL,
+  STATIC_UNHASHED_CACHE_CONTROL,
+  weakStaticEtag
+} from './static-delivery.ts'
 import { checkWebContract, readWebContract } from './web-contract.ts'
 import {
   createRelayNodeRegistry,
@@ -1121,7 +1129,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       !path.startsWith('/install/') &&
       path !== '/health'
     ) {
-      return serveStatic(path, res)
+      return serveStatic(path, req, res)
     }
 
     // ---- auth ----
@@ -3322,7 +3330,7 @@ export function createApp(config: ApiConfig): ApiHandle {
   webReleases.archive()
 
   /** Hashed assets are immutable; the hashed path is what makes an old page keep working. */
-  function serveAsset(path: string, res: ServerResponse): boolean {
+  function serveAsset(path: string, req: IncomingMessage, res: ServerResponse): boolean {
     const match = path.match(/^\/assets\/([0-9a-f]{6,32})\/([\w.-]+)$/)
     if (!match) {
       return false
@@ -3331,40 +3339,51 @@ export function createApp(config: ApiConfig): ApiHandle {
     if (!asset) {
       return false
     }
-    res.writeHead(200, {
-      'content-type': asset.contentType,
-      'cache-control': 'public, max-age=31536000, immutable',
-      etag: `"${asset.sha256}"`
+    sendStaticAsset(req, res, {
+      name: asset.name,
+      contentType: asset.contentType,
+      cacheControl: STATIC_HASHED_CACHE_CONTROL,
+      etag: `"${asset.sha256}"`,
+      body: asset.bytes
     })
-    res.end(asset.bytes)
     return true
   }
 
-  async function serveStatic(path: string, res: ServerResponse): Promise<void> {
-    if (serveAsset(path, res)) {
+  async function serveStatic(
+    path: string,
+    req: IncomingMessage,
+    res: ServerResponse
+  ): Promise<void> {
+    if (serveAsset(path, req, res)) {
       return
     }
     const rel = path === '/' ? 'index.html' : decodeURIComponent(path).replace(/^\//, '')
     const name = normalize(rel).replace(/^(\.\.[/\\])+/, '')
     const current = webReleases.current().files.get(name)
     if (current) {
-      // Why no-store on the entry point and no-cache on legacy paths: a deploy
-      // must be picked up, while an already-cached old page still resolves here.
+      // Why no-cache on the entry point: a deploy must be picked up, but an
+      // ETag revalidation keeps the cost at a 304.
       const isEntry = name === 'index.html'
-      res.writeHead(200, {
-        'content-type': current.contentType,
-        'cache-control': isEntry ? 'no-store' : 'no-cache',
+      res.setHeader('x-orca-web-build', webReleases.current().build)
+      sendStaticAsset(req, res, {
+        name,
+        contentType: current.contentType,
+        cacheControl: isEntry ? STATIC_HTML_CACHE_CONTROL : STATIC_UNHASHED_CACHE_CONTROL,
         etag: `"${current.sha256}"`,
-        'x-orca-web-build': webReleases.current().build
+        body: isEntry ? Buffer.from(webReleases.indexHtml()) : current.bytes
       })
-      res.end(isEntry ? webReleases.indexHtml() : current.bytes)
       return
     }
     try {
       const target = join(config.webRoot ?? WEB_ROOT, name)
-      const data = await readFile(target)
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
-      res.end(data)
+      const [fileStat, data] = await Promise.all([stat(target), readFile(target)])
+      sendStaticAsset(req, res, {
+        name,
+        contentType: 'text/html; charset=utf-8',
+        cacheControl: cacheControlForStaticName(name),
+        etag: weakStaticEtag(fileStat.size, fileStat.mtimeMs),
+        body: data
+      })
     } catch {
       res.writeHead(404)
       res.end('not found')
