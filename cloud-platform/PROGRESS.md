@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### U46-7a 落地（2026-11-15）
+
+`dbb54750bc4`（5 新文件）：编辑器标签（files.read→Monaco→files.write、Cmd/Ctrl+S、baseContent 重读比对冲突框三选、无 file:write 只读徽标、truncated 绝不写回、binary 内联）+**md 双模式**（编辑=Monaco 源码着色 / 预览=复用 orca web MarkdownPreviewBody 全插件链 GFM/highlight/katex/sanitize——script 与 javascript: 链接失效；lazy chunk）+dirty 上报接 reducer+`__monacoEditorE2E` oracle 同形态（W13b）。新 19+回归 142 绿，tc:web 清。复用两处（MarkdownPreviewBody/monaco-setup 本地管线）。空槽保持——7b 等 6b 的 git RPC 契约。
+
 ### U46-6 落地（2026-11-15）
 
 `fd410cbff78`（2 文件）：懒加载文件树+文件名过滤——根挂载/目录首展恰 1 次 readDir/折叠缓存/刷新保留层级/过期回复 generation 丢弃/错误行 failureText；排序直接复用 shared sortCloudEntries；过滤=已加载集合前端过滤+未展开目录提示（点击命中目录展开加载）；降级 canReadFiles=false 零 RPC；**复用落实**：过滤栏直接 import orca web FileExplorerNameFilter，explorer 因桌面 store 依赖差异做云链路适配（文件头注明来源与原因）。新 6/6+cloud 域 118 回归绿。
