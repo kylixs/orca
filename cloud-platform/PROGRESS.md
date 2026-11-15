@@ -2705,6 +2705,19 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### U46 组件级拆分预案（2026-11-15 用户二次指令：按页面组件拆分防堵塞）
+
+粒度再细化——简易工作区按**组件**拆（组件间以设计契约为界并行）：
+- U46a 详情弹框组件 ProjectInfoDialog（app.js，独立先行）
+- U46b 工作区容器 WorkbenchShell：左中右三栏+标签容器挂载点+路由/权限门接线（容器先行提供挂载契约）
+- U46c 文件树组件 FileTreePanel：懒加载目录/点选回调/权限降级态
+- U46d 多标签容器 TabGroup：打开/关闭/active 切换/标签类型分发（终端|编辑器|预览）
+- U46e 终端标签页 TerminalTab：复用 W5a xterm+WebGL+重签订阅管线（一标签一 PTY）
+- U46f 编辑器标签页 EditorTab：Monaco file RPC 读写（按设计方法核验结论）
+- U46g 预览标签页 PreviewTab：HTML/设计图沙箱渲染
+- U46h 状态接线+e2e 收口（P3 对照+验收标准）
+并行约束：U46b 容器先落地提供挂载点→c/d/e/f/g 五组件**并行**（各独立文件/独立测试）→h 收口；app.js 主文件改动集中在 b/h（通道③），组件文件独立域。设计回收审定后即按此派发。
+
 ### U46 并行拆分预案（2026-11-15 用户指令：拆分多子任务并行开发测试）
 
 用户指令拆分并行。预置方案（设计回收审定后按其结论微调即发）：**详情弹框**=U46a（app.js 弹框+字段映射，独立可先行）；**简易工作区**按域拆——U46b 工作区容器/布局/路由（app.js 域，与 U46a 通道③串行）、U46c 终端标签（复用 W5a CloudProjectWorkspace 管线，cloud-admin 组件域）、U46d 文件树+编辑（file.* RPC 面，依赖设计方法核验结论）、U46e 预览（设计图/HTML 沙箱渲染）、U46f e2e 收口（原型 P3 对照断言）。并行约束：app.js 单域内 U46a/b 串行、其余跨域并行；细节以设计文档为准。设计回收即审定派发。
