@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### U46-5a 落地（2026-11-15）
+
+`837615a7c83`+`7f81aa1bf78`（10 新文件）：两栏外壳（中间标签条+右栏挂载+状态栏+空态降级；复用 orca web 先例三处注明来源：AppWorkspaceShell 面板组合/CloudSessionEmptyState 降级卡/login-entry 状态栏 segment）；标签 reducer 四类型（terminal|editor|preview|diff——去重/active 邻居选择/dirty 位/终端标题最小 N 上限 6）；右栏双 tab 骨架（文件/Git 变更双挂载点 renderFileTree/renderGitChanges——后续令接入）；tabComponents 注册接缝留 U46-8。新 18 测试+cloud 域 123 回归绿。**解锁 5b∥6b**。
+
 ### U46-2 落地（2026-11-15）
 
 `c42248f942c`（4 文件）：详情改 admin-only 弹框（详情=button；detailDisabledReason 删除=离线可看）+§3.2 全字段（三次既有 GET 并行刷新、失败保留缓存示「未能刷新」、ID/路径可复制、createdBy 未记录降级、授权概要+策略生效来源）+主按钮「打开项目」走 surface:'admin' 占位（U46-3 替换为覆盖层）+独立页逃生链接+dialog() 无障碍补齐（Escape/聚焦/aria）。D1-D6 新 6/6+门禁 29+其余 55 零回归。空槽回填 U46-3。
