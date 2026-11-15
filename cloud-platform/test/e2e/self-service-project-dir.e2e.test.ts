@@ -84,6 +84,17 @@ async function registerHost(name: string): Promise<{ hostId: string; credential:
   const body = (await res.json()) as { hostId?: string; credential?: string }
   assert.equal(res.status, 201, JSON.stringify(body))
   assert.ok(body.hostId && body.credential)
+  // U65/U67: self-service creation needs the host provision bit.
+  const granted = await fetch(`${api.url}/v1/hosts/${body.hostId}/grants`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', ...auth(adminToken) },
+    body: JSON.stringify({
+      subjectType: 'group',
+      subjectId: 'developers',
+      permissions: ['provision']
+    })
+  })
+  assert.equal(granted.status, 200, await granted.text())
   return { hostId: body.hostId, credential: body.credential }
 }
 

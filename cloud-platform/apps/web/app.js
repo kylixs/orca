@@ -8,7 +8,7 @@ const state = {
   route: 'workbench',
   deviceId: localStorage.getItem('orca.device') ?? '',
   lastHosts: [],
-  /** Admin-only subject directory (A1), cached for the members matrix. */
+  /** Admin-only subject directory (A1), cached for the permission-tab pickers. */
   directory: null,
   auditFilter: {},
   auditEvents: null,
@@ -83,13 +83,12 @@ function toast(text) {
 
 /* ---------------- routing ---------------- */
 
-const ADMIN_ROUTES = new Set(['hosts', 'relays', 'members', 'audit', 'settings'])
+const ADMIN_ROUTES = new Set(['hosts', 'relays', 'audit', 'settings'])
 const TITLES = {
   workbench: '工作台',
   projects: '我的项目',
   hosts: '平台设置 / 主机',
   relays: '平台设置 / 中继',
-  members: '成员与权限',
   audit: '审计日志',
   settings: '平台设置',
   forbidden: '无权访问'
@@ -114,7 +113,6 @@ function navigate(route) {
     projects: renderProjects,
     hosts: renderHosts,
     relays: renderRelays,
-    members: renderMembers,
     audit: renderAudit,
     settings: renderSettings
   }
@@ -253,7 +251,10 @@ function permissionSummary(p) {
   if (p.permissions.length === 0 && isAdmin()) {
     return '管理员可见（未授权）'
   }
-  return p.permissions.join(' · ')
+  // U65: a host read-only grant caps the ticket at open+file:read, so the
+  // column names the cap instead of implying free choice (DH matrix).
+  const capped = p.hostAccess === 'read-only' ? '（主机只读上限）' : ''
+  return `${p.permissions.join(' · ')}${capped}`
 }
 
 /** Why 打开 is unavailable, or null when the project can be opened (FR-2.4). */
@@ -262,7 +263,7 @@ function openDisabledReason(p) {
   if (p.hostStatus === 'maintenance') return '主机维护中'
   if (p.hostStatus !== 'online') return '主机离线'
   if (p.permissions.length === 0 && isAdmin()) {
-    return '项目未授权给你，请先在「成员与权限」中授权'
+    return '项目未授权给你，请先在项目详情的「权限」页签中授权'
   }
   return null
 }
@@ -772,46 +773,55 @@ function projectDetailHtml(p, extra = {}) {
     : '—'
   return `
     ${extra.refreshFailed ? '<p class="note warn">未能刷新项目信息，以下为最近一次加载的数据。</p>' : ''}
-    <div class="detail-sections">
-      <section class="detail-section">
-        <h3>基本信息</h3>
-        <dl class="kv">
-          <dt>项目名称</dt><dd>${esc(p.name)}</dd>
-          <dt>项目 Key</dt><dd class="mono">${esc(p.key)}</dd>
-          <dt>项目 ID</dt><dd>${copyable(p.id)}</dd>
-          <dt>创建者</dt><dd>${esc(createdBy)}</dd>
-          <dt>创建时间</dt><dd>${esc(createdAt)}</dd>
-          <dt>项目状态</dt><dd>${projectStatusBadge(p.status)}</dd>
-          ${
-            p.status === 'failed' && p.provisioningError
-              ? `<dt>准备失败原因</dt><dd class="mono">${esc(p.provisioningError)}</dd>`
-              : ''
-          }
-        </dl>
-      </section>
-      <section class="detail-section">
-        <h3>运行配置</h3>
-        <dl class="kv">
-          <dt>主机</dt><dd>${esc(p.hostName ?? '—')} <span class="mono muted">${esc(p.hostId)}</span></dd>
-          <dt>宿主状态</dt><dd>${detailHostStatus(p)}</dd>
-          <dt>项目路径</dt><dd>${copyable(p.path)}</dd>
-          <dt>仓库地址</dt><dd>${p.repoUrl ? copyable(p.repoUrl) : '<span class="muted">未配置仓库</span>'}</dd>
-          <dt>默认分支</dt><dd class="mono">${esc(p.defaultBranch)}</dd>
-        </dl>
-      </section>
-      <section class="detail-section">
-        <h3>授权与策略</h3>
-        <dl class="kv">
-          <dt>我的权限</dt><dd>${detailPermissions(p)}</dd>
-          <dt>直接授权</dt><dd>${detailGrants(extra.grants, extra.grantsLoading === true)}</dd>
-          <dt>下载策略</dt><dd>${detailDownloadPolicy(p, extra.policy)}</dd>
-          ${
-            p.sessionPageUrl
-              ? `<dt>独立页</dt><dd><a href="${esc(p.sessionPageUrl)}" target="_blank" rel="noopener">在独立页打开会话页</a></dd>`
-              : ''
-          }
-        </dl>
-      </section>
+    <div class="detail-tabs">
+      <button class="detail-tab active" data-auth-tab="info">信息</button>
+      <button class="detail-tab" data-auth-tab="perms">权限</button>
+    </div>
+    <div data-auth-panel="info">
+      <div class="detail-sections">
+        <section class="detail-section">
+          <h3>基本信息</h3>
+          <dl class="kv">
+            <dt>项目名称</dt><dd>${esc(p.name)}</dd>
+            <dt>项目 Key</dt><dd class="mono">${esc(p.key)}</dd>
+            <dt>项目 ID</dt><dd>${copyable(p.id)}</dd>
+            <dt>创建者</dt><dd>${esc(createdBy)}</dd>
+            <dt>创建时间</dt><dd>${esc(createdAt)}</dd>
+            <dt>项目状态</dt><dd>${projectStatusBadge(p.status)}</dd>
+            ${
+              p.status === 'failed' && p.provisioningError
+                ? `<dt>准备失败原因</dt><dd class="mono">${esc(p.provisioningError)}</dd>`
+                : ''
+            }
+          </dl>
+        </section>
+        <section class="detail-section">
+          <h3>运行配置</h3>
+          <dl class="kv">
+            <dt>主机</dt><dd>${esc(p.hostName ?? '—')} <span class="mono muted">${esc(p.hostId)}</span></dd>
+            <dt>宿主状态</dt><dd>${detailHostStatus(p)}</dd>
+            <dt>项目路径</dt><dd>${copyable(p.path)}</dd>
+            <dt>仓库地址</dt><dd>${p.repoUrl ? copyable(p.repoUrl) : '<span class="muted">未配置仓库</span>'}</dd>
+            <dt>默认分支</dt><dd class="mono">${esc(p.defaultBranch)}</dd>
+          </dl>
+        </section>
+        <section class="detail-section">
+          <h3>授权与策略</h3>
+          <dl class="kv">
+            <dt>我的权限</dt><dd>${detailPermissions(p)}</dd>
+            <dt>直接授权</dt><dd>${detailGrants(extra.grants, extra.grantsLoading === true)}</dd>
+            <dt>下载策略</dt><dd>${detailDownloadPolicy(p, extra.policy)}</dd>
+            ${
+              p.sessionPageUrl
+                ? `<dt>独立页</dt><dd><a href="${esc(p.sessionPageUrl)}" target="_blank" rel="noopener">在独立页打开会话页</a></dd>`
+                : ''
+            }
+          </dl>
+        </section>
+      </div>
+    </div>
+    <div data-auth-panel="perms" hidden>
+      <div id="projectPermCards"><p class="muted">加载中…</p></div>
     </div>`
 }
 
@@ -825,18 +835,22 @@ function wireDetailCopy(backdrop) {
 }
 
 /**
- * Read-only platform info: render the cached row at once, then refresh it with
- * one GET /projects/:id plus the two existing read endpoints (grants, policy).
- * Never talks to the host, so an offline/maintenance host is still inspectable.
+ * Read-only platform info plus the U67 permission tab (the only project-grant
+ * entry): render the cached row at once, then refresh with one GET /projects/:id
+ * plus the existing read endpoints (grants, policy, host grants). Never talks
+ * to the host, so an offline/maintenance host is still inspectable.
  */
 async function openProjectDetail(projectId) {
   const cached = state.projects.find((p) => p.id === projectId)
   if (!cached) {
     return
   }
+  // The permission tab's pickers share the admin directory cache (AA4); a
+  // failed read degrades to free-text input, never to a broken dialog.
+  if (isAdmin() && !state.directory) state.directory = await loadDirectory()
   let project = cached
   const reason = openDisabledReason(cached)
-  const extra = { grantsLoading: true, grants: [] }
+  const extra = { grantsLoading: true, grants: [], hostRows: null }
   const backdrop = dialog(
     '项目详情',
     projectDetailHtml(project, extra),
@@ -854,12 +868,41 @@ async function openProjectDetail(projectId) {
     { wide: true }
   )
   const body = backdrop.querySelector('.dialog .body')
+  const grantsPath = `/v1/projects/${projectId}/grants`
+  const paintPermCards = () => {
+    const holder = body.querySelector('#projectPermCards')
+    if (!holder) return
+    holder.innerHTML = permCardsHtml(PROJECT_ROLE_CARDS, extra.grants ?? [], {
+      kind: 'project',
+      header:
+        '项目级授权仅影响当前项目，不扩大到所在主机或其它项目（FR-9.11③）。下载位仍受项目 / 全局下载策略独立约束。',
+      footnote: PERM_FOOTNOTE,
+      datalistPrefix: 'project',
+      hostRows: extra.hostRows
+    })
+    wirePermCards(holder, {
+      grantsPath,
+      rows: extra.grants ?? [],
+      cards: PROJECT_ROLE_CARDS,
+      kind: 'project',
+      noun: '项目',
+      errorText: grantErrorText,
+      datalistPrefix: 'project',
+      onChange: async () => {
+        const fresh = await api(grantsPath)
+        extra.grants = fresh.grants
+        paintPermCards()
+      }
+    })
+  }
   const paint = () => {
     if (!backdrop.isConnected) {
       return
     }
     body.innerHTML = projectDetailHtml(project, extra)
     wireDetailCopy(backdrop)
+    wireAuthTabs(body)
+    paintPermCards()
     // The refresh may have changed host state, so the primary action follows it.
     const refreshedReason = openDisabledReason(project)
     const openAction = backdrop.querySelector('[data-action="0"]')
@@ -870,10 +913,11 @@ async function openProjectDetail(projectId) {
   }
   wireDetailCopy(backdrop)
 
-  const [fresh, grants, policy] = await Promise.allSettled([
+  const [fresh, grants, policy, hostGrants] = await Promise.allSettled([
     api(`/v1/projects/${projectId}`),
-    isAdmin() ? api(`/v1/projects/${projectId}/grants`) : Promise.resolve(null),
-    api('/v1/policies/download')
+    isAdmin() ? api(grantsPath) : Promise.resolve(null),
+    api('/v1/policies/download'),
+    isAdmin() ? api(`/v1/hosts/${cached.hostId}/grants`).catch(() => null) : Promise.resolve(null)
   ])
   if (fresh.status === 'fulfilled') {
     project = { ...cached, ...fresh.value }
@@ -884,6 +928,7 @@ async function openProjectDetail(projectId) {
   extra.grantsLoading = false
   extra.grants = grants.status === 'fulfilled' ? (grants.value?.grants ?? []) : null
   extra.policy = policy.status === 'fulfilled' ? policy.value : null
+  extra.hostRows = hostGrants.status === 'fulfilled' ? (hostGrants.value?.grants ?? null) : null
   paint()
 }
 
@@ -1075,7 +1120,7 @@ async function registerProjectDialog() {
       }
       backdrop.remove()
       toast(
-        `项目已登记${created.repoUrl ? '，克隆中，就绪后可打开' : ''}。授权请在「成员与权限」中配置。`
+        `项目已登记${created.repoUrl ? '，克隆中，就绪后可打开' : ''}。授权请在项目详情的「权限」页签中配置。`
       )
       await renderProjects()
     })()
@@ -1225,31 +1270,39 @@ async function registerHostDialog() {
 async function showHost(hostId) {
   const host = state.lastHosts.find((h) => h.id === hostId)
   if (!host) return
-  // Host routes are admin-only; the directory is shared with the members matrix (AA4).
+  // Host routes are admin-only; the directory feeds the permission-tab pickers.
   if (!state.directory && isAdmin()) state.directory = await loadDirectory()
   const drawer = openDrawer(
     `主机 ${host.name}`,
     `
-    <dl class="kv">
-      <dt>主机 ID</dt><dd class="mono">${esc(host.id)}</dd>
-      <dt>指纹</dt><dd class="mono">${esc(host.fingerprint)}</dd>
-      <dt>E2EE 公钥</dt><dd class="mono">${esc(host.e2eePublicKey)}</dd>
-      <dt>版本</dt><dd>${esc(host.orcaVersion)} · 协议 v${host.protocolVersion}</dd>
-      <dt>网络位置</dt><dd>${esc(host.zone)}</dd>
-      <dt>直连地址</dt><dd class="mono">${esc(host.directAddrs.join(', ') || '—')}</dd>
-      <dt>中继路由</dt><dd class="mono">${esc(host.relayRoute ?? '—')}</dd>
-      <dt>能力</dt><dd>${esc(host.capabilities.join(', '))}</dd>
-      <dt>最近心跳</dt><dd>${relative(host.lastHeartbeatAt)}</dd>
-      ${host.revokedAt ? `<dt>状态</dt><dd>已吊销（${new Date(host.revokedAt).toLocaleString('zh-CN')}）</dd>` : ''}
-    </dl>
-    <div class="toolbar" style="margin-top:20px">
-      <button class="btn" id="maintenanceBtn" ${host.revokedAt ? 'disabled title="主机已下线"' : ''}>${host.status === 'maintenance' ? '结束维护' : '进入维护模式'}</button>
-      <button class="btn danger" id="revokeHostBtn" ${host.revokedAt ? 'disabled' : ''}>下线主机</button>
+    <div class="detail-tabs">
+      <button class="detail-tab active" data-auth-tab="info">信息</button>
+      <button class="detail-tab" data-auth-tab="perms">权限</button>
     </div>
-    <p class="muted" style="margin-top:12px">下线后该主机的项目立即不可打开，已签发凭证失效。</p>
-    <div class="section-head" style="margin-top:24px"><h2>权限分配</h2></div>
-    <div id="hostGrantPanel"><p class="muted">加载中…</p></div>`
+    <div data-auth-panel="info">
+      <dl class="kv">
+        <dt>主机 ID</dt><dd class="mono">${esc(host.id)}</dd>
+        <dt>指纹</dt><dd class="mono">${esc(host.fingerprint)}</dd>
+        <dt>E2EE 公钥</dt><dd class="mono">${esc(host.e2eePublicKey)}</dd>
+        <dt>版本</dt><dd>${esc(host.orcaVersion)} · 协议 v${host.protocolVersion}</dd>
+        <dt>网络位置</dt><dd>${esc(host.zone)}</dd>
+        <dt>直连地址</dt><dd class="mono">${esc(host.directAddrs.join(', ') || '—')}</dd>
+        <dt>中继路由</dt><dd class="mono">${esc(host.relayRoute ?? '—')}</dd>
+        <dt>能力</dt><dd>${esc(host.capabilities.join(', '))}</dd>
+        <dt>最近心跳</dt><dd>${relative(host.lastHeartbeatAt)}</dd>
+        ${host.revokedAt ? `<dt>状态</dt><dd>已吊销（${new Date(host.revokedAt).toLocaleString('zh-CN')}）</dd>` : ''}
+      </dl>
+      <div class="toolbar" style="margin-top:20px">
+        <button class="btn" id="maintenanceBtn" ${host.revokedAt ? 'disabled title="主机已下线"' : ''}>${host.status === 'maintenance' ? '结束维护' : '进入维护模式'}</button>
+        <button class="btn danger" id="revokeHostBtn" ${host.revokedAt ? 'disabled' : ''}>下线主机</button>
+      </div>
+      <p class="muted" style="margin-top:12px">下线后该主机的项目立即不可打开，已签发凭证失效。</p>
+    </div>
+    <div data-auth-panel="perms" hidden>
+      <div id="hostPermCards"><p class="muted">加载中…</p></div>
+    </div>`
   )
+  wireAuthTabs(drawer.backdrop)
   $('#maintenanceBtn').onclick = async () => {
     await api(`/v1/hosts/${host.id}/maintenance`, {
       method: 'POST',
@@ -1268,251 +1321,39 @@ async function showHost(hostId) {
 }
 
 /**
- * Host authorization is platform-side delegation only (AA6): bits never enter a
- * credential, so unlike project rows saving one never disconnects a session.
+ * U67: the drawer's permission tab is the only host-grant entry. Cards are the
+ * role view of the stored bits; every add/remove is one immediate row PUT.
  */
 async function showHostGrants(host) {
   const grantsPath = `/v1/hosts/${host.id}/grants`
+  const holder = $('#hostPermCards')
   let body
   try {
     body = await api(grantsPath)
   } catch (err) {
-    const panel = $('#hostGrantPanel')
-    if (panel) {
-      panel.innerHTML = `<div class="note danger">授权加载失败：${esc(hostGrantErrorText(err))}</div>`
+    if (holder) {
+      holder.innerHTML = `<div class="note danger">授权加载失败：${esc(hostGrantErrorText(err))}</div>`
     }
     return
   }
-  const panel = $('#hostGrantPanel')
-  if (!panel) return // the drawer was closed while the grants were loading
-  const serverPerms = new Map(body.grants.map((g) => [grantKey(g), [...g.permissions].sort()]))
-  // Checkbox/radio edits stay a local draft until 「保存变更」 (M120b §4.1).
-  const draft = new Map()
-  const draftOf = (g) => draft.get(grantKey(g)) ?? [...g.permissions].sort()
-  const isDirty = (g) => {
-    const next = draft.get(grantKey(g))
-    if (!next) return false
-    const base = serverPerms.get(grantKey(g)) ?? []
-    return next.length !== base.length || next.some((p, i) => p !== base[i])
-  }
-  const dirtyGrants = () => body.grants.filter(isDirty)
-  const currentPolicy = hostPolicyMode(host)
-  const selectedPolicy = () =>
-    panel.querySelector('input[name="hostProvisionPolicy"]:checked')?.value ?? currentPolicy
-  const policyDirty = () => selectedPolicy() !== currentPolicy
-
-  const rows = body.grants
-    .map((g) => {
-      const deadUser = g.subjectType === 'user' && !g.username
-      return `<tr data-row="${esc(grantKey(g))}">
-        <td>${esc(subjectLabel(g))}${deadUser ? ' <span class="badge">已删除用户</span>' : ''}<span class="badge" data-unsaved hidden>未保存</span></td>
-        <td class="muted">${g.subjectType === 'group' ? '组' : '用户'}</td>
-        ${HOST_GRANT_PERMISSIONS.map(
-          (p) =>
-            `<td><input type="checkbox" aria-label="${esc(subjectLabel(g))} ${p}" data-host-perm="${p}" data-subject-type="${g.subjectType}" data-subject-id="${esc(g.subjectId)}"${draftOf(g).includes(p) ? ' checked' : ''}${deadUser ? ' disabled title="该账号已不存在"' : ''}></td>`
-        ).join('')}
-        <td class="actions"><button class="btn sm danger" data-host-remove="${esc(grantKey(g))}" ${deadUser ? 'disabled title="该账号已不存在，无法在此移除"' : ''}>移除</button></td>
-      </tr>`
-    })
-    .join('')
-  const directory = state.directory
-  const userOptions = (directory?.users ?? [])
-    .map(
-      (user) =>
-        `<option value="${esc(user.username)}">${esc(user.displayName)}${user.dept ? ` · ${esc(user.dept)}` : ''}</option>`
-    )
-    .join('')
-  const groupOptions = (directory?.groups ?? [])
-    .map((group) => `<option value="${esc(group)}"></option>`)
-    .join('')
-  const radio = (mode, label) =>
-    `<label class="muted"><input type="radio" name="hostProvisionPolicy" value="${mode}"${currentPolicy === mode ? ' checked' : ''}> ${label}</label>`
-
-  panel.innerHTML = `
-    <div class="note">provision = 自助建项目；maintain = 维护模式；view 仅占位（v1 不接端点）。主机权限位不进凭证，保存无需断开会话。</div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>主体</th><th>类型</th>${HOST_GRANT_PERMISSIONS.map((p) => `<th>${p}</th>`).join('')}<th></th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="6" class="table-empty">尚无授权</td></tr>`}</tbody>
-      </table>
-    </div>
-    <div class="toolbar" style="margin-top:16px">
-      <span class="muted">自助建项目策略：</span>
-      ${radio('open', '开放（所有登录者）')}
-      ${radio('restricted', '仅授权主体')}
-    </div>
-    <div class="toolbar" style="margin-top:12px">
-      <button class="btn primary" id="hostGrantSave" disabled>保存变更</button>
-      <button class="btn" id="hostGrantDiscard" disabled>放弃修改</button>
-      <span class="muted">勾选/切换先暂存，「保存变更」才落盘。</span>
-    </div>
-    <div class="toolbar" style="margin-top:12px">
-      <input class="input" id="hostGrantSubject" style="min-width:240px"${directory ? ' list="hostGrantGroupOptions"' : ''} placeholder="组名，如 team-payment">
-      <select class="select" id="hostGrantType"><option value="group">组</option><option value="user">用户</option></select>
-      <button class="btn" id="hostGrantAdd">添加授权</button>
-    </div>
-    ${directory ? `<datalist id="hostGrantUserOptions">${userOptions}</datalist><datalist id="hostGrantGroupOptions">${groupOptions}</datalist>` : ''}`
-
-  if (directory) {
-    $('#hostGrantType').onchange = () => {
-      const isUser = $('#hostGrantType').value === 'user'
-      $('#hostGrantSubject').setAttribute(
-        'list',
-        isUser ? 'hostGrantUserOptions' : 'hostGrantGroupOptions'
-      )
-      $('#hostGrantSubject').placeholder = isUser ? '用户名，如 zhangsan' : '组名，如 team-payment'
-    }
-  }
-
-  const syncDraftUi = (tr) => {
-    if (tr) {
-      const dirty = body.grants.some((g) => grantKey(g) === tr.dataset.row && isDirty(g))
-      tr.classList.toggle('dirty', dirty)
-      tr.querySelector('[data-unsaved]').hidden = !dirty
-    }
-    const anyDirty = dirtyGrants().length > 0 || policyDirty()
-    $('#hostGrantSave').disabled = !anyDirty
-    $('#hostGrantDiscard').disabled = !anyDirty
-  }
-  for (const box of panel.querySelectorAll('input[type="checkbox"][data-host-perm]')) {
-    box.onchange = () => {
-      const key = `${box.dataset.subjectType}:${box.dataset.subjectId}`
-      const next = new Set(draft.get(key) ?? serverPerms.get(key) ?? [])
-      if (box.checked) next.add(box.dataset.hostPerm)
-      else next.delete(box.dataset.hostPerm)
-      draft.set(key, [...next].sort())
-      syncDraftUi(box.closest('tr'))
-    }
-  }
-  for (const input of panel.querySelectorAll('input[name="hostProvisionPolicy"]')) {
-    input.onchange = () => syncDraftUi()
-  }
-
-  const diffLine = (g) => {
-    const base = new Set(g.permissions)
-    const next = new Set(draftOf(g))
-    const added = HOST_GRANT_PERMISSIONS.filter((p) => next.has(p) && !base.has(p))
-    const removed = HOST_GRANT_PERMISSIONS.filter((p) => base.has(p) && !next.has(p))
-    const changes = [
-      added.length ? `+新增 ${added.join('、')}` : '',
-      removed.length ? `−移除 ${removed.join('、')}` : ''
-    ]
-      .filter(Boolean)
-      .join('；')
-    return `<li>${esc(subjectLabel(g))}（${g.subjectType === 'group' ? '组' : '用户'}）：${esc(changes)}<br><span class="muted">主机权限位不进凭证，保存无需断开会话。</span></li>`
-  }
-
-  // A failed save rolls the panel back to what the platform holds (QA-009).
-  const applyChanges = async (dirty, policyChanged, nextPolicy) => {
-    $('#hostGrantSave').disabled = true
-    $('#hostGrantDiscard').disabled = true
-    for (const control of panel.querySelectorAll(
-      'input[data-host-perm], input[name="hostProvisionPolicy"], [data-host-remove], #hostGrantAdd, #hostGrantSubject, #hostGrantType'
-    )) {
-      control.disabled = true
-    }
-    let saved = 0
-    for (const g of dirty) {
-      try {
-        await api(grantsPath, {
-          method: 'PUT',
-          // Row-wide replacement: the PUT carries the subject's full array.
-          body: JSON.stringify({
-            subjectType: g.subjectType,
-            subjectId: g.subjectId,
-            permissions: draftOf(g)
-          })
-        })
-        saved += 1
-      } catch (err) {
-        toast(
-          `已保存 ${saved} 项，${dirty.length - saved} 项失败：${subjectLabel(g)}（${hostGrantErrorText(err)}）`
-        )
-        await showHostGrants(host)
-        return
-      }
-    }
-    if (policyChanged) {
-      try {
-        await api(`/v1/hosts/${host.id}/provision-policy`, {
-          method: 'PUT',
-          body: JSON.stringify({ mode: nextPolicy })
-        })
-        host.provisionPolicy = nextPolicy
-        saved += 1
-      } catch (err) {
-        toast(`已保存 ${saved} 项，策略保存失败：${hostGrantErrorText(err)}`)
-        await showHostGrants(host)
-        return
-      }
-    }
-    toast(`已保存 ${saved} 项主机授权变更`)
-    await showHostGrants(host)
-  }
-
-  $('#hostGrantSave').onclick = () => {
-    const dirty = dirtyGrants()
-    const policyChanged = policyDirty()
-    if (dirty.length === 0 && !policyChanged) return
-    dialog(
-      '确认保存主机权限变更',
-      `
-      <p>将保存 ${dirty.length} 行权限变更${policyChanged ? '及自助建项目策略' : ''}：</p>
-      <ul>${dirty.map(diffLine).join('')}${policyChanged ? `<li>自助建项目策略：${currentPolicy} → ${selectedPolicy()}</li>` : ''}</ul>
-      <p class="muted">主机权限位不进凭证，保存无需断开会话。</p>`,
-      [
-        {
-          label: '确认保存',
-          primary: true,
-          onClick: () => {
-            void applyChanges(dirty, policyChanged, selectedPolicy())
-          }
-        }
-      ]
-    )
-  }
-  $('#hostGrantDiscard').onclick = () => showHostGrants(host)
-
-  $('#hostGrantAdd').onclick = async () => {
-    const subjectId = $('#hostGrantSubject').value.trim()
-    if (!subjectId) return
-    try {
-      await api(grantsPath, {
-        method: 'PUT',
-        // An empty array deletes a row, so a new grant is born with one bit
-        // and the rest is set in the matrix (M120b §4.2).
-        body: JSON.stringify({
-          subjectType: $('#hostGrantType').value,
-          subjectId,
-          permissions: ['provision']
-        })
-      })
-    } catch (err) {
-      // W2-M-1/AA4: report the refusal, keep the typed subject and the matrix.
-      toast(`授予失败：${hostGrantErrorText(err)}`)
-      return
-    }
-    toast('已授予，默认 provision，可在矩阵中调整')
-    await showHostGrants(host)
-  }
-  for (const btn of panel.querySelectorAll('[data-host-remove]')) {
-    btn.onclick = async () => {
-      const sep = btn.dataset.hostRemove.indexOf(':')
-      const subjectType = btn.dataset.hostRemove.slice(0, sep)
-      const subjectId = btn.dataset.hostRemove.slice(sep + 1)
-      try {
-        await api(grantsPath, {
-          method: 'PUT',
-          body: JSON.stringify({ subjectType, subjectId, permissions: [] })
-        })
-      } catch (err) {
-        toast(`移除失败：${hostGrantErrorText(err)}`)
-        return
-      }
-      toast('已移除')
-      await showHostGrants(host)
-    }
-  }
+  if (!holder) return // the drawer was closed while the grants were loading
+  holder.innerHTML = permCardsHtml(HOST_ROLE_CARDS, body.grants, {
+    kind: 'host',
+    header:
+      '三张卡片是主机授权位（view / provision / maintain）的分组视图：同一主体加入多张卡时权限位取并集，行内徽标显示合成级别（U65 语义矩阵）。项目级授权不扩大到主机级。',
+    footnote: PERM_FOOTNOTE,
+    datalistPrefix: 'host'
+  })
+  wirePermCards(holder, {
+    grantsPath,
+    rows: body.grants,
+    cards: HOST_ROLE_CARDS,
+    kind: 'host',
+    noun: '主机',
+    errorText: hostGrantErrorText,
+    datalistPrefix: 'host',
+    onChange: () => showHostGrants(host)
+  })
 }
 
 async function renderRelays() {
@@ -1568,49 +1409,9 @@ async function loadDirectory() {
   }
 }
 
-async function renderMembers() {
-  const projects = await loadProjects()
-  // Only an admin reaches this route; guard anyway so a non-admin never asks.
-  state.directory = isAdmin() ? await loadDirectory() : null
-  const selected = projects[0]
-  content().innerHTML = `
-    <div class="page-head"><div><h1>成员与权限</h1><p>按项目管理成员/组的权限。下载权限需在平台设置中单独开启。</p></div></div>
-    <div class="grid-3" style="grid-template-columns: 260px 1fr; align-items:start">
-      <div class="card">
-        <div class="section-head" style="margin:12px 16px"><h2>项目</h2></div>
-        <div id="memberProjectList"></div>
-      </div>
-      <div class="card pad" id="grantPanel"><p class="muted">选择左侧项目查看授权。</p></div>
-    </div>`
-  $('#memberProjectList').innerHTML = projects
-    .map(
-      (p, i) =>
-        `<button class="nav-item ${i === 0 ? 'active' : ''}" data-material="${p.id}">${esc(p.name)}</button>`
-    )
-    .join('')
-  for (const btn of document.querySelectorAll('[data-material]')) {
-    btn.onclick = () => {
-      for (const other of document.querySelectorAll('[data-material]'))
-        other.classList.remove('active')
-      btn.classList.add('active')
-      showGrants(btn.dataset.material)
-    }
-  }
-  if (selected) showGrants(selected.id)
-}
+/* ---------------- 授权卡片（U67：详情弹框权限页签 = 唯一授权入口） ---------------- */
 
-/** The full Permission set of the credential contract; the matrix edits exactly these 7 bits. */
-const GRANT_PERMISSIONS = [
-  'open',
-  'terminal',
-  'agent',
-  'file:read',
-  'file:write',
-  'browser',
-  'download'
-]
-
-/** Server verdicts the matrix must explain, not echo as a raw code (AA4). */
+/** Server verdicts the cards must explain, not echo as a raw code (AA4). */
 const GRANT_ERROR_TEXT = {
   GROUP_NOT_FOUND: '组不存在或平台未见过该组。',
   GRANT_PERMISSION_INVALID:
@@ -1618,261 +1419,296 @@ const GRANT_ERROR_TEXT = {
 }
 const grantErrorText = (err) => GRANT_ERROR_TEXT[err?.code] ?? err?.message ?? String(err)
 
-/** Host bits (AA6): provision → self-service, maintain → maintenance, view is reserved in v1. */
-const HOST_GRANT_PERMISSIONS = ['provision', 'maintain', 'view']
 const HOST_GRANT_ERROR_TEXT = {
   ...GRANT_ERROR_TEXT,
   HOST_GRANT_PERMISSION_INVALID: '主机权限位不在允许范围内。',
   HOST_PROVISION_POLICY_INVALID: '自助建项目策略只能是 open 或 restricted。'
 }
 const hostGrantErrorText = (err) => HOST_GRANT_ERROR_TEXT[err?.code] ?? err?.message ?? String(err)
-const hostPolicyMode = (host) => (host.provisionPolicy === 'restricted' ? 'restricted' : 'open')
 
 const grantKey = (g) => `${g.subjectType}:${g.subjectId}`
 const subjectLabel = (g) => g.username ?? g.subjectId
 
-async function showGrants(projectId) {
-  const grantsPath = `/v1/projects/${projectId}/grants`
-  const body = await api(grantsPath)
-  // What the platform holds per row, sorted so a draft diff is a plain compare.
-  const serverPerms = new Map(body.grants.map((g) => [grantKey(g), [...g.permissions].sort()]))
-  // Checkbox edits stay a local draft per row: nothing lands until 「保存变更」 (M120b §4.1).
-  const draft = new Map()
-  const draftOf = (g) => draft.get(grantKey(g)) ?? [...g.permissions].sort()
-  const isDirty = (g) => {
-    const next = draft.get(grantKey(g))
-    if (!next) return false
-    const base = serverPerms.get(grantKey(g)) ?? []
-    return next.length !== base.length || next.some((p, i) => p !== base[i])
+/**
+ * 角色 → 位组合映射（u67-authz-refactor-design §2）。存储行保持位组合，卡片只是
+ * 分组视图；加入卡片 = 位并集，移除 = 从行里减去卡片位。
+ */
+const HOST_ROLE_CARDS = [
+  {
+    key: 'view',
+    label: '查看',
+    bits: ['view'],
+    desc: '主机只读：可见该主机全部非归档项目并打开查看；项目内上限 = 打开 + 文件只读。不能创建 / 维护主机，不能使用终端 / Agent / 编辑 / 浏览器 / 下载。'
+  },
+  {
+    key: 'control',
+    label: '控制',
+    bits: ['view', 'provision'],
+    desc: '主机全权（操作推导）：可见全部项目，项目内终端 / Agent / 文件读写 / 浏览器可用；下载仍按下载策略独立判定。含创建 / 登记项目能力（U65 全权语义，不含主机维护）。'
+  },
+  {
+    key: 'manage',
+    label: '管理',
+    bits: ['provision', 'maintain'],
+    desc: '创建 / 登记项目 + 进入 / 退出维护模式。不推导项目可见性（仅显式授权项目可见），不授予项目内操作位；吊销主机仍仅限平台管理员。'
   }
-  const dirtyGrants = () => body.grants.filter(isDirty)
+]
 
-  const rows = body.grants
-    .map((g) => {
-      // GET /grants names only user rows it can resolve: an unnamed user row has
-      // no live account behind it (a pre-fix row keyed by the typed name), so it
-      // grants nothing and its removal is refused server-side (W2 audit m-2).
-      const deadUser = g.subjectType === 'user' && !g.username
-      return `<tr data-row="${esc(grantKey(g))}">
-        <td>${esc(subjectLabel(g))}${deadUser ? ' <span class="badge">已删除用户</span>' : ''}<span class="badge" data-unsaved hidden>未保存</span></td>
-        <td class="muted">${g.subjectType === 'group' ? '组' : '用户'}</td>
-        ${GRANT_PERMISSIONS.map(
-          (p) =>
-            `<td><input type="checkbox" aria-label="${esc(subjectLabel(g))} ${p}" data-perm="${p}" data-subject-type="${g.subjectType}" data-subject-id="${esc(g.subjectId)}"${draftOf(g).includes(p) ? ' checked' : ''}${deadUser ? ' disabled title="该账号已不存在"' : ''}></td>`
-        ).join('')}
-        <td class="actions"><button class="btn sm danger" data-remove="${esc(grantKey(g))}" ${deadUser ? 'disabled title="该账号已不存在，无法在此移除"' : ''}>移除</button></td>
-      </tr>`
-    })
-    .join('')
+const PROJECT_OP_BITS = ['terminal', 'agent', 'file:write', 'browser', 'download']
+
+const PROJECT_ROLE_CARDS = [
+  {
+    key: 'view',
+    label: '查看',
+    bits: ['open', 'file:read'],
+    desc: '项目可见、可打开；文件浏览与预览。'
+  },
+  {
+    key: 'control',
+    label: '控制',
+    bits: PROJECT_OP_BITS,
+    desc: '项目内操作位：终端、Agent、文件写入、浏览器与下载；下载仍需项目 / 全局下载策略为「允许」才放行（FR-7）。'
+  }
+]
+
+const PERM_FOOTNOTE =
+  '变更即时保存（PUT 整行替换）；已存在于其它卡片时先弹覆盖确认。降级保存将断开该主体当前全部云会话，≤60 秒生效（FR-1.7）。'
+
+/** 合成级别徽标（§2.2）：管理台不产生这两种读法之外的级别。 */
+function permLevelLabel(kind, permissions) {
+  const has = (bit) => permissions.includes(bit)
+  if (kind === 'host') {
+    if (has('view') && has('provision')) return has('maintain') ? '全权+维护' : '全权'
+    if (has('view')) return '只读'
+    if (has('provision') && has('maintain')) return '管理（创建+维护）'
+    return '其他位组合'
+  }
+  const levels = []
+  if (has('open') && has('file:read')) levels.push('查看')
+  if (PROJECT_OP_BITS.some((bit) => has(bit))) levels.push('控制')
+  return levels.join('+') || '其他位组合'
+}
+
+/** Tab switch is pure overlay view state: no route, no Escape/close change. */
+function wireAuthTabs(scope) {
+  const tabs = scope.querySelectorAll('[data-auth-tab]')
+  for (const tab of tabs) {
+    tab.onclick = () => {
+      const key = tab.dataset.authTab
+      for (const other of tabs) other.classList.toggle('active', other === tab)
+      for (const panel of scope.querySelectorAll('[data-auth-panel]')) {
+        panel.hidden = panel.dataset.authPanel !== key
+      }
+    }
+  }
+}
+
+function permChipHtml(row, card, kind) {
+  const dead = row.subjectType === 'user' && !row.username
+  const removable = card.key !== 'derived' && !dead
+  return `<span class="perm-chip" data-chip="${esc(grantKey(row))}">
+      <span class="mono">${esc(subjectLabel(row))}</span>${dead ? ' <span class="badge">已删除用户</span>' : ''}
+      <span class="muted">${row.subjectType === 'group' ? '组' : '用户'}</span>
+      <span class="badge">${esc(permLevelLabel(kind, row.permissions))}</span>
+      <button class="perm-chip-x" data-perm-remove="${esc(grantKey(row))}" data-card="${esc(card.key)}" title="从「${esc(card.label)}」移除 ${esc(subjectLabel(row))}"${removable ? '' : ' disabled'}>✕</button>
+    </span>`
+}
+
+function permDatalistsHtml(prefix) {
   const directory = state.directory
-  // Value must be what the platform resolves (username / exact group name);
+  if (!directory) return ''
+  // Values must be what the platform resolves (username / exact group name);
   // display name and department only help the admin pick it (AA4).
-  const userOptions = (directory?.users ?? [])
+  const users = (directory.users ?? [])
     .map(
       (user) =>
         `<option value="${esc(user.username)}">${esc(user.displayName)}${user.dept ? ` · ${esc(user.dept)}` : ''}</option>`
     )
     .join('')
-  const groupOptions = (directory?.groups ?? [])
+  const groups = (directory.groups ?? [])
     .map((group) => `<option value="${esc(group)}"></option>`)
     .join('')
-  const panel = $('#grantPanel')
-  panel.innerHTML = `
-    <div class="section-head" style="margin-top:0"><h2>授权矩阵</h2></div>
-    <div class="note">download 仅在项目下载策略为「允许」时生效（平台设置）；策略为「禁止」时勾选也不放行导出。</div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>主体</th><th>类型</th>${GRANT_PERMISSIONS.map((p) => `<th>${p}</th>`).join('')}<th></th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="10" class="table-empty">尚无授权</td></tr>`}</tbody>
-      </table>
-    </div>
-    <div class="toolbar" style="margin-top:16px">
-      <button class="btn primary" id="grantSave" disabled>保存变更</button>
-      <button class="btn" id="grantDiscard" disabled>放弃修改</button>
-      <span class="muted">勾选先暂存，「保存变更」才落盘。</span>
-    </div>
-    <div class="toolbar" style="margin-top:12px">
-      <input class="input" id="grantSubject" style="min-width:240px"${directory ? ' list="grantGroupOptions"' : ''} placeholder="组名，如 team-payment">
-      <select class="select" id="grantType"><option value="group">组</option><option value="user">用户</option></select>
-      <button class="btn" id="grantAdd">添加授权</button>
-    </div>
-    ${directory ? `<datalist id="grantUserOptions">${userOptions}</datalist><datalist id="grantGroupOptions">${groupOptions}</datalist>` : ''}`
+  return `<datalist id="${prefix}UserOptions">${users}</datalist><datalist id="${prefix}GroupOptions">${groups}</datalist>`
+}
 
-  if (directory) {
-    $('#grantType').onchange = () => {
-      const isUser = $('#grantType').value === 'user'
-      $('#grantSubject').setAttribute('list', isUser ? 'grantUserOptions' : 'grantGroupOptions')
-      $('#grantSubject').placeholder = isUser ? '用户名，如 zhangsan' : '组名，如 team-payment'
-    }
-  }
-
-  const syncDraftUi = (tr) => {
-    const dirty = body.grants.some((g) => grantKey(g) === tr.dataset.row && isDirty(g))
-    tr.classList.toggle('dirty', dirty)
-    tr.querySelector('[data-unsaved]').hidden = !dirty
-    const anyDirty = dirtyGrants().length > 0
-    $('#grantSave').disabled = !anyDirty
-    $('#grantDiscard').disabled = !anyDirty
-  }
-  for (const box of panel.querySelectorAll('input[type="checkbox"][data-perm]')) {
-    box.onchange = () => {
-      const key = `${box.dataset.subjectType}:${box.dataset.subjectId}`
-      const next = new Set(draft.get(key) ?? serverPerms.get(key) ?? [])
-      if (box.checked) next.add(box.dataset.perm)
-      else next.delete(box.dataset.perm)
-      draft.set(key, [...next].sort())
-      syncDraftUi(box.closest('tr'))
-    }
-  }
-
-  // The platform has no online-session listing, so the blast radius is stated as
-  // a rule per row kind, never as named online users (M120b §4.3).
-  const diffLine = (g) => {
-    const base = new Set(g.permissions)
-    const next = new Set(draftOf(g))
-    const added = GRANT_PERMISSIONS.filter((p) => next.has(p) && !base.has(p))
-    const removed = GRANT_PERMISSIONS.filter((p) => base.has(p) && !next.has(p))
-    const changes = [
-      added.length ? `+新增 ${added.join('、')}` : '',
-      removed.length ? `−移除 ${removed.join('、')}` : ''
-    ]
-      .filter(Boolean)
-      .join('；')
-    const blast =
-      g.subjectType === 'user'
-        ? `保存将断开 ${subjectLabel(g)} 当前全部云会话（含其他项目）。`
-        : '宿主无法解析组成员，保存将断开该项目当前全部在线会话。'
-    return `<li>${esc(subjectLabel(g))}（${g.subjectType === 'group' ? '组' : '用户'}）：${esc(changes)}<br><span class="muted">${esc(blast)}</span></li>`
-  }
-
-  const applyChanges = async (dirty) => {
-    // A double click would double-send the batch: the buttons stay dead until the redraw.
-    $('#grantSave').disabled = true
-    $('#grantDiscard').disabled = true
-    // The whole batch window freezes: an edit to a not-yet-queued row would be
-    // silently dropped by the post-batch redraw (m-5). The redraw rebuilds the
-    // panel, so nothing needs re-enabling on either exit path.
-    for (const control of panel.querySelectorAll(
-      'input[type="checkbox"][data-perm], [data-remove], #grantAdd, #grantSubject, #grantType'
-    )) {
-      control.disabled = true
-    }
-    let saved = 0
-    for (const g of dirty) {
-      try {
-        await api(grantsPath, {
-          method: 'PUT',
-          // Row-wide replacement: the PUT carries the subject's full array and the
-          // platform rebuilds that row from it, so unticked bits stay unticked (§4.2).
-          body: JSON.stringify({
-            subjectType: g.subjectType,
-            subjectId: g.subjectId,
-            permissions: draftOf(g)
+/** 项目弹框的管理卡：主机推导只读视图（FR-9.11③ 不扩大），不可添加/移除。 */
+function projectDerivedCardHtml(hostRows) {
+  const chips =
+    hostRows == null
+      ? '<span class="muted">未能读取主机授权</span>'
+      : hostRows
+          .filter((row) => row.permissions.includes('view'))
+          .map((row) => {
+            const full = row.permissions.includes('provision')
+            return `<span class="perm-chip"><span class="mono">${esc(subjectLabel(row))}</span> <span class="muted">${row.subjectType === 'group' ? '组' : '用户'}</span> <span class="badge">${full ? '全权（来源）' : '只读（上限）'}</span></span>`
           })
-        })
-        saved += 1
-      } catch (err) {
-        toast(
-          `已保存 ${saved} 项，${dirty.length - saved} 项失败：${subjectLabel(g)}（${grantErrorText(err)}）`
+          .join('') || '<span class="muted">暂无主机级主体</span>'
+  return `
+    <div class="perm-card" data-card="derived">
+      <div class="perm-card-head"><strong>管理</strong><span class="badge">主机推导 · 只读</span></div>
+      <p class="muted perm-card-desc">项目级无「管理」权限位：归档 / 登记归创建者或平台管理员，主机维护属主机授权。下方为按 U65 推导在本项目获得权限的主机级主体——在主机详情弹框维护，项目授权不扩大到主机级。</p>
+      <div class="perm-chips">${chips}</div>
+    </div>`
+}
+
+function permCardsHtml(cards, rows, options) {
+  const { kind } = options
+  const cardsHtml = cards
+    .map((card) => {
+      const matching = rows.filter((row) =>
+        card.bits.some((bit) => row.permissions.includes(bit))
+      )
+      return `
+      <div class="perm-card" data-card="${esc(card.key)}">
+        <div class="perm-card-head"><strong>${esc(card.label)}</strong><span class="badge">${esc(card.bits.join(' + '))}</span><span class="muted">${matching.length} 个主体</span></div>
+        <p class="muted perm-card-desc">${esc(card.desc)}</p>
+        <div class="perm-chips" data-chips>${
+          matching.map((row) => permChipHtml(row, card, kind)).join('') ||
+          '<span class="muted">暂无主体</span>'
+        }</div>
+        <div class="toolbar perm-add">
+          <input class="input" style="min-width:200px" data-perm-subject="${esc(card.key)}" list="${esc(options.datalistPrefix)}GroupOptions" placeholder="组名，如 team-payment">
+          <select class="select" data-perm-type="${esc(card.key)}"><option value="group">组</option><option value="user">用户</option></select>
+          <button class="btn sm" data-perm-add="${esc(card.key)}">添加</button>
+        </div>
+      </div>`
+    })
+    .join('')
+  // Rows no card claims are history/direct-write shapes; removable, not editable.
+  const leftovers = rows.filter((row) =>
+    cards.every((card) => card.bits.every((bit) => !row.permissions.includes(bit)))
+  )
+  const leftoverCard = leftovers.length
+    ? `
+      <div class="perm-card" data-card="other">
+        <div class="perm-card-head"><strong>其他位组合</strong><span class="muted">最小降级（管理台自身不产生该形态）</span></div>
+        <div class="perm-chips" data-chips>${leftovers
+          .map((row) => permChipHtml(row, { key: 'other', label: '其他位组合' }, kind))
+          .join('')}</div>
+      </div>`
+    : ''
+  const derivedCard = kind === 'project' ? projectDerivedCardHtml(options.hostRows) : ''
+  return `
+      ${options.header ? `<div class="note">${esc(options.header)}</div>` : ''}
+      <div data-perm-cards>${cardsHtml}${leftoverCard}${derivedCard}</div>
+      ${options.footnote ? `<p class="muted perm-footnote">${esc(options.footnote)}</p>` : ''}
+      ${permDatalistsHtml(options.datalistPrefix)}`
+}
+
+/**
+ * One subject = one row: add unions the card's bits into the row, chip removal
+ * subtracts them (empty remainder deletes with the danger confirm, U67 §4.2).
+ * Every operation is one immediate PUT; failures redraw from the platform.
+ */
+function wirePermCards(root, options) {
+  const { grantsPath, rows, cards, kind, errorText, onChange } = options
+  const rowOf = (key) => rows.find((g) => grantKey(g) === key)
+  for (const select of root.querySelectorAll('[data-perm-type]')) {
+    select.onchange = () => {
+      const input = root.querySelector(`[data-perm-subject="${select.dataset.permType}"]`)
+      const isUser = select.value === 'user'
+      input.setAttribute(
+        'list',
+        isUser ? `${options.datalistPrefix}UserOptions` : `${options.datalistPrefix}GroupOptions`
+      )
+      input.placeholder = isUser ? '用户名，如 zhangsan' : '组名，如 team-payment'
+    }
+  }
+  const setFrozen = (frozen) => {
+    for (const control of root.querySelectorAll(
+      '[data-perm-subject], [data-perm-type], [data-perm-add], .perm-chip-x'
+    )) {
+      control.disabled = frozen
+    }
+  }
+  const putRow = async (subjectType, subjectId, permissions) => {
+    await api(grantsPath, {
+      method: 'PUT',
+      // Row-wide replacement: the PUT carries the subject's full array.
+      body: JSON.stringify({ subjectType, subjectId, permissions })
+    })
+  }
+  for (const button of root.querySelectorAll('[data-perm-add]')) {
+    button.onclick = () => {
+      const card = cards.find((c) => c.key === button.dataset.permAdd)
+      const input = root.querySelector(`[data-perm-subject="${button.dataset.permAdd}"]`)
+      const select = root.querySelector(`[data-perm-type="${button.dataset.permAdd}"]`)
+      const subjectId = input?.value.trim() ?? ''
+      if (!card || subjectId === '') return
+      const subjectType = select.value
+      const existing = rows.find(
+        (g) =>
+          g.subjectType === subjectType &&
+          (g.subjectId === subjectId || (subjectType === 'user' && g.username === subjectId))
+      )
+      const next = [...new Set([...(existing?.permissions ?? []), ...card.bits])].sort()
+      const save = async () => {
+        try {
+          setFrozen(true)
+          await putRow(subjectType, subjectId, next)
+        } catch (err) {
+          // W2-M-1/AA4: report the refusal, keep the typed subject for correction.
+          toast(`授予失败：${errorText(err)}`)
+          return
+        } finally {
+          setFrozen(false)
+        }
+        if (!existing) input.value = ''
+        toast(`已保存「${card.label}」授权：${permLevelLabel(kind, next)}`)
+        await onChange()
+      }
+      if (existing) {
+        dialog(
+          '覆盖现有授权',
+          `<p>${esc(subjectLabel(existing))}（${subjectType === 'group' ? '组' : '用户'}）已有一条授权，保存按整行替换权限位。</p>
+           <p>级别：${esc(permLevelLabel(kind, existing.permissions))} → ${esc(permLevelLabel(kind, next))}（${esc(card.bits.join(' + '))} 并入）</p>
+           <p class="muted">级别提升即时生效；降级保存将断开该主体当前全部云会话，≤60 秒生效（FR-1.7）。</p>`,
+          [{ label: '确认保存', primary: true, onClick: () => void save() }]
         )
-        // Applied rows persist server-side; the rest falls back to what it holds.
-        showGrants(projectId)
         return
       }
+      void save()
     }
-    toast(`已保存 ${saved} 项授权变更`)
-    showGrants(projectId)
   }
-
-  $('#grantSave').onclick = () => {
-    const dirty = dirtyGrants()
-    if (dirty.length === 0) return
-    dialog(
-      '确认保存权限变更',
-      `
-      <p>将保存 ${dirty.length} 行权限变更：</p>
-      <ul>${dirty.map(diffLine).join('')}</ul>
-      <p class="muted">断开后重新打开项目即按新权限签发凭证。</p>`,
-      [
-        {
-          label: '确认保存',
-          primary: true,
-          onClick: () => {
-            void applyChanges(dirty)
-          }
+  for (const button of root.querySelectorAll('.perm-chip-x[data-perm-remove]')) {
+    button.onclick = () => {
+      const row = rowOf(button.dataset.permRemove)
+      const card = cards.find((c) => c.key === button.dataset.card)
+      if (!row) return
+      const remaining = (card
+        ? row.permissions.filter((bit) => !card.bits.includes(bit))
+        : []
+      ).sort()
+      const save = async () => {
+        try {
+          setFrozen(true)
+          await putRow(row.subjectType, row.subjectId, remaining)
+        } catch (err) {
+          toast(`移除失败：${errorText(err)}`)
+          return
+        } finally {
+          setFrozen(false)
         }
-      ]
-    )
-  }
-  $('#grantDiscard').onclick = () => showGrants(projectId)
-
-  $('#grantAdd').onclick = async () => {
-    const subjectType = $('#grantType').value
-    const subjectId = $('#grantSubject').value.trim()
-    if (!subjectId) return
-    const save = async () => {
-      try {
-        await api(grantsPath, {
-          method: 'PUT',
-          // An empty array deletes a row, so a new grant is born with one bit and
-          // the rest is set in the matrix (M120b §4.2).
-          body: JSON.stringify({ subjectType, subjectId, permissions: ['open'] })
-        })
-      } catch (err) {
-        // A refused grant (a mistyped name → 400 USER_NOT_FOUND) used to vanish
-        // silently: report it and leave the matrix as the platform holds it (W2-M-1).
-        // The typed subject stays in the input so it can be corrected (AA4).
-        toast(`授予失败：${grantErrorText(err)}`)
+        toast(
+          remaining.length === 0
+            ? '已移除该主体的全部授权'
+            : `已保存，级别：${permLevelLabel(kind, row.permissions)} → ${permLevelLabel(kind, remaining)}`
+        )
+        await onChange()
+      }
+      if (remaining.length === 0) {
+        const blast =
+          row.subjectType === 'user'
+            ? `该主体将失去此${options.noun}的全部授权，云会话将在 ≤60 秒内断开（FR-1.7）。`
+            : `宿主无法解析组成员，将断开该${options.noun}当前全部在线会话（≤60 秒内生效，FR-1.7）。`
+        dialog(
+          '移除全部授权',
+          `<p>${esc(subjectLabel(row))}（${row.subjectType === 'group' ? '组' : '用户'}）</p><p>${esc(blast)}</p>`,
+          [{ label: '确认移除', primary: true, onClick: () => void save() }]
+        )
         return
       }
-      toast('已授予，默认 open，可在矩阵中调整')
-      showGrants(projectId)
-    }
-    // U53④: PUT replaces the whole row, so an existing subject silently loses
-    // every bit it is not born with. Name the overwrite before sending it.
-    const existing = body.grants.find(
-      (g) =>
-        g.subjectType === subjectType &&
-        // A user row is stored by the resolved id; the input carries the username.
-        (g.subjectId === subjectId || (subjectType === 'user' && g.username === subjectId))
-    )
-    if (!existing) {
-      await save()
-      return
-    }
-    dialog(
-      '覆盖现有权限位',
-      `
-      <p>${esc(subjectLabel(existing))}（${subjectType === 'group' ? '组' : '用户'}）已有一条授权。</p>
-      <p>覆盖现有权限位（当前 ${esc(GRANT_PERMISSIONS.filter((p) => existing.permissions.includes(p)).join(' + ') || '无')} → open）</p>
-      <p class="muted">保存将断开该主体当前全部云会话（含其他项目）。</p>`,
-      [
-        {
-          label: '覆盖授权',
-          primary: true,
-          onClick: () => {
-            void save()
-          }
-        }
-      ]
-    )
-  }
-  for (const btn of panel.querySelectorAll('[data-remove]')) {
-    btn.onclick = async () => {
-      const sep = btn.dataset.remove.indexOf(':')
-      const subjectType = btn.dataset.remove.slice(0, sep)
-      const subjectId = btn.dataset.remove.slice(sep + 1)
-      try {
-        await api(grantsPath, {
-          method: 'PUT',
-          body: JSON.stringify({ subjectType, subjectId, permissions: [] })
-        })
-      } catch (err) {
-        toast(`移除失败：${grantErrorText(err)}`)
-        return
-      }
-      toast('已移除')
-      showGrants(projectId)
+      void save()
     }
   }
 }
@@ -2357,7 +2193,7 @@ function openDrawer(title, html) {
     if (e.target === backdrop) backdrop.remove()
   }
   document.body.appendChild(backdrop)
-  return { close: () => backdrop.remove() }
+  return { close: () => backdrop.remove(), backdrop }
 }
 
 let dialogSeq = 0

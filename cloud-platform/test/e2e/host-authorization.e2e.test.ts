@@ -3,14 +3,16 @@ import assert from 'node:assert/strict'
 import { login, registerHost, saveEvidence, spawnService, type Service } from './harness.ts'
 
 /**
- * AA2 (admin-authorization design §3.2): host grants are a platform-only
- * delegation layer — nothing here travels to the host on the wire.
+ * AA2 (admin-authorization design §3.2) migrated per the U65/U67 model switch:
+ * host grants stay stored bit rows, but creation now needs the `provision` bit
+ * unconditionally — the legacy `provisionPolicy` no longer opens the gate and
+ * /v1/hosts/available gains the additive `accessLevel` (full | read-only | null).
  *
  * - GET/PUT /v1/hosts/{id}/grants and PUT /v1/hosts/{id}/provision-policy are
  *   admin-only; refusals land as audit events
- * - a `restricted` host refuses self-service to ungranted subjects with
- *   HOST_PROVISION_FORBIDDEN, while an absent policy keeps the old open behaviour
- * - /v1/hosts/available gains the additive `provisionAllowed` field
+ * - self-service is refused with HOST_PROVISION_FORBIDDEN without `provision`,
+ *   whatever the policy says; a granted group or admin passes
+ * - an ungranted `view` holder derives no creation right (read-only ceiling)
  * - a granted `maintain` subject may toggle maintenance; admin keeps full power
  */
 
@@ -313,7 +315,7 @@ test('AA2 restricted 门禁：非授权主体 403 HOST_PROVISION_FORBIDDEN，授
   saveEvidence(EVIDENCE, 'restricted-provision.json', { refused, denied, granted: granted.body })
 }, 120_000)
 
-test('AA2 available 加性字段：restricted 按授权区分，缺省 open 恒 true 且其余字段不变', async () => {
+test('AA2 available 加性字段：按 provision 位区分，accessLevel 加性，其余字段不变', async () => {
   const forOther = (await available(otherToken)).find((host) => host.id === restrictedHostId)
   assert.ok(forOther)
   assert.equal(forOther.provisionAllowed, false)
@@ -325,11 +327,13 @@ test('AA2 available 加性字段：restricted 按授权区分，缺省 open 恒 
   const forAdmin = (await available(adminToken)).find((host) => host.id === restrictedHostId)
   assert.equal(forAdmin?.provisionAllowed, true)
 
-  // Host with no policy: pre-grant behaviour, so every logged-in user may self-serve.
+  // U65/U67: the legacy policy no longer gates creation, so an ungranted host
+  // refuses even without a restricted policy; accessLevel stays additive.
   const openForOther = (await available(otherToken)).find((host) => host.id === openHostId)
   assert.ok(openForOther)
-  assert.equal(openForOther.provisionAllowed, true)
+  assert.equal(openForOther.provisionAllowed, false)
   assert.deepEqual(Object.keys(openForOther).sort(), [
+    'accessLevel',
     'id',
     'name',
     'online',
@@ -338,6 +342,21 @@ test('AA2 available 加性字段：restricted 按授权区分，缺省 open 恒 
     'provisionable'
   ])
 
+  const refused = await selfService(otherToken, {
+    name: 'Open Self Refused',
+    dir: 'open-self-refused',
+    hostId: openHostId
+  })
+  assert.equal(refused.status, 403, JSON.stringify(refused.body))
+  assert.equal(errorCode(refused.body), 'HOST_PROVISION_FORBIDDEN')
+
+  // A direct provision row opens the same host, policy untouched (absent = legacy open).
+  assert.equal(
+    (await putHostGrant(adminToken, openHostId, 'user', 'lisi', ['provision'])).status,
+    200
+  )
+  const afterGrant = (await available(otherToken)).find((host) => host.id === openHostId)
+  assert.equal(afterGrant?.provisionAllowed, true)
   const created = await selfService(otherToken, {
     name: 'Open Self Demo',
     dir: 'open-self-demo',
@@ -347,7 +366,10 @@ test('AA2 available 加性字段：restricted 按授权区分，缺省 open 恒 
 
   saveEvidence(EVIDENCE, 'available.json', {
     restricted: forOther,
-    open: openForOther
+    open: openForOther,
+    refused,
+    afterGrant,
+    created: created.body
   })
 }, 120_000)
 
@@ -413,7 +435,7 @@ test('AA2 维护委派：maintain 位可进出维护并记 via，未授权者与
 
 // ---- AA3: branch matrix left uncovered by AA2, plus B2–B5 additions ----
 
-test('AA3 自助门禁分支：用户直授放行、按位判定、组名大小写、授予吊销即时生效、策略可回切', async () => {
+test('AA3 自助门禁分支：用户直授放行、按位判定、组名大小写、授予吊销即时生效、策略不再参与门禁', async () => {
   // AA2's maintenance test left both fixture hosts toggled; back online first.
   await restoreOnline(restrictedHostId)
   await restoreOnline(openHostId)
@@ -454,7 +476,8 @@ test('AA3 自助门禁分支：用户直授放行、按位判定、组名大小�
   )
   assert.equal(after.length, before.length + 1, 'the revoked-grant refusal is audited')
 
-  // Bits are independent: `view` never implies `provision`.
+  // Bits are independent: `view` never implies `provision` (read-only caps at
+  // open+file:read and derives no creation right).
   assert.equal(
     (await putHostGrant(adminToken, restrictedHostId, 'group', 'team-payment', ['view'])).status,
     200
@@ -472,14 +495,21 @@ test('AA3 自助门禁分支：用户直授放行、按位判定、组名大小�
     200
   )
 
-  // Policy is a switch, not a one-way door: `open` restores pre-grant behaviour.
+  // U65/U67: the policy is legacy — it no longer opens or closes the gate, so
+  // `open` does not restore pre-grant behaviour and the field still round-trips.
   assert.equal((await setPolicy(adminToken, restrictedHostId, 'open')).status, 200)
   const openAgain = await selfService(otherToken, {
     name: 'AA3 Open Policy',
     dir: 'aa3-open-policy',
     hostId: restrictedHostId
   })
-  assert.equal(openAgain.status, 201, JSON.stringify(openAgain.body))
+  assert.equal(openAgain.status, 403, JSON.stringify(openAgain.body))
+  assert.equal(errorCode(openAgain.body), 'HOST_PROVISION_FORBIDDEN')
+  const listed = await api('/v1/hosts')
+  const hostView = (listed.body.hosts as { id: string; provisionPolicy?: string }[]).find(
+    (host) => host.id === restrictedHostId
+  )
+  assert.equal(hostView?.provisionPolicy, 'open', 'the legacy field still stores and reports')
   assert.equal((await setPolicy(adminToken, restrictedHostId, 'restricted')).status, 200)
   const restrictedAgain = await selfService(otherToken, {
     name: 'AA3 Restricted Again',
@@ -492,20 +522,22 @@ test('AA3 自助门禁分支：用户直授放行、按位判定、组名大小�
     direct: direct.body,
     revoked,
     viewOnly,
-    openAgain: openAgain.body
+    openAgain,
+    policyStillStored: hostView?.provisionPolicy
   })
 }, 120_000)
 
-test('AA3 available 判定：其余字段逐字不变，用户直授计数，离线与未声明根目录不改变公式', async () => {
+test('AA3 available 判定：逐字段投影加 accessLevel，用户直授计数，离线与未声明根目录不改变公式', async () => {
   const restricted = (await available(otherToken)).find((host) => host.id === restrictedHostId)
-  // Byte-for-byte projection: the additive field is the only delta.
+  // Additive projection: accessLevel is the only new field; lisi holds no grant here.
   assert.deepEqual(restricted, {
     id: restrictedHostId,
     name: 'dev-aa2-restricted',
     online: true,
     provisionable: true,
     projectDirs: [],
-    provisionAllowed: false
+    provisionAllowed: false,
+    accessLevel: null
   })
 
   // Direct user rows count on the available projection too.
@@ -523,7 +555,7 @@ test('AA3 available 判定：其余字段逐字不变，用户直授计数，离
     false
   )
 
-  // The formula excludes `online`: an offline host keeps its policy verdict.
+  // The formula excludes `online`: an offline ungranted host stays refused.
   const offlineHost = await registerHost({
     apiUrl: service.url,
     adminToken,
@@ -536,11 +568,12 @@ test('AA3 available 判定：其余字段逐字不变，用户直授计数，离
   const offlineOpen = (await available(otherToken)).find((host) => host.id === offlineHost.hostId)
   assert.equal(offlineOpen?.online, false)
   assert.equal(offlineOpen?.provisionable, true)
-  assert.equal(offlineOpen?.provisionAllowed, true)
+  assert.equal(offlineOpen?.provisionAllowed, false, 'offline never widens the provision verdict')
   assert.equal((await setPolicy(adminToken, offlineHost.hostId, 'restricted')).status, 200)
   assert.equal(
     (await available(otherToken)).find((host) => host.id === offlineHost.hostId)?.provisionAllowed,
-    false
+    false,
+    'the legacy policy cannot open the gate either'
   )
   assert.equal(
     (await available(adminToken)).find((host) => host.id === offlineHost.hostId)?.provisionAllowed,

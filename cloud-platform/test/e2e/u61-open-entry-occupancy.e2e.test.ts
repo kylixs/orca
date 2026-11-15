@@ -195,6 +195,19 @@ test('F2 自助登记：跨主机同名目录 201，同主机重复 409', async 
     relayTarget: '127.0.0.1:12',
     projectsRoot: root
   })
+  // U65/U67: self-service creation needs the host provision bit.
+  for (const hostId of [hostA.hostId, hostB.hostId]) {
+    const granted = await fetch(`${url}/v1/hosts/${hostId}/grants`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', ...auth(adminToken) },
+      body: JSON.stringify({
+        subjectType: 'group',
+        subjectId: 'developers',
+        permissions: ['provision']
+      })
+    })
+    assert.equal(granted.status, 200, await granted.text())
+  }
 
   const createSelf = async (name: string, hostId: string) => {
     const res = await fetch(`${url}/v1/projects/self`, {

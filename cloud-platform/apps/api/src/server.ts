@@ -22,6 +22,11 @@ import {
 } from './project-self-service.ts'
 import { isProjectCreator, projectKeyTaken, projectPathTaken } from './project-occupancy.ts'
 import {
+  canCreateProjectOnHost,
+  effectiveProjectPermissions,
+  hostAccessLevel
+} from './host-authority.ts'
+import {
   newDeviceToken,
   newJti,
   signCredential,
@@ -1317,11 +1322,12 @@ export function createApp(config: ApiConfig): ApiHandle {
   }
 
   function projectView(p: Project, user: User, platformOrigin: string): Record<string, unknown> {
-    const permissions = store.effectivePermissions(p.id, user)
-    const host = store.hosts.get(p.hostId)
-    // Admin/auditor only: the creator is an administrative fact, and every other
-    // role's payload must stay byte-identical to the pre-U46 shape.
     const adminAccess = isAdmin(user) || user.roles.includes('platform:auditor')
+    // U65/U67: the ticket view carries the synthesized bits (host grant as
+    // source, read-only as ceiling); `hostAccess` explains a cap, additively.
+    const permissions = effectiveProjectPermissions(store, p, user, isAdmin(user))
+    const host = store.hosts.get(p.hostId)
+    const hostAccess = isAdmin(user) ? null : hostAccessLevel(store, p.hostId, user)
     return {
       id: p.id,
       key: p.key,
@@ -1343,6 +1349,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       status: p.status,
       ...(p.provisioningError ? { provisioningError: p.provisioningError } : {}),
       ...(adminAccess ? { createdBy: p.createdBy ?? null } : {}),
+      ...(hostAccess ? { hostAccess } : {}),
       createdAt: p.createdAt,
       permissions
     }
@@ -1413,8 +1420,7 @@ export function createApp(config: ApiConfig): ApiHandle {
   function visibleProject(projectId: string, user: User): Project | null {
     const p = store.projects.get(projectId)
     if (!p || p.status === 'archived') return null
-    const permissions = store.effectivePermissions(p.id, user)
-    if (!permissions.includes('open')) return null
+    if (!effectiveProjectPermissions(store, p, user, isAdmin(user)).includes('open')) return null
     return p
   }
 
@@ -1823,8 +1829,8 @@ export function createApp(config: ApiConfig): ApiHandle {
         return
       }
       // The code is bound to a user, not a permission: a grant pulled between
-      // issue and redeem must still stop the entry here.
-      if (!store.effectivePermissions(project.id, user).includes('open')) {
+      // issue and redeem must still stop the entry here (synthesized bits).
+      if (!effectiveProjectPermissions(store, project, user, isAdmin(user)).includes('open')) {
         await deny(
           403,
           'PROJECT_FORBIDDEN',
@@ -2063,7 +2069,8 @@ export function createApp(config: ApiConfig): ApiHandle {
         .filter(
           (p) =>
             (includeArchived || p.status !== 'archived') &&
-            (isAdmin(authed.user) || store.effectivePermissions(p.id, authed.user).includes('open'))
+            (isAdmin(authed.user) ||
+              effectiveProjectPermissions(store, p, authed.user, false).includes('open'))
         )
         .map((p) => projectView(p, authed.user, platformOrigin))
       return json(res, 200, { projects: visible })
@@ -2278,13 +2285,9 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (!selection.ok) {
         return await deny(selection.status, selection.code, selection.message, selection.details)
       }
-      // AA2: a restricted host only self-services for admins and granted
-      // subjects; absent policy is 'open', so existing hosts are unchanged.
-      if (
-        selection.host.provisionPolicy === 'restricted' &&
-        !isAdmin(authed.user) &&
-        !hasHostPermission(store, selection.host.id, authed.user, 'provision')
-      ) {
+      // U65/U67: creation needs the provision bit (admin bypass); the legacy
+      // provisionPolicy no longer opens the gate — it only reports in /available.
+      if (!canCreateProjectOnHost(store, selection.host.id, authed.user, isAdmin(authed.user))) {
         return await deny(
           403,
           'HOST_PROVISION_FORBIDDEN',
@@ -2366,11 +2369,13 @@ export function createApp(config: ApiConfig): ApiHandle {
       const projectId = projectPath[1]
       const action = projectPath[2] ?? ''
       const found = store.projects.get(projectId)
-      // 404 for both unknown and unauthorised: never leak existence.
+      // 404 for both unknown and unauthorised: never leak existence. The open
+      // verdict reads the synthesized bits, so a host view grant sees it too.
       const adminAccess = isAdmin(authed.user) || authed.user.roles.includes('platform:auditor')
       if (
         !found ||
-        (!adminAccess && !store.effectivePermissions(found.id, authed.user).includes('open'))
+        (!adminAccess &&
+          !effectiveProjectPermissions(store, found, authed.user, false).includes('open'))
       ) {
         await audit.append({
           eventType: 'project_access',
@@ -2821,8 +2826,9 @@ export function createApp(config: ApiConfig): ApiHandle {
       const authed = requireAuth()
       if (!authed) return
       // Deliberately credential-free: developers may pick a host, not inspect one.
-      // `provisionAllowed` is additive: an old client ignores it and keeps its
-      // pre-grant behaviour; every other field stays byte-for-byte identical.
+      // `provisionAllowed`/`accessLevel` are additive: an old client ignores them
+      // and keeps its pre-grant behaviour; every other field stays byte-identical.
+      const admin = isAdmin(authed.user)
       return json(res, 200, {
         hosts: [...store.hosts.values()].map((h) => ({
           id: h.id,
@@ -2830,11 +2836,11 @@ export function createApp(config: ApiConfig): ApiHandle {
           online: hostOnline(h),
           provisionable: Boolean(h.projectsRoot),
           projectDirs: h.projectDirs ?? [],
+          // U65/U67: creation needs projectsRoot AND the provision bit (admin
+          // bypass); the legacy policy no longer gates.
           provisionAllowed:
-            Boolean(h.projectsRoot) &&
-            (h.provisionPolicy !== 'restricted' ||
-              isAdmin(authed.user) ||
-              hasHostPermission(store, h.id, authed.user, 'provision'))
+            Boolean(h.projectsRoot) && canCreateProjectOnHost(store, h.id, authed.user, admin),
+          accessLevel: admin ? null : hostAccessLevel(store, h.id, authed.user)
         }))
       })
     }
@@ -3715,7 +3721,7 @@ export function createApp(config: ApiConfig): ApiHandle {
     // Same grant predicate as redemption: adminAccess only widens which projects
     // a caller can see, never the right to open one, so a code that could only
     // ever redeem 403 is refused here instead of minting a dead entry.
-    if (!store.effectivePermissions(project.id, user).includes('open')) {
+    if (!effectiveProjectPermissions(store, project, user, isAdmin(user)).includes('open')) {
       audit.appendBestEffort({
         eventType: 'web_handoff',
         actor: user.username,
@@ -3828,7 +3834,7 @@ export function createApp(config: ApiConfig): ApiHandle {
     const body = await readJson(req)
     // Same predicate as /web-handoff: adminAccess widens which projects a caller
     // can see, never the right to open one; `open` is an explicit bit.
-    const permissions = store.effectivePermissions(project.id, user)
+    const permissions = effectiveProjectPermissions(store, project, user, isAdmin(user))
     if (!permissions.includes('open')) {
       await audit.append({
         eventType: 'project_connect',

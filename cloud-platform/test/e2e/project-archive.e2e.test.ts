@@ -84,6 +84,13 @@ before(async () => {
       projectsRoot: '/srv/projects'
     })
   ).hostId
+  // U65/U67: self-service creation needs the host provision bit.
+  const granted = await request('PUT', `/v1/hosts/${hostId}/grants`, adminToken, {
+    subjectType: 'group',
+    subjectId: 'developers',
+    permissions: ['provision']
+  })
+  assert.equal(granted.status, 200, JSON.stringify(granted.body))
 })
 
 after(async () => {

@@ -73,7 +73,8 @@ test('M113-1 管理与开发者 Web 页面截图', async () => {
 
   // ---- admin: every management page ----
   const admin = await signInAs('admin', 'Adm1n!')
-  for (const route of ['workbench', 'projects', 'hosts', 'members', 'audit', 'settings']) {
+  // U67 removed the members page; the console routes shrink accordingly.
+  for (const route of ['workbench', 'projects', 'hosts', 'audit', 'settings']) {
     await admin.click(`button[data-route="${route}"]`)
     await admin.waitForFunction(
       () => {
@@ -98,7 +99,6 @@ test('M113-1 管理与开发者 Web 页面截图', async () => {
       'web-admin-workbench',
       'web-admin-projects',
       'web-admin-hosts',
-      'web-admin-members',
       'web-admin-audit',
       'web-admin-settings'
     ]

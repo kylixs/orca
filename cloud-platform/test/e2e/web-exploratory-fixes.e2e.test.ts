@@ -447,17 +447,64 @@ function matrixLoads(page: WebConsolePage, projectId: string): number {
   return page.calls().filter((call) => call === `GET /v1/projects/${projectId}/grants`).length
 }
 
-/** Opens the named project's matrix on the members page. */
-async function openGrantPanel(page: WebConsolePage, name: string): Promise<void> {
-  const button = [...page.window.document.querySelectorAll<HTMLButtonElement>('[data-material]')].find(
-    (candidate) => candidate.textContent === name
+/**
+ * U67: the project detail dialog's permission tab is the only project-grant
+ * entry — open it for the named workbench row.
+ */
+async function openPermTab(page: WebConsolePage, name: string): Promise<void> {
+  const row = [...page.window.document.querySelectorAll<HTMLElement>('#content tbody tr')].find(
+    (candidate) => candidate.textContent?.includes(name)
   )
-  assert.ok(button, `the members page must list ${name}`)
-  button.click()
+  assert.ok(row, `the workbench must list ${name}`)
+  const detail = [...row.querySelectorAll<HTMLButtonElement>('button')].find(
+    (candidate) => candidate.textContent?.trim() === '详情'
+  )
+  assert.ok(detail, 'the admin row must carry the 详情 entry')
+  detail.click()
+  await page.settle()
+  const tab = page.window.document.querySelector<HTMLButtonElement>(
+    '.dialog-backdrop [data-auth-tab="perms"]'
+  )
+  assert.ok(tab, 'the detail dialog must offer the 权限 tab')
+  tab.click()
   await page.settle()
 }
 
-test('W2-M-1 授予/移除失败时提示且矩阵不被误刷新', async () => {
+/** The card element inside the open permission tab. */
+function permCard(page: WebConsolePage, key: string): HTMLElement {
+  const card = page.window.document.querySelector<HTMLElement>(
+    `[data-perm-cards] > [data-card="${key}"]`
+  )
+  assert.ok(card, `the permission tab must render the ${key} card`)
+  return card
+}
+
+/** The remove button of the chip naming `label` inside one card. */
+function chipX(card: HTMLElement, label: string): HTMLButtonElement {
+  const chip = [...card.querySelectorAll<HTMLElement>('.perm-chip')].find((candidate) =>
+    candidate.textContent?.includes(label)
+  )
+  assert.ok(chip, `the ${card.dataset.card} card must carry a chip for ${label}`)
+  return chip.querySelector<HTMLButtonElement>('.perm-chip-x')!
+}
+
+/**
+ * The detail dialog stays open under its confirmations, so confirmations must
+ * be driven through the top-most `.dialog`, never the first match.
+ */
+function topDialog(page: WebConsolePage): HTMLElement {
+  const dialogs = [
+    ...page.window.document.querySelectorAll<HTMLElement>('.dialog-backdrop .dialog')
+  ]
+  assert.ok(dialogs.length > 0, 'a dialog must be open')
+  return dialogs[dialogs.length - 1]
+}
+
+function confirmTopDialog(page: WebConsolePage): void {
+  topDialog(page).querySelector<HTMLButtonElement>('[data-action="0"]')!.click()
+}
+
+test('W2-M-1 授予/移除失败时提示且权限页签不被误刷新', async () => {
   const projectId = 'proj_payment'
   const grantsPath = `/v1/projects/${projectId}/grants`
   const before = await adminApi(grantsPath)
@@ -467,78 +514,96 @@ test('W2-M-1 授予/移除失败时提示且矩阵不被误刷新', async () => 
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
-  await page.clickNav('members')
-  await openGrantPanel(page, 'payment-service')
+  await openPermTab(page, 'payment-service')
   const loads = matrixLoads(page, projectId)
+  const card = permCard(page, 'view')
+  const subject = card.querySelector<HTMLInputElement>('[data-perm-subject]')!
+  const type = card.querySelector<HTMLSelectElement>('[data-perm-type]')!
+  const add = card.querySelector<HTMLButtonElement>('[data-perm-add]')!
 
   // A mistyped user name is refused by the platform: the console used to swallow
-  // it and leave the admin staring at an unchanged matrix (W2 audit M-1).
-  page.window.document.querySelector<HTMLInputElement>('#grantSubject')!.value = 'no-such-user'
-  page.window.document.querySelector<HTMLSelectElement>('#grantType')!.value = 'user'
-  page.window.document.querySelector<HTMLButtonElement>('#grantAdd')!.click()
+  // it and leave the admin staring at an unchanged panel (W2 audit M-1).
+  subject.value = 'no-such-user'
+  type.value = 'user'
+  add.click()
   await page.settle()
 
   const refusal = lastToast(page)
   assert.match(refusal, /授予失败/, 'the refusal must be reported in the page')
   assert.match(refusal, /用户不存在/, 'the toast must carry the platform reason')
   assert.equal(
+    subject.value,
+    'no-such-user',
+    'the typed subject survives the refusal for correction'
+  )
+  assert.equal(
     matrixLoads(page, projectId),
     loads,
-    'a refused grant must not redraw the matrix as if it landed'
+    'a refused grant must not redraw the panel as if it landed'
   )
   const afterRefusal = await adminApi(grantsPath)
   assert.equal(afterRefusal.body.grants.length, baseline, 'no row may be added for the unknown user')
-  assert.equal(
-    afterRefusal.body.grants.some((g: GrantRow) => g.subjectId === 'no-such-user'),
-    false,
-    'the unknown name must not be stored'
-  )
 
   // The happy path still reports and refreshes, so the guard cannot hide success.
-  page.window.document.querySelector<HTMLInputElement>('#grantSubject')!.value = 'zhangsan'
-  page.window.document.querySelector<HTMLSelectElement>('#grantType')!.value = 'user'
-  page.window.document.querySelector<HTMLButtonElement>('#grantAdd')!.click()
+  subject.value = 'zhangsan'
+  add.click()
   await page.settle()
-  assert.match(lastToast(page), /已授予/)
-  assert.equal(matrixLoads(page, projectId), loads + 1, 'a landed grant must refresh the matrix')
-  assert.ok(rowFor(page, 'zhangsan').querySelector('[data-remove]'), 'the new row must be removable')
+  assert.match(lastToast(page), /已保存「查看」授权：查看/)
+  assert.equal(matrixLoads(page, projectId), loads + 1, 'a landed grant refreshes the tab')
+  // The landed grant re-rendered the holder: re-query instead of the stale node.
+  const stored = (await adminApi(grantsPath)).body.grants.find(
+    (g: GrantRow) => g.username === 'zhangsan'
+  )
+  assert.deepEqual(
+    [...stored.permissions].sort(),
+    ['file:read', 'open'],
+    'the 查看 card writes exactly its two bits'
+  )
+  const refreshedCard = permCard(page, 'view')
+  assert.equal(chipX(refreshedCard, 'zhangsan').disabled, false, 'the new chip is removable')
 
-  // Same for a removal that does not land.
+  // Same for a removal that does not land: empty remainder asks, then refuses.
   page.fail('PUT', grantsPath)
-  rowFor(page, 'zhangsan').querySelector<HTMLButtonElement>('[data-remove]')!.click()
+  chipX(refreshedCard, 'zhangsan').click()
+  await page.settle()
+  assert.match(topDialog(page).textContent ?? '', /≤60 秒/, 'the danger copy precedes the delete')
+  confirmTopDialog(page)
   await page.settle()
   assert.match(lastToast(page), /移除失败/, 'a failed removal must be reported')
   assert.equal(
     matrixLoads(page, projectId),
     loads + 1,
-    'a failed removal must not redraw the matrix'
+    'a failed removal must not redraw the panel'
   )
-  const afterFailedRemove = await adminApi(grantsPath)
   assert.equal(
-    afterFailedRemove.body.grants.some((g: GrantRow) => g.username === 'zhangsan'),
+    (await adminApi(grantsPath)).body.grants.some((g: GrantRow) => g.username === 'zhangsan'),
     true,
     'the grant must survive a failed removal'
   )
 
   page.clearFails()
-  rowFor(page, 'zhangsan').querySelector<HTMLButtonElement>('[data-remove]')!.click()
+  chipX(permCard(page, 'view'), 'zhangsan').click()
   await page.settle()
-  assert.match(lastToast(page), /已移除/)
-  const afterRemove = await adminApi(grantsPath)
+  const danger = topDialog(page)
+  assert.match(danger.textContent ?? '', /移除全部授权/, 'the row delete must be confirmed')
+  assert.match(danger.textContent ?? '', /≤60 秒/, 'the danger copy carries the FR-1.7 budget')
+  confirmTopDialog(page)
+  await page.settle()
+  assert.match(lastToast(page), /已移除该主体的全部授权/)
   assert.equal(
-    afterRemove.body.grants.some((g: GrantRow) => g.username === 'zhangsan'),
+    (await adminApi(grantsPath)).body.grants.some((g: GrantRow) => g.username === 'zhangsan'),
     false,
-    'a landed removal must drop the row'
+    'a landed removal drops the row'
   )
   record(
     'W2-M-1',
-    '授予未知用户 400 → toast 授予失败：用户不存在，矩阵不刷新且无新行；移除失败同样提示，成功路径照常刷新'
+    '授予未知用户 400 → toast 授予失败：用户不存在，页签不刷新且无新行；移除失败同样提示，成功路径照常刷新'
   )
   saveEvidence('w2-m1-fix', 'm1-grant-refusal.json', {
-    finding: 'W2 audit M-1',
-    refusedGrant: '授予失败：用户不存在。 + 矩阵不刷新、无新行',
-    failedRemoval: '移除失败：模拟平台故障 + 矩阵不刷新、行保留',
-    happyPath: '已授予/已移除 + 矩阵刷新'
+    finding: 'W2 audit M-1 (U67 permission tab entry)',
+    refusedGrant: '授予失败：用户不存在。 + 页签不刷新、无新行、输入保留',
+    failedRemoval: '移除失败：模拟平台故障 + 页签不刷新、行保留',
+    happyPath: '已保存「查看」授权 / 已移除该主体的全部授权 + 刷新'
   })
 }, 120_000)
 
@@ -548,7 +613,7 @@ test('W2-m-2 无主用户授权行标记已删除用户且不可移除', async (
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
 
-  // A pre-fix matrix stores user rows keyed by whatever was typed; the platform
+  // A pre-fix store keeps user rows keyed by whatever was typed; the platform
   // cannot resolve them any more, so GET /grants returns them without a username.
   page.fail('GET', `/v1/projects/${projectId}/grants`, {
     status: 200,
@@ -556,25 +621,39 @@ test('W2-m-2 无主用户授权行标记已删除用户且不可移除', async (
       grants: [
         { projectId, subjectType: 'group', subjectId: 'team-payment', permissions: ['open'] },
         { projectId, subjectType: 'user', subjectId: 'lsii', permissions: ['open'] },
-        { projectId, subjectType: 'user', subjectId: 'user_live', username: 'zhangsan', permissions: ['open'] }
+        {
+          projectId,
+          subjectType: 'user',
+          subjectId: 'user_live',
+          username: 'zhangsan',
+          permissions: ['open']
+        }
       ]
     }
   })
-  await page.clickNav('members')
-  await openGrantPanel(page, 'payment-service')
+  await openPermTab(page, 'payment-service')
+  const card = permCard(page, 'view')
 
-  const dead = rowFor(page, 'lsii')
-  assert.match(dead.textContent ?? '', /已删除用户/, 'a user row without an account must be labelled')
+  const dead = chipX(card, 'lsii')
+  assert.match(
+    dead.closest('.perm-chip')?.textContent ?? '',
+    /已删除用户/,
+    'a user row without an account must be labelled'
+  )
   assert.equal(
-    dead.querySelector<HTMLButtonElement>('[data-remove]')?.disabled,
+    dead.disabled,
     true,
     'the platform would refuse to clear that row'
   )
-  const alive = rowFor(page, 'zhangsan')
-  assert.doesNotMatch(alive.textContent ?? '', /已删除用户/)
-  assert.equal(alive.querySelector<HTMLButtonElement>('[data-remove]')?.disabled, false)
-  const group = rowFor(page, 'team-payment')
-  assert.doesNotMatch(group.textContent ?? '', /已删除用户/, 'only user rows can be dead')
+  const alive = chipX(card, 'zhangsan')
+  assert.doesNotMatch(alive.closest('.perm-chip')?.textContent ?? '', /已删除用户/)
+  assert.equal(alive.disabled, false)
+  const group = chipX(card, 'team-payment')
+  assert.doesNotMatch(
+    group.closest('.perm-chip')?.textContent ?? '',
+    /已删除用户/,
+    'only user rows can be dead'
+  )
   page.clearFails()
   saveEvidence('w2-m1-fix', 'm2-dead-row.json', {
     finding: 'W2 audit m-2',
@@ -654,51 +733,56 @@ test('R5-② 工作台/我的项目默认排除归档项目，归档行有徽标
   })
 }, 120_000)
 
-test('R5-③ 重复添加授权先确认覆盖，确认后才 PUT', async () => {
+test('R5-③ 重复添加授权先弹覆盖确认（级别并入），确认后才 PUT', async () => {
   const projectId = 'proj_payment'
   const grantsPath = `/v1/projects/${projectId}/grants`
-  // Seed a wide row so the overwrite visibly drops bits (open + file:read → open).
+  // Seed a control-only row so the 查看 add visibly unions a new level in.
   const seeded = await adminApi(grantsPath, {
     method: 'PUT',
-    body: JSON.stringify({ subjectType: 'user', subjectId: 'zhangsan', permissions: ['open', 'file:read'] })
+    body: JSON.stringify({ subjectType: 'user', subjectId: 'zhangsan', permissions: ['terminal'] })
   })
   assert.equal(seeded.status, 200, JSON.stringify(seeded.body))
 
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
-  await page.clickNav('members')
-  await openGrantPanel(page, 'payment-service')
+  await openPermTab(page, 'payment-service')
   const putsBefore = page.calls().filter((call) => call === `PUT ${grantsPath}`).length
+  const card = permCard(page, 'view')
+  const subject = card.querySelector<HTMLInputElement>('[data-perm-subject]')!
+  const type = card.querySelector<HTMLSelectElement>('[data-perm-type]')!
 
-  page.window.document.querySelector<HTMLInputElement>('#grantSubject')!.value = 'zhangsan'
-  page.window.document.querySelector<HTMLSelectElement>('#grantType')!.value = 'user'
-  page.window.document.querySelector<HTMLButtonElement>('#grantAdd')!.click()
+  subject.value = 'zhangsan'
+  type.value = 'user'
+  card.querySelector<HTMLButtonElement>('[data-perm-add]')!.click()
   await page.settle()
 
-  const dialog = page.window.document.querySelector<HTMLElement>('.dialog')
-  assert.ok(dialog, 'duplicate subject must open a confirmation dialog')
-  assert.match(dialog.textContent ?? '', /覆盖现有权限位/)
-  assert.match(dialog.textContent ?? '', /open \+ file:read → open/)
+  const dialog = topDialog(page)
+  assert.match(dialog.textContent ?? '', /覆盖现有授权/, 'an existing subject must confirm first')
+  assert.match(dialog.textContent ?? '', /级别：控制 → 查看\+控制/)
   assert.equal(
     page.calls().filter((call) => call === `PUT ${grantsPath}`).length,
     putsBefore,
     'the overwrite must not reach the platform before confirmation'
   )
 
-  dialog.querySelector<HTMLButtonElement>('[data-action="0"]')!.click()
+  confirmTopDialog(page)
   await page.settle()
   assert.equal(
     page.calls().filter((call) => call === `PUT ${grantsPath}`).length,
     putsBefore + 1,
-    'confirming sends exactly one overwrite PUT'
+    'confirming sends exactly one union PUT'
   )
   const after = await adminApi(grantsPath)
   const row = after.body.grants.find((g: GrantRow) => g.username === 'zhangsan')
-  assert.deepEqual([...row.permissions].sort(), ['open'], 'the confirmed overwrite applies the default open')
+  assert.deepEqual(
+    [...row.permissions].sort(),
+    ['file:read', 'open', 'terminal'],
+    'the confirmed add unions the card bits into the row'
+  )
   saveEvidence('r2r5-fix', 'r5-grant-overwrite-confirm.json', {
-    finding: 'U53④ silent downgrade on duplicate subject',
-    dialog: '覆盖现有权限位（当前 open + file:read → open）',
+    finding: 'U53④ overwrite on duplicate subject (U67 card semantics: union)',
+    dialog: '覆盖现有授权（级别：控制 → 查看+控制，open + file:read 并入）',
     after: row.permissions
   })
 }, 120_000)

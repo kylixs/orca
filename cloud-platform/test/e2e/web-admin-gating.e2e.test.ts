@@ -45,7 +45,8 @@ test('AC-18 开发者登录 Web 前端：管理导航隐藏，直达管理路由
   // ---- navigation is hidden, not merely disabled ----
   assert.equal(page.hidden('#adminNav'), true, 'the admin nav group must be hidden')
   const visibleAdminLinks: string[] = []
-  for (const route of ['hosts', 'relays', 'members', 'audit', 'settings']) {
+  // U67 removed the members page; the remaining admin routes stay guarded.
+  for (const route of ['hosts', 'relays', 'audit', 'settings']) {
     const button = page.window.document.querySelector<HTMLElement>(
       `.nav-item[data-route="${route}"]`
     )

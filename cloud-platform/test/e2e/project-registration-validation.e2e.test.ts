@@ -38,6 +38,20 @@ function auth(token: string): Record<string, string> {
   return { 'content-type': 'application/json', authorization: `Bearer ${token}` }
 }
 
+/** U65/U67: self-service creation needs the host provision bit. */
+async function grantProvision(hostId: string): Promise<void> {
+  const res = await fetch(`${api.url}/v1/hosts/${hostId}/grants`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${adminToken}` },
+    body: JSON.stringify({
+      subjectType: 'group',
+      subjectId: 'developers',
+      permissions: ['provision']
+    })
+  })
+  assert.equal(res.status, 200, await res.text())
+}
+
 async function beat(host: { id: string; credential: string }): Promise<void> {
   const res = await fetch(`${api.url}/v1/hosts/${host.id}/heartbeat`, {
     method: 'POST',
@@ -109,6 +123,7 @@ before(async () => {
     projectsRoot: '/srv/regval-online'
   })
   onlineHost = { id: online.hostId, credential: online.credential }
+  await grantProvision(online.hostId)
   const idle = await registerHost({
     apiUrl: api.url,
     adminToken,
@@ -118,6 +133,7 @@ before(async () => {
     projectsRoot: '/srv/regval-idle'
   })
   idleHost = { id: idle.hostId, credential: idle.credential }
+  await grantProvision(idle.hostId)
   // The idle host never beats again: past the window it is offline for good.
   await new Promise((resolve) => setTimeout(resolve, OFFLINE_WINDOW_MS + 300))
   await beat(onlineHost)

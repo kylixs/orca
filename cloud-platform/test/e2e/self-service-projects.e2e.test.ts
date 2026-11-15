@@ -42,6 +42,19 @@ function errorCode(body: unknown): string | null {
   return error?.code ?? null
 }
 
+/**
+ * U65/U67: self-service creation needs the host `provision` bit, so the
+ * fixture grants it to zhangsan's own group on every host it registers.
+ */
+async function grantProvision(hostId: string): Promise<void> {
+  const res = await fetch(`${api.url}/v1/hosts/${hostId}/grants`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', ...auth(adminToken) },
+    body: JSON.stringify({ subjectType: 'group', subjectId: 'developers', permissions: ['provision'] })
+  })
+  assert.equal(res.status, 200, await res.text())
+}
+
 function visibleIds(body: unknown): string[] {
   return ((body as { projects?: { id: string }[] }).projects ?? []).map((project) => project.id)
 }
@@ -83,6 +96,7 @@ describe('M59 开发者自助创建云端项目（真实平台进程）', () => 
       projectsRoot: '/srv/projects'
     })
     firstHostId = host.hostId
+    await grantProvision(host.hostId)
 
     const result = await createSelfService(devToken, {
       name: 'Self Service Demo',
@@ -167,21 +181,22 @@ describe('M59 开发者自助创建云端项目（真实平台进程）', () => 
       }[]
     }
     const first = body.hosts.find((host) => host.id === firstHostId)
-    // AA2 adds provisionAllowed; an absent policy is open, so pre-grant behaviour holds.
+    // provisionAllowed follows the granted provision bit; accessLevel is additive.
     assert.deepEqual(first, {
       id: firstHostId,
       name: 'dev-m59-a',
       online: true,
       provisionable: true,
       projectDirs: [],
-      provisionAllowed: true
+      provisionAllowed: true,
+      accessLevel: null
     })
     const seeded = body.hosts.find((host) => host.id === 'host_dev001')
     assert.equal(seeded?.provisionable, false)
   })
 
   test('多台合格主机且未指定 hostId 返回 409 HOST_REQUIRED（附主机列表）', async () => {
-    await registerHost({
+    const second = await registerHost({
       apiUrl: api.url,
       adminToken,
       name: 'dev-m59-b',
@@ -189,6 +204,7 @@ describe('M59 开发者自助创建云端项目（真实平台进程）', () => 
       relayTarget: '127.0.0.1:9',
       projectsRoot: '/srv/projects-b'
     })
+    await grantProvision(second.hostId)
     const result = await createSelfService(devToken, {
       name: 'Ambiguous Host',
       dir: 'ambiguous-host',
@@ -226,6 +242,7 @@ describe('M59 开发者自助创建云端项目（真实平台进程）', () => 
       relayTarget: '127.0.0.1:9',
       projectsRoot: 'D:\\projects'
     })
+    await grantProvision(host.hostId)
     const result = await createSelfService(devToken, {
       name: 'Windows Layout',
       dir: 'windows-layout',

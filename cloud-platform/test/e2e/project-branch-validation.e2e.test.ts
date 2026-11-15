@@ -90,6 +90,17 @@ before(async () => {
     projectsRoot: '/srv/projects'
   })
   hostId = host.hostId
+  // U65/U67: self-service creation needs the host provision bit.
+  const granted = await fetch(`${api.url}/v1/hosts/${hostId}/grants`, {
+    method: 'PUT',
+    headers: auth(adminToken),
+    body: JSON.stringify({
+      subjectType: 'group',
+      subjectId: 'developers',
+      permissions: ['provision']
+    })
+  })
+  assert.equal(granted.status, 200, await granted.text())
   const created = await createProject(adminToken, {
     key: 'w120-branch-fix',
     name: 'Branch Validation',
