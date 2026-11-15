@@ -1,10 +1,13 @@
+// Why: initialize the real store before the slice fixture helpers; their import
+// cycle through the skills client otherwise evaluates createRepoSlice too late.
+import '@/store'
 /**
  * The seeding predicate answers one question for both remote flavors: does some other party own
  * terminal creation for this workspace right now? Three answers, and only `none` seeds.
  */
 import { describe, expect, it, vi } from 'vitest'
 import type * as AgentStatusModule from '@/lib/agent-status'
-import { createTestStore, makeWorktree } from '@/store/slices/store-test-helpers'
+import { createTestStore, makeWorktree, TEST_REPO } from '@/store/slices/store-test-helpers'
 import { ensureWorktreeHasInitialTerminal } from '@/lib/worktree-initial-terminal-seeding'
 import { resolveWorkspaceTerminalHostAuthority } from '@/lib/workspace-terminal-host-authority'
 
@@ -19,8 +22,10 @@ type TestStore = ReturnType<typeof createTestStore>
 const LOCAL_WORKTREE_ID = 'repoLocal::/home/dev/proj/feature'
 const SSH_WORKTREE_ID = 'repoSsh::/srv/proj/feature'
 const PAIRED_WORKTREE_ID = 'repoPaired::/srv/proj/paired'
+const CLOUD_WORKTREE_ID = 'repoCloud::/srv/proj/cloud'
 const TARGET_ID = 'ssh-target-1'
 const ENVIRONMENT_ID = 'runtime-env-1'
+const CLOUD_ENVIRONMENT_ID = 'env-cloud'
 
 function repo(id: string, path: string, connectionId?: string): never {
   return {
@@ -44,6 +49,49 @@ function seedLocal(store: TestStore): void {
           path: '/home/dev/proj/feature',
           hostId: 'local'
         } as never)
+      ]
+    }
+  })
+}
+
+function seedCloud(store: TestStore): void {
+  store.setState({
+    runtimeEnvironments: [
+      {
+        id: CLOUD_ENVIRONMENT_ID,
+        name: 'payment',
+        createdAt: 1,
+        updatedAt: 1,
+        lastUsedAt: null,
+        runtimeId: 'runtime-1',
+        endpoints: [
+          { id: 'ws-cloud', kind: 'websocket', label: 'WS', endpoint: 'ws://example.invalid' }
+        ],
+        preferredEndpointId: 'ws-cloud',
+        cloudProject: {
+          projectId: 'proj_1',
+          projectKey: 'payment',
+          hostId: 'host_1',
+          registeredAt: 1
+        }
+      }
+    ],
+    repos: [
+      {
+        ...TEST_REPO,
+        id: 'repoCloud',
+        path: '/srv/proj',
+        executionHostId: `runtime:${CLOUD_ENVIRONMENT_ID}`
+      }
+    ],
+    worktreesByRepo: {
+      repoCloud: [
+        makeWorktree({
+          id: CLOUD_WORKTREE_ID,
+          repoId: 'repoCloud',
+          path: '/srv/proj/cloud',
+          hostId: `runtime:${CLOUD_ENVIRONMENT_ID}`
+        })
       ]
     }
   })
@@ -84,6 +132,16 @@ describe('workspace terminal seeding authority', () => {
     // A second activation pass must not add another.
     ensureWorktreeHasInitialTerminal(store.getState(), LOCAL_WORKTREE_ID)
     expect(terminalTabCount(store, LOCAL_WORKTREE_ID)).toBe(1)
+  })
+
+  it('seeds a client-owned terminal for a cloud session, whose host supplies no tab surfaces', () => {
+    const store = createTestStore()
+    seedCloud(store)
+
+    // Why: the cloud host refuses session.tabs.*, so its worktree must not wait for a mirror.
+    expect(resolveWorkspaceTerminalHostAuthority(store.getState(), CLOUD_WORKTREE_ID)).toBe('none')
+    expect(ensureWorktreeHasInitialTerminal(store.getState(), CLOUD_WORKTREE_ID)).toBeTruthy()
+    expect(terminalTabCount(store, CLOUD_WORKTREE_ID)).toBe(1)
   })
 
   it('distinguishes an unanswered SSH host from one that answered with nothing', () => {

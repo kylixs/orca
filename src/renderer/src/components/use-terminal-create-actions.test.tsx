@@ -16,8 +16,12 @@ const mocks = vi.hoisted(() => ({
     provider: 'local-client'
   } as ClientCreationActionAvailability,
   state: {} as Record<string, unknown>,
+  // Empty string = no runtime; each test swaps in a real id.
+  runtimeEnvironmentId: '',
   toastError: vi.fn(),
   createBrowserTab: vi.fn(),
+  createTab: vi.fn(() => ({ id: 'tab-1' })),
+  createWebRuntimeSessionTerminal: vi.fn(),
   openNewBrowserTabInActiveWorkspace: vi.fn(),
   openMobileEmulatorTab: vi.fn()
 }))
@@ -35,8 +39,9 @@ vi.mock('@/lib/client-creation-action-policy', () => ({
 vi.mock('@/lib/focus-terminal-tab-surface', () => ({ focusTerminalTabSurface: vi.fn() }))
 vi.mock('@/runtime/web-runtime-session', () => ({
   createWebRuntimeSessionBrowserTab: vi.fn(),
-  createWebRuntimeSessionTerminal: vi.fn(),
-  isWebRuntimeSessionActive: () => false
+  createWebRuntimeSessionTerminal: (...args: unknown[]) =>
+    mocks.createWebRuntimeSessionTerminal(...args),
+  isWebRuntimeSessionActive: () => Boolean(mocks.runtimeEnvironmentId)
 }))
 vi.mock('@/lib/open-mobile-emulator-tab', () => ({
   openMobileEmulatorTab: (...args: unknown[]) => mocks.openMobileEmulatorTab(...args)
@@ -51,17 +56,18 @@ vi.mock('@/runtime/remote-browser-tab-ownership', () => ({
 vi.mock('./tab-bar/tab-create-entry-action', () => ({ openTabBarEntry: vi.fn() }))
 vi.mock('@/i18n/i18n', () => ({ translate: (_key: string, fallback: string) => fallback }))
 vi.mock('./terminal-workspace-model', () => ({
-  getActiveWorktreeRuntimeEnvironmentId: () => null
+  getActiveWorktreeRuntimeEnvironmentId: () => mocks.runtimeEnvironmentId
 }))
 
 const WORKTREE_ID = 'repo-1::/repo/worktree'
 
 function renderActions() {
   return renderHook(() =>
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the hook reads only the creation callbacks this adapter supplies.
     useTerminalCreateActions({
       activeWorktreeId: WORKTREE_ID,
       createBrowserTab: mocks.createBrowserTab,
-      createTab: vi.fn(),
+      createTab: mocks.createTab,
       openNewBrowserTabInActiveWorkspace: mocks.openNewBrowserTabInActiveWorkspace,
       openNewMarkdownInActiveWorkspace: vi.fn(),
       openNewTerminalTabInActiveWorkspace: vi.fn(),
@@ -74,14 +80,56 @@ function renderActions() {
 describe('useTerminalCreateActions creation gates', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.runtimeEnvironmentId = ''
     mocks.browserAvailability = { state: 'enabled', provider: 'local-client' }
     mocks.simulatorAvailability = { state: 'enabled', provider: 'local-client' }
     mocks.state = {
       activeGroupIdByWorktree: {},
       groupsByWorktree: {},
       browserDefaultUrl: 'about:blank',
-      browserTabsByWorktree: { [WORKTREE_ID]: [{ id: 'browser-1', url: 'https://example.com' }] }
+      browserTabsByWorktree: { [WORKTREE_ID]: [{ id: 'browser-1', url: 'https://example.com' }] },
+      tabsByWorktree: { [WORKTREE_ID]: [{ id: 'tab-1' }] },
+      tabBarOrderByWorktree: {},
+      openFiles: []
     }
+  })
+
+  it('creates a client-owned terminal tab on a cloud-session environment', () => {
+    mocks.runtimeEnvironmentId = 'env-cloud'
+    mocks.state.runtimeEnvironments = [
+      {
+        id: 'env-cloud',
+        name: 'payment',
+        cloudProject: {
+          projectId: 'proj_1',
+          projectKey: 'payment',
+          hostId: 'host_1',
+          registeredAt: 1
+        }
+      }
+    ]
+
+    renderActions().handleNewTab()
+
+    // Why: the cloud host refuses session.tabs.*; the pane spawns this tab with terminal.create.
+    expect(mocks.createWebRuntimeSessionTerminal).not.toHaveBeenCalled()
+    expect(mocks.createTab).toHaveBeenCalledWith(WORKTREE_ID, undefined, undefined)
+  })
+
+  it('still delegates terminal creation to a paired native runtime host', () => {
+    mocks.runtimeEnvironmentId = 'env-native'
+    mocks.state.runtimeEnvironments = [{ id: 'env-native', name: 'Native' }]
+
+    renderActions().handleNewTab()
+
+    expect(mocks.createWebRuntimeSessionTerminal).toHaveBeenCalledWith({
+      worktreeId: WORKTREE_ID,
+      environmentId: 'env-native',
+      targetGroupId: undefined,
+      command: undefined,
+      activate: true
+    })
+    expect(mocks.createTab).not.toHaveBeenCalled()
   })
 
   it('toasts instead of creating a browser tab when the provider forbids it', () => {

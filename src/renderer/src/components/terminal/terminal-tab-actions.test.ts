@@ -127,6 +127,44 @@ describe('createNewTerminalTab', () => {
     expect(createTab).not.toHaveBeenCalled()
   })
 
+  it('keeps terminal creation client-owned on a cloud-session environment', () => {
+    const createTab = vi.fn(() => ({ id: 'tab-1' }))
+    const setActiveTabType = vi.fn()
+    const setTabBarOrder = vi.fn()
+    isWebRuntimeSessionActiveMock.mockReturnValue(true)
+    getStateMock
+      .mockReturnValueOnce({
+        settings: { activeRuntimeEnvironmentId: 'env-cloud' },
+        runtimeEnvironments: [
+          {
+            id: 'env-cloud',
+            name: 'payment',
+            cloudProject: {
+              projectId: 'proj_1',
+              projectKey: 'payment',
+              hostId: 'host_1',
+              registeredAt: 1
+            }
+          }
+        ],
+        createTab,
+        setActiveTabType,
+        setTabBarOrder
+      })
+      .mockReturnValueOnce({
+        tabsByWorktree: { 'wt-1': [{ id: 'tab-1' }] },
+        openFiles: [],
+        tabBarOrderByWorktree: {},
+        setTabBarOrder
+      })
+
+    createNewTerminalTab('wt-1')
+
+    // Why: the pane's remote transport spawns this client-owned tab with terminal.create.
+    expect(createTab).toHaveBeenCalledWith('wt-1', undefined, undefined, undefined)
+    expect(createWebRuntimeSessionTerminalMock).not.toHaveBeenCalled()
+  })
+
   it('creates local terminal tabs with a requested startup cwd', () => {
     const createTab = vi.fn(() => ({ id: 'tab-1' }))
     const setActiveTabType = vi.fn()

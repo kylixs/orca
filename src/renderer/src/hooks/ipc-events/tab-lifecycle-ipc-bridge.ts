@@ -1,5 +1,6 @@
 import { focusTerminalTabSurface } from '@/lib/focus-terminal-tab-surface'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
+import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 import {
   createWebRuntimeSessionTerminal,
   isWebRuntimeSessionActive
@@ -34,12 +35,17 @@ export function registerTabLifecycleIpcBridge(unsubs: (() => void)[]): void {
       }
       void (async () => {
         const environmentId = getWorktreeRuntimeEnvironmentId(worktreeId)
-        const outcome = await createWebRuntimeSessionTerminal({
-          worktreeId,
-          environmentId,
-          activate: true
-        })
-        if (outcome.status === 'created' || isWebRuntimeSessionActive(environmentId)) {
+        // Why: a cloud host refuses session.tabs.* (O1 F7), so its terminals stay client-owned
+        // and the pane spawns them with terminal.create.
+        if (
+          isWebRuntimeSessionActive(environmentId) &&
+          !isCloudSessionEnvironmentId(store.runtimeEnvironments, environmentId)
+        ) {
+          await createWebRuntimeSessionTerminal({
+            worktreeId,
+            environmentId,
+            activate: true
+          })
           return
         }
         const newTab = store.createTab(worktreeId)

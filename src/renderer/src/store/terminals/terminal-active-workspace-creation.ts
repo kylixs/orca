@@ -1,5 +1,6 @@
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import { parseWorkspaceKey } from '../../../../shared/workspace-scope'
+import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 import { focusTerminalTabSurface } from '@/lib/focus-terminal-tab-surface'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { resolveWorktreeOperationRouteResult } from '@/lib/worktree-operation-route'
@@ -28,7 +29,12 @@ export function createActiveWorkspaceTerminalActions(
       const runtimeEnvironmentId = worktreeRoute
         ? worktreeRoute.route.runtimeEnvironmentId
         : getRuntimeEnvironmentIdForWorktree(state, worktreeId)
-      if (runtimeEnvironmentId) {
+      // Why: a cloud host refuses session.tabs.* (O1 F7), so its terminals stay client-owned
+      // and the pane spawns them with terminal.create.
+      if (
+        runtimeEnvironmentId &&
+        !isCloudSessionEnvironmentId(state.runtimeEnvironments, runtimeEnvironmentId)
+      ) {
         const { createWebRuntimeSessionTerminal } = await import('@/runtime/web-runtime-session')
         await createWebRuntimeSessionTerminal({
           worktreeId,

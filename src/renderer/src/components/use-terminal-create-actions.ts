@@ -15,6 +15,7 @@ import { buildDuplicatedBrowserTabOptions } from '@/lib/duplicate-browser-tab-op
 import { browserWorkspaceHasRemoteOwner } from '@/runtime/remote-browser-tab-ownership'
 import { getClientCreationActionPolicy } from '@/lib/client-creation-action-policy'
 import { showClientCreationActionError } from '@/lib/client-creation-action-error'
+import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 import { openTabBarEntry, type TabCreateEntryArgs } from './tab-bar/tab-create-entry-action'
 import { translate } from '@/i18n/i18n'
 import { getActiveWorktreeRuntimeEnvironmentId } from './terminal-workspace-model'
@@ -40,7 +41,15 @@ export function useTerminalCreateActions(controller: TerminalColdActivationContr
         useAppStore.getState().activeGroupIdByWorktree[activeWorktreeId] ??
         useAppStore.getState().groupsByWorktree[activeWorktreeId]?.[0]?.id
       const runtimeEnvironmentId = getActiveWorktreeRuntimeEnvironmentId(activeWorktreeId)
-      if (isWebRuntimeSessionActive(runtimeEnvironmentId)) {
+      // Why: a cloud host refuses session.tabs.* (O1 F7), so its terminals stay client-owned
+      // and the pane spawns them with terminal.create.
+      if (
+        isWebRuntimeSessionActive(runtimeEnvironmentId) &&
+        !isCloudSessionEnvironmentId(
+          useAppStore.getState().runtimeEnvironments,
+          runtimeEnvironmentId
+        )
+      ) {
         void createWebRuntimeSessionTerminal({
           worktreeId: activeWorktreeId,
           environmentId: runtimeEnvironmentId,

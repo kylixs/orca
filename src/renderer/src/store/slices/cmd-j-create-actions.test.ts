@@ -1,3 +1,6 @@
+// Why: initialize the real store before the slice fixture helpers; their import
+// cycle through the skills client otherwise evaluates createRepoSlice too late.
+import '@/store'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import { folderWorkspaceKey } from '../../../../shared/workspace-scope'
@@ -281,6 +284,40 @@ describe('Cmd+J lifted creation actions', () => {
       activate: true
     })
     expect(store.getState().tabsByWorktree['wt-1'] ?? []).toEqual([])
+  })
+
+  it('keeps terminal creation client-owned on a cloud-session environment', async () => {
+    delete pairedWebFlag.__ORCA_WEB_CLIENT__
+    const store = createTestStore()
+    seedActiveWorkspace(store)
+    store.setState({
+      runtimeEnvironments: [
+        {
+          id: 'runtime-1',
+          name: 'payment',
+          createdAt: 1,
+          updatedAt: 1,
+          lastUsedAt: null,
+          runtimeId: 'runtime-1',
+          endpoints: [
+            { id: 'ws-cloud', kind: 'websocket', label: 'WS', endpoint: 'ws://example.invalid' }
+          ],
+          preferredEndpointId: 'ws-cloud',
+          cloudProject: {
+            projectId: 'proj_1',
+            projectKey: 'payment',
+            hostId: 'host_1',
+            registeredAt: 1
+          }
+        }
+      ]
+    })
+
+    await store.getState().openNewTerminalTabInActiveWorkspace('group-1')
+
+    // Why: a cloud host refuses session.tabs.*; the pane spawns this tab with terminal.create.
+    expect(createWebRuntimeSessionTerminalMock).not.toHaveBeenCalled()
+    expect(store.getState().tabsByWorktree['wt-1'] ?? []).toHaveLength(1)
   })
 
   it('fails terminal creation closed for duplicate repo IDs owned by different HUBs', async () => {

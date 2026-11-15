@@ -11,6 +11,7 @@ import {
   endWebRuntimeWakeTerminalRespawn
 } from '@/runtime/web-runtime-wake-terminal-respawn'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
+import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 import type { WorktreeStartupPayload } from '@/lib/worktree-startup-payload'
 import type { TuiAgent } from '../../../shared/tui-agent'
 import { toast } from 'sonner'
@@ -35,6 +36,10 @@ export function ensureWebRuntimeWorktreeTerminalAfterWake(
       ? (opts.runtimeEnvironmentId ?? null)
       : getRuntimeEnvironmentIdForWorktree(state, worktreeId)
   if (!runtimeEnvironmentId || !isWebRuntimeSessionActive(runtimeEnvironmentId)) {
+    return
+  }
+  // Why: a cloud host refuses session.tabs.* (O1 F7); its terminals are seeded as client tabs.
+  if (isCloudSessionEnvironmentId(state.runtimeEnvironments, runtimeEnvironmentId)) {
     return
   }
 

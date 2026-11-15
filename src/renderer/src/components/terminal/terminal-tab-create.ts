@@ -1,4 +1,5 @@
 import { useAppStore } from '@/store'
+import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 import { reconcileTabOrder } from '../tab-bar/reconcile-order'
 import {
   createWebRuntimeSessionTerminal,
@@ -20,7 +21,12 @@ export function createNewTerminalTab(
     return
   }
   const runtimeEnvironmentId = worktreeRoute.runtimeEnvironmentId
-  if (isWebRuntimeSessionActive(runtimeEnvironmentId)) {
+  // Why: a cloud host refuses session.tabs.* (O1 F7), so its terminals stay client-owned
+  // and the pane spawns them with terminal.create.
+  if (
+    isWebRuntimeSessionActive(runtimeEnvironmentId) &&
+    !isCloudSessionEnvironmentId(state.runtimeEnvironments, runtimeEnvironmentId)
+  ) {
     // Why: paired web clients receive host-owned terminal tabs through
     // session.tabs. Creating a local tab first races the host snapshot and can
     // leave stale remote handles in the web store.

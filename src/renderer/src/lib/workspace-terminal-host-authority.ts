@@ -6,6 +6,7 @@ import { splitWorktreeId } from '../../../shared/worktree/id'
 import type { HostLiveTerminalProbeVerdict } from '@/runtime/host-live-terminal-probe'
 import type { RemoteWorkspaceSyncStatus } from '@/store/slices/ssh'
 import { isWebRuntimeSessionActive } from '@/runtime/web-runtime-session'
+import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 import {
   getExecutionHostIdForWorktree,
   getRuntimeEnvironmentIdForWorktree,
@@ -107,8 +108,13 @@ export function resolveWorkspaceTerminalHostAuthority(
   if (!worktreeId || worktreeId === FLOATING_TERMINAL_WORKTREE_ID) {
     return 'none'
   }
-  if (isWebRuntimeSessionActive(getRuntimeEnvironmentIdForWorktree(state, worktreeId))) {
-    return 'live'
+  const runtimeEnvironmentId = getRuntimeEnvironmentIdForWorktree(state, worktreeId)
+  if (isWebRuntimeSessionActive(runtimeEnvironmentId)) {
+    // Why: a cloud host refuses session.tabs.* (O1 F7), so it supplies no surfaces —
+    // this client's own tab rows are the truth and may seed.
+    return isCloudSessionEnvironmentId(state.runtimeEnvironments, runtimeEnvironmentId)
+      ? 'none'
+      : 'live'
   }
   const host = parseExecutionHostId(getExecutionHostIdForWorktree(state, worktreeId))
   if (host?.kind === 'runtime') {

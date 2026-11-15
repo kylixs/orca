@@ -13,6 +13,7 @@ import { openMobileEmulatorTab } from '@/lib/open-mobile-emulator-tab'
 import { ensureSimulatorTab, getSimulatorTabForWorktree } from '@/lib/ensure-simulator-tab'
 import { buildDuplicatedBrowserTabOptions } from '@/lib/duplicate-browser-tab-options'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
+import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 import { browserWorkspaceHasRemoteOwner } from '@/runtime/remote-browser-tab-ownership'
 import { getClientCreationActionPolicy } from '@/lib/client-creation-action-policy'
 import type { TabGroupWorktreeSnapshot } from './useTabGroupItemProjections'
@@ -150,15 +151,20 @@ export function useTabGroupCreationCommands({
     },
     newTerminalWithShell: (shellOverride: string) => {
       void (async () => {
-        const environmentId = getRuntimeEnvironmentIdForWorktree(useAppStore.getState(), worktreeId)
-        const outcome = await createWebRuntimeSessionTerminal({
-          worktreeId,
-          environmentId,
-          targetGroupId: groupId,
-          command: shellOverride,
-          activate: true
-        })
-        if (outcome.status === 'created' || isWebRuntimeSessionActive(environmentId)) {
+        const state = useAppStore.getState()
+        const environmentId = getRuntimeEnvironmentIdForWorktree(state, worktreeId)
+        // Why: a cloud host refuses session.tabs.* (O1 F7), so its terminals stay client-owned.
+        if (
+          isWebRuntimeSessionActive(environmentId) &&
+          !isCloudSessionEnvironmentId(state.runtimeEnvironments, environmentId)
+        ) {
+          await createWebRuntimeSessionTerminal({
+            worktreeId,
+            environmentId,
+            targetGroupId: groupId,
+            command: shellOverride,
+            activate: true
+          })
           return
         }
         const terminal = createTab(worktreeId, groupId, shellOverride)
