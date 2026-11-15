@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="color-scheme" content="light">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23171717'/%3E%3Cpath d='M9.5 22.5v-13h6.8a6.5 6.5 0 0 1 0 13H9.5Z' fill='none' stroke='%23fff' stroke-width='2.1'/%3E%3Cpath d='m17 9.5 5.5 13' fill='none' stroke='%23fff' stroke-width='2.1' stroke-linecap='round'/%3E%3C/svg%3E">
-<title>Orca Cloud 云端开发平台 · 高保真原型</title>
+<title>Orca Cloud 云端开发平台</title>
 <style>
 /* ============================================================
    Design tokens
@@ -546,7 +546,6 @@ svg { display: block; }
 .breadcrumbs .icon { width: 13px; height: 13px; color: #c4c4c4; flex: none; }
 .topbar-actions { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .role-demo { display: flex; align-items: center; gap: 7px; }
-.role-demo-label { font-size: 10.5px; color: var(--text-3); white-space: nowrap; }
 .segmented {
   height: 28px; padding: 2px;
   display: inline-flex; align-items: center;
@@ -1740,76 +1739,10 @@ svg { display: block; }
 .toast-title { font-weight: 500; }
 .toast-sub { margin-top: 1px; color: var(--text-3); font-size: 10.5px; }
 
-/* ============================================================
-   U65 · Host authorization semantics
-   ============================================================ */
-.proto-changelog { position: relative; flex: none; z-index: 60; font-size: 10.5px; }
-.proto-changelog > summary {
-  list-style: none; cursor: pointer;
-  display: inline-flex; align-items: center; gap: 6px;
-  height: 22px; padding: 0 9px;
-  border: 1px solid #dbeafe; border-radius: 999px;
-  background: var(--brand-soft); color: #1e40af;
-  white-space: nowrap;
-}
-.proto-changelog > summary::-webkit-details-marker { display: none; }
-.proto-changelog > summary .icon { width: 11px; height: 11px; }
-.proto-changelog[open] > summary { box-shadow: 0 0 0 1px #bfdbfe; }
-.proto-changelog-panel {
-  position: absolute; top: 30px; left: 0; z-index: 70;
-  width: 430px; padding: 11px 13px;
-  border: 1px solid var(--border); border-radius: 9px; background: #fff;
-  box-shadow: var(--shadow-popover); color: var(--text-2);
-  font-size: 11px; line-height: 1.65;
-}
-.login-revision {
-  position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 300;
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 4px 10px;
-  border: 1px solid var(--border); border-radius: 999px; background: #fff;
-  color: var(--text-3); font-size: 10.5px;
-}
-.login-revision .icon { width: 11px; height: 11px; }
-.proto-changelog-panel h4 { margin: 0 0 6px; font-size: 11.5px; color: var(--text); }
-.proto-changelog-panel ul { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 3px; }
-.proto-changelog-panel .changelog-date { color: var(--text-3); font-weight: 400; margin-left: 5px; }
-
+/* 原型修订面板/登录徽标已移除：修订与语义说明迁移至 ui/prototype-notes.md */
 .detail-section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
 .detail-section-head .detail-section-title { margin-bottom: 0; }
-.perm-level-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
-.perm-level-card {
-  display: flex; flex-direction: column; gap: 5px;
-  padding: 10px; text-align: left;
-  border: 1px solid var(--border); border-radius: 8px; background: #fff;
-  color: var(--text-2);
-  transition: border-color .15s ease, background-color .15s ease;
-}
-.perm-level-card:hover { border-color: #d4d4d4; background: var(--sidebar); }
-.perm-level-card.is-active { border-color: #bfdbfe; background: var(--brand-soft); box-shadow: 0 0 0 1px #bfdbfe inset; }
-.perm-level-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--text); }
-.perm-level-card.is-active .perm-level-head { color: #1d4ed8; }
-.perm-level-desc { font-size: 10.5px; line-height: 1.5; color: var(--text-3); }
-.perm-level-tags { font-family: var(--mono); font-size: 9.5px; color: var(--text-3); letter-spacing: -.01em; }
-.perm-level-card.is-active .perm-level-tags { color: #2563eb; }
-.perm-bit-list { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 8px; margin-top: 10px; overflow: hidden; }
-.perm-bit { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border-bottom: 1px solid var(--divider); }
-.perm-bit:last-child { border-bottom: 0; }
-.perm-bit.is-off .perm-bit-name { color: var(--text-3); }
-.perm-bit.is-off .perm-bit-scope { color: var(--text-disabled); }
-.perm-bit-name { font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--text); width: 70px; flex: none; }
-.perm-bit-scope { flex: 1; min-width: 0; font-size: 10.5px; color: var(--text-3); line-height: 1.5; }
-.perm-bit input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-.perm-switch { position: relative; width: 28px; height: 16px; flex: none; border-radius: 999px; background: #d4d4d4; transition: background-color .15s ease; }
-.perm-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: transform .15s ease; }
-.perm-bit input:checked + .perm-switch { background: var(--brand); }
-.perm-bit input:checked + .perm-switch::after { transform: translateX(12px); }
-.perm-bit input:focus-visible + .perm-switch { outline: 2px solid rgba(37, 99, 235, .65); outline-offset: 2px; }
-.perm-derived { margin-top: 10px; }
-.host-grant-subjects { margin-top: 10px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-.host-grant-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--divider); font-size: 11.5px; color: var(--text-2); }
-.host-grant-row:last-child { border-bottom: 0; }
-.host-grant-row .grant-subject { flex: 1; min-width: 0; color: var(--text); font-weight: 500; }
-.host-grant-row .grant-subject small { display: block; font-family: var(--mono); font-weight: 400; font-size: 9.5px; color: var(--text-3); }
+/* U65 级别选择器 / 逐位开关样式已随「纯角色授权」模型移除（映射说明见 ui/prototype-notes.md） */
 
 /* [U67] 详情弹框 tab 化（信息 | 权限） */
 .detail-tabs {
@@ -1994,10 +1927,7 @@ svg { display: block; }
 </svg>
 
 <div class="login-screen" id="loginScreen">
-  <div class="login-revision">
-    <svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>
-    原型修订 · 2026-11-15 · U66 审计增强 + U65 主机授权
-  </div>
+  <!-- 原型修订徽标已移除：修订记录见 ui/prototype-notes.md -->
   <div class="login-card">
     <div class="login-brand">
       <div class="login-brand-row">
@@ -2084,10 +2014,6 @@ svg { display: block; }
         <span>中继</span>
         <span class="nav-count">3</span>
       </button>
-      <button class="nav-item admin-only" data-route="members">
-        <svg class="icon" aria-hidden="true"><use href="#i-users"/></svg>
-        <span>成员与权限</span>
-      </button>
       <button class="nav-item admin-only" data-route="users">
         <svg class="icon" aria-hidden="true"><use href="#i-user"/></svg>
         <span>用户管理</span>
@@ -2121,36 +2047,7 @@ svg { display: block; }
       <div class="breadcrumbs" id="breadcrumbs">
         <span class="crumb is-current">工作台</span>
       </div>
-      <details class="proto-changelog" id="protoChangelog">
-        <summary><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>原型修订 · U67 授权三卡片 + 用户管理 · 2026-11-15</summary>
-        <div class="proto-changelog-panel">
-          <h4>U67 · 授权方案重构（设计稿 · 待评审） <span class="changelog-date">2026-11-15</span></h4>
-          <ul>
-            <li>主机详情抽屉 tab 化（信息 | 权限）：权限 tab 改为「查看 / 控制 / 管理」三卡片，每卡片=权限说明 + 主体 chips + 添加输入（目录 datalist）+ 移除；卡片↔权限位映射：查看=view、控制=view+provision、管理=provision+maintain（U65 语义矩阵，不新增权限语义）。原 U65 级别选择器 / 逐位开关被三卡片取代（收敛形态）。</li>
-            <li>新增项目详情弹框（工作台 / 我的项目行内「详情」，admin）：信息 | 权限双 tab；权限 tab 三卡片同构，项目级映射：查看=open+file:read、控制=terminal/agent/file:write/browser/download（下载仍受策略）、管理=主机授权推导只读视图（FR-9.11③ 不扩大）。</li>
-            <li>交互：添加 / 移除即时保存（PUT 整行替换），覆盖与整行删除弹确认（含 before→after 级别与 ≤60 秒断会话提示，FR-1.7）。</li>
-            <li>新增「用户管理」页（admin）：账号列表 + 平台角色下拉（普通 / 审计 / 管理员）；角色=平台级身份（管控面 / 审计面），与三卡片的资源授权分两层；角色变更写入 role_update 审计，按用户覆盖优先于 LDAP 同步。</li>
-            <li>成员与权限页收敛为跨项目只读总览：行内「移除」改「编辑」（跳项目详情弹框权限 tab），「添加成员」改「编辑授权 · 详情弹框」。</li>
-          </ul>
-          <h4>U66 · 审计增强 <span class="changelog-date">2026-11-15 · 按独立评审修订</span></h4>
-          <ul>
-            <li>关键字改为文件名 / 路径 / 账号 / 项目匹配；内容前缀需摘录开关开启（二期），默认关闭，不再承诺“全文匹配”。[U66-review B-1 M-9 m-13]</li>
-            <li>新增起止时间（默认最近 7 天、最大 31 天）、事件族快捷项、项目与主机分离筛选、结果三态（成功 / 失败 / 拒绝）。[U66-review M-2 M-3 m-2 m-6]</li>
-            <li>事件列表新增下载 / 复制类型徽标、可信度徽标（主机确认 / 客户端自报 / 推断）、复制字符与字节数、关键字命中高亮；复制记录默认显示“未记录内容摘录（仅保留指纹）”。[U66-review M-4 M-8 m-1 m-3 m-4]</li>
-            <li>新增可折叠「覆盖范围与限制」与缺口说明：审计链保证记录不被篡改，不保证记录完整。[U66-review M-4]</li>
-            <li>可见性说明改为：审计员 / 管理员可见全部事件；本人自查不在本期；摘录仅在开关开启时可见。[U66-review M-5]</li>
-            <li>下载拦截事件统一为 <span class="mono">download_blocked result=denied</span>；新增关键字 / 文件名长度校验提示。[U66-review M-1 m-5]</li>
-            <li>二轮修订（N-1/N-2/N-5/N-6）：<span class="mono">download_blocked</span> 端点权属 U65、本原型仅演示事件语义；下载入口 <span class="mono">downloadAllowed</span> 缺省 fail-closed；下载拦截行补类型徽标并保持客户端自报；文案改为“未产生下载 RPC”。[U66-review-r2]</li>
-          </ul>
-          <h4 style="margin-top:9px">U65 · 主机授权语义深化 <span class="changelog-date">2026-11-15</span></h4>
-          <ul>
-            <li>主机详情抽屉新增「权限分配」：全权 / 只读两档快捷级别 + 逐位自定义（provision / maintain / view）。</li>
-            <li>新增「只读用户 lisi」演示视角：项目可打开查看，工作区内编辑 / 终端 / Agent 入口置灰，无「新建项目」入口。</li>
-            <li>成员与权限页补充项目级授权说明：仅影响当前项目，不扩大到主机级；未授权项目不可见、不能创建。</li>
-            <li>下载入口按下载权限置灰：一期在 Web / 客户端前端拦截，服务端与宿主硬拦为二期。</li>
-          </ul>
-        </div>
-      </details>
+      <!-- U65/U66/U67 原型修订面板已移除：变更记录见 ui/prototype-notes.md -->
 
       <div class="topbar-actions">
         <div class="topbar-search" id="topbarSearchWrap">
@@ -2236,11 +2133,10 @@ svg { display: block; }
         <div class="topbar-sep"></div>
 
         <div class="role-demo">
-          <span class="role-demo-label">演示</span>
-          <div class="segmented" role="group" aria-label="切换演示角色">
+          <div class="segmented" role="group" aria-label="切换登录视角">
             <button data-role-switch="admin" class="is-active" aria-pressed="true">管理员</button>
             <button data-role-switch="developer" aria-pressed="false">开发者</button>
-            <button data-role-switch="readonly" aria-pressed="false" title="主机只读授权演示：李思（lisi）">只读 lisi</button>
+            <button data-role-switch="readonly" aria-pressed="false" title="李思（lisi）· 主机只读授权">只读 lisi</button>
           </div>
           <button class="role-preview-link" id="viewForbiddenBtn">查看无权限页</button>
         </div>
@@ -2608,218 +2504,10 @@ svg { display: block; }
   <span>中继只做 TCP 转发：按 TLS ClientHello 的 SNI 路由标签查表转发，不解析 Orca 协议、不解密、不做授权判定。路由表由平台单向同步，且只包含已注册开发机。</span>
 </div>
 </section>
-      <section class="page" data-page="members" hidden><div class="page-head">
-  <div>
-    <h1>项目授权</h1>
-    <p>管理项目成员、LDAP 组权限与项目级下载策略。所有变更都会记录审计日志。</p>
-  </div>
-  <div class="page-head-actions">
-    <span class="status status-success"><span class="dot dot-success"></span>策略实时生效</span>
-  </div>
-</div>
-
-<div class="auth-layout">
-  <aside class="card auth-project-list" aria-label="项目列表">
-    <div class="auth-list-head">
-      <span class="eyebrow">受管项目</span>
-      <span class="section-count" id="authProjectCount">4</span>
-    </div>
-    <div id="authProjectList"></div>
-    <div class="muted-note" style="padding:10px 9px 4px;font-size:10px">
-      <svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>
-      仅显示受管项目
-    </div>
-  </aside>
-
-  <div class="auth-detail">
-    <div class="auth-detail-head">
-      <div style="min-width:0">
-        <div class="auth-detail-title">
-          <span class="mono" id="authProjectTitle">payment-service</span>
-          <span class="badge badge-success" id="authProjectStatus"><span class="dot dot-success"></span>在线</span>
-        </div>
-        <div class="auth-repo" id="authProjectRepo">git@git.internal:pay/payment-service.git</div>
-      </div>
-      <div class="auth-detail-meta">
-        <span class="badge badge-mono" id="authProjectHost"><svg class="icon" style="width:11px;height:11px"><use href="#i-server"/></svg>dev-node-03</span>
-        <span class="badge"><svg class="icon" style="width:11px;height:11px"><use href="#i-users"/></svg><span id="authProjectOwner">结算研发组</span></span>
-        <span class="download-locked-chip" id="authDownloadChip" title="项目策略：禁止下载 · 一期前端入口拦截">
-          <svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>下载 · 已禁用
-        </span>
-      </div>
-    </div>
-
-    <div class="notice">
-      <svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>
-      <span><strong>项目授权仅影响当前项目</strong>：不会扩大到该项目所在主机或其它项目。只授权个别项目且没有主机权限时，未授权项目不可见，也不能在该主机上创建项目。</span>
-    </div>
-
-    <div class="notice">
-      <svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>
-      <span><strong>写入口收敛（U67 推荐）</strong>：授权的新增 / 移除 / 覆盖统一在<strong>项目详情弹框「权限」tab 的三卡片</strong>（查看 / 控制 / 管理）中操作；本页矩阵保留为跨项目只读总览，行内「编辑」跳转对应弹框。</span>
-    </div>
-
-    <section class="card" aria-labelledby="basicInfoTitle">
-      <div class="card-head">
-        <div>
-          <h2 class="card-title" id="basicInfoTitle">基本信息</h2>
-          <p class="card-subtitle">项目登记信息用于连接路由与审计归属。</p>
-        </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-secondary" id="resetBasicInfoBtn" type="button">重置</button>
-          <button class="btn btn-primary" id="saveBasicInfoBtn" type="button">保存</button>
-        </div>
-      </div>
-      <div class="card-body">
-        <form class="basic-grid" id="authBasicForm">
-          <div class="field">
-            <label class="field-label" for="authNameInput">项目名</label>
-            <input class="input" id="authNameInput" type="text" value="payment-service">
-          </div>
-          <div class="field">
-            <label class="field-label" for="authHostInput">主机</label>
-            <select class="select" id="authHostInput">
-              <option>dev-node-03</option>
-              <option>dev-node-01</option>
-              <option>dev-node-07</option>
-              <option>dev-node-04</option>
-              <option>dev-node-02</option>
-              <option>dev-node-09</option>
-            </select>
-          </div>
-          <div class="field field-full">
-            <label class="field-label" for="authRepoInput">仓库地址</label>
-            <input class="input mono" id="authRepoInput" type="text" value="git@git.internal:pay/payment-service.git" style="font-size:12px">
-          </div>
-          <div class="field field-full">
-            <label class="field-label" for="authPathInput">目标路径 <span class="optional">· 只读</span></label>
-            <div class="readonly-copy">
-              <input class="input mono" id="authPathInput" type="text" value="/srv/orca/projects/payment-service" readonly style="font-size:12px">
-              <button class="icon-btn icon-btn-sm copy-inline" id="copyAuthPathBtn" type="button" aria-label="复制路径" title="复制路径">
-                <svg class="icon icon-sm" aria-hidden="true"><use href="#i-copy"/></svg>
-              </button>
-            </div>
-          </div>
-          <div class="field">
-            <label class="field-label" for="authOwnerInput">负责人组</label>
-            <select class="select" id="authOwnerInput">
-              <option>结算研发组</option>
-              <option>电商研发组</option>
-              <option>风控研发组</option>
-              <option>财务研发组</option>
-              <option>前端研发组</option>
-              <option>数据平台组</option>
-            </select>
-          </div>
-          <div class="field">
-            <label class="field-label" for="authVisibleInput">可见组 <span class="optional">· 仅展示</span></label>
-            <input class="input" id="authVisibleInput" type="text" value="结算研发组、支付平台组" readonly style="font-size:12px">
-          </div>
-        </form>
-      </div>
-    </section>
-
-    <section class="card" aria-labelledby="membersTitle">
-      <div class="card-head">
-        <div>
-          <h2 class="card-title" id="membersTitle">成员与组 <span class="section-count" id="authMemberCount">5</span></h2>
-          <p class="card-subtitle">用户与组来自 LDAP 同步，权限按项目独立授予。</p>
-        </div>
-        <button class="btn btn-secondary" id="addMemberBtn" title="授权写入口已收敛至项目详情弹框权限 tab">
-          <svg class="icon" aria-hidden="true"><use href="#i-user-plus"/></svg>
-          编辑授权 · 详情弹框
-        </button>
-      </div>
-      <div style="padding:16px 20px 0;display:flex;flex-direction:column;gap:8px">
-        <div class="notice">
-          <svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>
-          <span>下载权限需在“下载策略”中单独开启，并需审批流支持（二期）。成员权限不会自动包含下载。</span>
-        </div>
-        <div class="notice notice-warning">
-          <svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>
-          <span><strong>主机只读是项目内操作的上限</strong>：主机只读用户即使在本项目被授予终端 / 编辑，也只能打开查看，编辑、终端与 Agent 入口仍会置灰。</span>
-        </div>
-      </div>
-      <div class="table-scroll">
-        <table class="permission-table" aria-label="成员与组权限">
-          <thead>
-            <tr>
-              <th class="th-left" style="width:132px">主体</th>
-              <th style="width:54px">类型</th>
-              <th style="width:62px">打开项目</th>
-              <th style="width:46px">终端</th>
-              <th style="width:50px">Agent</th>
-              <th style="width:62px">文件只读</th>
-              <th style="width:62px">文件写入</th>
-              <th style="width:58px"><span style="display:inline-flex;align-items:center;gap:3px;justify-content:center;width:100%"><svg class="icon" style="width:10px;height:10px" aria-hidden="true"><use href="#i-lock"/></svg>下载</span></th>
-              <th style="width:56px">来源</th>
-              <th style="width:42px;text-align:right">操作</th>
-            </tr>
-          </thead>
-          <tbody id="authMembersBody"></tbody>
-        </table>
-      </div>
-      <div class="card-foot" style="padding-top:10px;padding-bottom:10px">
-        <span class="muted-note">
-          <svg class="icon" aria-hidden="true"><use href="#i-clock"/></svg>
-          权限变更最长 60 秒生效，已有连接会在权限收回后断开。
-        </span>
-        <span class="section-count" id="authMemberSummary">直接授权 3 · 继承 2</span>
-      </div>
-    </section>
-
-    <section class="card" aria-labelledby="downloadPolicyTitle">
-      <div class="card-head">
-        <div>
-          <h2 class="card-title" id="downloadPolicyTitle">下载策略</h2>
-          <p class="card-subtitle">项目级策略覆盖全局默认值；一期仅支持“禁止”与“允许”。</p>
-        </div>
-        <span class="badge badge-danger" id="authPolicyBadge"><svg class="icon" style="width:11px;height:11px" aria-hidden="true"><use href="#i-lock"/></svg>当前禁止</span>
-      </div>
-      <div class="card-body" style="padding-top:8px;padding-bottom:10px">
-        <div class="policy-radios" id="authPolicyRadios">
-          <label class="policy-line">
-            <input type="radio" name="projectDownloadPolicy" value="deny" checked>
-            <span class="policy-line-body">
-              <span class="policy-line-title">禁止下载</span>
-              <span class="policy-line-desc">隐藏下载与导出入口，服务端同步拒绝下载请求。适用于大多数托管项目。</span>
-            </span>
-          </label>
-          <label class="policy-line is-disabled" title="审批流将在二期开放">
-            <input type="radio" name="projectDownloadPolicy" value="approval" disabled>
-            <span class="policy-line-body">
-              <span class="policy-line-title">仅审批后允许 <span class="badge badge-sm">二期</span></span>
-              <span class="policy-line-desc">用户提交申请，审批通过后可在有效期内下载。需要审批流支持。</span>
-            </span>
-          </label>
-          <label class="policy-line">
-            <input type="radio" name="projectDownloadPolicy" value="allow">
-            <span class="policy-line-body">
-              <span class="policy-line-title">允许下载</span>
-              <span class="policy-line-desc">允许直接下载，所有下载行为计入审计日志。仅建议用于非敏感项目。</span>
-            </span>
-          </label>
-        </div>
-        <div class="notice notice-warning" style="margin-top:10px">
-          <svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>
-          <span>下载拦截分期落地：一期在 Orca Web / 客户端前端将下载入口置灰并记录拦截审计；服务端与宿主侧硬拦在二期上线。</span>
-        </div>
-      </div>
-      <div class="card-foot">
-        <span class="muted-note">
-          <svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>
-          策略变更将在 30 秒内生效，并产生审计事件。
-        </span>
-        <button class="btn btn-secondary" id="saveAuthPolicyBtn" type="button">保存策略</button>
-      </div>
-    </section>
-  </div>
-</div>
-</section>
       <section class="page" data-page="users" hidden><div class="page-head">
   <div>
     <h1>用户管理</h1>
-    <p>平台账号与角色设置。用户与组来自 LDAP 同步；角色为按用户覆盖，覆盖记录留审计（FR-9.2）。</p>
+    <p>平台账号与角色设置。用户与组来自 LDAP 同步；角色为按用户覆盖，覆盖记录留审计。</p>
   </div>
   <div class="page-head-actions">
     <span class="status status-success"><span class="dot dot-success"></span>LDAP 同步正常</span>
@@ -2829,7 +2517,7 @@ svg { display: block; }
 
 <div class="notice">
   <svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>
-  <span><strong>角色 ≠ 资源授权（两层模型）</strong>：本页的「普通 / 审计 / 管理员」是平台级身份——决定管控面与审计面可见性；「谁能用哪些项目、有哪些操作」由项目 / 主机详情弹框权限 tab 的三卡片（资源授权）决定。管理员角色不等于项目内全权：打开项目仍需显式授权（U40 自授语义）。</span>
+  <span><strong>角色 ≠ 资源授权（两层模型）</strong>：本页的「普通 / 审计 / 管理员」是平台级身份——决定管控面与审计面可见性；「谁能用哪些项目、有哪些操作」由项目 / 主机详情弹框权限页签的角色卡片（资源授权）决定。管理员角色不等于项目内全权：打开项目仍需显式授权。</span>
 </div>
 
 <section class="card table-card">
@@ -2872,18 +2560,16 @@ svg { display: block; }
   </div>
   <div class="page-head-actions">
     <span class="status status-muted"><span class="dot dot-success"></span>日志采集正常</span>
-    <!-- [U66-review M-10] 缺口可见性：AC-43 -->
     <span class="status status-warning" title="dev-node-07 在宿主重启窗口丢弃 3 条；缺口可见性为 best-effort"><span class="dot dot-warning"></span>1 台主机有审计缺口</span>
   </div>
 </div>
 
-<!-- [U66-review M-5] 本人自查不在本期，按主会话裁定 -->
 <div class="notice" style="margin-bottom:12px">
   <svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>
   <span><strong>审计员 / 管理员视角</strong>：可见全部用户与全部项目的事件；本人自查不在本期。内容摘录仅在摘录开关开启时可见，默认关闭。</span>
 </div>
 
-<!-- [U66-review M-4] 覆盖范围与限制：AC-44/AC-47 -->
+<!-- 审计覆盖说明见 ui/prototype-notes.md（U66 审计增强） -->
 <details class="audit-coverage">
   <summary>覆盖范围与限制（审计链保证记录不被篡改，不保证记录完整）</summary>
   <div class="audit-coverage-body">
@@ -2891,23 +2577,20 @@ svg { display: block; }
     <ul>
       <li>不可捕获：开发机 shell 的 <span class="mono">scp</span> / <span class="mono">git push</span> / <span class="mono">curl</span> / <span class="mono">cp</span> 等带外传输。</li>
       <li>不可捕获：Finder / Explorer、拖拽、第三方应用、截图 / 录屏 / OCR。</li>
-      <li>不可捕获：纯客户端浏览器「另存为」、跨域 iframe 内选区、键盘 Ctrl+C（一期）。</li>
+      <li>不可捕获：纯客户端浏览器「另存为」、跨域 iframe 内选区、键盘 Ctrl+C。</li>
       <li>无动作：Web 工作区当前不提供下载；云项目文件树没有「复制文件对象」；<span class="mono">files.download</span> / <span class="mono">terminal.exportArtifact</span> / <span class="mono">browser.savePage</span> 未注册。</li>
       <li>缺口：客户端离线、绕过应用接缝、宿主进程重启可能丢事件；缺口可见性为 best-effort，宿主瞬时崩溃无法精确检测。</li>
-      <!-- [U66-review-r2 N-2] fail-closed -->
-      <li>下载入口仅在宿主显式返回 <span class="mono">downloadAllowed=true</span> 时显示；字段缺失按禁止处理（fail-closed，<span class="mono">workspace.info</span> 为 U65 依赖）。</li>
+      <li>下载入口仅在宿主显式返回 <span class="mono">downloadAllowed=true</span> 时显示；字段缺失按禁止处理。</li>
     </ul>
   </div>
 </details>
 
 <form class="filter-bar" id="auditFilterForm">
-  <!-- [U66-review B-1 M-9] 关键字只匹配文件名/路径/账号/项目；内容前缀需摘录开关（二期） -->
   <div class="filter-field" style="flex:1.6;min-width:220px;max-width:320px">
     <label for="auditKeywordFilter">关键字 <span style="font-weight:400;color:var(--text-disabled)">· 文件名 / 路径 / 账号 / 项目</span></label>
     <input class="input input-sm" id="auditKeywordFilter" type="search" placeholder="文件名、路径、账号或项目关键字" autocomplete="off">
-    <div class="filter-hint">内容前缀匹配需摘录开关开启（二期）</div>
+    <div class="filter-hint">内容前缀匹配需开启内容摘录开关</div>
   </div>
-  <!-- [U66-review M-3] 起止时间 + 默认最近 7 天 + 31 天选项 -->
   <div class="filter-field" style="max-width:150px">
     <label for="auditTimeRange">时间范围</label>
     <select class="select select-sm" id="auditTimeRange">
@@ -2925,7 +2608,6 @@ svg { display: block; }
     <label for="auditUntilFilter">结束时间</label>
     <input class="input input-sm" id="auditUntilFilter" type="datetime-local" autocomplete="off">
   </div>
-  <!-- [U66-review M-1 M-2 m-2] 事件族快捷项 + 统一 download_blocked -->
   <div class="filter-field" style="max-width:210px">
     <label for="auditEventFilter">操作类型</label>
     <select class="select select-sm" id="auditEventFilter">
@@ -2952,9 +2634,7 @@ svg { display: block; }
       <option value="zhaomin">赵敏 · zhaomin</option>
       <option value="chenhao">陈昊 · chenhao</option>
     </datalist>
-    <div class="filter-hint">显示名搜索为二期（需用户目录）</div>
   </div>
-  <!-- [U66-review m-6] 项目与主机分离，支持 AND -->
   <div class="filter-field" style="max-width:160px">
     <label for="auditProjectFilter">项目</label>
     <select class="select select-sm" id="auditProjectFilter">
@@ -2978,7 +2658,6 @@ svg { display: block; }
     <input class="input input-sm" id="auditFilenameFilter" type="text" placeholder="如 calculator.ts" autocomplete="off">
     <div class="filter-hint">1–128 字符</div>
   </div>
-  <!-- [U66-review M-2] 结果三态 -->
   <div class="filter-field" style="max-width:120px">
     <label for="auditResultFilter">结果</label>
     <select class="select select-sm" id="auditResultFilter">
@@ -2992,7 +2671,6 @@ svg { display: block; }
     <button class="btn btn-primary" type="submit">查询</button>
     <button class="btn btn-ghost" type="button" id="auditResetBtn">清除</button>
   </div>
-  <!-- [U66-review m-5] 与 API INVALID_QUERY 对齐的前端校验 -->
   <div class="audit-filter-error" id="auditFilterError" role="alert" hidden></div>
 </form>
 
@@ -3001,13 +2679,12 @@ svg { display: block; }
     <div class="table-note-left">
       <svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>
       <span>审计日志保留 180 天，导出需审批。</span>
-      <!-- [U66-review B-1] 摘录开关默认关闭，开启后才有内容前缀 -->
       <span class="audit-excerpt-switch">
         <button class="switch" id="auditExcerptSwitch" role="switch" aria-checked="false" aria-label="内容摘录开关"></button>
         <span id="auditExcerptState">内容摘录：已关闭（默认）</span>
       </span>
     </div>
-    <span class="tip tip-left" data-tip="导出需审计员权限并提交审批（二期开放）">
+    <span class="tip tip-left" data-tip="导出需审计员权限并提交审批">
       <button class="btn btn-secondary btn-sm" type="button" disabled>
         <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>
         导出
@@ -3220,10 +2897,10 @@ svg { display: block; }
           <span class="policy-option-desc">拦截下载、导出与拖拽到本地的全部入口，推荐作为默认策略。</span>
           <span class="policy-option-tag" style="align-self:flex-start;margin-top:2px">默认</span>
         </label>
-        <label class="policy-option is-disabled" title="审批流将在二期开放">
+        <label class="policy-option is-disabled" title="审批流暂未开放">
           <input type="radio" name="globalDownloadPolicy" value="approval" disabled>
           <span class="policy-option-top">
-            <span class="policy-option-title">审批后允许 <span class="policy-option-tag">二期</span></span>
+            <span class="policy-option-title">审批后允许 <span class="policy-option-tag">暂未开放</span></span>
             <span class="policy-radio"></span>
           </span>
           <span class="policy-option-desc">用户提交下载申请，审批通过后在有效期内允许下载。</span>
@@ -3289,7 +2966,6 @@ svg { display: block; }
           <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>
           项目级策略例外 <span class="badge badge-sm">0 个项目</span>
         </div>
-        <button class="text-link" data-route="members">前往项目授权 <svg class="icon" style="width:12px;height:12px" aria-hidden="true"><use href="#i-arrow-right"/></svg></button>
       </div>
     </div>
   </section>
@@ -3349,7 +3025,7 @@ svg { display: block; }
           <svg class="icon chev" aria-hidden="true"><use href="#i-chevron-down"/></svg>
         </button>
         <div class="conn-popover" id="connPopover" hidden>
-          <div class="conn-popover-label">演示连接状态</div>
+          <div class="conn-popover-label">连接状态</div>
           <button class="conn-option is-selected" data-connection-state="direct">
             <span class="dot dot-success" style="margin-top:5px"></span>
             <span class="conn-option-body">
@@ -3394,7 +3070,7 @@ svg { display: block; }
 
     <div class="pb-right">
       <span class="badge badge-warning badge-sm project-readonly-badge" title="主机只读授权：项目内操作上限为查看">主机只读</span>
-      <span class="download-locked-chip" title="项目策略：禁止下载 · 一期前端入口拦截">
+      <span class="download-locked-chip" title="项目策略：禁止下载">
         <svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>下载已禁用
       </span>
       <span class="pb-host">
@@ -3647,7 +3323,7 @@ svg { display: block; }
       <div class="ide-panel-head">
         <span class="ide-panel-title">文件</span>
         <div class="ide-panel-actions">
-          <button class="icon-btn icon-btn-sm download-block-btn" data-open-modal="downloadBlocked" aria-label="下载已禁用" title="下载已禁用 · 一期前端入口拦截">
+          <button class="icon-btn icon-btn-sm download-block-btn" data-open-modal="downloadBlocked" aria-label="下载已禁用" title="下载已禁用">
             <svg class="icon icon-sm" aria-hidden="true"><use href="#i-lock"/></svg>
           </button>
           <button class="icon-btn icon-btn-sm" id="refreshFilesBtn" aria-label="刷新文件列表" title="刷新文件列表">
@@ -3856,8 +3532,7 @@ svg { display: block; }
       </div>
 
       <div class="detail-panel" data-detail-panel="perm" hidden>
-        <p class="muted-note" style="margin-top:-6px"><svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>三张卡片是主机授权位（view / provision / maintain）的分组视图：同一主体加入多张卡时权限位取并集，行尾徽标显示合成级别（U65 语义矩阵）。项目级授权不扩大到主机级。</p>
-
+        <!-- 三卡片↔权限位映射语义见 ui/prototype-notes.md（U67 三卡片语义） -->
         <div class="perm-card" data-host-card="view">
           <div class="perm-card-head">
             <span class="perm-card-title">查看</span>
@@ -3879,7 +3554,7 @@ svg { display: block; }
             <span class="badge badge-brand badge-sm">view + provision</span>
             <span class="perm-card-count" data-card-count>0</span>
           </div>
-          <p class="perm-card-desc">主机全权（操作推导）：可见全部项目，项目内终端 / Agent / 文件读写 / 浏览器可用；下载仍按下载策略独立判定。含创建 / 登记项目能力（U65 全权语义，不含主机维护）。</p>
+          <p class="perm-card-desc">主机全权（操作推导）：可见全部项目，项目内终端 / Agent / 文件读写 / 浏览器可用；下载仍按下载策略独立判定。含创建 / 登记项目能力（不含主机维护）。</p>
           <div class="perm-chip-list" data-card-chips></div>
           <div class="perm-add-row">
             <input class="input" data-card-input list="hostCardUserOptions" placeholder="用户名，如 zhangsan" aria-label="添加主体到控制卡">
@@ -3905,7 +3580,7 @@ svg { display: block; }
 
         <datalist id="hostCardUserOptions"></datalist>
         <datalist id="hostCardGroupOptions"></datalist>
-        <p class="perm-mixed-note">变更即时保存（PUT 整行替换）；已存在于其它卡片时先弹覆盖确认。降级保存将断开该主体当前全部云会话，≤60 秒生效（FR-1.7）。</p>
+        <p class="perm-mixed-note">变更即时保存；已存在于其它卡片时先弹覆盖确认。降级保存将断开该主体当前全部云会话，约 60 秒内生效。</p>
       </div>
     </div>
     <div class="drawer-foot">
@@ -3939,7 +3614,6 @@ svg { display: block; }
           <div class="detail-row"><span class="detail-key">用户</span><span class="detail-val" id="auditDetailUser">张伟（zhangwei）</span></div>
           <div class="detail-row"><span class="detail-key">项目或主机</span><span class="detail-val mono" id="auditDetailTarget">payment-service</span></div>
           <div class="detail-row"><span class="detail-key">结果</span><span class="detail-val" id="auditDetailResult">成功</span></div>
-          <!-- [U66-review M-4 M-8 m-3] 可信度与复制长度 -->
           <div class="detail-row"><span class="detail-key">可信度</span><span class="detail-val" id="auditDetailConfidence">—</span></div>
           <div class="detail-row"><span class="detail-key">复制长度</span><span class="detail-val" id="auditDetailCopied">—</span></div>
           <div class="detail-row"><span class="detail-key">来源 IP</span><span class="detail-val mono" id="auditDetailIp">10.20.8.42</span></div>
@@ -4196,58 +3870,7 @@ svg { display: block; }
     </div>
   </div>
 
-  <div class="modal modal-lg" role="dialog" aria-modal="true" aria-labelledby="addMemberTitle" data-modal="addMember" hidden>
-    <div class="modal-head">
-      <div class="modal-head-main">
-        <h2 class="modal-title" id="addMemberTitle">添加成员</h2>
-        <p class="modal-sub">为 <span class="mono" id="addMemberProjectName">payment-service</span> 添加用户或 LDAP 组授权。</p>
-      </div>
-      <button class="icon-btn icon-btn-sm modal-close" data-close-modal aria-label="关闭">
-        <svg class="icon" aria-hidden="true"><use href="#i-x"/></svg>
-      </button>
-    </div>
-    <div class="modal-body">
-      <form id="addMemberForm" novalidate>
-        <div class="form-grid">
-          <div class="field">
-            <span class="field-label">身份类型</span>
-            <div class="segmented-wide" id="memberTypeSwitch" role="group" aria-label="身份类型">
-              <button type="button" class="is-active" data-member-type="user">用户</button>
-              <button type="button" data-member-type="group">LDAP 组</button>
-            </div>
-          </div>
-          <div class="field">
-            <label class="field-label required" for="memberSubjectSelect">主体</label>
-            <select class="select" id="memberSubjectSelect"></select>
-          </div>
-          <div class="field">
-            <span class="field-label">项目权限</span>
-            <div class="member-permissions">
-              <div class="check-grid">
-                <label class="check-row"><input type="checkbox" data-member-perm="open" checked>打开项目</label>
-                <label class="check-row"><input type="checkbox" data-member-perm="terminal" checked>终端</label>
-                <label class="check-row"><input type="checkbox" data-member-perm="agent" checked>Agent</label>
-                <label class="check-row"><input type="checkbox" data-member-perm="fileRead" checked>文件只读</label>
-                <label class="check-row"><input type="checkbox" data-member-perm="fileWrite">文件写入</label>
-                <span class="permission-locked">
-                  <svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>
-                  下载 · 需单独审批
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="notice" style="margin-top:14px">
-          <svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>
-          <span>组授权对所有组成员生效，权限变更最长 60 秒内同步。下载权限不会随成员添加自动开启。</span>
-        </div>
-      </form>
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-secondary" data-close-modal>取消</button>
-      <button class="btn btn-primary" type="submit" form="addMemberForm">添加成员</button>
-    </div>
-  </div>
+  <!-- 旧「添加成员」弹框（逐位勾选）已移除：授权统一在详情权限页签（见 ui/prototype-notes.md 收敛裁定） -->
 
   <div class="modal modal-xl" role="dialog" aria-modal="true" aria-labelledby="projectDetailTitle" data-modal="projectDetail" hidden>
     <div class="modal-head">
@@ -4276,13 +3899,13 @@ svg { display: block; }
           <div class="detail-row"><span class="detail-key">下载策略</span><span class="detail-val" id="pdPolicy">禁止下载 · 项目覆盖</span></div>
           <div class="detail-row"><span class="detail-key">我的权限</span><span class="detail-val" id="pdMyPerms">打开 · 终端 · Agent · 文件只读 · 文件写入</span></div>
         </div>
-        <p class="muted-note" style="margin-top:10px">详情弹框为只读平台信息；授权请在「权限」tab 中维护（U67）。</p>
+        <p class="muted-note" style="margin-top:10px">详情弹框为只读平台信息；授权请在「权限」页签中维护。</p>
       </div>
 
       <div class="detail-panel" data-pd-panel="perm" hidden>
         <div class="notice" style="margin:-4px 0 10px">
           <svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>
-          <span>项目级授权<strong>仅影响当前项目</strong>，不扩大到所在主机或其它项目（FR-9.11③）。下载位仍受项目 / 全局下载策略独立约束。</span>
+          <span>项目级授权<strong>仅影响当前项目</strong>，不扩大到所在主机或其它项目。下载位仍受项目 / 全局下载策略独立约束。</span>
         </div>
 
         <div class="perm-card" data-project-card="view">
@@ -4306,7 +3929,7 @@ svg { display: block; }
             <span class="badge badge-mono badge-sm">terminal · agent · file:write · browser · download</span>
             <span class="perm-card-count" data-card-count>0</span>
           </div>
-          <p class="perm-card-desc">项目内操作位：终端、Agent、文件写入、浏览器与下载；下载仍需项目 / 全局下载策略为「允许」才放行（FR-7）。</p>
+          <p class="perm-card-desc">项目内操作位：终端、Agent、文件写入、浏览器与下载；下载仍需项目 / 全局下载策略为「允许」才放行。</p>
           <div class="perm-chip-list" data-card-chips></div>
           <div class="perm-add-row">
             <input class="input" data-card-input list="pdUserOptions" placeholder="用户名，如 zhangsan" aria-label="添加主体到控制卡">
@@ -4321,7 +3944,7 @@ svg { display: block; }
             <span class="badge badge-brand badge-sm">主机授权推导 · 只读</span>
             <span class="perm-card-count" data-card-count>0</span>
           </div>
-          <p class="perm-card-desc">项目级无「管理」权限位：归档 / 登记归创建者或平台管理员，主机维护属主机授权。下方为按 U65 推导在本项目获得权限的主机级主体——在主机详情弹框维护，项目授权不扩大到主机级。</p>
+          <p class="perm-card-desc">项目级无「管理」权限位：归档 / 登记归创建者或平台管理员，主机维护属主机授权。下方为按主机授权推导在本项目获得权限的主机级主体——在主机详情弹框维护，项目授权不扩大到主机级。</p>
           <div class="perm-chip-list" data-card-chips></div>
           <div class="perm-add-row" style="border-top-style:solid">
             <span class="muted-note" style="padding:0">无添加入口 · <button type="button" class="text-link" data-open-host-drawer id="pdHostJump" style="font-size:11px">前往主机详情弹框 →</button></span>
@@ -4330,7 +3953,7 @@ svg { display: block; }
 
         <datalist id="pdUserOptions"></datalist>
         <datalist id="pdGroupOptions"></datalist>
-        <p class="perm-mixed-note">变更即时保存（PUT 整行替换）；已存在于其它卡片时先弹覆盖确认。授权收缩将断开该主体当前全部云会话，≤60 秒生效（FR-1.7）。</p>
+        <p class="perm-mixed-note">变更即时保存；已存在于其它卡片时先弹覆盖确认。授权收缩将断开该主体当前全部云会话，约 60 秒内生效。</p>
       </div>
     </div>
     <div class="modal-foot">
@@ -4357,17 +3980,15 @@ svg { display: block; }
       <div class="detail-list" style="margin-top:12px">
         <div class="detail-row"><span class="detail-key">文件</span><span class="detail-val mono" id="blockedFilePath">src/refund/calculator.ts</span></div>
         <div class="detail-row"><span class="detail-key">策略</span><span class="detail-val">禁止下载</span></div>
-        <div class="detail-row"><span class="detail-key">拦截阶段</span><span class="detail-val">一期 · Web / 客户端前端入口拦截</span></div>
-        <div class="detail-row"><span class="detail-key">服务端 / 宿主硬拦</span><span class="detail-val">二期</span></div>
-        <div class="detail-row"><span class="detail-key">审批流</span><span class="detail-val">二期开放</span></div>
       </div>
+      <!-- 下载分期（拦截阶段 / 硬拦 / 审批流）说明迁移至 ui/prototype-notes.md（下载分期） -->
       <div class="dialog-warning">
         <svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>
-        <span>一期在前端入口置灰并记录拦截审计；服务端与宿主硬拦将在二期上线。当前如需导出，请联系项目负责人或平台管理员。</span>
+        <span>当前如需导出文件，请联系项目负责人或平台管理员。</span>
       </div>
     </div>
     <div class="modal-foot">
-      <button class="btn btn-primary" type="button" disabled title="审批流将在二期开放">提交下载申请</button>
+      <button class="btn btn-primary" type="button" disabled title="审批流暂未开放">提交下载申请</button>
       <button class="btn btn-secondary" data-close-modal>关闭</button>
     </div>
   </div>
@@ -4509,14 +4130,13 @@ svg { display: block; }
     notificationUnread: 3
   };
 
-  const adminRoutes = new Set(['hosts', 'relays', 'members', 'users', 'audit', 'settings']);
+  const adminRoutes = new Set(['hosts', 'relays', 'users', 'audit', 'settings']);
 
   const routeMeta = {
     workbench: { page: 'workbench', crumb: ['工作台'], search: true, actions: 'workbench', title: '工作台' },
     projects: { page: 'projects', crumb: ['工作台', '我的项目'], search: true, actions: 'projects', title: '我的项目' },
     hosts: { page: 'hosts', crumb: ['平台设置', '主机'], search: false, actions: 'hosts', title: '主机' },
     relays: { page: 'relays', crumb: ['平台设置', '中继'], search: false, actions: 'relays', title: '中继' },
-    members: { page: 'members', crumb: ['平台设置', '成员与权限'], search: false, actions: null, title: '项目授权' },
     users: { page: 'users', crumb: ['平台设置', '用户管理'], search: false, actions: null, title: '用户管理' },
     audit: { page: 'audit', crumb: ['平台设置', '审计日志'], search: false, actions: null, title: '审计日志' },
     settings: { page: 'settings', crumb: ['平台设置', '下载策略'], search: false, actions: null, title: '下载策略' },
@@ -4749,6 +4369,7 @@ svg { display: block; }
   };
 
   const directoryUsers = [
+    { name: '张三', account: 'zhangsan', meta: '结算研发组' },
     { name: '赵敏', account: 'zhaomin', meta: '结算研发组' },
     { name: '钱磊', account: 'qianlei', meta: '电商研发组' },
     { name: '孙悦', account: 'sunyue', meta: '测试组' },
@@ -4756,25 +4377,27 @@ svg { display: block; }
   ];
   const directoryGroups = [
     { name: '支付平台组', account: 'grp-pay-platform', meta: 'LDAP 组 · 42 人' },
+    { name: '支付研发组', account: 'team-payment', meta: 'LDAP 组 · 24 人' },
     { name: '测试组', account: 'grp-qa', meta: 'LDAP 组 · 18 人' },
     { name: '安全审计组', account: 'grp-security-audit', meta: 'LDAP 组 · 6 人' },
     { name: '平台管理员', account: 'grp-platform-admin', meta: 'LDAP 组 · 4 人' }
   ];
 
-  // [U67] 主机授权三卡片演示数据：bits 为 U65 存储位（view / provision / maintain），卡片按映射表派生
+  // 主机授权三卡片演示数据：role 为授予角色（view=查看 / ops=控制 / admin=管理），主体只出现在对应卡片
   const hostGrantsData = {
     'dev-node-01': [
-      { type: 'group', id: 'grp-pay-platform', name: '支付平台组', bits: ['view', 'provision'] },
-      { type: 'user', id: 'zhaomin', name: '赵敏（zhaomin）', bits: ['view'] }
+      { type: 'group', id: 'grp-pay-platform', name: '支付平台组', role: 'ops' },
+      { type: 'user', id: 'zhaomin', name: '赵敏（zhaomin）', role: 'view' },
+      { type: 'user', id: 'admin', name: '李静（admin）', role: 'admin' }
     ],
     'dev-node-03': [
-      { type: 'user', id: 'lisi', name: '李思（lisi）', bits: ['view'] },
-      { type: 'user', id: 'wangfang', name: '王芳（wangfang）', bits: ['view', 'provision'] },
-      { type: 'user', id: 'chenhao', name: '陈昊（chenhao）', bits: ['provision', 'maintain'] },
-      { type: 'group', id: 'grp-qa', name: '测试组', bits: ['view'] }
+      { type: 'user', id: 'lisi', name: '李思（lisi）', role: 'view' },
+      { type: 'user', id: 'zhangsan', name: '张三（zhangsan）', role: 'ops' },
+      { type: 'group', id: 'team-payment', name: '支付研发组', role: 'ops' },
+      { type: 'user', id: 'admin', name: '李静（admin）', role: 'admin' }
     ],
     'dev-node-09': [
-      { type: 'group', id: 'grp-platform-admin', name: '平台管理员', bits: ['view', 'provision', 'maintain'] }
+      { type: 'group', id: 'grp-platform-admin', name: '平台管理员', role: 'admin' }
     ]
   };
 
@@ -4786,7 +4409,7 @@ svg { display: block; }
     { account: 'qianlei', name: '钱磊', dept: '电商研发组', group: 'grp-commerce', role: 'developer', source: 'LDAP 同步' },
     { account: 'sunyue', name: '孙悦', dept: '测试组', group: 'grp-qa', role: 'auditor', source: '管理员覆盖' },
     { account: 'zhouhang', name: '周航', dept: '风控研发组', group: 'grp-risk', role: 'developer', source: 'LDAP 同步' },
-    { account: 'lisi', name: '李思', dept: '结算研发组', group: 'grp-pay-platform', role: 'developer', source: 'LDAP 同步 · 主机只读为资源授权' }
+    { account: 'lisi', name: '李思', dept: '结算研发组', group: 'grp-pay-platform', role: 'developer', source: 'LDAP 同步' }
   ];
 
   const auditEvents = [
@@ -5199,7 +4822,6 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     if (route === 'projects') renderMyProjects();
     if (route === 'hosts') renderHosts();
     if (route === 'relays') renderRelays();
-    if (route === 'members') renderAuthPage();
     if (route === 'users') renderUsers();
     if (route === 'audit') renderAuditTable();
     if (route === 'settings') syncPolicyUI();
@@ -5650,26 +5272,13 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     copyText(command, '注册命令已复制');
   }
 
-  /* [U67] 主机详情弹框 · 权限 tab 三卡片：查看=view、控制=view+provision、管理=provision+maintain */
+  /* 权限页签三卡片=纯角色授权（位置即权限）：查看=view、控制=view+provision、管理=provision+maintain。
+     同一主体只出现在其角色对应的一张卡片（查看<控制<管理，高级隐含低级，不做位并集合成，见 ui/prototype-notes.md） */
+  const HOST_CARD_ORDER = ['view', 'ops', 'admin'];
   const HOST_CARDS = {
-    view: { bits: ['view'], label: '查看卡' },
-    ops: { bits: ['view', 'provision'], label: '控制卡' },
-    admin: { bits: ['provision', 'maintain'], label: '管理卡' }
-  };
-  const hostLevelLabel = (bits) => {
-    const set = new Set(bits);
-    if (set.has('view') && set.has('provision')) return set.has('maintain') ? '全权 + 维护' : '全权';
-    if (set.has('view')) return '只读';
-    if (set.has('provision') && set.has('maintain')) return '管理（创建+维护）';
-    if (set.has('maintain')) return '仅维护';
-    if (set.has('provision')) return '仅创建';
-    return '无授权';
-  };
-  const hostLevelBadgeClass = (bits) => {
-    const set = new Set(bits);
-    if (set.has('view') && set.has('provision')) return 'badge-brand';
-    if (set.has('view')) return 'badge-warning';
-    return 'badge-neutral';
+    view: { label: '查看卡', roleName: '查看' },
+    ops: { label: '控制卡', roleName: '控制' },
+    admin: { label: '管理卡', roleName: '管理' }
   };
 
   function hostGrantsOf(hostId) {
@@ -5690,17 +5299,16 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     if (!host || layer.hidden) return;
     const grants = hostGrantsOf(host.id);
     $$('#hostDrawerLayer .perm-card[data-host-card]').forEach((card) => {
-      const cardBits = HOST_CARDS[card.dataset.hostCard].bits;
-      const members = grants
-        .map((grant, index) => ({ grant, index }))
-        .filter(({ grant }) => cardBits.every((bit) => grant.bits.includes(bit)));
+      const cardKey = card.dataset.hostCard;
+      // 位置即权限：主体只出现在其角色对应的卡片
+      const members = grants.filter((grant) => grant.role === cardKey);
       const list = $('[data-card-chips]', card);
       if (list) {
         list.innerHTML = members.length
-          ? members.map(({ grant, index }) => `
+          ? members.map((grant) => `
             <span class="perm-chip">${escapeHTML(grant.name)}
-              <small>${grant.type === 'group' ? '组' : '用户'} · ${hostLevelLabel(grant.bits)}</small>
-              <button type="button" data-host-remove="${index}:${card.dataset.hostCard}" aria-label="从${HOST_CARDS[card.dataset.hostCard].label}移除 ${escapeHTML(grant.name)}">✕</button>
+              <small>${grant.type === 'group' ? '组' : '用户'}</small>
+              <button type="button" data-host-remove="${grants.indexOf(grant)}:${cardKey}" aria-label="从${HOST_CARDS[cardKey].label}移除 ${escapeHTML(grant.name)}">✕</button>
             </span>`).join('')
           : '<span class="perm-empty">暂无主体——在下方输入并添加。</span>';
       }
@@ -5715,12 +5323,8 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
 
   function requireAdminForGrants() {
     if (state.role === 'admin') return true;
-    showToast('仅平台管理员可修改授权', { type: 'warning', sub: '三卡片写入为管理员操作（FR-9.7）' });
+    showToast('仅平台管理员可修改授权', { type: 'warning', sub: '授权卡片写入为管理员操作' });
     return false;
-  }
-
-  function applyHostGrantBits(grant, nextBits) {
-    grant.bits = [...new Set(nextBits)].sort();
   }
 
   function addHostCardSubject(card) {
@@ -5739,33 +5343,30 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     const displayName = entry ? (type === 'user' ? `${entry.name}（${entry.account}）` : entry.name) : typed;
     const grants = hostGrantsOf(host.id);
     const existing = grants.find((grant) => grant.type === type && grant.id === typed);
-    const cardBits = HOST_CARDS[card.dataset.hostCard].bits;
-    if (existing && cardBits.every((bit) => existing.bits.includes(bit))) {
+    const cardKey = card.dataset.hostCard;
+    if (existing && existing.role === cardKey) {
       showToast(`${displayName} 已在该卡片中`, { type: 'info' });
       return;
     }
-    const apply = () => {
-      if (existing) applyHostGrantBits(existing, [...existing.bits, ...cardBits]);
-      else grants.push({ type, id: typed, name: displayName, bits: [...cardBits] });
-      renderHostPermCards();
-      showToast(`已添加 ${displayName}`, { sub: `级别：${hostLevelLabel(existing ? existing.bits : cardBits)} · 写入 host_grant_update 审计` });
-    };
     if (!existing) {
-      apply();
+      grants.push({ type, id: typed, name: displayName, role: cardKey });
+      renderHostPermCards();
       input.value = '';
+      showToast(`已添加 ${displayName}`, { sub: `角色：${HOST_CARDS[cardKey].roleName}` });
       return;
     }
-    const before = hostLevelLabel(existing.bits);
-    const afterBits = [...new Set([...existing.bits, ...cardBits])];
+    const downgrade = HOST_CARD_ORDER.indexOf(cardKey) < HOST_CARD_ORDER.indexOf(existing.role);
     openConfirm({
-      title: '覆盖现有授权',
-      sub: '同一主体只有一行主机授权，保存按整行替换权限位。',
-      message: `${displayName} 已有主机授权（当前：${before} → 调整后：${hostLevelLabel(afterBits)}，位并集 ${afterBits.join(' + ')}）。级别提升即时生效，不断开会话。`,
-      confirmLabel: '覆盖授权',
-      danger: false,
+      title: '调整授权角色',
+      sub: '同一主体只有一条主机授权，调整后仅在目标卡片显示。',
+      message: `${displayName} 当前角色为「${HOST_CARDS[existing.role].roleName}」，将调整为「${HOST_CARDS[cardKey].roleName}」。${downgrade ? '降级将断开其当前云会话，约 60 秒内生效。' : '升级即时生效，不断开会话。'}`,
+      confirmLabel: '确认调整',
+      danger: downgrade,
       onConfirm: () => {
-        apply();
+        existing.role = cardKey;
+        renderHostPermCards();
         input.value = '';
+        showToast(`已调整 ${displayName} 的角色`, { sub: `角色：${HOST_CARDS[cardKey].roleName}` });
       }
     });
   }
@@ -5779,29 +5380,19 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     const cardKey = token.slice(sep + 1);
     const grants = hostGrantsOf(host.id);
     const grant = grants[index];
-    const cardBits = HOST_CARDS[cardKey]?.bits;
-    if (!grant || !cardBits) return;
-    const nextBits = grant.bits.filter((bit) => !cardBits.includes(bit));
-    const before = hostLevelLabel(grant.bits);
-    const after = hostLevelLabel(nextBits);
-    const apply = () => {
-      if (nextBits.length === 0) grants.splice(index, 1);
-      else applyHostGrantBits(grant, nextBits);
-      renderHostPermCards();
-      showToast(`已移出${HOST_CARDS[cardKey].label} · ${grant.name}`, { sub: nextBits.length ? `级别：${before} → ${after}` : '授权行已删除，云会话将在 ≤60 秒内断开' });
-    };
-    if (nextBits.length === 0) {
-      openConfirm({
-        title: '移除全部授权',
-        sub: '该主体将失去此主机上的全部授权。',
-        message: `${grant.name} 仅在本卡片持有授权。移除后授权行删除，其当前云会话将在 ≤60 秒内断开（FR-1.7）。`,
-        confirmLabel: '确认移除',
-        danger: true,
-        onConfirm: apply
-      });
-      return;
-    }
-    apply();
+    if (!grant || grant.role !== cardKey) return;
+    openConfirm({
+      title: '移除授权',
+      sub: '该主体将失去此主机上的全部授权。',
+      message: `${grant.name} 将从「${HOST_CARDS[cardKey].roleName}」移除，授权行删除，其当前云会话将在 60 秒内断开。`,
+      confirmLabel: '确认移除',
+      danger: true,
+      onConfirm: () => {
+        grants.splice(grants.indexOf(grant), 1);
+        renderHostPermCards();
+        showToast(`已移出${HOST_CARDS[cardKey].label} · ${grant.name}`, { sub: '授权行已删除，云会话将在 60 秒内断开' });
+      }
+    });
   }
 
   function syncHostCardInputs(card) {
@@ -5812,17 +5403,23 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     input.placeholder = type === 'user' ? '用户名，如 zhangsan' : '组名，如 grp-qa';
   }
 
-  /* [U67] 项目详情弹框 · 权限 tab 三卡片：查看=open+file:read、控制=操作位、管理=主机授权推导（只读） */
+  /* 项目详情弹框 · 权限页签三卡片=纯角色授权（位置即权限）：查看=open+file:read、控制=操作位、管理=主机授权推导（只读）。
+     同一主体只出现在其角色对应的一张卡片（查看<控制<管理，高级隐含低级），不做位并集合成（见 ui/prototype-notes.md） */
   let pdProjectId = null;
-  const PERM_LABELS = { open: '打开', terminal: '终端', agent: 'Agent', fileRead: '文件只读', fileWrite: '文件写入', download: '下载' };
-  const PROJECT_CARDS = {
-    view: { perms: ['open', 'fileRead'], match: 'all', label: '查看卡' },
-    ops: { perms: ['terminal', 'agent', 'fileWrite', 'download'], match: 'any', label: '控制卡' }
+  const PROJECT_CARD_ORDER = ['view', 'ops'];
+  const PROJECT_CARD_PERMS = {
+    view: ['open', 'fileRead'],
+    ops: ['open', 'fileRead', 'terminal', 'agent', 'fileWrite']
   };
-
-  function projectPermSummary(perms) {
-    const on = Object.keys(PERM_LABELS).filter((key) => perms[key]);
-    return on.length ? on.map((key) => PERM_LABELS[key]).join(' · ') : '无权限';
+  const PROJECT_CARDS = {
+    view: { perms: ['open', 'fileRead'], label: '查看卡', roleName: '查看' },
+    ops: { perms: ['terminal', 'agent', 'fileWrite', 'download'], label: '控制卡', roleName: '控制' }
+  };
+  // 位置即权限：任一操作位 ⇒ 控制卡；否则打开+文件只读两齐 ⇒ 查看卡
+  function projectMemberRole(member) {
+    if (PROJECT_CARDS.ops.perms.some((perm) => member.perms[perm])) return 'ops';
+    if (member.perms.open && member.perms.fileRead) return 'view';
+    return null;
   }
 
   function matchProjectMember(project, typed, displayName, type) {
@@ -5849,25 +5446,22 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
       const list = $('[data-card-chips]', card);
       const count = $('[data-card-count]', card);
       if (key === 'admin') {
-        const derived = hostGrantsOf(project.host).filter((grant) => grant.bits.includes('view') && grant.bits.includes('provision'));
+        const derived = hostGrantsOf(project.host).filter((grant) => grant.role === 'ops' || grant.role === 'admin');
         if (list) {
           list.innerHTML = derived.length
-            ? derived.map((grant) => `<span class="perm-chip">${escapeHTML(grant.name)}<small>主机 ${hostLevelLabel(grant.bits)} → 本项目操作位来源</small></span>`).join('')
-            : '<span class="perm-empty">该主机暂无全权主体。</span>';
+            ? derived.map((grant) => `<span class="perm-chip">${escapeHTML(grant.name)}<small>${grant.type === 'group' ? '组' : '用户'}</small></span>`).join('')
+            : '<span class="perm-empty">该主机暂无控制 / 管理主体。</span>';
         }
         if (count) count.textContent = `${derived.length} 个主体`;
         return;
       }
-      const cardPerms = PROJECT_CARDS[key].perms;
-      // 查看卡要求两齐（打开+文件只读）；控制卡任一操作位即入卡（download 仍受策略）
-      const members = project.members.filter((member) => PROJECT_CARDS[key].match === 'any'
-        ? cardPerms.some((perm) => member.perms[perm])
-        : cardPerms.every((perm) => member.perms[perm]));
+      // 位置即权限：主体只出现在其角色对应的卡片
+      const members = project.members.filter((member) => projectMemberRole(member) === key);
       if (list) {
         list.innerHTML = members.length
           ? members.map((member) => `
             <span class="perm-chip">${escapeHTML(member.subject)}
-              <small>${member.type} · ${projectPermSummary(member.perms)}</small>
+              <small>${member.type}</small>
               <button type="button" data-project-remove="${escapeHTML(member.subject)}:${key}" aria-label="从${PROJECT_CARDS[key].label}移除 ${escapeHTML(member.subject)}">✕</button>
             </span>`).join('')
           : '<span class="perm-empty">暂无主体——在下方输入并添加。</span>';
@@ -5894,7 +5488,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     $('#pdOwner').textContent = project.owner;
     $('#pdStatus').innerHTML = project.status === 'online' ? '<span class="dot dot-success"></span>在线' : '<span class="dot dot-gray"></span>主机离线';
     $('#pdPolicy').textContent = project.policy === 'allow' ? '允许下载' : '禁止下载 · 项目覆盖';
-    $('#pdMyPerms').textContent = '按登录身份返回（演示：打开 · 终端 · Agent · 文件只读）';
+    $('#pdMyPerms').textContent = '打开 · 终端 · Agent · 文件只读';
     switchProjectDetailTab('info');
     renderProjectPermCards();
     openModal('projectDetail');
@@ -5906,7 +5500,6 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     if (!project) return;
     const key = card.dataset.projectCard;
     if (key === 'admin') return; // derived card: read-only
-    const cardPerms = PROJECT_CARDS[key].perms;
     const input = $('[data-card-input]', card);
     const type = $('[data-card-type]', card).value;
     const typed = (input?.value ?? '').trim();
@@ -5918,35 +5511,34 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     const entry = type === 'user' ? directoryUsers.find((user) => user.account === typed) : directoryGroups.find((group) => group.account === typed);
     const displayName = entry ? (type === 'user' ? `${entry.name}（${entry.account}）` : entry.name) : typed;
     const existing = matchProjectMember(project, typed, displayName, type);
-    if (existing && PROJECT_CARDS[key].perms.every((perm) => existing.perms[perm])) {
+    if (existing && projectMemberRole(existing) === key) {
       showToast(`${displayName} 已在该卡片中`, { type: 'info' });
       return;
     }
     const apply = () => {
       if (existing) {
-        cardPerms.forEach((perm) => { existing.perms[perm] = true; });
+        Object.keys(existing.perms).forEach((perm) => { existing.perms[perm] = PROJECT_CARD_PERMS[key].includes(perm); });
       } else {
         const perms = { open: false, terminal: false, agent: false, fileRead: false, fileWrite: false, download: false };
-        cardPerms.forEach((perm) => { perms[perm] = true; });
-        project.members.push({ subject: displayName, type: type === 'group' ? '组' : '用户', source: '直接', perms: can(perms) });
+        PROJECT_CARD_PERMS[key].forEach((perm) => { perms[perm] = true; });
+        project.members.push({ subject: displayName, type: type === 'group' ? '组' : '用户', source: '直接', perms });
       }
       renderProjectPermCards();
-      if (state.route === 'members') renderAuthMembers(project);
-      showToast(`已添加 ${displayName}`, { sub: '写入 grant_update 审计 · 授权收缩时 ≤60 秒断开会话' });
+      showToast(`已添加 ${displayName}`, { sub: `角色：${PROJECT_CARDS[key].roleName}` });
     };
     if (!existing) {
       apply();
       input.value = '';
       return;
     }
-    const afterPerms = { ...existing.perms };
-    cardPerms.forEach((perm) => { afterPerms[perm] = true; });
+    const fromRole = projectMemberRole(existing);
+    const downgrade = PROJECT_CARD_ORDER.indexOf(key) < PROJECT_CARD_ORDER.indexOf(fromRole);
     openConfirm({
-      title: '覆盖现有授权',
-      sub: '同一主体只有一行项目授权，保存按整行替换权限位。',
-      message: `${displayName} 已有项目授权（当前：${projectPermSummary(existing.perms)} → 调整后：${projectPermSummary(afterPerms)}）。下载位仍受下载策略独立约束。`,
-      confirmLabel: '覆盖授权',
-      danger: true,
+      title: '调整授权角色',
+      sub: '同一主体只有一条项目授权，调整后仅在目标卡片显示。',
+      message: `${displayName} 当前角色为「${PROJECT_CARDS[fromRole].roleName}」，将调整为「${PROJECT_CARDS[key].roleName}」。${downgrade ? '降级将断开其当前云会话，约 60 秒内生效。' : '升级即时生效，不断开会话。'}`,
+      confirmLabel: '确认调整',
+      danger: downgrade,
       onConfirm: () => {
         apply();
         input.value = '';
@@ -5962,30 +5554,19 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     const subject = token.slice(0, sep);
     const key = token.slice(sep + 1);
     const member = project.members.find((item) => item.subject === subject);
-    const cardPerms = PROJECT_CARDS[key]?.perms;
-    if (!member || !cardPerms) return;
-    const nextPerms = { ...member.perms };
-    cardPerms.forEach((perm) => { nextPerms[perm] = false; });
-    const hasAny = Object.values(nextPerms).some(Boolean);
-    const apply = () => {
-      if (hasAny) member.perms = nextPerms;
-      else project.members = project.members.filter((item) => item !== member);
-      renderProjectPermCards();
-      if (state.route === 'members') renderAuthMembers(project);
-      showToast(`已移出${PROJECT_CARDS[key].label} · ${subject}`, { sub: hasAny ? undefined : '授权行已删除，云会话将在 ≤60 秒内断开' });
-    };
-    if (!hasAny) {
-      openConfirm({
-        title: '移除全部授权',
-        sub: '该主体将失去本项目的全部授权。',
-        message: `${subject} 仅在本卡片持有权限。移除后授权行删除，其当前云会话将在 ≤60 秒内断开（FR-1.7）。`,
-        confirmLabel: '确认移除',
-        danger: true,
-        onConfirm: apply
-      });
-      return;
-    }
-    apply();
+    if (!member || projectMemberRole(member) !== key) return;
+    openConfirm({
+      title: '移除授权',
+      sub: '该主体将失去本项目的全部授权。',
+      message: `${subject} 将从「${PROJECT_CARDS[key].roleName}」移除，授权行删除，其当前云会话将在 60 秒内断开。`,
+      confirmLabel: '确认移除',
+      danger: true,
+      onConfirm: () => {
+        project.members = project.members.filter((item) => item !== member);
+        renderProjectPermCards();
+        showToast(`已移出${PROJECT_CARDS[key].label} · ${subject}`, { sub: '授权行已删除，云会话将在 60 秒内断开' });
+      }
+    });
   }
 
   function syncProjectCardInputs(card) {
@@ -6143,245 +5724,6 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
   }
 
   /* ------------------------------------------------------------
-     Project authorization
-     ------------------------------------------------------------ */
-  function authStatusMarkup(project) {
-    return project.status === 'online'
-      ? '<span class="dot dot-success"></span>在线'
-      : '<span class="dot dot-gray"></span>离线';
-  }
-
-  function renderAuthProjectList() {
-    const container = $('#authProjectList');
-    if (!container) return;
-    container.innerHTML = Object.values(authProjects).map((project) => `
-      <button class="auth-project-item${project.id === state.currentAuthProject ? ' is-active' : ''}" data-auth-project="${escapeHTML(project.id)}">
-        <span class="auth-project-name">${escapeHTML(project.name)}</span>
-        <span class="auth-project-meta">${escapeHTML(project.host)} · ${project.status === 'online' ? '在线' : '离线'}</span>
-      </button>`).join('');
-    $('#authProjectCount').textContent = String(Object.keys(authProjects).length);
-  }
-
-  function memberPermMarkup(granted) {
-    return granted
-      ? `<span class="perm-check" title="已授权">${iconMarkup('check')}</span>`
-      : '<span class="perm-none">—</span>';
-  }
-
-  function renderAuthMembers(project) {
-    const tbody = $('#authMembersBody');
-    if (!tbody) return;
-    const direct = project.members.filter((member) => member.source === '直接').length;
-    const inherited = project.members.length - direct;
-    tbody.innerHTML = project.members.map((member) => {
-      const typeIcon = member.type === '组' ? 'users' : 'user';
-      return `
-        <tr>
-          <td>
-            <span class="perm-subject">
-              <span style="width:20px;height:20px;border-radius:5px;background:var(--sidebar);border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;color:var(--text-3)">
-                ${iconMarkup(typeIcon, 'icon')}
-              </span>
-              <span style="font-weight:500;color:var(--text)">${escapeHTML(member.subject)}</span>
-            </span>
-          </td>
-          <td><span class="type-tag">${escapeHTML(member.type)}</span></td>
-          <td>${memberPermMarkup(member.perms.open)}</td>
-          <td>${memberPermMarkup(member.perms.terminal)}</td>
-          <td>${memberPermMarkup(member.perms.agent)}</td>
-          <td>${memberPermMarkup(member.perms.fileRead)}</td>
-          <td>${memberPermMarkup(member.perms.fileWrite)}</td>
-          <td><span class="perm-lock" title="下载需在下载策略中开启并提交审批"><span class="perm-unchecked"></span>${iconMarkup('lock')}</span></td>
-          <td><span class="source-tag${member.source === '继承' ? ' is-inherited' : ''}">${escapeHTML(member.source)}</span></td>
-          <td style="text-align:right">
-            <button class="text-link" data-edit-member="${escapeHTML(member.subject)}" title="在项目详情弹框权限 tab 中编辑">编辑</button>
-          </td>
-        </tr>`;
-    }).join('');
-    $('#authMemberCount').textContent = String(project.members.length);
-    $('#authMemberSummary').textContent = `直接授权 ${direct} · 继承 ${inherited}`;
-  }
-
-  function updateAuthPolicyBadge(project) {
-    const badge = $('#authPolicyBadge');
-    if (!badge) return;
-    if (project.policy === 'allow') {
-      badge.className = 'badge badge-warning';
-      badge.innerHTML = `${iconMarkup('download')}当前允许`;
-    } else {
-      badge.className = 'badge badge-danger';
-      badge.innerHTML = `${iconMarkup('lock')}当前禁止`;
-    }
-    const chip = $('#authDownloadChip');
-    if (chip) {
-      chip.className = project.policy === 'allow' ? 'badge badge-warning' : 'download-locked-chip';
-      chip.innerHTML = project.policy === 'allow'
-        ? `${iconMarkup('download')}下载已允许`
-        : `${iconMarkup('lock')}下载 · 已禁用`;
-    }
-  }
-
-  function fillAuthProject(project) {
-    if (!project) return;
-    $('#authProjectTitle').textContent = project.name;
-    $('#authProjectRepo').textContent = project.repo;
-    $('#authProjectHost').innerHTML = `${iconMarkup('server')}${escapeHTML(project.host)}`;
-    $('#authProjectOwner').textContent = project.owner;
-    const status = $('#authProjectStatus');
-    status.className = `badge ${project.status === 'online' ? 'badge-success' : 'badge-neutral'}`;
-    status.innerHTML = authStatusMarkup(project);
-
-    $('#authNameInput').value = project.name;
-    $('#authRepoInput').value = project.repo;
-    $('#authPathInput').value = project.path;
-    $('#authHostInput').value = project.host;
-    $('#authOwnerInput').value = project.owner;
-    $('#authVisibleInput').value = project.visible;
-    if (!$('#authOwnerInput').value) {
-      const option = document.createElement('option');
-      option.textContent = project.owner;
-      $('#authOwnerInput').appendChild(option);
-      $('#authOwnerInput').value = project.owner;
-    }
-    if (!$('#authHostInput').value) {
-      const option = document.createElement('option');
-      option.textContent = project.host;
-      $('#authHostInput').appendChild(option);
-      $('#authHostInput').value = project.host;
-    }
-
-    $$('input[name="projectDownloadPolicy"]').forEach((radio) => {
-      radio.checked = radio.value === project.policy;
-    });
-    updateAuthPolicyBadge(project);
-    renderAuthMembers(project);
-    renderAuthProjectList();
-    $('#addMemberProjectName').textContent = project.name;
-  }
-
-  function selectAuthProject(projectId) {
-    const project = authProjects[projectId];
-    if (!project) return;
-    state.currentAuthProject = projectId;
-    fillAuthProject(project);
-  }
-
-  function renderAuthPage() {
-    renderAuthProjectList();
-    const project = authProjects[state.currentAuthProject] || authProjects['payment-service'];
-    state.currentAuthProject = project.id;
-    fillAuthProject(project);
-  }
-
-  function resetMemberTypeOptions(type) {
-    state.memberType = type;
-    $$('#memberTypeSwitch [data-member-type]').forEach((button) => {
-      button.classList.toggle('is-active', button.dataset.memberType === type);
-    });
-    const list = type === 'group' ? directoryGroups : directoryUsers;
-    const select = $('#memberSubjectSelect');
-    select.innerHTML = list.map((entry) => `<option value="${escapeHTML(entry.account)}">${escapeHTML(entry.name)} · ${escapeHTML(entry.account)} · ${escapeHTML(entry.meta)}</option>`).join('');
-  }
-
-  function resetAddMemberModal() {
-    resetMemberTypeOptions('user');
-    const addMemberProject = authProjects[state.currentAuthProject];
-    $('#addMemberProjectName').textContent = addMemberProject ? addMemberProject.name : 'payment-service';
-    $$('#addMemberForm [data-member-perm]').forEach((checkbox) => {
-      checkbox.checked = checkbox.dataset.memberPerm !== 'fileWrite';
-    });
-  }
-
-  function handleAddMember(event) {
-    event.preventDefault();
-    const project = authProjects[state.currentAuthProject];
-    if (!project) return;
-    const select = $('#memberSubjectSelect');
-    const option = select.selectedOptions[0];
-    if (!option) {
-      showToast('请选择要添加的用户或组', { type: 'error' });
-      return;
-    }
-    const subject = option.textContent.split(' · ')[0];
-    const exists = project.members.some((member) => member.subject === subject && member.type === (state.memberType === 'group' ? '组' : '用户'));
-    if (exists) {
-      showToast(`${subject} 已拥有该项目权限`, { type: 'warning' });
-      return;
-    }
-    const perms = can();
-    $$('#addMemberForm [data-member-perm]').forEach((checkbox) => {
-      perms[checkbox.dataset.memberPerm] = checkbox.checked;
-    });
-    perms.download = false;
-    project.members.push({
-      subject,
-      type: state.memberType === 'group' ? '组' : '用户',
-      source: '直接',
-      perms
-    });
-    fillAuthProject(project);
-    closeModal();
-    showToast(`已添加 ${subject}`, { sub: '权限变更将在 60 秒内生效' });
-  }
-
-  function markAuthBasicSaved() {
-    const project = authProjects[state.currentAuthProject];
-    if (!project) return;
-    const name = $('#authNameInput').value.trim();
-    if (!name) {
-      showToast('项目名不能为空', { type: 'error' });
-      $('#authNameInput').focus();
-      return;
-    }
-    project.name = name;
-    project.repo = $('#authRepoInput').value.trim();
-    project.host = $('#authHostInput').value;
-    project.owner = $('#authOwnerInput').value;
-    project.visible = $('#authVisibleInput').value.trim();
-    fillAuthProject(project);
-    showToast('项目基本信息已保存');
-  }
-
-  function resetAuthBasicForm() {
-    const project = authProjects[state.currentAuthProject];
-    if (!project) return;
-    fillAuthProject(project);
-    showToast('已恢复为已保存的项目信息', { type: 'info' });
-  }
-
-  function saveAuthPolicy() {
-    const project = authProjects[state.currentAuthProject];
-    if (!project) return;
-    const selected = $('input[name="projectDownloadPolicy"]:checked');
-    if (!selected) return;
-    project.policy = selected.value;
-    updateAuthPolicyBadge(project);
-    showToast('项目下载策略已保存', {
-      type: project.policy === 'allow' ? 'warning' : 'success',
-      sub: project.policy === 'allow' ? '允许下载将产生审计日志' : '下载入口已保持禁用'
-    });
-  }
-
-  function removeAuthMember(subject) {
-    const project = authProjects[state.currentAuthProject];
-    if (!project) return;
-    const member = project.members.find((item) => item.subject === subject);
-    if (!member) return;
-    openConfirm({
-      title: '移除成员',
-      sub: '权限变更将在 60 秒内生效。',
-      message: `确定从 ${project.name} 移除「${subject}」吗？如权限来自 LDAP 组继承，请前往组管理调整。`,
-      confirmLabel: '移除',
-      danger: true,
-      onConfirm: () => {
-        project.members = project.members.filter((item) => item !== member);
-        fillAuthProject(project);
-        showToast(`已移除 ${subject}`);
-      }
-    });
-  }
-
-  /* ------------------------------------------------------------
      Audit
      ------------------------------------------------------------ */
   // [U66-review B-1 M-3 M-9 m-2 m-6] 关键字白名单 + 起止时间 + 事件族 + 项目/主机分离
@@ -6526,7 +5868,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
       : '<div class="audit-empty-excerpt">未记录内容摘录（仅保留指纹）</div>';
     const excerptBadge = state.auditExcerptEnabled
       ? `<span class="badge badge-sm">有界摘录（≤1KB）</span>${event.excerptTruncated ? '<span class="badge badge-warning badge-sm">已截断</span>' : ''}`
-      : '<span class="badge badge-sm">已关闭 · 二期</span>';
+      : '<span class="badge badge-sm">未开启</span>';
     return row + `
       <tr class="audit-expand-row">
         <td colspan="7">
@@ -6617,7 +5959,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     if (button) button.setAttribute('aria-checked', String(state.auditExcerptEnabled));
     const label = $('#auditExcerptState');
     if (label) label.textContent = state.auditExcerptEnabled
-      ? '内容摘录：已开启（≤1KB，二期）'
+      ? '内容摘录：已开启（≤1KB）'
       : '内容摘录：已关闭（默认）';
   }
 
@@ -7122,15 +6464,12 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     modal.hidden = false;
     layer.hidden = false;
     state.activeModal = modal;
-    if (modalId === 'addMember') resetAddMemberModal();
     if (modalId === 'downloadBlocked') {
       $('#blockedFilePath').textContent = state.lastBlockedFile || 'src/refund/calculator.ts';
       $('#blockedProjectName').textContent = state.projectName || 'payment-service';
     }
     window.setTimeout(() => {
-      const preferred = modalId === 'addMember'
-        ? $('#memberSubjectSelect')
-        : modalId === 'newProject'
+      const preferred = modalId === 'newProject'
           ? $('#newProjectName')
           : modalId === 'registerHost'
             ? $('#copyRegCommandBtn')
@@ -7377,26 +6716,6 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
         return;
       }
 
-      const authProjectTarget = target.closest('[data-auth-project]');
-      if (authProjectTarget) {
-        selectAuthProject(authProjectTarget.dataset.authProject);
-        return;
-      }
-
-      const removeMemberTarget = target.closest('[data-remove-member]');
-      if (removeMemberTarget) {
-        removeAuthMember(removeMemberTarget.dataset.removeMember);
-        return;
-      }
-
-      // [U67] 矩阵行「编辑」与详情入口统一跳项目详情弹框权限 tab
-      const editMemberTarget = target.closest('[data-edit-member]');
-      if (editMemberTarget) {
-        openProjectDetail(state.currentAuthProject);
-        switchProjectDetailTab('perm');
-        return;
-      }
-
       const projectDetailTarget = target.closest('[data-project-detail]');
       if (projectDetailTarget) {
         openProjectDetail(projectDetailTarget.dataset.projectDetail);
@@ -7525,33 +6844,6 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     });
   }
 
-  function bindAuthEvents() {
-    // [U67] 收敛：授权写入口移至项目详情弹框权限 tab，矩阵页保留只读总览
-    $('#addMemberBtn').addEventListener('click', () => {
-      openProjectDetail(state.currentAuthProject);
-      switchProjectDetailTab('perm');
-    });
-    $('#memberTypeSwitch').addEventListener('click', (event) => {
-      const button = event.target.closest('[data-member-type]');
-      if (!button) return;
-      resetMemberTypeOptions(button.dataset.memberType);
-    });
-    $('#addMemberForm').addEventListener('submit', handleAddMember);
-    $('#saveBasicInfoBtn').addEventListener('click', markAuthBasicSaved);
-    $('#resetBasicInfoBtn').addEventListener('click', resetAuthBasicForm);
-    $('#copyAuthPathBtn').addEventListener('click', () => copyText($('#authPathInput').value, '项目路径已复制'));
-    $('#saveAuthPolicyBtn').addEventListener('click', saveAuthPolicy);
-    $$('input[name="projectDownloadPolicy"]').forEach((radio) => {
-      radio.addEventListener('change', () => {
-        const project = authProjects[state.currentAuthProject];
-        if (project) {
-          project.policy = radio.value;
-          updateAuthPolicyBadge(project);
-        }
-      });
-    });
-  }
-
   function bindUserEvents() {
     const usersBody = $('#usersBody');
     if (usersBody) usersBody.addEventListener('change', handleUserRoleChange);
@@ -7611,7 +6903,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     $('#connDiagLink').addEventListener('click', () => navigate('diagnostics'));
     $('#errorDiagBtn').addEventListener('click', () => navigate('diagnostics'));
     $('#retryConnectionBtn').addEventListener('click', retryProjectConnection);
-    $('#splitLayoutBtn').addEventListener('click', () => showToast('分屏布局已切换（演示）', { type: 'info' }));
+    $('#splitLayoutBtn').addEventListener('click', () => showToast('分屏布局已切换', { type: 'info' }));
     $('#newTerminalBtn').addEventListener('click', addTerminalTab);
     $('#browserRefreshBtn').addEventListener('click', () => showToast('浏览器预览已刷新', { type: 'info' }));
     $('#openBrowserPreviewBtn').addEventListener('click', () => showToast('正在打开 http://localhost:3000/', { type: 'info', sub: '浏览器下载仍受项目策略限制' }));
@@ -7783,7 +7075,6 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     bindDrawerEvents();
     bindHostEvents();
     bindRelayEvents();
-    bindAuthEvents();
     bindUserEvents();
     bindAuditEvents();
     bindPolicyEvents();
@@ -7800,7 +7091,6 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     renderRelays();
     updateAuditExcerptState();
     renderAuditTable();
-    renderAuthPage();
     renderUsers();
 
     if (!location.hash) {
