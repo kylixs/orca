@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### 修复批 R1 落地（2026-11-15，U55 🟢）—— 探索批修复全闭环
+
+`a1c65bb63ad`（12 文件 +257/−27）：P0 根因=O1-a 只治理镜像订阅未治理创建动作——云会话终端创建从宿主 tab 委派分流为客户端 tab（terminal.create/multiplex 拉起 PTY），覆盖七创建入口。104 测试绿+tc:web 清。**U55→🟢。探索批四令（R1/R2+R5/R3/R4）全部落地：P0×2+P1×6 闭环**。派修复复验（探索路径重放）。
+
 ### PS-1 落地（2026-11-15，Playwright Server 核心）
 
 `52b40d80c30`（新目录 6 文件）：常驻 server（headless Chromium+admin/zhangsan/lisi 三隔离上下文 storageState+127.0.0.1:9223 控制面 Bearer/Host/Origin 校验）+journey-runtime（defineJourney/runIfMain 双模式底座）+ui 骨架+example-journey。端点：tabs CRUD/execute/screenshot（限 evidence 内）/shutdown。双模式 demo 双 PASS（注入 6 步 127ms ∥ 独立 6 步 222ms 同结果）；2/2 测试。空槽回填 PS-2（扩展函数库）。
