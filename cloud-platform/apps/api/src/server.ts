@@ -1029,8 +1029,21 @@ export function createApp(config: ApiConfig): ApiHandle {
   function ensureHostRoute(target: Host): void {
     const routeTarget = target.directAddrs[0]
     if (!target.relayRoute || !routeTarget) return
-    // Registration's explicit relayTarget stays authoritative; only fill the gap.
-    if (store.relayRoutes.has(target.relayRoute)) return
+    // Derived `ip-` keys are syncHostRoute's: it carries an explicit upstream
+    // across a label move, and this correction must not undo that (U39/M114a).
+    if (target.relayRoute.startsWith('ip-')) return
+    const current = store.relayRoutes.get(target.relayRoute)
+    if (current) {
+      // U64: a restarted host reports its new listen port on the next beat, so
+      // following it closes the window where the relay keeps dialing the dead
+      // port. Why the beat outranks registration's explicit relayTarget: that
+      // target is the host's enrolment-time snapshot, while a changed
+      // directAddrs proves the host has moved since. Same address ⇒ no write.
+      if (current.target === routeTarget) return
+      current.target = routeTarget
+      current.version = store.policies.version
+      return
+    }
     store.relayRoutes.set(target.relayRoute, {
       routeKey: target.relayRoute,
       hostId: target.id,
