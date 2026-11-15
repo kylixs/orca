@@ -148,7 +148,7 @@ function canCreateProjectOnHost(store, hostId, user, isPlatformAdmin): boolean {
 | 平台管理员 | 全部（含归档，`includeArchived=1` 时） | 需显式 `open`（U40 自授，现状不变） | 按项目位 | 按项目位 | 按项目位 | 允许 | 允许 | 按项目位 + 策略 | `admin` 管控面旁路；项目内仍 `P` |
 | 主机全权（三位） | 该主机全部非归档 | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 | 按项目位（仅显式 `download`）+ 策略 | `H` 供给六位；下载 `P` + `policy`；宿主 `host` |
 | 主机只读（仅 `view`） | 该主机全部非归档 | 允许 | 拒绝 | 拒绝 | 拒绝 | 拒绝 | 拒绝 | 拒绝 | `H` 上限（`open + file:read`）；宿主 `host` |
-| 混合：`view + provision`（缺 maintain） | 该主机全部非归档 | 允许 | 拒绝 | 拒绝 | 拒绝 | 允许 | 拒绝 | 拒绝 | 缺 maintain 不成立全权；`provision` 只给创建 |
+| 混合：`view + provision`（缺 maintain） | 该主机全部非归档 | 允许 | 拒绝 | 拒绝 | 拒绝 | 允许 | 拒绝 | 拒绝 | 缺 maintain 不成立全权；`provision` 只给创建。**审定修订（2026-11-15，随「全权不含 maintain」裁定）：本行作废改写——全权 = `view + provision`，含六操作位供给与可见性推导（终端/Agent/编辑/浏览器不拒绝），缺 maintain 不降级；U67 §2.4 引用本修订** |
 | 混合：`view + maintain`（缺 provision） | 该主机全部非归档 | 允许 | 拒绝 | 拒绝 | 拒绝 | 拒绝 | 允许 | 拒绝 | 同上，`maintain` 只给维护 |
 | 混合：`provision + maintain`（无 view） | 仅显式项目授权 | 按项目位 | 按项目位 | 按项目位 | 按项目位 | 允许 | 允许 | 按项目位 + 策略 | 缺 view 不推导可见性/上限 |
 | 仅 `provision` | 仅显式项目授权 | 按项目位 | 按项目位 | 按项目位 | 按项目位 | 允许 | 拒绝 | 按项目位 + 策略 | 同上 |

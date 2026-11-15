@@ -1287,51 +1287,11 @@ svg { display: block; }
 /* ============================================================
    Project authorization
    ============================================================ */
-.auth-layout { display: grid; grid-template-columns: 208px minmax(0, 1fr); gap: 16px; align-items: start; }
-.auth-project-list { padding: 8px; position: sticky; top: 0; }
-.auth-list-head { display: flex; align-items: center; justify-content: space-between; padding: 7px 8px 9px; }
-.auth-project-item {
-  width: 100%; display: flex; flex-direction: column; gap: 2px;
-  padding: 9px 9px;
-  border-radius: 7px;
-  text-align: left;
-  position: relative;
-}
-.auth-project-item:hover { background: var(--hover); }
-.auth-project-item.is-active { background: var(--brand-soft); }
-.auth-project-item.is-active::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px; border-radius: 2px; background: var(--brand); }
-.auth-project-name { font-family: var(--mono); font-size: 11.5px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.auth-project-meta { font-size: 10px; color: var(--text-3); }
-.auth-detail { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-.auth-detail-head {
-  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
-  padding: 18px 20px;
-  border: 1px solid var(--border); border-radius: 10px; background: #fff;
-}
-.auth-detail-title { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
-.auth-repo { margin-top: 5px; font-family: var(--mono); font-size: 10.5px; color: var(--text-3); word-break: break-all; }
-.auth-detail-meta { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; justify-content: flex-end; }
 .basic-grid { display: grid; grid-template-columns: 1.1fr .9fr; gap: 16px; }
 .basic-grid .field-full { grid-column: 1 / -1; }
 .readonly-copy { position: relative; }
 .readonly-copy .input { padding-right: 34px; }
 .readonly-copy .copy-inline { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); }
-.permission-table { width: 100%; min-width: 650px; border-collapse: separate; border-spacing: 0; }
-.permission-table th {
-  height: 40px; padding: 0 8px;
-  background: var(--sidebar);
-  border-bottom: 1px solid var(--border);
-  color: var(--text-3); font-size: 10px; font-weight: 600; letter-spacing: .02em;
-  text-align: center; white-space: nowrap;
-}
-.permission-table th.th-left { text-align: left; }
-.permission-table td { height: 40px; padding: 0 8px; border-bottom: 1px solid var(--divider); text-align: center; font-size: 12px; color: var(--text-2); }
-.permission-table tr:last-child td { border-bottom: 0; }
-.permission-table tbody tr:hover { background: var(--hover); }
-.permission-table .perm-subject { text-align: left; display: flex; align-items: center; gap: 7px; white-space: nowrap; }
-.perm-check { display: inline-flex; justify-content: center; color: var(--text-2); }
-.perm-check .icon { width: 13px; height: 13px; }
-.perm-none { color: #c4c4c4; font-size: 12px; }
 .perm-lock { display: inline-flex; align-items: center; justify-content: center; gap: 3px; color: #a3a3a3; }
 .perm-unchecked { width: 10px; height: 10px; border: 1px solid #d4d4d4; border-radius: 2px; display: inline-block; }
 .perm-lock .icon { width: 12px; height: 12px; }
@@ -1837,7 +1797,6 @@ svg { display: block; }
   .topbar-actions { gap: 8px; }
   .role-demo { gap: 6px; }
   .role-preview-link { font-size: 10.5px; }
-  .auth-layout { grid-template-columns: 196px minmax(0, 1fr); }
   .ide-sidebar { width: 228px; flex-basis: 228px; }
   .ide-files { width: 288px; flex-basis: 288px; }
 }
@@ -1847,7 +1806,6 @@ svg { display: block; }
   .recent-grid { gap: 16px; }
   .stat-card { padding: 16px 18px; }
   .page { padding: 24px; }
-  .auth-layout { grid-template-columns: 188px minmax(0, 1fr); }
   .basic-grid { grid-template-columns: 1fr 1fr; }
   .policy-options { gap: 10px; }
   .policy-option { padding: 14px; }
@@ -3536,7 +3494,6 @@ svg { display: block; }
         <div class="perm-card" data-host-card="view">
           <div class="perm-card-head">
             <span class="perm-card-title">查看</span>
-            <span class="badge badge-warning badge-sm">view</span>
             <span class="perm-card-count" data-card-count>0</span>
           </div>
           <p class="perm-card-desc">主机只读：可见该主机全部非归档项目并打开查看；项目内上限 = 打开 + 文件只读。不能创建 / 维护主机，不能使用终端 / Agent / 编辑 / 浏览器 / 下载。</p>
@@ -3551,7 +3508,6 @@ svg { display: block; }
         <div class="perm-card" data-host-card="ops">
           <div class="perm-card-head">
             <span class="perm-card-title">控制</span>
-            <span class="badge badge-brand badge-sm">view + provision</span>
             <span class="perm-card-count" data-card-count>0</span>
           </div>
           <p class="perm-card-desc">主机全权（操作推导）：可见全部项目，项目内终端 / Agent / 文件读写 / 浏览器可用；下载仍按下载策略独立判定。含创建 / 登记项目能力（不含主机维护）。</p>
@@ -3566,7 +3522,6 @@ svg { display: block; }
         <div class="perm-card" data-host-card="admin">
           <div class="perm-card-head">
             <span class="perm-card-title">管理</span>
-            <span class="badge badge-mono badge-sm">provision + maintain</span>
             <span class="perm-card-count" data-card-count>0</span>
           </div>
           <p class="perm-card-desc">创建 / 登记项目 + 进入 / 退出维护模式。不推导项目可见性（仅显式授权项目可见），不授予项目内操作位；吊销主机仍仅限平台管理员。</p>
@@ -3580,7 +3535,7 @@ svg { display: block; }
 
         <datalist id="hostCardUserOptions"></datalist>
         <datalist id="hostCardGroupOptions"></datalist>
-        <p class="perm-mixed-note">变更即时保存；已存在于其它卡片时先弹覆盖确认。降级保存将断开该主体当前全部云会话，约 60 秒内生效。</p>
+        <p class="perm-mixed-note">变更即时保存；同一主体已有授权时弹角色调整确认。降级保存将断开该主体当前全部云会话，约 60 秒内生效。</p>
       </div>
     </div>
     <div class="drawer-foot">
@@ -3911,7 +3866,6 @@ svg { display: block; }
         <div class="perm-card" data-project-card="view">
           <div class="perm-card-head">
             <span class="perm-card-title">查看</span>
-            <span class="badge badge-mono badge-sm">open + file:read</span>
             <span class="perm-card-count" data-card-count>0</span>
           </div>
           <p class="perm-card-desc">打开项目、浏览与预览文件。不含终端 / Agent / 编辑 / 浏览器 / 下载。</p>
@@ -3926,7 +3880,6 @@ svg { display: block; }
         <div class="perm-card" data-project-card="ops">
           <div class="perm-card-head">
             <span class="perm-card-title">控制</span>
-            <span class="badge badge-mono badge-sm">terminal · agent · file:write · browser · download</span>
             <span class="perm-card-count" data-card-count>0</span>
           </div>
           <p class="perm-card-desc">项目内操作位：终端、Agent、文件写入、浏览器与下载；下载仍需项目 / 全局下载策略为「允许」才放行。</p>
@@ -3941,7 +3894,6 @@ svg { display: block; }
         <div class="perm-card is-derived" data-project-card="admin">
           <div class="perm-card-head">
             <span class="perm-card-title">管理</span>
-            <span class="badge badge-brand badge-sm">主机授权推导 · 只读</span>
             <span class="perm-card-count" data-card-count>0</span>
           </div>
           <p class="perm-card-desc">项目级无「管理」权限位：归档 / 登记归创建者或平台管理员，主机维护属主机授权。下方为按主机授权推导在本项目获得权限的主机级主体——在主机详情弹框维护，项目授权不扩大到主机级。</p>
@@ -3953,7 +3905,7 @@ svg { display: block; }
 
         <datalist id="pdUserOptions"></datalist>
         <datalist id="pdGroupOptions"></datalist>
-        <p class="perm-mixed-note">变更即时保存；已存在于其它卡片时先弹覆盖确认。授权收缩将断开该主体当前全部云会话，约 60 秒内生效。</p>
+        <p class="perm-mixed-note">变更即时保存；同一主体已有授权时弹角色调整确认。授权收缩将断开该主体当前全部云会话，约 60 秒内生效。</p>
       </div>
     </div>
     <div class="modal-foot">
@@ -4293,7 +4245,7 @@ svg { display: block; }
   ];
 
   const can = (overrides = {}) => Object.assign({
-    open: true, terminal: true, agent: true, fileRead: true, fileWrite: false, download: false
+    open: true, terminal: true, agent: true, fileRead: true, fileWrite: false, browser: false, download: false
   }, overrides);
 
   const authProjects = {
@@ -5327,6 +5279,12 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     return false;
   }
 
+  // 断会话文案分主体类型（设计 §4.4）：组主体宿主无法解析成员，断开该资源全部在线会话
+  function revokeSessionNote(isGroup, scope, downgrade) {
+    if (!isGroup) return downgrade ? '降级将断开其当前云会话，约 60 秒内生效。' : '其当前云会话将在 60 秒内断开。';
+    return downgrade ? `宿主无法解析组成员，降级将断开该${scope}当前全部在线会话，约 60 秒内生效。` : `宿主无法解析组成员，断开该${scope}当前全部在线会话（≤60 秒）。`;
+  }
+
   function addHostCardSubject(card) {
     if (!requireAdminForGrants()) return;
     const host = hostDirectory.find((item) => item.id === state.selectedHostId);
@@ -5359,7 +5317,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     openConfirm({
       title: '调整授权角色',
       sub: '同一主体只有一条主机授权，调整后仅在目标卡片显示。',
-      message: `${displayName} 当前角色为「${HOST_CARDS[existing.role].roleName}」，将调整为「${HOST_CARDS[cardKey].roleName}」。${downgrade ? '降级将断开其当前云会话，约 60 秒内生效。' : '升级即时生效，不断开会话。'}`,
+      message: `${displayName} 当前角色为「${HOST_CARDS[existing.role].roleName}」，将调整为「${HOST_CARDS[cardKey].roleName}」。${downgrade ? revokeSessionNote(existing.type === 'group', '主机', true) : '升级即时生效，不断开会话。'}`,
       confirmLabel: '确认调整',
       danger: downgrade,
       onConfirm: () => {
@@ -5384,7 +5342,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     openConfirm({
       title: '移除授权',
       sub: '该主体将失去此主机上的全部授权。',
-      message: `${grant.name} 将从「${HOST_CARDS[cardKey].roleName}」移除，授权行删除，其当前云会话将在 60 秒内断开。`,
+      message: `${grant.name} 将从「${HOST_CARDS[cardKey].roleName}」移除，授权行删除，${revokeSessionNote(grant.type === 'group', '主机', false)}`,
       confirmLabel: '确认移除',
       danger: true,
       onConfirm: () => {
@@ -5409,11 +5367,11 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
   const PROJECT_CARD_ORDER = ['view', 'ops'];
   const PROJECT_CARD_PERMS = {
     view: ['open', 'fileRead'],
-    ops: ['open', 'fileRead', 'terminal', 'agent', 'fileWrite']
+    ops: ['terminal', 'agent', 'fileWrite', 'browser', 'download']
   };
   const PROJECT_CARDS = {
     view: { perms: ['open', 'fileRead'], label: '查看卡', roleName: '查看' },
-    ops: { perms: ['terminal', 'agent', 'fileWrite', 'download'], label: '控制卡', roleName: '控制' }
+    ops: { perms: ['terminal', 'agent', 'fileWrite', 'browser', 'download'], label: '控制卡', roleName: '控制' }
   };
   // 位置即权限：任一操作位 ⇒ 控制卡；否则打开+文件只读两齐 ⇒ 查看卡
   function projectMemberRole(member) {
@@ -5519,7 +5477,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
       if (existing) {
         Object.keys(existing.perms).forEach((perm) => { existing.perms[perm] = PROJECT_CARD_PERMS[key].includes(perm); });
       } else {
-        const perms = { open: false, terminal: false, agent: false, fileRead: false, fileWrite: false, download: false };
+        const perms = { open: false, terminal: false, agent: false, fileRead: false, fileWrite: false, browser: false, download: false };
         PROJECT_CARD_PERMS[key].forEach((perm) => { perms[perm] = true; });
         project.members.push({ subject: displayName, type: type === 'group' ? '组' : '用户', source: '直接', perms });
       }
@@ -5536,7 +5494,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     openConfirm({
       title: '调整授权角色',
       sub: '同一主体只有一条项目授权，调整后仅在目标卡片显示。',
-      message: `${displayName} 当前角色为「${PROJECT_CARDS[fromRole].roleName}」，将调整为「${PROJECT_CARDS[key].roleName}」。${downgrade ? '降级将断开其当前云会话，约 60 秒内生效。' : '升级即时生效，不断开会话。'}`,
+      message: `${displayName} 当前角色为「${PROJECT_CARDS[fromRole].roleName}」，将调整为「${PROJECT_CARDS[key].roleName}」。${downgrade ? revokeSessionNote(existing.type === '组', '项目', true) : '升级即时生效，不断开会话。'}`,
       confirmLabel: '确认调整',
       danger: downgrade,
       onConfirm: () => {
@@ -5558,7 +5516,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     openConfirm({
       title: '移除授权',
       sub: '该主体将失去本项目的全部授权。',
-      message: `${subject} 将从「${PROJECT_CARDS[key].roleName}」移除，授权行删除，其当前云会话将在 60 秒内断开。`,
+      message: `${subject} 将从「${PROJECT_CARDS[key].roleName}」移除，授权行删除，${revokeSessionNote(member.type === '组', '项目', false)}`,
       confirmLabel: '确认移除',
       danger: true,
       onConfirm: () => {
