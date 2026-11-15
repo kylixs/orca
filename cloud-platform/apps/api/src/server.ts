@@ -29,7 +29,7 @@ import {
   type Permission,
   type SigningKey
 } from '../../../packages/contract/src/credential.ts'
-import { AuditChain } from './audit.ts'
+import { AuditChain, type AuditSummary } from './audit.ts'
 import { createRemoteAudit, type AuditSink } from './audit-writer-client.ts'
 import { createSigningKeyRing } from './signing-key-ring.ts'
 import type { AuditEventInput } from './store.ts'
@@ -2874,17 +2874,77 @@ export function createApp(config: ApiConfig): ApiHandle {
       const requestedLimit = Number(url.searchParams.get('limit') ?? 50)
       const limit =
         Number.isInteger(requestedLimit) && requestedLimit > 0 ? Math.min(requestedLimit, 200) : 50
+      const windowMs = 31 * 24 * 60 * 60_000
+      const rawEventTypes = (url.searchParams.get('eventTypes') ?? '')
+        .split(',')
+        .map((type) => type.trim())
+        .filter((type) => type !== '')
+      if (rawEventTypes.length > 20) {
+        return error(res, 400, 'INVALID_QUERY', 'eventTypes 最多 20 个。', traceId)
+      }
+      if (rawEventTypes.some((type) => type.length > 64)) {
+        return error(res, 400, 'INVALID_QUERY', 'eventTypes 每个最多 64 字符。', traceId)
+      }
+      const family = url.searchParams.get('eventFamily')
+      let familyTypes: string[] | undefined
+      if (family === 'download') familyTypes = ['file_download', 'download_blocked']
+      else if (family === 'copy') familyTypes = ['file_copy']
+      else if (family !== null && family !== '') {
+        return error(res, 400, 'INVALID_QUERY', 'eventFamily 仅支持 download/copy。', traceId)
+      }
+      // Explicit eventTypes wins over the family shortcut and over eventType.
+      const eventTypes = rawEventTypes.length > 0 ? rawEventTypes : familyTypes
+      const fileNameRaw = (url.searchParams.get('fileName') ?? '').trim()
+      if (fileNameRaw.length > 128) {
+        return error(res, 400, 'INVALID_QUERY', 'fileName 最多 128 字符。', traceId)
+      }
+      const fileName = fileNameRaw === '' ? undefined : fileNameRaw
+      const keywordRaw = (url.searchParams.get('q') ?? url.searchParams.get('keyword') ?? '').trim()
+      if (keywordRaw.length > 128) {
+        return error(res, 400, 'INVALID_QUERY', 'q 最多 128 字符。', traceId)
+      }
+      if (keywordRaw.length === 1) {
+        return error(res, 400, 'INVALID_QUERY', 'q 至少 2 个字符。', traceId)
+      }
+      const keyword = keywordRaw === '' ? undefined : keywordRaw
       const sinceParam = url.searchParams.get('since')
-      const since = sinceParam ? Date.parse(sinceParam) : undefined
-      if (since && now() - since > 31 * 24 * 60 * 60_000) {
+      const parsedSince = sinceParam ? Date.parse(sinceParam) : undefined
+      // Why ignore a bad since: old clients sent strings the chain silently dropped;
+      // a bad until is new input, so it is a caller error instead.
+      const since =
+        parsedSince !== undefined && !Number.isNaN(parsedSince) ? parsedSince : undefined
+      const untilParam = url.searchParams.get('until')
+      const until = untilParam === null ? undefined : Date.parse(untilParam)
+      if (until !== undefined && Number.isNaN(until)) {
+        return error(res, 400, 'INVALID_QUERY', 'until 不是有效时间。', traceId)
+      }
+      if (until !== undefined) {
+        const lower = since ?? until - windowMs
+        if (lower > until || until - lower > windowMs) {
+          return error(res, 400, 'TIME_WINDOW_TOO_LARGE', '查询时间窗最大 31 天。', traceId)
+        }
+      } else if (since && now() - since > windowMs) {
         return error(res, 400, 'TIME_WINDOW_TOO_LARGE', '查询时间窗最大 31 天。', traceId)
+      }
+      // Keyword/fileName without an explicit window would scan the whole chain;
+      // default it to the documented seven days (AC-13), never to no lower bound.
+      let querySince = since ?? (until !== undefined ? until - windowMs : undefined)
+      if (querySince === undefined && (fileName !== undefined || keyword !== undefined)) {
+        querySince = now() - 7 * 24 * 60 * 60_000
       }
       const page = await audit.query({
         actor: url.searchParams.get('actor') ?? undefined,
         eventType: url.searchParams.get('eventType') ?? undefined,
+        eventTypes,
         result: url.searchParams.get('result') ?? undefined,
         traceId: url.searchParams.get('traceId') ?? undefined,
-        since,
+        since: querySince,
+        until,
+        fileName,
+        keyword,
+        username: url.searchParams.get('username') ?? undefined,
+        projectId: url.searchParams.get('projectId') ?? undefined,
+        hostId: url.searchParams.get('hostId') ?? undefined,
         limit,
         cursor: url.searchParams.get('cursor') ? Number(url.searchParams.get('cursor')) : undefined
       })
@@ -2903,7 +2963,21 @@ export function createApp(config: ApiConfig): ApiHandle {
         })
       }
       const health = audit.getHealth()
-      return json(res, 200, { ...health, persisted: auditLogPath !== null })
+      // The summary comes from the writer in production; an unreachable writer
+      // must not hide the health verdict this endpoint already served (AC-26).
+      let summary: AuditSummary | null = null
+      try {
+        summary = await audit.summary()
+      } catch {
+        summary = null
+      }
+      return json(res, 200, {
+        ...health,
+        persisted: auditLogPath !== null,
+        ...(summary === null
+          ? {}
+          : { chain: summary.chain, gaps: summary.gaps, capacity: summary.capacity })
+      })
     }
 
     // ---- audit: chain integrity ----

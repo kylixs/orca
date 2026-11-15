@@ -1,5 +1,7 @@
-import type { AuditHealth } from './audit.ts'
+import type { AuditHealth, AuditQuery, AuditQueryResult, AuditSummary } from './audit.ts'
 import type { AuditEvent, AuditEventInput } from './store.ts'
+
+export type { AuditQuery, AuditQueryResult } from './audit.ts'
 
 /**
  * The API replica's half of the single audit writer (design §3). Every audited
@@ -10,22 +12,11 @@ import type { AuditEvent, AuditEventInput } from './store.ts'
  * failed write must stop the mutation rather than leave it unrecorded.
  */
 
-export type AuditQuery = {
-  actor?: string
-  eventType?: string
-  result?: string
-  traceId?: string
-  since?: number
-  limit: number
-  cursor?: number
-}
-
-export type AuditQueryResult = { events: AuditEvent[]; nextCursor: number | null }
-
 export type RemoteAudit = {
   append: (input: AuditEventInput) => Promise<AuditEvent>
   appendBestEffort: (input: AuditEventInput) => boolean
   query: (filter: AuditQuery) => Promise<AuditQueryResult>
+  summary: () => Promise<AuditSummary>
   verify: () => Promise<
     { ok: true; checked: number; tip: string } | { ok: false; brokenAtSeq: number; checked: number }
   >
@@ -39,6 +30,7 @@ export type AuditSink = {
   append: (input: AuditEventInput) => AuditEvent | Promise<AuditEvent>
   appendBestEffort: (input: AuditEventInput) => boolean
   query: (filter: AuditQuery) => AuditQueryResult | Promise<AuditQueryResult>
+  summary: () => AuditSummary | Promise<AuditSummary>
   verify: () =>
     | { ok: true; checked: number; tip: string }
     | { ok: false; brokenAtSeq: number; checked: number }
@@ -165,9 +157,18 @@ export function createRemoteAudit(options: {
       const params = new URLSearchParams({ limit: String(filter.limit) })
       if (filter.actor) params.set('actor', filter.actor)
       if (filter.eventType) params.set('eventType', filter.eventType)
+      if (filter.eventTypes && filter.eventTypes.length > 0) {
+        params.set('eventTypes', filter.eventTypes.join(','))
+      }
       if (filter.result) params.set('result', filter.result)
       if (filter.traceId) params.set('traceId', filter.traceId)
       if (filter.since !== undefined) params.set('since', String(filter.since))
+      if (filter.until !== undefined) params.set('until', String(filter.until))
+      if (filter.fileName) params.set('fileName', filter.fileName)
+      if (filter.keyword) params.set('q', filter.keyword)
+      if (filter.username) params.set('username', filter.username)
+      if (filter.projectId) params.set('projectId', filter.projectId)
+      if (filter.hostId) params.set('hostId', filter.hostId)
       if (filter.cursor !== undefined) params.set('cursor', String(filter.cursor))
       const res = await call(`/v1/events?${params.toString()}`)
       if (!res.ok) {
@@ -176,6 +177,16 @@ export function createRemoteAudit(options: {
         })
       }
       return (await res.json()) as AuditQueryResult
+    },
+    summary: async () => {
+      const res = await call('/v1/summary')
+      if (!res.ok) {
+        markWriteFailed(`audit summary failed: ${res.status}`)
+        throw Object.assign(new Error(`audit summary failed: ${res.status}`), {
+          code: 'AUDIT_UNAVAILABLE'
+        })
+      }
+      return (await res.json()) as AuditSummary
     },
     verify: async () => {
       const res = await call('/v1/verify')

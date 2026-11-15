@@ -187,16 +187,31 @@ export async function startAuditWriter(options: {
     }
 
     if (req.method === 'GET' && url.pathname === '/v1/events') {
+      const eventTypes = (url.searchParams.get('eventTypes') ?? '')
+        .split(',')
+        .map((type) => type.trim())
+        .filter((type) => type !== '')
       const page = chain.query({
         actor: url.searchParams.get('actor') ?? undefined,
         eventType: url.searchParams.get('eventType') ?? undefined,
+        eventTypes: eventTypes.length > 0 ? eventTypes : undefined,
         result: url.searchParams.get('result') ?? undefined,
         traceId: url.searchParams.get('traceId') ?? undefined,
         since: url.searchParams.get('since') ? Number(url.searchParams.get('since')) : undefined,
+        until: url.searchParams.get('until') ? Number(url.searchParams.get('until')) : undefined,
+        fileName: url.searchParams.get('fileName') ?? undefined,
+        keyword: url.searchParams.get('q') ?? url.searchParams.get('keyword') ?? undefined,
+        username: url.searchParams.get('username') ?? undefined,
+        projectId: url.searchParams.get('projectId') ?? undefined,
+        hostId: url.searchParams.get('hostId') ?? undefined,
         limit: Math.min(Number(url.searchParams.get('limit') ?? 50), 200),
         cursor: url.searchParams.get('cursor') ? Number(url.searchParams.get('cursor')) : undefined
       })
       return json(res, 200, page)
+    }
+
+    if (req.method === 'GET' && url.pathname === '/v1/summary') {
+      return json(res, 200, chain.summary())
     }
 
     if (req.method === 'GET' && url.pathname === '/v1/anchors') {
