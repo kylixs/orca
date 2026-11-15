@@ -469,4 +469,5 @@ defect-ledger 登记 U#（未修/在途/已修复）
 - Playwright Server 包装层的 `assertText/discover` 即按此原则设计；`page.innerText(selector)` 支持整块提取。
 
 ## 9c. 红因定性方法论（2026-11-15 复盘固化）
+- **构建对照纪律（2026-11-16 04:05 复盘固化，U75 假红判例）**：A/B 对照构建只许差被测变量（未提交 WIP、构建 flag 二者必控）；构建产物须自校验关键 marker（如 VITE_EXPOSE_STORE 死代码探测，与 verify-web-build 门禁并跑）——「双构建同红」在对照不纯时无效，U75 即因此把 oracle 缺陷误判为 HEAD 回归。
 - **bisect 提效（2026-11-16 复盘固化）**：多候选回归先做「diff 审读+符号定位」缩小到 1-2 候选，构建复放只做终确认——快照独立 out/ 全构建×N 候选耗时不可接受（U75 判例）。
