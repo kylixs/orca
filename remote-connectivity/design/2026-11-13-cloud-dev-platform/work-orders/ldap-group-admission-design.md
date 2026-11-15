@@ -192,7 +192,7 @@ ORCA_CLOUD_LDAP_REQUIRED_GROUP    # 准入组 CN 名单值；未设置/空白=�
 
 - **缺省行为与现网完全一致**：env 未设置时准入链路零生效（闸门条件短路、Mock 不带 requiredGroup、:1731 废除对默认 mock 三账户行为无变化——zhangsan/lisi 仍 developer、admin 仍启动种子 admin）；既有测试全量绿（E3）。
 - **wire 零变更**：新增仅服务端行为+`LdapResult.reason` 进程内加性枚举；登录/refresh/审计协议形状不变，错误响应走既有 `error()` 形状，仅新增一种 401 错误码。
-- **env 变更不要求旧客户端/宿主升级**：web（app.js:2385 直接展示 message）/宿主/中继/relay 无感知，mobile 按既有错误处理形态预期无感知（裸断言无证据指针，实现验收补验）——登录 200 响应结构不变、新 401 码走既有错误处理（既有错误处理）；准入开关纯属平台侧运维配置，随时可设可撤。
+- **env 变更不要求旧客户端/宿主升级**：web（app.js:2385 直接展示 message）/宿主/中继/relay 无感知，mobile 按既有错误处理形态预期无感知（裸断言无证据指针，实现验收补验）——登录 200 响应结构不变、新 401 码走既有错误处理形态；准入开关纯属平台侧运维配置，随时可设可撤。
 
 ### 3.7 会话与移出组善后（一期边界，如实声明）
 
@@ -217,7 +217,7 @@ ORCA_CLOUD_LDAP_REQUIRED_GROUP    # 准入组 CN 名单值；未设置/空白=�
 
 **处置步骤**（实现令 LGAA-4）：①`git rm cloud-platform/apps/api/src/ldap-role-groups.ts cloud-platform/test/ldap-role-groups.test.ts`（14 用例随模块同删，方向作废不保留断言）；②全量 `node --test` 回归 + grep 全仓 `rolesFromGroups|LDAP_ROLE_GROUP_MAP` 零命中（§6.3）；③台账 U69a 备注列登记裁定（LGAA-5）。不 revert 提交本身、不抹历史，前向删除。
 
-### 4.2 连带裁定建议（终审项 T3）：废除 server.ts:1731-1733 内联组→角色种子规则
+### 4.2 连带裁定（已终审 §9-2：废除） server.ts:1731-1733 内联组→角色种子规则
 
 survey §3-6 点名的冲突点（「platform-admins 组首登 seed 平台管理员」vs「LDAP 不供角色」）。**建议裁定：废除**——新用户种子一律 `roles:['developer']`，「分组=准入、角色=平台内」语义不留例外口子（为什么 `platform-admins` 特殊？没有理由——这正是作废方向的残余）。**保留选项如实给出**：保留为首登引导亦可行（U67 `roleOverride` 已保证覆盖优先、重登不回灌，:1739-1741），代价是语义残留一个「组→角色」特例。主会话终审二选一；以下影响面按「废除」核实：
 
@@ -258,18 +258,18 @@ new MockLdapAdapter(accounts, { requiredGroup?: string })
 - **接口零改动**（reason 加性除外，§3.2）：`createLdapsAdapter(config)` 承接作废方案 git 历史 `170f4e28f84` §6 的已核实骨架——TLS 连接、用户 DN 搜索、用户密码 simple bind（认证本体）、自读组属性、DN→CN 归一、`ORCA_CLOUD_LDAP_URL` 存在即选生产 adapter 的入口装配、`ApiConfig.ldap` 注入点不动。**两处语义修正**：①用户查找 filter 内嵌 memberOf 准入条件（§3.3，本设计核心增量）；②组的用途从「角色重算」改为「准入+组并集合并（Grant 组主体）」。
 - **配置键**（生产工单钉最终名，§8-Q5）：`ORCA_CLOUD_LDAP_URL` / `ORCA_CLOUD_LDAP_GROUP_ATTR`（缺省 memberOf）/ 组搜索基（合成 `CN=<准入组>,<基>`）/ 服务账号 bindDN+bindPassword（search 权限，§5.3）。
 - **过滤位置声明（如实）**：主执行在 LDAP 查询侧（用户钦定形态 A）；平台闸门保留为统一语义点+防御第二道（§3.1）。与 Gitea/GitLab 的差别在二分 miss 诊断与独立审计（§3.3）——形态一致、诊断更强。
-- **依赖前置**：Node 内置无 LDAP 客户端，候选 `ldapts`（作废方案 §6 评审结论照抄）；本仓库零运行时依赖纪律（cloud-platform/PLAN.md §0）→ 引依赖须独立评审，生产 adapter 连同评审走独立工单；本设计的准入链（Mock/注入）零新依赖即可全量验证。
+- **依赖前置**：Node 内置无 LDAP 客户端，候选 `ldapts`（作废方案 git 历史 170f4e28f84 §6 评审结论照抄）；本仓库零运行时依赖纪律（cloud-platform/PLAN.md §0）→ 引依赖须独立评审，生产 adapter 连同评审走独立工单；本设计的准入链（Mock/注入）零新依赖即可全量验证。
 
 ### 5.3 simple-bind 能力边界（如实声明）
 
 simple bind 只回答「凭据对不对」，**不具备任何查询能力**——memberOf filter 是 search 语义，必须先有可执行 search 的绑定：
 
-1. 目录允许匿名 search，或配置服务账号 bindDN（作废方案 §6 已有该设计，照抄）；
+1. 目录允许匿名 search，或配置服务账号 bindDN（作废方案 git 历史 170f4e28f84 §6 已有该设计，照抄）；
 2. 目录在用户条目上维护 memberOf（AD 原生；OpenLDAP 需 memberof overlay）；
 3. 服务账号可读用户条目 memberOf（受限 schema 除外）；
 4. 登录名属性映射：filter 模板钉死 `uid`——AD 登录名常为 sAMAccountName、`uid` 可能缺省，部署前核实用户条目含 `uid`（属性可配归生产 adapter 工单键，并入 §8-Q5）。
 
-前提不满足时：准入开启 → 所有登录在 filter 阶段失败（uid 复查命中则 `not_admitted`）——**全员 fail-closed，无提权风险，方向安全**；准入关闭 → 回到现状登录（组回填空仅影响组并集展示）。三条是**部署前置条件**，进运维 checklist；真实目录核实挂 `ORCA_REAL_LDAP_TEST=1` 门（作废方案 §6 先例），归生产 adapter 工单。
+前提不满足时：准入开启 → 所有登录在 filter 阶段失败（uid 复查命中则 `not_admitted`）——**全员 fail-closed，无提权风险，方向安全**；准入关闭 → 回到现状登录（组回填空仅影响组并集展示）。四条是**部署前置条件**，进运维 checklist；真实目录核实挂 `ORCA_REAL_LDAP_TEST=1` 门（作废方案 git 历史 170f4e28f84 §6 先例），归生产 adapter 工单。
 
 ---
 
@@ -333,7 +333,7 @@ LGAA-4 删除 LGA-1 两文件后：全量 `node --test` 绿；grep 全仓 `roles
 | 令      | 层                                      | 内容                                                                                                                                              | 预估 |
 | ------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
 | LGAA-1a | ① `ldap.ts`                             | reason 加 `'not_admitted'` + `MockLdapAdapter` 可选 `requiredGroup`（§5.1）+ Mock 行为单测                                                          | 20   |
-| LGAA-1b | ① `server.ts`                           | 登录链 `not_admitted` 分支（401/审计/不计数）+ 平台统一闸门 + 删除 :1731-1733 内联规则（种子一律 developer；按 T3 终审执行）+ `ApiConfig`/createApp env 读点 + Mock 装配透传 + 入口 env 装配 | 20   |
+| LGAA-1b | ① `server.ts`                           | 登录链 `not_admitted` 分支（401/审计/不计数）+ 平台统一闸门 + 删除 :1731-1733 内联规则（种子一律 developer；按 §9-2 终审执行）+ `ApiConfig`/createApp env 读点 + Mock 装配透传 + 入口 env 装配 | 20   |
 | LGAA-2  | ③ `test/ldap-admission.test.ts`         | §6.1 A1-A12                                                                                                                                         | 20   |
 | LGAA-3  | ③ `test/e2e/ldap-admission.e2e.test.ts` | §6.2 E1-E6（spawnService env 门）                                                                                                                   | 20   |
 | LGAA-4  | ② 删除                                  | `ldap-role-groups.ts` + `test/ldap-role-groups.test.ts`（§4.1 处置步骤）+ §6.3 回归                                                                 | 10   |
@@ -352,7 +352,7 @@ LGAA-4 删除 LGA-1 两文件后：全量 `node --test` 绿；grep 全仓 `roles
 | Q1  | 真实目录 memberOf 可用性（AD 原生 / OpenLDAP overlay）与 search 权限（匿名 or 服务账号） | 生产 adapter 工单前置核实 + 部署 checklist（§5.3）；准入开启前必须确认                                   |
 | Q2  | posixGroup 目录（无 memberOf）反查形态（Gitea 双向 member 查找）                        | 本设计不做双栈（用户钦定 memberOf group filter）；adapter 层未来扩展登记，需求出现再设计                  |
 | Q3  | 移出组存量会话处置（GitLab `ldap_blocked` 全端点禁登 + FR-1.7 ≤60s 撤销）——**二期挂账** | 一期不做（§3.7，差异已写明）；FR-1.6 强制下线兜底；内网审计要求升级再开独立工单                          |
-| Q4  | requirements.md FR-1.5/§50/§105「角色由安全组映射」措辞与 U69a 语义冲突                  | 本设计不改正文（非目标）；LGAA-5 只登记，正文修订由主会话裁定归属                                        |
+| Q4  | requirements.md FR-1.5/§50/§105「角色由安全组映射」措辞与 U69a 语义冲突                  | 本设计不改正文（非目标）；已终审（§9-3）：修订并入 LGAA-5 执行，见 §7.1                                        |
 | Q5  | 生产配置键终名（组搜索基/组 DN 模板、服务账号键）与 `ldapts` 依赖评审                    | 归生产 adapter 工单；本设计只钉 `ORCA_CLOUD_LDAP_REQUIRED_GROUP` 与合成规则                              |
 | Q6  | 审计拒绝事件是否独立 `eventType`（survey §3-4 提「ldap_denied 类事件」）                 | 采用既有 `login`/failure+reason 模式（§3.2，审计页下拉零改动）；审计运营要求独立类型属加性小改不阻塞     |
 | Q7  | filter miss 二分诊断（§3.3 步骤 3）的取舍                                                | 按明确提示要求做二分；运维接受含混文案可在实现令裁掉（只省一次拒绝路径 search），不影响其他设计          |
