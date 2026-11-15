@@ -2713,6 +2713,10 @@ A 线 1/1（9 步，**R1 确认**：A4 终端 remote PTY 句柄创建+回显 142
 
 `e1da1b63e01`（6 文件）：README 终版（端点/两层脚本/16 扩展/原型对照 CLI/集成/故障排查含 18787 陈旧前置）+example-explore（discover→extract→findings 形态）+example-regression（断言链可入 CI）+启动自检 --ensure-env。双模式示例全通+PS 测试 8/8。**Playwright Server 批（1-4）全部完成**。派终态双线旅程第三轮（探索修复批 R1-R4 合入后）。
 
+### U66-5 落地（2026-11-16）—— 一期五令齐
+
+`524e866964e`（3 文件 +655/−48）：审计页查询 UI 对接 U66-2 端点全参数（q 2-128/eventFamily+eventType/username/since-until 默认 7 天/fileName/项目主机分离/三态结果）+下载复制徽标+复制行展开摘录/sha256/复制计数+命中高亮+审计缺口告警+覆盖范围声明+confidence 徽标语义。新 5/5+回归 76/76=81 全绿。**U66 一期 5 令齐**。派独立测试验收（收口）。
+
 ### U66-4 落地（2026-11-16）
 
 `393e4e3e864`（6 文件）：mobile-file-event-capture（AC-56 file_download+savedName 补报规则/shared=success+share_sheet 不谎称落盘/取消 failure+client_cancelled；AC-57 file_copy+copiedChars/Bytes+文本 sha256；失败分 read_failed/clipboard_write_failed；全 best-effort 不阻塞）+use-mobile-file-actions 七路径接线。38/38+mobile files 470 零回归。注：runtime allowlist/宿主注册为禁碰接缝，方法不可用时静默丢弃。空槽回填 U66-5。
