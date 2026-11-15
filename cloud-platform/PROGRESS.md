@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### 终态双线旅程第二轮全绿（2026-11-15，U46 合入后 HEAD=d2dbff30598）
+
+A 线 1/1（9 步）+B 线 2/2（10 步，U35 钉恰增 1）+U46 抽查（真栈 7/7+cloud-admin-session 4/4+web-project 双套件 16/16）+U49 护栏验证（两入口 chunk 2770B/2139B 零静态导入者、U36 仪表标记在位）——**红项无**（evidence/final-journey-verification-2/）。待 U46 批审计回收后宣告。
+
 ### U49 落地（2026-11-15，🟢）—— U46 批红项清零
 
 `1173b6b3901`（6 文件）：根因=共享模块提升进含顶层 mount 副作用的 web 入口 chunk→290 chunk 静态引入；修复=mountWebRoot/mountCloudAdmin 无副作用模块拆分+verify-web-build 入口反向引入门禁加固（防复发）。两构建验证+真实产物无 stub 冒烟（cloud-admin PASS/web-index PASS）+10/10 回归。**U49→🟢，U46 批红项清零**。派终局两令：U46 批审计∥终态双线旅程。
