@@ -31,6 +31,8 @@ import {
  * Embedded simple workspace shell (U46-5a, design §4.3/§4.4): centre tabs plus a
  * right rail with file-tree and Git-changes tabs, bottom status bar. Tab panes
  * and rail contents are registered by later orders (U46-5b/6/7).
+ * Layout composition follows AppWorkspaceShell (app-shell/AppWorkspaceShell.tsx):
+ * a flex row of panels inside a min-h-0 column.
  * TODO(U46-8): mount this shell from CloudProjectWorkspace once wiring lands.
  */
 

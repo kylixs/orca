@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { Cloud } from 'lucide-react'
 
 /**
  * What the workspace shows when it cannot show a tab (design §4.4/§4.9): the
@@ -37,6 +38,8 @@ export type CloudSimpleWorkspaceDegradedInfo = {
   fallbackHref?: string
 }
 
+// Form follows the web session's SidebarCloudSessionEmptyState (cloud ticket
+// session card): icon, bold title, muted body, explicit way out.
 export function CloudSimpleWorkspaceDegraded({
   code,
   message,
@@ -46,12 +49,15 @@ export function CloudSimpleWorkspaceDegraded({
     <div
       role="alert"
       data-testid="cloud-simple-workspace-degraded"
-      className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center"
+      className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center"
     >
+      <Cloud className="size-5 text-muted-foreground" aria-hidden />
       <h2 className="text-sm font-medium text-foreground">
         当前项目未授予终端权限，无法创建工作区
       </h2>
-      <p className="text-xs text-muted-foreground">{message ? `${code}：${message}` : code}</p>
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        {message ? `${code}：${message}` : code}
+      </p>
       {fallbackHref ? (
         <a
           data-testid="cloud-simple-workspace-degraded-fallback"
