@@ -116,7 +116,10 @@ function dirtyActions(
   return dispatch.mock.calls.map((call) => call[0]).filter((action) => action.type === 'setDirty')
 }
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  window.sessionStorage.clear()
+})
 
 describe('工作区文件编辑标签', () => {
   it('打开 worktree 内文件、按扩展名着色，初始为干净状态', async () => {
@@ -126,6 +129,8 @@ describe('工作区文件编辑标签', () => {
 
     expect((input as HTMLTextAreaElement).value).toBe('base')
     expect(screen.getByTestId('fake-editor-language').textContent).toBe('typescript')
+    // Pure source formats get no mode switch (FS-1).
+    expect(screen.queryByTestId('cloud-workspace-file-tab-mode-preview')).toBeNull()
     expect(mock.mock).toHaveBeenCalledWith('files.read', {
       worktree: 'path:/srv/wt',
       relativePath: 'src/a.ts'
@@ -281,25 +286,23 @@ describe('工作区文件编辑标签', () => {
     expect(screen.queryByTestId('cloud-workspace-file-tab-save')).toBeNull()
   })
 
-  it('读取内容含 NUL 字节 → 强制只读且无法保存（U59② 启发兜底）', async () => {
+  it('读取内容含 NUL 字节 → 二进制占位，而非只读 Monaco（FS-1）', async () => {
     const rpc = makeRpc({ content: 'abc\u0000def' })
     renderTab({ path: 'data/unknown.dat', rpc })
 
-    const input = await screen.findByTestId<HTMLTextAreaElement>('fake-editor-input')
-    expect(input.readOnly).toBe(true)
-    expect(screen.getByTestId('cloud-workspace-file-tab-readonly').textContent).toContain('只读')
-    expect(screen.getByTestId('cloud-workspace-file-tab-notice').textContent).toContain('二进制')
+    const binary = await screen.findByTestId('cloud-workspace-file-tab-binary')
+    expect(binary.textContent).toContain('二进制')
+    expect(binary.textContent).toContain('下载')
+    expect(screen.queryByTestId('fake-editor-input')).toBeNull()
     expect(screen.queryByTestId('cloud-workspace-file-tab-save')).toBeNull()
-
-    await userEvent.click(screen.getByTestId('fake-editor-save'))
     expect(rpc.mock.mock.calls.filter((call) => call[0] === 'files.write')).toHaveLength(0)
   })
 
-  it('宿主 binary 标志 → 强制只读（U59②）', async () => {
+  it('宿主 binary 标志 → 二进制占位，而非只读 Monaco（FS-1）', async () => {
     renderTab({ path: 'data/unknown.dat', rpc: makeRpc({ content: 'abc', binary: true }) })
 
-    const input = await screen.findByTestId<HTMLTextAreaElement>('fake-editor-input')
-    expect(input.readOnly).toBe(true)
+    await screen.findByTestId('cloud-workspace-file-tab-binary')
+    expect(screen.queryByTestId('fake-editor-input')).toBeNull()
     expect(screen.queryByTestId('cloud-workspace-file-tab-save')).toBeNull()
   })
 
@@ -313,7 +316,7 @@ describe('工作区文件编辑标签', () => {
     expect(rpc.mock).not.toHaveBeenCalled()
   })
 
-  it('markdown 标签切换预览：渲染标题、脚本不执行、javascript: 链接被清除', async () => {
+  it('markdown 默认预览：渲染标题、脚本不执行、javascript: 链接被清除，可切源码', async () => {
     const user = userEvent.setup()
     renderTab({
       path: 'README.md',
@@ -339,12 +342,13 @@ describe('工作区文件编辑标签', () => {
       })
     })
 
-    await screen.findByTestId('fake-editor-input')
-    await user.click(screen.getByTestId('cloud-workspace-file-tab-mode-preview'))
-
     const preview = await screen.findByTestId('cloud-workspace-markdown-preview', undefined, {
       timeout: 10_000
     })
+    expect(screen.queryByTestId('fake-editor-input')).toBeNull()
+    expect(
+      screen.getByTestId('cloud-workspace-file-tab-mode-preview').getAttribute('aria-pressed')
+    ).toBe('true')
     expect(within(preview).getByRole('heading', { name: '标题' })).toBeTruthy()
     expect(within(preview).getByText('列表项')).toBeTruthy()
     expect(preview.querySelector('pre code')?.textContent).toContain('const value = 1')
@@ -355,7 +359,53 @@ describe('工作区文件编辑标签', () => {
     expect(link?.getAttribute('href') ?? '').not.toContain('javascript:')
 
     await user.click(screen.getByTestId('cloud-workspace-file-tab-mode-edit'))
-    expect(screen.getByTestId('fake-editor-input')).toBeTruthy()
+    expect(await screen.findByTestId('fake-editor-input')).toBeTruthy()
+
+    await user.click(screen.getByTestId('cloud-workspace-file-tab-mode-preview'))
+    await screen.findByTestId('cloud-workspace-markdown-preview')
+  })
+
+  it('HTML 默认预览；源码模式为可编辑 Monaco，可保存', async () => {
+    const user = userEvent.setup()
+    const html = '<!doctype html><html><body><script>window.__xss=true</script>hi</body></html>'
+    const rpc = makeRpc({ content: html })
+    renderTab({ path: 'docs/index.html', title: 'index.html', rpc })
+
+    const frame = await screen.findByTestId('cloud-workspace-preview-html-frame')
+    expect(frame.getAttribute('sandbox')).toBe('')
+    expect(frame.getAttribute('srcdoc')).toBe(html)
+
+    await user.click(screen.getByTestId('cloud-workspace-file-tab-mode-edit'))
+    const input = await screen.findByTestId<HTMLTextAreaElement>('fake-editor-input')
+    expect(screen.getByTestId('fake-editor-language').textContent).toBe('html')
+    expect(input.readOnly).toBe(false)
+
+    await user.clear(input)
+    await user.type(input, '<h1>edited</h1>')
+    await user.click(screen.getByTestId('cloud-workspace-file-tab-save'))
+    await waitFor(() =>
+      expect(rpc.mock).toHaveBeenCalledWith('files.write', {
+        worktree: 'path:/srv/wt',
+        relativePath: 'docs/index.html',
+        content: '<h1>edited</h1>',
+        expectedExecutionHostId: 'local'
+      })
+    )
+  })
+
+  it('模式切换按渲染器 id 记入 sessionStorage，新标签优先用偏好（FS-1）', async () => {
+    const user = userEvent.setup()
+    renderTab({ path: 'README.md', title: 'README.md', rpc: makeRpc({ content: '# hi' }) })
+
+    await screen.findByTestId('cloud-workspace-markdown-preview', undefined, { timeout: 10_000 })
+    await user.click(screen.getByTestId('cloud-workspace-file-tab-mode-edit'))
+    await screen.findByTestId('fake-editor-input')
+
+    cleanup()
+
+    renderTab({ path: 'README.md', title: 'README.md', rpc: makeRpc({ content: '# hi' }) })
+    expect(await screen.findByTestId('fake-editor-input')).toBeTruthy()
+    expect(screen.queryByTestId('cloud-workspace-markdown-preview')).toBeNull()
   })
 
   it('工厂把 RPC/权限绑定进 shell 注册组件', async () => {

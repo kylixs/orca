@@ -9,11 +9,20 @@ import type { CloudWorkspaceEditorProps } from './cloud-workspace-monaco-editor'
 import {
   cloudWorkspaceFileFailureText,
   cloudWorkspaceFileLanguage,
-  isCloudWorkspaceMarkdownPath,
   readCloudWorkspaceFile,
   writeCloudWorkspaceFile,
   type CloudWorkspaceFileFailure
 } from './cloud-workspace-file-io'
+import {
+  CLOUD_BINARY_FILE_RENDERER,
+  CLOUD_CODE_FILE_RENDERER,
+  resolveCloudFileFormat,
+  type CloudFileMode
+} from './file-renderers/registry'
+import {
+  initialCloudFileMode,
+  writeCloudFileModePreference
+} from './file-renderers/viewer-mode-preference'
 
 /**
  * Editor tab for the embedded workspace (U46-7a, design §4.7 + §11.4).
@@ -40,16 +49,8 @@ function fileExtension(relativePath: string): string {
   const dot = name.lastIndexOf('.')
   return dot <= 0 ? name : name.slice(dot + 1)
 }
-
-const LazyMonacoEditor = React.lazy(async () => {
-  const module = await import('./cloud-workspace-monaco-editor')
-  return { default: module.CloudWorkspaceMonacoEditor }
-})
-
-const LazyMarkdownPreview = React.lazy(async () => {
-  const module = await import('./cloud-workspace-markdown-preview')
-  return { default: module.CloudWorkspaceMarkdownPreview }
-})
+const SourceRenderer = CLOUD_CODE_FILE_RENDERER.component
+const BinaryRenderer = CLOUD_BINARY_FILE_RENDERER.component
 
 export type CloudWorkspaceFileTabApi = {
   rpc: CloudRpc
@@ -83,12 +84,12 @@ function CloudWorkspaceFileTabBody({
 }: CloudWorkspaceFileTabBodyProps): React.JSX.Element {
   const canRead = permissions?.includes('file:read') ?? true
   const canWrite = permissions?.includes('file:write') ?? true
-  const markdown = isCloudWorkspaceMarkdownPath(tab.path)
-  const language = React.useMemo(() => cloudWorkspaceFileLanguage(tab.path), [tab.path])
+  const renderer = React.useMemo(() => resolveCloudFileFormat(tab.path), [tab.path])
+  const language = renderer.language ?? cloudWorkspaceFileLanguage(tab.path)
 
   const [loaded, setLoaded] = React.useState<Loaded>({ kind: 'loading' })
   const [content, setContent] = React.useState('')
-  const [mode, setMode] = React.useState<'edit' | 'preview'>('edit')
+  const [mode, setMode] = React.useState<CloudFileMode>(() => initialCloudFileMode(renderer))
   const [saving, setSaving] = React.useState(false)
   const [saveError, setSaveError] = React.useState<CloudWorkspaceFileFailure | null>(null)
   const [conflict, setConflict] = React.useState<Conflict | null>(null)
@@ -114,17 +115,23 @@ function CloudWorkspaceFileTabBody({
         )
         return
       }
+      if (outcome.binary) {
+        // Unknown extension but binary content: placeholder, never read-only Monaco.
+        setLoaded({ kind: 'binary', detail: fileExtension(tab.path) })
+        setContent(outcome.content)
+        return
+      }
+      const truncated = outcome.truncated
       setLoaded({
         kind: 'ready',
         baseContent: outcome.content,
-        readOnly: !canWrite || outcome.truncated || outcome.binary,
-        notice: outcome.binary
-          ? '二进制文件仅支持查看，不能编辑或保存。'
-          : outcome.truncated
-            ? '文件过大（已截断），简易工作区不支持编辑。'
-            : null
+        readOnly: !canWrite || truncated,
+        notice: truncated ? '文件过大（已截断），简易工作区不支持编辑。' : null
       })
       setContent(outcome.content)
+      if (truncated) {
+        setMode('source')
+      }
     })
     return () => {
       cancelled = true
@@ -207,7 +214,15 @@ function CloudWorkspaceFileTabBody({
     )
   }
 
-  const EditorComponent = editor ?? LazyMonacoEditor
+  const selectMode = (next: CloudFileMode): void => {
+    setMode(next)
+    if (renderer.canPreview && renderer.canEditSource) {
+      writeCloudFileModePreference(renderer.id, next)
+    }
+  }
+  const EditorComponent = editor
+  const PreviewRenderer = renderer.component
+  const canSwitchMode = renderer.canPreview && renderer.canEditSource
 
   return (
     <section
@@ -222,14 +237,14 @@ function CloudWorkspaceFileTabBody({
         >
           {tab.path}
         </span>
-        {markdown && loaded.kind === 'ready' ? (
+        {canSwitchMode && loaded.kind === 'ready' ? (
           <div role="group" aria-label="显示模式" className="flex items-center gap-1">
             <Button
-              variant={mode === 'edit' ? 'secondary' : 'ghost'}
+              variant={mode === 'source' ? 'secondary' : 'ghost'}
               size="sm"
               data-testid="cloud-workspace-file-tab-mode-edit"
-              aria-pressed={mode === 'edit'}
-              onClick={() => setMode('edit')}
+              aria-pressed={mode === 'source'}
+              onClick={() => selectMode('source')}
             >
               编辑
             </Button>
@@ -238,7 +253,7 @@ function CloudWorkspaceFileTabBody({
               size="sm"
               data-testid="cloud-workspace-file-tab-mode-preview"
               aria-pressed={mode === 'preview'}
-              onClick={() => setMode('preview')}
+              onClick={() => selectMode('preview')}
             >
               预览
             </Button>
@@ -319,36 +334,56 @@ function CloudWorkspaceFileTabBody({
         {loaded.kind === 'loading' ? (
           <p className="p-3 text-xs text-muted-foreground">正在读取文件…</p>
         ) : loaded.kind === 'binary' ? (
-          <div
-            data-testid="cloud-workspace-file-tab-binary"
-            className="flex h-full flex-col items-center justify-center gap-1 p-6 text-center text-xs text-muted-foreground"
+          <React.Suspense
+            fallback={<p className="p-3 text-xs text-muted-foreground">正在加载预览…</p>}
           >
-            <p className="text-foreground">该文件为二进制格式，简易工作区不支持编辑。</p>
-            <p className="break-all font-mono">{loaded.detail}</p>
-            <p>请下载后打开。</p>
-          </div>
+            <BinaryRenderer
+              path={tab.path}
+              mode="preview"
+              readOnly
+              binary={{ base64: '', mimeType: loaded.detail }}
+              testId="cloud-workspace-file-tab-binary"
+            />
+          </React.Suspense>
         ) : loaded.kind === 'failed' ? (
           <p data-testid="cloud-workspace-file-tab-error" className="p-3 text-xs text-destructive">
             {cloudWorkspaceFileFailureText(loaded)}
           </p>
-        ) : markdown && mode === 'preview' ? (
+        ) : mode === 'preview' && renderer.canPreview ? (
           <React.Suspense
             fallback={<p className="p-3 text-xs text-muted-foreground">正在渲染预览…</p>}
           >
-            <LazyMarkdownPreview content={content} />
+            <PreviewRenderer
+              path={tab.path}
+              mode="preview"
+              readOnly={loaded.readOnly}
+              text={content}
+            />
           </React.Suspense>
         ) : (
           <React.Suspense
             fallback={<p className="p-3 text-xs text-muted-foreground">正在加载编辑器…</p>}
           >
-            <EditorComponent
-              filePath={tab.path}
-              value={content}
-              language={language}
-              readOnly={loaded.readOnly}
-              onChange={setContent}
-              onSave={() => void save(false)}
-            />
+            {EditorComponent ? (
+              <EditorComponent
+                filePath={tab.path}
+                value={content}
+                language={language}
+                readOnly={loaded.readOnly}
+                onChange={setContent}
+                onSave={() => void save(false)}
+              />
+            ) : (
+              <SourceRenderer
+                path={tab.path}
+                mode="source"
+                readOnly={loaded.readOnly}
+                text={content}
+                language={language}
+                onChange={setContent}
+                onSave={() => void save(false)}
+              />
+            )}
           </React.Suspense>
         )}
       </div>

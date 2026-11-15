@@ -39,11 +39,8 @@ import {
   useCloudSimpleWorkspaceCloseGuard,
   type CloudSimpleWorkspaceSaveHandler
 } from './cloud-simple-workspace-close-guard'
-import {
-  cloudWorkspacePreviewKind,
-  createCloudWorkspacePreviewTab,
-  isCloudWorkspaceBinaryPath
-} from './cloud-workspace-preview-tab'
+import { createCloudWorkspacePreviewTab } from './cloud-workspace-preview-tab'
+import { resolveCloudFileFormat } from './file-renderers/registry'
 import { createCloudWorkspaceDiffTab } from './cloud-workspace-diff-tab'
 import { CloudWorkspaceFileTree } from './cloud-workspace-file-tree'
 import { CloudWorkspaceGitPanel } from './cloud-workspace-git-panel'
@@ -106,21 +103,15 @@ export type {
 } from './cloud-simple-workspace-right-panel'
 
 /**
- * One click → one tab (U46-8). Known binary extensions go to the preview
- * placeholder; the editor's read heuristic is the fallback for unknown ones
- * (U59②).
+ * One click → one tab (U46-8). The format registry decides which host owns the
+ * file; unknown extensions fall through to the text host, whose read result
+ * refines a binary payload into the placeholder (FS-1).
  */
 export function cloudSimpleWorkspaceTabForFile(path: string): CloudSimpleWorkspaceTab {
-  const previewKind = cloudWorkspacePreviewKind(path)
-  if (previewKind !== 'binary') {
-    return cloudSimpleWorkspaceFileTab(
-      path,
-      'preview',
-      previewKind === 'image' ? 'image' : 'preview'
-    )
-  }
-  if (isCloudWorkspaceBinaryPath(path)) {
-    return cloudSimpleWorkspaceFileTab(path, 'preview', 'binary')
+  const renderer = resolveCloudFileFormat(path)
+  if (renderer.source === 'binary') {
+    const mode = renderer.id === 'image' ? 'image' : renderer.id === 'pdf' ? 'preview' : 'binary'
+    return cloudSimpleWorkspaceFileTab(path, 'preview', mode)
   }
   return cloudSimpleWorkspaceFileTab(path)
 }
