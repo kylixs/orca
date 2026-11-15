@@ -92,6 +92,8 @@ const HOST_OFFLINE_DEFAULT_MS = 60_000
 /** U37: per-beat cap on the heartbeat's provision kick; the rest waits for the next beat. */
 const MAX_PROVISION_ASSIGNMENTS_PER_BEAT = 16
 const HANDOFF_TTL_MS = 60_000
+// §3.2 单常量：两条准入拒绝路径（查询侧 miss / 平台闸门 miss）共用同一文案，可一键切回备选。
+const LDAP_GROUP_NOT_ADMITTED_MESSAGE = '账号未加入平台准入组。'
 const WEB_ROOT = new URL('../../web/', import.meta.url).pathname
 
 export type ApiConfig = {
@@ -115,6 +117,8 @@ export type ApiConfig = {
   auditWriterUrls?: string[]
   /** Shared login-lockout counter; absent counts in this process only. */
   loginLockoutUrl?: string
+  /** LDAP admission group CN; set = logins outside the group are refused (fail-open-on-unset). */
+  ldapRequiredGroup?: string
   /** Frontend directory; tests point this at a copy to simulate a new release. */
   webRoot?: string
   /** Where superseded frontend builds are kept so cached old pages still load. */
@@ -743,6 +747,9 @@ export function createApp(config: ApiConfig): ApiHandle {
   const sharedLockout = loginLockoutUrl
     ? createRemoteLoginLockout({ url: loginLockoutUrl, internalToken })
     : null
+  // trim 防「空白 env 意外开启」准入（§3.4）。
+  const ldapRequiredGroup =
+    (config.ldapRequiredGroup ?? process.env.ORCA_CLOUD_LDAP_REQUIRED_GROUP ?? '').trim() || null
   const auditWriterUrls = auditWriterEndpoints(config)
   // Why the writer wins: with several replicas, only one process may assign
   // `seq`/`prevHash`, otherwise the chain forks (AC-26).
@@ -1202,7 +1209,12 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
     ]
   ])
-  const ldap = config.ldap ?? new MockLdapAdapter(accounts)
+  const ldap =
+    config.ldap ??
+    new MockLdapAdapter(
+      accounts,
+      ldapRequiredGroup ? { requiredGroup: ldapRequiredGroup } : undefined
+    )
 
   // Seed: admin, developer, host, project, grants.
   const admin = store.seedUser({
@@ -1786,8 +1798,25 @@ export function createApp(config: ApiConfig): ApiHandle {
         })
         return error(res, 423, 'ACCOUNT_LOCKED', '账号已锁定，请 15 分钟后再试。', traceId)
       }
+      // 两条准入拒绝路径同一审计/错误码/文案（§3.2）。
+      const refuseNotAdmitted = () => {
+        audit.appendBestEffort({
+          eventType: 'login',
+          actor: username,
+          targetType: 'session',
+          targetId: null,
+          result: 'failure',
+          traceId,
+          metadata: { reason: 'ldap_group_denied' }
+        })
+        return error(res, 401, 'LDAP_GROUP_NOT_ADMITTED', LDAP_GROUP_NOT_ADMITTED_MESSAGE, traceId)
+      }
       const result = await ldap.authenticate(username, password)
       if (!result.ok) {
+        // 查询侧 filter miss：密码未经 bind 验证，不计数也不清锁定。
+        if (result.reason === 'not_admitted') {
+          return refuseNotAdmitted()
+        }
         const failure = await recordLoginFailure(username)
         if (failure === null) {
           return error(res, 503, 'PLATFORM_UNAVAILABLE', '平台暂不可用，请稍后再试。', traceId)
@@ -1807,6 +1836,10 @@ export function createApp(config: ApiConfig): ApiHandle {
         return error(res, 401, 'INVALID_CREDENTIALS', '账号或密码错误。', traceId)
       }
       await clearLoginFailures(username)
+      // 平台统一闸门（Mock 唯一执行点/生产防御第二道）：密码已验，清零已发生、不增量。
+      if (ldapRequiredGroup && !result.profile.groups.includes(ldapRequiredGroup)) {
+        return refuseNotAdmitted()
+      }
       let user = store.usersByName.get(username)
       if (!user) {
         user = store.seedUser({
@@ -1815,9 +1848,7 @@ export function createApp(config: ApiConfig): ApiHandle {
           dept: result.profile.dept,
           email: result.profile.email,
           groups: result.profile.groups,
-          roles: result.profile.groups.includes('platform-admins')
-            ? ['platform:admin', 'developer']
-            : ['developer'],
+          roles: ['developer'],
           status: 'active'
         })
       }
@@ -4409,6 +4440,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     ...(handoffTtlMs === undefined ? {} : { handoffTtlMs }),
     ...(process.env.ORCA_CLOUD_LOGIN_LOCKOUT_URL
       ? { loginLockoutUrl: process.env.ORCA_CLOUD_LOGIN_LOCKOUT_URL }
+      : {}),
+    ...(process.env.ORCA_CLOUD_LDAP_REQUIRED_GROUP
+      ? { ldapRequiredGroup: process.env.ORCA_CLOUD_LDAP_REQUIRED_GROUP }
       : {}),
     ...(process.env.ORCA_CLOUD_AUDIT_WRITER_URL
       ? { auditWriterUrl: process.env.ORCA_CLOUD_AUDIT_WRITER_URL }
