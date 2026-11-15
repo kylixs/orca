@@ -61,6 +61,7 @@ describe('文件渲染器注册表：L1 格式匹配矩阵', () => {
       'assets/icon.bmp',
       'assets/icon.ico',
       'assets/icon.svg',
+      'assets/photo.avif',
       'design/flow.drawio.svg'
     ]) {
       expect(resolveCloudFileFormat(path)).toMatchObject({
@@ -71,11 +72,48 @@ describe('文件渲染器注册表：L1 格式匹配矩阵', () => {
     }
   })
 
-  it('PDF 保持二进制占位，默认预览', () => {
+  it('CSV/TSV 表格默认预览且源码可切', () => {
+    for (const path of ['data/table.csv', 'data/table.TSV']) {
+      expect(resolveCloudFileFormat(path)).toMatchObject({
+        id: 'csv',
+        source: 'text',
+        defaultMode: 'preview',
+        canPreview: true,
+        canEditSource: true
+      })
+    }
+    expect(resolveCloudFileFormat('notes.unknown', { mimeType: 'text/csv' }).id).toBe('csv')
+  })
+
+  it('JSON/XML/YAML/Mermaid 归预览树或图，源码可切', () => {
+    const cases: [string, string][] = [
+      ['config/app.json', 'json'],
+      ['config/tsconfig.jsonc', 'json'],
+      ['pom.xml', 'xml'],
+      ['config/app.yml', 'yaml'],
+      ['config/app.yaml', 'yaml'],
+      ['design/flow.mmd', 'mermaid'],
+      ['docs/flow.mermaid', 'mermaid']
+    ]
+    for (const [path, id] of cases) {
+      expect(resolveCloudFileFormat(path)).toMatchObject({
+        id,
+        source: 'text',
+        defaultMode: 'preview',
+        canPreview: true,
+        canEditSource: true
+      })
+    }
+    expect(resolveCloudFileFormat('a.unknown', { mimeType: 'application/xml' }).id).toBe('xml')
+    expect(resolveCloudFileFormat('a.unknown', { mimeType: 'text/x-mermaid' }).id).toBe('mermaid')
+  })
+
+  it('PDF 真预览走二进制宿主，无源码切换', () => {
     expect(resolveCloudFileFormat('docs/spec.PDF')).toMatchObject({
       id: 'pdf',
       source: 'binary',
       defaultMode: 'preview',
+      canPreview: true,
       canEditSource: false
     })
   })
@@ -98,12 +136,6 @@ describe('文件渲染器注册表：L1 格式匹配矩阵', () => {
       'Dockerfile',
       'Makefile',
       '.env',
-      'data.csv',
-      'data.tsv',
-      'config.json',
-      'pom.xml',
-      'config.yml',
-      'diagram.mmd',
       'docs/unknown.unknownext'
     ]) {
       expect(resolveCloudFileFormat(path)).toBe(CLOUD_CODE_FILE_RENDERER)
@@ -127,8 +159,9 @@ describe('文件渲染器注册表：L1 格式匹配矩阵', () => {
     expect(cloudFileExtension('a/b/README.MD')).toBe('md')
     expect(cloudFileExtension('Makefile')).toBe('')
     expect(cloudImageMimeType('logo.JPG')).toBe('image/jpeg')
+    expect(cloudImageMimeType('photo.avif')).toBe('image/avif')
     expect(cloudImageMimeType('a.ts')).toBeNull()
-    expect(CLOUD_FILE_RENDERERS).toHaveLength(7)
+    expect(CLOUD_FILE_RENDERERS).toHaveLength(12)
   })
 })
 

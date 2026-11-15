@@ -1,13 +1,13 @@
 import * as React from 'react'
-import { lazyWithRetry } from '@/lib/lazy-with-retry'
+import {
+  CLOUD_BINARY_EXTENSIONS,
+  IMAGE_EXTENSIONS,
+  cloudFileExtension,
+  cloudFileName
+} from './format-catalog'
+import { lazyRenderer } from './renderer-lazy'
 
-/**
- * Per-format renderer registry (FS-1, design §4.2/§4.3).
- *
- * This module must stay type-only apart from the lazy factories: importing a
- * renderer here would pull every format (and its dependencies) into the main
- * cloud chunk.
- */
+/** Per-format renderer registry (design §4.2/§4.3); renderers stay lazy. */
 
 export type CloudFileSourceKind = 'text' | 'binary'
 
@@ -15,6 +15,11 @@ export type CloudFileRendererId =
   | 'markdown'
   | 'html'
   | 'drawio'
+  | 'csv'
+  | 'json'
+  | 'xml'
+  | 'yaml'
+  | 'mermaid'
   | 'code'
   | 'image'
   | 'pdf'
@@ -59,13 +64,6 @@ export type CloudFileRendererDescriptor = {
   component: React.LazyExoticComponent<React.ComponentType<CloudFileRendererProps>>
 }
 
-function lazyRenderer(
-  id: CloudFileRendererId,
-  load: () => Promise<{ default: React.ComponentType<CloudFileRendererProps> }>
-): React.LazyExoticComponent<React.ComponentType<CloudFileRendererProps>> {
-  return lazyWithRetry(load, { reloadKey: `cloud.renderer.${id}` })
-}
-
 const MarkdownRenderer = lazyRenderer('markdown', async () => {
   const module = await import('./markdown-file-renderer')
   return { default: module.MarkdownFileRenderer }
@@ -86,6 +84,31 @@ const ImageRenderer = lazyRenderer('image', async () => {
   return { default: module.ImageFileRenderer }
 })
 
+const CsvRenderer = lazyRenderer('csv', async () => {
+  const module = await import('./csv-file-renderer')
+  return { default: module.CsvFileRenderer }
+})
+
+const JsonRenderer = lazyRenderer('json', async () => {
+  const module = await import('./json-file-renderer')
+  return { default: module.JsonFileRenderer }
+})
+
+const XmlRenderer = lazyRenderer('xml', async () => {
+  const module = await import('./xml-file-renderer')
+  return { default: module.XmlFileRenderer }
+})
+
+const YamlRenderer = lazyRenderer('yaml', async () => {
+  const module = await import('./yaml-file-renderer')
+  return { default: module.YamlFileRenderer }
+})
+
+const MermaidRenderer = lazyRenderer('mermaid', async () => {
+  const module = await import('./mermaid-file-renderer')
+  return { default: module.MermaidFileRenderer }
+})
+
 const PdfRenderer = lazyRenderer('pdf', async () => {
   const module = await import('./pdf-file-renderer')
   return { default: module.PdfFileRenderer }
@@ -102,75 +125,7 @@ const CODE_RENDERER_COMPONENT = lazyRenderer('code', async () => {
   return { default: module.CodeFileRenderer }
 })
 
-const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'svg'] as const
-
-const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
-  png: 'image/png',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  gif: 'image/gif',
-  webp: 'image/webp',
-  bmp: 'image/bmp',
-  ico: 'image/x-icon',
-  svg: 'image/svg+xml'
-}
-
-/** MIME fallback for a host that returns image bytes without a MIME header. */
-export function cloudImageMimeType(relativePath: string): string | null {
-  return IMAGE_MIME_BY_EXTENSION[cloudFileExtension(relativePath)] ?? null
-}
-
-/** Known binary extensions the editor must never open (U59②). */
-export const CLOUD_BINARY_EXTENSIONS = [
-  'bin',
-  'exe',
-  'dll',
-  'so',
-  'dylib',
-  'zip',
-  'tar',
-  'gz',
-  'tgz',
-  'bz2',
-  'xz',
-  '7z',
-  'rar',
-  'class',
-  'jar',
-  'wasm',
-  'pyc',
-  'pyo',
-  'o',
-  'a',
-  'lib',
-  'node',
-  'woff',
-  'woff2',
-  'ttf',
-  'otf',
-  'mp3',
-  'mp4',
-  'mov',
-  'avi',
-  'mkv',
-  'wav',
-  'flac',
-  'ogg',
-  'webm',
-  'sqlite',
-  'db',
-  'iso',
-  'dmg',
-  'doc',
-  'docx',
-  'xls',
-  'xlsx',
-  'ppt',
-  'pptx',
-  'odt',
-  'ods',
-  'odp'
-] as const
+export { CLOUD_BINARY_EXTENSIONS, cloudFileExtension, cloudImageMimeType } from './format-catalog'
 
 export const CLOUD_CODE_FILE_RENDERER: CloudFileRendererDescriptor = {
   id: 'code',
@@ -225,6 +180,71 @@ export const CLOUD_FILE_RENDERERS: readonly CloudFileRendererDescriptor[] = [
     component: DrawioRenderer
   },
   {
+    id: 'csv',
+    source: 'text',
+    match: [
+      { extension: 'csv' },
+      { extension: 'tsv' },
+      { mimeType: 'text/csv' },
+      { mimeType: 'text/tab-separated-values' }
+    ],
+    defaultMode: 'preview',
+    canPreview: true,
+    canEditSource: true,
+    component: CsvRenderer
+  },
+  {
+    id: 'json',
+    source: 'text',
+    match: [
+      { extension: 'json' },
+      { extension: 'jsonc' },
+      { mimeType: 'application/json' },
+      { mimeType: 'application/jsonc' }
+    ],
+    defaultMode: 'preview',
+    canPreview: true,
+    canEditSource: true,
+    language: 'json',
+    component: JsonRenderer
+  },
+  {
+    id: 'xml',
+    source: 'text',
+    match: [{ extension: 'xml' }, { mimeType: 'application/xml' }, { mimeType: 'text/xml' }],
+    defaultMode: 'preview',
+    canPreview: true,
+    canEditSource: true,
+    language: 'xml',
+    component: XmlRenderer
+  },
+  {
+    id: 'yaml',
+    source: 'text',
+    match: [
+      { extension: 'yaml' },
+      { extension: 'yml' },
+      { mimeType: 'application/yaml' },
+      { mimeType: 'text/yaml' },
+      { mimeType: 'application/x-yaml' }
+    ],
+    defaultMode: 'preview',
+    canPreview: true,
+    canEditSource: true,
+    language: 'yaml',
+    component: YamlRenderer
+  },
+  {
+    id: 'mermaid',
+    source: 'text',
+    match: [{ extension: 'mmd' }, { extension: 'mermaid' }, { mimeType: 'text/x-mermaid' }],
+    defaultMode: 'preview',
+    canPreview: true,
+    canEditSource: true,
+    language: 'mermaid',
+    component: MermaidRenderer
+  },
+  {
     id: 'image',
     source: 'binary',
     match: [
@@ -243,23 +263,13 @@ export const CLOUD_FILE_RENDERERS: readonly CloudFileRendererDescriptor[] = [
     source: 'binary',
     match: [{ extension: 'pdf' }, { mimeType: 'application/pdf' }],
     defaultMode: 'preview',
-    canPreview: false,
+    canPreview: true,
     canEditSource: false,
     component: PdfRenderer
   },
   CLOUD_BINARY_FILE_RENDERER,
   CLOUD_CODE_FILE_RENDERER
 ]
-
-function fileNameOf(relativePath: string): string {
-  return relativePath.split(/[\\/]/).at(-1) ?? relativePath
-}
-
-export function cloudFileExtension(relativePath: string): string {
-  const name = fileNameOf(relativePath).toLowerCase()
-  const dot = name.lastIndexOf('.')
-  return dot <= 0 ? '' : name.slice(dot + 1)
-}
 
 function mimeMatches(actual: string, expected: string): boolean {
   if (expected.endsWith('/*')) {
@@ -310,7 +320,7 @@ export function resolveCloudFileFormat(
   relativePath: string,
   options: CloudFileResolveOptions = {}
 ): CloudFileRendererDescriptor {
-  const name = fileNameOf(relativePath).toLowerCase()
+  const name = cloudFileName(relativePath).toLowerCase()
   const extension = cloudFileExtension(relativePath)
   const mimeType = options.mimeType ?? null
 

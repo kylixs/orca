@@ -12,7 +12,7 @@ import {
   isCloudWorkspaceBinaryPath
 } from './cloud-workspace-preview-tab'
 
-/** U46-7b T5: image data URLs, HTML sandbox, drawio degradation, binary/PDF placeholders. */
+/** U46-7b T5: image data URLs, HTML sandbox, drawio degradation, PDF preview, binary placeholders. */
 
 const ALL: CloudProjectPermission[] = ['open', 'terminal', 'file:read']
 
@@ -208,10 +208,22 @@ describe('工作区预览标签', () => {
     expect(screen.queryByTestId('cloud-workspace-preview-image')).toBeNull()
   })
 
-  it('PDF 直接给出范围外占位，不消耗读取预算', async () => {
-    const mock = renderTab({ path: 'docs/spec.pdf' })
-    await screen.findByTestId('cloud-workspace-preview-pdf')
-    expect(mock.calls).toEqual([])
+  it('PDF 读取 base64 后交给原生查看器', async () => {
+    const mock = renderTab({
+      path: 'docs/spec.pdf',
+      replies: {
+        'files.readPreview': () =>
+          previewReply({
+            content: 'JVBERi0=',
+            isBinary: true,
+            isImage: false,
+            mimeType: 'application/pdf'
+          })
+      }
+    })
+    const frame = await screen.findByTestId('cloud-workspace-pdf-frame')
+    expect(frame.getAttribute('src')).toBe('data:application/pdf;base64,JVBERi0=')
+    expect(mock.calls).toHaveLength(1)
   })
 
   it('file_too_large 如实显示错误并可重试', async () => {

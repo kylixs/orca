@@ -19,9 +19,8 @@ import {
  * Binary host for the embedded workspace (U46-7b, FS-1).
  *
  * The registry picks the renderer; images/PDF/binaries stay here, while text
- * formats (Markdown/HTML/drawio) are opened by the editor host. Everything
- * previewable comes from one `files.readPreview` call. PDF is classified before
- * the read so an unrenderable file never spends the project's read budget.
+ * formats are opened by the editor host. Everything previewable comes from one
+ * `files.readPreview` call; PDF bytes arrive base64 for the native viewer.
  */
 
 type PreviewTab = Extract<CloudSimpleWorkspaceTab, { kind: 'preview' }>
@@ -79,7 +78,7 @@ function CloudWorkspacePreviewTabBody({
   const [htmlMode, setHtmlMode] = React.useState<CloudFileMode>('preview')
 
   React.useEffect(() => {
-    if (!canRead || renderer.id === 'pdf') {
+    if (!canRead) {
       return
     }
     let cancelled = false
@@ -166,16 +165,7 @@ function CloudWorkspacePreviewTabBody({
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        {renderer.id === 'pdf' ? (
-          <React.Suspense fallback={<p className="p-3 text-xs text-muted-foreground">加载中…</p>}>
-            <Renderer
-              path={tab.path}
-              mode="preview"
-              readOnly
-              testId="cloud-workspace-preview-pdf"
-            />
-          </React.Suspense>
-        ) : loaded.status === 'loading' ? (
+        {loaded.status === 'loading' ? (
           <p
             data-testid="cloud-workspace-preview-loading"
             className="p-3 text-xs text-muted-foreground"
