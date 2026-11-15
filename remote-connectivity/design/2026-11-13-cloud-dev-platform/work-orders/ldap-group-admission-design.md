@@ -7,7 +7,7 @@
 > 语义基线：作废标记 `work-orders/ldap-group-authz-design.md`（组→角色映射方向全文作废）+ `work-orders/u67-authz-refactor-design.md` §7.2/§7.3（roleOverride 优先于种子）+ `requirements.md` FR-1.1/FR-1.4/FR-1.6（认证/锁定/吊销既有语义不动）
 > 业界对照：`work-orders/ldap-open-source-survey.md`（Gitea/GitLab/Jenkins/Keycloak/Grafana/FAB 六项调研，提交 `5c82d39294f`，用户指令要求对齐）
 > 现状基线：HEAD 工作树实读——`cloud-platform/apps/api/ldap.ts`（LdapAdapter/LdapProfile.groups/Mock）、`server.ts`（登录链 :1682-1767、authenticate :1702、种子 :1723-1737、roleOverride :1739-1741、内联组→角色规则 :1731-1733、env 装配先例 :736/:4270、handoff :1827-1875）、`ldap-role-groups.ts`（LGA-1，未被引用）、`store.ts` User（:4-14）、`apps/web/app.js`（登录错误透传 :2383-2388）
-> 范围：平台 API 登录链准入过滤 × LGA-1 去留裁定 × Mock/生产适配形态 × 测试 × 切分；**非目标**：不做组→角色映射（已作废）、不做定时全量同步（U67 已裁定）、不做移出组后存量会话 ≤60s 撤销（一期只做登录时判定，§3.7）、不实现生产 LDAPS 适配器本体（只定接口、filter 形态与边界，独立工单）、不改 requirements.md 正文（§8-Q4 登记）
+> 范围：平台 API 登录链准入过滤 × LGA-1 去留裁定 × Mock/生产适配形态 × 测试 × 切分；**非目标**：不做组→角色映射（已作废）、不做定时全量同步（U67 已裁定）、不做移出组后存量会话 ≤60s 撤销（一期只做登录时判定，§3.7）、不实现生产 LDAPS 适配器本体（只定接口、filter 形态与边界，独立工单）、requirements.md FR-1.5 措辞修订并入 LGAA-5（§9-3 裁定，覆盖本条原非目标表述）
 
 ---
 
@@ -15,7 +15,7 @@
 
 **一句话**：按用户钦定的 **memberOf group filter 方案**（调研形态 A 正宗），准入条件=filter `(&(uid=<用户>)(memberOf=CN=<准入组>,<组搜索基>))`——**生产 LDAPS adapter 在用户查找 filter 内嵌 memberOf 准入条件**，filter 未命中即目录里无此准入用户；`ORCA_CLOUD_LDAP_REQUIRED_GROUP`（单个 CN 名单值，env 存在才启用、缺省全放行=Gitea/GitLab/FAB 同款 fail-open-on-unset）同时驱动查询侧 filter 与平台侧统一闸门（`profile.groups ∋ 准入组`，Mock 的唯一执行点+生产的防御第二道）；拒绝统一映射 `401 LDAP_GROUP_NOT_ADMITTED` + 明确提示 + `login` 失败审计（reason=`ldap_group_denied`）+ **不计锁定、不建用户行**；角色派生与组彻底脱钩。
 
-**LGA-1 裁定：删除**（前向 revert `c45aba6f23` 的两个文件，不抹提交历史；处置步骤 §4.1）。`ldap-role-groups.ts` 是被用户裁定作废的「形态 B 组→角色映射」，且现状就是死代码（`rolesFromGroups` 仅被自身测试引用，server.ts 从未 import）；留着会让后来者误以为映射方向仍可启用。若未来真需要组分层权限，按届时语义重新设计，不复活这份提交。
+**LGA-1 裁定：删除**（前向删除 `git rm` 两个文件；不 revert 提交、不抹历史；处置步骤 §4.1）。`ldap-role-groups.ts` 是被用户裁定作废的「形态 B 组→角色映射」，且现状就是死代码（`rolesFromGroups` 仅被自身测试引用，server.ts 从未 import）；留着会让后来者误以为映射方向仍可启用。若未来真需要组分层权限，按届时语义重新设计，不复活这份提交。
 
 **形态选择的如实说明**：任务原稿拟「过滤在平台侧做而非 LDAP 查询侧」；用户在本会话两次追加指令（memberOf → memberOf group filter 方案）后定为**查询侧 filter（形态 A 正宗）**。平台侧闸门仍保留，但角色降级为「统一语义点+防御第二道」：Mock 无 LDAP 查询层，闸门是它的唯一执行点；生产中 filter 是主执行点，闸门兜 adapter 漂移。两层由同一 env 驱动、同一判据（memberOf 含准入组），不存在分歧。
 
@@ -56,7 +56,7 @@ POST /v1/auth/login（server.ts:1682）
             │   既有用户：角色冻结，仅 roleOverride 非空时重算（:1739-1741，U67-3）
             groups 并集合并（:1737，供 Grant/HostGrant 组主体匹配——保留不动）
             issueDeviceSession → 审计(login/success) → 签发 token（:1742-1766）
-POST /v1/auth/refresh（:1769）——不触碰 LDAP（无密码可绑，作废方案 §4.2 已核实）
+POST /v1/auth/refresh（:1769）——不触碰 LDAP（无密码可绑，作废方案 git 历史 170f4e28f84 §4.2 已核实）
 web-handoff 兑换（:1827-1875）——consumeWebHandoff 消费已存在用户，不认证 LDAP
 ```
 
@@ -86,7 +86,7 @@ web-handoff 兑换（:1827-1875）——consumeWebHandoff 消费已存在用户�
 | §3-3 开关语义：未设置=全放行，设置后 fail-closed                                                                                                  | 与 R2 缺省兼容一致                                                                                      |
 | §3-4 拒绝行为：拒绝+可诊断审计+登录页明示原因                                                                                                     | `401 LDAP_GROUP_NOT_ADMITTED`+提示文案+`login`/failure reason=`ldap_group_denied`（不新增事件类型）     |
 | §3-5 移出组善后：下次登录即拒（各家一致）；GitLab `ldap_blocked` 更严                                                                              | §3.7 一期登录时判定；`ldap_blocked` 式登记二期挂账并写明差异                                            |
-| §3-6 `server.ts:1731` 内联规则与新语义冲突须裁定                                                                                                  | §4.2 建议废除（终审项 T3），admin 引导改走启动种子+用户管理页                                           |
+| §3-6 `server.ts:1731` 内联规则与新语义冲突须裁定                                                                                                  | §4.2 建议废除（终审项 T2），admin 引导改走启动种子+用户管理页                                           |
 | §3-7 不引定时全量同步                                                                                                                              | 准入判定点=登录（唯一知情点），与 U67 非目标一致                                                        |
 
 ---
@@ -100,7 +100,7 @@ web-handoff 兑换（:1827-1875）——consumeWebHandoff 消费已存在用户�
 | **查询侧（主）**    | 生产 LDAPS adapter 的用户查找 filter      | `(&(uid=<u>)(memberOf=CN=<准入组>,<组搜索基>))`——形态 A 正宗，用户钦定   | filter 未命中=目录无此准入用户，bind 不发生；非组成员的密码**不经验证**                          |
 | **平台侧（统一语义点）** | 登录链 `clearLoginFailures` 之后、`seedUser` 之前 | `result.profile.groups.includes(requiredGroup)`              | ①Mock/dev 的唯一执行点（Mock 无查询层）；②生产防御第二道（兜 adapter 漂移/回填缺陷）；③钦定 401/审计语义的统一映射点 |
 
-两层由同一 `ORCA_CLOUD_LDAP_REQUIRED_GROUP` 驱动、判据同源（memberOf 含准入组 CN）——不存在「filter 说有、闸门说无」的分歧；闸门对已通过 filter 的用户是重言式复核（防御性），对注入 adapter（测试）是独立执行点。
+两层由同一 `ORCA_CLOUD_LDAP_REQUIRED_GROUP` 驱动、判据同源（memberOf 含准入组 CN）——不存在「filter 说有、闸门说无」的分歧；闸门对已通过 filter 的用户是重言式复核（防御性），对注入 adapter（测试）是独立执行点。大小写偏差为钦定的 fail-closed 边界（§3.5/A7），非分歧面。
 
 **登录链变更**（:1702 起）：
 
@@ -134,7 +134,7 @@ ok → clearLoginFailures（:1722 原位——密码已证即清计数）
 | --------------------- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | HTTP 状态             | `401`                                                                                                                  | R3（语义=「身份已知但未获本系统准入」；不冒用 403——本平台 403=已登录后的权限拒绝）                                                                          |
 | 错误码                | `LDAP_GROUP_NOT_ADMITTED`                                                                                              | SCREAMING_SNAKE 惯例（INVALID_CREDENTIALS/ACCOUNT_LOCKED）；技术码可 grep、可对审计；两条拒绝路径统一                                                       |
-| 文案（终审项 T2）     | 默认 `该账号未授权访问本系统。`（U69a 钦定）；备选 `账号未加入平台准入组。`（survey §3-4/调度建议，更明示原因）          | 单常量可一键切换；内网管理台场景两者枚举风险均可接受（survey §3-4），主会话终审定稿                                                                        |
+| 文案（终审项 T1）     | 定稿 `账号未加入平台准入组。`（§9-1 裁定，survey §3-4/调度建议，更明示原因）；备选 `该账号未授权访问本系统。`（原默认，单常量可切回）          | 单常量可一键切换；内网管理台场景两者枚举风险均可接受（survey §3-4），主会话已终审（§9-1）                                                                        |
 | 前端                  | 零改动                                                                                                                  | app.js:2385 直接展示 `error.message`，新码新文案原样进 `#loginError`                                                                                        |
 | 审计                  | `eventType:'login'`、`result:'failure'`、`actor:username`、`targetId:null`、`metadata:{ reason:'ldap_group_denied' }`   | 沿既有 login/failure+reason 模式（:1691-1699，'locked' 同款）；不新增事件类型（审计页下拉不动）；best-effort 同款（审计盘满不阻断拒绝响应）；落链断言见 A12 |
 | 锁定（filter miss）   | **既不增量也不清零**                                                                                                    | 密码未经 bind 验证：按 FR-1.4「密码错误计数」语义不可计；与 Gitea/GitLab「通算登录失败」的如实差异——通算会让不在组用户以正确密码自攒锁定、入组后反被 423 挡；可诊断性由独立审计 reason 承担（survey §3-4） |
@@ -178,7 +178,7 @@ ORCA_CLOUD_LDAP_REQUIRED_GROUP    # 准入组 CN 名单值；未设置/空白=�
 | --------------------------------------------------------------------------------------- | ------------------ | ----------------------------------------------------------------------- |
 | `POST /v1/auth/login`（新用户，触发 seedUser）                                          | **过**（双层）     | 查询侧 filter 先挡；Mock/注入形态走闸门；不在组永不建户               |
 | `POST /v1/auth/login`（store 既有用户，含启动种子 admin/zhangsan、roleOverride 用户）  | **过**（双层）     | 种子用户被移出组后同样下次登录即拒                                    |
-| web-handoff 兑换（:1864 issueDeviceSession）                                            | **传递覆盖**       | 只消费既有用户（:1839），既有用户必经登录闸；无独立 LDAP 路径         |
+| web-handoff 兑换（:1864 issueDeviceSession）                                            | **传递覆盖**       | 只消费既有用户（:1839），无独立 LDAP 路径；存量用户过闸口径按 §3.7 登录时判定边界（env 开启前已 seed 的用户经 handoff 兑换不触发登录闸）         |
 | refresh / me / install 脚本 token                                                       | 不过（一期边界）   | §3.7：无密码不可重验，存量会话不追溯                                  |
 | 宿主/中继/内部 token 链                                                                 | 不涉及             | 非 LDAP 身份（mTLS/internal token），准入语义只管「人」               |
 
@@ -192,13 +192,13 @@ ORCA_CLOUD_LDAP_REQUIRED_GROUP    # 准入组 CN 名单值；未设置/空白=�
 
 - **缺省行为与现网完全一致**：env 未设置时准入链路零生效（闸门条件短路、Mock 不带 requiredGroup、:1731 废除对默认 mock 三账户行为无变化——zhangsan/lisi 仍 developer、admin 仍启动种子 admin）；既有测试全量绿（E3）。
 - **wire 零变更**：新增仅服务端行为+`LdapResult.reason` 进程内加性枚举；登录/refresh/审计协议形状不变，错误响应走既有 `error()` 形状，仅新增一种 401 错误码。
-- **env 变更不要求旧客户端/宿主升级**：web/mobile/宿主/中继/relay 均无感知——登录 200 响应结构不变、新 401 码走既有错误处理（web 直接展示 message，app.js:2385）；准入开关纯属平台侧运维配置，随时可设可撤。
+- **env 变更不要求旧客户端/宿主升级**：web（app.js:2385 直接展示 message）/宿主/中继/relay 无感知，mobile 按既有错误处理形态预期无感知（裸断言无证据指针，实现验收补验）——登录 200 响应结构不变、新 401 码走既有错误处理（既有错误处理）；准入开关纯属平台侧运维配置，随时可设可撤。
 
 ### 3.7 会话与移出组善后（一期边界，如实声明）
 
 - 判定点=**登录时**。移出组后：下次登录即拒（查询侧 filter 即刻不命中）；存量会话/refresh 链一期**不追溯撤销**（survey §3-5 各家主流形态）。
 - **二期挂账（写明差异）**：GitLab `ldap_blocked` 形态=移出组即全端点禁登+存量会话处置，配合 FR-1.7 的 ≤60s 撤销语义——登记 §8-Q3，本设计不做；一期应急收敛走既有 FR-1.6 管理员强制下线/设备吊销（server.ts revoke 链）。
-- 刷新链滚动续期意味着「移出组」的实际生效上界=该用户下次主动登录（作废方案 §4.2 已核实 refresh 无密码不可重绑）。
+- 刷新链滚动续期意味着「移出组」的实际生效上界=该用户下次主动登录（作废方案 git 历史 170f4e28f84 §4.2 已核实 refresh 无密码不可重绑）。
 - 「准入开启→关闭 env」的已拒用户：无 User 行、无会话，无善后；已在组用户不受影响。
 
 ---
@@ -223,6 +223,7 @@ survey §3-6 点名的冲突点（「platform-admins 组首登 seed 平台管理
 
 - 默认 mock 下该规则对 zhangsan/lisi 派生 `['developer']`（废除后不变）；对 admin **不生效**（admin 启动已种子 :1121-1129，usersByName 命中走不到 seed）；全测试目录 grep `platform-admins` 断言仅存在于待删除的 ldap-role-groups.test.ts → **废除零测试破坏**。
 - 生产管理员引导故事（废除后的引导路径）：启动种子 admin（platform:admin，既有）保持登录即管理员——运维把 admin 账号加入准入组即可（filter/闸门只看准入组，不看平台角色组）；其余新用户一律 developer，升权走 U67-3 用户管理页 roleOverride（覆盖优先 :1739-1741 不动，一经设置永不被种子回灌）。
+- **文档级连带（评审 M3 登记）**：U67 设计 §7.1 页脚「LDAP platform-admins 组成员首次登录映射为管理员」与 §7.2 admin 行「组首登映射（既有，保留）」须随本裁定（废除）同步修订——归属 U67 修订令（本轮已下达），避免 U67 落地把已废除语义写进 UI。
 
 ---
 
@@ -265,7 +266,8 @@ simple bind 只回答「凭据对不对」，**不具备任何查询能力**—�
 
 1. 目录允许匿名 search，或配置服务账号 bindDN（作废方案 §6 已有该设计，照抄）；
 2. 目录在用户条目上维护 memberOf（AD 原生；OpenLDAP 需 memberof overlay）；
-3. 服务账号可读用户条目 memberOf（受限 schema 除外）。
+3. 服务账号可读用户条目 memberOf（受限 schema 除外）；
+4. 登录名属性映射：filter 模板钉死 `uid`——AD 登录名常为 sAMAccountName、`uid` 可能缺省，部署前核实用户条目含 `uid`（属性可配归生产 adapter 工单键，并入 §8-Q5）。
 
 前提不满足时：准入开启 → 所有登录在 filter 阶段失败（uid 复查命中则 `not_admitted`）——**全员 fail-closed，无提权风险，方向安全**；准入关闭 → 回到现状登录（组回填空仅影响组并集展示）。三条是**部署前置条件**，进运维 checklist；真实目录核实挂 `ORCA_REAL_LDAP_TEST=1` 门（作废方案 §6 先例），归生产 adapter 工单。
 
@@ -297,7 +299,7 @@ simple bind 只回答「凭据对不对」，**不具备任何查询能力**—�
 | E1  | `ORCA_CLOUD_LDAP_REQUIRED_GROUP=platform-admins` | admin/Adm1n! 200；zhangsan/lisi 401 + 文案（web 透传形态同 app.js:2385）             |
 | E2  | `ORCA_CLOUD_LDAP_REQUIRED_GROUP=developers`      | zhangsan/lisi 200；admin 401（门不偏袒管理员）                                       |
 | E3  | 不设 env（现网兼容）                             | 三账户全 200；与既有 login-lockout e2e（login-lockout-shared.e2e.test.ts）并跑不回归 |
-| E4  | 拒绝不污染锁定                                   | E1 下 zhangsan 正确密码连击 5 次 → 全 401 无 423；env 撤后同账密立即 200             |
+| E4  | 拒绝不污染锁定                                   | E1 下 zhangsan 正确密码连击 5 次 → 全 401 无 423；env 撤后同账密立即 200（env 在 createApp 启动读点生效：撤 env=重启 spawnService）             |
 | E5  | handoff 传递覆盖                                 | env 开启下先登录取 handoff 码 → 兑换 200（闸门单点性验证）                           |
 | E6  | 审计可诊断                                       | E1 的拒绝事件在审计查询可见（reason=`ldap_group_denied`），与密码错误事件可区分      |
 
@@ -322,6 +324,9 @@ LGAA-4 删除 LGA-1 两文件后：全量 `node --test` 绿；grep 全仓 `roles
 | 种子/会话/既有路径全覆盖      | §6.1-A6/A9 + §6.2-E5 | 种子 admin/roleOverride 用户过闸且角色不受影响；移出组下次登录即拒、存量会话一期不动；handoff 传递覆盖                                          |
 | 匹配语义（精确 CN）           | §6.1-A7              | 多组含目标组命中；前缀相似/大小写偏差 fail-closed                                                                                              |
 | 兼容性（wire/env）            | §3.6 声明 + E3       | wire 零变更、错误走既有形状；env 可设可撤，无客户端/宿主升级要求                                                                               |
+| LGA-1 删除回归 | §6.3 | 全量 node --test 绿 + grep `rolesFromGroups|LDAP_ROLE_GROUP_MAP` 零命中 |
+| env 中途切换 | §3.7（声明性覆盖） | 撤 env=重启生效；已拒用户无善后；已在组用户不受影响 |
+| 并发登录 | 豁免声明 | 登录链无共享可变状态（判定为请求内逻辑+store 既有原子操作），不设并发用例 |
 
 ### 7.1 令切分
 
@@ -332,7 +337,7 @@ LGAA-4 删除 LGA-1 两文件后：全量 `node --test` 绿；grep 全仓 `roles
 | LGAA-2  | ③ `test/ldap-admission.test.ts`         | §6.1 A1-A12                                                                                                                                         | 20   |
 | LGAA-3  | ③ `test/e2e/ldap-admission.e2e.test.ts` | §6.2 E1-E6（spawnService env 门）                                                                                                                   | 20   |
 | LGAA-4  | ② 删除                                  | `ldap-role-groups.ts` + `test/ldap-role-groups.test.ts`（§4.1 处置步骤）+ §6.3 回归                                                                 | 10   |
-| LGAA-5  | ④ 文档                                  | defect-ledger U69a 备注列登记裁定（LGA-1 删除 + :1731 终审结果 + filter 形态落地）；requirements.md FR-1.5 措辞冲突登记 §8-Q4                        | 10   |
+| LGAA-5  | ④ 文档                                  | defect-ledger U69a 备注列登记裁定（LGA-1 删除 + :1731 终审结果 + filter 形态落地）；**按 §9-3 执行** requirements.md FR-1.5 措辞修订（保留「组信息同步」「管理员可覆盖」子句）+ 登记 U67 §7.1/§7.2 文案连带修订归属                        | 10   |
 
 依赖：1a→1b→2→3 顺序；4、5 独立可并行。生产 LDAPS adapter（filter 内嵌+二分诊断+服务账号+ldapts 评审+ORCA_REAL_LDAP_TEST 验收）= **独立后续工单**。
 
@@ -342,8 +347,8 @@ LGAA-4 删除 LGA-1 两文件后：全量 `node --test` 绿；grep 全仓 `roles
 
 | #   | 问题                                                                                  | 现处置                                                                                                   |
 | --- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| T1  | 拒绝文案定稿：U69a 钦定「该账号未授权访问本系统。」vs survey/调度建议「账号未加入平台准入组。」 | §3.2 单常量两案并存，主会话终审（默认按钦定文案实现）                                                   |
-| T2  | :1731 内联组→角色种子规则：废除（建议）vs 保留为首登引导                                | §4.2 两案并列、影响面按废除核实完毕，主会话终审                                                          |
+| T1  | 拒绝文案定稿：U69a 钦定「该账号未授权访问本系统。」vs survey/调度建议「账号未加入平台准入组。」 | 已终审（§9-1）：定稿 survey 文案，见 §3.2                                                   |
+| T2  | :1731 内联组→角色种子规则：废除（建议）vs 保留为首登引导                                | 已终审（§9-2）：废除；影响面核实完毕见 §4.2                                                          |
 | Q1  | 真实目录 memberOf 可用性（AD 原生 / OpenLDAP overlay）与 search 权限（匿名 or 服务账号） | 生产 adapter 工单前置核实 + 部署 checklist（§5.3）；准入开启前必须确认                                   |
 | Q2  | posixGroup 目录（无 memberOf）反查形态（Gitea 双向 member 查找）                        | 本设计不做双栈（用户钦定 memberOf group filter）；adapter 层未来扩展登记，需求出现再设计                  |
 | Q3  | 移出组存量会话处置（GitLab `ldap_blocked` 全端点禁登 + FR-1.7 ≤60s 撤销）——**二期挂账** | 一期不做（§3.7，差异已写明）；FR-1.6 强制下线兜底；内网审计要求升级再开独立工单                          |
@@ -359,5 +364,5 @@ LGAA-4 删除 LGA-1 两文件后：全量 `node --test` 绿；grep 全仓 `roles
 1. **T1 文案：定「账号未加入平台准入组。」**（采纳 survey/调度建议案）——「明确提示」的需求本体是让用户知道原因与去向（找管理员入组），诊断性文案严格更优；「该账号未授权访问本系统。」降为备选，单常量可一键切回（如运营偏好弱提示）。
 2. **T2：废除 server.ts:1731-1733 内联组→角色种子规则**（采纳设计建议）——「分组=准入、角色=平台内」不留特例口子；影响面已核实零测试破坏；生产管理员引导=启动种子 admin（既有）+ admin 加入准入组 + 升权走 U67-3 用户管理页 roleOverride。
 3. **Q4 归属裁定**：requirements.md FR-1.5「角色由安全组映射」措辞修订**并入 LGAA-5** 执行（语义已由 U69a 终局澄清，非重设计）——替换为「登录准入由 LDAP 分组门槛控制（ORCA_CLOUD_LDAP_REQUIRED_GROUP）；角色（普通/审计/管理员）由平台内用户管理页管理，与 LDAP 组无关」。
-4. **切分照准**（§7.1 六令+依赖链）；执行窗口约束：LGAA-1b/2/3 涉 server.ts，须待 U66 二期（server.ts 在途改动）落地后再行；LGAA-1a/4 零碰撞，评审 APPROVED 即可行。Q1-Q3/Q5-Q7 处置照准。
+4. **切分照准**（§7.1 六令+依赖链）；执行窗口约束：LGAA-1b/2/3 涉 server.ts——U66 二期已落地（`f01bc88272e`）窗口已开，与 U62 修令（apps/api 域）串行；LGAA-1a/4/5 零碰撞，复评 APPROVED 即可行。Q1-Q3/Q5-Q7 处置照准。
 5. **评审门**：独立 doc-review 通过后才派任何实现令；LGA-1 删除（LGAA-4）随实现批一并执行，不提前。
