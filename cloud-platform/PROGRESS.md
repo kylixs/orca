@@ -2713,6 +2713,14 @@ A 线 1/1（9 步，**R1 确认**：A4 终端 remote PTY 句柄创建+回显 142
 
 `e1da1b63e01`（6 文件）：README 终版（端点/两层脚本/16 扩展/原型对照 CLI/集成/故障排查含 18787 陈旧前置）+example-explore（discover→extract→findings 形态）+example-regression（断言链可入 CI）+启动自检 --ensure-env。双模式示例全通+PS 测试 8/8。**Playwright Server 批（1-4）全部完成**。派终态双线旅程第三轮（探索修复批 R1-R4 合入后）。
 
+### U66-1 正式交付补充（2026-11-16）
+
+`1525c8cda77`（server.ts 审计区 +527 行）：`POST /v1/internal/audit/file-events`（内部认证+字段白名单+deviceId→username 反解+captureConfidence 强制 client-declared+download_blocked=denied/frontend-block）+限流 429/Retry-After+ingressGaps 计数+traceId 去重合并（N-4）+AC-53 摘录拒绝+AC-56/57 移动端字段。6/6+18/18。**注意**：与 U66-2 共享 index 竞争致新测试文件曾并入相邻提交——HEAD 树完整（服务端+测试均就位），核验无回退。**U66 一期剩 3（Web 捕获）/4（移动）/5（管理台 UI）**。
+
+### U66-1/2 落地（2026-11-16）
+
+U66-1 `2c99689d684`（audit.recordFileEvent 端点：三事件骨架/字段白名单/限流 120/min/traceId 去重/AC-53 负向）；U66-2 `7bd2ce0971e`（查询扩展：until/eventTypes 多值/eventFamily/fileName/q 白名单含 projectKey/倒序扫描命中即停/searchText 缓存+/v1/audit/status 含 auditGap 与容量水位）。新 7/7+audit 系 12/12+typecheck 过；**2 万条大链 P95 0.33-0.35ms（预算 2s）**。并发索引抢占致边界提交交错——两令文件经核验完整落库。空槽回填 U66-3（Web 捕获）。
+
 ### U66 复审 APPROVED（2026-11-16）—— 开发批启动
 
 第三轮复审 **APPROVED**：N-1~N-7 全关闭、偏离（evt-1040 client-declared）核验成立。非阻断跟踪项 3 条并入开发令（U65 侧端点权属表述同步/O4-O5 同文件改串行/清理×3）。**U66 一期开发批启动**：U66-1（audit.recordFileEvent 端点+事件落链）∥ U66-2（查询扩展：until/fileName/q/eventTypes 多值+auditGap/status）并行派发。
