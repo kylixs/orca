@@ -35,6 +35,7 @@ import {
   type SigningKey
 } from '../../../packages/contract/src/credential.ts'
 import { AuditChain, type AuditSummary } from './audit.ts'
+import { AUDIT_EVENT_TYPES } from './audit-event-catalog.ts'
 import { createRemoteAudit, type AuditSink } from './audit-writer-client.ts'
 import { createSigningKeyRing } from './signing-key-ring.ts'
 import type { AuditEvent, AuditEventInput } from './store.ts'
@@ -3044,12 +3045,21 @@ export function createApp(config: ApiConfig): ApiHandle {
         })
       }
       return json(res, 200, {
-        hosts: [...store.hosts.values()].map((h) => ({
-          ...h,
-          credentialHash: undefined,
-          online: hostOnline(h),
-          browserEntryUrl: browserEntryUrlFor(h.relayRoute)
-        }))
+        hosts: [...store.hosts.values()].map((h) => {
+          // U79 additive: the host↔relay binding, invisible to clients that
+          // predate the fields. relayOnline is "a live relay serves routes" —
+          // routes sync to every relay, so no healthy relay breaks the relay
+          // path of every bound host at once.
+          const route = h.relayRoute ? store.relayRoutes.get(h.relayRoute) : undefined
+          return {
+            ...h,
+            credentialHash: undefined,
+            online: hostOnline(h),
+            browserEntryUrl: browserEntryUrlFor(h.relayRoute),
+            relayTarget: route?.target ?? null,
+            relayOnline: relayNodes.healthy(now(), relayAliveMs).length > 0
+          }
+        })
       })
     }
 
@@ -3779,7 +3789,10 @@ export function createApp(config: ApiConfig): ApiHandle {
           rateLimitedTotal: fileEventGap.rateLimited,
           suppressedTotal: fileEventGap.suppressed,
           lastGapAt: fileEventGap.lastGapAt
-        }
+        },
+        // U78 additive: the authoritative eventType catalog, so the console's
+        // 操作类型 dropdown derives from the server instead of drifting from it.
+        eventTypes: [...AUDIT_EVENT_TYPES]
       })
     }
 

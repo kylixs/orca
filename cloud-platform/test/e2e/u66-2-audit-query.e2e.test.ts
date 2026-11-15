@@ -43,6 +43,7 @@ type Status = {
     overDailyEnvelope: boolean
     overTotalEnvelope: boolean
   }
+  eventTypes?: string[]
 }
 
 function auth(token: string): Record<string, string> {
@@ -490,6 +491,79 @@ test('U66-2-6 /v1/audit/status：admin/auditor-only，缺口摘要与容量水�
     admin: body
   })
 })
+
+test('U78-1 接入类事件可检索：目录自服务端目录派生，q 命中事件类型与脚本路径', async () => {
+  // Real access flows mint the events: a denied script fetch, an admin script
+  // fetch, admin-only list refusals, and a registration token mint.
+  const devToken = await login('zhangsan', 'Passw0rd!', 'u78-dev')
+  assert.notEqual(devToken, '')
+  const deniedScript = await fetch(`${url}/install/host.sh?token=missing`, {
+    headers: auth(devToken)
+  })
+  assert.equal(deniedScript.status, 403)
+  const relayScript = await fetch(`${url}/install/relay.sh`, { headers: auth(adminToken) })
+  assert.equal(relayScript.status, 200)
+  const hostListDenied = await fetch(`${url}/v1/hosts`, { headers: auth(devToken) })
+  assert.equal(hostListDenied.status, 403)
+  const relayListDenied = await fetch(`${url}/v1/relays`, { headers: auth(devToken) })
+  assert.equal(relayListDenied.status, 403)
+  const tokenCreate = await fetch(`${url}/v1/hosts/tokens`, {
+    method: 'POST',
+    headers: auth(adminToken)
+  })
+  assert.equal(tokenCreate.status, 201)
+
+  // The console's 操作类型 source: /v1/audit/status carries the catalog.
+  const status = await queryStatus(adminToken)
+  assert.equal(status.status, 200)
+  const catalog = (status.body as Status).eventTypes
+  assert.ok(Array.isArray(catalog), 'status must list the authoritative event types')
+  const listed = new Set(catalog)
+  for (const required of [
+    'install_script',
+    'relay_list',
+    'host_list',
+    'host_token_create',
+    'host_register',
+    'file_download'
+  ]) {
+    assert.ok(listed.has(required), `catalog must list ${required}`)
+  }
+  // Anti-drift: everything actually in the chain is listed by the catalog.
+  for (const event of app.store.audit) {
+    assert.ok(listed.has(event.eventType), `catalog must list chain type ${event.eventType}`)
+  }
+
+  // Filtering by the previously-missing type hits both real script events.
+  const byType = await query({ eventType: 'install_script' })
+  assert.equal(seqsOf(byType).length, 2)
+  assert.deepEqual(
+    byType.events.map((event) => event.result),
+    ['success', 'denied']
+  )
+
+  // q now matches the eventType itself.
+  const window = { since: iso(NOW - 60_000) }
+  const byKeyword = await query({ ...window, q: 'install_script' })
+  assert.deepEqual(seqsOf(byKeyword), seqsOf(byType))
+  // q matches the endpoint path carried in targetId (denied fetch only).
+  const byPath = await query({ ...window, q: '/install/host.sh' })
+  assert.equal(seqsOf(byPath).length, 1)
+  assert.equal(byPath.events[0]?.result, 'denied')
+  // q matches a type that has no metadata text at all.
+  assert.equal(seqsOf(await query({ ...window, q: 'host_token_create' })).length, 1)
+  // The whitelist holds: refusal reasons still stay out of the keyword scan.
+  assert.deepEqual(seqsOf(await query({ ...window, q: 'PERMISSION_DENIED' })), [])
+
+  saveEvidence(EVIDENCE, 'u78-access-events.json', {
+    catalogSize: catalog?.length ?? 0,
+    catalogCoversChain: true,
+    installScriptByType: seqsOf(byType),
+    qByEventType: seqsOf(byKeyword),
+    qByScriptPath: seqsOf(byPath),
+    qWhitelistHolds: { permissionDenied: [] }
+  })
+}, 30_000)
 
 test('U66-2-7 性能抽测：大链 limit=50 关键字/文件名/四条件查询 P95', async () => {
   clock = NOW

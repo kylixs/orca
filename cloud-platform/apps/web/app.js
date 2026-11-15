@@ -1230,9 +1230,9 @@ async function renderHosts() {
     <div class="note">中继路由由平台单向同步；未知 SNI 默认黑洞。下载默认策略：<strong>${policy.downloadDefault === 'deny' ? '禁止' : '允许'}</strong>（v${policy.version}）。</div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>主机</th><th>直连地址</th><th>中继路由</th><th>版本</th><th>心跳</th><th>状态</th><th class="actions">操作</th></tr></thead>
+        <thead><tr><th>主机</th><th>直连地址</th><th>中继路由</th><th>中继</th><th>版本</th><th>心跳</th><th>状态</th><th class="actions">操作</th></tr></thead>
         <tbody>
-          ${hostsBody.hosts.map(hostRow).join('') || '<tr><td colspan="7" class="table-empty">尚未注册主机</td></tr>'}
+          ${hostsBody.hosts.map(hostRow).join('') || '<tr><td colspan="8" class="table-empty">尚未注册主机</td></tr>'}
         </tbody>
       </table>
     </div>`
@@ -1263,11 +1263,34 @@ function hostRow(h) {
     <td><strong>${esc(h.name)}</strong><div class="muted mono">${esc(h.zone)}</div></td>
     <td class="mono">${esc(h.directAddrs.join('<br>') || '—')}</td>
     <td class="mono">${esc(h.relayRoute ?? '—')}</td>
+    <td>${hostRelayCell(h)}</td>
     <td>${esc(h.orcaVersion)} <span class="muted">p${h.protocolVersion}</span></td>
     <td>${relative(h.lastHeartbeatAt)}</td>
     <td><span class="dot ${dot}"></span> ${status}</td>
     <td class="actions"><button class="btn sm" data-host="${h.id}">详情</button></td>
   </tr>`
+}
+
+/**
+ * U79: the host↔relay binding (route target), with an offline flag when no
+ * live relay serves routes any more — the blast radius of a dead relay.
+ */
+function hostRelayCell(h) {
+  const bound = h.relayTarget
+    ? `<span class="mono">${esc(h.relayTarget)}</span>`
+    : '<span class="muted mono">—</span>'
+  const offline = h.relayRoute && h.relayOnline === false
+  if (!offline) return bound
+  const direct = (h.directAddrs ?? []).length > 0 ? '<div class="muted">直连不受阻</div>' : ''
+  return `${bound}<div><span class="badge warn">中继离线</span> ${direct}</div>`
+}
+
+/** Drawer form of the same U79 verdict: bound target plus the offline caveat. */
+function hostRelayOfflineNote(host) {
+  const offline = host.relayRoute && host.relayOnline === false
+  if (!offline) return ''
+  const direct = (host.directAddrs ?? []).length > 0 ? '（直连不受阻）' : ''
+  return ` <span class="badge warn">中继离线</span>${direct}`
 }
 
 function copyCommandAction(cmd) {
@@ -1314,6 +1337,7 @@ async function showHost(hostId) {
         <dt>网络位置</dt><dd>${esc(host.zone)}</dd>
         <dt>直连地址</dt><dd class="mono">${esc(host.directAddrs.join(', ') || '—')}</dd>
         <dt>中继路由</dt><dd class="mono">${esc(host.relayRoute ?? '—')}</dd>
+        <dt>中继绑定</dt><dd class="mono">${esc(host.relayTarget ?? '—')}${hostRelayOfflineNote(host)}</dd>
         <dt>能力</dt><dd>${esc(host.capabilities.join(', '))}</dd>
         <dt>最近心跳</dt><dd>${relative(host.lastHeartbeatAt)}</dd>
         ${host.revokedAt ? `<dt>状态</dt><dd>已吊销（${new Date(host.revokedAt).toLocaleString('zh-CN')}）</dd>` : ''}
@@ -1839,25 +1863,89 @@ function wirePermCards(root, options) {
 
 const AUDIT_PAGE_SIZE = 50
 
-const AUDIT_EVENT_OPTIONS = [
-  ['', '全部操作'],
+/**
+ * U78: the 操作类型 dropdown derives from the platform's authoritative catalog
+ * (/v1/audit/status `eventTypes`), so a new server event type appears here
+ * without a console change. The list below is only the fallback for a platform
+ * that predates the field, plus the zh labels for known types.
+ */
+const AUDIT_FAMILY_OPTIONS = [
   ['family:download', '下载族 · 下载 + 拦截'],
-  ['family:copy', '复制族 · file_copy'],
-  ['file_download', '文件下载 · file_download'],
-  ['file_copy', '复制文件内容 · file_copy'],
-  ['download_blocked', '下载拦截 · download_blocked'],
-  ['login', '登录 · login'],
-  ['logout', '登出 · logout'],
-  ['project_create', '项目创建 · project_create'],
-  ['project_connect', '打开项目 · project_connect'],
-  ['project_access', '连接 · project_access'],
-  ['grant_update', '权限变更 · grant_update'],
-  ['role_update', '角色变更 · role_update'],
-  ['host_register', '主机注册 · host_register'],
-  ['host_revoke', '主机撤销 · host_revoke'],
-  ['policy_update', '策略变更 · policy_update'],
-  ['device_revoke', '设备撤销 · device_revoke']
+  ['family:copy', '复制族 · file_copy']
 ]
+const AUDIT_EVENT_FALLBACK_TYPES = [
+  'file_download',
+  'file_copy',
+  'download_blocked',
+  'login',
+  'logout',
+  'project_create',
+  'project_connect',
+  'project_access',
+  'grant_update',
+  'role_update',
+  'host_register',
+  'host_revoke',
+  'policy_update',
+  'device_revoke'
+]
+const AUDIT_EVENT_LABELS = {
+  audit_query: '审计查询',
+  audit_verify: '审计校验',
+  connection_rejected: '连接拒绝',
+  device_revoke: '设备撤销',
+  directory_read: '目录读取',
+  download_blocked: '下载拦截',
+  file_copy: '复制文件内容',
+  file_download: '文件下载',
+  grant_update: '权限变更',
+  'host.audit_gap': '主机审计缺口',
+  'host.connection_rejected': '主机连接拒绝',
+  'host.path_denied': '主机路径拒绝',
+  'host.method_denied': '主机方法拒绝',
+  host_e2ee_key_changed: '主机 E2EE 密钥变更',
+  host_grant_read: '主机授权读取',
+  host_grant_update: '主机授权变更',
+  host_list: '主机列表',
+  host_maintenance: '主机维护',
+  host_projects_root_rejected: '项目根拒绝',
+  host_provision_policy_update: '建项目策略变更',
+  host_register: '主机注册',
+  host_revoke: '主机撤销',
+  host_tls_fingerprint_changed: '主机 TLS 指纹变更',
+  host_token_create: '注册令牌签发',
+  install_script: '安装脚本取用',
+  login: '登录',
+  logout: '登出',
+  policy_update: '策略变更',
+  project_access: '连接',
+  project_archive: '项目归档',
+  project_connect: '打开项目',
+  project_create: '项目创建',
+  project_provision: '项目开通',
+  project_restore: '项目恢复',
+  project_update: '项目更新',
+  projects_root_change: '项目根变更',
+  provision_assign: '开通分配',
+  relay_list: '中继列表',
+  role_update: '角色变更',
+  signing_key_rotate: '签名密钥轮换',
+  user_list: '用户列表',
+  web_handoff: '会话交接'
+}
+
+/** Families first, then the catalog (or the legacy fallback) with zh labels. */
+function auditEventOptions(status) {
+  const catalog = Array.isArray(status?.eventTypes) ? status.eventTypes : []
+  const types = catalog.length > 0 ? catalog : AUDIT_EVENT_FALLBACK_TYPES
+  return [
+    ...AUDIT_FAMILY_OPTIONS,
+    ...types.map((type) => [
+      type,
+      AUDIT_EVENT_LABELS[type] ? `${AUDIT_EVENT_LABELS[type]} · ${type}` : type
+    ])
+  ]
+}
 
 /** file_download/download_blocked are the download family; file_copy is copy. */
 const AUDIT_FILE_LABELS = {
@@ -2096,7 +2184,7 @@ async function renderAudit(loadMore = false) {
       </div>
     </details>
     <div class="toolbar">
-      <input class="input grow" id="auditKeyword" type="search" placeholder="关键字：文件名 / 路径 / 账号 / 项目（2–128 字符）" autocomplete="off" aria-label="关键字">
+      <input class="input grow" id="auditKeyword" type="search" placeholder="关键字：类型 / 路径 / 文件名 / 账号 / 项目（2–128 字符）" autocomplete="off" aria-label="关键字">
       <select class="select" id="auditRange" aria-label="时间范围">
         <option value="24">最近 24 小时</option>
         <option value="168">最近 7 天（默认）</option>
@@ -2105,7 +2193,10 @@ async function renderAudit(loadMore = false) {
       <input class="input" type="datetime-local" id="auditSince" aria-label="起始时间">
       <input class="input" type="datetime-local" id="auditUntil" aria-label="结束时间">
       <select class="select" id="auditType" aria-label="操作类型">
-        ${AUDIT_EVENT_OPTIONS.map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}
+        <option value="">全部操作</option>
+        ${auditEventOptions(status)
+          .map(([value, label]) => `<option value="${esc(value)}">${esc(label)}</option>`)
+          .join('')}
       </select>
       <input class="input" id="auditActor" placeholder="用户（域账号，精确）" autocomplete="off" aria-label="用户">
       <select class="select" id="auditProject" aria-label="项目">

@@ -263,13 +263,16 @@ export class AuditChain {
   /**
    * Lowercased whitelist join, cached per event: q must never match event display
    * names, branch/reason, or other metadata (tech design §4.1/§4.4). Excerpt is
-   * absent until the phase-two switch exists.
+   * absent until the phase-two switch exists. U78 adds eventType and targetId —
+   * targetId is where endpoint paths like /install/host.sh land.
    */
   private searchable(event: AuditEvent): string {
     const cached = this.searchCache.get(event)
     if (cached !== undefined) return cached
     const metadata = event.metadata ?? {}
     const parts = [
+      event.eventType,
+      event.targetId,
       str(metadata.fileName),
       str(metadata.path),
       str(event.actor),

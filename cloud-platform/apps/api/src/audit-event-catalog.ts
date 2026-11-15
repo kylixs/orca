@@ -1,0 +1,51 @@
+/**
+ * U78: the authoritative eventType catalog — every value the platform writes to
+ * the audit chain. Mirrors the write points in server.ts (bare literals) and
+ * host-audit-ingest.ts (bare file events + `host.`-prefixed refusals). A new
+ * write point must add its type here, or /v1/audit/status hides it from the
+ * admin console's 操作类型 dropdown (the dropdown derives from this list).
+ */
+export const AUDIT_EVENT_TYPES: readonly string[] = [
+  'audit_query',
+  'audit_verify',
+  'connection_rejected',
+  'device_revoke',
+  'directory_read',
+  'download_blocked',
+  'file_copy',
+  'file_download',
+  'grant_update',
+  'host.audit_gap',
+  'host.connection_rejected',
+  'host.path_denied',
+  'host.method_denied',
+  'host_e2ee_key_changed',
+  'host_grant_read',
+  'host_grant_update',
+  'host_list',
+  'host_maintenance',
+  'host_projects_root_rejected',
+  'host_provision_policy_update',
+  'host_register',
+  'host_revoke',
+  'host_tls_fingerprint_changed',
+  'host_token_create',
+  'install_script',
+  'login',
+  'logout',
+  'policy_update',
+  'project_access',
+  'project_archive',
+  'project_connect',
+  'project_create',
+  'project_provision',
+  'project_restore',
+  'project_update',
+  'projects_root_change',
+  'provision_assign',
+  'relay_list',
+  'role_update',
+  'signing_key_rotate',
+  'user_list',
+  'web_handoff'
+]
