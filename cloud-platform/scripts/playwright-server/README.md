@@ -1,4 +1,4 @@
-# Playwright Server (PS-1 core)
+# Playwright Server (PS-1 core + PS-2 extensions)
 
 Resident, headless-browser test infrastructure for the cloud platform. One Chromium
 process holds one `BrowserContext` per identity (`admin`, `zhangsan`, `lisi`), a tab
@@ -126,6 +126,54 @@ Identity credentials default to the reseed demo accounts (`admin/Adm1n!`,
 `zhangsan/Passw0rd!`, `lisi/Passw0rd!`); override with `ORCA_PW_ROLE_MAP` JSON.
 Successful logins persist `storageState` to `<state-dir>/<profile>.json`, so a
 restart keeps each identity logged in.
+
+## Extended function library (PS-2)
+
+`ui-extensions.mjs` attaches to the same `ui` namespace in both modes. Extraction
+comes first (exploratory-testing-method §9b): read region text/state and assert,
+use screenshots only for layout evidence. Every helper is a thin Playwright
+wrapper and keeps `page` as the escape hatch.
+
+| Group    | Signature                        | Returns                                                                   |
+| -------- | -------------------------------- | ------------------------------------------------------------------------- |
+| extract  | `extractText(scope?, selector?)` | `{text, sections[], kv[]}`                                                |
+| extract  | `extractLayout(pageId?)`         | `{route, viewport, nav[], blocks[]}`                                      |
+| extract  | `extractState()`                 | `{states[], badges[], counts[], stats[]}`                                 |
+| extract  | `extractTable(selector?)`        | `[{columns[], rowCount, rows[]}]`                                         |
+| act      | `login(username?, opts?)`        | `{username, reused}` (role key or account)                                |
+| act      | `logout()`                       | `{reused}`                                                                |
+| act      | `navigateMenu(pageIdOrLabel)`    | crumb text                                                                |
+| act      | `openProject(id)`                | `{id, found, text}`                                                       |
+| act      | `openDetail(id?)`                | `{title, text, kv[]}` (dialog left open)                                  |
+| act      | `openWorkspace(id, opts?)`       | `{status: ready\|failed\|pending\|blocked}`                               |
+| act      | `openTab(type, arg?)`            | `{type, activeTab}` — `files\|git\|file\|diff\|terminal\|activate`        |
+| act      | `saveFile()`                     | `{saved, dirtyTabs}`                                                      |
+| act      | `switchDiff(mode)`               | `{mode}` — `inline\|side-by-side`                                         |
+| act      | `fillForm(fieldMap, opts?)`      | `{filled[], submitted}` — keys are labels/ids; `$submit` or `opts.submit` |
+| assert   | `assertText(expected, scope?)`   | `true` (throws on miss)                                                   |
+| assert   | `waitForState(text, opts?)`      | `{found, line}`                                                           |
+| discover | `discover()`                     | `{route, controls:{buttons,inputs,links,tables,tabs}}`                    |
+| discover | `compareWithPrototype(pageId?)`  | `{status:'not-implemented', inventoryFile, inventory}` (PS-4 hook)        |
+| evidence | `screenshot(name, opts?)`        | file path                                                                 |
+
+Workspace helpers (`openTab/saveFile/switchDiff`) act inside the
+`cloud-admin.html` iframe, so call `openWorkspace` first. JSDoc above each
+function carries a runnable example.
+
+### Extension demo (both modes)
+
+```bash
+# standalone
+ORCA_QA_BASE=https://127.0.0.1:18787 \
+ORCA_PW_EVIDENCE_DIR=cloud-platform/evidence/ps2-extensions/standalone \
+node cloud-platform/scripts/playwright-server/extension-demo.mjs
+
+# server mode
+curl .../tabs/t1/execute -d '{"script":"extension-demo.mjs","params":{"role":"admin"}}'
+```
+
+The demo extracts workbench text/state, asserts, opens a project detail dialog,
+extracts the table, then inventories controls and layout.
 
 ## Integration with exploration agents
 

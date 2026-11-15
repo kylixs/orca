@@ -5,6 +5,7 @@
  */
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
+import { attachUiExtensions } from './ui-extensions.mjs'
 
 export const DEFAULT_ROLES = {
   admin: { username: 'admin', password: 'Adm1n!' },
@@ -109,6 +110,7 @@ export function createUi({
     page,
     baseUrl,
     profile: () => profile,
+    roles: roleMap,
     mode,
     steps,
     logs,
@@ -236,5 +238,5 @@ export function createUi({
     }
   }
 
-  return ui
+  return attachUiExtensions(ui, { page, baseUrl, evidenceDir, targetLocator, step, log })
 }
