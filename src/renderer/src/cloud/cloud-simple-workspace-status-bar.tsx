@@ -18,6 +18,8 @@ export type CloudSimpleWorkspaceStatusBarProps = {
   connection: CloudSimpleWorkspaceConnection
   route: 'direct' | 'relay'
   latencyMs?: number | null
+  /** The open project, so the embedded frame names what it is showing. */
+  projectName?: string | null
   branch?: string | null
   workspacePath?: string | null
   dirtyCount: number
@@ -37,6 +39,7 @@ export function CloudSimpleWorkspaceStatusBar({
   connection,
   route,
   latencyMs,
+  projectName,
   branch,
   workspacePath,
   dirtyCount
@@ -46,6 +49,14 @@ export function CloudSimpleWorkspaceStatusBar({
       data-testid="cloud-simple-workspace-status-bar"
       className="scrollbar-sleek flex shrink-0 items-center gap-1 overflow-x-auto border-t border-border bg-card px-2 py-1 text-[11px] text-muted-foreground"
     >
+      {projectName ? (
+        <span
+          data-testid="cloud-simple-workspace-status-project"
+          className={`${SEGMENT_CLASS} min-w-0 truncate text-foreground`}
+        >
+          {projectName}
+        </span>
+      ) : null}
       <span data-testid="cloud-simple-workspace-status-connection" className={SEGMENT_CLASS}>
         <span aria-hidden className={`size-1.5 rounded-full ${CONNECTION_DOT_CLASS[connection]}`} />
         {CONNECTION_LABEL[connection]}

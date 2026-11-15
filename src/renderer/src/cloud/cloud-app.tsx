@@ -4,6 +4,8 @@ import { CloudConnectFailureDialog } from './cloud-connect-failure-dialog'
 import { CloudHostKeyDialog } from './cloud-host-key-dialog'
 import { CloudLoginPanel } from './cloud-login-panel'
 import { CloudProjectWorkspace, openedProjectSummary } from './cloud-project-workspace'
+import { CloudSimpleWorkspaceSession } from './cloud-simple-workspace'
+import { chosenProbe } from './cloud-connection-diagnostics'
 import { CloudWorkbench } from './cloud-workbench'
 import {
   CLOUD_ADMIN_EMBED_READY_TIMEOUT_MS,
@@ -237,7 +239,12 @@ export function CloudApp({
     if (session.status === 'signed-in' && bridge && openedProject) {
       return (
         <>
-          <EmbeddedWorkspace session={session} project={openedProject} bridge={bridge} />
+          <EmbeddedWorkspace
+            session={session}
+            project={openedProject}
+            bridge={bridge}
+            postToParent={postToParent}
+          />
           {dialogs}
         </>
       )
@@ -337,26 +344,40 @@ export function CloudApp({
   )
 }
 
-/** The same workspace view the standalone page shows, wired to the live bridge. */
+/**
+ * §4.2 embed: the simple workspace shell bound to the live bridge. The console
+ * owns the overlay chrome, so this frame only shows the tabs, rail and status.
+ */
 function EmbeddedWorkspace({
   session,
   project,
-  bridge
+  bridge,
+  postToParent
 }: {
   session: CloudSessionView
   project: NonNullable<ReturnType<typeof openedProjectSummary>>
   bridge: CloudBridge
+  postToParent: (message: Record<string, unknown>) => void
 }): React.JSX.Element {
   const { subscribe } = bridge
+  const opened = session.opened
+  const chosen = chosenProbe(opened?.connectDiagnostics)
   return (
-    <CloudProjectWorkspace
-      session={session}
-      project={project}
+    <CloudSimpleWorkspaceSession
+      projectName={project.name}
+      route={opened?.route ?? session.route ?? 'direct'}
+      latencyMs={chosen?.elapsedMs ?? null}
+      workspacePath={opened?.workspacePath ?? null}
+      permissions={opened?.permissions ?? null}
+      connection={session.status === 'signed-in' ? 'connected' : 'connecting'}
       rpc={(method, params) => bridge.rpc(method, params ?? {}, project.id)}
       subscribe={
         subscribe
           ? (method, params, callbacks) => subscribe(project.id, method, params, callbacks)
           : null
+      }
+      onDirtyCountChange={(count) =>
+        postToParent({ source: 'orca-cloud-admin', type: 'dirty', count })
       }
     />
   )

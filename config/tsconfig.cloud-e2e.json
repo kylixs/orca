@@ -18,6 +18,7 @@
     "../src/renderer/src/env.d.ts",
     // The ten specs, plus the renderer modules they import; everything transitive follows.
     "../src/renderer/src/cloud-admin/cloud-admin-session.e2e.test.ts",
+    "../src/renderer/src/cloud-admin/cloud-simple-workspace.e2e.test.ts",
     "../src/renderer/src/cloud/cloud-browser-host-key.e2e.test.ts",
     "../src/renderer/src/web/web-cloud-connect.e2e.test.ts",
     "../src/renderer/src/web/web-cloud-handoff.e2e.test.ts",

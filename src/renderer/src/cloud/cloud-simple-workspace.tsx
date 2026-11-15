@@ -1,8 +1,11 @@
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import type { CloudProjectPermission } from '../../../shared/cloud-platform-ipc'
+import { readField, readObjectValue, readString } from '../../../shared/json-fields'
+import type { CloudRpc } from '../../../shared/cloud-file-browser'
 import {
   CLOUD_SIMPLE_WORKSPACE_MAX_TERMINAL_TABS,
+  cloudSimpleWorkspaceDiffTab,
   cloudSimpleWorkspaceDirtyCount,
   cloudSimpleWorkspaceFileTab,
   cloudSimpleWorkspaceTabsInitialState,
@@ -26,15 +29,26 @@ import {
   type CloudSimpleWorkspaceFileTreeApi,
   type CloudSimpleWorkspaceGitApi
 } from './cloud-simple-workspace-right-panel'
-import { CloudWorkspaceTerminalTab } from './cloud-workspace-terminal-tab'
+import {
+  CloudWorkspaceTerminalTab,
+  CloudWorkspaceTerminalTabProvider
+} from './cloud-workspace-terminal-tab'
+import { createCloudWorkspaceFileTab } from './cloud-workspace-file-tab'
+import {
+  cloudWorkspacePreviewKind,
+  createCloudWorkspacePreviewTab
+} from './cloud-workspace-preview-tab'
+import { createCloudWorkspaceDiffTab } from './cloud-workspace-diff-tab'
+import { CloudWorkspaceFileTree } from './cloud-workspace-file-tree'
+import { CloudWorkspaceGitPanel } from './cloud-workspace-git-panel'
+import type { CloudTerminalSubscribe } from './cloud-terminal-panel'
 
 /**
  * Embedded simple workspace shell (U46-5a, design §4.3/§4.4): centre tabs plus a
- * right rail with file-tree and Git-changes tabs, bottom status bar. Tab panes
- * and rail contents are registered by later orders (U46-5b/6/7).
+ * right rail with file-tree and Git-changes tabs, bottom status bar. U46-8
+ * registers the four pane factories and the two rail panes on live RPC.
  * Layout composition follows AppWorkspaceShell (app-shell/AppWorkspaceShell.tsx):
  * a flex row of panels inside a min-h-0 column.
- * TODO(U46-8): mount this shell from CloudProjectWorkspace once wiring lands.
  */
 
 export type CloudSimpleWorkspaceTabComponentProps = {
@@ -86,6 +100,8 @@ export type {
 export type CloudSimpleWorkspaceProps = {
   route: 'direct' | 'relay'
   latencyMs?: number | null
+  /** Context line: which project this checkout belongs to. */
+  projectName?: string | null
   /** From `workspace.info`; null when the host did not report one. */
   branch?: string | null
   workspacePath?: string | null
@@ -98,11 +114,16 @@ export type CloudSimpleWorkspaceProps = {
   tabComponents?: CloudSimpleWorkspaceTabComponents
   renderFileTree?: (api: CloudSimpleWorkspaceFileTreeApi) => React.ReactNode
   renderGitChanges?: (api: CloudSimpleWorkspaceGitApi) => React.ReactNode
+  /** Embed protocol (§4.2): the console asks before discarding dirty buffers. */
+  onDirtyCountChange?: (count: number) => void
+  /** Which tab a file click opens; defaults to the editor. */
+  fileTab?: (path: string) => CloudSimpleWorkspaceTab
 }
 
 export function CloudSimpleWorkspace({
   route,
   latencyMs,
+  projectName,
   branch,
   workspacePath,
   permissions,
@@ -111,7 +132,9 @@ export function CloudSimpleWorkspace({
   initialTabs,
   tabComponents,
   renderFileTree,
-  renderGitChanges
+  renderGitChanges,
+  onDirtyCountChange,
+  fileTab
 }: CloudSimpleWorkspaceProps): React.JSX.Element {
   const [state, dispatch] = React.useReducer(
     cloudSimpleWorkspaceTabsReducer,
@@ -123,10 +146,25 @@ export function CloudSimpleWorkspace({
   const canUseTerminal = permissions?.includes('terminal') ?? true
   const canReadFiles = permissions?.includes('file:read') ?? true
   const nextTerminal = nextTerminalTab(state.tabs)
+  const dirtyCount = cloudSimpleWorkspaceDirtyCount(state)
 
-  const openFile = React.useCallback((path: string) => {
-    dispatch({ type: 'open', tab: cloudSimpleWorkspaceFileTab(path) })
+  const openFile = React.useCallback(
+    (path: string) => {
+      dispatch({
+        type: 'open',
+        tab: fileTab ? fileTab(path) : cloudSimpleWorkspaceFileTab(path)
+      })
+    },
+    [fileTab]
+  )
+
+  const openDiff = React.useCallback((path: string) => {
+    dispatch({ type: 'open', tab: cloudSimpleWorkspaceDiffTab(path) })
   }, [])
+
+  React.useEffect(() => {
+    onDirtyCountChange?.(dirtyCount)
+  }, [dirtyCount, onDirtyCountChange])
 
   if (degraded) {
     return (
@@ -251,6 +289,7 @@ export function CloudSimpleWorkspace({
           renderFileTree={renderFileTree}
           renderGitChanges={renderGitChanges}
           openFile={openFile}
+          openDiff={openDiff}
         />
       </div>
 
@@ -258,10 +297,141 @@ export function CloudSimpleWorkspace({
         connection={connection}
         route={route}
         latencyMs={latencyMs}
+        projectName={projectName}
         branch={branch}
         workspacePath={workspacePath}
-        dirtyCount={cloudSimpleWorkspaceDirtyCount(state)}
+        dirtyCount={dirtyCount}
       />
     </div>
+  )
+}
+
+export type CloudSimpleWorkspaceSessionProps = {
+  projectName: string
+  route: 'direct' | 'relay'
+  latencyMs?: number | null
+  /** The checkout from `cloud:openWorkspace`; a viewer ticket has none. */
+  workspacePath?: string | null
+  permissions?: CloudProjectPermission[] | null
+  rpc: CloudRpc
+  subscribe?: CloudTerminalSubscribe | null
+  connection?: CloudSimpleWorkspaceConnection
+  degraded?: CloudSimpleWorkspaceDegradedInfo | null
+  onDirtyCountChange?: (count: number) => void
+}
+
+/**
+ * U46-8 assembly: binds the shell's four tab kinds to the live-RPC factories
+ * and its rail to the file-tree/Git panes, then asks `workspace.info` for the
+ * branch (the checkout exists by the time the embed opens — `openWorkspace`
+ * ensures it). Without a checkout the rail renders its no-workspace states.
+ */
+export function CloudSimpleWorkspaceSession({
+  projectName,
+  route,
+  latencyMs,
+  workspacePath,
+  permissions,
+  rpc,
+  subscribe = null,
+  connection,
+  degraded,
+  onDirtyCountChange
+}: CloudSimpleWorkspaceSessionProps): React.JSX.Element {
+  const [branch, setBranch] = React.useState<string | null>(null)
+  const canUseTerminal = permissions?.includes('terminal') ?? true
+  const canReadFiles = permissions?.includes('file:read') ?? true
+
+  React.useEffect(() => {
+    if (!workspacePath) {
+      setBranch(null)
+      return
+    }
+    let cancelled = false
+    void rpc('workspace.info')
+      .then((outcome) => {
+        if (cancelled || !outcome.ok) {
+          return
+        }
+        const workspace = readObjectValue(readField(outcome.result, 'workspace'))
+        setBranch(workspace === null ? null : readString(workspace, 'branch'))
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [rpc, workspacePath])
+
+  const tabComponents = React.useMemo<CloudSimpleWorkspaceTabComponents>(() => {
+    if (!workspacePath) {
+      return {}
+    }
+    return {
+      terminal: CloudWorkspaceTerminalTab,
+      editor: createCloudWorkspaceFileTab({ rpc, workspacePath, permissions }),
+      preview: createCloudWorkspacePreviewTab({
+        rpc,
+        workspacePath,
+        permissions
+      }),
+      diff: createCloudWorkspaceDiffTab({ rpc, workspacePath, permissions })
+    }
+  }, [permissions, rpc, workspacePath])
+
+  return (
+    <CloudWorkspaceTerminalTabProvider
+      rpc={rpc}
+      subscribe={subscribe}
+      workspacePath={workspacePath ?? null}
+      canUseTerminal={canUseTerminal}
+    >
+      <CloudSimpleWorkspace
+        route={route}
+        latencyMs={latencyMs}
+        projectName={projectName}
+        branch={branch}
+        workspacePath={workspacePath}
+        permissions={permissions}
+        connection={connection}
+        degraded={degraded}
+        tabComponents={tabComponents}
+        renderFileTree={
+          workspacePath
+            ? ({ openFile }) => (
+                <CloudWorkspaceFileTree
+                  rpc={rpc}
+                  workspacePath={workspacePath}
+                  canReadFiles={canReadFiles}
+                  onOpenFile={openFile}
+                />
+              )
+            : undefined
+        }
+        renderGitChanges={
+          workspacePath
+            ? ({ onOpenDiff }) => (
+                <CloudWorkspaceGitPanel
+                  rpc={rpc}
+                  workspacePath={workspacePath}
+                  canReadFiles={canReadFiles}
+                  onOpenDiff={onOpenDiff}
+                />
+              )
+            : undefined
+        }
+        onDirtyCountChange={onDirtyCountChange}
+        fileTab={(path) => {
+          const kind = cloudWorkspacePreviewKind(path)
+          if (kind === 'binary') {
+            return cloudSimpleWorkspaceFileTab(path)
+          }
+          return cloudSimpleWorkspaceFileTab(
+            path,
+            'preview',
+            kind === 'image' ? 'image' : 'preview'
+          )
+        }}
+      />
+    </CloudWorkspaceTerminalTabProvider>
   )
 }

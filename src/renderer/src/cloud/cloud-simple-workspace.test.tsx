@@ -1,13 +1,15 @@
 // @vitest-environment happy-dom
 import * as React from 'react'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { CloudProjectPermission } from '../../../shared/cloud-platform-ipc'
+import type { CloudProjectPermission, CloudRpcOutcome } from '../../../shared/cloud-platform-ipc'
 import {
   CloudSimpleWorkspace,
+  CloudSimpleWorkspaceSession,
   type CloudSimpleWorkspaceTabComponentProps
 } from './cloud-simple-workspace'
+import type { CloudRpc } from '../../../shared/cloud-file-browser'
 
 /** T1 (design §6.2): tab dedupe, switching, close-neighbour, empty state, plus permissions. */
 
@@ -227,5 +229,138 @@ describe('简易工作区外壳', () => {
 
     await user.click(screen.getByTestId('cloud-simple-workspace-tab-close-file:a.ts'))
     expect(screen.queryByTestId('cloud-simple-workspace-status-dirty')).toBeNull()
+  })
+})
+
+/** U46-8 assembly: the shell's factories and rail panes bound to one scripted RPC. */
+function scriptedSessionRpc(): {
+  rpc: CloudRpc
+  calls: { method: string; params?: object }[]
+} {
+  const calls: { method: string; params?: object }[] = []
+  const rpc: CloudRpc = async (method, params): Promise<CloudRpcOutcome> => {
+    calls.push({ method, params })
+    switch (method) {
+      case 'workspace.info':
+        return { ok: true, result: { workspace: { branch: 'feat/refund' } } }
+      case 'files.readDir': {
+        const relativePath = (params as { relativePath?: string } | undefined)?.relativePath
+        return relativePath === 'src'
+          ? { ok: true, result: [{ name: 'a.ts', isDirectory: false }] }
+          : {
+              ok: true,
+              result: [
+                { name: 'src', isDirectory: true },
+                { name: 'logo.png', isDirectory: false },
+                { name: 'README.md', isDirectory: false }
+              ]
+            }
+      }
+      case 'files.readPreview':
+        return {
+          ok: true,
+          result: {
+            content: 'iVBORw0KGgo=',
+            isBinary: true,
+            isImage: true,
+            mimeType: 'image/png'
+          }
+        }
+      case 'files.read':
+        return { ok: false, code: 'denied' }
+      case 'git.status':
+        return {
+          ok: true,
+          result: { entries: [{ path: 'src/a.ts', status: 'modified' }] }
+        }
+      case 'git.history':
+        return {
+          ok: true,
+          result: { items: [{ id: 'abc123', subject: 'init' }] }
+        }
+      case 'git.diff':
+        return { ok: false, code: 'denied' }
+      default:
+        return { ok: false, code: 'unexpected_method' }
+    }
+  }
+  return { rpc, calls }
+}
+
+describe('简易工作区装配（U46-8）', () => {
+  it('挂载真实四类型工厂与右栏：分支来自 workspace.info，文件点击开编辑器/预览，Git 行开 diff', async () => {
+    const user = userEvent.setup()
+    const { rpc, calls } = scriptedSessionRpc()
+
+    render(
+      <CloudSimpleWorkspaceSession
+        projectName="payment-svc"
+        route="relay"
+        latencyMs={18}
+        workspacePath="/srv/checkout"
+        permissions={ALL}
+        rpc={rpc}
+      />
+    )
+
+    expect(screen.getByTestId('cloud-simple-workspace-status-project').textContent).toContain(
+      'payment-svc'
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId('cloud-simple-workspace-status-branch').textContent).toContain(
+        'feat/refund'
+      )
+    )
+
+    // Right rail = the real tree, whose readDir rides the same RPC.
+    await screen.findByTestId('cloud-workspace-file-tree-node-src')
+    expect(calls.some((call) => call.method === 'files.readDir')).toBe(true)
+
+    // Text file → editor factory.
+    await user.click(screen.getByTestId('cloud-workspace-file-tree-node-README.md'))
+    await within(screen.getByTestId('cloud-simple-workspace-pane-file:README.md')).findByTestId(
+      'cloud-workspace-file-tab'
+    )
+
+    // Image file → preview factory and readPreview.
+    await user.click(screen.getByTestId('cloud-workspace-file-tree-node-logo.png'))
+    await within(screen.getByTestId('cloud-simple-workspace-pane-preview:logo.png')).findByTestId(
+      'cloud-workspace-preview-tab'
+    )
+    expect(
+      calls.some(
+        (call) =>
+          call.method === 'files.readPreview' &&
+          (call.params as { relativePath?: string } | undefined)?.relativePath === 'logo.png'
+      )
+    ).toBe(true)
+
+    // Git rail → real changes pane; a row opens the diff factory.
+    await user.click(screen.getByTestId('cloud-simple-workspace-right-tab-git'))
+    await screen.findByTestId('cloud-workspace-git-panel')
+    await screen.findByTestId('cloud-workspace-git-change-src/a.ts')
+    await user.click(screen.getByTestId('cloud-workspace-git-change-src/a.ts'))
+    await within(screen.getByTestId('cloud-simple-workspace-pane-diff:src/a.ts')).findByTestId(
+      'cloud-workspace-diff-tab'
+    )
+  })
+
+  it('无工作区（viewer 票据）：四类型与服务工厂不注册，右栏落在无工作区态', async () => {
+    const { rpc, calls } = scriptedSessionRpc()
+    render(
+      <CloudSimpleWorkspaceSession
+        projectName="viewer-svc"
+        route="relay"
+        workspacePath={null}
+        permissions={['open', 'file:read']}
+        rpc={rpc}
+      />
+    )
+
+    expect(screen.getByTestId('cloud-simple-workspace-file-tree-no-workspace')).toBeTruthy()
+    await userEvent.setup().click(screen.getByTestId('cloud-simple-workspace-right-tab-git'))
+    // Git reads need `terminal`; a viewer ticket lacks it, so that gate wins over no-workspace.
+    expect(screen.getByTestId('cloud-simple-workspace-git-no-permission')).toBeTruthy()
+    expect(calls).toEqual([])
   })
 })
