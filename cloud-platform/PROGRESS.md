@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### U46-4 落地（2026-11-15）
+
+`07cf401c36d`（10 文件）：embed 模式（main.tsx 读 ?embed=1+project+hash 兑换前清除、loginWithHandoff 复用 redeemWebHandoff、signInWithHandoff 失败码映射）+消息桥（ready/dirty/close/logout 协议、source 与 targetOrigin 严格校验、20s 未 ready 回落独立页）+自动打开幂等（重渲染/已恢复不双开）+embed 下无工作台 chrome；max-lines 合规拆 4 个同域文件（cloud-admin-embed/sign-in/open/session-lifecycle）。新 6 用例+bridge C2+cloud 域 18 文件 99 测试全绿。空槽回填 U46-5a（工作区外壳，依赖 4 ✓）。
+
 ### U46-1 落地（2026-11-15）
 
 `ede079c7e86`（2 文件）：handoff 可选 surface:'admin'（URL→cloud-admin.html+embed=1、admin 独享 readiness 前置门禁 failed/provisioning→409、审计带 surface、响应仅显式携带时回显=旧控制台逐字节不变）+projectView.createdBy（admin/auditor 下发，developer payload 无字段）。新 7/7+handoff 系 14+关联 24+update 4=49 零回归。空槽回填 U46-2（详情弹框）。
