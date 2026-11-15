@@ -238,9 +238,29 @@ const PROJECT_GRANTS = {
   'zhangsan-lab': []
 }
 
+// U67: self-service creation gates on the host-level provision bit, so the seed
+// must mint zhangsan a host grant (view+provision = full) on every seeded host.
+async function seedHostGrants(api, tokens) {
+  const adminToken = tokens.admin.accessToken
+  const rows = []
+  for (const host of Object.values(tokens.hosts)) {
+    const res = await api('PUT', `/v1/hosts/${host.id}/grants`, {
+      token: adminToken,
+      body: { subjectType: 'user', subjectId: DEV.username, permissions: ['view', 'provision'] }
+    })
+    if (res.status !== 200) {
+      throw new Error(`host grant ${host.name}:${DEV.username} -> ${res.status} ${res.text}`)
+    }
+    rows.push(`${host.name}:user:${DEV.username}`)
+  }
+  return rows
+}
+
 async function seedProjects(api, tokens, paths) {
   const adminToken = tokens.admin.accessToken
+  const hostGrants = await seedHostGrants(api, tokens)
   const projects = {}
+  const skipped = []
   const grantRows = []
   for (const host of paths.hosts) {
     const recorded = tokens.hosts[host.name]
@@ -255,19 +275,27 @@ async function seedProjects(api, tokens, paths) {
             path: path.join(host.projects, key),
             defaultBranch: 'main'
           }
-      const result = await ensureProject(
-        api,
-        self ? tokens.dev.accessToken : adminToken,
-        spec,
-        self
-      )
+      let result
+      try {
+        result = await ensureProject(
+          api,
+          self ? tokens.dev.accessToken : adminToken,
+          spec,
+          self
+        )
+      } catch (error) {
+        console.warn(`[reseed] warn project ${key} skipped: ${error.message}`)
+        skipped.push(key)
+        continue
+      }
       for (const [subjectType, subjectId, permissions] of PROJECT_GRANTS[key]) {
         const res = await api('PUT', `/v1/projects/${result.project.id}/grants`, {
           token: adminToken,
           body: { subjectType, subjectId, permissions }
         })
         if (res.status !== 200) {
-          throw new Error(`grant ${key}:${subjectId} -> ${res.status} ${res.text}`)
+          console.warn(`[reseed] warn grant ${key}:${subjectId} -> ${res.status} ${res.text}`)
+          continue
         }
         grantRows.push([key, subjectType, subjectId])
       }
@@ -278,17 +306,22 @@ async function seedProjects(api, tokens, paths) {
     token: adminToken,
     body: { downloadDefault: 'allow' }
   })
-  const demoPolicy = await api('PUT', `/v1/projects/${projects['demo-app'].project.id}/policy`, {
-    token: adminToken,
-    body: { downloadPolicy: 'deny' }
-  })
-  if (global.status !== 200 || demoPolicy.status !== 200) {
+  const demoApp = projects['demo-app']
+  const demoPolicy = demoApp
+    ? await api('PUT', `/v1/projects/${demoApp.project.id}/policy`, {
+        token: adminToken,
+        body: { downloadPolicy: 'deny' }
+      })
+    : null
+  if (global.status !== 200 || demoPolicy?.status !== 200) {
     throw new Error('policy seed failed')
   }
   return {
     projects,
+    skipped,
+    hostGrants,
     grants: grantRows.map(([key, type, id]) => `${key}:${type}:${id}`),
-    policies: { global: global.status, demoApp: demoPolicy.status }
+    policies: { global: global.status, demoApp: demoPolicy?.status ?? null }
   }
 }
 
@@ -398,10 +431,14 @@ async function main() {
     paths.hosts.map((host) => [host.name, hostEntries[host.name].host])
   )
   const projects = await seedProjects(api, { ...seeded, hosts: hostIds }, paths)
+  if (projects.skipped.length > 0) {
+    log('projects', `skipped=${projects.skipped.join(',')}`)
+  }
   log(
     'projects',
     paths.hosts
       .flatMap((host) => host.projectKeys)
+      .filter((key) => projects.projects[key])
       .map((key) => `${key}=${projects.projects[key].project.id}`)
       .join(' ')
   )
@@ -515,6 +552,8 @@ async function main() {
     projects: projectEvidence,
     repos,
     grants: projects.grants,
+    hostGrants: projects.hostGrants,
+    skippedProjects: projects.skipped,
     policies: projects.policies,
     verification,
     relay: {
