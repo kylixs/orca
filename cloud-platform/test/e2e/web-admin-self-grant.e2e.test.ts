@@ -218,7 +218,7 @@ function redactHandoff(url: string): string {
   return url.replace(/#handoff=[A-Za-z0-9_-]+/, '#handoff=<redacted>')
 }
 
-test('AA5-1 未授权管理员「授权并打开」：确认五位→恰好一次 PUT grants→handoff 新标签', async () => {
+test('AA5-1 未授权管理员「授权并打开」：确认五位→恰好一次 PUT grants→同页覆盖层', async () => {
   const page = await loginAdminWorkbench()
   const row = rowFor(page, 'selfgrant-project')
   const projectId = await projectIdOf('selfgrant-project')
@@ -256,9 +256,13 @@ test('AA5-1 未授权管理员「授权并打开」：确认五位→恰好一�
     [`PUT /v1/projects/${projectId}/grants`, `POST /v1/projects/${projectId}/web-handoff`],
     'one grant write then the usual handoff, nothing else'
   )
-  assert.equal(opened.length, 1, 'the handoff opens exactly one new tab')
-  const url = new URL(opened[0])
+  assert.equal(opened.length, 0, 'U46-3 enters the same-page overlay, not a new tab')
+  const iframe = page.window.document.querySelector<HTMLIFrameElement>('#workspaceOverlay iframe')
+  assert.ok(iframe, 'the self-grant enters the workspace overlay')
+  const url = new URL(iframe.src)
+  assert.equal(url.pathname, '/cloud-admin.html')
   assert.equal(url.searchParams.get('api'), service.url)
+  assert.equal(url.searchParams.get('embed'), '1')
   assert.equal(new URLSearchParams(url.hash.slice(1)).get('project'), projectId)
 
   // The platform holds what the dialog promised: a named user row for the admin.
@@ -289,12 +293,12 @@ test('AA5-1 未授权管理员「授权并打开」：确认五位→恰好一�
   saveEvidence(EVIDENCE, 'self-grant-open.json', {
     project: projectId,
     put: `PUT /v1/projects/${projectId}/grants`,
-    handoff: redactHandoff(opened[0]),
+    handoff: redactHandoff(iframe.src),
     grantedPermissions: adminRow.permissions,
     auditResult: event.result
   })
   matrix['self-grant-open'] =
-    '授权并打开 → 确认五位+断开提示 → 1×PUT grants(username=admin) → 1×POST web-handoff 新标签；授权后行恢复 打开/Orca Web'
+    '授权并打开 → 确认五位+断开提示 → 1×PUT grants(username=admin) → 1×POST admin web-handoff 同页覆盖层；授权后行恢复 打开/Orca Web'
 }, 120_000)
 
 test('AA5-2 取消自授：关闭确认框零请求，grants 无 admin 行', async () => {
@@ -349,13 +353,17 @@ test('AA5-3 已授权管理员：打开直接 handoff，无确认框无 PUT', as
   )
   const projectId = await projectIdOf('granted-project')
   assert.deepEqual(callsSince(page, before), [`POST /v1/projects/${projectId}/web-handoff`])
-  assert.equal(opened.length, 1)
+  assert.equal(opened.length, 0, 'U46-3 opens the overlay instead of a tab')
+  const iframe = page.window.document.querySelector<HTMLIFrameElement>('#workspaceOverlay iframe')
+  assert.ok(iframe, 'an authorized admin enters the workspace overlay')
+  assert.equal(new URL(iframe.src).searchParams.get('project'), projectId)
   saveEvidence(EVIDENCE, 'granted-admin-direct.json', {
     project: projectId,
     calls: callsSince(page, before),
-    dialogShown: false
+    dialogShown: false,
+    overlay: redactHandoff(iframe.src)
   })
-  matrix['granted-admin'] = '已有 open 的 admin → 打开直接 POST web-handoff，零确认框零 PUT'
+  matrix['granted-admin'] = '已有 open 的 admin → 打开直接 POST admin web-handoff 进同页覆盖层，零确认框零 PUT'
 }, 120_000)
 
 test('AA5-4 非 admin：不渲染自授入口，直调 PUT 403、项目 404 语义不变', async () => {
@@ -407,12 +415,14 @@ test('AA5-4 非 admin：不渲染自授入口，直调 PUT 403、项目 404 语�
   await page.settle()
   assert.equal(page.window.document.querySelector('.dialog-backdrop'), null)
   assert.deepEqual(callsSince(page, before), [`POST /v1/projects/${devId}/web-handoff`])
-  assert.equal(opened.length, 1)
+  assert.equal(opened.length, 0, 'U46-3 opens the overlay instead of a tab')
+  const iframe = page.window.document.querySelector<HTMLIFrameElement>('#workspaceOverlay iframe')
+  assert.ok(iframe, 'a developer holding open enters the workspace overlay')
   saveEvidence(EVIDENCE, 'non-admin-403.json', {
     invisibleGrantStatus: invisible.status,
     putStatus: refused.status,
     projectStatus: hidden.status,
-    devHandoff: redactHandoff(opened[0]),
+    devHandoff: redactHandoff(iframe.src),
     selfGrantEntries: 0
   })
   matrix['non-admin'] =

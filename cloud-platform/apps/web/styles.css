@@ -175,6 +175,26 @@ td.actions { text-align: right; }
 .dialog pre { background: #171717; color: #e5e7eb; padding: 12px 14px; border-radius: var(--radius); overflow: auto; font-family: var(--mono); font-size: 11.5px; }
 .dialog.wide { width: 720px; }
 .dialog.wide .body { max-height: 65vh; overflow: auto; }
+
+/* ---------- 内嵌工作区覆盖层（U46-3 §4.2） ---------- */
+.workspace-overlay { position: fixed; inset: 0; z-index: 45; background: var(--bg); display: flex; flex-direction: column; }
+.workspace-bar {
+  height: 40px; flex: none; display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 0 12px; background: var(--sidebar); border-bottom: 1px solid var(--border);
+}
+.workspace-bar-side { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.workspace-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.workspace-route, .workspace-dirty { font-size: 11.5px; color: var(--text-3); white-space: nowrap; }
+.workspace-body { flex: 1; min-height: 0; position: relative; background: var(--sidebar); }
+.workspace-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.workspace-status {
+  position: absolute; inset: 0; display: grid; place-items: center; padding: 24px;
+  background: #fff; color: var(--text-3); text-align: center;
+}
+.workspace-status-box { max-width: 420px; }
+.workspace-status-box p { margin: 0 0 14px; color: var(--text-2); }
+.workspace-actions { display: flex; justify-content: center; gap: 8px; }
+
 .detail-sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 28px; }
 .detail-section h3 { font-size: 12px; font-weight: 600; margin: 0 0 8px; color: var(--text-3); letter-spacing: .05em; }
 .detail-section .kv { grid-template-columns: 88px 1fr; }

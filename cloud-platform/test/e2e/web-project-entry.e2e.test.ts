@@ -17,9 +17,9 @@ import { loadWebConsolePage, type WebConsolePage } from './web-console-page.ts'
  *   greys it), 「Orca Web」 for open-permission holders (an action button since
  *   M122: it mints a one-time handoff URL per click; it greys out while the
  *   host is offline or in maintenance)
- * - W3c (FR-3.11 revision): 「打开」 is the same handoff entry — it mints a
- *   one-time URL and opens the workspace in a new tab, and the raw-address
- *   「连接信息已就绪」 dialog is gone
+ * - W3c (FR-3.11 revision): 「打开」 mints the admin-surface handoff and mounts
+ *   it in the same-page overlay (U46-3); the raw-address「连接信息已就绪」
+ *   dialog is gone
  */
 
 const EVIDENCE = 'w3-fixes'
@@ -475,7 +475,7 @@ test('W3-developer 开发者无详情入口，Orca Web 随权限与浏览器入�
     '无详情入口；Orca Web 在线为动作按钮、无浏览器入口仍可点击、离线 title=主机离线；两页 actions 一致'
 }, 120_000)
 
-test('W3c-open 打开走 web-handoff 新标签进入工作区，不再弹连接信息对话框', async () => {
+test('W3c-open 打开走 admin handoff 进同页覆盖层，不再弹连接信息对话框', async () => {
   await announceBrowserEdge()
   const page = loadWebConsolePage(service.url)
   await page.settle()
@@ -504,26 +504,31 @@ test('W3c-open 打开走 web-handoff 新标签进入工作区，不再弹连接�
     [`POST /v1/projects/${liveProjectId}/web-handoff`],
     '打开 mints a handoff and never calls the desktop /connect'
   )
-  assert.equal(opened.length, 1, 'the issued URL opens exactly one new tab')
-  const openedUrl = new URL(opened[0])
+  assert.equal(opened.length, 0, 'U46-3 keeps the workspace on the page')
+  const iframe = page.window.document.querySelector<HTMLIFrameElement>('#workspaceOverlay iframe')
+  assert.ok(iframe, 'the workspace entry mounts the same-page overlay')
+  const entryUrl = new URL(iframe.src)
   // U22: the entry lives on the relay edge serving /h/dev-tls/ — the platform
   // address only ever appears as the ?api= param, never as the origin.
-  assert.equal(openedUrl.origin, `https://${BROWSER_EDGE_HOST}`)
-  assert.equal(openedUrl.searchParams.get('api'), service.url)
-  assert.match(openedUrl.hash, /^#handoff=[A-Za-z0-9_-]+&project=/)
+  assert.equal(entryUrl.origin, `https://${BROWSER_EDGE_HOST}`)
+  assert.equal(entryUrl.pathname, '/h/dev-tls/cloud-admin.html', 'the admin surface swaps the page')
+  assert.equal(entryUrl.searchParams.get('api'), service.url)
+  assert.equal(entryUrl.searchParams.get('embed'), '1')
+  assert.equal(entryUrl.searchParams.get('project'), liveProjectId)
+  assert.match(entryUrl.hash, /^#handoff=[A-Za-z0-9_-]+&project=/)
   assert.equal(
-    new URLSearchParams(openedUrl.hash.slice(1)).get('project'),
+    new URLSearchParams(entryUrl.hash.slice(1)).get('project'),
     liveProjectId,
     'the handoff must carry the id of the clicked project'
   )
 
   saveEvidence(EVIDENCE, 'open-handoff-entry.json', {
     call: `POST /v1/projects/${liveProjectId}/web-handoff`,
-    opened: opened[0].replace(/#handoff=[A-Za-z0-9_-]+/, '#handoff=<redacted>'),
+    overlay: iframe.src.replace(/#handoff=[A-Za-z0-9_-]+/, '#handoff=<redacted>'),
     dialogShown: page.window.document.querySelector('.dialog') !== null
   })
   matrix['open-entry'] =
-    '有 open 权限点「打开」→ POST web-handoff → window.open(一次性 URL) 进工作区；无连接信息对话框、无 /connect 调用'
+    '有 open 权限点「打开」→ POST admin web-handoff → 同页覆盖层 iframe(cloud-admin.html?embed=1) 进工作区；无连接信息对话框、无 /connect、无新标签'
 }, 120_000)
 
 test('W3-admin 在线但无可直达会话页地址时详情仍可看，弹框无独立页链接', async () => {

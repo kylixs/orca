@@ -19,8 +19,8 @@ import { loadWebConsolePage, type WebConsolePage } from './web-console-page.ts'
  * - 打开项目 closes the dialog and mints the admin-surface handoff
  * - Escape closes and returns focus to the triggering row button
  *
- * The in-page overlay and its O1-O5 assertions land with U46-3; this order
- * asserts the handoff request and the placeholder new-tab.
+ * U46-3 mounts that handoff in the same-page overlay; D5 asserts the dialog
+ * hands off into it. O1-O5 live in u46-3-overlay.e2e.test.ts.
  */
 
 const EVIDENCE = 'u46-2-dialog'
@@ -401,7 +401,7 @@ test('W46-D4 createdBy 只随 admin/auditor 下发（新增平台断言）', asy
   matrix.d4 = { adminCreatedBy: adminRow.createdBy, developerHasKey: 'createdBy' in devRow }
 }, 120_000)
 
-test('W46-D5 弹框「打开项目」关闭弹框并签发 admin surface handoff（覆盖层随 U46-3）', async () => {
+test('W46-D5 弹框「打开项目」关闭弹框并在同页覆盖层进入工作区（U46-3）', async () => {
   const page = await loginAs('admin', 'Adm1n!')
   const { opened } = captureOpened(page)
   ;(entryIn(rowFor(page, 'detail-project'), '详情') as HTMLButtonElement).click()
@@ -421,7 +421,13 @@ test('W46-D5 弹框「打开项目」关闭弹框并签发 admin surface handoff
     [`POST /v1/projects/${detailProjectId}/web-handoff`],
     'exactly one handoff mint, no other traffic'
   )
-  assert.equal(opened.length, 1, 'the placeholder opens the issued entry')
+  assert.equal(opened.length, 0, 'U46-3 replaces the placeholder new tab with the overlay')
+  const iframe = page.window.document.querySelector<HTMLIFrameElement>('#workspaceOverlay iframe')
+  assert.ok(iframe, 'the workspace entry mounts the same-page overlay')
+  const entry = new URL(iframe.src)
+  assert.equal(entry.pathname, '/cloud-admin.html')
+  assert.equal(entry.searchParams.get('embed'), '1')
+  assert.equal(entry.searchParams.get('project'), detailProjectId)
 
   // The server is the authority for the body this order sent: its audit carries
   // the surface the console requested.
@@ -435,8 +441,8 @@ test('W46-D5 弹框「打开项目」关闭弹框并签发 admin surface handoff
   matrix.d5 = {
     calls: [`POST /v1/projects/${detailProjectId}/web-handoff`],
     auditSurface: event.metadata.surface,
-    overlay: 'U46-3',
-    opened: opened[0].replace(/#handoff=[A-Za-z0-9_-]+/, '#handoff=<redacted>')
+    overlay: iframe.src.replace(/#handoff=[A-Za-z0-9_-]+/, '#handoff=<redacted>'),
+    opened: opened.length
   }
 }, 120_000)
 

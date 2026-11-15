@@ -287,8 +287,8 @@ function projectCard(p, globalDefault) {
  * The per-project row entries (FR-3.11 R3) come from one builder so 工作台 and
  * 我的项目 stay identical. 「详情」 is admin-only and opens a read-only platform
  * dialog (never gated by host state: an offline host is exactly what it
- * explains); 「打开」 and 「Orca Web」 (M122, FR-3.10) mint a one-time handoff
- * URL and open it, landing straight in the project workspace.
+ * explains); 「打开」 mounts the admin-surface handoff in a same-page overlay
+ * (U46-3); 「Orca Web」 (M122, FR-3.10) keeps the new-tab entry unchanged.
  */
 function projectRowActions(p) {
   return `<button class="btn sm" data-open="${p.id}" ${openDisabledAttr(p)}>打开</button>${selfGrantEntry(p)}${detailEntry(p)}${orcaWebEntry(p)}`
@@ -401,11 +401,13 @@ function projectRow(p) {
 }
 
 function wireProjectActions() {
-  // 「打开」 and 「Orca Web」 are the same handoff entry (FR-3.11 revision):
-  // both land the open-permission holder straight in the project workspace.
-  for (const btn of document.querySelectorAll('[data-open], [data-orca-web]')) {
-    const projectId = btn.dataset.open ?? btn.dataset.orcaWeb
-    btn.onclick = () => openProjectWorkspace(projectId)
+  // §4.10: 「打开」 goes into the same-page overlay; 「Orca Web」 keeps the W13b
+  // new-tab handoff byte for byte.
+  for (const btn of document.querySelectorAll('[data-open]')) {
+    btn.onclick = () => void openProjectWorkspace(btn.dataset.open ?? '')
+  }
+  for (const btn of document.querySelectorAll('[data-orca-web]')) {
+    btn.onclick = () => void openOrcaWebInNewTab(btn.dataset.orcaWeb ?? '')
   }
   for (const btn of document.querySelectorAll('[data-self-grant]')) {
     btn.onclick = () => confirmSelfGrant(btn.dataset.selfGrant ?? '')
@@ -422,24 +424,221 @@ function wireProjectActions() {
   }
 }
 
-/**
- * The platform mints a one-time, 60-second handoff code bound to this session,
- * and the new tab trades it for a workspace — no second login (FR-3.10). The
- * raw connection info stays with the 详情 entry and the workspace's connection
- * diagnostics, so the old「连接信息已就绪」dialog has nothing left to add.
- */
-async function openProjectWorkspace(projectId, surface) {
+/* ---------------- 内嵌工作区覆盖层（U46-3 · §4.2） ---------------- */
+
+const WORKSPACE_READY_TIMEOUT_MS = 20_000
+const WORKSPACE_CLOSE_TIMEOUT_MS = 300
+let workspaceOverlay = null
+
+/** Only the admin-surface page can host the embed entry (§4.10). */
+function isInlineWorkspaceUrl(url) {
   try {
-    const body = await api(`/v1/projects/${projectId}/web-handoff`, {
+    return new URL(url).pathname.endsWith('/cloud-admin.html')
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The platform mints a one-time, 60-second handoff code bound to this session;
+ * the console asks for the admin surface and mounts the host-served
+ * cloud-admin.html in a fullscreen overlay, so the workspace document runs on
+ * the host/relay edge while the console stays underneath (§4.1/§4.2).
+ */
+async function openProjectWorkspace(projectId) {
+  const project = state.projects.find((p) => p.id === projectId)
+  let body
+  try {
+    body = await api(`/v1/projects/${projectId}/web-handoff`, {
       method: 'POST',
-      // U46-3 replaces this window.open with the in-page overlay; U46-2 only
-      // makes the dialog's 打开项目 take the same admin-surface entry.
-      ...(surface ? { body: JSON.stringify({ surface }) } : {})
+      body: JSON.stringify({ surface: 'admin' })
     })
+  } catch (err) {
+    // The issuance itself failed: state the reason, keep both escape hatches.
+    mountWorkspaceFailure(projectId, project, err.message ?? String(err))
+    return
+  }
+  const url = String(body.url ?? '')
+  if (!isInlineWorkspaceUrl(url)) {
+    // An old platform ignores `surface` and still answers web-index.html.
+    window.open(url, '_blank', 'noopener')
+    toast('当前平台版本不支持内嵌工作区，已在新标签打开')
+    return
+  }
+  mountWorkspaceOverlay(projectId, project, url)
+}
+
+/** 「Orca Web」 and the overlay's fallback: web surface, new tab, unchanged. */
+async function openOrcaWebInNewTab(projectId) {
+  try {
+    const body = await api(`/v1/projects/${projectId}/web-handoff`, { method: 'POST' })
     window.open(body.url, '_blank', 'noopener')
   } catch (err) {
     toast(`打开失败：${err.message ?? err}`)
   }
+}
+
+function workspaceBarHtml(project) {
+  const branch = project?.defaultBranch
+    ? `<span class="muted">${esc(project.defaultBranch)}</span>`
+    : ''
+  const host = project?.hostName ? `<span class="muted">${esc(project.hostName)}</span>` : ''
+  return `
+    <header class="workspace-bar">
+      <div class="workspace-bar-side">
+        <button class="btn ghost sm" data-workspace-back>← 返回</button>
+        <strong class="workspace-title">${esc(project?.name ?? '项目工作区')}</strong>
+        ${branch}
+        <span class="workspace-route" data-workspace-route hidden></span>
+        <span class="workspace-dirty" data-workspace-dirty hidden></span>
+        ${host}
+      </div>
+      <div class="workspace-bar-side">
+        <button class="btn sm" data-workspace-new-tab>在新标签打开 Orca Web</button>
+        <button class="btn sm" data-workspace-close>关闭</button>
+      </div>
+    </header>`
+}
+
+function createWorkspaceShell(project) {
+  const root = document.createElement('div')
+  root.className = 'workspace-overlay'
+  root.id = 'workspaceOverlay'
+  root.setAttribute('role', 'dialog')
+  root.setAttribute('aria-modal', 'true')
+  root.setAttribute('aria-label', '项目工作区')
+  root.innerHTML = `${workspaceBarHtml(project)}<div class="workspace-body"></div>`
+  return root
+}
+
+function wireWorkspaceShell(root, projectId) {
+  for (const btn of root.querySelectorAll('[data-workspace-close], [data-workspace-back]')) {
+    btn.onclick = () => {
+      // A failure shell has no iframe to handshake with.
+      if (workspaceOverlay?.root === root) requestWorkspaceClose()
+      else root.remove()
+    }
+  }
+  for (const btn of root.querySelectorAll('[data-workspace-new-tab]')) {
+    btn.onclick = () => void openOrcaWebInNewTab(projectId)
+  }
+  const retry = root.querySelector('[data-workspace-retry]')
+  if (retry) {
+    retry.onclick = () => {
+      removeWorkspaceOverlay()
+      void openProjectWorkspace(projectId)
+    }
+  }
+}
+
+function mountWorkspaceFailure(projectId, project, reason) {
+  removeWorkspaceOverlay()
+  const root = createWorkspaceShell(project)
+  root.querySelector('.workspace-body').innerHTML = `
+    <div class="workspace-status" role="alert">
+      <div class="workspace-status-box">
+        <p>工作区打开失败：${esc(reason)}</p>
+        <div class="workspace-actions">
+          <button class="btn primary sm" data-workspace-retry>重试</button>
+          <button class="btn sm" data-workspace-new-tab>在新标签打开 Orca Web</button>
+        </div>
+      </div>
+    </div>`
+  wireWorkspaceShell(root, projectId)
+  document.body.appendChild(root)
+}
+
+function mountWorkspaceOverlay(projectId, project, url) {
+  removeWorkspaceOverlay()
+  const root = createWorkspaceShell(project)
+  const body = root.querySelector('.workspace-body')
+  body.innerHTML = '<div class="workspace-status" data-workspace-status>正在进入项目工作区…</div>'
+  const iframe = document.createElement('iframe')
+  iframe.className = 'workspace-frame'
+  iframe.title = '项目工作区'
+  iframe.src = url
+  body.appendChild(iframe)
+
+  const overlay = {
+    root,
+    iframe,
+    origin: new URL(url).origin,
+    dirty: 0,
+    ready: false,
+    readyTimer: null,
+    closeTimer: null,
+    onMessage: null
+  }
+  const status = root.querySelector('[data-workspace-status]')
+  const route = root.querySelector('[data-workspace-route]')
+  const dirty = root.querySelector('[data-workspace-dirty]')
+
+  overlay.onMessage = (event) => {
+    // §4.2: only this iframe, only from the page the handoff named.
+    if (event.source !== iframe.contentWindow || event.origin !== overlay.origin) return
+    const data = event.data ?? {}
+    if (data.source !== 'orca-cloud-admin') return
+    if (data.type === 'ready') {
+      overlay.ready = true
+      clearTimeout(overlay.readyTimer)
+      status.hidden = true
+      route.hidden = false
+      route.textContent = `${data.route === 'relay' ? '中继' : '直连'} ${Number(data.latencyMs) || 0}ms`
+    } else if (data.type === 'dirty') {
+      overlay.dirty = Number(data.count) || 0
+      dirty.hidden = overlay.dirty === 0
+      dirty.textContent = `${overlay.dirty} 个未保存文件`
+    } else if (data.type === 'closed') {
+      removeWorkspaceOverlay()
+    }
+  }
+  window.addEventListener('message', overlay.onMessage)
+  overlay.readyTimer = setTimeout(() => {
+    if (overlay.ready) return
+    // R9: an old host bundle never reports ready; do not trap the console.
+    removeWorkspaceOverlay()
+    toast('工作区加载超时，请在 Orca Web 新标签中打开')
+  }, WORKSPACE_READY_TIMEOUT_MS)
+  workspaceOverlay = overlay
+  wireWorkspaceShell(root, projectId)
+  document.body.appendChild(root)
+}
+
+function requestWorkspaceClose() {
+  const overlay = workspaceOverlay
+  if (!overlay) return
+  if (overlay.dirty > 0 && !confirmDialog(`有 ${overlay.dirty} 个文件未保存，确定关闭工作区？`)) {
+    return
+  }
+  if (!overlay.iframe) {
+    removeWorkspaceOverlay()
+    return
+  }
+  // R1: close the PTY/socket inside the iframe before its document goes away.
+  overlay.iframe.contentWindow?.postMessage({ type: 'close' }, overlay.origin)
+  overlay.closeTimer = setTimeout(removeWorkspaceOverlay, WORKSPACE_CLOSE_TIMEOUT_MS)
+}
+
+function removeWorkspaceOverlay() {
+  const overlay = workspaceOverlay
+  if (!overlay) {
+    // A failure shell is not registered (no iframe to handshake with).
+    document.querySelector('#workspaceOverlay')?.remove()
+    return
+  }
+  clearTimeout(overlay.readyTimer)
+  clearTimeout(overlay.closeTimer)
+  if (overlay.onMessage) window.removeEventListener('message', overlay.onMessage)
+  overlay.root.remove()
+  workspaceOverlay = null
+}
+
+/** R10: tell the embedded page to drop its session before the console signs out. */
+function closeWorkspaceForLogout() {
+  const overlay = workspaceOverlay
+  if (!overlay) return
+  overlay.iframe?.contentWindow?.postMessage({ type: 'logout' }, overlay.origin)
+  removeWorkspaceOverlay()
 }
 
 /* ---------------- 详情弹框（U46-2 · FR-3.11 R3） ---------------- */
@@ -478,7 +677,9 @@ function detailPermissions(p) {
       ? '<span class="muted">管理员可见（未授权）</span>'
       : '<span class="muted">无直接权限</span>'
   }
-  return p.permissions.map((permission) => `<span class="badge">${esc(permission)}</span>`).join(' ')
+  return p.permissions
+    .map((permission) => `<span class="badge">${esc(permission)}</span>`)
+    .join(' ')
 }
 
 function detailGrants(grants, loading) {
@@ -595,7 +796,7 @@ async function openProjectDetail(projectId) {
         disabled: Boolean(reason),
         title: reason ?? '进入项目工作区',
         onClick: () => {
-          void openProjectWorkspace(projectId, 'admin')
+          void openProjectWorkspace(projectId)
         }
       }
     ],
@@ -1092,7 +1293,10 @@ async function showHostGrants(host) {
   if (directory) {
     $('#hostGrantType').onchange = () => {
       const isUser = $('#hostGrantType').value === 'user'
-      $('#hostGrantSubject').setAttribute('list', isUser ? 'hostGrantUserOptions' : 'hostGrantGroupOptions')
+      $('#hostGrantSubject').setAttribute(
+        'list',
+        isUser ? 'hostGrantUserOptions' : 'hostGrantGroupOptions'
+      )
       $('#hostGrantSubject').placeholder = isUser ? '用户名，如 zhangsan' : '组名，如 team-payment'
     }
   }
@@ -1349,7 +1553,7 @@ const GRANT_ERROR_TEXT = {
   GRANT_PERMISSION_INVALID:
     '权限位无效：仅支持 open、terminal、agent、file:read、file:write、browser、download。'
 }
-const grantErrorText = (err) => GRANT_ERROR_TEXT[err?.code] ?? (err?.message ?? String(err))
+const grantErrorText = (err) => GRANT_ERROR_TEXT[err?.code] ?? err?.message ?? String(err)
 
 /** Host bits (AA6): provision → self-service, maintain → maintenance, view is reserved in v1. */
 const HOST_GRANT_PERMISSIONS = ['provision', 'maintain', 'view']
@@ -1358,8 +1562,7 @@ const HOST_GRANT_ERROR_TEXT = {
   HOST_GRANT_PERMISSION_INVALID: '主机权限位不在允许范围内。',
   HOST_PROVISION_POLICY_INVALID: '自助建项目策略只能是 open 或 restricted。'
 }
-const hostGrantErrorText = (err) =>
-  HOST_GRANT_ERROR_TEXT[err?.code] ?? (err?.message ?? String(err))
+const hostGrantErrorText = (err) => HOST_GRANT_ERROR_TEXT[err?.code] ?? err?.message ?? String(err)
 const hostPolicyMode = (host) => (host.provisionPolicy === 'restricted' ? 'restricted' : 'open')
 
 const grantKey = (g) => `${g.subjectType}:${g.subjectId}`
@@ -1917,6 +2120,8 @@ async function login(username, password) {
 }
 
 function logout() {
+  // R10: the overlay goes first, and the iframe is told to drop its session.
+  closeWorkspaceForLogout()
   void fetch('/v1/auth/logout', {
     method: 'POST',
     headers: { authorization: `Bearer ${state.accessToken}` }
