@@ -1633,7 +1633,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         })
         return error(res, 400, pathVerdict.code, pathVerdict.message, traceId)
       }
-      if (projectPathTaken(store, pathVerdict.path)) {
+      if (projectPathTaken(store, target.id, pathVerdict.path)) {
         return error(res, 409, 'PROJECT_PATH_TAKEN', '该主机目录下已存在同路径的项目。', traceId)
       }
       const repoUrlVerdict = validateProjectRepoUrl(body.repoUrl)
@@ -1782,7 +1782,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (projectPath === null) {
         return await deny(400, 'PATH_OUTSIDE_ROOT', '项目目录不在主机项目根目录内。')
       }
-      if (projectPathTaken(store, projectPath)) {
+      if (projectPathTaken(store, selection.host.id, projectPath)) {
         return await deny(409, 'PROJECT_PATH_TAKEN', '该主机目录下已存在同路径的项目。')
       }
       if (
@@ -2096,7 +2096,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         }
         const conflict = projectKeyTaken(store, found.key, found.id)
           ? ('PROJECT_KEY_TAKEN' as const)
-          : projectPathTaken(store, found.path, found.id)
+          : projectPathTaken(store, found.hostId, found.path, found.id)
             ? ('PROJECT_PATH_TAKEN' as const)
             : null
         if (conflict !== null) {
@@ -3214,6 +3214,23 @@ export function createApp(config: ApiConfig): ApiHandle {
     traceId: string
   ): Promise<void> {
     const body = await readJson(req)
+    // Same predicate as /web-handoff: adminAccess widens which projects a caller
+    // can see, never the right to open one; `open` is an explicit bit.
+    const permissions = store.effectivePermissions(project.id, user)
+    if (!permissions.includes('open')) {
+      await audit.append({
+        eventType: 'project_connect',
+        actor: user.username,
+        targetType: 'project',
+        targetId: project.id,
+        result: 'denied',
+        traceId,
+        metadata: { reason: 'permission_lost' }
+      })
+      return error(res, 403, 'PROJECT_FORBIDDEN', '项目无权限，无法打开。', traceId, {
+        reason: 'permission_lost'
+      })
+    }
     const host = store.hosts.get(project.hostId)
     if (!host) return error(res, 404, 'HOST_NOT_FOUND', '主机不存在。', traceId)
     if (host.revokedAt !== null) {
@@ -3286,7 +3303,6 @@ export function createApp(config: ApiConfig): ApiHandle {
         offered: offeredVersion
       })
     }
-    const permissions = store.effectivePermissions(project.id, user)
     const devicePubKey = String(body.devicePubKey ?? '')
     const deviceId = String(body.deviceId ?? '')
     const device = store.devices.get(deviceId)

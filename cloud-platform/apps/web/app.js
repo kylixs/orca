@@ -1115,9 +1115,21 @@ async function registerProjectDialog() {
     </div>`,
     [{ label: '登记', primary: true, onClick: submitRegistration }]
   )
+  let lastHostId = $('#regHost').value
   $('#regHost').onchange = () => {
+    const hostId = $('#regHost').value
+    // An absolute path is scoped to one host's root; carrying it across a host
+    // switch registers a directory the user never picked on the new machine.
+    if (lastHostId !== '' && hostId !== lastHostId) {
+      $('#regPath').value = ''
+      const pathError = $('#regPathError')
+      pathError.hidden = true
+      pathError.textContent = ''
+      $('#regPath').classList.remove('invalid')
+    }
+    lastHostId = hostId
     const hint = $('#regRootHint')
-    const root = hosts.find((h) => h.id === $('#regHost').value)?.projectsRoot
+    const root = hosts.find((h) => h.id === hostId)?.projectsRoot
     hint.textContent = root ? `主机项目根：${root}` : ''
     hint.hidden = !root
   }

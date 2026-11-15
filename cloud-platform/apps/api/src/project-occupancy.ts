@@ -19,6 +19,7 @@ export function projectKeyTaken(
 
 export function projectPathTaken(
   store: Pick<Store, 'projects'>,
+  hostId: string,
   path: string,
   excludeProjectId?: string
 ): boolean {
@@ -26,7 +27,9 @@ export function projectPathTaken(
     if (project.id === excludeProjectId || project.status === 'archived') {
       continue
     }
-    if (project.path === path) {
+    // A path names a directory on one machine; another host's identical absolute
+    // path is a different directory and must stay registrable.
+    if (project.hostId === hostId && project.path === path) {
       return true
     }
   }

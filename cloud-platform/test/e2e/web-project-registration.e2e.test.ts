@@ -459,7 +459,19 @@ test('M120a-6 重复路径与平台侧非法路径都落在 path 字段（服务
   const page = loadWebConsolePage(service.url)
   await openRegisterDialog(page, 'admin', 'Adm1n!')
 
-  // ① the seeded project's directory is already occupied.
+  // ① path occupancy is per (host, path): the seeded project lives on another
+  // host, so this host gets its own occupant for the duplicate verdict.
+  const occupied = await adminApi('/v1/projects', {
+    method: 'POST',
+    body: JSON.stringify({
+      key: 'reg-path-owner',
+      name: '重复路径占位',
+      hostId,
+      path: '/srv/work/payment-service'
+    })
+  })
+  assert.equal(occupied.status, 201, JSON.stringify(occupied.body))
+
   fillRegistration(page, {
     name: '重复路径演练',
     key: 'reg-dup-path',
