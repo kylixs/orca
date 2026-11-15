@@ -232,6 +232,9 @@ describe('简易工作区外壳', () => {
   })
 })
 
+const SESSION_COMMIT_OID = 'c'.repeat(40)
+const SESSION_PARENT_OID = 'd'.repeat(40)
+
 /** U46-8 assembly: the shell's factories and rail panes bound to one scripted RPC. */
 function scriptedSessionRpc(): {
   rpc: CloudRpc
@@ -276,10 +279,23 @@ function scriptedSessionRpc(): {
       case 'git.history':
         return {
           ok: true,
-          result: { items: [{ id: 'abc123', subject: 'init' }] }
+          result: { items: [{ id: SESSION_COMMIT_OID, subject: 'init' }] }
+        }
+      case 'git.commitCompare':
+        return {
+          ok: true,
+          result: {
+            entries: [{ path: 'src/a.ts', status: 'modified' }],
+            summary: { parentOid: SESSION_PARENT_OID }
+          }
         }
       case 'git.diff':
         return { ok: false, code: 'denied' }
+      case 'git.commitDiff':
+        return {
+          ok: true,
+          result: { kind: 'text', originalContent: 'old', modifiedContent: 'new' }
+        }
       default:
         return { ok: false, code: 'unexpected_method' }
     }
@@ -342,6 +358,42 @@ describe('简易工作区装配（U46-8）', () => {
     await user.click(screen.getByTestId('cloud-workspace-git-change-src/a.ts'))
     await within(screen.getByTestId('cloud-simple-workspace-pane-diff:src/a.ts')).findByTestId(
       'cloud-workspace-diff-tab'
+    )
+  })
+
+  it('提交行开 diff：标签携带完整 commitOid/parentOid，差异走 git.commitDiff（U50）', async () => {
+    const user = userEvent.setup()
+    const { rpc, calls } = scriptedSessionRpc()
+
+    render(
+      <CloudSimpleWorkspaceSession
+        projectName="payment-svc"
+        route="relay"
+        workspacePath="/srv/checkout"
+        permissions={ALL}
+        rpc={rpc}
+      />
+    )
+
+    await user.click(screen.getByTestId('cloud-simple-workspace-right-tab-git'))
+    await user.click(await screen.findByTestId(`cloud-workspace-git-commit-${SESSION_COMMIT_OID}`))
+    const files = await screen.findByTestId(
+      `cloud-workspace-git-commit-files-${SESSION_COMMIT_OID}`
+    )
+    await user.click(await within(files).findByTestId('cloud-workspace-git-commit-file-src/a.ts'))
+
+    const paneId = `cloud-simple-workspace-pane-diff:${SESSION_COMMIT_OID}:src/a.ts`
+    await within(await screen.findByTestId(paneId)).findByTestId('cloud-workspace-diff-tab')
+    await waitFor(() =>
+      expect(calls).toContainEqual({
+        method: 'git.commitDiff',
+        params: {
+          worktree: 'path:/srv/checkout',
+          filePath: 'src/a.ts',
+          commitOid: SESSION_COMMIT_OID,
+          parentOid: SESSION_PARENT_OID
+        }
+      })
     )
   })
 

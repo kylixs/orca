@@ -156,7 +156,8 @@ describe('工作区文件编辑标签', () => {
       expect(rpc.mock).toHaveBeenCalledWith('files.write', {
         worktree: 'path:/srv/wt',
         relativePath: 'src/a.ts',
-        content: 'edited'
+        content: 'edited',
+        expectedExecutionHostId: 'local'
       })
     )
     // Initial read + save-time re-read.
@@ -192,7 +193,8 @@ describe('工作区文件编辑标签', () => {
       expect(rpc.mock).toHaveBeenCalledWith('files.write', {
         worktree: 'path:/srv/wt',
         relativePath: 'src/a.ts',
-        content: 'edited'
+        content: 'edited',
+        expectedExecutionHostId: 'local'
       })
     )
     expect(screen.queryByTestId('cloud-workspace-file-tab-conflict')).toBeNull()

@@ -1,5 +1,6 @@
 import * as React from 'react'
 import type { GitFileStatus } from '../../../shared/git-status-types'
+import type { CloudWorkspaceDiffSource } from './cloud-workspace-diff-tab-model'
 import { CloudSimpleWorkspaceFileTreePlaceholder } from './cloud-simple-workspace-empty-state'
 
 /**
@@ -16,7 +17,11 @@ export type CloudSimpleWorkspaceFileTreeApi = {
   openFile: (path: string) => void
 }
 
-export type CloudSimpleWorkspaceOpenDiff = (path: string, status: GitFileStatus) => void
+export type CloudSimpleWorkspaceOpenDiff = (
+  path: string,
+  status: GitFileStatus,
+  source?: CloudWorkspaceDiffSource
+) => void
 
 export type CloudSimpleWorkspaceGitApi = {
   workspacePath: string

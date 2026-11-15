@@ -6,6 +6,8 @@
  * their content orders (U46-5b, U46-6/7) plug in without touching this state.
  */
 
+import type { CloudWorkspaceDiffSource } from './cloud-workspace-diff-tab-model'
+
 export type CloudSimpleWorkspaceTabKind = 'terminal' | 'editor' | 'preview' | 'diff'
 
 export type CloudSimpleWorkspaceTab =
@@ -18,7 +20,14 @@ export type CloudSimpleWorkspaceTab =
       path: string
       mode: 'preview' | 'image' | 'binary'
     }
-  | { id: string; kind: 'diff'; title: string; path: string }
+  | {
+      id: string
+      kind: 'diff'
+      title: string
+      path: string
+      /** Working-tree rows omit this; a commit row carries its commit identity. */
+      source?: CloudWorkspaceDiffSource
+    }
 
 /** One PTY per terminal tab; the device session allows 12 sockets total. */
 export const CLOUD_SIMPLE_WORKSPACE_MAX_TERMINAL_TABS = 6
@@ -171,14 +180,21 @@ export function cloudSimpleWorkspaceFileTab(
 
 /** A diff tab never shares the editor/preview slot: source and diff coexist. */
 export function cloudSimpleWorkspaceDiffTab(
-  path: string
+  path: string,
+  source?: CloudWorkspaceDiffSource
 ): Extract<CloudSimpleWorkspaceTab, { kind: 'diff' }> {
-  return {
-    id: `diff:${path}`,
-    kind: 'diff',
-    title: path.split('/').at(-1) ?? path,
-    path
+  const title = path.split('/').at(-1) ?? path
+  // Commit identity is part of the id, so the same file in two commits opens twice.
+  if (source?.kind === 'commit') {
+    return {
+      id: `diff:${source.commitOid}:${path}`,
+      kind: 'diff',
+      title,
+      path,
+      source
+    }
   }
+  return { id: `diff:${path}`, kind: 'diff', title, path }
 }
 
 export function cloudSimpleWorkspaceDirtyCount(state: CloudSimpleWorkspaceTabsState): number {

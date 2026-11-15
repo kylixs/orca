@@ -8,14 +8,16 @@ import type { GitFileStatus } from '../../../shared/git-status-types'
 import {
   cloudGitRelativeTime,
   groupCloudGitChanges,
-  parseCloudGitCommitFiles,
+  parseCloudGitCommitCompare,
   parseCloudGitHistory,
   parseCloudGitStatus,
   shortHash,
   splitPath,
   type CloudWorkspaceGitChange,
-  type CloudWorkspaceGitCommit
+  type CloudWorkspaceGitCommit,
+  type CloudWorkspaceGitCommitFiles
 } from './cloud-workspace-git-panel-model'
+import type { CloudWorkspaceDiffSource } from './cloud-workspace-diff-tab-model'
 
 /**
  * Git changes pane for the right rail (U46-6b, design §11.3): working-tree
@@ -36,14 +38,14 @@ export type CloudWorkspaceGitPanelProps = {
   canReadFiles?: boolean
   /**
    * Ask the shell to open a diff tab. Status is the git status the row was
-   * filed under, which tells the diff pane whether the change is staged.
+   * filed under; commit rows also pass the commit identity (U50).
    */
-  onOpenDiff?: (path: string, status: GitFileStatus) => void
+  onOpenDiff?: (path: string, status: GitFileStatus, source?: CloudWorkspaceDiffSource) => void
 }
 
 const HISTORY_LIMIT = 30
 
-const EMPTY_COMMIT_FILES: Record<string, PanelLoad<CloudWorkspaceGitChange[]>> = {}
+const EMPTY_COMMIT_FILES: Record<string, PanelLoad<CloudWorkspaceGitCommitFiles>> = {}
 
 type PanelLoad<T> =
   | { status: 'loading' }
@@ -152,7 +154,7 @@ export function CloudWorkspaceGitPanel({
   })
   const [commitFiles, setCommitFiles] = React.useState<{
     key: string
-    files: Record<string, PanelLoad<CloudWorkspaceGitChange[]>>
+    files: Record<string, PanelLoad<CloudWorkspaceGitCommitFiles>>
   }>({ key: '', files: {} })
   const generation = React.useRef(0)
   const expandedCommitId = expanded.key === requestKey ? expanded.commitId : null
@@ -205,7 +207,7 @@ export function CloudWorkspaceGitPanel({
             key: requestKey,
             files: {
               ...(previous.key === requestKey ? previous.files : {}),
-              [commitId]: toPanelLoad(outcome, parseCloudGitCommitFiles)
+              [commitId]: toPanelLoad(outcome, parseCloudGitCommitCompare)
             }
           }))
         })
@@ -336,18 +338,24 @@ export function CloudWorkspaceGitPanel({
                           onRetry={() => loadCommitFiles(commit.id)}
                         />
                       ) : null}
-                      {files?.status === 'ready' && files.data.length === 0 ? (
+                      {files?.status === 'ready' && files.data.changes.length === 0 ? (
                         <p className="px-6 py-1 text-[11px] text-muted-foreground">
                           该提交没有文件变更。
                         </p>
                       ) : null}
                       {files?.status === 'ready'
-                        ? files.data.map((change) => (
+                        ? files.data.changes.map((change) => (
                             <GitFileRow
                               key={change.path}
                               change={change}
                               testId={`cloud-workspace-git-commit-file-${change.path}`}
-                              onOpen={openDiff}
+                              onOpen={(path, status) =>
+                                onOpenDiff?.(path, status, {
+                                  kind: 'commit',
+                                  commitOid: commit.id,
+                                  parentOid: files.data.parentOid
+                                })
+                              }
                             />
                           ))
                         : null}

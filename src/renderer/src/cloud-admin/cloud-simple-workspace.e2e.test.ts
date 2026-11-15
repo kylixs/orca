@@ -439,40 +439,26 @@ describe('U46-8 简易工作区真栈（真实平台 + TLS 宿主 + 真 PTY + �
     })
     const base = readString(original.ok ? original.result : null, 'content') ?? ''
     const edited = `${base}\nU46-8 edited line\n`
-    // Red item recorded, not fixed here: the U46-7a adapter's files.write payload
-    // omits the provenance field the host requires for mutations.
+    // U48: the adapter names the host in the payload, so the real host accepts the save.
     const adapterWrite = await writeCloudWorkspaceFile(
       rpc,
       opened.workspacePath,
       'README.md',
       edited
     )
-    expect(adapterWrite.ok).toBe(false)
+    expect(adapterWrite.ok, JSON.stringify(adapterWrite)).toBe(true)
 
-    const wrote = await rpc('files.write', {
-      worktree: cloudWorktreeSelector(opened.workspacePath),
-      relativePath: 'README.md',
-      content: edited,
-      expectedExecutionHostId: 'local'
-    })
-    expect(wrote.ok, JSON.stringify(wrote)).toBe(true)
     const reread = await rpc('files.read', {
       worktree: cloudWorktreeSelector(opened.workspacePath),
       relativePath: 'README.md'
     })
     expect(readString(reread.ok ? reread.result : null, 'content')).toBe(edited)
 
-    const restored = await rpc('files.write', {
-      worktree: cloudWorktreeSelector(opened.workspacePath),
-      relativePath: 'README.md',
-      content: base,
-      expectedExecutionHostId: 'local'
-    })
-    expect(restored.ok).toBe(true)
+    const restored = await writeCloudWorkspaceFile(rpc, opened.workspacePath, 'README.md', base)
+    expect(restored.ok, JSON.stringify(restored)).toBe(true)
 
     saveEvidence('e4-edit-save.json', {
       adapterWrite,
-      wrote,
       reread: edited,
       restored
     })

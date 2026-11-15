@@ -30,6 +30,7 @@ function bridge(replies: Record<string, Reply>) {
 
 const MODIFIED_OID = 'a'.repeat(40)
 const ADDED_OID = 'b'.repeat(40)
+const PARENT_OID = 'c'.repeat(40)
 
 function statusReply(): CloudRpcOutcome {
   return {
@@ -78,7 +79,10 @@ function baseReplies(now?: number): Record<string, Reply> {
     'git.history': () => historyReply(now),
     'git.commitCompare': () => ({
       ok: true,
-      result: { entries: [{ path: 'src/a.ts', status: 'modified' }] }
+      result: {
+        entries: [{ path: 'src/a.ts', status: 'modified' }],
+        summary: { parentOid: PARENT_OID }
+      }
     })
   }
 }
@@ -87,7 +91,7 @@ function renderPanel(
   options: {
     replies?: Record<string, Reply>
     canReadFiles?: boolean
-    onOpenDiff?: (path: string, status: string) => void
+    onOpenDiff?: (path: string, status: string, source?: unknown) => void
   } = {}
 ) {
   const host = bridge(options.replies ?? baseReplies())
@@ -167,7 +171,12 @@ describe('工作区 Git 变更面板', () => {
     })
 
     await user.click(within(files).getByTestId('cloud-workspace-git-commit-file-src/a.ts'))
-    expect(onOpenDiff).toHaveBeenCalledWith('src/a.ts', 'modified')
+    // U50: a commit row carries the full commit identity, not just path/status.
+    expect(onOpenDiff).toHaveBeenCalledWith('src/a.ts', 'modified', {
+      kind: 'commit',
+      commitOid: MODIFIED_OID,
+      parentOid: PARENT_OID
+    })
 
     // Collapsing hides the cached file list.
     await user.click(commit)

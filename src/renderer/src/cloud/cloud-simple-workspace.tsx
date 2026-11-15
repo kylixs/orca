@@ -27,7 +27,8 @@ import {
 import {
   CloudSimpleWorkspaceRightPanel,
   type CloudSimpleWorkspaceFileTreeApi,
-  type CloudSimpleWorkspaceGitApi
+  type CloudSimpleWorkspaceGitApi,
+  type CloudSimpleWorkspaceOpenDiff
 } from './cloud-simple-workspace-right-panel'
 import {
   CloudWorkspaceTerminalTab,
@@ -158,8 +159,8 @@ export function CloudSimpleWorkspace({
     [fileTab]
   )
 
-  const openDiff = React.useCallback((path: string) => {
-    dispatch({ type: 'open', tab: cloudSimpleWorkspaceDiffTab(path) })
+  const openDiff = React.useCallback<CloudSimpleWorkspaceOpenDiff>((path, _status, source) => {
+    dispatch({ type: 'open', tab: cloudSimpleWorkspaceDiffTab(path, source) })
   }, [])
 
   React.useEffect(() => {

@@ -1,5 +1,11 @@
 import { getDominantStatus } from '@/components/right-sidebar/status-display'
-import { readArray, readNumber, readString } from '../../../shared/json-fields'
+import {
+  readArray,
+  readNumber,
+  readObjectValue,
+  readField,
+  readString
+} from '../../../shared/json-fields'
 import type { GitFileStatus } from '../../../shared/git-status-types'
 
 /**
@@ -89,9 +95,20 @@ export function parseCloudGitStatus(result: unknown): CloudWorkspaceGitChange[] 
   return parseCloudGitChangeEntries(result)
 }
 
-/** `git.commitCompare` returns the same `entries` shape as `git.status`. */
-export function parseCloudGitCommitFiles(result: unknown): CloudWorkspaceGitChange[] | null {
-  return parseCloudGitChangeEntries(result)
+export type CloudWorkspaceGitCommitFiles = {
+  changes: CloudWorkspaceGitChange[]
+  /** From `summary.parentOid`; null on a root commit. */
+  parentOid: string | null
+}
+
+/** `git.commitCompare` is the `git.status` entries shape plus `summary.parentOid`. */
+export function parseCloudGitCommitCompare(result: unknown): CloudWorkspaceGitCommitFiles | null {
+  const changes = parseCloudGitChangeEntries(result)
+  if (changes === null) {
+    return null
+  }
+  const summary = readObjectValue(readField(result, 'summary'))
+  return { changes, parentOid: summary === null ? null : readString(summary, 'parentOid') }
 }
 
 function parseCloudGitChangeEntries(result: unknown): CloudWorkspaceGitChange[] | null {

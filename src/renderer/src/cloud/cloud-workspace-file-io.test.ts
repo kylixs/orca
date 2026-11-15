@@ -82,7 +82,7 @@ describe('编辑器文件 IO', () => {
     expect(cloudWorkspaceFileFailureText({ code: 'binary_file' })).toContain('二进制')
   })
 
-  it('files.write 发送工作区、相对路径与完整内容', async () => {
+  it('files.write 发送工作区、相对路径、完整内容与宿主标识（U48）', async () => {
     const rpc = vi.fn(async (): Promise<CloudRpcOutcome> => ({ ok: true, result: null }))
 
     const result = await writeCloudWorkspaceFile(rpc, '/srv/wt', 'src/a.ts', 'next')
@@ -91,7 +91,33 @@ describe('编辑器文件 IO', () => {
     expect(rpc).toHaveBeenCalledWith('files.write', {
       worktree: 'path:/srv/wt',
       relativePath: 'src/a.ts',
-      content: 'next'
+      content: 'next',
+      expectedExecutionHostId: 'local'
+    })
+  })
+
+  it('宿主按 payload 中的宿主标识校验写入并接受（U48）', async () => {
+    // Mirrors assertRuntimeFileMutationExpectation: no id → update-required, wrong id → host changed.
+    const rpc = vi.fn(async (_method: string, params?: Record<string, unknown>) => {
+      if (params?.expectedExecutionHostId === undefined) {
+        return {
+          ok: false as const,
+          code: 'runtime_error',
+          message: 'Remote file changes require a newer Orca client.'
+        }
+      }
+      if (params.expectedExecutionHostId !== 'local') {
+        return { ok: false as const, code: 'runtime_error', message: 'Workspace host changed' }
+      }
+      return { ok: true as const, result: null }
+    })
+
+    expect(await writeCloudWorkspaceFile(rpc, '/srv/wt', 'src/a.ts', 'next')).toEqual({ ok: true })
+    expect(rpc).toHaveBeenCalledWith('files.write', {
+      worktree: 'path:/srv/wt',
+      relativePath: 'src/a.ts',
+      content: 'next',
+      expectedExecutionHostId: 'local'
     })
   })
 

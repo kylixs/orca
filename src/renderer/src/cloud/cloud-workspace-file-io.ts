@@ -70,12 +70,15 @@ export async function writeCloudWorkspaceFile(
   rpc: CloudRpc,
   workspacePath: string,
   relativePath: string,
-  content: string
+  content: string,
+  /** The checkout lives on the host serving this session; the host refuses a mutation that does not name it. */
+  executionHostId = 'local'
 ): Promise<CloudWorkspaceFileWrite> {
   const outcome = await rpc('files.write', {
     worktree: cloudWorktreeSelector(workspacePath),
     relativePath,
-    content
+    content,
+    expectedExecutionHostId: executionHostId
   })
   return outcome.ok ? { ok: true } : failure(outcome)
 }

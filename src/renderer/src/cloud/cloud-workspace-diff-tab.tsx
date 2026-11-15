@@ -45,7 +45,7 @@ export type CloudWorkspaceDiffTabApi = {
   rpc: CloudRpc
   workspacePath: string
   permissions?: readonly CloudProjectPermission[] | null
-  /** Defaults to the working tree; commit rows pass the commit identity. */
+  /** Fallback source for tabs that carry none; commit tabs carry their identity. */
   source?: CloudWorkspaceDiffSource
   /** Test/embedding seam; defaults to the lazy Monaco surface. */
   diffEditor?: React.ComponentType<CloudWorkspaceDiffEditorProps>
@@ -400,7 +400,7 @@ export function CloudWorkspaceDiffTab(props: CloudWorkspaceDiffTabProps): React.
       rpc={rpc}
       workspacePath={workspacePath}
       permissions={permissions}
-      source={source ?? WORKING_SOURCE}
+      source={tab.source ?? source ?? WORKING_SOURCE}
       diffEditor={diffEditor}
     />
   )
