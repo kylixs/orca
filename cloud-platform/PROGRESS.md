@@ -2749,6 +2749,10 @@ A 线 1/1（9 步，**R1 确认**：A4 终端 remote PTY 句柄创建+回显 142
 
 `2a60be4a1fb`（playwright-server 10 文件）：DOM 清点器统一 schema（含隐藏层）+admin/developer 双轮驱动+三类差异检测（布局 LCS/字段 Dice+别名/菜单 label+role）+compareWithPrototype 真实接线+CLI。**6/6 可预见差异全检出**（方法有效性验收）；真实报告 294 条（P0 2=diagnostics 原型自有/P1 237/P2 55）落 evidence/ps3-prototype-diff/。5/5 新测试+PS 回归 2/2；600 行门禁按职责拆子模块零抑制。空槽派 PS-4 收官。
 
+### FS-2 落地（2026-11-16，L2 首批渲染器）
+
+`9d7456e6e37`：注册表 7→12 descriptor（CSV/TSV 表格复用 RFC4180 解析+千行上限、JSON/XML/YAML 树解析失败回落 Monaco+错误横幅、Mermaid 复用 MermaidViewer+DOMPurify、PDF 真预览 dataURL iframe、AVIF+宿主 MIME 白名单）；format-catalog.ts/renderer-lazy.ts/structured-tree-view.tsx 拆分（registry<300 行）。新 15+cloud 域 229 绿，tc:web 清。空槽派 PS-3（原型对照）。
+
 ### PS-2 落地（2026-11-15，扩展函数库）
 
 `2da67fc8a34`（5 文件 +1011）：16 扩展函数（提取 extractText/Layout/State/Table+操作 login/logout/navigateMenu/openProject/Detail/Workspace/openTab/saveFile/switchDiff/fillForm+断言发现 assertText/waitForState/discover/compareWithPrototype 预留/screenshot）——工作区三函数基于既有 probe 验证过的 cloud-workspace-* testid；`attachUiExtensions` 进 createUi=server 注入与 standalone 自动全量。双模式 demo 双 PASS（工作台文本 1142 字符/11 区块/详情 kv 15 项）。空槽派 PS-3（原型对照）。
