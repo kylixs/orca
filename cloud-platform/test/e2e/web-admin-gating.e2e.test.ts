@@ -41,6 +41,9 @@ test('AC-18 开发者登录 Web 前端：管理导航隐藏，直达管理路由
   await page.submitLogin('zhangsan', 'Passw0rd!')
   assert.equal(page.hidden('#view-app'), false, 'a developer must still reach the shell')
   assert.equal(page.text('#roleChip'), '开发者')
+  // U74-P3: the developer's forced admin routes do render the forbidden page,
+  // so the preview button stays available to them.
+  assert.equal(page.hidden('#open403'), false, 'a non-admin keeps the forbidden-page preview')
 
   // ---- navigation is hidden, not merely disabled ----
   assert.equal(page.hidden('#adminNav'), true, 'the admin nav group must be hidden')
@@ -138,6 +141,8 @@ test('AC-18 管理员登录：管理导航可见，管理路由可用', async ()
   assert.equal(page.hidden('#view-app'), false)
   assert.equal(page.text('#roleChip'), '平台管理员')
   assert.equal(page.hidden('#adminNav'), false, 'the admin must see the admin nav group')
+  // U74-P3: no route renders forbidden for an admin, so the preview button is hidden.
+  assert.equal(page.hidden('#open403'), true, 'the admin must not see the forbidden-page preview')
 
   await page.clickNav('hosts')
   assert.equal(page.text('#crumbs'), '平台设置 / 主机')

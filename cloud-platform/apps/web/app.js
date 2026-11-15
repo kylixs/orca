@@ -2462,6 +2462,8 @@ function enterApp() {
   for (const btn of document.querySelectorAll('#adminNav .nav-item[data-route]')) {
     btn.hidden = btn.dataset.route === 'audit' ? !(admin || auditor) : !admin
   }
+  // U74-P3: every route renders for an admin, so the 403 preview is theirs alone to skip.
+  $('#open403').hidden = admin
   $('#userName').textContent = state.user.displayName
   $('#userDept').textContent = state.user.dept
   $('#userAvatar').textContent = state.user.displayName.slice(0, 1)
