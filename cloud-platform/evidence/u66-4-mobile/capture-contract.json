@@ -1,0 +1,58 @@
+{
+  "generatedAt": "2026-11-15T13:37:00.000Z",
+  "method": "audit.recordFileEvent",
+  "capturePoints": {
+    "save-to-phone": "mobile-save",
+    "copy-content": "mobile-copy-content"
+  },
+  "surface": "mobile",
+  "captureConfidence": "client-declared",
+  "download": {
+    "eventType": "file_download",
+    "method": "mobile.saveToPhone",
+    "outcomes": {
+      "saved": { "result": "success", "savedName": "best-effort supplement, same traceId" },
+      "shared": { "result": "success", "reason": "share_sheet", "savedName": null },
+      "cancelled": { "result": "failure", "reason": "client_cancelled", "savedName": null },
+      "failed": { "result": "failure", "reason": "action failure code" }
+    },
+    "samplePayload": {
+      "eventType": "file_download",
+      "result": "success",
+      "traceId": "tr_…",
+      "metadata": {
+        "fileName": "app.ts",
+        "path": "src/app.ts",
+        "method": "mobile.saveToPhone",
+        "kind": "file",
+        "surface": "mobile",
+        "capturePoint": "mobile-save",
+        "captureConfidence": "client-declared",
+        "sizeBytes": 3,
+        "sha256": "…64 hex…",
+        "sha256Source": "client",
+        "occurredAt": 1800000000000
+      }
+    },
+    "savedNameSupplement": {
+      "eventType": "file_download",
+      "result": "success",
+      "traceId": "same as the success event",
+      "metadata": { "savedName": "app.ts" }
+    }
+  },
+  "copy": {
+    "eventType": "file_copy",
+    "copyKind": "content-whole",
+    "capturePoint": "mobile-copy-content",
+    "success": "copiedChars/copiedBytes of the text that reached the clipboard (truncated at 512 KB)",
+    "failure": {
+      "result": "failure",
+      "reasons": ["read_failed", "clipboard_write_failed"],
+      "copiedChars": 0,
+      "copiedBytes": 0
+    }
+  },
+  "privacy": "No excerpt/excerptBytes/excerptTruncated field is produced; the copied body never enters the wire payload (AC-53).",
+  "bestEffort": "Every report swallows RPC/refusal errors and is never awaited by the save/copy UI path."
+}

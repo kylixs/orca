@@ -40,6 +40,8 @@ import {
 } from './file-read-failures'
 import { resetAllFileActionTasks, taskStateFor } from './mobile-file-action-tasks'
 import { fileActionTargetKey } from './mobile-file-actions'
+import { FileActionError } from './file-action-error'
+import { MOBILE_FILE_EVENT_METHOD } from './mobile-file-event-capture'
 
 const SCOPE = { hostId: 'host-1', worktreeId: 'wt-1' }
 const TARGET: FileActionTarget = {
@@ -68,14 +70,38 @@ const PREPARED: PreparedCachedFile = {
 type ActionsApi = ReturnType<typeof useMobileFileActions>
 const latest: { api: ActionsApi | null } = { api: null }
 const client = {
-  sendRequest: vi.fn(async (): Promise<RpcResponse> => {
+  sendRequest: vi.fn(async (_method: string, _params?: unknown): Promise<RpcResponse> => {
     throw new Error('unexpected RPC call')
   })
 }
 
+let activeClient: typeof client = client
+
 function Harness() {
-  latest.api = useMobileFileActions({ client, target: TARGET, scope: SCOPE })
+  latest.api = useMobileFileActions({ client: activeClient, target: TARGET, scope: SCOPE })
   return null
+}
+
+function auditSender(): typeof client {
+  return {
+    sendRequest: vi.fn(async (_method: string, _params?: unknown): Promise<RpcResponse> => ({
+      id: 'rpc-1',
+      ok: true,
+      result: { queued: true, acceptedSeq: 1 }
+    }))
+  }
+}
+
+/** Body of the nth `audit.recordFileEvent` send; unknown on purpose, asserted structurally. */
+function eventBody(sender: typeof client, index = 0): unknown {
+  return sender.sendRequest.mock.calls[index]?.[1]
+}
+
+function eventTraceId(body: unknown): unknown {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: event bodies are the objects built by the module under test.
+  return typeof body === 'object' && body !== null
+    ? (body as { traceId?: unknown }).traceId
+    : undefined
 }
 
 let tree: ReactTestRenderer | null = null
@@ -95,6 +121,7 @@ async function renderActions(): Promise<ActionsApi> {
 }
 
 beforeEach(() => {
+  activeClient = client
   deps.prepare.mockReset()
   deps.prepare.mockResolvedValue(PREPARED)
   deps.clipboardWrite.mockReset()
@@ -209,6 +236,135 @@ describe('useMobileFileActions', () => {
     expect(deps.prepare).toHaveBeenCalledTimes(2)
     expect(deps.save).toHaveBeenCalledTimes(2)
     expect(taskStateFor(fileActionTargetKey(TARGET)).status).toBe('idle')
+  })
+
+  it('reports a completed Save as file_download and supplements savedName (AC-56)', async () => {
+    const rpc = auditSender()
+    activeClient = rpc
+    const actions = await renderActions()
+
+    await act(async () => {
+      await actions.save()
+    })
+
+    await vi.waitFor(() => expect(rpc.sendRequest).toHaveBeenCalledTimes(2))
+    const [success, supplement] = rpc.sendRequest.mock.calls
+    expect(success[0]).toBe(MOBILE_FILE_EVENT_METHOD)
+    expect(success[1]).toMatchObject({
+      eventType: 'file_download',
+      result: 'success',
+      metadata: {
+        fileName: 'app.ts',
+        path: 'src/app.ts',
+        method: 'mobile.saveToPhone',
+        kind: 'file',
+        surface: 'mobile',
+        capturePoint: 'mobile-save',
+        captureConfidence: 'client-declared',
+        sizeBytes: 3
+      }
+    })
+    expect(JSON.stringify(success[1])).not.toContain('savedName')
+    expect(supplement[1]).toMatchObject({
+      eventType: 'file_download',
+      result: 'success',
+      metadata: { savedName: 'app.ts' }
+    })
+    expect(eventTraceId(supplement[1])).toBe(eventTraceId(success[1]))
+    expect(eventTraceId(supplement[1])).toEqual(expect.stringMatching(/^tr_/))
+  })
+
+  it('records a cancelled Save as failure and never as savedName (AC-56)', async () => {
+    const rpc = auditSender()
+    activeClient = rpc
+    deps.save.mockRejectedValue(new FileActionError('cancelled', 'Save cancelled'))
+    const actions = await renderActions()
+
+    await act(async () => {
+      await actions.save()
+    })
+
+    await vi.waitFor(() => expect(rpc.sendRequest).toHaveBeenCalledTimes(1))
+    expect(eventBody(rpc)).toMatchObject({
+      eventType: 'file_download',
+      result: 'failure',
+      metadata: { capturePoint: 'mobile-save', reason: 'client_cancelled' }
+    })
+    expect(JSON.stringify(eventBody(rpc))).not.toContain('savedName')
+  })
+
+  it('reports Copy content as file_copy with the copied length (AC-57)', async () => {
+    const rpc = auditSender()
+    activeClient = rpc
+    const actions = await renderActions()
+
+    await act(async () => {
+      await actions.copyContent()
+    })
+
+    await vi.waitFor(() => expect(rpc.sendRequest).toHaveBeenCalledTimes(1))
+    expect(eventBody(rpc)).toMatchObject({
+      eventType: 'file_copy',
+      result: 'success',
+      metadata: {
+        fileName: 'app.ts',
+        path: 'src/app.ts',
+        copyKind: 'content-whole',
+        copiedChars: 9,
+        copiedBytes: 9,
+        surface: 'mobile',
+        capturePoint: 'mobile-copy-content',
+        captureConfidence: 'client-declared'
+      }
+    })
+  })
+
+  it('records a clipboard write failure as file_copy result=failure (AC-57)', async () => {
+    const rpc = auditSender()
+    activeClient = rpc
+    deps.clipboardWrite.mockRejectedValue(new Error('clipboard unavailable'))
+    const actions = await renderActions()
+
+    await act(async () => {
+      await actions.copyContent()
+    })
+
+    await vi.waitFor(() => expect(rpc.sendRequest).toHaveBeenCalledTimes(1))
+    expect(eventBody(rpc)).toMatchObject({
+      eventType: 'file_copy',
+      result: 'failure',
+      metadata: { reason: 'clipboard_write_failed', copiedChars: 0, copiedBytes: 0 }
+    })
+  })
+
+  it('records a read failure as file_copy result=failure (AC-57)', async () => {
+    const rpc = auditSender()
+    activeClient = rpc
+    deps.copyContent.mockRejectedValue(new FileActionError('read_failed', 'unreadable'))
+    const actions = await renderActions()
+
+    await act(async () => {
+      await actions.copyContent()
+    })
+
+    await vi.waitFor(() => expect(rpc.sendRequest).toHaveBeenCalledTimes(1))
+    expect(eventBody(rpc)).toMatchObject({
+      eventType: 'file_copy',
+      result: 'failure',
+      metadata: { reason: 'read_failed' }
+    })
+  })
+
+  it('never records Copy path as a file event', async () => {
+    const rpc = auditSender()
+    activeClient = rpc
+    const actions = await renderActions()
+
+    await act(async () => {
+      await actions.copyPath()
+    })
+
+    expect(rpc.sendRequest).not.toHaveBeenCalled()
   })
 
   it('retries the action recorded in the shared task, not a local one', async () => {

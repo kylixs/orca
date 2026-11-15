@@ -5,6 +5,12 @@ import { fileActionPath, type FileActionTarget } from './mobile-file-actions'
 import type { MobileFileActionRpcSender } from './mobile-file-action-operations'
 import { FileActionError, type FileActionFailureCode } from './file-action-error'
 import { readFileContentForCopy } from './mobile-file-copy-content'
+import {
+  mobileSavedFileName,
+  reportMobileFileCopy,
+  reportMobileFileCopyFailure,
+  reportMobileFileSave
+} from './mobile-file-event-capture'
 import { savePreparedFileToPhone, type SavedPreparedFileResult } from './mobile-file-save'
 import { openPreparedFile } from '../platform/open-file'
 import {
@@ -86,19 +92,38 @@ export function useMobileFileActions(args: {
       // The bytes were used: the next Save/Open must not reuse a prepare from before an edit.
       task.forget()
       if (result.kind === 'saved') {
+        void reportMobileFileSave(client, {
+          target,
+          outcome: 'saved',
+          savedName: mobileSavedFileName(result.path, prepared.fileName),
+          sizeBytes: prepared.size,
+          sha256: prepared.sha256
+        })
         setSaveResult(result)
         succeed(fileActionPath(target), 'Saved to phone')
       } else {
         // The share sheet resolves even when dismissed, so it cannot claim a completed save.
+        void reportMobileFileSave(client, {
+          target,
+          outcome: 'shared',
+          sizeBytes: prepared.size,
+          sha256: prepared.sha256
+        })
         setSaveResult(null)
         succeed(fileActionPath(target), 'Shared. Check your Files app to confirm the save.')
       }
     } catch (error) {
       if (error instanceof FileActionError && error.code === 'cancelled') {
+        void reportMobileFileSave(client, { target, outcome: 'cancelled' })
         task.reset()
         setNotice(null)
         return
       }
+      void reportMobileFileSave(client, {
+        target,
+        outcome: 'failed',
+        reason: error instanceof FileActionError ? error.code : 'read_failed'
+      })
       fail(error, fileActionPath(target), 'action')
     } finally {
       busyRef.current = false
@@ -146,6 +171,7 @@ export function useMobileFileActions(args: {
       })
     } catch (error) {
       fail(error, fileActionPath(target), 'read')
+      void reportMobileFileCopyFailure(client, { target, reason: 'read_failed' })
       return
     }
     try {
@@ -153,8 +179,10 @@ export function useMobileFileActions(args: {
     } catch (error) {
       // The read succeeded; a clipboard failure must not mark the file as unreadable.
       fail(error, fileActionPath(target), 'action')
+      void reportMobileFileCopyFailure(client, { target, reason: 'clipboard_write_failed' })
       return
     }
+    void reportMobileFileCopy(client, { target, content: copied.content })
     succeed(fileActionPath(target), copied.truncated ? 'Copied first 512 KB' : 'Copied content')
   }, [args.onTerminalArtifactSourceRefreshed, client, clipboard, fail, succeed, target])
 
