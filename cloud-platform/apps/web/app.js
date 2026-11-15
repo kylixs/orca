@@ -283,38 +283,21 @@ function projectCard(p, globalDefault) {
     </div>`
 }
 
-/** Why the 详情 entry cannot open, or null when it is a plain link (FR-3.8). */
-function detailDisabledReason(p) {
-  if (p.hostStatus === 'maintenance') {
-    return '主机维护中'
-  }
-  if (p.hostStatus !== 'online') {
-    return '主机离线'
-  }
-  if (!p.sessionPageUrl) {
-    return '该主机没有可直达的会话页地址'
-  }
-  return null
-}
-
 /**
- * The per-project row entries (FR-3.11) come from one builder so 工作台 and
- * 我的项目 stay identical. 「详情」 is admin-only and opens the host session
- * page in a new tab; 「打开」 and 「Orca Web」 (M122, FR-3.10) mint a one-time
- * handoff URL and open it, landing straight in the project workspace.
+ * The per-project row entries (FR-3.11 R3) come from one builder so 工作台 and
+ * 我的项目 stay identical. 「详情」 is admin-only and opens a read-only platform
+ * dialog (never gated by host state: an offline host is exactly what it
+ * explains); 「打开」 and 「Orca Web」 (M122, FR-3.10) mint a one-time handoff
+ * URL and open it, landing straight in the project workspace.
  */
 function projectRowActions(p) {
   return `<button class="btn sm" data-open="${p.id}" ${openDisabledAttr(p)}>打开</button>${selfGrantEntry(p)}${detailEntry(p)}${orcaWebEntry(p)}`
 }
 
 function detailEntry(p) {
-  if (!isAdmin()) {
-    return ''
-  }
-  const reason = detailDisabledReason(p)
-  return reason
-    ? `<button class="btn sm" disabled title="${esc(reason)}">详情</button>`
-    : `<a class="btn sm" href="${esc(p.sessionPageUrl)}" target="_blank" rel="noopener" title="在新标签打开会话详情">详情</a>`
+  // Q1 (U46): the dialog carries createdBy and the direct-grant summary, so the
+  // entry stays admin-only; a host that is offline still opens its own dialog.
+  return isAdmin() ? `<button class="btn sm" data-detail="${esc(p.id)}">详情</button>` : ''
 }
 
 /** Why the Orca Web entry cannot open. */
@@ -427,6 +410,13 @@ function wireProjectActions() {
   for (const btn of document.querySelectorAll('[data-self-grant]')) {
     btn.onclick = () => confirmSelfGrant(btn.dataset.selfGrant ?? '')
   }
+  for (const btn of document.querySelectorAll('[data-detail]')) {
+    btn.onclick = () => {
+      // Keep the row button as the opener so closing the dialog can return focus.
+      btn.focus()
+      void openProjectDetail(btn.dataset.detail ?? '')
+    }
+  }
   for (const btn of document.querySelectorAll('[data-go]')) {
     btn.onclick = () => navigate(btn.dataset.go)
   }
@@ -438,13 +428,211 @@ function wireProjectActions() {
  * raw connection info stays with the 详情 entry and the workspace's connection
  * diagnostics, so the old「连接信息已就绪」dialog has nothing left to add.
  */
-async function openProjectWorkspace(projectId) {
+async function openProjectWorkspace(projectId, surface) {
   try {
-    const body = await api(`/v1/projects/${projectId}/web-handoff`, { method: 'POST' })
+    const body = await api(`/v1/projects/${projectId}/web-handoff`, {
+      method: 'POST',
+      // U46-3 replaces this window.open with the in-page overlay; U46-2 only
+      // makes the dialog's 打开项目 take the same admin-surface entry.
+      ...(surface ? { body: JSON.stringify({ surface }) } : {})
+    })
     window.open(body.url, '_blank', 'noopener')
   } catch (err) {
     toast(`打开失败：${err.message ?? err}`)
   }
+}
+
+/* ---------------- 详情弹框（U46-2 · FR-3.11 R3） ---------------- */
+
+const PROJECT_STATUS = {
+  provisioning: ['准备中', ''],
+  ready: ['就绪', 'ok'],
+  failed: ['准备失败', 'danger'],
+  archived: ['已归档', '']
+}
+
+function projectStatusBadge(status) {
+  const [label, tone] = PROJECT_STATUS[status] ?? [status || '未知', '']
+  return `<span class="badge ${tone}">${esc(label)}</span>`
+}
+
+function detailHostStatus(p) {
+  if (p.hostStatus === 'maintenance') {
+    return `<span class="badge warn">维护中</span>${
+      p.hostMaintenanceReason ? `<div class="muted">${esc(p.hostMaintenanceReason)}</div>` : ''
+    }`
+  }
+  return p.hostStatus === 'online'
+    ? '<span class="badge ok">在线</span>'
+    : '<span class="badge danger">离线</span>'
+}
+
+/** A mono value with a copy button; read-only fields stay selectable too. */
+function copyable(value) {
+  return `<span class="mono">${esc(value)}</span> <button class="btn sm" data-copy="${esc(value)}">复制</button>`
+}
+
+function detailPermissions(p) {
+  if (p.permissions.length === 0) {
+    return isAdmin()
+      ? '<span class="muted">管理员可见（未授权）</span>'
+      : '<span class="muted">无直接权限</span>'
+  }
+  return p.permissions.map((permission) => `<span class="badge">${esc(permission)}</span>`).join(' ')
+}
+
+function detailGrants(grants, loading) {
+  if (loading) {
+    return '<span class="muted">加载中…</span>'
+  }
+  if (grants === null) {
+    return '<span class="muted">未能读取直接授权</span>'
+  }
+  if (grants.length === 0) {
+    return '<span class="muted">无直接授权</span>'
+  }
+  return grants
+    .map((grant) => {
+      const subject = grant.username ?? grant.subjectId
+      const kind = grant.subjectType === 'group' ? '组' : '用户'
+      return `<div>${esc(subject)}（${kind}）· ${grant.permissions.length} 项权限</div>`
+    })
+    .join('')
+}
+
+function detailDownloadPolicy(p, policy) {
+  if (!policy) {
+    return '<span class="muted">未能读取下载策略</span>'
+  }
+  const effective = effectiveDownloadPolicy(p, policy.downloadDefault)
+  const source = p.downloadPolicyExplicit === true ? '项目覆盖' : '跟随全局'
+  const badge =
+    effective === 'deny'
+      ? '<span class="badge lock">禁止下载</span>'
+      : '<span class="badge">允许下载</span>'
+  return `${badge} <span class="muted">${source}</span>`
+}
+
+function projectDetailHtml(p, extra = {}) {
+  const createdBy = p.createdBy == null || p.createdBy === '' ? '未记录' : p.createdBy
+  const createdAt = p.createdAt
+    ? `${new Date(p.createdAt).toLocaleString('zh-CN')}（${relative(p.createdAt)}）`
+    : '—'
+  return `
+    ${extra.refreshFailed ? '<p class="note warn">未能刷新项目信息，以下为最近一次加载的数据。</p>' : ''}
+    <div class="detail-sections">
+      <section class="detail-section">
+        <h3>基本信息</h3>
+        <dl class="kv">
+          <dt>项目名称</dt><dd>${esc(p.name)}</dd>
+          <dt>项目 Key</dt><dd class="mono">${esc(p.key)}</dd>
+          <dt>项目 ID</dt><dd>${copyable(p.id)}</dd>
+          <dt>创建者</dt><dd>${esc(createdBy)}</dd>
+          <dt>创建时间</dt><dd>${esc(createdAt)}</dd>
+          <dt>项目状态</dt><dd>${projectStatusBadge(p.status)}</dd>
+          ${
+            p.status === 'failed' && p.provisioningError
+              ? `<dt>准备失败原因</dt><dd class="mono">${esc(p.provisioningError)}</dd>`
+              : ''
+          }
+        </dl>
+      </section>
+      <section class="detail-section">
+        <h3>运行配置</h3>
+        <dl class="kv">
+          <dt>主机</dt><dd>${esc(p.hostName ?? '—')} <span class="mono muted">${esc(p.hostId)}</span></dd>
+          <dt>宿主状态</dt><dd>${detailHostStatus(p)}</dd>
+          <dt>项目路径</dt><dd>${copyable(p.path)}</dd>
+          <dt>仓库地址</dt><dd>${p.repoUrl ? copyable(p.repoUrl) : '<span class="muted">未配置仓库</span>'}</dd>
+          <dt>默认分支</dt><dd class="mono">${esc(p.defaultBranch)}</dd>
+        </dl>
+      </section>
+      <section class="detail-section">
+        <h3>授权与策略</h3>
+        <dl class="kv">
+          <dt>我的权限</dt><dd>${detailPermissions(p)}</dd>
+          <dt>直接授权</dt><dd>${detailGrants(extra.grants, extra.grantsLoading === true)}</dd>
+          <dt>下载策略</dt><dd>${detailDownloadPolicy(p, extra.policy)}</dd>
+          ${
+            p.sessionPageUrl
+              ? `<dt>独立页</dt><dd><a href="${esc(p.sessionPageUrl)}" target="_blank" rel="noopener">在独立页打开会话页</a></dd>`
+              : ''
+          }
+        </dl>
+      </section>
+    </div>`
+}
+
+function wireDetailCopy(backdrop) {
+  for (const button of backdrop.querySelectorAll('[data-copy]')) {
+    button.onclick = () => {
+      void navigator.clipboard?.writeText(button.dataset.copy ?? '')
+      toast('已复制')
+    }
+  }
+}
+
+/**
+ * Read-only platform info: render the cached row at once, then refresh it with
+ * one GET /projects/:id plus the two existing read endpoints (grants, policy).
+ * Never talks to the host, so an offline/maintenance host is still inspectable.
+ */
+async function openProjectDetail(projectId) {
+  const cached = state.projects.find((p) => p.id === projectId)
+  if (!cached) {
+    return
+  }
+  let project = cached
+  const reason = openDisabledReason(cached)
+  const extra = { grantsLoading: true, grants: [] }
+  const backdrop = dialog(
+    '项目详情',
+    projectDetailHtml(project, extra),
+    [
+      {
+        label: '打开项目',
+        primary: true,
+        disabled: Boolean(reason),
+        title: reason ?? '进入项目工作区',
+        onClick: () => {
+          void openProjectWorkspace(projectId, 'admin')
+        }
+      }
+    ],
+    { wide: true }
+  )
+  const body = backdrop.querySelector('.dialog .body')
+  const paint = () => {
+    if (!backdrop.isConnected) {
+      return
+    }
+    body.innerHTML = projectDetailHtml(project, extra)
+    wireDetailCopy(backdrop)
+    // The refresh may have changed host state, so the primary action follows it.
+    const refreshedReason = openDisabledReason(project)
+    const openAction = backdrop.querySelector('[data-action="0"]')
+    if (openAction) {
+      openAction.disabled = Boolean(refreshedReason)
+      openAction.title = refreshedReason ?? '进入项目工作区'
+    }
+  }
+  wireDetailCopy(backdrop)
+
+  const [fresh, grants, policy] = await Promise.allSettled([
+    api(`/v1/projects/${projectId}`),
+    isAdmin() ? api(`/v1/projects/${projectId}/grants`) : Promise.resolve(null),
+    api('/v1/policies/download')
+  ])
+  if (fresh.status === 'fulfilled') {
+    project = { ...cached, ...fresh.value }
+    Object.assign(cached, fresh.value)
+  } else {
+    extra.refreshFailed = true
+  }
+  extra.grantsLoading = false
+  extra.grants = grants.status === 'fulfilled' ? (grants.value?.grants ?? []) : null
+  extra.policy = policy.status === 'fulfilled' ? policy.value : null
+  paint()
 }
 
 function currentDeviceId() {
@@ -1632,29 +1820,68 @@ function openDrawer(title, html) {
   return { close: () => backdrop.remove() }
 }
 
-function dialog(title, html, actions = []) {
+let dialogSeq = 0
+
+function dialog(title, html, actions = [], options = {}) {
+  // Captured before the dialog steals focus so closing can return it (U46 §3.5).
+  const opener = document.activeElement
+  const titleId = `dialogTitle${++dialogSeq}`
   const backdrop = document.createElement('div')
   backdrop.className = 'dialog-backdrop'
   backdrop.innerHTML = `
-    <div class="dialog" role="dialog" aria-modal="true">
-      <h2>${esc(title)}</h2>
+    <div class="dialog${options.wide ? ' wide' : ''}" role="dialog" aria-modal="true" aria-labelledby="${titleId}">
+      <h2 id="${titleId}">${esc(title)}</h2>
       <div class="body">${html}</div>
       <div class="foot">
-        ${actions.map((a, i) => `<button class="btn ${a.primary ? 'primary' : ''}" data-action="${i}">${esc(a.label)}</button>`).join('')}
+        ${actions
+          .map(
+            (a, i) =>
+              `<button class="btn ${a.primary ? 'primary' : ''}" data-action="${i}" ${a.disabled ? 'disabled' : ''} ${a.title ? `title="${esc(a.title)}"` : ''}>${esc(a.label)}</button>`
+          )
+          .join('')}
         <button class="btn ghost" data-action="close">关闭</button>
       </div>
     </div>`
-  backdrop.querySelector('[data-action="close"]').onclick = () => backdrop.remove()
+  const panel = backdrop.querySelector('.dialog')
+  const close = () => {
+    document.removeEventListener('keydown', onKeydown)
+    backdrop.remove()
+    // Duck-typed: app.js runs in a DOM whose HTMLElement is not this realm's.
+    if (typeof opener?.focus === 'function') {
+      opener.focus()
+    }
+  }
+  const onKeydown = (event) => {
+    if (event.key !== 'Escape') {
+      return
+    }
+    event.preventDefault()
+    close()
+  }
+  document.addEventListener('keydown', onKeydown)
+  backdrop.querySelector('[data-action="close"]').onclick = close
   backdrop.onclick = (e) => {
-    if (e.target === backdrop) backdrop.remove()
+    if (e.target === backdrop) {
+      close()
+    }
   }
   actions.forEach((a, i) => {
     backdrop.querySelector(`[data-action="${i}"]`).onclick = () => {
       const keep = a.onClick?.()
-      if (keep !== false) backdrop.remove()
+      if (keep !== false) {
+        close()
+      }
     }
   })
   document.body.appendChild(backdrop)
+  // First focusable wins; with none, the close button keeps Escape reachable.
+  const forceFocus = panel.querySelector(
+    'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])'
+  )
+  const target = forceFocus ?? panel.querySelector('[data-action="close"]')
+  if (typeof target?.focus === 'function') {
+    target.focus()
+  }
   return backdrop
 }
 
