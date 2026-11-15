@@ -157,7 +157,7 @@ async function openProject(page, key) {
   const failureOpen = (await page.locator('#workspaceOverlay [data-workspace-ready-failure]').count()) > 0
   if (failureOpen) {
     const popupPromise = page.waitForEvent('popup', { timeout: 10000 }).catch(() => null)
-    await page.locator('#workspaceOverlay [data-workspace-new-tab]').click()
+    await page.locator('#workspaceOverlay [data-workspace-ready-failure] [data-workspace-new-tab]').click()
     const popup = await popupPromise
     check('lifecycle', 'failure shell still offers 在新标签打开 Orca Web', !!popup && (popup.url() || '').includes('web-index.html'), 'new tab web-index', popup?.url() ?? 'no popup', 'P1')
     await popup?.close().catch(() => {})

@@ -71,10 +71,25 @@ async function expandParents(relPath) {
 }
 
 async function clickFileNode(relPath) {
+  await t('cloud-simple-workspace-right-tab-files').click().catch(() => {})
+  await sleep(250)
   await expandParents(relPath)
   const selector = `[data-testid="cloud-workspace-file-tree-node-${relPath.replaceAll('"', '\\"')}"]`
-  await fr().locator(selector).waitFor({ timeout: 15000 })
-  await fr().locator(selector).click()
+  const node = fr().locator(selector)
+  if ((await node.count()) && (await node.isVisible())) {
+    await node.click()
+    return
+  }
+  // Fallback: the name filter searches every loaded directory and opens on click.
+  console.log('[debug] fallback open', relPath, 'count=', await node.count(), 'visible=', await node.isVisible().catch(() => false))
+  const input = fr().locator('[data-testid="cloud-workspace-file-tree-filter"] input')
+  const base = relPath.split('/').at(-1)
+  await input.fill(base)
+  await sleep(600)
+  const match = fr().locator(`[data-testid="cloud-workspace-file-tree-match-${relPath.replaceAll('"', '\\"')}"]`)
+  await match.waitFor({ timeout: 10000 })
+  await match.click()
+  await input.fill('')
 }
 
 async function tabIds() {
@@ -307,6 +322,48 @@ async function main() {
     // close the stale tab so later steps re-read the restored file
     await t('cloud-simple-workspace-tab-close-file:README.md').click()
     await sleep(400)
+  })
+
+  await step('dirty-close', 'dirty close confirm three options', async () => {
+    await t('cloud-simple-workspace-right-tab-files').click().catch(() => {})
+    await clickFileNode('docs/design.md')
+    await fr().locator('.monaco-editor:visible').first().waitFor()
+    await sleep(500)
+    await monacoAppend('\nr2-close-dirty')
+    await sleep(800)
+    const dirtyBeforeClose = await t('cloud-simple-workspace-tab-dirty-file:docs/design.md').count()
+    check('dirty-close', 'typing marks the file tab dirty', dirtyBeforeClose > 0, 'dirty dot present', String(dirtyBeforeClose), 'P1')
+    if (dirtyBeforeClose === 0) {
+      await shot(page, 'r2-dirty-close-not-dirty')
+      return
+    }
+    await t('cloud-simple-workspace-tab-close-file:docs/design.md').click()
+    await t('cloud-simple-workspace-close-confirm').waitFor({ timeout: 10000 })
+    const box = await t('cloud-simple-workspace-close-confirm').innerText()
+    check('dirty-close', 'closing a dirty tab opens 保存/放弃/取消', /保存/.test(box) && /放弃/.test(box) && /取消/.test(box), 'three options', box.replaceAll('\n', ' '), 'P0')
+    await t('cloud-simple-workspace-close-confirm-cancel').click()
+    check('dirty-close', '取消 keeps the tab and buffer', (await t('cloud-simple-workspace-close-confirm').count()) === 0 && (await t('cloud-simple-workspace-tab-file:docs/design.md').count()) === 1, 'tab kept', 'ok', 'P1')
+    await t('cloud-simple-workspace-tab-close-file:docs/design.md').click()
+    await t('cloud-simple-workspace-close-confirm-discard').click()
+    await sleep(500)
+    check('dirty-close', '放弃 closes and drops the buffer', (await t('cloud-simple-workspace-tab-file:docs/design.md').count()) === 0, 'tab closed', 'ok', 'P1')
+    // save-and-close
+    await clickFileNode('docs/design.md')
+    await fr().locator('.monaco-editor:visible').first().waitFor()
+    await sleep(500)
+    await monacoAppend('\nr2-save-and-close')
+    await sleep(400)
+    await t('cloud-simple-workspace-tab-close-file:docs/design.md').click()
+    await t('cloud-simple-workspace-close-confirm-save').click()
+    const deadline = Date.now() + 10000
+    let closed = false
+    while (Date.now() < deadline) {
+      if ((await t('cloud-simple-workspace-tab-file:docs/design.md').count()) === 0) { closed = true; break }
+      await sleep(250)
+    }
+    const disk = fs.readFileSync(path.join(WT, 'docs/design.md'), 'utf8')
+    check('dirty-close', '保存 saves to host then closes', closed && disk.includes('r2-save-and-close'), 'file saved, tab closed', JSON.stringify({ closed, saved: disk.includes('r2-save-and-close') }), 'P0')
+    execFileSync('git', ['checkout', '--', 'docs/design.md'], { cwd: WT })
   })
 
   // ===== F. truncated / read-only =====
@@ -602,6 +659,11 @@ async function main() {
     const termId = (await tabIds()).find((id) => id.startsWith('terminal-'))
     await t(`cloud-simple-workspace-tab-${termId}`).click()
     await fr().locator('.xterm-screen:visible').first().waitFor({ timeout: 30000 })
+    for (let i = 0; i < 60; i += 1) {
+      const state = await fr().evaluate(() => document.querySelector('[data-testid="cloud-terminal-state"]')?.textContent ?? '')
+      if (state.includes('实时')) break
+      await sleep(500)
+    }
     await fr().locator('.xterm-screen:visible').first().click()
     await page.keyboard.type(`touch ${JSON.stringify(marker)}`, { delay: 5 })
     await page.keyboard.press('Enter')
@@ -630,48 +692,6 @@ async function main() {
       await sleep(350)
     }
     check('terminal', 'closing a terminal frees a slot', !(await t('cloud-simple-workspace-new-terminal').isDisabled().catch(() => true)), '+ enabled again', 'ok')
-  })
-
-  await step('dirty-close', 'dirty close confirm three options', async () => {
-    await t('cloud-simple-workspace-right-tab-files').click().catch(() => {})
-    await clickFileNode('docs/design.md')
-    await fr().locator('.monaco-editor:visible').first().waitFor()
-    await sleep(500)
-    await monacoAppend('\nr2-close-dirty')
-    await sleep(800)
-    const dirtyBeforeClose = await t('cloud-simple-workspace-tab-dirty-file:docs/design.md').count()
-    check('dirty-close', 'typing marks the file tab dirty', dirtyBeforeClose > 0, 'dirty dot present', String(dirtyBeforeClose), 'P1')
-    if (dirtyBeforeClose === 0) {
-      await shot(page, 'r2-dirty-close-not-dirty')
-      return
-    }
-    await t('cloud-simple-workspace-tab-close-file:docs/design.md').click()
-    await t('cloud-simple-workspace-close-confirm').waitFor({ timeout: 10000 })
-    const box = await t('cloud-simple-workspace-close-confirm').innerText()
-    check('dirty-close', 'closing a dirty tab opens 保存/放弃/取消', /保存/.test(box) && /放弃/.test(box) && /取消/.test(box), 'three options', box.replaceAll('\n', ' '), 'P0')
-    await t('cloud-simple-workspace-close-confirm-cancel').click()
-    check('dirty-close', '取消 keeps the tab and buffer', (await t('cloud-simple-workspace-close-confirm').count()) === 0 && (await t('cloud-simple-workspace-tab-file:docs/design.md').count()) === 1, 'tab kept', 'ok', 'P1')
-    await t('cloud-simple-workspace-tab-close-file:docs/design.md').click()
-    await t('cloud-simple-workspace-close-confirm-discard').click()
-    await sleep(500)
-    check('dirty-close', '放弃 closes and drops the buffer', (await t('cloud-simple-workspace-tab-file:docs/design.md').count()) === 0, 'tab closed', 'ok', 'P1')
-    // save-and-close
-    await clickFileNode('docs/design.md')
-    await fr().locator('.monaco-editor:visible').first().waitFor()
-    await sleep(500)
-    await monacoAppend('\nr2-save-and-close')
-    await sleep(400)
-    await t('cloud-simple-workspace-tab-close-file:docs/design.md').click()
-    await t('cloud-simple-workspace-close-confirm-save').click()
-    const deadline = Date.now() + 10000
-    let closed = false
-    while (Date.now() < deadline) {
-      if ((await t('cloud-simple-workspace-tab-file:docs/design.md').count()) === 0) { closed = true; break }
-      await sleep(250)
-    }
-    const disk = fs.readFileSync(path.join(WT, 'docs/design.md'), 'utf8')
-    check('dirty-close', '保存 saves to host then closes', closed && disk.includes('r2-save-and-close'), 'file saved, tab closed', JSON.stringify({ closed, saved: disk.includes('r2-save-and-close') }), 'P0')
-    execFileSync('git', ['checkout', '--', 'docs/design.md'], { cwd: WT })
   })
 
   // ===== L. logout cleanup (overlay still open) =====

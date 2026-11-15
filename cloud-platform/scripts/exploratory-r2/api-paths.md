@@ -360,4 +360,10 @@ ORCA_R2_SKIP_TIMING=1 node cloud-platform/scripts/exploratory-r2/run-api-explora
 
 ## 本次结果
 
-以 `api.json` 为准。最终一次运行：254 用例，232 通过，22 失配（1×P1、4×P2、17×P3；其中 A5/A6 为重复运行把固定探针用户名锁定后的环境伪差，不计产品缺陷）。清理结果见 `api.json.cleanup`：全部探针项目 `archive` 返回 200，探针宿主 `DELETE` 返回 200，全局策略恢复返回 200。
+以 `api.json` 为准。最终一次运行（2026-11-15，平台 `https://127.0.0.1:18787`）：
+
+- 269 用例 / 51 个端点模式；249 通过，20 失配
+- 失配分布：P0=0、P1=1、P2=4、P3=14
+- 清理：9 个探针项目 `archive` 全部 200；2 个探针宿主 `DELETE` 全部 200；全局策略恢复为 `allow` + 600 calls/64MiB（`restoredPolicyStatus=200`）
+- 种子状态未改动：`dev-local-02`/`dev-local-03` online，种子项目与授权保持原样；审计链 `verify` 通过（checked>0）
+- 惰性残留：探针宿主以 `revokedAt` 记录留存、探针项目以 `archived` 留存。平台为内存 store，重启即清空
