@@ -534,3 +534,28 @@ node cloud-platform/scripts/playwright-server/compare-prototype.mjs --all --role
 ## 主会话审定（2026-11-15）
 
 全盘采纳：①常驻 Node 进程+headless Chromium+身份隔离上下文（admin/zhangsan/lisi）+127.0.0.1 HTTP/WS 端口协议；②defineJourney 单文件双模式（server 注入常驻 page/ui ∥ runIfMain 临时 Chromium 独立回归）——两种模式同一脚本正文；③原型对照=同一 DOM 清点器双轮（prototype.html file:// + 实际页，admin/developer 两轮含隐藏层）+三类差异检测（布局 LCS/字段 Dice+别名表/菜单 label+role）+6 条可预见差异作验收自检；④与 tests/e2e spec 不迁移、server 服务探索与快速回归；⑤升级路径（isolate:true+launchServer/connect）留档。实现切分按设计 §切分节（PS 系令），四路探索回收后并行派发。
+
+
+## 主会话审定补充：常用扩展函数库（2026-11-15 用户指令）
+
+包装层第一层 `ui` 在语义薄封装之上增**扩展函数库**（实现令含；场景在使用中持续探索扩展）：
+
+**提取类**（§9b 文字提取优先原则的落地）：
+- `extractText(scope?, selector?)` —— 整块/按区域结构化文本（重点区域数据与状态判读）
+- `extractLayout(pageId?)` —— 页面区块树/导航/栅格位置（原型对照输入）
+- `extractState()` —— 业务状态词聚合（就绪/准备中/失败/离线/维护/计数/徽标）
+- `extractTable(selector?)` —— 表格行列结构化（审计/授权矩阵/项目列表）
+
+**操作类**（项目内常用语义封装）：
+- `login(username)` / `logout()` —— 身份矩阵快捷切换（复用驻留上下文）
+- `navigateMenu(pageId)` —— 侧栏/路由导航
+- `openProject(id)` / `openDetail(id)` / `openWorkspace(id)` —— 三操作直达
+- `openTab(type, arg)` / `saveFile()` / `switchDiff(mode)` —— 工作区标签语义操作
+- `fillForm(fieldMap)` —— 表单批量填充+提交
+
+**断言/发现类**：
+- `assertText(expected, scope?)` / `waitForState(text)` / `discover()` —— 控件清单发现（探索核心）
+- `compareWithPrototype(pageId)` —— 原型对照（调 DOM 清点器）
+- `screenshot(target?)` —— 辅助证据（布局类问题）
+
+实现约束：扩展函数全部基于第二层原生 API 薄封装（无魔法）；每个函数带 JSDoc 使用例；发现的新场景**追加进本节**持续演进。
