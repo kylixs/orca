@@ -2821,6 +2821,10 @@ U66-1 `2c99689d684`（audit.recordFileEvent 端点：三事件骨架/字段白�
 
 `7f89573f6d4`（8 文件）：cloudSimpleWorkspaceTabForFile 分发策略（二进制扩展黑名单→preview 占位）+编辑器双层防御（binary/isBinary 标志+NUL 启发→强制只读禁保存）。定向 50+cloud 域 197 绿。**U59②→🟢（U59 维持 🟡 待①P0）**。注：任务中工作区一次被外部回退，代理用留存 diff 精确恢复后提交（事故响应纪律生效）。空槽派 PS-1。
 
+### U67-3 落地（2026-11-16，用户管理页）
+
+`c3040c6e9cb`（5 文件 +630/−2）：GET /v1/users+PUT roles（admin-only 审计先行 fail-closed；三角色映射；管理员降级撤凭证 revokeUserCredentials ≤60s；越权 403 denied）+roleOverride 落 User 模型+登录重算+#/users 页面（两层模型 notice/原型形态 9 锚点/来源徽标/降级 danger 弹框/审计筛选项）。新 6/6+零回归 59。**用户管理页上线**——两层授权模型（全局角色页+资源三卡片）全部成形。U66 红项复验与授权组合复验在途。
+
 ### 修复批 R3 落地（2026-11-15，U57 🟢）
 
 `8e17ed8c800`（2 文件 +37/−7）：heartbeat directAddrs 校验（400 落库前拒）、grants permissions 非数组 400（不静默删）、audit limit 钳制 50/封顶 200。新 4/4+回归 136 全绿。**U57→🟢**（探索修复批 1/4）。
