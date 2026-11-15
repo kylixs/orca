@@ -5,6 +5,7 @@ import type { CloudConnectionEvent } from '../../../shared/cloud-platform-ipc'
 import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
 import type { WebCloudDeviceKeyStorage } from '../web/web-cloud-device-key'
 import type { WebPairingOffer } from '../web/web-pairing'
+import { readPersistedWebCloudSession } from '../web/web-cloud-session-storage'
 import type { WebRuntimeSubscriptionCallbacks } from '../web/web-runtime-subscription-contract'
 import { createCloudBrowserBridge, type BrowserCloudClient } from './cloud-browser-bridge'
 
@@ -94,6 +95,8 @@ function ticketReply(
 type ScriptedPlatform = {
   fetchImpl: typeof fetch
   requests: string[]
+  /** Bodies posted to the one-time handoff exchange (U46-4). */
+  handoffs: unknown[]
   devicePublicKeyB64: () => string
   /** Makes every token-guarded call answer as a dead session. */
   expire: () => void
@@ -103,6 +106,7 @@ type ScriptedPlatform = {
 
 function scriptedPlatform(): ScriptedPlatform {
   const requests: string[] = []
+  const handoffs: unknown[] = []
   let devicePublicKey = ''
   let expired = false
   let hostKeyB64 = HOST_KEY_B64
@@ -114,6 +118,23 @@ function scriptedPlatform(): ScriptedPlatform {
     }
     if (expired) {
       return jsonReply({ error: { code: 'SESSION_EXPIRED', message: 'dead' } }, 401)
+    }
+    if (url.endsWith('/v1/web/handoff')) {
+      const body = typeof init?.body === 'string' ? parseJsonText(init.body) : null
+      handoffs.push(body)
+      devicePublicKey = readString(body, 'devicePubKey') ?? ''
+      return jsonReply({
+        accessToken: 'access-1',
+        refreshToken: 'refresh-1',
+        user: {
+          id: 'user-1',
+          username: 'zhangsan',
+          displayName: '张三',
+          roles: [],
+          permissions: []
+        },
+        device: { id: 'device-1' }
+      })
     }
     if (url.endsWith('/v1/auth/login')) {
       const body = typeof init?.body === 'string' ? parseJsonText(init.body) : null
@@ -144,6 +165,7 @@ function scriptedPlatform(): ScriptedPlatform {
   return {
     fetchImpl,
     requests,
+    handoffs,
     devicePublicKeyB64: () => devicePublicKey,
     expire: () => {
       expired = true
@@ -527,5 +549,39 @@ describe('AC-29 浏览器侧主机公钥固定', () => {
       throw new Error('expected both opens to be refused')
     }
     expect(second.hostKey?.pinnedFingerprint).toBe(first.hostKey?.pinnedFingerprint)
+  })
+})
+
+describe('U46-4 handoff 兑换', () => {
+  it('C2 一次性 code 兑换 → 持久化浏览器会话 → 列出项目', async () => {
+    const storage = new MemoryStore()
+    const platform = scriptedPlatform()
+    const bridge = createCloudBrowserBridge({
+      apiUrl: 'http://platform.test',
+      deviceName: 'm54-admin',
+      deviceKeyStore: new DeviceKeyStorage(),
+      sessionStorage: storage,
+      fetchImpl: platform.fetchImpl,
+      clientFactory: scriptedFactory([], [], [])
+    })
+    const loginWithHandoff = bridge.loginWithHandoff
+    if (!loginWithHandoff) {
+      throw new Error('the browser bridge must expose loginWithHandoff')
+    }
+
+    const state = await loginWithHandoff('code-1')
+
+    expect(state).toMatchObject({ status: 'signed-in', displayName: '张三' })
+    if (state.status !== 'signed-in') {
+      throw new Error('handoff must sign the browser in')
+    }
+    expect(state.projects.map((project) => project.id)).toEqual(['proj-1', 'proj-2'])
+    expect(platform.requests).toContain('POST http://platform.test/v1/web/handoff')
+    expect(platform.handoffs).toHaveLength(1)
+    expect(platform.handoffs[0]).toMatchObject({ code: 'code-1' })
+
+    const persisted = readPersistedWebCloudSession(storage, 'http://platform.test')
+    expect(persisted?.refreshToken).toBe('refresh-1')
+    expect(persisted?.deviceId).toBe('device-1')
   })
 })

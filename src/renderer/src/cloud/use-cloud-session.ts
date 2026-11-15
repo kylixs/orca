@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { errorCodeOf, readField } from '../../../shared/json-fields'
+import { useCallback, useRef, useState } from 'react'
+import { errorCodeOf } from '../../../shared/json-fields'
 import { readIpcErrorMessage } from '@/lib/ipc-error'
 import type * as cloudSubscription from './cloud-browser-bridge-subscription'
+import { useCloudSessionLifecycle } from './cloud-session-lifecycle'
 import type {
   CloudArchiveProjectResult,
   CloudConnectionEvent,
@@ -31,6 +32,11 @@ export type * from './cloud-browser-bridge-subscription'
 
 export type CloudBridge = {
   login: (username: string, password: string, platformUrl?: string) => Promise<CloudSessionState>
+  /**
+   * U46-4 embed entry: trades the one-time handoff code from the URL hash for a
+   * session. Optional because the Electron preload bridge never enters this way.
+   */
+  loginWithHandoff?: (code: string) => Promise<CloudSessionState>
   /** Address and username the login form prefills (M119/W10). */
   getLoginContext: () => Promise<CloudLoginContext | null>
   openWorkspace: (projectId: string) => Promise<CloudOpenResult>
@@ -110,14 +116,11 @@ export type CloudSessionView = {
   confirmHostKey: () => Promise<CloudOpenResult | null>
   dismissHostKeyMismatch: () => void
   signIn: (username: string, password: string, platformUrl?: string) => Promise<void>
+  /** U46-4 embed entry; absent in scripted views that never enter by handoff. */
+  signInWithHandoff?: (code: string) => Promise<void>
   signOut: () => Promise<void>
   openProject: (projectId: string) => Promise<CloudOpenResult | null>
   closeProject: (projectId: string) => Promise<void>
-}
-
-function isCloudState(value: unknown): value is CloudSessionState {
-  const status = readField(value, 'status')
-  return status === 'signed-out' || status === 'signed-in'
 }
 
 export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSessionView {
@@ -154,65 +157,19 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
     setStatus('signed-out')
   }, [])
 
-  useEffect(() => {
-    const active = bridgeRef.current
-    if (!active) {
-      // Not a cloud build: the UI must say so rather than showing a dead form.
-      setStatus('unavailable')
-      return
+  useCloudSessionLifecycle({
+    bridgeRef,
+    applyState,
+    onLoginContext: setLoginContext,
+    onUnavailable: () => setStatus('unavailable'),
+    onSignedOut: () => applyState({ status: 'signed-out' }),
+    onConnectionClosed: (event) => {
+      setOpenProjectId(null)
+      setOpened(null)
+      setRoute(null)
+      setNotice({ code: event.closeCode, reason: event.reason })
     }
-    let cancelled = false
-    // Why fire-and-forget: the prefill must never delay the session restore; a
-    // failure just means the user types the address themselves.
-    active
-      .getLoginContext()
-      .then((context) => {
-        if (!cancelled && context) {
-          setLoginContext(context)
-        }
-      })
-      .catch(() => undefined)
-    void active
-      .getState()
-      .then((state) => {
-        if (!cancelled && isCloudState(state)) {
-          applyState(state)
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setStatus('signed-out')
-        }
-      })
-    const unsubscribe = active.onConnectionChanged((event) => {
-      if (event.closeCode !== null) {
-        setOpenProjectId(null)
-        setOpened(null)
-        setRoute(null)
-        setNotice({ code: event.closeCode, reason: event.reason })
-      }
-      if (event.reason === 'session_expired') {
-        // Why re-read: main already signed out; trusting cached state would strand
-        // the user on a workbench whose every action now fails.
-        void active
-          .getState()
-          .then((state) => {
-            if (!cancelled && isCloudState(state)) {
-              applyState(state)
-            }
-          })
-          .catch(() => {
-            if (!cancelled) {
-              applyState({ status: 'signed-out' })
-            }
-          })
-      }
-    })
-    return () => {
-      cancelled = true
-      unsubscribe()
-    }
-  }, [applyState])
+  })
 
   const signIn = useCallback(
     async (username: string, password: string, platformUrl?: string) => {
@@ -233,6 +190,35 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
           readIpcErrorMessage(cause) ??
           (cause instanceof Error ? cause.message : '登录失败')
         setError(code)
+        setStatus('signed-out')
+      }
+    },
+    [applyState]
+  )
+
+  /** U46-4: enter from the console's one-time code; a failure falls back to the form. */
+  const signInWithHandoff = useCallback(
+    async (code: string) => {
+      const active = bridgeRef.current
+      if (!active) {
+        return
+      }
+      setStatus('signing-in')
+      setError(null)
+      setNotice(null)
+      if (!active.loginWithHandoff) {
+        setError('HANDOFF_UNSUPPORTED')
+        setStatus('signed-out')
+        return
+      }
+      try {
+        applyState(await active.loginWithHandoff(code))
+      } catch (cause) {
+        const codeText =
+          errorCodeOf(cause) ??
+          readIpcErrorMessage(cause) ??
+          (cause instanceof Error ? cause.message : '登录失败')
+        setError(codeText)
         setStatus('signed-out')
       }
     },
@@ -351,6 +337,7 @@ export function useCloudSession(bridge: CloudBridge | null | undefined): CloudSe
     confirmHostKey,
     dismissHostKeyMismatch,
     signIn,
+    signInWithHandoff,
     signOut,
     openProject,
     closeProject

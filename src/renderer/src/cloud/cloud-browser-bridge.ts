@@ -1,16 +1,10 @@
-import { openCloudWorkspaceOverRpc } from '../../../shared/cloud-workspace-open'
 import type {
   CloudConnectionEvent,
-  CloudOpenResult,
   CloudProjectSummary,
   CloudRpcOutcome,
   CloudSessionState
 } from '../../../shared/cloud-platform-ipc'
-import {
-  loadOrCreateWebCloudDeviceKey,
-  type WebCloudDeviceIdentity,
-  type WebCloudDeviceKeyStorage
-} from '../web/web-cloud-device-key'
+import type { WebCloudDeviceIdentity, WebCloudDeviceKeyStorage } from '../web/web-cloud-device-key'
 import { WebRuntimeClient } from '../web/web-runtime-client'
 import type { WebPairingOffer } from '../web/web-pairing'
 import {
@@ -22,12 +16,12 @@ import {
 } from './cloud-browser-bridge-replies'
 import {
   listCloudProjects,
-  loginToCloud,
   type WebCloudProject,
   type WebCloudSession
 } from '../web/web-cloud-session'
 import {
   createBrowserWebCloudSessionStorage,
+  readPersistedWebCloudSession,
   type WebCloudSessionStorage
 } from '../web/web-cloud-session-storage'
 import { WEB_HOST_TRUST_STORAGE_KEY } from '../web/web-host-key-trust'
@@ -37,6 +31,8 @@ import {
   restoreBrowserSession,
   type BrowserSavedSession
 } from './cloud-browser-saved-session'
+import { signInWithHandoff, signInWithPassword, type CloudSignedIn } from './cloud-browser-sign-in'
+import { openProjectOnConnection, openWorkspaceOnConnection } from './cloud-browser-open'
 import { browserUnsupportedAdminMethods } from './cloud-browser-bridge-unsupported'
 import { subscribeOverConnection } from './cloud-browser-bridge-subscription'
 import { BrowserProjectConnections } from './cloud-browser-project-connections'
@@ -155,50 +151,78 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
     return state
   }
 
-  return {
-    async login(username: string, password: string): Promise<CloudSessionState> {
+  function resetSignIn(): void {
+    projectConnections.closeAll()
+    session = null
+    identity = null
+    sessionEnded = false
+    state = { status: 'signed-out' }
+  }
+
+  function adoptSignedIn(result: CloudSignedIn): CloudSessionState {
+    session = result.session
+    identity = result.identity
+    state = result.state
+    const auth = result.session.auth
+    if (auth?.refreshToken) {
+      persistBrowserSession(savedSession, {
+        accessToken: auth.accessToken,
+        refreshToken: auth.refreshToken
+      })
+    }
+    return state
+  }
+
+  function signInOptions(): Omit<
+    Parameters<typeof signInWithPassword>[0],
+    'username' | 'password'
+  > {
+    return {
       // Why no address argument: this page is served by its platform, so the
       // deployment-fixed origin is the only address a browser login may use.
-      projectConnections.closeAll()
-      session = null
-      identity = null
-      sessionEnded = false
-      state = { status: 'signed-out' }
+      apiUrl: options.apiUrl,
+      deviceName: options.deviceName,
+      deviceKeyStore: options.deviceKeyStore,
+      fetchOptions,
+      ...(options.now ? { now: options.now } : {}),
+      onTokensChanged: (tokens) => persistBrowserSession(savedSession, tokens)
+    }
+  }
+
+  return {
+    async login(username: string, password: string): Promise<CloudSessionState> {
+      resetSignIn()
       // Why: an explicit sign-in supersedes whatever login was saved before it.
       clearBrowserSession(savedSession)
-      const loaded = loadOrCreateWebCloudDeviceKey(options.deviceKeyStore)
-      const nextSession = await loginToCloud({
-        apiUrl: options.apiUrl,
-        username,
-        password,
-        devicePublicKeyB64: loaded.publicKeyB64,
-        deviceName: options.deviceName,
-        onTokensChanged: (tokens) => persistBrowserSession(savedSession, tokens),
-        ...fetchOptions,
-        ...(options.now ? { now: options.now } : {})
-      })
-      let projects: WebCloudProject[]
       try {
-        projects = await listCloudProjects(nextSession, fetchOptions)
+        return adoptSignedIn(await signInWithPassword({ ...signInOptions(), username, password }))
       } catch (error) {
         notePlatformError(error)
         throw error
       }
-      session = nextSession
-      identity = loaded
-      state = {
-        status: 'signed-in',
-        displayName: nextSession.user.displayName,
-        projects: projects.map(summarize)
+    },
+
+    /** U46-4 embed entry: one-time code → session, persisted like a password login. */
+    async loginWithHandoff(code: string): Promise<CloudSessionState> {
+      resetSignIn()
+      // Why read before clearing: one browser stays one device row across entries.
+      const knownDeviceId = readPersistedWebCloudSession(
+        savedSession.store,
+        options.apiUrl
+      )?.deviceId
+      clearBrowserSession(savedSession)
+      try {
+        return adoptSignedIn(
+          await signInWithHandoff({
+            ...signInOptions(),
+            code,
+            ...(knownDeviceId ? { deviceId: knownDeviceId } : {})
+          })
+        )
+      } catch (error) {
+        notePlatformError(error)
+        throw error
       }
-      const auth = nextSession.auth
-      if (auth?.refreshToken) {
-        persistBrowserSession(savedSession, {
-          accessToken: auth.accessToken,
-          refreshToken: auth.refreshToken
-        })
-      }
-      return state
     },
 
     async getState(): Promise<CloudSessionState> {
@@ -237,21 +261,7 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
       return projects
     },
 
-    async openProject(projectId: string): Promise<CloudOpenResult> {
-      const opened = await projectConnections.open(projectId)
-      if ('ok' in opened) {
-        return opened
-      }
-      return {
-        ok: true,
-        projectId,
-        route: opened.route,
-        workspaceRoot: opened.workspace.workspaceRoot,
-        capabilities: opened.capabilities,
-        ...(opened.permissions ? { permissions: opened.permissions } : {}),
-        ...(opened.hostFingerprint ? { hostFingerprint: opened.hostFingerprint } : {})
-      }
-    },
+    openProject: (projectId: string) => openProjectOnConnection(projectConnections, projectId),
 
     async trustHostKey(hostId: string) {
       return (await projectConnections.trustPendingHostKey(hostId))
@@ -259,31 +269,7 @@ export function createCloudBrowserBridge(options: CloudBrowserBridgeOptions): Cl
         : { ok: false as const, code: 'HOST_KEY_NOT_PENDING' }
     },
 
-    async openWorkspace(projectId: string): Promise<CloudOpenResult> {
-      const opened = await projectConnections.open(projectId)
-      if ('ok' in opened) {
-        return opened
-      }
-      const ensured = await openCloudWorkspaceOverRpc(
-        async (method, params, timeoutMs) =>
-          outcomeOf(await opened.client.call(method, params, { timeoutMs })),
-        projectId,
-        opened.workspace
-      )
-      if (!ensured.ok) {
-        return ensured
-      }
-      return {
-        ok: true,
-        projectId,
-        route: opened.route,
-        workspaceRoot: opened.workspace.workspaceRoot,
-        workspacePath: ensured.workspacePath,
-        capabilities: opened.capabilities,
-        ...(opened.permissions ? { permissions: opened.permissions } : {}),
-        ...(opened.hostFingerprint ? { hostFingerprint: opened.hostFingerprint } : {})
-      }
-    },
+    openWorkspace: (projectId: string) => openWorkspaceOnConnection(projectConnections, projectId),
 
     ...browserUnsupportedAdminMethods,
 

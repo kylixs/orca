@@ -3,7 +3,9 @@ import '../assets/main.css'
 import ReactDOM from 'react-dom/client'
 import { CloudApp } from '../cloud/cloud-app'
 import { createCloudBrowserBridge } from '../cloud/cloud-browser-bridge'
+import { takeCloudAdminEmbedEntry } from '../cloud/cloud-admin-embed'
 import { createLocalStorageWebCloudDeviceKey } from '../web/web-cloud-device-key'
+import { clearWebHandoffFromAddressBar } from '../web/web-cloud-handoff-entry'
 
 /**
  * Standalone admin entry (design §4.2): its own login, no token from the URL.
@@ -17,6 +19,9 @@ export function resolveCloudAdminApiUrl(location: Location = window.location): s
 }
 
 const apiUrl = resolveCloudAdminApiUrl()
+// U46-4: the console hands us `?embed=1&project=<id>#handoff=<code>`; the code
+// is wiped before the exchange so a refresh can never replay it (C1).
+const embed = takeCloudAdminEmbedEntry(window.location, clearWebHandoffFromAddressBar)
 const root = document.getElementById('root')
 if (!root) {
   throw new Error('cloud-admin entry is missing #root')
@@ -29,7 +34,7 @@ const bridge = apiUrl
     })
   : null
 
-ReactDOM.createRoot(root).render(<CloudApp bridge={bridge} />)
+ReactDOM.createRoot(root).render(<CloudApp bridge={bridge} embed={embed} />)
 
 // Why: the admin session page hosts terminals too, so it starts the deferred
 // WebGL addon load itself (same reason as web/main.tsx). Dynamic because this

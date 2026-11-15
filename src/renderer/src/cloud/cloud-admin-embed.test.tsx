@@ -1,0 +1,236 @@
+// @vitest-environment happy-dom
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
+import type {
+  CloudConnectionEvent,
+  CloudLoginContext,
+  CloudOpenResult,
+  CloudProjectSummary,
+  CloudProjectRegistration,
+  CloudRetryPrepareResult,
+  CloudRpcOutcome,
+  CloudSessionState
+} from '../../../shared/cloud-platform-ipc'
+import { CloudApp } from './cloud-app'
+import { takeCloudAdminEmbedEntry } from './cloud-admin-embed'
+import type { CloudBridge } from './use-cloud-session'
+
+/**
+ * U46-4: the admin page as the console's embedded workspace (§4.2/§6.2 C1–C5).
+ * The bridge is scripted; the real exchange + persistence is covered in
+ * cloud-browser-bridge.test.ts, and the real stack in cloud-admin-session.e2e.
+ */
+
+const PROJECT: CloudProjectSummary = {
+  id: 'p1',
+  key: 'payment-svc',
+  name: 'payment-svc',
+  hostName: 'dev-001',
+  hostStatus: 'online',
+  downloadRestricted: true,
+  status: 'ready',
+  provisioningError: null
+}
+
+const SIGNED_IN: CloudSessionState = {
+  status: 'signed-in',
+  displayName: '张伟',
+  projects: [PROJECT]
+}
+
+const OPENED: Extract<CloudOpenResult, { ok: true }> = {
+  ok: true,
+  projectId: 'p1',
+  route: 'relay',
+  workspaceRoot: '/srv/work/payment-svc/.orca-worktrees/zhangsan',
+  workspacePath: '/srv/work/payment-svc/.orca-worktrees/zhangsan',
+  capabilities: ['pty'],
+  permissions: ['open', 'terminal', 'file:read']
+}
+
+type Script = {
+  state?: CloudSessionState
+  /** The error code `loginWithHandoff` rejects with (C3). */
+  handoffError?: string
+}
+
+type TestBridge = CloudBridge & {
+  handoffCalls: string[]
+  openCalls: string[]
+  closeCalls: string[]
+  logoutCalls: number
+}
+
+function makeBridge(script: Script = {}): TestBridge {
+  const bridge: TestBridge = {
+    handoffCalls: [],
+    openCalls: [],
+    closeCalls: [],
+    logoutCalls: 0,
+    login: async (): Promise<CloudSessionState> => script.state ?? SIGNED_IN,
+    loginWithHandoff: async (code: string): Promise<CloudSessionState> => {
+      bridge.handoffCalls.push(code)
+      if (script.handoffError) {
+        throw Object.assign(new Error(script.handoffError), { code: script.handoffError })
+      }
+      return SIGNED_IN
+    },
+    getLoginContext: async (): Promise<CloudLoginContext | null> => null,
+    logout: async (): Promise<CloudSessionState> => {
+      bridge.logoutCalls += 1
+      return { status: 'signed-out' }
+    },
+    getState: async (): Promise<CloudSessionState> => script.state ?? { status: 'signed-out' },
+    listProjects: async () => [PROJECT],
+    openProject: async (projectId: string): Promise<CloudOpenResult> => ({ ...OPENED, projectId }),
+    openWorkspace: async (projectId: string): Promise<CloudOpenResult> => {
+      bridge.openCalls.push(projectId)
+      return { ...OPENED, projectId }
+    },
+    registerProjects: async (): Promise<CloudProjectRegistration> => ({
+      environments: [],
+      failures: [],
+      removedEnvironmentIds: []
+    }),
+    retryPrepare: async (): Promise<CloudRetryPrepareResult> => ({ ok: false, code: 'UNUSED' }),
+    createProject: async () => ({ ok: false, code: 'UNUSED' }),
+    archiveProject: async () => ({ ok: false, code: 'UNUSED' }),
+    listProvisionableHosts: async () => [],
+    closeProject: async (projectId: string) => {
+      bridge.closeCalls.push(projectId)
+      return { ok: true }
+    },
+    rpc: async (): Promise<CloudRpcOutcome> => ({ ok: true, result: { runtimeId: 'rt-1' } }),
+    onConnectionChanged: (_listener: (event: CloudConnectionEvent) => void) => () => undefined
+  }
+  return bridge
+}
+
+/** happy-dom does not always set MessageEvent.source from the init dict. */
+function dispatchParentMessage(data: Record<string, unknown>): void {
+  const event = new MessageEvent('message', { data })
+  Object.defineProperty(event, 'source', { value: window.parent })
+  window.dispatchEvent(event)
+}
+
+afterEach(cleanup)
+
+describe('U46-4 embed 入口', () => {
+  it('C1 handoff code 在兑换前从 hash 清除；非 embed URL 不进入 embed', () => {
+    const cleared: string[] = []
+    const entry = takeCloudAdminEmbedEntry(
+      { hash: '#handoff=code-1&project=p1', search: '?embed=1' },
+      () => cleared.push('clear')
+    )
+    expect(entry).toEqual({ projectId: 'p1', handoffCode: 'code-1' })
+    expect(cleared).toEqual(['clear'])
+
+    // Reload: query still names the project, hash is already gone.
+    const reload = takeCloudAdminEmbedEntry({ hash: '', search: '?embed=1&project=p1' }, () =>
+      cleared.push('clear')
+    )
+    expect(reload).toEqual({ projectId: 'p1', handoffCode: null })
+    expect(cleared).toEqual(['clear'])
+
+    // C5: the standalone page is not embed mode.
+    expect(
+      takeCloudAdminEmbedEntry({ hash: '#handoff=c&project=p1', search: '?api=x' }, () => undefined)
+    ).toBeNull()
+  })
+
+  it('C2 兑换成功 → 自动打开项目 → ready + dirty 上报，并渲染内嵌工作区', async () => {
+    const bridge = makeBridge()
+    const posted: Record<string, unknown>[] = []
+    render(
+      <CloudApp
+        bridge={bridge}
+        embed={{ projectId: 'p1', handoffCode: 'code-1' }}
+        postToParent={(message) => posted.push(message)}
+      />
+    )
+
+    await waitFor(() => expect(bridge.handoffCalls).toEqual(['code-1']))
+    await waitFor(() => expect(bridge.openCalls).toEqual(['p1']))
+    await waitFor(() => expect(posted.some((message) => message.type === 'ready')).toBe(true))
+
+    const ready = posted.find((message) => message.type === 'ready')
+    expect(ready).toMatchObject({ source: 'orca-cloud-admin', type: 'ready', route: 'relay' })
+    expect(typeof ready?.latencyMs).toBe('number')
+    expect(posted).toContainEqual({ source: 'orca-cloud-admin', type: 'dirty', count: 0 })
+    await waitFor(() => expect(screen.getByText('payment-svc')).toBeTruthy())
+  })
+
+  it('C3 兑换 410/403/网络失败 → 登录表单 + notice，不打开项目', async () => {
+    const bridge = makeBridge({ handoffError: 'HANDOFF_GONE' })
+    render(
+      <CloudApp
+        bridge={bridge}
+        embed={{ projectId: 'p1', handoffCode: 'spent-code' }}
+        postToParent={() => undefined}
+      />
+    )
+
+    await waitFor(() =>
+      expect(screen.getByTestId('cloud-embed-notice').textContent).toContain('已过期')
+    )
+    expect(screen.getByLabelText('域账号')).toBeTruthy()
+    expect(bridge.openCalls).toEqual([])
+  })
+
+  it('C4 刷新（?embed=1&project）+ 已存会话 → 自动打开且不兑换；重渲染不双开', async () => {
+    const bridge = makeBridge({ state: SIGNED_IN })
+    const posted: Record<string, unknown>[] = []
+    const embed = { projectId: 'p1', handoffCode: null }
+    const { rerender } = render(
+      <CloudApp bridge={bridge} embed={embed} postToParent={(message) => posted.push(message)} />
+    )
+
+    await waitFor(() => expect(bridge.openCalls).toEqual(['p1']))
+    await waitFor(() => expect(posted.some((message) => message.type === 'ready')).toBe(true))
+    expect(bridge.handoffCalls).toEqual([])
+
+    rerender(
+      <CloudApp
+        bridge={bridge}
+        embed={{ projectId: 'p1', handoffCode: null }}
+        postToParent={(message) => posted.push(message)}
+      />
+    )
+    await waitFor(() => expect(screen.getByText('payment-svc')).toBeTruthy())
+    expect(bridge.openCalls).toEqual(['p1'])
+    expect(posted.filter((message) => message.type === 'ready')).toHaveLength(1)
+  })
+
+  it('父窗口 close 收尾并回 closed；logout 走 bridge.logout', async () => {
+    const bridge = makeBridge()
+    const posted: Record<string, unknown>[] = []
+    render(
+      <CloudApp
+        bridge={bridge}
+        embed={{ projectId: 'p1', handoffCode: 'code-1' }}
+        postToParent={(message) => posted.push(message)}
+      />
+    )
+    await waitFor(() => expect(posted.some((message) => message.type === 'ready')).toBe(true))
+
+    act(() => dispatchParentMessage({ type: 'close' }))
+    await waitFor(() => expect(bridge.closeCalls).toEqual(['p1']))
+    await waitFor(() =>
+      expect(posted).toContainEqual({ source: 'orca-cloud-admin', type: 'closed' })
+    )
+
+    act(() => dispatchParentMessage({ type: 'logout' }))
+    await waitFor(() => expect(bridge.logoutCalls).toBe(1))
+  })
+
+  it('C5 非 embed 模式零变化：工作台照常渲染，无自动打开、无消息上报', async () => {
+    const bridge = makeBridge({ state: SIGNED_IN })
+    const posted: Record<string, unknown>[] = []
+    render(<CloudApp bridge={bridge} postToParent={(message) => posted.push(message)} />)
+
+    await waitFor(() => expect(screen.getByText('工作台')).toBeTruthy())
+    expect(bridge.openCalls).toEqual([])
+    expect(bridge.handoffCalls).toEqual([])
+    expect(posted).toEqual([])
+  })
+})
