@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import type { CloudRetryPrepareResult } from '../../shared/cloud-platform-ipc'
 import { readEnvironmentStore } from '../../shared/runtime-environment-store-file'
 import { toRuntimeExecutionHostId } from '../../shared/execution-host'
 import type { Repo } from '../../shared/repo-types'
@@ -58,7 +59,14 @@ describe('M65 项目归档闭环（真实平台 + 真实主机 + 真实 TLS Runt
       throw new Error(created.code)
     }
     const projectId = created.projectId
-    const environmentId = created.environment.environmentId
+    // U44: creation reports "preparing"; drive the kick clone, then prepare.
+    await harness.beatUntilReady(projectId)
+    const retried = await harness.retryPrepare(projectId)
+    expect(retried.ok, JSON.stringify(retried)).toBe(true)
+    if (!retried.ok || !('environment' in retried)) {
+      throw new Error('retry did not return an environment')
+    }
+    const environmentId = retried.environment.environmentId
     expect(environmentFor(projectId)?.id).toBe(environmentId)
 
     const opened = await harness.openWorkspace(projectId)
@@ -122,6 +130,12 @@ describe('M65 项目归档闭环（真实平台 + 真实主机 + 真实 TLS Runt
     })
     const oldCheckoutSurvived = existsSync(row.path)
 
+    let rebornPrepared: CloudRetryPrepareResult | null = null
+    if (reborn.ok) {
+      await harness.beatUntilReady(reborn.projectId)
+      rebornPrepared = await harness.retryPrepare(reborn.projectId)
+    }
+
     harness.saveEvidence('m65-archive.json', {
       projectId,
       environmentId,
@@ -132,6 +146,7 @@ describe('M65 项目归档闭环（真实平台 + 真实主机 + 真实 TLS Runt
       sidecarEnvironmentRemoved: environmentFor(projectId) === undefined,
       oldCheckoutSurvived,
       reborn,
+      rebornPrepared,
       timestamp: new Date().toISOString()
     })
 
@@ -140,7 +155,12 @@ describe('M65 项目归档闭环（真实平台 + 真实主机 + 真实 TLS Runt
     expect(reborn.ok, JSON.stringify(reborn)).toBe(true)
     if (reborn.ok) {
       expect(reborn.projectId).not.toBe(projectId)
-      expect(reborn.environment.projectRoot).toBe(row.path)
+      expect(rebornPrepared).toMatchObject({ ok: true })
+      if (rebornPrepared?.ok && 'environment' in rebornPrepared) {
+        expect(rebornPrepared.environment.projectRoot).toBe(row.path)
+      } else {
+        throw new Error('reborn project did not return an environment')
+      }
     }
   })
 })

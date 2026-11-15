@@ -51,6 +51,11 @@ export const NODE_RUNTIME_INCLUDE = [
   'src/main/cloud-platform/cloud-parallel-prepare.test.ts',
   // Why: M58's recovery retry now waits for the same kick clone over TLS.
   'src/main/cloud-platform/cloud-provision-recovery.test.ts',
+  // Why: U60 - these suites now beat the kick clone to ready, then connect over
+  // the same throwaway-certificate TLS runtime (bun's ws cannot).
+  'src/main/cloud-platform/cloud-project-archive.test.ts',
+  'src/main/cloud-platform/cloud-session-renewal.test.ts',
+  'src/main/cloud-platform/cloud-session-restart.test.ts',
   // Why: M57 is the same real-platform + TLS-runtime + git stack, now driven by
   // the U37 kick, so it belongs in the node-runtime pool with its siblings.
   'src/main/cloud-platform/cloud-project-provisioning.test.ts',

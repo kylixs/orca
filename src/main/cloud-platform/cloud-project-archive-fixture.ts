@@ -8,7 +8,8 @@ import type {
   CloudCreateProjectInput,
   CloudCreateProjectResult,
   CloudOpenResult,
-  CloudProjectRegistration
+  CloudProjectRegistration,
+  CloudRetryPrepareResult
 } from '../../shared/cloud-platform-ipc'
 import { CLOUD_PLATFORM_IPC } from '../../shared/cloud-platform-ipc'
 import { readArrayValue, readField, readString } from '../../shared/json-fields'
@@ -25,6 +26,7 @@ import {
 } from '../startup/cloud-runtime-admission'
 import { registerCloudPlatformHandlers } from '../ipc/cloud-platform'
 import { CloudSessionService } from './cloud-session-service'
+import { createCloudProvisionAssignmentExecutor } from './cloud-provision-assignment'
 import { setActiveCloudSession } from './cloud-runtime-session'
 import {
   REPO_ROOT,
@@ -60,6 +62,9 @@ export type ArchiveHarness = {
   createProject: (input: CloudCreateProjectInput) => Promise<CloudCreateProjectResult>
   openWorkspace: (projectId: string) => Promise<CloudOpenResult>
   archiveProject: (projectId: string) => Promise<CloudArchiveProjectResult>
+  retryPrepare: (projectId: string) => Promise<CloudRetryPrepareResult>
+  /** Beats until the kick clone reports the project ready (U37/U44). */
+  beatUntilReady: (projectId: string) => Promise<void>
   registerProjects: () => Promise<CloudProjectRegistration>
   adminListProjects: () => Promise<{ id: string; key: string; status: string }[]>
   adminGetProject: (id: string) => Promise<{ status: number; body: unknown }>
@@ -165,6 +170,14 @@ export async function startArchiveHarness(
   })
   admission.bindRuntime(cloud.runtime)
   cloud.runtime.setCloudProvisionReporter((report) => admission.client!.reportProvisioned(report))
+  // U37/U44: the heartbeat assignment clones the repo before any ticket exists.
+  admission.client!.onProvisionAssignment(
+    createCloudProvisionAssignmentExecutor({
+      provision: cloud.runtime.provisionCloudProject.bind(cloud.runtime),
+      report: (report) => admission.client!.reportProvisioned(report),
+      inMaintenance: () => admission.client!.snapshot().maintenance !== null
+    })
+  )
   await admission.client!.refresh()
 
   const adminFetch = (path: string, init: RequestInit = {}): Promise<Response> =>
@@ -222,6 +235,25 @@ export async function startArchiveHarness(
         null,
         projectId
       ),
+    retryPrepare: async (projectId) =>
+      requireHandler<CloudRetryPrepareResult>(ipcHandlers, CLOUD_PLATFORM_IPC.retryPrepare)(
+        null,
+        projectId
+      ),
+    beatUntilReady: async (projectId) => {
+      const deadline = Date.now() + 60_000
+      while (Date.now() < deadline) {
+        await admission.client!.refresh()
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        await admission.client!.refresh()
+        const detail = await adminFetch(`/v1/projects/${projectId}`)
+        const status = readString(await detail.json(), 'status')
+        if (status === 'ready') {
+          return
+        }
+      }
+      throw new Error(`project ${projectId} never became ready`)
+    },
     registerProjects: async () =>
       parseCloudProjectRegistration(
         await requireHandler(ipcHandlers, CLOUD_PLATFORM_IPC.registerProjects)(null)

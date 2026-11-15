@@ -101,6 +101,8 @@ describe('桌面重启后恢复云会话（真实平台 + 真实主机/TLS/git�
     const deviceId = first.currentDeviceId
     expect(deviceId.length).toBeGreaterThan(0)
     note('login', first, loggedIn.status)
+    // U44: wait for the kick clone, so connect is not blocked by the U20 gate.
+    await harness.beatUntilReady(harness.projectId)
 
     await sleep(ACCESS_TTL_MS + 300)
     const firstEnsure = await first.ensureWorkspace(harness.projectId)

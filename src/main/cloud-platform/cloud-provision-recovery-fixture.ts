@@ -66,6 +66,8 @@ export type RecoveryHarness = {
   adminFetch: (path: string, init?: RequestInit) => Promise<Response>
   getProject: (id: string) => Promise<unknown>
   beat: () => Promise<void>
+  /** Beats until the kick clone reports the project ready (U37/U44). */
+  beatUntilReady: (projectId: string) => Promise<void>
   registerProjects: () => Promise<CloudProjectRegistration>
   retryPrepare: (id: string) => Promise<unknown>
   saveEvidence: (file: string, content: unknown) => void
@@ -252,6 +254,19 @@ export async function startRecoveryHarness(
       await admission.client!.refresh()
       await new Promise((resolve) => setTimeout(resolve, 50))
       await admission.client!.refresh()
+    },
+    beatUntilReady: async (projectId) => {
+      const deadline = Date.now() + 60_000
+      while (Date.now() < deadline) {
+        await admission.client!.refresh()
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        await admission.client!.refresh()
+        const detail = await adminFetch(`/v1/projects/${projectId}`)
+        if (readString(await detail.json(), 'status') === 'ready') {
+          return
+        }
+      }
+      throw new Error(`project ${projectId} never became ready`)
     },
     registerProjects: async () =>
       parseCloudProjectRegistration(

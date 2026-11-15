@@ -77,6 +77,8 @@ describe('云端会话自动续期（真实平台短 TTL + 真实主机/TLS/git�
   it('M61-1 令牌过期后 ensureWorkspace 内部刷新成功；会话被作废后回到签退并推送事件', async () => {
     const before = harness.session.authTokenFingerprints()
     expect(before).not.toBeNull()
+    // U44: wait for the kick clone, so connect is not blocked by the U20 gate.
+    await harness.beatUntilReady(harness.projectId)
 
     // Why past the real 1.2s TTL: the client's second-granularity estimate still
     // says valid, so the first request must recover through the 401 path.
