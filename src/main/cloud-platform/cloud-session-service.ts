@@ -123,9 +123,10 @@ export class CloudSessionService {
     return (this.restorePromise ??= this.performRestore())
   }
 
-  /** The current state once the background restore has settled (immediate if not started). */
+  /** The current state once the background restore has settled (immediate if none is pending). */
   whenRestored(): Promise<CloudSessionState> {
-    return this.restorePromise ?? Promise.resolve(this.state)
+    // Why re-read: a settled restore must not replay a state revoked since boot.
+    return (this.restorePromise ?? Promise.resolve()).then(() => this.state)
   }
 
   private async performRestore(): Promise<CloudSessionState> {

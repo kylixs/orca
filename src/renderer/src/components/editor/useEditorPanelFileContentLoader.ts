@@ -24,6 +24,7 @@ import { findRestoredEditorWorkspaceRuntimeOwner } from './restored-editor-works
 import type { RuntimeWorkspaceFileRoute } from '@/lib/runtime-workspace-file-route'
 import { editorTabFileAccess } from '@/lib/local-file-access'
 import { isFloatingWorkspaceId } from '../../../../shared/floating-workspace-worktree'
+import { guardEditorFileContent, isKnownBinaryEditorFile } from './editor-file-content-binary-guard'
 
 const inFlightFileReads = new Map<string, InFlightContentRead<FileContent>>()
 
@@ -89,6 +90,13 @@ export function useEditorPanelFileContentLoader({
       outstandingFileReadsRef.current[id] = generation
       let readConnectionId: string | undefined
       try {
+        // Why before the read: a known binary must never round-trip its bytes
+        // through a host that may only check its own extension allowlist.
+        if (isKnownBinaryEditorFile(filePath)) {
+          delete fileLoadRetryAttemptsRef.current[id]
+          setFileContents((prev) => ({ ...prev, [id]: { content: '', isBinary: true } }))
+          return
+        }
         const resolvedConnectionId = getConnectionIdForFile(worktreeId ?? null, filePath)
         const connectionId = resolvedConnectionId ?? undefined
         const restoredOpenFile = openFilesRef.current.find((file) => file.id === id)
@@ -241,8 +249,12 @@ export function useEditorPanelFileContentLoader({
           useAppStore.getState().setCsvPreviewOnly(id, Boolean(result.csvPreview))
         }
         delete fileLoadRetryAttemptsRef.current[id]
-        setFileContents((prev) => ({ ...prev, [id]: result }))
-        stampCleanTabDiskBaseline(id, result)
+        // Why: a host can answer a text read with raw NUL bytes when its own
+        // extension allowlist missed the file; the desktop editor must still
+        // refuse to mount those bytes as an editable buffer.
+        const guarded = guardEditorFileContent(result)
+        setFileContents((prev) => ({ ...prev, [id]: guarded }))
+        stampCleanTabDiskBaseline(id, guarded)
       } catch (err) {
         if (fileReadGenerationRef.current[id] !== generation) {
           return

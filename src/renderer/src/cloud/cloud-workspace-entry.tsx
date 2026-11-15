@@ -17,6 +17,7 @@ import {
 } from './cloud-workspace-banners'
 import {
   openCreatedCloudProject,
+  refreshCloudProjectWorktrees,
   rendererRepoPorts,
   selectInitialWorktree
 } from './cloud-entry-workspace-sync'
@@ -117,6 +118,17 @@ export function useCloudWorkspaceEntry(
         }
         for (const failed of result.failed) {
           console.warn('[cloud] could not register repo', failed.projectId)
+        }
+        // Why forced: after a restart the persisted rows can be stale, and the
+        // host's real checkout list is what keeps the sidebar out of fallback.
+        await refreshCloudProjectWorktrees({
+          environments: preparedEnvironments,
+          repos: useAppStore.getState().repos,
+          fetchWorktrees: (repoId, options) =>
+            useAppStore.getState().fetchWorktrees(repoId, options)
+        })
+        if (cancelled) {
+          return
         }
         const first = projects[0]
         if (!first) {

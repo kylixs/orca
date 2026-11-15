@@ -1,6 +1,7 @@
 import type { CloudOpenResult, CloudProjectEnvironment } from '../../../shared/cloud-platform-ipc'
 import { selectCloudInitialWorktreeId } from '../../../shared/cloud-initial-worktree'
-import { getRepoExecutionHostId } from '../../../shared/execution-host'
+import { getRepoExecutionHostId, type ExecutionHostId } from '../../../shared/execution-host'
+import type { Repo } from '../../../shared/repo-types'
 import { useAppStore } from '@/store'
 import { getRepoHostIdentity } from '@/store/slices/repo-host-identity'
 import {
@@ -71,6 +72,39 @@ export async function openCreatedCloudProject(args: {
     projectId: args.projectId,
     isCancelled: () => false
   })
+}
+
+/**
+ * After sign-in or a process restart the persisted worktree rows may predate the
+ * host's current checkouts; re-listing per project keeps the sidebar from
+ * degrading to a fallback row whose paths sit outside the repo root.
+ */
+export async function refreshCloudProjectWorktrees(args: {
+  environments: readonly CloudProjectEnvironment[]
+  repos: readonly Repo[]
+  fetchWorktrees: (
+    repoId: string,
+    options: { executionHostId: ExecutionHostId }
+  ) => Promise<unknown>
+}): Promise<void> {
+  for (const environment of args.environments) {
+    const target = cloudProjectRepoTarget(environment)
+    const repo = args.repos.find(
+      (row) => getRepoExecutionHostId(row) === target.executionHostId && row.path === target.path
+    )
+    if (!repo) {
+      continue
+    }
+    try {
+      await args.fetchWorktrees(repo.id, { executionHostId: target.executionHostId })
+    } catch (error) {
+      // Why continue: one unreachable host must not block the other projects.
+      console.warn(
+        '[cloud] could not refresh project worktrees',
+        error instanceof Error ? error.message : String(error)
+      )
+    }
+  }
 }
 
 /**
