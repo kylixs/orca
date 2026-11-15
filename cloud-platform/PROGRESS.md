@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### U46 批审计 PASS（有条件，2026-11-15）+ U51 派修
+
+审计（test-reports/u46-batch-audit.md）：12 提交逐令 PASS、**0 blocker/2 major/7 minor/4 info**——三操作语义与用户裁定一致、安全面无漏洞级（postMessage 三重校验/HTML sandbox/drawio 拒三方脚本/worktree 边界）、复用纪律与兼容矩阵成立；静态变异抽查均有真实断言可捕获。2 major=U51（F-01 dirty 关闭无确认/F-02 ready 超时缺失败态重试）**修复令已派**；minor 7 归并 U52⚪（P2 打磨）；info 记档。**待 U51 落地+复验后宣告**。
+
 ### 终态双线旅程第二轮全绿（2026-11-15，U46 合入后 HEAD=d2dbff30598）
 
 A 线 1/1（9 步）+B 线 2/2（10 步，U35 钉恰增 1）+U46 抽查（真栈 7/7+cloud-admin-session 4/4+web-project 双套件 16/16）+U49 护栏验证（两入口 chunk 2770B/2139B 零静态导入者、U36 仪表标记在位）——**红项无**（evidence/final-journey-verification-2/）。待 U46 批审计回收后宣告。
