@@ -1,0 +1,43 @@
+# 开源项目 LDAP 分组准入调研（对照表 + 共性归纳 + 本平台建议）
+
+> 目的：为 `ORCA_CLOUD_LDAP_REQUIRED_GROUP`（单组准入）选型提供业界对照。输入语义 = `ldap-group-authz-design.md` 作废后的用户澄清：**多系统共用一个 LDAP，每系统一个准入分组，加入分组才能登录本系统；分组是登录门槛，不是组→角色映射**（角色由平台用户管理页管，见 U67）。
+> 方法：仅检索各项目官方文档（链接见表后），2026-11-16。
+
+## 1. 对照表
+
+| 项目 | 机制一句话 | 关键配置键 | 不在组时的登录行为 | 组名匹配语义 | 可借鉴点 |
+| --- | --- | --- | --- | --- | --- |
+| **Gitea** | 登录认证源两层：User Filter 决定"谁能登录"（可直接内嵌 memberOf 条件）；另可选"Verify group membership"独立组检查 | `User Filter`（如 `(&(objectClass=posixAccount)(memberOf=CN=user-group,…)(uid=%[1]s))`）；组检查四键：`Group Search Base DN` + `Group Attribute Containing List Of Users`（memberUid/member）+ `User Attribute Listed in Group`（uid/dn）+ 组过滤器 `(|(cn=gitea_users)(cn=admins))`；`Admin Filter` 仅授管理员不拒登录 | filter 未命中 = 找不到用户记录 = 登录失败（含组检查未命中）；Admin Filter 命中只给 admin 位 | 组检查用**用户↔组属性互查**（posixGroup 用 uid 反查，AD 用 dn），组过滤器按 **CN** 写 | ①不依赖 memberOf（posixGroup 无该属性也能查）的双向属性设计；②组过滤用 CN 列表，简单直白 |
+| **GitLab** | `user_filter`（全版本免费）= 登录准入 filter；group sync（**Premium**）= 组→GitLab 群角色映射，不拒登录 | `user_filter`（RFC 4515，如 `(memberOf=cn=gitlab,ou=groups,dc=…)`，支持 AD 嵌套规则 `1.2.840.113556.1.4.1941`）；同步键：`group_base`、`admin_group`、`audit_group`、`external_groups`；映射键 `groups:` + `group_access:`（Developer/Maintainer/Owner） | filter 外用户视为 inactive：登录被拒、置 `ldap_blocked`、"Unable to sign in using any authentication provider"，直到重新入组 | `admin_group`/`audit_group`/`external_groups` 只填 **CN**（文档明示不许填 DN）；user_filter 内部才用完整 DN | ①准入与角色映射**分键分层**，准入层免费、角色层付费——印证"准入"是基础能力；②移出组即 `ldap_blocked` 全端点禁登的状态机先例 |
+| **Jenkins** | 原生无登录准入：LDAP 插件只管认证（Security Realm），准入靠授权层变相实现 | LDAP 插件：`User search filter`（`uid={0}`）、`Group membership filter`（默认 `\|(member={0})(uniqueMember={0})(memberUid={1})`，`{0}`=用户 DN、`{1}`=用户名）、`Group search base`；Role-based Strategy 插件：角色 Assign 给组，Item 角色带 regex `Pattern` | 登录本身能成功；无角色用户落 `anonymous`/`authenticated` 内建组，未授权即全站 403（变相准入，体验差） | 组以 **CN** 名暴露给授权插件（1.404 起无前缀、无大写；大小写策略可选） | ①`{0}`=DN/`{1}`=用户名的组成员 filter 占位符规范；②反例：准入放在授权层会导致"登得进但处处 403"，不如认证时拒 |
+| **Keycloak** | 联盟只同步组（group-ldap-mapper），**无原生"不入组拒登录"**——社区公认的已知缺口 | `group-ldap-mapper`（Groups DN / Group Name LDAP Attribute / Membership LDAP Attribute）；组进 token 靠 groups claim mapper；门禁要靠自定义 conditional flow 扩展或应用侧校验 claim | 默认所有导入用户可登录所有应用；拒绝须应用侧/代理侧（如 nginx auth_request）自查 groups claim | 组同步后按 Keycloak 组名匹配；LDAP 侧用 Membership LDAP Attribute | 反面印证：原生 IdP 不做系统级准入，**准入放在每个子系统自己门口**是更普遍的分工 |
+| **Grafana** | LDAP 登录 + `group_mappings` 组→Org 角色映射（Admin/Editor/Viewer），映射**不拒登录** | `[[servers.group_mappings]]`：`group_dn`（可 `"*"` 通配兜底）+ `org_role`（大小写敏感）+ `org_id` + `grafana_admin`；`skip_org_role_sync` 可完全停掉角色同步改平台内管理；`allow_sign_up` 控制建号 | 认证与角色同步分离：无映射命中仍登录成功，只是无角色（文档用 `"*"→Viewer` 兜底）；`skip_org_role_sync=true` 时角色**完全由平台内手工管理** | `group_dn` 按**完整 DN** 精确匹配（唯一模糊项是 `"*"`） | ①`skip_org_role_sync` 键名/语义 ≈ 本平台"角色与 LDAP 解耦"的现成先例；②首个命中生效、按文件序优先 |
+| **Superset/Airflow（FAB）** | `AUTH_LDAP_SEARCH_FILTER` 即准入 filter（文档原话"Filter or limit allowable users… only the people on your team"）；`AUTH_ROLES_MAPPING` 组→FAB 角色 | `AUTH_LDAP_SEARCH_FILTER`（如 `(memberOf=cn=group name,OU=type,dc=ex,cn=com)`）+ `AUTH_LDAP_SEARCH`/`AUTH_LDAP_BIND_USER`；映射键：`AUTH_ROLES_MAPPING`（`{"cn=User,ou=groups,dc=example,dc=com": ["User"]}`）+ `AUTH_LDAP_GROUP_FIELD`（默认 memberOf）+ `AUTH_ROLES_SYNC_AT_LOGIN` + `AUTH_USER_REGISTRATION_ROLE` | search filter 未命中 = 找不到记录 = 登录失败；若放行注册，未命中角色映射的用户落 `AUTH_USER_REGISTRATION_ROLE` 兜底角色 | `AUTH_ROLES_MAPPING` 键为**完整组 DN**（经 `AUTH_LDAP_GROUP_FIELD` 取值） | ①准入 filter 与角色映射是两套正交配置，同一个项目同时提供——业界标准双轨；②`AUTH_ROLES_SYNC_AT_LOGIN`=登录时同步组角色的开关命名 |
+
+来源：[Gitea Authentication](https://docs.gitea.com/1.25/administration/authentication) · [GitLab LDAP admin](https://docs.gitlab.com/administration/auth/ldap/) · [Jenkins LDAP plugin](https://plugins.jenkins.io/ldap/) / [Role Strategy plugin](https://plugins.jenkins.io/role-strategy/) · [Keycloak Server Admin](https://www.keycloak.org/docs/latest/server_admin/index.html)（+forum 确认无原生门禁）· [Grafana LDAP](https://grafana.com/docs/grafana/latest/setup-grafana/configure-security/configure-authentication/ldap/) · [Flask-AppBuilder config](https://flask-appbuilder.readthedocs.io/en/latest/config.html)
+
+## 2. 共性归纳
+
+业界「分组准入」三形态，且**前两形态在同一项目里普遍并存、正交**（Gitea/GitLab/FAB 三家都同时提供）：
+
+| 形态 | 做法 | 使用者 | 适用场景 |
+| --- | --- | --- | --- |
+| **A. 准入过滤**（唯一原生"拒绝登录"） | 把组条件并入用户查找 filter（memberOf 最常见），filter 未命中 = 无此用户 = 认证失败 | Gitea User Filter、GitLab `user_filter`、FAB `AUTH_LDAP_SEARCH_FILTER` | 单系统单组准入——正是本平台需求 |
+| **B. 登录后组→角色映射**（从不拒登录） | 登录成功后查组，映射成平台角色/Org 角色 | Grafana group_mappings、GitLab group sync（Premium）、FAB AUTH_ROLES_MAPPING、Jenkins role-strategy、Gitea Admin Filter/team map | 组决定**权限分层**，不决定"能不能进来" |
+| **C. 无原生门禁** | 组只同步进 token，准入由应用/代理侧自查 | Keycloak（需自定义 flow 或应用侧 claim 校验） | 中心化 IdP 不做系统准入的分工模式 |
+
+共识细节：①组名匹配两派——**CN**（Gitea 组过滤、GitLab admin_group、Jenkins）与**完整 DN**（GitLab user_filter 内、Grafana、FAB）；②未设置过滤 = 全员可登录（fail-open on unset，设置后 fail-closed）是默认语义；③移出组的善后：GitLab 最严（`ldap_blocked` 全端点禁登），多数项目只影响下次登录。
+
+## 3. 对本平台的建议
+
+**推荐形态：A（单组准入）+ 显式解耦角色** —— `ORCA_CLOUD_LDAP_REQUIRED_GROUP` 采用 Gitea/GitLab 形态，**不引入** Grafana 形态的组→角色映射（角色已由 U67 用户管理页管，平台需求明示分组只做登录门槛；Grafana 的 `skip_org_role_sync=true` 正是"映射关闭、平台内管角色"的同款形态，可引为先例）。
+
+建议语义（供 `ldap-group-admission-design.md` 对齐）：
+
+1. **配置收窄**：单个组名（CN）值，不做自由 filter 表达式（GitLab user_filter/FAB 的任意 filter 能力过强、易误配；我们单组名单值即可，内部展开为 memberOf/member 查询）。命名对齐现网 `ORCA_CLOUD_LDAP_*` 前缀。
+2. **匹配语义**：优先 memberOf（AD/OpenLDAP 均常用）；需兼容 posixGroup（无 memberOf）时退化为 Gitea 形态的组对象 member 反查——设计文档定死所选目录形态其一即可，不做双栈。
+3. **开关语义**：未设置 = 不启用准入（现网/开发环境全放行）；设置后 fail-closed。与 Gitea/GitLab/FAB 默认一致。
+4. **拒绝行为**：凭据验证通过但组检查未命中 → 登录拒绝 + `ldap_denied` 类审计事件（平台有审计纪律，应比 Gitea 的通用失败更可诊断）；登录页提示「账号未加入平台准入组」明示原因（内网管理台场景，枚举风险低）。
+5. **移出组善后**：下次登录即拒（各家一致）；**既有会话/凭证是否 ≤60s 撤销**（FR-1.7 语义）与 GitLab `ldap_blocked` 先例是本设计需裁定的差异点——一期可只做登录时判定，不动存量会话。
+6. **角色解耦的对齐点**：`server.ts:1703-1712` 现有「`platform-admins` 组首登 seed 平台管理员」规则与新语义（LDAP 不供角色）冲突——需裁定废除，或保留为首登引导（U67 `roleOverride` 已保证覆盖优先、重登不回灌）。
+7. **不引定时全量同步**：Gitea 的 24h cron / GitLab 同步 job 是大规模形态；本平台登录时判定已够（U67 非目标已裁定）。
