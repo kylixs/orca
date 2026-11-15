@@ -214,3 +214,33 @@ test('same journey file runs injected and standalone', async (t) => {
   assert.equal(payload.mode, 'standalone')
   assert.equal(payload.result.crumbs, '工作台')
 })
+
+test('--ensure-env exits 2 when the platform is unreachable', async (t) => {
+  const evidenceDir = mkdtempSync(path.join(tmpdir(), 'ps1-ensure-env-'))
+  t.after(() => rmSync(evidenceDir, { recursive: true, force: true }))
+
+  const result = await new Promise((resolve) => {
+    const child = spawn(
+      process.execPath,
+      [
+        SERVER,
+        '--port',
+        '0',
+        '--base',
+        'https://127.0.0.1:1',
+        '--evidence-dir',
+        evidenceDir,
+        '--ensure-env'
+      ],
+      { stdio: ['ignore', 'pipe', 'pipe'] }
+    )
+    let stderr = ''
+    child.stderr.on('data', (chunk) => (stderr += chunk))
+    child.once('exit', (code) => resolve({ code, stderr }))
+  })
+
+  assert.equal(result.code, 2)
+  assert.match(result.stderr, /base unreachable/)
+  assert.match(result.stderr, /--ensure-env/)
+  assert.equal(existsSync(path.join(evidenceDir, 'server.json')), false)
+})

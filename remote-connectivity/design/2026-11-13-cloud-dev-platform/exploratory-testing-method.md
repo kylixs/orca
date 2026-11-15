@@ -411,6 +411,7 @@ defect-ledger 登记 U#（未修/在途/已修复）
 - HTTP 控制面：`/tabs`、`/tabs/:id/state|screenshot|evaluate`、`/profiles/:name/login`、`/scripts`、`/runs`、`/prototype/inventory`、`/compare/prototype`；WS 推送 `run.started/step/log/screenshot/run.result`。
 - 单文件脚本两模式共用：`POST /runs {mode:"explore"}` 注入常驻 `ui/page`；`node journey.mjs` 由 `runIfMain` 启动临时 Chromium，执行同一个 `run`。
 - 原型对照：同一 DOM 清点器双轮（prototype.html `file://` + 实际页，admin/developer 两轮），输出 `diff.json` + `report.md` + 并排截图。
+- **落地状态**：Playwright Server 已落地（PS-1 核心、PS-2 扩展函数、PS-3 原型对照、PS-4 示例/文档），入口 `cloud-platform/scripts/playwright-server/README.md`。
 
 ### 9.2 当前可用的探索入口
 

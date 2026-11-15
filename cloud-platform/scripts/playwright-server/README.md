@@ -1,4 +1,4 @@
-# Playwright Server (PS-1 core + PS-2 extensions + PS-3 prototype diff)
+# Playwright Server (final: PS-1 core + PS-2 extensions + PS-3 prototype diff + PS-4 examples)
 
 Resident, headless-browser test infrastructure for the cloud platform. One Chromium
 process holds one `BrowserContext` per identity (`admin`, `zhangsan`, `lisi`), a tab
@@ -23,14 +23,20 @@ node cloud-platform/scripts/playwright-server/server.mjs \
 
 Flags / env:
 
-| Flag             | Env                                               | Default                                   |
-| ---------------- | ------------------------------------------------- | ----------------------------------------- |
-| `--port`         | `ORCA_PW_SERVER_PORT`                             | `9223` (`0` = random)                     |
-| `--base`         | `ORCA_QA_BASE`                                    | `https://127.0.0.1:18787`                 |
-| `--evidence-dir` | `ORCA_PW_EVIDENCE_DIR`                            | `cloud-platform/evidence/ps1-server-core` |
-| `--state-dir`    | `ORCA_PW_STATE_DIR`                               | `<evidence-dir>/state`                    |
-| `--token`        | `ORCA_PW_SERVER_TOKEN`                            | random per start                          |
-| `--scripts-dir`  | `ORCA_PW_SERVER_SCRIPTS_DIRS` (`:`/`;` separated) | adds script roots                         |
+| Flag             | Env                                               | Default                                    |
+| ---------------- | ------------------------------------------------- | ------------------------------------------ |
+| `--port`         | `ORCA_PW_SERVER_PORT`                             | `9223` (`0` = random)                      |
+| `--base`         | `ORCA_QA_BASE`                                    | `https://127.0.0.1:18787`                  |
+| `--evidence-dir` | `ORCA_PW_EVIDENCE_DIR`                            | `cloud-platform/evidence/ps1-server-core`  |
+| `--state-dir`    | `ORCA_PW_STATE_DIR`                               | `<evidence-dir>/state`                     |
+| `--token`        | `ORCA_PW_SERVER_TOKEN`                            | random per start                           |
+| `--scripts-dir`  | `ORCA_PW_SERVER_SCRIPTS_DIRS` (`:`/`;` separated) | adds script roots                          |
+| `--ensure-env`   | —                                                 | probe `--base` and exit 2 when unreachable |
+
+On start the server probes `--base`. If the platform is unreachable it prints a
+warning with the `local-env-reseed.mjs` command and keeps running; with
+`--ensure-env` the same probe is fatal (exit 2). The probe only checks — it never
+rebuilds the environment or restarts a running platform.
 
 On listen the server writes `<evidence-dir>/server.json` (mode 0600) with
 `{pid,port,url,token,baseUrl,startedAt}`. `GET /status` is anonymous; every other
@@ -65,15 +71,16 @@ TOKEN=$(node -p "require('./$E').token")
 PORT=$(node -p "require('./$E').port")
 H="authorization: Bearer $TOKEN"
 
-curl -s localhost:$PORT/status
-curl -s -H "$H" -H 'content-type: application/json' -d '{"profile":"zhangsan","url":"https://127.0.0.1:18787/"}' localhost:$PORT/tabs
+# Use 127.0.0.1, not localhost: the Host header check rejects other names.
+curl -s 127.0.0.1:$PORT/status
+curl -s -H "$H" -H 'content-type: application/json' -d '{"profile":"zhangsan","url":"https://127.0.0.1:18787/"}' 127.0.0.1:$PORT/tabs
 curl -s -H "$H" -H 'content-type: application/json' \
   -d '{"script":"example-journey.mjs","params":{"role":"zhangsan"}}' \
-  localhost:$PORT/tabs/t1/execute
+  127.0.0.1:$PORT/tabs/t1/execute
 curl -s -H "$H" -H 'content-type: application/json' -d '{"fullPage":true}' \
-  localhost:$PORT/tabs/t1/screenshot
-curl -s -X DELETE -H "$H" localhost:$PORT/tabs/t1
-curl -s -X POST -H "$H" localhost:$PORT/shutdown
+  127.0.0.1:$PORT/tabs/t1/screenshot
+curl -s -X DELETE -H "$H" 127.0.0.1:$PORT/tabs/t1
+curl -s -X POST -H "$H" 127.0.0.1:$PORT/shutdown
 ```
 
 ## Two-layer scripts
@@ -127,7 +134,7 @@ Identity credentials default to the reseed demo accounts (`admin/Adm1n!`,
 Successful logins persist `storageState` to `<state-dir>/<profile>.json`, so a
 restart keeps each identity logged in.
 
-## Extended function library (PS-2)
+## Extended function library (16 helpers from PS-2, plus PS-3 compare)
 
 `ui-extensions.mjs` attaches to the same `ui` namespace in both modes. Extraction
 comes first (exploratory-testing-method §9b): read region text/state and assert,
@@ -175,6 +182,37 @@ curl .../tabs/t1/execute -d '{"script":"extension-demo.mjs","params":{"role":"ad
 The demo extracts workbench text/state, asserts, opens a project detail dialog,
 extracts the table, then inventories controls and layout.
 
+### Examples (PS-4, both modes)
+
+| File                     | Mode        | What it shows                                                                 |
+| ------------------------ | ----------- | ----------------------------------------------------------------------------- |
+| `example-journey.mjs`    | smoke       | minimal login → workbench → assert → return evidence                          |
+| `extension-demo.mjs`     | smoke       | extraction-first loop: extractText/State → assert → detail → extractTable     |
+| `example-explore.mjs`    | exploration | `discover` → `extractText`/`extractState` → findings-shaped `{meta,findings}` |
+| `example-regression.mjs` | regression  | login → open project detail → assertion chain; exits 1 on first failure       |
+
+`example-explore.mjs` records non-blocking observations as findings (M116 shape:
+`id/severity/page/title/steps/expected/actual/evidence`) instead of aborting.
+`example-regression.mjs` throws on the first broken assertion, so standalone
+`node` exit codes make it a CI gate.
+
+```bash
+# exploration, standalone
+ORCA_QA_BASE=https://127.0.0.1:18787 \
+ORCA_PW_EVIDENCE_DIR=cloud-platform/evidence/ps4-final/standalone \
+node cloud-platform/scripts/playwright-server/example-explore.mjs
+
+# regression, standalone (exit 1 = first failed step in error.failedStep)
+ORCA_QA_BASE=https://127.0.0.1:18787 \
+ORCA_PW_EVIDENCE_DIR=cloud-platform/evidence/ps4-final/standalone \
+node cloud-platform/scripts/playwright-server/example-regression.mjs
+
+# server mode (same files)
+curl -s -H "$H" -H 'content-type: application/json' \
+  -d '{"script":"example-explore.mjs","params":{"role":"admin"}}' \
+  127.0.0.1:$PORT/tabs/t1/execute
+```
+
 ## Prototype comparison (PS-3)
 
 `prototype-inventory.mjs` runs **one** browser-side extractor over both
@@ -191,11 +229,11 @@ and the writer in `prototype-report.mjs`.
 
 `prototype-diff.mjs` then detects three classes:
 
-| Class  | Comparator                                                                 | Severity |
-| ------ | -------------------------------------------------------------------------- | -------- |
+| Class  | Comparator                                                                  | Severity |
+| ------ | --------------------------------------------------------------------------- | -------- |
 | layout | page reachability, nav/section order (LCS), stats, table column order/count | P0/P1/P2 |
 | field  | label normalize -> alias table -> Dice >= 0.75, then id/type/required/state | P1/P2    |
-| menu   | sidebar, page actions, context menus, dialog buttons by label + role       | P1/P2    |
+| menu   | sidebar, page actions, context menus, dialog buttons by label + role        | P1/P2    |
 
 ```bash
 ORCA_BACKGROUND_LAUNCH=1 node cloud-platform/scripts/playwright-server/prototype-compare.mjs \
@@ -222,24 +260,69 @@ deliberately not a gate (font rendering and demo data differ).
 
 ## Integration with exploration agents
 
-1. Start the server once; read `server.json`.
-2. `POST /tabs {profile,url}` per surface the agent wants to inspect. Tabs and
-   logins survive across injections — no cold browser rebuild.
-3. `POST /tabs/:id/execute` with either the agent's inline function source or a
-   registered journey file. Context is isolated per `profile`.
-4. Pull screenshots/`runs/<runId>` as evidence; `GET /tabs` addresses them by id.
-5. Promote a successful exploration snippet into `example-journey.mjs`-style
-   `defineJourney` files and run them standalone in regression.
+The shipped control plane is tab-oriented: one resident server, one tab per
+surface, and `execute` is the injection point. There is intentionally no
+`/runs` queue or WS event stream in v1 — `execute` returns the full run payload
+synchronously, and `node` standalone mode covers chained regression runs.
+
+1. Start the platform (`local-env-reseed.mjs`) and the server once; read
+   `<evidence-dir>/server.json` for `port`/`token`/`baseUrl`.
+2. `POST /tabs {profile,url}` per identity/surface. Each profile has its own
+   `BrowserContext`; tabs keep DOM and login state across injections, so an
+   exploration session never pays a cold browser rebuild.
+3. `POST /tabs/:id/execute` with either:
+   - `{source}` — a throw-away probe as a function expression or statement body
+     `({page,ui,context,params,log}) => …`;
+   - `{script}` — a `defineJourney` file in this directory (allow-listed path).
+4. Use `example-explore.mjs` as the exploration template: login → navigate →
+   `discover`/`extractText`/`extractState`/`extractTable` → return
+   `{meta, findings, summary}`. Findings use the M116 shape
+   (`id/severity/page/title/steps/expected/actual/evidence`); observations that
+   should not abort the run are recorded instead of thrown. Prefer extraction
+   over screenshots (method §9b); screenshots are layout evidence only.
+5. Evidence: each execute writes `runs/<runId>/{result.json,logs.txt}`;
+   `ui.screenshot()` and `POST /tabs/:id/screenshot` write under the evidence
+   dir. `GET /tabs` addresses surfaces by stable `t1,t2,…` ids.
+6. Promote a probe into a regression file like `example-regression.mjs` (its
+   assertions throw). Run it standalone in CI: exit 0 passes, exit 1 reports the
+   first failed step in `error.failedStep`.
+7. Keep one server instance for the whole session, but restart it after changing
+   platform/server code — see Troubleshooting.
+
+## Troubleshooting
+
+| Symptom                                          | Cause / fix                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `server.json` never appears, process exits early | Port already in use (`EADDRINUSE`) or a bad flag. Retry with `--port 0` and read stderr.                                                                                                                                                                                                                             |
+| `WARN base unreachable`                          | Platform is down or `--base` is wrong. Start it with `node cloud-platform/scripts/local-env-reseed.mjs`. Node-side callers need the dev CA (`NODE_EXTRA_CA_CERTS=~/orca-local-env/tls/ca.pem`); browser contexts already use `ignoreHTTPSErrors`.                                                                    |
+| **18787 long-running instance is stale**         | A resident platform keeps serving the `apps/web`/`apps/api` code it started with, so DOM changes and new fixtures never appear. After changing either app, restart it: `node cloud-platform/scripts/local-env-reseed.mjs --restart-platform`, then restart the Playwright Server so open tabs reload the new bundle. |
+| `server.json` points at a dead port              | Stale discovery file from a previous instance. Check `/status` / `pid`; delete `server.json` (or use a fresh `--evidence-dir`) before starting again.                                                                                                                                                                |
+| Login screen never advances                      | Persisted `storageState` for that profile is stale. Delete `<state-dir>/<profile>.json`, use a fresh `--state-dir`, or call `ui.login(role,{relogin:true})`.                                                                                                                                                         |
+| `403 BAD_HOST` / `403 BAD_ORIGIN`                | Call the control plane as `127.0.0.1:<port>` (not `localhost`), and do not send a cross-origin `Origin` header.                                                                                                                                                                                                      |
+| `403 script path not allowed`                    | `script` must resolve (via `realpath`) inside this directory or a `--scripts-dir` root.                                                                                                                                                                                                                              |
+| Execute times out                                | Default 120 s. A synchronous infinite loop cannot be aborted; pass `timeoutMs`, ensure loops `await`, or use the documented `isolate` upgrade path.                                                                                                                                                                  |
+| `400 path escapes evidence directory`            | Screenshot artifact paths must stay under `--evidence-dir`; use relative paths.                                                                                                                                                                                                                                      |
+| Tabs from a previous run are gone                | Tabs are in-memory and die with the browser process. Logins survive through `storageState`; page DOM does not.                                                                                                                                                                                                       |
+| Wrong data or sessions during exploration        | Exploration deliberately reuses warm sessions. Run reseed (or use a fresh `--state-dir`) when you need clean data; regression accepts the current data by design.                                                                                                                                                    |
 
 ## Tests
 
 ```bash
-node --test cloud-platform/scripts/playwright-server/server.test.mjs
+node --test cloud-platform/scripts/playwright-server/server.test.mjs \
+  cloud-platform/scripts/playwright-server/prototype-diff.test.mjs
+
+# example gate: both modes must pass
+ORCA_QA_BASE=https://127.0.0.1:18787 ORCA_PW_EVIDENCE_DIR=cloud-platform/evidence/ps4-final/standalone \
+  node cloud-platform/scripts/playwright-server/example-explore.mjs
+ORCA_QA_BASE=https://127.0.0.1:18787 ORCA_PW_EVIDENCE_DIR=cloud-platform/evidence/ps4-final/standalone \
+  node cloud-platform/scripts/playwright-server/example-regression.mjs
 ```
 
-Covers server start/stop, `/status`, auth, tab lifecycle, inline execute,
-screenshot path confinement, and the same journey file in both modes. Journey
-tests skip if the local platform at `ORCA_QA_BASE` is unreachable.
+`server.test.mjs` covers server start/stop, `/status`, auth, tab lifecycle, inline
+execute, screenshot path confinement, and the same journey file in both modes;
+its journey test skips when the platform at `ORCA_QA_BASE` is unreachable.
+`prototype-diff.test.mjs` covers the pure diff functions (label normalization,
+Dice, LCS, severity) without a browser.
 
 ## Safety notes
 

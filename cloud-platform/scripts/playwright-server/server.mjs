@@ -12,6 +12,7 @@
  * Writes <evidence-dir>/server.json (mode 0600) so callers can discover port + token.
  */
 import http from 'node:http'
+import https from 'node:https'
 import { chmodSync, existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
 import path from 'node:path'
@@ -31,6 +32,7 @@ function parseArgs(argv) {
       path.join(REPO_ROOT, 'cloud-platform/evidence/ps1-server-core'),
     stateDir: process.env.ORCA_PW_STATE_DIR || '',
     token: process.env.ORCA_PW_SERVER_TOKEN || '',
+    ensureEnv: false,
     scriptsDirs: []
   }
   for (let i = 0; i < argv.length; i += 1) {
@@ -55,9 +57,11 @@ function parseArgs(argv) {
       options.token = value()
     } else if (arg === '--scripts-dir') {
       options.scriptsDirs.push(path.resolve(value()))
+    } else if (arg === '--ensure-env') {
+      options.ensureEnv = true
     } else if (arg === '--help' || arg === '-h') {
       console.log(
-        'node server.mjs [--port n] [--base url] [--evidence-dir dir] [--state-dir dir] [--token t] [--scripts-dir dir]'
+        'node server.mjs [--port n] [--base url] [--evidence-dir dir] [--state-dir dir] [--token t] [--scripts-dir dir] [--ensure-env]'
       )
       process.exit(0)
     } else {
@@ -82,6 +86,33 @@ mkdirSync(options.stateDir, { recursive: true })
 mkdirSync(path.join(options.evidenceDir, 'runs'), { recursive: true })
 
 const startedAt = Date.now()
+
+/** One-shot reachability probe for --base; self-signed dev TLS is expected. */
+function probeBase(baseUrl, timeoutMs = 3000) {
+  return new Promise((resolve) => {
+    let target
+    try {
+      target = new URL(baseUrl)
+    } catch {
+      return resolve(false)
+    }
+    const client = target.protocol === 'https:' ? https : http
+    const req = client.request(
+      target,
+      { method: 'GET', rejectUnauthorized: false, timeout: timeoutMs },
+      (res) => {
+        res.resume()
+        resolve(res.statusCode < 500)
+      }
+    )
+    req.on('error', () => resolve(false))
+    req.on('timeout', () => {
+      req.destroy()
+      resolve(false)
+    })
+    req.end()
+  })
+}
 
 class BrowserHost {
   constructor({ stateDir }) {
@@ -551,6 +582,17 @@ async function shutdown(reason) {
 }
 
 let discovery = null
+if (await probeBase(options.base)) {
+  console.log(`[playwright-server] base reachable: ${options.base}`)
+} else {
+  console.error(
+    `[playwright-server] WARN base unreachable: ${options.base}; start it with: node cloud-platform/scripts/local-env-reseed.mjs`
+  )
+  if (options.ensureEnv) {
+    console.error('[playwright-server] --ensure-env: exiting 2')
+    process.exit(2)
+  }
+}
 await host.start()
 server.listen(options.port, '127.0.0.1', () => {
   const port = server.address().port
