@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### 修复批复验 PASS（2026-11-15）+ U60 登记
+
+重放 P0×2/P1×6 **全 PASS**（三场景二次打开 ready 1-2.6s/终端真栈 create ok/登出清凭据/覆盖确认框/.bin 预览占位/心跳 400 不落库/grants 400 保留/审计钳 50）+回归 197+62+36 绿，重放范围红项无。**路径重放首战评价**：workspace/api/desktop 清单可直接照做；改进点=probe-reentry 补 ready 布尔+三场景循环、probe-binary-write 已过时（修复后路径=P12）、terminal-rpc 硬编码改 openWorkspace 模式、**路径清单加前置项「server/web 变更后重启实例」**（18787 长驻固定启动时代码→R3/R5 类假红——U36 同族，已入复盘）。新增重放脚本 5 个入库待提交。**U60 登记**：复验超范围跑出 3 个 main 池套件红（疑 U44 preparing 连锁），修复令已派。
+
 ### 修复批 R1 落地（2026-11-15，U55 🟢）—— 探索批修复全闭环
 
 `a1c65bb63ad`（12 文件 +257/−27）：P0 根因=O1-a 只治理镜像订阅未治理创建动作——云会话终端创建从宿主 tab 委派分流为客户端 tab（terminal.create/multiplex 拉起 PTY），覆盖七创建入口。104 测试绿+tc:web 清。**U55→🟢。探索批四令（R1/R2+R5/R3/R4）全部落地：P0×2+P1×6 闭环**。派修复复验（探索路径重放）。
