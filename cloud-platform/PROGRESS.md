@@ -2717,6 +2717,10 @@ A 线 1/1（9 步，**R1 确认**：A4 终端 remote PTY 句柄创建+回显 142
 
 第三轮复审 **APPROVED**：N-1~N-7 全关闭、偏离（evt-1040 client-declared）核验成立。非阻断跟踪项 3 条并入开发令（U65 侧端点权属表述同步/O4-O5 同文件改串行/清理×3）。**U66 一期开发批启动**：U66-1（audit.recordFileEvent 端点+事件落链）∥ U66-2（查询扩展：until/fileName/q/eventTypes 多值+auditGap/status）并行派发。
 
+### Tailscale 接入正式收尾（2026-11-16）
+
+4 台 dev-remote 全部 online（connect 200/跨机 TLS 200/中继路由/证书指纹），跳过台如实记录（lanmao1 免密失败、10-185-1-171 活动实例+磁盘不足、Windows 后续项）。**多主机真机矩阵达成：6 台 online（2 本机+4 Tailscale）**。空槽回填 U66-3（Web 捕获）。
+
 ### U60 落地（2026-11-15，🟢）
 
 `8ca63a29161`（6 文件 +79/−3）：定性=测试适配（父提交 `f23718594a^` 复现同红——U20+U37 语义潜伏，U44 暴露）；三套件 beatUntilReady 对齐+node 池；漏网排查 created.environment 仅 archive 一处+U44 族 12 例零回归。**U60→🟢**。探索批+连锁全部闭环。待 PS-4 落地 → 终态双线旅程复跑（含探索修复批+PS）→ 更新验收状态。
