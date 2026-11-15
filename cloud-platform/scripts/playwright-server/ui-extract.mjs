@@ -5,22 +5,16 @@
  * one namespace. Every helper is a thin Playwright wrapper; `page` remains the
  * escape hatch.
  */
-import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import { collectComparison } from './prototype-collect.mjs'
+import { defaultPrototypePath } from './prototype-inventory.mjs'
+import { diffInventories, writeComparisonEvidence } from './prototype-diff.mjs'
 
 export const fragment = (text, max = 1200) =>
   String(text ?? '')
     .replace(/[ \t]+\n/g, '\n')
     .trim()
     .slice(0, max)
-
-function slug(value) {
-  return (
-    String(value)
-      .replace(/[^\w.-]+/g, '-')
-      .slice(0, 80) || 'current'
-  )
-}
 
 /** Status vocabulary the platform renders as text (badges, cells, hints). */
 const STATE_GROUPS = {
@@ -60,7 +54,7 @@ export const collectKv = (root) =>
     return out.slice(0, 120)
   })
 
-export function attachExtraction(ui, { page, evidenceDir, targetLocator, step }) {
+export function attachExtraction(ui, { page, baseUrl, evidenceDir, targetLocator, step }) {
   /**
    * Structured text for one scope — whole page or a region.
    * @example
@@ -438,31 +432,34 @@ export function attachExtraction(ui, { page, evidenceDir, targetLocator, step })
   }
 
   /**
-   * Prototype-diff hook. PS-4 is not implemented yet, so this captures the same
-   * DOM inventory shape a diff will consume and writes it to the evidence dir.
+   * Full prototype comparison: the same DOM inventory over prototype.html and
+   * the running Web, for admin + developer, then layout/field/menu diff.
    * @example
    * const parity = await ui.compareWithPrototype('workbench')
-   * parity.status // 'not-implemented'; parity.inventoryFile is the captured JSON
+   * parity.acceptance.passed // six predictable differences all detected
    */
-  async function compareWithPrototype(pageId = 'current') {
+  async function compareWithPrototype(pageId = 'current', opts = {}) {
     return step(`compareWithPrototype:${pageId}`, async () => {
-      const inventory = await discover()
-      mkdirSync(evidenceDir, { recursive: true })
-      const file = path.join(evidenceDir, `prototype-compare-${slug(pageId)}.json`)
-      writeFileSync(
-        file,
-        JSON.stringify(
-          { pageId, capturedAt: new Date().toISOString(), prototypeRoute: pageId, inventory },
-          null,
-          2
-        )
-      )
+      const browser = opts.browser ?? page.context().browser()
+      if (!browser) {throw new Error('compareWithPrototype needs a Playwright browser')}
+      const outDir = opts.outDir ?? path.join(evidenceDir, 'prototype-diff')
+      const collection = await collectComparison({
+        browser,
+        baseUrl: opts.baseUrl ?? baseUrl,
+        prototypeUrl: opts.prototypeUrl ?? defaultPrototypePath(),
+        evidenceDir: outDir,
+        roles: opts.roles,
+        accounts: opts.accounts ?? ui.roles?.()
+      })
+      const diff = diffInventories(collection)
+      const files = writeComparisonEvidence(diff, outDir)
       return {
-        status: 'not-implemented',
+        status: 'ok',
         pageId,
-        inventoryFile: file,
-        next: 'PS-4 wires this inventory into prototype.html extraction and diff',
-        inventory
+        inventoryDir: outDir,
+        ...files,
+        summary: diff.summary,
+        acceptance: diff.acceptance
       }
     })
   }

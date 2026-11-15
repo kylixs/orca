@@ -1,4 +1,4 @@
-# Playwright Server (PS-1 core + PS-2 extensions)
+# Playwright Server (PS-1 core + PS-2 extensions + PS-3 prototype diff)
 
 Resident, headless-browser test infrastructure for the cloud platform. One Chromium
 process holds one `BrowserContext` per identity (`admin`, `zhangsan`, `lisi`), a tab
@@ -153,7 +153,7 @@ wrapper and keeps `page` as the escape hatch.
 | assert   | `assertText(expected, scope?)`   | `true` (throws on miss)                                                   |
 | assert   | `waitForState(text, opts?)`      | `{found, line}`                                                           |
 | discover | `discover()`                     | `{route, controls:{buttons,inputs,links,tables,tabs}}`                    |
-| discover | `compareWithPrototype(pageId?)`  | `{status:'not-implemented', inventoryFile, inventory}` (PS-4 hook)        |
+| discover | `compareWithPrototype(pageId?)`  | `{status:'ok', diffFile, reportFile, summary, acceptance}` (PS-3)         |
 | evidence | `screenshot(name, opts?)`        | file path                                                                 |
 
 Workspace helpers (`openTab/saveFile/switchDiff`) act inside the
@@ -174,6 +174,51 @@ curl .../tabs/t1/execute -d '{"script":"extension-demo.mjs","params":{"role":"ad
 
 The demo extracts workbench text/state, asserts, opens a project detail dialog,
 extracts the table, then inventories controls and layout.
+
+## Prototype comparison (PS-3)
+
+`prototype-inventory.mjs` runs **one** browser-side extractor over both
+`remote-connectivity/design/2026-11-13-cloud-dev-platform/ui/prototype.html`
+(`file://`) and the running Web. Each role runs in its own isolated
+`BrowserContext`; the prototype side also switches its admin/developer demo role.
+The unified inventory captures
+`nav/sections/stats/tables/fields/actions/menus/dialogs/drawers/frames/tokens`,
+including hidden dialogs, drawers and context menus on the prototype.
+
+Role drivers live in `prototype-collect.mjs`; `prototype-diff.mjs` re-exports the
+public API, with the comparators in `prototype-diff-{layout,fields,menus}.mjs`
+and the writer in `prototype-report.mjs`.
+
+`prototype-diff.mjs` then detects three classes:
+
+| Class  | Comparator                                                                 | Severity |
+| ------ | -------------------------------------------------------------------------- | -------- |
+| layout | page reachability, nav/section order (LCS), stats, table column order/count | P0/P1/P2 |
+| field  | label normalize -> alias table -> Dice >= 0.75, then id/type/required/state | P1/P2    |
+| menu   | sidebar, page actions, context menus, dialog buttons by label + role       | P1/P2    |
+
+```bash
+ORCA_BACKGROUND_LAUNCH=1 node cloud-platform/scripts/playwright-server/prototype-compare.mjs \
+  --base https://127.0.0.1:18787 \
+  --evidence-dir cloud-platform/evidence/ps3-prototype-diff
+```
+
+Writes `inventory-{prototype,actual}-{admin,developer}.json`, `diff.json` and
+`report.md`. The CLI exits 1 unless all six predictable differences from design
+§4.5 are detected (nav/page rename, workbench stat rename, missing 「最近使用」
+column, missing `diagnostics` route, P3 overlay+iframe, login id drift).
+
+From a journey or server injection, the same run is one call:
+
+```js
+const parity = await ui.compareWithPrototype('workbench')
+parity.acceptance.passed // true when 6/6 known differences were detected
+```
+
+Workspace comparison opens a project into the same-page overlay and inventories
+the `cloud-admin.html` iframe entry; prototype dialogs are static, so the diff
+reports unopened Web overlays as findings rather than guessing. Screenshots are
+deliberately not a gate (font rendering and demo data differ).
 
 ## Integration with exploration agents
 
