@@ -1,0 +1,287 @@
+// @vitest-environment happy-dom
+import * as React from 'react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { CloudRpcOutcome } from '../../../shared/cloud-platform-ipc'
+import type { CloudRpc } from '../../../shared/cloud-file-browser'
+import { CloudSimpleWorkspace } from './cloud-simple-workspace'
+import type { CloudSimpleWorkspaceTabsAction } from './cloud-simple-workspace-tabs'
+import type { CloudTerminalSubscribe } from './cloud-terminal-panel'
+import {
+  CloudWorkspaceTerminalTab,
+  CloudWorkspaceTerminalTabProvider
+} from './cloud-workspace-terminal-tab'
+
+/**
+ * U46-5b (design §4.5): each terminal tab is one CloudTerminalPanel on the
+ * W5a/W5c pipeline — one PTY per tab, reducer-assigned title, hidden panes do
+ * not fit, and closing the tab releases both the stream and the PTY.
+ */
+
+type HarnessTerminal = {
+  cols: number
+  rows: number
+  write: ReturnType<typeof vi.fn>
+  resize: ReturnType<typeof vi.fn>
+  dispose: ReturnType<typeof vi.fn>
+}
+
+const terminalHarness = vi.hoisted((): { instances: HarnessTerminal[] } => ({
+  instances: []
+}))
+
+const fitHarness = vi.hoisted((): { instances: { fit: ReturnType<typeof vi.fn> }[] } => ({
+  instances: []
+}))
+
+vi.mock('@xterm/xterm', () => ({
+  Terminal: class {
+    cols = 80
+    rows = 24
+    write = vi.fn()
+    resize = vi.fn()
+    dispose = vi.fn()
+    open = vi.fn()
+    loadAddon = vi.fn()
+    onData = vi.fn(() => ({ dispose: vi.fn() }))
+    constructor() {
+      terminalHarness.instances.push(this)
+    }
+  }
+}))
+
+vi.mock('@xterm/addon-fit', () => ({
+  FitAddon: class {
+    fit = vi.fn()
+    constructor() {
+      fitHarness.instances.push(this)
+    }
+  }
+}))
+
+type Call = { method: string; params?: Record<string, unknown> }
+
+function scriptedHost(): { rpc: CloudRpc; calls: Call[] } {
+  const calls: Call[] = []
+  let nextHandle = 0
+  const rpc: CloudRpc = async (method, params): Promise<CloudRpcOutcome> => {
+    calls.push({ method, params })
+    if (method === 'terminal.create') {
+      nextHandle += 1
+      return {
+        ok: true,
+        result: { terminal: { handle: `term_${nextHandle}` }, worktreeId: 'wt_1' }
+      }
+    }
+    return { ok: true, result: {} }
+  }
+  return { rpc, calls }
+}
+
+function scriptedStream(): {
+  subscribe: CloudTerminalSubscribe
+  calls: Call[]
+  unsubscribers: ReturnType<typeof vi.fn>[]
+} {
+  const calls: Call[] = []
+  const unsubscribers: ReturnType<typeof vi.fn>[] = []
+  const subscribe: CloudTerminalSubscribe = async (method, params) => {
+    calls.push({ method, params })
+    const unsubscribe = vi.fn()
+    unsubscribers.push(unsubscribe)
+    return { ok: true, subscription: { unsubscribe } }
+  }
+  return { subscribe, calls, unsubscribers }
+}
+
+const dispatch: React.Dispatch<CloudSimpleWorkspaceTabsAction> = () => undefined
+
+const terminalTab = { id: 'terminal-1', kind: 'terminal', title: 'Terminal 1' } as const
+
+function renderTab(
+  host: ReturnType<typeof scriptedHost>,
+  stream: ReturnType<typeof scriptedStream>,
+  active: boolean
+) {
+  const view = render(
+    <CloudWorkspaceTerminalTabProvider
+      rpc={host.rpc}
+      subscribe={stream.subscribe}
+      workspacePath="/srv/checkout"
+    >
+      <CloudWorkspaceTerminalTab tab={terminalTab} active={active} dispatch={dispatch} />
+    </CloudWorkspaceTerminalTabProvider>
+  )
+  const rerender = (nextActive: boolean): void => {
+    view.rerender(
+      <CloudWorkspaceTerminalTabProvider
+        rpc={host.rpc}
+        subscribe={stream.subscribe}
+        workspacePath="/srv/checkout"
+      >
+        <CloudWorkspaceTerminalTab tab={terminalTab} active={nextActive} dispatch={dispatch} />
+      </CloudWorkspaceTerminalTabProvider>
+    )
+  }
+  return { ...view, rerender }
+}
+
+beforeEach(() => {
+  terminalHarness.instances.length = 0
+  fitHarness.instances.length = 0
+})
+
+afterEach(cleanup)
+
+describe('简易工作区终端标签（U46-5b）', () => {
+  it('每个标签独立创建 PTY，标题取 reducer 分配的 Terminal N', async () => {
+    const user = userEvent.setup()
+    const host = scriptedHost()
+    const stream = scriptedStream()
+
+    render(
+      <CloudWorkspaceTerminalTabProvider
+        rpc={host.rpc}
+        subscribe={stream.subscribe}
+        workspacePath="/srv/checkout"
+      >
+        <CloudSimpleWorkspace
+          route="relay"
+          workspacePath="/srv/checkout"
+          permissions={['open', 'terminal']}
+        />
+      </CloudWorkspaceTerminalTabProvider>
+    )
+
+    await user.click(screen.getByTestId('cloud-simple-workspace-new-terminal'))
+    await user.click(screen.getByTestId('cloud-simple-workspace-new-terminal'))
+
+    for (const id of ['terminal-1', 'terminal-2']) {
+      await within(screen.getByTestId(`cloud-simple-workspace-pane-${id}`)).findByTestId(
+        'cloud-terminal-panel'
+      )
+    }
+    await waitFor(() => expect(stream.unsubscribers).toHaveLength(2))
+
+    const creates = host.calls.filter((call) => call.method === 'terminal.create')
+    expect(creates).toHaveLength(2)
+    expect(creates[0]?.params).toEqual({ worktree: 'path:/srv/checkout', title: 'Terminal 1' })
+    expect(creates[1]?.params).toEqual({ worktree: 'path:/srv/checkout', title: 'Terminal 2' })
+    expect(terminalHarness.instances).toHaveLength(2)
+  })
+
+  it('隐藏标签跳过 fit 与 viewport，激活时补一次 fit + viewport（§4.5）', async () => {
+    const host = scriptedHost()
+    const stream = scriptedStream()
+
+    const view = renderTab(host, stream, false)
+    await screen.findByTestId('cloud-terminal-panel')
+    await waitFor(() => expect(stream.calls).toHaveLength(1))
+
+    const fit = fitHarness.instances[0]
+    expect(fitHarness.instances).toHaveLength(1)
+    expect(fit?.fit).not.toHaveBeenCalled()
+    expect(host.calls.some((call) => call.method === 'terminal.updateViewport')).toBe(false)
+
+    act(() => {
+      view.rerender(true)
+    })
+
+    expect(fit?.fit).toHaveBeenCalledTimes(1)
+    const viewport = host.calls.find((call) => call.method === 'terminal.updateViewport')
+    expect(viewport?.params).toMatchObject({
+      terminal: 'term_1',
+      client: { type: 'desktop' },
+      viewport: { cols: 80, rows: 24 }
+    })
+  })
+
+  it('关闭标签卸载面板：退订流并关闭该标签的 PTY，不碰其他标签', async () => {
+    const user = userEvent.setup()
+    const host = scriptedHost()
+    const stream = scriptedStream()
+
+    render(
+      <CloudWorkspaceTerminalTabProvider
+        rpc={host.rpc}
+        subscribe={stream.subscribe}
+        workspacePath="/srv/checkout"
+      >
+        <CloudSimpleWorkspace
+          route="relay"
+          workspacePath="/srv/checkout"
+          permissions={['open', 'terminal']}
+        />
+      </CloudWorkspaceTerminalTabProvider>
+    )
+
+    await user.click(screen.getByTestId('cloud-simple-workspace-new-terminal'))
+    await user.click(screen.getByTestId('cloud-simple-workspace-new-terminal'))
+    await waitFor(() => expect(stream.unsubscribers).toHaveLength(2))
+
+    await user.click(screen.getByTestId('cloud-simple-workspace-tab-close-terminal-2'))
+
+    await waitFor(() =>
+      expect(host.calls.filter((call) => call.method === 'terminal.close')).toEqual([
+        { method: 'terminal.close', params: { terminal: 'term_2' } }
+      ])
+    )
+    expect(stream.unsubscribers[1]).toHaveBeenCalled()
+    expect(stream.unsubscribers[0]).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('cloud-simple-workspace-pane-terminal-2')).toBeNull()
+  })
+
+  it('无 terminal 权限：组件层防御性占位，不建 PTY', async () => {
+    const host = scriptedHost()
+    const stream = scriptedStream()
+
+    render(
+      <CloudWorkspaceTerminalTabProvider
+        rpc={host.rpc}
+        subscribe={stream.subscribe}
+        workspacePath="/srv/checkout"
+        canUseTerminal={false}
+      >
+        <CloudWorkspaceTerminalTab tab={terminalTab} active dispatch={dispatch} />
+      </CloudWorkspaceTerminalTabProvider>
+    )
+
+    expect(screen.getByTestId('cloud-workspace-terminal-denied').textContent).toContain(
+      '未授予终端权限'
+    )
+    expect(host.calls).toEqual([])
+    expect(stream.calls).toEqual([])
+  })
+
+  it('无流接缝或无工作区：占位而非空面板，不发 rpc', () => {
+    const host = scriptedHost()
+    const stream = scriptedStream()
+
+    const missingStream = render(
+      <CloudWorkspaceTerminalTabProvider
+        rpc={host.rpc}
+        subscribe={null}
+        workspacePath="/srv/checkout"
+      >
+        <CloudWorkspaceTerminalTab tab={terminalTab} active dispatch={dispatch} />
+      </CloudWorkspaceTerminalTabProvider>
+    )
+    expect(screen.getByTestId('cloud-workspace-terminal-unavailable')).toBeTruthy()
+    missingStream.unmount()
+
+    render(
+      <CloudWorkspaceTerminalTabProvider
+        rpc={host.rpc}
+        subscribe={stream.subscribe}
+        workspacePath={null}
+      >
+        <CloudWorkspaceTerminalTab tab={terminalTab} active dispatch={dispatch} />
+      </CloudWorkspaceTerminalTabProvider>
+    )
+    expect(screen.getByTestId('cloud-workspace-terminal-no-workspace')).toBeTruthy()
+
+    expect(host.calls).toEqual([])
+    expect(stream.calls).toEqual([])
+  })
+})

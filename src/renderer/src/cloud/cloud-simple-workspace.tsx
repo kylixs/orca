@@ -26,6 +26,7 @@ import {
   type CloudSimpleWorkspaceFileTreeApi,
   type CloudSimpleWorkspaceGitApi
 } from './cloud-simple-workspace-right-panel'
+import { CloudWorkspaceTerminalTab } from './cloud-workspace-terminal-tab'
 
 /**
  * Embedded simple workspace shell (U46-5a, design §4.3/§4.4): centre tabs plus a
@@ -70,7 +71,7 @@ export const CLOUD_SIMPLE_WORKSPACE_TAB_COMPONENTS: Record<
   CloudSimpleWorkspaceTabKind,
   React.ComponentType<CloudSimpleWorkspaceTabComponentProps>
 > = {
-  terminal: TabPlaceholder,
+  terminal: CloudWorkspaceTerminalTab,
   editor: TabPlaceholder,
   preview: TabPlaceholder,
   diff: TabPlaceholder

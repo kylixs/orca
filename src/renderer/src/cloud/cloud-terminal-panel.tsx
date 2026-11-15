@@ -42,6 +42,13 @@ export type CloudTerminalPanelProps = {
   subscribe: CloudTerminalSubscribe
   /** The user's checkout, as returned by `cloud:openWorkspace`. */
   workspacePath: string
+  /** `terminal.create` title; one PTY per mounted tab (design §4.5). */
+  title?: string
+  /**
+   * False while an inactive tab keeps the pane mounted but hidden. Fit and
+   * viewport updates are skipped until activation (design §4.5).
+   */
+  active?: boolean
 }
 
 type PanelState =
@@ -77,19 +84,27 @@ function framePayloadOf(event: unknown): string | null {
 export function CloudTerminalPanel({
   rpc,
   subscribe,
-  workspacePath
+  workspacePath,
+  title = 'cloud-admin',
+  active = true
 }: CloudTerminalPanelProps): React.JSX.Element {
   const [state, setState] = React.useState<PanelState>({ kind: 'booting' })
   const hostRef = React.useRef<HTMLDivElement | null>(null)
   const termRef = React.useRef<Terminal | null>(null)
   const handleRef = React.useRef<string | null>(null)
   const retryRef = React.useRef<(() => void) | null>(null)
+  const fitRef = React.useRef<FitAddon | null>(null)
+  const activeRef = React.useRef(active)
+  // Whether the pane has been hidden at least once since mount; the initial fit
+  // belongs to the creation effect, not to an activation transition.
+  const wasHiddenRef = React.useRef(!active)
   const clientId = React.useMemo(() => createBrowserUuid(), [])
 
   const pushViewport = React.useCallback(() => {
     const term = termRef.current
     const handle = handleRef.current
-    if (!term || handle === null || !document.contains(hostRef.current)) {
+    // A hidden pane's grid is stale; the activation effect refits and republishes.
+    if (!activeRef.current || !term || handle === null || !document.contains(hostRef.current)) {
       return
     }
     void rpc('terminal.updateViewport', {
@@ -99,6 +114,26 @@ export function CloudTerminalPanel({
     })
   }, [rpc, clientId])
 
+  // Why here and not in the creation effect: fit/viewport must follow visibility
+  // without rebuilding the xterm instance or its PTY.
+  React.useEffect(() => {
+    activeRef.current = active
+    if (!active) {
+      wasHiddenRef.current = true
+      return
+    }
+    if (!wasHiddenRef.current) {
+      return
+    }
+    wasHiddenRef.current = false
+    try {
+      fitRef.current?.fit()
+    } catch {
+      /* the pane can be mid-teardown while an observation lands */
+    }
+    pushViewport()
+  }, [active, pushViewport])
+
   // The terminal is created once per mount; the session effect only writes into it.
   React.useEffect(() => {
     const host = hostRef.current
@@ -107,6 +142,7 @@ export function CloudTerminalPanel({
     }
     const term = new Terminal(buildDefaultTerminalOptions())
     const fit = new FitAddon()
+    fitRef.current = fit
     term.loadAddon(fit)
     term.open(host)
     termRef.current = term
@@ -135,6 +171,10 @@ export function CloudTerminalPanel({
     }
 
     const refit = (): void => {
+      // Hidden panes report a 0×0 grid; fitting would collapse the PTY.
+      if (!activeRef.current) {
+        return
+      }
       try {
         fit.fit()
       } catch {
@@ -165,6 +205,7 @@ export function CloudTerminalPanel({
         cancelAnimationFrame(viewportFrame)
       }
       disposeWebgl()
+      fitRef.current = null
       term.dispose()
       termRef.current = null
     }
@@ -305,7 +346,7 @@ export function CloudTerminalPanel({
       void (async () => {
         const created = await rpc('terminal.create', {
           worktree: cloudWorktreeSelector(workspacePath),
-          title: 'cloud-admin'
+          title
         })
         if (disposed) {
           // Unmount raced this rpc: the cleanup saw no handle yet, so the shell
@@ -369,7 +410,8 @@ export function CloudTerminalPanel({
       handleRef.current = null
     }
     // One PTY per workspace path; a different path belongs to a different panel.
-  }, [rpc, subscribe, workspacePath, clientId, pushViewport])
+    // The title is the create-time name of that PTY, never a live relabel.
+  }, [rpc, subscribe, workspacePath, title, clientId, pushViewport])
 
   // Keystrokes name the live handle; a dropping link shows its state instead of
   // throwing into the tree.
