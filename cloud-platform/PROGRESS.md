@@ -2713,6 +2713,10 @@ A 线 1/1（9 步，**R1 确认**：A4 终端 remote PTY 句柄创建+回显 142
 
 `e1da1b63e01`（6 文件）：README 终版（端点/两层脚本/16 扩展/原型对照 CLI/集成/故障排查含 18787 陈旧前置）+example-explore（discover→extract→findings 形态）+example-regression（断言链可入 CI）+启动自检 --ensure-env。双模式示例全通+PS 测试 8/8。**Playwright Server 批（1-4）全部完成**。派终态双线旅程第三轮（探索修复批 R1-R4 合入后）。
 
+### U66-4 落地（2026-11-16）
+
+`393e4e3e864`（6 文件）：mobile-file-event-capture（AC-56 file_download+savedName 补报规则/shared=success+share_sheet 不谎称落盘/取消 failure+client_cancelled；AC-57 file_copy+copiedChars/Bytes+文本 sha256；失败分 read_failed/clipboard_write_failed；全 best-effort 不阻塞）+use-mobile-file-actions 七路径接线。38/38+mobile files 470 零回归。注：runtime allowlist/宿主注册为禁碰接缝，方法不可用时静默丢弃。空槽回填 U66-5。
+
 ### U66-3 落地（2026-11-16）
 
 `002baaa7b2d`（9 文件）：cloud-file-copy-audit 封装（file_copy 事件+120/min 客户端频控+失败不重试+recordFileDownload 预留）+cloud-file-copy-capture hook/按钮（应用内 web-clipboard-api+Ctrl+C dom-copy-listener 两路径+1.5s 去重）+cloud-clipboard-write（失败 result=failure 落 AC-48）+冲突横幅抽出。摘录零正文（AC-53 负向断言）。新 8/8+cloud 域 237 绿，tc:web 清。偏离：Ctrl+C 提前覆盖（技术方案列二期 dom-copy-listener）如实标记 capturePoint。空槽回填 U66-4。
