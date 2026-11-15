@@ -1370,6 +1370,24 @@ svg { display: block; }
 .audit-result { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; }
 .audit-result.is-success { color: #15803d; }
 .audit-result.is-failure { color: #b91c1c; }
+/* [U66-review M-2] 三态结果：denied 与 failure 分开 */
+.audit-result.is-denied { color: var(--warning); }
+/* [U66-review m-1] 关键字命中高亮 */
+.audit-hit { background: var(--warning-soft); border-bottom: 1px solid var(--warning); color: inherit; }
+/* [U66-review M-4 M-8] 客户端自报 / 主机确认 / 推断 */
+.audit-confidence { display: inline-flex; align-items: center; height: 17px; padding: 0 5px; border: 1px solid var(--border); border-radius: 999px; font-size: 10px; line-height: 1; white-space: nowrap; color: var(--text-3); background: #fff; }
+.audit-confidence.is-attested { border-color: #bbf7d0; background: var(--success-soft); color: #15803d; }
+.audit-confidence.is-declared { border-color: #fde68a; background: var(--warning-soft); color: #b45309; }
+.audit-confidence.is-inferred { border-color: var(--border); background: var(--sidebar); color: var(--text-3); }
+/* [U66-review M-4] 覆盖范围与限制 */
+.audit-coverage { margin-bottom: 12px; border: 1px solid var(--divider); border-radius: 8px; background: #fff; }
+.audit-coverage > summary { cursor: pointer; padding: 9px 12px; font-size: 11.5px; font-weight: 500; color: var(--text-2); }
+.audit-coverage-body { padding: 0 12px 11px; font-size: 11px; line-height: 1.65; color: var(--text-3); }
+.audit-coverage-body ul { margin: 6px 0 0; padding-left: 17px; }
+.audit-filter-error { flex-basis: 100%; margin: 2px 0 0; font-size: 11px; color: var(--danger); }
+.filter-hint { margin-top: 3px; font-size: 10px; color: var(--text-3); }
+.audit-copy-len { color: var(--text-2); }
+.audit-excerpt-switch { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-3); }
 .event-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--text-2); }
 .event-tag .icon { width: 13px; height: 13px; color: var(--text-3); }
 .audit-op { display: inline-flex; align-items: center; gap: 6px; }
@@ -2058,11 +2076,14 @@ svg { display: block; }
       <details class="proto-changelog" id="protoChangelog">
         <summary><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>原型修订 · U66 审计增强 + U65 · 2026-11-15</summary>
         <div class="proto-changelog-panel">
-          <h4>U66 · 审计增强 <span class="changelog-date">2026-11-15</span></h4>
+          <h4>U66 · 审计增强 <span class="changelog-date">2026-11-15 · 按独立评审修订</span></h4>
           <ul>
-            <li>审计查询新增关键字（内容 / 文件名 / 路径全文匹配）、操作类型（含 file_download / file_copy）、用户与文件名条件，支持组合查询与清除。</li>
-            <li>事件列表新增下载 / 复制类型徽标、可复制文件名与大小；复制记录可展开查看内容摘录与 sha256 指纹。</li>
-            <li>补充审计可见性说明：审计员可见全部事件与内容摘录；普通用户仅可见本人相关记录。</li>
+            <li>关键字改为文件名 / 路径 / 账号 / 项目匹配；内容前缀需摘录开关开启（二期），默认关闭，不再承诺“全文匹配”。[U66-review B-1 M-9 m-13]</li>
+            <li>新增起止时间（默认最近 7 天、最大 31 天）、事件族快捷项、项目与主机分离筛选、结果三态（成功 / 失败 / 拒绝）。[U66-review M-2 M-3 m-2 m-6]</li>
+            <li>事件列表新增下载 / 复制类型徽标、可信度徽标（主机确认 / 客户端自报 / 推断）、复制字符与字节数、关键字命中高亮；复制记录默认显示“未记录内容摘录（仅保留指纹）”。[U66-review M-4 M-8 m-1 m-3 m-4]</li>
+            <li>新增可折叠「覆盖范围与限制」与缺口说明：审计链保证记录不被篡改，不保证记录完整。[U66-review M-4]</li>
+            <li>可见性说明改为：审计员 / 管理员可见全部事件；本人自查不在本期；摘录仅在开关开启时可见。[U66-review M-5]</li>
+            <li>下载拦截事件统一为 <span class="mono">download_blocked result=denied</span>；新增关键字 / 文件名长度校验提示。[U66-review M-1 m-5]</li>
           </ul>
           <h4 style="margin-top:9px">U65 · 主机授权语义深化 <span class="changelog-date">2026-11-15</span></h4>
           <ul>
@@ -2740,79 +2761,126 @@ svg { display: block; }
   </div>
   <div class="page-head-actions">
     <span class="status status-muted"><span class="dot dot-success"></span>日志采集正常</span>
+    <!-- [U66-review M-10] 缺口可见性：AC-43 -->
+    <span class="status status-warning" title="dev-node-07 在宿主重启窗口丢弃 3 条；缺口可见性为 best-effort"><span class="dot dot-warning"></span>1 台主机有审计缺口</span>
   </div>
 </div>
 
+<!-- [U66-review M-5] 本人自查不在本期，按主会话裁定 -->
 <div class="notice" style="margin-bottom:12px">
   <svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>
-  <span><strong>审计员视角</strong>：可见全部用户与全部项目的事件及内容摘录；普通用户仅可见本人相关记录，不展示他人的复制内容与 sha256 指纹。</span>
+  <span><strong>审计员 / 管理员视角</strong>：可见全部用户与全部项目的事件；本人自查不在本期。内容摘录仅在摘录开关开启时可见，默认关闭。</span>
 </div>
 
-<form class="filter-bar" id="auditFilterForm">
-  <div class="filter-field" style="flex:1.6;min-width:220px;max-width:320px">
-    <label for="auditKeywordFilter">关键字 <span style="font-weight:400;color:var(--text-disabled)">· 内容 / 文件名 / 路径全文匹配</span></label>
-    <input class="input input-sm" id="auditKeywordFilter" type="search" placeholder="输入内容、文件名或路径关键字" autocomplete="off">
+<!-- [U66-review M-4] 覆盖范围与限制：AC-44/AC-47 -->
+<details class="audit-coverage">
+  <summary>覆盖范围与限制（审计链保证记录不被篡改，不保证记录完整）</summary>
+  <div class="audit-coverage-body">
+    <div>可捕获：桌面云工作区下载（<span class="mono">files.readChunk</span>，客户端自报）、宿主 <span class="mono">browser.download</span>、移动端保存到手机、应用内复制（Web / 桌面 / 移动端）、宿主拒绝与前端下载拦截。</div>
+    <ul>
+      <li>不可捕获：开发机 shell 的 <span class="mono">scp</span> / <span class="mono">git push</span> / <span class="mono">curl</span> / <span class="mono">cp</span> 等带外传输。</li>
+      <li>不可捕获：Finder / Explorer、拖拽、第三方应用、截图 / 录屏 / OCR。</li>
+      <li>不可捕获：纯客户端浏览器「另存为」、跨域 iframe 内选区、键盘 Ctrl+C（一期）。</li>
+      <li>无动作：Web 工作区当前不提供下载；云项目文件树没有「复制文件对象」；<span class="mono">files.download</span> / <span class="mono">terminal.exportArtifact</span> / <span class="mono">browser.savePage</span> 未注册。</li>
+      <li>缺口：客户端离线、绕过应用接缝、宿主进程重启可能丢事件；缺口可见性为 best-effort，宿主瞬时崩溃无法精确检测。</li>
+    </ul>
   </div>
-  <div class="filter-field" style="max-width:140px">
+</details>
+
+<form class="filter-bar" id="auditFilterForm">
+  <!-- [U66-review B-1 M-9] 关键字只匹配文件名/路径/账号/项目；内容前缀需摘录开关（二期） -->
+  <div class="filter-field" style="flex:1.6;min-width:220px;max-width:320px">
+    <label for="auditKeywordFilter">关键字 <span style="font-weight:400;color:var(--text-disabled)">· 文件名 / 路径 / 账号 / 项目</span></label>
+    <input class="input input-sm" id="auditKeywordFilter" type="search" placeholder="文件名、路径、账号或项目关键字" autocomplete="off">
+    <div class="filter-hint">内容前缀匹配需摘录开关开启（二期）</div>
+  </div>
+  <!-- [U66-review M-3] 起止时间 + 默认最近 7 天 + 31 天选项 -->
+  <div class="filter-field" style="max-width:150px">
     <label for="auditTimeRange">时间范围</label>
     <select class="select select-sm" id="auditTimeRange">
       <option value="24">最近 24 小时</option>
-      <option value="168">最近 7 天</option>
-      <option value="720">最近 30 天</option>
+      <option value="168" selected>最近 7 天（默认）</option>
+      <option value="744">最近 31 天</option>
     </select>
+    <div class="filter-hint">最大 31 天</div>
   </div>
   <div class="filter-field" style="max-width:180px">
+    <label for="auditSinceFilter">起始时间</label>
+    <input class="input input-sm" id="auditSinceFilter" type="datetime-local" autocomplete="off">
+  </div>
+  <div class="filter-field" style="max-width:180px">
+    <label for="auditUntilFilter">结束时间</label>
+    <input class="input input-sm" id="auditUntilFilter" type="datetime-local" autocomplete="off">
+  </div>
+  <!-- [U66-review M-1 M-2 m-2] 事件族快捷项 + 统一 download_blocked -->
+  <div class="filter-field" style="max-width:210px">
     <label for="auditEventFilter">操作类型</label>
     <select class="select select-sm" id="auditEventFilter">
       <option value="all">全部操作</option>
-      <option value="login">登录 · login</option>
-      <option value="project_open">打开项目 · project_open</option>
-      <option value="connect">连接 · connect</option>
+      <option value="family:download">下载族 · 下载 + 拦截</option>
+      <option value="family:copy">复制族 · file_copy</option>
       <option value="file_download">文件下载 · file_download</option>
       <option value="file_copy">复制文件内容 · file_copy</option>
-      <option value="download_denied">下载拦截 · download_denied</option>
+      <option value="download_blocked">下载拦截 · download_blocked</option>
+      <option value="login">登录 · login</option>
+      <option value="project_connect">打开项目 · project_connect</option>
+      <option value="project_access">连接 · project_access</option>
+      <option value="grant_update">权限变更 · grant_update</option>
       <option value="host_register">主机注册 · host_register</option>
-      <option value="permission_change">权限变更 · permission_change</option>
     </select>
   </div>
-  <div class="filter-field" style="max-width:130px">
+  <div class="filter-field" style="max-width:150px">
     <label for="auditUserFilter">用户</label>
-    <input class="input input-sm" id="auditUserFilter" type="text" list="auditUserOptions" placeholder="姓名或账号" autocomplete="off">
+    <input class="input input-sm" id="auditUserFilter" type="text" list="auditUserOptions" placeholder="域账号（精确）" autocomplete="off">
     <datalist id="auditUserOptions">
-      <option value="张伟">张伟 · zhangwei</option>
-      <option value="李明">李明 · liming</option>
-      <option value="王芳">王芳 · wangfang</option>
-      <option value="赵敏">赵敏 · zhaomin</option>
-      <option value="陈昊">陈昊 · chenhao</option>
+      <option value="zhangwei">张伟 · zhangwei</option>
+      <option value="liming">李明 · liming</option>
+      <option value="wangfang">王芳 · wangfang</option>
+      <option value="zhaomin">赵敏 · zhaomin</option>
+      <option value="chenhao">陈昊 · chenhao</option>
     </datalist>
+    <div class="filter-hint">显示名搜索为二期（需用户目录）</div>
   </div>
+  <!-- [U66-review m-6] 项目与主机分离，支持 AND -->
   <div class="filter-field" style="max-width:160px">
-    <label for="auditTargetFilter">项目或主机</label>
-    <select class="select select-sm" id="auditTargetFilter">
-      <option value="all">全部对象</option>
+    <label for="auditProjectFilter">项目</label>
+    <select class="select select-sm" id="auditProjectFilter">
+      <option value="all">全部项目</option>
       <option value="payment-service">payment-service</option>
       <option value="order-center">order-center</option>
       <option value="risk-engine">risk-engine</option>
+    </select>
+  </div>
+  <div class="filter-field" style="max-width:150px">
+    <label for="auditHostFilter">主机</label>
+    <select class="select select-sm" id="auditHostFilter">
+      <option value="all">全部主机</option>
+      <option value="dev-node-03">dev-node-03</option>
+      <option value="dev-node-07">dev-node-07</option>
       <option value="dev-node-09">dev-node-09</option>
-      <option value="平台">平台</option>
     </select>
   </div>
   <div class="filter-field" style="max-width:170px">
     <label for="auditFilenameFilter">文件名</label>
     <input class="input input-sm" id="auditFilenameFilter" type="text" placeholder="如 calculator.ts" autocomplete="off">
+    <div class="filter-hint">1–128 字符</div>
   </div>
+  <!-- [U66-review M-2] 结果三态 -->
   <div class="filter-field" style="max-width:120px">
     <label for="auditResultFilter">结果</label>
     <select class="select select-sm" id="auditResultFilter">
       <option value="all">全部结果</option>
       <option value="success">成功</option>
       <option value="failure">失败</option>
+      <option value="denied">拒绝</option>
     </select>
   </div>
   <div class="filter-actions">
     <button class="btn btn-primary" type="submit">查询</button>
     <button class="btn btn-ghost" type="button" id="auditResetBtn">清除</button>
   </div>
+  <!-- [U66-review m-5] 与 API INVALID_QUERY 对齐的前端校验 -->
+  <div class="audit-filter-error" id="auditFilterError" role="alert" hidden></div>
 </form>
 
 <section class="card table-card">
@@ -2820,6 +2888,11 @@ svg { display: block; }
     <div class="table-note-left">
       <svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>
       <span>审计日志保留 180 天，导出需审批。</span>
+      <!-- [U66-review B-1] 摘录开关默认关闭，开启后才有内容前缀 -->
+      <span class="audit-excerpt-switch">
+        <button class="switch" id="auditExcerptSwitch" role="switch" aria-checked="false" aria-label="内容摘录开关"></button>
+        <span id="auditExcerptState">内容摘录：已关闭（默认）</span>
+      </span>
     </div>
     <span class="tip tip-left" data-tip="导出需审计员权限并提交审批（二期开放）">
       <button class="btn btn-secondary btn-sm" type="button" disabled>
@@ -2835,7 +2908,7 @@ svg { display: block; }
     </div>
     <div class="muted-note">
       <svg class="icon" aria-hidden="true"><use href="#i-clock"/></svg>
-      查询时间窗最大 31 天
+      默认最近 7 天 · 最大 31 天 · 可信度按主机确认 / 客户端自报 / 推断展示
     </div>
   </div>
   <div class="table-scroll">
@@ -2844,7 +2917,7 @@ svg { display: block; }
         <tr>
           <th style="width:106px">时间</th>
           <th style="width:90px">用户</th>
-          <th style="width:142px">操作</th>
+          <th style="width:196px">操作</th>
           <th style="width:152px">项目或主机</th>
           <th style="width:210px">文件 / 大小</th>
           <th style="width:80px">结果</th>
@@ -3753,6 +3826,9 @@ svg { display: block; }
           <div class="detail-row"><span class="detail-key">用户</span><span class="detail-val" id="auditDetailUser">张伟（zhangwei）</span></div>
           <div class="detail-row"><span class="detail-key">项目或主机</span><span class="detail-val mono" id="auditDetailTarget">payment-service</span></div>
           <div class="detail-row"><span class="detail-key">结果</span><span class="detail-val" id="auditDetailResult">成功</span></div>
+          <!-- [U66-review M-4 M-8 m-3] 可信度与复制长度 -->
+          <div class="detail-row"><span class="detail-key">可信度</span><span class="detail-val" id="auditDetailConfidence">—</span></div>
+          <div class="detail-row"><span class="detail-key">复制长度</span><span class="detail-val" id="auditDetailCopied">—</span></div>
           <div class="detail-row"><span class="detail-key">来源 IP</span><span class="detail-val mono" id="auditDetailIp">10.20.8.42</span></div>
         </div>
       </section>
@@ -4208,6 +4284,7 @@ svg { display: block; }
     selectedRelayId: null,
     selectedAuditId: null,
     expandedAuditIds: new Set(),
+    auditExcerptEnabled: false, // [U66-review B-1] 默认关闭，开启后才展示/匹配内容前缀
     contextFile: null,
     memberType: 'user',
     currentAuthProject: 'payment-service',
@@ -4483,14 +4560,14 @@ svg { display: block; }
   const auditEvents = [
     {
       id: 'evt-1042', relative: '2 分钟前', abs: '2026-11-13 14:58:12', hours: 0.03,
-      user: '张伟', initials: 'ZW', account: 'zhangwei', event: '打开项目', code: 'project_open', target: 'payment-service',
+      user: '张伟', initials: 'ZW', account: 'zhangwei', event: '打开项目', code: 'project_connect', target: 'payment-service', host: 'dev-node-03',
       targetSub: 'feat/refund', result: 'success', ip: '10.20.8.42', trace: 'tr_01HX7P9F3ZK8M2QW',
       session: 'sess_9f2a41c7', path: '直连', duration: '1,269ms', error: '—',
       note: '客户端版本 2026.10.2 · 设备 macOS 15.1 · 线路 relay-01'
     },
     {
       id: 'evt-1041', relative: '12 分钟前', abs: '2026-11-13 14:46:03', hours: 0.2,
-      user: '张伟', initials: 'ZW', account: 'zhangwei', event: '连接', code: 'connect', target: 'payment-service',
+      user: '张伟', initials: 'ZW', account: 'zhangwei', event: '连接', code: 'project_access', target: 'payment-service', host: 'dev-node-03',
       targetSub: 'dev-node-03', result: 'success', ip: '10.20.8.42', trace: 'tr_01HX7P8B2YJ7L1NV',
       session: 'sess_9f2a41c7', path: '直连', duration: '1,302ms', error: '—',
       note: 'E2EE 握手成功 · 协议 v3 · 直连 18ms'
@@ -4498,24 +4575,25 @@ svg { display: block; }
     {
       id: 'evt-1044', relative: '18 分钟前', abs: '2026-11-13 14:40:05', hours: 0.31,
       user: '张伟', initials: 'ZW', account: 'zhangwei', event: '文件下载', code: 'file_download', kind: 'download',
-      target: 'payment-service', targetSub: 'feat/refund', result: 'success',
+      target: 'payment-service', targetSub: 'feat/refund', host: 'dev-node-03', result: 'success',
+      method: 'files.readChunk', confidence: 'client-declared', savedName: 'calculator.ts',
       fileName: 'calculator.ts', filePath: 'src/refund/calculator.ts', fileSize: '4.2 KB',
       ip: '10.20.8.42', trace: 'tr_01HX7P7A5WQ3K8LD',
       session: 'sess_9f2a41c7', path: '直连', duration: '86ms', error: '—',
-      note: '方法：文件浏览器下载 · 策略：允许 · 已写入审计'
+      note: '方法：files.readChunk · 策略：允许 · 客户端确认写入本地（calculator.ts） · 非主机确认'
     },
     {
       id: 'evt-1040', relative: '27 分钟前', abs: '2026-11-13 14:31:27', hours: 0.45,
-      user: '李明', initials: 'LM', account: 'liming', event: '下载拦截', code: 'download_denied', target: 'risk-engine',
-      targetSub: 'src/engine/rules.ts', result: 'failure',
-      fileName: 'rules.ts', filePath: 'src/engine/rules.ts', fileSize: '18.4 KB',
+      user: '李明', initials: 'LM', account: 'liming', event: '下载拦截', code: 'download_blocked', target: 'risk-engine', host: 'dev-node-07',
+      targetSub: 'release/2.8', result: 'denied', confidence: 'client-declared',
+      method: 'files.download', fileName: 'rules.ts', filePath: 'src/engine/rules.ts', fileSize: '18.4 KB',
       ip: '10.20.9.17', trace: 'tr_01HX7P6C4XK5N3MT',
-      session: 'sess_4c8e13ab', path: '中继', duration: '12ms', error: 'DOWNLOAD_DENIED',
-      note: '文件大小 18.4KB · 方法：文件浏览器下载 · 客户端已拦截'
+      session: 'sess_4c8e13ab', path: '中继', duration: '12ms', error: 'DOWNLOAD_DISABLED',
+      note: '前端拦截 · 策略：禁止 · 未产生 RPC（客户端自报，advisory）'
     },
     {
       id: 'evt-1039', relative: '46 分钟前', abs: '2026-11-13 14:12:09', hours: 0.77,
-      user: '张伟', initials: 'ZW', account: 'zhangwei', event: '权限变更', code: 'permission_change', target: 'payment-service',
+      user: '张伟', initials: 'ZW', account: 'zhangwei', event: '权限变更', code: 'grant_update', target: 'payment-service', host: 'dev-node-03',
       targetSub: '测试组', result: 'success', ip: '10.20.3.2', trace: 'tr_01HX7P3A9ZK2M7QP',
       session: '—', path: '—', duration: '248ms', error: '—',
       note: '操作：为“测试组”新增终端权限 · 变更人：张伟'
@@ -4529,7 +4607,7 @@ svg { display: block; }
     },
     {
       id: 'evt-1037', relative: '1 小时前', abs: '2026-11-13 13:40:18', hours: 1.3,
-      user: '赵敏', initials: 'ZM', account: 'zhaomin', event: '主机注册', code: 'host_register', target: 'dev-node-09',
+      user: '赵敏', initials: 'ZM', account: 'zhaomin', event: '主机注册', code: 'host_register', target: 'dev-node-09', host: 'dev-node-09',
       targetSub: '主机', result: 'success', ip: '10.20.3.2', trace: 'tr_01HX7NX8F2V9S6TL',
       session: '—', path: '中继', duration: '2,481ms', error: '—',
       note: 'Orca 2026.10.1 · 协议 v3 · 指纹已登记 · 一次性令牌已失效'
@@ -4544,27 +4622,39 @@ svg { display: block; }
     {
       id: 'evt-1043', relative: '5 小时前', abs: '2026-11-13 09:52:47', hours: 5.2,
       user: '李明', initials: 'LM', account: 'liming', event: '复制文件内容', code: 'file_copy', kind: 'copy',
-      target: 'risk-engine', targetSub: 'release/2.8', result: 'success',
+      target: 'risk-engine', targetSub: 'release/2.8', host: 'dev-node-07', result: 'success', confidence: 'client-declared',
       fileName: 'rules.ts', filePath: 'src/engine/rules.ts', fileSize: '18.4 KB',
+      copiedChars: 186, copiedBytes: 186, mime: 'text/typescript', isBinary: false, excerptTruncated: false,
       excerpt: `export function evaluate(rules: Rule[], ctx: EvalContext): Decision {\n  const matched = rules.find((rule) => rule.matcher(ctx))\n  return matched ? matched.decision : Decision.allow()\n}`,
       sha256: '4f9c2a7e8b1d3f6a0c5e9d2b7a4f1c8e6d3b0a9f2c5e8d1b4a7f0c3e6d9b2a5f',
       ip: '10.20.9.17', trace: 'tr_01HX7D5C3VY8N1KW',
       session: 'sess_4c8e13ab', path: '中继', duration: '—', error: '—',
-      note: '方法：文件预览面板复制 · 摘录 4 行 · 仅记录指纹，不可反推内容'
+      note: '方法：文件预览面板复制 · 复制 186 字符 / 186 字节 · 仅记录指纹，不可反推内容'
     },
     {
       id: 'evt-1035', relative: '6 小时前', abs: '2026-11-13 09:12:31', hours: 5.8,
-      user: '李明', initials: 'LM', account: 'liming', event: '打开项目', code: 'project_open', target: 'risk-engine',
+      user: '李明', initials: 'LM', account: 'liming', event: '打开项目', code: 'project_connect', target: 'risk-engine', host: 'dev-node-07',
       targetSub: 'release/2.8', result: 'failure', ip: '10.20.9.17', trace: 'tr_01HX7D6E8F2A4B6C',
       session: '—', path: '直连', duration: '802ms', error: 'HOST_OFFLINE',
       note: '主机 dev-node-07 心跳超时，项目打开被拒绝'
     },
     {
       id: 'evt-1034', relative: '1 天前', abs: '2026-11-12 17:21:06', hours: 26.7,
-      user: '张伟', initials: 'ZW', account: 'zhangwei', event: '连接', code: 'connect', target: 'payment-service',
+      user: '张伟', initials: 'ZW', account: 'zhangwei', event: '连接', code: 'project_access', target: 'payment-service', host: 'dev-node-03',
       targetSub: 'dev-node-03', result: 'success', ip: '10.20.8.42', trace: 'tr_01HX5P3G7K9M2Q4S',
       session: 'sess_11bd72e0', path: '中继', duration: '1,488ms', error: '—',
       note: '直连探测超时后回落中继 relay-01'
+    },
+    {
+      // [U66-review M-4] host-attested 示例：宿主浏览器下载
+      id: 'evt-1033', relative: '1 天前', abs: '2026-11-12 15:02:10', hours: 24.0,
+      user: '王芳', initials: 'WF', account: 'wangfang', event: '文件下载', code: 'file_download', kind: 'download',
+      target: 'order-center', targetSub: 'main', host: 'dev-node-09', result: 'success',
+      method: 'browser.download', confidence: 'host-attested',
+      fileName: 'invoice.csv', filePath: 'reports/invoice.csv', fileSize: '2.1 MB',
+      ip: '10.20.8.77', trace: 'tr_01HX5M1B8R3S7T2V',
+      session: 'sess_58af92c1', path: '直连', duration: '132ms', error: '—',
+      note: '方法：browser.download · 宿主确认交付 · 本地保存结果未知'
     }
   ];
 
@@ -5698,46 +5788,117 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
   /* ------------------------------------------------------------
      Audit
      ------------------------------------------------------------ */
+  // [U66-review B-1 M-3 M-9 m-2 m-6] 关键字白名单 + 起止时间 + 事件族 + 项目/主机分离
+  const AUDIT_EVENT_FAMILIES = {
+    'family:download': ['file_download', 'download_blocked'],
+    'family:copy': ['file_copy']
+  };
+
+  function auditKeywordHaystack(event) {
+    // 只匹配 fileName/path/actor(account)/projectKey；摘录仅在开关开启时进入匹配
+    return [event.fileName, event.filePath, event.account, event.target]
+      .concat(state.auditExcerptEnabled ? [event.excerpt] : [])
+      .filter(Boolean).join('\n').toLowerCase();
+  }
+
   function filteredAuditEvents() {
     const range = Number($('#auditTimeRange').value);
     const keyword = $('#auditKeywordFilter').value.trim().toLowerCase();
     const user = $('#auditUserFilter').value.trim().toLowerCase();
-    const target = $('#auditTargetFilter').value;
+    const project = $('#auditProjectFilter').value;
+    const host = $('#auditHostFilter').value;
     const filename = $('#auditFilenameFilter').value.trim().toLowerCase();
     const operation = $('#auditEventFilter').value;
     const result = $('#auditResultFilter').value;
+    const since = $('#auditSinceFilter').value;
+    const until = $('#auditUntilFilter').value;
+    const family = AUDIT_EVENT_FAMILIES[operation];
+    // [U66-review M-3] 起止时间优先；未填起止时用预设范围（默认 7 天）
+    const useCustomWindow = Boolean(since || until);
     return auditEvents.filter((event) => {
-      const haystack = [event.event, event.target, event.targetSub, event.fileName, event.filePath, event.excerpt]
-        .filter(Boolean).join('\n').toLowerCase();
       const fileHaystack = [event.fileName, event.filePath].filter(Boolean).join('\n').toLowerCase();
-      return event.hours <= range
-        && (!keyword || haystack.includes(keyword))
-        && (!user || `${event.user}\n${event.account}`.toLowerCase().includes(user))
-        && (target === 'all' || event.target === target)
+      const abs = event.abs.replace(' ', 'T');
+      return (useCustomWindow || event.hours <= range)
+        && (!since || abs >= since)
+        && (!until || abs <= until)
+        && (!keyword || auditKeywordHaystack(event).includes(keyword))
+        && (!user || event.account.toLowerCase() === user)
+        && (project === 'all' || event.target === project)
+        && (host === 'all' || event.host === host)
         && (!filename || fileHaystack.includes(filename))
-        && (operation === 'all' || event.code === operation)
+        && (operation === 'all' || (family ? family.includes(event.code) : event.code === operation))
         && (result === 'all' || event.result === result);
     });
+  }
+
+  // [U66-review m-1] 关键字命中高亮（只高亮 q/fileName，空关键字不高亮）
+  function auditHighlight(text, terms) {
+    let html = escapeHTML(text || '');
+    terms.filter(Boolean).forEach((term) => {
+      const safe = escapeHTML(term);
+      if (!safe) return;
+      const pattern = safe.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      html = html.replace(new RegExp(pattern, 'gi'), (match) => `<mark class="audit-hit">${match}</mark>`);
+    });
+    return html;
+  }
+
+  function auditTerms() {
+    return [
+      $('#auditKeywordFilter').value.trim(),
+      $('#auditFilenameFilter').value.trim()
+    ];
   }
 
   function auditFileMarkup(event) {
     if (!event.fileName) return '<span class="cell-mono">—</span>';
     const path = event.filePath || event.fileName;
+    const terms = auditTerms();
+    const copyLen = event.kind === 'copy' && event.copiedChars
+      ? `<span class="audit-copy-len">复制 ${event.copiedChars} 字符 / ${event.copiedBytes} 字节</span><span class="dot-sep">·</span>`
+      : '';
     return `
       <button class="audit-file" type="button" data-copy-file="${escapeHTML(path)}" title="点击复制${event.filePath ? '路径' : '文件名'}">
-        <span class="audit-file-name">${escapeHTML(event.fileName)}</span>${iconMarkup('copy')}
+        <span class="audit-file-name">${auditHighlight(event.fileName, terms)}</span>${iconMarkup('copy')}
       </button>
       <div class="audit-file-meta">
         <span>${escapeHTML(event.fileSize || '—')}</span>
         <span class="dot-sep">·</span>
-        <span class="audit-file-path">${escapeHTML(path)}</span>
+        ${copyLen}
+        <span class="audit-file-path">${auditHighlight(path, terms)}</span>
       </div>`;
+  }
+
+  const AUDIT_CONFIDENCE_LABELS = {
+    'host-attested': '主机确认',
+    'client-declared': '客户端自报',
+    'inferred': '推断'
+  };
+
+  function auditConfidenceMarkup(event) {
+    if (!event.confidence) return '';
+    const label = AUDIT_CONFIDENCE_LABELS[event.confidence] || event.confidence;
+    const cls = event.confidence === 'host-attested' ? 'is-attested'
+      : event.confidence === 'inferred' ? 'is-inferred' : 'is-declared';
+    return `<span class="audit-confidence ${cls}">${escapeHTML(label)}</span>`;
+  }
+
+  const AUDIT_RESULT_LABELS = { success: '成功', failure: '失败', denied: '拒绝' };
+  const AUDIT_RESULT_CLASSES = { success: 'is-success', failure: 'is-failure', denied: 'is-denied' };
+  const AUDIT_RESULT_DOTS = { success: 'dot-success', failure: 'dot-danger', denied: 'dot-warning' };
+
+  function auditResultMarkup(event) {
+    const cls = AUDIT_RESULT_CLASSES[event.result] || 'is-failure';
+    const dot = AUDIT_RESULT_DOTS[event.result] || 'dot-danger';
+    const label = AUDIT_RESULT_LABELS[event.result] || '失败';
+    return `<span class="audit-result ${cls}"><span class="dot ${dot}"></span>${label}</span>`;
   }
 
   function auditRowMarkup(event) {
     const eventIcon = eventIconMap[event.event] || 'activity';
+    // [U66-review M-4 M-8] 文件事件带可信度徽标
     const opMarkup = event.kind
-      ? `<span class="audit-op"><span class="audit-type is-${event.kind}">${event.kind === 'download' ? '下载' : '复制'}</span><span>${escapeHTML(event.event)}</span></span>`
+      ? `<span class="audit-op"><span class="audit-type is-${event.kind}">${event.kind === 'download' ? '下载' : '复制'}</span><span>${escapeHTML(event.event)}</span>${auditConfidenceMarkup(event)}</span>`
       : `<span class="event-tag">${iconMarkup(eventIcon)}${escapeHTML(event.event)}</span>`;
     const actions = event.kind === 'copy'
       ? `<span class="audit-row-actions"><button class="text-link" type="button" data-audit-expand="${escapeHTML(event.id)}">${state.expandedAuditIds.has(event.id) ? '收起' : '展开'}</button><button class="text-link" type="button" data-audit-open="${escapeHTML(event.id)}">详情</button></span>`
@@ -5759,25 +5920,29 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
           </span>
         </td>
         <td>${auditFileMarkup(event)}</td>
-        <td><span class="audit-result ${event.result === 'success' ? 'is-success' : 'is-failure'}"><span class="dot ${event.result === 'success' ? 'dot-success' : 'dot-danger'}"></span>${event.result === 'success' ? '成功' : '失败'}</span></td>
+        <td>${auditResultMarkup(event)}</td>
         <td class="cell-ops">${actions}</td>
       </tr>`;
     if (event.kind !== 'copy' || !state.expandedAuditIds.has(event.id)) return row;
-    const excerpt = event.excerpt
-      ? `<div class="audit-excerpt">${escapeHTML(event.excerpt)}</div>`
+    // [U66-review B-1 m-4] 摘录默认关闭；开启后才展示有界前缀并标注截断
+    const excerpt = state.auditExcerptEnabled && event.excerpt
+      ? `<div class="audit-excerpt">${auditHighlight(event.excerpt, auditTerms())}</div>`
       : '<div class="audit-empty-excerpt">未记录内容摘录（仅保留指纹）</div>';
+    const excerptBadge = state.auditExcerptEnabled
+      ? `<span class="badge badge-sm">有界摘录（≤1KB）</span>${event.excerptTruncated ? '<span class="badge badge-warning badge-sm">已截断</span>' : ''}`
+      : '<span class="badge badge-sm">已关闭 · 二期</span>';
     return row + `
       <tr class="audit-expand-row">
         <td colspan="7">
           <div class="audit-expand-panel">
             <div>
-              <div class="audit-expand-label">复制内容摘录 <span class="badge badge-sm">脱敏</span></div>
+              <div class="audit-expand-label">复制内容摘录 ${excerptBadge}</div>
               ${excerpt}
             </div>
             <div>
-              <div class="audit-expand-label">内容指纹</div>
+              <div class="audit-expand-label">内容指纹与复制长度</div>
               <div class="audit-fingerprint">sha256:${escapeHTML(event.sha256 || '—')}</div>
-              <div class="audit-fingerprint-hint">仅记录指纹，不可反推内容</div>
+              <div class="audit-fingerprint-hint">${event.copiedChars ? `复制 ${event.copiedChars} 字符 / ${event.copiedBytes} 字节 · ` : ''}仅记录指纹，不可反推内容</div>
             </div>
           </div>
         </td>
@@ -5802,15 +5967,25 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
 
   function fillAuditDrawer(event) {
     if (!event) return;
+    // [U66-review M-2 M-4 M-8 m-3] 三态结果 + 可信度 + 复制长度
     const result = $('#auditDrawerResult');
-    result.className = `badge ${event.result === 'success' ? 'badge-success' : 'badge-danger'}`;
-    result.innerHTML = `<span class="dot ${event.result === 'success' ? 'dot-success' : 'dot-danger'}"></span>${event.result === 'success' ? '成功' : '失败'}`;
+    const resultClass = { success: 'badge-success', failure: 'badge-danger', denied: 'badge-warning' }[event.result] || 'badge-danger';
+    const resultDot = AUDIT_RESULT_DOTS[event.result] || 'dot-danger';
+    const resultLabel = AUDIT_RESULT_LABELS[event.result] || '失败';
+    result.className = `badge ${resultClass}`;
+    result.innerHTML = `<span class="dot ${resultDot}"></span>${resultLabel}`;
     $('#auditDrawerSub').textContent = `${event.event} · ${event.abs}`;
     $('#auditDetailEvent').textContent = event.event;
     $('#auditDetailTime').textContent = event.abs;
     $('#auditDetailUser').textContent = `${event.user}（${event.account}）`;
     $('#auditDetailTarget').textContent = event.target;
-    $('#auditDetailResult').textContent = event.result === 'success' ? '成功' : '失败';
+    $('#auditDetailResult').textContent = resultLabel;
+    $('#auditDetailConfidence').textContent = event.confidence
+      ? (AUDIT_CONFIDENCE_LABELS[event.confidence] || event.confidence)
+      : '—';
+    $('#auditDetailCopied').textContent = event.copiedChars
+      ? `${event.copiedChars} 字符 / ${event.copiedBytes} 字节`
+      : '—';
     $('#auditDetailIp').textContent = event.ip;
     $('#auditDetailTrace').textContent = event.trace;
     $('#auditDetailSession').textContent = event.session;
@@ -5840,14 +6015,48 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     }
   }
 
+  // [U66-review B-1] 摘录开关状态（演示：默认关闭，开启后才展示/匹配内容前缀）
+  function updateAuditExcerptState() {
+    const button = $('#auditExcerptSwitch');
+    if (button) button.setAttribute('aria-checked', String(state.auditExcerptEnabled));
+    const label = $('#auditExcerptState');
+    if (label) label.textContent = state.auditExcerptEnabled
+      ? '内容摘录：已开启（≤1KB，二期）'
+      : '内容摘录：已关闭（默认）';
+  }
+
+  // [U66-review m-5] 与 API INVALID_QUERY 对齐：q 2..128、fileName 1..128
+  function validateAuditFilters() {
+    const error = $('#auditFilterError');
+    const keyword = $('#auditKeywordFilter').value.trim();
+    const filename = $('#auditFilenameFilter').value.trim();
+    let message = '';
+    if (keyword && (keyword.length < 2 || keyword.length > 128)) {
+      message = '关键字长度需为 2–128 个字符（INVALID_QUERY：q）';
+    } else if (filename && filename.length > 128) {
+      message = '文件名长度需为 1–128 个字符（INVALID_QUERY：fileName）';
+    }
+    if (error) {
+      error.textContent = message;
+      error.hidden = !message;
+    }
+    return !message;
+  }
+
   function resetAuditFilters() {
     $('#auditKeywordFilter').value = '';
-    $('#auditTimeRange').value = '24';
+    $('#auditTimeRange').value = '168';
+    $('#auditSinceFilter').value = '';
+    $('#auditUntilFilter').value = '';
     $('#auditUserFilter').value = '';
-    $('#auditTargetFilter').value = 'all';
+    $('#auditProjectFilter').value = 'all';
+    $('#auditHostFilter').value = 'all';
     $('#auditFilenameFilter').value = '';
     $('#auditEventFilter').value = 'all';
     $('#auditResultFilter').value = 'all';
+    $('#auditFilterError').hidden = true;
+    state.auditExcerptEnabled = false;
+    updateAuditExcerptState();
     state.expandedAuditIds.clear();
     renderAuditTable();
   }
@@ -6711,9 +6920,23 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
   function bindAuditEvents() {
     $('#auditFilterForm').addEventListener('submit', (event) => {
       event.preventDefault();
+      if (!validateAuditFilters()) return;
       renderAuditTable();
     });
     $('#auditResetBtn').addEventListener('click', resetAuditFilters);
+    // [U66-review B-1] 摘录开关：关闭时不展示/不匹配 excerpt
+    $('#auditExcerptSwitch').addEventListener('click', () => {
+      state.auditExcerptEnabled = !state.auditExcerptEnabled;
+      updateAuditExcerptState();
+      renderAuditTable();
+    });
+    $('#auditExcerptSwitch').addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      state.auditExcerptEnabled = !state.auditExcerptEnabled;
+      updateAuditExcerptState();
+      renderAuditTable();
+    });
   }
 
   function bindPolicyEvents() {
@@ -6912,6 +7135,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     renderMyProjects();
     renderHosts();
     renderRelays();
+    updateAuditExcerptState();
     renderAuditTable();
     renderAuthPage();
 
