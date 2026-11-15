@@ -2713,6 +2713,10 @@ A 线 1/1（9 步，**R1 确认**：A4 终端 remote PTY 句柄创建+回显 142
 
 `e1da1b63e01`（6 文件）：README 终版（端点/两层脚本/16 扩展/原型对照 CLI/集成/故障排查含 18787 陈旧前置）+example-explore（discover→extract→findings 形态）+example-regression（断言链可入 CI）+启动自检 --ensure-env。双模式示例全通+PS 测试 8/8。**Playwright Server 批（1-4）全部完成**。派终态双线旅程第三轮（探索修复批 R1-R4 合入后）。
 
+### U67 设计代理正式关闭（2026-11-16）
+
+确认全部交付完成：设计文档（433 行映射表/用户管理三角色/实现预案 6 令）+ prototype.html 修订（主机/项目详情权限 tab 三卡片/用户管理页/成员页收敛）+ 流程修正项（tab 切换缺陷+控制卡匹配缺陷）Playwright 本地 HTTP 实测通过+截图归档 ui/screenshots/u67-*.png。**开发未启动**（待用户原型确认+独立评审）。该代理任务正式关闭。
+
 ### U67-1 落地（2026-11-16，新授权模型切换）
 
 `355384656d9`（21 文件 +2357/−1692）：host-authority.ts 推导核心（hostBits 并集/hostAccessLevel 全权不含 maintain/effectiveProjectPermissions 只读封顶兼保底/canCreateProjectOnHost）+server.ts 消费点全切（可见性推导/项目守卫/connect/handoff/票据 perms/自助门禁 provision 位无条件——provisionPolicy 弃用/available 加 accessLevel）+Web 成员与权限页删除（路由回落）+详情弹框/主机抽屉「信息|权限」三卡片入口（位并集徽标/即时 PUT/覆盖确认级别 diff/≤60s 断会话文案）。新 u67 6/6+AA 迁移+self-service 30+探索修复 19；全量 394/395（唯一失败=web-handoff HEAD 既有红，stash 对照验证）。授权收缩撤凭证（≤60s）留 U65 实现令。空槽待分配。
