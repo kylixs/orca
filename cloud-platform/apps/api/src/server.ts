@@ -341,6 +341,22 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
   developer: []
 }
 
+/**
+ * 用户管理页三角色 → 存储 roles（u67 设计 §7.2）；下拉加新角色 = 加一个键。
+ */
+const USER_PAGE_ROLES: Record<'developer' | 'auditor' | 'admin', string[]> = {
+  developer: ['developer'],
+  auditor: ['developer', 'platform:auditor'],
+  admin: ['developer', 'platform:admin']
+}
+
+/** 存储 roles 的页面角色键；USER_PAGE_ROLES 的逆映射。 */
+function userPageRole(roles: string[]): 'developer' | 'auditor' | 'admin' {
+  if (roles.includes('platform:admin')) return 'admin'
+  if (roles.includes('platform:auditor')) return 'auditor'
+  return 'developer'
+}
+
 function isAdmin(user: User): boolean {
   return user.roles.includes('platform:admin')
 }
@@ -1719,6 +1735,10 @@ export function createApp(config: ApiConfig): ApiHandle {
         })
       }
       user.groups = [...new Set([...user.groups, ...result.profile.groups])]
+      // 角色覆盖优先于 LDAP 种子（§7.3）：种子只在首登生效，覆盖后每次登录重算。
+      if (user.roleOverride) {
+        user.roles = USER_PAGE_ROLES[user.roleOverride]
+      }
       const { device, tokens } = issueDeviceSession(user, body)
       // Why best-effort: an operator must still be able to sign in and diagnose a
       // full audit disk; mutations are what fail closed, not authentication.
@@ -2776,6 +2796,87 @@ export function createApp(config: ApiConfig): ApiHandle {
         })),
         groups: knownGroups(store)
       })
+    }
+
+    // ---- user management (U67-3): admin-only list + role writes ----
+    if (req.method === 'GET' && path === '/v1/users') {
+      const authed = requireAuth()
+      if (!authed) return
+      if (!isAdmin(authed.user)) {
+        return denyPrivileged(res, traceId, authed.user, {
+          eventType: 'user_list',
+          targetType: 'user',
+          permission: 'platform:admin'
+        })
+      }
+      return json(res, 200, {
+        users: [...store.users.values()].map((user) => ({
+          id: user.id,
+          username: user.username,
+          displayName: user.displayName,
+          dept: user.dept,
+          groups: user.groups,
+          roles: user.roles,
+          status: user.status,
+          role: userPageRole(user.roles),
+          roleSource: user.roleOverride ? 'admin-override' : 'ldap'
+        }))
+      })
+    }
+
+    const userRolesPath = path.match(/^\/v1\/users\/([\w-]+)\/roles$/)
+    if (userRolesPath && req.method === 'PUT') {
+      const authed = requireAuth()
+      if (!authed) return
+      const targetId = userRolesPath[1]
+      if (!isAdmin(authed.user)) {
+        return denyPrivileged(res, traceId, authed.user, {
+          eventType: 'role_update',
+          targetType: 'user',
+          targetId,
+          permission: 'platform:admin'
+        })
+      }
+      if (!auditAllowsMutations(res, traceId)) return
+      const body = await readJson(req)
+      const next =
+        body.role === 'developer' || body.role === 'auditor' || body.role === 'admin'
+          ? body.role
+          : null
+      if (next === null) {
+        return error(res, 400, 'ROLE_INVALID', '角色只能是普通、审计或管理员。', traceId)
+      }
+      const target = store.users.get(targetId)
+      if (!target) {
+        return error(res, 404, 'USER_NOT_FOUND', '用户不存在。', traceId)
+      }
+      const from = userPageRole(target.roles)
+      // 只有管理员降级需要撤凭证：旧云会话票据按 admin 旁路签发（位无上限），
+      // 降级后必须重算——≤60s 心跳撤销闭环；升级只增不减，不撤销（§7.3）。
+      const revoked = from === 'admin' && next !== 'admin'
+      if (
+        !(await recordAudit(
+          res,
+          {
+            eventType: 'role_update',
+            actor: authed.user.username,
+            targetType: 'user',
+            targetId: target.id,
+            result: 'success',
+            traceId,
+            metadata: { from, to: next, username: target.username, revoked }
+          },
+          traceId
+        ))
+      ) {
+        return
+      }
+      target.roleOverride = next
+      target.roles = USER_PAGE_ROLES[next]
+      if (revoked) {
+        revokeUserCredentials(target.username, 'role_changed')
+      }
+      return json(res, 200, { ok: true, roles: target.roles, source: 'admin-override' })
     }
 
     // ---- hosts ----

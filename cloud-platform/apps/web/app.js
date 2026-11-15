@@ -83,12 +83,13 @@ function toast(text) {
 
 /* ---------------- routing ---------------- */
 
-const ADMIN_ROUTES = new Set(['hosts', 'relays', 'audit', 'settings'])
+const ADMIN_ROUTES = new Set(['hosts', 'relays', 'users', 'audit', 'settings'])
 const TITLES = {
   workbench: '工作台',
   projects: '我的项目',
   hosts: '平台设置 / 主机',
   relays: '平台设置 / 中继',
+  users: '用户管理',
   audit: '审计日志',
   settings: '平台设置',
   forbidden: '无权访问'
@@ -113,6 +114,7 @@ function navigate(route) {
     projects: renderProjects,
     hosts: renderHosts,
     relays: renderRelays,
+    users: renderUsersPage,
     audit: renderAudit,
     settings: renderSettings
   }
@@ -1400,6 +1402,104 @@ function relayRow(r) {
   </tr>`
 }
 
+/* ---------------- 用户管理（U67-3：平台级身份，覆盖优先于 LDAP 同步） ---------------- */
+
+const USER_PAGE_ROLE_LABELS = { developer: '普通', auditor: '审计', admin: '管理员' }
+const USER_SOURCE_LABELS = { ldap: 'LDAP 同步', 'admin-override': '管理员覆盖' }
+
+/** 原型 #/users 页形态（P4）：两层模型说明 + 账号表格 + 角色下拉 + 来源 + 状态。 */
+async function renderUsersPage() {
+  const body = await api('/v1/users')
+  const users = body.users
+  content().innerHTML = `
+    <div class="page-head">
+      <div>
+        <h1>用户管理</h1>
+        <p>平台账号与角色设置。用户与组来自 LDAP 同步；角色为按用户覆盖，覆盖记录留审计。</p>
+      </div>
+      <div class="toolbar">
+        <span class="badge ok"><span class="dot online"></span>LDAP 同步正常</span>
+        <span class="badge">${users.length} 个账号</span>
+      </div>
+    </div>
+    <div class="note"><strong>角色 ≠ 资源授权（两层模型）</strong>：本页的「普通 / 审计 / 管理员」是平台级身份——决定管控面与审计面可见性；「谁能用哪些项目、有哪些操作」由项目 / 主机详情弹框权限页签的角色卡片（资源授权）决定。管理员角色不等于项目内全权：打开项目仍需显式授权。</div>
+    <div class="section-head"><h2>账号与角色</h2><span class="muted">角色变更写入 role_update 审计</span></div>
+    <div class="table-wrap">
+      <table aria-label="用户与角色">
+        <thead><tr><th>用户</th><th>部门</th><th>LDAP 组</th><th>角色</th><th>角色来源</th><th>状态</th></tr></thead>
+        <tbody>
+          ${users.map(userRow).join('') || '<tr><td colspan="6" class="table-empty">暂无账号</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+    <p class="muted" id="usersFoot">共 ${users.length} 个账号 · 服务端按请求实时判定角色；角色降级会断开当前云会话（≤60 秒），升级即时生效、不断会话。变更可在审计日志按「角色变更 · role_update」筛选。</p>
+    <div class="note">角色语义：普通 = 项目 / 主机使用面（按资源授权）；审计 = + 审计查询与目录读取，不可管控；管理员 = 全管控面 + 授权卡片写入。LDAP platform-admins 组成员首次登录映射为管理员，此后按用户覆盖优先，再次登录不会被同步覆盖。</div>`
+  for (const select of document.querySelectorAll('[data-user-role]')) {
+    select.onchange = () => void confirmUserRoleChange(select, users)
+  }
+}
+
+function userRow(user) {
+  const options = Object.entries(USER_PAGE_ROLE_LABELS)
+    .map(
+      ([value, label]) =>
+        `<option value="${value}"${user.role === value ? ' selected' : ''}>${label}</option>`
+    )
+    .join('')
+  const active = user.status === 'active'
+  return `<tr>
+    <td><strong>${esc(user.displayName)}</strong><div class="muted mono">${esc(user.username)}</div></td>
+    <td>${esc(user.dept)}</td>
+    <td class="mono">${esc(user.groups.join(', ') || '—')}</td>
+    <td>
+      <select class="select" data-user-role="${esc(user.id)}" aria-label="${esc(user.displayName)} 的平台角色">${options}</select>
+    </td>
+    <td>${
+      user.roleSource === 'admin-override'
+        ? `<span class="badge ok">${esc(USER_SOURCE_LABELS[user.roleSource])}</span>`
+        : `<span class="muted">${esc(USER_SOURCE_LABELS[user.roleSource] ?? 'LDAP 同步')}</span>`
+    }</td>
+    <td><span class="dot ${active ? 'online' : 'offline'}"></span> ${active ? '活跃' : '已禁用'}</td>
+  </tr>`
+}
+
+/** 下拉 change → 确认弹框（降级 danger + 断开会话副题）→ PUT → 重绘 + toast。 */
+function confirmUserRoleChange(select, users) {
+  const user = users.find((item) => item.id === select.dataset.userRole)
+  const next = select.value
+  if (!user || next === user.role) return
+  select.value = user.role // 回退到当前值：确认成功后整页重绘才会翻转
+  const demote = user.role === 'admin' && next !== 'admin'
+  dialog(
+    '角色变更',
+    `<p><strong>${esc(user.displayName)}（${esc(user.username)}）</strong>：${USER_PAGE_ROLE_LABELS[user.role]} → ${USER_PAGE_ROLE_LABELS[next]}。</p>
+     <p class="muted">变更写入 role_update 审计；按用户覆盖优先于 LDAP 同步，再次登录不会被同步覆盖。</p>
+     ${demote ? '<p class="note warn">降级将断开该用户当前云会话（≤60 秒）。</p>' : '<p class="muted">升级即时生效，不断开会话。</p>'}`,
+    [
+      {
+        label: '确认变更',
+        primary: !demote,
+        danger: demote,
+        onClick: () => void applyUserRoleChange(user, next)
+      }
+    ]
+  )
+}
+
+async function applyUserRoleChange(user, next) {
+  try {
+    await api(`/v1/users/${user.id}/roles`, {
+      method: 'PUT',
+      body: JSON.stringify({ role: next })
+    })
+    toast(`已将 ${user.displayName} 的角色更新为${USER_PAGE_ROLE_LABELS[next]}`)
+  } catch (err) {
+    // 失败重绘回滚：行不能继续显示一个没落库的角色。
+    toast(`保存失败：${err.message ?? err}`)
+  }
+  await renderUsersPage()
+}
+
 /** The subject picker is an enhancement: a failed directory read keeps free text. */
 async function loadDirectory() {
   try {
@@ -1728,6 +1828,7 @@ const AUDIT_EVENT_OPTIONS = [
   ['project_connect', '打开项目 · project_connect'],
   ['project_access', '连接 · project_access'],
   ['grant_update', '权限变更 · grant_update'],
+  ['role_update', '角色变更 · role_update'],
   ['host_register', '主机注册 · host_register'],
   ['host_revoke', '主机撤销 · host_revoke'],
   ['policy_update', '策略变更 · policy_update'],
@@ -2212,7 +2313,7 @@ function dialog(title, html, actions = [], options = {}) {
         ${actions
           .map(
             (a, i) =>
-              `<button class="btn ${a.primary ? 'primary' : ''}" data-action="${i}" ${a.disabled ? 'disabled' : ''} ${a.title ? `title="${esc(a.title)}"` : ''}>${esc(a.label)}</button>`
+              `<button class="btn ${a.danger ? 'danger' : a.primary ? 'primary' : ''}" data-action="${i}" ${a.disabled ? 'disabled' : ''} ${a.title ? `title="${esc(a.title)}"` : ''}>${esc(a.label)}</button>`
           )
           .join('')}
         <button class="btn ghost" data-action="close">关闭</button>

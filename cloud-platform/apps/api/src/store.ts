@@ -10,6 +10,8 @@ export type User = {
   groups: string[]
   roles: string[]
   status: 'active' | 'disabled'
+  /** Set once an admin assigns a role from the users page; wins over the LDAP seed. */
+  roleOverride?: 'developer' | 'auditor' | 'admin'
 }
 
 export type Device = {
