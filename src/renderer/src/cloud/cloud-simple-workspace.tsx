@@ -41,7 +41,8 @@ import {
 } from './cloud-simple-workspace-close-guard'
 import {
   cloudWorkspacePreviewKind,
-  createCloudWorkspacePreviewTab
+  createCloudWorkspacePreviewTab,
+  isCloudWorkspaceBinaryPath
 } from './cloud-workspace-preview-tab'
 import { createCloudWorkspaceDiffTab } from './cloud-workspace-diff-tab'
 import { CloudWorkspaceFileTree } from './cloud-workspace-file-tree'
@@ -104,6 +105,26 @@ export type {
   CloudSimpleWorkspaceRightPanelKind
 } from './cloud-simple-workspace-right-panel'
 
+/**
+ * One click → one tab (U46-8). Known binary extensions go to the preview
+ * placeholder; the editor's read heuristic is the fallback for unknown ones
+ * (U59②).
+ */
+export function cloudSimpleWorkspaceTabForFile(path: string): CloudSimpleWorkspaceTab {
+  const previewKind = cloudWorkspacePreviewKind(path)
+  if (previewKind !== 'binary') {
+    return cloudSimpleWorkspaceFileTab(
+      path,
+      'preview',
+      previewKind === 'image' ? 'image' : 'preview'
+    )
+  }
+  if (isCloudWorkspaceBinaryPath(path)) {
+    return cloudSimpleWorkspaceFileTab(path, 'preview', 'binary')
+  }
+  return cloudSimpleWorkspaceFileTab(path)
+}
+
 export type CloudSimpleWorkspaceProps = {
   route: 'direct' | 'relay'
   latencyMs?: number | null
@@ -160,7 +181,7 @@ export function CloudSimpleWorkspace({
     (path: string) => {
       dispatch({
         type: 'open',
-        tab: fileTab ? fileTab(path) : cloudSimpleWorkspaceFileTab(path)
+        tab: fileTab ? fileTab(path) : cloudSimpleWorkspaceTabForFile(path)
       })
     },
     [fileTab]
@@ -390,17 +411,7 @@ export function CloudSimpleWorkspaceSession({
             : undefined
         }
         onDirtyCountChange={onDirtyCountChange}
-        fileTab={(path) => {
-          const kind = cloudWorkspacePreviewKind(path)
-          if (kind === 'binary') {
-            return cloudSimpleWorkspaceFileTab(path)
-          }
-          return cloudSimpleWorkspaceFileTab(
-            path,
-            'preview',
-            kind === 'image' ? 'image' : 'preview'
-          )
-        }}
+        fileTab={cloudSimpleWorkspaceTabForFile}
       />
     </CloudWorkspaceTerminalTabProvider>
   )

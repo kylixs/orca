@@ -39,6 +39,67 @@ const IMAGE_EXTENSIONS = new Set(Object.keys(IMAGE_MIME_BY_EXTENSION))
 
 export type CloudWorkspacePreviewKind = 'image' | 'html' | 'drawio' | 'pdf' | 'binary'
 
+/**
+ * Extensions the text editor must never open (U59②). Previewable types
+ * (images/HTML/drawio/PDF) are classified first, so this set only diverts files
+ * the host's `files.read` would otherwise return as raw bytes.
+ */
+const CLOUD_WORKSPACE_BINARY_EXTENSIONS = new Set([
+  'bin',
+  'exe',
+  'dll',
+  'so',
+  'dylib',
+  'zip',
+  'tar',
+  'gz',
+  'tgz',
+  'bz2',
+  'xz',
+  '7z',
+  'rar',
+  'class',
+  'jar',
+  'wasm',
+  'pyc',
+  'pyo',
+  'o',
+  'a',
+  'lib',
+  'node',
+  'woff',
+  'woff2',
+  'ttf',
+  'otf',
+  'mp3',
+  'mp4',
+  'mov',
+  'avi',
+  'mkv',
+  'wav',
+  'flac',
+  'ogg',
+  'webm',
+  'sqlite',
+  'db',
+  'iso',
+  'dmg',
+  'doc',
+  'docx',
+  'xls',
+  'xlsx',
+  'ppt',
+  'pptx',
+  'odt',
+  'ods',
+  'odp'
+])
+
+/** True for a known binary extension; unknown files fall back to the read heuristic. */
+export function isCloudWorkspaceBinaryPath(relativePath: string): boolean {
+  return CLOUD_WORKSPACE_BINARY_EXTENSIONS.has(extensionOf(relativePath))
+}
+
 function fileName(relativePath: string): string {
   return relativePath.split(/[\\/]/).at(-1) ?? relativePath
 }

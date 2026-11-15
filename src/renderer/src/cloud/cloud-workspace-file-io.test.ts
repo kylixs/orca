@@ -49,7 +49,30 @@ describe('编辑器文件 IO', () => {
       worktree: 'path:/srv/wt',
       relativePath: 'src/a.ts'
     })
-    expect(result).toEqual({ ok: true, content: 'hello\n', truncated: false, byteLength: 6 })
+    expect(result).toEqual({
+      ok: true,
+      content: 'hello\n',
+      truncated: false,
+      byteLength: 6,
+      binary: false
+    })
+  })
+
+  it('NUL 字节或宿主 binary 标志判为二进制，供编辑器强制只读（U59②）', async () => {
+    const nul = rpcReturning({
+      ok: true,
+      result: { content: 'abc\u0000def', truncated: false }
+    })
+    expect(await readCloudWorkspaceFile(nul, '/srv/wt', 'data/unknown.dat')).toMatchObject({
+      ok: true,
+      binary: true
+    })
+
+    const flagged = rpcReturning({ ok: true, result: { content: 'abc', isBinary: true } })
+    expect(await readCloudWorkspaceFile(flagged, '/srv/wt', 'data/unknown.dat')).toMatchObject({
+      ok: true,
+      binary: true
+    })
   })
 
   it('截断标记原样透出（供标签降级为只读）', async () => {

@@ -7,6 +7,7 @@ import type { CloudProjectPermission, CloudRpcOutcome } from '../../../shared/cl
 import {
   CloudSimpleWorkspace,
   CloudSimpleWorkspaceSession,
+  cloudSimpleWorkspaceTabForFile,
   type CloudSimpleWorkspaceTabComponentProps
 } from './cloud-simple-workspace'
 import { createCloudWorkspaceFileTab } from './cloud-workspace-file-tab'
@@ -33,6 +34,26 @@ function renderWorkspace(
     />
   )
 }
+
+describe('文件点击分发（U59②）', () => {
+  it('二进制扩展进预览占位，文本进编辑器，图片进图片预览', () => {
+    expect(cloudSimpleWorkspaceTabForFile('dist/app.bin')).toMatchObject({
+      kind: 'preview',
+      path: 'dist/app.bin',
+      mode: 'binary'
+    })
+    expect(cloudSimpleWorkspaceTabForFile('tools/run.exe')).toMatchObject({
+      kind: 'preview',
+      mode: 'binary'
+    })
+    expect(cloudSimpleWorkspaceTabForFile('src/a.ts')).toMatchObject({ kind: 'editor' })
+    expect(cloudSimpleWorkspaceTabForFile('README.md')).toMatchObject({ kind: 'editor' })
+    expect(cloudSimpleWorkspaceTabForFile('assets/logo.png')).toMatchObject({
+      kind: 'preview',
+      mode: 'image'
+    })
+  })
+})
 
 describe('简易工作区外壳', () => {
   it('呈现标签区、右侧双 tab 与状态栏', () => {
@@ -343,20 +364,31 @@ function scriptedSessionRpc(): {
               result: [
                 { name: 'src', isDirectory: true },
                 { name: 'logo.png', isDirectory: false },
-                { name: 'README.md', isDirectory: false }
+                { name: 'README.md', isDirectory: false },
+                { name: 'app.bin', isDirectory: false }
               ]
             }
       }
       case 'files.readPreview':
-        return {
-          ok: true,
-          result: {
-            content: 'iVBORw0KGgo=',
-            isBinary: true,
-            isImage: true,
-            mimeType: 'image/png'
-          }
-        }
+        return (params as { relativePath?: string } | undefined)?.relativePath === 'app.bin'
+          ? {
+              ok: true,
+              result: {
+                content: '',
+                isBinary: true,
+                isImage: false,
+                mimeType: 'application/octet-stream'
+              }
+            }
+          : {
+              ok: true,
+              result: {
+                content: 'iVBORw0KGgo=',
+                isBinary: true,
+                isImage: true,
+                mimeType: 'image/png'
+              }
+            }
       case 'files.read':
         return { ok: false, code: 'denied' }
       case 'git.status':
@@ -447,6 +479,38 @@ describe('简易工作区装配（U46-8）', () => {
     await within(screen.getByTestId('cloud-simple-workspace-pane-diff:src/a.ts')).findByTestId(
       'cloud-workspace-diff-tab'
     )
+  })
+
+  it('点击 .bin 打开预览二进制占位而非编辑器（U59②）', async () => {
+    const user = userEvent.setup()
+    const { rpc, calls } = scriptedSessionRpc()
+
+    render(
+      <CloudSimpleWorkspaceSession
+        projectName="payment-svc"
+        route="relay"
+        latencyMs={18}
+        workspacePath="/srv/checkout"
+        permissions={ALL}
+        rpc={rpc}
+      />
+    )
+
+    await user.click(await screen.findByTestId('cloud-workspace-file-tree-node-app.bin'))
+
+    const pane = screen.getByTestId('cloud-simple-workspace-pane-preview:app.bin')
+    const binary = await within(pane).findByTestId('cloud-workspace-preview-binary')
+    expect(binary.textContent).toContain('二进制')
+    expect(binary.textContent).toContain('application/octet-stream')
+    expect(binary.textContent).toContain('下载')
+    expect(screen.queryByTestId('cloud-simple-workspace-pane-file:app.bin')).toBeNull()
+    expect(
+      calls.some(
+        (call) =>
+          call.method === 'files.read' &&
+          (call.params as { relativePath?: string } | undefined)?.relativePath === 'app.bin'
+      )
+    ).toBe(false)
   })
 
   it('提交行开 diff：标签携带完整 commitOid/parentOid，差异走 git.commitDiff（U50）', async () => {

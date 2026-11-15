@@ -42,6 +42,7 @@ function FakeEditor({
 type RpcScript = {
   content: string
   truncated?: boolean
+  binary?: boolean
   writeFailure?: { code: string; message?: string }
   readFailure?: { code: string; message?: string }
 }
@@ -59,7 +60,8 @@ function makeRpc(script: RpcScript) {
           result: {
             content,
             truncated: script.truncated === true,
-            byteLength: content.length
+            byteLength: content.length,
+            ...(script.binary === true ? { isBinary: true } : {})
           }
         }
       }
@@ -266,12 +268,39 @@ describe('工作区文件编辑标签', () => {
     expect(screen.queryByTestId('cloud-workspace-file-tab-save')).toBeNull()
   })
 
-  it('二进制文件内联呈现错误码', async () => {
-    renderTab({ rpc: makeRpc({ content: '', readFailure: { code: 'binary_file' } }) })
+  it('宿主以 binary_file 拒绝读取 → 二进制占位，而非编辑器', async () => {
+    renderTab({
+      path: 'dist/app.bin',
+      rpc: makeRpc({ content: '', readFailure: { code: 'binary_file' } })
+    })
 
-    expect((await screen.findByTestId('cloud-workspace-file-tab-error')).textContent).toContain(
-      '二进制文件'
-    )
+    const binary = await screen.findByTestId('cloud-workspace-file-tab-binary')
+    expect(binary.textContent).toContain('二进制')
+    expect(binary.textContent).toContain('下载')
+    expect(screen.queryByTestId('fake-editor-input')).toBeNull()
+    expect(screen.queryByTestId('cloud-workspace-file-tab-save')).toBeNull()
+  })
+
+  it('读取内容含 NUL 字节 → 强制只读且无法保存（U59② 启发兜底）', async () => {
+    const rpc = makeRpc({ content: 'abc\u0000def' })
+    renderTab({ path: 'data/unknown.dat', rpc })
+
+    const input = await screen.findByTestId<HTMLTextAreaElement>('fake-editor-input')
+    expect(input.readOnly).toBe(true)
+    expect(screen.getByTestId('cloud-workspace-file-tab-readonly').textContent).toContain('只读')
+    expect(screen.getByTestId('cloud-workspace-file-tab-notice').textContent).toContain('二进制')
+    expect(screen.queryByTestId('cloud-workspace-file-tab-save')).toBeNull()
+
+    await userEvent.click(screen.getByTestId('fake-editor-save'))
+    expect(rpc.mock.mock.calls.filter((call) => call[0] === 'files.write')).toHaveLength(0)
+  })
+
+  it('宿主 binary 标志 → 强制只读（U59②）', async () => {
+    renderTab({ path: 'data/unknown.dat', rpc: makeRpc({ content: 'abc', binary: true }) })
+
+    const input = await screen.findByTestId<HTMLTextAreaElement>('fake-editor-input')
+    expect(input.readOnly).toBe(true)
+    expect(screen.queryByTestId('cloud-workspace-file-tab-save')).toBeNull()
   })
 
   it('无 file:read → 拒绝态，不发 RPC', async () => {

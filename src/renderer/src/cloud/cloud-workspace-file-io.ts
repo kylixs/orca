@@ -20,6 +20,8 @@ export type CloudWorkspaceFileRead =
       /** >512KB reads come back truncated; such a buffer must never be written back. */
       truncated: boolean
       byteLength: number | null
+      /** Host-flagged or NUL-containing content: never open it for writing (U59②). */
+      binary: boolean
     }
   | CloudWorkspaceFileFailure
 
@@ -62,7 +64,11 @@ export async function readCloudWorkspaceFile(
     ok: true,
     content,
     truncated: readField(outcome.result, 'truncated') === true,
-    byteLength: readNumber(outcome.result, 'byteLength')
+    byteLength: readNumber(outcome.result, 'byteLength'),
+    binary:
+      readField(outcome.result, 'binary') === true ||
+      readField(outcome.result, 'isBinary') === true ||
+      content.includes('\u0000')
   }
 }
 

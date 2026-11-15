@@ -8,7 +8,8 @@ import type { CloudSimpleWorkspaceTabsAction } from './cloud-simple-workspace-ta
 import {
   CloudWorkspacePreviewTab,
   cloudWorkspacePreviewKind,
-  createCloudWorkspacePreviewTab
+  createCloudWorkspacePreviewTab,
+  isCloudWorkspaceBinaryPath
 } from './cloud-workspace-preview-tab'
 
 /** U46-7b T5: image data URLs, HTML sandbox, drawio degradation, binary/PDF placeholders. */
@@ -79,6 +80,20 @@ describe('预览类型分发', () => {
     expect(cloudWorkspacePreviewKind('design/flow.drawio.svg')).toBe('image')
     expect(cloudWorkspacePreviewKind('docs/spec.pdf')).toBe('pdf')
     expect(cloudWorkspacePreviewKind('dist/app.bin')).toBe('binary')
+  })
+
+  it('识别常见二进制扩展，文本与可预览类型不受影响（U59②）', () => {
+    expect(isCloudWorkspaceBinaryPath('dist/app.bin')).toBe(true)
+    expect(isCloudWorkspaceBinaryPath('tools/run.exe')).toBe(true)
+    expect(isCloudWorkspaceBinaryPath('lib/native.so')).toBe(true)
+    expect(isCloudWorkspaceBinaryPath('lib/native.dylib')).toBe(true)
+    expect(isCloudWorkspaceBinaryPath('release/app.zip')).toBe(true)
+    expect(isCloudWorkspaceBinaryPath('build/main.wasm')).toBe(true)
+    expect(isCloudWorkspaceBinaryPath('cache/mod.pyc')).toBe(true)
+    expect(isCloudWorkspaceBinaryPath('src/a.ts')).toBe(false)
+    expect(isCloudWorkspaceBinaryPath('README.md')).toBe(false)
+    expect(isCloudWorkspaceBinaryPath('assets/logo.png')).toBe(false)
+    expect(isCloudWorkspaceBinaryPath('docs/spec.pdf')).toBe(false)
   })
 })
 

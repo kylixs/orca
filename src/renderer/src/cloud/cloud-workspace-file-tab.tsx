@@ -29,9 +29,17 @@ type EditorTab = Extract<CloudSimpleWorkspaceTab, { kind: 'editor' }>
 type Loaded =
   | { kind: 'loading' }
   | { kind: 'ready'; baseContent: string; readOnly: boolean; notice: string | null }
+  /** Host refused the read as binary; show the 7b placeholder instead of an editor. */
+  | { kind: 'binary'; detail: string }
   | { kind: 'failed'; code: string; message?: string }
 
 type Conflict = { latestContent: string }
+
+function fileExtension(relativePath: string): string {
+  const name = relativePath.split(/[\\/]/).at(-1) ?? relativePath
+  const dot = name.lastIndexOf('.')
+  return dot <= 0 ? name : name.slice(dot + 1)
+}
 
 const LazyMonacoEditor = React.lazy(async () => {
   const module = await import('./cloud-workspace-monaco-editor')
@@ -99,14 +107,22 @@ function CloudWorkspaceFileTabBody({
         return
       }
       if (!outcome.ok) {
-        setLoaded({ kind: 'failed', code: outcome.code, message: outcome.message })
+        setLoaded(
+          outcome.code === 'binary_file'
+            ? { kind: 'binary', detail: fileExtension(tab.path) }
+            : { kind: 'failed', code: outcome.code, message: outcome.message }
+        )
         return
       }
       setLoaded({
         kind: 'ready',
         baseContent: outcome.content,
-        readOnly: !canWrite || outcome.truncated,
-        notice: outcome.truncated ? '文件过大（已截断），简易工作区不支持编辑。' : null
+        readOnly: !canWrite || outcome.truncated || outcome.binary,
+        notice: outcome.binary
+          ? '二进制文件仅支持查看，不能编辑或保存。'
+          : outcome.truncated
+            ? '文件过大（已截断），简易工作区不支持编辑。'
+            : null
       })
       setContent(outcome.content)
     })
@@ -302,6 +318,15 @@ function CloudWorkspaceFileTabBody({
       <div className="flex min-h-0 flex-1 flex-col">
         {loaded.kind === 'loading' ? (
           <p className="p-3 text-xs text-muted-foreground">正在读取文件…</p>
+        ) : loaded.kind === 'binary' ? (
+          <div
+            data-testid="cloud-workspace-file-tab-binary"
+            className="flex h-full flex-col items-center justify-center gap-1 p-6 text-center text-xs text-muted-foreground"
+          >
+            <p className="text-foreground">该文件为二进制格式，简易工作区不支持编辑。</p>
+            <p className="break-all font-mono">{loaded.detail}</p>
+            <p>请下载后打开。</p>
+          </div>
         ) : loaded.kind === 'failed' ? (
           <p data-testid="cloud-workspace-file-tab-error" className="p-3 text-xs text-destructive">
             {cloudWorkspaceFileFailureText(loaded)}
