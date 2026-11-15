@@ -2713,6 +2713,10 @@ A 线 1/1（9 步，**R1 确认**：A4 终端 remote PTY 句柄创建+回显 142
 
 `e1da1b63e01`（6 文件）：README 终版（端点/两层脚本/16 扩展/原型对照 CLI/集成/故障排查含 18787 陈旧前置）+example-explore（discover→extract→findings 形态）+example-regression（断言链可入 CI）+启动自检 --ensure-env。双模式示例全通+PS 测试 8/8。**Playwright Server 批（1-4）全部完成**。派终态双线旅程第三轮（探索修复批 R1-R4 合入后）。
 
+### U66-3 落地（2026-11-16）
+
+`002baaa7b2d`（9 文件）：cloud-file-copy-audit 封装（file_copy 事件+120/min 客户端频控+失败不重试+recordFileDownload 预留）+cloud-file-copy-capture hook/按钮（应用内 web-clipboard-api+Ctrl+C dom-copy-listener 两路径+1.5s 去重）+cloud-clipboard-write（失败 result=failure 落 AC-48）+冲突横幅抽出。摘录零正文（AC-53 负向断言）。新 8/8+cloud 域 237 绿，tc:web 清。偏离：Ctrl+C 提前覆盖（技术方案列二期 dom-copy-listener）如实标记 capturePoint。空槽回填 U66-4。
+
 ### U66-1 正式交付补充（2026-11-16）
 
 `1525c8cda77`（server.ts 审计区 +527 行）：`POST /v1/internal/audit/file-events`（内部认证+字段白名单+deviceId→username 反解+captureConfidence 强制 client-declared+download_blocked=denied/frontend-block）+限流 429/Retry-After+ingressGaps 计数+traceId 去重合并（N-4）+AC-53 摘录拒绝+AC-56/57 移动端字段。6/6+18/18。**注意**：与 U66-2 共享 index 竞争致新测试文件曾并入相邻提交——HEAD 树完整（服务端+测试均就位），核验无回退。**U66 一期剩 3（Web 捕获）/4（移动）/5（管理台 UI）**。
