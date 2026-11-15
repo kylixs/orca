@@ -2721,6 +2721,10 @@ A 线 1/1（9 步，**R1 确认**：A4 终端 remote PTY 句柄创建+回显 142
 
 重放 P0×2/P1×6 **全 PASS**（三场景二次打开 ready 1-2.6s/终端真栈 create ok/登出清凭据/覆盖确认框/.bin 预览占位/心跳 400 不落库/grants 400 保留/审计钳 50）+回归 197+62+36 绿，重放范围红项无。**路径重放首战评价**：workspace/api/desktop 清单可直接照做；改进点=probe-reentry 补 ready 布尔+三场景循环、probe-binary-write 已过时（修复后路径=P12）、terminal-rpc 硬编码改 openWorkspace 模式、**路径清单加前置项「server/web 变更后重启实例」**（18787 长驻固定启动时代码→R3/R5 类假红——U36 同族，已入复盘）。新增重放脚本 5 个入库待提交。**U60 登记**：复验超范围跑出 3 个 main 池套件红（疑 U44 preparing 连锁），修复令已派。
 
+### U65a+b 补修落地（2026-11-16，🟢）
+
+`77219a14ffa`（8 文件 +455/−5）：U65a=桌面原生编辑器二进制双层防御（扩展名+BUL NUL 启发；根因=宿主侧只筛 MOBILE_BINARY_EXTENSIONS 而本地 fs:readFile 的 NUL 探测不生效、渲染端信任返回文本）覆盖全部桌面打开链路；U65b=whenRestored settle 后重读 state（吊销 fresh）+refreshCloudProjectWorktrees（恢复成功强制刷新，跨宿主失败隔离）。新 10+回归 35 绿。**U65a/b→🟢**——重验 1 发现已全闭环（U65a/b 修复+U65c 归并 P2）。
+
 ### 修复批 R1 落地（2026-11-15，U55 🟢）—— 探索批修复全闭环
 
 `a1c65bb63ad`（12 文件 +257/−27）：P0 根因=O1-a 只治理镜像订阅未治理创建动作——云会话终端创建从宿主 tab 委派分流为客户端 tab（terminal.create/multiplex 拉起 PTY），覆盖七创建入口。104 测试绿+tc:web 清。**U55→🟢。探索批四令（R1/R2+R5/R3/R4）全部落地：P0×2+P1×6 闭环**。派修复复验（探索路径重放）。
