@@ -12,7 +12,8 @@ const state = {
   directory: null,
   auditFilter: {},
   auditEvents: null,
-  auditCursor: null
+  auditCursor: null,
+  auditStatus: null
 }
 
 const $ = (sel) => document.querySelector(sel)
@@ -1878,6 +1879,209 @@ async function showGrants(projectId) {
 
 const AUDIT_PAGE_SIZE = 50
 
+const AUDIT_EVENT_OPTIONS = [
+  ['', '全部操作'],
+  ['family:download', '下载族 · 下载 + 拦截'],
+  ['family:copy', '复制族 · file_copy'],
+  ['file_download', '文件下载 · file_download'],
+  ['file_copy', '复制文件内容 · file_copy'],
+  ['download_blocked', '下载拦截 · download_blocked'],
+  ['login', '登录 · login'],
+  ['logout', '登出 · logout'],
+  ['project_create', '项目创建 · project_create'],
+  ['project_connect', '打开项目 · project_connect'],
+  ['project_access', '连接 · project_access'],
+  ['grant_update', '权限变更 · grant_update'],
+  ['host_register', '主机注册 · host_register'],
+  ['host_revoke', '主机撤销 · host_revoke'],
+  ['policy_update', '策略变更 · policy_update'],
+  ['device_revoke', '设备撤销 · device_revoke']
+]
+
+/** file_download/download_blocked are the download family; file_copy is copy. */
+const AUDIT_FILE_LABELS = {
+  file_download: ['badge', '下载'],
+  file_copy: ['badge warn', '复制'],
+  download_blocked: ['badge danger', '拦截']
+}
+const AUDIT_RESULT_LABELS = {
+  success: ['badge ok', '✓ 成功'],
+  failure: ['badge danger', '✕ 失败'],
+  denied: ['badge warn', '⛔ 拒绝']
+}
+const AUDIT_DAY_MS = 24 * 60 * 60_000
+
+/** Only q/fileName hits are highlighted; the server treats them as literals. */
+function auditHighlight(text, terms) {
+  let html = esc(text ?? '')
+  for (const term of terms.filter(Boolean)) {
+    const pattern = esc(term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    if (pattern) {
+      html = html.replace(new RegExp(pattern, 'gi'), (match) => `<mark class="audit-hit">${match}</mark>`)
+    }
+  }
+  return html
+}
+
+function auditTypeMarkup(event) {
+  const fileLabel = AUDIT_FILE_LABELS[event.eventType]
+  const type = fileLabel
+    ? `<span class="${fileLabel[0]}">${fileLabel[1]}</span> <span class="mono">${esc(event.eventType)}</span>`
+    : `<span class="mono">${esc(event.eventType)}</span>`
+  const confidence = event.metadata?.captureConfidence
+  // client-declared is advisory: the client said so; the host did not attest it.
+  const confidenceMarkup =
+    confidence === 'host-attested'
+      ? '<span class="badge ok">主机确认</span>'
+      : confidence === 'inferred'
+        ? '<span class="badge">推断</span>'
+        : confidence
+          ? '<span class="badge warn">客户端自报 · advisory</span>'
+          : ''
+  return `${type}${confidenceMarkup ? ` ${confidenceMarkup}` : ''}`
+}
+
+function auditSize(bytes) {
+  const value = Number(bytes)
+  if (!Number.isFinite(value) || value < 0) return '—'
+  if (value < 1024) return `${value} B`
+  if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`
+  return `${(value / 1024 ** 2).toFixed(1)} MB`
+}
+
+function auditFileMarkup(event, terms) {
+  const metadata = event.metadata ?? {}
+  const name = typeof metadata.fileName === 'string' ? metadata.fileName : ''
+  if (!name) return '<span class="muted mono">—</span>'
+  const path = typeof metadata.path === 'string' && metadata.path ? metadata.path : name
+  const copyLength = metadata.copiedChars
+    ? `${Number(metadata.copiedChars)} 字符 / ${Number(metadata.copiedBytes ?? 0)} 字节`
+    : ''
+  const meta = [
+    metadata.sizeBytes === undefined ? '—' : auditSize(metadata.sizeBytes),
+    copyLength,
+    auditHighlight(path, terms)
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  return `<button class="audit-file" type="button" data-copy-file="${esc(path)}" title="点击复制路径">
+      <span class="mono">${auditHighlight(name, terms)}</span>
+      <span class="muted">复制</span>
+    </button>
+    <div class="audit-file-meta muted mono">${meta}</div>`
+}
+
+function auditDetailMarkup(event, terms, expanded) {
+  const metadata = event.metadata ?? {}
+  const excerpt = typeof metadata.excerpt === 'string' ? metadata.excerpt : ''
+  const copyLength = metadata.copiedChars
+    ? `复制 ${Number(metadata.copiedChars)} 字符 / ${Number(metadata.copiedBytes ?? 0)} 字节 · `
+    : ''
+  return `<tr class="audit-expand-row" data-detail="${event.seq}" ${expanded ? '' : 'hidden'}>
+      <td colspan="8">
+        <div class="audit-expand-panel">
+          <div>
+            <div class="audit-expand-label">复制内容摘录</div>
+            ${
+              excerpt
+                ? `<div class="mono audit-excerpt">${auditHighlight(excerpt, terms)}</div>`
+                : '<div class="muted">未记录内容摘录（仅保留指纹）</div>'
+            }
+          </div>
+          <div>
+            <div class="audit-expand-label">内容指纹与复制长度</div>
+            <div class="mono">sha256:${esc(metadata.sha256 ?? '—')}</div>
+            <div class="muted">${copyLength}仅记录指纹，不可反推内容</div>
+          </div>
+        </div>
+      </td>
+    </tr>`
+}
+
+function auditRowMarkup(event, terms, expanded) {
+  const metadata = event.metadata ?? {}
+  const result = AUDIT_RESULT_LABELS[event.result] ?? AUDIT_RESULT_LABELS.failure
+  const traceId = event.traceId ?? ''
+  const expandable = event.eventType === 'file_copy'
+  return `<tr>
+      <td class="muted">${esc(new Date(event.ts).toLocaleString('zh-CN'))}</td>
+      <td>${esc(event.actor ?? '—')}</td>
+      <td>${auditTypeMarkup(event)}</td>
+      <td class="mono">${esc(event.targetId ?? '—')}</td>
+      <td class="mono muted">${esc(metadata.hostName ?? metadata.hostId ?? '—')}</td>
+      <td>${auditFileMarkup(event, terms)}</td>
+      <td><span class="${result[0]}">${result[1]}</span></td>
+      <td class="actions mono muted">
+        <span title="${esc(traceId)}">${esc(traceId || '—')}</span>
+        ${traceId ? `<button class="btn sm" data-trace="${esc(traceId)}">复制</button>` : ''}
+        ${expandable ? `<button class="btn sm" data-expand="${event.seq}">${expanded ? '收起' : '展开'}</button>` : ''}
+      </td>
+    </tr>${expandable ? auditDetailMarkup(event, terms, expanded) : ''}`
+}
+
+/** A non-zero host or ingress gap must be visible; best-effort is not "normal". */
+function auditGapMarkup(status) {
+  const gaps = status?.gaps ?? {}
+  const ingress = status?.ingressGaps ?? {}
+  const hosts = Number(gaps.hostsWithGap) || 0
+  const counts = [
+    gaps.droppedTotal,
+    gaps.suppressedTotal,
+    gaps.rateLimitedTotal,
+    ingress.droppedTotal,
+    ingress.suppressedTotal,
+    ingress.rateLimitedTotal
+  ].map((value) => Number(value) || 0)
+  if (hosts === 0 && counts.every((value) => value === 0)) return ''
+  return `<div class="note warn" id="auditGapWarning">审计缺口：${hosts} 台主机有缺口；宿主上报 dropped ${counts[0]} / suppressed ${counts[1]} / rateLimited ${counts[2]}；平台入口 dropped ${counts[3]} / suppressed ${counts[4]} / rateLimited ${counts[5]}。缺口可见性为 best-effort，宿主瞬时崩溃无法精确检测。</div>`
+}
+
+/** Mirrors the API's INVALID_QUERY/TIME_WINDOW_TOO_LARGE gates. */
+function auditFilterError(filter) {
+  if (filter.q && (filter.q.length < 2 || filter.q.length > 128)) {
+    return '关键字长度需为 2–128 个字符。'
+  }
+  if (filter.fileName.length > 128) return '文件名长度需为 1–128 个字符。'
+  const since = filter.since ? Date.parse(filter.since) : undefined
+  const until = filter.until ? Date.parse(filter.until) : undefined
+  if (since !== undefined && Number.isNaN(since)) return '起始时间无效。'
+  if (until !== undefined && Number.isNaN(until)) return '结束时间无效。'
+  const lower = since ?? (until !== undefined ? until - 31 * AUDIT_DAY_MS : undefined)
+  if (lower !== undefined && until !== undefined && lower > until) {
+    return '结束时间不能早于起始时间。'
+  }
+  if (lower !== undefined && until !== undefined && until - lower > 31 * AUDIT_DAY_MS) {
+    return '查询时间窗最大 31 天。'
+  }
+  if (since !== undefined && until === undefined && Date.now() - since > 31 * AUDIT_DAY_MS) {
+    return '查询时间窗最大 31 天。'
+  }
+  return ''
+}
+
+/** Explicit bounds win over the preset range (tech design §4.1). */
+function auditQueryParams(filter, cursor) {
+  const params = new URLSearchParams({ limit: String(AUDIT_PAGE_SIZE) })
+  if (filter.q) params.set('q', filter.q)
+  if (filter.event) {
+    if (filter.event.startsWith('family:')) params.set('eventFamily', filter.event.slice(7))
+    else params.set('eventType', filter.event)
+  }
+  if (filter.username) params.set('username', filter.username)
+  if (filter.fileName) params.set('fileName', filter.fileName)
+  if (filter.result) params.set('result', filter.result)
+  if (filter.projectId) params.set('projectId', filter.projectId)
+  if (filter.hostId) params.set('hostId', filter.hostId)
+  if (filter.since) params.set('since', new Date(filter.since).toISOString())
+  if (filter.until) params.set('until', new Date(filter.until).toISOString())
+  if (!filter.since && !filter.until) {
+    const hours = Number(filter.range) || 168
+    params.set('since', new Date(Date.now() - hours * 3_600_000).toISOString())
+  }
+  if (cursor) params.set('cursor', String(cursor))
+  return params
+}
+
 async function renderAudit(loadMore = false) {
   // Only 「加载更早」 accumulates onto what is shown; a fresh view re-queries, so
   // leaving and returning can never resurrect a stale accumulation (M116-QA-002).
@@ -1888,62 +2092,74 @@ async function renderAudit(loadMore = false) {
   // Filter controls re-render from state so what they show always matches the
   // rows below them (M116-QA-003).
   const filter = state.auditFilter
-  const params = new URLSearchParams({ limit: String(AUDIT_PAGE_SIZE) })
-  for (const [key, value] of Object.entries(filter)) if (value) params.set(key, value)
-  if (state.auditCursor) params.set('cursor', String(state.auditCursor))
-  const body = await api(`/v1/audit/events?${params}`)
+  const params = auditQueryParams(filter, state.auditCursor)
+  const [body, status, projectsBody, hostsBody] = await Promise.all([
+    api(`/v1/audit/events?${params}`),
+    api('/v1/audit/status').catch(() => null),
+    api('/v1/projects').catch(() => null),
+    api('/v1/hosts').catch(() => null)
+  ])
+  if (!loadMore) state.auditStatus = status
   const events = state.auditEvents ? [...state.auditEvents, ...body.events] : body.events
   state.auditEvents = events
   state.auditCursor = body.nextCursor
+  const projects = projectsBody?.projects ?? []
+  const hosts = hostsBody?.hosts ?? []
+  const terms = [filter.q, filter.fileName].filter(Boolean)
   content().innerHTML = `
-    <div class="page-head"><div><h1>审计日志</h1><p>只追加、哈希链校验；保留 180 天。已显示 ${events.length} 条。</p></div></div>
+    <div class="page-head"><div><h1>审计日志</h1><p>查询身份、连接、文件下载与复制、下载拦截与管理操作事件。只追加、哈希链校验；保留 180 天。已显示 ${events.length} 条。</p></div></div>
+    ${auditGapMarkup(state.auditStatus)}
+    <details class="audit-coverage">
+      <summary>覆盖范围与限制（审计链保证记录不被篡改，不保证记录完整）</summary>
+      <div class="audit-coverage-body">
+        <div>可捕获：桌面云工作区下载（files.readChunk，客户端自报）、宿主 browser.download、移动端保存、应用内复制（Web / 桌面 / 移动端）、宿主拒绝与前端下载拦截。</div>
+        <ul>
+          <li>不可捕获：开发机 shell 的 scp / git push / curl / cp 等带外传输；Finder / Explorer、拖拽、第三方应用、截图 / 录屏 / OCR；纯浏览器「另存为」、跨域 iframe 选区、键盘 Ctrl+C（一期）。</li>
+          <li>缺口：客户端离线、绕过应用接缝、宿主进程重启可能丢事件；缺口可见性为 best-effort，宿主瞬时崩溃无法精确检测。</li>
+          <li>可信度：主机确认（host-attested）为宿主确认；客户端自报（client-declared）为 advisory，只表示客户端声明，不作为宿主确认结论；推断（inferred）为启发式归属。</li>
+        </ul>
+      </div>
+    </details>
     <div class="toolbar">
-      <select class="select" id="auditType">
-        <option value="">全部事件</option>
-        ${[
-          'login',
-          'logout',
-          'project_create',
-          'project_connect',
-          'project_access',
-          'grant_update',
-          'host_register',
-          'host_revoke',
-          'policy_update',
-          'device_revoke'
-        ]
-          .map((t) => `<option value="${t}">${t}</option>`)
-          .join('')}
+      <input class="input grow" id="auditKeyword" type="search" placeholder="关键字：文件名 / 路径 / 账号 / 项目（2–128 字符）" autocomplete="off" aria-label="关键字">
+      <select class="select" id="auditRange" aria-label="时间范围">
+        <option value="24">最近 24 小时</option>
+        <option value="168">最近 7 天（默认）</option>
+        <option value="744">最近 31 天</option>
       </select>
-      <select class="select" id="auditResult">
+      <input class="input" type="datetime-local" id="auditSince" aria-label="起始时间">
+      <input class="input" type="datetime-local" id="auditUntil" aria-label="结束时间">
+      <select class="select" id="auditType" aria-label="操作类型">
+        ${AUDIT_EVENT_OPTIONS.map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}
+      </select>
+      <input class="input" id="auditActor" placeholder="用户（域账号，精确）" autocomplete="off" aria-label="用户">
+      <select class="select" id="auditProject" aria-label="项目">
+        <option value="">全部项目</option>
+        ${projects.map((project) => `<option value="${esc(project.id)}">${esc(project.name)}</option>`).join('')}
+      </select>
+      <select class="select" id="auditHost" aria-label="主机">
+        <option value="">全部主机</option>
+        ${hosts.filter((host) => !host.revokedAt).map((host) => `<option value="${esc(host.id)}">${esc(host.name ?? host.id)}</option>`).join('')}
+      </select>
+      <input class="input" id="auditFileName" placeholder="文件名（1–128 字符）" autocomplete="off" aria-label="文件名">
+      <select class="select" id="auditResult" aria-label="结果">
         <option value="">全部结果</option>
         <option value="success">成功</option>
         <option value="failure">失败</option>
         <option value="denied">拒绝</option>
       </select>
-      <input class="input grow" id="auditActor" placeholder="按用户过滤，如 zhangsan">
       <button class="btn primary" id="auditApply">查询</button>
-      <button class="btn" id="auditReset">重置</button>
+      <button class="btn" id="auditReset">清除</button>
     </div>
+    <p class="inline-error" id="auditError" hidden></p>
+    <div class="muted" style="margin:-4px 0 12px">默认最近 7 天，起止时间优先；时间窗最大 31 天。关键字 2–128 字符，文件名 1–128 字符。</div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>时间</th><th>用户</th><th>事件</th><th>目标</th><th>结果</th><th>traceId</th></tr></thead>
+        <thead><tr><th>时间</th><th>用户</th><th>操作</th><th>项目</th><th>主机</th><th>文件 · 大小</th><th>结果</th><th>详情 / traceId</th></tr></thead>
         <tbody>
           ${
-            events
-              .map(
-                (e) => `<tr>
-                <td class="muted">${new Date(e.ts).toLocaleString('zh-CN')}</td>
-                <td>${esc(e.actor ?? '—')}</td>
-                <td class="mono">${esc(e.eventType)}</td>
-                <td class="mono muted">${esc(e.targetId ?? '—')}</td>
-                <td>${{ success: '✓ 成功', failure: '✕ 失败', denied: '⛔ 拒绝' }[e.result]}</td>
-                <td class="mono muted"><span title="${esc(e.traceId ?? '')}">${esc(e.traceId ?? '—')}</span>
-                  ${e.traceId ? `<button class="btn sm" data-trace="${esc(e.traceId)}">复制</button>` : ''}
-                </td>
-              </tr>`
-              )
-              .join('') || '<tr><td colspan="6" class="table-empty">没有事件</td></tr>'
+            events.map((event) => auditRowMarkup(event, terms, false)).join('') ||
+            '<tr><td colspan="8" class="table-empty">没有符合筛选条件的审计事件</td></tr>'
           }
         </tbody>
       </table>
@@ -1951,17 +2167,34 @@ async function renderAudit(loadMore = false) {
     ${body.nextCursor ? `<div class="toolbar"><span class="muted">仅显示最近 ${AUDIT_PAGE_SIZE} 条，还有更早记录。</span><button class="btn" id="auditMore">加载更早</button></div>` : ''}`
   // The chosen conditions are restored as properties: a parsed `selected`
   // attribute is not what every DOM picks up on a re-render.
-  $('#auditType').value = filter.eventType ?? ''
+  $('#auditKeyword').value = filter.q ?? ''
+  $('#auditRange').value = filter.range ?? '168'
+  $('#auditSince').value = filter.since ?? ''
+  $('#auditUntil').value = filter.until ?? ''
+  $('#auditType').value = filter.event ?? ''
+  $('#auditActor').value = filter.username ?? ''
+  $('#auditProject').value = filter.projectId ?? ''
+  $('#auditHost').value = filter.hostId ?? ''
+  $('#auditFileName').value = filter.fileName ?? ''
   $('#auditResult').value = filter.result ?? ''
-  $('#auditActor').value = filter.actor ?? ''
   const apply = () => {
-    state.auditFilter = {
-      eventType: $('#auditType').value,
-      result: $('#auditResult').value,
-      actor: $('#auditActor').value.trim()
+    const next = {
+      q: $('#auditKeyword').value.trim(),
+      range: $('#auditRange').value,
+      since: $('#auditSince').value,
+      until: $('#auditUntil').value,
+      event: $('#auditType').value,
+      username: $('#auditActor').value.trim(),
+      projectId: $('#auditProject').value,
+      hostId: $('#auditHost').value,
+      fileName: $('#auditFileName').value.trim(),
+      result: $('#auditResult').value
     }
-    for (const [key, value] of Object.entries(state.auditFilter))
-      if (!value) delete state.auditFilter[key]
+    const error = auditFilterError(next)
+    $('#auditError').textContent = error
+    $('#auditError').hidden = !error
+    if (error) return
+    state.auditFilter = next
     state.auditEvents = null
     state.auditCursor = null
     renderAudit()
@@ -1979,6 +2212,21 @@ async function renderAudit(loadMore = false) {
     btn.onclick = () => {
       navigator.clipboard?.writeText(btn.dataset.trace)
       toast('已复制')
+    }
+  }
+  for (const btn of document.querySelectorAll('[data-copy-file]')) {
+    btn.onclick = () => {
+      navigator.clipboard?.writeText(btn.dataset.copyFile)
+      toast('已复制')
+    }
+  }
+  // The excerpt row is rendered closed; expanding must not re-query the page.
+  for (const btn of document.querySelectorAll('[data-expand]')) {
+    btn.onclick = () => {
+      const row = document.querySelector(`[data-detail="${btn.dataset.expand}"]`)
+      if (!row) return
+      row.hidden = !row.hidden
+      btn.textContent = row.hidden ? '展开' : '收起'
     }
   }
 }

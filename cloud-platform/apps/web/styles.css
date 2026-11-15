@@ -215,3 +215,75 @@ td.actions { text-align: right; }
   .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grid-3 { grid-template-columns: 1fr; }
 }
+/* ---------- audit query (U66-5) ---------- */
+.audit-coverage {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: #fff;
+  margin-bottom: 12px;
+}
+.audit-coverage > summary {
+  cursor: pointer;
+  padding: 9px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+.audit-coverage-body {
+  padding: 0 12px 11px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--text-3);
+}
+.audit-coverage-body ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.audit-hit {
+  background: #fef3c7;
+  color: inherit;
+}
+.audit-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+.audit-file:hover {
+  color: var(--brand);
+}
+.audit-file-meta {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.audit-expand-row td {
+  padding: 0;
+  background: var(--sidebar);
+}
+.audit-expand-panel {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 10px 16px 12px;
+}
+.audit-expand-label {
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+  text-transform: uppercase;
+}
+.audit-excerpt {
+  max-width: 520px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
