@@ -1993,9 +1993,11 @@ export function createApp(config: ApiConfig): ApiHandle {
         const body = await readJson(req)
         const subjectType = body.subjectType === 'group' ? 'group' : 'user'
         const submitted = String(body.subjectId ?? '').trim()
-        const submittedPermissions: unknown[] = Array.isArray(body.permissions)
-          ? body.permissions
-          : []
+        // A non-array used to read as [] and delete the row; reject it instead (U57 G9).
+        if (!Array.isArray(body.permissions)) {
+          return error(res, 400, 'GRANT_PERMISSION_INVALID', '权限位不在允许范围内。', traceId)
+        }
+        const submittedPermissions: unknown[] = body.permissions
         // PUT is a whole-row replacement, so an out-of-contract bit rejects the
         // row instead of silently storing a bit no host rule reads.
         const permissions = submittedPermissions.filter(
@@ -2454,6 +2456,21 @@ export function createApp(config: ApiConfig): ApiHandle {
           return error(res, 401, 'HOST_CREDENTIAL_INVALID', '主机凭证无效。', traceId)
         }
         const body = await readJson(req)
+        // Bad addresses would be stored and later splice into every project view;
+        // reject the beat before anything is persisted (U57 H14).
+        if (
+          body.directAddrs !== undefined &&
+          (!Array.isArray(body.directAddrs) ||
+            !body.directAddrs.every((addr) => typeof addr === 'string' && isDirectAddrForm(addr)))
+        ) {
+          return error(
+            res,
+            400,
+            'HOST_DIRECTADDRS_INVALID',
+            'directAddrs 必须是合法地址字符串数组。',
+            traceId
+          )
+        }
         // Why: a revoked host keeps its credential so this beat can deliver the
         // revocation; it must not look alive or accept any more reported state.
         // A refused root keeps the old one; the beat still answers so the host
@@ -2683,9 +2700,17 @@ export function createApp(config: ApiConfig): ApiHandle {
         const body = await readJson(req)
         const subjectType = body.subjectType === 'group' ? 'group' : 'user'
         const submitted = String(body.subjectId ?? '').trim()
-        const submittedPermissions: unknown[] = Array.isArray(body.permissions)
-          ? body.permissions
-          : []
+        // Same contract as project grants: malformed input must never delete a row.
+        if (!Array.isArray(body.permissions)) {
+          return error(
+            res,
+            400,
+            'HOST_GRANT_PERMISSION_INVALID',
+            '主机权限位不在允许范围内。',
+            traceId
+          )
+        }
+        const submittedPermissions: unknown[] = body.permissions
         // PUT replaces the whole row: one bad bit rejects the row, never partially stores it.
         const permissions = submittedPermissions.filter(
           (permission): permission is HostPermission =>
@@ -2830,7 +2855,12 @@ export function createApp(config: ApiConfig): ApiHandle {
           permission: 'platform:auditor'
         })
       }
-      const limit = Math.min(Number(url.searchParams.get('limit') ?? 50), 200)
+      // Why clamp rather than 400: 0/-1/NaN reached audit.slice as 0/-1/NaN and
+      // returned the whole chain. Falling back to the documented page size keeps
+      // older callers working while never widening the page (U57 U8).
+      const requestedLimit = Number(url.searchParams.get('limit') ?? 50)
+      const limit =
+        Number.isInteger(requestedLimit) && requestedLimit > 0 ? Math.min(requestedLimit, 200) : 50
       const sinceParam = url.searchParams.get('since')
       const since = sinceParam ? Date.parse(sinceParam) : undefined
       if (since && now() - since > 31 * 24 * 60 * 60_000) {
