@@ -1,4 +1,5 @@
 import * as React from 'react'
+import type { GitFileStatus } from '../../../shared/git-status-types'
 import { CloudSimpleWorkspaceFileTreePlaceholder } from './cloud-simple-workspace-empty-state'
 
 /**
@@ -15,8 +16,12 @@ export type CloudSimpleWorkspaceFileTreeApi = {
   openFile: (path: string) => void
 }
 
+export type CloudSimpleWorkspaceOpenDiff = (path: string, status: GitFileStatus) => void
+
 export type CloudSimpleWorkspaceGitApi = {
   workspacePath: string
+  canReadFiles?: boolean
+  onOpenDiff?: CloudSimpleWorkspaceOpenDiff
 }
 
 export type CloudSimpleWorkspaceRightPanelProps = {
@@ -26,6 +31,7 @@ export type CloudSimpleWorkspaceRightPanelProps = {
   renderFileTree?: (api: CloudSimpleWorkspaceFileTreeApi) => React.ReactNode
   renderGitChanges?: (api: CloudSimpleWorkspaceGitApi) => React.ReactNode
   openFile: (path: string) => void
+  openDiff?: CloudSimpleWorkspaceOpenDiff
 }
 
 function unavailable(testId: string, text: string): React.JSX.Element {
@@ -42,7 +48,8 @@ export function CloudSimpleWorkspaceRightPanel({
   workspacePath,
   renderFileTree,
   renderGitChanges,
-  openFile
+  openFile,
+  openDiff
 }: CloudSimpleWorkspaceRightPanelProps): React.JSX.Element {
   const [active, setActive] = React.useState<CloudSimpleWorkspaceRightPanelKind>('files')
 
@@ -74,7 +81,7 @@ export function CloudSimpleWorkspaceRightPanel({
       )
     }
     return renderGitChanges
-      ? renderGitChanges({ workspacePath })
+      ? renderGitChanges({ workspacePath, canReadFiles, onOpenDiff: openDiff })
       : unavailable('cloud-simple-workspace-git-slot', 'Git 变更面板将在后续版本接入。')
   }
 
