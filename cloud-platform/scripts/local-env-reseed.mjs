@@ -4,16 +4,15 @@
  * Usage: node cloud-platform/scripts/local-env-reseed.mjs [--root dir] [--port n]
  *        [--host-name name] [--advertise-host ip] [--restart-platform]
  *        [--skip-keychain] [--keep-legacy] [--help]
- * Everything lives under --root (default ~/orca-local-env). Exit 0 = every check passed.
+ * The second host name/WS port come from ORCA_LOCAL_HOST2_NAME (dev-local-03) and
+ * ORCA_LOCAL_HOST2_WS_PORT (18889). Everything lives under --root (default
+ * ~/orca-local-env). Exit 0 = every check passed.
  */
-import { createRequire } from 'node:module'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  ensureSource,
-  exists,
   killTree,
   listeners,
   isAlive,
@@ -22,17 +21,17 @@ import {
   readPid,
   spawnDetached,
   tcpReachable,
-  tryRun,
   waitFor,
   waitPortsFree,
   writeFile
 } from './local-env-daemon-control.mjs'
 import { ensureCertificates, ensureKeychain } from './local-env-certificates.mjs'
 import { DEMO_REPOS, ensureRepo, repoSummary } from './local-env-demo-projects.mjs'
+import { ensureForwarder, ensureHost, findAdvertisedHost } from './local-env-host-runtime.mjs'
+import { buildPaths } from './local-env-paths.mjs'
 import { probeEnvironment, relayProbe, verify } from './local-env-verification.mjs'
 
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)))
-const requireFromRepo = createRequire(import.meta.url)
 const ADMIN = { username: 'admin', password: 'Adm1n!' }
 const DEV = { username: 'zhangsan', password: 'Passw0rd!' }
 const LIMITED = { username: 'lisi', password: 'Passw0rd!' }
@@ -51,6 +50,8 @@ function parseOptions(argv) {
     root: process.env.ORCA_LOCAL_ENV_ROOT || path.join(os.homedir(), 'orca-local-env'),
     port: Number(process.env.ORCA_LOCAL_PLATFORM_PORT || 18787),
     hostName: process.env.ORCA_LOCAL_HOST_NAME || 'dev-local-02',
+    host2Name: process.env.ORCA_LOCAL_HOST2_NAME || 'dev-local-03',
+    host2WsPort: Number(process.env.ORCA_LOCAL_HOST2_WS_PORT || 18889),
     advertiseHost: process.env.ORCA_LOCAL_ADVERTISE_HOST || '100.103.213.12',
     internalToken: process.env.ORCA_LOCAL_INTERNAL_TOKEN || 'm114-link-token',
     restartPlatform: false,
@@ -94,74 +95,27 @@ function parseOptions(argv) {
   if (!Number.isInteger(options.port) || options.port <= 0) {
     throw new Error(`invalid --port: ${options.port}`)
   }
+  if (!Number.isInteger(options.host2WsPort) || options.host2WsPort <= 0) {
+    throw new Error(`invalid ORCA_LOCAL_HOST2_WS_PORT: ${options.host2WsPort}`)
+  }
+  if (options.hostName === options.host2Name) {
+    throw new Error('--host-name and ORCA_LOCAL_HOST2_NAME must differ')
+  }
   options.root = path.resolve(options.root)
   return options
 }
 
-function buildPaths(root) {
-  const p = (name) => path.join(root, name)
-  return {
-    root,
-    caPem: p('tls/ca.pem'),
-    caKey: p('tls/ca.key'),
-    caSerial: p('tls/ca.srl'),
-    platformCert: p('tls/platform/cert.pem'),
-    platformKey: p('tls/platform/key.pem'),
-    hostCert: p('tls/host/cert.pem'),
-    hostKey: p('tls/host/key.pem'),
-    hostHome: p('host/home'),
-    hostUd: p('host/ud'),
-    hostProjects: p('host/projects'),
-    hostCredential: p('host/ud/orca-cloud-host.json'),
-    supervisor: p('bin/host-supervisor.mjs'),
-    forwarderScript: p('bin/forwarder.mjs'),
-    logs: p('logs'),
-    run: p('run'),
-    platformPid: p('run/platform.pid'),
-    forwarderPid: p('run/forwarder.pid'),
-    hostPid: p('run/host.pid'),
-    platformLog: p('logs/platform.log'),
-    forwarderLog: p('logs/forwarder.log'),
-    hostLog: p('logs/host.log'),
-    evidence: path.join(ROOT, 'cloud-platform/evidence/env-persist-2026-11-14/result.json')
-  }
-}
-
-const FORWARDER = `import net from 'node:net'\nconst port = Number(process.env.FORWARD_PORT ?? 18787)\nnet.createServer((client) => {\n  const upstream = net.connect(port, '127.0.0.1')\n  client.on('error', () => upstream.destroy())\n  upstream.on('error', () => client.destroy())\n  client.pipe(upstream)\n  upstream.pipe(client)\n}).listen(port, '0.0.0.0')\n`
-// The dev build quits when its parent dies; this supervisor keeps the host alive.
-const SUPERVISOR = `import { spawn } from 'node:child_process'\nconst [command, ...args] = process.argv.slice(2)\nconst child = spawn(command, args, { stdio: 'inherit', env: process.env })\nfor (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP']) {\n  process.on(signal, () => { try { child.kill(signal) } catch {} })\n}\nchild.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)))\n`
-
-async function ensureForwarder(paths, options) {
-  await ensureSource(paths.forwarderScript, FORWARDER)
-  const pid = readPid(paths.forwarderPid)
-  if (isAlive(pid) && (await tcpReachable(options.advertiseHost, options.port))) {
-    return { pid, status: 'reused' }
-  }
-  await killTree(pid)
-  for (const found of listeners(options.port)) {
-    if (!isLoopback(found.address)) {
-      await killTree(found.pid)
-    }
-  }
-  await waitPortsFree(options.port, true)
-  const started = spawnDetached({
-    command: process.execPath,
-    args: [paths.forwarderScript],
-    env: { ...process.env, FORWARD_PORT: String(options.port) },
-    logFile: paths.forwarderLog,
-    pidFile: paths.forwarderPid
-  })
-  return { pid: started, status: 'started' }
-}
-
 const createApi =
   (options, paths) =>
-  (method, pathname, { token, body } = {}) =>
+  (method, pathname, { token, body, headers } = {}) =>
     httpsJson(`https://127.0.0.1:${options.port}${pathname}`, {
       method,
       body,
       ca: paths.caPem,
-      headers: token ? { authorization: `Bearer ${token}` } : {}
+      headers: {
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...headers
+      }
     })
 
 async function login(api, { username, password }) {
@@ -213,22 +167,25 @@ async function ensurePlatform(paths, options) {
   return { pid: started, status: 'started', url: base }
 }
 
-async function seedData(api, paths, options) {
+async function seedData(api, paths) {
   const admin = await login(api, ADMIN)
   const dev = await login(api, DEV)
   const limited = await login(api, LIMITED)
   const hosts = (await api('GET', '/v1/hosts', { token: admin.accessToken })).json?.hosts ?? []
+  const keep = new Set(paths.hosts.map((host) => host.name))
   const revoked = []
   for (const host of hosts) {
-    if (host.name === options.hostName || host.revokedAt !== null) {
+    if (keep.has(host.name) || host.revokedAt !== null) {
       continue
     }
     const res = await api('DELETE', `/v1/hosts/${host.id}`, { token: admin.accessToken })
     revoked.push({ name: host.name, id: host.id, status: res.status })
   }
   const repos = {}
-  for (const [key, spec] of Object.entries(DEMO_REPOS)) {
-    repos[key] = ensureRepo(path.join(paths.hostProjects, key), spec)
+  for (const host of paths.hosts) {
+    for (const key of host.projectKeys) {
+      repos[key] = ensureRepo(path.join(host.projects, key), DEMO_REPOS[key])
+    }
   }
   return { admin, dev, limited, revoked, repos }
 }
@@ -260,170 +217,126 @@ async function ensureProject(api, token, spec, self) {
   throw new Error(`project ${spec.key} -> ${res.status} ${res.text}`)
 }
 
+const SELF_SERVICE_KEYS = new Set(['zhangsan-demo', 'zhangsan-lab'])
+// Cross-host visibility is deliberate: infra-tools is visible beyond its creator
+// via team-payment, while each self-created project stays private to zhangsan.
+const PROJECT_GRANTS = {
+  'demo-app': [
+    ['group', 'team-payment', FULL],
+    ['user', 'zhangsan', FULL],
+    ['user', 'lisi', READ_ONLY],
+    ['user', 'admin', FULL]
+  ],
+  'zhangsan-demo': [
+    ['user', 'zhangsan', FULL],
+    ['user', 'admin', FULL]
+  ],
+  'infra-tools': [
+    ['group', 'team-payment', FULL],
+    ['user', 'admin', FULL]
+  ],
+  'zhangsan-lab': []
+}
+
 async function seedProjects(api, tokens, paths) {
-  const token = tokens.admin.accessToken
-  const demo = await ensureProject(api, token, {
-    name: 'demo-app',
-    key: 'demo-app',
-    hostId: tokens.hostId,
-    path: path.join(paths.hostProjects, 'demo-app'),
-    defaultBranch: 'main'
-  })
-  const zs = await ensureProject(
-    api,
-    tokens.dev.accessToken,
-    {
-      name: 'zhangsan-demo',
-      key: 'zhangsan-demo',
-      dir: 'zhangsan-demo',
-      hostId: tokens.hostId,
-      defaultBranch: 'main'
-    },
-    true
-  )
-  const grants = [
-    ['demo-app', demo.project.id, 'group', 'team-payment', FULL],
-    ['demo-app', demo.project.id, 'user', 'zhangsan', FULL],
-    ['demo-app', demo.project.id, 'user', 'lisi', READ_ONLY],
-    ['demo-app', demo.project.id, 'user', 'admin', FULL],
-    ['zhangsan-demo', zs.project.id, 'user', 'zhangsan', FULL],
-    ['zhangsan-demo', zs.project.id, 'user', 'admin', FULL]
-  ]
-  for (const [, projectId, subjectType, subjectId, permissions] of grants) {
-    const res = await api('PUT', `/v1/projects/${projectId}/grants`, {
-      token,
-      body: { subjectType, subjectId, permissions }
-    })
-    if (res.status !== 200) {
-      throw new Error(`grant ${subjectId} -> ${res.status} ${res.text}`)
+  const adminToken = tokens.admin.accessToken
+  const projects = {}
+  const grantRows = []
+  for (const host of paths.hosts) {
+    const recorded = tokens.hosts[host.name]
+    for (const key of host.projectKeys) {
+      const self = SELF_SERVICE_KEYS.has(key)
+      const spec = self
+        ? { name: key, key, dir: key, hostId: recorded.id, defaultBranch: 'main' }
+        : {
+            name: key,
+            key,
+            hostId: recorded.id,
+            path: path.join(host.projects, key),
+            defaultBranch: 'main'
+          }
+      const result = await ensureProject(
+        api,
+        self ? tokens.dev.accessToken : adminToken,
+        spec,
+        self
+      )
+      for (const [subjectType, subjectId, permissions] of PROJECT_GRANTS[key]) {
+        const res = await api('PUT', `/v1/projects/${result.project.id}/grants`, {
+          token: adminToken,
+          body: { subjectType, subjectId, permissions }
+        })
+        if (res.status !== 200) {
+          throw new Error(`grant ${key}:${subjectId} -> ${res.status} ${res.text}`)
+        }
+        grantRows.push([key, subjectType, subjectId])
+      }
+      projects[key] = { ...result, hostName: host.name, owner: self ? DEV.username : 'admin' }
     }
   }
   const global = await api('PUT', '/v1/policies/download', {
-    token,
+    token: adminToken,
     body: { downloadDefault: 'allow' }
   })
-  const demoPolicy = await api('PUT', `/v1/projects/${demo.project.id}/policy`, {
-    token,
+  const demoPolicy = await api('PUT', `/v1/projects/${projects['demo-app'].project.id}/policy`, {
+    token: adminToken,
     body: { downloadPolicy: 'deny' }
   })
   if (global.status !== 200 || demoPolicy.status !== 200) {
     throw new Error('policy seed failed')
   }
   return {
-    demo,
-    zs,
-    grants: grants.map(([key, , type, id]) => `${key}:${type}:${id}`),
+    projects,
+    grants: grantRows.map(([key, type, id]) => `${key}:${type}:${id}`),
     policies: { global: global.status, demoApp: demoPolicy.status }
   }
 }
 
-function hostEnv(paths, options, token) {
-  const env = { ...process.env }
-  const drop = [
-    'ORCA_USER_DATA_PATH',
-    'ORCA_TAB_ID',
-    'ORCA_PANE_KEY',
-    'ORCA_TERMINAL_HANDLE',
-    'ORCA_AGENT_PANE',
-    'ORCA_AGENT_LAUNCH',
-    'ORCA_AGENT_LAUNCH_TOKEN',
-    'ORCA_AGENT_HOOK_ENDPOINT',
-    'ORCA_WORKSPACE_ID',
-    'ORCA_WORKTREE_ID',
-    'ORCA_RUNTIME_SOURCE_ID',
-    'ORCA_RUNTIME_SOURCE_INCARNATION',
-    'ORCA_RUNTIME_SOURCE_PROFILE_PATH'
-  ]
-  for (const key of Object.keys(env)) {
-    if (key.startsWith('ORCA_CLOUD_') || drop.includes(key)) {
-      delete env[key]
-    }
-  }
+function hostView(spec, entry, record) {
   return {
-    ...env,
-    HOME: paths.hostHome,
-    ORCA_E2E_HOME_DIR: paths.hostHome,
-    ORCA_E2E_USER_DATA_DIR: paths.hostUd,
-    ORCA_BYPASS_SINGLE_INSTANCE_LOCK: '1',
-    ORCA_BACKGROUND_LAUNCH: '1',
-    NODE_EXTRA_CA_CERTS: paths.caPem,
-    ORCA_CLOUD_API_URL: `https://127.0.0.1:${options.port}`,
-    ORCA_CLOUD_HOST_NAME: options.hostName,
-    ORCA_CLOUD_HOST_TOKEN: token,
-    ORCA_CLOUD_PROJECTS_ROOT: paths.hostProjects,
-    ORCA_CLOUD_TLS_CERT_PATH: paths.hostCert,
-    ORCA_CLOUD_TLS_KEY_PATH: paths.hostKey,
-    ORCA_CLOUD_ADVERTISE_HOST: options.advertiseHost
+    pid: entry.pid,
+    reused: entry.reused,
+    id: record.id,
+    name: record.name,
+    online: record.online,
+    directAddrs: record.directAddrs,
+    relayRoute: record.relayRoute,
+    projectsRoot: record.projectsRoot,
+    projectDirs: record.projectDirs,
+    tlsFingerprint: record.tlsFingerprint,
+    home: spec.home,
+    userData: spec.ud,
+    projects: spec.projects,
+    cert: spec.cert,
+    key: spec.key,
+    log: spec.log
   }
-}
-
-function electronBinary() {
-  const resolved = requireFromRepo('electron')
-  if (typeof resolved === 'string' && exists(resolved)) {
-    return resolved
-  }
-  throw new Error('cannot resolve electron — run pnpm install')
-}
-
-async function ensureHost(api, paths, options, token, adminToken) {
-  const entry = path.join(ROOT, 'out/main/index.js')
-  if (!exists(entry)) {
-    throw new Error(`missing build: ${entry} — run pnpm build:electron-vite`)
-  }
-  await killTree(readPid(paths.hostPid))
-  for (const pid of (tryRun('pgrep', ['-f', paths.hostUd]) ?? '').split(/\s+/).map(Number)) {
-    if (Number.isInteger(pid) && pid !== process.pid) {
-      await killTree(pid)
-    }
-  }
-  fs.rmSync(paths.hostCredential, { force: true })
-  await ensureSource(paths.supervisor, SUPERVISOR)
-  const pid = spawnDetached({
-    command: process.execPath,
-    args: [paths.supervisor, electronBinary(), entry],
-    env: hostEnv(paths, options, token),
-    logFile: paths.hostLog,
-    pidFile: paths.hostPid
-  })
-  const host = await waitFor(
-    `host ${options.hostName} online`,
-    async () => {
-      const hosts = (await api('GET', '/v1/hosts', { token: adminToken })).json?.hosts ?? []
-      const found = hosts.find((candidate) => candidate.name === options.hostName)
-      const advertised = (found?.directAddrs ?? []).some((addr) =>
-        addr.startsWith(`${options.advertiseHost}:`)
-      )
-      return found?.online && advertised ? found : null
-    },
-    120000,
-    1000
-  )
-  return { pid, host, reused: false }
 }
 
 async function main() {
   const options = parseOptions(process.argv.slice(2))
-  const paths = buildPaths(options.root)
-  for (const dir of [
+  const paths = buildPaths(options.root, options)
+  const dirs = [
     options.root,
     path.dirname(paths.caPem),
-    paths.hostHome,
-    paths.hostUd,
-    paths.hostProjects,
     paths.logs,
     paths.run,
     path.dirname(paths.supervisor)
-  ]) {
+  ]
+  for (const host of paths.hosts) {
+    dirs.push(host.home, host.ud, host.projects, path.dirname(host.cert))
+  }
+  for (const dir of dirs) {
     fs.mkdirSync(dir, { recursive: true })
   }
   log(
     'paths',
-    `root=${options.root} platform=https://127.0.0.1:${options.port} host=${options.hostName} advertise=${options.advertiseHost}`
+    `root=${options.root} platform=https://127.0.0.1:${options.port} hosts=${paths.hosts.map((host) => host.name).join(',')} advertise=${options.advertiseHost}`
   )
 
   const certs = await ensureCertificates(paths, options, log)
   log('certs', `ca=${certs.ca.source} ${certs.ca.fp}`)
-  log('certs', `platform=${certs.platform.source} host=${certs.host.source}`)
+  log('certs', `platform=${certs.platform.source} hosts=${JSON.stringify(certs.hosts)}`)
   const keychain = ensureKeychain(paths, options)
   log('keychain', keychain.status)
 
@@ -456,28 +369,62 @@ async function main() {
     log('platform', `restarted pid=${platform.pid} for fresh routes`)
   }
 
-  const seeded = await seedData(api, paths, options)
+  const seeded = await seedData(api, paths)
   log('seed', `admin/zhangsan/lisi login ok, revoked=${JSON.stringify(seeded.revoked)}`)
-  const host =
-    platform.status === 'reused' && health.healthy
-      ? { pid: readPid(paths.hostPid), host: health.host, reused: true }
+  const hostEntries = {}
+  for (const host of paths.hosts) {
+    const reuse = platform.status === 'reused' && health.healthy
+    const existing = reuse
+      ? await findAdvertisedHost(api, seeded.admin.accessToken, options, host)
+      : null
+    const entry = existing
+      ? { pid: readPid(host.pid), reused: true, host: existing }
       : await ensureHost(
           api,
           paths,
           options,
+          host,
           await hostToken(api, seeded.admin.accessToken),
           seeded.admin.accessToken
         )
-  log(
-    'host',
-    `${host.reused ? 'reused' : 'online'} pid=${host.pid ?? '?'} id=${host.host.id} addrs=${host.host.directAddrs.join(',')}`
-  )
+    hostEntries[host.name] = entry
+    log(
+      'host',
+      `${entry.reused ? 'reused' : 'online'} ${host.name} pid=${entry.pid ?? '?'} id=${entry.host.id} addrs=${entry.host.directAddrs.join(',')}`
+    )
+  }
 
-  const projects = await seedProjects(api, { ...seeded, hostId: host.host.id }, paths)
-  log('projects', `demo-app=${projects.demo.project.id} zhangsan-demo=${projects.zs.project.id}`)
-  const verification = await verify(api, seeded, projects)
-  const relay = await relayProbe(api, seeded.admin.accessToken, options)
-  log('verify', `failures=${JSON.stringify(verification.failures)} relay=${relay.status}`)
+  const hostIds = Object.fromEntries(
+    paths.hosts.map((host) => [host.name, hostEntries[host.name].host])
+  )
+  const projects = await seedProjects(api, { ...seeded, hosts: hostIds }, paths)
+  log(
+    'projects',
+    paths.hosts
+      .flatMap((host) => host.projectKeys)
+      .map((key) => `${key}=${projects.projects[key].project.id}`)
+      .join(' ')
+  )
+  const liveHosts =
+    (await api('GET', '/v1/hosts', { token: seeded.admin.accessToken })).json?.hosts ?? []
+  const verification = await verify(api, seeded, projects.projects, {
+    hosts: paths.hosts.map((host) => ({
+      name: host.name,
+      record: liveHosts.find((candidate) => candidate.name === host.name) ?? null
+    })),
+    advertiseHost: options.advertiseHost,
+    internalToken: options.internalToken
+  })
+  const relay = await relayProbe(
+    api,
+    seeded.admin.accessToken,
+    options,
+    paths.hosts.map((host) => host.name)
+  )
+  log(
+    'verify',
+    `failures=${JSON.stringify(verification.failures)} relay=${JSON.stringify(Object.fromEntries(Object.entries(relay.hosts).map(([name, value]) => [name, value.status])))}`
+  )
 
   if (!options.keepLegacy) {
     for (const dir of LEGACY_DIRS) {
@@ -489,10 +436,31 @@ async function main() {
     log('legacy', 'removed /tmp/m114-* assets')
   }
   const repos = {}
-  for (const key of Object.keys(DEMO_REPOS)) {
-    const dir = path.join(paths.hostProjects, key)
-    repos[key] = { path: dir, ...repoSummary(dir), createdThisRun: seeded.repos[key] }
+  for (const host of paths.hosts) {
+    for (const key of host.projectKeys) {
+      const dir = path.join(host.projects, key)
+      repos[key] = { path: dir, ...repoSummary(dir), createdThisRun: seeded.repos[key] }
+    }
   }
+  const hostEvidence = paths.hosts.map((host) =>
+    hostView(host, hostEntries[host.name], hostIds[host.name])
+  )
+  const projectEvidence = Object.fromEntries(
+    Object.entries(projects.projects).map(([key, value]) => [
+      key,
+      {
+        id: value.project.id,
+        status: value.status,
+        hostName: value.hostName,
+        owner: value.owner,
+        path: value.project.path,
+        visibleTo: Object.entries(verification.confirmations.visibility)
+          .filter(([, keys]) => keys.includes(key))
+          .map(([identity]) => identity)
+      }
+    ])
+  )
+  const primary = hostEvidence[0]
   const evidence = {
     task: 'local cloud-dev-platform persistent environment rebuild',
     date: new Date().toISOString(),
@@ -501,16 +469,20 @@ async function main() {
       root: options.root,
       platformPort: options.port,
       hostName: options.hostName,
+      host2Name: options.host2Name,
+      host2WsPort: options.host2WsPort,
       advertiseHost: options.advertiseHost,
       restartPlatform: options.restartPlatform
     },
     persistentAssets: {
       ca: { pem: paths.caPem, key: paths.caKey, ...certs.ca },
       platformTls: { cert: paths.platformCert, key: paths.platformKey, ...certs.platform },
-      hostTls: { cert: paths.hostCert, key: paths.hostKey, ...certs.host },
-      hostHome: paths.hostHome,
-      hostUserData: paths.hostUd,
-      hostProjects: paths.hostProjects,
+      hosts: Object.fromEntries(
+        paths.hosts.map((host) => [
+          host.name,
+          { cert: host.cert, key: host.key, ...certs.hosts[host.name] }
+        ])
+      ),
       logs: paths.logs
     },
     keychain,
@@ -527,46 +499,80 @@ async function main() {
       log: paths.forwarderLog
     },
     host: {
-      pid: host.pid,
-      reused: host.reused,
-      id: host.host.id,
-      name: host.host.name,
-      online: host.host.online,
-      directAddrs: host.host.directAddrs,
-      projectsRoot: host.host.projectsRoot,
-      projectDirs: host.host.projectDirs,
-      tlsFingerprint: host.host.tlsFingerprint,
-      log: paths.hostLog
+      pid: primary.pid,
+      reused: primary.reused,
+      id: primary.id,
+      name: primary.name,
+      online: primary.online,
+      directAddrs: primary.directAddrs,
+      projectsRoot: primary.projectsRoot,
+      projectDirs: primary.projectDirs,
+      tlsFingerprint: primary.tlsFingerprint,
+      log: primary.log
     },
+    hosts: hostEvidence,
     revokedResidualHosts: seeded.revoked,
-    projects: {
-      'demo-app': {
-        id: projects.demo.project.id,
-        status: projects.demo.status,
-        path: path.join(paths.hostProjects, 'demo-app')
-      },
-      'zhangsan-demo': {
-        id: projects.zs.project.id,
-        status: projects.zs.status,
-        path: path.join(paths.hostProjects, 'zhangsan-demo')
-      }
-    },
+    projects: projectEvidence,
     repos,
     grants: projects.grants,
     policies: projects.policies,
     verification,
-    relay: { online: relay.online, url: relay.url, status: relay.status },
+    relay: {
+      online: relay.online,
+      url: relay.url,
+      status: relay.status,
+      hosts: relay.hosts
+    },
     legacyCleanup: options.keepLegacy
       ? { skipped: true }
       : { removed: LEGACY_DIRS.length + LEGACY_FILES.length }
   }
   await writeFile(paths.evidence, `${JSON.stringify(evidence, null, 2)}\n`)
-  log('evidence', paths.evidence)
+  const multiHost = {
+    task: 'multi-host multi-project environment seed',
+    date: new Date().toISOString(),
+    options: {
+      root: options.root,
+      platformPort: options.port,
+      advertiseHost: options.advertiseHost
+    },
+    hosts: hostEvidence,
+    projects: projectEvidence,
+    visibilityMatrix: verification.confirmations.visibility,
+    crossHostAssertions: {
+      lisi: {
+        'host-1': verification.confirmations.visibility.lisi.filter(
+          (key) => projectEvidence[key]?.hostName === options.hostName
+        ),
+        'host-2': verification.confirmations.visibility.lisi.filter(
+          (key) => projectEvidence[key]?.hostName === options.host2Name
+        )
+      },
+      infraToolsVisibleViaGroup:
+        verification.confirmations.visibility.zhangsan.includes('infra-tools'),
+      selfServiceProjectsPrivate: !verification.confirmations.visibility.lisi.some(
+        (key) => key === 'zhangsan-demo' || key === 'zhangsan-lab'
+      )
+    },
+    handoff: verification.confirmations.handoff,
+    relayRoutes: verification.confirmations.relayRoutes,
+    relay: { online: relay.online, hosts: relay.hosts },
+    idempotency: {
+      hostsReused: hostEvidence.map((host) => ({ name: host.name, reused: host.reused })),
+      projectStatuses: Object.fromEntries(
+        Object.entries(projects.projects).map(([key, value]) => [key, value.status])
+      )
+    },
+    failures: verification.failures
+  }
+  await writeFile(paths.multiHostEvidence, `${JSON.stringify(multiHost, null, 2)}\n`)
+  log('evidence', `${paths.evidence} ${paths.multiHostEvidence}`)
+  const relayStatuses = Object.values(relay.hosts).map((entry) => entry.status)
   if (verification.failures.length > 0) {
     console.error(`[reseed] FAILED: ${verification.failures.join(', ')}`)
     process.exitCode = 1
-  } else if (relay.status !== 200) {
-    console.error(`[reseed] FAILED: relay browser entry -> ${relay.status}`)
+  } else if (relayStatuses.some((status) => status !== 200)) {
+    console.error(`[reseed] FAILED: relay browser entries -> ${relayStatuses.join(',')}`)
     process.exitCode = 1
   } else {
     console.log('[reseed] OK')

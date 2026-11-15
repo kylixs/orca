@@ -77,9 +77,7 @@ async function ensureCa(paths, log) {
   return { source: 'generated', fp: fingerprint(paths.caPem) }
 }
 
-async function ensureLeaf(paths, name, subject, san, required, legacy, log) {
-  const cert = paths[`${name}Cert`]
-  const key = paths[`${name}Key`]
+async function ensureLeaf(paths, name, cert, key, subject, san, required, legacy, log) {
   let migrated = false
   if (legacy) {
     const movedCert = await migrate('/tmp/m114-platform-tls/cert.pem', cert)
@@ -146,22 +144,29 @@ export async function ensureCertificates(paths, options, log) {
   const platform = await ensureLeaf(
     paths,
     'platform',
+    paths.platformCert,
+    paths.platformKey,
     'orca-cloud-platform',
     san,
     { ip: '127.0.0.1' },
     true,
     log
   )
-  const host = await ensureLeaf(
-    paths,
-    'host',
-    options.hostName,
-    `${san},DNS:${options.hostName}`,
-    { ip: options.advertiseHost, dns: options.hostName },
-    false,
-    log
-  )
-  return { ca, platform, host }
+  const hosts = {}
+  for (const host of paths.hosts) {
+    hosts[host.name] = await ensureLeaf(
+      paths,
+      host.name,
+      host.cert,
+      host.key,
+      host.name,
+      `${san},DNS:${host.name}`,
+      { ip: options.advertiseHost, dns: host.name },
+      false,
+      log
+    )
+  }
+  return { ca, platform, hosts }
 }
 
 export function ensureKeychain(paths, options) {

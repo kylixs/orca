@@ -97,6 +97,106 @@ export const DEMO_REPOS = {
         ]
       ]
     ]
+  },
+  'infra-tools': {
+    feature: 'feature/deploy-pipeline',
+    commits: [
+      ['init: 初始化 infra-tools 仓库', [['README.md', '# infra-tools\n\n基础设施运维工具集。\n']]],
+      [
+        'feat: 主机清单与健康检查',
+        [
+          [
+            'src/inventory.js',
+            'export function inventory(hosts) {\n  return hosts.map((host) => ({ ...host, reachable: true }))\n}\n'
+          ],
+          [
+            'src/healthcheck.js',
+            "import { inventory } from './inventory.js'\n\nexport function healthcheck(hosts) {\n  return inventory(hosts).filter((host) => host.reachable)\n}\n"
+          ]
+        ]
+      ],
+      [
+        'feat: 部署与回滚脚本',
+        [
+          [
+            'scripts/deploy.sh',
+            '#!/usr/bin/env bash\nset -euo pipefail\nnode src/deploy.js "$@"\n'
+          ],
+          [
+            'src/deploy.js',
+            "export function deploy(service, version) {\n  return { service, version, status: 'deployed' }\n}\n"
+          ],
+          [
+            'src/rollback.js',
+            "export function rollback(service) {\n  return { service, status: 'rolled_back' }\n}\n"
+          ]
+        ]
+      ],
+      [
+        'docs: 运维手册',
+        [
+          [
+            'docs/runbook.md',
+            '# 运维手册\n\n## 发布\n\n```bash\n./scripts/deploy.sh payment-api 1.4.0\n```\n\n## 回滚\n\n回滚前先确认主机健康检查通过。\n'
+          ]
+        ]
+      ]
+    ],
+    featureCommit: [
+      'feat: 灰度发布流水线',
+      [
+        [
+          'src/pipeline.js',
+          "import { deploy } from './deploy.js'\n\nexport function canary(service, version, ratio) {\n  return { service, version, ratio, status: 'canary_started' }\n}\n"
+        ]
+      ]
+    ]
+  },
+  'zhangsan-lab': {
+    feature: 'feature/metric-dashboard',
+    commits: [
+      ['init: 初始化 zhangsan-lab 仓库', [['README.md', '# zhangsan-lab\n\n个人指标实验项目。\n']]],
+      [
+        'feat: 指标采集',
+        [
+          [
+            'src/collect.js',
+            'export function collect(samples) {\n  return samples.map((sample) => ({ ...sample, at: Date.now() }))\n}\n'
+          ]
+        ]
+      ],
+      [
+        'feat: 时序聚合',
+        [
+          [
+            'src/aggregate.js',
+            'export function mean(values) {\n  return values.reduce((sum, value) => sum + value, 0) / values.length\n}\n'
+          ],
+          [
+            'src/window.js',
+            'export function windowed(rows, size) {\n  const out = []\n  for (let i = 0; i + size <= rows.length; i += size) out.push(rows.slice(i, i + size))\n  return out\n}\n'
+          ]
+        ]
+      ],
+      [
+        'feat: 命令行输出',
+        [
+          [
+            'src/cli.js',
+            "import { aggregate } from './aggregate.js'\n\nexport function report(values) {\n  return `mean=${aggregate(values)}`\n}\n"
+          ]
+        ]
+      ]
+    ],
+    featureCommit: [
+      'feat: 指标看板导出',
+      [
+        [
+          'src/dashboard.js',
+          "export function dashboard(series) {\n  return series.map((value) => `<span>${value}</span>`).join('')\n}\n"
+        ]
+      ]
+    ]
   }
 }
 
