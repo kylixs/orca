@@ -32,7 +32,7 @@ import {
 import { AuditChain, type AuditSummary } from './audit.ts'
 import { createRemoteAudit, type AuditSink } from './audit-writer-client.ts'
 import { createSigningKeyRing } from './signing-key-ring.ts'
-import type { AuditEventInput } from './store.ts'
+import type { AuditEvent, AuditEventInput } from './store.ts'
 import { openAuditLogFile } from './audit-log-file.ts'
 import { startInternalChannel } from './internal-channel.ts'
 import { ldapProfile, MockLdapAdapter, type LdapAdapter } from './ldap.ts'
@@ -398,6 +398,302 @@ function resolveGrantSubject(
     : { ok: false, code: 'USER_NOT_FOUND', message: '用户不存在。' }
 }
 
+/** U66 file events: client-declared download/copy audit (§2.10 of the U66 design). */
+const FILE_EVENT_TYPES = new Set(['file_download', 'file_copy', 'download_blocked'])
+const FILE_EVENT_RESULTS = new Set(['success', 'failure', 'denied'])
+const FILE_EVENT_METADATA_FIELDS = new Set([
+  'hostId',
+  'hostName',
+  'projectKey',
+  'method',
+  'kind',
+  'surface',
+  'capturePoint',
+  'captureConfidence',
+  'copyKind',
+  'policy',
+  'reason',
+  'fileName',
+  'path',
+  'sizeBytes',
+  'copiedChars',
+  'copiedBytes',
+  'itemCount',
+  'sha256',
+  'sha256Source',
+  'savedName',
+  'mime',
+  'isBinary',
+  'excerpt',
+  'excerptBytes',
+  'excerptTruncated',
+  'occurredAt',
+  'clientVersion',
+  'truncated'
+])
+/** Platform-written; a client must not be able to forge its own attribution. */
+const FILE_EVENT_PLATFORM_FIELDS = new Set(['deviceId', 'subject', 'actorSource'])
+const FILE_EVENT_TOP_FIELDS = new Set([
+  'eventType',
+  'result',
+  'traceId',
+  'metadata',
+  'deviceId',
+  'subject',
+  'sessionId',
+  'cloudSession',
+  'projectId',
+  'hostId',
+  'hostName'
+])
+const FILE_EVENT_KINDS = new Set(['file', 'folder', 'artifact', 'browser'])
+const FILE_EVENT_SURFACES = new Set(['desktop', 'web', 'mobile', 'admin-embed'])
+const FILE_EVENT_COPY_KINDS = new Set(['content-whole', 'content-selection', 'file-object'])
+const FILE_EVENT_POLICIES = new Set(['allow', 'deny'])
+const DOWNLOAD_METHODS = new Set([
+  'files.readChunk',
+  'browser.download',
+  'files.download',
+  'mobile.saveToPhone'
+])
+const DOWNLOAD_CAPTURE_POINTS = new Set([
+  'download-runtime-client',
+  'mobile-save',
+  'host-browser-download',
+  'host-files-download'
+])
+const COPY_CAPTURE_POINTS = new Set([
+  'web-clipboard-api',
+  'desktop-clipboard-ipc',
+  'dom-copy-listener',
+  'mobile-copy-content'
+])
+const FILE_EVENT_METADATA_LIMIT = 4096
+const FILE_EVENT_RATE_LIMIT = 120
+const FILE_EVENT_RATE_WINDOW_MS = 60_000
+const OCCURRED_AT_TOLERANCE_MS = 60_000
+
+type FileEventVerdict =
+  | { ok: true; metadata: Record<string, unknown>; excerptDropped: boolean }
+  | { ok: false; field: string; reason: string }
+
+/** Relative, forward-slash project path; absolute paths and `..` are refused (OQ-8). */
+function safeFileEventPath(value: string): string | null {
+  const normalized = value.replaceAll('\\', '/')
+  if (normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized)) return null
+  if (normalized.split('/').includes('..')) return null
+  return normalized.slice(0, 1024)
+}
+
+/**
+ * §2.5 field whitelist and enums. Excerpts are refused for the first release
+ * (AC-53), so the field is dropped rather than stored; everything else that the
+ * dictionary does not know is rejected so a bad report never reaches the chain.
+ */
+function validateFileEventMetadata(input: {
+  eventType: string
+  result: string
+  metadata: Record<string, unknown>
+  project: Project
+  hostId: string
+  hostName: string
+  actor: string
+  actorSource: 'device' | 'subject' | 'host'
+  subject: string | null
+  deviceId: string | null
+  now: number
+}): FileEventVerdict {
+  const raw = input.metadata
+  let invalid: { field: string; reason: string } | null = null
+  const fail = (field: string, reason: string): void => {
+    invalid ??= { field, reason }
+  }
+  for (const key of Object.keys(raw)) {
+    if (FILE_EVENT_METADATA_FIELDS.has(key)) continue
+    fail(`metadata.${key}`, FILE_EVENT_PLATFORM_FIELDS.has(key) ? 'platform-written' : 'unknown')
+  }
+
+  const text = (field: string, max: number, required = false): string | undefined => {
+    const value = raw[field]
+    if (value === undefined) {
+      if (required) fail(field, 'missing')
+      return undefined
+    }
+    if (typeof value !== 'string' || value.length === 0) {
+      fail(field, 'not-a-string')
+      return undefined
+    }
+    return value.slice(0, max)
+  }
+  const enumText = (
+    field: string,
+    allowed: Set<string>,
+    required = false
+  ): string | undefined => {
+    const value = text(field, 128, required)
+    if (value !== undefined && !allowed.has(value)) fail(field, 'not-allowed')
+    return value
+  }
+  const optionalText = (field: string, max: number): string | undefined => {
+    if (raw[field] === undefined) return undefined
+    const value = text(field, max)
+    if (value !== undefined && /[\\/]/.test(value)) fail(field, 'must-be-basename')
+    return value
+  }
+  const integer = (field: string, required = false): number | undefined => {
+    const value = raw[field]
+    if (value === undefined) {
+      if (required) fail(field, 'missing')
+      return undefined
+    }
+    if (
+      typeof value !== 'number' ||
+      !Number.isInteger(value) ||
+      value < 0 ||
+      value > Number.MAX_SAFE_INTEGER
+    ) {
+      fail(field, 'not-a-non-negative-integer')
+      return undefined
+    }
+    return value
+  }
+
+  const eventType = input.eventType
+  const isDownload = eventType === 'file_download'
+  const isCopy = eventType === 'file_copy'
+  const isBlocked = eventType === 'download_blocked'
+
+  const kind = enumText('kind', FILE_EVENT_KINDS, isDownload || isBlocked)
+  const surface = enumText('surface', FILE_EVENT_SURFACES, true)
+  const method = isCopy ? text('method', 128) : text('method', 128, true)
+  if (isDownload && method !== undefined && !DOWNLOAD_METHODS.has(method)) {
+    fail('method', 'not-allowed')
+  }
+  const fileName = optionalText('fileName', 255)
+  if (fileName === undefined && !(isDownload && kind === 'browser')) fail('fileName', 'missing')
+  const pathValue = text('path', 1024, true)
+  const path = pathValue === undefined ? undefined : safeFileEventPath(pathValue)
+  if (pathValue !== undefined && path === null) fail('path', 'absolute-or-parent-traversal')
+  const occurredAt = integer('occurredAt', true)
+  if (occurredAt !== undefined && Math.abs(occurredAt - input.now) > OCCURRED_AT_TOLERANCE_MS) {
+    fail('occurredAt', 'outside-60s-window')
+  }
+
+  const sizeBytes = integer('sizeBytes', isDownload && input.result === 'success' && kind !== 'browser')
+  const copyKind = enumText('copyKind', FILE_EVENT_COPY_KINDS, isCopy)
+  const copiedChars = integer('copiedChars', isCopy)
+  const copiedBytes = integer('copiedBytes', isCopy)
+  const itemCount = integer('itemCount')
+  const policyValue = enumText('policy', FILE_EVENT_POLICIES)
+  const reason = text('reason', 128)
+  const clientVersion = text('clientVersion', 64)
+  const mime = text('mime', 128)
+  if (raw.isBinary !== undefined && typeof raw.isBinary !== 'boolean') fail('isBinary', 'not-a-boolean')
+  if (raw.truncated !== undefined && typeof raw.truncated !== 'boolean') {
+    fail('truncated', 'not-a-boolean')
+  }
+
+  let sha256: string | undefined
+  if (raw.sha256 !== undefined) {
+    const value = text('sha256', 64)
+    // Invalid fingerprints are dropped, not fatal (§2.5).
+    if (value !== undefined && /^[0-9a-f]{64}$/.test(value)) sha256 = value
+  }
+  const savedName = optionalText('savedName', 255)
+
+  let capturePoint: string | undefined
+  if (isBlocked) {
+    if (raw.capturePoint !== undefined && raw.capturePoint !== 'frontend-block') {
+      fail('capturePoint', 'frontend-block-required')
+    }
+    capturePoint = 'frontend-block'
+  } else if (isCopy) {
+    capturePoint = enumText('capturePoint', COPY_CAPTURE_POINTS)
+  } else {
+    capturePoint = enumText('capturePoint', DOWNLOAD_CAPTURE_POINTS)
+  }
+  if (raw.captureConfidence !== undefined && raw.captureConfidence !== 'client-declared') {
+    fail('captureConfidence', 'client-cannot-self-attest')
+  }
+
+  // Excerpts are a second-release switch; the host is authoritative and drops them.
+  const excerptDropped =
+    raw.excerpt !== undefined || raw.excerptBytes !== undefined || raw.excerptTruncated !== undefined
+
+  if (invalid) return { ok: false, ...invalid }
+
+  const metadata: Record<string, unknown> = {
+    hostId: input.hostId,
+    hostName: input.hostName,
+    projectKey: input.project.key,
+    captureConfidence: 'client-declared',
+    actorSource: input.actorSource,
+    ...(input.subject ? { subject: input.subject } : {}),
+    ...(input.deviceId ? { deviceId: input.deviceId } : {}),
+    ...(path !== undefined ? { path } : {}),
+    surface,
+    occurredAt,
+    capturePoint:
+      capturePoint ??
+      (isBlocked
+        ? 'frontend-block'
+        : isCopy
+          ? surface === 'mobile'
+            ? 'mobile-copy-content'
+            : surface === 'desktop'
+              ? 'desktop-clipboard-ipc'
+              : 'web-clipboard-api'
+          : method === 'mobile.saveToPhone'
+            ? 'mobile-save'
+            : method === 'browser.download'
+              ? 'host-browser-download'
+              : 'download-runtime-client')
+  }
+  if (fileName !== undefined) metadata.fileName = fileName
+  if (method !== undefined) metadata.method = method
+  if (kind !== undefined) metadata.kind = kind
+  if (sizeBytes !== undefined) metadata.sizeBytes = sizeBytes
+  if (copyKind !== undefined) metadata.copyKind = copyKind
+  if (copiedChars !== undefined) metadata.copiedChars = copiedChars
+  if (copiedBytes !== undefined) metadata.copiedBytes = copiedBytes
+  if (itemCount !== undefined) metadata.itemCount = itemCount
+  if (sha256 !== undefined) {
+    metadata.sha256 = sha256
+    metadata.sha256Source = 'client'
+  }
+  if (savedName !== undefined) metadata.savedName = savedName
+  if (mime !== undefined) metadata.mime = mime
+  if (typeof raw.isBinary === 'boolean') metadata.isBinary = raw.isBinary
+  if (typeof raw.truncated === 'boolean') metadata.truncated = raw.truncated
+  if (clientVersion !== undefined) metadata.clientVersion = clientVersion
+  if (isBlocked) {
+    metadata.policy = 'deny'
+    metadata.reason = reason ?? 'DOWNLOAD_DISABLED'
+  } else {
+    if (policyValue !== undefined) metadata.policy = policyValue
+    if (reason !== undefined) metadata.reason = reason
+    if (isDownload && input.result === 'denied' && reason === undefined) {
+      metadata.reason = 'DOWNLOAD_DISABLED'
+    }
+  }
+
+  // Order: excerpt (already absent) → sha256 → optional fields; then give up.
+  if (Buffer.byteLength(JSON.stringify(metadata)) > FILE_EVENT_METADATA_LIMIT) {
+    delete metadata.sha256
+    delete metadata.sha256Source
+    delete metadata.mime
+    delete metadata.isBinary
+    delete metadata.clientVersion
+    delete metadata.savedName
+    delete metadata.itemCount
+    delete metadata.truncated
+  }
+  if (Buffer.byteLength(JSON.stringify(metadata)) > FILE_EVENT_METADATA_LIMIT) {
+    return { ok: false, field: 'metadata', reason: 'too-large' }
+  }
+  return { ok: true, metadata, excerptDropped }
+}
+
 export function createApp(config: ApiConfig): ApiHandle {
   const now = config.now ?? (() => Date.now())
   const accessTtlMs = config.accessTtlMs ?? ACCESS_TTL_MS
@@ -521,6 +817,217 @@ export function createApp(config: ApiConfig): ApiHandle {
           : 'AUDIT_UNAVAILABLE'
       error(res, 503, code, '审计日志不可写，敏感操作已停止。', traceId)
       return false
+    }
+  }
+
+  const fileEventRate = new Map<string, { windowStart: number; count: number }>()
+  const fileEventGap = {
+    dropped: 0,
+    rateLimited: 0,
+    suppressed: 0,
+    lastGapAt: null as number | null
+  }
+  const noteFileEventGap = (key: 'dropped' | 'rateLimited' | 'suppressed'): void => {
+    fileEventGap[key] += 1
+    fileEventGap.lastGapAt = now()
+  }
+
+  type FileEventOutcome = { status: number; body: Record<string, unknown>; retryAfter?: boolean }
+
+  /** Finds the download-family event a same-trace report must merge into (N-4). */
+  async function findFileEventByTrace(
+    traceId: string,
+    deviceId: string | null
+  ): Promise<AuditEvent | null> {
+    const page = await audit.query({ traceId, limit: 200 })
+    return (
+      page.events.find((event) => {
+        if (event.eventType !== 'file_download' && event.eventType !== 'download_blocked') {
+          return false
+        }
+        return deviceId === null || event.metadata?.deviceId === deviceId
+      }) ?? null
+    )
+  }
+
+  /**
+   * §2.10 `audit.recordFileEvent`. The host RPC validates and queues; this is the
+   * same contract's authenticated ingress, appending straight to the chain.
+   * Best effort: a bad report or an unwritable chain answers without throwing.
+   */
+  async function recordFileEvent(
+    body: Record<string, unknown>,
+    requestTraceId: string
+  ): Promise<FileEventOutcome> {
+    const reject = (field: string, reason: string): FileEventOutcome => ({
+      status: 400,
+      body: {
+        error: {
+          code: 'INVALID_FILE_EVENT',
+          message: '文件审计事件字段不合法。',
+          traceId: requestTraceId,
+          details: { field, reason }
+        }
+      }
+    })
+    for (const key of Object.keys(body)) {
+      if (!FILE_EVENT_TOP_FIELDS.has(key)) return reject(key, 'unknown')
+    }
+    const eventType = typeof body.eventType === 'string' ? body.eventType : ''
+    if (!FILE_EVENT_TYPES.has(eventType)) return reject('eventType', 'not-allowed')
+    const resultValue = typeof body.result === 'string' ? body.result : ''
+    if (!FILE_EVENT_RESULTS.has(resultValue)) return reject('result', 'not-allowed')
+    const result: 'success' | 'failure' | 'denied' =
+      resultValue === 'success' ? 'success' : resultValue === 'failure' ? 'failure' : 'denied'
+    if (eventType === 'download_blocked' && result !== 'denied') {
+      return reject('result', 'download-blocked-must-be-denied')
+    }
+
+    const cloudSession =
+      typeof body.cloudSession === 'string' && body.cloudSession.length > 0
+        ? body.cloudSession
+        : typeof body.sessionId === 'string'
+          ? body.sessionId
+          : ''
+    if (!cloudSession) {
+      return { status: 200, body: { queued: false, reason: 'non-cloud-session' } }
+    }
+
+    const current = now()
+    const previous = fileEventRate.get(cloudSession)
+    const window =
+      previous && current - previous.windowStart < FILE_EVENT_RATE_WINDOW_MS
+        ? previous
+        : { windowStart: current, count: 0 }
+    if (window.count >= FILE_EVENT_RATE_LIMIT) {
+      noteFileEventGap('rateLimited')
+      return {
+        status: 429,
+        retryAfter: true,
+        body: {
+          queued: false,
+          reason: 'rate-limited',
+          auditGap: { rateLimited: fileEventGap.rateLimited }
+        }
+      }
+    }
+    window.count += 1
+    fileEventRate.set(cloudSession, window)
+
+    const metadataInput = body.metadata
+    if (
+      metadataInput !== undefined &&
+      (typeof metadataInput !== 'object' || metadataInput === null || Array.isArray(metadataInput))
+    ) {
+      return reject('metadata', 'not-an-object')
+    }
+    const metadata: Record<string, unknown> = {}
+    if (metadataInput !== undefined) {
+      for (const [key, value] of Object.entries(metadataInput)) metadata[key] = value
+    }
+    const projectId = typeof body.projectId === 'string' ? body.projectId : ''
+    if (!projectId) return reject('projectId', 'missing')
+    const project = store.projects.get(projectId)
+    if (!project) return reject('projectId', 'unknown')
+
+    const deviceId = typeof body.deviceId === 'string' && body.deviceId.length > 0 ? body.deviceId : null
+    const subjectInput =
+      typeof body.subject === 'string' && body.subject.length > 0
+        ? body.subject.slice(0, 128)
+        : null
+    const suppliedHostId =
+      typeof body.hostId === 'string' && body.hostId.length > 0 ? body.hostId : null
+    if (suppliedHostId && suppliedHostId !== project.hostId) {
+      return reject('hostId', 'project-host-mismatch')
+    }
+    const hostId = project.hostId
+    const hostName =
+      store.hosts.get(hostId)?.name ??
+      (typeof body.hostName === 'string' ? body.hostName.slice(0, 128) : 'unknown')
+
+    const device = deviceId ? store.devices.get(deviceId) : undefined
+    const deviceUser = device ? store.users.get(device.userId) : undefined
+    let actor: string
+    let actorSource: 'device' | 'subject' | 'host'
+    if (deviceUser) {
+      actor = deviceUser.username
+      actorSource = 'device'
+    } else if (subjectInput && /^user:/i.test(subjectInput)) {
+      actor = subjectInput.slice(5)
+      actorSource = 'subject'
+    } else {
+      actor = `host:${hostName}`
+      actorSource = 'host'
+    }
+    const subject = subjectInput ?? (actorSource === 'device' ? `user:${actor}` : null)
+    const traceId =
+      typeof body.traceId === 'string' && body.traceId.length > 0
+        ? body.traceId.slice(0, 128)
+        : requestTraceId
+
+    // One download action, one event: a same-trace report never adds a second (N-4).
+    if ((eventType === 'file_download' || eventType === 'download_blocked') && traceId) {
+      const prior = await findFileEventByTrace(traceId, deviceId)
+      if (prior) {
+        if (eventType === 'file_download' && metadata.savedName !== undefined) {
+          return { status: 200, body: { queued: true, acceptedSeq: prior.seq, merged: true } }
+        }
+        noteFileEventGap('dropped')
+        return {
+          status: 200,
+          body: { queued: false, reason: 'duplicate', matchedSeq: prior.seq }
+        }
+      }
+      // A supplement with no matching event is merged/dropped, never a download.
+      if (
+        eventType === 'file_download' &&
+        metadata.savedName !== undefined &&
+        metadata.method === undefined &&
+        metadata.path === undefined
+      ) {
+        noteFileEventGap('dropped')
+        return { status: 200, body: { queued: false, reason: 'unmatched-saved-name' } }
+      }
+    }
+
+    const verdict = validateFileEventMetadata({
+      eventType,
+      result,
+      metadata,
+      project,
+      hostId,
+      hostName,
+      actor,
+      actorSource,
+      subject,
+      deviceId,
+      now: current
+    })
+    if (!verdict.ok) return reject(verdict.field, verdict.reason)
+
+    try {
+      const event = await audit.append({
+        eventType,
+        actor,
+        targetType: 'project',
+        targetId: project.id,
+        result,
+        traceId,
+        metadata: verdict.metadata
+      })
+      return {
+        status: 200,
+        body: {
+          queued: true,
+          acceptedSeq: event.seq,
+          ...(verdict.excerptDropped
+            ? { reason: 'excerpt-not-allowed', excerptDropped: true }
+            : {})
+        }
+      }
+    } catch {
+      noteFileEventGap('dropped')
+      return { status: 200, body: { queued: false, reason: 'audit-unavailable' } }
     }
   }
 
@@ -2857,6 +3364,17 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
     }
 
+    // ---- audit: file event ingress (U66 §2.10) ----
+    if (req.method === 'POST' && path === '/v1/internal/audit/file-events') {
+      const token = req.headers['x-internal-token']
+      if (token !== internalToken) {
+        return error(res, 401, 'INTERNAL_TOKEN_INVALID', '内部令牌无效。', traceId)
+      }
+      const outcome = await recordFileEvent(await readJson(req), traceId)
+      if (outcome.retryAfter) res.setHeader('retry-after', '60')
+      return json(res, outcome.status, outcome.body)
+    }
+
     // ---- audit ----
     if (req.method === 'GET' && path === '/v1/audit/events') {
       const authed = requireAuth()
@@ -2976,7 +3494,14 @@ export function createApp(config: ApiConfig): ApiHandle {
         persisted: auditLogPath !== null,
         ...(summary === null
           ? {}
-          : { chain: summary.chain, gaps: summary.gaps, capacity: summary.capacity })
+          : { chain: summary.chain, gaps: summary.gaps, capacity: summary.capacity }),
+        // Ingress-side counters, separate from the writer's host-reported gaps.
+        ingressGaps: {
+          droppedTotal: fileEventGap.dropped,
+          rateLimitedTotal: fileEventGap.rateLimited,
+          suppressedTotal: fileEventGap.suppressed,
+          lastGapAt: fileEventGap.lastGapAt
+        }
       })
     }
 
