@@ -50,6 +50,11 @@ const EVIDENCE_DIR = join(REPO_ROOT, 'cloud-platform', 'evidence', 'u46-8-assemb
 const PERMISSIONS = ['open', 'terminal', 'file:read', 'file:write']
 const VIEWER_PERMISSIONS = ['open', 'file:read']
 const ECHO_MARKER = 'ORCA_U46_8_PTY_ECHO_OK'
+/** A real 1x1 PNG, so the image preview round-trips actual bytes (F-04, §6.2 E3). */
+const PNG_ONE_PIXEL = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64'
+)
 
 function saveEvidence(file: string, content: unknown): void {
   mkdirSync(EVIDENCE_DIR, { recursive: true })
@@ -67,6 +72,12 @@ function initRepo(path: string, marker: string): void {
   git(path, 'config', 'user.name', 'e2e')
   writeFileSync(join(path, 'README.md'), `# ${marker}\n\n- one\n- two\n`)
   writeFileSync(join(path, marker), `${marker}\n`)
+  // F-04 (§6.2 E3): real image and HTML fixtures for true-host preview reads.
+  writeFileSync(join(path, 'logo.png'), PNG_ONE_PIXEL)
+  writeFileSync(
+    join(path, 'page.html'),
+    `<!doctype html>\n<html><body><h1>${marker}-html</h1></body></html>\n`
+  )
   git(path, 'add', '.')
   git(path, 'commit', '-qm', 'init')
 }
@@ -116,13 +127,15 @@ let adminToken = ''
 let userToken = ''
 let projectId = ''
 let viewerProjectId = ''
+/** No grant at all: the no-`open` 403 control (F-04, §6.2 E6). */
+let unsharedProjectId = ''
 let root = ''
 let viewerRoot = ''
 
 async function createProject(
   key: string,
   path: string,
-  permissions: readonly string[] = PERMISSIONS
+  permissions: readonly string[] | null = PERMISSIONS
 ): Promise<string> {
   const res = await fetch(`${platform.url}/v1/projects`, {
     method: 'POST',
@@ -141,6 +154,9 @@ async function createProject(
   const id = readString(await res.json(), 'id')
   if (id === null) {
     throw new Error(`project ${key} has no id`)
+  }
+  if (permissions === null) {
+    return id
   }
   await fetch(`${platform.url}/v1/projects/${id}/grants`, {
     method: 'PUT',
@@ -252,6 +268,8 @@ beforeAll(async () => {
 
   projectId = await createProject('u46-service', root)
   viewerProjectId = await createProject('u46-viewer', viewerRoot, VIEWER_PERMISSIONS)
+  mkdirSync(join(base, 'u46-unshared'), { recursive: true })
+  unsharedProjectId = await createProject('u46-unshared', join(base, 'u46-unshared'), null)
   await new Promise((resolve) => setTimeout(resolve, 1200))
 
   vi.stubGlobal('window', {
@@ -341,6 +359,36 @@ describe('U46-8 简易工作区真栈（真实平台 + TLS 宿主 + 真 PTY + �
     )
     expect(adminEvent, JSON.stringify(list)).toBeTruthy()
 
+    // F-04 (§6.2 E6): a spent code replays as 410; an `open`-less project is a
+    // 404 for a plain user (existence never leaks) and a 403 at admin mint.
+    const replay = await fetch(`${platform.url}/v1/web/handoff`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code: issued.code })
+    })
+    expect(replay.status).toBe(410)
+    const unshared = await fetch(`${platform.url}/v1/projects/${unsharedProjectId}/web-handoff`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${userToken}`
+      },
+      body: JSON.stringify({ surface: 'admin' })
+    })
+    expect(unshared.status).toBe(404)
+    const unsharedAdmin = await fetch(
+      `${platform.url}/v1/projects/${unsharedProjectId}/web-handoff`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${adminToken}`
+        },
+        body: JSON.stringify({ surface: 'admin' })
+      }
+    )
+    expect(unsharedAdmin.status).toBe(403)
+
     saveEvidence('e1-handoff-embed-open.json', {
       issued: {
         status: issued.status,
@@ -349,7 +397,10 @@ describe('U46-8 简易工作区真栈（真实平台 + TLS 宿主 + 真 PTY + �
       },
       opened,
       workspaceInfo: workspace,
-      adminSurfaceAudited: Boolean(adminEvent)
+      adminSurfaceAudited: Boolean(adminEvent),
+      replayStatus: replay.status,
+      unsharedHandoffStatus: unshared.status,
+      unsharedAdminHandoffStatus: unsharedAdmin.status
     })
   }, 120_000)
 
@@ -385,16 +436,39 @@ describe('U46-8 简易工作区真栈（真实平台 + TLS 宿主 + 真 PTY + �
     const closed = await rpc('terminal.close', { terminal: handle })
     expect(closed.ok).toBe(true)
 
+    // F-04 (§6.2 E7): a PTY still alive at overlay close must be recycled with
+    // the project — the socket refuses every further terminal call.
+    const orphan = await rpc('terminal.create', {
+      worktree: cloudWorktreeSelector(opened.workspacePath),
+      title: 'Terminal 2'
+    })
+    expect(orphan.ok, JSON.stringify(orphan)).toBe(true)
+    const orphanHandle = readString(
+      readField(orphan.ok ? orphan.result : null, 'terminal'),
+      'handle'
+    )
+    expect(orphanHandle).toBeTruthy()
     await bridge.closeProject(projectId)
     const gone = await rpc('status.get')
     expect(gone).toEqual({ ok: false, code: 'NOT_CONNECTED' })
+    const orphanRead = await rpc('terminal.read', {
+      terminal: orphanHandle ?? '',
+      limit: 10
+    })
+    expect(orphanRead).toEqual({ ok: false, code: 'NOT_CONNECTED' })
+    const noNew = await rpc('terminal.create', {
+      worktree: cloudWorktreeSelector(opened.workspacePath),
+      title: 'Terminal 3'
+    })
+    expect(noNew).toEqual({ ok: false, code: 'NOT_CONNECTED' })
 
     saveEvidence('e2-terminal-echo.json', {
       created,
       echoRead: read,
       resized,
       closed,
-      gone
+      gone,
+      orphanRecycled: { read: orphanRead, create: noNew }
     })
   }, 120_000)
 
@@ -457,14 +531,39 @@ describe('U46-8 简易工作区真栈（真实平台 + TLS 宿主 + 真 PTY + �
     const restored = await writeCloudWorkspaceFile(rpc, opened.workspacePath, 'README.md', base)
     expect(restored.ok, JSON.stringify(restored)).toBe(true)
 
+    // F-04 (§6.2 E4): a write outside the workspace root is refused by the
+    // cloud boundary (an absolute path can never be inside it) and audited.
+    const denied = await rpc('files.write', {
+      worktree: cloudWorktreeSelector(opened.workspacePath),
+      relativePath: '/etc/orca-u46-8-escape.txt',
+      content: 'escaped',
+      expectedExecutionHostId: 'local'
+    })
+    expect(denied.ok, JSON.stringify(denied)).toBe(false)
+    if (!denied.ok) {
+      expect(denied.code).toBe('forbidden')
+    }
+    await admission.client!.refresh()
+    const denialAudit = await fetch(
+      `${platform.url}/v1/audit/events?eventType=host.path_denied&limit=100`,
+      { headers: { authorization: `Bearer ${adminToken}` } }
+    )
+    const denialEvents = readField(await denialAudit.json(), 'events')
+    const writeDenial = (Array.isArray(denialEvents) ? denialEvents : []).find(
+      (event) => readString(readField(event, 'metadata'), 'method') === 'files.write'
+    )
+    expect(writeDenial, JSON.stringify(denialEvents)).toBeTruthy()
+
     saveEvidence('e4-edit-save.json', {
       adapterWrite,
       reread: edited,
-      restored
+      restored,
+      writeDenied: denied,
+      writeDenialAudited: Boolean(writeDenial)
     })
   }, 120_000)
 
-  it('E5 Markdown 预览数据：readPreview 返回文本（渲染由组件测试覆盖）', async () => {
+  it('E5 预览数据：markdown 文本、真实图片 base64+mime、HTML 文本（§6.2 E3，F-04）', async () => {
     const opened = await bridge.openWorkspace(projectId)
     if (!opened.ok || !opened.workspacePath) {
       throw new Error(`open failed: ${JSON.stringify(opened)}`)
@@ -477,7 +576,24 @@ describe('U46-8 简易工作区真栈（真实平台 + TLS 宿主 + 真 PTY + �
       expect(preview.preview.isBinary).toBe(false)
       expect(preview.preview.content).toContain('# u46-marker.txt')
     }
-    saveEvidence('e5-markdown-preview.json', { preview })
+
+    const image = await previewCloudFile(rpc, opened.workspacePath, 'logo.png')
+    expect(image.ok, JSON.stringify(image)).toBe(true)
+    if (image.ok) {
+      expect(image.preview.isBinary).toBe(true)
+      expect(image.preview.isImage).toBe(true)
+      expect(image.preview.mimeType).toBe('image/png')
+      expect(Buffer.from(image.preview.content, 'base64').equals(PNG_ONE_PIXEL)).toBe(true)
+    }
+
+    const html = await previewCloudFile(rpc, opened.workspacePath, 'page.html')
+    expect(html.ok, JSON.stringify(html)).toBe(true)
+    if (html.ok) {
+      expect(html.preview.isBinary).toBe(false)
+      expect(html.preview.content).toContain('u46-marker.txt-html')
+    }
+
+    saveEvidence('e5-markdown-preview.json', { preview, image, html })
   }, 120_000)
 
   it('E6 Git 变更、提交展开与 diff：status/history/commitCompare/diff 全部落在真仓库', async () => {
@@ -537,13 +653,31 @@ describe('U46-8 简易工作区真栈（真实平台 + TLS 宿主 + 真 PTY + �
     })
     expect(diff.ok, JSON.stringify(diff)).toBe(true)
 
+    // F-05 (U50): the commit row's diff rides git.commitDiff on the real repo.
+    const commitDiff = await rpc('git.commitDiff', {
+      worktree: cloudWorktreeSelector(opened.workspacePath),
+      filePath: 'README.md',
+      commitOid: commitId
+    })
+    expect(commitDiff.ok, JSON.stringify(commitDiff)).toBe(true)
+    expect(readField(commitDiff.ok ? commitDiff.result : null, 'kind')).toBe('text')
+    expect(readString(commitDiff.ok ? commitDiff.result : null, 'modifiedContent')).toContain(
+      'u46-marker'
+    )
+
     await rpc('files.write', {
       worktree: cloudWorktreeSelector(opened.workspacePath),
       relativePath: 'README.md',
       content: original ?? '',
       expectedExecutionHostId: 'local'
     })
-    saveEvidence('e6-git-diff.json', { status, history, compare, diff })
+    saveEvidence('e6-git-diff.json', {
+      status,
+      history,
+      compare,
+      diff,
+      commitDiff
+    })
   }, 120_000)
 
   it('E7 权限降级（viewer 票据）：无 workspacePath、终端拒绝带审计、文件仍可读', async () => {

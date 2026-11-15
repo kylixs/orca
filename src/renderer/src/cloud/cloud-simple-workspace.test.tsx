@@ -77,6 +77,47 @@ describe('简易工作区外壳', () => {
     )
   })
 
+  it('F-09 标签带类型图标，终端关闭带结束会话 tooltip', async () => {
+    const user = userEvent.setup()
+    renderWorkspace({
+      renderFileTree: ({ openFile }) => (
+        <div>
+          <button type="button" onClick={() => openFile('src/a.ts')}>
+            open-a
+          </button>
+        </div>
+      )
+    })
+
+    await user.click(screen.getByText('open-a'))
+    await user.click(screen.getByTestId('cloud-simple-workspace-new-terminal'))
+
+    const tabButton = screen.getByTestId('cloud-simple-workspace-tab-file:src/a.ts')
+    expect(tabButton.querySelector('svg[aria-hidden="true"]')).toBeTruthy()
+    const terminalButton = screen.getByTestId('cloud-simple-workspace-tab-terminal-1')
+    expect(terminalButton.querySelector('svg[aria-hidden="true"]')).toBeTruthy()
+
+    expect(screen.getByTestId('cloud-simple-workspace-tab-close-file:src/a.ts').title).toBe(
+      '关闭 a.ts'
+    )
+    expect(screen.getByTestId('cloud-simple-workspace-tab-close-terminal-1').title).toBe(
+      '关闭将结束该终端会话'
+    )
+  })
+
+  it('F-09 空态文案按 file:read 权限分支，无读取权不提示文件树', () => {
+    renderWorkspace({ permissions: ['open', 'terminal'] })
+    const empty = screen.getByTestId('cloud-simple-workspace-empty').textContent ?? ''
+    expect(empty).toContain('未授予文件读取权限')
+    expect(empty).not.toContain('文件树')
+
+    cleanup()
+    renderWorkspace({ permissions: ['open'] })
+    expect(screen.getByTestId('cloud-simple-workspace-empty').textContent).toContain(
+      '未授予终端与文件读取权限'
+    )
+  })
+
   it('右侧栏文件树与 Git 变更双 tab 切换，内容由挂载点注入', async () => {
     const user = userEvent.setup()
     renderWorkspace({

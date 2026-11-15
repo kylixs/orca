@@ -218,7 +218,10 @@ export function CloudSimpleWorkspace({
 
           <div className="flex min-h-0 flex-1 flex-col">
             {state.tabs.length === 0 ? (
-              <CloudSimpleWorkspaceEmptyState canUseTerminal={canUseTerminal} />
+              <CloudSimpleWorkspaceEmptyState
+                canUseTerminal={canUseTerminal}
+                canReadFiles={canReadFiles}
+              />
             ) : (
               state.tabs.map((tab) => {
                 const active = tab.id === state.activeId

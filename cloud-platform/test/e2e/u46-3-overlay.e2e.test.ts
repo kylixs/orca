@@ -230,6 +230,23 @@ test('W46-O2 签发失败 → 原因 + 在新标签打开 Orca Web → 无 surfa
   }
 }, 120_000)
 
+test('W46-O2b 失败态 shell 已登记：登出同样移除（F-08）', async () => {
+  const page = await loginDevWorkbench()
+  page.fail('POST', HANDOFF_PATH)
+  await openProject(page)
+  assert.ok(page.window.document.querySelector('[role="alert"]'), 'the failure shell is on screen')
+
+  page.window.document.querySelector<HTMLButtonElement>('#logoutBtn')?.click()
+  await page.settle()
+
+  assert.equal(
+    page.window.document.querySelector('#workspaceOverlay'),
+    null,
+    'logout releases the registered failure shell'
+  )
+  matrix.o2b = { failureShellRegistered: true, logoutRemoves: true }
+}, 120_000)
+
 test('W46-O3 旧平台回 web-index.html → 不挂覆盖层，回落新标签 + toast', async () => {
   const page = await loginDevWorkbench()
   const { opened } = captureOpened(page)

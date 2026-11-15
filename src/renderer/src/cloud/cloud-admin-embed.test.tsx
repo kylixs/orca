@@ -52,6 +52,10 @@ type Script = {
   state?: CloudSessionState
   /** The error code `loginWithHandoff` rejects with (C3). */
   handoffError?: string
+  /** The platform url the login context reports (F-07 origin fallback). */
+  platformUrl?: string
+  /** The error code `openWorkspace` fails with (F-03 degraded page). */
+  openError?: string
 }
 
 type TestBridge = CloudBridge & {
@@ -75,7 +79,10 @@ function makeBridge(script: Script = {}): TestBridge {
       }
       return SIGNED_IN
     },
-    getLoginContext: async (): Promise<CloudLoginContext | null> => null,
+    getLoginContext: async (): Promise<CloudLoginContext | null> =>
+      script.platformUrl === undefined
+        ? null
+        : { platformUrl: script.platformUrl, username: 'zhangsan', locked: true },
     logout: async (): Promise<CloudSessionState> => {
       bridge.logoutCalls += 1
       return { status: 'signed-out' }
@@ -85,6 +92,9 @@ function makeBridge(script: Script = {}): TestBridge {
     openProject: async (projectId: string): Promise<CloudOpenResult> => ({ ...OPENED, projectId }),
     openWorkspace: async (projectId: string): Promise<CloudOpenResult> => {
       bridge.openCalls.push(projectId)
+      if (script.openError) {
+        return { ok: false, code: script.openError }
+      }
       return { ...OPENED, projectId }
     },
     registerProjects: async (): Promise<CloudProjectRegistration> => ({
@@ -107,8 +117,11 @@ function makeBridge(script: Script = {}): TestBridge {
 }
 
 /** happy-dom does not always set MessageEvent.source from the init dict. */
-function dispatchParentMessage(data: Record<string, unknown>): void {
-  const event = new MessageEvent('message', { data })
+function dispatchParentMessage(
+  data: Record<string, unknown>,
+  origin = 'https://console.example'
+): void {
+  const event = new MessageEvent('message', { data, origin })
   Object.defineProperty(event, 'source', { value: window.parent })
   window.dispatchEvent(event)
 }
@@ -221,6 +234,58 @@ describe('U46-4 embed 入口', () => {
 
     act(() => dispatchParentMessage({ type: 'logout' }))
     await waitFor(() => expect(bridge.logoutCalls).toBe(1))
+  })
+
+  it('F-07 父消息负例：错误 origin/source 被忽略；referrer 缺失回落平台 origin', async () => {
+    const bridge = makeBridge({ state: SIGNED_IN, platformUrl: 'https://platform.example' })
+    render(
+      <CloudApp
+        bridge={bridge}
+        embed={{ projectId: 'p1', handoffCode: null }}
+        postToParent={() => undefined}
+      />
+    )
+    await waitFor(() => expect(bridge.openCalls).toEqual(['p1']))
+
+    // Real parent window but a foreign origin: the close is ignored.
+    act(() => dispatchParentMessage({ type: 'close' }, 'https://evil.example'))
+    await act(async () => await new Promise((resolve) => setTimeout(resolve, 20)))
+    expect(bridge.closeCalls).toEqual([])
+
+    // Right origin but another frame's source window: ignored too. (happy-dom's
+    // window.parent is the window itself, so the frame must be a real second one.)
+    const frame = document.createElement('iframe')
+    document.body.appendChild(frame)
+    const foreign = new MessageEvent('message', {
+      data: { type: 'close' },
+      origin: 'https://platform.example'
+    })
+    Object.defineProperty(foreign, 'source', { value: frame.contentWindow })
+    act(() => window.dispatchEvent(foreign))
+    frame.remove()
+    await act(async () => await new Promise((resolve) => setTimeout(resolve, 20)))
+    expect(bridge.closeCalls).toEqual([])
+
+    // No referrer + configured platform origin: the handshake still works.
+    act(() => dispatchParentMessage({ type: 'close' }, 'https://platform.example'))
+    await waitFor(() => expect(bridge.closeCalls).toEqual(['p1']))
+  })
+
+  it('F-03 ensure 失败 → §4.9 权限降级页，而非通用进度条', async () => {
+    const bridge = makeBridge({ state: SIGNED_IN, openError: 'WORKSPACE_ENSURE_FAILED' })
+    render(
+      <CloudApp
+        bridge={bridge}
+        embed={{ projectId: 'p1', handoffCode: null }}
+        postToParent={() => undefined}
+      />
+    )
+
+    await waitFor(() => expect(screen.getByTestId('cloud-simple-workspace-degraded')).toBeTruthy())
+    expect(screen.getByTestId('cloud-simple-workspace-degraded').textContent).toContain(
+      'WORKSPACE_ENSURE_FAILED'
+    )
+    expect(screen.queryByTestId('cloud-embed-entering')).toBeNull()
   })
 
   it('C5 非 embed 模式零变化：工作台照常渲染，无自动打开、无消息上报', async () => {

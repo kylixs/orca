@@ -5,6 +5,7 @@ import { CloudHostKeyDialog } from './cloud-host-key-dialog'
 import { CloudLoginPanel } from './cloud-login-panel'
 import { CloudProjectWorkspace, openedProjectSummary } from './cloud-project-workspace'
 import { CloudSimpleWorkspaceSession } from './cloud-simple-workspace'
+import { CloudSimpleWorkspaceDegraded } from './cloud-simple-workspace-empty-state'
 import { chosenProbe } from './cloud-connection-diagnostics'
 import { CloudWorkbench } from './cloud-workbench'
 import {
@@ -36,12 +37,26 @@ function postToCloudAdminParent(message: Record<string, unknown>): void {
 }
 
 /** Parent → iframe is accepted only from the embedding window on the console origin. */
-function isCloudAdminParentMessage(event: MessageEvent): boolean {
+function isCloudAdminParentMessage(event: MessageEvent, fallbackOrigin: string | null): boolean {
   if (event.source !== window.parent) {
     return false
   }
-  const expected = cloudAdminParentOrigin()
+  // F-07: referrer first, else the configured platform origin; accept anything
+  // only when neither is known (no api url → embed could not sign in anyway).
+  const expected = cloudAdminParentOrigin() ?? fallbackOrigin
   return expected === null || event.origin === expected
+}
+
+/** The console serves from the platform itself, so its api url names the parent origin. */
+function cloudAdminPlatformOrigin(platformUrl: string | null | undefined): string | null {
+  if (!platformUrl) {
+    return null
+  }
+  try {
+    return new URL(platformUrl).origin
+  } catch {
+    return null
+  }
 }
 
 function CloudEmbedProgress({ error }: { error: string | null }): React.JSX.Element {
@@ -172,12 +187,14 @@ export function CloudApp({
     postToParent
   ])
 
+  const parentOrigin = cloudAdminPlatformOrigin(session.loginContext?.platformUrl)
+
   React.useEffect(() => {
     if (embedProjectId === null) {
       return
     }
     const onMessage = (event: MessageEvent): void => {
-      if (!isCloudAdminParentMessage(event)) {
+      if (!isCloudAdminParentMessage(event, parentOrigin)) {
         return
       }
       const type = readField(event.data, 'type')
@@ -193,7 +210,7 @@ export function CloudApp({
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [embedProjectId, closeProject, signOut, postToParent])
+  }, [embedProjectId, closeProject, signOut, postToParent, parentOrigin])
 
   const dialogs = (
     <>
@@ -250,6 +267,21 @@ export function CloudApp({
       )
     }
     if (session.status === 'signed-in') {
+      // F-03: an ensure failure lands on the §4.9 degraded page, not a bare
+      // progress line; host-key/connect failures keep their own dialogs.
+      if (session.error && !session.hostKeyMismatch && !session.connectFailure) {
+        return (
+          <>
+            <div
+              data-testid="cloud-simple-workspace"
+              className="flex h-full flex-col bg-background"
+            >
+              <CloudSimpleWorkspaceDegraded code={session.error} />
+            </div>
+            {dialogs}
+          </>
+        )
+      }
       return (
         <>
           <CloudEmbedProgress error={session.error} />

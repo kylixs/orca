@@ -8,20 +8,26 @@ import { Cloud } from 'lucide-react'
  */
 
 export function CloudSimpleWorkspaceEmptyState({
-  canUseTerminal
+  canUseTerminal,
+  canReadFiles = true
 }: {
   canUseTerminal: boolean
+  /** F-09: without `file:read` the copy must not point at the file tree. */
+  canReadFiles?: boolean
 }): React.JSX.Element {
+  const headline = canUseTerminal
+    ? canReadFiles
+      ? '从右侧文件树打开文件，或新建终端'
+      : '可新建终端；当前项目未授予文件读取权限'
+    : canReadFiles
+      ? '当前项目未授予终端权限，无法新建终端'
+      : '当前项目未授予终端与文件读取权限'
   return (
     <div
       data-testid="cloud-simple-workspace-empty"
       className="flex h-full flex-col items-center justify-center gap-1 p-6 text-center"
     >
-      <p className="text-sm text-foreground">
-        {canUseTerminal
-          ? '从右侧文件树打开文件，或新建终端'
-          : '当前项目未授予终端权限，无法新建终端'}
-      </p>
+      <p className="text-sm text-foreground">{headline}</p>
       {canUseTerminal ? (
         <p className="text-xs text-muted-foreground">标签会在这里打开，切换不会丢失内容。</p>
       ) : (

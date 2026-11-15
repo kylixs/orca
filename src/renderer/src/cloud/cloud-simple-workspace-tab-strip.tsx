@@ -1,9 +1,19 @@
 import * as React from 'react'
+import { Eye, FileText, GitCompare, SquareTerminal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   CLOUD_SIMPLE_WORKSPACE_MAX_TERMINAL_TABS,
-  type CloudSimpleWorkspaceTab
+  type CloudSimpleWorkspaceTab,
+  type CloudSimpleWorkspaceTabKind
 } from './cloud-simple-workspace-tabs'
+
+/** §4.4: one icon per tab kind, so a scrolled strip still reads at a glance. */
+const TAB_ICONS: Record<CloudSimpleWorkspaceTabKind, typeof FileText> = {
+  terminal: SquareTerminal,
+  editor: FileText,
+  preview: Eye,
+  diff: GitCompare
+}
 
 export function CloudSimpleWorkspaceTabStrip({
   tabs,
@@ -34,6 +44,7 @@ export function CloudSimpleWorkspaceTabStrip({
       >
         {tabs.map((tab) => {
           const active = tab.id === activeId
+          const Icon = TAB_ICONS[tab.kind]
           return (
             <div
               key={tab.id}
@@ -44,9 +55,10 @@ export function CloudSimpleWorkspaceTabStrip({
                 role="tab"
                 aria-selected={active}
                 data-testid={`cloud-simple-workspace-tab-${tab.id}`}
-                className={`px-2 py-1 text-xs ${active ? 'text-foreground' : 'text-muted-foreground'}`}
+                className={`flex items-center gap-1 px-2 py-1 text-xs ${active ? 'text-foreground' : 'text-muted-foreground'}`}
                 onClick={() => onActivate(tab.id)}
               >
+                <Icon className="size-3 shrink-0" aria-hidden />
                 {tab.title}
                 {dirty[tab.id] ? (
                   <span
@@ -61,6 +73,7 @@ export function CloudSimpleWorkspaceTabStrip({
               <button
                 type="button"
                 aria-label={`关闭 ${tab.title}`}
+                title={tab.kind === 'terminal' ? '关闭将结束该终端会话' : `关闭 ${tab.title}`}
                 data-testid={`cloud-simple-workspace-tab-close-${tab.id}`}
                 className="px-1.5 py-1 text-xs text-muted-foreground hover:text-foreground"
                 onClick={() => onClose(tab)}

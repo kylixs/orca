@@ -561,6 +561,17 @@ function mountWorkspaceFailure(projectId, project, reason) {
     </div>`
   wireWorkspaceShell(root, projectId)
   document.body.appendChild(root)
+  // F-08: registered too, so top-bar close, logout, and a later open release it.
+  workspaceOverlay = {
+    root,
+    iframe: null,
+    origin: null,
+    dirty: 0,
+    ready: false,
+    readyTimer: null,
+    closeTimer: null,
+    onMessage: null
+  }
 }
 
 /**
@@ -676,7 +687,6 @@ function requestWorkspaceClose() {
 function removeWorkspaceOverlay() {
   const overlay = workspaceOverlay
   if (!overlay) {
-    // A failure shell is not registered (no iframe to handshake with).
     document.querySelector('#workspaceOverlay')?.remove()
     return
   }
