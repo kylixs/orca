@@ -3492,6 +3492,13 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **U67 独立评审回收**：CHANGES-REQUIRED 轻量文档轮（`test-reports/u67-doc-review.md`，无 P0+原型五基准 PASS）——M1-M4 文档修订+m1 卡头位徽标裁定删除/m2 文案；修订令已派（修订后免重审），修订稿随用户原型复核呈报。
 - **释放序列**：U66 红项真宿主终复验 + U62/U52 打磨修令已派；LDAP 评审 APPROVED 后放行 LGAA-1a/4（1b/2/3 排 U62 后的 server.ts 队列）。
 
+### LDAP 分组准入全交付（2026-11-16 02:5x）
+
+- **六令 6/6**：1a Mock 适配（`6d0202fb695`）→1b 登录链（`d917085a838`）→2 单测 A1-A12（`bf2855de5c5`）→3 e2e E1-E6（`0c55592edf5`）→4 LGA-1 删除（`f1855b4d569`）→5 requirements 措辞（`86e469f4845`）。设计经两轮评审 APPROVED（`3f573bae498`）。
+- 语义定稿：memberOf 单组准入（`ORCA_CLOUD_LDAP_REQUIRED_GROUP`，未设置=不过滤、设置后 fail-closed）×平台统一闸门；拒绝 401 `LDAP_GROUP_NOT_ADMITTED`「账号未加入平台准入组。」+审计 reason=ldap_group_denied；锁定不污染（不计数不清零）；:1731 组→角色种子废除；LGA-1 前向删除。
+- 数字：单测 12+11 新增/全量 89 绿；e2e 6 新增/27 并跑零回归；tc:node 0 错。
+- 终验排程：持久环境 reseed 冒烟 + 终态旅程五轮。
+
 ### U67 设计族过审 + 探索 r3 回收 + LGAA-1a 落地（2026-11-16 02:3x）
 
 - **U67 修订令** `7c0970b17ca`：M1-M4+m1-m7+LDAP M3 追加全修（卡头位徽标删除/审计目录 admin-only/成员页删除语义/断会话文案分型）；评审免重审条款生效=设计族过审，**用户原型复核材料就绪**（人工门）。
