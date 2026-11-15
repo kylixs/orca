@@ -522,7 +522,9 @@ svg { display: block; }
 .user-name { display: block; font-size: 12.5px; font-weight: 500; color: var(--text); line-height: 1.35; }
 .user-dept { display: block; font-size: 10.5px; color: var(--text-3); line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .user-signout { margin-left: auto; flex: none; }
-.app[data-role="developer"] .admin-only { display: none !important; }
+.app[data-role="developer"] .admin-only,
+.app[data-role="readonly"] .admin-only { display: none !important; }
+.app[data-role="readonly"] .create-project-entry { display: none !important; }
 
 .app-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .topbar {
@@ -1370,6 +1372,47 @@ svg { display: block; }
 .audit-result.is-failure { color: #b91c1c; }
 .event-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--text-2); }
 .event-tag .icon { width: 13px; height: 13px; color: var(--text-3); }
+.audit-op { display: inline-flex; align-items: center; gap: 6px; }
+.audit-type {
+  display: inline-flex; align-items: center;
+  height: 18px; padding: 0 6px;
+  border: 1px solid var(--border); border-radius: 999px; background: #fff;
+  font-size: 10.5px; line-height: 1; white-space: nowrap;
+}
+.audit-type.is-download { background: var(--brand-soft); border-color: #dbeafe; color: #1d4ed8; }
+.audit-type.is-copy { background: var(--warning-soft); border-color: #fde68a; color: #b45309; }
+.audit-file {
+  display: inline-flex; align-items: center; gap: 4px;
+  max-width: 190px; padding: 0;
+  border: 0; background: none;
+  color: var(--text-2); font-family: var(--mono); font-size: 10.5px;
+  text-align: left; cursor: pointer;
+}
+.audit-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audit-file .icon { width: 11px; height: 11px; flex: none; color: var(--text-3); }
+.audit-file:hover { color: var(--brand-hover); }
+.audit-file-meta { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 10px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.audit-file-meta .dot-sep { color: var(--text-disabled); flex: none; }
+.audit-file-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.audit-empty-excerpt { padding: 8px 10px; border: 1px dashed var(--border); border-radius: 6px; font-size: 11px; color: var(--text-3); }
+.audit-expand-row td { padding: 0 !important; background: var(--sidebar); white-space: normal !important; }
+.audit-expand-panel { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 16px; padding: 11px 16px 13px; }
+.audit-expand-label { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; font-size: 10px; font-weight: 600; letter-spacing: .04em; color: var(--text-3); text-transform: uppercase; }
+.audit-excerpt {
+  max-height: 88px; overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--divider); border-radius: 6px; background: #fff;
+  font-family: var(--mono); font-size: 10.5px; line-height: 1.6; color: var(--text-2);
+  white-space: pre-wrap; word-break: break-all;
+}
+.audit-fingerprint {
+  padding: 8px 10px;
+  border: 1px solid var(--divider); border-radius: 6px; background: #fff;
+  font-family: var(--mono); font-size: 10.5px; line-height: 1.55; color: var(--text-2);
+  word-break: break-all;
+}
+.audit-fingerprint-hint { margin-top: 5px; font-size: 10px; color: var(--text-3); }
+.audit-row-actions { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; }
 .drawer-code { font-family: var(--mono); font-size: 10.5px; color: var(--text-2); background: var(--sidebar); border: 1px solid var(--divider); border-radius: 6px; padding: 8px 10px; word-break: break-all; }
 .drawer-copy-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 
@@ -1680,6 +1723,117 @@ svg { display: block; }
 .toast-sub { margin-top: 1px; color: var(--text-3); font-size: 10.5px; }
 
 /* ============================================================
+   U65 · Host authorization semantics
+   ============================================================ */
+.proto-changelog { position: relative; flex: none; z-index: 60; font-size: 10.5px; }
+.proto-changelog > summary {
+  list-style: none; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 22px; padding: 0 9px;
+  border: 1px solid #dbeafe; border-radius: 999px;
+  background: var(--brand-soft); color: #1e40af;
+  white-space: nowrap;
+}
+.proto-changelog > summary::-webkit-details-marker { display: none; }
+.proto-changelog > summary .icon { width: 11px; height: 11px; }
+.proto-changelog[open] > summary { box-shadow: 0 0 0 1px #bfdbfe; }
+.proto-changelog-panel {
+  position: absolute; top: 30px; left: 0; z-index: 70;
+  width: 430px; padding: 11px 13px;
+  border: 1px solid var(--border); border-radius: 9px; background: #fff;
+  box-shadow: var(--shadow-popover); color: var(--text-2);
+  font-size: 11px; line-height: 1.65;
+}
+.login-revision {
+  position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 300;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border); border-radius: 999px; background: #fff;
+  color: var(--text-3); font-size: 10.5px;
+}
+.login-revision .icon { width: 11px; height: 11px; }
+.proto-changelog-panel h4 { margin: 0 0 6px; font-size: 11.5px; color: var(--text); }
+.proto-changelog-panel ul { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 3px; }
+.proto-changelog-panel .changelog-date { color: var(--text-3); font-weight: 400; margin-left: 5px; }
+
+.detail-section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.detail-section-head .detail-section-title { margin-bottom: 0; }
+.perm-level-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.perm-level-card {
+  display: flex; flex-direction: column; gap: 5px;
+  padding: 10px; text-align: left;
+  border: 1px solid var(--border); border-radius: 8px; background: #fff;
+  color: var(--text-2);
+  transition: border-color .15s ease, background-color .15s ease;
+}
+.perm-level-card:hover { border-color: #d4d4d4; background: var(--sidebar); }
+.perm-level-card.is-active { border-color: #bfdbfe; background: var(--brand-soft); box-shadow: 0 0 0 1px #bfdbfe inset; }
+.perm-level-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--text); }
+.perm-level-card.is-active .perm-level-head { color: #1d4ed8; }
+.perm-level-desc { font-size: 10.5px; line-height: 1.5; color: var(--text-3); }
+.perm-level-tags { font-family: var(--mono); font-size: 9.5px; color: var(--text-3); letter-spacing: -.01em; }
+.perm-level-card.is-active .perm-level-tags { color: #2563eb; }
+.perm-bit-list { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 8px; margin-top: 10px; overflow: hidden; }
+.perm-bit { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border-bottom: 1px solid var(--divider); }
+.perm-bit:last-child { border-bottom: 0; }
+.perm-bit.is-off .perm-bit-name { color: var(--text-3); }
+.perm-bit.is-off .perm-bit-scope { color: var(--text-disabled); }
+.perm-bit-name { font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--text); width: 70px; flex: none; }
+.perm-bit-scope { flex: 1; min-width: 0; font-size: 10.5px; color: var(--text-3); line-height: 1.5; }
+.perm-bit input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.perm-switch { position: relative; width: 28px; height: 16px; flex: none; border-radius: 999px; background: #d4d4d4; transition: background-color .15s ease; }
+.perm-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: transform .15s ease; }
+.perm-bit input:checked + .perm-switch { background: var(--brand); }
+.perm-bit input:checked + .perm-switch::after { transform: translateX(12px); }
+.perm-bit input:focus-visible + .perm-switch { outline: 2px solid rgba(37, 99, 235, .65); outline-offset: 2px; }
+.perm-derived { margin-top: 10px; }
+.host-grant-subjects { margin-top: 10px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.host-grant-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--divider); font-size: 11.5px; color: var(--text-2); }
+.host-grant-row:last-child { border-bottom: 0; }
+.host-grant-row .grant-subject { flex: 1; min-width: 0; color: var(--text); font-weight: 500; }
+.host-grant-row .grant-subject small { display: block; font-family: var(--mono); font-weight: 400; font-size: 9.5px; color: var(--text-3); }
+
+.download-locked-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 22px; padding: 0 8px;
+  border: 1px solid #fecaca; border-radius: 999px;
+  background: var(--danger-soft); color: #b91c1c;
+  font-size: 10.5px; white-space: nowrap; cursor: not-allowed;
+}
+.download-locked-chip .icon { width: 11px; height: 11px; }
+.download-block-btn { color: var(--text-disabled) !important; }
+.download-block-btn:hover { background: var(--danger-soft) !important; color: #b91c1c !important; }
+
+.readonly-view-notice { display: none; margin-bottom: 16px; }
+.app[data-role="readonly"] .readonly-view-notice { display: flex; }
+.readonly-banner {
+  flex: none; display: none; align-items: center; gap: 7px;
+  height: 30px; padding: 0 14px;
+  background: var(--warning-soft); border-bottom: 1px solid #fde68a;
+  color: #92400e; font-size: 11px;
+}
+.project-shell.is-readonly .readonly-banner { display: flex; }
+.readonly-banner .icon { width: 13px; height: 13px; flex: none; }
+.readonly-banner .badge { height: 18px; font-size: 10px; }
+.project-readonly-badge { display: none !important; }
+.project-shell.is-readonly .project-readonly-badge { display: inline-flex !important; }
+.project-shell.is-readonly .ide-tab.is-locked { color: var(--text-disabled); cursor: not-allowed; }
+.project-shell.is-readonly .ide-tab.is-locked .icon { color: #c4c4c4; }
+.project-shell.is-readonly .ide-tab.is-locked:hover { background: transparent; color: var(--text-disabled); }
+.project-shell.is-readonly .ide-tab.is-locked::after { display: none; }
+.readonly-lock { display: none; }
+.project-shell.is-readonly .ide-tab.is-locked .readonly-lock { display: inline-flex; }
+.readonly-lock .icon { width: 11px; height: 11px; }
+.project-shell.is-readonly .titlebar-right .icon-btn,
+.project-shell.is-readonly .new-workspace-btn { opacity: .45; cursor: not-allowed; }
+.context-menu.is-readonly [data-file-action="editor"],
+.context-menu.is-readonly [data-file-action="rename"],
+.context-menu.is-readonly [data-file-action="delete"] { color: var(--text-disabled); pointer-events: none; }
+.context-menu.is-readonly [data-file-action="editor"] .icon,
+.context-menu.is-readonly [data-file-action="rename"] .icon,
+.context-menu.is-readonly [data-file-action="delete"] .icon { color: #c4c4c4; }
+
+/* ============================================================
    Responsive
    ============================================================ */
 @media (max-width: 1360px) {
@@ -1778,6 +1932,10 @@ svg { display: block; }
 </svg>
 
 <div class="login-screen" id="loginScreen">
+  <div class="login-revision">
+    <svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>
+    原型修订 · 2026-11-15 · U66 审计增强 + U65 主机授权
+  </div>
   <div class="login-card">
     <div class="login-brand">
       <div class="login-brand-row">
@@ -1880,10 +2038,10 @@ svg { display: block; }
 
     <div class="sidebar-footer">
       <div class="user-card" id="userCard" title="当前账号">
-        <span class="avatar">ZW</span>
+        <span class="avatar" id="userCardAvatar">ZW</span>
         <span class="user-meta">
-          <span class="user-name">张伟</span>
-          <span class="user-dept">研发效能部</span>
+          <span class="user-name" id="userCardName">张伟</span>
+          <span class="user-dept" id="userCardDept">研发效能部</span>
         </span>
         <button class="icon-btn icon-btn-sm user-signout" id="logoutBtn" type="button" aria-label="退出登录" title="退出登录">
           <svg class="icon" aria-hidden="true"><use href="#i-log-out"/></svg>
@@ -1897,6 +2055,24 @@ svg { display: block; }
       <div class="breadcrumbs" id="breadcrumbs">
         <span class="crumb is-current">工作台</span>
       </div>
+      <details class="proto-changelog" id="protoChangelog">
+        <summary><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>原型修订 · U66 审计增强 + U65 · 2026-11-15</summary>
+        <div class="proto-changelog-panel">
+          <h4>U66 · 审计增强 <span class="changelog-date">2026-11-15</span></h4>
+          <ul>
+            <li>审计查询新增关键字（内容 / 文件名 / 路径全文匹配）、操作类型（含 file_download / file_copy）、用户与文件名条件，支持组合查询与清除。</li>
+            <li>事件列表新增下载 / 复制类型徽标、可复制文件名与大小；复制记录可展开查看内容摘录与 sha256 指纹。</li>
+            <li>补充审计可见性说明：审计员可见全部事件与内容摘录；普通用户仅可见本人相关记录。</li>
+          </ul>
+          <h4 style="margin-top:9px">U65 · 主机授权语义深化 <span class="changelog-date">2026-11-15</span></h4>
+          <ul>
+            <li>主机详情抽屉新增「权限分配」：全权 / 只读两档快捷级别 + 逐位自定义（provision / maintain / view）。</li>
+            <li>新增「只读用户 lisi」演示视角：项目可打开查看，工作区内编辑 / 终端 / Agent 入口置灰，无「新建项目」入口。</li>
+            <li>成员与权限页补充项目级授权说明：仅影响当前项目，不扩大到主机级；未授权项目不可见、不能创建。</li>
+            <li>下载入口按下载权限置灰：一期在 Web / 客户端前端拦截，服务端与宿主硬拦为二期。</li>
+          </ul>
+        </div>
+      </details>
 
       <div class="topbar-actions">
         <div class="topbar-search" id="topbarSearchWrap">
@@ -1945,13 +2121,13 @@ svg { display: block; }
         </div>
 
         <div class="topbar-group" data-topbar-group="workbench" hidden>
-          <button class="btn btn-primary" data-open-modal="newProject">
+          <button class="btn btn-primary create-project-entry" data-open-modal="newProject">
             <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>
             新建项目
           </button>
         </div>
         <div class="topbar-group" data-topbar-group="projects" hidden>
-          <button class="btn btn-primary" data-open-modal="newProject">
+          <button class="btn btn-primary create-project-entry" data-open-modal="newProject">
             <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>
             新建项目
           </button>
@@ -1986,6 +2162,7 @@ svg { display: block; }
           <div class="segmented" role="group" aria-label="切换演示角色">
             <button data-role-switch="admin" class="is-active" aria-pressed="true">管理员</button>
             <button data-role-switch="developer" aria-pressed="false">开发者</button>
+            <button data-role-switch="readonly" aria-pressed="false" title="主机只读授权演示：李思（lisi）">只读 lisi</button>
           </div>
           <button class="role-preview-link" id="viewForbiddenBtn">查看无权限页</button>
         </div>
@@ -1995,10 +2172,15 @@ svg { display: block; }
     <main class="content" id="contentArea">
       <section class="page" data-page="workbench" hidden><div class="welcome-row">
   <div>
-    <h1 class="welcome-title">下午好，张伟</h1>
-    <p class="welcome-sub">你有 3 个项目正在进行。</p>
+    <h1 class="welcome-title" id="welcomeTitle">下午好，张伟</h1>
+    <p class="welcome-sub" id="welcomeSub">你有 3 个项目正在进行。</p>
   </div>
   <div class="welcome-date">2026 年 11 月 13 日 · 星期五</div>
+</div>
+
+<div class="notice notice-warning readonly-view-notice" id="readonlyWorkbenchNotice">
+  <svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>
+  <span><strong>只读用户 lisi 视角</strong>：主机只读授权。项目可以打开查看，但工作区内编辑、终端、Agent 与新建项目均不可用；未授权项目不会出现在列表与搜索中。</span>
 </div>
 
 <div class="stat-grid">
@@ -2090,6 +2272,11 @@ svg { display: block; }
       刷新
     </button>
   </div>
+</div>
+
+<div class="notice notice-warning readonly-view-notice" id="readonlyProjectsNotice">
+  <svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>
+  <span><strong>只读用户 lisi 视角</strong>：只显示已授权项目。可以打开查看，但工作区内不能编辑、运行终端或新建项目。</span>
 </div>
 
 <div class="filter-bar">
@@ -2378,7 +2565,15 @@ svg { display: block; }
       <div class="auth-detail-meta">
         <span class="badge badge-mono" id="authProjectHost"><svg class="icon" style="width:11px;height:11px"><use href="#i-server"/></svg>dev-node-03</span>
         <span class="badge"><svg class="icon" style="width:11px;height:11px"><use href="#i-users"/></svg><span id="authProjectOwner">结算研发组</span></span>
+        <span class="download-locked-chip" id="authDownloadChip" title="项目策略：禁止下载 · 一期前端入口拦截">
+          <svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>下载 · 已禁用
+        </span>
       </div>
+    </div>
+
+    <div class="notice">
+      <svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>
+      <span><strong>项目授权仅影响当前项目</strong>：不会扩大到该项目所在主机或其它项目。只授权个别项目且没有主机权限时，未授权项目不可见，也不能在该主机上创建项目。</span>
     </div>
 
     <section class="card" aria-labelledby="basicInfoTitle">
@@ -2452,10 +2647,14 @@ svg { display: block; }
           添加成员
         </button>
       </div>
-      <div style="padding:16px 20px 0">
+      <div style="padding:16px 20px 0;display:flex;flex-direction:column;gap:8px">
         <div class="notice">
           <svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>
           <span>下载权限需在“下载策略”中单独开启，并需审批流支持（二期）。成员权限不会自动包含下载。</span>
+        </div>
+        <div class="notice notice-warning">
+          <svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>
+          <span><strong>主机只读是项目内操作的上限</strong>：主机只读用户即使在本项目被授予终端 / 编辑，也只能打开查看，编辑、终端与 Agent 入口仍会置灰。</span>
         </div>
       </div>
       <div class="table-scroll">
@@ -2518,6 +2717,10 @@ svg { display: block; }
             </span>
           </label>
         </div>
+        <div class="notice notice-warning" style="margin-top:10px">
+          <svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>
+          <span>下载拦截分期落地：一期在 Orca Web / 客户端前端将下载入口置灰并记录拦截审计；服务端与宿主侧硬拦在二期上线。</span>
+        </div>
       </div>
       <div class="card-foot">
         <span class="muted-note">
@@ -2533,15 +2736,24 @@ svg { display: block; }
       <section class="page" data-page="audit" hidden><div class="page-head">
   <div>
     <h1>审计日志</h1>
-    <p>查询身份、连接、下载拦截与管理操作事件。日志只追加，不可修改。</p>
+    <p>查询身份、连接、文件下载与复制、下载拦截与管理操作事件。日志只追加，不可修改。</p>
   </div>
   <div class="page-head-actions">
     <span class="status status-muted"><span class="dot dot-success"></span>日志采集正常</span>
   </div>
 </div>
 
+<div class="notice" style="margin-bottom:12px">
+  <svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>
+  <span><strong>审计员视角</strong>：可见全部用户与全部项目的事件及内容摘录；普通用户仅可见本人相关记录，不展示他人的复制内容与 sha256 指纹。</span>
+</div>
+
 <form class="filter-bar" id="auditFilterForm">
-  <div class="filter-field" style="max-width:150px">
+  <div class="filter-field" style="flex:1.6;min-width:220px;max-width:320px">
+    <label for="auditKeywordFilter">关键字 <span style="font-weight:400;color:var(--text-disabled)">· 内容 / 文件名 / 路径全文匹配</span></label>
+    <input class="input input-sm" id="auditKeywordFilter" type="search" placeholder="输入内容、文件名或路径关键字" autocomplete="off">
+  </div>
+  <div class="filter-field" style="max-width:140px">
     <label for="auditTimeRange">时间范围</label>
     <select class="select select-sm" id="auditTimeRange">
       <option value="24">最近 24 小时</option>
@@ -2549,18 +2761,32 @@ svg { display: block; }
       <option value="720">最近 30 天</option>
     </select>
   </div>
-  <div class="filter-field" style="max-width:140px">
-    <label for="auditUserFilter">用户</label>
-    <select class="select select-sm" id="auditUserFilter">
-      <option value="all">全部用户</option>
-      <option value="张伟">张伟</option>
-      <option value="李明">李明</option>
-      <option value="王芳">王芳</option>
-      <option value="赵敏">赵敏</option>
-      <option value="陈昊">陈昊</option>
+  <div class="filter-field" style="max-width:180px">
+    <label for="auditEventFilter">操作类型</label>
+    <select class="select select-sm" id="auditEventFilter">
+      <option value="all">全部操作</option>
+      <option value="login">登录 · login</option>
+      <option value="project_open">打开项目 · project_open</option>
+      <option value="connect">连接 · connect</option>
+      <option value="file_download">文件下载 · file_download</option>
+      <option value="file_copy">复制文件内容 · file_copy</option>
+      <option value="download_denied">下载拦截 · download_denied</option>
+      <option value="host_register">主机注册 · host_register</option>
+      <option value="permission_change">权限变更 · permission_change</option>
     </select>
   </div>
-  <div class="filter-field" style="max-width:170px">
+  <div class="filter-field" style="max-width:130px">
+    <label for="auditUserFilter">用户</label>
+    <input class="input input-sm" id="auditUserFilter" type="text" list="auditUserOptions" placeholder="姓名或账号" autocomplete="off">
+    <datalist id="auditUserOptions">
+      <option value="张伟">张伟 · zhangwei</option>
+      <option value="李明">李明 · liming</option>
+      <option value="王芳">王芳 · wangfang</option>
+      <option value="赵敏">赵敏 · zhaomin</option>
+      <option value="陈昊">陈昊 · chenhao</option>
+    </datalist>
+  </div>
+  <div class="filter-field" style="max-width:160px">
     <label for="auditTargetFilter">项目或主机</label>
     <select class="select select-sm" id="auditTargetFilter">
       <option value="all">全部对象</option>
@@ -2571,17 +2797,9 @@ svg { display: block; }
       <option value="平台">平台</option>
     </select>
   </div>
-  <div class="filter-field" style="max-width:150px">
-    <label for="auditEventFilter">事件类型</label>
-    <select class="select select-sm" id="auditEventFilter">
-      <option value="all">全部事件</option>
-      <option value="登录">登录</option>
-      <option value="打开项目">打开项目</option>
-      <option value="连接">连接</option>
-      <option value="下载拦截">下载拦截</option>
-      <option value="主机注册">主机注册</option>
-      <option value="权限变更">权限变更</option>
-    </select>
+  <div class="filter-field" style="max-width:170px">
+    <label for="auditFilenameFilter">文件名</label>
+    <input class="input input-sm" id="auditFilenameFilter" type="text" placeholder="如 calculator.ts" autocomplete="off">
   </div>
   <div class="filter-field" style="max-width:120px">
     <label for="auditResultFilter">结果</label>
@@ -2593,7 +2811,7 @@ svg { display: block; }
   </div>
   <div class="filter-actions">
     <button class="btn btn-primary" type="submit">查询</button>
-    <button class="btn btn-ghost" type="button" id="auditResetBtn">重置</button>
+    <button class="btn btn-ghost" type="button" id="auditResetBtn">清除</button>
   </div>
 </form>
 
@@ -2613,7 +2831,7 @@ svg { display: block; }
   <div class="table-card-head">
     <div class="table-card-title">
       <h2>事件列表</h2>
-      <span class="section-count" id="auditEventCount">8 条事件</span>
+      <span class="section-count" id="auditEventCount">10 条事件</span>
     </div>
     <div class="muted-note">
       <svg class="icon" aria-hidden="true"><use href="#i-clock"/></svg>
@@ -2626,18 +2844,18 @@ svg { display: block; }
         <tr>
           <th style="width:106px">时间</th>
           <th style="width:90px">用户</th>
-          <th style="width:116px">事件</th>
+          <th style="width:142px">操作</th>
           <th style="width:152px">项目或主机</th>
+          <th style="width:210px">文件 / 大小</th>
           <th style="width:80px">结果</th>
-          <th style="width:122px">来源 IP</th>
-          <th style="width:60px;text-align:right">详情</th>
+          <th style="width:92px;text-align:right">详情</th>
         </tr>
       </thead>
       <tbody id="auditBody"></tbody>
     </table>
   </div>
   <div class="table-foot">
-    <span id="auditFoot">显示 8 条事件</span>
+    <span id="auditFoot">显示 10 条事件</span>
     <span>时间均为北京时间（UTC+8）</span>
   </div>
 </section>
@@ -2989,13 +3207,23 @@ svg { display: block; }
     </div>
 
     <div class="pb-right">
+      <span class="badge badge-warning badge-sm project-readonly-badge" title="主机只读授权：项目内操作上限为查看">主机只读</span>
+      <span class="download-locked-chip" title="项目策略：禁止下载 · 一期前端入口拦截">
+        <svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>下载已禁用
+      </span>
       <span class="pb-host">
         <svg class="icon" aria-hidden="true"><use href="#i-server"/></svg>
         dev-node-03
       </span>
-      <span class="avatar avatar-xs" title="张伟">ZW</span>
+      <span class="avatar avatar-xs" id="projectUserAvatar" title="张伟">ZW</span>
       <button class="pb-disconnect" id="disconnectBtn">断开连接</button>
     </div>
+  </div>
+
+  <div class="readonly-banner" id="readonlyBanner" role="status">
+    <svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>
+    <span><strong>主机只读授权</strong> · 可以查看该项目，编辑、终端与 Agent 不可用；新建工作区与文件修改入口已禁用。</span>
+    <span class="badge badge-warning badge-sm" style="margin-left:auto">view only</span>
   </div>
 
   <div class="ide-titlebar">
@@ -3013,14 +3241,17 @@ svg { display: block; }
       <button class="ide-tab is-active" data-project-tab="claude" role="tab" aria-selected="true">
         <svg class="icon" aria-hidden="true"><use href="#i-sparkles"/></svg>
         Claude
+        <span class="readonly-lock"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg></span>
       </button>
       <button class="ide-tab" data-project-tab="terminal1" role="tab" aria-selected="false">
         <svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg>
         Terminal 1
+        <span class="readonly-lock"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg></span>
       </button>
       <button class="ide-tab" data-project-tab="terminal2" role="tab" aria-selected="false">
         <svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg>
         Terminal 2
+        <span class="readonly-lock"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg></span>
       </button>
       <button class="ide-tab" data-project-tab="browser" role="tab" aria-selected="false">
         <svg class="icon" aria-hidden="true"><use href="#i-globe"/></svg>
@@ -3230,7 +3461,7 @@ svg { display: block; }
       <div class="ide-panel-head">
         <span class="ide-panel-title">文件</span>
         <div class="ide-panel-actions">
-          <button class="icon-btn icon-btn-sm" data-open-modal="downloadBlocked" aria-label="下载（需审批）" title="下载已禁用，需项目审批">
+          <button class="icon-btn icon-btn-sm download-block-btn" data-open-modal="downloadBlocked" aria-label="下载已禁用" title="下载已禁用 · 一期前端入口拦截">
             <svg class="icon icon-sm" aria-hidden="true"><use href="#i-lock"/></svg>
           </button>
           <button class="icon-btn icon-btn-sm" id="refreshFilesBtn" aria-label="刷新文件列表" title="刷新文件列表">
@@ -3409,6 +3640,65 @@ svg { display: block; }
           <div class="detail-row"><span class="detail-key">中继端点 SNI</span><span class="detail-val mono" id="hostDetailSni">ip-10.20.3.18.relay.local</span></div>
         </div>
         <p class="muted-note" style="margin-top:10px"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>路由键默认取直连 IP，可显式配置；SNI 只是中继的路由标签，无 DNS 解析。</p>
+      </section>
+
+      <section aria-labelledby="hostGrantTitle">
+        <div class="detail-section-head">
+          <h3 class="detail-section-title" id="hostGrantTitle">权限分配</h3>
+          <span class="badge badge-brand">主机级授权</span>
+        </div>
+        <p class="muted-note" style="margin-bottom:2px"><svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>主机授权决定项目可见范围与项目内操作上限；项目授权不扩大到主机级。</p>
+
+        <div class="perm-level-grid" id="hostPermissionLevels" role="radiogroup" aria-label="主机授权级别">
+          <button type="button" class="perm-level-card" data-host-level="full" role="radio" aria-checked="false">
+            <span class="perm-level-head">全权 <span class="badge badge-brand badge-sm">3 / 3</span></span>
+            <span class="perm-level-desc">可见该主机全部项目，可创建 / 登记项目，可维护主机。</span>
+            <span class="perm-level-tags">provision · maintain · view</span>
+          </button>
+          <button type="button" class="perm-level-card is-active" data-host-level="readonly" role="radio" aria-checked="true">
+            <span class="perm-level-head">只读 <span class="badge badge-warning badge-sm">view only</span></span>
+            <span class="perm-level-desc">只能打开查看已授权项目，不能创建 / 编辑 / 运行终端。</span>
+            <span class="perm-level-tags">view</span>
+          </button>
+          <button type="button" class="perm-level-card" data-host-level="custom" role="radio" aria-checked="false">
+            <span class="perm-level-head">自定义 <span class="badge badge-neutral badge-sm">逐位</span></span>
+            <span class="perm-level-desc">按 provision / maintain / view 三个权限位单独组合。</span>
+            <span class="perm-level-tags">custom bits</span>
+          </button>
+        </div>
+
+        <div class="perm-bit-list" id="hostPermissionBits" aria-label="主机权限位">
+          <label class="perm-bit">
+            <input type="checkbox" data-host-bit="provision">
+            <span class="perm-switch" aria-hidden="true"></span>
+            <span class="perm-bit-name">provision</span>
+            <span class="perm-bit-scope">创建 / 登记项目 · 可见该主机全部项目</span>
+          </label>
+          <label class="perm-bit">
+            <input type="checkbox" data-host-bit="maintain">
+            <span class="perm-switch" aria-hidden="true"></span>
+            <span class="perm-bit-name">maintain</span>
+            <span class="perm-bit-scope">进入 / 退出维护模式（吊销主机仍仅管理员）</span>
+          </label>
+          <label class="perm-bit">
+            <input type="checkbox" data-host-bit="view" checked>
+            <span class="perm-switch" aria-hidden="true"></span>
+            <span class="perm-bit-name">view</span>
+            <span class="perm-bit-scope">打开查看项目 · 只读时为项目内操作上限</span>
+          </label>
+        </div>
+        <p class="muted-note perm-derived" id="hostGrantSummary" aria-live="polite"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>当前级别：只读 · view</p>
+
+        <div class="host-grant-subjects" aria-label="当前主机授权">
+          <div class="host-grant-row">
+            <span class="grant-subject">李思（lisi）<small>结算研发组 · 主机只读</small></span>
+            <span class="badge badge-warning badge-sm">只读 · view</span>
+          </div>
+          <div class="host-grant-row">
+            <span class="grant-subject">王芳（wangfang）<small>结算研发组 · 主机全权</small></span>
+            <span class="badge badge-brand badge-sm">全权 · provision / maintain / view</span>
+          </div>
+        </div>
       </section>
 
       <section>
@@ -3628,6 +3918,10 @@ svg { display: block; }
         <svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>
         <span>新建项目默认采用“禁止下载”策略。如需调整，请在项目授权中单独配置。</span>
       </div>
+      <div class="notice notice-warning" style="margin-top:8px">
+        <svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>
+        <span>创建项目需要目标主机的 provision 授权。主机只读用户看不到该入口；只读授权不能创建或登记项目。</span>
+      </div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-secondary" data-close-modal>取消</button>
@@ -3784,11 +4078,13 @@ svg { display: block; }
       <div class="detail-list" style="margin-top:12px">
         <div class="detail-row"><span class="detail-key">文件</span><span class="detail-val mono" id="blockedFilePath">src/refund/calculator.ts</span></div>
         <div class="detail-row"><span class="detail-key">策略</span><span class="detail-val">禁止下载</span></div>
+        <div class="detail-row"><span class="detail-key">拦截阶段</span><span class="detail-val">一期 · Web / 客户端前端入口拦截</span></div>
+        <div class="detail-row"><span class="detail-key">服务端 / 宿主硬拦</span><span class="detail-val">二期</span></div>
         <div class="detail-row"><span class="detail-key">审批流</span><span class="detail-val">二期开放</span></div>
       </div>
       <div class="dialog-warning">
         <svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>
-        <span>审批功能即将开放。当前如需导出，请联系项目负责人或平台管理员。</span>
+        <span>一期在前端入口置灰并记录拦截审计；服务端与宿主硬拦将在二期上线。当前如需导出，请联系项目负责人或平台管理员。</span>
       </div>
     </div>
     <div class="modal-foot">
@@ -3911,6 +4207,7 @@ svg { display: block; }
     selectedHostId: null,
     selectedRelayId: null,
     selectedAuditId: null,
+    expandedAuditIds: new Set(),
     contextFile: null,
     memberType: 'user',
     currentAuthProject: 'payment-service',
@@ -3987,6 +4284,15 @@ svg { display: block; }
       workspaces: ['main']
     }
   ];
+
+  // U65: 只读用户 lisi 仅能看见已授权的 payment-service；项目授权不扩大到主机级
+  const readonlyProjectIds = new Set(['payment-service']);
+
+  function accessibleProjects() {
+    return isProjectReadonly()
+      ? projectDirectory.filter((project) => readonlyProjectIds.has(project.id))
+      : projectDirectory;
+  }
 
   const hostDirectory = [
     {
@@ -4099,6 +4405,7 @@ svg { display: block; }
         { subject: '支付平台组', type: '组', source: '继承', perms: can() },
         { subject: '张伟', type: '用户', source: '直接', perms: can({ fileWrite: true }) },
         { subject: '李明', type: '用户', source: '直接', perms: can() },
+        { subject: '李思（lisi）', type: '用户', source: '直接', perms: can({ terminal: false, agent: false, fileWrite: false }) },
         { subject: '测试组', type: '组', source: '继承', perms: can({ terminal: false, agent: false }) }
       ]
     },
@@ -4176,63 +4483,85 @@ svg { display: block; }
   const auditEvents = [
     {
       id: 'evt-1042', relative: '2 分钟前', abs: '2026-11-13 14:58:12', hours: 0.03,
-      user: '张伟', initials: 'ZW', account: 'zhangwei', event: '打开项目', target: 'payment-service',
+      user: '张伟', initials: 'ZW', account: 'zhangwei', event: '打开项目', code: 'project_open', target: 'payment-service',
       targetSub: 'feat/refund', result: 'success', ip: '10.20.8.42', trace: 'tr_01HX7P9F3ZK8M2QW',
       session: 'sess_9f2a41c7', path: '直连', duration: '1,269ms', error: '—',
       note: '客户端版本 2026.10.2 · 设备 macOS 15.1 · 线路 relay-01'
     },
     {
       id: 'evt-1041', relative: '12 分钟前', abs: '2026-11-13 14:46:03', hours: 0.2,
-      user: '张伟', initials: 'ZW', account: 'zhangwei', event: '连接', target: 'payment-service',
+      user: '张伟', initials: 'ZW', account: 'zhangwei', event: '连接', code: 'connect', target: 'payment-service',
       targetSub: 'dev-node-03', result: 'success', ip: '10.20.8.42', trace: 'tr_01HX7P8B2YJ7L1NV',
       session: 'sess_9f2a41c7', path: '直连', duration: '1,302ms', error: '—',
       note: 'E2EE 握手成功 · 协议 v3 · 直连 18ms'
     },
     {
+      id: 'evt-1044', relative: '18 分钟前', abs: '2026-11-13 14:40:05', hours: 0.31,
+      user: '张伟', initials: 'ZW', account: 'zhangwei', event: '文件下载', code: 'file_download', kind: 'download',
+      target: 'payment-service', targetSub: 'feat/refund', result: 'success',
+      fileName: 'calculator.ts', filePath: 'src/refund/calculator.ts', fileSize: '4.2 KB',
+      ip: '10.20.8.42', trace: 'tr_01HX7P7A5WQ3K8LD',
+      session: 'sess_9f2a41c7', path: '直连', duration: '86ms', error: '—',
+      note: '方法：文件浏览器下载 · 策略：允许 · 已写入审计'
+    },
+    {
       id: 'evt-1040', relative: '27 分钟前', abs: '2026-11-13 14:31:27', hours: 0.45,
-      user: '李明', initials: 'LM', account: 'liming', event: '下载拦截', target: 'risk-engine',
-      targetSub: 'src/engine/rules.ts', result: 'failure', ip: '10.20.9.17', trace: 'tr_01HX7P6C4XK5N3MT',
+      user: '李明', initials: 'LM', account: 'liming', event: '下载拦截', code: 'download_denied', target: 'risk-engine',
+      targetSub: 'src/engine/rules.ts', result: 'failure',
+      fileName: 'rules.ts', filePath: 'src/engine/rules.ts', fileSize: '18.4 KB',
+      ip: '10.20.9.17', trace: 'tr_01HX7P6C4XK5N3MT',
       session: 'sess_4c8e13ab', path: '中继', duration: '12ms', error: 'DOWNLOAD_DENIED',
       note: '文件大小 18.4KB · 方法：文件浏览器下载 · 客户端已拦截'
     },
     {
       id: 'evt-1039', relative: '46 分钟前', abs: '2026-11-13 14:12:09', hours: 0.77,
-      user: '张伟', initials: 'ZW', account: 'zhangwei', event: '权限变更', target: 'payment-service',
+      user: '张伟', initials: 'ZW', account: 'zhangwei', event: '权限变更', code: 'permission_change', target: 'payment-service',
       targetSub: '测试组', result: 'success', ip: '10.20.3.2', trace: 'tr_01HX7P3A9ZK2M7QP',
       session: '—', path: '—', duration: '248ms', error: '—',
       note: '操作：为“测试组”新增终端权限 · 变更人：张伟'
     },
     {
       id: 'evt-1038', relative: '1 小时前', abs: '2026-11-13 13:56:44', hours: 1.07,
-      user: '王芳', initials: 'WF', account: 'wangfang', event: '登录', target: '平台',
+      user: '王芳', initials: 'WF', account: 'wangfang', event: '登录', code: 'login', target: '平台',
       targetSub: 'LDAP 认证', result: 'success', ip: '10.20.8.77', trace: 'tr_01HX7NY5D1Q8R4CW',
       session: 'sess_58af92c1', path: '—', duration: '186ms', error: '—',
       note: 'LDAP 认证成功 · 来源：办公网 · 客户端 2026.10.2'
     },
     {
       id: 'evt-1037', relative: '1 小时前', abs: '2026-11-13 13:40:18', hours: 1.3,
-      user: '赵敏', initials: 'ZM', account: 'zhaomin', event: '主机注册', target: 'dev-node-09',
+      user: '赵敏', initials: 'ZM', account: 'zhaomin', event: '主机注册', code: 'host_register', target: 'dev-node-09',
       targetSub: '主机', result: 'success', ip: '10.20.3.2', trace: 'tr_01HX7NX8F2V9S6TL',
       session: '—', path: '中继', duration: '2,481ms', error: '—',
       note: 'Orca 2026.10.1 · 协议 v3 · 指纹已登记 · 一次性令牌已失效'
     },
     {
       id: 'evt-1036', relative: '3 小时前', abs: '2026-11-13 12:08:55', hours: 2.87,
-      user: '陈昊', initials: 'CH', account: 'chenhao', event: '登录', target: '平台',
+      user: '陈昊', initials: 'CH', account: 'chenhao', event: '登录', code: 'login', target: '平台',
       targetSub: 'LDAP 认证', result: 'failure', ip: '203.0.113.24', trace: 'tr_01HX7K2M4B8C1D9E',
       session: '—', path: '—', duration: '412ms', error: 'LDAP_INVALID_CREDENTIALS',
       note: '密码错误 · 连续失败 1 次 · 来源：外网访问'
     },
     {
+      id: 'evt-1043', relative: '5 小时前', abs: '2026-11-13 09:52:47', hours: 5.2,
+      user: '李明', initials: 'LM', account: 'liming', event: '复制文件内容', code: 'file_copy', kind: 'copy',
+      target: 'risk-engine', targetSub: 'release/2.8', result: 'success',
+      fileName: 'rules.ts', filePath: 'src/engine/rules.ts', fileSize: '18.4 KB',
+      excerpt: `export function evaluate(rules: Rule[], ctx: EvalContext): Decision {\n  const matched = rules.find((rule) => rule.matcher(ctx))\n  return matched ? matched.decision : Decision.allow()\n}`,
+      sha256: '4f9c2a7e8b1d3f6a0c5e9d2b7a4f1c8e6d3b0a9f2c5e8d1b4a7f0c3e6d9b2a5f',
+      ip: '10.20.9.17', trace: 'tr_01HX7D5C3VY8N1KW',
+      session: 'sess_4c8e13ab', path: '中继', duration: '—', error: '—',
+      note: '方法：文件预览面板复制 · 摘录 4 行 · 仅记录指纹，不可反推内容'
+    },
+    {
       id: 'evt-1035', relative: '6 小时前', abs: '2026-11-13 09:12:31', hours: 5.8,
-      user: '李明', initials: 'LM', account: 'liming', event: '打开项目', target: 'risk-engine',
+      user: '李明', initials: 'LM', account: 'liming', event: '打开项目', code: 'project_open', target: 'risk-engine',
       targetSub: 'release/2.8', result: 'failure', ip: '10.20.9.17', trace: 'tr_01HX7D6E8F2A4B6C',
       session: '—', path: '直连', duration: '802ms', error: 'HOST_OFFLINE',
       note: '主机 dev-node-07 心跳超时，项目打开被拒绝'
     },
     {
       id: 'evt-1034', relative: '1 天前', abs: '2026-11-12 17:21:06', hours: 26.7,
-      user: '张伟', initials: 'ZW', account: 'zhangwei', event: '连接', target: 'payment-service',
+      user: '张伟', initials: 'ZW', account: 'zhangwei', event: '连接', code: 'connect', target: 'payment-service',
       targetSub: 'dev-node-03', result: 'success', ip: '10.20.8.42', trace: 'tr_01HX5P3G7K9M2Q4S',
       session: 'sess_11bd72e0', path: '中继', duration: '1,488ms', error: '—',
       note: '直连探测超时后回落中继 relay-01'
@@ -4346,6 +4675,8 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     '登录': 'user',
     '打开项目': 'folder',
     '连接': 'network',
+    '文件下载': 'download',
+    '复制文件内容': 'copy',
     '下载拦截': 'lock',
     '主机注册': 'server',
     '权限变更': 'users'
@@ -4410,6 +4741,31 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
   /* ------------------------------------------------------------
      Role handling
      ------------------------------------------------------------ */
+  const roleLabels = { admin: '平台管理员', developer: '开发者', readonly: '只读用户' };
+  const roleToast = {
+    admin: '已切换为管理员视角',
+    developer: '已切换为开发者视角',
+    readonly: '已切换为只读用户 lisi 视角'
+  };
+
+  function isProjectReadonly() {
+    return state.role === 'readonly';
+  }
+
+  function syncDemoIdentity() {
+    const readonly = isProjectReadonly();
+    const cardAvatar = $('#userCardAvatar');
+    const cardName = $('#userCardName');
+    const cardDept = $('#userCardDept');
+    if (cardAvatar) cardAvatar.textContent = readonly ? 'LS' : 'ZW';
+    if (cardName) cardName.textContent = readonly ? '李思' : '张伟';
+    if (cardDept) cardDept.textContent = readonly ? '结算研发组 · 主机只读' : '研发效能部';
+    const welcomeTitle = $('#welcomeTitle');
+    const welcomeSub = $('#welcomeSub');
+    if (welcomeTitle) welcomeTitle.textContent = readonly ? '下午好，李思' : '下午好，张伟';
+    if (welcomeSub) welcomeSub.textContent = readonly ? '你可以查看 1 个已授权项目。' : '你有 3 个项目正在进行。';
+  }
+
   function updateRoleUI() {
     const app = $('#appShell');
     app.dataset.role = state.role;
@@ -4419,7 +4775,8 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
       button.setAttribute('aria-pressed', String(active));
     });
     const forbiddenRole = $('#forbiddenRoleLabel');
-    if (forbiddenRole) forbiddenRole.textContent = state.role === 'admin' ? '平台管理员' : '开发者';
+    if (forbiddenRole) forbiddenRole.textContent = roleLabels[state.role] || '开发者';
+    syncDemoIdentity();
   }
 
   function setRoleDisplay(role) {
@@ -4429,20 +4786,21 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
 
   function switchRole(role) {
     if (role === state.role) return;
-    if (role === 'developer' && adminRoutes.has(state.route)) {
-      setRoleDisplay('developer');
+    if (role !== 'admin' && adminRoutes.has(state.route)) {
+      setRoleDisplay(role);
       navigate('workbench');
-      showToast('已切换为开发者视角，管理导航已隐藏', { type: 'info' });
+      showToast(roleToast[role], { type: 'info', sub: role === 'readonly' ? '主机只读：项目可查看，编辑与终端不可用' : '管理导航已隐藏' });
       return;
     }
     if (role === 'admin' && state.route === 'forbidden') {
       setRoleDisplay('admin');
       navigate('workbench');
-      showToast('已切换为管理员视角', { type: 'info' });
+      showToast(roleToast.admin, { type: 'info' });
       return;
     }
     setRoleDisplay(role);
-    showToast(role === 'admin' ? '已切换为管理员视角' : '已切换为开发者视角', { type: 'info' });
+    if (state.route === 'workbench' || state.route === 'projects') renderRoute();
+    showToast(roleToast[role], { type: 'info', sub: role === 'readonly' ? '项目可查看，编辑与终端不可用' : undefined });
   }
 
   /* ------------------------------------------------------------
@@ -4555,7 +4913,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
       return;
     }
 
-    if (route === 'forbidden' && state.role !== 'developer') {
+    if (route === 'forbidden' && state.role === 'admin') {
       setRoleDisplay('developer');
     }
 
@@ -4675,27 +5033,28 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
   }
 
   function renderWorkbench() {
+    const projects = accessibleProjects();
     const recent = $('#recentProjectGrid');
-    recent.innerHTML = projectDirectory.slice(0, 3).map(recentProjectMarkup).join('');
+    recent.innerHTML = projects.slice(0, 3).map(recentProjectMarkup).join('');
 
     const filter = $('#projectStatusFilter').value;
     const filtered = filter === 'all'
-      ? projectDirectory
-      : projectDirectory.filter((project) => filter === 'online' ? project.online : !project.online);
+      ? projects
+      : projects.filter((project) => filter === 'online' ? project.online : !project.online);
     $('#allProjectsBody').innerHTML = filtered.length
       ? filtered.map(projectRowMarkup).join('')
       : `<tr><td colspan="7" class="empty-cell"><div class="empty-inline">${iconMarkup('folder')}<span>没有符合筛选条件的项目</span></div></td></tr>`;
     $('#allProjectCount').textContent = `${filtered.length} 个`;
     $('#allProjectsFoot').textContent = filter === 'all'
-      ? `共 ${projectDirectory.length} 个项目`
-      : `筛选出 ${filtered.length} 个项目（共 ${projectDirectory.length} 个）`;
+      ? `共 ${projects.length} 个项目`
+      : `筛选出 ${filtered.length} 个项目（共 ${projects.length} 个）`;
   }
 
   function filteredMyProjects() {
     const query = $('#myProjectSearch').value.trim().toLowerCase();
     const status = $('#myProjectStatus').value;
     const scope = $('#myProjectScope').value;
-    return projectDirectory.filter((project) => {
+    return accessibleProjects().filter((project) => {
       const matchesQuery = !query
         || project.name.toLowerCase().includes(query)
         || project.repo.toLowerCase().includes(query)
@@ -4708,11 +5067,12 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
 
   function renderMyProjects() {
     const projects = filteredMyProjects();
+    const total = accessibleProjects().length;
     $('#myProjectsBody').innerHTML = projects.length
       ? projects.map(projectRowMarkup).join('')
       : `<tr><td colspan="7" class="empty-cell"><div class="empty-inline">${iconMarkup('search')}<span>没有找到匹配的项目</span></div></td></tr>`;
     $('#myProjectsFilteredCount').textContent = `共 ${projects.length} 个`;
-    $('#myProjectsFoot').textContent = `显示 ${projects.length} / ${projectDirectory.length} 个项目`;
+    $('#myProjectsFoot').textContent = `显示 ${projects.length} / ${total} 个项目`;
   }
 
   /* ------------------------------------------------------------
@@ -4726,7 +5086,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
   function renderSearchResults() {
     const panel = $('#searchResults');
     const query = $('#globalSearch').value.trim().toLowerCase();
-    const visibleProjects = projectDirectory.filter((project) => !query
+    const visibleProjects = accessibleProjects().filter((project) => !query
       || project.name.toLowerCase().includes(query)
       || project.repo.toLowerCase().includes(query)
       || project.host.toLowerCase().includes(query)).slice(0, 5);
@@ -4964,6 +5324,39 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     copyText(command, '注册命令已复制');
   }
 
+  function hostGrantBits() {
+    return $$('#hostPermissionBits input[data-host-bit]');
+  }
+
+  function applyHostLevel(level) {
+    if (level !== 'custom') {
+      const wanted = level === 'full' ? ['provision', 'maintain', 'view'] : ['view'];
+      hostGrantBits().forEach((input) => {
+        input.checked = wanted.includes(input.dataset.hostBit);
+      });
+    }
+    syncHostGrantUI(level);
+  }
+
+  function syncHostGrantUI(forcedLevel) {
+    const inputs = hostGrantBits();
+    const checked = inputs.filter((input) => input.checked).map((input) => input.dataset.hostBit);
+    const level = forcedLevel || (checked.length === 3 ? 'full' : checked.length === 1 && checked[0] === 'view' ? 'readonly' : 'custom');
+    $$('#hostPermissionLevels [data-host-level]').forEach((card) => {
+      const active = card.dataset.hostLevel === level;
+      card.classList.toggle('is-active', active);
+      card.setAttribute('aria-checked', String(active));
+    });
+    inputs.forEach((input) => input.closest('.perm-bit').classList.toggle('is-off', !input.checked));
+    const summary = $('#hostGrantSummary');
+    if (summary) {
+      const label = level === 'full' ? '全权 · provision / maintain / view'
+        : level === 'readonly' ? '只读 · view'
+          : `自定义 · ${checked.length ? checked.join(' / ') : '无权限位'}`;
+      summary.innerHTML = `${iconMarkup('info')}当前级别：${label}${level === 'readonly' ? '（项目内编辑 / 终端受上限约束）' : ''}`;
+    }
+  }
+
   /* ------------------------------------------------------------
      Relays（与主机分开管理：FR-4.10）
      ------------------------------------------------------------ */
@@ -5133,6 +5526,13 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
       badge.className = 'badge badge-danger';
       badge.innerHTML = `${iconMarkup('lock')}当前禁止`;
     }
+    const chip = $('#authDownloadChip');
+    if (chip) {
+      chip.className = project.policy === 'allow' ? 'badge badge-warning' : 'download-locked-chip';
+      chip.innerHTML = project.policy === 'allow'
+        ? `${iconMarkup('download')}下载已允许`
+        : `${iconMarkup('lock')}下载 · 已禁用`;
+    }
   }
 
   function fillAuthProject(project) {
@@ -5300,22 +5700,49 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
      ------------------------------------------------------------ */
   function filteredAuditEvents() {
     const range = Number($('#auditTimeRange').value);
-    const user = $('#auditUserFilter').value;
+    const keyword = $('#auditKeywordFilter').value.trim().toLowerCase();
+    const user = $('#auditUserFilter').value.trim().toLowerCase();
     const target = $('#auditTargetFilter').value;
-    const eventType = $('#auditEventFilter').value;
+    const filename = $('#auditFilenameFilter').value.trim().toLowerCase();
+    const operation = $('#auditEventFilter').value;
     const result = $('#auditResultFilter').value;
     return auditEvents.filter((event) => {
+      const haystack = [event.event, event.target, event.targetSub, event.fileName, event.filePath, event.excerpt]
+        .filter(Boolean).join('\n').toLowerCase();
+      const fileHaystack = [event.fileName, event.filePath].filter(Boolean).join('\n').toLowerCase();
       return event.hours <= range
-        && (user === 'all' || event.user === user)
+        && (!keyword || haystack.includes(keyword))
+        && (!user || `${event.user}\n${event.account}`.toLowerCase().includes(user))
         && (target === 'all' || event.target === target)
-        && (eventType === 'all' || event.event === eventType)
+        && (!filename || fileHaystack.includes(filename))
+        && (operation === 'all' || event.code === operation)
         && (result === 'all' || event.result === result);
     });
   }
 
+  function auditFileMarkup(event) {
+    if (!event.fileName) return '<span class="cell-mono">—</span>';
+    const path = event.filePath || event.fileName;
+    return `
+      <button class="audit-file" type="button" data-copy-file="${escapeHTML(path)}" title="点击复制${event.filePath ? '路径' : '文件名'}">
+        <span class="audit-file-name">${escapeHTML(event.fileName)}</span>${iconMarkup('copy')}
+      </button>
+      <div class="audit-file-meta">
+        <span>${escapeHTML(event.fileSize || '—')}</span>
+        <span class="dot-sep">·</span>
+        <span class="audit-file-path">${escapeHTML(path)}</span>
+      </div>`;
+  }
+
   function auditRowMarkup(event) {
     const eventIcon = eventIconMap[event.event] || 'activity';
-    return `
+    const opMarkup = event.kind
+      ? `<span class="audit-op"><span class="audit-type is-${event.kind}">${event.kind === 'download' ? '下载' : '复制'}</span><span>${escapeHTML(event.event)}</span></span>`
+      : `<span class="event-tag">${iconMarkup(eventIcon)}${escapeHTML(event.event)}</span>`;
+    const actions = event.kind === 'copy'
+      ? `<span class="audit-row-actions"><button class="text-link" type="button" data-audit-expand="${escapeHTML(event.id)}">${state.expandedAuditIds.has(event.id) ? '收起' : '展开'}</button><button class="text-link" type="button" data-audit-open="${escapeHTML(event.id)}">详情</button></span>`
+      : `<button class="text-link" type="button" data-audit-open="${escapeHTML(event.id)}">查看</button>`;
+    const row = `
       <tr class="row-click" data-audit-open="${escapeHTML(event.id)}">
         <td><span title="${escapeHTML(event.abs)}">${escapeHTML(event.relative)}</span></td>
         <td>
@@ -5324,16 +5751,36 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
             <span>${escapeHTML(event.user)}</span>
           </span>
         </td>
-        <td><span class="event-tag">${iconMarkup(eventIcon)}${escapeHTML(event.event)}</span></td>
+        <td>${opMarkup}</td>
         <td>
           <span class="audit-target">
             <span class="audit-target-main mono">${escapeHTML(event.target)}</span>
             <span class="audit-target-sub">${escapeHTML(event.targetSub)}</span>
           </span>
         </td>
+        <td>${auditFileMarkup(event)}</td>
         <td><span class="audit-result ${event.result === 'success' ? 'is-success' : 'is-failure'}"><span class="dot ${event.result === 'success' ? 'dot-success' : 'dot-danger'}"></span>${event.result === 'success' ? '成功' : '失败'}</span></td>
-        <td><span class="cell-mono">${escapeHTML(event.ip)}</span></td>
-        <td class="cell-ops"><button class="text-link" data-audit-open="${escapeHTML(event.id)}">查看</button></td>
+        <td class="cell-ops">${actions}</td>
+      </tr>`;
+    if (event.kind !== 'copy' || !state.expandedAuditIds.has(event.id)) return row;
+    const excerpt = event.excerpt
+      ? `<div class="audit-excerpt">${escapeHTML(event.excerpt)}</div>`
+      : '<div class="audit-empty-excerpt">未记录内容摘录（仅保留指纹）</div>';
+    return row + `
+      <tr class="audit-expand-row">
+        <td colspan="7">
+          <div class="audit-expand-panel">
+            <div>
+              <div class="audit-expand-label">复制内容摘录 <span class="badge badge-sm">脱敏</span></div>
+              ${excerpt}
+            </div>
+            <div>
+              <div class="audit-expand-label">内容指纹</div>
+              <div class="audit-fingerprint">sha256:${escapeHTML(event.sha256 || '—')}</div>
+              <div class="audit-fingerprint-hint">仅记录指纹，不可反推内容</div>
+            </div>
+          </div>
+        </td>
       </tr>`;
   }
 
@@ -5345,6 +5792,12 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
       : `<tr><td colspan="7" class="empty-cell"><div class="empty-inline">${iconMarkup('clipboard-list')}<span>没有符合筛选条件的审计事件</span></div></td></tr>`;
     $('#auditEventCount').textContent = `${events.length} 条事件`;
     $('#auditFoot').textContent = `显示 ${events.length} 条事件`;
+  }
+
+  function toggleAuditExpand(eventId) {
+    if (state.expandedAuditIds.has(eventId)) state.expandedAuditIds.delete(eventId);
+    else state.expandedAuditIds.add(eventId);
+    renderAuditTable();
   }
 
   function fillAuditDrawer(event) {
@@ -5388,11 +5841,14 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
   }
 
   function resetAuditFilters() {
+    $('#auditKeywordFilter').value = '';
     $('#auditTimeRange').value = '24';
-    $('#auditUserFilter').value = 'all';
+    $('#auditUserFilter').value = '';
     $('#auditTargetFilter').value = 'all';
+    $('#auditFilenameFilter').value = '';
     $('#auditEventFilter').value = 'all';
     $('#auditResultFilter').value = 'all';
+    state.expandedAuditIds.clear();
     renderAuditTable();
   }
 
@@ -5541,6 +5997,12 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
       element.textContent = `~/${project.name}`;
     });
     $('.file-pathbar span').textContent = `~/${project.name}`;
+    const avatar = $('#projectUserAvatar');
+    if (avatar) {
+      const readonly = isProjectReadonly();
+      avatar.textContent = readonly ? 'LS' : 'ZW';
+      avatar.title = readonly ? '李思（lisi）' : '张伟';
+    }
   }
 
   function closeConnectionPopover() {
@@ -5616,6 +6078,10 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
   }
 
   function switchProjectTab(tab) {
+    if (isProjectReadonly() && ['claude', 'terminal1', 'terminal2'].includes(tab)) {
+      showToast('主机只读授权：编辑与终端不可用', { type: 'warning', sub: '可以继续查看项目，但不能运行命令或修改文件' });
+      tab = 'browser';
+    }
     state.activeProjectTab = tab;
     $$('.ide-tab').forEach((button) => {
       const active = button.dataset.projectTab === tab;
@@ -5666,6 +6132,12 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
       renderRoute();
       return;
     }
+    if (isProjectReadonly() && !readonlyProjectIds.has(project.id)) {
+      history.replaceState(null, '', '#/workbench');
+      renderRoute();
+      showToast('未授权项目不可见', { type: 'error', sub: '项目授权不会扩大到主机级或其它项目' });
+      return;
+    }
     if (!project.online) {
       history.replaceState(null, '', '#/workbench');
       renderRoute();
@@ -5692,12 +6164,24 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     state.connection = 'direct';
     state.activeProjectTab = 'claude';
 
+    const readonly = isProjectReadonly();
     $('#loginScreen').hidden = true;
     $('#appShell').hidden = true;
     $('#projectShell').hidden = false;
+    $('#projectShell').classList.toggle('is-readonly', readonly);
+    $$('.ide-tab[data-project-tab]').forEach((tab) => {
+      const locked = readonly && ['claude', 'terminal1', 'terminal2'].includes(tab.dataset.projectTab);
+      tab.classList.toggle('is-locked', locked);
+      tab.setAttribute('aria-disabled', String(locked));
+      tab.title = locked ? '主机只读授权：编辑与终端不可用' : '';
+    });
+    $('#splitLayoutBtn').disabled = readonly;
+    $('#newTerminalBtn').disabled = readonly;
+    const newWorkspace = $('.new-workspace-btn');
+    if (newWorkspace) newWorkspace.disabled = readonly;
     updateProjectChrome(project);
     renderWorkspaceList(project);
-    switchProjectTab('claude');
+    switchProjectTab(readonly ? 'browser' : 'claude');
     setConnection('direct');
     document.title = `${project.name} · 项目视图 · Orca Cloud`;
   }
@@ -5707,6 +6191,8 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     $('#filePreviewTitle').textContent = path;
     $('#filePreviewPath').textContent = path;
     $('#filePreviewCode').textContent = content;
+    const openInEditor = $('#openInEditorBtn');
+    if (openInEditor) openInEditor.disabled = isProjectReadonly();
     openModal('filePreview');
   }
 
@@ -5728,6 +6214,7 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     closeNotifPopover();
     const menu = $('#fileMenu');
     $('#fileMenuLabel').textContent = path || '文件';
+    menu.classList.toggle('is-readonly', isProjectReadonly());
     menu.hidden = false;
     menu.style.left = '0px';
     menu.style.top = '0px';
@@ -6025,8 +6512,19 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
 
       const modalTrigger = target.closest('[data-open-modal]');
       if (modalTrigger) {
+        const modalId = modalTrigger.dataset.openModal;
+        if (modalId === 'newProject' && isProjectReadonly()) {
+          event.preventDefault();
+          showToast('主机只读授权：不能创建项目', { type: 'warning', sub: '需要目标主机的 provision 授权' });
+          return;
+        }
+        if (modalId === 'newWorkspace' && isProjectReadonly()) {
+          event.preventDefault();
+          showToast('主机只读授权：不能新建工作区', { type: 'warning' });
+          return;
+        }
         event.preventDefault();
-        openModal(modalTrigger.dataset.openModal);
+        openModal(modalId);
         return;
       }
 
@@ -6053,6 +6551,18 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
       const relayTarget = target.closest('[data-relay-open]');
       if (relayTarget) {
         openRelayDrawer(relayTarget.dataset.relayOpen);
+        return;
+      }
+
+      const auditCopyTarget = target.closest('[data-copy-file]');
+      if (auditCopyTarget) {
+        copyText(auditCopyTarget.dataset.copyFile, '文件路径已复制');
+        return;
+      }
+
+      const auditExpandTarget = target.closest('[data-audit-expand]');
+      if (auditExpandTarget) {
+        toggleAuditExpand(auditExpandTarget.dataset.auditExpand);
         return;
       }
 
@@ -6149,6 +6659,11 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
       closeModal();
       showToast('注册流程已生成', { sub: '令牌 24 小时内有效，仅可使用一次' });
     });
+    $$('#hostPermissionLevels [data-host-level]').forEach((card) => {
+      card.addEventListener('click', () => applyHostLevel(card.dataset.hostLevel));
+    });
+    hostGrantBits().forEach((input) => input.addEventListener('change', () => syncHostGrantUI()));
+    syncHostGrantUI();
   }
 
   function bindRelayEvents() {
@@ -6299,6 +6814,11 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
       const action = item.dataset.fileAction;
       if (action === 'download') {
         openDownloadBlocked(path);
+        return;
+      }
+      if (isProjectReadonly() && ['editor', 'rename', 'delete'].includes(action)) {
+        closeFileMenu();
+        showToast('主机只读授权：不能编辑文件', { type: 'warning', sub: '只读用户只能查看项目文件' });
         return;
       }
       closeFileMenu();
