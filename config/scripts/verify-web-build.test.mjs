@@ -9,7 +9,7 @@ const scriptPath = resolve('config/scripts/verify-web-build.mjs')
 const temporaryRoots = []
 const ROUTE_PREFIX = '/h/route-key'
 
-function createBuildFixture({ absoluteAssets = false } = {}) {
+function createBuildFixture({ absoluteAssets = false, sharedImportsEntry = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'orca-web-build-'))
   temporaryRoots.push(root)
   const assetBase = absoluteAssets ? '/assets/' : './assets/'
@@ -23,6 +23,13 @@ function createBuildFixture({ absoluteAssets = false } = {}) {
   }
   writeFixtureFile(root, 'out/web/assets/app.js', 'export const app = true;')
   writeFixtureFile(root, 'out/web/assets/app.css', '.app { color: red; }')
+  if (sharedImportsEntry) {
+    writeFixtureFile(
+      root,
+      'out/web/assets/shared.js',
+      'import "./app.js"; export const shared = true;'
+    )
+  }
   return root
 }
 
@@ -92,6 +99,12 @@ describe('web build base', () => {
     const result = await verifyFixture(createBuildFixture({ absoluteAssets: true }))
     expect(result.code).toBe(1)
     expect(result.stderr).toContain('Web build must use relative asset URLs')
+  })
+
+  it('rejects a shared chunk that statically imports an entry chunk', async () => {
+    const result = await verifyFixture(createBuildFixture({ sharedImportsEntry: true }))
+    expect(result.code).toBe(1)
+    expect(result.stderr).toContain('is statically imported by shared.js')
   })
 })
 
