@@ -439,3 +439,8 @@ type FileBuffer = {
 5. **标签类型枚举扩为四**：terminal|editor|preview|diff。
 
 覆盖 §4.3/§4.4/§4.6/§4.8 相应部分；其余条款不变。切分调整：U46-6 文件树+过滤；U46-6b git 变更面板（首步核验 git RPC）；U46-7a 编辑器+md+着色；U46-7b 预览（drawio/svg/img）+diff 标签页（依赖 6b 的 git RPC 结论）；5a 已止损通知（两栏+四类型）。
+
+
+## 12. 复用指导（2026-11-15 用户指令：复用 orca web 组件与参考设计）
+
+各组件令实现时**优先复用 orca web（src/renderer/src/web/，W13b 云会话视图）的组件与形态**：外壳参考其 app-layout/侧栏/面板组合与 CloudSessionEmptyState 降级态；文件树**优先直接复用或最小适配其 explorer**（同数据面 cloud file RPC，勿重造树逻辑，无过滤则新增）；编辑器参考其 Monaco 加载/`__monacoEditorE2E` 管线与 md 呈现（如有）；终端参考其终端管线与 W13b 终端标签形态。跨包能 import 则 import，不能则形态复制适配并注明来源先例。后续令（5b/6b/7b/8）派发词直接含此要求。
