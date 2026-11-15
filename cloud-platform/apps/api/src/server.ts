@@ -812,6 +812,9 @@ export function createApp(config: ApiConfig): ApiHandle {
   function projectView(p: Project, user: User, platformOrigin: string): Record<string, unknown> {
     const permissions = store.effectivePermissions(p.id, user)
     const host = store.hosts.get(p.hostId)
+    // Admin/auditor only: the creator is an administrative fact, and every other
+    // role's payload must stay byte-identical to the pre-U46 shape.
+    const adminAccess = isAdmin(user) || user.roles.includes('platform:auditor')
     return {
       id: p.id,
       key: p.key,
@@ -832,6 +835,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       downloadPolicyExplicit: p.downloadPolicyExplicit === true,
       status: p.status,
       ...(p.provisioningError ? { provisioningError: p.provisioningError } : {}),
+      ...(adminAccess ? { createdBy: p.createdBy ?? null } : {}),
       createdAt: p.createdAt,
       permissions
     }
@@ -1957,7 +1961,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
 
       if (req.method === 'POST' && action === '/web-handoff') {
-        return handleWebHandoff(res, authed.user, found, traceId, platformOrigin)
+        return handleWebHandoff(req, res, authed.user, found, traceId, platformOrigin)
       }
 
       if (req.method === 'GET' && action === '/grants') {
@@ -3053,13 +3057,19 @@ export function createApp(config: ApiConfig): ApiHandle {
    * else the host's TLS direct address in its web-index form; anything short of
    * that gets a 4xx instead of handing the developer a dead or mispointed link.
    */
-  function handleWebHandoff(
+  async function handleWebHandoff(
+    req: IncomingMessage,
     res: ServerResponse,
     user: User,
     project: Project,
     traceId: string,
     platformOrigin: string
-  ): void {
+  ): Promise<void> {
+    const body = await readJson(req)
+    // Additive wire field: an old console sends no body and keeps the pre-U46
+    // entry, URL shape, status gates, and reply fields byte-for-byte.
+    const surface = body.surface === 'admin' ? 'admin' : 'web'
+    const adminSurface = surface === 'admin'
     // Same grant predicate as redemption: adminAccess only widens which projects
     // a caller can see, never the right to open one, so a code that could only
     // ever redeem 403 is refused here instead of minting a dead entry.
@@ -3071,7 +3081,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         targetId: project.id,
         result: 'denied',
         traceId,
-        metadata: { reason: 'permission_lost' }
+        metadata: { reason: 'permission_lost', surface }
       })
       return error(res, 403, 'PROJECT_FORBIDDEN', '项目无权限，无法打开。', traceId, {
         reason: 'permission_lost'
@@ -3092,6 +3102,21 @@ export function createApp(config: ApiConfig): ApiHandle {
         lastHeartbeatAt: new Date(host.lastHeartbeatAt).toISOString()
       })
     }
+    // The embedded workspace cannot render a project the host has not prepared,
+    // so the admin surface carries the same readiness gate as /connect. The web
+    // surface keeps the pre-U46 behavior: an old console's request never gets
+    // these new refusals.
+    if (adminSurface && project.status === 'failed') {
+      return error(res, 409, 'PROJECT_NOT_PREPARED', '项目准备失败，暂无法打开。', traceId, {
+        status: project.status,
+        ...(project.provisioningError ? { provisioningError: project.provisioningError } : {})
+      })
+    }
+    if (adminSurface && project.status === 'provisioning') {
+      return error(res, 409, 'PROJECT_PROVISIONING', '项目正在准备中，请稍后重试。', traceId, {
+        status: project.status
+      })
+    }
     // A live browser edge serves the page through the relay, so the host's own
     // direct address stops being a precondition (a relayed host may list none).
     const browserEntry = browserEntryUrlFor(host.relayRoute)
@@ -3104,7 +3129,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         targetId: project.id,
         result: 'denied',
         traceId,
-        metadata: { reason: 'host_unavailable', hostId: host.id }
+        metadata: { reason: 'host_unavailable', hostId: host.id, surface }
       })
       return error(res, 400, 'HOST_UNAVAILABLE', '开发机没有可直达的 Web 入口地址。', traceId)
     }
@@ -3125,17 +3150,29 @@ export function createApp(config: ApiConfig): ApiHandle {
       metadata: {
         hostId: host.id,
         codeFingerprint: codeFingerprint(code),
-        ttlSeconds: Math.ceil(handoffTtlMs / 1000)
+        ttlSeconds: Math.ceil(handoffTtlMs / 1000),
+        surface
       }
     })
     const entry = browserEntry !== '' ? browserEntry : `https://${directAddr}/web-index.html`
-    const page = new URL(entry)
+    // The admin surface swaps the host-served page only: same origin, same code
+    // hash, plus the iframe/project query the embedded workspace needs.
+    const page = new URL(
+      adminSurface ? entry.replace(/web-index\.html$/, 'cloud-admin.html') : entry
+    )
     // The page is served by the host or relay, so `?api=` is how it finds the
     // platform to trade the code on (same channel as the admin session page).
     page.searchParams.set('api', platformOrigin)
+    if (adminSurface) {
+      page.searchParams.set('embed', '1')
+      page.searchParams.set('project', project.id)
+    }
     return json(res, 201, {
       url: `${page.toString()}#handoff=${code}&project=${project.id}`,
-      expiresIn: Math.ceil(handoffTtlMs / 1000)
+      expiresIn: Math.ceil(handoffTtlMs / 1000),
+      // Echoed only when the caller opted in, so an old console's reply keeps
+      // its exact pre-U46 field set.
+      ...(typeof body.surface === 'string' ? { surface } : {})
     })
   }
 
