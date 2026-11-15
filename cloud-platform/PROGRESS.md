@@ -2705,6 +2705,10 @@ cron 看护规则由「>30 分钟主动检查」精化为：正常推进（未�
 
 cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 转发器，03:20 起）；**平台本体（127.0.0.1:18787）已死**（curl 空回复），store 为内存态（`new Store()` 无落盘）⇒ demo-app=proj_7d0651e6、dev-local-02 注册、team-payment 授权均已随进程丢失。宿主 Electron（:53156）仍在跑但其云凭据已失效。**重建不阻塞任何在途工作**（W9 黄金旅程与各套件均自起实例）；列为本轮收尾的**人工验收前置任务**。配方要点（已查证）：① 启动 `INTERNAL_TOKEN=m114-link-token PORT=18787 node cloud-platform/apps/api/src/server.ts`（可选 `ORCA_CLOUD_WEB_ROOT=cloud-platform/apps/web`）；② 首启自动种子 admin+dev 用户（server.ts:498-507）；③ 管理员签发一次性宿主令牌→重启宿主带新令牌注册（参照 test/e2e/harness.ts registerHost）；④ 重建演示项目+授权。
 
+### U48+U50 落地（2026-11-15，🟢）
+
+`0bbe49e5e81`（12 文件）：U48=writeCloudWorkspaceFile 补 executionHostId（宿主契约 assertRuntimeFileMutationExpectation；E4 真栈 adapterWrite.ok=true 转绿）；U50=diff 回调携 commit 身份（完整 oid/parentOid→commitDiff，reducer id=diff:<oid>:<path> 区分）。新 2+cloud 域 187 用例绿。**U48/U50→🟢**。U49（构建图）在途。
+
 ### U46-8 收口（2026-11-15）+ U48/U49/U50 登记
 
 `5b9b0915052`（8 文件）：四类型工厂全注册+embed 链路贯通（handoff→ensure→workspace.info→各面板）+真栈 **E1-E7 7/7**（真仓库 git 真链路）+真浏览器旅程 **11 步 11 截图**+回归 185/298（install-wizard flake 单跑绿）。**三红项登记派修**：U48（7a 保存缺 expectedExecutionHostId→真宿主拒，P1）、U49（bundle chunk 静态引入 web 入口→cloud-admin 被覆盖，P1 构建图）、U50（diff 回调缺 commit 身份）。三令合并两派：U48+U50（cloud 域）∥ U49（构建图）。
