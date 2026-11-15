@@ -48,3 +48,25 @@ export function describeAiVaultScanError(raw: string): string {
   const text = raw.replace(IPC_INVOKE_PREFIX, '').replace(RELAY_PREFIX, '')
   return humanize(text) ?? text
 }
+
+/**
+ * A cloud-session method denial is the host gate refusing the scan (O1), not a
+ * scanner failure: every `Method '...' ...` variant ends in this phrase, so the
+ * surface can demote it to a diagnostic log instead of painting it.
+ */
+export function isAiVaultCloudSessionDenial(raw: string): boolean {
+  return raw.includes('is not available to cloud sessions')
+}
+
+/**
+ * U65c: a cloud-session denial is the host gate's expected degradation — it goes
+ * to the diagnostic log and the surface keeps its document-style empty state.
+ * Any other failure paints as user copy.
+ */
+export function reportAiVaultScanFailure(raw: string, paint: (copy: string) => void): void {
+  if (isAiVaultCloudSessionDenial(raw)) {
+    console.warn(`aiVault.listSessions denied for this surface: ${raw}`)
+    return
+  }
+  paint(describeAiVaultScanError(raw))
+}

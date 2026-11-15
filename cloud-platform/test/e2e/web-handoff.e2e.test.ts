@@ -67,7 +67,9 @@ async function issueHandoff(token: string, projectId: string): Promise<HandoffIs
   const hash = body.url
     ? (new URL(body.url).hash.match(/^#handoff=([^&]+)&project=([\w-]+)$/) ?? [])
     : []
-  if (hash[1]) issuedCodes.push(hash[1])
+  if (hash[1]) {
+    issuedCodes.push(hash[1])
+  }
   return {
     status: res.status,
     url: body.url ?? '',
@@ -135,12 +137,23 @@ async function heartbeatOnline(
   credential: string,
   directAddrs?: string[]
 ): Promise<void> {
+  const beat = await heartbeat(hostId, credential, directAddrs)
+  assert.equal(beat.status, 200)
+}
+
+/** U57 hardened the front door: a malformed address is refused at the beat itself. */
+async function heartbeat(
+  hostId: string,
+  credential: string,
+  directAddrs?: string[]
+): Promise<{ status: number; code: string }> {
   const res = await fetch(`${api.url}/v1/hosts/${hostId}/heartbeat`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${credential}` },
     body: JSON.stringify({ status: 'online', ...(directAddrs ? { directAddrs } : {}) })
   })
-  assert.equal(res.status, 200)
+  const body = (await res.json()) as { error?: { code?: string } }
+  return { status: res.status, code: body.error?.code ?? '' }
 }
 
 /** Issuance demands `open` even from admin/auditor, so host-gate probes grant it first. */
@@ -334,12 +347,14 @@ describe('W7a web handoff：一次性 code 签发与换发', () => {
     })
   })
 
-  test('直连地址形态非法：400 HOST_UNAVAILABLE，不产出错位入口 URL', async () => {
+  test('直连地址形态非法：心跳 400 拒收不落库，签发仍 400 HOST_UNAVAILABLE 不产出错位入口 URL', async () => {
     const credential = await registerNoDirectHost('w7a-malformed-addr')
     const projectId = await createProjectOnHost('handoff-bad-addr', noDirectHostId)
 
     // A host-supplied string is spliced verbatim into `https://<addr>/...`, so a
-    // scheme, path, bad port, or unbracketed IPv6 must be refused, not pointed at.
+    // scheme, path, bad port, or unbracketed IPv6 must never reach an entry URL.
+    // U57 moved the first line of defense into the heartbeat (400, not stored);
+    // issuance keeps its own refusal for any state that predates it.
     const malformed = [
       'https://attacker.example/web-index.html',
       'dev-001.example/web-index.html',
@@ -349,7 +364,9 @@ describe('W7a web handoff：一次性 code 签发与换发', () => {
       'dev-001 example'
     ]
     for (const addr of malformed) {
-      await heartbeatOnline(noDirectHostId, credential, [addr])
+      const beat = await heartbeat(noDirectHostId, credential, [addr])
+      assert.equal(beat.status, 400, addr)
+      assert.equal(beat.code, 'HOST_DIRECTADDRS_INVALID', addr)
       const issued = await issueHandoff(adminToken, projectId)
       assert.equal(issued.status, 400, addr)
       assert.equal(issued.url, '', `no entry URL may be built from ${addr}`)

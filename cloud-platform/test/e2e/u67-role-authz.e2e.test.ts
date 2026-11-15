@@ -1,7 +1,7 @@
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { login, makeDeviceKey, registerHost, saveEvidence, spawnService, type Service } from './harness.ts'
-import { loadWebConsolePage, type WebConsolePage } from './web-console-page.ts'
+import { loadWebConsolePage } from './web-console-page.ts'
 
 /**
  * U67 role-based authorization model, platform + UI, against a real process.
@@ -453,5 +453,67 @@ test('U67-P7 UI 三卡片→票据端到端：查看卡添加 lisi@hostB，票�
     storedRow: row,
     derivedRow: seen,
     ticketPerms: ticket.perms
+  })
+}, 120_000)
+
+test('U45 被授权开发者管理项目被拒：PUT grants/策略/更新 403，读路径与既有授权不受影响', async () => {
+  // zhangsan holds the wide team-payment row on p1: authorized to work, not to manage.
+  assert.equal((await api(`/v1/projects/${p1}`, { token: zhangsanToken })).status, 200)
+  assert.equal((await api(`/v1/projects/${p1}/grants`, { token: zhangsanToken })).status, 200)
+
+  const grantWrite = await api(`/v1/projects/${p1}/grants`, {
+    method: 'PUT',
+    token: zhangsanToken,
+    body: JSON.stringify({ subjectType: 'user', subjectId: 'lisi', permissions: ['open'] })
+  })
+  assert.equal(grantWrite.status, 403, JSON.stringify(grantWrite.body))
+  assert.equal(errorCode(grantWrite.body), 'PERMISSION_DENIED')
+
+  const policyWrite = await api(`/v1/projects/${p1}/policy`, {
+    method: 'PUT',
+    token: zhangsanToken,
+    body: JSON.stringify({ downloadPolicy: 'deny' })
+  })
+  assert.equal(policyWrite.status, 403, JSON.stringify(policyWrite.body))
+  assert.equal(errorCode(policyWrite.body), 'PERMISSION_DENIED')
+
+  const update = await api(`/v1/projects/${p1}`, {
+    method: 'PUT',
+    token: zhangsanToken,
+    body: JSON.stringify({ name: 'renamed by developer' })
+  })
+  assert.equal(update.status, 403, JSON.stringify(update.body))
+  assert.equal(errorCode(update.body), 'PERMISSION_DENIED')
+
+  // AC-18: every refusal is audited, so the attempts are visible after the fact.
+  const denied = (
+    (await api('/v1/audit/events?result=denied&limit=200')).body.events as {
+      eventType: string
+      actor: string | null
+      targetId: string | null
+      metadata?: Record<string, unknown> | null
+    }[]
+  ).filter((event) => event.actor === 'zhangsan' && event.targetId === p1)
+  for (const eventType of ['grant_update', 'policy_update', 'project_update']) {
+    const refusal = denied.find((event) => event.eventType === eventType)
+    assert.ok(refusal, `${eventType} denial must be audited`)
+    assert.equal(refusal.metadata?.requiredPermission, 'platform:admin')
+  }
+
+  // The refused grant write must not have stored the lisi row it asked for.
+  const grantsAfter = (await api(`/v1/projects/${p1}/grants`)).body.grants as {
+    subjectType: string
+    subjectId: string
+  }[]
+  assert.equal(
+    grantsAfter.some((grant) => grant.subjectType === 'user' && grant.subjectId === 'lisi'),
+    false,
+    'a refused grant write stores nothing'
+  )
+
+  saveEvidence(EVIDENCE, 'u45-dev-manage-denied.json', {
+    developer: 'zhangsan (wide team-payment project row)',
+    denied: { grantWrite: grantWrite.status, policyWrite: policyWrite.status, update: update.status },
+    auditedEventTypes: denied.map((event) => event.eventType)
   })
 }, 120_000)

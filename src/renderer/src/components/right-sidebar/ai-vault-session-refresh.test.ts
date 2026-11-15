@@ -7,6 +7,7 @@ import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
 import type { AiVaultListResult, AiVaultSession } from '../../../../shared/ai-vault-types'
 import type { ExecutionHostScope } from '../../../../shared/execution-host'
 import { useAppStore } from '@/store'
+import { isAiVaultCloudSessionDenial } from '../../../../shared/ai-vault-scan-error-message'
 import {
   isAiVaultScanCancellation,
   resetAiVaultForcedRescanThrottleForTest,
@@ -64,6 +65,31 @@ describe('isAiVaultScanCancellation', () => {
   it('leaves a real scan failure reportable', () => {
     expect(isAiVaultScanCancellation(new Error('SSH relay is not ready'))).toBe(false)
     expect(isAiVaultScanCancellation('nope')).toBe(false)
+  })
+})
+
+describe('isAiVaultCloudSessionDenial', () => {
+  it('recognises every host-gate denial variant through the IPC error wrapper', () => {
+    expect(
+      isAiVaultCloudSessionDenial(
+        "Error invoking remote method 'aiVault:listSessions': Error: Method 'aiVault.listSessions' is not available to cloud sessions."
+      )
+    ).toBe(true)
+    expect(
+      isAiVaultCloudSessionDenial(
+        "Method 'aiVault.listSessions' acts on the host's own window and is not available to cloud sessions."
+      )
+    ).toBe(true)
+    expect(
+      isAiVaultCloudSessionDenial(
+        "Method 'aiVault.listSessions' answers across every session on the host and is not available to cloud sessions."
+      )
+    ).toBe(true)
+  })
+
+  it('leaves scanner and relay failures reportable', () => {
+    expect(isAiVaultCloudSessionDenial('SSH relay is not ready')).toBe(false)
+    expect(isAiVaultCloudSessionDenial('AI Vault service timed out after 30000ms.')).toBe(false)
   })
 })
 
@@ -800,6 +826,30 @@ describe('useAiVaultSessionRefresh in-app agent session behavior', () => {
     await flushMicrotasks()
 
     expect(listSessionsMock.mock.calls.length).toBe(callsWhileHealthy)
+  })
+
+  // U65c: the cloud host gate's denial is an expected degradation — the panel keeps its
+  // document-style empty state and the method name stays in the diagnostic log.
+  it('logs a cloud-session denial instead of painting it, real failures still paint', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    listSessionsMock.mockRejectedValueOnce(
+      new Error(
+        "Error invoking remote method 'aiVault:listSessions': Error: Method 'aiVault.listSessions' is not available to cloud sessions."
+      )
+    )
+    await renderHook(['/home/neil/projects/orca'])
+    await flushMicrotasks()
+
+    expect(latest?.error).toBeNull()
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Method 'aiVault.listSessions' is not available to cloud sessions.")
+    )
+
+    listSessionsMock.mockRejectedValueOnce(new Error('SSH relay is not ready'))
+    await fireWindowFocused()
+    await flushMicrotasks()
+
+    expect(latest?.error).toBe('SSH relay is not ready')
   })
 })
 
