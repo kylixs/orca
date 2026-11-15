@@ -1,6 +1,6 @@
 # W12 诊断 · U15 自建项目平台 `ready` 但客户端持续 `PROJECT_NOT_PREPARED`
 
-> 状态：诊断稿（只诊断不改码），待主会话审定修复方向后再派修
+> 状态：已审定并落地（裁定=B 宿主 init 语义 + 必修时序缺口并行，A/C 缓议挂 P2；W12b-1 `09c5c9a3e19`、W12b-2 `a6d8d1fc7fa`、U23 `108bf8bb832`；结果见 defect-ledger.md U15/U17/U23）
 > 日期：2026-11-14 · 缺陷账：U15🔴（defect-ledger.md:22，用户 3 次复现）
 > 范围：平台 `cloud-platform/apps/api` × 客户端宿主 `src/main/cloud-platform` + `src/main/runtime` × 客户端消费面（创建/打开/横幅重试/侧车）
 > 证据：本仓库代码静态链路 + `/tmp/u15-probe.ts` 隔离实例最小复现（见 §3，未触碰 18787 在线平台与 demo-app=proj_7d0651e6）
