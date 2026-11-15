@@ -2713,6 +2713,10 @@ cron 查证：18787 监听者= `/tmp/m114-forwarder.mjs`（0.0.0.0→127.0.0.1 �
 
 `a1c65bb63ad`（12 文件 +257/−27）：P0 根因=O1-a 只治理镜像订阅未治理创建动作——云会话终端创建从宿主 tab 委派分流为客户端 tab（terminal.create/multiplex 拉起 PTY），覆盖七创建入口。104 测试绿+tc:web 清。**U55→🟢。探索批四令（R1/R2+R5/R3/R4）全部落地：P0×2+P1×6 闭环**。派修复复验（探索路径重放）。
 
+### PS-3 落地（2026-11-15，原型对照）
+
+`2a60be4a1fb`（playwright-server 10 文件）：DOM 清点器统一 schema（含隐藏层）+admin/developer 双轮驱动+三类差异检测（布局 LCS/字段 Dice+别名/菜单 label+role）+compareWithPrototype 真实接线+CLI。**6/6 可预见差异全检出**（方法有效性验收）；真实报告 294 条（P0 2=diagnostics 原型自有/P1 237/P2 55）落 evidence/ps3-prototype-diff/。5/5 新测试+PS 回归 2/2；600 行门禁按职责拆子模块零抑制。空槽派 PS-4 收官。
+
 ### PS-2 落地（2026-11-15，扩展函数库）
 
 `2da67fc8a34`（5 文件 +1011）：16 扩展函数（提取 extractText/Layout/State/Table+操作 login/logout/navigateMenu/openProject/Detail/Workspace/openTab/saveFile/switchDiff/fillForm+断言发现 assertText/waitForState/discover/compareWithPrototype 预留/screenshot）——工作区三函数基于既有 probe 验证过的 cloud-workspace-* testid；`attachUiExtensions` 进 createUi=server 注入与 standalone 自动全量。双模式 demo 双 PASS（工作台文本 1142 字符/11 区块/详情 kv 15 项）。空槽派 PS-3（原型对照）。
