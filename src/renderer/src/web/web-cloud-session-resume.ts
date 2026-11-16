@@ -73,6 +73,7 @@ const UNAVAILABLE_CODES = new Set<string>([
   WEB_CLOUD_CONNECT_ERROR_CODE.projectNotVisible,
   WEB_CLOUD_CONNECT_ERROR_CODE.noProjects,
   WEB_CLOUD_CONNECT_ERROR_CODE.noOpenableProjects,
+  WEB_CLOUD_CONNECT_ERROR_CODE.noAvailableProjects,
   'PROJECT_FORBIDDEN'
 ])
 

@@ -4,6 +4,7 @@ import { translate } from '@/i18n/i18n'
 import type { WebCloudAuthTokens } from './web-cloud-auth'
 import {
   cloudPairingOfferFromTicket,
+  isAvailableCloudProject,
   listCloudProjects,
   loginToCloud,
   requestCloudTicket,
@@ -47,6 +48,7 @@ export const WEB_CLOUD_CONNECT_ERROR_CODE = {
   mobileScopeRejected: 'MOBILE_SCOPE_REJECTED',
   noProjects: 'NO_PROJECTS',
   noOpenableProjects: 'NO_OPENABLE_PROJECTS',
+  noAvailableProjects: 'NO_AVAILABLE_PROJECTS',
   projectNotVisible: 'PROJECT_NOT_VISIBLE'
 } as const
 
@@ -182,17 +184,14 @@ function selectProject(
     }
     return chosen
   }
+  const available = projects.filter(isAvailableCloudProject)
   // Why remembered first: `/v1/projects` order is not the user's workspace, and a
   // project the account cannot open (no `open` permission) answers 403.
-  if (rememberedProjectId !== undefined) {
-    const remembered = projects.find(
-      (project) => project.id === rememberedProjectId && project.permissions.includes('open')
-    )
-    if (remembered) {
-      return remembered
-    }
-  }
-  const openable = projects.find((project) => project.permissions.includes('open'))
+  const remembered =
+    rememberedProjectId === undefined
+      ? undefined
+      : available.find((project) => project.id === rememberedProjectId)
+  const openable = remembered ?? available[0]
   if (openable) {
     return openable
   }
@@ -202,9 +201,15 @@ function selectProject(
       'This account has no visible cloud projects.'
     )
   }
+  const hasOpenable = projects.some((project) => project.permissions.includes('open'))
+  // Why one throw: an offline host's ticket would answer 409 HOST_REVOKED.
   throw new WebCloudConnectError(
-    WEB_CLOUD_CONNECT_ERROR_CODE.noOpenableProjects,
-    'This account can see cloud projects but none grants open permission. Ask an administrator for access.'
+    hasOpenable
+      ? WEB_CLOUD_CONNECT_ERROR_CODE.noAvailableProjects
+      : WEB_CLOUD_CONNECT_ERROR_CODE.noOpenableProjects,
+    hasOpenable
+      ? 'No cloud project can be opened right now: its host is offline or has been revoked.'
+      : 'This account can see cloud projects but none grants open permission. Ask an administrator for access.'
   )
 }
 

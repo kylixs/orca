@@ -17,7 +17,8 @@ vi.mock('./web-cloud-connect', () => ({
     connectFailed: 'CONNECT_FAILED',
     mobileScopeRejected: 'MOBILE_SCOPE_REJECTED',
     noProjects: 'NO_PROJECTS',
-    noOpenableProjects: 'NO_OPENABLE_PROJECTS'
+    noOpenableProjects: 'NO_OPENABLE_PROJECTS',
+    noAvailableProjects: 'NO_AVAILABLE_PROJECTS'
   }
 }))
 
@@ -217,6 +218,24 @@ describe('WebConnect cloud login', () => {
     expect(onConnected).not.toHaveBeenCalled()
     expect(container.textContent).toContain('none can be opened')
     expect(container.textContent).not.toContain('PROJECT_FORBIDDEN')
+  })
+
+  it('shows an explicit empty state when every project host is offline or revoked', async () => {
+    cloudMock.connectCloudProject.mockRejectedValue(
+      Object.assign(new Error('hosts offline'), { code: 'NO_AVAILABLE_PROJECTS' })
+    )
+
+    render(null, 'https://cloud.example.com')
+    if (!container) {
+      throw new Error('missing container')
+    }
+    setInputValue(field(container, 'web-cloud-username'), 'admin')
+    setInputValue(field(container, 'web-cloud-password'), 'Adm1n!')
+
+    await submitCloudForm(container)
+
+    expect(onConnected).not.toHaveBeenCalled()
+    expect(container.textContent).toContain('offline or has been revoked')
   })
 
   it('renders the platform error code and message', async () => {

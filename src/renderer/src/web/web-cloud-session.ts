@@ -62,6 +62,12 @@ export type WebCloudProject = {
   provisioningError: string | null
 }
 
+/** Revoked hosts report `offline` (U170); rows from platforms predating it stay available. */
+export function isAvailableCloudProject(project: WebCloudProject): boolean {
+  const status = project.hostStatus
+  return project.permissions.includes('open') && (!status || status === 'online')
+}
+
 function malformed(message: string): WebCloudSessionError {
   return new WebCloudSessionError(WEB_CLOUD_ERROR_CODE.malformedReply, message)
 }

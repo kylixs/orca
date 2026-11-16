@@ -85,6 +85,15 @@ function restrictedProjectRow(id: string, name: string): Record<string, unknown>
   return { ...projectRow(id, name), permissions: ['download'] }
 }
 
+/** Revoked hosts report `offline` from the platform's hostStatusView (U170). */
+function unavailableHostProjectRow(
+  id: string,
+  name: string,
+  hostStatus = 'offline'
+): Record<string, unknown> {
+  return { ...projectRow(id, name), hostStatus }
+}
+
 function ticketBody(): Record<string, unknown> {
   return {
     credential: TICKET_CREDENTIAL,
@@ -475,6 +484,63 @@ describe('connectCloudProject', () => {
     expect(
       platform.calls.some((call) => call.url.endsWith('/v1/projects/proj_payment/connect'))
     ).toBe(false)
+  })
+
+  it('skips a first row whose host is offline or revoked', async () => {
+    const store = new MemoryStorage()
+    const platform = scriptedPlatform({
+      projects: [
+        unavailableHostProjectRow('proj_payment', 'Payments'),
+        projectRow('proj_demo', 'Demo')
+      ]
+    })
+    const fake = fakeClientFactory(statusSuccess())
+
+    const result = await connectCloudProject(
+      input(store, { fetchImpl: platform.fetchImpl, clientFactory: fake.factory })
+    )
+
+    expect(result.projectId).toBe('proj_demo')
+    expect(
+      platform.calls.some((call) => call.url.endsWith('/v1/projects/proj_payment/connect'))
+    ).toBe(false)
+  })
+
+  it('reports NO_AVAILABLE_PROJECTS instead of connecting to an offline host', async () => {
+    const store = new MemoryStorage()
+    const platform = scriptedPlatform({
+      projects: [
+        unavailableHostProjectRow('proj_payment', 'Payments', 'offline'),
+        unavailableHostProjectRow('proj_ledger', 'Ledger', 'maintenance')
+      ]
+    })
+    const factory = vi.fn()
+
+    const error = await captureError(() =>
+      connectCloudProject(input(store, { fetchImpl: platform.fetchImpl, clientFactory: factory }))
+    )
+
+    expect(error).toBeInstanceOf(WebCloudConnectError)
+    if (!(error instanceof WebCloudConnectError)) {
+      throw new Error('expected WebCloudConnectError')
+    }
+    expect(error.code).toBe(WEB_CLOUD_CONNECT_ERROR_CODE.noAvailableProjects)
+    expect(factory).not.toHaveBeenCalled()
+    expect(platform.calls.some((call) => call.url.endsWith('/connect'))).toBe(false)
+  })
+
+  it('keeps the first visible project when every project is available', async () => {
+    const store = new MemoryStorage()
+    const platform = scriptedPlatform({
+      projects: [projectRow('proj_first', 'First'), projectRow('proj_second', 'Second')]
+    })
+    const fake = fakeClientFactory(statusSuccess())
+
+    const result = await connectCloudProject(
+      input(store, { fetchImpl: platform.fetchImpl, clientFactory: fake.factory })
+    )
+
+    expect(result.projectId).toBe('proj_first')
   })
 
   it('prefers the remembered project over the first visible one', async () => {

@@ -39,6 +39,12 @@ function cloudConnectErrorMessage(code: string, error: unknown): string {
       'This project does not exist or your account cannot open it. Sign in to continue.'
     )
   }
+  if (code === WEB_CLOUD_CONNECT_ERROR_CODE.noAvailableProjects) {
+    return translate(
+      'auto.web.WebConnect.noAvailableProjects',
+      'No cloud project can be opened right now: its host is offline or has been revoked.'
+    )
+  }
   if (code === WEB_CLOUD_CONNECT_ERROR_CODE.noOpenableProjects) {
     return translate(
       'auto.web.WebConnect.noOpenableProjects',
