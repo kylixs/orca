@@ -19,6 +19,7 @@ import {
   type DropIndicator
 } from './drop-indicator'
 import { preventMiddleButtonDefault } from './middle-button-default-guard'
+import { guardTabClosePointerDown } from './tab-close-pointer-guard'
 import { useSortableTabRename } from './use-sortable-tab-rename'
 import { SortableTabContextMenu } from './SortableTabContextMenu'
 import { translate } from '@/i18n/i18n'
@@ -301,18 +302,8 @@ export default function SortableTab({
               : 'text-transparent group-hover:text-muted-foreground hover:!text-foreground hover:!bg-muted'
           }`}
           // Why: the collapse action focuses/activates the group itself; a focus-capture re-render would swallow this click first, so keep DOM focus off the button.
-          onPointerDown={(e) => {
-            if (e.button === 0) {
-              e.preventDefault()
-              e.stopPropagation()
-            }
-          }}
-          onMouseDown={(e) => {
-            if (e.button === 0) {
-              e.preventDefault()
-              e.stopPropagation()
-            }
-          }}
+          onPointerDown={guardTabClosePointerDown}
+          onMouseDown={guardTabClosePointerDown}
           onClick={(e) => {
             e.stopPropagation()
             onToggleExpand(tab.id)
@@ -340,18 +331,8 @@ export default function SortableTab({
             type="button"
             data-tab-close-button="true"
             // Why: a focused close button hands the gesture to the group's onFocusCapture (focusGroup store write + re-render), and the click then lands nowhere; keep DOM focus off the button.
-            onPointerDown={(e) => {
-              if (e.button === 0) {
-                e.preventDefault()
-                e.stopPropagation()
-              }
-            }}
-            onMouseDown={(e) => {
-              if (e.button === 0) {
-                e.preventDefault()
-                e.stopPropagation()
-              }
-            }}
+            onPointerDown={guardTabClosePointerDown}
+            onMouseDown={guardTabClosePointerDown}
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()

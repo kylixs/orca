@@ -12,6 +12,7 @@ import {
   getClientHostedBrowserRowLabel
 } from './client-hosted-browser-row-label'
 import { preventMiddleButtonDefault } from './middle-button-default-guard'
+import { guardTabClosePointerDown } from './tab-close-pointer-guard'
 import { TAB_LABEL_WIDTH_CLASSES } from './tab-width-rules'
 import { useTabStripSlotProps } from './use-tab-strip-slot-props'
 
@@ -87,7 +88,12 @@ export default function ClientHostedBrowserTab({
                 ? 'text-muted-foreground hover:bg-muted hover:text-foreground'
                 : 'text-transparent group-hover:text-muted-foreground hover:!bg-muted hover:!text-foreground'
             }`}
-            onPointerDown={(event) => event.stopPropagation()}
+            // Why: the row activates the group on any pointerdown, so keep the button's gesture from reaching it; the guard adds the primary-button focus protection.
+            onPointerDown={(event) => {
+              event.stopPropagation()
+              guardTabClosePointerDown(event)
+            }}
+            onMouseDown={guardTabClosePointerDown}
             onClick={(event) => {
               event.stopPropagation()
               onClose()

@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { TabHoverCard } from './TabHoverCard'
+import { guardTabClosePointerDown } from './tab-close-pointer-guard'
 import { ORCA_BROWSER_BLANK_URL } from '../../../../shared/constants'
 import { redactKagiSessionToken } from '../../../../shared/browser-url'
 import type { BrowserTab as BrowserTabState } from '../../../../shared/browser-workspace-types'
@@ -207,19 +208,8 @@ export default function BrowserTab({
               : 'text-transparent group-hover:text-muted-foreground hover:!text-foreground hover:!bg-muted'
           }`}
           type="button"
-          // Why: a focused close button hands the gesture to the group's onFocusCapture (focusGroup store write + re-render), and the click then lands nowhere; keep DOM focus off the button.
-          onPointerDown={(e) => {
-            if (e.button === 0) {
-              e.preventDefault()
-              e.stopPropagation()
-            }
-          }}
-          onMouseDown={(e) => {
-            if (e.button === 0) {
-              e.preventDefault()
-              e.stopPropagation()
-            }
-          }}
+          onPointerDown={guardTabClosePointerDown}
+          onMouseDown={guardTabClosePointerDown}
           onClick={(e) => {
             e.stopPropagation()
             onClose()
