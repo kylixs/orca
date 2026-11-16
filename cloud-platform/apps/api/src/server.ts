@@ -1372,7 +1372,7 @@ export function createApp(config: ApiConfig): ApiHandle {
   // and the seed above must not revive it — revoked hosts own no relay route.
   for (const [key, relayRoute] of store.relayRoutes) {
     const routeHost = store.hosts.get(relayRoute.hostId)
-    if (routeHost && routeHost.revokedAt !== null) store.relayRoutes.delete(key)
+    if (!routeHost || routeHost.revokedAt !== null) store.relayRoutes.delete(key)
   }
 
   function resolveToken(req: IncomingMessage): AuthedRequest | null {
@@ -3323,6 +3323,19 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
       entry.usedAt = now()
       const existing = store.hostsByName.get(name)
+      // U143: a revoked host must not come back through name reuse.
+      if (existing && existing.revokedAt !== null) {
+        await audit.append({
+          eventType: 'host_register',
+          actor: 'agent',
+          targetType: 'host',
+          targetId: existing.id,
+          result: 'denied',
+          traceId,
+          metadata: { name, reason: 'host_revoked' }
+        })
+        return error(res, 409, 'HOST_REVOKED', '主机已被吊销，无法重新注册。', traceId)
+      }
       const credential = randomBytes(32).toString('base64url')
       const target: Host = existing ?? {
         id: `host_${randomBytes(4).toString('hex')}`,
