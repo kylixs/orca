@@ -20,6 +20,26 @@ import {
   sweepOrphanedRuntimeSockets
 } from './runtime-rpc-socket-metadata'
 import { errorMessage } from '../../../shared/error-message'
+import type { AuthenticatedMobileSocket } from '../rpc/mobile-socket-wiring'
+
+// Why: best-effort id/method recovery so a failed dispatch still produces a correlated error frame.
+function dispatchCorrelation(rawMessage: string): { id: string; method: string } {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(rawMessage)
+  } catch {
+    return { id: 'unknown', method: 'unknown' }
+  }
+  if (typeof parsed !== 'object' || parsed === null) {
+    return { id: 'unknown', method: 'unknown' }
+  }
+  const id = Reflect.get(parsed, 'id')
+  const method = Reflect.get(parsed, 'method')
+  return {
+    id: typeof id === 'string' && id.length > 0 ? id : 'unknown',
+    method: typeof method === 'string' && method.length > 0 ? method : 'unknown'
+  }
+}
 
 export class RuntimeRpcLifecycle extends RuntimeRpcWebSocketDispatch {
   async start(): Promise<void> {
@@ -52,18 +72,8 @@ export class RuntimeRpcLifecycle extends RuntimeRpcWebSocketDispatch {
           reply(JSON.stringify(response))
         })
         .catch((error) => {
-          const message = errorMessage(error)
-          // Why: best-effort id recovery so the client can correlate the error frame to its pending request.
-          let id = 'unknown'
-          try {
-            const parsed = JSON.parse(msg) as { id?: unknown }
-            if (typeof parsed.id === 'string' && parsed.id.length > 0) {
-              id = parsed.id
-            }
-          } catch {
-            // ignore — fall through with id='unknown'
-          }
-          reply(JSON.stringify(this.buildError(id, 'internal_error', message)))
+          const { id } = dispatchCorrelation(msg)
+          reply(JSON.stringify(this.buildError(id, 'internal_error', errorMessage(error))))
         })
     })
 
@@ -203,6 +213,43 @@ export class RuntimeRpcLifecycle extends RuntimeRpcWebSocketDispatch {
     }
   }
 
+  // Why: the mobile socket path is fire-and-forget, but a dispatch that throws must still
+  // answer — otherwise the client waits out RPC_TIMEOUT and the fault looks like a dead host (U102).
+  protected dispatchMobileSocketText(
+    socket: AuthenticatedMobileSocket,
+    plaintext: string,
+    reply: (response: string) => void,
+    sendBinary: (response: Uint8Array<ArrayBufferLike>) => boolean | void
+  ): Promise<void> {
+    return this.trackClientRequest(() =>
+      this.handleWebSocketMessage(
+        plaintext,
+        reply,
+        sendBinary,
+        undefined,
+        socket.ws,
+        socket.device.deviceToken,
+        socket
+      )
+    ).catch((error) => {
+      const { id, method } = dispatchCorrelation(plaintext)
+      // Host keeps the stack; the remote only gets the method and a summary, never the trace.
+      console.warn(`[runtime] mobile RPC dispatch failed (${method}, id ${id}):`, error)
+      try {
+        reply(
+          JSON.stringify(
+            this.buildError(id, 'internal_error', `${method} failed: ${errorMessage(error)}`)
+          )
+        )
+      } catch (replyError) {
+        console.warn(
+          `[runtime] failed to send dispatch error reply (${method}, id ${id}):`,
+          replyError
+        )
+      }
+    })
+  }
+
   // Why: one MobileSocketWiring per server session. Direct WS and cloud relay both attach to it, and
   // DesktopRelayService captures it once at construction, so a loopback→wide pairing rebind must swap the
   // transport under the SAME wiring — replacing the wiring would strand relay sockets (lost connection IDs,
@@ -222,17 +269,7 @@ export class RuntimeRpcLifecycle extends RuntimeRpcWebSocketDispatch {
       deviceRegistry,
       e2eeKeypair,
       onText: (socket, plaintext, reply, sendBinary) => {
-        void this.trackClientRequest(() =>
-          this.handleWebSocketMessage(
-            plaintext,
-            reply,
-            sendBinary,
-            undefined,
-            socket.ws,
-            socket.device.deviceToken,
-            socket
-          )
-        )
+        void this.dispatchMobileSocketText(socket, plaintext, reply, sendBinary)
       },
       onBinary: (socket, bytes) => {
         this.lastClientRequestAt = Date.now()

@@ -471,10 +471,8 @@ describe('session tabs inventory RPC methods', () => {
     )
     const waiters = (runtime as unknown as { sessionTabsInventoryWaiters: Set<() => void> })
       .sessionTabsInventoryWaiters
-    for (let index = 0; index < 20 && waiters.size === 0; index += 1) {
-      await Promise.resolve()
-    }
-    expect(waiters.size).toBe(1)
+    // Why: the waiter is armed after the priming census, so poll instead of counting microtasks.
+    await vi.waitFor(() => expect(waiters.size).toBe(1))
 
     runtime.cleanupSubscription('session.tabs:conn-cancel:*:req-1')
     await pending
@@ -485,6 +483,34 @@ describe('session tabs inventory RPC methods', () => {
         ok: false,
         error: expect.objectContaining({ code: 'runtime_error' })
       })
+    ])
+  })
+
+  // Why: A-1b — a host that never attaches a window never publishes a graph epoch, so the census
+  // must answer immediately instead of arming a waiter that only an RPC timeout would end.
+  it('answers immediately and arms no publication waiter without an authoritative window', async () => {
+    const runtime = new OrcaRuntimeService()
+    const dispatcher = new RpcDispatcher({ runtime, methods: SESSION_TAB_METHODS })
+    const messages: string[] = []
+
+    await dispatcher.dispatchStreaming(
+      makeRequest('session.tabs.subscribeAll'),
+      (message) => messages.push(message),
+      {
+        connectionId: 'conn-headless',
+        clientCapabilities: [SESSION_TABS_AUTHORITATIVE_INVENTORY_RUNTIME_CAPABILITY]
+      }
+    )
+
+    const waiters = (runtime as unknown as { sessionTabsInventoryWaiters: Set<() => void> })
+      .sessionTabsInventoryWaiters
+    expect(waiters.size).toBe(0)
+    expect(messages.map((message) => JSON.parse(message).result?.type)).toEqual(['snapshots'])
+
+    runtime.cleanupSubscription('session.tabs:conn-headless:*:req-1')
+    expect(messages.map((message) => JSON.parse(message).result?.type)).toEqual([
+      'snapshots',
+      'end'
     ])
   })
 
