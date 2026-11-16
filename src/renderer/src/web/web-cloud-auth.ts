@@ -1,5 +1,9 @@
 import { readNumber, readString } from '../../../shared/json-fields'
-import { webCloudSessionExpiredError } from './web-cloud-error'
+import {
+  WEB_CLOUD_ERROR_CODE,
+  WebCloudSessionError,
+  webCloudSessionExpiredError
+} from './web-cloud-error'
 
 /**
  * Browser-side token renewal. One login owns one instance, so concurrent
@@ -77,6 +81,7 @@ export function createWebCloudAuth(init: WebCloudAuthInit): WebCloudAuth {
     let nextAccess: string | null = null
     let nextRefresh: string | null = null
     let nextExpiresIn: number | null = null
+    let unreachable = false
     try {
       const response = await fetchImpl(`${baseUrl}/v1/auth/refresh`, {
         method: 'POST',
@@ -90,9 +95,17 @@ export function createWebCloudAuth(init: WebCloudAuthInit): WebCloudAuth {
         nextExpiresIn = readNumber(body, 'expiresIn')
       }
     } catch {
-      nextAccess = null
+      unreachable = true
     }
     if (nextAccess === null) {
+      // Why distinguish: a dead refresh token is final, but an offline reload must
+      // keep the saved login so the next attempt can still succeed.
+      if (unreachable) {
+        throw new WebCloudSessionError(
+          WEB_CLOUD_ERROR_CODE.network,
+          'The platform cannot be reached to renew the session.'
+        )
+      }
       expired = true
       throw webCloudSessionExpiredError()
     }

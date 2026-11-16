@@ -11,12 +11,15 @@ import {
   saveStoredWebRuntimeEnvironment,
   type StoredWebRuntimeEnvironment
 } from './web-runtime-environment'
+import { normalizeWebCloudWorkspaceUrl } from './web-cloud-workspace-location'
 import { translate } from '@/i18n/i18n'
 
 type WebConnectCloudFormProps = {
   existingEnvironment: StoredWebRuntimeEnvironment | null
   /** Pre-fills the platform address, e.g. from a handoff entry URL's `?api=`. */
   initialApiUrl?: string | null
+  /** The project named by the entry URL; sign-in returns to that page. */
+  initialProjectId?: string | null
   onConnected: () => void
 }
 
@@ -28,6 +31,12 @@ function defaultCloudApiUrl(): string {
 
 /** A visible empty state beats the raw 403 a forbidden pick would surface. */
 function cloudConnectErrorMessage(code: string, error: unknown): string {
+  if (code === WEB_CLOUD_CONNECT_ERROR_CODE.projectNotVisible) {
+    return translate(
+      'auto.web.WebConnect.projectUnavailable',
+      'This project does not exist or your account cannot open it. Sign in to continue.'
+    )
+  }
   if (code === WEB_CLOUD_CONNECT_ERROR_CODE.noOpenableProjects) {
     return translate(
       'auto.web.WebConnect.noOpenableProjects',
@@ -46,6 +55,7 @@ function cloudConnectErrorMessage(code: string, error: unknown): string {
 export default function WebConnectCloudForm({
   existingEnvironment,
   initialApiUrl = null,
+  initialProjectId = null,
   onConnected
 }: WebConnectCloudFormProps): React.JSX.Element {
   // The handoff entry URL's ?api= wins: it is the platform the code came from.
@@ -73,6 +83,7 @@ export default function WebConnectCloudForm({
         password,
         deviceName: deviceName.trim() || 'Orca Web',
         deviceKeyStore: createLocalStorageWebCloudDeviceKey(),
+        ...(initialProjectId ? { projectId: initialProjectId } : {}),
         previousEnvironment: existingEnvironment
       })
       try {
@@ -82,6 +93,11 @@ export default function WebConnectCloudForm({
         connection.client.close()
         throw err
       }
+      // Why normalize: the reload URL must name the project the App just opened.
+      normalizeWebCloudWorkspaceUrl({
+        apiUrl: apiUrl.trim(),
+        projectId: connection.projectId
+      })
       // Why adopt: the ticket was consumed by the validation probe, so the App
       // must use this exact live socket instead of upgrading the stored offer again.
       adoptWebRuntimeClient(connection.client, connection.environment)

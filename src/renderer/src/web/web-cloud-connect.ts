@@ -39,7 +39,8 @@ export const WEB_CLOUD_CONNECT_ERROR_CODE = {
   connectFailed: 'CONNECT_FAILED',
   mobileScopeRejected: 'MOBILE_SCOPE_REJECTED',
   noProjects: 'NO_PROJECTS',
-  noOpenableProjects: 'NO_OPENABLE_PROJECTS'
+  noOpenableProjects: 'NO_OPENABLE_PROJECTS',
+  projectNotVisible: 'PROJECT_NOT_VISIBLE'
 } as const
 
 /** The stored environment name marks a cloud session with this suffix (see `toCloudEnvironment`). */
@@ -159,10 +160,14 @@ function selectProject(
   rememberedProjectId: string | undefined
 ): WebCloudProject {
   if (projectId !== undefined) {
-    const chosen = projects.find((project) => project.id === projectId)
+    // Why no fallback: a URL-named project is the page the user is on. Switching
+    // to another project would silently show a different workspace on refresh.
+    const chosen = projects.find(
+      (project) => project.id === projectId && project.permissions.includes('open')
+    )
     if (!chosen) {
       throw new WebCloudConnectError(
-        WEB_CLOUD_CONNECT_ERROR_CODE.noProjects,
+        WEB_CLOUD_CONNECT_ERROR_CODE.projectNotVisible,
         `Project ${projectId} is not visible to this account.`
       )
     }

@@ -11,11 +11,20 @@ import {
   readPairingInputFromLocation
 } from './web-pairing'
 import {
-  clearWebHandoffFromAddressBar,
   readWebCloudApiUrlFromLocation,
   readWebCloudHandoffEntry,
   useWebCloudHandoffEntry
 } from './web-cloud-handoff-entry'
+import {
+  normalizeWebCloudWorkspaceUrl,
+  readWebCloudWorkspaceLocation
+} from './web-cloud-workspace-location'
+import {
+  createBrowserWebCloudSessionStorage,
+  readPersistedWebCloudSession
+} from './web-cloud-session-storage'
+import { createLocalStorageWebCloudDeviceKey } from './web-cloud-device-key'
+import { resumeWebCloudSession, webCloudResumeFailureNotice } from './web-cloud-session-resume'
 import {
   clearStoredWebRuntimeEnvironment,
   createStoredWebRuntimeEnvironment,
@@ -37,19 +46,34 @@ function WebRoot(): React.JSX.Element {
   // will install, including whether a cloud ticket (already consumed) produced it.
   const startup = useMemo(() => {
     // FR-3.10: an explicit handoff outranks every stored environment, and its
-    // code leaves the address bar before anything can record it again.
+    // code leaves the address bar before anything can record it again. The project
+    // id stays, so a spent code still has a page to return to after sign-in.
     const handoffEntry = readWebCloudHandoffEntry(window.location)
     if (handoffEntry) {
-      clearWebHandoffFromAddressBar()
-      return { decision: null, cloudSessionEnded: false, handoffEntry, cloudApiUrl: null }
+      normalizeWebCloudWorkspaceUrl({
+        apiUrl: handoffEntry.apiUrl || null,
+        projectId: handoffEntry.projectId
+      })
+      return {
+        decision: null,
+        cloudSessionEnded: false,
+        handoffEntry,
+        cloudApiUrl: handoffEntry.apiUrl || null,
+        workspaceLocation: {
+          apiUrl: handoffEntry.apiUrl || null,
+          projectId: handoffEntry.projectId
+        },
+        resume: null
+      }
     }
     const initialPairingInput = readPairingInputFromLocation(window.location)
+    const workspaceLocation = readWebCloudWorkspaceLocation(window.location)
     const storedEnvironment = readStoredWebRuntimeEnvironment()
     const cloudSessionEnded =
       storedEnvironment !== null && isCloudSessionWebEnvironment(storedEnvironment)
     if (cloudSessionEnded) {
-      // Why clear: the ticket cannot be replayed, so keeping the record only
-      // risks mounting App against a pairing that can never authenticate.
+      // Why clear the spent pairing: its ticket cannot be replayed. The saved
+      // cloud login below is what makes the reload recoverable.
       clearStoredWebRuntimeEnvironment()
     }
     // Why: current runtime links carry scope metadata. Runtime-scope offers keep
@@ -64,13 +88,30 @@ function WebRoot(): React.JSX.Element {
     ) {
       clearPairingInputFromAddressBar()
     }
+    // U103-B1: a saved cloud login resumes the workspace instead of forcing the
+    // sign-in form. An explicit pairing input or a live pairing environment wins.
+    const canResume =
+      initialPairingInput === null &&
+      (storedEnvironment === null || cloudSessionEnded) &&
+      workspaceLocation.apiUrl !== null &&
+      readPersistedWebCloudSession(
+        createBrowserWebCloudSessionStorage(),
+        workspaceLocation.apiUrl
+      ) !== null
     return {
       decision,
       cloudSessionEnded,
       handoffEntry: null,
       // Why: `?api=` outlives the handoff hash, so a spent-code fallback and a
       // plain refresh both keep the platform address on the sign-in form.
-      cloudApiUrl: readWebCloudApiUrlFromLocation(window.location)
+      cloudApiUrl: workspaceLocation.apiUrl ?? readWebCloudApiUrlFromLocation(window.location),
+      workspaceLocation,
+      resume: canResume
+        ? {
+            location: workspaceLocation,
+            previousEnvironment: cloudSessionEnded ? storedEnvironment : null
+          }
+        : null
     }
   }, [])
   const startupDecision = startup.decision
@@ -99,9 +140,51 @@ function WebRoot(): React.JSX.Element {
     handoffStarted.current = true
     handoff.begin(startup.handoffEntry)
   }, [startup.handoffEntry, handoff])
+  const [resumeState, setResumeState] = useState<
+    { status: 'idle' } | { status: 'running' } | { status: 'failed'; notice: string | null }
+  >({ status: 'idle' })
+  const resumeStarted = useRef(false)
+  useEffect(() => {
+    const resume = startup.resume
+    if (!resume || resumeStarted.current) {
+      return
+    }
+    resumeStarted.current = true
+    setResumeState({ status: 'running' })
+    void resumeWebCloudSession({
+      location: resume.location,
+      storage: createBrowserWebCloudSessionStorage(),
+      deviceKeyStore: createLocalStorageWebCloudDeviceKey(),
+      previousEnvironment: resume.previousEnvironment
+    })
+      .then((result) => {
+        if (result.status === 'resumed') {
+          // Why: a remembered-project resume must leave a page-level URL too.
+          normalizeWebCloudWorkspaceUrl({
+            apiUrl: resume.location.apiUrl,
+            projectId: result.projectId
+          })
+          setHasEnvironment(true)
+          return
+        }
+        setResumeState({
+          status: 'failed',
+          notice: webCloudResumeFailureNotice(result)
+        })
+      })
+      .catch(() =>
+        setResumeState({
+          status: 'failed',
+          notice: translate(
+            'auto.web.WebConnect.resumeFailed',
+            'The saved cloud session could not be resumed. Sign in to continue.'
+          )
+        })
+      )
+  }, [startup.resume])
 
   if (!hasEnvironment) {
-    if (handoff.state.status === 'entering') {
+    if (handoff.state.status === 'entering' || resumeState.status === 'running') {
       return (
         <div className="flex min-h-dvh items-center justify-center bg-background px-4 text-foreground">
           <p className="text-sm text-muted-foreground">
@@ -117,20 +200,23 @@ function WebRoot(): React.JSX.Element {
           startupDecision?.kind === 'show-connect' ? startupDecision.initialPairingInput : null
         }
         initialNotice={
-          sessionRecovery.status === 'signed-out'
-            ? sessionRecovery.notice
-            : handoffFailure
-              ? handoffFailure.notice
-              : startup.cloudSessionEnded &&
-                  startupDecision?.kind === 'show-connect' &&
-                  startupDecision.initialPairingInput === null
-                ? translate(
-                    'auto.web.WebConnect.cloudSessionEnded',
-                    'Your cloud session ended when this page closed. Sign in again to continue.'
-                  )
-                : null
+          resumeState.status === 'failed' && resumeState.notice
+            ? resumeState.notice
+            : sessionRecovery.status === 'signed-out'
+              ? sessionRecovery.notice
+              : handoffFailure
+                ? handoffFailure.notice
+                : startup.cloudSessionEnded &&
+                    startupDecision?.kind === 'show-connect' &&
+                    startupDecision.initialPairingInput === null
+                  ? translate(
+                      'auto.web.WebConnect.cloudSessionEnded',
+                      'Your cloud session ended when this page closed. Sign in again to continue.'
+                    )
+                  : null
         }
         initialCloudApiUrl={handoffFailure?.apiUrl ?? startup.cloudApiUrl}
+        initialProjectId={startup.workspaceLocation.projectId}
         onConnected={() => setHasEnvironment(true)}
       />
     )

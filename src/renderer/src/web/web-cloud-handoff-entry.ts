@@ -109,7 +109,8 @@ export function webCloudHandoffFailureNotice(error: unknown): string {
   }
   if (
     error instanceof WebCloudConnectError &&
-    error.code === WEB_CLOUD_CONNECT_ERROR_CODE.noProjects
+    (error.code === WEB_CLOUD_CONNECT_ERROR_CODE.noProjects ||
+      error.code === WEB_CLOUD_CONNECT_ERROR_CODE.projectNotVisible)
   ) {
     return translate(
       'auto.web.WebConnect.handoffNoProject',

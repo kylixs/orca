@@ -166,18 +166,24 @@ describe('浏览器云端令牌续期', () => {
     expect(platform.tokens).toEqual(['refresh-0'])
   })
 
-  it('网络异常同样把会话锁定为 SESSION_EXPIRED', async () => {
+  it('网络异常报 network_error 且不锁定会话，下次可重试', async () => {
+    let attempts = 0
     const auth = createWebCloudAuth({
       apiUrl: 'http://platform.test',
       accessToken: 'access-0',
       refreshToken: 'refresh-0',
       fetchImpl: async () => {
+        attempts += 1
         throw new Error('offline')
       },
       now: () => START
     })
     const error = await captureError(() => auth.refresh(true))
-    expect(error.code).toBe('SESSION_EXPIRED')
-    expect(error.status).toBe(401)
+    expect(error.code).toBe('network_error')
+    expect(error.status).toBeNull()
+
+    const retry = await captureError(() => auth.refresh(true))
+    expect(retry.code).toBe('network_error')
+    expect(attempts).toBe(2)
   })
 })

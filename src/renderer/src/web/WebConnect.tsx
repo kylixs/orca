@@ -23,6 +23,8 @@ type WebConnectProps = {
   initialNotice?: string | null
   /** Pre-fills the platform address, e.g. from a spent handoff entry URL. */
   initialCloudApiUrl?: string | null
+  /** The URL's project, opened after sign-in so a refresh returns to that page. */
+  initialProjectId?: string | null
   onConnected: () => void
 }
 
@@ -32,6 +34,7 @@ export default function WebConnect({
   initialPairingInput,
   initialNotice = null,
   initialCloudApiUrl = null,
+  initialProjectId = null,
   onConnected
 }: WebConnectProps): React.JSX.Element {
   const existingEnvironment = readStoredWebRuntimeEnvironment()
@@ -164,6 +167,7 @@ export default function WebConnect({
             <WebConnectCloudForm
               existingEnvironment={existingEnvironment}
               initialApiUrl={initialCloudApiUrl}
+              initialProjectId={initialProjectId}
               onConnected={onConnected}
             />
           </TabsContent>
