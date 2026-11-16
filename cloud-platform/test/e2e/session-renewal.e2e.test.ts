@@ -20,11 +20,15 @@ async function start(accessTtlMs: number, refreshTtlMs: number): Promise<string>
   return `http://127.0.0.1:${port}`
 }
 
-async function login(base: string): Promise<Record<string, unknown>> {
+async function login(
+  base: string,
+  username = 'zhangsan',
+  password = 'Passw0rd!'
+): Promise<Record<string, unknown>> {
   const res = await fetch(`${base}/v1/auth/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ username: 'zhangsan', password: 'Passw0rd!', deviceName: 'renewal' })
+    body: JSON.stringify({ username, password, deviceName: 'renewal' })
   })
   assert.equal(res.status, 200)
   return res.json()
@@ -141,5 +145,39 @@ describe('平台会话续期（真实 createApp + HTTP）', () => {
       'renewing must rotate the refresh token'
     )
     assert.match(page.text('#content'), /中继/, 'the replay must render the page')
+  })
+
+  test('并行 401 共享一次 refresh，不触发登出（U134）', async () => {
+    // 我的项目 load is Promise.all([GET /v1/projects, GET /v1/policies/download]):
+    // two real requests carrying the same expired access token. Each 401 must
+    // join one refresh, or the loser reuses the rotated token and logs out.
+    const base = await start(1200, 60_000)
+    const page = loadWebConsolePage(base)
+    await page.settle()
+    await page.submitLogin('admin', 'Adm1n!')
+    assert.equal(page.hidden('#view-app'), false)
+    const refreshBefore = page.window.localStorage.getItem('orca.refresh')
+    assert.ok(refreshBefore, 'login must persist a refresh token')
+
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+    const refreshCallsBefore = page.calls().filter(
+      (call) => call === 'POST /v1/auth/refresh'
+    ).length
+    await page.clickNav('projects')
+
+    const refreshCalls = page.calls().filter((call) => call === 'POST /v1/auth/refresh')
+    assert.equal(
+      refreshCalls.length - refreshCallsBefore,
+      1,
+      'the parallel 401s must share one refresh'
+    )
+    assert.equal(page.hidden('#view-app'), false, 'the user stays signed in')
+    assert.match(page.text('#content'), /我的项目/, 'both replayed requests must render')
+    assert.match(page.text('#content'), /payment-service/, 'the project list came back')
+    assert.notEqual(
+      page.window.localStorage.getItem('orca.refresh'),
+      refreshBefore,
+      'renewing must rotate the refresh token'
+    )
   })
 })

@@ -40,25 +40,17 @@ function relative(ts) {
 }
 
 async function api(path, init = {}) {
+  const accessToken = state.accessToken
   const res = await fetch(path, {
     ...init,
     headers: {
       'content-type': 'application/json',
-      ...(state.accessToken ? { authorization: `Bearer ${state.accessToken}` } : {}),
+      ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}),
       ...(init.headers ?? {})
     }
   })
   if (res.status === 401 && state.refreshToken) {
-    const refreshed = await fetch('/v1/auth/refresh', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ refreshToken: state.refreshToken })
-    })
-    if (refreshed.ok) {
-      const body = await refreshed.json()
-      setTokens(body.accessToken, body.refreshToken)
-      return api(path, init)
-    }
+    if (await refreshSession(accessToken)) return api(path, init)
     logout()
   }
   const body = res.status === 204 ? {} : await res.json().catch(() => ({}))
@@ -69,6 +61,33 @@ async function api(path, init = {}) {
     throw err
   }
   return body
+}
+
+/** U134: parallel 401s share one rotation — a second refresh with the already
+ * rotated token would kill the session and sign the user out. */
+let refreshInFlight = null
+
+function refreshSession(staleAccess) {
+  // The token this request carried is already gone: someone else renewed first.
+  if (state.accessToken !== staleAccess) return Promise.resolve(true)
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      try {
+        const res = await fetch('/v1/auth/refresh', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ refreshToken: state.refreshToken })
+        })
+        if (!res.ok) return false
+        const body = await res.json()
+        setTokens(body.accessToken, body.refreshToken)
+        return true
+      } finally {
+        refreshInFlight = null
+      }
+    })()
+  }
+  return refreshInFlight
 }
 
 function setTokens(access, refresh) {

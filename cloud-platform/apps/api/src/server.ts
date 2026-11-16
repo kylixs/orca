@@ -3107,6 +3107,20 @@ export function createApp(config: ApiConfig): ApiHandle {
         return error(res, 404, 'USER_NOT_FOUND', '用户不存在。', traceId)
       }
       const from = userPageRole(target.roles)
+      // U135: a disabled account keeps its directory state until re-enabled;
+      // re-roling it would pre-stage permissions for a login that must not work.
+      if (target.status !== 'active') {
+        audit.appendBestEffort({
+          eventType: 'role_update',
+          actor: authed.user.username,
+          targetType: 'user',
+          targetId: target.id,
+          result: 'denied',
+          traceId,
+          metadata: { reason: 'USER_DISABLED', from, to: next, username: target.username }
+        })
+        return error(res, 409, 'USER_DISABLED', '账号已停用，不能修改角色。', traceId)
+      }
       // 只有管理员降级需要撤凭证：旧云会话票据按 admin 旁路签发（位无上限），
       // 降级后必须重算——≤60s 心跳撤销闭环；升级只增不减，不撤销（§7.3）。
       const revoked = from === 'admin' && next !== 'admin'
