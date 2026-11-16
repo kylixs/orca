@@ -30,6 +30,7 @@ export const AUDIT_EVENT_TYPES: readonly string[] = [
   'host_revoke',
   'host_tls_fingerprint_changed',
   'host_token_create',
+  'install_download_token_create',
   'install_script',
   'login',
   'logout',

@@ -12,6 +12,7 @@ const state = {
   routeQuery: null,
   deviceId: localStorage.getItem('orca.device') ?? '',
   lastHosts: [],
+  users: [],
   /** Admin-only subject directory (A1), cached for the permission-tab pickers. */
   directory: null,
   auditFilter: {},
@@ -149,8 +150,70 @@ function routeSignature(route) {
 function navigate(name, params = {}, query = undefined) {
   const hash = buildHash({ name, params, query })
   if (location.hash !== hash) location.hash = hash
+  // 详情层是应用内 push 的条目：关闭时据此决定 back（回列表）还是 replace（深链直达）。
+  window.history.replaceState(params?.id ? { detail: true } : null, '', hash)
   // 显式导航总是重绘（重复点当前导航项=刷新）；只有 hashchange 去重。
   applyRoute(parseHash(hash), { force: true })
+}
+
+/** 详情深链：`projects|hosts|users/<id>`，`?tab=perms` 选权限页签（D3）。 */
+function detailRouteOf(route) {
+  if (!['projects', 'hosts', 'users'].includes(route?.name)) return null
+  const id = route.params?.id
+  if (typeof id !== 'string' || id === '') return null
+  return {
+    name: route.name,
+    id,
+    tab: route.query?.get('tab') === 'perms' ? 'perms' : 'info'
+  }
+}
+
+/** 当前打开的详情层（项目弹框 / 主机抽屉 / 用户弹框）。 */
+let activeDetail = null
+
+/** 路由切换时静默移除旧详情层，不操作历史（§3.1 页面导航）。 */
+function removeActiveDetail() {
+  if (!activeDetail) return
+  const current = activeDetail
+  activeDetail = null
+  current.remove()
+}
+
+/** 关闭详情层：列表点击 push 的条目后退一步；深链直达则替换为父路由。 */
+function handleDetailClose(parent) {
+  activeDetail = null
+  if (window.history.state?.detail === true) {
+    window.history.back()
+    return
+  }
+  const hash = buildHash({ name: parent })
+  window.history.replaceState(null, '', hash)
+  appliedRoute = routeSignature(parseHash(hash))
+}
+
+/** 页签是视图态：tab 变化 replaceState（刷新可恢复），不新增历史项。 */
+function replaceDetailTab(name, id, tab) {
+  const hash = buildHash({
+    name,
+    params: { id },
+    query: tab === 'perms' ? { tab: 'perms' } : undefined
+  })
+  if (location.hash === hash) return
+  window.history.replaceState(window.history.state, '', hash)
+  appliedRoute = routeSignature(parseHash(hash))
+}
+
+/** 列表点击：push 详情条目后直接打开，避免重载列表（与深链共用 openRouteDetail）。 */
+function openDetailFromList(name, id) {
+  const hash = buildHash({ name, params: { id } })
+  if (location.hash === hash) {
+    window.history.replaceState({ detail: true }, '', hash)
+  } else {
+    window.history.pushState({ detail: true }, '', hash)
+  }
+  state.routeParams = { id }
+  appliedRoute = routeSignature(parseHash(hash))
+  void openRouteDetail(parseHash(hash))
 }
 
 /**
@@ -165,6 +228,14 @@ function applyRoute(route, { force = false } = {}) {
   if (route.name === 'login') {
     navigate(DEFAULT_ROUTE)
     return
+  }
+  // 切到别的路由（或别的详情 id）前先移除旧弹框/抽屉，历史由浏览器自己走。
+  const detail = detailRouteOf(route)
+  if (
+    activeDetail &&
+    (!detail || activeDetail.name !== detail.name || activeDetail.id !== detail.id)
+  ) {
+    removeActiveDetail()
   }
   state.route = route.name
   state.routeParams = route.params
@@ -184,15 +255,29 @@ function applyRoute(route, { force = false } = {}) {
   if (!force && signature === appliedRoute) return
   appliedRoute = signature
   updateNav(route.name)
-  // workspace 与详情参数由 R3/R4 接管；在此之前它们仍落到列表页。
-  void loadContent(ROUTE_RENDERERS[route.name] ?? renderWorkbench)
+  const render = ROUTE_RENDERERS[route.name] ?? renderWorkbench
+  // 详情先完成列表加载，再按 id 打开弹框/抽屉（列表数据即存在性判据）。
+  if (detail) {
+    // Q5/T5：详情弹框管理员专属，非管理员直达同一 URL 给 403（URL 保留）。
+    if (detail.name === 'projects' && !isAdmin()) {
+      renderForbidden()
+      return
+    }
+    // 显式重绘同一详情时先收起旧层，避免叠两个弹框。
+    removeActiveDetail()
+    void loadContent(render).then((result) => {
+      if (appliedRoute === signature) void openRouteDetail(route, result)
+    })
+    return
+  }
+  void loadContent(render)
 }
 
 /** One failed fetch must not leave the page stuck on its own spinner (M116-QA-011). */
 async function loadContent(render) {
   content().innerHTML = '<p class="muted">加载中…</p>'
   try {
-    await render()
+    return await render()
   } catch (err) {
     content().innerHTML = `
       <div class="forbidden">
@@ -238,6 +323,53 @@ function renderNotFound() {
       </div>
     </div>`
   $('#backToWorkbench').onclick = () => navigate('workbench')
+}
+
+/** T5：id 不存在或当前名单不可见一律 404 语义，不泄露存在性。 */
+function renderDetailNotFound(parent) {
+  const labels = {
+    projects: ['项目', '返回我的项目'],
+    hosts: ['主机', '返回主机'],
+    users: ['用户', '返回用户管理']
+  }
+  const [noun, backLabel] = labels[parent]
+  clearActiveNav()
+  content().innerHTML = `
+    <div class="forbidden">
+      <div class="box">
+        <h1>页面不存在</h1>
+        <p class="muted">链接里的${noun}不存在或当前账号不可见。地址保留，刷新会重新校验。</p>
+        <button class="btn primary" id="backToParent">${backLabel}</button>
+      </div>
+    </div>`
+  $('#backToParent').onclick = () => navigate(parent)
+}
+
+/** 列表加载完成后按详情路由打开既有弹框/抽屉（U106 R3）。 */
+async function openRouteDetail(route, listResult) {
+  const detail = detailRouteOf(route)
+  if (!detail) return
+  const onClose = () => handleDetailClose(detail.name)
+  if (detail.name === 'projects') {
+    if (!state.projects.some((p) => p.id === detail.id)) {
+      return renderDetailNotFound('projects')
+    }
+    await openProjectDetail(detail.id, { tab: detail.tab, onClose })
+    return
+  }
+  if (detail.name === 'hosts') {
+    if (!state.lastHosts.some((h) => h.id === detail.id)) {
+      return renderDetailNotFound('hosts')
+    }
+    await showHost(detail.id, { tab: detail.tab, onClose })
+    return
+  }
+  const user = (listResult ?? state.users).find((item) => item.id === detail.id)
+  if (!user) {
+    renderDetailNotFound('users')
+    return
+  }
+  openUserDetail(user, { onClose })
 }
 
 async function loadProjects() {
@@ -508,9 +640,10 @@ function wireProjectActions() {
   }
   for (const btn of document.querySelectorAll('[data-detail]')) {
     btn.onclick = () => {
-      // Keep the row button as the opener so closing the dialog can return focus.
+      // 详情是 URL 状态：push 后立即打开，浏览器后退可回到列表（U106 R3）。
+      // 保持行按钮为 opener，关闭时焦点回到它（U46 §3.5）。
       btn.focus()
-      void openProjectDetail(btn.dataset.detail ?? '')
+      openDetailFromList('projects', btn.dataset.detail ?? '')
     }
   }
   for (const btn of document.querySelectorAll('[data-go]')) {
@@ -965,7 +1098,7 @@ function wireDetailCopy(backdrop) {
  * plus the existing read endpoints (grants, policy, host grants). Never talks
  * to the host, so an offline/maintenance host is still inspectable.
  */
-async function openProjectDetail(projectId) {
+async function openProjectDetail(projectId, { tab = 'info', onClose } = {}) {
   const cached = state.projects.find((p) => p.id === projectId)
   if (!cached) {
     return
@@ -974,8 +1107,13 @@ async function openProjectDetail(projectId) {
   // failed read degrades to free-text input, never to a broken dialog.
   if (isAdmin() && !state.directory) state.directory = await loadDirectory()
   let project = cached
+  let currentTab = tab
+  // 「打开项目」进入覆盖层：URL 不再回落列表（workspace 路由由 R4 接管）。
+  let openedWorkspace = false
   const reason = openDisabledReason(cached)
   const extra = { grantsLoading: true, grants: [], hostRows: null }
+  // 详情层身份：静默移除后旧弹框的 Escape 监听不得影响新层（onClose 身份比对）。
+  const detailEntry = { name: 'projects', id: projectId, remove: () => backdrop.remove() }
   const backdrop = dialog(
     '项目详情',
     projectDetailHtml(project, extra),
@@ -986,12 +1124,21 @@ async function openProjectDetail(projectId) {
         disabled: Boolean(reason),
         title: reason ?? '进入项目工作区',
         onClick: () => {
+          openedWorkspace = true
           void openProjectWorkspace(projectId)
         }
       }
     ],
-    { wide: true }
+    {
+      wide: true,
+      onClose: () => {
+        if (activeDetail !== detailEntry) return // 已被路由静默移除
+        activeDetail = null
+        if (!openedWorkspace) onClose?.()
+      }
+    }
   )
+  activeDetail = detailEntry
   const body = backdrop.querySelector('.dialog .body')
   const grantsPath = `/v1/projects/${projectId}/grants`
   const paintPermCards = () => {
@@ -1026,7 +1173,13 @@ async function openProjectDetail(projectId) {
     }
     body.innerHTML = projectDetailHtml(project, extra)
     wireDetailCopy(backdrop)
-    wireAuthTabs(body)
+    wireAuthTabs(body, {
+      active: currentTab,
+      onSelect: (key) => {
+        currentTab = key
+        replaceDetailTab('projects', projectId, key)
+      }
+    })
     paintPermCards()
     // The refresh may have changed host state, so the primary action follows it.
     const refreshedReason = openDisabledReason(project)
@@ -1337,7 +1490,7 @@ async function renderHosts() {
     </div>`
   $('#registerHostBtn').onclick = registerHostDialog
   for (const btn of document.querySelectorAll('[data-host]')) {
-    btn.onclick = () => showHost(btn.dataset.host)
+    btn.onclick = () => openDetailFromList('hosts', btn.dataset.host ?? '')
   }
 }
 
@@ -1406,20 +1559,24 @@ function copyCommandAction(cmd) {
 
 async function registerHostDialog() {
   const body = await api('/v1/hosts/tokens', { method: 'POST' })
-  const cmd = `bash <(curl -fsSL ${location.origin}/install/host.sh?token=${body.token})`
+  // U115: the target machine has no session, so the one-liner carries a
+  // short-lived one-time download token alongside the registration token.
+  const download = body.downloadToken ? `download=${encodeURIComponent(body.downloadToken)}&` : ''
+  const cmd = `bash <(curl -fsSL ${location.origin}/install/host.sh?${download}token=${body.token})`
   dialog(
     '注册主机',
-    `<p>在目标开发机执行以下命令完成注册。脚本会写入环境配置并生成自签证书，令牌 24 小时内有效且只能使用一次。</p>
+    `<p>在目标开发机执行以下命令完成注册。脚本会写入环境配置并生成自签证书，命令 10 分钟内有效且只能下载一次；注册令牌 24 小时内有效且只能使用一次。</p>
      <pre id="installCmd">${esc(cmd)}</pre>`,
     [copyCommandAction(cmd)]
   )
 }
 
-async function showHost(hostId) {
+async function showHost(hostId, { tab = 'info', onClose } = {}) {
   const host = state.lastHosts.find((h) => h.id === hostId)
   if (!host) return
   // Host routes are admin-only; the directory feeds the permission-tab pickers.
   if (!state.directory && isAdmin()) state.directory = await loadDirectory()
+  const detailEntry = { name: 'hosts', id: host.id, remove: () => drawer.backdrop.remove() }
   const drawer = openDrawer(
     `主机 ${host.name}`,
     `
@@ -1449,9 +1606,20 @@ async function showHost(hostId) {
     </div>
     <div data-auth-panel="perms" hidden>
       <div id="hostPermCards"><p class="muted">加载中…</p></div>
-    </div>`
+    </div>`,
+    {
+      onClose: () => {
+        if (activeDetail !== detailEntry) return // 已被路由静默移除
+        activeDetail = null
+        onClose?.()
+      }
+    }
   )
-  wireAuthTabs(drawer.backdrop)
+  activeDetail = detailEntry
+  wireAuthTabs(drawer.backdrop, {
+    active: tab,
+    onSelect: (key) => replaceDetailTab('hosts', host.id, key)
+  })
   $('#maintenanceBtn').onclick = async () => {
     await api(`/v1/hosts/${host.id}/maintenance`, {
       method: 'POST',
@@ -1529,11 +1697,16 @@ async function renderRelays() {
 }
 
 /** FR-4.11: the internal token is injected by the script endpoint, never the URL. */
-function addRelayDialog() {
-  const cmd = `bash <(curl -fsSL ${location.origin}/install/relay.sh)`
+async function addRelayDialog() {
+  // U115: the target machine has no session, so the command carries a one-time
+  // download token; the internal token still never travels in the URL.
+  const body = await api('/v1/relays/install-tokens', { method: 'POST' })
+  const cmd = body.downloadToken
+    ? `bash <(curl -fsSL ${location.origin}/install/relay.sh?download=${encodeURIComponent(body.downloadToken)})`
+    : `bash <(curl -fsSL ${location.origin}/install/relay.sh)`
   dialog(
     '添加中继',
-    `<p>在中继机执行以下命令完成注册上线。内部控制令牌由脚本端点注入，不出现在 URL 中。</p>
+    `<p>在中继机执行以下命令完成注册上线。命令 10 分钟内有效且只能下载一次；内部控制令牌由脚本端点注入，不出现在 URL 中。</p>
      <pre id="relayInstallCmd">${esc(cmd)}</pre>
      <p class="muted">仅管理员可见。RELAY_PUBLIC_HOST 缺省时平台记录注册来源 IP。</p>`,
     [copyCommandAction(cmd)]
@@ -1560,6 +1733,7 @@ let userFilter = { query: '', role: 'all', status: 'all' }
 async function renderUsersPage() {
   const body = await api('/v1/users')
   const users = body.users
+  state.users = users
   content().innerHTML = `
     <div class="page-head">
       <div>
@@ -1659,10 +1833,7 @@ function renderUserRows(users) {
     foot.textContent = `共 ${users.length} 个账号${filtered.length !== users.length ? ` · 当前筛选 ${filtered.length} 个` : ''} · 服务端按请求实时判定角色；角色降级会断开当前云会话（≤60 秒），升级即时生效、不断会话。变更可在审计日志按「角色变更 · role_update」筛选。`
   }
   for (const button of document.querySelectorAll('[data-user-detail]')) {
-    button.onclick = () => {
-      const user = users.find((item) => item.id === button.dataset.userDetail)
-      if (user) openUserDetail(user)
-    }
+    button.onclick = () => openDetailFromList('users', button.dataset.userDetail ?? '')
   }
 }
 
@@ -1703,10 +1874,17 @@ function userDetailMarkup(user) {
   <p class="muted" style="margin-top:12px">角色变更写入 role_update 审计，按用户覆盖优先于 LDAP 同步；降级将断开该用户当前云会话（≤60 秒），升级即时生效。列表只读，角色修改仅在此处进行。</p>`
 }
 
-function openUserDetail(user) {
+function openUserDetail(user, { onClose } = {}) {
+  const detailEntry = { name: 'users', id: user.id, remove: () => backdrop.remove() }
   const backdrop = dialog(`用户详情 · ${user.displayName}`, userDetailMarkup(user), [], {
-    wide: true
+    wide: true,
+    onClose: () => {
+      if (activeDetail !== detailEntry) return // 已被路由静默移除
+      activeDetail = null
+      onClose?.()
+    }
   })
+  activeDetail = detailEntry
   wireDetailRoleSelect(backdrop, user)
 }
 
@@ -1853,16 +2031,20 @@ function permLevelLabel(kind, permissions) {
   return levels.join('+') || '其他位组合'
 }
 
-/** Tab switch is pure overlay view state: no route, no Escape/close change. */
-function wireAuthTabs(scope) {
+/** Tab switch is pure overlay view state; the URL keeps it via `?tab=`. */
+function wireAuthTabs(scope, { active = 'info', onSelect } = {}) {
   const tabs = scope.querySelectorAll('[data-auth-tab]')
+  const show = (key) => {
+    for (const other of tabs) other.classList.toggle('active', other.dataset.authTab === key)
+    for (const panel of scope.querySelectorAll('[data-auth-panel]')) {
+      panel.hidden = panel.dataset.authPanel !== key
+    }
+  }
+  show(active)
   for (const tab of tabs) {
     tab.onclick = () => {
-      const key = tab.dataset.authTab
-      for (const other of tabs) other.classList.toggle('active', other === tab)
-      for (const panel of scope.querySelectorAll('[data-auth-panel]')) {
-        panel.hidden = panel.dataset.authPanel !== key
-      }
+      show(tab.dataset.authTab)
+      onSelect?.(tab.dataset.authTab)
     }
   }
 }
@@ -2649,7 +2831,7 @@ async function saveProjectPolicy(projectId, value) {
 
 /* ---------------- overlays ---------------- */
 
-function openDrawer(title, html) {
+function openDrawer(title, html, options = {}) {
   const backdrop = document.createElement('div')
   backdrop.className = 'drawer-backdrop'
   backdrop.innerHTML = `
@@ -2657,12 +2839,18 @@ function openDrawer(title, html) {
       <div class="drawer-head"><h2>${esc(title)}</h2><button class="icon-btn" aria-label="关闭">✕</button></div>
       <div class="drawer-body">${html}</div>
     </div>`
-  backdrop.querySelector('.icon-btn').onclick = () => backdrop.remove()
+  const close = () => {
+    backdrop.remove()
+    options.onClose?.()
+  }
+  backdrop.querySelector('.icon-btn').onclick = close
   backdrop.onclick = (e) => {
-    if (e.target === backdrop) backdrop.remove()
+    if (e.target === backdrop) {
+      close()
+    }
   }
   document.body.appendChild(backdrop)
-  return { close: () => backdrop.remove(), backdrop }
+  return { close, backdrop }
 }
 
 let dialogSeq = 0
@@ -2691,6 +2879,7 @@ function dialog(title, html, actions = [], options = {}) {
   const close = () => {
     document.removeEventListener('keydown', onKeydown)
     backdrop.remove()
+    options.onClose?.()
     // Duck-typed: app.js runs in a DOM whose HTMLElement is not this realm's.
     if (typeof opener?.focus === 'function') {
       opener.focus()

@@ -128,6 +128,21 @@ export type RelayRoute = { routeKey: string; hostId: string; target: string; ver
 
 export type HostToken = { tokenHash: string; expiresAt: number; usedAt: number | null }
 
+/**
+ * A one-time credential for fetching an install script from a machine that has
+ * no session (U115). Never a general API credential: kind- and host-scoped,
+ * short-lived, hashed at rest, consumed by the first successful download.
+ */
+export type InstallDownloadToken = {
+  tokenHash: string
+  userId: string
+  kind: 'host' | 'relay'
+  /** Bound host for a reinstall; null for a new host or the platform-level relay. */
+  hostId: string | null
+  expiresAt: number
+  usedAt: number | null
+}
+
 /** A one-time web handoff code (FR-3.10), bound to its user and project. */
 export type WebHandoff = { userId: string; projectId: string; expiresAt: number }
 
@@ -150,6 +165,7 @@ export class Store {
   revocations: Revocation[] = []
   relayRoutes = new Map<string, RelayRoute>()
   hostTokens: HostToken[] = []
+  installDownloadTokens: InstallDownloadToken[] = []
   webHandoffs = new Map<string, WebHandoff>()
   policies = {
     downloadDefault: 'deny' as 'deny' | 'allow',

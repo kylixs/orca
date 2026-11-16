@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Window } from 'happy-dom'
-import { saveEvidence, spawnService, type Service } from './harness.ts'
+import { buildHash, DEFAULT_ROUTE, parseHash } from '../../apps/web/router/routes.js'
+import { registerHost, saveEvidence, spawnService, type Service } from './harness.ts'
 
 /**
  * M114b2 (FR-4.11): adding a host or a relay is a wizard, not a runbook — the
@@ -25,9 +26,39 @@ function auth(token: string): Record<string, string> {
 }
 
 async function mintHostToken(): Promise<string> {
-  const res = await fetch(`${api.url}/v1/hosts/tokens`, { method: 'POST', headers: auth(adminToken) })
+  const res = await fetch(`${api.url}/v1/hosts/tokens`, {
+    method: 'POST',
+    headers: auth(adminToken)
+  })
   assert.equal(res.status, 201)
   return ((await res.json()) as { token: string }).token
+}
+
+/** U115: the credential the copied one-liner carries, bound to the issuing admin. */
+async function mintHostDownload(
+  hostId?: string
+): Promise<{ token: string; downloadToken: string }> {
+  const res = await fetch(`${api.url}/v1/hosts/tokens`, {
+    method: 'POST',
+    headers: auth(adminToken),
+    ...(hostId ? { body: JSON.stringify({ hostId }) } : {})
+  })
+  assert.equal(res.status, 201)
+  return (await res.json()) as { token: string; downloadToken: string }
+}
+
+async function mintRelayDownload(): Promise<string> {
+  const res = await fetch(`${api.url}/v1/relays/install-tokens`, {
+    method: 'POST',
+    headers: auth(adminToken)
+  })
+  assert.equal(res.status, 201)
+  return ((await res.json()) as { downloadToken: string }).downloadToken
+}
+
+/** Extracts the URL from `bash <(curl -fsSL <url>)`, i.e. what the target machine runs. */
+function commandUrl(command: string): string {
+  return /curl -fsSL ([^)\s]+)/.exec(command)?.[1] ?? ''
 }
 
 type AuditEvent = { eventType: string; actor: string | null; result: string; metadata: unknown }
@@ -51,10 +82,13 @@ function loadWizard(platformUrl: string) {
 
   const realFetch = globalThis.fetch
   const fetchToPlatform: typeof fetch = (input, init) => {
-    const path = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url
+    const path =
+      typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url
     return realFetch(`${platformUrl}${path}`, init)
   }
-  const source = readFileSync(join(WEB_SOURCE, 'app.js'), 'utf8')
+  // app.js is an ES module; `new Function` has no import machinery, so the one
+  // router import is stripped and its bindings injected below.
+  const source = readFileSync(join(WEB_SOURCE, 'app.js'), 'utf8').replace(/^import .*$/m, '')
   new Function(
     'document',
     'localStorage',
@@ -70,6 +104,9 @@ function loadWizard(platformUrl: string) {
     'URL',
     'JSON',
     'Promise',
+    'buildHash',
+    'DEFAULT_ROUTE',
+    'parseHash',
     source
   )(
     window.document,
@@ -85,7 +122,10 @@ function loadWizard(platformUrl: string) {
     Date,
     URL,
     JSON,
-    Promise
+    Promise,
+    buildHash,
+    DEFAULT_ROUTE,
+    parseHash
   )
 
   const wait = async (selector: string): Promise<string> => {
@@ -138,7 +178,11 @@ before(async () => {
   devToken = await fetch(`${api.url}/v1/auth/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ username: 'zhangsan', password: 'Passw0rd!', deviceName: 'm114-wizard-dev' })
+    body: JSON.stringify({
+      username: 'zhangsan',
+      password: 'Passw0rd!',
+      deviceName: 'm114-wizard-dev'
+    })
   }).then((res) => res.json().then((body: { accessToken: string }) => body.accessToken))
   assert.notEqual(devToken, '')
 }, 120_000)
@@ -155,7 +199,10 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     const script = await res.text()
     assert.match(script, /^#!\/usr\/bin\/env bash/)
     assert.ok(script.includes(`ORCA_CLOUD_API_URL=${api.url}`), 'platform address must be embedded')
-    assert.ok(script.includes(`ORCA_CLOUD_INTERNAL_TOKEN=${INTERNAL_TOKEN}`), 'internal token must be embedded')
+    assert.ok(
+      script.includes(`ORCA_CLOUD_INTERNAL_TOKEN=${INTERNAL_TOKEN}`),
+      'internal token must be embedded'
+    )
     assert.match(script, /RELAY_PUBLIC_HOST/)
     assert.match(script, /node cloud-platform\/apps\/relay\/src\/relay\.ts/)
     saveEvidence(EVIDENCE, 'install-relay-script.txt', script)
@@ -164,7 +211,10 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
   test('管理员拉取 host.sh：缺令牌 400，有效令牌内嵌 env 与自签证书步骤', async () => {
     const missing = await fetch(`${api.url}/install/host.sh`, { headers: auth(adminToken) })
     assert.equal(missing.status, 400)
-    assert.equal(((await missing.json()) as { error?: { code: string } }).error?.code, 'INSTALL_TOKEN_REQUIRED')
+    assert.equal(
+      ((await missing.json()) as { error?: { code: string } }).error?.code,
+      'INSTALL_TOKEN_REQUIRED'
+    )
 
     const used = await fetch(`${api.url}/install/host.sh?token=not-a-real-token`, {
       headers: auth(adminToken)
@@ -172,7 +222,9 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     assert.equal(used.status, 401)
 
     const token = await mintHostToken()
-    const res = await fetch(`${api.url}/install/host.sh?token=${token}`, { headers: auth(adminToken) })
+    const res = await fetch(`${api.url}/install/host.sh?token=${token}`, {
+      headers: auth(adminToken)
+    })
     assert.equal(res.status, 200)
     const script = await res.text()
     assert.ok(script.includes(`ORCA_CLOUD_API_URL=${api.url}`))
@@ -206,7 +258,10 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     for (const path of [`/install/host.sh?token=${token}`, '/install/relay.sh']) {
       const res = await fetch(`${api.url}${path}`, { headers: auth(devToken) })
       assert.equal(res.status, 403, path)
-      assert.equal(((await res.json()) as { error?: { code: string } }).error?.code, 'PERMISSION_DENIED')
+      assert.equal(
+        ((await res.json()) as { error?: { code: string } }).error?.code,
+        'PERMISSION_DENIED'
+      )
     }
 
     const events = await auditEvents('eventType=install_script&limit=50')
@@ -216,59 +271,182 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     )
     const successes = events.filter((event) => event.result === 'success')
     assert.ok(successes.length >= 2, 'both script kinds must record their own disclosure')
-    assert.deepEqual(
-      successes.map((event) => (event.metadata as { type: string }).type).sort(),
-      ['host', 'relay']
-    )
+    assert.deepEqual(successes.map((event) => (event.metadata as { type: string }).type).sort(), [
+      'host',
+      'relay'
+    ])
     assert.ok(
       successes.every((event) => !JSON.stringify(event.metadata).includes(token)),
       'no token plaintext in the audit metadata'
     )
     assert.ok(
-      successes.every((event) => typeof (event.metadata as { tokenEmbedded: boolean }).tokenEmbedded === 'boolean')
+      successes.every(
+        (event) => typeof (event.metadata as { tokenEmbedded: boolean }).tokenEmbedded === 'boolean'
+      )
     )
     saveEvidence(EVIDENCE, 'install-wizard.json', {
       admin: { relayScript: 200, hostScript: 200, missingToken: 400, invalidToken: 401 },
       developer: { status: 403, errorCode: 'PERMISSION_DENIED' },
-      audit: { deniedRecorded: true, successTypes: ['host', 'relay'], tokenPlaintextRecorded: false }
+      audit: {
+        deniedRecorded: true,
+        successTypes: ['host', 'relay'],
+        tokenPlaintextRecorded: false
+      }
     })
   })
 
-  test('Web 向导命令与端点一致：主机与中继的一行命令都能拉到脚本', async () => {
+  test('Web 向导命令照抄可执行：download 令牌免登录，二次使用 401', async () => {
     const wizard = loadWizard(api.url)
     await wizard.login()
     assert.equal(wizard.window.location.origin, api.url)
 
-    const hostCmd = await wizard.nav('hosts', '#registerHostBtn').then(() =>
-      wizard.click('#registerHostBtn', '#installCmd')
-    )
+    const hostCmd = await wizard
+      .nav('hosts', '#registerHostBtn')
+      .then(() => wizard.click('#registerHostBtn', '#installCmd'))
+    const hostDownload = /download=([\w-]+)/.exec(hostCmd)?.[1] ?? ''
     const token = /token=([\w-]+)/.exec(hostCmd)?.[1] ?? ''
-    assert.notEqual(token, '', 'the wizard must embed a token')
-    assert.equal(hostCmd, `bash <(curl -fsSL ${api.url}/install/host.sh?token=${token})`)
-    // The exact command the admin copies must work as-is on the target machine.
-    // Why not \S+: the trailing `)` of the process substitution is not part of the URL.
-    const hostUrl = /curl -fsSL ([^)\s]+)/.exec(hostCmd)?.[1] ?? ''
-    assert.equal(hostUrl, `${api.url}/install/host.sh?token=${token}`)
-    const hostFetch = await fetch(hostUrl, { headers: auth(adminToken) })
+    assert.notEqual(hostDownload, '', 'the wizard must embed a download token')
+    assert.notEqual(token, '', 'the wizard must embed a registration token')
+    assert.equal(
+      hostCmd,
+      `bash <(curl -fsSL ${api.url}/install/host.sh?download=${hostDownload}&token=${token})`
+    )
+    // The exact URL the admin copies must answer WITHOUT any Authorization header:
+    // that is what `curl -fsSL` on the target machine actually sends.
+    const hostUrl = commandUrl(hostCmd)
+    const hostFetch = await fetch(hostUrl)
     assert.equal(hostFetch.status, 200)
+    assert.match(hostFetch.headers.get('content-type') ?? '', /text\/x-shellscript/)
     assert.ok((await hostFetch.text()).includes(`HOST_TOKEN=${token}`))
+    // One-time: the same command reused must not hand out the script again.
+    const hostReplay = await fetch(hostUrl)
+    assert.equal(hostReplay.status, 401)
 
     await wizard.nav('relays', '#addRelayBtn')
     const relayCmd = await wizard.click('#addRelayBtn', '#relayInstallCmd')
-    assert.equal(relayCmd, `bash <(curl -fsSL ${api.url}/install/relay.sh)`)
+    const relayDownload = /download=([\w-]+)/.exec(relayCmd)?.[1] ?? ''
+    assert.notEqual(relayDownload, '', 'the relay wizard must embed a download token')
+    assert.equal(
+      relayCmd,
+      `bash <(curl -fsSL ${api.url}/install/relay.sh?download=${relayDownload})`
+    )
     assert.doesNotMatch(relayCmd, /token=/, 'the internal token must not travel in the URL')
-    const relayUrl = /curl -fsSL ([^)\s]+)/.exec(relayCmd)?.[1] ?? ''
-    assert.equal(relayUrl, `${api.url}/install/relay.sh`)
-    const relayFetch = await fetch(relayUrl, { headers: auth(adminToken) })
+    const relayUrl = commandUrl(relayCmd)
+    const relayFetch = await fetch(relayUrl)
     assert.equal(relayFetch.status, 200)
     assert.ok((await relayFetch.text()).includes(`ORCA_CLOUD_INTERNAL_TOKEN=${INTERNAL_TOKEN}`))
+    const relayReplay = await fetch(relayUrl)
+    assert.equal(relayReplay.status, 401)
 
     saveEvidence(EVIDENCE, 'install-wizard-web.json', {
       origin: api.url,
       hostCmd,
       relayCmd,
-      hostScriptFetched: 200,
-      relayScriptFetched: 200
+      hostScriptVerbatim: 200,
+      hostReplay: 401,
+      relayScriptVerbatim: 200,
+      relayReplay: 401
     })
+  }, 120_000)
+
+  test('download 令牌按 kind 隔离并绑定 hostId；无效令牌可回退 Bearer', async () => {
+    // A relay token must not fetch the host script, even with a valid host
+    // registration token alongside: kind is part of the grant.
+    const relayDownload = await mintRelayDownload()
+    const freshHostToken = await mintHostToken()
+    const relayOnHost = await fetch(
+      `${api.url}/install/host.sh?download=${relayDownload}&token=${freshHostToken}`
+    )
+    assert.equal(relayOnHost.status, 401)
+
+    // Conversely, a host token must not fetch relay.sh (which embeds the
+    // platform internal token for every relay).
+    const hostOnly = await mintHostDownload()
+    const hostOnRelay = await fetch(
+      `${api.url}/install/relay.sh?download=${hostOnly.downloadToken}`
+    )
+    assert.equal(hostOnRelay.status, 401)
+
+    // A host-bound download token only works for that host id.
+    const host = await registerHost({
+      apiUrl: api.url,
+      adminToken,
+      name: `wizard-bound-${Date.now()}`,
+      directAddr: '127.0.0.1:19091',
+      relayTarget: '127.0.0.1:19091'
+    })
+    const bound = await mintHostDownload(host.hostId)
+    const wrongHost = await fetch(
+      `${api.url}/install/host.sh?download=${bound.downloadToken}&token=${bound.token}&hostId=host_other`
+    )
+    assert.equal(wrongHost.status, 401, 'a bound token must not serve another host')
+    const rightHost = await fetch(
+      `${api.url}/install/host.sh?download=${bound.downloadToken}&token=${bound.token}&hostId=${host.hostId}`
+    )
+    assert.equal(rightHost.status, 200)
+    const burnt = await fetch(
+      `${api.url}/install/host.sh?download=${bound.downloadToken}&token=${bound.token}&hostId=${host.hostId}`
+    )
+    assert.equal(burnt.status, 401)
+
+    // Existing API clients keep using Bearer; an unusable download token falls
+    // back to it rather than locking them out.
+    const bearerFallback = await fetch(`${api.url}/install/relay.sh?download=not-a-token`, {
+      headers: auth(adminToken)
+    })
+    assert.equal(bearerFallback.status, 200)
+    const anonymous = await fetch(`${api.url}/install/relay.sh?download=not-a-token`)
+    assert.equal(anonymous.status, 401)
+
+    saveEvidence(EVIDENCE, 'install-wizard-token-scope.json', {
+      relayOnHost: 401,
+      hostOnRelay: 401,
+      wrongHostId: 401,
+      rightHostId: 200,
+      burntAfterUse: 401,
+      bearerFallback: 200,
+      anonymousInvalid: 401
+    })
+  }, 120_000)
+
+  test('过期 download 令牌 401：host 与 relay 一致', async () => {
+    const shortApi = await spawnService(
+      'apps/api/src/server.ts',
+      { PORT: '0', INTERNAL_TOKEN, ORCA_CLOUD_INSTALL_DOWNLOAD_TTL_MS: '25' },
+      /\[api\] listening on http:\/\/127\.0\.0\.1:(\d+)/,
+      'api-install-download-expiry'
+    )
+    try {
+      const access = await fetch(`${shortApi.url}/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username: 'admin', password: 'Adm1n!', deviceName: 'u115-expiry' })
+      }).then((res) => res.json().then((body: { accessToken: string }) => body.accessToken))
+      const mint = (path: string) =>
+        fetch(`${shortApi.url}${path}`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${access}` }
+        }).then((res) => res.json() as Promise<Record<string, string>>)
+      const host = await mint('/v1/hosts/tokens')
+      const relay = await mint('/v1/relays/install-tokens')
+      await new Promise((resolve) => setTimeout(resolve, 60))
+      // The host script also needs its registration token; only the download
+      // credential is expected to be expired here.
+      const expiredHost = await fetch(
+        `${shortApi.url}/install/host.sh?download=${host.downloadToken}&token=${host.token}`
+      )
+      assert.equal(expiredHost.status, 401)
+      const expiredRelay = await fetch(
+        `${shortApi.url}/install/relay.sh?download=${relay.downloadToken}`
+      )
+      assert.equal(expiredRelay.status, 401)
+      saveEvidence(EVIDENCE, 'install-download-expiry.json', {
+        ttlMs: 25,
+        hostExpired: 401,
+        relayExpired: 401
+      })
+    } finally {
+      await shortApi.stop()
+    }
   }, 120_000)
 })

@@ -47,6 +47,7 @@ import {
   type Device,
   type Host,
   type HostPermission,
+  type InstallDownloadToken,
   type Project,
   type User
 } from './store.ts'
@@ -93,6 +94,8 @@ const HOST_OFFLINE_DEFAULT_MS = 60_000
 /** U37: per-beat cap on the heartbeat's provision kick; the rest waits for the next beat. */
 const MAX_PROVISION_ASSIGNMENTS_PER_BEAT = 16
 const HANDOFF_TTL_MS = 60_000
+/** U115: a pasted install command must work at once, so its download credential is short. */
+const INSTALL_DOWNLOAD_TTL_MS = 10 * 60_000
 // §3.2 单常量：两条准入拒绝路径（查询侧 miss / 平台闸门 miss）共用同一文案，可一键切回备选。
 const LDAP_GROUP_NOT_ADMITTED_MESSAGE = '账号未加入平台准入组。'
 const WEB_ROOT = new URL('../../web/', import.meta.url).pathname
@@ -110,6 +113,8 @@ export type ApiConfig = {
   hostOfflineMs?: number
   /** One-time web-handoff code lifetime (FR-3.10); tests shrink it to exercise expiry. */
   handoffTtlMs?: number
+  /** One-time install-script download token lifetime (U115); tests shrink it to exercise expiry. */
+  installDownloadTtlMs?: number
   /** Append-only audit log; absent keeps the chain in memory (tests). */
   auditLogPath?: string
   /** Single audit writer shared by replicas; absent keeps the local chain. */
@@ -557,11 +562,7 @@ function validateFileEventMetadata(input: {
     }
     return value.slice(0, max)
   }
-  const enumText = (
-    field: string,
-    allowed: Set<string>,
-    required = false
-  ): string | undefined => {
+  const enumText = (field: string, allowed: Set<string>, required = false): string | undefined => {
     const value = text(field, 128, required)
     if (value !== undefined && !allowed.has(value)) fail(field, 'not-allowed')
     return value
@@ -611,7 +612,10 @@ function validateFileEventMetadata(input: {
     fail('occurredAt', 'outside-60s-window')
   }
 
-  const sizeBytes = integer('sizeBytes', isDownload && input.result === 'success' && kind !== 'browser')
+  const sizeBytes = integer(
+    'sizeBytes',
+    isDownload && input.result === 'success' && kind !== 'browser'
+  )
   const copyKind = enumText('copyKind', FILE_EVENT_COPY_KINDS, isCopy)
   const copiedChars = integer('copiedChars', isCopy)
   const copiedBytes = integer('copiedBytes', isCopy)
@@ -620,7 +624,8 @@ function validateFileEventMetadata(input: {
   const reason = text('reason', 128)
   const clientVersion = text('clientVersion', 64)
   const mime = text('mime', 128)
-  if (raw.isBinary !== undefined && typeof raw.isBinary !== 'boolean') fail('isBinary', 'not-a-boolean')
+  if (raw.isBinary !== undefined && typeof raw.isBinary !== 'boolean')
+    fail('isBinary', 'not-a-boolean')
   if (raw.truncated !== undefined && typeof raw.truncated !== 'boolean') {
     fail('truncated', 'not-a-boolean')
   }
@@ -650,7 +655,9 @@ function validateFileEventMetadata(input: {
 
   // Excerpts are a second-release switch; the host is authoritative and drops them.
   const excerptDropped =
-    raw.excerpt !== undefined || raw.excerptBytes !== undefined || raw.excerptTruncated !== undefined
+    raw.excerpt !== undefined ||
+    raw.excerptBytes !== undefined ||
+    raw.excerptTruncated !== undefined
 
   if (invalid) return { ok: false, ...invalid }
 
@@ -734,6 +741,7 @@ export function createApp(config: ApiConfig): ApiHandle {
     config.hostOfflineMs ??
     Number(process.env.ORCA_CLOUD_HOST_OFFLINE_MS ?? HOST_OFFLINE_DEFAULT_MS)
   const handoffTtlMs = config.handoffTtlMs ?? HANDOFF_TTL_MS
+  const installDownloadTtlMs = config.installDownloadTtlMs ?? INSTALL_DOWNLOAD_TTL_MS
   const expiresInSeconds = Math.ceil(accessTtlMs / 1000)
   const auditLogPath = config.auditLogPath ?? process.env.AUDIT_LOG_PATH ?? null
   const store = new Store()
@@ -771,6 +779,48 @@ export function createApp(config: ApiConfig): ApiHandle {
       chain.restore(auditLog.load())
     }
     return chain
+  }
+
+  /**
+   * U115: the copied install command runs without a session, so the wizard mints
+   * this short-lived credential. Stored hashed; the plaintext lives only in the
+   * command the admin copies.
+   */
+  function issueInstallDownloadToken(
+    user: User,
+    kind: InstallDownloadToken['kind'],
+    hostId: string | null
+  ): { downloadToken: string; downloadExpiresIn: number } {
+    const downloadToken = randomBytes(24).toString('base64url')
+    store.installDownloadTokens = store.installDownloadTokens.filter((t) => t.expiresAt > now())
+    store.installDownloadTokens.push({
+      tokenHash: hashToken(downloadToken),
+      userId: user.id,
+      kind,
+      hostId,
+      expiresAt: now() + installDownloadTtlMs,
+      usedAt: null
+    })
+    return { downloadToken, downloadExpiresIn: Math.ceil(installDownloadTtlMs / 1000) }
+  }
+
+  /**
+   * Peek without consuming: the request still has to pass the script's own input
+   * checks, and the token is burned only when a 200 is about to be written.
+   */
+  function findInstallDownloadToken(
+    downloadToken: string,
+    kind: InstallDownloadToken['kind'],
+    hostId: string | null
+  ): { entry: InstallDownloadToken; user: User } | null {
+    const hash = hashToken(downloadToken)
+    const entry = store.installDownloadTokens.find((t) => safeEqual(t.tokenHash, hash))
+    if (!entry || entry.usedAt || entry.expiresAt < now()) return null
+    if (entry.kind !== kind) return null
+    // A bound token may only fetch that host's script, not any host's.
+    if (entry.hostId !== null && entry.hostId !== hostId) return null
+    const user = store.users.get(entry.userId)
+    return user ? { entry, user } : null
   }
   /**
    * Sensitive control-plane mutations gate on audit health (design §13.2): a full
@@ -820,7 +870,11 @@ export function createApp(config: ApiConfig): ApiHandle {
       targetId: input.targetId ?? null,
       result: 'denied',
       traceId,
-      metadata: { reason: 'PERMISSION_DENIED', requiredPermission: input.permission, ...input.metadata }
+      metadata: {
+        reason: 'PERMISSION_DENIED',
+        requiredPermission: input.permission,
+        ...input.metadata
+      }
     })
     error(
       res,
@@ -1046,7 +1100,8 @@ export function createApp(config: ApiConfig): ApiHandle {
     const project = store.projects.get(projectId)
     if (!project) return reject('projectId', 'unknown')
 
-    const deviceId = typeof body.deviceId === 'string' && body.deviceId.length > 0 ? body.deviceId : null
+    const deviceId =
+      typeof body.deviceId === 'string' && body.deviceId.length > 0 ? body.deviceId : null
     const subjectInput =
       typeof body.subject === 'string' && body.subject.length > 0
         ? body.subject.slice(0, 128)
@@ -1136,9 +1191,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         body: {
           queued: true,
           acceptedSeq: event.seq,
-          ...(verdict.excerptDropped
-            ? { reason: 'excerpt-not-allowed', excerptDropped: true }
-            : {})
+          ...(verdict.excerptDropped ? { reason: 'excerpt-not-allowed', excerptDropped: true } : {})
         }
       }
     } catch {
@@ -2033,13 +2086,21 @@ export function createApp(config: ApiConfig): ApiHandle {
       return auth
     }
 
-    // ---- install wizard (FR-4.11): admin-only, the script embeds secrets ----
-    // Sits beside the /v1/relays admin gate and after session resolution; the
-    // static fallback above skips /install/ so a plain GET still reaches here.
+    // ---- install wizard (FR-4.11): admin-issued, the script embeds secrets ----
+    // U115: the copied command runs on the target machine with no session, so a
+    // one-time download token in the URL authenticates it; Bearer stays for the
+    // API and tests. The static fallback above skips /install/ to reach here.
     if (req.method === 'GET' && (path === '/install/host.sh' || path === '/install/relay.sh')) {
-      const authed = requireAuth()
+      const kind = path === '/install/host.sh' ? 'host' : 'relay'
+      const download = url.searchParams.get('download') ?? ''
+      const downloadMatch = download
+        ? findInstallDownloadToken(download, kind, url.searchParams.get('hostId'))
+        : null
+      const authed: AuthedRequest | null = downloadMatch
+        ? { user: downloadMatch.user, sessionId: 'install-download' }
+        : requireAuth()
       if (!authed) return
-      if (!isAdmin(authed.user)) {
+      if (!downloadMatch && !isAdmin(authed.user)) {
         return denyPrivileged(res, traceId, authed.user, {
           eventType: 'install_script',
           targetType: 'install_script',
@@ -2047,7 +2108,6 @@ export function createApp(config: ApiConfig): ApiHandle {
           permission: 'platform:admin'
         })
       }
-      const kind = path === '/install/host.sh' ? 'host' : 'relay'
       // The operator pastes this command on the target machine, so the embedded
       // address must be the one the wizard page saw.
       const platformUrl = requestOrigin(req)
@@ -2067,6 +2127,9 @@ export function createApp(config: ApiConfig): ApiHandle {
       } else {
         script = relayInstallScript({ platformUrl, internalToken })
       }
+      // Burn only now: a request that failed the script's own checks must not
+      // spend the admin's one shot.
+      if (downloadMatch) downloadMatch.entry.usedAt = now()
       // Why no token in metadata: the audit log must not become a second copy of the secret.
       audit.appendBestEffort({
         eventType: 'install_script',
@@ -2075,7 +2138,12 @@ export function createApp(config: ApiConfig): ApiHandle {
         targetId: `${kind}.sh`,
         result: 'success',
         traceId,
-        metadata: { type: kind, tokenEmbedded, platformUrl }
+        metadata: {
+          type: kind,
+          tokenEmbedded,
+          platformUrl,
+          via: downloadMatch ? 'download-token' : 'session'
+        }
       })
       res.writeHead(200, { 'content-type': 'text/x-shellscript; charset=utf-8' })
       res.end(script)
@@ -2664,8 +2732,18 @@ export function createApp(config: ApiConfig): ApiHandle {
         if (!auditAllowsMutations(res, traceId)) return
         const body = await readJson(req)
         // U62 B12: same contract as host grants — reject unknown subject types.
-        if (body.subjectType !== undefined && body.subjectType !== 'user' && body.subjectType !== 'group') {
-          return error(res, 400, 'GRANT_SUBJECT_TYPE_INVALID', 'subjectType 只支持 user 或 group。', traceId)
+        if (
+          body.subjectType !== undefined &&
+          body.subjectType !== 'user' &&
+          body.subjectType !== 'group'
+        ) {
+          return error(
+            res,
+            400,
+            'GRANT_SUBJECT_TYPE_INVALID',
+            'subjectType 只支持 user 或 group。',
+            traceId
+          )
         }
         const subjectType = body.subjectType === 'group' ? 'group' : 'user'
         const submitted = String(body.subjectId ?? '').trim()
@@ -3034,6 +3112,39 @@ export function createApp(config: ApiConfig): ApiHandle {
       })
     }
 
+    if (req.method === 'POST' && path === '/v1/relays/install-tokens') {
+      const authed = requireAuth()
+      if (!authed) return
+      if (!isAdmin(authed.user)) {
+        return denyPrivileged(res, traceId, authed.user, {
+          eventType: 'install_download_token_create',
+          targetType: 'install_script',
+          permission: 'platform:admin'
+        })
+      }
+      if (!auditAllowsMutations(res, traceId)) return
+      if (
+        !(await recordAudit(
+          res,
+          {
+            eventType: 'install_download_token_create',
+            actor: authed.user.username,
+            targetType: 'install_script',
+            targetId: 'relay.sh',
+            result: 'success',
+            traceId,
+            metadata: { type: 'relay' }
+          },
+          traceId
+        ))
+      ) {
+        return
+      }
+      // U115: relay.sh embeds the platform internal token, never a registration
+      // token, so its download credential is platform-level (no host binding).
+      return json(res, 201, issueInstallDownloadToken(authed.user, 'relay', null))
+    }
+
     if (req.method === 'GET' && path === '/v1/hosts') {
       const authed = requireAuth()
       if (!authed) return
@@ -3097,6 +3208,12 @@ export function createApp(config: ApiConfig): ApiHandle {
         })
       }
       if (!auditAllowsMutations(res, traceId)) return
+      const body = await readJson(req)
+      const boundHostId =
+        typeof body.hostId === 'string' && body.hostId.trim() ? body.hostId.trim() : null
+      if (boundHostId && !store.hosts.has(boundHostId)) {
+        return error(res, 404, 'HOST_NOT_FOUND', '主机不存在。', traceId)
+      }
       const token = randomBytes(24).toString('base64url')
       if (
         !(await recordAudit(
@@ -3119,7 +3236,10 @@ export function createApp(config: ApiConfig): ApiHandle {
         expiresAt: now() + 24 * 60 * 60_000,
         usedAt: null
       })
-      return json(res, 201, { token, expiresIn: 86400 })
+      // U115: the wizard one-liner must run on a machine with no session, so the
+      // same response carries the one-time script-download credential.
+      const download = issueInstallDownloadToken(authed.user, 'host', boundHostId)
+      return json(res, 201, { token, expiresIn: 86400, ...download })
     }
 
     if (req.method === 'POST' && path === '/v1/hosts/register') {
@@ -3395,10 +3515,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         }
         // AA2: admins keep full power; a delegated subject needs the maintain bit.
         const viaHostGrant = !isAdmin(authed.user)
-        if (
-          viaHostGrant &&
-          !hasHostPermission(store, hostId, authed.user, 'maintain')
-        ) {
+        if (viaHostGrant && !hasHostPermission(store, hostId, authed.user, 'maintain')) {
           return denyPrivileged(res, traceId, authed.user, {
             eventType: 'host_maintenance',
             targetType: 'host',
@@ -3490,7 +3607,11 @@ export function createApp(config: ApiConfig): ApiHandle {
         const body = await readJson(req)
         // U62 B12: the contract is user|group; anything else is a caller bug
         // and must be refused, never silently stored as a user row.
-        if (body.subjectType !== undefined && body.subjectType !== 'user' && body.subjectType !== 'group') {
+        if (
+          body.subjectType !== undefined &&
+          body.subjectType !== 'user' &&
+          body.subjectType !== 'group'
+        ) {
           return error(
             res,
             400,
@@ -4450,11 +4571,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const accessTtlMs = ttlFromEnv('ORCA_CLOUD_ACCESS_TTL_MS')
   const refreshTtlMs = ttlFromEnv('ORCA_CLOUD_REFRESH_TTL_MS')
   const handoffTtlMs = ttlFromEnv('ORCA_CLOUD_HANDOFF_TTL_MS')
+  const installDownloadTtlMs = ttlFromEnv('ORCA_CLOUD_INSTALL_DOWNLOAD_TTL_MS')
   const app = createApp({
     port: Number(process.env.PORT ?? 18787),
     ...(accessTtlMs === undefined ? {} : { accessTtlMs }),
     ...(refreshTtlMs === undefined ? {} : { refreshTtlMs }),
     ...(handoffTtlMs === undefined ? {} : { handoffTtlMs }),
+    ...(installDownloadTtlMs === undefined ? {} : { installDownloadTtlMs }),
     ...(process.env.ORCA_CLOUD_LOGIN_LOCKOUT_URL
       ? { loginLockoutUrl: process.env.ORCA_CLOUD_LOGIN_LOCKOUT_URL }
       : {}),
