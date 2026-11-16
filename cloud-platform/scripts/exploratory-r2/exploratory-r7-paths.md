@@ -22,7 +22,7 @@
 
 1. admin 给 zhangsan 主机 dev-local-02 full 授权 → zhangsan 取 accessToken 记录
 2. admin 将授权降为 read-only
-3. 断言：zhangsan 旧 token 下一次主机相关请求 401；`host_grant_update` success 事件含 `removedPermissions:['provision']`、`revokedUsers:1`、`accessLevel:'read-only'`
+3. 断言：zhangsan 旧 token 下一次**平台**主机操作请求 **403**（实时位门禁 `HOST_PROVISION_FORBIDDEN`；平台会话按设计保留，401 仅发生在宿主侧旧 ticket，需宿主入口探针）；`host_grant_update` success 事件含 `removedPermissions:['provision']`、`revokedUsers:1`、`accessLevel:'read-only'`，且持久化撤销记录含 `zhangsan/host_grant_changed`
 4. 反例：给 lisi 扩容授权 → lisi 会话不被撤销
 5. 证据：API 响应 JSON + 审计事件
 
