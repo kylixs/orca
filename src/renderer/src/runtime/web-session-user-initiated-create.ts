@@ -5,46 +5,72 @@
  */
 const USER_INITIATED_CREATE_TTL_MS = 2 * 60_000
 
-const markedAtByTabId = new Map<string, number>()
+type UserInitiatedCreateMark = {
+  worktreeId?: string
+  markedAt: number
+}
+
+const marksByTabId = new Map<string, UserInitiatedCreateMark>()
 
 function sweepExpiredMarks(now: number): void {
-  for (const [tabId, markedAt] of markedAtByTabId) {
-    if (now - markedAt > USER_INITIATED_CREATE_TTL_MS) {
-      markedAtByTabId.delete(tabId)
+  for (const [tabId, mark] of marksByTabId) {
+    if (now - mark.markedAt > USER_INITIATED_CREATE_TTL_MS) {
+      marksByTabId.delete(tabId)
     }
   }
 }
 
-export function markUserInitiatedTerminalCreate(tabId: string): void {
+export function markUserInitiatedTerminalCreate(tabId: string, worktreeId?: string): void {
   if (tabId) {
     const now = Date.now()
     // Why: failed/aborted creates never reach a consumer, so expire their marks on the next write.
     sweepExpiredMarks(now)
-    markedAtByTabId.set(tabId, now)
+    marksByTabId.set(tabId, {
+      ...(worktreeId ? { worktreeId } : {}),
+      markedAt: now
+    })
   }
 }
 
 export function peekUserInitiatedTerminalCreate(tabId: string): boolean {
-  const markedAt = markedAtByTabId.get(tabId)
-  if (markedAt === undefined) {
+  const mark = marksByTabId.get(tabId)
+  if (mark === undefined) {
     return false
   }
-  if (Date.now() - markedAt > USER_INITIATED_CREATE_TTL_MS) {
-    markedAtByTabId.delete(tabId)
+  if (Date.now() - mark.markedAt > USER_INITIATED_CREATE_TTL_MS) {
+    marksByTabId.delete(tabId)
     return false
   }
   return true
 }
 
+/**
+ * U161: a host frame that predates the create must not steal the tab the user just opened, so the
+ * host-active follow stands down for the whole worktree while any create gesture is in flight.
+ */
+export function peekUserInitiatedTerminalCreateForWorktree(worktreeId: string): boolean {
+  if (!worktreeId) {
+    return false
+  }
+  const now = Date.now()
+  sweepExpiredMarks(now)
+  for (const mark of marksByTabId.values()) {
+    if (mark.worktreeId === worktreeId) {
+      return true
+    }
+  }
+  return false
+}
+
 export function consumeUserInitiatedTerminalCreate(tabId: string): void {
-  markedAtByTabId.delete(tabId)
+  marksByTabId.delete(tabId)
 }
 
 /** Drop the mark when the create fails or aborts, so a later remount cannot replay the gesture. */
 export function discardUserInitiatedTerminalCreate(tabId: string): void {
-  markedAtByTabId.delete(tabId)
+  marksByTabId.delete(tabId)
 }
 
 export function clearUserInitiatedTerminalCreateForTests(): void {
-  markedAtByTabId.clear()
+  marksByTabId.clear()
 }

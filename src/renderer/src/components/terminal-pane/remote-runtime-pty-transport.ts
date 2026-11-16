@@ -2719,7 +2719,7 @@ export function createRemoteRuntimePtyTransport(
     }
     userInitiatedCreateAttempted = false
     userInitiatedCreateRearmedForReconnect = true
-    markUserInitiatedTerminalCreate(tabId)
+    markUserInitiatedTerminalCreate(tabId, worktreeId)
   }
 
   let connectForRecovery: PtyTransport['connect'] = (options) => transport.connect(options)

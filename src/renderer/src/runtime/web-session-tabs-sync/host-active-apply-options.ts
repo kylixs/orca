@@ -1,6 +1,7 @@
 import type { WebSessionTabsSnapshotApplyOptions } from './state'
 import { captureWebSessionIntentOwner } from '../web-runtime-session-environment'
 import { peekWebSessionFocusIntent } from '../web-session-focus-intent'
+import { peekUserInitiatedTerminalCreateForWorktree } from '../web-session-user-initiated-create'
 
 /**
  * U138: a cloud host is the single active-tab authority. Follow it on every frame so a value the
@@ -15,12 +16,14 @@ export function resolveHostActiveApplyOptions(args: {
   hasHostGroups: boolean
 }): { options?: WebSessionTabsSnapshotApplyOptions; adoptHostLayout: boolean } {
   const adoptHostLayout = args.isCloudSession && args.pendingAdoption && args.hasHostGroups
+  // Why: between the click and the create reply the host still publishes the pre-create active;
+  // following it would undo the optimistic tab and invalidate the focus intent that follows (U161).
+  const userCreateInFlight = peekUserInitiatedTerminalCreateForWorktree(args.worktreeId)
   const followHostActive =
     args.isCloudSession &&
-    peekWebSessionFocusIntent(
-      captureWebSessionIntentOwner(args.environmentId),
-      args.worktreeId
-    ) === null
+    !userCreateInFlight &&
+    peekWebSessionFocusIntent(captureWebSessionIntentOwner(args.environmentId), args.worktreeId) ===
+      null
   const options =
     adoptHostLayout || followHostActive
       ? {

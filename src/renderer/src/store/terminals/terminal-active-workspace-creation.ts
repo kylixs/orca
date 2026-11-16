@@ -59,7 +59,7 @@ export function createActiveWorkspaceTerminalActions(
       const terminal = get().createTab(worktreeId, groupId)
       // Why: a cloud session's client-owned pane spawns through terminal.create; only this click
       // may persist the new tab as the host's selection when that create returns (U153).
-      markUserInitiatedTerminalCreate(terminal.id)
+      markUserInitiatedTerminalCreate(terminal.id, worktreeId)
       get().setActiveTab(terminal.id)
       get().setActiveTabType('terminal', worktreeId)
       const latest = get()

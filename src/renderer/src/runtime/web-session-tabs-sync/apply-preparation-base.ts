@@ -15,6 +15,7 @@ import {
   resolveWebSessionVisibleTabId,
   clearWebSessionFocusIntent
 } from '../web-session-focus-intent'
+import { acceptReplayedWebSessionTabsSnapshot } from './tracking-lifecycle'
 import {
   resolveWebAgentSessionHandoff,
   isWebAgentSessionHandoffPostCreateSnapshotConfirmed,
@@ -30,6 +31,12 @@ import {
 } from './terminal-surfaces'
 import { buildMirroredTerminalTabs } from './terminal-build'
 import { hostSnapshotAffirmsWorktreeContents } from '../host-session-snapshot-authority'
+
+const intentGuardDeferrals = new Set<string>()
+
+export function resetWebSessionFocusIntentGuardForTests(): void {
+  intentGuardDeferrals.clear()
+}
 
 export function prepareWebSessionTabsSnapshotBase(
   state: WebSessionTabsSyncState,
@@ -96,8 +103,26 @@ export function prepareWebSessionTabsSnapshotBase(
       : null
   const navigationIntentTab = callerFocusIntentTab ?? followIntentTab
   const honorSnapshotActiveFocus = navigationIntentTab !== null
+  // Why: rejecting on the first frame must not burn the intent (U161); the same version stays
+  // replayable so it is re-evaluated once the local visible tab settles. A second rejection still
+  // means the user moved away during the round trip, which cancels the intent (U154).
+  const intentGuardKey =
+    focusIntent !== null && matchingFocusIntentTab !== null
+      ? `${environmentId}\0${worktreeId}\0${focusIntentHostTabId}\0${String(expectedCurrentLocalTabId)}`
+      : null
   if (matchingFocusIntentTab) {
-    clearWebSessionFocusIntent({ environmentId }, worktreeId)
+    if (callerFocusIntentTab !== null) {
+      if (intentGuardKey) {
+        intentGuardDeferrals.delete(intentGuardKey)
+      }
+      clearWebSessionFocusIntent({ environmentId }, worktreeId)
+    } else if (intentGuardKey && intentGuardDeferrals.has(intentGuardKey)) {
+      intentGuardDeferrals.delete(intentGuardKey)
+      clearWebSessionFocusIntent({ environmentId }, worktreeId)
+    } else if (intentGuardKey) {
+      intentGuardDeferrals.add(intentGuardKey)
+      acceptReplayedWebSessionTabsSnapshot(environmentId, worktreeId)
+    }
   }
   const currentTerminalTabs = state.tabsByWorktree[worktreeId] ?? []
   const existingTerminalById = new Map(currentTerminalTabs.map((tab) => [tab.id, tab]))

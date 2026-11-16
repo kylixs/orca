@@ -211,7 +211,7 @@ function applyMove(
   })
   if (!ptyId) {
     // Why: only the no-bound-PTY branch spawns a new terminal; the reused-PTY branch is passive (U155).
-    markUserInitiatedTerminalCreate(tab.id)
+    markUserInitiatedTerminalCreate(tab.id, worktreeId)
   }
   const afterCreateStore = args.getStore()
   moveCreatedTabToIndex({

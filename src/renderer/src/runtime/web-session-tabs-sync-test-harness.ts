@@ -1,6 +1,8 @@
 import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-types'
 import type { TabGroupLayoutNode } from '../../../shared/tab-types'
 import { resetWebSessionFocusIntentForTests } from './web-session-focus-intent'
+import { clearUserInitiatedTerminalCreateForTests } from './web-session-user-initiated-create'
+import { resetWebSessionFocusIntentGuardForTests } from './web-session-tabs-sync/apply-preparation-base'
 import { resetWebSessionCloseIntentForTests } from './web-session-close-intent'
 import { resetWebSessionReorderIntentForTests } from './web-session-reorder-intent'
 import { resetWebAgentSessionHandoffsForTests } from './web-agent-session-handoff'
@@ -21,6 +23,8 @@ export const HOST_SURFACE_ID = `host-tab-1::${LEAF_ID}`
 export function resetWebSessionTabsSyncTestState(): void {
   resetWebSessionTabsSnapshotFreshnessForTests()
   resetWebSessionFocusIntentForTests()
+  resetWebSessionFocusIntentGuardForTests()
+  clearUserInitiatedTerminalCreateForTests()
   resetWebSessionCloseIntentForTests()
   resetWebSessionReorderIntentForTests()
   resetWebAgentSessionHandoffsForTests()
