@@ -3871,13 +3871,11 @@ async function renderAudit(loadMore = false) {
   }
 }
 
-/* ---------------- 项目级下载策略覆盖（M120c · QA-015） ---------------- */
+/* ---------------- 项目下载策略（M120c · G27） ---------------- */
 
-/** 统计与覆盖表都只看在营项目：已归档行是历史，不再参与策略管理（§5.3）。 */
-function policyOverrides(projects) {
-  const live = projects.filter((p) => p.status !== 'archived')
-  const overrides = live.filter((p) => p.downloadPolicyExplicit === true)
-  return { following: live.length - overrides.length, overrides }
+/** G27: 设置页是全量总览，不再只列显式覆盖；归档项目不参与策略（T6/Q8）。 */
+function livePolicyProjects(projects) {
+  return projects.filter((p) => p.status !== 'archived')
 }
 
 /** U136④b: a stale admin keeps their radio choice; the card states the version
@@ -3902,25 +3900,42 @@ function showPolicyConflict(value, details, retry) {
 async function renderSettings() {
   const [policy, projects] = await Promise.all([api('/v1/policies/download'), loadProjects()])
   const globalDefault = policy.downloadDefault
-  const { following, overrides } = policyOverrides(projects)
-  const rows = overrides
-    .map(
-      (p) => `<tr data-policy-row="${esc(p.id)}">
-        <td data-label="项目"><strong>${esc(p.name)}</strong> <span class="badge">覆盖</span><div class="muted mono">${esc(p.path)}</div></td>
+  const serverLabel = globalDefault === 'allow' ? '允许' : '禁止'
+  const live = livePolicyProjects(projects)
+  const overrides = live.filter((p) => p.downloadPolicyExplicit === true)
+  const following = live.length - overrides.length
+  const rows = live
+    .map((p) => {
+      const explicit = p.downloadPolicyExplicit === true
+      const value = explicit ? p.downloadPolicy : 'inherit'
+      const source = explicit
+        ? p.downloadPolicy === globalDefault
+          ? '独立覆盖（与全局相同）'
+          : '独立覆盖'
+        : '跟随全局'
+      return `<tr data-policy-row="${esc(p.id)}">
+        <td data-label="项目"><strong>${esc(p.name)}</strong> <span class="badge" data-policy-source>${source}</span><div class="muted mono">${esc(p.path)}</div></td>
         <td data-label="覆盖策略">
-          <select class="select settings-policy-select" data-policy-select="${esc(p.id)}" aria-label="${esc(p.name)} 下载策略">
-            <option value="deny" ${p.downloadPolicy === 'deny' ? 'selected' : ''}>禁止</option>
-            <option value="allow" ${p.downloadPolicy === 'allow' ? 'selected' : ''}>允许</option>
-            <option value="inherit">跟随全局</option>
+          <select class="select settings-policy-select" data-policy-select="${esc(p.id)}" data-policy-value="${esc(value)}" aria-label="${esc(p.name)} 下载策略">
+            <option value="inherit" ${value === 'inherit' ? 'selected' : ''}>跟随全局（当前：${serverLabel}）</option>
+            <option value="deny" ${value === 'deny' ? 'selected' : ''}>禁止下载</option>
+            <option value="allow" ${value === 'allow' ? 'selected' : ''}>允许下载</option>
           </select>
+          <div class="note warn settings-row-conflict" data-policy-conflict="${esc(p.id)}" hidden></div>
         </td>
         <td class="muted" data-label="当前生效">当前生效：${effectiveDownloadPolicy(p, globalDefault) === 'deny' ? '禁止' : '允许'}</td>
       </tr>`
-    )
+    })
     .join('')
+  const table = rows
+    ? `<div class="table-wrap settings-policy-table"><table>
+        <thead><tr><th>项目</th><th>覆盖策略</th><th>当前生效</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>`
+    : '<p class="muted">当前没有在营项目，暂无项目级策略可设置。</p>'
   content().innerHTML = `
     <div class="settings-page">
-    <div class="page-head"><div><h1>平台设置</h1><p>下载策略：全局默认与项目覆盖。</p></div></div>
+    <div class="page-head"><div><h1>平台设置</h1><p>下载策略：全局默认与项目策略。</p></div></div>
     <div class="card pad settings-card" style="max-width:640px">
       <h2 style="font-size:14px;margin:0 0 4px">全局下载策略</h2>
       <p class="muted" style="margin:0 0 16px">项目级策略可覆盖全局；托管项目默认禁止下载。</p>
@@ -3940,17 +3955,16 @@ async function renderSettings() {
       </div>
     </div>
     <div class="card pad settings-card" style="max-width:640px;margin-top:16px">
-      <h2 style="font-size:14px;margin:0 0 4px">项目级覆盖</h2>
-      <p class="muted" style="margin:0 0 12px">独立覆盖钉住该项目的下载策略，全局默认翻转时不随之变化；选「跟随全局」即恢复。</p>
-      <p class="muted" style="margin:0 0 12px" id="policyScope">跟随全局默认 <strong>${following}</strong> 个项目 · 独立覆盖 <strong>${overrides.length}</strong> 个项目</p>
+      <h2 style="font-size:14px;margin:0 0 4px">项目下载策略</h2>
+      <p class="muted" style="margin:0 0 12px">列表覆盖全部在营项目；跟随全局的项目无需单独保存，选择「禁止/允许」即新建独立覆盖。</p>
+      <p class="muted" style="margin:0 0 12px" id="policyScope">全部 <strong>${live.length}</strong> 个 · 跟随全局 <strong>${following}</strong> 个 · 独立覆盖 <strong>${overrides.length}</strong> 个</p>
+      <p class="muted" style="margin:0 0 12px">策略保存后随宿主下一次心跳生效；本页不轮询主机确认，也不显示「已同步」。归档项目不参与策略，恢复后重新进入本列表。</p>
       ${
-        rows
-          ? `<div class="table-wrap settings-policy-table"><table>
-              <thead><tr><th>项目</th><th>覆盖策略</th><th>当前生效</th></tr></thead>
-              <tbody>${rows}</tbody>
-            </table></div>`
-          : '<p class="muted">暂无项目覆盖，全部项目跟随全局默认。</p>'
+        live.length > 200
+          ? '<input class="input" id="policySearch" type="search" placeholder="搜索项目名称或路径" autocomplete="off" style="margin-bottom:12px">'
+          : ''
       }
+      ${table}
     </div>
     </div>`
   const saveGlobalPolicy = async (value, expectedVersion) => {
@@ -4001,13 +4015,57 @@ async function renderSettings() {
     const value = document.querySelector('input[name=dl]:checked').value
     void saveGlobalPolicy(value, policy.version)
   }
+  const search = $('#policySearch')
+  if (search) {
+    search.oninput = () => {
+      const term = search.value.trim().toLowerCase()
+      for (const row of content().querySelectorAll('[data-policy-row]')) {
+        const haystack = row.textContent?.toLowerCase() ?? ''
+        row.style.display = term === '' || haystack.includes(term) ? '' : 'none'
+      }
+    }
+  }
   for (const select of content().querySelectorAll('[data-policy-select]')) {
-    select.onchange = () => void saveProjectPolicy(select.dataset.policySelect ?? '', select.value)
+    // Some DOM implementations mis-parse `selected` on a later option; the
+    // attribute is only markup, so pin the state the platform actually holds.
+    select.value = select.dataset.policyValue ?? 'inherit'
+    select.onchange = () => {
+      const row = select.closest('[data-policy-row]')
+      const conflict = row?.querySelector('[data-policy-conflict]')
+      if (conflict) {
+        conflict.hidden = true
+        conflict.innerHTML = ''
+      }
+      void saveProjectPolicy(select.dataset.policySelect ?? '', select.value, policy.version)
+    }
   }
 }
 
+/** T7: a stale row keeps the admin's choice; retry re-reads the shared version
+ * and the project list before replaying it, never overwriting a newer policy. */
+function showRowConflict(projectId, value, details, retry) {
+  const row = document.querySelector(`[data-policy-row="${projectId}"]`)
+  const host = row?.querySelector(`[data-policy-conflict="${projectId}"]`)
+  if (!host) return
+  const serverVersion = details.version ?? '?'
+  const serverValue = details.downloadPolicy === 'allow' ? '允许' : '禁止'
+  const pending = value === 'inherit' ? '跟随全局' : value === 'allow' ? '允许' : '禁止'
+  host.hidden = false
+  host.innerHTML = `<div><strong>策略已被他人修改</strong>（服务端 v${esc(serverVersion)}，当前值：${serverValue}）。你的选择「${pending}」尚未保存。</div>`
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = 'btn settings-conflict-retry'
+  button.dataset.policyRetry = projectId
+  button.textContent = '刷新后重试'
+  button.onclick = () => {
+    button.disabled = true
+    void retry(button)
+  }
+  host.append(button)
+}
+
 /** 行内选择即保存：「禁止/允许」钉住一个覆盖，「跟随全局」清掉钉住回到继承。 */
-async function saveProjectPolicy(projectId, value) {
+async function saveProjectPolicy(projectId, value, expectedVersion) {
   const inherit = value === 'inherit'
   // A row save redraws the whole page, which used to throw the admin back to the
   // top and drop the select: carry both over (m-7). The failure path redraws to
@@ -4018,16 +4076,37 @@ async function saveProjectPolicy(projectId, value) {
   try {
     await api(`/v1/projects/${projectId}/policy`, {
       method: 'PUT',
-      body: JSON.stringify(inherit ? { inherit: true } : { downloadPolicy: value })
+      body: JSON.stringify(
+        inherit ? { inherit: true, expectedVersion } : { downloadPolicy: value, expectedVersion }
+      )
     })
   } catch (err) {
+    if (err.status === 409 && err.code === 'POLICY_VERSION_CONFLICT') {
+      showRowConflict(projectId, value, err.body?.error?.details ?? {}, async (button) => {
+        let fresh
+        try {
+          // Both the shared version and the row's source value may have moved.
+          ;[fresh] = await Promise.all([api('/v1/policies/download'), loadProjects()])
+        } catch (refreshErr) {
+          toast(`刷新失败：${refreshErr.message ?? refreshErr}`)
+          button.disabled = false
+          return
+        }
+        await saveProjectPolicy(projectId, value, fresh.version)
+      })
+      return
+    }
     // Same rule as the global card (M116-QA-009): report it and redraw from the
     // platform's value, so no row keeps claiming a policy that never landed.
     toast(`保存失败：${err.message ?? err}`)
     renderSettings()
     return
   }
-  toast(inherit ? '已恢复跟随全局默认' : '已保存项目下载策略')
+  toast(
+    inherit
+      ? '已恢复跟随全局默认，将随宿主心跳生效'
+      : '已保存项目下载策略，将随宿主心跳生效'
+  )
   await renderSettings()
   scroller.scrollTop = scrollTop
   const refocus = focusedId ? document.querySelector(`[data-policy-select="${focusedId}"]`) : null
