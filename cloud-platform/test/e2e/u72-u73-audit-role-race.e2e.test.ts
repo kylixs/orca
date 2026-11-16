@@ -173,6 +173,43 @@ test('U72-1 审计员登录：侧栏审计入口可见、其余管理入口隐�
   })
 }, 120_000)
 
+/**
+ * F6 E5 (AC-M7-14): an auditor's project/host dropdowns are empty because both
+ * list endpoints are denied (hosts) or ACL-filtered to nothing (projects), and
+ * the page swallows that. Characterization pin: if either list gains auditor
+ * data, or the page starts explaining the empty state, this fails.
+ */
+test('U72-4 审计员项目/主机筛选仅有「全部」，空态不解释（F6 E5 现状钉）', async () => {
+  const page = loadWebConsolePage(url)
+  await page.settle()
+  await page.submitLogin('lisi', 'Passw0rd!')
+  await page.clickNav('audit')
+
+  const options = (selector: string): { value: string; text: string }[] => {
+    const select = page.window.document.querySelector<HTMLSelectElement>(selector)
+    assert.ok(select, `missing ${selector}`)
+    return [...select.options].map((option) => ({ value: option.value, text: option.text }))
+  }
+  assert.deepEqual(options('#auditProject'), [{ value: '', text: '全部项目' }])
+  assert.deepEqual(options('#auditHost'), [{ value: '', text: '全部主机' }])
+
+  // The host list denial is what empties the host select; the page must still
+  // render the events it is allowed to query, and must not claim a load failure.
+  const hosts = await fetch(`${url}/v1/hosts`, {
+    headers: { authorization: `Bearer ${lisiToken}` }
+  })
+  assert.equal(hosts.status, 403, 'precondition: auditors are denied the host list')
+  assert.doesNotMatch(page.text('#content'), /加载失败|无权访问/)
+  assert.match(page.text('#content'), /u73-alpha\.log/, 'events still render')
+
+  saveEvidence(EVIDENCE, 'u72-auditor-empty-filters.json', {
+    projectOptions: options('#auditProject'),
+    hostOptions: options('#auditHost'),
+    hostsApiStatus: hosts.status,
+    explained: false
+  })
+}, 120_000)
+
 test('U72-2 管理员不回退：全部管理入口可见，审计页与用户页照常渲染', async () => {
   const page = loadWebConsolePage(url)
   await page.settle()

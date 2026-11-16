@@ -154,6 +154,46 @@ test('M116-QA-011 加载失败显示错误态并可重试', async () => {
   record('QA-011', 'GET /v1/relays 失败 → 加载失败 + 重试按钮，恢复后重试渲染中继页')
 }, 120_000)
 
+/**
+ * F8 E1/E3 (AC-M5-09/11): the relay page has no refresh-failure feedback and no
+ * auto-poll — a characterization pin so a future fix or a surprise timer both
+ * show up here, not in a manual retest.
+ */
+test('M116-QA-013 中继刷新失败保留旧表且不自动轮询', async () => {
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  await page.clickNav('relays')
+  assert.match(page.text('#content'), /中继/)
+
+  const listCalls = () => page.calls().filter((call) => call === 'GET /v1/relays').length
+  const baseline = listCalls()
+  assert.ok(baseline >= 1, 'the page queries once on entry')
+  // F8 E3: with nobody clicking, the page never re-asks; staleness is the operator's job.
+  await new Promise((resolve) => setTimeout(resolve, 1200))
+  assert.equal(listCalls(), baseline, 'no timer-driven refresh')
+
+  const rowsBefore = page.window.document.querySelectorAll('#content tbody tr').length
+  page.fail('GET', '/v1/relays')
+  page.window.document.querySelector<HTMLButtonElement>('#refreshRelaysBtn')!.click()
+  await page.settle()
+
+  assert.ok(listCalls() > baseline, 'the refresh button must re-query')
+  assert.equal(
+    page.window.document.querySelectorAll('#content tbody tr').length,
+    rowsBefore,
+    'a failed refresh keeps the previous table'
+  )
+  assert.doesNotMatch(page.text('#content'), /加载失败/, 'the table is not replaced by an error page')
+  assert.equal(
+    page.window.document.querySelector('.toast'),
+    null,
+    'no feedback is shown — the characterized gap (AC-M5-09)'
+  )
+  page.clearFails()
+  record('F8-E1/E3', '刷新失败旧表保留、无 toast/横幅；1.2s 内无自动轮询（characterization）')
+}, 120_000)
+
 test('M116-QA-005 主机状态按心跳推导：静默主机不再显示在线', async () => {
   // The payload still carries the stale reported status; the console must not.
   const payload = await adminApi('/v1/hosts')

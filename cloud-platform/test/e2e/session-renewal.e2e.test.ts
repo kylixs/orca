@@ -1,6 +1,7 @@
 import { after, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createApp, type ApiHandle } from '../../apps/api/src/server.ts'
+import { loadWebConsolePage } from './web-console-page.ts'
 
 /**
  * The refresh contract clients depend on: a short access token becomes 401
@@ -106,5 +107,39 @@ describe('平台会话续期（真实 createApp + HTTP）', () => {
     const refused = await refresh(base, refreshOf(first))
     assert.equal(refused.status, 401)
     assert.equal((await refused.json()).error.code, 'SESSION_EXPIRED')
+  })
+
+  test('浏览器 401 → refresh → 原请求重放一次（AC-M1-04）', async () => {
+    // Why an expiry longer than the page's own settle: the login itself must
+    // finish on the first token, so the 401 under test belongs to the click.
+    // Why the relays route: it makes exactly one request, so this pins the
+    // replay path itself. Parallel-load routes race the refresh (registered as
+    // a separate gap) and are not a replay assertion.
+    const base = await start(2000, 60_000)
+    const page = loadWebConsolePage(base)
+    await page.settle()
+    await page.submitLogin('admin', 'Adm1n!')
+    assert.equal(page.hidden('#view-app'), false)
+    const refreshBefore = page.window.localStorage.getItem('orca.refresh')
+    assert.ok(refreshBefore, 'login must persist a refresh token')
+
+    await new Promise((resolve) => setTimeout(resolve, 2200))
+    const before = page.calls().filter((call) => call === 'GET /v1/relays').length
+    await page.clickNav('relays')
+    const after = page.calls().filter((call) => call === 'GET /v1/relays').length
+
+    assert.equal(after - before, 2, 'the expired request must be replayed exactly once')
+    assert.equal(
+      page.calls().filter((call) => call === 'POST /v1/auth/refresh').length,
+      1,
+      'one expiry renews once'
+    )
+    assert.equal(page.hidden('#view-app'), false, 'the user stays signed in')
+    assert.notEqual(
+      page.window.localStorage.getItem('orca.refresh'),
+      refreshBefore,
+      'renewing must rotate the refresh token'
+    )
+    assert.match(page.text('#content'), /中继/, 'the replay must render the page')
   })
 })
