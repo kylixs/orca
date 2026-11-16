@@ -1,0 +1,1546 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23171717'/%3E%3Cpath d='M9.5 22.5v-13h6.8a6.5 6.5 0 0 1 0 13H9.5Z' fill='none' stroke='%23fff' stroke-width='2.1'/%3E%3Cpath d='m17 9.5 5.5 13' fill='none' stroke='%23fff' stroke-width='2.1' stroke-linecap='round'/%3E%3C/svg%3E">
+<title>Orca Cloud 移动端原型 · U80</title>
+<!-- U80 移动端适配原型。渲染层零元内容：修订记录 / 断点策略理由 / 面清单 / T-Q 清单见 ui/prototype-mobile-notes.md -->
+<style>
+/* ============================================================
+   Design tokens（与桌面原型 ui/prototype.html 同一套）
+   ============================================================ */
+:root {
+  --bg: #ffffff;
+  --sidebar: #fafafa;
+  --card: #ffffff;
+  --border: #e5e7eb;
+  --divider: #f1f2f4;
+  --text: #171717;
+  --text-2: #525252;
+  --text-3: #737373;
+  --text-disabled: #a3a3a3;
+  --brand: #2563eb;
+  --brand-hover: #1d4ed8;
+  --brand-soft: #eff6ff;
+  --hover: #f5f5f5;
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --success-soft: #f0fdf4;
+  --warning-soft: #fffbeb;
+  --danger-soft: #fef2f2;
+  --radius: 8px;
+  --radius-card: 10px;
+  --font: Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --tabbar-h: 56px;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: #ececee;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ============================================================
+   演示舞台：桌面浏览器里以 375px 手机框预览；真机/窄窗口满屏
+   ============================================================ */
+.stage { min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+.phone {
+  width: 375px; height: 780px;
+  background: var(--bg);
+  border: 1px solid #d4d4d4;
+  border-radius: 28px;
+  box-shadow: 0 24px 60px rgba(23, 23, 23, .18), 0 4px 14px rgba(23, 23, 23, .08);
+  overflow: hidden;
+  position: relative;
+}
+@media (max-width: 520px) {
+  .stage { padding: 0; }
+  .phone { width: 100%; height: 100dvh; border: 0; border-radius: 0; box-shadow: none; }
+}
+
+.screen { position: absolute; inset: 0; background: var(--bg); }
+
+/* ============================================================
+   通用元件
+   ============================================================ */
+button, input, select, textarea { font: inherit; color: inherit; }
+button { border: 0; background: none; padding: 0; cursor: pointer; }
+a { color: var(--brand); text-decoration: none; }
+svg { display: block; }
+[hidden] { display: none !important; }
+.mono { font-family: var(--mono); font-variant-ligatures: none; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.text-2 { color: var(--text-2); }
+.text-3 { color: var(--text-3); }
+:focus-visible { outline: 2px solid rgba(37, 99, 235, .65); outline-offset: 2px; }
+
+.icon {
+  width: 18px; height: 18px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 1.75;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.icon-sm { width: 15px; height: 15px; }
+
+/* 页头：标题 + 可选操作，替代桌面 topbar+面包屑 */
+.m-head {
+  position: sticky; top: 0; z-index: 30;
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px 10px;
+  background: rgba(255, 255, 255, .94);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--divider);
+}
+.m-head-title { min-width: 0; flex: 1; }
+.m-head h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -.01em; line-height: 1.3; }
+.m-head p { margin: 2px 0 0; font-size: 11.5px; color: var(--text-3); line-height: 1.45; }
+.m-head-action { flex: none; }
+
+.m-page {
+  position: absolute; inset: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--sidebar);
+  padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 20px);
+}
+.m-body { padding: 12px 16px 0; }
+
+/* 按钮：触控目标放大 */
+.btn {
+  height: 40px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font-size: 13.5px; font-weight: 500;
+  color: var(--text-2);
+  background: transparent;
+  white-space: nowrap;
+}
+.btn:disabled, .btn.is-disabled { opacity: .46; cursor: not-allowed; }
+.btn-primary { color: #fff; background: var(--brand); border-color: var(--brand); }
+.btn-primary:active:not(:disabled) { background: var(--brand-hover); }
+.btn-secondary { color: var(--text); background: var(--card); border-color: var(--border); }
+.btn-ghost { color: var(--text-2); }
+.btn-sm { height: 34px; padding: 0 11px; font-size: 12.5px; }
+.btn-block { width: 100%; }
+
+/* 徽标 / 状态点：沿用桌面语义 */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 20px; padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--text-2);
+  font-size: 11px; line-height: 1;
+  white-space: nowrap;
+}
+.badge-brand { background: var(--brand-soft); border-color: #dbeafe; color: #1d4ed8; }
+.badge-success { background: var(--success-soft); border-color: #bbf7d0; color: #15803d; }
+.badge-warning { background: var(--warning-soft); border-color: #fde68a; color: #b45309; }
+.badge-danger { background: var(--danger-soft); border-color: #fecaca; color: #b91c1c; }
+.badge-neutral { background: var(--hover); border-color: transparent; color: var(--text-2); }
+.badge-mono { font-family: var(--mono); font-size: 10.5px; }
+.dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--text-3); }
+.dot-success { background: var(--success); }
+.dot-warning { background: var(--warning); }
+.dot-danger { background: var(--danger); }
+
+/* 通知条 */
+.notice {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  font-size: 12px; color: var(--text-2); line-height: 1.55;
+}
+.notice .icon-sm { margin-top: 1px; color: var(--text-3); flex: none; }
+.notice-warning { background: var(--warning-soft); border-color: #fde68a; color: #92400e; }
+.notice-warning .icon-sm { color: var(--warning); }
+
+/* 卡片列表（表格的移动形态）：一行 = 一卡 */
+.card-list { display: flex; flex-direction: column; gap: 10px; }
+.m-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 12px 14px;
+}
+.m-card-main { display: flex; align-items: flex-start; gap: 10px; }
+.m-card-title { min-width: 0; flex: 1; }
+.m-card-title strong { display: block; font-size: 14.5px; font-weight: 600; line-height: 1.35; }
+.m-card-title .sub { display: block; margin-top: 2px; font-size: 11.5px; color: var(--text-3); }
+.m-card-fields {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px;
+  margin-top: 10px; padding-top: 10px;
+  border-top: 1px solid var(--divider);
+}
+.m-field { min-width: 0; font-size: 12px; }
+.m-field .k { color: var(--text-3); font-size: 10.5px; }
+.m-field .v { margin-top: 1px; color: var(--text-2); }
+.m-field .v.wide { grid-column: 1 / -1; }
+.m-card-actions {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 11px; padding-top: 11px;
+  border-top: 1px solid var(--divider);
+}
+.m-card-actions .spacer { flex: 1; }
+.list-foot { padding: 12px 4px 0; font-size: 11px; color: var(--text-3); text-align: center; }
+
+/* 筛选 chips（≤3 字段的轻筛选形态） */
+.chip-row { display: flex; gap: 8px; overflow-x: auto; padding: 12px 16px 2px; scrollbar-width: none; }
+.chip-row::-webkit-scrollbar { display: none; }
+.chip {
+  flex: none; height: 32px;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  font-size: 12.5px; color: var(--text-2);
+}
+.chip.is-on { background: var(--brand-soft); border-color: #bfdbfe; color: var(--brand); font-weight: 500; }
+
+/* 搜索框 */
+.search-box {
+  display: flex; align-items: center; gap: 8px;
+  height: 40px; padding: 0 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-3);
+}
+.search-box input { flex: 1; min-width: 0; border: 0; outline: none; background: none; font-size: 13.5px; color: var(--text); }
+
+/* 表单 */
+.field { margin-bottom: 14px; }
+.field-label { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 500; color: var(--text-2); }
+.input, .select {
+  width: 100%; height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  font-size: 14px; color: var(--text);
+  outline: none;
+}
+.input:focus, .select:focus { border-color: var(--brand); }
+.input::placeholder { color: var(--text-disabled); }
+.select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23737373' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; background-size: 16px; padding-right: 34px; }
+.filter-hint { margin-top: 5px; font-size: 10.5px; color: var(--text-disabled); }
+
+/* 统计卡 2×2 */
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.stat-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-card); padding: 12px 14px; }
+.stat-top { display: flex; align-items: center; justify-content: space-between; }
+.stat-label { font-size: 11px; color: var(--text-3); }
+.stat-icon { color: var(--text-3); }
+.stat-value { margin-top: 4px; font-size: 22px; font-weight: 600; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+
+/* 区块标题 */
+.section-head { display: flex; align-items: center; justify-content: space-between; margin: 18px 0 10px; }
+.section-title { margin: 0; font-size: 13px; font-weight: 600; color: var(--text); }
+.section-count { font-size: 11px; color: var(--text-3); }
+.text-link { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 500; color: var(--brand); }
+
+/* 详情行（字段纵列，sheet 信息 tab 用） */
+.info-rows { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-card); overflow: hidden; }
+.info-row { display: flex; align-items: flex-start; gap: 12px; padding: 11px 14px; border-top: 1px solid var(--divider); font-size: 13px; }
+.info-row:first-child { border-top: 0; }
+.info-row .k { flex: none; width: 76px; color: var(--text-3); font-size: 12px; }
+.info-row .v { flex: 1; min-width: 0; color: var(--text); word-break: break-all; }
+
+/* ============================================================
+   底部 tab（≤480px 导航形态）
+   ============================================================ */
+.m-tabbar {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 40;
+  display: flex;
+  height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  background: rgba(255, 255, 255, .96);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--border);
+}
+.m-tab {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  font-size: 10px; color: var(--text-3);
+}
+.m-tab .icon { width: 21px; height: 21px; }
+.m-tab.is-active { color: var(--brand); font-weight: 500; }
+.m-tab .tab-dot { position: relative; }
+.m-tab .tab-dot::after {
+  content: ''; position: absolute; top: -1px; right: -7px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--danger); border: 1.5px solid #fff;
+}
+
+/* ============================================================
+   全屏 sheet（弹框 / 抽屉的移动形态）
+   ============================================================ */
+.m-sheet {
+  position: absolute; inset: 0; z-index: 60;
+  display: flex; flex-direction: column;
+  background: var(--sidebar);
+  animation: sheet-in .18s ease;
+}
+@keyframes sheet-in { from { transform: translateY(14px); opacity: .4; } to { transform: none; opacity: 1; } }
+.sheet-head {
+  flex: none;
+  display: flex; align-items: center; gap: 10px;
+  min-height: 54px; padding: 8px 12px 8px 8px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+.sheet-back { width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; border-radius: 50%; color: var(--text-2); }
+.sheet-back:active { background: var(--hover); }
+.sheet-title { flex: 1; min-width: 0; }
+.sheet-title strong { display: block; font-size: 15px; font-weight: 600; line-height: 1.3; }
+.sheet-title .sub { display: block; margin-top: 1px; font-size: 11px; color: var(--text-3); }
+.sheet-body { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 14px 16px calc(16px + env(safe-area-inset-bottom)); }
+.sheet-foot {
+  flex: none;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: var(--card);
+  border-top: 1px solid var(--border);
+}
+.sheet-foot .btn { flex: 1; }
+
+/* sheet 内分段 tab（信息 | 权限） */
+.seg {
+  display: flex; padding: 3px; gap: 2px;
+  background: #f0f0f1;
+  border-radius: 9px;
+}
+.seg button {
+  flex: 1; height: 32px;
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  border-radius: 7px;
+  font-size: 12.5px; font-weight: 500; color: var(--text-3);
+}
+.seg button.is-on { background: #fff; color: var(--text); box-shadow: 0 1px 3px rgba(23, 23, 23, .12); }
+.seg-badge { font-size: 10px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.seg button.is-on .seg-badge { color: var(--text-2); }
+.tabpane[hidden] { display: none !important; }
+
+/* 权限三卡片（与桌面原型同构，纵向堆叠） */
+.perm-card { border: 1px solid var(--border); border-radius: 10px; background: #fff; overflow: hidden; }
+.perm-card + .perm-card { margin-top: 10px; }
+.perm-card-head { display: flex; align-items: center; gap: 8px; padding: 11px 13px 4px; }
+.perm-card-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.perm-card-count { margin-left: auto; font-size: 10.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.perm-card-desc { padding: 0 13px 9px; font-size: 10.5px; line-height: 1.6; color: var(--text-3); }
+.perm-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 13px 12px; }
+.perm-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 26px; padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--sidebar);
+  font-size: 11.5px; color: var(--text-2);
+}
+.perm-chip .x { color: var(--text-disabled); font-size: 13px; line-height: 1; }
+.perm-add {
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  margin: 0 13px 13px;
+  height: 34px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  font-size: 12px; color: var(--text-3);
+}
+.perm-card.is-derived { background: var(--sidebar); }
+
+/* 用户角色内联编辑（U82：详情弹框内角色字段点击 → 下拉修改） */
+.role-edit-row { display: flex; align-items: center; gap: 8px; }
+.role-edit-row .select { height: 38px; flex: 1; }
+.role-warn {
+  display: flex; align-items: flex-start; gap: 7px;
+  margin-top: 8px; padding: 9px 11px;
+  border-radius: 8px;
+  background: var(--warning-soft);
+  border: 1px solid #fde68a;
+  font-size: 11.5px; line-height: 1.55; color: #92400e;
+}
+
+/* 审计事件卡（重表格页的卡片化解法） */
+.event-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-card); padding: 12px 14px; }
+.event-card + .event-card { margin-top: 10px; }
+.event-l1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.event-l1 .time { margin-left: auto; font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.event-op { font-size: 13px; font-weight: 600; color: var(--text); }
+.event-l2 { display: flex; align-items: center; gap: 5px; margin-top: 6px; font-size: 12px; color: var(--text-2); flex-wrap: wrap; }
+.event-l2 .sep { color: var(--text-disabled); }
+.event-file {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 7px; padding: 6px 9px;
+  background: var(--sidebar);
+  border-radius: 7px;
+  font-size: 11.5px; color: var(--text-2);
+}
+.event-file .mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.event-toggle { display: inline-flex; align-items: center; gap: 3px; margin-top: 8px; font-size: 11.5px; color: var(--brand); font-weight: 500; }
+.event-detail {
+  margin-top: 9px; padding-top: 9px;
+  border-top: 1px dashed var(--divider);
+  font-size: 11.5px; color: var(--text-2); line-height: 1.6;
+}
+.event-detail .row { display: flex; gap: 8px; margin-top: 3px; }
+.event-detail .row .k { flex: none; width: 64px; color: var(--text-3); }
+
+/* 骨架（次要页布局骨架） */
+.skel { position: relative; overflow: hidden; background: #ededee; border-radius: 6px; }
+.skel::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.7), transparent); animation: shimmer 1.4s infinite; }
+@keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.skel-line { height: 12px; }
+.skel-block { height: 44px; }
+
+/* 断点策略页专用 */
+.rule-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-card); padding: 14px; }
+.rule-card + .rule-card { margin-top: 12px; }
+.rule-card h2 { margin: 0; font-size: 13.5px; font-weight: 600; }
+.rule-card .sub { margin: 3px 0 0; font-size: 11px; color: var(--text-3); }
+.bp-row { display: flex; gap: 10px; margin-top: 12px; }
+.bp-chip {
+  flex: none; width: 64px; height: 40px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border: 1px solid var(--border); border-radius: 8px;
+  font-size: 10px; color: var(--text-2); background: var(--sidebar);
+}
+.bp-chip strong { font-size: 11px; }
+.bp-chip.is-on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); }
+.rule-list { margin: 10px 0 0; padding: 0; list-style: none; }
+.rule-list li { display: flex; gap: 8px; font-size: 12px; color: var(--text-2); line-height: 1.6; padding: 5px 0; }
+.rule-list li .icon-sm { flex: none; margin-top: 2px; color: var(--success); }
+.rule-list.warn li .icon-sm { color: var(--warning); }
+.t1-verdict {
+  display: flex; align-items: flex-start; gap: 9px;
+  margin-top: 12px; padding: 11px 12px;
+  background: var(--brand-soft);
+  border: 1px solid #bfdbfe;
+  border-radius: 9px;
+  font-size: 12.5px; color: #1e40af; line-height: 1.6;
+}
+.t1-verdict .icon-sm { margin-top: 2px; flex: none; }
+
+/* 登录页 */
+.login-page { position: absolute; inset: 0; overflow-y: auto; background: var(--bg); display: flex; flex-direction: column; padding: 0 28px calc(24px + env(safe-area-inset-bottom)); }
+.login-brand { display: flex; flex-direction: column; align-items: center; gap: 12px; margin: 84px 0 34px; }
+.login-brand .wordmark { font-size: 15px; font-weight: 700; letter-spacing: .06em; }
+.login-brand .wordmark span { font-weight: 500; color: var(--text-2); }
+.login-title { margin: 0; font-size: 21px; font-weight: 600; text-align: center; letter-spacing: -.01em; }
+.login-subtitle { margin: 7px 0 26px; font-size: 13px; color: var(--text-3); text-align: center; }
+.login-form .btn-primary { height: 48px; font-size: 15px; margin-top: 4px; }
+.login-foot { margin-top: auto; padding-top: 28px; text-align: center; font-size: 11px; color: var(--text-3); line-height: 1.7; }
+.login-error {
+  display: flex; align-items: flex-start; gap: 6px;
+  margin-top: 8px; font-size: 11.5px; color: var(--danger); line-height: 1.5;
+}
+.password-wrap { position: relative; }
+.password-wrap .input { padding-right: 46px; }
+.password-toggle { position: absolute; right: 4px; top: 3px; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; color: var(--text-3); }
+
+/* toast */
+.toast {
+  position: absolute; left: 50%; bottom: calc(var(--tabbar-h) + 18px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  max-width: 86%;
+  padding: 9px 16px;
+  background: #171717; color: #fff;
+  border-radius: 999px;
+  font-size: 12px; line-height: 1.5;
+  z-index: 120;
+  box-shadow: 0 8px 22px rgba(23, 23, 23, .28);
+  animation: toast-in .18s ease;
+}
+@keyframes toast-in { from { transform: translateX(-50%) translateY(8px); opacity: 0; } to { transform: translateX(-50%); opacity: 1; } }
+</style>
+</head>
+<body>
+
+<svg class="svg-sprite" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+  <defs>
+    <symbol id="i-dashboard" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></symbol>
+    <symbol id="i-network" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.2"/><circle cx="5" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M6.6 6.6l3.6 3.6M17.4 6.6l-3.6 3.6M6.6 17.4l3.6-3.6M17.4 17.4l-3.6-3.6"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></symbol>
+    <symbol id="i-clipboard" viewBox="0 0 24 24"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4.5V4a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 4v.5"/><path d="M9.5 11h5M9.5 15h5"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4.5 4.5"/></symbol>
+    <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6Z"/></symbol>
+    <symbol id="i-log-out" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5M11 18l-6-6 6-6"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 2h16Z"/><path d="M10 20a2 2 0 0 0 4 0"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 13 4 4 10-10"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 5h5v5M19 5l-8 8"/><path d="M19 14v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><path d="m4 17 6-5-6-5M12 19h8"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></symbol>
+  </defs>
+</svg>
+
+<div class="stage">
+<div class="phone">
+<div class="screen" id="screen">
+
+  <!-- ============ 断点策略页（评审入口页） ============ -->
+  <section class="m-page" data-page="strategy">
+    <header class="m-head">
+      <div class="m-head-title">
+        <h1>移动端适配 · 断点策略</h1>
+        <p>云端平台全站 Web 面 · 375px 基准原型</p>
+      </div>
+      <button class="btn btn-primary btn-sm m-head-action" data-nav="workbench">进入原型</button>
+    </header>
+    <div class="m-body">
+      <div class="rule-card">
+        <h2>断点定义</h2>
+        <p class="sub">沿用同一套 DOM 与样式表，仅按视口宽度切换布局形态</p>
+        <div class="bp-row">
+          <div class="bp-chip"><strong>≥769px</strong>桌面</div>
+          <div class="bp-chip"><strong>481–768</strong>窄屏</div>
+          <div class="bp-chip is-on"><strong>≤480px</strong>手机</div>
+        </div>
+        <ul class="rule-list">
+          <li><svg class="icon icon-sm"><use href="#i-check"/></svg><span><strong>桌面 ≥769px</strong>：现状布局不变（侧栏 + 表格 + 居中弹框），本原型不影响桌面形态。</span></li>
+          <li><svg class="icon icon-sm"><use href="#i-check"/></svg><span><strong>窄屏 481–768px</strong>：侧栏收为抽屉；表格保留触控横向滚动；弹框仍居中，不改卡片。</span></li>
+          <li><svg class="icon icon-sm"><use href="#i-check"/></svg><span><strong>手机 ≤480px</strong>：本原型形态——底部 tab 导航 + 表格卡片化 + 弹框转全屏 sheet。</span></li>
+        </ul>
+      </div>
+
+      <div class="rule-card">
+        <h2>导航模式</h2>
+        <ul class="rule-list">
+          <li><svg class="icon icon-sm"><use href="#i-check"/></svg><span>侧栏 → <strong>底部 tab</strong>：常驻「工作台 / 项目 / 审计」三个高频面 +「更多」。</span></li>
+          <li><svg class="icon icon-sm"><use href="#i-check"/></svg><span>管理页（主机 / 中继 / 用户 / 设置）收进「更多」sheet；admin-only 守卫沿用：无权角色直接不渲染入口。</span></li>
+          <li><svg class="icon icon-sm"><use href="#i-check"/></svg><span>顶栏全局搜索 / 通知降为页头图标入口；账号与退出移入「更多」。</span></li>
+        </ul>
+      </div>
+
+      <div class="rule-card">
+        <h2>表格 → 卡片列表</h2>
+        <ul class="rule-list">
+          <li><svg class="icon icon-sm"><use href="#i-check"/></svg><span>一行 = 一卡：首行主标识 + 状态徽标；中部关键字段两列网格；尾部主操作按钮 + 次操作链接。</span></li>
+          <li><svg class="icon icon-sm"><use href="#i-check"/></svg><span>表格计数 / 脚注 → 列表尾注行；分页 → 「加载更多」按钮。</span></li>
+          <li><svg class="icon icon-sm"><use href="#i-check"/></svg><span>筛选 ≤3 字段 = 横向 chips；多字段（审计 10 项）= 「筛选」入口 + 全屏筛选 sheet。</span></li>
+        </ul>
+      </div>
+
+      <div class="rule-card">
+        <h2>弹框 → 全屏 sheet</h2>
+        <ul class="rule-list">
+          <li><svg class="icon icon-sm"><use href="#i-check"/></svg><span>详情弹框 / 右侧抽屉 → 全屏 sheet：标题栏（返回 + 标题）+ 分段 tab + 吸底操作栏。</span></li>
+          <li><svg class="icon icon-sm"><use href="#i-check"/></svg><span>确认类小弹框（覆盖确认 / 危险操作）保持居中小卡，不打断层级。</span></li>
+          <li><svg class="icon icon-sm"><use href="#i-check"/></svg><span>触控目标 ≥44px，主按钮 ≥48px；滚动区带安全区 padding。</span></li>
+        </ul>
+      </div>
+
+      <div class="rule-card">
+        <h2>DOM 策略（终审项 T1）</h2>
+        <p class="sub">响应式同一套 DOM vs 独立移动布局</p>
+        <div class="t1-verdict">
+          <svg class="icon icon-sm"><use href="#i-check"/></svg>
+          <span><strong>推荐：响应式同一套 DOM</strong>。断点 CSS + 少量组件级分叉（表格↔卡片、弹框↔sheet）覆盖全部管理面；完整理由与边界见 prototype-mobile-notes.md §2。</span>
+        </div>
+        <ul class="rule-list warn">
+          <li><svg class="icon icon-sm"><use href="#i-alert"/></svg><span>边界：开发工作区面（宿主 cloud-admin.html / 独立 Orca Web）不适用本策略——管理能力可移动适配，工作区内容仍桌面优先。</span></li>
+        </ul>
+      </div>
+
+      <div class="list-foot">断点策略页为评审入口 · 完整面清单与未解问题见 prototype-mobile-notes.md</div>
+    </div>
+  </section>
+
+  <!-- ============ 登录 ============ -->
+  <section class="m-page" data-page="login" hidden style="background:var(--bg)">
+    <div class="login-page">
+      <div class="login-brand">
+        <svg width="52" height="52" viewBox="0 0 32 32" aria-hidden="true">
+          <rect width="32" height="32" rx="9" fill="#171717"/>
+          <path d="M9.5 22.5v-13h6.8a6.5 6.5 0 0 1 0 13H9.5Z" fill="none" stroke="#fff" stroke-width="2.1"/>
+          <path d="m17 9.5 5.5 13" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round"/>
+        </svg>
+        <div class="wordmark">ORCA <span>CLOUD</span></div>
+      </div>
+      <h1 class="login-title">登录云端开发平台</h1>
+      <p class="login-subtitle">使用公司域账号登录</p>
+      <form class="login-form" id="loginForm" novalidate>
+        <div class="field">
+          <label class="field-label" for="mLoginAccount">域账号</label>
+          <input class="input" id="mLoginAccount" type="text" placeholder="域账号，如 zhangsan" autocomplete="username" spellcheck="false">
+        </div>
+        <div class="field">
+          <label class="field-label" for="mLoginPassword">密码</label>
+          <div class="password-wrap">
+            <input class="input" id="mLoginPassword" type="password" placeholder="请输入域账号密码" autocomplete="current-password">
+            <button class="password-toggle" type="button" aria-label="显示密码" data-toggle-password>
+              <svg class="icon icon-sm"><use href="#i-info"/></svg>
+            </button>
+          </div>
+          <div class="login-error" id="mLoginError" role="alert" hidden>
+            <svg class="icon icon-sm" style="flex:none;margin-top:1px"><use href="#i-alert"/></svg>
+            <span>域账号或密码错误，请检查后重新输入。</span>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-block" type="submit">登录</button>
+      </form>
+      <div class="login-foot">
+        登录即表示同意<a href="#" onclick="return false;">《平台使用规范》</a><br>
+        ORCA CLOUD · 企业内部系统 · 仅限授权员工使用
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 工作台 ============ -->
+  <section class="m-page" data-page="workbench" hidden>
+    <header class="m-head">
+      <div class="m-head-title">
+        <h1 id="mWelcome">下午好，张伟</h1>
+        <p id="mWelcomeSub">你有 3 个项目正在进行。</p>
+      </div>
+      <button class="btn btn-secondary btn-sm m-head-action" data-nav="projects">我的项目</button>
+    </header>
+    <div class="m-body">
+      <div class="notice notice-warning" data-readonly-notice hidden>
+        <svg class="icon icon-sm"><use href="#i-lock"/></svg>
+        <span><strong>只读视角</strong>：项目可打开查看，工作区内编辑、终端、Agent 与新建项目不可用。</span>
+      </div>
+
+      <div class="stat-grid" style="margin-top:12px">
+        <div class="stat-card"><div class="stat-top"><span class="stat-label">进行中项目</span><svg class="icon icon-sm stat-icon"><use href="#i-folder"/></svg></div><div class="stat-value">3</div></div>
+        <div class="stat-card"><div class="stat-top"><span class="stat-label">今日会话</span><svg class="icon icon-sm stat-icon"><use href="#i-terminal"/></svg></div><div class="stat-value">7</div></div>
+        <div class="stat-card"><div class="stat-top"><span class="stat-label">可用主机</span><svg class="icon icon-sm stat-icon"><use href="#i-server"/></svg></div><div class="stat-value">12</div></div>
+        <div class="stat-card"><div class="stat-top"><span class="stat-label">待审批下载</span><svg class="icon icon-sm stat-icon"><use href="#i-lock"/></svg></div><div class="stat-value">2</div></div>
+      </div>
+
+      <div class="section-head">
+        <h2 class="section-title">最近项目</h2>
+        <button class="text-link" data-nav="projects">全部项目 <svg class="icon icon-sm" style="width:12px;height:12px"><use href="#i-chevron-right"/></svg></button>
+      </div>
+      <div class="card-list">
+        <div class="m-card">
+          <div class="m-card-main">
+            <div class="m-card-title">
+              <strong>payment-service</strong>
+              <span class="sub mono">git.company/payment-service · dev-node-03</span>
+            </div>
+            <span class="badge badge-success"><span class="dot dot-success"></span>在线</span>
+          </div>
+          <div class="m-card-actions">
+            <button class="btn btn-secondary btn-sm" data-open-sheet="sheetProject">详情</button>
+            <span class="spacer"></span>
+            <button class="btn btn-primary btn-sm" data-workspace-entry><svg class="icon icon-sm"><use href="#i-terminal"/></svg>打开工作区</button>
+          </div>
+        </div>
+        <div class="m-card">
+          <div class="m-card-main">
+            <div class="m-card-title">
+              <strong>order-center</strong>
+              <span class="sub mono">git.company/order-center · dev-node-07</span>
+            </div>
+            <span class="badge badge-danger"><span class="dot dot-danger"></span>离线</span>
+          </div>
+          <div class="m-card-actions">
+            <button class="btn btn-secondary btn-sm" data-open-sheet="sheetProject">详情</button>
+            <span class="spacer"></span>
+            <button class="btn btn-primary btn-sm is-disabled" disabled><svg class="icon icon-sm"><use href="#i-terminal"/></svg>主机离线</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-head">
+        <h2 class="section-title">全部项目</h2>
+        <span class="section-count">6 个 · 仅显示已授权项目</span>
+      </div>
+      <div class="card-list">
+        <div class="m-card">
+          <div class="m-card-main">
+            <div class="m-card-title">
+              <strong>risk-engine</strong>
+              <span class="sub mono">git.company/risk-engine · dev-node-09</span>
+            </div>
+            <span class="badge badge-success"><span class="dot dot-success"></span>在线</span>
+          </div>
+          <div class="m-card-actions">
+            <button class="btn btn-secondary btn-sm" data-open-sheet="sheetProject">详情</button>
+            <span class="spacer"></span>
+            <button class="btn btn-primary btn-sm" data-workspace-entry><svg class="icon icon-sm"><use href="#i-terminal"/></svg>打开工作区</button>
+          </div>
+        </div>
+      </div>
+      <div class="list-foot">权限变更 60 秒内生效 · 未授权项目不出现在列表与搜索中</div>
+    </div>
+  </section>
+
+  <!-- ============ 我的项目（关键页：列表卡片化） ============ -->
+  <section class="m-page" data-page="projects" hidden>
+    <header class="m-head">
+      <div class="m-head-title">
+        <h1>我的项目</h1>
+        <p>已授权的托管项目 · 按最近使用排序</p>
+      </div>
+      <button class="icon-btn m-head-action" style="width:38px;height:38px;display:flex;align-items:center;justify-content:center;border-radius:50%;color:var(--text-3)" aria-label="刷新" data-toast="已刷新（原型演示）">
+        <svg class="icon"><use href="#i-refresh"/></svg>
+      </button>
+    </header>
+    <div class="chip-row" style="padding-bottom:0">
+      <button class="search-box" style="flex:1;min-width:180px;height:36px" data-toast="搜索：项目名 / 仓库 / 主机（原型演示）">
+        <svg class="icon icon-sm"><use href="#i-search"/></svg>
+        <span style="font-size:12.5px">搜索项目、仓库或主机</span>
+      </button>
+    </div>
+    <div class="chip-row">
+      <button class="chip is-on">全部状态</button>
+      <button class="chip">仅在线</button>
+      <button class="chip">仅离线</button>
+      <button class="chip">按组授权</button>
+      <button class="chip">项目内成员</button>
+    </div>
+    <div class="m-body">
+      <div class="notice" data-readonly-notice hidden>
+        <svg class="icon icon-sm"><use href="#i-lock"/></svg>
+        <span><strong>只读视角</strong>：可以打开查看，不能编辑、终端或新建项目。</span>
+      </div>
+      <div class="card-list" style="margin-top:12px">
+        <div class="m-card">
+          <div class="m-card-main">
+            <div class="m-card-title">
+              <strong>payment-service</strong>
+              <span class="sub mono">feat/refund · dev-node-03</span>
+            </div>
+            <span class="badge badge-success"><span class="dot dot-success"></span>在线</span>
+          </div>
+          <div class="m-card-fields">
+            <div class="m-field"><div class="k">可见范围</div><div class="v">项目内成员</div></div>
+            <div class="m-field"><div class="k">最近使用</div><div class="v">2 小时前</div></div>
+          </div>
+          <div class="m-card-actions">
+            <button class="btn btn-secondary btn-sm" data-open-sheet="sheetProject">详情</button>
+            <span class="spacer"></span>
+            <button class="btn btn-primary btn-sm" data-workspace-entry><svg class="icon icon-sm"><use href="#i-terminal"/></svg>打开工作区</button>
+          </div>
+        </div>
+        <div class="m-card">
+          <div class="m-card-main">
+            <div class="m-card-title">
+              <strong>order-center</strong>
+              <span class="sub mono">main · dev-node-07</span>
+            </div>
+            <span class="badge badge-danger"><span class="dot dot-danger"></span>离线</span>
+          </div>
+          <div class="m-card-fields">
+            <div class="m-field"><div class="k">可见范围</div><div class="v">按组授权</div></div>
+            <div class="m-field"><div class="k">最近使用</div><div class="v">昨天</div></div>
+          </div>
+          <div class="m-card-actions">
+            <button class="btn btn-secondary btn-sm" data-open-sheet="sheetProject">详情</button>
+            <span class="spacer"></span>
+            <button class="btn btn-primary btn-sm is-disabled" disabled>主机离线</button>
+          </div>
+        </div>
+        <div class="m-card">
+          <div class="m-card-main">
+            <div class="m-card-title">
+              <strong>risk-engine</strong>
+              <span class="sub mono">main · dev-node-09</span>
+            </div>
+            <span class="badge badge-success"><span class="dot dot-success"></span>在线</span>
+          </div>
+          <div class="m-card-fields">
+            <div class="m-field"><div class="k">可见范围</div><div class="v">项目内成员</div></div>
+            <div class="m-field"><div class="k">最近使用</div><div class="v">3 天前</div></div>
+          </div>
+          <div class="m-card-actions">
+            <button class="btn btn-secondary btn-sm" data-open-sheet="sheetProject">详情</button>
+            <span class="spacer"></span>
+            <button class="btn btn-primary btn-sm" data-workspace-entry><svg class="icon icon-sm"><use href="#i-terminal"/></svg>打开工作区</button>
+          </div>
+        </div>
+      </div>
+      <div class="list-foot">显示 6 / 6 个项目 · 数据更新于 12 秒前</div>
+    </div>
+  </section>
+
+  <!-- ============ 用户管理（关键页：U81 查询条件 + U82 只读列表） ============ -->
+  <section class="m-page" data-page="users" hidden>
+    <header class="m-head">
+      <div class="m-head-title">
+        <h1>用户管理</h1>
+        <p><span style="display:inline-flex;align-items:center;gap:4px"><span class="dot dot-success"></span>LDAP 同步正常</span> · 7 个账号</p>
+      </div>
+    </header>
+    <div class="chip-row" style="padding-bottom:0">
+      <button class="search-box" style="flex:1;min-width:180px;height:36px" data-toast="搜索：用户名（原型演示）">
+        <svg class="icon icon-sm"><use href="#i-search"/></svg>
+        <span style="font-size:12.5px">搜索用户名 / 域账号</span>
+      </button>
+    </div>
+    <div class="chip-row">
+      <button class="chip is-on">全部角色</button>
+      <button class="chip">管理员</button>
+      <button class="chip">审计员</button>
+      <button class="chip">普通</button>
+      <button class="chip">已停用</button>
+    </div>
+    <div class="m-body">
+      <div class="notice">
+        <svg class="icon icon-sm"><use href="#i-shield"/></svg>
+        <span><strong>角色 ≠ 资源授权</strong>：本页角色为平台级身份；资源授权在项目 / 主机详情的权限页签维护。列表只读，点「详情」查看并修改角色。</span>
+      </div>
+      <div class="card-list" style="margin-top:12px">
+        <div class="m-card">
+          <div class="m-card-main">
+            <span class="badge badge-neutral" style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex:none">ZW</span>
+            <div class="m-card-title">
+              <strong>张伟 <span class="text-3" style="font-weight:400;font-size:11.5px">zhangwei</span></strong>
+              <span class="sub">研发效能部 · platform-admins</span>
+            </div>
+            <span class="badge badge-brand">管理员</span>
+          </div>
+          <div class="m-card-actions">
+            <span class="status" style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--text-2)"><span class="dot dot-success"></span>启用</span>
+            <span class="spacer" style="flex:1"></span>
+            <button class="btn btn-secondary btn-sm" data-open-sheet="sheetUser" data-user="zhangwei">详情</button>
+          </div>
+        </div>
+        <div class="m-card">
+          <div class="m-card-main">
+            <span class="badge badge-neutral" style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex:none">LM</span>
+            <div class="m-card-title">
+              <strong>李明 <span class="text-3" style="font-weight:400;font-size:11.5px">liming</span></strong>
+              <span class="sub">安全审计部 · platform-auditors</span>
+            </div>
+            <span class="badge badge-warning">审计员</span>
+          </div>
+          <div class="m-card-actions">
+            <span class="status" style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--text-2)"><span class="dot dot-success"></span>启用</span>
+            <span class="spacer" style="flex:1"></span>
+            <button class="btn btn-secondary btn-sm" data-open-sheet="sheetUser" data-user="liming">详情</button>
+          </div>
+        </div>
+        <div class="m-card">
+          <div class="m-card-main">
+            <span class="badge badge-neutral" style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex:none">LS</span>
+            <div class="m-card-title">
+              <strong>李四 <span class="text-3" style="font-weight:400;font-size:11.5px">lisi</span></strong>
+              <span class="sub">交付一部 · dev-node-viewers</span>
+            </div>
+            <span class="badge badge-neutral">普通</span>
+          </div>
+          <div class="m-card-actions">
+            <span class="status" style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--text-2)"><span class="dot dot-success"></span>启用</span>
+            <span class="spacer" style="flex:1"></span>
+            <button class="btn btn-secondary btn-sm" data-open-sheet="sheetUser" data-user="lisi">详情</button>
+          </div>
+        </div>
+      </div>
+      <div class="list-foot">共 7 个账号 · 角色变更写入 role_update 审计</div>
+    </div>
+  </section>
+
+  <!-- ============ 审计查询（关键页：重表格页卡片化最难点） ============ -->
+  <section class="m-page" data-page="audit" hidden>
+    <header class="m-head">
+      <div class="m-head-title">
+        <h1>审计日志</h1>
+        <p>只追加 · 哈希链校验 · 保留 180 天</p>
+      </div>
+      <button class="btn btn-secondary btn-sm m-head-action" id="mAuditFilterBtn" style="position:relative">
+        <svg class="icon icon-sm"><use href="#i-filter"/></svg>筛选
+        <span id="mAuditFilterCount" class="badge badge-brand" style="position:absolute;top:-7px;right:-7px;height:17px;min-width:17px;padding:0 4px;font-size:10px;justify-content:center" hidden>2</span>
+      </button>
+    </header>
+    <div class="chip-row">
+      <button class="chip is-on">全部操作</button>
+      <button class="chip">下载族</button>
+      <button class="chip">复制族</button>
+      <button class="chip">拒绝</button>
+      <button class="chip" data-open-sheet="sheetFilter"><svg class="icon icon-sm" style="width:12px;height:12px"><use href="#i-filter"/></svg>更多条件</button>
+    </div>
+    <div class="m-body">
+      <details class="notice" style="flex-direction:column;gap:6px">
+        <summary style="display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none">
+          <svg class="icon icon-sm" style="flex:none"><use href="#i-shield"/></svg>
+          <span>覆盖范围与限制（1 台主机有审计缺口）</span>
+        </summary>
+        <div style="font-size:11px;color:var(--text-3);line-height:1.6">
+          可捕获：桌面云工作区下载、宿主下载、移动端保存到手机、应用内复制、宿主拒绝与前端拦截。不可捕获：开发机 shell 带外传输（scp / git push / curl）、截图录屏、纯客户端「另存为」。缺口可见性为 best-effort。
+        </div>
+      </details>
+
+      <div class="section-head">
+        <h2 class="section-title">事件列表</h2>
+        <span class="section-count">最近 7 天 · 10 条</span>
+      </div>
+      <div class="card-list" style="margin-top:0">
+        <div class="event-card">
+          <div class="event-l1">
+            <span class="event-op">文件下载</span>
+            <span class="badge badge-mono">file_download</span>
+            <span class="badge badge-success">成功</span>
+            <span class="time">11-13 14:58</span>
+          </div>
+          <div class="event-l2">
+            <span>zhangwei</span><span class="sep">·</span><span>payment-service</span><span class="sep">·</span><span class="mono">dev-node-03</span>
+          </div>
+          <div class="event-file">
+            <svg class="icon icon-sm" style="width:12px;height:12px;flex:none;color:var(--text-3)"><use href="#i-folder"/></svg>
+            <span class="mono">src/billing/calculator.ts</span>
+            <span style="flex:none;color:var(--text-3)">18.4 KB</span>
+          </div>
+          <button class="event-toggle" data-expand>详情 <svg class="icon icon-sm" style="width:12px;height:12px"><use href="#i-chevron-down"/></svg></button>
+          <div class="event-detail" hidden>
+            <div class="row"><span class="k">可信度</span><span><span class="badge badge-sm badge-neutral">客户端自报</span></span></div>
+            <div class="row"><span class="k">会话</span><span class="mono">sess_9f2a41c7</span></div>
+            <div class="row"><span class="k">摘录</span><span>未开启内容摘录开关，仅保留指纹。</span></div>
+          </div>
+        </div>
+        <div class="event-card">
+          <div class="event-l1">
+            <span class="event-op">下载拦截</span>
+            <span class="badge badge-mono">download_blocked</span>
+            <span class="badge badge-danger">拒绝</span>
+            <span class="time">11-13 14:52</span>
+          </div>
+          <div class="event-l2">
+            <span>wangfang</span><span class="sep">·</span><span>order-center</span><span class="sep">·</span><span class="mono">dev-node-07</span>
+          </div>
+          <div class="event-file">
+            <svg class="icon icon-sm" style="width:12px;height:12px;flex:none;color:var(--text-3)"><use href="#i-folder"/></svg>
+            <span class="mono">config/prod-credentials.env</span>
+            <span style="flex:none;color:var(--text-3)">2.1 KB</span>
+          </div>
+          <button class="event-toggle" data-expand>详情 <svg class="icon icon-sm" style="width:12px;height:12px"><use href="#i-chevron-down"/></svg></button>
+          <div class="event-detail" hidden>
+            <div class="row"><span class="k">可信度</span><span><span class="badge badge-sm badge-neutral">前端拦截</span></span></div>
+            <div class="row"><span class="k">拦截原因</span><span>项目下载策略 = 禁止下载，未产生下载 RPC。</span></div>
+          </div>
+        </div>
+        <div class="event-card">
+          <div class="event-l1">
+            <span class="event-op">复制文件内容</span>
+            <span class="badge badge-mono">file_copy</span>
+            <span class="badge badge-success">成功</span>
+            <span class="time">11-13 14:47</span>
+          </div>
+          <div class="event-l2">
+            <span>liming</span><span class="sep">·</span><span>risk-engine</span><span class="sep">·</span><span class="mono">dev-node-09</span>
+          </div>
+          <div class="event-file">
+            <svg class="icon icon-sm" style="width:12px;height:12px;flex:none;color:var(--text-3)"><use href="#i-folder"/></svg>
+            <span class="mono">rules/amount.yaml</span>
+            <span style="flex:none;color:var(--text-3)">1,024 字符</span>
+          </div>
+          <button class="event-toggle" data-expand>详情 <svg class="icon icon-sm" style="width:12px;height:12px"><use href="#i-chevron-down"/></svg></button>
+          <div class="event-detail" hidden>
+            <div class="row"><span class="k">可信度</span><span><span class="badge badge-sm badge-neutral">客户端自报</span></span></div>
+            <div class="row"><span class="k">摘录</span><span>未记录内容摘录（仅保留指纹）。</span></div>
+          </div>
+        </div>
+        <div class="event-card">
+          <div class="event-l1">
+            <span class="event-op">权限变更</span>
+            <span class="badge badge-mono">grant_update</span>
+            <span class="badge badge-success">成功</span>
+            <span class="time">11-13 11:20</span>
+          </div>
+          <div class="event-l2">
+            <span>zhangwei</span><span class="sep">·</span><span>payment-service</span>
+          </div>
+          <button class="event-toggle" data-expand>详情 <svg class="icon icon-sm" style="width:12px;height:12px"><use href="#i-chevron-down"/></svg></button>
+          <div class="event-detail" hidden>
+            <div class="row"><span class="k">变更</span><span>lisi：查看（角色卡片调整，降级断开当前云会话 ≤60 秒）</span></div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:14px 0 0">
+        <button class="btn btn-secondary btn-block" data-toast="已加载全部演示事件（原型）">加载更多</button>
+      </div>
+      <div class="list-foot">时间均为北京时间（UTC+8） · 导出需审批</div>
+    </div>
+  </section>
+
+  <!-- ============ 主机（布局骨架） ============ -->
+  <section class="m-page" data-page="hosts" hidden>
+    <header class="m-head">
+      <div class="m-head-title"><h1>主机</h1><p>已注册开发机 · 心跳与接入路径</p></div>
+      <button class="btn btn-primary btn-sm m-head-action" data-toast="登记主机弹框：移动端转全屏 sheet（同项目详情形态）">登记</button>
+    </header>
+    <div class="chip-row">
+      <button class="chip is-on">全部</button>
+      <button class="chip">仅在线</button>
+      <button class="chip">仅离线</button>
+    </div>
+    <div class="m-body">
+      <div class="card-list" style="margin-top:12px">
+        <div class="m-card">
+          <div class="m-card-main">
+            <div class="m-card-title">
+              <strong>dev-node-03</strong>
+              <span class="sub mono">10.20.1.13 · 心跳 12 秒前</span>
+            </div>
+            <span class="badge badge-success"><span class="dot dot-success"></span>在线</span>
+          </div>
+          <div class="m-card-fields">
+            <div class="m-field"><div class="k">接入路径</div><div class="v">直连 + relay-01</div></div>
+            <div class="m-field"><div class="k">托管项目</div><div class="v">3 个</div></div>
+          </div>
+          <div class="m-card-actions">
+            <button class="btn btn-secondary btn-sm" data-toast="主机详情抽屉：移动端转全屏 sheet（信息 | 权限 分段 tab）">详情</button>
+            <span class="spacer"></span>
+            <button class="btn btn-ghost btn-sm" data-toast="维护 / 下线操作入卡片菜单，含确认小弹框">维护</button>
+          </div>
+        </div>
+        <div class="m-card" style="opacity:.75">
+          <div class="m-card-main">
+            <div class="skel skel-line" style="width:96px"></div>
+            <span class="badge badge-danger"><span class="dot dot-danger"></span>离线</span>
+          </div>
+          <div class="m-card-fields">
+            <div class="m-field"><div class="skel skel-line" style="width:70%"></div></div>
+            <div class="m-field"><div class="skel skel-line" style="width:60%"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="list-foot">卡片结构同项目列表 · 详情抽屉（信息 | 权限）转全屏 sheet</div>
+    </div>
+  </section>
+
+  <!-- ============ 中继（布局骨架） ============ -->
+  <section class="m-page" data-page="relays" hidden>
+    <header class="m-head">
+      <div class="m-head-title"><h1>中继</h1><p>中继节点与路由承载</p></div>
+      <button class="btn btn-primary btn-sm m-head-action" data-toast="登记中继弹框：移动端转全屏 sheet">登记</button>
+    </header>
+    <div class="m-body">
+      <div class="card-list" style="margin-top:12px">
+        <div class="m-card">
+          <div class="m-card-main">
+            <div class="m-card-title">
+              <strong>relay-01</strong>
+              <span class="sub mono">ip-10.20.3.18.relay.local</span>
+            </div>
+            <span class="badge badge-success"><span class="dot dot-success"></span>在线</span>
+          </div>
+          <div class="m-card-fields">
+            <div class="m-field"><div class="k">承载路由</div><div class="v">5 条</div></div>
+            <div class="m-field"><div class="k">负载</div><div class="v">42%</div></div>
+          </div>
+          <div class="m-card-actions">
+            <button class="btn btn-secondary btn-sm" data-toast="中继详情：移动端转全屏 sheet">详情</button>
+          </div>
+        </div>
+        <div class="m-card" style="opacity:.75">
+          <div class="skel skel-line" style="width:88px"></div>
+          <div style="margin-top:10px"><div class="skel skel-line" style="width:60%"></div></div>
+        </div>
+      </div>
+      <div class="list-foot">骨架页：字段与主机卡片同构（路由数 / 负载 / 状态）</div>
+    </div>
+  </section>
+
+  <!-- ============ 平台设置（布局骨架） ============ -->
+  <section class="m-page" data-page="settings" hidden>
+    <header class="m-head">
+      <div class="m-head-title"><h1>平台设置</h1><p>下载策略：全局默认与项目覆盖</p></div>
+    </header>
+    <div class="m-body">
+      <div class="section-head" style="margin-top:4px">
+        <h2 class="section-title">全局默认策略</h2>
+        <span class="badge">覆盖 6 个托管项目</span>
+      </div>
+      <div class="card-list" style="margin-top:0">
+        <div class="m-card" style="border-color:#bfdbfe;background:var(--brand-soft)">
+          <div class="m-card-main">
+            <div class="m-card-title"><strong>禁止下载</strong><span class="sub">拦截下载、导出与拖拽到本地的全部入口。</span></div>
+            <span class="badge badge-brand">当前</span>
+          </div>
+        </div>
+        <div class="m-card" style="opacity:.6">
+          <div class="m-card-main">
+            <div class="m-card-title"><strong>审批后允许</strong><span class="sub">审批流二期开放。</span></div>
+            <span class="badge badge-neutral">暂未开放</span>
+          </div>
+        </div>
+        <div class="m-card">
+          <div class="m-card-main">
+            <div class="m-card-title"><strong>允许下载</strong><span class="sub">记录完整审计日志，仅建议非敏感项目。</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="notice" style="margin-top:12px">
+        <svg class="icon icon-sm"><use href="#i-info"/></svg>
+        <span>策略卡片纵向堆叠，天然适配移动端；保存操作吸底。例外与告警卡同构，骨架从略。</span>
+      </div>
+      <div style="padding:14px 0 0"><button class="btn btn-primary btn-block" data-toast="已保存（原型演示）">保存</button></div>
+    </div>
+  </section>
+
+  <!-- ============ 宿主 cloud-admin 工作区（边界骨架） ============ -->
+  <section class="m-page" data-page="cloudadmin" hidden>
+    <header class="m-head">
+      <div class="m-head-title"><h1>工作区 · cloud-admin</h1><p>宿主伺服的开发工作区文档（覆盖层内嵌）</p></div>
+    </header>
+    <div class="m-body">
+      <div class="notice notice-warning" style="margin-top:12px">
+        <svg class="icon icon-sm"><use href="#i-alert"/></svg>
+        <span><strong>移动边界</strong>：管理台只适配「入口与状态」；cloud-admin 工作区内容（终端 / 文件树 / Agent）保持桌面优先，移动端不承诺可用。</span>
+      </div>
+      <div class="info-rows" style="margin-top:12px">
+        <div class="info-row"><span class="k">覆盖层顶栏</span><span class="v">← 返回 · 项目名 · 分支 · 线路状态 · 在新标签打开 · 关闭</span></div>
+        <div class="info-row"><span class="k">工作区主体</span><span class="v text-3">桌面布局原样内嵌（不重排），小屏横向滚动兜底</span></div>
+        <div class="info-row"><span class="k">移动引导</span><span class="v">页头提示「建议在桌面客户端 / 桌面浏览器打开」</span></div>
+      </div>
+      <div class="m-card" style="margin-top:12px">
+        <div class="skel skel-block" style="width:100%"></div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <div class="skel skel-line" style="flex:1"></div>
+          <div class="skel skel-line" style="flex:2"></div>
+        </div>
+        <div style="margin-top:8px"><div class="skel skel-line" style="width:55%"></div></div>
+      </div>
+      <div class="list-foot">骨架示意 · 工作区内容不做移动重排（一期非目标，见 notes §4 边界）</div>
+    </div>
+  </section>
+
+  <!-- ============ 独立 Orca Web 工作区（边界骨架） ============ -->
+  <section class="m-page" data-page="orcaweb" hidden>
+    <header class="m-head">
+      <div class="m-head-title"><h1>Orca Web 工作区</h1><p>独立浏览器入口（web-index.html）</p></div>
+    </header>
+    <div class="m-body">
+      <div class="notice notice-warning" style="margin-top:12px">
+        <svg class="icon icon-sm"><use href="#i-alert"/></svg>
+        <span><strong>移动边界</strong>：orca web 一期明确「不做移动端布局」。移动端保底形态 = 交接码直达 + 页面原样渲染 + 桌面引导提示；终端 / 文件树 / Agent 的移动适配不在 U80 范围。</span>
+      </div>
+      <div class="info-rows" style="margin-top:12px">
+        <div class="info-row"><span class="k">进入方式</span><span class="v">项目卡「打开工作区」→ 新标签 / 覆盖层（管理台内）</span></div>
+        <div class="info-row"><span class="k">小屏现状</span><span class="v text-3">桌面布局直接缩排，横向滚动可用但体验差</span></div>
+        <div class="info-row"><span class="k">建议</span><span class="v">手机上只做查看与状态确认，开发动作回桌面</span></div>
+      </div>
+      <div class="m-card" style="margin-top:12px">
+        <div class="skel skel-block" style="width:100%"></div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <div class="skel skel-line" style="flex:2"></div>
+          <div class="skel skel-line" style="flex:1"></div>
+        </div>
+      </div>
+      <div class="list-foot">骨架示意 · web-index-adaptation-plan §2 非目标延续</div>
+    </div>
+  </section>
+
+  <!-- ============ 底部 tab ============ -->
+  <nav class="m-tabbar" id="mTabbar">
+    <button class="m-tab is-active" data-nav="workbench">
+      <svg class="icon"><use href="#i-dashboard"/></svg><span>工作台</span>
+    </button>
+    <button class="m-tab" data-nav="projects">
+      <svg class="icon"><use href="#i-folder"/></svg><span>项目</span>
+    </button>
+    <button class="m-tab" data-nav="audit" data-audit-tab>
+      <span class="tab-dot"><svg class="icon"><use href="#i-clipboard"/></svg></span><span>审计</span>
+    </button>
+    <button class="m-tab" data-open-sheet="sheetMore">
+      <svg class="icon"><use href="#i-menu"/></svg><span>更多</span>
+    </button>
+  </nav>
+
+  <!-- ============ 全屏 sheet：项目详情（信息 | 权限） ============ -->
+  <div class="m-sheet" id="sheetProject" hidden role="dialog" aria-modal="true" aria-label="项目详情">
+    <header class="sheet-head">
+      <button class="sheet-back" data-close-sheet aria-label="返回"><svg class="icon"><use href="#i-arrow-left"/></svg></button>
+      <div class="sheet-title">
+        <strong>payment-service</strong>
+        <span class="sub mono">git.company/payment-service · dev-node-03</span>
+      </div>
+      <span class="badge badge-success"><span class="dot dot-success"></span>在线</span>
+    </header>
+    <div class="seg" style="margin:12px 16px 0">
+      <button class="is-on" data-tab="pInfo">信息</button>
+      <button data-tab="pPerm">权限 <span class="seg-badge">4</span></button>
+    </div>
+    <div class="sheet-body">
+      <div class="tabpane" id="pInfo">
+        <div class="info-rows">
+          <div class="info-row"><span class="k">仓库</span><span class="v mono">git.company/payment-service</span></div>
+          <div class="info-row"><span class="k">默认分支</span><span class="v mono">main</span></div>
+          <div class="info-row"><span class="k">主机</span><span class="v">dev-node-03 <span class="badge badge-success badge-sm" style="height:17px;font-size:10px">在线</span></span></div>
+          <div class="info-row"><span class="k">可见范围</span><span class="v">项目内成员</span></div>
+          <div class="info-row"><span class="k">下载策略</span><span class="v">禁止下载（全局默认）</span></div>
+          <div class="info-row"><span class="k">最近使用</span><span class="v">2 小时前 · 张伟</span></div>
+        </div>
+        <div class="notice" style="margin-top:12px">
+          <svg class="icon icon-sm"><use href="#i-info"/></svg>
+          <span>下载入口仅在宿主显式允许时显示；字段缺失按禁止处理。</span>
+        </div>
+      </div>
+      <div class="tabpane" id="pPerm" hidden>
+        <div class="perm-card">
+          <div class="perm-card-head"><span class="perm-card-title">查看</span><span class="perm-card-count">2 个主体</span></div>
+          <p class="perm-card-desc">打开 + 文件只读。可见项目并浏览文件；不能编辑、终端、Agent、下载。</p>
+          <div class="perm-chips">
+            <span class="perm-chip">dev-viewers <span class="badge badge-sm badge-neutral" style="height:16px;font-size:9.5px;padding:0 5px">组</span><span class="x" data-toast="移除需确认（覆盖确认保持居中小弹框）">×</span></span>
+            <span class="perm-chip">lisi <span class="badge badge-sm badge-neutral" style="height:16px;font-size:9.5px;padding:0 5px">用户</span><span class="x" data-toast="移除需确认（覆盖确认保持居中小弹框）">×</span></span>
+          </div>
+          <button class="perm-add" data-toast="添加主体：输入 + 目录联想（原型从略）"><svg class="icon icon-sm" style="width:13px;height:13px"><use href="#i-user"/></svg>添加主体</button>
+        </div>
+        <div class="perm-card">
+          <div class="perm-card-head"><span class="perm-card-title">控制</span><span class="perm-card-count">2 个主体</span></div>
+          <p class="perm-card-desc">终端 / Agent / 文件编辑 / 浏览器 / 下载（下载仍受项目策略约束）。</p>
+          <div class="perm-chips">
+            <span class="perm-chip">payment-team <span class="badge badge-sm badge-neutral" style="height:16px;font-size:9.5px;padding:0 5px">组</span><span class="x" data-toast="移除需确认（覆盖确认保持居中小弹框）">×</span></span>
+            <span class="perm-chip">zhangwei <span class="badge badge-sm badge-neutral" style="height:16px;font-size:9.5px;padding:0 5px">用户</span><span class="x" data-toast="移除需确认（覆盖确认保持居中小弹框）">×</span></span>
+          </div>
+          <button class="perm-add" data-toast="添加主体：输入 + 目录联想（原型从略）"><svg class="icon icon-sm" style="width:13px;height:13px"><use href="#i-user"/></svg>添加主体</button>
+        </div>
+        <div class="perm-card is-derived">
+          <div class="perm-card-head"><span class="perm-card-title">管理</span><span class="perm-card-count">推导只读视图</span></div>
+          <p class="perm-card-desc">项目级无「管理」位：主机授权推导只读视图，在主机详情维护；归档 / 登记归创建者或平台管理员。</p>
+        </div>
+        <div class="notice" style="margin-top:12px">
+          <svg class="icon icon-sm"><use href="#i-shield"/></svg>
+          <span>位置即权限：主体出现在哪张卡片即拥有哪个角色。变更即时保存；降级断开该主体当前云会话 ≤60 秒。</span>
+        </div>
+      </div>
+    </div>
+    <footer class="sheet-foot">
+      <button class="btn btn-secondary" data-close-sheet>关闭</button>
+      <button class="btn btn-primary" data-workspace-entry><svg class="icon icon-sm"><use href="#i-terminal"/></svg>打开工作区</button>
+    </footer>
+  </div>
+
+  <!-- ============ 全屏 sheet：用户详情（U82 只读 + 角色内联编辑） ============ -->
+  <div class="m-sheet" id="sheetUser" hidden role="dialog" aria-modal="true" aria-label="用户详情">
+    <header class="sheet-head">
+      <button class="sheet-back" data-close-sheet aria-label="返回"><svg class="icon"><use href="#i-arrow-left"/></svg></button>
+      <div class="sheet-title">
+        <strong id="mUserDetailName">张伟</strong>
+        <span class="sub" id="mUserDetailAccount">zhangwei · 研发效能部</span>
+      </div>
+      <span class="badge badge-success" id="mUserDetailStatus"><span class="dot dot-success"></span>启用</span>
+    </header>
+    <div class="sheet-body">
+      <div class="info-rows">
+        <div class="info-row"><span class="k">域账号</span><span class="v mono">zhangwei</span></div>
+        <div class="info-row"><span class="k">部门</span><span class="v">研发效能部</span></div>
+        <div class="info-row"><span class="k">LDAP 组</span><span class="v"><span class="badge badge-neutral badge-sm">platform-admins</span></span></div>
+        <div class="info-row"><span class="k">角色来源</span><span class="v">按用户覆盖（优先于 LDAP 同步）</span></div>
+        <div class="info-row"><span class="k">状态</span><span class="v">启用</span></div>
+      </div>
+      <div class="section-head" style="margin-top:16px">
+        <h2 class="section-title">平台角色</h2>
+        <span class="section-count">点击修改</span>
+      </div>
+      <div class="role-edit-row">
+        <select class="select" id="mUserRoleSelect">
+          <option value="admin" selected>管理员</option>
+          <option value="auditor">审计员</option>
+          <option value="member">普通</option>
+        </select>
+        <button class="btn btn-primary" style="flex:none" id="mUserRoleSave">保存</button>
+      </div>
+      <div class="role-warn" id="mUserRoleWarn" hidden>
+        <svg class="icon icon-sm" style="flex:none;margin-top:1px"><use href="#i-alert"/></svg>
+        <span id="mUserRoleWarnText">角色降级将断开该用户当前全部云会话，≤60 秒生效；变更写入 role_update 审计。</span>
+      </div>
+      <div class="notice" style="margin-top:14px">
+        <svg class="icon icon-sm"><use href="#i-shield"/></svg>
+        <span>角色决定管控面 / 审计面可见性；「能用哪些项目 / 主机」由资源授权（权限卡片）决定，与本角色分层。</span>
+      </div>
+    </div>
+    <footer class="sheet-foot">
+      <button class="btn btn-secondary btn-block" data-close-sheet>关闭</button>
+    </footer>
+  </div>
+
+  <!-- ============ 全屏 sheet：审计筛选（重筛选表单的移动解法） ============ -->
+  <div class="m-sheet" id="sheetFilter" hidden role="dialog" aria-modal="true" aria-label="审计筛选">
+    <header class="sheet-head">
+      <button class="sheet-back" data-close-sheet aria-label="返回"><svg class="icon"><use href="#i-arrow-left"/></svg></button>
+      <div class="sheet-title"><strong>筛选条件</strong><span class="sub">默认最近 7 天 · 最大 31 天</span></div>
+      <button class="btn btn-ghost btn-sm" id="mAuditReset">清除</button>
+    </header>
+    <div class="sheet-body">
+      <div class="section-head" style="margin-top:0"><h2 class="section-title">关键字</h2><span class="section-count">文件名 / 路径 / 账号 / 项目</span></div>
+      <div class="field">
+        <input class="input" type="search" placeholder="文件名、路径、账号或项目关键字">
+        <div class="filter-hint">内容前缀匹配需开启内容摘录开关</div>
+      </div>
+      <div class="field">
+        <label class="field-label">文件名</label>
+        <input class="input" type="text" placeholder="如 calculator.ts">
+        <div class="filter-hint">1–128 字符</div>
+      </div>
+
+      <div class="section-head"><h2 class="section-title">时间</h2></div>
+      <div class="field">
+        <label class="field-label">范围</label>
+        <select class="select">
+          <option>最近 24 小时</option>
+          <option selected>最近 7 天（默认）</option>
+          <option>最近 31 天</option>
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="field"><label class="field-label">起始</label><input class="input" type="datetime-local"></div>
+        <div class="field"><label class="field-label">结束</label><input class="input" type="datetime-local"></div>
+      </div>
+
+      <div class="section-head"><h2 class="section-title">操作</h2></div>
+      <div class="field">
+        <select class="select">
+          <option selected>全部操作</option>
+          <option>下载族 · 下载 + 拦截</option>
+          <option>复制族 · file_copy</option>
+          <option>登录 · login</option>
+          <option>打开项目 · project_connect</option>
+          <option>权限变更 · grant_update</option>
+          <option>主机注册 · host_register</option>
+        </select>
+      </div>
+
+      <div class="section-head"><h2 class="section-title">范围</h2></div>
+      <div class="field">
+        <label class="field-label">用户</label>
+        <input class="input" type="text" placeholder="域账号（精确）" list="mAuditUsers">
+        <datalist id="mAuditUsers">
+          <option value="zhangwei">张伟 · zhangwei</option>
+          <option value="liming">李明 · liming</option>
+          <option value="wangfang">王芳 · wangfang</option>
+        </datalist>
+      </div>
+      <div class="field">
+        <label class="field-label">项目</label>
+        <select class="select"><option selected>全部项目</option><option>payment-service</option><option>order-center</option><option>risk-engine</option></select>
+      </div>
+      <div class="field">
+        <label class="field-label">主机</label>
+        <select class="select"><option selected>全部主机</option><option>dev-node-03</option><option>dev-node-07</option><option>dev-node-09</option></select>
+      </div>
+
+      <div class="section-head"><h2 class="section-title">结果</h2></div>
+      <div class="field">
+        <select class="select"><option selected>全部结果</option><option>成功</option><option>失败</option><option>拒绝</option></select>
+      </div>
+    </div>
+    <footer class="sheet-foot">
+      <button class="btn btn-secondary" id="mAuditFilterCancel">取消</button>
+      <button class="btn btn-primary" id="mAuditFilterApply">查询</button>
+    </footer>
+  </div>
+
+  <!-- ============ 全屏 sheet：更多（管理页收纳 + 账号） ============ -->
+  <div class="m-sheet" id="sheetMore" hidden role="dialog" aria-modal="true" aria-label="更多">
+    <header class="sheet-head">
+      <button class="sheet-back" data-close-sheet aria-label="返回"><svg class="icon"><use href="#i-arrow-left"/></svg></button>
+      <div class="sheet-title"><strong>更多</strong><span class="sub" id="mMoreAccount">张伟 · zhangwei · 管理员</span></div>
+      <button class="icon-btn" style="width:38px;height:38px;display:flex;align-items:center;justify-content:center;border-radius:50%;color:var(--text-3)" aria-label="退出登录" data-toast="退出登录 → 回登录页（原型演示）">
+        <svg class="icon"><use href="#i-log-out"/></svg>
+      </button>
+    </header>
+    <div class="sheet-body">
+      <div class="section-head" style="margin-top:0"><h2 class="section-title">管理</h2><span class="section-count">admin-only 守卫沿用</span></div>
+      <div class="info-rows">
+        <button class="info-row" style="width:100%;text-align:left" data-nav="hosts"><span class="k" style="width:auto"><svg class="icon icon-sm" style="vertical-align:-3px"><use href="#i-server"/></svg></span><span class="v">主机</span><svg class="icon icon-sm" style="flex:none;color:var(--text-disabled)"><use href="#i-chevron-right"/></svg></button>
+        <button class="info-row" style="width:100%;text-align:left" data-nav="relays"><span class="k" style="width:auto"><svg class="icon icon-sm" style="vertical-align:-3px"><use href="#i-network"/></svg></span><span class="v">中继</span><svg class="icon icon-sm" style="flex:none;color:var(--text-disabled)"><use href="#i-chevron-right"/></svg></button>
+        <button class="info-row" style="width:100%;text-align:left" data-nav="users"><span class="k" style="width:auto"><svg class="icon icon-sm" style="vertical-align:-3px"><use href="#i-user"/></svg></span><span class="v">用户管理</span><svg class="icon icon-sm" style="flex:none;color:var(--text-disabled)"><use href="#i-chevron-right"/></svg></button>
+        <button class="info-row" style="width:100%;text-align:left" data-nav="settings"><span class="k" style="width:auto"><svg class="icon icon-sm" style="vertical-align:-3px"><use href="#i-settings"/></svg></span><span class="v">平台设置</span><svg class="icon icon-sm" style="flex:none;color:var(--text-disabled)"><use href="#i-chevron-right"/></svg></button>
+      </div>
+
+      <div class="section-head"><h2 class="section-title">工作区（移动边界）</h2></div>
+      <div class="info-rows">
+        <button class="info-row" style="width:100%;text-align:left" data-nav="cloudadmin"><span class="k" style="width:auto"><svg class="icon icon-sm" style="vertical-align:-3px"><use href="#i-terminal"/></svg></span><span class="v">宿主 cloud-admin 工作区 <span class="badge badge-warning badge-sm" style="height:17px;font-size:10px">桌面优先</span></span><svg class="icon icon-sm" style="flex:none;color:var(--text-disabled)"><use href="#i-chevron-right"/></svg></button>
+        <button class="info-row" style="width:100%;text-align:left" data-nav="orcaweb"><span class="k" style="width:auto"><svg class="icon icon-sm" style="vertical-align:-3px"><use href="#i-external"/></svg></span><span class="v">Orca Web 工作区 <span class="badge badge-warning badge-sm" style="height:17px;font-size:10px">桌面优先</span></span><svg class="icon icon-sm" style="flex:none;color:var(--text-disabled)"><use href="#i-chevron-right"/></svg></button>
+      </div>
+
+      <div class="section-head"><h2 class="section-title">评审</h2></div>
+      <div class="info-rows">
+        <button class="info-row" style="width:100%;text-align:left" data-nav="strategy"><span class="v">断点策略页</span><svg class="icon icon-sm" style="flex:none;color:var(--text-disabled)"><use href="#i-chevron-right"/></svg></button>
+        <button class="info-row" style="width:100%;text-align:left" data-nav="login"><span class="v">登录页</span><svg class="icon icon-sm" style="flex:none;color:var(--text-disabled)"><use href="#i-chevron-right"/></svg></button>
+      </div>
+
+      <!-- 演示脚手架（非产品功能）：视角切换，说明见 prototype-mobile-notes.md §5 -->
+      <div class="section-head"><h2 class="section-title">视角切换</h2><span class="section-count">演示脚手架</span></div>
+      <div class="seg" id="mRoleSwitch">
+        <button class="is-on" data-role="admin">管理员</button>
+        <button data-role="auditor">审计员</button>
+        <button data-role="readonly">只读 lisi</button>
+      </div>
+      <div class="list-foot">审计员：管理页隐藏、审计保留；只读：审计与详情/工作区入口按权限置灰</div>
+    </div>
+    <footer class="sheet-foot">
+      <button class="btn btn-secondary btn-block" data-close-sheet>关闭</button>
+    </footer>
+  </div>
+
+</div><!-- /screen -->
+</div><!-- /phone -->
+</div><!-- /stage -->
+
+<script>
+/* 交互守卫沿用桌面原型形态：admin-only 入口按角色隐藏；审计对 admin+auditor 开放。 */
+const roleState = { role: 'admin' }
+const $$ = (sel, root = document) => [...root.querySelectorAll(sel)]
+const screenEl = document.getElementById('screen')
+
+function toast(text) {
+  $$('.toast', screenEl).forEach((t) => t.remove())
+  const el = document.createElement('div')
+  el.className = 'toast'
+  el.textContent = text
+  screenEl.appendChild(el)
+  setTimeout(() => el.remove(), 2200)
+}
+
+function closeSheets() { $$('.m-sheet', screenEl).forEach((s) => { s.hidden = true }) }
+
+function show(page) {
+  closeSheets()
+  $$('.m-page', screenEl).forEach((p) => { p.hidden = p.dataset.page !== page })
+  $$('.m-tab', screenEl).forEach((t) => t.classList.toggle('is-active', t.dataset.nav === page))
+  const target = screenEl.querySelector(`[data-page="${page}"]`)
+  if (target) target.scrollTop = 0
+}
+
+/* 导航 / sheet / toast 绑定 */
+document.addEventListener('click', (e) => {
+  const nav = e.target.closest('[data-nav]')
+  if (nav) { show(nav.dataset.nav); return }
+  const open = e.target.closest('[data-open-sheet]')
+  if (open) { closeSheets(); const sheet = document.getElementById(open.dataset.openSheet); if (sheet) { sheet.hidden = false; const u = open.dataset.user; if (u) fillUser(u) } ; return }
+  const close = e.target.closest('[data-close-sheet]')
+  if (close) { close.closest('.m-sheet').hidden = true; return }
+  const t = e.target.closest('[data-toast]')
+  if (t) { toast(t.dataset.toast); return }
+  const expand = e.target.closest('[data-expand]')
+  if (expand) {
+    const detail = expand.nextElementSibling
+    if (detail) { detail.hidden = !detail.hidden; expand.innerHTML = detail.hidden ? '详情 <svg class="icon icon-sm" style="width:12px;height:12px"><use href="#i-chevron-down"/></svg>' : '收起 <svg class="icon icon-sm" style="width:12px;height:12px;transform:rotate(180deg)"><use href="#i-chevron-down"/></svg>' }
+    return
+  }
+  const ws = e.target.closest('[data-workspace-entry]')
+  if (ws) { toast('打开工作区：管理台内嵌覆盖层 / 新标签；移动端引导「建议桌面」。'); return }
+})
+
+/* sheet 内分段 tab */
+$$('.seg [data-tab]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const seg = btn.closest('.seg')
+    $$('button', seg).forEach((b) => b.classList.toggle('is-on', b === btn))
+    const sheet = seg.closest('.m-sheet')
+    $$('.tabpane', sheet).forEach((p) => { p.hidden = p.id !== btn.dataset.tab })
+  })
+})
+
+/* 审计事件卡展开箭头符号（chevron-up 即 chevron-down 旋转语义，复用同图标） */
+
+/* 登录演示：任意非空提交进入工作台；空提交显示错误 */
+document.getElementById('loginForm').addEventListener('submit', (e) => {
+  e.preventDefault()
+  const ok = document.getElementById('mLoginAccount').value.trim() && document.getElementById('mLoginPassword').value
+  document.getElementById('mLoginError').hidden = Boolean(ok)
+  if (ok) { applyRole('admin'); show('workbench') }
+})
+
+/* 密码可见切换（演示） */
+document.addEventListener('click', (e) => {
+  const toggle = e.target.closest('[data-toggle-password]')
+  if (!toggle) return
+  const input = toggle.parentElement.querySelector('input')
+  input.type = input.type === 'password' ? 'text' : 'password'
+})
+
+/* 审计筛选 sheet：查询 → 激活数徽标 + 关闭 */
+const filterSheet = document.getElementById('sheetFilter')
+document.getElementById('mAuditFilterApply').addEventListener('click', () => {
+  const badge = document.getElementById('mAuditFilterCount')
+  badge.textContent = '2'
+  badge.hidden = false
+  filterSheet.hidden = true
+  toast('已应用筛选：时间范围 + 操作类型（演示）')
+})
+document.getElementById('mAuditFilterCancel').addEventListener('click', () => { filterSheet.hidden = true })
+document.getElementById('mAuditReset').addEventListener('click', () => {
+  $$('#sheetFilter input').forEach((i) => { i.value = '' })
+  $$('#sheetFilter select').forEach((s) => { s.selectedIndex = 0 })
+  toast('已清除全部条件')
+})
+
+/* 用户详情（U82）：角色内联编辑 + 降级警示 */
+const users = {
+  zhangwei: { name: '张伟', account: 'zhangwei · 研发效能部', role: 'admin', warn: false },
+  liming: { name: '李明', account: 'liming · 安全审计部', role: 'auditor', warn: false },
+  lisi: { name: '李四', account: 'lisi · 交付一部', role: 'member', warn: false }
+}
+const roleNames = { admin: '管理员', auditor: '审计员', member: '普通' }
+let currentDetailUser = 'zhangwei'
+function fillUser(id) {
+  const u = users[id]
+  if (!u) return
+  currentDetailUser = id
+  document.getElementById('mUserDetailName').textContent = u.name
+  document.getElementById('mUserDetailAccount').textContent = u.account
+  document.getElementById('mUserRoleSelect').value = u.role
+  document.getElementById('mUserRoleWarn').hidden = true
+}
+document.getElementById('mUserRoleSelect').addEventListener('change', (e) => {
+  const u = users[currentDetailUser]
+  const downgraded = ['admin', 'auditor', 'member'].indexOf(e.target.value) > ['admin', 'auditor', 'member'].indexOf(u.role)
+  document.getElementById('mUserRoleWarnText').textContent = downgraded
+    ? '角色降级将断开该用户当前全部云会话，≤60 秒生效；变更写入 role_update 审计。'
+    : '角色升级即时生效、不断会话；变更写入 role_update 审计。'
+  document.getElementById('mUserRoleWarn').hidden = false
+})
+document.getElementById('mUserRoleSave').addEventListener('click', () => {
+  const u = users[currentDetailUser]
+  u.role = document.getElementById('mUserRoleSelect').value
+  document.getElementById('mUserRoleWarn').hidden = true
+  toast(`已保存：${u.name} → ${roleNames[u.role]}（role_update 落审计）`)
+})
+
+/* 视角切换（演示脚手架）：admin-only 守卫沿用桌面形态 */
+function applyRole(role) {
+  roleState.role = role
+  const adminOnly = role !== 'admin'
+  const noAudit = role === 'readonly'
+  $$('[data-nav="hosts"], [data-nav="relays"], [data-nav="users"], [data-nav="settings"]').forEach((b) => { b.closest('.info-row').hidden = adminOnly })
+  document.querySelector('[data-audit-tab]').hidden = noAudit
+  $$('[data-readonly-notice]').forEach((n) => { n.hidden = role !== 'readonly' })
+  $$('[data-open-sheet="sheetProject"], [data-open-sheet="sheetUser"]').forEach((b) => { b.hidden = role === 'readonly' })
+  $$('[data-workspace-entry]').forEach((b) => { b.disabled = role === 'readonly'; b.classList.toggle('is-disabled', role === 'readonly') })
+  document.getElementById('mWelcome').textContent = role === 'readonly' ? '下午好，李四' : '下午好，张伟'
+  document.getElementById('mWelcomeSub').textContent = role === 'readonly' ? '你有 1 个可查看的项目。' : '你有 3 个项目正在进行。'
+  document.getElementById('mMoreAccount').textContent = role === 'readonly' ? '李四 · lisi · 普通（只读授权）' : role === 'auditor' ? '李明 · liming · 审计员' : '张伟 · zhangwei · 管理员'
+  $$('#mRoleSwitch button').forEach((b) => b.classList.toggle('is-on', b.dataset.role === role))
+}
+$$('#mRoleSwitch button').forEach((btn) => btn.addEventListener('click', () => {
+  applyRole(btn.dataset.role)
+  toast(`已切换视角：${btn.textContent}（演示脚手架）`)
+  if (roleState.role === 'readonly') show('workbench')
+}))
+
+/* 初始页：断点策略 */
+show('strategy')
+</script>
+</body>
+</html>
