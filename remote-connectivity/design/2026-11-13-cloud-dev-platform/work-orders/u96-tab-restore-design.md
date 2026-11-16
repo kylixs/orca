@@ -231,3 +231,14 @@ E2E 回归（追加到 U91 A-RESTART 断言）：云 Orca Web 一组「开 3 tab
 
 > 待主会话填写：A 的 T1-T4 / T8-T10 决策、Q2/Q3/Q4/Q6/Q10/Q11 结论、A-令1..8 放行顺序；T5-T7 与 B 的 Q 项随 B 设计另审。
 
+
+## 主会话审定（2026-11-16，A 部分）
+
+- **T1**：先复用 `listAll`+handler 内 `workspaceRoot` 过滤（fail-closed），**不新增 listOwn**。
+- **T2**：持久化复用宿主 `workspaceSession.tabsByWorktree`（不造新存储）。
+- **T3**：`terminal.create` 不从云方法表新开放（现有用户在建终端走既有面）。
+- **T4**：云滚动缓冲不入共享持久化（`localOnlyScrollback` 边界保持）。
+- **T8**：`capabilities: ['cloud.session-tabs-restore.v1']` 放行（wire-additive，旧宿主无字段→客户端保持跳过，零新 opcode）。
+- **T9**：默认成立（云票据 workspaceRoot 按用户隔离由既有票据语义保证）；A-2 实现时以既有 scope 测试为证。
+- **T10**：PTY 保活/死后回放边界在 A-1/A-2 实测取证后再定，不预先实现。
+- **流程**：A-1（宿主策略表+capability）与 A-4（客户端谓词）并行开；A-2→A-3 串行（同文件 path guard）；A-5 最小可用；A-6 持久化缺口；A-7 scrollback；A-8 端到端回归（真机：开标签组→关页→重开→恢复）。
