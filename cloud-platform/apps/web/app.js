@@ -1795,6 +1795,7 @@ async function showHostGrants(host) {
     rows: body.grants,
     cards: HOST_ROLE_CARDS,
     kind: 'host',
+    roleOf: hostRoleOf,
     noun: '主机',
     errorText: hostGrantErrorText,
     datalistPrefix: 'host',
@@ -2177,7 +2178,7 @@ const PROJECT_ROLE_CARDS = [
 ]
 
 const PERM_FOOTNOTE =
-  '变更即时保存（PUT 整行替换）；已存在于其它卡片时先弹覆盖确认。降级保存将断开该主体当前全部云会话，≤60 秒生效（FR-1.7）。'
+  '变更即时保存（PUT 整行替换）；同一主体已有授权时弹角色调整确认。降级保存将断开该主体当前全部云会话，≤60 秒生效（FR-1.7）。'
 
 /** 合成级别徽标（§2.2）：管理台不产生这两种读法之外的级别。 */
 function permLevelLabel(kind, permissions) {
@@ -2212,16 +2213,20 @@ function wireAuthTabs(scope, { active = 'info', onSelect } = {}) {
   }
 }
 
-function permChipHtml(row, card, kind, { showLevel = true } = {}) {
+function permChipHtml(row, card, kind, { showLevel = true, adjustable = false } = {}) {
   const dead = row.subjectType === 'user' && !row.username
   const removable = card.key !== 'derived' && !dead
   const level = showLevel
     ? `<span class="badge">${esc(permLevelLabel(kind, row.permissions))}</span>`
     : ''
+  const adjust =
+    adjustable && !dead
+      ? ` <button class="perm-chip-adjust" data-perm-role="${esc(grantKey(row))}" data-card="${esc(card.key)}" title="调整 ${esc(subjectLabel(row))} 的角色">调整</button>`
+      : ''
   return `<span class="perm-chip" data-chip="${esc(grantKey(row))}">
       <span class="mono">${esc(subjectLabel(row))}</span>${dead ? ' <span class="badge">已删除用户</span>' : ''}
       <span class="muted">${row.subjectType === 'group' ? '组' : '用户'}</span>
-      ${level}
+      ${level}${adjust}
       <button class="perm-chip-x" data-perm-remove="${esc(grantKey(row))}" data-card="${esc(card.key)}" title="从「${esc(card.label)}」移除 ${esc(subjectLabel(row))}"${removable ? '' : ' disabled'}>✕</button>
     </span>`
 }
@@ -2271,6 +2276,7 @@ function permCardsHtml(cards, rows, options) {
     ? (row, card) => options.roleOf(row.permissions) === card.key
     : (row, card) => card.bits.some((bit) => row.permissions.includes(bit))
   const userFirst = options.defaultSubjectType === 'user'
+  const adjustable = Boolean(options.roleOf)
   const cardsHtml = cards
     .map((card) => {
       const matching = rows.filter((row) => belongs(row, card))
@@ -2279,7 +2285,7 @@ function permCardsHtml(cards, rows, options) {
         <div class="perm-card-head"><strong>${esc(card.label)}</strong>${showBits ? `<span class="badge">${esc(card.bits.join(' + '))}</span>` : ''}<span class="muted">${matching.length} 个主体</span></div>
         <p class="muted perm-card-desc">${esc(card.desc)}</p>
         <div class="perm-chips" data-chips>${
-          matching.map((row) => permChipHtml(row, card, kind, { showLevel })).join('') ||
+          matching.map((row) => permChipHtml(row, card, kind, { showLevel, adjustable })).join('') ||
           '<span class="muted">暂无主体</span>'
         }</div>
         <div class="toolbar perm-add">
@@ -2312,13 +2318,17 @@ function permCardsHtml(cards, rows, options) {
 }
 
 /**
- * One subject = one row: add unions the card's bits into the row, chip removal
- * subtracts them (empty remainder deletes with the danger confirm, U67 §4.2).
- * Every operation is one immediate PUT; failures redraw from the platform.
+ * One subject = one row. With `roleOf` (the host tab) position *is* the role:
+ * adding writes exactly the target card's bits, and a subject in a higher card
+ * cannot be dropped into a lower one. Without it (project tab) bits still union,
+ * as project cards share the same row. Every operation is one immediate PUT;
+ * failures redraw from the platform, never from local state.
  */
 function wirePermCards(root, options) {
-  const { grantsPath, rows, cards, kind, errorText, onChange } = options
+  const { grantsPath, rows, cards, kind, errorText, onChange, roleOf } = options
   const rowOf = (key) => rows.find((g) => grantKey(g) === key)
+  const rankOf = (key) => cards.findIndex((card) => card.key === key)
+  const roleLabel = (key) => cards.find((card) => card.key === key)?.label ?? '其他位组合'
   for (const select of root.querySelectorAll('[data-perm-type]')) {
     select.onchange = () => {
       const input = root.querySelector(`[data-perm-subject="${select.dataset.permType}"]`)
@@ -2332,7 +2342,7 @@ function wirePermCards(root, options) {
   }
   const setFrozen = (frozen) => {
     for (const control of root.querySelectorAll(
-      '[data-perm-subject], [data-perm-type], [data-perm-add], .perm-chip-x'
+      '[data-perm-subject], [data-perm-type], [data-perm-add], .perm-chip-x, [data-perm-role]'
     )) {
       control.disabled = frozen
     }
@@ -2357,7 +2367,24 @@ function wirePermCards(root, options) {
           g.subjectType === subjectType &&
           (g.subjectId === subjectId || (subjectType === 'user' && g.username === subjectId))
       )
-      const next = [...new Set([...(existing?.permissions ?? []), ...card.bits])].sort()
+      const currentRole = roleOf && existing ? roleOf(existing.permissions) : null
+      if (roleOf && existing) {
+        if (currentRole === card.key) {
+          toast(`该主体已在「${card.label}」，无需重复添加`)
+          return
+        }
+        if (rankOf(currentRole) > rankOf(card.key)) {
+          toast(
+            `该主体已在更高层级的「${roleLabel(currentRole)}」，位置即权限，不能降入「${card.label}」；请用 chip 上的「调整」`
+          )
+          return
+        }
+      }
+      const next = (
+        roleOf
+          ? [...card.bits]
+          : [...new Set([...(existing?.permissions ?? []), ...card.bits])]
+      ).sort()
       const save = async () => {
         try {
           setFrozen(true)
@@ -2370,15 +2397,19 @@ function wirePermCards(root, options) {
           setFrozen(false)
         }
         if (!existing) input.value = ''
-        toast(`已保存「${card.label}」授权：${permLevelLabel(kind, next)}`)
+        toast(
+          existing && roleOf
+            ? `已将 ${subjectLabel(existing)} 调整为「${card.label}」，即时生效`
+            : `已保存「${card.label}」授权：${permLevelLabel(kind, next)}`
+        )
         await onChange()
       }
       if (existing) {
         dialog(
-          '覆盖现有授权',
+          roleOf ? '调整角色' : '覆盖现有授权',
           `<p>${esc(subjectLabel(existing))}（${subjectType === 'group' ? '组' : '用户'}）已有一条授权，保存按整行替换权限位。</p>
-           <p>级别：${esc(permLevelLabel(kind, existing.permissions))} → ${esc(permLevelLabel(kind, next))}（${esc(card.bits.join(' + '))} 并入）</p>
-           <p class="muted">级别提升即时生效；降级保存将断开该主体当前全部云会话，≤60 秒生效（FR-1.7）。</p>`,
+           <p>级别：${esc(permLevelLabel(kind, existing.permissions))} → ${esc(permLevelLabel(kind, next))}</p>
+           <p class="muted">${rankOf(card.key) > rankOf(currentRole) ? '升级即时生效，不断开会话。' : '降级保存将断开该主体当前全部云会话，≤60 秒生效（FR-1.7）。'}</p>`,
           [{ label: '确认保存', primary: true, onClick: () => void save() }]
         )
         return
@@ -2386,13 +2417,55 @@ function wirePermCards(root, options) {
       void save()
     }
   }
+  for (const button of root.querySelectorAll('.perm-chip-adjust[data-perm-role]')) {
+    button.onclick = () => {
+      const row = rowOf(button.dataset.permRole)
+      if (!row || !roleOf) return
+      const currentRole = roleOf(row.permissions)
+      const currentRank = rankOf(currentRole)
+      const targets = cards.filter((card) => card.key !== currentRole)
+      if (targets.length === 0) return
+      const save = async (card, downgrade) => {
+        try {
+          setFrozen(true)
+          await putRow(row.subjectType, row.subjectId, [...card.bits].sort())
+        } catch (err) {
+          toast(`调整失败：${errorText(err)}`)
+          return
+        } finally {
+          setFrozen(false)
+        }
+        toast(
+          downgrade
+            ? `已将 ${subjectLabel(row)} 调整为「${card.label}」，云会话将在 ≤60 秒内断开`
+            : `已将 ${subjectLabel(row)} 调整为「${card.label}」，即时生效`
+        )
+        await onChange()
+      }
+      const hasDowngrade = targets.some((card) => rankOf(card.key) < currentRank)
+      dialog(
+        '调整角色',
+        `<p>${esc(subjectLabel(row))}（${row.subjectType === 'group' ? '组' : '用户'}）当前角色为「${esc(roleLabel(currentRole))}」。</p>
+         <p>请选择目标角色。${hasDowngrade ? '降级将断开该主体当前全部云会话，≤60 秒内生效（FR-1.7）。' : '升级即时生效，不断开会话。'}</p>`,
+        targets.map((card) => {
+          const downgrade = rankOf(card.key) < currentRank
+          return {
+            label: `改为「${card.label}」`,
+            danger: downgrade,
+            onClick: () => void save(card, downgrade)
+          }
+        })
+      )
+    }
+  }
   for (const button of root.querySelectorAll('.perm-chip-x[data-perm-remove]')) {
     button.onclick = () => {
       const row = rowOf(button.dataset.permRemove)
       const card = cards.find((c) => c.key === button.dataset.card)
       if (!row) return
+      // Position is the role: removing the subject deletes its whole authorization row.
       const remaining = (
-        card ? row.permissions.filter((bit) => !card.bits.includes(bit)) : []
+        roleOf || !card ? [] : row.permissions.filter((bit) => !card.bits.includes(bit))
       ).sort()
       const save = async () => {
         try {
@@ -2419,7 +2492,7 @@ function wirePermCards(root, options) {
         dialog(
           '移除全部授权',
           `<p>${esc(subjectLabel(row))}（${row.subjectType === 'group' ? '组' : '用户'}）</p><p>${esc(blast)}</p>`,
-          [{ label: '确认移除', primary: true, onClick: () => void save() }]
+          [{ label: '确认移除', danger: true, primary: true, onClick: () => void save() }]
         )
         return
       }

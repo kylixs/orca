@@ -11,10 +11,13 @@ import { loadWebConsolePage, type WebConsolePage } from './web-console-page.ts'
  *
  * - opening 详情 reads that host's grants once and renders the three cards
  * - adding a subject to 查看 writes exactly the view bits, immediately
- * - adding the same subject to 控制 asks the overwrite confirmation (只读→全权)
- *   and unions to view+provision after confirming
+ * - adding the same subject to 控制 adjusts the role (只读→全权) after the
+ *   confirmation; position is the role, so the row becomes exactly view+provision
  * - a failed add is reported and stores nothing (QA-009)
  * - a non-admin never reaches the drawer (route guard) and issues zero requests
+ *
+ * U67-3b adds the write-path contract (审定二 · 位置即权限): 三卡位映射、降级
+ * 拦截、调整角色（降级 danger + 断会话文案）、移除危险确认与失败回滚.
  */
 
 const EVIDENCE = 'aa6-host-drawer'
@@ -50,6 +53,10 @@ async function hostGrants(): Promise<GrantRow[]> {
   return res.body.grants
 }
 
+/** User rows are stored under the canonical id, so match the username too. */
+const subjectIs = (row: GrantRow, name: string): boolean =>
+  row.subjectId === name || row.username === name
+
 function lastToast(page: WebConsolePage): string {
   return [...page.window.document.querySelectorAll('.toast')].at(-1)?.textContent ?? ''
 }
@@ -77,6 +84,23 @@ function topDialog(page: WebConsolePage): HTMLElement {
   ]
   assert.ok(dialogs.length > 0, 'a dialog must be open')
   return dialogs[dialogs.length - 1]
+}
+
+/** The chip showing `name` inside a card (subjects live in exactly one card). */
+function chipOf(page: WebConsolePage, cardKey: string, name: string): HTMLElement {
+  const chip = [...permCard(page, cardKey).querySelectorAll<HTMLElement>('.perm-chip')].find(
+    (candidate) => candidate.querySelector('.mono')?.textContent === name
+  )
+  assert.ok(chip, `the ${cardKey} card must hold a chip for ${name}`)
+  return chip
+}
+
+function actionByText(dialog: HTMLElement, text: string): HTMLButtonElement {
+  const button = [...dialog.querySelectorAll<HTMLButtonElement>('button[data-action]')].find(
+    (candidate) => candidate.textContent?.includes(text)
+  )
+  assert.ok(button, `the dialog must offer a 「${text}」 action`)
+  return button
 }
 
 /** Adds `subject` to a card through the real input + type select + button. */
@@ -253,7 +277,7 @@ test('AA6-2 查看卡添加组：整行即存 view 位，chip 只含名字+类�
     '查看卡添加 team-payment → 立即 PUT 落 view 位；lisi 自助建项目 403 HOST_PROVISION_FORBIDDEN'
 }, 120_000)
 
-test('AA6-3 控制卡加同一主体：覆盖确认 只读→全权，确认后并集 view+provision', async () => {
+test('AA6-3 控制卡加同一主体：角色调整确认 只读→全权，确认后整行即 view+provision', async () => {
   const page = loadWebConsolePage(service.url)
   await openPermTab(page, 'admin', 'Adm1n!')
   const putsBefore = callsTo(page, 'PUT', `/v1/hosts/${hostId}/grants`)
@@ -261,8 +285,9 @@ test('AA6-3 控制卡加同一主体：覆盖确认 只读→全权，确认后�
   await addToCard(page, 'control', 'group', 'team-payment')
 
   const dialog = topDialog(page)
-  assert.match(dialog.textContent ?? '', /覆盖现有授权/, 'an existing subject must confirm first')
-  assert.match(dialog.textContent ?? '', /级别：只读 → 全权/, 'the union reads as the new level')
+  assert.match(dialog.textContent ?? '', /调整角色/, 'an existing subject must confirm the role change')
+  assert.match(dialog.textContent ?? '', /级别：只读 → 全权/, 'the row reads as the new role')
+  assert.match(dialog.textContent ?? '', /升级即时生效，不断开会话/, 'an upgrade notes no disconnect')
   assert.equal(
     callsTo(page, 'PUT', `/v1/hosts/${hostId}/grants`),
     putsBefore,
@@ -276,7 +301,7 @@ test('AA6-3 控制卡加同一主体：覆盖确认 只读→全权，确认后�
   assert.deepEqual(
     [...group.permissions].sort(),
     ['provision', 'view'],
-    'the confirmed add unions the card bits (maintain excluded by verdict)'
+    'the confirmed role change writes exactly the control bits (maintain excluded)'
   )
   const chips = [...drawer(page).querySelectorAll<HTMLElement>('.perm-chip')].filter((candidate) =>
     candidate.textContent?.includes('team-payment')
@@ -293,7 +318,7 @@ test('AA6-3 控制卡加同一主体：覆盖确认 只读→全权，确认后�
   )
 
   saveEvidence(EVIDENCE, 'control-overwrite.json', { group })
-  cases['control-overwrite'] = '控制卡加已有主体 → 覆盖确认（只读→全权）→ 并集 view+provision 落库'
+  cases['control-overwrite'] = '控制卡加已有主体 → 调整角色确认（只读→全权）→ 整行落 view+provision'
 }, 120_000)
 
 test('AA6-4 非 admin：主机路由 403 页面，零 hosts/grants/目录请求', async () => {
@@ -417,4 +442,174 @@ test('U67-3a 三卡结构：卡头无位徽标、chips 只有名字+类型、主
   })
   cases['u67-3a-structure'] =
     '三卡顺序固定；卡头无位徽标；chip 仅名字+类型；主体仅出现在最高级别卡且全局唯一'
+}, 120_000)
+
+/**
+ * U67-3b 写路径（审定二 · 位置即权限）：加卡 = 整行即目标卡位组；已在高卡不
+ * 可降入低卡、同卡去重；调整角色走确认（降级 danger + 断会话文案）；移除整行
+ * 危险确认；失败只报错、不改本地与平台状态。
+ */
+test('U67-3b-1 三卡位映射：控制=view+provision，管理=provision+maintain（整行替换）', async () => {
+  const page = loadWebConsolePage(service.url)
+  await openPermTab(page, 'admin', 'Adm1n!')
+
+  await addToCard(page, 'control', 'user', 'zhangsan')
+  assert.match(lastToast(page), /已保存「控制」授权：全权/)
+  const zhangsan = (await hostGrants()).find((row) => subjectIs(row, 'zhangsan'))!
+  assert.deepEqual([...zhangsan.permissions].sort(), ['provision', 'view'], '控制 card writes exactly view+provision')
+  assert.ok(chipOf(page, 'control', 'zhangsan'), 'the upgrade lands in the 控制 card')
+
+  // developers currently holds only view → adding to 管理 is an upgrade that
+  // replaces the row: position is the role, so the view bit is dropped.
+  await addToCard(page, 'manage', 'group', 'developers')
+  const upgrade = topDialog(page)
+  assert.match(upgrade.textContent ?? '', /调整角色/)
+  assert.match(upgrade.textContent ?? '', /级别：只读 → 管理（创建\+维护）/)
+  upgrade.querySelector<HTMLButtonElement>('[data-action="0"]')!.click()
+  await page.settle()
+
+  const developers = (await hostGrants()).find((row) => row.subjectId === 'developers')!
+  assert.deepEqual(
+    [...developers.permissions].sort(),
+    ['maintain', 'provision'],
+    '管理 card writes exactly provision+maintain (view is not retained)'
+  )
+  assert.ok(chipOf(page, 'manage', 'developers'), 'the subject moves to the 管理 card')
+
+  saveEvidence(EVIDENCE, 'u67-3b-card-bits.json', { zhangsan, developers })
+  cases['u67-3b-card-bits'] =
+    '控制卡写 view+provision；管理卡写 provision+maintain（整行替换，不保留 view）'
+}, 120_000)
+
+test('U67-3b-2 位置即权限：高卡主体不可降入低卡，同卡重复添加去重', async () => {
+  const page = loadWebConsolePage(service.url)
+  await openPermTab(page, 'admin', 'Adm1n!')
+  const grantsPath = `/v1/hosts/${hostId}/grants`
+  const putsBefore = callsTo(page, 'PUT', grantsPath)
+
+  // platform-admins is in 管理; 查看 is a lower card.
+  await addToCard(page, 'view', 'group', 'platform-admins')
+  assert.match(lastToast(page), /不能降入「查看」/, 'a higher-card subject must be refused')
+  assert.equal(callsTo(page, 'PUT', grantsPath), putsBefore, 'the refusal writes nothing')
+
+  // Same card again → dedupe notice, still no write.
+  await addToCard(page, 'manage', 'group', 'platform-admins')
+  assert.match(lastToast(page), /已在「管理」，无需重复添加/)
+  assert.equal(callsTo(page, 'PUT', grantsPath), putsBefore)
+  assert.deepEqual(
+    (await hostGrants()).find((row) => row.subjectId === 'platform-admins')?.permissions.sort(),
+    ['maintain', 'provision'],
+    'the existing row is untouched'
+  )
+
+  saveEvidence(EVIDENCE, 'u67-3b-hierarchy.json', { toast: lastToast(page) })
+  cases['u67-3b-hierarchy'] = '管理卡主体加入查看卡 → 提示不可降入；同卡重复添加 → 去重提示，均零 PUT'
+}, 120_000)
+
+test('U67-3b-3 调整角色降级：danger 确认含 ≤60 秒断会话，确认后两卡同步刷新', async () => {
+  const page = loadWebConsolePage(service.url)
+  await openPermTab(page, 'admin', 'Adm1n!')
+  const grantsPath = `/v1/hosts/${hostId}/grants`
+  const putsBefore = callsTo(page, 'PUT', grantsPath)
+  const loadsBefore = callsTo(page, 'GET', grantsPath)
+
+  const chip = chipOf(page, 'control', 'lisi')
+  const adjust = chip.querySelector<HTMLButtonElement>('[data-perm-role]')
+  assert.ok(adjust, 'a role chip offers 调整')
+  assert.doesNotMatch(chip.textContent ?? '', /查看|控制|管理/, 'the adjust control adds no permission words')
+  adjust.click()
+  await page.settle()
+
+  const dialog = topDialog(page)
+  assert.match(dialog.textContent ?? '', /调整角色/)
+  assert.match(dialog.textContent ?? '', /当前角色为「控制」/)
+  assert.match(dialog.textContent ?? '', /≤60 秒/, 'a downgrade announces the session cut')
+  const down = actionByText(dialog, '改为「查看」')
+  assert.match(down.className, /danger/, 'the downgrade action is the danger action')
+  assert.equal(callsTo(page, 'PUT', grantsPath), putsBefore, 'nothing lands before confirming')
+
+  down.click()
+  await page.settle()
+
+  assert.equal(callsTo(page, 'PUT', grantsPath), putsBefore + 1)
+  assert.deepEqual(
+    (await hostGrants()).find((row) => subjectIs(row, 'lisi'))?.permissions,
+    ['view'],
+    'the downgrade writes exactly the view bit'
+  )
+  assert.ok(chipOf(page, 'view', 'lisi'), 'lisi now renders in 查看')
+  assert.equal(
+    [...permCard(page, 'control').querySelectorAll<HTMLElement>('.perm-chip')].some(
+      (candidate) => candidate.querySelector('.mono')?.textContent === 'lisi'
+    ),
+    false,
+    'the control card no longer lists lisi (both cards redrawn)'
+  )
+  assert.equal(callsTo(page, 'GET', grantsPath), loadsBefore + 1, 'success redraws from the platform')
+  assert.match(lastToast(page), /调整为「查看」.*≤60 秒/)
+
+  saveEvidence(EVIDENCE, 'u67-3b-adjust-down.json', { toast: lastToast(page) })
+  cases['u67-3b-adjust-down'] =
+    '调整角色 → danger 确认含断会话文案 → PUT view；主体从控制移入查看，两卡同步刷新'
+}, 120_000)
+
+test('U67-3b-4 移除：危险确认含 ≤60 秒断会话，确认后整行删除', async () => {
+  const page = loadWebConsolePage(service.url)
+  await openPermTab(page, 'admin', 'Adm1n!')
+  const grantsPath = `/v1/hosts/${hostId}/grants`
+  const putsBefore = callsTo(page, 'PUT', grantsPath)
+
+  chipOf(page, 'manage', 'developers')
+    .querySelector<HTMLButtonElement>('.perm-chip-x')!
+    .click()
+  await page.settle()
+
+  const dialog = topDialog(page)
+  assert.match(dialog.textContent ?? '', /移除全部授权/)
+  assert.match(dialog.textContent ?? '', /≤60 秒/, 'the removal announces the session cut')
+  assert.equal(callsTo(page, 'PUT', grantsPath), putsBefore, 'nothing lands before confirming')
+  actionByText(dialog, '确认移除').click()
+  await page.settle()
+
+  const rows = await hostGrants()
+  assert.equal(
+    rows.some((row) => row.subjectId === 'developers'),
+    false,
+    'the whole authorization row is deleted'
+  )
+  const allChips = [...drawer(page).querySelectorAll<HTMLElement>('.perm-chip')].map(
+    (chip) => chip.querySelector('.mono')?.textContent
+  )
+  assert.equal(allChips.includes('developers'), false, 'the chip disappears after the redraw')
+
+  saveEvidence(EVIDENCE, 'u67-3b-remove.json', { rows })
+  cases['u67-3b-remove'] = '移除 → 危险确认含 ≤60 秒断会话 → PUT []，行删除、chip 消失'
+}, 120_000)
+
+test('U67-3b-5 写失败回滚：toast 报错、平台行不变、不重绘本地状态', async () => {
+  const page = loadWebConsolePage(service.url)
+  await openPermTab(page, 'admin', 'Adm1n!')
+  const grantsPath = `/v1/hosts/${hostId}/grants`
+  const loadsBefore = callsTo(page, 'GET', grantsPath)
+
+  page.fail('PUT', grantsPath)
+  chipOf(page, 'view', 'lisi')
+    .querySelector<HTMLButtonElement>('.perm-chip-x')!
+    .click()
+  await page.settle()
+  actionByText(topDialog(page), '确认移除').click()
+  await page.settle()
+
+  assert.match(lastToast(page), /移除失败/, 'the refusal is reported')
+  assert.equal(callsTo(page, 'GET', grantsPath), loadsBefore, 'a refusal never redraws from the platform')
+  assert.deepEqual(
+    (await hostGrants()).find((row) => subjectIs(row, 'lisi'))?.permissions,
+    ['view'],
+    'the failed removal leaves the stored row intact'
+  )
+  assert.ok(chipOf(page, 'view', 'lisi'), 'the chip is still rendered locally')
+
+  page.clearFails()
+  saveEvidence(EVIDENCE, 'u67-3b-rollback.json', { toast: lastToast(page) })
+  cases['u67-3b-rollback'] = '移除 PUT 503 → toast 移除失败、不重绘、平台行与本地 chip 不变'
 }, 120_000)
