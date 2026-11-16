@@ -87,10 +87,14 @@ const dragData: TabDragItemData = {
  */
 function InactiveSplitGroup({
   focusGroup,
-  onClose
+  onClose,
+  isExpanded = false,
+  onToggleExpand = vi.fn()
 }: {
   focusGroup: () => void
   onClose: (tabId: string) => void
+  isExpanded?: boolean
+  onToggleExpand?: (tabId: string) => void
 }): React.JSX.Element {
   const [renderEpoch, setRenderEpoch] = useState(0)
   const handleGroupFocus = (): void => {
@@ -113,7 +117,7 @@ function InactiveSplitGroup({
         hasTabsToLeft={false}
         isActive={false}
         isPinned={false}
-        isExpanded={false}
+        isExpanded={isExpanded}
         onActivate={vi.fn()}
         onClose={onClose}
         onCloseOthers={vi.fn()}
@@ -122,7 +126,7 @@ function InactiveSplitGroup({
         onSetCustomTitle={vi.fn()}
         onSetTabColor={vi.fn()}
         onTogglePin={vi.fn()}
-        onToggleExpand={vi.fn()}
+        onToggleExpand={onToggleExpand}
         dragData={dragData}
       />
     </div>
@@ -159,5 +163,31 @@ describe('SortableTab close button in an inactive split group (U158)', () => {
     await user.click(screen.getByTestId('sortable-tab'))
 
     expect(focusGroup).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('SortableTab collapse button in an inactive split group (U159)', () => {
+  it('collapses on the first click without stealing the group gesture', async () => {
+    const user = userEvent.setup()
+    const focusGroup = vi.fn()
+    const onToggleExpand = vi.fn()
+    render(
+      <InactiveSplitGroup
+        focusGroup={focusGroup}
+        onClose={vi.fn()}
+        isExpanded
+        onToggleExpand={onToggleExpand}
+      />
+    )
+    const collapseButton = screen.getByRole('button', { name: /Collapse pane/ })
+
+    await user.click(collapseButton)
+
+    // Why: the production callback activates/focuses the group itself; the pin is
+    // that TabGroupPanel's onFocusCapture does not fire first and eat the click.
+    expect(onToggleExpand).toHaveBeenCalledTimes(1)
+    expect(onToggleExpand).toHaveBeenCalledWith('terminal-tab-1')
+    expect(focusGroup).not.toHaveBeenCalled()
+    expect(document.activeElement).not.toBe(collapseButton)
   })
 })

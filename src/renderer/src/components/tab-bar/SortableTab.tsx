@@ -300,7 +300,19 @@ export default function SortableTab({
               ? 'text-muted-foreground hover:text-foreground hover:bg-muted'
               : 'text-transparent group-hover:text-muted-foreground hover:!text-foreground hover:!bg-muted'
           }`}
-          onPointerDown={(e) => e.stopPropagation()}
+          // Why: the collapse action focuses/activates the group itself; a focus-capture re-render would swallow this click first, so keep DOM focus off the button.
+          onPointerDown={(e) => {
+            if (e.button === 0) {
+              e.preventDefault()
+              e.stopPropagation()
+            }
+          }}
+          onMouseDown={(e) => {
+            if (e.button === 0) {
+              e.preventDefault()
+              e.stopPropagation()
+            }
+          }}
           onClick={(e) => {
             e.stopPropagation()
             onToggleExpand(tab.id)

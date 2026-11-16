@@ -206,7 +206,20 @@ export default function BrowserTab({
               ? 'text-muted-foreground hover:text-foreground hover:bg-muted'
               : 'text-transparent group-hover:text-muted-foreground hover:!text-foreground hover:!bg-muted'
           }`}
-          onPointerDown={(e) => e.stopPropagation()}
+          type="button"
+          // Why: a focused close button hands the gesture to the group's onFocusCapture (focusGroup store write + re-render), and the click then lands nowhere; keep DOM focus off the button.
+          onPointerDown={(e) => {
+            if (e.button === 0) {
+              e.preventDefault()
+              e.stopPropagation()
+            }
+          }}
+          onMouseDown={(e) => {
+            if (e.button === 0) {
+              e.preventDefault()
+              e.stopPropagation()
+            }
+          }}
           onClick={(e) => {
             e.stopPropagation()
             onClose()
