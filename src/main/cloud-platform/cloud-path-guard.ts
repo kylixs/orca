@@ -27,6 +27,11 @@ import {
   type CloudPathDecision,
   type CloudPathRoots
 } from './cloud-path-boundary'
+import {
+  checkCloudSessionTabsScope,
+  cloudSessionTabsScopeOf,
+  type CloudSessionTabsGuardRuntime
+} from './cloud-session-tabs-scope'
 
 /**
  * Applies the ticket's roots to a file RPC before its handler runs (design §8.3).
@@ -37,8 +42,7 @@ import {
  * and checked against the project, and the target against the write root.
  */
 
-export type CloudPathGuardRuntime = {
-  resolveWorktreeRootPath: (worktreeSelector: string) => Promise<string>
+export type CloudPathGuardRuntime = CloudSessionTabsGuardRuntime & {
   resolveRepoRootPath: (repoSelector: string) => Promise<string>
   /** Which worktree a live terminal handle belongs to, if it is still running. */
   resolveTerminalContext?: (
@@ -102,7 +106,8 @@ export function isCloudPathGuardedMethod(method: string): boolean {
     cloudPathAccessOf(method) !== null ||
     cloudWorktreeAccessOf(method) !== null ||
     cloudTerminalScopeOf(method) !== null ||
-    cloudAgentScopeOf(method) !== null
+    cloudAgentScopeOf(method) !== null ||
+    cloudSessionTabsScopeOf(method) !== null
   )
 }
 
@@ -133,6 +138,10 @@ export async function checkCloudRpcPath(args: {
   const agentScope = cloudAgentScopeOf(args.method)
   if (agentScope) {
     return await checkCloudAgentScope(args, agentScope)
+  }
+  const sessionTabsScope = cloudSessionTabsScopeOf(args.method)
+  if (sessionTabsScope) {
+    return await checkCloudSessionTabsScope({ ...args, scope: sessionTabsScope })
   }
   const denial = cloudWorktreeDenial(args.method)
   if (denial) {
