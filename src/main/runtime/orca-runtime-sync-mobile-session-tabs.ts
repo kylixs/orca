@@ -4,7 +4,10 @@ import { OrcaRuntimeWithWriteOrchestrationPointerPty } from './orca-runtime-writ
 import type { RuntimeMobileSessionTabsSnapshot } from '../../shared/runtime-types'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import { getMobileSessionSnapshotTabIdentityKeys } from './mobile-session-tab-merge'
-import { getMobileSessionTabGroupLayoutSignature } from './mobile-session-tab-group-layout-signature'
+import {
+  getMobileSessionAuthoredLayoutDigest,
+  getMobileSessionTabGroupLayoutSignature
+} from './mobile-session-tab-group-layout-signature'
 
 export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOrchestrationPointerPty {
   // Returns the worktrees whose stored snapshot object changed during this
@@ -167,24 +170,44 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
       const fencedSnapshot = this.applyMobileSessionRetirementFences(launchDraftFencedSnapshot)
       this.releaseRuntimeSessionOwnershipForRendererRetiredTabs(fencedSnapshot, existing)
       const mergedSnapshot = this.mergePreservedHeadlessMobileSessionTabs(fencedSnapshot, existing)
-      // Why: a headless-authored layout stays host-owned until the renderer
-      // authors a DIFFERENT one. Its content-only republish (same group ids and
-      // tree as its last accepted frame) must not write the old groups back.
+      // Why: within one generation, the digest (not the shape) tells a
+      // content-only resend from a same-shape member/order change. Across a
+      // renderer reload versions are incomparable, so the first frame is the new
+      // generation's baseline and only a different tree takes over.
+      const sameGeneration =
+        accepted !== undefined && accepted.publicationEpoch === snapshot.publicationEpoch
+      const shapeMatches =
+        accepted !== undefined &&
+        getMobileSessionTabGroupLayoutSignature(snapshot) ===
+          accepted.rendererTabGroupLayoutSignature
+      const digestMatches =
+        accepted === undefined
+          ? false
+          : accepted.rendererAuthoredLayoutDigest === undefined
+            ? shapeMatches
+            : accepted.rendererAuthoredLayoutDigest ===
+              getMobileSessionAuthoredLayoutDigest(snapshot)
       const preserveHostLayout =
         existing !== undefined &&
         accepted !== undefined &&
         this.isHeadlessBuiltMobileSessionPublicationBase(existing.publicationEpoch) &&
-        getMobileSessionTabGroupLayoutSignature(snapshot) ===
-          accepted.rendererTabGroupLayoutSignature
+        (sameGeneration ? digestMatches : shapeMatches)
+      const adoptIncomingActiveGroupId =
+        snapshot.activeGroupId !== null &&
+        (existing?.tabGroups ?? []).some(
+          (group) => group.id === snapshot.activeGroupId && group.tabOrder.length > 0
+        )
       const nextSnapshot = preserveHostLayout
         ? {
             ...mergedSnapshot,
             // Keep host ownership of the layout: the renderer still has to
-            // author a changed tree before its groups take over.
+            // author a changed layout before its groups take over.
             publicationEpoch: existing.publicationEpoch,
             tabGroups: existing.tabGroups,
             tabGroupLayout: existing.tabGroupLayout,
-            activeGroupId: existing.activeGroupId
+            activeGroupId: adoptIncomingActiveGroupId
+              ? snapshot.activeGroupId
+              : existing.activeGroupId
           }
         : mergedSnapshot
       // Why: clients drop same-epoch frames whose version isn't strictly newer,
@@ -207,7 +230,9 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
         rendererTabIdentityKeys: new Set(
           fencedSnapshot.tabs.flatMap((tab) => getMobileSessionSnapshotTabIdentityKeys(tab))
         ),
-        rendererTabGroupLayoutSignature: getMobileSessionTabGroupLayoutSignature(snapshot)
+        rendererTabGroupLayoutSignature: getMobileSessionTabGroupLayoutSignature(snapshot),
+        // Why: from the raw incoming frame, so host-preserved tabs never enter it.
+        rendererAuthoredLayoutDigest: getMobileSessionAuthoredLayoutDigest(snapshot)
       })
     }
     for (const [worktreeId, existing] of [...this.mobileSessionTabsByWorktree.entries()]) {

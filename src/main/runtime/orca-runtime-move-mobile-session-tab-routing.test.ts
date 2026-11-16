@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { OrcaRuntimeService } from './orca-runtime'
 import { getHeadlessMobileSessionGroupId } from './mobile-session-layout-projection'
-import { getMobileSessionTabGroupLayoutSignature } from './mobile-session-tab-group-layout-signature'
 import type { RuntimeMobileSessionTabsSnapshot } from '../../shared/runtime-types'
 import {
   HEADLESS_LEAF_ID,
@@ -10,82 +9,13 @@ import {
   makeRuntimeStoreWithWorkspaceSession,
   makeWorkspaceSessionWithHeadlessTerminal
 } from './orca-runtime-test-fixtures.spec'
-
-function setMobileSessionSnapshot(
-  runtime: OrcaRuntimeService,
-  snapshot: RuntimeMobileSessionTabsSnapshot
-): void {
-  ;(
-    runtime as unknown as {
-      mobileSessionTabsByWorktree: Map<string, RuntimeMobileSessionTabsSnapshot>
-    }
-  ).mobileSessionTabsByWorktree.set(snapshot.worktree, snapshot)
-}
-
-function markRendererPublished(
-  runtime: OrcaRuntimeService,
-  worktree: string,
-  layout: Pick<RuntimeMobileSessionTabsSnapshot, 'tabGroups' | 'tabGroupLayout'>
-): void {
-  // Only an authoritative-window publication whose group layout still matches
-  // the host makes a forwarded move applicable.
-  ;(
-    runtime as unknown as {
-      acceptedRendererMobileSnapshotByWorktree: Map<string, unknown>
-    }
-  ).acceptedRendererMobileSnapshotByWorktree.set(worktree, {
-    publicationEpoch: 'renderer-epoch',
-    rendererVersion: 1,
-    rendererTabCount: 2,
-    rendererTabIdentityKeys: new Set(['left-tab::leaf-1', 'right-tab::leaf-1']),
-    rendererTabGroupLayoutSignature: getMobileSessionTabGroupLayoutSignature(layout)
-  })
-}
-
-function syncRendererSnapshots(
-  runtime: OrcaRuntimeService,
-  snapshots: RuntimeMobileSessionTabsSnapshot[],
-  unchangedWorktreeIds?: string[]
-): void {
-  ;(
-    runtime as unknown as {
-      syncMobileSessionTabs(
-        snapshots: RuntimeMobileSessionTabsSnapshot[],
-        unchangedWorktreeIds?: string[]
-      ): Set<string>
-    }
-  ).syncMobileSessionTabs(snapshots, unchangedWorktreeIds)
-}
-
-function twoTabSnapshot(worktree = TEST_WORKTREE_ID): RuntimeMobileSessionTabsSnapshot {
-  return {
-    worktree,
-    publicationEpoch: 'renderer-epoch',
-    snapshotVersion: 4,
-    activeGroupId: 'group-left',
-    activeTabId: 'left-tab::leaf-1',
-    activeTabType: 'terminal',
-    tabGroups: [{ id: 'group-left', activeTabId: 'left-tab', tabOrder: ['left-tab', 'right-tab'] }],
-    tabs: [
-      {
-        type: 'terminal',
-        id: 'left-tab::leaf-1',
-        parentTabId: 'left-tab',
-        leafId: 'leaf-1',
-        title: 'Left',
-        isActive: true
-      },
-      {
-        type: 'terminal',
-        id: 'right-tab::leaf-1',
-        parentTabId: 'right-tab',
-        leafId: 'leaf-1',
-        title: 'Right',
-        isActive: false
-      }
-    ]
-  }
-}
+import {
+  makeThreeTabHeadlessSession,
+  markRendererPublished,
+  setMobileSessionSnapshot,
+  syncRendererSnapshots,
+  twoTabSnapshot
+} from './mobile-session-tab-routing-fixtures.spec'
 
 function makeTwoTabHeadlessSession() {
   return makeWorkspaceSessionWithHeadlessTerminal({
@@ -124,41 +54,6 @@ function makeTwoTabHeadlessSession() {
           worktreeId: TEST_WORKTREE_ID,
           activeTabId: 'host-tab',
           tabOrder: ['host-tab', 'host-tab-2']
-        }
-      ]
-    }
-  })
-}
-
-function makeThreeTabHeadlessSession() {
-  return makeWorkspaceSessionWithHeadlessTerminal({
-    tabsByWorktree: {
-      [TEST_WORKTREE_ID]: ['host-tab', 'host-tab-2', 'host-tab-3'].map((id, index) => ({
-        id,
-        ptyId: `persisted-pty${index === 0 ? '' : `-${index + 1}`}`,
-        worktreeId: TEST_WORKTREE_ID,
-        title: `Tab ${index + 1}`,
-        customTitle: null,
-        color: null,
-        sortOrder: index,
-        createdAt: index + 1
-      }))
-    },
-    terminalLayoutsByTabId: Object.fromEntries(
-      ['host-tab', 'host-tab-2', 'host-tab-3'].map((id, index) => [
-        id,
-        makeHeadlessTerminalLayout({
-          [HEADLESS_LEAF_ID]: `persisted-pty${index === 0 ? '' : `-${index + 1}`}`
-        })
-      ])
-    ),
-    tabGroups: {
-      [TEST_WORKTREE_ID]: [
-        {
-          id: getHeadlessMobileSessionGroupId(TEST_WORKTREE_ID),
-          worktreeId: TEST_WORKTREE_ID,
-          activeTabId: 'host-tab',
-          tabOrder: ['host-tab', 'host-tab-2', 'host-tab-3']
         }
       ]
     }
@@ -358,9 +253,7 @@ describe('moveMobileSessionTab ownership routing', () => {
     expect(moveSessionTab).toHaveBeenCalledTimes(1)
     const afterSplit = await runtime.listMobileSessionTabs(`id:${TEST_WORKTREE_ID}`)
     expect(afterSplit.tabGroups).toHaveLength(2)
-    const splitGroup = afterSplit.tabGroups!.find((group) =>
-      group.tabOrder.includes('host-tab-2')
-    )!
+    const splitGroup = afterSplit.tabGroups!.find((group) => group.tabOrder.includes('host-tab-2'))!
     // A stale renderer would happily apply this move to its one-group layout and
     // ack success, so the test proves the host never asks it.
     moveSessionTab.mockClear()
@@ -377,9 +270,7 @@ describe('moveMobileSessionTab ownership routing', () => {
     expect(moveSessionTab).not.toHaveBeenCalled()
     const afterMove = await runtime.listMobileSessionTabs(`id:${TEST_WORKTREE_ID}`)
     expect(afterMove.tabGroups).toHaveLength(2)
-    const movedGroup = afterMove.tabGroups!.find((group) =>
-      group.tabOrder.includes('host-tab-3')
-    )!
+    const movedGroup = afterMove.tabGroups!.find((group) => group.tabOrder.includes('host-tab-3'))!
     expect(movedGroup.id).toBe(splitGroup.id)
     expect(afterMove.tabGroupLayout).toMatchObject({
       type: 'split',
@@ -404,9 +295,7 @@ describe('moveMobileSessionTab ownership routing', () => {
       splitDirection: 'right'
     })
     const afterSplit = await runtime.listMobileSessionTabs(`id:${TEST_WORKTREE_ID}`)
-    const splitGroup = afterSplit.tabGroups!.find((group) =>
-      group.tabOrder.includes('host-tab-2')
-    )!
+    const splitGroup = afterSplit.tabGroups!.find((group) => group.tabOrder.includes('host-tab-2'))!
     // Simulates the renderer observing the host broadcast: the accepted snapshot
     // now carries the two-group layout.
     markRendererPublished(runtime, TEST_WORKTREE_ID, afterSplit)
@@ -533,10 +422,7 @@ describe('moveMobileSessionTab ownership routing', () => {
     ])
 
     const afterAuthored = await runtime.listMobileSessionTabs(`id:${TEST_WORKTREE_ID}`)
-    expect(afterAuthored.tabGroups?.map((group) => group.id)).toEqual([
-      'renderer-a',
-      'renderer-b'
-    ])
+    expect(afterAuthored.tabGroups?.map((group) => group.id)).toEqual(['renderer-a', 'renderer-b'])
     expect(afterAuthored.tabGroupLayout).toMatchObject({
       type: 'split',
       direction: 'vertical'

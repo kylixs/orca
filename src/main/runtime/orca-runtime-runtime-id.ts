@@ -149,6 +149,9 @@ export class OrcaRuntimeWithRuntimeId {
       // different group layout must not receive them — its write-back would
       // overwrite the host's newer (e.g. headlessly split) layout.
       rendererTabGroupLayoutSignature: string
+      // Why: shape alone cannot tell a content-only resend from a same-shape
+      // member/order change, so ownership compares the renderer-authored layout.
+      rendererAuthoredLayoutDigest?: string
     }
   >()
 
