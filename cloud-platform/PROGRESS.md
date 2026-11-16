@@ -3685,6 +3685,13 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **U159 审计 PASS → U160（P3）**：`ClientHostedBrowserTab` 关闭按钮同源残留，未证实用户可见。
 - **U157 审计 PASS**；U158 审计 PASS。
 
+### 2026-11-17 04:0x 轮：金路径检查点 13/13（含 a2）+ U161 根因修复在途
+
+- **金路径检查点**（`evidence/journey-checkpoint-20261117-035409/`，final2 构建）：13/13 全绿含 a2（reload 后 26ms 三方一致）；b8 三项绿。**不作 U138 消除结论**（构建与 final3 不同、单次样本）。U161 症状在 reload 前快照可见（`domBeforeReload`/`storeBeforeReload`=旧 tab），未入门禁断言。
+- **U161 根因与修法已入账**（`3a61d86ddb2`）：乐观激活 + 先于 intent 的权威帧 → 守卫丢 intent/烧版本；修=worktree 手势账本 + `followHostActive=false`。
+- **U160 审计 PASS**（`4da058a2f18`）。
+- 判定口径：final3 仍以 U161 修复后构建为准（目标 0 red / `conclusive=true`）。
+
 ### 四通道并发执行（启动，2026-11-14）
 
 按细粒度拆分与三权分立纪律并发起跑：通道② **W6a**（中继浏览器模式，relay.ts 域）、通道③ **W10**（客户端零 env 登录，src/main+renderer 登录域）、通道④ **W5a**（详情页终端组件，cloud-admin 域）三个实现代理并行；通道① 等在途 W2（QA 修复）完成后接 W8。每令完成→独立测试代理→独立审计代理→主会话关闭放行下一个。
