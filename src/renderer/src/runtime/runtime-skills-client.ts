@@ -14,7 +14,6 @@ import {
   runtimeEnvironmentSupportsCapability,
   type RuntimeClientTarget
 } from './runtime-rpc-client'
-import { useAppStore } from '@/store'
 import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 
 const SKILL_DISCOVERY_TIMEOUT_MS = 15_000
@@ -45,8 +44,14 @@ export async function discoverSkillsForRuntimeTarget(
   if (runtimeTarget.kind === 'local') {
     return window.api.skills.discover(target)
   }
+  // Why dynamic: a static store import closes store -> runtime-status -> this module -> store,
+  // and bun's ESM order then evaluates the store before the slice exists (U110).
+  const { useAppStore } = await import('@/store')
   if (
-    isCloudSessionEnvironmentId(useAppStore.getState().runtimeEnvironments, runtimeTarget.environmentId)
+    isCloudSessionEnvironmentId(
+      useAppStore.getState().runtimeEnvironments,
+      runtimeTarget.environmentId
+    )
   ) {
     // Why: the skill directory is the host's global user catalog (~/.claude/skills) —
     // a cross-project surface the ticket never carries (O1 F4). Report an empty scan

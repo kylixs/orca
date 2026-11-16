@@ -54,6 +54,7 @@ import {
   registerHttpLinkStoreAccessor,
   registerWorkspaceHttpLinkBrowserOpener
 } from '@/lib/http-link-routing'
+import { registerCloudFileAuditRuntimeEnvironmentsReader } from '@/cloud/cloud-file-download-audit'
 import { installStoreListenerCensus } from './store-listener-census'
 import { installSettledSortEpoch } from './settled-sort-epoch'
 import { withReactCommitCascadeWriteProbe } from './react-commit-cascade-write-probe'
@@ -132,6 +133,7 @@ export const useAppStore = create<AppState>()(
 )
 
 registerHttpLinkStoreAccessor(() => useAppStore.getState())
+registerCloudFileAuditRuntimeEnvironmentsReader(() => useAppStore.getState().runtimeEnvironments)
 registerWorkspaceHttpLinkBrowserOpener(async (request) => {
   const { openWorkspaceBrowserTab } = await import('@/lib/workspace-browser-tab-open')
   await openWorkspaceBrowserTab(request)

@@ -2,7 +2,6 @@ import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
 import type { RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 import { createBrowserUuid } from '@/lib/browser-uuid'
-import { useAppStore } from '@/store'
 import {
   CLOUD_FILE_EVENT_METHOD,
   cloudFileAuditSurface,
@@ -59,13 +58,25 @@ async function report(
   }
 }
 
+type RuntimeEnvironmentsReader = () => Parameters<typeof isCloudSessionEnvironmentId>[0] | null
+
+// Why injected: a direct '@/store' import closes store -> editor -> ... -> this module -> store,
+// and loader-first tests see createEditorSlice undefined (U110; same break as http-link-routing).
+let runtimeEnvironmentsReader: RuntimeEnvironmentsReader | null = null
+
+export function registerCloudFileAuditRuntimeEnvironmentsReader(
+  reader: RuntimeEnvironmentsReader | null
+): void {
+  runtimeEnvironmentsReader = reader
+}
+
 /** Null outside a desktop cloud session: SSH, local, and web clients stay silent. */
 export function desktopCloudFileDownloadAudit(
   target: RuntimeClientTarget
 ): DesktopDownloadAudit | null {
   if (
     target.kind !== 'environment' ||
-    !isCloudSessionEnvironmentId(useAppStore.getState().runtimeEnvironments, target.environmentId)
+    !isCloudSessionEnvironmentId(runtimeEnvironmentsReader?.() ?? undefined, target.environmentId)
   ) {
     return null
   }
