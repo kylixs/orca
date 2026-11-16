@@ -113,10 +113,14 @@ only as `frameAppliedAggregate`; H-A never reads it.
 
 `lastQualifyingAppliedFrame` must satisfy all of:
 
-1. `applied === true` for this worktree's snapshot;
-2. its `ts` is strictly later than the last client selection write
-   (`activate` / `close` / `closeLifecycle` / `createTerminal`) recorded in the
-   same document;
+1. `applied === true` for this worktree's snapshot, **and** its method is one of
+   `session.tabs.list` / `session.tabs.listAll` / `session.tabs.subscribe` /
+   `session.tabs.subscribeAll`. Response frames from `activate`,
+   `createTerminal`, or any other write never qualify;
+2. the same document contains a client selection write (`activate` / `close` /
+   `closeLifecycle` / `createTerminal`) and the frame's `ts` is strictly later
+   than the last one. With **no** selection write in the document there is no
+   timing anchor, so H-A is `unknown` by construction;
 3. it carried an `activeTabId` different from both the sampled DOM and the
    sampled store.
 
@@ -137,10 +141,15 @@ The second read of an inconsistent point is classified in this order:
 | `client-ahead-host` | DOM=store ≠ host persisted, and the last client write's response active equals host persisted                           |
 | `host-frame-not-won`| a qualifying applied frame carried host persisted active, yet the client kept a different active                        |
 | `H-C`               | device projection ≠ host persisted                                                                                      |
-| `H-A`               | a qualifying applied frame lacked `hostActiveAuthoritative` (see above)                                                 |
+| `H-A`               | a qualifying list/subscription applied frame lacked `hostActiveAuthoritative` (see above)                              |
 | `H-B`               | a qualifying stream (`subscribe`/`subscribeAll`) applied over the last client write                                     |
 | `H-D`               | `activate` responses landed out of send order                                                                           |
-| `unknown`           | none of the above; no qualifying frame after the last client write, direction not attributable                          |
+| `unknown`           | none of the above; no qualifying frame after the last client write, no selection write to anchor against, or direction not attributable |
+
+`client-ahead-host` and `host-frame-not-won` can both hold at the same sample
+point (the client leads the host while a host frame carrying the host active
+was not adopted). The table order is the priority: **first match wins**, so
+`client-ahead-host` is reported when both apply.
 
 `diagnosis` is a factual direction string recorded for red points
 (`client-ahead-host`, `host-did-not-follow-write`, `projection-lag`, ...). The
@@ -182,16 +191,18 @@ Otherwise `conclusive` is `false` with a `conclusiveReason` listing the
 blockers. Only a `conclusive: true` run may be quoted as a signed
 "reproduced" **or** "not reproduced" result.
 
-`verdict.reproduced` is `null` when there is no valid sample at all (for
-example every point is INVALID). It is `true` when at least one stable valid
-red exists, and `false` only when there are valid, stable, non-red points. A
-`reproduced: null` run is **not** evidence of non-reproduction.
-`reproducedByScenario` gives the same reading per scenario so a quick-only red
+`verdict.reproduced` is `null` when there is no stable valid sample — either no
+valid sample at all (for example every point is INVALID) or every valid point
+is unstable. It is `true` when at least one stable valid red exists, and
+`false` only when at least one stable valid point exists and none of them is
+red. A `reproduced: null` run is **not** evidence of non-reproduction.
+`reproducedByScenario` applies the same rule per scenario so a quick-only red
 is not reported as a reload/reopen regression.
 
 Restore and cleanup run before the final verify: the probe activates the
 baseline host value, closes the tabs it created, then reads the host state
-again; if cleanup moved the active tab, it restores once more and re-verifies.
+again; if cleanup moved the active tab, it restores once more, waits ≥1 s for
+the host's debounced persistence write to land, and re-verifies.
 `isolation.restored` is `true` only when the baseline was readable, the restore
 call succeeded, and the post-cleanup host persisted value matches the baseline.
 A baseline read failure can never yield `restored: true`.

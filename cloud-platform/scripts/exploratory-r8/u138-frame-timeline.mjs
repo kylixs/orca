@@ -1151,12 +1151,24 @@ function frameBelongsToWorktree(frame, worktreeId) {
   return sameWorktree(frameWorktree, worktreeId)
 }
 
-/** H-A candidate: applied, after the last selection write, and not what the client shows. */
+/** Only an authoritative list/subscription apply can answer H-A; responses cannot. */
+const HA_APPLICABLE_METHODS = new Set([
+  'session.tabs.list',
+  'session.tabs.listAll',
+  'session.tabs.subscribe',
+  'session.tabs.subscribeAll'
+])
+
+/** H-A candidate: list/subscription apply, after the last selection write, and not what the client shows. */
 function isHACandidate(entry, afterTs, clientDomActive, clientStoreActive) {
   if (!entry || entry.applied !== true || !entry.activeTabId) {
     return false
   }
-  if (afterTs !== null && !(typeof entry.ts === 'number' && entry.ts > afterTs)) {
+  if (!HA_APPLICABLE_METHODS.has(entry.method)) {
+    return false
+  }
+  // No selection write in this document means no timing anchor: never attribute H-A.
+  if (typeof afterTs !== 'number' || !(typeof entry.ts === 'number' && entry.ts > afterTs)) {
     return false
   }
   const domActive =
@@ -1264,18 +1276,25 @@ function sameWorktree(a, b) {
 }
 
 /**
- * H-A: only a frame that is applied, came after the last selection write, and carries an
- * active different from the sampled DOM/store may answer. Anything else is `unknown`.
+ * H-A: only a list/subscription frame that is applied, came after the last selection write,
+ * and carries an active different from the sampled DOM/store may answer. Anything else is
+ * `unknown` — including documents with no selection write at all (no timing anchor).
  */
 function hAAssessment(sample) {
   const frame = sample?.trace?.lastQualifyingAppliedFrame
   const decision = sample?.trace?.lastAppliedFrame
   if (!frame) {
+    if (!sample?.lastSelectionWrite) {
+      return {
+        verdict: 'unknown',
+        reason: 'no client selection write in this document; H-A has no timing anchor'
+      }
+    }
     return {
       verdict: 'unknown',
       reason: decision
-        ? `no applied frame after the last selection write carrying a different active (last decision ${decision.method} applied=${decision.applied})`
-        : 'no applied frame after the last selection write carrying a different active'
+        ? `no list/subscription applied frame after the last selection write carrying a different active (last decision ${decision.method} applied=${decision.applied})`
+        : 'no list/subscription applied frame after the last selection write carrying a different active'
     }
   }
   const authoritative = frame.applyOptions?.hostActiveAuthoritative
@@ -2151,6 +2170,8 @@ try {
       tabPart(verifyState.ok ? verifyState.hostPersistentActive : null)
   if (offBaseline) {
     out.isolation.postCleanupRestoreCall = await restoreBaseline('after-cleanup')
+    // Host selection persistence is debounced (~1 s); re-read only after it can land.
+    await sleep(1200)
     verifyState = readHostState(worktreeId)
   }
   out.isolation.finalPersistentActive = verifyState.ok
@@ -2190,10 +2211,11 @@ try {
   }
   const scenarioReproduced = (kind) => {
     const points = out.samples.filter((point) => scenarioName(point) === kind && point.valid)
-    if (points.length === 0) {
+    const stablePoints = points.filter((point) => point.stable)
+    if (stablePoints.length === 0) {
       return null
     }
-    return points.some((point) => point.stable && !point.consistent)
+    return stablePoints.some((point) => !point.consistent)
   }
 
   // "Conclusive" signs off both the reproduction *and* the non-reproduction reading:
@@ -2240,8 +2262,8 @@ try {
     // Backwards-compatible names: only stable valid points participate.
     consistentSamples: greenPoints.length,
     inconsistentSamples: redPoints.length,
-    // All-INVALID must not read as "not reproduced"; null means "no signable verdict".
-    reproduced: validPoints.length === 0 ? null : redPoints.length > 0,
+    // All-INVALID or all-unstable must not read as "not reproduced"; null means "no signable verdict".
+    reproduced: stableValidPoints.length === 0 ? null : redPoints.length > 0,
     reproducedByScenario: {
       reload: scenarioReproduced('reload'),
       reopen: scenarioReproduced('reopen'),
