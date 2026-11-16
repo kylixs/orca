@@ -147,6 +147,21 @@ function routeSignature(route) {
   return `${route.name}|${JSON.stringify(route.params)}|${route.query.toString()}`
 }
 
+/**
+ * T7/C3 列表筛选入 URL：输入时 replaceState（不刷历史），显式「查询」pushState。
+ * 只写当前列表路由；空值即从 query 删除（规范化）。
+ */
+function syncListQuery(name, filter, { push = false } = {}) {
+  if (state.route !== name) return
+  const hash = buildHash({ name, query: filter })
+  if (location.hash === hash) return
+  if (push) window.history.pushState(null, '', hash)
+  else window.history.replaceState(null, '', hash)
+  const route = parseHash(hash)
+  state.routeQuery = route.query
+  appliedRoute = routeSignature(route)
+}
+
 /** 写 URL 是唯一导航入口（U106 D1/D5）：刷新据此恢复。 */
 function navigate(name, params = {}, query = undefined) {
   const hash = buildHash({ name, params, query })
@@ -1370,8 +1385,12 @@ async function renderProjects() {
         .join('') || '<tr><td colspan="6" class="table-empty">没有匹配的项目</td></tr>'
     wireProjectActions()
   }
-  draw()
-  $('#projectSearch').oninput = (e) => draw(e.target.value)
+  draw(state.routeQuery?.get('q') ?? '')
+  $('#projectSearch').value = state.routeQuery?.get('q') ?? ''
+  $('#projectSearch').oninput = (e) => {
+    draw(e.target.value)
+    syncListQuery('projects', { q: e.target.value.trim() })
+  }
   const registerBtn = $('#registerProjectBtn')
   if (registerBtn) {
     registerBtn.onclick = () =>
@@ -1837,8 +1856,23 @@ const USER_SOURCE_LABELS = { ldap: 'LDAP 同步', 'admin-override': '管理员�
 /** U81：查询条件客户端过滤（零 wire 变更）；跨重绘保留，角色变更后筛选不丢。 */
 let userFilter = { query: '', role: 'all', status: 'all' }
 
+const USER_ROLES = ['developer', 'auditor', 'admin']
+const USER_STATUSES = ['active', 'disabled']
+
+/** T7：URL 是筛选状态的载体，非法值规范化为 all。 */
+function userFilterFromQuery(query) {
+  const role = query?.get('role')
+  const status = query?.get('status')
+  return {
+    query: query?.get('query') ?? '',
+    role: typeof role === 'string' && USER_ROLES.includes(role) ? role : 'all',
+    status: typeof status === 'string' && USER_STATUSES.includes(status) ? status : 'all'
+  }
+}
+
 /** 原型 #/users（U81/U82）：查询栏 + 只读列表 + 详情弹框（角色修改唯一入口）。返回列表数据供弹框同步。 */
 async function renderUsersPage() {
+  userFilter = userFilterFromQuery(state.routeQuery)
   const body = await api('/v1/users')
   const users = body.users
   state.users = users
@@ -1885,20 +1919,30 @@ async function renderUsersPage() {
   search.value = userFilter.query
   roleSelect.value = userFilter.role
   statusSelect.value = userFilter.status
-  const apply = () => {
+  const apply = ({ push = false } = {}) => {
     userFilter = { query: search.value, role: roleSelect.value, status: statusSelect.value }
+    syncListQuery(
+      'users',
+      {
+        query: userFilter.query.trim(),
+        role: userFilter.role === 'all' ? '' : userFilter.role,
+        status: userFilter.status === 'all' ? '' : userFilter.status
+      },
+      { push }
+    )
     renderUserRows(users)
   }
   // 即输即筛为主，「查询」按钮兜底重放（T4 裁定：两者并存）。
-  search.oninput = apply
-  roleSelect.onchange = apply
-  statusSelect.onchange = apply
-  $('#userFilterApply').onclick = apply
+  search.oninput = () => apply()
+  roleSelect.onchange = () => apply()
+  statusSelect.onchange = () => apply()
+  $('#userFilterApply').onclick = () => apply({ push: true })
   $('#userFilterReset').onclick = () => {
     userFilter = { query: '', role: 'all', status: 'all' }
     search.value = ''
     roleSelect.value = 'all'
     statusSelect.value = 'all'
+    syncListQuery('users', {})
     renderUserRows(users)
   }
   renderUserRows(users)
@@ -2596,6 +2640,29 @@ function auditGapMarkup(status) {
 }
 
 /** Mirrors the API's INVALID_QUERY/TIME_WINDOW_TOO_LARGE gates. */
+/** T7：审计筛选全部入 URL；cursor 与事件行展开不入。 */
+const AUDIT_QUERY_KEYS = Object.freeze([
+  'q',
+  'range',
+  'since',
+  'until',
+  'event',
+  'username',
+  'projectId',
+  'hostId',
+  'fileName',
+  'result'
+])
+
+function auditFilterFromQuery(query) {
+  const filter = {}
+  for (const key of AUDIT_QUERY_KEYS) {
+    const value = query?.get(key)
+    if (value) filter[key] = value
+  }
+  return filter
+}
+
 function auditFilterError(filter) {
   if (filter.q && (filter.q.length < 2 || filter.q.length > 128)) {
     return '关键字长度需为 2–128 个字符。'
@@ -2659,6 +2726,7 @@ async function renderAudit(loadMore = false) {
     state.auditEvents = null
     state.auditCursor = null
   }
+  if (!loadMore) state.auditFilter = auditFilterFromQuery(state.routeQuery)
   // Filter controls re-render from state so what they show always matches the
   // rows below them (M116-QA-003).
   const filter = state.auditFilter
@@ -2792,6 +2860,7 @@ async function renderAudit(loadMore = false) {
     state.auditFilter = next
     state.auditEvents = null
     state.auditCursor = null
+    syncListQuery('audit', next, { push: true })
     renderAudit()
   }
   $('#auditApply').onclick = apply
@@ -2799,6 +2868,7 @@ async function renderAudit(loadMore = false) {
     state.auditFilter = {}
     state.auditEvents = null
     state.auditCursor = null
+    syncListQuery('audit', {})
     renderAudit()
   }
   const more = $('#auditMore')
@@ -3077,6 +3147,11 @@ function logout() {
   $('#password').value = ''
   $('#loginError').hidden = true
   showLogin()
+  // U120: 登出即丢弃受保护深链；刷新只回到登录页，再登录落工作台。
+  window.history.replaceState(null, '', buildHash({ name: 'login' }))
+  state.route = 'login'
+  state.routeParams = {}
+  state.routeQuery = null
 }
 
 function enterApp() {
