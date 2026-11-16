@@ -134,6 +134,73 @@ test('M116-QA-012 空登录不发起请求、不计失败', async () => {
   record('QA-012', 'empty submit shows 请输入域账号和密码，未发出 POST /v1/auth/login')
 }, 120_000)
 
+test('G03 登录网络不可达显示可读文案且按钮恢复', async () => {
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  page.abort('POST', '/v1/auth/login')
+  await page.submitLogin('admin', 'Adm1n!')
+
+  assert.equal(page.hidden('#view-app'), true, 'a dropped connection must stay on the login view')
+  assert.equal(page.text('#loginError'), '网络异常，请稍后重试')
+  assert.doesNotMatch(
+    page.text('#loginError'),
+    /fetch|TypeError|Failed to fetch/i,
+    'the raw transport error must never reach the form'
+  )
+  const button = page.window.document.querySelector<HTMLButtonElement>('#loginBtn')!
+  assert.equal(button.disabled, false, 'a failed login must restore the button')
+  assert.equal(button.textContent, '登录')
+  record('G03-network', 'fetch 拒绝时显示「网络异常，请稍后重试」，按钮恢复可点，不泄露原始异常')
+}, 120_000)
+
+test('G03 LDAP 准入拒绝逐字展示服务端文案', async () => {
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  page.fail('POST', '/v1/auth/login', {
+    status: 401,
+    body: {
+      error: { code: 'LDAP_GROUP_NOT_ADMITTED', message: '账号未加入平台准入组。' }
+    }
+  })
+  await page.submitLogin('qa_outside_group', 'WrongPass!1')
+
+  assert.equal(page.hidden('#view-app'), true, 'a refused admission must stay on the login view')
+  assert.equal(page.text('#loginError'), '账号未加入平台准入组。')
+  assert.doesNotMatch(
+    page.text('#loginError'),
+    /登录失败/,
+    'the server admission copy must not be replaced by a generic failure'
+  )
+  record('G03-ldap', '401 LDAP_GROUP_NOT_ADMITTED 原样展示「账号未加入平台准入组。」')
+}, 120_000)
+
+test('G03 登录中按钮禁用且重复提交不产生第二次请求', async () => {
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  page.hold('POST', '/v1/auth/login')
+  const { window } = page
+  window.document.querySelector<HTMLInputElement>('#username')!.value = 'admin'
+  window.document.querySelector<HTMLInputElement>('#password')!.value = 'Adm1n!'
+  const form = window.document.querySelector<HTMLFormElement>('#loginForm')!
+  const button = window.document.querySelector<HTMLButtonElement>('#loginBtn')!
+
+  form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }))
+  assert.equal(button.disabled, true, 'the button must disable while the request is in flight')
+  assert.equal(button.textContent, '登录中…')
+
+  form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }))
+  assert.equal(
+    page.calls().filter((call) => call === 'POST /v1/auth/login').length,
+    1,
+    'a repeated submit must not issue a second login request'
+  )
+
+  await page.release()
+  await page.settle()
+  assert.equal(page.hidden('#view-app'), false, 'the held login still completes')
+  record('G03-pending', '请求在途时按钮禁用并显示「登录中…」，重复提交零新增请求')
+}, 120_000)
+
 test('M116-QA-011 加载失败显示错误态并可重试', async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()

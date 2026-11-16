@@ -3417,18 +3417,27 @@ function confirmDialog(text) {
 /* ---------------- auth ---------------- */
 
 async function login(username, password) {
-  const res = await fetch('/v1/auth/login', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      username,
-      password,
-      deviceId: currentDeviceId(),
-      deviceName: navigator.userAgent.includes('Mac') ? 'Mac 浏览器' : '浏览器',
-      devicePubKey: 'web-client'
+  let res
+  try {
+    res = await fetch('/v1/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        username,
+        password,
+        deviceId: currentDeviceId(),
+        deviceName: navigator.userAgent.includes('Mac') ? 'Mac 浏览器' : '浏览器',
+        devicePubKey: 'web-client'
+      })
     })
-  })
-  const body = await res.json()
+  } catch {
+    // G03: a dropped connection must read as a platform message, not "Failed to fetch".
+    const err = new Error('网络异常，请稍后重试')
+    err.code = 'NETWORK_ERROR'
+    throw err
+  }
+  // A proxy 502 can answer with HTML; never leak a JSON parse error to the form.
+  const body = await res.json().catch(() => ({}))
   if (!res.ok) {
     const err = new Error(body.error?.message ?? '登录失败')
     err.code = body.error?.code
@@ -3509,6 +3518,8 @@ function showLogin() {
 
 $('#loginForm').onsubmit = async (event) => {
   event.preventDefault()
+  // G03: a programmatic second submit must not race the in-flight login.
+  if ($('#loginBtn').disabled) return
   const username = $('#username').value.trim()
   const password = $('#password').value
   const errorEl = $('#loginError')

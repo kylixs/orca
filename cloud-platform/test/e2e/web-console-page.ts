@@ -17,6 +17,8 @@ export type WebConsolePage = {
    * or return a stubbed payload when `respond` is given.
    */
   fail: (method: string, path: string, respond?: { status: number; body: unknown }) => void
+  /** Makes the next request to `METHOD path` reject at the fetch boundary (network down). */
+  abort: (method: string, path: string) => void
   clearFails: () => void
   /**
    * Makes the NEXT request to `METHOD path` hang at the page boundary until
@@ -55,6 +57,7 @@ export function loadWebConsolePage(
   const realFetch = globalThis.fetch
   const failing = new Map<string, number>()
   const stubbed = new Map<string, { status: number; body: unknown }>()
+  const aborted = new Set<string>()
   const requests: string[] = []
   const sentBodies: { call: string; body: unknown }[] = []
   const heldPaths = new Set<string>()
@@ -90,6 +93,10 @@ export function loadWebConsolePage(
         waiters.push({ input: `${platformUrl}${path}`, init, resolve })
         held.set(key, waiters)
       })
+    }
+    if (aborted.delete(key)) {
+      // A rejected fetch, not an HTTP error: the page must handle the transport failure.
+      return Promise.reject(new TypeError('fetch failed'))
     }
     const failure = lookup(failing, key)
     const stub = lookup(stubbed, key)
@@ -208,9 +215,13 @@ export function loadWebConsolePage(
         failing.set(key, 503)
       }
     },
+    abort: (method, path) => {
+      aborted.add(`${method.toUpperCase()} ${path}`)
+    },
     clearFails: () => {
       failing.clear()
       stubbed.clear()
+      aborted.clear()
     },
     hold: (method, path) => {
       heldPaths.add(`${method.toUpperCase()} ${path}`)
