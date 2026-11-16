@@ -700,6 +700,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const WEB_TERMINAL_PREFIX = 'web-terminal-'
 const HOST_SURFACE_SEPARATOR = '::'
 
+const BARE_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 function toHostTabId(localId) {
   if (!localId) {
     return null
@@ -711,6 +713,67 @@ function toHostTabId(localId) {
     return decodeURIComponent(localId.slice(WEB_TERMINAL_PREFIX.length))
   } catch {
     return localId
+  }
+}
+
+/** DOM ids are `web-terminal-<uuid>`; an early render can expose the bare uuid (run2 quick-5). */
+function toDomTabId(rawId) {
+  if (!rawId || rawId.startsWith(WEB_TERMINAL_PREFIX) || !BARE_UUID_RE.test(rawId)) {
+    return rawId
+  }
+  return `${WEB_TERMINAL_PREFIX}${rawId}`
+}
+
+function tabSelectorFor(tabId) {
+  const escaped = tabId.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  return `.app-layout [data-tab-id="${escaped}"]`
+}
+
+/** DOM-only read around the close click; never samples the perspectives. */
+function readCloseInteraction(selector) {
+  const state = window.__store?.getState?.()
+  const worktreeId = state?.activeWorktreeId ?? null
+  const groups = worktreeId ? (state?.groupsByWorktree?.[worktreeId] ?? []) : []
+  const activeGroupId = worktreeId ? (state?.activeGroupIdByWorktree?.[worktreeId] ?? null) : null
+  const activeGroup = activeGroupId ? (groups.find((group) => group.id === activeGroupId) ?? null) : null
+  const tab = document.querySelector(selector)
+  const dialog = document.querySelector('[data-slot="dialog-content"]')
+  const confirm = dialog?.querySelector('button[data-variant="destructive"]') ?? null
+  return {
+    present: tab !== null,
+    domActive: tab?.getAttribute('data-active') === 'true',
+    storeActive: activeGroup?.activeTabId ?? null,
+    storeActiveGroupId: activeGroup?.id ?? null,
+    dialogOpen: dialog !== null,
+    dialogText: dialog
+      ? (dialog.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 200)
+      : null,
+    confirmLabel: confirm ? (confirm.textContent ?? '').trim() : null,
+    hasCloseButton: Boolean(tab?.querySelector('[data-tab-close-button="true"]'))
+  }
+}
+
+/** Which element actually owns the close-button center point. */
+function probeCloseButtonHit(selector) {
+  const button =
+    document.querySelector(selector)?.querySelector('[data-tab-close-button="true"]') ?? null
+  if (!button) {
+    return { found: false }
+  }
+  const rect = button.getBoundingClientRect()
+  const cx = rect.left + rect.width / 2
+  const cy = rect.top + rect.height / 2
+  const top = document.elementFromPoint(cx, cy)
+  return {
+    found: true,
+    hit: Boolean(top && (top === button || button.contains(top))),
+    cx: Math.round(cx * 100) / 100,
+    cy: Math.round(cy * 100) / 100,
+    w: Math.round(rect.width * 100) / 100,
+    h: Math.round(rect.height * 100) / 100,
+    topTag: top?.tagName ?? null,
+    topClass: typeof top?.className === 'string' ? top.className.slice(0, 160) : null,
+    topTabId: top?.closest?.('[data-tab-id]')?.getAttribute('data-tab-id') ?? null
   }
 }
 
@@ -1056,10 +1119,14 @@ function lastClientWriteBefore(frames, gid, doc, methodFilter = isWriteMethod) {
   return null
 }
 
-function lastHostPublishBefore(frames, gid) {
+function lastHostPublishBefore(frames, gid, doc) {
   for (let index = frames.length - 1; index >= 0; index -= 1) {
     const frame = frames[index]
     if (frame.gid > gid) {
+      continue
+    }
+    // A publish from a previous document cannot explain the current render.
+    if (doc !== undefined && frame.doc !== doc) {
       continue
     }
     if (
@@ -1382,12 +1449,14 @@ const out = {
     baselinePersistentActive: null,
     baselineOk: false,
     finalPersistentActive: null,
+    skipCloseTerminalWithRunningProcessConfirm: null,
     restored: false,
     restoredVerified: false,
     restoreCall: null,
     postCleanupRestoreCall: null,
     createdTabIds: [],
     quickCreatedTabIds: [],
+    quickCloseEvidence: [],
     cleanupAttemptedTabIds: [],
     closedCreatedTabIds: []
   },
@@ -1493,6 +1562,12 @@ try {
   const ready = await waitWorkspaceShell(workspacePage)
   const worktreeId = ready.worktreeId
   out.worktreeId = worktreeId
+  // Run-initial value: true disables the running-terminal close confirmation entirely.
+  out.isolation.skipCloseTerminalWithRunningProcessConfirm = await workspacePage
+    .evaluate(
+      () => window.__store?.getState?.()?.settings?.skipCloseTerminalWithRunningProcessConfirm ?? null
+    )
+    .catch(() => null)
   out.project = {
     key: PROJECT_KEY,
     id: projectIdFromButton,
@@ -1645,7 +1720,7 @@ try {
     }
 
     const valid = invalidReasons.length === 0
-    const lastPublish = lastHostPublishBefore(out.frames, frameGidAtSample)
+    const lastPublish = lastHostPublishBefore(out.frames, frameGidAtSample, documentEpoch)
     const run = {
       cycle,
       phase,
@@ -1706,7 +1781,9 @@ try {
       lastHostPublish: lastPublish,
       tabCount: domStore.unified.length,
       hasStore: domStore.hasStore,
-      hasProbe: domStore.hasProbe
+      hasProbe: domStore.hasProbe,
+      // Any Radix dialog (incl. the running-terminal close confirm) is visible in the read.
+      onboardingOpen: domStore.onboardingOpen
     }
     out.runs.push(run)
     return run
@@ -1734,6 +1811,7 @@ try {
       frameGidAtSample: run.frameGidAtSample,
       domActive: run.domActive,
       domVisibleTabCount: run.domVisibleTabCount,
+      dialogOpen: run.onboardingOpen,
       storeActive: run.storeActive,
       storeActiveSource: run.storeActiveSource,
       storeActiveGroupId: run.storeActiveGroupId,
@@ -1913,12 +1991,26 @@ try {
     await waitStableTabCount(workspacePage)
   }
 
-  async function createTempTab() {
-    const before = await workspacePage.evaluate(() =>
-      [...document.querySelectorAll('.app-layout [data-tab-id]')].map((element) =>
+  /** Read the tab ids the close selector can address (sortable-tab, not any data-tab-id). */
+  const listSortableTabIds = () =>
+    workspacePage.evaluate(() =>
+      [...document.querySelectorAll('.app-layout [data-testid="sortable-tab"]')].map((element) =>
         element.getAttribute('data-tab-id')
       )
     )
+
+  async function resolveDomTabId(rawId) {
+    const normalized = toDomTabId(rawId)
+    if (!rawId || normalized === rawId) {
+      return rawId
+    }
+    // Only adopt the prefixed form when the DOM really exposes it.
+    const present = await workspacePage.locator(tabSelectorFor(normalized)).count().catch(() => 0)
+    return present > 0 ? normalized : rawId
+  }
+
+  async function createTempTab() {
+    const before = await listSortableTabIds()
     // Split layouts render one New-tab trigger per group; use the first visible one.
     await workspacePage.getByRole('button', { name: 'New tab' }).first().click({ timeout: 15_000 })
     await workspacePage
@@ -1926,52 +2018,132 @@ try {
       .first()
       .click({ timeout: 15_000 })
     const deadline = Date.now() + 30_000
-    let after = before
+    let newIds = []
     while (Date.now() < deadline) {
-      after = await workspacePage.evaluate(() =>
-        [...document.querySelectorAll('.app-layout [data-tab-id]')].map((element) =>
-          element.getAttribute('data-tab-id')
-        )
-      )
-      if (after.length > before.length) {
+      const after = await listSortableTabIds()
+      newIds = after.filter((id) => id && !before.includes(id))
+      if (newIds.length > 0) {
         break
       }
       await sleep(300)
     }
-    return after.find((id) => !before.includes(id)) ?? null
+    // Prefer the prefixed id the DOM selector uses; normalize a bare uuid if that is all we saw.
+    const chosen = newIds.find((id) => id.startsWith(WEB_TERMINAL_PREFIX)) ?? newIds[0] ?? null
+    return chosen ? resolveDomTabId(chosen) : null
   }
 
   /** Real tab-strip close: the signed quick path must not inject session.tabs.close. */
   async function closeTabViaUI(tabId) {
-    const escaped = tabId.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-    const selector = `.app-layout [data-tab-id="${escaped}"]`
+    const selector = tabSelectorFor(tabId)
+    const evidence = { tabId }
     try {
       const tab = workspacePage.locator(selector).first()
       if ((await tab.count()) === 0) {
         return { ok: false, path: 'ui', error: 'tab-not-found' }
       }
-      // The close button is hidden until hover in the transparent tab strip.
-      await tab.hover({ timeout: 5000 }).catch(() => {})
       const closeButton = tab.locator('[data-tab-close-button="true"]').first()
       if ((await closeButton.count()) === 0) {
         return { ok: false, path: 'ui', error: 'close-button-not-found' }
       }
+      await closeButton.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {})
+      // The close button is hidden until hover in the transparent tab strip.
+      await tab.hover({ timeout: 5000 }).catch(() => {})
+
+      const hit = await workspacePage.evaluate(probeCloseButtonHit, selector)
+      evidence.hit = hit
+      if (!hit.found) {
+        return { ok: false, path: 'ui', error: 'close-button-not-found', ...evidence }
+      }
+      if (!hit.hit) {
+        // Prove the pointer lands on the button; otherwise the click means something else.
+        return { ok: false, path: 'ui', error: 'close-button-obscured', ...evidence }
+      }
+
+      const before = await workspacePage.evaluate(readCloseInteraction, selector)
+      evidence.before = before
       await closeButton.click({ timeout: 10_000 })
-      const deadline = Date.now() + 15_000
+
+      let confirmDialogClicked = null
+      let deadline = Date.now() + 15_000
+      let extended = false
       while (Date.now() < deadline) {
-        const present = await workspacePage
-          .evaluate((sel) => document.querySelector(sel) !== null, selector)
+        const now = await workspacePage
+          .evaluate(readCloseInteraction, selector)
           .catch(() => null)
-        if (present === false) {
+        if (!now) {
+          await sleep(250)
+          continue
+        }
+
+        if (now.dialogOpen && now.confirmLabel !== null && confirmDialogClicked === null) {
+          // Running terminal close asks for confirmation; a real user clicks the destructive
+          // button, so the probe must too (no injected RPC).
+          try {
+            await workspacePage
+              .locator('[data-slot="dialog-content"] button[data-variant="destructive"]')
+              .first()
+              .click({ timeout: 5000 })
+            confirmDialogClicked = now.confirmLabel
+            if (!extended) {
+              extended = true
+              deadline = Date.now() + 15_000
+            }
+          } catch (error) {
+            return {
+              ok: false,
+              path: 'ui',
+              error: 'close-blocked-by-confirm-dialog',
+              detail: { ...now, clickError: String(error?.message ?? error) },
+              ...evidence,
+              after: now
+            }
+          }
+        } else if (now.dialogOpen && confirmDialogClicked === null) {
+          // A dialog without a recognizable destructive confirm cannot be driven reliably.
+          return {
+            ok: false,
+            path: 'ui',
+            error: 'close-blocked-by-confirm-dialog',
+            detail: now,
+            ...evidence,
+            after: now
+          }
+        }
+
+        if (!now.present) {
           // Let the close response and the subscription update land before sampling.
           await sleep(600)
-          return { ok: true, path: 'ui' }
+          return { ok: true, path: 'ui', confirmDialogClicked, ...evidence, after: now }
+        }
+
+        const wasTargetActive = before.storeActive === tabId || before.domActive === true
+        const isTargetActive = now.storeActive === tabId || now.domActive === true
+        if (!wasTargetActive && isTargetActive) {
+          // The gesture activated the tab instead of closing it; waiting 15 s adds nothing.
+          return {
+            ok: false,
+            path: 'ui',
+            error: 'ui-close-activated-instead',
+            ...evidence,
+            after: now
+          }
         }
         await sleep(250)
       }
-      return { ok: false, path: 'ui', error: 'tab-still-present-after-ui-close' }
+      return {
+        ok: false,
+        path: 'ui',
+        error: 'tab-still-present-after-ui-close',
+        ...evidence,
+        after: await workspacePage.evaluate(readCloseInteraction, selector).catch(() => null)
+      }
     } catch (error) {
-      return { ok: false, path: 'ui', error: `ui-close-thrown: ${String(error?.message ?? error)}` }
+      return {
+        ok: false,
+        path: 'ui',
+        error: `ui-close-thrown: ${String(error?.message ?? error)}`,
+        ...evidence
+      }
     }
   }
 
@@ -2059,6 +2231,16 @@ try {
     ]
     const openedPoint = await samplePoint(`quick-${index}`, 'opened')
     const closedBy = await closeTabViaUI(createdTabId)
+    out.isolation.quickCloseEvidence.push({
+      index,
+      tabId: createdTabId,
+      ok: closedBy.ok,
+      error: closedBy.error ?? null,
+      confirmDialogClicked: closedBy.confirmDialogClicked ?? null,
+      hit: closedBy.hit ?? null,
+      before: closedBy.before ?? null,
+      after: closedBy.after ?? null
+    })
     if (closedBy.ok) {
       out.isolation.closedCreatedTabIds.push(createdTabId)
     } else {

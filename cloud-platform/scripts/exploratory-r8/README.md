@@ -62,6 +62,57 @@ read), `U138_HEADLESS=0`, `U138_PAGE_FRAME_LIMIT`, `U138_RUN_ID`,
    (`[data-tab-close-button]`) → sample `closed`. No injected `session.tabs.close`
    remains on the signed path. A failed create or close makes the round INVALID
    (the failed close also invalidates the `opened` point); it is never a red.
+   The round counts as closed **only** when the tab is really gone from the DOM
+   after the UI close; an INVALID round is not evidence of a healthy quick path.
+
+### Quick-close interaction fidelity
+
+The gesture must be proven to reach the close button before its result is read:
+
+- **Hit assertion.** The close button is scrolled into view and hovered, then
+  `document.elementFromPoint(center)` must resolve to the button or one of its
+  descendants. Otherwise the round fails with `close-button-obscured` and the
+  evidence records `{cx, cy, w, h, topTag, topClass, topTabId}`.
+- **Activation comparison.** `store.activeTabIdByWorktree` (active group) and the
+  target tab's `data-active` are read before the click and polled after it. If
+  the target tab was not active before, becomes active, and is still present,
+  the round fails immediately with `ui-close-activated-instead` instead of
+  waiting the 15 s close deadline. That means the pointer gesture was consumed
+  by tab activation, not by the close handler.
+- **Confirm dialog.** A running terminal close raises the product's Radix
+  `CloseTerminalDialog` (`[data-slot="dialog-content"]`); the probe clicks its
+  destructive confirm button (`button[data-variant="destructive"]`, labels
+  `Stop and Close` / `Stop Agent` / localized equivalents) to complete the same
+  close a user would. The clicked label is recorded. If a dialog appears but no
+  reliable confirm button can be located, the round fails with
+  `close-blocked-by-confirm-dialog` rather than guessing.
+- **`pointer-synthetic` is not used.** The signed path is a real Playwright
+  pointer click. A synthetic `el.click()` fallback would skip
+  pointerdown/hover/pointerup, so it would not prove the pointer path; it is
+  deliberately not implemented. Injecting `session.tabs.close` through the
+  probe (`hostClose`) also remains cleanup-only and is never the quick close.
+- `summarizeRun` keeps the dialog observation (`dialogOpen`, from
+  `[data-slot="dialog-content"]`) so a confirmation that appeared during a
+  sample is visible in the evidence, and `isolation` records the run-initial
+  `skipCloseTerminalWithRunningProcessConfirm` setting.
+
+Quick INVALID reasons (all prefixed `quick-close-failed:` except the create one):
+
+| reason | meaning |
+| --- | --- |
+| `quick-create-failed: …` | no new sortable tab appeared, or the New tab / New Terminal click failed |
+| `tab-not-found` | the created DOM id is not addressable by the tab selector (see id normalization below) |
+| `close-button-not-found` | the tab has no `[data-tab-close-button="true"]` |
+| `close-button-obscured` | `elementFromPoint(button center)` is not the button; coordinates and top element recorded |
+| `ui-close-activated-instead` | the click activated the target tab and the tab is still present |
+| `close-blocked-by-confirm-dialog` | a confirm dialog appeared and its destructive confirm could not be clicked |
+| `ui-close-thrown: …` | the Playwright click or a post-click read threw |
+| `tab-still-present-after-ui-close` | no activation change and the tab survived the 15 s close deadline |
+
+`createTempTab` reads `[data-testid="sortable-tab"]` `data-tab-id` values and
+normalizes a bare UUID to `web-terminal-<uuid>` (the form the tab selector and
+the DOM use), so an early render cannot produce `tab-not-found` for an id the
+probe never saw in the DOM.
 
 Every sample point is **dual-read**: initial read → wait `U138_SETTLE_MS`
 (default 5 s, ≥5 s recommended) → re-read. A point is `consistent` only when
@@ -170,7 +221,10 @@ A sample point is INVALID and excluded from green/red when any of these holds:
   cannot answer H-A);
 - quick round: tab creation failed, or the real UI close failed / the tab was
   still present afterwards. A failed close also invalidates that round's
-  `opened` point.
+  `opened` point. The failure vocabulary is listed under
+  [Quick-close interaction fidelity](#quick-close-interaction-fidelity); a round
+  counts as closed only after the DOM no longer contains the tab, so an INVALID
+  quick round carries no "quick is healthy" signal.
 
 Invalid points are counted in a separate `invalid` bucket. `unstable` points are
 counted in their own bucket too. Neither contributes to `green`, `red`, or
