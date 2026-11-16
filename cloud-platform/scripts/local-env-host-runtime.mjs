@@ -112,6 +112,11 @@ export async function ensureHost(api, paths, options, host, token, adminToken) {
   if (!exists(entry)) {
     throw new Error(`missing build: ${entry} — run pnpm build:electron-vite`)
   }
+  // Why: a host started before out/web lands binds https with no request listener, so every web request hangs silently.
+  const webEntry = path.join(ROOT, 'out/web/web-index.html')
+  if (!exists(webEntry)) {
+    throw new Error(`missing web build: ${webEntry} — run pnpm build:web before starting a host`)
+  }
   await killTree(readPid(host.pid))
   for (const pid of (tryRun('pgrep', ['-f', host.ud]) ?? '').split(/\s+/).map(Number)) {
     if (Number.isInteger(pid) && pid !== process.pid) {
