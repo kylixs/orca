@@ -1,4 +1,4 @@
-import { createServer, connect, type Server } from 'node:net'
+import { createServer, connect, type Server, type Socket } from 'node:net'
 
 /**
  * A TCP hop whose runtime→client direction can be delayed, so a latency test can
@@ -14,11 +14,16 @@ export type LatencyHop = {
 
 export async function startLatencyHop(targetPort: number | (() => number)): Promise<LatencyHop> {
   let delayMs = 0
+  // Why: server.close() waits for open sockets; tracking them lets close() cut a
+  // lingering proxied session instead of hanging the hook for 60s.
+  const sockets = new Set<Socket>()
   const server: Server = createServer((client) => {
     const upstream = connect(
       typeof targetPort === 'number' ? targetPort : targetPort(),
       '127.0.0.1'
     )
+    sockets.add(client)
+    sockets.add(upstream)
     client.pipe(upstream)
     upstream.on('data', (chunk: Buffer) => {
       // Why pause: with a delay the write must happen after the timer, and pausing
@@ -39,8 +44,14 @@ export async function startLatencyHop(targetPort: number | (() => number)): Prom
     }
     client.on('error', drop)
     upstream.on('error', drop)
-    client.on('close', () => upstream.destroy())
-    upstream.on('close', () => client.destroy())
+    client.on('close', () => {
+      sockets.delete(client)
+      upstream.destroy()
+    })
+    upstream.on('close', () => {
+      sockets.delete(upstream)
+      client.destroy()
+    })
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()))
   const address = server.address()
@@ -52,6 +63,10 @@ export async function startLatencyHop(targetPort: number | (() => number)): Prom
     },
     close: () =>
       new Promise<void>((resolve) => {
+        for (const socket of sockets) {
+          socket.destroy()
+        }
+        sockets.clear()
         server.close(() => resolve())
       })
   }

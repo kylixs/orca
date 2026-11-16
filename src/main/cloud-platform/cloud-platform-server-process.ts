@@ -34,24 +34,63 @@ export async function startPlatform(options: PlatformOptions = {}): Promise<Plat
     env,
     stdio: ['ignore', 'pipe', 'pipe']
   })
-  const url = await new Promise<string>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('platform did not start')), 15_000)
-    let buffer = ''
-    proc.stdout?.on('data', (chunk: Buffer) => {
-      buffer += chunk.toString()
-      const match = /\[api\] listening on (http:\/\/127\.0\.0\.1:\d+)/.exec(buffer)
-      if (match) {
-        clearTimeout(timer)
-        resolve(match[1])
+  // Why: leave stderr unread and a mid-run crash is invisible — the client only
+  // reports ECONNREFUSED with no cause, and a full stderr pipe can block the child.
+  let logs = ''
+  const append = (chunk: Buffer): void => {
+    logs += chunk.toString()
+  }
+  proc.stdout?.on('data', append)
+  proc.stderr?.on('data', append)
+  let exit: { code: number | null; signal: NodeJS.Signals | null } | null = null
+  let stopping = false
+  let rejectStart: ((error: Error) => void) | null = null
+  let startupTimer: NodeJS.Timeout | null = null
+  proc.once('exit', (code, signal) => {
+    exit = { code, signal }
+    if (rejectStart) {
+      if (startupTimer) {
+        clearTimeout(startupTimer)
       }
+      rejectStart(
+        new Error(
+          `platform exited before ready (code=${code} signal=${signal}):\n${logs.slice(-4000)}`
+        )
+      )
+      return
+    }
+    if (!stopping) {
+      console.error(
+        `[platform] exited before teardown (code=${code} signal=${signal}):\n${logs.slice(-4000)}`
+      )
+    }
+  })
+  const url = await new Promise<string>((resolve, reject) => {
+    rejectStart = reject
+    startupTimer = setTimeout(
+      () => reject(new Error(`platform did not start:\n${logs.slice(-4000)}`)),
+      15_000
+    )
+    proc.stdout?.on('data', () => {
+      const match = /\[api\] listening on (http:\/\/127\.0\.0\.1:\d+)/.exec(logs)
+      if (!match) {
+        return
+      }
+      if (startupTimer) {
+        clearTimeout(startupTimer)
+      }
+      rejectStart = null
+      resolve(match[1])
     })
-    proc.once('exit', (code) => reject(new Error(`platform exited ${code}`)))
   })
   return {
     url,
     stop: () =>
       new Promise<void>((resolve) => {
-        if (proc.exitCode !== null) {
+        stopping = true
+        // Why: a signal-killed child keeps exitCode null, so only the signalCode
+        // check tells us the exit event already fired (otherwise: 60s hook hang).
+        if (exit || proc.exitCode !== null || proc.signalCode !== null) {
           resolve()
           return
         }
