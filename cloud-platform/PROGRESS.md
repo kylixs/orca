@@ -3626,6 +3626,7 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **U138 加压复现（race 窗口）**：4 run/25 cycle/112 采样 = 104 绿 **8 红**；10-cycle race **7/50 红**，红样本同构——`listAll` 入场投影 A → 双 activate → 宿主 publish A/B → 采样 DOM=store=A、host=B，**收到携带 B 的广播后仍停在 A**，+3s 复采样自愈。根因倾向 **H-A**（入场 listAll 应用晚到，覆盖 active），H-C 为触发，H-D 未观察。race 探针 `f31739e2f6e`；证据 `evidence/exploratory-r8/stress-summary.md`。
 - **探针有效性审计 → U152**（`test-reports/u138-probe-audit.md`）：原探针「12/12 一致」**不可签字**（hostActive 读设备投影、单次立即采样、无 applied/applyOptions、同页 reload 非关页重开、隔离恢复误报等）。按设计令预设条件**解冻 T1**（产品内帧记录器，默认关/零分配/不改 wire），探针按「最小改动 1–5」硬化后重跑。
 - **门禁**：U151 落地后 `--platform-only` 刷新（web build=源 d53905bc1bbe）→ 金路径控制台线 **12/13**（a2=U138 已复现的同一缺陷，其余全绿）；台账 U151 🟢、U152 🔴（修复中）。
+- **T1 帧记录器落地**（`f72ee67dbc8`，13 文件/900 行）：默认关（`localStorage["orca.debug.sessionTabs"]==="1"`）、关闭路径零分配；三处窄边界（env call/subscribe/直连 preload）；11 个实际存在的方法进白名单（无 `session.tabs.restore`）；环形 300；`applied/applyOptions` 回填；`window.__orcaSessionTabsTrace` 暴露。单测 10/10（主会话复跑）、相邻 66 绿、`pnpm tc` 与 oxlint 干净；wire/构建宏零改动。
 
 ### 四通道并发执行（启动，2026-11-14）
 
