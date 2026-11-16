@@ -38,7 +38,7 @@
 | B-令5 | suspend/end 协议+面板卸载策略 | — | **✅ 完成** `8f986d89e90`（suspend 保活/end 回收/logout=suspend；features 协商；278 测试+overlay 8/8） |
 | B-令6 | 尺寸冲突 overlay+claim/restoreFit+get/setAutoRestoreFit scope（含 **U98 抢尺寸修复**） | A-令3 | **✅ 完成** `4b3e9365482`（U98 订阅被动化+per-PTY override 全局零写+overlay；78 绿；面板瘦身 302 行） |
 | B-令7 | 回放边界+ended 阈值+孤儿兜底 | A-令3/7 | **✅ 完成** `d81600ab1e9`（孤儿 adopt 拓扑校验+重开限频+回放两态；62 绿） |
-| B-令8 | 端到端回归（双端同步 e2e） | 全部 | 收口 |
+| B-令8 | 端到端回归（双端同步 e2e） | 全部 | **✅ 完成** `ec7d1bd093f`（5 绿：双向可见/同 PTY 输入/suspend 保活恢复/尺寸冲突/旧宿主零噪声；2 红转缺陷 U107/U108） |
 
 ## 验收里程碑
 
