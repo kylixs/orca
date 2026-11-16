@@ -3609,6 +3609,16 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **AC-M3-33/G08 注记同步**（`09bfb94513b`），计数机检 PASS（318=276+41+1、§13 9/5/15）。
 - 最终构建门禁：平台 e2e **426/0**、W9 双线 A 4/4 + B 2/2 绿。
 
+### 2026-11-17 01:3x 轮：U146 落地 + U138 设计/探针闭环（三通道并行）
+
+- **环境体检**：platform pid 65394、宿主 98982/99952、forwarder 88911 全存活；`--platform-only` 后 web 快照=源（build=1253f697af53）、双宿主同 id 在线。
+- **台账对账**：U116 行更新（① U116① W1–W12 已交付；③ `35b43c973fa`；②/④ 按 B2/B3 用户暂缓），提交 `84ce450ff23`。
+- **通道 A · U146/G25 陈旧路由可观测**（`a3603b825b9`）：`RelayRoute.updatedAt` + `GET /v1/hosts` 三加性字段（age/stale/updatedAt）+ 控制台主机表/手机卡/抽屉「路由确认于 N 秒前 / 路由陈旧 / —」；stale=3×心跳（180s）或路由目标不在宿直连地址。主会话自跑新套件 + U64 相邻 **8/8**，`tc:node` 干净；m04 基线更新（`7e880f392d8`）。
+- **通道 B · U138 残余设计令**（`16a50b4701c` + 审定 `49b4207e972`）：五层写入方盘点补出 4 处矩阵缺口（持久→内存回灌无优先级、`refreshMobileSessionPtyRecords` await 前置致乱序、`load-initial` listAll 缺 `hostActiveAuthoritative`、create-time 持久写 vs tap 竞争）；RPC 帧可观测设计（默认关、零分配、300 帧环、不改 wire）；C1–C5 收敛判据；T1–T4 拆分。**主会话审定：T1 产品内记录器暂缓**，先用外部探针产时间线；验序 H-A→H-C 对照→H-B→H-D。
+- **通道 C · U138 帧时间线探针**（`22f5f4855ef`）：可复用探针（RPC 明文边界录制 + WS 传输层帧 + 三方采样 + 设备级隔离/恢复）；3 cycle ×4 采样 **12/12 三方一致，本轮未复现**（U138 固有 flaky）；输出含 `firstInconsistency`/`diagnosis` 分类（client-apply-lag / host-publish-overrode-write / write-response-disagrees-with-host）。下一步：`U138_CYCLES=10` + 未回帧即 reload 加压复现。
+- **门禁**：`--platform-only` 刷新后金路径控制台线 **12/13**（a2=U138 已知残余，其余 12 项全绿，含 b8/b9/b10）；U146 app.js 变更经复跑零回归。
+- **验收基线**：G25 **closed**（U146），§13 = **closed 26 / 部分 1（G27 同步 ack）/ 待 2（G04/G24 部署层）**；321 用例、机检 PASS。
+
 ### 四通道并发执行（启动，2026-11-14）
 
 按细粒度拆分与三权分立纪律并发起跑：通道② **W6a**（中继浏览器模式，relay.ts 域）、通道③ **W10**（客户端零 env 登录，src/main+renderer 登录域）、通道④ **W5a**（详情页终端组件，cloud-admin 域）三个实现代理并行；通道① 等在途 W2（QA 修复）完成后接 W8。每令完成→独立测试代理→独立审计代理→主会话关闭放行下一个。
