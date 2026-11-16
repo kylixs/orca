@@ -584,6 +584,25 @@ test('U96 A1 Orca Web 页面重载：2 组 3 标签、活动标签与活 PTY mar
         }
         const list = async (): Promise<Result> =>
           (await call('session.tabs.list', { worktree })) as Result
+        // The host applies a move through the renderer notifier, so the next list
+        // lags the RPC — mirror the layout oracle's move wait (15s) with a poll.
+        const waitForList = async (predicate: (snapshot: Result) => boolean): Promise<Result> => {
+          const deadline = Date.now() + 20_000
+          for (;;) {
+            const snapshot = await list()
+            if (predicate(snapshot)) {
+              return snapshot
+            }
+            if (Date.now() > deadline) {
+              throw new Error(`session.tabs.list never matched: ${JSON.stringify(snapshot)}`)
+            }
+            await new Promise((resolve) => setTimeout(resolve, 250))
+          }
+        }
+        const groupIds = (snapshot: Result): string[] =>
+          ((field(snapshot, 'tabGroups') as unknown[]) ?? [])
+            .map((group) => text(group, 'id'))
+            .filter((id): id is string => id !== null)
 
         const before = await list()
         const beforeIds = new Set(
@@ -625,6 +644,7 @@ test('U96 A1 Orca Web 页面重载：2 组 3 标签、活动标签与活 PTY mar
         if (!firstGroupId) {
           throw new Error('the created tabs have no group to split from')
         }
+        const groupIdsBeforeSplit = new Set(groupIds(afterCreate))
 
         // Group 2: split the second terminal right, then move the third in.
         await call('session.tabs.move', {
@@ -634,11 +654,12 @@ test('U96 A1 Orca Web 页面重载：2 组 3 标签、活动标签与活 PTY mar
           targetGroupId: firstGroupId,
           splitDirection: 'right'
         })
-        const afterSplit = await list()
-        const secondGroup = ((field(afterSplit, 'tabGroups') as unknown[]) ?? []).find(
-          (group) => text(group, 'id') !== firstGroupId
+        // Identify the new group by id diff, not by "not the first id" — the
+        // workspace may already own groups besides the one we split from.
+        const afterSplit = await waitForList((snapshot) =>
+          groupIds(snapshot).some((id) => !groupIdsBeforeSplit.has(id))
         )
-        const secondGroupId = text(secondGroup, 'id')
+        const secondGroupId = groupIds(afterSplit).find((id) => !groupIdsBeforeSplit.has(id))
         if (!secondGroupId) {
           throw new Error('the split created no second group')
         }
@@ -661,7 +682,11 @@ test('U96 A1 Orca Web 页面重载：2 组 3 标签、活动标签与活 PTY mar
           text: `printf '${markerTwo}\\n'\r`
         })
 
-        const beforeReload = await list()
+        const beforeReload = await waitForList(
+          (snapshot) =>
+            groupIds(snapshot).length >= 2 &&
+            text(snapshot, 'activeTabId') === created[1]!.surfaceId
+        )
         const beforeTabs = ((field(beforeReload, 'tabs') as unknown[]) ?? []).map((tab) => ({
           id: text(tab, 'id'),
           title: text(tab, 'title')
@@ -693,42 +718,27 @@ test('U96 A1 Orca Web 页面重载：2 组 3 标签、活动标签与活 PTY mar
     const activeLocalId = localWebTabId(setup.created[1]!.parentTabId)
     const firstCreatedLocalId = localWebTabId(setup.created[0]!.parentTabId)
 
-    // The mirror publishes the host inventory into the renderer; wait for the
-    // user-visible strip to show both panes before the reload under test.
+    // Why: once a worktree has client groups, placement is client-owned —
+    // snapshots append tabs but never re-apply host order/active/layout
+    // (apply-preparation-groups.ts). So the 2-pane split asserted above is a
+    // host-side contract, not a local mirror contract. Only wait for the
+    // created tabs to reach the visible strip before the reload under test.
     await expect
       .poll(
         async () =>
           page.evaluate(
-            ({ worktreeId, activeTabId }) => {
+            ({ worktreeId }) => {
               const state = window.__store?.getState?.()
-              const tabs = state?.tabsByWorktree?.[worktreeId] ?? []
-              const groups = state?.groupsByWorktree?.[worktreeId] ?? []
               return {
-                tabs: tabs.length,
-                groups: groups.length,
-                active: state?.activeTabIdByWorktree?.[worktreeId] ?? null,
-                domTabs: document.querySelectorAll('[data-testid="sortable-tab"]').length,
-                domStrips: document.querySelectorAll('.terminal-tab-strip').length,
-                domActive:
-                  document
-                    .querySelector('[data-testid="sortable-tab"][data-active="true"]')
-                    ?.getAttribute('data-tab-id') ?? null,
-                expectedActive: activeTabId
+                tabs: (state?.tabsByWorktree?.[worktreeId] ?? []).length,
+                domTabs: document.querySelectorAll('[data-testid="sortable-tab"]').length
               }
             },
-            { worktreeId: setup.worktreeId, activeTabId: activeLocalId }
+            { worktreeId: setup.worktreeId }
           ),
-        { timeout: 120_000, message: 'the split/move never reached the Orca Web tab strip' }
+        { timeout: 120_000, message: 'the created tabs never reached the Orca Web tab strip' }
       )
-      .toEqual({
-        tabs: expectedTabCount,
-        groups: 2,
-        active: activeLocalId,
-        domTabs: expectedTabCount,
-        domStrips: 2,
-        domActive: activeLocalId,
-        expectedActive: activeLocalId
-      })
+      .toEqual({ tabs: expectedTabCount, domTabs: expectedTabCount })
     await page.screenshot({ path: path.join(EVIDENCE_DIR, 'u96-a1-before-reload.png') })
 
     const requests: { method: string; path: string }[] = []
@@ -738,6 +748,9 @@ test('U96 A1 Orca Web 页面重载：2 组 3 标签、活动标签与活 PTY mar
         requests.push({ method: request.method(), path: parsed.pathname })
       }
     })
+    // KNOWN RED until the product decides whether a web reload resumes the host
+    // session (today it lands on the sign-in shell). The reload assertions below
+    // are kept as the target contract for that fix.
     await page.reload({ waitUntil: 'domcontentloaded' })
     await page.waitForSelector('.app-layout', { timeout: WORKSPACE_TIMEOUT_MS })
 
