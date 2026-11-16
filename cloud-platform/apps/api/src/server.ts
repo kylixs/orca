@@ -180,6 +180,19 @@ function error(
   json(res, status, { error: { code, message, traceId, details } })
 }
 
+/**
+ * U136④a: absent keeps the old last-write-wins contract; a supplied version must
+ * be a non-negative integer, so `"1"` or `-1` is a caller error, not a no-op.
+ */
+function parseExpectedVersion(
+  value: unknown
+): { kind: 'absent' } | { kind: 'invalid' } | { kind: 'set'; version: number } {
+  if (value === undefined) return { kind: 'absent' }
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? { kind: 'set', version: value }
+    : { kind: 'invalid' }
+}
+
 async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = []
   for await (const chunk of req) chunks.push(chunk as Buffer)
@@ -962,6 +975,26 @@ export function createApp(config: ApiConfig): ApiHandle {
           : 'AUDIT_UNAVAILABLE'
       error(res, 503, code, '审计日志不可写，敏感操作已停止。', traceId)
       return false
+    }
+  }
+
+  /**
+   * U136④a: the expected-version check and its write must not interleave with
+   * another policy write across the (possibly remote) audit await, or both
+   * stale callers would pass the check and mint the same version.
+   */
+  let policyWriteQueue: Promise<void> = Promise.resolve()
+  async function withPolicyWriteLock(work: () => Promise<void>): Promise<void> {
+    const previous = policyWriteQueue
+    let release!: () => void
+    policyWriteQueue = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await previous
+    try {
+      await work()
+    } finally {
+      release()
     }
   }
 
@@ -3023,46 +3056,96 @@ export function createApp(config: ApiConfig): ApiHandle {
         if (rate.kind === 'invalid') {
           return error(res, 400, 'POLICY_INVALID', '读取限速必须是大于 0 的 calls/bytes。', traceId)
         }
-        // Why write-ahead: same rule as every other sensitive write (M32) — a policy
-        // change that cannot be recorded must not take effect.
-        if (
-          !(await recordAudit(
-            res,
-            {
-              eventType: 'policy_update',
-              actor: authed.user.username,
-              targetType: 'project',
-              targetId: projectId,
-              result: 'success',
+        return withPolicyWriteLock(async () => {
+          // U136④a: same optimistic control as the global policy, on the shared version.
+          const expectedVersion = parseExpectedVersion(body.expectedVersion)
+          if (expectedVersion.kind === 'invalid') {
+            return error(res, 400, 'POLICY_INVALID', 'expectedVersion 必须是非负整数。', traceId)
+          }
+          if (
+            expectedVersion.kind === 'set' &&
+            expectedVersion.version !== store.policies.version
+          ) {
+            if (
+              !(await recordAudit(
+                res,
+                {
+                  eventType: 'policy_update',
+                  actor: authed.user.username,
+                  targetType: 'project',
+                  targetId: projectId,
+                  result: 'failure',
+                  traceId,
+                  metadata: {
+                    reason: 'POLICY_VERSION_CONFLICT',
+                    expectedVersion: expectedVersion.version,
+                    resultVersion: store.policies.version,
+                    ...(inherit ? { inherited: true } : { downloadPolicy: found.downloadPolicy })
+                  }
+                },
+                traceId
+              ))
+            ) {
+              return
+            }
+            return error(
+              res,
+              409,
+              'POLICY_VERSION_CONFLICT',
+              '下载策略已被他人修改，请刷新后重试。',
               traceId,
-              metadata: {
-                // An inherit must not log the ignored downloadPolicy as if it applied.
-                ...(inherit ? { inherited: true } : { downloadPolicy: nextPolicy }),
-                ...(rate.kind === 'set' ? { readRatePerHour: rate.rate } : {}),
-                ...(rate.kind === 'clear' ? { readRatePerHour: null } : {})
+              {
+                version: store.policies.version,
+                downloadPolicy: found.downloadPolicy,
+                readRatePerHour: found.readRatePerHour ?? store.policies.readRatePerHour
               }
-            },
-            traceId
-          ))
-        ) {
-          return
-        }
-        if (inherit) {
-          delete found.downloadPolicyExplicit
-        } else {
-          found.downloadPolicy = nextPolicy
-          found.downloadPolicyExplicit = true
-        }
-        if (rate.kind === 'set') {
-          found.readRatePerHour = rate.rate
-        } else if (rate.kind === 'clear') {
-          delete found.readRatePerHour
-        }
-        store.policies.version += 1
-        return json(res, 200, {
-          downloadPolicy: found.downloadPolicy,
-          readRatePerHour: found.readRatePerHour ?? store.policies.readRatePerHour,
-          version: store.policies.version
+            )
+          }
+          const resultVersion = store.policies.version + 1
+          // Why write-ahead: same rule as every other sensitive write (M32) — a policy
+          // change that cannot be recorded must not take effect.
+          if (
+            !(await recordAudit(
+              res,
+              {
+                eventType: 'policy_update',
+                actor: authed.user.username,
+                targetType: 'project',
+                targetId: projectId,
+                result: 'success',
+                traceId,
+                metadata: {
+                  // An inherit must not log the ignored downloadPolicy as if it applied.
+                  ...(inherit ? { inherited: true } : { downloadPolicy: nextPolicy }),
+                  ...(rate.kind === 'set' ? { readRatePerHour: rate.rate } : {}),
+                  ...(rate.kind === 'clear' ? { readRatePerHour: null } : {}),
+                  ...(expectedVersion.kind === 'set'
+                    ? { expectedVersion: expectedVersion.version, resultVersion }
+                    : {})
+                }
+              },
+              traceId
+            ))
+          ) {
+            return
+          }
+          if (inherit) {
+            delete found.downloadPolicyExplicit
+          } else {
+            found.downloadPolicy = nextPolicy
+            found.downloadPolicyExplicit = true
+          }
+          if (rate.kind === 'set') {
+            found.readRatePerHour = rate.rate
+          } else if (rate.kind === 'clear') {
+            delete found.readRatePerHour
+          }
+          store.policies.version = resultVersion
+          return json(res, 200, {
+            downloadPolicy: found.downloadPolicy,
+            readRatePerHour: found.readRatePerHour ?? store.policies.readRatePerHour,
+            version: store.policies.version
+          })
         })
       }
     }
@@ -4137,35 +4220,85 @@ export function createApp(config: ApiConfig): ApiHandle {
         if (rate.kind === 'invalid' || rate.kind === 'clear') {
           return error(res, 400, 'POLICY_INVALID', '读取限速必须是大于 0 的 calls/bytes。', traceId)
         }
-        if (
-          !(await recordAudit(
-            res,
-            {
-              eventType: 'policy_update',
-              actor: authed.user.username,
-              targetType: 'policy',
-              targetId: 'download',
-              result: 'success',
+        return withPolicyWriteLock(async () => {
+          // U136④a: a stale admin must not silently overwrite a newer policy.
+          const expectedVersion = parseExpectedVersion(body.expectedVersion)
+          if (expectedVersion.kind === 'invalid') {
+            return error(res, 400, 'POLICY_INVALID', 'expectedVersion 必须是非负整数。', traceId)
+          }
+          if (
+            expectedVersion.kind === 'set' &&
+            expectedVersion.version !== store.policies.version
+          ) {
+            if (
+              !(await recordAudit(
+                res,
+                {
+                  eventType: 'policy_update',
+                  actor: authed.user.username,
+                  targetType: 'policy',
+                  targetId: 'download',
+                  result: 'failure',
+                  traceId,
+                  metadata: {
+                    reason: 'POLICY_VERSION_CONFLICT',
+                    expectedVersion: expectedVersion.version,
+                    resultVersion: store.policies.version,
+                    downloadDefault: store.policies.downloadDefault
+                  }
+                },
+                traceId
+              ))
+            ) {
+              return
+            }
+            return error(
+              res,
+              409,
+              'POLICY_VERSION_CONFLICT',
+              '下载策略已被他人修改，请刷新后重试。',
               traceId,
-              metadata: {
-                downloadDefault: nextDefault,
-                ...(rate.kind === 'set' ? { readRatePerHour: rate.rate } : {})
+              {
+                version: store.policies.version,
+                downloadDefault: store.policies.downloadDefault,
+                readRatePerHour: store.policies.readRatePerHour
               }
-            },
-            traceId
-          ))
-        ) {
-          return
-        }
-        store.policies.downloadDefault = nextDefault
-        if (rate.kind === 'set') {
-          store.policies.readRatePerHour = rate.rate
-        }
-        store.policies.version += 1
-        return json(res, 200, {
-          downloadDefault: store.policies.downloadDefault,
-          readRatePerHour: store.policies.readRatePerHour,
-          version: store.policies.version
+            )
+          }
+          const resultVersion = store.policies.version + 1
+          if (
+            !(await recordAudit(
+              res,
+              {
+                eventType: 'policy_update',
+                actor: authed.user.username,
+                targetType: 'policy',
+                targetId: 'download',
+                result: 'success',
+                traceId,
+                metadata: {
+                  downloadDefault: nextDefault,
+                  ...(rate.kind === 'set' ? { readRatePerHour: rate.rate } : {}),
+                  ...(expectedVersion.kind === 'set'
+                    ? { expectedVersion: expectedVersion.version, resultVersion }
+                    : {})
+                }
+              },
+              traceId
+            ))
+          ) {
+            return
+          }
+          store.policies.downloadDefault = nextDefault
+          if (rate.kind === 'set') {
+            store.policies.readRatePerHour = rate.rate
+          }
+          store.policies.version = resultVersion
+          return json(res, 200, {
+            downloadDefault: store.policies.downloadDefault,
+            readRatePerHour: store.policies.readRatePerHour,
+            version: store.policies.version
+          })
         })
       }
     }
