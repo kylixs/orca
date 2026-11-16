@@ -1,24 +1,31 @@
 import * as React from 'react'
 import { cloudWorktreeSelector, type CloudRpc } from '../../../shared/cloud-file-browser'
-import { readArrayValue, readField, readObjectValue, readString } from '../../../shared/json-fields'
+import { readField, readObjectValue, readString } from '../../../shared/json-fields'
 import { CLOUD_SESSION_TABS_RESTORE_CAPABILITY } from '../../../shared/cloud-workspace-info'
-import type { RuntimeMobileSessionClientTab } from '../../../shared/runtime-mobile-session-tab-contracts'
-import type { CloudSubscription } from './use-cloud-session'
 import type { CloudTerminalSubscribe } from './cloud-terminal-panel'
 import {
   hostTabCloseRefusalNotice,
   hostTerminalTabsFromSnapshot,
-  type CloudSimpleHostTabsSnapshot,
+  readCloudSimpleHostTabsFrame,
+  type CloudSimpleHostTabsFrame,
   type CloudSimpleHostTerminalTab
 } from './cloud-simple-workspace-session-tabs'
 import { recoverSimpleWorkspaceTerminalOrphans } from './cloud-simple-workspace-orphan-recovery'
 import { closeHostSessionTabsForEnd } from './cloud-simple-workspace-end-close'
+import {
+  freshDegradedActions,
+  isMissingTabFailure,
+  isPermanentSyncFailure,
+  type DegradedActions
+} from './cloud-simple-workspace-session-tab-failure'
+import { startSessionTabsStream } from './cloud-simple-workspace-session-tabs-stream'
 
 /**
  * U96 B-令2: bootstrap the simple workspace from the host's session-tab
  * inventory (design §2.5). Capability-gated: a legacy host makes zero
- * `session.tabs.*` calls. One failed attempt degrades the session — no retry,
- * no warn-loop — and the shell keeps its local-tab behaviour.
+ * `session.tabs.*` calls. A failed bootstrap degrades the session once — no
+ * warn-loop — while transient stream drops retry with backoff (U112 D5) and a
+ * failed action retires only that action (U112 D4).
  */
 
 export type CloudSimpleWorkspaceHostSnapshot = {
@@ -27,11 +34,12 @@ export type CloudSimpleWorkspaceHostSnapshot = {
 }
 
 /**
- * U96 B-令4 close outcome. `local` means the host cannot be coordinated with
- * (capability absent, degraded, or the call failed), so the shell falls back to
- * today's local tab close instead of pretending the host acted.
+ * U96 B-令4 + U112 D4 close outcome. `local` means the host cannot be
+ * coordinated with at all (capability absent / bootstrap degraded), so the shell
+ * falls back to today's local tab close. `failed` means the host is there but
+ * did not close the tab; the row must stay so a reopen cannot resurrect it.
  */
-export type CloudSimpleWorkspaceHostCloseOutcome = 'closed' | 'refused' | 'local'
+export type CloudSimpleWorkspaceHostCloseOutcome = 'closed' | 'refused' | 'failed' | 'local'
 
 export type CloudSimpleWorkspaceSessionTabActions = {
   /** User gesture only; never called while applying a host frame (loop guard). */
@@ -55,41 +63,6 @@ export type CloudSimpleWorkspaceSessionTabs = {
   actions: CloudSimpleWorkspaceSessionTabActions
 }
 
-type HostTabsFrame = CloudSimpleHostTabsSnapshot & { activeTabId: string | null }
-
-/**
- * Shape-checked `session.tabs.list` reply / stream frame. Terminal rows are
- * read-only projections, so entries only need to be objects — the host owns
- * the row schema (the same trust the web mirror applies).
- */
-function readHostTabsFrame(value: unknown): HostTabsFrame | null {
-  const frame = readObjectValue(value)
-  if (frame === null) {
-    return null
-  }
-  const tabs = readArrayValue(readField(frame, 'tabs'))
-  if (tabs === null || tabs.some((row) => readObjectValue(row) === null)) {
-    return null
-  }
-  const groups = readArrayValue(readField(frame, 'tabGroups'))
-  const tabGroups =
-    groups === null
-      ? undefined
-      : groups.flatMap((group) => {
-          const order = readArrayValue(readField(group, 'tabOrder'))
-          return order === null
-            ? []
-            : [{ tabOrder: order.filter((id): id is string => typeof id === 'string') }]
-        })
-  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: entries are verified non-null objects above; the host owns the terminal-row field set.
-  const rows = tabs as RuntimeMobileSessionClientTab[]
-  return {
-    tabs: rows,
-    ...(tabGroups === undefined ? {} : { tabGroups }),
-    activeTabId: readString(frame, 'activeTabId')
-  }
-}
-
 export function useCloudSimpleWorkspaceSessionTabs({
   rpc,
   subscribe,
@@ -105,8 +78,9 @@ export function useCloudSimpleWorkspaceSessionTabs({
   const restoreSupported =
     Boolean(workspacePath) &&
     (capabilities?.includes(CLOUD_SESSION_TABS_RESTORE_CAPABILITY) ?? false)
-  const [hostSnapshot, setHostSnapshot] =
-    React.useState<CloudSimpleWorkspaceHostSnapshot | null>(null)
+  const [hostSnapshot, setHostSnapshot] = React.useState<CloudSimpleWorkspaceHostSnapshot | null>(
+    null
+  )
   const [syncing, setSyncing] = React.useState(false)
   const [degraded, setDegraded] = React.useState(false)
   const [notice, setNotice] = React.useState<string | null>(null)
@@ -116,35 +90,49 @@ export function useCloudSimpleWorkspaceSessionTabs({
   rpcRef.current = rpc
   const subscribeRef = React.useRef(subscribe)
   subscribeRef.current = subscribe
-  // Mutation seam shared by the actions and the bootstrap effect below.
-  const degradeRef = React.useRef<(() => void) | null>(null)
   const worktreeRef = React.useRef<string | null>(null)
   const supportedRef = React.useRef(false)
   // Loop guard (T-B2): the host active tab we last observed, plus the one this
   // client asked for. Applying a frame never calls activate.
   const hostActiveRef = React.useRef<string | null>(null)
   const requestedActivationRef = React.useRef<string | null>(null)
+  const degradedActionsRef = React.useRef<DegradedActions>(freshDegradedActions())
 
   const activate = React.useCallback((tabId: string): void => {
     const worktree = worktreeRef.current
-    if (!supportedRef.current || !worktree) {
+    if (!supportedRef.current || !worktree || degradedActionsRef.current.activate) {
       return
     }
-    // The host already has it (or our own notification is in flight).
+    // The host already has it (or this exact request is still in flight).
     if (hostActiveRef.current === tabId || requestedActivationRef.current === tabId) {
       return
     }
     requestedActivationRef.current = tabId
-    rpcRef.current('session.tabs.activate', { worktree, tabId, notifyClients: true })
+    rpcRef
+      .current('session.tabs.activate', { worktree, tabId, notifyClients: true })
       .then((outcome) => {
-        if (!outcome.ok) {
+        // In-flight, not "ever requested": a peer switch must not swallow the
+        // next click on this same tab (U112 D3).
+        if (requestedActivationRef.current === tabId) {
           requestedActivationRef.current = null
-          degradeRef.current?.()
+        }
+        if (outcome.ok) {
+          // The host accepted it; its next frame remains authoritative.
+          hostActiveRef.current = tabId
+          return
+        }
+        // A peer retired the row: the frame converges, nothing to degrade.
+        if (isMissingTabFailure(outcome)) {
+          return
+        }
+        if (isPermanentSyncFailure(outcome)) {
+          degradedActionsRef.current.activate = true
         }
       })
       .catch(() => {
-        requestedActivationRef.current = null
-        degradeRef.current?.()
+        if (requestedActivationRef.current === tabId) {
+          requestedActivationRef.current = null
+        }
       })
   }, [])
 
@@ -154,15 +142,32 @@ export function useCloudSimpleWorkspaceSessionTabs({
       if (!supportedRef.current || !worktree) {
         return 'local'
       }
-      const outcome = await rpcRef.current('session.tabs.close', {
-        worktree,
-        tabId,
-        reason: 'user'
-      }).catch(() => null)
-      if (!outcome?.ok) {
-        degradeRef.current?.()
+      if (degradedActionsRef.current.close) {
         setNotice('连接不可用，未关闭该终端。')
-        return 'local'
+        return 'failed'
+      }
+      const outcome = await rpcRef
+        .current('session.tabs.close', {
+          worktree,
+          tabId,
+          reason: 'user'
+        })
+        .catch(() => null)
+      if (outcome === null) {
+        setNotice('连接不可用，未关闭该终端。')
+        return 'failed'
+      }
+      if (!outcome.ok) {
+        // The peer closed it first: idempotent success, never a channel degrade.
+        if (isMissingTabFailure(outcome)) {
+          setNotice(null)
+          return 'closed'
+        }
+        if (isPermanentSyncFailure(outcome)) {
+          degradedActionsRef.current.close = true
+        }
+        setNotice('连接不可用，未关闭该终端。')
+        return 'failed'
       }
       const result = readObjectValue(outcome.result)
       if (result !== null && readField(result, 'refused') === true) {
@@ -185,28 +190,43 @@ export function useCloudSimpleWorkspaceSessionTabs({
   const createTerminal = React.useCallback(
     async (tabId: string, leafId: string, title: string): Promise<boolean> => {
       const worktree = worktreeRef.current
-      if (!supportedRef.current || !worktree) {
+      if (!supportedRef.current || !worktree || degradedActionsRef.current.create) {
         return false
       }
-      const outcome = await rpcRef.current('terminal.create', {
-        worktree,
-        tabId,
-        leafId,
-        title,
-        clientMutationId: tabId
-      }).catch(() => null)
-      if (!outcome?.ok) {
-        degradeRef.current?.()
+      const outcome = await rpcRef
+        .current('terminal.create', {
+          worktree,
+          tabId,
+          leafId,
+          title,
+          clientMutationId: tabId
+        })
+        .catch(() => null)
+      if (outcome === null) {
+        return false
+      }
+      if (!outcome.ok) {
+        if (isPermanentSyncFailure(outcome)) {
+          degradedActionsRef.current.create = true
+        }
         return false
       }
       requestedActivationRef.current = tabId
-      const activated = await rpcRef.current('session.tabs.activate', {
-        worktree,
-        tabId,
-        notifyClients: true
-      }).catch(() => null)
-      if (activated !== null && !activated.ok) {
-        degradeRef.current?.()
+      const activated = await rpcRef
+        .current('session.tabs.activate', {
+          worktree,
+          tabId,
+          notifyClients: true
+        })
+        .catch(() => null)
+      if (activated === null || !activated.ok) {
+        requestedActivationRef.current = null
+        if (activated !== null && isPermanentSyncFailure(activated)) {
+          degradedActionsRef.current.activate = true
+        }
+      } else {
+        hostActiveRef.current = tabId
+        requestedActivationRef.current = null
       }
       return true
     },
@@ -237,7 +257,7 @@ export function useCloudSimpleWorkspaceSessionTabs({
     supportedRef.current = true
     let cancelled = false
     let failed = false
-    let subscription: CloudSubscription | null = null
+    let stream: { stop: () => void } | null = null
 
     const degrade = (): void => {
       if (cancelled || failed) {
@@ -247,13 +267,17 @@ export function useCloudSimpleWorkspaceSessionTabs({
       supportedRef.current = false
       setSyncing(false)
       setDegraded(true)
-      subscription?.unsubscribe()
+      stream?.stop()
     }
-    degradeRef.current = degrade
 
-    const apply = (frame: HostTabsFrame): void => {
+    const apply = (frame: CloudSimpleHostTabsFrame): void => {
       if (cancelled || failed) {
         return
+      }
+      // A frame that confirms our request ends the in-flight guard; a frame that
+      // moves elsewhere leaves it to the RPC completion (U112 D3).
+      if (frame.activeTabId !== null && frame.activeTabId === requestedActivationRef.current) {
+        requestedActivationRef.current = null
       }
       // Record the host's choice; never echo it back as an activate (T-B2 loop guard).
       hostActiveRef.current = frame.activeTabId
@@ -269,13 +293,14 @@ export function useCloudSimpleWorkspaceSessionTabs({
     setNotice(null)
     hostActiveRef.current = null
     requestedActivationRef.current = null
+    degradedActionsRef.current = freshDegradedActions()
 
     const establish = async (): Promise<void> => {
       const listed = await rpcRef.current('session.tabs.list', { worktree }).catch(() => null)
       if (cancelled) {
         return
       }
-      const initial = listed?.ok ? readHostTabsFrame(listed.result) : null
+      const initial = listed?.ok ? readCloudSimpleHostTabsFrame(listed.result) : null
       if (initial === null) {
         degrade()
         return
@@ -292,48 +317,30 @@ export function useCloudSimpleWorkspaceSessionTabs({
       if (cancelled || failed) {
         return
       }
-      const adoptedFrame = adopted === null ? null : readHostTabsFrame(adopted)
+      const adoptedFrame = adopted === null ? null : readCloudSimpleHostTabsFrame(adopted)
       if (adoptedFrame !== null) {
         apply(adoptedFrame)
       }
-      const streamed = await subscribeStream(
-        'session.tabs.subscribe',
-        { worktree },
-        {
-          onEvent: (event) => {
-            const frame = readHostTabsFrame(event)
-            if (frame !== null) {
-              apply(frame)
-            }
-          },
-          onClose: () => {
-            if (!cancelled && !failed) {
-              setSyncing(false)
-            }
-          },
-          onError: degrade
-        }
-      ).catch(() => null)
-      if (cancelled || failed) {
-        if (streamed?.ok) {
-          streamed.subscription.unsubscribe()
-        }
-        return
-      }
-      if (!streamed?.ok) {
-        degrade()
-        return
-      }
-      subscription = streamed.subscription
-      setSyncing(false)
+      stream = startSessionTabsStream({
+        subscribe: subscribeStream,
+        worktree,
+        onFrame: (event) => {
+          const frame = readCloudSimpleHostTabsFrame(event)
+          if (frame !== null) {
+            apply(frame)
+          }
+        },
+        onSyncing: setSyncing,
+        onDegraded: degrade,
+        isStopped: () => cancelled || failed
+      })
     }
 
     void establish()
     return () => {
       cancelled = true
       supportedRef.current = false
-      degradeRef.current = null
-      subscription?.unsubscribe()
+      stream?.stop()
     }
     // Why only these: rpc/subscribe identity churns per render (see refs above).
   }, [restoreSupported, workspacePath])

@@ -696,6 +696,17 @@ describe('简易工作区宿主动作接线（U96 B-令4）', () => {
     expect(screen.getByTestId('cloud-simple-workspace-host-tab-notice').textContent).toContain(
       '桌面端'
     )
+
+    // U112 D4: a failed host close must not close the row locally (it would
+    // reappear on the next host frame), so the tab stays too.
+    cleanup()
+    renderWorkspace({
+      initialTabs: [hostTab('tab-a', 'leaf-1')],
+      sessionTabs: actions({ closeResult: 'failed', notice: '连接不可用，未关闭该终端。' }),
+      tabComponents: noopTerminal
+    })
+    await user.click(screen.getByTestId('cloud-simple-workspace-tab-close-tab-a'))
+    await waitFor(() => expect(screen.getByTestId('cloud-simple-workspace-tab-tab-a')).toBeTruthy())
   })
 
   it('关闭本地新建终端（无宿主行）不调用 session.tabs.close', async () => {

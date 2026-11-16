@@ -1,0 +1,38 @@
+{
+  "run": {
+    "date": "2026-11-16",
+    "suite": "src/renderer/src/cloud-admin/cloud-simple-workspace-dual-client.e2e.test.ts",
+    "result": "6 passed, 0 expected fail",
+    "isolation": "temp platform + temp TLS host + real PTY; no existing instance touched",
+    "evidence": "E8/E9/E10/E11 save their own artifacts; E8b/E9b are asserted inside the same suite log and have no separate artifact"
+  },
+  "green": {
+    "E8": "cross-client session.tabs.subscribe sees both parentTabIds; same handle echo shared both ways",
+    "E8b": "client `terminal-<uuid>` / bare-UUID leaf ids are adopted verbatim by the host (was `it.fails`)",
+    "E9": "suspend (closeProject) kept the PTY readable by a probe; reopen restored same tabId + same handle + marker replay",
+    "E9b": "explicit session.tabs.close retires the persisted row, the other subscriber sees the retirement, and the PTY is gone (was `it.fails`)",
+    "E10": "bidirectional fit claim emitted fit-override-changed (remote-desktop-fit, 120x40 / 90x28) on the peer stream",
+    "E11": "explicit end closes every host-backed PTY, retires the rows, and the peer's mirror drops them (U112 D1)"
+  },
+  "knownDefects": {
+    "U96B8-01": {
+      "test": "E8b",
+      "status": "resolved",
+      "closedBy": "7f258aa8892 (U107 id contract alignment)",
+      "note": "The client now mints `terminal-<uuid>` + bare-UUID leaf ids, and the host's allocateTerminalPaneIdentity adopts them; requestedIds ≡ hostIds."
+    },
+    "U96B8-02": {
+      "test": "E9b",
+      "status": "resolved",
+      "closedBy": "a38e844f657 (U108 headless close fence + topology revision)",
+      "note": "Cloud create reaches workspaceSession.tabsByWorktree; close retires the row and the PTY, and the peer's mirror drops it."
+    }
+  },
+  "capabilityGate": {
+    "tests": [
+      "src/renderer/src/runtime/web-session-tabs-sync/cloud-capability-gate.test.ts",
+      "src/renderer/src/cloud/cloud-simple-workspace-session-tabs-hook.test.tsx"
+    ],
+    "result": "23 passed; old host performs zero session.tabs.* / terminal.list calls and no warn-loop"
+  }
+}

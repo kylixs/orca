@@ -238,12 +238,12 @@ describe('简易工作区 session-tabs bootstrap（U96 B-令2）', () => {
     expect(stream.calls).toHaveLength(0)
   })
 
-  it('subscribe 失败：同样一次性降级，不重复订阅', async () => {
+  it('subscribe 永久失败（forbidden）：一次性降级，不重复订阅', async () => {
     const { rpc } = scriptedRpc({
       ok: true,
       result: frame('snapshot', [terminalRow('tab-a', 'leaf-1')])
     })
-    const stream = scriptedSubscribe({ ok: false, code: 'timeout' })
+    const stream = scriptedSubscribe({ ok: false, code: 'forbidden' })
 
     const { result, rerender } = renderHook(
       (props: { rpc: CloudRpc }) =>
@@ -263,6 +263,54 @@ describe('简易工作区 session-tabs bootstrap（U96 B-令2）', () => {
     rerender({ rpc: scriptedRpc({ ok: true, result: frame('snapshot', []) }).rpc })
     await act(async () => undefined)
     expect(stream.calls).toHaveLength(1)
+  })
+
+  it('U112 D5 订阅流瞬时失败：500ms/1000ms 退避重连，成功后恢复同步', async () => {
+    vi.useFakeTimers()
+    try {
+      const replies: CloudRpcOutcome[] = [
+        { ok: false, code: 'timeout' },
+        { ok: false, code: 'timeout' },
+        { ok: true, result: {} }
+      ]
+      let subscribeCalls = 0
+      const unsubscribe = vi.fn()
+      const subscribe: CloudTerminalSubscribe = async () => {
+        const reply = replies[Math.min(subscribeCalls, replies.length - 1)]
+        subscribeCalls += 1
+        return reply.ok ? { ok: true, subscription: { unsubscribe } } : reply
+      }
+      const { rpc } = methodRpc({
+        'session.tabs.list': {
+          ok: true,
+          result: frame('snapshot', [terminalRow('tab-a', 'leaf-1')])
+        }
+      })
+
+      const { result } = renderHook(() =>
+        useHarness({ rpc, subscribe, workspacePath: WORKSPACE, capabilities: CAPABILITY })
+      )
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(subscribeCalls).toBe(1)
+      expect(result.current.syncing).toBe(true)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500)
+      })
+      expect(subscribeCalls).toBe(2)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000)
+      })
+      expect(subscribeCalls).toBe(3)
+      expect(result.current.syncing).toBe(false)
+      expect(result.current.unsupported).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
@@ -320,6 +368,36 @@ describe('简易工作区 session-tabs 双向动作（U96 B-令4）', () => {
     expect(calls.filter((call) => call.method === 'session.tabs.activate')).toHaveLength(sent)
   })
 
+  it('U112 D3 对端切换后再点同一标签：回环保护不是在途守卫', async () => {
+    const { calls, stream, result } = await booted({})
+    const activateCalls = () => calls.filter((call) => call.method === 'session.tabs.activate')
+
+    act(() => result.current.actions.activate('tab-b'))
+    await waitFor(() => expect(activateCalls()).toHaveLength(1))
+    // 连点同一标签在途/已确认，仍去重。
+    act(() => result.current.actions.activate('tab-b'))
+    await act(async () => undefined)
+    expect(activateCalls()).toHaveLength(1)
+
+    // 对端切回 tab-a：宿主帧带回的 active 不是本端请求，必须解除守卫。
+    act(() => {
+      stream
+        .callbacks()
+        ?.onEvent(
+          frame(
+            'updated',
+            [terminalRow('tab-a', 'leaf-1'), terminalRow('tab-b', 'leaf-2')],
+            'tab-a'
+          )
+        )
+    })
+    await act(async () => undefined)
+
+    act(() => result.current.actions.activate('tab-b'))
+    await waitFor(() => expect(activateCalls()).toHaveLength(2))
+    expect(activateCalls()[1]?.params).toMatchObject({ tabId: 'tab-b' })
+  })
+
   it('close：宿主确认退役 → closed；live-host-pty 拒绝 → refused + 提示保留', async () => {
     const closed = await booted({ 'session.tabs.close': { ok: true, result: { closed: true } } })
     await expect(closed.result.current.actions.close('tab-a')).resolves.toBe('closed')
@@ -339,19 +417,32 @@ describe('简易工作区 session-tabs 双向动作（U96 B-令4）', () => {
     await waitFor(() => expect(refused.result.current.actions.notice).toContain('桌面端'))
   })
 
-  it('close 失败：一次性降级，后续动作零新调用（退回本地标签）', async () => {
+  it('U112 D4 close 永久失败：只降级 close 动作，通道与订阅保持', async () => {
     const { calls, stream, result } = await booted({
       'session.tabs.close': { ok: false, code: 'forbidden' }
     })
+    const closeCalls = () => calls.filter((call) => call.method === 'session.tabs.close')
 
-    await expect(result.current.actions.close('tab-a')).resolves.toBe('local')
-    await waitFor(() => expect(result.current.unsupported).toBe(true))
-    expect(result.current.actions.notice).not.toBeNull()
+    await expect(result.current.actions.close('tab-a')).resolves.toBe('failed')
+    await waitFor(() => expect(result.current.actions.notice).not.toBeNull())
+    expect(result.current.unsupported).toBe(false)
+    expect(stream.unsubscribe).not.toHaveBeenCalled()
 
-    const before = calls.length
-    await expect(result.current.actions.close('tab-b')).resolves.toBe('local')
-    expect(calls).toHaveLength(before)
-    expect(stream.unsubscribe).toHaveBeenCalledTimes(1)
+    // The action type is negative-cached; the tab stays for a later retry path.
+    const before = closeCalls().length
+    await expect(result.current.actions.close('tab-b')).resolves.toBe('failed')
+    expect(closeCalls()).toHaveLength(before)
+  })
+
+  it('U112 D4 双端并发关闭：对端已关的 tab_not_found 视为已关闭，不降级', async () => {
+    const { stream, result } = await booted({
+      'session.tabs.close': { ok: false, code: 'runtime_error', message: 'tab_not_found' }
+    })
+
+    await expect(result.current.actions.close('tab-a')).resolves.toBe('closed')
+    expect(result.current.actions.notice).toBeNull()
+    expect(result.current.unsupported).toBe(false)
+    expect(stream.unsubscribe).not.toHaveBeenCalled()
   })
 
   it('U112 D1 closeAll：end 退役全部宿主标签（含 pending 行），逐标签 reason=user', async () => {
@@ -417,13 +508,32 @@ describe('简易工作区 session-tabs 双向动作（U96 B-令4）', () => {
     })
   })
 
-  it('create 失败：降级并返回 false', async () => {
+  it('U112 D4 create 永久失败：只降级 create 动作，通道与订阅保持', async () => {
+    const { calls, stream, result } = await booted({
+      'terminal.create': { ok: false, code: 'forbidden' }
+    })
+    const createCalls = () => calls.filter((call) => call.method === 'terminal.create')
+
+    await expect(
+      result.current.actions.createTerminal('terminal:abc', 'leaf:abc', 'Terminal 3')
+    ).resolves.toBe(false)
+    expect(result.current.unsupported).toBe(false)
+    expect(stream.unsubscribe).not.toHaveBeenCalled()
+
+    const before = createCalls().length
+    await expect(
+      result.current.actions.createTerminal('terminal:def', 'leaf:def', 'Terminal 4')
+    ).resolves.toBe(false)
+    expect(createCalls()).toHaveLength(before)
+  })
+
+  it('create 瞬时失败不降级：同一动作类型可重试', async () => {
     const { result } = await booted({ 'terminal.create': { ok: false, code: 'timeout' } })
 
     await expect(
       result.current.actions.createTerminal('terminal:abc', 'leaf:abc', 'Terminal 3')
     ).resolves.toBe(false)
-    await waitFor(() => expect(result.current.unsupported).toBe(true))
+    expect(result.current.unsupported).toBe(false)
   })
 })
 

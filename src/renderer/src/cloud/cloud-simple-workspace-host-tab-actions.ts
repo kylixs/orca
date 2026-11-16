@@ -43,8 +43,9 @@ export function useCloudSimpleWorkspaceHostTabActions({
     (tab: CloudSimpleWorkspaceTab) => {
       if (tab.kind === 'terminal' && tab.host && sessionTabs) {
         void sessionTabs.close(tab.id).then((outcome) => {
-          // A refusal keeps the tab; the host notice is already visible.
-          if (outcome !== 'refused') {
+          // A refusal or a failed host close keeps the tab: closing locally would
+          // hide a row the host still publishes (it would reappear on reopen).
+          if (outcome === 'closed' || outcome === 'local') {
             dispatch({ type: 'close', id: tab.id })
           }
         })

@@ -356,6 +356,33 @@ describe('云端终端面板（FR-3.9）', () => {
     })
   })
 
+  it('U112 D6 characterization：无 owner 首开只被动订阅，不接管尺寸', async () => {
+    // Why pin this: U111 audit D6 found that a sole viewer's first open does not
+    // take over the size floor; the PTY keeps the host default grid until an
+    // explicit gesture. Behavior is intentionally unchanged pending the T ruling
+    // (suggest: seed a passive owner on first subscribe, or have the host export
+    // its initial fit state so the panel can show `desktop-fit`, not a conflict).
+    const host = scriptedHost({ 'terminal.create': () => createdHandle() })
+    const stream = scriptedStream(subscribeOk())
+
+    panel(host, stream)
+    await flush()
+
+    // The panel publishes its grid (the later refresh has a floor to update) but
+    // never claims it and never restores: no automatic take-over on first open.
+    expect(stream.calls[0]?.params).toMatchObject({
+      terminal: 'term_1',
+      capabilities: { desktopViewportClaims: 1 },
+      viewport: { cols: 80, rows: 24 }
+    })
+    const claims = host.calls.filter(
+      (call) => call.method === 'terminal.updateViewport' && call.params?.claim === true
+    )
+    expect(claims).toHaveLength(0)
+    expect(host.calls.some((call) => call.method === 'terminal.restoreFit')).toBe(false)
+    expect(screen.queryByTestId('cloud-terminal-fit-overlay')).toBeNull()
+  })
+
   it('U96B6-1 另一窗口持有尺寸时弹出冲突提示，接管发出 claim:true', async () => {
     const host = scriptedHost({
       'terminal.create': () => createdHandle(),

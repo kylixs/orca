@@ -688,7 +688,7 @@ describe('U96 B-令8 双端同步真栈（简易工作区 + Orca Web）', () => 
     const worktree = cloudWorktreeSelector(opened.workspacePath)
     const created = await simple.rpc(
       'terminal.create',
-      { worktree, tabId: 'terminal:u96-fit', leafId: 'leaf:u96-fit', title: 'U96 Fit' },
+      { worktree, ...clientTerminalIdentity(), title: 'U96 Fit' },
       projectId
     )
     expect(created.ok, JSON.stringify(created)).toBe(true)

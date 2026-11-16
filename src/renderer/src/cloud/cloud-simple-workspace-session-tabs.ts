@@ -10,6 +10,7 @@ import type {
   RuntimeMobileSessionClientTab,
   RuntimeMobileSessionTerminalClientTab
 } from '../../../shared/runtime-mobile-session-tab-contracts'
+import { readArrayValue, readField, readObjectValue, readString } from '../../../shared/json-fields'
 import type {
   CloudSimpleWorkspaceTab,
   CloudSimpleWorkspaceTabsState
@@ -222,4 +223,41 @@ export function mergeHostTabsIntoState(
     Object.entries(state.dirty).filter(([id, value]) => value && survivingIds.has(id))
   )
   return { tabs, activeId, dirty, hostSynced: true }
+}
+
+/** A `session.tabs.list` reply or stream frame, shape-checked at the wire boundary. */
+export type CloudSimpleHostTabsFrame = CloudSimpleHostTabsSnapshot & {
+  activeTabId: string | null
+}
+
+/**
+ * Terminal rows are read-only projections, so entries only need to be objects —
+ * the host owns the row schema (the same trust the web mirror applies).
+ */
+export function readCloudSimpleHostTabsFrame(value: unknown): CloudSimpleHostTabsFrame | null {
+  const frame = readObjectValue(value)
+  if (frame === null) {
+    return null
+  }
+  const tabs = readArrayValue(readField(frame, 'tabs'))
+  if (tabs === null || tabs.some((row) => readObjectValue(row) === null)) {
+    return null
+  }
+  const groups = readArrayValue(readField(frame, 'tabGroups'))
+  const tabGroups =
+    groups === null
+      ? undefined
+      : groups.flatMap((group) => {
+          const order = readArrayValue(readField(group, 'tabOrder'))
+          return order === null
+            ? []
+            : [{ tabOrder: order.filter((id): id is string => typeof id === 'string') }]
+        })
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: entries are verified non-null objects above; the host owns the terminal-row field set.
+  const rows = tabs as RuntimeMobileSessionClientTab[]
+  return {
+    tabs: rows,
+    ...(tabGroups === undefined ? {} : { tabGroups }),
+    activeTabId: readString(frame, 'activeTabId')
+  }
 }
