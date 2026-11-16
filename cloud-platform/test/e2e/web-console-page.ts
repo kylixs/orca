@@ -57,6 +57,15 @@ export function loadWebConsolePage(
     string,
     { input: string; init: RequestInit | undefined; resolve: (response: Response) => void }[]
   >()
+  // A `*` suffix matches a path prefix, for endpoints whose query string is
+  // computed at click time and cannot be named up front.
+  const lookup = <T>(map: Map<string, T>, key: string): T | undefined => {
+    if (map.has(key)) return map.get(key)
+    for (const [pattern, value] of map) {
+      if (pattern.endsWith('*') && key.startsWith(pattern.slice(0, -1))) return value
+    }
+    return undefined
+  }
   const fetchToPlatform: typeof fetch = (input, init) => {
     const path =
       typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url
@@ -70,8 +79,8 @@ export function loadWebConsolePage(
         held.set(key, waiters)
       })
     }
-    const failure = failing.get(key)
-    const stub = stubbed.get(key)
+    const failure = lookup(failing, key)
+    const stub = lookup(stubbed, key)
     if (failure !== undefined || stub !== undefined) {
       // An in-page failure exercises the console's own error paths (M116-QA-009/011);
       // a stub replays a payload the live platform cannot produce any more, such as

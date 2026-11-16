@@ -194,9 +194,7 @@ test('U66-5-2 摘录关闭时 q 不匹配正文；复制行展开有则示摘录
   assert.match(withExcerpt.textContent ?? '', /sha256:bbbb/)
   assert.match(withExcerpt.textContent ?? '', /1240 字符 \/ 3720 字节/)
 
-  const plainSeq = app.store.audit.find(
-    (event) => event.traceId === 'tr_u66_5_copy_plain'
-  )?.seq
+  const plainSeq = app.store.audit.find((event) => event.traceId === 'tr_u66_5_copy_plain')?.seq
   assert.ok(plainSeq)
   click(page, `[data-expand="${plainSeq}"]`)
   const plain = page.window.document.querySelector<HTMLElement>(`[data-detail="${plainSeq}"]`)
@@ -232,12 +230,17 @@ test('U66-5-4 时间窗上限 31 天：预设可选，超限在前端拦截且�
 
   const range = page.window.document.querySelector<HTMLSelectElement>('#auditRange')
   assert.ok(range)
-  assert.ok([...range.options].some((option) => option.value === '744'), '31-day preset exists')
+  assert.ok(
+    [...range.options].some((option) => option.value === '744'),
+    '31-day preset exists'
+  )
   assert.match(page.text('#content'), /最大 31 天/)
 
   setValue(page, '#auditSince', localInput(now - 40 * DAY))
   setValue(page, '#auditUntil', localInput(now))
-  const beforeCount = page.calls().filter((entry) => entry.startsWith('GET /v1/audit/events')).length
+  const beforeCount = page
+    .calls()
+    .filter((entry) => entry.startsWith('GET /v1/audit/events')).length
   click(page, '#auditApply')
   await page.settle()
 
@@ -253,6 +256,59 @@ test('U66-5-4 时间窗上限 31 天：预设可选，超限在前端拦截且�
     error: error?.textContent,
     requestsBefore: beforeCount,
     requestsAfter: afterCount
+  })
+})
+
+test('U66-5-6 31 天预设留缓冲可查询；服务端拒绝可见且不静默', async () => {
+  const page = await loginAdmin()
+
+  setValue(page, '#auditRange', '744')
+  click(page, '#auditApply')
+  await page.settle()
+
+  const query = lastAuditQuery(page)
+  const since = Date.parse(query.get('since') ?? '')
+  const until = Date.parse(query.get('until') ?? '')
+  assert.ok(!Number.isNaN(since) && !Number.isNaN(until), 'the preset must pin both bounds')
+  assert.ok(
+    until - since <= 31 * DAY - 60_000,
+    'the preset window must leave headroom under the API gate'
+  )
+  assert.equal(page.hidden('#auditError'), true, 'a working preset must not show an error')
+  assert.match(page.text('#content'), /已显示 \d+ 条/, 'the preset query must succeed')
+  const rowsBefore = page.window.document.querySelectorAll('#content tbody tr').length
+  assert.ok(rowsBefore > 0, 'the successful query must render rows')
+
+  // The live API accepts this request, so only a platform rejection can exercise
+  // the banner; replay one with the exact server text.
+  page.fail('GET', '/v1/audit/events?*', {
+    status: 400,
+    body: { error: { code: 'TIME_WINDOW_TOO_LARGE', message: '查询时间窗最大 31 天。' } }
+  })
+  click(page, '#auditApply')
+  await page.settle()
+
+  const error = page.window.document.querySelector<HTMLElement>('#auditError')
+  assert.equal(error?.hidden, false, 'a server rejection must be visible')
+  assert.match(error?.textContent ?? '', /查询时间窗最大 31 天/)
+  assert.match(error?.textContent ?? '', /上次查询结果/, 'stale rows must be labelled as such')
+  assert.equal(
+    page.window.document.querySelectorAll('#content tbody tr').length,
+    rowsBefore,
+    'the previous rows stay visible'
+  )
+
+  page.clearFails()
+  click(page, '#auditApply')
+  await page.settle()
+  assert.equal(page.hidden('#auditError'), true, 'a later success clears the banner')
+
+  saveEvidence(EVIDENCE, 'window-boundary.json', {
+    since: query.get('since'),
+    until: query.get('until'),
+    windowHours: (until - since) / HOUR,
+    rowsPreserved: rowsBefore,
+    serverErrorVisible: true
   })
 })
 

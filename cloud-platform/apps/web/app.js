@@ -2073,6 +2073,10 @@ const AUDIT_RESULT_LABELS = {
   denied: ['badge warn', '⛔ 拒绝']
 }
 const AUDIT_DAY_MS = 24 * 60 * 60_000
+const AUDIT_MAX_WINDOW_MS = 31 * AUDIT_DAY_MS
+// U97: a preset must not sit exactly on the API's window gate; leave headroom
+// for anything the server adds after the client computes the window.
+const AUDIT_WINDOW_BUFFER_MS = 5 * 60_000
 
 /** Only q/fileName hits are highlighted; the server treats them as literals. */
 function auditHighlight(text, terms) {
@@ -2212,14 +2216,14 @@ function auditFilterError(filter) {
   const until = filter.until ? Date.parse(filter.until) : undefined
   if (since !== undefined && Number.isNaN(since)) return '起始时间无效。'
   if (until !== undefined && Number.isNaN(until)) return '结束时间无效。'
-  const lower = since ?? (until !== undefined ? until - 31 * AUDIT_DAY_MS : undefined)
+  const lower = since ?? (until !== undefined ? until - AUDIT_MAX_WINDOW_MS : undefined)
   if (lower !== undefined && until !== undefined && lower > until) {
     return '结束时间不能早于起始时间。'
   }
-  if (lower !== undefined && until !== undefined && until - lower > 31 * AUDIT_DAY_MS) {
+  if (lower !== undefined && until !== undefined && until - lower > AUDIT_MAX_WINDOW_MS) {
     return '查询时间窗最大 31 天。'
   }
-  if (since !== undefined && until === undefined && Date.now() - since > 31 * AUDIT_DAY_MS) {
+  if (since !== undefined && until === undefined && Date.now() - since > AUDIT_MAX_WINDOW_MS) {
     return '查询时间窗最大 31 天。'
   }
   return ''
@@ -2242,7 +2246,14 @@ function auditQueryParams(filter, cursor) {
   if (filter.until) params.set('until', new Date(filter.until).toISOString())
   if (!filter.since && !filter.until) {
     const hours = Number(filter.range) || 168
-    params.set('since', new Date(Date.now() - hours * 3_600_000).toISOString())
+    const requestedMs = hours * 3_600_000
+    // U97: trim the buffer off the old end and pin `until` to the same clock, so
+    // the server compares the window the client computed — not client-now
+    // against server-now, whose drift rejected the «最近 31 天» preset.
+    const windowMs = Math.min(requestedMs, AUDIT_MAX_WINDOW_MS - AUDIT_WINDOW_BUFFER_MS)
+    const nowMs = Date.now()
+    params.set('since', new Date(nowMs - windowMs).toISOString())
+    if (windowMs < requestedMs) params.set('until', new Date(nowMs).toISOString())
   }
   if (cursor) params.set('cursor', String(cursor))
   return params
@@ -2276,6 +2287,14 @@ async function renderAudit(loadMore = false) {
     ])
   } catch (err) {
     if (generation !== auditQueryGeneration) return // superseded: the page moved on
+    // U97: a failed query must be visible. Keep the previous rows, but say so;
+    // the initial load has no page yet, so it still falls through to loadContent.
+    const banner = $('#auditError')
+    if (banner) {
+      banner.textContent = `查询失败：${err.message ?? String(err)}（下方为上次查询结果）`
+      banner.hidden = false
+      return
+    }
     throw err
   }
   if (generation !== auditQueryGeneration) return
