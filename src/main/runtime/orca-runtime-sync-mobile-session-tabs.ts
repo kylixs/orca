@@ -195,19 +195,22 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
       // Why: focus is adopted as a pair. A group that is not live in the host
       // tree, or an incoming active tab the group does not hold, would highlight
       // a group the tab is not in — keep the host's focus instead.
+      // Why fencedSnapshot: a tab retired by a fence must not license its group.
       const incomingActiveTabTopLevelId =
-        typeof snapshot.activeTabId === 'string' && snapshot.activeTabId.length > 0
-          ? (this.resolveMobileSessionHostTabId(snapshot, snapshot.activeTabId) ??
-            snapshot.activeTabId)
+        typeof fencedSnapshot.activeTabId === 'string' && fencedSnapshot.activeTabId.length > 0
+          ? (this.resolveMobileSessionHostTabId(
+              fencedSnapshot,
+              fencedSnapshot.activeTabId
+            ) ?? fencedSnapshot.activeTabId)
           : null
       const adoptIncomingActiveGroupId =
-        snapshot.activeGroupId !== null &&
+        fencedSnapshot.activeGroupId !== null &&
         existing !== undefined &&
-        this.isApplicableHeadlessTabGroupTarget(existing, snapshot.activeGroupId) &&
+        this.isApplicableHeadlessTabGroupTarget(existing, fencedSnapshot.activeGroupId) &&
         incomingActiveTabTopLevelId !== null &&
         (existing.tabGroups ?? []).some(
           (group) =>
-            group.id === snapshot.activeGroupId &&
+            group.id === fencedSnapshot.activeGroupId &&
             group.tabOrder.length > 0 &&
             group.tabOrder.includes(incomingActiveTabTopLevelId)
         )
@@ -220,8 +223,16 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
             tabGroups: existing.tabGroups,
             tabGroupLayout: existing.tabGroupLayout,
             activeGroupId: adoptIncomingActiveGroupId
-              ? snapshot.activeGroupId
-              : existing.activeGroupId
+              ? fencedSnapshot.activeGroupId
+              : existing.activeGroupId,
+            // Why paired: a rejected focus must not leave any renderer frame
+            // field behind, or the stored pair can name a tab outside the group.
+            activeTabId: adoptIncomingActiveGroupId
+              ? mergedSnapshot.activeTabId
+              : existing.activeTabId,
+            activeTabType: adoptIncomingActiveGroupId
+              ? mergedSnapshot.activeTabType
+              : existing.activeTabType
           }
         : mergedSnapshot
       // Why: clients drop same-epoch frames whose version isn't strictly newer,

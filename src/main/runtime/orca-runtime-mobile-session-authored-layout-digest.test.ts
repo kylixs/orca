@@ -453,6 +453,8 @@ describe('renderer-authored layout digest ownership', () => {
       snapshotVersion: 10,
       activeGroupId: 'group-right',
       activeTabId: 'right-tab::leaf-1',
+      // Distinct from the frame's type so a rejected adoption is observable.
+      activeTabType: null,
       tabGroups: [
         { id: 'group-left', activeTabId: 'left-tab', tabOrder: ['left-tab', 'right-tab'] },
         { id: 'group-right', activeTabId: 'right-tab', tabOrder: ['right-tab'] }
@@ -464,8 +466,11 @@ describe('renderer-authored layout digest ownership', () => {
 
     const stored = getStoredMobileSessionSnapshot(runtime, TEST_WORKTREE_ID)!
     expect(stored.publicationEpoch).toBe('headless:host-owned')
-    // Without an active tab the pair cannot be validated: keep the host focus.
+    // Without an active tab the pair cannot be validated: keep the host focus,
+    // all three fields, not just the group.
     expect(stored.activeGroupId).toBe('group-right')
+    expect(stored.activeTabId).toBe('right-tab::leaf-1')
+    expect(stored.activeTabType).toBeNull()
   })
 
   it('compares against the digest of the raw frame, not of the merged snapshot', () => {

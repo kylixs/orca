@@ -206,11 +206,15 @@ function scriptedPlatform(
   options: {
     projects?: unknown[]
     loginReply?: Reply
+    refreshReply?: Reply
   } = {}
 ): { fetchImpl: typeof fetch; calls: FetchCall[] } {
   return scriptedFetch((call) => {
     if (call.url.endsWith('/v1/auth/login')) {
       return options.loginReply ?? { body: loginBody() }
+    }
+    if (call.url.endsWith('/v1/auth/refresh')) {
+      return options.refreshReply ?? { status: 404, body: { error: { code: 'not_found' } } }
     }
     if (call.url.endsWith('/v1/projects')) {
       return {
@@ -340,6 +344,35 @@ describe('connectCloudProject', () => {
     expect(platform.calls.some((call) => call.url.endsWith('/v1/projects/project-1/connect'))).toBe(
       true
     )
+  })
+
+  it('persists tokens rotated while the connect is in flight', async () => {
+    const store = new MemoryStorage()
+    const sessionStore = new MemorySessionStorage()
+    // Zero TTL forces the first authorized request to rotate the pair, which
+    // happens after login but before the record is written.
+    const platform = scriptedPlatform({
+      loginReply: { body: { ...loginBody(), expiresIn: 0 } },
+      refreshReply: {
+        body: { accessToken: 'access-2', refreshToken: 'refresh-2', expiresIn: 3600 }
+      }
+    })
+    const fake = fakeClientFactory(statusSuccess())
+
+    await connectCloudProject(
+      input(store, {
+        sessionStorage: sessionStore,
+        fetchImpl: platform.fetchImpl,
+        clientFactory: fake.factory,
+        now: () => 1_700_000_000_000
+      })
+    )
+
+    expect(platform.calls.some((call) => call.url.endsWith('/v1/auth/refresh'))).toBe(true)
+    expect(readPersistedWebCloudSession(sessionStore, 'https://cloud.example')).toMatchObject({
+      accessToken: 'access-2',
+      refreshToken: 'refresh-2'
+    })
   })
 
   it('does not persist a login when the platform refuses the credentials', async () => {
