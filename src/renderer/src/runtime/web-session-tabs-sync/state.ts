@@ -74,6 +74,8 @@ export type WebSessionTabsSnapshotApplyOptions = {
   terminalPtyMode?: 'local' | 'remote'
   /** Re-enter the host's order/active/layout once per cloud workspace entry (U104). */
   adoptHostLayout?: boolean
+  /** Follow the host's active tab on every frame; a pending caller focus intent still wins (U138). */
+  hostActiveAuthoritative?: boolean
 }
 
 export type TrackedWebSessionTabsWorktree = {

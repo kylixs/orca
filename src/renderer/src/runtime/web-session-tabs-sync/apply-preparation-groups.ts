@@ -129,9 +129,28 @@ export function prepareWebSessionTabsSnapshotGroups(
         isWebSessionBrowserPlacementGroupReserved({ worktreeId, groupId })
     })
   })()
+  // Why: following the host's active tab must not re-adopt order/layout — only the active group
+  // and its active tab move (U138). A caller focus intent already owns the visible tab.
+  const hostFollowActiveTabId =
+    options?.hostActiveAuthoritative && !honorSnapshotActiveFocus ? nextActiveUnifiedTabId : null
+  const hostFollowGroup = hostFollowActiveTabId
+    ? clientOwnedPlacement?.groups?.find((group) => group.tabOrder.includes(hostFollowActiveTabId))
+    : undefined
+  const clientPlacement =
+    clientOwnedPlacement && hostFollowGroup
+      ? {
+          ...clientOwnedPlacement,
+          activeGroupId: hostFollowGroup.id,
+          groups: (clientOwnedPlacement.groups ?? []).map((group) =>
+            group.id === hostFollowGroup.id
+              ? { ...group, activeTabId: hostFollowActiveTabId }
+              : group
+          )
+        }
+      : clientOwnedPlacement
   const nextGroups = (() => {
-    if (clientOwnedPlacement) {
-      return clientOwnedPlacement.groups
+    if (clientPlacement) {
+      return clientPlacement.groups
     }
     if (!nextUnifiedTabs || nextUnifiedTabs.length === 0) {
       return null
@@ -234,7 +253,7 @@ export function prepareWebSessionTabsSnapshotGroups(
     ...base,
     currentGroups,
     clientGroupIdByLocalTabId,
-    clientOwnedPlacement,
+    clientOwnedPlacement: clientPlacement,
     nextGroups,
     nextTabBarOrder
   }

@@ -135,14 +135,18 @@ export function applyActiveStateUpdates(context: ActiveStateContext) {
   )
   const nextActiveTabIdByWorktree =
     (state.activeTabIdByWorktree[worktreeId] ?? null) !==
-    (intentMirroredAgent?.unifiedTab.id ?? currentVisibleStructuredTabId ?? nextActiveTerminalId)
+    (intentMirroredAgent?.unifiedTab.id ??
+      (options?.hostActiveAuthoritative && snapshot.activeTabType === 'terminal'
+        ? nextActiveTerminalId
+        : (currentVisibleStructuredTabId ?? nextActiveTerminalId)))
       ? withWorktreeEntry(
           state,
           'activeTabIdByWorktree',
           worktreeId,
           intentMirroredAgent?.unifiedTab.id ??
-            currentVisibleStructuredTabId ??
-            nextActiveTerminalId,
+            (options?.hostActiveAuthoritative && snapshot.activeTabType === 'terminal'
+              ? nextActiveTerminalId
+              : (currentVisibleStructuredTabId ?? nextActiveTerminalId)),
           (current, next) => (current ?? null) === next,
           context.batchContext,
           false
@@ -232,7 +236,9 @@ export function applyActiveStateUpdates(context: ActiveStateContext) {
       currentVisibleTabTypeStillValid ??
       snapshotVisibleTabType ??
       fallbackVisibleTabType)
-    : (currentVisibleTabTypeStillValid ?? snapshotVisibleTabType ?? fallbackVisibleTabType)
+    : options?.hostActiveAuthoritative
+      ? (snapshotVisibleTabType ?? currentVisibleTabTypeStillValid ?? fallbackVisibleTabType)
+      : (currentVisibleTabTypeStillValid ?? snapshotVisibleTabType ?? fallbackVisibleTabType)
 
   const currentActiveTerminalStillValid =
     state.activeTabId && (nextTerminalTabs ?? []).some((tab) => tab.id === state.activeTabId)

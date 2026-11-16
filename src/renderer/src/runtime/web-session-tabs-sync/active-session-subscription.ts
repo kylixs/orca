@@ -30,7 +30,7 @@ import {
   type HostSessionMirrorSettle
 } from './mirror-settle'
 import { consumeHostLayoutAdoption, hasPendingHostLayoutAdoption } from './host-layout-adoption'
-import { captureRestoredActive, reassertRestoredActive } from './restored-active-reassert'
+import { resolveHostActiveApplyOptions } from './host-active-apply-options'
 import { resolveCloudSessionTabsGate } from './cloud-session-tabs-gate'
 import {
   beginWebRuntimeWakeTerminalRespawn,
@@ -98,8 +98,6 @@ export function installActiveSessionTabsSubscription({
   const expectedTrackingGeneration = getWebSessionTabsTrackingGeneration(environmentId)
   let requestedInitialTerminal = false
   let requestedRespawnAfterWake = false
-  // Why here: this is the last point before any stream frame can apply (U138 phase 5).
-  const restoredActiveAtEntry = captureRestoredActive(activeWorktreeId)
 
   const applyActiveSnapshot = async (
     event: RuntimeMobileSessionTabsResult & { type: 'snapshot' | 'updated' },
@@ -176,10 +174,13 @@ export function installActiveSessionTabsSubscription({
       const replayed = isRuntimeSubscriptionReplayResponse(response)
       // Why consume only with host groups: a frame that carries no layout has nothing to
       // adopt, so the entry keeps waiting for the inventory that actually holds the groups.
-      const adoptHostLayout =
-        isCloudSession &&
-        (pendingHostLayoutAdoption || hasPendingHostLayoutAdoption(activeWorktreeId)) &&
-        (recovered.tabGroups?.length ?? 0) > 0
+      const { options: applyOptions, adoptHostLayout } = resolveHostActiveApplyOptions({
+        environmentId,
+        worktreeId: activeWorktreeId,
+        isCloudSession,
+        pendingAdoption: pendingHostLayoutAdoption || hasPendingHostLayoutAdoption(activeWorktreeId),
+        hasHostGroups: (recovered.tabGroups?.length ?? 0) > 0
+      })
       settle = applyWebSessionTabsStorePatch(
         (state) =>
           applyWebSessionTabsSnapshot(
@@ -187,7 +188,7 @@ export function installActiveSessionTabsSubscription({
             recovered,
             environmentId,
             Date.now(),
-            adoptHostLayout ? { adoptHostLayout: true } : undefined
+            applyOptions
           ),
         {
           frames: [
@@ -208,7 +209,6 @@ export function installActiveSessionTabsSubscription({
       if (adoptHostLayout) {
         pendingHostLayoutAdoption = false
         consumeHostLayoutAdoption(activeWorktreeId)
-        reassertRestoredActive(environmentId, activeWorktreeId, recovered, restoredActiveAtEntry)
       }
       // Why here and only on an applied frame: this is the mirror's answer about the worktree. A
       // bootstrap whose create resolved without a row was parked until that answer arrived; a

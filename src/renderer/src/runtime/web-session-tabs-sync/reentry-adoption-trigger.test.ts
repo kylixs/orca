@@ -135,7 +135,9 @@ async function feed(groups: string[]): Promise<void> {
 }
 
 function adoptCalls(): unknown[] {
-  return applySpy.mock.calls.map(([options]) => options)
+  return applySpy.mock.calls.map(
+    ([options]) => (options as { adoptHostLayout?: boolean } | undefined)?.adoptHostLayout
+  )
 }
 
 beforeEach(async () => {
@@ -167,7 +169,7 @@ describe('cloud workspace entry adoption trigger (U113 D2)', () => {
 
     // First visit: the install-time fallback adopts the host layout once.
     await feed(['group-left'])
-    expect(adoptCalls()).toEqual([{ adoptHostLayout: true }])
+    expect(adoptCalls()).toEqual([true])
 
     // A later frame in the same visit stays client-owned.
     applySpy.mockClear()
@@ -181,7 +183,7 @@ describe('cloud workspace entry adoption trigger (U113 D2)', () => {
     requestHostLayoutAdoption(WT)
     callbacks.onResponse({ ok: true, result: snapshot(['group-left', 'group-right']) })
     await vi.waitFor(() => expect(applySpy).toHaveBeenCalled())
-    expect(adoptCalls()).toEqual([{ adoptHostLayout: true }])
+    expect(adoptCalls()).toEqual([true])
 
     // One entry, one adoption: the request is consumed by that frame.
     applySpy.mockClear()
@@ -216,7 +218,7 @@ describe('cloud workspace entry adoption trigger (U113 D2)', () => {
     applySpy.mockClear()
     callbacks.onResponse({ ok: true, result: snapshot(['group-left', 'group-right']) })
     await vi.waitFor(() => expect(applySpy).toHaveBeenCalled())
-    expect(adoptCalls()).toEqual([{ adoptHostLayout: true }])
+    expect(adoptCalls()).toEqual([true])
     dispose()
   })
 })

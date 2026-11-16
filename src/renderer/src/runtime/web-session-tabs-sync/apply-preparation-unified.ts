@@ -38,6 +38,9 @@ export function prepareWebSessionTabsSnapshotUnified(
   } = base
   // Why: set once per cloud workspace entry by the active subscription (U104).
   const adoptHostLayout = options?.adoptHostLayout === true
+  // Why: the host is the single active-tab authority on cloud sessions; the one-shot entry
+  // adoption is not enough because the host can publish a corrected value on a later frame (U138).
+  const honorHostActive = adoptHostLayout || options?.hostActiveAuthoritative === true
   const mirroredTerminalUnifiedTabs = mirroredTerminalTabs.map((entry) =>
     buildTerminalUnifiedTab(
       entry.tab,
@@ -131,7 +134,7 @@ export function prepareWebSessionTabsSnapshotUnified(
       : null
   const nextActiveTerminalId =
     intentTerminalId ??
-    (adoptHostLayout ? activeMirroredTerminalId : null) ??
+    (honorHostActive ? activeMirroredTerminalId : null) ??
     currentActiveTerminalStillExists ??
     (snapshot.activeTabType === 'terminal'
       ? (activeMirroredTerminalId ?? mirroredTerminalTabEntries[0]?.id)
@@ -148,6 +151,7 @@ export function prepareWebSessionTabsSnapshotUnified(
       : null
   const nextActiveBrowserWorkspaceId =
     intentBrowserWorkspaceId ??
+    (honorHostActive ? activeMirroredBrowserWorkspaceId : null) ??
     currentActiveBrowserStillExists ??
     (snapshot.activeTabType === 'browser'
       ? (activeMirroredBrowserWorkspaceId ?? mirroredBrowserTabs[0]?.workspace.id)
@@ -163,6 +167,7 @@ export function prepareWebSessionTabsSnapshotUnified(
     : null
   const nextActiveEditorFileId =
     intentEditorFileId ??
+    (honorHostActive ? activeMirroredEditorFileId : null) ??
     currentActiveEditorStillExists ??
     (snapshot.activeTabType === 'markdown' || snapshot.activeTabType === 'file'
       ? (activeMirroredEditorFileId ?? mirroredEditorTabs[0]?.file.id)
@@ -202,8 +207,8 @@ export function prepareWebSessionTabsSnapshotUnified(
             ? (intentMirroredEditor?.unifiedTab.id ?? null)
             : null
     : null
-  // Why: the previous visit's visible tab is not an intent from this visit, so adoption wins.
-  const adoptedHostActiveUnifiedTabId = adoptHostLayout
+  // Why: the previous visit's visible tab is not an intent from this visit, so host authority wins.
+  const adoptedHostActiveUnifiedTabId = honorHostActive
     ? snapshot.activeTabType === 'agent-session'
       ? (activeMirroredAgentTabId ?? null)
       : snapshot.activeTabType === 'browser'

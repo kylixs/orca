@@ -21,7 +21,10 @@ type MockState = {
   setActiveTab: ReturnType<typeof vi.fn>
 }
 
-const { applySpy } = vi.hoisted(() => ({ applySpy: vi.fn() }))
+const { applySpy, peekFocusSpy } = vi.hoisted(() => ({
+  applySpy: vi.fn(),
+  peekFocusSpy: vi.fn<() => { hostTabId: string } | null>(() => null)
+}))
 const { activateSpy } = vi.hoisted(() => ({ activateSpy: vi.fn(async () => true) }))
 const { mockState } = vi.hoisted((): { mockState: MockState } => ({
   mockState: {
@@ -39,7 +42,7 @@ vi.mock('../../store', () => ({ useAppStore: { getState: () => mockState } }))
 vi.mock('../web-runtime-session-environment', () => ({
   captureWebSessionIntentOwner: () => ({ environmentId: ENV })
 }))
-vi.mock('../web-session-focus-intent', () => ({ peekWebSessionFocusIntent: () => null }))
+vi.mock('../web-session-focus-intent', () => ({ peekWebSessionFocusIntent: peekFocusSpy }))
 vi.mock('../web-runtime-session', () => ({ activateWebRuntimeSessionTab: activateSpy }))
 vi.mock('./tracking-mappings', () => ({
   resolveLocalTabIdForHostSessionTab: ({ hostTabId }: { hostTabId: string }) =>
@@ -84,11 +87,9 @@ vi.mock('./snapshot-api', () => ({
 }))
 
 import { installActiveSessionTabsSubscription } from './active-session-subscription'
-import { resetRestoredActiveReassertForTests } from './restored-active-reassert'
 
 const ENV = 'cloud-u138'
 const WT = 'repo::/checkout'
-const RESTORED = 'web-terminal-f5ff'
 const HOST_ACTIVE = 'web-terminal-026d'
 const THIRD = 'web-terminal-9be1'
 
@@ -117,19 +118,20 @@ function cloudEnvironment(): PublicKnownRuntimeEnvironment {
   }
 }
 
-/** 3 tabs / 2 groups: the active tab is not the last created one. */
-function snapshot(): StreamSnapshot {
+/** 3 tabs / 2 groups: the host active is never the last created tab. */
+function snapshot(activeLocalTabId: string): StreamSnapshot {
+  const parent = activeLocalTabId.replace('web-terminal-', '')
   return {
     type: 'snapshot',
     worktree: WT,
     publicationEpoch: 'epoch-1',
     snapshotVersion: 1,
     activeGroupId: 'group-right',
-    activeTabId: '026d::leaf',
+    activeTabId: `${parent}::leaf`,
     activeTabType: 'terminal',
     tabGroups: [
       { id: 'group-left', activeTabId: 'f5ff', tabOrder: ['f5ff', '9be1'] },
-      { id: 'group-right', activeTabId: '026d', tabOrder: ['026d'] }
+      { id: 'group-right', activeTabId: parent, tabOrder: [parent] }
     ],
     tabGroupLayout: {
       type: 'split',
@@ -137,7 +139,7 @@ function snapshot(): StreamSnapshot {
       first: { type: 'leaf', groupId: 'group-left' },
       second: { type: 'leaf', groupId: 'group-right' }
     },
-    tabs: [terminalTab('f5ff', true), terminalTab('9be1', false), terminalTab('026d', false)]
+    tabs: [terminalTab('f5ff', true), terminalTab('9be1', false), terminalTab(parent, false)]
   }
 }
 
@@ -159,18 +161,10 @@ let subscribe: ReturnType<typeof vi.fn>
 
 function cloudState(restoredActive: string | null): void {
   mockState.runtimeEnvironments = [cloudEnvironment()]
-  mockState.tabsByWorktree = { [WT]: [{ id: RESTORED }, { id: HOST_ACTIVE }, { id: THIRD }] }
-  mockState.unifiedTabsByWorktree = {
-    [WT]: [{ id: RESTORED }, { id: HOST_ACTIVE }, { id: THIRD }]
-  }
+  mockState.tabsByWorktree = { [WT]: [{ id: 'web-terminal-f5ff' }, { id: HOST_ACTIVE }] }
+  mockState.unifiedTabsByWorktree = { [WT]: [{ id: 'web-terminal-f5ff' }, { id: HOST_ACTIVE }] }
   mockState.activeTabIdByWorktree = { [WT]: restoredActive }
   mockState.ptyIdsByTabId = {}
-  mockState.activateTab.mockImplementation((tabId: string) => {
-    mockState.activeTabIdByWorktree[WT] = tabId
-  })
-  mockState.setActiveTab.mockImplementation((tabId: string) => {
-    mockState.activeTabIdByWorktree[WT] = tabId
-  })
 }
 
 function install(): () => void {
@@ -188,15 +182,23 @@ function install(): () => void {
   )
 }
 
+async function feed(activeLocalTabId: string): Promise<void> {
+  callbacks.onResponse({ ok: true, result: snapshot(activeLocalTabId) })
+  await vi.waitFor(() => expect(applySpy).toHaveBeenCalled())
+}
+
+function lastOptions(): unknown {
+  return applySpy.mock.calls.at(-1)?.[0]
+}
+
 beforeEach(async () => {
   applySpy.mockReset()
   activateSpy.mockReset()
   activateSpy.mockResolvedValue(true)
-  mockState.activateTab.mockReset()
-  mockState.setActiveTab.mockReset()
+  peekFocusSpy.mockReset()
+  peekFocusSpy.mockReturnValue(null)
   resetWebCloudSessionCapabilities()
   resetHostLayoutAdoptionForTests()
-  resetRestoredActiveReassertForTests()
   replaceRuntimeEnvironmentRevisions([{ id: ENV, createdAt: 1, pairingRevision: 1 }])
   recordWebCloudSessionCapabilities(ENV, [CLOUD_SESSION_TABS_RESTORE_CAPABILITY])
   subscribe = vi.fn(async (_args: unknown, received: FrameCallbacks) => {
@@ -214,61 +216,58 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('restored active capture point (U138 phase 5)', () => {
-  it('writes back the active captured before any frame applied, once, even after frames moved it', async () => {
-    cloudState(RESTORED)
+describe('cloud session host-active authority (U138 phase 6)', () => {
+  it('adopts the host active at entry and never writes one back', async () => {
+    cloudState('web-terminal-f5ff')
     const dispose = install()
     await vi.waitFor(() => expect(subscribe).toHaveBeenCalled())
 
-    // An earlier frame already overwrote the restored active with the host's answer. Reading the
-    // store at adoption time would compare it equal to the host and stay silent (the regression).
-    mockState.activeTabIdByWorktree[WT] = HOST_ACTIVE
+    await feed(HOST_ACTIVE)
 
-    callbacks.onResponse({ ok: true, result: snapshot() })
-    await vi.waitFor(() => expect(activateSpy).toHaveBeenCalled())
-
-    expect(activateSpy).toHaveBeenCalledTimes(1)
-    expect(activateSpy).toHaveBeenCalledWith({
-      worktreeId: WT,
-      tabId: RESTORED,
-      environmentId: ENV
-    })
-    // The local active is restored, not left on the host's 026d.
-    expect(mockState.activeTabIdByWorktree[WT]).toBe(RESTORED)
-    dispose()
-  })
-
-  it('writes nothing when the captured active already matches the host', async () => {
-    cloudState(HOST_ACTIVE)
-    const dispose = install()
-    await vi.waitFor(() => expect(subscribe).toHaveBeenCalled())
-
-    callbacks.onResponse({ ok: true, result: snapshot() })
-    await vi.waitFor(() => expect(applySpy).toHaveBeenCalled())
-    await new Promise((resolve) => setTimeout(resolve, 0))
-
+    expect(lastOptions()).toEqual({ adoptHostLayout: true, hostActiveAuthoritative: true })
     expect(activateSpy).not.toHaveBeenCalled()
-    expect(mockState.activeTabIdByWorktree[WT]).toBe(HOST_ACTIVE)
     dispose()
   })
 
-  it('does not override local when the host refuses the re-assert, and never retries it', async () => {
-    cloudState(RESTORED)
-    activateSpy.mockResolvedValue(false)
+  it('keeps following host active broadcasts after the one-shot adoption is consumed', async () => {
     const dispose = install()
     await vi.waitFor(() => expect(subscribe).toHaveBeenCalled())
 
-    mockState.activeTabIdByWorktree[WT] = HOST_ACTIVE
-    callbacks.onResponse({ ok: true, result: snapshot() })
-    await vi.waitFor(() => expect(activateSpy).toHaveBeenCalledTimes(1))
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await feed(HOST_ACTIVE)
+    applySpy.mockClear()
+    await feed(THIRD)
 
-    // Host is authoritative: a refused request must not be shown locally, and a later frame in
-    // the same entry cannot repeat the write.
-    expect(mockState.activeTabIdByWorktree[WT]).toBe(HOST_ACTIVE)
-    callbacks.onResponse({ ok: true, result: snapshot() })
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    expect(activateSpy).toHaveBeenCalledTimes(1)
+    expect(lastOptions()).toEqual({ hostActiveAuthoritative: true })
+    expect(activateSpy).not.toHaveBeenCalled()
+    dispose()
+  })
+
+  it('stands down while a local gesture intent is pending', async () => {
+    const dispose = install()
+    await vi.waitFor(() => expect(subscribe).toHaveBeenCalled())
+
+    await feed(HOST_ACTIVE)
+    applySpy.mockClear()
+    peekFocusSpy.mockReturnValue({ hostTabId: '9be1' })
+    await feed(THIRD)
+
+    expect(lastOptions()).toBeUndefined()
+    expect(activateSpy).not.toHaveBeenCalled()
+    dispose()
+  })
+
+  it('follows the host echo of a gesture without sending a second activate', async () => {
+    const dispose = install()
+    await vi.waitFor(() => expect(subscribe).toHaveBeenCalled())
+
+    await feed(HOST_ACTIVE)
+    // The gesture path itself (activateWebRuntimeSessionTab) sends the one activate; the
+    // subscription's job is to follow the echoed host active afterwards.
+    applySpy.mockClear()
+    await feed(THIRD)
+
+    expect(lastOptions()).toEqual({ hostActiveAuthoritative: true })
+    expect(activateSpy).not.toHaveBeenCalled()
     dispose()
   })
 })
