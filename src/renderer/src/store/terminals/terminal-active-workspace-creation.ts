@@ -44,7 +44,15 @@ export function createActiveWorkspaceTerminalActions(
         })
         return
       }
-      if (isWebClientLocation() && worktreeId !== FLOATING_TERMINAL_WORKTREE_ID) {
+      // Why: a paired web client's tabs come from the host mirror, so a local tab
+      // would race it. A cloud session has no host-side creation path (its host
+      // refuses session.tabs.*) — client-owned tabs are the only way it gets a
+      // second terminal, so the guard must not swallow the create (U118).
+      if (
+        isWebClientLocation() &&
+        !isCloudSessionEnvironmentId(state.runtimeEnvironments, runtimeEnvironmentId) &&
+        worktreeId !== FLOATING_TERMINAL_WORKTREE_ID
+      ) {
         return
       }
       const terminal = get().createTab(worktreeId, groupId)

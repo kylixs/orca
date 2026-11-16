@@ -2,6 +2,8 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { MAX_SOCKETS_PER_DEVICE_SESSION } from '../cloud-platform/cloud-session-limits'
+import { adoptCloudDeviceInList } from './device-registry-cloud-adoption'
 import { DeviceRegistry, type DeviceEntry } from './device-registry'
 import { DEVICE_REGISTRY_FILENAME } from './mobile-pairing-files'
 
@@ -105,5 +107,41 @@ describe('DeviceRegistry 云端 token 释放', () => {
     new DeviceRegistry(dir)
 
     expect(readFileSync(registryFile(dir), 'utf-8')).toBe(corrupt)
+  })
+})
+
+describe('DeviceRegistry 云端 token 预算', () => {
+  function adopt(devices: readonly DeviceEntry[], token: string): readonly DeviceEntry[] {
+    return adoptCloudDeviceInList(devices, {
+      deviceId: 'cloud-device',
+      token,
+      name: 'cloud-device',
+      publicKeyB64: 'device-public-key',
+      project: 'proj-alpha',
+      permissions: ['open', 'terminal'],
+      projectRoot: '/srv/project',
+      workspaceRoot: '/srv/workspace'
+    }).devices
+  }
+
+  it('a full device-session fan-out plus its replacement keeps the oldest live token (U118)', () => {
+    let devices: readonly DeviceEntry[] = []
+    for (let index = 0; index <= MAX_SOCKETS_PER_DEVICE_SESSION; index += 1) {
+      devices = adopt(devices, `token-${index}`)
+    }
+
+    expect(devices).toHaveLength(MAX_SOCKETS_PER_DEVICE_SESSION + 1)
+    expect(devices.map((row) => row.token)).toContain('token-0')
+  })
+
+  it('still evicts the oldest token beyond that budget', () => {
+    let devices: readonly DeviceEntry[] = []
+    for (let index = 0; index <= MAX_SOCKETS_PER_DEVICE_SESSION + 1; index += 1) {
+      devices = adopt(devices, `token-${index}`)
+    }
+
+    expect(devices).toHaveLength(MAX_SOCKETS_PER_DEVICE_SESSION + 1)
+    expect(devices.map((row) => row.token)).not.toContain('token-0')
+    expect(devices.map((row) => row.token)).toContain('token-1')
   })
 })

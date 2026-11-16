@@ -1,5 +1,6 @@
 import type { DeviceEntry, DeviceScope } from './device-registry'
 import type { CloudPermission } from '../cloud-platform/cloud-credential'
+import { MAX_SOCKETS_PER_DEVICE_SESSION } from '../cloud-platform/cloud-session-limits'
 import { sameCloudSession } from './device-registry-entry-validators'
 
 export type CloudDeviceAdoption = {
@@ -19,11 +20,14 @@ export type CloudDeviceAdoption = {
 }
 
 /**
- * Live tokens kept per registered device per project. The host admits at most 3
- * sessions per user per project; one spare covers the socket closing as its
- * replacement is adopted. Older tokens are dead once evicted.
+ * Live tokens kept per registered device per project. One device session holds
+ * up to MAX_SOCKETS_PER_DEVICE_SESSION live sockets (main, one per stream), and a
+ * replacement is adopted before its predecessor closes, so the token budget must
+ * cover that fan-out plus the spare. A smaller budget let a legitimate extra
+ * stream evict the main socket's live token, whose next RPC then answered
+ * `unauthorized` and ended the session (U118). Older tokens still die on eviction.
  */
-const CLOUD_TOKENS_PER_DEVICE_PROJECT = 4
+const CLOUD_TOKENS_PER_DEVICE_PROJECT = MAX_SOCKETS_PER_DEVICE_SESSION + 1
 
 /** Drops the oldest tokens for this device+project so one-shot ticket churn stays bounded. */
 function trimSessionRows(
