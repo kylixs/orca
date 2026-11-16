@@ -268,3 +268,76 @@ describe('U138 phase 8: mirror attach is not navigation', () => {
     expect(getSession().activeTabId).toBe('tab-1')
   })
 })
+
+describe('U138 phase 9: materializeOnly is a mount, never a tap', () => {
+  function materializeOnlyAttach(
+    runtime: OrcaRuntimeService,
+    tabId: string,
+    leafId: string,
+    deviceId = 'device-a'
+  ): ReturnType<OrcaRuntimeService['activateMobileSessionTab']> {
+    return runtime.activateMobileSessionTab(selector, tabId, leafId, {
+      notifyClients: false,
+      navigation: 'caller',
+      clientNavigationId: deviceId,
+      materializeOnly: true,
+      intent: 'user'
+    })
+  }
+
+  it('projects the caller selection without writing durable or per-device state', async () => {
+    const { runtime, getSession, persisted } = createRuntime()
+
+    await userActivate(runtime, 'tab-2', 'leaf-2')
+    const attached = await materializeOnlyAttach(runtime, 'tab-1', 'leaf-1')
+
+    expect(attached.activeTabId).toBe('tab-2::leaf-2')
+    expect(getSession().activeTabId).toBe('tab-2')
+    expect(persisted.state['device-a']?.[WT]?.activeTabId).toBe('tab-2::leaf-2')
+  })
+
+  it('still materializes a pending pane the mount activates', async () => {
+    const session = makeSession()
+    session.tabsByWorktree = {
+      [WT]: [
+        {
+          id: 'tab-1',
+          ptyId: 'serve-dead-pty',
+          worktreeId: WT,
+          title: 'Terminal 1',
+          customTitle: null,
+          color: null,
+          sortOrder: 0,
+          createdAt: 1
+        }
+      ]
+    }
+    session.terminalLayoutsByTabId = {
+      'tab-1': {
+        root: { type: 'leaf', leafId: HEADLESS_LEAF_ID },
+        activeLeafId: HEADLESS_LEAF_ID,
+        expandedLeafId: null,
+        ptyIdsByLeafId: { [HEADLESS_LEAF_ID]: 'serve-dead-pty' }
+      }
+    }
+    const { runtime, spawn } = createRuntime(session)
+    runtime.syncWindowGraph(1, { tabs: [], leaves: [], mobileSessionTabs: [] })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the protected launch-scope seam is orthogonal to this assertion; the stub only keeps worktree resolution out of it.
+    const launchScopeSeam = runtime as unknown as {
+      resolveTerminalWorkspaceLaunchScope(selector: string): Promise<unknown>
+    }
+    vi.spyOn(launchScopeSeam, 'resolveTerminalWorkspaceLaunchScope').mockResolvedValue({
+      id: WT,
+      path: '/tmp/worktree-a',
+      connectionId: null,
+      repo: null,
+      folderWorkspace: null
+    })
+
+    await materializeOnlyAttach(runtime, 'tab-1', HEADLESS_LEAF_ID)
+
+    expect(spawn).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: 'serve-dead-pty', worktreeId: WT })
+    )
+  })
+})

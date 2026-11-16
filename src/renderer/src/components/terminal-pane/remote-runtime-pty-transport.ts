@@ -686,7 +686,9 @@ export function createRemoteRuntimePtyTransport(
         ...(leafId ? { leafId } : {}),
         notifyClients: false,
         navigation: 'caller',
-        intent
+        intent,
+        // Why: this is a pane mount, not a tap — wake the PTY without persisting the selection (U138).
+        materializeOnly: true
       },
       timeoutMs
     )

@@ -28,7 +28,10 @@ export const ActivateTab = WorktreeTabSelector.extend({
   navigation: z.enum(RUNTIME_NAVIGATION_TARGETS).optional(),
   // Why: absent means user intent, so clients that predate this field keep the
   // tab-open wake gesture. Only 'automatic' may be refused for a slept pane.
-  intent: z.enum(TAB_ACTIVATION_INTENTS).optional()
+  intent: z.enum(TAB_ACTIVATION_INTENTS).optional(),
+  // Why: a pane mount may wake a slept PTY but is not a tap, so additive callers
+  // opt out of persisting the selection (U138 phase 9).
+  materializeOnly: OptionalBoolean
 })
 
 export const CloseTab = ActivateTab.extend({

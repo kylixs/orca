@@ -187,6 +187,38 @@ describe('session tab RPC methods', () => {
     })
   })
 
+  // Why: the pane mirror attach carries the user's wake intent so the host may materialize a
+  // slept PTY, but the request itself is not a tap: it must never move either selection (U138 phase 9).
+  it('materializes without persisting a materializeOnly attach that carries user intent', async () => {
+    const runtime = {
+      getRuntimeId: () => 'test-runtime',
+      activateMobileSessionTab: vi.fn().mockResolvedValue({ tabs: [] })
+    } as unknown as OrcaRuntimeService
+    const dispatcher = new RpcDispatcher({ runtime, methods: SESSION_TAB_METHODS })
+
+    const response = await dispatcher.dispatch(
+      makeRequest('session.tabs.activate', {
+        worktree: 'id:wt-1',
+        tabId: 'tab-1',
+        leafId: 'leaf-1',
+        notifyClients: false,
+        navigation: 'caller',
+        intent: 'user',
+        materializeOnly: true
+      })
+    )
+
+    expect(response.ok).toBe(true)
+    expect(runtime.activateMobileSessionTab).toHaveBeenCalledWith('id:wt-1', 'tab-1', 'leaf-1', {
+      notifyClients: false,
+      clientNavigationId: undefined,
+      persistSelection: false,
+      intent: 'user',
+      navigation: 'caller',
+      materializeOnly: true
+    })
+  })
+
   it('refuses a reasonless close without invoking destructive runtime logic', async () => {
     const runtime = {
       getRuntimeId: () => 'test-runtime',

@@ -35,9 +35,13 @@ export const SESSION_TAB_MUTATION_METHODS = [
           notifyClients: params.notifyClients !== false,
           clientNavigationId: pairedDeviceId,
           // Why: renderer clicks carry navigation:'caller' too, so the explicit user intent
-          // separates them from a navigation-less tap and a pane mirror attach (U138).
-          persistSelection: params.navigation === undefined || params.intent === 'user',
+          // separates them from a navigation-less tap and a pane mirror attach (U138). A
+          // materializeOnly mount is never a tap even when it carries the wake intent.
+          persistSelection:
+            params.materializeOnly !== true &&
+            (params.navigation === undefined || params.intent === 'user'),
           ...(params.intent ? { intent: params.intent } : {}),
+          ...(params.materializeOnly === true ? { materializeOnly: true } : {}),
           navigation: resolveRuntimeNavigationTarget({
             navigation: params.navigation,
             notifyClients: params.notifyClients,

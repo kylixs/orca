@@ -101,7 +101,8 @@ describe('createRemoteRuntimePtyTransport', () => {
           leafId: 'leaf-1',
           notifyClients: false,
           navigation: 'caller',
-          intent: 'user'
+          intent: 'user',
+          materializeOnly: true
         }
       })
     )
@@ -281,7 +282,8 @@ describe('createRemoteRuntimePtyTransport', () => {
           leafId: 'leaf-2',
           notifyClients: false,
           navigation: 'caller',
-          intent: 'user'
+          intent: 'user',
+          materializeOnly: true
         }
       })
     )

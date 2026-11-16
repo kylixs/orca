@@ -106,9 +106,13 @@ export class OrcaRuntimeWithPerformMobileSessionPtyRecordsRefresh extends OrcaRu
       /** False for a pane mount mirror-attaching through activate; only a user tap persists. */
       persistSelection?: boolean
       intent?: TabActivationIntent
+      /** A pane mount that may wake a slept PTY but must never move any selection (U138). */
+      materializeOnly?: boolean
     } = {}
   ): Promise<RuntimeMobileSessionTabsResult> {
     const navigation = opts.navigation ?? (opts.notifyClients === false ? 'caller' : 'all')
+    // Why: materializeOnly is a mount, so it is never navigation even when it carries user intent.
+    const persistSelection = opts.persistSelection !== false && opts.materializeOnly !== true
     const targetsHost = navigationTargetsHost(navigation)
     const explicitWorktreeId = this.getValidatedExplicitWorktreeIdSelector(worktreeSelector)
     const worktreeId =
@@ -210,7 +214,8 @@ export class OrcaRuntimeWithPerformMobileSessionPtyRecordsRefresh extends OrcaRu
               tab.id,
               navigation,
               opts.clientNavigationId,
-              opts.persistSelection !== false
+              persistSelection,
+              opts.materializeOnly === true
             )
           }
           if (sessionId && parseAppSshPtyId(sessionId)) {
@@ -225,7 +230,8 @@ export class OrcaRuntimeWithPerformMobileSessionPtyRecordsRefresh extends OrcaRu
           tab.id,
           navigation,
           opts.clientNavigationId,
-          opts.persistSelection !== false
+          persistSelection,
+          opts.materializeOnly === true
         )
       }
       const callerSnapshot = this.getMobileSessionTabsForWorktree(
@@ -256,7 +262,7 @@ export class OrcaRuntimeWithPerformMobileSessionPtyRecordsRefresh extends OrcaRu
       // renderer window owns the live publication and cannot persist it (U138). The desktop path
       // (host window republishing focus) is skipped to avoid a conflicting second write.
       if (
-        opts.persistSelection !== false &&
+        persistSelection &&
         opts.clientNavigationId &&
         !(targetsHost && this.notifier?.focusTerminal)
       ) {
@@ -267,7 +273,8 @@ export class OrcaRuntimeWithPerformMobileSessionPtyRecordsRefresh extends OrcaRu
         targetTab.id,
         navigation,
         opts.clientNavigationId,
-        opts.persistSelection !== false
+        persistSelection,
+        opts.materializeOnly === true
       )
     } else if (tab.type === 'browser') {
       // Why: browser mobile tabs are renderer-owned unified tabs; focusing the
@@ -285,7 +292,8 @@ export class OrcaRuntimeWithPerformMobileSessionPtyRecordsRefresh extends OrcaRu
       tab.id,
       navigation,
       opts.clientNavigationId,
-      opts.persistSelection !== false
+      persistSelection,
+      opts.materializeOnly === true
     )
   }
 }

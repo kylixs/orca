@@ -26,7 +26,8 @@ export class OrcaRuntimeWithApplyMobileSessionTabNavigation extends OrcaRuntimeW
     activeTabId: string,
     navigation: RuntimeNavigationTarget,
     clientNavigationId?: string,
-    persistClientSelection = true
+    persistClientSelection = true,
+    materializeOnly = false
   ): RuntimeMobileSessionTabsResult {
     let callerSnapshot: RuntimeMobileSessionTabsResult | null = null
     if (navigationTargetsClients(navigation)) {
@@ -40,11 +41,15 @@ export class OrcaRuntimeWithApplyMobileSessionTabNavigation extends OrcaRuntimeW
         ids.add(clientNavigationId)
       }
       for (const id of ids) {
-        const projected = this.clientSessionTabSelections.activate(
-          this.withSessionTabsHolds(snapshot, id),
-          id,
-          activeTabId
-        )
+        // Why: a materializeOnly mount projects each device's own selection instead of
+        // rewriting it, so attaching a pane never steers another viewer (U138 phase 9).
+        const projected = materializeOnly
+          ? this.projectMobileSessionTabsForClient(this.withSessionTabsHolds(snapshot, id), id)
+          : this.clientSessionTabSelections.activate(
+              this.withSessionTabsHolds(snapshot, id),
+              id,
+              activeTabId
+            )
         this.emitMobileSessionTabsSnapshotToClient(projected, id, true)
         if (id === clientNavigationId) {
           callerSnapshot = projected
