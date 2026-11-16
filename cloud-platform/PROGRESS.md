@@ -3619,6 +3619,14 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **门禁**：`--platform-only` 刷新后金路径控制台线 **12/13**（a2=U138 已知残余，其余 12 项全绿，含 b8/b9/b10）；U146 app.js 变更经复跑零回归。
 - **验收基线**：G25 **closed**（U146），§13 = **closed 26 / 部分 1（G27 同步 ack）/ 待 2（G04/G24 部署层）**；321 用例、机检 PASS。
 
+### 2026-11-17 01:4x 轮：U146 审计→U151 修复、U138 复现、探针审计→U152/T1
+
+- **U146 独立审计**（`test-reports/u146-audit.md`，不提交）：PASS-WITH-DEFECT——加性字段真兼容、证据/复跑成立；**P2 逻辑缺陷**：`relayRouteStale` 的 180s 分支不可达（`online` 门与每拍刷新互相抵消），静默主机残留路由永不显陈旧；另旧快照 stale=false 应为 null、套件无判别力。
+- **U151（登记→修复→关闭）**：`ef74e62d9bd` 提取纯函数 `relay-route-freshness.ts`（无路由→null；漂移→true；age 已知→`>3×心跳窗`；age 未知且匹配→null；去掉 online 门）；单测 8（注入时钟，含 180/181s 边界）+ e2e 第⑤例（1s 心跳窗实例停跳 4.5s → `online=false` 且 `stale=true`、UI 徽标）；主会话自跑 **13/13**，`tc:node` 干净；台账 🟢（`e6412612cdd`）。
+- **U138 加压复现（race 窗口）**：4 run/25 cycle/112 采样 = 104 绿 **8 红**；10-cycle race **7/50 红**，红样本同构——`listAll` 入场投影 A → 双 activate → 宿主 publish A/B → 采样 DOM=store=A、host=B，**收到携带 B 的广播后仍停在 A**，+3s 复采样自愈。根因倾向 **H-A**（入场 listAll 应用晚到，覆盖 active），H-C 为触发，H-D 未观察。race 探针 `f31739e2f6e`；证据 `evidence/exploratory-r8/stress-summary.md`。
+- **探针有效性审计 → U152**（`test-reports/u138-probe-audit.md`）：原探针「12/12 一致」**不可签字**（hostActive 读设备投影、单次立即采样、无 applied/applyOptions、同页 reload 非关页重开、隔离恢复误报等）。按设计令预设条件**解冻 T1**（产品内帧记录器，默认关/零分配/不改 wire），探针按「最小改动 1–5」硬化后重跑。
+- **门禁**：U151 落地后 `--platform-only` 刷新（web build=源 d53905bc1bbe）→ 金路径控制台线 **12/13**（a2=U138 已复现的同一缺陷，其余全绿）；台账 U151 🟢、U152 🔴（修复中）。
+
 ### 四通道并发执行（启动，2026-11-14）
 
 按细粒度拆分与三权分立纪律并发起跑：通道② **W6a**（中继浏览器模式，relay.ts 域）、通道③ **W10**（客户端零 env 登录，src/main+renderer 登录域）、通道④ **W5a**（详情页终端组件，cloud-admin 域）三个实现代理并行；通道① 等在途 W2（QA 修复）完成后接 W8。每令完成→独立测试代理→独立审计代理→主会话关闭放行下一个。
