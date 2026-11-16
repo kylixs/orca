@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { createCloudDownloadReadGuard } from './cloud-download-read-guard'
+import {
+  DOWNLOAD_DENIED_READ_WINDOW_MAX_BYTES,
+  createCloudDownloadReadGuard
+} from './cloud-download-read-guard'
 
 /**
  * U66 phase 2 (OQ-6): the readChunk download-equivalence rule — a window that
@@ -77,6 +80,47 @@ describe('cloud-download-read-guard（readChunk 下载等价硬拦）', () => {
     expect(
       guard.check({ ...base, relativePath: 'f999.bin', offset: 0, length: 1, fileSize: 4096 })
     ).toBe('allow')
+  })
+
+  it('U70 单窗上限：64KB 放行，64KB+1 拒绝且不推进覆盖', () => {
+    const guard = createCloudDownloadReadGuard()
+    const fileSize = 128 * 1024
+    expect(
+      guard.check({
+        ...base,
+        offset: 0,
+        length: DOWNLOAD_DENIED_READ_WINDOW_MAX_BYTES,
+        fileSize
+      })
+    ).toBe('allow')
+    expect(
+      guard.check({
+        ...base,
+        relativePath: 'oversized.bin',
+        offset: 0,
+        length: DOWNLOAD_DENIED_READ_WINDOW_MAX_BYTES + 1,
+        fileSize
+      })
+    ).toBe('window_too_large')
+    // A refused window must not become rebuild coverage.
+    expect(
+      guard.check({
+        ...base,
+        relativePath: 'oversized.bin',
+        offset: 0,
+        length: 1024,
+        fileSize: 2048
+      })
+    ).toBe('allow')
+    expect(
+      guard.check({
+        ...base,
+        relativePath: 'oversized.bin',
+        offset: 1024,
+        length: 1024,
+        fileSize: 2048
+      })
+    ).toBe('deny')
   })
 
   it('非法参数放行（由读取路径自己的校验回答）', () => {

@@ -5,9 +5,10 @@
  * completing window and the refusal lands as `file_download denied`
  * (host-attested, `method=files.readChunk`).
  *
- * Declared residual gap (per the tech design's coverage statement): reads
- * within a single chunk window stay open — the first window of a rebuild, any
- * one-window whole file, and out-of-order windows are never refused.
+ * U70 (C+②): a download-denied session's single window is also capped at 64KB,
+ * so the declared residual no longer exposes whole files of ordinary size.
+ * Still open: the first window (≤64KB prefix) and out-of-order windows, since
+ * only a contiguous rebuild from byte 0 accumulates coverage.
  */
 
 export type DownloadReadWindow = {
@@ -20,9 +21,17 @@ export type DownloadReadWindow = {
   fileSize: number
 }
 
+export type CloudDownloadReadVerdict = 'allow' | 'deny' | 'window_too_large'
+
+/**
+ * U70: a download-denied session cannot ask for one window large enough to hold
+ * most files. 64KB keeps the boundary check meaningful for small configs/docs.
+ */
+export const DOWNLOAD_DENIED_READ_WINDOW_MAX_BYTES = 64 * 1024
+
 export type CloudDownloadReadGuard = {
   /** 'deny' when this window would complete a multi-window rebuild of the file. */
-  check: (window: DownloadReadWindow) => 'allow' | 'deny'
+  check: (window: DownloadReadWindow) => CloudDownloadReadVerdict
 }
 
 /** Bounded memory: one coverage entry per (session, worktree, file). */
@@ -46,6 +55,9 @@ export function createCloudDownloadReadGuard(now: () => number = Date.now): Clou
         window.length < 1
       ) {
         return 'allow'
+      }
+      if (window.length > DOWNLOAD_DENIED_READ_WINDOW_MAX_BYTES) {
+        return 'window_too_large'
       }
       const key = `${window.projectId}\u0000${window.deviceId}\u0000${window.worktree}\u0000${window.relativePath}`
       const current = now()

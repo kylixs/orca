@@ -27,7 +27,8 @@ import { installCloudAccessGuard } from '../startup/cloud-runtime-attach'
  * `files.readChunk` run that rebuilds an entire multi-chunk file is refused for
  * a session without the ticket's `download` bit or under a deny policy, and the
  * refusal lands as `file_download denied` (host-attested) on the platform
- * chain. Single-window reads stay open: the declared residual gap.
+ * chain. U70: single windows above 64KB are refused the same way; the first
+ * prefix window and out-of-order windows stay open (declared residual ①③).
  */
 
 const EVIDENCE_DIR = join(REPO_ROOT, 'cloud-platform', 'evidence', 'u66-phase2-host')
@@ -64,13 +65,14 @@ const WINDOW = 1024
 async function readChunk(
   session: Extract<CloudConnection, { status: 'authenticated' }>,
   relativePath: string,
-  offset: number
+  offset: number,
+  length = WINDOW
 ) {
   return session.rpc('files.readChunk', {
     worktree: `path:${projectRoot}`,
     relativePath,
     offset,
-    length: WINDOW
+    length
   })
 }
 
@@ -114,6 +116,7 @@ beforeAll(async () => {
   initRepo(projectRoot)
   writeFileSync(join(projectRoot, 'big.bin'), Buffer.alloc(BIG_SIZE, 7))
   writeFileSync(join(projectRoot, 'small.bin'), Buffer.alloc(512, 3))
+  writeFileSync(join(projectRoot, 'mid.bin'), Buffer.alloc(128 * 1024, 5))
 
   const dataDir = mkdtempSync(join(tmpdir(), 'orca-u66-dl-data-'))
   installFakeAppEnvironment({ getPath: () => dataDir })
@@ -245,6 +248,39 @@ describe('U66 二期：readChunk 重建整文件的宿主硬拦（真实平台 +
     }
   }, 60_000)
 
+  it('U70-D 无 download 位：单窗 64KB 放行，64KB+1 拒绝并落 host-attested denied', async () => {
+    const session = await connectSession('u70-window-cap')
+    try {
+      const atCap = await readChunk(session, 'mid.bin', 0, 64 * 1024)
+      expect(atCap.ok, JSON.stringify(atCap)).toBe(true)
+      const oversized = await readChunk(session, 'mid.bin', 0, 64 * 1024 + 1)
+      expect(oversized.ok).toBe(false)
+      if (!oversized.ok) {
+        expect(oversized.code).toBe('forbidden')
+        expect(oversized.message).toContain('64 KB')
+        expect(oversized.message).toContain("'download'")
+      }
+
+      await admission!.client!.refresh()
+      await admission!.client!.refresh()
+
+      const denials = (await auditEvents('eventType=file_download&result=denied&limit=200')).filter(
+        (event) =>
+          readString(readField(event, 'metadata'), 'method') === 'files.readChunk' &&
+          readString(readField(event, 'metadata'), 'fileName') === 'mid.bin'
+      )
+      expect(denials).toHaveLength(1)
+      const denial = denials[0]
+      expect(readString(readField(denial, 'metadata'), 'denial')).toBe('PERMISSION_MISSING')
+      expect(readString(readField(denial, 'metadata'), 'captureConfidence')).toBe('host-attested')
+      expect(readNumber(readField(denial, 'metadata'), 'sizeBytes')).toBe(128 * 1024)
+
+      saveEvidence('u70-window-cap-denied.json', { oversized, denial })
+    } finally {
+      session.ws.close()
+    }
+  }, 60_000)
+
   it('U66-D2 票据带 download 但策略 deny：同一硬拦，理由为 DOWNLOAD_DISABLED', async () => {
     await grant(['open', 'file:read', 'download'])
     const session = await connectSession('u66-dl-policy')
@@ -299,6 +335,9 @@ describe('U66 二期：readChunk 重建整文件的宿主硬拦（真实平台 +
           expect(readField(reply.result, 'eof')).toBe(offset + WINDOW >= BIG_SIZE)
         }
       }
+      // U70: sessions that may download keep the original 512KB window limit.
+      const wide = await readChunk(session, 'mid.bin', 0, 64 * 1024 + 1)
+      expect(wide.ok, JSON.stringify(wide)).toBe(true)
       await admission!.client!.refresh()
       const denialsAfter = (
         await auditEvents('eventType=file_download&result=denied&limit=200')

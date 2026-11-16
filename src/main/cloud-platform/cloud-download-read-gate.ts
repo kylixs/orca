@@ -1,5 +1,8 @@
 import { downloadRebuildDenialDetails, type CloudDenialDetails } from './cloud-denial-details'
-import type { CloudDownloadReadGuard } from './cloud-download-read-guard'
+import {
+  DOWNLOAD_DENIED_READ_WINDOW_MAX_BYTES,
+  type CloudDownloadReadGuard
+} from './cloud-download-read-guard'
 import type { CloudHostAuditSink } from './cloud-host-audit'
 
 /**
@@ -7,8 +10,8 @@ import type { CloudHostAuditSink } from './cloud-host-audit'
  * data-fetch path — a `files.readChunk` run that rebuilds an entire multi-chunk
  * file is the download itself, so for a session that may not download the
  * completing window is refused before any bytes move and lands as
- * `file_download denied` (host-attested). Single-window reads stay open: the
- * declared residual gap.
+ * `file_download denied` (host-attested). U70: single windows are additionally
+ * capped at 64KB; the first prefix window and out-of-order windows stay open.
  */
 
 export type DownloadReadTarget = {
@@ -93,14 +96,20 @@ export async function downloadReadRefusal(
     length,
     fileSize
   })
-  if (verdict !== 'deny') {
+  if (verdict === 'allow') {
     return null
   }
+  const maxKb = DOWNLOAD_DENIED_READ_WINDOW_MAX_BYTES / 1024
   return {
     details: downloadRebuildDenialDetails(hasDownloadPermission),
-    message: hasDownloadPermission
-      ? 'Refused: reading this whole file rebuilds a download, and downloads are disabled for this project by platform policy.'
-      : "Reading this whole file rebuilds a download, which needs the 'download' project permission, which this cloud session was not granted.",
+    message:
+      verdict === 'window_too_large'
+        ? hasDownloadPermission
+          ? `Refused: a single read is capped at ${maxKb} KB when downloads are disabled for this project by platform policy.`
+          : `Refused: a single read is capped at ${maxKb} KB, because reading a larger window needs the 'download' project permission, which this cloud session was not granted.`
+        : hasDownloadPermission
+          ? 'Refused: reading this whole file rebuilds a download, and downloads are disabled for this project by platform policy.'
+          : "Reading this whole file rebuilds a download, which needs the 'download' project permission, which this cloud session was not granted.",
     fileName: relativePath.split(/[\\/]/).pop() ?? relativePath,
     relativePath,
     fileSize
