@@ -19,6 +19,9 @@ export const NODE_RUNTIME_INCLUDE = [
   // Why: U46-8's simple-workspace e2e reads a real PTY echo and drives the real
   // TLS runtime; the bun worker would time out every echo (same W5b defect B).
   'src/renderer/src/cloud-admin/cloud-simple-workspace.e2e.test.ts',
+  // Why: U96 B-令8 reads real PTY echo across two clients; the bun worker emits no
+  // PTY data, so every sync assertion would time out (same W5b defect B).
+  'src/renderer/src/cloud-admin/cloud-simple-workspace-dual-client.e2e.test.ts',
   // Why: the M72 denial-details suite proves cloud denials over a real TLS
   // runtime; bun's ws fails the throwaway-certificate handshake, so the fixture's
   // beforeAll OPEN_FAILEDs and both M72 proofs would silently retire (U31, same
