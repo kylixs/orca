@@ -45,6 +45,15 @@ const LEGACY_FILES = [
 ]
 const log = (step, msg) => console.log(`[reseed] ${step} ${msg}`)
 
+// U88: children's stdout/stderr go to logs/<role>.log (append); stamp each reseed
+// round so a later silent death can be tied to a run.
+const logSinks = (paths) => ({
+  platform: paths.platformLog,
+  forwarder: paths.forwarderLog,
+  host: paths.hosts[0].log,
+  host2: paths.hosts[1].log
+})
+
 function parseOptions(argv) {
   const options = {
     root: process.env.ORCA_LOCAL_ENV_ROOT || path.join(os.homedir(), 'orca-local-env'),
@@ -361,6 +370,10 @@ async function main() {
   }
   for (const dir of dirs) {
     fs.mkdirSync(dir, { recursive: true })
+  }
+  for (const file of Object.values(logSinks(paths))) {
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.appendFileSync(file, `[reseed] ${new Date().toISOString()} run start pid=${process.pid}\n`)
   }
   log(
     'paths',
