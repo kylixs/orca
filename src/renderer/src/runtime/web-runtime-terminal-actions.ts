@@ -4,6 +4,7 @@ import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
 import type { RuntimeTerminalClose, RuntimeTerminalSplit } from '../../../shared/runtime-types'
 import type { TerminalPaneLayoutNode } from '../../../shared/terminal-tab-types'
 import type { PaneLayoutEditIntent } from '../../../shared/rpc-contract/session-tabs-schemas-params'
+import { isCloudSessionEnvironmentId } from '../lib/cloud-session-environment-membership'
 import { getRuntimeEnvironmentIdForWorktree } from '../lib/worktree-runtime-owner'
 import { useAppStore } from '../store'
 import { unwrapRuntimeRpcResult } from './runtime-rpc-client'
@@ -202,10 +203,14 @@ export async function updateWebRuntimePaneLayout(args: {
   titlesByLeafId?: Record<string, string>
   intent?: PaneLayoutEditIntent
 }): Promise<boolean> {
-  const environmentId =
-    getRuntimeEnvironmentIdForWorktree(useAppStore.getState(), args.worktreeId) ?? null
+  const state = useAppStore.getState()
+  const environmentId = getRuntimeEnvironmentIdForWorktree(state, args.worktreeId) ?? null
   if (!environmentId || !isWebRuntimeSessionActive(environmentId)) {
     return false
+  }
+  // Why: a cloud session's layout is client-owned and its host refuses this method (U119).
+  if (isCloudSessionEnvironmentId(state.runtimeEnvironments, environmentId)) {
+    return true
   }
   const callEnvironment = captureRuntimeEnvironmentCall(environmentId)
   const hostTabId = isWebTerminalSurfaceTabId(args.tabId)
