@@ -3,10 +3,16 @@
  * Persistent local cloud-dev-platform rebuild. Safe to re-run.
  * Usage: node cloud-platform/scripts/local-env-reseed.mjs [--root dir] [--port n]
  *        [--host-name name] [--advertise-host ip] [--restart-platform]
- *        [--skip-keychain] [--keep-legacy] [--help]
+ *        [--platform-only] [--skip-keychain] [--keep-legacy] [--help]
  * The second host name/WS port come from ORCA_LOCAL_HOST2_NAME (dev-local-03) and
  * ORCA_LOCAL_HOST2_WS_PORT (18889). Everything lives under --root (default
  * ~/orca-local-env). Exit 0 = every check passed.
+ *
+ * --platform-only restarts only the platform process (implies --restart-platform)
+ * and refreshes the web release snapshot it serves. Host processes are never
+ * killed, re-enrolled, or health-rebuilt, so their PTYs survive; host assertions
+ * are deferred instead of retried. The dev platform keeps its store in memory, so
+ * a restart starts empty: hosts stay offline until a full reseed.
  */
 import fs from 'node:fs'
 import os from 'node:os'
@@ -28,6 +34,7 @@ import {
 import { ensureCertificates, ensureKeychain } from './local-env-certificates.mjs'
 import { DEMO_REPOS, ensureRepo, repoSummary } from './local-env-demo-projects.mjs'
 import { ensureForwarder, ensureHost, findAdvertisedHost } from './local-env-host-runtime.mjs'
+import { captureHostState, createApi, login, runPlatformOnly } from './local-env-platform-only.mjs'
 import { buildPaths } from './local-env-paths.mjs'
 import { probeEnvironment, relayProbe, verify } from './local-env-verification.mjs'
 
@@ -64,6 +71,7 @@ function parseOptions(argv) {
     advertiseHost: process.env.ORCA_LOCAL_ADVERTISE_HOST || '100.103.213.12',
     internalToken: process.env.ORCA_LOCAL_INTERNAL_TOKEN || 'm114-link-token',
     restartPlatform: false,
+    platformOnly: false,
     skipKeychain: false,
     keepLegacy: false
   }
@@ -93,6 +101,9 @@ function parseOptions(argv) {
       i += 1
     } else if (arg === '--restart-platform') {
       options.restartPlatform = true
+    } else if (arg === '--platform-only') {
+      options.platformOnly = true
+      options.restartPlatform = true
     } else if (arg === '--skip-keychain') {
       options.skipKeychain = true
     } else if (arg === '--keep-legacy') {
@@ -112,29 +123,6 @@ function parseOptions(argv) {
   }
   options.root = path.resolve(options.root)
   return options
-}
-
-const createApi =
-  (options, paths) =>
-  (method, pathname, { token, body, headers } = {}) =>
-    httpsJson(`https://127.0.0.1:${options.port}${pathname}`, {
-      method,
-      body,
-      ca: paths.caPem,
-      headers: {
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
-        ...headers
-      }
-    })
-
-async function login(api, { username, password }) {
-  const res = await api('POST', '/v1/auth/login', {
-    body: { username, password, deviceName: 'local-env-reseed' }
-  })
-  if (res.status !== 200 || !res.json?.accessToken) {
-    throw new Error(`login ${username} -> ${res.status} ${res.text}`)
-  }
-  return res.json
 }
 
 async function ensurePlatform(paths, options) {
@@ -167,7 +155,9 @@ async function ensurePlatform(paths, options) {
       PORT: String(options.port),
       PLATFORM_TLS_CERT_PATH: paths.platformCert,
       PLATFORM_TLS_KEY_PATH: paths.platformKey,
-      ORCA_CLOUD_WEB_ROOT: path.join(ROOT, 'cloud-platform/apps/web')
+      ORCA_CLOUD_WEB_ROOT: path.join(ROOT, 'cloud-platform/apps/web'),
+      // U126: keep superseded builds so a cached browser page keeps resolving.
+      ORCA_CLOUD_WEB_ARCHIVE: path.join(options.root, 'web-archive')
     },
     logFile: paths.platformLog,
     pidFile: paths.platformPid
@@ -386,8 +376,23 @@ async function main() {
   const keychain = ensureKeychain(paths, options)
   log('keychain', keychain.status)
 
+  const before = options.platformOnly ? captureHostState(paths) : null
   let platform = await ensurePlatform(paths, options)
   log('platform', `${platform.status} pid=${platform.pid}`)
+  if (options.platformOnly) {
+    const api = createApi(options, paths)
+    const admin = await login(api, ADMIN)
+    await runPlatformOnly({
+      api,
+      token: admin.accessToken,
+      paths,
+      options,
+      platform,
+      before,
+      log
+    })
+    return
+  }
   const forwarder = await ensureForwarder(paths, options)
   const edgeReachable = await waitFor(
     'forwarder edge',
