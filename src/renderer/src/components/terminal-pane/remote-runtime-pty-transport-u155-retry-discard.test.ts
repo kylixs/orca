@@ -42,9 +42,7 @@ function cloudEnvironment(): PublicKnownRuntimeEnvironment {
     updatedAt: 1,
     lastUsedAt: null,
     runtimeId: null,
-    endpoints: [
-      { id: 'ws-1', kind: 'websocket', label: 'WebSocket', endpoint: 'ws://host' }
-    ],
+    endpoints: [{ id: 'ws-1', kind: 'websocket', label: 'WebSocket', endpoint: 'ws://host' }],
     preferredEndpointId: 'ws-1',
     cloudProject: {
       projectId: 'proj-u155',
@@ -176,5 +174,7 @@ describe('U155: retry and unusable create answers discard the gesture', () => {
     const { peekUserInitiatedTerminalCreate } =
       await import('@/runtime/web-session-user-initiated-create')
     expect(peekUserInitiatedTerminalCreate(LOCAL_TAB_ID)).toBe(false)
+    // Why: a discarded gesture must not leak a durable tap through any other activation (U157 P3-C).
+    expect(activationParams()).toHaveLength(0)
   })
 })

@@ -87,7 +87,8 @@ import {
 } from '@/runtime/web-session-focus-intent'
 import {
   consumeUserInitiatedTerminalCreate,
-  discardUserInitiatedTerminalCreate
+  discardUserInitiatedTerminalCreate,
+  markUserInitiatedTerminalCreate
 } from '@/runtime/web-session-user-initiated-create'
 import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 import { parsePaneKey } from '../../../../shared/stable-pane-id'
@@ -237,8 +238,10 @@ export function createRemoteRuntimePtyTransport(
     onAgentStatus
   } = opts
   // Why: recovery replays connect() with this closure intact, but the click belongs to the first
-  // attempt only; a retried create must stay a passive mount (U155).
+  // attempt only; a retried create must stay a passive mount (U155). A user-clicked Reconnect
+  // re-arms it once, so its reconciled reply may still select the same local tab (U157).
   let userInitiatedCreateAttempted = false
+  let userInitiatedCreateRearmedForReconnect = false
   let connected = false
   let attachmentReady = false
   let destroyed = false
@@ -718,12 +721,13 @@ export function createRemoteRuntimePtyTransport(
   function selectUserCreatedHostTab(
     created: RuntimeTerminalCreate,
     environmentId: string,
+    // Why: connect() already narrowed the pane's worktreeId; re-checking it here was dead code (U157).
+    selectionWorktreeId: string,
     expectedCurrentLocalTabId?: string | null
   ): void {
     const hostTabId = created.tabId
     const hostLeafId = created.leafId ?? parsePaneKey(created.paneKey ?? '')?.leafId
     if (
-      !worktreeId ||
       !hostTabId ||
       created.isReattach === true ||
       !isCloudSessionEnvironmentId(useAppStore.getState().runtimeEnvironments, environmentId)
@@ -737,7 +741,13 @@ export function createRemoteRuntimePtyTransport(
     const owner = captureWebSessionIntentOwner(environmentId)
     // Why: expectedCurrentLocalTabId is sampled before the create round-trip, so a switch made
     // while it is in flight cancels the intent instead of yanking the user back.
-    recordWebSessionFocusIntent(owner, worktreeId, hostTabId, hostLeafId, expectedCurrentLocalTabId)
+    recordWebSessionFocusIntent(
+      owner,
+      selectionWorktreeId,
+      hostTabId,
+      hostLeafId,
+      expectedCurrentLocalTabId
+    )
     if (tabId) {
       consumeUserInitiatedTerminalCreate(tabId)
     }
@@ -746,7 +756,7 @@ export function createRemoteRuntimePtyTransport(
       environmentId,
       'session.tabs.activate',
       {
-        worktree: toRuntimeWorktreeSelector(worktreeId),
+        worktree: toRuntimeWorktreeSelector(selectionWorktreeId),
         tabId: hostTabId,
         ...(hostLeafId ? { leafId: hostLeafId } : {}),
         notifyClients: false,
@@ -2694,6 +2704,24 @@ export function createRemoteRuntimePtyTransport(
     return sendUnacknowledgedInput(data, true)
   }
 
+  // Why: an explicit Reconnect is a new user gesture for a create that never landed; automatic
+  // replays (auto-retry, online/resume) must stay passive (U157).
+  function rearmUserInitiatedCreateForManualReconnect(): void {
+    if (
+      userInitiated !== true ||
+      !tabId ||
+      !userInitiatedCreateAttempted ||
+      connected ||
+      handle ||
+      isWebTerminalSurfaceTabId(tabId)
+    ) {
+      return
+    }
+    userInitiatedCreateAttempted = false
+    userInitiatedCreateRearmedForReconnect = true
+    markUserInitiatedTerminalCreate(tabId)
+  }
+
   let connectForRecovery: PtyTransport['connect'] = (options) => transport.connect(options)
   const transport: PtyTransport = {
     async connect(options) {
@@ -2713,6 +2741,8 @@ export function createRemoteRuntimePtyTransport(
       }
       // Why: sample before the create round-trip; a user switch during it must cancel the intent.
       // A replayed connect() carries no gesture, so its sampling would reset the guard anyway (U155).
+      const rearmedForManualReconnect = userInitiatedCreateRearmedForReconnect
+      userInitiatedCreateRearmedForReconnect = false
       const attemptUserInitiatedCreate = userInitiated === true && !userInitiatedCreateAttempted
       const expectedCurrentLocalTabId = attemptUserInitiatedCreate
         ? resolveWebSessionVisibleTabId(useAppStore.getState(), worktreeId)
@@ -2846,7 +2876,8 @@ export function createRemoteRuntimePtyTransport(
         const resumeHostAuthorityCapability = resumeProviderSessionToSend
           ? agentResumeHostAuthorityCapability(launchAgentToSend)
           : undefined
-        // Why: mark the one attempt that owns the gesture; every later replay of this transport is passive (U155).
+        // Why: mark the attempt that owns the gesture; later replays stay passive unless the
+        // user clicks Reconnect, which re-arms it once (U155/U157).
         userInitiatedCreateAttempted = true
         const created = launchAgentToSend
           ? agentSessionRequiresHostAuthorityReplay
@@ -2873,6 +2904,11 @@ export function createRemoteRuntimePtyTransport(
         }
         const createdTerminal = created.terminal
         adoptExecutionMetadata(createdTerminal)
+        // Why: a reconciled/host-authority reply belongs to a passive replay, not the original
+        // click — unless the user manually re-armed it on Reconnect (U155/U157).
+        const createFinishedOnPassiveReplay =
+          (terminalCreateNeedsReconciliation || agentSessionRequiresHostAuthorityReplay) &&
+          !rearmedForManualReconnect
         if (created.disposition !== undefined && tabId && createdTerminal.tabId) {
           recordWebAgentSessionHandoff({
             environmentId: createEnvironmentId,
@@ -2893,12 +2929,17 @@ export function createRemoteRuntimePtyTransport(
           })
         }
         if (destroyed || lifecycleEpoch !== connectLifecycleEpoch) {
-          if (attemptUserInitiatedCreate && createdTerminal.isReattach !== true) {
+          if (
+            attemptUserInitiatedCreate &&
+            createdTerminal.isReattach !== true &&
+            !createFinishedOnPassiveReplay
+          ) {
             // Why: the mirror rename unmounts this transport, but the click it owned must still
             // persist the host selection or the surviving mirror pane only materializes (U156).
             selectUserCreatedHostTab(
               createdTerminal,
               createEnvironmentId,
+              worktreeId,
               expectedCurrentLocalTabId
             )
           } else if (userInitiated === true && tabId) {
@@ -2916,7 +2957,7 @@ export function createRemoteRuntimePtyTransport(
         handle = createdTerminal.handle
 
         if (attemptUserInitiatedCreate) {
-          if (terminalCreateNeedsReconciliation || agentSessionRequiresHostAuthorityReplay) {
+          if (createFinishedOnPassiveReplay) {
             // Why: this create only finished on a replay, so the original click no longer owns it (U155).
             if (tabId) {
               discardUserInitiatedTerminalCreate(tabId)
@@ -2925,6 +2966,7 @@ export function createRemoteRuntimePtyTransport(
             selectUserCreatedHostTab(
               createdTerminal,
               createEnvironmentId,
+              worktreeId,
               expectedCurrentLocalTabId
             )
           }
@@ -3148,6 +3190,9 @@ export function createRemoteRuntimePtyTransport(
     },
 
     retryRecovery() {
+      if (!destroyed && !terminalEnded) {
+        rearmUserInitiatedCreateForManualReconnect()
+      }
       if (
         !destroyed &&
         !terminalEnded &&
