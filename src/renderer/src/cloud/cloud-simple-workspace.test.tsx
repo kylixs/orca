@@ -2,7 +2,7 @@
 import * as React from 'react'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
 import type { CloudProjectPermission, CloudRpcOutcome } from '../../../shared/cloud-platform-ipc'
 import {
   CloudSimpleWorkspace,
@@ -12,6 +12,10 @@ import {
 } from './cloud-simple-workspace'
 import { createCloudWorkspaceFileTab } from './cloud-workspace-file-tab'
 import type { CloudWorkspaceEditorProps } from './cloud-workspace-monaco-editor'
+import type {
+  CloudSimpleWorkspaceHostCloseOutcome,
+  CloudSimpleWorkspaceSessionTabActions
+} from './use-cloud-simple-workspace-session-tabs'
 import type { CloudRpc } from '../../../shared/cloud-file-browser'
 
 /** T1 (design §6.2): tab dedupe, switching, close-neighbour, empty state, plus permissions. */
@@ -607,5 +611,120 @@ describe('简易工作区装配（U46-8）', () => {
     // Git reads need `terminal`; a viewer ticket lacks it, so that gate wins over no-workspace.
     expect(screen.getByTestId('cloud-simple-workspace-git-no-permission')).toBeTruthy()
     expect(calls).toEqual([])
+  })
+})
+
+describe('简易工作区宿主动作接线（U96 B-令4）', () => {
+  const hostTab = (tabId: string, leafId: string) => ({
+    id: tabId,
+    kind: 'terminal' as const,
+    title: 'zsh',
+    host: { leafId, terminal: `handle-${leafId}`, ptyId: `pty-${leafId}`, leafCount: 1 }
+  })
+  const noopTerminal = { terminal: () => null }
+
+  type ActionMocks = CloudSimpleWorkspaceSessionTabActions & {
+    activate: Mock<(tabId: string) => void>
+    close: Mock<(tabId: string) => Promise<CloudSimpleWorkspaceHostCloseOutcome>>
+    createTerminal: Mock<(tabId: string, leafId: string, title: string) => Promise<boolean>>
+    dismissNotice: Mock<() => void>
+  }
+
+  function actions(
+    options: { notice?: string | null; closeResult?: CloudSimpleWorkspaceHostCloseOutcome } = {}
+  ): ActionMocks {
+    return {
+      activate: vi.fn<(tabId: string) => void>(),
+      close: vi
+        .fn<(tabId: string) => Promise<CloudSimpleWorkspaceHostCloseOutcome>>()
+        .mockResolvedValue(options.closeResult ?? 'closed'),
+      createTerminal: vi
+        .fn<(tabId: string, leafId: string, title: string) => Promise<boolean>>()
+        .mockResolvedValue(true),
+      notice: options.notice ?? null,
+      dismissNotice: vi.fn<() => void>()
+    }
+  }
+
+
+  it('切换宿主终端标签 → sessionTabs.activate；本地文件标签不写宿主', async () => {
+    const user = userEvent.setup()
+    const host = actions()
+    renderWorkspace({
+      initialTabs: [hostTab('tab-a', 'leaf-1'), hostTab('tab-b', 'leaf-2')],
+      sessionTabs: host,
+      tabComponents: noopTerminal,
+      renderFileTree: ({ openFile }) => (
+        <button type="button" onClick={() => openFile('src/local.ts')}>
+          open-local
+        </button>
+      )
+    })
+
+    await user.click(screen.getByTestId('cloud-simple-workspace-tab-tab-b'))
+    expect(host.activate).toHaveBeenCalledWith('tab-b')
+
+    await user.click(screen.getByText('open-local'))
+    await user.click(screen.getByTestId('cloud-simple-workspace-tab-file:src/local.ts'))
+    expect(host.activate).toHaveBeenCalledTimes(1)
+  })
+
+  it('关闭宿主终端：close 确认后行出队；refused 时保留并展示宿主提示', async () => {
+    const user = userEvent.setup()
+    const host = actions()
+    const first = renderWorkspace({
+      initialTabs: [hostTab('tab-a', 'leaf-1')],
+      sessionTabs: host,
+      tabComponents: noopTerminal
+    })
+    await user.click(screen.getByTestId('cloud-simple-workspace-tab-close-tab-a'))
+    expect(host.close).toHaveBeenCalledWith('tab-a')
+    await waitFor(() =>
+      expect(screen.queryByTestId('cloud-simple-workspace-tab-tab-a')).toBeNull()
+    )
+    first.unmount()
+
+    renderWorkspace({
+      initialTabs: [hostTab('tab-a', 'leaf-1')],
+      sessionTabs: actions({
+        closeResult: 'refused',
+        notice: '桌面端正在使用该终端，无法从云端关闭。'
+      }),
+      tabComponents: noopTerminal
+    })
+    await user.click(screen.getByTestId('cloud-simple-workspace-tab-close-tab-a'))
+    await waitFor(() => expect(screen.getByTestId('cloud-simple-workspace-tab-tab-a')).toBeTruthy())
+    expect(screen.getByTestId('cloud-simple-workspace-host-tab-notice').textContent).toContain(
+      '桌面端'
+    )
+  })
+
+  it('关闭本地新建终端（无宿主行）不调用 session.tabs.close', async () => {
+    const user = userEvent.setup()
+    const host = actions()
+    renderWorkspace({ sessionTabs: host, tabComponents: noopTerminal })
+
+    await user.click(screen.getByTestId('cloud-simple-workspace-new-terminal'))
+    const id = screen
+      .getAllByTestId(/^cloud-simple-workspace-tab-terminal:/)
+      .at(-1)
+      ?.getAttribute('data-testid')
+      ?.replace('cloud-simple-workspace-tab-', '')
+    expect(id).toBeTruthy()
+    await user.click(screen.getByTestId(`cloud-simple-workspace-tab-close-${id}`))
+    expect(host.close).not.toHaveBeenCalled()
+  })
+
+  it('新建终端 → terminal.create(tabId,leafId) 由 sessionTabs 动作承接', async () => {
+    const user = userEvent.setup()
+    const host = actions()
+    renderWorkspace({ sessionTabs: host, tabComponents: noopTerminal })
+
+    await user.click(screen.getByTestId('cloud-simple-workspace-new-terminal'))
+    expect(host.createTerminal).toHaveBeenCalledTimes(1)
+    const [tabId, leafId, title] = host.createTerminal.mock.calls[0]
+    expect(tabId).toMatch(/^terminal:/)
+    expect(leafId).toBe(`leaf:${tabId.replace(/^terminal:/, '')}`)
+    expect(title).toBe('Terminal 1')
   })
 })

@@ -9,9 +9,7 @@ import {
   cloudSimpleWorkspaceTabsInitialState,
   cloudSimpleWorkspaceTabsReducer,
   nextTerminalTab,
-  type CloudSimpleWorkspaceTab,
-  type CloudSimpleWorkspaceTabKind,
-  type CloudSimpleWorkspaceTabsAction
+  type CloudSimpleWorkspaceTab
 } from './cloud-simple-workspace-tabs'
 import { CloudSimpleWorkspaceTabStrip } from './cloud-simple-workspace-tab-strip'
 import {
@@ -36,8 +34,7 @@ import {
 import { createCloudWorkspaceFileTab } from './cloud-workspace-file-tab'
 import {
   CloudSimpleWorkspaceCloseConfirm,
-  useCloudSimpleWorkspaceCloseGuard,
-  type CloudSimpleWorkspaceSaveHandler
+  useCloudSimpleWorkspaceCloseGuard
 } from './cloud-simple-workspace-close-guard'
 import { createCloudWorkspacePreviewTab } from './cloud-workspace-preview-tab'
 import { resolveCloudFileFormat } from './file-renderers/registry'
@@ -47,8 +44,15 @@ import { CloudWorkspaceGitPanel } from './cloud-workspace-git-panel'
 import type { CloudTerminalSubscribe } from './cloud-terminal-panel'
 import {
   useCloudSimpleWorkspaceSessionTabs,
-  type CloudSimpleWorkspaceHostSnapshot
+  type CloudSimpleWorkspaceHostSnapshot,
+  type CloudSimpleWorkspaceSessionTabActions
 } from './use-cloud-simple-workspace-session-tabs'
+import { useCloudSimpleWorkspaceHostTabActions } from './cloud-simple-workspace-host-tab-actions'
+import { CloudSimpleWorkspaceHostTabNotice } from './cloud-simple-workspace-host-tab-notice'
+import {
+  CLOUD_SIMPLE_WORKSPACE_TAB_COMPONENTS,
+  type CloudSimpleWorkspaceTabComponents
+} from './cloud-simple-workspace-tab-components'
 
 /**
  * Embedded simple workspace shell (U46-5a, design §4.3/§4.4): centre tabs plus a
@@ -58,47 +62,10 @@ import {
  * a flex row of panels inside a min-h-0 column.
  */
 
-export type CloudSimpleWorkspaceTabComponentProps = {
-  tab: CloudSimpleWorkspaceTab
-  /** False while the tab is mounted but hidden; panes must not fit or poll. */
-  active: boolean
-  dispatch: React.Dispatch<CloudSimpleWorkspaceTabsAction>
-  /** Lets a dirty close save through this pane before the tab unmounts. */
-  registerSave?: (tabId: string, save: CloudSimpleWorkspaceSaveHandler | null) => void
-}
-
-export type CloudSimpleWorkspaceTabComponents = Partial<
-  Record<CloudSimpleWorkspaceTabKind, React.ComponentType<CloudSimpleWorkspaceTabComponentProps>>
->
-
-function TabPlaceholder({ tab }: CloudSimpleWorkspaceTabComponentProps): React.JSX.Element {
-  const label =
-    tab.kind === 'terminal'
-      ? '终端'
-      : tab.kind === 'editor'
-        ? '文件编辑'
-        : tab.kind === 'preview'
-          ? '预览'
-          : 'Diff'
-  return (
-    <div
-      data-testid={`cloud-simple-workspace-${tab.kind}-placeholder`}
-      className="flex h-full items-center justify-center p-6 text-xs text-muted-foreground"
-    >
-      {label}面板将在后续版本接入。
-    </div>
-  )
-}
-
-export const CLOUD_SIMPLE_WORKSPACE_TAB_COMPONENTS: Record<
-  CloudSimpleWorkspaceTabKind,
-  React.ComponentType<CloudSimpleWorkspaceTabComponentProps>
-> = {
-  terminal: CloudWorkspaceTerminalTab,
-  editor: TabPlaceholder,
-  preview: TabPlaceholder,
-  diff: TabPlaceholder
-}
+export type {
+  CloudSimpleWorkspaceTabComponentProps,
+  CloudSimpleWorkspaceTabComponents
+} from './cloud-simple-workspace-tab-components'
 
 export type {
   CloudSimpleWorkspaceFileTreeApi,
@@ -136,6 +103,8 @@ export type CloudSimpleWorkspaceProps = {
   initialTabs?: CloudSimpleWorkspaceTab[]
   /** U96 B-令2: host session-tab projection applied through the `host-snapshot` action. */
   hostSnapshot?: CloudSimpleWorkspaceHostSnapshot | null
+  /** U96 B-令4: activate/close/create against the host inventory; absent on legacy hosts. */
+  sessionTabs?: CloudSimpleWorkspaceSessionTabActions | null
   tabComponents?: CloudSimpleWorkspaceTabComponents
   renderFileTree?: (api: CloudSimpleWorkspaceFileTreeApi) => React.ReactNode
   renderGitChanges?: (api: CloudSimpleWorkspaceGitApi) => React.ReactNode
@@ -156,6 +125,7 @@ export function CloudSimpleWorkspace({
   degraded,
   initialTabs,
   hostSnapshot,
+  sessionTabs,
   tabComponents,
   renderFileTree,
   renderGitChanges,
@@ -188,6 +158,14 @@ export function CloudSimpleWorkspace({
   const openDiff = React.useCallback<CloudSimpleWorkspaceOpenDiff>((path, _status, source) => {
     dispatch({ type: 'open', tab: cloudSimpleWorkspaceDiffTab(path, source) })
   }, [])
+
+  const { activateTab, requestCloseTab, openTerminal } = useCloudSimpleWorkspaceHostTabActions({
+    sessionTabs,
+    tabs: state.tabs,
+    nextTerminal,
+    dispatch,
+    requestLocalClose: closeGuard.requestClose
+  })
 
   React.useEffect(() => {
     onDirtyCountChange?.(dirtyCount)
@@ -224,14 +202,17 @@ export function CloudSimpleWorkspace({
             dirty={state.dirty}
             canUseTerminal={canUseTerminal}
             nextTerminal={nextTerminal !== null}
-            onActivate={(id) => dispatch({ type: 'activate', id })}
-            onClose={closeGuard.requestClose}
-            onNewTerminal={() => {
-              if (nextTerminal) {
-                dispatch({ type: 'open', tab: nextTerminal })
-              }
-            }}
+            onActivate={activateTab}
+            onClose={requestCloseTab}
+            onNewTerminal={openTerminal}
           />
+
+          {sessionTabs?.notice ? (
+            <CloudSimpleWorkspaceHostTabNotice
+              notice={sessionTabs.notice}
+              onDismiss={sessionTabs.dismissNotice}
+            />
+          ) : null}
 
           <div className="flex min-h-0 flex-1 flex-col">
             {state.tabs.length === 0 ? (
@@ -418,6 +399,7 @@ export function CloudSimpleWorkspaceSession({
         connection={connection}
         degraded={degraded}
         hostSnapshot={sessionTabs.hostSnapshot}
+        sessionTabs={sessionTabs.actions}
         tabComponents={tabComponents}
         renderFileTree={
           workspacePath

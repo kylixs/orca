@@ -86,6 +86,19 @@ function scriptedRpc(list: CloudRpcOutcome): { rpc: CloudRpc; calls: RpcCall[] }
   return { rpc, calls }
 }
 
+/** Per-method replies; unlisted methods answer `ok` with an empty result. */
+function methodRpc(outcomes: Record<string, CloudRpcOutcome>): {
+  rpc: CloudRpc
+  calls: RpcCall[]
+} {
+  const calls: RpcCall[] = []
+  const rpc: CloudRpc = async (method, params) => {
+    calls.push({ method, params })
+    return outcomes[method] ?? { ok: true, result: {} }
+  }
+  return { rpc, calls }
+}
+
 function scriptedSubscribe(outcome?: CloudRpcOutcome): {
   subscribe: CloudTerminalSubscribe
   calls: SubscribeCall[]
@@ -244,3 +257,126 @@ describe('简易工作区 session-tabs bootstrap（U96 B-令2）', () => {
     expect(stream.calls).toHaveLength(1)
   })
 })
+
+describe('简易工作区 session-tabs 双向动作（U96 B-令4）', () => {
+  async function booted(outcomes: Record<string, CloudRpcOutcome>) {
+    const scripted = methodRpc({
+      'session.tabs.list': {
+        ok: true,
+        result: frame('snapshot', [terminalRow('tab-a', 'leaf-1'), terminalRow('tab-b', 'leaf-2')])
+      },
+      ...outcomes
+    })
+    const stream = scriptedSubscribe()
+    const rendered = renderHook(() =>
+      useHarness({
+        rpc: scripted.rpc,
+        subscribe: stream.subscribe,
+        workspacePath: WORKSPACE,
+        capabilities: CAPABILITY
+      })
+    )
+    await waitFor(() => expect(rendered.result.current.state.tabs).toHaveLength(2))
+    await waitFor(() => expect(stream.callbacks()).not.toBeNull())
+    return { ...scripted, stream, result: rendered.result }
+  }
+
+  it('activate：用户切换才发 RPC；同标签去重，宿主帧回来不回写', async () => {
+    const { calls, stream, result } = await booted({})
+
+    act(() => result.current.actions.activate('tab-b'))
+    await waitFor(() =>
+      expect(calls).toContainEqual({
+        method: 'session.tabs.activate',
+        params: { worktree: WORKTREE, tabId: 'tab-b', notifyClients: true }
+      })
+    )
+    const sent = calls.filter((call) => call.method === 'session.tabs.activate').length
+
+    // Same tab again is already requested/confirmed: no second write.
+    act(() => result.current.actions.activate('tab-b'))
+
+    // A host frame carrying the new active tab must not echo an activate.
+    act(() => {
+      stream
+        .callbacks()
+        ?.onEvent(
+          frame(
+            'updated',
+            [terminalRow('tab-a', 'leaf-1'), terminalRow('tab-b', 'leaf-2')],
+            'tab-b'
+          )
+        )
+    })
+    await act(async () => undefined)
+    expect(calls.filter((call) => call.method === 'session.tabs.activate')).toHaveLength(sent)
+  })
+
+  it('close：宿主确认退役 → closed；live-host-pty 拒绝 → refused + 提示保留', async () => {
+    const closed = await booted({ 'session.tabs.close': { ok: true, result: { closed: true } } })
+    await expect(closed.result.current.actions.close('tab-a')).resolves.toBe('closed')
+    expect(closed.calls).toContainEqual({
+      method: 'session.tabs.close',
+      params: { worktree: WORKTREE, tabId: 'tab-a', reason: 'user' }
+    })
+
+    cleanup()
+    const refused = await booted({
+      'session.tabs.close': {
+        ok: true,
+        result: { closed: true, refused: true, refusalReason: 'live-host-pty' }
+      }
+    })
+    await expect(refused.result.current.actions.close('tab-a')).resolves.toBe('refused')
+    await waitFor(() => expect(refused.result.current.actions.notice).toContain('桌面端'))
+  })
+
+  it('close 失败：一次性降级，后续动作零新调用（退回本地标签）', async () => {
+    const { calls, stream, result } = await booted({
+      'session.tabs.close': { ok: false, code: 'forbidden' }
+    })
+
+    await expect(result.current.actions.close('tab-a')).resolves.toBe('local')
+    await waitFor(() => expect(result.current.unsupported).toBe(true))
+    expect(result.current.actions.notice).not.toBeNull()
+
+    const before = calls.length
+    await expect(result.current.actions.close('tab-b')).resolves.toBe('local')
+    expect(calls).toHaveLength(before)
+    expect(stream.unsubscribe).toHaveBeenCalledTimes(1)
+  })
+
+  it('create：带客户端 tabId/leafId，随后 activate', async () => {
+    const { calls, result } = await booted({
+      'terminal.create': { ok: true, result: { terminal: { handle: 'handle-new' } } }
+    })
+
+    await expect(
+      result.current.actions.createTerminal('terminal:abc', 'leaf:abc', 'Terminal 3')
+    ).resolves.toBe(true)
+    expect(calls).toContainEqual({
+      method: 'terminal.create',
+      params: {
+        worktree: WORKTREE,
+        tabId: 'terminal:abc',
+        leafId: 'leaf:abc',
+        title: 'Terminal 3',
+        clientMutationId: 'terminal:abc'
+      }
+    })
+    expect(calls).toContainEqual({
+      method: 'session.tabs.activate',
+      params: { worktree: WORKTREE, tabId: 'terminal:abc', notifyClients: true }
+    })
+  })
+
+  it('create 失败：降级并返回 false', async () => {
+    const { result } = await booted({ 'terminal.create': { ok: false, code: 'timeout' } })
+
+    await expect(
+      result.current.actions.createTerminal('terminal:abc', 'leaf:abc', 'Terminal 3')
+    ).resolves.toBe(false)
+    await waitFor(() => expect(result.current.unsupported).toBe(true))
+  })
+})
+
