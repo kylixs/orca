@@ -15,6 +15,7 @@ import {
   mergeMobileSessionSnapshotTabs,
   mergeMobileSessionTabGroups
 } from './mobile-session-tab-merge'
+import { persistPublishedMobileSessionTerminalTab } from './published-mobile-session-terminal-persistence'
 
 export class OrcaRuntimeWithPublishPtyBackedMobileSessionTerminal extends OrcaRuntimeWithHasLiveOrPersistedServeOrSshOwnedPtyBinding {
   /**
@@ -144,8 +145,59 @@ export class OrcaRuntimeWithPublishPtyBackedMobileSessionTerminal extends OrcaRu
       tabs
     }
     this.storeMobileSessionSnapshot(worktreeId, next)
+    this.persistPublishedMobileSessionTerminalTabToWorkspaceSession({
+      worktreeId,
+      tabId: args.tabId,
+      leafId: args.leafId,
+      pty,
+      title,
+      parentLayout,
+      activation: args.activate,
+      startupCwd: args.startupCwd,
+      viewMode
+    })
     if (args.notify !== false) {
       this.notifyMobileSessionTabsChanged(worktreeId)
+    }
+  }
+
+  /** Mirror a published PTY-backed tab into the durable session so a host restart keeps it. */
+  protected persistPublishedMobileSessionTerminalTabToWorkspaceSession(args: {
+    worktreeId: string
+    tabId: string
+    leafId: string
+    pty: RuntimePtyWorktreeRecord
+    title: string
+    parentLayout: RuntimeMobileSessionTerminalTab['parentLayout']
+    activation: boolean
+    startupCwd?: string
+    viewMode?: 'terminal' | 'chat'
+  }): void {
+    // Why: with a renderer attached its graph owns persistence; this backfill is
+    // only for the headless/cloud runtime where no graph publication will run.
+    if (this.getAvailableAuthoritativeWindow() || !args.parentLayout) {
+      return
+    }
+    const session = this.getWorkspaceSessionForWorktree(args.worktreeId)
+    if (!session || !this.store?.setWorkspaceSession) {
+      return
+    }
+    const next = persistPublishedMobileSessionTerminalTab({
+      session,
+      worktreeId: args.worktreeId,
+      tabId: args.tabId,
+      leafId: args.leafId,
+      ptyId: args.pty.ptyId,
+      title: args.title,
+      parentLayout: args.parentLayout,
+      activation: args.activation,
+      startupCwd: args.startupCwd,
+      launchAgent: args.pty.launchAgent ?? undefined,
+      viewMode: args.viewMode,
+      incarnationId: args.pty.incarnationId
+    })
+    if (next) {
+      this.setWorkspaceSessionForWorktree(args.worktreeId, next)
     }
   }
 
