@@ -3692,6 +3692,12 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **U160 审计 PASS**（`4da058a2f18`）。
 - 判定口径：final3 仍以 U161 修复后构建为准（目标 0 red / `conclusive=true`）。
 
+### 2026-11-17 04:1x 轮：final3（U161 v1）9/10 绿；入口分歧登记 U162
+
+- **final3（U161 v1 构建，`final3-20261117-035926/`）**：两次同型——green 23 / red 1 / unstable 1 / invalid 0，`conclusive=false`；quick 每轮 tap/create 与 DOM/store/group=新 tab（**9/10**，1 轮首读 persisted 滞后 unstable）；race 25/25。
+- **确定性 red（两次复现）**：reload cycle-1 `start`，`attribution=H-C`——运行入口即 host projection=`e05…` vs persisted=`1bb…`（上一轮流程遗留、任何手势前）→ 登记 **U162**（宿主内存/持久分歧），并派探针**基线归一**（setup，非测量）。
+- **U161 v2**（`9d408c77c0f`）：另 4 入口补 worktree + 每入口钉 + deferral 清理；28 文件 119 测试；**final3 构建不含 v2**，须重建 final4。
+
 ### 四通道并发执行（启动，2026-11-14）
 
 按细粒度拆分与三权分立纪律并发起跑：通道② **W6a**（中继浏览器模式，relay.ts 域）、通道③ **W10**（客户端零 env 登录，src/main+renderer 登录域）、通道④ **W5a**（详情页终端组件，cloud-admin 域）三个实现代理并行；通道① 等在途 W2（QA 修复）完成后接 W8。每令完成→独立测试代理→独立审计代理→主会话关闭放行下一个。
