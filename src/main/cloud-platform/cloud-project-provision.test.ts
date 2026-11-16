@@ -4,6 +4,11 @@ import {
   validateCloudBranchName,
   validateCloudCloneUrl
 } from './cloud-project-provision'
+import { validateProjectRepoUrl } from '../../../cloud-platform/packages/contract/src/repo-url'
+import {
+  REPO_URL_ACCEPT,
+  REPO_URL_REJECT
+} from '../../../cloud-platform/packages/contract/src/repo-url-acceptance-cases'
 
 describe('云项目准备：仓库地址校验', () => {
   it.each([
@@ -23,14 +28,15 @@ describe('云项目准备：仓库地址校验', () => {
   })
 
   it('接受两端共享矩阵（防分叉）', () => {
-    const shared = [
-      '/srv/git/repo.git',
-      'C:\\repos\\demo.git',
-      'file:///srv/git/repo.git',
-      'file://localhost/srv/git/repo.git'
-    ]
-    for (const url of shared) {
+    for (const url of REPO_URL_ACCEPT) {
       expect(validateCloudCloneUrl(url).ok, `${url} 两端都必须接受`).toBe(true)
+    }
+  })
+
+  it('无 user@ 的 SCP-like 与 UNC 两端都拒绝，且判定一致（防分叉）', () => {
+    for (const url of REPO_URL_REJECT) {
+      expect(validateCloudCloneUrl(url).ok, `${url} 宿主必须拒绝`).toBe(false)
+      expect(validateProjectRepoUrl(url).ok, `${url} 平台必须拒绝`).toBe(false)
     }
   })
 
@@ -47,6 +53,10 @@ describe('云项目准备：仓库地址校验', () => {
     ['file://remote-host/srv/work/repo', 'file url with hostname'],
     ['javascript:alert(1)', 'unlisted scheme'],
     ['../relative/path', 'relative path'],
+    ['example.com:org/repo.git', 'scp-like without user'],
+    ['localhost:org/repo.git', 'scp-like localhost without user'],
+    ['\\\\server\\share\\repo.git', 'windows UNC'],
+    ['//server/share/repo.git', 'posix UNC'],
     ['git@host', 'scp-like without path']
   ])('拒绝 %s（%s）', (url) => {
     const verdict = validateCloudCloneUrl(url)

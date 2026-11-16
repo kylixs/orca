@@ -1,6 +1,7 @@
 import { test, before, after, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { registerHost, saveEvidence, spawnService, type Service } from './harness.ts'
+import { REPO_URL_REJECT } from '../../packages/contract/src/repo-url-acceptance-cases.ts'
 
 /**
  * W120 U18/U19: the platform no longer trusts the admin console's client-side
@@ -292,7 +293,7 @@ describe('W120 U18/U19 平台登记输入校验（真实平台进程）', () => 
   })
 
   test('U136 仓库地址：裸字符串 400 REPO_URL_INVALID，受支持形态 201', async () => {
-    for (const [index, repoUrl] of ['not-a-valid-url'].entries()) {
+    for (const [index, repoUrl] of ['not-a-valid-url', ...REPO_URL_REJECT].entries()) {
       await expectRejected(
         `admin-bad-repo-${index}`,
         adminCreate({
@@ -322,7 +323,8 @@ describe('W120 U18/U19 平台登记输入校验（真实平台进程）', () => 
       'ssh://git@git.example.com/pay/regval-repo-ssh.git',
       'git@git.example.com:pay/regval-repo-scp.git',
       '/srv/git/regval-repo-local.git',
-      'file:///srv/git/regval-repo-file.git'
+      'file:///srv/git/regval-repo-file.git',
+      'file://localhost/srv/git/regval-repo-file-localhost.git'
     ]
     for (const [index, repoUrl] of supported.entries()) {
       const created = await adminCreate({
@@ -344,7 +346,7 @@ describe('W120 U18/U19 平台登记输入校验（真实平台进程）', () => 
     })
     assert.equal(repoLess.status, 201, JSON.stringify(repoLess.body))
     assert.equal((repoLess.body as { repoUrl: string }).repoUrl, '')
-    observations['repo-url-matrix'] = { rejected: 2, created: 6 }
+    observations['repo-url-matrix'] = { rejected: 1 + REPO_URL_REJECT.length, created: 7 }
   })
 
   test('合法输入两条路径仍 201（零回归）', async () => {

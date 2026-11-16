@@ -47,7 +47,10 @@ export type CloudProvisionValidation<T> =
 
 const MAX_CLONE_URL_LENGTH = 4096
 const MAX_BRANCH_LENGTH = 200
-const SCP_LIKE = /^[A-Za-z0-9._-]+@[^:/\s]+:.+$/
+// `user@` is required so `host:path` cannot be confused with a drive or local path.
+const SCP_LIKE = /^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+:[^\s\\]+$/
+// UNC paths reach an SMB share instead of the host's own filesystem.
+const UNC_PATH = /^[\\/]{2}/
 const ALLOWED_SCHEMES = ['https://', 'http://', 'ssh://', 'git://'] as const
 
 function hasControlCharacter(value: string): boolean {
@@ -107,6 +110,9 @@ export function validateCloudCloneUrl(value: string): CloudProvisionValidation<s
   // git's ext:: transport executes an arbitrary command; it must never come from a ticket.
   if (url.toLowerCase().includes('ext::')) {
     return rejectUrl('不支持 git ext:: 传输协议。')
+  }
+  if (UNC_PATH.test(url)) {
+    return rejectUrl('不支持 UNC 网络共享路径。')
   }
   if (isAbsoluteLocalPath(url) || isLocalFileUrl(url) || SCP_LIKE.test(url)) {
     return { ok: true, value: url }

@@ -14,10 +14,13 @@ const MAX_REPO_URL_LENGTH = 4096
 // above because it runs a command; ftp(s) is deliberately not offered.
 const SUPPORTED_SCHEMES = new Set(['http:', 'https:', 'ssh:', 'git:', 'file:'])
 
-// SCP-like syntax: `[user@]host:path`. A host without `user@` must look like a
-// hostname so a Windows drive path (`C:/repo`) is not mistaken for one.
-const SCP_LIKE =
-  /^(?:[A-Za-z0-9._-]+@[A-Za-z0-9._-]+|(?:(?:[A-Za-z0-9-]+\.)+[A-Za-z0-9-]+|localhost)):[^\s\\]+$/
+// SCP-like syntax requires `user@` on both sides: without it, `host:path` is
+// ambiguous (a Windows drive, a local path, or an SMB target) and the host
+// provisioner rejects it.
+const SCP_LIKE = /^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+:[^\s\\]+$/
+
+// UNC paths reach an SMB share instead of the host's own filesystem.
+const UNC_PATH = /^[\\/]{2}/
 
 function hasControlCharacter(value: string): boolean {
   for (const character of value) {
@@ -36,15 +39,10 @@ function reject(message: string): ProjectRepoUrlVerdict {
 // The ticket may point at a repository already prepared on the host's own
 // filesystem, so an absolute local path is as valid as a transport URL.
 const WINDOWS_DRIVE_ABSOLUTE = /^[A-Za-z]:[\\/][^\\/]/
-const WINDOWS_UNC_ABSOLUTE = /^\\\\[^\\/]+[\\/][^\\/]/
 const ROOTED_ABSOLUTE = /^[\\/][^\\/]/
 
 function isAbsoluteLocalPath(value: string): boolean {
-  return (
-    WINDOWS_DRIVE_ABSOLUTE.test(value) ||
-    WINDOWS_UNC_ABSOLUTE.test(value) ||
-    ROOTED_ABSOLUTE.test(value)
-  )
+  return WINDOWS_DRIVE_ABSOLUTE.test(value) || ROOTED_ABSOLUTE.test(value)
 }
 
 function isSupportedRepoAddress(value: string): boolean {
@@ -94,6 +92,9 @@ export function validateProjectRepoUrl(value: unknown): ProjectRepoUrlVerdict {
   }
   if (repoUrl.toLowerCase().includes('ext::')) {
     return reject('不支持 git ext:: 传输协议。')
+  }
+  if (UNC_PATH.test(repoUrl)) {
+    return reject('不支持 UNC 网络共享路径。')
   }
   // Local absolute paths are host-local like file:// and may contain spaces or
   // Windows separators, so they must be classified before the URL shape checks.

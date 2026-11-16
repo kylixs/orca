@@ -1,6 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { validateProjectRepoUrl } from '../packages/contract/src/repo-url.ts'
+import {
+  REPO_URL_ACCEPT,
+  REPO_URL_REJECT
+} from '../packages/contract/src/repo-url-acceptance-cases.ts'
 
 const POSITIVE = [
   'https://git.example.com/org/repo.git',
@@ -10,15 +14,12 @@ const POSITIVE = [
   'git://git.example.com/org/repo.git',
   'git@git.example.com:org/repo.git',
   'git@host:org/repo.git',
-  'example.com:org/repo.git',
-  'localhost:org/repo.git',
   'file:///srv/git/repo.git',
   'file://localhost/srv/git/repo.git',
   '/srv/git/repo.git',
   '/srv/git/repo with space.git',
   'C:/repos/demo.git',
-  'C:\\repos\\demo.git',
-  '\\\\server\\share\\repo.git'
+  'C:\\repos\\demo.git'
 ]
 
 const NEGATIVE = [
@@ -36,7 +37,11 @@ const NEGATIVE = [
   'https://git.example.com/org/repo\\x.git',
   '-oops',
   '-https://git.example.com/org/repo.git',
-  'ext::sh -c id'
+  'ext::sh -c id',
+  'example.com:org/repo.git',
+  'localhost:org/repo.git',
+  '\\\\server\\share\\repo.git',
+  '//server/share/repo.git'
 ]
 
 test('仓库地址：空值表示无仓库项目，保持合法', () => {
@@ -66,14 +71,16 @@ test('仓库地址：裸字符串与畸形地址拒绝', () => {
 })
 
 test('仓库地址：两端共享矩阵在本侧全部接受（防分叉）', () => {
-  const shared = [
-    '/srv/git/repo.git',
-    'C:\\repos\\demo.git',
-    'file:///srv/git/repo.git',
-    'file://localhost/srv/git/repo.git'
-  ]
-  for (const repoUrl of shared) {
+  for (const repoUrl of REPO_URL_ACCEPT) {
     assert.equal(validateProjectRepoUrl(repoUrl).ok, true, `${repoUrl} 两端都必须接受`)
+  }
+})
+
+test('仓库地址：无 user@ 的 SCP-like 与 UNC 两端都拒绝（防分叉）', () => {
+  for (const repoUrl of REPO_URL_REJECT) {
+    const verdict = validateProjectRepoUrl(repoUrl)
+    assert.equal(verdict.ok, false, `${repoUrl} 两端都必须拒绝`)
+    assert.equal(verdict.ok === false ? verdict.code : '', 'REPO_URL_INVALID')
   }
 })
 

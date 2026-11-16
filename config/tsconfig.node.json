@@ -23,7 +23,10 @@
     "../src/relay/**/*",
     "../src/types/**/*",
     // The platform's credential twin is dependency-free, so parity tests can import it.
-    "../cloud-platform/packages/contract/src/credential.ts"
+    "../cloud-platform/packages/contract/src/credential.ts",
+    // Repo-URL parity tests import the platform validator and its shared cases.
+    "../cloud-platform/packages/contract/src/repo-url.ts",
+    "../cloud-platform/packages/contract/src/repo-url-acceptance-cases.ts"
   ],
   "exclude": [
     // Why cloud-e2e owns them: each imports a renderer module this project does not list.
