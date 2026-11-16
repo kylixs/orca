@@ -486,8 +486,23 @@ function renderWorkspaceLoadFailure(projectId, err) {
   $('#retryWorkspace').onclick = () => void loadWorkspaceRoute(projectId)
 }
 
+/** U80 M3: the embedded desktop overlay never mounts on a phone; point at Orca Web. */
+const MOBILE_VIEWPORT_QUERY = '(max-width: 700px)'
+const MOBILE_WORKSPACE_HINT = '请在 Orca Web 工作区打开（自带移动端支持）'
+
+function isMobileViewport() {
+  return typeof window.matchMedia === 'function' && window.matchMedia(MOBILE_VIEWPORT_QUERY).matches
+}
+
+function mobileWorkspaceBlocked() {
+  if (!isMobileViewport()) return false
+  toast(MOBILE_WORKSPACE_HINT)
+  return true
+}
+
 /** 列表/授权后打开：先 push URL，再由路由挂载覆盖层（T4）。 */
 function enterWorkspace(projectId) {
+  if (mobileWorkspaceBlocked()) return
   const hash = buildHash({ name: 'workspace', params: { id: projectId } })
   workspaceClosing = false
   if (location.hash === hash) {
@@ -678,6 +693,41 @@ function projectCard(p, globalDefault) {
 }
 
 /**
+ * U80 M3: the phone face of 我的项目. Same row data as the table, rendered as a
+ * card (visible only ≤700px); desktop keeps the table byte for byte.
+ */
+function projectListCard(p) {
+  const offline = p.hostStatus !== 'online'
+  const [statusLabel, statusTone] =
+    p.status === 'archived'
+      ? ['已归档', '']
+      : p.hostAccess === 'read-only'
+        ? ['只读', 'warn']
+        : p.hostStatus === 'maintenance'
+          ? ['维护中', 'warn']
+          : offline
+            ? ['离线', 'danger']
+            : ['在线', 'ok']
+  const reason = openDisabledReason(p)
+  return `<article class="card project-list-card" data-online="${offline ? 'false' : 'true'}">
+    <div class="plc-head">
+      <div class="plc-title"><span class="dot ${offline ? 'offline' : 'online'}"></span><strong class="plc-name">${esc(p.name)}</strong>${archivedBadge(p)}</div>
+      <span class="badge ${statusTone}">${statusLabel}</span>
+    </div>
+    <div class="plc-path mono">${esc(p.repoUrl || p.path)}</div>
+    <div class="plc-fields">
+      <div class="plc-field"><span class="k">可见范围</span><span class="v">${esc(permissionSummary(p))}</span></div>
+      <div class="plc-field"><span class="k">创建时间</span><span class="v">${relative(p.createdAt ?? Date.now())}</span></div>
+    </div>
+    <div class="plc-actions">
+      ${detailEntry(p)}
+      <span class="plc-spacer"></span>
+      <button class="btn primary sm" data-open="${esc(p.id)}" ${reason ? `disabled title="${esc(reason)}"` : ''}>打开工作区</button>
+    </div>
+  </article>`
+}
+
+/**
  * The per-project row entries (FR-3.11 R3) come from one builder so 工作台 and
  * 我的项目 stay identical. 「详情」 is admin-only and opens a read-only platform
  * dialog (never gated by host state: an offline host is exactly what it
@@ -846,6 +896,8 @@ function isInlineWorkspaceUrl(url) {
  * the host/relay edge while the console stays underneath (§4.1/§4.2).
  */
 async function openProjectWorkspace(projectId, { retries = 0 } = {}) {
+  // Detail sheet's primary action calls this directly, so the phone guard lives here too.
+  if (mobileWorkspaceBlocked()) return
   const project = state.projects.find((p) => p.id === projectId)
   let body
   try {
@@ -1326,6 +1378,7 @@ async function openProjectDetail(projectId, { tab = 'info', onClose } = {}) {
     ],
     {
       wide: true,
+      sheet: true,
       onClose: () => {
         if (activeDetail !== detailEntry) return // 已被路由静默移除
         activeDetail = null
@@ -1437,16 +1490,31 @@ async function renderProjects() {
     <div class="toolbar">
       <input class="input grow" id="projectSearch" placeholder="搜索项目名、仓库或主机">
     </div>
-    <div class="table-wrap">
+    <div class="project-chips" id="projectChips" role="group" aria-label="项目状态筛选">
+      <button class="chip is-on" type="button" data-project-filter="all">全部状态</button>
+      <button class="chip" type="button" data-project-filter="online">仅在线</button>
+      <button class="chip" type="button" data-project-filter="offline">仅离线</button>
+    </div>
+    <div class="table-wrap" id="projectTableWrap">
       <table>
         <thead><tr><th>项目</th><th>仓库</th><th>主机</th><th>权限</th><th>下载策略</th><th class="actions">操作</th></tr></thead>
         <tbody id="projectBody"></tbody>
       </table>
-    </div>`
+    </div>
+    <div class="project-list" id="projectList"></div>`
+  let statusFilter = 'all'
+  const matchesStatus = (p) => {
+    if (statusFilter === 'online') return p.hostStatus === 'online'
+    if (statusFilter === 'offline') return p.hostStatus !== 'online'
+    return true
+  }
   const draw = (filter = '') => {
-    const rows = projects.filter((p) =>
-      `${p.name} ${p.repoUrl} ${p.hostName}`.toLowerCase().includes(filter.toLowerCase())
+    const rows = projects.filter(
+      (p) =>
+        matchesStatus(p) &&
+        `${p.name} ${p.repoUrl} ${p.hostName}`.toLowerCase().includes(filter.toLowerCase())
     )
+    const emptyRow = '<tr><td colspan="6" class="table-empty">没有匹配的项目</td></tr>'
     $('#projectBody').innerHTML =
       rows
         .map(
@@ -1463,7 +1531,10 @@ async function renderProjects() {
         <td class="actions">${projectRowActions(p)}</td>
       </tr>`
         )
-        .join('') || '<tr><td colspan="6" class="table-empty">没有匹配的项目</td></tr>'
+        .join('') || emptyRow
+    $('#projectList').innerHTML =
+      rows.map(projectListCard).join('') ||
+      '<div class="card pad muted">没有匹配的项目</div>'
     wireProjectActions()
   }
   draw(state.routeQuery?.get('q') ?? '')
@@ -1471,6 +1542,15 @@ async function renderProjects() {
   $('#projectSearch').oninput = (e) => {
     draw(e.target.value)
     syncListQuery('projects', { q: e.target.value.trim() })
+  }
+  for (const chip of document.querySelectorAll('#projectChips .chip')) {
+    chip.onclick = () => {
+      statusFilter = chip.dataset.projectFilter ?? 'all'
+      for (const other of document.querySelectorAll('#projectChips .chip')) {
+        other.classList.toggle('is-on', other === chip)
+      }
+      draw($('#projectSearch').value)
+    }
   }
   const registerBtn = $('#registerProjectBtn')
   if (registerBtn) {
@@ -3431,9 +3511,10 @@ function dialog(title, html, actions = [], options = {}) {
   const opener = document.activeElement
   const titleId = `dialogTitle${++dialogSeq}`
   const backdrop = document.createElement('div')
-  backdrop.className = 'dialog-backdrop'
+  backdrop.className = `dialog-backdrop${options.sheet ? ' dialog-sheet' : ''}`
   backdrop.innerHTML = `
     <div class="dialog${options.wide ? ' wide' : ''}" role="dialog" aria-modal="true" aria-labelledby="${titleId}">
+      ${options.sheet ? '<button class="btn ghost dialog-sheet-close" data-action="close" aria-label="关闭详情">← 返回</button>' : ''}
       <h2 id="${titleId}">${esc(title)}</h2>
       <div class="body">${html}</div>
       <div class="foot">
@@ -3464,7 +3545,10 @@ function dialog(title, html, actions = [], options = {}) {
     close()
   }
   document.addEventListener('keydown', onKeydown)
-  backdrop.querySelector('[data-action="close"]').onclick = close
+  // The sheet carries both a header back button and the footer close, so bind every one.
+  for (const button of backdrop.querySelectorAll('[data-action="close"]')) {
+    button.onclick = close
+  }
   backdrop.onclick = (e) => {
     if (e.target === backdrop) {
       close()

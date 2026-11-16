@@ -482,6 +482,12 @@ select {
   font-size: 12px;
   flex-wrap: wrap;
 }
+/* U80 M3: phone-only project chips/cards + sheet header; desktop stays untouched. */
+.project-chips,
+.project-list,
+.dialog-sheet-close {
+  display: none;
+}
 .badge {
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -1330,5 +1336,205 @@ td.actions {
     position: sticky;
     bottom: calc(8px + env(safe-area-inset-bottom));
     z-index: 1;
+  }
+
+  /* ---------- U80 M3: 项目列表卡片 + 筛选 chips ---------- */
+  #projectTableWrap {
+    display: none;
+  }
+  .project-chips {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+    margin: 0 0 12px;
+    padding: 2px 0 4px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .project-chips::-webkit-scrollbar {
+    display: none;
+  }
+  .chip {
+    flex: none;
+    min-height: 44px;
+    padding: 0 16px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--card);
+    color: var(--text-2);
+    font-size: 12.5px;
+    white-space: nowrap;
+  }
+  .chip.is-on {
+    color: var(--brand);
+    border-color: var(--brand);
+    background: var(--brand-soft);
+    font-weight: 500;
+  }
+  .project-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .project-list-card {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+  }
+  .plc-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    min-width: 0;
+  }
+  .plc-title {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .plc-name {
+    min-width: 0;
+    font-size: 14px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .plc-head > .badge {
+    flex: none;
+  }
+  .plc-path {
+    color: var(--text-3);
+    font-size: 11.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .plc-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 12px;
+  }
+  .plc-field {
+    min-width: 0;
+  }
+  .plc-field .k {
+    display: block;
+    color: var(--text-3);
+    font-size: 11px;
+    margin-bottom: 2px;
+  }
+  .plc-field .v {
+    display: block;
+    color: var(--text-2);
+    font-size: 12.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .plc-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 2px;
+  }
+  .plc-spacer {
+    flex: 1;
+  }
+  .plc-actions .btn {
+    min-height: 44px;
+  }
+
+  /* ---------- U80 M3: 项目详情全屏 sheet ---------- */
+  .dialog-backdrop.dialog-sheet {
+    padding: 0;
+    place-items: stretch;
+    background: var(--bg);
+  }
+  .dialog-backdrop.dialog-sheet .dialog {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    display: flex;
+    flex-direction: column;
+  }
+  .dialog-sheet .dialog-sheet-close {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    min-height: 44px;
+    margin: calc(8px + env(safe-area-inset-top)) 8px 0;
+    padding: 0 8px;
+    color: var(--text-2);
+  }
+  .dialog-sheet h2 {
+    padding: 4px 20px 10px;
+    font-size: 16px;
+  }
+  .dialog-sheet .body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 16px 12px;
+  }
+  .dialog-backdrop.dialog-sheet .dialog.wide .body {
+    max-height: none;
+  }
+  .dialog-sheet .foot {
+    flex: none;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--border);
+    background: var(--card);
+  }
+  .dialog-sheet .foot .btn {
+    flex: 1 1 auto;
+    min-height: 44px;
+  }
+  .dialog-sheet .detail-tabs {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--bg);
+    margin-bottom: 14px;
+  }
+  .dialog-sheet .detail-tab {
+    flex: 1;
+    min-height: 44px;
+    font-size: 13.5px;
+  }
+  .dialog-sheet .detail-sections {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+  .dialog-sheet .detail-section .kv {
+    grid-template-columns: 88px minmax(0, 1fr);
+  }
+  .dialog-sheet .kv dd {
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  .dialog-sheet .perm-card {
+    padding: 14px;
+  }
+  .dialog-sheet .perm-card-head {
+    flex-wrap: wrap;
+    row-gap: 4px;
+    min-width: 0;
+  }
+  .dialog-sheet .perm-chips {
+    gap: 8px 6px;
+  }
+  .dialog-sheet .perm-chip {
+    max-width: 100%;
   }
 }

@@ -262,3 +262,185 @@ test('390×844：工作台统计 2×2、提示条一次可关、最近项目触�
     await page.context().close()
   }
 })
+
+/* ---------------- U80 M3: 项目列表 + 详情 sheet ---------------- */
+
+test('390×844：项目列表 chips 横滑、卡字段单行省略、操作 ≥44px、无横向溢出', async () => {
+  const page = await signIn({ width: 390, height: 844 }, ADMIN, '#/projects')
+  try {
+    assert.equal(await page.locator('#projectChips').isVisible(), true)
+    assert.deepEqual(await page.locator('#projectChips .chip').allInnerTexts(), [
+      '全部状态',
+      '仅在线',
+      '仅离线'
+    ])
+    const chipsStyle = await page.locator('#projectChips').evaluate((el) => {
+      const style = getComputedStyle(el)
+      return { wrap: style.flexWrap, overflowX: style.overflowX }
+    })
+    assert.deepEqual(chipsStyle, { wrap: 'nowrap', overflowX: 'auto' })
+    assert.equal(
+      await page.locator('#projectChips .chip').first().evaluate((el) =>
+        getComputedStyle(el).whiteSpace
+      ),
+      'nowrap',
+      'chips never wrap onto a second line'
+    )
+
+    assert.equal(await page.locator('#projectTableWrap').isVisible(), false, 'table → cards')
+    const cards = page.locator('.project-list-card')
+    assert.ok((await cards.count()) > 0, 'seeded fixtures expose project cards')
+    const nameStyle = await page.locator('.project-list-card .plc-name').first().evaluate((el) => {
+      const style = getComputedStyle(el)
+      return [style.whiteSpace, style.textOverflow, style.overflow]
+    })
+    assert.deepEqual(nameStyle, ['nowrap', 'ellipsis', 'hidden'])
+    const fieldStyle = await page.locator('.project-list-card .plc-field .v').first().evaluate((el) => {
+      const style = getComputedStyle(el)
+      return [style.whiteSpace, style.textOverflow]
+    })
+    assert.deepEqual(fieldStyle, ['nowrap', 'ellipsis'])
+    assert.equal(
+      await page.locator('.project-list-card .plc-field .k').first().innerText(),
+      '可见范围'
+    )
+
+    const heights = await cards
+      .first()
+      .locator('.plc-actions .btn')
+      .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height))
+    assert.equal(heights.length, 2, '详情 + 打开工作区')
+    assert.ok(heights.every((height) => height >= 44), `actions >=44px, got ${heights.join(',')}`)
+
+    await page.click('#projectChips .chip[data-project-filter="offline"]')
+    await page.waitForFunction(
+      () => document.querySelectorAll('.project-list-card').length === 0
+    )
+    assert.match(await page.locator('#projectList').innerText(), /没有匹配的项目/)
+    await page.click('#projectChips .chip[data-project-filter="all"]')
+    await page.waitForFunction(() => document.querySelectorAll('.project-list-card').length > 0)
+
+    assert.ok((await horizontalOverflow(page)) <= 1, '390px projects must not overflow')
+    await page.screenshot({ path: join(evidenceDir(EV), '390x844-projects.png') })
+  } finally {
+    await page.context().close()
+  }
+})
+
+test('390×844：项目详情全屏 sheet，信息/权限可切换，权限三卡纵向可读，按钮关闭', async () => {
+  const page = await signIn({ width: 390, height: 844 }, ADMIN, '#/projects')
+  try {
+    await page.click('.project-list-card [data-detail]')
+    await page.waitForSelector('.dialog-backdrop.dialog-sheet')
+    const sheet = await page.locator('.dialog-backdrop.dialog-sheet .dialog').boundingBox()
+    assert.ok(sheet, 'sheet must be laid out')
+    assert.ok(sheet.width >= 389, `sheet spans the viewport, got ${sheet.width}`)
+    assert.ok(sheet.height >= 843, `sheet spans the viewport, got ${sheet.height}`)
+    assert.equal(await page.locator('.dialog-sheet-close').isVisible(), true, 'back button')
+
+    const tabHeight = await page
+      .locator('[data-auth-tab="info"]')
+      .evaluate((el) => el.getBoundingClientRect().height)
+    assert.ok(tabHeight >= 44, `tabs are touch targets, got ${tabHeight}`)
+
+    await page.click('[data-auth-tab="perms"]')
+    await page.waitForFunction(
+      () => document.querySelectorAll('#projectPermCards .perm-card').length === 3
+    )
+    assert.deepEqual(
+      await page.locator('#projectPermCards .perm-card-head strong').allInnerTexts(),
+      ['查看', '控制', '管理']
+    )
+    const boxes = await page
+      .locator('#projectPermCards .perm-card')
+      .evaluateAll((els) =>
+        els.map((el) => {
+          const rect = el.getBoundingClientRect()
+          return { x: rect.x, y: rect.y, width: rect.width }
+        })
+      )
+    assert.ok(
+      boxes.every((box) => box.width >= 300),
+      `cards fill the sheet width, got ${boxes.map((box) => box.width).join(',')}`
+    )
+    for (let i = 1; i < boxes.length; i += 1) {
+      assert.ok(boxes[i].y > boxes[i - 1].y, 'cards stack vertically')
+    }
+
+    await page.click('[data-auth-tab="info"]')
+    const overflowing = await page.locator('.dialog-sheet .kv dd').evaluateAll((els) => {
+      const limit = document.documentElement.clientWidth
+      return els.filter((el) => {
+        const rect = el.getBoundingClientRect()
+        return rect.width > 0 && rect.right > limit + 1
+      }).length
+    })
+    assert.equal(overflowing, 0, 'info values wrap inside the sheet')
+    assert.ok((await horizontalOverflow(page)) <= 1, 'open sheet must not overflow horizontally')
+    await page.screenshot({ path: join(evidenceDir(EV), '390x844-project-sheet.png') })
+
+    await page.click('.dialog-sheet .foot [data-action="close"]')
+    await page.waitForFunction(() => !document.querySelector('.dialog-backdrop'))
+    assert.equal(await currentHash(page), '#/projects')
+    assert.ok((await horizontalOverflow(page)) <= 1)
+  } finally {
+    await page.context().close()
+  }
+})
+
+test('390×844：打开工作区提示 Orca Web 且不加载桌面覆盖层', async () => {
+  const page = await signIn({ width: 390, height: 844 }, DEVELOPER, '#/projects')
+  try {
+    const open = page.locator('.project-list-card [data-open]').first()
+    assert.equal(await open.isEnabled(), true)
+    await open.click()
+    await page.waitForSelector('.toast')
+    assert.equal(
+      await page.locator('.toast').innerText(),
+      '请在 Orca Web 工作区打开（自带移动端支持）'
+    )
+    assert.equal(await page.locator('#workspaceOverlay').count(), 0)
+    assert.equal(await page.evaluate(() => document.querySelectorAll('.workspace-overlay').length), 0)
+    assert.equal(await currentHash(page), '#/projects')
+    assert.ok((await horizontalOverflow(page)) <= 1)
+  } finally {
+    await page.context().close()
+  }
+})
+
+test('768/1280：项目列表保持表格、详情居中弹框（M3 桌面零回归）', async () => {
+  for (const viewport of [
+    { width: 768, height: 1024 },
+    { width: 1280, height: 800 }
+  ]) {
+    const page = await signIn(viewport, ADMIN, '#/projects')
+    try {
+      assert.equal(await page.locator('#projectChips').isVisible(), false)
+      assert.equal(await page.locator('.project-list').isVisible(), false)
+      assert.equal(await page.locator('#projectTableWrap').isVisible(), true)
+      assert.ok((await page.locator('#projectBody tr').count()) > 0)
+
+      await page.click('#projectBody [data-detail]')
+      await page.waitForSelector('.dialog-backdrop')
+      assert.equal(
+        await page.locator('.dialog-sheet-close').isVisible(),
+        false,
+        'desktop keeps the centered dialog: no sheet back bar'
+      )
+      const box = await page.locator('.dialog').boundingBox()
+      assert.ok(box, 'dialog must be laid out')
+      assert.ok(box.width <= 720, `dialog keeps its desktop width, got ${box.width}`)
+      const leftGap = box.x
+      const rightGap = viewport.width - box.x - box.width
+      assert.ok(Math.abs(leftGap - rightGap) <= 2, 'dialog stays centered')
+      await page.click('.dialog .foot [data-action="close"]')
+      await page.waitForFunction(() => !document.querySelector('.dialog-backdrop'))
+      assert.ok(
+        (await horizontalOverflow(page)) <= 1,
+        `${viewport.width}px must not overflow horizontally`
+      )
+    } finally {
+      await page.context().close()
+    }
+  }
+})
