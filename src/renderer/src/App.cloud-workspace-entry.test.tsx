@@ -305,7 +305,9 @@ describe('native cloud entry', () => {
         'runtime:env-a'
       )
     )
-    expect(storeMock.state.fetchWorktrees).toHaveBeenCalledWith('repo-a')
+    expect(storeMock.state.fetchWorktrees).toHaveBeenCalledWith('repo-a', {
+      executionHostId: 'runtime:env-a'
+    })
   })
 
   it('leaves the default view untouched when the open reply has no checkout path', async () => {
@@ -326,7 +328,11 @@ describe('native cloud entry', () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
-    expect(storeMock.state.fetchWorktrees).not.toHaveBeenCalled()
+    // The entry still refreshes the registered repo, but with no checkout path
+    // in the reply there is nothing to activate.
+    expect(storeMock.state.fetchWorktrees).toHaveBeenCalledWith('repo-a', {
+      executionHostId: 'runtime:env-a'
+    })
     expect(storeMock.state.setActiveWorktree).not.toHaveBeenCalled()
   })
 

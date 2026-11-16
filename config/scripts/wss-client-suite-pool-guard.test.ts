@@ -11,8 +11,25 @@ import { NODE_RUNTIME_INCLUDE } from './vitest-node-runtime-files.mjs'
  * This static guard makes the next unregistered WSS-client suite fail here, next
  * to the manifest, instead of as an unrelated handshake error in CI.
  */
+function importsModule(source: string, moduleBaseName: string): boolean {
+  return new RegExp(`from\\s+['"][^'"]*${moduleBaseName}['"]`).test(source)
+}
+
 function wssClientSignals(source: string): string[] {
   const signals: string[] = []
+  // One hop: this fixture always starts its runtime over a throwaway certificate,
+  // so importing it commits the suite to a real WSS client just like calling
+  // makeSelfSignedTls() does. The shared harness is excluded: it also serves
+  // plain ws:// suites (cloud-session-limits), so its import alone proves nothing.
+  if (importsModule(source, 'cloud-agent-launch-execution-fixture')) {
+    signals.push('imports cloud-agent-launch-execution-fixture')
+  }
+  // A hand-rolled E2EE handshake over a real WebSocket reds in bun's ws: its
+  // shim re-delivers the in-flight frame to nested listeners, so the client
+  // reads `{}` instead of e2ee_authenticated (cloud-host-enrollment, U132).
+  if (/deriveSharedKey\s*\(/.test(source) && /new WebSocket\(/.test(source)) {
+    signals.push('E2EE handshake over WebSocket')
+  }
   // The shared fixture that serves the runtime with a throwaway certificate.
   if (/makeSelfSignedTls\s*\(/.test(source)) {
     signals.push('makeSelfSignedTls()')

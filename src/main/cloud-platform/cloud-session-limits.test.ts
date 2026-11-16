@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type WebSocket from 'ws'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { readString } from '../../shared/json-fields'
 import type { DeviceRegistry } from '../runtime/device-registry'
 import {
   startCloudRuntimeAdmission,
@@ -208,6 +209,25 @@ describe('每主机并发上限（超限返回 4431，释放后可再连）', ()
 
   beforeAll(async () => {
     platform = await startPlatform()
+    // Why: the seeded project is granted to team-payment (zhangsan) only. This
+    // case also connects admin devices, so admin needs its own `open` bit.
+    const adminLogin = await fetch(`${platform.url}/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password: 'Adm1n!', deviceName: 'host-cap-grant' })
+    })
+    const adminToken = readString(await adminLogin.json(), 'accessToken')
+    if (adminToken === null) {
+      throw new Error('admin login failed')
+    }
+    const granted = await fetch(`${platform.url}/v1/projects/proj_payment/grants`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ subjectType: 'user', subjectId: 'admin', permissions: ['open'] })
+    })
+    if (!granted.ok) {
+      throw new Error(`admin open grant failed: ${await granted.text()}`)
+    }
     client = createCloudAgentClient({
       apiUrl: platform.url,
       internalToken: DEFAULT_INTERNAL_TOKEN,

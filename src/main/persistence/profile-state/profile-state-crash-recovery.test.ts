@@ -22,6 +22,31 @@ afterEach(() => {
   }
 })
 
+// Node 24.10 added DatabaseSync.setAuthorizer; older runtimes cannot drive the
+// checkpoint-interruption case. CI's latest Node 24 has it.
+function supportsSqliteAuthorizer(): boolean {
+  if (typeof process.getBuiltinModule !== 'function') {
+    return false
+  }
+  const sqlite: unknown = process.getBuiltinModule('node:sqlite')
+  if (typeof sqlite !== 'object' || sqlite === null || !('DatabaseSync' in sqlite)) {
+    return false
+  }
+  const DatabaseSync = sqlite.DatabaseSync
+  if (typeof DatabaseSync !== 'function') {
+    return false
+  }
+  const prototype: unknown = Reflect.get(DatabaseSync, 'prototype')
+  return (
+    typeof prototype === 'object' &&
+    prototype !== null &&
+    'setAuthorizer' in prototype &&
+    typeof prototype.setAuthorizer === 'function'
+  )
+}
+
+const supportsCheckpointAuthorizer = supportsSqliteAuthorizer()
+
 const crashDuringWriteScript = `
   const { DatabaseSync } = process.getBuiltinModule('node:sqlite')
   const db = new DatabaseSync(process.argv[1])
@@ -76,6 +101,9 @@ const crashDuringCheckpointScript = `
   writer.exec('COMMIT')
   reader.exec('BEGIN')
   reader.prepare("SELECT value FROM profile_state_meta WHERE key = 'revision'").get()
+  if (typeof writer.setAuthorizer !== 'function') {
+    throw new Error('DatabaseSync.setAuthorizer is unavailable (Node <24.10)')
+  }
   // SQLITE_PRAGMA is action code 19; the reader keeps TRUNCATE checkpointing active after this callback returns.
   writer.setAuthorizer((action) => {
     if (action === 19) {
@@ -100,14 +128,28 @@ async function killAfterChildReady(dbPath: string, script: string, marker: strin
   try {
     await new Promise<void>((resolve, reject) => {
       let output = ''
+      let errors = ''
       const onData = (chunk: Buffer | string): void => {
         output += String(chunk)
         if (output.includes(marker)) {
           resolve()
         }
       }
+      const onErrorData = (chunk: Buffer | string): void => {
+        errors += String(chunk)
+      }
       child.stdout.on('data', onData)
+      child.stderr.on('data', onErrorData)
       child.once('error', reject)
+      // Why: an unsupported runtime exits before the marker; waiting out the
+      // whole hook would hide the cause, so surface stderr immediately.
+      child.once('exit', (code, signal) => {
+        reject(
+          new Error(
+            `child exited before "${marker}" (code=${String(code)}, signal=${String(signal)}): ${errors.trim()}`
+          )
+        )
+      })
     })
     child.kill('SIGKILL')
     await new Promise<void>((resolve, reject) => {
@@ -185,26 +227,31 @@ describe('profile state crash recovery', () => {
     }
   })
 
-  it('recovers a committed database when checkpointing is interrupted', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'orca-profile-state-checkpoint-crash-'))
-    temporaryDirectories.push(directory)
-    const dbPath = profileStateDatabaseFile(directory)
-    const fixture = buildProfileStateCutoverFixture()
-    const initial = openProfileStateDatabase(dbPath, 'profile-a')
-    importProfileStateJson(initial.db, JSON.stringify(fixture), { now: () => 100 })
-    initial.db.close()
+  // Why skip: Node <24.10 has no DatabaseSync.setAuthorizer, so the child exits
+  // before the checkpoint marker; CI's latest Node 24 runs it.
+  it.skipIf(!supportsCheckpointAuthorizer)(
+    'recovers a committed database when checkpointing is interrupted',
+    async () => {
+      const directory = mkdtempSync(join(tmpdir(), 'orca-profile-state-checkpoint-crash-'))
+      temporaryDirectories.push(directory)
+      const dbPath = profileStateDatabaseFile(directory)
+      const fixture = buildProfileStateCutoverFixture()
+      const initial = openProfileStateDatabase(dbPath, 'profile-a')
+      importProfileStateJson(initial.db, JSON.stringify(fixture), { now: () => 100 })
+      initial.db.close()
 
-    await killAfterChildReady(dbPath, crashDuringCheckpointScript, 'checkpoint-started')
+      await killAfterChildReady(dbPath, crashDuringCheckpointScript, 'checkpoint-started')
 
-    const recovered = openProfileStateDatabase(dbPath, 'profile-a')
-    try {
-      expect(recovered.readOnly).toBe(false)
-      expect(readProfileStateRevision(recovered.db)).toBe(1)
-      expect(canonicalProfileStateJson(JSON.parse(exportProfileStateJson(recovered.db)))).toBe(
-        canonicalProfileStateJson(fixture)
-      )
-    } finally {
-      recovered.db.close()
+      const recovered = openProfileStateDatabase(dbPath, 'profile-a')
+      try {
+        expect(recovered.readOnly).toBe(false)
+        expect(readProfileStateRevision(recovered.db)).toBe(1)
+        expect(canonicalProfileStateJson(JSON.parse(exportProfileStateJson(recovered.db)))).toBe(
+          canonicalProfileStateJson(fixture)
+        )
+      } finally {
+        recovered.db.close()
+      }
     }
-  })
+  )
 })

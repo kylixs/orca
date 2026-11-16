@@ -99,6 +99,15 @@ export const NODE_RUNTIME_INCLUDE = [
   'src/main/cloud-platform/cloud-grant-revocation-scope.test.ts',
   'src/main/cloud-platform/cloud-project-link.test.ts',
   'src/main/cloud-platform/cloud-runtime-environment.test.ts',
+  // Why: U132 - these reach a real TLS runtime through the M67 launch fixture
+  // (`cloud-agent-launch-execution-fixture`), so the old source-only guard missed
+  // them; cloud-host-enrollment hand-rolls the E2EE handshake over a real
+  // WebSocket. Under bun's ws the handshake reds (OPEN_FAILED / `{}` instead of
+  // e2ee_authenticated), same U31/U87/U93 family.
+  'src/main/cloud-platform/cloud-signing-key-rotation.test.ts',
+  'src/main/cloud-platform/cloud-host-audit.test.ts',
+  'src/main/cloud-platform/cloud-host-key-pinning.test.ts',
+  'src/main/cloud-platform/cloud-host-enrollment.test.ts',
   // Why: same U95 WSS family - these renderer/web e2e suites inject the `ws`
   // client against a makeSelfSignedTls() runtime and would red the handshake in
   // the bun pool instead of proving the browser connect path.
