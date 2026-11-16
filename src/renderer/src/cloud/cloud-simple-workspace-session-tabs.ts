@@ -6,8 +6,10 @@
  * terminal rows — this module only reshapes them for the existing tabs reducer.
  */
 
-import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-session-contracts'
-import type { RuntimeMobileSessionTerminalClientTab } from '../../../shared/runtime-mobile-session-tab-contracts'
+import type {
+  RuntimeMobileSessionClientTab,
+  RuntimeMobileSessionTerminalClientTab
+} from '../../../shared/runtime-mobile-session-tab-contracts'
 import type {
   CloudSimpleWorkspaceTab,
   CloudSimpleWorkspaceTabsState
@@ -29,7 +31,13 @@ export type CloudSimpleHostTerminalTab = {
 
 type TerminalRow = RuntimeMobileSessionTerminalClientTab
 
-function hostTabOrder(snapshot: RuntimeMobileSessionTabsResult): Map<string, number> {
+/** The projection's structural input: a full host snapshot satisfies it. */
+export type CloudSimpleHostTabsSnapshot = {
+  tabs: readonly RuntimeMobileSessionClientTab[]
+  tabGroups?: readonly { tabOrder: readonly string[] }[]
+}
+
+function hostTabOrder(snapshot: CloudSimpleHostTabsSnapshot): Map<string, number> {
   const order = new Map<string, number>()
   for (const group of snapshot.tabGroups ?? []) {
     for (const tabId of group.tabOrder) {
@@ -50,7 +58,7 @@ function pickLeaf(rows: readonly TerminalRow[]): TerminalRow {
 
 /** Project terminal rows into one simple-workspace tab per host parent tab. */
 export function hostTerminalTabsFromSnapshot(
-  snapshot: RuntimeMobileSessionTabsResult
+  snapshot: CloudSimpleHostTabsSnapshot
 ): CloudSimpleHostTerminalTab[] {
   const groupOrder = hostTabOrder(snapshot)
   const groups = new Map<string, TerminalRow[]>()

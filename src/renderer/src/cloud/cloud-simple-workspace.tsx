@@ -1,6 +1,6 @@
 import * as React from 'react'
 import type { CloudProjectPermission } from '../../../shared/cloud-platform-ipc'
-import { readField, readObjectValue, readString } from '../../../shared/json-fields'
+import { readField, readObjectValue, readString, readStringArray } from '../../../shared/json-fields'
 import type { CloudRpc } from '../../../shared/cloud-file-browser'
 import {
   cloudSimpleWorkspaceDiffTab,
@@ -45,6 +45,10 @@ import { createCloudWorkspaceDiffTab } from './cloud-workspace-diff-tab'
 import { CloudWorkspaceFileTree } from './cloud-workspace-file-tree'
 import { CloudWorkspaceGitPanel } from './cloud-workspace-git-panel'
 import type { CloudTerminalSubscribe } from './cloud-terminal-panel'
+import {
+  useCloudSimpleWorkspaceSessionTabs,
+  type CloudSimpleWorkspaceHostSnapshot
+} from './use-cloud-simple-workspace-session-tabs'
 
 /**
  * Embedded simple workspace shell (U46-5a, design §4.3/§4.4): centre tabs plus a
@@ -130,6 +134,8 @@ export type CloudSimpleWorkspaceProps = {
   degraded?: CloudSimpleWorkspaceDegradedInfo | null
   /** Seed for tests and for a host that reopens a tab set; normally empty. */
   initialTabs?: CloudSimpleWorkspaceTab[]
+  /** U96 B-令2: host session-tab projection applied through the `host-snapshot` action. */
+  hostSnapshot?: CloudSimpleWorkspaceHostSnapshot | null
   tabComponents?: CloudSimpleWorkspaceTabComponents
   renderFileTree?: (api: CloudSimpleWorkspaceFileTreeApi) => React.ReactNode
   renderGitChanges?: (api: CloudSimpleWorkspaceGitApi) => React.ReactNode
@@ -149,6 +155,7 @@ export function CloudSimpleWorkspace({
   connection = 'connected',
   degraded,
   initialTabs,
+  hostSnapshot,
   tabComponents,
   renderFileTree,
   renderGitChanges,
@@ -185,6 +192,16 @@ export function CloudSimpleWorkspace({
   React.useEffect(() => {
     onDirtyCountChange?.(dirtyCount)
   }, [dirtyCount, onDirtyCountChange])
+
+  React.useEffect(() => {
+    if (hostSnapshot) {
+      dispatch({
+        type: 'host-snapshot',
+        tabs: hostSnapshot.tabs,
+        activeId: hostSnapshot.activeTabId
+      })
+    }
+  }, [hostSnapshot])
 
   if (degraded) {
     return (
@@ -324,13 +341,17 @@ export function CloudSimpleWorkspaceSession({
   degraded,
   onDirtyCountChange
 }: CloudSimpleWorkspaceSessionProps): React.JSX.Element {
-  const [branch, setBranch] = React.useState<string | null>(null)
+  // Path-keyed, so a stale reply for the previous checkout is ignored instead of reset in an effect.
+  const [workspaceInfo, setWorkspaceInfo] = React.useState<{
+    path: string
+    branch: string | null
+    capabilities: readonly string[]
+  } | null>(null)
   const canUseTerminal = permissions?.includes('terminal') ?? true
   const canReadFiles = permissions?.includes('file:read') ?? true
 
   React.useEffect(() => {
     if (!workspacePath) {
-      setBranch(null)
       return
     }
     let cancelled = false
@@ -340,13 +361,29 @@ export function CloudSimpleWorkspaceSession({
           return
         }
         const workspace = readObjectValue(readField(outcome.result, 'workspace'))
-        setBranch(workspace === null ? null : readString(workspace, 'branch'))
+        setWorkspaceInfo({
+          path: workspacePath,
+          branch: workspace === null ? null : readString(workspace, 'branch'),
+          capabilities: readStringArray(outcome.result, 'capabilities') ?? []
+        })
       })
       .catch(() => undefined)
     return () => {
       cancelled = true
     }
   }, [rpc, workspacePath])
+
+  const currentInfo =
+    workspaceInfo !== null && workspaceInfo.path === workspacePath ? workspaceInfo : null
+  const branch = currentInfo?.branch ?? null
+  const capabilities = currentInfo?.capabilities ?? null
+
+  const sessionTabs = useCloudSimpleWorkspaceSessionTabs({
+    rpc,
+    subscribe,
+    workspacePath,
+    capabilities
+  })
 
   const tabComponents = React.useMemo<CloudSimpleWorkspaceTabComponents>(() => {
     if (!workspacePath) {
@@ -380,6 +417,7 @@ export function CloudSimpleWorkspaceSession({
         permissions={permissions}
         connection={connection}
         degraded={degraded}
+        hostSnapshot={sessionTabs.hostSnapshot}
         tabComponents={tabComponents}
         renderFileTree={
           workspacePath
