@@ -3717,6 +3717,13 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **宿主重建 + full reseed**：out/main 重建（04:31）、宿主重启（pid 28844，04:33）；`evidence/u162-e2e/` 已生成（u162-e2e.json + 两张视图截图），汇总待回收。
 - 下一步：final6（新宿主构建）确认 final5 结论保持 → 生产重建（去仪器化）→ `--platform-only` 刷新 → 金路径 13/13 + W9 双线 → 收口报告。
 
+### 2026-11-17 04:5x 轮：U162 e2e FAIL（renderer epoch 未覆盖），v2 诊断在途
+
+- **U162 端到端 FAIL**（`evidence/u162-e2e/u162-e2e.json`，新 out/main + 宿主重启）：caller 激活 persisted=目标，但**新设备投影仍=旧 tab**；实际 `publicationEpoch=renderer:…:client-navigation`（非 headless），修复 helper 条件未命中。
+- 台账 U162 回 🔴 并记录；v2 诊断（renderer-owned owner 链路、回退依据、三种修法取舍）在途。
+- 宿主重建代理已要求收口（build/reseed/解释）。
+- final5（门 v3）签字结论不受影响（U138/U161 链），但 U162 未闭环前不收 U138 家族总账。
+
 ### 四通道并发执行（启动，2026-11-14）
 
 按细粒度拆分与三权分立纪律并发起跑：通道② **W6a**（中继浏览器模式，relay.ts 域）、通道③ **W10**（客户端零 env 登录，src/main+renderer 登录域）、通道④ **W5a**（详情页终端组件，cloud-admin 域）三个实现代理并行；通道① 等在途 W2（QA 修复）完成后接 W8。每令完成→独立测试代理→独立审计代理→主会话关闭放行下一个。
