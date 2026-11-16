@@ -3544,6 +3544,14 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **环境修复族**：U115 安装向导一次性令牌（照抄五场景）；U118 新建终端双根因；U124 DOM/hydration；U126 platform-only reseed（PTY 存活）；U128 host 启动竞态；U122 去外链；P3 批 8+5 条输入硬化。
 - **验收基线**：318 用例刷新（自动化 267/手测 44/未覆盖 7，缺口 27→21）。
 
+### 全量回归批闭环推进（2026-11-16 16:0x）
+
+- **回归批结果**：4405/4436 通过（test-reports/regression-2026-11-16-pm.md）。失败分三类：今日引入 9（=U130）、既有 3、环境 6。
+- **U130 已登记**（`e9a6d9162ca`）：①U86 网格契约未纳入新 `auditTrace` span（第三行 15≠12）②`cloud-workspace-info-real-host` 白名单缺 `capabilities` ③5 个主侧真栈夹具缺 host `provision` 授权（U62-C10 收紧，7 例）。修令已派（并行线②）。
+- **U129 剪贴板修复已提交**（`74e4daef976`：iframe `allow=clipboard-write`），平台 `--platform-only` 刷新后真机复测中（并行线①，期望 clipboardLength>0 / 无策略违例 / 审计 file_copy=success）。
+- **环境 6 红 + 既有 3 红分诊中**（并行线③）：TLS/node-pool、U95 guard、profile-state 超时、`App.cloud-workspace-entry`×2、`cloud-session-limits` M33-2，逐项定性后决定登记或环境噪声。
+- **收口门禁**：U130 九红清零 + U129 复测绿 + 双线金路径保持绿 → 出最终报告。
+
 ### 四通道并发执行（启动，2026-11-14）
 
 按细粒度拆分与三权分立纪律并发起跑：通道② **W6a**（中继浏览器模式，relay.ts 域）、通道③ **W10**（客户端零 env 登录，src/main+renderer 登录域）、通道④ **W5a**（详情页终端组件，cloud-admin 域）三个实现代理并行；通道① 等在途 W2（QA 修复）完成后接 W8。每令完成→独立测试代理→独立审计代理→主会话关闭放行下一个。
