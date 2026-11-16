@@ -12,7 +12,7 @@ import { evidenceDir, login, spawnService, type Service } from './harness.ts'
  * longer advertises), and the console must show that verdict.
  */
 
-const EVIDENCE = 'u146-relay-route-staleness'
+const EVIDENCE = 'u151-relay-route-staleness'
 
 type HostFields = {
   id: string

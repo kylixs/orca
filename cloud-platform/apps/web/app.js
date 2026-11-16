@@ -2192,7 +2192,7 @@ function hostActionsDialog(host) {
   )
 }
 
-/** U146: how recently an online host confirmed its relay route; `—` when unbound. */
+/** U146: how recently a host confirmed its relay route; `—` when unbound or unknown. */
 function relayRouteFreshness(h) {
   // A stale route stays visible even when an old snapshot has no `updatedAt`.
   if (h.relayRouteStale === true) return '<span class="badge warn">路由陈旧</span>'
