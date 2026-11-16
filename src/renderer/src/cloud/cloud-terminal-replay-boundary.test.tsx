@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CloudRpc } from '../../../shared/cloud-file-browser'
+import type { CloudRpcOutcome } from '../../../shared/cloud-platform-ipc'
 import {
   CloudTerminalEndedNotice,
   CloudTerminalReplayNotice,
@@ -202,5 +203,43 @@ describe('重新打开终端', () => {
       fireEvent.click(screen.getByRole('button'))
     })
     expect(onReopened).toHaveBeenCalledWith(null)
+  })
+
+  it('U96B7 重开限频：同一次点击风暴只创建一个 PTY', async () => {
+    let resolveCreate: ((outcome: CloudRpcOutcome) => void) | null = null
+    const rpc = vi.fn(
+      (_method: string, _params?: Record<string, unknown>): Promise<CloudRpcOutcome> =>
+        new Promise<CloudRpcOutcome>((resolve) => {
+          resolveCreate = resolve
+        })
+    )
+    const onReopened = vi.fn()
+    const { result } = renderHook(() =>
+      useCloudTerminalReopen({
+        rpc,
+        workspacePath: '/ws',
+        title: 'cloud-admin',
+        tabId: 'tab-9',
+        onReopened
+      })
+    )
+
+    let first: Promise<void> = Promise.resolve()
+    let second: Promise<void> = Promise.resolve()
+    act(() => {
+      first = result.current.reopen()
+      // The second click lands before the first answered; a second create here
+      // would spawn a second PTY for the same tab.
+      second = result.current.reopen()
+    })
+    expect(rpc).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      resolveCreate?.({ ok: true, result: { terminal: { handle: 'handle-new' } } })
+      await first
+      await second
+    })
+    expect(onReopened).toHaveBeenCalledTimes(1)
+    expect(onReopened).toHaveBeenCalledWith('handle-new')
   })
 })

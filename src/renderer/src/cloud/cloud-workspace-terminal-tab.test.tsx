@@ -8,6 +8,7 @@ import type { CloudRpc } from '../../../shared/cloud-file-browser'
 import { CloudSimpleWorkspace } from './cloud-simple-workspace'
 import type { CloudSimpleWorkspaceTabsAction } from './cloud-simple-workspace-tabs'
 import type { CloudTerminalSubscribe } from './cloud-terminal-panel'
+import type { CloudSubscriptionCallbacks } from './use-cloud-session'
 import {
   CloudWorkspaceTerminalTab,
   CloudWorkspaceTerminalTabProvider
@@ -84,16 +85,19 @@ function scriptedStream(): {
   subscribe: CloudTerminalSubscribe
   calls: Call[]
   unsubscribers: ReturnType<typeof vi.fn>[]
+  callbacks: CloudSubscriptionCallbacks[]
 } {
   const calls: Call[] = []
   const unsubscribers: ReturnType<typeof vi.fn>[] = []
-  const subscribe: CloudTerminalSubscribe = async (method, params) => {
+  const callbacks: CloudSubscriptionCallbacks[] = []
+  const subscribe: CloudTerminalSubscribe = async (method, params, next) => {
     calls.push({ method, params })
+    callbacks.push(next)
     const unsubscribe = vi.fn()
     unsubscribers.push(unsubscribe)
     return { ok: true, subscription: { unsubscribe } }
   }
-  return { subscribe, calls, unsubscribers }
+  return { subscribe, calls, unsubscribers, callbacks }
 }
 
 const dispatch: React.Dispatch<CloudSimpleWorkspaceTabsAction> = () => undefined
@@ -396,5 +400,39 @@ describe('简易工作区终端标签（U46-5b）', () => {
     await screen.findByTestId('cloud-terminal-pending')
     expect(host.calls.filter((call) => call.method === 'terminal.create')).toEqual([])
     expect(stream.calls).toEqual([])
+  })
+
+  it('U96B7 回放边界：截断/无历史提示只由宿主标志驱动', async () => {
+    const host = scriptedHost()
+    const stream = scriptedStream()
+
+    renderTab(host, stream, true)
+    await screen.findByTestId('cloud-terminal-panel')
+    await waitFor(() => expect(stream.callbacks).toHaveLength(1))
+
+    // A clean replay paints history with no notice.
+    act(() => {
+      stream.callbacks[0]?.onEvent({ type: 'scrollback', serialized: 'ANSI' })
+    })
+    expect(screen.queryByTestId('cloud-terminal-replay-truncated')).toBeNull()
+    expect(screen.queryByTestId('cloud-terminal-replay-unavailable')).toBeNull()
+
+    act(() => {
+      stream.callbacks[0]?.onEvent({
+        type: 'scrollback',
+        serialized: 'ANSI',
+        truncatedByByteBudget: true
+      })
+    })
+    expect(screen.getByTestId('cloud-terminal-replay-truncated').textContent).toContain(
+      '回放已截断'
+    )
+
+    act(() => {
+      stream.callbacks[0]?.onEvent({ type: 'scrollback', unavailable: 'serialize_failed' })
+    })
+    expect(screen.getByTestId('cloud-terminal-replay-unavailable').textContent).toContain(
+      '未保留可回放的终端历史'
+    )
   })
 })

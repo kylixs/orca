@@ -70,7 +70,7 @@ export function readCloudScrollbackReplay(event: unknown): CloudScrollbackReplay
 }
 
 /** Error codes that mean the PTY behind the handle is gone, not a dropped link. */
-const TERMINAL_GONE_CODES = [
+const TERMINAL_GONE_CODES: readonly string[] = [
   'terminal_handle_stale',
   'terminal_exited',
   'terminal_unknown',
@@ -80,7 +80,7 @@ const TERMINAL_GONE_CODES = [
 
 export function isTerminalSessionGone(code: string | null, message?: string | null): boolean {
   const normalized = (code ?? '').toLowerCase()
-  if ((TERMINAL_GONE_CODES as readonly string[]).includes(normalized)) {
+  if (TERMINAL_GONE_CODES.includes(normalized)) {
     return true
   }
   const text = (message ?? '').toLowerCase()
@@ -110,6 +110,13 @@ function terminalHandleOf(result: unknown): string | null {
   return readString(readField(result, 'terminal'), 'handle')
 }
 
+/**
+ * A reopen creates a PTY, so a double click (or a stuck pointer) must not
+ * create two. One attempt per window; the cooldown also rate-limits retries
+ * after a failed reopen.
+ */
+export const REOPEN_COOLDOWN_MS = 1_500
+
 /** Rebuilds the PTY after an ended session; the caller re-subscribes with the new handle. */
 export function useCloudTerminalReopen(args: {
   rpc: CloudRpc
@@ -120,9 +127,21 @@ export function useCloudTerminalReopen(args: {
   onReopened: (handle: string | null) => void
 }): { reopen: () => Promise<void>; pending: boolean } {
   const [pending, setPending] = React.useState(false)
+  const pendingRef = React.useRef(false)
+  const lastAttemptAtRef = React.useRef(0)
   const { rpc, workspacePath, title, tabId, leafId, onReopened } = args
 
   const reopen = React.useCallback(async (): Promise<void> => {
+    // Refs, not state: two clicks in one tick both see the same render.
+    if (pendingRef.current) {
+      return
+    }
+    const now = Date.now()
+    if (now - lastAttemptAtRef.current < REOPEN_COOLDOWN_MS) {
+      return
+    }
+    lastAttemptAtRef.current = now
+    pendingRef.current = true
     setPending(true)
     let outcome: CloudRpcOutcome
     try {
@@ -133,6 +152,7 @@ export function useCloudTerminalReopen(args: {
     } catch {
       outcome = { ok: false, code: 'terminal_create_failed' }
     }
+    pendingRef.current = false
     setPending(false)
     onReopened(outcome.ok ? terminalHandleOf(outcome.result) : null)
   }, [rpc, workspacePath, title, tabId, leafId, onReopened])

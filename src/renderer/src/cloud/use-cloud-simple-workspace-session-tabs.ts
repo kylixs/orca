@@ -10,6 +10,7 @@ import {
   type CloudSimpleHostTabsSnapshot,
   type CloudSimpleHostTerminalTab
 } from './cloud-simple-workspace-session-tabs'
+import { recoverSimpleWorkspaceTerminalOrphans } from './cloud-simple-workspace-orphan-recovery'
 
 /**
  * U96 B-令2: bootstrap the simple workspace from the host's session-tab
@@ -61,6 +62,7 @@ function closeRefusalNotice(reason: string | null): string {
       return '终端状态已变化，请刷新后重试。'
     case 'unknown-liveness':
       return '暂时无法确认终端状态，标签已保留。'
+    case null:
     default:
       return '云端无法关闭该终端，标签已保留。'
   }
@@ -278,6 +280,21 @@ export function useCloudSimpleWorkspaceSessionTabs({
         return
       }
       apply(initial)
+      // B-令7: a persisted-but-handle-less row may still own a live PTY; claim
+      // it before the stream's first frame would project the pending row.
+      const adopted = await recoverSimpleWorkspaceTerminalOrphans({
+        rpc: rpcRef.current,
+        workspacePath,
+        frame: initial,
+        isCurrent: () => !cancelled && !failed
+      }).catch(() => null)
+      if (cancelled || failed) {
+        return
+      }
+      const adoptedFrame = adopted === null ? null : readHostTabsFrame(adopted)
+      if (adoptedFrame !== null) {
+        apply(adoptedFrame)
+      }
       const streamed = await subscribeStream(
         'session.tabs.subscribe',
         { worktree },

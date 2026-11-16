@@ -41,6 +41,14 @@ function terminalRow(
   }
 }
 
+function pendingRow(parentTabId: string, leafId: string): RuntimeMobileSessionTerminalClientTab {
+  return {
+    ...terminalRow(parentTabId, leafId),
+    status: 'pending-handle',
+    terminal: null
+  }
+}
+
 function frame(
   type: 'snapshot' | 'updated',
   tabs: RuntimeMobileSessionTerminalClientTab[],
@@ -379,4 +387,105 @@ describe('简易工作区 session-tabs 双向动作（U96 B-令4）', () => {
     await waitFor(() => expect(result.current.unsupported).toBe(true))
   })
 })
+
+describe('简易工作区孤儿兜底（U96 B-令7）', () => {
+  const orphanListing = {
+    ok: true as const,
+    result: {
+      terminals: [
+        {
+          handle: 'handle-orphan',
+          ptyId: 'pty-leaf-1',
+          incarnationId: 'inc-1',
+          orphaned: true,
+          worktreePath: WORKSPACE
+        }
+      ],
+      topologyRevisions: { [WORKTREE]: 3 },
+      totalCount: 1,
+      truncated: false
+    }
+  }
+
+  it('pending 行 + 存活孤儿：list → adoptOrphans，adopt 成果进投影', async () => {
+    const { rpc, calls } = methodRpc({
+      'session.tabs.list': { ok: true, result: frame('snapshot', [pendingRow('tab-a', 'leaf-1')]) },
+      'terminal.list': orphanListing,
+      'terminal.adoptOrphans': {
+        ok: true,
+        result: {
+          adopted: true,
+          topologyRevision: 4,
+          snapshot: frame('snapshot', [terminalRow('tab-a', 'leaf-1')])
+        }
+      }
+    })
+    const stream = scriptedSubscribe()
+
+    const { result } = renderHook(() =>
+      useHarness({
+        rpc,
+        subscribe: stream.subscribe,
+        workspacePath: WORKSPACE,
+        capabilities: CAPABILITY
+      })
+    )
+
+    await waitFor(() =>
+      expect(result.current.state.tabs[0]).toMatchObject({
+        id: 'tab-a',
+        host: { leafId: 'leaf-1', terminal: 'handle-leaf-1' }
+      })
+    )
+    const methods = calls.map((call) => call.method)
+    expect(methods.indexOf('terminal.adoptOrphans')).toBeGreaterThan(methods.indexOf('terminal.list'))
+    expect(methods.indexOf('terminal.list')).toBeGreaterThan(methods.indexOf('session.tabs.list'))
+    expect(calls).toContainEqual({
+      method: 'terminal.adoptOrphans',
+      params: {
+        worktree: WORKTREE,
+        expectedTopologyRevision: 3,
+        claims: [
+          {
+            terminal: 'handle-orphan',
+            ptyId: 'pty-leaf-1',
+            incarnationId: 'inc-1',
+            tabId: 'tab-a',
+            leafId: 'leaf-1'
+          }
+        ]
+      }
+    })
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+  })
+
+  it('adopt 失败：一次性降级，pending 行保留且不再重试', async () => {
+    const { rpc, calls } = methodRpc({
+      'session.tabs.list': { ok: true, result: frame('snapshot', [pendingRow('tab-a', 'leaf-1')]) },
+      'terminal.list': orphanListing,
+      'terminal.adoptOrphans': { ok: false, code: 'scope_mismatch' }
+    })
+    const stream = scriptedSubscribe()
+
+    const { result, rerender } = renderHook(
+      (props: { rpc: CloudRpc }) =>
+        useHarness({
+          rpc: props.rpc,
+          subscribe: stream.subscribe,
+          workspacePath: WORKSPACE,
+          capabilities: CAPABILITY
+        }),
+      { initialProps: { rpc } }
+    )
+
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+    expect(result.current.state.tabs[0]).toMatchObject({ id: 'tab-a', host: { terminal: null } })
+    expect(calls.filter((call) => call.method === 'terminal.adoptOrphans')).toHaveLength(1)
+
+    rerender({ rpc: methodRpc({}).rpc })
+    await act(async () => undefined)
+    expect(calls.filter((call) => call.method === 'terminal.list')).toHaveLength(1)
+  })
+})
+
 
