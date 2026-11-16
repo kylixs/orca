@@ -37,7 +37,8 @@
 - **展开行**（仅 `file_copy`，`tr.audit-expand-row[hidden]`，colspan 8）：左「复制内容摘录」（有 excerpt 展示，无则「未记录内容摘录（仅保留指纹）」）；右「内容指纹与复制长度」：`sha256:<hash 或 —>`、`复制 X 字符 / Y 字节`、灰字「仅记录指纹，不可反推内容」。
 - **加载更早**：存在 `nextCursor` 时显示「仅显示最近 50 条，还有更早记录。」+「加载更早」按钮。
 - **空态**：单行 `colspan="8"`「没有符合筛选条件的审计事件」。
-- **无**：导出、保存查询、列排序、每页条数切换、审计链验证按钮/状态灯、容量水位展示、自动刷新。
+- **链健康与容量**（`details#auditHealth`，只读）：`chain.ok/lastSeq`、容量今日/累计与 daily/total envelope、`persisted`；「校验审计链」按钮内联展示 200/409 结果（U136③）。
+- **无**：导出、保存查询、列排序、每页条数切换、自动刷新。
 
 ## 2. 菜单与入口
 
@@ -61,7 +62,7 @@
 | 3.9  | 选择预设「最近 31 天」         | 客户端钳到 31 天 − 5 分钟，并把 `until` 钉在同一客户端时钟，避免服务端钟漂移触发 400                                                                  | 无        | 真被服务端拒绝时走 3.2 的服务端错误横幅                                                                         |
 | 3.10 | 手动 since/until               | 显式边界优先于预设；结束早于开始、超 31 天、非法日期均前端拦截                                                                                        | 无        | 横幅错误，不发请求                                                                                              |
 | 3.11 | 连续快速查询                   | `auditQueryGeneration` latest-wins：被取代的请求不落 state、不渲染，避免重复累积/条件混表                                                             | 无        | 被取代的失败也静默丢弃                                                                                          |
-| 3.12 | 审计链/缺口查看                | 缺口横幅可见；链健康 `chain.ok`、`lastSeq`、容量水位**不展示**；无 `/v1/audit/verify` 页面入口                                                        | 无        | 无                                                                                                              |
+| 3.12 | 审计链/缺口查看                | 缺口横幅可见；「链健康与容量（只读）」展示 `chain.ok/lastSeq`、容量今日/累计与 envelope、`persisted`；「校验审计链」调用 `/v1/audit/verify` 并内联展示 200/409 结果 | 无        | 校验失败/链断裂：内联「链已断裂：seq X」或错误文本，不阻断页面                                                   |
 
 查询参数（`auditQueryParams`）：`limit=50`、`q`、`eventFamily`（族）或 `eventType`（单类型）、`username`、`fileName`、`result`、`projectId`、`hostId`、`since`/`until`（ISO）、`cursor`。
 客户端校验（`auditFilterError`，与 API 门限对齐）：`q` 长度 2–128；`fileName` ≤128；起始/结束必须可解析；结束不得早于开始；窗口 >31 天拒绝；只给 since 且距今 >31 天拒绝。
@@ -70,10 +71,9 @@
 
 - `GET /v1/audit/events?<conditions>` → `{ events: AuditEvent[], nextCursor }`；事件字段：`seq/ts/actor/eventType/targetType/targetId/result/traceId/metadata`。
 - `GET /v1/audit/status` → `{ ok?, lastSeq?, chain:{ok,lastSeq}, gaps:{hostsWithGap,droppedTotal,suppressedTotal,rateLimitedTotal,lastGapAt}, capacity:{fileEventsToday,fileEventsTotal,dailyEnvelope,totalEnvelope,overDailyEnvelope,...}, ingressGaps:{droppedTotal,suppressedTotal,rateLimitedTotal,lastGapAt}, persisted, eventTypes:[...] }`。
-  - 页面实际消费：`eventTypes`（操作类型下拉）、`gaps` + `ingressGaps`（缺口横幅）。
-  - 页面**不消费**：`chain`、`capacity`、`persisted`、`lastSeq`。
-- `GET /v1/audit/verify` → 200 `{ok:true, checked, tip}` / 409 `{ok:false, checked, brokenAtSeq}`，并把 `audit_verify` 写入链；**控制台无入口**（仅 API）。
-- `GET /v1/projects`、`GET /v1/hosts`：仅用于项目/主机筛选下拉；`/v1/hosts` 对 auditor 403（被 `.catch(() => null)` 吞掉，下拉为空）；`/v1/projects` 对 auditor 只返回其有 `open` 授权的项目（通常为空）。
+  - 页面实际消费：`eventTypes`（操作类型下拉）、`gaps` + `ingressGaps`（缺口横幅）、`chain`/`capacity`/`persisted`（链健康与容量只读区块，U136③）。
+- `GET /v1/audit/verify` → 200 `{ok:true, checked, tip}` / 409 `{ok:false, checked, brokenAtSeq}`，并把 `audit_verify` 写入链；控制台「校验审计链」按钮消费两种结果（U136③）。
+- `GET /v1/projects`、`GET /v1/hosts`：仅用于项目/主机筛选下拉；`/v1/hosts` 对 auditor 403、`/v1/projects` 对 auditor 只返回其有 `open` 授权的项目（通常为空），空列表时下拉显示解释选项（U136③）。
 - 审计链来源：平台 audit writer（单写者哈希链）；`host.audit_gap` 由宿主心跳 delta 落链（U71）。
 - **持久化（2026-11-16）**：dev 平台启用 `AUDIT_LOG_PATH` 追加式审计文件，重启后 `prevHash` 续接（实测 `verify ok:true` 跨 `--platform-only` 重启）；事件字段 `actor/targetType/targetId/traceId` 合法可为 null（U133 修校验器，此前该类事件会被误判 corrupt）。
 
@@ -93,8 +93,8 @@
 
 未登记观察（建议登记）：
 
-1. 审计链健康与容量水位在 API 已返回，但控制台完全不展示；管理员/审计员无法从页面判断链是否断裂或容量是否接近上限，也没有触发 `/v1/audit/verify` 的按钮。
-2. auditor 的「项目」「主机」筛选下拉实际为空（权限降级被 catch 吞掉），但 UI 不说明原因，容易被理解为「无数据」。
+1. ~~审计链健康与容量水位无 UI、verify 无入口~~ **已由 U136③ 实现**：只读链健康/容量区块 +「校验审计链」按钮（T32 U72-5）。
+2. ~~auditor 的「项目」「主机」下拉为空且不说明原因~~ **已由 U136③ 实现**：空列表显示「无可见项目（需 open 授权）」「无可见主机（需主机权限）」（T32 U72-4）。
 3. 缺口横幅只统计宿主上报与平台入口计数，不区分「本次查询窗口」与「全量历史」。
 4. 时间范围「最近 7 天（默认）」在显式 since/until 存在时被忽略，界面无提示。
 
@@ -106,15 +106,13 @@
 - `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/u66-2-audit-query.e2e.test.ts`：四条件矩阵、fileName/q 大小写与白名单/长度、eventTypes 多值 OR / family / 显式优先、边界与 31 天窗、旧客户端零回归、status 权限与缺口/容量、U78 接入类事件检索、P95 性能抽测。
 - `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/u66-audit-file-events.e2e.test.ts`：三类事件落链、120 条/分钟限速与缺口、同 traceId 合并、畸形字段拒绝、内部/非云会话不写链、excerpt 丢弃与移动端字段。
 - `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/u71-audit-gap-heartbeat.e2e.test.ts`：同值不刷屏、变化落增量、重启 pending 记一次。
-- `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/u72-u73-audit-role-race.e2e.test.ts`：审计员入口/页面渲染、管理员不回退、开发者 403、双击查询与清除后查询的 latest-wins。
+- `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/u72-u73-audit-role-race.e2e.test.ts`：审计员入口/页面渲染、管理员不回退、开发者 403、双击查询与清除后查询的 latest-wins、auditor 空下拉解释（U72-4）、链健康/容量区块与校验按钮成功/409（U72-5，U136③）。
 - `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/audit-verify.e2e.test.ts`：链校验 200/409、校验动作入链、非授权 403（API 层）。
 - `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/audit-fail-closed.e2e.test.ts`、`audit-writer.e2e.test.ts`、`audit-writer-standby.e2e.test.ts`、`audit-anchor.e2e.test.ts`、`audit-query-latency.e2e.test.ts`、`audit-trace-window.e2e.test.ts`：写失败 fail-closed、单写者/备用、锚点、延迟、trace 窗口。
 - 证据：`/Users/gongdewei/work/projects/orca/cloud-platform/evidence/u66-5-audit-ui/`、`.../u66-2-query/`、`.../u71-audit-gap/`、`.../u72u73-fix/`、`.../m31-audit-verify/`、`.../u66-final-reverify/`；U86 前后截图与文字提取在 `/Users/gongdewei/work/projects/orca/evidence/u86-fix/`（audit-before/after-layout.json 含控件坐标、hintPresent=false）。
 
 未覆盖：
 
-- 审计链健康/容量水位的控制台展示（当前无 UI，无测试）。
-- auditor 身份下的项目/主机下拉为空及页面观感。
 - 缺口横幅的 UI 断言（u71 只测链事件，u66-2 测 status 载荷，未断言横幅文案/条件）。
 - 移动端审计页与 ≤1100/≤700 断点的自动化几何断言（U114-D4）。
 - 加载更早的 UI 追加行为（u66-5 未覆盖 nextCursor 按钮）。

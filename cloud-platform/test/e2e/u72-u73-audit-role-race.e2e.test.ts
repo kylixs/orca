@@ -175,11 +175,10 @@ test('U72-1 审计员登录：侧栏审计入口可见、其余管理入口隐�
 
 /**
  * F6 E5 (AC-M7-14): an auditor's project/host dropdowns are empty because both
- * list endpoints are denied (hosts) or ACL-filtered to nothing (projects), and
- * the page swallows that. Characterization pin: if either list gains auditor
- * data, or the page starts explaining the empty state, this fails.
+ * list endpoints are denied (hosts) or ACL-filtered to nothing (projects); the
+ * page now explains why instead of leaving two silent empty selects.
  */
-test('U72-4 审计员项目/主机筛选仅有「全部」，空态不解释（F6 E5 现状钉）', async () => {
+test('U72-4 审计员项目/主机筛选为空时显示解释文案（F6 E5）', async () => {
   const page = loadWebConsolePage(url)
   await page.settle()
   await page.submitLogin('lisi', 'Passw0rd!')
@@ -190,8 +189,14 @@ test('U72-4 审计员项目/主机筛选仅有「全部」，空态不解释（F
     assert.ok(select, `missing ${selector}`)
     return [...select.options].map((option) => ({ value: option.value, text: option.text }))
   }
-  assert.deepEqual(options('#auditProject'), [{ value: '', text: '全部项目' }])
-  assert.deepEqual(options('#auditHost'), [{ value: '', text: '全部主机' }])
+  assert.deepEqual(options('#auditProject'), [
+    { value: '', text: '全部项目' },
+    { value: '', text: '无可见项目（需 open 授权）' }
+  ])
+  assert.deepEqual(options('#auditHost'), [
+    { value: '', text: '全部主机' },
+    { value: '', text: '无可见主机（需主机权限）' }
+  ])
 
   // The host list denial is what empties the host select; the page must still
   // render the events it is allowed to query, and must not claim a load failure.
@@ -201,12 +206,58 @@ test('U72-4 审计员项目/主机筛选仅有「全部」，空态不解释（F
   assert.equal(hosts.status, 403, 'precondition: auditors are denied the host list')
   assert.doesNotMatch(page.text('#content'), /加载失败|无权访问/)
   assert.match(page.text('#content'), /u73-alpha\.log/, 'events still render')
+  assert.match(page.text('#content'), /链健康与容量/, 'auditors see the read-only chain health block')
 
   saveEvidence(EVIDENCE, 'u72-auditor-empty-filters.json', {
     projectOptions: options('#auditProject'),
     hostOptions: options('#auditHost'),
     hostsApiStatus: hosts.status,
-    explained: false
+    explained: true
+  })
+}, 120_000)
+
+/**
+ * 3.12 / AC-M7-29: the chain health block renders status data and the verify
+ * button drives /v1/audit/verify from the console, including the 409 shape.
+ */
+test('U72-5 管理员审计页：链健康/容量只读区块 + 校验审计链（成功与断链）', async () => {
+  const page = loadWebConsolePage(url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  await page.clickNav('audit')
+
+  const content = page.text('#content')
+  assert.match(content, /链健康与容量（只读）/)
+  assert.match(content, /链健康：正常/)
+  assert.match(content, /容量：未超限/)
+  assert.match(content, /文件事件今日 \d+ \/ \d+，累计 \d+ \/ \d+/)
+  assert.match(content, /持久化：/)
+
+  click(page, '#auditVerify')
+  await page.settle()
+  assert.match(
+    page.text('#auditVerifyResult'),
+    /校验通过：已校验 \d+ 条/,
+    'the success verdict must be shown inline'
+  )
+  assert.ok(
+    page.calls().some((entry) => entry === 'GET /v1/audit/verify'),
+    'the button must call the verify endpoint'
+  )
+
+  // 409 断链结论没有 error 信封，页面必须从 response body 读 brokenAtSeq。
+  page.fail('GET', '/v1/audit/verify', {
+    status: 409,
+    body: { ok: false, brokenAtSeq: 3, checked: 2 }
+  })
+  click(page, '#auditVerify')
+  await page.settle()
+  assert.match(page.text('#auditVerifyResult'), /链已断裂：seq 3（已校验 2 条）/)
+
+  saveEvidence(EVIDENCE, 'u72-chain-health-verify.json', {
+    healthBlock: /链健康与容量/.test(page.text('#content')),
+    verifyEndpointCalled: true,
+    brokenChainVerdict: '链已断裂：seq 3（已校验 2 条）'
   })
 }, 120_000)
 

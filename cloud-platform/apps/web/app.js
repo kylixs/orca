@@ -58,6 +58,7 @@ async function api(path, init = {}) {
     const err = new Error(body.error?.message ?? `请求失败 (${res.status})`)
     err.code = body.error?.code
     err.status = res.status
+    err.body = body // 409 的校验结论不是 error 信封，调用方需要读 brokenAtSeq
     throw err
   }
   return body
@@ -2823,6 +2824,40 @@ function auditGapMarkup(status) {
   return `<div class="note warn" id="auditGapWarning">审计缺口：${hosts} 台主机有缺口；宿主上报 dropped ${counts[0]} / suppressed ${counts[1]} / rateLimited ${counts[2]}；平台入口 dropped ${counts[3]} / suppressed ${counts[4]} / rateLimited ${counts[5]}。缺口可见性为 best-effort，宿主瞬时崩溃无法精确检测。</div>`
 }
 
+/** 3.12：链健康/容量只读水位 + 手动校验入口；数据来自 status/verify。 */
+function auditHealthMarkup(status) {
+  if (!status) return ''
+  const chain = status.chain
+  const capacity = status.capacity
+  const chainBadge = chain
+    ? chain.ok
+      ? '<span class="badge ok">正常</span>'
+      : '<span class="badge danger">异常</span>'
+    : '<span class="badge warn">不可用</span>'
+  const chainText = chain ? `最后序号 ${chain.lastSeq}` : '摘要不可用'
+  const over = Boolean(capacity?.overDailyEnvelope || capacity?.overTotalEnvelope)
+  const capacityBadge = !capacity
+    ? '<span class="badge warn">不可用</span>'
+    : over
+      ? '<span class="badge warn">超出配额</span>'
+      : '<span class="badge ok">未超限</span>'
+  const capacityText = capacity
+    ? `文件事件今日 ${capacity.fileEventsToday} / ${capacity.dailyEnvelope}，累计 ${capacity.fileEventsTotal} / ${capacity.totalEnvelope}`
+    : '容量不可用'
+  const persisted = status.persisted ? '已写入本地审计文件' : '未启用本地审计文件（仅内存）'
+  return `<details class="audit-coverage" id="auditHealth">
+      <summary>链健康与容量（只读）</summary>
+      <div class="audit-coverage-body">
+        <div>链健康：${chainBadge} ${esc(chainText)}；容量：${capacityBadge} ${esc(capacityText)}。</div>
+        <div>持久化：${esc(persisted)}。</div>
+        <div class="toolbar">
+          <button class="btn sm" type="button" id="auditVerify">校验审计链</button>
+          <span class="muted" id="auditVerifyResult" role="status" aria-live="polite"></span>
+        </div>
+      </div>
+    </details>`
+}
+
 /** Mirrors the API's INVALID_QUERY/TIME_WINDOW_TOO_LARGE gates. */
 /** T7：审计筛选全部入 URL；cursor 与事件行展开不入。 */
 const AUDIT_QUERY_KEYS = Object.freeze([
@@ -2947,11 +2982,12 @@ async function renderAudit(loadMore = false) {
   state.auditEvents = events
   state.auditCursor = body.nextCursor
   const projects = projectsBody?.projects ?? []
-  const hosts = hostsBody?.hosts ?? []
+  const hosts = (hostsBody?.hosts ?? []).filter((host) => !host.revokedAt)
   const terms = [filter.q, filter.fileName].filter(Boolean)
   content().innerHTML = `
     <div class="page-head"><div><h1>审计日志</h1><p>查询身份、连接、文件下载与复制、下载拦截与管理操作事件。只追加、哈希链校验；保留 180 天，查询时间窗最大 31 天。已显示 ${events.length} 条。</p></div></div>
     ${auditGapMarkup(state.auditStatus)}
+    ${auditHealthMarkup(state.auditStatus)}
     <details class="audit-coverage">
       <summary>覆盖范围与限制（审计链保证记录不被篡改，不保证记录完整）</summary>
       <div class="audit-coverage-body">
@@ -2981,14 +3017,23 @@ async function renderAudit(loadMore = false) {
       <input class="input span-3" id="auditActor" placeholder="用户（域账号，精确）" autocomplete="off" aria-label="用户">
       <select class="select span-3" id="auditProject" aria-label="项目">
         <option value="">全部项目</option>
-        ${projects.map((project) => `<option value="${esc(project.id)}">${esc(project.name)}</option>`).join('')}
+        ${
+          projects.length
+            ? projects
+                .map((project) => `<option value="${esc(project.id)}">${esc(project.name)}</option>`)
+                .join('')
+            : '<option value="" disabled>无可见项目（需 open 授权）</option>'
+        }
       </select>
       <select class="select span-3" id="auditHost" aria-label="主机">
         <option value="">全部主机</option>
-        ${hosts
-          .filter((host) => !host.revokedAt)
-          .map((host) => `<option value="${esc(host.id)}">${esc(host.name ?? host.id)}</option>`)
-          .join('')}
+        ${
+          hosts.length
+            ? hosts
+                .map((host) => `<option value="${esc(host.id)}">${esc(host.name ?? host.id)}</option>`)
+                .join('')
+            : '<option value="" disabled>无可见主机（需主机权限）</option>'
+        }
       </select>
       <input class="input span-3" id="auditFileName" placeholder="文件名（1–128 字符）" autocomplete="off" aria-label="文件名">
       <input class="input span-3" id="auditTrace" placeholder="traceId（精确）" autocomplete="off" maxlength="128" aria-label="traceId">
@@ -3063,6 +3108,26 @@ async function renderAudit(loadMore = false) {
   }
   const more = $('#auditMore')
   if (more) more.onclick = () => renderAudit(true)
+  const verifyBtn = $('#auditVerify')
+  if (verifyBtn) {
+    verifyBtn.onclick = async () => {
+      const out = $('#auditVerifyResult')
+      verifyBtn.disabled = true
+      out.textContent = '校验中…'
+      try {
+        const verdict = await api('/v1/audit/verify')
+        out.textContent = `校验通过：已校验 ${verdict.checked} 条${verdict.tip ? `，链尾 ${verdict.tip}` : ''}`
+      } catch (err) {
+        const verdict = err.body
+        out.textContent =
+          err.status === 409 && typeof verdict?.brokenAtSeq === 'number'
+            ? `链已断裂：seq ${verdict.brokenAtSeq}（已校验 ${verdict.checked} 条）`
+            : `校验失败：${err.message ?? String(err)}`
+      } finally {
+        verifyBtn.disabled = false
+      }
+    }
+  }
   for (const btn of document.querySelectorAll('[data-trace]')) {
     btn.onclick = () => {
       navigator.clipboard?.writeText(btn.dataset.trace)
