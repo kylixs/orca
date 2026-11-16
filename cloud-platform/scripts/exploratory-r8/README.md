@@ -15,9 +15,10 @@ Product code, `cloud-platform/apps/`, the ledger, and PROGRESS are not modified.
   stress variant (unchanged entry): reloads as soon as a renderer
   `session.tabs.activate` send frame is recorded. Knobs: `U138_RACE_DELAY_MS`,
   `U138_RACE_SETTLE_MS`.
-- Output: `cloud-platform/evidence/exploratory-r8/u138-timeline.json`
-  (gitignored) plus an immutable per-run copy under
-  `evidence/exploratory-r8/run-<ts>/` (`u138-timeline.json`, `summary.json`).
+- Output: each run writes the authoritative copy directly to
+  `cloud-platform/evidence/exploratory-r8/run-<ts>/u138-timeline.json` and
+  `summary.json` (gitignored). The shared
+  `evidence/exploratory-r8/u138-timeline.json` is only a latest-run pointer.
 
 ## Entry
 
@@ -52,50 +53,97 @@ default `~/orca-local-env/host` and `~/orca-local-env/host2`).
    console project entry again (same pairing context) → wait for the shell →
    sample `after-reopen`. Cross-reopen active equality is recorded.
 3. **quick open/close (C2) x `U138_QUICK_CYCLES`**: create a temp tab → sample
-   `opened` → close it → sample `closed`.
+   `opened` → close it → sample `closed`. The close is injected through
+   `session.tabs.close` (not a UI click); treat quick reds as a synthetic-path
+   finding until the UI-close variant lands.
 
 Every sample point is **dual-read**: initial read → wait `U138_SETTLE_MS`
 (≥2 s) → re-read. A point is `consistent` only when both reads agree with each
-other and all views agree; disagreement between reads is a red (`unstable`),
-never a green.
+other and all views agree; disagreement between reads is red with
+`attribution.token: "unstable"`, never a green and never a causal token.
 
-## Three independent reads
+## Three perspectives (host memory is not observed)
 
 Each read records, with its own timestamp:
 
-- **host memory** active: there is no RPC for host memory, so it is read from
-  `profile-state.db` (`workspaceSession.activeTabIdByWorktree`) and explicitly
-  labelled `hostMemorySource: "persisted-file-fallback"`. If the file/key
-  cannot be read the read is `hostMemoryOk=false` and the point is INVALID.
-- **host persistent** active: the same persisted field, labelled
-  `profile-state.db:workspaceSession.activeTabIdByWorktree`.
+- **host persisted** active: `profile-state.db`
+  `workspaceSession.activeTabIdByWorktree`, labelled
+  `persistentSource: "profile-state.db:workspaceSession.activeTabIdByWorktree"`.
+  If the file/key cannot be read the read is `hostPersistedOk=false` and the
+  point is INVALID.
 - **device projection**: `session.tabs.list` from the web client. This is a
   per-device projection and is asserted separately; it never substitutes for
-  host memory.
+  the host.
+- **client**: DOM and store. DOM is scoped to `.app-layout` and visible nodes
+  only; store active is the active group only (no `groups[0]` fallback).
 
-DOM and store are read alongside them. DOM is scoped to `.app-layout` and
-visible nodes only; store active is the active group only (no `groups[0]`
-fallback). `activeTabIdByWorktree` is the focus/terminal id and is recorded as
+There is **no host-memory read**. `hostMemory` is emitted as `"UNKNOWN"` with
+`hostMemorySource: "unavailable"` and takes no part in `consistent`:
+`memoryPersistent` no longer exists. A green therefore asserts host persisted +
+device projection + client DOM/store agreement. It does **not** claim host
+memory agreement; the memory-vs-persisted axis (H-B) is not judged here.
+
+`activeTabIdByWorktree` is the focus/terminal id and is recorded as
 corroborating evidence, not as the group's active tab.
 
 ## Apply telemetry (H-A)
 
 `addInitScript` sets `localStorage['orca.debug.sessionTabs']='1'` before any
 page script, so the T1 renderer tracer (`window.__orcaSessionTabsTrace`) is on
-from the first frame. Each sample records the last trace frame and the last
-frame carrying an apply decision (`applied`, `applyOptions.hostActiveAuthoritative`)
-before the DOM read timestamp. H-A is `affirmative` when the last winning
-(`applied=true`) frame was applied without `hostActiveAuthoritative=true` —
-including the case where `applyOptions` is absent, which means the apply did
-not adopt the host active. A later decision frame with `applied=false` is a
-rejected (stale) frame and does not answer H-A. With no winning frame the
-verdict is `undetermined` (reported, never guessed).
+from the first frame. Each sample records:
+
+- `lastFrame` — last trace frame before the DOM read;
+- `lastAppliedFrame` — last frame carrying an apply decision;
+- `lastAppliedTrueFrame` — last frame with `applied=true`, **diagnostic only**;
+  the apply pipeline writes `true` at entry, so this is not evidence of a race
+  or of a state change;
+- `lastQualifyingAppliedFrame` — the only frame allowed to answer H-A.
+
+Frames are filtered to the sampled worktree: `listAll` per snapshot (`worktree`)
+and single-snapshot stream frames by `result.worktree`. The frame-level
+`applied` on a `listAll` frame is an aggregate over every worktree and is kept
+only as `frameAppliedAggregate`; H-A never reads it.
+
+`lastQualifyingAppliedFrame` must satisfy all of:
+
+1. `applied === true` for this worktree's snapshot;
+2. its `ts` is strictly later than the last client selection write
+   (`activate` / `close` / `closeLifecycle` / `createTerminal`) recorded in the
+   same document;
+3. it carried an `activeTabId` different from both the sampled DOM and the
+   sampled store.
+
+H-A is `affirmative` only for such a frame that lacks
+`applyOptions.hostActiveAuthoritative === true`. If no frame qualifies the
+verdict is `unknown`; the probe does not guess. A qualifying frame that did
+adopt the host active is `negative`.
+
+## Attribution tokens
+
+The second read of an inconsistent point is classified in this order:
+
+| token               | condition                                                                                                               |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `none`              | green: both reads agree and host persisted + projection + client all agree                                              |
+| `INVALID`           | point failed validity (see below)                                                                                       |
+| `unstable`          | the two reads disagree; excluded from causal attribution                                                                |
+| `client-ahead-host` | DOM=store ≠ host persisted, and the last client write's response active equals host persisted                           |
+| `host-frame-not-won`| a qualifying applied frame carried host persisted active, yet the client kept a different active                        |
+| `H-C`               | device projection ≠ host persisted                                                                                      |
+| `H-A`               | a qualifying applied frame lacked `hostActiveAuthoritative` (see above)                                                 |
+| `H-B`               | a qualifying stream (`subscribe`/`subscribeAll`) applied over the last client write                                     |
+| `H-D`               | `activate` responses landed out of send order                                                                           |
+| `unknown`           | none of the above; no qualifying frame after the last client write, direction not attributable                          |
+
+`diagnosis` is a factual direction string recorded for red points
+(`client-ahead-host`, `host-did-not-follow-write`, `projection-lag`, ...). The
+earlier `host-moved-after-write` label was wrong for this defect and is gone.
 
 ## INVALID
 
 A sample point is INVALID and excluded from green/red when any of these holds:
 
-- `hostMemoryOk=false` (host persisted state unreadable);
+- `hostPersistedOk=false` (host persisted state unreadable);
 - `hasStore=false` or the active group is missing;
 - topology precondition fails: `<2` tabs, `<2` groups, or the driven A/B tabs
   are not in different groups;
@@ -105,10 +153,14 @@ A sample point is INVALID and excluded from green/red when any of these holds:
 Invalid points are counted separately. `verdict.reproduced` is true only for
 valid red points.
 
+`verdict.conclusive` is emitted but is **forced to `false`** in this pass with a
+`conclusiveReason`, because the INVALID-hardening work (projection unavailable
+and failed quick create/close still count as red) is not implemented yet. Treat
+`reproduced=false` as "no valid red", not as a signed "not reproduced".
+
 ## Output
 
-`evidence/exploratory-r8/u138-timeline.json` plus
-`run-<ts>/summary.json`:
+`run-<ts>/u138-timeline.json` plus `run-<ts>/summary.json`:
 
 ```jsonc
 {
@@ -123,27 +175,24 @@ valid red points.
         "domActive": ["web-terminal-…"],
         "storeActive": "…",
         "projectionActive": "…::…",
-        "hostMemoryActive": "…",
-        "hostPersistentActive": "…"
+        "hostPersistentActive": "…",
+        "hostMemoryActive": "UNKNOWN",
+        "hostMemorySource": "unavailable"
       },
-      "second": {
-        "domActive": ["web-terminal-…"],
-        "storeActive": "…",
-        "projectionActive": "…::…",
-        "hostMemoryActive": "…",
-        "hostPersistentActive": "…"
-      },
-      "hA": {
-        "verdict": "negative",
-        "reason": "session.tabs.listAll applied with hostActiveAuthoritative=true"
-      },
-      "attribution": { "token": "green", "reason": "all views agree in both reads" }
+      "second": { "…": "same shape" },
+      "hA": { "verdict": "unknown", "reason": "no applied frame after the last selection write …" },
+      "attribution": { "token": "none", "reason": "all three perspectives agree in both reads" }
     }
   ],
   "verdict": {
     "green": 12,
     "red": 0,
     "invalid": 0,
+    "conclusive": false,
+    "conclusiveReason": "fix B not implemented: …",
+    "perspective": "host-persisted + device-projection + client DOM/store (host memory UNKNOWN)",
+    "hostMemory": "UNKNOWN",
+    "hostMemorySource": "unavailable",
     "byScenario": {},
     "redSamples": [],
     "invalidSamples": []
@@ -151,16 +200,20 @@ valid red points.
 }
 ```
 
-Terminal output prints one line per sample point with both reads, the
-attribution token, and the last applied frame's `applied` /
-`hostActiveAuthoritative` values for red points.
+`matches` on each read now contains `domHostPersisted` / `storeHostPersisted`
+instead of the removed memory fields. Terminal output prints one line per
+sample point with both reads, host persisted, the attribution token, and the
+last decision / H-A-candidate frames for red points.
 
 ## Notes / limits
 
-- No host-memory RPC exists, so `hostMemoryActive` is the persisted value with
-  an explicit fallback label. H-C (device projection vs host) is still
-  detectable by comparing projection with the persisted value; memory-vs-persist
-  lag within the host is not independently observable without a reboot/debug RPC.
+- Host memory is not observed. H-B (memory vs persisted inside the host) is not
+  judged; a green covers host persisted + per-device projection + client
+  DOM/store only. Reading host memory needs a host debug RPC or a privileged
+  probe, not a relabelled persisted file.
+- The host persisted source is read from the machine running the probe. The
+  host side of this probe is valid only when the host and the probe share a
+  machine (local rig); a remote host needs a host-side debug RPC.
 - `tab::leaf` is collapsed to `tab` when comparing, so leaf/pane changes inside
   one tab are out of scope.
 - The probe calls `session.tabs.list` at sample time; that method may restore

@@ -27,7 +27,7 @@
  *
  * Output: cloud-platform/evidence/exploratory-r8/u138-timeline.json (gitignored)
  */
-import { copyFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -65,15 +65,16 @@ mkdirSync(EVIDENCE_DIR, { recursive: true })
 mkdirSync(RUN_DIR, { recursive: true })
 
 /* -------------------------------------------------------------------------- */
-/* Host state (script side): profile-state.db is the only non-projection read  */
-/* available without a host restart. No RPC exposes host memory.              */
+/* Host state (script side): the persisted value is the ONLY host-side source. */
+/* Host memory is not observable without a host debug RPC, so it stays        */
+/* UNKNOWN and never takes part in consistency.                                */
 /* -------------------------------------------------------------------------- */
 
 let DatabaseSync = null
 try {
   ;({ DatabaseSync } = await import('node:sqlite'))
 } catch {
-  // Node < 22.5; host state reads degrade to hostMemoryOk=false.
+  // Node < 22.5; host state reads degrade to hostPersistedOk=false.
 }
 
 function candidateProfileStateDbs() {
@@ -96,7 +97,7 @@ function candidateProfileStateDbs() {
 function readHostState(worktreeId) {
   const at = Date.now()
   if (!DatabaseSync) {
-    return { ok: false, at, error: 'node:sqlite unavailable', hostMemoryOk: false }
+    return { ok: false, at, error: 'node:sqlite unavailable', hostPersistedOk: false }
   }
   const errors = []
   for (const candidate of candidateProfileStateDbs()) {
@@ -117,13 +118,13 @@ function readHostState(worktreeId) {
       return {
         ok: true,
         at,
-        hostMemoryOk: true,
+        hostPersistedOk: true,
         file: candidate.file,
         hostRoot: candidate.root,
-        // No host-memory RPC exists; this is an explicitly labelled persisted fallback.
-        memorySource: 'persisted-file-fallback',
+        // Host memory has no RPC and is NOT read here; never present it as observed.
+        hostMemoryActive: 'UNKNOWN',
+        hostMemorySource: 'unavailable',
         persistentSource: 'profile-state.db:workspaceSession.activeTabIdByWorktree',
-        hostMemoryActive: byWorktree[worktreeId] ?? null,
         hostPersistentActive: byWorktree[worktreeId] ?? null,
         hostPersistentType: session?.activeTabTypeByWorktree?.[worktreeId] ?? null,
         hostPersistentGroupId: session?.activeGroupIdByWorktree?.[worktreeId] ?? null
@@ -139,7 +140,7 @@ function readHostState(worktreeId) {
   return {
     ok: false,
     at,
-    hostMemoryOk: false,
+    hostPersistedOk: false,
     error:
       errors.length > 0 ? errors.join('; ') : `worktree ${worktreeId} not found in profile-state.db`
   }
@@ -963,10 +964,23 @@ function isWriteMethod(method) {
   ].includes(method)
 }
 
-function lastClientWriteBefore(frames, gid) {
+/** Writes that can move the selection; the H-A timing anchor only uses these. */
+function isSelectionWriteMethod(method) {
+  return [
+    'session.tabs.activate',
+    'session.tabs.close',
+    'session.tabs.closeLifecycle',
+    'session.tabs.createTerminal'
+  ].includes(method)
+}
+
+function lastClientWriteBefore(frames, gid, doc, methodFilter = isWriteMethod) {
   for (let index = frames.length - 1; index >= 0; index -= 1) {
     const frame = frames[index]
     if (frame.gid > gid) {
+      continue
+    }
+    if (doc !== undefined && frame.doc !== doc) {
       continue
     }
     if (
@@ -974,7 +988,7 @@ function lastClientWriteBefore(frames, gid) {
       frame.dir === 'send' &&
       frame.source === 'renderer' &&
       !frame.synthetic &&
-      isWriteMethod(frame.method)
+      methodFilter(frame.method)
     ) {
       const response = [...frames]
         .toReversed()
@@ -988,6 +1002,7 @@ function lastClientWriteBefore(frames, gid) {
       return {
         gid: frame.gid,
         t: frame.t,
+        wall: frame.wall ?? null,
         method: frame.method,
         params: frame.params,
         source: frame.source,
@@ -1035,19 +1050,6 @@ function lastHostPublishBefore(frames, gid) {
   return null
 }
 
-function frameActive(frame) {
-  if (!frame?.result) {
-    return null
-  }
-  if (frame.result.activeTabId !== undefined) {
-    return frame.result.activeTabId
-  }
-  if (Array.isArray(frame.result.snapshots) && frame.result.snapshots.length === 1) {
-    return frame.result.snapshots[0]?.activeTabId ?? null
-  }
-  return null
-}
-
 /* -------------------------------------------------------------------------- */
 /* T1 apply telemetry + validity helpers                                      */
 /* -------------------------------------------------------------------------- */
@@ -1069,17 +1071,12 @@ function parseTrace(raw) {
   }
 }
 
-function summarizeTraceFrame(frame) {
+function summarizeTraceFrame(frame, worktreeId) {
   if (!frame) {
     return null
   }
-  // listAll annotates the per-worktree summary, not the top-level result.
-  const snapshots = frame.result?.snapshots
-  const summary = Array.isArray(snapshots)
-    ? (snapshots.find((entry) => entry.applied !== undefined) ??
-      snapshots.find((entry) => entry.activeTabId !== undefined) ??
-      null)
-    : null
+  const summary = matchedWorktreeSnapshot(frame, worktreeId)
+  const isListFrame = Array.isArray(frame.result?.snapshots)
   return {
     seq: frame.seq,
     ts: frame.ts,
@@ -1087,40 +1084,114 @@ function summarizeTraceFrame(frame) {
     method: frame.method,
     requestId: frame.requestId,
     ok: frame.ok ?? null,
+    worktree: summary?.worktree ?? frame.worktree ?? frame.result?.worktree ?? null,
     activeTabId: frame.result?.activeTabId ?? summary?.activeTabId ?? null,
     activeGroupId: frame.result?.activeGroupId ?? summary?.activeGroupId ?? null,
     snapshotVersion: frame.result?.snapshotVersion ?? summary?.snapshotVersion ?? null,
     publicationEpoch: frame.result?.publicationEpoch ?? summary?.publicationEpoch ?? null,
-    applied: frame.applied ?? summary?.applied ?? null,
-    applyOptions: frame.applyOptions ?? summary?.applyOptions ?? null
+    // A listAll frame's own `applied` is an aggregate over every worktree, so only the
+    // matched per-worktree snapshot may answer the decision for this worktree.
+    applied: isListFrame ? (summary?.applied ?? null) : (frame.applied ?? null),
+    applyOptions: isListFrame ? (summary?.applyOptions ?? null) : (frame.applyOptions ?? null),
+    frameAppliedAggregate: frame.applied ?? null,
+    matchedSnapshot: summary !== null
   }
 }
 
-/** Last trace frame, last apply decision, and last winning (applied=true) frame. */
-function traceAtWall(traceFrames, wall) {
-  if (!Array.isArray(traceFrames) || typeof wall !== 'number') {
-    return { lastFrame: null, lastAppliedFrame: null, lastWinningFrame: null }
+/** A listAll frame carries one snapshot per worktree; keep only the sampled worktree's. */
+function matchedWorktreeSnapshot(frame, worktreeId) {
+  const snapshots = frame?.result?.snapshots
+  if (!Array.isArray(snapshots)) {
+    return null
   }
-  const before = traceFrames.filter((frame) => typeof frame.ts === 'number' && frame.ts <= wall)
-  const lastFrame = before.length > 0 ? before.at(-1) : null
+  const scoped = worktreeId
+    ? snapshots.filter((entry) => !entry.worktree || sameWorktree(entry.worktree, worktreeId))
+    : snapshots
+  return (
+    scoped.find((entry) => entry.applied !== undefined) ??
+    scoped.find((entry) => entry.activeTabId !== undefined) ??
+    null
+  )
+}
+
+function frameBelongsToWorktree(frame, worktreeId) {
+  // Single-snapshot stream frames carry the worktree on result; listAll carries it per snapshot.
+  const frameWorktree = frame?.worktree ?? frame?.result?.worktree ?? null
+  if (!worktreeId || !frameWorktree) {
+    return true
+  }
+  return sameWorktree(frameWorktree, worktreeId)
+}
+
+/** H-A candidate: applied, after the last selection write, and not what the client shows. */
+function isHACandidate(entry, afterTs, clientDomActive, clientStoreActive) {
+  if (!entry || entry.applied !== true || !entry.activeTabId) {
+    return false
+  }
+  if (afterTs !== null && !(typeof entry.ts === 'number' && entry.ts > afterTs)) {
+    return false
+  }
+  const domActive =
+    Array.isArray(clientDomActive) && clientDomActive.length === 1 ? clientDomActive[0] : null
+  if (domActive === null || clientStoreActive === null) {
+    return false
+  }
+  return (
+    !sameComparable(entry.activeTabId, domActive) &&
+    !sameComparable(entry.activeTabId, clientStoreActive)
+  )
+}
+
+/**
+ * Frames up to the wall clock. `lastQualifyingAppliedFrame` is the only frame allowed to
+ * answer H-A: `applied` alone means the apply pipeline ran, not that it won a race.
+ */
+function traceAtWall(traceFrames, wall, options = {}) {
+  const {
+    worktreeId = null,
+    afterTs = null,
+    clientDomActive = [],
+    clientStoreActive = null
+  } = options
+  if (!Array.isArray(traceFrames) || typeof wall !== 'number') {
+    return {
+      lastFrame: null,
+      lastAppliedFrame: null,
+      lastAppliedTrueFrame: null,
+      lastQualifyingAppliedFrame: null
+    }
+  }
+  const before = traceFrames.filter(
+    (frame) =>
+      typeof frame.ts === 'number' && frame.ts <= wall && frameBelongsToWorktree(frame, worktreeId)
+  )
+  const lastFrame = before.length > 0 ? summarizeTraceFrame(before.at(-1), worktreeId) : null
   let lastAppliedFrame = null
-  let lastWinningFrame = null
+  let lastAppliedTrueFrame = null
+  let lastQualifyingAppliedFrame = null
   for (let index = before.length - 1; index >= 0; index -= 1) {
-    if (lastAppliedFrame === null && before[index].applied !== undefined) {
-      lastAppliedFrame = before[index]
+    const entry = summarizeTraceFrame(before[index], worktreeId)
+    if (lastAppliedFrame === null && entry.applied !== null && entry.applied !== undefined) {
+      lastAppliedFrame = entry
     }
-    if (lastWinningFrame === null && before[index].applied === true) {
-      lastWinningFrame = before[index]
+    if (lastAppliedTrueFrame === null && entry.applied === true) {
+      lastAppliedTrueFrame = entry
     }
-    if (lastAppliedFrame !== null && lastWinningFrame !== null) {
+    if (
+      lastQualifyingAppliedFrame === null &&
+      isHACandidate(entry, afterTs, clientDomActive, clientStoreActive)
+    ) {
+      lastQualifyingAppliedFrame = entry
+    }
+    if (
+      lastAppliedFrame !== null &&
+      lastAppliedTrueFrame !== null &&
+      lastQualifyingAppliedFrame !== null
+    ) {
       break
     }
   }
-  return {
-    lastFrame: summarizeTraceFrame(lastFrame),
-    lastAppliedFrame: summarizeTraceFrame(lastAppliedFrame),
-    lastWinningFrame: summarizeTraceFrame(lastWinningFrame)
-  }
+  return { lastFrame, lastAppliedFrame, lastAppliedTrueFrame, lastQualifyingAppliedFrame }
 }
 
 function evaluateTopology(domStore, tabA, tabB) {
@@ -1150,64 +1221,79 @@ function sameComparable(a, b) {
   return comparable(a) !== null && comparable(a) === comparable(b)
 }
 
+function normalizeWorktreeSelector(value) {
+  const trimmed = typeof value === 'string' ? value.trim() : ''
+  if (!trimmed) {
+    return null
+  }
+  return trimmed.startsWith('id:') ? trimmed.slice(3) : trimmed
+}
+
+function sameWorktree(a, b) {
+  const left = normalizeWorktreeSelector(a)
+  const right = normalizeWorktreeSelector(b)
+  return left !== null && right !== null && left === right
+}
+
 /**
- * H-A: the winning applied frame is a list/listAll snapshot that did not mark
- * hostActiveAuthoritative, i.e. apply followed a non-authoritative read.
+ * H-A: only a frame that is applied, came after the last selection write, and carries an
+ * active different from the sampled DOM/store may answer. Anything else is `unknown`.
  */
 function hAAssessment(sample) {
-  const applied = sample?.trace?.lastWinningFrame
+  const frame = sample?.trace?.lastQualifyingAppliedFrame
   const decision = sample?.trace?.lastAppliedFrame
-  if (!applied) {
+  if (!frame) {
     return {
-      verdict: 'undetermined',
+      verdict: 'unknown',
       reason: decision
-        ? `last decision ${decision.method} applied=${decision.applied}; no winning apply frame`
-        : 'no apply frame before sample'
+        ? `no applied frame after the last selection write carrying a different active (last decision ${decision.method} applied=${decision.applied})`
+        : 'no applied frame after the last selection write carrying a different active'
     }
   }
-  const authoritative = applied.applyOptions?.hostActiveAuthoritative
-  // Missing applyOptions means the apply did not carry hostActiveAuthoritative,
-  // which is the H-A signature the design names ("应用缺 hostActiveAuthoritative").
-  if (applied.applied === true && authoritative !== true) {
+  const authoritative = frame.applyOptions?.hostActiveAuthoritative
+  // Missing applyOptions means that apply did not adopt the host active.
+  if (authoritative !== true) {
     return {
       verdict: 'affirmative',
-      reason: `${applied.method} applied with hostActiveAuthoritative=${String(authoritative)}`
-    }
-  }
-  if (applied.applied === true && authoritative === true) {
-    return {
-      verdict: 'negative',
-      reason: `${applied.method} applied with hostActiveAuthoritative=true`
+      reason: `${frame.method} applied after the last client write with active=${JSON.stringify(frame.activeTabId)} and hostActiveAuthoritative=${String(authoritative)}`
     }
   }
   return {
-    verdict: 'undetermined',
-    reason: `${applied.method} applied=${applied.applied} hostActiveAuthoritative=${String(authoritative)}`
+    verdict: 'negative',
+    reason: `${frame.method} applied with hostActiveAuthoritative=true`
   }
 }
 
-function diagnose(domStoreMatch, domHostMatch, lastWrite, lastPublish, sampleHostActive) {
-  if (domStoreMatch && domHostMatch) {
+/** Factual direction of the divergence; no causal claim beyond the recorded frames. */
+function diagnose(matches, lastWrite, hostPersistentActive, projectionActive, domActive) {
+  if (matches.domStore && matches.domHostPersisted && matches.projectionPersistent) {
     return 'consistent'
   }
+  if (!matches.domStore) {
+    return 'client-divergence: DOM and store disagree'
+  }
   const writeActive = lastWrite?.response?.result?.activeTabId ?? null
-  const publishActive = lastPublish ? frameActive(lastPublish) : null
-  const writeMatchesHost =
-    writeActive !== null && tabPart(writeActive) === tabPart(sampleHostActive)
-  const publishMatchesHost =
-    publishActive !== null && tabPart(publishActive) === tabPart(sampleHostActive)
-  if (!domStoreMatch) {
-    return writeMatchesHost
-      ? 'client-apply-lag: request reached the host with the sampled active tab, but DOM/store did not follow'
-      : 'client-divergence: DOM and store disagree with each other (and the host)'
+  const clientActive = domActive.length === 1 ? domActive[0] : null
+  if (!matches.domHostPersisted) {
+    if (writeActive !== null && sameComparable(writeActive, hostPersistentActive)) {
+      return 'client-ahead-host: last client write response carries the host persisted active, but DOM/store show another tab'
+    }
+    if (
+      writeActive !== null &&
+      clientActive !== null &&
+      sameComparable(writeActive, clientActive)
+    ) {
+      return 'host-did-not-follow-write: last client write response carries the client active, host persisted stayed different'
+    }
+    return 'client-host-divergence-without-matching-write'
   }
-  if (writeMatchesHost) {
-    return 'host-moved-after-write: the host changed away from the last client write after it was accepted'
+  if (!matches.projectionPersistent) {
+    return 'projection-lag: device projection differs from host persisted active'
   }
-  if (publishMatchesHost && !writeMatchesHost) {
-    return 'host-publish-overrode-write: a later host subscription snapshot carries a different active tab'
+  if (!matches.domProjection) {
+    return 'projection-differs-from-client: device projection differs from DOM/store while host persisted matched'
   }
-  return 'write-response-disagrees-with-host: the accepted request and the sampled host active differ'
+  return 'unclassified-divergence: host persisted, projection, and client views disagree'
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1238,11 +1324,9 @@ const out = {
   transportByDoc: [],
   firstInconsistency: null,
   isolation: {
-    baselineHostActive: null,
     baselinePersistentActive: null,
     baselineOk: false,
-    finalHostActive: null,
-    finalHostMemoryActive: null,
+    finalPersistentActive: null,
     restored: false,
     restoredVerified: false,
     restoreCall: null,
@@ -1252,10 +1336,10 @@ const out = {
   verdict: null,
   notes: [
     'WebSocket frames are E2EE ciphertext after e2ee_hello; plaintext RPC frames are recorded at the window.api boundary.',
-    'Host memory active has no RPC: read from profile-state.db activeTabIdByWorktree and labelled persisted-file-fallback.',
-    'Device projection is session.tabs.list; it is NOT host memory and is asserted separately.',
-    'DOM active is scoped to .app-layout and visible only (P2-1).',
-    'Store active is the active group only; no groups[0] fallback (P2-2).'
+    'Host memory is NOT observed: this probe compares host persisted (profile-state.db activeTabIdByWorktree) + device projection + client DOM/store.',
+    'Device projection is session.tabs.list; it is asserted separately from host persisted.',
+    'DOM active is scoped to .app-layout and visible only.',
+    'Store active is the active group only; no groups[0] fallback.'
   ]
 }
 
@@ -1369,7 +1453,6 @@ try {
       : null
   }
   out.isolation.baselineOk = baselineHostState.ok === true
-  out.isolation.baselineHostActive = baselineHostState.hostMemoryActive ?? null
   out.isolation.baselinePersistentActive = baselineHostState.hostPersistentActive ?? null
   if (!baselineHostState.ok) {
     out.notes.push(`baseline host state read failed: ${baselineHostState.error}`)
@@ -1432,21 +1515,35 @@ try {
     }
 
     const trace = parseTrace(traceRaw)
-    const traceSlice = traceAtWall(trace.frames, readAt.domStore)
     const projectionActive = host?.ok ? (host.result?.activeTabId ?? null) : null
     const domActive = domStore.domActive
     const storeActive = domStore.storeActive
-    const hostMemoryActive = hostState.ok ? (hostState.hostMemoryActive ?? null) : null
+    // Host memory is not observable from this probe; it is never compared.
+    const hostMemoryActive = 'UNKNOWN'
     const hostPersistentActive = hostState.ok ? (hostState.hostPersistentActive ?? null) : null
+    const lastWrite = lastClientWriteBefore(out.frames, frameGidAtSample, documentEpoch)
+    const lastSelectionWrite = lastClientWriteBefore(
+      out.frames,
+      frameGidAtSample,
+      documentEpoch,
+      isSelectionWriteMethod
+    )
+    const traceSlice = traceAtWall(trace.frames, readAt.domStore, {
+      worktreeId,
+      afterTs: lastSelectionWrite?.wall ?? null,
+      clientDomActive: domActive,
+      clientStoreActive: storeActive
+    })
 
     const topology = evaluateTopology(domStore, tabA, tabB)
     const matches = {
       domStore: domActive.length === 1 && domActive[0] === storeActive,
       domProjection: domActive.length === 1 && sameComparable(domActive[0], projectionActive),
       storeProjection: storeActive !== null && sameComparable(storeActive, projectionActive),
-      domHostMemory: domActive.length === 1 && sameComparable(domActive[0], hostMemoryActive),
-      storeHostMemory: storeActive !== null && sameComparable(storeActive, hostMemoryActive),
-      memoryPersistent: hostState.ok && sameComparable(hostMemoryActive, hostPersistentActive),
+      domHostPersisted:
+        domActive.length === 1 && sameComparable(domActive[0], hostPersistentActive),
+      storeHostPersisted:
+        storeActive !== null && sameComparable(storeActive, hostPersistentActive),
       projectionPersistent:
         projectionActive !== null &&
         hostState.ok &&
@@ -1456,13 +1553,12 @@ try {
       matches.domStore &&
       matches.domProjection &&
       matches.storeProjection &&
-      matches.domHostMemory &&
-      matches.storeHostMemory &&
-      matches.memoryPersistent
+      matches.domHostPersisted &&
+      matches.storeHostPersisted
 
     const invalidReasons = []
     if (!hostState.ok) {
-      invalidReasons.push(`hostMemoryOk=false: ${hostState.error}`)
+      invalidReasons.push(`hostPersistedOk=false: ${hostState.error}`)
     }
     if (!domStore.hasStore) {
       invalidReasons.push('hasStore=false')
@@ -1483,7 +1579,6 @@ try {
     }
 
     const valid = invalidReasons.length === 0
-    const lastWrite = lastClientWriteBefore(out.frames, frameGidAtSample)
     const lastPublish = lastHostPublishBefore(out.frames, frameGidAtSample)
     const run = {
       cycle,
@@ -1516,10 +1611,11 @@ try {
       projectionOk: host?.ok === true,
       projectionError: host?.ok === true ? null : (host?.error ?? null),
       hostMemoryActive,
-      hostMemoryOk: hostState.ok === true,
-      hostMemorySource: hostState.memorySource ?? null,
+      hostMemoryKnown: false,
+      hostMemorySource: 'unavailable',
       hostStateFile: hostState.file ?? null,
       hostStateError: hostState.ok ? null : (hostState.error ?? null),
+      hostPersistedOk: hostState.ok === true,
       hostPersistentActive,
       hostPersistentType: hostState.hostPersistentType ?? null,
       hostPersistentGroupId: hostState.hostPersistentGroupId ?? null,
@@ -1529,22 +1625,18 @@ try {
       valid,
       invalidReasons,
       consistent,
-      diagnosis: diagnose(
-        matches.domStore,
-        matches.domProjection,
-        lastWrite,
-        lastPublish,
-        projectionActive
-      ),
+      diagnosis: diagnose(matches, lastWrite, hostPersistentActive, projectionActive, domActive),
       outOfOrderWrites: outOfOrderActivate(out.frames, frameGidAtSample),
       trace: {
         ok: trace.ok,
         size: trace.size ?? null,
         lastFrame: traceSlice.lastFrame,
         lastAppliedFrame: traceSlice.lastAppliedFrame,
-        lastWinningFrame: traceSlice.lastWinningFrame
+        lastAppliedTrueFrame: traceSlice.lastAppliedTrueFrame,
+        lastQualifyingAppliedFrame: traceSlice.lastQualifyingAppliedFrame
       },
       lastClientWrite: lastWrite,
+      lastSelectionWrite,
       lastHostPublish: lastPublish,
       tabCount: domStore.unified.length,
       hasStore: domStore.hasStore,
@@ -1582,8 +1674,9 @@ try {
       projectionActive: run.projectionActive,
       projectionOk: run.projectionOk,
       hostMemoryActive: run.hostMemoryActive,
-      hostMemoryOk: run.hostMemoryOk,
+      hostMemoryKnown: run.hostMemoryKnown,
       hostMemorySource: run.hostMemorySource,
+      hostPersistedOk: run.hostPersistedOk,
       hostPersistentActive: run.hostPersistentActive,
       hostStateFile: run.hostStateFile,
       hostStateError: run.hostStateError,
@@ -1595,6 +1688,7 @@ try {
       diagnosis: run.diagnosis,
       trace: run.trace,
       lastClientWrite: run.lastClientWrite,
+      lastSelectionWrite: run.lastSelectionWrite,
       lastHostPublish: run.lastHostPublish
     }
   }
@@ -1603,7 +1697,44 @@ try {
     if (!point.valid) {
       return { token: 'INVALID', reason: point.invalidReasons.join(' | ') }
     }
+    if (point.unstable) {
+      return { token: 'unstable', reason: 'the two reads disagree; no causal attribution' }
+    }
     const sample = point.second
+    const clientActive = sample.domActive.length === 1 ? sample.domActive[0] : null
+    const hostPersisted = sample.hostPersistentActive
+    const writeActive = sample.lastClientWrite?.response?.result?.activeTabId ?? null
+    const written = sample.trace?.lastQualifyingAppliedFrame ?? null
+
+    // Client DOM/store moved off the host persisted value while its own write reply
+    // still carried the host value: the client is ahead of the host.
+    if (
+      sample.matches.domStore &&
+      clientActive !== null &&
+      !sameComparable(clientActive, hostPersisted) &&
+      writeActive !== null &&
+      sameComparable(writeActive, hostPersisted)
+    ) {
+      const params = sample.lastClientWrite?.params ?? {}
+      return {
+        token: 'client-ahead-host',
+        reason: `client shows ${clientActive} while host persisted stays ${hostPersisted}; last client write ${sample.lastClientWrite?.method} replied ${writeActive} (materializeOnly=${String(params.materializeOnly)}, notifyClients=${String(params.notifyClients)})`
+      }
+    }
+    // A host frame carried the host persisted active after the last write and the
+    // client did not adopt it.
+    if (
+      written &&
+      written.activeTabId !== null &&
+      sameComparable(written.activeTabId, hostPersisted) &&
+      clientActive !== null &&
+      !sameComparable(written.activeTabId, clientActive)
+    ) {
+      return {
+        token: 'host-frame-not-won',
+        reason: `applied ${written.method} #${written.seq} carried host persisted active ${written.activeTabId}; client kept ${clientActive}`
+      }
+    }
     if (sample.matches.projectionPersistent === false) {
       return {
         token: 'H-C',
@@ -1614,8 +1745,7 @@ try {
     if (ha.verdict === 'affirmative') {
       return { token: 'H-A', reason: ha.reason }
     }
-    const applied = sample.trace?.lastWinningFrame
-    const writeActive = sample.lastClientWrite?.response?.result?.activeTabId ?? null
+    const applied = sample.trace?.lastQualifyingAppliedFrame
     if (
       applied &&
       writeActive &&
@@ -1632,7 +1762,10 @@ try {
     if (sample.outOfOrderWrites) {
       return { token: 'H-D', reason: 'activate responses landed out of send order' }
     }
-    return { token: 'undetermined', reason: 'no matching H-A/H-B/H-C/H-D signature in trace' }
+    return {
+      token: 'unknown',
+      reason: 'no qualifying frame after the last client write; direction not attributable'
+    }
   }
 
   async function samplePoint(cycle, phase) {
@@ -1658,7 +1791,7 @@ try {
       hA: hAAssessment(second)
     }
     point.attribution = consistent
-      ? { token: 'green', reason: 'all views agree in both reads' }
+      ? { token: 'none', reason: 'all three perspectives agree in both reads' }
       : attributePoint(point)
     out.samples.push(point)
     const view = !valid ? 'INVALID' : consistent ? 'GREEN' : 'RED'
@@ -1666,7 +1799,7 @@ try {
       `[u138] ${String(cycle).padEnd(12)} ${phase.padEnd(12)} ${view}` +
         ` dom=${JSON.stringify(point.second.domActive)} store=${JSON.stringify(point.second.storeActive)}` +
         ` projection=${JSON.stringify(point.second.projectionActive)}` +
-        ` hostMem=${JSON.stringify(point.second.hostMemoryActive)}` +
+        ` hostMem=${String(point.second.hostMemoryActive)}` +
         ` hostPersist=${JSON.stringify(point.second.hostPersistentActive)}` +
         ` hA=${point.hA.verdict} attr=${point.attribution.token}`
     )
@@ -1771,7 +1904,7 @@ try {
       domActive: point.second.domActive,
       storeActive: point.second.storeActive,
       projectionActive: point.second.projectionActive,
-      hostMemoryActive: point.second.hostMemoryActive
+      hostPersistentActive: point.second.hostPersistentActive
     })
   }
   out.reopenActives = reopenActives
@@ -1806,16 +1939,17 @@ try {
     }
   }
 
-  // Restore by host memory value (not projection), then re-read to verify.
+  // Restore by host persisted value (not projection), then re-read to verify.
   const finalHostState = readHostState(worktreeId)
   await drainInto(workspacePage, documentEpoch)
-  out.isolation.finalHostActive = finalHostState.ok ? finalHostState.hostPersistentActive : null
-  out.isolation.finalHostMemoryActive = finalHostState.ok ? finalHostState.hostMemoryActive : null
-  const baselineSurface = out.isolation.baselineHostActive
+  out.isolation.finalPersistentActive = finalHostState.ok
+    ? finalHostState.hostPersistentActive
+    : null
+  const baselineSurface = out.isolation.baselinePersistentActive
   if (
     out.isolation.baselineOk &&
     baselineSurface &&
-    tabPart(baselineSurface) !== tabPart(out.isolation.finalHostMemoryActive)
+    tabPart(baselineSurface) !== tabPart(out.isolation.finalPersistentActive)
   ) {
     const [baseTabId, baseLeafId] = String(baselineSurface).split(HOST_SURFACE_SEPARATOR)
     try {
@@ -1850,14 +1984,14 @@ try {
   } else {
     out.isolation.restored = out.isolation.baselineOk
     out.isolation.restoreCall = out.isolation.baselineOk
-      ? { ok: true, skipped: 'host memory active did not change' }
+      ? { ok: true, skipped: 'host persisted active did not change' }
       : { ok: false, skipped: 'baseline host state unreadable' }
   }
   const verifyState = readHostState(worktreeId)
   out.isolation.restoredVerified =
     out.isolation.baselineOk &&
     verifyState.ok &&
-    comparable(baselineSurface) === comparable(verifyState.hostMemoryActive)
+    comparable(baselineSurface) === comparable(verifyState.hostPersistentActive)
   out.isolation.verifyState = verifyState
 
   // Close any tabs the initial ensureTwoTabs created.
@@ -1915,6 +2049,13 @@ try {
     consistentSamples: greenPoints.length,
     inconsistentSamples: redPoints.length,
     reproduced: redPoints.length > 0,
+    // Fix B (INVALID hardening / conclusive gate) is out of scope for this pass.
+    conclusive: false,
+    conclusiveReason:
+      'fix B not implemented: projection-unavailable and failed quick create/close still count as red; see test-reports/u138-probe-hardened-audit.md P1-1/P1-4',
+    perspective: 'host-persisted + device-projection + client DOM/store (host memory UNKNOWN)',
+    hostMemory: 'UNKNOWN',
+    hostMemorySource: 'unavailable',
     byScenario: {
       reload: scenarioSummary('reload'),
       reopen: scenarioSummary('reopen'),
@@ -1957,6 +2098,11 @@ try {
     consistentSamples: out.samples.filter((point) => point.valid && point.consistent).length,
     inconsistentSamples: out.samples.filter((point) => point.valid && !point.consistent).length,
     reproduced: out.samples.some((point) => point.valid && !point.consistent),
+    conclusive: false,
+    conclusiveReason: 'fix B not implemented; forced false before the run finished',
+    hostMemory: 'UNKNOWN',
+    hostMemorySource: 'unavailable',
+    perspective: 'host-persisted + device-projection + client DOM/store (host memory UNKNOWN)',
     blocked: true
   }
 } finally {
@@ -1976,9 +2122,13 @@ try {
     red: out.verdict?.red ?? 0,
     invalid: out.verdict?.invalid ?? 0,
     reproduced: out.verdict?.reproduced ?? false,
+    conclusive: out.verdict?.conclusive ?? false,
+    conclusiveReason: out.verdict?.conclusiveReason ?? null,
+    perspective: out.verdict?.perspective ?? null,
     byScenario: out.verdict?.byScenario ?? null,
     baselineOk: out.isolation?.baselineOk ?? false,
-    hostMemorySource: out.baseline?.hostState?.memorySource ?? null,
+    hostMemory: 'UNKNOWN',
+    hostMemorySource: 'unavailable',
     firstInconsistency: firstBad
       ? {
           cycle: firstBad.cycle,
@@ -1995,40 +2145,39 @@ try {
     output: OUTPUT_FILE
   }
   out.summary = summary
-  writeFileSync(OUTPUT_FILE, JSON.stringify(out, null, 2))
+  // Write the authoritative copy into this run's directory first; the shared file is only a pointer.
+  writeFileSync(path.join(RUN_DIR, 'u138-timeline.json'), JSON.stringify(out, null, 2))
   writeFileSync(path.join(RUN_DIR, 'summary.json'), JSON.stringify(summary, null, 2))
-  try {
-    copyFileSync(OUTPUT_FILE, path.join(RUN_DIR, 'u138-timeline.json'))
-  } catch {}
+  writeFileSync(OUTPUT_FILE, JSON.stringify(out, null, 2))
 
   console.log('')
   console.log('[u138] U138 frame timeline probe (hardened)')
   console.log(`[u138] project=${PROJECT_KEY} worktree=${out.worktreeId ?? 'n/a'}`)
   console.log(
-    `[u138] baselineOk=${out.isolation?.baselineOk} hostMemorySource=${out.summary.hostMemorySource ?? 'n/a'}`
+    `[u138] baselineOk=${out.isolation?.baselineOk} hostMemory=UNKNOWN perspective=host-persisted+projection+client`
   )
   console.log(
-    `[u138] counts: green=${summary.green} red=${summary.red} invalid=${summary.invalid} of ${summary.samplePoints} sample point(s)`
+    `[u138] counts: green=${summary.green} red=${summary.red} invalid=${summary.invalid} of ${summary.samplePoints} sample point(s) conclusive=${summary.conclusive}`
   )
   for (const point of out.samples) {
     const view = !point.valid ? 'INVALID' : point.consistent ? 'GREEN' : 'RED'
     console.log(
       `[u138] ${String(point.cycle).padEnd(12)} ${point.phase.padEnd(12)} ${view}` +
-        ` first={dom:${JSON.stringify(point.first.domActive)},store:${JSON.stringify(point.first.storeActive)},proj:${JSON.stringify(point.first.projectionActive)},mem:${JSON.stringify(point.first.hostMemoryActive)}}` +
-        ` second={dom:${JSON.stringify(point.second.domActive)},store:${JSON.stringify(point.second.storeActive)},proj:${JSON.stringify(point.second.projectionActive)},mem:${JSON.stringify(point.second.hostMemoryActive)}}` +
+        ` first={dom:${JSON.stringify(point.first.domActive)},store:${JSON.stringify(point.first.storeActive)},proj:${JSON.stringify(point.first.projectionActive)},hostPersist:${JSON.stringify(point.first.hostPersistentActive)}}` +
+        ` second={dom:${JSON.stringify(point.second.domActive)},store:${JSON.stringify(point.second.storeActive)},proj:${JSON.stringify(point.second.projectionActive)},hostPersist:${JSON.stringify(point.second.hostPersistentActive)}}` +
         ` attr=${point.attribution.token} hA=${point.hA.verdict}`
     )
     if (!point.valid) {
       console.log(`[u138]   INVALID: ${point.invalidReasons.join(' | ')}`)
     } else if (!point.consistent) {
-      const applied = point.second.trace?.lastAppliedFrame
-      const winning = point.second.trace?.lastWinningFrame
+      const decision = point.second.trace?.lastAppliedFrame
+      const qualifying = point.second.trace?.lastQualifyingAppliedFrame
       console.log(`[u138]   attribution: ${point.attribution.token} — ${point.attribution.reason}`)
       console.log(
-        `[u138]   last decision frame: ${applied ? `#${applied.seq} ${applied.method} applied=${applied.applied} hostActiveAuthoritative=${String(applied.applyOptions?.hostActiveAuthoritative)} active=${JSON.stringify(applied.activeTabId)}` : 'H-A 不可判定（无 apply 帧）'}`
+        `[u138]   last decision frame: ${decision ? `#${decision.seq} ${decision.method} applied=${decision.applied} hostActiveAuthoritative=${String(decision.applyOptions?.hostActiveAuthoritative)} active=${JSON.stringify(decision.activeTabId)}` : 'none'}`
       )
       console.log(
-        `[u138]   last winning frame: ${winning ? `#${winning.seq} ${winning.method} applied=${winning.applied} hostActiveAuthoritative=${String(winning.applyOptions?.hostActiveAuthoritative)} active=${JSON.stringify(winning.activeTabId)}` : 'H-A 不可判定（无 applied=true 帧）'}`
+        `[u138]   last H-A-candidate frame: ${qualifying ? `#${qualifying.seq} ${qualifying.method} applied=${qualifying.applied} hostActiveAuthoritative=${String(qualifying.applyOptions?.hostActiveAuthoritative)} active=${JSON.stringify(qualifying.activeTabId)}` : 'none (after last selection write, different from client)'}`
       )
     }
   }
@@ -2039,8 +2188,12 @@ try {
   } else {
     console.log('[u138] first red: none')
   }
+  console.log('')
+  console.log(
+    `[u138] perspective: host-persisted + device-projection + client DOM/store; host memory UNKNOWN (H-B not judged)`
+  )
   console.log(`[u138] evidence: ${OUTPUT_FILE}`)
-  console.log(`[u138] evidence copy: ${RUN_DIR}`)
+  console.log(`[u138] evidence copy (authoritative): ${path.join(RUN_DIR, 'u138-timeline.json')}`)
   if (fatalError) {
     console.log(`[u138] blocked: ${out.fatalError.message}`)
   }
