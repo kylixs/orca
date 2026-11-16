@@ -3573,7 +3573,8 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **U141 闭环**（`6cb53417057`）：平台/宿主 clone URL 校验收敛（绝对路径+file:// 同步接受，裸串/ftp/ext:: 仍拒）；契约 5/5、宿主 51/51、注册 e2e 7/7。最终构建+部署与门禁复跑进行中。
 - **最终构建已部署**（out/main/out/web 17:37，含 expose-store）：平台 40293、宿主 40667/41785（同 host id），reseed `failures=[]`。
 - **U138 重开**（`7f07d3ce86e`）：部署后 journey-9 复跑仍红（a2 三方不一致；B7 零互换绿、内容/分组绿），已证 out/main 含修复 → 修复未稳定；**二次诊断**（`b4e5e3cdde2`）：renderer: epoch 的 activate 从未落盘 + 每设备选择投影产生第三陈旧值；绿 run 属相位巧合（门禁仅采样一次）。二期修令在途；门禁 B7 已加「三次重开 active 一致」。
-- **U140/U141 独立审计 PASS**：U140 3 例父提交先红后绿复现；U141 两端矩阵逐条对齐、AC-M3-33 裸串仍 400；偏差转 U142（SCP-like 无 user@ 分叉 + UNC 裁定两端拒绝）/U143（orphan 路由、注册 revoked 门禁、多宿主用例），均已派修。
+- **U140/U141 独立审计 PASS**；偏差转 U142/U143 均已闭环：U142 `bdf41816514`（SCP-like 统一 user@、UNC 两端拒、共享矩阵模块两端 import 防再分叉；6/6+56/56+7/7）、U143 `ab7d2eade44`（orphan 路由清扫、注册 revoked 门禁 409+denied、多宿主用例；43 绿）。
+- **U138 二期修复落地**（`fa6143d4fa7`）：配对客户端 activate 落盘（含 group active/split leaf，桌面 path 不双写）+ 每设备投影快照 active 回退；聚焦 20/20、web-session-tabs-sync 39/39、orca-runtime 1381 passed；真机复验随最终重建执行。
 - **AC-M3-33/G08 注记同步**（`09bfb94513b`），计数机检 PASS（318=276+41+1、§13 9/5/15）。
 - 最终构建门禁：平台 e2e **426/0**、W9 双线 A 4/4 + B 2/2 绿。
 
