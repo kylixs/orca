@@ -943,10 +943,6 @@ td.actions {
 }
 
 /* ---------- U80 M1: 移动端基座（≤700 单列 / 701–1100 双列） ---------- */
-.touch-target {
-  min-width: 44px;
-  min-height: 44px;
-}
 /* 桌面零泄漏：底部导航与「更多」层只在窄视口由媒体查询显示。 */
 .tabbar,
 .more-backdrop {
@@ -1007,7 +1003,7 @@ td.actions {
     padding: 0 16px;
   }
   .btn.sm {
-    min-height: 36px;
+    min-height: 44px;
   }
   .icon-btn,
   .link-btn {
@@ -1328,8 +1324,17 @@ td.actions {
     margin: auto;
     padding: 24px 20px;
   }
-  .login-card .field input {
+  .login-card .field input,
+  .login-card .field select {
     min-height: 44px;
+  }
+  /* 显隐按钮与输入行同高，避免 44px 触控目标向下溢出。 */
+  .login-card .password-row input {
+    padding-right: 48px;
+  }
+  .login-card .password-row .icon-btn {
+    top: 0;
+    right: 0;
   }
   .login-card .btn.block {
     min-height: 44px;

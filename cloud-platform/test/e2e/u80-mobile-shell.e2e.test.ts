@@ -63,6 +63,37 @@ async function isActive(page: Page, selector: string): Promise<boolean> {
   return page.locator(selector).evaluate((el) => el.classList.contains('active'))
 }
 
+async function apiLogin(
+  username: string,
+  password: string
+): Promise<{ accessToken: string }> {
+  const res = await fetch(`${service.url}/v1/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  })
+  assert.equal(res.status, 200, `${username} must sign in over the API`)
+  return (await res.json()) as { accessToken: string }
+}
+
+/** No seeded auditor: promote lisi through the admin API the users page uses. */
+async function promoteAuditor(): Promise<void> {
+  const admin = await apiLogin(...ADMIN)
+  await apiLogin('lisi', 'Passw0rd!')
+  const headers = { authorization: `Bearer ${admin.accessToken}` }
+  const directory = (await (
+    await fetch(`${service.url}/v1/users`, { headers })
+  ).json()) as { users: Array<{ id: string; username: string }> }
+  const lisi = directory.users.find((user) => user.username === 'lisi')
+  assert.ok(lisi, 'lisi is seeded after first login')
+  const res = await fetch(`${service.url}/v1/users/${lisi.id}/roles`, {
+    method: 'PUT',
+    headers: { ...headers, 'content-type': 'application/json' },
+    body: JSON.stringify({ role: 'auditor' })
+  })
+  assert.equal(res.status, 200, 'admin promotes lisi to auditor')
+}
+
 test('390×844：底栏四项可点、导航生效、无横向溢出', async () => {
   const page = await signIn({ width: 390, height: 844 }, ADMIN)
   try {
@@ -167,6 +198,63 @@ test('390×844：开发者无审计入口，「更多」仅保留账号与退出
   }
 })
 
+test('390×844：审计员可见审计入口，「更多」无管理项，审计页可进', async () => {
+  await promoteAuditor()
+  const page = await signIn({ width: 390, height: 844 }, ['lisi', 'Passw0rd!'])
+  try {
+    assert.equal(await page.locator('#tabAudit').isVisible(), true)
+    assert.equal(await page.locator('#tabbar .tabitem:visible').count(), 4)
+    assert.equal(await page.locator('#roleChip').innerText(), '审计员')
+
+    await page.click('#tabMore')
+    await page.waitForSelector('#moreSheet:not([hidden])')
+    assert.equal(await page.locator('#moreNav .more-item:visible').count(), 0)
+    assert.equal(await page.locator('#moreLogout').isVisible(), true)
+    assert.match(await page.locator('#moreAccount').innerText(), /审计员/)
+    await page.click('#moreSheet', { position: { x: 5, y: 5 } })
+    await page.waitForFunction(() => document.querySelector('#moreSheet')?.hidden === true)
+
+    await page.click('#tabbar .tabitem[data-route="audit"]')
+    await page.waitForFunction(() => location.hash === '#/audit')
+    assert.equal(await page.locator('#crumbs').innerText(), '审计日志')
+    assert.ok((await horizontalOverflow(page)) <= 1, 'auditor shell must not overflow')
+  } finally {
+    await page.context().close()
+  }
+})
+
+test('700/701/1100/1101：grid 列数与底栏显隐的断点边界', async () => {
+  const cases = [
+    { width: 700, grid3: 1, grid4: 2, tabbar: true },
+    { width: 701, grid3: 2, grid4: 2, tabbar: false },
+    { width: 1100, grid3: 2, grid4: 2, tabbar: false },
+    { width: 1101, grid3: 3, grid4: 4, tabbar: false }
+  ] as const
+  for (const expected of cases) {
+    const page = await signIn({ width: expected.width, height: 900 }, ADMIN)
+    try {
+      const columns = async (selector: string) =>
+        page
+          .locator(`#content ${selector}`)
+          .first()
+          .evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length)
+      assert.equal(await columns('.grid-3'), expected.grid3, `${expected.width}px grid-3`)
+      assert.equal(await columns('.grid-4'), expected.grid4, `${expected.width}px grid-4`)
+      assert.equal(
+        await page.locator('#tabbar').isVisible(),
+        expected.tabbar,
+        `${expected.width}px tabbar visibility`
+      )
+      assert.ok(
+        (await horizontalOverflow(page)) <= 1,
+        `${expected.width}px must not overflow horizontally`
+      )
+    } finally {
+      await page.context().close()
+    }
+  }
+})
+
 test('390×844：登录页单列居中、16px 输入、错误/禁用态、44px 主按钮', async () => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } })
   const page = await context.newPage()
@@ -188,6 +276,25 @@ test('390×844：登录页单列居中、16px 输入、错误/禁用态、44px �
     assert.equal(
       await page.locator('#username').evaluate((el) => getComputedStyle(el).fontSize),
       '16px'
+    )
+    const fieldHeights = await page
+      .locator('.login-card .field input')
+      .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height))
+    assert.ok(
+      fieldHeights.every((height) => height >= 44),
+      `login inputs keep a 44px touch target, got ${fieldHeights.join(',')}`
+    )
+    const passwordBox = await page.locator('#password').boundingBox()
+    const toggleBox = await page.locator('#togglePassword').boundingBox()
+    assert.ok(passwordBox && toggleBox, 'password row must be laid out')
+    assert.ok(
+      toggleBox.y >= passwordBox.y - 1 &&
+        toggleBox.y + toggleBox.height <= passwordBox.y + passwordBox.height + 1,
+      `password toggle stays inside the input row (input ${passwordBox.y}+${passwordBox.height}, toggle ${toggleBox.y}+${toggleBox.height})`
+    )
+    assert.ok(
+      toggleBox.width >= 44 && toggleBox.height >= 44,
+      `password toggle keeps a 44px touch target, got ${toggleBox.width}×${toggleBox.height}`
     )
     assert.ok(
       (await page.locator('#loginBtn').evaluate((el) => el.getBoundingClientRect().height)) >= 44,
@@ -311,6 +418,14 @@ test('390×844：项目列表 chips 横滑、卡字段单行省略、操作 ≥4
       .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height))
     assert.equal(heights.length, 2, '详情 + 打开工作区')
     assert.ok(heights.every((height) => height >= 44), `actions >=44px, got ${heights.join(',')}`)
+    assert.equal(
+      await cards
+        .first()
+        .locator('.plc-actions .btn.sm')
+        .count(),
+      2,
+      'compact buttons still hold the 44px mobile target'
+    )
 
     await page.click('#projectChips .chip[data-project-filter="offline"]')
     await page.waitForFunction(
