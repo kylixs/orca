@@ -19,13 +19,18 @@ import type {
   WebCloudWorkspaceBootstrapApi,
   WebCloudWorkspaceBootstrapPorts
 } from './web-cloud-workspace-store-ports'
+import { CLOUD_SESSION_TABS_RESTORE_CAPABILITY } from '../../../shared/cloud-workspace-info'
+import {
+  resetWebCloudSessionCapabilities,
+  shouldMirrorCloudSessionTabs
+} from './web-cloud-session-capabilities'
 
 const PROJECT_ROOT = '/srv/work/payment-service'
 const WORKSPACE_ROOT = `${PROJECT_ROOT}/.orca-worktrees/zhangsan`
 const WORKSPACE_PATH = `${WORKSPACE_ROOT}/main`
 const EXECUTION_HOST_ID = 'runtime:web-bootstrap-env'
 
-function workspaceInfo(overrides: Partial<CloudWorkspaceInfo> = {}): CloudWorkspaceInfo {
+function workspaceInfo(overrides: Partial<CloudWorkspaceInfo> = {}): CloudWorkspaceInfoResponse {
   return {
     project: { id: 'proj_1', root: PROJECT_ROOT, repoUrl: '', defaultBranch: 'main' },
     workspace: { root: WORKSPACE_ROOT, path: null, branch: null },
@@ -176,6 +181,7 @@ async function collectStatusPhases(run: () => Promise<void>): Promise<string[]> 
 describe('web cloud workspace bootstrap (W13b)', () => {
   beforeEach(() => {
     resetWebCloudWorkspaceBootstrap()
+    resetWebCloudSessionCapabilities()
   })
 
   afterEach(() => {
@@ -404,5 +410,23 @@ describe('web cloud workspace bootstrap (W13b)', () => {
     harness.emitTransport('ready')
     await startWebCloudWorkspaceBootstrapForTests(harness.ports)
     expect(harness.info).toHaveBeenCalledTimes(2)
+  })
+
+  it('records the restore capability an upgraded host advertises', async () => {
+    const harness = makeHarness({
+      info: async () => workspaceInfo({ capabilities: [CLOUD_SESSION_TABS_RESTORE_CAPABILITY] })
+    })
+    await startWebCloudWorkspaceBootstrapForTests(harness.ports)
+
+    expect(readWebCloudWorkspaceBootstrapStatus().phase).toBe('done')
+    expect(shouldMirrorCloudSessionTabs('web-bootstrap-env')).toBe(true)
+  })
+
+  it('keeps the cloud skip when the host predates the capabilities field', async () => {
+    const harness = makeHarness()
+    await startWebCloudWorkspaceBootstrapForTests(harness.ports)
+
+    expect(readWebCloudWorkspaceBootstrapStatus().phase).toBe('done')
+    expect(shouldMirrorCloudSessionTabs('web-bootstrap-env')).toBe(false)
   })
 })

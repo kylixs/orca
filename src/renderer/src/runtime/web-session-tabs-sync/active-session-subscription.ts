@@ -2,6 +2,7 @@ import type { RuntimeRpcResponse } from '../../../../shared/runtime-rpc-envelope
 import { isCloudSessionRuntimeEnvironment } from '../../../../shared/runtime-environments'
 import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-types'
 import { isRuntimeSubscriptionReplayResponse } from '../../../../shared/runtime-subscription-replay'
+import { shouldMirrorCloudSessionTabs } from '../../web/web-cloud-session-capabilities'
 import { useAppStore } from '../../store'
 import { getRuntimeEnvironmentRevision } from '../runtime-environment-revision'
 import { recoverWebSessionTerminalOrphansBeforeApply } from '../web-session-terminal-orphan-recovery'
@@ -82,12 +83,16 @@ export function installActiveSessionTabsSubscription({
   ) {
     return undefined
   }
-  // Why: a cloud session's host refuses the paired-desktop `session.tabs.*` family, so the
-  // mirror has no surface to sync there; subscribing would only warn-loop on the refusal.
+  // Why: a cloud session's host refuses the paired-desktop `session.tabs.*` family unless it
+  // advertised the restore capability (U96); without one, subscribing only warn-loops.
   const environment = useAppStore
     .getState()
     .runtimeEnvironments.find(({ id }) => id === environmentId)
-  if (environment !== undefined && isCloudSessionRuntimeEnvironment(environment)) {
+  if (
+    environment !== undefined &&
+    isCloudSessionRuntimeEnvironment(environment) &&
+    !shouldMirrorCloudSessionTabs(environmentId)
+  ) {
     return undefined
   }
   const expectedTrackingGeneration = getWebSessionTabsTrackingGeneration(environmentId)

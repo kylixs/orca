@@ -3,6 +3,7 @@ import type { RuntimeMobileSessionTabsResult } from '../../../shared/runtime-typ
 import { getRuntimeEnvironmentConnectionGeneration } from '@/store/slices/runtime-status'
 import { useAppStore } from '../store'
 import { isActiveWebClientCloudSession } from '@/web/web-cloud-session-scope'
+import { shouldMirrorCloudSessionTabs } from '@/web/web-cloud-session-capabilities'
 import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 import {
   listRemoteRuntimeSessionTabsAfterCurrentInFlight,
@@ -42,11 +43,12 @@ export async function refreshWebRuntimeSessionTabsSnapshot(
   } = {}
 ): Promise<void> {
   // Why: a cloud session's host refuses session.tabs.* — the mirror protocol has no
-  // second paired end to converge (O1 F7). Skip every eager refresh instead of
-  // logging a doomed list; the multiplex stream itself carries the live state.
+  // second paired end to converge (O1 F7) — unless it advertised the restore
+  // capability (U96). Skip every eager refresh only when the host did not.
   if (
-    isActiveWebClientCloudSession() ||
-    isCloudSessionEnvironmentId(useAppStore.getState().runtimeEnvironments, environmentId)
+    (isActiveWebClientCloudSession() ||
+      isCloudSessionEnvironmentId(useAppStore.getState().runtimeEnvironments, environmentId)) &&
+    !shouldMirrorCloudSessionTabs(environmentId)
   ) {
     return
   }

@@ -13,6 +13,7 @@ import {
   defaultWebCloudWorkspacePorts,
   type WebCloudWorkspaceBootstrapPorts
 } from './web-cloud-workspace-store-ports'
+import { recordWebCloudSessionCapabilities } from './web-cloud-session-capabilities'
 
 /**
  * The cloud session's workspace bootstrap (W13 design §4): `workspace.info` →
@@ -164,6 +165,9 @@ async function runBootstrap(
       fallback({ reason: 'unavailable' })
       return
     }
+    // Why here: every admitted cloud session runs this one self-description call, so an old
+    // host's absent field reads as "unsupported" and the mirror keeps its cloud skip.
+    recordWebCloudSessionCapabilities(environment.id, info.capabilities ?? [])
     const executionHostId = toRuntimeExecutionHostId(environment.id)
     const terminalGranted = info.perms.includes('terminal')
     // §4.3: the explorer is a file-tree surface, so it mounts only on a read

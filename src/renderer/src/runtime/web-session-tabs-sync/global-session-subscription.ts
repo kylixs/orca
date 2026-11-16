@@ -1,4 +1,5 @@
 import { isCloudSessionRuntimeEnvironment } from '../../../../shared/runtime-environments'
+import { shouldMirrorCloudSessionTabs } from '../../web/web-cloud-session-capabilities'
 import { useAppStore } from '../../store'
 import { getRuntimeEnvironmentRevision } from '../runtime-environment-revision'
 import { clearWebSessionCloseIntentsForOwner } from '../web-session-close-intent'
@@ -65,17 +66,19 @@ export function installGlobalSessionTabsSubscriptions({
   workspaceSessionReady,
   refs
 }: GlobalSubscriptionInstallArgs): (() => void) | undefined {
-  // Why: a cloud session's host refuses the paired-desktop `session.tabs.*` family, so the
-  // mirror has no surface to sync there; subscribing would only warn-loop on the refusal.
+  // Why: a cloud session's host refuses the paired-desktop `session.tabs.*` family unless it
+  // advertised the restore capability (U96); without one, subscribing only warn-loops.
   // Judged per environment: a desktop client can pair cloud projects beside native hosts.
-  const cloudEnvironmentIds = new Set(
-    useAppStore
-      .getState()
-      .runtimeEnvironments.filter(isCloudSessionRuntimeEnvironment)
-      .map(({ id }) => id)
-  )
+  const runtimeEnvironments = useAppStore.getState().runtimeEnvironments
   const environments = parseEnvironments(runtimeSessionMirrorEnvironmentKey).filter(
-    ({ environmentId }) => !cloudEnvironmentIds.has(environmentId)
+    ({ environmentId }) => {
+      const environment = runtimeEnvironments.find(({ id }) => id === environmentId)
+      return (
+        environment === undefined ||
+        !isCloudSessionRuntimeEnvironment(environment) ||
+        shouldMirrorCloudSessionTabs(environmentId)
+      )
+    }
   )
   const ownerRevisions = new Map(
     (workspaceSessionReady ? environments : []).map(
