@@ -1768,23 +1768,38 @@ async function renderHosts() {
       <button class="btn primary" id="registerHostBtn">注册主机</button>
     </div>
     <div class="note">中继路由由平台单向同步；未知 SNI 默认黑洞。下载默认策略：<strong>${policy.downloadDefault === 'deny' ? '禁止' : '允许'}</strong>（v${policy.version}）。</div>
-    <div class="table-wrap">
+    <div class="table-wrap" id="hostTableWrap">
       <table>
         <thead><tr><th>主机</th><th>直连地址</th><th>中继路由</th><th>中继</th><th>版本</th><th>心跳</th><th>状态</th><th class="actions">操作</th></tr></thead>
         <tbody>
           ${hostsBody.hosts.map(hostRow).join('') || '<tr><td colspan="8" class="table-empty">尚未注册主机</td></tr>'}
         </tbody>
       </table>
+    </div>
+    <div class="host-list">
+      ${hostsBody.hosts.map(hostCard).join('') || '<p class="card table-empty">尚未注册主机</p>'}
     </div>`
   $('#registerHostBtn').onclick = registerHostDialog
   for (const btn of document.querySelectorAll('[data-host]')) {
     btn.onclick = () => openDetailFromList('hosts', btn.dataset.host ?? '')
   }
+  for (const btn of document.querySelectorAll('[data-host-maintenance]')) {
+    btn.onclick = async () => {
+      const host = state.lastHosts.find((h) => h.id === btn.dataset.hostMaintenance)
+      if (host && (await toggleHostMaintenance(host))) await renderHosts()
+    }
+  }
+  for (const btn of document.querySelectorAll('[data-host-revoke]')) {
+    btn.onclick = async () => {
+      const host = state.lastHosts.find((h) => h.id === btn.dataset.hostRevoke)
+      if (host && (await revokeHost(host))) await renderHosts()
+    }
+  }
 }
 
-function hostRow(h) {
-  // The heartbeat window decides liveness: a stored "online" must not keep a
-  // silent host green (M116-QA-005). Revocation is terminal and labelled.
+/** The heartbeat window decides liveness: a stored "online" must not keep a
+ * silent host green (M116-QA-005). Revocation is terminal and labelled. */
+function hostVerdict(h) {
   const status = h.revokedAt
     ? '已吊销'
     : h.status === 'maintenance'
@@ -1799,6 +1814,12 @@ function hostRow(h) {
       : h.online
         ? 'online'
         : 'offline'
+  const tone = h.revokedAt ? 'danger' : h.status === 'maintenance' ? 'warn' : h.online ? 'ok' : ''
+  return { status, dot, tone }
+}
+
+function hostRow(h) {
+  const { status, dot } = hostVerdict(h)
   return `<tr>
     <td><strong>${esc(h.name)}</strong><div class="muted mono">${esc(h.zone)}</div></td>
     <td class="mono">${esc(h.directAddrs.join('<br>') || '—')}</td>
@@ -1809,6 +1830,26 @@ function hostRow(h) {
     <td><span class="dot ${dot}"></span> ${status}</td>
     <td class="actions"><button class="btn sm" data-host="${h.id}">详情</button></td>
   </tr>`
+}
+
+/** U80 M4: the phone face of 主机; desktop keeps the table byte for byte. */
+function hostCard(h) {
+  const { status, dot, tone } = hostVerdict(h)
+  const address = h.directAddrs.join(', ') || h.relayTarget || h.relayRoute || '—'
+  return `<article class="card host-list-card" data-host-card="${esc(h.id)}">
+    <div class="hlc-head">
+      <span class="dot ${dot}"></span>
+      <strong class="hlc-name">${esc(h.name)}</strong>
+      <span class="badge ${tone}">${status}</span>
+    </div>
+    <div class="hlc-line mono">${esc(address)}</div>
+    <div class="hlc-line muted">最后心跳 ${relative(h.lastHeartbeatAt)}</div>
+    <div class="hlc-actions">
+      <button class="btn sm" data-host="${esc(h.id)}">详情</button>
+      <button class="btn sm" data-host-maintenance="${esc(h.id)}" ${h.revokedAt ? 'disabled' : ''}>${h.status === 'maintenance' ? '结束维护' : '维护'}</button>
+      <button class="btn sm danger" data-host-revoke="${esc(h.id)}" ${h.revokedAt ? 'disabled' : ''}>下线</button>
+    </div>
+  </article>`
 }
 
 /**
@@ -1831,6 +1872,32 @@ function hostRelayOfflineNote(host) {
   if (!offline) return ''
   const direct = (host.directAddrs ?? []).length > 0 ? '（直连不受阻）' : ''
   return ` <span class="badge warn">中继离线</span>${direct}`
+}
+
+/** U80 M4: one action path for the drawer and the phone card, same failure toast. */
+async function toggleHostMaintenance(host) {
+  const enter = host.status !== 'maintenance'
+  try {
+    await api(`/v1/hosts/${host.id}/maintenance`, {
+      method: 'POST',
+      body: JSON.stringify({ enabled: enter, reason: '管理员操作' })
+    })
+  } catch (err) {
+    toast(`${enter ? '进入维护模式' : '结束维护'}失败：${err.message ?? err}`)
+    return false
+  }
+  return true
+}
+
+async function revokeHost(host) {
+  if (!confirmDialog('确认下线该主机？')) return false
+  try {
+    await api(`/v1/hosts/${host.id}`, { method: 'DELETE' })
+  } catch (err) {
+    toast(`下线主机失败：${err.message ?? err}`)
+    return false
+  }
+  return true
 }
 
 function copyCommandAction(cmd) {
@@ -1915,29 +1982,14 @@ async function showHost(hostId, { tab = 'info', onClose } = {}) {
     onSelect: (key) => replaceDetailTab('hosts', host.id, key)
   })
   $('#maintenanceBtn').onclick = async () => {
-    const enter = host.status !== 'maintenance'
-    try {
-      await api(`/v1/hosts/${host.id}/maintenance`, {
-        method: 'POST',
-        body: JSON.stringify({ enabled: enter, reason: '管理员操作' })
-      })
-    } catch (err) {
-      toast(`${enter ? '进入维护模式' : '结束维护'}失败：${err.message ?? err}`)
-      return
-    }
+    if (!(await toggleHostMaintenance(host))) return
     drawer.close()
-    renderHosts()
+    await renderHosts()
   }
   $('#revokeHostBtn').onclick = async () => {
-    if (!confirmDialog('确认下线该主机？')) return
-    try {
-      await api(`/v1/hosts/${host.id}`, { method: 'DELETE' })
-    } catch (err) {
-      toast(`下线主机失败：${err.message ?? err}`)
-      return
-    }
+    if (!(await revokeHost(host))) return
     drawer.close()
-    renderHosts()
+    await renderHosts()
   }
   await showHostGrants(host)
 }
@@ -2003,13 +2055,16 @@ async function renderRelays({ keepTable = false } = {}) {
       </div>
     </div>
     <div class="note">客户端地址是客户端实际拨号的 host:port：中继显式上报的可达地址优先，未上报时取注册来源 IP。路由表由平台单向同步。</div>
-    <div class="table-wrap">
+    <div class="table-wrap" id="relayTableWrap">
       <table>
         <thead><tr><th>节点 ID</th><th>客户端地址</th><th>状态</th><th>最近注册时间</th></tr></thead>
         <tbody>
           ${body.relays.map(relayRow).join('') || '<tr><td colspan="4" class="table-empty">尚未注册中继</td></tr>'}
         </tbody>
       </table>
+    </div>
+    <div class="relay-list">
+      ${body.relays.map(relayCard).join('') || '<p class="card table-empty">尚未注册中继</p>'}
     </div>`
   $('#addRelayBtn').onclick = addRelayDialog
   $('#refreshRelaysBtn').onclick = () => void renderRelays({ keepTable: true })
@@ -2057,6 +2112,19 @@ function relayRow(r) {
     <td><span class="dot ${r.online ? 'online' : 'offline'}"></span> ${r.online ? '在线' : '离线'}</td>
     <td class="muted">${new Date(r.lastSeenAt).toLocaleString()}</td>
   </tr>`
+}
+
+/** U80 M4: phone face of the relay table; same data, desktop keeps the table. */
+function relayCard(r) {
+  return `<article class="card relay-list-card" data-relay-card="${esc(r.id)}">
+    <div class="hlc-head">
+      <span class="dot ${r.online ? 'online' : 'offline'}"></span>
+      <strong class="hlc-name mono">${esc(r.id)}</strong>
+      <span class="badge ${r.online ? 'ok' : ''}">${r.online ? '在线' : '离线'}</span>
+    </div>
+    <div class="hlc-line mono">${esc(`${r.host}:${r.port}`)}</div>
+    <div class="hlc-line muted">最近注册 ${new Date(r.lastSeenAt).toLocaleString()}</div>
+  </article>`
 }
 
 /* ---------------- 用户管理（U67-3：平台级身份，覆盖优先于 LDAP 同步） ---------------- */

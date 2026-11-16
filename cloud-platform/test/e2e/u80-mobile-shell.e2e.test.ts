@@ -559,3 +559,245 @@ test('768/1280：项目列表保持表格、详情居中弹框（M3 桌面零回
     }
   }
 })
+
+/* ---------------- U80 M4: 主机 / 中继移动适配 ---------------- */
+
+const FAILURE_BODY = { error: { code: 'SIMULATED_FAILURE', message: '模拟平台故障' } }
+
+/** A relay node exists only after it registers: seed one through the internal edge. */
+async function registerRelayFixture(): Promise<void> {
+  const res = await fetch(`${service.url}/v1/internal/relay-endpoint`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-internal-token': 'u80-mobile-internal' },
+    body: JSON.stringify({ id: 'relay-u80-mobile', host: '127.0.0.1', port: 17080 })
+  })
+  assert.equal(res.status, 200, 'the relay fixture must register')
+}
+
+async function hostCard(page: Page, id = 'host_dev001') {
+  const card = page.locator(`.host-list-card[data-host-card="${id}"]`)
+  await card.waitFor()
+  return card
+}
+
+test('390×844：主机卡片化、字段省略、动作 ≥44px、维护成功/失败、下线取消零 DELETE', async () => {
+  const page = await signIn({ width: 390, height: 844 }, ADMIN, '#/hosts')
+  try {
+    assert.equal(await page.locator('#hostTableWrap').isVisible(), false, 'table → cards')
+    const card = await hostCard(page)
+    const nameStyle = await card.locator('.hlc-name').evaluate((el) => {
+      const style = getComputedStyle(el)
+      return [style.whiteSpace, style.textOverflow, style.overflow]
+    })
+    assert.deepEqual(nameStyle, ['nowrap', 'ellipsis', 'hidden'])
+    const lineStyle = await card.locator('.hlc-line').first().evaluate((el) => {
+      const style = getComputedStyle(el)
+      return [style.whiteSpace, style.textOverflow, style.overflow]
+    })
+    assert.deepEqual(lineStyle, ['nowrap', 'ellipsis', 'hidden'], 'address/heartbeat stay one line')
+    assert.match(await card.innerText(), /最后心跳/)
+
+    const actions = card.locator('.hlc-actions .btn')
+    assert.equal(await actions.count(), 3, '详情 / 维护 / 下线')
+    const heights = await actions.evaluateAll((els) =>
+      els.map((el) => el.getBoundingClientRect().height)
+    )
+    assert.ok(heights.every((height) => height >= 44), `actions >=44px, got ${heights.join(',')}`)
+
+    // Enter maintenance: the sealed-in-place failure path reuses the desktop toast.
+    await card.locator('[data-host-maintenance]').click()
+    await page.waitForFunction(
+      () =>
+        document.querySelector('.host-list-card[data-host-card="host_dev001"] .badge')
+          ?.textContent === '维护中'
+    )
+    assert.match(await (await hostCard(page)).innerText(), /维护中/)
+
+    await page.route('**/v1/hosts/*/maintenance', (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify(FAILURE_BODY)
+      })
+    )
+    await (await hostCard(page)).locator('[data-host-maintenance]').click()
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll('.toast')].some((el) => el.textContent?.includes('失败'))
+    )
+    assert.match(
+      await page.locator('.toast').last().innerText(),
+      /结束维护失败：模拟平台故障/,
+      'failure toast must carry the platform reason'
+    )
+    assert.match(
+      await (await hostCard(page)).innerText(),
+      /维护中/,
+      'a failed call leaves state untouched'
+    )
+    await page.unroute('**/v1/hosts/*/maintenance')
+
+    await (await hostCard(page)).locator('[data-host-maintenance]').click()
+    await page.waitForFunction(
+      () =>
+        document.querySelector('.host-list-card[data-host-card="host_dev001"] .badge')
+          ?.textContent !== '维护中'
+    )
+
+    // Revoke asks first; cancel must send no DELETE.
+    const deletes: string[] = []
+    page.on('request', (request) => {
+      if (request.method() === 'DELETE' && request.url().includes('/v1/hosts/')) {
+        deletes.push(request.url())
+      }
+    })
+    await page.evaluate(() => {
+      window.confirm = () => false
+    })
+    await (await hostCard(page)).locator('[data-host-revoke]').click()
+    await page.waitForTimeout(300)
+    assert.deepEqual(deletes, [], 'cancelling the confirm must issue zero DELETE')
+
+    assert.ok((await horizontalOverflow(page)) <= 1, '390px hosts must not overflow')
+    await page.screenshot({ path: join(evidenceDir(EV), '390x844-hosts.png') })
+  } finally {
+    await page.context().close()
+  }
+})
+
+test('390×844：主机详情全屏 sheet 换行不溢出，注册命令可横滑、复制 ≥44px', async () => {
+  const page = await signIn({ width: 390, height: 844 }, ADMIN, '#/hosts')
+  try {
+    await (await hostCard(page)).locator('[data-host]').click()
+    await page.waitForSelector('.drawer')
+    const box = await page.locator('.drawer').boundingBox()
+    assert.ok(box, 'drawer must be laid out')
+    assert.ok(box.width >= 389, `phone drawer spans the viewport, got ${box.width}`)
+    assert.ok(box.height >= 843, `phone drawer is full height, got ${box.height}`)
+    const closeSize = await page
+      .locator('.drawer-head .icon-btn')
+      .evaluate((el) => el.getBoundingClientRect().height)
+    assert.ok(closeSize >= 44, `close target >=44px, got ${closeSize}`)
+    const ddWrap = await page.locator('.drawer dd').first().evaluate((el) => {
+      const style = getComputedStyle(el)
+      return [style.wordBreak, style.overflowWrap]
+    })
+    assert.equal(ddWrap[0], 'break-word')
+    assert.equal(ddWrap[1], 'anywhere')
+    assert.ok((await horizontalOverflow(page)) <= 1, 'the host sheet must not overflow')
+    const maintenance = await page
+      .locator('#maintenanceBtn')
+      .evaluate((el) => el.getBoundingClientRect().height)
+    const revoke = await page
+      .locator('#revokeHostBtn')
+      .evaluate((el) => el.getBoundingClientRect().height)
+    assert.ok(maintenance >= 44 && revoke >= 44, 'drawer actions >=44px')
+    await page.click('.drawer-head .icon-btn')
+    await page.waitForFunction(() => !document.querySelector('.drawer'))
+
+    await page.click('#registerHostBtn')
+    await page.waitForSelector('#installCmd')
+    const pre = await page.locator('#installCmd').evaluate((el) => {
+      const style = getComputedStyle(el)
+      return {
+        overflowX: style.overflowX,
+        scrolls: el.scrollWidth > el.clientWidth,
+        right: el.getBoundingClientRect().right
+      }
+    })
+    assert.equal(pre.overflowX, 'auto')
+    assert.equal(pre.scrolls, true, 'the one-liner is wider than the phone dialog')
+    assert.ok(pre.right <= 391, 'the command block stays inside the viewport')
+    const copy = page.locator('.dialog .foot .btn', { hasText: '复制命令' })
+    const copyHeight = await copy.evaluate((el) => el.getBoundingClientRect().height)
+    assert.ok(copyHeight >= 44, `copy target >=44px, got ${copyHeight}`)
+    await copy.click()
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll('.toast')].some((el) => el.textContent === '已复制')
+    )
+    await page.click('.dialog .foot [data-action="close"]')
+    assert.ok((await horizontalOverflow(page)) <= 1)
+    await page.screenshot({ path: join(evidenceDir(EV), '390x844-host-detail.png') })
+  } finally {
+    await page.context().close()
+  }
+})
+
+test('390×844：中继卡片化、刷新 ≥44px、失败横幅可读且旧数据保留', async () => {
+  await registerRelayFixture()
+  const page = await signIn({ width: 390, height: 844 }, ADMIN, '#/relays')
+  try {
+    assert.equal(await page.locator('#relayTableWrap').isVisible(), false, 'table → cards')
+    const cards = page.locator('.relay-list-card')
+    assert.ok((await cards.count()) > 0, 'the registered relay renders as a card')
+    const card = cards.filter({ hasText: 'relay-u80-mobile' }).first()
+    assert.match(await card.innerText(), /127\.0\.0\.1:17080/)
+    assert.equal(await card.locator('.hlc-line').count(), 2, 'address + last seen')
+    assert.match(await card.innerText(), /最近注册/)
+    const refreshHeight = await page
+      .locator('#refreshRelaysBtn')
+      .evaluate((el) => el.getBoundingClientRect().height)
+    assert.ok(refreshHeight >= 44, `refresh target >=44px, got ${refreshHeight}`)
+
+    await page.route('**/v1/relays', (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify(FAILURE_BODY)
+      })
+    )
+    await page.click('#refreshRelaysBtn')
+    await page.waitForSelector('#relayRefreshWarning')
+    const warning = page.locator('#relayRefreshWarning')
+    assert.match(await warning.innerText(), /刷新失败：模拟平台故障/)
+    assert.equal(await page.locator('.relay-list-card').count(), await cards.count(), 'old cards stay')
+    const warningBox = await warning.boundingBox()
+    assert.ok(warningBox && warningBox.x + warningBox.width <= 391, 'warning fits the phone')
+    const retryHeight = await page
+      .locator('#retryRelaysBtn')
+      .evaluate((el) => el.getBoundingClientRect().height)
+    assert.ok(retryHeight >= 44, `retry target >=44px, got ${retryHeight}`)
+    assert.ok((await horizontalOverflow(page)) <= 1, '390px relays must not overflow')
+    await page.screenshot({ path: join(evidenceDir(EV), '390x844-relays-warning.png') })
+
+    await page.unroute('**/v1/relays')
+    await page.click('#retryRelaysBtn')
+    await page.waitForFunction(() => !document.querySelector('#relayRefreshWarning'))
+    assert.ok((await page.locator('.relay-list-card').count()) > 0, 'retry renders the cards')
+  } finally {
+    await page.context().close()
+  }
+})
+
+test('768/1280：主机/中继保持表格、主机详情为侧栏抽屉（M4 桌面零回归）', async () => {
+  for (const viewport of [
+    { width: 768, height: 1024 },
+    { width: 1280, height: 800 }
+  ]) {
+    const page = await signIn(viewport, ADMIN, '#/hosts')
+    try {
+      assert.equal(await page.locator('.host-list').isVisible(), false)
+      assert.equal(await page.locator('#hostTableWrap').isVisible(), true)
+      assert.ok((await page.locator('#hostTableWrap tbody tr').count()) > 0)
+      await page.click('#hostTableWrap [data-host]')
+      await page.waitForSelector('.drawer')
+      const box = await page.locator('.drawer').boundingBox()
+      assert.ok(box, 'desktop drawer must be laid out')
+      assert.ok(box.width <= 441, `desktop keeps the side drawer, got ${box.width}`)
+      assert.ok(
+        box.x + box.width >= viewport.width - 1,
+        'desktop drawer stays docked to the right edge'
+      )
+      await page.click('.drawer-head .icon-btn')
+      await page.waitForFunction(() => !document.querySelector('.drawer'))
+
+      await page.click('.sidebar .nav-item[data-route="relays"]')
+      await page.waitForFunction(() => location.hash === '#/relays')
+      await page.waitForSelector('#relayTableWrap')
+      assert.equal(await page.locator('.relay-list').isVisible(), false)
+      assert.equal(await page.locator('#relayTableWrap').isVisible(), true)
+      assert.ok((await horizontalOverflow(page)) <= 1, `${viewport.width}px must not overflow`)
+    } finally {
+      await page.context().close()
+    }
+  }
+})

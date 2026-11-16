@@ -485,6 +485,8 @@ select {
 /* U80 M3: phone-only project chips/cards + sheet header; desktop stays untouched. */
 .project-chips,
 .project-list,
+.host-list,
+.relay-list,
 .dialog-sheet-close {
   display: none;
 }
@@ -1541,5 +1543,129 @@ td.actions {
   }
   .dialog-sheet .perm-chip {
     max-width: 100%;
+  }
+
+  /* ---------- U80 M4: 主机 / 中继卡片 + 主机详情全屏 sheet ---------- */
+  #hostTableWrap,
+  #relayTableWrap {
+    display: none;
+  }
+  .host-list,
+  .relay-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .host-list-card,
+  .relay-list-card {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+  }
+  .hlc-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .hlc-head > .dot {
+    flex: none;
+  }
+  .hlc-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 14px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .hlc-head > .badge {
+    flex: none;
+  }
+  .hlc-line {
+    min-width: 0;
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .hlc-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 2px;
+  }
+  .hlc-actions .btn {
+    flex: 1 1 auto;
+    min-height: 44px;
+  }
+  /* 主机详情抽屉在窄屏变全屏 sheet；长指纹/地址换行而不撑破视口。 */
+  .drawer-backdrop {
+    align-items: stretch;
+  }
+  .drawer {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    border-left: 0;
+  }
+  .drawer-head {
+    padding: max(10px, env(safe-area-inset-top)) 16px 10px;
+  }
+  .drawer-head .icon-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .drawer-body {
+    padding: 16px 16px calc(20px + env(safe-area-inset-bottom));
+  }
+  .drawer .kv {
+    grid-template-columns: 88px minmax(0, 1fr);
+  }
+  .drawer .kv dd {
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  .drawer .toolbar .btn {
+    flex: 1 1 auto;
+    min-height: 44px;
+  }
+  /* 注册主机命令块在窄屏内横向滚动，不把弹框撑宽。 */
+  .dialog-backdrop {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .dialog,
+  .dialog.wide {
+    width: 100%;
+    max-width: 520px;
+  }
+  .dialog-backdrop.dialog-sheet {
+    align-items: stretch;
+    justify-content: stretch;
+    padding: 0;
+  }
+  .dialog pre {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .dialog .foot .btn {
+    min-height: 44px;
+  }
+  /* 中继刷新失败横幅可读，重试按钮满足触控高度。 */
+  .note.warn {
+    font-size: 13px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+  #retryRelaysBtn {
+    min-height: 44px;
+    margin-top: 8px;
   }
 }
