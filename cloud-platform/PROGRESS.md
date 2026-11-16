@@ -3574,7 +3574,8 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **最终构建已部署**（out/main/out/web 17:37，含 expose-store）：平台 40293、宿主 40667/41785（同 host id），reseed `failures=[]`。
 - **U138 重开**（`7f07d3ce86e`）：部署后 journey-9 复跑仍红（a2 三方不一致；B7 零互换绿、内容/分组绿），已证 out/main 含修复 → 修复未稳定；**二次诊断**（`b4e5e3cdde2`）：renderer: epoch 的 activate 从未落盘 + 每设备选择投影产生第三陈旧值；绿 run 属相位巧合（门禁仅采样一次）。二期修令在途；门禁 B7 已加「三次重开 active 一致」。
 - **U140/U141 独立审计 PASS**；偏差转 U142/U143 均已闭环：U142 `bdf41816514`（SCP-like 统一 user@、UNC 两端拒、共享矩阵模块两端 import 防再分叉；6/6+56/56+7/7）、U143 `ab7d2eade44`（orphan 路由清扫、注册 revoked 门禁 409+denied、多宿主用例；43 绿）。
-- **U138 二期修复落地**（`fa6143d4fa7`）：配对客户端 activate 落盘（含 group active/split leaf，桌面 path 不双写）+ 每设备投影快照 active 回退；聚焦 20/20、web-session-tabs-sync 39/39、orca-runtime 1381 passed；真机复验随最终重建执行。
+- **U138 三期落地**（`68c498fd5d1`）：恢复后 re-assert——adoption 前客户端 restored active ≠ 宿主则回写一次（配对落盘），相同/手势/失效零写入；4 新例、相邻 46 文件/348 绿。
+- **journey-11（加严）**：a2 与 B7 均红且呈**振荡**（dom/store/host 在 `026d` 与 `83030` 间来回，cycle2 客户端换值、cycle3 宿主换值）——疑似三期 re-assert 与宿主投影双写对抗或陈旧每设备选择；四期定向诊断（含钻取隔离实验）进行中；平台 e2e **428/428 绿**、W9 双线复跑中。
 - **AC-M3-33/G08 注记同步**（`09bfb94513b`），计数机检 PASS（318=276+41+1、§13 9/5/15）。
 - 最终构建门禁：平台 e2e **426/0**、W9 双线 A 4/4 + B 2/2 绿。
 
