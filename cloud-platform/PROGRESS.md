@@ -3651,6 +3651,16 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **U153 P2 实现（D1+D2 同批）在途**：用户手势创建补非 materialize 的 tap activate + focus intent（显式 `userInitiated`）；全局 apply 接 `resolveHostActiveApplyOptions`。
 - **基线刷新**：m09 更新 v2/U153 状态。
 
+### 2026-11-17 03:0x 轮：U154/U155 手势入口补齐、探针关闭保真
+
+- **U153 P2 复跑（P2 构建）**：quick 原 10 红全消，但 8–10 INVALID（关闭失真）→ `conclusive=false`，quick 不签健康；reload 12/12、reopen 3/3、race 25/25 绿。
+- **U154**（`d043389fcae`）：文件树/split/shell 三入口标记 + 账本清扫/discard + `expectedCurrentLocalTabId`；8 绿、判别力四路；**独立审计 PASS**（30 个 createTab 调用点分类：恢复/被动零误标、tabId 命名空间一致）。
+- **U155**（`edb3cdef5fc`）：Cmd/Ctrl+T、quick command、detach 新建分支标记；重试去手势 + 四提前 return discard；34 绿、六路变异全红、相邻 22 绿。
+- **探针关闭保真**（`96e6120b44d`）：elementFromPoint 命中 + 点击前后激活对比 + 确认框驱动（运行中终端关闭需确认=产品既定语义）+ 临时 tab id 归一；新增 INVALID 原因清单（`close-button-obscured`/`ui-close-activated-instead`/`close-blocked-by-confirm-dialog`）。
+- **关闭交互诊断**（`test-reports/u153-close-diagnosis.md`）：探针失真为主、产品链路正常；「quick 0 红」不携信号。
+- **U154 构建复跑**：D1 仍 **1/5**（「New tab→New Terminal」路径未命中标记）→ 登记 **U156** 并派事件级诊断；close RPC 1/5（探针已修待复跑）。
+- **证据规则事故**：U154 提交曾 `git add -f` 误带 evidence，已移出跟踪（`bf4e7029fdf`）。
+
 ### 四通道并发执行（启动，2026-11-14）
 
 按细粒度拆分与三权分立纪律并发起跑：通道② **W6a**（中继浏览器模式，relay.ts 域）、通道③ **W10**（客户端零 env 登录，src/main+renderer 登录域）、通道④ **W5a**（详情页终端组件，cloud-admin 域）三个实现代理并行；通道① 等在途 W2（QA 修复）完成后接 W8。每令完成→独立测试代理→独立审计代理→主会话关闭放行下一个。
