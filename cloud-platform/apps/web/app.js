@@ -1950,6 +1950,15 @@ function userFilterFromQuery(query) {
   }
 }
 
+/** U145：只陈述准入配置事实，不主张同步状态；旧服务端无该字段时回退中性文案。 */
+function ldapAdmissionBadge(ldap) {
+  if (!ldap || typeof ldap !== 'object') return '<span class="badge">LDAP 分组准入</span>'
+  const group = typeof ldap.requiredGroup === 'string' ? ldap.requiredGroup.trim() : ''
+  return group
+    ? `<span class="badge">LDAP 准入组：${esc(group)}</span>`
+    : '<span class="badge">LDAP 准入：未配置</span>'
+}
+
 /** 原型 #/users（U81/U82）：查询栏 + 只读列表 + 详情弹框（角色修改唯一入口）。返回列表数据供弹框同步。 */
 async function renderUsersPage() {
   userFilter = userFilterFromQuery(state.routeQuery)
@@ -1963,7 +1972,7 @@ async function renderUsersPage() {
         <p>平台账号与角色设置。用户与组来自 LDAP 同步；角色为按用户覆盖，覆盖记录留审计。</p>
       </div>
       <div class="toolbar">
-        <span class="badge ok"><span class="dot online"></span>LDAP 同步正常</span>
+        ${ldapAdmissionBadge(body.ldap)}
         <span class="badge">${users.length} 个账号</span>
       </div>
     </div>
@@ -3269,7 +3278,7 @@ async function renderSettings() {
     policy.version = saved.version
     // FR-9.4 的生效范围：翻转全局时告诉管理员谁跟着走、谁被钉住不受影响。
     toast(
-      `已保存，30 秒内生效；跟随全局 ${following} 个项目，独立覆盖 ${overrides.length} 个不受影响`
+      `已保存，将随宿主心跳生效；跟随全局 ${following} 个项目，独立覆盖 ${overrides.length} 个不受影响`
     )
     renderSettings()
   }
