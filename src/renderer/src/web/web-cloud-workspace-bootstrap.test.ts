@@ -34,7 +34,12 @@ const EXECUTION_HOST_ID = 'runtime:web-bootstrap-env'
 
 function workspaceInfo(overrides: Partial<CloudWorkspaceInfo> = {}): CloudWorkspaceInfoResponse {
   return {
-    project: { id: 'proj_1', root: PROJECT_ROOT, repoUrl: '', defaultBranch: 'main' },
+    project: {
+      id: 'proj_1',
+      root: PROJECT_ROOT,
+      repoUrl: '',
+      defaultBranch: 'main'
+    },
     workspace: { root: WORKSPACE_ROOT, path: null, branch: null },
     perms: ['open', 'terminal', 'file:read', 'file:write'],
     ...overrides
@@ -141,7 +146,10 @@ function makeHarness(args?: {
     >()
   const ports: WebCloudWorkspaceBootstrapPorts = {
     api: () => api,
-    environment: () => ({ id: 'web-bootstrap-env', name: 'payment-service (cloud session)' }),
+    environment: () => ({
+      id: 'web-bootstrap-env',
+      name: 'payment-service (cloud session)'
+    }),
     hydrationSettled: () => hydrationSettled,
     subscribeTransport: (listener) => {
       transportListeners.add(listener)
@@ -217,7 +225,11 @@ describe('web cloud workspace bootstrap (W13b)', () => {
       [
         {
           projectId: 'proj_1',
-          roots: { projectRoot: PROJECT_ROOT, workspaceRoot: WORKSPACE_ROOT, defaultBranch: 'main' }
+          roots: {
+            projectRoot: PROJECT_ROOT,
+            workspaceRoot: WORKSPACE_ROOT,
+            defaultBranch: 'main'
+          }
         }
       ]
     ])
@@ -303,9 +315,18 @@ describe('web cloud workspace bootstrap (W13b)', () => {
       ensure: async () => {
         attempts += 1
         if (attempts === 1) {
-          return { ok: false, code: 'WORKTREE_CREATE_FAILED', message: 'clone failed' }
+          return {
+            ok: false,
+            code: 'WORKTREE_CREATE_FAILED',
+            message: 'clone failed'
+          }
         }
-        return { ok: true, workspacePath: WORKSPACE_PATH, created: true, provisioned: false }
+        return {
+          ok: true,
+          workspacePath: WORKSPACE_PATH,
+          created: true,
+          provisioned: false
+        }
       }
     })
     await startWebCloudWorkspaceBootstrapForTests(harness.ports)
@@ -324,7 +345,10 @@ describe('web cloud workspace bootstrap (W13b)', () => {
 
   it('degrades to the cloud card when the page has no cloudWorkspace namespace', async () => {
     const harness = makeHarness()
-    const ports: WebCloudWorkspaceBootstrapPorts = { ...harness.ports, api: () => null }
+    const ports: WebCloudWorkspaceBootstrapPorts = {
+      ...harness.ports,
+      api: () => null
+    }
     await startWebCloudWorkspaceBootstrapForTests(ports)
 
     expect(readWebCloudWorkspaceBootstrapStatus()).toMatchObject({
@@ -336,7 +360,9 @@ describe('web cloud workspace bootstrap (W13b)', () => {
   })
 
   it('registers the row but drives no workspace when the ticket lacks terminal', async () => {
-    const harness = makeHarness({ info: async () => workspaceInfo({ perms: ['open'] }) })
+    const harness = makeHarness({
+      info: async () => workspaceInfo({ perms: ['open'] })
+    })
     await startWebCloudWorkspaceBootstrapForTests(harness.ports)
 
     expect(readWebCloudWorkspaceBootstrapStatus()).toMatchObject({
@@ -430,7 +456,10 @@ describe('web cloud workspace bootstrap (W13b)', () => {
 
   it('records the restore capability an upgraded host advertises', async () => {
     const harness = makeHarness({
-      info: async () => workspaceInfo({ capabilities: [CLOUD_SESSION_TABS_RESTORE_CAPABILITY] })
+      info: async () =>
+        workspaceInfo({
+          capabilities: [CLOUD_SESSION_TABS_RESTORE_CAPABILITY]
+        })
     })
     await startWebCloudWorkspaceBootstrapForTests(harness.ports)
 
@@ -440,7 +469,10 @@ describe('web cloud workspace bootstrap (W13b)', () => {
 
   it('waits for the restored inventory before activating, so the seed is only a fallback', async () => {
     const harness = makeHarness({
-      info: async () => workspaceInfo({ capabilities: [CLOUD_SESSION_TABS_RESTORE_CAPABILITY] })
+      info: async () =>
+        workspaceInfo({
+          capabilities: [CLOUD_SESSION_TABS_RESTORE_CAPABILITY]
+        })
     })
     await startWebCloudWorkspaceBootstrapForTests(harness.ports)
 
@@ -460,6 +492,25 @@ describe('web cloud workspace bootstrap (W13b)', () => {
 
     expect(harness.waitForSessionTabsRestore).not.toHaveBeenCalled()
     expect(harness.activateWorkspace).toHaveBeenCalledTimes(1)
+  })
+
+  it('re-asserts activation when hydration lands after the courtesy deadline (U124)', async () => {
+    const harness = makeHarness()
+    harness.setHydrationSettled(false)
+    await startWebCloudWorkspaceBootstrapForTests(harness.ports, {
+      hydrationSettleTimeoutMs: 5
+    })
+
+    expect(readWebCloudWorkspaceBootstrapStatus().phase).toBe('done')
+    // The deadline expired, so the bootstrap activated without the hydrated session.
+    expect(harness.activateWorkspace).toHaveBeenCalledTimes(1)
+
+    // The late hydration is what rewrites activeWorktreeId to null; re-activate after it lands.
+    harness.setHydrationSettled(true)
+    await vi.waitFor(() => expect(harness.activateWorkspace).toHaveBeenCalledTimes(2), {
+      timeout: 1_000
+    })
+    expect(harness.activateWorkspace.mock.calls[1]).toEqual(harness.activateWorkspace.mock.calls[0])
   })
 
   it('clears a stale capability record when the host predates workspace.info (D4)', async () => {

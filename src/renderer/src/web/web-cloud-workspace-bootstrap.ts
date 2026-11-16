@@ -18,6 +18,17 @@ import {
   recordWebCloudSessionCapabilities,
   shouldMirrorCloudSessionTabs
 } from './web-cloud-session-capabilities'
+import {
+  HYDRATION_SETTLE_TIMEOUT_MS,
+  reassertActivationAfterLateHydration,
+  waitForHydrationSettled
+} from './web-cloud-workspace-hydration-settle'
+import { IDLE, type WebCloudWorkspaceBootstrapStatus } from './web-cloud-workspace-bootstrap-status'
+
+export type {
+  WebCloudWorkspaceBootstrapPhase,
+  WebCloudWorkspaceBootstrapStatus
+} from './web-cloud-workspace-bootstrap-status'
 
 /**
  * The cloud session's workspace bootstrap (W13 design §4): `workspace.info` →
@@ -34,38 +45,6 @@ import {
  * registered `path:<projectRoot>` row — a web session is the first opener, so
  * nothing else has created it.
  */
-
-export type WebCloudWorkspaceBootstrapPhase =
-  | 'idle'
-  | 'loading'
-  | 'registering'
-  | 'ensuring'
-  | 'activating'
-  | 'done'
-  | 'fallback'
-
-export type WebCloudWorkspaceBootstrapStatus = {
-  phase: WebCloudWorkspaceBootstrapPhase
-  /** Why no workspace view came up; set with `fallback` only. */
-  fallbackReason: 'unsupported-host' | 'unavailable' | 'failed' | null
-  fallbackDetail: string | null
-  /** Only a `failed` fallback is worth retrying: the ensure flow is idempotent. */
-  retryable: boolean
-  /** The ticket grants `open` but not `terminal`: the repo row is up, no workspace opens. */
-  terminalNotGranted: boolean
-}
-
-const IDLE: WebCloudWorkspaceBootstrapStatus = {
-  phase: 'idle',
-  fallbackReason: null,
-  fallbackDetail: null,
-  retryable: false,
-  terminalNotGranted: false
-}
-
-/** The activation wait is a courtesy, not a gate; a degraded boot must not wedge the bootstrap. */
-const HYDRATION_SETTLE_TIMEOUT_MS = 30_000
-const HYDRATION_SETTLE_POLL_MS = 100
 
 let status: WebCloudWorkspaceBootstrapStatus = IDLE
 const listeners = new Set<() => void>()
@@ -122,22 +101,10 @@ function fallback(args: {
   })
 }
 
-async function waitForHydrationSettled(
-  ports: WebCloudWorkspaceBootstrapPorts,
-  isCancelled: () => boolean
-): Promise<void> {
-  const deadline = Date.now() + HYDRATION_SETTLE_TIMEOUT_MS
-  while (!ports.hydrationSettled() && Date.now() < deadline) {
-    if (isCancelled()) {
-      return
-    }
-    await new Promise((resolve) => setTimeout(resolve, HYDRATION_SETTLE_POLL_MS))
-  }
-}
-
 async function runBootstrap(
   ports: WebCloudWorkspaceBootstrapPorts,
-  isCancelled: () => boolean
+  isCancelled: () => boolean,
+  hydrationSettleTimeoutMs: number
 ): Promise<void> {
   try {
     setStatus({ ...IDLE, phase: 'loading' })
@@ -186,12 +153,20 @@ async function runBootstrap(
 
     // Why wait: hydrateWorkspaceSession rewrites activeWorktreeId and the tab map
     // from the persisted session, so state written before it would be silently cleared.
-    await waitForHydrationSettled(ports, isCancelled)
+    const hydrationSettledBeforeActivation = await waitForHydrationSettled(
+      ports,
+      isCancelled,
+      hydrationSettleTimeoutMs
+    )
     if (isCancelled()) {
       return
     }
 
-    setStatus({ ...IDLE, phase: 'registering', terminalNotGranted: !terminalGranted })
+    setStatus({
+      ...IDLE,
+      phase: 'registering',
+      terminalNotGranted: !terminalGranted
+    })
     const repo = await ports.ensureRepoRow({
       path: info.project.root,
       displayName: cloudWorkspaceProjectDisplayName(environment.name, info.project.root),
@@ -225,7 +200,11 @@ async function runBootstrap(
         return
       }
       if (!opened.ok) {
-        fallback({ reason: 'failed', detail: opened.message ?? opened.code, retryable: true })
+        fallback({
+          reason: 'failed',
+          detail: opened.message ?? opened.code,
+          retryable: true
+        })
         return
       }
       workspacePath = opened.workspacePath
@@ -258,13 +237,27 @@ async function runBootstrap(
     // lands would add a terminal the user never opened. Legacy hosts advertise
     // no capability and keep the immediate fallback.
     if (shouldMirrorCloudSessionTabs(environment.id)) {
-      await ports.waitForSessionTabsRestore({ environmentId: environment.id, worktreeId })
+      await ports.waitForSessionTabsRestore({
+        environmentId: environment.id,
+        worktreeId
+      })
       if (isCancelled()) {
         return
       }
     }
-    ports.activateWorkspace({ worktreeId, executionHostId, mountExplorer: fileReadGranted })
+    ports.activateWorkspace({
+      worktreeId,
+      executionHostId,
+      mountExplorer: fileReadGranted
+    })
     setStatus({ ...IDLE, phase: 'done' })
+    reassertActivationAfterLateHydration({
+      ports,
+      isCancelled,
+      hydrationSettledBeforeActivation,
+      hydrationSettleTimeoutMs,
+      activation: { worktreeId, executionHostId, mountExplorer: fileReadGranted }
+    })
   } catch (error) {
     if (!isCancelled()) {
       // A host predating the method answers method_not_found; that is permanent,
@@ -287,7 +280,11 @@ async function runBootstrap(
 
 async function launch(
   ports: WebCloudWorkspaceBootstrapPorts,
-  args: { force: boolean; isCancelled: () => boolean }
+  args: {
+    force: boolean
+    isCancelled: () => boolean
+    hydrationSettleTimeoutMs?: number
+  }
 ): Promise<void> {
   if (activePorts === null) {
     activePorts = ports
@@ -301,7 +298,11 @@ async function launch(
     return
   }
   transportReconnectedSinceSettle = false
-  inFlight = runBootstrap(activePorts, args.isCancelled).finally(() => {
+  inFlight = runBootstrap(
+    activePorts,
+    args.isCancelled,
+    args.hydrationSettleTimeoutMs ?? HYDRATION_SETTLE_TIMEOUT_MS
+  ).finally(() => {
     inFlight = null
   })
   return inFlight
@@ -309,14 +310,18 @@ async function launch(
 
 /** Entry point the startup chain calls once per page; concurrent calls share one run. */
 export function startWebCloudWorkspaceBootstrap(): Promise<void> {
-  return launch(defaultWebCloudWorkspacePorts(), { force: false, isCancelled: () => false })
+  return launch(defaultWebCloudWorkspacePorts(), {
+    force: false,
+    isCancelled: () => false
+  })
 }
 
-/** Test seam: the same launch against injected ports. */
+/** Test seam: the same launch against injected ports (a short settle window keeps the deadline test fast). */
 export function startWebCloudWorkspaceBootstrapForTests(
-  ports: WebCloudWorkspaceBootstrapPorts
+  ports: WebCloudWorkspaceBootstrapPorts,
+  options?: { hydrationSettleTimeoutMs?: number }
 ): Promise<void> {
-  return launch(ports, { force: false, isCancelled: () => false })
+  return launch(ports, { force: false, isCancelled: () => false, ...options })
 }
 
 /** The cloud card's retry: rerun ensure + seeding, which the host deduplicates. */

@@ -20,7 +20,7 @@ import { getTabPaneBodyDroppableId, type HoveredTabInsertion } from './useTabDra
 import { tabGroupBodyAnchorName } from './tab-group-body-anchor'
 import { registerTabGroupBody } from './tab-group-body-geometry'
 import { translate } from '@/i18n/i18n'
-import type { TabGroup } from '../../../../shared/tab-types'
+import { toVisibleTabType, type TabGroup } from '../../../../shared/tab-types'
 import type { ClientHostedBrowserRow } from '../../../../shared/client-hosted-browser-rows'
 import { useClientHostedBrowserRows } from '@/lib/pane-manager/client-hosted-browser-row-state'
 import { resolveClientHostedBrowserRowStripGroupId } from '../tab-bar/client-hosted-browser-row-strip-placement'
@@ -118,7 +118,10 @@ export default function TabGroupPanel({
     },
     [groupId, setBodyDropRef]
   )
-  const attachEditorFileDropOwner = useEditorGroupFileDropOwner({ worktreeId, groupId })
+  const attachEditorFileDropOwner = useEditorGroupFileDropOwner({
+    worktreeId,
+    groupId
+  })
   // Why: per-group anchor-name lets the worktree-level overlay position panes via CSS anchor positioning, so moving a tab between groups re-targets the anchor instead of remounting xterm (loses alt-screen TUI state) or reloading `<webview>`.
   const bodyAnchorName = tabGroupBodyAnchorName(groupId)
   // Why: memoize so a fresh style object each render doesn't break downstream memoization keyed on referential equality.
@@ -127,15 +130,18 @@ export default function TabGroupPanel({
     [bodyAnchorName]
   )
 
+  const tabBarOwnsActiveTab = isFocused // Only the focused pane owns the worktree-global active tab (U124).
   const tabBar = (
     <TabBar
       tabs={terminalTabs}
       activeTabId={
-        activeTab?.contentType === 'terminal'
-          ? activeTab.entityId
-          : activeTab?.contentType === 'agent-session'
-            ? activeTab.id
-            : null
+        tabBarOwnsActiveTab
+          ? activeTab?.contentType === 'terminal'
+            ? activeTab.entityId
+            : activeTab?.contentType === 'agent-session'
+              ? activeTab.id
+              : null
+          : null
       }
       groupId={groupId}
       worktreeId={worktreeId}
@@ -184,25 +190,20 @@ export default function TabGroupPanel({
       groupActiveTabId={activeTab?.id ?? null}
       agentSessionTabs={agentSessionItems}
       activeFileId={
-        activeTab?.contentType === 'terminal' ||
-        activeTab?.contentType === 'agent-session' ||
-        activeTab?.contentType === 'browser' ||
-        activeTab?.contentType === 'simulator'
+        !tabBarOwnsActiveTab ||
+        (activeTab &&
+          ['terminal', 'agent-session', 'browser', 'simulator'].includes(activeTab.contentType))
           ? null
           : activeTab?.id
       }
-      activeBrowserTabId={activeTab?.contentType === 'browser' ? activeTab.entityId : null}
-      activeSimulatorTabId={activeTab?.contentType === 'simulator' ? activeTab.id : null}
+      activeBrowserTabId={
+        tabBarOwnsActiveTab && activeTab?.contentType === 'browser' ? activeTab.entityId : null
+      }
+      activeSimulatorTabId={
+        tabBarOwnsActiveTab && activeTab?.contentType === 'simulator' ? activeTab.id : null
+      }
       activeTabType={
-        activeTab?.contentType === 'terminal'
-          ? 'terminal'
-          : activeTab?.contentType === 'agent-session'
-            ? 'agent-session'
-            : activeTab?.contentType === 'browser'
-              ? 'browser'
-              : activeTab?.contentType === 'simulator'
-                ? 'simulator'
-                : 'editor'
+        tabBarOwnsActiveTab && activeTab ? toVisibleTabType(activeTab.contentType) : 'terminal'
       }
       onActivateFile={commands.activateEditor}
       onCloseFile={commands.closeItem}
