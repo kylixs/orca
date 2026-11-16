@@ -3669,6 +3669,14 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **探针场景修正**（`985159a265a`）：quick 改为**激活组内**建/关（`active-group-new-tab-missing`/`target-tab-outside-active-group`），非激活组行为由 U158 单独跟踪。
 - **U157 在途**：手动重连重新武装 + 三处测试缺口 + reconcile 排除。
 
+### 2026-11-17 03:3x 轮：最终构建（U153–U158）0 红 / quick 关闭 5/5；探针稳定门补口径
+
+- **最终构建复跑**（`evidence/exploratory-r8/final-20261117-032158/`）：**red 0 / invalid 0**；reload 12/12、reopen 3/3、race 25/25；**quick 关闭 5/5 真实成功**（`session.tabs.close reason:user`）、**D1 非 materialize tap 5/5**；唯一余项=5 个 quick-opened UNSTABLE（tap 后 ~70ms 首读，宿主持久尚未落盘）→ `conclusive=false`。
+- **探针稳定门**（`0136f571da5`）：quick opened/closed 初读前等 projection 与 persisted 一致（100ms 轮询，默认 3000ms，`U138_OPENED_STABLE_MS` 覆盖）；超时不强行相等、仍按双读语义判 UNSTABLE。
+- **U157 审计 PASS**：re-mark 键换名后仍有效、反复 Reconnect 语义可接受；P3 竞态（rearm 早于手动重放判定）记录。
+- **U158 审计 PASS → U159 登记并修复**（`b6067e2520b`）：BrowserTab 关闭、编辑器关闭、折叠按钮同源修复；639 绿、判别力三路。
+- **U159 审计 + 含 U159 的最终重建复跑在途**（目标 `conclusive=true`）。
+
 ### 四通道并发执行（启动，2026-11-14）
 
 按细粒度拆分与三权分立纪律并发起跑：通道② **W6a**（中继浏览器模式，relay.ts 域）、通道③ **W10**（客户端零 env 登录，src/main+renderer 登录域）、通道④ **W5a**（详情页终端组件，cloud-admin 域）三个实现代理并行；通道① 等在途 W2（QA 修复）完成后接 W8。每令完成→独立测试代理→独立审计代理→主会话关闭放行下一个。
