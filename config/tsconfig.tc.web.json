@@ -53,6 +53,7 @@
   "exclude": [
     "../src/renderer/src/cloud-admin/cloud-admin-session.e2e.test.ts",
     "../src/renderer/src/cloud-admin/cloud-simple-workspace.e2e.test.ts",
+    "../src/renderer/src/cloud-admin/cloud-simple-workspace-dual-client.e2e.test.ts",
     "../src/renderer/src/web/web-cloud-connect.e2e.test.ts",
     "../src/renderer/src/cloud/cloud-browser-host-key.e2e.test.ts",
     "../src/renderer/src/web/web-cloud-handoff.e2e.test.ts",

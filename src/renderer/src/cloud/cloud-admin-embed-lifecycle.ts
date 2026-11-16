@@ -38,9 +38,23 @@ export function useCloudAdminEmbedLifecycle({
 }): CloudAdminEmbedLifecycle {
   const [phase, setPhase] = React.useState<CloudSimpleWorkspaceLifecycleIntent>('active')
   const intent = React.useRef<CloudSimpleWorkspaceLifecycleIntent>('active')
+  const endCleanups = React.useRef(new Set<() => Promise<void>>())
   // Read at unmount: the removed subtree never re-renders with the new intent.
   const lifecycle = React.useMemo<CloudSimpleWorkspaceLifecycle>(
-    () => ({ intent: () => intent.current }),
+    () => ({
+      intent: () => intent.current,
+      registerEndCleanup: (cleanup) => {
+        endCleanups.current.add(cleanup)
+        return () => endCleanups.current.delete(cleanup)
+      },
+      runEndCleanup: async () => {
+        for (const cleanup of endCleanups.current) {
+          // Why swallow: the console still gets its `ended` reply; a host refusal
+          // already kept that tab's row and must not block the rest.
+          await cleanup().catch(() => undefined)
+        }
+      }
+    }),
     []
   )
 
@@ -63,11 +77,14 @@ export function useCloudAdminEmbedLifecycle({
     if (projectId === null) {
       return
     }
+    // §4.3: retire every host-backed terminal row (and its PTY) before the
+    // project socket goes away; unmount cleanup only closes PTYs it created.
+    await lifecycle.runEndCleanup()
     setPhase('ending')
     await nextEmbedTask()
     await closeProject(projectId)
     postToParent({ source: 'orca-cloud-admin', type: 'ended' })
-  }, [projectId, closeProject, postToParent])
+  }, [projectId, closeProject, postToParent, lifecycle])
 
   const handleParentMessage = React.useCallback(
     (type: unknown) => {

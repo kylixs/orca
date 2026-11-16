@@ -23,6 +23,12 @@ import type { CloudSubscription } from './use-cloud-session'
 
 const RECONNECT_DELAYS_MS = [500, 1_000, 2_000, 4_000, 8_000]
 
+/**
+ * §2.4: a projection row whose PTY the host never restores (restart, failed
+ * create) must stop saying "waiting" and offer the same-tab reopen instead.
+ */
+export const PENDING_HANDLE_TIMEOUT_MS = 10_000
+
 /** The handle field `terminal.create` answers with (M102 e2e contract). */
 function terminalHandleOf(result: unknown): string | null {
   return readString(readField(readObjectValue(result), 'terminal'), 'handle')
@@ -261,6 +267,12 @@ export function useCloudTerminalStreamSession(args: {
       const plan = planCloudTerminalBoot(hostTerminal, hostOwnsPtyRef.current)
       if (plan.kind === 'pending') {
         setState({ kind: 'pending' })
+        timer = setTimeout(() => {
+          timer = undefined
+          // `pending_timeout` is our own verdict, not a host error: the row may
+          // still recover later, and a projection frame reruns this effect.
+          setState({ kind: 'ended', code: 'pending_timeout' })
+        }, PENDING_HANDLE_TIMEOUT_MS)
         return
       }
       if (plan.kind === 'attach') {

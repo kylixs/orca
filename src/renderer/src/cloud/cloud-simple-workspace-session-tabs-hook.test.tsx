@@ -354,6 +354,45 @@ describe('简易工作区 session-tabs 双向动作（U96 B-令4）', () => {
     expect(stream.unsubscribe).toHaveBeenCalledTimes(1)
   })
 
+  it('U112 D1 closeAll：end 退役全部宿主标签（含 pending 行），逐标签 reason=user', async () => {
+    const { calls, result } = await booted({
+      'session.tabs.list': {
+        ok: true,
+        result: frame('snapshot', [terminalRow('tab-a', 'leaf-1'), pendingRow('tab-b', 'leaf-2')])
+      },
+      'session.tabs.close': { ok: true, result: { closed: true } }
+    })
+
+    await act(async () => {
+      await result.current.actions.closeAll()
+    })
+
+    expect(calls.filter((call) => call.method === 'session.tabs.close')).toEqual([
+      {
+        method: 'session.tabs.close',
+        params: { worktree: WORKTREE, tabId: 'tab-a', reason: 'user' }
+      },
+      {
+        method: 'session.tabs.close',
+        params: { worktree: WORKTREE, tabId: 'tab-b', reason: 'user' }
+      }
+    ])
+  })
+
+  it('U112 D1 closeAll：旧宿主（无 capability）零 session.tabs 调用', async () => {
+    const { rpc, calls } = methodRpc({})
+    const stream = scriptedSubscribe()
+
+    const { result } = renderHook(() =>
+      useHarness({ rpc, subscribe: stream.subscribe, workspacePath: WORKSPACE, capabilities: [] })
+    )
+    await act(async () => {
+      await result.current.actions.closeAll()
+    })
+
+    expect(calls).toHaveLength(0)
+  })
+
   it('create：带客户端 tabId/leafId，随后 activate', async () => {
     const { calls, result } = await booted({
       'terminal.create': { ok: true, result: { terminal: { handle: 'handle-new' } } }
@@ -438,7 +477,9 @@ describe('简易工作区孤儿兜底（U96 B-令7）', () => {
       })
     )
     const methods = calls.map((call) => call.method)
-    expect(methods.indexOf('terminal.adoptOrphans')).toBeGreaterThan(methods.indexOf('terminal.list'))
+    expect(methods.indexOf('terminal.adoptOrphans')).toBeGreaterThan(
+      methods.indexOf('terminal.list')
+    )
     expect(methods.indexOf('terminal.list')).toBeGreaterThan(methods.indexOf('session.tabs.list'))
     expect(calls).toContainEqual({
       method: 'terminal.adoptOrphans',
@@ -487,5 +528,3 @@ describe('简易工作区孤儿兜底（U96 B-令7）', () => {
     expect(calls.filter((call) => call.method === 'terminal.list')).toHaveLength(1)
   })
 })
-
-

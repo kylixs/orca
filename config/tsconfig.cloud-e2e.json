@@ -19,6 +19,7 @@
     // The ten specs, plus the renderer modules they import; everything transitive follows.
     "../src/renderer/src/cloud-admin/cloud-admin-session.e2e.test.ts",
     "../src/renderer/src/cloud-admin/cloud-simple-workspace.e2e.test.ts",
+    "../src/renderer/src/cloud-admin/cloud-simple-workspace-dual-client.e2e.test.ts",
     "../src/renderer/src/cloud/cloud-browser-host-key.e2e.test.ts",
     "../src/renderer/src/web/web-cloud-connect.e2e.test.ts",
     "../src/renderer/src/web/web-cloud-handoff.e2e.test.ts",
@@ -30,6 +31,7 @@
     "../src/renderer/src/web/web-cloud-transport.e2e.test.ts",
     "../src/renderer/src/cloud/cloud-browser-bridge.ts",
     "../src/renderer/src/cloud/cloud-project-repos.ts",
+    "../src/renderer/src/cloud/cloud-simple-workspace-end-close.ts",
     "../src/renderer/src/cloud/use-cloud-session.ts",
     "../src/renderer/src/web/web-cloud-connect.ts",
     "../src/renderer/src/web/web-cloud-device-key.ts",

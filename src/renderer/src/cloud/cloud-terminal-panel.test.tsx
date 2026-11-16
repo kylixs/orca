@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CloudRpcOutcome } from '../../../shared/cloud-platform-ipc'
 import { RELEASE_SYNCHRONIZED_OUTPUT } from '../../../shared/terminal-mode-reset-profiles'
 import { CloudTerminalPanel, type CloudTerminalSubscribe } from './cloud-terminal-panel'
+import { PENDING_HANDLE_TIMEOUT_MS } from './use-cloud-terminal-stream-session'
 import type { CloudSubscribeOutcome } from './use-cloud-session'
 
 /**
@@ -544,6 +545,90 @@ describe('云端终端 attach 与回放边界（U96 B-令3）', () => {
     expect(stream.calls).toHaveLength(1)
     expect(stream.calls[0]?.params).toMatchObject({ terminal: 'term_7' })
     expect(host.calls.filter((call) => call.method === 'terminal.create')).toEqual([])
+  })
+
+  it('U112 D2 pending 超阈值转 ended，重开沿用原 tabId/leafId', async () => {
+    const host = scriptedHost({
+      'terminal.create': () => ({
+        ok: true,
+        result: { terminal: { handle: 'term_reopen' }, worktreeId: 'wt_1' }
+      })
+    })
+    const stream = scriptedStream(subscribeOk())
+
+    render(
+      <CloudTerminalPanel
+        rpc={host.rpc}
+        subscribe={stream.subscribe}
+        workspacePath="/srv/checkout"
+        tabId="tab_1"
+        leafId="leaf_1"
+        hostOwnsPty
+        hostTerminal={null}
+      />
+    )
+    await flush()
+    expect(screen.getByTestId('cloud-terminal-pending')).toBeTruthy()
+    expect(screen.queryByTestId('cloud-terminal-ended')).toBeNull()
+
+    // Before the threshold the row is still waiting; no local create.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PENDING_HANDLE_TIMEOUT_MS - 1)
+    })
+    expect(screen.getByTestId('cloud-terminal-pending')).toBeTruthy()
+    expect(host.calls).toEqual([])
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+    })
+    expect(screen.queryByTestId('cloud-terminal-pending')).toBeNull()
+    expect(screen.getByTestId('cloud-terminal-ended')).toBeTruthy()
+
+    fireEvent.click(screen.getByTestId('cloud-terminal-reopen'))
+    await flush()
+    await flush()
+
+    expect(host.calls.at(-1)).toMatchObject({
+      method: 'terminal.create',
+      params: {
+        worktree: 'path:/srv/checkout',
+        title: 'cloud-admin',
+        tabId: 'tab_1',
+        leafId: 'leaf_1'
+      }
+    })
+    expect(stream.calls.at(-1)?.params).toMatchObject({ terminal: 'term_reopen' })
+  })
+
+  it('U112 D2 pending 在阈值内拿到 handle：直接 attach，不转 ended', async () => {
+    const host = scriptedHost({})
+    const stream = scriptedStream(subscribeOk())
+    const element = (hostTerminal: string | null) => (
+      <CloudTerminalPanel
+        rpc={host.rpc}
+        subscribe={stream.subscribe}
+        workspacePath="/srv/checkout"
+        tabId="tab_1"
+        leafId="leaf_1"
+        hostOwnsPty
+        hostTerminal={hostTerminal}
+      />
+    )
+
+    const view = render(element(null))
+    await flush()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PENDING_HANDLE_TIMEOUT_MS - 1)
+    })
+    view.rerender(element('term_7'))
+    await flush()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PENDING_HANDLE_TIMEOUT_MS * 2)
+    })
+
+    expect(stream.calls).toHaveLength(1)
+    expect(stream.calls[0]?.params).toMatchObject({ terminal: 'term_7' })
+    expect(screen.queryByTestId('cloud-terminal-ended')).toBeNull()
   })
 
   it('U96B3-3 回放边界：截断与无历史各有提示', async () => {

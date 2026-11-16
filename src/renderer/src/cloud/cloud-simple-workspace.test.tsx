@@ -627,6 +627,7 @@ describe('简易工作区宿主动作接线（U96 B-令4）', () => {
     activate: Mock<(tabId: string) => void>
     close: Mock<(tabId: string) => Promise<CloudSimpleWorkspaceHostCloseOutcome>>
     createTerminal: Mock<(tabId: string, leafId: string, title: string) => Promise<boolean>>
+    closeAll: Mock<() => Promise<void>>
     dismissNotice: Mock<() => void>
   }
 
@@ -641,6 +642,7 @@ describe('简易工作区宿主动作接线（U96 B-令4）', () => {
       createTerminal: vi
         .fn<(tabId: string, leafId: string, title: string) => Promise<boolean>>()
         .mockResolvedValue(true),
+      closeAll: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
       notice: options.notice ?? null,
       dismissNotice: vi.fn<() => void>()
     }

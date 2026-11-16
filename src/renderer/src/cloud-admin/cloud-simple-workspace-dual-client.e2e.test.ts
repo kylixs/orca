@@ -33,6 +33,7 @@ import type { CloudBridge } from '../cloud/use-cloud-session'
 import { createCloudBrowserBridge } from '../cloud/cloud-browser-bridge'
 import type { WebCloudDeviceKeyStorage } from '../web/web-cloud-device-key'
 import { createBrowserUuid } from '@/lib/browser-uuid'
+import { closeHostSessionTabsForEnd } from '../cloud/cloud-simple-workspace-end-close'
 
 /**
  * U96 B-令8: two clients of the same host session — the simple workspace and
@@ -262,6 +263,23 @@ function snapshotHasTab(snapshot: unknown, tabId: string): boolean {
   return (readArray(snapshot, 'tabs') ?? []).some((tab) => readString(tab, 'parentTabId') === tabId)
 }
 
+/** Wait for a frame after `from` that no longer carries the tab (the row retired). */
+async function waitForRetirement(
+  events: readonly unknown[],
+  from: number,
+  tabId: string,
+  timeoutMs = 20_000
+): Promise<void> {
+  const started = Date.now()
+  while (Date.now() - started < timeoutMs) {
+    if (events.slice(from).some((event) => !snapshotHasTab(event, tabId))) {
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  throw new Error(`the other client never saw ${tabId} retire`)
+}
+
 function terminalHandleOf(outcome: CloudRpcOutcome): string | null {
   return readString(readField(outcome.ok ? outcome.result : null, 'terminal'), 'handle')
 }
@@ -295,7 +313,7 @@ function hasDataChunk(events: readonly unknown[], needle: string): boolean {
   )
 }
 
-function fitEventFor(events: readonly unknown[], cols: number, rows: number): unknown | null {
+function fitEventFor(events: readonly unknown[], cols: number, rows: number): unknown {
   return (
     events.find(
       (event) =>
@@ -746,6 +764,78 @@ describe('U96 B-令8 双端同步真栈（简易工作区 + Orca Web）', () => 
       simpleSub.unsubscribe()
       webSub.unsubscribe()
       await web.rpc('terminal.close', { terminal: handle }, projectId)
+      await closeClient(web)
+      await closeClient(simple)
+    }
+  }, 180_000)
+
+  it('E11 end 动作关闭全部宿主承接 PTY、退役行，另一端同步消失（U112 D1）', async () => {
+    const simple = await openClient('u96-b8-end-simple')
+    const web = await openClient('u96-b8-end-web')
+    const opened = await simple.openWorkspace(projectId)
+    if (!opened.ok || !opened.workspacePath) {
+      throw new Error(`open failed: ${JSON.stringify(opened)}`)
+    }
+    const workspacePath = opened.workspacePath
+    const worktree = cloudWorktreeSelector(workspacePath)
+    const handles: { tabId: string; handle: string }[] = []
+    const webEvents: unknown[] = []
+    const webSub = await subscribeAs(web, 'session.tabs.subscribe', { worktree }, webEvents)
+    try {
+      // One tab from each client: the target shape is a host-owned terminal the
+      // simple workspace only attached to (`createdHere === false`).
+      for (const [client, title] of [
+        [simple, 'U96 end simple'],
+        [web, 'U96 end web']
+      ] as const) {
+        const created = await client.rpc(
+          'terminal.create',
+          { worktree, ...clientTerminalIdentity(), title },
+          projectId
+        )
+        expect(created.ok, JSON.stringify(created)).toBe(true)
+        const handle = terminalHandleOf(created)
+        if (handle === null) {
+          throw new Error(`${title} handle missing`)
+        }
+        const row = await hostRowForHandle(client, worktree, handle)
+        handles.push({ tabId: row.tabId, handle })
+        await waitForEvent(webEvents, (event) => snapshotHasTab(event, row.tabId))
+      }
+      const beforeEnd = webEvents.length
+
+      // The exact product path an embed `end` runs before closeProject.
+      await closeHostSessionTabsForEnd({
+        rpc: (method, params) => simple.rpc(method, params ?? {}, projectId),
+        workspacePath
+      })
+      await simple.closeProject(projectId)
+
+      const list = await web.rpc('session.tabs.list', { worktree }, projectId)
+      const remaining = (readArray(list.ok ? list.result : null, 'tabs') ?? [])
+        .map((tab) => readString(tab, 'parentTabId'))
+        .filter((tabId): tabId is string => tabId !== null)
+      for (const { tabId } of handles) {
+        expect(remaining).not.toContain(tabId)
+        await waitForRetirement(webEvents, beforeEnd, tabId)
+      }
+      const statuses: (string | null)[] = []
+      for (const { handle } of handles) {
+        const dead = await waitForTerminalGone(
+          (method, params) => web.rpc(method, params ?? {}, projectId),
+          handle
+        )
+        statuses.push(readString(readField(dead.ok ? dead.result : null, 'terminal'), 'status'))
+        expect(dead.ok === false || statuses.at(-1) === 'exited', JSON.stringify(dead)).toBe(true)
+      }
+      saveEvidence('e11-end-retire.json', {
+        handles,
+        remaining,
+        statuses,
+        eventsAfterEnd: webEvents.length - beforeEnd
+      })
+    } finally {
+      webSub.unsubscribe()
       await closeClient(web)
       await closeClient(simple)
     }

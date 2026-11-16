@@ -29,6 +29,24 @@ export type CloudSimpleHostTerminalTab = {
   order: number
 }
 
+/** The notice a refused `session.tabs.close` leaves next to the tab strip. */
+export function hostTabCloseRefusalNotice(reason: string | null): string {
+  switch (reason) {
+    case 'live-host-pty':
+      return '桌面端正在使用该终端，无法从云端关闭。'
+    case 'retirement-owner':
+      return '该终端正由桌面端结束，请稍后重试。'
+    case 'stale-terminal':
+    case 'stale-publication':
+      return '终端状态已变化，请刷新后重试。'
+    case 'unknown-liveness':
+      return '暂时无法确认终端状态，标签已保留。'
+    case null:
+    default:
+      return '云端无法关闭该终端，标签已保留。'
+  }
+}
+
 type TerminalRow = RuntimeMobileSessionTerminalClientTab
 
 /** The projection's structural input: a full host snapshot satisfies it. */

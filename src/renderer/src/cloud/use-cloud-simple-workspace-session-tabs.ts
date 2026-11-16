@@ -6,11 +6,13 @@ import type { RuntimeMobileSessionClientTab } from '../../../shared/runtime-mobi
 import type { CloudSubscription } from './use-cloud-session'
 import type { CloudTerminalSubscribe } from './cloud-terminal-panel'
 import {
+  hostTabCloseRefusalNotice,
   hostTerminalTabsFromSnapshot,
   type CloudSimpleHostTabsSnapshot,
   type CloudSimpleHostTerminalTab
 } from './cloud-simple-workspace-session-tabs'
 import { recoverSimpleWorkspaceTerminalOrphans } from './cloud-simple-workspace-orphan-recovery'
+import { closeHostSessionTabsForEnd } from './cloud-simple-workspace-end-close'
 
 /**
  * U96 B-令2: bootstrap the simple workspace from the host's session-tab
@@ -37,6 +39,8 @@ export type CloudSimpleWorkspaceSessionTabActions = {
   close: (tabId: string) => Promise<CloudSimpleWorkspaceHostCloseOutcome>
   /** T-B1: create the PTY with the client-generated tab/leaf ids, then activate it. */
   createTerminal: (tabId: string, leafId: string, title: string) => Promise<boolean>
+  /** U112 D1: explicit end retires every host-backed terminal row. */
+  closeAll: () => Promise<void>
   /** Host refusal text to keep visible next to the tab strip. */
   notice: string | null
   dismissNotice: () => void
@@ -49,23 +53,6 @@ export type CloudSimpleWorkspaceSessionTabs = {
   /** Capability absent, or the one attempt failed (negative cache). */
   unsupported: boolean
   actions: CloudSimpleWorkspaceSessionTabActions
-}
-
-function closeRefusalNotice(reason: string | null): string {
-  switch (reason) {
-    case 'live-host-pty':
-      return '桌面端正在使用该终端，无法从云端关闭。'
-    case 'retirement-owner':
-      return '该终端正由桌面端结束，请稍后重试。'
-    case 'stale-terminal':
-    case 'stale-publication':
-      return '终端状态已变化，请刷新后重试。'
-    case 'unknown-liveness':
-      return '暂时无法确认终端状态，标签已保留。'
-    case null:
-    default:
-      return '云端无法关闭该终端，标签已保留。'
-  }
 }
 
 type HostTabsFrame = CloudSimpleHostTabsSnapshot & { activeTabId: string | null }
@@ -179,13 +166,20 @@ export function useCloudSimpleWorkspaceSessionTabs({
       }
       const result = readObjectValue(outcome.result)
       if (result !== null && readField(result, 'refused') === true) {
-        setNotice(closeRefusalNotice(readString(result, 'refusalReason')))
+        setNotice(hostTabCloseRefusalNotice(readString(result, 'refusalReason')))
         return 'refused'
       }
       setNotice(null)
       return 'closed'
     },
     []
+  )
+
+  // Why the capability gate (not supportedRef): the end cleanup must still run
+  // when the stream never established, and it reads the inventory fresh.
+  const closeAll = React.useCallback(
+    () => closeHostSessionTabsForEnd({ rpc: rpcRef.current, workspacePath }, restoreSupported),
+    [restoreSupported, workspacePath]
   )
 
   const createTerminal = React.useCallback(
@@ -220,8 +214,15 @@ export function useCloudSimpleWorkspaceSessionTabs({
   )
 
   const actions = React.useMemo<CloudSimpleWorkspaceSessionTabActions>(
-    () => ({ activate, close, createTerminal, notice, dismissNotice: () => setNotice(null) }),
-    [activate, close, createTerminal, notice]
+    () => ({
+      activate,
+      close,
+      createTerminal,
+      closeAll,
+      notice,
+      dismissNotice: () => setNotice(null)
+    }),
+    [activate, close, createTerminal, closeAll, notice]
   )
 
   React.useEffect(() => {

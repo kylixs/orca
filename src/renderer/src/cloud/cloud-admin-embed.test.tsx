@@ -14,6 +14,8 @@ import type {
 import { CloudApp } from './cloud-app'
 import { takeCloudAdminEmbedEntry } from './cloud-admin-embed'
 import type { CloudBridge } from './use-cloud-session'
+import { cloudWorktreeSelector } from '../../../shared/cloud-file-browser'
+import { CLOUD_SESSION_TABS_RESTORE_CAPABILITY } from '../../../shared/cloud-workspace-info'
 
 /**
  * U46-4: the admin page as the console's embedded workspace (§4.2/§6.2 C1–C5).
@@ -47,6 +49,8 @@ const OPENED: Extract<CloudOpenResult, { ok: true }> = {
   capabilities: ['pty'],
   permissions: ['open', 'terminal', 'file:read']
 }
+
+const WORKTREE = cloudWorktreeSelector(OPENED.workspacePath ?? '')
 
 type Script = {
   state?: CloudSessionState
@@ -234,6 +238,78 @@ describe('U46-4 embed 入口', () => {
 
     act(() => dispatchParentMessage({ type: 'logout' }))
     await waitFor(() => expect(bridge.logoutCalls).toBe(1))
+  })
+
+  it('U112 D1 end 先逐标签退役宿主 PTY/行，再 closeProject', async () => {
+    const bridge = makeBridge()
+    const posted: Record<string, unknown>[] = []
+    const timeline: string[] = []
+    const rpcCalls: { method: string; params?: Record<string, unknown> }[] = []
+    bridge.closeProject = async (projectId: string) => {
+      timeline.push('closeProject')
+      bridge.closeCalls.push(projectId)
+      return { ok: true }
+    }
+    bridge.rpc = async (method, params) => {
+      timeline.push(method)
+      rpcCalls.push({ method, params })
+      if (method === 'workspace.info') {
+        return {
+          ok: true,
+          result: {
+            workspace: { branch: 'main' },
+            capabilities: [CLOUD_SESSION_TABS_RESTORE_CAPABILITY]
+          }
+        }
+      }
+      if (method === 'session.tabs.list') {
+        return {
+          ok: true,
+          result: {
+            tabs: [
+              { type: 'terminal', parentTabId: 'tab-a', leafId: 'leaf-1' },
+              { type: 'terminal', parentTabId: 'tab-b', leafId: 'leaf-2' }
+            ],
+            activeTabId: 'tab-a'
+          }
+        }
+      }
+      return { ok: true, result: {} }
+    }
+
+    render(
+      <CloudApp
+        bridge={bridge}
+        embed={{ projectId: 'p1', handoffCode: 'code-1' }}
+        postToParent={(message) => posted.push(message)}
+      />
+    )
+    await waitFor(() => expect(posted.some((message) => message.type === 'ready')).toBe(true))
+    await waitFor(() =>
+      expect(rpcCalls.some((call) => call.method === 'workspace.info')).toBe(true)
+    )
+
+    act(() => dispatchParentMessage({ type: 'end' }))
+    await waitFor(() =>
+      expect(posted).toContainEqual({ source: 'orca-cloud-admin', type: 'ended' })
+    )
+
+    expect(rpcCalls.filter((call) => call.method === 'session.tabs.close')).toEqual([
+      {
+        method: 'session.tabs.close',
+        params: { worktree: WORKTREE, tabId: 'tab-a', reason: 'user' }
+      },
+      {
+        method: 'session.tabs.close',
+        params: { worktree: WORKTREE, tabId: 'tab-b', reason: 'user' }
+      }
+    ])
+    // §4.3: the row retirement must be on the wire before the socket closes.
+    expect(timeline.at(-1)).toBe('closeProject')
+    expect(timeline.lastIndexOf('session.tabs.close')).toBeLessThan(
+      timeline.lastIndexOf('closeProject')
+    )
+    expect(bridge.closeCalls).toEqual(['p1'])
   })
 
   it('B-令5 生命周期：ready 声明能力；close/suspend/end 各自回执，登出不隐式 end', async () => {

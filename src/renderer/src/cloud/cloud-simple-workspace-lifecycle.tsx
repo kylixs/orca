@@ -14,6 +14,13 @@ export type CloudSimpleWorkspaceLifecycleIntent = 'active' | 'suspending' | 'end
 
 export type CloudSimpleWorkspaceLifecycle = {
   intent: () => CloudSimpleWorkspaceLifecycleIntent
+  /**
+   * U112 D1 (§4.3): an explicit end runs these (awaited) before `closeProject`.
+   * A panel unmount only closes the PTY it created; the host tab inventory —
+   * the target shape — is retired through `session.tabs.close` from here.
+   */
+  registerEndCleanup: (cleanup: () => Promise<void>) => () => void
+  runEndCleanup: () => Promise<void>
 }
 
 const CloudSimpleWorkspaceLifecycleContext =

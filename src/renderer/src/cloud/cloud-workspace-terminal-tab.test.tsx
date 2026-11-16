@@ -112,7 +112,11 @@ function renderTab(
   active: boolean,
   intent: LifecycleIntent = { current: 'active' }
 ) {
-  const lifecycle = { intent: (): 'active' | 'suspending' | 'ending' => intent.current }
+  const lifecycle = {
+    intent: (): 'active' | 'suspending' | 'ending' => intent.current,
+    registerEndCleanup: (): (() => void) => () => undefined,
+    runEndCleanup: async (): Promise<void> => undefined
+  }
   const element = (
     <CloudWorkspaceTerminalTabProvider
       rpc={host.rpc}

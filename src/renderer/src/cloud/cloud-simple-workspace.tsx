@@ -58,6 +58,7 @@ import {
   CLOUD_SIMPLE_WORKSPACE_TAB_COMPONENTS,
   type CloudSimpleWorkspaceTabComponents
 } from './cloud-simple-workspace-tab-components'
+import { useCloudSimpleWorkspaceLifecycle } from './cloud-simple-workspace-lifecycle'
 
 /**
  * Embedded simple workspace shell (U46-5a, design §4.3/§4.4): centre tabs plus a
@@ -370,6 +371,16 @@ export function CloudSimpleWorkspaceSession({
     workspacePath,
     capabilities
   })
+
+  // U112 D1: an explicit end retires the host inventory before `closeProject`.
+  const lifecycle = useCloudSimpleWorkspaceLifecycle()
+  const closeAllHostTabs = sessionTabs.actions.closeAll
+  React.useEffect(() => {
+    if (!lifecycle) {
+      return
+    }
+    return lifecycle.registerEndCleanup(closeAllHostTabs)
+  }, [lifecycle, closeAllHostTabs])
 
   const tabComponents = React.useMemo<CloudSimpleWorkspaceTabComponents>(() => {
     if (!workspacePath) {
