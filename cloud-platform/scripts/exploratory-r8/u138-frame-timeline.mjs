@@ -61,9 +61,12 @@ const SETTLE_MS = Math.max(1000, Number(process.env.U138_SETTLE_MS ?? 5000))
 // a settle floor AND a stable tab count before the initial read (P2-1).
 const RELOAD_STABLE_MS = Math.max(2000, Number(process.env.U138_RELOAD_STABLE_MS ?? 2500))
 // Quick open/close persist the new selection asynchronously (~70 ms): the projection can
-// already point at the new tab while profile-state still holds the old one. Poll until
-// both surfaces agree before the initial read; a timeout keeps the normal dual-read verdict.
-const OPENED_STABLE_MS = Math.max(0, Number(process.env.U138_OPENED_STABLE_MS ?? 3000))
+// already point at the new tab while profile-state still holds the old one. Only that
+// persisted lag is gated; a projection mismatch is sampled immediately. 0 disables the gate.
+const OPENED_STABLE_MS_RAW = Number(process.env.U138_OPENED_STABLE_MS ?? 3000)
+const OPENED_STABLE_MS = Number.isFinite(OPENED_STABLE_MS_RAW)
+  ? Math.max(0, OPENED_STABLE_MS_RAW)
+  : 3000
 const HEADLESS = process.env.U138_HEADLESS !== '0'
 const PAGE_FRAME_LIMIT = Number(process.env.U138_PAGE_FRAME_LIMIT ?? 300)
 const HOST_STATE_ROOTS = (
@@ -1947,40 +1950,81 @@ try {
   }
 
   /**
-   * Quick open/close stability gate: wait until the device projection and the host
-   * persisted value agree (and, when expectedTabId is set, both point at that tab).
-   * The first read must not sample the asynchronous `profile-state` write. A timeout
-   * returns ok:false; the point then keeps the unchanged dual-read UNSTABLE/INVALID
+   * Quick open/close stability gate (measurement evidence only).
+   * Waits for the asynchronous host persisted write ONLY when the device projection already
+   * points at the expected tab; a projection mismatch is sampled immediately so real
+   * projection lag stays visible. `0` disables the gate entirely (no pre-read pair).
+   * A timeout returns ok:false; the point keeps the unchanged dual-read UNSTABLE/INVALID
    * semantics — surfaces are never forced equal.
    */
   async function waitQuickSurfacesAligned(expectedTabId = null, timeoutMs = OPENED_STABLE_MS) {
+    const expected = comparable(expectedTabId)
+    if (!(timeoutMs > 0)) {
+      return {
+        ok: null,
+        disabled: true,
+        elapsedMs: 0,
+        expectedTabId,
+        initialProjectionActive: null,
+        initialPersistedActive: null,
+        projectionActive: null,
+        hostPersistentActive: null,
+        waitedFor: 'none',
+        degraded: false,
+        degradedReason: null
+      }
+    }
     const startedAt = Date.now()
-    let projectionActive = null
-    let hostPersistentActive = null
-    while (true) {
+    const readSurfaces = async () => {
       const host = await probeHostList(workspacePage, worktreeId)
       const hostState = readHostState(worktreeId)
-      projectionActive = host?.ok ? (host.result?.activeTabId ?? null) : null
-      hostPersistentActive = hostState.ok ? (hostState.hostPersistentActive ?? null) : null
-      const projection = comparable(projectionActive)
-      const persisted = comparable(hostPersistentActive)
-      const aligned =
-        host?.ok === true &&
-        hostState.ok === true &&
+      return {
+        hostOk: host?.ok === true,
+        hostStateOk: hostState.ok === true,
+        projectionActive: host?.ok ? (host.result?.activeTabId ?? null) : null,
+        hostPersistentActive: hostState.ok ? (hostState.hostPersistentActive ?? null) : null
+      }
+    }
+    const alignedIn = (surfaces) => {
+      const projection = comparable(surfaces.projectionActive)
+      const persisted = comparable(surfaces.hostPersistentActive)
+      return (
+        surfaces.hostOk &&
+        surfaces.hostStateOk &&
         projection !== null &&
         projection === persisted &&
-        (expectedTabId === null ||
-          (comparable(expectedTabId) !== null && projection === comparable(expectedTabId)))
-      if (aligned || Date.now() - startedAt >= timeoutMs) {
-        return {
-          ok: aligned,
-          elapsedMs: Date.now() - startedAt,
-          expectedTabId,
-          projectionActive,
-          hostPersistentActive
-        }
-      }
+        (expectedTabId === null || (expected !== null && projection === expected))
+      )
+    }
+    let surfaces = await readSurfaces()
+    const initialProjectionActive = surfaces.projectionActive
+    const initialPersistedActive = surfaces.hostPersistentActive
+    // Persisted-only: projection must already be at the expected tab. With no expected
+    // anchor (closed degraded) or a mismatch, sample now instead of waiting.
+    const waitedFor =
+      expected !== null && comparable(initialProjectionActive) === expected ? 'persisted-only' : 'none'
+    let aligned = alignedIn(surfaces)
+    while (!aligned && waitedFor === 'persisted-only' && Date.now() - startedAt < timeoutMs) {
       await sleep(100)
+      surfaces = await readSurfaces()
+      aligned = alignedIn(surfaces)
+      // Projection left the expected tab: stop waiting and expose it to the dual read.
+      if (!aligned && comparable(surfaces.projectionActive) !== expected) {
+        break
+      }
+    }
+    return {
+      ok: aligned,
+      disabled: false,
+      elapsedMs: Date.now() - startedAt,
+      expectedTabId,
+      initialProjectionActive,
+      initialPersistedActive,
+      projectionActive: surfaces.projectionActive,
+      hostPersistentActive: surfaces.hostPersistentActive,
+      waitedFor,
+      degraded: false,
+      degradedReason: null
     }
   }
 
@@ -2041,11 +2085,20 @@ try {
       )
     }
     if (point.quickGate) {
-      console.log(
-        `[u138]   quick-gate ${point.quickGate.ok ? 'aligned' : 'TIMEOUT'}` +
-          ` after ${point.quickGate.elapsedMs}ms projection=${JSON.stringify(point.quickGate.projectionActive)}` +
-          ` hostPersist=${JSON.stringify(point.quickGate.hostPersistentActive)}`
-      )
+      const gate = point.quickGate
+      const label = gate.disabled ? 'disabled' : gate.ok ? 'aligned' : 'TIMEOUT'
+      const detail = [
+        `[u138]   quick-gate ${label} after ${gate.elapsedMs}ms`,
+        `waitedFor=${gate.waitedFor}`,
+        `projection=${JSON.stringify(gate.projectionActive)}`,
+        `hostPersist=${JSON.stringify(gate.hostPersistentActive)}`,
+        `initialProjection=${JSON.stringify(gate.initialProjectionActive)}`,
+        `initialHostPersist=${JSON.stringify(gate.initialPersistedActive)}`,
+        gate.degraded ? `degraded=${JSON.stringify(gate.degradedReason)}` : null
+      ]
+        .filter(Boolean)
+        .join(' ')
+      console.log(detail)
     }
     return point
   }
@@ -2313,16 +2366,24 @@ try {
     let createdTabId = null
     let createError = null
     // Return target for the closed gate: the pre-open projection/persisted agreement,
-    // read before the create gesture moves the active tab. Unreadable -> require only
-    // projection/persisted agreement on close.
+    // read before the create gesture moves the active tab. Unavailable OR disagreeing
+    // pre-open surfaces degrade the gate to plain projection/persisted agreement.
     const preOpenState = readHostState(worktreeId)
     const preOpenProjection = await probeHostList(workspacePage, worktreeId)
-    const preOpenActive =
-      preOpenState.ok &&
-      preOpenProjection?.ok === true &&
-      sameComparable(preOpenState.hostPersistentActive, preOpenProjection.result?.activeTabId)
-        ? (preOpenProjection.result?.activeTabId ?? null)
-        : null
+    const preOpenSurfacesReadable = preOpenState.ok && preOpenProjection?.ok === true
+    const preOpenPersistedActive = preOpenState.ok
+      ? (preOpenState.hostPersistentActive ?? null)
+      : null
+    const preOpenProjectionActive =
+      preOpenProjection?.ok === true ? (preOpenProjection.result?.activeTabId ?? null) : null
+    const preOpenMatched =
+      preOpenSurfacesReadable && sameComparable(preOpenPersistedActive, preOpenProjectionActive)
+    const preOpenActive = preOpenMatched ? preOpenProjectionActive : null
+    const preOpenDegradedReason = preOpenMatched
+      ? null
+      : preOpenSurfacesReadable
+        ? 'pre-open projection and host persisted did not agree'
+        : 'pre-open projection or host persisted unavailable'
     try {
       createdTabId = await createTempTab()
     } catch (error) {
@@ -2358,7 +2419,14 @@ try {
       invalidatePoint(openedPoint, `quick-close-failed: ${closedBy.error}`)
     }
     // Gate only a real close; a failed close carries its own INVALID reason.
-    const closedGate = closedBy.ok ? await waitQuickSurfacesAligned(preOpenActive) : null
+    const closedGate = closedBy.ok
+      ? {
+          ...(await waitQuickSurfacesAligned(preOpenActive)),
+          ...(preOpenDegradedReason
+            ? { degraded: true, degradedReason: preOpenDegradedReason }
+            : { degraded: false, degradedReason: null })
+        }
+      : null
     await samplePoint(`quick-${index}`, 'closed', {
       ...(closedGate ? { gate: closedGate } : {}),
       ...(closedBy.ok ? {} : { forcedInvalidReasons: [`quick-close-failed: ${closedBy.error}`] })

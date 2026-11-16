@@ -43,9 +43,11 @@ Environment knobs: `U138_PLATFORM_URL`, `U138_USERNAME`, `U138_PASSWORD`,
 `U138_SETTLE_MS` (default 5000, min 1000; the design recommends ≥5 s between the
 two reads of a point, env lowers it for smoke only), `U138_RELOAD_STABLE_MS`
 (default 2500, min 2000: settle floor before the first post-reload/post-reopen
-read), `U138_OPENED_STABLE_MS` (default 3000, min 0: how long a quick
-`opened`/`closed` point waits for projection and host persisted to agree before
-its initial read), `U138_HEADLESS=0`, `U138_PAGE_FRAME_LIMIT`, `U138_RUN_ID`,
+read), `U138_OPENED_STABLE_MS` (default 3000; non-numeric falls back to 3000,
+negative clamps to 0; `0` disables the quick gate entirely, so no pre-read pair
+happens: how long the gate waits for the host persisted value to catch up when
+the projection already points at the expected tab), `U138_HEADLESS=0`,
+`U138_PAGE_FRAME_LIMIT`, `U138_RUN_ID`,
 `U138_HOST_STATE_ROOTS` (colon-separated host user-data roots, default
 `~/orca-local-env/host` and `~/orca-local-env/host2`).
 
@@ -150,19 +152,28 @@ read, ~70 ms after the frame; the next read sees the settled value). That is a
 measurement-window artifact, not a product regression, so quick `opened` and
 `closed` gate their **initial** read on projection/persisted agreement:
 
-- `opened`: projection and host persisted must both point at the created tab.
-- `closed`: projection and host persisted must both point back at the pre-open
-  tab (the projection/persisted agreement read before the create gesture). If
-  that pre-open read was unavailable, only agreement between projection and
-  host persisted is required.
+- `opened`: the gate waits only for the **host persisted** value to catch up
+  when the projection already points at the created tab. If the projection does
+  not point at the created tab, the gate does not wait — the initial read is
+  sampled immediately so a real projection-side lag stays visible instead of
+  healing inside the wait window.
+- `closed`: same rule against the pre-open tab (the projection/persisted
+  agreement read before the create gesture). If that pre-open read was
+  unavailable **or** its two surfaces disagreed, the gate degrades to plain
+  projection/persisted agreement and records `degraded:true` plus
+  `degradedReason` in `quickGate`; without an anchor it does not wait.
 
-The gate polls every 100 ms and gives up after `U138_OPENED_STABLE_MS` (default
-3000). A timeout does **not** force the surfaces equal and does not soften the
-verdict: the point is sampled normally and keeps the existing dual-read
+The gate polls every ~100 ms plus the probe round-trip and gives up after
+`U138_OPENED_STABLE_MS` (default 3000; a poll can include probe retries, so the
+effective wait can exceed the knob). `U138_OPENED_STABLE_MS=0` disables the
+gate: no projection/persisted pre-read happens and the point is sampled
+directly. A timeout does **not** force the surfaces equal and does not soften
+the verdict: the point is sampled normally and keeps the existing dual-read
 semantics — typically `unstable`, or `invalid` when a perspective cannot be
-read. The gate outcome (`ok`, `elapsedMs`, expected tab, both surfaces) is
-recorded as `quickGate` on the point. `conclusive` is unchanged: an unstable
-point still blocks sign-off.
+read. The gate outcome (`ok`, `disabled`, `elapsedMs`, `waitedFor`, expected
+tab, initial and final surface values, `degraded`/`degradedReason`) is recorded
+as `quickGate` on the point. `conclusive` is unchanged: an unstable point still
+blocks sign-off.
 
 ## Three perspectives (host memory is not observed)
 
@@ -331,10 +342,16 @@ A baseline read failure can never yield `restored: true`.
       "second": { "…": "same shape" },
       "quickGate": {
         "ok": true,
+        "disabled": false,
         "elapsedMs": 120,
+        "waitedFor": "persisted-only",
         "expectedTabId": "…",
+        "initialProjectionActive": "…::…",
+        "initialPersistedActive": "…",
         "projectionActive": "…::…",
-        "hostPersistentActive": "…"
+        "hostPersistentActive": "…",
+        "degraded": false,
+        "degradedReason": null
       },
       "hA": { "verdict": "unknown", "reason": "no applied frame after the last selection write …" },
       "attribution": { "token": "none", "reason": "all three perspectives agree in both reads" }
