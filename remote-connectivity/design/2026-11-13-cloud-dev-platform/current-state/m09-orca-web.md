@@ -46,16 +46,16 @@ Orca Web 复用**完整原生 App 外壳**（`web-root.tsx` 懒加载 `../App`�
 
 ### 3.2 标签组恢复（U96 A 链，现状）
 
-| 环节            | 现状                                                                                                                                                                                                   |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 能力协商        | `workspace.info.capabilities` 可选字段 `cloud.session-tabs-restore.v1`；`shouldMirrorCloudSessionTabs` 三处共用（global 订阅 / active 订阅 / 快照 eager refresh），pairing revision 不符即 fail-closed |
-| 宿主放行        | `session.tabs.list/listAll/subscribe/subscribeAll/activate/close/move` 归 `terminal` 权限；`createTerminal/setTabProps` 继续拒绝；`terminal.list/adoptOrphans` 云放行并做 worktree/handle scope        |
-| 清单应用        | `applyWebSessionTabsSnapshot` 系列；`adoptHostLayout` 每次**进入工作区**收养一次宿主镜像组/active/layout，之后 client-owned（U104，`b50c241e699`）；进入动作触发已由 U113 A-fix1 在途补强              |
-| 孤儿认领        | `recoverWebSessionTerminalOrphansBeforeApply` → `terminal.list` + `terminal.adoptOrphans`（按 worktree/handle 限界）                                                                                   |
-| 新建终端        | 客户端生成 `terminal-<uuid>` tabId + 裸 UUID leafId（U107），`terminal.create` 后由宿主发布/持久化；关闭经 `session.tabs.close`（U108 图代数围栏与镜像退役已修）                                       |
-| 多组            | 2 组恢复已真机验证（journey-8 控制台线 13/13 含 3 tabs/2 groups、B7 三次重开零互换；U99 move 超时已修）                                                                                                  |
-| 活动标签权威    | **U138**（`3b241e585d3`）：headless 宿主用 `HEADLESS_RUNTIME_WINDOW_ID` 充当 graph owner 但无真实窗口，旧判据误以为渲染器会回写焦点 → `session.tabs.activate` 从不持久化，恢复后活动标签退回「最后创建标签」。现判据为 `getAvailableAuthoritativeWindow()`，hydration 的 group active 与 snapshot active 同源；journey a2 三方一致门禁绿 |
-| 文件/编辑器标签 | **不恢复**（U100 用户裁定方案 a）：仅终端标签+分组+内容；文档需注明                                                                                                                                    |
+| 环节            | 现状                                                                                                                                                                                                                                                                                                                                     |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 能力协商        | `workspace.info.capabilities` 可选字段 `cloud.session-tabs-restore.v1`；`shouldMirrorCloudSessionTabs` 三处共用（global 订阅 / active 订阅 / 快照 eager refresh），pairing revision 不符即 fail-closed                                                                                                                                   |
+| 宿主放行        | `session.tabs.list/listAll/subscribe/subscribeAll/activate/close/move` 归 `terminal` 权限；`createTerminal/setTabProps` 继续拒绝；`terminal.list/adoptOrphans` 云放行并做 worktree/handle scope                                                                                                                                          |
+| 清单应用        | `applyWebSessionTabsSnapshot` 系列；`adoptHostLayout` 每次**进入工作区**收养一次宿主镜像组/active/layout，之后 client-owned（U104，`b50c241e699`）；进入动作触发已由 U113 A-fix1 在途补强                                                                                                                                                |
+| 孤儿认领        | `recoverWebSessionTerminalOrphansBeforeApply` → `terminal.list` + `terminal.adoptOrphans`（按 worktree/handle 限界）                                                                                                                                                                                                                     |
+| 新建终端        | 客户端生成 `terminal-<uuid>` tabId + 裸 UUID leafId（U107），`terminal.create` 后由宿主发布/持久化；关闭经 `session.tabs.close`（U108 图代数围栏与镜像退役已修）                                                                                                                                                                         |
+| 多组            | 2 组恢复已真机验证（journey-8 控制台线 13/13 含 3 tabs/2 groups、B7 三次重开零互换；U99 move 超时已修）                                                                                                                                                                                                                                  |
+| 活动标签权威    | **U138（残余修复中）**：`3b241e585d3` 修 headless 宿主持久化判据后，快速开合/竞争窗口仍偶发「选中标签差一周期」（内容/分组每次正确）。Race 探针复现 7/50→硬化探针归因 **H-A**（获胜 apply 帧未带 `hostActiveAuthoritative`；延迟 listAll 回滚 active）。T3 `d9aff7afd02` 修 late-listAll 回滚（`preserveStoreActiveFocus`），钉转正；`subscribeAll` 无权威的快速开合子案在复验中。 |
+| 文件/编辑器标签 | **不恢复**（U100 用户裁定方案 a）：仅终端标签+分组+内容；文档需注明                                                                                                                                                                                                                                                                      |
 
 ### 3.3 终端内容回放与 ended 态
 
@@ -85,18 +85,17 @@ Orca Web 复用**完整原生 App 外壳**（`web-root.tsx` 懒加载 `../App`�
 
 | U                                | 状态 | 与本模块关系                                                                                   |
 | -------------------------------- | ---- | ---------------------------------------------------------------------------------------------- |
-| [U96](../defect-ledger.md#L99)   | 🔴   | 标签组/终端恢复总项；A 链多数子令已落地，多组恢复（U99）与真机终验未闭合                       |
-| [U103](../defect-ledger.md#L105) | 🔴   | 刷新停留旧登录页：B1 静默续会话 + B2 预填已落地；真栈 reload 站待发布环境复验                  |
+| [U96](../defect-ledger.md#L99)   | 🟢   | 标签组/终端恢复已闭环（U99/U104/U107/U108；U113 真机 9/9）                                      |
+| [U103](../defect-ledger.md#L105) | 🟢   | 刷新停留旧登录页已修（B1 静默续会话 + B2 预填），真栈 reload 复验通过                           |
 | [U104](../defect-ledger.md#L106) | 🟢   | 二次打开不恢复：`adoptHostLayout` 每次进入收养，已修                                           |
-| [U106](../defect-ledger.md#L107) | 🟡   | 全站 URL 路由：W1（项目上下文）已落地；工作区标签级深链仍缺                                    |
-| [U113](../defect-ledger.md#L112) | 🟡   | 审计 A 批：D2 二次打开采纳触发缺口（A-fix1 在途）、D3 时序钉、D4 stale capability、D1 真机复跑 |
+| [U106](../defect-ledger.md#L107) | 🟢   | 全站 URL 路由 R1–R6 + W1–W3 已落地；标签级深链按设计不承诺                                     |
+| [U113](../defect-ledger.md#L112) | 🟢   | 审计 A 批闭环：A-fix1/时序钉/stale capability 已落；真机矩阵 9/9（`evidence/u113-retest/`）    |
 | [U100](../defect-ledger.md#L104) | ⚪   | 文件/编辑器标签不随重开恢复（用户裁定接受，需在验收文案注明）                                  |
 | [U109](../defect-ledger.md#L109) | 🟢   | 编译产物遮蔽源文件已清；web 域已删，components 域遗留                                          |
 
 **尚未实现的设计项**（现状 vs 设计）：
 
-- 标签级唯一 URL（当前仅项目级 `?api=&project=`；U106 W2/W3/E1/E2 未落地）。
-- 多标签组恢复未通过真机终验（U99 + U113 A-retest）。
+- 标签级唯一 URL：按设计不承诺（现状=项目级 `?api=&project=`；U106 W1–W3 已落地）。
 - 旧宿主降级 A11「零拒绝探测」已实现，但真机旧版本矩阵未常设。
 - 文件/编辑器标签恢复明确不做（U100），验收文档必须声明，避免按 A1 字面误判。
 
