@@ -102,7 +102,7 @@
 
 已覆盖（绝对路径）：
 
-- `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/u66-5-audit-ui.e2e.test.ts`：四条件组合、摘录关闭时 q 不命中正文、file_copy 展开摘录/指纹/长度、无摘录占位、download_blocked 拦截/拒绝徽标、31 天预设与超限前端拦截不发请求、31 天预设留缓冲、服务端拒绝可见且旧行保留、后续成功清横幅、非 admin events/status 均 403。
+- `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/u66-5-audit-ui.e2e.test.ts`：四条件组合、摘录关闭时 q 不命中正文、file_copy 展开摘录/指纹/长度、无摘录占位、download_blocked 拦截/拒绝徽标、31 天预设与超限前端拦截不发请求、31 天预设留缓冲、服务端拒绝可见且旧行保留、后续成功清横幅、文件名点击复制 path 并 toast「已复制」（U66-5-7）、审计首屏失败「加载失败」+错误文本+「重试」恢复（U66-5-8）、缺口 >0 渲染 `.note.warn#auditGapWarning` 且无缺口不渲染（U66-5-9）、非 admin events/status 均 403。
 - `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/u66-2-audit-query.e2e.test.ts`：四条件矩阵、fileName/q 大小写与白名单/长度、eventTypes 多值 OR / family / 显式优先、边界与 31 天窗、旧客户端零回归、status 权限与缺口/容量、U78 接入类事件检索、P95 性能抽测。
 - `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/u66-audit-file-events.e2e.test.ts`：三类事件落链、120 条/分钟限速与缺口、同 traceId 合并、畸形字段拒绝、内部/非云会话不写链、excerpt 丢弃与移动端字段。
 - `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/u71-audit-gap-heartbeat.e2e.test.ts`：同值不刷屏、变化落增量、重启 pending 记一次。
@@ -113,9 +113,8 @@
 
 未覆盖：
 
-- 缺口横幅的 UI 断言（u71 只测链事件，u66-2 测 status 载荷，未断言横幅文案/条件）。
 - 移动端审计页与 ≤1100/≤700 断点的自动化几何断言（U114-D4）。
-- 加载更早的 UI 追加行为（u66-5 未覆盖 nextCursor 按钮）。
+- 加载更早的 UI 追加行为（u66-5 未覆盖 nextCursor 按钮；由 T06 QA-002 覆盖）。
 
 ## 7. 基线提交
 

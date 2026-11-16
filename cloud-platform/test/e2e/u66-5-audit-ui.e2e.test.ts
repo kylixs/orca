@@ -312,6 +312,109 @@ test('U66-5-6 31 天预设留缓冲可查询；服务端拒绝可见且不静默
   })
 })
 
+test('U66-5-7 事件表文件名可复制路径并提示', async () => {
+  const page = await loginAdmin()
+  const path = '/srv/payments/reports/payment-report.pdf'
+  const button = page.window.document.querySelector<HTMLButtonElement>(
+    `[data-copy-file="${path}"]`
+  )
+  assert.ok(button, 'the file cell must offer a copy action')
+  assert.equal(button.title, '点击复制路径')
+  assert.match(button.textContent ?? '', /payment-report\.pdf/, 'the file name is the click target')
+  assert.match(button.textContent ?? '', /复制/, 'the copy label is visible')
+
+  const copies: string[] = []
+  Object.defineProperty(page.window.navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText: (value: string) => (copies.push(value), Promise.resolve()) }
+  })
+  button.click()
+  await page.settle()
+
+  assert.deepEqual(copies, [path], 'the copy action writes the recorded path')
+  assert.equal(
+    page.window.document.querySelector('.toast')?.textContent,
+    '已复制',
+    'the copy is confirmed in the page'
+  )
+
+  saveEvidence(EVIDENCE, 'file-name-copy.json', {
+    path,
+    label: '复制',
+    toast: '已复制'
+  })
+})
+
+test('U66-5-8 审计首屏失败显示加载失败并可重试恢复', async () => {
+  const page = loadWebConsolePage(url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+
+  page.fail('GET', '/v1/audit/events?*')
+  await page.clickNav('audit')
+
+  const failed = page.text('#content')
+  assert.match(failed, /加载失败/, 'a first-load failure must show the error state')
+  assert.match(failed, /模拟平台故障/, 'the platform error text must be visible')
+  const retry = page.window.document.querySelector<HTMLButtonElement>('#retryContent')
+  assert.ok(retry, 'the error state must offer a retry')
+  assert.equal(retry.textContent, '重试')
+
+  page.clearFails()
+  retry.click()
+  await page.settle()
+
+  assert.match(page.text('#content'), /审计日志/, 'retry must recover the audit page')
+  assert.match(page.text('#content'), /已显示 \d+ 条/, 'retry renders the real events')
+  assert.equal(
+    page.window.document.querySelector('#retryContent'),
+    null,
+    'the error state is replaced by the page'
+  )
+
+  saveEvidence(EVIDENCE, 'initial-load-retry.json', {
+    failedText: '加载失败',
+    errorText: '模拟平台故障',
+    retry: '重试',
+    recovered: true
+  })
+})
+
+test('U66-5-9 宿主/入口缺口非零渲染 .note.warn 横幅', async () => {
+  const page = await loginAdmin()
+  assert.equal(
+    page.window.document.querySelector('#auditGapWarning'),
+    null,
+    'no gap means no banner'
+  )
+
+  page.fail('GET', '/v1/audit/status', {
+    status: 200,
+    body: {
+      gaps: { hostsWithGap: 2, droppedTotal: 3, suppressedTotal: 4, rateLimitedTotal: 5 },
+      ingressGaps: { droppedTotal: 6, suppressedTotal: 7, rateLimitedTotal: 8 }
+    }
+  })
+  click(page, '#auditApply')
+  await page.settle()
+
+  const banner = page.window.document.querySelector<HTMLElement>('#auditGapWarning')
+  assert.ok(banner, 'a non-zero gap must render the banner')
+  assert.ok(banner.classList.contains('note'), 'the banner uses the note style')
+  assert.ok(banner.classList.contains('warn'), 'the banner uses the warn tone')
+  assert.match(
+    banner.textContent ?? '',
+    /审计缺口：2 台主机有缺口；宿主上报 dropped 3 \/ suppressed 4 \/ rateLimited 5；平台入口 dropped 6 \/ suppressed 7 \/ rateLimited 8。/,
+    'the banner reports both host and ingress counts'
+  )
+  assert.match(banner.textContent ?? '', /best-effort/, 'the banner keeps the best-effort caveat')
+
+  saveEvidence(EVIDENCE, 'gap-banner.json', {
+    className: banner.className,
+    text: banner.textContent
+  })
+})
+
 test('U66-5-5 非 admin 查询审计事件与缺口状态均为 403', async () => {
   const res = await fetch(`${url}/v1/auth/login`, {
     method: 'POST',
