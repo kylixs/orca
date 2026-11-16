@@ -6,7 +6,10 @@ import {
   clearWebSessionTabsTrackingForEnvironment,
   resetWebSessionTabsSnapshotFreshnessForTests
 } from './tracking-lifecycle'
-import { resolveHostSessionGroupIdForWebSessionGroup } from './tracking-mappings'
+import {
+  resolveHostSessionGroupIdForWebSessionGroup,
+  isKnownHostSessionGroupId
+} from './tracking-mappings'
 
 const ENVIRONMENT_ID = 'environment-1'
 const WORKTREE_ID = 'worktree-1'
@@ -82,19 +85,99 @@ describe('host session group id mapping', () => {
     expect(resolve('local-pending')).toBeNull()
   })
 
-  it('keeps the first recorded mapping when a later snapshot disagrees', () => {
+  it('does not map when two host groups share the same member set', () => {
     record(
       [localGroup('local-split', ['local-a'])],
-      [hostGroup('host-split-v1', ['host-a'])],
-      hostToLocal({ 'host-a': 'local-a' })
-    )
-    record(
-      [localGroup('local-split', ['local-a'])],
-      [hostGroup('host-renamed', ['host-a'])],
+      [hostGroup('host-split-a', ['host-a']), hostGroup('host-split-b', ['host-a'])],
       hostToLocal({ 'host-a': 'local-a' })
     )
 
-    expect(resolve('local-split')).toBe('host-split-v1')
+    // Ambiguous membership is not evidence; picking either group could land the move wrong.
+    expect(resolve('local-split')).toBeNull()
+  })
+
+  it('re-points a mapping whose host group disappeared to the replacement group', () => {
+    record(
+      [localGroup('local-split', ['local-a'])],
+      [hostGroup('host-source', ['host-a'])],
+      hostToLocal({ 'host-a': 'local-a' })
+    )
+    expect(resolve('local-split')).toBe('host-source')
+
+    // The host applied the split: the source group is deleted, the split group carries the tab.
+    record(
+      [localGroup('local-split', ['local-a'])],
+      [hostGroup('host-split-new', ['host-a']), hostGroup('host-other', ['host-b'])],
+      hostToLocal({ 'host-a': 'local-a', 'host-b': 'local-b' })
+    )
+
+    expect(resolve('local-split')).toBe('host-split-new')
+  })
+
+  it('drops a mapping whose host-backed members changed and re-matches', () => {
+    record(
+      [localGroup('local-split', ['local-a'])],
+      [hostGroup('host-old', ['host-a'])],
+      hostToLocal({ 'host-a': 'local-a', 'host-b': 'local-b' })
+    )
+    record(
+      [localGroup('local-split', ['local-a', 'local-b'])],
+      [hostGroup('host-old', ['host-a']), hostGroup('host-new', ['host-a', 'host-b'])],
+      hostToLocal({ 'host-a': 'local-a', 'host-b': 'local-b' })
+    )
+
+    expect(resolve('local-split')).toBe('host-new')
+  })
+
+  it('recycles mappings for local groups that disappeared', () => {
+    record(
+      [localGroup('local-split', ['local-a'])],
+      [hostGroup('host-split', ['host-a'])],
+      hostToLocal({ 'host-a': 'local-a', 'host-b': 'local-b' })
+    )
+    expect(resolve('local-split')).toBe('host-split')
+
+    record(
+      [localGroup('local-other', ['local-b'])],
+      [hostGroup('host-split', ['host-a']), hostGroup('host-other', ['host-b'])],
+      hostToLocal({ 'host-a': 'local-a', 'host-b': 'local-b' })
+    )
+
+    expect(resolve('local-split')).toBeNull()
+    expect(resolve('local-other')).toBe('host-other')
+  })
+
+  it('exposes the last frame’s host group ids and forgets them at teardown', () => {
+    record(
+      [localGroup('local-split', ['local-a'])],
+      [hostGroup('host-split', ['host-a'])],
+      hostToLocal({ 'host-a': 'local-a' })
+    )
+
+    expect(
+      isKnownHostSessionGroupId({
+        environmentId: ENVIRONMENT_ID,
+        worktreeId: WORKTREE_ID,
+        groupId: 'host-split'
+      })
+    ).toBe(true)
+    expect(
+      isKnownHostSessionGroupId({
+        environmentId: ENVIRONMENT_ID,
+        worktreeId: WORKTREE_ID,
+        groupId: 'local-split'
+      })
+    ).toBe(false)
+
+    clearWebSessionTabsTrackingForEnvironment(ENVIRONMENT_ID)
+
+    expect(
+      isKnownHostSessionGroupId({
+        environmentId: ENVIRONMENT_ID,
+        worktreeId: WORKTREE_ID,
+        groupId: 'host-split'
+      })
+    ).toBe(false)
   })
 
   it('drops mappings when the environment tracking is torn down', () => {

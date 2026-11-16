@@ -45,8 +45,11 @@ export async function moveWebRuntimeSessionTab(
   }
 
   try {
-    const { resolveHostSessionGroupIdForWebSessionGroup, resolveHostSessionTabIdForWebSessionTab } =
-      await import('./web-session-tabs-sync')
+    const {
+      isKnownHostSessionGroupId,
+      resolveHostSessionGroupIdForWebSessionGroup,
+      resolveHostSessionTabIdForWebSessionTab
+    } = await import('./web-session-tabs-sync')
     const state = useAppStore.getState()
     const resolveHostBackedTabId = (tabId: string): string | null =>
       resolveHostSessionTabIdForWebSessionTab(state, {
@@ -81,18 +84,29 @@ export async function moveWebRuntimeSessionTab(
         : args.kind === 'move-to-group'
           ? args.index
           : undefined
-    // Why: a client-owned split mints a local group id the host never saw; sending it
-    // verbatim only earns a host refusal, so a mirrored move must name the host group.
+    // Why: a client-owned split mints a local group id the host never saw; only a recorded
+    // mapping (or a target that is already a host group id) can name a group the host applies.
+    // Reorder takes the same path — a reorder inside a client-owned split used to ship the
+    // local UUID and fail every time.
+    const mappedHostGroupId = resolveHostSessionGroupIdForWebSessionGroup({
+      environmentId,
+      worktreeId: args.worktreeId,
+      groupId: args.targetGroupId
+    })
     const hostTargetGroupId =
-      args.kind === 'reorder'
+      mappedHostGroupId ??
+      (isKnownHostSessionGroupId({
+        environmentId,
+        worktreeId: args.worktreeId,
+        groupId: args.targetGroupId
+      })
         ? args.targetGroupId
-        : (resolveHostSessionGroupIdForWebSessionGroup({
-            environmentId,
-            worktreeId: args.worktreeId,
-            groupId: args.targetGroupId
-          }) ?? (args.kind === 'split' ? args.targetGroupId : null))
+        : null)
     if (hostTargetGroupId === null) {
       // Why: no verified counterpart means the drop cannot land; mirror reports the refusal.
+      if (args.kind === 'reorder') {
+        clearWebSessionReorderIntent(intentOwner, args.worktreeId, args.targetGroupId)
+      }
       return false
     }
     const base = {

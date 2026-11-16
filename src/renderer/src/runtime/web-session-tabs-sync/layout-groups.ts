@@ -9,10 +9,13 @@ import type {
 } from './state'
 import { toWebTerminalSurfaceTabId } from '../web-runtime-session'
 import {
+  clearHostSessionGroupIdMapping,
   clearHostSessionTabIdMappings,
+  hostSessionGroupMappingsForWorktree,
   resolveHostSessionGroupIdForWebSessionGroup,
   setHostSessionGroupIdMapping,
-  setHostSessionTabIdMapping
+  setHostSessionTabIdMapping,
+  setKnownHostSessionGroupIds
 } from './tracking-mappings'
 import { isWebSessionBrowserPlacementGroupReserved } from '../web-session-browser-placement'
 import { resolveWebSessionReorderedOrder } from '../web-session-reorder-intent'
@@ -84,7 +87,8 @@ export function updateHostSessionTabIdMappings(args: {
 }
 
 // Why: match a client-owned group to the host group it became by host-backed membership,
-// so a later mirrored move targets a group the host can actually apply.
+// so a later mirrored move targets a group the host can actually apply. Mappings are
+// re-validated every frame: a group the host deleted or reshaped must not stay pinned.
 export function updateHostSessionGroupIdMappings(args: {
   environmentId: string
   worktreeId: string
@@ -92,11 +96,55 @@ export function updateHostSessionGroupIdMappings(args: {
   hostGroups: readonly RuntimeMobileSessionTabGroup[] | undefined
   hostToLocalTabId: ReadonlyMap<string, string>
 }): void {
+  const scope = { environmentId: args.environmentId, worktreeId: args.worktreeId }
+  if (args.hostGroups) {
+    setKnownHostSessionGroupIds(
+      scope,
+      args.hostGroups.map((group) => group.id)
+    )
+  }
+  const memberSetKey = (tabIds: Iterable<string>): string =>
+    [...new Set(tabIds)].sort().join('\u0000')
+  const hostBackedLocalTabIds = new Set(args.hostToLocalTabId.values())
+  const localMemberSet = (tabIds: readonly string[]): Set<string> =>
+    new Set(tabIds.filter((tabId) => hostBackedLocalTabIds.has(tabId)))
+  const hostGroupById = args.hostGroups
+    ? new Map(args.hostGroups.map((group) => [group.id, group]))
+    : null
+  const localGroupsById = new Map(args.localGroups.map((group) => [group.id, group]))
+
+  for (const [localGroupId, hostGroupId] of hostSessionGroupMappingsForWorktree(
+    args.environmentId,
+    args.worktreeId
+  )) {
+    const localGroup = localGroupsById.get(localGroupId)
+    if (!localGroup) {
+      // Why: the local group is gone (split closed, last tab moved); the mapping is garbage.
+      clearHostSessionGroupIdMapping({ ...scope, groupId: localGroupId })
+      continue
+    }
+    if (!hostGroupById) {
+      continue
+    }
+    const hostGroup = hostGroupById.get(hostGroupId)
+    const hostMembers = hostGroup
+      ? localMemberSet(
+          hostGroup.tabOrder
+            .map((tabId) => args.hostToLocalTabId.get(tabId))
+            .filter((tabId): tabId is string => tabId !== undefined)
+        )
+      : null
+    if (
+      !hostMembers ||
+      memberSetKey(hostMembers) !== memberSetKey(localMemberSet(localGroup.tabOrder))
+    ) {
+      clearHostSessionGroupIdMapping({ ...scope, groupId: localGroupId })
+    }
+  }
+
   if (!args.hostGroups || args.hostGroups.length === 0) {
     return
   }
-  const memberSetKey = (tabIds: readonly string[]): string =>
-    [...new Set(tabIds)].sort().join('\u0000')
   const hostGroupIdsByMemberSet = new Map<string, string[]>()
   for (const hostGroup of args.hostGroups) {
     const localTabIds = hostGroup.tabOrder
@@ -108,30 +156,19 @@ export function updateHostSessionGroupIdMappings(args: {
     const key = memberSetKey(localTabIds)
     hostGroupIdsByMemberSet.set(key, [...(hostGroupIdsByMemberSet.get(key) ?? []), hostGroup.id])
   }
-  const hostBackedLocalTabIds = new Set(args.hostToLocalTabId.values())
   for (const localGroup of args.localGroups) {
-    if (
-      resolveHostSessionGroupIdForWebSessionGroup({
-        environmentId: args.environmentId,
-        worktreeId: args.worktreeId,
-        groupId: localGroup.id
-      })
-    ) {
+    if (resolveHostSessionGroupIdForWebSessionGroup({ ...scope, groupId: localGroup.id })) {
       continue
     }
-    const hostBackedMembers = localGroup.tabOrder.filter((tabId) =>
-      hostBackedLocalTabIds.has(tabId)
-    )
+    const hostBackedMembers = localMemberSet(localGroup.tabOrder)
     // Why: local-only tabs have no host row, so only the host-backed subset can identify the group.
-    if (hostBackedMembers.length === 0) {
+    if (hostBackedMembers.size === 0) {
       continue
     }
     const matches = hostGroupIdsByMemberSet.get(memberSetKey(hostBackedMembers))
+    // Why: two host groups with the same members are ambiguous; guessing could target the wrong one.
     if (matches?.length === 1) {
-      setHostSessionGroupIdMapping(
-        { environmentId: args.environmentId, worktreeId: args.worktreeId, groupId: localGroup.id },
-        matches[0]
-      )
+      setHostSessionGroupIdMapping({ ...scope, groupId: localGroup.id }, matches[0])
     }
   }
 }

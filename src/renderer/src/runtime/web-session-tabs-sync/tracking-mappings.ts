@@ -16,6 +16,9 @@ function hostSessionTabMappingKey(args: {
 // Why: a client-owned split mints a local group id the host never saw, so a mirrored
 // move must resolve it back to the host group it actually became.
 const hostSessionGroupIdByLocalKey = new Map<string, string>()
+// Why: the last applied frame's host group ids let a drop onto a host-owned group skip the
+// local-UUID guess even before any member-set mapping exists.
+const hostSessionGroupIdsByEnvironmentAndWorktree = new Map<string, Map<string, Set<string>>>()
 
 function hostSessionGroupMappingKey(args: {
   environmentId: string
@@ -29,12 +32,9 @@ export function setHostSessionGroupIdMapping(
   args: { environmentId: string; worktreeId: string; groupId: string },
   hostGroupId: string
 ): void {
-  const mappingKey = hostSessionGroupMappingKey(args)
-  // Why: the first exact member-set match is the stable identity; a later frame must not
-  // re-point an established local group at a different host group.
-  if (!hostSessionGroupIdByLocalKey.has(mappingKey)) {
-    hostSessionGroupIdByLocalKey.set(mappingKey, hostGroupId)
-  }
+  // Why: callers clear a stale entry before re-matching, so an existing entry here was
+  // re-validated against the current frame.
+  hostSessionGroupIdByLocalKey.set(hostSessionGroupMappingKey(args), hostGroupId)
 }
 
 export function resolveHostSessionGroupIdForWebSessionGroup(args: {
@@ -45,12 +45,63 @@ export function resolveHostSessionGroupIdForWebSessionGroup(args: {
   return hostSessionGroupIdByLocalKey.get(hostSessionGroupMappingKey(args)) ?? null
 }
 
+/** Local group id → host group id entries recorded for one worktree. */
+export function hostSessionGroupMappingsForWorktree(
+  environmentId: string,
+  worktreeId: string
+): Map<string, string> {
+  const prefix = hostSessionGroupMappingKey({ environmentId, worktreeId, groupId: '' })
+  const entries = new Map<string, string>()
+  for (const [key, hostGroupId] of hostSessionGroupIdByLocalKey) {
+    if (key.startsWith(prefix)) {
+      entries.set(key.slice(prefix.length), hostGroupId)
+    }
+  }
+  return entries
+}
+
+export function clearHostSessionGroupIdMapping(args: {
+  environmentId: string
+  worktreeId: string
+  groupId: string
+}): void {
+  hostSessionGroupIdByLocalKey.delete(hostSessionGroupMappingKey(args))
+}
+
+export function setKnownHostSessionGroupIds(
+  args: { environmentId: string; worktreeId: string },
+  hostGroupIds: readonly string[]
+): void {
+  const byWorktree =
+    hostSessionGroupIdsByEnvironmentAndWorktree.get(args.environmentId) ?? new Map()
+  byWorktree.set(args.worktreeId, new Set(hostGroupIds))
+  hostSessionGroupIdsByEnvironmentAndWorktree.set(args.environmentId, byWorktree)
+}
+
+export function isKnownHostSessionGroupId(args: {
+  environmentId: string
+  worktreeId: string
+  groupId: string
+}): boolean {
+  return (
+    hostSessionGroupIdsByEnvironmentAndWorktree
+      .get(args.environmentId)
+      ?.get(args.worktreeId)
+      ?.has(args.groupId) ?? false
+  )
+}
+
 export function clearHostSessionGroupIdMappings(environmentId: string, worktreeId: string): void {
   const prefix = hostSessionGroupMappingKey({ environmentId, worktreeId, groupId: '' })
   for (const key of hostSessionGroupIdByLocalKey.keys()) {
     if (key.startsWith(prefix)) {
       hostSessionGroupIdByLocalKey.delete(key)
     }
+  }
+  const byWorktree = hostSessionGroupIdsByEnvironmentAndWorktree.get(environmentId)
+  byWorktree?.delete(worktreeId)
+  if (byWorktree?.size === 0) {
+    hostSessionGroupIdsByEnvironmentAndWorktree.delete(environmentId)
   }
 }
 
@@ -61,10 +112,12 @@ export function clearHostSessionGroupIdMappingsForEnvironment(environmentId: str
       hostSessionGroupIdByLocalKey.delete(key)
     }
   }
+  hostSessionGroupIdsByEnvironmentAndWorktree.delete(environmentId)
 }
 
 export function resetHostSessionGroupIdMappingsForTests(): void {
   hostSessionGroupIdByLocalKey.clear()
+  hostSessionGroupIdsByEnvironmentAndWorktree.clear()
 }
 
 export function clearHostSessionTabIdMappings(environmentId: string, worktreeId: string): void {

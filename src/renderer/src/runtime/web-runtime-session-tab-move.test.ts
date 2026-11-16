@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   acceptReplayedWebSessionTabsSnapshot: vi.fn(),
   resolveHostSessionTabIdForWebSessionTab: vi.fn(),
   resolveHostSessionGroupIdForWebSessionGroup: vi.fn(),
+  isKnownHostSessionGroupId: vi.fn(),
   trackTerminalPaneSplit: vi.fn(),
   deliverLaunchPromptToAgentTab: vi.fn(),
   seedNativeChatLaunchDraftForAgentTab: vi.fn(),
@@ -46,7 +47,8 @@ vi.mock('./web-session-tabs-sync', () => ({
     return () => {}
   },
   resolveHostSessionTabIdForWebSessionTab: mocks.resolveHostSessionTabIdForWebSessionTab,
-  resolveHostSessionGroupIdForWebSessionGroup: mocks.resolveHostSessionGroupIdForWebSessionGroup
+  resolveHostSessionGroupIdForWebSessionGroup: mocks.resolveHostSessionGroupIdForWebSessionGroup,
+  isKnownHostSessionGroupId: mocks.isKnownHostSessionGroupId
 }))
 
 vi.mock('@/lib/feature-education-telemetry', () => ({
@@ -79,6 +81,7 @@ describe('moveWebRuntimeSessionTab', () => {
     })
     mocks.applyWebSessionTabsSnapshot.mockReturnValue({ state: 'after' })
     mocks.resolveHostSessionGroupIdForWebSessionGroup.mockReturnValue(null)
+    mocks.isKnownHostSessionGroupId.mockReturnValue(false)
   })
 
   afterEach(() => {
@@ -88,6 +91,8 @@ describe('moveWebRuntimeSessionTab', () => {
   })
 
   it('moves paired web tabs through the host session API without an eager stale refresh', async () => {
+    // Why: the target is a host group id from the last frame, so no mapping is needed.
+    mocks.isKnownHostSessionGroupId.mockReturnValue(true)
     const runtimeCall = vi.fn().mockResolvedValueOnce({
       id: 'move',
       ok: true,
@@ -129,6 +134,8 @@ describe('moveWebRuntimeSessionTab', () => {
   })
 
   it('maps mirrored local browser unified ids back to host session tab ids', async () => {
+    // Why: a host group id needs no local mapping to be a valid reorder target.
+    mocks.isKnownHostSessionGroupId.mockReturnValue(true)
     mocks.resolveHostSessionTabIdForWebSessionTab.mockImplementation(
       (_state, args: { tabId: string }) =>
         args.tabId === 'local-browser-unified'
@@ -334,6 +341,107 @@ describe('moveWebRuntimeSessionTab', () => {
         targetGroupId: 'group-right',
         kind: 'reorder',
         tabOrder: ['local-only-unified', 'local-terminal-unified']
+      })
+    ).resolves.toBe(false)
+
+    expect(runtimeCall).not.toHaveBeenCalled()
+  })
+
+  it('resolves a client-owned split group id for a reorder instead of shipping the local UUID', async () => {
+    mocks.resolveHostSessionTabIdForWebSessionTab.mockImplementation(
+      (_state, args: { tabId: string }) =>
+        args.tabId === 'local-terminal-unified' ? 'host-terminal' : null
+    )
+    mocks.resolveHostSessionGroupIdForWebSessionGroup.mockImplementation(
+      (args: { groupId: string }) =>
+        args.groupId === 'local-split-group' ? 'host-split-group' : null
+    )
+    const runtimeCall = vi.fn().mockResolvedValueOnce({
+      id: 'move',
+      ok: true,
+      result: { moved: true }
+    })
+
+    vi.stubGlobal('window', {
+      api: {
+        runtimeEnvironments: {
+          call: runtimeCall
+        }
+      }
+    })
+
+    await expect(
+      moveWebRuntimeSessionTab({
+        worktreeId: WORKTREE_ID,
+        tabId: 'local-terminal-unified',
+        targetGroupId: 'local-split-group',
+        kind: 'reorder',
+        tabOrder: ['local-terminal-unified']
+      })
+    ).resolves.toBe(true)
+
+    expect(runtimeCall).toHaveBeenCalledWith({
+      selector: ENVIRONMENT_ID,
+      method: 'session.tabs.move',
+      params: {
+        worktree: `id:${WORKTREE_ID}`,
+        tabId: 'host-terminal',
+        targetGroupId: 'host-split-group',
+        kind: 'reorder',
+        tabOrder: ['host-terminal']
+      },
+      timeoutMs: 15_000
+    })
+  })
+
+  it('refuses a reorder whose target group is neither mapped nor a known host group', async () => {
+    mocks.resolveHostSessionTabIdForWebSessionTab.mockReturnValue('host-terminal')
+    mocks.resolveHostSessionGroupIdForWebSessionGroup.mockReturnValue(null)
+    mocks.isKnownHostSessionGroupId.mockReturnValue(false)
+    const runtimeCall = vi.fn()
+
+    vi.stubGlobal('window', {
+      api: {
+        runtimeEnvironments: {
+          call: runtimeCall
+        }
+      }
+    })
+
+    await expect(
+      moveWebRuntimeSessionTab({
+        worktreeId: WORKTREE_ID,
+        tabId: 'local-terminal-unified',
+        targetGroupId: 'local-split-group',
+        kind: 'reorder',
+        tabOrder: ['local-terminal-unified']
+      })
+    ).resolves.toBe(false)
+
+    // Why: the local UUID cannot match any host group, so the round-trip is guaranteed to fail.
+    expect(runtimeCall).not.toHaveBeenCalled()
+  })
+
+  it('refuses a split whose local target group has no host counterpart', async () => {
+    mocks.resolveHostSessionGroupIdForWebSessionGroup.mockReturnValue(null)
+    mocks.isKnownHostSessionGroupId.mockReturnValue(false)
+    const runtimeCall = vi.fn()
+
+    vi.stubGlobal('window', {
+      api: {
+        runtimeEnvironments: {
+          call: runtimeCall
+        }
+      }
+    })
+
+    await expect(
+      moveWebRuntimeSessionTab({
+        worktreeId: WORKTREE_ID,
+        tabId: 'web-terminal-host-tab-1%3A%3Aleaf-1',
+        targetGroupId: 'local-split-group',
+        kind: 'split',
+        splitDirection: 'right'
       })
     ).resolves.toBe(false)
 

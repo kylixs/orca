@@ -23,6 +23,7 @@ export {
   _getWebSessionTabsTrackingCountsForTest
 } from './web-session-tabs-sync/tracking-lifecycle'
 export {
+  isKnownHostSessionGroupId,
   resolveHostSessionGroupIdForWebSessionGroup,
   resolveHostSessionTabIdForWebSessionTab
 } from './web-session-tabs-sync/tracking-mappings'

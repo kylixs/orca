@@ -222,17 +222,15 @@ export function prepareWebSessionTabsSnapshotGroups(
     )
   })()
 
-  if (nextGroups) {
-    // Why: only a member-set match is evidence that a client-owned group is a host group's
-    // counterpart; the mapping is what lets a later mirrored move name a group the host knows.
-    updateHostSessionGroupIdMappings({
-      environmentId,
-      worktreeId,
-      localGroups: nextGroups,
-      hostGroups: snapshot.tabGroups,
-      hostToLocalTabId
-    })
-  }
+  // Why: re-validate on every applied frame, even one without host groups, so a vanished
+  // local group or a split-deleted host group cannot pin a stale mapping.
+  updateHostSessionGroupIdMappings({
+    environmentId,
+    worktreeId,
+    localGroups: nextGroups ?? [],
+    hostGroups: snapshot.tabGroups,
+    hostToLocalTabId
+  })
 
   const nextTabBarOrder = (() => {
     const current = state.tabBarOrderByWorktree[worktreeId] ?? []
