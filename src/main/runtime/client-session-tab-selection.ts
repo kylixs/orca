@@ -86,15 +86,23 @@ export function projectClientSessionTabSelection(
       snapshot,
       selectedGroup ? selection.activeTabIdByGroupId[selectedGroup.id] : null
     ) ??
+    // Why U138: a reloading device with no surviving selection must resume the durable host
+    // active, not the topology-first tab, or an explicit activation is lost on every refresh.
+    snapshot.tabs.find((tab) => tab.id === snapshot.activeTabId) ??
     findTabByTopLevelId(snapshot, selectedGroup?.tabOrder[0]) ??
     snapshot.tabs[0] ??
     null
   const activeTopLevelTabId = activeTab ? topLevelTabId(activeTab) : null
   const activeTabIdByGroupId: Record<string, string> = {}
   const tabGroups = snapshot.tabGroups?.map((group) => {
-    const selected = selection.activeTabIdByGroupId[group.id]
+    const inGroup = (candidate: string | null | undefined) =>
+      candidate && group.tabOrder.includes(candidate) ? candidate : null
     const activeTabId =
-      (selected && group.tabOrder.includes(selected) ? selected : null) ?? group.tabOrder[0] ?? null
+      inGroup(selection.activeTabIdByGroupId[group.id]) ??
+      inGroup(activeTopLevelTabId) ??
+      inGroup(group.activeTabId) ??
+      group.tabOrder[0] ??
+      null
     if (activeTabId) {
       activeTabIdByGroupId[group.id] = activeTabId
     }
@@ -193,7 +201,8 @@ export class ClientSessionTabSelectionStore {
     const statesByWorktree = this.getStatesByWorktree(clientNavigationId)
     const existingState = statesByWorktree.get(snapshot.worktree)
     const state = existingState ?? {
-      // Why: host focus is private navigation; a new paired device starts from deterministic topology instead of inheriting it.
+      // Why: a device without a recorded selection resumes the host snapshot's active tab (the
+      // durable activation), falling back to topology inside projectClientSessionTabSelection.
       selection: emptyClientSessionTabSelection(),
       revision: 0,
       shouldPersist: false,

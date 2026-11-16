@@ -234,4 +234,68 @@ export class OrcaRuntimeWithApplyMobileSessionTabNavigation extends OrcaRuntimeW
       terminalLayoutsByTabId: nextLayouts
     })
   }
+
+  /**
+   * Why: a paired web client's tap is durable intent even when a renderer window owns the live
+   * publication. Without this the reload/rebuild path restores the renderer or create-time write
+   * and drops the tap (U138). Desktop callers skip this while the host window republishes focus.
+   */
+  protected persistPairedClientMobileSessionTabActivation(
+    worktreeId: string,
+    snapshot: RuntimeMobileSessionTabsSnapshot,
+    tab: RuntimeMobileSessionTerminalTab
+  ): void {
+    const session = this.getWorkspaceSessionForWorktree(worktreeId)
+    if (!session || !this.store?.setWorkspaceSession) {
+      return
+    }
+    const activeGroupId = snapshot.tabGroups?.find((group) =>
+      group.tabOrder.includes(tab.parentTabId)
+    )?.id
+    const persistedGroups = session.tabGroups?.[worktreeId]
+    const persistedGroupActive = persistedGroups?.find(
+      (group) => group.id === activeGroupId
+    )?.activeTabId
+    if (
+      session.activeTabIdByWorktree?.[worktreeId] === tab.parentTabId &&
+      session.activeTabId === tab.parentTabId &&
+      (!activeGroupId || persistedGroupActive === tab.parentTabId)
+    ) {
+      return
+    }
+    const nextGroups =
+      persistedGroups && activeGroupId
+        ? persistedGroups.map((group) =>
+            group.id === activeGroupId ? { ...group, activeTabId: tab.parentTabId } : group
+          )
+        : persistedGroups
+    const existingLayout = session.terminalLayoutsByTabId?.[tab.parentTabId]
+    const nextLayouts = existingLayout
+      ? {
+          ...session.terminalLayoutsByTabId,
+          [tab.parentTabId]: {
+            ...cloneTerminalLayoutSnapshot(existingLayout),
+            activeLeafId: tab.leafId
+          }
+        }
+      : session.terminalLayoutsByTabId
+    this.setWorkspaceSessionForWorktree(worktreeId, {
+      ...session,
+      activeTabId: tab.parentTabId,
+      activeTabIdByWorktree: {
+        ...session.activeTabIdByWorktree,
+        [worktreeId]: tab.parentTabId
+      },
+      ...(activeGroupId
+        ? {
+            activeGroupIdByWorktree: {
+              ...session.activeGroupIdByWorktree,
+              [worktreeId]: activeGroupId
+            }
+          }
+        : {}),
+      ...(nextGroups ? { tabGroups: { ...session.tabGroups, [worktreeId]: nextGroups } } : {}),
+      ...(nextLayouts ? { terminalLayoutsByTabId: nextLayouts } : {})
+    })
+  }
 }

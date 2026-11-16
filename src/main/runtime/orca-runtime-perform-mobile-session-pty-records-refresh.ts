@@ -248,6 +248,12 @@ export class OrcaRuntimeWithPerformMobileSessionPtyRecordsRefresh extends OrcaRu
       } else if (targetsHost) {
         this.notifier?.focusTerminal?.(targetTab.parentTabId, worktreeId, targetTab.leafId)
       }
+      // Why: a paired web/remote tap is explicit intent, so it must survive reload even when a
+      // renderer window owns the live publication and cannot persist it (U138). The desktop path
+      // (host window republishing focus) is skipped to avoid a conflicting second write.
+      if (opts.clientNavigationId && !(targetsHost && this.notifier?.focusTerminal)) {
+        this.persistPairedClientMobileSessionTabActivation(worktreeId, snapshot!, targetTab)
+      }
       return this.applyMobileSessionTabNavigation(
         this.getMobileSessionTabsForWorktree(worktreeId),
         targetTab.id,

@@ -130,15 +130,35 @@ describe('client session-tab selection', () => {
     expect(store.project(initial, 'device-a').activeTabId).toBe('terminal-a::leaf-a')
   })
 
-  it('does not expose host focus when initializing a new paired device', () => {
+  it('resumes the host snapshot active for a paired device with no recorded selection', () => {
     const store = new ClientSessionTabSelectionStore()
     const hostFocusedBrowser = snapshot('browser-unified')
 
     const projected = store.project(hostFocusedBrowser, 'new-device')
 
-    expect(projected.activeTabId).toBe('terminal-a::leaf-a')
-    expect(projected.activeGroupId).toBe('group-left')
-    expect(projected.tabs.find((tab) => tab.isActive)?.id).toBe('terminal-a::leaf-a')
+    // Why U138: a reloaded device without a matching entry must resume the durable active tab,
+    // not the topology-first tab, or the host's explicit activation is lost on every refresh.
+    expect(projected.activeTabId).toBe('browser-unified')
+    expect(projected.activeGroupId).toBe('group-right')
+    expect(projected.tabs.find((tab) => tab.isActive)?.id).toBe('browser-unified')
+  })
+
+  it('falls back to the host snapshot active when a persisted selection tab no longer exists', () => {
+    const store = new ClientSessionTabSelectionStore()
+    store.hydrate({
+      'device-a': {
+        'wt-1': {
+          activeTabId: 'terminal-gone::leaf',
+          activeGroupId: 'group-left',
+          activeTabIdByGroupId: { 'group-left': 'terminal-gone' }
+        }
+      }
+    })
+
+    const projected = store.project(snapshot('terminal-a::leaf-b'), 'device-a')
+
+    expect(projected.activeTabId).toBe('terminal-a::leaf-b')
+    expect(projected.tabGroups?.[0]?.activeTabId).toBe('terminal-a')
   })
 
   it('persists activations and restores them across a store rebuild (host restart)', () => {

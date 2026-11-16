@@ -8,7 +8,7 @@
  * (tab-b). `session.tabs.activate` reaches this path as `activateMobileSessionTab` → the
  * headless activation branch; the methods below are that branch's two steps.
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type {
   RuntimeMobileSessionTabsSnapshot,
   RuntimeMobileSessionTerminalTab
@@ -124,6 +124,66 @@ function staleCreateTimeSession(): WorkspaceSessionState {
   })
 }
 
+/** Three tabs so the activated tab is neither the topology-first nor the last-created one. */
+function reloadSession(): WorkspaceSessionState {
+  return makeSession({
+    activeTabId: 'tab-c',
+    activeTabIdByWorktree: { [WT]: 'tab-c' },
+    tabsByWorktree: {
+      [WT]: [makeTerminalTab('tab-a', 0), makeTerminalTab('tab-b', 1), makeTerminalTab('tab-c', 2)]
+    },
+    tabGroups: {
+      [WT]: [
+        {
+          id: 'group-1',
+          worktreeId: WT,
+          activeTabId: 'tab-c',
+          tabOrder: ['tab-a', 'tab-b', 'tab-c']
+        }
+      ]
+    }
+  })
+}
+
+/** Publishes the graph a renderer window owns, with `tab-c` (last created) active. */
+function publishRendererGraph(runtime: OrcaRuntimeService): void {
+  const rendererTab = (id: string, leafId: string, isActive: boolean) => ({
+    type: 'terminal' as const,
+    id,
+    parentTabId: id,
+    leafId,
+    ptyId: `pty-${id}`,
+    title: id,
+    isActive,
+    status: 'ready' as const
+  })
+  runtime.attachWindow(1)
+  runtime.markGraphReady(1)
+  runtime.syncWindowGraph(1, {
+    tabs: [],
+    leaves: [],
+    mobileSessionTabs: [
+      {
+        worktree: WT,
+        publicationEpoch: 'renderer:host',
+        snapshotVersion: 1,
+        activeGroupId: 'group-1',
+        activeTabId: 'tab-c',
+        activeTabType: 'terminal',
+        tabGroups: [{ id: 'group-1', activeTabId: 'tab-c', tabOrder: ['tab-a', 'tab-b', 'tab-c'] }],
+        tabs: [
+          rendererTab('tab-a', 'pane-a', false),
+          rendererTab('tab-b', 'pane-b', false),
+          rendererTab('tab-c', 'pane-c', true)
+        ]
+      }
+    ]
+  })
+  for (const id of ['tab-a', 'tab-b', 'tab-c']) {
+    runtime.registerPty(`pty-${id}`, WT)
+  }
+}
+
 describe('mobile session active tab persistence authority (U138)', () => {
   it('persists an explicit activation even when a renderer graph never republishes focus', async () => {
     const { runtime } = createRuntime(staleCreateTimeSession())
@@ -167,8 +227,9 @@ describe('mobile session active tab persistence authority (U138)', () => {
     const { runtime: restarted } = createRuntime(getSession())
     publishHeadlessRuntimeGraph(restarted)
     const restored = await restarted.listMobileSessionTabs(`id:${WT}`)
-    const restoredSnapshot = (restarted as unknown as RuntimeActivationInternals)
-      .mobileSessionTabsByWorktree.get(WT)
+    const restoredSnapshot = (
+      restarted as unknown as RuntimeActivationInternals
+    ).mobileSessionTabsByWorktree.get(WT)
 
     expect(
       restoredSnapshot?.tabs.find(
@@ -178,4 +239,66 @@ describe('mobile session active tab persistence authority (U138)', () => {
     expect(restored.tabGroups?.[0]?.activeTabId).toBe('tab-a')
     expect(String(restored.activeTabId)).toMatch(/^tab-a::/)
   })
+
+  it('persists a paired web client activation even when a renderer publishes the graph', async () => {
+    const { runtime, getSession } = createRuntime(reloadSession())
+    publishRendererGraph(runtime)
+    expect((await runtime.listMobileSessionTabs(`id:${WT}`)).publicationEpoch).toMatch(/^renderer:/)
+
+    await runtime.activateMobileSessionTab(`id:${WT}`, 'tab-b', undefined, {
+      notifyClients: false,
+      clientNavigationId: 'device-web',
+      navigation: 'caller'
+    })
+
+    // The paired client's explicit tap is durable even though the renderer epoch cannot persist it.
+    expect(getSession().activeTabIdByWorktree?.[WT]).toBe('tab-b')
+    expect(getSession().tabGroups?.[WT]?.[0]?.activeTabId).toBe('tab-b')
+    // The renderer keeps ownership of the live snapshot: no headless reclassification or republish.
+    expect((await runtime.listMobileSessionTabs(`id:${WT}`)).publicationEpoch).toMatch(/^renderer:/)
+  })
+
+  it('leaves workspace-session focus to the desktop window when the host handles the activation', async () => {
+    const session = reloadSession()
+    const { runtime, getSession } = createRuntime(session)
+    publishRendererGraph(runtime)
+    const focusTerminal = vi.fn()
+    runtime.setNotifier({ focusTerminal } as never)
+
+    await runtime.activateMobileSessionTab(`id:${WT}`, 'tab-b')
+
+    expect(focusTerminal).toHaveBeenCalledWith('tab-b', WT, 'pane-b')
+    // The renderer republishes the host focus itself; the runtime must not double-write.
+    expect(getSession()).toBe(session)
+  })
+
+  it('restores the paired activation after reload instead of the last-created or first tab', async () => {
+    const { runtime, getSession } = createRuntime(reloadSession())
+    publishRendererGraph(runtime)
+    await runtime.activateMobileSessionTab(`id:${WT}`, 'tab-b', undefined, {
+      notifyClients: false,
+      clientNavigationId: 'device-web',
+      navigation: 'caller'
+    })
+
+    // Reload: a fresh runtime over the same durable session, no renderer attached.
+    const { runtime: reloaded } = createRuntime(getSession())
+    publishHeadlessRuntimeGraph(reloaded)
+
+    const sameDevice = await reloaded.listMobileSessionTabs(`id:${WT}`, 'device-web')
+    expect(String(sameDevice.activeTabId)).toMatch(/^tab-b::/)
+    expect(tabParent(sameDevice)).toBe('tab-b')
+    // A device with no recorded selection resumes the host snapshot active, not topology-first `tab-a`.
+    const noSelection = await reloaded.listMobileSessionTabs(`id:${WT}`, 'device-other')
+    expect(String(noSelection.activeTabId)).toMatch(/^tab-b::/)
+    expect(noSelection.tabGroups?.[0]?.activeTabId).toBe('tab-b')
+  })
 })
+
+function tabParent(snapshot: {
+  activeTabId: string | null
+  tabs: { id: string; parentTabId?: string }[]
+}) {
+  const active = snapshot.tabs.find((tab) => tab.id === snapshot.activeTabId)
+  return active?.parentTabId ?? active?.id ?? null
+}
