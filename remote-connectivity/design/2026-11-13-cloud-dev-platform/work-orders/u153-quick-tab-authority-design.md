@@ -37,6 +37,12 @@
 | P2 | **实现 T1+T2**（同批）。 | P1 钉转正；创建后宿主选择=新 tab（真栈验证）；被动 mount 不产生持久 activate（负控）。 |
 | P3 | **关闭回退对齐**（T5）与真栈复验：quick 场景双采样转绿；race 保持 0 红。 | 硬化探针 quick 0 红；reload/reopen 不回归。 |
 
+## 4.1 实施修订（2026-11-17 03:0x，U156 诊断）
+
+- 首个实现（U153 P2/U154/U155）在**镜像换名竞态**下失效：mark 键为裸 uuid，镜像把 tab 改名 `web-terminal-<uuid>` 并销毁持有 `terminal.create` 的 transport；回包晚于换名即走 `destroyed/epoch` 提前返回，只 discard 不 select（实测 1/5）。
+- 修法（U156）：提前返回分支中「成功创建且本次 connect 持有手势」先 `selectUserCreatedHostTab` 再 return；不改键/不改 wire。影响面=所有云会话手势自建 tab 路径。
+- 手动重连语义（U157）：首败后用户 Reconnect 应**重新武装一次**手势（不是被动恢复）；补 transport 级重放钉与 discard 负控。
+
 ## 5. 风险
 
 - T2 会扩大宿主权威面：须确认恢复修复（authority repair）与 reentry 不产生循环写；门禁覆盖 C1（无手势不改写）。
