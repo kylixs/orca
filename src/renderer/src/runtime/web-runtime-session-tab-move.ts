@@ -110,8 +110,14 @@ export async function moveWebRuntimeSessionTab(
       params: move,
       timeoutMs: 15_000
     })
-    unwrapRuntimeRpcResult(response as RuntimeRpcResponse<RuntimeMobileSessionTabMoveResult>)
-    return true
+    const result = unwrapRuntimeRpcResult(
+      response as RuntimeRpcResponse<RuntimeMobileSessionTabMoveResult>
+    )
+    if (result.moved === false && args.kind === 'reorder') {
+      // Why: a refused reorder must not keep the local order pinned over the host's snapshot.
+      clearWebSessionReorderIntent(intentOwner, args.worktreeId, args.targetGroupId)
+    }
+    return result.moved
   } catch (error) {
     if (args.kind === 'reorder') {
       clearWebSessionReorderIntent(intentOwner, args.worktreeId, args.targetGroupId)

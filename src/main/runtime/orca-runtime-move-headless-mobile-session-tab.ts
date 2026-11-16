@@ -90,6 +90,12 @@ export class OrcaRuntimeWithMoveHeadlessMobileSessionTab extends OrcaRuntimeWith
     if (!hostTabId) {
       throw new Error('tab_not_found')
     }
+    const sourceGroup = (snapshot.tabGroups ?? []).find((group) =>
+      group.tabOrder.includes(hostTabId)
+    )
+    if (!sourceGroup || !this.isApplicableHeadlessTabGroupTarget(snapshot, move.targetGroupId)) {
+      return { moved: false }
+    }
     const split = buildHeadlessTabGroupSplit({
       groups: snapshot.tabGroups ?? [],
       layout: snapshot.tabGroupLayout,
@@ -127,6 +133,12 @@ export class OrcaRuntimeWithMoveHeadlessMobileSessionTab extends OrcaRuntimeWith
     const hostTabId = this.resolveMobileSessionHostTabId(snapshot, move.tabId)
     if (!hostTabId) {
       throw new Error('tab_not_found')
+    }
+    const sourceGroup = (snapshot.tabGroups ?? []).find((group) =>
+      group.tabOrder.includes(hostTabId)
+    )
+    if (!sourceGroup || !this.isApplicableHeadlessTabGroupTarget(snapshot, move.targetGroupId)) {
+      return { moved: false }
     }
     const moved = buildHeadlessTabGroupMove({
       groups: snapshot.tabGroups ?? [],

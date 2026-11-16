@@ -8,6 +8,7 @@ import type {
 } from '../../shared/runtime-types'
 import { parseAppSshPtyId } from '../../shared/ssh-pty-id'
 import { buildHeadlessMobileSessionTabGroups } from './mobile-session-layout-projection'
+import { collectTabGroupLayoutGroupIds } from '../../shared/workspace-layout/tab-group-moves'
 import { appendRetiredTerminalSurfaceProofs } from './mobile-session-terminal-retirement-proof'
 import type { RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 import type { TerminalPaneLayoutNode } from '../../shared/terminal-tab-types'
@@ -145,6 +146,14 @@ export class OrcaRuntimeWithCloseHeadlessMobileTerminalTab extends OrcaRuntimeWi
     ) {
       // Why: a window that never published this worktree has no store entry to
       // drop, so forwarding there is a silent no-op; the host must apply it.
+      // A stale client snapshot can name a group this host has dropped: applying
+      // would report success for nothing (or orphan the new group outside the tree).
+      if (
+        move.kind !== 'reorder' &&
+        !this.isApplicableHeadlessTabGroupTarget(snapshot, move.targetGroupId)
+      ) {
+        return { moved: false }
+      }
       return this.moveHeadlessMobileSessionTab(worktreeId, snapshot, move)
     }
     const hostTabId = this.resolveMobileSessionHostTabId(snapshot, move.tabId)
@@ -169,19 +178,63 @@ export class OrcaRuntimeWithCloseHeadlessMobileTerminalTab extends OrcaRuntimeWi
         tabId: hostTabId,
         tabOrder
       })
-      return { moved: applied !== false }
+      return applied === false
+        ? this.applyHeadlessMobileSessionTabMove(worktreeId, move)
+        : { moved: true }
     }
     const applied = await this.notifier.moveSessionTab(worktreeId, {
       ...move,
       tabId: hostTabId
     })
-    return { moved: applied !== false }
+    return applied === false
+      ? this.applyHeadlessMobileSessionTabMove(worktreeId, move)
+      : { moved: true }
+  }
+
+  // Why: an accepted publication can still refuse the drop (the window may be
+  // gone, reloading, or not actually own the worktree). Leaving it unapplied
+  // strands the client's optimistic layout, so the host applies it headlessly.
+  protected applyHeadlessMobileSessionTabMove(
+    worktreeId: string,
+    move: RuntimeMobileSessionTabMove
+  ): RuntimeMobileSessionTabMoveResult {
+    const snapshot = this.mobileSessionTabsByWorktree.get(worktreeId)
+    if (!snapshot) {
+      return { moved: false }
+    }
+    if (
+      move.kind !== 'reorder' &&
+      !this.isApplicableHeadlessTabGroupTarget(snapshot, move.targetGroupId)
+    ) {
+      return { moved: false }
+    }
+    try {
+      return this.moveHeadlessMobileSessionTab(worktreeId, snapshot, move)
+    } catch {
+      // A renderer-only refusal (e.g. an invalid reorder) must stay an unapplied move.
+      return { moved: false }
+    }
   }
 
   // Why: only a renderer that published this worktree owns a store entry the
   // forwarded move can drop; request/response then confirms it actually applied.
   protected hasAcceptedRendererMobileSessionPublication(worktreeId: string): boolean {
     return this.acceptedRendererMobileSnapshotByWorktree.has(worktreeId)
+  }
+
+  // Why: a group only exists while it holds a tab AND is referenced by the tree;
+  // a target that fails either invariant is stale and must not be applied.
+  protected isApplicableHeadlessTabGroupTarget(
+    snapshot: RuntimeMobileSessionTabsSnapshot,
+    targetGroupId: string
+  ): boolean {
+    if (!(snapshot.tabGroups ?? []).some((group) => group.id === targetGroupId)) {
+      return false
+    }
+    return (
+      !snapshot.tabGroupLayout ||
+      collectTabGroupLayoutGroupIds(snapshot.tabGroupLayout).has(targetGroupId)
+    )
   }
 
   // Why: pane geometry inside a tab (split ratios, expanded pane, pane titles)

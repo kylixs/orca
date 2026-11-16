@@ -53,7 +53,7 @@ export function moveTabToNewPaneColumn(args: {
     splitDirection: args.direction
   })
   if (moved) {
-    mirrorWebRuntimeTabMove({
+    void mirrorWebRuntimeTabMove({
       kind: 'split',
       worktreeId,
       tabId: args.unifiedTabId,

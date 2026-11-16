@@ -234,6 +234,34 @@ describe('moveWebRuntimeSessionTab', () => {
     })
   })
 
+  it('returns the host moved:false instead of masking it as success', async () => {
+    const runtimeCall = vi.fn().mockResolvedValueOnce({
+      id: 'move',
+      ok: true,
+      result: { moved: false }
+    })
+
+    vi.stubGlobal('window', {
+      api: {
+        runtimeEnvironments: {
+          call: runtimeCall
+        }
+      }
+    })
+
+    await expect(
+      moveWebRuntimeSessionTab({
+        worktreeId: WORKTREE_ID,
+        tabId: 'web-terminal-host-tab-1%3A%3Aleaf-1',
+        targetGroupId: 'group-gone',
+        kind: 'move-to-group',
+        index: 0
+      })
+    ).resolves.toBe(false)
+
+    expect(runtimeCall).toHaveBeenCalledTimes(1)
+  })
+
   it('does not mirror a reorder when the dragged tab is local-only', async () => {
     mocks.resolveHostSessionTabIdForWebSessionTab.mockImplementation(
       (_state, args: { tabId: string }) =>

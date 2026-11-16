@@ -56,7 +56,7 @@ export function commitTabDragDrop({
     })
     if (moved) {
       shouldRestorePreDragActivation = false
-      mirrorWebRuntimeTabMove({
+      void mirrorWebRuntimeTabMove({
         kind: 'split',
         worktreeId,
         tabId: activeData.unifiedTabId,
@@ -116,7 +116,7 @@ export function commitTabDragDrop({
         const nextOrder = targetGroup.tabOrder.filter((id) => id !== activeData.unifiedTabId)
         nextOrder.splice(nextIndex, 0, activeData.unifiedTabId)
         reorderUnifiedTabs(overData.groupId, nextOrder)
-        mirrorWebRuntimeTabMove({
+        void mirrorWebRuntimeTabMove({
           kind: 'reorder',
           worktreeId,
           tabId: activeData.unifiedTabId,
@@ -132,7 +132,7 @@ export function commitTabDragDrop({
       })
       if (moved) {
         shouldRestorePreDragActivation = false
-        mirrorWebRuntimeTabMove({
+        void mirrorWebRuntimeTabMove({
           kind: 'move-to-group',
           worktreeId,
           tabId: activeData.unifiedTabId,
@@ -156,7 +156,7 @@ export function commitTabDragDrop({
       })
       if (moved) {
         shouldRestorePreDragActivation = false
-        mirrorWebRuntimeTabMove({
+        void mirrorWebRuntimeTabMove({
           kind: 'move-to-group',
           worktreeId,
           tabId: activeData.unifiedTabId,

@@ -118,6 +118,33 @@ describe('buildHeadlessTabGroupSplit', () => {
     expect(result!.layout).toMatchObject({ type: 'split' })
     expect([...collectTabGroupLayoutGroupIds(result!.layout)].sort()).toEqual(['g1', 'g2'])
   })
+
+  it('returns null when the target group does not exist', () => {
+    expect(
+      buildHeadlessTabGroupSplit({
+        groups: [group('g1', ['a', 'b'])],
+        layout: { type: 'leaf', groupId: 'g1' },
+        tabId: 'b',
+        targetGroupId: 'missing',
+        splitDirection: 'right',
+        newGroupId: 'g2'
+      })
+    ).toBeNull()
+  })
+
+  it('returns null when the target group is absent from the layout tree', () => {
+    // A group outside the tree is stale; splicing beside it is impossible.
+    expect(
+      buildHeadlessTabGroupSplit({
+        groups: [group('g1', ['a', 'b']), group('g2', ['c'])],
+        layout: { type: 'leaf', groupId: 'g1' },
+        tabId: 'b',
+        targetGroupId: 'g2',
+        splitDirection: 'right',
+        newGroupId: 'g3'
+      })
+    ).toBeNull()
+  })
 })
 
 describe('buildHeadlessTabGroupMove', () => {
@@ -169,6 +196,17 @@ describe('buildHeadlessTabGroupMove', () => {
         layout: { type: 'leaf', groupId: 'g1' },
         tabId: 'b',
         targetGroupId: 'missing'
+      })
+    ).toBeNull()
+  })
+
+  it('returns null when the target group is absent from the layout tree', () => {
+    expect(
+      buildHeadlessTabGroupMove({
+        groups: [group('g1', ['a']), group('g2', ['b'])],
+        layout: { type: 'leaf', groupId: 'g1' },
+        tabId: 'a',
+        targetGroupId: 'g2'
       })
     ).toBeNull()
   })

@@ -1356,6 +1356,11 @@
       }
     },
     "components": {
+      "tab-bar": {
+        "web-runtime-tab-move-mirror": {
+          "failed": "Couldn't move the tab on the host."
+        }
+      },
       "BrowserCookieImportDisclosure": {
         "title": "Google logins aren't imported",
         "description": "Sign in to Google directly in Orca."

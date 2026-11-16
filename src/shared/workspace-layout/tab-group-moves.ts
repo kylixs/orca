@@ -77,6 +77,10 @@ export function buildHeadlessTabGroupMove(args: {
   if (!sourceGroup || !targetGroup) {
     return null
   }
+  // A group absent from the tree is stale; moving into it would keep it orphaned.
+  if (args.layout && !collectTabGroupLayoutGroupIds(args.layout).has(args.targetGroupId)) {
+    return null
+  }
   if (sourceGroup.id === args.targetGroupId) {
     return null
   }
@@ -129,6 +133,13 @@ export function buildHeadlessTabGroupSplit(args: {
 }): HeadlessTabGroupSplitResult | null {
   const sourceGroup = args.groups.find((group) => group.tabOrder.includes(args.tabId))
   if (!sourceGroup) {
+    return null
+  }
+  if (!args.groups.some((group) => group.id === args.targetGroupId)) {
+    return null
+  }
+  // A group absent from the tree is stale; moving into it would keep it orphaned.
+  if (args.layout && !collectTabGroupLayoutGroupIds(args.layout).has(args.targetGroupId)) {
     return null
   }
   // Splitting the last tab off its own group would create a sibling only to
