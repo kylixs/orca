@@ -192,6 +192,7 @@ export class OrcaRuntimeWithOnPtyExit extends OrcaRuntimeWithOnClientDisconnecte
         this.notifier?.terminalFitOverrideChanged(ptyId, 'desktop-fit', 0, 0)
         this.notifyFitOverrideListeners(ptyId, 'desktop-fit', 0, 0)
       }
+      this.terminalAutoRestoreFitOverrides.delete(ptyId)
       // Why: clear driver state and notify the renderer so any lock banner on
       // this dead pane unmounts. Without this, the pane shows a stuck banner
       // until tab teardown, and `getDriver(deadPtyId)` would keep returning a

@@ -2,7 +2,9 @@ import { z } from 'zod'
 import { TERMINAL_VIEWPORT_MAX_COLS } from '../terminal-viewport'
 import { requiredString } from './rpc-param-primitives'
 
-export const TerminalHandle = z.object({ terminal: requiredString('Missing terminal handle') })
+export const TerminalHandle = z.object({
+  terminal: requiredString('Missing terminal handle')
+})
 
 export const TerminalSetDisplayMode = TerminalHandle.extend({
   // Why: 'auto' = mobile drives dims while subscribed (desktop restores on last-leave); 'desktop' = no resize, mobile scales to fit.
@@ -49,6 +51,8 @@ export const TerminalUpdateViewport = TerminalHandle.extend({
 })
 
 // Why: phone-fit auto-restore preference (docs/mobile-fit-hold.md); `null` = Indefinite, finite ms clamped to [5_000, 60min] server-side.
+// Why: `terminal` scopes the write to one PTY's temporary override; absent keeps the legacy host-global write.
 export const TerminalSetAutoRestoreFit = z.object({
-  ms: z.number().nullable()
+  ms: z.number().nullable(),
+  terminal: z.string().min(1).optional()
 })

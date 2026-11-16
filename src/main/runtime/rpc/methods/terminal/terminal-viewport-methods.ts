@@ -127,8 +127,19 @@ export const TERMINAL_VIEWPORT_METHODS_AFTER_STREAMS = [
     name: 'terminal.setAutoRestoreFit',
     permission: 'workspace',
     params: TerminalSetAutoRestoreFit,
-    handler: async (params, { runtime }) => ({
-      ms: runtime.setMobileAutoRestoreFitMs(params.ms)
-    })
+    handler: async (params, { runtime }) => {
+      if (params.terminal !== undefined) {
+        // Why (T-B6): a cloud session may only override the one PTY it names;
+        // mutating the host-global preference would reach every user.
+        const leaf = runtime.resolveLiveLeafForHandle(params.terminal)
+        if (!leaf?.ptyId) {
+          throw new Error('no_connected_pty')
+        }
+        return {
+          ms: runtime.setTerminalAutoRestoreFitMs(leaf.ptyId, params.ms)
+        }
+      }
+      return { ms: runtime.setMobileAutoRestoreFitMs(params.ms) }
+    }
   })
 ]

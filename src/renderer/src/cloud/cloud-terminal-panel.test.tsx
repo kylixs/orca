@@ -342,6 +342,117 @@ describe('云端终端面板（FR-3.9）', () => {
     expect(secondUnsubscribe).toHaveBeenCalled()
   })
 
+  it('U98 订阅声明 desktopViewportClaims，attach 是被动观察而不是抢尺寸', async () => {
+    const host = scriptedHost({ 'terminal.create': () => createdHandle() })
+    const stream = scriptedStream(subscribeOk())
+
+    panel(host, stream)
+    await flush()
+
+    expect(stream.calls[0]?.params).toMatchObject({
+      terminal: 'term_1',
+      capabilities: { desktopViewportClaims: 1 }
+    })
+  })
+
+  it('U96B6-1 另一窗口持有尺寸时弹出冲突提示，接管发出 claim:true', async () => {
+    const host = scriptedHost({
+      'terminal.create': () => createdHandle(),
+      'terminal.getAutoRestoreFit': () => ({ ok: true, result: { ms: 15_000 } }),
+      'terminal.updateViewport': () => ({ ok: true, result: { updated: true, applied: true } })
+    })
+    const stream = scriptedStream(subscribeOk())
+
+    panel(host, stream)
+    await flush()
+
+    act(() => {
+      stream.emit({ type: 'fit-override-changed', mode: 'remote-desktop-fit', cols: 120, rows: 40 })
+    })
+    await flush()
+    expect(screen.getByTestId('cloud-terminal-fit-overlay').textContent).toContain(
+      '当前尺寸由另一个窗口控制'
+    )
+    expect(screen.getByTestId('cloud-terminal-fit-overlay-auto-restore').textContent).toContain(
+      '15 秒'
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '使用本窗口尺寸' }))
+    await flush()
+    expect(host.calls.at(-1)).toMatchObject({
+      method: 'terminal.updateViewport',
+      params: {
+        terminal: 'term_1',
+        client: { type: 'desktop' },
+        viewport: { cols: 80, rows: 24 },
+        claim: true
+      }
+    })
+    expect(screen.queryByTestId('cloud-terminal-fit-overlay')).toBeNull()
+  })
+
+  it('U96B6-2 手机持有时「保持现状」折叠同一提示，另一方接管时重新提示', async () => {
+    const host = scriptedHost({
+      'terminal.create': () => createdHandle(),
+      'terminal.getAutoRestoreFit': () => ({ ok: true, result: { ms: null } })
+    })
+    const stream = scriptedStream(subscribeOk())
+
+    panel(host, stream)
+    await flush()
+
+    act(() => {
+      stream.emit({ type: 'fit-override-changed', mode: 'mobile-fit', cols: 50, rows: 40 })
+    })
+    await flush()
+    expect(screen.getByTestId('cloud-terminal-fit-overlay').textContent).toContain(
+      '当前尺寸由手机控制'
+    )
+    expect(screen.getByTestId('cloud-terminal-fit-overlay-auto-restore').textContent).toContain(
+      '保持当前尺寸'
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '保持现状' }))
+    expect(screen.queryByTestId('cloud-terminal-fit-overlay')).toBeNull()
+
+    // The same holder must not re-prompt; a different one must.
+    act(() => {
+      stream.emit({ type: 'fit-override-changed', mode: 'mobile-fit', cols: 50, rows: 40 })
+    })
+    expect(screen.queryByTestId('cloud-terminal-fit-overlay')).toBeNull()
+
+    act(() => {
+      stream.emit({ type: 'fit-override-changed', mode: 'remote-desktop-fit', cols: 120, rows: 40 })
+    })
+    expect(screen.getByTestId('cloud-terminal-fit-overlay').textContent).toContain(
+      '当前尺寸由另一个窗口控制'
+    )
+  })
+
+  it('U96B6-3 手机持有尺寸时「恢复」走 terminal.restoreFit（云白名单）', async () => {
+    const host = scriptedHost({
+      'terminal.create': () => createdHandle(),
+      'terminal.getAutoRestoreFit': () => ({ ok: true, result: { ms: null } }),
+      'terminal.restoreFit': () => ({ ok: true, result: { restored: true } })
+    })
+    const stream = scriptedStream(subscribeOk())
+
+    panel(host, stream)
+    await flush()
+
+    act(() => {
+      stream.emit({ type: 'fit-override-changed', mode: 'mobile-fit', cols: 50, rows: 40 })
+    })
+    await flush()
+    fireEvent.click(screen.getByRole('button', { name: '恢复为本窗口尺寸' }))
+    await flush()
+    expect(host.calls.at(-1)).toEqual({
+      method: 'terminal.restoreFit',
+      params: { terminal: 'term_1' }
+    })
+    expect(screen.queryByTestId('cloud-terminal-fit-overlay')).toBeNull()
+  })
+
   it('M118-8 create 在途时卸载仍关闭宿主侧 shell，不泄漏（W5a MIN-4）', async () => {
     let resolveCreate: (outcome: CloudRpcOutcome) => void = () => undefined
     const calls: Call[] = []

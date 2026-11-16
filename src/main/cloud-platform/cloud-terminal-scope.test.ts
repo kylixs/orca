@@ -193,13 +193,30 @@ describe('终端地址边界', () => {
       'terminal.closeTab',
       'terminal.focus',
       'terminal.show',
-      'terminal.getAutoRestoreFit',
-      'terminal.setAutoRestoreFit',
       'terminal.split'
     ]) {
       const decision = await check(method, {})
       expect(decision, method).toMatchObject({ ok: false, reason: 'terminal_host_scope' })
     }
+  })
+
+  it('U96 T-B6：autoRestoreFit 读取放行，写入必须绑定本人在范围的终端', async () => {
+    expect(await check('terminal.getAutoRestoreFit', {})).toEqual({ ok: true })
+
+    // No handle: the host-global preference is never writable through a ticket.
+    expect(await check('terminal.setAutoRestoreFit', { ms: 5000 })).toMatchObject({
+      ok: false,
+      reason: 'terminal_unknown'
+    })
+    expect(
+      await check('terminal.setAutoRestoreFit', { ms: 5000, terminal: 'term-own' })
+    ).toEqual({ ok: true })
+    expect(
+      await check('terminal.setAutoRestoreFit', { ms: 5000, terminal: 'term-teammate' })
+    ).toMatchObject({ ok: false, reason: 'workspace_scope' })
+    expect(
+      await check('terminal.setAutoRestoreFit', { ms: 5000, terminal: 'term-exited' })
+    ).toMatchObject({ ok: false, reason: 'terminal_unknown' })
   })
 
   it('multiplex 信封不带地址，按帧检查：信封放行，逐帧边界在订阅时执行', async () => {

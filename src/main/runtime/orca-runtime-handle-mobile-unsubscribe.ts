@@ -115,7 +115,7 @@ export class OrcaRuntimeWithHandleMobileUnsubscribe extends OrcaRuntimeWithHandl
       // dims until the user clicks Restore on the desktop banner — the
       // central UX promise of docs/mobile-fit-hold.md. A finite value runs
       // the restore that long after the last unsubscribe.
-      const autoRestoreMs = this.getAutoRestoreFitMs()
+      const autoRestoreMs = this.getAutoRestoreFitMs(ptyId)
       if (autoRestoreMs == null) {
         // Indefinite hold: the fit override persists, the SOFT_LEAVE_GRACE
         // driver-state grace above still releases the input lock, and the

@@ -129,7 +129,16 @@ export class OrcaRuntimeWithReclaimTerminalForDesktop extends OrcaRuntimeWithMob
   // to [MIN, MAX] to defend against bad config — the smallest useful
   // value is a few seconds, the largest is one hour. See
   // docs/mobile-fit-hold.md.
-  protected getAutoRestoreFitMs(): number | null {
+  protected getAutoRestoreFitMs(ptyId?: string): number | null {
+    if (ptyId !== undefined && this.terminalAutoRestoreFitOverrides.has(ptyId)) {
+      const override = this.terminalAutoRestoreFitOverrides.get(ptyId)
+      return override == null
+        ? null
+        : Math.min(
+            Math.max(override, MOBILE_AUTO_RESTORE_FIT_MIN_MS),
+            MOBILE_AUTO_RESTORE_FIT_MAX_MS
+          )
+    }
     const raw = this.store?.getSettings().mobileAutoRestoreFitMs ?? null
     if (raw == null) {
       return null
@@ -186,5 +195,21 @@ export class OrcaRuntimeWithReclaimTerminalForDesktop extends OrcaRuntimeWithMob
       this.cancelAllPendingFitRestoreTimers()
     }
     return normalized
+  }
+
+  // Why (U96 T-B6): the cloud-scoped write. It lands in the same in-memory
+  // domain as the other per-PTY fit state, so a project ticket cannot change
+  // the host-global preference another user's terminals read.
+  setTerminalAutoRestoreFitMs(ptyId: string, ms: number | null): number | null {
+    const normalized =
+      ms == null || typeof ms !== 'number' || !Number.isFinite(ms)
+        ? null
+        : Math.min(Math.max(ms, MOBILE_AUTO_RESTORE_FIT_MIN_MS), MOBILE_AUTO_RESTORE_FIT_MAX_MS)
+    this.terminalAutoRestoreFitOverrides.set(ptyId, normalized)
+    return normalized
+  }
+
+  clearTerminalAutoRestoreFitMs(ptyId: string): void {
+    this.terminalAutoRestoreFitOverrides.delete(ptyId)
   }
 }

@@ -20,6 +20,10 @@ export type CloudTerminalScope =
   | { kind: 'list' }
   /** Claims orphan PTYs; worktree, each claimed handle, and the proposed topology must agree. */
   | { kind: 'adopt' }
+  /** Host-wide fit preference; the answer carries no user data. */
+  | { kind: 'fit-read' }
+  /** A per-PTY fit override: the body must name the terminal it applies to. */
+  | { kind: 'fit-write' }
   | { kind: 'deny'; message: string }
 
 /** Creates a PTY; `worktree` must resolve inside the caller's workspace root. */
@@ -75,10 +79,17 @@ export const CLOUD_TERMINAL_DENIED_METHODS: ReadonlySet<string> = new Set([
   'terminal.resolveActive',
   'terminal.resolvePane',
   'terminal.recoverPane',
-  'terminal.resolveIdentity',
-  'terminal.getAutoRestoreFit',
-  'terminal.setAutoRestoreFit'
+  'terminal.resolveIdentity'
 ])
+
+/** Read-only: reports the host global `mobileAutoRestoreFitMs`, no user data. */
+const FIT_READ_METHODS: ReadonlySet<string> = new Set(['terminal.getAutoRestoreFit'])
+
+/**
+ * Host-global write is refused (it would reach every user's PTYs); the call is
+ * allowed only when it names the terminal whose temporary override it sets.
+ */
+const FIT_WRITE_METHODS: ReadonlySet<string> = new Set(['terminal.setAutoRestoreFit'])
 
 export function cloudTerminalScopeOf(method: string): CloudTerminalScope | null {
   if (CREATE_METHODS.has(method)) {
@@ -95,6 +106,12 @@ export function cloudTerminalScopeOf(method: string): CloudTerminalScope | null 
   }
   if (ADOPT_METHODS.has(method)) {
     return { kind: 'adopt' }
+  }
+  if (FIT_READ_METHODS.has(method)) {
+    return { kind: 'fit-read' }
+  }
+  if (FIT_WRITE_METHODS.has(method)) {
+    return { kind: 'fit-write' }
   }
   if (CLOUD_TERMINAL_DENIED_METHODS.has(method)) {
     return { kind: 'deny', message: deniedMessage(method) }

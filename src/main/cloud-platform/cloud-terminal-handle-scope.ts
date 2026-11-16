@@ -3,6 +3,14 @@ import {
   type CloudPathDecision,
   type CloudPathRoots
 } from './cloud-path-boundary'
+import { cloudTerminalHandleOf } from './cloud-terminal-scope'
+
+type TerminalScopeRuntime = {
+  resolveTerminalContext?(
+    terminalHandle: string
+  ): { worktreeId: string; connectionId: string | null } | null
+  resolveWorktreeRootPath(worktreeSelector: string): Promise<string>
+}
 
 /**
  * Whether a live terminal handle sits inside the caller's write root.
@@ -13,12 +21,7 @@ import {
  * teammate's checkout is equally undriveable over either transport.
  */
 export async function checkCloudTerminalHandleScope(args: {
-  runtime: {
-    resolveTerminalContext?(
-      terminalHandle: string
-    ): { worktreeId: string; connectionId: string | null } | null
-    resolveWorktreeRootPath(worktreeSelector: string): Promise<string>
-  }
+  runtime: TerminalScopeRuntime
   roots: CloudPathRoots
   terminalHandle: string
 }): Promise<CloudPathDecision> {
@@ -43,4 +46,36 @@ export async function checkCloudTerminalHandleScope(args: {
     }
   }
   return checkCloudTargetScope(args.roots, 'write', worktreePath)
+}
+
+/**
+ * U96 T-B6: the fit preference. Reading the host-global value is harmless; a
+ * write must name the terminal it applies to, because a cloud ticket serves
+ * several users on one host and must never change the shared preference.
+ */
+export async function checkCloudFitScope(args: {
+  runtime: TerminalScopeRuntime
+  roots: CloudPathRoots
+  scope: 'fit-read' | 'fit-write'
+  params: unknown
+}): Promise<CloudPathDecision> {
+  if (args.scope === 'fit-read') {
+    return { ok: true }
+  }
+  const raw =
+    args.params !== null && typeof args.params === 'object'
+      ? Reflect.get(args.params, 'terminal')
+      : undefined
+  if (typeof raw !== 'string' || raw.length === 0) {
+    return {
+      ok: false,
+      reason: 'terminal_unknown',
+      message: 'A cloud session must name the terminal whose fit preference it changes.'
+    }
+  }
+  return await checkCloudTerminalHandleScope({
+    runtime: args.runtime,
+    roots: args.roots,
+    terminalHandle: cloudTerminalHandleOf(raw)
+  })
 }

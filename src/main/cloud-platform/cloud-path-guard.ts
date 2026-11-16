@@ -1,4 +1,5 @@
 import { isAbsolute, join } from 'node:path'
+import { readString } from '../../shared/json-fields'
 import { cloudMethodAccess } from './cloud-rpc-permission'
 import {
   CLOUD_FILE_PATH_PARAMS,
@@ -15,7 +16,7 @@ import {
   cloudTerminalScopeOf
 } from './cloud-terminal-scope'
 import { checkCloudTerminalRestore } from './cloud-terminal-restore-scope'
-import { checkCloudTerminalHandleScope } from './cloud-terminal-handle-scope'
+import { checkCloudTerminalHandleScope, checkCloudFitScope } from './cloud-terminal-handle-scope'
 import {
   MANAGED_CREATE_METHOD,
   cloudWorktreeAccessOf,
@@ -52,18 +53,11 @@ export type CloudPathGuardRuntime = CloudSessionTabsGuardRuntime & {
   resolveAgentSessionContext?: (sessionId: string) => { worktreeId: string } | null
 }
 
-function stringField(value: unknown, key: string): string | null {
-  if (!value || typeof value !== 'object' || !(key in value)) {
-    return null
-  }
-  const field: unknown = key in value ? Reflect.get(value, key) : undefined
-  return typeof field === 'string' ? field : null
-}
 
 function collectPaths(params: unknown, spec: CloudFilePaths): string[] {
   const paths: string[] = []
   for (const key of spec.singular) {
-    const value = stringField(params, key)
+    const value = readString(params, key)
     if (value !== null) {
       paths.push(value)
     }
@@ -112,11 +106,6 @@ export function isCloudPathGuardedMethod(method: string): boolean {
 }
 
 /** A worktree method the host refuses outright, regardless of its selector. */
-export function cloudWorktreeDenial(method: string): { message: string } | null {
-  const access = cloudWorktreeAccessOf(method)
-  return access?.kind === 'deny' ? { message: access.message } : null
-}
-
 export async function checkCloudRpcPath(args: {
   runtime: CloudPathGuardRuntime
   roots: CloudPathRoots
@@ -135,6 +124,14 @@ export async function checkCloudRpcPath(args: {
   if (terminalScope?.kind === 'list' || terminalScope?.kind === 'adopt') {
     return await checkCloudTerminalRestore(args, terminalScope.kind)
   }
+  if (terminalScope?.kind === 'fit-read' || terminalScope?.kind === 'fit-write') {
+    return await checkCloudFitScope({
+      runtime: args.runtime,
+      roots: args.roots,
+      scope: terminalScope.kind,
+      params: args.params
+    })
+  }
   if (terminalScope) {
     return await checkCloudTerminal(args, terminalScope)
   }
@@ -146,9 +143,9 @@ export async function checkCloudRpcPath(args: {
   if (sessionTabsScope) {
     return await checkCloudSessionTabsScope({ ...args, scope: sessionTabsScope })
   }
-  const denial = cloudWorktreeDenial(args.method)
-  if (denial) {
-    return { ok: false, reason: 'worktree_scope', message: denial.message }
+  const worktreeAccess = cloudWorktreeAccessOf(args.method)
+  if (worktreeAccess?.kind === 'deny') {
+    return { ok: false, reason: 'worktree_scope', message: worktreeAccess.message }
   }
   if (PROJECT_ROOT_METHODS.has(args.method)) {
     return checkProjectRootTarget(args)
@@ -186,7 +183,7 @@ export async function checkCloudRpcPath(args: {
   if (access === null) {
     return null
   }
-  const selector = stringField(args.params, 'worktree')
+  const selector = readString(args.params, 'worktree')
   if (selector === null) {
     return { ok: false, reason: 'worktree_unknown', message: 'This call names no worktree.' }
   }
@@ -252,8 +249,8 @@ async function checkManagedCreate(args: {
   roots: CloudPathRoots
   params: unknown
 }): Promise<CloudPathDecision> {
-  const repoSelector = stringField(args.params, 'repo')
-  const workspaceRoot = stringField(args.params, 'workspaceRoot')
+  const repoSelector = readString(args.params, 'repo')
+  const workspaceRoot = readString(args.params, 'workspaceRoot')
   if (repoSelector === null || workspaceRoot === null) {
     return {
       ok: false,
@@ -288,7 +285,7 @@ async function checkRepoScopedRead(args: {
   roots: CloudPathRoots
   params: unknown
 }): Promise<CloudPathDecision> {
-  const repoSelector = stringField(args.params, 'repo')
+  const repoSelector = readString(args.params, 'repo')
   if (repoSelector === null) {
     return {
       ok: false,
@@ -320,7 +317,7 @@ async function checkCloudTerminal(
   scope: { kind: 'create' } | { kind: 'handle' }
 ): Promise<CloudPathDecision> {
   if (scope.kind === 'create') {
-    const selector = stringField(args.params, 'worktree')
+    const selector = readString(args.params, 'worktree')
     if (selector === null) {
       return {
         ok: false,
@@ -340,7 +337,7 @@ async function checkCloudTerminal(
     }
     return checkCloudTargetScope(args.roots, 'write', worktreePath)
   }
-  const handle = stringField(args.params, cloudTerminalHandleParam(args.method))
+  const handle = readString(args.params, cloudTerminalHandleParam(args.method))
   if (handle === null) {
     return {
       ok: false,

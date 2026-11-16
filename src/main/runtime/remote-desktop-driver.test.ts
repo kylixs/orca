@@ -57,6 +57,9 @@ class TestOrcaRuntimeService extends OrcaRuntimeService {
   getLayoutQueues() {
     return this.layoutQueues
   }
+  peekAutoRestoreFitMs(ptyId: string) {
+    return this.getAutoRestoreFitMs(ptyId)
+  }
 }
 
 const store = {
@@ -147,6 +150,21 @@ function createRuntime(mobileAutoRestoreFitMs: number | null = 5_000) {
 describe('remote desktop viewer width driver', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
+
+  it('T-B6: a per-PTY auto-restore override never writes the host-global preference', () => {
+    const { runtime } = createRuntime(5_000)
+
+    expect(runtime.setTerminalAutoRestoreFitMs('pty-1', 12_000)).toBe(12_000)
+    expect(runtime.peekAutoRestoreFitMs('pty-1')).toBe(12_000)
+    // Another PTY keeps reading the host-global value the ticket cannot touch.
+    expect(runtime.peekAutoRestoreFitMs('pty-2')).toBe(5_000)
+    expect(runtime.getMobileAutoRestoreFitMs()).toBe(5_000)
+
+    runtime.setTerminalAutoRestoreFitMs('pty-1', null)
+    expect(runtime.peekAutoRestoreFitMs('pty-1')).toBeNull()
+    runtime.clearTerminalAutoRestoreFitMs('pty-1')
+    expect(runtime.peekAutoRestoreFitMs('pty-1')).toBe(5_000)
+  })
 
   it('applying a viewport suppresses host resize without touching driver state', async () => {
     const { runtime, driverEvents } = createRuntime()

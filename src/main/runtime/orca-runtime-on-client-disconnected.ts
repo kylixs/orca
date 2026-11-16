@@ -48,7 +48,7 @@ export class OrcaRuntimeWithOnClientDisconnected extends OrcaRuntimeWithHasRecen
         this.setDriver(ptyId, { kind: 'idle' })
         void this.applyRemoteDesktopLayout(ptyId)
         continue
-      } else if (cur?.kind === 'phone' && this.getAutoRestoreFitMs() != null) {
+      } else if (cur?.kind === 'phone' && this.getAutoRestoreFitMs(ptyId) != null) {
         if (this.remoteDesktopFloor.hasHostReclaimTarget(ptyId)) {
           this.setDriver(ptyId, { kind: 'idle' })
           void this.applyRemoteDesktopLayout(ptyId)
@@ -96,7 +96,7 @@ export class OrcaRuntimeWithOnClientDisconnected extends OrcaRuntimeWithHasRecen
         this.setDriver(ptyId, { kind: 'idle' })
         void this.applyRemoteDesktopLayout(ptyId)
         continue
-      } else if (cur?.kind === 'phone' && this.getAutoRestoreFitMs() != null) {
+      } else if (cur?.kind === 'phone' && this.getAutoRestoreFitMs(ptyId) != null) {
         if (this.remoteDesktopFloor.hasHostReclaimTarget(ptyId)) {
           this.setDriver(ptyId, { kind: 'idle' })
           void this.applyRemoteDesktopLayout(ptyId)
@@ -160,7 +160,7 @@ export class OrcaRuntimeWithOnClientDisconnected extends OrcaRuntimeWithHasRecen
       }
       // Why: Indefinite hold gate — see soft-leaver branch above. Legacy
       // mobile clients (resizeForClient path) honor the same setting.
-      if (this.getAutoRestoreFitMs() == null) {
+      if (this.getAutoRestoreFitMs(ptyId) == null) {
         continue
       }
       const fallback = this.resolveDesktopRestoreTarget(ptyId)

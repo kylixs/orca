@@ -147,6 +147,11 @@ export class OrcaRuntimeWithFitOverrideListeners extends OrcaRuntimeWithStopRequ
     }
   >()
 
+  // Why (U96 T-B6): a cloud session may set the auto-restore fit preference for
+  // one PTY only. In-memory, keyed by ptyId like terminalFitOverrides, and never
+  // written back to the host-global `mobileAutoRestoreFitMs` setting.
+  protected terminalAutoRestoreFitOverrides = new Map<string, number | null>()
+
   // Why: server-authoritative display mode per terminal. 'auto' (default)
   // means phone-fit when mobile subscribes, desktop otherwise. 'desktop'
   // locks to no-resize regardless of subscriber state. The third historical
