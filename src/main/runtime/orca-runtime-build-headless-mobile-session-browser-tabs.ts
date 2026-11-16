@@ -9,7 +9,6 @@ import type {
 import { parseAppSshPtyId } from '../../shared/ssh-pty-id'
 import { getRuntimeBrowserPageRegistry } from './runtime-browser-page-registry'
 import { holdAgentSessionInventory } from './structured-agent-session-inventory-hold'
-import type { Tab } from '../../shared/tab-types'
 import {
   captureTerminalCloseRequest,
   resolveTerminalCloseTarget,
@@ -27,6 +26,8 @@ import { FLOATING_TERMINAL_WORKTREE_ID } from '../../shared/constants'
 import { captureAcknowledgedTerminalTabRetirement } from './workspace-session-terminal-tab-retirement-identity'
 import { closeLeafOrTab } from '../persistence/terminal-topology/terminal-topology-commit'
 import { markAgentLaunchesClosedByUser } from '../agent-launch/agent-launch-pane-attachment'
+import { resolveDurableActiveTabId } from './client-session-durable-active-tab'
+import { getPersistedUnifiedSessionTabProps } from './persisted-unified-session-tab-props'
 
 export class OrcaRuntimeWithBuildHeadlessMobileSessionBrowserTabs extends OrcaRuntimeWithPersistTerminalSurfaceRetirements {
   // Why: headless serve backs browser panes with offscreen WebContents that live
@@ -42,7 +43,11 @@ export class OrcaRuntimeWithBuildHeadlessMobileSessionBrowserTabs extends OrcaRu
         ? this.agentBrowserBridge.tabList(worktreeId).tabs
         : []
     const publishedServerTabs = serverTabs.map((tab) => {
-      const persistedProps = this.getPersistedUnifiedSessionTabProps(worktreeId, tab.browserPageId)
+      const persistedProps = getPersistedUnifiedSessionTabProps(
+        this.getWorkspaceSessionForWorktree(worktreeId),
+        worktreeId,
+        tab.browserPageId
+      )
       return {
         type: 'browser' as const,
         // Why: an offscreen page has no separate workspace identity, so the page id
@@ -80,17 +85,6 @@ export class OrcaRuntimeWithBuildHeadlessMobileSessionBrowserTabs extends OrcaRu
         isActive: page.active
       }))
     return [...publishedServerTabs, ...publishedClientTabs]
-  }
-
-  protected getPersistedUnifiedSessionTabProps(
-    worktreeId: string,
-    tabId: string
-  ): Pick<Tab, 'color' | 'isPinned'> | null {
-    const tab =
-      this.getWorkspaceSessionForWorktree(worktreeId)?.unifiedTabs?.[worktreeId]?.find(
-        (candidate) => candidate.id === tabId || candidate.entityId === tabId
-      ) ?? null
-    return tab ? { color: tab.color, isPinned: tab.isPinned } : null
   }
 
   protected captureTerminalTabRetirement(worktreeId: string, tabId: string) {
@@ -307,9 +301,11 @@ export class OrcaRuntimeWithBuildHeadlessMobileSessionBrowserTabs extends OrcaRu
     result: RuntimeMobileSessionTabsResult,
     clientNavigationId?: string
   ): RuntimeMobileSessionTabsResult {
+    const held = this.withSessionTabsHolds(result, clientNavigationId)
     return this.clientSessionTabSelections.project(
-      this.withSessionTabsHolds(result, clientNavigationId),
-      clientNavigationId
+      held,
+      clientNavigationId,
+      resolveDurableActiveTabId(this.getWorkspaceSessionForWorktree(held.worktree), held)
     )
   }
 

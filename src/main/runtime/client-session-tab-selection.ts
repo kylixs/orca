@@ -10,22 +10,18 @@ import {
 } from './client-session-tab-closed-selection'
 import type { StoredClientSessionTabSelection } from './client-session-tab-closed-selection'
 import { normalizePersistedMobileClientTabSelections } from './client-session-tab-selection-persistence'
+import {
+  activateClientSessionTabSelection,
+  resumeDurableClientSessionTabSelection,
+  topLevelTabId,
+  type ClientSessionTabSelection
+} from './client-session-durable-active-tab'
 
-export type ClientSessionTabSelection = {
-  activeTabId: string | null
-  activeGroupId: string | null
-  activeTabIdByGroupId: Readonly<Record<string, string>>
-}
+export { activateClientSessionTabSelection } from './client-session-durable-active-tab'
+export type { ClientSessionTabSelection } from './client-session-durable-active-tab'
 
 function emptyClientSessionTabSelection(): ClientSessionTabSelection {
   return { activeTabId: null, activeGroupId: null, activeTabIdByGroupId: {} }
-}
-
-function topLevelTabId(tab: RuntimeMobileSessionClientTab): string {
-  if (tab.type === 'terminal') {
-    return tab.parentTabId
-  }
-  return tab.id
 }
 
 function findTabByTopLevelId(
@@ -49,28 +45,6 @@ export function deriveClientSessionTabSelection(
         group.activeTabId ? [[group.id, group.activeTabId] as const] : []
       ) ?? []
     )
-  }
-}
-
-export function activateClientSessionTabSelection(
-  snapshot: RuntimeMobileSessionTabsResult,
-  selection: ClientSessionTabSelection,
-  activeTabId: string
-): ClientSessionTabSelection {
-  const activeTab = snapshot.tabs.find((tab) => tab.id === activeTabId)
-  if (!activeTab) {
-    return selection
-  }
-  const activeTopLevelTabId = topLevelTabId(activeTab)
-  const activeGroup = snapshot.tabGroups?.find((group) =>
-    group.tabOrder.includes(activeTopLevelTabId)
-  )
-  return {
-    activeTabId,
-    activeGroupId: activeGroup?.id ?? selection.activeGroupId,
-    activeTabIdByGroupId: activeGroup
-      ? { ...selection.activeTabIdByGroupId, [activeGroup.id]: activeTopLevelTabId }
-      : selection.activeTabIdByGroupId
   }
 }
 
@@ -193,7 +167,8 @@ export class ClientSessionTabSelectionStore {
 
   project(
     snapshot: RuntimeMobileSessionTabsResult,
-    clientNavigationId?: string
+    clientNavigationId?: string,
+    durableActiveTabId?: string | null
   ): RuntimeMobileSessionTabsResult {
     if (!clientNavigationId) {
       return snapshot
@@ -223,7 +198,15 @@ export class ClientSessionTabSelectionStore {
         snapshotVersion: snapshot.snapshotVersion + state.revision
       }
     }
-    const projected = projectClientSessionTabSelection(closed.snapshot, state.selection)
+    // Why U162: a renderer-owned publication keeps its own active tab, so a device with no durable
+    // selection must resume the host's persisted active instead of that stale snapshot value.
+    const durableFallback =
+      !existingState || !existingState.shouldPersist ? durableActiveTabId : null
+    const projected = projectClientSessionTabSelection(
+      closed.snapshot,
+      resumeDurableClientSessionTabSelection(closed.snapshot, state.selection, durableFallback) ??
+        state.selection
+    )
     // Why: a browser guest process swap drops its tab for one snapshot; the topology fallback
     // must not overwrite (and persist) the device's explicit pick, or focus never returns.
     const selectionSurvived =
@@ -232,6 +215,7 @@ export class ClientSessionTabSelectionStore {
     statesByWorktree.set(snapshot.worktree, {
       selection: selectionSurvived ? projected.selection : state.selection,
       revision: state.revision,
+      // Why: the durable fallback is a read-only resume; it must never become this device's pick.
       shouldPersist: state.shouldPersist,
       closedTabIds: closed.retainedClosedTabIds
     })

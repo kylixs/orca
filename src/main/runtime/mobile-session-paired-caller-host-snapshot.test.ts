@@ -113,6 +113,40 @@ function tabParent(snapshot: {
   return active?.parentTabId ?? active?.id ?? null
 }
 
+function rendererMobileSessionTabs(activeTabId: string) {
+  return {
+    worktree: WT,
+    publicationEpoch: 'renderer:host',
+    snapshotVersion: 1,
+    activeGroupId: 'group-1',
+    activeTabId,
+    activeTabType: 'terminal' as const,
+    tabGroups: [{ id: 'group-1', activeTabId: 'tab-c', tabOrder: ['tab-a', 'tab-b', 'tab-c'] }],
+    tabs: ['tab-a', 'tab-b', 'tab-c'].map((id) => ({
+      type: 'terminal' as const,
+      id: `${id}::${leafOf(id)}`,
+      parentTabId: id,
+      leafId: leafOf(id),
+      ptyId: `pty-${id}`,
+      title: id,
+      isActive: activeTabId === `${id}::${leafOf(id)}`
+    }))
+  }
+}
+
+function publishRendererSnapshot(
+  runtime: OrcaRuntimeService,
+  activeTabId = `tab-c::${leafOf('tab-c')}`
+) {
+  runtime.attachWindow(1)
+  runtime.markGraphReady(1)
+  runtime.syncWindowGraph(1, {
+    tabs: [],
+    leaves: [],
+    mobileSessionTabs: [rendererMobileSessionTabs(activeTabId)]
+  })
+}
+
 describe('U162 paired caller activation keeps the headless host snapshot in sync', () => {
   it('moves snapshot.activeTabId with the durable activation and a new device resumes it', async () => {
     const { runtime, getSession, snapshot } = createRuntime()
@@ -200,54 +234,7 @@ describe('U162 paired caller activation keeps the headless host snapshot in sync
 
   it('leaves a renderer-published snapshot untouched while the activation stays durable', async () => {
     const { runtime, getSession, snapshot } = createRuntime()
-    runtime.attachWindow(1)
-    runtime.markGraphReady(1)
-    runtime.syncWindowGraph(1, {
-      tabs: [],
-      leaves: [],
-      mobileSessionTabs: [
-        {
-          worktree: WT,
-          publicationEpoch: 'renderer:host',
-          snapshotVersion: 1,
-          activeGroupId: 'group-1',
-          activeTabId: `tab-c::${leafOf('tab-c')}`,
-          activeTabType: 'terminal',
-          tabGroups: [
-            { id: 'group-1', activeTabId: 'tab-c', tabOrder: ['tab-a', 'tab-b', 'tab-c'] }
-          ],
-          tabs: [
-            {
-              type: 'terminal' as const,
-              id: `tab-a::${leafOf('tab-a')}`,
-              parentTabId: 'tab-a',
-              leafId: leafOf('tab-a'),
-              ptyId: 'pty-tab-a',
-              title: 'tab-a',
-              isActive: false
-            },
-            {
-              type: 'terminal' as const,
-              id: `tab-b::${leafOf('tab-b')}`,
-              parentTabId: 'tab-b',
-              leafId: leafOf('tab-b'),
-              ptyId: 'pty-tab-b',
-              title: 'tab-b',
-              isActive: false
-            },
-            {
-              type: 'terminal' as const,
-              id: `tab-c::${leafOf('tab-c')}`,
-              parentTabId: 'tab-c',
-              leafId: leafOf('tab-c'),
-              ptyId: 'pty-tab-c',
-              title: 'tab-c',
-              isActive: true
-            }
-          ]
-        }
-      ]
-    })
+    publishRendererSnapshot(runtime)
     const before = snapshot()
 
     await runtime.activateMobileSessionTab(selector, 'tab-b', undefined, {
@@ -261,5 +248,59 @@ describe('U162 paired caller activation keeps the headless host snapshot in sync
     expect(snapshot()).toBe(before)
     expect(snapshot()?.activeTabId).toBe(`tab-c::${leafOf('tab-c')}`)
     expect(snapshot()?.publicationEpoch).toMatch(/^renderer:/)
+  })
+
+  it('projects the durable activation to a fresh device under a renderer publication', async () => {
+    const { runtime, snapshot } = createRuntime()
+    publishRendererSnapshot(runtime)
+    const before = snapshot()
+
+    await runtime.activateMobileSessionTab(selector, 'tab-b', undefined, {
+      notifyClients: false,
+      clientNavigationId: 'device-web',
+      navigation: 'caller'
+    })
+
+    // The renderer snapshot must stay the renderer's: no reclassification, no republish.
+    expect(snapshot()).toBe(before)
+    expect(snapshot()?.activeTabId).toBe(`tab-c::${leafOf('tab-c')}`)
+    expect(snapshot()?.publicationEpoch).toMatch(/^renderer:/)
+
+    // A device with no recorded selection must resume the durable activation, not the stale snapshot.
+    const freshDevice = await runtime.listMobileSessionTabs(selector, 'device-new')
+    expect(freshDevice.activeTabId).toBe(`tab-b::${leafOf('tab-b')}`)
+    expect(tabParent(freshDevice)).toBe('tab-b')
+    const activeGroup = freshDevice.tabGroups?.find((group) => group.tabOrder.includes('tab-b'))
+    expect(freshDevice.activeGroupId).toBe(activeGroup?.id)
+    expect(activeGroup?.activeTabId).toBe('tab-b')
+  })
+
+  it('falls back to the snapshot active when the durable tab is not in the snapshot', async () => {
+    const session = makeSession()
+    session.activeTabIdByWorktree = { [WT]: 'tab-gone' }
+    const { runtime } = createRuntime(session)
+    publishRendererSnapshot(runtime)
+
+    const freshDevice = await runtime.listMobileSessionTabs(selector, 'device-new')
+
+    expect(freshDevice.activeTabId).toBe(`tab-c::${leafOf('tab-c')}`)
+    expect(tabParent(freshDevice)).toBe('tab-c')
+  })
+
+  it('keeps the durable active for a device that only mounted before the activation', async () => {
+    const { runtime } = createRuntime()
+    publishRendererSnapshot(runtime)
+    // A mount projection records an auto selection with shouldPersist:false.
+    expect(tabParent(await runtime.listMobileSessionTabs(selector, 'device-mount'))).toBe('tab-c')
+
+    await runtime.activateMobileSessionTab(selector, 'tab-b', undefined, {
+      notifyClients: false,
+      clientNavigationId: 'device-web',
+      navigation: 'caller'
+    })
+
+    const mounted = await runtime.listMobileSessionTabs(selector, 'device-mount')
+    expect(mounted.activeTabId).toBe(`tab-b::${leafOf('tab-b')}`)
+    expect(tabParent(mounted)).toBe('tab-b')
   })
 })
