@@ -121,7 +121,7 @@ describe("U153 D1: user-created cloud tab selects itself on the host", () => {
     vi.useRealTimers();
   });
 
-  it.fails(
+  it(
     "pins D1: user-gesture cloud tab creation sends a tap-semantics activate and records focus intent",
     async () => {
       const { createRemoteRuntimePtyTransport } =
@@ -134,6 +134,8 @@ describe("U153 D1: user-created cloud tab selects itself on the host", () => {
         leafId: LOCAL_LEAF_ID,
         // The pane was mounted because the user just created and showed this tab.
         activate: true,
+        // Client-local gesture marker: only a click sets this; passive mounts never do.
+        userInitiated: true,
       });
 
       await transport.connect({ url: "", callbacks: {} });

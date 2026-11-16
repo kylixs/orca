@@ -16,6 +16,7 @@ import { browserWorkspaceHasRemoteOwner } from '@/runtime/remote-browser-tab-own
 import { getClientCreationActionPolicy } from '@/lib/client-creation-action-policy'
 import { showClientCreationActionError } from '@/lib/client-creation-action-error'
 import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
+import { markUserInitiatedTerminalCreate } from '@/runtime/web-session-user-initiated-create'
 import { openTabBarEntry, type TabCreateEntryArgs } from './tab-bar/tab-create-entry-action'
 import { translate } from '@/i18n/i18n'
 import { getActiveWorktreeRuntimeEnvironmentId } from './terminal-workspace-model'
@@ -64,6 +65,8 @@ export function useTerminalCreateActions(controller: TerminalColdActivationContr
         return
       }
       const newTab = createTab(activeWorktreeId, undefined, shellOverride)
+      // Why: user click — the finished host create may select the tab; passive mounts never mark.
+      markUserInitiatedTerminalCreate(newTab.id)
       setActiveTabType('terminal', activeWorktreeId)
       const state = useAppStore.getState()
       const currentTerminals = state.tabsByWorktree[activeWorktreeId] ?? []

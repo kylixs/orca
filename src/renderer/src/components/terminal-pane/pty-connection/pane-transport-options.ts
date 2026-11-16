@@ -1,4 +1,5 @@
 import { useAppStore } from '@/store'
+import { peekUserInitiatedTerminalCreate } from '@/runtime/web-session-user-initiated-create'
 import { shouldRetainDisposedPaneSpawn } from './disposed-spawn-retention'
 import type { IpcPtyTransportOptions } from '../pty-transport-types'
 import type { ConnectPanePtySession } from './connect-pane-pty-session'
@@ -50,6 +51,7 @@ export function buildPaneTransportOptions(session: ConnectPanePtySession): IpcPt
     leafId: session.pane.leafId,
     ...(session.deps.placement ? { placement: session.deps.placement } : {}),
     activate: session.deps.isActiveRef.current && session.deps.isVisibleRef.current,
+    ...(peekUserInitiatedTerminalCreate(session.deps.tabId) ? { userInitiated: true } : {}),
     ...(session.shellOverride ? { shellOverride: session.shellOverride } : {}),
     ...(session.projectRuntime ? { projectRuntime: session.projectRuntime } : {}),
     ...(session.terminalColorQueryReplies

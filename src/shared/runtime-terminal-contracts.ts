@@ -260,6 +260,8 @@ export type RuntimeTerminalCreate = {
   /** Host-owned PTY incarnation used to fence remote identity observations. */
   incarnationId?: string | null
   tabId?: string
+  /** Host-created pane leaf, so a paired caller can select the exact pane the create returned. */
+  leafId?: string
   paneKey?: string | null
   ptyId?: string | null
   worktreeId: string

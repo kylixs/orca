@@ -292,6 +292,8 @@ export type IpcPtyTransportOptions = {
   /** Sent on fresh spawns only; a reattach names a PTY whose leaf main already knows. */
   placement?: TerminalPanePlacement
   activate?: boolean
+  /** U153: the tab was created by a user gesture, so the finished create must select it on the host. */
+  userInitiated?: boolean
   shellOverride?: string
   projectRuntime?: ProjectExecutionRuntimeResolution
   terminalKittyKeyboardProtocol?: boolean

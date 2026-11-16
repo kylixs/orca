@@ -1,6 +1,7 @@
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import { parseWorkspaceKey } from '../../../../shared/workspace-scope'
 import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
+import { markUserInitiatedTerminalCreate } from '@/runtime/web-session-user-initiated-create'
 import { focusTerminalTabSurface } from '@/lib/focus-terminal-tab-surface'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { resolveWorktreeOperationRouteResult } from '@/lib/worktree-operation-route'
@@ -56,6 +57,9 @@ export function createActiveWorkspaceTerminalActions(
         return
       }
       const terminal = get().createTab(worktreeId, groupId)
+      // Why: a cloud session's client-owned pane spawns through terminal.create; only this click
+      // may persist the new tab as the host's selection when that create returns (U153).
+      markUserInitiatedTerminalCreate(terminal.id)
       get().setActiveTab(terminal.id)
       get().setActiveTabType('terminal', worktreeId)
       const latest = get()

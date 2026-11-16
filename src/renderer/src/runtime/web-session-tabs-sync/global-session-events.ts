@@ -23,6 +23,8 @@ import {
   type HostSessionMirrorSettle
 } from './mirror-settle'
 import { handleGlobalSessionInventoryEvent } from './global-session-inventory-event'
+import { resolveHostActiveApplyOptions } from './host-active-apply-options'
+import { isCloudSessionEnvironmentId } from '../../lib/cloud-session-environment-membership'
 import type { VisibilityResumeCoordinator } from './visibility-resume-coordinator'
 
 export type GlobalSessionEventArgs = {
@@ -141,8 +143,21 @@ export function handleGlobalSessionEvent(args: GlobalSessionEventArgs): void {
       }
       const decision = decideWebSessionTabsSnapshot(recovered, environmentId, runtimeId)
       if (decision.apply) {
+        // Why: the global stream lands first and dedupes the per-worktree frame, so it must carry
+        // the same host-active authority a cloud session relies on (U153 D2).
+        const { options: applyOptions } = resolveHostActiveApplyOptions({
+          environmentId,
+          worktreeId: recovered.worktree,
+          isCloudSession: isCloudSessionEnvironmentId(
+            useAppStore.getState().runtimeEnvironments,
+            environmentId
+          ),
+          pendingAdoption: false,
+          hasHostGroups: (recovered.tabGroups?.length ?? 0) > 0
+        })
         settleHydration = applyWebSessionTabsStorePatch(
-          (state) => applyWebSessionTabsSnapshot(state, recovered, environmentId),
+          (state) =>
+            applyWebSessionTabsSnapshot(state, recovered, environmentId, Date.now(), applyOptions),
           {
             frames: [
               {

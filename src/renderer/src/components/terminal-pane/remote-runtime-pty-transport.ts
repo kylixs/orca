@@ -80,6 +80,11 @@ import {
 import { replaceFitOverridePtyId, setFitOverride } from '@/lib/pane-manager/mobile-fit-overrides'
 import { replaceDriverPtyId, setDriverForPty } from '@/lib/pane-manager/mobile-driver-state'
 import { isWebTerminalSurfaceTabId, toHostSessionTabId } from '@/runtime/web-terminal-surface-id'
+import { captureWebSessionIntentOwner } from '@/runtime/web-runtime-session-environment'
+import { recordWebSessionFocusIntent } from '@/runtime/web-session-focus-intent'
+import { consumeUserInitiatedTerminalCreate } from '@/runtime/web-session-user-initiated-create'
+import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
+import { parsePaneKey } from '../../../../shared/stable-pane-id'
 import { listRemoteRuntimeSessionTabsAfterCurrentInFlight } from '@/runtime/remote-runtime-session-tabs-inflight'
 import { subscribeAcceptedWebSessionTerminalHandle } from '@/runtime/web-session-terminal-handle-events'
 import { hostSnapshotAffirmsWorktreeContents } from '@/runtime/host-session-snapshot-authority'
@@ -214,6 +219,7 @@ export function createRemoteRuntimePtyTransport(
     tabId,
     leafId,
     activate,
+    userInitiated,
     onPtyExit,
     onPtySpawn,
     onPtyRebind,
@@ -697,6 +703,45 @@ export function createRemoteRuntimePtyTransport(
   function isMissingHostSessionSurfaceError(error: unknown): boolean {
     const message = runtimeTerminalErrorMessage(error)
     return message.includes('tab_not_found') || message.includes('terminal_not_found')
+  }
+
+  /** U153 D1: a user-created cloud tab must become the host's persisted selection. */
+  function selectUserCreatedHostTab(
+    created: RuntimeTerminalCreate,
+    environmentId: string
+  ): void {
+    const hostTabId = created.tabId
+    const hostLeafId = created.leafId ?? parsePaneKey(created.paneKey ?? '')?.leafId
+    if (
+      !worktreeId ||
+      !hostTabId ||
+      created.isReattach === true ||
+      !isCloudSessionEnvironmentId(useAppStore.getState().runtimeEnvironments, environmentId)
+    ) {
+      return
+    }
+    const owner = captureWebSessionIntentOwner(environmentId)
+    recordWebSessionFocusIntent(owner, worktreeId, hostTabId, hostLeafId)
+    if (tabId) {
+      consumeUserInitiatedTerminalCreate(tabId)
+    }
+    // Why fire-and-forget: the host persists a tap; pane readiness must not wait on it.
+    void callRuntimeForEnvironment<RuntimeMobileSessionTabsResult>(
+      environmentId,
+      'session.tabs.activate',
+      {
+        worktree: toRuntimeWorktreeSelector(worktreeId),
+        tabId: hostTabId,
+        ...(hostLeafId ? { leafId: hostLeafId } : {}),
+        notifyClients: false,
+        navigation: 'caller',
+        intent: 'user'
+      }
+    ).catch((error) => {
+      if (!destroyed) {
+        console.warn('[remote-runtime-pty] user-created tab selection failed:', error)
+      }
+    })
   }
 
   async function waitForHostSessionHandle(
@@ -2830,6 +2875,10 @@ export function createRemoteRuntimePtyTransport(
           return
         }
         handle = createdTerminal.handle
+
+        if (userInitiated === true) {
+          selectUserCreatedHostTab(createdTerminal, createEnvironmentId)
+        }
 
         if (createdTerminal.isReattach === true) {
           storedCallbacks.onReattachDetermined?.()

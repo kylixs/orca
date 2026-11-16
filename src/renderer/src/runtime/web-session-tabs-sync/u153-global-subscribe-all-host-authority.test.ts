@@ -192,7 +192,7 @@ describe("U153 D2: global subscribeAll applies with host-active authority", () =
     mockState.runtimeEnvironments = [cloudEnvironment()];
   });
 
-  it.fails(
+  it(
     "pins D2: a cloud session global snapshot apply carries hostActiveAuthoritative:true",
     async () => {
       feedGlobalFrame();
