@@ -3591,6 +3591,7 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **U127 已执行闭环（用户授权：开发环境非危险操作自主处理，中继未正式使用）**：远端 relay 自签证书→CA 签发（SAN 含 IP，旧件备份）；新增 `orca-relay.service` systemd（沿用原 token，Restart=always）停旧起新；18443/18444 监听、routes n=2；handoff `…:18444/h/dev-local-02/…` 实测 **200**、系统信任校验 **return code 0**；协议 §3i 增补开发环境自主权限。证据 `evidence/u127/result.json`。
 - **U63 人工复核证据重验完成并闭环**（10 步 / 23 截图，`evidence/u63-manual-review/`）：9 PASS；唯一 DIFF（主机指纹占位/版本缺失）→ **U147 已修并真机验证**：详情显示真实 `TLS 指纹 sha256:3f4b…`、版本心跳自愈（开发运行时显示 Electron 版本 43.7.5，打包版为 Orca 版本）。U63/U147 均 🟢。
 - **移动端真机抽验 15/15 PASS**（`evidence/u80-mobile/real-env.json` + 4 截图）：390 工作台四 tab/2×2/Orca Web 提示、项目卡/chips/「打开工作区」toast 且 hash 不变、详情全屏 sheet+权限三卡、768 侧栏两列；consoleErrors=[]。
+- **U116① 进展**：W1 G06 服务端（`c5c1151`）、W2 数据层（`29e02c5`）、W3 归档分组/chip（`49656b8`）已落地；W4 归档/恢复交互在途；M9 发现的 4 缺陷已修（`f381ea1`，待 M10 真机复核）。
 - **移动端 M9 逐页探索完成**：73 项检查 **66 PASS / 7 FAIL**（归并 4 缺陷，`evidence/u80-mobile/m9-exploration/` 38 截图 + summary.json）：①工作台 390 项目卡横向溢出（P1 布局）②主机详情页签 39px ③主机卡操作未按原型折叠 ④下线用原生 confirm → 登记 **U148**，修复排在 W3 后（同 app.js）。
 - **移动端 U80 M1-M8 全部落地**：M4 主机/中继 `8cb88ab`、M5 用户 `ae2e11c`、M6 审计 `67e876f`、M7 设置 `7e956a7`、M8 深链守卫+全局形态 `359f275`；M6-M7 独立审计 PASS（40/40）；**M9 逐页探索**与 **W2（U116① 数据层）** 在途。
 - **移动端 U80 进展（M1-M3 已落地）**：M1 基座 `8dbc5f9`（审计 PASS，D2/D3/D4 由 `54955b44a80` 收口）；M2 登录+工作台 `54ed87a`；M3 项目列表+详情 `33e42b8`（含「打开工作区→请用 Orca Web」提示）；U80 套件 12/12；控制台已部署测试环境，真机移动视口抽验进行中。M4 主机/中继在途。
