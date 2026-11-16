@@ -278,7 +278,7 @@ test('M120c2-4 显式禁止覆盖钉住：全局翻转为 allow 后该行不变�
   assert.equal(await globalDefault(), 'allow', 'the flip landed')
   assert.match(
     lastToast(page),
-    /已保存，30 秒内生效；跟随全局 1 个项目，独立覆盖 1 个不受影响/,
+    /已保存，将随宿主心跳生效；跟随全局 1 个项目，独立覆盖 1 个不受影响/,
     'the toast names who follows and who is pinned (FR-9.4)'
   )
 
@@ -327,7 +327,7 @@ test('M120c2-4 显式禁止覆盖钉住：全局翻转为 allow 后该行不变�
 
   saveEvidence(EVIDENCE, 'pinned-vs-global-flip.json', {
     globalDefault: 'allow',
-    toast: '已保存，30 秒内生效；跟随全局 1 个项目，独立覆盖 1 个不受影响',
+    toast: '已保存，将随宿主心跳生效；跟随全局 1 个项目，独立覆盖 1 个不受影响',
     pinned: { project: 'payment-service', stored: 'deny', effective: 'deny', badge: '下载已禁用' },
     follower: { project: followProjectId, stored: 'deny', effective: 'allow', badge: '允许下载' }
   })
@@ -492,7 +492,7 @@ test('M120c2-8 全局保存携带 expectedVersion：成功后本地与服务端�
   assert.equal(after.body.downloadDefault, 'allow')
   assert.equal(after.body.version, seenVersion + 1, 'the platform version advanced once')
   assert.match(page.text('#content'), /当前版本 v\d+/, 'the card still shows a version')
-  assert.match(lastToast(page), /已保存，30 秒内生效/)
+  assert.match(lastToast(page), /已保存，将随宿主心跳生效/)
 
   // Keep the shipped default for any later run.
   const restored = await adminApi('/v1/policies/download', {
@@ -504,7 +504,7 @@ test('M120c2-8 全局保存携带 expectedVersion：成功后本地与服务端�
   saveEvidence(EVIDENCE, 'expected-version-save.json', {
     sent: { downloadDefault: 'allow', expectedVersion: seenVersion },
     resultVersion: after.body.version,
-    toast: '已保存，30 秒内生效；跟随全局 2 个项目，独立覆盖 0 个不受影响'
+    toast: '已保存，将随宿主心跳生效；跟随全局 2 个项目，独立覆盖 0 个不受影响'
   })
   record(
     'expected-version',
