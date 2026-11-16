@@ -3628,6 +3628,14 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **门禁**：U151 落地后 `--platform-only` 刷新（web build=源 d53905bc1bbe）→ 金路径控制台线 **12/13**（a2=U138 已复现的同一缺陷，其余全绿）；台账 U151 🟢、U152 🔴（修复中）。
 - **T1 帧记录器落地**（`f72ee67dbc8`，13 文件/900 行）：默认关（`localStorage["orca.debug.sessionTabs"]==="1"`）、关闭路径零分配；三处窄边界（env call/subscribe/直连 preload）；11 个实际存在的方法进白名单（无 `session.tabs.restore`）；环形 300；`applied/applyOptions` 回填；`window.__orcaSessionTabsTrace` 暴露。单测 10/10（主会话复跑）、相邻 66 绿、`pnpm tc` 与 oxlint 干净；wire/构建宏零改动。
 
+### 2026-11-17 02:1x 轮：U138 H-A 修复 / 探针硬化 / T1 打磨复盘闭环
+
+- **TDD 钉 → T3 修复**：钉 `420b72e859d`（先红：`expected host-entry to be host-later`）→ 修复 `d9aff7afd02`（新增 `preserveStoreActiveFocus`：恢复等待期间有流帧落地时，延迟 listAll 只合并内容、不采纳焦点；`apply-final-patch` 剔除 9 个焦点键；反向用例保证无流帧时仍采纳入场 active）。钉转正 2/2（主会话复跑）、相邻 9 文件 37 绿、tc/oxlint 干净。
+- **U152 探针硬化**（`435339df131`）：三读分离（宿主持久文件回退口径显式标注 hostMemorySource）、双采样（≥2.1s）、reload×3 + 关页重开×3 + 快速开合×5、T1 `__orcaSessionTabsTrace` 归因、INVALID 判定、证据按 run 归档、DOM 作用域限定、`rawCall` 按 namespace。**上一构建（T3 前）结果**：baseline 绿 16 / 红 9 / INVALID 0；9 红同构——获胜帧 `session.tabs.subscribeAll` `applied=true` 但无 `hostActiveAuthoritative`（快速新建/关闭 tab 场景），归因 **H-A 泛化**（获胜 apply 帧未采纳宿主 active，而非仅 late-listAll）；race 5-cycle 25/25 绿但旧 oracle 不可签字。
+- **T1 审计 PASS + 打磨**（`aa08270151f`）：关闭态 storage 读=首入 1 次后 0（spy 断言）；新增 `enable()/disable()` 运行时开关；worktree+version+epoch 精确回填；句柄随关闭卸载；单测 16/16（主会话复跑）。
+- **基线刷新**：m09 更新 U138 残余/T3 状态与 U96/U103/U106/U113 过期状态（`9c2308c7989`）；02:00 复盘 + 协议 §2-47~§2-50（`9d7d8c90e69`/`91fede76778`）。
+- **下一步**：用含 T3 的新构建重跑硬化 baseline（期望 9 红转绿）；若 `subscribeAll` 子案仍红，另派修复（不动 late-listAll 语义）。
+
 ### 四通道并发执行（启动，2026-11-14）
 
 按细粒度拆分与三权分立纪律并发起跑：通道② **W6a**（中继浏览器模式，relay.ts 域）、通道③ **W10**（客户端零 env 登录，src/main+renderer 登录域）、通道④ **W5a**（详情页终端组件，cloud-admin 域）三个实现代理并行；通道① 等在途 W2（QA 修复）完成后接 W8。每令完成→独立测试代理→独立审计代理→主会话关闭放行下一个。
