@@ -3577,7 +3577,8 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **U138 三期落地**（`68c498fd5d1`）：恢复后 re-assert——adoption 前客户端 restored active ≠ 宿主则回写一次（配对落盘），相同/手势/失效零写入；4 新例、相邻 46 文件/348 绿。
 - **U138 三~五期**：客户端回写方案（reassert）经三轮（`68c498fd5d1`/`b6883d9f389`）仍偶发；四期诊断证伪双写/陈旧选择、证实捕获点污染；**升级用户裁定「宿主为准」**（台账 `c8eb0cf75fc`），并落权威矩阵 `work-orders/u138-active-tab-authority-matrix.md`。
 - **六期（宿主为准）落地**（`4e3a955d2e2`）：移除回写；云会话每帧 `hostActiveAuthoritative`、手势优先；**journey-13：a2 三方一致绿**。
-- **七期诊断锁定翻转源**（`f69f7add9fb`）：隐藏 pane 的镜像 attach（`navigation:'caller'`）被二期落盘当成用户选择持久化，每次打开翻到「最后 attach 的隐藏同组 tab」；H5 证伪。**八期修令在途**（仅显式导航落盘、镜像 attach 仅 caller 投影）。W9 双线六期构建 6/6 绿。
+- **七期诊断锁定翻转源**（`f69f7add9fb`）：隐藏 pane 的镜像 attach 被落盘当成用户选择；八~九期迭代（`b1961de1df7`/`9f1d4876a72`/`7f4cf9a77b3`）引入 `materializeOnly` 显式标记：材质化请求不写 durable/per-device。
+- **终局门禁（九期构建）**：journey-16 **13/13 全绿**（含 a2 三方一致）；W9 官方双线 **6/6 绿**；平台 e2e **428/428**。**U138 残余观测**：快速开合循环中宿主内存 active 仍被材质化 attach 翻转（dom/store 慢一拍交替），内容/分组零丢失；十期修令在途（材质化不改内存 active）。
 - **AC-M3-33/G08 注记同步**（`09bfb94513b`），计数机检 PASS（318=276+41+1、§13 9/5/15）。
 - 最终构建门禁：平台 e2e **426/0**、W9 双线 A 4/4 + B 2/2 绿。
 
