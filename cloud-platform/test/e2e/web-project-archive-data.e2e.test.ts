@@ -82,6 +82,38 @@ function rowContaining(page: WebConsolePage, text: string): HTMLElement | undefi
   )
 }
 
+/** Live-table row on 我的项目, excluding the archived history group. */
+function liveRowContaining(page: WebConsolePage, text: string): HTMLElement | undefined {
+  return [...page.window.document.querySelectorAll<HTMLElement>('#projectTableWrap tbody tr')].find(
+    (row) => row.textContent?.includes(text)
+  )
+}
+
+function archivedGroup(page: WebConsolePage): HTMLDetailsElement | null {
+  return page.window.document.querySelector<HTMLDetailsElement>('.archived-group')
+}
+
+function archivedRows(page: WebConsolePage, text: string): HTMLElement[] {
+  const group = archivedGroup(page)
+  if (!group) return []
+  return [...group.querySelectorAll<HTMLElement>('tbody tr')].filter((row) =>
+    row.textContent?.includes(text)
+  )
+}
+
+function projectChip(page: WebConsolePage, filter: string): HTMLButtonElement | null {
+  return page.window.document.querySelector<HTMLButtonElement>(
+    `#projectChips [data-project-filter="${filter}"]`
+  )
+}
+
+async function searchProjects(page: WebConsolePage, value: string): Promise<void> {
+  const input = page.window.document.querySelector<HTMLInputElement>('#projectSearch')!
+  input.value = value
+  input.dispatchEvent(new page.window.Event('input', { bubbles: true }))
+  await page.settle()
+}
+
 test('W2-1 admin 项目页请求 includeArchived，工作台不请求，归档不进在营列表', async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
@@ -99,9 +131,9 @@ test('W2-1 admin 项目页请求 includeArchived，工作台不请求，归档�
     1,
     'the admin project page asks for the archive exactly once'
   )
-  assert.ok(rowContaining(page, 'w2-live'), 'the live row stays in 我的项目')
+  assert.ok(liveRowContaining(page, 'w2-live'), 'the live row stays in 我的项目')
   assert.equal(
-    rowContaining(page, 'w2-archived'),
+    liveRowContaining(page, 'w2-archived'),
     undefined,
     'archived projects stay out of the live list (group UI is W3)'
   )
@@ -127,7 +159,7 @@ test('W2-2 admin 直达归档项目 URL 可解析（数据层/路由，无 UI �
     'the detail read opts into the archived row'
   )
   assert.equal(
-    rowContaining(page, 'w2-archived'),
+    liveRowContaining(page, 'w2-archived'),
     undefined,
     'resolving the archive does not put it back into the live table'
   )
@@ -143,6 +175,8 @@ test('W2-3 非 admin 从不请求 includeArchived，归档深链维持 403', asy
     false,
     'a developer console never asks for archived rows'
   )
+  assert.equal(projectChip(page, 'archived'), null, 'a developer sees no 已归档 chip')
+  assert.equal(archivedGroup(page), null, 'a developer sees no archived group')
 
   const deepLink = loadWebConsolePage(service.url, { hash: `#/projects/${archivedId}` })
   await deepLink.settle()
@@ -154,6 +188,124 @@ test('W2-3 非 admin 从不请求 includeArchived，归档深链维持 403', asy
     false,
     'the existing 403 path sends no archive query'
   )
+})
+
+test('W3-1 admin 归档分组默认折叠、计数与 chip，归档行只留详情', async () => {
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  await page.clickNav('projects')
+
+  const group = archivedGroup(page)
+  assert.ok(group, 'admin sees the archived history group')
+  assert.equal(group.open, false, 'the history group starts folded')
+  assert.match(group.querySelector('summary')?.textContent ?? '', /已归档项目（1）/)
+
+  const chip = projectChip(page, 'archived')
+  assert.ok(chip, 'the archive filter chip exists when history is non-empty')
+  assert.match(chip.textContent ?? '', /已归档 1/)
+
+  assert.ok(liveRowContaining(page, 'w2-live'), 'live rows stay in the live table')
+  assert.equal(
+    liveRowContaining(page, 'w2-archived'),
+    undefined,
+    'archived rows never enter the live table'
+  )
+
+  const [archivedRow] = archivedRows(page, 'w2-archived')
+  assert.ok(archivedRow, 'the archived row lives inside the history group')
+  assert.match(archivedRow.textContent ?? '', /已归档/)
+  assert.equal(
+    archivedRow.querySelector('[data-open]'),
+    null,
+    'archived rows expose no workspace entry'
+  )
+  assert.ok(archivedRow.querySelector('[data-detail]'), 'archived rows keep 详情 only')
+
+  const archivedCard = group.querySelector<HTMLElement>('.project-list-card')
+  assert.ok(archivedCard, 'the same card renderer carries the archive on mobile')
+  assert.match(archivedCard.textContent ?? '', /已归档/)
+  assert.equal(
+    archivedCard.querySelector('[data-open]'),
+    null,
+    'archived cards expose no 打开工作区'
+  )
+  assert.ok(archivedCard.querySelector('[data-detail]'))
+})
+
+test('W3-2 已归档 chip 只看归档，与在营 chip 互斥', async () => {
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  await page.clickNav('projects')
+
+  projectChip(page, 'archived')!.click()
+  await page.settle()
+
+  assert.equal(page.hidden('#projectTableWrap'), true, 'live table hides in archive view')
+  assert.equal(page.hidden('#projectList'), true, 'live cards hide in archive view')
+  const group = archivedGroup(page)
+  assert.ok(group, 'archive view keeps the history group')
+  assert.equal(group.open, true, 'archive view expands the group')
+  assert.ok(archivedRows(page, 'w2-archived').length > 0, 'the archived row is visible')
+  assert.equal(
+    archivedRows(page, 'w2-live').length,
+    0,
+    'live rows stay out of the archive-only view'
+  )
+  assert.equal(
+    page.window.document.querySelectorAll('#projectList .project-list-card').length,
+    0,
+    'no live card leaks into the archive view'
+  )
+
+  projectChip(page, 'online')!.click()
+  await page.settle()
+
+  assert.equal(archivedGroup(page), null, '仅在线 hides the history group')
+  assert.equal(page.hidden('#projectTableWrap'), false, 'the live table returns')
+  assert.ok(liveRowContaining(page, 'w2-live'))
+})
+
+test('W3-3 搜索同时过滤归档分组，计数按过滤后数量', async () => {
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  await page.clickNav('projects')
+
+  await searchProjects(page, 'w2-archived')
+  let group = archivedGroup(page)
+  assert.ok(group, 'a matching archive keeps the group')
+  assert.match(group.querySelector('summary')?.textContent ?? '', /已归档项目（1）/)
+  assert.ok(archivedRows(page, 'w2-archived').length > 0)
+  assert.match(page.text('#projectBody'), /没有匹配的项目/, 'live rows filter with the same query')
+
+  await searchProjects(page, 'w2-live')
+  group = archivedGroup(page)
+  assert.equal(group, null, 'a query that misses history hides the group')
+  assert.ok(liveRowContaining(page, 'w2-live'), 'the live row still matches')
+
+  await searchProjects(page, 'w2-archived')
+  projectChip(page, 'archived')!.click()
+  await page.settle()
+  assert.ok(archivedRows(page, 'w2-archived').length > 0, 'archive chip keeps the query filter')
+})
+
+test('W3-4 没有归档项目时不渲染分组与 chip', async () => {
+  const listing = await adminApi('/v1/projects?includeArchived=1')
+  const live = listing.body.projects.filter((p: { status: string }) => p.status !== 'archived')
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  page.fail('GET', '/v1/projects?includeArchived=1', {
+    status: 200,
+    body: { projects: live }
+  })
+  await page.clickNav('projects')
+
+  assert.equal(archivedGroup(page), null, 'an empty history renders no group')
+  assert.equal(projectChip(page, 'archived'), null, 'an empty history renders no 已归档 chip')
+  page.clearFails()
 })
 
 test('W2-4 准备中/准备失败的行禁用打开并给出因由', async () => {
@@ -174,8 +326,22 @@ test('W2-4 准备中/准备失败的行禁用打开并给出因由', async () =>
     status: 200,
     body: {
       projects: [
-        { ...base, id: 'proj_prep', key: 'w2-prep', name: 'w2-prep', status: 'provisioning', path: '/srv/w2-prep' },
-        { ...base, id: 'proj_failed', key: 'w2-failed', name: 'w2-failed', status: 'failed', path: '/srv/w2-failed' }
+        {
+          ...base,
+          id: 'proj_prep',
+          key: 'w2-prep',
+          name: 'w2-prep',
+          status: 'provisioning',
+          path: '/srv/w2-prep'
+        },
+        {
+          ...base,
+          id: 'proj_failed',
+          key: 'w2-failed',
+          name: 'w2-failed',
+          status: 'failed',
+          path: '/srv/w2-failed'
+        }
       ]
     }
   })

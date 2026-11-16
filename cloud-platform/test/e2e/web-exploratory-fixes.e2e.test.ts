@@ -850,11 +850,17 @@ test('R5-② 工作台/我的项目默认排除归档项目，归档行有徽标
   )
 
   await page.clickNav('projects')
-  assert.doesNotMatch(
-    page.text('#content'),
-    /r5-archived/,
-    '我的项目 must not list an archived project'
+  assert.equal(
+    [...page.window.document.querySelectorAll<HTMLElement>('#projectTableWrap tbody tr')].some(
+      (row) => row.textContent?.includes('r5-archived')
+    ),
+    false,
+    '我的项目 live table must not list an archived project'
   )
+  const archivedGroup = page.window.document.querySelector<HTMLDetailsElement>('.archived-group')
+  assert.ok(archivedGroup, 'U116① W3: the admin history group carries the archive')
+  assert.equal(archivedGroup.open, false, 'the history group is folded by default')
+  assert.match(archivedGroup.textContent ?? '', /r5-archived/)
   assert.equal(
     page.calls().filter((call) => call === 'GET /v1/projects?includeArchived=1').length,
     1,

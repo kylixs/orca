@@ -754,9 +754,10 @@ function projectListCard(p) {
             ? ['离线', 'danger']
             : ['在线', 'ok']
   const reason = openDisabledReason(p)
-  return `<article class="card project-list-card" data-online="${offline ? 'false' : 'true'}">
+  const archived = p.status === 'archived'
+  return `<article class="card project-list-card" data-online="${offline ? 'false' : 'true'}"${archived ? ' data-archived="true"' : ''}>
     <div class="plc-head">
-      <div class="plc-title"><span class="dot ${offline ? 'offline' : 'online'}"></span><strong class="plc-name">${esc(p.name)}</strong>${archivedBadge(p)}</div>
+      <div class="plc-title"><span class="dot ${offline ? 'offline' : 'online'}"></span><strong class="plc-name">${esc(p.name)}</strong>${archived ? '' : archivedBadge(p)}</div>
       <span class="badge ${statusTone}">${statusLabel}</span>
     </div>
     <div class="plc-path mono">${esc(p.repoUrl || p.path)}</div>
@@ -766,8 +767,12 @@ function projectListCard(p) {
     </div>
     <div class="plc-actions">
       ${detailEntry(p)}
-      <span class="plc-spacer"></span>
-      <button class="btn primary sm" data-open="${esc(p.id)}" ${reason ? `disabled title="${esc(reason)}"` : ''}>打开工作区</button>
+      ${
+        archived
+          ? ''
+          : `<span class="plc-spacer"></span>
+      <button class="btn primary sm" data-open="${esc(p.id)}" ${reason ? `disabled title="${esc(reason)}"` : ''}>打开工作区</button>`
+      }
     </div>
   </article>`
 }
@@ -1526,6 +1531,36 @@ function currentDeviceId() {
   return generated
 }
 
+const PROJECT_TABLE_HEAD =
+  '<thead><tr><th>项目</th><th>仓库</th><th>主机</th><th>权限</th><th>下载策略</th><th class="actions">操作</th></tr></thead>'
+
+/** One desktop row; archived history rows drop every live entry but 详情 (U116① W3). */
+function projectTableRow(p, globalDefault) {
+  return `<tr>
+        <td><strong>${esc(p.name)}</strong> ${archivedBadge(p)}<div class="muted mono">${esc(p.path)}</div></td>
+        <td class="mono muted">${esc(p.repoUrl)}</td>
+        <td>${esc(p.hostName)} ${hostStatusBadge(p)}</td>
+        <td class="muted">${esc(permissionSummary(p))}</td>
+        <td>${
+          effectiveDownloadPolicy(p, globalDefault) === 'deny'
+            ? '<span class="badge lock">禁止</span>'
+            : '<span class="badge">允许</span>'
+        }</td>
+        <td class="actions">${p.status === 'archived' ? detailEntry(p) : projectRowActions(p)}</td>
+      </tr>`
+}
+
+/** Default-folded history group; the same rows/cards serve desktop and phone. */
+function archivedGroupHtml(rows, globalDefault, { open = false } = {}) {
+  return `<details class="archived-group"${open ? ' open' : ''}>
+    <summary>已归档项目（${rows.length}）</summary>
+    <div class="table-wrap archived-table">
+      <table>${PROJECT_TABLE_HEAD}<tbody>${rows.map((p) => projectTableRow(p, globalDefault)).join('')}</tbody></table>
+    </div>
+    <div class="project-list">${rows.map(projectListCard).join('')}</div>
+  </details>`
+}
+
 async function renderProjects() {
   // 生效值 = 显式覆盖 ? 项目值 : 全局默认；列与徽标都按生效值渲染（M120c §5.4）。
   const [projects, policy] = await Promise.all([
@@ -1533,6 +1568,7 @@ async function renderProjects() {
     api('/v1/policies/download')
   ])
   const globalDefault = policy.downloadDefault
+  const archived = isAdmin() ? state.archivedProjects : []
   content().innerHTML = `
     <div class="page-head">
       <div><h1>我的项目</h1><p>仅展示你有「打开项目」权限的项目。</p></div>
@@ -1548,46 +1584,45 @@ async function renderProjects() {
       <button class="chip is-on" type="button" data-project-filter="all">全部状态</button>
       <button class="chip" type="button" data-project-filter="online">仅在线</button>
       <button class="chip" type="button" data-project-filter="offline">仅离线</button>
+      ${archived.length > 0 ? `<button class="chip" type="button" data-project-filter="archived">已归档 ${archived.length}</button>` : ''}
     </div>
     <div class="table-wrap" id="projectTableWrap">
-      <table>
-        <thead><tr><th>项目</th><th>仓库</th><th>主机</th><th>权限</th><th>下载策略</th><th class="actions">操作</th></tr></thead>
-        <tbody id="projectBody"></tbody>
-      </table>
+      <table>${PROJECT_TABLE_HEAD}<tbody id="projectBody"></tbody></table>
     </div>
-    <div class="project-list" id="projectList"></div>`
+    <div class="project-list" id="projectList"></div>
+    <div id="archivedGroup"></div>`
   let statusFilter = 'all'
   const matchesStatus = (p) => {
     if (statusFilter === 'online') return p.hostStatus === 'online'
     if (statusFilter === 'offline') return p.hostStatus !== 'online'
     return true
   }
+  const matchesText = (p, filter) =>
+    `${p.name} ${p.repoUrl} ${p.hostName}`.toLowerCase().includes(filter.toLowerCase())
   const draw = (filter = '') => {
-    const rows = projects.filter(
-      (p) =>
-        matchesStatus(p) &&
-        `${p.name} ${p.repoUrl} ${p.hostName}`.toLowerCase().includes(filter.toLowerCase())
-    )
+    const archivedView = statusFilter === 'archived'
+    const rows = archivedView
+      ? []
+      : projects.filter((p) => matchesStatus(p) && matchesText(p, filter))
+    const archivedRows = archived.filter((p) => matchesText(p, filter))
+    $('#projectTableWrap').hidden = archivedView
+    $('#projectList').hidden = archivedView
     const emptyRow = '<tr><td colspan="6" class="table-empty">没有匹配的项目</td></tr>'
     $('#projectBody').innerHTML =
-      rows
-        .map(
-          (p) => `<tr>
-        <td><strong>${esc(p.name)}</strong> ${archivedBadge(p)}<div class="muted mono">${esc(p.path)}</div></td>
-        <td class="mono muted">${esc(p.repoUrl)}</td>
-        <td>${esc(p.hostName)} ${hostStatusBadge(p)}</td>
-        <td class="muted">${esc(permissionSummary(p))}</td>
-        <td>${
-          effectiveDownloadPolicy(p, globalDefault) === 'deny'
-            ? '<span class="badge lock">禁止</span>'
-            : '<span class="badge">允许</span>'
-        }</td>
-        <td class="actions">${projectRowActions(p)}</td>
-      </tr>`
-        )
-        .join('') || emptyRow
+      rows.map((p) => projectTableRow(p, globalDefault)).join('') || emptyRow
     $('#projectList').innerHTML =
       rows.map(projectListCard).join('') || '<div class="card pad muted">没有匹配的项目</div>'
+    const group = $('#archivedGroup')
+    if (archivedView) {
+      group.innerHTML =
+        archivedRows.length > 0
+          ? archivedGroupHtml(archivedRows, globalDefault, { open: true })
+          : '<div class="card pad muted">暂无归档项目</div>'
+    } else if (statusFilter === 'all' && archivedRows.length > 0) {
+      group.innerHTML = archivedGroupHtml(archivedRows, globalDefault)
+    } else {
+      group.innerHTML = ''
+    }
     wireProjectActions()
   }
   draw(state.routeQuery?.get('q') ?? '')

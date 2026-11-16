@@ -566,6 +566,23 @@ td.actions {
   color: var(--text-3);
 }
 
+/* U116① W3: admin-only history group under the live project list. */
+.archived-group {
+  margin-top: 16px;
+}
+.archived-group > summary {
+  cursor: pointer;
+  padding: 10px 2px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.archived-group[open] > summary {
+  margin-bottom: 12px;
+}
+.archived-group .archived-table {
+  margin-bottom: 12px;
+}
+
 .toolbar {
   display: flex;
   gap: 8px;
@@ -1392,6 +1409,19 @@ td.actions {
     flex-direction: column;
     gap: 12px;
   }
+  .archived-group {
+    margin-top: 20px;
+  }
+  .archived-group > summary {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 2px;
+    font-size: 14px;
+  }
+  .archived-group .archived-table {
+    display: none;
+  }
   .project-list-card {
     padding: 14px;
     display: flex;
@@ -2071,7 +2101,6 @@ td.actions {
     min-height: 44px;
   }
 }
-
 
 /* ---------- U80 M8: 全局形态（toast/横幅/空态/错误态/守卫页，≤700） ---------- */
 @media (max-width: 700px) {
