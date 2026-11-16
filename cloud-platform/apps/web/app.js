@@ -1783,8 +1783,10 @@ async function showHostGrants(host) {
   if (!holder) return // the drawer was closed while the grants were loading
   holder.innerHTML = permCardsHtml(HOST_ROLE_CARDS, body.grants, {
     kind: 'host',
-    header:
-      '三张卡片是主机授权位（view / provision / maintain）的分组视图：同一主体加入多张卡时权限位取并集，行内徽标显示合成级别（U65 语义矩阵）。项目级授权不扩大到主机级。',
+    roleOf: hostRoleOf,
+    showBits: false,
+    showLevel: false,
+    defaultSubjectType: 'user',
     footnote: PERM_FOOTNOTE,
     datalistPrefix: 'host'
   })
@@ -2124,8 +2126,8 @@ const grantKey = (g) => `${g.subjectType}:${g.subjectId}`
 const subjectLabel = (g) => g.username ?? g.subjectId
 
 /**
- * 角色 → 位组合映射（u67-authz-refactor-design §2）。存储行保持位组合，卡片只是
- * 分组视图；加入卡片 = 位并集，移除 = 从行里减去卡片位。
+ * 角色 → 位组合映射（u67-authz-refactor-design §2 / 审定二）。存储行保持位组合；
+ * 位置即权限——主体只出现在其被授权的最高级别卡（查看 < 控制 < 管理）。
  */
 const HOST_ROLE_CARDS = [
   {
@@ -2138,7 +2140,7 @@ const HOST_ROLE_CARDS = [
     key: 'control',
     label: '控制',
     bits: ['view', 'provision'],
-    desc: '主机全权（操作推导）：可见全部项目，项目内终端 / Agent / 文件读写 / 浏览器可用；下载仍按下载策略独立判定。含创建 / 登记项目能力（U65 全权语义，不含主机维护）。'
+    desc: '主机全权（操作推导）：可见全部项目，项目内终端 / Agent / 文件读写 / 浏览器可用；下载仍按下载策略独立判定。含创建 / 登记项目能力（不含主机维护）。'
   },
   {
     key: 'manage',
@@ -2147,6 +2149,15 @@ const HOST_ROLE_CARDS = [
     desc: '创建 / 登记项目 + 进入 / 退出维护模式。不推导项目可见性（仅显式授权项目可见），不授予项目内操作位；吊销主机仍仅限平台管理员。'
   }
 ]
+
+/** 审定二：层级单卡——按存储位推导主体唯一的卡片（高级隐含低级）。 */
+function hostRoleOf(permissions) {
+  const has = (bit) => permissions.includes(bit)
+  if (has('provision') && has('maintain')) return 'manage'
+  if (has('view') && has('provision')) return 'control'
+  if (has('view')) return 'view'
+  return null
+}
 
 const PROJECT_OP_BITS = ['terminal', 'agent', 'file:write', 'browser', 'download']
 
@@ -2201,13 +2212,16 @@ function wireAuthTabs(scope, { active = 'info', onSelect } = {}) {
   }
 }
 
-function permChipHtml(row, card, kind) {
+function permChipHtml(row, card, kind, { showLevel = true } = {}) {
   const dead = row.subjectType === 'user' && !row.username
   const removable = card.key !== 'derived' && !dead
+  const level = showLevel
+    ? `<span class="badge">${esc(permLevelLabel(kind, row.permissions))}</span>`
+    : ''
   return `<span class="perm-chip" data-chip="${esc(grantKey(row))}">
       <span class="mono">${esc(subjectLabel(row))}</span>${dead ? ' <span class="badge">已删除用户</span>' : ''}
       <span class="muted">${row.subjectType === 'group' ? '组' : '用户'}</span>
-      <span class="badge">${esc(permLevelLabel(kind, row.permissions))}</span>
+      ${level}
       <button class="perm-chip-x" data-perm-remove="${esc(grantKey(row))}" data-card="${esc(card.key)}" title="从「${esc(card.label)}」移除 ${esc(subjectLabel(row))}"${removable ? '' : ' disabled'}>✕</button>
     </span>`
 }
@@ -2251,35 +2265,41 @@ function projectDerivedCardHtml(hostRows) {
 
 function permCardsHtml(cards, rows, options) {
   const { kind } = options
+  const showBits = options.showBits !== false
+  const showLevel = options.showLevel !== false
+  const belongs = options.roleOf
+    ? (row, card) => options.roleOf(row.permissions) === card.key
+    : (row, card) => card.bits.some((bit) => row.permissions.includes(bit))
+  const userFirst = options.defaultSubjectType === 'user'
   const cardsHtml = cards
     .map((card) => {
-      const matching = rows.filter((row) => card.bits.some((bit) => row.permissions.includes(bit)))
+      const matching = rows.filter((row) => belongs(row, card))
       return `
       <div class="perm-card" data-card="${esc(card.key)}">
-        <div class="perm-card-head"><strong>${esc(card.label)}</strong><span class="badge">${esc(card.bits.join(' + '))}</span><span class="muted">${matching.length} 个主体</span></div>
+        <div class="perm-card-head"><strong>${esc(card.label)}</strong>${showBits ? `<span class="badge">${esc(card.bits.join(' + '))}</span>` : ''}<span class="muted">${matching.length} 个主体</span></div>
         <p class="muted perm-card-desc">${esc(card.desc)}</p>
         <div class="perm-chips" data-chips>${
-          matching.map((row) => permChipHtml(row, card, kind)).join('') ||
+          matching.map((row) => permChipHtml(row, card, kind, { showLevel })).join('') ||
           '<span class="muted">暂无主体</span>'
         }</div>
         <div class="toolbar perm-add">
-          <input class="input" style="min-width:200px" data-perm-subject="${esc(card.key)}" list="${esc(options.datalistPrefix)}GroupOptions" placeholder="组名，如 team-payment">
-          <select class="select" data-perm-type="${esc(card.key)}"><option value="group">组</option><option value="user">用户</option></select>
+          <input class="input" style="min-width:200px" data-perm-subject="${esc(card.key)}" list="${esc(options.datalistPrefix)}${userFirst ? 'User' : 'Group'}Options" placeholder="${userFirst ? '用户名，如 zhangsan' : '组名，如 team-payment'}">
+          <select class="select" data-perm-type="${esc(card.key)}"><option value="${userFirst ? 'user' : 'group'}">${userFirst ? '用户' : '组'}</option><option value="${userFirst ? 'group' : 'user'}">${userFirst ? '组' : '用户'}</option></select>
           <button class="btn sm" data-perm-add="${esc(card.key)}">添加</button>
         </div>
       </div>`
     })
     .join('')
   // Rows no card claims are history/direct-write shapes; removable, not editable.
-  const leftovers = rows.filter((row) =>
-    cards.every((card) => card.bits.every((bit) => !row.permissions.includes(bit)))
-  )
+  const leftovers = rows.filter((row) => cards.every((card) => !belongs(row, card)))
   const leftoverCard = leftovers.length
     ? `
       <div class="perm-card" data-card="other">
         <div class="perm-card-head"><strong>其他位组合</strong><span class="muted">最小降级（管理台自身不产生该形态）</span></div>
         <div class="perm-chips" data-chips>${leftovers
-          .map((row) => permChipHtml(row, { key: 'other', label: '其他位组合' }, kind))
+          .map((row) =>
+            permChipHtml(row, { key: 'other', label: '其他位组合' }, kind, { showLevel })
+          )
           .join('')}</div>
       </div>`
     : ''

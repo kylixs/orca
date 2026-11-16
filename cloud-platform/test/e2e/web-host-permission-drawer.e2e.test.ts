@@ -100,15 +100,19 @@ async function openDrawer(page: WebConsolePage, username: string, password: stri
   await page.settle()
   await page.submitLogin(username, password)
   await page.clickNav('hosts')
-  const button = [
-    ...page.window.document.querySelectorAll<HTMLButtonElement>('[data-host]')
-  ].find((candidate) => candidate.dataset.host === hostId)
+  const button = [...page.window.document.querySelectorAll<HTMLButtonElement>('[data-host]')].find(
+    (candidate) => candidate.dataset.host === hostId
+  )
   assert.ok(button, 'the hosts page must list the registered host')
   button.click()
   await page.settle()
 }
 
-async function openPermTab(page: WebConsolePage, username: string, password: string): Promise<void> {
+async function openPermTab(
+  page: WebConsolePage,
+  username: string,
+  password: string
+): Promise<void> {
   await openDrawer(page, username, password)
   const tab = drawer(page).querySelector<HTMLButtonElement>('[data-auth-tab="perms"]')
   assert.ok(tab, 'the drawer must offer the 权限 tab')
@@ -154,23 +158,46 @@ test('AA6-1 admin 打开主机详情权限页签：grants 一次、三卡片渲�
     1,
     'opening the drawer reads this host grants exactly once'
   )
-  assert.equal(callsTo(page, 'GET', '/v1/directory'), 1, 'the admin picker reads the directory once')
+  assert.equal(
+    callsTo(page, 'GET', '/v1/directory'),
+    1,
+    'the admin picker reads the directory once'
+  )
 
   for (const key of ['view', 'control', 'manage']) {
     assert.match(permCard(page, key).textContent ?? '', /个主体/, `${key} card renders`)
   }
-  assert.match(page.text('[data-perm-cards]'), /view \+ provision/, 'the 控制 card names its bits')
-  assert.match(
-    drawer(page).textContent ?? '',
-    /项目级授权不扩大到主机级/,
-    'the header states the FR-9.11 boundary'
+  // U67-3a 审定二：卡头只有角色名 + 主体计数，不暴露权限位。
+  const cardKeys = [...drawer(page).querySelectorAll<HTMLElement>(
+    '[data-perm-cards] > .perm-card[data-card]'
+  )].map((card) => card.dataset.card)
+  assert.deepEqual(cardKeys.slice(0, 3), ['view', 'control', 'manage'], 'cards are 查看/控制/管理')
+  for (const key of ['view', 'control', 'manage']) {
+    const head = permCard(page, key).querySelector<HTMLElement>('.perm-card-head')!
+    assert.equal(head.querySelector('.badge'), null, `${key} head has no bit badge`)
+    assert.doesNotMatch(
+      head.textContent ?? '',
+      /view|provision|maintain|全权|只读/,
+      `${key} head names only the role`
+    )
+  }
+  assert.equal(
+    permCard(page, 'view')
+      .querySelector<HTMLInputElement>('[data-perm-subject]')!
+      .getAttribute('list'),
+    'hostUserOptions',
+    'the add row defaults to 用户, per the prototype'
   )
   assert.equal(
     page.window.document.querySelector('input[name="hostProvisionPolicy"]'),
     null,
     'the legacy policy switch is gone from the drawer'
   )
-  assert.equal(page.window.document.querySelector('#hostGrantPanel'), null, 'the old matrix is gone')
+  assert.equal(
+    page.window.document.querySelector('#hostGrantPanel'),
+    null,
+    'the old matrix is gone'
+  )
 
   const groups = [
     ...permCard(page, 'view').querySelectorAll<HTMLOptionElement>('datalist > option, option')
@@ -187,10 +214,11 @@ test('AA6-1 admin 打开主机详情权限页签：grants 一次、三卡片渲�
     policySwitchRemoved: true,
     matrixRemoved: true
   })
-  cases['drawer-default'] = 'grants 1 次、目录 1 次；查看/控制/管理 三卡片渲染，策略开关与旧矩阵移除'
+  cases['drawer-default'] =
+    'grants 1 次、目录 1 次；查看/控制/管理 三卡片渲染，策略开关与旧矩阵移除'
 }, 120_000)
 
-test('AA6-2 查看卡添加组：整行即存 view 位，卡片徽标只读，未授权者自助 403', async () => {
+test('AA6-2 查看卡添加组：整行即存 view 位，chip 只含名字+类型，未授权者自助 403', async () => {
   const page = loadWebConsolePage(service.url)
   await openPermTab(page, 'admin', 'Adm1n!')
 
@@ -204,7 +232,12 @@ test('AA6-2 查看卡添加组：整行即存 view 位，卡片徽标只读，�
   const chip = [...permCard(page, 'view').querySelectorAll<HTMLElement>('.perm-chip')].find(
     (candidate) => candidate.textContent?.includes('team-payment')
   )
-  assert.match(chip?.textContent ?? '', /只读/, 'the chip shows the synthesized level')
+  assert.match(chip?.textContent ?? '', /组/, 'the chip carries the type badge')
+  assert.doesNotMatch(
+    chip?.textContent ?? '',
+    /只读|全权|view|provision|maintain/,
+    'chips carry no permission words (U67 审定二)'
+  )
 
   // No provision anywhere: an ungranted developer stays refused at the platform.
   const refused = await api('/v1/projects/self', {
@@ -216,7 +249,8 @@ test('AA6-2 查看卡添加组：整行即存 view 位，卡片徽标只读，�
   assert.equal(refused.body.error.code, 'HOST_PROVISION_FORBIDDEN')
 
   saveEvidence(EVIDENCE, 'view-card.json', { rows, refused: refused.status })
-  cases['view-card'] = '查看卡添加 team-payment → 立即 PUT 落 view 位；lisi 自助建项目 403 HOST_PROVISION_FORBIDDEN'
+  cases['view-card'] =
+    '查看卡添加 team-payment → 立即 PUT 落 view 位；lisi 自助建项目 403 HOST_PROVISION_FORBIDDEN'
 }, 120_000)
 
 test('AA6-3 控制卡加同一主体：覆盖确认 只读→全权，确认后并集 view+provision', async () => {
@@ -244,10 +278,19 @@ test('AA6-3 控制卡加同一主体：覆盖确认 只读→全权，确认后�
     ['provision', 'view'],
     'the confirmed add unions the card bits (maintain excluded by verdict)'
   )
-  const chip = [...permCard(page, 'control').querySelectorAll<HTMLElement>('.perm-chip')].find(
-    (candidate) => candidate.textContent?.includes('team-payment')
+  const chips = [...drawer(page).querySelectorAll<HTMLElement>('.perm-chip')].filter((candidate) =>
+    candidate.textContent?.includes('team-payment')
   )
-  assert.match(chip?.textContent ?? '', /全权/, 'the chip shows the synthesized level')
+  assert.equal(chips.length, 1, 'the subject lives in exactly one card (highest level only)')
+  assert.ok(
+    permCard(page, 'control').contains(chips[0]),
+    'view+provision is rendered in 控制, not 查看'
+  )
+  assert.doesNotMatch(
+    chips[0].textContent ?? '',
+    /全权|只读|view|provision|maintain/,
+    'chips carry no permission words (U67 审定二)'
+  )
 
   saveEvidence(EVIDENCE, 'control-overwrite.json', { group })
   cases['control-overwrite'] = '控制卡加已有主体 → 覆盖确认（只读→全权）→ 并集 view+provision 落库'
@@ -297,4 +340,81 @@ test('AA6-5 添加失败：toast 报错、输入保留、平台状态不变（QA
   page.clearFails()
   saveEvidence(EVIDENCE, 'add-rollback.json', { toast: lastToast(page) })
   cases['add-rollback'] = 'PUT grants 503 → toast 授予失败、输入保留、平台行不变（QA-009）'
+}, 120_000)
+
+/**
+ * U67-3a 结构契约（审定二 · 位置即权限 · 层级单卡）：存储仍是位组合，读取时
+ * 按 查看 < 控制 < 管理 推导唯一归属卡，主体不跨卡、chip 不带权限词尾注。
+ */
+test('U67-3a 三卡结构：卡头无位徽标、chips 只有名字+类型、主体只出现在最高级别卡', async () => {
+  const rows = [
+    { subjectType: 'group', subjectId: 'developers', permissions: ['view'] },
+    { subjectType: 'user', subjectId: 'lisi', permissions: ['view', 'provision'] },
+    { subjectType: 'group', subjectId: 'platform-admins', permissions: ['provision', 'maintain'] },
+    {
+      subjectType: 'group',
+      subjectId: 'team-payment',
+      permissions: ['view', 'provision', 'maintain']
+    }
+  ]
+  for (const row of rows) {
+    const res = await api(`/v1/hosts/${hostId}/grants`, {
+      method: 'PUT',
+      body: JSON.stringify(row)
+    })
+    assert.equal(res.status, 200, JSON.stringify(res.body))
+  }
+
+  const page = loadWebConsolePage(service.url)
+  await openPermTab(page, 'admin', 'Adm1n!')
+
+  const cards = [
+    ...drawer(page).querySelectorAll<HTMLElement>('[data-perm-cards] > .perm-card[data-card]')
+  ]
+  assert.deepEqual(
+    cards.map((card) => card.dataset.card),
+    ['view', 'control', 'manage'],
+    'cards render top-to-bottom 查看/控制/管理'
+  )
+
+  const chipSubjects = (key: string): string[] =>
+    [...permCard(page, key).querySelectorAll<HTMLElement>('.perm-chip')].map(
+      (chip) => chip.querySelector('.mono')?.textContent ?? ''
+    )
+
+  // 层级单卡：view→查看；view+provision→控制；provision+maintain / 三位→管理。
+  assert.deepEqual(chipSubjects('view'), ['developers'])
+  assert.deepEqual(chipSubjects('control'), ['lisi'])
+  assert.deepEqual(chipSubjects('manage').sort(), ['platform-admins', 'team-payment'])
+
+  const allChips = [...drawer(page).querySelectorAll<HTMLElement>('.perm-chip')]
+  assert.equal(
+    new Set(allChips.map((chip) => chip.dataset.chip)).size,
+    allChips.length,
+    'every subject appears exactly once across the three cards'
+  )
+  assert.equal(
+    permCard(page, 'manage').querySelector<HTMLElement>('.perm-card-head .badge'),
+    null,
+    'card heads carry no bit badge'
+  )
+  for (const chip of allChips) {
+    assert.match(chip.textContent ?? '', /(组|用户)/, 'chips keep the type badge')
+    assert.doesNotMatch(
+      chip.textContent ?? '',
+      /全权|只读|查看|控制|管理|view|provision|maintain/,
+      'chips carry no permission words'
+    )
+  }
+
+  saveEvidence(EVIDENCE, 'u67-3a-structure.json', {
+    cards: cards.map((card) => card.dataset.card),
+    subjects: {
+      view: chipSubjects('view'),
+      control: chipSubjects('control'),
+      manage: chipSubjects('manage')
+    }
+  })
+  cases['u67-3a-structure'] =
+    '三卡顺序固定；卡头无位徽标；chip 仅名字+类型；主体仅出现在最高级别卡且全局唯一'
 }, 120_000)
