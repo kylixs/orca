@@ -46,15 +46,15 @@
 | # | 触发面 | 结果 | 弹窗/确认 | 失败态 | 权限门槛 |
 | --- | --- | --- | --- | --- | --- |
 | D1 | 进入「主机」 | 并发 `GET /v1/hosts` + `GET /v1/policies/download`，渲染列表 | 无 | 内容区「加载失败」+ 重试 | `platform:admin` |
-| D2 | 「注册主机」 | `POST /v1/hosts/tokens` 签发一次性令牌（24h，仅存 hash，审计 `host_token_create`），弹框展示命令 | 弹框 | 签发失败无专门处理，由 `loadContent` 失败态承接 | `platform:admin` |
+| D2 | 「注册主机」 | `POST /v1/hosts/tokens` 签发一次性令牌（24h，仅存 hash，审计 `host_token_create`），弹框展示命令 | 弹框 | 签发失败 toast「注册主机失败：…」，不打开弹框（try/catch） | `platform:admin` |
 | D3 | 「复制命令」 | 剪贴板写入整条 `bash <(curl …)` 命令，toast「已复制」，弹框不关 | 无 | 剪贴板不可用时仍 toast | 同上 |
 | D4 | 目标机执行命令（向导外） | `GET /install/host.sh?token=…` → 校验管理员会话与未使用令牌 → 输出脚本（内嵌平台地址、`HOST_TOKEN`/`ORCA_CLOUD_HOST_TOKEN`、HOST_NAME、ADVERTISE_HOST、PROJECTS_ROOT、TLS 证书路径、`openssl req -x509` 自签步骤、systemd/`orca --host-mode`）；审计 `install_script`（不含令牌明文） | 无 | 缺令牌 400 `INSTALL_TOKEN_REQUIRED`；无效/已用/过期 401 `HOST_TOKEN_INVALID`；非 admin 403 | 见「存疑①」 |
 | D5 | 宿主脚本注册 | `POST /v1/hosts/register`（Bearer=一次性令牌）→ 令牌置已用；按名称 upsert 主机；写入指纹/TLS 指纹/E2EE 公钥/版本/协议/zone/直连地址/能力/项目根/项目目录/状态=online/最近心跳；生成长期凭证；写中继路由表项；审计 `host_register`；返回 `hostId/credential/policyVersion` | 无 | 令牌无效/已用/过期 401 | 令牌 |
 | D6 | 行内「详情」 | 打开右侧抽屉，先渲染列表缓存，再异步拉 grants 填充权限页 | 抽屉 | grants 失败→权限页「授权加载失败：…」 | `platform:admin` |
 | D7 | 信息/权限页签切换 | 纯视图态切换，不改 URL | 无 | — | 同上 |
-| D8 | 「进入维护模式」 | `POST /v1/hosts/:id/maintenance {enabled:true, reason:'管理员操作'}` → 关闭抽屉、重绘列表；主机状态=维护中，项目打开入口随 `hostStatus` 置灰 | 无确认 | 已吊销→409 `HOST_REVOKED`；请求异常无专门 toast（未捕获路径） | admin 或 `maintain` 授权（UI 在 admin 页） |
-| D9 | 「结束维护」 | 同接口 `{enabled:false}` → 状态回 online，重绘列表 | 无确认 | 同上 | 同上 |
-| D10 | 「下线主机」 | `DELETE /v1/hosts/:id` → 状态 offline、`revokedAt` 记录、删除中继路由、撤销该主机所有项目凭证；关抽屉、重绘；审计 `host_revoke` | `confirmDialog('确认下线该主机？')`（原生 confirm） | 非 admin 403 + denied 审计 | `platform:admin` |
+| D8 | 「进入维护模式」 | `POST /v1/hosts/:id/maintenance {enabled:true, reason:'管理员操作'}` → 关闭抽屉、重绘列表；主机状态=维护中，项目打开入口随 `hostStatus` 置灰 | 无确认 | 已吊销→409 `HOST_REVOKED`；请求异常 toast「进入维护模式失败：…」，抽屉保持 | admin 或 `maintain` 授权（UI 在 admin 页） |
+| D9 | 「结束维护」 | 同接口 `{enabled:false}` → 状态回 online，重绘列表 | 无确认 | 同 D8；失败 toast「结束维护失败：…」，抽屉保持 | 同上 |
+| D10 | 「下线主机」 | `DELETE /v1/hosts/:id` → 状态 offline、`revokedAt` 记录、删除中继路由、撤销该主机所有项目凭证；关抽屉、重绘；审计 `host_revoke` | `confirmDialog('确认下线该主机？')`（原生 confirm） | 非 admin 403 + denied 审计；请求异常 toast「下线主机失败：…」，抽屉保持 | `platform:admin` |
 | D11 | 权限页「添加」 | 组/用户切换 datalist；添加=把卡片位并集进该主体整行，`PUT /v1/hosts/:id/grants`；成功 toast 合成级别并重绘 | 主体已有行→「覆盖现有授权」确认（显示级别变化与会话断开提示） | toast「授予失败：…」，输入保留，请求期间控件冻结；非法位/未知组显示平台文案 | `platform:admin` |
 | D12 | 权限页芯片「✕」 | 从该行减去卡片位并 `PUT`；剩余非空→toast 级别变化并重绘 | 剩余为空→「移除全部授权」确认（组：宿主无法解析组成员；用户：失去该主机全部授权） | toast「移除失败：…」 | 同上 |
 | D13 | 心跳（宿主，周期上报） | `POST /v1/hosts/:id/heartbeat`：更新直连地址/projectDirs/E2EE/TLS 指纹/状态（维护中不被覆盖）/项目根/开通回报；响应 `hostRevoked`、`projectsRootRejected`、`provisionAssignments`、`auditCapabilities`、`policyVersion`、`policies`、`revoked`、`maintenance`、`serverTime`；写 `host.audit_gap` 等审计 | 无 | 凭证不符 401；坏 `directAddrs` 400 `HOST_DIRECTADDRS_INVALID`（整拍拒绝） | 主机凭证 |
@@ -103,14 +103,15 @@
 - `cloud-platform/test/e2e/host-key-change-audit.e2e.test.ts`：E2EE/TLS 指纹变更审计。
 - `cloud-platform/test/e2e/mtls-control-channel.e2e.test.ts`、`control-plane-isolation.e2e.test.ts`：控制面通道与隔离。
 - `cloud-platform/test/e2e/web-exploratory-fixes.e2e.test.ts`：M116-QA-005/006/008。
+- `cloud-platform/test/e2e/web-host-lifecycle-feedback.e2e.test.ts`（G09/T72）：抽屉进入维护→行维护中+项目打开禁用；下线 confirm 取消零 DELETE/确认后行已吊销；注册弹框复制命令（剪贴板+toast「已复制」+弹框保持）；令牌/维护/下线 500 → `<动作>失败：原因` toast、抽屉与平台状态不变。
 - 证据目录参考：`cloud-platform/evidence/aa2-host-grants/`、`aa6-host-drawer/`。
 
 ## 7. 未覆盖 / 存疑
 
 - **① 复制出的安装命令与脚本端点鉴权不一致（需现场核实）**：向导命令为无 `Authorization` 的 `curl`，而 `GET /install/host.sh` 在服务端先 `requireAuth()` 再 `isAdmin()`。按代码路径，目标机直接执行该命令会被 401；`install-wizard.e2e` 的「命令一致」用例实际是带 `adminToken` 头再取脚本，并未验证「照抄命令即执行」。台账未见对应 U 号。
 - 主机详情「信息」页签无专门 e2e（AA6 只覆盖权限页签）。
-- 「进入/结束维护」「下线主机」的**控制台 UI** 无 e2e（服务端维护/吊销语义有套件）；维护请求失败无 toast 的路径也未被测试。
-- 注册主机弹框的成功/失败 UI（令牌签发失败）、复制按钮无 e2e。
+- ~~「进入/结束维护」「下线主机」的**控制台 UI** 无 e2e；维护请求失败无 toast~~ **closed（T72）**：抽屉维护/下线成功态、confirm 取消/确认、三类失败 toast 与状态保持均已覆盖。
+- ~~注册主机弹框的成功/失败 UI（令牌签发失败）、复制按钮无 e2e~~ **closed（T72）**：复制写入完整命令 + toast「已复制」、弹框保持；签发失败 toast「注册主机失败：…」且不打开弹框。
 - 真实宿主执行安装脚本 → 注册 → 首次心跳的端到端浏览器/真机用例不在本套件内（脚本内容与端点分别断言）。
 - 心跳窗口文案「心跳 15 秒」（工作台统计卡）与默认 60s 不一致，见 M2 §7。
 - `relayRoute` 为空、`directAddrs` 为空等边界在列表/抽屉的呈现无 e2e。

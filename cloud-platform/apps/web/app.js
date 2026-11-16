@@ -1716,7 +1716,13 @@ function copyCommandAction(cmd) {
 }
 
 async function registerHostDialog() {
-  const body = await api('/v1/hosts/tokens', { method: 'POST' })
+  let body
+  try {
+    body = await api('/v1/hosts/tokens', { method: 'POST' })
+  } catch (err) {
+    toast(`注册主机失败：${err.message ?? err}`)
+    return
+  }
   // U115: the target machine has no session, so the one-liner carries a
   // short-lived one-time download token alongside the registration token.
   const download = body.downloadToken ? `download=${encodeURIComponent(body.downloadToken)}&` : ''
@@ -1779,16 +1785,27 @@ async function showHost(hostId, { tab = 'info', onClose } = {}) {
     onSelect: (key) => replaceDetailTab('hosts', host.id, key)
   })
   $('#maintenanceBtn').onclick = async () => {
-    await api(`/v1/hosts/${host.id}/maintenance`, {
-      method: 'POST',
-      body: JSON.stringify({ enabled: host.status !== 'maintenance', reason: '管理员操作' })
-    })
+    const enter = host.status !== 'maintenance'
+    try {
+      await api(`/v1/hosts/${host.id}/maintenance`, {
+        method: 'POST',
+        body: JSON.stringify({ enabled: enter, reason: '管理员操作' })
+      })
+    } catch (err) {
+      toast(`${enter ? '进入维护模式' : '结束维护'}失败：${err.message ?? err}`)
+      return
+    }
     drawer.close()
     renderHosts()
   }
   $('#revokeHostBtn').onclick = async () => {
     if (!confirmDialog('确认下线该主机？')) return
-    await api(`/v1/hosts/${host.id}`, { method: 'DELETE' })
+    try {
+      await api(`/v1/hosts/${host.id}`, { method: 'DELETE' })
+    } catch (err) {
+      toast(`下线主机失败：${err.message ?? err}`)
+      return
+    }
     drawer.close()
     renderHosts()
   }
