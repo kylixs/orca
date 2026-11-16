@@ -7,12 +7,12 @@ import {
   sameSessionTabsPublicationLineage
 } from './publisher-identity-fences'
 import { createSessionTabsAuthorityRepairLane } from './session-tabs-authority-repair'
+import { nextReceivedSessionTabsFrame, sessionTabsPublicationEpochHistoryByWorktree } from './state'
 import {
-  latestReceivedSessionTabsSnapshotByWorktree,
-  nextReceivedSessionTabsFrame,
-  sessionTabsPublicationEpochHistoryByWorktree
-} from './state'
-import { isSessionTabsListAllResult, sessionTabsFreshnessKey } from './tracking'
+  isSessionTabsBootstrapSnapshotSuperseded,
+  isSessionTabsListAllResult,
+  sessionTabsFreshnessKey
+} from './tracking'
 import { traceSessionTabsCall } from './session-tabs-frame-trace'
 
 // Why no generation fence here: each census re-checks its own subscription before applying.
@@ -79,7 +79,7 @@ async function runCensus(
     // Why: an older host's unlabeled census may be partial, so it cannot revive anything.
     response.result.authoritative !== true ||
     // Why: a stream frame received after the request began is fresher; it re-schedules if dropped.
-    (latestReceivedSessionTabsSnapshotByWorktree.get(key)?.receivedFrame ?? 0) > requestFrame
+    isSessionTabsBootstrapSnapshotSuperseded(args.environmentId, worktreeId, requestFrame)
   ) {
     return
   }

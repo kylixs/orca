@@ -23,6 +23,7 @@ import {
   recordReceivedWebSessionTabsEnvironmentFrame
 } from './publisher-identity-fences'
 import { hostSnapshotAffirmsWorktreeContents } from '../host-session-snapshot-authority'
+import { normalizeWorktreeSelector } from './session-tabs-frame-summary'
 
 export function isSessionTabsListAllResult(value: unknown): value is SessionTabsListAllResult {
   return (
@@ -33,7 +34,10 @@ export function isSessionTabsListAllResult(value: unknown): value is SessionTabs
 }
 
 export function sessionTabsFreshnessKey(environmentId: string, worktreeId: string): string {
-  return `${environmentId}:${worktreeId}`
+  // Canonicalize so a future host channel answering in `id:` selector form still keys the same
+  // receipt entry; raw-only keys would silently fail open on the U138 superseded check (P3-2).
+  const canonicalWorktreeId = normalizeWorktreeSelector(worktreeId) ?? worktreeId
+  return `${environmentId}:${canonicalWorktreeId}`
 }
 
 export function advancesSessionTabsFreshness(
