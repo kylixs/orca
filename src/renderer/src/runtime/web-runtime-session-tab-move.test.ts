@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   getWebSessionTabsTrackingGeneration: vi.fn(() => 0),
   acceptReplayedWebSessionTabsSnapshot: vi.fn(),
   resolveHostSessionTabIdForWebSessionTab: vi.fn(),
+  resolveHostSessionGroupIdForWebSessionGroup: vi.fn(),
   trackTerminalPaneSplit: vi.fn(),
   deliverLaunchPromptToAgentTab: vi.fn(),
   seedNativeChatLaunchDraftForAgentTab: vi.fn(),
@@ -44,7 +45,8 @@ vi.mock('./web-session-tabs-sync', () => ({
     // The production caller invokes the returned settle receipt.
     return () => {}
   },
-  resolveHostSessionTabIdForWebSessionTab: mocks.resolveHostSessionTabIdForWebSessionTab
+  resolveHostSessionTabIdForWebSessionTab: mocks.resolveHostSessionTabIdForWebSessionTab,
+  resolveHostSessionGroupIdForWebSessionGroup: mocks.resolveHostSessionGroupIdForWebSessionGroup
 }))
 
 vi.mock('@/lib/feature-education-telemetry', () => ({
@@ -76,6 +78,7 @@ describe('moveWebRuntimeSessionTab', () => {
       setActiveWorktree: mocks.setActiveWorktree
     })
     mocks.applyWebSessionTabsSnapshot.mockReturnValue({ state: 'after' })
+    mocks.resolveHostSessionGroupIdForWebSessionGroup.mockReturnValue(null)
   })
 
   afterEach(() => {
@@ -181,7 +184,7 @@ describe('moveWebRuntimeSessionTab', () => {
       groupsByWorktree: {
         [WORKTREE_ID]: [
           {
-            id: 'group-right',
+            id: 'local-group-right',
             activeTabId: 'local-only-unified',
             tabOrder: ['local-only-unified', 'local-terminal-unified']
           }
@@ -195,6 +198,10 @@ describe('moveWebRuntimeSessionTab', () => {
           : args.tabId === 'local-terminal-unified'
             ? 'host-terminal'
             : null
+    )
+    mocks.resolveHostSessionGroupIdForWebSessionGroup.mockImplementation(
+      (args: { groupId: string }) =>
+        args.groupId === 'local-group-right' ? 'host-group-right' : null
     )
     const runtimeCall = vi.fn().mockResolvedValueOnce({
       id: 'move',
@@ -214,7 +221,7 @@ describe('moveWebRuntimeSessionTab', () => {
       moveWebRuntimeSessionTab({
         worktreeId: WORKTREE_ID,
         tabId: 'local-browser-unified',
-        targetGroupId: 'group-right',
+        targetGroupId: 'local-group-right',
         kind: 'move-to-group',
         index: 1
       })
@@ -226,7 +233,8 @@ describe('moveWebRuntimeSessionTab', () => {
       params: {
         worktree: `id:${WORKTREE_ID}`,
         tabId: 'host-browser-unified',
-        targetGroupId: 'group-right',
+        // Why: the host only knows the group id its own split minted, never the client's local UUID.
+        targetGroupId: 'host-group-right',
         kind: 'move-to-group',
         index: 0
       },
@@ -234,7 +242,45 @@ describe('moveWebRuntimeSessionTab', () => {
     })
   })
 
+  it('refuses a move-to-group whose local target group has no host counterpart', async () => {
+    mocks.getState.mockReturnValue({
+      settings: {
+        activeRuntimeEnvironmentId: ENVIRONMENT_ID
+      },
+      setActiveWorktree: mocks.setActiveWorktree,
+      groupsByWorktree: {
+        [WORKTREE_ID]: [
+          { id: 'local-group-right', activeTabId: null, tabOrder: ['local-only-unified'] }
+        ]
+      }
+    })
+    mocks.resolveHostSessionGroupIdForWebSessionGroup.mockReturnValue(null)
+    const runtimeCall = vi.fn()
+
+    vi.stubGlobal('window', {
+      api: {
+        runtimeEnvironments: {
+          call: runtimeCall
+        }
+      }
+    })
+
+    await expect(
+      moveWebRuntimeSessionTab({
+        worktreeId: WORKTREE_ID,
+        tabId: 'local-browser-unified',
+        targetGroupId: 'local-group-right',
+        kind: 'move-to-group',
+        index: 0
+      })
+    ).resolves.toBe(false)
+
+    // Why: guessing the local UUID would only earn a host refusal after a round-trip.
+    expect(runtimeCall).not.toHaveBeenCalled()
+  })
+
   it('returns the host moved:false instead of masking it as success', async () => {
+    mocks.resolveHostSessionGroupIdForWebSessionGroup.mockReturnValue('host-group-gone')
     const runtimeCall = vi.fn().mockResolvedValueOnce({
       id: 'move',
       ok: true,

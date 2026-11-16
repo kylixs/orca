@@ -13,6 +13,60 @@ function hostSessionTabMappingKey(args: {
   return `${args.environmentId}:${args.worktreeId}:${args.tabId}`
 }
 
+// Why: a client-owned split mints a local group id the host never saw, so a mirrored
+// move must resolve it back to the host group it actually became.
+const hostSessionGroupIdByLocalKey = new Map<string, string>()
+
+function hostSessionGroupMappingKey(args: {
+  environmentId: string
+  worktreeId: string
+  groupId: string
+}): string {
+  return `${args.environmentId}:${args.worktreeId}:${args.groupId}`
+}
+
+export function setHostSessionGroupIdMapping(
+  args: { environmentId: string; worktreeId: string; groupId: string },
+  hostGroupId: string
+): void {
+  const mappingKey = hostSessionGroupMappingKey(args)
+  // Why: the first exact member-set match is the stable identity; a later frame must not
+  // re-point an established local group at a different host group.
+  if (!hostSessionGroupIdByLocalKey.has(mappingKey)) {
+    hostSessionGroupIdByLocalKey.set(mappingKey, hostGroupId)
+  }
+}
+
+export function resolveHostSessionGroupIdForWebSessionGroup(args: {
+  environmentId: string
+  worktreeId: string
+  groupId: string
+}): string | null {
+  return hostSessionGroupIdByLocalKey.get(hostSessionGroupMappingKey(args)) ?? null
+}
+
+export function clearHostSessionGroupIdMappings(environmentId: string, worktreeId: string): void {
+  const prefix = hostSessionGroupMappingKey({ environmentId, worktreeId, groupId: '' })
+  for (const key of hostSessionGroupIdByLocalKey.keys()) {
+    if (key.startsWith(prefix)) {
+      hostSessionGroupIdByLocalKey.delete(key)
+    }
+  }
+}
+
+export function clearHostSessionGroupIdMappingsForEnvironment(environmentId: string): void {
+  const prefix = `${environmentId}:`
+  for (const key of hostSessionGroupIdByLocalKey.keys()) {
+    if (key.startsWith(prefix)) {
+      hostSessionGroupIdByLocalKey.delete(key)
+    }
+  }
+}
+
+export function resetHostSessionGroupIdMappingsForTests(): void {
+  hostSessionGroupIdByLocalKey.clear()
+}
+
 export function clearHostSessionTabIdMappings(environmentId: string, worktreeId: string): void {
   const mappingKeysByWorktree = hostSessionTabMappingKeysByEnvironmentAndWorktree.get(environmentId)
   const mappingKeys = mappingKeysByWorktree?.get(worktreeId)

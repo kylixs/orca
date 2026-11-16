@@ -7,7 +7,11 @@ import {
 } from '../web-session-browser-placement'
 import { peekWebSessionTerminalPlacementGroup } from '../web-session-terminal-placement'
 import { reconcileClientOwnedTabPlacement } from '../web-session-client-owned-tab-placement'
-import { buildMirroredHostGroups, retainClientPlacedMirroredTabs } from './layout-groups'
+import {
+  buildMirroredHostGroups,
+  retainClientPlacedMirroredTabs,
+  updateHostSessionGroupIdMappings
+} from './layout-groups'
 import { sanitizeRecentTabIds, pushRecentTabId } from './state-equality-core'
 
 export function prepareWebSessionTabsSnapshotGroups(
@@ -217,6 +221,18 @@ export function prepareWebSessionTabsSnapshotGroups(
         })
     )
   })()
+
+  if (nextGroups) {
+    // Why: only a member-set match is evidence that a client-owned group is a host group's
+    // counterpart; the mapping is what lets a later mirrored move name a group the host knows.
+    updateHostSessionGroupIdMappings({
+      environmentId,
+      worktreeId,
+      localGroups: nextGroups,
+      hostGroups: snapshot.tabGroups,
+      hostToLocalTabId
+    })
+  }
 
   const nextTabBarOrder = (() => {
     const current = state.tabBarOrderByWorktree[worktreeId] ?? []

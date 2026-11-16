@@ -46,7 +46,12 @@ import {
 import { clearHostSessionMirrorHydration } from '../host-session-mirror-hydration'
 import { clearHostMirrorHandleGapVerdictsForEnvironment } from '@/lib/host-mirror-handle-gap-wait'
 import { createBoundedGenerationMap } from '@/lib/bounded-generation-map'
-import { clearHostSessionTabIdMappings } from './tracking-mappings'
+import {
+  clearHostSessionGroupIdMappings,
+  clearHostSessionGroupIdMappingsForEnvironment,
+  clearHostSessionTabIdMappings,
+  resetHostSessionGroupIdMappingsForTests
+} from './tracking-mappings'
 import {
   sessionTabsFreshnessKey,
   untrackWebSessionTabsWorktree,
@@ -102,6 +107,7 @@ export function resetWebSessionTabsSnapshotFreshnessForTests(): void {
   sessionTabsInventoryOmissionsByWorktree.clear()
   hostSessionTabIdByLocalKey.clear()
   hostSessionTabMappingKeysByEnvironmentAndWorktree.clear()
+  resetHostSessionGroupIdMappingsForTests()
   hostWorkingClientBoundaryByPaneKey.clear()
   sessionTabsTrackingGenerations.reset()
   resetWebSessionBrowserPlacementsForTests()
@@ -156,6 +162,7 @@ export function clearWebSessionTabsTrackingForWorktree(
   clearWebSessionCloseIntentsForWorktree({ environmentId }, worktreeId)
   clearWebAgentSessionHandoffsForWorktree(environmentId, worktreeId)
   clearHostSessionTabIdMappings(environmentId, worktreeId)
+  clearHostSessionGroupIdMappings(environmentId, worktreeId)
   clearWebSessionBrowserPlacementsForWorktree(environmentId, worktreeId)
   clearWebSessionTerminalPlacementsForWorktree(environmentId, worktreeId)
 }
@@ -220,6 +227,7 @@ export function clearWebSessionTabsTrackingForEnvironment(environmentId: string)
     }
     hostSessionTabMappingKeysByEnvironmentAndWorktree.delete(trimmedEnvironmentId)
   }
+  clearHostSessionGroupIdMappingsForEnvironment(trimmedEnvironmentId)
   clearWebAgentSessionHandoffsForEnvironment(trimmedEnvironmentId)
   clearWebSessionBrowserPlacementsForEnvironment(trimmedEnvironmentId)
   clearWebSessionTerminalPlacementsForEnvironment(trimmedEnvironmentId)

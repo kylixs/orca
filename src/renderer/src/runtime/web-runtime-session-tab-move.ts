@@ -45,7 +45,8 @@ export async function moveWebRuntimeSessionTab(
   }
 
   try {
-    const { resolveHostSessionTabIdForWebSessionTab } = await import('./web-session-tabs-sync')
+    const { resolveHostSessionGroupIdForWebSessionGroup, resolveHostSessionTabIdForWebSessionTab } =
+      await import('./web-session-tabs-sync')
     const state = useAppStore.getState()
     const resolveHostBackedTabId = (tabId: string): string | null =>
       resolveHostSessionTabIdForWebSessionTab(state, {
@@ -80,10 +81,24 @@ export async function moveWebRuntimeSessionTab(
         : args.kind === 'move-to-group'
           ? args.index
           : undefined
+    // Why: a client-owned split mints a local group id the host never saw; sending it
+    // verbatim only earns a host refusal, so a mirrored move must name the host group.
+    const hostTargetGroupId =
+      args.kind === 'reorder'
+        ? args.targetGroupId
+        : (resolveHostSessionGroupIdForWebSessionGroup({
+            environmentId,
+            worktreeId: args.worktreeId,
+            groupId: args.targetGroupId
+          }) ?? (args.kind === 'split' ? args.targetGroupId : null))
+    if (hostTargetGroupId === null) {
+      // Why: no verified counterpart means the drop cannot land; mirror reports the refusal.
+      return false
+    }
     const base = {
       worktree: toRuntimeWorktreeSelector(args.worktreeId),
       tabId: movedHostTabId,
-      targetGroupId: args.targetGroupId
+      targetGroupId: hostTargetGroupId
     }
     const move =
       args.kind === 'reorder'
