@@ -2129,7 +2129,7 @@ function hostRow(h) {
     <td><strong>${esc(h.name)}</strong><div class="muted mono">${esc(h.zone)}</div></td>
     <td class="mono">${esc(h.directAddrs.join('<br>') || '—')}</td>
     <td class="mono">${esc(h.relayRoute ?? '—')}</td>
-    <td>${hostRelayCell(h)}</td>
+    <td>${hostRelayCell(h)}<div data-relay-freshness="${esc(h.id)}">${relayRouteFreshness(h)}</div></td>
     <td>${esc(h.orcaVersion || '—')} <span class="muted">p${h.protocolVersion}</span></td>
     <td>${relative(h.lastHeartbeatAt)}</td>
     <td><span class="dot ${dot}"></span> ${status}</td>
@@ -2149,6 +2149,7 @@ function hostCard(h) {
     </div>
     <div class="hlc-line mono">${esc(address)}</div>
     <div class="hlc-line muted">最后心跳 ${relative(h.lastHeartbeatAt)}</div>
+    <div class="hlc-line muted" data-relay-freshness="${esc(h.id)}">${relayRouteFreshness(h)}</div>
     <div class="hlc-actions">
       <button class="btn sm" data-host="${esc(h.id)}">详情</button>
       <button class="btn sm" data-host-more="${esc(h.id)}">更多</button>
@@ -2189,6 +2190,14 @@ function hostActionsDialog(host) {
       }
     ]
   )
+}
+
+/** U146: how recently an online host confirmed its relay route; `—` when unbound. */
+function relayRouteFreshness(h) {
+  if (h.relayRouteUpdatedAt == null) return '<span class="muted mono">—</span>'
+  if (h.relayRouteStale === true) return '<span class="badge warn">路由陈旧</span>'
+  const age = Math.max(0, Math.floor(h.relayRouteAgeSec ?? 0))
+  return `<span class="muted">路由确认于 ${age} 秒前</span>`
 }
 
 /**
@@ -2319,6 +2328,7 @@ async function showHost(hostId, { tab = 'info', onClose } = {}) {
         <dt>直连地址</dt><dd class="mono">${esc(host.directAddrs.join(', ') || '—')}</dd>
         <dt>中继路由</dt><dd class="mono">${esc(host.relayRoute ?? '—')}</dd>
         <dt>中继绑定</dt><dd class="mono">${esc(host.relayTarget ?? '—')}${hostRelayOfflineNote(host)}</dd>
+        <dt>路由确认</dt><dd data-relay-freshness="${esc(host.id)}">${relayRouteFreshness(host)}</dd>
         <dt>能力</dt><dd>${esc(host.capabilities.join(', '))}</dd>
         <dt>最近心跳</dt><dd>${relative(host.lastHeartbeatAt)}</dd>
         ${host.revokedAt ? `<dt>状态</dt><dd>已吊销（${new Date(host.revokedAt).toLocaleString('zh-CN')}）</dd>` : ''}

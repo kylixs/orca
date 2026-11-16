@@ -223,7 +223,7 @@ describe('U64 宿主端口漂移传播窗口', () => {
     await second.close()
   })
 
-  test('target 相同：重复心跳零写入、无抖动', async () => {
+  test('target 相同：重复心跳不重写路由字段、无抖动', async () => {
     const host = await registerHost({
       name: 'u64-steady',
       directAddrs: ['127.0.0.1:19101'],
@@ -238,7 +238,13 @@ describe('U64 宿主端口漂移传播窗口', () => {
       await heartbeat(host.hostId, host.credential, ['127.0.0.1:19101'])
     }
     const after = routeFor(await routes(), 'u64-steady')
-    assert.deepEqual(after, steady, 'the same address must not rewrite the entry')
+    // U146: updatedAt is the beat confirmation itself, so the routing fields are
+    // what must stay byte-identical across same-address beats.
+    assert.deepEqual(
+      { ...after, updatedAt: undefined },
+      { ...steady, updatedAt: undefined },
+      'the same address must not rewrite the routing fields'
+    )
 
     saveEvidence(EVIDENCE, 'steady-target-no-write.json', { steady, afterBeats: after })
   })

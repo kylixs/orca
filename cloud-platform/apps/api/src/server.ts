@@ -1429,7 +1429,8 @@ export function createApp(config: ApiConfig): ApiHandle {
       routeKey: 'dev-001',
       hostId: host.id,
       target: '127.0.0.1:16768',
-      version: 1
+      version: 1,
+      updatedAt: now()
     })
   }
   // U140: a restored snapshot can still carry the route the revoke path deleted,
@@ -1815,7 +1816,8 @@ export function createApp(config: ApiConfig): ApiHandle {
         routeKey: nextKey,
         hostId: target.id,
         target: routeTarget,
-        version: store.policies.version
+        version: store.policies.version,
+        updatedAt: now()
       })
     }
   }
@@ -1841,13 +1843,15 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (current.target === routeTarget) return
       current.target = routeTarget
       current.version = store.policies.version
+      current.updatedAt = now()
       return
     }
     store.relayRoutes.set(target.relayRoute, {
       routeKey: target.relayRoute,
       hostId: target.id,
       target: routeTarget,
-      version: store.policies.version
+      version: store.policies.version,
+      updatedAt: now()
     })
   }
 
@@ -3352,12 +3356,28 @@ export function createApp(config: ApiConfig): ApiHandle {
           // routes sync to every relay, so no healthy relay breaks the relay
           // path of every bound host at once.
           const route = h.relayRoute ? store.relayRoutes.get(h.relayRoute) : undefined
+          const online = hostOnline(h)
+          // U146: freshness is judged against the platform's only beat constant.
+          // Stale = three missed beats, or the route left the host's own addresses.
+          const routeUpdatedAt =
+            route && Number.isFinite(route.updatedAt) ? route.updatedAt : null
+          const relayRouteAgeSec =
+            routeUpdatedAt === null
+              ? null
+              : Math.max(0, Math.floor((now() - routeUpdatedAt) / 1000))
           return {
             ...h,
             credentialHash: undefined,
-            online: hostOnline(h),
+            online,
             browserEntryUrl: browserEntryUrlFor(h.relayRoute),
             relayTarget: route?.target ?? null,
+            relayRouteUpdatedAt: routeUpdatedAt,
+            relayRouteAgeSec,
+            relayRouteStale: route
+              ? online &&
+                ((relayRouteAgeSec !== null && relayRouteAgeSec * 1000 > 3 * hostOfflineMs) ||
+                  !h.directAddrs.includes(route.target))
+              : null,
             relayOnline: relayNodes.healthy(now(), relayAliveMs).length > 0
           }
         })
@@ -3517,7 +3537,8 @@ export function createApp(config: ApiConfig): ApiHandle {
           routeKey: target.relayRoute,
           hostId: target.id,
           target: routeTarget,
-          version: store.policies.version
+          version: store.policies.version,
+          updatedAt: now()
         })
       }
       await audit.append({
@@ -3637,6 +3658,11 @@ export function createApp(config: ApiConfig): ApiHandle {
           projectsRootRejection = applyProjectsRoot(target, body.projectsRoot, traceId)
           applyProjectProvisionReports(target.id, body.provisioned, traceId)
           target.lastHeartbeatAt = now()
+          // U146: an online beat confirms the route even when its target is unchanged.
+          if (target.status === 'online' && target.relayRoute) {
+            const confirmed = store.relayRoutes.get(target.relayRoute)
+            if (confirmed) confirmed.updatedAt = now()
+          }
         }
         // Why outside the revoked guard: a host's last refusal before it is cut
         // off still belongs in the chain, and this never fails the beat.

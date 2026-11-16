@@ -124,7 +124,14 @@ export type Revocation = {
   at: number
 }
 
-export type RelayRoute = { routeKey: string; hostId: string; target: string; version: number }
+export type RelayRoute = {
+  routeKey: string
+  hostId: string
+  target: string
+  version: number
+  /** Epoch ms of the last write or online-host beat confirming this route (U146). */
+  updatedAt: number
+}
 
 export type HostToken = { tokenHash: string; expiresAt: number; usedAt: number | null }
 
