@@ -16,6 +16,7 @@ import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner
 import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 import { browserWorkspaceHasRemoteOwner } from '@/runtime/remote-browser-tab-ownership'
 import { getClientCreationActionPolicy } from '@/lib/client-creation-action-policy'
+import { markUserInitiatedTerminalCreate } from '@/runtime/web-session-user-initiated-create'
 import type { TabGroupWorktreeSnapshot } from './useTabGroupItemProjections'
 
 export function recordTerminalTabGroupSplit(createdTerminal: TerminalTab | null | undefined): void {
@@ -59,6 +60,8 @@ export function useTabGroupCreationCommands({
       }
       // Why: this Split entry point always seeds a fresh terminal (tab-drag can open other directions).
       const terminal = createTab(worktreeId, newGroupId)
+      // Why: the Split command is a user gesture; passive mounts never mark.
+      markUserInitiatedTerminalCreate(terminal.id)
       recordTerminalTabGroupSplit(terminal)
       setActiveTab(terminal.id)
       setActiveTabType('terminal', worktreeId)
@@ -168,6 +171,7 @@ export function useTabGroupCreationCommands({
           return
         }
         const terminal = createTab(worktreeId, groupId, shellOverride)
+        markUserInitiatedTerminalCreate(terminal.id)
         setActiveTab(terminal.id)
         setActiveTabType('terminal', worktreeId)
         focusTerminalTabSurface(terminal.id)

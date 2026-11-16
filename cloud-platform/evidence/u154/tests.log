@@ -1,0 +1,12 @@
+$ pnpm run build:packages && node config/scripts/ensure-native-runtime.mjs --runtime=node && node config/scripts/run-vitest.mjs run --config config/vitest.config.ts src/renderer/src/runtime/web-session-user-initiated-create.test.ts src/renderer/src/components/terminal/user-initiated-terminal-create-entries.test.ts src/renderer/src/components/terminal-pane/remote-runtime-pty-transport-u154-user-create-wiring.test.ts src/renderer/src/components/terminal-pane/remote-runtime-pty-transport-u153-user-create-host-selection.test.ts
+$ pnpm --filter @orca/process-host build
+$ tsx --conditions=orca-source scripts/build-dist.mjs
+
+ RUN  v5.0.3 /Users/gongdewei/work/projects/orca
+
+
+ Test Files  4 passed (4)
+      Tests  10 passed (10)
+   Start at  02:47:27
+   Duration  1.59s (tests 90%, transform 6%, setup 2%, import 1%)
+

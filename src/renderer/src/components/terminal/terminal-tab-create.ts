@@ -6,6 +6,7 @@ import {
   isWebRuntimeSessionActive
 } from '@/runtime/web-runtime-session'
 import { resolveTerminalWorktreeRoute } from '@/lib/terminal-worktree-route'
+import { markUserInitiatedTerminalCreate } from '@/runtime/web-session-user-initiated-create'
 
 export function createNewTerminalTab(
   activeWorktreeId: string | null,
@@ -45,6 +46,8 @@ export function createNewTerminalTab(
     shellOverride,
     options?.startupCwd ? { startupCwd: options.startupCwd } : undefined
   )
+  // Why: file-tree "New Terminal" is a user gesture; a passive pane mount never reaches this entry.
+  markUserInitiatedTerminalCreate(newTab.id)
   state.setActiveTabType('terminal', activeWorktreeId)
   // Why: persist the tab bar order with the new terminal at the end of the
   // current visual order. Without this, reconcileTabOrder falls back to

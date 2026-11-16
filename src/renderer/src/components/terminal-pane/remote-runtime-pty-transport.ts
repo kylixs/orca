@@ -81,8 +81,14 @@ import { replaceFitOverridePtyId, setFitOverride } from '@/lib/pane-manager/mobi
 import { replaceDriverPtyId, setDriverForPty } from '@/lib/pane-manager/mobile-driver-state'
 import { isWebTerminalSurfaceTabId, toHostSessionTabId } from '@/runtime/web-terminal-surface-id'
 import { captureWebSessionIntentOwner } from '@/runtime/web-runtime-session-environment'
-import { recordWebSessionFocusIntent } from '@/runtime/web-session-focus-intent'
-import { consumeUserInitiatedTerminalCreate } from '@/runtime/web-session-user-initiated-create'
+import {
+  recordWebSessionFocusIntent,
+  resolveWebSessionVisibleTabId
+} from '@/runtime/web-session-focus-intent'
+import {
+  consumeUserInitiatedTerminalCreate,
+  discardUserInitiatedTerminalCreate
+} from '@/runtime/web-session-user-initiated-create'
 import { isCloudSessionEnvironmentId } from '@/lib/cloud-session-environment-membership'
 import { parsePaneKey } from '../../../../shared/stable-pane-id'
 import { listRemoteRuntimeSessionTabsAfterCurrentInFlight } from '@/runtime/remote-runtime-session-tabs-inflight'
@@ -708,7 +714,8 @@ export function createRemoteRuntimePtyTransport(
   /** U153 D1: a user-created cloud tab must become the host's persisted selection. */
   function selectUserCreatedHostTab(
     created: RuntimeTerminalCreate,
-    environmentId: string
+    environmentId: string,
+    expectedCurrentLocalTabId?: string | null
   ): void {
     const hostTabId = created.tabId
     const hostLeafId = created.leafId ?? parsePaneKey(created.paneKey ?? '')?.leafId
@@ -721,7 +728,9 @@ export function createRemoteRuntimePtyTransport(
       return
     }
     const owner = captureWebSessionIntentOwner(environmentId)
-    recordWebSessionFocusIntent(owner, worktreeId, hostTabId, hostLeafId)
+    // Why: expectedCurrentLocalTabId is sampled before the create round-trip, so a switch made
+    // while it is in flight cancels the intent instead of yanking the user back.
+    recordWebSessionFocusIntent(owner, worktreeId, hostTabId, hostLeafId, expectedCurrentLocalTabId)
     if (tabId) {
       consumeUserInitiatedTerminalCreate(tabId)
     }
@@ -2695,6 +2704,11 @@ export function createRemoteRuntimePtyTransport(
       if (destroyed || !worktreeId) {
         return
       }
+      // Why: sample before the create round-trip; a user switch during it must cancel the intent.
+      const expectedCurrentLocalTabId =
+        userInitiated === true
+          ? resolveWebSessionVisibleTabId(useAppStore.getState(), worktreeId)
+          : undefined
 
       try {
         if (isWebTerminalSurfaceTabId(tabId ?? '')) {
@@ -2837,6 +2851,10 @@ export function createRemoteRuntimePtyTransport(
               })
           : await legacyCreate()
         if (!created) {
+          // Why: a failed create never reaches the consumer; drop the gesture so a remount stays passive.
+          if (userInitiated === true && tabId) {
+            discardUserInitiatedTerminalCreate(tabId)
+          }
           if (!destroyed && lifecycleEpoch === connectLifecycleEpoch) {
             connecting = false
             recovery.markDisconnected()
@@ -2865,6 +2883,9 @@ export function createRemoteRuntimePtyTransport(
           })
         }
         if (destroyed || lifecycleEpoch !== connectLifecycleEpoch) {
+          if (userInitiated === true && tabId) {
+            discardUserInitiatedTerminalCreate(tabId)
+          }
           if (
             !hostSnapshotOwnsLaunch(created, createEnvironmentId) &&
             (createdTerminal.handle !== handle ||
@@ -2877,7 +2898,7 @@ export function createRemoteRuntimePtyTransport(
         handle = createdTerminal.handle
 
         if (userInitiated === true) {
-          selectUserCreatedHostTab(createdTerminal, createEnvironmentId)
+          selectUserCreatedHostTab(createdTerminal, createEnvironmentId, expectedCurrentLocalTabId)
         }
 
         if (createdTerminal.isReattach === true) {
@@ -2915,6 +2936,10 @@ export function createRemoteRuntimePtyTransport(
           ...(createdTerminal.isReattach === true ? { isReattach: true } : {})
         } satisfies PtyConnectResult
       } catch (error) {
+        // Why: the create never completed, so the click gesture must not survive into a remount.
+        if (userInitiated === true && tabId) {
+          discardUserInitiatedTerminalCreate(tabId)
+        }
         if (!destroyed && lifecycleEpoch === connectLifecycleEpoch) {
           connecting = false
           const message = runtimeTerminalErrorMessage(error)
