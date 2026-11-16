@@ -536,10 +536,10 @@ GET /v1/projects/{id}?includeArchived=1
 | W6 ✅ `703fe5dfbb7`（4/4+36/36） | 完成 | `apps/web/styles.css` | 归档分组、summary、危险按钮间距、移动卡片操作、sheet 横幅/页脚 44px | 700px 与桌面截图核对；无新增颜色/字号 |
 | W7 ✅ `176c644f382`（6/6+9/9） | 完成 | `apps/web/app.js` | G27 全量策略表：三态 select、来源徽标、统计、`expectedVersion`、行级 409 保留选择+刷新重试、失败回滚 | 跟随全局项目可新建覆盖；409 不丢选择 |
 | W8 ✅ `24a8761400e`（13/13） | 完成 | `apps/web/styles.css` | G27 桌面表格与 ≤700 卡片、select 44px/16px、冲突提示布局 | 移动端单列可操作；无横向溢出 |
-| W9 | 20m | `test/e2e/web-project-archive.e2e.test.ts`（新）、`web-exploratory-fixes.e2e.test.ts` | U116 前端 9 条 + 更新 R5-②（admin 项目页现在会带 includeArchived，工作台仍不带） | 新套件绿；R5-② 改后绿 |
-| W10 | 20m | `test/e2e/web-project-archive-visibility.e2e.test.ts`（新） | G06 前端 7 条 + 服务端旧请求对照 | 新套件绿；直达/降级/只读断言全过 |
+| W9 🔁 并入 M10 总审计 | — | `test/e2e/web-project-archive.e2e.test.ts`（新）、`web-exploratory-fixes.e2e.test.ts` | U116 前端 9 条 + 更新 R5-②（admin 项目页现在会带 includeArchived，工作台仍不带） | 新套件绿；R5-② 改后绿 |
+| W10 🔁 并入 M10 总审计 | — | `test/e2e/web-project-archive-visibility.e2e.test.ts`（新） | G06 前端 7 条 + 服务端旧请求对照 | 新套件绿；直达/降级/只读断言全过 |
 | W11 ✅ `d0e6d05aa60`（9/9+11/11） | 完成 | `test/e2e/web-download-policy.e2e.test.ts` | G27 10 条：更新 M120c2-1/2/3/7，新增全量/新建覆盖/409 行级/文案事实性 | 套件绿；旧“只列 explicit”断言全部替换 |
-| W12 | 15m | 回归套件 | `project-archive`、`project-download-policy`、`policy-version-conflict`、`web-project-detail`、`admin-gating`、`web-admin-gating` | 全绿；`pnpm run check:code-quality:changed` 0 新发现 |
+| W12 🔄 待 U149 修复后执行（全量回归+质量门） | 15m | 回归套件 | `project-archive`、`project-download-policy`、`policy-version-conflict`、`web-project-detail`、`admin-gating`、`web-admin-gating` | 全绿；`pnpm run check:code-quality:changed` 0 新发现 |
 
 ### 依赖图
 
