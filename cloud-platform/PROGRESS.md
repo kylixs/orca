@@ -3844,6 +3844,12 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **v1 真机复验不可判定**：测试布局被多次拆分污染（面板 96px、strip 重叠），dnd 未启动、无 move 帧——非产品断言失败。
 - **最终复验**：v2 重建 web + 选择干净 worktree（0–1 组）验证 split→拖拽与组内 reorder（宿主 id/成员断言），在跑。
 
+### 2026-11-17 08:2x 轮：交付态一致；补建 renderer
+
+- **交付态静态审计**（`test-reports/final-delivery-audit.md`）：**一致**——main `e1f23030`（含 U168/U164）、preload production、out/web `e26779dc`（含 U169 v2/U166，exposeStore=0）、served=磁盘、宿主 07:01 启动晚于构建、平台/relay 200。
+- **范围说明**：`out/renderer` 早于 U169 v2（06:57）→ 已派补建 renderer（production），不影响运行中窗口（下次创建/重启加载）。
+- **U169 v2 最终真机复验**（干净 worktree）在跑。
+
 ### 四通道并发执行（启动，2026-11-14）
 
 按细粒度拆分与三权分立纪律并发起跑：通道② **W6a**（中继浏览器模式，relay.ts 域）、通道③ **W10**（客户端零 env 登录，src/main+renderer 登录域）、通道④ **W5a**（详情页终端组件，cloud-admin 域）三个实现代理并行；通道① 等在途 W2（QA 修复）完成后接 W8。每令完成→独立测试代理→独立审计代理→主会话关闭放行下一个。
