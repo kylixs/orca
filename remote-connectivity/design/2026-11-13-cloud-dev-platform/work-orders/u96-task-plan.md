@@ -56,3 +56,5 @@
 - 安全：云票据只能读/写 `workspaceRoot` 内对象；fail-closed；多人隔离
 - 回放体积上限沿用既有（1000 行 / 512 KiB），不提高
 - 禁宽域 pkill（协议 §2-8）
+
+> 追加：U99 ✅ `1cace8bc18f`（move 超时根因=scope 解绑调用 this 丢失→分发无 catch 静默超时；分组恢复从此可验）
