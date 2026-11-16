@@ -153,14 +153,49 @@ const ROUTE_RENDERERS = {
 /** 上一次真正渲染的路由；hashchange 与直接导航会对同一目标触发两次。 */
 let appliedRoute = null
 
+/** 移动端「更多」收纳的管理路由（U80 M1）；审计在底栏有独立入口。 */
+const MOBILE_MORE_ROUTES = new Set(['hosts', 'relays', 'users', 'settings'])
+
 function clearActiveNav() {
-  for (const btn of document.querySelectorAll('.nav-item')) btn.classList.remove('active')
+  for (const btn of document.querySelectorAll('.nav-item, .tabitem, .more-item')) {
+    btn.classList.remove('active')
+  }
 }
 
 function updateNav(name) {
   for (const btn of document.querySelectorAll('.nav-item')) {
     btn.classList.toggle('active', btn.dataset.route === name)
   }
+  for (const btn of document.querySelectorAll('.tabitem')) {
+    const target = btn.dataset.route
+    btn.classList.toggle(
+      'active',
+      target === name || (btn.dataset.tab === 'more' && MOBILE_MORE_ROUTES.has(name))
+    )
+  }
+  for (const btn of document.querySelectorAll('.more-item')) {
+    btn.classList.toggle('active', btn.dataset.route === name)
+  }
+}
+
+/** 底栏与「更多」沿用桌面侧栏的权限判定（U80 M1）。 */
+function syncMobileNav() {
+  const admin = isAdmin()
+  const auditor = isAuditor()
+  $('#tabAudit').hidden = !(admin || auditor)
+  for (const btn of document.querySelectorAll('#moreNav [data-route]')) btn.hidden = !admin
+  $('#moreAccount').textContent = `${state.user.displayName} · ${
+    admin ? '平台管理员' : auditor ? '审计员' : '开发者'
+  }`
+}
+
+function closeMoreSheet() {
+  const sheet = $('#moreSheet')
+  if (!sheet || sheet.hidden) {
+    return
+  }
+  sheet.hidden = true
+  $('#tabMore').setAttribute('aria-expanded', 'false')
 }
 
 function routeSignature(route) {
@@ -3046,7 +3081,9 @@ async function renderAudit(loadMore = false) {
         ${
           projects.length
             ? projects
-                .map((project) => `<option value="${esc(project.id)}">${esc(project.name)}</option>`)
+                .map(
+                  (project) => `<option value="${esc(project.id)}">${esc(project.name)}</option>`
+                )
                 .join('')
             : '<option value="" disabled>无可见项目（需 open 授权）</option>'
         }
@@ -3056,7 +3093,9 @@ async function renderAudit(loadMore = false) {
         ${
           hosts.length
             ? hosts
-                .map((host) => `<option value="${esc(host.id)}">${esc(host.name ?? host.id)}</option>`)
+                .map(
+                  (host) => `<option value="${esc(host.id)}">${esc(host.name ?? host.id)}</option>`
+                )
                 .join('')
             : '<option value="" disabled>无可见主机（需主机权限）</option>'
         }
@@ -3518,6 +3557,7 @@ function enterApp() {
   $('#userDept').textContent = state.user.dept
   $('#userAvatar').textContent = state.user.displayName.slice(0, 1)
   $('#roleChip').textContent = admin ? '平台管理员' : auditor ? '审计员' : '开发者'
+  syncMobileNav()
   appliedRoute = null
   const route = parseHash(location.hash)
   // 空 hash 规范化为默认路由，深链则原样恢复（D5/D7）。
@@ -3536,6 +3576,7 @@ function enterApp() {
 function showLogin() {
   appliedRoute = null
   pendingBackRestore = false
+  closeMoreSheet()
   $('#view-login').hidden = false
   $('#view-app').hidden = true
 }
@@ -3591,9 +3632,33 @@ $('#togglePassword').onclick = () => {
   button.setAttribute('aria-pressed', String(revealing))
 }
 
-for (const btn of document.querySelectorAll('.nav-item[data-route]')) {
-  btn.onclick = () => navigate(btn.dataset.route)
+for (const btn of document.querySelectorAll(
+  '.nav-item[data-route], .tabitem[data-route], .more-item[data-route]'
+)) {
+  btn.onclick = () => {
+    closeMoreSheet()
+    navigate(btn.dataset.route)
+  }
 }
+$('#tabMore').onclick = () => {
+  if ($('#moreSheet').hidden) {
+    $('#moreSheet').hidden = false
+    $('#tabMore').setAttribute('aria-expanded', 'true')
+  } else {
+    closeMoreSheet()
+  }
+}
+$('#moreSheet').onclick = (event) => {
+  if (event.target === $('#moreSheet')) {
+    closeMoreSheet()
+  }
+}
+$('#moreLogout').onclick = logout
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    closeMoreSheet()
+  }
+})
 $('#logoutBtn').onclick = logout
 $('#open403').onclick = () => navigate('forbidden')
 
