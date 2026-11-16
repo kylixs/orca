@@ -3724,6 +3724,13 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - 宿主重建代理已要求收口（build/reseed/解释）。
 - final5（门 v3）签字结论不受影响（U138/U161 链），但 U162 未闭环前不收 U138 家族总账。
 
+### 2026-11-17 05:0x 轮：U162 v3 端到端 PASS；final6 确认轮
+
+- **U162 v3**（`e501edca0c3`）：读侧回退持久 active（leaf→parent→browser + 快照命中校验；仅无持久选择设备；revision 0、不写 snapshot/epoch）；3 钉 + 判别力；53 相邻绿。
+- **宿主重建 + 重启 + e2e PASS**：out/main 05:04（仅 main target，out/web 未动）、`--restart-platform`、双宿主重启 `failures=[]`（PTY 71/15）；**9/9 断言**：`freshDeviceProjectionIsTarget=true`、旧设备选择不受影响、只读回退不写盘、restore 一致。
+- **停滞处置**：旧重建代理 28 分钟无证据 + 催促无响应 → TaskStop，按剩余范围重派（§2-44/§2-59），10 分钟完成。
+- final6（新宿主构建）确认 final5 0 红保持中。
+
 ### 四通道并发执行（启动，2026-11-14）
 
 按细粒度拆分与三权分立纪律并发起跑：通道② **W6a**（中继浏览器模式，relay.ts 域）、通道③ **W10**（客户端零 env 登录，src/main+renderer 登录域）、通道④ **W5a**（详情页终端组件，cloud-admin 域）三个实现代理并行；通道① 等在途 W2（QA 修复）完成后接 W8。每令完成→独立测试代理→独立审计代理→主会话关闭放行下一个。
