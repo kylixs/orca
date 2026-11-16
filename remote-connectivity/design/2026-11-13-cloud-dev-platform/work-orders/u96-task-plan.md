@@ -22,7 +22,7 @@
 | A-3 | `terminal.list/adoptOrphans` 放行+三重 scope | A-1，与 A-2 共享 path guard **串行** | **✅ 完成** `ee92bb2e449`（restore-scope 模块+拓扑校验；53 例绿） | 无 selector/越界拒绝；跨 worktree handle 拒绝 |
 | A-5 | bootstrap 顺序+孤儿认领接通（**最小可用里程碑**） | A-2/3/4 | **✅ 落地** `430b2a2f312`（**M1 核心绿**：3 tab 同 id 恢复+活动一致+双 PTY marker 可见；断点：move 超时 U99 / 文件标签无云通路 U100 / Bun TLS 工具注记） | 页面重开→标签组/布局/活动标签恢复；活 PTY 回放 marker 可见 |
 | A-7 | scrollback 回放边界（1000 行/512 KiB/truncated；localOnly 不外发；死 PTY→ended UI） | A-5 | **✅ 模块落地** `4dc482a272a`（13 新例；**面板接线待 B-令6 合并点**——已声明 API 与接入方式） | A7 断言全过 |
-| A-8 | 端到端回归（页面重载/宿主重启两档+旧宿主+多项目） | A-5/6/7 | 排队 | A1-A11 AC 全过；evidence/u96-fix/ |
+| A-8 | 端到端回归（页面重载/宿主重启两档+旧宿主+多项目） | A-5/6/7 | **T2/T3/T4 ✅；T1 站已适配** `c36b9f682f4`+`ac695fac00c`（轮询/组差集/宿主契约；仅 reload 段 KNOWN RED=等 U103-B1 静默续会话产品修复） | A1-A11 AC 全过；evidence/u96-fix/ |
 
 **并行约束**：A-1 是前置；A-2→A-3 串行；A-4/A-6 与 2/3 并行安全；A-5 汇聚；A-7/8 收口。
 
