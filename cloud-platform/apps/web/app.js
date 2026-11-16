@@ -7,6 +7,8 @@ const state = {
   refreshToken: localStorage.getItem('orca.refresh') ?? '',
   user: null,
   projects: [],
+  /** Admin-only history list; live views never read it (U116①/T2). */
+  archivedProjects: [],
   route: 'workbench',
   routeParams: {},
   routeQuery: null,
@@ -533,13 +535,30 @@ function enterWorkspace(projectId) {
   applyRoute(parseHash(hash), { force: true })
 }
 
+/** Admin route lookup resolves history rows the live list no longer carries. */
+async function resolveRouteProject(projectId) {
+  const cached =
+    state.projects.find((p) => p.id === projectId) ??
+    state.archivedProjects.find((p) => p.id === projectId)
+  if (cached || !isAdmin()) return cached ?? null
+  try {
+    const project = await api(`/v1/projects/${projectId}?includeArchived=1`)
+    if (project.status === 'archived') state.archivedProjects.push(project)
+    else state.projects.push(project)
+    return project
+  } catch {
+    return null
+  }
+}
+
 /** 列表加载完成后按详情路由打开既有弹框/抽屉（U106 R3）。 */
 async function openRouteDetail(route, listResult) {
   const detail = detailRouteOf(route)
   if (!detail) return
   const onClose = () => handleDetailClose(detail.name)
   if (detail.name === 'projects') {
-    if (!state.projects.some((p) => p.id === detail.id)) {
+    const project = await resolveRouteProject(detail.id)
+    if (!project) {
       return renderDetailNotFound('projects')
     }
     await openProjectDetail(detail.id, { tab: detail.tab, onClose })
@@ -560,12 +579,16 @@ async function openRouteDetail(route, listResult) {
   openUserDetail(user, { onClose })
 }
 
-async function loadProjects() {
-  // Live views only: an archived project is history, so it never enters the
-  // workbench or 「我的项目」 (U53③). includeArchived stays an explicit query.
-  const body = await api('/v1/projects')
-  state.projects = body.projects
-  return body.projects
+async function loadProjects({ includeArchived = false } = {}) {
+  // Live views only: archived projects are history, so they never enter the
+  // workbench/settings lists (U53③/T2). Admin's project page opts into a
+  // separate list for its history group (U116①).
+  const withArchived = includeArchived && isAdmin()
+  const body = await api(`/v1/projects${withArchived ? '?includeArchived=1' : ''}`)
+  const all = body.projects ?? []
+  state.projects = all.filter((p) => p.status !== 'archived')
+  state.archivedProjects = withArchived ? all.filter((p) => p.status === 'archived') : []
+  return state.projects
 }
 
 /**
@@ -679,6 +702,8 @@ function permissionSummary(p) {
 /** Why 打开 is unavailable, or null when the project can be opened (FR-2.4). */
 function openDisabledReason(p) {
   if (p.status === 'archived') return '项目已归档，无法打开'
+  if (p.status === 'provisioning') return '项目准备中，暂时无法打开'
+  if (p.status === 'failed') return '项目准备失败'
   if (p.hostStatus === 'maintenance') return '主机维护中'
   if (p.hostStatus !== 'online') return '主机离线'
   if (p.permissions.length === 0 && isAdmin()) {
@@ -1366,7 +1391,9 @@ function wireDetailCopy(backdrop) {
  * to the host, so an offline/maintenance host is still inspectable.
  */
 async function openProjectDetail(projectId, { tab = 'info', onClose } = {}) {
-  const cached = state.projects.find((p) => p.id === projectId)
+  const cached =
+    state.projects.find((p) => p.id === projectId) ??
+    state.archivedProjects.find((p) => p.id === projectId)
   if (!cached) {
     return
   }
@@ -1469,7 +1496,11 @@ async function openProjectDetail(projectId, { tab = 'info', onClose } = {}) {
   wireDetailCopy(backdrop)
 
   const [fresh, grants, policy, hostGrants] = await Promise.allSettled([
-    api(`/v1/projects/${projectId}`),
+    api(
+      cached.status === 'archived' && isAdmin()
+        ? `/v1/projects/${projectId}?includeArchived=1`
+        : `/v1/projects/${projectId}`
+    ),
     isAdmin() ? api(grantsPath) : Promise.resolve(null),
     api('/v1/policies/download'),
     isAdmin() ? api(`/v1/hosts/${cached.hostId}/grants`).catch(() => null) : Promise.resolve(null)
@@ -1497,7 +1528,10 @@ function currentDeviceId() {
 
 async function renderProjects() {
   // 生效值 = 显式覆盖 ? 项目值 : 全局默认；列与徽标都按生效值渲染（M120c §5.4）。
-  const [projects, policy] = await Promise.all([loadProjects(), api('/v1/policies/download')])
+  const [projects, policy] = await Promise.all([
+    loadProjects({ includeArchived: isAdmin() }),
+    api('/v1/policies/download')
+  ])
   const globalDefault = policy.downloadDefault
   content().innerHTML = `
     <div class="page-head">
@@ -3862,6 +3896,7 @@ function logout() {
   state.refreshToken = ''
   state.user = null
   state.directory = null
+  state.archivedProjects = []
   localStorage.removeItem('orca.access')
   localStorage.removeItem('orca.refresh')
   localStorage.removeItem('orca.user')

@@ -855,26 +855,31 @@ test('R5-② 工作台/我的项目默认排除归档项目，归档行有徽标
     /r5-archived/,
     '我的项目 must not list an archived project'
   )
+  assert.equal(
+    page.calls().filter((call) => call === 'GET /v1/projects?includeArchived=1').length,
+    1,
+    'U116①: the admin project page opts into the separate archive list'
+  )
 
-  // Fallback: if an archived row ever reaches a live view (stale/legacy payload),
-  // it is badged and its open entry is disabled rather than silently openable.
+  // T2: even a stale/legacy payload cannot inject an archived row into a live
+  // view — loadProjects filters it out before any renderer sees it.
   const listing = await adminApi('/v1/projects?includeArchived=1')
   const archived = listing.body.projects.find((p: { id: string }) => p.id === archivedId)
   assert.equal(archived.status, 'archived')
   page.fail('GET', '/v1/projects', { status: 200, body: { projects: [archived] } })
   await page.clickNav('workbench')
-  const row = rowFor(page, 'r5-archived')
-  assert.match(row.textContent ?? '', /已归档/, 'an archived row must carry the badge')
   assert.equal(
-    row.querySelector<HTMLButtonElement>('[data-open]')?.disabled,
-    true,
-    'an archived project cannot be opened'
+    [...page.window.document.querySelectorAll<HTMLElement>('#content tbody tr')].some((row) =>
+      row.textContent?.includes('r5-archived')
+    ),
+    false,
+    'an archived row never reaches a live view, even from a stale payload'
   )
   page.clearFails()
   saveEvidence('r2r5-fix', 'r5-archived-excluded.json', {
     finding: 'U53③ archived projects in live views',
     liveListRequests: 'GET /v1/projects (no includeArchived)',
-    fallback: '已归档 badge + open disabled'
+    fallback: 'stale archived rows are filtered out of live views'
   })
 }, 120_000)
 
