@@ -57,18 +57,32 @@ read), `U138_HEADLESS=0`, `U138_PAGE_FRAME_LIMIT`, `U138_RUN_ID`,
    console project entry again (same pairing context) → wait for the shell and
    the same stability gate → sample `after-reopen`. Cross-reopen active equality
    requires every reopen point to be valid and to expose exactly one DOM active.
-3. **quick open/close (C2) x `U138_QUICK_CYCLES`**: create a temp tab → sample
-   `opened` → close it through the **real tab-strip close button**
-   (`[data-tab-close-button]`) → sample `closed`. No injected `session.tabs.close`
-   remains on the signed path. A failed create or close makes the round INVALID
-   (the failed close also invalidates the `opened` point); it is never a red.
-   The round counts as closed **only** when the tab is really gone from the DOM
-   after the UI close; an INVALID round is not evidence of a healthy quick path.
+3. **quick open/close (C2) x `U138_QUICK_CYCLES`**: within the **active group**,
+   create a temp tab → sample `opened` → close it through the **real tab-strip
+   close button** (`[data-tab-close-button]`) → sample `closed`. No injected
+   `session.tabs.close` remains on the signed path. A failed create or close
+   makes the round INVALID (the failed close also invalidates the `opened`
+   point); it is never a red. The round counts as closed **only** when the tab
+   is really gone from the DOM after the UI close; an INVALID round is not
+   evidence of a healthy quick path.
+
+   The quick scope is create/close inside the active group. Hitting X on a tab
+   in an **inactive** group only activates that group on the first click; that
+   product behavior is tracked by U158 and is deliberately **out of** the quick
+   accounting, so the probe never creates in a non-active group.
 
 ### Quick-close interaction fidelity
 
 The gesture must be proven to reach the close button before its result is read:
 
+- **Active-group precondition.** The New-tab trigger is resolved from the active
+  group only: `activeGroupIdByWorktree[activeWorktreeId]` from the store, then
+  that group's `[data-tab-group-strip-id]` strip. There is no `.first()`
+  fallback across groups; if the active group or its trigger cannot be located,
+  the round fails with `quick-create-failed: active-group-new-tab-missing`.
+  Before the close click the target tab's enclosing strip group must equal the
+  store's active group, otherwise the round fails with
+  `target-tab-outside-active-group` (an inactive-group X click only activates).
 - **Hit assertion.** The close button is scrolled into view and hovered, then
   `document.elementFromPoint(center)` must resolve to the button or one of its
   descendants. Otherwise the round fails with `close-button-obscured` and the
@@ -100,8 +114,9 @@ Quick INVALID reasons (all prefixed `quick-close-failed:` except the create one)
 
 | reason | meaning |
 | --- | --- |
-| `quick-create-failed: …` | no new sortable tab appeared, or the New tab / New Terminal click failed |
+| `quick-create-failed: …` | no new sortable tab appeared, the New tab / New Terminal click failed, or the active group's trigger was missing (`active-group-new-tab-missing`) |
 | `tab-not-found` | the created DOM id is not addressable by the tab selector (see id normalization below) |
+| `target-tab-outside-active-group` | the target tab's strip group is not the store's active group; an inactive-group X click only activates |
 | `close-button-not-found` | the tab has no `[data-tab-close-button="true"]` |
 | `close-button-obscured` | `elementFromPoint(button center)` is not the button; coordinates and top element recorded |
 | `ui-close-activated-instead` | the click activated the target tab and the tab is still present |
@@ -109,7 +124,10 @@ Quick INVALID reasons (all prefixed `quick-close-failed:` except the create one)
 | `ui-close-thrown: …` | the Playwright click or a post-click read threw |
 | `tab-still-present-after-ui-close` | no activation change and the tab survived the 15 s close deadline |
 
-`createTempTab` reads `[data-testid="sortable-tab"]` `data-tab-id` values and
+`createTempTab` opens the menu from the active group's New-tab trigger
+(`[data-tab-group-strip-id="<activeGroupId>"]`), not the first trigger in the
+layout, so the created tab is guaranteed to sit in the group the close gesture
+targets. It also reads `[data-testid="sortable-tab"]` `data-tab-id` values and
 normalizes a bare UUID to `web-terminal-<uuid>` (the form the tab selector and
 the DOM use), so an early render cannot produce `tab-not-found` for an id the
 probe never saw in the DOM.
@@ -219,7 +237,9 @@ A sample point is INVALID and excluded from green/red when any of these holds:
 - baseline host state read failed (this invalidates every point in the run);
 - the T1 trace is unavailable **or empty** (a handle with zero recorded frames
   cannot answer H-A);
-- quick round: tab creation failed, or the real UI close failed / the tab was
+- quick round: tab creation failed (including
+  `active-group-new-tab-missing`), the target tab was not in the active group
+  (`target-tab-outside-active-group`), or the real UI close failed / the tab was
   still present afterwards. A failed close also invalidates that round's
   `opened` point. The failure vocabulary is listed under
   [Quick-close interaction fidelity](#quick-close-interaction-fidelity); a round

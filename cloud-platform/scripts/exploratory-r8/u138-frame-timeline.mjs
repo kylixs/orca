@@ -729,6 +729,11 @@ function tabSelectorFor(tabId) {
   return `.app-layout [data-tab-id="${escaped}"]`
 }
 
+function groupStripSelectorFor(groupId) {
+  const escaped = groupId.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  return `.app-layout [data-tab-group-strip-id="${escaped}"]`
+}
+
 /** DOM-only read around the close click; never samples the perspectives. */
 function readCloseInteraction(selector) {
   const state = window.__store?.getState?.()
@@ -750,6 +755,30 @@ function readCloseInteraction(selector) {
       : null,
     confirmLabel: confirm ? (confirm.textContent ?? '').trim() : null,
     hasCloseButton: Boolean(tab?.querySelector('[data-tab-close-button="true"]'))
+  }
+}
+
+/** Active group drives quick create; a `.first()` trigger would target an arbitrary split group. */
+function readActiveGroupTarget() {
+  const state = window.__store?.getState?.()
+  const worktreeId = state?.activeWorktreeId ?? null
+  const activeGroupId = worktreeId ? (state?.activeGroupIdByWorktree?.[worktreeId] ?? null) : null
+  return { hasStore: Boolean(window.__store), worktreeId, activeGroupId }
+}
+
+/** The close gesture only counts when the target tab renders inside the active group. */
+function readTabGroupAssignment(selector) {
+  const state = window.__store?.getState?.()
+  const worktreeId = state?.activeWorktreeId ?? null
+  const activeGroupId = worktreeId ? (state?.activeGroupIdByWorktree?.[worktreeId] ?? null) : null
+  const element = document.querySelector(selector)
+  const domGroupId =
+    element?.closest('[data-tab-group-strip-id]')?.getAttribute('data-tab-group-strip-id') ?? null
+  return {
+    worktreeId,
+    activeGroupId,
+    domGroupId,
+    inActiveGroup: Boolean(activeGroupId && domGroupId === activeGroupId)
   }
 }
 
@@ -2011,8 +2040,19 @@ try {
 
   async function createTempTab() {
     const before = await listSortableTabIds()
-    // Split layouts render one New-tab trigger per group; use the first visible one.
-    await workspacePage.getByRole('button', { name: 'New tab' }).first().click({ timeout: 15_000 })
+    // Split layouts render one New-tab trigger per group. The temp tab must be created in
+    // the active group: a `.first()` trigger can land in an unfocused group, where the X is
+    // consumed by activation, turning a probe bookkeeping gap into a fake quick red.
+    const { hasStore, activeGroupId } = await workspacePage.evaluate(readActiveGroupTarget)
+    if (!hasStore || !activeGroupId) {
+      throw new Error('active-group-new-tab-missing')
+    }
+    const strip = workspacePage.locator(groupStripSelectorFor(activeGroupId))
+    const trigger = strip.getByRole('button', { name: 'New tab' })
+    if ((await strip.count()) !== 1 || (await trigger.count()) !== 1) {
+      throw new Error('active-group-new-tab-missing')
+    }
+    await trigger.click({ timeout: 15_000 })
     await workspacePage
       .getByRole('menuitem', { name: /New Terminal/ })
       .first()
@@ -2040,6 +2080,12 @@ try {
       const tab = workspacePage.locator(selector).first()
       if ((await tab.count()) === 0) {
         return { ok: false, path: 'ui', error: 'tab-not-found' }
+      }
+      // A tab outside the active group makes the first X click an activation, not a close.
+      const groupState = await workspacePage.evaluate(readTabGroupAssignment, selector)
+      evidence.group = groupState
+      if (!groupState.inActiveGroup) {
+        return { ok: false, path: 'ui', error: 'target-tab-outside-active-group', ...evidence }
       }
       const closeButton = tab.locator('[data-tab-close-button="true"]').first()
       if ((await closeButton.count()) === 0) {
