@@ -3588,6 +3588,7 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **U145/G27 闭环**：LDAP 徽标事实化（加性 `ldap.requiredGroup`+三态展示，`accf5204d26`/`33d01936cab`）；设置页 toast 去掉「30 秒」承诺改「随宿主心跳生效」（`86e072fcc1e`/`33d01936cab`）；G27 钉住功能待排期（部分闭合）。
 - **U145/G27 真机抽验全 PASS**（`evidence/u145-g27/`）：users 徽标「LDAP 准入：未配置」与 API `ldap.requiredGroup=null` 一致、无「LDAP 同步正常」；settings toast 无「30 秒」，线上 bundle grep 命中 0；audit/hosts 回归正常（环境未改动）。
 - **P2/缺口批独立审计 PASS**（13 提交，25/25 抽跑绿；0 skip/todo、未放宽断言）：3 项非阻断偏差已处置——并发用例改名（真并发由 write-lock 代码保证）、本段历史基线加时刻标注、纯测试提交的措辞区分见各条（实现早于覆盖补齐）。
+- **全量回归终验（HEAD，2026-11-16 24:00 口径）**：524 文件 / **3671 用例 / 0 失败 / 9 跳过**（双池 + 平台单测/e2e 460 + W9 4）；上次 5 红（U136① 夹具）全部转绿并由 8+4 文件定向复跑佐证；三桶：今日引入 0 / 既有 0 / 环境 0（注：完整单机全量约需数小时，按上次同口径可比批执行，报告 `test-reports/regression-2026-11-16-2400.md`，不提交）。结论 **GO（范围限定：单机完整全量需 CI 分片）**。
 - **最终一致性验证完成（HEAD 重建部署后）**：W9 官方双线 **6/6 绿**；平台 e2e **460/460 绿**；journey 控制台线 **12/13**（a2 为 U138 已知 flaky 残余，B7 原语义绿；证据 `evidence/journey-final/`）。环境健康：platform 200、hosts 47158/49053 在线、reseed `failures=[]`。
 - **过程事故与处置（已闭环）**：验证链首轮因**平台 pidfile 陈旧未杀到真实进程**→EADDRINUSE，随后 TaskStop 留下 14 个测试 server 泄漏进程；按精确 PID 清理、full reseed 恢复。教训：重启前置核验实际监听者；停后台链后清点子进程。
 - **缺口收敛（本小时）**：G23 授权组合 6 findings 逐条复验全部已修（`3d9dee67131`/`b05ee6ae5ac`）→ **closed**；U113 A-retest 真机矩阵 **9/9 PASS**（2 组 3 标签×关页/刷新/二开×3，证据 `evidence/u113-retest/`）→ U113 关闭；宿主旧 user ticket 401 探针入套件（`b7fc032ce01`，2/2）。基线：320=279+41+0、§13 closed 15/部分 2/待 12（机检 PASS）。
