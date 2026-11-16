@@ -528,9 +528,9 @@ GET /v1/projects/{id}?includeArchived=1
 
 | 令 | 估时 | 文件 | 内容 | 退出条件 |
 |---|---|---|---|---|
-| W1 | 18m | `apps/api/src/server.ts`、`test/e2e/project-archive.e2e.test.ts` | G06 opt-in 只读详情守卫 + 服务端 7 条断言（200/404/权限/仍拒绝写） | 新用例绿；既有 archive 套件绿；`pnpm tc:node` |
-| W2 | 15m | `apps/web/app.js` | 数据层：`state.archivedProjects`、`loadProjects({includeArchived})`、详情路由查找合并、`openDisabledReason` 补 provisioning/failed | 工作台/设置调用零变化；直连归档详情的存在性判断可命中 |
-| W3 | 20m | `apps/web/app.js` | 项目页：admin 归档分组 `<details>`、`已归档 N` chip、搜索/过滤语义、空态 | 桌面/移动 DOM 分组正确；workbench 不发 includeArchived |
+| W1 ✅ `c5c11515cc3`（9/9+71/71） | 完成 | `apps/api/src/server.ts`、`test/e2e/project-archive.e2e.test.ts` | G06 opt-in 只读详情守卫 + 服务端 7 条断言（200/404/权限/仍拒绝写） | 新用例绿；既有 archive 套件绿；`pnpm tc:node` |
+| W2 ✅ `29e02c55842`（4/4+39/39） | 完成 | `apps/web/app.js` | 数据层：`state.archivedProjects`、`loadProjects({includeArchived})`、详情路由查找合并、`openDisabledReason` 补 provisioning/failed | 工作台/设置调用零变化；直连归档详情的存在性判断可命中 |
+| W3 🔄 进行中 | 20m | `apps/web/app.js` | 项目页：admin 归档分组 `<details>`、`已归档 N` chip、搜索/过滤语义、空态 | 桌面/移动 DOM 分组正确；workbench 不发 includeArchived |
 | W4 | 20m | `apps/web/app.js` | 归档/恢复入口（行、卡片、详情页脚）+ `dialog()` 确认 + 请求/刷新/toast/错误映射 | 两个确认文案逐字；取消 0 请求；成功/失败状态正确 |
 | W5 | 18m | `apps/web/app.js` | 归档详情只读：横幅、隐藏权限 tab、跳过 grants、opt-in 请求、旧平台降级、恢复后关闭 | 无打开/无写请求；404 降级文案正确 |
 | W6 | 15m | `apps/web/styles.css` | 归档分组、summary、危险按钮间距、移动卡片操作、sheet 横幅/页脚 44px | 700px 与桌面截图核对；无新增颜色/字号 |
