@@ -21,6 +21,7 @@ import {
   validateProjectDir
 } from './project-self-service.ts'
 import { isProjectCreator, projectKeyTaken, projectPathTaken } from './project-occupancy.ts'
+import { evaluateRelayRouteFreshness } from './relay-route-freshness.ts'
 import {
   canCreateProjectOnHost,
   effectiveProjectPermissions,
@@ -3357,27 +3358,21 @@ export function createApp(config: ApiConfig): ApiHandle {
           // path of every bound host at once.
           const route = h.relayRoute ? store.relayRoutes.get(h.relayRoute) : undefined
           const online = hostOnline(h)
-          // U146: freshness is judged against the platform's only beat constant.
-          // Stale = three missed beats, or the route left the host's own addresses.
-          const routeUpdatedAt =
-            route && Number.isFinite(route.updatedAt) ? route.updatedAt : null
-          const relayRouteAgeSec =
-            routeUpdatedAt === null
-              ? null
-              : Math.max(0, Math.floor((now() - routeUpdatedAt) / 1000))
+          // U146/U151: freshness is independent of `online` — an offline host's
+          // leftover route must still age out against the beat constant.
+          const freshness = evaluateRelayRouteFreshness({
+            route,
+            directAddrs: h.directAddrs,
+            now: now(),
+            hostOfflineMs
+          })
           return {
             ...h,
             credentialHash: undefined,
             online,
             browserEntryUrl: browserEntryUrlFor(h.relayRoute),
             relayTarget: route?.target ?? null,
-            relayRouteUpdatedAt: routeUpdatedAt,
-            relayRouteAgeSec,
-            relayRouteStale: route
-              ? online &&
-                ((relayRouteAgeSec !== null && relayRouteAgeSec * 1000 > 3 * hostOfflineMs) ||
-                  !h.directAddrs.includes(route.target))
-              : null,
+            ...freshness,
             relayOnline: relayNodes.healthy(now(), relayAliveMs).length > 0
           }
         })

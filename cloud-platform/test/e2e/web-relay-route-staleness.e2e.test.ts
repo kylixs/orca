@@ -32,17 +32,21 @@ let freshHostId = ''
 let staleHostId = ''
 let unboundHostId = ''
 
-async function registerHost(body: Record<string, unknown>): Promise<{
+async function registerHost(
+  body: Record<string, unknown>,
+  baseUrl = api.url,
+  adminBearer = adminToken
+): Promise<{
   hostId: string
   credential: string
 }> {
-  const tokenRes = await fetch(`${api.url}/v1/hosts/tokens`, {
+  const tokenRes = await fetch(`${baseUrl}/v1/hosts/tokens`, {
     method: 'POST',
-    headers: { authorization: `Bearer ${adminToken}` }
+    headers: { authorization: `Bearer ${adminBearer}` }
   })
   assert.equal(tokenRes.status, 201)
   const { token } = (await tokenRes.json()) as { token: string }
-  const res = await fetch(`${api.url}/v1/hosts/register`, {
+  const res = await fetch(`${baseUrl}/v1/hosts/register`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
     body: JSON.stringify({
@@ -59,8 +63,13 @@ async function registerHost(body: Record<string, unknown>): Promise<{
   return JSON.parse(text) as { hostId: string; credential: string }
 }
 
-async function heartbeat(hostId: string, credential: string, directAddrs?: string[]): Promise<void> {
-  const res = await fetch(`${api.url}/v1/hosts/${hostId}/heartbeat`, {
+async function heartbeat(
+  hostId: string,
+  credential: string,
+  directAddrs?: string[],
+  baseUrl = api.url
+): Promise<void> {
+  const res = await fetch(`${baseUrl}/v1/hosts/${hostId}/heartbeat`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${credential}` },
     body: JSON.stringify({ status: 'online', ...(directAddrs ? { directAddrs } : {}) })
@@ -68,9 +77,13 @@ async function heartbeat(hostId: string, credential: string, directAddrs?: strin
   assert.equal(res.status, 200, await res.text())
 }
 
-async function hostFields(hostId: string): Promise<HostFields> {
-  const res = await fetch(`${api.url}/v1/hosts`, {
-    headers: { authorization: `Bearer ${adminToken}` }
+async function hostFields(
+  hostId: string,
+  baseUrl = api.url,
+  adminBearer = adminToken
+): Promise<HostFields> {
+  const res = await fetch(`${baseUrl}/v1/hosts`, {
+    headers: { authorization: `Bearer ${adminBearer}` }
   })
   assert.equal(res.status, 200)
   const { hosts } = (await res.json()) as { hosts: HostFields[] }
@@ -210,4 +223,66 @@ test('④ 抽屉复用同一判定，窄视口不横向溢出', async () => {
     path: join(evidenceDir(EVIDENCE), 'hosts-390.png'),
     fullPage: true
   })
+})
+
+test('⑤ 宿主停止心跳后：残留路由在 3×心跳窗后判陈旧，UI 显示陈旧徽标', async () => {
+  // A one-second offline window makes three missed beats observable in seconds.
+  const staleApi = await spawnService(
+    'apps/api/src/server.ts',
+    { PORT: '0', ORCA_CLOUD_HOST_OFFLINE_MS: '1000' },
+    /\[api\] listening on http:\/\/127\.0\.0\.1:(\d+)/,
+    'api-u151-offline-route-staleness'
+  )
+  try {
+    const staleAdmin = await login(staleApi.url, 'admin', 'Adm1n!')
+    const host = await registerHost(
+      {
+        name: 'u151-offline-host',
+        directAddrs: ['127.0.0.1:16813'],
+        relayTarget: '127.0.0.1:16813',
+        relayRoute: 'u151-offline-host'
+      },
+      staleApi.url,
+      staleAdmin
+    )
+    await heartbeat(host.hostId, host.credential, ['127.0.0.1:16813'], staleApi.url)
+
+    // Control: while the host still beats, the matching route is fresh.
+    const live = await hostFields(host.hostId, staleApi.url, staleAdmin)
+    assert.equal(live.online, true)
+    assert.equal(live.relayRouteStale, false)
+
+    // Negative control: the host goes silent; the leftover route must age out
+    // even though nothing dereferences or deletes it.
+    await new Promise((resolve) => setTimeout(resolve, 4_500))
+    const row = await hostFields(host.hostId, staleApi.url, staleAdmin)
+    assert.equal(row.online, false, 'a silent host leaves the online window')
+    assert.equal(typeof row.relayRouteUpdatedAt, 'number')
+    assert.ok((row.relayRouteAgeSec ?? 0) >= 3, 'route age crossed three beat windows')
+    assert.equal(row.relayRouteStale, true, 'leftover route is stale once the host is silent')
+    assert.equal(row.relayTarget, '127.0.0.1:16813')
+
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await page.goto(`${staleApi.url}/#/hosts`, { waitUntil: 'domcontentloaded' })
+    await page.waitForSelector('#loginForm', { state: 'visible' })
+    await page.fill('#username', 'admin')
+    await page.fill('#password', 'Adm1n!')
+    await page.click('#loginBtn')
+    await page.waitForSelector('#hostTableWrap table')
+    const cell = page.locator(`#hostTableWrap [data-relay-freshness="${host.hostId}"]`)
+    await cell.waitFor({ state: 'visible' })
+    assert.equal((await cell.innerText()).trim(), '路由陈旧')
+    assert.equal(await cell.locator('.badge.warn').count(), 1)
+
+    writeFileSync(
+      join(evidenceDir('u151-relay-route-staleness'), 'offline-stale-api.json'),
+      JSON.stringify(row, null, 2)
+    )
+    await page.screenshot({
+      path: join(evidenceDir('u151-relay-route-staleness'), 'offline-stale-hosts.png'),
+      fullPage: true
+    })
+  } finally {
+    await staleApi.stop()
+  }
 })

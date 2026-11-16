@@ -2194,8 +2194,9 @@ function hostActionsDialog(host) {
 
 /** U146: how recently an online host confirmed its relay route; `—` when unbound. */
 function relayRouteFreshness(h) {
-  if (h.relayRouteUpdatedAt == null) return '<span class="muted mono">—</span>'
+  // A stale route stays visible even when an old snapshot has no `updatedAt`.
   if (h.relayRouteStale === true) return '<span class="badge warn">路由陈旧</span>'
+  if (h.relayRouteUpdatedAt == null) return '<span class="muted mono">—</span>'
   const age = Math.max(0, Math.floor(h.relayRouteAgeSec ?? 0))
   return `<span class="muted">路由确认于 ${age} 秒前</span>`
 }
