@@ -39,7 +39,7 @@
   - 显式 `relayRoute` 优先；
   - 否则 `routeKeyFromDirectAddrs` 取第一个可解析 IP，`ip-<IP>`，点/冒号全部替换为 `-`（SNI 标签不允许点）；无地址回落主机名。
   - `ip-…` 键随心跳地址跟随（`syncHostRoute`）；显式命名键不自动改名。
-- 路由表：`relayTarget || directAddrs[0]` 非空则写 `store.relayRoutes.set(routeKey,{hostId,target,version})`；重注册改键时删除旧键表项。
+- 路由表：`relayTarget || directAddrs[0]` 非空则写 `store.relayRoutes.set(routeKey,{hostId,target,version,updatedAt})`（U146：`updatedAt`=写入时间或在线心跳确认时间）；重注册改键时删除旧键表项。
 - 审计：`host_register`（actor=agent，metadata=name/zone）；注册后返回 `hostId`、一次性长期 credential、`policyVersion`。
 
 ## 4. 心跳（`POST /v1/hosts/{id}/heartbeat`）
@@ -78,6 +78,7 @@
 - 已撤销主机仍接受心跳（用于下发撤销结果），但不更新存活状态/地址/根目录/能力。
 - `provisionAssignments` 在撤销或维护态不生成；非空时写 1 条批量 `provision_assign` 审计。
 - 离线判定基于 `lastHeartbeatAt`（`hostOnline`，默认心跳窗 `HOST_OFFLINE_DEFAULT_MS`）。
+- **路由确认（U146）**：在线主机每拍确认其 `relayRoute` 表项（同地址也刷新 `updatedAt`）；`GET /v1/hosts` 加性返回 `relayRouteUpdatedAt/relayRouteAgeSec/relayRouteStale`，陈旧=在线且 3×心跳窗未确认，或路由目标不在宿主 `directAddrs`。旧快照缺 `updatedAt` 时字段回落 null（显示「—」，不伪装新鲜）。
 
 ## 5. projectsRoot / projectDirs 语义
 
