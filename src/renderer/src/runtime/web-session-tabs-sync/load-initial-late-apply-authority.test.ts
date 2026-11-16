@@ -34,20 +34,26 @@ const storeHarness = vi.hoisted(() => {
 vi.mock('../../store', () => ({ useAppStore: storeHarness.useAppStore }))
 
 // The entry listAll apply is gated behind orphan recovery; holding it lets a host publish land first.
-type RecoveryGate = { release: (() => void) | undefined }
+// One recovery runs per snapshot, so every pending call must be released.
+type RecoveryGate = { releases: (() => void)[] }
 
-const recoveryGate = vi.hoisted((): RecoveryGate => ({ release: undefined }))
+const recoveryGate = vi.hoisted((): RecoveryGate => ({ releases: [] }))
 
 vi.mock('../web-session-terminal-orphan-recovery', () => ({
   recoverWebSessionTerminalOrphansBeforeApply: vi.fn(
     async (_state: unknown, snapshot: RuntimeMobileSessionTabsResult) => {
       await new Promise<void>((resolve) => {
-        recoveryGate.release = resolve
+        recoveryGate.releases.push(resolve)
       })
       return snapshot
     }
   )
 }))
+
+function releaseRecovery(): void {
+  const releases = recoveryGate.releases.splice(0)
+  releases.forEach((release) => release())
+}
 
 import { loadInitialWebSessionTabs } from './load-initial'
 import { recordReceivedWebSessionTabsSnapshot } from './tracking'
@@ -58,19 +64,20 @@ import {
   LEAF_ID,
   NOW,
   SECOND_LEAF_ID,
+  THIRD_LEAF_ID,
   WT,
   makeSnapshot,
   makeState,
   resetWebSessionTabsSyncTestState
 } from '../web-session-tabs-sync-test-harness'
 
+const WT2 = 'repo::/worktree-2'
 const LATER_HOST = 'host-later'
 const ENTRY_HOST = 'host-entry'
 const INVENTORY_ONLY_HOST = 'host-inventory-only'
 const LATER_TAB = toWebTerminalSurfaceTabId(LATER_HOST)
 const ENTRY_TAB = toWebTerminalSurfaceTabId(ENTRY_HOST)
 const INVENTORY_ONLY_TAB = toWebTerminalSurfaceTabId(INVENTORY_ONLY_HOST)
-const THIRD_LEAF_ID = '33333333-3333-4333-8333-333333333333'
 
 function terminal(
   hostTabId: string,
@@ -88,24 +95,20 @@ function terminal(
   }
 }
 
-function snapshot(
+function hostSnapshot(
+  worktree: string,
   activeHostTabId: string,
   version: number,
   tabs: RuntimeMobileSessionTabsResult['tabs']
 ): RuntimeMobileSessionTabsResult {
-  const activeGroupId = activeHostTabId === LATER_HOST ? 'group-later' : 'group-entry'
+  const groupId = `group-${activeHostTabId.replace(/^host-/, '')}`
   return makeSnapshot(tabs, {
-    activeGroupId,
-    activeTabId:
-      activeHostTabId === LATER_HOST
-        ? `${LATER_HOST}::${LEAF_ID}`
-        : `${ENTRY_HOST}::${SECOND_LEAF_ID}`,
+    worktree,
+    activeGroupId: groupId,
+    activeTabId: tabs.find((tab) => tab.type === 'terminal')?.id ?? null,
     snapshotVersion: version,
-    tabGroups:
-      activeHostTabId === LATER_HOST
-        ? [{ id: 'group-later', activeTabId: LATER_HOST, tabOrder: [LATER_HOST] }]
-        : [{ id: 'group-entry', activeTabId: ENTRY_HOST, tabOrder: [ENTRY_HOST] }],
-    tabGroupLayout: { type: 'leaf', groupId: activeGroupId }
+    tabGroups: [{ id: groupId, activeTabId: activeHostTabId, tabOrder: [activeHostTabId] }],
+    tabGroupLayout: { type: 'leaf', groupId }
   })
 }
 
@@ -125,10 +128,10 @@ describe('late initial listAll apply ordering (U138 H-A)', () => {
   beforeEach(() => {
     resetWebSessionTabsSyncTestState()
     storeHarness.replaceState(makeState())
-    recoveryGate.release = undefined
+    recoveryGate.releases.length = 0
   })
 
-  it('keeps the host-published active when a delayed listAll applies afterwards', async () => {
+  it('rejects only the raced worktree snapshot and still merges its unstained sibling', async () => {
     let resolveListAll: ((value: unknown) => void) | undefined
     const call = vi.fn(
       () =>
@@ -147,35 +150,60 @@ describe('late initial listAll apply ordering (U138 H-A)', () => {
       isCurrent: () => true
     })
 
-    // Entry projection captured before the later publish: it neither knows that tab nor its
-    // active. Applying it after the publish must merge its tabs without moving active back.
-    const entryProjection = snapshot(ENTRY_HOST, 72, [
-      terminal(ENTRY_HOST, SECOND_LEAF_ID),
+    // Entry projections captured before the later publish: they neither know the LATER tab nor
+    // its active. WT's projection races the publish; WT2's does not.
+    const racedProjection = hostSnapshot(WT, ENTRY_HOST, 72, [
+      terminal(ENTRY_HOST, SECOND_LEAF_ID)
+    ])
+    const siblingProjection = hostSnapshot(WT2, INVENTORY_ONLY_HOST, 72, [
       terminal(INVENTORY_ONLY_HOST, THIRD_LEAF_ID)
     ])
     resolveListAll?.({
       ok: true,
-      result: { snapshots: [entryProjection], authoritative: true }
+      result: { snapshots: [racedProjection, siblingProjection], authoritative: true }
     })
-    await vi.waitFor(() => expect(recoveryGate.release).toBeTypeOf('function'))
+    await vi.waitFor(() => expect(recoveryGate.releases).toHaveLength(2))
 
-    // A host publish lands and is applied with host-active authority before the listAll.
-    applyHostPublish(snapshot(LATER_HOST, 71, [terminal(LATER_HOST, LEAF_ID)]))
+    // A host publish lands for WT only, applied with host-active authority before the listAll.
+    applyHostPublish(hostSnapshot(WT, LATER_HOST, 71, [terminal(LATER_HOST, LEAF_ID)]))
     expect(storeHarness.currentState().activeTabIdByWorktree[WT]).toBe(LATER_TAB)
 
+    // Seed non-terminal focus so a rollback of any focus map is visible.
+    storeHarness.useAppStore.setState({
+      activeBrowserTabIdByWorktree: { [WT]: 'browser-focus' },
+      activeFileIdByWorktree: { [WT]: 'file-focus' },
+      activeTabTypeByWorktree: { [WT]: 'browser' }
+    })
+    const beforeLateApply = storeHarness.currentState()
+
     // Now the delayed listAll applies.
-    recoveryGate.release?.()
+    releaseRecovery()
     await new Promise((resolve) => setTimeout(resolve, 20))
 
     const state = storeHarness.currentState()
     const tabIds = state.tabsByWorktree[WT]?.map((tab) => tab.id) ?? []
+    const unifiedIds = state.unifiedTabsByWorktree[WT]?.map((tab) => tab.id) ?? []
 
-    // The listAll still supplies tab content: a fix must not drop the whole apply.
-    expect(tabIds).toContain(ENTRY_TAB)
-    expect(tabIds).toContain(INVENTORY_ONLY_TAB)
-    // The later host publish is the freshest evidence; the stale entry projection may merge
-    // tabs but must not move active back.
+    // The raced worktree snapshot is rejected whole: no trimming back to its entry set.
+    expect(tabIds).toContain(LATER_TAB)
+    expect(tabIds).not.toContain(ENTRY_TAB)
+    expect(unifiedIds).toContain(LATER_TAB)
+    // Focus stays on the host-published tab in every carrier that drives the UI.
     expect(state.activeTabIdByWorktree[WT]).toBe(LATER_TAB)
+    expect(state.activeGroupIdByWorktree[WT]).toBe('group-later')
+    const laterGroup = state.groupsByWorktree[WT]?.find((group) => group.id === 'group-later')
+    expect(laterGroup?.activeTabId).toBe(LATER_TAB)
+    // No dangling active: the retained focus still names a live tab.
+    expect(tabIds).toContain(state.activeTabIdByWorktree[WT])
+    // Type/browser/file focus is untouched.
+    expect(state.activeTabTypeByWorktree[WT]).toBe('browser')
+    expect(state.activeBrowserTabIdByWorktree[WT]).toBe('browser-focus')
+    expect(state.activeFileIdByWorktree[WT]).toBe('file-focus')
+    expect(state.activeTabId).toBe(beforeLateApply.activeTabId)
+    expect(state.activeTabType).toBe(beforeLateApply.activeTabType)
+
+    // Rejection is worktree-scoped: WT2 saw no stream frame, so its inventory-only tab merges.
+    expect(state.tabsByWorktree[WT2]?.map((tab) => tab.id) ?? []).toContain(INVENTORY_ONLY_TAB)
   })
 
   it('adopts the listAll active when no stream frame lands during recovery', async () => {
@@ -199,18 +227,20 @@ describe('late initial listAll apply ordering (U138 H-A)', () => {
     resolveListAll?.({
       ok: true,
       result: {
-        snapshots: [snapshot(ENTRY_HOST, 72, [terminal(ENTRY_HOST, SECOND_LEAF_ID)])],
+        snapshots: [hostSnapshot(WT, ENTRY_HOST, 72, [terminal(ENTRY_HOST, SECOND_LEAF_ID)])],
         authoritative: true
       }
     })
-    await vi.waitFor(() => expect(recoveryGate.release).toBeTypeOf('function'))
+    await vi.waitFor(() => expect(recoveryGate.releases).toHaveLength(1))
 
     // No publish arrives while recovery is awaited, so the entry inventory still owns focus.
-    recoveryGate.release?.()
+    releaseRecovery()
     await new Promise((resolve) => setTimeout(resolve, 20))
 
     const state = storeHarness.currentState()
     expect(state.activeTabIdByWorktree[WT]).toBe(ENTRY_TAB)
     expect(state.activeGroupIdByWorktree[WT]).toBe('group-entry')
+    expect(state.activeTabTypeByWorktree[WT]).toBe('terminal')
+    expect(state.activeTabId).toBe(ENTRY_TAB)
   })
 })

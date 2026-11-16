@@ -218,6 +218,21 @@ export function shouldApplyRecoveredWebSessionTabsSnapshot(
   return snapshot.snapshotVersion >= latest.snapshotVersion
 }
 
+/**
+ * True when a stream frame for this worktree arrived after the bootstrap request was issued, so the
+ * bootstrap projection is stale for that worktree and must be rejected whole (U138 H-A).
+ */
+export function isSessionTabsBootstrapSnapshotSuperseded(
+  environmentId: string,
+  worktreeId: string,
+  requestReceivedFrame: number
+): boolean {
+  const latest = latestReceivedSessionTabsSnapshotByWorktree.get(
+    sessionTabsFreshnessKey(environmentId, worktreeId)
+  )
+  return latest !== undefined && latest.receivedFrame > requestReceivedFrame
+}
+
 export function recordAcceptedWebSessionTabsEnvironment(
   environmentId: string,
   snapshot: RuntimeMobileSessionTabsResult

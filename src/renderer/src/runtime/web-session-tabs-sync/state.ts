@@ -76,12 +76,6 @@ export type WebSessionTabsSnapshotApplyOptions = {
   adoptHostLayout?: boolean
   /** Follow the host's active tab on every frame; a pending caller focus intent still wins (U138). */
   hostActiveAuthoritative?: boolean
-  /**
-   * Merge tabs/content but leave the store's active tab, visible type, and group focus untouched.
-   * A late bootstrap that finishes after a stream frame landed must not move focus back to its
-   * pre-stream projection (U138 H-A).
-   */
-  preserveStoreActiveFocus?: boolean
 }
 
 export type TrackedWebSessionTabsWorktree = {

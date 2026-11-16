@@ -62,23 +62,6 @@ export function applyWebSessionTabsSnapshots(
   for (const recordKey of batchContext.changedRecords) {
     mutableMergedPatch[recordKey] = mutableNextState[recordKey]
   }
-  if (options?.preserveStoreActiveFocus) {
-    // Why: `withWorktreeEntry` rewrites the batch's own focus records in place, so the per-snapshot
-    // stage cannot read the store's focus. Restore it here: content merges, focus stays (U138 H-A).
-    const preservedFocus = {
-      activeBrowserTabId: state.activeBrowserTabId,
-      activeBrowserTabIdByWorktree: state.activeBrowserTabIdByWorktree,
-      activeFileId: state.activeFileId,
-      activeFileIdByWorktree: state.activeFileIdByWorktree,
-      activeGroupIdByWorktree: state.activeGroupIdByWorktree,
-      activeTabId: state.activeTabId,
-      activeTabIdByWorktree: state.activeTabIdByWorktree,
-      activeTabType: state.activeTabType,
-      activeTabTypeByWorktree: state.activeTabTypeByWorktree
-    }
-    Object.assign(nextState, preservedFocus)
-    Object.assign(mergedPatch, preservedFocus)
-  }
   return Object.keys(mergedPatch).length === 0 ? state : mergedPatch
 }
 

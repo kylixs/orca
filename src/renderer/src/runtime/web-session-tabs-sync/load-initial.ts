@@ -4,6 +4,7 @@ import { useAppStore } from '../../store'
 import { getRuntimeEnvironmentRevision } from '../runtime-environment-revision'
 import { recoverWebSessionTerminalOrphansBeforeApply } from '../web-session-terminal-orphan-recovery'
 import {
+  isSessionTabsBootstrapSnapshotSuperseded,
   isSessionTabsListAllResult,
   recordReceivedWebSessionTabsSnapshot,
   shouldApplyRecoveredWebSessionTabsSnapshot
@@ -121,6 +122,13 @@ export function loadInitialWebSessionTabs({
         (snapshot, index): snapshot is RuntimeMobileSessionTabsResult =>
           snapshot !== null &&
           !initialInventorySuperseded &&
+          // Why: a stream frame that landed after this request owns this worktree; rejecting the
+          // whole snapshot keeps its stale projection from trimming tabs or moving focus (U138 H-A).
+          !isSessionTabsBootstrapSnapshotSuperseded(
+            environmentId,
+            snapshot.worktree,
+            requestReceivedFrame
+          ) &&
           shouldApplyRecoveredWebSessionTabsSnapshot(
             environmentId,
             snapshot,
@@ -144,19 +152,13 @@ export function loadInitialWebSessionTabs({
         latestReceivedSessionTabsFrameByEnvironment.get(environmentId) === requestReceivedFrame &&
         (latestReceivedSessionTabsInventoryFrameByEnvironment.get(environmentId) ?? 0) <=
           requestReceivedFrame
-      // Why: a stream frame landed while recovery was awaited and already applied host-active;
-      // this late inventory may merge content but must not move focus back (U138 H-A).
-      const applyOptions = initialInventoryStillCurrent
-        ? undefined
-        : { preserveStoreActiveFocus: true }
       settleHydration = applyWebSessionTabsStorePatch(
         (state) =>
           applyWebSessionTabsSnapshots(
             state,
             freshSnapshots,
             environmentId,
-            Date.now(),
-            applyOptions
+            Date.now()
           ),
         {
           frames: applicable.map((snapshot, index) => ({
