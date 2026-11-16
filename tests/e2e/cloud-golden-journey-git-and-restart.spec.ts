@@ -277,6 +277,19 @@ async function statusText(frame: Frame, testId: string): Promise<string> {
   return (await frame.locator(`[data-testid="${testId}"]`).textContent())?.trim() ?? ''
 }
 
+/**
+ * U137: every session tab stays mounted (hidden) once opened, so the terminal
+ * state badge is not unique in the document. Scope it to the active pane — the
+ * tab the journey just opened — and require the host-restore wait to converge.
+ */
+function activeTerminalState(page: Page): ReturnType<Page['locator']> {
+  return page.locator('[role="tabpanel"]:not([hidden]) [data-testid="cloud-terminal-state"]')
+}
+
+function activeTerminalPending(page: Page): ReturnType<Page['locator']> {
+  return page.locator('[role="tabpanel"]:not([hidden]) [data-testid="cloud-terminal-pending"]')
+}
+
 async function waitForWorkspaceConnected(frame: Frame): Promise<string> {
   const pathSelector = '[data-testid="cloud-simple-workspace-status-path"]'
   await frame.waitForSelector(pathSelector, { timeout: WORKSPACE_TIMEOUT_MS })
@@ -419,8 +432,12 @@ test('U91 A-RESTART 客户端重载：持久会话自动恢复项目 + 终端重
 
     // A live terminal makes this a session in progress, not an idle shell.
     await page.locator('[data-testid="cloud-simple-workspace-new-terminal"]').click()
-    const terminalState = page.locator('[data-testid="cloud-terminal-state"]')
+    const terminalState = activeTerminalState(page)
     await expect(terminalState).toHaveText('实时', { timeout: 60_000 })
+    await expect(
+      activeTerminalPending(page),
+      'the new terminal must leave the host-restore wait, not stay pending'
+    ).toHaveCount(0)
     await page.screenshot({ path: path.join(EVIDENCE_DIR, 'a-restart-before.png') })
 
     const requests: { method: string; path: string }[] = []
@@ -454,9 +471,13 @@ test('U91 A-RESTART 客户端重载：持久会话自动恢复项目 + 终端重
 
     // Terminal reconnect: a fresh pane must reach the live host stream again.
     await page.locator('[data-testid="cloud-simple-workspace-new-terminal"]').click()
-    await expect(page.locator('[data-testid="cloud-terminal-state"]')).toHaveText('实时', {
+    await expect(activeTerminalState(page)).toHaveText('实时', {
       timeout: 90_000
     })
+    await expect(
+      activeTerminalPending(page),
+      'a reloaded terminal must leave the host-restore wait, not stay pending'
+    ).toHaveCount(0)
     await page.screenshot({ path: path.join(EVIDENCE_DIR, 'a-restart-after.png') })
 
     writeEvidence('a-restart.json', {

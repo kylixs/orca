@@ -29,7 +29,7 @@ import {
 import { ensureTerminalVisible } from './helpers/store'
 import {
   focusActiveTerminalInput,
-  getTerminalContent,
+  resolveActiveTabId,
   waitForActivePanePtyId,
   waitForActiveTerminalManager
 } from './helpers/terminal'
@@ -102,6 +102,44 @@ const BASELINE_DESKTOP_JOURNEY_DENIALS: ReadonlySet<string> = new Set([
 const EVIDENCE_DIR =
   process.env.ORCA_JOURNEY_GOLDEN_A_EVIDENCE_DIR ??
   path.join(process.cwd(), 'cloud-platform', 'evidence', 'journey-golden-a')
+
+/**
+ * U137: a ~60-column pane wraps the typed command. xterm soft-wraps mark the
+ * continuation row, but zsh's right prompt makes the line editor emit a hard
+ * newline there, so the wrap survives as a row boundary. Rebuild logical lines
+ * from `isWrapped` first, then count markers on the newline-free stream: the
+ * marker must still occur whole in the echo and again in the command output.
+ */
+async function getTerminalLogicalContent(page: Page, charLimit = 8000): Promise<string> {
+  const tabId = await resolveActiveTabId(page)
+  if (!tabId) {
+    return ''
+  }
+  return page.evaluate(
+    ({ tabId, charLimit }) => {
+      const manager = window.__paneManagers?.get(tabId)
+      if (!manager) {
+        return ''
+      }
+      const pane = manager.getActivePane?.() ?? manager.getPanes?.()[0]
+      const buffer = pane?.terminal?.buffer?.active
+      if (!buffer) {
+        return ''
+      }
+      let logical = ''
+      for (let row = 0; row < buffer.length; row++) {
+        const line = buffer.getLine(row)
+        if (!line) {
+          continue
+        }
+        const text = line.translateToString(true)
+        logical += line.isWrapped ? text : `${row === 0 ? '' : '\n'}${text}`
+      }
+      return logical.slice(-charLimit)
+    },
+    { tabId, charLimit }
+  )
+}
 
 type JourneyStep = {
   step: string
@@ -558,7 +596,7 @@ test('W9a 桌面黄金旅程：登录 → 打开项目（直连）→ 终端 →
         await expect
           .poll(
             async () => {
-              const content = await getTerminalContent(page, 8000)
+              const content = await getTerminalLogicalContent(page, 8000)
               if (content.includes(FILE_NAME) && content.includes('README.md') && outputMs < 0) {
                 outputMs = Date.now() - sentAt
               }
@@ -567,15 +605,23 @@ test('W9a 桌面黄金旅程：登录 → 打开项目（直连）→ 终端 →
             { timeout: 60_000, message: 'ls output never reached the pane' }
           )
           .toBe(true)
-        const content = await getTerminalContent(page, 8000)
+        const content = await getTerminalLogicalContent(page, 8000)
+        // Count on the wrap-free stream so a display wrap inside the echoed
+        // marker is not mistaken for a missing occurrence; two whole markers
+        // (echo + output) are still required.
+        const markerOccurrences = content.replace(/\r?\n/g, '').split(RUN_MARKER).length - 1
         expect(
-          content.split(RUN_MARKER).length - 1,
+          markerOccurrences,
           'the marker must appear in the echoed command and in its output'
         ).toBeGreaterThanOrEqual(2)
         await shoot(page, '03-terminal-output')
-        return { ptyId, outputMs }
+        return { ptyId, outputMs, markerOccurrences }
       },
-      (result) => ({ ptyId: result.ptyId, commandOutputMs: result.outputMs })
+      (result) => ({
+        ptyId: result.ptyId,
+        commandOutputMs: result.outputMs,
+        markerOccurrences: result.markerOccurrences
+      })
     )
 
     // ── A5 · 文件树浏览并打开文件 ────────────────────────────────────
