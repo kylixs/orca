@@ -1,0 +1,61 @@
+{
+  "task": "U87 - M102 relay-stack fixture TLS failure + U84b full-path confirmation",
+  "capturedAt": "2026-11-16",
+  "rootCause": {
+    "summary": "The M102/M103/M104 relay-stack suites were never registered in NODE_RUNTIME_INCLUDE, so the default `pnpm test` path (config/scripts/run-vitest.mjs -> bun --bun vitest) ran them in the |bun| project. Bun resolves `ws` to its built-in client, which fails the fixture's throwaway self-signed TLS handshake.",
+    "mechanism": "config/vitest.config.ts: when process.versions.bun is set, the node project includes only NODE_RUNTIME_INCLUDE and the bun project excludes those files. cloud-terminal-echo-latency / cloud-file-listing-latency / cloud-connection-establish-latency were absent from the list, so they landed in the bun pool.",
+    "observedError": "workspace ensure failed: OPEN_FAILED [object ErrorEvent] at cloud-relay-stack-fixture.ts:169 (ensureCloudWorkspace); uncaught ws error: WebSocket connection to 'wss://127.0.0.1:<port>/' failed: TLS handshake failed",
+    "family": "Same family as W5b defect B / W9A-7 audit MAJ-1 / U31 (real-TLS fixture must be in the node pool).",
+    "not": "Not a product defect, certificate/SAN problem, handshake-timeout problem, port-reuse problem, or concurrency race. The exact same fixture passes under the node pool.",
+    "reproduction": "bun --bun node_modules/vitest/vitest.mjs run --config config/vitest.config.ts src/main/cloud-platform/cloud-terminal-echo-latency.test.ts (pre-fix: |bun| project, OPEN_FAILED TLS handshake, 2.5s)"
+  },
+  "fix": {
+    "file": "config/scripts/vitest-node-runtime-files.mjs",
+    "change": "Register cloud-terminal-echo-latency.test.ts, cloud-file-listing-latency.test.ts and cloud-connection-establish-latency.test.ts in NODE_RUNTIME_INCLUDE with a Why comment; the default `pnpm test` path now routes them to the node-runtime pool.",
+    "verified": {
+      "beforeFixBunRunner": "FAIL - OPEN_FAILED / TLS handshake failed",
+      "afterFixBunRunner": "PASS via node config/scripts/run-vitest.mjs run --config config/vitest.config.ts src/main/cloud-platform/cloud-terminal-echo-latency.test.ts (15.24s, 1/1)",
+      "nodePoolSuites": "cloud-file-listing-latency (M103) PASS; cloud-connection-establish-latency (M104) still FAIL for a separate, pre-existing reason (see knownSeparateIssue)",
+      "boundaryScripts": "config/scripts/vitest-runtime-boundary.test.ts + ci-shard-assignment.test.mjs + vitest-node-runtime-boundary.test.ts: 3 files / 14 tests PASS"
+    }
+  },
+  "fullPathAfter": {
+    "what": "M102-1 end-to-end echo over real relay process + real TLS + E2EE + real PTY, 50 keys, budget 120ms; route relay.",
+    "method": "actual re-run with the U84b fix (6b67ea041ba) present, no derivation.",
+    "runs": [
+      {
+        "runner": "vitest under node (pnpm test:node path)",
+        "normal": { "samples": 50, "p50Ms": 3.22, "p95Ms": 7.26, "minMs": 0.49, "maxMs": 132.41 },
+        "injected": { "delayMs": 150, "p50Ms": 304.42, "p95Ms": 306.25 },
+        "restored": { "samples": 20, "p50Ms": 3.05, "p95Ms": 3.96, "maxMs": 4.35 }
+      },
+      {
+        "runner": "default pnpm test path (run-vitest.mjs) after node-pool registration",
+        "normal": { "samples": 50, "p50Ms": 3.09, "p95Ms": 7.69, "minMs": 0.83, "maxMs": 131.94 },
+        "injected": { "delayMs": 150, "p50Ms": 304.75, "p95Ms": 306.45 },
+        "restored": { "samples": 20, "p50Ms": 3.69, "p95Ms": 7.14, "maxMs": 10.08 }
+      }
+    ],
+    "environment": { "platform": "darwin", "node": "v24.5.0", "shell": "/bin/zsh", "clientAndHostOnSameMachine": true }
+  },
+  "comparison": {
+    "beforeFullPath": {
+      "source": "cloud-platform/evidence/m102-terminal-echo-latency/terminal-echo-latency.json as reused in evidence/u84b-fix/before.json",
+      "keys": 50,
+      "p50Ms": 10.18,
+      "p95Ms": 11.31,
+      "maxMs": 13.74
+    },
+    "afterMeasured": { "p50Ms": 3.09, "p95Ms": 7.69 },
+    "afterDerivedByU84b": { "p50Ms": 4.52, "p95Ms": 5.59 },
+    "deltaMeasured": { "p50Ms": -7.09, "p50Pct": -69.6, "p95Ms": -3.62, "p95Pct": -32.0 },
+    "verdict": "U84b confirmed on the full path: P50 10.18 -> 3.09ms (derived estimate 4.52ms was conservative; the real P50 is lower). P95 11.31 -> 7.69ms, slightly above the derived 5.59ms because each run contains one ~132ms cold-start outlier; the remaining samples sit around 3-8ms. Both runs stay far inside the 120ms budget.",
+    "note": "Injected 150ms hop delay moves the same echo metric to P50 ~305ms / P95 ~306ms and the budget assertion turns red, so the measurement still follows the path rather than a constant."
+  },
+  "knownSeparateIssue": {
+    "suite": "cloud-connection-establish-latency.test.ts (M104-1/M104-2)",
+    "status": "FAIL in this worktree under BOTH the bun pool (TLS, pre-fix) and the node pool (post-fix, same as a standalone node run)",
+    "symptom": "platform unavailable / connect ECONNREFUSED to the fixture platform port at sample time (~12-18s in), plus afterAll 'stopRelayStack' exceeding the 60s hook timeout for both describes",
+    "scope": "Pre-existing and unrelated to the routing change: it reproduces with a standalone `node node_modules/vitest/vitest.mjs run ... cloud-connection-establish-latency.test.ts` on the node pool. Not fixed here; needs its own diagnosis (platform child exits mid-sampling and teardown hangs)."
+  }
+}

@@ -40,6 +40,12 @@ export const NODE_RUNTIME_INCLUDE = [
   // same real TLS runtime and real PTY, so bun would red it and silently retire
   // the proof (W9A-7 audit MAJ-1, same family as W5b defect B).
   'src/main/cloud-platform/cloud-terminal-multiplex-scope.test.ts',
+  // Why: M102/M103/M104 drive startRelayStack's real relay + throwaway-certificate
+  // TLS runtime (+ real PTY for M102); bun's ws reds the handshake as OPEN_FAILED,
+  // so under `pnpm test` they never exercise the budgets they exist to prove (U87).
+  'src/main/cloud-platform/cloud-terminal-echo-latency.test.ts',
+  'src/main/cloud-platform/cloud-file-listing-latency.test.ts',
+  'src/main/cloud-platform/cloud-connection-establish-latency.test.ts',
   // Why: the workspace.info real-host suite drives a real TLS runtime; bun's ws
   // fails the throwaway-certificate handshake, so the proof would silently retire
   // from the bun pool (same family as W5b defect B / W9A-7 audit MAJ-1).
