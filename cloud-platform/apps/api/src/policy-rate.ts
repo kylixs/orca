@@ -16,7 +16,8 @@ export type ReadRateInput =
 
 function positiveInteger(value: unknown): number | null {
   const parsed = typeof value === 'number' ? value : Number(value)
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+  // Safe integer only: 1e300 is integral, but it can never be a real budget.
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null
 }
 
 export function parseReadRate(value: unknown): ReadRateInput {

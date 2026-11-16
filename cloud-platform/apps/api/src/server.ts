@@ -1490,6 +1490,19 @@ export function createApp(config: ApiConfig): ApiHandle {
     return page.toString()
   }
 
+  /** Credentials in a clone URL are host-only; readers get the address without them. */
+  function redactRepoCredentials(repoUrl: string): string {
+    try {
+      const url = new URL(repoUrl)
+      if (!url.username && !url.password) return repoUrl
+      url.username = ''
+      url.password = ''
+      return url.toString()
+    } catch {
+      return repoUrl
+    }
+  }
+
   function projectView(p: Project, user: User, platformOrigin: string): Record<string, unknown> {
     const adminAccess = isAdmin(user) || user.roles.includes('platform:auditor')
     // U65/U67: the ticket view carries the synthesized bits (host grant as
@@ -1501,7 +1514,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       id: p.id,
       key: p.key,
       name: p.name,
-      repoUrl: p.repoUrl,
+      repoUrl: isAdmin(user) ? p.repoUrl : redactRepoCredentials(p.repoUrl),
       hostId: p.hostId,
       hostName: host?.name ?? null,
       hostStatus: hostStatusView(host),
@@ -1612,19 +1625,23 @@ export function createApp(config: ApiConfig): ApiHandle {
 
   /**
    * A bad root is ignored on its own; it must not fail registration or a heartbeat.
-   * Returns false when the reported root was refused. A change of root is refused
+   * Returns a rejection code, or null when accepted. A change of root is refused
    * while the host still owns non-archived projects: their recorded paths — and
    * every ticket minted from them — point at the old root, so silently moving it
    * presents each project as not-prepared with nothing to explain why. Rewriting
    * those paths across roots is a guess about an operator's intent, so refusing
    * and saying so is the safe minimal semantics.
    */
-  function applyProjectsRoot(target: Host, value: unknown, traceId: string): boolean {
+  function applyProjectsRoot(
+    target: Host,
+    value: unknown,
+    traceId: string
+  ): 'PROJECTS_ROOT_INVALID' | 'PROJECTS_ROOT_CONFLICT' | null {
     if (value === undefined) {
-      return true
+      return null
     }
     if (value === '' || value === null) {
-      return commitProjectsRoot(target, null, traceId)
+      return commitProjectsRoot(target, null, traceId) ? null : 'PROJECTS_ROOT_CONFLICT'
     }
     const verdict = validateProjectPath(value)
     if (!verdict.ok) {
@@ -1637,9 +1654,9 @@ export function createApp(config: ApiConfig): ApiHandle {
         traceId,
         metadata: { reason: verdict.code }
       })
-      return true
+      return 'PROJECTS_ROOT_INVALID'
     }
-    return commitProjectsRoot(target, verdict.path, traceId)
+    return commitProjectsRoot(target, verdict.path, traceId) ? null : 'PROJECTS_ROOT_CONFLICT'
   }
 
   /** Applies a validated root unless live projects still hang off the current one. */
@@ -3249,8 +3266,12 @@ export function createApp(config: ApiConfig): ApiHandle {
         return error(res, 401, 'HOST_TOKEN_INVALID', '注册令牌无效或已使用。', traceId)
       }
       const body = await readJson(req)
+      const name = typeof body.name === 'string' ? body.name.trim() : ''
+      // The token is single-use: refuse a nameless registration before spending it.
+      if (name === '') {
+        return error(res, 400, 'HOST_NAME_REQUIRED', 'name 为必填的主机标识。', traceId)
+      }
       entry.usedAt = now()
-      const name = String(body.name ?? '')
       const existing = store.hostsByName.get(name)
       const credential = randomBytes(32).toString('base64url')
       const target: Host = existing ?? {
@@ -3358,11 +3379,22 @@ export function createApp(config: ApiConfig): ApiHandle {
             traceId
           )
         }
+        // U58 H12b: a typo used to be stored as offline, so a live host could be
+        // reported dead. Only the two states a host may claim are accepted.
+        if (body.status !== undefined && body.status !== 'online' && body.status !== 'offline') {
+          return error(
+            res,
+            400,
+            'HOST_STATUS_INVALID',
+            'status 仅支持 online/offline。',
+            traceId
+          )
+        }
         // Why: a revoked host keeps its credential so this beat can deliver the
         // revocation; it must not look alive or accept any more reported state.
         // A refused root keeps the old one; the beat still answers so the host
         // can report why its own view of the root no longer matches.
-        let projectsRootAccepted = true
+        let projectsRootRejection: string | null = null
         if (target.revokedAt === null) {
           if (Array.isArray(body.directAddrs) && body.directAddrs.length > 0) {
             target.directAddrs = body.directAddrs as string[]
@@ -3417,7 +3449,7 @@ export function createApp(config: ApiConfig): ApiHandle {
           if (typeof body.status === 'string' && target.status !== 'maintenance') {
             target.status = body.status === 'online' ? 'online' : 'offline'
           }
-          projectsRootAccepted = applyProjectsRoot(target, body.projectsRoot, traceId)
+          projectsRootRejection = applyProjectsRoot(target, body.projectsRoot, traceId)
           applyProjectProvisionReports(target.id, body.provisioned, traceId)
           target.lastHeartbeatAt = now()
         }
@@ -3465,7 +3497,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         return json(res, 200, {
           ...(target.revokedAt !== null ? { hostRevoked: true } : {}),
           // Optional so older hosts that ignore it stay on the wire untouched.
-          ...(projectsRootAccepted ? {} : { projectsRootRejected: 'PROJECTS_ROOT_CONFLICT' }),
+          ...(projectsRootRejection ? { projectsRootRejected: projectsRootRejection } : {}),
           // Same wire-additive guarantee as projectsRootRejected above (U21
           // precedent): an old host's sendHeartbeat whitelists the fields it knows
           // (cloud-host-enrollment.ts), so a key it has never heard of is structurally
@@ -3530,6 +3562,11 @@ export function createApp(config: ApiConfig): ApiHandle {
           return error(res, 409, 'HOST_REVOKED', '主机已下线，不能再进入维护模式。', traceId)
         }
         const body = await readJson(req)
+        // U58 H23: `enabled: "false"` used to enter maintenance, the opposite of
+        // what the caller asked for. Only a real boolean may steer this switch.
+        if (body.enabled !== undefined && typeof body.enabled !== 'boolean') {
+          return error(res, 400, 'HOST_MAINTENANCE_INVALID', 'enabled 必须是布尔值。', traceId)
+        }
         const nextStatus = body.enabled === false ? 'online' : 'maintenance'
         const nextReason = body.reason ? String(body.reason) : '计划维护'
         if (
@@ -3967,6 +4004,15 @@ export function createApp(config: ApiConfig): ApiHandle {
         }
         if (!auditAllowsMutations(res, traceId)) return
         const body = await readJson(req)
+        // U58 Y14: an unknown value used to be coerced to `deny`, so a typo
+        // silently changed the platform policy. Refuse it instead.
+        if (
+          body.downloadDefault !== undefined &&
+          body.downloadDefault !== 'allow' &&
+          body.downloadDefault !== 'deny'
+        ) {
+          return error(res, 400, 'POLICY_INVALID', 'downloadDefault 仅支持 allow/deny。', traceId)
+        }
         const nextDefault = body.downloadDefault === 'allow' ? 'allow' : 'deny'
         const rate = parseReadRate(body.readRatePerHour)
         if (rate.kind === 'invalid' || rate.kind === 'clear') {

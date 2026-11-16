@@ -3146,10 +3146,19 @@ function openDrawer(title, html, options = {}) {
       <div class="drawer-head"><h2>${esc(title)}</h2><button class="icon-btn" aria-label="关闭">✕</button></div>
       <div class="drawer-body">${html}</div>
     </div>`
+  // U54 WEB-R2-017: a drawer is modal, so Escape closes it like a dialog does.
+  // A dialog stacked on top owns Escape first; closing the drawer underneath it
+  // would strand the dialog over a removed layer.
+  const onKeydown = (event) => {
+    if (event.key !== 'Escape' || document.querySelector('.dialog-backdrop')) return
+    close()
+  }
   const close = () => {
+    document.removeEventListener('keydown', onKeydown)
     backdrop.remove()
     options.onClose?.()
   }
+  document.addEventListener('keydown', onKeydown)
   backdrop.querySelector('.icon-btn').onclick = close
   backdrop.onclick = (e) => {
     if (e.target === backdrop) {
