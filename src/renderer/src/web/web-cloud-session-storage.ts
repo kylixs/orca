@@ -1,4 +1,6 @@
 import { parseJsonText, readNumber, readString } from '../../../shared/json-fields'
+import type { WebCloudAuthTokens } from './web-cloud-auth'
+import type { WebCloudSession } from './web-cloud-session'
 
 /**
  * The browser's saved platform session. It deliberately carries no device secret:
@@ -73,6 +75,23 @@ export function readPersistedWebCloudSession(
     return null
   }
   return normalizeApiUrl(parsed.apiUrl) === normalizeApiUrl(currentApiUrl) ? parsed : null
+}
+
+/** The saved-login shape every entry writes: handoff, password form, or token rotation. */
+export function persistedWebCloudSessionFrom(
+  session: Pick<WebCloudSession, 'apiUrl' | 'deviceId' | 'user'>,
+  tokens: WebCloudAuthTokens,
+  savedAtMs = Date.now()
+): PersistedWebCloudSession {
+  return {
+    version: 1,
+    apiUrl: session.apiUrl,
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken,
+    deviceId: session.deviceId,
+    displayName: session.user.displayName,
+    savedAtMs
+  }
 }
 
 /** False when the browser refused the write (quota, private mode); the login still works. */

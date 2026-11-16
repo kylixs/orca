@@ -15,6 +15,12 @@ import {
   type WebCloudDeviceIdentity
 } from './web-cloud-device-key'
 import { WebCloudSessionError } from './web-cloud-session'
+import {
+  deletePersistedWebCloudSession,
+  readPersistedWebCloudSession,
+  type WebCloudSessionStorage
+} from './web-cloud-session-storage'
+import { resumeWebCloudSession } from './web-cloud-session-resume'
 
 /** Standard base64 host key; ticket parsing requires a usable E2EE key. */
 const HOST_KEY_B64 = Buffer.alloc(32, 0x07).toString('base64')
@@ -137,6 +143,26 @@ class MemoryStorage implements WebCloudDeviceKeyStorage {
 
   write(value: string): void {
     this.value = value
+  }
+}
+
+class MemorySessionStorage implements WebCloudSessionStorage {
+  value: string | null = null
+  writes = 0
+  removals = 0
+
+  read(): string | null {
+    return this.value
+  }
+
+  write(value: string): void {
+    this.value = value
+    this.writes += 1
+  }
+
+  remove(): void {
+    this.value = null
+    this.removals += 1
   }
 }
 
@@ -265,6 +291,118 @@ describe('connectCloudProject', () => {
     const loginCall = platform.calls.find((call) => call.url.endsWith('/v1/auth/login'))
     expect(loginCall?.body).toContain(identity.publicKeyB64)
     expect(loginCall?.body).not.toContain(identity.secretKeyB64)
+  })
+
+  it('persists the login after the project opens, and a cold restore resumes it', async () => {
+    const store = new MemoryStorage()
+    const sessionStore = new MemorySessionStorage()
+    const platform = scriptedPlatform()
+    const fake = fakeClientFactory(statusSuccess())
+
+    const result = await connectCloudProject(
+      input(store, {
+        sessionStorage: sessionStore,
+        projectId: 'project-1',
+        fetchImpl: platform.fetchImpl,
+        clientFactory: fake.factory
+      })
+    )
+    expect(result.projectId).toBe('project-1')
+
+    // The same key and shape the handoff entry writes, now from the form login.
+    expect(readPersistedWebCloudSession(sessionStore, 'https://cloud.example')).toMatchObject({
+      version: 1,
+      apiUrl: 'https://cloud.example',
+      accessToken: 'access-1',
+      refreshToken: 'refresh-1',
+      deviceId: 'device-1',
+      displayName: '张三'
+    })
+    expect(sessionStore.writes).toBe(1)
+
+    // A cold load (web-root's canResume gate) finds the record and resumes the
+    // URL's project instead of showing the sign-in form.
+    const resumedClient = fakeClientFactory(statusSuccess())
+    const resumed = await resumeWebCloudSession({
+      location: { apiUrl: 'https://cloud.example', projectId: 'project-1' },
+      storage: sessionStore,
+      deviceKeyStore: store,
+      fetchImpl: platform.fetchImpl,
+      clientFactory: resumedClient.factory,
+      saveEnvironment: () => undefined,
+      adopt: () => undefined
+    })
+    expect(resumed).toMatchObject({
+      status: 'resumed',
+      projectId: 'project-1',
+      runtimeId: 'runtime-42'
+    })
+    expect(platform.calls.some((call) => call.url.endsWith('/v1/projects/project-1/connect'))).toBe(
+      true
+    )
+  })
+
+  it('does not persist a login when the platform refuses the credentials', async () => {
+    const store = new MemoryStorage()
+    const sessionStore = new MemorySessionStorage()
+    const platform = scriptedPlatform({
+      loginReply: { status: 401, body: { error: { code: 'INVALID_CREDENTIALS', message: 'no' } } }
+    })
+
+    const error = await captureError(() =>
+      connectCloudProject(
+        input(store, { sessionStorage: sessionStore, fetchImpl: platform.fetchImpl })
+      )
+    )
+
+    expect(error).toBeInstanceOf(WebCloudSessionError)
+    expect(sessionStore.writes).toBe(0)
+    expect(readPersistedWebCloudSession(sessionStore, 'https://cloud.example')).toBeNull()
+  })
+
+  it('does not persist a login when the connect fails', async () => {
+    const store = new MemoryStorage()
+    const sessionStore = new MemorySessionStorage()
+    const platform = scriptedPlatform({ projects: [] })
+
+    const error = await captureError(() =>
+      connectCloudProject(
+        input(store, { sessionStorage: sessionStore, fetchImpl: platform.fetchImpl })
+      )
+    )
+
+    expect(error).toBeInstanceOf(WebCloudConnectError)
+    expect(sessionStore.writes).toBe(0)
+    expect(readPersistedWebCloudSession(sessionStore, 'https://cloud.example')).toBeNull()
+  })
+
+  it('sign-out clears the record, so a reload asks for a login again', async () => {
+    const store = new MemoryStorage()
+    const sessionStore = new MemorySessionStorage()
+    const platform = scriptedPlatform()
+    const fake = fakeClientFactory(statusSuccess())
+
+    await connectCloudProject(
+      input(store, {
+        sessionStorage: sessionStore,
+        fetchImpl: platform.fetchImpl,
+        clientFactory: fake.factory
+      })
+    )
+    expect(readPersistedWebCloudSession(sessionStore, 'https://cloud.example')).not.toBeNull()
+
+    deletePersistedWebCloudSession(sessionStore)
+
+    expect(readPersistedWebCloudSession(sessionStore, 'https://cloud.example')).toBeNull()
+    const callsBefore = platform.calls.length
+    const resumed = await resumeWebCloudSession({
+      location: { apiUrl: 'https://cloud.example', projectId: 'project-1' },
+      storage: sessionStore,
+      deviceKeyStore: store,
+      fetchImpl: platform.fetchImpl
+    })
+    expect(resumed).toEqual({ status: 'no-session' })
+    expect(platform.calls).toHaveLength(callsBefore)
   })
 
   it('honours an explicit projectId instead of the first visible project', async () => {

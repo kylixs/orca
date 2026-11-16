@@ -1,6 +1,7 @@
 import { readString } from '../../../shared/json-fields'
 import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
 import { translate } from '@/i18n/i18n'
+import type { WebCloudAuthTokens } from './web-cloud-auth'
 import {
   cloudPairingOfferFromTicket,
   listCloudProjects,
@@ -10,6 +11,12 @@ import {
   type WebCloudProject,
   type WebCloudSession
 } from './web-cloud-session'
+import {
+  createBrowserWebCloudSessionStorage,
+  persistedWebCloudSessionFrom,
+  writePersistedWebCloudSession,
+  type WebCloudSessionStorage
+} from './web-cloud-session-storage'
 import { requestCloudPairingOffer } from './web-cloud-connection-offer'
 import {
   loadOrCreateWebCloudDeviceKey,
@@ -89,6 +96,8 @@ export type ConnectCloudProjectInput = {
   clientFactory?: WebCloudConnectClientFactory
   /** Keeps compatibility ids across a re-login of the same server. */
   previousEnvironment?: StoredWebRuntimeEnvironment | null
+  /** Where the saved login lands after a successful connect; tests inject memory storage. */
+  sessionStorage?: WebCloudSessionStorage
 }
 
 /**
@@ -312,6 +321,8 @@ export async function connectCloudProject(
 ): Promise<WebCloudProjectConnection> {
   const fetchOptions = input.fetchImpl ? { fetchImpl: input.fetchImpl } : {}
   const identity = loadOrCreateWebCloudDeviceKey(input.deviceKeyStore)
+  // Rotation during the connect (a 401 refresh) must land in the saved record too.
+  let rotatedTokens: WebCloudAuthTokens | null = null
   // Platform failures keep their own codes; only local/transport failures get ours.
   const session = await loginToCloud({
     apiUrl: input.apiUrl,
@@ -320,13 +331,16 @@ export async function connectCloudProject(
     devicePublicKeyB64: identity.publicKeyB64,
     deviceName: input.deviceName,
     ...fetchOptions,
-    ...(input.now ? { now: input.now } : {})
+    ...(input.now ? { now: input.now } : {}),
+    onTokensChanged: (tokens) => {
+      rotatedTokens = tokens
+    }
   })
   const rememberedProjectId =
     input.rememberedProjectId ??
     readRememberedCloudProjectId(createBrowserWebCloudProjectMemoryStorage(), input.apiUrl) ??
     undefined
-  return connectCloudProjectWithSession({
+  const connection = await connectCloudProjectWithSession({
     session,
     devicePublicKeyB64: identity.publicKeyB64,
     deviceSecretKeyB64: identity.secretKeyB64,
@@ -339,4 +353,11 @@ export async function connectCloudProject(
       ? {}
       : { previousEnvironment: input.previousEnvironment })
   })
+  // Why after the project opens: a refused login/connect must not leave a login a
+  // reload would resume; on success this is the same record a handoff entry saves.
+  writePersistedWebCloudSession(
+    input.sessionStorage ?? createBrowserWebCloudSessionStorage(),
+    persistedWebCloudSessionFrom(session, rotatedTokens ?? session)
+  )
+  return connection
 }
