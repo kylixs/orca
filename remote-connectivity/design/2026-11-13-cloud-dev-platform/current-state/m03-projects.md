@@ -6,6 +6,7 @@
 ## 1. 页面/界面布局
 
 **项目列表（我的项目，`#/projects`）**
+
 - 页头：标题「我的项目」、说明「仅展示你有『打开项目』权限的项目」；右侧「登记项目」（管理员）与「刷新」。
 - 工具栏：一个搜索框（项目名、仓库或主机）。
 - 表格：列 `项目 / 仓库 / 主机 / 权限 / 下载策略 / 操作`。
@@ -17,11 +18,14 @@
 - 无分页；空态「没有匹配的项目」。
 
 **登记项目弹框（`.dialog`，标题「登记项目」）**
+
 - 顶部行内错误区（兜底/未映射错误）。
 - 字段：项目名称、项目 Key（占位含规则；失焦即校）、目标主机下拉（已吊销主机不出现；离线/维护标注）、目标路径（占位「主机上的绝对路径」；选中主机有项目根时显示「主机项目根：…」提示）、仓库地址（可选，留空=登记即就绪）、默认分支（可选，留空用远端默认分支）。
 - 每字段下方独立行内错误行；底部主按钮「登记」。
+- 仓库地址校验（U136①→U141→U142）：接受 http(s)/ssh/git/`file://`、本地绝对路径、`user@host:path` 形式 SCP-like；拒绝裸串、UNC（`\\server\share` 与 `//server/share`）、ftp、`ext::`、控制字符；平台与宿主共用同一接受/拒绝矩阵（`repo-url-acceptance-cases.ts`），历史数据读取不重校验。
 
 **项目详情弹框（管理员，`.dialog.wide`，标题「项目详情」）**
+
 - 顶部可选黄条：「未能刷新项目信息，以下为最近一次加载的数据。」
 - 页签：`信息` / `权限`。
 - 信息页三组：
@@ -32,58 +36,59 @@
 - 底部：主按钮「打开项目」（不可打开时 disabled 且 title 给原因）、「关闭」。
 
 **工作区入口（同页覆盖层）**
+
 - 打开不新开标签：全屏 `.workspace-overlay`，顶栏含「← 返回」、项目名、默认分支、路由/延迟（就绪后）、未保存文件数、「在新标签打开 Orca Web」、「结束工作区」（宿主声明支持 end 时）、「关闭」；主体为宿主 `cloud-admin.html` iframe。内容细节归 M9/M10。
 
 ## 2. 菜单与入口（权限门槛）
 
-| 入口 | 位置 | 门槛 |
-| --- | --- | --- |
-| 我的项目 | 侧栏 | 已登录；`GET /v1/projects` 仅返回 ACL 内项目（管理员全部） |
-| 登记项目 | 列表页头 | `platform:admin`（接口 403 + denied 审计） |
-| 详情 | 行内 / 工作台行内 | `platform:admin` |
-| 打开 | 行内 / 卡片 / 详情主按钮 | 项目 `open` + 未归档 + 主机在线且非维护；管理员无授权时可先「授权并打开」 |
-| 授权并打开 | 行内（管理员无 open） | `platform:admin`；确认后 PUT 自授 5 位 |
-| Orca Web | 行内（有 open） | 项目 `open` + 主机在线且非维护 |
-| 权限页签增删 | 详情弹框 | 页面入口 admin-only；`PUT /v1/projects/:id/grants` 允许 admin 或 `project:owner` 角色（当前角色集无该角色，等价 admin） |
-| 归档 / 恢复 | **控制台无入口** | 仅 API：`POST /v1/projects/:id/archive|restore`；创建者自助或管理员 |
+| 入口         | 位置                     | 门槛                                                                                                                    |
+| ------------ | ------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| 我的项目     | 侧栏                     | 已登录；`GET /v1/projects` 仅返回 ACL 内项目（管理员全部）                                                              |
+| 登记项目     | 列表页头                 | `platform:admin`（接口 403 + denied 审计）                                                                              |
+| 详情         | 行内 / 工作台行内        | `platform:admin`                                                                                                        |
+| 打开         | 行内 / 卡片 / 详情主按钮 | 项目 `open` + 未归档 + 主机在线且非维护；管理员无授权时可先「授权并打开」                                               |
+| 授权并打开   | 行内（管理员无 open）    | `platform:admin`；确认后 PUT 自授 5 位                                                                                  |
+| Orca Web     | 行内（有 open）          | 项目 `open` + 主机在线且非维护                                                                                          |
+| 权限页签增删 | 详情弹框                 | 页面入口 admin-only；`PUT /v1/projects/:id/grants` 允许 admin 或 `project:owner` 角色（当前角色集无该角色，等价 admin） |
+| 归档 / 恢复  | **控制台无入口**         | 仅 API：`POST /v1/projects/:id/archive                                                                                  | restore`；创建者自助或管理员 |
 
 ## 3. 操作清单
 
-| # | 触发面 | 结果 | 弹窗/确认 | 失败态 | 权限门槛 |
-| --- | --- | --- | --- | --- | --- |
-| C1 | 进入「我的项目」 | `GET /v1/projects` + `GET /v1/policies/download`，按生效下载策略渲染列表 | 无 | 加载失败→内容区「加载失败」+重试 | 已登录 |
-| C2 | 搜索框输入 | 客户端过滤（名称/仓库/主机包含，大小写不敏感），即时重绘 | 无 | 无匹配→空态行 | 已登录 |
-| C3 | 「刷新」 | `location.reload()` | 无 | — | 已登录 |
-| C4 | 「登记项目」（管理员） | 拉 `GET /v1/hosts`（排除已吊销）后打开弹框 | 弹框 | 拉取失败→toast「打开登记弹层失败：…」 | `platform:admin` |
-| C5 | 项目 Key 失焦 | 与提交同一份规则即时校验 | 无 | 非法→字段标红 + 行内规则文案；合法→清错 | 同上 |
-| C6 | 目标主机切换 | 清空已填目标路径（避免跨主机路径误登记）；刷新「主机项目根」提示 | 无 | — | 同上 |
-| C7 | 提交（客户端校验失败） | 不请求；所有错误字段标红并列出，焦点到首个错误 | 无 | 名称空/超 200、Key 长度/字符集/尾点、主机未选、路径非绝对/含 `..`/尾分隔符 | 同上 |
-| C8 | 提交成功（无 repoUrl） | `POST /v1/projects` → 弹框关闭，toast「项目已登记…授权请在项目详情的『权限』页签中配置。」→ 重绘列表；项目状态 ready | 无 | — | 同上 |
-| C9 | 提交成功（有 repoUrl） | 同上，toast 追加「克隆中，就绪后可打开」；状态 provisioning，等待宿主克隆回报转 ready | 无 | 克隆失败由心跳回报 `provisioningError`，详情显示「准备失败」 | 同上 |
-| C10 | 提交（服务端字段错误） | 按错误码落字段：`HOST_NOT_FOUND`→主机、`PROJECT_EXISTS`→Key、`PROJECT_PATH_TAKEN`/`PROJECT_PATH_INVALID`→路径、`REPO_URL_INVALID`→仓库、`BRANCH_INVALID`→分支；其余落顶部 | 无 | 弹框不关、输入保留、按钮恢复；`HOST_OFFLINE`/`PROJECT_NAME_INVALID` 等未映射码走顶部 | 同上 |
-| C11 | 行内「打开」 | `POST /v1/projects/:id/web-handoff {surface:'admin'}` → 同页 iframe 覆盖层；老平台返回非 `cloud-admin.html` 时新标签打开并 toast「当前平台版本不支持内嵌工作区…」 | 脏文件关闭确认；结束工作区确认 | 签发失败→覆盖层失败态（重试/新标签）；20 秒未就绪→超时态，最多重试 2 次 | open + 主机在线/非维护 + 未归档 |
-| C12 | 「授权并打开」 | 确认框列出 5 个权限位并警告断开全部云会话；确认→`PUT grants` 自授→toast「已授权，正在打开…」→打开 | 确认框 | toast「授权失败：…」，不打开 | `platform:admin` 且无 open |
-| C13 | 行内「详情」 | 弹框先渲染缓存行，再并发刷新 `GET /projects/:id`、grants、下载策略、主机 grants；主按钮随刷新后的可打开性更新 | 弹框 | 任一刷新失败不阻塞弹框；项目 GET 失败显示黄条；grants 失败显示「未能读取直接授权」 | `platform:admin` |
-| C14 | 详情页签切换 | 纯视图态切换，不改 URL、不影响 Escape/关闭 | 无 | — | 同上 |
-| C15 | 详情「复制」按钮（ID/路径/仓库） | 写剪贴板，toast「已复制」 | 无 | 剪贴板 API 不可用时静默（仍 toast） | 同上 |
-| C16 | 权限页「添加」 | 组建/用户切换 datalist；添加=把卡片位并集进该主体整行，`PUT grants` 整行替换；成功后 toast 级别、清空输入、重绘卡片 | 主体已有行→「覆盖现有授权」确认（显示级别变化与会话断开提示） | toast「授予失败：…」；输入保留；请求期间卡片控件冻结；未知组/非法位显示平台文案 | 同上（接口 admin 或 project:owner） |
-| C17 | 权限页芯片「✕」移除 | 从该行减去卡片位并 `PUT`；仍有剩余位→toast 级别变化并重绘 | 剩余为空→「移除全部授权」确认（用户/组不同爆炸半径文案） | toast「移除失败：…」；控件冻结后恢复 | 同上 |
-| C18 | 详情「打开项目」 | 弹框关闭并启动同页覆盖层（同 C11） | 无 | 不可打开时按钮 disabled + title | 同 C11 |
-| C19 | 详情关闭 | Escape / 背景点击 / 「关闭」；焦点回到「详情」按钮 | 无 | — | 同上 |
-| C20 | 行内「Orca Web」 | `POST web-handoff`（web surface）→ 新标签；入口按 open 权限渲染 | 无 | toast「打开失败：…」；离线/维护 disabled + 原因 | open + 主机在线/非维护 |
-| C21 | 归档 / 恢复 | **控制台不可达**；仅 API。归档后项目从 `/v1/projects` 消失（管理员可 `includeArchived=1` 取回），详情 GET 归档项目返回 404；归档撤销该项目全部凭证并释放 key/路径 | API 无确认 UI | API 非创建者/非管理员返回 404（不泄漏存在性） | 创建者自助或 admin |
+| #   | 触发面                           | 结果                                                                                                                                                                      | 弹窗/确认                                                     | 失败态                                                                               | 权限门槛                            |
+| --- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ----------------------------------- |
+| C1  | 进入「我的项目」                 | `GET /v1/projects` + `GET /v1/policies/download`，按生效下载策略渲染列表                                                                                                  | 无                                                            | 加载失败→内容区「加载失败」+重试                                                     | 已登录                              |
+| C2  | 搜索框输入                       | 客户端过滤（名称/仓库/主机包含，大小写不敏感），即时重绘                                                                                                                  | 无                                                            | 无匹配→空态行                                                                        | 已登录                              |
+| C3  | 「刷新」                         | `location.reload()`                                                                                                                                                       | 无                                                            | —                                                                                    | 已登录                              |
+| C4  | 「登记项目」（管理员）           | 拉 `GET /v1/hosts`（排除已吊销）后打开弹框                                                                                                                                | 弹框                                                          | 拉取失败→toast「打开登记弹层失败：…」                                                | `platform:admin`                    |
+| C5  | 项目 Key 失焦                    | 与提交同一份规则即时校验                                                                                                                                                  | 无                                                            | 非法→字段标红 + 行内规则文案；合法→清错                                              | 同上                                |
+| C6  | 目标主机切换                     | 清空已填目标路径（避免跨主机路径误登记）；刷新「主机项目根」提示                                                                                                          | 无                                                            | —                                                                                    | 同上                                |
+| C7  | 提交（客户端校验失败）           | 不请求；所有错误字段标红并列出，焦点到首个错误                                                                                                                            | 无                                                            | 名称空/超 200、Key 长度/字符集/尾点、主机未选、路径非绝对/含 `..`/尾分隔符           | 同上                                |
+| C8  | 提交成功（无 repoUrl）           | `POST /v1/projects` → 弹框关闭，toast「项目已登记…授权请在项目详情的『权限』页签中配置。」→ 重绘列表；项目状态 ready                                                      | 无                                                            | —                                                                                    | 同上                                |
+| C9  | 提交成功（有 repoUrl）           | 同上，toast 追加「克隆中，就绪后可打开」；状态 provisioning，等待宿主克隆回报转 ready                                                                                     | 无                                                            | 克隆失败由心跳回报 `provisioningError`，详情显示「准备失败」                         | 同上                                |
+| C10 | 提交（服务端字段错误）           | 按错误码落字段：`HOST_NOT_FOUND`→主机、`PROJECT_EXISTS`→Key、`PROJECT_PATH_TAKEN`/`PROJECT_PATH_INVALID`→路径、`REPO_URL_INVALID`→仓库、`BRANCH_INVALID`→分支；其余落顶部 | 无                                                            | 弹框不关、输入保留、按钮恢复；`HOST_OFFLINE`/`PROJECT_NAME_INVALID` 等未映射码走顶部 | 同上                                |
+| C11 | 行内「打开」                     | `POST /v1/projects/:id/web-handoff {surface:'admin'}` → 同页 iframe 覆盖层；老平台返回非 `cloud-admin.html` 时新标签打开并 toast「当前平台版本不支持内嵌工作区…」         | 脏文件关闭确认；结束工作区确认                                | 签发失败→覆盖层失败态（重试/新标签）；20 秒未就绪→超时态，最多重试 2 次              | open + 主机在线/非维护 + 未归档     |
+| C12 | 「授权并打开」                   | 确认框列出 5 个权限位并警告断开全部云会话；确认→`PUT grants` 自授→toast「已授权，正在打开…」→打开                                                                         | 确认框                                                        | toast「授权失败：…」，不打开                                                         | `platform:admin` 且无 open          |
+| C13 | 行内「详情」                     | 弹框先渲染缓存行，再并发刷新 `GET /projects/:id`、grants、下载策略、主机 grants；主按钮随刷新后的可打开性更新                                                             | 弹框                                                          | 任一刷新失败不阻塞弹框；项目 GET 失败显示黄条；grants 失败显示「未能读取直接授权」   | `platform:admin`                    |
+| C14 | 详情页签切换                     | 纯视图态切换，不改 URL、不影响 Escape/关闭                                                                                                                                | 无                                                            | —                                                                                    | 同上                                |
+| C15 | 详情「复制」按钮（ID/路径/仓库） | 写剪贴板，toast「已复制」                                                                                                                                                 | 无                                                            | 剪贴板 API 不可用时静默（仍 toast）                                                  | 同上                                |
+| C16 | 权限页「添加」                   | 组建/用户切换 datalist；添加=把卡片位并集进该主体整行，`PUT grants` 整行替换；成功后 toast 级别、清空输入、重绘卡片                                                       | 主体已有行→「覆盖现有授权」确认（显示级别变化与会话断开提示） | toast「授予失败：…」；输入保留；请求期间卡片控件冻结；未知组/非法位显示平台文案      | 同上（接口 admin 或 project:owner） |
+| C17 | 权限页芯片「✕」移除              | 从该行减去卡片位并 `PUT`；仍有剩余位→toast 级别变化并重绘                                                                                                                 | 剩余为空→「移除全部授权」确认（用户/组不同爆炸半径文案）      | toast「移除失败：…」；控件冻结后恢复                                                 | 同上                                |
+| C18 | 详情「打开项目」                 | 弹框关闭并启动同页覆盖层（同 C11）                                                                                                                                        | 无                                                            | 不可打开时按钮 disabled + title                                                      | 同 C11                              |
+| C19 | 详情关闭                         | Escape / 背景点击 / 「关闭」；焦点回到「详情」按钮                                                                                                                        | 无                                                            | —                                                                                    | 同上                                |
+| C20 | 行内「Orca Web」                 | `POST web-handoff`（web surface）→ 新标签；入口按 open 权限渲染                                                                                                           | 无                                                            | toast「打开失败：…」；离线/维护 disabled + 原因                                      | open + 主机在线/非维护              |
+| C21 | 归档 / 恢复                      | **控制台不可达**；仅 API。归档后项目从 `/v1/projects` 消失（管理员可 `includeArchived=1` 取回），详情 GET 归档项目返回 404；归档撤销该项目全部凭证并释放 key/路径         | API 无确认 UI                                                 | API 非创建者/非管理员返回 404（不泄漏存在性）                                        | 创建者自助或 admin                  |
 
 ## 4. 数据来源
 
-| 面 | 来源 |
-| --- | --- |
-| 列表 | `GET /v1/projects`（活跃 + ACL；`includeArchived=1` 仅管理员）、`GET /v1/policies/download` |
-| 登记 | `GET /v1/hosts`（含 revokedAt/projectsRoot/online/status）、`POST /v1/projects` |
-| 详情 | `GET /v1/projects/:id`、`GET /v1/projects/:id/grants`、`GET /v1/policies/download`、`GET /v1/hosts/:id/grants`（推导卡）、`GET /v1/directory`（选择器） |
-| 权限写入 | `PUT /v1/projects/:id/grants`（整行替换；用户/组名解析为内部 id） |
-| 打开 | `POST /v1/projects/:id/web-handoff`；iframe 消息 `ready/dirty/closed/suspended/ended`（`source='orca-cloud-admin'`，校验 origin 与 source window） |
-| 归档/恢复 | `POST /v1/projects/:id/archive|restore`（仅 API） |
-| 下载策略覆盖 | `PUT /v1/projects/:id/policy`（平台设置页，M8） |
+| 面           | 来源                                                                                                                                                    |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 列表         | `GET /v1/projects`（活跃 + ACL；`includeArchived=1` 仅管理员）、`GET /v1/policies/download`                                                             |
+| 登记         | `GET /v1/hosts`（含 revokedAt/projectsRoot/online/status）、`POST /v1/projects`                                                                         |
+| 详情         | `GET /v1/projects/:id`、`GET /v1/projects/:id/grants`、`GET /v1/policies/download`、`GET /v1/hosts/:id/grants`（推导卡）、`GET /v1/directory`（选择器） |
+| 权限写入     | `PUT /v1/projects/:id/grants`（整行替换；用户/组名解析为内部 id）                                                                                       |
+| 打开         | `POST /v1/projects/:id/web-handoff`；iframe 消息 `ready/dirty/closed/suspended/ended`（`source='orca-cloud-admin'`，校验 origin 与 source window）      |
+| 归档/恢复    | `POST /v1/projects/:id/archive                                                                                                                          | restore`（仅 API） |
+| 下载策略覆盖 | `PUT /v1/projects/:id/policy`（平台设置页，M8）                                                                                                         |
 
 ## 5. 已知缺陷（台账）
 
