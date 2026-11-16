@@ -32,6 +32,7 @@ import {
   type HostSessionMirrorSettle
 } from './mirror-settle'
 import { consumeHostLayoutAdoption, hasPendingHostLayoutAdoption } from './host-layout-adoption'
+import { reassertRestoredActive } from './restored-active-reassert'
 import {
   beginWebRuntimeWakeTerminalRespawn,
   endWebRuntimeWakeTerminalRespawn,
@@ -209,6 +210,7 @@ export function installActiveSessionTabsSubscription({
       if (adoptHostLayout) {
         pendingHostLayoutAdoption = false
         consumeHostLayoutAdoption(activeWorktreeId)
+        reassertRestoredActive(environmentId, activeWorktreeId, recovered, syncState)
       }
       // Why here and only on an applied frame: this is the mirror's answer about the worktree. A
       // bootstrap whose create resolved without a row was parked until that answer arrived; a
