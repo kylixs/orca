@@ -2719,8 +2719,15 @@ export function createApp(config: ApiConfig): ApiHandle {
 
       const archiveAction =
         req.method === 'POST' && (action === '/archive' || action === '/restore')
-      // Why: an archived project is history; only archive/restore may still see it.
-      if (found.status === 'archived' && !archiveAction) {
+      // G06: admin-only opt-in mirrors the list param; history stays readable, not operable.
+      const archivedReadOptIn =
+        req.method === 'GET' &&
+        action === '' &&
+        isAdmin(authed.user) &&
+        url.searchParams.get('includeArchived') === '1'
+      // Why: an archived project is history; only archive/restore (or the admin
+      // opt-in read) may still see it.
+      if (found.status === 'archived' && !archiveAction && !archivedReadOptIn) {
         return error(res, 404, 'PROJECT_NOT_FOUND', '项目不存在或无权访问。', traceId)
       }
 

@@ -97,6 +97,143 @@ after(async () => {
   await api?.stop()
 })
 
+describe('G06 归档详情 opt-in 只读（admin-only）', () => {
+  let archivedId = ''
+  let liveId = ''
+  let creatorArchivedId = ''
+  let auditorId = ''
+
+  before(async () => {
+    const live = await request('POST', '/v1/projects', adminToken, {
+      key: 'g06-live',
+      name: 'G06 Live',
+      hostId,
+      path: '/srv/projects/g06-live',
+      repoUrl: ''
+    })
+    assert.equal(live.status, 201, JSON.stringify(live.body))
+    liveId = (live.body as { id: string }).id
+
+    const archivable = await request('POST', '/v1/projects', adminToken, {
+      key: 'g06-archived',
+      name: 'G06 Archived',
+      hostId,
+      path: '/srv/projects/g06-archived',
+      repoUrl: ''
+    })
+    assert.equal(archivable.status, 201, JSON.stringify(archivable.body))
+    archivedId = (archivable.body as { id: string }).id
+    assert.equal((await archive(adminToken, archivedId)).status, 200)
+
+    // Creator is a developer: the creator role must not unlock archived reads.
+    const creator = await createSelf(devToken, {
+      name: 'G06 Creator',
+      key: 'g06-creator',
+      dir: 'g06-creator',
+      repoUrl: ''
+    })
+    assert.equal(creator.status, 201, JSON.stringify(creator.body))
+    creatorArchivedId = (creator.body as { id: string }).id
+    assert.equal((await archive(devToken, creatorArchivedId)).status, 200)
+
+    const users = await request('GET', '/v1/users', adminToken)
+    auditorId = (
+      (users.body as { users: { id: string; username: string }[] }).users.find(
+        (user) => user.username === 'lisi'
+      ) as { id: string }
+    ).id
+    const promoted = await request('PUT', `/v1/users/${auditorId}/roles`, adminToken, {
+      role: 'auditor'
+    })
+    assert.equal(promoted.status, 200, JSON.stringify(promoted.body))
+  })
+
+  after(async () => {
+    if (auditorId) {
+      await request('PUT', `/v1/users/${auditorId}/roles`, adminToken, { role: 'developer' })
+    }
+  })
+
+  test('admin + includeArchived=1 → 200 只读视图；无参数仍 404', async () => {
+    const detail = await request(
+      'GET',
+      `/v1/projects/${archivedId}?includeArchived=1`,
+      adminToken
+    )
+    assert.equal(detail.status, 200, JSON.stringify(detail.body))
+    const view = detail.body as Record<string, unknown>
+    assert.equal(view.id, archivedId)
+    assert.equal(view.status, 'archived')
+    assert.equal(view.path, '/srv/projects/g06-archived')
+    // Same shape as a live read: no new fields for archived.
+    const live = await request('GET', `/v1/projects/${liveId}`, adminToken)
+    assert.equal(live.status, 200)
+    assert.deepEqual(
+      Object.keys(detail.body as object).sort(),
+      Object.keys(live.body as object).sort()
+    )
+
+    const noParam = await request('GET', `/v1/projects/${archivedId}`, adminToken)
+    assert.equal(noParam.status, 404)
+    assert.equal(errorCode(noParam.body), 'PROJECT_NOT_FOUND')
+  })
+
+  test('非 admin（developer/auditor/创建者）带参数仍 404', async () => {
+    const dev = await request('GET', `/v1/projects/${archivedId}?includeArchived=1`, devToken)
+    assert.equal(dev.status, 404)
+    assert.equal(errorCode(dev.body), 'PROJECT_NOT_FOUND')
+
+    const auditor = await request(
+      'GET',
+      `/v1/projects/${archivedId}?includeArchived=1`,
+      otherToken
+    )
+    assert.equal(auditor.status, 404)
+    assert.equal(errorCode(auditor.body), 'PROJECT_NOT_FOUND')
+
+    const creator = await request(
+      'GET',
+      `/v1/projects/${creatorArchivedId}?includeArchived=1`,
+      devToken
+    )
+    assert.equal(creator.status, 404)
+    assert.equal(errorCode(creator.body), 'PROJECT_NOT_FOUND')
+  })
+
+  test('非归档项目带参数与无参数一致 200；未知 id 仍 404', async () => {
+    const withParam = await request('GET', `/v1/projects/${liveId}?includeArchived=1`, adminToken)
+    const without = await request('GET', `/v1/projects/${liveId}`, adminToken)
+    assert.equal(withParam.status, 200)
+    assert.deepEqual(withParam.body, without.body)
+
+    const unknown = await request(
+      'GET',
+      '/v1/projects/proj_does_not_exist?includeArchived=1',
+      adminToken
+    )
+    assert.equal(unknown.status, 404)
+  })
+
+  test('写面仍拒绝：PUT / policy / grants 对归档项目 404', async () => {
+    const put = await request('PUT', `/v1/projects/${archivedId}?includeArchived=1`, adminToken, {
+      repoUrl: ''
+    })
+    assert.equal(put.status, 404)
+    const policy = await request(
+      'GET',
+      `/v1/projects/${archivedId}/policy?includeArchived=1`,
+      adminToken
+    )
+    assert.equal(policy.status, 404)
+    const grants = await request(
+      'GET',
+      `/v1/projects/${archivedId}/grants?includeArchived=1`,
+      adminToken
+    )
+    assert.equal(grants.status, 404)
+  })
+})
+
 describe('M65 项目归档闭环（真实平台进程）', () => {
   test('创建者可归档自己的项目；非创建者 404；管理员可归档他人项目', async () => {
     const created = await createSelf(devToken, {
