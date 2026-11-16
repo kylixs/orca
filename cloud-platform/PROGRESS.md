@@ -3571,6 +3571,8 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **U140 闭环**（`f98d6b3503c`）：吊销宿主路由不再被启动种子复活+启动清扫；routes 实测 2 条、完整 reseed `failures=[]`。
 - **U138 闭环**（`3b241e585d3`，真机）：重建 out/main + 宿主重启后，journey 控制台线 **13/13 全绿**（a2 三方一致、B7 零互换），Orca Web 探针（probe-a2）同构建通过；W9 官方双线 **A 4/4 + B 2/2** 复跑绿（注：生产重建会折叠 e2e store oracle，需 `VITE_EXPOSE_STORE=true` 重建后跑 spec——U36 族再次现形）。
 - **U141 闭环**（`6cb53417057`）：平台/宿主 clone URL 校验收敛（绝对路径+file:// 同步接受，裸串/ftp/ext:: 仍拒）；契约 5/5、宿主 51/51、注册 e2e 7/7。最终构建+部署与门禁复跑进行中。
+- **最终构建已部署**（out/main/out/web 17:37，含 expose-store）：平台 40293、宿主 40667/41785（同 host id），reseed `failures=[]`。
+- **U138 重开**（`7f07d3ce86e`）：部署后 journey-9 复跑仍红（a2 三方不一致；B7 零互换绿、内容/分组绿），已证 out/main 含修复 → 修复未稳定；二次诊断（对照 activate 前后宿主 list/持久值/F5 来源）进行中；平台 e2e 全量 + W9 双线 spec 同构建复跑并行。
 
 ### 四通道并发执行（启动，2026-11-14）
 
