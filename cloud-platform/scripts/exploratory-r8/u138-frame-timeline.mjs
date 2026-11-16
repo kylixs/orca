@@ -30,8 +30,14 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { chromium } from 'playwright'
+
+// Why a hard guard: this script is top-level code that drives a live browser;
+// an accidental import() would run the probe. Static inspection uses `node --check`.
+if (pathToFileURL(process.argv[1] ?? '').href !== import.meta.url) {
+  throw new Error('u138 probe is a script — run it directly; do not import() it')
+}
 
 const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url))
 const EVIDENCE_DIR = path.join(REPO_ROOT, 'cloud-platform/evidence/exploratory-r8')
