@@ -305,4 +305,46 @@ describe('U157: manual reconnect re-arms the gesture; automatic replays stay pas
     expect(await peekMark()).toBe(false)
     transport.destroy?.()
   })
+
+  it('P3-1: a click that lands after auto recovery reached a live phase never re-arms', async () => {
+    vi.useFakeTimers()
+    let createCalls = 0
+    runtimeCall.mockImplementation(async (request: { method: string }) => {
+      if (request.method === 'status.get') {
+        return {
+          ok: true,
+          result: { capabilities: [TERMINAL_CREATE_IDEMPOTENCY_RUNTIME_CAPABILITY] }
+        }
+      }
+      if (request.method === 'terminal.create') {
+        createCalls += 1
+        throw new Error(
+          createCalls === 1 ? 'remote orca runtime is not connected' : 'u157 fatal create failure'
+        )
+      }
+      return { ok: true, result: {} }
+    })
+
+    const transport = await createUserInitiatedTransport()
+    // Why: a failed replay already consumed the mark; the transport still owns the attempted gesture.
+    const { clearUserInitiatedTerminalCreateForTests } =
+      await import('@/runtime/web-session-user-initiated-create')
+    clearUserInitiatedTerminalCreateForTests()
+
+    const connect = transport.connect({ url: '', callbacks: {} })
+    await vi.advanceTimersByTimeAsync(1)
+    expect(transport.getRecoveryState?.().phase, 'auto recovery owns the window').toBe('recovering')
+
+    expect(
+      transport.retryRecovery?.(),
+      'a click has no replay branch outside disconnected'
+    ).toBe(false)
+    expect(await peekMark(), 'the stale click must not re-arm the gesture').toBe(false)
+
+    await vi.advanceTimersByTimeAsync(300)
+    await connect
+    expect(tapActivations(), 'the automatic connect stays passive').toHaveLength(0)
+    expect(await peekMark()).toBe(false)
+    transport.destroy?.()
+  })
 })

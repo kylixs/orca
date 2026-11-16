@@ -2713,7 +2713,9 @@ export function createRemoteRuntimePtyTransport(
       !userInitiatedCreateAttempted ||
       connected ||
       handle ||
-      isWebTerminalSurfaceTabId(tabId)
+      isWebTerminalSurfaceTabId(tabId) ||
+      // Why: auto recovery (online/resume) may have taken over before a stale banner click lands (U157 P3-1).
+      recovery.currentPhase !== 'disconnected'
     ) {
       return
     }
