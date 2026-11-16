@@ -18,7 +18,7 @@
 | A-1b | **headless census 回落**：无 authoritative 窗口时 inventory 从 legacy `listAllMobileSessionTabs`（=workspaceSession 持久源，A-6 同源）构建，不等待 graph publication epoch | A-1 | **✅ 完成** `04771583922`（实测 3/2/3/1ms，原 >20s；有窗口语义零变） | headless 云宿主 listAll/subscribeAll 不再挂 20s；有窗口宿主行为不变 |
 | A-4 | 客户端 capability 谓词+三处云跳过点条件取消 | A-1（契约层并行可先做） | **✅ 完成** `18ecede0a60`（谓词 shouldMirrorCloudSessionTabs；新宿 20 例+旧宿主 0 调用断言） | capability 含→走恢复链；缺→保持现状（零 RPC 拒绝） |
 | A-6 | 宿主持久化缺口：快照写 `workspaceSession.tabsByWorktree`（幂等追加/更新，close 退役） | — | **✅ 完成** `e4c27ebf699`（persistPerPublish 幂等；4 新例含重启重载恢复；24 例回归绿） | 宿主重启后 loader 可恢复 tab 行；关闭不复活 |
-| A-2 | 云 inventory 过滤（`projectCloudSessionTabsInventory`）+ `session.tabs` 作用域 | A-1 | 排队 | 越界 worktree 帧丢弃；多项目隔离 |
+| A-2 | 云 inventory 过滤（`projectCloudSessionTabsInventory`）+ `session.tabs` 作用域 | A-1 | **✅ 完成** `1590e9fc956`（worktree 级/tab 级 scope+assertCloudSessionTabVisible fail-closed；9 新例+118 绿） | 越界 worktree 帧丢弃；多项目隔离 |
 | A-3 | `terminal.list/adoptOrphans` 放行+三重 scope | A-1，与 A-2 共享 path guard **串行** | 排队 | 无 selector/越界拒绝；跨 worktree handle 拒绝 |
 | A-5 | bootstrap 顺序+孤儿认领接通（**最小可用里程碑**） | A-2/3/4 | 排队 | 页面重开→标签组/布局/活动标签恢复；活 PTY 回放 marker 可见 |
 | A-7 | scrollback 回放边界（1000 行/512 KiB/truncated；localOnly 不外发；死 PTY→ended UI） | A-5 | 排队 | A7 断言全过 |
