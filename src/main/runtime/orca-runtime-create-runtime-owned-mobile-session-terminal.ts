@@ -212,7 +212,7 @@ export class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal extends Orca
       parentLayout,
       isActive: activate
     }
-    const tabs = placeCreatedSessionTab(
+    const placedTabs = placeCreatedSessionTab(
       (existing?.tabs ?? []).map((candidate) => ({
         ...candidate,
         ...(candidate.type === 'terminal' && candidate.parentTabId === parentTabId
@@ -224,6 +224,15 @@ export class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal extends Orca
       afterTabId,
       { afterParentGroup: opts.supportsSplitGroupPlacement !== false }
     )
+    const nextActiveTabId = activate ? tab.id : (existing?.activeTabId ?? null)
+    // Why: a materialize (activate=false) must not leave the host active flagless, or the
+    // projection falls back to the first tab and the client sees the active tab flip (U138).
+    const tabs = activate
+      ? placedTabs
+      : placedTabs.map((candidate) => ({
+          ...candidate,
+          isActive: candidate.id === nextActiveTabId
+        }))
     const next: RuntimeMobileSessionTabsSnapshot = {
       worktree: worktreeId,
       // Why: a fresh epoch retires the current publisher, so clients drop its later tab updates.
@@ -234,7 +243,7 @@ export class OrcaRuntimeWithCreateRuntimeOwnedMobileSessionTerminal extends Orca
         activate && opts.targetGroupId
           ? opts.targetGroupId
           : (existing?.activeGroupId ?? getHeadlessMobileSessionGroupId(worktreeId)),
-      activeTabId: activate ? tab.id : (existing?.activeTabId ?? null),
+      activeTabId: nextActiveTabId,
       activeTabType: activate ? 'terminal' : (existing?.activeTabType ?? null),
       tabGroups: buildHeadlessMobileSessionTabGroups(
         worktreeId,

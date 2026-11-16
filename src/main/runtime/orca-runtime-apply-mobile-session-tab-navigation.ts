@@ -58,7 +58,7 @@ export class OrcaRuntimeWithApplyMobileSessionTabNavigation extends OrcaRuntimeW
     } else if (clientNavigationId) {
       // Why: follow-host still starts as caller navigation; the host is an additional target, not a replacement owner.
       callerSnapshot =
-        persistClientSelection === false && navigation === 'caller'
+        materializeOnly || (persistClientSelection === false && navigation === 'caller')
           ? // A pane mount is not a tap: project the caller's existing selection, never overwrite it (U138).
             this.projectMobileSessionTabsForClient(snapshot, clientNavigationId)
           : this.clientSessionTabSelections.activate(
@@ -70,6 +70,10 @@ export class OrcaRuntimeWithApplyMobileSessionTabNavigation extends OrcaRuntimeW
     }
     if (clientNavigationId) {
       return callerSnapshot ?? this.projectMobileSessionTabsForClient(snapshot, clientNavigationId)
+    }
+    // Why: a materializeOnly mount only projects; the unpaired caller's snapshot must stay as-is.
+    if (materializeOnly) {
+      return snapshot
     }
     if (navigation === 'caller') {
       const selection = activateClientSessionTabSelection(

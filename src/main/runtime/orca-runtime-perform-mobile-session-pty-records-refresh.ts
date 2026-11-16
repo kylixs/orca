@@ -112,7 +112,8 @@ export class OrcaRuntimeWithPerformMobileSessionPtyRecordsRefresh extends OrcaRu
   ): Promise<RuntimeMobileSessionTabsResult> {
     const navigation = opts.navigation ?? (opts.notifyClients === false ? 'caller' : 'all')
     // Why: materializeOnly is a mount, so it is never navigation even when it carries user intent.
-    const persistSelection = opts.persistSelection !== false && opts.materializeOnly !== true
+    const materializeOnly = opts.materializeOnly === true
+    const persistSelection = opts.persistSelection !== false && !materializeOnly
     const targetsHost = navigationTargetsHost(navigation)
     const explicitWorktreeId = this.getValidatedExplicitWorktreeIdSelector(worktreeSelector)
     const worktreeId =
@@ -191,21 +192,26 @@ export class OrcaRuntimeWithPerformMobileSessionPtyRecordsRefresh extends OrcaRu
           }
         }
         try {
-          await this.createRuntimeOwnedMobileSessionTerminal(worktreeId, targetsHost, undefined, {
-            identity: {
-              tabId: tab.parentTabId,
-              leafId: tab.leafId,
-              sessionId
-            },
-            cwd: tab.startupCwd,
-            command: agentStartup.command,
-            env: agentStartup.env,
-            startupCommandDelivery: agentStartup.startupCommandDelivery,
-            launchConfig: agentStartup.launchConfig,
-            launchAgent: tab.launchAgent,
-            targetGroupId,
-            ...(automatic ? { refuseSleptWorktree: true } : {})
-          })
+          await this.createRuntimeOwnedMobileSessionTerminal(
+            worktreeId,
+            targetsHost && !materializeOnly,
+            undefined,
+            {
+              identity: {
+                tabId: tab.parentTabId,
+                leafId: tab.leafId,
+                sessionId
+              },
+              cwd: tab.startupCwd,
+              command: agentStartup.command,
+              env: agentStartup.env,
+              startupCommandDelivery: agentStartup.startupCommandDelivery,
+              launchConfig: agentStartup.launchConfig,
+              launchAgent: tab.launchAgent,
+              targetGroupId,
+              ...(automatic ? { refuseSleptWorktree: true } : {})
+            }
+          )
         } catch (err) {
           if (automatic && isWorktreeTerminalsSleepingError(err)) {
             // Why: the host slept the worktree while this probe waited for the spawn lock.
@@ -248,14 +254,17 @@ export class OrcaRuntimeWithPerformMobileSessionPtyRecordsRefresh extends OrcaRu
                 candidate.isActive
             ) as RuntimeMobileSessionTerminalTab | undefined)
       const targetTab = activeSibling ?? tab
-      if (targetsHost && !this.notifier?.focusTerminal) {
+      // Why: a materializeOnly mount completes the surface and its projection only; it must
+      // never move the in-memory host active tab or group, or a hidden pane's mount steers
+      // every viewer one frame behind (U138 phase 10).
+      if (!materializeOnly && targetsHost && !this.notifier?.focusTerminal) {
         if (
           !targetTab.isActive &&
           this.shouldPersistHeadlessMobileSessionActivation(snapshot!, targetTab)
         ) {
           this.activateHeadlessMobileSessionTerminalTab(worktreeId, snapshot!, targetTab)
         }
-      } else if (targetsHost) {
+      } else if (!materializeOnly && targetsHost) {
         this.notifier?.focusTerminal?.(targetTab.parentTabId, worktreeId, targetTab.leafId)
       }
       // Why: a paired web/remote tap is explicit intent, so it must survive reload even when a

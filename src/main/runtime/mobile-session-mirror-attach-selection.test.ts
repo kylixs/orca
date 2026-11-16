@@ -10,6 +10,7 @@ import type { RuntimeMobileSessionTabsSnapshot } from '../../shared/runtime-type
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import { OrcaRuntimeService } from './orca-runtime'
 import { HEADLESS_LEAF_ID } from './orca-runtime-test-fixtures.spec'
+import { publishHeadlessRuntimeGraph } from './headless-runtime-graph'
 
 const WT = 'repo-1::/tmp/worktree-a'
 const selector = `id:${WT}`
@@ -338,6 +339,207 @@ describe('U138 phase 9: materializeOnly is a mount, never a tap', () => {
 
     expect(spawn).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: 'serve-dead-pty', worktreeId: WT })
+    )
+  })
+})
+
+type HeadlessRuntimeInternals = {
+  mobileSessionTabsByWorktree: Map<string, RuntimeMobileSessionTabsSnapshot>
+}
+
+const SECOND_HEADLESS_LEAF_ID = '22222222-2222-4222-8222-222222222222'
+
+/** Headless hydration only keeps persisted leaf ids that are real terminal leaf ids. */
+function makeHeadlessSession(): WorkspaceSessionState {
+  const session = makeSession()
+  // Serve-owned bindings, so a materialized pane resolves to a ready surface.
+  session.tabsByWorktree = {
+    [WT]: (session.tabsByWorktree[WT] ?? []).map((tab) => ({
+      ...tab,
+      ptyId: tab.id === 'tab-1' ? 'serve-pty-a' : 'serve-pty-b'
+    }))
+  }
+  session.terminalLayoutsByTabId = {
+    'tab-1': {
+      root: { type: 'leaf', leafId: HEADLESS_LEAF_ID },
+      activeLeafId: HEADLESS_LEAF_ID,
+      expandedLeafId: null,
+      ptyIdsByLeafId: { [HEADLESS_LEAF_ID]: 'serve-pty-a' }
+    },
+    'tab-2': {
+      root: { type: 'leaf', leafId: SECOND_HEADLESS_LEAF_ID },
+      activeLeafId: SECOND_HEADLESS_LEAF_ID,
+      expandedLeafId: null,
+      ptyIdsByLeafId: { [SECOND_HEADLESS_LEAF_ID]: 'serve-pty-b' }
+    }
+  }
+  return session
+}
+
+/** No renderer window and no paired device: the host's own in-memory snapshot is authoritative. */
+function createHeadlessRuntime(session = makeHeadlessSession()) {
+  let currentSession = session
+  const persisted: { state: PersistedMobileClientTabSelections } = { state: {} }
+  const runtime = new OrcaRuntimeService({
+    ...storeBase,
+    getWorkspaceSession: () => currentSession,
+    setWorkspaceSession: (next: WorkspaceSessionState) => {
+      currentSession = next
+    },
+    getMobileClientTabSelections: () => persisted.state,
+    setMobileClientTabSelections: (next: PersistedMobileClientTabSelections) => {
+      persisted.state = next
+    }
+  } as never)
+  const spawn = vi.fn(async () => ({ id: 'spawned-pty' }))
+  runtime.setPtyController({
+    spawn,
+    write: () => true,
+    kill: () => true,
+    getForegroundProcess: async () => null,
+    listProcesses: async () => []
+  })
+  publishHeadlessRuntimeGraph(runtime)
+  // Why: pending surfaces materialize through create; keep the launch-scope seam out of the assertion.
+  vi.spyOn(
+    runtime as unknown as {
+      resolveTerminalWorkspaceLaunchScope(selector: string): Promise<unknown>
+    },
+    'resolveTerminalWorkspaceLaunchScope'
+  ).mockResolvedValue({
+    id: WT,
+    path: '/tmp/worktree-a',
+    connectionId: null,
+    repo: null,
+    folderWorkspace: null
+  })
+  const storedSnapshot = (): RuntimeMobileSessionTabsSnapshot | undefined =>
+    (runtime as unknown as HeadlessRuntimeInternals).mobileSessionTabsByWorktree.get(WT)
+  return { runtime, getSession: () => currentSession, persisted, spawn, storedSnapshot }
+}
+
+describe('U138 phase 10: materializeOnly never moves the in-memory host snapshot', () => {
+  function mount(
+    runtime: OrcaRuntimeService,
+    tabId: string,
+    leafId: string,
+    opts: { deviceId?: string; navigation?: 'caller' | 'all'; notifyClients?: boolean } = {}
+  ): ReturnType<OrcaRuntimeService['activateMobileSessionTab']> {
+    return runtime.activateMobileSessionTab(selector, tabId, leafId, {
+      notifyClients: opts.notifyClients ?? false,
+      navigation: opts.navigation ?? 'caller',
+      clientNavigationId: opts.deviceId ?? 'device-a',
+      materializeOnly: true,
+      intent: 'user'
+    })
+  }
+
+  it('keeps the stored host active stable while every pane, hidden included, mounts', async () => {
+    const { runtime, storedSnapshot } = createHeadlessRuntime()
+    const listed = await runtime.listMobileSessionTabs(selector)
+    const panes = listed.tabs.flatMap((tab) =>
+      tab.type === 'terminal' && tab.parentTabId ? [[tab.parentTabId, tab.leafId]] : []
+    )
+    expect(panes).toHaveLength(2)
+    const [firstPane, secondPane] = panes
+
+    // A user tap first, so the mount target differs from the host active.
+    const initialActive = storedSnapshot()!.activeTabId
+    await runtime.activateMobileSessionTab(selector, secondPane[0], secondPane[1], {
+      notifyClients: true,
+      navigation: 'all',
+      clientNavigationId: 'device-a'
+    })
+    const before = storedSnapshot()!
+    expect(before.activeTabId).toBeTruthy()
+    // The user tap itself still moves the in-memory host active (no materializeOnly).
+    expect(before.activeTabId).not.toBe(initialActive)
+
+    // Why both targets: the pane transport mounts with 'caller', but the invariant must hold
+    // even when a mount reaches the host through a host-targeting navigation.
+    const variants = [
+      { navigation: 'caller' as const, notifyClients: false },
+      { navigation: 'all' as const, notifyClients: true }
+    ]
+    for (const variant of variants) {
+      for (const [tabId, leafId] of [firstPane, secondPane, firstPane] as const) {
+        await mount(runtime, tabId, leafId, variant)
+        const stored = storedSnapshot()!
+        expect(stored.activeTabId).toBe(before.activeTabId)
+        expect(stored.tabGroups?.map((group) => group.activeTabId)).toEqual(
+          before.tabGroups?.map((group) => group.activeTabId)
+        )
+        expect((await runtime.listMobileSessionTabs(selector)).activeTabId).toBe(before.activeTabId)
+      }
+    }
+  })
+
+  it('still materializes a pending pane mount and keeps the terminal readable', async () => {
+    const session = makeSession()
+    session.tabsByWorktree = {
+      [WT]: [
+        {
+          id: 'tab-1',
+          ptyId: 'serve-dead-pty',
+          worktreeId: WT,
+          title: 'Terminal 1',
+          customTitle: null,
+          color: null,
+          sortOrder: 0,
+          createdAt: 1
+        }
+      ]
+    }
+    session.terminalLayoutsByTabId = {
+      'tab-1': {
+        root: { type: 'leaf', leafId: HEADLESS_LEAF_ID },
+        activeLeafId: HEADLESS_LEAF_ID,
+        expandedLeafId: null,
+        ptyIdsByLeafId: { [HEADLESS_LEAF_ID]: 'serve-dead-pty' }
+      }
+    }
+    const { runtime, spawn, storedSnapshot } = createHeadlessRuntime(session)
+    const launchScopeSeam = runtime as unknown as {
+      resolveTerminalWorkspaceLaunchScope(selector: string): Promise<unknown>
+    }
+    vi.spyOn(launchScopeSeam, 'resolveTerminalWorkspaceLaunchScope').mockResolvedValue({
+      id: WT,
+      path: '/tmp/worktree-a',
+      connectionId: null,
+      repo: null,
+      folderWorkspace: null
+    })
+    await runtime.listMobileSessionTabs(selector)
+    const before = storedSnapshot()!.activeTabId
+
+    const mounted = await mount(runtime, 'tab-1', HEADLESS_LEAF_ID)
+
+    expect(spawn).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: 'serve-dead-pty', worktreeId: WT })
+    )
+    const surface = mounted.tabs.find(
+      (tab) =>
+        tab.type === 'terminal' && tab.parentTabId === 'tab-1' && tab.leafId === HEADLESS_LEAF_ID
+    )
+    expect(surface?.type === 'terminal' && surface.status).toBe('ready')
+    const terminalHandle = surface?.type === 'terminal' ? surface.terminal : null
+    expect(terminalHandle).toBeTruthy()
+    if (terminalHandle) {
+      await expect(runtime.readTerminal(terminalHandle, { limit: 10 })).resolves.toBeTruthy()
+    }
+    expect(storedSnapshot()!.activeTabId).toBe(before)
+  })
+
+  it('still moves the durable and per-device active for a user tap', async () => {
+    const { runtime, getSession, persisted } = createRuntime()
+
+    await userActivate(runtime, 'tab-2', 'leaf-2')
+
+    expect(getSession().activeTabId).toBe('tab-2')
+    expect(getSession().activeTabIdByWorktree?.[WT]).toBe('tab-2')
+    expect(persisted.state['device-a']?.[WT]?.activeTabId).toBe('tab-2::leaf-2')
+    expect((await runtime.listMobileSessionTabs(selector, 'device-a')).activeTabId).toBe(
+      'tab-2::leaf-2'
     )
   })
 })
