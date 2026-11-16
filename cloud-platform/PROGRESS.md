@@ -3636,6 +3636,13 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **基线刷新**：m09 更新 U138 残余/T3 状态与 U96/U103/U106/U113 过期状态（`9c2308c7989`）；02:00 复盘 + 协议 §2-47~§2-50（`9d7d8c90e69`/`91fede76778`）。
 - **下一步**：用含 T3 的新构建重跑硬化 baseline（期望 9 红转绿）；若 `subscribeAll` 子案仍红，另派修复（不动 late-listAll 语义）。
 
+### 2026-11-17 02:2x 轮：U138 late-listAll 子案闭环（race 50/50），残余转 U153
+
+- **v2 修复**（`22ce17c5d71`）：worktree 级陈旧拒绝（复用每 worktree 收帧记录；旧 `preserveStoreActiveFocus` 全删）；钉重写 + 判别力验证（短路谓词→钉红）。
+- **复跑（v2 构建）**：race 10-cycle **50/50 绿**（v2 前 43/50、7 红），reload 12/12、reopen 3/3 绿；bundle 校验含 `isSessionTabsBootstrapSnapshotSuperseded`、无旧标记；chunk sha256 记录在证据。**late-listAll 子案闭环**。
+- **残余转 U153**：quick 场景 9-10 红，形态=客户端 `activate {materializeOnly:true, notifyClients:false}`（用户手势被当投影）→ 宿主不移动 active、客户端本地 intent 领先；已登记并派事件级诊断。
+- **探针复审不可签字**（`test-reports/u138-probe-hardened-audit.md`）：H-A 归因取错帧、宿主内存与持久同源、缺方向 token；已派探针修正 A（口径单源 + 判据收紧 + `client-ahead-host`）。**在探针修正完成前，race 绿按「无条件红样本、红签名未再出现」表述，不签「未复现」。**
+
 ### 四通道并发执行（启动，2026-11-14）
 
 按细粒度拆分与三权分立纪律并发起跑：通道② **W6a**（中继浏览器模式，relay.ts 域）、通道③ **W10**（客户端零 env 登录，src/main+renderer 登录域）、通道④ **W5a**（详情页终端组件，cloud-admin 域）三个实现代理并行；通道① 等在途 W2（QA 修复）完成后接 W8。每令完成→独立测试代理→独立审计代理→主会话关闭放行下一个。
