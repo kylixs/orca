@@ -97,6 +97,7 @@ export function updateHostSessionGroupIdMappings(args: {
   hostToLocalTabId: ReadonlyMap<string, string>
 }): void {
   const scope = { environmentId: args.environmentId, worktreeId: args.worktreeId }
+  // Why: an undefined frame means "host layout not reported", not "no host groups" — keep the last known set.
   if (args.hostGroups) {
     setKnownHostSessionGroupIds(
       scope,
@@ -134,8 +135,10 @@ export function updateHostSessionGroupIdMappings(args: {
             .filter((tabId): tabId is string => tabId !== undefined)
         )
       : null
+    // Why: same rule as the create side below — a host group with no host-backed members identifies nothing.
     if (
       !hostMembers ||
+      hostMembers.size === 0 ||
       memberSetKey(hostMembers) !== memberSetKey(localMemberSet(localGroup.tabOrder))
     ) {
       clearHostSessionGroupIdMapping({ ...scope, groupId: localGroupId })

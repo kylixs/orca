@@ -34,7 +34,7 @@ function hostToLocal(entries: Record<string, string>): Map<string, string> {
 
 function record(
   localGroups: TabGroup[],
-  hostGroups: RuntimeMobileSessionTabGroup[],
+  hostGroups: RuntimeMobileSessionTabGroup[] | undefined,
   mapping: Map<string, string>
 ): void {
   updateHostSessionGroupIdMappings({
@@ -129,6 +129,24 @@ describe('host session group id mapping', () => {
     expect(resolve('local-split')).toBe('host-new')
   })
 
+  it('recycles a mapping whose host group no longer has any host-backed member', () => {
+    record(
+      [localGroup('local-split', ['local-a'])],
+      [hostGroup('host-split', ['host-a'])],
+      hostToLocal({ 'host-a': 'local-a' })
+    )
+    expect(resolve('local-split')).toBe('host-split')
+
+    // The host still lists the group, but no host tab resolves locally: identity is unverifiable.
+    record(
+      [localGroup('local-split', ['local-a'])],
+      [hostGroup('host-split', ['host-a'])],
+      hostToLocal({})
+    )
+
+    expect(resolve('local-split')).toBeNull()
+  })
+
   it('recycles mappings for local groups that disappeared', () => {
     record(
       [localGroup('local-split', ['local-a'])],
@@ -178,6 +196,36 @@ describe('host session group id mapping', () => {
         groupId: 'host-split'
       })
     ).toBe(false)
+  })
+
+  it('keeps the last known host group ids when a frame omits the host layout', () => {
+    record(
+      [localGroup('local-split', ['local-a'])],
+      [hostGroup('host-split', ['host-a'])],
+      hostToLocal({ 'host-a': 'local-a' })
+    )
+    expect(
+      isKnownHostSessionGroupId({
+        environmentId: ENVIRONMENT_ID,
+        worktreeId: WORKTREE_ID,
+        groupId: 'host-split'
+      })
+    ).toBe(true)
+
+    // An omitted host layout must not erase what the last applied frame reported.
+    record(
+      [localGroup('local-split', ['local-a'])],
+      undefined,
+      hostToLocal({ 'host-a': 'local-a' })
+    )
+
+    expect(
+      isKnownHostSessionGroupId({
+        environmentId: ENVIRONMENT_ID,
+        worktreeId: WORKTREE_ID,
+        groupId: 'host-split'
+      })
+    ).toBe(true)
   })
 
   it('drops mappings when the environment tracking is torn down', () => {

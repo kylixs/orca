@@ -83,4 +83,17 @@ describe('ClientHostedBrowserTab close button in an inactive split group (U160)'
     expect(focusGroup).not.toHaveBeenCalled()
     expect(document.activeElement).not.toBe(closeButton)
   })
+
+  it('still activates the group when the row root is pressed', async () => {
+    const user = userEvent.setup()
+    const focusGroup = vi.fn()
+    const onClose = vi.fn()
+    render(<InactiveHostedGroup focusGroup={focusGroup} onClose={onClose} />)
+
+    await user.click(screen.getByText('Marker'))
+
+    // Negative control: close-button interception must not be the reason nothing activates.
+    expect(focusGroup).toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+  })
 })
