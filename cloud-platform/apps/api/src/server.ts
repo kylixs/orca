@@ -3186,6 +3186,8 @@ export function createApp(config: ApiConfig): ApiHandle {
         })
       }
       return json(res, 200, {
+        // U145: additive admission config, so the page states a fact instead of a fake sync status.
+        ldap: { requiredGroup: ldapRequiredGroup },
         users: [...store.users.values()].map((user) => ({
           id: user.id,
           username: user.username,

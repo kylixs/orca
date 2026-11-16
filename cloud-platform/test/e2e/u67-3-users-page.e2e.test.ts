@@ -81,7 +81,7 @@ async function userByName(username: string): Promise<UserRow> {
 before(async () => {
   service = await spawnService(
     'apps/api/src/server.ts',
-    { PORT: '0', INTERNAL_TOKEN: INTERNAL_TOKEN },
+    { PORT: '0', INTERNAL_TOKEN: INTERNAL_TOKEN, ORCA_CLOUD_LDAP_REQUIRED_GROUP: '' },
     /\[api\] listening on http:\/\/127\.0\.0\.1:(\d+)/,
     'api-u67-3-users'
   )
@@ -106,6 +106,8 @@ test('UG-6 UI：admin 渲染 #/users 页（U81 查询四态 + U82 只读列表/�
     'lisi',
     'zhangsan'
   ])
+  // U145：准入配置以加性字段给出事实（本套件未设组，故为 null）。
+  assert.deepEqual(listed.body.ldap, { requiredGroup: null })
 
   const page = loadWebConsolePage(service.url)
   await page.settle()
@@ -132,7 +134,6 @@ test('UG-6 UI：admin 渲染 #/users 页（U81 查询四态 + U82 只读列表/�
   const contentText = page.text('#content').replace(/\s+/g, ' ')
   const anchors = [
     '用户管理',
-    'LDAP 同步正常',
     '角色 ≠ 资源授权（两层模型）',
     '账号与角色',
     '列表只读 · 角色在详情中修改 · 变更写入 role_update 审计',
@@ -146,6 +147,11 @@ test('UG-6 UI：admin 渲染 #/users 页（U81 查询四态 + U82 只读列表/�
     (anchor) => !prototypeText.includes(anchor) || !contentText.includes(anchor)
   )
   assert.deepEqual(missing, [], `prototype anchors missing from the live page: ${missing}`)
+
+  // U145：原型的「LDAP 同步正常」是静态假状态，实现页不得照抄。
+  // 徽标只陈述准入配置事实；本套件未配置准入组。
+  assert.ok(!contentText.includes('LDAP 同步正常'), 'live page must not claim a sync status')
+  assert.match(contentText, /LDAP 准入：未配置/)
 
   // 表格列逐一对照原型（U82：角色只读 + 操作列）
   const prototypeColumns = [...prototypeSection.matchAll(/<th[^>]*>([^<]+)<\/th>/g)].map((m) =>

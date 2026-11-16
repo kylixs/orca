@@ -111,6 +111,13 @@ describe('LGAA-3 LDAP 分组准入 e2e（§6.2 E1-E6）', () => {
     const admin = await login(gatedAdmins, 'admin', ADMIN_PW)
     assert.equal(admin.status, 200)
     assert.ok(admin.body.accessToken, 'in-group admin must get a session')
+    // U145：用户页徽标读该字段，必须回显真实准入组而非静态文案。
+    const users = await fetch(`${gatedAdmins.url}/v1/users`, {
+      headers: { authorization: `Bearer ${admin.body.accessToken}` }
+    })
+    assert.equal(users.status, 200)
+    const usersBody: { ldap?: { requiredGroup: string | null } } = await users.json()
+    assert.deepEqual(usersBody.ldap, { requiredGroup: 'platform-admins' })
     const zhangsan = await login(gatedAdmins, 'zhangsan', DEV_PW)
     expectRefusal(zhangsan, 'zhangsan out of group')
     const lisi = await login(gatedAdmins, 'lisi', DEV_PW)
@@ -219,7 +226,10 @@ describe('LGAA-3 LDAP 分组准入 e2e（§6.2 E1-E6）', () => {
     )
     assert.equal(events.status, 200)
     const reasons = (events.body.events ?? []).map((event) => event.metadata?.reason)
-    assert.ok(reasons.includes('ldap_group_denied'), `refusals must be retrievable: ${JSON.stringify(reasons)}`)
+    assert.ok(
+      reasons.includes('ldap_group_denied'),
+      `refusals must be retrievable: ${JSON.stringify(reasons)}`
+    )
     assert.ok(reasons.includes('invalid_credentials'), 'credential failures stay distinguishable')
     const verify = await auditQuery('/v1/audit/verify')
     assert.equal(verify.status, 200)
