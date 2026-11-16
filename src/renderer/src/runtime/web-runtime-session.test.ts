@@ -84,6 +84,11 @@ vi.mock('./web-runtime-browser-materialization', () => ({
 afterEach(() => resetWebSessionCloseIntentForTests())
 
 describe('refreshWebRuntimeSessionTabsSnapshot', () => {
+  beforeEach(() => {
+    // The snapshot path reads cloud-session membership from the store before listing.
+    mocks.getState.mockReturnValue({ runtimeEnvironments: [] })
+  })
+
   afterEach(() => {
     resetWebAgentSessionHandoffsForTests()
     replaceRuntimeEnvironmentRevisions([])
