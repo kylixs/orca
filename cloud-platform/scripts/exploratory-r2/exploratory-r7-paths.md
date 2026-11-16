@@ -34,6 +34,12 @@
 4. 断言：B 后写未被 A 覆盖（GET 校验）；`policy_update` 冲突事件含 expectedVersion/resultVersion
 5. 证据：截图 + 审计事件
 
+## P6 事实性文案（U145/G27）
+
+1. `#/users`：徽标应为「LDAP 准入：未配置」或「LDAP 准入组：<组名>」；不得出现「LDAP 同步正常」；API `/v1/users` 顶层 `ldap.requiredGroup` 与徽标一致
+2. `#/settings` 保存下载策略 → toast「已保存，将随宿主心跳生效…」；页面无「30 秒内生效」残留
+3. 证据：截图 + DOM 文本断言
+
 ## P5 既有回归抽检（不回归）
 
 - `#/hosts` 吊销/维护按钮仍工作；`#/users` 详情改角色（启用账号）200；`#/audit` 过滤与分页正常
