@@ -1,8 +1,6 @@
 import type { RuntimeRpcResponse } from '../../../../shared/runtime-rpc-envelope'
-import { isCloudSessionRuntimeEnvironment } from '../../../../shared/runtime-environments'
 import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-types'
 import { isRuntimeSubscriptionReplayResponse } from '../../../../shared/runtime-subscription-replay'
-import { shouldMirrorCloudSessionTabs } from '../../web/web-cloud-session-capabilities'
 import { useAppStore } from '../../store'
 import { getRuntimeEnvironmentRevision } from '../runtime-environment-revision'
 import { recoverWebSessionTerminalOrphansBeforeApply } from '../web-session-terminal-orphan-recovery'
@@ -32,7 +30,8 @@ import {
   type HostSessionMirrorSettle
 } from './mirror-settle'
 import { consumeHostLayoutAdoption, hasPendingHostLayoutAdoption } from './host-layout-adoption'
-import { reassertRestoredActive } from './restored-active-reassert'
+import { captureRestoredActive, reassertRestoredActive } from './restored-active-reassert'
+import { resolveCloudSessionTabsGate } from './cloud-session-tabs-gate'
 import {
   beginWebRuntimeWakeTerminalRespawn,
   endWebRuntimeWakeTerminalRespawn,
@@ -87,11 +86,8 @@ export function installActiveSessionTabsSubscription({
   }
   // Why: a cloud session's host refuses the paired-desktop `session.tabs.*` family unless it
   // advertised the restore capability (U96); without one, subscribing only warn-loops.
-  const environment = useAppStore
-    .getState()
-    .runtimeEnvironments.find(({ id }) => id === environmentId)
-  const isCloudSession = environment !== undefined && isCloudSessionRuntimeEnvironment(environment)
-  if (isCloudSession && !shouldMirrorCloudSessionTabs(environmentId)) {
+  const { isCloudSession, subscribable } = resolveCloudSessionTabsGate(environmentId)
+  if (!subscribable) {
     return undefined
   }
   // Why: a cloud workspace can be entered again without a page reload, and the client-owned
@@ -102,6 +98,8 @@ export function installActiveSessionTabsSubscription({
   const expectedTrackingGeneration = getWebSessionTabsTrackingGeneration(environmentId)
   let requestedInitialTerminal = false
   let requestedRespawnAfterWake = false
+  // Why here: this is the last point before any stream frame can apply (U138 phase 5).
+  const restoredActiveAtEntry = captureRestoredActive(activeWorktreeId)
 
   const applyActiveSnapshot = async (
     event: RuntimeMobileSessionTabsResult & { type: 'snapshot' | 'updated' },
@@ -210,7 +208,7 @@ export function installActiveSessionTabsSubscription({
       if (adoptHostLayout) {
         pendingHostLayoutAdoption = false
         consumeHostLayoutAdoption(activeWorktreeId)
-        reassertRestoredActive(environmentId, activeWorktreeId, recovered, syncState)
+        reassertRestoredActive(environmentId, activeWorktreeId, recovered, restoredActiveAtEntry)
       }
       // Why here and only on an applied frame: this is the mirror's answer about the worktree. A
       // bootstrap whose create resolved without a row was parked until that answer arrived; a
