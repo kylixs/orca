@@ -170,6 +170,8 @@ function detailRouteOf(route) {
 
 /** 当前打开的详情层（项目弹框 / 主机抽屉 / 用户弹框）。 */
 let activeDetail = null
+/** 详情层通过 history.back() 关闭后，目标列表仍在层下方，hashchange 不再重绘。 */
+let pendingBackRestore = false
 
 /** 路由切换时静默移除旧详情层，不操作历史（§3.1 页面导航）。 */
 function removeActiveDetail() {
@@ -183,6 +185,7 @@ function removeActiveDetail() {
 function handleDetailClose(parent) {
   activeDetail = null
   if (window.history.state?.detail === true) {
+    pendingBackRestore = true
     window.history.back()
     return
   }
@@ -254,6 +257,11 @@ function applyRoute(route, { force = false } = {}) {
   const signature = routeSignature(route)
   if (!force && signature === appliedRoute) return
   appliedRoute = signature
+  // 关层后的 back 目标列表仍在旧的层下方：不重绘，保留弹框 opener 的焦点（U46 §3.5）。
+  if (pendingBackRestore) {
+    pendingBackRestore = false
+    if (!force) return
+  }
   updateNav(route.name)
   const render = ROUTE_RENDERERS[route.name] ?? renderWorkbench
   // 详情先完成列表加载，再按 id 打开弹框/抽屉（列表数据即存在性判据）。
@@ -3004,6 +3012,7 @@ function enterApp() {
 
 function showLogin() {
   appliedRoute = null
+  pendingBackRestore = false
   $('#view-login').hidden = false
   $('#view-app').hidden = true
 }
