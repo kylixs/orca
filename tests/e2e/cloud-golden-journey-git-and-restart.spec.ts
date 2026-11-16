@@ -16,6 +16,8 @@ import { closeElectronAppForE2E } from './helpers/electron-process-shutdown'
 import { createElectronHomeIsolation } from './helpers/electron-home-isolation'
 import { getOrcaElectronLaunchArgs } from './helpers/electron-launch-args'
 import { getE2ECompletedOnboardingProfile } from './helpers/e2e-completed-onboarding-profile'
+import { getTerminalContent } from './helpers/terminal'
+import { webBundleExposesStore } from './helpers/web-bundle-store-oracle'
 import {
   adminTokenOf,
   cloudHostEnv,
@@ -260,8 +262,7 @@ async function waitForWorkspaceFrame(page: Page): Promise<Frame> {
   await page.waitForSelector('#workspaceOverlay iframe', { timeout: 30_000 })
   await expect
     .poll(
-      async () =>
-        page.frames().some((candidate) => candidate.url().includes('/cloud-admin.html')),
+      async () => page.frames().some((candidate) => candidate.url().includes('/cloud-admin.html')),
       { timeout: 60_000, message: 'the overlay never mounted the cloud-admin workspace frame' }
     )
     .toBe(true)
@@ -336,9 +337,7 @@ test('U91 A-GIT 云端简易工作区 Git 变更面板：真实变更列表 → 
     await frame.waitForSelector('[data-testid="cloud-workspace-diff-tab"]', { timeout: 30_000 })
     await expect(frame.locator('[data-testid="cloud-workspace-diff-path"]')).toHaveText(README)
     await expect(frame.locator('[data-testid="cloud-workspace-diff-source"]')).toHaveText('工作区')
-    const sideBySideButton = frame.locator(
-      '[data-testid="cloud-workspace-diff-mode-side-by-side"]'
-    )
+    const sideBySideButton = frame.locator('[data-testid="cloud-workspace-diff-mode-side-by-side"]')
     const inlineButton = frame.locator('[data-testid="cloud-workspace-diff-mode-inline"]')
     await expect(sideBySideButton).toHaveAttribute('aria-pressed', 'true')
 
@@ -390,11 +389,7 @@ test('U91 A-GIT 云端简易工作区 Git 变更面板：真实变更列表 → 
         sideBySide: { original: `# ${PROJECT_NAME}`, modified: MODIFIED_MARKER },
         inline: { containsModified: true }
       },
-      screenshots: [
-        'a-git-changes.png',
-        'a-git-diff-side-by-side.png',
-        'a-git-diff-inline.png'
-      ]
+      screenshots: ['a-git-changes.png', 'a-git-diff-side-by-side.png', 'a-git-diff-inline.png']
     })
     await page.context().close()
   } finally {
@@ -447,10 +442,7 @@ test('U91 A-RESTART 客户端重载：持久会话自动恢复项目 + 终端重
       'a reload must restore the session, never land on the sign-in form'
     ).toBe(0)
     const afterPath = await waitForWorkspaceConnected(page.mainFrame())
-    const afterProject = await statusText(
-      page.mainFrame(),
-      'cloud-simple-workspace-status-project'
-    )
+    const afterProject = await statusText(page.mainFrame(), 'cloud-simple-workspace-status-project')
     expect(afterPath, 'the restart must reopen the same checkout').toBe(beforePath)
     expect(afterProject).toBe(PROJECT_NAME)
     // Restoration is the saved token + refresh path; a login or a second handoff
@@ -475,6 +467,377 @@ test('U91 A-RESTART 客户端重载：持久会话自动恢复项目 + 终端重
       after: { workspacePath: afterPath, project: afterProject, terminal: '实时' },
       reauthenticationCalls: reauth,
       screenshots: ['a-restart-before.png', 'a-restart-after.png']
+    })
+    await context.close()
+  } finally {
+    await browser.close()
+  }
+})
+
+/** Mints the Orca Web (not admin-embed) handoff the reload station drives. */
+async function mintOrcaWebUrl(platformUrl: string, projectId: string): Promise<string> {
+  const login = await fetch(`${platformUrl}/v1/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: DEVELOPER, password: PASSWORD, deviceName: 'u96-a8-web' })
+  })
+  expect(login.status, await login.clone().text()).toBe(200)
+  const token = readString((await login.json()) as unknown, 'accessToken') ?? ''
+  expect(token.length, 'developer login must mint a token').toBeGreaterThan(0)
+  const minted = await fetch(`${platformUrl}/v1/projects/${projectId}/web-handoff`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify({})
+  })
+  expect(minted.status, await minted.clone().text()).toBe(201)
+  const url = readString((await minted.json()) as unknown, 'url') ?? ''
+  expect(url, 'the web handoff targets web-index.html').toContain('/web-index.html')
+  return url
+}
+
+const U96_E2E_MARKER_ONE = `U96-A8-E2E-ONE-${Date.now()}`
+const U96_E2E_MARKER_TWO = `U96-A8-E2E-TWO-${Date.now()}`
+
+/** The renderer's local tab id for a host terminal surface (`web-terminal-<enc>`). */
+function localWebTabId(hostParentTabId: string): string {
+  return `web-terminal-${encodeURIComponent(hostParentTabId)}`
+}
+
+/**
+ * U96 A-8 / A1 — Orca Web page reload station.
+ *
+ * The A-RESTART station above proves the simple workspace reconnects. This one
+ * drives the real Orca Web tab surface: three live terminals are grouped into
+ * two panes through the host's own `session.tabs.move` split/move-to-group
+ * path (the U99 fix), typed into, and then the document reloads. The pass
+ * asserts what the user sees afterwards — tab count, both panes/groups, the
+ * same active tab, and each live PTY's marker text in its pane — not merely
+ * that the workspace came back.
+ */
+test('U96 A1 Orca Web 页面重载：2 组 3 标签、活动标签与活 PTY marker 恢复', async () => {
+  test.setTimeout(600_000)
+  expect(stack, 'stack must have started').toBeTruthy()
+  // Why: the setup drives the host through the page's own preload RPC and reads
+  // window.__store, both of which only exist in the instrumented e2e bundle.
+  expect(
+    webBundleExposesStore(path.join(process.cwd(), 'out', 'web')),
+    'out/web lacks the instrumented-build marker — rebuild with: VITE_EXPOSE_STORE=true pnpm run build:web'
+  ).toBe(true)
+  const session = stack!
+  const browser = await launchBrowser()
+  try {
+    const context = await newProfile(browser)
+    const page = await context.newPage()
+    await page.goto(await mintOrcaWebUrl(session.platform.url, session.projectId), {
+      waitUntil: 'domcontentloaded'
+    })
+    await page.waitForSelector('.app-layout', { timeout: WORKSPACE_TIMEOUT_MS })
+
+    // The cloud bootstrap registers the project and activates the host-managed
+    // per-user checkout; the tab work starts only once that worktree exists.
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() => {
+            const state = window.__store?.getState?.()
+            return {
+              repos: state?.repos?.length ?? 0,
+              activeWorktreeId: state?.activeWorktreeId ?? null
+            }
+          }),
+        { timeout: WORKSPACE_TIMEOUT_MS, message: 'the Orca Web checkout never activated' }
+      )
+      .toEqual({ repos: 1, activeWorktreeId: expect.any(String) })
+
+    const setup = await page.evaluate(
+      async ({ markerOne, markerTwo }) => {
+        const state = window.__store?.getState?.()
+        if (!state?.activeWorktreeId) {
+          throw new Error('no active worktree to drive')
+        }
+        const environmentId = state.runtimeEnvironments?.[0]?.id
+        if (!environmentId) {
+          throw new Error('no runtime environment to drive')
+        }
+        const worktreeId = state.activeWorktreeId
+        const worktree = `id:${worktreeId}`
+        const call = async (method: string, params: Record<string, unknown>): Promise<unknown> => {
+          const reply = (await window.api.runtimeEnvironments.call({
+            selector: environmentId,
+            method,
+            params,
+            timeoutMs: 60_000
+          })) as
+            | { ok: true; result: unknown }
+            | { ok: false; error: { code: string; message: string } }
+          if (!reply.ok) {
+            throw new Error(`${method}: ${reply.error.code} ${reply.error.message}`)
+          }
+          return reply.result
+        }
+        type Result = Record<string, unknown>
+        const field = (source: unknown, key: string): unknown =>
+          source !== null && typeof source === 'object' ? Reflect.get(source, key) : undefined
+        const text = (source: unknown, key: string): string | null => {
+          const value = field(source, key)
+          return typeof value === 'string' ? value : null
+        }
+        const list = async (): Promise<Result> =>
+          (await call('session.tabs.list', { worktree })) as Result
+
+        const before = await list()
+        const beforeIds = new Set(
+          ((field(before, 'tabs') as unknown[]) ?? [])
+            .map((tab) => text(tab, 'id'))
+            .filter((id): id is string => id !== null)
+        )
+        const created: { handle: string; parentTabId: string; surfaceId: string }[] = []
+        for (const index of [1, 2, 3]) {
+          const result = (await call('terminal.create', {
+            worktree,
+            title: `U96 A8 e2e terminal ${index}`,
+            tabId: `u96-a8-e2e-tab-${index}`,
+            leafId: `u96-a8-e2e-leaf-${index}`
+          })) as Result
+          const terminal = field(result, 'terminal')
+          const handle = text(terminal, 'handle')
+          const parentTabId = text(terminal, 'tabId')
+          if (!handle || !parentTabId) {
+            throw new Error(`terminal.create ${index} returned no handle/tabId`)
+          }
+          created.push({ handle, parentTabId, surfaceId: '' })
+        }
+        const afterCreate = await list()
+        const fresh = ((field(afterCreate, 'tabs') as unknown[]) ?? []).filter((tab) => {
+          const id = text(tab, 'id')
+          return id !== null && !beforeIds.has(id)
+        })
+        for (const entry of created) {
+          const surface = fresh.find((tab) => text(tab, 'id')?.startsWith(`${entry.parentTabId}::`))
+          const surfaceId = surface ? text(surface, 'id') : null
+          if (!surfaceId) {
+            throw new Error(`no surface for created tab ${entry.parentTabId}`)
+          }
+          entry.surfaceId = surfaceId
+        }
+        const groups = (field(afterCreate, 'tabGroups') as unknown[]) ?? []
+        const firstGroupId = text(groups[0], 'id')
+        if (!firstGroupId) {
+          throw new Error('the created tabs have no group to split from')
+        }
+
+        // Group 2: split the second terminal right, then move the third in.
+        await call('session.tabs.move', {
+          kind: 'split',
+          worktree,
+          tabId: created[1]!.surfaceId,
+          targetGroupId: firstGroupId,
+          splitDirection: 'right'
+        })
+        const afterSplit = await list()
+        const secondGroup = ((field(afterSplit, 'tabGroups') as unknown[]) ?? []).find(
+          (group) => text(group, 'id') !== firstGroupId
+        )
+        const secondGroupId = text(secondGroup, 'id')
+        if (!secondGroupId) {
+          throw new Error('the split created no second group')
+        }
+        await call('session.tabs.move', {
+          kind: 'move-to-group',
+          worktree,
+          tabId: created[2]!.surfaceId,
+          targetGroupId: secondGroupId
+        })
+        await call('session.tabs.activate', {
+          worktree,
+          tabId: created[1]!.surfaceId
+        })
+        await call('terminal.send', {
+          terminal: created[0]!.handle,
+          text: `printf '${markerOne}\\n'\r`
+        })
+        await call('terminal.send', {
+          terminal: created[1]!.handle,
+          text: `printf '${markerTwo}\\n'\r`
+        })
+
+        const beforeReload = await list()
+        const beforeTabs = ((field(beforeReload, 'tabs') as unknown[]) ?? []).map((tab) => ({
+          id: text(tab, 'id'),
+          title: text(tab, 'title')
+        }))
+        const beforeGroups = ((field(beforeReload, 'tabGroups') as unknown[]) ?? []).map(
+          (group) => ({
+            id: text(group, 'id'),
+            tabOrder: (field(group, 'tabOrder') as string[]) ?? []
+          })
+        )
+        return {
+          worktreeId,
+          environmentId,
+          created,
+          beforeTabs,
+          beforeGroups,
+          activeHostTabId: text(beforeReload, 'activeTabId'),
+          activeGroupId: text(beforeReload, 'activeGroupId')
+        }
+      },
+      { markerOne: U96_E2E_MARKER_ONE, markerTwo: U96_E2E_MARKER_TWO }
+    )
+
+    const expectedTabCount = setup.beforeTabs.length
+    expect(setup.beforeGroups.length, 'two groups exist before the reload').toBe(2)
+    expect(setup.activeHostTabId, 'the split-group terminal is the active tab').toBe(
+      setup.created[1]!.surfaceId
+    )
+    const activeLocalId = localWebTabId(setup.created[1]!.parentTabId)
+    const firstCreatedLocalId = localWebTabId(setup.created[0]!.parentTabId)
+
+    // The mirror publishes the host inventory into the renderer; wait for the
+    // user-visible strip to show both panes before the reload under test.
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(
+            ({ worktreeId, activeTabId }) => {
+              const state = window.__store?.getState?.()
+              const tabs = state?.tabsByWorktree?.[worktreeId] ?? []
+              const groups = state?.groupsByWorktree?.[worktreeId] ?? []
+              return {
+                tabs: tabs.length,
+                groups: groups.length,
+                active: state?.activeTabIdByWorktree?.[worktreeId] ?? null,
+                domTabs: document.querySelectorAll('[data-testid="sortable-tab"]').length,
+                domStrips: document.querySelectorAll('.terminal-tab-strip').length,
+                domActive:
+                  document
+                    .querySelector('[data-testid="sortable-tab"][data-active="true"]')
+                    ?.getAttribute('data-tab-id') ?? null,
+                expectedActive: activeTabId
+              }
+            },
+            { worktreeId: setup.worktreeId, activeTabId: activeLocalId }
+          ),
+        { timeout: 120_000, message: 'the split/move never reached the Orca Web tab strip' }
+      )
+      .toEqual({
+        tabs: expectedTabCount,
+        groups: 2,
+        active: activeLocalId,
+        domTabs: expectedTabCount,
+        domStrips: 2,
+        domActive: activeLocalId,
+        expectedActive: activeLocalId
+      })
+    await page.screenshot({ path: path.join(EVIDENCE_DIR, 'u96-a1-before-reload.png') })
+
+    const requests: { method: string; path: string }[] = []
+    page.on('request', (request) => {
+      const parsed = new URL(request.url())
+      if (parsed.pathname.startsWith('/v1/')) {
+        requests.push({ method: request.method(), path: parsed.pathname })
+      }
+    })
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await page.waitForSelector('.app-layout', { timeout: WORKSPACE_TIMEOUT_MS })
+
+    // What the user sees after the reload: same checkout, same three-terminal
+    // layout in two panes, the same tab selected.
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(
+            ({ worktreeId, activeTabId }) => {
+              const state = window.__store?.getState?.()
+              const tabs = state?.tabsByWorktree?.[worktreeId] ?? []
+              return {
+                repos: state?.repos?.length ?? 0,
+                tabs: tabs.length,
+                groups: (state?.groupsByWorktree?.[worktreeId] ?? []).length,
+                active: state?.activeTabIdByWorktree?.[worktreeId] ?? null,
+                domTabs: document.querySelectorAll('[data-testid="sortable-tab"]').length,
+                domStrips: document.querySelectorAll('.terminal-tab-strip').length,
+                domActive:
+                  document
+                    .querySelector('[data-testid="sortable-tab"][data-active="true"]')
+                    ?.getAttribute('data-tab-id') ?? null,
+                expectedActive: activeTabId,
+                signIn: document.querySelector('#web-cloud-api-url') !== null
+              }
+            },
+            { worktreeId: setup.worktreeId, activeTabId: activeLocalId }
+          ),
+        { timeout: 180_000, message: 'the reload did not restore the tab group layout' }
+      )
+      .toEqual({
+        repos: 1,
+        tabs: expectedTabCount,
+        groups: 2,
+        active: activeLocalId,
+        domTabs: expectedTabCount,
+        domStrips: 2,
+        domActive: activeLocalId,
+        expectedActive: activeLocalId,
+        signIn: false
+      })
+
+    // Group membership, not just the count: each pane keeps its own tabs.
+    const restoredGroups = await page.evaluate(
+      ({ worktreeId }) => {
+        const state = window.__store?.getState?.()
+        return (state?.groupsByWorktree?.[worktreeId] ?? []).map((group) => [...group.tabOrder])
+      },
+      { worktreeId: setup.worktreeId }
+    )
+    expect(restoredGroups.length).toBe(2)
+    expect(
+      restoredGroups.every((order) => order.length > 0),
+      'no group lost its tabs'
+    ).toBe(true)
+
+    const reauth = requests.filter(
+      (call) => call.path === '/v1/auth/login' || call.path === '/v1/web/handoff'
+    )
+    expect(reauth, 'a reload must not re-authenticate by login or handoff').toEqual([])
+
+    // Live PTY content: select each restored terminal and read its pane. The
+    // marker exists in no client buffer — the host stream replays it.
+    const readMarker = async (localTabId: string, marker: string): Promise<void> => {
+      await page.locator(`[data-testid="sortable-tab"][data-tab-id="${localTabId}"]`).click()
+      await expect
+        .poll(async () => getTerminalContent(page, 10_000), {
+          timeout: 120_000,
+          message: `the live PTY marker never rendered in the restored pane ${localTabId}`
+        })
+        .toContain(marker)
+    }
+    await readMarker(firstCreatedLocalId, U96_E2E_MARKER_ONE)
+    await readMarker(activeLocalId, U96_E2E_MARKER_TWO)
+    await page.screenshot({ path: path.join(EVIDENCE_DIR, 'u96-a1-after-reload.png') })
+
+    writeEvidence('u96-a1-orca-web-reload.json', {
+      station: 'U96-A1',
+      entry: 'web-index.html?api=<platform>#handoff=<code>',
+      markerOne: U96_E2E_MARKER_ONE,
+      markerTwo: U96_E2E_MARKER_TWO,
+      worktreeId: setup.worktreeId,
+      createdHostTabIds: setup.created.map((entry) => entry.parentTabId),
+      before: {
+        tabCount: expectedTabCount,
+        groupCount: setup.beforeGroups.length,
+        groups: setup.beforeGroups,
+        activeTabId: setup.activeHostTabId,
+        activeGroupId: setup.activeGroupId
+      },
+      after: {
+        tabCount: expectedTabCount,
+        groupCount: restoredGroups.length,
+        groups: restoredGroups,
+        activeLocalTabId: activeLocalId,
+        markersVisible: [U96_E2E_MARKER_ONE, U96_E2E_MARKER_TWO],
+        reauthenticationCalls: reauth
+      },
+      screenshots: ['u96-a1-before-reload.png', 'u96-a1-after-reload.png']
     })
     await context.close()
   } finally {

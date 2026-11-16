@@ -7,6 +7,7 @@ import {
   recordWebCloudSessionCapabilities,
   resetWebCloudSessionCapabilities
 } from '../../web/web-cloud-session-capabilities'
+import { refreshWebRuntimeSessionTabsSnapshot } from '../web-runtime-session-snapshot'
 import { installActiveSessionTabsSubscription } from './active-session-subscription'
 import { installGlobalSessionTabsSubscriptions } from './global-session-subscription'
 
@@ -118,5 +119,25 @@ describe('cloud session-tabs capability gate (U96)', () => {
     installActive()()
 
     expect(subscribedMethods()).toEqual([])
+  })
+
+  it('makes zero restore RPCs on an old host — no list, no orphan probe, no warnings', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      // Both subscription installers run first: an old host must not even open
+      // the streams that would later carry the restore chain.
+      installGlobal()()
+      installActive()()
+      await refreshWebRuntimeSessionTabsSnapshot(CLOUD_ENVIRONMENT_ID, 'wt-u96')
+
+      // Why one count covers A11: the orphan recovery (`terminal.list` /
+      // `terminal.adoptOrphans`) only runs downstream of this session.tabs.list,
+      // so zero total calls proves all three families stayed silent.
+      expect(call).not.toHaveBeenCalled()
+      expect(subscribedMethods()).toEqual([])
+      expect(warn).not.toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
   })
 })
