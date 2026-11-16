@@ -3677,6 +3677,14 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **U158 审计 PASS → U159 登记并修复**（`b6067e2520b`）：BrowserTab 关闭、编辑器关闭、折叠按钮同源修复；639 绿、判别力三路。
 - **U159 审计 + 含 U159 的最终重建复跑在途**（目标 `conclusive=true`）。
 
+### 2026-11-17 03:4x 轮：final2 conclusive=true；quick opened 稳定红 → U161
+
+- **final2（含 U159 + 稳定门，`run-final2-20261117-033250`）**：`conclusive=true`；20 绿 / **5 红** / 0 INVALID / 0 UNSTABLE；quick closed 5/5 绿、D1 tap 5/5、race 25/25 绿。
+- **新稳定缺陷 U161**：创建后宿主 projection/persisted=新 tab（gate ~1.0–1.1s 对齐、ack active=新 tab），客户端 DOM/store 5s 内始终=旧 tab → `client-ahead-host`。已登记并派事件级诊断（T1 trace + store 快照 + focus intent/applyOptions）。
+- **稳定门审计**：有条件（P2-2 门对 projection 滞后也等待可能掩盖自愈；P2-1 env NaN），已派收窄（只等 persisted；门初始状态入证据；0=关门）。
+- **U159 审计 PASS → U160（P3）**：`ClientHostedBrowserTab` 关闭按钮同源残留，未证实用户可见。
+- **U157 审计 PASS**；U158 审计 PASS。
+
 ### 四通道并发执行（启动，2026-11-14）
 
 按细粒度拆分与三权分立纪律并发起跑：通道② **W6a**（中继浏览器模式，relay.ts 域）、通道③ **W10**（客户端零 env 登录，src/main+renderer 登录域）、通道④ **W5a**（详情页终端组件，cloud-admin 域）三个实现代理并行；通道① 等在途 W2（QA 修复）完成后接 W8。每令完成→独立测试代理→独立审计代理→主会话关闭放行下一个。
