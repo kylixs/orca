@@ -15,7 +15,7 @@
 | 令 | 内容 | 依赖 | 状态 | 验收要点 |
 | --- | --- | --- | --- | --- |
 | A-1 | 宿主策略表放行 `session.tabs.*` 只读/恢复子集 + `workspace.info.capabilities` 加性字段 | — | **✅ 完成** `87e07c366be`（120 例绿；取证：capability 返回、tab 进 inventory、exit/close 退役；**负发现=headless listAll 20s 超时**） | 云票据下方法放行；listAll 按 workspaceRoot fail-closed；旧宿主零噪声 |
-| A-1b | **headless census 回落**：无 authoritative 窗口时 inventory 从 legacy `listAllMobileSessionTabs`（=workspaceSession 持久源，A-6 同源）构建，不等待 graph publication epoch | A-1 | 放行中 | headless 云宿主 listAll/subscribeAll 不再挂 20s；有窗口宿主行为不变 |
+| A-1b | **headless census 回落**：无 authoritative 窗口时 inventory 从 legacy `listAllMobileSessionTabs`（=workspaceSession 持久源，A-6 同源）构建，不等待 graph publication epoch | A-1 | **✅ 完成** `04771583922`（实测 3/2/3/1ms，原 >20s；有窗口语义零变） | headless 云宿主 listAll/subscribeAll 不再挂 20s；有窗口宿主行为不变 |
 | A-4 | 客户端 capability 谓词+三处云跳过点条件取消 | A-1（契约层并行可先做） | **✅ 完成** `18ecede0a60`（谓词 shouldMirrorCloudSessionTabs；新宿 20 例+旧宿主 0 调用断言） | capability 含→走恢复链；缺→保持现状（零 RPC 拒绝） |
 | A-6 | 宿主持久化缺口：快照写 `workspaceSession.tabsByWorktree`（幂等追加/更新，close 退役） | — | **✅ 完成** `e4c27ebf699`（persistPerPublish 幂等；4 新例含重启重载恢复；24 例回归绿） | 宿主重启后 loader 可恢复 tab 行；关闭不复活 |
 | A-2 | 云 inventory 过滤（`projectCloudSessionTabsInventory`）+ `session.tabs` 作用域 | A-1 | 排队 | 越界 worktree 帧丢弃；多项目隔离 |
