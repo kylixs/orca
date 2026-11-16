@@ -531,8 +531,8 @@ GET /v1/projects/{id}?includeArchived=1
 | W1 ✅ `c5c11515cc3`（9/9+71/71） | 完成 | `apps/api/src/server.ts`、`test/e2e/project-archive.e2e.test.ts` | G06 opt-in 只读详情守卫 + 服务端 7 条断言（200/404/权限/仍拒绝写） | 新用例绿；既有 archive 套件绿；`pnpm tc:node` |
 | W2 ✅ `29e02c55842`（4/4+39/39） | 完成 | `apps/web/app.js` | 数据层：`state.archivedProjects`、`loadProjects({includeArchived})`、详情路由查找合并、`openDisabledReason` 补 provisioning/failed | 工作台/设置调用零变化；直连归档详情的存在性判断可命中 |
 | W3 ✅ `49656b8ab40`（8/8+16/16） | 完成 | `apps/web/app.js` | 项目页：admin 归档分组 `<details>`、`已归档 N` chip、搜索/过滤语义、空态 | 桌面/移动 DOM 分组正确；workbench 不发 includeArchived |
-| W4 🔄 排队（U148 修复后） | 20m | `apps/web/app.js` | 归档/恢复入口（行、卡片、详情页脚）+ `dialog()` 确认 + 请求/刷新/toast/错误映射 | 两个确认文案逐字；取消 0 请求；成功/失败状态正确 |
-| W5 | 18m | `apps/web/app.js` | 归档详情只读：横幅、隐藏权限 tab、跳过 grants、opt-in 请求、旧平台降级、恢复后关闭 | 无打开/无写请求；404 降级文案正确 |
+| W4 ✅ `e2cddadc888`（7/7+41/41+16/16） | 完成 | `apps/web/app.js` | 归档/恢复入口（行、卡片、详情页脚）+ `dialog()` 确认 + 请求/刷新/toast/错误映射 | 两个确认文案逐字；取消 0 请求；成功/失败状态正确 |
+| W5 🔄 进行中 | 18m | `apps/web/app.js` | 归档详情只读：横幅、隐藏权限 tab、跳过 grants、opt-in 请求、旧平台降级、恢复后关闭 | 无打开/无写请求；404 降级文案正确 |
 | W6 | 15m | `apps/web/styles.css` | 归档分组、summary、危险按钮间距、移动卡片操作、sheet 横幅/页脚 44px | 700px 与桌面截图核对；无新增颜色/字号 |
 | W7 | 20m | `apps/web/app.js` | G27 全量策略表：三态 select、来源徽标、统计、`expectedVersion`、行级 409 保留选择+刷新重试、失败回滚 | 跟随全局项目可新建覆盖；409 不丢选择 |
 | W8 | 15m | `apps/web/styles.css` | G27 桌面表格与 ≤700 卡片、select 44px/16px、冲突提示布局 | 移动端单列可操作；无横向溢出 |
