@@ -327,13 +327,16 @@ export default function SortableTab({
             )}
             type="button"
             data-tab-close-button="true"
+            // Why: a focused close button hands the gesture to the group's onFocusCapture (focusGroup store write + re-render), and the click then lands nowhere; keep DOM focus off the button.
             onPointerDown={(e) => {
               if (e.button === 0) {
+                e.preventDefault()
                 e.stopPropagation()
               }
             }}
             onMouseDown={(e) => {
               if (e.button === 0) {
+                e.preventDefault()
                 e.stopPropagation()
               }
             }}
