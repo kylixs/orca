@@ -84,15 +84,17 @@ export async function checkCloudSessionTabsScope(args: {
   if (tabId === null) {
     return { ok: false, reason: 'tab_required', message: 'This call must name a tab.' }
   }
-  const list = args.runtime.listMobileSessionTabs
-  if (!list) {
+  if (!args.runtime.listMobileSessionTabs) {
     return {
       ok: false,
       reason: 'tab_unverifiable',
       message: 'This host cannot verify the tab before the operation.'
     }
   }
-  return assertCloudSessionTabVisible(await list(selector), tabId)
+  // Why: call through the runtime — extracting the method drops its `this`, which
+  // made the check throw so the cloud RPC never answered (client saw RPC_TIMEOUT).
+  const listed = await args.runtime.listMobileSessionTabs(selector)
+  return assertCloudSessionTabVisible(listed, tabId)
 }
 
 /** A tab reachable through a direct call must be one the worktree projects. */

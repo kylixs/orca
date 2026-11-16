@@ -176,4 +176,31 @@ describe('session.tabs 作用域', () => {
       })
     ).toMatchObject({ ok: false, reason: 'tab_unverifiable' })
   })
+
+  it('原型方法形式的 listMobileSessionTabs 以 runtime 为接收者调用', async () => {
+    // Why: the real runtime lists tabs through a prototype method that reads
+    // `this`; a detached call threw and the RPC hung (U99 session.tabs.move).
+    class PrototypeRuntime {
+      resolveWorktreeRootPath = runtime.resolveWorktreeRootPath
+      resolveRepoRootPath = runtime.resolveRepoRootPath
+      async listMobileSessionTabs(selector: string): Promise<RuntimeMobileSessionTabsResult> {
+        return this.snapshotFor(selector)
+      }
+      snapshotFor(selector: string): RuntimeMobileSessionTabsResult {
+        const found = snapshots[selector]
+        if (found === undefined) {
+          throw new Error('unknown worktree')
+        }
+        return found
+      }
+    }
+    expect(
+      await checkCloudRpcPath({
+        runtime: new PrototypeRuntime(),
+        roots,
+        method: 'session.tabs.move',
+        params: { worktree: `path:${workspaceRoot}`, tabId: 'tab-own' }
+      })
+    ).toEqual({ ok: true })
+  })
 })
