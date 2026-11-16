@@ -145,6 +145,10 @@ export class OrcaRuntimeWithRuntimeId {
       rendererVersion: number
       rendererTabCount: number
       rendererTabIdentityKeys: ReadonlySet<string>
+      // Why: moves embed group ids, so a renderer whose accepted frame has a
+      // different group layout must not receive them — its write-back would
+      // overwrite the host's newer (e.g. headlessly split) layout.
+      rendererTabGroupLayoutSignature: string
     }
   >()
 

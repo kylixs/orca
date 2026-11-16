@@ -4,6 +4,7 @@ import { OrcaRuntimeWithWriteOrchestrationPointerPty } from './orca-runtime-writ
 import type { RuntimeMobileSessionTabsSnapshot } from '../../shared/runtime-types'
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import { getMobileSessionSnapshotTabIdentityKeys } from './mobile-session-tab-merge'
+import { getMobileSessionTabGroupLayoutSignature } from './mobile-session-tab-group-layout-signature'
 
 export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOrchestrationPointerPty {
   // Returns the worktrees whose stored snapshot object changed during this
@@ -99,6 +100,12 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
       if (existing) {
         nextWorktrees.add(worktreeId)
       }
+      // Why: a headless-authored layout is host-owned; a renderer that merely
+      // withheld this worktree never saw it. Asking for a republish would only
+      // replay the renderer's stale frame and collapse the host's groups.
+      if (existing && this.isHeadlessBuiltMobileSessionPublicationBase(existing.publicationEpoch)) {
+        continue
+      }
       // Why: a fenced frame stays "published" renderer-side; asking for a
       // republish would only be fenced again on every sync.
       if (!existing && this.removedMobileSessionWorktreeIds.get(worktreeId)?.rejectedPublication) {
@@ -159,7 +166,27 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
       const launchDraftFencedSnapshot = this.nativeChatDraftResolutions.applyFence(snapshot)
       const fencedSnapshot = this.applyMobileSessionRetirementFences(launchDraftFencedSnapshot)
       this.releaseRuntimeSessionOwnershipForRendererRetiredTabs(fencedSnapshot, existing)
-      const nextSnapshot = this.mergePreservedHeadlessMobileSessionTabs(fencedSnapshot, existing)
+      const mergedSnapshot = this.mergePreservedHeadlessMobileSessionTabs(fencedSnapshot, existing)
+      // Why: a headless-authored layout stays host-owned until the renderer
+      // authors a DIFFERENT one. Its content-only republish (same group ids and
+      // tree as its last accepted frame) must not write the old groups back.
+      const preserveHostLayout =
+        existing !== undefined &&
+        accepted !== undefined &&
+        this.isHeadlessBuiltMobileSessionPublicationBase(existing.publicationEpoch) &&
+        getMobileSessionTabGroupLayoutSignature(snapshot) ===
+          accepted.rendererTabGroupLayoutSignature
+      const nextSnapshot = preserveHostLayout
+        ? {
+            ...mergedSnapshot,
+            // Keep host ownership of the layout: the renderer still has to
+            // author a changed tree before its groups take over.
+            publicationEpoch: existing.publicationEpoch,
+            tabGroups: existing.tabGroups,
+            tabGroupLayout: existing.tabGroupLayout,
+            activeGroupId: existing.activeGroupId
+          }
+        : mergedSnapshot
       // Why: clients drop same-epoch frames whose version isn't strictly newer,
       // and main-local touches may already have emitted a higher version than
       // the renderer's counter — keep the stored version strictly monotonic so
@@ -179,7 +206,8 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
         rendererTabCount: fencedSnapshot.tabs.length,
         rendererTabIdentityKeys: new Set(
           fencedSnapshot.tabs.flatMap((tab) => getMobileSessionSnapshotTabIdentityKeys(tab))
-        )
+        ),
+        rendererTabGroupLayoutSignature: getMobileSessionTabGroupLayoutSignature(snapshot)
       })
     }
     for (const [worktreeId, existing] of [...this.mobileSessionTabsByWorktree.entries()]) {

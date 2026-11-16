@@ -1,16 +1,18 @@
 import { describe, expect, it, vi } from 'vitest'
 import { OrcaRuntimeService } from '../../orca-runtime'
 import type { RuntimeMobileSessionTabsSnapshot } from '../../../../shared/runtime-types'
+import { getMobileSessionTabGroupLayoutSignature } from '../../mobile-session-tab-group-layout-signature'
 
 function setMobileSessionSnapshot(
   runtime: OrcaRuntimeService,
   snapshot: RuntimeMobileSessionTabsSnapshot
-): void {
+): RuntimeMobileSessionTabsSnapshot {
   ;(
     runtime as unknown as {
       mobileSessionTabsByWorktree: Map<string, RuntimeMobileSessionTabsSnapshot>
     }
   ).mobileSessionTabsByWorktree.set(snapshot.worktree, snapshot)
+  return snapshot
 }
 
 function getMobileSessionSnapshot(
@@ -24,8 +26,13 @@ function getMobileSessionSnapshot(
   ).mobileSessionTabsByWorktree.get(worktree)
 }
 
-function markRendererPublished(runtime: OrcaRuntimeService, worktree: string): void {
-  // A forwarded move is only reachable for a worktree the renderer published.
+function markRendererPublished(
+  runtime: OrcaRuntimeService,
+  worktree: string,
+  layout: Pick<RuntimeMobileSessionTabsSnapshot, 'tabGroups' | 'tabGroupLayout'>
+): void {
+  // A forwarded move is only reachable for a worktree the renderer published
+  // and only while that publication matches the host's group layout.
   ;(
     runtime as unknown as {
       acceptedRendererMobileSnapshotByWorktree: Map<string, unknown>
@@ -34,7 +41,8 @@ function markRendererPublished(runtime: OrcaRuntimeService, worktree: string): v
     publicationEpoch: 'epoch-1',
     rendererVersion: 1,
     rendererTabCount: 0,
-    rendererTabIdentityKeys: new Set<string>()
+    rendererTabIdentityKeys: new Set<string>(),
+    rendererTabGroupLayoutSignature: getMobileSessionTabGroupLayoutSignature(layout)
   })
 }
 
@@ -171,8 +179,7 @@ describe('session tab move validation', () => {
     const runtime = new OrcaRuntimeService()
     const moveSessionTab = vi.fn()
     runtime.setNotifier({ moveSessionTab } as never)
-    markRendererPublished(runtime, 'wt-1')
-    setMobileSessionSnapshot(runtime, {
+    const published = setMobileSessionSnapshot(runtime, {
       worktree: 'wt-1',
       publicationEpoch: 'epoch-1',
       snapshotVersion: 1,
@@ -208,6 +215,7 @@ describe('session tab move validation', () => {
         }
       ]
     })
+    markRendererPublished(runtime, 'wt-1', published)
 
     await runtime.moveMobileSessionTab('id:wt-1', {
       kind: 'reorder',
@@ -228,7 +236,6 @@ describe('session tab move validation', () => {
     const runtime = new OrcaRuntimeService()
     const moveSessionTab = vi.fn()
     runtime.setNotifier({ moveSessionTab } as never)
-    markRendererPublished(runtime, 'wt-1')
     runtime.setAgentBrowserBridge({
       tabList: vi.fn(() => ({
         tabs: [
@@ -240,7 +247,7 @@ describe('session tab move validation', () => {
         ]
       }))
     } as never)
-    setMobileSessionSnapshot(runtime, {
+    const published = setMobileSessionSnapshot(runtime, {
       worktree: 'wt-1',
       publicationEpoch: 'epoch-1',
       snapshotVersion: 1,
@@ -270,6 +277,7 @@ describe('session tab move validation', () => {
         })
       ]
     })
+    markRendererPublished(runtime, 'wt-1', published)
 
     await expect(
       runtime.moveMobileSessionTab('id:wt-1', {
@@ -292,11 +300,10 @@ describe('session tab move validation', () => {
     const runtime = new OrcaRuntimeService()
     const moveSessionTab = vi.fn()
     runtime.setNotifier({ moveSessionTab } as never)
-    markRendererPublished(runtime, 'wt-1')
     runtime.setAgentBrowserBridge({
       tabList: vi.fn(() => ({ tabs: [] }))
     } as never)
-    setMobileSessionSnapshot(runtime, {
+    const published = setMobileSessionSnapshot(runtime, {
       worktree: 'wt-1',
       publicationEpoch: 'epoch-1',
       snapshotVersion: 1,
@@ -317,6 +324,7 @@ describe('session tab move validation', () => {
         })
       ]
     })
+    markRendererPublished(runtime, 'wt-1', published)
 
     await expect(
       runtime.moveMobileSessionTab('id:wt-1', {
@@ -333,13 +341,12 @@ describe('session tab move validation', () => {
     const runtime = new OrcaRuntimeService()
     const moveSessionTab = vi.fn()
     runtime.setNotifier({ moveSessionTab } as never)
-    markRendererPublished(runtime, 'wt-1')
     runtime.setAgentBrowserBridge({
       tabList: vi.fn(() => ({
         tabs: [{ browserPageId: 'page-live', title: 'Live Browser', url: 'https://example.test' }]
       }))
     } as never)
-    setMobileSessionSnapshot(runtime, {
+    const published = setMobileSessionSnapshot(runtime, {
       worktree: 'wt-1',
       publicationEpoch: 'epoch-1',
       snapshotVersion: 1,
@@ -360,6 +367,7 @@ describe('session tab move validation', () => {
         })
       ]
     })
+    markRendererPublished(runtime, 'wt-1', published)
 
     await expect(
       runtime.moveMobileSessionTab('id:wt-1', {

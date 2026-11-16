@@ -10,6 +10,7 @@ import { parseAppSshPtyId } from '../../shared/ssh-pty-id'
 import { buildHeadlessMobileSessionTabGroups } from './mobile-session-layout-projection'
 import { collectTabGroupLayoutGroupIds } from '../../shared/workspace-layout/tab-group-moves'
 import { appendRetiredTerminalSurfaceProofs } from './mobile-session-terminal-retirement-proof'
+import { getMobileSessionTabGroupLayoutSignature } from './mobile-session-tab-group-layout-signature'
 import type { RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 import type { TerminalPaneLayoutNode } from '../../shared/terminal-tab-types'
 import type { RuntimeSessionTabCloseReason } from '../../shared/runtime-session-contracts'
@@ -142,7 +143,7 @@ export class OrcaRuntimeWithCloseHeadlessMobileTerminalTab extends OrcaRuntimeWi
     }
     if (
       !this.notifier?.moveSessionTab ||
-      !this.hasAcceptedRendererMobileSessionPublication(worktreeId)
+      !this.acceptedRendererMobileSessionLayoutMatchesHost(worktreeId, snapshot)
     ) {
       // Why: a window that never published this worktree has no store entry to
       // drop, so forwarding there is a silent no-op; the host must apply it.
@@ -216,10 +217,20 @@ export class OrcaRuntimeWithCloseHeadlessMobileTerminalTab extends OrcaRuntimeWi
     }
   }
 
-  // Why: only a renderer that published this worktree owns a store entry the
-  // forwarded move can drop; request/response then confirms it actually applied.
-  protected hasAcceptedRendererMobileSessionPublication(worktreeId: string): boolean {
-    return this.acceptedRendererMobileSnapshotByWorktree.has(worktreeId)
+  // Why: only a renderer whose accepted snapshot still describes the host's
+  // current group layout owns the groups the forwarded move names. A stale
+  // renderer (e.g. one that never saw a headless split) would apply the move to
+  // its older single-group layout and publish that back, collapsing the split.
+  protected acceptedRendererMobileSessionLayoutMatchesHost(
+    worktreeId: string,
+    hostSnapshot: RuntimeMobileSessionTabsSnapshot
+  ): boolean {
+    const accepted = this.acceptedRendererMobileSnapshotByWorktree.get(worktreeId)
+    return (
+      accepted !== undefined &&
+      accepted.rendererTabGroupLayoutSignature ===
+        getMobileSessionTabGroupLayoutSignature(hostSnapshot)
+    )
   }
 
   // Why: a group only exists while it holds a tab AND is referenced by the tree;
