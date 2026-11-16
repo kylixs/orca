@@ -147,6 +147,32 @@ async function deniedEvents(eventType: string): Promise<AuditEvent[]> {
   return res.body.events as AuditEvent[]
 }
 
+async function successEvents(eventType: string): Promise<AuditEvent[]> {
+  const res = await api(`/v1/audit/events?eventType=${eventType}&result=success&limit=200`)
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  return res.body.events as AuditEvent[]
+}
+
+async function userRevocations(): Promise<{ id: string; since: number }[]> {
+  const res = await fetch(`${service.url}/v1/internal/revocations`, {
+    headers: { 'x-internal-token': 'aa2-internal-token' }
+  })
+  assert.equal(res.status, 200)
+  return ((await res.json()) as { users: { id: string; since: number }[] }).users
+}
+
+async function newHost(name: string): Promise<string> {
+  const host = await registerHost({
+    apiUrl: service.url,
+    adminToken,
+    name,
+    directAddr: '127.0.0.1:7',
+    relayTarget: '127.0.0.1:7',
+    projectsRoot: `/srv/${name}`
+  })
+  return host.hostId
+}
+
 before(async () => {
   service = await spawnService(
     'apps/api/src/server.ts',
@@ -236,9 +262,7 @@ test('AA2 授权写入：组/用户行、位校验、组名校验，全量替换
   assert.equal(invalid.code, 'HOST_GRANT_PERMISSION_INVALID')
   assert.deepEqual(await hostGrants(restrictedHostId), [], 'a bad bit stores nothing')
 
-  const typo = await putHostGrant(adminToken, restrictedHostId, 'group', 'team-typo', [
-    'provision'
-  ])
+  const typo = await putHostGrant(adminToken, restrictedHostId, 'group', 'team-typo', ['provision'])
   assert.equal(typo.status, 400)
   assert.equal(typo.code, 'GROUP_NOT_FOUND')
   assert.deepEqual(await hostGrants(restrictedHostId), [])
@@ -263,7 +287,10 @@ test('AA2 授权写入：组/用户行、位校验、组名校验，全量替换
   // Whole-row replacement: an empty array deletes exactly that subject's row.
   const cleared = await putHostGrant(adminToken, restrictedHostId, 'group', 'team-payment', [])
   assert.equal(cleared.status, 200)
-  assert.equal((await hostGrants(restrictedHostId)).some((row) => row.username === 'lisi'), true)
+  assert.equal(
+    (await hostGrants(restrictedHostId)).some((row) => row.username === 'lisi'),
+    true
+  )
   // Re-grant team-payment provision so the group path stays covered below.
   assert.equal(
     (await putHostGrant(adminToken, restrictedHostId, 'group', 'team-payment', ['provision']))
@@ -416,9 +443,8 @@ test('AA2 维护委派：maintain 位可进出维护并记 via，未授权者与
   })
   assert.equal(byAdmin.status, 200)
   const adminEvent = (
-    (
-      await api('/v1/audit/events?eventType=host_maintenance&result=success&limit=200')
-    ).body.events as AuditEvent[]
+    (await api('/v1/audit/events?eventType=host_maintenance&result=success&limit=200')).body
+      .events as AuditEvent[]
   ).find((event) => event.actor === 'admin' && event.targetId === openHostId)
   assert.equal(adminEvent?.metadata?.via, undefined)
 
@@ -426,9 +452,7 @@ test('AA2 维护委派：maintain 位可进出维护并记 via，未授权者与
   const revoke = await api(`/v1/hosts/${restrictedHostId}`, { method: 'DELETE', token: otherToken })
   assert.equal(revoke.status, 403)
   assert.equal(errorCode(revoke.body), 'PERMISSION_DENIED')
-  const revokeDenied = (await deniedEvents('host_revoke')).filter(
-    (event) => event.actor === 'lisi'
-  )
+  const revokeDenied = (await deniedEvents('host_revoke')).filter((event) => event.actor === 'lisi')
   assert.equal(revokeDenied.length, 1)
 
   saveEvidence(EVIDENCE, 'maintenance-delegation.json', {
@@ -692,5 +716,157 @@ test('AA3 维护委派与吊销：denied 审计、撤销恒 admin-only、吊销�
     revokeDenied,
     afterRevoke,
     selfAfterRevoke
+  })
+}, 120_000)
+
+test('U136⑤ 用户授权收缩：有效位收缩撤销该用户，扩容/同值不撤销', async () => {
+  const hostId = await newHost('dev-u136-user-shrink')
+  assert.equal(
+    (await putHostGrant(adminToken, hostId, 'user', 'zhangsan', ['view', 'provision'])).status,
+    200
+  )
+  const before = await userRevocations()
+  // Earlier tests in this file may already have revoked someone; pin timestamps.
+  const beforeZhangsan = before.find((entry) => entry.id === 'zhangsan')?.since ?? 0
+  const beforeLisi = before.find((entry) => entry.id === 'lisi')
+  await new Promise((resolve) => setTimeout(resolve, 5))
+
+  // full → read-only: the provision bit disappears from the effective set.
+  assert.equal(
+    (await putHostGrant(adminToken, hostId, 'user', 'zhangsan', ['view'])).status,
+    200
+  )
+  const afterShrink = await userRevocations()
+  assert.ok(
+    (afterShrink.find((entry) => entry.id === 'zhangsan')?.since ?? 0) > beforeZhangsan,
+    `the shrunk user must be revoked: ${JSON.stringify(afterShrink)}`
+  )
+  assert.deepEqual(
+    afterShrink.find((entry) => entry.id === 'lisi'),
+    beforeLisi,
+    'an unrelated user keeps the same revocation record'
+  )
+
+  const shrinkEvent = (await successEvents('host_grant_update')).find(
+    (event) =>
+      event.targetId === hostId &&
+      event.metadata?.username === 'zhangsan' &&
+      Array.isArray(event.metadata?.permissions) &&
+      (event.metadata.permissions as string[]).join(',') === 'view'
+  )
+  assert.ok(shrinkEvent, 'the shrink is audited')
+  assert.deepEqual(shrinkEvent.metadata?.removedPermissions, ['provision'])
+  assert.equal(shrinkEvent.metadata?.revokedUsers, 1)
+  assert.equal(shrinkEvent.metadata?.accessLevel, 'read-only')
+
+  // Expansion (read-only → full) is not a revocation: the session just gets more.
+  const snapshot = await userRevocations()
+  assert.equal(
+    (await putHostGrant(adminToken, hostId, 'user', 'zhangsan', ['view', 'provision'])).status,
+    200
+  )
+  assert.deepEqual(await userRevocations(), snapshot, 'expansion must not touch revocations')
+
+  const expandEvent = (await successEvents('host_grant_update')).find(
+    (event) =>
+      event.targetId === hostId &&
+      event.metadata?.username === 'zhangsan' &&
+      Array.isArray(event.metadata?.permissions) &&
+      (event.metadata.permissions as string[]).join(',') === 'view,provision'
+  )
+  assert.ok(expandEvent, 'the expansion is audited')
+  assert.deepEqual(expandEvent.metadata?.removedPermissions, [])
+  assert.equal(expandEvent.metadata?.revokedUsers, 0)
+  assert.equal(expandEvent.metadata?.accessLevel, 'full')
+
+  // A refused shrink leaves a denied event that names the would-be removal.
+  const refused = await putHostGrant(otherToken, hostId, 'user', 'zhangsan', ['view'])
+  assert.equal(refused.status, 403)
+  const refusedEvent = (await deniedEvents('host_grant_update')).find(
+    (event) => event.actor === 'lisi' && event.targetId === hostId
+  )
+  assert.ok(refusedEvent, 'the refused shrink is audited')
+  assert.deepEqual(refusedEvent.metadata?.removedPermissions, ['provision'])
+  assert.equal(refusedEvent.metadata?.revokedUsers, 0)
+
+  saveEvidence(EVIDENCE, 'u136-user-shrink.json', {
+    revoked: afterShrink,
+    shrinkMetadata: shrinkEvent.metadata,
+    expandMetadata: expandEvent.metadata,
+    refusedMetadata: refusedEvent.metadata
+  })
+}, 120_000)
+
+test('U136⑤ 组授权收缩：组内用户撤销，组外用户不受影响', async () => {
+  const hostId = await newHost('dev-u136-group-shrink')
+  assert.equal(
+    (await putHostGrant(adminToken, hostId, 'group', 'team-payment', ['view', 'provision'])).status,
+    200
+  )
+  // lisi is developers-only: a direct row keeps a baseline outside the group.
+  assert.equal((await putHostGrant(adminToken, hostId, 'user', 'lisi', ['view'])).status, 200)
+  const before = await userRevocations()
+  // An earlier test in this file already revoked zhangsan, so pin the timestamp.
+  const beforeZhangsan = before.find((entry) => entry.id === 'zhangsan')?.since ?? 0
+  const beforeLisi = before.find((entry) => entry.id === 'lisi')
+  await new Promise((resolve) => setTimeout(resolve, 5))
+
+  assert.equal(
+    (await putHostGrant(adminToken, hostId, 'group', 'team-payment', ['view'])).status,
+    200
+  )
+  const afterShrink = await userRevocations()
+  assert.ok(
+    (afterShrink.find((entry) => entry.id === 'zhangsan')?.since ?? 0) > beforeZhangsan,
+    'the group member whose bits shrank is revoked again'
+  )
+  assert.deepEqual(
+    afterShrink.find((entry) => entry.id === 'lisi'),
+    beforeLisi,
+    'a user outside the group keeps their revocation record untouched'
+  )
+
+  const shrinkEvent = (await successEvents('host_grant_update')).find(
+    (event) =>
+      event.targetId === hostId &&
+      event.metadata?.subjectId === 'team-payment' &&
+      Array.isArray(event.metadata?.permissions) &&
+      (event.metadata.permissions as string[]).join(',') === 'view'
+  )
+  assert.ok(shrinkEvent, 'the group shrink is audited')
+  assert.deepEqual(shrinkEvent.metadata?.removedPermissions, ['provision'])
+  assert.equal(shrinkEvent.metadata?.revokedUsers, 1)
+  assert.equal(shrinkEvent.metadata?.accessLevel, 'read-only')
+
+  // Clearing the row drops every group bit, so the member is revoked again.
+  const shrinkSince = afterShrink.find((entry) => entry.id === 'zhangsan')?.since ?? 0
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  assert.equal(
+    (await putHostGrant(adminToken, hostId, 'group', 'team-payment', [])).status,
+    200
+  )
+  const afterClear = await userRevocations()
+  assert.ok(
+    (afterClear.find((entry) => entry.id === 'zhangsan')?.since ?? 0) > shrinkSince,
+    'clearing the group row revokes the member again'
+  )
+  assert.deepEqual(afterClear.find((entry) => entry.id === 'lisi'), beforeLisi)
+
+  const clearEvent = (await successEvents('host_grant_update')).find(
+    (event) =>
+      event.targetId === hostId &&
+      event.metadata?.subjectId === 'team-payment' &&
+      Array.isArray(event.metadata?.permissions) &&
+      (event.metadata.permissions as string[]).length === 0
+  )
+  assert.ok(clearEvent, 'the clear is audited')
+  assert.deepEqual(clearEvent.metadata?.removedPermissions, ['view'])
+  assert.equal(clearEvent.metadata?.revokedUsers, 1)
+  assert.equal(clearEvent.metadata?.accessLevel, null)
+
+  saveEvidence(EVIDENCE, 'u136-group-shrink.json', {
+    revoked: afterClear,
+    shrinkMetadata: shrinkEvent.metadata,
+    clearMetadata: clearEvent.metadata
   })
 }, 120_000)

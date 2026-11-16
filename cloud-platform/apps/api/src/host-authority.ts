@@ -1,5 +1,5 @@
 import type { Permission } from '../../../packages/contract/src/credential.ts'
-import type { HostPermission, Project, Store, User } from './store.ts'
+import type { HostGrant, HostPermission, Project, Store, User } from './store.ts'
 
 /**
  * U65/U67 host-grant synthesis: stored host rows keep the three bits, the
@@ -17,9 +17,13 @@ const VIEW_OPS: Permission[] = ['open', 'file:read']
  * Host bits of one subject: direct user rows union group rows. The single
  * subject-matching core — `hasHostPermission` reads through this.
  */
-export function hostBits(store: Store, hostId: string, user: User): Set<HostPermission> {
+export function hostBitsFromRows(
+  grants: HostGrant[],
+  hostId: string,
+  user: User
+): Set<HostPermission> {
   const bits = new Set<HostPermission>()
-  for (const grant of store.hostGrants) {
+  for (const grant of grants) {
     if (grant.hostId !== hostId) continue
     if (
       (grant.subjectType === 'user' && grant.subjectId === user.id) ||
@@ -31,15 +35,22 @@ export function hostBits(store: Store, hostId: string, user: User): Set<HostPerm
   return bits
 }
 
+export function hostBits(store: Store, hostId: string, user: User): Set<HostPermission> {
+  return hostBitsFromRows(store.hostGrants, hostId, user)
+}
+
 /**
  * U67 定型: full = view+provision (maintain excluded by verdict), read-only =
  * view alone. provision/maintain without view derives nothing.
  */
-export function hostAccessLevel(store: Store, hostId: string, user: User): HostAccessLevel {
-  const bits = hostBits(store, hostId, user)
+export function hostLevelFromBits(bits: Set<HostPermission>): HostAccessLevel {
   if (bits.has('view') && bits.has('provision')) return 'full'
   if (bits.has('view')) return 'read-only'
   return null
+}
+
+export function hostAccessLevel(store: Store, hostId: string, user: User): HostAccessLevel {
+  return hostLevelFromBits(hostBits(store, hostId, user))
 }
 
 /**

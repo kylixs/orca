@@ -24,7 +24,10 @@ import { isProjectCreator, projectKeyTaken, projectPathTaken } from './project-o
 import {
   canCreateProjectOnHost,
   effectiveProjectPermissions,
-  hostAccessLevel
+  hostAccessLevel,
+  hostBits,
+  hostBitsFromRows,
+  hostLevelFromBits
 } from './host-authority.ts'
 import {
   newDeviceToken,
@@ -906,6 +909,34 @@ export function createApp(config: ApiConfig): ApiHandle {
         : []
     }
     return hostId === undefined ? subject : { hostId, ...subject }
+  }
+
+  /** Denied writes never mutate, so the row diff is informational and nothing is revoked. */
+  function deniedHostGrantRevocationFields(
+    body: Record<string, unknown>,
+    hostId: string
+  ): { removedPermissions: HostPermission[]; revokedUsers: number } {
+    const subjectType = body.subjectType === 'group' ? 'group' : 'user'
+    const subjectId = typeof body.subjectId === 'string' ? body.subjectId.trim() : ''
+    const next = Array.isArray(body.permissions)
+      ? body.permissions.filter((permission): permission is string => typeof permission === 'string')
+      : []
+    // The stored row is keyed by the resolved user id, not the submitted username.
+    const resolved = resolveGrantSubject(store, subjectType, subjectId)
+    const previous = resolved.ok
+      ? store.hostGrants.find(
+          (g) =>
+            g.hostId === hostId &&
+            g.subjectType === resolved.subjectType &&
+            g.subjectId === resolved.subjectId
+        )
+      : undefined
+    return {
+      removedPermissions: (previous?.permissions ?? []).filter(
+        (permission) => !next.includes(permission)
+      ),
+      revokedUsers: 0
+    }
   }
 
   /**
@@ -3445,13 +3476,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         // U58 H12b: a typo used to be stored as offline, so a live host could be
         // reported dead. Only the two states a host may claim are accepted.
         if (body.status !== undefined && body.status !== 'online' && body.status !== 'offline') {
-          return error(
-            res,
-            400,
-            'HOST_STATUS_INVALID',
-            'status 仅支持 online/offline。',
-            traceId
-          )
+          return error(res, 400, 'HOST_STATUS_INVALID', 'status 仅支持 online/offline。', traceId)
         }
         // Why: a revoked host keeps its credential so this beat can deliver the
         // revocation; it must not look alive or accept any more reported state.
@@ -3701,7 +3726,10 @@ export function createApp(config: ApiConfig): ApiHandle {
             targetType: 'host',
             targetId: hostId,
             permission: 'platform:admin',
-            metadata: deniedGrantMetadata(body, hostId)
+            metadata: {
+              ...deniedGrantMetadata(body, hostId),
+              ...deniedHostGrantRevocationFields(body, hostId)
+            }
           })
         }
         if (!auditAllowsMutations(res, traceId)) return
@@ -3755,6 +3783,26 @@ export function createApp(config: ApiConfig): ApiHandle {
         }
         const subjectId = resolved.subjectId
         const username = resolved.subjectType === 'user' ? resolved.username : null
+        const previous = store.hostGrants.find(
+          (g) =>
+            g.hostId === hostId && g.subjectType === subjectType && g.subjectId === subjectId
+        )
+        const removedPermissions = (previous?.permissions ?? []).filter(
+          (permission) => !permissions.includes(permission)
+        )
+        // Shrink is judged on effective bits, not the row: a bit still supplied
+        // by another row is not lost, and an added bit never revokes (§3.3).
+        const rowsAfter = store.hostGrants.filter(
+          (g) =>
+            !(g.hostId === hostId && g.subjectType === subjectType && g.subjectId === subjectId)
+        )
+        if (permissions.length > 0) {
+          rowsAfter.push({ hostId, subjectType, subjectId, permissions })
+        }
+        const revokedUsers = hostGrantSubjectUsers(subjectType, subjectId).filter((user) => {
+          const after = hostBitsFromRows(rowsAfter, hostId, user)
+          return [...hostBits(store, hostId, user)].some((bit) => !after.has(bit))
+        })
         if (
           !(await recordAudit(
             res,
@@ -3770,7 +3818,10 @@ export function createApp(config: ApiConfig): ApiHandle {
                 subjectType,
                 subjectId,
                 ...(username ? { username } : {}),
-                permissions
+                permissions,
+                accessLevel: hostLevelFromBits(new Set(permissions)),
+                removedPermissions,
+                revokedUsers: revokedUsers.length
               }
             },
             traceId
@@ -3785,8 +3836,12 @@ export function createApp(config: ApiConfig): ApiHandle {
         if (permissions.length > 0) {
           store.hostGrants.push({ hostId, subjectType, subjectId, permissions })
         }
-        // Why no credential revocation: host bits only gate platform endpoints and
-        // are never minted into a ticket, so no live session has to be closed.
+        // Host bits are platform-only, but tickets already minted carry the old
+        // effective set; revoking the affected users closes them within the
+        // heartbeat window (U65 §3.3 / AC-38).
+        for (const user of revokedUsers) {
+          revokeUserCredentials(user.username, 'host_grant_changed')
+        }
         return json(res, 200, { ok: true })
       }
 
@@ -4534,6 +4589,15 @@ export function createApp(config: ApiConfig): ApiHandle {
    */
   function revokeUserCredentials(username: string, reason: string): void {
     appendRevocation('user', username, reason)
+  }
+
+  /** Host grants reach groups through user.groups; a group edit must land on each member. */
+  function hostGrantSubjectUsers(subjectType: 'user' | 'group', subjectId: string): User[] {
+    if (subjectType === 'user') {
+      const user = store.users.get(subjectId)
+      return user ? [user] : []
+    }
+    return [...store.users.values()].filter((user) => user.groups.includes(subjectId))
   }
 
   let relayPort = 18080
