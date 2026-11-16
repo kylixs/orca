@@ -4,6 +4,7 @@ import { Terminal } from 'lucide-react-native'
 import type { TuiAgent } from '../../../src/shared/tui-agent'
 import Svg, { Defs, G, LinearGradient, Path, Stop } from 'react-native-svg'
 import { colors } from '../theme/mobile-theme'
+import { letterAvatarColor } from '../../../src/shared/letter-avatar'
 import { MOBILE_AGENT_CATALOG } from '../tasks/mobile-agent-catalog'
 import { MOBILE_AGENT_ICON_ASSETS } from './mobile-agent-icon-assets'
 import { ClaudeIcon, OpenAIIcon } from './AgentIcons'
@@ -56,16 +57,15 @@ function BundledIcon({ source, size = 16 }: { source: ImageSourcePropType; size?
   return <Image source={source} style={{ width: size, height: size, borderRadius: 2 }} />
 }
 
-function FaviconIcon({ domain, size = 16 }: { domain: string; size?: number }) {
-  return (
-    <Image
-      source={{ uri: `https://www.google.com/s2/favicons?domain=${domain}&sz=64` }}
-      style={{ width: size, height: size, borderRadius: 2 }}
-    />
-  )
-}
-
-function AgentLetterIcon({ letter, size = 16 }: { letter: string; size?: number }) {
+function AgentLetterIcon({
+  letter,
+  seed = letter,
+  size = 16
+}: {
+  letter: string
+  seed?: string
+  size?: number
+}) {
   return (
     <View
       style={[
@@ -74,11 +74,11 @@ function AgentLetterIcon({ letter, size = 16 }: { letter: string; size?: number 
           width: size,
           height: size,
           borderRadius: size * 0.22,
-          backgroundColor: colors.textMuted + '33'
+          backgroundColor: letterAvatarColor(seed)
         }
       ]}
     >
-      <Text style={[styles.letterIconText, { fontSize: size * 0.55, color: colors.textPrimary }]}>
+      <Text style={[styles.letterIconText, { fontSize: size * 0.55, color: '#fff' }]}>
         {letter}
       </Text>
     </View>
@@ -105,18 +105,16 @@ export function MobileAgentIcon({ agentId, size = 16 }: { agentId: string; size?
     return <Terminal size={size} color={colors.textMuted} />
   }
 
-  // Why: prefer the favicon bundled into the app over Google's favicon service,
+  // Why: prefer the favicon bundled into the app over a remote favicon service,
   // which is unreachable in some regions and offline (#8451).
   const bundledIcon = MOBILE_AGENT_ICON_ASSETS[agentId as TuiAgent]
   if (bundledIcon) {
     return <BundledIcon source={bundledIcon} size={size} />
   }
+  // Why: no remote fallback — a local letter badge always renders offline (U122).
   const agent = MOBILE_AGENT_CATALOG.find((entry) => entry.id === agentId)
-  if (agent?.faviconDomain) {
-    return <FaviconIcon domain={agent.faviconDomain} size={size} />
-  }
   const label = agent?.label ?? agentId
-  return <AgentLetterIcon letter={label.charAt(0).toUpperCase()} size={size} />
+  return <AgentLetterIcon letter={label.charAt(0).toUpperCase()} seed={label} size={size} />
 }
 
 const styles = StyleSheet.create({

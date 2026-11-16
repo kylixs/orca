@@ -9,6 +9,7 @@ import {
 } from './providers/ssh-filesystem-dispatch'
 import type { IFilesystemProvider } from './providers/types'
 import { detectRepoIcon, detectRepoIconAndUpstream } from './repo-icon-autodetect'
+import { faviconUrlFromWebsite } from '../shared/repo-icon'
 
 const PNG_1X1_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII='
@@ -112,7 +113,7 @@ describe('detectRepoIcon', () => {
       detectRepoIcon({ repoPath, kind: 'folder', executionHostId: 'local' })
     ).resolves.toEqual({
       type: 'image',
-      src: 'https://www.google.com/s2/favicons?domain=app.example.com&sz=64',
+      src: faviconUrlFromWebsite('https://app.example.com/docs'),
       source: 'favicon',
       label: 'Website favicon'
     })
@@ -223,13 +224,13 @@ describe('detectRepoIcon', () => {
       detectRepoIcon({ repoPath, kind: 'folder', executionHostId: 'ssh:m4air' })
     ).resolves.toMatchObject({
       source: 'favicon',
-      src: expect.stringContaining('m4air.example.com')
+      src: faviconUrlFromWebsite('https://m4air.example.com')
     })
     await expect(
       detectRepoIcon({ repoPath, kind: 'folder', executionHostId: 'ssh:openclaw' })
     ).resolves.toMatchObject({
       source: 'favicon',
-      src: expect.stringContaining('openclaw.example.com')
+      src: faviconUrlFromWebsite('https://openclaw.example.com')
     })
   })
 

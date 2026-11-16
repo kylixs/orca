@@ -206,7 +206,7 @@ describe('AgentCombobox', () => {
     expect(markup).toContain('<svg')
     expect(markup).toContain('viewBox="0 0 512 512"')
     expect(markup).not.toContain('/resources/opencode.webp')
-    expect(markup).not.toContain('https://www.google.com/s2/favicons')
+    expect(markup).not.toContain('https://')
     expect(markup).not.toContain('<img')
   })
 
@@ -218,7 +218,7 @@ describe('AgentCombobox', () => {
       const markup = renderToStaticMarkup(<AgentIcon agent={agent} />)
       const iconName = sharedIcons.get(agent) ?? agent
       expect(markup).toContain(`/shared/agent-icons/${iconName}.png`)
-      expect(markup).not.toContain('https://www.google.com/s2/favicons')
+      expect(markup).not.toContain('https://')
     }
   })
 })

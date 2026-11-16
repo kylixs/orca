@@ -1,4 +1,5 @@
 import { validateRasterImageDataUri } from './image-data-uri'
+import { letterAvatarColor, letterAvatarLetter } from './letter-avatar'
 
 export type RepoIconImageSource = 'upload' | 'file' | 'favicon' | 'github'
 
@@ -14,6 +15,7 @@ const LUCIDE_ICON_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9]*$/
 const isRepoIconImageSource = (value: string): value is RepoIconImageSource =>
   value === 'upload' || value === 'file' || value === 'favicon' || value === 'github'
 
+// Why: offline-safe local badge (letter + hashed color) instead of the remote favicon service (U122).
 export function faviconUrlFromWebsite(rawUrl: string): string | null {
   const trimmed = rawUrl.trim()
   if (!trimmed) {
@@ -25,9 +27,34 @@ export function faviconUrlFromWebsite(rawUrl: string): string | null {
     if (!['http:', 'https:'].includes(url.protocol) || !url.hostname) {
       return null
     }
-    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(url.hostname)}&sz=64`
+    const name = url.hostname.replace(/^www\./, '')
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">' +
+      `<rect width="64" height="64" rx="14" fill="${letterAvatarColor(name)}"/>` +
+      '<text x="32" y="44" text-anchor="middle" font-family="system-ui,sans-serif" ' +
+      `font-size="34" font-weight="700" fill="#fff">${letterAvatarLetter(name)}</text></svg>`
+    return `${LOCAL_FAVICON_BADGE_PREFIX}${encodeURIComponent(svg)}`
   } catch {
     return null
+  }
+}
+
+const LOCAL_FAVICON_BADGE_PREFIX = 'data:image/svg+xml;charset=utf-8,'
+
+function isLocalFaviconBadgeSrc(src: string): boolean {
+  if (!src.startsWith(LOCAL_FAVICON_BADGE_PREFIX) || src.length > 1024) {
+    return false
+  }
+  try {
+    const svg = decodeURIComponent(src.slice(LOCAL_FAVICON_BADGE_PREFIX.length))
+    return (
+      svg.startsWith('<svg ') &&
+      svg.includes('<rect ') &&
+      svg.includes('<text ') &&
+      !/<script|on[a-z]+=/i.test(svg)
+    )
+  } catch {
+    return false
   }
 }
 
@@ -94,6 +121,10 @@ function computeIsSupportedImageSrc(src: string, source: RepoIconImageSource): b
     )
   }
 
+  if (source === 'favicon') {
+    return isLocalFaviconBadgeSrc(src)
+  }
+
   let url: URL
   try {
     url = new URL(src)
@@ -109,7 +140,7 @@ function computeIsSupportedImageSrc(src: string, source: RepoIconImageSource): b
     return !url.username && !url.password && /^\/[^/?#]+\.png$/i.test(url.pathname)
   }
 
-  return url.hostname === 'www.google.com' && url.pathname === '/s2/favicons'
+  return false
 }
 
 type ImageSrcVerdict = { src: unknown; source: unknown; supported: boolean }

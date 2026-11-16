@@ -13,6 +13,7 @@ import {
   PiIcon
 } from './agent-icon-glyphs'
 import { createLocalizedCatalog } from '@/i18n/localized-catalog'
+import { LetterAvatar } from '@/components/letter-avatar'
 import { AGENT_FAVICON_ASSETS } from './agent-favicon-assets'
 import { buildAgentCatalogEntries } from './agent-catalog-entries'
 
@@ -24,8 +25,6 @@ export type AgentCatalogEntry = {
   searchAliases?: readonly string[]
   /** Direct or bundled image URL for agents whose project identity is not represented by a favicon service. */
   iconUrl?: string
-  /** Domain for Google's favicon service — used for agents without an SVG icon. */
-  faviconDomain?: string
   /** Homepage/install docs URL, sourced from the README agent badge list. */
   homepageUrl: string
 }
@@ -82,7 +81,7 @@ export function AgentIcon({
   }
   const catalogEntry = getAgentCatalog().find((a) => a.id === agent)
   // Why: prefer the favicon bundled at build time so the icon renders without a
-  // live network request — Google's favicon service is unreachable in some
+  // live network request — remote favicon services are unreachable in some
   // regions and offline, which left these icons broken (#8451).
   const bundledFaviconUrl = AGENT_FAVICON_ASSETS[agent]
   // Why: one resolved src for guard + attribute so empty `iconUrl` cannot pass
@@ -100,20 +99,6 @@ export function AgentIcon({
       />
     )
   }
-  if (catalogEntry?.faviconDomain) {
-    // Why: agents without a published SVG icon or bundled favicon fall back to
-    // their site favicon via Google's favicon service — same source the README
-    // uses for the agent badge list.
-    return (
-      <img
-        src={`https://www.google.com/s2/favicons?domain=${catalogEntry.faviconDomain}&sz=64`}
-        width={size}
-        height={size}
-        alt=""
-        aria-hidden
-        style={{ borderRadius: 2 }}
-      />
-    )
-  }
-  return <AgentLetterIcon letter={getAgentLabel(agent).charAt(0).toUpperCase()} size={size} />
+  // Why: no remote favicon fallback — a local letter badge always renders offline (U122).
+  return <LetterAvatar name={getAgentLabel(agent)} size={size} />
 }

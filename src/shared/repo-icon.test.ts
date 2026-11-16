@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import type * as ImageDataUriModule from './image-data-uri'
-import { githubAvatarIcon, githubAvatarSlug, sanitizeRepoIcon } from './repo-icon'
+import {
+  faviconUrlFromWebsite,
+  githubAvatarIcon,
+  githubAvatarSlug,
+  sanitizeRepoIcon
+} from './repo-icon'
 
 // Why a module mock: `validateRasterImageDataUri` is the leaf that base64-decodes an inline icon's
 // header, so counting its invocations is the direct measure of what re-hydrating a repo costs.
@@ -30,6 +35,16 @@ function pngBase64(width: number, height: number): string {
   bytes.writeUInt32BE(height, 20)
   return bytes.toString('base64')
 }
+
+describe('faviconUrlFromWebsite', () => {
+  it('builds an offline local badge instead of a remote favicon request', () => {
+    const src = faviconUrlFromWebsite('https://www.example.com')
+    expect(src).not.toBeNull()
+    expect(src).toMatch(/^data:image\/svg\+xml;charset=utf-8,/)
+    expect(decodeURIComponent(src!.split(',').slice(1).join(','))).toContain('>E</text>')
+    expect(faviconUrlFromWebsite('https://example.com')).toBe(src)
+  })
+})
 
 describe('sanitizeRepoIcon', () => {
   it('accepts lucide, emoji, and supported image icons', () => {
@@ -67,15 +82,17 @@ describe('sanitizeRepoIcon', () => {
       source: 'github',
       label: 'stablyai/orca'
     })
+    const localFaviconSrc = faviconUrlFromWebsite('https://example.com')
+    expect(localFaviconSrc).not.toBeNull()
     expect(
       sanitizeRepoIcon({
         type: 'image',
-        src: 'https://www.google.com/s2/favicons?domain=example.com&sz=64',
+        src: localFaviconSrc,
         source: 'favicon'
       })
     ).toEqual({
       type: 'image',
-      src: 'https://www.google.com/s2/favicons?domain=example.com&sz=64',
+      src: localFaviconSrc,
       source: 'favicon'
     })
     expect(

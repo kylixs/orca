@@ -1,3 +1,5 @@
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import {
   createPresetOpenInApplication,
@@ -35,10 +37,13 @@ describe('OpenInMenuSetting presets', () => {
     expect(isOpenInAppPresetAdded([{ command: ' cursor ' }], cursor)).toBe(true)
   })
 
-  it('keeps the Zed icon visible on dark menus', () => {
-    const icon = OpenInApplicationIcon({ application: { command: 'zed' } })
+  it('renders a local letter badge for preset apps', () => {
+    const markup = renderToStaticMarkup(
+      createElement(OpenInApplicationIcon, { application: { command: 'zed' } })
+    )
 
-    expect(icon.props.className).toContain('dark:invert')
+    expect(markup).toContain('>Z</text>')
+    expect(markup).not.toContain('<img')
   })
 })
 
