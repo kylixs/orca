@@ -29,7 +29,11 @@ import {
   type CloudRuntime,
   type Platform
 } from './cloud-session-e2e-harness'
-import { makeBareRepository } from './cloud-project-provisioning-fixture'
+import {
+  makeBareRepository,
+  startLocalGitDaemon,
+  type LocalGitDaemon
+} from './cloud-project-provisioning-fixture'
 
 /** Real platform + enrolled host declaring projectsRoot + TLS runtime, for M59. */
 
@@ -50,6 +54,8 @@ export type SelfServiceHarness = {
   projectsRoot: string
   hostId: string
   repoUrl: string
+  /** repoUrl for a bare repo this harness (or its test) created under `base`. */
+  repoUrlFor: (repoName: string) => string
   createProject: (input: Record<string, unknown>) => Promise<unknown>
   listProvisionableHosts: () => Promise<unknown[]>
   getProject: (id: string) => Promise<unknown>
@@ -102,6 +108,8 @@ export async function startSelfServiceHarness(
 ): Promise<SelfServiceHarness> {
   const base = realpathSync(mkdtempSync(join(tmpdir(), 'orca-m59-self-service-')))
   const projectsRoot = join(base, 'projects')
+  makeBareRepository(base)
+  const daemon: LocalGitDaemon = await startLocalGitDaemon(base)
   mkdirSync(projectsRoot, { recursive: true })
   const registrationUserData = mkdtempSync(join(tmpdir(), 'orca-m59-self-service-user-'))
 
@@ -207,7 +215,8 @@ export async function startSelfServiceHarness(
     base,
     projectsRoot,
     hostId: enrolledHost.hostId,
-    repoUrl: makeBareRepository(base),
+    repoUrl: daemon.urlFor('payment-service.git'),
+    repoUrlFor: (repoName) => daemon.urlFor(repoName),
     createProject: (input) =>
       requireHandler(ipcHandlers, CLOUD_PLATFORM_IPC.createProject)(null, input),
     listProvisionableHosts: async () => {
@@ -276,6 +285,7 @@ export async function startSelfServiceHarness(
       admission.client?.stop()
       await cloud.runtime.stop()
       await platform.stop()
+      await daemon.stop()
       await closeTestStores()
     }
   }

@@ -67,10 +67,13 @@ describe('云端项目准备失败可恢复（真实平台 + 真实 TLS Runtime 
     expect(blocked.failures[0]).toMatchObject({ projectId, code: 'PROJECT_NOT_PREPARED' })
     expect(blocked.failures[0].projectName).toBe('Recovered Service')
 
-    const bareRepo = makeBareRepository(harness.base)
+    makeBareRepository(harness.base)
     const updated = await harness.adminFetch(`/v1/projects/${projectId}`, {
       method: 'PUT',
-      body: JSON.stringify({ repoUrl: bareRepo, defaultBranch: 'main' })
+      body: JSON.stringify({
+        repoUrl: harness.repoUrlFor('payment-service.git'),
+        defaultBranch: 'main'
+      })
     })
     expect(updated.status).toBe(200)
     const updatedBody: unknown = await updated.json()

@@ -56,7 +56,7 @@ describe('创建成功但准备失败的项目可恢复（真实平台 + 主机 
     const created = await harness.createProject({
       name: 'Broken Source',
       dir: 'broken-source',
-      repoUrl: missingRepo,
+      repoUrl: harness.repoUrlFor('missing-source.git'),
       defaultBranch: 'main'
     })
     // U44: creation itself reports "preparing"; the clone failure arrives with
@@ -70,8 +70,12 @@ describe('创建成功但准备失败的项目可恢复（真实平台 + 主机 
     expect(readString(createdProject, 'key')).toBe('broken-source')
     expect(readString(createdProject, 'status')).toBe('provisioning')
 
-    await harness.beat()
-    const failedRow = projectRow(await harness.listPlatformProjects(), projectId)
+    const failedDeadline = Date.now() + 60_000
+    let failedRow = projectRow(await harness.listPlatformProjects(), projectId)
+    while (readString(failedRow, 'status') !== 'failed' && Date.now() < failedDeadline) {
+      await harness.beat()
+      failedRow = projectRow(await harness.listPlatformProjects(), projectId)
+    }
     expect(readString(failedRow, 'status')).toBe('failed')
     expect(readString(failedRow, 'provisioningError')).toContain('CLONE_FAILED')
 

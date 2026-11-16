@@ -37,6 +37,10 @@ import {
   type Platform
 } from './cloud-session-e2e-harness'
 import { parseCloudProjectRegistration } from './cloud-provision-recovery-fixture'
+import {
+  startLocalGitDaemon,
+  type LocalGitDaemon
+} from './cloud-project-provisioning-fixture'
 
 /** Real platform + self-service host + TLS runtime for the M65 archive suite. */
 
@@ -123,7 +127,9 @@ export async function startArchiveHarness(
   const base = realpathSync(mkdtempSync(join(tmpdir(), 'orca-m65-archive-')))
   const projectsRoot = join(base, 'projects')
   const registrationUserData = mkdtempSync(join(tmpdir(), 'orca-m65-archive-user-'))
-  const repoUrl = makeBareRepo(base)
+  makeBareRepo(base)
+  const daemon: LocalGitDaemon = await startLocalGitDaemon(base)
+  const repoUrl = daemon.urlFor('m65-archive.git')
 
   const dataDir = mkdtempSync(join(tmpdir(), 'orca-m65-archive-data-'))
   installFakeAppEnvironment({ getPath: () => dataDir })
@@ -294,6 +300,7 @@ export async function startArchiveHarness(
       admission.client?.stop()
       await cloud.runtime.stop()
       await platform.stop()
+      await daemon.stop()
       await closeTestStores()
     }
   }

@@ -18,7 +18,9 @@ import {
   PROVISIONING_README,
   git,
   makeBareRepository,
-  saveProvisioningEvidence
+  saveProvisioningEvidence,
+  startLocalGitDaemon,
+  type LocalGitDaemon
 } from './cloud-project-provisioning-fixture'
 import { createCloudProvisionAssignmentExecutor } from './cloud-provision-assignment'
 import { CloudSessionService } from './cloud-session-service'
@@ -45,6 +47,7 @@ let cloud: CloudRuntime
 let session: CloudSessionService
 let base = ''
 let bareRepo = ''
+let daemon: LocalGitDaemon | null = null
 let checkoutPath = ''
 let workspaceRoot = ''
 let failedCheckoutPath = ''
@@ -54,7 +57,9 @@ let adminToken = ''
 
 beforeAll(async () => {
   base = realpathSync(mkdtempSync(join(tmpdir(), 'orca-m57-provision-')))
-  bareRepo = makeBareRepository(base)
+  makeBareRepository(base)
+  daemon = await startLocalGitDaemon(base)
+  bareRepo = daemon.urlFor('payment-service.git')
   checkoutPath = join(base, 'checkout', 'payment-service')
   workspaceRoot = join(checkoutPath, '.orca-worktrees', 'zhangsan')
   failedCheckoutPath = join(base, 'checkout', 'missing-service')
@@ -132,7 +137,7 @@ beforeAll(async () => {
   failedProjectId = await createProvisioningProject({
     key: 'm57-missing-service',
     name: 'Missing Service',
-    repoUrl: join(base, 'missing-source.git'),
+    repoUrl: daemon.urlFor('missing-source.git'),
     path: failedCheckoutPath
   })
 
@@ -144,6 +149,7 @@ afterAll(async () => {
   admission?.client?.stop()
   await cloud?.runtime.stop()
   await platform?.stop()
+  await daemon?.stop()
   await closeTestStores()
 })
 

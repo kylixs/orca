@@ -30,6 +30,10 @@ import {
   type Platform
 } from './cloud-session-e2e-harness'
 import { parseCloudProjectRegistration } from './cloud-provision-recovery-fixture'
+import {
+  startLocalGitDaemon,
+  type LocalGitDaemon
+} from './cloud-project-provisioning-fixture'
 
 /** Real platform + enrolled host + TLS runtime for the M64 parallel-prepare suite. */
 
@@ -111,8 +115,9 @@ export async function startParallelPrepareHarness(
 ): Promise<ParallelPrepareHarness> {
   const base = realpathSync(mkdtempSync(join(tmpdir(), 'orca-m64-parallel-')))
   const registrationUserData = mkdtempSync(join(tmpdir(), 'orca-m64-parallel-user-'))
-  const alphaRepo = makeBareRepo(base, 'alpha-service', '# alpha-service\n')
-  const gammaRepo = makeBareRepo(base, 'gamma-service', '# gamma-service\n')
+  makeBareRepo(base, 'alpha-service', '# alpha-service\n')
+  makeBareRepo(base, 'gamma-service', '# gamma-service\n')
+  const daemon: LocalGitDaemon = await startLocalGitDaemon(base)
 
   const dataDir = mkdtempSync(join(tmpdir(), 'orca-m64-parallel-data-'))
   installFakeAppEnvironment({ getPath: () => dataDir })
@@ -182,21 +187,21 @@ export async function startParallelPrepareHarness(
       key: 'm64-alpha',
       name: 'Alpha Service',
       root: join(base, 'projects', 'alpha-service'),
-      repoUrl: alphaRepo,
+      repoUrl: daemon.urlFor('alpha-service.git'),
       readme: '# alpha-service\n'
     },
     {
       key: 'm64-broken',
       name: 'Broken Service',
       root: join(base, 'projects', 'broken-service'),
-      repoUrl: join(base, 'missing-source.git'),
+      repoUrl: daemon.urlFor('missing-source.git'),
       readme: null
     },
     {
       key: 'm64-gamma',
       name: 'Gamma Service',
       root: join(base, 'projects', 'gamma-service'),
-      repoUrl: gammaRepo,
+      repoUrl: daemon.urlFor('gamma-service.git'),
       readme: '# gamma-service\n'
     }
   ]
@@ -284,6 +289,7 @@ export async function startParallelPrepareHarness(
       admission.client?.stop()
       await cloud.runtime.stop()
       await platform.stop()
+      await daemon.stop()
       await closeTestStores()
     }
   }

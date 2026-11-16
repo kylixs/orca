@@ -34,7 +34,7 @@ import {
   type Platform,
   type PlatformOptions
 } from './cloud-session-e2e-harness'
-import { makeBareRepository } from './cloud-project-provisioning-fixture'
+import { makeBareRepository, startLocalGitDaemon } from './cloud-project-provisioning-fixture'
 
 /** Real platform + enrolled host + TLS runtime used by the M58 recovery suite. */
 
@@ -72,6 +72,8 @@ export type RecoveryHarness = {
   retryPrepare: (id: string) => Promise<unknown>
   saveEvidence: (file: string, content: unknown) => void
   repoOf: (result: unknown) => Repo | null
+  /** repoUrl for a bare repo this harness (or its test) created under `base`. */
+  repoUrlFor: (repoName: string) => string
   stop: () => Promise<void>
 }
 
@@ -117,6 +119,7 @@ export async function startRecoveryHarness(
   const base = realpathSync(mkdtempSync(join(tmpdir(), 'orca-m58-recovery-')))
   const projectRoot = join(base, 'checkout', 'recovered-service')
   const registrationUserData = mkdtempSync(join(tmpdir(), 'orca-m58-recovery-user-'))
+  const daemon = await startLocalGitDaemon(base)
 
   const dataDir = mkdtempSync(join(tmpdir(), 'orca-m58-recovery-data-'))
   installFakeAppEnvironment({ getPath: () => dataDir })
@@ -193,6 +196,10 @@ export async function startRecoveryHarness(
       }
     })
 
+  // Why: the bare repo must exist before the first heartbeat asks the host to clone it.
+  if (options.provisionRepo) {
+    makeBareRepository(base)
+  }
   const created = await adminFetch('/v1/projects', {
     method: 'POST',
     body: JSON.stringify({
@@ -200,7 +207,9 @@ export async function startRecoveryHarness(
       name: 'Recovered Service',
       hostId: admission.host()!.hostId,
       path: projectRoot,
-      repoUrl: options.provisionRepo ? makeBareRepository(base) : join(base, 'missing-source.git'),
+      repoUrl: options.provisionRepo
+        ? daemon.urlFor('payment-service.git')
+        : daemon.urlFor('missing-source.git'),
       defaultBranch: 'main'
     })
   })
@@ -288,11 +297,13 @@ export async function startRecoveryHarness(
         ? { id, path, displayName, badgeColor, addedAt: 0 }
         : null
     },
+    repoUrlFor: (repoName) => daemon.urlFor(repoName),
     stop: async () => {
       setActiveCloudSession(null)
       admission.client?.stop()
       await cloud.runtime.stop()
       await platform.stop()
+      await daemon.stop()
       await closeTestStores()
     }
   }

@@ -1,6 +1,8 @@
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
+import { createServer, connect } from 'node:net'
 import { join } from 'node:path'
+import { spawnProcess } from '@orca/process-host'
 import { REPO_ROOT } from './cloud-session-e2e-harness'
 
 /** Git/evidence fixtures shared by the M57 provisioning suite. */
@@ -33,6 +35,91 @@ export function makeBareRepository(base: string): string {
   git(work, 'remote', 'add', 'origin', bare)
   git(work, 'push', '-q', 'origin', 'main')
   return bare
+}
+
+export type LocalGitDaemon = {
+  /** A repoUrl both the platform and the host validators accept: a real git:// remote. */
+  urlFor: (repoName: string) => string
+  stop: () => Promise<void>
+}
+
+async function reserveLoopbackPort(): Promise<number> {
+  const server = createServer()
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', resolve)
+  })
+  const address = server.address()
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()))
+  })
+  if (address === null || typeof address === 'string') {
+    throw new Error('failed to reserve a loopback port')
+  }
+  return address.port
+}
+
+async function waitForLoopbackPort(port: number, isExited: () => boolean): Promise<void> {
+  const deadline = Date.now() + 10_000
+  let lastError: unknown = null
+  while (Date.now() < deadline) {
+    if (isExited()) {
+      throw new Error('git daemon exited before accepting connections')
+    }
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const socket = connect(port, '127.0.0.1')
+        socket.once('connect', () => {
+          socket.destroy()
+          resolve()
+        })
+        socket.once('error', (error) => {
+          socket.destroy()
+          reject(error)
+        })
+      })
+      return
+    } catch (error) {
+      lastError = error
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+  }
+  throw new Error(`git daemon did not accept connections: ${String(lastError)}`)
+}
+
+/**
+ * Serves the bare repos under `base` over git://. The platform rejects bare local
+ * paths and the host rejects file://, so the fixture repo has to arrive as a URL
+ * both sides accept.
+ */
+export async function startLocalGitDaemon(base: string): Promise<LocalGitDaemon> {
+  const port = await reserveLoopbackPort()
+  const child = spawnProcess({
+    program: 'git',
+    args: [
+      'daemon',
+      '--reuseaddr',
+      '--export-all',
+      `--base-path=${base}`,
+      '--listen=127.0.0.1',
+      `--port=${port}`,
+      base
+    ],
+    stdio: 'ignore'
+  })
+  await waitForLoopbackPort(port, () => child.exitCode !== null)
+  return {
+    urlFor: (repoName) => `git://127.0.0.1:${port}/${repoName}`,
+    stop: async () => {
+      if (child.exitCode !== null) {
+        return
+      }
+      await new Promise<void>((resolve) => {
+        child.once('exit', () => resolve())
+        child.kill()
+      })
+    }
+  }
 }
 
 export function saveProvisioningEvidence(file: string, content: unknown): void {
