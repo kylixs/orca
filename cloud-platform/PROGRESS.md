@@ -3737,6 +3737,12 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **final6（新宿主构建）**：无红、25/25 两次读取完全一致（DOM=store=projection=persisted），但 25 点全 INVALID——04:33 full reseed 清空宿主 `tabGroups=[]`，探针 ≥2 组跨组前置不满足；race 25/25。属环境前置，不是回归。
 - **final7 在途**：先经 UI 恢复 2 组/3 tab 布局，再签字复跑（目标 `conclusive=true`）。
 
+### 2026-11-17 05:3x 轮：final7 布局恢复受阻（U163）；W9 官方门禁在跑
+
+- **final7**：客户端恢复 3 tabs/2 groups 成功，但宿主 `tabGroups` 仍 `[]`——`session.tabs.move` 被转发到桌面主窗口（其 `activeWorktreeId=demo-app/admin/main-2`），对目标 worktree 为 no-op；新设备水合仍 1 组 → 25 点全 INVALID（拓扑），race 25/25。登记 **U163**（云多 worktree move 语义），待 W9 后诊断。
+- **U162 v3 e2e 脚本入库**（`3a521bf0e65`）：三项审计条件落实（A 读后复读、原始快照值、溯源字段）。
+- **W9 官方双线门禁在跑**（当前仪器化构建；不重建）。
+
 ### 四通道并发执行（启动，2026-11-14）
 
 按细粒度拆分与三权分立纪律并发起跑：通道② **W6a**（中继浏览器模式，relay.ts 域）、通道③ **W10**（客户端零 env 登录，src/main+renderer 登录域）、通道④ **W5a**（详情页终端组件，cloud-admin 域）三个实现代理并行；通道① 等在途 W2（QA 修复）完成后接 W8。每令完成→独立测试代理→独立审计代理→主会话关闭放行下一个。
