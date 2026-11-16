@@ -3850,6 +3850,12 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **范围说明**：`out/renderer` 早于 U169 v2（06:57）→ 已派补建 renderer（production），不影响运行中窗口（下次创建/重启加载）。
 - **U169 v2 最终真机复验**（干净 worktree）在跑。
 
+### 2026-11-17 08:3x 轮：U169 闭环；renderer 补建；交付态收口
+
+- **U169 最终真机复验 PASS**（`evidence/u169-final-20261117-072035/`）：干净 worktree split 两栏 402px → 跨组拖拽宿主 DB 成员更新 → 刷新保持；组内 reorder `tabOrder` 更新。
+- **out/renderer 补建（production）**（`evidence/renderer-rebuild-20261117-072619/`）：含 U169 v2（`isKnownHostSessionGroupId` 4 处）、无 e2e 探针、exposeStore false；main/preload 未动；运行中窗口不受影响（下次创建/重启生效）。
+- **交付面**：平台控制台（apps/web）+ Orca Web（relay 伺服 out/web）+ 桌面 renderer（out/renderer）均已含本批修复；唯一余项 = 运行中窗口/宿主进程内存快照（下次重启加载）。
+
 ### 四通道并发执行（启动，2026-11-14）
 
 按细粒度拆分与三权分立纪律并发起跑：通道② **W6a**（中继浏览器模式，relay.ts 域）、通道③ **W10**（客户端零 env 登录，src/main+renderer 登录域）、通道④ **W5a**（详情页终端组件，cloud-admin 域）三个实现代理并行；通道① 等在途 W2（QA 修复）完成后接 W8。每令完成→独立测试代理→独立审计代理→主会话关闭放行下一个。
