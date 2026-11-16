@@ -137,6 +137,30 @@ test('R3 项目权限页签：?tab=perms 直开并保持；页签切换写回 UR
   assert.equal(page.window.location.hash, hash, 'switching to perms restores the query')
 })
 
+test('U150 深链/刷新的详情层是唯一 role=dialog（隐藏的更多面板不得抢先命中）', async () => {
+  const hash = `#/projects/${projectId}?tab=perms`
+  const assertDetailLayer = (page: WebConsolePage) => {
+    const dialogs = page.window.document.querySelectorAll<HTMLElement>('[role="dialog"]')
+    assert.equal(dialogs.length, 1, 'only the detail layer carries role=dialog')
+    assert.match(dialogs[0].className, /\bdialog\b/, 'the first dialog is the project detail')
+    assert.equal(
+      page.window.document.querySelector('#moreSheet [role="dialog"]'),
+      null,
+      'the hidden mobile sheet drops its dialog identity'
+    )
+    assert.equal(
+      (dialogs[0].querySelector('[data-auth-tab="perms"]') as HTMLElement).classList.contains(
+        'active'
+      ),
+      true,
+      'the deep link selects the permission tab'
+    )
+    assert.equal(page.window.location.hash, hash, 'the deep link stays canonical')
+  }
+  assertDetailLayer(await openDeepLink(hash))
+  assertDetailLayer(await openDeepLink(hash))
+})
+
 test('R3 主机详情深链：抽屉直开、刷新保持、关闭回主机列表', async () => {
   const hash = `#/hosts/${hostId}`
   const page = await openDeepLink(hash)

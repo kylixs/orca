@@ -191,13 +191,27 @@ function syncMobileNav() {
   }`
 }
 
+/** 隐藏时摘掉 dialog 身份：静态 role 会抢在真实弹框前被 [role=dialog] 命中。 */
+function setMoreSheetOpen(open) {
+  const sheet = $('#moreSheet')
+  const panel = sheet.querySelector('.more-sheet')
+  sheet.hidden = !open
+  if (open) {
+    panel.setAttribute('role', 'dialog')
+    panel.setAttribute('aria-modal', 'true')
+  } else {
+    panel.removeAttribute('role')
+    panel.removeAttribute('aria-modal')
+  }
+  $('#tabMore').setAttribute('aria-expanded', String(open))
+}
+
 function closeMoreSheet() {
   const sheet = $('#moreSheet')
   if (!sheet || sheet.hidden) {
     return
   }
-  sheet.hidden = true
-  $('#tabMore').setAttribute('aria-expanded', 'false')
+  setMoreSheetOpen(false)
 }
 
 function routeSignature(route) {
@@ -4387,10 +4401,10 @@ for (const btn of document.querySelectorAll(
     navigate(btn.dataset.route)
   }
 }
+setMoreSheetOpen(false) // index.html 的静态面板初始隐藏，加载时同步语义
 $('#tabMore').onclick = () => {
   if ($('#moreSheet').hidden) {
-    $('#moreSheet').hidden = false
-    $('#tabMore').setAttribute('aria-expanded', 'true')
+    setMoreSheetOpen(true)
   } else {
     closeMoreSheet()
   }
