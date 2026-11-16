@@ -227,6 +227,7 @@ export function CloudSimpleWorkspace({
                 const active = tab.id === state.activeId
                 const Component =
                   tabComponents?.[tab.kind] ?? CLOUD_SIMPLE_WORKSPACE_TAB_COMPONENTS[tab.kind]
+                // Why a block wrapper: `hidden` must still collapse inactive panes.
                 return (
                   <div
                     key={tab.id}
@@ -234,7 +235,7 @@ export function CloudSimpleWorkspace({
                     aria-label={tab.title}
                     hidden={!active}
                     data-testid={`cloud-simple-workspace-pane-${tab.id}`}
-                    className="min-h-0 flex-1"
+                    className="min-h-0 flex-1 [&>*]:h-full"
                   >
                     {tab.kind === 'terminal' && !canUseTerminal ? (
                       <p
