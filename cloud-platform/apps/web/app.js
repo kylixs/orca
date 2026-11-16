@@ -1454,8 +1454,10 @@ function relayRow(r) {
 
 const USER_PAGE_ROLE_LABELS = { developer: '普通', auditor: '审计', admin: '管理员' }
 const USER_SOURCE_LABELS = { ldap: 'LDAP 同步', 'admin-override': '管理员覆盖' }
+/** U81：查询条件客户端过滤（零 wire 变更）；跨重绘保留，角色变更后筛选不丢。 */
+let userFilter = { query: '', role: 'all', status: 'all' }
 
-/** 原型 #/users 页形态（P4）：两层模型说明 + 账号表格 + 角色下拉 + 来源 + 状态。 */
+/** 原型 #/users（U81/U82）：查询栏 + 只读列表 + 详情弹框（角色修改唯一入口）。返回列表数据供弹框同步。 */
 async function renderUsersPage() {
   const body = await api('/v1/users')
   const users = body.users
@@ -1471,52 +1473,165 @@ async function renderUsersPage() {
       </div>
     </div>
     <div class="note"><strong>角色 ≠ 资源授权（两层模型）</strong>：本页的「普通 / 审计 / 管理员」是平台级身份——决定管控面与审计面可见性；「谁能用哪些项目、有哪些操作」由项目 / 主机详情弹框权限页签的角色卡片（资源授权）决定。管理员角色不等于项目内全权：打开项目仍需显式授权。</div>
-    <div class="section-head"><h2>账号与角色</h2><span class="muted">角色变更写入 role_update 审计</span></div>
+    <div class="toolbar" role="search" aria-label="用户查询">
+      <input class="input grow" id="userSearch" type="search" placeholder="用户名关键字：显示名或账号，如 张伟 / zhangwei" aria-label="用户名关键字" autocomplete="off">
+      <select class="select" id="userRoleFilter" aria-label="角色">
+        <option value="all">全部角色</option>
+        <option value="developer">普通</option>
+        <option value="auditor">审计</option>
+        <option value="admin">管理员</option>
+      </select>
+      <select class="select" id="userStatusFilter" aria-label="状态">
+        <option value="all">全部状态</option>
+        <option value="active">活跃</option>
+        <option value="disabled">已停用</option>
+      </select>
+      <button class="btn primary" id="userFilterApply" type="button">查询</button>
+      <button class="btn ghost" id="userFilterReset" type="button">重置</button>
+    </div>
+    <div class="section-head"><h2>账号与角色</h2><span class="muted">列表只读 · 角色在详情中修改 · 变更写入 role_update 审计</span></div>
     <div class="table-wrap">
       <table aria-label="用户与角色">
-        <thead><tr><th>用户</th><th>部门</th><th>LDAP 组</th><th>角色</th><th>角色来源</th><th>状态</th></tr></thead>
-        <tbody>
-          ${users.map(userRow).join('') || '<tr><td colspan="6" class="table-empty">暂无账号</td></tr>'}
-        </tbody>
+        <thead><tr><th>用户</th><th>部门</th><th>LDAP 组</th><th>角色</th><th>角色来源</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody id="usersBody"></tbody>
       </table>
     </div>
-    <p class="muted" id="usersFoot">共 ${users.length} 个账号 · 服务端按请求实时判定角色；角色降级会断开当前云会话（≤60 秒），升级即时生效、不断会话。变更可在审计日志按「角色变更 · role_update」筛选。</p>
-    <div class="note">角色语义：普通 = 项目 / 主机使用面（按资源授权）；审计 = + 审计查询与目录读取，不可管控；管理员 = 全管控面 + 授权卡片写入。LDAP platform-admins 组成员首次登录映射为管理员，此后按用户覆盖优先，再次登录不会被同步覆盖。</div>`
-  for (const select of document.querySelectorAll('[data-user-role]')) {
-    select.onchange = () => void confirmUserRoleChange(select, users)
+    <p class="muted" id="usersFoot"></p>
+    <div class="note">角色语义：普通 = 项目 / 主机使用面（按资源授权）；审计 = + 审计查询（目录保持 admin-only），不可管控；管理员 = 全管控面 + 授权卡片写入。新用户首登角色一律普通（LDAP 组→角色种子映射已废除）；升权经用户管理页覆盖（roleOverride 优先、不被回灌），登录准入由 LDAP 分组门槛独立控制。</div>`
+  const search = $('#userSearch')
+  const roleSelect = $('#userRoleFilter')
+  const statusSelect = $('#userStatusFilter')
+  search.value = userFilter.query
+  roleSelect.value = userFilter.role
+  statusSelect.value = userFilter.status
+  const apply = () => {
+    userFilter = { query: search.value, role: roleSelect.value, status: statusSelect.value }
+    renderUserRows(users)
+  }
+  // 即输即筛为主，「查询」按钮兜底重放（T4 裁定：两者并存）。
+  search.oninput = apply
+  roleSelect.onchange = apply
+  statusSelect.onchange = apply
+  $('#userFilterApply').onclick = apply
+  $('#userFilterReset').onclick = () => {
+    userFilter = { query: '', role: 'all', status: 'all' }
+    search.value = ''
+    roleSelect.value = 'all'
+    statusSelect.value = 'all'
+    renderUserRows(users)
+  }
+  renderUserRows(users)
+  return users
+}
+
+function filterUsers(users) {
+  const query = userFilter.query.trim().toLowerCase()
+  return users.filter((user) => {
+    const matchesQuery =
+      !query ||
+      user.displayName.toLowerCase().includes(query) ||
+      user.username.toLowerCase().includes(query)
+    const matchesRole = userFilter.role === 'all' || user.role === userFilter.role
+    const matchesStatus = userFilter.status === 'all' || user.status === userFilter.status
+    return matchesQuery && matchesRole && matchesStatus
+  })
+}
+
+function userSourceMarkup(source) {
+  return source === 'admin-override'
+    ? `<span class="badge ok">${esc(USER_SOURCE_LABELS[source])}</span>`
+    : `<span class="muted">${esc(USER_SOURCE_LABELS[source] ?? 'LDAP 同步')}</span>`
+}
+
+function statusMarkup(status) {
+  const active = status === 'active'
+  return `<span class="dot ${active ? 'online' : 'offline'}"></span> ${active ? '活跃' : '已停用'}`
+}
+
+function renderUserRows(users) {
+  const tbody = $('#usersBody')
+  if (!tbody) return
+  const filtered = filterUsers(users)
+  tbody.innerHTML = filtered.length
+    ? filtered.map(userRow).join('')
+    : '<tr><td colspan="7" class="table-empty">没有符合筛选条件的账号——请调整关键字或重置条件</td></tr>'
+  const foot = $('#usersFoot')
+  if (foot) {
+    foot.textContent = `共 ${users.length} 个账号${filtered.length !== users.length ? ` · 当前筛选 ${filtered.length} 个` : ''} · 服务端按请求实时判定角色；角色降级会断开当前云会话（≤60 秒），升级即时生效、不断会话。变更可在审计日志按「角色变更 · role_update」筛选。`
+  }
+  for (const button of document.querySelectorAll('[data-user-detail]')) {
+    button.onclick = () => {
+      const user = users.find((item) => item.id === button.dataset.userDetail)
+      if (user) openUserDetail(user)
+    }
   }
 }
 
+/** 列表只读（U82）：角色纯文本 + 行内唯一动作「详情」。 */
 function userRow(user) {
-  const options = Object.entries(USER_PAGE_ROLE_LABELS)
+  return `<tr>
+    <td><strong>${esc(user.displayName)}</strong><div class="muted mono">${esc(user.username)}</div></td>
+    <td>${esc(user.dept)}</td>
+    <td class="mono">${esc(user.groups.join(', ') || '—')}</td>
+    <td>${esc(USER_PAGE_ROLE_LABELS[user.role] ?? user.role)}</td>
+    <td>${userSourceMarkup(user.roleSource)}</td>
+    <td>${statusMarkup(user.status)}</td>
+    <td><button class="btn ghost" data-user-detail="${esc(user.id)}">详情</button></td>
+  </tr>`
+}
+
+/** 用户详情弹框字段集（U82）：users API 实有字段，创建时间/最近登录无 wire 数据不虚构。 */
+function userDetailMarkup(user) {
+  const active = user.status === 'active'
+  const roleOptions = Object.entries(USER_PAGE_ROLE_LABELS)
     .map(
       ([value, label]) =>
         `<option value="${value}"${user.role === value ? ' selected' : ''}>${label}</option>`
     )
     .join('')
-  const active = user.status === 'active'
-  return `<tr>
-    <td><strong>${esc(user.displayName)}</strong><div class="muted mono">${esc(user.username)}</div></td>
-    <td>${esc(user.dept)}</td>
-    <td class="mono">${esc(user.groups.join(', ') || '—')}</td>
-    <td>
-      <select class="select" data-user-role="${esc(user.id)}" aria-label="${esc(user.displayName)} 的平台角色">${options}</select>
-    </td>
-    <td>${
-      user.roleSource === 'admin-override'
-        ? `<span class="badge ok">${esc(USER_SOURCE_LABELS[user.roleSource])}</span>`
-        : `<span class="muted">${esc(USER_SOURCE_LABELS[user.roleSource] ?? 'LDAP 同步')}</span>`
-    }</td>
-    <td><span class="dot ${active ? 'online' : 'offline'}"></span> ${active ? '活跃' : '已禁用'}</td>
-  </tr>`
+  return `<dl class="kv">
+    <dt>显示名</dt><dd>${esc(user.displayName)}</dd>
+    <dt>账号</dt><dd class="mono">${esc(user.username)}</dd>
+    <dt>部门</dt><dd>${esc(user.dept)}</dd>
+    <dt>LDAP 组</dt><dd class="mono">${esc(user.groups.join(', ') || '—')}</dd>
+    <dt>平台角色</dt><dd>
+      <select class="select" data-detail-role aria-label="平台角色（点击修改）"${active ? '' : ' disabled'}>${roleOptions}</select>
+      <span class="muted">${active ? '点击可修改' : '已停用账号不可修改角色'}</span>
+    </dd>
+    <dt>角色来源</dt><dd>${userSourceMarkup(user.roleSource)}</dd>
+    <dt>状态</dt><dd>${statusMarkup(user.status)}</dd>
+  </dl>
+  <p class="muted" style="margin-top:12px">角色变更写入 role_update 审计，按用户覆盖优先于 LDAP 同步；降级将断开该用户当前云会话（≤60 秒），升级即时生效。列表只读，角色修改仅在此处进行。</p>`
 }
 
-/** 下拉 change → 确认弹框（降级 danger + 断开会话副题）→ PUT → 重绘 + toast。 */
-function confirmUserRoleChange(select, users) {
-  const user = users.find((item) => item.id === select.dataset.userRole)
-  const next = select.value
-  if (!user || next === user.role) return
-  select.value = user.role // 回退到当前值：确认成功后整页重绘才会翻转
+function openUserDetail(user) {
+  const backdrop = dialog(`用户详情 · ${user.displayName}`, userDetailMarkup(user), [], {
+    wide: true
+  })
+  wireDetailRoleSelect(backdrop, user)
+}
+
+/** 弹框内角色下拉 change → 既有确认链；确认后弹框保持打开并重绘为新值。 */
+function wireDetailRoleSelect(backdrop, user) {
+  const select = backdrop.querySelector('[data-detail-role]')
+  if (!select) return
+  select.value = user.role // 显式落值：innerHTML 的 selected 属性在部分 DOM 实现不可靠
+  select.onchange = () => {
+    const next = select.value
+    select.value = user.role // 回退到当前值：确认成功后重绘才会翻转
+    if (user.status !== 'active') return // T3：停用账号不可修改角色
+    confirmUserRoleChange(user, next, (fresh) => {
+      const body = backdrop.querySelector('.body')
+      if (!body) return
+      body.innerHTML = userDetailMarkup(fresh)
+      wireDetailRoleSelect(backdrop, fresh)
+    })
+  }
+}
+
+/** 确认弹框（降级 danger + 断开会话副题）→ PUT → 列表同步 + 回调刷新弹框 + toast。 */
+function confirmUserRoleChange(user, next, onChanged) {
+  if (next === user.role) return
   const demote = user.role === 'admin' && next !== 'admin'
   dialog(
     '角色变更',
@@ -1528,13 +1643,13 @@ function confirmUserRoleChange(select, users) {
         label: '确认变更',
         primary: !demote,
         danger: demote,
-        onClick: () => void applyUserRoleChange(user, next)
+        onClick: () => void applyUserRoleChange(user, next, onChanged)
       }
     ]
   )
 }
 
-async function applyUserRoleChange(user, next) {
+async function applyUserRoleChange(user, next, onChanged) {
   try {
     await api(`/v1/users/${user.id}/roles`, {
       method: 'PUT',
@@ -1542,10 +1657,12 @@ async function applyUserRoleChange(user, next) {
     })
     toast(`已将 ${user.displayName} 的角色更新为${USER_PAGE_ROLE_LABELS[next]}`)
   } catch (err) {
-    // 失败重绘回滚：行不能继续显示一个没落库的角色。
+    // 失败重绘回滚：列表与弹框不能继续显示一个没落库的角色。
     toast(`保存失败：${err.message ?? err}`)
   }
-  await renderUsersPage()
+  const users = await renderUsersPage()
+  const fresh = users.find((item) => item.id === user.id) ?? user
+  onChanged?.(fresh, users)
 }
 
 /** The subject picker is an enhancement: a failed directory read keeps free text. */
@@ -1703,9 +1820,7 @@ function permCardsHtml(cards, rows, options) {
   const { kind } = options
   const cardsHtml = cards
     .map((card) => {
-      const matching = rows.filter((row) =>
-        card.bits.some((bit) => row.permissions.includes(bit))
-      )
+      const matching = rows.filter((row) => card.bits.some((bit) => row.permissions.includes(bit)))
       return `
       <div class="perm-card" data-card="${esc(card.key)}">
         <div class="perm-card-head"><strong>${esc(card.label)}</strong><span class="badge">${esc(card.bits.join(' + '))}</span><span class="muted">${matching.length} 个主体</span></div>
@@ -1823,9 +1938,8 @@ function wirePermCards(root, options) {
       const row = rowOf(button.dataset.permRemove)
       const card = cards.find((c) => c.key === button.dataset.card)
       if (!row) return
-      const remaining = (card
-        ? row.permissions.filter((bit) => !card.bits.includes(bit))
-        : []
+      const remaining = (
+        card ? row.permissions.filter((bit) => !card.bits.includes(bit)) : []
       ).sort()
       const save = async () => {
         try {
@@ -1966,7 +2080,10 @@ function auditHighlight(text, terms) {
   for (const term of terms.filter(Boolean)) {
     const pattern = esc(term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     if (pattern) {
-      html = html.replace(new RegExp(pattern, 'gi'), (match) => `<mark class="audit-hit">${match}</mark>`)
+      html = html.replace(
+        new RegExp(pattern, 'gi'),
+        (match) => `<mark class="audit-hit">${match}</mark>`
+      )
     }
   }
   return html
@@ -2205,7 +2322,10 @@ async function renderAudit(loadMore = false) {
       </select>
       <select class="select" id="auditHost" aria-label="主机">
         <option value="">全部主机</option>
-        ${hosts.filter((host) => !host.revokedAt).map((host) => `<option value="${esc(host.id)}">${esc(host.name ?? host.id)}</option>`).join('')}
+        ${hosts
+          .filter((host) => !host.revokedAt)
+          .map((host) => `<option value="${esc(host.id)}">${esc(host.name ?? host.id)}</option>`)
+          .join('')}
       </select>
       <input class="input" id="auditFileName" placeholder="文件名（1–128 字符）" autocomplete="off" aria-label="文件名">
       <select class="select" id="auditResult" aria-label="结果">
