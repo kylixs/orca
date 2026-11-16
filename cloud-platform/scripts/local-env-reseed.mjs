@@ -156,6 +156,8 @@ async function ensurePlatform(paths, options) {
       PLATFORM_TLS_KEY_PATH: paths.platformKey,
       ORCA_CLOUD_WEB_ROOT: path.join(ROOT, 'cloud-platform/apps/web'),
       ORCA_PLATFORM_STORE_FILE: path.join(options.root, 'run/platform-store.json'),
+      // Durable audit chain across restarts; snapshot audit is only a 10k-event fallback.
+      AUDIT_LOG_PATH: path.join(options.root, 'run/platform-audit.log'),
       // U126: keep superseded builds so a cached browser page keeps resolving.
       ORCA_CLOUD_WEB_ARCHIVE: path.join(options.root, 'web-archive')
     },
