@@ -164,6 +164,13 @@ test('W46-O1 点「打开」恰一次 admin handoff → 覆盖层 iframe 换页�
 
   const iframe = iframeOf(page)
   assert.equal(iframe.title, '项目工作区')
+  // U129: the cross-origin embed must delegate clipboard writes, or 复制内容 throws
+  // "The Clipboard API has been blocked" inside the workspace frame.
+  assert.deepEqual(
+    (iframe.getAttribute('allow') ?? '').split(';').map((feature) => feature.trim()),
+    ['clipboard-write'],
+    'the workspace frame delegates clipboard writes only'
+  )
   const url = new URL(iframe.src)
   assert.equal(url.origin, DIRECT_ORIGIN, 'the host serves the workspace document')
   assert.equal(url.pathname, '/cloud-admin.html', 'the admin surface swaps the page')
@@ -183,6 +190,7 @@ test('W46-O1 点「打开」恰一次 admin handoff → 覆盖层 iframe 换页�
   matrix.o1 = {
     calls: [`POST ${HANDOFF_PATH}`],
     src: redactHandoff(iframe.src),
+    allow: iframe.getAttribute('allow'),
     opened: opened.length,
     surface: event.metadata.surface
   }

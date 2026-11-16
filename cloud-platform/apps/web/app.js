@@ -947,6 +947,8 @@ function mountWorkspaceOverlay(projectId, project, url, retries = 0) {
   const iframe = document.createElement('iframe')
   iframe.className = 'workspace-frame'
   iframe.title = '项目工作区'
+  // Cross-origin embed: Clipboard API writes are delegated per-frame.
+  iframe.allow = 'clipboard-write'
   iframe.src = url
   body.appendChild(iframe)
 
