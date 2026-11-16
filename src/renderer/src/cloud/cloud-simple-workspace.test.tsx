@@ -213,6 +213,37 @@ describe('简易工作区外壳', () => {
     expect(screen.getByTestId('registered-diff').textContent).toBe('a.ts')
   })
 
+  // U83 (U114 D5): happy-dom has no layout, so this pins the class contract the
+  // real stack relies on. The geometric half (`pane.bottom === panel.bottom`,
+  // gap=0 at two viewports) is measured in
+  // cloud-admin/cloud-simple-workspace.e2e.test.ts and evidence/u94-verify.
+  it('U83：pane 包装层保持块级并加 [&>*]:h-full，非活动 pane 仍由 hidden 折叠', () => {
+    function Stub({ tab }: CloudSimpleWorkspaceTabComponentProps) {
+      return <div data-testid={`stub-${tab.id}`}>stub</div>
+    }
+
+    renderWorkspace({
+      initialTabs: [
+        { id: 'terminal-1', kind: 'terminal', title: 'Terminal 1' },
+        { id: 'file:a.ts', kind: 'editor', title: 'a.ts', path: 'src/a.ts' }
+      ],
+      tabComponents: { terminal: Stub, editor: Stub }
+    })
+
+    const panes = [...document.querySelectorAll<HTMLElement>('[role="tabpanel"]')]
+    expect(panes).toHaveLength(2)
+    for (const pane of panes) {
+      expect(pane.classList.contains('min-h-0')).toBe(true)
+      expect(pane.classList.contains('flex-1')).toBe(true)
+      expect(pane.className).toContain('[&>*]:h-full')
+      // Block, not flex: `hidden` must keep collapsing inactive panes.
+      expect(pane.classList.contains('flex')).toBe(false)
+      expect(pane.classList.contains('flex-col')).toBe(false)
+    }
+    expect(panes.filter((pane) => !pane.hidden)).toHaveLength(1)
+    expect(panes.filter((pane) => pane.hidden)).toHaveLength(1)
+  })
+
   it('无 terminal 权限：不渲染新建终端，终端标签与 Git 变更呈现拒绝态', async () => {
     const user = userEvent.setup()
     renderWorkspace({
