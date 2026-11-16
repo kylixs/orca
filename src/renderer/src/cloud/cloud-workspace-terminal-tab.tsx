@@ -2,6 +2,10 @@ import * as React from 'react'
 import type { CloudRpc } from '../../../shared/cloud-file-browser'
 import type { CloudSimpleWorkspaceTabComponentProps } from './cloud-simple-workspace'
 import type { CloudTerminalPanelProps, CloudTerminalSubscribe } from './cloud-terminal-panel'
+import {
+  cloudTerminalDetachPolicy,
+  useCloudSimpleWorkspaceLifecycle
+} from './cloud-simple-workspace-lifecycle'
 
 /**
  * Terminal tab of the embedded simple workspace (U46-5b, design §4.5).
@@ -70,6 +74,12 @@ export function CloudWorkspaceTerminalTab({
   active
 }: CloudSimpleWorkspaceTabComponentProps): React.JSX.Element | null {
   const deps = React.useContext(CloudWorkspaceTerminalDepsContext)
+  const lifecycle = useCloudSimpleWorkspaceLifecycle()
+  // Read at unmount: suspend flips the intent after this pane's last render.
+  const detachPolicyResolver = React.useCallback(
+    () => cloudTerminalDetachPolicy(lifecycle?.intent() ?? 'active'),
+    [lifecycle]
+  )
   // Defensive: the shell already refuses to render terminal tabs without the
   // permission, and the reducer never produces another kind here.
   if (tab.kind !== 'terminal') {
@@ -101,7 +111,8 @@ export function CloudWorkspaceTerminalTab({
     subscribe: deps.subscribe,
     workspacePath: deps.workspacePath,
     title: tab.title,
-    active
+    active,
+    detachPolicyResolver
   }
   return (
     <React.Suspense

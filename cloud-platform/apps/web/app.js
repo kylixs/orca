@@ -454,6 +454,8 @@ function wireProjectActions() {
 
 const WORKSPACE_READY_TIMEOUT_MS = 20_000
 const WORKSPACE_CLOSE_TIMEOUT_MS = 300
+/** §4.2: an end closes every PTY serially, so its acknowledgement is slower. */
+const WORKSPACE_END_TIMEOUT_MS = 5_000
 /** R9: retry the handoff at most twice, then point at the standalone page. */
 const WORKSPACE_READY_MAX_RETRIES = 2
 let workspaceOverlay = null
@@ -523,6 +525,7 @@ function workspaceBarHtml(project) {
       </div>
       <div class="workspace-bar-side">
         <button class="btn sm" data-workspace-new-tab>在新标签打开 Orca Web</button>
+        <button class="btn sm danger" data-workspace-end hidden>结束工作区</button>
         <button class="btn sm" data-workspace-close>关闭</button>
       </div>
     </header>`
@@ -549,6 +552,9 @@ function wireWorkspaceShell(root, projectId, retries = 0) {
   }
   for (const btn of root.querySelectorAll('[data-workspace-new-tab]')) {
     btn.onclick = () => void openOrcaWebInNewTab(projectId)
+  }
+  for (const btn of root.querySelectorAll('[data-workspace-end]')) {
+    btn.onclick = () => requestWorkspaceEnd()
   }
   const retry = root.querySelector('[data-workspace-retry]')
   if (retry) {
@@ -582,6 +588,7 @@ function mountWorkspaceFailure(projectId, project, reason) {
     origin: null,
     dirty: 0,
     ready: false,
+    features: new Set(),
     readyTimer: null,
     closeTimer: null,
     onMessage: null
@@ -620,6 +627,7 @@ function mountWorkspaceReadyFailure(projectId, project, retries) {
     origin: null,
     dirty: 0,
     ready: false,
+    features: new Set(),
     readyTimer: null,
     closeTimer: null,
     onMessage: null
@@ -644,6 +652,7 @@ function mountWorkspaceOverlay(projectId, project, url, retries = 0) {
     origin: new URL(url).origin,
     dirty: 0,
     ready: false,
+    features: new Set(),
     readyTimer: null,
     closeTimer: null,
     onMessage: null
@@ -651,6 +660,7 @@ function mountWorkspaceOverlay(projectId, project, url, retries = 0) {
   const status = root.querySelector('[data-workspace-status]')
   const route = root.querySelector('[data-workspace-route]')
   const dirty = root.querySelector('[data-workspace-dirty]')
+  const endBtn = root.querySelector('[data-workspace-end]')
 
   overlay.onMessage = (event) => {
     // §4.2: only this iframe, only from the page the handoff named.
@@ -659,15 +669,18 @@ function mountWorkspaceOverlay(projectId, project, url, retries = 0) {
     if (data.source !== 'orca-cloud-admin') return
     if (data.type === 'ready') {
       overlay.ready = true
+      overlay.features = new Set(Array.isArray(data.features) ? data.features : [])
       clearTimeout(overlay.readyTimer)
       status.hidden = true
       route.hidden = false
       route.textContent = `${data.route === 'relay' ? '中继' : '直连'} ${Number(data.latencyMs) || 0}ms`
+      // §4.2: only a console that implements `end` offers the explicit action.
+      if (endBtn) endBtn.hidden = !overlay.features.has('end')
     } else if (data.type === 'dirty') {
       overlay.dirty = Number(data.count) || 0
       dirty.hidden = overlay.dirty === 0
       dirty.textContent = `${overlay.dirty} 个未保存文件`
-    } else if (data.type === 'closed') {
+    } else if (data.type === 'closed' || data.type === 'suspended' || data.type === 'ended') {
       removeWorkspaceOverlay()
     }
   }
@@ -693,9 +706,24 @@ function requestWorkspaceClose() {
     removeWorkspaceOverlay()
     return
   }
-  // R1: close the PTY/socket inside the iframe before its document goes away.
-  overlay.iframe.contentWindow?.postMessage({ type: 'close' }, overlay.origin)
+  // §4.1: 收起 is a suspend — the iframe drops its stream/socket, host PTYs stay.
+  // An old iframe has no `suspend` feature; its `close` means the same now.
+  const type = overlay.features.has('suspend') ? 'suspend' : 'close'
+  overlay.iframe.contentWindow?.postMessage({ type }, overlay.origin)
   overlay.closeTimer = setTimeout(removeWorkspaceOverlay, WORKSPACE_CLOSE_TIMEOUT_MS)
+}
+
+/** §4.1: explicit end is the only action that retires PTYs and rows. */
+function requestWorkspaceEnd() {
+  const overlay = workspaceOverlay
+  if (!overlay || !overlay.iframe) return
+  if (!confirmDialog('结束工作区将关闭其中所有终端，确定继续？')) return
+  clearTimeout(overlay.closeTimer)
+  overlay.iframe.contentWindow?.postMessage({ type: 'end' }, overlay.origin)
+  overlay.closeTimer = setTimeout(() => {
+    removeWorkspaceOverlay()
+    toast('结束工作区超时，已强制关闭')
+  }, WORKSPACE_END_TIMEOUT_MS)
 }
 
 function removeWorkspaceOverlay() {
@@ -711,7 +739,10 @@ function removeWorkspaceOverlay() {
   workspaceOverlay = null
 }
 
-/** R10: tell the embedded page to drop its session before the console signs out. */
+/**
+ * R10/T-B7: the console owns logout; logout is a suspend, never an implicit end,
+ * so the iframe clears its session without closing any host PTY.
+ */
 function closeWorkspaceForLogout() {
   const overlay = workspaceOverlay
   if (!overlay) return

@@ -12,6 +12,7 @@ import {
   CloudWorkspaceTerminalTab,
   CloudWorkspaceTerminalTabProvider
 } from './cloud-workspace-terminal-tab'
+import { CloudSimpleWorkspaceLifecycleProvider } from './cloud-simple-workspace-lifecycle'
 
 /**
  * U46-5b (design §4.5): each terminal tab is one CloudTerminalPanel on the
@@ -99,20 +100,27 @@ const dispatch: React.Dispatch<CloudSimpleWorkspaceTabsAction> = () => undefined
 
 const terminalTab = { id: 'terminal-1', kind: 'terminal', title: 'Terminal 1' } as const
 
+type LifecycleIntent = { current: 'active' | 'suspending' | 'ending' }
+
 function renderTab(
   host: ReturnType<typeof scriptedHost>,
   stream: ReturnType<typeof scriptedStream>,
-  active: boolean
+  active: boolean,
+  intent: LifecycleIntent = { current: 'active' }
 ) {
-  const view = render(
+  const lifecycle = { intent: (): 'active' | 'suspending' | 'ending' => intent.current }
+  const element = (
     <CloudWorkspaceTerminalTabProvider
       rpc={host.rpc}
       subscribe={stream.subscribe}
       workspacePath="/srv/checkout"
     >
-      <CloudWorkspaceTerminalTab tab={terminalTab} active={active} dispatch={dispatch} />
+      <CloudSimpleWorkspaceLifecycleProvider lifecycle={lifecycle}>
+        <CloudWorkspaceTerminalTab tab={terminalTab} active={active} dispatch={dispatch} />
+      </CloudSimpleWorkspaceLifecycleProvider>
     </CloudWorkspaceTerminalTabProvider>
   )
+  const view = render(element)
   const rerender = (nextActive: boolean): void => {
     view.rerender(
       <CloudWorkspaceTerminalTabProvider
@@ -120,7 +128,9 @@ function renderTab(
         subscribe={stream.subscribe}
         workspacePath="/srv/checkout"
       >
-        <CloudWorkspaceTerminalTab tab={terminalTab} active={nextActive} dispatch={dispatch} />
+        <CloudSimpleWorkspaceLifecycleProvider lifecycle={lifecycle}>
+          <CloudWorkspaceTerminalTab tab={terminalTab} active={nextActive} dispatch={dispatch} />
+        </CloudSimpleWorkspaceLifecycleProvider>
       </CloudWorkspaceTerminalTabProvider>
     )
   }
@@ -157,11 +167,10 @@ describe('简易工作区终端标签（U46-5b）', () => {
     await user.click(screen.getByTestId('cloud-simple-workspace-new-terminal'))
     await user.click(screen.getByTestId('cloud-simple-workspace-new-terminal'))
 
-    for (const id of ['terminal-1', 'terminal-2']) {
-      await within(screen.getByTestId(`cloud-simple-workspace-pane-${id}`)).findByTestId(
-        'cloud-terminal-panel'
-      )
+    for (const pane of await screen.findAllByTestId(/^cloud-simple-workspace-pane-terminal:/)) {
+      await within(pane).findByTestId('cloud-terminal-panel')
     }
+    expect(screen.getAllByTestId(/^cloud-simple-workspace-pane-terminal:/)).toHaveLength(2)
     await waitFor(() => expect(stream.unsubscribers).toHaveLength(2))
 
     const creates = host.calls.filter((call) => call.method === 'terminal.create')
@@ -220,7 +229,13 @@ describe('简易工作区终端标签（U46-5b）', () => {
     await user.click(screen.getByTestId('cloud-simple-workspace-new-terminal'))
     await waitFor(() => expect(stream.unsubscribers).toHaveLength(2))
 
-    await user.click(screen.getByTestId('cloud-simple-workspace-tab-close-terminal-2'))
+    const closeButtons = screen.getAllByTestId(/^cloud-simple-workspace-tab-close-terminal:/)
+    const secondClose = closeButtons[1]
+    if (!secondClose) {
+      throw new Error('expected two terminal tabs')
+    }
+    const closingId = secondClose.dataset.testid?.replace('cloud-simple-workspace-tab-close-', '')
+    await user.click(secondClose)
 
     await waitFor(() =>
       expect(host.calls.filter((call) => call.method === 'terminal.close')).toEqual([
@@ -229,7 +244,7 @@ describe('简易工作区终端标签（U46-5b）', () => {
     )
     expect(stream.unsubscribers[1]).toHaveBeenCalled()
     expect(stream.unsubscribers[0]).not.toHaveBeenCalled()
-    expect(screen.queryByTestId('cloud-simple-workspace-pane-terminal-2')).toBeNull()
+    expect(screen.queryByTestId(`cloud-simple-workspace-pane-${closingId}`)).toBeNull()
   })
 
   it('无 terminal 权限：组件层防御性占位，不建 PTY', async () => {
@@ -283,5 +298,43 @@ describe('简易工作区终端标签（U46-5b）', () => {
 
     expect(host.calls).toEqual([])
     expect(stream.calls).toEqual([])
+  })
+
+  it('suspend 卸载：退订流但保留 PTY（不发 terminal.close）', async () => {
+    const host = scriptedHost()
+    const stream = scriptedStream()
+    const intent: LifecycleIntent = { current: 'active' }
+    const view = renderTab(host, stream, true, intent)
+    await screen.findByTestId('cloud-terminal-panel')
+    await waitFor(() =>
+      expect(host.calls.some((call) => call.method === 'terminal.create')).toBe(true)
+    )
+
+    // The console flips the intent in the same commit that removes the workspace.
+    intent.current = 'suspending'
+    view.unmount()
+
+    await waitFor(() => expect(stream.unsubscribers[0]).toHaveBeenCalled())
+    expect(host.calls.filter((call) => call.method === 'terminal.close')).toEqual([])
+  })
+
+  it('end 卸载：退订流并关闭 PTY（显式结束才回收）', async () => {
+    const host = scriptedHost()
+    const stream = scriptedStream()
+    const intent: LifecycleIntent = { current: 'active' }
+    const view = renderTab(host, stream, true, intent)
+    await screen.findByTestId('cloud-terminal-panel')
+    await waitFor(() =>
+      expect(host.calls.some((call) => call.method === 'terminal.create')).toBe(true)
+    )
+
+    intent.current = 'ending'
+    view.unmount()
+
+    await waitFor(() =>
+      expect(host.calls.filter((call) => call.method === 'terminal.close')).toEqual([
+        { method: 'terminal.close', params: { terminal: 'term_1' } }
+      ])
+    )
   })
 })

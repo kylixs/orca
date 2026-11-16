@@ -14,6 +14,8 @@ import {
   type CloudAdminEmbedEntry
 } from './cloud-admin-embed'
 import { useCloudSession, type CloudBridge, type CloudSessionView } from './use-cloud-session'
+import { CloudSimpleWorkspaceLifecycleProvider } from './cloud-simple-workspace-lifecycle'
+import { useCloudAdminEmbedLifecycle } from './cloud-admin-embed-lifecycle'
 
 /** Where the console page lives, derived from the referrer when the browser reports it. */
 function cloudAdminParentOrigin(): string | null {
@@ -121,6 +123,17 @@ export function CloudApp({
   const embedProjectId = embed?.projectId ?? null
   const handoffCode = embed?.handoffCode ?? null
   const embedActive = embedProjectId !== null && !embedTimedOut
+  // §4.1: `active` while embedded, then `suspending` (keep PTYs) or `ending`.
+  const {
+    phase: embedPhase,
+    lifecycle,
+    handleParentMessage
+  } = useCloudAdminEmbedLifecycle({
+    projectId: embedProjectId,
+    closeProject,
+    signOut,
+    postToParent
+  })
   const embedHandoffFailed =
     embedActive && handoffCode !== null && session.status === 'signed-out' && session.error !== null
 
@@ -173,6 +186,8 @@ export function CloudApp({
     postToParent({
       source: 'orca-cloud-admin',
       type: 'ready',
+      // §4.2: only the capabilities this build actually implements.
+      features: ['suspend', 'end'],
       route: session.route,
       latencyMs: Date.now() - (embedStartedAt.current ?? Date.now())
     })
@@ -197,20 +212,11 @@ export function CloudApp({
       if (!isCloudAdminParentMessage(event, parentOrigin)) {
         return
       }
-      const type = readField(event.data, 'type')
-      if (type === 'close') {
-        // R1: close the PTY/socket before the console drops the document.
-        void closeProject(embedProjectId).then(() =>
-          postToParent({ source: 'orca-cloud-admin', type: 'closed' })
-        )
-      } else if (type === 'logout') {
-        // R10: the console owns logout; the host still clears every project link.
-        void signOut()
-      }
+      handleParentMessage(readField(event.data, 'type'))
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [embedProjectId, closeProject, signOut, postToParent, parentOrigin])
+  }, [embedProjectId, handleParentMessage, parentOrigin])
 
   const dialogs = (
     <>
@@ -253,15 +259,27 @@ export function CloudApp({
   // U46-4: embedded mode renders only the workspace; the console owns the
   // workbench chrome, navigation and login.
   if (embedActive) {
+    // §4.1: a suspend/end tears the workspace down before the console drops the
+    // document; the panels' unmount policy reads the intent set above.
+    if (embedPhase !== 'active') {
+      return (
+        <>
+          <CloudEmbedProgress error={null} />
+          {dialogs}
+        </>
+      )
+    }
     if (session.status === 'signed-in' && bridge && openedProject) {
       return (
         <>
-          <EmbeddedWorkspace
-            session={session}
-            project={openedProject}
-            bridge={bridge}
-            postToParent={postToParent}
-          />
+          <CloudSimpleWorkspaceLifecycleProvider lifecycle={lifecycle}>
+            <EmbeddedWorkspace
+              session={session}
+              project={openedProject}
+              bridge={bridge}
+              postToParent={postToParent}
+            />
+          </CloudSimpleWorkspaceLifecycleProvider>
           {dialogs}
         </>
       )

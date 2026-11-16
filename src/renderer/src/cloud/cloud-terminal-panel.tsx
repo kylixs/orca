@@ -56,6 +56,13 @@ export type CloudTerminalPanelProps = {
    * viewport updates are skipped until activation (design §4.5).
    */
   active?: boolean
+  /**
+   * §4.3: `leave-running` unmounts the xterm and stream but keeps the host PTY
+   * (overlay suspend); the default closes it, as a tab close does.
+   */
+  detachPolicy?: 'close-on-unmount' | 'leave-running'
+  /** Consulted at unmount; the suspend intent lands after the last render. */
+  detachPolicyResolver?: () => 'close-on-unmount' | 'leave-running'
 }
 
 type PanelState =
@@ -93,7 +100,9 @@ export function CloudTerminalPanel({
   subscribe,
   workspacePath,
   title = 'cloud-admin',
-  active = true
+  active = true,
+  detachPolicy = 'close-on-unmount',
+  detachPolicyResolver
 }: CloudTerminalPanelProps): React.JSX.Element {
   // U84a observation: one meter per panel (one PTY); it only timestamps keys
   // and the write callbacks xterm already runs, never the data path itself.
@@ -430,7 +439,8 @@ export function CloudTerminalPanel({
       // must own the last armed timer without a guard that hides it.
       clearTimeout(timer)
       subscription?.unsubscribe()
-      if (handleRef.current !== null) {
+      const policy = detachPolicyResolver ? detachPolicyResolver() : detachPolicy
+      if (handleRef.current !== null && policy === 'close-on-unmount') {
         // Why not awaited: an unmount must not hold the tree on the network.
         void rpc('terminal.close', { terminal: handleRef.current })
       }
@@ -438,7 +448,17 @@ export function CloudTerminalPanel({
     }
     // One PTY per workspace path; a different path belongs to a different panel.
     // The title is the create-time name of that PTY, never a live relabel.
-  }, [rpc, subscribe, workspacePath, title, clientId, pushViewport, echoMeter])
+  }, [
+    rpc,
+    subscribe,
+    workspacePath,
+    title,
+    clientId,
+    pushViewport,
+    echoMeter,
+    detachPolicy,
+    detachPolicyResolver
+  ])
 
   // Keystrokes name the live handle; a dropping link shows its state instead of
   // throwing into the tree.

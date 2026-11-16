@@ -236,6 +236,61 @@ describe('U46-4 embed 入口', () => {
     await waitFor(() => expect(bridge.logoutCalls).toBe(1))
   })
 
+  it('B-令5 生命周期：ready 声明能力；close/suspend/end 各自回执，登出不隐式 end', async () => {
+    const bridge = makeBridge()
+    const posted: Record<string, unknown>[] = []
+    render(
+      <CloudApp
+        bridge={bridge}
+        embed={{ projectId: 'p1', handoffCode: 'code-1' }}
+        postToParent={(message) => posted.push(message)}
+      />
+    )
+    await waitFor(() => expect(posted.some((message) => message.type === 'ready')).toBe(true))
+    expect(posted.find((message) => message.type === 'ready')).toMatchObject({
+      features: ['suspend', 'end']
+    })
+
+    // Old console: close is a suspend, but the legacy acknowledgement still lands.
+    act(() => dispatchParentMessage({ type: 'close' }))
+    await waitFor(() =>
+      expect(posted).toContainEqual({ source: 'orca-cloud-admin', type: 'closed' })
+    )
+    expect(bridge.closeCalls).toEqual(['p1'])
+
+    act(() => dispatchParentMessage({ type: 'suspend' }))
+    await waitFor(() =>
+      expect(posted).toContainEqual({ source: 'orca-cloud-admin', type: 'suspended' })
+    )
+    expect(bridge.closeCalls).toEqual(['p1', 'p1'])
+
+    act(() => dispatchParentMessage({ type: 'end' }))
+    await waitFor(() =>
+      expect(posted).toContainEqual({ source: 'orca-cloud-admin', type: 'ended' })
+    )
+    expect(bridge.closeCalls).toEqual(['p1', 'p1', 'p1'])
+    // No terminal.handle existed here, but an end must never hide a PTY close
+    // behind an unmount policy: the workspace unmounted under the ending intent.
+    expect(bridge.logoutCalls).toBe(0)
+  })
+
+  it('登出按 suspend 处理：iframe signOut，不关项目（不隐式 end）', async () => {
+    const bridge = makeBridge()
+    const posted: Record<string, unknown>[] = []
+    render(
+      <CloudApp
+        bridge={bridge}
+        embed={{ projectId: 'p1', handoffCode: 'code-1' }}
+        postToParent={(message) => posted.push(message)}
+      />
+    )
+    await waitFor(() => expect(posted.some((message) => message.type === 'ready')).toBe(true))
+
+    act(() => dispatchParentMessage({ type: 'logout' }))
+    await waitFor(() => expect(bridge.logoutCalls).toBe(1))
+    expect(bridge.closeCalls).toEqual([])
+  })
+
   it('F-07 父消息负例：错误 origin/source 被忽略；referrer 缺失回落平台 origin', async () => {
     const bridge = makeBridge({ state: SIGNED_IN, platformUrl: 'https://platform.example' })
     render(

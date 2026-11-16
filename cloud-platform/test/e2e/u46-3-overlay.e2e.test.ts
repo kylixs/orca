@@ -472,3 +472,65 @@ test('W46-O5 登出先移除覆盖层并 postMessage(logout)', async () => {
 
   matrix.o5 = { logoutMessage: true, overlayRemoved: true, loginShown: true }
 }, 120_000)
+
+test('W46-O7 suspend/end：能力声明决定按钮与消息；close 为 suspend，suspended/ended 均移除', async () => {
+  const page = await loginDevWorkbench()
+  await openProject(page)
+  const iframe = iframeOf(page)
+  const sent: unknown[] = []
+  iframe.contentWindow!.postMessage = ((message: unknown) => {
+    sent.push(message)
+    return undefined
+    // oxlint-disable-next-line typescript/no-explicit-any -- happy-dom's cross-origin window is structurally wider
+  }) as any
+
+  // §4.2: without the capability the console hides the explicit end action.
+  const endButton = () => overlayOf(page).querySelector<HTMLButtonElement>('[data-workspace-end]')
+  assert.equal(endButton()?.hidden, true, 'end stays hidden before ready')
+  postFromIframe(page, iframe, {
+    source: 'orca-cloud-admin',
+    type: 'ready',
+    route: 'direct',
+    latencyMs: 12,
+    features: ['suspend', 'end']
+  })
+  assert.equal(endButton()?.hidden, false, 'ready advertises end')
+
+  // 关闭 = suspend: no closeProject on the console; the iframe acknowledges.
+  overlayOf(page).querySelector<HTMLButtonElement>('[data-workspace-close]')?.click()
+  assert.deepEqual(sent, [{ type: 'suspend' }], 'close suspends instead of ending')
+  postFromIframe(page, iframe, { source: 'orca-cloud-admin', type: 'suspended' })
+  assert.equal(
+    page.window.document.querySelector('#workspaceOverlay'),
+    null,
+    'suspended removes the overlay'
+  )
+
+  // Reopen: the explicit end asks first, then waits for `ended`.
+  await openProject(page)
+  const reopened = iframeOf(page)
+  const endSent: unknown[] = []
+  reopened.contentWindow!.postMessage = ((message: unknown) => {
+    endSent.push(message)
+    return undefined
+    // oxlint-disable-next-line typescript/no-explicit-any -- happy-dom's cross-origin window is structurally wider
+  }) as any
+  postFromIframe(page, reopened, {
+    source: 'orca-cloud-admin',
+    type: 'ready',
+    route: 'direct',
+    latencyMs: 8,
+    features: ['suspend', 'end']
+  })
+  page.window.confirm = () => true
+  overlayOf(page).querySelector<HTMLButtonElement>('[data-workspace-end]')?.click()
+  assert.deepEqual(endSent, [{ type: 'end' }], 'end is an explicit action')
+  postFromIframe(page, reopened, { source: 'orca-cloud-admin', type: 'ended' })
+  assert.equal(
+    page.window.document.querySelector('#workspaceOverlay'),
+    null,
+    'ended removes the overlay'
+  )
+
+  matrix.o7 = { endGatedByFeature: true, close: 'suspend', end: 'explicit' }
+}, 120_000)
