@@ -10,8 +10,15 @@ Product code, `cloud-platform/apps/`, the ledger, and PROGRESS are not modified.
 ## Files
 
 - `cloud-platform/scripts/exploratory-r8/u138-frame-timeline.mjs` — probe.
+- `cloud-platform/scripts/exploratory-r8/u138-frame-timeline-race.mjs` — race-window
+  variant: reloads as soon as a renderer `session.tabs.activate` send frame is
+  recorded, without waiting for the response/DOM/host publish. Pre-reload frames
+  and race metadata are persisted to sessionStorage and drained after the shell
+  returns. Knobs: `U138_RACE_DELAY_MS` (default 0), `U138_RACE_SETTLE_MS`
+  (default 3000, second post-reload sample).
 - Output: `cloud-platform/evidence/exploratory-r8/u138-timeline.json`
-  (gitignored, ~141 frames per 3-cycle run).
+  (gitignored, ~141 frames per 3-cycle run); the race variant writes
+  `u138-timeline-race.json` (50 samples per 10-cycle run).
 
 ## Entry
 
