@@ -27,7 +27,8 @@
  *
  * Output: cloud-platform/evidence/exploratory-r8/u138-timeline.json (gitignored)
  */
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
@@ -35,16 +36,114 @@ import { chromium } from 'playwright'
 const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url))
 const EVIDENCE_DIR = path.join(REPO_ROOT, 'cloud-platform/evidence/exploratory-r8')
 const OUTPUT_FILE = path.join(EVIDENCE_DIR, 'u138-timeline.json')
+const RUN_ID = (process.env.U138_RUN_ID ?? new Date().toISOString().replace(/[:.]/g, '-')).replace(
+  /[^\w-]/g,
+  '-'
+)
+const RUN_DIR = path.join(EVIDENCE_DIR, `run-${RUN_ID}`)
 
 const PLATFORM_URL = (process.env.U138_PLATFORM_URL ?? 'https://127.0.0.1:18787').replace(/\/$/, '')
 const USERNAME = process.env.U138_USERNAME ?? 'zhangsan'
 const PASSWORD = process.env.U138_PASSWORD ?? 'Passw0rd!'
 const PROJECT_KEY = process.env.U138_PROJECT_KEY ?? 'zhangsan-demo'
 const CYCLES = Math.max(1, Number(process.env.U138_CYCLES ?? 3))
+const REOPEN_CYCLES = Math.max(0, Number(process.env.U138_REOPEN_CYCLES ?? 3))
+const QUICK_CYCLES = Math.max(0, Number(process.env.U138_QUICK_CYCLES ?? 5))
+const SETTLE_MS = Math.max(2000, Number(process.env.U138_SETTLE_MS ?? 2100))
 const HEADLESS = process.env.U138_HEADLESS !== '0'
 const PAGE_FRAME_LIMIT = Number(process.env.U138_PAGE_FRAME_LIMIT ?? 300)
+const HOST_STATE_ROOTS = (
+  process.env.U138_HOST_STATE_ROOTS ??
+  [path.join(homedir(), 'orca-local-env/host'), path.join(homedir(), 'orca-local-env/host2')].join(
+    path.delimiter
+  )
+)
+  .split(path.delimiter)
+  .filter(Boolean)
 
 mkdirSync(EVIDENCE_DIR, { recursive: true })
+mkdirSync(RUN_DIR, { recursive: true })
+
+/* -------------------------------------------------------------------------- */
+/* Host state (script side): profile-state.db is the only non-projection read  */
+/* available without a host restart. No RPC exposes host memory.              */
+/* -------------------------------------------------------------------------- */
+
+let DatabaseSync = null
+try {
+  ;({ DatabaseSync } = await import('node:sqlite'))
+} catch {
+  // Node < 22.5; host state reads degrade to hostMemoryOk=false.
+}
+
+function candidateProfileStateDbs() {
+  const files = []
+  for (const root of HOST_STATE_ROOTS) {
+    const profiles = path.join(root, 'ud', 'profiles')
+    if (!existsSync(profiles)) {
+      continue
+    }
+    for (const profileId of readdirSync(profiles)) {
+      const file = path.join(profiles, profileId, 'profile-state.db')
+      if (existsSync(file)) {
+        files.push({ root, profileId, file })
+      }
+    }
+  }
+  return files
+}
+
+function readHostState(worktreeId) {
+  const at = Date.now()
+  if (!DatabaseSync) {
+    return { ok: false, at, error: 'node:sqlite unavailable', hostMemoryOk: false }
+  }
+  const errors = []
+  for (const candidate of candidateProfileStateDbs()) {
+    let db = null
+    try {
+      db = new DatabaseSync(candidate.file, { readOnly: true })
+      const row = db
+        .prepare("select payload from profile_state_documents where domain = 'workspaceSession'")
+        .get()
+      if (!row?.payload) {
+        continue
+      }
+      const session = JSON.parse(row.payload)
+      const byWorktree = session?.activeTabIdByWorktree ?? {}
+      if (!Object.hasOwn(byWorktree, worktreeId)) {
+        continue
+      }
+      return {
+        ok: true,
+        at,
+        hostMemoryOk: true,
+        file: candidate.file,
+        hostRoot: candidate.root,
+        // No host-memory RPC exists; this is an explicitly labelled persisted fallback.
+        memorySource: 'persisted-file-fallback',
+        persistentSource: 'profile-state.db:workspaceSession.activeTabIdByWorktree',
+        hostMemoryActive: byWorktree[worktreeId] ?? null,
+        hostPersistentActive: byWorktree[worktreeId] ?? null,
+        hostPersistentType: session?.activeTabTypeByWorktree?.[worktreeId] ?? null,
+        hostPersistentGroupId: session?.activeGroupIdByWorktree?.[worktreeId] ?? null
+      }
+    } catch (error) {
+      errors.push(`${candidate.file}: ${String(error?.message ?? error)}`)
+    } finally {
+      try {
+        db?.close?.()
+      } catch {}
+    }
+  }
+  return {
+    ok: false,
+    at,
+    hostMemoryOk: false,
+    error:
+      errors.length > 0 ? errors.join('; ') : `worktree ${worktreeId} not found in profile-state.db`
+  }
+}
 
 /* -------------------------------------------------------------------------- */
 /* Page-side recorder (runs before any page script)                            */
@@ -68,7 +167,7 @@ function installU138Probe(config) {
     lastControl: null
   }
   let seq = 0
-  let rawCall = null
+  let probeCall = null
   let rawSubscribe = null
 
   const isRelevantMethod = (method) =>
@@ -77,7 +176,9 @@ function installU138Probe(config) {
   const push = (frame) => {
     frames.push(frame)
     if (frames.length > MAX_FRAMES) {
-      frames.splice(0, frames.length - MAX_FRAMES)
+      const dropped = frames.length - MAX_FRAMES
+      frames.splice(0, dropped)
+      transport.droppedFrames = (transport.droppedFrames ?? 0) + dropped
     }
   }
 
@@ -104,6 +205,9 @@ function installU138Probe(config) {
       'navigation',
       'intent',
       'materializeOnly',
+      'persistSelection',
+      'clientNavigationId',
+      'clientMutationId',
       'targetGroupId',
       'afterTabId'
     ]) {
@@ -145,7 +249,7 @@ function installU138Probe(config) {
           activeTabId: group.activeTabId ?? null,
           tabOrder: Array.isArray(group.tabOrder)
             ? group.tabOrder.slice(0, 40)
-            : group.tabOrder ?? null
+            : (group.tabOrder ?? null)
         }))
       : undefined
   })
@@ -156,7 +260,9 @@ function installU138Probe(config) {
     }
     if (method === 'session.tabs.listAll') {
       return {
-        worktrees: Array.isArray(result.worktrees) ? result.worktrees.slice(0, 20) : result.worktrees,
+        worktrees: Array.isArray(result.worktrees)
+          ? result.worktrees.slice(0, 20)
+          : result.worktrees,
         snapshots: Array.isArray(result.snapshots)
           ? result.snapshots.slice(0, 20).map(summarizeSnapshot)
           : undefined
@@ -207,7 +313,7 @@ function installU138Probe(config) {
     return Object.keys(picked).length > 0 ? picked : { __keys: Object.keys(result).slice(0, 20) }
   }
 
-  const recordCall = async (req, source) => {
+  const recordCall = async (req, source, call) => {
     const method = req?.method
     const callId = `u138-${source}-${++seq}`
     const sendAt = performance.now()
@@ -225,7 +331,7 @@ function installU138Probe(config) {
     }
     push(sendFrame)
     try {
-      const response = await rawCall(req)
+      const response = await call(req)
       push({
         layer: 'rpc',
         dir: 'recv',
@@ -262,18 +368,21 @@ function installU138Probe(config) {
 
   const wrapCallNamespace = (namespace) => {
     if (!namespace || typeof namespace.call !== 'function') {
-      return
+      return null
     }
     const original = namespace.call
-    if (!rawCall) {
-      rawCall = original.bind(namespace)
+    const bound = original.bind(namespace)
+    if (!probeCall) {
+      // session.tabs.* travels over runtimeEnvironments; probe reads reuse its binding.
+      probeCall = bound
     }
     namespace.call = function wrappedCall(req) {
       if (!isRelevantMethod(req?.method)) {
         return original.call(namespace, req)
       }
-      return recordCall(req, 'renderer')
+      return recordCall(req, 'renderer', bound)
     }
+    return bound
   }
 
   const wrapSubscribeNamespace = (namespace) => {
@@ -346,6 +455,7 @@ function installU138Probe(config) {
           error: null,
           subscription: true,
           source: 'renderer',
+          synthetic: true,
           t: performance.now(),
           wall: Date.now()
         })
@@ -374,9 +484,7 @@ function installU138Probe(config) {
             }
           : {})
       }
-      const argument = isCallbackShape
-        ? (response) => wrapped.onResponse(response)
-        : wrapped
+      const argument = isCallbackShape ? (response) => wrapped.onResponse(response) : wrapped
       return original.call(namespace, req, argument)
     }
   }
@@ -483,9 +591,7 @@ function installU138Probe(config) {
 
     function WrappedWebSocket(url, protocols) {
       const socket =
-        protocols === undefined
-          ? new OriginalWebSocket(url)
-          : new OriginalWebSocket(url, protocols)
+        protocols === undefined ? new OriginalWebSocket(url) : new OriginalWebSocket(url, protocols)
       transport.openedAt = transport.openedAt ?? Date.now()
       const originalSend = socket.send.bind(socket)
       socket.send = (data) => {
@@ -519,16 +625,22 @@ function installU138Probe(config) {
       },
       transport: () => ({ ...transport }),
       hostList: async (worktree) => {
-        if (typeof rawCall !== 'function') {
+        if (typeof probeCall !== 'function') {
           throw new Error('u138 probe: raw RPC call not captured yet')
         }
         return recordCall(
-          { selector: 'active', method: 'session.tabs.list', params: { worktree }, timeoutMs: 15_000 },
-          'probe'
+          {
+            selector: 'active',
+            method: 'session.tabs.list',
+            params: { worktree },
+            timeoutMs: 15_000
+          },
+          'probe',
+          probeCall
         )
       },
       hostActivate: async (args) => {
-        if (typeof rawCall !== 'function') {
+        if (typeof probeCall !== 'function') {
           throw new Error('u138 probe: raw RPC call not captured yet')
         }
         return recordCall(
@@ -538,11 +650,12 @@ function installU138Probe(config) {
             params: args,
             timeoutMs: 15_000
           },
-          'probe-restore'
+          'probe-restore',
+          probeCall
         )
       },
       hostClose: async (args) => {
-        if (typeof rawCall !== 'function') {
+        if (typeof probeCall !== 'function') {
           throw new Error('u138 probe: raw RPC call not captured yet')
         }
         return recordCall(
@@ -552,8 +665,16 @@ function installU138Probe(config) {
             params: args,
             timeoutMs: 15_000
           },
-          'probe-restore'
+          'probe-close',
+          probeCall
         )
+      },
+      traceDump: () => {
+        try {
+          return window.__orcaSessionTabsTrace?.dump?.() ?? null
+        } catch {
+          return null
+        }
       }
     }
   })
@@ -590,54 +711,61 @@ function tabPart(hostSurfaceId) {
   return index === -1 ? hostSurfaceId : hostSurfaceId.slice(0, index)
 }
 
-function comparableHostId(localId) {
-  return tabPart(toHostTabId(localId))
-}
-
 function readDomAndStore() {
   const state = window.__store?.getState?.()
   const worktreeId = state?.activeWorktreeId ?? null
   const groups = worktreeId ? (state?.groupsByWorktree?.[worktreeId] ?? []) : []
-  const activeGroupId = worktreeId
-    ? (state?.activeGroupIdByWorktree?.[worktreeId] ?? null)
-    : null
+  const activeGroupId = worktreeId ? (state?.activeGroupIdByWorktree?.[worktreeId] ?? null) : null
+  // Authoritative field only: no groups[0] fallback (P2-2).
   const activeGroup =
-    (activeGroupId ? groups.find((group) => group.id === activeGroupId) : null) ??
-    groups[0] ??
-    null
+    (activeGroupId ? groups.find((group) => group.id === activeGroupId) : null) ?? null
   const unified = worktreeId ? (state?.unifiedTabsByWorktree?.[worktreeId] ?? []) : []
+  const groupByTabId = new Map(unified.map((tab) => [tab.id, tab.groupId ?? null]))
   const activeUnified =
     activeGroup?.activeTabId != null
       ? (unified.find((tab) => tab.id === activeGroup.activeTabId) ?? null)
       : null
 
-  const domNodes = [...document.querySelectorAll('[data-tab-id]')]
-  const domTabs = domNodes.map((element) => ({
-    id: element.getAttribute('data-tab-id'),
-    title: element.getAttribute('data-tab-title') ?? (element.innerText ?? '').trim(),
-    active: element.getAttribute('data-active') === 'true',
-    group: element.getAttribute('data-tab-group') ?? null
-  }))
-  const domActive = domTabs.filter((tab) => tab.active).map((tab) => tab.id)
+  // Scope DOM to the visible workspace container; ignore hidden panes and
+  // floating tab strips outside .app-layout (P2-1).
+  const root = document.querySelector('.app-layout')
+  const domNodes = root ? [...root.querySelectorAll('[data-tab-id]')] : []
+  const domTabs = domNodes.map((element) => {
+    const id = element.getAttribute('data-tab-id')
+    return {
+      id,
+      title: element.getAttribute('data-tab-title') ?? (element.innerText ?? '').trim(),
+      active: element.getAttribute('data-active') === 'true',
+      visible: element.getClientRects().length > 0,
+      groupId: groupByTabId.get(id) ?? null
+    }
+  })
+  const domActive = domTabs.filter((tab) => tab.active && tab.visible).map((tab) => tab.id)
 
   return {
     worktreeId,
     domActive,
     domTabs,
+    domVisibleTabCount: domTabs.filter((tab) => tab.visible).length,
     storeActive: activeGroup?.activeTabId ?? null,
-    storeActiveType: activeUnified?.contentType ?? state?.activeTabTypeByWorktree?.[worktreeId] ?? null,
+    storeActiveSource: activeGroupId ? 'active-group' : 'missing-active-group',
+    storeActiveType:
+      activeUnified?.contentType ?? state?.activeTabTypeByWorktree?.[worktreeId] ?? null,
     storeActiveLabel: activeUnified?.label ?? null,
     storeActiveGroupId: activeGroup?.id ?? null,
     storeActiveGroup: activeGroup?.activeTabId ?? null,
+    focusedGroupId: activeGroupId,
     activeTerminalId: worktreeId ? (state?.activeTabIdByWorktree?.[worktreeId] ?? null) : null,
-    activeBrowserId: worktreeId ? (state?.activeBrowserTabIdByWorktree?.[worktreeId] ?? null) : null,
+    activeBrowserId: worktreeId
+      ? (state?.activeBrowserTabIdByWorktree?.[worktreeId] ?? null)
+      : null,
     activeFileId: worktreeId ? (state?.activeFileIdByWorktree?.[worktreeId] ?? null) : null,
     groups: groups.map((group) => ({ id: group.id, activeTabId: group.activeTabId ?? null })),
     unified: unified.map((tab) => ({
       id: tab.id,
       contentType: tab.contentType,
       label: tab.label,
-      groupId: tab.groupId
+      groupId: tab.groupId ?? null
     })),
     hasStore: Boolean(window.__store),
     hasProbe: Boolean(window.__u138Probe),
@@ -712,7 +840,10 @@ async function ensureTwoTabs(page) {
     return { tabIds: before, createdTabIds: [] }
   }
   await page.getByRole('button', { name: 'New tab' }).click({ timeout: 15_000 })
-  await page.getByText('New Terminal', { exact: true }).click({ timeout: 15_000 })
+  await page
+    .getByRole('menuitem', { name: /New Terminal/ })
+    .first()
+    .click({ timeout: 15_000 })
   const deadline = Date.now() + 30_000
   let after = before
   while (Date.now() < deadline) {
@@ -785,31 +916,35 @@ async function probeHostList(page, worktreeId) {
           ok: response?.ok === true,
           id: response?.id ?? null,
           error: response?.ok === true ? null : (response?.error ?? null),
-          result: response?.ok === true
-            ? {
-                activeTabId: response.result?.activeTabId ?? null,
-                activeTabType: response.result?.activeTabType ?? null,
-                activeGroupId: response.result?.activeGroupId ?? null,
-                publicationEpoch: response.result?.publicationEpoch ?? null,
-                snapshotVersion: response.result?.snapshotVersion ?? null,
-                worktree: response.result?.worktree ?? null,
-                tabs: Array.isArray(response.result?.tabs)
-                  ? response.result.tabs.map((tab) => ({
-                      id: tab.id,
-                      type: tab.type,
-                      title: tab.title ?? null,
-                      groupId: tab.groupId ?? null
-                    }))
-                  : []
-              }
-            : null
+          result:
+            response?.ok === true
+              ? {
+                  activeTabId: response.result?.activeTabId ?? null,
+                  activeTabType: response.result?.activeTabType ?? null,
+                  activeGroupId: response.result?.activeGroupId ?? null,
+                  publicationEpoch: response.result?.publicationEpoch ?? null,
+                  snapshotVersion: response.result?.snapshotVersion ?? null,
+                  worktree: response.result?.worktree ?? null,
+                  tabs: Array.isArray(response.result?.tabs)
+                    ? response.result.tabs.map((tab) => ({
+                        id: tab.id,
+                        type: tab.type,
+                        title: tab.title ?? null,
+                        groupId: tab.groupId ?? null
+                      }))
+                    : []
+                }
+              : null
         }
       }, worktreeId)
       if (last?.ok) {
         return last
       }
     } catch (error) {
-      last = { ok: false, error: { code: 'probe_thrown', message: String(error?.message ?? error) } }
+      last = {
+        ok: false,
+        error: { code: 'probe_thrown', message: String(error?.message ?? error) }
+      }
     }
     await sleep(500)
   }
@@ -834,9 +969,15 @@ function lastClientWriteBefore(frames, gid) {
     if (frame.gid > gid) {
       continue
     }
-    if (frame.layer === 'rpc' && frame.dir === 'send' && isWriteMethod(frame.method)) {
+    if (
+      frame.layer === 'rpc' &&
+      frame.dir === 'send' &&
+      frame.source === 'renderer' &&
+      !frame.synthetic &&
+      isWriteMethod(frame.method)
+    ) {
       const response = [...frames]
-        .reverse()
+        .toReversed()
         .find(
           (candidate) =>
             candidate.layer === 'rpc' &&
@@ -875,8 +1016,8 @@ function lastHostPublishBefore(frames, gid) {
     if (
       frame.layer === 'rpc' &&
       frame.dir === 'recv' &&
-      (frame.method === 'session.tabs.subscribe' ||
-        frame.method === 'session.tabs.subscribeAll') &&
+      !frame.synthetic &&
+      (frame.method === 'session.tabs.subscribe' || frame.method === 'session.tabs.subscribeAll') &&
       frame.result &&
       (frame.result.activeTabId !== undefined ||
         frame.result.type === 'updated' ||
@@ -907,13 +1048,152 @@ function frameActive(frame) {
   return null
 }
 
+/* -------------------------------------------------------------------------- */
+/* T1 apply telemetry + validity helpers                                      */
+/* -------------------------------------------------------------------------- */
+
+function parseTrace(raw) {
+  if (typeof raw !== 'string') {
+    return { ok: false, frames: [], error: 'trace handle unavailable' }
+  }
+  try {
+    const parsed = JSON.parse(raw)
+    return {
+      ok: true,
+      capacity: parsed.capacity ?? null,
+      size: parsed.size ?? null,
+      frames: Array.isArray(parsed.frames) ? parsed.frames : []
+    }
+  } catch (error) {
+    return { ok: false, frames: [], error: String(error?.message ?? error) }
+  }
+}
+
+function summarizeTraceFrame(frame) {
+  if (!frame) {
+    return null
+  }
+  // listAll annotates the per-worktree summary, not the top-level result.
+  const snapshots = frame.result?.snapshots
+  const summary = Array.isArray(snapshots)
+    ? (snapshots.find((entry) => entry.applied !== undefined) ??
+      snapshots.find((entry) => entry.activeTabId !== undefined) ??
+      null)
+    : null
+  return {
+    seq: frame.seq,
+    ts: frame.ts,
+    dir: frame.dir,
+    method: frame.method,
+    requestId: frame.requestId,
+    ok: frame.ok ?? null,
+    activeTabId: frame.result?.activeTabId ?? summary?.activeTabId ?? null,
+    activeGroupId: frame.result?.activeGroupId ?? summary?.activeGroupId ?? null,
+    snapshotVersion: frame.result?.snapshotVersion ?? summary?.snapshotVersion ?? null,
+    publicationEpoch: frame.result?.publicationEpoch ?? summary?.publicationEpoch ?? null,
+    applied: frame.applied ?? summary?.applied ?? null,
+    applyOptions: frame.applyOptions ?? summary?.applyOptions ?? null
+  }
+}
+
+/** Last trace frame, last apply decision, and last winning (applied=true) frame. */
+function traceAtWall(traceFrames, wall) {
+  if (!Array.isArray(traceFrames) || typeof wall !== 'number') {
+    return { lastFrame: null, lastAppliedFrame: null, lastWinningFrame: null }
+  }
+  const before = traceFrames.filter((frame) => typeof frame.ts === 'number' && frame.ts <= wall)
+  const lastFrame = before.length > 0 ? before.at(-1) : null
+  let lastAppliedFrame = null
+  let lastWinningFrame = null
+  for (let index = before.length - 1; index >= 0; index -= 1) {
+    if (lastAppliedFrame === null && before[index].applied !== undefined) {
+      lastAppliedFrame = before[index]
+    }
+    if (lastWinningFrame === null && before[index].applied === true) {
+      lastWinningFrame = before[index]
+    }
+    if (lastAppliedFrame !== null && lastWinningFrame !== null) {
+      break
+    }
+  }
+  return {
+    lastFrame: summarizeTraceFrame(lastFrame),
+    lastAppliedFrame: summarizeTraceFrame(lastAppliedFrame),
+    lastWinningFrame: summarizeTraceFrame(lastWinningFrame)
+  }
+}
+
+function evaluateTopology(domStore, tabA, tabB) {
+  const groupOf = (id) => (domStore.unified ?? []).find((tab) => tab.id === id)?.groupId ?? null
+  const tabAGroupId = groupOf(tabA)
+  const tabBGroupId = groupOf(tabB)
+  const tabCount = (domStore.unified ?? []).length
+  const groupCount = (domStore.groups ?? []).length
+  const crossGroup = Boolean(tabAGroupId && tabBGroupId && tabAGroupId !== tabBGroupId)
+  return {
+    tabCount,
+    groupCount,
+    tabA,
+    tabB,
+    tabAGroupId,
+    tabBGroupId,
+    crossGroup,
+    ok: tabCount >= 2 && groupCount >= 2 && crossGroup
+  }
+}
+
+function comparable(id) {
+  return tabPart(toHostTabId(id))
+}
+
+function sameComparable(a, b) {
+  return comparable(a) !== null && comparable(a) === comparable(b)
+}
+
+/**
+ * H-A: the winning applied frame is a list/listAll snapshot that did not mark
+ * hostActiveAuthoritative, i.e. apply followed a non-authoritative read.
+ */
+function hAAssessment(sample) {
+  const applied = sample?.trace?.lastWinningFrame
+  const decision = sample?.trace?.lastAppliedFrame
+  if (!applied) {
+    return {
+      verdict: 'undetermined',
+      reason: decision
+        ? `last decision ${decision.method} applied=${decision.applied}; no winning apply frame`
+        : 'no apply frame before sample'
+    }
+  }
+  const authoritative = applied.applyOptions?.hostActiveAuthoritative
+  // Missing applyOptions means the apply did not carry hostActiveAuthoritative,
+  // which is the H-A signature the design names ("应用缺 hostActiveAuthoritative").
+  if (applied.applied === true && authoritative !== true) {
+    return {
+      verdict: 'affirmative',
+      reason: `${applied.method} applied with hostActiveAuthoritative=${String(authoritative)}`
+    }
+  }
+  if (applied.applied === true && authoritative === true) {
+    return {
+      verdict: 'negative',
+      reason: `${applied.method} applied with hostActiveAuthoritative=true`
+    }
+  }
+  return {
+    verdict: 'undetermined',
+    reason: `${applied.method} applied=${applied.applied} hostActiveAuthoritative=${String(authoritative)}`
+  }
+}
+
 function diagnose(domStoreMatch, domHostMatch, lastWrite, lastPublish, sampleHostActive) {
   if (domStoreMatch && domHostMatch) {
     return 'consistent'
   }
   const writeActive = lastWrite?.response?.result?.activeTabId ?? null
   const publishActive = lastPublish ? frameActive(lastPublish) : null
-  const writeMatchesHost = writeActive !== null && tabPart(writeActive) === tabPart(sampleHostActive)
+  const writeMatchesHost =
+    writeActive !== null && tabPart(writeActive) === tabPart(sampleHostActive)
   const publishMatchesHost =
     publishActive !== null && tabPart(publishActive) === tabPart(sampleHostActive)
   if (!domStoreMatch) {
@@ -937,20 +1217,34 @@ function diagnose(domStoreMatch, domHostMatch, lastWrite, lastPublish, sampleHos
 const out = {
   probe: 'u138-frame-timeline',
   generatedAt: new Date().toISOString(),
+  runId: RUN_ID,
+  runDir: RUN_DIR,
   platformUrl: PLATFORM_URL,
   user: USERNAME,
   projectKey: PROJECT_KEY,
   requestedCycles: CYCLES,
+  config: {
+    cycles: CYCLES,
+    reopenCycles: REOPEN_CYCLES,
+    quickCycles: QUICK_CYCLES,
+    settleMs: SETTLE_MS
+  },
   worktreeId: null,
   project: null,
   runs: [],
+  samples: [],
   frames: [],
+  baseline: null,
   transportByDoc: [],
   firstInconsistency: null,
   isolation: {
     baselineHostActive: null,
+    baselinePersistentActive: null,
+    baselineOk: false,
     finalHostActive: null,
+    finalHostMemoryActive: null,
     restored: false,
+    restoredVerified: false,
     restoreCall: null,
     createdTabIds: [],
     closedCreatedTabIds: []
@@ -958,9 +1252,10 @@ const out = {
   verdict: null,
   notes: [
     'WebSocket frames are E2EE ciphertext after e2ee_hello; plaintext RPC frames are recorded at the window.api boundary.',
-    'Host active is sampled with a read-only session.tabs.list probe and cross-checked against session.tabs.subscribe snapshots.',
-    'DOM active selector: [data-tab-id][data-active="true"] (SortableTab/TerminalTab/BrowserTab/EditorFileTab roots).',
-    'Store active: active group of activeWorktreeId -> group.activeTabId (plus activeTabIdByWorktree evidence).'
+    'Host memory active has no RPC: read from profile-state.db activeTabIdByWorktree and labelled persisted-file-fallback.',
+    'Device projection is session.tabs.list; it is NOT host memory and is asserted separately.',
+    'DOM active is scoped to .app-layout and visible only (P2-1).',
+    'Store active is the active group only; no groups[0] fallback (P2-2).'
   ]
 }
 
@@ -990,6 +1285,13 @@ try {
   context = await browser.newContext({
     ignoreHTTPSErrors: true,
     viewport: { width: 1440, height: 900 }
+  })
+  await context.addInitScript(() => {
+    try {
+      localStorage.setItem('orca.debug.sessionTabs', '1')
+    } catch {
+      // Trace opt-in is best-effort; its absence marks the run INVALID.
+    }
   })
   await context.addInitScript(installU138Probe, { frameLimit: PAGE_FRAME_LIMIT })
 
@@ -1025,10 +1327,7 @@ try {
     )
   }
 
-  const row = consolePage
-    .locator('#projectBody tr')
-    .filter({ hasText: PROJECT_KEY })
-    .first()
+  const row = consolePage.locator('#projectBody tr').filter({ hasText: PROJECT_KEY }).first()
   if (!(await row.count())) {
     throw new Error(`project row not found for ${PROJECT_KEY}`)
   }
@@ -1059,9 +1358,22 @@ try {
   }
 
   await drainInto(workspacePage, documentEpoch)
-  const baselineHost = await probeHostList(workspacePage, worktreeId)
+  const baselineHostState = readHostState(worktreeId)
+  const baselineProjection = await probeHostList(workspacePage, worktreeId)
   await drainInto(workspacePage, documentEpoch)
-  out.isolation.baselineHostActive = baselineHost?.result?.activeTabId ?? null
+  out.baseline = {
+    hostState: baselineHostState,
+    projectionOk: baselineProjection?.ok === true,
+    projectionActive: baselineProjection?.ok
+      ? (baselineProjection.result?.activeTabId ?? null)
+      : null
+  }
+  out.isolation.baselineOk = baselineHostState.ok === true
+  out.isolation.baselineHostActive = baselineHostState.hostMemoryActive ?? null
+  out.isolation.baselinePersistentActive = baselineHostState.hostPersistentActive ?? null
+  if (!baselineHostState.ok) {
+    out.notes.push(`baseline host state read failed: ${baselineHostState.error}`)
+  }
 
   const ensured = await ensureTwoTabs(workspacePage)
   out.isolation.createdTabIds = ensured.createdTabIds
@@ -1072,63 +1384,169 @@ try {
   const tabB = ensured.tabIds[1]
   out.notes.push(`driven tabs: A=${tabA} B=${tabB}`)
 
-  async function sample(cycle, phase) {
+  function outOfOrderActivate(frames, gid) {
+    const pairs = []
+    for (const frame of frames) {
+      if (frame.gid > gid || frame.layer !== 'rpc' || frame.method !== 'session.tabs.activate') {
+        continue
+      }
+      if (frame.dir === 'send' && frame.source === 'renderer') {
+        const recv = frames.find(
+          (candidate) =>
+            candidate.layer === 'rpc' &&
+            candidate.dir === 'recv' &&
+            candidate.callId === frame.callId &&
+            candidate.gid <= gid
+        )
+        if (recv) {
+          pairs.push({ send: frame.gid, recv: recv.gid })
+        }
+      }
+    }
+    const recent = pairs.slice(-6)
+    for (let index = 1; index < recent.length; index += 1) {
+      if (recent[index].recv < recent[index - 1].recv) {
+        return true
+      }
+    }
+    return false
+  }
+
+  /** One atomic read: DOM/store, device projection, host persisted fallback, T1 trace. */
+  async function readOnce(cycle, phase, tag) {
+    const readAt = { start: Date.now() }
     const preFrames = await drainInto(workspacePage, documentEpoch)
     const domStore = await workspacePage.evaluate(readDomAndStore)
+    readAt.domStore = Date.now()
     const host = await probeHostList(workspacePage, worktreeId)
+    readAt.projection = Date.now()
+    const hostState = readHostState(worktreeId)
+    readAt.hostState = Date.now()
+    const traceRaw = await workspacePage.evaluate(() => window.__u138Probe?.traceDump?.() ?? null)
+    readAt.trace = Date.now()
     const probeFrames = await drainInto(workspacePage, documentEpoch)
     const frameGidAtSample = globalFrameSeq
     const transport = await readTransport(workspacePage)
     if (transport) {
-      out.transportByDoc.push({ doc: documentEpoch, phase, cycle, ...transport })
+      out.transportByDoc.push({ doc: documentEpoch, phase, cycle, tag, ...transport })
     }
 
+    const trace = parseTrace(traceRaw)
+    const traceSlice = traceAtWall(trace.frames, readAt.domStore)
+    const projectionActive = host?.ok ? (host.result?.activeTabId ?? null) : null
     const domActive = domStore.domActive
     const storeActive = domStore.storeActive
-    const hostActive = host?.ok ? (host.result?.activeTabId ?? null) : null
-    const domStoreMatch = domActive.length === 1 && domActive[0] === storeActive
-    const domHostMatch =
-      domActive.length === 1 &&
-      comparableHostId(domActive[0]) === tabPart(hostActive)
-    const storeHostMatch =
-      storeActive !== null && comparableHostId(storeActive) === tabPart(hostActive)
-    const consistent = domStoreMatch && domHostMatch && storeHostMatch
+    const hostMemoryActive = hostState.ok ? (hostState.hostMemoryActive ?? null) : null
+    const hostPersistentActive = hostState.ok ? (hostState.hostPersistentActive ?? null) : null
 
+    const topology = evaluateTopology(domStore, tabA, tabB)
+    const matches = {
+      domStore: domActive.length === 1 && domActive[0] === storeActive,
+      domProjection: domActive.length === 1 && sameComparable(domActive[0], projectionActive),
+      storeProjection: storeActive !== null && sameComparable(storeActive, projectionActive),
+      domHostMemory: domActive.length === 1 && sameComparable(domActive[0], hostMemoryActive),
+      storeHostMemory: storeActive !== null && sameComparable(storeActive, hostMemoryActive),
+      memoryPersistent: hostState.ok && sameComparable(hostMemoryActive, hostPersistentActive),
+      projectionPersistent:
+        projectionActive !== null &&
+        hostState.ok &&
+        sameComparable(projectionActive, hostPersistentActive)
+    }
+    const consistent =
+      matches.domStore &&
+      matches.domProjection &&
+      matches.storeProjection &&
+      matches.domHostMemory &&
+      matches.storeHostMemory &&
+      matches.memoryPersistent
+
+    const invalidReasons = []
+    if (!hostState.ok) {
+      invalidReasons.push(`hostMemoryOk=false: ${hostState.error}`)
+    }
+    if (!domStore.hasStore) {
+      invalidReasons.push('hasStore=false')
+    }
+    if (domStore.storeActiveSource !== 'active-group') {
+      invalidReasons.push('storeActiveSource=missing-active-group')
+    }
+    if (!topology.ok) {
+      invalidReasons.push(
+        `topology: tabs=${topology.tabCount} groups=${topology.groupCount} crossGroup=${topology.crossGroup}`
+      )
+    }
+    if (!trace.ok) {
+      invalidReasons.push(`trace unavailable: ${trace.error ?? 'no dump'}`)
+    }
+    if (!out.isolation.baselineOk) {
+      invalidReasons.push('baseline-read-failure')
+    }
+
+    const valid = invalidReasons.length === 0
     const lastWrite = lastClientWriteBefore(out.frames, frameGidAtSample)
     const lastPublish = lastHostPublishBefore(out.frames, frameGidAtSample)
     const run = {
       cycle,
       phase,
+      tag,
       at: new Date().toISOString(),
+      readAt,
       doc: documentEpoch,
       frameGidAtSample,
       frames: [...preFrames, ...probeFrames],
       domActive,
       domTabs: domStore.domTabs,
+      domVisibleTabCount: domStore.domVisibleTabCount,
       storeActive,
+      storeActiveSource: domStore.storeActiveSource,
       storeActiveType: domStore.storeActiveType,
       storeActiveLabel: domStore.storeActiveLabel,
       storeActiveGroupId: domStore.storeActiveGroupId,
       storeActiveGroup: domStore.storeActiveGroup,
+      focusedGroupId: domStore.focusedGroupId,
       activeTerminalId: domStore.activeTerminalId,
       activeBrowserId: domStore.activeBrowserId,
       activeFileId: domStore.activeFileId,
       groups: domStore.groups,
       unified: domStore.unified,
-      hostActive,
-      hostActiveType: host?.ok ? (host.result?.activeTabType ?? null) : null,
-      hostActiveGroupId: host?.ok ? (host.result?.activeGroupId ?? null) : null,
-      hostPublicationEpoch: host?.ok ? (host.result?.publicationEpoch ?? null) : null,
-      hostOk: host?.ok === true,
-      hostError: host?.ok === true ? null : (host?.error ?? null),
-      domStoreMatch,
-      domHostMatch,
-      storeHostMatch,
+      projectionActive,
+      projectionActiveType: host?.ok ? (host.result?.activeTabType ?? null) : null,
+      projectionActiveGroupId: host?.ok ? (host.result?.activeGroupId ?? null) : null,
+      projectionPublicationEpoch: host?.ok ? (host.result?.publicationEpoch ?? null) : null,
+      projectionOk: host?.ok === true,
+      projectionError: host?.ok === true ? null : (host?.error ?? null),
+      hostMemoryActive,
+      hostMemoryOk: hostState.ok === true,
+      hostMemorySource: hostState.memorySource ?? null,
+      hostStateFile: hostState.file ?? null,
+      hostStateError: hostState.ok ? null : (hostState.error ?? null),
+      hostPersistentActive,
+      hostPersistentType: hostState.hostPersistentType ?? null,
+      hostPersistentGroupId: hostState.hostPersistentGroupId ?? null,
+      hostPersistentSource: hostState.persistentSource ?? null,
+      matches,
+      topology,
+      valid,
+      invalidReasons,
       consistent,
-      diagnosis: diagnose(domStoreMatch, domHostMatch, lastWrite, lastPublish, hostActive),
+      diagnosis: diagnose(
+        matches.domStore,
+        matches.domProjection,
+        lastWrite,
+        lastPublish,
+        projectionActive
+      ),
+      outOfOrderWrites: outOfOrderActivate(out.frames, frameGidAtSample),
+      trace: {
+        ok: trace.ok,
+        size: trace.size ?? null,
+        lastFrame: traceSlice.lastFrame,
+        lastAppliedFrame: traceSlice.lastAppliedFrame,
+        lastWinningFrame: traceSlice.lastWinningFrame
+      },
       lastClientWrite: lastWrite,
       lastHostPublish: lastPublish,
-      tabCount: domStore.domTabs.length,
+      tabCount: domStore.unified.length,
       hasStore: domStore.hasStore,
       hasProbe: domStore.hasProbe
     }
@@ -1136,18 +1554,202 @@ try {
     return run
   }
 
+  function normalizedReading(run) {
+    return {
+      domActive: run.domActive,
+      storeActive: comparable(run.storeActive),
+      projectionActive: comparable(run.projectionActive),
+      hostMemoryActive: comparable(run.hostMemoryActive),
+      hostPersistentActive: comparable(run.hostPersistentActive)
+    }
+  }
+
+  function sameReading(a, b) {
+    return JSON.stringify(normalizedReading(a)) === JSON.stringify(normalizedReading(b))
+  }
+
+  function summarizeRun(run) {
+    return {
+      tag: run.tag,
+      at: run.at,
+      doc: run.doc,
+      frameGidAtSample: run.frameGidAtSample,
+      domActive: run.domActive,
+      domVisibleTabCount: run.domVisibleTabCount,
+      storeActive: run.storeActive,
+      storeActiveSource: run.storeActiveSource,
+      storeActiveGroupId: run.storeActiveGroupId,
+      projectionActive: run.projectionActive,
+      projectionOk: run.projectionOk,
+      hostMemoryActive: run.hostMemoryActive,
+      hostMemoryOk: run.hostMemoryOk,
+      hostMemorySource: run.hostMemorySource,
+      hostPersistentActive: run.hostPersistentActive,
+      hostStateFile: run.hostStateFile,
+      hostStateError: run.hostStateError,
+      matches: run.matches,
+      topology: run.topology,
+      valid: run.valid,
+      invalidReasons: run.invalidReasons,
+      consistent: run.consistent,
+      diagnosis: run.diagnosis,
+      trace: run.trace,
+      lastClientWrite: run.lastClientWrite,
+      lastHostPublish: run.lastHostPublish
+    }
+  }
+
+  function attributePoint(point) {
+    if (!point.valid) {
+      return { token: 'INVALID', reason: point.invalidReasons.join(' | ') }
+    }
+    const sample = point.second
+    if (sample.matches.projectionPersistent === false) {
+      return {
+        token: 'H-C',
+        reason: 'device projection differs from host persisted activeTabIdByWorktree'
+      }
+    }
+    const ha = point.hA
+    if (ha.verdict === 'affirmative') {
+      return { token: 'H-A', reason: ha.reason }
+    }
+    const applied = sample.trace?.lastWinningFrame
+    const writeActive = sample.lastClientWrite?.response?.result?.activeTabId ?? null
+    if (
+      applied &&
+      writeActive &&
+      (applied.method === 'session.tabs.subscribe' ||
+        applied.method === 'session.tabs.subscribeAll') &&
+      applied.activeTabId &&
+      !sameComparable(applied.activeTabId, writeActive)
+    ) {
+      return {
+        token: 'H-B',
+        reason: `host stream ${applied.method} applied over client write (write=${writeActive} applied=${applied.activeTabId})`
+      }
+    }
+    if (sample.outOfOrderWrites) {
+      return { token: 'H-D', reason: 'activate responses landed out of send order' }
+    }
+    return { token: 'undetermined', reason: 'no matching H-A/H-B/H-C/H-D signature in trace' }
+  }
+
+  async function samplePoint(cycle, phase) {
+    const first = await readOnce(cycle, phase, 'initial')
+    await sleep(SETTLE_MS)
+    const second = await readOnce(cycle, phase, 'resample')
+    const valid = first.valid && second.valid
+    const stable = valid && sameReading(first, second)
+    const consistent = valid && stable && first.consistent && second.consistent
+    const invalidReasons = [...new Set([...first.invalidReasons, ...second.invalidReasons])]
+    const point = {
+      cycle,
+      phase,
+      kind: typeof cycle === 'number' ? 'reload' : String(cycle).replace(/-\d+$/, ''),
+      at: new Date().toISOString(),
+      valid,
+      stable,
+      consistent,
+      unstable: valid && !stable,
+      invalidReasons,
+      first: summarizeRun(first),
+      second: summarizeRun(second),
+      hA: hAAssessment(second)
+    }
+    point.attribution = consistent
+      ? { token: 'green', reason: 'all views agree in both reads' }
+      : attributePoint(point)
+    out.samples.push(point)
+    const view = !valid ? 'INVALID' : consistent ? 'GREEN' : 'RED'
+    console.log(
+      `[u138] ${String(cycle).padEnd(12)} ${phase.padEnd(12)} ${view}` +
+        ` dom=${JSON.stringify(point.second.domActive)} store=${JSON.stringify(point.second.storeActive)}` +
+        ` projection=${JSON.stringify(point.second.projectionActive)}` +
+        ` hostMem=${JSON.stringify(point.second.hostMemoryActive)}` +
+        ` hostPersist=${JSON.stringify(point.second.hostPersistentActive)}` +
+        ` hA=${point.hA.verdict} attr=${point.attribution.token}`
+    )
+    if (!valid) {
+      console.log(`[u138]   INVALID: ${invalidReasons.join(' | ')}`)
+    }
+    return point
+  }
+
+  async function openWorkspaceFromConsole(timeoutMs = 120_000) {
+    const popupPromise = consolePage.waitForEvent('popup', { timeout: 30_000 })
+    await row.locator('button[data-orca-web]').first().click()
+    const page = await popupPromise
+    page.on('pageerror', (error) => workspaceErrors.push(String(error?.message ?? error)))
+    await page.waitForSelector('.app-layout', { timeout: timeoutMs })
+    await sleep(500)
+    await dismissOnboarding(page)
+    await waitWorkspaceShell(page, timeoutMs)
+    return page
+  }
+
+  async function reopenWorkspace() {
+    await drainInto(workspacePage, documentEpoch)
+    documentEpoch += 1
+    try {
+      await workspacePage.close()
+    } catch {}
+    workspacePage = await openWorkspaceFromConsole()
+  }
+
+  async function createTempTab() {
+    const before = await workspacePage.evaluate(() =>
+      [...document.querySelectorAll('.app-layout [data-tab-id]')].map((element) =>
+        element.getAttribute('data-tab-id')
+      )
+    )
+    // Split layouts render one New-tab trigger per group; use the first visible one.
+    await workspacePage.getByRole('button', { name: 'New tab' }).first().click({ timeout: 15_000 })
+    await workspacePage
+      .getByRole('menuitem', { name: /New Terminal/ })
+      .first()
+      .click({ timeout: 15_000 })
+    const deadline = Date.now() + 30_000
+    let after = before
+    while (Date.now() < deadline) {
+      after = await workspacePage.evaluate(() =>
+        [...document.querySelectorAll('.app-layout [data-tab-id]')].map((element) =>
+          element.getAttribute('data-tab-id')
+        )
+      )
+      if (after.length > before.length) {
+        break
+      }
+      await sleep(300)
+    }
+    return after.find((id) => !before.includes(id)) ?? null
+  }
+
+  async function closeTabViaProbe(tabId) {
+    try {
+      await workspacePage.evaluate(
+        async (args) => {
+          const response = await window.__u138Probe.hostClose(args)
+          return response?.ok === true
+        },
+        { worktree: worktreeId, tabId: toHostTabId(tabId), reason: 'user' }
+      )
+    } catch {
+      // Best-effort; the reopen/close scenario records host state regardless.
+    }
+    await sleep(400)
+  }
+
+  // Scenario C1/baseline: activate A -> activate B -> reload, dual-sampled.
   for (let cycle = 1; cycle <= CYCLES; cycle += 1) {
     if (cycle > 1) {
-      // Refresh start of cycle: the previous cycle ended with a reload, so this
-      // is the post-refresh sample for the previous cycle. Cycles still begin
-      // with a stable sample to keep the timeline self-contained.
       await waitWorkspaceShell(workspacePage)
     }
-    await sample(cycle, 'start')
+    await samplePoint(cycle, 'start')
     await activateTab(workspacePage, tabA)
-    await sample(cycle, 'activate-a')
+    await samplePoint(cycle, 'activate-a')
     await activateTab(workspacePage, tabB)
-    await sample(cycle, 'activate-b')
+    await samplePoint(cycle, 'activate-b')
 
     await drainInto(workspacePage, documentEpoch)
     documentEpoch += 1
@@ -1155,43 +1757,67 @@ try {
     await workspacePage.waitForSelector('.app-layout', { timeout: 120_000 })
     await dismissOnboarding(workspacePage)
     await waitWorkspaceShell(workspacePage)
-    const afterReload = await sample(cycle, 'after-reload')
-    if (cycle === CYCLES) {
-      // Keep the final transport snapshot before closing.
-      await drainInto(workspacePage, documentEpoch)
-    }
-    if (!afterReload.consistent) {
-      // Do not abort: collect the following cycles to see whether it is durable.
-      out.notes.push(`cycle ${cycle} after-reload inconsistent: ${afterReload.diagnosis}`)
-    }
+    await samplePoint(cycle, 'after-reload')
   }
 
-  // First inconsistency in sample order.
-  const firstBad = out.runs.find((run) => !run.consistent)
+  // Scenario C3: close the page, reopen through the console entry, dual-sample.
+  const reopenActives = []
+  for (let index = 1; index <= REOPEN_CYCLES; index += 1) {
+    await reopenWorkspace()
+    const point = await samplePoint(`reopen-${index}`, 'after-reopen')
+    reopenActives.push({
+      index,
+      pointValid: point.valid,
+      domActive: point.second.domActive,
+      storeActive: point.second.storeActive,
+      projectionActive: point.second.projectionActive,
+      hostMemoryActive: point.second.hostMemoryActive
+    })
+  }
+  out.reopenActives = reopenActives
+  out.crossReopenSameActive =
+    reopenActives.length > 0 &&
+    reopenActives.every(
+      (entry) =>
+        comparable(entry.domActive[0] ?? null) === comparable(reopenActives[0].domActive[0] ?? null)
+    )
+
+  // Scenario C2: quick tab open -> sample -> close -> sample, five rounds.
+  for (let index = 1; index <= QUICK_CYCLES; index += 1) {
+    const createdTabId = await createTempTab()
+    await samplePoint(`quick-${index}`, 'opened')
+    if (createdTabId) {
+      out.isolation.quickCreatedTabIds = [...(out.isolation.quickCreatedTabIds ?? []), createdTabId]
+      await closeTabViaProbe(createdTabId)
+    }
+    await samplePoint(`quick-${index}`, 'closed')
+  }
+
+  // First red sample in order (valid but inconsistent).
+  const firstBad = out.samples.find((point) => point.valid && !point.consistent)
   if (firstBad) {
     out.firstInconsistency = {
       cycle: firstBad.cycle,
       phase: firstBad.phase,
-      frameGidAtSample: firstBad.frameGidAtSample,
-      domActive: firstBad.domActive,
-      storeActive: firstBad.storeActive,
-      hostActive: firstBad.hostActive,
-      diagnosis: firstBad.diagnosis,
-      lastClientWrite: firstBad.lastClientWrite,
-      lastHostPublish: firstBad.lastHostPublish
+      attribution: firstBad.attribution,
+      hA: firstBad.hA,
+      first: firstBad.first,
+      second: firstBad.second
     }
   }
 
-  // Restore the pre-run host active tab (same device), then close any tab we created.
-  const finalHost = await probeHostList(workspacePage, worktreeId)
+  // Restore by host memory value (not projection), then re-read to verify.
+  const finalHostState = readHostState(worktreeId)
   await drainInto(workspacePage, documentEpoch)
-  out.isolation.finalHostActive = finalHost?.ok ? (finalHost.result?.activeTabId ?? null) : null
+  out.isolation.finalHostActive = finalHostState.ok ? finalHostState.hostPersistentActive : null
+  out.isolation.finalHostMemoryActive = finalHostState.ok ? finalHostState.hostMemoryActive : null
   const baselineSurface = out.isolation.baselineHostActive
   if (
+    out.isolation.baselineOk &&
     baselineSurface &&
-    tabPart(baselineSurface) !== tabPart(out.isolation.finalHostActive)
+    tabPart(baselineSurface) !== tabPart(out.isolation.finalHostMemoryActive)
   ) {
-    const [baseTabId, baseLeafId] = baselineSurface.split(HOST_SURFACE_SEPARATOR)
+    const [baseTabId, baseLeafId] = String(baselineSurface).split(HOST_SURFACE_SEPARATOR)
     try {
       const restored = await workspacePage.evaluate(
         async (args) => {
@@ -1222,64 +1848,97 @@ try {
       }
     }
   } else {
-    out.isolation.restored = true
-    out.isolation.restoreCall = { ok: true, skipped: 'active tab did not change' }
+    out.isolation.restored = out.isolation.baselineOk
+    out.isolation.restoreCall = out.isolation.baselineOk
+      ? { ok: true, skipped: 'host memory active did not change' }
+      : { ok: false, skipped: 'baseline host state unreadable' }
   }
+  const verifyState = readHostState(worktreeId)
+  out.isolation.restoredVerified =
+    out.isolation.baselineOk &&
+    verifyState.ok &&
+    comparable(baselineSurface) === comparable(verifyState.hostMemoryActive)
+  out.isolation.verifyState = verifyState
 
-  if (out.isolation.createdTabIds.length > 0) {
-    for (const createdTabId of out.isolation.createdTabIds) {
-      try {
-        const closed = await workspacePage.evaluate(
-          async (args) => {
-            const response = await window.__u138Probe.hostClose(args)
-            return {
-              ok: response?.ok === true,
-              error: response?.ok === true ? null : (response?.error ?? null)
-            }
-          },
-          {
-            worktree: worktreeId,
-            tabId: toHostTabId(createdTabId),
-            reason: 'user'
+  // Close any tabs the initial ensureTwoTabs created.
+  const cleanupIds = [
+    ...new Set([
+      ...(out.isolation.createdTabIds ?? []),
+      ...(out.isolation.quickCreatedTabIds ?? [])
+    ])
+  ]
+  for (const createdTabId of cleanupIds) {
+    try {
+      const closed = await workspacePage.evaluate(
+        async (args) => {
+          const response = await window.__u138Probe.hostClose(args)
+          return {
+            ok: response?.ok === true,
+            error: response?.ok === true ? null : (response?.error ?? null)
           }
-        )
-        if (closed.ok) {
-          out.isolation.closedCreatedTabIds.push(createdTabId)
-        }
-      } catch {
-        // Best-effort cleanup; the run evidence records what was created.
+        },
+        { worktree: worktreeId, tabId: toHostTabId(createdTabId), reason: 'user' }
+      )
+      if (closed.ok) {
+        out.isolation.closedCreatedTabIds.push(createdTabId)
       }
+    } catch {
+      // Best-effort cleanup; the run evidence records what was created.
     }
-    await drainInto(workspacePage, documentEpoch)
   }
+  await drainInto(workspacePage, documentEpoch)
 
-  const consistentSamples = out.runs.filter((run) => run.consistent).length
-  const inconsistentSamples = out.runs.length - consistentSamples
-  const perCycle = []
-  for (let cycle = 1; cycle <= CYCLES; cycle += 1) {
-    const cycleRuns = out.runs.filter((run) => run.cycle === cycle)
-    perCycle.push({
-      cycle,
-      samples: cycleRuns.map((run) => ({
-        phase: run.phase,
-        consistent: run.consistent,
-        domActive: run.domActive,
-        storeActive: run.storeActive,
-        hostActive: run.hostActive,
-        frameGidAtSample: run.frameGidAtSample,
-        diagnosis: run.diagnosis
-      })),
-      consistent: cycleRuns.every((run) => run.consistent)
-    })
+  const validPoints = out.samples.filter((point) => point.valid)
+  const invalidPoints = out.samples.filter((point) => !point.valid)
+  const greenPoints = validPoints.filter((point) => point.consistent)
+  const redPoints = validPoints.filter((point) => !point.consistent)
+  const scenarioName = (point) => point.kind
+  const scenarioSummary = (kind) => {
+    const points = out.samples.filter((point) => scenarioName(point) === kind)
+    return {
+      samplePoints: points.length,
+      green: points.filter((point) => point.valid && point.consistent).length,
+      red: points.filter((point) => point.valid && !point.consistent).length,
+      invalid: points.filter((point) => !point.valid).length
+    }
   }
   out.verdict = {
     cycleCount: CYCLES,
+    reopenCycles: REOPEN_CYCLES,
+    quickCycles: QUICK_CYCLES,
     sampleCount: out.runs.length,
-    consistentSamples,
-    inconsistentSamples,
-    perCycle,
-    reproduced: inconsistentSamples > 0
+    samplePointCount: out.samples.length,
+    green: greenPoints.length,
+    red: redPoints.length,
+    invalid: invalidPoints.length,
+    // Backwards-compatible names: only valid points participate.
+    consistentSamples: greenPoints.length,
+    inconsistentSamples: redPoints.length,
+    reproduced: redPoints.length > 0,
+    byScenario: {
+      reload: scenarioSummary('reload'),
+      reopen: scenarioSummary('reopen'),
+      quick: scenarioSummary('quick')
+    },
+    redSamples: redPoints.map((point) => ({
+      cycle: point.cycle,
+      phase: point.phase,
+      attribution: point.attribution,
+      hA: point.hA,
+      unstable: point.unstable,
+      first: point.first,
+      second: point.second
+    })),
+    invalidSamples: invalidPoints.map((point) => ({
+      cycle: point.cycle,
+      phase: point.phase,
+      invalidReasons: point.invalidReasons
+    })),
+    crossReopenSameActive: out.crossReopenSameActive,
+    reopenActives,
+    baseline: out.baseline
   }
+
   out.consoleErrors = consoleErrors.slice(0, 50)
   out.workspaceErrors = workspaceErrors.slice(0, 50)
 } catch (error) {
@@ -1291,10 +1950,13 @@ try {
   out.verdict = out.verdict ?? {
     cycleCount: out.runs.length > 0 ? Math.max(...out.runs.map((run) => run.cycle)) : 0,
     sampleCount: out.runs.length,
-    consistentSamples: out.runs.filter((run) => run.consistent).length,
-    inconsistentSamples: out.runs.filter((run) => !run.consistent).length,
-    perCycle: [],
-    reproduced: out.runs.some((run) => !run.consistent),
+    samplePointCount: out.samples.length,
+    green: out.samples.filter((point) => point.valid && point.consistent).length,
+    red: out.samples.filter((point) => point.valid && !point.consistent).length,
+    invalid: out.samples.filter((point) => !point.valid).length,
+    consistentSamples: out.samples.filter((point) => point.valid && point.consistent).length,
+    inconsistentSamples: out.samples.filter((point) => point.valid && !point.consistent).length,
+    reproduced: out.samples.some((point) => point.valid && !point.consistent),
     blocked: true
   }
 } finally {
@@ -1304,80 +1966,81 @@ try {
   const firstBad = out.firstInconsistency
   const summary = {
     fatalError: out.fatalError ?? null,
+    runId: RUN_ID,
     cycles: out.verdict?.cycleCount ?? 0,
+    reopenCycles: REOPEN_CYCLES,
+    quickCycles: QUICK_CYCLES,
     samples: out.verdict?.sampleCount ?? 0,
-    consistent: out.verdict?.consistentSamples ?? 0,
-    inconsistent: out.verdict?.inconsistentSamples ?? 0,
+    samplePoints: out.verdict?.samplePointCount ?? 0,
+    green: out.verdict?.green ?? 0,
+    red: out.verdict?.red ?? 0,
+    invalid: out.verdict?.invalid ?? 0,
     reproduced: out.verdict?.reproduced ?? false,
+    byScenario: out.verdict?.byScenario ?? null,
+    baselineOk: out.isolation?.baselineOk ?? false,
+    hostMemorySource: out.baseline?.hostState?.memorySource ?? null,
     firstInconsistency: firstBad
       ? {
           cycle: firstBad.cycle,
           phase: firstBad.phase,
-          frameGid: firstBad.frameGidAtSample,
-          domActive: firstBad.domActive,
-          storeActive: firstBad.storeActive,
-          hostActive: firstBad.hostActive,
-          diagnosis: firstBad.diagnosis,
-          lastClientWrite: firstBad.lastClientWrite
-            ? {
-                gid: firstBad.lastClientWrite.gid,
-                method: firstBad.lastClientWrite.method,
-                params: firstBad.lastClientWrite.params,
-                response: firstBad.lastClientWrite.response
-              }
-            : null,
-          lastHostPublish: firstBad.lastHostPublish
-            ? {
-                gid: firstBad.lastHostPublish.gid,
-                activeTabId: frameActive(firstBad.lastHostPublish)
-              }
-            : null
+          attribution: firstBad.attribution,
+          hA: firstBad.hA,
+          first: firstBad.first,
+          second: firstBad.second
         }
       : null,
+    redSamples: out.verdict?.redSamples ?? [],
+    invalidSamples: out.verdict?.invalidSamples ?? [],
     isolation: out.isolation,
     output: OUTPUT_FILE
   }
   out.summary = summary
   writeFileSync(OUTPUT_FILE, JSON.stringify(out, null, 2))
+  writeFileSync(path.join(RUN_DIR, 'summary.json'), JSON.stringify(summary, null, 2))
+  try {
+    copyFileSync(OUTPUT_FILE, path.join(RUN_DIR, 'u138-timeline.json'))
+  } catch {}
 
   console.log('')
-  console.log('[u138] U138 frame timeline probe')
+  console.log('[u138] U138 frame timeline probe (hardened)')
   console.log(`[u138] project=${PROJECT_KEY} worktree=${out.worktreeId ?? 'n/a'}`)
-  for (const run of out.runs) {
-    const view = run.consistent ? 'CONSISTENT' : 'INCONSISTENT'
+  console.log(
+    `[u138] baselineOk=${out.isolation?.baselineOk} hostMemorySource=${out.summary.hostMemorySource ?? 'n/a'}`
+  )
+  console.log(
+    `[u138] counts: green=${summary.green} red=${summary.red} invalid=${summary.invalid} of ${summary.samplePoints} sample point(s)`
+  )
+  for (const point of out.samples) {
+    const view = !point.valid ? 'INVALID' : point.consistent ? 'GREEN' : 'RED'
     console.log(
-      `[u138] cycle ${run.cycle} ${run.phase.padEnd(12)} dom=${JSON.stringify(run.domActive)} store=${JSON.stringify(run.storeActive)} host=${JSON.stringify(run.hostActive)} => ${view}`
+      `[u138] ${String(point.cycle).padEnd(12)} ${point.phase.padEnd(12)} ${view}` +
+        ` first={dom:${JSON.stringify(point.first.domActive)},store:${JSON.stringify(point.first.storeActive)},proj:${JSON.stringify(point.first.projectionActive)},mem:${JSON.stringify(point.first.hostMemoryActive)}}` +
+        ` second={dom:${JSON.stringify(point.second.domActive)},store:${JSON.stringify(point.second.storeActive)},proj:${JSON.stringify(point.second.projectionActive)},mem:${JSON.stringify(point.second.hostMemoryActive)}}` +
+        ` attr=${point.attribution.token} hA=${point.hA.verdict}`
     )
-    if (!run.consistent) {
-      console.log(`[u138]   diagnosis: ${run.diagnosis}`)
-      if (run.lastClientWrite) {
-        console.log(
-          `[u138]   last client write: frame #${run.lastClientWrite.gid} ${run.lastClientWrite.method} params=${JSON.stringify(run.lastClientWrite.params)}`
-        )
-        console.log(
-          `[u138]   response: ${JSON.stringify(run.lastClientWrite.response)}`
-        )
-      } else {
-        console.log('[u138]   last client write: none observed before this sample')
-      }
-      if (run.lastHostPublish) {
-        console.log(
-          `[u138]   last host publish: frame #${run.lastHostPublish.gid} activeTabId=${JSON.stringify(frameActive(run.lastHostPublish))}`
-        )
-      }
+    if (!point.valid) {
+      console.log(`[u138]   INVALID: ${point.invalidReasons.join(' | ')}`)
+    } else if (!point.consistent) {
+      const applied = point.second.trace?.lastAppliedFrame
+      const winning = point.second.trace?.lastWinningFrame
+      console.log(`[u138]   attribution: ${point.attribution.token} — ${point.attribution.reason}`)
+      console.log(
+        `[u138]   last decision frame: ${applied ? `#${applied.seq} ${applied.method} applied=${applied.applied} hostActiveAuthoritative=${String(applied.applyOptions?.hostActiveAuthoritative)} active=${JSON.stringify(applied.activeTabId)}` : 'H-A 不可判定（无 apply 帧）'}`
+      )
+      console.log(
+        `[u138]   last winning frame: ${winning ? `#${winning.seq} ${winning.method} applied=${winning.applied} hostActiveAuthoritative=${String(winning.applyOptions?.hostActiveAuthoritative)} active=${JSON.stringify(winning.activeTabId)}` : 'H-A 不可判定（无 applied=true 帧）'}`
+      )
     }
   }
   if (firstBad) {
     console.log(
-      `[u138] first inconsistency: cycle ${firstBad.cycle} ${firstBad.phase} at frame #${firstBad.frameGidAtSample} (${firstBad.diagnosis})`
+      `[u138] first red: ${firstBad.phase} attr=${firstBad.attribution.token} hA=${firstBad.hA.verdict}`
     )
   } else {
-    console.log('[u138] first inconsistency: none (all samples agree)')
+    console.log('[u138] first red: none')
   }
-  console.log(
-    `[u138] conclusion: ${out.verdict.consistentSamples}/${out.verdict.sampleCount} samples consistent across ${out.verdict.cycleCount} cycle(s); reproduced=${out.verdict.reproduced}`
-  )
   console.log(`[u138] evidence: ${OUTPUT_FILE}`)
+  console.log(`[u138] evidence copy: ${RUN_DIR}`)
   if (fatalError) {
     console.log(`[u138] blocked: ${out.fatalError.message}`)
   }

@@ -179,7 +179,7 @@ function installU138Probe(config) {
           activeTabId: group.activeTabId ?? null,
           tabOrder: Array.isArray(group.tabOrder)
             ? group.tabOrder.slice(0, 40)
-            : group.tabOrder ?? null
+            : (group.tabOrder ?? null)
         }))
       : undefined
   })
@@ -190,7 +190,9 @@ function installU138Probe(config) {
     }
     if (method === 'session.tabs.listAll') {
       return {
-        worktrees: Array.isArray(result.worktrees) ? result.worktrees.slice(0, 20) : result.worktrees,
+        worktrees: Array.isArray(result.worktrees)
+          ? result.worktrees.slice(0, 20)
+          : result.worktrees,
         snapshots: Array.isArray(result.snapshots)
           ? result.snapshots.slice(0, 20).map(summarizeSnapshot)
           : undefined
@@ -262,12 +264,7 @@ function installU138Probe(config) {
     // first renderer activate send consumes it and reloads without waiting for
     // the response. Frames are persisted so the pre-reload timeline survives.
     const arm = window.__u138RaceArm
-    if (
-      arm &&
-      source === 'renderer' &&
-      method === 'session.tabs.activate' &&
-      arm.token
-    ) {
+    if (arm && source === 'renderer' && method === 'session.tabs.activate' && arm.token) {
       window.__u138RaceArm = null
       raceFiredCallId = callId
       const delayMs = Number(arm.delayMs ?? config.raceDelayMs ?? 0)
@@ -444,9 +441,7 @@ function installU138Probe(config) {
             }
           : {})
       }
-      const argument = isCallbackShape
-        ? (response) => wrapped.onResponse(response)
-        : wrapped
+      const argument = isCallbackShape ? (response) => wrapped.onResponse(response) : wrapped
       return original.call(namespace, req, argument)
     }
   }
@@ -553,9 +548,7 @@ function installU138Probe(config) {
 
     function WrappedWebSocket(url, protocols) {
       const socket =
-        protocols === undefined
-          ? new OriginalWebSocket(url)
-          : new OriginalWebSocket(url, protocols)
+        protocols === undefined ? new OriginalWebSocket(url) : new OriginalWebSocket(url, protocols)
       transport.openedAt = transport.openedAt ?? Date.now()
       const originalSend = socket.send.bind(socket)
       socket.send = (data) => {
@@ -593,7 +586,12 @@ function installU138Probe(config) {
           throw new Error('u138 probe: raw RPC call not captured yet')
         }
         return recordCall(
-          { selector: 'active', method: 'session.tabs.list', params: { worktree }, timeoutMs: 15_000 },
+          {
+            selector: 'active',
+            method: 'session.tabs.list',
+            params: { worktree },
+            timeoutMs: 15_000
+          },
           'probe'
         )
       },
@@ -668,13 +666,9 @@ function readDomAndStore() {
   const state = window.__store?.getState?.()
   const worktreeId = state?.activeWorktreeId ?? null
   const groups = worktreeId ? (state?.groupsByWorktree?.[worktreeId] ?? []) : []
-  const activeGroupId = worktreeId
-    ? (state?.activeGroupIdByWorktree?.[worktreeId] ?? null)
-    : null
+  const activeGroupId = worktreeId ? (state?.activeGroupIdByWorktree?.[worktreeId] ?? null) : null
   const activeGroup =
-    (activeGroupId ? groups.find((group) => group.id === activeGroupId) : null) ??
-    groups[0] ??
-    null
+    (activeGroupId ? groups.find((group) => group.id === activeGroupId) : null) ?? groups[0] ?? null
   const unified = worktreeId ? (state?.unifiedTabsByWorktree?.[worktreeId] ?? []) : []
   const activeUnified =
     activeGroup?.activeTabId != null
@@ -695,12 +689,15 @@ function readDomAndStore() {
     domActive,
     domTabs,
     storeActive: activeGroup?.activeTabId ?? null,
-    storeActiveType: activeUnified?.contentType ?? state?.activeTabTypeByWorktree?.[worktreeId] ?? null,
+    storeActiveType:
+      activeUnified?.contentType ?? state?.activeTabTypeByWorktree?.[worktreeId] ?? null,
     storeActiveLabel: activeUnified?.label ?? null,
     storeActiveGroupId: activeGroup?.id ?? null,
     storeActiveGroup: activeGroup?.activeTabId ?? null,
     activeTerminalId: worktreeId ? (state?.activeTabIdByWorktree?.[worktreeId] ?? null) : null,
-    activeBrowserId: worktreeId ? (state?.activeBrowserTabIdByWorktree?.[worktreeId] ?? null) : null,
+    activeBrowserId: worktreeId
+      ? (state?.activeBrowserTabIdByWorktree?.[worktreeId] ?? null)
+      : null,
     activeFileId: worktreeId ? (state?.activeFileIdByWorktree?.[worktreeId] ?? null) : null,
     groups: groups.map((group) => ({ id: group.id, activeTabId: group.activeTabId ?? null })),
     unified: unified.map((tab) => ({
@@ -811,7 +808,11 @@ async function clickTabNoWait(page, tabId) {
   } catch (error) {
     // The in-page reload can destroy the execution context mid-click; that is
     // the race itself, not a drive failure.
-    if (!/Execution context was destroyed|Target closed|navigat/i.test(String(error?.message ?? error))) {
+    if (
+      !/Execution context was destroyed|Target closed|navigat/i.test(
+        String(error?.message ?? error)
+      )
+    ) {
       throw error
     }
   }
@@ -853,9 +854,11 @@ async function raceActivateAndReload(page, tabId, token) {
   await clickTabNoWait(page, tabId)
   const navigated = await navPromise
   if (!navigated) {
-    await page.evaluate(() => {
-      window.__u138RaceArm = null
-    }).catch(() => {})
+    await page
+      .evaluate(() => {
+        window.__u138RaceArm = null
+      })
+      .catch(() => {})
     return { navigated: false, token }
   }
   await page.waitForSelector('.app-layout', { timeout: 120_000 })
@@ -915,31 +918,35 @@ async function probeHostList(page, worktreeId) {
           ok: response?.ok === true,
           id: response?.id ?? null,
           error: response?.ok === true ? null : (response?.error ?? null),
-          result: response?.ok === true
-            ? {
-                activeTabId: response.result?.activeTabId ?? null,
-                activeTabType: response.result?.activeTabType ?? null,
-                activeGroupId: response.result?.activeGroupId ?? null,
-                publicationEpoch: response.result?.publicationEpoch ?? null,
-                snapshotVersion: response.result?.snapshotVersion ?? null,
-                worktree: response.result?.worktree ?? null,
-                tabs: Array.isArray(response.result?.tabs)
-                  ? response.result.tabs.map((tab) => ({
-                      id: tab.id,
-                      type: tab.type,
-                      title: tab.title ?? null,
-                      groupId: tab.groupId ?? null
-                    }))
-                  : []
-              }
-            : null
+          result:
+            response?.ok === true
+              ? {
+                  activeTabId: response.result?.activeTabId ?? null,
+                  activeTabType: response.result?.activeTabType ?? null,
+                  activeGroupId: response.result?.activeGroupId ?? null,
+                  publicationEpoch: response.result?.publicationEpoch ?? null,
+                  snapshotVersion: response.result?.snapshotVersion ?? null,
+                  worktree: response.result?.worktree ?? null,
+                  tabs: Array.isArray(response.result?.tabs)
+                    ? response.result.tabs.map((tab) => ({
+                        id: tab.id,
+                        type: tab.type,
+                        title: tab.title ?? null,
+                        groupId: tab.groupId ?? null
+                      }))
+                    : []
+                }
+              : null
         }
       }, worktreeId)
       if (last?.ok) {
         return last
       }
     } catch (error) {
-      last = { ok: false, error: { code: 'probe_thrown', message: String(error?.message ?? error) } }
+      last = {
+        ok: false,
+        error: { code: 'probe_thrown', message: String(error?.message ?? error) }
+      }
     }
     await sleep(500)
   }
@@ -1005,8 +1012,7 @@ function lastHostPublishBefore(frames, gid) {
     if (
       frame.layer === 'rpc' &&
       frame.dir === 'recv' &&
-      (frame.method === 'session.tabs.subscribe' ||
-        frame.method === 'session.tabs.subscribeAll') &&
+      (frame.method === 'session.tabs.subscribe' || frame.method === 'session.tabs.subscribeAll') &&
       frame.result &&
       (frame.result.activeTabId !== undefined ||
         frame.result.type === 'updated' ||
@@ -1037,13 +1043,54 @@ function frameActive(frame) {
   return null
 }
 
+/* U152: attach the T1 apply decision to each race sample for H-A attribution. */
+function summarizeTraceFrame(frame) {
+  if (!frame) {
+    return null
+  }
+  const snapshots = frame.result?.snapshots
+  const summary = Array.isArray(snapshots)
+    ? (snapshots.find((entry) => entry.applied !== undefined) ??
+      snapshots.find((entry) => entry.activeTabId !== undefined) ??
+      null)
+    : null
+  return {
+    seq: frame.seq,
+    ts: frame.ts,
+    dir: frame.dir,
+    method: frame.method,
+    activeTabId: frame.result?.activeTabId ?? summary?.activeTabId ?? null,
+    applied: frame.applied ?? summary?.applied ?? null,
+    applyOptions: frame.applyOptions ?? summary?.applyOptions ?? null
+  }
+}
+
+function traceAtWall(traceFrames, wall) {
+  if (!Array.isArray(traceFrames) || typeof wall !== 'number') {
+    return { lastFrame: null, lastAppliedFrame: null }
+  }
+  const before = traceFrames.filter((frame) => typeof frame.ts === 'number' && frame.ts <= wall)
+  let lastAppliedFrame = null
+  for (let index = before.length - 1; index >= 0; index -= 1) {
+    if (before[index].applied !== undefined) {
+      lastAppliedFrame = before[index]
+      break
+    }
+  }
+  return {
+    lastFrame: summarizeTraceFrame(before.at(-1) ?? null),
+    lastAppliedFrame: summarizeTraceFrame(lastAppliedFrame)
+  }
+}
+
 function diagnose(domStoreMatch, domHostMatch, lastWrite, lastPublish, sampleHostActive) {
   if (domStoreMatch && domHostMatch) {
     return 'consistent'
   }
   const writeActive = lastWrite?.response?.result?.activeTabId ?? null
   const publishActive = lastPublish ? frameActive(lastPublish) : null
-  const writeMatchesHost = writeActive !== null && tabPart(writeActive) === tabPart(sampleHostActive)
+  const writeMatchesHost =
+    writeActive !== null && tabPart(writeActive) === tabPart(sampleHostActive)
   const publishMatchesHost =
     publishActive !== null && tabPart(publishActive) === tabPart(sampleHostActive)
   if (!domStoreMatch) {
@@ -1129,6 +1176,13 @@ try {
     ignoreHTTPSErrors: true,
     viewport: { width: 1440, height: 900 }
   })
+  await context.addInitScript(() => {
+    try {
+      localStorage.setItem('orca.debug.sessionTabs', '1')
+    } catch {
+      // Trace opt-in is best-effort; absence is recorded, never guessed.
+    }
+  })
   await context.addInitScript(installU138Probe, {
     frameLimit: PAGE_FRAME_LIMIT,
     raceDelayMs: RACE_DELAY_MS,
@@ -1168,10 +1222,7 @@ try {
     )
   }
 
-  const row = consolePage
-    .locator('#projectBody tr')
-    .filter({ hasText: PROJECT_KEY })
-    .first()
+  const row = consolePage.locator('#projectBody tr').filter({ hasText: PROJECT_KEY }).first()
   if (!(await row.count())) {
     throw new Error(`project row not found for ${PROJECT_KEY}`)
   }
@@ -1218,6 +1269,10 @@ try {
   async function sample(cycle, phase) {
     const preFrames = await drainInto(workspacePage, documentEpoch)
     const domStore = await workspacePage.evaluate(readDomAndStore)
+    const sampleWall = Date.now()
+    const traceRaw = await workspacePage.evaluate(
+      () => window.__orcaSessionTabsTrace?.dump?.() ?? null
+    )
     const host = await probeHostList(workspacePage, worktreeId)
     const probeFrames = await drainInto(workspacePage, documentEpoch)
     const frameGidAtSample = globalFrameSeq
@@ -1226,13 +1281,40 @@ try {
       out.transportByDoc.push({ doc: documentEpoch, phase, cycle, ...transport })
     }
 
+    let traceFrames = []
+    let traceOk = false
+    try {
+      const parsed = JSON.parse(traceRaw)
+      traceFrames = Array.isArray(parsed.frames) ? parsed.frames : []
+      traceOk = true
+    } catch {
+      traceOk = false
+    }
+    const trace = traceAtWall(traceFrames, sampleWall)
+    const groupOf = (id) => (domStore.unified ?? []).find((tab) => tab.id === id)?.groupId ?? null
+    const crossGroup = Boolean(groupOf(tabA) && groupOf(tabB) && groupOf(tabA) !== groupOf(tabB))
+    const invalidReasons = []
+    if (host?.ok !== true) {
+      invalidReasons.push('projection read failed')
+    }
+    if (!domStore.hasStore) {
+      invalidReasons.push('hasStore=false')
+    }
+    if (!traceOk) {
+      invalidReasons.push('trace unavailable')
+    }
+    if ((domStore.unified ?? []).length < 2 || (domStore.groups ?? []).length < 2 || !crossGroup) {
+      invalidReasons.push(
+        `topology: tabs=${(domStore.unified ?? []).length} groups=${(domStore.groups ?? []).length} crossGroup=${crossGroup}`
+      )
+    }
+
     const domActive = domStore.domActive
     const storeActive = domStore.storeActive
     const hostActive = host?.ok ? (host.result?.activeTabId ?? null) : null
     const domStoreMatch = domActive.length === 1 && domActive[0] === storeActive
     const domHostMatch =
-      domActive.length === 1 &&
-      comparableHostId(domActive[0]) === tabPart(hostActive)
+      domActive.length === 1 && comparableHostId(domActive[0]) === tabPart(hostActive)
     const storeHostMatch =
       storeActive !== null && comparableHostId(storeActive) === tabPart(hostActive)
     const consistent = domStoreMatch && domHostMatch && storeHostMatch
@@ -1273,7 +1355,12 @@ try {
       lastHostPublish: lastPublish,
       tabCount: domStore.domTabs.length,
       hasStore: domStore.hasStore,
-      hasProbe: domStore.hasProbe
+      hasProbe: domStore.hasProbe,
+      traceOk,
+      lastAppliedFrame: trace.lastAppliedFrame,
+      lastTraceFrame: trace.lastFrame,
+      invalidReasons,
+      valid: invalidReasons.length === 0
     }
     out.runs.push(run)
     return run
@@ -1359,10 +1446,7 @@ try {
   await drainInto(workspacePage, documentEpoch)
   out.isolation.finalHostActive = finalHost?.ok ? (finalHost.result?.activeTabId ?? null) : null
   const baselineSurface = out.isolation.baselineHostActive
-  if (
-    baselineSurface &&
-    tabPart(baselineSurface) !== tabPart(out.isolation.finalHostActive)
-  ) {
+  if (baselineSurface && tabPart(baselineSurface) !== tabPart(out.isolation.finalHostActive)) {
     const [baseTabId, baseLeafId] = baselineSurface.split(HOST_SURFACE_SEPARATOR)
     try {
       const restored = await workspacePage.evaluate(
@@ -1526,9 +1610,7 @@ try {
         console.log(
           `[u138]   last client write: frame #${run.lastClientWrite.gid} ${run.lastClientWrite.method} params=${JSON.stringify(run.lastClientWrite.params)}`
         )
-        console.log(
-          `[u138]   response: ${JSON.stringify(run.lastClientWrite.response)}`
-        )
+        console.log(`[u138]   response: ${JSON.stringify(run.lastClientWrite.response)}`)
       } else {
         console.log('[u138]   last client write: none observed before this sample')
       }
