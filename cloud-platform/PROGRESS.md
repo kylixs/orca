@@ -3558,6 +3558,8 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **U129 端到端闭环**：真实环境 probe-b10——文件树/复制按钮到位、父页剪贴板 80 字符、审计 `file_copy result=success`（README.md，web-clipboard-api，host_b58500c3）。
 - **U132 闭环**（`29c881f9eb3`）：池守卫一跳 import+E2EE 信号（先红 4 漏检→登记后绿）、crash-recovery 监听 exit+Node<24.10 skipIf、App 2 例断言同步、M33-2 补 `open` 授权；`pnpm tc` exit 0。
 - **终局门禁在跑**：双线黄金旅程复跑（A=Orca Web 旅程、B=控制台旅程，evidence/journey-8/）。
+- **journey-8 探针线全绿**（21/21：A 线 8 + B 线 13，红 0；脚本漂移 1 处已修）；非门禁观察 3 条与 journey-7 基线一致。官方 W9 spec 双线（桌面/Orca Web）门禁在跑（`evidence/journey-8/spec-gate/`）。
+- **验收缺口收窄批落地**（`63a47043057`）：29 条缺口核实（closed 7/部分 4/待办 18），新增 e2e 3 个全绿（T05 3/3、T06 21/21、T32 6/6）；F1/F6/F8 覆盖升至 69 步骤/51 分支。产出两个已核验 P1 → 登记 U134（并行 401 双 refresh 误登出）/U135（停用账号可改角色）并派修；P2 观测并入 U136（含裁定：仓库地址 validator 收紧、授权收缩撤凭证）。
 
 ### 四通道并发执行（启动，2026-11-14）
 
