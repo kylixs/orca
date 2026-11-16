@@ -49,7 +49,11 @@ const PROJECT_KEY = process.env.U138_PROJECT_KEY ?? 'zhangsan-demo'
 const CYCLES = Math.max(1, Number(process.env.U138_CYCLES ?? 3))
 const REOPEN_CYCLES = Math.max(0, Number(process.env.U138_REOPEN_CYCLES ?? 3))
 const QUICK_CYCLES = Math.max(0, Number(process.env.U138_QUICK_CYCLES ?? 5))
-const SETTLE_MS = Math.max(2000, Number(process.env.U138_SETTLE_MS ?? 2100))
+// Design C3 recommends >=5 s between the two reads of a point; env may shorten it for smoke.
+const SETTLE_MS = Math.max(1000, Number(process.env.U138_SETTLE_MS ?? 5000))
+// A reload/reopen shell is not sampleable the instant `.app-layout` exists: wait for
+// a settle floor AND a stable tab count before the initial read (P2-1).
+const RELOAD_STABLE_MS = Math.max(2000, Number(process.env.U138_RELOAD_STABLE_MS ?? 2500))
 const HEADLESS = process.env.U138_HEADLESS !== '0'
 const PAGE_FRAME_LIMIT = Number(process.env.U138_PAGE_FRAME_LIMIT ?? 300)
 const HOST_STATE_ROOTS = (
@@ -831,6 +835,30 @@ async function waitWorkspaceShell(page, timeoutMs = 120_000) {
   throw new Error(`workspace did not become ready: ${JSON.stringify(last)}`)
 }
 
+/** Settle floor plus a tab count that holds for 1 s, so a reload transient is not sampled. */
+async function waitStableTabCount(page, minMs = RELOAD_STABLE_MS, timeoutMs = 45_000) {
+  const startedAt = Date.now()
+  await sleep(minMs)
+  let last = null
+  let stableSince = null
+  while (Date.now() - startedAt < timeoutMs) {
+    const count = await page.evaluate(
+      () => document.querySelectorAll('.app-layout [data-tab-id]').length
+    )
+    if (count === last) {
+      stableSince = stableSince ?? Date.now()
+      if (Date.now() - stableSince >= 1000) {
+        return count
+      }
+    } else {
+      last = count
+      stableSince = null
+    }
+    await sleep(250)
+  }
+  return last
+}
+
 async function ensureTwoTabs(page) {
   const before = await page.evaluate(() =>
     [...document.querySelectorAll('[data-tab-id]')].map((element) =>
@@ -1313,7 +1341,9 @@ const out = {
     cycles: CYCLES,
     reopenCycles: REOPEN_CYCLES,
     quickCycles: QUICK_CYCLES,
-    settleMs: SETTLE_MS
+    settleMs: SETTLE_MS,
+    reloadStableMs: RELOAD_STABLE_MS,
+    quickClose: 'ui'
   },
   worktreeId: null,
   project: null,
@@ -1330,7 +1360,10 @@ const out = {
     restored: false,
     restoredVerified: false,
     restoreCall: null,
+    postCleanupRestoreCall: null,
     createdTabIds: [],
+    quickCreatedTabIds: [],
+    cleanupAttemptedTabIds: [],
     closedCreatedTabIds: []
   },
   verdict: null,
@@ -1573,6 +1606,14 @@ try {
     }
     if (!trace.ok) {
       invalidReasons.push(`trace unavailable: ${trace.error ?? 'no dump'}`)
+    } else if (trace.frames.length === 0) {
+      // A handle that recorded nothing cannot answer H-A; an empty trace is not evidence.
+      invalidReasons.push(`trace-empty: size=${String(trace.size)} frames=0`)
+    }
+    if (host?.ok !== true) {
+      invalidReasons.push(
+        `projection-unavailable: ${host?.error?.message ?? host?.error?.code ?? 'session.tabs.list failed'}`
+      )
     }
     if (!out.isolation.baselineOk) {
       invalidReasons.push('baseline-read-failure')
@@ -1768,14 +1809,17 @@ try {
     }
   }
 
-  async function samplePoint(cycle, phase) {
+  async function samplePoint(cycle, phase, options = {}) {
+    const forcedInvalidReasons = options.forcedInvalidReasons ?? []
     const first = await readOnce(cycle, phase, 'initial')
     await sleep(SETTLE_MS)
     const second = await readOnce(cycle, phase, 'resample')
-    const valid = first.valid && second.valid
+    const invalidReasons = [
+      ...new Set([...first.invalidReasons, ...second.invalidReasons, ...forcedInvalidReasons])
+    ]
+    const valid = invalidReasons.length === 0
     const stable = valid && sameReading(first, second)
     const consistent = valid && stable && first.consistent && second.consistent
-    const invalidReasons = [...new Set([...first.invalidReasons, ...second.invalidReasons])]
     const point = {
       cycle,
       phase,
@@ -1788,13 +1832,22 @@ try {
       invalidReasons,
       first: summarizeRun(first),
       second: summarizeRun(second),
-      hA: hAAssessment(second)
+      // Unstable points are counted separately and never receive a causal token.
+      hA:
+        valid && stable
+          ? hAAssessment(second)
+          : {
+              verdict: 'unknown',
+              reason: valid
+                ? 'the two reads disagree; excluded from causal attribution'
+                : 'point INVALID; not attributed'
+            }
     }
     point.attribution = consistent
       ? { token: 'none', reason: 'all three perspectives agree in both reads' }
       : attributePoint(point)
     out.samples.push(point)
-    const view = !valid ? 'INVALID' : consistent ? 'GREEN' : 'RED'
+    const view = !valid ? 'INVALID' : !stable ? 'UNSTABLE' : consistent ? 'GREEN' : 'RED'
     console.log(
       `[u138] ${String(cycle).padEnd(12)} ${phase.padEnd(12)} ${view}` +
         ` dom=${JSON.stringify(point.second.domActive)} store=${JSON.stringify(point.second.storeActive)}` +
@@ -1805,6 +1858,10 @@ try {
     )
     if (!valid) {
       console.log(`[u138]   INVALID: ${invalidReasons.join(' | ')}`)
+    } else if (!stable) {
+      console.log(
+        `[u138]   UNSTABLE: first=${JSON.stringify(normalizedReading(first))} second=${JSON.stringify(normalizedReading(second))}`
+      )
     }
     return point
   }
@@ -1828,6 +1885,7 @@ try {
       await workspacePage.close()
     } catch {}
     workspacePage = await openWorkspaceFromConsole()
+    await waitStableTabCount(workspacePage)
   }
 
   async function createTempTab() {
@@ -1858,19 +1916,50 @@ try {
     return after.find((id) => !before.includes(id)) ?? null
   }
 
-  async function closeTabViaProbe(tabId) {
+  /** Real tab-strip close: the signed quick path must not inject session.tabs.close. */
+  async function closeTabViaUI(tabId) {
+    const escaped = tabId.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+    const selector = `.app-layout [data-tab-id="${escaped}"]`
     try {
-      await workspacePage.evaluate(
-        async (args) => {
-          const response = await window.__u138Probe.hostClose(args)
-          return response?.ok === true
-        },
-        { worktree: worktreeId, tabId: toHostTabId(tabId), reason: 'user' }
-      )
-    } catch {
-      // Best-effort; the reopen/close scenario records host state regardless.
+      const tab = workspacePage.locator(selector).first()
+      if ((await tab.count()) === 0) {
+        return { ok: false, path: 'ui', error: 'tab-not-found' }
+      }
+      // The close button is hidden until hover in the transparent tab strip.
+      await tab.hover({ timeout: 5000 }).catch(() => {})
+      const closeButton = tab.locator('[data-tab-close-button="true"]').first()
+      if ((await closeButton.count()) === 0) {
+        return { ok: false, path: 'ui', error: 'close-button-not-found' }
+      }
+      await closeButton.click({ timeout: 10_000 })
+      const deadline = Date.now() + 15_000
+      while (Date.now() < deadline) {
+        const present = await workspacePage
+          .evaluate((sel) => document.querySelector(sel) !== null, selector)
+          .catch(() => null)
+        if (present === false) {
+          // Let the close response and the subscription update land before sampling.
+          await sleep(600)
+          return { ok: true, path: 'ui' }
+        }
+        await sleep(250)
+      }
+      return { ok: false, path: 'ui', error: 'tab-still-present-after-ui-close' }
+    } catch (error) {
+      return { ok: false, path: 'ui', error: `ui-close-thrown: ${String(error?.message ?? error)}` }
     }
-    await sleep(400)
+  }
+
+  function invalidatePoint(point, reason) {
+    if (!point.invalidReasons.includes(reason)) {
+      point.invalidReasons.push(reason)
+    }
+    point.valid = false
+    point.stable = false
+    point.consistent = false
+    point.unstable = false
+    point.hA = { verdict: 'unknown', reason: 'point INVALID; not attributed' }
+    point.attribution = { token: 'INVALID', reason: point.invalidReasons.join(' | ') }
   }
 
   // Scenario C1/baseline: activate A -> activate B -> reload, dual-sampled.
@@ -1890,6 +1979,7 @@ try {
     await workspacePage.waitForSelector('.app-layout', { timeout: 120_000 })
     await dismissOnboarding(workspacePage)
     await waitWorkspaceShell(workspacePage)
+    await waitStableTabCount(workspacePage)
     await samplePoint(cycle, 'after-reload')
   }
 
@@ -1908,26 +1998,57 @@ try {
     })
   }
   out.reopenActives = reopenActives
+  const allReopensValid =
+    REOPEN_CYCLES > 0 &&
+    reopenActives.length === REOPEN_CYCLES &&
+    reopenActives.every((entry) => entry.pointValid && entry.domActive.length === 1)
   out.crossReopenSameActive =
-    reopenActives.length > 0 &&
+    allReopensValid &&
     reopenActives.every(
       (entry) =>
+        comparable(entry.domActive[0] ?? null) !== null &&
         comparable(entry.domActive[0] ?? null) === comparable(reopenActives[0].domActive[0] ?? null)
     )
+  out.crossReopenReason = allReopensValid
+    ? null
+    : 'cross-reopen equality requires every reopen point valid with exactly one DOM active'
 
-  // Scenario C2: quick tab open -> sample -> close -> sample, five rounds.
+  // Scenario C2: quick tab open -> sample -> close (real UI) -> sample, five rounds.
   for (let index = 1; index <= QUICK_CYCLES; index += 1) {
-    const createdTabId = await createTempTab()
-    await samplePoint(`quick-${index}`, 'opened')
-    if (createdTabId) {
-      out.isolation.quickCreatedTabIds = [...(out.isolation.quickCreatedTabIds ?? []), createdTabId]
-      await closeTabViaProbe(createdTabId)
+    let createdTabId = null
+    let createError = null
+    try {
+      createdTabId = await createTempTab()
+    } catch (error) {
+      createError = String(error?.message ?? error)
     }
-    await samplePoint(`quick-${index}`, 'closed')
+    if (!createdTabId) {
+      const reason = `quick-create-failed: ${createError ?? 'no new tab appeared'}`
+      await samplePoint(`quick-${index}`, 'opened', { forcedInvalidReasons: [reason] })
+      await samplePoint(`quick-${index}`, 'closed', { forcedInvalidReasons: [reason] })
+      continue
+    }
+    out.isolation.quickCreatedTabIds = [
+      ...(out.isolation.quickCreatedTabIds ?? []),
+      createdTabId
+    ]
+    const openedPoint = await samplePoint(`quick-${index}`, 'opened')
+    const closedBy = await closeTabViaUI(createdTabId)
+    if (closedBy.ok) {
+      out.isolation.closedCreatedTabIds.push(createdTabId)
+    } else {
+      // A failed close means "closed" is not a real state; the round cannot be signed.
+      invalidatePoint(openedPoint, `quick-close-failed: ${closedBy.error}`)
+    }
+    await samplePoint(
+      `quick-${index}`,
+      'closed',
+      closedBy.ok ? {} : { forcedInvalidReasons: [`quick-close-failed: ${closedBy.error}`] }
+    )
   }
 
-  // First red sample in order (valid but inconsistent).
-  const firstBad = out.samples.find((point) => point.valid && !point.consistent)
+  // First stable red sample in order (unstable/invalid are not causal evidence).
+  const firstBad = out.samples.find((point) => point.valid && point.stable && !point.consistent)
   if (firstBad) {
     out.firstInconsistency = {
       cycle: firstBad.cycle,
@@ -1939,18 +2060,14 @@ try {
     }
   }
 
-  // Restore by host persisted value (not projection), then re-read to verify.
-  const finalHostState = readHostState(worktreeId)
-  await drainInto(workspacePage, documentEpoch)
-  out.isolation.finalPersistentActive = finalHostState.ok
-    ? finalHostState.hostPersistentActive
-    : null
+  // Restore by host persisted value (not projection); cleanup runs BEFORE the final
+  // verify because closing created tabs can move the active tab again.
   const baselineSurface = out.isolation.baselinePersistentActive
-  if (
-    out.isolation.baselineOk &&
-    baselineSurface &&
-    tabPart(baselineSurface) !== tabPart(out.isolation.finalPersistentActive)
-  ) {
+
+  async function restoreBaseline(reasonTag) {
+    if (!out.isolation.baselineOk || !baselineSurface) {
+      return { ok: false, reason: reasonTag, skipped: 'baseline host state unreadable' }
+    }
     const [baseTabId, baseLeafId] = String(baselineSurface).split(HOST_SURFACE_SEPARATOR)
     try {
       const restored = await workspacePage.evaluate(
@@ -1972,35 +2089,37 @@ try {
           intent: 'user'
         }
       )
-      out.isolation.restoreCall = restored
-      out.isolation.restored = restored.ok === true
       await drainInto(workspacePage, documentEpoch)
+      return { ...restored, reason: reasonTag }
     } catch (error) {
-      out.isolation.restoreCall = {
+      return {
         ok: false,
+        reason: reasonTag,
         error: { code: 'restore_thrown', message: String(error?.message ?? error) }
       }
     }
-  } else {
-    out.isolation.restored = out.isolation.baselineOk
-    out.isolation.restoreCall = out.isolation.baselineOk
-      ? { ok: true, skipped: 'host persisted active did not change' }
-      : { ok: false, skipped: 'baseline host state unreadable' }
   }
-  const verifyState = readHostState(worktreeId)
-  out.isolation.restoredVerified =
-    out.isolation.baselineOk &&
-    verifyState.ok &&
-    comparable(baselineSurface) === comparable(verifyState.hostPersistentActive)
-  out.isolation.verifyState = verifyState
 
-  // Close any tabs the initial ensureTwoTabs created.
+  const postSampleState = readHostState(worktreeId)
+  out.isolation.finalPersistentActive = postSampleState.ok
+    ? postSampleState.hostPersistentActive
+    : null
+  const needsRestore =
+    out.isolation.baselineOk &&
+    baselineSurface !== null &&
+    tabPart(baselineSurface) !== tabPart(out.isolation.finalPersistentActive)
+  out.isolation.restoreCall = needsRestore
+    ? await restoreBaseline('after-sampling')
+    : out.isolation.baselineOk
+      ? { ok: true, reason: 'after-sampling', skipped: 'host persisted active did not change' }
+      : { ok: false, skipped: 'baseline host state unreadable' }
+
+  // Close tabs the probe created (quick tabs closed through the UI already are skipped).
+  const alreadyClosed = new Set(out.isolation.closedCreatedTabIds ?? [])
   const cleanupIds = [
-    ...new Set([
-      ...(out.isolation.createdTabIds ?? []),
-      ...(out.isolation.quickCreatedTabIds ?? [])
-    ])
-  ]
+    ...new Set([...(out.isolation.createdTabIds ?? []), ...(out.isolation.quickCreatedTabIds ?? [])])
+  ].filter((tabId) => !alreadyClosed.has(tabId))
+  out.isolation.cleanupAttemptedTabIds = cleanupIds
   for (const createdTabId of cleanupIds) {
     try {
       const closed = await workspacePage.evaluate(
@@ -2021,38 +2140,123 @@ try {
     }
   }
   await drainInto(workspacePage, documentEpoch)
+  await sleep(1000)
+
+  // Final host value after cleanup; if cleanup moved it, restore once more and re-verify.
+  let verifyState = readHostState(worktreeId)
+  const offBaseline =
+    out.isolation.baselineOk &&
+    baselineSurface !== null &&
+    tabPart(baselineSurface) !==
+      tabPart(verifyState.ok ? verifyState.hostPersistentActive : null)
+  if (offBaseline) {
+    out.isolation.postCleanupRestoreCall = await restoreBaseline('after-cleanup')
+    verifyState = readHostState(worktreeId)
+  }
+  out.isolation.finalPersistentActive = verifyState.ok
+    ? verifyState.hostPersistentActive
+    : null
+  out.isolation.restoredVerified = Boolean(
+    out.isolation.baselineOk &&
+      baselineSurface !== null &&
+      verifyState.ok &&
+      comparable(baselineSurface) !== null &&
+      comparable(baselineSurface) === comparable(verifyState.hostPersistentActive)
+  )
+  out.isolation.restored = Boolean(
+    out.isolation.baselineOk &&
+      out.isolation.restoreCall?.ok === true &&
+      (out.isolation.postCleanupRestoreCall?.ok ?? true) &&
+      out.isolation.restoredVerified
+  )
+  out.isolation.verifyState = verifyState
 
   const validPoints = out.samples.filter((point) => point.valid)
   const invalidPoints = out.samples.filter((point) => !point.valid)
-  const greenPoints = validPoints.filter((point) => point.consistent)
-  const redPoints = validPoints.filter((point) => !point.consistent)
+  const unstablePoints = validPoints.filter((point) => !point.stable)
+  const stableValidPoints = validPoints.filter((point) => point.stable)
+  const greenPoints = stableValidPoints.filter((point) => point.consistent)
+  const redPoints = stableValidPoints.filter((point) => !point.consistent)
   const scenarioName = (point) => point.kind
   const scenarioSummary = (kind) => {
     const points = out.samples.filter((point) => scenarioName(point) === kind)
     return {
       samplePoints: points.length,
-      green: points.filter((point) => point.valid && point.consistent).length,
-      red: points.filter((point) => point.valid && !point.consistent).length,
+      green: points.filter((point) => point.valid && point.stable && point.consistent).length,
+      red: points.filter((point) => point.valid && point.stable && !point.consistent).length,
+      unstable: points.filter((point) => point.valid && !point.stable).length,
       invalid: points.filter((point) => !point.valid).length
     }
   }
+  const scenarioReproduced = (kind) => {
+    const points = out.samples.filter((point) => scenarioName(point) === kind && point.valid)
+    if (points.length === 0) {
+      return null
+    }
+    return points.some((point) => point.stable && !point.consistent)
+  }
+
+  // "Conclusive" signs off both the reproduction *and* the non-reproduction reading:
+  // no INVALID, no unstable, the script fully executed, and host persisted + projection
+  // were readable for every read. Anything else must not be quoted as "not reproduced".
+  const expectedSamplePoints = CYCLES * 4 + REOPEN_CYCLES + QUICK_CYCLES * 2
+  const conclusiveBlockers = []
+  if (fatalError) {
+    conclusiveBlockers.push(`run blocked: ${String(fatalError?.message ?? fatalError)}`)
+  }
+  if (out.samples.length !== expectedSamplePoints) {
+    conclusiveBlockers.push(
+      `scenario incomplete: ${out.samples.length}/${expectedSamplePoints} sample points`
+    )
+  }
+  if (invalidPoints.length > 0) {
+    conclusiveBlockers.push(`invalid=${invalidPoints.length}`)
+  }
+  if (unstablePoints.length > 0) {
+    conclusiveBlockers.push(`unstable=${unstablePoints.length} (excluded from causal attribution)`)
+  }
+  if (!out.isolation.baselineOk) {
+    conclusiveBlockers.push('baseline host persisted state unreadable')
+  }
+  if (out.baseline?.projectionOk !== true) {
+    conclusiveBlockers.push('baseline device projection unreadable')
+  }
+  if (out.runs.some((run) => run.projectionOk !== true)) {
+    conclusiveBlockers.push('device projection unreadable in at least one read')
+  }
+  const conclusive = conclusiveBlockers.length === 0
+
   out.verdict = {
     cycleCount: CYCLES,
     reopenCycles: REOPEN_CYCLES,
     quickCycles: QUICK_CYCLES,
     sampleCount: out.runs.length,
     samplePointCount: out.samples.length,
+    expectedSamplePoints,
     green: greenPoints.length,
     red: redPoints.length,
+    unstable: unstablePoints.length,
     invalid: invalidPoints.length,
-    // Backwards-compatible names: only valid points participate.
+    // Backwards-compatible names: only stable valid points participate.
     consistentSamples: greenPoints.length,
     inconsistentSamples: redPoints.length,
-    reproduced: redPoints.length > 0,
-    // Fix B (INVALID hardening / conclusive gate) is out of scope for this pass.
-    conclusive: false,
-    conclusiveReason:
-      'fix B not implemented: projection-unavailable and failed quick create/close still count as red; see test-reports/u138-probe-hardened-audit.md P1-1/P1-4',
+    // All-INVALID must not read as "not reproduced"; null means "no signable verdict".
+    reproduced: validPoints.length === 0 ? null : redPoints.length > 0,
+    reproducedByScenario: {
+      reload: scenarioReproduced('reload'),
+      reopen: scenarioReproduced('reopen'),
+      quick: scenarioReproduced('quick')
+    },
+    conclusive,
+    conclusiveReason: conclusive ? null : conclusiveBlockers.join(' | '),
+    conclusiveChecks: {
+      scenarioComplete: out.samples.length === expectedSamplePoints,
+      noInvalid: invalidPoints.length === 0,
+      noUnstable: unstablePoints.length === 0,
+      baselineHostPersistedReadable: out.isolation.baselineOk === true,
+      baselineProjectionReadable: out.baseline?.projectionOk === true
+    },
+    scenarioComplete: out.samples.length === expectedSamplePoints,
     perspective: 'host-persisted + device-projection + client DOM/store (host memory UNKNOWN)',
     hostMemory: 'UNKNOWN',
     hostMemorySource: 'unavailable',
@@ -2070,12 +2274,20 @@ try {
       first: point.first,
       second: point.second
     })),
+    unstableSamples: unstablePoints.map((point) => ({
+      cycle: point.cycle,
+      phase: point.phase,
+      reason: 'the two reads disagree; no causal attribution',
+      first: point.first,
+      second: point.second
+    })),
     invalidSamples: invalidPoints.map((point) => ({
       cycle: point.cycle,
       phase: point.phase,
       invalidReasons: point.invalidReasons
     })),
     crossReopenSameActive: out.crossReopenSameActive,
+    crossReopenReason: out.crossReopenReason ?? null,
     reopenActives,
     baseline: out.baseline
   }
@@ -2092,14 +2304,22 @@ try {
     cycleCount: out.runs.length > 0 ? Math.max(...out.runs.map((run) => run.cycle)) : 0,
     sampleCount: out.runs.length,
     samplePointCount: out.samples.length,
-    green: out.samples.filter((point) => point.valid && point.consistent).length,
-    red: out.samples.filter((point) => point.valid && !point.consistent).length,
+    green: out.samples.filter((point) => point.valid && point.stable && point.consistent).length,
+    red: out.samples.filter((point) => point.valid && point.stable && !point.consistent).length,
+    unstable: out.samples.filter((point) => point.valid && !point.stable).length,
     invalid: out.samples.filter((point) => !point.valid).length,
-    consistentSamples: out.samples.filter((point) => point.valid && point.consistent).length,
-    inconsistentSamples: out.samples.filter((point) => point.valid && !point.consistent).length,
-    reproduced: out.samples.some((point) => point.valid && !point.consistent),
+    consistentSamples: out.samples.filter(
+      (point) => point.valid && point.stable && point.consistent
+    ).length,
+    inconsistentSamples: out.samples.filter(
+      (point) => point.valid && point.stable && !point.consistent
+    ).length,
+    reproduced:
+      out.samples.some((point) => point.valid) === false
+        ? null
+        : out.samples.some((point) => point.valid && point.stable && !point.consistent),
     conclusive: false,
-    conclusiveReason: 'fix B not implemented; forced false before the run finished',
+    conclusiveReason: `run blocked: ${String(error?.message ?? error)}`,
     hostMemory: 'UNKNOWN',
     hostMemorySource: 'unavailable',
     perspective: 'host-persisted + device-projection + client DOM/store (host memory UNKNOWN)',
@@ -2120,13 +2340,21 @@ try {
     samplePoints: out.verdict?.samplePointCount ?? 0,
     green: out.verdict?.green ?? 0,
     red: out.verdict?.red ?? 0,
+    unstable: out.verdict?.unstable ?? 0,
     invalid: out.verdict?.invalid ?? 0,
-    reproduced: out.verdict?.reproduced ?? false,
+    expectedSamplePoints: out.verdict?.expectedSamplePoints ?? null,
+    scenarioComplete: out.verdict?.scenarioComplete ?? false,
+    reproduced: out.verdict?.reproduced ?? null,
+    reproducedByScenario: out.verdict?.reproducedByScenario ?? null,
     conclusive: out.verdict?.conclusive ?? false,
     conclusiveReason: out.verdict?.conclusiveReason ?? null,
+    conclusiveChecks: out.verdict?.conclusiveChecks ?? null,
     perspective: out.verdict?.perspective ?? null,
     byScenario: out.verdict?.byScenario ?? null,
     baselineOk: out.isolation?.baselineOk ?? false,
+    baselineProjectionOk: out.baseline?.projectionOk ?? false,
+    restored: out.isolation?.restored ?? false,
+    restoredVerified: out.isolation?.restoredVerified ?? false,
     hostMemory: 'UNKNOWN',
     hostMemorySource: 'unavailable',
     firstInconsistency: firstBad
@@ -2140,6 +2368,7 @@ try {
         }
       : null,
     redSamples: out.verdict?.redSamples ?? [],
+    unstableSamples: out.verdict?.unstableSamples ?? [],
     invalidSamples: out.verdict?.invalidSamples ?? [],
     isolation: out.isolation,
     output: OUTPUT_FILE
@@ -2157,10 +2386,19 @@ try {
     `[u138] baselineOk=${out.isolation?.baselineOk} hostMemory=UNKNOWN perspective=host-persisted+projection+client`
   )
   console.log(
-    `[u138] counts: green=${summary.green} red=${summary.red} invalid=${summary.invalid} of ${summary.samplePoints} sample point(s) conclusive=${summary.conclusive}`
+    `[u138] counts: green=${summary.green} red=${summary.red} unstable=${summary.unstable} invalid=${summary.invalid} of ${summary.samplePoints} sample point(s) conclusive=${summary.conclusive}`
   )
+  if (summary.conclusive !== true) {
+    console.log(`[u138] conclusiveReason: ${summary.conclusiveReason ?? 'n/a'}`)
+  }
   for (const point of out.samples) {
-    const view = !point.valid ? 'INVALID' : point.consistent ? 'GREEN' : 'RED'
+    const view = !point.valid
+      ? 'INVALID'
+      : !point.stable
+        ? 'UNSTABLE'
+        : point.consistent
+          ? 'GREEN'
+          : 'RED'
     console.log(
       `[u138] ${String(point.cycle).padEnd(12)} ${point.phase.padEnd(12)} ${view}` +
         ` first={dom:${JSON.stringify(point.first.domActive)},store:${JSON.stringify(point.first.storeActive)},proj:${JSON.stringify(point.first.projectionActive)},hostPersist:${JSON.stringify(point.first.hostPersistentActive)}}` +
@@ -2169,6 +2407,8 @@ try {
     )
     if (!point.valid) {
       console.log(`[u138]   INVALID: ${point.invalidReasons.join(' | ')}`)
+    } else if (!point.stable) {
+      console.log('[u138]   UNSTABLE: the two reads disagree; excluded from causal attribution')
     } else if (!point.consistent) {
       const decision = point.second.trace?.lastAppliedFrame
       const qualifying = point.second.trace?.lastQualifyingAppliedFrame

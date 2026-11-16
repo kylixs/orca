@@ -40,27 +40,34 @@ U138_CYCLES=3 U138_REOPEN_CYCLES=3 U138_QUICK_CYCLES=5 \
 
 Environment knobs: `U138_PLATFORM_URL`, `U138_USERNAME`, `U138_PASSWORD`,
 `U138_PROJECT_KEY`, `U138_CYCLES`, `U138_REOPEN_CYCLES`, `U138_QUICK_CYCLES`,
-`U138_SETTLE_MS` (min 2000), `U138_HEADLESS=0`, `U138_PAGE_FRAME_LIMIT`,
-`U138_RUN_ID`, `U138_HOST_STATE_ROOTS` (colon-separated host user-data roots,
-default `~/orca-local-env/host` and `~/orca-local-env/host2`).
+`U138_SETTLE_MS` (default 5000, min 1000; the design recommends ≥5 s between the
+two reads of a point, env lowers it for smoke only), `U138_RELOAD_STABLE_MS`
+(default 2500, min 2000: settle floor before the first post-reload/post-reopen
+read), `U138_HEADLESS=0`, `U138_PAGE_FRAME_LIMIT`, `U138_RUN_ID`,
+`U138_HOST_STATE_ROOTS` (colon-separated host user-data roots, default
+`~/orca-local-env/host` and `~/orca-local-env/host2`).
 
 ## Scenarios
 
 1. **reload (C1) x `U138_CYCLES`**: sample `start` → click A → sample
-   `activate-a` → click B → sample `activate-b` → `page.reload()` → sample
-   `after-reload`.
+   `activate-a` → click B → sample `activate-b` → `page.reload()` → wait for the
+   shell, a `U138_RELOAD_STABLE_MS` settle floor, and a tab count that holds for
+   1 s → sample `after-reload`.
 2. **reopen (C3) x `U138_REOPEN_CYCLES`**: close the workspace page → click the
-   console project entry again (same pairing context) → wait for the shell →
-   sample `after-reopen`. Cross-reopen active equality is recorded.
+   console project entry again (same pairing context) → wait for the shell and
+   the same stability gate → sample `after-reopen`. Cross-reopen active equality
+   requires every reopen point to be valid and to expose exactly one DOM active.
 3. **quick open/close (C2) x `U138_QUICK_CYCLES`**: create a temp tab → sample
-   `opened` → close it → sample `closed`. The close is injected through
-   `session.tabs.close` (not a UI click); treat quick reds as a synthetic-path
-   finding until the UI-close variant lands.
+   `opened` → close it through the **real tab-strip close button**
+   (`[data-tab-close-button]`) → sample `closed`. No injected `session.tabs.close`
+   remains on the signed path. A failed create or close makes the round INVALID
+   (the failed close also invalidates the `opened` point); it is never a red.
 
 Every sample point is **dual-read**: initial read → wait `U138_SETTLE_MS`
-(≥2 s) → re-read. A point is `consistent` only when both reads agree with each
-other and all views agree; disagreement between reads is red with
-`attribution.token: "unstable"`, never a green and never a causal token.
+(default 5 s, ≥5 s recommended) → re-read. A point is `consistent` only when
+both reads agree with each other and all views agree. The two reads disagreeing
+makes the point `unstable`: counted in its own bucket, never a green, never a
+red, and never given a causal attribution token.
 
 ## Three perspectives (host memory is not observed)
 
@@ -144,19 +151,50 @@ earlier `host-moved-after-write` label was wrong for this defect and is gone.
 A sample point is INVALID and excluded from green/red when any of these holds:
 
 - `hostPersistedOk=false` (host persisted state unreadable);
+- `projectionOk=false` (`session.tabs.list` failed after its retries; projection
+  is a required perspective, not an optional extra);
 - `hasStore=false` or the active group is missing;
 - topology precondition fails: `<2` tabs, `<2` groups, or the driven A/B tabs
   are not in different groups;
-- baseline host state read failed;
-- the T1 trace is unavailable for that read.
+- baseline host state read failed (this invalidates every point in the run);
+- the T1 trace is unavailable **or empty** (a handle with zero recorded frames
+  cannot answer H-A);
+- quick round: tab creation failed, or the real UI close failed / the tab was
+  still present afterwards. A failed close also invalidates that round's
+  `opened` point.
 
-Invalid points are counted separately. `verdict.reproduced` is true only for
-valid red points.
+Invalid points are counted in a separate `invalid` bucket. `unstable` points are
+counted in their own bucket too. Neither contributes to `green`, `red`, or
+`reproduced`.
 
-`verdict.conclusive` is emitted but is **forced to `false`** in this pass with a
-`conclusiveReason`, because the INVALID-hardening work (projection unavailable
-and failed quick create/close still count as red) is not implemented yet. Treat
-`reproduced=false` as "no valid red", not as a signed "not reproduced".
+## Sign-off: `conclusive`
+
+`conclusive` is `true` only when **all** of these hold:
+
+1. no INVALID points;
+2. no unstable points (an unstable point has no causal reading);
+3. the script executed completely: the sample-point count equals
+   `CYCLES × 4 + REOPEN_CYCLES + QUICK_CYCLES × 2` and the run was not blocked;
+4. the baseline host persisted state and the baseline device projection were
+   both readable, and every read in the run had a readable projection.
+
+Otherwise `conclusive` is `false` with a `conclusiveReason` listing the
+blockers. Only a `conclusive: true` run may be quoted as a signed
+"reproduced" **or** "not reproduced" result.
+
+`verdict.reproduced` is `null` when there is no valid sample at all (for
+example every point is INVALID). It is `true` when at least one stable valid
+red exists, and `false` only when there are valid, stable, non-red points. A
+`reproduced: null` run is **not** evidence of non-reproduction.
+`reproducedByScenario` gives the same reading per scenario so a quick-only red
+is not reported as a reload/reopen regression.
+
+Restore and cleanup run before the final verify: the probe activates the
+baseline host value, closes the tabs it created, then reads the host state
+again; if cleanup moved the active tab, it restores once more and re-verifies.
+`isolation.restored` is `true` only when the baseline was readable, the restore
+call succeeded, and the post-cleanup host persisted value matches the baseline.
+A baseline read failure can never yield `restored: true`.
 
 ## Output
 
@@ -185,16 +223,29 @@ and failed quick create/close still count as red) is not implemented yet. Treat
     }
   ],
   "verdict": {
-    "green": 12,
+    "green": 25,
     "red": 0,
+    "unstable": 0,
     "invalid": 0,
-    "conclusive": false,
-    "conclusiveReason": "fix B not implemented: …",
+    "expectedSamplePoints": 25,
+    "scenarioComplete": true,
+    "reproduced": false,
+    "reproducedByScenario": { "reload": false, "reopen": false, "quick": false },
+    "conclusive": true,
+    "conclusiveReason": null,
+    "conclusiveChecks": {
+      "scenarioComplete": true,
+      "noInvalid": true,
+      "noUnstable": true,
+      "baselineHostPersistedReadable": true,
+      "baselineProjectionReadable": true
+    },
     "perspective": "host-persisted + device-projection + client DOM/store (host memory UNKNOWN)",
     "hostMemory": "UNKNOWN",
     "hostMemorySource": "unavailable",
     "byScenario": {},
     "redSamples": [],
+    "unstableSamples": [],
     "invalidSamples": []
   }
 }
@@ -202,15 +253,20 @@ and failed quick create/close still count as red) is not implemented yet. Treat
 
 `matches` on each read now contains `domHostPersisted` / `storeHostPersisted`
 instead of the removed memory fields. Terminal output prints one line per
-sample point with both reads, host persisted, the attribution token, and the
-last decision / H-A-candidate frames for red points.
+sample point (`GREEN` / `RED` / `UNSTABLE` / `INVALID`) with both reads, host
+persisted, the attribution token, and the last decision / H-A-candidate frames
+for red points.
 
 ## Notes / limits
 
+- **Sign-off condition**: quote this probe only for a run with
+  `conclusive: true`. The verdict covers host persisted + per-device projection
+  + client DOM/store; it does not cover host memory.
 - Host memory is not observed. H-B (memory vs persisted inside the host) is not
-  judged; a green covers host persisted + per-device projection + client
-  DOM/store only. Reading host memory needs a host debug RPC or a privileged
-  probe, not a relabelled persisted file.
+  judged. Reading host memory needs a host debug RPC or a privileged probe, not
+  a relabelled persisted file.
+- The quick-close path is the real tab-strip close button; created/closed tabs
+  and cleanup attempts are recorded under `isolation`.
 - The host persisted source is read from the machine running the probe. The
   host side of this probe is valid only when the host and the probe share a
   machine (local rig); a remote host needs a host-side debug RPC.
