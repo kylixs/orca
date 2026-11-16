@@ -20,7 +20,7 @@
 | A-6 | 宿主持久化缺口：快照写 `workspaceSession.tabsByWorktree`（幂等追加/更新，close 退役） | — | **✅ 完成** `e4c27ebf699`（persistPerPublish 幂等；4 新例含重启重载恢复；24 例回归绿） | 宿主重启后 loader 可恢复 tab 行；关闭不复活 |
 | A-2 | 云 inventory 过滤（`projectCloudSessionTabsInventory`）+ `session.tabs` 作用域 | A-1 | **✅ 完成** `1590e9fc956`（worktree 级/tab 级 scope+assertCloudSessionTabVisible fail-closed；9 新例+118 绿） | 越界 worktree 帧丢弃；多项目隔离 |
 | A-3 | `terminal.list/adoptOrphans` 放行+三重 scope | A-1，与 A-2 共享 path guard **串行** | **✅ 完成** `ee92bb2e449`（restore-scope 模块+拓扑校验；53 例绿） | 无 selector/越界拒绝；跨 worktree handle 拒绝 |
-| A-5 | bootstrap 顺序+孤儿认领接通（**最小可用里程碑**） | A-2/3/4 | 排队 | 页面重开→标签组/布局/活动标签恢复；活 PTY 回放 marker 可见 |
+| A-5 | bootstrap 顺序+孤儿认领接通（**最小可用里程碑**） | A-2/3/4 | **✅ 落地** `430b2a2f312`（**M1 核心绿**：3 tab 同 id 恢复+活动一致+双 PTY marker 可见；断点：move 超时 U99 / 文件标签无云通路 U100 / Bun TLS 工具注记） | 页面重开→标签组/布局/活动标签恢复；活 PTY 回放 marker 可见 |
 | A-7 | scrollback 回放边界（1000 行/512 KiB/truncated；localOnly 不外发；死 PTY→ended UI） | A-5 | 排队 | A7 断言全过 |
 | A-8 | 端到端回归（页面重载/宿主重启两档+旧宿主+多项目） | A-5/6/7 | 排队 | A1-A11 AC 全过；evidence/u96-fix/ |
 
