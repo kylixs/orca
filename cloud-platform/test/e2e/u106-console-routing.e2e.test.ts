@@ -112,6 +112,32 @@ test('C6 未知路由矩阵：已删页面/旧原型/畸形编码一律 404，�
   }
 })
 
+test('U67-5 成员与权限页整体删除：导航无入口、#/members 只渲染 404、旧逐位矩阵不渲染', async () => {
+  const page = loadWebConsolePage(service.url, { hash: '#/members' })
+  await page.settle()
+  await page.submitLogin(ADMIN[0], ADMIN[1])
+
+  assert.equal(page.text('#crumbs'), '页面不存在')
+  assert.equal(page.window.location.hash, '#/members', 'the removed route stays in the URL')
+
+  const doc = page.window.document
+  // 导航入口：无 members 路由按钮，也无旧「成员与权限」文案。
+  assert.equal(doc.querySelector('.nav-item[data-route="members"]'), null)
+  assert.doesNotMatch(doc.querySelector('#adminNav')?.textContent ?? '', /成员与权限/)
+  assert.doesNotMatch(doc.body.textContent ?? '', /授权矩阵|添加授权/)
+
+  // 页面体：旧矩阵/逐位勾选/添加弹框一律不渲染。
+  const content = page.text('#content')
+  assert.doesNotMatch(content, /成员与权限|权限矩阵/)
+  assert.equal(doc.querySelectorAll('#content table').length, 0)
+  assert.equal(
+    doc.querySelectorAll('#content .permission-table, #content .perm-check, #content .perm-none')
+      .length,
+    0
+  )
+  assert.equal(doc.querySelectorAll('#content input[type="checkbox"]').length, 0)
+})
+
 test('C6/T5 403 与 404 不混用：无权管理路由 403，未知路由对同一非管理员 404', async () => {
   const forbidden = loadWebConsolePage(service.url, { hash: '#/hosts' })
   await forbidden.settle()
