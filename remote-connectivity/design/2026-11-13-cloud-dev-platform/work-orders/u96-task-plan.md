@@ -34,7 +34,7 @@
 | B-令1 | 纯投影模块+reducer 扩展 | A-令1（已落） | **✅ 完成** `1f91ac00efc`（投影/合并/幂等/活动兜底 11 例+44 绿） |
 | B-令2 | bootstrap hook（capability 门控+subscribe/list+退避/负缓存） | A-令2/4 | **✅ 完成** `d2847b50b7d`（hook+负缓存+闭包重试环修复；5 新例 42 绿） |
 | B-令3 | 终端 attach/create/pending/ended/重开 | A-令5/6 | 排队 |
-| B-令4 | 关闭/激活/新建双向 | A-令3 | 与 B-令6 串行合并 |
+| B-令4 | 关闭/激活/新建双向 | A-令3 | **✅ 完成** `d1902c398c8`（回环保护/拒绝语义/降级；61 绿）；**过渡态申报：新终端可能双 PTY，B-令3 attach 落地即消除（B-令3 必做项）** |
 | B-令5 | suspend/end 协议+面板卸载策略 | — | **✅ 完成** `8f986d89e90`（suspend 保活/end 回收/logout=suspend；features 协商；278 测试+overlay 8/8） |
 | B-令6 | 尺寸冲突 overlay+claim/restoreFit+get/setAutoRestoreFit scope（含 **U98 抢尺寸修复**） | A-令3 | 排队 |
 | B-令7 | 回放边界+ended 阈值+孤儿兜底 | A-令3/7 | 排队 |
