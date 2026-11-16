@@ -291,8 +291,8 @@ describe('W120 U18/U19 平台登记输入校验（真实平台进程）', () => 
     )
   })
 
-  test('U136 仓库地址：裸字符串/本地路径 400 REPO_URL_INVALID，受支持形态 201', async () => {
-    for (const [index, repoUrl] of ['not-a-valid-url', '/tmp/local.git'].entries()) {
+  test('U136 仓库地址：裸字符串 400 REPO_URL_INVALID，受支持形态 201', async () => {
+    for (const [index, repoUrl] of ['not-a-valid-url'].entries()) {
       await expectRejected(
         `admin-bad-repo-${index}`,
         adminCreate({
@@ -320,7 +320,9 @@ describe('W120 U18/U19 平台登记输入校验（真实平台进程）', () => 
     const supported = [
       'https://git.example.com/pay/regval-repo-https.git',
       'ssh://git@git.example.com/pay/regval-repo-ssh.git',
-      'git@git.example.com:pay/regval-repo-scp.git'
+      'git@git.example.com:pay/regval-repo-scp.git',
+      '/srv/git/regval-repo-local.git',
+      'file:///srv/git/regval-repo-file.git'
     ]
     for (const [index, repoUrl] of supported.entries()) {
       const created = await adminCreate({
@@ -342,7 +344,7 @@ describe('W120 U18/U19 平台登记输入校验（真实平台进程）', () => 
     })
     assert.equal(repoLess.status, 201, JSON.stringify(repoLess.body))
     assert.equal((repoLess.body as { repoUrl: string }).repoUrl, '')
-    observations['repo-url-matrix'] = { rejected: 3, created: 4 }
+    observations['repo-url-matrix'] = { rejected: 2, created: 6 }
   })
 
   test('合法输入两条路径仍 201（零回归）', async () => {

@@ -13,17 +13,19 @@ const POSITIVE = [
   'example.com:org/repo.git',
   'localhost:org/repo.git',
   'file:///srv/git/repo.git',
-  'file://localhost/srv/git/repo.git'
+  'file://localhost/srv/git/repo.git',
+  '/srv/git/repo.git',
+  '/srv/git/repo with space.git',
+  'C:/repos/demo.git',
+  'C:\\repos\\demo.git',
+  '\\\\server\\share\\repo.git'
 ]
 
 const NEGATIVE = [
   'not-a-valid-url',
   'bare-word',
-  '/tmp/does-not-exist.git',
   './repo.git',
   '../repo.git',
-  'C:/repos/demo.git',
-  'C:\\repos\\demo.git',
   'https://git.example.com',
   'https://git.example.com/',
   'https:///org/repo.git',
@@ -55,11 +57,23 @@ test('仓库地址：受支持的 VCS 地址形态放行', () => {
   })
 })
 
-test('仓库地址：裸字符串、本地路径与畸形地址拒绝', () => {
+test('仓库地址：裸字符串与畸形地址拒绝', () => {
   for (const repoUrl of NEGATIVE) {
     const verdict = validateProjectRepoUrl(repoUrl)
     assert.equal(verdict.ok, false, `${JSON.stringify(repoUrl)} 必须被拒绝`)
     assert.equal(verdict.ok === false ? verdict.code : '', 'REPO_URL_INVALID')
+  }
+})
+
+test('仓库地址：两端共享矩阵在本侧全部接受（防分叉）', () => {
+  const shared = [
+    '/srv/git/repo.git',
+    'C:\\repos\\demo.git',
+    'file:///srv/git/repo.git',
+    'file://localhost/srv/git/repo.git'
+  ]
+  for (const repoUrl of shared) {
+    assert.equal(validateProjectRepoUrl(repoUrl).ok, true, `${repoUrl} 两端都必须接受`)
   }
 })
 

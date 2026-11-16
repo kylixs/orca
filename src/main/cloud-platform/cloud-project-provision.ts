@@ -73,6 +73,23 @@ function isAbsoluteLocalPath(value: string): boolean {
   return isAbsolute(value) || win32.isAbsolute(value)
 }
 
+/** `file://` is another name for a host-local path; a hostname would resolve elsewhere. */
+function isLocalFileUrl(value: string): boolean {
+  if (!/^file:\/\//i.test(value)) {
+    return false
+  }
+  try {
+    const parsed = new URL(value)
+    return (
+      parsed.protocol === 'file:' &&
+      (parsed.hostname === '' || parsed.hostname === 'localhost') &&
+      parsed.pathname.length > 1
+    )
+  } catch {
+    return false
+  }
+}
+
 export function validateCloudCloneUrl(value: string): CloudProvisionValidation<string> {
   const url = value.trim()
   if (url === '') {
@@ -91,12 +108,12 @@ export function validateCloudCloneUrl(value: string): CloudProvisionValidation<s
   if (url.toLowerCase().includes('ext::')) {
     return rejectUrl('不支持 git ext:: 传输协议。')
   }
-  if (isAbsoluteLocalPath(url) || SCP_LIKE.test(url)) {
+  if (isAbsoluteLocalPath(url) || isLocalFileUrl(url) || SCP_LIKE.test(url)) {
     return { ok: true, value: url }
   }
   const scheme = ALLOWED_SCHEMES.find((candidate) => url.toLowerCase().startsWith(candidate))
   if (!scheme) {
-    return rejectUrl('仓库地址必须使用 https/http/ssh/git 协议或为本地绝对路径。')
+    return rejectUrl('仓库地址必须使用 https/http/ssh/git/file 协议或为本地绝对路径。')
   }
   try {
     const parsed = new URL(url)

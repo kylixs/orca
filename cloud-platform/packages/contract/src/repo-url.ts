@@ -33,6 +33,20 @@ function reject(message: string): ProjectRepoUrlVerdict {
   return { ok: false, code: 'REPO_URL_INVALID', message }
 }
 
+// The ticket may point at a repository already prepared on the host's own
+// filesystem, so an absolute local path is as valid as a transport URL.
+const WINDOWS_DRIVE_ABSOLUTE = /^[A-Za-z]:[\\/][^\\/]/
+const WINDOWS_UNC_ABSOLUTE = /^\\\\[^\\/]+[\\/][^\\/]/
+const ROOTED_ABSOLUTE = /^[\\/][^\\/]/
+
+function isAbsoluteLocalPath(value: string): boolean {
+  return (
+    WINDOWS_DRIVE_ABSOLUTE.test(value) ||
+    WINDOWS_UNC_ABSOLUTE.test(value) ||
+    ROOTED_ABSOLUTE.test(value)
+  )
+}
+
 function isSupportedRepoAddress(value: string): boolean {
   if (SCP_LIKE.test(value)) return true
   let url: URL
@@ -81,12 +95,17 @@ export function validateProjectRepoUrl(value: unknown): ProjectRepoUrlVerdict {
   if (repoUrl.toLowerCase().includes('ext::')) {
     return reject('不支持 git ext:: 传输协议。')
   }
+  // Local absolute paths are host-local like file:// and may contain spaces or
+  // Windows separators, so they must be classified before the URL shape checks.
+  if (isAbsoluteLocalPath(repoUrl)) {
+    return { ok: true, repoUrl }
+  }
   if (/\s/.test(repoUrl) || repoUrl.includes('\\')) {
     return reject('仓库地址不能包含空白字符或反斜杠。')
   }
   if (!isSupportedRepoAddress(repoUrl)) {
     return reject(
-      '仓库地址格式无效：请填写 https://、http://、ssh://、git://、file:// 或以 git@主机:路径 形式的地址。'
+      '仓库地址格式无效：请填写 https://、http://、ssh://、git://、file:// 等地址、git@主机:路径 形式，或本地绝对路径。'
     )
   }
   return { ok: true, repoUrl }
