@@ -190,14 +190,14 @@ describe('云端会话的 RPC 权限（真实平台票据 + 真实 Runtime）', 
   it('M34-2 只授予 terminal 的项目：终端方法放行，文件方法被拒', async () => {
     const session = authenticated(await connect('scope-terminal', 'scope-terminal-1'))
     try {
-      // terminal permission admits the family; the host-wide listing itself is
-      // refused by the M43 boundary, and the message says so rather than naming a
-      // missing permission.
+      // terminal permission admits the family and the listing, but a listing is
+      // host-wide unless it names one worktree — so a bare call is refused by the
+      // workspace boundary, not by a missing permission.
       const list = await session.rpc('terminal.list', {})
       expect(list.ok).toBe(false)
       if (!list.ok) {
         expect(list.code).toBe('forbidden')
-        expect(list.message).toContain('not available to cloud sessions')
+        expect(list.message).toContain('worktree')
       }
 
       const read = await session.rpc('files.read', {
@@ -259,12 +259,13 @@ describe('云端会话的 RPC 权限（真实平台票据 + 真实 Runtime）', 
         expect(write.code).toBe('forbidden')
       }
       // Reaches the family (no permission refusal), and is then refused by the
-      // host-window rule — the two tickets still answer differently than a
-      // permission-less one would.
+      // workspace-selector rule — the two tickets still answer differently than
+      // a permission-less one would.
       const terminalReply = await terminal.rpc('terminal.list', {})
       expect(terminalReply.ok).toBe(false)
       if (!terminalReply.ok) {
         expect(terminalReply.message).not.toContain("'terminal'")
+        expect(terminalReply.message).toContain('worktree')
       }
       // The cloud cap counts both, and each keeps its own grant.
       const concurrent = client.activeSessionCount()

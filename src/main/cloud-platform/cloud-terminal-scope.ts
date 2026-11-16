@@ -16,6 +16,10 @@ export type CloudTerminalScope =
   | { kind: 'handle' }
   /** A stream transport: the envelope names no terminal, so every subscribe frame is checked instead. */
   | { kind: 'multiplex' }
+  /** Names one worktree; the listing is bounded to that worktree's workspace root. */
+  | { kind: 'list' }
+  /** Claims orphan PTYs; worktree, each claimed handle, and the proposed topology must agree. */
+  | { kind: 'adopt' }
   | { kind: 'deny'; message: string }
 
 /** Creates a PTY; `worktree` must resolve inside the caller's workspace root. */
@@ -54,6 +58,12 @@ export const CLOUD_TERMINAL_HANDLE_METHODS: ReadonlySet<string> = new Set([
  */
 export const CLOUD_TERMINAL_MULTIPLEX_METHODS: ReadonlySet<string> = new Set(['terminal.multiplex'])
 
+/** Names a worktree only: the selector boundary is the whole call. */
+const LIST_METHODS: ReadonlySet<string> = new Set(['terminal.list'])
+
+/** Claims live orphan PTYs into named tabs; every address in the request is checked. */
+const ADOPT_METHODS: ReadonlySet<string> = new Set(['terminal.adoptOrphans'])
+
 /** Host-desktop or host-global methods, refused regardless of their selector. */
 export const CLOUD_TERMINAL_DENIED_METHODS: ReadonlySet<string> = new Set([
   'terminal.split',
@@ -62,7 +72,6 @@ export const CLOUD_TERMINAL_DENIED_METHODS: ReadonlySet<string> = new Set([
   'terminal.sleep',
   'terminal.focus',
   'terminal.show',
-  'terminal.list',
   'terminal.resolveActive',
   'terminal.resolvePane',
   'terminal.recoverPane',
@@ -81,6 +90,12 @@ export function cloudTerminalScopeOf(method: string): CloudTerminalScope | null 
   if (CLOUD_TERMINAL_MULTIPLEX_METHODS.has(method)) {
     return { kind: 'multiplex' }
   }
+  if (LIST_METHODS.has(method)) {
+    return { kind: 'list' }
+  }
+  if (ADOPT_METHODS.has(method)) {
+    return { kind: 'adopt' }
+  }
   if (CLOUD_TERMINAL_DENIED_METHODS.has(method)) {
     return { kind: 'deny', message: deniedMessage(method) }
   }
@@ -92,10 +107,7 @@ export function cloudTerminalScopeOf(method: string): CloudTerminalScope | null 
 }
 
 function deniedMessage(method: string): string {
-  const hostWindow = method !== 'terminal.list'
-  return hostWindow
-    ? `Method '${method}' acts on the host's own window and is not available to cloud sessions.`
-    : `Method '${method}' is not available to cloud sessions.`
+  return `Method '${method}' acts on the host's own window and is not available to cloud sessions.`
 }
 
 /**
@@ -113,4 +125,112 @@ export function cloudTerminalHandleParam(method: string): string {
 export function cloudTerminalHandleOf(subscriptionId: string): string {
   const cut = subscriptionId.indexOf(':')
   return cut <= 0 ? subscriptionId : subscriptionId.slice(0, cut)
+}
+
+/** The tab/pane a claim lands in; the terminal handle itself is checked separately. */
+export type CloudTerminalOrphanClaim = { tabId: string; leafId: string }
+
+// Mirrors the parse caps in `session-tabs-schemas-params.ts`: an unparsed request
+// reaches this guard, so its layout walk needs the same depth/node limits.
+const MAX_ORPHAN_LAYOUT_DEPTH = 64
+const MAX_ORPHAN_LAYOUT_NODES = 1024
+
+/**
+ * Null when the proposed topology names exactly the claimed tabs and leaf ids,
+ * otherwise a refusal message. The handler re-validates; this keeps a mismatched
+ * request from reaching it on the strength of a workspace selector alone.
+ */
+export function cloudTerminalTopologyMismatch(
+  topology: unknown,
+  claims: readonly CloudTerminalOrphanClaim[]
+): string | null {
+  if (!topology || typeof topology !== 'object') {
+    return 'The proposed topology must describe the claimed tabs.'
+  }
+  const tabs: unknown = Reflect.get(topology, 'tabs')
+  if (!Array.isArray(tabs) || tabs.length === 0) {
+    return 'The proposed topology must describe at least one claimed tab.'
+  }
+  const claimedLeafIdsByTabId = new Map<string, Set<string>>()
+  for (const claim of claims) {
+    const leafIds = claimedLeafIdsByTabId.get(claim.tabId) ?? new Set<string>()
+    leafIds.add(claim.leafId)
+    claimedLeafIdsByTabId.set(claim.tabId, leafIds)
+  }
+  // One topology entry per claimed tab: extra tabs would restore unclaimed panes.
+  if (tabs.length !== claimedLeafIdsByTabId.size) {
+    return 'The proposed topology does not match the claimed tabs.'
+  }
+  for (const tab of tabs) {
+    if (!tab || typeof tab !== 'object') {
+      return 'The proposed topology is malformed.'
+    }
+    const tabId: unknown = Reflect.get(tab, 'tabId')
+    if (typeof tabId !== 'string' || tabId.length === 0) {
+      return 'The proposed topology names no tab.'
+    }
+    const claimedLeafIds = claimedLeafIdsByTabId.get(tabId)
+    if (claimedLeafIds === undefined) {
+      return 'The proposed topology names a tab this call does not claim.'
+    }
+    const topologyLeafIds = collectLayoutLeafIds(Reflect.get(tab, 'root'))
+    if (
+      topologyLeafIds === null ||
+      topologyLeafIds.size !== claimedLeafIds.size ||
+      [...topologyLeafIds].some((leafId) => !claimedLeafIds.has(leafId))
+    ) {
+      return 'The proposed topology does not match the claimed panes.'
+    }
+    const activeLeafId: unknown = Reflect.get(tab, 'activeLeafId')
+    if (typeof activeLeafId !== 'string' || !topologyLeafIds.has(activeLeafId)) {
+      return 'The proposed topology names an active pane it does not contain.'
+    }
+    const expandedLeafId: unknown = Reflect.get(tab, 'expandedLeafId')
+    if (
+      expandedLeafId !== null &&
+      expandedLeafId !== undefined &&
+      (typeof expandedLeafId !== 'string' || !topologyLeafIds.has(expandedLeafId))
+    ) {
+      return 'The proposed topology names an expanded pane it does not contain.'
+    }
+  }
+  return null
+}
+
+function collectLayoutLeafIds(root: unknown): Set<string> | null {
+  const leafIds = new Set<string>()
+  const stack: { node: unknown; depth: number }[] = [{ node: root, depth: 0 }]
+  let count = 0
+  while (stack.length > 0) {
+    const current = stack.pop()!
+    if (
+      current.depth > MAX_ORPHAN_LAYOUT_DEPTH ||
+      ++count > MAX_ORPHAN_LAYOUT_NODES ||
+      !current.node ||
+      typeof current.node !== 'object'
+    ) {
+      return null
+    }
+    const type: unknown = Reflect.get(current.node, 'type')
+    if (type === 'leaf') {
+      const leafId: unknown = Reflect.get(current.node, 'leafId')
+      if (typeof leafId !== 'string' || leafId.length === 0) {
+        return null
+      }
+      // Duplicate leaves would let two claims share one pane address.
+      if (leafIds.has(leafId)) {
+        return null
+      }
+      leafIds.add(leafId)
+      continue
+    }
+    if (type !== 'split') {
+      return null
+    }
+    stack.push(
+      { node: Reflect.get(current.node, 'first'), depth: current.depth + 1 },
+      { node: Reflect.get(current.node, 'second'), depth: current.depth + 1 }
+    )
+  }
+  return leafIds
 }

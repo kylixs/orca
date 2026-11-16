@@ -12,9 +12,9 @@ import { checkCloudAgentScope, cloudAgentScopeOf } from './cloud-agent-scope'
 import {
   cloudTerminalHandleOf,
   cloudTerminalHandleParam,
-  cloudTerminalScopeOf,
-  type CloudTerminalScope
+  cloudTerminalScopeOf
 } from './cloud-terminal-scope'
+import { checkCloudTerminalRestore } from './cloud-terminal-restore-scope'
 import { checkCloudTerminalHandleScope } from './cloud-terminal-handle-scope'
 import {
   MANAGED_CREATE_METHOD,
@@ -131,6 +131,9 @@ export async function checkCloudRpcPath(args: {
     // The envelope names no terminal (`TerminalMultiplex` params are `{}`); the
     // stream's own frames are bounded per subscribe by the multiplex boundary.
     return { ok: true }
+  }
+  if (terminalScope?.kind === 'list' || terminalScope?.kind === 'adopt') {
+    return await checkCloudTerminalRestore(args, terminalScope.kind)
   }
   if (terminalScope) {
     return await checkCloudTerminal(args, terminalScope)
@@ -314,7 +317,7 @@ async function checkRepoScopedRead(args: {
  */
 async function checkCloudTerminal(
   args: { runtime: CloudPathGuardRuntime; roots: CloudPathRoots; method: string; params: unknown },
-  scope: CloudTerminalScope
+  scope: { kind: 'create' } | { kind: 'handle' }
 ): Promise<CloudPathDecision> {
   if (scope.kind === 'create') {
     const selector = stringField(args.params, 'worktree')
