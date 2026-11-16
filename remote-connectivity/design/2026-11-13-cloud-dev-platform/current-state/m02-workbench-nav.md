@@ -65,6 +65,8 @@ hash 形态 `#/<路径>?<查询>`，路由表在 `cloud-platform/apps/web/router
 
 解析规则：字面段大小写敏感；参数段 `decodeURIComponent`（畸形编码→404）；缺失前导 `/`→404；尾斜杠按同一路由；空查询值被丢弃；未知查询键保留。R5 后 `routeQuery` 已被 projects/users/audit 消费（见上表），cursor 与审计展开行不入 URL。写入统一经 `navigate()`（改 `location.hash` + 强制重绘）；`hashchange` 对同一「路由名+参数+查询」签名去重，只有显式导航/重复点当前项会强制重绘。未登录时 `hashchange` 不消费，保留目标 hash 供登录后回跳。
 
+**静态服务运维语义（U125）**：平台进程**启动时**把 `cloud-platform/apps/web/{index.html,app.js,styles.css,router/routes.js}` 读入内存并冻结为 release build（`apps/api/src/web-release.ts`，哈希内容寻址 `/assets/<build>/…`，build 会归档供旧页面继续取用），运行期**不再回读源文件**。因此改了 app.js/styles.css（或 routes.js）后，必须**重启平台**才对 18787 外显：`node cloud-platform/scripts/local-env-reseed.mjs --restart-platform`。排障「改了 UI 没变化」时先核对 served 与源哈希：`curl -fsS https://127.0.0.1:18787/v1/web/release` 的 `build` 及各资源 `sha256` 应与源文件 `shasum -a 256` 一致（静态响应头 `x-orca-web-build` 同源于该 build）；不一致即进程仍在服务启动时快照，重启后复验。
+
 **R1-R6 收口清单（对照设计 T1-T14，2026-11-16）**
 
 | 终审项 | 状态   | 差异说明                                                                                                |
