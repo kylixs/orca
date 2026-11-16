@@ -507,7 +507,7 @@ async function renderWorkbench() {
     </div>
     <div class="grid-4">
       ${stat('可访问项目', String(projects.length), '按 ACL 过滤')}
-      ${stat('主机在线', String(online), '心跳 15 秒')}
+      ${stat('主机在线', String(online), '60 秒无心跳转离线')}
       ${stat('禁用下载项目', String(denied), '导出入口已隐藏')}
       ${stat('下载默认策略', policy.downloadDefault === 'deny' ? '禁止' : '允许', `策略版本 v${policy.version}`)}
     </div>
@@ -2385,7 +2385,12 @@ function wirePermCards(root, options) {
       const input = root.querySelector(`[data-perm-subject="${button.dataset.permAdd}"]`)
       const select = root.querySelector(`[data-perm-type="${button.dataset.permAdd}"]`)
       const subjectId = input?.value.trim() ?? ''
-      if (!card || subjectId === '') return
+      if (!card) return
+      if (subjectId === '') {
+        toast('请输入组名或用户名后再添加')
+        input?.focus()
+        return
+      }
       const subjectType = select.value
       const existing = rows.find(
         (g) =>
@@ -2780,6 +2785,7 @@ const AUDIT_QUERY_KEYS = Object.freeze([
   'projectId',
   'hostId',
   'fileName',
+  'traceId',
   'result'
 ])
 
@@ -2797,6 +2803,7 @@ function auditFilterError(filter) {
     return '关键字长度需为 2–128 个字符。'
   }
   if (filter.fileName.length > 128) return '文件名长度需为 1–128 个字符。'
+  if (filter.traceId.length > 128) return 'traceId 最多 128 个字符。'
   const since = filter.since ? Date.parse(filter.since) : undefined
   const until = filter.until ? Date.parse(filter.until) : undefined
   if (since !== undefined && Number.isNaN(since)) return '起始时间无效。'
@@ -2824,6 +2831,7 @@ function auditQueryParams(filter, cursor) {
   }
   if (filter.username) params.set('username', filter.username)
   if (filter.fileName) params.set('fileName', filter.fileName)
+  if (filter.traceId) params.set('traceId', filter.traceId)
   if (filter.result) params.set('result', filter.result)
   if (filter.projectId) params.set('projectId', filter.projectId)
   if (filter.hostId) params.set('hostId', filter.hostId)
@@ -2933,6 +2941,7 @@ async function renderAudit(loadMore = false) {
           .join('')}
       </select>
       <input class="input span-3" id="auditFileName" placeholder="文件名（1–128 字符）" autocomplete="off" aria-label="文件名">
+      <input class="input span-3" id="auditTrace" placeholder="traceId（精确）" autocomplete="off" maxlength="128" aria-label="traceId">
       <select class="select span-3" id="auditResult" aria-label="结果">
         <option value="">全部结果</option>
         <option value="success">成功</option>
@@ -2968,6 +2977,7 @@ async function renderAudit(loadMore = false) {
   $('#auditProject').value = filter.projectId ?? ''
   $('#auditHost').value = filter.hostId ?? ''
   $('#auditFileName').value = filter.fileName ?? ''
+  $('#auditTrace').value = filter.traceId ?? ''
   $('#auditResult').value = filter.result ?? ''
   const apply = () => {
     const next = {
@@ -2980,6 +2990,7 @@ async function renderAudit(loadMore = false) {
       projectId: $('#auditProject').value,
       hostId: $('#auditHost').value,
       fileName: $('#auditFileName').value.trim(),
+      traceId: $('#auditTrace').value.trim(),
       result: $('#auditResult').value
     }
     const error = auditFilterError(next)
@@ -3372,7 +3383,11 @@ $('#loginForm').onsubmit = async (event) => {
 
 $('#togglePassword').onclick = () => {
   const input = $('#password')
-  input.type = input.type === 'password' ? 'text' : 'password'
+  const button = $('#togglePassword')
+  const revealing = input.type === 'password'
+  input.type = revealing ? 'text' : 'password'
+  button.setAttribute('aria-label', revealing ? '隐藏密码' : '显示密码')
+  button.setAttribute('aria-pressed', String(revealing))
 }
 
 for (const btn of document.querySelectorAll('.nav-item[data-route]')) {

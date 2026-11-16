@@ -1,12 +1,6 @@
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
-import {
-  login,
-  registerHost,
-  saveEvidence,
-  spawnService,
-  type Service
-} from './harness.ts'
+import { login, registerHost, saveEvidence, spawnService, type Service } from './harness.ts'
 import { loadWebConsolePage } from './web-console-page.ts'
 
 /**
@@ -232,6 +226,43 @@ test('U58 H23 维护开关的 enabled 必须是布尔值', async () => {
     200
   )
   assert.equal((await hostRow(host.hostId)).online, true)
+})
+
+test('U58 H24c 退出维护后不再返回陈旧的维护原因', async () => {
+  const host = await registerHost({
+    apiUrl: api.url,
+    adminToken,
+    name: 'u58-maint-reason-host',
+    directAddr: '127.0.0.1:19126',
+    relayTarget: '127.0.0.1:19126'
+  })
+  const created = await call('/v1/projects', 'POST', {
+    key: 'u58-maint-reason',
+    name: 'u58-maint-reason',
+    hostId: host.hostId,
+    path: '/srv/u58-work/u58-maint-reason'
+  })
+  assert.equal(created.status, 201, created.text)
+  const id = created.body.id as string
+
+  const entered = await call(`/v1/hosts/${host.hostId}/maintenance`, 'POST', {
+    enabled: true,
+    reason: '计划维护'
+  })
+  assert.equal(entered.status, 200, entered.text)
+  const inMaintenance = await call(`/v1/projects/${id}`)
+  assert.equal(inMaintenance.status, 200, inMaintenance.text)
+  assert.equal(inMaintenance.body.hostStatus, 'maintenance')
+  assert.equal(inMaintenance.body.hostMaintenanceReason, '计划维护')
+
+  const exited = await call(`/v1/hosts/${host.hostId}/maintenance`, 'POST', {
+    enabled: false
+  })
+  assert.equal(exited.status, 200, exited.text)
+  const online = await call(`/v1/projects/${id}`)
+  assert.equal(online.status, 200, online.text)
+  assert.equal(online.body.hostStatus, 'online')
+  assert.equal(online.body.hostMaintenanceReason, undefined, 'the reason belongs to the window')
 })
 
 test('U58 Y13/Y14 限速与下载默认值拒绝非法输入', async () => {

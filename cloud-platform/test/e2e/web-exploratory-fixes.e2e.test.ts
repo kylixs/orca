@@ -542,7 +542,11 @@ test('W2-M-1 授予/移除失败时提示且权限页签不被误刷新', async 
     'a refused grant must not redraw the panel as if it landed'
   )
   const afterRefusal = await adminApi(grantsPath)
-  assert.equal(afterRefusal.body.grants.length, baseline, 'no row may be added for the unknown user')
+  assert.equal(
+    afterRefusal.body.grants.length,
+    baseline,
+    'no row may be added for the unknown user'
+  )
 
   // The happy path still reports and refreshes, so the guard cannot hide success.
   subject.value = 'zhangsan'
@@ -640,11 +644,7 @@ test('W2-m-2 无主用户授权行标记已删除用户且不可移除', async (
     /已删除用户/,
     'a user row without an account must be labelled'
   )
-  assert.equal(
-    dead.disabled,
-    true,
-    'the platform would refuse to clear that row'
-  )
+  assert.equal(dead.disabled, true, 'the platform would refuse to clear that row')
   const alive = chipX(card, 'zhangsan')
   assert.doesNotMatch(alive.closest('.perm-chip')?.textContent ?? '', /已删除用户/)
   assert.equal(alive.disabled, false)
@@ -701,7 +701,11 @@ test('R5-② 工作台/我的项目默认排除归档项目，归档行有徽标
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
-  assert.doesNotMatch(page.text('#content'), /r5-archived/, 'the workbench must not list an archived project')
+  assert.doesNotMatch(
+    page.text('#content'),
+    /r5-archived/,
+    'the workbench must not list an archived project'
+  )
   assert.equal(
     page.calls().some((call) => call.includes('includeArchived=1')),
     false,
@@ -709,7 +713,11 @@ test('R5-② 工作台/我的项目默认排除归档项目，归档行有徽标
   )
 
   await page.clickNav('projects')
-  assert.doesNotMatch(page.text('#content'), /r5-archived/, '我的项目 must not list an archived project')
+  assert.doesNotMatch(
+    page.text('#content'),
+    /r5-archived/,
+    '我的项目 must not list an archived project'
+  )
 
   // Fallback: if an archived row ever reaches a live view (stale/legacy payload),
   // it is badged and its open entry is disabled rather than silently openable.
@@ -785,4 +793,89 @@ test('R5-③ 重复添加授权先弹覆盖确认（级别并入），确认后�
     dialog: '覆盖现有授权（级别：控制 → 查看+控制，open + file:read 并入）',
     after: row.permissions
   })
+}, 120_000)
+
+test('U54 WEB-R2-011 密码可见性按钮同步 aria-label 与 aria-pressed', async () => {
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  const button = page.window.document.querySelector<HTMLButtonElement>('#togglePassword')!
+  const input = page.window.document.querySelector<HTMLInputElement>('#password')!
+  assert.equal(button.getAttribute('aria-label'), '显示密码')
+  assert.equal(button.getAttribute('aria-pressed'), 'false')
+  button.click()
+  assert.equal(input.type, 'text', 'the first click reveals the password')
+  assert.equal(button.getAttribute('aria-label'), '隐藏密码')
+  assert.equal(button.getAttribute('aria-pressed'), 'true')
+  button.click()
+  assert.equal(input.type, 'password', 'the second click hides it again')
+  assert.equal(button.getAttribute('aria-label'), '显示密码')
+  assert.equal(button.getAttribute('aria-pressed'), 'false')
+  record('WEB-R2-011', '切换密码可见性时 aria-label 在 显示/隐藏密码 间同步，aria-pressed 随之切换')
+}, 120_000)
+
+test('U54 WEB-R2-015 空主体添加授权给出提示并聚焦输入框', async () => {
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  await openPermTab(page, 'payment-service')
+  const card = permCard(page, 'view')
+  const subject = card.querySelector<HTMLInputElement>('[data-perm-subject]')!
+  const adds = () => page.calls().filter((call) => call.startsWith('PUT /v1/projects/')).length
+  const before = adds()
+  subject.value = ''
+  card.querySelector<HTMLButtonElement>('[data-perm-add]')!.click()
+  await page.settle()
+  assert.match(lastToast(page), /请输入组名或用户名/, 'an empty subject must explain itself')
+  assert.equal(
+    page.window.document.activeElement,
+    subject,
+    'the empty field takes focus for correction'
+  )
+  assert.equal(adds(), before, 'an empty subject must not reach the platform')
+  record('WEB-R2-015', '空主体添加 → toast 请输入组名或用户名、输入框获得焦点、零 PUT')
+}, 120_000)
+
+test('U54 WEB-R2-016 审计支持按 traceId 精确筛选', async () => {
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  await page.clickNav('audit')
+  const latest = await adminApi('/v1/audit/events?limit=1')
+  const traceId: string = latest.body.events[0]?.traceId ?? ''
+  assert.ok(traceId.length > 12, `precondition: a traceId exists (${traceId})`)
+
+  const input = page.window.document.querySelector<HTMLInputElement>('#auditTrace')!
+  input.value = traceId
+  page.window.document.querySelector<HTMLButtonElement>('#auditApply')!.click()
+  await page.settle()
+
+  const lastQuery = page
+    .calls()
+    .filter((call) => call.startsWith('GET /v1/audit/events'))
+    .at(-1)
+  assert.ok(
+    lastQuery?.includes(`traceId=${traceId}`),
+    `the query must carry traceId (${lastQuery})`
+  )
+  assert.equal(
+    page.window.document.querySelector<HTMLInputElement>('#auditTrace')!.value,
+    traceId,
+    'the traceId condition survives the query'
+  )
+  const rows = [...page.window.document.querySelectorAll<HTMLElement>('#content tbody tr')]
+  assert.ok(rows.length > 0, 'the exact traceId must match its event')
+  for (const tr of rows) {
+    assert.match(tr.textContent ?? '', new RegExp(traceId), 'only that trace may be listed')
+  }
+  record('WEB-R2-016', `审计筛选新增 traceId 精确条件（${traceId}），查询透传且条件保持`)
+}, 120_000)
+
+test('U116 工作台心跳文案反映后端在线判定窗口', async () => {
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  const text = page.window.document.querySelector('#content')!.textContent ?? ''
+  assert.match(text, /60 秒无心跳转离线/, 'the copy must state the real offline window')
+  assert.doesNotMatch(text, /心跳 15 秒/, 'the old 15s copy must be gone')
+  record('U116', '工作台统计卡心跳文案改为「60 秒无心跳转离线」，与 HOST_OFFLINE_DEFAULT_MS 一致')
 }, 120_000)

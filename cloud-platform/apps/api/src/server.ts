@@ -3591,7 +3591,8 @@ export function createApp(config: ApiConfig): ApiHandle {
           return
         }
         target.status = nextStatus
-        target.maintenanceReason = nextReason
+        // U58 H24c: the reason belongs to the window, not to the host.
+        target.maintenanceReason = nextStatus === 'maintenance' ? nextReason : null
         return json(res, 200, { status: target.status })
       }
 
