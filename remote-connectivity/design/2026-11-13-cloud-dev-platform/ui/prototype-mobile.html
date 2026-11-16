@@ -466,6 +466,28 @@ svg { display: block; }
   animation: toast-in .18s ease;
 }
 @keyframes toast-in { from { transform: translateX(-50%) translateY(8px); opacity: 0; } to { transform: translateX(-50%); opacity: 1; } }
+
+/* 确认类居中小卡：覆盖确认 / 危险操作不打断 sheet 层级（策略页约定） */
+.confirm-layer {
+  position: absolute; inset: 0; z-index: 90;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  background: rgba(23, 23, 23, .36);
+  animation: sheet-in .18s ease;
+}
+.confirm-card {
+  width: 100%; max-width: 300px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 16px 14px;
+  box-shadow: 0 18px 44px rgba(23, 23, 23, .24);
+}
+.confirm-card h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.confirm-card p { margin: 8px 0 0; font-size: 12.5px; color: var(--text-2); line-height: 1.6; }
+.confirm-actions { display: flex; gap: 8px; margin-top: 16px; }
+.confirm-actions .btn { flex: 1; }
+.btn-danger { color: #fff; background: var(--danger); border-color: var(--danger); }
 </style>
 </head>
 <body>
@@ -510,7 +532,7 @@ svg { display: block; }
         <h1>移动端适配 · 断点策略</h1>
         <p>云端平台全站 Web 面 · 375px 基准原型</p>
       </div>
-      <button class="btn btn-primary btn-sm m-head-action" data-nav="workbench">进入原型</button>
+      <button class="btn btn-primary btn-sm m-head-action" data-nav="login">进入原型</button>
     </header>
     <div class="m-body">
       <div class="rule-card">
@@ -710,11 +732,11 @@ svg { display: block; }
       </button>
     </div>
     <div class="chip-row">
-      <button class="chip is-on">全部状态</button>
-      <button class="chip">仅在线</button>
-      <button class="chip">仅离线</button>
-      <button class="chip">按组授权</button>
-      <button class="chip">项目内成员</button>
+      <button class="chip is-on" data-filter="all">全部状态</button>
+      <button class="chip" data-filter="online">仅在线</button>
+      <button class="chip" data-filter="offline">仅离线</button>
+      <button class="chip" data-filter="scope-group">按组授权</button>
+      <button class="chip" data-filter="scope-member">项目内成员</button>
     </div>
     <div class="m-body">
       <div class="notice" data-readonly-notice hidden>
@@ -722,7 +744,7 @@ svg { display: block; }
         <span><strong>只读视角</strong>：可以打开查看，不能编辑、终端或新建项目。</span>
       </div>
       <div class="card-list" style="margin-top:12px">
-        <div class="m-card">
+        <div class="m-card" data-online="true" data-scope="member">
           <div class="m-card-main">
             <div class="m-card-title">
               <strong>payment-service</strong>
@@ -740,7 +762,7 @@ svg { display: block; }
             <button class="btn btn-primary btn-sm" data-workspace-entry><svg class="icon icon-sm"><use href="#i-terminal"/></svg>打开工作区</button>
           </div>
         </div>
-        <div class="m-card">
+        <div class="m-card" data-online="false" data-scope="group">
           <div class="m-card-main">
             <div class="m-card-title">
               <strong>order-center</strong>
@@ -758,7 +780,7 @@ svg { display: block; }
             <button class="btn btn-primary btn-sm is-disabled" disabled>主机离线</button>
           </div>
         </div>
-        <div class="m-card">
+        <div class="m-card" data-online="true" data-scope="member">
           <div class="m-card-main">
             <div class="m-card-title">
               <strong>risk-engine</strong>
@@ -777,7 +799,7 @@ svg { display: block; }
           </div>
         </div>
       </div>
-      <div class="list-foot">显示 6 / 6 个项目 · 数据更新于 12 秒前</div>
+      <div class="list-foot" data-filter-count>显示 3 / 3 个项目 · 数据更新于 12 秒前</div>
     </div>
   </section>
 
@@ -786,7 +808,7 @@ svg { display: block; }
     <header class="m-head">
       <div class="m-head-title">
         <h1>用户管理</h1>
-        <p><span style="display:inline-flex;align-items:center;gap:4px"><span class="dot dot-success"></span>LDAP 同步正常</span> · 7 个账号</p>
+        <p><span style="display:inline-flex;align-items:center;gap:4px"><span class="dot dot-success"></span>LDAP 同步正常</span> · 3 个账号</p>
       </div>
     </header>
     <div class="chip-row" style="padding-bottom:0">
@@ -796,11 +818,11 @@ svg { display: block; }
       </button>
     </div>
     <div class="chip-row">
-      <button class="chip is-on">全部角色</button>
-      <button class="chip">管理员</button>
-      <button class="chip">审计员</button>
-      <button class="chip">普通</button>
-      <button class="chip">已停用</button>
+      <button class="chip is-on" data-filter="all">全部角色</button>
+      <button class="chip" data-filter="admin">管理员</button>
+      <button class="chip" data-filter="auditor">审计员</button>
+      <button class="chip" data-filter="member">普通</button>
+      <button class="chip" data-filter="disabled">已停用</button>
     </div>
     <div class="m-body">
       <div class="notice">
@@ -808,14 +830,14 @@ svg { display: block; }
         <span><strong>角色 ≠ 资源授权</strong>：本页角色为平台级身份；资源授权在项目 / 主机详情的权限页签维护。列表只读，点「详情」查看并修改角色。</span>
       </div>
       <div class="card-list" style="margin-top:12px">
-        <div class="m-card">
+        <div class="m-card" data-role="admin" data-status="active">
           <div class="m-card-main">
             <span class="badge badge-neutral" style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex:none">ZW</span>
             <div class="m-card-title">
               <strong>张伟 <span class="text-3" style="font-weight:400;font-size:11.5px">zhangwei</span></strong>
               <span class="sub">研发效能部 · platform-admins</span>
             </div>
-            <span class="badge badge-brand">管理员</span>
+            <span class="badge badge-brand" data-user-badge="zhangwei">管理员</span>
           </div>
           <div class="m-card-actions">
             <span class="status" style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--text-2)"><span class="dot dot-success"></span>启用</span>
@@ -823,14 +845,14 @@ svg { display: block; }
             <button class="btn btn-secondary btn-sm" data-open-sheet="sheetUser" data-user="zhangwei">详情</button>
           </div>
         </div>
-        <div class="m-card">
+        <div class="m-card" data-role="auditor" data-status="active">
           <div class="m-card-main">
             <span class="badge badge-neutral" style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex:none">LM</span>
             <div class="m-card-title">
               <strong>李明 <span class="text-3" style="font-weight:400;font-size:11.5px">liming</span></strong>
               <span class="sub">安全审计部 · platform-auditors</span>
             </div>
-            <span class="badge badge-warning">审计员</span>
+            <span class="badge badge-warning" data-user-badge="liming">审计员</span>
           </div>
           <div class="m-card-actions">
             <span class="status" style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--text-2)"><span class="dot dot-success"></span>启用</span>
@@ -838,14 +860,14 @@ svg { display: block; }
             <button class="btn btn-secondary btn-sm" data-open-sheet="sheetUser" data-user="liming">详情</button>
           </div>
         </div>
-        <div class="m-card">
+        <div class="m-card" data-role="member" data-status="active">
           <div class="m-card-main">
             <span class="badge badge-neutral" style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex:none">LS</span>
             <div class="m-card-title">
               <strong>李四 <span class="text-3" style="font-weight:400;font-size:11.5px">lisi</span></strong>
               <span class="sub">交付一部 · dev-node-viewers</span>
             </div>
-            <span class="badge badge-neutral">普通</span>
+            <span class="badge badge-neutral" data-user-badge="lisi">普通</span>
           </div>
           <div class="m-card-actions">
             <span class="status" style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--text-2)"><span class="dot dot-success"></span>启用</span>
@@ -854,7 +876,7 @@ svg { display: block; }
           </div>
         </div>
       </div>
-      <div class="list-foot">共 7 个账号 · 角色变更写入 role_update 审计</div>
+      <div class="list-foot" data-filter-count>共 3 个账号 · 角色变更写入 role_update 审计</div>
     </div>
   </section>
 
@@ -871,10 +893,10 @@ svg { display: block; }
       </button>
     </header>
     <div class="chip-row">
-      <button class="chip is-on">全部操作</button>
-      <button class="chip">下载族</button>
-      <button class="chip">复制族</button>
-      <button class="chip">拒绝</button>
+      <button class="chip is-on" data-filter="all">全部操作</button>
+      <button class="chip" data-filter="family-download">下载族</button>
+      <button class="chip" data-filter="family-copy">复制族</button>
+      <button class="chip" data-filter="blocked">拒绝</button>
       <button class="chip" data-open-sheet="sheetFilter"><svg class="icon icon-sm" style="width:12px;height:12px"><use href="#i-filter"/></svg>更多条件</button>
     </div>
     <div class="m-body">
@@ -890,10 +912,10 @@ svg { display: block; }
 
       <div class="section-head">
         <h2 class="section-title">事件列表</h2>
-        <span class="section-count">最近 7 天 · 10 条</span>
+        <span class="section-count" data-filter-count>最近 7 天 · 4 条</span>
       </div>
       <div class="card-list" style="margin-top:0">
-        <div class="event-card">
+        <div class="event-card" data-op="download" data-blocked="false">
           <div class="event-l1">
             <span class="event-op">文件下载</span>
             <span class="badge badge-mono">file_download</span>
@@ -915,7 +937,7 @@ svg { display: block; }
             <div class="row"><span class="k">摘录</span><span>未开启内容摘录开关，仅保留指纹。</span></div>
           </div>
         </div>
-        <div class="event-card">
+        <div class="event-card" data-op="download" data-blocked="true">
           <div class="event-l1">
             <span class="event-op">下载拦截</span>
             <span class="badge badge-mono">download_blocked</span>
@@ -936,7 +958,7 @@ svg { display: block; }
             <div class="row"><span class="k">拦截原因</span><span>项目下载策略 = 禁止下载，未产生下载 RPC。</span></div>
           </div>
         </div>
-        <div class="event-card">
+        <div class="event-card" data-op="copy" data-blocked="false">
           <div class="event-l1">
             <span class="event-op">复制文件内容</span>
             <span class="badge badge-mono">file_copy</span>
@@ -957,7 +979,7 @@ svg { display: block; }
             <div class="row"><span class="k">摘录</span><span>未记录内容摘录（仅保留指纹）。</span></div>
           </div>
         </div>
-        <div class="event-card">
+        <div class="event-card" data-op="grant" data-blocked="false">
           <div class="event-l1">
             <span class="event-op">权限变更</span>
             <span class="badge badge-mono">grant_update</span>
@@ -987,13 +1009,13 @@ svg { display: block; }
       <button class="btn btn-primary btn-sm m-head-action" data-toast="登记主机弹框：移动端转全屏 sheet（同项目详情形态）">登记</button>
     </header>
     <div class="chip-row">
-      <button class="chip is-on">全部</button>
-      <button class="chip">仅在线</button>
-      <button class="chip">仅离线</button>
+      <button class="chip is-on" data-filter="all">全部</button>
+      <button class="chip" data-filter="online">仅在线</button>
+      <button class="chip" data-filter="offline">仅离线</button>
     </div>
     <div class="m-body">
       <div class="card-list" style="margin-top:12px">
-        <div class="m-card">
+        <div class="m-card" data-online="true">
           <div class="m-card-main">
             <div class="m-card-title">
               <strong>dev-node-03</strong>
@@ -1011,7 +1033,7 @@ svg { display: block; }
             <button class="btn btn-ghost btn-sm" data-toast="维护 / 下线操作入卡片菜单，含确认小弹框">维护</button>
           </div>
         </div>
-        <div class="m-card" style="opacity:.75">
+        <div class="m-card" style="opacity:.75" data-online="false">
           <div class="m-card-main">
             <div class="skel skel-line" style="width:96px"></div>
             <span class="badge badge-danger"><span class="dot dot-danger"></span>离线</span>
@@ -1386,11 +1408,23 @@ svg { display: block; }
         <button data-role="auditor">审计员</button>
         <button data-role="readonly">只读 lisi</button>
       </div>
-      <div class="list-foot">审计员：管理页隐藏、审计保留；只读：审计与详情/工作区入口按权限置灰</div>
+      <div class="list-foot">审计员：管理页隐藏、审计保留；只读：审计与详情/工作区入口按权限隐藏</div>
     </div>
     <footer class="sheet-foot">
       <button class="btn btn-secondary btn-block" data-close-sheet>关闭</button>
     </footer>
+  </div>
+
+  <!-- ============ 确认类居中小卡：角色变更保存前确认（U85-P3b，对齐桌面确认语义） ============ -->
+  <div class="confirm-layer" id="mConfirmLayer" hidden role="dialog" aria-modal="true" aria-label="确认角色变更">
+    <div class="confirm-card">
+      <h3 id="mConfirmTitle">角色变更</h3>
+      <p id="mConfirmText"></p>
+      <div class="confirm-actions">
+        <button class="btn btn-secondary" id="mConfirmCancel">取消</button>
+        <button class="btn btn-primary" id="mConfirmOk">确认变更</button>
+      </div>
+    </div>
   </div>
 
 </div><!-- /screen -->
@@ -1414,7 +1448,12 @@ function toast(text) {
 
 function closeSheets() { $$('.m-sheet', screenEl).forEach((s) => { s.hidden = true }) }
 
+const ADMIN_ONLY_PAGES = ['hosts', 'relays', 'users', 'settings']
+
 function show(page) {
+  /* [U85-P3d] 路由级守卫兜底：入口隐藏之外的防御层，越权直达回退工作台 */
+  if (ADMIN_ONLY_PAGES.includes(page) && roleState.role !== 'admin') page = 'workbench'
+  if (page === 'audit' && roleState.role === 'readonly') page = 'workbench'
   closeSheets()
   $$('.m-page', screenEl).forEach((p) => { p.hidden = p.dataset.page !== page })
   $$('.m-tab', screenEl).forEach((t) => t.classList.toggle('is-active', t.dataset.nav === page))
@@ -1450,6 +1489,52 @@ $$('.seg [data-tab]').forEach((btn) => {
     const sheet = seg.closest('.m-sheet')
     $$('.tabpane', sheet).forEach((p) => { p.hidden = p.id !== btn.dataset.tab })
   })
+})
+
+/* [U85-P1] 筛选 chips 统一委托：单选高亮 + 按卡片 data 条件显隐 + 尾注计数同步 */
+const CHIP_FILTERS = {
+  all: () => true,
+  online: (card) => card.dataset.online === 'true',
+  offline: (card) => card.dataset.online === 'false',
+  'scope-group': (card) => card.dataset.scope === 'group',
+  'scope-member': (card) => card.dataset.scope === 'member',
+  admin: (card) => card.dataset.role === 'admin',
+  auditor: (card) => card.dataset.role === 'auditor',
+  member: (card) => card.dataset.role === 'member',
+  disabled: (card) => card.dataset.status === 'disabled',
+  'family-download': (card) => card.dataset.op === 'download',
+  'family-copy': (card) => card.dataset.op === 'copy',
+  blocked: (card) => card.dataset.blocked === 'true'
+}
+const FILTER_COUNT_FORMATS = {
+  projects: (visible, total) => `显示 ${visible} / ${total} 个项目 · 数据更新于 12 秒前`,
+  users: (visible, total) => `共 ${total} 个账号${visible !== total ? ` · 当前筛选 ${visible} 个` : ''} · 角色变更写入 role_update 审计`,
+  audit: (visible) => `最近 7 天 · ${visible} 条`
+}
+document.addEventListener('click', (e) => {
+  const chip = e.target.closest('.chip')
+  if (!chip || chip.hasAttribute('data-open-sheet')) return
+  const row = chip.closest('.chip-row')
+  const page = chip.closest('.m-page')
+  const match = CHIP_FILTERS[chip.dataset.filter]
+  if (!row || !page || !match) return
+  $$('.chip', row).forEach((c) => c.classList.toggle('is-on', c === chip))
+  const cards = $$('.card-list > .m-card, .card-list > .event-card', page)
+  let visible = 0
+  cards.forEach((card) => { const hit = match(card); card.hidden = !hit; if (hit) visible += 1 })
+  let empty = page.querySelector('[data-filter-empty]')
+  if (!empty) {
+    empty = document.createElement('div')
+    empty.className = 'notice'
+    empty.setAttribute('data-filter-empty', '')
+    empty.innerHTML = '<svg class="icon icon-sm"><use href="#i-info"/></svg><span>没有符合当前筛选的条目（原型演示）。</span>'
+    const list = page.querySelector('.card-list')
+    if (list) list.after(empty)
+  }
+  empty.hidden = visible > 0
+  const format = FILTER_COUNT_FORMATS[page.dataset.page]
+  const counter = page.querySelector('[data-filter-count]')
+  if (format && counter) counter.textContent = format(visible, cards.length)
 })
 
 /* 审计事件卡展开箭头符号（chevron-up 即 chevron-down 旋转语义，复用同图标） */
@@ -1493,7 +1578,10 @@ const users = {
   lisi: { name: '李四', account: 'lisi · 交付一部', role: 'member', warn: false }
 }
 const roleNames = { admin: '管理员', auditor: '审计员', member: '普通' }
+const ROLE_ORDER = ['admin', 'auditor', 'member']
+const BADGE_BY_ROLE = { admin: 'badge-brand', auditor: 'badge-warning', member: 'badge-neutral' }
 let currentDetailUser = 'zhangwei'
+let pendingRole = null
 function fillUser(id) {
   const u = users[id]
   if (!u) return
@@ -1505,16 +1593,39 @@ function fillUser(id) {
 }
 document.getElementById('mUserRoleSelect').addEventListener('change', (e) => {
   const u = users[currentDetailUser]
-  const downgraded = ['admin', 'auditor', 'member'].indexOf(e.target.value) > ['admin', 'auditor', 'member'].indexOf(u.role)
+  const downgraded = ROLE_ORDER.indexOf(e.target.value) > ROLE_ORDER.indexOf(u.role)
   document.getElementById('mUserRoleWarnText').textContent = downgraded
     ? '角色降级将断开该用户当前全部云会话，≤60 秒生效；变更写入 role_update 审计。'
     : '角色升级即时生效、不断会话；变更写入 role_update 审计。'
   document.getElementById('mUserRoleWarn').hidden = false
 })
+/* [U85-P3b] 保存前必经居中小确认卡：降级用 danger + 断会话文案（对齐桌面确认语义） */
+const confirmLayer = document.getElementById('mConfirmLayer')
 document.getElementById('mUserRoleSave').addEventListener('click', () => {
   const u = users[currentDetailUser]
-  u.role = document.getElementById('mUserRoleSelect').value
+  const next = document.getElementById('mUserRoleSelect').value
+  if (next === u.role) { document.getElementById('mUserRoleWarn').hidden = true; return }
+  pendingRole = next
+  const demote = ROLE_ORDER.indexOf(next) > ROLE_ORDER.indexOf(u.role)
+  document.getElementById('mConfirmText').textContent = `${u.name}（${currentDetailUser}）：${roleNames[u.role]} → ${roleNames[next]}。${demote ? '降级将断开该用户当前全部云会话，≤60 秒生效' : '升级即时生效，不断开会话'}；变更写入 role_update 审计。`
+  const okBtn = document.getElementById('mConfirmOk')
+  okBtn.className = `btn ${demote ? 'btn-danger' : 'btn-primary'}`
+  okBtn.textContent = demote ? '确认降级' : '确认变更'
+  confirmLayer.hidden = false
+})
+document.getElementById('mConfirmCancel').addEventListener('click', () => {
+  document.getElementById('mUserRoleSelect').value = users[currentDetailUser].role
   document.getElementById('mUserRoleWarn').hidden = true
+  confirmLayer.hidden = true
+})
+document.getElementById('mConfirmOk').addEventListener('click', () => {
+  const u = users[currentDetailUser]
+  u.role = pendingRole
+  document.getElementById('mUserRoleSelect').value = u.role
+  document.getElementById('mUserRoleWarn').hidden = true
+  confirmLayer.hidden = true
+  const badge = document.querySelector(`[data-user-badge="${currentDetailUser}"]`)
+  if (badge) { badge.className = `badge ${BADGE_BY_ROLE[u.role]}`; badge.textContent = roleNames[u.role] }
   toast(`已保存：${u.name} → ${roleNames[u.role]}（role_update 落审计）`)
 })
 

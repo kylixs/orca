@@ -4442,6 +4442,12 @@ svg { display: block; }
     { account: 'zhengyang', name: '郑阳', dept: '平台工程部', group: 'developers', role: 'developer', source: 'LDAP 同步', status: 'disabled', createdAt: '2026-08-19 10:52', lastLogin: '2026-10-28 18:22' }
   ];
 
+  // [U85-P2] LDAP 种子快照：变更后与种子角色不一致即「管理员覆盖」，回到种子恢复 LDAP 来源文案
+  const ldapSeedByAccount = new Map(userDirectory.map((user) => [user.account, {
+    role: user.source.startsWith('管理员覆盖') ? 'developer' : user.role,
+    source: user.source.startsWith('管理员覆盖') ? 'LDAP 同步' : user.source
+  }]));
+
   const auditEvents = [
     {
       id: 'evt-1042', relative: '2 分钟前', abs: '2026-11-13 14:58:12', hours: 0.03,
@@ -5694,15 +5700,19 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
     const previous = user.role;
     select.value = previous; // revert until confirmed; confirm re-renders the row
     const demote = previous === 'admin' && next !== 'admin';
+    // [U85-P2] 来源按“是否偏离 LDAP 种子角色”判定，不再以 developer 为门槛
+    const seed = ldapSeedByAccount.get(user.account);
+    const restored = Boolean(seed) && next === seed.role;
     openConfirm({
       title: '角色变更',
       sub: demote ? '降级将断开该用户当前云会话。' : '升级即时生效，不断开会话。',
-      message: `${user.name}（${user.account}）：${ROLE_OPTIONS[previous]} → ${ROLE_OPTIONS[next]}。变更写入 role_update 审计；按用户覆盖优先于 LDAP 同步，再次登录不会被同步覆盖。`,
+      message: `${user.name}（${user.account}）：${ROLE_OPTIONS[previous]} → ${ROLE_OPTIONS[next]}。变更写入 role_update 审计；${restored ? '回到 LDAP 种子角色，来源恢复为 LDAP 同步。' : '按用户覆盖优先于 LDAP 同步，再次登录不会被同步覆盖。'}`,
       confirmLabel: '确认变更',
       danger: demote,
       onConfirm: () => {
         user.role = next;
-        if (next !== 'developer' && !user.source.startsWith('管理员覆盖')) user.source = '管理员覆盖';
+        if (restored) user.source = seed.source;
+        else if (seed && !user.source.startsWith('管理员覆盖')) user.source = '管理员覆盖';
         renderUsers();
         // [U82] 变更发起于详情弹框：确认后弹框保持打开，展示新角色并同步列表
         if (state.userDetailAccount === user.account) {
