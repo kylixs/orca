@@ -60,6 +60,10 @@ const SETTLE_MS = Math.max(1000, Number(process.env.U138_SETTLE_MS ?? 5000))
 // A reload/reopen shell is not sampleable the instant `.app-layout` exists: wait for
 // a settle floor AND a stable tab count before the initial read (P2-1).
 const RELOAD_STABLE_MS = Math.max(2000, Number(process.env.U138_RELOAD_STABLE_MS ?? 2500))
+// Quick open/close persist the new selection asynchronously (~70 ms): the projection can
+// already point at the new tab while profile-state still holds the old one. Poll until
+// both surfaces agree before the initial read; a timeout keeps the normal dual-read verdict.
+const OPENED_STABLE_MS = Math.max(0, Number(process.env.U138_OPENED_STABLE_MS ?? 3000))
 const HEADLESS = process.env.U138_HEADLESS !== '0'
 const PAGE_FRAME_LIMIT = Number(process.env.U138_PAGE_FRAME_LIMIT ?? 300)
 const HOST_STATE_ROOTS = (
@@ -1464,6 +1468,7 @@ const out = {
     quickCycles: QUICK_CYCLES,
     settleMs: SETTLE_MS,
     reloadStableMs: RELOAD_STABLE_MS,
+    openedStableMs: OPENED_STABLE_MS,
     quickClose: 'ui'
   },
   worktreeId: null,
@@ -1941,6 +1946,44 @@ try {
     }
   }
 
+  /**
+   * Quick open/close stability gate: wait until the device projection and the host
+   * persisted value agree (and, when expectedTabId is set, both point at that tab).
+   * The first read must not sample the asynchronous `profile-state` write. A timeout
+   * returns ok:false; the point then keeps the unchanged dual-read UNSTABLE/INVALID
+   * semantics — surfaces are never forced equal.
+   */
+  async function waitQuickSurfacesAligned(expectedTabId = null, timeoutMs = OPENED_STABLE_MS) {
+    const startedAt = Date.now()
+    let projectionActive = null
+    let hostPersistentActive = null
+    while (true) {
+      const host = await probeHostList(workspacePage, worktreeId)
+      const hostState = readHostState(worktreeId)
+      projectionActive = host?.ok ? (host.result?.activeTabId ?? null) : null
+      hostPersistentActive = hostState.ok ? (hostState.hostPersistentActive ?? null) : null
+      const projection = comparable(projectionActive)
+      const persisted = comparable(hostPersistentActive)
+      const aligned =
+        host?.ok === true &&
+        hostState.ok === true &&
+        projection !== null &&
+        projection === persisted &&
+        (expectedTabId === null ||
+          (comparable(expectedTabId) !== null && projection === comparable(expectedTabId)))
+      if (aligned || Date.now() - startedAt >= timeoutMs) {
+        return {
+          ok: aligned,
+          elapsedMs: Date.now() - startedAt,
+          expectedTabId,
+          projectionActive,
+          hostPersistentActive
+        }
+      }
+      await sleep(100)
+    }
+  }
+
   async function samplePoint(cycle, phase, options = {}) {
     const forcedInvalidReasons = options.forcedInvalidReasons ?? []
     const first = await readOnce(cycle, phase, 'initial')
@@ -1964,6 +2007,8 @@ try {
       invalidReasons,
       first: summarizeRun(first),
       second: summarizeRun(second),
+      // Pre-read stability gate for quick opened/closed; measurement evidence only.
+      quickGate: options.gate ?? null,
       // Unstable points are counted separately and never receive a causal token.
       hA:
         valid && stable
@@ -1993,6 +2038,13 @@ try {
     } else if (!stable) {
       console.log(
         `[u138]   UNSTABLE: first=${JSON.stringify(normalizedReading(first))} second=${JSON.stringify(normalizedReading(second))}`
+      )
+    }
+    if (point.quickGate) {
+      console.log(
+        `[u138]   quick-gate ${point.quickGate.ok ? 'aligned' : 'TIMEOUT'}` +
+          ` after ${point.quickGate.elapsedMs}ms projection=${JSON.stringify(point.quickGate.projectionActive)}` +
+          ` hostPersist=${JSON.stringify(point.quickGate.hostPersistentActive)}`
       )
     }
     return point
@@ -2260,6 +2312,17 @@ try {
   for (let index = 1; index <= QUICK_CYCLES; index += 1) {
     let createdTabId = null
     let createError = null
+    // Return target for the closed gate: the pre-open projection/persisted agreement,
+    // read before the create gesture moves the active tab. Unreadable -> require only
+    // projection/persisted agreement on close.
+    const preOpenState = readHostState(worktreeId)
+    const preOpenProjection = await probeHostList(workspacePage, worktreeId)
+    const preOpenActive =
+      preOpenState.ok &&
+      preOpenProjection?.ok === true &&
+      sameComparable(preOpenState.hostPersistentActive, preOpenProjection.result?.activeTabId)
+        ? (preOpenProjection.result?.activeTabId ?? null)
+        : null
     try {
       createdTabId = await createTempTab()
     } catch (error) {
@@ -2275,7 +2338,8 @@ try {
       ...(out.isolation.quickCreatedTabIds ?? []),
       createdTabId
     ]
-    const openedPoint = await samplePoint(`quick-${index}`, 'opened')
+    const openedGate = await waitQuickSurfacesAligned(createdTabId)
+    const openedPoint = await samplePoint(`quick-${index}`, 'opened', { gate: openedGate })
     const closedBy = await closeTabViaUI(createdTabId)
     out.isolation.quickCloseEvidence.push({
       index,
@@ -2293,11 +2357,12 @@ try {
       // A failed close means "closed" is not a real state; the round cannot be signed.
       invalidatePoint(openedPoint, `quick-close-failed: ${closedBy.error}`)
     }
-    await samplePoint(
-      `quick-${index}`,
-      'closed',
-      closedBy.ok ? {} : { forcedInvalidReasons: [`quick-close-failed: ${closedBy.error}`] }
-    )
+    // Gate only a real close; a failed close carries its own INVALID reason.
+    const closedGate = closedBy.ok ? await waitQuickSurfacesAligned(preOpenActive) : null
+    await samplePoint(`quick-${index}`, 'closed', {
+      ...(closedGate ? { gate: closedGate } : {}),
+      ...(closedBy.ok ? {} : { forcedInvalidReasons: [`quick-close-failed: ${closedBy.error}`] })
+    })
   }
 
   // First stable red sample in order (unstable/invalid are not causal evidence).

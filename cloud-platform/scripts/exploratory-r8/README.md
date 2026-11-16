@@ -43,7 +43,9 @@ Environment knobs: `U138_PLATFORM_URL`, `U138_USERNAME`, `U138_PASSWORD`,
 `U138_SETTLE_MS` (default 5000, min 1000; the design recommends ≥5 s between the
 two reads of a point, env lowers it for smoke only), `U138_RELOAD_STABLE_MS`
 (default 2500, min 2000: settle floor before the first post-reload/post-reopen
-read), `U138_HEADLESS=0`, `U138_PAGE_FRAME_LIMIT`, `U138_RUN_ID`,
+read), `U138_OPENED_STABLE_MS` (default 3000, min 0: how long a quick
+`opened`/`closed` point waits for projection and host persisted to agree before
+its initial read), `U138_HEADLESS=0`, `U138_PAGE_FRAME_LIMIT`, `U138_RUN_ID`,
 `U138_HOST_STATE_ROOTS` (colon-separated host user-data roots, default
 `~/orca-local-env/host` and `~/orca-local-env/host2`).
 
@@ -58,13 +60,14 @@ read), `U138_HEADLESS=0`, `U138_PAGE_FRAME_LIMIT`, `U138_RUN_ID`,
    the same stability gate → sample `after-reopen`. Cross-reopen active equality
    requires every reopen point to be valid and to expose exactly one DOM active.
 3. **quick open/close (C2) x `U138_QUICK_CYCLES`**: within the **active group**,
-   create a temp tab → sample `opened` → close it through the **real tab-strip
-   close button** (`[data-tab-close-button]`) → sample `closed`. No injected
-   `session.tabs.close` remains on the signed path. A failed create or close
-   makes the round INVALID (the failed close also invalidates the `opened`
-   point); it is never a red. The round counts as closed **only** when the tab
-   is really gone from the DOM after the UI close; an INVALID round is not
-   evidence of a healthy quick path.
+   create a temp tab → wait for the quick stability gate to point at the new tab
+   → sample `opened` → close it through the **real tab-strip close button**
+   (`[data-tab-close-button]`) → wait for the gate to return to the pre-open tab
+   → sample `closed`. No injected `session.tabs.close` remains on the signed
+   path. A failed create or close makes the round INVALID (the failed close also
+   invalidates the `opened` point); it is never a red. The round counts as closed
+   **only** when the tab is really gone from the DOM after the UI close; an
+   INVALID round is not evidence of a healthy quick path.
 
    The quick scope is create/close inside the active group. Hitting X on a tab
    in an **inactive** group only activates that group on the first click; that
@@ -137,6 +140,29 @@ Every sample point is **dual-read**: initial read → wait `U138_SETTLE_MS`
 both reads agree with each other and all views agree. The two reads disagreeing
 makes the point `unstable`: counted in its own bucket, never a green, never a
 red, and never given a causal attribution token.
+
+### Quick open/close stability gate
+
+The host persists a selection change asynchronously. Just after the quick tap
+the device projection can already point at the new tab while
+`profile-state.db` still holds the previously active one (observed at the first
+read, ~70 ms after the frame; the next read sees the settled value). That is a
+measurement-window artifact, not a product regression, so quick `opened` and
+`closed` gate their **initial** read on projection/persisted agreement:
+
+- `opened`: projection and host persisted must both point at the created tab.
+- `closed`: projection and host persisted must both point back at the pre-open
+  tab (the projection/persisted agreement read before the create gesture). If
+  that pre-open read was unavailable, only agreement between projection and
+  host persisted is required.
+
+The gate polls every 100 ms and gives up after `U138_OPENED_STABLE_MS` (default
+3000). A timeout does **not** force the surfaces equal and does not soften the
+verdict: the point is sampled normally and keeps the existing dual-read
+semantics — typically `unstable`, or `invalid` when a perspective cannot be
+read. The gate outcome (`ok`, `elapsedMs`, expected tab, both surfaces) is
+recorded as `quickGate` on the point. `conclusive` is unchanged: an unstable
+point still blocks sign-off.
 
 ## Three perspectives (host memory is not observed)
 
@@ -303,6 +329,13 @@ A baseline read failure can never yield `restored: true`.
         "hostMemorySource": "unavailable"
       },
       "second": { "…": "same shape" },
+      "quickGate": {
+        "ok": true,
+        "elapsedMs": 120,
+        "expectedTabId": "…",
+        "projectionActive": "…::…",
+        "hostPersistentActive": "…"
+      },
       "hA": { "verdict": "unknown", "reason": "no applied frame after the last selection write …" },
       "attribution": { "token": "none", "reason": "all three perspectives agree in both reads" }
     }
