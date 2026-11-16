@@ -3554,6 +3554,10 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **U130 已闭环**（`a6c43b28994`）：①U86 实为真实布局溢出（actions span 9→6，3+3+6=12）②白名单加 `capabilities` 并补值断言 ③两夹具补 host `provision` 授权。精确重跑核验：**今日引入 9/9 转绿**（main 14/14、U86 2/2），今日引入红数=0。
 - **U132 已登记并派修**（测试基建四项，均非产品缺陷）：R-A 池守卫漏检间接 TLS+4 文件登记 node 池；R-B crash-recovery 等待不监听 exit（本机 Node 24.5 缺 `setAuthorizer`）；R-C App 入口 2 例断言陈旧；R-D `cloud-session-limits` 身份缺 `open`。分诊实验复证 node 池 13/13 绿。
 - **U131 已登记并派实现**：平台 dev store 快照持久化（env 门控默认关），修 `--platform-only` 丢注册态根因；落地后 full reseed 一次重建快照，再验持久性并收口 U129。
+- **U131/U133 闭环 + platform-only 真验**（`78fc0855a11`/`dfde8755f38`/`5153f095b0f`）：store 快照持久化上线；首次启用持久审计日志即暴露 U133（校验器拒绝 null actor，重启被判 corrupt）——放宽校验并补 3 例回归。真机验证：full reseed 建快照（hosts 3/projects 5，0600）→ `--platform-only` 重启 `failures=[]`、双宿主同 id 在线、PTY 144/21 存活、5 项目 ready、审计链 32 事件 `ok:true`。**U126 的「刷新平台保 PTY」承诺自此完整成立。**
+- **U129 端到端闭环**：真实环境 probe-b10——文件树/复制按钮到位、父页剪贴板 80 字符、审计 `file_copy result=success`（README.md，web-clipboard-api，host_b58500c3）。
+- **U132 闭环**（`29c881f9eb3`）：池守卫一跳 import+E2EE 信号（先红 4 漏检→登记后绿）、crash-recovery 监听 exit+Node<24.10 skipIf、App 2 例断言同步、M33-2 补 `open` 授权；`pnpm tc` exit 0。
+- **终局门禁在跑**：双线黄金旅程复跑（A=Orca Web 旅程、B=控制台旅程，evidence/journey-8/）。
 
 ### 四通道并发执行（启动，2026-11-14）
 
