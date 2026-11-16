@@ -2134,12 +2134,39 @@ td.actions {
     font-size: 11px;
     color: var(--text-3);
   }
+  /* G27 W8: 全量列表——名称/路径单行省略，来源徽标可换行。 */
+  .settings-page .settings-policy-table td[data-label='项目'] strong,
+  .settings-page .settings-policy-table td[data-label='项目'] .mono {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .settings-page .settings-policy-table [data-policy-source] {
+    display: inline-block;
+    max-width: 100%;
+    margin-top: 4px;
+    overflow-wrap: anywhere;
+  }
   .settings-page .settings-policy-table .mono {
     overflow-wrap: anywhere;
   }
   .settings-page .settings-policy-select {
     width: 100%;
     min-height: 44px;
+  }
+  /* 搜索框 16px/44px；统计行可读不溢出。 */
+  .settings-page #policySearch {
+    width: 100%;
+    min-height: 44px;
+    box-sizing: border-box;
+  }
+  .settings-page #policyScope {
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+  }
+  .settings-page .settings-row-conflict {
+    overflow-wrap: anywhere;
   }
 }
 
