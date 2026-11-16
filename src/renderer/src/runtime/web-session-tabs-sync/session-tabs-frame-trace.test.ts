@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RuntimeRpcResponse } from '../../../../shared/runtime-rpc-envelope'
 import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-types'
 import {
@@ -31,8 +31,14 @@ beforeEach(() => {
   vi.stubGlobal('window', windowStub)
 })
 
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
 function enable(): void {
   storage.set(SESSION_TABS_FRAME_TRACE_STORAGE_KEY, '1')
+  // The flag is read once per page load, so a reload is what makes a storage write take effect.
+  resetSessionTabsFrameTraceForTests()
 }
 
 function snapshot(
@@ -50,12 +56,15 @@ function snapshot(
   }
 }
 
-function request(method = 'session.tabs.activate'): SessionTabsTraceRequest {
+function request(
+  method = 'session.tabs.activate',
+  worktree: string | null = 'id:repo::/worktree'
+): SessionTabsTraceRequest {
   return {
     selector: 'env-1',
     method,
     params: {
-      worktree: 'id:repo::/worktree',
+      ...(worktree === null ? {} : { worktree }),
       tabId: 'tab-1',
       notifyClients: false,
       terminalContent: 'do not record this',
@@ -90,6 +99,47 @@ describe('session-tabs-frame-trace', () => {
     expect(frames().map((frame) => frame.seq)).toEqual([1, 2])
     expect(windowStub.__orcaSessionTabsTrace).toBeDefined()
   })
+
+  it('reads the switch once per page load and never again on the closed path', async () => {
+    const getItem = vi.spyOn(localStorage, 'getItem')
+    await traceSessionTabsCall(request(), () => Promise.resolve(successResponse(snapshot())))
+    expect(getItem).toHaveBeenCalledTimes(1)
+
+    getItem.mockClear()
+    for (let index = 0; index < 50; index += 1) {
+      await traceSessionTabsCall(request(), () => Promise.resolve(successResponse(snapshot())))
+    }
+    traceSessionTabsApplyDecision('env-1', snapshot(), true)
+    expect(getItem).not.toHaveBeenCalled()
+  })
+
+  it('enables from the window handle at runtime and records from the next frame', async () => {
+    enable()
+    await traceSessionTabsCall(request(), () => Promise.resolve(successResponse(snapshot())))
+    const handle = windowStub.__orcaSessionTabsTrace!
+    expect(frames()).toHaveLength(2)
+
+    handle.disable()
+    expect(windowStub.__orcaSessionTabsTrace).toBeUndefined()
+    await traceSessionTabsCall(request(), () => Promise.resolve(successResponse(snapshot())))
+    expect(frames()).toHaveLength(0)
+
+    handle.enable()
+    expect(windowStub.__orcaSessionTabsTrace).toBeDefined()
+    await traceSessionTabsCall(request(), () => Promise.resolve(successResponse(snapshot())))
+    expect(frames().map((frame) => frame.seq)).toEqual([1, 2])
+  })
+
+  it('removes the window handle when tracing is disabled', async () => {
+    enable()
+    await traceSessionTabsCall(request(), () => Promise.resolve(successResponse(snapshot())))
+    expect(windowStub.__orcaSessionTabsTrace).toBeDefined()
+
+    windowStub.__orcaSessionTabsTrace!.disable()
+    expect(windowStub.__orcaSessionTabsTrace).toBeUndefined()
+    expect(isSessionTabsFrameTraceEnabled()).toBe(false)
+  })
+
 
   it('associates a request with its response and records only allowlisted params', async () => {
     enable()
@@ -200,6 +250,76 @@ describe('session-tabs-frame-trace', () => {
       applied: true
     })
     expect(responseFrame!.result?.snapshots?.[0]?.applied).toBeUndefined()
+  })
+
+  it('matches apply decisions by worktree when version and epoch collide', async () => {
+    enable()
+    const shared = { publicationEpoch: 'epoch-shared', snapshotVersion: 7 }
+    const first = snapshot({ ...shared, worktree: 'repo::/wt-a' })
+    const second = snapshot({ ...shared, worktree: 'repo::/wt-b' })
+    await traceSessionTabsCall(request('session.tabs.listAll', 'id:repo::/wt-a'), () =>
+      Promise.resolve(successResponse({ authoritative: true, snapshots: [first] }))
+    )
+    await traceSessionTabsCall(request('session.tabs.listAll', 'id:repo::/wt-b'), () =>
+      Promise.resolve(successResponse({ authoritative: true, snapshots: [second] }))
+    )
+
+    traceSessionTabsApplyDecision('env-1', first, false)
+    traceSessionTabsApplyDecision('env-1', second, true, { hostActiveAuthoritative: true })
+
+    const [, firstResponse, , secondResponse] = frames()
+    expect(firstResponse!.result?.snapshots?.[0]).toMatchObject({
+      worktree: 'repo::/wt-a',
+      applied: false
+    })
+    expect(secondResponse!.result?.snapshots?.[0]).toMatchObject({
+      worktree: 'repo::/wt-b',
+      applied: true
+    })
+    expect(firstResponse!.applied).toBe(false)
+    expect(secondResponse!.applied).toBe(true)
+  })
+
+  it('annotates the worktree-matching snapshot when one listAll frame collides', async () => {
+    enable()
+    const first = snapshot({
+      publicationEpoch: 'epoch-shared',
+      snapshotVersion: 3,
+      worktree: 'repo::/wt-a'
+    })
+    const second = snapshot({
+      publicationEpoch: 'epoch-shared',
+      snapshotVersion: 3,
+      worktree: 'repo::/wt-b'
+    })
+    await traceSessionTabsCall(request('session.tabs.listAll', null), () =>
+      Promise.resolve(successResponse({ authoritative: true, snapshots: [first, second] }))
+    )
+
+    traceSessionTabsApplyDecision('env-1', second, true, { hostActiveAuthoritative: true })
+
+    const [responseFrame] = frames().slice(1)
+    expect(responseFrame!.result?.snapshots?.[0]?.applied).toBeUndefined()
+    expect(responseFrame!.result?.snapshots?.[1]).toMatchObject({
+      worktree: 'repo::/wt-b',
+      applied: true
+    })
+  })
+
+  it('uses the final decision when the same snapshot is first accepted then rejected', async () => {
+    enable()
+    const carried = snapshot({ publicationEpoch: 'epoch-2', snapshotVersion: 2 })
+    await traceSessionTabsCall(request('session.tabs.listAll', null), () =>
+      Promise.resolve(successResponse({ authoritative: true, snapshots: [carried] }))
+    )
+
+    traceSessionTabsApplyDecision('env-1', carried, true, { hostActiveAuthoritative: true })
+    traceSessionTabsApplyDecision('env-1', carried, false)
+
+    const responseFrame = frames()[1]!
+    expect(responseFrame.applied).toBe(false)
+    expect(responseFrame.result?.snapshots?.[0]?.applied).toBe(false)
+    expect(responseFrame.result?.snapshots?.[0]?.applyOptions).toBeUndefined()
   })
 
   it('dumps a JSON-serializable timeline and clears it on demand', async () => {

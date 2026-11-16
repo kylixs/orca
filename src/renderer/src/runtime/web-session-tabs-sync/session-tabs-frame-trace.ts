@@ -1,7 +1,12 @@
 /**
  * U138: record the `session.tabs.*` frames a web renderer exchanges with a paired host, so a
- * timeline can answer "who changed active, with which params, and did this frame win". Off by
- * default; the closed path is one localStorage read and no allocation.
+ * timeline can answer "who changed active, with which params, and did this frame win".
+ *
+ * Off by default; the switch is read once per page load (see the store), so the closed path never
+ * touches storage again. 11 of the 13 renderer-callable `session.tabs.*` methods pass through the
+ * mount points this module wraps; `unsubscribe`/`unsubscribeAll` are issued by the preload/shared
+ * control layer instead. Known limits: call sites allocate their request object before the switch
+ * is checked, `onClose` is not recorded, and a subscribe that rejects leaves no response frame.
  */
 import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-types'
 import type { WebSessionTabsSnapshotApplyOptions } from './state'
@@ -14,6 +19,7 @@ import {
 } from './session-tabs-frame-trace-store'
 import {
   isRecord,
+  normalizeWorktreeSelector,
   readResponseMeta,
   readString,
   summarizeApplyOptions,
@@ -28,6 +34,8 @@ import type {
 
 export {
   SESSION_TABS_FRAME_TRACE_STORAGE_KEY,
+  disableSessionTabsFrameTrace,
+  enableSessionTabsFrameTrace,
   isSessionTabsFrameTraceEnabled,
   resetSessionTabsFrameTraceForTests
 } from './session-tabs-frame-trace-store'
@@ -42,6 +50,8 @@ export type {
   SessionTabsSubscriptionCallbacks
 } from './session-tabs-frame-trace-types'
 
+// The 11 methods that actually pass through the env-call/subscribe mount points; the catalog's
+// `unsubscribe`/`unsubscribeAll` never do (preload/shared control issues them).
 export const SESSION_TABS_TRACE_METHODS: ReadonlySet<string> = new Set([
   'session.tabs.list',
   'session.tabs.listAll',
@@ -182,6 +192,10 @@ function snapshotMatchesSummary(
   summary: SessionTabsTraceSnapshotSummary,
   snapshot: RuntimeMobileSessionTabsResult
 ): boolean {
+  const worktree = normalizeWorktreeSelector(snapshot.worktree)
+  if (worktree !== undefined && summary.worktree !== worktree) {
+    return false
+  }
   if (
     summary.snapshotVersion !== undefined &&
     snapshot.snapshotVersion !== undefined &&
@@ -219,16 +233,22 @@ function annotateFrame(
     summary.applied = applied
     if (applied && options) {
       summary.applyOptions = summarizeApplyOptions(options)
+    } else if (!applied) {
+      delete summary.applyOptions
     }
+    // Why: the frame-level flag is an aggregate over its snapshots; the latest verdict wins.
+    frame.applied = result.snapshots.some((candidate) => candidate.applied === true)
   } else {
     if (!snapshotMatchesSummary(result, snapshot)) {
       return false
     }
     if (applied && options) {
       frame.applyOptions = summarizeApplyOptions(options)
+    } else if (!applied) {
+      delete frame.applyOptions
     }
+    frame.applied = applied
   }
-  frame.applied = applied === true ? true : (frame.applied ?? false)
   return true
 }
 
@@ -243,9 +263,18 @@ export function traceSessionTabsApplyDecision(
   if (state === null) {
     return
   }
+  const worktree = normalizeWorktreeSelector(snapshot.worktree)
   for (let index = state.size - 1; index >= 0; index -= 1) {
     const frame = frameAt(state, index)
     if (!frame || frame.dir === 'req' || frame.environmentId !== environmentId) {
+      continue
+    }
+    // Frames that carry no worktree (subscribeAll) still match on version/epoch.
+    if (
+      worktree !== undefined &&
+      frame.worktree !== undefined &&
+      normalizeWorktreeSelector(frame.worktree) !== worktree
+    ) {
       continue
     }
     if (annotateFrame(frame, snapshot, applied, options)) {

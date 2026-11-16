@@ -22,6 +22,8 @@ export type SessionTabsTraceApplyOptions = {
 }
 
 export type SessionTabsTraceSnapshotSummary = {
+  /** Normalized worktree selector, so two same-version worktrees stay distinguishable. */
+  worktree?: string
   activeTabId?: string | null
   activeGroupId?: string | null
   snapshotVersion?: number
@@ -58,7 +60,12 @@ export type SessionTabsTraceFrame = {
 
 export type SessionTabsFrameTraceHandle = {
   readonly frames: readonly SessionTabsTraceFrame[]
+  /** Clear the ring but keep this handle and its sequence counters. */
   clear: () => void
+  /** Start tracing (idempotent) and install the handle. */
+  enable: () => void
+  /** Stop tracing and remove this handle from the window. */
+  disable: () => void
   dump: () => string
 }
 

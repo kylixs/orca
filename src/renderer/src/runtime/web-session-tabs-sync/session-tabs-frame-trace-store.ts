@@ -1,6 +1,6 @@
 /**
- * U138 frame-trace ring buffer: created only while the localStorage switch is on, so the closed
- * path reads one flag and allocates nothing.
+ * U138 frame-trace ring buffer. The `orca.debug.sessionTabs` flag is read once per page load and
+ * cached, so the closed path allocates nothing and never touches storage again.
  */
 import type {
   SessionTabsFrameTraceHandle,
@@ -20,9 +20,10 @@ export type SessionTabsFrameTraceState = {
 }
 
 let traceState: SessionTabsFrameTraceState | null = null
+/** `null` until the first entry point runs, i.e. the page-load read. */
+let enabledCache: boolean | null = null
 
-/** Read on every entry: enabling mid-session starts with the next frame, no replay. */
-export function isSessionTabsFrameTraceEnabled(): boolean {
+function readStoredFlag(): boolean {
   try {
     if (typeof localStorage === 'undefined') {
       return false
@@ -34,10 +35,48 @@ export function isSessionTabsFrameTraceEnabled(): boolean {
   }
 }
 
+/** One storage read per page load; every later call is a cached boolean. */
+export function isSessionTabsFrameTraceEnabled(): boolean {
+  if (enabledCache === null) {
+    enabledCache = readStoredFlag()
+  }
+  return enabledCache
+}
+
+/** Runtime entry point: persist the switch, start a fresh ring, and install the window handle. */
+export function enableSessionTabsFrameTrace(): void {
+  if (enabledCache === true && traceState !== null) {
+    return
+  }
+  enabledCache = true
+  try {
+    localStorage.setItem(SESSION_TABS_FRAME_TRACE_STORAGE_KEY, '1')
+  } catch {
+    // In-memory tracing still works when storage is blocked.
+  }
+  ensureTraceState()
+}
+
+/** Close the switch for this page and remove the window handle and retained frames. */
+export function disableSessionTabsFrameTrace(): void {
+  enabledCache = false
+  traceState = null
+  try {
+    localStorage.removeItem(SESSION_TABS_FRAME_TRACE_STORAGE_KEY)
+  } catch {
+    // Nothing to clear when storage is blocked.
+  }
+  uninstallWindowHandle()
+}
+
 export function getSessionTabsFrameTraceState(): SessionTabsFrameTraceState | null {
   if (!isSessionTabsFrameTraceEnabled()) {
     return null
   }
+  return ensureTraceState()
+}
+
+function ensureTraceState(): SessionTabsFrameTraceState {
   if (!traceState) {
     traceState = {
       frames: Array.from<SessionTabsTraceFrame | undefined>({ length: FRAME_TRACE_CAPACITY }),
@@ -52,6 +91,12 @@ export function getSessionTabsFrameTraceState(): SessionTabsFrameTraceState | nu
   return traceState
 }
 
+function uninstallWindowHandle(): void {
+  if (typeof window !== 'undefined') {
+    delete window.__orcaSessionTabsTrace
+  }
+}
+
 function installWindowHandle(): void {
   if (typeof window === 'undefined') {
     return
@@ -60,6 +105,7 @@ function installWindowHandle(): void {
     get frames() {
       return traceState ? orderedFrames(traceState) : []
     },
+    // Why: clear keeps the handle (and the seq counters) so a probe can keep sampling.
     clear() {
       if (traceState) {
         traceState.frames.fill(undefined)
@@ -67,6 +113,8 @@ function installWindowHandle(): void {
         traceState.size = 0
       }
     },
+    enable: enableSessionTabsFrameTrace,
+    disable: disableSessionTabsFrameTrace,
     dump() {
       return JSON.stringify({
         capacity: FRAME_TRACE_CAPACITY,
@@ -113,8 +161,7 @@ export function nextFrameBase(
 }
 
 export function resetSessionTabsFrameTraceForTests(): void {
+  enabledCache = null
   traceState = null
-  if (typeof window !== 'undefined') {
-    delete window.__orcaSessionTabsTrace
-  }
+  uninstallWindowHandle()
 }

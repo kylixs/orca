@@ -96,7 +96,11 @@ declare global {
       worktreeVerdicts: () => TerminalWorktreeParkingDebugVerdict[]
     }
     __monacoEditorE2E?: MonacoE2EProbe
-    /** U138 diagnostic ring of `session.tabs.*` frames; present only while orca.debug.sessionTabs is on. */
+    /**
+     * U138 diagnostic ring of `session.tabs.*` frames. Installed only while
+     * `orca.debug.sessionTabs` is on; `handle.disable()` removes it, `handle.clear()`
+     * keeps it and only empties the ring.
+     */
     __orcaSessionTabsTrace?: SessionTabsFrameTraceHandle
     __e2ePtyAppliedSizeReadDelayMs?: number
     __terminalPtyPreSpawnE2EBarrier?: TerminalPtyPreSpawnE2EBarrier

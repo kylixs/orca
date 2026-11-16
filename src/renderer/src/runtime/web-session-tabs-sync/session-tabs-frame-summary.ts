@@ -27,6 +27,15 @@ export function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
+/** Request params use `id:` selectors; snapshots carry the raw id. Match on the id. */
+export function normalizeWorktreeSelector(value: string | undefined): string | undefined {
+  const trimmed = value?.trim()
+  if (!trimmed) {
+    return undefined
+  }
+  return trimmed.startsWith('id:') ? trimmed.slice(3) : trimmed
+}
+
 function readPrimitive(value: unknown): string | boolean | number | undefined {
   return typeof value === 'string' || typeof value === 'boolean' || typeof value === 'number'
     ? value
@@ -60,6 +69,12 @@ export function summarizeApplyOptions(
 
 function summarizeSnapshot(source: Record<string, unknown>): SessionTabsTraceSnapshotSummary {
   const summary: SessionTabsTraceSnapshotSummary = {}
+  const worktree = normalizeWorktreeSelector(
+    typeof source.worktree === 'string' ? source.worktree : undefined
+  )
+  if (worktree !== undefined) {
+    summary.worktree = worktree
+  }
   if (typeof source.activeTabId === 'string' || source.activeTabId === null) {
     summary.activeTabId = source.activeTabId
   }
