@@ -4,7 +4,11 @@ import { readArrayValue, readField, readObjectValue, readString } from './json-f
  * `workspace.info` response (W13): the ticket's own project/workspace facts plus
  * the checkout the host found inside the workspace root. The field set is the
  * information boundary — an extra key would leak host-wide state to the session.
+ * `capabilities` is the one explicit extension: names only, no host facts.
  */
+
+/** Host capabilities this response can advertise (U96 A). */
+export const CLOUD_SESSION_TABS_RESTORE_CAPABILITY = 'cloud.session-tabs-restore.v1'
 
 /** The permissions a platform ticket can carry; the host's CloudPermission twin. */
 export type CloudWorkspacePermission =
@@ -36,6 +40,8 @@ export type CloudWorkspaceInfo = {
     branch: string | null
   }
   perms: readonly CloudWorkspacePermission[]
+  /** Optional additive capability names (U96 A); absent on hosts that predate them. */
+  capabilities?: readonly string[]
 }
 
 /** The only failure shape: the caller is not a cloud session. */
@@ -97,12 +103,17 @@ export function readCloudWorkspaceInfo(value: unknown): CloudWorkspaceInfo | nul
   ) {
     return null
   }
+  // Why: an old host omits the field and a malformed one must not void the answer.
+  const capabilities = readArrayValue(readField(response, 'capabilities'))
   return {
     project: { id, root, repoUrl, defaultBranch },
     workspace: { root: workspaceRoot, path, branch },
     perms: perms.filter(
       (permission): permission is CloudWorkspacePermission =>
         typeof permission === 'string' && PERMISSIONS.has(permission)
-    )
+    ),
+    ...(capabilities === null
+      ? {}
+      : { capabilities: capabilities.filter((name): name is string => typeof name === 'string') })
   }
 }

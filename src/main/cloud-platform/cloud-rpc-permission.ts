@@ -91,6 +91,21 @@ const AGENT_PROBE_METHODS: ReadonlySet<string> = new Set([
   'preflight.refreshAgents'
 ])
 
+/**
+ * Session-tab inventory and restore (U96 A): a cloud client may reclaim the
+ * tabs the host still holds, but not create or restyle them — tab creation
+ * stays client-owned through `terminal.create(tabId, leafId)`.
+ */
+const SESSION_TAB_METHODS: ReadonlySet<string> = new Set([
+  'session.tabs.list',
+  'session.tabs.listAll',
+  'session.tabs.subscribe',
+  'session.tabs.subscribeAll',
+  'session.tabs.activate',
+  'session.tabs.close',
+  'session.tabs.move'
+])
+
 const WORKTREE_METHODS: ReadonlySet<string> = new Set([
   'worktree.create',
   'worktree.createManaged',
@@ -118,6 +133,9 @@ export function cloudMethodAccess(method: string): CloudMethodAccess {
     return 'file:write'
   }
   if (WORKTREE_METHODS.has(method)) {
+    return 'terminal'
+  }
+  if (SESSION_TAB_METHODS.has(method)) {
     return 'terminal'
   }
   if (PROJECT_METHODS.has(method)) {

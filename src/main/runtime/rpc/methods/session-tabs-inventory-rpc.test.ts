@@ -12,6 +12,33 @@ function makeRequest(method: string, params?: unknown): RpcRequest {
   return { id: 'req-1', authToken: 'tok', method, params }
 }
 
+const CLOUD_TICKET = {
+  projectId: 'proj_app',
+  projectRoot: '/srv/work/app',
+  workspaceRoot: '/srv/work/app/.orca/user/zhangsan',
+  repoUrl: 'https://git.example.com/app.git',
+  defaultBranch: 'main',
+  perms: ['terminal'] as const
+}
+
+const CLOUD_SCOPE = {
+  kind: 'cloud',
+  permissions: ['terminal'],
+  downloadAllowed: false
+} as const
+
+function snapshot(worktree: string) {
+  return {
+    worktree,
+    publicationEpoch: 'epoch',
+    snapshotVersion: 1,
+    activeGroupId: null,
+    activeTabId: null,
+    activeTabType: null,
+    tabs: []
+  }
+}
+
 describe('session tabs inventory RPC methods', () => {
   it('withholds an old-client list until the host inventory is authoritative', async () => {
     let resolveInventory!: (value: { snapshots: []; authoritative: true }) => void
@@ -459,5 +486,88 @@ describe('session tabs inventory RPC methods', () => {
         error: expect.objectContaining({ code: 'runtime_error' })
       })
     ])
+  })
+
+  it('cloud listAll keeps only worktrees under the ticket workspaceRoot', async () => {
+    const snapshots = [snapshot('wt-own'), snapshot('wt-teammate'), snapshot('wt-broken')]
+    const resolveWorktreeRootPath = vi.fn(async (worktree: string) => {
+      if (worktree === 'wt-own') {
+        return CLOUD_TICKET.workspaceRoot
+      }
+      if (worktree === 'wt-broken') {
+        throw new Error('selector_not_found')
+      }
+      return '/srv/work/app/.orca/user/lisi'
+    })
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: this partial runtime supplies exactly the methods the inventory RPC invokes.
+    const runtime = {
+      getRuntimeId: () => 'test-runtime',
+      supportsAuthoritativeSessionTabsInventory: () => false,
+      listAllMobileSessionTabs: vi.fn(async () => snapshots),
+      resolveWorktreeRootPath
+    } as unknown as OrcaRuntimeService
+    const dispatcher = new RpcDispatcher({
+      runtime,
+      methods: SESSION_TAB_METHODS,
+      callerScope: CLOUD_SCOPE
+    })
+    const messages: string[] = []
+
+    await dispatcher.dispatchStreaming(
+      makeRequest('session.tabs.listAll'),
+      (message) => messages.push(message),
+      { cloud: CLOUD_TICKET }
+    )
+
+    const result = JSON.parse(messages[0]!).result
+    // Fail-closed: an unresolvable worktree disappears instead of leaking.
+    expect(result.snapshots.map((entry: { worktree: string }) => entry.worktree)).toEqual([
+      'wt-own'
+    ])
+    expect(resolveWorktreeRootPath).toHaveBeenCalledWith('wt-own')
+  })
+
+  it('cloud listAll is empty when the ticket names no workspaceRoot', async () => {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: this partial runtime supplies exactly the methods the inventory RPC invokes.
+    const runtime = {
+      getRuntimeId: () => 'test-runtime',
+      supportsAuthoritativeSessionTabsInventory: () => false,
+      listAllMobileSessionTabs: vi.fn(async () => [snapshot('wt-own')]),
+      resolveWorktreeRootPath: vi.fn(async () => CLOUD_TICKET.workspaceRoot)
+    } as unknown as OrcaRuntimeService
+    const dispatcher = new RpcDispatcher({
+      runtime,
+      methods: SESSION_TAB_METHODS,
+      callerScope: CLOUD_SCOPE
+    })
+    const messages: string[] = []
+
+    await dispatcher.dispatchStreaming(
+      makeRequest('session.tabs.listAll'),
+      (message) => messages.push(message),
+      { cloud: { ...CLOUD_TICKET, workspaceRoot: '' } }
+    )
+
+    expect(JSON.parse(messages[0]!).result.snapshots).toEqual([])
+    expect(runtime.resolveWorktreeRootPath).not.toHaveBeenCalled()
+  })
+
+  it('owner listAll is not filtered by any ticket root', async () => {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: this partial runtime supplies exactly the methods the inventory RPC invokes.
+    const runtime = {
+      getRuntimeId: () => 'test-runtime',
+      supportsAuthoritativeSessionTabsInventory: () => false,
+      listAllMobileSessionTabs: vi.fn(async () => [snapshot('wt-a'), snapshot('wt-b')]),
+      resolveWorktreeRootPath: vi.fn()
+    } as unknown as OrcaRuntimeService
+    const dispatcher = new RpcDispatcher({ runtime, methods: SESSION_TAB_METHODS })
+    const messages: string[] = []
+
+    await dispatcher.dispatchStreaming(makeRequest('session.tabs.listAll'), (message) =>
+      messages.push(message)
+    )
+
+    expect(JSON.parse(messages[0]!).result.snapshots).toHaveLength(2)
+    expect(runtime.resolveWorktreeRootPath).not.toHaveBeenCalled()
   })
 })

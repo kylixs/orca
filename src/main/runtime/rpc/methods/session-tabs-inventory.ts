@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from 'node:util'
 import { SESSION_TABS_AUTHORITATIVE_INVENTORY_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
 import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-types'
 import type { RpcContext } from '../core'
+import { projectCloudSessionTabsInventory } from './cloud-session-tabs-inventory'
 import { projectSessionTabAgentStatus } from './session-tab-agent-status-projection'
 import { projectSessionTabBrowserPlacements } from './session-tab-browser-placement-projection'
 import { createSessionTabsRetirementProofDelta } from './session-tabs-retirement-proof-delta'
@@ -64,13 +65,22 @@ async function collectSessionTabsInventory(
     const inventory = runtime.supportsAuthoritativeSessionTabsInventory()
       ? await runtime.listAllMobileSessionTabsInventory(pairedDeviceId, signal)
       : { snapshots: await runtime.listAllMobileSessionTabs(pairedDeviceId) }
-    return { inventory: projectInventory(inventory, context), changeSequence: 0 }
+    return {
+      inventory: await projectCloudSessionTabsInventory(
+        projectInventory(inventory, context),
+        context
+      ),
+      changeSequence: 0
+    }
   }
   const collected = runtime.supportsAuthoritativeSessionTabsInventory()
     ? await runtime.listAllMobileSessionTabsInventoryWithChangeSequence(pairedDeviceId, signal)
     : await runtime.listAllMobileSessionTabsWithChangeSequence(pairedDeviceId)
   return {
-    inventory: projectInventory(collected, context),
+    inventory: await projectCloudSessionTabsInventory(
+      projectInventory(collected, context),
+      context
+    ),
     changeSequence: collected.changeSequence
   }
 }
@@ -108,6 +118,9 @@ export async function subscribeSessionTabsInventory(
   const deliveredChangeSequenceByWorktree = new Map<string, number>()
   let censusChangeSequence: number | undefined
   let censusInvalidated = false
+  // U96 A: incremental frames must honor the same workspaceRoot boundary as the census.
+  const cloud = context.cloud
+  let cloudWorktrees: ReadonlySet<string> | null = null
   const withProofDelta = createSessionTabsRetirementProofDelta(context.clientCapabilities)
   const projectChange = (snapshot: SessionTabsChange): SessionTabsChange =>
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: projection rewrites only tabs and groups; the change fields it was handed pass through.
@@ -176,6 +189,9 @@ export async function subscribeSessionTabsInventory(
     })
   }
   const publishChange = (snapshot: SessionTabsChange, changeSequence: number): void => {
+    if (cloud && !cloudWorktrees?.has(snapshot.worktree)) {
+      return
+    }
     const projected = projectChange(snapshot)
     const state = withoutNavigationIntent(projected)
     const published = publishedSnapshotsByWorktree.get(snapshot.worktree)
@@ -265,6 +281,9 @@ export async function subscribeSessionTabsInventory(
   }
   const { inventory, changeSequence } = collected
   censusChangeSequence = changeSequence
+  if (cloud) {
+    cloudWorktrees = new Set(inventory.snapshots.map((snapshot) => snapshot.worktree))
+  }
   emit({ type: 'snapshots', ...inventory, snapshots: inventory.snapshots.map(withProofDelta) })
   for (const snapshot of inventory.snapshots) {
     publishedSnapshotsByWorktree.set(snapshot.worktree, withoutNavigationIntent(snapshot))

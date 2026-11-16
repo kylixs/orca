@@ -36,6 +36,29 @@ describe('云端方法 → 项目权限映射', () => {
     }
   })
 
+  it('会话标签清单/恢复归 terminal，创建与改属性仍在云表外', () => {
+    for (const method of [
+      'session.tabs.list',
+      'session.tabs.listAll',
+      'session.tabs.subscribe',
+      'session.tabs.subscribeAll',
+      'session.tabs.activate',
+      'session.tabs.close',
+      'session.tabs.move'
+    ]) {
+      expect(cloudMethodAccess(method), method).toBe('terminal')
+    }
+    for (const method of [
+      'session.tabs.createTerminal',
+      'session.tabs.setTabProps',
+      'session.tabs.updatePaneLayout',
+      'session.tabs.unsubscribe',
+      'session.tabs.unsubscribeAll'
+    ]) {
+      expect(cloudMethodAccess(method), method).toBeNull()
+    }
+  })
+
   it('agent 家族归 agent', () => {
     for (const method of ['agent.launch', 'agentSession.send', 'agentProvider.list']) {
       expect(cloudMethodAccess(method), method).toBe('agent')
@@ -110,6 +133,18 @@ describe('云端调用方作用域', () => {
 
   it('自省方法不受权限集限制', () => {
     expect(denyRpcMethodForCaller(cloud([]), 'status.get', 'workspace')).toBeNull()
+  })
+
+  it('会话标签恢复受票据 terminal 位约束', () => {
+    expect(denyRpcMethodForCaller(cloud(['open']), 'session.tabs.listAll', 'workspace')).toContain(
+      "needs the 'terminal' project permission"
+    )
+    expect(
+      denyRpcMethodForCaller(cloud(['terminal']), 'session.tabs.listAll', 'workspace')
+    ).toBeNull()
+    expect(
+      denyRpcMethodForCaller(cloud(['terminal']), 'session.tabs.createTerminal', 'workspace')
+    ).toContain('not available to cloud sessions')
   })
 
   it('agent 探测需要 agent 权限位，拒绝文案指明缺哪一个', () => {

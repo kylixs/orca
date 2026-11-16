@@ -30,6 +30,24 @@ describe('云端工作区信息读取器', () => {
     })
   })
 
+  it('可选 capabilities 原样保留字符串项，缺失旧宿主不补字段', () => {
+    expect(
+      readCloudWorkspaceInfo({
+        ...REPLY,
+        capabilities: ['cloud.session-tabs-restore.v1', 7, 'future-capability']
+      })
+    ).toMatchObject({
+      capabilities: ['cloud.session-tabs-restore.v1', 'future-capability']
+    })
+    expect(readCloudWorkspaceInfo(REPLY)).not.toHaveProperty('capabilities')
+  })
+
+  it('capabilities 类型非法不使整单作废，按缺失处理', () => {
+    expect(
+      readCloudWorkspaceInfo({ ...REPLY, capabilities: 'cloud.session-tabs-restore.v1' })
+    ).not.toHaveProperty('capabilities')
+  })
+
   it('读出已 ensure 的检出路径与分支', () => {
     expect(
       readCloudWorkspaceInfo({

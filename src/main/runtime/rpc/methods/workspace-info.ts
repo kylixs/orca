@@ -4,6 +4,7 @@ import type {
   CloudWorkspaceInfoResponse,
   CloudWorkspaceInfo
 } from '../../../../shared/cloud-workspace-info'
+import { CLOUD_SESSION_TABS_RESTORE_CAPABILITY } from '../../../../shared/cloud-workspace-info'
 import type {
   RuntimeWorktreeListResult,
   RuntimeWorktreeRecord
@@ -49,7 +50,8 @@ export const WORKSPACE_INFO_METHODS = [
           path: checkout?.git.path ?? null,
           branch: checkout === null ? null : branchOfHeadRef(checkout.git.branch)
         },
-        perms: [...cloud.perms]
+        perms: [...cloud.perms],
+        capabilities: [CLOUD_SESSION_TABS_RESTORE_CAPABILITY]
       }
       return info
     }

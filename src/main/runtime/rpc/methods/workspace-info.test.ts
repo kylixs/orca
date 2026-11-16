@@ -149,11 +149,13 @@ describe('workspace.info（云会话工作区自省）', () => {
           path: null,
           branch: null
         },
-        perms: ['open', 'terminal', 'file:read']
+        perms: ['open', 'terminal', 'file:read'],
+        capabilities: ['cloud.session-tabs-restore.v1']
       }
     })
     const result = resultOf(reply)
     expect(Object.keys(readObjectValue(result) ?? {}).sort()).toEqual([
+      'capabilities',
       'perms',
       'project',
       'workspace'
@@ -171,6 +173,16 @@ describe('workspace.info（云会话工作区自省）', () => {
     ])
     expect(readStringArray(result, 'perms')).toEqual(['open', 'terminal', 'file:read'])
     expect(listManagedWorktrees).toHaveBeenCalledWith(`path:${CLOUD.projectRoot}`)
+  })
+
+  it('声明标签恢复能力：只有能力名，不带主机事实（U96 A，wire-additive）', async () => {
+    const { runtime } = makeRuntime(EMPTY_LISTING)
+
+    const result = resultOf(await call(runtime, CLOUD))
+
+    expect(readStringArray(result, 'capabilities')).toEqual([
+      'cloud.session-tabs-restore.v1'
+    ])
   })
 
   it('未 ensure 时 path/branch 为 null 是正常应答', async () => {
@@ -229,7 +241,8 @@ describe('workspace.info（云会话工作区自省）', () => {
           defaultBranch: CLOUD.defaultBranch
         },
         workspace: { root: CLOUD.workspaceRoot, path: null, branch: null },
-        perms: ['open', 'terminal', 'file:read']
+        perms: ['open', 'terminal', 'file:read'],
+        capabilities: ['cloud.session-tabs-restore.v1']
       }
     })
   })
