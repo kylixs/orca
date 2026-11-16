@@ -1948,3 +1948,127 @@ td.actions {
     overflow-wrap: anywhere;
   }
 }
+
+/* ---------- U80 M7: 设置页移动适配（≤700 单列 / 44px，桌面不变） ---------- */
+.settings-choice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+.settings-choice + .settings-choice {
+  margin-bottom: 16px;
+}
+.settings-save {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.settings-version,
+.settings-conflict-retry {
+  margin-left: 8px;
+}
+
+@media (max-width: 700px) {
+  /* 单列：策略卡与覆盖卡占满宽度，字段和说明垂直排布。 */
+  .settings-page .settings-card {
+    max-width: 100% !important;
+    padding: 16px;
+  }
+  .settings-page .settings-choice {
+    min-height: 44px;
+    padding: 6px 0;
+  }
+  .settings-page .settings-choice input {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    margin-top: 2px;
+  }
+  /* 输入统一 16px，避免 iOS 聚焦缩放。 */
+  .settings-page input,
+  .settings-page select {
+    font-size: 16px;
+  }
+  /* 保存吸底：滚动时按钮停在键盘/底栏上方。 */
+  .settings-page .settings-save {
+    position: sticky;
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    z-index: 1;
+    gap: 8px;
+    padding: 8px 0 2px;
+    background: var(--card);
+  }
+  .settings-page .settings-save .btn {
+    flex: 1 1 auto;
+    min-height: 44px;
+  }
+  .settings-page .settings-version {
+    width: 100%;
+    margin-left: 0;
+    font-size: 12px;
+  }
+  /* 409 冲突条：整段可换行，重试按钮整行 ≥44px。 */
+  .settings-page .settings-conflict {
+    overflow-wrap: anywhere;
+  }
+  .settings-page .settings-conflict-retry {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    margin: 10px 0 0;
+  }
+  /* 项目覆盖表转卡片：表头隐藏，每行一张卡，字段带标签。 */
+  .settings-page .settings-policy-table {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    overflow: visible;
+  }
+  .settings-page .settings-policy-table table,
+  .settings-page .settings-policy-table tbody,
+  .settings-page .settings-policy-table tr,
+  .settings-page .settings-policy-table td {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .settings-page .settings-policy-table thead {
+    display: none;
+  }
+  .settings-page .settings-policy-table tr[data-policy-row] {
+    padding: 14px;
+    margin-bottom: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    background: var(--card);
+  }
+  .settings-page .settings-policy-table tr[data-policy-row]:last-child {
+    margin-bottom: 0;
+  }
+  .settings-page .settings-policy-table td {
+    padding: 0;
+    border: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .settings-page .settings-policy-table td + td {
+    margin-top: 10px;
+  }
+  .settings-page .settings-policy-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 4px;
+    font-size: 11px;
+    color: var(--text-3);
+  }
+  .settings-page .settings-policy-table .mono {
+    overflow-wrap: anywhere;
+  }
+  .settings-page .settings-policy-select {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+

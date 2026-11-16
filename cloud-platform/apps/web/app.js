@@ -3543,10 +3543,9 @@ function showPolicyConflict(value, details, retry) {
   note.hidden = false
   note.innerHTML = `<strong>策略已被他人修改</strong>：服务端当前版本 v${esc(details.version ?? '?')}，全局默认 <strong>${server}</strong>。你选择的「${pending}」尚未保存。`
   const button = document.createElement('button')
-  button.className = 'btn'
+  button.className = 'btn settings-conflict-retry'
   button.id = 'policyConflictRetry'
   button.textContent = '刷新后重试'
-  button.style.marginLeft = '8px'
   button.onclick = () => {
     button.disabled = true
     void retry(value)
@@ -3561,48 +3560,52 @@ async function renderSettings() {
   const rows = overrides
     .map(
       (p) => `<tr data-policy-row="${esc(p.id)}">
-        <td><strong>${esc(p.name)}</strong> <span class="badge">覆盖</span><div class="muted mono">${esc(p.path)}</div></td>
-        <td>
-          <select class="select" data-policy-select="${esc(p.id)}" aria-label="${esc(p.name)} 下载策略" style="width:auto">
+        <td data-label="项目"><strong>${esc(p.name)}</strong> <span class="badge">覆盖</span><div class="muted mono">${esc(p.path)}</div></td>
+        <td data-label="覆盖策略">
+          <select class="select settings-policy-select" data-policy-select="${esc(p.id)}" aria-label="${esc(p.name)} 下载策略">
             <option value="deny" ${p.downloadPolicy === 'deny' ? 'selected' : ''}>禁止</option>
             <option value="allow" ${p.downloadPolicy === 'allow' ? 'selected' : ''}>允许</option>
             <option value="inherit">跟随全局</option>
           </select>
         </td>
-        <td class="muted">当前生效：${effectiveDownloadPolicy(p, globalDefault) === 'deny' ? '禁止' : '允许'}</td>
+        <td class="muted" data-label="当前生效">当前生效：${effectiveDownloadPolicy(p, globalDefault) === 'deny' ? '禁止' : '允许'}</td>
       </tr>`
     )
     .join('')
   content().innerHTML = `
+    <div class="settings-page">
     <div class="page-head"><div><h1>平台设置</h1><p>下载策略：全局默认与项目覆盖。</p></div></div>
-    <div class="card pad" style="max-width:640px">
+    <div class="card pad settings-card" style="max-width:640px">
       <h2 style="font-size:14px;margin:0 0 4px">全局下载策略</h2>
       <p class="muted" style="margin:0 0 16px">项目级策略可覆盖全局；托管项目默认禁止下载。</p>
-      <label style="display:flex;gap:10px;align-items:flex-start;margin-bottom:12px">
+      <label class="settings-choice">
         <input type="radio" name="dl" value="deny" ${policy.downloadDefault === 'deny' ? 'checked' : ''}>
         <span><strong>禁止下载</strong><br><span class="muted">隐藏导出入口；主机拒绝专用下载 RPC；阻断浏览器下载。</span></span>
       </label>
-      <label style="display:flex;gap:10px;align-items:flex-start;margin-bottom:16px">
+      <label class="settings-choice">
         <input type="radio" name="dl" value="allow" ${policy.downloadDefault === 'allow' ? 'checked' : ''}>
         <span><strong>允许下载</strong><br><span class="muted">保留导出通道，仍记录审计。</span></span>
       </label>
       <div class="note warn">内容级 DLP（终端复制、文件内容读取）一期不做阻断，仅限速与审计。</div>
-      <div class="note warn" id="policyConflict" hidden></div>
-      <button class="btn primary" id="savePolicy">保存</button>
-      <span class="muted" style="margin-left:8px">当前版本 v${policy.version}</span>
+      <div class="note warn settings-conflict" id="policyConflict" hidden></div>
+      <div class="settings-save">
+        <button class="btn primary" id="savePolicy">保存</button>
+        <span class="muted settings-version" id="policyVersion">当前版本 v${policy.version}</span>
+      </div>
     </div>
-    <div class="card pad" style="max-width:640px;margin-top:16px">
+    <div class="card pad settings-card" style="max-width:640px;margin-top:16px">
       <h2 style="font-size:14px;margin:0 0 4px">项目级覆盖</h2>
       <p class="muted" style="margin:0 0 12px">独立覆盖钉住该项目的下载策略，全局默认翻转时不随之变化；选「跟随全局」即恢复。</p>
       <p class="muted" style="margin:0 0 12px" id="policyScope">跟随全局默认 <strong>${following}</strong> 个项目 · 独立覆盖 <strong>${overrides.length}</strong> 个项目</p>
       ${
         rows
-          ? `<div class="table-wrap"><table>
+          ? `<div class="table-wrap settings-policy-table"><table>
               <thead><tr><th>项目</th><th>覆盖策略</th><th>当前生效</th></tr></thead>
               <tbody>${rows}</tbody>
             </table></div>`
           : '<p class="muted">暂无项目覆盖，全部项目跟随全局默认。</p>'
       }
+    </div>
     </div>`
   const saveGlobalPolicy = async (value, expectedVersion) => {
     let saved
