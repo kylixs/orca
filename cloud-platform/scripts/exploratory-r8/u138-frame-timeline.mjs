@@ -60,13 +60,19 @@ const SETTLE_MS = Math.max(1000, Number(process.env.U138_SETTLE_MS ?? 5000))
 // A reload/reopen shell is not sampleable the instant `.app-layout` exists: wait for
 // a settle floor AND a stable tab count before the initial read (P2-1).
 const RELOAD_STABLE_MS = Math.max(2000, Number(process.env.U138_RELOAD_STABLE_MS ?? 2500))
-// Quick open/close persist the new selection asynchronously (~70 ms): the projection can
-// already point at the new tab while profile-state still holds the old one. Only that
-// persisted lag is gated; a projection mismatch is sampled immediately. 0 disables the gate.
+// Quick open/close persist the new selection asynchronously: the device projection can
+// lag the tap ack and profile-state can lag the projection. A bounded projection
+// catch-up runs first, then the persisted-only gate. 0 disables the persisted wait.
 const OPENED_STABLE_MS_RAW = Number(process.env.U138_OPENED_STABLE_MS ?? 3000)
 const OPENED_STABLE_MS = Number.isFinite(OPENED_STABLE_MS_RAW)
   ? Math.max(0, OPENED_STABLE_MS_RAW)
   : 3000
+// Bounded wait for the device projection to reach the expected tab after the tap ack.
+// Covers normal apply latency; a longer lag is sampled immediately so it stays visible.
+const OPENED_PROJECTION_MS_RAW = Number(process.env.U138_OPENED_PROJECTION_MS ?? 1000)
+const OPENED_PROJECTION_MS = Number.isFinite(OPENED_PROJECTION_MS_RAW)
+  ? Math.max(0, OPENED_PROJECTION_MS_RAW)
+  : 1000
 // Run-start baseline normalization may only wait this long for the host
 // projection/persisted split to close after the setup activate.
 const BASELINE_ALIGN_MS_RAW = Number(process.env.U138_BASELINE_ALIGN_MS ?? 5000)
@@ -1494,6 +1500,7 @@ const out = {
     settleMs: SETTLE_MS,
     reloadStableMs: RELOAD_STABLE_MS,
     openedStableMs: OPENED_STABLE_MS,
+    openedProjectionMs: OPENED_PROJECTION_MS,
     quickClose: 'ui'
   },
   worktreeId: null,
@@ -2129,13 +2136,18 @@ try {
 
   /**
    * Quick open/close stability gate (measurement evidence only).
-   * Waits for the asynchronous host persisted write ONLY when the device projection already
-   * points at the expected tab; a projection mismatch is sampled immediately so real
-   * projection lag stays visible. `0` disables the gate entirely (no pre-read pair).
+   * First waits (bounded) for the device projection to reach the expected tab, then waits
+   * for the asynchronous host persisted write only when the projection is there. A
+   * projection that does not catch up within its bound is sampled immediately so real
+   * projection lag stays visible. `0` disables the corresponding wait.
    * A timeout returns ok:false; the point keeps the unchanged dual-read UNSTABLE/INVALID
    * semantics — surfaces are never forced equal.
    */
-  async function waitQuickSurfacesAligned(expectedTabId = null, timeoutMs = OPENED_STABLE_MS) {
+  async function waitQuickSurfacesAligned(
+    expectedTabId = null,
+    timeoutMs = OPENED_STABLE_MS,
+    projectionTimeoutMs = OPENED_PROJECTION_MS
+  ) {
     const expected = comparable(expectedTabId)
     if (!(timeoutMs > 0)) {
       return {
@@ -2148,6 +2160,8 @@ try {
         projectionActive: null,
         hostPersistentActive: null,
         waitedFor: 'none',
+        projectionCaughtUp: false,
+        projectionWaitMs: 0,
         timedOut: false,
         degraded: false,
         degradedReason: null
@@ -2178,10 +2192,25 @@ try {
     let surfaces = await readSurfaces()
     const initialProjectionActive = surfaces.projectionActive
     const initialPersistedActive = surfaces.hostPersistentActive
-    // Persisted-only: projection must already be at the expected tab. With no expected
-    // anchor (closed degraded) or a mismatch, sample now instead of waiting.
-    const waitedFor =
-      expected !== null && comparable(initialProjectionActive) === expected ? 'persisted-only' : 'none'
+    // The tap ack returns before the device projection applies. Catch it up within a
+    // bound, then hand over to the persisted-only gate; a longer lag is sampled now.
+    const projectionStartedAt = Date.now()
+    const projectionReached = () =>
+      surfaces.hostOk && expected !== null && comparable(surfaces.projectionActive) === expected
+    let projectionCaughtUp = projectionReached()
+    while (
+      !projectionCaughtUp &&
+      expected !== null &&
+      Date.now() - projectionStartedAt < projectionTimeoutMs
+    ) {
+      await sleep(100)
+      surfaces = await readSurfaces()
+      projectionCaughtUp = projectionReached()
+    }
+    const projectionWaitMs = Date.now() - projectionStartedAt
+    // Persisted-only: projection must be at the expected tab. With no expected anchor
+    // (closed degraded) or an uncaught-up projection, sample now instead of waiting.
+    const waitedFor = projectionCaughtUp ? 'persisted-only' : 'none'
     let aligned = alignedIn(surfaces)
     while (!aligned && waitedFor === 'persisted-only' && Date.now() - startedAt < timeoutMs) {
       await sleep(100)
@@ -2202,6 +2231,8 @@ try {
       projectionActive: surfaces.projectionActive,
       hostPersistentActive: surfaces.hostPersistentActive,
       waitedFor,
+      projectionCaughtUp,
+      projectionWaitMs,
       // A gate that gave up, including the no-wait projection-lag case.
       timedOut: !aligned,
       degraded: false,
@@ -2275,6 +2306,8 @@ try {
       const detail = [
         `[u138]   quick-gate ${label} after ${gate.elapsedMs}ms`,
         `waitedFor=${gate.waitedFor}`,
+        `projectionCaughtUp=${String(gate.projectionCaughtUp)}`,
+        `projectionWaitMs=${gate.projectionWaitMs}`,
         `projection=${JSON.stringify(gate.projectionActive)}`,
         `hostPersist=${JSON.stringify(gate.hostPersistentActive)}`,
         `initialProjection=${JSON.stringify(gate.initialProjectionActive)}`,
