@@ -92,6 +92,7 @@ const ADMIN_ROUTES = new Set(['hosts', 'relays', 'users', 'audit', 'settings'])
 const TITLES = {
   workbench: '工作台',
   projects: '我的项目',
+  workspace: '项目工作区',
   hosts: '平台设置 / 主机',
   relays: '平台设置 / 中继',
   users: '用户管理',
@@ -156,6 +157,13 @@ function navigate(name, params = {}, query = undefined) {
   applyRoute(parseHash(hash), { force: true })
 }
 
+/** 工作区覆盖层路由：`#/workspace/<projectId>`（T4 顶层路径）。 */
+function workspaceRouteOf(route) {
+  if (route?.name !== 'workspace') return null
+  const id = route.params?.id
+  return typeof id === 'string' && id !== '' ? id : null
+}
+
 /** 详情深链：`projects|hosts|users/<id>`，`?tab=perms` 选权限页签（D3）。 */
 function detailRouteOf(route) {
   if (!['projects', 'hosts', 'users'].includes(route?.name)) return null
@@ -172,6 +180,8 @@ function detailRouteOf(route) {
 let activeDetail = null
 /** 详情层通过 history.back() 关闭后，目标列表仍在层下方，hashchange 不再重绘。 */
 let pendingBackRestore = false
+/** 关闭覆盖层期间的幂等闸：iframe 回报与 300ms 兜底只能关一次（T4）。 */
+let workspaceClosing = false
 
 /** 路由切换时静默移除旧详情层，不操作历史（§3.1 页面导航）。 */
 function removeActiveDetail() {
@@ -245,6 +255,13 @@ function applyRoute(route, { force = false } = {}) {
   state.routeQuery = route.query
   $('#crumbs').textContent = TITLES[route.name] ?? route.name
 
+  // 覆盖层是路由状态：离开工作区路由或换项目时先静默移除，历史由浏览器自己走。
+  const workspaceId = workspaceRouteOf(route)
+  if (workspaceClosing && !workspaceId) workspaceClosing = false
+  if (workspaceOverlay && workspaceId !== workspaceOverlay.projectId) {
+    removeWorkspaceOverlay()
+  }
+
   if (route.name === 'not-found') {
     renderNotFound()
     return
@@ -257,6 +274,13 @@ function applyRoute(route, { force = false } = {}) {
   const signature = routeSignature(route)
   if (!force && signature === appliedRoute) return
   appliedRoute = signature
+  // 工作区路由：列表数据即存在性判据，确认可见后才 mint handoff（D4/T5）。
+  if (workspaceId) {
+    if (workspaceOverlay?.projectId === workspaceId) return
+    pendingBackRestore = false
+    void loadWorkspaceRoute(workspaceId)
+    return
+  }
   // 关层后的 back 目标列表仍在旧的层下方：不重绘，保留弹框 opener 的焦点（U46 §3.5）。
   if (pendingBackRestore) {
     pendingBackRestore = false
@@ -351,6 +375,57 @@ function renderDetailNotFound(parent) {
       </div>
     </div>`
   $('#backToParent').onclick = () => navigate(parent)
+}
+
+/** 工作区路由：项目在可见列表内才 mint handoff 并挂覆盖层（D4/T5）。 */
+async function loadWorkspaceRoute(projectId) {
+  let projects = state.projects
+  if (!projects.some((project) => project.id === projectId)) {
+    try {
+      projects = await loadProjects()
+    } catch (err) {
+      renderWorkspaceLoadFailure(projectId, err)
+      return
+    }
+  }
+  // 加载期间路由可能已改变（后退或换项目）。
+  if (workspaceRouteOf(parseHash(location.hash)) !== projectId) return
+  const project = projects.find((candidate) => candidate.id === projectId)
+  if (!project) {
+    renderWorkspaceNotFound()
+    return
+  }
+  await openProjectWorkspace(projectId)
+}
+
+/** 不泄露存在性：列表只含可见项目，查不到即 404（T5）。 */
+function renderWorkspaceNotFound() {
+  $('#crumbs').textContent = TITLES['not-found']
+  renderDetailNotFound('projects')
+}
+
+function renderWorkspaceLoadFailure(projectId, err) {
+  content().innerHTML = `
+    <div class="forbidden">
+      <div class="box">
+        <h1>加载失败</h1>
+        <p class="muted">${esc(err.message ?? String(err))}</p>
+        <button class="btn primary" id="retryWorkspace">重试</button>
+      </div>
+    </div>`
+  $('#retryWorkspace').onclick = () => void loadWorkspaceRoute(projectId)
+}
+
+/** 列表/授权后打开：先 push URL，再由路由挂载覆盖层（T4）。 */
+function enterWorkspace(projectId) {
+  const hash = buildHash({ name: 'workspace', params: { id: projectId } })
+  workspaceClosing = false
+  if (location.hash === hash) {
+    window.history.replaceState({ workspace: true }, '', hash)
+  } else {
+    window.history.pushState({ workspace: true }, '', hash)
+  }
+  applyRoute(parseHash(hash), { force: true })
 }
 
 /** 列表加载完成后按详情路由打开既有弹框/抽屉（U106 R3）。 */
@@ -594,7 +669,7 @@ async function selfGrantAndOpen(projectId) {
     return
   }
   toast('已授权，正在打开…')
-  await openProjectWorkspace(projectId)
+  enterWorkspace(projectId)
 }
 
 function confirmSelfGrant(projectId) {
@@ -638,7 +713,8 @@ function wireProjectActions() {
   // §4.10: 「打开」 goes into the same-page overlay; 「Orca Web」 keeps the W13b
   // new-tab handoff byte for byte.
   for (const btn of document.querySelectorAll('[data-open]')) {
-    btn.onclick = () => void openProjectWorkspace(btn.dataset.open ?? '')
+    // 打开是 URL 状态：push #/workspace/<id>，浏览器后退即关闭覆盖层（U106 D4）。
+    btn.onclick = () => enterWorkspace(btn.dataset.open ?? '')
   }
   for (const btn of document.querySelectorAll('[data-orca-web]')) {
     btn.onclick = () => void openOrcaWebInNewTab(btn.dataset.orcaWeb ?? '')
@@ -702,6 +778,8 @@ async function openProjectWorkspace(projectId, { retries = 0 } = {}) {
     // An old platform ignores `surface` and still answers web-index.html.
     window.open(url, '_blank', 'noopener')
     toast('当前平台版本不支持内嵌工作区，已在新标签打开')
+    // 没有覆盖层能恢复，URL 就不该继续声称 `#/workspace/<id>`（T4）。
+    if (workspaceRouteOf(parseHash(location.hash)) === projectId) finishWorkspaceClose()
     return
   }
   mountWorkspaceOverlay(projectId, project, url, retries)
@@ -793,6 +871,7 @@ function mountWorkspaceFailure(projectId, project, reason) {
   // F-08: registered too, so top-bar close, logout, and a later open release it.
   workspaceOverlay = {
     root,
+    projectId,
     iframe: null,
     origin: null,
     dirty: 0,
@@ -832,6 +911,7 @@ function mountWorkspaceReadyFailure(projectId, project, retries) {
   // Registered so top-bar close, logout, and a later open all release it.
   workspaceOverlay = {
     root,
+    projectId,
     iframe: null,
     origin: null,
     dirty: 0,
@@ -857,6 +937,7 @@ function mountWorkspaceOverlay(projectId, project, url, retries = 0) {
 
   const overlay = {
     root,
+    projectId,
     iframe,
     origin: new URL(url).origin,
     dirty: 0,
@@ -890,7 +971,7 @@ function mountWorkspaceOverlay(projectId, project, url, retries = 0) {
       dirty.hidden = overlay.dirty === 0
       dirty.textContent = `${overlay.dirty} 个未保存文件`
     } else if (data.type === 'closed' || data.type === 'suspended' || data.type === 'ended') {
-      removeWorkspaceOverlay()
+      finishWorkspaceClose()
     }
   }
   window.addEventListener('message', overlay.onMessage)
@@ -912,14 +993,14 @@ function requestWorkspaceClose() {
     return
   }
   if (!overlay.iframe) {
-    removeWorkspaceOverlay()
+    finishWorkspaceClose()
     return
   }
   // §4.1: 收起 is a suspend — the iframe drops its stream/socket, host PTYs stay.
   // An old iframe has no `suspend` feature; its `close` means the same now.
   const type = overlay.features.has('suspend') ? 'suspend' : 'close'
   overlay.iframe.contentWindow?.postMessage({ type }, overlay.origin)
-  overlay.closeTimer = setTimeout(removeWorkspaceOverlay, WORKSPACE_CLOSE_TIMEOUT_MS)
+  overlay.closeTimer = setTimeout(finishWorkspaceClose, WORKSPACE_CLOSE_TIMEOUT_MS)
 }
 
 /** §4.1: explicit end is the only action that retires PTYs and rows. */
@@ -930,9 +1011,28 @@ function requestWorkspaceEnd() {
   clearTimeout(overlay.closeTimer)
   overlay.iframe.contentWindow?.postMessage({ type: 'end' }, overlay.origin)
   overlay.closeTimer = setTimeout(() => {
-    removeWorkspaceOverlay()
+    finishWorkspaceClose()
     toast('结束工作区超时，已强制关闭')
   }, WORKSPACE_END_TIMEOUT_MS)
+}
+
+/**
+ * 关闭覆盖层并回退 URL（T4）：push 打开的后退一步回来源页；深链直达
+ * 则 replace 为 `#/projects`（无前项可退）。iframe 回报与兜底只生效一次。
+ */
+function finishWorkspaceClose() {
+  if (workspaceClosing) return
+  workspaceClosing = true
+  const pushed = window.history.state?.workspace === true
+  removeWorkspaceOverlay()
+  if (pushed) {
+    pendingBackRestore = true
+    window.history.back()
+    return
+  }
+  const hash = buildHash({ name: 'projects' })
+  window.history.replaceState(null, '', hash)
+  applyRoute(parseHash(hash), { force: true })
 }
 
 function removeWorkspaceOverlay() {
