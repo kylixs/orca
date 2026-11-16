@@ -155,11 +155,10 @@ test('M116-QA-011 加载失败显示错误态并可重试', async () => {
 }, 120_000)
 
 /**
- * F8 E1/E3 (AC-M5-09/11): the relay page has no refresh-failure feedback and no
- * auto-poll — a characterization pin so a future fix or a surprise timer both
- * show up here, not in a manual retest.
+ * F8 E1/E3 (AC-M5-09/11): a failed refresh keeps the last table and shows an
+ * inline warning with a retry; the page still never auto-polls.
  */
-test('M116-QA-013 中继刷新失败保留旧表且不自动轮询', async () => {
+test('M116-QA-013 中继刷新失败提示并可重试，旧表保留且不自动轮询', async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
@@ -184,14 +183,45 @@ test('M116-QA-013 中继刷新失败保留旧表且不自动轮询', async () =>
     rowsBefore,
     'a failed refresh keeps the previous table'
   )
-  assert.doesNotMatch(page.text('#content'), /加载失败/, 'the table is not replaced by an error page')
+  assert.doesNotMatch(
+    page.text('#content'),
+    /加载失败/,
+    'the table is not replaced by an error page'
+  )
+  const warning = page.window.document.querySelector<HTMLElement>('#relayRefreshWarning')
+  assert.ok(warning, 'a failed refresh must show an inline warning')
+  assert.match(warning!.textContent ?? '', /刷新失败/)
+  assert.match(warning!.textContent ?? '', /模拟平台故障/, 'the warning must say what failed')
+  const retry = page.window.document.querySelector<HTMLButtonElement>('#retryRelaysBtn')
+  assert.ok(retry, 'the warning must offer a retry')
   assert.equal(
     page.window.document.querySelector('.toast'),
     null,
-    'no feedback is shown — the characterized gap (AC-M5-09)'
+    'the failure is persistent inline feedback, not a transient toast'
   )
+
+  // No auto-poll while the warning is up either.
+  const failedCalls = listCalls()
+  await new Promise((resolve) => setTimeout(resolve, 1200))
+  assert.equal(listCalls(), failedCalls, 'no timer-driven retry')
+
   page.clearFails()
-  record('F8-E1/E3', '刷新失败旧表保留、无 toast/横幅；1.2s 内无自动轮询（characterization）')
+  retry!.click()
+  await page.settle()
+  assert.equal(
+    page.window.document.querySelector('#relayRefreshWarning'),
+    null,
+    'a successful retry clears the warning'
+  )
+  assert.equal(
+    page.window.document.querySelectorAll('#content tbody tr').length,
+    rowsBefore,
+    'the retried table still renders the relay rows'
+  )
+  record(
+    'F8-E1/E3',
+    '刷新失败 → .note.warn + 重试、旧行保留；1.2s 内无自动轮询；恢复后重试清除提示'
+  )
 }, 120_000)
 
 test('M116-QA-005 主机状态按心跳推导：静默主机不再显示在线', async () => {

@@ -1833,8 +1833,19 @@ async function showHostGrants(host) {
   })
 }
 
-async function renderRelays() {
-  const body = await api('/v1/relays')
+/**
+ * F8 E1: a failed refresh keeps the last table and shows an inline warning with
+ * retry; entry-time failure stays a full error page (keepTable=false).
+ */
+async function renderRelays({ keepTable = false } = {}) {
+  let body
+  try {
+    body = await api('/v1/relays')
+  } catch (err) {
+    if (!keepTable) throw err
+    showRelayRefreshFailure(err)
+    return
+  }
   content().innerHTML = `
     <div class="page-head">
       <div><h1>中继</h1><p>已注册中继节点、客户端拨号地址与在线状态。</p></div>
@@ -1853,7 +1864,25 @@ async function renderRelays() {
       </table>
     </div>`
   $('#addRelayBtn').onclick = addRelayDialog
-  $('#refreshRelaysBtn').onclick = () => renderRelays()
+  $('#refreshRelaysBtn').onclick = () => void renderRelays({ keepTable: true })
+}
+
+/** Persistent inline failure (STYLEGUIDE: read/retry stays on screen, not a toast). */
+function showRelayRefreshFailure(err) {
+  let banner = $('#relayRefreshWarning')
+  if (!banner) {
+    banner = document.createElement('div')
+    banner.id = 'relayRefreshWarning'
+    banner.className = 'note warn'
+    $('#content .page-head')?.after(banner)
+  }
+  banner.textContent = `刷新失败：${err.message ?? String(err)}。以下为最近一次加载的数据。`
+  const retry = document.createElement('button')
+  retry.id = 'retryRelaysBtn'
+  retry.className = 'btn'
+  retry.textContent = '重试'
+  retry.onclick = () => void renderRelays({ keepTable: true })
+  banner.append(' ', retry)
 }
 
 /** FR-4.11: the internal token is injected by the script endpoint, never the URL. */
@@ -2331,8 +2360,9 @@ function permCardsHtml(cards, rows, options) {
         <div class="perm-card-head"><strong>${esc(card.label)}</strong>${showBits ? `<span class="badge">${esc(card.bits.join(' + '))}</span>` : ''}<span class="muted">${matching.length} 个主体</span></div>
         <p class="muted perm-card-desc">${esc(card.desc)}</p>
         <div class="perm-chips" data-chips>${
-          matching.map((row) => permChipHtml(row, card, kind, { showLevel, adjustable })).join('') ||
-          '<span class="muted">暂无主体</span>'
+          matching
+            .map((row) => permChipHtml(row, card, kind, { showLevel, adjustable }))
+            .join('') || '<span class="muted">暂无主体</span>'
         }</div>
         <div class="toolbar perm-add">
           <input class="input" style="min-width:200px" data-perm-subject="${esc(card.key)}" list="${esc(options.datalistPrefix)}${userFirst ? 'User' : 'Group'}Options" placeholder="${userFirst ? '用户名，如 zhangsan' : '组名，如 team-payment'}">
@@ -2355,7 +2385,8 @@ function permCardsHtml(cards, rows, options) {
           .join('')}</div>
       </div>`
     : ''
-  const derivedCard = kind === 'project' ? projectDerivedCardHtml(options.hostRows, options.hostId) : ''
+  const derivedCard =
+    kind === 'project' ? projectDerivedCardHtml(options.hostRows, options.hostId) : ''
   return `
       ${options.header ? `<div class="note">${esc(options.header)}</div>` : ''}
       <div data-perm-cards>${cardsHtml}${leftoverCard}${derivedCard}</div>
@@ -2432,9 +2463,7 @@ function wirePermCards(root, options) {
         }
       }
       const next = (
-        roleOf
-          ? [...card.bits]
-          : [...new Set([...(existing?.permissions ?? []), ...card.bits])]
+        roleOf ? [...card.bits] : [...new Set([...(existing?.permissions ?? []), ...card.bits])]
       ).sort()
       const save = async () => {
         try {

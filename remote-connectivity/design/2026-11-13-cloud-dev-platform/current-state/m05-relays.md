@@ -27,17 +27,18 @@
 
 ## 3. 操作清单
 
-| # | 触发 | 结果 | 弹窗/确认 | 失败态 |
-| --- | --- | --- | --- | --- |
-| 3.1 | 打开 `#/relays` | `GET /v1/relays` → 表头 + 行；空列表显示「尚未注册中继」 | 无 | `loadContent` 兜底：「加载失败」+ 错误文本 + 「重试」按钮 |
-| 3.2 | 点击「刷新」 | 重新 `GET /v1/relays` 并整体重绘 tbody | 无 | **无可见错误**：`renderRelays()` 直接 await，异常不进入 `loadContent`；旧表保留，无 toast/横幅（见 §5 未登记观察） |
-| 3.3 | 点击「添加中继」 | 打开 `dialog('添加中继')`：说明「在中继机执行以下命令完成注册上线」+ 一行命令 `<pre id="relayInstallCmd">` + 灰字「仅管理员可见。RELAY_PUBLIC_HOST 缺省时平台记录注册来源 IP。」 | 唯一动作「复制命令」（复制 + toast「已复制」，弹框保持）；「关闭」/Esc/点遮罩关闭 | 无网络请求，弹框必然打开 |
-| 3.4 | 执行向导命令（在中继机） | 命令为 `bash <(curl -fsSL <platform>/install/relay.sh)`；脚本端点内嵌 `ORCA_CLOUD_API_URL` 与 `ORCA_CLOUD_INTERNAL_TOKEN`，内部令牌不出现在 URL 中（e2e 断言） | 无 | 脚本端点 admin-gated（401/403）；命令本身不带凭据，见 §5 观察 2 |
-| 3.5 | 中继静默超过存活窗口 | `online=false` → 行显示「离线」；页面不自动轮询，需「刷新」或重进页面才看到 | 无 | 无 |
-| 3.6 | 中继离线的影响面（在 M4 主机页看） | 宿主表「中继」列显示 `relayTarget`，并附 `badge warn`「中继离线」；若宿主有直连地址再加「直连不受阻」；主机详情抽屉「中继绑定」行同样标注 | 无 | 无 |
-| 3.7 | 客户端连接中继 | `/connect` 只下发存活中继端点（`wss://<host>:<port>/`，SNI=`<routeKey>.relay.local`）；中继死亡后客户端在 5 次内切换存活节点（AC-23） | 无（客户端行为） | 无存活中继时不下发端点；未知 SNI 黑洞 |
+| #   | 触发                               | 结果                                                                                                                                                                             | 弹窗/确认                                                                         | 失败态                                                                                                             |
+| --- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| 3.1 | 打开 `#/relays`                    | `GET /v1/relays` → 表头 + 行；空列表显示「尚未注册中继」                                                                                                                         | 无                                                                                | `loadContent` 兜底：「加载失败」+ 错误文本 + 「重试」按钮                                                          |
+| 3.2 | 点击「刷新」                       | 重新 `GET /v1/relays` 并整体重绘 tbody                                                                                                                                           | 无                                                                                | 失败提示：`.note.warn` 横幅显示「刷新失败：<原因>」+「重试」；旧表保留；重试成功后提示清除；不自动轮询（U136②） |
+| 3.3 | 点击「添加中继」                   | 打开 `dialog('添加中继')`：说明「在中继机执行以下命令完成注册上线」+ 一行命令 `<pre id="relayInstallCmd">` + 灰字「仅管理员可见。RELAY_PUBLIC_HOST 缺省时平台记录注册来源 IP。」 | 唯一动作「复制命令」（复制 + toast「已复制」，弹框保持）；「关闭」/Esc/点遮罩关闭 | 无网络请求，弹框必然打开                                                                                           |
+| 3.4 | 执行向导命令（在中继机）           | 命令为 `bash <(curl -fsSL <platform>/install/relay.sh)`；脚本端点内嵌 `ORCA_CLOUD_API_URL` 与 `ORCA_CLOUD_INTERNAL_TOKEN`，内部令牌不出现在 URL 中（e2e 断言）                   | 无                                                                                | 脚本端点 admin-gated（401/403）；命令本身不带凭据，见 §5 观察 2                                                    |
+| 3.5 | 中继静默超过存活窗口               | `online=false` → 行显示「离线」；页面不自动轮询，需「刷新」或重进页面才看到                                                                                                      | 无                                                                                | 无                                                                                                                 |
+| 3.6 | 中继离线的影响面（在 M4 主机页看） | 宿主表「中继」列显示 `relayTarget`，并附 `badge warn`「中继离线」；若宿主有直连地址再加「直连不受阻」；主机详情抽屉「中继绑定」行同样标注                                        | 无                                                                                | 无                                                                                                                 |
+| 3.7 | 客户端连接中继                     | `/connect` 只下发存活中继端点（`wss://<host>:<port>/`，SNI=`<routeKey>.relay.local`）；中继死亡后客户端在 5 次内切换存活节点（AC-23）                                            | 无（客户端行为）                                                                  | 无存活中继时不下发端点；未知 SNI 黑洞                                                                              |
 
 补充语义：
+
 - 在线判定：`now - lastSeenAt <= relayAliveMs`（默认 30s，`RELAY_ALIVE_DEFAULT_MS`）；中继每 2s 心跳注册。
 - 客户端地址优先级：中继宣告的 `host`（`RELAY_PUBLIC_HOST`）> 注册请求来源 IP。
 - 「状态」只有在线/离线两态，没有维护中/已下线等中继状态。
@@ -57,6 +58,7 @@
 ## 5. 已知缺陷与观察
 
 已登记且已修（台账 `remote-connectivity/design/2026-11-13-cloud-dev-platform/defect-ledger.md`）：
+
 - **U38**（🟢）：安装脚本 env 命名与 relay 进程读取不一致（`API_URL` vs `ORCA_CLOUD_API_URL`），已双读兼容并消除静默失败。
 - **U39**（🟢）：中继路由表为空（注册拍缺 relayTarget/directAddrs 时不写表项），已修。
 - **U43**（🟢）：`mtlsFetch` https 分支丢请求体导致 relay announce 400，已修。
@@ -65,13 +67,15 @@
 - 非缺陷：中继页无详情页/无删除/无分页，当前设计与需求未承诺，不作为缺陷。
 
 未登记观察（建议后续登记 U 号）：
-1. 「刷新」失败无任何可见反馈：`#refreshRelaysBtn` 直接调用 `renderRelays()`，不经过 `loadContent` 的错误兜底，API 失败时页面保持旧数据且无提示。
+
+1. 「刷新」失败原有可见反馈缺口：`#refreshRelaysBtn` 直接调用 `renderRelays()`，不经过 `loadContent` 的错误兜底。U136② 已修复：失败时保留旧数据并显示 `.note.warn` 横幅 +「重试」，成功后清除。
 2. 向导命令的可执行性依赖部署侧鉴权：`/install/relay.sh` 要求 admin Bearer，而 UI 命令（e2e 断言）不含 token；在干净 shell 中直接执行会 401。e2e 只验证「管理员带 Bearer 拉脚本」和「命令字符串等于端点 URL」，未端到端验证粘贴执行。是否由反代/部署层补鉴权待 M12 明确。
 3. 页面无自动刷新：中继掉线后状态可能长期停留在「在线」，直到人工刷新。
 
 ## 6. 测试覆盖
 
 已覆盖（绝对路径）：
+
 - `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/web-admin-gating.e2e.test.ts`：M114b 管理员中继页导航可见、渲染 `relay-web`/`relay.example.test:18443`/「在线」；开发者直达 `#/relays` 渲染无权访问且页面不出现「尚未注册中继」；`/v1/relays` 403 + `relay_list` denied 审计。
 - `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/relay-endpoint-address.e2e.test.ts`：列表来源地址注册、`RELAY_PUBLIC_HOST` 优先、`/connect` 端点与 SNI、开发者 403 + denied 审计。
 - `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/install-wizard.e2e.test.ts`：relay.sh 内嵌平台地址/内部令牌、开发者 403 + `install_script` 审计（无令牌明文）、Web 向导命令与端点逐字一致且 URL 无 token。
@@ -83,9 +87,10 @@
 - 证据：`/Users/gongdewei/work/projects/orca/cloud-platform/evidence/m114-relay-page/`、`.../u79-relay-binding/`、`.../m83-relay-failover/`、`.../m86-relay-data-path/`。
 
 未覆盖：
-- 「刷新」失败态（观察 1）无测试。
+
+- 「刷新」失败态（观察 1）由 T06 QA-013 覆盖（U136②：提示+重试、旧表保留、成功清除）。
 - 中继离线行的 UI（dot/文案）无直接断言；u79 只覆盖宿主侧离线标注。
-- 无自动刷新是有意还是遗漏，无 characterization。
+- 无自动刷新为既定语义；T06 QA-013 断言 1.2s 内无轮询。
 - 向导命令从干净 shell 粘贴执行（观察 2）无端到端测试。
 
 ## 7. 基线提交
