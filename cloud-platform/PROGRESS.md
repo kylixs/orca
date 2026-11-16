@@ -3551,6 +3551,9 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **U129 剪贴板修复已提交**（`74e4daef976`：iframe `allow=clipboard-write`），平台 `--platform-only` 刷新后真机复测中（并行线①，期望 clipboardLength>0 / 无策略违例 / 审计 file_copy=success）。
 - **环境 6 红 + 既有 3 红分诊中**（并行线③）：TLS/node-pool、U95 guard、profile-state 超时、`App.cloud-workspace-entry`×2、`cloud-session-limits` M33-2，逐项定性后决定登记或环境噪声。
 - **收口门禁**：U130 九红清零 + U129 复测绿 + 双线金路径保持绿 → 出最终报告。
+- **U130 已闭环**（`a6c43b28994`）：①U86 实为真实布局溢出（actions span 9→6，3+3+6=12）②白名单加 `capabilities` 并补值断言 ③两夹具补 host `provision` 授权。精确重跑核验：**今日引入 9/9 转绿**（main 14/14、U86 2/2），今日引入红数=0。
+- **U132 已登记并派修**（测试基建四项，均非产品缺陷）：R-A 池守卫漏检间接 TLS+4 文件登记 node 池；R-B crash-recovery 等待不监听 exit（本机 Node 24.5 缺 `setAuthorizer`）；R-C App 入口 2 例断言陈旧；R-D `cloud-session-limits` 身份缺 `open`。分诊实验复证 node 池 13/13 绿。
+- **U131 已登记并派实现**：平台 dev store 快照持久化（env 门控默认关），修 `--platform-only` 丢注册态根因；落地后 full reseed 一次重建快照，再验持久性并收口 U129。
 
 ### 四通道并发执行（启动，2026-11-14）
 
