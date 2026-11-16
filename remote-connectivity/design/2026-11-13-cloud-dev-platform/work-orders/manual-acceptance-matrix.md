@@ -33,6 +33,8 @@
 | C3 | G25 陈旧路由可观测性 | **已实现（U146）**：确认时间/陈旧徽标 | 已闭环 |
 | C4 | U164 布局所有权（headless 同形状写入后不交还） | 同形状成员/顺序变更在 headless-authored worktree 上可能被丢弃并闪回（`moved:true` 后回滚） | 披露为 P2；v4 排期（layoutRevision） |
 | C5 | U163 组 id 未水合瞬态 | 本地 UUID 未水合时 move 抛错并 toast 失败（诚实失败） | 可接受；hydrate 后恢复正常 |
+| C6 | 桌面 Electron 真实拖拽抽验（U164/U169） | 云会话拖拽/重排已在 Orca Web 真机验证（宿主 DB 落盘+刷新保持）；桌面 renderer 已含 U169（07:26 补建）但未做真机拖拽 | 建议人工抽验一次桌面拖拽/组重排 |
+| C7 | 运行中宿主窗口内存快照 | 宿主已跑生产 main（07:01），但已打开窗口仍用旧 preload/renderer；新窗口/重启后才加载 07:26 renderer | 部署时执行一次宿主重启即可收敛（PTY 会重建） |
 
 ## D. 环境注意事项
 
