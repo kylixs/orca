@@ -32,7 +32,7 @@
 | --- | --- | --- | --- |
 | B-0 | 完整设计（复用 A 通道+autoRestoreFit 尺寸弹框+overlay suspend/end 语义+多用户 scope） | A 设计/V 诊断 | **设计在途** |
 | B-令1 | 纯投影模块+reducer 扩展 | A-令1（已落） | **✅ 完成** `1f91ac00efc`（投影/合并/幂等/活动兜底 11 例+44 绿） |
-| B-令2 | bootstrap hook（capability 门控+subscribe/list+退避/负缓存） | A-令2/4 | 排队 |
+| B-令2 | bootstrap hook（capability 门控+subscribe/list+退避/负缓存） | A-令2/4 | **✅ 完成** `d2847b50b7d`（hook+负缓存+闭包重试环修复；5 新例 42 绿） |
 | B-令3 | 终端 attach/create/pending/ended/重开 | A-令5/6 | 排队 |
 | B-令4 | 关闭/激活/新建双向 | A-令3 | 与 B-令6 串行合并 |
 | B-令5 | suspend/end 协议+面板卸载策略 | — | 可并行 |
