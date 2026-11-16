@@ -78,9 +78,12 @@ function renderActions() {
 }
 
 describe('useTerminalCreateActions creation gates', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
     mocks.runtimeEnvironmentId = ''
+    const { clearUserInitiatedTerminalCreateForTests } =
+      await import('@/runtime/web-session-user-initiated-create')
+    clearUserInitiatedTerminalCreateForTests()
     mocks.browserAvailability = { state: 'enabled', provider: 'local-client' }
     mocks.simulatorAvailability = { state: 'enabled', provider: 'local-client' }
     mocks.state = {
@@ -94,7 +97,7 @@ describe('useTerminalCreateActions creation gates', () => {
     }
   })
 
-  it('creates a client-owned terminal tab on a cloud-session environment', () => {
+  it('creates a client-owned terminal tab on a cloud-session environment', async () => {
     mocks.runtimeEnvironmentId = 'env-cloud'
     mocks.state.runtimeEnvironments = [
       {
@@ -114,6 +117,9 @@ describe('useTerminalCreateActions creation gates', () => {
     // Why: the cloud host refuses session.tabs.*; the pane spawns this tab with terminal.create.
     expect(mocks.createWebRuntimeSessionTerminal).not.toHaveBeenCalled()
     expect(mocks.createTab).toHaveBeenCalledWith(WORKTREE_ID, undefined, undefined)
+    const { peekUserInitiatedTerminalCreateForWorktree } =
+      await import('@/runtime/web-session-user-initiated-create')
+    expect(peekUserInitiatedTerminalCreateForWorktree(WORKTREE_ID)).toBe(true)
   })
 
   it('still delegates terminal creation to a paired native runtime host', () => {

@@ -107,7 +107,7 @@ export function runQuickCommandInNewTab({
     quickCommandLabel: command.label
   })
   // Why: a quick-command tab in a cloud repo worktree is client-owned; the click must persist (U155).
-  markUserInitiatedTerminalCreate(tab.id)
+  markUserInitiatedTerminalCreate(tab.id, worktreeId)
 
   store.queueTabStartupCommand(tab.id, {
     command: flattenTerminalQuickCommand(command).command

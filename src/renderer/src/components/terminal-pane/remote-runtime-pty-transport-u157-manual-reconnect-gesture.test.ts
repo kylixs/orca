@@ -267,6 +267,7 @@ describe('U157: manual reconnect re-arms the gesture; automatic replays stay pas
     expect(tapActivations()).toHaveLength(0)
 
     vi.useRealTimers()
+    let resolveReconnectCreate: (() => void) | undefined
     runtimeCall.mockImplementation(async (request: { method: string }) => {
       if (request.method === 'status.get') {
         return {
@@ -275,12 +276,24 @@ describe('U157: manual reconnect re-arms the gesture; automatic replays stay pas
         }
       }
       if (request.method === 'terminal.create') {
-        return createResult(createdTerminal())
+        return new Promise((resolve) => {
+          resolveReconnectCreate = () => resolve(createResult(createdTerminal()))
+        })
       }
       return { ok: true, result: {} }
     })
 
+    const { peekUserInitiatedTerminalCreateForWorktree } =
+      await import('@/runtime/web-session-user-initiated-create')
     expect(transport.retryRecovery?.(), 'the Reconnect button must start a replay').toBe(true)
+    // Why: the re-armed gesture must carry the transport's worktree (U161), or the host-active
+    // follow would still steal the tab while this create is in flight.
+    expect(
+      peekUserInitiatedTerminalCreateForWorktree(WORKTREE),
+      'the re-armed gesture is scoped to its worktree'
+    ).toBe(true)
+    await vi.waitFor(() => expect(resolveReconnectCreate).toBeDefined(), { timeout: 1_000 })
+    resolveReconnectCreate?.()
     await vi.waitFor(() => expect(tapActivations()).toHaveLength(1), { timeout: 1_000 })
     expect(tapActivations()[0]).toMatchObject({
       tabId: CREATED_HOST_TAB_ID,

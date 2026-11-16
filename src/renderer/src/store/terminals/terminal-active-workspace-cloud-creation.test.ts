@@ -3,6 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PublicKnownRuntimeEnvironment } from '../../../../shared/runtime-environments'
 import type { AppState } from '../types'
 import { createTestStore, makeWorktree, seedStore, TEST_REPO } from '../slices/store-test-helpers'
+import {
+  clearUserInitiatedTerminalCreateForTests,
+  peekUserInitiatedTerminalCreateForWorktree
+} from '@/runtime/web-session-user-initiated-create'
 
 const createWebRuntimeSessionTerminalMock = vi.hoisted(() => vi.fn())
 
@@ -69,6 +73,7 @@ function seedCloudWorkspace(store: ReturnType<typeof createTestStore>, cloud: bo
 describe('openNewTerminalTabInActiveWorkspace on a web client', () => {
   beforeEach(() => {
     createWebRuntimeSessionTerminalMock.mockReset()
+    clearUserInitiatedTerminalCreateForTests()
   })
 
   afterEach(() => {
@@ -83,6 +88,8 @@ describe('openNewTerminalTabInActiveWorkspace on a web client', () => {
 
     expect(store.getState().tabsByWorktree['wt-1']).toHaveLength(1)
     expect(createWebRuntimeSessionTerminalMock).not.toHaveBeenCalled()
+    // Why: U161 scopes the click to the cloud worktree so a pre-create host frame cannot steal it.
+    expect(peekUserInitiatedTerminalCreateForWorktree('wt-1')).toBe(true)
   })
 
   it('still leaves creation to the host mirror on a paired (non-cloud) web client', async () => {

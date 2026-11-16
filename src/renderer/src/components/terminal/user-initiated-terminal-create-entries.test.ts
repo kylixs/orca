@@ -19,6 +19,10 @@ const mocks = vi.hoisted(() => ({
   recordFeatureInteraction: vi.fn(),
   getRuntimeEnvironmentIdForWorktree: vi.fn(),
   focusTerminalTabSurface: vi.fn(),
+  queueTabStartupCommand: vi.fn(),
+  setRecentQuickCommandForGroup: vi.fn(),
+  persistAgentLaunchTabOrder: vi.fn(),
+  launchAgentInNewTab: vi.fn(),
   isWebRuntimeSessionActive: vi.fn(() => false),
   createWebRuntimeSessionTerminal: vi.fn(),
   createWebRuntimeSessionBrowserTab: vi.fn()
@@ -41,6 +45,14 @@ vi.mock('@/lib/focus-terminal-tab-surface', () => ({
   focusTerminalTabSurface: mocks.focusTerminalTabSurface
 }))
 
+vi.mock('@/lib/launch-agent-tab-order', () => ({
+  persistAgentLaunchTabOrder: mocks.persistAgentLaunchTabOrder
+}))
+
+vi.mock('@/lib/launch-agent-in-new-tab', () => ({
+  launchAgentInNewTab: mocks.launchAgentInNewTab
+}))
+
 const WORKTREE_ID = 'repo-1::/worktrees/main'
 const GROUP_ID = 'group-1'
 
@@ -49,6 +61,8 @@ const storeState: Record<string, unknown> = {
   runtimeEnvironments: [],
   activeWorktreeId: WORKTREE_ID,
   tabsByWorktree: {},
+  unifiedTabsByWorktree: {},
+  activeGroupIdByWorktree: {},
   openFiles: [],
   tabBarOrderByWorktree: {},
   createTab: mocks.createTab,
@@ -61,7 +75,9 @@ const storeState: Record<string, unknown> = {
   openNewBrowserTabInActiveWorkspace: mocks.openNewBrowserTabInActiveWorkspace,
   openNewMarkdownInActiveWorkspace: mocks.openNewMarkdownInActiveWorkspace,
   openNewTerminalTabInActiveWorkspace: mocks.openNewTerminalTabInActiveWorkspace,
-  recordFeatureInteraction: mocks.recordFeatureInteraction
+  recordFeatureInteraction: mocks.recordFeatureInteraction,
+  queueTabStartupCommand: mocks.queueTabStartupCommand,
+  setRecentQuickCommandForGroup: mocks.setRecentQuickCommandForGroup
 }
 
 const useAppStore = Object.assign(
@@ -96,20 +112,22 @@ describe('U154: other user-gesture terminal creates mark the gesture', () => {
   it('marks a terminal created from the file tree', async () => {
     mocks.createTab.mockReturnValue({ id: 'file-tree-tab' })
     const { createNewTerminalTab } = await import('./terminal-tab-create')
-    const { peekUserInitiatedTerminalCreate } =
+    const { peekUserInitiatedTerminalCreate, peekUserInitiatedTerminalCreateForWorktree } =
       await import('@/runtime/web-session-user-initiated-create')
 
     createNewTerminalTab(WORKTREE_ID)
 
     expect(mocks.createTab).toHaveBeenCalledTimes(1)
     expect(peekUserInitiatedTerminalCreate('file-tree-tab')).toBe(true)
+    // Why: the gesture is scoped to the worktree the click created the tab in (U161).
+    expect(peekUserInitiatedTerminalCreateForWorktree(WORKTREE_ID)).toBe(true)
   })
 
   it('marks the terminal seeded by a split-group command', async () => {
     mocks.createEmptySplitGroup.mockReturnValue('group-new')
     mocks.createTab.mockReturnValue({ id: 'split-tab' })
     const { useTabGroupCreationCommands } = await import('../tab-group/useTabGroupCreationCommands')
-    const { peekUserInitiatedTerminalCreate } =
+    const { peekUserInitiatedTerminalCreate, peekUserInitiatedTerminalCreateForWorktree } =
       await import('@/runtime/web-session-user-initiated-create')
 
     const commands = useTabGroupCreationCommands({
@@ -120,12 +138,13 @@ describe('U154: other user-gesture terminal creates mark the gesture', () => {
     commands.createSplitGroup('right')
 
     expect(peekUserInitiatedTerminalCreate('split-tab')).toBe(true)
+    expect(peekUserInitiatedTerminalCreateForWorktree(WORKTREE_ID)).toBe(true)
   })
 
   it('marks a local-shell terminal from the "+" menu', async () => {
     mocks.createTab.mockReturnValue({ id: 'shell-tab' })
     const { useTabGroupCreationCommands } = await import('../tab-group/useTabGroupCreationCommands')
-    const { peekUserInitiatedTerminalCreate } =
+    const { peekUserInitiatedTerminalCreate, peekUserInitiatedTerminalCreateForWorktree } =
       await import('@/runtime/web-session-user-initiated-create')
 
     const commands = useTabGroupCreationCommands({
@@ -137,6 +156,28 @@ describe('U154: other user-gesture terminal creates mark the gesture', () => {
     await vi.waitFor(() => expect(mocks.createTab).toHaveBeenCalled())
 
     expect(peekUserInitiatedTerminalCreate('shell-tab')).toBe(true)
+    expect(peekUserInitiatedTerminalCreateForWorktree(WORKTREE_ID)).toBe(true)
+  })
+
+  it('marks a quick-command tab in the clicked worktree', async () => {
+    mocks.createTab.mockReturnValue({ id: 'quick-tab' })
+    const { runQuickCommandInNewTab } = await import('@/lib/run-quick-command-in-new-tab')
+    const { peekUserInitiatedTerminalCreate, peekUserInitiatedTerminalCreateForWorktree } =
+      await import('@/runtime/web-session-user-initiated-create')
+
+    runQuickCommandInNewTab({
+      command: {
+        id: 'quick-1',
+        label: 'List files',
+        command: 'ls',
+        appendEnter: true
+      },
+      worktreeId: WORKTREE_ID,
+      groupId: GROUP_ID
+    })
+
+    expect(peekUserInitiatedTerminalCreate('quick-tab')).toBe(true)
+    expect(peekUserInitiatedTerminalCreateForWorktree(WORKTREE_ID)).toBe(true)
   })
 
   it('does not mark a passive pane mount', async () => {

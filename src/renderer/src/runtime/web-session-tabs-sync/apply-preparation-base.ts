@@ -34,6 +34,23 @@ import { hostSnapshotAffirmsWorktreeContents } from '../host-session-snapshot-au
 
 const intentGuardDeferrals = new Set<string>()
 
+/** Why: an intent cleared elsewhere or replaced by a newer create must not leave a deferral key forever. */
+function pruneIntentGuardDeferrals(
+  environmentId: string,
+  worktreeId: string,
+  keepKey: string | null
+): void {
+  if (intentGuardDeferrals.size === 0) {
+    return
+  }
+  const prefix = `${environmentId}\0${worktreeId}\0`
+  for (const key of intentGuardDeferrals) {
+    if (key !== keepKey && key.startsWith(prefix)) {
+      intentGuardDeferrals.delete(key)
+    }
+  }
+}
+
 export function resetWebSessionFocusIntentGuardForTests(): void {
   intentGuardDeferrals.clear()
 }
@@ -110,6 +127,11 @@ export function prepareWebSessionTabsSnapshotBase(
     focusIntent !== null && matchingFocusIntentTab !== null
       ? `${environmentId}\0${worktreeId}\0${focusIntentHostTabId}\0${String(expectedCurrentLocalTabId)}`
       : null
+  if (focusIntent === null) {
+    pruneIntentGuardDeferrals(environmentId, worktreeId, null)
+  } else if (intentGuardKey !== null) {
+    pruneIntentGuardDeferrals(environmentId, worktreeId, intentGuardKey)
+  }
   if (matchingFocusIntentTab) {
     if (callerFocusIntentTab !== null) {
       if (intentGuardKey) {

@@ -4,7 +4,8 @@ import {
   consumeUserInitiatedTerminalCreate,
   discardUserInitiatedTerminalCreate,
   markUserInitiatedTerminalCreate,
-  peekUserInitiatedTerminalCreate
+  peekUserInitiatedTerminalCreate,
+  peekUserInitiatedTerminalCreateForWorktree
 } from './web-session-user-initiated-create'
 
 const TTL_MS = 2 * 60_000
@@ -40,5 +41,23 @@ describe('U154: user-initiated terminal create ledger', () => {
     markUserInitiatedTerminalCreate('aborted-tab')
     discardUserInitiatedTerminalCreate('aborted-tab')
     expect(peekUserInitiatedTerminalCreate('aborted-tab')).toBe(false)
+  })
+
+  it('keeps worktree gestures isolated from each other', () => {
+    markUserInitiatedTerminalCreate('tab-a', 'wt-a')
+    markUserInitiatedTerminalCreate('tab-b', 'wt-b')
+
+    expect(peekUserInitiatedTerminalCreateForWorktree('wt-a')).toBe(true)
+    expect(peekUserInitiatedTerminalCreateForWorktree('wt-b')).toBe(true)
+    expect(peekUserInitiatedTerminalCreateForWorktree('wt-c')).toBe(false)
+
+    consumeUserInitiatedTerminalCreate('tab-a')
+    expect(peekUserInitiatedTerminalCreateForWorktree('wt-a')).toBe(false)
+    expect(peekUserInitiatedTerminalCreateForWorktree('wt-b')).toBe(true)
+  })
+
+  it('does not let an unmarked tab answer for a worktree', () => {
+    markUserInitiatedTerminalCreate('no-worktree-tab')
+    expect(peekUserInitiatedTerminalCreateForWorktree('wt-a')).toBe(false)
   })
 })

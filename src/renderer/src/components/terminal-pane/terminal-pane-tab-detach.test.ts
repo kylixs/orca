@@ -182,7 +182,7 @@ describe('resolveTerminalTabStripDropTarget', () => {
 describe('detachTerminalPaneToTab', () => {
   it('marks a detached pane that must spawn a new PTY (U155)', async () => {
     const store = createStore(unboundSplitLayout())
-    const { peekUserInitiatedTerminalCreate } =
+    const { peekUserInitiatedTerminalCreate, peekUserInitiatedTerminalCreateForWorktree } =
       await import('@/runtime/web-session-user-initiated-create')
 
     await detachTerminalPaneToTab({
@@ -202,6 +202,8 @@ describe('detachTerminalPaneToTab', () => {
     const options = vi.mocked(store.createTab).mock.calls[0]?.[3]
     expect(options?.pendingActivationSpawn).toBe(true)
     expect(peekUserInitiatedTerminalCreate('tab-detached')).toBe(true)
+    // Why: U161 scopes the gesture to the worktree so the host-active follow stands down there.
+    expect(peekUserInitiatedTerminalCreateForWorktree(WORKTREE_ID)).toBe(true)
   })
 
   it('does not mark the reuse branch that reattaches an existing PTY (U155)', async () => {
