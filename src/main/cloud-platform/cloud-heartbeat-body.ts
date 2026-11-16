@@ -7,6 +7,8 @@ export type HeartbeatSource = {
   directAddrs?: string[] | (() => string[])
   e2eePublicKeyB64?: () => string | null
   tlsFingerprint?: () => string | null
+  /** The app version this host runs; lets the platform heal older registrations. */
+  orcaVersion?: () => string | null
   projectsRoot?: string
   /** Directory names under projectsRoot, resolved per beat so the listing stays current. */
   projectDirs?: string[] | (() => string[])
@@ -39,6 +41,7 @@ export function cloudHeartbeatBody(
 ): Record<string, unknown> {
   const e2eePublicKeyB64 = source.e2eePublicKeyB64?.()
   const tlsFingerprint = source.tlsFingerprint?.()
+  const orcaVersion = source.orcaVersion?.()
   return {
     status: 'online',
     ...heartbeatAddrsField(source.directAddrs),
@@ -46,6 +49,7 @@ export function cloudHeartbeatBody(
     ...projectDirsField(source.projectDirs),
     ...(e2eePublicKeyB64 ? { e2eePublicKeyB64 } : {}),
     ...(tlsFingerprint ? { tlsFingerprint } : {}),
+    ...(orcaVersion ? { orcaVersion } : {}),
     ...(provisioned.length > 0 ? { provisioned } : {}),
     ...(audit.length > 0 ? { audit } : {}),
     ...auditGapField(auditGap)

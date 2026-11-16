@@ -44,6 +44,8 @@ export type CloudAgentConfig = {
     e2eePublicKeyB64?: () => string | null
     /** SHA-256 of the host's TLS certificate; only when the listener serves TLS. */
     tlsFingerprint?: () => string | null
+    /** The app version, reported per beat so registrations made before U147 heal. */
+    orcaVersion?: () => string | null
     /** Parent directory for self-service projects; absent means the host opts out. */
     projectsRoot?: string
   }

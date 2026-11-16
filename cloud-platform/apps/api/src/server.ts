@@ -3626,6 +3626,11 @@ export function createApp(config: ApiConfig): ApiHandle {
             }
             target.tlsFingerprint = body.tlsFingerprint
           }
+          // U147: the heartbeat heals registrations made without a version (a
+          // registered host never re-registers). A beat without it keeps the value.
+          if (typeof body.orcaVersion === 'string' && body.orcaVersion.length > 0) {
+            target.orcaVersion = body.orcaVersion
+          }
           if (typeof body.status === 'string' && target.status !== 'maintenance') {
             target.status = body.status === 'online' ? 'online' : 'offline'
           }

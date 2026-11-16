@@ -204,6 +204,7 @@ function startEnrolled(
         directAddrs: options.directAddrs ?? [],
         relayTarget: options.relayTarget,
         ...(hostTls ? { tlsFingerprint: hostTls.fingerprint } : {}),
+        ...(env.ORCA_APP_VERSION ? { orcaVersion: env.ORCA_APP_VERSION } : {}),
         ...(projectsRoot ? { projectsRoot } : {})
       })
       if (!enrolled.ok) {
@@ -232,6 +233,7 @@ function startEnrolled(
         // that will actually answer — the enrolment call ran before it existed.
         e2eePublicKeyB64: () => boundRuntime?.getE2EEPublicKey() ?? null,
         tlsFingerprint: () => hostTls?.fingerprint ?? null,
+        orcaVersion: () => env.ORCA_APP_VERSION ?? null,
         directAddrs: () =>
           advertisedAddrs(
             boundRuntime?.getWebSocketEndpoint() ?? null,
