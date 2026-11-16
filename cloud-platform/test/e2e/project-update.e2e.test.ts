@@ -59,7 +59,7 @@ before(async () => {
       name: 'Recoverable',
       hostId: host.hostId,
       path: '/srv/work/recoverable',
-      repoUrl: '/tmp/does-not-exist.git',
+      repoUrl: 'https://git.example.com/pay/m58-recoverable.git',
       defaultBranch: 'main'
     })
   })
@@ -84,14 +84,16 @@ after(async () => {
 
 describe('M58 管理员修正项目来源（真实平台）', () => {
   test('开发者 PUT 项目返回 403，且被拒绝写入审计', async () => {
-    const result = await updateProject(devToken, { repoUrl: '/tmp/other.git' })
+    const result = await updateProject(devToken, {
+      repoUrl: 'https://git.example.com/pay/m58-other.git'
+    })
     assert.equal(result.status, 403)
     assert.equal((result.body as { error?: { code: string } }).error?.code, 'PERMISSION_DENIED')
   })
 
   test('管理员 PUT repoUrl 后状态重置为 provisioning 且清除 provisioningError', async () => {
     const result = await updateProject(adminToken, {
-      repoUrl: '/tmp/real-source.git',
+      repoUrl: 'https://git.example.com/pay/m58-real-source.git',
       defaultBranch: 'release'
     })
     assert.equal(result.status, 200, JSON.stringify(result.body))
@@ -101,7 +103,7 @@ describe('M58 管理员修正项目来源（真实平台）', () => {
       status: string
       provisioningError?: string
     }
-    assert.equal(body.repoUrl, '/tmp/real-source.git')
+    assert.equal(body.repoUrl, 'https://git.example.com/pay/m58-real-source.git')
     assert.equal(body.defaultBranch, 'release')
     assert.equal(body.status, 'provisioning')
     assert.equal(body.provisioningError, undefined)
@@ -117,7 +119,10 @@ describe('M58 管理员修正项目来源（真实平台）', () => {
     const metadata = success.metadata as Record<string, unknown>
     assert.equal(metadata.key, 'm58-recoverable')
     assert.equal(metadata.repoUrlChanged, true)
-    assert.equal(JSON.stringify(success).includes('/tmp/real-source.git'), false)
+    assert.equal(
+      JSON.stringify(success).includes('https://git.example.com/pay/m58-real-source.git'),
+      false
+    )
     saveEvidence(EVIDENCE, 'platform-project-update.json', { update: result.body, audit: events })
   })
 
@@ -125,6 +130,13 @@ describe('M58 管理员修正项目来源（真实平台）', () => {
     const badUrl = await updateProject(adminToken, { repoUrl: '-oops' })
     assert.equal(badUrl.status, 400)
     assert.equal((badUrl.body as { error?: { code: string } }).error?.code, 'REPO_URL_INVALID')
+
+    const opaqueUrl = await updateProject(adminToken, { repoUrl: 'not-a-valid-url' })
+    assert.equal(opaqueUrl.status, 400)
+    assert.equal(
+      (opaqueUrl.body as { error?: { code: string } }).error?.code,
+      'REPO_URL_INVALID'
+    )
 
     const badBranch = await updateProject(adminToken, { defaultBranch: 'has space' })
     assert.equal(badBranch.status, 400)
@@ -140,6 +152,7 @@ describe('M58 管理员修正项目来源（真实平台）', () => {
     }
     saveEvidence(EVIDENCE, 'platform-validation.json', {
       badUrl: badUrl.body,
+      opaqueUrl: opaqueUrl.body,
       badBranch: badBranch.body
     })
   })
@@ -155,7 +168,7 @@ describe('M58 管理员修正项目来源（真实平台）', () => {
     })
     assert.equal(archived.status, 200)
 
-    const denied = await updateProject(adminToken, { repoUrl: '/tmp/again.git' })
+    const denied = await updateProject(adminToken, { repoUrl: 'https://git.example.com/pay/m58-again.git' })
     assert.equal(denied.status, 404)
     assert.equal((denied.body as { error?: { code: string } }).error?.code, 'PROJECT_NOT_FOUND')
   })
