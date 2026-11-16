@@ -3576,7 +3576,8 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **U140/U141 独立审计 PASS**；偏差转 U142/U143 均已闭环：U142 `bdf41816514`（SCP-like 统一 user@、UNC 两端拒、共享矩阵模块两端 import 防再分叉；6/6+56/56+7/7）、U143 `ab7d2eade44`（orphan 路由清扫、注册 revoked 门禁 409+denied、多宿主用例；43 绿）。
 - **U138 三期落地**（`68c498fd5d1`）：恢复后 re-assert——adoption 前客户端 restored active ≠ 宿主则回写一次（配对落盘），相同/手势/失效零写入；4 新例、相邻 46 文件/348 绿。
 - **U138 三~五期**：客户端回写方案（reassert）经三轮（`68c498fd5d1`/`b6883d9f389`）仍偶发；四期诊断证伪双写/陈旧选择、证实捕获点污染；**升级用户裁定「宿主为准」**（台账 `c8eb0cf75fc`），并落权威矩阵 `work-orders/u138-active-tab-authority-matrix.md`。
-- **六期（宿主为准）落地**（`4e3a955d2e2`）：移除回写；云会话每帧 `hostActiveAuthoritative`、手势优先；**journey-13：a2 三方一致绿**，B7 仍红——宿主在两次打开间自身翻转 active（无手势），疑似挂载隐式 activate；七期定向诊断进行中。平台 e2e 428/428 绿。
+- **六期（宿主为准）落地**（`4e3a955d2e2`）：移除回写；云会话每帧 `hostActiveAuthoritative`、手势优先；**journey-13：a2 三方一致绿**。
+- **七期诊断锁定翻转源**（`f69f7add9fb`）：隐藏 pane 的镜像 attach（`navigation:'caller'`）被二期落盘当成用户选择持久化，每次打开翻到「最后 attach 的隐藏同组 tab」；H5 证伪。**八期修令在途**（仅显式导航落盘、镜像 attach 仅 caller 投影）。W9 双线六期构建 6/6 绿。
 - **AC-M3-33/G08 注记同步**（`09bfb94513b`），计数机检 PASS（318=276+41+1、§13 9/5/15）。
 - 最终构建门禁：平台 e2e **426/0**、W9 双线 A 4/4 + B 2/2 绿。
 

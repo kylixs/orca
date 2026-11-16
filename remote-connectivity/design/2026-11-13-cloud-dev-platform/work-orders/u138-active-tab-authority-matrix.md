@@ -18,6 +18,7 @@
 1. **入场/重载**：宿主持久 active（经 `session.tabs.list` 投影）为唯一初始活动标签；客户端本地恢复值不得覆盖。
 2. **宿主广播**：无本地 pending 手势时，客户端跟随宿主 active 变化（其他设备激活、恢复回放）。
 3. **用户手势**：本地立即切换 → `session.tabs.activate`（配对路径）→ 宿主落盘 → 广播回显；客户端等待回显收敛，不做独立回写。
+   - **镜像 attach 不是手势**（七期诊断 H4）：页面挂载时隐藏 pane 的 `attachHostSessionMirror → activateHostSessionSurface` 固定携带 `navigation:'caller', notifyClients:false`；宿主**不得**将其持久化为 active（只做 caller 投影），否则隐藏 pane 会翻转全局活动标签。判定依据：`session.tabs.activate` 参数含 `navigation` 即非显式导航。
 4. **每设备选择**：仅当有效且指向现存 tab 时参与投影；缺失/失效回退快照 active（`client-session-tab-selection.ts`）。
 5. **桌面原生窗口**：渲染器 focus 回写为权威路径，不因配对客户端写入而双写/回跳。
 
