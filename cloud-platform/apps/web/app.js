@@ -2192,12 +2192,13 @@ async function renderUsersPage() {
       <button class="btn ghost" id="userFilterReset" type="button">重置</button>
     </div>
     <div class="section-head"><h2>账号与角色</h2><span class="muted">列表只读 · 角色在详情中修改 · 变更写入 role_update 审计</span></div>
-    <div class="table-wrap">
+    <div class="table-wrap" id="userTableWrap">
       <table aria-label="用户与角色">
         <thead><tr><th>用户</th><th>部门</th><th>LDAP 组</th><th>角色</th><th>角色来源</th><th>状态</th><th>操作</th></tr></thead>
         <tbody id="usersBody"></tbody>
       </table>
     </div>
+    <div class="user-list" id="userList"></div>
     <p class="muted" id="usersFoot"></p>
     <div class="note">角色语义：普通 = 项目 / 主机使用面（按资源授权）；审计 = + 审计查询（目录保持 admin-only），不可管控；管理员 = 全管控面 + 授权卡片写入。新用户首登角色一律普通（LDAP 组→角色种子映射已废除）；升权经用户管理页覆盖（roleOverride 优先、不被回灌），登录准入由 LDAP 分组门槛独立控制。</div>`
   const search = $('#userSearch')
@@ -2264,9 +2265,16 @@ function renderUserRows(users) {
   const tbody = $('#usersBody')
   if (!tbody) return
   const filtered = filterUsers(users)
+  const emptyText = '没有符合筛选条件的账号——请调整关键字或重置条件'
   tbody.innerHTML = filtered.length
     ? filtered.map(userRow).join('')
-    : '<tr><td colspan="7" class="table-empty">没有符合筛选条件的账号——请调整关键字或重置条件</td></tr>'
+    : `<tr><td colspan="7" class="table-empty">${emptyText}</td></tr>`
+  const list = $('#userList')
+  if (list) {
+    list.innerHTML = filtered.length
+      ? filtered.map(userCard).join('')
+      : `<p class="card table-empty">${emptyText}</p>`
+  }
   const foot = $('#usersFoot')
   if (foot) {
     foot.textContent = `共 ${users.length} 个账号${filtered.length !== users.length ? ` · 当前筛选 ${filtered.length} 个` : ''} · 服务端按请求实时判定角色；角色降级会断开当前云会话（≤60 秒），升级即时生效、不断会话。变更可在审计日志按「角色变更 · role_update」筛选。`
@@ -2274,6 +2282,21 @@ function renderUserRows(users) {
   for (const button of document.querySelectorAll('[data-user-detail]')) {
     button.onclick = () => openDetailFromList('users', button.dataset.userDetail ?? '')
   }
+}
+
+/** U80 M5: the phone face of 用户管理; desktop keeps the table byte for byte. */
+function userCard(user) {
+  const active = user.status === 'active'
+  const role = USER_PAGE_ROLE_LABELS[user.role] ?? user.role
+  return `<article class="card user-list-card" data-user-card="${esc(user.id)}">
+    <div class="ulc-head">
+      <strong class="ulc-name">${esc(user.displayName)}</strong>
+      <span class="badge ${active ? 'ok' : ''}">${active ? '活跃' : '已停用'}</span>
+    </div>
+    <div class="ulc-line mono">${esc(user.username)} · ${esc(user.dept)}</div>
+    <div class="ulc-role"><span class="badge">${esc(role)}</span><span class="muted">${esc(USER_SOURCE_LABELS[user.roleSource] ?? 'LDAP 同步')}</span></div>
+    <div class="ulc-actions"><button class="btn sm" data-user-detail="${esc(user.id)}">详情</button></div>
+  </article>`
 }
 
 /** 列表只读（U82）：角色纯文本 + 行内唯一动作「详情」。 */
@@ -2292,6 +2315,8 @@ function userRow(user) {
 /** 用户详情弹框字段集（U82）：users API 实有字段，创建时间/最近登录无 wire 数据不虚构。 */
 function userDetailMarkup(user) {
   const active = user.status === 'active'
+  // Mobile lets the attempt through so U135's 409 copy surfaces; desktop keeps its lock.
+  const locked = !active && !isMobileViewport()
   const roleOptions = Object.entries(USER_PAGE_ROLE_LABELS)
     .map(
       ([value, label]) =>
@@ -2304,7 +2329,7 @@ function userDetailMarkup(user) {
     <dt>部门</dt><dd>${esc(user.dept)}</dd>
     <dt>LDAP 组</dt><dd class="mono">${esc(user.groups.join(', ') || '—')}</dd>
     <dt>平台角色</dt><dd>
-      <select class="select" data-detail-role aria-label="平台角色（点击修改）"${active ? '' : ' disabled'}>${roleOptions}</select>
+      <select class="select" data-detail-role aria-label="平台角色（点击修改）"${locked ? ' disabled' : ''}>${roleOptions}</select>
       <span class="muted">${active ? '点击可修改' : '已停用账号不可修改角色'}</span>
     </dd>
     <dt>角色来源</dt><dd>${userSourceMarkup(user.roleSource)}</dd>
@@ -2317,6 +2342,7 @@ function openUserDetail(user, { onClose } = {}) {
   const detailEntry = { name: 'users', id: user.id, remove: () => backdrop.remove() }
   const backdrop = dialog(`用户详情 · ${user.displayName}`, userDetailMarkup(user), [], {
     wide: true,
+    sheet: true,
     onClose: () => {
       if (activeDetail !== detailEntry) return // 已被路由静默移除
       activeDetail = null
@@ -2335,7 +2361,7 @@ function wireDetailRoleSelect(backdrop, user) {
   select.onchange = () => {
     const next = select.value
     select.value = user.role // 回退到当前值：确认成功后重绘才会翻转
-    if (user.status !== 'active') return // T3：停用账号不可修改角色
+    if (user.status !== 'active' && !isMobileViewport()) return // T3：停用账号不可修改角色
     confirmUserRoleChange(user, next, (fresh) => {
       const body = backdrop.querySelector('.body')
       if (!body) return

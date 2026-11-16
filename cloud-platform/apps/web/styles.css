@@ -487,6 +487,7 @@ select {
 .project-list,
 .host-list,
 .relay-list,
+.user-list,
 .dialog-sheet-close {
   display: none;
 }
@@ -1667,5 +1668,80 @@ td.actions {
   #retryRelaysBtn {
     min-height: 44px;
     margin-top: 8px;
+  }
+
+  /* ---------- U80 M5: 用户管理卡片 + 详情全屏 sheet ---------- */
+  #userTableWrap {
+    display: none;
+  }
+  .user-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .user-list-card {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+  }
+  .ulc-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .ulc-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 14px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ulc-head > .badge {
+    flex: none;
+  }
+  .ulc-line {
+    min-width: 0;
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ulc-role {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .ulc-role .badge {
+    flex: none;
+  }
+  .ulc-role .muted {
+    min-width: 0;
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ulc-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 2px;
+  }
+  .ulc-actions .btn {
+    flex: 1 1 auto;
+    min-height: 44px;
+  }
+  /* LDAP 准入徽标在窄屏可换行，长组名不撑破页头。 */
+  .page-head .toolbar .badge {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .dialog-sheet [data-detail-role] {
+    width: 100%;
   }
 }
