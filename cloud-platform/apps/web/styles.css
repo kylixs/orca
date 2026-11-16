@@ -1246,3 +1246,89 @@ td.actions {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---------- U80 M2: 登录 + 工作台移动适配（≤700） ---------- */
+.workspace-tip {
+  display: none;
+}
+@media (max-width: 700px) {
+  /* 统计卡 2×2；最近项目保持单列。 */
+  .grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .stat {
+    padding: 14px 16px;
+  }
+  .stat-value {
+    font-size: 22px;
+  }
+
+  .workspace-tip {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    background: var(--brand-soft);
+    border-color: var(--border);
+  }
+  .workspace-tip span {
+    flex: 1;
+    min-width: 0;
+    color: var(--text-2);
+    font-size: 12.5px;
+  }
+  .workspace-tip .btn {
+    flex: none;
+    min-height: 44px;
+  }
+
+  /* 最近项目：长名称/元信息单行截断，卡片内操作保持 44px 触控高度。 */
+  .project-card .name,
+  .project-card .name-text {
+    min-width: 0;
+  }
+  .project-card .name-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .project-card .meta-row {
+    min-width: 0;
+  }
+  .project-card .meta-row span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .project-card .foot .btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* 登录：单列居中卡，输入 16px/44px，按钮 sticky 在键盘上方。 */
+  .login-wrap {
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+    padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+    overflow-y: auto;
+  }
+  .login-card {
+    width: 100%;
+    max-width: 400px;
+    margin: auto;
+    padding: 24px 20px;
+  }
+  .login-card .field input {
+    min-height: 44px;
+  }
+  .login-card .btn.block {
+    min-height: 44px;
+    position: sticky;
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    z-index: 1;
+  }
+}

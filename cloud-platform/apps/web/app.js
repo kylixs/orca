@@ -547,12 +547,15 @@ function downloadBadge(p, globalDefault) {
   return `<span class="badge ${deny ? 'lock' : ''}">${deny ? '下载已禁用' : '允许下载'}</span>`
 }
 
+const WORKSPACE_TIP_KEY = 'orca.mobile-workspace-tip'
+
 async function renderWorkbench() {
   const [projects, policy] = await Promise.all([loadProjects(), api('/v1/policies/download')])
   const globalDefault = policy.downloadDefault
   const online = projects.filter((p) => p.hostStatus === 'online').length
   const denied = projects.filter((p) => effectiveDownloadPolicy(p, globalDefault) === 'deny').length
   const recent = projects.slice(0, 3)
+  const tipDismissed = localStorage.getItem(WORKSPACE_TIP_KEY) === '1'
   content().innerHTML = `
     <div class="page-head">
       <div>
@@ -560,6 +563,14 @@ async function renderWorkbench() {
         <p>你有 ${projects.length} 个可访问项目，其中 ${online} 个所在主机在线。</p>
       </div>
     </div>
+    ${
+      tipDismissed
+        ? ''
+        : `<div class="card workspace-tip" id="workspaceTip" role="status">
+            <span>移动端工作区请打开 Orca Web 工作区（自带移动端支持）</span>
+            <button class="btn ghost" id="workspaceTipClose" type="button">知道了</button>
+          </div>`
+    }
     <div class="grid-4">
       ${stat('可访问项目', String(projects.length), '按 ACL 过滤')}
       ${stat('主机在线', String(online), '60 秒无心跳转离线')}
@@ -580,6 +591,10 @@ async function renderWorkbench() {
       </table>
     </div>`
   wireProjectActions()
+  $('#workspaceTipClose')?.addEventListener('click', () => {
+    localStorage.setItem(WORKSPACE_TIP_KEY, '1')
+    $('#workspaceTip')?.remove()
+  })
 }
 
 function greeting() {
@@ -647,7 +662,7 @@ function projectCard(p, globalDefault) {
   const offline = p.hostStatus !== 'online'
   return `
     <div class="card project-card">
-      <div class="name"><span class="dot ${offline ? 'offline' : 'online'}"></span>${esc(p.name)} ${archivedBadge(p)}</div>
+      <div class="name"><span class="dot ${offline ? 'offline' : 'online'}"></span><span class="name-text">${esc(p.name)}</span> ${archivedBadge(p)}</div>
       <div class="path">${esc(p.repoUrl || p.path)}</div>
       <div class="meta-row">
         <span>${esc(p.hostName ?? '—')}</span>
