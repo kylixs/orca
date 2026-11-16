@@ -1360,13 +1360,19 @@ export function createApp(config: ApiConfig): ApiHandle {
   ) {
     store.grants.push(seededGrant)
   }
-  if (!store.relayRoutes.has('dev-001')) {
+  if (host.revokedAt === null && !store.relayRoutes.has('dev-001')) {
     store.relayRoutes.set('dev-001', {
       routeKey: 'dev-001',
       hostId: host.id,
       target: '127.0.0.1:16768',
       version: 1
     })
+  }
+  // U140: a restored snapshot can still carry the route the revoke path deleted,
+  // and the seed above must not revive it — revoked hosts own no relay route.
+  for (const [key, relayRoute] of store.relayRoutes) {
+    const routeHost = store.hosts.get(relayRoute.hostId)
+    if (routeHost && routeHost.revokedAt !== null) store.relayRoutes.delete(key)
   }
 
   function resolveToken(req: IncomingMessage): AuthedRequest | null {
