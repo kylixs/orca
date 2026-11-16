@@ -3661,6 +3661,14 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **U154 构建复跑**：D1 仍 **1/5**（「New tab→New Terminal」路径未命中标记）→ 登记 **U156** 并派事件级诊断；close RPC 1/5（探针已修待复跑）。
 - **证据规则事故**：U154 提交曾 `git add -f` 误带 evidence，已移出跟踪（`bf4e7029fdf`）。
 
+### 2026-11-17 03:1x 轮：U156 修复闭环、探针关闭/场景保真、U157/U158 派修
+
+- **U156**（`fee100cd5d5` + 审计 PASS）：换名竞态下补 tap 选择（正钉 2/负控 2，判别力成立）；审计确认无重复 active 改写；P2-1（提前返回分支缺 reconcile 排除）追加到 U157 同批。
+- **探针关闭保真验证**（`96e6120b44d` + `probe-close-verify-20261117-030943`）：命中断言/激活对比/确认框驱动按设计生效；失败轮立即报 `ui-close-activated-instead`（不再 15s 误超时）。**quick 仍不可签字**（3/5 关闭失败）。
+- **U158 定性（共享组件真实缺陷）**：`TabGroupPanel onFocusCapture` 在按下关闭按钮时抢焦点→`focusGroup` 重渲染→close click 落空；桌面/web 同源，激活组内正常。已派最小修复（关闭按钮 `preventDefault` 阻止取焦点）。
+- **探针场景修正**（`985159a265a`）：quick 改为**激活组内**建/关（`active-group-new-tab-missing`/`target-tab-outside-active-group`），非激活组行为由 U158 单独跟踪。
+- **U157 在途**：手动重连重新武装 + 三处测试缺口 + reconcile 排除。
+
 ### 四通道并发执行（启动，2026-11-14）
 
 按细粒度拆分与三权分立纪律并发起跑：通道② **W6a**（中继浏览器模式，relay.ts 域）、通道③ **W10**（客户端零 env 登录，src/main+renderer 登录域）、通道④ **W5a**（详情页终端组件，cloud-admin 域）三个实现代理并行；通道① 等在途 W2（QA 修复）完成后接 W8。每令完成→独立测试代理→独立审计代理→主会话关闭放行下一个。
