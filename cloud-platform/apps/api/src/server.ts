@@ -4317,7 +4317,8 @@ export function createApp(config: ApiConfig): ApiHandle {
 
   /** Hashed assets are immutable; the hashed path is what makes an old page keep working. */
   function serveAsset(path: string, req: IncomingMessage, res: ServerResponse): boolean {
-    const match = path.match(/^\/assets\/([0-9a-f]{6,32})\/([\w.-]+)$/)
+    // Nested names (router/routes.js) resolve the same way flat ones do.
+    const match = path.match(/^\/assets\/([0-9a-f]{6,32})\/([\w./-]+)$/)
     if (!match) {
       return false
     }
@@ -4344,7 +4345,10 @@ export function createApp(config: ApiConfig): ApiHandle {
       return
     }
     const rel = path === '/' ? 'index.html' : decodeURIComponent(path).replace(/^\//, '')
-    const name = normalize(rel).replace(/^(\.\.[/\\])+/, '')
+    // Release keys are posix names; normalize() would produce backslashes on Windows.
+    const name = normalize(rel)
+      .replace(/^(\.\.[/\\])+/, '')
+      .replace(/\\/g, '/')
     const current = webReleases.current().files.get(name)
     if (current) {
       // Why no-cache on the entry point: a deploy must be picked up, but an

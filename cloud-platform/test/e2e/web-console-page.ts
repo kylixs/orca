@@ -37,12 +37,14 @@ export type WebConsolePage = {
  */
 export function loadWebConsolePage(
   platformUrl: string,
-  options: { timerScale?: number } = {}
+  options: { timerScale?: number; hash?: string } = {}
 ): WebConsolePage {
   // Why scale: the ready timeout is 20s; a test needs to observe it (and two
   // retries) without waiting a minute. Default 1 keeps every other suite real.
   const timerScale = options.timerScale ?? 1
   const window = new Window({ url: 'https://web.console.local/' })
+  // Seed the deep link before the page runs so its bootstrap parses that URL.
+  if (options.hash !== undefined) window.location.hash = options.hash
   const html = readFileSync(join(WEB_SOURCE, 'index.html'), 'utf8')
     // Why strip: the markup's script tags point at the server, not at our shim.
     .replace(/<script[\s\S]*?<\/script>/g, '')
@@ -99,9 +101,18 @@ export function loadWebConsolePage(
     return realFetch(`${platformUrl}${path}`, init)
   }
 
-  const source = readFileSync(join(WEB_SOURCE, 'app.js'), 'utf8')
-  // Why Function and not eval: app.js is a classic script; this keeps its
-  // declarations out of the test module and lets the DOM globals be injected.
+  // The router is an ES module the browser imports; `new Function` has no module
+  // loader, so inline it (export keywords dropped) ahead of the classic app.js.
+  const routesSource = readFileSync(join(WEB_SOURCE, 'router/routes.js'), 'utf8').replace(
+    /^export /gm,
+    ''
+  )
+  const source = `${routesSource}\n${readFileSync(join(WEB_SOURCE, 'app.js'), 'utf8').replace(
+    /^import[^\n]*from '\.\/router\/routes\.js'\n/m,
+    ''
+  )}`
+  // Why Function and not eval: this keeps the page's declarations out of the
+  // test module and lets the DOM globals be injected.
   const run = new Function(
     'document',
     'localStorage',

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs'
-import { basename, extname, join } from 'node:path'
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { dirname, extname, join } from 'node:path'
 
 /**
  * The web console is released separately from the API (design §11.3), so its
@@ -15,7 +15,13 @@ export const WEB_CONTRACT_VERSION = 1
 export const MIN_WEB_CONTRACT_VERSION = 1
 
 const HASH_LENGTH = 12
-const STATIC_FILES: readonly string[] = ['index.html', 'app.js', 'styles.css']
+const STATIC_FILES: readonly string[] = [
+  'index.html',
+  'app.js',
+  'styles.css',
+  // The console's hash router is a module next to app.js (U106).
+  'router/routes.js'
+]
 
 export type WebAsset = { name: string; sha256: string; bytes: Buffer; contentType: string }
 
@@ -38,7 +44,8 @@ function contentTypeFor(name: string): string {
 /** A build id is the digest of every file's name and hash, so any change makes a new one. */
 export function loadWebRelease(dir: string): WebRelease {
   const files = new Map<string, WebAsset>()
-  const names = existsSync(dir) ? readdirSync(dir).filter((name) => STATIC_FILES.includes(name)) : []
+  // Why not readdir: nested entries (router/routes.js) keep their slash name.
+  const names = existsSync(dir) ? STATIC_FILES.filter((name) => existsSync(join(dir, name))) : []
   for (const name of names.sort()) {
     const bytes = readFileSync(join(dir, name))
     files.set(name, {
@@ -127,7 +134,9 @@ export function createWebReleaseStore(options: {
       }
       mkdirSync(dir, { recursive: true })
       for (const file of current.files.values()) {
-        copyFileSync(join(options.webRoot, basename(file.name)), join(dir, file.name))
+        const target = join(dir, file.name)
+        mkdirSync(dirname(target), { recursive: true })
+        copyFileSync(join(options.webRoot, file.name), target)
       }
     }
   }

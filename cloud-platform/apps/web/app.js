@@ -1,11 +1,15 @@
 /* Orca Cloud 平台 Web 前端（前后端分离：只通过 REST 访问后端） */
 
+import { buildHash, DEFAULT_ROUTE, parseHash } from './router/routes.js'
+
 const state = {
   accessToken: localStorage.getItem('orca.access') ?? '',
   refreshToken: localStorage.getItem('orca.refresh') ?? '',
   user: null,
   projects: [],
   route: 'workbench',
+  routeParams: {},
+  routeQuery: null,
   deviceId: localStorage.getItem('orca.device') ?? '',
   lastHosts: [],
   /** Admin-only subject directory (A1), cached for the permission-tab pickers. */
@@ -92,7 +96,8 @@ const TITLES = {
   users: '用户管理',
   audit: '审计日志',
   settings: '平台设置',
-  forbidden: '无权访问'
+  forbidden: '无权访问',
+  'not-found': '页面不存在'
 }
 
 function isAdmin() {
@@ -113,26 +118,74 @@ function routeAllowed(route) {
   return route === 'audit' ? canViewAudit() : isAdmin()
 }
 
-function navigate(route) {
-  if (!routeAllowed(route)) {
+const ROUTE_RENDERERS = {
+  workbench: renderWorkbench,
+  projects: renderProjects,
+  hosts: renderHosts,
+  relays: renderRelays,
+  users: renderUsersPage,
+  audit: renderAudit,
+  settings: renderSettings
+}
+
+/** 上一次真正渲染的路由；hashchange 与直接导航会对同一目标触发两次。 */
+let appliedRoute = null
+
+function clearActiveNav() {
+  for (const btn of document.querySelectorAll('.nav-item')) btn.classList.remove('active')
+}
+
+function updateNav(name) {
+  for (const btn of document.querySelectorAll('.nav-item')) {
+    btn.classList.toggle('active', btn.dataset.route === name)
+  }
+}
+
+function routeSignature(route) {
+  return `${route.name}|${JSON.stringify(route.params)}|${route.query.toString()}`
+}
+
+/** 写 URL 是唯一导航入口（U106 D1/D5）：刷新据此恢复。 */
+function navigate(name, params = {}, query = undefined) {
+  const hash = buildHash({ name, params, query })
+  if (location.hash !== hash) location.hash = hash
+  // 显式导航总是重绘（重复点当前导航项=刷新）；只有 hashchange 去重。
+  applyRoute(parseHash(hash), { force: true })
+}
+
+/**
+ * 渲染 URL 指向的页面。登录是视图态（D7）：未登录时保留目标 hash，
+ * 让登录成功后回到同一个 URL；无权管理路由保留 URL 并渲染 403（D6）。
+ */
+function applyRoute(route, { force = false } = {}) {
+  if (!state.user) {
+    showLogin()
+    return
+  }
+  if (route.name === 'login') {
+    navigate(DEFAULT_ROUTE)
+    return
+  }
+  state.route = route.name
+  state.routeParams = route.params
+  state.routeQuery = route.query
+  $('#crumbs').textContent = TITLES[route.name] ?? route.name
+
+  if (route.name === 'not-found') {
+    renderNotFound()
+    return
+  }
+  if (route.name === 'forbidden' || !routeAllowed(route.name)) {
     renderForbidden()
     return
   }
-  state.route = route
-  for (const btn of document.querySelectorAll('.nav-item')) {
-    btn.classList.toggle('active', btn.dataset.route === route)
-  }
-  $('#crumbs').textContent = TITLES[route] ?? route
-  const renderers = {
-    workbench: renderWorkbench,
-    projects: renderProjects,
-    hosts: renderHosts,
-    relays: renderRelays,
-    users: renderUsersPage,
-    audit: renderAudit,
-    settings: renderSettings
-  }
-  void loadContent(renderers[route] ?? renderWorkbench)
+
+  const signature = routeSignature(route)
+  if (!force && signature === appliedRoute) return
+  appliedRoute = signature
+  updateNav(route.name)
+  // workspace 与详情参数由 R3/R4 接管；在此之前它们仍落到列表页。
+  void loadContent(ROUTE_RENDERERS[route.name] ?? renderWorkbench)
 }
 
 /** One failed fetch must not leave the page stuck on its own spinner (M116-QA-011). */
@@ -157,7 +210,7 @@ async function loadContent(render) {
 
 function renderForbidden() {
   $('#crumbs').textContent = TITLES.forbidden
-  for (const btn of document.querySelectorAll('.nav-item')) btn.classList.remove('active')
+  clearActiveNav()
   content().innerHTML = `
     <div class="forbidden">
       <div class="box">
@@ -166,6 +219,21 @@ function renderForbidden() {
         </svg>
         <h1>无权访问</h1>
         <p>当前账号没有平台管理权限。如需访问，请联系平台管理员开通。</p>
+        <button class="btn primary" id="backToWorkbench">返回工作台</button>
+      </div>
+    </div>`
+  $('#backToWorkbench').onclick = () => navigate('workbench')
+}
+
+/** D5：未知 hash 保留原地址，渲染可辨识的 404，而不是静默回落工作台。 */
+function renderNotFound() {
+  $('#crumbs').textContent = TITLES['not-found']
+  clearActiveNav()
+  content().innerHTML = `
+    <div class="forbidden">
+      <div class="box">
+        <h1>页面不存在</h1>
+        <p class="muted">没有找到这个页面：<span class="mono">${esc(location.hash || '（空）')}</span></p>
         <button class="btn primary" id="backToWorkbench">返回工作台</button>
       </div>
     </div>`
@@ -2730,10 +2798,23 @@ function enterApp() {
   $('#userDept').textContent = state.user.dept
   $('#userAvatar').textContent = state.user.displayName.slice(0, 1)
   $('#roleChip').textContent = admin ? '平台管理员' : auditor ? '审计员' : '开发者'
-  navigate('workbench')
+  appliedRoute = null
+  const route = parseHash(location.hash)
+  // 空 hash 规范化为默认路由，深链则原样恢复（D5/D7）。
+  if (
+    route.name === 'login' ||
+    location.hash === '' ||
+    location.hash === '#' ||
+    location.hash === '#/'
+  ) {
+    navigate(DEFAULT_ROUTE)
+    return
+  }
+  applyRoute(route)
 }
 
 function showLogin() {
+  appliedRoute = null
   $('#view-login').hidden = false
   $('#view-app').hidden = true
 }
@@ -2787,7 +2868,13 @@ for (const btn of document.querySelectorAll('.nav-item[data-route]')) {
   btn.onclick = () => navigate(btn.dataset.route)
 }
 $('#logoutBtn').onclick = logout
-$('#open403').onclick = renderForbidden
+$('#open403').onclick = () => navigate('forbidden')
+
+// URL 是恢复载体：前进/后退与手改地址都走同一分发。
+window.addEventListener('hashchange', () => {
+  if (!state.user) return // 登录视图保持目标 hash，登录成功后回到它（D7）
+  applyRoute(parseHash(location.hash))
+})
 
 // restore session
 ;(async () => {
