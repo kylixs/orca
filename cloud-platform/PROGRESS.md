@@ -3565,7 +3565,7 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **W9 官方双线全绿**（`27135c06cbc`，U137 闭环）：A 线 desktop 连续 2 次通过（37.3s/37.1s，marker 去折行统计仍要求 ≥2）+ git-and-restart 3 passed ×2（pending 正常收敛）；B 线 app.js 变更后复跑 2 passed（32.7s）。
 - **U136① 闭环**（`9854ef58d60`）：仓库地址 validator 收紧（裸串/本地裸路径 400 `REPO_URL_INVALID`），正例 11+负例 18 矩阵，相关 173 测试绿。
 - **验收计数审计三轮收口（PASS）**（`7f793667009`/`75b60a78828`/`9986ef6cf99`/`e1f6a4f5bd4`）：统一 characterization 口径→**318=276 自动+41 手测+1 未覆盖**；§13 closed 9/部分 5/待 15（G08/G28 closed、AC-M6-15 ✅ U135、AC-M3-33 ✅ T10）；终审逐列算术自洽、交叉引用一致，判 PASS。
-- **U138 登记（`1684980bfef`）**：部署环境控制台线 post-P1 复跑 12/13 绿，唯一红=刷新后宿主活动标签与 DOM/store 不一致（内容/分组正常；同门禁前次为绿）——诊断代理在跑，未定位前不宣告完成。
+- **U138 根因定位并派修**（`29ad5a06cb3`）：确定性复现 2/2；宿主两份 active 状态——首帧内存值正确，随后 workspace-session 持久化旧 `activeTabIdByWorktree`（create-time focused 写）经 merge/hydration 覆盖，客户端一次性 adoption 已消费→不再跟随。前置条件=reload 前活动标签≠最后创建标签（解释前次绿）。修令含：宿主单一权威+revision 判定、客户端稳定前持续 adopt、回归三件（active≠last-created 前置/稳定 ≥2s 三方相等/B7 零互换）+ journey 门禁复跑。
 - **全量回归终验在跑**（覆盖 U131–U137；产出 15 红对照与三桶分类）。
 
 ### 四通道并发执行（启动，2026-11-14）
