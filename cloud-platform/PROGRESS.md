@@ -3866,7 +3866,7 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 
 - **P3-A**（`01bc259cf32`）：U169-L1 回收侧空集排除（与新建侧对称）、L2 undefined 帧契约注释固定、U160-D1 行根负控；21 测试、判别力。
 - **U157 相位守卫**（`4f8a9e26402`）：`retryRecovery` 仅 `currentPhase==='disconnected'` 才 rearm；新钉 + 判别力；18 测试。
-- **重建 web/renderer（生产）** + served 核验 + P3 批独立审计在跑。
+- **重建 web/renderer（生产）完成**（`evidence/p3-build-20261117-074016/`）：web served `fb496c0f…`==磁盘（L1/L2 编译证据）、renderer 含 U157 相位守卫/U169 映射、无 e2e 探针、exposeStore false；P3 批独立审计在跑。
 - 待用户裁定：数据采集 A+/P1/审计存储二期。
 
 ### 四通道并发执行（启动，2026-11-14）
