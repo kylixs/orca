@@ -1533,8 +1533,7 @@ async function renderProjects() {
         )
         .join('') || emptyRow
     $('#projectList').innerHTML =
-      rows.map(projectListCard).join('') ||
-      '<div class="card pad muted">没有匹配的项目</div>'
+      rows.map(projectListCard).join('') || '<div class="card pad muted">没有匹配的项目</div>'
     wireProjectActions()
   }
   draw(state.routeQuery?.get('q') ?? '')
@@ -3108,6 +3107,103 @@ function auditHealthMarkup(status) {
     </details>`
 }
 
+/** U80 M6: the phone face of the audit log; desktop keeps the table byte for byte. */
+function auditCardMarkup(event, terms) {
+  const metadata = event.metadata ?? {}
+  const result = AUDIT_RESULT_LABELS[event.result] ?? AUDIT_RESULT_LABELS.failure
+  const host = metadata.hostName ?? metadata.hostId
+  return `<article class="card audit-event-card" data-audit-card="${event.seq}">
+    <div class="aec-head">
+      <span class="aec-time muted mono">${esc(new Date(event.ts).toLocaleString('zh-CN'))}</span>
+      <span class="${result[0]}">${result[1]}</span>
+    </div>
+    <div class="aec-line"><strong class="aec-actor">${esc(event.actor ?? '—')}</strong><span class="muted mono aec-target">${esc(event.targetId ?? '—')}</span></div>
+    <div class="aec-type">${auditTypeMarkup(event)}</div>
+    ${host ? `<div class="aec-line muted mono">主机 ${esc(host)}</div>` : ''}
+    <div class="aec-file">${auditFileMarkup(event, terms)}</div>
+    <div class="aec-actions"><button class="btn sm" type="button" data-audit-detail="${event.seq}">事件详情</button></div>
+  </article>`
+}
+
+/** U80 M6: one sheet for every event field; long values wrap, traceId copies. */
+function auditEventDetailMarkup(event, terms) {
+  const metadata = event.metadata ?? {}
+  const result = AUDIT_RESULT_LABELS[event.result] ?? AUDIT_RESULT_LABELS.failure
+  const traceId = event.traceId ?? ''
+  const fileName = typeof metadata.fileName === 'string' ? metadata.fileName : ''
+  const path = typeof metadata.path === 'string' ? metadata.path : ''
+  const excerpt = typeof metadata.excerpt === 'string' ? metadata.excerpt : ''
+  const copyLength = metadata.copiedChars
+    ? ` · 复制 ${Number(metadata.copiedChars)} 字符 / ${Number(metadata.copiedBytes ?? 0)} 字节`
+    : ''
+  const kv = [
+    ['时间', esc(new Date(event.ts).toLocaleString('zh-CN'))],
+    ['用户', esc(event.actor ?? '—')],
+    ['操作', auditTypeMarkup(event)],
+    ['项目', esc(event.targetId ?? '—')],
+    ['主机', esc(metadata.hostName ?? metadata.hostId ?? '—')],
+    ['结果', `<span class="${result[0]}">${result[1]}</span>`]
+  ]
+  return `<dl class="kv audit-kv">
+      ${kv.map(([key, value]) => `<dt>${key}</dt><dd>${value}</dd>`).join('')}
+      <dt>traceId</dt>
+      <dd class="audit-trace-row"><span class="mono audit-trace-value">${esc(traceId || '—')}</span>${
+        traceId ? '<button class="btn sm" id="auditTraceCopy" type="button">复制</button>' : ''
+      }</dd>
+    </dl>
+    <div class="audit-detail-block">
+      <div class="audit-expand-label">文件</div>
+      ${
+        fileName
+          ? `<div class="mono audit-detail-path">${auditHighlight(fileName, terms)}</div>
+             <div class="muted mono audit-detail-path">${path ? auditHighlight(path, terms) : '—'}</div>
+             <div class="muted">${metadata.sizeBytes === undefined ? '大小 —' : auditSize(metadata.sizeBytes)}${copyLength}</div>`
+          : '<div class="muted">非文件事件</div>'
+      }
+    </div>
+    ${
+      metadata.sha256
+        ? `<div class="audit-detail-block"><div class="audit-expand-label">内容指纹</div><div class="mono audit-detail-path">sha256:${esc(metadata.sha256)}</div></div>`
+        : ''
+    }
+    ${
+      excerpt
+        ? `<div class="audit-detail-block"><div class="audit-expand-label">复制内容摘录</div><div class="mono audit-excerpt-full">${auditHighlight(excerpt, terms)}</div></div>`
+        : ''
+    }`
+}
+
+function openAuditEventDetail(event, terms) {
+  const backdrop = dialog('审计事件详情', auditEventDetailMarkup(event, terms), [], { sheet: true })
+  const copy = backdrop.querySelector('#auditTraceCopy')
+  if (copy) {
+    copy.onclick = () => {
+      navigator.clipboard?.writeText(event.traceId ?? '')
+      toast('已复制')
+    }
+  }
+}
+
+/** Collapsed summary counts the conditions a user actually set. */
+function auditConditionCount(filter) {
+  const keys = [
+    'q',
+    'since',
+    'until',
+    'event',
+    'username',
+    'projectId',
+    'hostId',
+    'fileName',
+    'traceId',
+    'result'
+  ]
+  return (
+    keys.filter((key) => Boolean(filter[key])).length +
+    (filter.range && filter.range !== '168' ? 1 : 0)
+  )
+}
+
 /** Mirrors the API's INVALID_QUERY/TIME_WINDOW_TOO_LARGE gates. */
 /** T7：审计筛选全部入 URL；cursor 与事件行展开不入。 */
 const AUDIT_QUERY_KEYS = Object.freeze([
@@ -3234,6 +3330,9 @@ async function renderAudit(loadMore = false) {
   const projects = projectsBody?.projects ?? []
   const hosts = (hostsBody?.hosts ?? []).filter((host) => !host.revokedAt)
   const terms = [filter.q, filter.fileName].filter(Boolean)
+  const conditionCount = auditConditionCount(filter)
+  // U80 M6: phone starts folded; the desktop pane stays open (and unchanged).
+  const filterOpen = !isMobileViewport()
   content().innerHTML = `
     <div class="page-head"><div><h1>审计日志</h1><p>查询身份、连接、文件下载与复制、下载拦截与管理操作事件。只追加、哈希链校验；保留 180 天，查询时间窗最大 31 天。已显示 ${events.length} 条。</p></div></div>
     ${auditGapMarkup(state.auditStatus)}
@@ -3249,7 +3348,9 @@ async function renderAudit(loadMore = false) {
         </ul>
       </div>
     </details>
-    <div class="audit-filter" role="search" aria-label="审计查询">
+    <details class="audit-filter-shell" id="auditFilterShell"${filterOpen ? ' open' : ''}>
+      <summary class="audit-filter-summary">筛选${conditionCount ? ` · ${conditionCount} 条件` : ''}</summary>
+      <div class="audit-filter" role="search" aria-label="审计查询">
       <input class="input span-4" id="auditKeyword" type="search" placeholder="关键字：类型 / 路径 / 文件名 / 账号 / 项目（2–128 字符）" autocomplete="off" aria-label="关键字">
       <select class="select span-2" id="auditRange" aria-label="时间范围">
         <option value="24">最近 24 小时</option>
@@ -3302,8 +3403,9 @@ async function renderAudit(loadMore = false) {
         <button class="btn" id="auditReset">清除</button>
       </div>
     </div>
+    </details>
     <p class="inline-error" id="auditError" hidden></p>
-    <div class="table-wrap">
+    <div class="table-wrap" id="auditTableWrap">
       <table>
         <thead><tr><th>时间</th><th>用户</th><th>操作</th><th>项目</th><th>主机</th><th>文件 · 大小</th><th>结果</th><th>详情 / traceId</th></tr></thead>
         <tbody>
@@ -3314,7 +3416,14 @@ async function renderAudit(loadMore = false) {
         </tbody>
       </table>
     </div>
-    ${body.nextCursor ? `<div class="toolbar"><span class="muted">仅显示最近 ${AUDIT_PAGE_SIZE} 条，还有更早记录。</span><button class="btn" id="auditMore">加载更早</button></div>` : ''}`
+    <div class="audit-list" id="auditList">
+      <div class="audit-list-summary muted" id="auditResultSummary">已显示 ${events.length} 条</div>
+      ${
+        events.map((event) => auditCardMarkup(event, terms)).join('') ||
+        '<p class="card table-empty">没有符合筛选条件的审计事件</p>'
+      }
+    </div>
+    ${body.nextCursor ? `<div class="toolbar audit-more-bar"><span class="muted">仅显示最近 ${AUDIT_PAGE_SIZE} 条，还有更早记录。</span><button class="btn" id="auditMore">加载更早</button></div>` : ''}`
   // The chosen conditions are restored as properties: a parsed `selected`
   // attribute is not what every DOM picks up on a re-render.
   $('#auditKeyword').value = filter.q ?? ''
@@ -3401,6 +3510,17 @@ async function renderAudit(loadMore = false) {
       if (!row) return
       row.hidden = !row.hidden
       btn.textContent = row.hidden ? '展开' : '收起'
+    }
+  }
+  // U80 M6: card detail sheet reads the already-loaded event, never re-queries.
+  for (const btn of document.querySelectorAll('[data-audit-detail]')) {
+    btn.onclick = () => {
+      const event = state.auditEvents?.find(
+        (item) => String(item.seq) === String(btn.dataset.auditDetail)
+      )
+      if (event) {
+        openAuditEventDetail(event, terms)
+      }
     }
   }
 }

@@ -1252,6 +1252,12 @@ td.actions {
   white-space: nowrap;
 }
 
+/* ---------- U80 M6: 审计移动适配（卡片 / 筛选折叠，桌面不显示） ---------- */
+.audit-list,
+.audit-filter-summary {
+  display: none;
+}
+
 /* ---------- U80 M2: 登录 + 工作台移动适配（≤700） ---------- */
 .workspace-tip {
   display: none;
@@ -1743,5 +1749,202 @@ td.actions {
   }
   .dialog-sheet [data-detail-role] {
     width: 100%;
+  }
+}
+
+/* ---------- U80 M6: 审计页移动适配（含筛选折叠、事件卡片、详情 sheet） ---------- */
+@media (max-width: 700px) {
+  /* 筛选默认收起，摘要 44px；展开后字段单列，查询/重置吸底。 */
+  .audit-filter-shell {
+    margin-bottom: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    background: var(--card);
+  }
+  .audit-filter-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 44px;
+    padding: 0 12px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-2);
+    cursor: pointer;
+    list-style: none;
+  }
+  .audit-filter-summary::-webkit-details-marker {
+    display: none;
+  }
+  .audit-filter-summary::after {
+    content: '展开';
+    font-size: 12px;
+    color: var(--brand);
+  }
+  .audit-filter-shell[open] .audit-filter-summary {
+    border-bottom: 1px solid var(--border);
+  }
+  .audit-filter-shell[open] .audit-filter-summary::after {
+    content: '收起';
+  }
+  /* 晚于 U86 断点声明：窄屏最终收敛为单列。 */
+  .audit-filter-shell .audit-filter {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 12px;
+    margin-bottom: 0;
+  }
+  .audit-filter-shell .audit-filter .span-4,
+  .audit-filter-shell .audit-filter .span-3,
+  .audit-filter-shell .audit-filter .span-2,
+  .audit-filter-shell .audit-filter-actions {
+    grid-column: span 1;
+  }
+  .audit-filter-shell .audit-filter-actions {
+    position: sticky;
+    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+    z-index: 2;
+    justify-content: stretch;
+    padding: 8px 0 0;
+    background: var(--card);
+  }
+  .audit-filter-shell .audit-filter-actions .btn {
+    flex: 1;
+  }
+
+  /* 表格转事件卡片。 */
+  #auditTableWrap {
+    display: none;
+  }
+  .audit-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .audit-list-summary {
+    font-size: 12px;
+  }
+  .audit-event-card {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+  }
+  .aec-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    min-width: 0;
+  }
+  .aec-time {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .aec-head > .badge {
+    flex: none;
+  }
+  .aec-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-size: 13px;
+  }
+  .aec-actor,
+  .aec-target {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .aec-type {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 6px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+  .aec-file .audit-file {
+    width: 100%;
+    min-height: 44px;
+  }
+  .aec-file .audit-file-meta {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.5;
+  }
+  .aec-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .aec-actions .btn {
+    flex: 1;
+    min-height: 44px;
+  }
+  .audit-more-bar .btn {
+    width: 100%;
+  }
+
+  /* 链健康 / 容量与缺口横幅：摘要 44px，正文换行可读。 */
+  .audit-coverage > summary {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    font-size: 13px;
+  }
+  .audit-coverage-body {
+    font-size: 13px;
+    overflow-wrap: anywhere;
+  }
+  .audit-coverage-body ul {
+    padding-left: 16px;
+  }
+  .audit-coverage-body .toolbar .btn {
+    flex: 1;
+  }
+  #auditGapWarning {
+    overflow-wrap: anywhere;
+  }
+
+  /* 事件详情 sheet：metadata 换行不溢出，traceId 一键复制。 */
+  .audit-kv {
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: 8px 10px;
+  }
+  .audit-kv dd {
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  .audit-trace-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .audit-trace-value {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .audit-trace-row .btn {
+    flex: none;
+    min-height: 44px;
+  }
+  .audit-detail-block {
+    margin-top: 14px;
+  }
+  .audit-detail-path {
+    overflow-wrap: anywhere;
+  }
+  .audit-excerpt-full {
+    max-height: 40vh;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 }
