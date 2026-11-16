@@ -220,6 +220,23 @@ describe('宿主快照合并进简易工作区 reducer', () => {
     expect(next.dirty).toEqual({ 'terminal:local': true })
   })
 
+  it('宿主行沿用客户端请求的 id，只确认本地终端而不产生第二份（U107）', () => {
+    const tabId = 'terminal-11111111-1111-4111-8111-111111111111'
+    const initial: CloudSimpleWorkspaceTabsState = {
+      tabs: [{ id: tabId, kind: 'terminal', title: 'Terminal 1' }],
+      activeId: tabId,
+      dirty: {},
+      hostSynced: true
+    }
+    const next = mergeHostTabsIntoState(initial, [hostTab(tabId, 0)], tabId)
+    expect(next.tabs).toHaveLength(1)
+    expect(next.tabs[0]).toMatchObject({
+      id: tabId,
+      kind: 'terminal',
+      host: { terminal: `handle-${tabId}` }
+    })
+  })
+
   it('活动标签消失时优先右邻，再左邻，最后回退宿主活动标签', () => {
     const initial = mergeHostTabsIntoState(
       state([]),

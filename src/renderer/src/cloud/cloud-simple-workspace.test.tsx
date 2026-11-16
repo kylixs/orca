@@ -98,13 +98,13 @@ describe('简易工作区外壳', () => {
 
     const tabButton = screen.getByTestId('cloud-simple-workspace-tab-file:src/a.ts')
     expect(tabButton.querySelector('svg[aria-hidden="true"]')).toBeTruthy()
-    const terminalButton = screen.getByTestId(/^cloud-simple-workspace-tab-terminal:/)
+    const terminalButton = screen.getByTestId(/^cloud-simple-workspace-tab-terminal-/)
     expect(terminalButton.querySelector('svg[aria-hidden="true"]')).toBeTruthy()
 
     expect(screen.getByTestId('cloud-simple-workspace-tab-close-file:src/a.ts').title).toBe(
       '关闭 a.ts'
     )
-    expect(screen.getByTestId(/^cloud-simple-workspace-tab-close-terminal:/).title).toBe(
+    expect(screen.getByTestId(/^cloud-simple-workspace-tab-close-terminal-/).title).toBe(
       '关闭将结束该终端会话'
     )
   })
@@ -646,7 +646,6 @@ describe('简易工作区宿主动作接线（U96 B-令4）', () => {
     }
   }
 
-
   it('切换宿主终端标签 → sessionTabs.activate；本地文件标签不写宿主', async () => {
     const user = userEvent.setup()
     const host = actions()
@@ -679,9 +678,7 @@ describe('简易工作区宿主动作接线（U96 B-令4）', () => {
     })
     await user.click(screen.getByTestId('cloud-simple-workspace-tab-close-tab-a'))
     expect(host.close).toHaveBeenCalledWith('tab-a')
-    await waitFor(() =>
-      expect(screen.queryByTestId('cloud-simple-workspace-tab-tab-a')).toBeNull()
-    )
+    await waitFor(() => expect(screen.queryByTestId('cloud-simple-workspace-tab-tab-a')).toBeNull())
     first.unmount()
 
     renderWorkspace({
@@ -706,7 +703,7 @@ describe('简易工作区宿主动作接线（U96 B-令4）', () => {
 
     await user.click(screen.getByTestId('cloud-simple-workspace-new-terminal'))
     const id = screen
-      .getAllByTestId(/^cloud-simple-workspace-tab-terminal:/)
+      .getAllByTestId(/^cloud-simple-workspace-tab-terminal-/)
       .at(-1)
       ?.getAttribute('data-testid')
       ?.replace('cloud-simple-workspace-tab-', '')
@@ -723,8 +720,8 @@ describe('简易工作区宿主动作接线（U96 B-令4）', () => {
     await user.click(screen.getByTestId('cloud-simple-workspace-new-terminal'))
     expect(host.createTerminal).toHaveBeenCalledTimes(1)
     const [tabId, leafId, title] = host.createTerminal.mock.calls[0]
-    expect(tabId).toMatch(/^terminal:/)
-    expect(leafId).toBe(`leaf:${tabId.replace(/^terminal:/, '')}`)
+    expect(tabId).toMatch(/^terminal-[0-9a-f-]{36}$/)
+    expect(leafId).toBe(tabId.replace(/^terminal-/, ''))
     expect(title).toBe('Terminal 1')
   })
 })

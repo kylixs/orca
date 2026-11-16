@@ -1,8 +1,9 @@
 import * as React from 'react'
 import type { CloudSimpleWorkspaceSessionTabActions } from './use-cloud-simple-workspace-session-tabs'
-import type {
-  CloudSimpleWorkspaceTab,
-  CloudSimpleWorkspaceTabsAction
+import {
+  cloudTerminalLeafId,
+  type CloudSimpleWorkspaceTab,
+  type CloudSimpleWorkspaceTabsAction
 } from './cloud-simple-workspace-tabs'
 
 /**
@@ -63,7 +64,7 @@ export function useCloudSimpleWorkspaceHostTabActions({
       // T-B1: client-generated ids, so the host row lands on this same tab id.
       void sessionTabs.createTerminal(
         nextTerminal.id,
-        `leaf:${nextTerminal.id.replace(/^terminal:/, '')}`,
+        cloudTerminalLeafId(nextTerminal.id),
         nextTerminal.title
       )
     }

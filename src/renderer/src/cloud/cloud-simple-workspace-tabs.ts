@@ -149,10 +149,20 @@ export function cloudSimpleWorkspaceTabsReducer(
   }
 }
 
-/** Lowest unused terminal number; id is `terminal:<uuid>` so it never collides with a host tab id. */
+/** Host identity contract: a tab id without ':' and a UUID leaf id. */
+export const CLOUD_TERMINAL_TAB_ID_PREFIX = 'terminal-'
+
+/** The leaf half of a local terminal tab id, so `terminal.create` adopts both hints. */
+export function cloudTerminalLeafId(tabId: string): string {
+  return tabId.startsWith(CLOUD_TERMINAL_TAB_ID_PREFIX)
+    ? tabId.slice(CLOUD_TERMINAL_TAB_ID_PREFIX.length)
+    : tabId
+}
+
+/** Lowest unused terminal number; the id is minted in the host's adoptable shape. */
 export function nextTerminalTab(
   tabs: CloudSimpleWorkspaceTab[],
-  id = `terminal:${createBrowserUuid()}`
+  id = `${CLOUD_TERMINAL_TAB_ID_PREFIX}${createBrowserUuid()}`
 ): Extract<CloudSimpleWorkspaceTab, { kind: 'terminal' }> | null {
   if (
     tabs.filter((tab) => tab.kind === 'terminal').length >= CLOUD_SIMPLE_WORKSPACE_MAX_TERMINAL_TABS

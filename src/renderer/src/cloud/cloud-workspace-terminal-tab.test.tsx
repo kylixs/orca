@@ -171,10 +171,10 @@ describe('简易工作区终端标签（U46-5b）', () => {
     await user.click(screen.getByTestId('cloud-simple-workspace-new-terminal'))
     await user.click(screen.getByTestId('cloud-simple-workspace-new-terminal'))
 
-    for (const pane of await screen.findAllByTestId(/^cloud-simple-workspace-pane-terminal:/)) {
+    for (const pane of await screen.findAllByTestId(/^cloud-simple-workspace-pane-terminal-/)) {
       await within(pane).findByTestId('cloud-terminal-panel')
     }
-    expect(screen.getAllByTestId(/^cloud-simple-workspace-pane-terminal:/)).toHaveLength(2)
+    expect(screen.getAllByTestId(/^cloud-simple-workspace-pane-terminal-/)).toHaveLength(2)
     await waitFor(() => expect(stream.unsubscribers).toHaveLength(2))
 
     const creates = host.calls.filter((call) => call.method === 'terminal.create')
@@ -183,9 +183,9 @@ describe('简易工作区终端标签（U46-5b）', () => {
       worktree: 'path:/srv/checkout',
       title: 'Terminal 1'
     })
-    expect(creates[0]?.params?.tabId).toMatch(/^terminal:/)
+    expect(creates[0]?.params?.tabId).toMatch(/^terminal-[0-9a-f-]{36}$/)
     expect(creates[0]?.params?.leafId).toBe(
-      `leaf:${String(creates[0]?.params?.tabId).replace(/^terminal:/, '')}`
+      String(creates[0]?.params?.tabId).replace(/^terminal-/, '')
     )
     expect(creates[1]?.params).toMatchObject({
       worktree: 'path:/srv/checkout',
@@ -243,7 +243,7 @@ describe('简易工作区终端标签（U46-5b）', () => {
     await user.click(screen.getByTestId('cloud-simple-workspace-new-terminal'))
     await waitFor(() => expect(stream.unsubscribers).toHaveLength(2))
 
-    const closeButtons = screen.getAllByTestId(/^cloud-simple-workspace-tab-close-terminal:/)
+    const closeButtons = screen.getAllByTestId(/^cloud-simple-workspace-tab-close-terminal-/)
     const secondClose = closeButtons[1]
     if (!secondClose) {
       throw new Error('expected two terminal tabs')

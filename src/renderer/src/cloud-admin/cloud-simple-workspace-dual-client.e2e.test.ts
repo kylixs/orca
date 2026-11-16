@@ -250,6 +250,12 @@ async function subscribeAs(
   return outcome.subscription
 }
 
+/** The shell's identity request: tab id without ':', leaf id a bare UUID. */
+function clientTerminalIdentity(): { tabId: string; leafId: string } {
+  const leafId = createBrowserUuid()
+  return { tabId: `terminal-${leafId}`, leafId }
+}
+
 function snapshotHasTab(snapshot: unknown, tabId: string): boolean {
   return (readArray(snapshot, 'tabs') ?? []).some((tab) => readString(tab, 'parentTabId') === tabId)
 }
@@ -366,9 +372,8 @@ describe('U96 B-令8 双端同步真栈（简易工作区 + Orca Web）', () => 
     try {
       await simple.rpc('session.tabs.list', { worktree }, projectId)
 
-      // The ids mirror the shell's `terminal:<uuid>` / `leaf:<uuid>` request; the host
-      // is authoritative for the row ids, so read them back instead of assuming.
-      const requestedA = { tabId: 'terminal:u96-a', leafId: 'leaf:u96-a' }
+      // The ids mirror the shell's request; the host adopts them as the row ids.
+      const requestedA = clientTerminalIdentity()
       const created = await simple.rpc(
         'terminal.create',
         { worktree, ...requestedA, title: 'U96 A' },
@@ -383,7 +388,7 @@ describe('U96 B-令8 双端同步真栈（简易工作区 + Orca Web）', () => 
       await waitForEvent(webEvents, (event) => snapshotHasTab(event, rowA.tabId))
 
       // 反向：Orca Web 新建 → 简易工作区看到同一行。
-      const requestedB = { tabId: 'terminal:u96-b', leafId: 'leaf:u96-b' }
+      const requestedB = clientTerminalIdentity()
       const createdWeb = await web.rpc(
         'terminal.create',
         { worktree, ...requestedB, title: 'U96 B' },
@@ -463,17 +468,14 @@ describe('U96 B-令8 双端同步真栈（简易工作区 + Orca Web）', () => 
     }
   }, 180_000)
 
-  it.fails('E8b 已知缺陷（U96B8-01）：客户端 terminal:<uuid>/leaf:<uuid> 被宿主丢弃，行 id 与本地标签不一致', async () => {
+  it('E8b 客户端 terminal-<uuid>/<uuid> 被宿主采纳，行 id 与本地标签一致（U107）', async () => {
     const simple = await openClient('u96-b8-simple')
     const opened = await simple.openWorkspace(projectId)
     if (!opened.ok || !opened.workspacePath) {
       throw new Error(`open failed: ${JSON.stringify(opened)}`)
     }
     const worktree = cloudWorktreeSelector(opened.workspacePath)
-    const requested = {
-      tabId: `terminal:${createBrowserUuid()}`,
-      leafId: `leaf:${createBrowserUuid()}`
-    }
+    const requested = clientTerminalIdentity()
     const created = await simple.rpc(
       'terminal.create',
       { worktree, ...requested, title: 'U96 id contract' },
@@ -505,8 +507,7 @@ describe('U96 B-令8 双端同步真栈（简易工作区 + Orca Web）', () => 
       'terminal.create',
       {
         worktree,
-        tabId: 'terminal:u96-suspend',
-        leafId: 'leaf:u96-suspend',
+        ...clientTerminalIdentity(),
         title: 'U96 Suspend'
       },
       projectId

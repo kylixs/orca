@@ -164,7 +164,14 @@ export function mergeHostTabsIntoState(
     const previous = previousById.get(next.id)
     return previous && sameSimpleTab(previous, next) ? previous : next
   })
-  tabs.push(...state.tabs.filter((tab) => tab.kind !== 'terminal' || isLocalOnlyTerminal(tab)))
+  // A local-only terminal whose id the projection now carries is that same tab,
+  // confirmed — keeping it would render the shell and its host row twice.
+  const projectedIds = new Set(tabs.map((tab) => tab.id))
+  tabs.push(
+    ...state.tabs.filter(
+      (tab) => tab.kind !== 'terminal' || (isLocalOnlyTerminal(tab) && !projectedIds.has(tab.id))
+    )
+  )
 
   const survivingIds = new Set(tabs.map((tab) => tab.id))
   let activeId: string | null

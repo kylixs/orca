@@ -143,15 +143,15 @@ describe('简易工作区标签 reducer', () => {
   })
 
   it('新终端取未用最小序号，id 为客户端生成的稳定 uuid，达到上限返回 null', () => {
-    expect(nextTerminalTab([], 'terminal:test-a')).toMatchObject({
-      id: 'terminal:test-a',
+    expect(nextTerminalTab([], 'terminal-test-a')).toMatchObject({
+      id: 'terminal-test-a',
       title: 'Terminal 1'
     })
-    expect(nextTerminalTab([terminal(1), terminal(3)], 'terminal:test-b')).toMatchObject({
-      id: 'terminal:test-b',
+    expect(nextTerminalTab([terminal(1), terminal(3)], 'terminal-test-b')).toMatchObject({
+      id: 'terminal-test-b',
       title: 'Terminal 2'
     })
-    expect(nextTerminalTab([])?.id).toMatch(/^terminal:[0-9a-f-]{36}$/)
+    expect(nextTerminalTab([])?.id).toMatch(/^terminal-[0-9a-f-]{36}$/)
     const full = Array.from({ length: CLOUD_SIMPLE_WORKSPACE_MAX_TERMINAL_TABS }, (_, index) =>
       terminal(index + 1)
     )

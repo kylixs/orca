@@ -6,6 +6,7 @@ import {
   cloudTerminalDetachPolicy,
   useCloudSimpleWorkspaceLifecycle
 } from './cloud-simple-workspace-lifecycle'
+import { cloudTerminalLeafId } from './cloud-simple-workspace-tabs'
 
 /**
  * Terminal tab of the embedded simple workspace (U46-5b, design §4.5).
@@ -112,7 +113,7 @@ export function CloudWorkspaceTerminalTab({
   // The host row carries the live PTY handle; a local tab has none until the
   // host projection acknowledges it (then its row supplies the same tab id).
   const host = tab.host
-  const leafId = host?.leafId ?? `leaf:${tab.id.replace(/^terminal:/, '')}`
+  const leafId = host?.leafId ?? cloudTerminalLeafId(tab.id)
   const panelProps: CloudTerminalPanelProps = {
     rpc: deps.rpc,
     subscribe: deps.subscribe,
