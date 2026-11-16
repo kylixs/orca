@@ -1,7 +1,11 @@
-import { spawn, type ChildProcess } from 'node:child_process'
 import { generateKeyPairSync, sign } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { readArray, readField, readNumber, readString } from '../../shared/json-fields'
+import {
+  DEFAULT_INTERNAL_TOKEN,
+  startPlatform,
+  type Platform
+} from './cloud-platform-server-process'
 import { createCloudUpgradeAdmission, type CloudRevocations } from './cloud-upgrade-admission'
 
 /**
@@ -12,10 +16,6 @@ import { createCloudUpgradeAdmission, type CloudRevocations } from './cloud-upgr
  * real platform: real Ed25519 signature, real revocations endpoint.
  */
 
-const REPO_ROOT = new URL('../../..', import.meta.url).pathname
-const INTERNAL_TOKEN = 'precision-token'
-
-type Platform = { url: string; stop: () => Promise<void> }
 let platform: Platform
 let adminToken = ''
 let projectId = ''
@@ -25,39 +25,6 @@ const devicePubKey = (() => {
   const { publicKey } = generateKeyPairSync('x25519')
   return publicKey.export({ type: 'spki', format: 'der' }).toString('base64')
 })()
-
-async function startPlatform(): Promise<Platform> {
-  const proc: ChildProcess = spawn(process.execPath, ['cloud-platform/apps/api/src/server.ts'], {
-    cwd: REPO_ROOT,
-    env: { ...process.env, PORT: '0', INTERNAL_TOKEN },
-    stdio: ['ignore', 'pipe', 'pipe']
-  })
-  const url = await new Promise<string>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('platform did not start')), 15_000)
-    let buffer = ''
-    proc.stdout?.on('data', (chunk: Buffer) => {
-      buffer += chunk.toString()
-      const match = /\[api\] listening on (http:\/\/127\.0\.0\.1:\d+)/.exec(buffer)
-      if (match) {
-        clearTimeout(timer)
-        resolve(match[1])
-      }
-    })
-    proc.once('exit', (code) => reject(new Error(`platform exited ${code}`)))
-  })
-  return {
-    url,
-    stop: () =>
-      new Promise<void>((resolve) => {
-        if (proc.exitCode !== null) {
-          resolve()
-          return
-        }
-        proc.once('exit', () => resolve())
-        proc.kill('SIGTERM')
-      })
-  }
-}
 
 type Ticket = { credential: string; hostId: string; hostName: string }
 
@@ -138,7 +105,7 @@ async function loadKeysAndRevocations(): Promise<{
   const revocations = parseRevocations(
     await (
       await fetch(`${platform.url}/v1/internal/revocations`, {
-        headers: { 'x-internal-token': INTERNAL_TOKEN }
+        headers: { 'x-internal-token': DEFAULT_INTERNAL_TOKEN }
       })
     ).json()
   )
