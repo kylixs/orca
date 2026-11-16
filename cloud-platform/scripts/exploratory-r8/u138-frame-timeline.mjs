@@ -67,6 +67,12 @@ const OPENED_STABLE_MS_RAW = Number(process.env.U138_OPENED_STABLE_MS ?? 3000)
 const OPENED_STABLE_MS = Number.isFinite(OPENED_STABLE_MS_RAW)
   ? Math.max(0, OPENED_STABLE_MS_RAW)
   : 3000
+// Run-start baseline normalization may only wait this long for the host
+// projection/persisted split to close after the setup activate.
+const BASELINE_ALIGN_MS_RAW = Number(process.env.U138_BASELINE_ALIGN_MS ?? 5000)
+const BASELINE_ALIGN_MS = Number.isFinite(BASELINE_ALIGN_MS_RAW)
+  ? Math.max(0, BASELINE_ALIGN_MS_RAW)
+  : 5000
 const HEADLESS = process.env.U138_HEADLESS !== '0'
 const PAGE_FRAME_LIMIT = Number(process.env.U138_PAGE_FRAME_LIMIT ?? 300)
 const HOST_STATE_ROOTS = (
@@ -669,6 +675,22 @@ function installU138Probe(config) {
             timeoutMs: 15_000
           },
           'probe-restore',
+          probeCall
+        )
+      },
+      hostActivateBaseline: async (args) => {
+        if (typeof probeCall !== 'function') {
+          throw new Error('u138 probe: raw RPC call not captured yet')
+        }
+        return recordCall(
+          {
+            selector: 'active',
+            method: 'session.tabs.activate',
+            params: args,
+            timeoutMs: 15_000
+          },
+          // Setup, not a renderer gesture: excluded from last-client-write anchors.
+          'probe-baseline',
           probeCall
         )
       },
@@ -1485,6 +1507,8 @@ const out = {
   isolation: {
     baselinePersistentActive: null,
     baselineOk: false,
+    baselineNormalized: null,
+    baselineDivergenceUnresolved: false,
     finalPersistentActive: null,
     skipCloseTerminalWithRunningProcessConfirm: null,
     restored: false,
@@ -1628,6 +1652,155 @@ try {
     out.notes.push(`baseline host state read failed: ${baselineHostState.error}`)
   }
 
+  // Baseline establishment (setup, NOT a measured sample): a projection/persisted
+  // split that exists before any gesture is last-run residue (U162), not this run's
+  // evidence. One persistent activate toward the persisted value aligns host memory
+  // before sampling; the end-of-run restore still targets this pre-normalization
+  // persisted value. Runs with an unresolved split are INVALID, never red.
+  const entryProjectionActive = out.baseline.projectionActive
+  const entryPersistedActive = out.isolation.baselinePersistentActive
+  out.baseline.entryProjectionActive = entryProjectionActive
+  out.baseline.entryPersistedActive = entryPersistedActive
+  out.isolation.baselineNormalized = null
+  out.isolation.baselineDivergenceUnresolved = false
+  const entryAligned =
+    comparable(entryProjectionActive) !== null &&
+    comparable(entryProjectionActive) === comparable(entryPersistedActive)
+  if (!out.isolation.baselineOk || out.baseline.projectionOk !== true || !entryPersistedActive) {
+    out.isolation.baselineNormalized = {
+      attempted: false,
+      status: 'skipped',
+      reason: !out.isolation.baselineOk
+        ? 'baseline-host-persisted-unreadable'
+        : out.baseline.projectionOk !== true
+          ? 'baseline-projection-unreadable'
+          : 'persisted-active-null',
+      projection: entryProjectionActive,
+      persisted: entryPersistedActive,
+      chosen: null,
+      elapsedMs: 0,
+      source: 'probe-baseline'
+    }
+  } else if (entryAligned) {
+    out.isolation.baselineNormalized = {
+      attempted: false,
+      status: 'already-aligned',
+      projection: entryProjectionActive,
+      persisted: entryPersistedActive,
+      chosen: entryPersistedActive,
+      elapsedMs: 0,
+      source: 'probe-baseline'
+    }
+  } else {
+    const normalizeStartedAt = Date.now()
+    const [baseTabId, baseLeafId] = String(entryPersistedActive).split(HOST_SURFACE_SEPARATOR)
+    let activate = null
+    let activateThrown = null
+    try {
+      activate = await workspacePage.evaluate(
+        async (args) => {
+          const response = await window.__u138Probe.hostActivateBaseline(args)
+          return {
+            ok: response?.ok === true,
+            id: response?.id ?? null,
+            error: response?.ok === true ? null : (response?.error ?? null),
+            activeTabId: response?.ok === true ? (response.result?.activeTabId ?? null) : null
+          }
+        },
+        {
+          worktree: worktreeId,
+          tabId: baseTabId,
+          ...(baseLeafId ? { leafId: baseLeafId } : {}),
+          notifyClients: true,
+          // Host derives persistSelection=true from caller/user + non-materializeOnly.
+          navigation: 'caller',
+          intent: 'user'
+        }
+      )
+    } catch (thrown) {
+      activateThrown = { code: 'baseline_activate_thrown', message: String(thrown?.message ?? thrown) }
+    }
+    await drainInto(workspacePage, documentEpoch)
+
+    const target = comparable(entryPersistedActive)
+    let resolvedProjectionActive = null
+    let resolvedPersistedActive = entryPersistedActive
+    let resolvedDomActive = null
+    let resolvedStoreActive = null
+    const readResolvedSurfaces = async () => {
+      const projection = await probeHostList(workspacePage, worktreeId)
+      resolvedProjectionActive =
+        projection?.ok === true ? (projection.result?.activeTabId ?? null) : null
+      const state = readHostState(worktreeId)
+      resolvedPersistedActive = state.ok ? (state.hostPersistentActive ?? null) : null
+      return (
+        projection?.ok === true &&
+        state.ok &&
+        target !== null &&
+        comparable(resolvedProjectionActive) === target &&
+        comparable(resolvedPersistedActive) === target
+      )
+    }
+    const readClientSurfaces = async () => {
+      const domStore = await workspacePage.evaluate(readDomAndStore)
+      resolvedDomActive = domStore.domActive
+      resolvedStoreActive = domStore.storeActive
+      return (
+        domStore.domActive.length === 1 &&
+        comparable(domStore.domActive[0]) === target &&
+        comparable(domStore.storeActive) === target
+      )
+    }
+    let resolved = await readResolvedSurfaces()
+    while (!resolved && Date.now() - normalizeStartedAt < BASELINE_ALIGN_MS) {
+      await sleep(100)
+      resolved = await readResolvedSurfaces()
+    }
+    // The client is this run's fresh device; let the notified activation land
+    // before sampling, but only the host surfaces decide baseline validity.
+    let clientConverged = false
+    const clientSettleUntil = Math.min(normalizeStartedAt + BASELINE_ALIGN_MS, Date.now() + 2000)
+    while (resolved && !clientConverged && Date.now() < clientSettleUntil) {
+      clientConverged = await readClientSurfaces()
+      if (!clientConverged) {
+        await sleep(100)
+      }
+    }
+    await drainInto(workspacePage, documentEpoch)
+    const unresolved = activate?.ok !== true || !resolved
+    out.isolation.baselineDivergenceUnresolved = unresolved
+    out.isolation.baselineNormalized = {
+      attempted: true,
+      status: unresolved ? 'unresolved' : 'normalized',
+      projection: entryProjectionActive,
+      persisted: entryPersistedActive,
+      chosen: entryPersistedActive,
+      elapsedMs: Date.now() - normalizeStartedAt,
+      source: 'probe-baseline',
+      persistSelection: true,
+      activateOk: activate?.ok === true,
+      activateActiveTabId: activate?.activeTabId ?? null,
+      error: activateThrown ?? activate?.error ?? null,
+      resolvedProjectionActive,
+      resolvedPersistedActive,
+      resolvedDomActive,
+      resolvedStoreActive,
+      clientConverged
+    }
+    if (unresolved) {
+      out.notes.push(
+        'baseline projection/persisted divergence unresolved; run baseline INVALID (baseline-divergence-unresolved)'
+      )
+    } else {
+      out.notes.push(
+        `baseline normalized to persisted ${String(entryPersistedActive)} (was projection ${String(entryProjectionActive)})`
+      )
+    }
+  }
+  out.baseline.normalization = out.isolation.baselineNormalized
+  out.baseline.projectionActiveAfterNormalization =
+    out.isolation.baselineNormalized?.resolvedProjectionActive ?? entryProjectionActive
+
   const ensured = await ensureTwoTabs(workspacePage)
   out.isolation.createdTabIds = ensured.createdTabIds
   if (ensured.tabIds.length < 2) {
@@ -1754,6 +1927,11 @@ try {
     }
     if (!out.isolation.baselineOk) {
       invalidReasons.push('baseline-read-failure')
+    }
+    if (out.isolation.baselineDivergenceUnresolved) {
+      // Setup could not align a pre-run projection/persisted split; the run has
+      // no valid baseline, so no point may be scored green or red.
+      invalidReasons.push('baseline-divergence-unresolved')
     }
 
     const valid = invalidReasons.length === 0
@@ -1970,6 +2148,7 @@ try {
         projectionActive: null,
         hostPersistentActive: null,
         waitedFor: 'none',
+        timedOut: false,
         degraded: false,
         degradedReason: null
       }
@@ -2023,6 +2202,8 @@ try {
       projectionActive: surfaces.projectionActive,
       hostPersistentActive: surfaces.hostPersistentActive,
       waitedFor,
+      // A gate that gave up, including the no-wait projection-lag case.
+      timedOut: !aligned,
       degraded: false,
       degradedReason: null
     }
@@ -2086,6 +2267,10 @@ try {
     }
     if (point.quickGate) {
       const gate = point.quickGate
+      // Timed-out gate + final UNSTABLE: keep both surface values for triage
+      // instead of forcing them equal (existing projection/persisted fields).
+      gate.gateTimedOut = Boolean(point.unstable && gate.ok === false)
+      gate.gateSampleUnstable = point.unstable
       const label = gate.disabled ? 'disabled' : gate.ok ? 'aligned' : 'TIMEOUT'
       const detail = [
         `[u138]   quick-gate ${label} after ${gate.elapsedMs}ms`,
@@ -2607,6 +2792,11 @@ try {
   if (!out.isolation.baselineOk) {
     conclusiveBlockers.push('baseline host persisted state unreadable')
   }
+  if (out.isolation.baselineDivergenceUnresolved) {
+    conclusiveBlockers.push(
+      'baseline divergence unresolved: pre-run projection/persisted split not normalized (baseline-divergence-unresolved)'
+    )
+  }
   if (out.baseline?.projectionOk !== true) {
     conclusiveBlockers.push('baseline device projection unreadable')
   }
@@ -2643,7 +2833,8 @@ try {
       noInvalid: invalidPoints.length === 0,
       noUnstable: unstablePoints.length === 0,
       baselineHostPersistedReadable: out.isolation.baselineOk === true,
-      baselineProjectionReadable: out.baseline?.projectionOk === true
+      baselineProjectionReadable: out.baseline?.projectionOk === true,
+      baselineDivergenceResolved: out.isolation.baselineDivergenceUnresolved !== true
     },
     scenarioComplete: out.samples.length === expectedSamplePoints,
     perspective: 'host-persisted + device-projection + client DOM/store (host memory UNKNOWN)',
@@ -2742,6 +2933,8 @@ try {
     byScenario: out.verdict?.byScenario ?? null,
     baselineOk: out.isolation?.baselineOk ?? false,
     baselineProjectionOk: out.baseline?.projectionOk ?? false,
+    baselineNormalized: out.isolation?.baselineNormalized ?? null,
+    baselineDivergenceUnresolved: out.isolation?.baselineDivergenceUnresolved === true,
     restored: out.isolation?.restored ?? false,
     restoredVerified: out.isolation?.restoredVerified ?? false,
     hostMemory: 'UNKNOWN',

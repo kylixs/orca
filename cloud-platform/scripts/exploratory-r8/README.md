@@ -46,7 +46,9 @@ two reads of a point, env lowers it for smoke only), `U138_RELOAD_STABLE_MS`
 read), `U138_OPENED_STABLE_MS` (default 3000; non-numeric falls back to 3000,
 negative clamps to 0; `0` disables the quick gate entirely, so no pre-read pair
 happens: how long the gate waits for the host persisted value to catch up when
-the projection already points at the expected tab), `U138_HEADLESS=0`,
+the projection already points at the expected tab), `U138_BASELINE_ALIGN_MS`
+(default 5000, min 0: run-start convergence budget for baseline establishment;
+see below), `U138_HEADLESS=0`,
 `U138_PAGE_FRAME_LIMIT`, `U138_RUN_ID`,
 `U138_HOST_STATE_ROOTS` (colon-separated host user-data roots, default
 `~/orca-local-env/host` and `~/orca-local-env/host2`).
@@ -175,6 +177,80 @@ tab, initial and final surface values, `degraded`/`degradedReason`) is recorded
 as `quickGate` on the point. `conclusive` is unchanged: an unstable point still
 blocks sign-off.
 
+A gate that gives up records `timedOut: true`. That includes the
+`waitedFor: "none"` case where the projection is already behind the expected
+tab: per the rule above it does not wait, and the point is sampled by the
+unchanged dual-read semantics. If that point is finally `unstable`, the gate
+also records `gateTimedOut: true` and `gateSampleUnstable: true`; both final
+view values remain in `projectionActive` / `hostPersistentActive` (the initial
+pair stays in `initialProjectionActive` / `initialPersistedActive`). An aligned
+or disabled gate records `gateTimedOut: false`.
+
+## Baseline establishment (setup, not measurement)
+
+A run can start on a host whose device projection and persisted active already
+disagree — residue from an earlier flow (tracked separately as U162), not a
+gesture of this run. final3 hit this twice: before any sample, the new device's
+`session.tabs.list` projection was `web-terminal-e05cbc48…` while
+`profile-state.db` held `web-terminal-1bb67bb3…`. Sampling that split made
+reload cycle-1 `start` red (`H-C`) for a state the run never caused.
+
+The probe therefore establishes a baseline once, at run start, before any
+sample or gesture:
+
+1. Read host persisted (`profile-state.db`) and the device projection
+   (`session.tabs.list`).
+2. If they agree (after the usual leaf collapse), nothing is written and
+   `baselineNormalized.status` is `already-aligned`.
+3. If they disagree, send **one** `session.tabs.activate` to the **persisted**
+   tab (`navigation: "caller"`, `intent: "user"`, `notifyClients: true`, no
+   `materializeOnly`). The host derives `persistSelection: true` from those
+   fields; this is the persisted-selection path, not a pane mount. The call is
+   tagged `source: "probe-baseline"` at the recorder boundary, so it is never
+   confused with a renderer write (H-A's last-client-write anchor only reads
+   `source: "renderer"`).
+4. Poll projection + persisted (and best-effort DOM/store) up to
+   `U138_BASELINE_ALIGN_MS`. Success records
+   `baselineNormalized.{projection, persisted, chosen, elapsedMs, …}` with
+   `status: "normalized"`.
+5. If the activate fails, times out, or the two host surfaces do not converge,
+   the run baseline is INVALID (`baseline-divergence-unresolved`) and every
+   sample point carries that reason. It is never scored red.
+
+The chosen baseline is always the **persisted** value. The end-of-run restore
+and `isolation.restored` still target the same pre-normalization persisted
+value, so normalization changes nothing about what is restored.
+
+This is setup, not a measurement and not a fix: U162 (which flow writes host
+memory without persisting) stays open and must be diagnosed separately. A
+normalized run does not close U162; it only proves the run started from a
+single, persisted truth.
+
+### Baseline evidence fields
+
+`isolation.baselineNormalized` (mirrored at `baseline.normalization`):
+
+| field | meaning |
+| --- | --- |
+| `attempted` | a setup activate was sent |
+| `status` | `already-aligned` / `normalized` / `unresolved` / `skipped` |
+| `projection` | run-entry device projection (before any write) |
+| `persisted` | run-entry host persisted value (the chosen baseline) |
+| `chosen` | tab the setup activate targeted (always the persisted value) |
+| `elapsedMs` | wall time of establish + converge |
+| `source` | `probe-baseline` |
+| `persistSelection` | `true` on the setup activate (derived by the host from caller/user, non-materializeOnly) |
+| `activateOk`, `activateActiveTabId`, `error` | setup RPC outcome |
+| `resolvedProjectionActive`, `resolvedPersistedActive` | last host surfaces read during convergence |
+| `resolvedDomActive`, `resolvedStoreActive`, `clientConverged` | best-effort client observation before sampling |
+
+`isolation.baselineDivergenceUnresolved` is `true` only for `unresolved`; it is
+a run-wide INVALID reason and a `conclusive: false` blocker.
+`baseline.entryProjectionActive` / `baseline.entryPersistedActive` keep the raw
+entry pair, and `baseline.projectionActiveAfterNormalization` is the post-setup
+projection. `summary.json` carries `baselineNormalized` and
+`baselineDivergenceUnresolved`.
+
 ## Three perspectives (host memory is not observed)
 
 Each read records, with its own timestamp:
@@ -272,6 +348,9 @@ A sample point is INVALID and excluded from green/red when any of these holds:
 - topology precondition fails: `<2` tabs, `<2` groups, or the driven A/B tabs
   are not in different groups;
 - baseline host state read failed (this invalidates every point in the run);
+- baseline establishment could not normalize a pre-run projection/persisted
+  split (`baseline-divergence-unresolved`, see
+  [Baseline establishment](#baseline-establishment-setup-not-measurement));
 - the T1 trace is unavailable **or empty** (a handle with zero recorded frames
   cannot answer H-A);
 - quick round: tab creation failed (including
@@ -296,7 +375,9 @@ counted in their own bucket too. Neither contributes to `green`, `red`, or
 3. the script executed completely: the sample-point count equals
    `CYCLES × 4 + REOPEN_CYCLES + QUICK_CYCLES × 2` and the run was not blocked;
 4. the baseline host persisted state and the baseline device projection were
-   both readable, and every read in the run had a readable projection.
+   both readable, and every read in the run had a readable projection;
+5. baseline establishment resolved any entry projection/persisted split
+   (`baselineDivergenceUnresolved !== true`).
 
 Otherwise `conclusive` is `false` with a `conclusiveReason` listing the
 blockers. Only a `conclusive: true` run may be quoted as a signed
@@ -311,7 +392,8 @@ red. A `reproduced: null` run is **not** evidence of non-reproduction.
 is not reported as a reload/reopen regression.
 
 Restore and cleanup run before the final verify: the probe activates the
-baseline host value, closes the tabs it created, then reads the host state
+baseline host value (the pre-normalization persisted value, which is also the
+normalization target), closes the tabs it created, then reads the host state
 again; if cleanup moved the active tab, it restores once more, waits ≥1 s for
 the host's debounced persistence write to land, and re-verifies.
 `isolation.restored` is `true` only when the baseline was readable, the restore
@@ -350,6 +432,9 @@ A baseline read failure can never yield `restored: true`.
         "initialPersistedActive": "…",
         "projectionActive": "…::…",
         "hostPersistentActive": "…",
+        "timedOut": false,
+        "gateTimedOut": false,
+        "gateSampleUnstable": false,
         "degraded": false,
         "degradedReason": null
       },
@@ -373,7 +458,8 @@ A baseline read failure can never yield `restored: true`.
       "noInvalid": true,
       "noUnstable": true,
       "baselineHostPersistedReadable": true,
-      "baselineProjectionReadable": true
+      "baselineProjectionReadable": true,
+      "baselineDivergenceResolved": true
     },
     "perspective": "host-persisted + device-projection + client DOM/store (host memory UNKNOWN)",
     "hostMemory": "UNKNOWN",
