@@ -3698,6 +3698,13 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **确定性 red（两次复现）**：reload cycle-1 `start`，`attribution=H-C`——运行入口即 host projection=`e05…` vs persisted=`1bb…`（上一轮流程遗留、任何手势前）→ 登记 **U162**（宿主内存/持久分歧），并派探针**基线归一**（setup，非测量）。
 - **U161 v2**（`9d408c77c0f`）：另 4 入口补 worktree + 每入口钉 + deferral 清理；28 文件 119 测试；**final3 构建不含 v2**，须重建 final4。
 
+### 2026-11-17 04:2x 轮：final4 24 绿 0 红；仅测量竞态 unstable
+
+- **final4（U161 v2 + 基线归一）**：两次同型 **24 绿 / 0 红 / 0 INVALID / 1 unstable**；D1 5/5、quick close 5/5、race 25/25；基线归一 `already-aligned`；`conclusive=false` 仅因 quick-4 opened 的 38ms gate/采样竞态（测量，非产品）。
+- **基线归一审可签字**：不掩盖 U162、caller-only 不拉他设备；P3（字段形状/预算起算/单次读目标/内存层为推断）记录。
+- **门 v3 在途**（合并 gate 与采样读取或 1s 有界投影追齐）；**U162 诊断在途**（哪一步只写内存不落盘）。
+- 签字口径不变：unstable 不得签通过。
+
 ### 四通道并发执行（启动，2026-11-14）
 
 按细粒度拆分与三权分立纪律并发起跑：通道② **W6a**（中继浏览器模式，relay.ts 域）、通道③ **W10**（客户端零 env 登录，src/main+renderer 登录域）、通道④ **W5a**（详情页终端组件，cloud-admin 域）三个实现代理并行；通道① 等在途 W2（QA 修复）完成后接 W8。每令完成→独立测试代理→独立审计代理→主会话关闭放行下一个。
