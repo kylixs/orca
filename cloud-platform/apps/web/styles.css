@@ -1426,6 +1426,13 @@ td.actions {
   .archived-group .archived-table {
     display: none;
   }
+  /* 归档卡与在营卡同构；组内卡片不再额外缩进。 */
+  .archived-group .project-list {
+    padding-bottom: 4px;
+  }
+  .archived-group .project-list-card .plc-actions .btn {
+    min-height: 44px;
+  }
   .project-list-card {
     padding: 14px;
     display: flex;
@@ -1700,8 +1707,30 @@ td.actions {
     overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch;
   }
+  .dialog .foot {
+    flex-wrap: wrap;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  }
   .dialog .foot .btn {
+    flex: 1 1 auto;
     min-height: 44px;
+  }
+  /* 归档/恢复确认卡的后果清单保持可读行宽。 */
+  .dialog-consequences {
+    margin: 0;
+    padding-left: 20px;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+  }
+  .dialog-consequences li + li {
+    margin-top: 6px;
+  }
+  /* 无页签的归档详情横幅不与标题挤在一起。 */
+  .dialog-sheet .note.warn {
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    font-size: 12.5px;
+    line-height: 1.55;
   }
   /* 中继刷新失败横幅可读，重试按钮满足触控高度。 */
   .note.warn {
