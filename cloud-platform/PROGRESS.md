@@ -3584,7 +3584,9 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **P2 批已部署并真机验证**（`--platform-only` web build=源；r7 探索 `evidence/r7/`）：P1 中继刷新横幅+重试、P2 审计链健康/校验+auditor 空下拉解释、P4 策略冲突双会话、P5 回归抽检 **全 PASS**；P3 授权收缩核心行为通过（403 实时位门禁 + revokedUsers + 撤销记录；「401」断言已按设计修正为宿主旧 ticket 侧）。
 - r7 环境残留（已记录）：策略版本因测试写入由 25→31（不可回退）；zhangsan/lisi `roleSource` 变为 admin-override（角色值已复原）；lisi 一条历史撤销记录。
 - **缺口收敛（续）**：G03 登录 UX（`470d319bcbe`）、G15 审计 UI 三项（`1000cc18d3b`）、G02 会话失败三例（`c7a0e90090e`）、G05 工作台四卡+query+forward（`f68e9fe15eb`）、G25 capabilities 路径钉住（`e67d13fb575`）、G07 provisioning UI 全链（`3ec24af7486`）、G09 维护/下线失败 toast+成功态（`c05974dd502`）全部落地。
-- **验收基线**：**321 = 284 自动 + 37 手测 + 0 未覆盖**；§13 **closed 22 / 部分 1 / 待 6**（G04/G06/G12/U145/G24/G26/G27 属部署手测或产品待决）；链路 82/70/71/54；机检 PASS。人工验收矩阵 `work-orders/manual-acceptance-matrix.md`。
+- **验收基线（当前，2026-11-16 23:xx）**：**321 = 284 自动 + 37 手测 + 0 未覆盖**；§13 **closed 23 / 部分 2 / 待 4**（G04/G06/G24/G26 属部署手测或待排期）；链路 82/70/71/54；机检 PASS。人工验收矩阵 `work-orders/manual-acceptance-matrix.md`。
+- **U145/G27 闭环**：LDAP 徽标事实化（加性 `ldap.requiredGroup`+三态展示，`accf5204d26`/`33d01936cab`）；设置页 toast 去掉「30 秒」承诺改「随宿主心跳生效」（`86e072fcc1e`/`33d01936cab`）；G27 钉住功能待排期（部分闭合）。
+- **P2/缺口批独立审计 PASS**（13 提交，25/25 抽跑绿；0 skip/todo、未放宽断言）：3 项非阻断偏差已处置——并发用例改名（真并发由 write-lock 代码保证）、本段历史基线加时刻标注、纯测试提交的措辞区分见各条（实现早于覆盖补齐）。
 - **最终一致性验证完成（HEAD 重建部署后）**：W9 官方双线 **6/6 绿**；平台 e2e **460/460 绿**；journey 控制台线 **12/13**（a2 为 U138 已知 flaky 残余，B7 原语义绿；证据 `evidence/journey-final/`）。环境健康：platform 200、hosts 47158/49053 在线、reseed `failures=[]`。
 - **过程事故与处置（已闭环）**：验证链首轮因**平台 pidfile 陈旧未杀到真实进程**→EADDRINUSE，随后 TaskStop 留下 14 个测试 server 泄漏进程；按精确 PID 清理、full reseed 恢复。教训：重启前置核验实际监听者；停后台链后清点子进程。
 - **缺口收敛（本小时）**：G23 授权组合 6 findings 逐条复验全部已修（`3d9dee67131`/`b05ee6ae5ac`）→ **closed**；U113 A-retest 真机矩阵 **9/9 PASS**（2 组 3 标签×关页/刷新/二开×3，证据 `evidence/u113-retest/`）→ U113 关闭；宿主旧 user ticket 401 探针入套件（`b7fc032ce01`，2/2）。基线：320=279+41+0、§13 closed 15/部分 2/待 12（机检 PASS）。

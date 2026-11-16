@@ -90,7 +90,7 @@ after(async () => {
 })
 
 describe('U136④a 下载策略乐观并发控制（真实平台进程）', () => {
-  test('两管理员并发：陈旧 expectedVersion 409 且不覆盖新策略', async () => {
+  test('两管理员顺序陈旧写：陈旧 expectedVersion 409 且不覆盖新策略（真并发由 write-lock 代码保证，未实验断言）', async () => {
     const seen = await getPolicy() // admin A reads version N
     const staleVersion = seen.version
 
