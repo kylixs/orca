@@ -275,6 +275,7 @@ export class OrcaRuntimeWithApplyMobileSessionTabNavigation extends OrcaRuntimeW
       session.activeTabId === tab.parentTabId &&
       (!activeGroupId || persistedGroupActive === tab.parentTabId)
     ) {
+      this.syncHeadlessMobileSessionSnapshotActiveTab(worktreeId, tab, activeGroupId)
       return
     }
     const nextGroups =
@@ -310,6 +311,54 @@ export class OrcaRuntimeWithApplyMobileSessionTabNavigation extends OrcaRuntimeW
         : {}),
       ...(nextGroups ? { tabGroups: { ...session.tabGroups, [worktreeId]: nextGroups } } : {}),
       ...(nextLayouts ? { terminalLayoutsByTabId: nextLayouts } : {})
+    })
+    this.syncHeadlessMobileSessionSnapshotActiveTab(worktreeId, tab, activeGroupId)
+  }
+
+  /**
+   * Why U162: the durable paired activation just moved the host's active tab, so the live snapshot
+   * a device without a recorded selection resumes must move with it or the two disagree.
+   */
+  private syncHeadlessMobileSessionSnapshotActiveTab(
+    worktreeId: string,
+    tab: RuntimeMobileSessionTerminalTab,
+    activeGroupId: string | undefined
+  ): void {
+    const snapshot = this.mobileSessionTabsByWorktree.get(worktreeId)
+    if (
+      !snapshot ||
+      !this.isHeadlessMobileSessionPublication(snapshot.publicationEpoch) ||
+      !snapshot.tabs.some((candidate) => candidate.id === tab.id)
+    ) {
+      return
+    }
+    const groupId = activeGroupId ?? snapshot.activeGroupId
+    const tabGroups = snapshot.tabGroups?.map((group) =>
+      group.id === groupId && group.activeTabId !== tab.parentTabId
+        ? { ...group, activeTabId: tab.parentTabId }
+        : group
+    )
+    const groupsChanged =
+      tabGroups?.some((group, index) => group !== snapshot.tabGroups?.[index]) ?? false
+    const unchanged =
+      snapshot.activeTabId === tab.id &&
+      snapshot.activeGroupId === groupId &&
+      !groupsChanged &&
+      snapshot.tabs.every((candidate) => candidate.isActive === (candidate.id === tab.id))
+    if (unchanged) {
+      return
+    }
+    this.storeMobileSessionSnapshot(worktreeId, {
+      ...snapshot,
+      // publicationEpoch is not touched: the headless publication owner keeps it.
+      activeTabId: tab.id,
+      activeTabType: 'terminal',
+      activeGroupId: groupId,
+      ...(tabGroups ? { tabGroups } : {}),
+      tabs: snapshot.tabs.map((candidate) => ({
+        ...candidate,
+        isActive: candidate.id === tab.id
+      }))
     })
   }
 }
