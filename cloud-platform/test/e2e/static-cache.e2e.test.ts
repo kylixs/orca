@@ -70,19 +70,23 @@ test('U47 静态资源：不可变缓存头、HTML 短缓存、gzip 协商与 ET
     const hashed = await rawGet(`${base}${appPath}`, { 'accept-encoding': 'identity' })
     assert.equal(hashed.status, 200)
     assert.equal(hashed.headers['cache-control'], 'public, max-age=31536000, immutable')
+    assert.equal(hashed.headers['referrer-policy'], 'no-referrer')
     assert.ok((hashed.headers.etag ?? '').length > 2)
     assert.match(String(hashed.headers.vary), /accept-encoding/i)
 
     // ② HTML entry revalidates every load; ③ unhashed paths get a short TTL.
     const index = await rawGet(`${base}/`, { 'accept-encoding': 'identity' })
     assert.equal(index.headers['cache-control'], 'no-cache')
+    assert.equal(index.headers['referrer-policy'], 'no-referrer')
     const legacy = await rawGet(`${base}/app.js`, { 'accept-encoding': 'identity' })
     assert.equal(legacy.headers['cache-control'], 'max-age=300')
+    assert.equal(legacy.headers['referrer-policy'], 'no-referrer')
 
     // ④ Accept-Encoding: gzip compresses a text body on the wire.
     const compressed = await rawGet(`${base}${appPath}`, { 'accept-encoding': 'gzip' })
     assert.equal(compressed.status, 200)
     assert.equal(compressed.headers['content-encoding'], 'gzip')
+    assert.equal(compressed.headers['referrer-policy'], 'no-referrer')
     assert.equal(gunzipSync(compressed.body).toString('utf8'), hashed.body.toString('utf8'))
     assert.notEqual(compressed.headers['content-length'], hashed.headers['content-length'])
     assert.ok(Number(compressed.headers['content-length']) < hashed.body.length)
@@ -99,16 +103,21 @@ test('U47 静态资源：不可变缓存头、HTML 短缓存、gzip 协商与 ET
     assert.equal(notModified.status, 304)
     assert.equal(notModified.body.length, 0)
     assert.equal(notModified.headers['cache-control'], 'public, max-age=31536000, immutable')
+    assert.equal(notModified.headers['referrer-policy'], 'no-referrer')
 
     saveEvidence(EVIDENCE, 'platform-static.json', {
       build: release.build,
       hashedAsset: {
         path: appPath,
         cacheControl: hashed.headers['cache-control'],
+        referrerPolicy: hashed.headers['referrer-policy'],
         etag: hashed.headers.etag,
         vary: hashed.headers.vary
       },
-      html: { cacheControl: index.headers['cache-control'] },
+      html: {
+        cacheControl: index.headers['cache-control'],
+        referrerPolicy: index.headers['referrer-policy']
+      },
       unhashed: { cacheControl: legacy.headers['cache-control'] },
       gzip: {
         contentEncoding: compressed.headers['content-encoding'],
