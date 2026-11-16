@@ -128,56 +128,89 @@ describe('late initial listAll apply ordering (U138 H-A)', () => {
     recoveryGate.release = undefined
   })
 
-  it.fails(
-    'keeps the host-published active when a delayed listAll applies afterwards',
-    async () => {
-      let resolveListAll: ((value: unknown) => void) | undefined
-      const call = vi.fn(
-        () =>
-          new Promise((resolve) => {
-            resolveListAll = resolve
-          })
-      )
-      Object.assign(window, { api: { runtimeEnvironments: { call } } })
+  it('keeps the host-published active when a delayed listAll applies afterwards', async () => {
+    let resolveListAll: ((value: unknown) => void) | undefined
+    const call = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveListAll = resolve
+        })
+    )
+    Object.assign(window, { api: { runtimeEnvironments: { call } } })
 
-      // The one-shot entry inventory reserves its receipt frame before the request leaves.
-      loadInitialWebSessionTabs({
-        environmentId: ENV,
-        expectedEnvironmentConnectionGeneration: 1,
-        expectedEnvironmentPairingRevision: undefined,
-        expectedTrackingGeneration: 0,
-        isCurrent: () => true
-      })
+    // The one-shot entry inventory reserves its receipt frame before the request leaves.
+    loadInitialWebSessionTabs({
+      environmentId: ENV,
+      expectedEnvironmentConnectionGeneration: 1,
+      expectedEnvironmentPairingRevision: undefined,
+      expectedTrackingGeneration: 0,
+      isCurrent: () => true
+    })
 
-      // Entry projection captured before the later publish: it neither knows that tab nor its
-      // active. Applying it after the publish must merge its tabs without moving active back.
-      const entryProjection = snapshot(ENTRY_HOST, 72, [
-        terminal(ENTRY_HOST, SECOND_LEAF_ID),
-        terminal(INVENTORY_ONLY_HOST, THIRD_LEAF_ID)
-      ])
-      resolveListAll?.({
-        ok: true,
-        result: { snapshots: [entryProjection], authoritative: true }
-      })
-      await vi.waitFor(() => expect(recoveryGate.release).toBeTypeOf('function'))
+    // Entry projection captured before the later publish: it neither knows that tab nor its
+    // active. Applying it after the publish must merge its tabs without moving active back.
+    const entryProjection = snapshot(ENTRY_HOST, 72, [
+      terminal(ENTRY_HOST, SECOND_LEAF_ID),
+      terminal(INVENTORY_ONLY_HOST, THIRD_LEAF_ID)
+    ])
+    resolveListAll?.({
+      ok: true,
+      result: { snapshots: [entryProjection], authoritative: true }
+    })
+    await vi.waitFor(() => expect(recoveryGate.release).toBeTypeOf('function'))
 
-      // A host publish lands and is applied with host-active authority before the listAll.
-      applyHostPublish(snapshot(LATER_HOST, 71, [terminal(LATER_HOST, LEAF_ID)]))
-      expect(storeHarness.currentState().activeTabIdByWorktree[WT]).toBe(LATER_TAB)
+    // A host publish lands and is applied with host-active authority before the listAll.
+    applyHostPublish(snapshot(LATER_HOST, 71, [terminal(LATER_HOST, LEAF_ID)]))
+    expect(storeHarness.currentState().activeTabIdByWorktree[WT]).toBe(LATER_TAB)
 
-      // Now the delayed listAll applies.
-      recoveryGate.release?.()
-      await new Promise((resolve) => setTimeout(resolve, 20))
+    // Now the delayed listAll applies.
+    recoveryGate.release?.()
+    await new Promise((resolve) => setTimeout(resolve, 20))
 
-      const state = storeHarness.currentState()
-      const tabIds = state.tabsByWorktree[WT]?.map((tab) => tab.id) ?? []
+    const state = storeHarness.currentState()
+    const tabIds = state.tabsByWorktree[WT]?.map((tab) => tab.id) ?? []
 
-      // The listAll still supplies tab content: a fix must not drop the whole apply.
-      expect(tabIds).toContain(ENTRY_TAB)
-      expect(tabIds).toContain(INVENTORY_ONLY_TAB)
-      // The later host publish is the freshest evidence; the stale entry projection may merge
-      // tabs but must not move active back.
-      expect(state.activeTabIdByWorktree[WT]).toBe(LATER_TAB)
-    }
-  )
+    // The listAll still supplies tab content: a fix must not drop the whole apply.
+    expect(tabIds).toContain(ENTRY_TAB)
+    expect(tabIds).toContain(INVENTORY_ONLY_TAB)
+    // The later host publish is the freshest evidence; the stale entry projection may merge
+    // tabs but must not move active back.
+    expect(state.activeTabIdByWorktree[WT]).toBe(LATER_TAB)
+  })
+
+  it('adopts the listAll active when no stream frame lands during recovery', async () => {
+    let resolveListAll: ((value: unknown) => void) | undefined
+    const call = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveListAll = resolve
+        })
+    )
+    Object.assign(window, { api: { runtimeEnvironments: { call } } })
+
+    loadInitialWebSessionTabs({
+      environmentId: ENV,
+      expectedEnvironmentConnectionGeneration: 1,
+      expectedEnvironmentPairingRevision: undefined,
+      expectedTrackingGeneration: 0,
+      isCurrent: () => true
+    })
+
+    resolveListAll?.({
+      ok: true,
+      result: {
+        snapshots: [snapshot(ENTRY_HOST, 72, [terminal(ENTRY_HOST, SECOND_LEAF_ID)])],
+        authoritative: true
+      }
+    })
+    await vi.waitFor(() => expect(recoveryGate.release).toBeTypeOf('function'))
+
+    // No publish arrives while recovery is awaited, so the entry inventory still owns focus.
+    recoveryGate.release?.()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    const state = storeHarness.currentState()
+    expect(state.activeTabIdByWorktree[WT]).toBe(ENTRY_TAB)
+    expect(state.activeGroupIdByWorktree[WT]).toBe('group-entry')
+  })
 })

@@ -10,6 +10,19 @@ import { isWebSessionTabsWorktreeRemovalFrame } from './session-tabs-inventory-a
 
 type FinalPatchContext = ReturnType<typeof applyActiveStateUpdates>
 
+/** Store fields a content-only apply must leave exactly as they are. */
+const STORE_ACTIVE_FOCUS_KEYS = [
+  'activeBrowserTabId',
+  'activeBrowserTabIdByWorktree',
+  'activeFileId',
+  'activeFileIdByWorktree',
+  'activeGroupIdByWorktree',
+  'activeTabId',
+  'activeTabIdByWorktree',
+  'activeTabType',
+  'activeTabTypeByWorktree'
+] as const
+
 /** Build the minimal store patch after all reconciliation stages have completed. */
 export function buildWebSessionTabsFinalPatch(
   context: FinalPatchContext
@@ -20,6 +33,7 @@ export function buildWebSessionTabsFinalPatch(
     environmentId,
     worktreeId,
     now,
+    options,
     batchContext,
     currentTerminalTabs,
     terminalSurfaceTabs,
@@ -158,6 +172,12 @@ export function buildWebSessionTabsFinalPatch(
     ...(nextActiveTabTypeByWorktree !== state.activeTabTypeByWorktree
       ? { activeTabTypeByWorktree: nextActiveTabTypeByWorktree }
       : {})
+  }
+  if (options?.preserveStoreActiveFocus) {
+    // Why: a late bootstrap merges content but must not move focus back to its stale projection (U138 H-A).
+    for (const key of STORE_ACTIVE_FOCUS_KEYS) {
+      delete patch[key]
+    }
   }
   return Object.keys(patch).length === 0 ? state : patch
 }

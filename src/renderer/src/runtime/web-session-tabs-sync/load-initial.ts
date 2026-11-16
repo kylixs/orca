@@ -144,8 +144,20 @@ export function loadInitialWebSessionTabs({
         latestReceivedSessionTabsFrameByEnvironment.get(environmentId) === requestReceivedFrame &&
         (latestReceivedSessionTabsInventoryFrameByEnvironment.get(environmentId) ?? 0) <=
           requestReceivedFrame
+      // Why: a stream frame landed while recovery was awaited and already applied host-active;
+      // this late inventory may merge content but must not move focus back (U138 H-A).
+      const applyOptions = initialInventoryStillCurrent
+        ? undefined
+        : { preserveStoreActiveFocus: true }
       settleHydration = applyWebSessionTabsStorePatch(
-        (state) => applyWebSessionTabsSnapshots(state, freshSnapshots, environmentId),
+        (state) =>
+          applyWebSessionTabsSnapshots(
+            state,
+            freshSnapshots,
+            environmentId,
+            Date.now(),
+            applyOptions
+          ),
         {
           frames: applicable.map((snapshot, index) => ({
             environmentId,
