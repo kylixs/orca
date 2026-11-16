@@ -3589,6 +3589,7 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **U145/G27 真机抽验全 PASS**（`evidence/u145-g27/`）：users 徽标「LDAP 准入：未配置」与 API `ldap.requiredGroup=null` 一致、无「LDAP 同步正常」；settings toast 无「30 秒」，线上 bundle grep 命中 0；audit/hosts 回归正常（环境未改动）。
 - **P2/缺口批独立审计 PASS**（13 提交，25/25 抽跑绿；0 skip/todo、未放宽断言）：3 项非阻断偏差已处置——并发用例改名（真并发由 write-lock 代码保证）、本段历史基线加时刻标注、纯测试提交的措辞区分见各条（实现早于覆盖补齐）。
 - **U127 已执行闭环（用户授权：开发环境非危险操作自主处理，中继未正式使用）**：远端 relay 自签证书→CA 签发（SAN 含 IP，旧件备份）；新增 `orca-relay.service` systemd（沿用原 token，Restart=always）停旧起新；18443/18444 监听、routes n=2；handoff `…:18444/h/dev-local-02/…` 实测 **200**、系统信任校验 **return code 0**；协议 §3i 增补开发环境自主权限。证据 `evidence/u127/result.json`。
+- **U63 人工复核证据重验完成**（10 步 / 23 截图，`evidence/u63-manual-review/`）：**9 PASS、1 DIFF**——主机指纹为占位 `host:dev-local-02`、在线版本缺失（与 WEB-R2-007 同源）→ 登记 **U147**（诊断中）；其余步骤（登录/工作台/项目/工作区终端+文件树/中继刷新/用户改角色/审计链校验/设置/登出）全部通过。
 - **移动端真机抽验 15/15 PASS**（`evidence/u80-mobile/real-env.json` + 4 截图）：390 工作台四 tab/2×2/Orca Web 提示、项目卡/chips/「打开工作区」toast 且 hash 不变、详情全屏 sheet+权限三卡、768 侧栏两列；consoleErrors=[]。
 - **移动端 U80 进展（M1-M3 已落地）**：M1 基座 `8dbc5f9`（审计 PASS，D2/D3/D4 由 `54955b44a80` 收口）；M2 登录+工作台 `54ed87a`；M3 项目列表+详情 `33e42b8`（含「打开工作区→请用 Orca Web」提示）；U80 套件 12/12；控制台已部署测试环境，真机移动视口抽验进行中。M4 主机/中继在途。
 - **移动端 U80 启动**：原型已改「打开 Orca Web」提示（`2749d252eec`）；任务计划+探索清单落盘；**M1 基座完成**（`8dbc5f9230b`：≤700 单列/701–1100 两列/≥1101 零泄漏、底部 tabbar+更多 sheet 按权限显隐、安全区/16px/44px、表格横滚；390/768/1280 断言 + 桌面 32/32 回归）；M1 独立审计与 M2（登录+工作台）在途。
