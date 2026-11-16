@@ -1,4 +1,0 @@
-$ pnpm run typecheck
-$ pnpm run build:packages && node config/scripts/run-typecheck-projects-in-parallel.mjs
-$ pnpm --filter @orca/process-host build
-$ tsx --conditions=orca-source scripts/build-dist.mjs
