@@ -2713,8 +2713,7 @@ export function createRemoteRuntimePtyTransport(
       }
       // Why: sample before the create round-trip; a user switch during it must cancel the intent.
       // A replayed connect() carries no gesture, so its sampling would reset the guard anyway (U155).
-      const attemptUserInitiatedCreate =
-        userInitiated === true && !userInitiatedCreateAttempted
+      const attemptUserInitiatedCreate = userInitiated === true && !userInitiatedCreateAttempted
       const expectedCurrentLocalTabId = attemptUserInitiatedCreate
         ? resolveWebSessionVisibleTabId(useAppStore.getState(), worktreeId)
         : undefined
@@ -2894,7 +2893,15 @@ export function createRemoteRuntimePtyTransport(
           })
         }
         if (destroyed || lifecycleEpoch !== connectLifecycleEpoch) {
-          if (userInitiated === true && tabId) {
+          if (attemptUserInitiatedCreate && createdTerminal.isReattach !== true) {
+            // Why: the mirror rename unmounts this transport, but the click it owned must still
+            // persist the host selection or the surviving mirror pane only materializes (U156).
+            selectUserCreatedHostTab(
+              createdTerminal,
+              createEnvironmentId,
+              expectedCurrentLocalTabId
+            )
+          } else if (userInitiated === true && tabId) {
             discardUserInitiatedTerminalCreate(tabId)
           }
           if (
