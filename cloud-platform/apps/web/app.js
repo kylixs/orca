@@ -1273,7 +1273,7 @@ async function openProjectDetail(projectId, { tab = 'info', onClose } = {}) {
       showBits: false,
       showLevel: false,
       header:
-        '项目级授权仅影响当前项目，不扩大到所在主机或其它项目（FR-9.11③）。下载位仍受项目 / 全局下载策略独立约束。',
+        '项目级授权仅影响当前项目，不扩大到所在主机或其它项目（FR-9.11③）。下载位仍受项目 / 全局下载策略独立约束。同一主体在主机推导卡与可写卡并列时以主机推导为准。',
       footnote: PERM_FOOTNOTE,
       datalistPrefix: 'project',
       hostRows: extra.hostRows,
@@ -2189,6 +2189,12 @@ const PROJECT_ROLE_CARDS = [
 const PERM_FOOTNOTE =
   '变更即时保存（PUT 整行替换）；同一主体已有授权时弹角色调整确认。降级保存将断开该主体当前全部云会话，≤60 秒生效（FR-1.7）。'
 
+/** 管理卡位不含 view：从含 view 的卡升入管理会丢失项目可见性，确认框必须点明。 */
+const MANAGE_DROPS_VIEW_NOTE =
+  '管理=provision+maintain（不含 view）：保存会丢失 view 带来的项目可见性。'
+const manageDropsView = (roleKey, permissions) =>
+  roleKey !== 'manage' && permissions.includes('view')
+
 /** 合成级别徽标（§2.2）：管理台不产生这两种读法之外的级别。 */
 function permLevelLabel(kind, permissions) {
   const has = (bit) => permissions.includes(bit)
@@ -2424,10 +2430,15 @@ function wirePermCards(root, options) {
         await onChange()
       }
       if (existing) {
+        const upgradeNote =
+          roleOf && card.key === 'manage' && manageDropsView(currentRole, existing.permissions)
+            ? MANAGE_DROPS_VIEW_NOTE
+            : ''
         dialog(
           roleOf ? '调整角色' : '覆盖现有授权',
           `<p>${esc(subjectLabel(existing))}（${subjectType === 'group' ? '组' : '用户'}）已有一条授权，保存按整行替换权限位。</p>
            <p>级别：${esc(permLevelLabel(kind, existing.permissions))} → ${esc(permLevelLabel(kind, next))}</p>
+           ${upgradeNote ? `<p class="muted">${esc(upgradeNote)}</p>` : ''}
            <p class="muted">${rankOf(card.key) > rankOf(currentRole) ? '升级即时生效，不断开会话。' : '降级保存将断开该主体当前全部云会话，≤60 秒生效（FR-1.7）。'}</p>`,
           [{ label: '确认保存', primary: true, onClick: () => void save() }]
         )
@@ -2462,10 +2473,16 @@ function wirePermCards(root, options) {
         await onChange()
       }
       const hasDowngrade = targets.some((card) => rankOf(card.key) < currentRank)
+      const manageNote =
+        targets.some((card) => card.key === 'manage') &&
+        manageDropsView(currentRole, row.permissions)
+          ? `<p class="muted">${esc(MANAGE_DROPS_VIEW_NOTE)}</p>`
+          : ''
       dialog(
         '调整角色',
         `<p>${esc(subjectLabel(row))}（${row.subjectType === 'group' ? '组' : '用户'}）当前角色为「${esc(roleLabel(currentRole))}」。</p>
-         <p>请选择目标角色。${hasDowngrade ? '降级将断开该主体当前全部云会话，≤60 秒内生效（FR-1.7）。' : '升级即时生效，不断开会话。'}</p>`,
+         <p>请选择目标角色。${hasDowngrade ? '降级将断开该主体当前全部云会话，≤60 秒内生效（FR-1.7）。' : '升级即时生效，不断开会话。'}</p>
+         ${manageNote}`,
         targets.map((card) => {
           const downgrade = rankOf(card.key) < currentRank
           return {

@@ -44,6 +44,7 @@ let lisiId = ''
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const sorted = (list) => [...new Set(list)].sort()
+const subjectOf = (row) => row.username ?? row.subjectId
 
 async function api(pathname, { token, method = 'GET', body } = {}) {
   const init = {
@@ -124,23 +125,32 @@ async function addToCard(page, card, subjectType, subject) {
   await page.settle()
 }
 
+const HOST_CARD_KEYS = ['view', 'control', 'manage', 'other']
+
 function hostCardMap(page) {
   const map = {}
   for (const key of ['view', 'control', 'manage']) {
     map[key] = cardSubjects(permCard(page, key))
   }
+  // 无卡片认领的位组合落到「其他位组合」卡（与 app.js leftovers 同源）。
+  const other = drawer(page).querySelector('[data-perm-cards] > [data-card="other"]')
+  map.other = other ? cardSubjects(other) : []
   return map
 }
 
+/** 与 app.js hostRoleOf 严格同源：未匹配任何卡位的行落 other（不是回落 view）。 */
 function expectedCard(permissions) {
   const has = (bit) => permissions.includes(bit)
-  if (has('maintain')) {
+  if (has('provision') && has('maintain')) {
     return 'manage'
   }
   if (has('view') && has('provision')) {
     return 'control'
   }
-  return 'view'
+  if (has('view')) {
+    return 'view'
+  }
+  return 'other'
 }
 
 async function hostGrants(hostId, token = tokens.admin) {
@@ -165,15 +175,47 @@ async function hostCombination(host, subject) {
   await openHostPermTab(page, host.id)
   const before = await hostGrants(host.id)
   const uiBefore = hostCardMap(page)
-  const mapped = before.map((row) => ({
-    subject: row.username ?? row.subjectId,
-    permissions: row.permissions,
-    expectedCard: expectedCard(row.permissions),
-    uiCard: ['view', 'control', 'manage'].find((key) =>
-      uiBefore[key].includes(row.username ?? row.subjectId)
-    )
-  }))
-  const mappingOk = mapped.every((row) => row.expectedCard === row.uiCard)
+  // 严格两向断言：每条 API 行恰落一张预期卡，且 UI 上的每个主体都有对应 API 行。
+  const uiCardsBySubject = {}
+  for (const key of HOST_CARD_KEYS) {
+    for (const subject of uiBefore[key]) {
+      ;(uiCardsBySubject[subject] ??= []).push(key)
+    }
+  }
+  const mapped = before.map((row) => {
+    const subject = row.username ?? row.subjectId
+    const uiCards = uiCardsBySubject[subject] ?? []
+    return {
+      subject,
+      permissions: row.permissions,
+      expectedCard: expectedCard(row.permissions),
+      uiCards,
+      uiCard: uiCards.length === 1 ? uiCards[0] : null
+    }
+  })
+  const apiSubjects = new Set(mapped.map((row) => row.subject))
+  const uiOnlySubjects = Object.keys(uiCardsBySubject).filter(
+    (subject) => !apiSubjects.has(subject)
+  )
+  const mappingOk =
+    mapped.every((row) => row.uiCards.length === 1 && row.uiCards[0] === row.expectedCard) &&
+    uiOnlySubjects.length === 0
+  if (!mappingOk) {
+    results.defects.push({
+      severity: 'P1',
+      title: `host card mapping mismatch on ${host.name}`,
+      detail: {
+        rows: mapped
+          .filter((row) => row.uiCards.length !== 1 || row.uiCards[0] !== row.expectedCard)
+          .map((row) => ({
+            subject: row.subject,
+            expectedCard: row.expectedCard,
+            uiCards: row.uiCards
+          })),
+        uiOnlySubjects
+      }
+    })
+  }
   save(`admin-${host.name}-host-tab.json`, { host, before, uiBefore, mapped, mappingOk })
   saveDom(page, `admin-${host.name}-host-perm`)
 
@@ -433,6 +475,8 @@ try {
     method: 'PUT',
     body: { subjectType: 'user', subjectId: 'lisi', permissions: ['view'] }
   })
+  // 项目 grants 写入口口径（审计 O3）：不可见项目 → 404（资源隐藏，不泄露存在性）；
+  // 可见但无权限 → 403。下面用的是 lisi 可见的 zdemo，故预期 403；主机 grants 一律 403。
   const auditorProjectPut = await api(`/v1/projects/${zdemo.id}/grants`, {
     token: tokens.lisi,
     method: 'PUT',
@@ -497,6 +541,39 @@ try {
       })
       results.restore = { lisiRole: restore.status, roles: restore.body?.roles }
     }
+    // O2: 复原后再做第二轮 live 断言，不能只凭 PUT 200 宣布归零。
+    const residualHosts = {}
+    for (const host of (await api('/v1/hosts', { token: tokens.admin })).body?.hosts ?? []) {
+      if (!['dev-local-02', 'dev-local-03'].includes(host.name)) {
+        continue
+      }
+      const rows =
+        (await api(`/v1/hosts/${host.id}/grants`, { token: tokens.admin })).body?.grants ?? []
+      residualHosts[host.name] = rows.filter((row) => subjectOf(row) === 'lisi').length
+    }
+    const projectsNow = (await api('/v1/projects', { token: tokens.admin })).body?.projects ?? []
+    const zdemoNow = projectsNow.find((project) => project.key === 'zhangsan-demo')
+    const residualProject = zdemoNow
+      ? (
+          (await api(`/v1/projects/${zdemoNow.id}/grants`, { token: tokens.admin })).body?.grants ??
+          []
+        ).filter((row) => subjectOf(row) === 'lisi').length
+      : null
+    const relogin = await login('lisi')
+    const lisiRoles = relogin.user?.roles ?? []
+    results.restoreVerification = { residualHosts, residualProject, lisiRoles }
+    if (
+      Object.values(residualHosts).some((count) => count !== 0) ||
+      residualProject !== 0 ||
+      lisiRoles.length !== 1 ||
+      lisiRoles[0] !== 'developer'
+    ) {
+      results.defects.push({
+        severity: 'P0',
+        title: 'restore verification failed',
+        detail: results.restoreVerification
+      })
+    }
   } catch (error) {
     results.defects.push({ severity: 'P0', title: 'restore failed', detail: String(error) })
   }
@@ -510,7 +587,8 @@ try {
         combos: Object.keys(results.combos),
         gates: Object.keys(results.gates),
         defects: results.defects,
-        restore: results.restore
+        restore: results.restore,
+        restoreVerification: results.restoreVerification
       },
       null,
       2
