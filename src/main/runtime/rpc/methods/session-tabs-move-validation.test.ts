@@ -24,6 +24,20 @@ function getMobileSessionSnapshot(
   ).mobileSessionTabsByWorktree.get(worktree)
 }
 
+function markRendererPublished(runtime: OrcaRuntimeService, worktree: string): void {
+  // A forwarded move is only reachable for a worktree the renderer published.
+  ;(
+    runtime as unknown as {
+      acceptedRendererMobileSnapshotByWorktree: Map<string, unknown>
+    }
+  ).acceptedRendererMobileSnapshotByWorktree.set(worktree, {
+    publicationEpoch: 'epoch-1',
+    rendererVersion: 1,
+    rendererTabCount: 0,
+    rendererTabIdentityKeys: new Set<string>()
+  })
+}
+
 function terminalTab() {
   return {
     type: 'terminal' as const,
@@ -157,6 +171,7 @@ describe('session tab move validation', () => {
     const runtime = new OrcaRuntimeService()
     const moveSessionTab = vi.fn()
     runtime.setNotifier({ moveSessionTab } as never)
+    markRendererPublished(runtime, 'wt-1')
     setMobileSessionSnapshot(runtime, {
       worktree: 'wt-1',
       publicationEpoch: 'epoch-1',
@@ -213,6 +228,7 @@ describe('session tab move validation', () => {
     const runtime = new OrcaRuntimeService()
     const moveSessionTab = vi.fn()
     runtime.setNotifier({ moveSessionTab } as never)
+    markRendererPublished(runtime, 'wt-1')
     runtime.setAgentBrowserBridge({
       tabList: vi.fn(() => ({
         tabs: [
@@ -276,6 +292,7 @@ describe('session tab move validation', () => {
     const runtime = new OrcaRuntimeService()
     const moveSessionTab = vi.fn()
     runtime.setNotifier({ moveSessionTab } as never)
+    markRendererPublished(runtime, 'wt-1')
     runtime.setAgentBrowserBridge({
       tabList: vi.fn(() => ({ tabs: [] }))
     } as never)
@@ -316,6 +333,7 @@ describe('session tab move validation', () => {
     const runtime = new OrcaRuntimeService()
     const moveSessionTab = vi.fn()
     runtime.setNotifier({ moveSessionTab } as never)
+    markRendererPublished(runtime, 'wt-1')
     runtime.setAgentBrowserBridge({
       tabList: vi.fn(() => ({
         tabs: [{ browserPageId: 'page-live', title: 'Live Browser', url: 'https://example.test' }]

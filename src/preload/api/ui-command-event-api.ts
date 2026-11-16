@@ -27,10 +27,10 @@ import type {
 } from '../../shared/agent-session-resume'
 import type { TerminalPaneSplitSource } from '../../shared/feature-education-telemetry'
 import type {
-  RuntimeMobileSessionTabMove,
   RuntimeTerminalCreateRequestPayload,
   RuntimeTerminalPresentation
 } from '../../shared/runtime-types'
+import type { SessionTabMoveRequest, SessionTabMoveResponse } from '../../shared/session-tab-move'
 import type {
   RuntimeMobileMarkdownRequest,
   RuntimeMobileMarkdownResponse
@@ -224,9 +224,8 @@ export type UiCommandEventApi = {
   onCloseSessionTab: (callback: (data: { tabId: string; worktreeId: string }) => void) => () => void
   onSessionTabCloseRequest: (callback: (request: SessionTabCloseRequest) => void) => () => void
   respondSessionTabClose: (response: SessionTabCloseResponse) => void
-  onMoveSessionTab: (
-    callback: (data: { worktreeId: string } & RuntimeMobileSessionTabMove) => void
-  ) => () => void
+  onMoveSessionTab: (callback: (data: SessionTabMoveRequest) => void) => () => void
+  respondSessionTabMove: (response: SessionTabMoveResponse) => void
   onOpenFileFromMobile: (
     callback: (data: {
       worktreeId: string

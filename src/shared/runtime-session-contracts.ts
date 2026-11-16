@@ -196,7 +196,8 @@ export type RuntimeMobileSessionTabMove =
       splitDirection: 'left' | 'right' | 'up' | 'down'
     })
 
-export type RuntimeMobileSessionTabMoveResult = { moved: true }
+/** `moved: false` means the host could not apply the move — never a silent success. */
+export type RuntimeMobileSessionTabMoveResult = { moved: boolean }
 
 export type RuntimeMobileSessionTabCloseResult = {
   closed: true

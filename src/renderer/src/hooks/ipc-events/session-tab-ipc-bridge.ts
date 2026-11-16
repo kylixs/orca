@@ -12,6 +12,7 @@ import {
   resolvePinnedTabLabel
 } from '../../store/pinned-tab-close-guard'
 import { useAppStore } from '../../store'
+import type { SessionTabMoveRequest } from '../../../../shared/session-tab-move'
 import { resolveBrowserSessionTabTarget } from './browser-session-tab-target'
 import { resolveWindowTabIdForHostTab } from './host-session-tab-target'
 
@@ -111,17 +112,47 @@ export function registerSessionTabIpcBridge(unsubs: (() => void)[]): void {
 
   unsubs.push(
     window.api.ui.onMoveSessionTab((move) => {
-      const { tabId, targetGroupId } = move
-      const store = useAppStore.getState()
-      if (move.kind === 'reorder') {
-        store.reorderUnifiedTabs(targetGroupId, move.tabOrder)
-        return
+      const applied = applyMobileSessionTabMoveInStore(useAppStore.getState(), move)
+      if (move.requestId) {
+        window.api.ui.respondSessionTabMove({ requestId: move.requestId, applied })
       }
-      store.dropUnifiedTab(tabId, {
-        groupId: targetGroupId,
-        ...(move.kind === 'move-to-group' ? { index: move.index } : {}),
-        ...(move.kind === 'split' ? { splitDirection: move.splitDirection } : {})
-      })
     })
   )
+}
+
+/**
+ * Apply a host-forwarded move to the window store, scoped to the payload's
+ * worktree. Returns false when this window has no entry for that worktree or
+ * when the store action itself dropped the move (silent no-op).
+ */
+function applyMobileSessionTabMoveInStore(
+  store: ReturnType<typeof useAppStore.getState>,
+  move: SessionTabMoveRequest
+): boolean {
+  const tabId = resolveWindowTabIdForHostTab(move.worktreeId, move.tabId)
+  const worktreeTabs = store.unifiedTabsByWorktree[move.worktreeId]
+  const worktreeGroups = store.groupsByWorktree[move.worktreeId]
+  const tab = worktreeTabs?.find((candidate) => candidate.id === tabId)
+  if (!tab) {
+    return false
+  }
+  if (!worktreeGroups?.some((group) => group.id === move.targetGroupId)) {
+    return false
+  }
+  if (move.kind === 'reorder') {
+    // reorderUnifiedTabs is void; a delivered reorder to a published group counts as applied.
+    store.reorderUnifiedTabs(move.targetGroupId, move.tabOrder)
+    return true
+  }
+  if (!worktreeGroups.some((group) => group.id === tab.groupId)) {
+    return false
+  }
+  // Why: dropUnifiedTab also returns false for legitimate no-ops (same group,
+  // pane-column dedupe); entities are validated above, so only those remain.
+  store.dropUnifiedTab(tabId, {
+    groupId: move.targetGroupId,
+    ...(move.kind === 'move-to-group' ? { index: move.index } : {}),
+    ...(move.kind === 'split' ? { splitDirection: move.splitDirection } : {})
+  })
+  return true
 }

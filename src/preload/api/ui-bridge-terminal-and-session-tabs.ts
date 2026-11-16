@@ -13,10 +13,10 @@ import type {
 import type { TuiAgent } from '../../shared/tui-agent'
 import type { RuntimeNavigationTarget } from '../../shared/runtime-navigation'
 import type {
-  RuntimeMobileSessionTabMove,
   RuntimeTerminalCreateRequestPayload,
   RuntimeTerminalPresentation
 } from '../../shared/runtime-types'
+import type { SessionTabMoveRequest, SessionTabMoveResponse } from '../../shared/session-tab-move'
 import type { PreloadApi } from '../api-types'
 
 export const uiTerminalAndSessionTabsApi = {
@@ -212,15 +212,14 @@ export const uiTerminalAndSessionTabsApi = {
   respondSessionTabClose: (response) => {
     ipcRenderer.send('ui:sessionTabCloseResponse', response)
   },
-  onMoveSessionTab: (
-    callback: (data: { worktreeId: string } & RuntimeMobileSessionTabMove) => void
-  ): (() => void) => {
-    const listener = (
-      _event: Electron.IpcRendererEvent,
-      data: { worktreeId: string } & RuntimeMobileSessionTabMove
-    ) => callback(data)
+  onMoveSessionTab: (callback: (data: SessionTabMoveRequest) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, data: SessionTabMoveRequest) =>
+      callback(data)
     ipcRenderer.on('ui:moveSessionTab', listener)
     return () => ipcRenderer.removeListener('ui:moveSessionTab', listener)
+  },
+  respondSessionTabMove: (response: SessionTabMoveResponse) => {
+    ipcRenderer.send('ui:sessionTabMoveResponse', response)
   },
   onOpenFileFromMobile: (
     callback: (data: {

@@ -139,7 +139,12 @@ export class OrcaRuntimeWithCloseHeadlessMobileTerminalTab extends OrcaRuntimeWi
     if (!snapshot) {
       throw new Error('tab_not_found')
     }
-    if (!this.notifier?.moveSessionTab) {
+    if (
+      !this.notifier?.moveSessionTab ||
+      !this.hasAcceptedRendererMobileSessionPublication(worktreeId)
+    ) {
+      // Why: a window that never published this worktree has no store entry to
+      // drop, so forwarding there is a silent no-op; the host must apply it.
       return this.moveHeadlessMobileSessionTab(worktreeId, snapshot, move)
     }
     const hostTabId = this.resolveMobileSessionHostTabId(snapshot, move.tabId)
@@ -159,18 +164,24 @@ export class OrcaRuntimeWithCloseHeadlessMobileTerminalTab extends OrcaRuntimeWi
       if (!tabOrder.includes(hostTabId)) {
         throw new Error('invalid_tab_order')
       }
-      this.notifier.moveSessionTab(worktreeId, {
+      const applied = await this.notifier.moveSessionTab(worktreeId, {
         ...move,
         tabId: hostTabId,
         tabOrder
       })
-      return { moved: true }
+      return { moved: applied !== false }
     }
-    this.notifier.moveSessionTab(worktreeId, {
+    const applied = await this.notifier.moveSessionTab(worktreeId, {
       ...move,
       tabId: hostTabId
     })
-    return { moved: true }
+    return { moved: applied !== false }
+  }
+
+  // Why: only a renderer that published this worktree owns a store entry the
+  // forwarded move can drop; request/response then confirms it actually applied.
+  protected hasAcceptedRendererMobileSessionPublication(worktreeId: string): boolean {
+    return this.acceptedRendererMobileSnapshotByWorktree.has(worktreeId)
   }
 
   // Why: pane geometry inside a tab (split ratios, expanded pane, pane titles)
