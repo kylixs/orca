@@ -2287,7 +2287,7 @@ async function renderAudit(loadMore = false) {
   const hosts = hostsBody?.hosts ?? []
   const terms = [filter.q, filter.fileName].filter(Boolean)
   content().innerHTML = `
-    <div class="page-head"><div><h1>审计日志</h1><p>查询身份、连接、文件下载与复制、下载拦截与管理操作事件。只追加、哈希链校验；保留 180 天。已显示 ${events.length} 条。</p></div></div>
+    <div class="page-head"><div><h1>审计日志</h1><p>查询身份、连接、文件下载与复制、下载拦截与管理操作事件。只追加、哈希链校验；保留 180 天，查询时间窗最大 31 天。已显示 ${events.length} 条。</p></div></div>
     ${auditGapMarkup(state.auditStatus)}
     <details class="audit-coverage">
       <summary>覆盖范围与限制（审计链保证记录不被篡改，不保证记录完整）</summary>
@@ -2300,45 +2300,46 @@ async function renderAudit(loadMore = false) {
         </ul>
       </div>
     </details>
-    <div class="toolbar">
-      <input class="input grow" id="auditKeyword" type="search" placeholder="关键字：类型 / 路径 / 文件名 / 账号 / 项目（2–128 字符）" autocomplete="off" aria-label="关键字">
-      <select class="select" id="auditRange" aria-label="时间范围">
+    <div class="audit-filter" role="search" aria-label="审计查询">
+      <input class="input span-4" id="auditKeyword" type="search" placeholder="关键字：类型 / 路径 / 文件名 / 账号 / 项目（2–128 字符）" autocomplete="off" aria-label="关键字">
+      <select class="select span-2" id="auditRange" aria-label="时间范围">
         <option value="24">最近 24 小时</option>
         <option value="168">最近 7 天（默认）</option>
         <option value="744">最近 31 天</option>
       </select>
-      <input class="input" type="datetime-local" id="auditSince" aria-label="起始时间">
-      <input class="input" type="datetime-local" id="auditUntil" aria-label="结束时间">
-      <select class="select" id="auditType" aria-label="操作类型">
+      <input class="input span-2" type="datetime-local" id="auditSince" aria-label="起始时间">
+      <input class="input span-2" type="datetime-local" id="auditUntil" aria-label="结束时间">
+      <select class="select span-2" id="auditType" aria-label="操作类型">
         <option value="">全部操作</option>
         ${auditEventOptions(status)
           .map(([value, label]) => `<option value="${esc(value)}">${esc(label)}</option>`)
           .join('')}
       </select>
-      <input class="input" id="auditActor" placeholder="用户（域账号，精确）" autocomplete="off" aria-label="用户">
-      <select class="select" id="auditProject" aria-label="项目">
+      <input class="input span-3" id="auditActor" placeholder="用户（域账号，精确）" autocomplete="off" aria-label="用户">
+      <select class="select span-3" id="auditProject" aria-label="项目">
         <option value="">全部项目</option>
         ${projects.map((project) => `<option value="${esc(project.id)}">${esc(project.name)}</option>`).join('')}
       </select>
-      <select class="select" id="auditHost" aria-label="主机">
+      <select class="select span-3" id="auditHost" aria-label="主机">
         <option value="">全部主机</option>
         ${hosts
           .filter((host) => !host.revokedAt)
           .map((host) => `<option value="${esc(host.id)}">${esc(host.name ?? host.id)}</option>`)
           .join('')}
       </select>
-      <input class="input" id="auditFileName" placeholder="文件名（1–128 字符）" autocomplete="off" aria-label="文件名">
-      <select class="select" id="auditResult" aria-label="结果">
+      <input class="input span-3" id="auditFileName" placeholder="文件名（1–128 字符）" autocomplete="off" aria-label="文件名">
+      <select class="select span-3" id="auditResult" aria-label="结果">
         <option value="">全部结果</option>
         <option value="success">成功</option>
         <option value="failure">失败</option>
         <option value="denied">拒绝</option>
       </select>
-      <button class="btn primary" id="auditApply">查询</button>
-      <button class="btn" id="auditReset">清除</button>
+      <div class="audit-filter-actions">
+        <button class="btn primary" id="auditApply">查询</button>
+        <button class="btn" id="auditReset">清除</button>
+      </div>
     </div>
     <p class="inline-error" id="auditError" hidden></p>
-    <div class="muted" style="margin:-4px 0 12px">默认最近 7 天，起止时间优先；时间窗最大 31 天。关键字 2–128 字符，文件名 1–128 字符。</div>
     <div class="table-wrap">
       <table>
         <thead><tr><th>时间</th><th>用户</th><th>操作</th><th>项目</th><th>主机</th><th>文件 · 大小</th><th>结果</th><th>详情 / traceId</th></tr></thead>
