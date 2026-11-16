@@ -9,7 +9,7 @@
 |---|---|---|---|---|
 | A1 | G04 生产 LDAPS 适配器 | 生产接入真实 LDAP(S)（simple-bind）：准入组通过/拒绝/不可达三态 | ☐ | 登录审计 + 截图 |
 | A2 | G24 宿主安装脚本矩阵 | Linux x64、CentOS7、Windows：`host.sh`/`host.cmd` → 注册 → 首心跳；二次令牌 401 | ☐ | 三平台日志 |
-| A3 | U127 远端 relay 证书 | 待用户批准：远端 jlc-docker 停旧起新 + CA 证书落位 + token + systemd | ☐ | relay 日志 + 18444 可达 |
+| A3 | ~~U127 远端 relay 证书~~ 已执行 | CA 证书替换 + systemd(`orca-relay`) + 18443/18444 监听；handoff 200、系统信任 0 | ☑ | relay 日志 + 实测 URL |
 | A4 | 中继浏览器模式真实链路 | 经远端 relay 18444 打开工作区（当前本地环境已验） | ☐ | 截图 + 路由表 |
 
 ## B. 产品语义/交互（需用户确认后实现或验收）
