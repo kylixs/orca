@@ -79,6 +79,7 @@ class DeviceKeyStorage implements WebCloudDeviceKeyStorage {
 let platform: Platform
 let admission: CloudRuntimeAdmission
 let cloud: CloudRuntime
+let hostStore: Store
 let adminToken = ''
 let userToken = ''
 let projectId = ''
@@ -122,6 +123,7 @@ beforeAll(async () => {
   const store = createSqliteTestStore(Store, {
     dataFile: join(dataDir, 'orca-data.json')
   })
+  hostStore = store
   store.addRepo({
     id: 'repo-u96-b8',
     path: root,
@@ -330,15 +332,27 @@ async function waitForTerminalLine(
   }
 }
 
-/** PTY teardown is asynchronous; poll until the retired handle refuses reads. */
+/** Whether any host partition durably lists this tab (the mirror a restart/reopen reads). */
+function hostPersistedTabIds(): string[] {
+  const hostIds = hostStore.getWorkspaceSessionHostIds?.() ?? ['local']
+  return hostIds.flatMap((hostId) =>
+    Object.values(hostStore.getWorkspaceSession(hostId).tabsByWorktree)
+      .flat()
+      .map((tab) => tab.id)
+  )
+}
+
+/** PTY teardown is asynchronous; poll until the handle refuses reads or reports a non-running status. */
 async function waitForTerminalGone(
   rpc: (method: string, params?: Record<string, unknown>) => Promise<CloudRpcOutcome>,
   handle: string,
   timeoutMs = 8000
 ): Promise<CloudRpcOutcome> {
+  const settled = (outcome: CloudRpcOutcome): boolean =>
+    !outcome.ok || readString(readField(outcome.result, 'terminal'), 'status') !== 'running'
   const started = Date.now()
   let last = await rpc('terminal.read', { terminal: handle, limit: 10 })
-  while (last.ok && Date.now() - started < timeoutMs) {
+  while (!settled(last) && Date.now() - started < timeoutMs) {
     await new Promise((resolve) => setTimeout(resolve, 150))
     last = await rpc('terminal.read', { terminal: handle, limit: 10 })
   }
@@ -591,8 +605,9 @@ describe('U96 B-令8 双端同步真栈（简易工作区 + Orca Web）', () => 
     }
   }, 180_000)
 
-  it.fails('E9b 已知缺陷（U96B8-02）：显式 close 后 PTY 仍 running、行未退役', async () => {
+  it('E9b 显式 close 后 PTY 终止、行退役', async () => {
     const simple = await openClient('u96-b8-simple')
+    const web = await openClient('u96-b8-close-web')
     const opened = await simple.openWorkspace(projectId)
     if (!opened.ok || !opened.workspacePath) {
       throw new Error(`open failed: ${JSON.stringify(opened)}`)
@@ -604,7 +619,14 @@ describe('U96 B-令8 双端同步真栈（简易工作区 + Orca Web）', () => 
       throw new Error('end terminal handle missing')
     }
     const row = await hostRowForHandle(simple, worktree, handle)
+    // The mirror, not just the in-memory snapshot: a restart/reopen reads this row.
+    const persistedTabIds = hostPersistedTabIds()
+    expect(persistedTabIds, JSON.stringify(persistedTabIds)).toContain(row.tabId)
+    const webEvents: unknown[] = []
+    const webSub = await subscribeAs(web, 'session.tabs.subscribe', { worktree }, webEvents)
     try {
+      await waitForEvent(webEvents, (event) => snapshotHasTab(event, row.tabId))
+      const beforeClose = webEvents.length
       const ended = await simple.rpc(
         'session.tabs.close',
         { worktree, tabId: row.tabId, reason: 'user' },
@@ -617,12 +639,23 @@ describe('U96 B-令8 双端同步真栈（简易工作区 + Orca Web）', () => 
           (tab) => readString(tab, 'parentTabId') === row.tabId
         )
       ).toBe(false)
+      // The other client must see the retirement, not just the closing one.
+      await waitForEvent(webEvents.slice(beforeClose), (event) => !snapshotHasTab(event, row.tabId))
+      const webList = await web.rpc('session.tabs.list', { worktree }, projectId)
+      expect(
+        (readArray(webList.ok ? webList.result : null, 'tabs') ?? []).some(
+          (tab) => readString(tab, 'parentTabId') === row.tabId
+        )
+      ).toBe(false)
       const dead = await waitForTerminalGone(
         (method, params) => simple.rpc(method, params ?? {}, projectId),
         handle
       )
-      expect(dead.ok, JSON.stringify(dead)).toBe(false)
+      const deadStatus = readString(readField(dead.ok ? dead.result : null, 'terminal'), 'status')
+      expect(dead.ok === false || deadStatus === 'exited', JSON.stringify(dead)).toBe(true)
     } finally {
+      webSub.unsubscribe()
+      await closeClient(web)
       await closeClient(simple)
     }
   })

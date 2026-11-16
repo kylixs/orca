@@ -62,6 +62,25 @@ describe('persistPublishedMobileSessionTerminalTab', () => {
     expect(next?.terminalPtyIncarnationsByPaneKey?.[`${TAB_ID}:${LEAF_ID}`]).toBe('inc-1')
   })
 
+  it('advances the repo topology revision so a prior close cannot rebase the spawn away', () => {
+    const next = persistPublishedMobileSessionTerminalTab({
+      session: {
+        ...baseSession(),
+        terminalTopologyRevisionByRepoId: { [REPO_ID]: 3 }
+      },
+      worktreeId: WORKTREE_ID,
+      tabId: TAB_ID,
+      leafId: LEAF_ID,
+      ptyId: PTY_ID,
+      title: 'Terminal',
+      parentLayout: layout(LEAF_ID, PTY_ID)
+    })
+    // Why: membership rebasing compares this revision; without the advance the store
+    // treats the earlier close as authoritative and drops the new row.
+    expect(next?.terminalTopologyRevisionByRepoId?.[REPO_ID]).toBe(4)
+    expect(next?.tabsByWorktree[WORKTREE_ID]?.map((tab) => tab.id)).toEqual([TAB_ID])
+  })
+
   it('is idempotent and preserves a user-customized title on republish', () => {
     const first = persistPublishedMobileSessionTerminalTab({
       session: baseSession(),

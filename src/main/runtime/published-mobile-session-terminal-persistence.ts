@@ -5,6 +5,7 @@ import {
   cloneTerminalLayoutSnapshot,
   collectPersistedTerminalLeafIds
 } from './mobile-session-layout-projection'
+import { advanceTerminalTopologyRevision } from '../persistence/terminal-topology/terminal-topology-membership'
 
 export type PublishedMobileSessionTerminalPersistenceInput = {
   session: WorkspaceSessionState
@@ -65,7 +66,7 @@ export function persistPublishedMobileSessionTerminalTab(
   ) {
     return null
   }
-  return {
+  const next: WorkspaceSessionState = {
     ...session,
     activeTabId: nextActiveTabId,
     ...(nextActiveTabIdByWorktree ? { activeTabIdByWorktree: nextActiveTabIdByWorktree } : {}),
@@ -75,6 +76,9 @@ export function persistPublishedMobileSessionTerminalTab(
     terminalLayoutsByTabId: nextLayouts,
     ...(nextIncarnations ? { terminalPtyIncarnationsByPaneKey: nextIncarnations } : {})
   }
+  // Why: membership rebasing treats a prior close's topology revision as authoritative,
+  // so a spawn that does not advance it is silently dropped after any close in the repo.
+  return tabsChanged ? advanceTerminalTopologyRevision(next, worktreeId) : next
 }
 
 function buildPublishedTerminalTab(

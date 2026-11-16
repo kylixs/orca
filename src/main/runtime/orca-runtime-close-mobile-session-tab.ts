@@ -37,7 +37,12 @@ export class OrcaRuntimeWithCloseMobileSessionTab extends OrcaRuntimeWithRefuseU
       force?: boolean
     } = {}
   ): Promise<MobileSessionTabCloseOutcome> {
-    const graphEpoch = options.clientNavigationId ? this.captureReadyGraphEpoch() : null
+    // Why: the graph-epoch fence only guards a renderer-owned graph; a headless
+    // cloud host has none, and demanding one refused every paired close.
+    const graphEpoch =
+      options.clientNavigationId && this.getAvailableAuthoritativeWindow()
+        ? this.captureReadyGraphEpoch()
+        : null
     const explicitWorktreeId = this.getValidatedExplicitWorktreeIdSelector(worktreeSelector)
     const worktreeId =
       explicitWorktreeId ?? (await this.resolveWorktreeSelector(worktreeSelector)).id

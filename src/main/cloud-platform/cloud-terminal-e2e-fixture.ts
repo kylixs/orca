@@ -83,6 +83,11 @@ export function installRealPtyController(service: OrcaRuntimeService): void {
         }
       })
       term.onData((data) => service.onPtyData(id, data, Date.now()))
+      // Why: the host retires a handle only from the provider's exit callback; without
+      // it a real kill leaves the row "running" and close-retirement cannot be observed.
+      term.onExit(({ exitCode }) =>
+        service.onPtyExit(id, exitCode, undefined, { providerExitObserved: true })
+      )
       terminals.set(id, { write: (data) => term.write(data), kill: () => term.kill() })
       return { id, pid: term.pid }
     },
