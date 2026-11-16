@@ -255,7 +255,7 @@
 | AC-M3-30 | U62                  | 授权写入                               | 非法 subjectType/权限位/拒绝                       | 400 或明确拒绝；拒绝落 denied 审计（字段完整）                            | 回归钉 | ✅ T26/T27                     | U62           |
 | AC-M3-31 | U65/U67/U67b         | 项目详情权限页                         | 查看三卡片                                         | U67-4 已实现：项目权限页查看/控制可写卡、管理卡主机推导只读并跳转主机权限 | 回归钉 | ✅ T12（U67-4 层级单卡）       | U65/U67/U67b  |
 | AC-M3-32 | U23/U24              | 自助建项目路径                         | 已存在 git 目录/并发 open                          | 返回明确错误/幂等，不产生半成品                                           | 回归钉 | ✅ T59                         | U23/U24       |
-| AC-M3-33 | 探索 P2/`WEB-R2-008` | 登记弹框                               | 仓库填 `not-a-valid-url`                           | 400 `REPO_URL_INVALID`（U136① 落地；裸串/本地裸路径拒绝，受支持传输放行） | 回归钉 | ✅ T10（project-registration-validation U136 矩阵） | U136① `9854ef58d60` |
+| AC-M3-33 | 探索 P2/`WEB-R2-008` | 登记弹框                               | 仓库填 `not-a-valid-url`                           | 400 `REPO_URL_INVALID`；受支持形态=http(s)/ssh/git/file/本地绝对路径/user@ 形式 SCP-like（U141/U142 两端对齐）；拒绝裸串、UNC、ftp、ext::、控制字符 | 回归钉 | ✅ T10（project-registration-validation 树；U141 起本地路径/`file://` 201） | U136①+U141 `6cb53417057`+U142 |
 
 **覆盖核对表（M3）**
 
@@ -746,7 +746,7 @@
 | G05 | 工作台统计卡四项数值、前进/后退历史栈、查询参数不生效                      | M2 §7                 | 补测/登记 | 补 e2e 与 characterization                                                                     |
 | G06 | 归档/恢复无控制台入口（仅 API）                                            | AC-M3-16 / C21        | 登记      | 无 U 号；按「设计未承诺 UI」验收或补 UI                                                        |
 | G07 | provisioning→ready UI、详情黄条/复制/独立页链接                            | AC-M3-07/21、C15      | 补测      | 补浏览器 e2e                                                                                   |
-| G08 | ~~仓库地址 `not-a-valid-url` 历史接受缺陷~~ **closed** | AC-M3-33 | closed | U136① `9854ef58d60`：validator 收紧（http/https/ssh/git/file/scp-like 接受，裸串与本地裸路径 400）；正例 11+负例 18 矩阵、T10 回归；历史数据读取不重校验 |
+| G08 | ~~仓库地址 `not-a-valid-url` 历史接受缺陷~~ **closed** | AC-M3-33 | closed | U136① `9854ef58d60` 收紧→U141 `6cb53417057` 跨层对齐（本地绝对路径与 `file://` 两端接受）→U142 统一 SCP-like(user@) 并两端拒 UNC；矩阵与 T10 回归；历史数据读取不重校验 |
 | G09 | 维护/下线控制台 UI、注册弹框成功/失败 UI                                   | AC-M4-07/09、D2       | 补测      | 补 UI e2e                                                                                      |
 | G10 | ~~U115 安装命令照抄执行 401~~ **closed**                                   | AC-M4-23/34、AC-M5-10 | closed    | U115 修复 `9d90575ccf3`；T38 五场景矩阵（照抄 200/二次 401/过期 401/兼容 200/越权 401）        |
 | G11 | 中继刷新失败态、自动刷新/离线 UI（**部分闭合：已钉现状，行为缺口保留**）     | AC-M5-09/11           | 部分闭合  | T06 新增 QA-013（`web-exploratory-fixes.e2e.test.ts`）：刷新失败保留旧表、无 toast/横幅、1.2s 内无轮询——characterization，不得判「有反馈达标」；断言边界=DOM 行数不变（可为空态）+ 无 toast + 1.2s 窗口（代码确无 relay 定时器；「横幅」仅经 加载失败 正则间接覆盖）；建议登记 U（P2） |
