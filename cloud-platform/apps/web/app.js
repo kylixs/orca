@@ -465,7 +465,27 @@ async function loadWorkspaceRoute(projectId) {
     renderWorkspaceNotFound()
     return
   }
+  // U80 M8: a phone deep link/refresh keeps the URL but never mounts the desktop overlay.
+  if (isMobileViewport()) {
+    renderMobileWorkspaceGuard(project)
+    return
+  }
   await openProjectWorkspace(projectId)
+}
+
+/** ≤700 深链占位：同一 URL、同一项目，引导去自带移动端支持的 Orca Web 工作区。 */
+function renderMobileWorkspaceGuard(project) {
+  clearActiveNav()
+  content().innerHTML = `
+    <div class="forbidden">
+      <div class="box">
+        <h1>项目工作区</h1>
+        <p>移动端工作区请打开 Orca Web 工作区（自带移动端支持）</p>
+        <p class="muted">项目：${esc(project.name)}</p>
+        <button class="btn primary" id="mobileWorkspaceBack">返回我的项目</button>
+      </div>
+    </div>`
+  $('#mobileWorkspaceBack').onclick = () => navigate('projects')
 }
 
 /** 不泄露存在性：列表只含可见项目，查不到即 404（T5）。 */

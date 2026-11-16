@@ -2072,3 +2072,49 @@ td.actions {
   }
 }
 
+
+/* ---------- U80 M8: 全局形态（toast/横幅/空态/错误态/守卫页，≤700） ---------- */
+@media (max-width: 700px) {
+  /* toast 整宽换行并抬到底栏上方，长文案不裁切、不压住导航。 */
+  .toast {
+    left: 12px;
+    right: 12px;
+    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 12px);
+    transform: none;
+    max-width: none;
+    padding: 10px 14px;
+    font-size: 13px;
+    line-height: 1.5;
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
+  /* 横幅正文可换行，关闭按钮保持 44px。 */
+  .workspace-tip {
+    align-items: flex-start;
+  }
+  .workspace-tip span {
+    overflow-wrap: anywhere;
+  }
+  /* 空态：列表空行与卡片空态居中可读。 */
+  .table-empty {
+    padding: 28px 16px;
+    overflow-wrap: anywhere;
+  }
+  /* 守卫/加载失败：整宽卡片，长 hash/错误文本换行，重试/返回按钮整行 44px。 */
+  .forbidden {
+    height: auto;
+    min-height: 60vh;
+    padding: 16px 4px;
+  }
+  .forbidden .box {
+    width: 100%;
+    max-width: 100%;
+  }
+  .forbidden p {
+    overflow-wrap: anywhere;
+  }
+  .forbidden .btn {
+    width: 100%;
+    min-height: 44px;
+  }
+}
