@@ -137,7 +137,10 @@ export class OrcaRuntimeWithApplyMobileSessionTabNavigation extends OrcaRuntimeW
     if (snapshot.publicationEpoch.includes(':headless-merge:')) {
       return false
     }
-    if (this.authoritativeWindowId !== null && this.graphStatus === 'ready') {
+    // Why: only a real renderer window republishes focus into the workspace session. A headless
+    // host names HEADLESS_RUNTIME_WINDOW_ID as its graph owner but has no window to republish, so
+    // skipping persistence there left create-time focus as the durable active tab (U138).
+    if (this.getAvailableAuthoritativeWindow() && this.graphStatus === 'ready') {
       return false
     }
     return this.shouldMaterializeHeadlessMobileSessionTab(snapshot, tab)

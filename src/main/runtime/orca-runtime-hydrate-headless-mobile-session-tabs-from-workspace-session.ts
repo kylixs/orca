@@ -216,9 +216,9 @@ export class OrcaRuntimeWithHydrateHeadlessMobileSessionTabsFromWorkspaceSession
           : [
               {
                 id: groupId,
-                activeTabId: mergedActiveTab?.id
-                  ? (activeTab?.parentTabId ?? mergedActiveTab.id)
-                  : (tabOrder[0] ?? null),
+                // Why: the group must name the same tab as the snapshot; the freshly projected
+                // `activeTab` can still hold the older persisted value during a rebuild (U138).
+                activeTabId: activeTopLevelId ?? (tabOrder[0] ?? null),
                 tabOrder
               }
             ]
