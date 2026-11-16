@@ -1,0 +1,21 @@
+{
+  "task": "U84b terminal input echo latency",
+  "capturedAt": "2026-11-16",
+  "change": "terminal-output-batcher: a lone interactive write (<=256 bytes, no push within 2ms) flushes immediately instead of riding the 5ms timer; bursts still coalesce",
+  "method": "same micro-benchmark of the real module (tsx, n=200)",
+  "segments": {
+    "hostOutputBatcherOneByteEcho": { "p50Ms": 0.0, "p95Ms": 0.003, "maxMs": 0.165 },
+    "hostOutputBatcher64KiB": { "p50Ms": 0.123, "p95Ms": 0.531 }
+  },
+  "delta": {
+    "oneByteEchoP50Ms": -5.657,
+    "oneByteEchoP95Ms": -5.72,
+    "bulk64KiBP50Ms": -0.014
+  },
+  "derivedFullPath": {
+    "note": "serial subtraction of the removed segment from the M102 baseline; not a re-run because the local latency-hop fixture fails TLS handshake in this worktree (pre-existing: the non-hop relay/M90 test passes)",
+    "p50Ms": 4.52,
+    "p95Ms": 5.59
+  },
+  "e2eStatus": "M102 relay echo test re-run blocked at startRelayStack workspace-ensure: TLS handshake failed through cloud-latency-hop-fixture; unrelated to this change (git stash of the fix reproduces it)."
+}

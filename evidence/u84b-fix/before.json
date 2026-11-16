@@ -1,0 +1,19 @@
+{
+  "task": "U84b terminal input echo latency",
+  "capturedAt": "2026-11-16",
+  "method": "micro-benchmark of the real modules (tsx, n=200); M102 full-path evidence reused from this worktree",
+  "fullPathRelayMainClient": {
+    "source": "cloud-platform/evidence/m102-terminal-echo-latency/terminal-echo-latency.json",
+    "keys": 50,
+    "p50Ms": 10.18,
+    "p95Ms": 11.31,
+    "maxMs": 13.74
+  },
+  "segments": {
+    "clientSendEncryptAndJson": { "p50Ms": 0.017, "p95Ms": 0.046 },
+    "clientRecvDecryptAndJson": { "p50Ms": 0.007, "p95Ms": 0.019 },
+    "hostOutputBatcherOneByteEcho": { "p50Ms": 5.657, "p95Ms": 5.723, "maxMs": 7.511 },
+    "hostOutputBatcher64KiB": { "p50Ms": 0.137, "p95Ms": 0.697 }
+  },
+  "conclusion": "The fixed 5ms coalescing timer on the host output batcher is the dominant code-controlled term: 5.66ms of a 10.18ms echo P50. E2EE+JSON is negligible (<=0.05ms)."
+}

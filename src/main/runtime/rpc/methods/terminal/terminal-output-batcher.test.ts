@@ -20,6 +20,29 @@ function range(start: number): TerminalOutputSourceRange {
   }
 }
 
+it('flushes a lone small interactive write at once and still coalesces a burst', () => {
+  const delivered: string[] = []
+  const batcher = createTerminalOutputBatcher((data) => delivered.push(data))
+  try {
+    // One keystroke echo must not wait for the 5ms coalescing timer.
+    batcher.push('a')
+    expect(delivered).toEqual(['a'])
+    // A burst keeps batching: only an isolated write skips the timer.
+    batcher.push('b')
+    batcher.push('c')
+    expect(delivered).toEqual(['a'])
+    batcher.flush()
+    expect(delivered).toEqual(['a', 'bc'])
+    // A write above the interactive size still rides the coalescing timer.
+    batcher.push('x'.repeat(257))
+    expect(delivered).toEqual(['a', 'bc'])
+    batcher.flush()
+    expect(delivered).toHaveLength(3)
+  } finally {
+    batcher.dispose()
+  }
+})
+
 it('keeps delivered ranges frozen and isolated from reentrant flushes and disposal', () => {
   const firstRange = range(0)
   const secondRange = range(1)

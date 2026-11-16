@@ -7,6 +7,10 @@ import {
 } from '../../../../../shared/terminal-output-source-range'
 
 const TERMINAL_OUTPUT_FLUSH_MS = 5
+/** A lone write up to this size is interactive output (echo/prompt), not bulk. */
+const TERMINAL_OUTPUT_INTERACTIVE_FLUSH_MAX_BYTES = 256
+/** Writes closer than this are one burst; only its first small write skips the timer. */
+const TERMINAL_OUTPUT_BURST_WINDOW_MS = 2
 export type TerminalOutputBatcher = {
   push: (data: string, meta?: TerminalOutputMeta) => void
   flush: () => void
@@ -23,6 +27,7 @@ export function createTerminalOutputBatcher(
   let pendingRawLength = 0
   let pendingSourceRanges: TerminalOutputSourceRange[] = []
   let timer: ReturnType<typeof setTimeout> | null = null
+  let lastPushAt = Number.NEGATIVE_INFINITY
 
   const clearTimer = (): void => {
     if (!timer) {
@@ -63,6 +68,9 @@ export function createTerminalOutputBatcher(
       if (!data && rawLength === 0) {
         return
       }
+      const at = performance.now()
+      const burst = at - lastPushAt < TERMINAL_OUTPUT_BURST_WINDOW_MS
+      lastPushAt = at
       if (meta?.transformed || rawLength !== data.length) {
         flush()
         onFlush(data, { ...meta, rawLength, transformed: true })
@@ -97,6 +105,17 @@ export function createTerminalOutputBatcher(
         lastSeq = meta.seq
       }
       if (measurement.exceededLimit || bytes >= TERMINAL_OUTPUT_BATCH_MAX_BYTES) {
+        flush()
+        return
+      }
+      // Why: a lone small write is an interactive echo/prompt, and the coalescing
+      // timer would add ~5ms to every keystroke. Only an isolated first write
+      // skips the timer; the rest of a burst still coalesces.
+      if (
+        !burst &&
+        chunks.length === 1 &&
+        pendingRawLength <= TERMINAL_OUTPUT_INTERACTIVE_FLUSH_MAX_BYTES
+      ) {
         flush()
         return
       }
