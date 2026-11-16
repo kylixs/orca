@@ -13,7 +13,7 @@ import { ROOT } from './harness.ts'
  *   - scripts/exploratory-r2/exploratory-r5-paths.md §P2' (rowGroups / y = 204/244/284)
  *   - evidence/u86-fix/after-layout.json
  * What this file pins is the static contract those probes relied on: the 12-col
- * base grid, the row span arithmetic (4+2+2+2+2 / 3+3+3+3 / 3+9), and the
+ * base grid, the row span arithmetic (4+2+2+2+2 / 3+3+3+3 / 3+3+6), and the
  * 1100px (6-col) and 700px (2-col) breakpoints.
  */
 
@@ -60,7 +60,7 @@ test('U86 基础网格：12 列 + span 类 + 三行跨度合计 12', () => {
   assert.match(sheet, /\.audit-filter \.span-2 \{ grid-column: span 2; \}/)
   assert.match(sheet, /\.audit-filter \.span-3 \{ grid-column: span 3; \}/)
   assert.match(sheet, /\.audit-filter \.span-4 \{ grid-column: span 4; \}/)
-  assert.match(sheet, /\.audit-filter-actions \{ grid-column: span 9;/)
+  assert.match(sheet, /\.audit-filter-actions \{ grid-column: span 6;/)
 
   // Markup order is the row grouping: spans are consumed left-to-right in
   // chunks of 12 columns, so these three sums are the three visual rows.
@@ -69,11 +69,11 @@ test('U86 基础网格：12 列 + span 类 + 三行跨度合计 12', () => {
     app.indexOf('<p class="inline-error" id="auditError"')
   )
   const spans = [...markup.matchAll(/class="[^"]*span-(\d)[^"]*"/g)].map((m) => Number(m[1]))
-  assert.deepEqual(spans, [4, 2, 2, 2, 2, 3, 3, 3, 3, 3])
+  assert.deepEqual(spans, [4, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3])
   const rows = [spans.slice(0, 5), spans.slice(5, 9), spans.slice(9)]
   assert.equal(rows[0].reduce((a, b) => a + b, 0), 12, 'row 1: keyword + range + since + until + type')
   assert.equal(rows[1].reduce((a, b) => a + b, 0), 12, 'row 2: actor + project + host + fileName')
-  assert.equal(rows[2].reduce((a, b) => a + b, 0) + 9, 12, 'row 3: result + actions(span 9)')
+  assert.equal(rows[2].reduce((a, b) => a + b, 0) + 6, 12, 'row 3: trace + result + actions(span 6)')
 })
 
 test('U86 响应式断点：1100px 收 6 列，700px 收 2 列，span 同步收敛', () => {

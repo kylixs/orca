@@ -28,6 +28,7 @@ import {
 } from './cloud-session-e2e-harness'
 import { CloudConnectClient } from './cloud-connect-client'
 import { readTicketClaims } from './cloud-connect-response'
+import { CLOUD_SESSION_TABS_RESTORE_CAPABILITY } from '../../shared/cloud-workspace-info'
 import { ensureCloudWorkspace } from './cloud-workspace-ensure'
 
 /**
@@ -216,6 +217,7 @@ async function askWorkspaceInfo(): Promise<{
   path: string | null
   branch: string | null
   perms: string[] | null
+  capabilities: string[] | null
   keys: string[]
   errorCode: string | null
 }> {
@@ -234,6 +236,7 @@ async function askWorkspaceInfo(): Promise<{
         path: null,
         branch: null,
         perms: null,
+        capabilities: null,
         keys: [],
         errorCode: reply.code
       }
@@ -252,6 +255,7 @@ async function askWorkspaceInfo(): Promise<{
       path: readString(workspace, 'path'),
       branch: readString(workspace, 'branch'),
       perms: readStringArray(result, 'perms'),
+      capabilities: readStringArray(result, 'capabilities'),
       keys: Object.keys(result ?? {}).sort(),
       errorCode: null
     }
@@ -273,7 +277,9 @@ describe('workspace.info（真实平台 + 真实 TLS 宿主 + 真实仓库）', 
     expect(reply.path).toBeNull()
     expect(reply.branch).toBeNull()
     expect(reply.perms).toEqual(['open', 'terminal', 'file:read', 'file:write'])
-    expect(reply.keys).toEqual(['perms', 'project', 'workspace'])
+    // U96 A-1: names only, no host facts (wire-additive field).
+    expect(reply.capabilities).toEqual([CLOUD_SESSION_TABS_RESTORE_CAPABILITY])
+    expect(reply.keys).toEqual(['capabilities', 'perms', 'project', 'workspace'])
 
     saveEvidence('w13a-1-before-ensure.json', reply.raw)
   }, 60_000)

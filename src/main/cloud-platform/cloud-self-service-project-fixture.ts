@@ -161,6 +161,11 @@ export async function startSelfServiceHarness(
   )
   await admission.client!.refresh()
 
+  const enrolledHost = admission.host()
+  if (!enrolledHost) {
+    throw new Error('host not enrolled')
+  }
+
   const adminFetch = (path: string, init: RequestInit = {}): Promise<Response> =>
     fetch(`${platform.url}${path}`, {
       ...init,
@@ -170,6 +175,19 @@ export async function startSelfServiceHarness(
         ...init.headers
       }
     })
+
+  // U62 C10: self-service creation needs the host provision bit (U61 shape).
+  const provisionGrant = await adminFetch(`/v1/hosts/${enrolledHost.hostId}/grants`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      subjectType: 'group',
+      subjectId: 'developers',
+      permissions: ['provision']
+    })
+  })
+  if (!provisionGrant.ok) {
+    throw new Error(`host provision grant failed: ${provisionGrant.status}`)
+  }
 
   const session = new CloudSessionService({
     apiUrl: platform.url,
@@ -188,7 +206,7 @@ export async function startSelfServiceHarness(
     registrationUserData,
     base,
     projectsRoot,
-    hostId: admission.host()!.hostId,
+    hostId: enrolledHost.hostId,
     repoUrl: makeBareRepository(base),
     createProject: (input) =>
       requireHandler(ipcHandlers, CLOUD_PLATFORM_IPC.createProject)(null, input),

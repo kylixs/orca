@@ -201,6 +201,18 @@ export async function startArchiveHarness(
   if (!host) {
     throw new Error('host not enrolled')
   }
+  // U62 C10: self-service creation needs the host provision bit (U61 shape).
+  const provisionGrant = await adminFetch(`/v1/hosts/${host.hostId}/grants`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      subjectType: 'group',
+      subjectId: 'developers',
+      permissions: ['provision']
+    })
+  })
+  if (!provisionGrant.ok) {
+    throw new Error(`host provision grant failed: ${provisionGrant.status}`)
+  }
 
   const session = new CloudSessionService({ apiUrl: platform.url, tlsRejectUnauthorized: false })
   await session.login('zhangsan', 'Passw0rd!')
