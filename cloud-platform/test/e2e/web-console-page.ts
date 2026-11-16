@@ -41,12 +41,20 @@ export type WebConsolePage = {
  */
 export function loadWebConsolePage(
   platformUrl: string,
-  options: { timerScale?: number; hash?: string } = {}
+  options: {
+    timerScale?: number
+    hash?: string
+    /** localStorage seeded before the page's bootstrap runs (cached-session cases). */
+    storage?: Record<string, string>
+  } = {}
 ): WebConsolePage {
   // Why scale: the ready timeout is 20s; a test needs to observe it (and two
   // retries) without waiting a minute. Default 1 keeps every other suite real.
   const timerScale = options.timerScale ?? 1
   const window = new Window({ url: 'https://web.console.local/' })
+  for (const [key, value] of Object.entries(options.storage ?? {})) {
+    window.localStorage.setItem(key, value)
+  }
   // Seed the deep link before the page runs so its bootstrap parses that URL.
   if (options.hash !== undefined) window.location.hash = options.hash
   const html = readFileSync(join(WEB_SOURCE, 'index.html'), 'utf8')
