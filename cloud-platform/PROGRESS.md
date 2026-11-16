@@ -3792,6 +3792,13 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **U165 闭环**：构建口味矩阵处置有效（§2-25）。
 - **生产重建（去仪器化）+ `--platform-only` 刷新 + 去仪器化核验**在跑；完成后出总账收口报告。
 
+### 2026-11-17 06:4x 轮：交付构建完成，U138 家族收口
+
+- **生产重建 + 刷新 + 核验**（`evidence/prod-build-20261117-0620/`）：preload `MODE=production`/exposeStore false、renderer 无 e2e 探针、out/web `exposeStore` 常量 false（`__store=` 字面量位于不可达守卫内，运行期不暴露）；`web refreshed build=8f5651b109ab source=同`、双宿主同 id online（PTY 156/157、52/52 kept）、`failures=[]`；served app.js 与 out/web sha == 源。
+- **门禁终态**：journey-final8 **13/13**；W9 **A 1/1 + B 2/2**；probe final5 **25/25 conclusive**；U162 e2e 9/9；U163 落盘 2 组；race 25/25。
+- **台账**：U138/U163/U165 关闭；残余 U164（P2 布局所有权）、U157/U160/U162/U163 P3 披露；人工验收矩阵补 C4/C5。
+- 宿主运行进程仍持旧 e2e preload/renderer 内存快照（磁盘已生产）；下个窗口 reload/宿主重启即消失（未执行以保 PTY）。
+
 ### 四通道并发执行（启动，2026-11-14）
 
 按细粒度拆分与三权分立纪律并发起跑：通道② **W6a**（中继浏览器模式，relay.ts 域）、通道③ **W10**（客户端零 env 登录，src/main+renderer 登录域）、通道④ **W5a**（详情页终端组件，cloud-admin 域）三个实现代理并行；通道① 等在途 W2（QA 修复）完成后接 W8。每令完成→独立测试代理→独立审计代理→主会话关闭放行下一个。
