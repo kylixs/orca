@@ -169,24 +169,30 @@ test('G09-1 抽屉「进入维护模式」→ 行变维护中、项目打开入�
   cases['maintenance-enter'] = '抽屉进入维护 → POST {enabled:true,reason}；列表行维护中；项目打开禁用（主机维护中）'
 }, 120_000)
 
-test('G09-2 下线：原生 confirm 取消零 DELETE，确认后行变已吊销', async () => {
+test('G09-2 下线：样式化确认卡取消零 DELETE，确认后行变已吊销', async () => {
   const page = loadWebConsolePage(service.url)
   await loginAsAdmin(page)
   await openHostDrawer(page, lifecycleHostId)
 
   const revokePath = `/v1/hosts/${lifecycleHostId}`
-  const prompts: string[] = []
-  page.window.confirm = (text?: string) => (prompts.push(text ?? ''), false)
   page.window.document.querySelector<HTMLButtonElement>('#revokeHostBtn')!.click()
   await page.settle()
 
-  assert.deepEqual(prompts, ['确认下线该主机？'], 'the native confirm asks exactly once')
+  const cancelCard = page.window.document.querySelector<HTMLElement>('.dialog-backdrop')
+  assert.ok(cancelCard, 'the styled confirm card opens instead of window.confirm')
+  assert.match(cancelCard.textContent ?? '', /下线后.*凭证失效.*不可撤销/)
+  cancelCard.querySelector<HTMLButtonElement>('[data-action="0"]')!.click()
+  await page.settle()
+
   assert.equal(callsTo(page, 'DELETE', revokePath), 0, 'cancel sends no DELETE')
   assert.ok(drawer(page), 'cancel keeps the drawer open')
   assert.equal((await hostFromPlatform(lifecycleHostId)).revokedAt ?? null, null)
 
-  page.window.confirm = () => true
   page.window.document.querySelector<HTMLButtonElement>('#revokeHostBtn')!.click()
+  await page.settle()
+  page.window.document
+    .querySelector<HTMLButtonElement>('.dialog-backdrop [data-action="1"]')!
+    .click()
   await page.settle()
 
   assert.equal(callsTo(page, 'DELETE', revokePath), 1, 'confirm sends exactly one DELETE')
@@ -194,7 +200,8 @@ test('G09-2 下线：原生 confirm 取消零 DELETE，确认后行变已吊销'
   assert.match(rowFor(page, 'dev-g09-lifecycle').textContent ?? '', /已吊销/)
   assert.ok((await hostFromPlatform(lifecycleHostId)).revokedAt, 'the platform records revocation')
 
-  cases['revoke-confirm'] = 'confirm 取消 → 0 DELETE、抽屉不关、平台未吊销；确认 → 1 DELETE、行已吊销'
+  cases['revoke-confirm'] =
+    '样式化确认卡：取消 → 0 DELETE、抽屉不关、平台未吊销；确认 → 1 DELETE、行已吊销'
 }, 120_000)
 
 test('G09-3 注册弹框「复制命令」：写入完整命令、toast 已复制、弹框保持', async () => {
@@ -250,8 +257,11 @@ test('G09-4 失败态：令牌/维护/下线请求失败均 toast 原因且状�
 
   const revokePath = `/v1/hosts/${failHostId}`
   page.fail('DELETE', revokePath, { status: 500, body: FAILURE_BODY })
-  page.window.confirm = () => true
   page.window.document.querySelector<HTMLButtonElement>('#revokeHostBtn')!.click()
+  await page.settle()
+  page.window.document
+    .querySelector<HTMLButtonElement>('.dialog-backdrop [data-action="1"]')!
+    .click()
   await page.settle()
   assert.match(lastToast(page), /^下线主机失败：模拟平台故障$/)
   assert.ok(drawer(page), 'a refused revoke leaves the drawer open')

@@ -580,6 +580,13 @@ async function hostCard(page: Page, id = 'host_dev001') {
   return card
 }
 
+/** U148: 维护/下线收进「更多」菜单；0=维护/结束维护，1=下线。 */
+async function hostMenuAction(page: Page, id: string, action: 0 | 1): Promise<void> {
+  await page.locator(`.host-list-card[data-host-card="${id}"] [data-host-more]`).click()
+  await page.waitForSelector('.dialog-backdrop')
+  await page.locator(`.dialog-backdrop [data-action="${action}"]`).click()
+}
+
 test('390×844：主机卡片化、字段省略、动作 ≥44px、维护成功/失败、下线取消零 DELETE', async () => {
   const page = await signIn({ width: 390, height: 844 }, ADMIN, '#/hosts')
   try {
@@ -598,14 +605,22 @@ test('390×844：主机卡片化、字段省略、动作 ≥44px、维护成功/
     assert.match(await card.innerText(), /最后心跳/)
 
     const actions = card.locator('.hlc-actions .btn')
-    assert.equal(await actions.count(), 3, '详情 / 维护 / 下线')
+    assert.equal(await actions.count(), 2, '详情 / 更多')
+    assert.deepEqual(await actions.allInnerTexts(), ['详情', '更多'])
     const heights = await actions.evaluateAll((els) =>
       els.map((el) => el.getBoundingClientRect().height)
     )
     assert.ok(heights.every((height) => height >= 44), `actions >=44px, got ${heights.join(',')}`)
 
+    await card.locator('[data-host-more]').click()
+    await page.waitForSelector('.dialog-backdrop')
+    const menuHeights = await page
+      .locator('.dialog-backdrop [data-action]')
+      .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height))
+    assert.ok(menuHeights.every((height) => height >= 44), 'menu items >=44px')
+    await page.locator('.dialog-backdrop [data-action="0"]').click()
+
     // Enter maintenance: the sealed-in-place failure path reuses the desktop toast.
-    await card.locator('[data-host-maintenance]').click()
     await page.waitForFunction(
       () =>
         document.querySelector('.host-list-card[data-host-card="host_dev001"] .badge')
@@ -620,7 +635,7 @@ test('390×844：主机卡片化、字段省略、动作 ≥44px、维护成功/
         body: JSON.stringify(FAILURE_BODY)
       })
     )
-    await (await hostCard(page)).locator('[data-host-maintenance]').click()
+    await hostMenuAction(page, 'host_dev001', 0)
     await page.waitForFunction(() =>
       [...document.querySelectorAll('.toast')].some((el) => el.textContent?.includes('失败'))
     )
@@ -636,24 +651,25 @@ test('390×844：主机卡片化、字段省略、动作 ≥44px、维护成功/
     )
     await page.unroute('**/v1/hosts/*/maintenance')
 
-    await (await hostCard(page)).locator('[data-host-maintenance]').click()
+    await hostMenuAction(page, 'host_dev001', 0)
     await page.waitForFunction(
       () =>
         document.querySelector('.host-list-card[data-host-card="host_dev001"] .badge')
           ?.textContent !== '维护中'
     )
 
-    // Revoke asks first; cancel must send no DELETE.
+    // Revoke asks first through the styled card; cancel must send no DELETE.
     const deletes: string[] = []
     page.on('request', (request) => {
       if (request.method() === 'DELETE' && request.url().includes('/v1/hosts/')) {
         deletes.push(request.url())
       }
     })
-    await page.evaluate(() => {
-      window.confirm = () => false
-    })
-    await (await hostCard(page)).locator('[data-host-revoke]').click()
+    await hostMenuAction(page, 'host_dev001', 1)
+    await page.waitForFunction(() =>
+      document.querySelector('.dialog-backdrop')?.textContent?.includes('不可撤销')
+    )
+    await page.locator('.dialog-backdrop [data-action="0"]').click()
     await page.waitForTimeout(300)
     assert.deepEqual(deletes, [], 'cancelling the confirm must issue zero DELETE')
 

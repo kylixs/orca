@@ -974,7 +974,11 @@ td.actions {
   }
   .grid-4,
   .grid-3 {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* nowrap 路径不得撑破单列网格 */
+  .project-card {
+    min-width: 0;
   }
   .shell {
     display: block;
@@ -1664,6 +1668,10 @@ td.actions {
   .drawer .kv dd {
     word-break: break-word;
     overflow-wrap: anywhere;
+  }
+  .drawer .detail-tab {
+    min-height: 44px;
+    font-size: 13.5px;
   }
   .drawer .toolbar .btn {
     flex: 1 1 auto;

@@ -1871,16 +1871,12 @@ async function renderHosts() {
   for (const btn of document.querySelectorAll('[data-host]')) {
     btn.onclick = () => openDetailFromList('hosts', btn.dataset.host ?? '')
   }
-  for (const btn of document.querySelectorAll('[data-host-maintenance]')) {
-    btn.onclick = async () => {
-      const host = state.lastHosts.find((h) => h.id === btn.dataset.hostMaintenance)
-      if (host && (await toggleHostMaintenance(host))) await renderHosts()
-    }
-  }
-  for (const btn of document.querySelectorAll('[data-host-revoke]')) {
-    btn.onclick = async () => {
-      const host = state.lastHosts.find((h) => h.id === btn.dataset.hostRevoke)
-      if (host && (await revokeHost(host))) await renderHosts()
+  for (const btn of document.querySelectorAll('[data-host-more]')) {
+    btn.onclick = () => {
+      const host = state.lastHosts.find((h) => h.id === btn.dataset.hostMore)
+      if (host) {
+        hostActionsDialog(host)
+      }
     }
   }
 }
@@ -1934,10 +1930,44 @@ function hostCard(h) {
     <div class="hlc-line muted">最后心跳 ${relative(h.lastHeartbeatAt)}</div>
     <div class="hlc-actions">
       <button class="btn sm" data-host="${esc(h.id)}">详情</button>
-      <button class="btn sm" data-host-maintenance="${esc(h.id)}" ${h.revokedAt ? 'disabled' : ''}>${h.status === 'maintenance' ? '结束维护' : '维护'}</button>
-      <button class="btn sm danger" data-host-revoke="${esc(h.id)}" ${h.revokedAt ? 'disabled' : ''}>下线</button>
+      <button class="btn sm" data-host-more="${esc(h.id)}">更多</button>
     </div>
   </article>`
+}
+
+/** 维护/下线收进「更多」菜单，卡片只留 详情 + 更多（原型）. */
+function hostActionsDialog(host) {
+  const enter = host.status !== 'maintenance'
+  const disabled = Boolean(host.revokedAt)
+  dialog(
+    `主机 ${host.name}`,
+    '<p class="muted">选择对主机的操作。</p>',
+    [
+      {
+        label: enter ? '进入维护模式' : '结束维护',
+        disabled,
+        onClick: () => {
+          void (async () => {
+            if (await toggleHostMaintenance(host)) {
+              await renderHosts()
+            }
+          })()
+        }
+      },
+      {
+        label: '下线主机',
+        danger: true,
+        disabled,
+        onClick: () => {
+          void (async () => {
+            if (await revokeHost(host)) {
+              await renderHosts()
+            }
+          })()
+        }
+      }
+    ]
+  )
 }
 
 /**
@@ -1977,8 +2007,33 @@ async function toggleHostMaintenance(host) {
   return true
 }
 
+/** 下线确认卡：原生 confirm 在移动端不可控，改为样式化 danger 弹框。 */
+function confirmHostRevoke(host) {
+  return new Promise((resolve) => {
+    let decided = false
+    const decide = (value) => {
+      if (decided) {
+        return
+      }
+      decided = true
+      resolve(value)
+    }
+    dialog(
+      `下线主机 ${host.name}`,
+      '<p>下线后，该主机的项目立即不可打开，已签发凭证失效；此操作不可撤销。</p>',
+      [
+        { label: '取消', onClick: () => decide(false) },
+        { label: '确认下线', danger: true, onClick: () => decide(true) }
+      ],
+      { onClose: () => decide(false) }
+    )
+  })
+}
+
 async function revokeHost(host) {
-  if (!confirmDialog('确认下线该主机？')) return false
+  if (!(await confirmHostRevoke(host))) {
+    return false
+  }
   try {
     await api(`/v1/hosts/${host.id}`, { method: 'DELETE' })
   } catch (err) {
