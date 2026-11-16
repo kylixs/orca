@@ -504,6 +504,37 @@ function localWebTabId(hostParentTabId: string): string {
 }
 
 /**
+ * First-run feature tips ("Jump to a worktree …") are modal and cover the tab
+ * strip; mirror the release smoke's dismiss loop so a mouse click can land.
+ * Closing marks the tip seen, so later pages do not reopen it.
+ */
+async function dismissFeatureTipDialogs(page: Page, windowMs = 12_000): Promise<void> {
+  const deadline = Date.now() + windowMs
+  let closed = 0
+  let quietMs = 0
+  while (Date.now() < deadline) {
+    const dialog = page.locator('[role="dialog"]').first()
+    if ((await dialog.count()) > 0 && (await dialog.isVisible().catch(() => false))) {
+      const close = dialog.locator('[data-slot="dialog-close"]').first()
+      await ((await close.count()) > 0
+        ? close.click({ timeout: 4_000 }).catch(() => {})
+        : page.keyboard.press('Escape'))
+      closed += 1
+      quietMs = 0
+      await page.waitForTimeout(800)
+    } else {
+      if (closed > 0) {
+        quietMs += 500
+        if (quietMs >= 2_000) {
+          break
+        }
+      }
+      await page.waitForTimeout(500)
+    }
+  }
+}
+
+/**
  * U96 A-8 / A1 — Orca Web page reload station.
  *
  * The A-RESTART station above proves the simple workspace reconnects. This one
@@ -548,6 +579,10 @@ test('U96 A1 Orca Web 页面重载：2 组 3 标签、活动标签与活 PTY mar
         { timeout: WORKSPACE_TIMEOUT_MS, message: 'the Orca Web checkout never activated' }
       )
       .toEqual({ repos: 1, activeWorktreeId: expect.any(String) })
+
+    // The first-run tip dialog otherwise covers the tab strip and swallows the
+    // marker clicks below.
+    await dismissFeatureTipDialogs(page)
 
     const setup = await page.evaluate(
       async ({ markerOne, markerTwo }) => {
@@ -812,6 +847,10 @@ test('U96 A1 Orca Web 页面重载：2 组 3 标签、活动标签与活 PTY mar
       (call) => call.path === '/v1/auth/login' || call.path === '/v1/web/handoff'
     )
     expect(reauth, 'a reload must not re-authenticate by login or handoff').toEqual([])
+
+    // Why again: a reload that lands before the seen-tip write flushes reopens
+    // the modal over the tab strip; the marker clicks must not be intercepted.
+    await dismissFeatureTipDialogs(page, 6_000)
 
     // Live PTY content: select each restored terminal and read its pane. The
     // marker exists in no client buffer — the host stream replays it.
