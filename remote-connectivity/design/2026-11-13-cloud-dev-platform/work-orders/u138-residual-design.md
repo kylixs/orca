@@ -169,6 +169,7 @@
   - H-D 并发 activate 因 `await refreshMobileSessionPtyRecords` 乱序落地。
 - **文件域**（按时间线落点）：`src/renderer/src/runtime/web-session-tabs-sync/load-initial.ts`；`src/main/runtime/orca-runtime-perform-mobile-session-pty-records-refresh.ts`；`orca-runtime-apply-mobile-session-tab-navigation.ts`；必要时 `client-session-tab-selection.ts`。
 - **验收**：C1/C2/C3 全绿；修复帧的判别字段通过 §2-35 互斥性检查；补一条能红复现的回归测试（客户端应用顺序或宿主写序）。
+- **v2 修订（2026-11-17 02:2x，T3 审计 REJECT）**：首版只保 `activeTabIdByWorktree`，但渲染用 `groupsByWorktree[].activeTabId` 仍回滚、且可能悬空；钉对剔除路径无判别力。v2 改为 **worktree 级陈旧拒绝**：恢复期间该 worktree 已收更新流帧时，晚到 listAll 快照整条不应用（内容+焦点都不写），未受影响的 worktree 照常合并；判别力检查（短路拒绝后钉必须变红）为交付必附证据。
 - **风险**：把 H-C 当 H-B 修会再次白跑（矩阵 4 的投影回退容易被误读）；修复必须写明「写后宿主内存与持久值如何变化」（矩阵 3）。
 
 ### T4 门禁固化（a2 多周期站点）
