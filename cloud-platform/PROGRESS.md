@@ -3761,6 +3761,12 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **重建 out/main+out/web（仪器化）→ full reseed → move 落盘验证**在跑；随后金路径控制台线复跑（目标 13/13）。
 - 之后：生产重建（去仪器化）→ `--platform-only` 刷新 → 总账收口。
 
+### 2026-11-17 06:0x 轮：U163 v2 落盘 PASS；金路径复跑
+
+- **U163 v2**（`d5620ab4511`）：headless 目标校验 + **ack false/超时回退 headless** + web 端处理 `moved:false`（toast/清 intent）；7 钉、判别力两变异、78 测试、tc 绿。
+- **落盘验证 PASS**（`evidence/u163-verify-v2-20261117-054931/`）：DB **2 组**、被移 tab 在目标组、投影/新设备水合 2 组；attempt1 暴露 P3（本地 UUID 未水合时抛 `target_group_not_found` → 客户端 toast 失败，诚实失败非假成功）。
+- **金路径 13 门禁**在跑（当前构建+已落盘 2 组布局）；之后生产重建（去仪器化）→ `--platform-only` 刷新 → 总账收口。
+
 ### 四通道并发执行（启动，2026-11-14）
 
 按细粒度拆分与三权分立纪律并发起跑：通道② **W6a**（中继浏览器模式，relay.ts 域）、通道③ **W10**（客户端零 env 登录，src/main+renderer 登录域）、通道④ **W5a**（详情页终端组件，cloud-admin 域）三个实现代理并行；通道① 等在途 W2（QA 修复）完成后接 W8。每令完成→独立测试代理→独立审计代理→主会话关闭放行下一个。
