@@ -1,6 +1,11 @@
 import * as React from 'react'
 import type { CloudProjectPermission } from '../../../shared/cloud-platform-ipc'
-import { readField, readObjectValue, readString, readStringArray } from '../../../shared/json-fields'
+import {
+  readField,
+  readObjectValue,
+  readString,
+  readStringArray
+} from '../../../shared/json-fields'
 import type { CloudRpc } from '../../../shared/cloud-file-browser'
 import {
   cloudSimpleWorkspaceDiffTab,
@@ -388,6 +393,7 @@ export function CloudSimpleWorkspaceSession({
       subscribe={subscribe}
       workspacePath={workspacePath ?? null}
       canUseTerminal={canUseTerminal}
+      hostOwnsTerminalPty={!sessionTabs.unsupported}
     >
       <CloudSimpleWorkspace
         route={route}

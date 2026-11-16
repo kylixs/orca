@@ -25,6 +25,8 @@ export type CloudWorkspaceTerminalTabDeps = {
   workspacePath: string | null
   /** False only when the opened project lacks the `terminal` permission. */
   canUseTerminal?: boolean
+  /** U96 B-令3: the host session-tab action layer creates this workspace's PTYs. */
+  hostOwnsTerminalPty?: boolean
 }
 
 const CloudWorkspaceTerminalDepsContext = React.createContext<CloudWorkspaceTerminalTabDeps | null>(
@@ -36,11 +38,12 @@ export function CloudWorkspaceTerminalTabProvider({
   subscribe,
   workspacePath,
   canUseTerminal,
+  hostOwnsTerminalPty,
   children
 }: CloudWorkspaceTerminalTabDeps & { children: React.ReactNode }): React.JSX.Element {
   const value = React.useMemo(
-    () => ({ rpc, subscribe, workspacePath, canUseTerminal }),
-    [rpc, subscribe, workspacePath, canUseTerminal]
+    () => ({ rpc, subscribe, workspacePath, canUseTerminal, hostOwnsTerminalPty }),
+    [rpc, subscribe, workspacePath, canUseTerminal, hostOwnsTerminalPty]
   )
   return (
     <CloudWorkspaceTerminalDepsContext.Provider value={value}>
@@ -106,11 +109,19 @@ export function CloudWorkspaceTerminalTab({
       </TerminalNotice>
     )
   }
+  // The host row carries the live PTY handle; a local tab has none until the
+  // host projection acknowledges it (then its row supplies the same tab id).
+  const host = tab.host
+  const leafId = host?.leafId ?? `leaf:${tab.id.replace(/^terminal:/, '')}`
   const panelProps: CloudTerminalPanelProps = {
     rpc: deps.rpc,
     subscribe: deps.subscribe,
     workspacePath: deps.workspacePath,
     title: tab.title,
+    tabId: tab.id,
+    leafId,
+    hostTerminal: host ? host.terminal : undefined,
+    hostOwnsPty: deps.hostOwnsTerminalPty === true,
     active,
     detachPolicyResolver
   }

@@ -1,63 +1,31 @@
 import * as React from 'react'
 import type { Terminal } from '@xterm/xterm'
-import { cloudWorktreeSelector, type CloudRpc } from '../../../shared/cloud-file-browser'
-import {
-  errorCodeOf,
-  readField,
-  readNumber,
-  readObjectValue,
-  readString,
-  readStringArray
-} from '../../../shared/json-fields'
+import type { CloudRpc } from '../../../shared/cloud-file-browser'
+import { errorCodeOf, readField, readObjectValue, readString } from '../../../shared/json-fields'
 import { RELEASE_SYNCHRONIZED_OUTPUT } from '../../../shared/terminal-mode-reset-profiles'
+import { planCloudTerminalBoot } from './cloud-terminal-attach'
 import type { TerminalEchoLatencyMeter, TerminalEchoStats } from './cloud-terminal-echo-latency'
-import type {
-  CloudSubscribeOutcome,
-  CloudSubscription,
-  CloudSubscriptionCallbacks
-} from './use-cloud-session'
+import {
+  buildCloudTerminalReopenParams,
+  isTerminalSessionGone,
+  type CloudScrollbackBoundary
+} from './cloud-terminal-replay-boundary'
+import type { CloudPanelState, CloudStreamSubscribe } from './cloud-terminal-stream-contracts'
+import { readCloudTerminalStreamFrame } from './cloud-terminal-stream-frame'
+import type { CloudSubscription } from './use-cloud-session'
 
 /**
- * The stream half of `CloudTerminalPanel` (U96 B-令6 extraction): create the
- * PTY, subscribe passively, reconnect with backoff, and release the shell on
- * unmount according to the detach policy. Kept out of the component so the
- * panel keeps its xterm/fit/overlay concerns below the file-size budget.
+ * The stream half of `CloudTerminalPanel` (U96 B-令6 extraction, B-令3 attach):
+ * attach to a host-projected handle or create a legacy PTY, subscribe
+ * passively, reconnect with backoff, and release the shell on unmount
+ * according to the detach policy.
  */
-
-export type CloudPanelState =
-  | { kind: 'booting' }
-  | { kind: 'live' }
-  | { kind: 'reconnecting'; code: string | null }
-  | { kind: 'failed'; code: string }
-
-export type CloudStreamSubscribe = (
-  method: string,
-  params: Record<string, unknown>,
-  callbacks: CloudSubscriptionCallbacks
-) => Promise<CloudSubscribeOutcome>
 
 const RECONNECT_DELAYS_MS = [500, 1_000, 2_000, 4_000, 8_000]
 
 /** The handle field `terminal.create` answers with (M102 e2e contract). */
 function terminalHandleOf(result: unknown): string | null {
   return readString(readField(readObjectValue(result), 'terminal'), 'handle')
-}
-
-/** The grid the host serialized the frame at; absent or absurd means "keep ours". */
-function frameSizeOf(event: unknown): { cols: number; rows: number } | null {
-  const cols = readNumber(event, 'cols')
-  const rows = readNumber(event, 'rows')
-  return cols !== null && rows !== null && cols > 0 && rows > 0 ? { cols, rows } : null
-}
-
-/** The ANSI image of the buffer; `lines` is the text fallback for older hosts. */
-function framePayloadOf(event: unknown): string | null {
-  const serialized = readString(event, 'serialized')
-  if (serialized !== null) {
-    return serialized
-  }
-  const lines = readStringArray(event, 'lines')
-  return lines === null ? null : `${lines.join('\r\n')}\r\n`
 }
 
 type Ref<T> = { current: T }
@@ -67,8 +35,15 @@ export function useCloudTerminalStreamSession(args: {
   subscribe: CloudStreamSubscribe
   workspacePath: string
   title: string
+  /** Host projection handle; undefined = never projected, null = host row pending. */
+  hostTerminal?: string | null
+  /** The host action layer creates this tab's PTY, so never create a second one. */
+  hostOwnsPty: boolean
+  tabId?: string
+  leafId?: string
   clientId: string
   pushViewport: () => void
+  setReplayBoundary: React.Dispatch<React.SetStateAction<CloudScrollbackBoundary | null>>
   echoMeter: TerminalEchoLatencyMeter
   detachPolicy: 'close-on-unmount' | 'leave-running'
   detachPolicyResolver?: () => 'close-on-unmount' | 'leave-running'
@@ -84,8 +59,13 @@ export function useCloudTerminalStreamSession(args: {
     subscribe,
     workspacePath,
     title,
+    hostTerminal,
+    hostOwnsPty,
+    tabId,
+    leafId,
     clientId,
     pushViewport,
+    setReplayBoundary,
     echoMeter,
     detachPolicy,
     detachPolicyResolver,
@@ -97,6 +77,11 @@ export function useCloudTerminalStreamSession(args: {
     setEchoStats
   } = args
 
+  // Mount-time snapshot: the capability probe can flip this after mount, and a
+  // rerun would close a legacy-created PTY before its host row could arrive.
+  const hostOwnsPtyRef = React.useRef(hostOwnsPty)
+  hostOwnsPtyRef.current = hostOwnsPty
+
   // oxlint-disable-next-line react-doctor/effect-needs-cleanup -- Why: the reconnect timer is armed from stream-drop callbacks, stored, and cleared by this effect's unmount cleanup.
   React.useEffect(() => {
     let disposed = false
@@ -104,6 +89,9 @@ export function useCloudTerminalStreamSession(args: {
     let subscription: CloudSubscription | null = null
     let timer: ReturnType<typeof setTimeout> | undefined
     let attempts = 0
+    // Whether this effect owns the PTY (it created it); an attached handle
+    // belongs to the host tab inventory and its close action releases it.
+    let createdHere = false
 
     const paint = (payload: string, snapshot: { cols: number; rows: number } | null): void => {
       const term = termRef.current
@@ -124,40 +112,50 @@ export function useCloudTerminalStreamSession(args: {
     }
 
     const onEvent = (event: unknown): void => {
-      const type = readString(event, 'type')
-      if (type === 'scrollback') {
+      const frame = readCloudTerminalStreamFrame(event)
+      if (frame.kind === 'replay') {
         // The buffer is kept across a drop; the snapshot is the host's
         // authoritative image of it (it carries the history too), so clear the
         // screen and scrollback and repaint, as the web client's replay does,
         // rather than append a second copy of the history.
         termRef.current?.write(`${RELEASE_SYNCHRONIZED_OUTPUT}\x1b[2J\x1b[3J\x1b[H`)
-        paint(framePayloadOf(event) ?? '', frameSizeOf(event))
+        paint(frame.payload ?? '', frame.size)
+        setReplayBoundary(frame.boundary)
         pushViewport()
         return
       }
-      if (type === 'data') {
-        const chunk = readString(event, 'chunk')
+      if (frame.kind === 'data') {
         const term = termRef.current
-        if (chunk !== null && chunk !== '' && term) {
+        if (frame.chunk !== '' && term) {
           if (echoMeter.hasPendingKeys()) {
             // The callback rides the same write and fires once xterm has parsed
             // the echo into the buffer; with no key pending the call keeps its
             // original single-argument shape.
-            term.write(chunk, () => {
+            term.write(frame.chunk, () => {
               const sample = echoMeter.recordEcho()
               if (sample !== null) {
                 setEchoStats(echoMeter.stats())
               }
             })
           } else {
-            term.write(chunk)
+            term.write(frame.chunk)
           }
         }
         return
       }
-      if (type === 'fit-override-changed') {
-        onFitOverrideEvent(event)
+      if (frame.kind === 'fit-override') {
+        onFitOverrideEvent(frame.event)
       }
+    }
+
+    /** True when the error means the PTY is gone, so a retry would replay a dead handle. */
+    const failStream = (code: string | null, message?: string): boolean => {
+      if (!isTerminalSessionGone(code, message)) {
+        return false
+      }
+      subscription = null
+      setState({ kind: 'ended', code: code ?? 'terminal_exited' })
+      return true
     }
 
     const connect = (): void => {
@@ -194,6 +192,11 @@ export function useCloudTerminalStreamSession(args: {
           if (disposed || currentEpoch !== epoch) {
             return
           }
+          // The PTY is gone (host restart/exit), not the link: an automatic
+          // reconnect would replay a dead handle, so end the session explicitly.
+          if (failStream(error.code, error.message)) {
+            return
+          }
           subscription = null
           scheduleReconnect(error.code)
         }
@@ -213,7 +216,9 @@ export function useCloudTerminalStreamSession(args: {
             return
           }
           if (!outcome.ok) {
-            scheduleReconnect(outcome.code)
+            if (!failStream(outcome.code, outcome.message)) {
+              scheduleReconnect(outcome.code)
+            }
             return
           }
           subscription = outcome.subscription
@@ -253,11 +258,23 @@ export function useCloudTerminalStreamSession(args: {
     }
 
     const boot = (): void => {
+      const plan = planCloudTerminalBoot(hostTerminal, hostOwnsPtyRef.current)
+      if (plan.kind === 'pending') {
+        setState({ kind: 'pending' })
+        return
+      }
+      if (plan.kind === 'attach') {
+        // The host already owns this PTY (projection row); subscribing is the
+        // whole mount — creating here is what produced two shells per tab.
+        handleRef.current = plan.handle
+        connect()
+        return
+      }
       void (async () => {
-        const created = await rpc('terminal.create', {
-          worktree: cloudWorktreeSelector(workspacePath),
-          title
-        })
+        const created = await rpc(
+          'terminal.create',
+          buildCloudTerminalReopenParams({ workspacePath, title, tabId, leafId })
+        )
         if (disposed) {
           // Unmount raced this rpc: the cleanup saw no handle yet, so the shell
           // the host already built is closed here instead of leaking.
@@ -279,6 +296,7 @@ export function useCloudTerminalStreamSession(args: {
           return
         }
         handleRef.current = handle
+        createdHere = true
         connect()
       })()
     }
@@ -314,7 +332,7 @@ export function useCloudTerminalStreamSession(args: {
       clearTimeout(timer)
       subscription?.unsubscribe()
       const policy = detachPolicyResolver ? detachPolicyResolver() : detachPolicy
-      if (handleRef.current !== null && policy === 'close-on-unmount') {
+      if (createdHere && handleRef.current !== null && policy === 'close-on-unmount') {
         // Why not awaited: an unmount must not hold the tree on the network.
         void rpc('terminal.close', { terminal: handleRef.current })
       }
@@ -327,8 +345,12 @@ export function useCloudTerminalStreamSession(args: {
     subscribe,
     workspacePath,
     title,
+    hostTerminal,
+    tabId,
+    leafId,
     clientId,
     pushViewport,
+    setReplayBoundary,
     echoMeter,
     detachPolicy,
     detachPolicyResolver,

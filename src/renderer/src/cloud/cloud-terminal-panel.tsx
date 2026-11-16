@@ -14,11 +14,15 @@ import {
   type TerminalEchoStats
 } from './cloud-terminal-echo-latency'
 import { CloudTerminalFitOverlay } from './cloud-terminal-fit-overlay'
-import { useCloudTerminalFitControl } from './use-cloud-terminal-fit-control'
 import {
-  useCloudTerminalStreamSession,
-  type CloudPanelState
-} from './use-cloud-terminal-stream-session'
+  CloudTerminalEndedNotice,
+  CloudTerminalReplayNotice,
+  useCloudTerminalReopen,
+  type CloudScrollbackBoundary
+} from './cloud-terminal-replay-boundary'
+import { useCloudTerminalFitControl } from './use-cloud-terminal-fit-control'
+import { useCloudTerminalStreamSession } from './use-cloud-terminal-stream-session'
+import type { CloudPanelState } from './cloud-terminal-stream-contracts'
 import type { CloudSubscribeOutcome, CloudSubscriptionCallbacks } from './use-cloud-session'
 
 /**
@@ -44,6 +48,17 @@ export type CloudTerminalPanelProps = {
   workspacePath: string
   /** `terminal.create` title; one PTY per mounted tab (design §4.5). */
   title?: string
+  /** Host session-tab id; a reopen recreates the PTY under this same tab. */
+  tabId?: string
+  /** Host leaf id; absent for the admin page's standalone terminal. */
+  leafId?: string
+  /**
+   * Host projection handle. A string attaches to the host's PTY instead of
+   * creating one; null means the host row is still restoring its PTY.
+   */
+  hostTerminal?: string | null
+  /** The host action layer owns PTY creation, so a pane must never create one. */
+  hostOwnsPty?: boolean
   /**
    * False while an inactive tab keeps the pane mounted but hidden. Fit and
    * viewport updates are skipped until activation (design §4.5).
@@ -58,11 +73,32 @@ export type CloudTerminalPanelProps = {
   detachPolicyResolver?: () => 'close-on-unmount' | 'leave-running'
 }
 
+function describePanelState(state: CloudPanelState): string {
+  switch (state.kind) {
+    case 'booting':
+      return '正在连接…'
+    case 'live':
+      return '实时'
+    case 'reconnecting':
+      return `已断开，正在重连…${state.code ? `（${state.code}）` : ''}`
+    case 'failed':
+      return `连接失败（${state.code}）`
+    case 'pending':
+      return '等待宿主恢复终端…'
+    case 'ended':
+      return `会话已结束${state.code ? `（${state.code}）` : ''}`
+  }
+}
+
 export function CloudTerminalPanel({
   rpc,
   subscribe,
   workspacePath,
   title = 'cloud-admin',
+  tabId,
+  leafId,
+  hostTerminal,
+  hostOwnsPty = false,
   active = true,
   detachPolicy = 'close-on-unmount',
   detachPolicyResolver
@@ -74,6 +110,7 @@ export function CloudTerminalPanel({
   const [state, setState] = React.useState<CloudPanelState>({
     kind: 'booting'
   })
+  const [replayBoundary, setReplayBoundary] = React.useState<CloudScrollbackBoundary | null>(null)
   const hostRef = React.useRef<HTMLDivElement | null>(null)
   const termRef = React.useRef<Terminal | null>(null)
   const handleRef = React.useRef<string | null>(null)
@@ -94,6 +131,25 @@ export function CloudTerminalPanel({
     termRef
   })
   const { onFitOverrideEvent } = fitControl
+
+  // A-7: an ended session reopens only on a user gesture; the new handle then
+  // re-subscribes through the same retry path instead of a blind reconnect.
+  const onReopened = React.useCallback((handle: string | null): void => {
+    if (handle === null) {
+      setState({ kind: 'failed', code: 'terminal_reopen_failed' })
+      return
+    }
+    handleRef.current = handle
+    retryRef.current?.()
+  }, [])
+  const { reopen, pending: reopenPending } = useCloudTerminalReopen({
+    rpc,
+    workspacePath,
+    title,
+    tabId,
+    leafId,
+    onReopened
+  })
 
   const pushViewport = React.useCallback(() => {
     const term = termRef.current
@@ -211,8 +267,13 @@ export function CloudTerminalPanel({
     subscribe,
     workspacePath,
     title,
+    hostTerminal,
+    hostOwnsPty,
+    tabId,
+    leafId,
     clientId,
     pushViewport,
+    setReplayBoundary,
     echoMeter,
     detachPolicy,
     detachPolicyResolver,
@@ -261,21 +322,24 @@ export function CloudTerminalPanel({
             </Badge>
           ) : null}
           <span className="text-xs text-muted-foreground" data-testid="cloud-terminal-state">
-            {state.kind === 'booting'
-              ? '正在连接…'
-              : state.kind === 'live'
-                ? '实时'
-                : state.kind === 'reconnecting'
-                  ? `已断开，正在重连…${state.code ? `（${state.code}）` : ''}`
-                  : `连接失败（${state.code}）`}
+            {describePanelState(state)}
           </span>
         </div>
       </div>
+      {state.kind === 'pending' ? (
+        <p data-testid="cloud-terminal-pending" className="text-xs text-muted-foreground">
+          正在等待宿主恢复终端…
+        </p>
+      ) : null}
       <div
         ref={hostRef}
         data-testid="cloud-terminal-host"
         className="min-h-0 flex-1 overflow-hidden rounded bg-background"
       />
+      {replayBoundary !== null ? <CloudTerminalReplayNotice boundary={replayBoundary} /> : null}
+      {state.kind === 'ended' ? (
+        <CloudTerminalEndedNotice pending={reopenPending} onReopen={() => void reopen()} />
+      ) : null}
       {fitControl.overlayConflict !== null ? (
         <CloudTerminalFitOverlay
           conflict={fitControl.overlayConflict}

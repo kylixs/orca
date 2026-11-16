@@ -489,3 +489,141 @@ describe('云端终端面板（FR-3.9）', () => {
     expect(stream.calls).toEqual([])
   })
 })
+
+describe('云端终端 attach 与回放边界（U96 B-令3）', () => {
+  it('U96B3-1 投影行已有 handle：只订阅不 create，卸载不关闭宿主 PTY', async () => {
+    const host = scriptedHost({})
+    const stream = scriptedStream(subscribeOk())
+
+    const view = render(
+      <CloudTerminalPanel
+        rpc={host.rpc}
+        subscribe={stream.subscribe}
+        workspacePath="/srv/checkout"
+        tabId="tab_1"
+        leafId="leaf_1"
+        hostTerminal="term_9"
+      />
+    )
+    await flush()
+
+    expect(host.calls.filter((call) => call.method === 'terminal.create')).toEqual([])
+    expect(stream.calls).toHaveLength(1)
+    expect(stream.calls[0]?.params).toMatchObject({ terminal: 'term_9' })
+    expect(screen.getByTestId('cloud-terminal-state').textContent).toBe('实时')
+
+    view.unmount()
+    expect(host.calls.filter((call) => call.method === 'terminal.close')).toEqual([])
+  })
+
+  it('U96B3-2 宿主承接 PTY：pending 占位 → handle 到达后 attach，全程零 create', async () => {
+    const host = scriptedHost({})
+    const stream = scriptedStream(subscribeOk())
+    const element = (hostTerminal?: string | null) => (
+      <CloudTerminalPanel
+        rpc={host.rpc}
+        subscribe={stream.subscribe}
+        workspacePath="/srv/checkout"
+        tabId="tab_1"
+        leafId="leaf_1"
+        hostOwnsPty
+        hostTerminal={hostTerminal}
+      />
+    )
+
+    const view = render(element(null))
+    await flush()
+
+    expect(screen.getByTestId('cloud-terminal-pending')).toBeTruthy()
+    expect(host.calls.filter((call) => call.method === 'terminal.create')).toEqual([])
+    expect(stream.calls).toEqual([])
+
+    view.rerender(element('term_7'))
+    await flush()
+
+    expect(stream.calls).toHaveLength(1)
+    expect(stream.calls[0]?.params).toMatchObject({ terminal: 'term_7' })
+    expect(host.calls.filter((call) => call.method === 'terminal.create')).toEqual([])
+  })
+
+  it('U96B3-3 回放边界：截断与无历史各有提示', async () => {
+    const host = scriptedHost({ 'terminal.create': () => createdHandle() })
+    const stream = scriptedStream(subscribeOk())
+
+    panel(host, stream)
+    await flush()
+
+    act(() => {
+      stream.emit({
+        type: 'scrollback',
+        serialized: '$ ',
+        cols: 80,
+        rows: 24,
+        truncatedByByteBudget: true
+      })
+    })
+    expect(screen.getByTestId('cloud-terminal-replay-truncated').textContent).toContain(
+      '回放已截断'
+    )
+
+    act(() => {
+      stream.emit({ type: 'scrollback', unavailable: 'serialize_failed' })
+    })
+    expect(screen.getByTestId('cloud-terminal-replay-unavailable').textContent).toContain(
+      '未保留可回放的终端历史'
+    )
+  })
+
+  it('U96B3-4 终端已消失：ended 提示不进退避重连，重开后订阅新 handle', async () => {
+    const host = scriptedHost({
+      'terminal.create': () => ({
+        ok: true,
+        result: { terminal: { handle: 'term_2' }, worktreeId: 'wt_1' }
+      })
+    })
+    const stream = scriptedStream(subscribeOk())
+
+    render(
+      <CloudTerminalPanel
+        rpc={host.rpc}
+        subscribe={stream.subscribe}
+        workspacePath="/srv/checkout"
+        tabId="tab_1"
+        leafId="leaf_1"
+        hostTerminal="term_1"
+      />
+    )
+    await flush()
+    expect(stream.calls).toHaveLength(1)
+
+    act(() => {
+      stream.fail({ code: 'terminal_handle_stale', message: 'pty gone' })
+    })
+    expect(screen.getByTestId('cloud-terminal-ended')).toBeTruthy()
+    expect(screen.getByTestId('cloud-terminal-ended-text').textContent).toContain('会话已结束')
+
+    // Ended is terminal locally: the backoff budget must not replay a dead handle.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000)
+    })
+    expect(stream.calls).toHaveLength(1)
+
+    fireEvent.click(screen.getByTestId('cloud-terminal-reopen'))
+    await flush()
+    await flush()
+
+    expect(host.calls.at(-1)).toMatchObject({
+      method: 'terminal.create',
+      params: {
+        worktree: 'path:/srv/checkout',
+        title: 'cloud-admin',
+        tabId: 'tab_1',
+        leafId: 'leaf_1'
+      }
+    })
+    expect(stream.calls).toHaveLength(2)
+    expect(stream.calls[1]?.params).toMatchObject({ terminal: 'term_2' })
+    expect(screen.queryByTestId('cloud-terminal-ended')).toBeNull()
+    expect(screen.getByTestId('cloud-terminal-state').textContent).toBe('实时')
+  })
+})

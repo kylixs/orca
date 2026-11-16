@@ -175,8 +175,18 @@ describe('简易工作区终端标签（U46-5b）', () => {
 
     const creates = host.calls.filter((call) => call.method === 'terminal.create')
     expect(creates).toHaveLength(2)
-    expect(creates[0]?.params).toEqual({ worktree: 'path:/srv/checkout', title: 'Terminal 1' })
-    expect(creates[1]?.params).toEqual({ worktree: 'path:/srv/checkout', title: 'Terminal 2' })
+    expect(creates[0]?.params).toMatchObject({
+      worktree: 'path:/srv/checkout',
+      title: 'Terminal 1'
+    })
+    expect(creates[0]?.params?.tabId).toMatch(/^terminal:/)
+    expect(creates[0]?.params?.leafId).toBe(
+      `leaf:${String(creates[0]?.params?.tabId).replace(/^terminal:/, '')}`
+    )
+    expect(creates[1]?.params).toMatchObject({
+      worktree: 'path:/srv/checkout',
+      title: 'Terminal 2'
+    })
     expect(terminalHarness.instances).toHaveLength(2)
   })
 
@@ -336,5 +346,55 @@ describe('简易工作区终端标签（U46-5b）', () => {
         { method: 'terminal.close', params: { terminal: 'term_1' } }
       ])
     )
+  })
+
+  it('U96B3-1 宿主投影行已有 PTY：attach 既有 handle，不 create、卸载不 close', async () => {
+    const host = scriptedHost()
+    const stream = scriptedStream()
+    const hostedTab = {
+      id: 'host-tab-9',
+      kind: 'terminal',
+      title: 'Terminal 9',
+      host: { leafId: 'leaf-9', terminal: 'term_9', ptyId: 'pty_9', leafCount: 1 }
+    } as const
+
+    const view = render(
+      <CloudWorkspaceTerminalTabProvider
+        rpc={host.rpc}
+        subscribe={stream.subscribe}
+        workspacePath="/srv/checkout"
+      >
+        <CloudWorkspaceTerminalTab tab={hostedTab} active dispatch={dispatch} />
+      </CloudWorkspaceTerminalTabProvider>
+    )
+
+    await screen.findByTestId('cloud-terminal-panel')
+    await waitFor(() => expect(stream.calls).toHaveLength(1))
+    expect(stream.calls[0]?.params).toMatchObject({ terminal: 'term_9' })
+    expect(host.calls.filter((call) => call.method === 'terminal.create')).toEqual([])
+
+    view.unmount()
+    expect(host.calls.filter((call) => call.method === 'terminal.close')).toEqual([])
+  })
+
+  it('U96B3-2 宿主承接 PTY 的新终端：pending 占位，不 create 竞争', async () => {
+    const host = scriptedHost()
+    const stream = scriptedStream()
+
+    render(
+      <CloudWorkspaceTerminalTabProvider
+        rpc={host.rpc}
+        subscribe={stream.subscribe}
+        workspacePath="/srv/checkout"
+        hostOwnsTerminalPty
+      >
+        <CloudWorkspaceTerminalTab tab={terminalTab} active dispatch={dispatch} />
+      </CloudWorkspaceTerminalTabProvider>
+    )
+
+    await screen.findByTestId('cloud-terminal-panel')
+    await screen.findByTestId('cloud-terminal-pending')
+    expect(host.calls.filter((call) => call.method === 'terminal.create')).toEqual([])
+    expect(stream.calls).toEqual([])
   })
 })
