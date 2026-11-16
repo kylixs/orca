@@ -48,20 +48,20 @@
 
 ## 3. 操作清单
 
-| # | 触发 | 结果 | 弹窗/确认 | 失败态 |
-| --- | --- | --- | --- | --- |
-| 3.1 | 打开 `#/audit` | 并行四请求：`GET /v1/audit/events`（默认 range=168，limit=50）、`/v1/audit/status`、`/v1/projects`、`/v1/hosts`；events 必须成功，其余失败降级为 null | 无 | 首屏 events 失败 → 「加载失败」+「重试」 |
-| 3.2 | 修改任一条件 → 点「查询」 | 读取 10 个控件；先客户端校验；通过后写 `state.auditFilter`、清空累积与 cursor、重新查询 | 无 | 校验失败：`#auditError` 显示原因且**不发请求**；服务端拒绝：横幅「查询失败：…（下方为上次查询结果）」，旧行保留 |
-| 3.3 | 点「清除」 | `state.auditFilter={}`、清空事件/cursor、重新查询（回到默认 7 天） | 无 | 同 3.2 |
-| 3.4 | 点「加载更早」 | 以 `nextCursor` 追加下一页（每页 50），不与新查询混表 | 无 | 服务端失败：横幅提示，已显示行保留 |
-| 3.5 | 点文件按钮 | 复制 `metadata.path`（缺省 fileName）到剪贴板 + toast「已复制」 | 无 | 剪贴板不可用静默 |
-| 3.6 | 点 traceId「复制」 | 复制 traceId + toast「已复制」 | 无 | 同上 |
-| 3.7 | 点 `file_copy` 行「展开/收起」 | 切换隐藏行；不重新查询；摘录/指纹/长度展示 | 无 | 无 |
-| 3.8 | 关键字/文件名查询 | 服务端按字面量匹配，命中内容在文件名、路径、摘录中以 `<mark class="audit-hit">` 高亮；大小写不敏感 | 无 | 无 |
-| 3.9 | 选择预设「最近 31 天」 | 客户端钳到 31 天 − 5 分钟，并把 `until` 钉在同一客户端时钟，避免服务端钟漂移触发 400 | 无 | 真被服务端拒绝时走 3.2 的服务端错误横幅 |
-| 3.10 | 手动 since/until | 显式边界优先于预设；结束早于开始、超 31 天、非法日期均前端拦截 | 无 | 横幅错误，不发请求 |
-| 3.11 | 连续快速查询 | `auditQueryGeneration` latest-wins：被取代的请求不落 state、不渲染，避免重复累积/条件混表 | 无 | 被取代的失败也静默丢弃 |
-| 3.12 | 审计链/缺口查看 | 缺口横幅可见；链健康 `chain.ok`、`lastSeq`、容量水位**不展示**；无 `/v1/audit/verify` 页面入口 | 无 | 无 |
+| #    | 触发                           | 结果                                                                                                                                                  | 弹窗/确认 | 失败态                                                                                                          |
+| ---- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------- |
+| 3.1  | 打开 `#/audit`                 | 并行四请求：`GET /v1/audit/events`（默认 range=168，limit=50）、`/v1/audit/status`、`/v1/projects`、`/v1/hosts`；events 必须成功，其余失败降级为 null | 无        | 首屏 events 失败 → 「加载失败」+「重试」                                                                        |
+| 3.2  | 修改任一条件 → 点「查询」      | 读取 10 个控件；先客户端校验；通过后写 `state.auditFilter`、清空累积与 cursor、重新查询                                                               | 无        | 校验失败：`#auditError` 显示原因且**不发请求**；服务端拒绝：横幅「查询失败：…（下方为上次查询结果）」，旧行保留 |
+| 3.3  | 点「清除」                     | `state.auditFilter={}`、清空事件/cursor、重新查询（回到默认 7 天）                                                                                    | 无        | 同 3.2                                                                                                          |
+| 3.4  | 点「加载更早」                 | 以 `nextCursor` 追加下一页（每页 50），不与新查询混表                                                                                                 | 无        | 服务端失败：横幅提示，已显示行保留                                                                              |
+| 3.5  | 点文件按钮                     | 复制 `metadata.path`（缺省 fileName）到剪贴板 + toast「已复制」                                                                                       | 无        | 剪贴板不可用静默                                                                                                |
+| 3.6  | 点 traceId「复制」             | 复制 traceId + toast「已复制」                                                                                                                        | 无        | 同上                                                                                                            |
+| 3.7  | 点 `file_copy` 行「展开/收起」 | 切换隐藏行；不重新查询；摘录/指纹/长度展示                                                                                                            | 无        | 无                                                                                                              |
+| 3.8  | 关键字/文件名查询              | 服务端按字面量匹配，命中内容在文件名、路径、摘录中以 `<mark class="audit-hit">` 高亮；大小写不敏感                                                    | 无        | 无                                                                                                              |
+| 3.9  | 选择预设「最近 31 天」         | 客户端钳到 31 天 − 5 分钟，并把 `until` 钉在同一客户端时钟，避免服务端钟漂移触发 400                                                                  | 无        | 真被服务端拒绝时走 3.2 的服务端错误横幅                                                                         |
+| 3.10 | 手动 since/until               | 显式边界优先于预设；结束早于开始、超 31 天、非法日期均前端拦截                                                                                        | 无        | 横幅错误，不发请求                                                                                              |
+| 3.11 | 连续快速查询                   | `auditQueryGeneration` latest-wins：被取代的请求不落 state、不渲染，避免重复累积/条件混表                                                             | 无        | 被取代的失败也静默丢弃                                                                                          |
+| 3.12 | 审计链/缺口查看                | 缺口横幅可见；链健康 `chain.ok`、`lastSeq`、容量水位**不展示**；无 `/v1/audit/verify` 页面入口                                                        | 无        | 无                                                                                                              |
 
 查询参数（`auditQueryParams`）：`limit=50`、`q`、`eventFamily`（族）或 `eventType`（单类型）、`username`、`fileName`、`result`、`projectId`、`hostId`、`since`/`until`（ISO）、`cursor`。
 客户端校验（`auditFilterError`，与 API 门限对齐）：`q` 长度 2–128；`fileName` ≤128；起始/结束必须可解析；结束不得早于开始；窗口 >31 天拒绝；只给 since 且距今 >31 天拒绝。
@@ -75,10 +75,12 @@
 - `GET /v1/audit/verify` → 200 `{ok:true, checked, tip}` / 409 `{ok:false, checked, brokenAtSeq}`，并把 `audit_verify` 写入链；**控制台无入口**（仅 API）。
 - `GET /v1/projects`、`GET /v1/hosts`：仅用于项目/主机筛选下拉；`/v1/hosts` 对 auditor 403（被 `.catch(() => null)` 吞掉，下拉为空）；`/v1/projects` 对 auditor 只返回其有 `open` 授权的项目（通常为空）。
 - 审计链来源：平台 audit writer（单写者哈希链）；`host.audit_gap` 由宿主心跳 delta 落链（U71）。
+- **持久化（2026-11-16）**：dev 平台启用 `AUDIT_LOG_PATH` 追加式审计文件，重启后 `prevHash` 续接（实测 `verify ok:true` 跨 `--platform-only` 重启）；事件字段 `actor/targetType/targetId/traceId` 合法可为 null（U133 修校验器，此前该类事件会被误判 corrupt）。
 
 ## 5. 已知缺陷与观察
 
 已登记：
+
 - **U66**（🟢）审计增强族：file_download/file_copy/download_blocked 事件语义、查询条件、UI 原型与验收；残余切片缺口见 U70。
 - **U71**（🟢）宿主 auditGap 心跳 delta：同值不刷屏、变化落增量、重启 pending 只记一次。
 - **U72**（🟢）审计员 Web 门禁：routeAllowed 角色感知，auditor 仅审计入口；目录 API 仍 admin-only。
@@ -90,6 +92,7 @@
 - **U114-D4**（⚪，覆盖缺口）U86 几何断点仅一次性截图，无自动化回归。
 
 未登记观察（建议登记）：
+
 1. 审计链健康与容量水位在 API 已返回，但控制台完全不展示；管理员/审计员无法从页面判断链是否断裂或容量是否接近上限，也没有触发 `/v1/audit/verify` 的按钮。
 2. auditor 的「项目」「主机」筛选下拉实际为空（权限降级被 catch 吞掉），但 UI 不说明原因，容易被理解为「无数据」。
 3. 缺口横幅只统计宿主上报与平台入口计数，不区分「本次查询窗口」与「全量历史」。
@@ -98,6 +101,7 @@
 ## 6. 测试覆盖
 
 已覆盖（绝对路径）：
+
 - `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/u66-5-audit-ui.e2e.test.ts`：四条件组合、摘录关闭时 q 不命中正文、file_copy 展开摘录/指纹/长度、无摘录占位、download_blocked 拦截/拒绝徽标、31 天预设与超限前端拦截不发请求、31 天预设留缓冲、服务端拒绝可见且旧行保留、后续成功清横幅、非 admin events/status 均 403。
 - `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/u66-2-audit-query.e2e.test.ts`：四条件矩阵、fileName/q 大小写与白名单/长度、eventTypes 多值 OR / family / 显式优先、边界与 31 天窗、旧客户端零回归、status 权限与缺口/容量、U78 接入类事件检索、P95 性能抽测。
 - `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/u66-audit-file-events.e2e.test.ts`：三类事件落链、120 条/分钟限速与缺口、同 traceId 合并、畸形字段拒绝、内部/非云会话不写链、excerpt 丢弃与移动端字段。
@@ -108,6 +112,7 @@
 - 证据：`/Users/gongdewei/work/projects/orca/cloud-platform/evidence/u66-5-audit-ui/`、`.../u66-2-query/`、`.../u71-audit-gap/`、`.../u72u73-fix/`、`.../m31-audit-verify/`、`.../u66-final-reverify/`；U86 前后截图与文字提取在 `/Users/gongdewei/work/projects/orca/evidence/u86-fix/`（audit-before/after-layout.json 含控件坐标、hintPresent=false）。
 
 未覆盖：
+
 - 审计链健康/容量水位的控制台展示（当前无 UI，无测试）。
 - auditor 身份下的项目/主机下拉为空及页面观感。
 - 缺口横幅的 UI 断言（u71 只测链事件，u66-2 测 status 载荷，未断言横幅文案/条件）。
