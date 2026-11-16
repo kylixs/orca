@@ -1,6 +1,6 @@
 # M2 工作台与导航框架（现状）
 
-> 基线提交：`dc621a4a954`（2026-11-16，U106-R6 收口）｜来源：`cloud-platform/apps/web/{index.html,app.js,router/routes.js}`、`cloud-platform/apps/api/src/server.ts` 代码阅读 + 既有套件。
+> 基线提交：`42c9d905e11`（2026-11-16，U106-R6 收口）｜来源：`cloud-platform/apps/web/{index.html,app.js,router/routes.js}`、`cloud-platform/apps/api/src/server.ts` 代码阅读 + 既有套件。
 > 本次未启动 18787（探测 `000`），布局以代码为准。
 
 ## 1. 页面/界面布局
