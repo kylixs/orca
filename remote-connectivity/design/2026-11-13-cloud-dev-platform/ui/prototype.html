@@ -2469,7 +2469,7 @@ svg { display: block; }
   </div>
   <div class="page-head-actions">
     <span class="status status-success"><span class="dot dot-success"></span>LDAP 同步正常</span>
-    <span class="status status-muted"><span class="dot dot-gray"></span>7 个账号</span>
+    <span class="status status-muted"><span class="dot dot-gray"></span>8 个账号</span>
   </div>
 </div>
 
@@ -2478,11 +2478,45 @@ svg { display: block; }
   <span><strong>角色 ≠ 资源授权（两层模型）</strong>：本页的「普通 / 审计 / 管理员」是平台级身份——决定管控面与审计面可见性；「谁能用哪些项目、有哪些操作」由项目 / 主机详情弹框权限页签的角色卡片（资源授权）决定。管理员角色不等于项目内全权：打开项目仍需显式授权。</span>
 </div>
 
+<!-- [U81] 常用查询条件（2026-11-16 用户指令）：用户名关键字 / 角色 / 状态 + 查询 / 重置 -->
+<form class="filter-bar" id="userFilterForm">
+  <div class="filter-field search-field" style="flex:1.6;min-width:200px;max-width:300px">
+    <label for="userSearch">用户名关键字</label>
+    <div class="input-icon-wrap">
+      <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
+      <input class="input input-sm" id="userSearch" type="search" placeholder="显示名或账号，如 张伟 / zhangwei" autocomplete="off">
+    </div>
+    <div class="filter-hint">匹配显示名或账号子串</div>
+  </div>
+  <div class="filter-field" style="max-width:150px">
+    <label for="userRoleFilter">角色</label>
+    <select class="select select-sm" id="userRoleFilter">
+      <option value="all">全部角色</option>
+      <option value="developer">普通</option>
+      <option value="auditor">审计</option>
+      <option value="admin">管理员</option>
+    </select>
+  </div>
+  <div class="filter-field" style="max-width:150px">
+    <label for="userStatusFilter">状态</label>
+    <select class="select select-sm" id="userStatusFilter">
+      <option value="all">全部状态</option>
+      <option value="active">活跃</option>
+      <option value="disabled">已停用</option>
+    </select>
+  </div>
+  <div class="filter-actions" style="margin-left:auto">
+    <span class="section-count" id="userFilteredCount">共 8 个</span>
+    <button class="btn btn-primary" type="submit">查询</button>
+    <button class="btn btn-ghost" type="button" id="userResetBtn">重置</button>
+  </div>
+</form>
+
 <section class="card table-card">
   <div class="table-card-head">
     <div class="table-card-title">
       <h2>账号与角色</h2>
-      <span class="section-count">角色变更写入 role_update 审计</span>
+      <span class="section-count">列表只读 · 角色在详情中修改 · 变更写入 role_update 审计</span>
     </div>
   </div>
   <div class="table-scroll">
@@ -2492,16 +2526,17 @@ svg { display: block; }
           <th style="width:172px">用户</th>
           <th style="width:120px">部门</th>
           <th style="width:150px">LDAP 组</th>
-          <th style="width:130px">角色</th>
+          <th style="width:96px">角色</th>
           <th style="width:140px">角色来源</th>
           <th style="width:96px">状态</th>
+          <th style="width:72px" class="cell-ops">操作</th>
         </tr>
       </thead>
       <tbody id="usersBody"></tbody>
     </table>
   </div>
   <div class="table-foot">
-    <span id="usersFoot">共 7 个账号</span>
+    <span id="usersFoot">共 8 个账号</span>
     <span>服务端按请求实时判定角色；角色降级会断开当前云会话（≤60 秒），升级即时生效、不断会话</span>
   </div>
 </section>
@@ -3914,6 +3949,46 @@ svg { display: block; }
     </div>
   </div>
 
+  <!-- [U82] 用户详情弹框（2026-11-16 用户指令）：只读字段 + 角色字段点击下拉修改（走既有确认/降级警示链） -->
+  <div class="modal modal-lg" role="dialog" aria-modal="true" aria-labelledby="userDetailTitle" data-modal="userDetail" hidden>
+    <div class="modal-head">
+      <div class="modal-head-main">
+        <h2 class="modal-title" id="userDetailTitle">李静</h2>
+        <p class="modal-sub">用户详情 · <span class="mono" id="userDetailAccount">admin</span></p>
+      </div>
+      <button class="icon-btn icon-btn-sm modal-close" data-close-modal aria-label="关闭用户详情">
+        <svg class="icon" aria-hidden="true"><use href="#i-x"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="detail-list">
+        <div class="detail-row"><span class="detail-key">显示名</span><span class="detail-val" id="udName">李静</span></div>
+        <div class="detail-row"><span class="detail-key">账号</span><span class="detail-val mono" id="udAccount">admin</span></div>
+        <div class="detail-row"><span class="detail-key">部门</span><span class="detail-val" id="udDept">平台工程部</span></div>
+        <div class="detail-row"><span class="detail-key">LDAP 组</span><span class="detail-val mono" id="udGroup">platform-admins</span></div>
+        <div class="detail-row">
+          <span class="detail-key">平台角色</span>
+          <span class="detail-val" style="display:flex;align-items:center;gap:8px">
+            <select class="select select-sm role-select" id="udRoleSelect" data-role-for="admin" aria-label="平台角色（点击修改）">
+              <option value="developer">普通</option>
+              <option value="auditor">审计</option>
+              <option value="admin">管理员</option>
+            </select>
+            <span class="muted-note" style="font-size:10px;white-space:nowrap">点击可修改</span>
+          </span>
+        </div>
+        <div class="detail-row"><span class="detail-key">角色来源</span><span class="detail-val" id="udSource">LDAP 同步 · platform-admins</span></div>
+        <div class="detail-row"><span class="detail-key">状态</span><span class="detail-val" id="udStatus">活跃</span></div>
+        <div class="detail-row"><span class="detail-key">创建时间</span><span class="detail-val mono" id="udCreatedAt">2026-01-12 09:40</span></div>
+        <div class="detail-row"><span class="detail-key">最近登录</span><span class="detail-val mono" id="udLastLogin">2026-11-13 14:20</span></div>
+      </div>
+      <p class="muted-note" style="margin-top:10px">角色变更写入 role_update 审计，按用户覆盖优先于 LDAP 同步；降级将断开该用户当前云会话（≤60 秒），升级即时生效。列表只读，角色修改仅在此处进行。</p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" data-close-modal>关闭</button>
+    </div>
+  </div>
+
   <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="downloadBlockedTitle" data-modal="downloadBlocked" hidden>
     <div class="modal-head">
       <div class="modal-icon-wrap is-warning">
@@ -4076,6 +4151,7 @@ svg { display: block; }
     pendingConfirm: null,
     activeModal: null,
     lastFocused: null,
+    userDetailAccount: null,
     lastBlockedFile: 'src/refund/calculator.ts',
     policySaved: { policy: 'deny', auditAlert: true, threshold: '0' },
     policyDirty: false,
@@ -4354,14 +4430,16 @@ svg { display: block; }
   };
 
   // [U67] 用户管理页演示数据：角色为平台级身份（普通/审计/管理员），资源授权在详情弹框三卡片
+  // [U81/U82] 补 status/createdAt/lastLogin 字段支撑查询与详情（zhengyang=停用演示账号，使状态筛选为真实过滤）
   const userDirectory = [
-    { account: 'admin', name: '李静', dept: '平台工程部', group: 'platform-admins', role: 'admin', source: 'LDAP 同步 · platform-admins' },
-    { account: 'zhangwei', name: '张伟', dept: '研发效能部', group: 'developers', role: 'developer', source: 'LDAP 同步' },
-    { account: 'zhaomin', name: '赵敏', dept: '结算研发组', group: 'grp-pay-platform', role: 'developer', source: 'LDAP 同步' },
-    { account: 'qianlei', name: '钱磊', dept: '电商研发组', group: 'grp-commerce', role: 'developer', source: 'LDAP 同步' },
-    { account: 'sunyue', name: '孙悦', dept: '测试组', group: 'grp-qa', role: 'auditor', source: '管理员覆盖' },
-    { account: 'zhouhang', name: '周航', dept: '风控研发组', group: 'grp-risk', role: 'developer', source: 'LDAP 同步' },
-    { account: 'lisi', name: '李思', dept: '结算研发组', group: 'grp-pay-platform', role: 'developer', source: 'LDAP 同步' }
+    { account: 'admin', name: '李静', dept: '平台工程部', group: 'platform-admins', role: 'admin', source: 'LDAP 同步 · platform-admins', status: 'active', createdAt: '2026-01-12 09:40', lastLogin: '2026-11-13 14:20' },
+    { account: 'zhangwei', name: '张伟', dept: '研发效能部', group: 'developers', role: 'developer', source: 'LDAP 同步', status: 'active', createdAt: '2026-02-03 10:15', lastLogin: '2026-11-13 14:58' },
+    { account: 'zhaomin', name: '赵敏', dept: '结算研发组', group: 'grp-pay-platform', role: 'developer', source: 'LDAP 同步', status: 'active', createdAt: '2026-02-17 11:02', lastLogin: '2026-11-12 17:46' },
+    { account: 'qianlei', name: '钱磊', dept: '电商研发组', group: 'grp-commerce', role: 'developer', source: 'LDAP 同步', status: 'active', createdAt: '2026-05-21 14:33', lastLogin: '2026-11-11 09:12' },
+    { account: 'sunyue', name: '孙悦', dept: '测试组', group: 'grp-qa', role: 'auditor', source: '管理员覆盖', status: 'active', createdAt: '2026-03-08 09:26', lastLogin: '2026-11-13 10:05' },
+    { account: 'zhouhang', name: '周航', dept: '风控研发组', group: 'grp-risk', role: 'developer', source: 'LDAP 同步', status: 'active', createdAt: '2026-06-30 16:48', lastLogin: '2026-11-10 16:31' },
+    { account: 'lisi', name: '李思', dept: '结算研发组', group: 'grp-pay-platform', role: 'developer', source: 'LDAP 同步', status: 'active', createdAt: '2026-04-15 13:07', lastLogin: '2026-11-13 08:47' },
+    { account: 'zhengyang', name: '郑阳', dept: '平台工程部', group: 'developers', role: 'developer', source: 'LDAP 同步', status: 'disabled', createdAt: '2026-08-19 10:52', lastLogin: '2026-10-28 18:22' }
   ];
 
   const auditEvents = [
@@ -5536,26 +5614,75 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
   }
 
   /* [U67] 用户管理页：平台级角色（普通/审计/管理员），覆盖优先于 LDAP 同步 */
+  /* [U81/U82] 列表只读化：角色仅展示，修改入口收敛到详情弹框（角色字段下拉） */
   const ROLE_OPTIONS = { developer: '普通', auditor: '审计', admin: '管理员' };
+
+  function userStatusMarkup(user) {
+    return user.status === 'disabled'
+      ? '<span class="status status-muted"><span class="dot dot-gray"></span>已停用</span>'
+      : '<span class="status status-success"><span class="dot dot-success"></span>活跃</span>';
+  }
 
   function renderUsers() {
     const tbody = $('#usersBody');
     if (!tbody) return;
-    tbody.innerHTML = userDirectory.map((user) => `
+    const query = ($('#userSearch')?.value || '').trim().toLowerCase();
+    const role = $('#userRoleFilter')?.value || 'all';
+    const status = $('#userStatusFilter')?.value || 'all';
+    const filtered = userDirectory.filter((user) => {
+      const matchesQuery = !query || user.name.toLowerCase().includes(query) || user.account.toLowerCase().includes(query);
+      const matchesRole = role === 'all' || user.role === role;
+      const matchesStatus = status === 'all' || user.status === status;
+      return matchesQuery && matchesRole && matchesStatus;
+    });
+    tbody.innerHTML = filtered.length
+      ? filtered.map((user) => `
       <tr>
         <td class="cell-strong">${escapeHTML(user.name)} <span class="cell-mono" style="margin-left:4px">${escapeHTML(user.account)}</span></td>
         <td>${escapeHTML(user.dept)}</td>
         <td><span class="cell-mono">${escapeHTML(user.group)}</span></td>
-        <td>
-          <select class="select select-sm role-select" data-role-for="${escapeHTML(user.account)}" aria-label="${escapeHTML(user.name)} 的平台角色">
-            ${Object.entries(ROLE_OPTIONS).map(([value, label]) => `<option value="${value}"${user.role === value ? ' selected' : ''}>${label}</option>`).join('')}
-          </select>
-        </td>
+        <td>${ROLE_OPTIONS[user.role]}</td>
         <td><span class="muted-note" style="font-size:10px">${escapeHTML(user.source)}</span></td>
-        <td><span class="status status-success"><span class="dot dot-success"></span>活跃</span></td>
-      </tr>`).join('');
+        <td>${userStatusMarkup(user)}</td>
+        <td class="cell-ops"><button class="text-link" data-user-open="${escapeHTML(user.account)}">详情</button></td>
+      </tr>`).join('')
+      : `<tr><td colspan="7" class="empty-cell"><div class="empty-inline">${iconMarkup('users')}<span>没有符合筛选条件的账号——请调整关键字或重置条件</span></div></td></tr>`;
+    const filteredCount = $('#userFilteredCount');
+    if (filteredCount) filteredCount.textContent = `共 ${filtered.length} 个`;
     const foot = $('#usersFoot');
-    if (foot) foot.textContent = `共 ${userDirectory.length} 个账号`;
+    if (foot) foot.textContent = `共 ${userDirectory.length} 个账号${filtered.length !== userDirectory.length ? ` · 当前筛选 ${filtered.length} 个` : ''}`;
+  }
+
+  function resetUserFilters() {
+    if ($('#userSearch')) $('#userSearch').value = '';
+    if ($('#userRoleFilter')) $('#userRoleFilter').value = 'all';
+    if ($('#userStatusFilter')) $('#userStatusFilter').value = 'all';
+    renderUsers();
+  }
+
+  /* [U82] 用户详情弹框：只读字段 + 角色下拉（change 走 handleUserRoleChange 既有确认链） */
+  function renderUserDetail() {
+    const user = userDirectory.find((item) => item.account === state.userDetailAccount);
+    if (!user) return;
+    $('#userDetailTitle').textContent = user.name;
+    $('#userDetailAccount').textContent = user.account;
+    $('#udName').textContent = user.name;
+    $('#udAccount').textContent = user.account;
+    $('#udDept').textContent = user.dept;
+    $('#udGroup').textContent = user.group;
+    const roleSelect = $('#udRoleSelect');
+    roleSelect.dataset.roleFor = user.account;
+    roleSelect.value = user.role;
+    $('#udSource').textContent = user.source;
+    $('#udStatus').innerHTML = userStatusMarkup(user);
+    $('#udCreatedAt').textContent = user.createdAt;
+    $('#udLastLogin').textContent = user.lastLogin;
+  }
+
+  function openUserDetail(account) {
+    state.userDetailAccount = account;
+    renderUserDetail();
+    openModal('userDetail');
   }
 
   function handleUserRoleChange(event) {
@@ -5577,6 +5704,11 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
         user.role = next;
         if (next !== 'developer' && !user.source.startsWith('管理员覆盖')) user.source = '管理员覆盖';
         renderUsers();
+        // [U82] 变更发起于详情弹框：确认后弹框保持打开，展示新角色并同步列表
+        if (state.userDetailAccount === user.account) {
+          renderUserDetail();
+          openModal('userDetail');
+        }
         showToast(`已将 ${user.name} 的角色更新为${ROLE_OPTIONS[next]}`, { type: demote ? 'warning' : 'info', sub: demote ? '已断开其当前云会话（≤60 秒）' : '服务端按请求实时生效' });
       }
     });
@@ -6804,7 +6936,22 @@ export { calculateRefund, validateRefundAmount } from './refund/calculator'`,
 
   function bindUserEvents() {
     const usersBody = $('#usersBody');
-    if (usersBody) usersBody.addEventListener('change', handleUserRoleChange);
+    if (usersBody) usersBody.addEventListener('click', (event) => {
+      const trigger = event.target.closest('[data-user-open]');
+      if (trigger) openUserDetail(trigger.dataset.userOpen);
+    });
+    $('#userFilterForm').addEventListener('submit', (event) => {
+      event.preventDefault();
+      renderUsers();
+    });
+    $('#userResetBtn').addEventListener('click', resetUserFilters);
+    // 即输即筛：输入 / 下拉变化即时过滤，「查询」按钮兜底重新执行
+    $('#userSearch').addEventListener('input', renderUsers);
+    $('#userRoleFilter').addEventListener('change', renderUsers);
+    $('#userStatusFilter').addEventListener('change', renderUsers);
+    // [U82] 详情弹框内角色下拉：复用 handleUserRoleChange 确认链
+    const userDetailModal = $('.modal[data-modal="userDetail"]');
+    if (userDetailModal) userDetailModal.addEventListener('change', handleUserRoleChange);
   }
 
   function bindAuditEvents() {
