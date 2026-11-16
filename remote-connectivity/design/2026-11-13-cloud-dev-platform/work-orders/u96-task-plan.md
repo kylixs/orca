@@ -37,7 +37,7 @@
 | B-令4 | 关闭/激活/新建双向 | A-令3 | **✅ 完成** `d1902c398c8`（回环保护/拒绝语义/降级；61 绿）；**过渡态申报：新终端可能双 PTY，B-令3 attach 落地即消除（B-令3 必做项）** |
 | B-令5 | suspend/end 协议+面板卸载策略 | — | **✅ 完成** `8f986d89e90`（suspend 保活/end 回收/logout=suspend；features 协商；278 测试+overlay 8/8） |
 | B-令6 | 尺寸冲突 overlay+claim/restoreFit+get/setAutoRestoreFit scope（含 **U98 抢尺寸修复**） | A-令3 | **✅ 完成** `4b3e9365482`（U98 订阅被动化+per-PTY override 全局零写+overlay；78 绿；面板瘦身 302 行） |
-| B-令7 | 回放边界+ended 阈值+孤儿兜底 | A-令3/7 | 排队 |
+| B-令7 | 回放边界+ended 阈值+孤儿兜底 | A-令3/7 | **✅ 完成** `d81600ab1e9`（孤儿 adopt 拓扑校验+重开限频+回放两态；62 绿） |
 | B-令8 | 端到端回归（双端同步 e2e） | 全部 | 收口 |
 
 ## 验收里程碑
