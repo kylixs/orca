@@ -3872,7 +3872,7 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 ### 2026-11-17 09:1x 轮：P3 批审计 PASS；U166 交付复验 PASS
 
 - **P3 批审计 PASS**：L1 不误回收、L2 契约一致、U157 不卡相位；仅两条 P3 措辞观察；50/50 相邻、tc 0。
-- **U166 交付复验 PASS**（`evidence/u166-resmoke-20261117-074509/`）：served `fb496c0f`==磁盘；表单登录→`orca.webCloudSession` v1→刷新恢复 8 tabs；console error 0/pageerror 0/requestfailed 0。
+- **U166 交付复验 PASS**（`evidence/u166-resmoke-20261117-074509/`；证据审计 `u166-resmoke-audit.md` = 有条件签字）：served `fb496c0f`==磁盘、真表单登录→`orca.webCloudSession` v1→同 context reload 免登录恢复 8 tabs；**错误计数 0/0/0 仅覆盖 page B（登录+刷新）**；裸入口 auto-pick 命中 `proj_payment`（已吊销宿主）→ 409 属已知 seed（登记 U170）；刷新/token 过期等失败分支未覆盖（P3 披露）。
 - **U170 登记（P3）**：无 project 参数时表单自动选首个项目（在已吊销宿主上）→ 409；建议默认跳过不可用项目。
 - 主线阻塞不变：等待用户三项裁定。
 
