@@ -83,6 +83,30 @@ export const NODE_RUNTIME_INCLUDE = [
   // W5b defect B / W9A-7 audit MAJ-1; U93).
   'src/main/cloud-platform/cloud-session-service.test.ts',
   'src/main/cloud-platform/cloud-host-revocation.test.ts',
+  // Why: U95 sweep - these suites serve the runtime over a throwaway-certificate
+  // TLS fixture and dial it with a real WebSocket client (CloudConnectClient,
+  // subscription, or the stock renderer path); under bun's ws the upgrade reds
+  // as "TLS handshake failed" even with rejectUnauthorized:false (U31/U87/U93
+  // family). The guard test wss-client-suite-pool-guard.test.ts keeps this list
+  // complete when a new WSS client suite is added.
+  'src/main/cloud-platform/cloud-browser-upgrade.test.ts',
+  'src/main/cloud-platform/cloud-connect-client.test.ts',
+  'src/main/cloud-platform/cloud-device-pop.test.ts',
+  'src/main/cloud-platform/cloud-grant-revocation-live.test.ts',
+  'src/main/cloud-platform/cloud-grant-revocation-scope.test.ts',
+  'src/main/cloud-platform/cloud-project-link.test.ts',
+  'src/main/cloud-platform/cloud-runtime-environment.test.ts',
+  // Why: same U95 WSS family - these renderer/web e2e suites inject the `ws`
+  // client against a makeSelfSignedTls() runtime and would red the handshake in
+  // the bun pool instead of proving the browser connect path.
+  'src/renderer/src/cloud/cloud-browser-host-key.e2e.test.ts',
+  'src/renderer/src/web/web-cloud-connect.e2e.test.ts',
+  'src/renderer/src/web/web-cloud-handoff-entry.e2e.test.ts',
+  'src/renderer/src/web/web-cloud-handoff.e2e.test.ts',
+  'src/renderer/src/web/web-cloud-session-recovery.e2e.test.ts',
+  'src/renderer/src/web/web-cloud-session-renewal.e2e.test.ts',
+  'src/renderer/src/web/web-cloud-session.e2e.test.ts',
+  'src/renderer/src/web/web-cloud-transport.e2e.test.ts',
   'src/renderer/src/lib/react-commit-cascade-observer.test.ts',
   'src/renderer/src/lib/react-commit-cascade-telemetry.test.ts',
   ...SQLITE_RUNTIME_INCLUDE,
@@ -168,5 +192,8 @@ export const NODE_RUNTIME_INCLUDE = [
   'config/scripts/profile-state-worker-smoke.test.mjs',
   'config/scripts/process-host-dev-rebuild.test.ts',
   'config/scripts/vitest-node-runtime-boundary.test.ts',
-  'config/scripts/vitest-node-runtime-pool.test.ts'
+  'config/scripts/vitest-node-runtime-pool.test.ts',
+  // Why: static guard for the WSS-client/TLS-fixture family; run it in the node
+  // pool alongside the boundary gates it protects.
+  'config/scripts/wss-client-suite-pool-guard.test.ts'
 ]
