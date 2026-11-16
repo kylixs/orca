@@ -173,6 +173,71 @@ async function newHost(name: string): Promise<string> {
   return host.hostId
 }
 
+type HostListRow = { id: string; capabilities: string[] }
+
+async function hostCapabilities(hostId: string): Promise<string[]> {
+  const res = await api('/v1/hosts')
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  const host = (res.body.hosts as HostListRow[]).find((row) => row.id === hostId)
+  assert.ok(host, `host ${hostId} is listed`)
+  return host.capabilities
+}
+
+/** Raw registration: harness.registerHost pins capabilities, this one varies them. */
+async function registerHostWithCapabilities(
+  name: string,
+  runtimeCapabilities: string[] | undefined
+): Promise<{ hostId: string; credential: string }> {
+  const tokenRes = await fetch(`${service.url}/v1/hosts/tokens`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${adminToken}` }
+  })
+  if (tokenRes.status !== 201) {
+    assert.fail(await tokenRes.text())
+  }
+  const { token } = (await tokenRes.json()) as { token: string }
+  const body: Record<string, unknown> = {
+    name,
+    fingerprint: `sha256:${name}`,
+    e2eePublicKeyB64: 'test-e2ee-key',
+    orcaVersion: '1.5.0',
+    protocolVersion: 3,
+    networkZone: 'intranet',
+    directAddrs: ['127.0.0.1:7'],
+    relayTarget: '127.0.0.1:7',
+    relayRoute: name
+  }
+  if (runtimeCapabilities !== undefined) {
+    body.runtimeCapabilities = runtimeCapabilities
+  }
+  const res = await fetch(`${service.url}/v1/hosts/register`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify(body)
+  })
+  if (res.status !== 201) {
+    assert.fail(await res.text())
+  }
+  return (await res.json()) as { hostId: string; credential: string }
+}
+
+async function heartbeat(
+  hostId: string,
+  credential: string,
+  runtimeCapabilities?: string[]
+): Promise<void> {
+  const body: Record<string, unknown> = { status: 'online' }
+  if (runtimeCapabilities !== undefined) {
+    body.runtimeCapabilities = runtimeCapabilities
+  }
+  const res = await fetch(`${service.url}/v1/hosts/${hostId}/heartbeat`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${credential}` },
+    body: JSON.stringify(body)
+  })
+  assert.equal(res.status, 200, await res.text())
+}
+
 before(async () => {
   service = await spawnService(
     'apps/api/src/server.ts',
@@ -869,4 +934,21 @@ test('U136⑤ 组授权收缩：组内用户撤销，组外用户不受影响', 
     shrinkMetadata: shrinkEvent.metadata,
     clearMetadata: clearEvent.metadata
   })
+}, 120_000)
+
+test('G25 runtimeCapabilities 只由注册落库：心跳上报与缺字段都不改写能力', async () => {
+  const host = await registerHostWithCapabilities('dev-g25-caps', ['pty'])
+  assert.deepEqual(await hostCapabilities(host.hostId), ['pty'])
+
+  // 现行为：心跳不消费 runtimeCapabilities，多报不升级、缺字段不清空（陈旧值 fail-closed）。
+  await heartbeat(host.hostId, host.credential, ['pty', 'files', 'git'])
+  assert.deepEqual(await hostCapabilities(host.hostId), ['pty'])
+
+  await heartbeat(host.hostId, host.credential)
+  assert.deepEqual(await hostCapabilities(host.hostId), ['pty'])
+
+  // 唯一更新通道是重新注册（同名覆盖）。
+  const upgraded = await registerHostWithCapabilities('dev-g25-caps', ['pty', 'files', 'git'])
+  assert.equal(upgraded.hostId, host.hostId)
+  assert.deepEqual(await hostCapabilities(host.hostId), ['pty', 'files', 'git'])
 }, 120_000)
