@@ -1464,12 +1464,27 @@ function projectDetailHtml(p, extra = {}) {
   const createdAt = p.createdAt
     ? `${new Date(p.createdAt).toLocaleString('zh-CN')}（${relative(p.createdAt)}）`
     : '—'
+  // 归档 = 只读：没有权限页、没有授权/策略读取，也没有打开工作区（U116① W5）。
+  const archived = p.status === 'archived'
   return `
+    ${
+      archived
+        ? `<p class="note warn" data-archived-banner>${
+            extra.archivedUnsupported
+              ? '当前平台不支持归档详情，以下为列表摘要。'
+              : '该项目已归档，仅供查看；会话已断开，磁盘代码未删除。'
+          }</p>`
+        : ''
+    }
     ${extra.refreshFailed ? '<p class="note warn">未能刷新项目信息，以下为最近一次加载的数据。</p>' : ''}
-    <div class="detail-tabs">
+    ${
+      archived
+        ? ''
+        : `<div class="detail-tabs">
       <button class="detail-tab active" data-auth-tab="info">信息</button>
       <button class="detail-tab" data-auth-tab="perms">权限</button>
-    </div>
+    </div>`
+    }
     <div data-auth-panel="info">
       <div class="detail-sections">
         <section class="detail-section">
@@ -1498,7 +1513,10 @@ function projectDetailHtml(p, extra = {}) {
             <dt>默认分支</dt><dd class="mono">${esc(p.defaultBranch)}</dd>
           </dl>
         </section>
-        <section class="detail-section">
+        ${
+          archived
+            ? ''
+            : `<section class="detail-section">
           <h3>授权与策略</h3>
           <dl class="kv">
             <dt>我的权限</dt><dd>${detailPermissions(p)}</dd>
@@ -1510,12 +1528,17 @@ function projectDetailHtml(p, extra = {}) {
                 : ''
             }
           </dl>
-        </section>
+        </section>`
+        }
       </div>
     </div>
-    <div data-auth-panel="perms" hidden>
+    ${
+      archived
+        ? ''
+        : `<div data-auth-panel="perms" hidden>
       <div id="projectPermCards"><p class="muted">加载中…</p></div>
     </div>`
+    }`
 }
 
 function wireDetailCopy(backdrop) {
@@ -1540,15 +1563,17 @@ async function openProjectDetail(projectId, { tab = 'info', onClose } = {}) {
   if (!cached) {
     return
   }
+  const isArchived = cached.status === 'archived'
   // The permission tab's pickers share the admin directory cache (AA4); a
   // failed read degrades to free-text input, never to a broken dialog.
-  if (isAdmin() && !state.directory) state.directory = await loadDirectory()
+  // An archived detail is read-only, so it never loads the directory either.
+  if (isAdmin() && !isArchived && !state.directory) state.directory = await loadDirectory()
   let project = cached
   let currentTab = tab
   // 「打开项目」进入覆盖层：URL 不再回落列表（workspace 路由由 R4 接管）。
   let openedWorkspace = false
   const reason = openDisabledReason(cached)
-  const extra = { grantsLoading: true, grants: [], hostRows: null }
+  const extra = { grantsLoading: true, grants: [], hostRows: null, archivedUnsupported: false }
   let backdrop
   const closeDetail = () => backdrop?.querySelector('[data-action="close"]')?.click()
   const detailActions =
@@ -1667,17 +1692,24 @@ async function openProjectDetail(projectId, { tab = 'info', onClose } = {}) {
 
   const [fresh, grants, policy, hostGrants] = await Promise.allSettled([
     api(
-      cached.status === 'archived' && isAdmin()
+      isArchived && isAdmin()
         ? `/v1/projects/${projectId}?includeArchived=1`
         : `/v1/projects/${projectId}`
     ),
-    isAdmin() ? api(grantsPath) : Promise.resolve(null),
-    api('/v1/policies/download'),
-    isAdmin() ? api(`/v1/hosts/${cached.hostId}/grants`).catch(() => null) : Promise.resolve(null)
+    isArchived ? Promise.resolve(null) : isAdmin() ? api(grantsPath) : Promise.resolve(null),
+    isArchived ? Promise.resolve(null) : api('/v1/policies/download'),
+    isArchived
+      ? Promise.resolve(null)
+      : isAdmin()
+        ? api(`/v1/hosts/${cached.hostId}/grants`).catch(() => null)
+        : Promise.resolve(null)
   ])
   if (fresh.status === 'fulfilled') {
     project = { ...cached, ...fresh.value }
     Object.assign(cached, fresh.value)
+  } else if (isArchived && isAdmin() && fresh.reason?.status === 404) {
+    // 旧服务端没有 opt-in：保留列表摘要并明确说不支持，而不是报“读取失败”。
+    extra.archivedUnsupported = true
   } else {
     extra.refreshFailed = true
   }
