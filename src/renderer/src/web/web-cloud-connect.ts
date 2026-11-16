@@ -16,6 +16,11 @@ import {
   type WebCloudDeviceKeyStorage
 } from './web-cloud-device-key'
 import type { WebPairingOffer } from './web-pairing'
+import {
+  createBrowserWebCloudProjectMemoryStorage,
+  rememberCloudProjectId,
+  readRememberedCloudProjectId
+} from './web-cloud-project-memory'
 import { WebRuntimeClient } from './web-runtime-client'
 import type { WebRuntimeSessionClient } from './web-runtime-session-client'
 import {
@@ -33,7 +38,8 @@ import {
 export const WEB_CLOUD_CONNECT_ERROR_CODE = {
   connectFailed: 'CONNECT_FAILED',
   mobileScopeRejected: 'MOBILE_SCOPE_REJECTED',
-  noProjects: 'NO_PROJECTS'
+  noProjects: 'NO_PROJECTS',
+  noOpenableProjects: 'NO_OPENABLE_PROJECTS'
 } as const
 
 /** The stored environment name marks a cloud session with this suffix (see `toCloudEnvironment`). */
@@ -74,6 +80,8 @@ export type ConnectCloudProjectInput = {
   deviceName: string
   deviceKeyStore: WebCloudDeviceKeyStorage
   projectId?: string
+  /** The project this browser last opened here; ignored when no longer visible. */
+  rememberedProjectId?: string
   fetchImpl?: typeof fetch
   now?: () => number
   endpointUrl?: string
@@ -94,6 +102,8 @@ export type ConnectCloudProjectWithSessionInput = {
   /** Half of the device identity the E2EE handshake needs; never persisted. */
   deviceSecretKeyB64: string
   projectId?: string
+  /** The project this browser last opened here; ignored when no longer visible. */
+  rememberedProjectId?: string
   fetchImpl?: typeof fetch
   endpointUrl?: string
   clientFactory?: WebCloudConnectClientFactory
@@ -104,6 +114,7 @@ export type WebCloudProjectConnection = {
   offer: WebPairingOffer
   environmentName: string
   runtimeId: string
+  projectId: string
   projectName: string
   /** Hand to the transport; never persisted and never placed on the offer. */
   deviceSecretKeyB64: string
@@ -144,7 +155,8 @@ function createValidationClient(
 
 function selectProject(
   projects: WebCloudProject[],
-  projectId: string | undefined
+  projectId: string | undefined,
+  rememberedProjectId: string | undefined
 ): WebCloudProject {
   if (projectId !== undefined) {
     const chosen = projects.find((project) => project.id === projectId)
@@ -156,14 +168,30 @@ function selectProject(
     }
     return chosen
   }
-  const first = projects[0]
-  if (!first) {
+  // Why remembered first: `/v1/projects` order is not the user's workspace, and a
+  // project the account cannot open (no `open` permission) answers 403.
+  if (rememberedProjectId !== undefined) {
+    const remembered = projects.find(
+      (project) => project.id === rememberedProjectId && project.permissions.includes('open')
+    )
+    if (remembered) {
+      return remembered
+    }
+  }
+  const openable = projects.find((project) => project.permissions.includes('open'))
+  if (openable) {
+    return openable
+  }
+  if (projects.length === 0) {
     throw new WebCloudConnectError(
       WEB_CLOUD_CONNECT_ERROR_CODE.noProjects,
       'This account has no visible cloud projects.'
     )
   }
-  return first
+  throw new WebCloudConnectError(
+    WEB_CLOUD_CONNECT_ERROR_CODE.noOpenableProjects,
+    'This account can see cloud projects but none grants open permission. Ask an administrator for access.'
+  )
 }
 
 function connectionFromStatus(
@@ -201,6 +229,7 @@ function connectionFromStatus(
     offer,
     environmentName: projectName,
     runtimeId,
+    projectId: project.id,
     projectName,
     deviceSecretKeyB64
   }
@@ -222,7 +251,7 @@ export async function connectCloudProjectWithSession(
   const fetchOptions = input.fetchImpl ? { fetchImpl: input.fetchImpl } : {}
   const { session } = input
   const projects = await listCloudProjects(session, fetchOptions)
-  const project = selectProject(projects, input.projectId)
+  const project = selectProject(projects, input.projectId, input.rememberedProjectId)
   const ticket = await requestCloudTicket(
     session,
     project.id,
@@ -258,6 +287,8 @@ export async function connectCloudProjectWithSession(
       timeoutMs: STATUS_TIMEOUT_MS
     })
     const connection = connectionFromStatus(reply, offer, project, input.deviceSecretKeyB64)
+    // Why: the next re-login resumes this project instead of the list's first row.
+    rememberCloudProjectId(createBrowserWebCloudProjectMemoryStorage(), session.apiUrl, project.id)
     // Why keep it open: its ticket is already spent; rebuilding from the stored
     // offer can never upgrade, so this socket is the App's only live connection.
     return {
@@ -286,11 +317,16 @@ export async function connectCloudProject(
     ...fetchOptions,
     ...(input.now ? { now: input.now } : {})
   })
+  const rememberedProjectId =
+    input.rememberedProjectId ??
+    readRememberedCloudProjectId(createBrowserWebCloudProjectMemoryStorage(), input.apiUrl) ??
+    undefined
   return connectCloudProjectWithSession({
     session,
     devicePublicKeyB64: identity.publicKeyB64,
     deviceSecretKeyB64: identity.secretKeyB64,
     ...(input.projectId === undefined ? {} : { projectId: input.projectId }),
+    ...(rememberedProjectId === undefined ? {} : { rememberedProjectId }),
     ...(input.fetchImpl === undefined ? {} : { fetchImpl: input.fetchImpl }),
     ...(input.endpointUrl === undefined ? {} : { endpointUrl: input.endpointUrl }),
     ...(input.clientFactory === undefined ? {} : { clientFactory: input.clientFactory }),

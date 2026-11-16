@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   clearWebHandoffFromAddressBar,
   enterWorkspaceViaWebHandoff,
+  readWebCloudApiUrlFromLocation,
   readWebCloudHandoffEntry,
   useWebCloudHandoffEntry,
   webCloudHandoffFailureNotice
@@ -135,6 +136,14 @@ describe('handoff 入口地址栏（FR-3.10 hash 用后即清）', () => {
     clearWebHandoffFromAddressBar()
     expect(window.location.hash).toBe('')
     expect(window.location.search).toBe('?api=https://cloud.example.com')
+  })
+
+  it('reads ?api= even without a handoff code, for the sign-in form prefill', () => {
+    expect(
+      readWebCloudApiUrlFromLocation({ search: '?api=https%3A%2F%2Fcloud.example.com/' })
+    ).toBe('https://cloud.example.com')
+    expect(readWebCloudApiUrlFromLocation({ search: '?api=' })).toBeNull()
+    expect(readWebCloudApiUrlFromLocation({ search: '' })).toBeNull()
   })
 })
 

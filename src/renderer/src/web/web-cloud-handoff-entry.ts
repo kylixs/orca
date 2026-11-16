@@ -58,8 +58,16 @@ export function readWebCloudHandoffEntry(location: {
   if (!code || !projectId) {
     return null
   }
-  const apiUrl = (new URLSearchParams(location.search).get('api') ?? '').trim().replace(/\/+$/, '')
-  return { code, projectId, apiUrl }
+  return { code, projectId, apiUrl: readWebCloudApiUrlFromLocation(location) ?? '' }
+}
+
+/**
+ * The platform address from the entry URL's `?api=`. It is not a secret, so it
+ * survives the handoff wipe and pre-fills the sign-in form when no code is left.
+ */
+export function readWebCloudApiUrlFromLocation(location: { search: string }): string | null {
+  const apiUrl = (new URLSearchParams(location.search).get('api') ?? '').trim()
+  return apiUrl ? apiUrl.replace(/\/+$/, '') : null
 }
 
 /**

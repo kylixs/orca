@@ -16,7 +16,8 @@ vi.mock('./web-cloud-connect', () => ({
   WEB_CLOUD_CONNECT_ERROR_CODE: {
     connectFailed: 'CONNECT_FAILED',
     mobileScopeRejected: 'MOBILE_SCOPE_REJECTED',
-    noProjects: 'NO_PROJECTS'
+    noProjects: 'NO_PROJECTS',
+    noOpenableProjects: 'NO_OPENABLE_PROJECTS'
   }
 }))
 
@@ -75,13 +76,20 @@ describe('WebConnect cloud login', () => {
   let container: HTMLDivElement | null = null
   let onConnected: ReturnType<typeof vi.fn<() => void>>
 
-  const render = (initialPairingInput: string | null = null): void => {
+  const render = (
+    initialPairingInput: string | null = null,
+    initialCloudApiUrl: string | null = null
+  ): void => {
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
     act(() => {
       root?.render(
-        <WebConnect initialPairingInput={initialPairingInput} onConnected={onConnected} />
+        <WebConnect
+          initialPairingInput={initialPairingInput}
+          initialCloudApiUrl={initialCloudApiUrl}
+          onConnected={onConnected}
+        />
       )
     })
   }
@@ -181,6 +189,34 @@ describe('WebConnect cloud login', () => {
     // The ticket is a one-time credential and never enters the stored record.
     expect(JSON.stringify(stored)).not.toContain('ticket-1')
     expect(JSON.stringify(stored)).not.toContain('deviceSecretKeyB64')
+  })
+
+  it('pre-fills the platform address from the entry URL ?api=', () => {
+    render(null, 'https://cloud.example.com')
+
+    if (!container) {
+      throw new Error('missing container')
+    }
+    expect(field(container, 'web-cloud-api-url').value).toBe('https://cloud.example.com')
+  })
+
+  it('shows an explicit empty state when no visible project can be opened', async () => {
+    cloudMock.connectCloudProject.mockRejectedValue(
+      Object.assign(new Error('no open permission'), { code: 'NO_OPENABLE_PROJECTS' })
+    )
+
+    render(null, 'https://cloud.example.com')
+    if (!container) {
+      throw new Error('missing container')
+    }
+    setInputValue(field(container, 'web-cloud-username'), 'admin')
+    setInputValue(field(container, 'web-cloud-password'), 'Adm1n!')
+
+    await submitCloudForm(container)
+
+    expect(onConnected).not.toHaveBeenCalled()
+    expect(container.textContent).toContain('none can be opened')
+    expect(container.textContent).not.toContain('PROJECT_FORBIDDEN')
   })
 
   it('renders the platform error code and message', async () => {

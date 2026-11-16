@@ -12,6 +12,7 @@ import {
 } from './web-pairing'
 import {
   clearWebHandoffFromAddressBar,
+  readWebCloudApiUrlFromLocation,
   readWebCloudHandoffEntry,
   useWebCloudHandoffEntry
 } from './web-cloud-handoff-entry'
@@ -40,7 +41,7 @@ function WebRoot(): React.JSX.Element {
     const handoffEntry = readWebCloudHandoffEntry(window.location)
     if (handoffEntry) {
       clearWebHandoffFromAddressBar()
-      return { decision: null, cloudSessionEnded: false, handoffEntry }
+      return { decision: null, cloudSessionEnded: false, handoffEntry, cloudApiUrl: null }
     }
     const initialPairingInput = readPairingInputFromLocation(window.location)
     const storedEnvironment = readStoredWebRuntimeEnvironment()
@@ -63,7 +64,14 @@ function WebRoot(): React.JSX.Element {
     ) {
       clearPairingInputFromAddressBar()
     }
-    return { decision, cloudSessionEnded, handoffEntry: null }
+    return {
+      decision,
+      cloudSessionEnded,
+      handoffEntry: null,
+      // Why: `?api=` outlives the handoff hash, so a spent-code fallback and a
+      // plain refresh both keep the platform address on the sign-in form.
+      cloudApiUrl: readWebCloudApiUrlFromLocation(window.location)
+    }
   }, [])
   const startupDecision = startup.decision
   const [hasEnvironment, setHasEnvironment] = useState(() => {
@@ -122,7 +130,7 @@ function WebRoot(): React.JSX.Element {
                   )
                 : null
         }
-        initialCloudApiUrl={handoffFailure?.apiUrl ?? null}
+        initialCloudApiUrl={handoffFailure?.apiUrl ?? startup.cloudApiUrl}
         onConnected={() => setHasEnvironment(true)}
       />
     )

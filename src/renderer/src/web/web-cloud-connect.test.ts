@@ -74,6 +74,11 @@ function projectRow(id: string, name: string): Record<string, unknown> {
   }
 }
 
+/** Visible but not openable, like an admin account's first row in `/v1/projects`. */
+function restrictedProjectRow(id: string, name: string): Record<string, unknown> {
+  return { ...projectRow(id, name), permissions: ['download'] }
+}
+
 function ticketBody(): Record<string, unknown> {
   return {
     credential: TICKET_CREDENTIAL,
@@ -281,6 +286,83 @@ describe('connectCloudProject', () => {
     expect(platform.calls.some((call) => call.url.endsWith('/v1/projects/project-2/connect'))).toBe(
       true
     )
+  })
+
+  it('skips a first row the account cannot open', async () => {
+    const store = new MemoryStorage()
+    const platform = scriptedPlatform({
+      projects: [restrictedProjectRow('proj_payment', 'Payments'), projectRow('proj_demo', 'Demo')]
+    })
+    const fake = fakeClientFactory(statusSuccess())
+
+    const result = await connectCloudProject(
+      input(store, { fetchImpl: platform.fetchImpl, clientFactory: fake.factory })
+    )
+
+    expect(result.projectName).toBe('Demo')
+    expect(result.projectId).toBe('proj_demo')
+    expect(
+      platform.calls.some((call) => call.url.endsWith('/v1/projects/proj_payment/connect'))
+    ).toBe(false)
+  })
+
+  it('prefers the remembered project over the first visible one', async () => {
+    const store = new MemoryStorage()
+    const platform = scriptedPlatform({
+      projects: [projectRow('project-1', 'Payments'), projectRow('project-2', 'Ledger')]
+    })
+    const fake = fakeClientFactory(statusSuccess())
+
+    const result = await connectCloudProject(
+      input(store, {
+        rememberedProjectId: 'project-2',
+        fetchImpl: platform.fetchImpl,
+        clientFactory: fake.factory
+      })
+    )
+
+    expect(result.projectId).toBe('project-2')
+    expect(platform.calls.some((call) => call.url.endsWith('/v1/projects/project-2/connect'))).toBe(
+      true
+    )
+  })
+
+  it('falls back to an openable project when the remembered one is gone', async () => {
+    const store = new MemoryStorage()
+    const platform = scriptedPlatform({
+      projects: [restrictedProjectRow('proj_payment', 'Payments'), projectRow('proj_demo', 'Demo')]
+    })
+    const fake = fakeClientFactory(statusSuccess())
+
+    const result = await connectCloudProject(
+      input(store, {
+        rememberedProjectId: 'proj_removed',
+        fetchImpl: platform.fetchImpl,
+        clientFactory: fake.factory
+      })
+    )
+
+    expect(result.projectId).toBe('proj_demo')
+  })
+
+  it('reports NO_OPENABLE_PROJECTS when no visible project grants open', async () => {
+    const store = new MemoryStorage()
+    const platform = scriptedPlatform({
+      projects: [restrictedProjectRow('proj_payment', 'Payments')]
+    })
+    const factory = vi.fn()
+
+    const error = await captureError(() =>
+      connectCloudProject(input(store, { fetchImpl: platform.fetchImpl, clientFactory: factory }))
+    )
+
+    expect(error).toBeInstanceOf(WebCloudConnectError)
+    if (!(error instanceof WebCloudConnectError)) {
+      throw new Error('expected WebCloudConnectError')
+    }
+    expect(error.code).toBe(WEB_CLOUD_CONNECT_ERROR_CODE.noOpenableProjects)
+    expect(factory).not.toHaveBeenCalled()
+    expect(platform.calls.some((call) => call.url.endsWith('/connect'))).toBe(false)
   })
 
   it('rejects a mobile-scope runtime with MOBILE_SCOPE_REJECTED', async () => {

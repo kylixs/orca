@@ -54,6 +54,8 @@ export type WebCloudProject = {
   name: string
   hostName: string | null
   hostStatus: string
+  /** The signed permissions the platform reports for this user and project. */
+  permissions: string[]
   downloadRestricted: boolean
   /** Null when the platform predates provisioning status. */
   status: string | null
@@ -226,6 +228,7 @@ function toWebProject(project: CloudReplyProject): WebCloudProject {
     hostStatus: project.hostStatus,
     status: project.status,
     provisioningError: project.provisioningError,
+    permissions: project.permissions,
     // The host enforces export; this only decides whether the UI offers it.
     downloadRestricted: !project.permissions.includes('download')
   }

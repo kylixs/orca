@@ -26,6 +26,23 @@ function defaultCloudApiUrl(): string {
   return String(import.meta.env.VITE_ORCA_CLOUD_API_URL ?? '').trim()
 }
 
+/** A visible empty state beats the raw 403 a forbidden pick would surface. */
+function cloudConnectErrorMessage(code: string, error: unknown): string {
+  if (code === WEB_CLOUD_CONNECT_ERROR_CODE.noOpenableProjects) {
+    return translate(
+      'auto.web.WebConnect.noOpenableProjects',
+      'This account can see cloud projects but none can be opened. Ask an administrator for open permission.'
+    )
+  }
+  if (code === WEB_CLOUD_CONNECT_ERROR_CODE.noProjects) {
+    return translate(
+      'auto.web.WebConnect.noProjects',
+      'This account has no cloud projects yet. Ask an administrator to grant one.'
+    )
+  }
+  return error instanceof Error ? error.message : String(error)
+}
+
 export default function WebConnectCloudForm({
   existingEnvironment,
   initialApiUrl = null,
@@ -70,10 +87,8 @@ export default function WebConnectCloudForm({
       adoptWebRuntimeClient(connection.client, connection.environment)
       onConnected()
     } catch (err) {
-      setError({
-        code: errorCodeOf(err) ?? WEB_CLOUD_CONNECT_ERROR_CODE.connectFailed,
-        message: err instanceof Error ? err.message : String(err)
-      })
+      const code = errorCodeOf(err) ?? WEB_CLOUD_CONNECT_ERROR_CODE.connectFailed
+      setError({ code, message: cloudConnectErrorMessage(code, err) })
     } finally {
       setConnecting(false)
     }
