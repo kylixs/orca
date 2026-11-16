@@ -136,6 +136,11 @@ export class OrcaRuntimeWithCollectMobileVisibleGraphChangedWorktrees extends Or
     ) {
       return await this.settleSessionTabsInventory(primed, clientNavigationId, signal)
     }
+    if (this.authoritativeWindowId === null) {
+      // Why: no window ever attached (headless serve/embedded runtime) means no renderer
+      // will publish a graph epoch; waiting for one hangs every census until RPC timeout.
+      return { snapshots: primed.snapshots, changeSequence: primed.changeSequence }
+    }
     while (true) {
       const publicationEpoch = this.getAuthoritativeSessionTabsInventoryEpoch()
       if (publicationEpoch === null) {

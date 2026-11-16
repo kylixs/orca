@@ -45,14 +45,26 @@ describe('authoritative session tab inventory publication', () => {
     expect(collect).toHaveBeenCalledTimes(2)
   })
 
-  it('treats an initial headless graph as an authoritative empty publication', async () => {
+  it('serves the legacy census immediately when no authoritative window exists (headless host)', async () => {
     const runtime = createInventoryRuntime()
-    const pending = runtime.listAllMobileSessionTabsInventory()
-    await waitForInventoryWaiter(runtime)
+    const collect = vi.spyOn(
+      runtime as unknown as { collectAllMobileSessionTabs: () => Promise<unknown> },
+      'collectAllMobileSessionTabs'
+    )
 
+    // Why: a host that never publishes a renderer graph must not hang the census.
+    await expect(runtime.listAllMobileSessionTabsInventory()).resolves.toEqual({ snapshots: [] })
+    expect(collect).toHaveBeenCalledTimes(1)
+  })
+
+  it('treats a published headless graph as an authoritative empty publication', async () => {
+    const runtime = createInventoryRuntime()
     runtime.syncWindowGraph(0, { tabs: [], leaves: [] })
 
-    await expect(pending).resolves.toEqual({ snapshots: [], authoritative: true })
+    await expect(runtime.listAllMobileSessionTabsInventory()).resolves.toEqual({
+      snapshots: [],
+      authoritative: true
+    })
   })
 
   it('returns a non-empty headed publication normally', async () => {
