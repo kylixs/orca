@@ -129,6 +129,64 @@ describe('session tab RPC methods', () => {
     })
   })
 
+  // Why: renderer clicks always carry navigation:'caller', so the caller target alone cannot
+  // mean "mirror attach" — the explicit user intent is what must persist the selection (U138).
+  it('persists selection for a caller-navigation user click', async () => {
+    const runtime = {
+      getRuntimeId: () => 'test-runtime',
+      activateMobileSessionTab: vi.fn().mockResolvedValue({ tabs: [] })
+    } as unknown as OrcaRuntimeService
+    const dispatcher = new RpcDispatcher({ runtime, methods: SESSION_TAB_METHODS })
+
+    const response = await dispatcher.dispatch(
+      makeRequest('session.tabs.activate', {
+        worktree: 'id:wt-1',
+        tabId: 'tab-1',
+        leafId: 'leaf-1',
+        notifyClients: false,
+        navigation: 'caller',
+        intent: 'user'
+      })
+    )
+
+    expect(response.ok).toBe(true)
+    expect(runtime.activateMobileSessionTab).toHaveBeenCalledWith('id:wt-1', 'tab-1', 'leaf-1', {
+      notifyClients: false,
+      clientNavigationId: undefined,
+      persistSelection: true,
+      intent: 'user',
+      navigation: 'caller'
+    })
+  })
+
+  // Why: a hidden pane mounts with the same caller target but no intent, and must not
+  // overwrite the device's durable selection (U138 phase 8).
+  it('does not persist selection for a caller-navigation mirror attach', async () => {
+    const runtime = {
+      getRuntimeId: () => 'test-runtime',
+      activateMobileSessionTab: vi.fn().mockResolvedValue({ tabs: [] })
+    } as unknown as OrcaRuntimeService
+    const dispatcher = new RpcDispatcher({ runtime, methods: SESSION_TAB_METHODS })
+
+    const response = await dispatcher.dispatch(
+      makeRequest('session.tabs.activate', {
+        worktree: 'id:wt-1',
+        tabId: 'tab-1',
+        leafId: 'leaf-1',
+        notifyClients: false,
+        navigation: 'caller'
+      })
+    )
+
+    expect(response.ok).toBe(true)
+    expect(runtime.activateMobileSessionTab).toHaveBeenCalledWith('id:wt-1', 'tab-1', 'leaf-1', {
+      notifyClients: false,
+      clientNavigationId: undefined,
+      persistSelection: false,
+      navigation: 'caller'
+    })
+  })
+
   it('refuses a reasonless close without invoking destructive runtime logic', async () => {
     const runtime = {
       getRuntimeId: () => 'test-runtime',

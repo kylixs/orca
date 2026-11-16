@@ -34,8 +34,9 @@ export const SESSION_TAB_MUTATION_METHODS = [
         {
           notifyClients: params.notifyClients !== false,
           clientNavigationId: pairedDeviceId,
-          // Why: a pane mount mirrors `navigation: 'caller'`; only a navigation-less request is a user tap (U138).
-          persistSelection: params.navigation === undefined,
+          // Why: renderer clicks carry navigation:'caller' too, so the explicit user intent
+          // separates them from a navigation-less tap and a pane mirror attach (U138).
+          persistSelection: params.navigation === undefined || params.intent === 'user',
           ...(params.intent ? { intent: params.intent } : {}),
           navigation: resolveRuntimeNavigationTarget({
             navigation: params.navigation,
