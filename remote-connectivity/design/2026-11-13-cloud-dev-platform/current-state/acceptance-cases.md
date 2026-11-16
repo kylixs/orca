@@ -736,9 +736,9 @@
 
 ---
 
-## F10 移动端（不派生验收用例）
+## F10 移动端（平台管理台适配已实现，不派生业务步骤用例）
 
-`business-flows.md#F10` 明确：U80 原型阶段，0 正常步骤、0 失败分支、0 已覆盖。本文件**不生成**移动端运行用例，也不得按原型截图推断「应通过」。缺口：U80（实现未开工）；U106 C15 移动视口冒烟尚未落地；R5 明确移动视口并入 r6。
+移动端是既有 F1–F9 流程的**展示层适配**（≤700 单列 / 701–1100 双列，桌面 ≥1100 零变化），不新增业务步骤，故本文件不按移动视口复制用例；运行覆盖在 `u80-mobile-*` 视口套件（shell/users/audit/settings/global/archive），探索重跑 80/80。Orca Web 工作区自带移动端支持，不在 U80 范围。U106 R6 移动视口冒烟保留。
 
 ---
 
@@ -751,7 +751,7 @@
 | G03 | ~~登录页网络错误、LDAP 拒绝 UI 文案、登录中禁用态~~ **closed**              | M1 §7                 | closed    | T06 新增三例：fetch 拒绝显示「网络异常，请稍后重试」、LDAP 401 文案逐字展示、请求在途按钮禁用且重复提交零新增请求（失败恢复可点）；AC-M1-24 |
 | G04 | 生产 LDAPS adapter 不在仓库                                                | M1 §7                 | 登记      | 真机/部署层验证，不据 Mock 判通过                                                                                                                                                                                                                                                      |
 | G05 | ~~工作台统计卡四项数值、前进/后退历史栈、查询参数不生效~~ **closed**      | M2 §7                 | closed    | T70 `u70-workbench-cards.e2e.test.ts`：四卡逐字对齐 API（项目数/在线数/禁用下载数/默认策略+v版本，含 2 在线+1 离线宿主与 1 显式 deny）、`#/workbench?foo=bar` 请求集合与无 query 一致、列表→详情 back→forward 复开详情（补 T64 缺的 forward） |
-| G06 | 归档/恢复无控制台入口（仅 API）                                            | AC-M3-16 / C21        | 登记      | 无 U 号；按「设计未承诺 UI」验收或补 UI                                                                                                                                                                                                                                                |
+| G06 | ~~归档/恢复无控制台入口（仅 API）~~ **closed**                              | AC-M3-16 / C21        | closed    | U116① W3–W5：项目页归档分组（`<details>`+chip）、归档确认卡（列明五项后果）、恢复入口；归档项目详情只读（`?includeArchived=1` admin opt-in，变更请求拒绝）+ G06 归档读策略；e2e `web-project-archive-data/actions/detail/mobile` + `u80-mobile-archive(-mobile)` |
 | G07 | ~~provisioning→ready UI、详情黄条/复制/独立页链接~~ **closed**             | AC-M3-07/21、C15      | closed    | T71 `web-project-detail.e2e.test.ts`：repoUrl 登记 toast「克隆中」→ 详情「准备中」→ 宿主回报 ok →「就绪」；回报 ok:false+error →「准备失败」+原因；详情 GET 失败 → 黄条「未能刷新项目信息」且缓存保留；路径/仓库复制 toast「已复制」、在线宿主详情含独立页链接 |
 | G08 | ~~仓库地址 `not-a-valid-url` 历史接受缺陷~~ **closed**                     | AC-M3-33              | closed    | U136① `9854ef58d60` 收紧→U141 `6cb53417057` 跨层对齐（本地绝对路径与 `file://` 两端接受）→U142 统一 SCP-like(user@) 并两端拒 UNC；矩阵与 T10 回归；历史数据读取不重校验                                                                                                                |
 | G09 | ~~维护/下线控制台 UI、注册弹框成功/失败 UI~~ **closed**                   | AC-M4-07/09、D2       | closed    | T72 `web-host-lifecycle-feedback.e2e.test.ts`：抽屉「进入维护模式」→ POST `{enabled:true,reason}`、抽屉关闭、行维护中、项目打开禁用；下线 confirm 取消 0 DELETE/抽屉不关/平台未吊销，确认 1 DELETE/行已吊销；注册弹框复制命令（剪贴板完整命令+toast「已复制」+弹框保持）；令牌/维护/下线 500 → `注册主机失败/进入维护模式失败/下线主机失败：模拟平台故障` toast、抽屉与平台状态不变 |
@@ -771,8 +771,8 @@
 | G23 | ~~authz-api 6 findings~~ **closed**（6/6 已在 HEAD 修复并有回归） | AC-M11-28             | closed | 逐项确认是否转 U                                                                                                                                                                                                                                                                       |
 | G24 | 真实宿主脚本→注册→首心跳端到端；Windows/CentOS7 脚本                       | M12 §10               | 补测      | 真机矩阵，勿以脚本文本断言替代                                                                                                                                                                                                                                                         |
 | G25 | runtimeCapabilities 升级路径、陈旧路由平台侧可观测性（能力路径已钉） | AC-M12-22             | 部分闭合  | T22 新增：注册落库 caps；心跳上报更多能力或缺失字段均不改写（注册是唯一更新通道，陈旧值 fail-closed）；陈旧路由平台侧仍无显式状态，可观测性未闭 |
-| G26 | 移动端实现（U80）；U106 R6 移动视口冒烟已闭                                | F10                   | 未实现    | T65 `u106-console-mobile`（404/403 同 schema）；U80 原型阶段，不生成运行用例                                                                                                                                                                                                           |
-| G27 | 无 U 号观察：设置页策略生效文案（原「30 秒生效」）无同步状态、未覆盖项目无法直接钉住 | M8 §5 | 部分闭合  | 文案已修正（「已保存，将随宿主心跳生效」）；未覆盖项目钉住功能待排期                                                                                                                                                                                                                   |
+| G26 | ~~移动端实现（U80）~~ **closed**（平台管理台；Orca Web 工作区上游自带移动端不在范围） | F10                   | closed    | U80 M1–M9 完成、M10 总审计 PASS；视口套件 `u80-mobile-shell/users/audit/settings/global/archive(-mobile)`（390/768 断言 + 桌面零变化），探索重跑 80/80（`evidence/u80-mobile/m9-rerun/`）；U106 R6 移动视口冒烟仍有效 |
+| G27 | 无 U 号观察：设置页策略生效文案（原「30 秒生效」）无同步状态、未覆盖项目无法直接钉住 | M8 §5 | 部分闭合  | 文案已修正（「已保存，将随宿主心跳生效」）；全量项目列表与逐行钉住（tri-state+expectedVersion+409 行重试）已由 W7/W8 实现并有 `web-settings-project-policy` e2e；仅宿主同步 ack 按 B5 决策暂缓 |
 | G28 | ~~浏览器并行 401 双 refresh 竞态→登出~~ **closed**                         | AC-M1-04 / 本轮探针   | closed    | U134 `cbbcb130086`：`refreshInFlight` single-flight（并行 401 仅 1 次 refresh、登录态保留）；`session-renewal` e2e 扩测                                                                                                                                                                |
 | G29 | ~~下载策略并发保存无版本号/冲突检测（last-write-wins）~~ **closed**        | AC-M8-15              | closed    | U136④a `afca14d02c8`：`PUT /v1/policies/download` 与 `PUT /v1/projects/:id/policy` 接受可选 `expectedVersion`，陈旧写入 409 `POLICY_VERSION_CONFLICT`（details 含服务端 version/策略、failure 审计）；U136④b UI：保存带 `expectedVersion`，409 保留输入+服务端值+刷新后重试，T47 M120c2-8/9；缺省字段保持旧客户端行为 |
 
@@ -804,4 +804,4 @@
 - **失败分支覆盖**：F1–F9 的 71 个失败分支均至少映射 1 条异常用例（源标签 E1–E9 全覆盖）。
 - **缺陷回归钉**：台账中与 F1–F9 相关的已知缺陷均至少出现 1 条「回归钉」；未实现项保持 ⛔ + U 号，未按设计稿判通过。
 - **探索转正**：`web-console-paths` L1–L8/P1–P4/H1–H6/§6–§9、`workspace-paths` P1–P23、`exploratory-r5-paths` P1'–P3'、`authz-combo` D0–D5/M1–M4、`api-paths` A/P/G/H/D/C/U/R 段的有效路径已转为用例或纳入异常/回归钉。
-- **缺口**：§13 共 29 条（27 原有 + 2 本轮新发现 G28/G29）。已 closed 23 条（G01/G02/G03/G05/G07/G08/G09/G10/G11/G12/G13/G14/G15/G16/G17/G18/G19/G20/G21/G22/G23/G28/G29）；部分闭合 2 条（G25 能力路径已自动化，陈旧路由平台侧可观测性仍无。G27 设置页文案已修正，未覆盖项目钉住待排期）；待裁定/待实现 4 条。⛔ 未覆盖用例剩 0 条；AC-M5-09/11 已由 U136② 实现并保留自动化（刷新失败提示+重试；无自动轮询为既定语义），AC-M7-14 已由 U136③ 实现（空下拉解释）、链健康/容量与 verify 入口由 AC-M7-29/30 覆盖。本轮新增自动化 5 例（T05 浏览器重放、T06 QA-013 中继刷新态、T32 U72-4 auditor 下拉解释、T32 U72-5 链健康/容量+校验、T10 U136① 仓库地址矩阵），另复核确认 T06 QA-002/QA-004/QA-009 与 U70 guard 7 单测已覆盖原缺口；U136④b 新增 T47 M120c2-8/9（保存携带 `expectedVersion`、409 保留输入+刷新后重试）；G09 由 T72 四例闭合（维护/下线控制台 UI、注册弹框复制与失败反馈）。
+- **缺口**：§13 共 29 条（27 原有 + 2 本轮新发现 G28/G29）。已 closed 25 条（G01/G02/G03/G05/G06/G07/G08/G09/G10/G11/G12/G13/G14/G15/G16/G17/G18/G19/G20/G21/G22/G23/G26/G28/G29）；部分闭合 2 条（G25 能力路径已自动化，陈旧路由平台侧可观测性按 U146 记为 P2 已知限制。G27 文案已修正、全量项目钉住已实现，仅同步 ack 按 B5 暂缓）；待裁定/待实现 2 条（G04/G24，均为部署/真机层）。⛔ 未覆盖用例剩 0 条；AC-M5-09/11 已由 U136② 实现并保留自动化（刷新失败提示+重试；无自动轮询为既定语义），AC-M7-14 已由 U136③ 实现（空下拉解释）、链健康/容量与 verify 入口由 AC-M7-29/30 覆盖。本轮新增自动化 5 例（T05 浏览器重放、T06 QA-013 中继刷新态、T32 U72-4 auditor 下拉解释、T32 U72-5 链健康/容量+校验、T10 U136① 仓库地址矩阵），另复核确认 T06 QA-002/QA-004/QA-009 与 U70 guard 7 单测已覆盖原缺口；U136④b 新增 T47 M120c2-8/9（保存携带 `expectedVersion`、409 保留输入+刷新后重试）；G09 由 T72 四例闭合（维护/下线控制台 UI、注册弹框复制与失败反馈）；G06 由 U116① W3–W5 闭合（归档/恢复控制台 + 归档只读详情），G26 由 U80 M1–M10 闭合（移动端视口套件 + 探索 80/80）。
