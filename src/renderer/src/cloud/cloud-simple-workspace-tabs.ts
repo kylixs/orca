@@ -6,12 +6,27 @@
  * their content orders (U46-5b, U46-6/7) plug in without touching this state.
  */
 
+import { createBrowserUuid } from '../lib/browser-uuid'
 import type { CloudWorkspaceDiffSource } from './cloud-workspace-diff-tab-model'
+import {
+  mergeHostTabsIntoState,
+  type CloudSimpleHostTerminalTab
+} from './cloud-simple-workspace-session-tabs'
 
 export type CloudSimpleWorkspaceTabKind = 'terminal' | 'editor' | 'preview' | 'diff'
 
+/** Host-owned terminal handle snapshot; absent until a host snapshot confirms the tab. */
+export type CloudSimpleWorkspaceHostTerminal = {
+  leafId: string
+  /** null while the host still restores the PTY (pending-handle). */
+  terminal: string | null
+  ptyId: string | null
+  /** >1 means the host tab is a split; only the active leaf is rendered here. */
+  leafCount: number
+}
+
 export type CloudSimpleWorkspaceTab =
-  | { id: string; kind: 'terminal'; title: string }
+  | { id: string; kind: 'terminal'; title: string; host?: CloudSimpleWorkspaceHostTerminal }
   | { id: string; kind: 'editor'; title: string; path: string }
   | {
       id: string
@@ -37,6 +52,8 @@ export type CloudSimpleWorkspaceTabsState = {
   activeId: string | null
   /** Tab id → unsaved buffer; absent means clean. */
   dirty: Record<string, boolean>
+  /** True once a host snapshot has set the active tab; later snapshots keep the local choice. */
+  hostSynced?: boolean
 }
 
 export type CloudSimpleWorkspaceTabsAction =
@@ -44,6 +61,8 @@ export type CloudSimpleWorkspaceTabsAction =
   | { type: 'activate'; id: string }
   | { type: 'close'; id: string }
   | { type: 'setDirty'; id: string; dirty: boolean }
+  /** Replace host terminal tabs with a projection; local file/preview/diff tabs survive. */
+  | { type: 'host-snapshot'; tabs: readonly CloudSimpleHostTerminalTab[]; activeId: string | null }
   | { type: 'reset' }
 
 export function cloudSimpleWorkspaceTabsInitialState(
@@ -123,14 +142,17 @@ export function cloudSimpleWorkspaceTabsReducer(
         ? state
         : { ...state, dirty: { ...state.dirty, [action.id]: true } }
     }
+    case 'host-snapshot':
+      return mergeHostTabsIntoState(state, action.tabs, action.activeId)
     case 'reset':
       return cloudSimpleWorkspaceTabsInitialState()
   }
 }
 
-/** Lowest unused terminal number, or null at the session's tab cap. */
+/** Lowest unused terminal number; id is `terminal:<uuid>` so it never collides with a host tab id. */
 export function nextTerminalTab(
-  tabs: CloudSimpleWorkspaceTab[]
+  tabs: CloudSimpleWorkspaceTab[],
+  id = `terminal:${createBrowserUuid()}`
 ): Extract<CloudSimpleWorkspaceTab, { kind: 'terminal' }> | null {
   if (
     tabs.filter((tab) => tab.kind === 'terminal').length >= CLOUD_SIMPLE_WORKSPACE_MAX_TERMINAL_TABS
@@ -152,7 +174,7 @@ export function nextTerminalTab(
     number += 1
   }
   return {
-    id: `terminal-${number}`,
+    id,
     kind: 'terminal',
     title: `Terminal ${number}`
   }

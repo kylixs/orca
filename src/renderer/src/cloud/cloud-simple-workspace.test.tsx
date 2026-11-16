@@ -94,13 +94,13 @@ describe('简易工作区外壳', () => {
 
     const tabButton = screen.getByTestId('cloud-simple-workspace-tab-file:src/a.ts')
     expect(tabButton.querySelector('svg[aria-hidden="true"]')).toBeTruthy()
-    const terminalButton = screen.getByTestId('cloud-simple-workspace-tab-terminal-1')
+    const terminalButton = screen.getByTestId(/^cloud-simple-workspace-tab-terminal:/)
     expect(terminalButton.querySelector('svg[aria-hidden="true"]')).toBeTruthy()
 
     expect(screen.getByTestId('cloud-simple-workspace-tab-close-file:src/a.ts').title).toBe(
       '关闭 a.ts'
     )
-    expect(screen.getByTestId('cloud-simple-workspace-tab-close-terminal-1').title).toBe(
+    expect(screen.getByTestId(/^cloud-simple-workspace-tab-close-terminal:/).title).toBe(
       '关闭将结束该终端会话'
     )
   })
