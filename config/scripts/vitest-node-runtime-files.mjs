@@ -77,6 +77,12 @@ export const NODE_RUNTIME_INCLUDE = [
   // certificate handshake and silently retire the O1-d proof (same family as
   // W5b defect B / W9A-7 audit MAJ-1).
   'src/main/cloud-platform/cloud-preflight-probe-real-host.test.ts',
+  // Why: the renderer-facing session and host-revocation proofs open real
+  // WebSockets to the throwaway-certificate TLS runtime; bun's ws reds them with
+  // "TLS handshake failed" even with rejectUnauthorized:false (same family as
+  // W5b defect B / W9A-7 audit MAJ-1; U93).
+  'src/main/cloud-platform/cloud-session-service.test.ts',
+  'src/main/cloud-platform/cloud-host-revocation.test.ts',
   'src/renderer/src/lib/react-commit-cascade-observer.test.ts',
   'src/renderer/src/lib/react-commit-cascade-telemetry.test.ts',
   ...SQLITE_RUNTIME_INCLUDE,

@@ -23,6 +23,8 @@ import { CloudConnectClient } from './cloud-connect-client'
  * AC-14 on the real stack: a registered host learns of its own revocation over
  * the heartbeat and closes every live cloud session within 60 seconds, while the
  * platform refuses new tickets.
+ * Runner: node (vitest-node-runtime-files.mjs) — bun's ws cannot complete the
+ * throwaway-certificate TLS handshake (U93).
  */
 
 const EVIDENCE_DIR = new URL(

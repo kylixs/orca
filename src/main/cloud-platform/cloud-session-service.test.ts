@@ -15,6 +15,8 @@ import { CloudSessionService } from './cloud-session-service'
 /**
  * The renderer-facing session. It must never expose a token or device key, and a
  * revoked connection must leave the UI state honest rather than "still open".
+ * Runner: node (vitest-node-runtime-files.mjs) — bun's ws cannot complete the
+ * throwaway-certificate TLS handshake (U93).
  */
 
 let platform: Platform
