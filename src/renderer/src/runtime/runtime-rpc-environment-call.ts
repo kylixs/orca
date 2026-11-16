@@ -1,10 +1,16 @@
 import { callAbortableRuntimeEnvironment } from './abortable-runtime-environment-call'
 import { observePairingRefusal } from './runtime-environment-pairing-refresh'
+import { traceSessionTabsCall } from './web-session-tabs-sync/session-tabs-frame-trace'
 
 export function callRuntimeEnvironmentWithRevision(
   args: Parameters<typeof callRuntimeEnvironmentOnce>[0]
 ): Promise<unknown> {
-  return observePairingRefusal(callRuntimeEnvironmentOnce(args))
+  return observePairingRefusal(
+    traceSessionTabsCall(
+      { selector: args.environmentId, method: args.method, params: args.params },
+      () => callRuntimeEnvironmentOnce(args)
+    )
+  )
 }
 
 async function callRuntimeEnvironmentOnce(args: {

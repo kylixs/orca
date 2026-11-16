@@ -4,6 +4,8 @@
  * renderer re-reads the catalog each retry is refused the same way. The first refusal re-reads
  * it; subscribers keyed on the revision then resubscribe and requests use the new pairing.
  */
+import { traceSessionTabsSubscription } from './web-session-tabs-sync/session-tabs-frame-trace'
+
 const PAIRING_CHANGED_MESSAGE = 'Runtime environment pairing changed'
 
 type CatalogRefresher = () => Promise<void>
@@ -53,7 +55,12 @@ export function refreshRuntimeEnvironmentCatalog(): Promise<void> {
 export function subscribeRuntimeEnvironment(
   ...args: Parameters<typeof window.api.runtimeEnvironments.subscribe>
 ): ReturnType<typeof window.api.runtimeEnvironments.subscribe> {
-  return observePairingRefusal(window.api.runtimeEnvironments.subscribe(...args))
+  const [request, callbacks] = args
+  return observePairingRefusal(
+    traceSessionTabsSubscription(request, callbacks, (tracedCallbacks) =>
+      window.api.runtimeEnvironments.subscribe(request, tracedCallbacks)
+    )
+  )
 }
 
 /**

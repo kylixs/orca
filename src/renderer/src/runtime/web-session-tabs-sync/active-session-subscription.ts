@@ -25,6 +25,7 @@ import {
 } from './publisher-identity-fences'
 import { applyWebSessionTabsSnapshot } from './snapshot-api'
 import { applyWebSessionTabsStorePatch } from './store-patch'
+import { traceSessionTabsApplyDecision } from './session-tabs-frame-trace'
 import {
   hostSessionMirrorSettleForPatchlessFrame,
   type HostSessionMirrorSettle
@@ -133,6 +134,9 @@ export function installActiveSessionTabsSubscription({
     }
     const recoveredEvent: SessionTabsStreamEvent = { ...recovered, type: event.type }
     const decision = decideWebSessionTabsSnapshot(recovered, environmentId, runtimeId)
+    if (!decision.apply) {
+      traceSessionTabsApplyDecision(environmentId, recovered, false)
+    }
     const syncState = useAppStore.getState()
     const localTabs = syncState.tabsByWorktree[activeWorktreeId] ?? []
     const localTerminalCount = localTabs.length
@@ -178,18 +182,13 @@ export function installActiveSessionTabsSubscription({
         environmentId,
         worktreeId: activeWorktreeId,
         isCloudSession,
-        pendingAdoption: pendingHostLayoutAdoption || hasPendingHostLayoutAdoption(activeWorktreeId),
+        pendingAdoption:
+          pendingHostLayoutAdoption || hasPendingHostLayoutAdoption(activeWorktreeId),
         hasHostGroups: (recovered.tabGroups?.length ?? 0) > 0
       })
       settle = applyWebSessionTabsStorePatch(
         (state) =>
-          applyWebSessionTabsSnapshot(
-            state,
-            recovered,
-            environmentId,
-            Date.now(),
-            applyOptions
-          ),
+          applyWebSessionTabsSnapshot(state, recovered, environmentId, Date.now(), applyOptions),
         {
           frames: [
             {

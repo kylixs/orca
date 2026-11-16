@@ -1,5 +1,6 @@
 import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
 import { getRuntimeEnvironmentRevision } from './runtime-environment-revision'
+import { traceSessionTabsCall } from './web-session-tabs-sync/session-tabs-frame-trace'
 import type { WebSessionIntentOwner } from './web-session-intent-owner'
 
 export function isWebRuntimeSessionActive(
@@ -18,11 +19,15 @@ export function captureRuntimeEnvironmentCall(
   timeoutMs?: number
 }) => Promise<RuntimeRpcResponse<unknown>> {
   return (args) =>
-    window.api.runtimeEnvironments.call({
-      selector: environmentId,
-      ...args,
-      expectedEnvironmentPairingRevision
-    })
+    traceSessionTabsCall(
+      { selector: environmentId, method: args.method, params: args.params },
+      () =>
+        window.api.runtimeEnvironments.call({
+          selector: environmentId,
+          ...args,
+          expectedEnvironmentPairingRevision
+        })
+    )
 }
 
 export function captureWebSessionIntentOwner(environmentId: string): WebSessionIntentOwner {

@@ -21,6 +21,11 @@ import {
 } from './state'
 import { applyWebSessionTabsSnapshots } from './snapshot-api'
 import { applyWebSessionTabsStorePatch } from './store-patch'
+import {
+  isSessionTabsFrameTraceEnabled,
+  traceSessionTabsApplyDecision,
+  traceSessionTabsCall
+} from './session-tabs-frame-trace'
 import { isHostMirroredWorktree } from './visibility-types'
 
 export type InitialSessionTabsLoadArgs = {
@@ -42,14 +47,17 @@ export function loadInitialWebSessionTabs({
   // Why: listAll is bootstrap fallback; a stream received after this boundary owns the result.
   const requestReceivedFrame = nextReceivedSessionTabsFrame()
   let settleHydration: (() => void) | null = null
-  void window.api.runtimeEnvironments
-    .call({
-      selector: environmentId,
-      method: 'session.tabs.listAll',
-      params: {},
-      timeoutMs: 15_000,
-      expectedEnvironmentPairingRevision
-    })
+  void traceSessionTabsCall(
+    { selector: environmentId, method: 'session.tabs.listAll', params: {} },
+    () =>
+      window.api.runtimeEnvironments.call({
+        selector: environmentId,
+        method: 'session.tabs.listAll',
+        params: {},
+        timeoutMs: 15_000,
+        expectedEnvironmentPairingRevision
+      })
+  )
     .then(async (response: RuntimeRpcResponse<unknown>) => {
       if (
         !isCurrent() ||
@@ -124,6 +132,14 @@ export function loadInitialWebSessionTabs({
         decideWebSessionTabsSnapshot(snapshot, environmentId, runtimeId)
       )
       const freshSnapshots = applicable.filter((_snapshot, index) => decisions[index]!.apply)
+      // Applied snapshots are annotated by the apply layer; rejected ones only pass through here.
+      if (isSessionTabsFrameTraceEnabled()) {
+        applicable.forEach((snapshot, index) => {
+          if (!decisions[index]!.apply) {
+            traceSessionTabsApplyDecision(environmentId, snapshot, false)
+          }
+        })
+      }
       const initialInventoryStillCurrent =
         latestReceivedSessionTabsFrameByEnvironment.get(environmentId) === requestReceivedFrame &&
         (latestReceivedSessionTabsInventoryFrameByEnvironment.get(environmentId) ?? 0) <=

@@ -6,6 +6,7 @@ import type { languages } from 'monaco-editor'
 import type { MonacoE2EProbe } from './components/editor/monaco-e2e-probe'
 import type { TerminalWorktreeParkingDebugVerdict } from './components/terminal-pane/terminal-parking-e2e-overrides'
 import type { TerminalPtyPreSpawnE2EBarrier } from './components/terminal-pane/terminal-pty-pre-spawn-e2e-barrier'
+import type { SessionTabsFrameTraceHandle } from './runtime/web-session-tabs-sync/session-tabs-frame-trace-types'
 
 declare module 'monaco-editor/esm/vs/basic-languages/python/python.js' {
   export const conf: languages.LanguageConfiguration
@@ -95,6 +96,8 @@ declare global {
       worktreeVerdicts: () => TerminalWorktreeParkingDebugVerdict[]
     }
     __monacoEditorE2E?: MonacoE2EProbe
+    /** U138 diagnostic ring of `session.tabs.*` frames; present only while orca.debug.sessionTabs is on. */
+    __orcaSessionTabsTrace?: SessionTabsFrameTraceHandle
     __e2ePtyAppliedSizeReadDelayMs?: number
     __terminalPtyPreSpawnE2EBarrier?: TerminalPtyPreSpawnE2EBarrier
     /** Deployment-injected platform address for the standalone admin session page. */

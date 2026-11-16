@@ -13,6 +13,7 @@ import {
   sessionTabsPublicationEpochHistoryByWorktree
 } from './state'
 import { isSessionTabsListAllResult, sessionTabsFreshnessKey } from './tracking'
+import { traceSessionTabsCall } from './session-tabs-frame-trace'
 
 // Why no generation fence here: each census re-checks its own subscription before applying.
 const pairedRepairLane = createSessionTabsAuthorityRepairLane({
@@ -59,13 +60,17 @@ async function runCensus(
     return
   }
   const requestFrame = nextReceivedSessionTabsFrame()
-  const response = await window.api.runtimeEnvironments.call({
-    selector: args.environmentId,
-    method: 'session.tabs.listAll',
-    params: {},
-    timeoutMs: 15_000,
-    expectedEnvironmentPairingRevision: args.expectedEnvironmentPairingRevision
-  })
+  const response = await traceSessionTabsCall(
+    { selector: args.environmentId, method: 'session.tabs.listAll', params: {} },
+    () =>
+      window.api.runtimeEnvironments.call({
+        selector: args.environmentId,
+        method: 'session.tabs.listAll',
+        params: {},
+        timeoutMs: 15_000,
+        expectedEnvironmentPairingRevision: args.expectedEnvironmentPairingRevision
+      })
+  )
   if (
     !args.isCurrent() ||
     getRuntimeEnvironmentRevision(args.environmentId) !== args.expectedEnvironmentPairingRevision ||

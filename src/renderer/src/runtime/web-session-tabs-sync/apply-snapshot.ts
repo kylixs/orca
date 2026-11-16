@@ -15,6 +15,7 @@ import { applyBrowserRecordUpdates } from './apply-browser-records'
 import { applyWorktreeRecordUpdates } from './apply-worktree-records'
 import { applyActiveStateUpdates } from './apply-active-state'
 import { buildWebSessionTabsFinalPatch } from './apply-final-patch'
+import { traceSessionTabsApplyDecision } from './session-tabs-frame-trace'
 
 /** Reconcile one host frame through the staged terminal/browser/layout pipeline. */
 export function applyWebSessionTabsSnapshotWithContext(
@@ -31,6 +32,7 @@ export function applyWebSessionTabsSnapshotWithContext(
   ) {
     return state
   }
+  traceSessionTabsApplyDecision(environmentId, rawSnapshot, true, options)
   const worktreeId = rawSnapshot.worktree
   const base = prepareWebSessionTabsSnapshotBase(
     state,
