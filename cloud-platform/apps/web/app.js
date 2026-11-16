@@ -741,7 +741,7 @@ function projectCard(p, globalDefault) {
  * U80 M3: the phone face of 我的项目. Same row data as the table, rendered as a
  * card (visible only ≤700px); desktop keeps the table byte for byte.
  */
-function projectListCard(p) {
+function projectListCard(p, { lifecycle = false } = {}) {
   const offline = p.hostStatus !== 'online'
   const [statusLabel, statusTone] =
     p.status === 'archived'
@@ -766,7 +766,7 @@ function projectListCard(p) {
       <div class="plc-field"><span class="k">创建时间</span><span class="v">${relative(p.createdAt ?? Date.now())}</span></div>
     </div>
     <div class="plc-actions">
-      ${detailEntry(p)}
+      ${detailEntry(p)}${archived ? restoreEntry(p) : archiveEntry(p, lifecycle)}
       ${
         archived
           ? ''
@@ -784,8 +784,21 @@ function projectListCard(p) {
  * explains); 「打开」 mounts the admin-surface handoff in a same-page overlay
  * (U46-3); 「Orca Web」 (M122, FR-3.10) keeps the new-tab entry unchanged.
  */
-function projectRowActions(p) {
-  return `<button class="btn sm" data-open="${p.id}" ${openDisabledAttr(p)}>打开</button>${selfGrantEntry(p)}${detailEntry(p)}${orcaWebEntry(p)}`
+function projectRowActions(p, { lifecycle = false } = {}) {
+  return `<button class="btn sm" data-open="${p.id}" ${openDisabledAttr(p)}>打开</button>${selfGrantEntry(p)}${detailEntry(p)}${archiveEntry(p, lifecycle)}${orcaWebEntry(p)}`
+}
+
+/** Lifecycle entries are admin-only and only rendered on the 我的项目 surface. */
+function archiveEntry(p, lifecycle) {
+  return lifecycle && isAdmin() && p.status !== 'archived'
+    ? `<button class="btn sm danger" data-archive="${esc(p.id)}">归档</button>`
+    : ''
+}
+
+function restoreEntry(p) {
+  return isAdmin() && p.status === 'archived'
+    ? `<button class="btn sm" data-restore="${esc(p.id)}">恢复</button>`
+    : ''
 }
 
 function detailEntry(p) {
@@ -915,9 +928,134 @@ function wireProjectActions() {
       openDetailFromList('projects', btn.dataset.detail ?? '')
     }
   }
+  for (const btn of document.querySelectorAll('[data-archive]')) {
+    btn.onclick = () => {
+      const project = projectById(btn.dataset.archive ?? '')
+      if (project) confirmArchiveProject(project)
+    }
+  }
+  for (const btn of document.querySelectorAll('[data-restore]')) {
+    btn.onclick = () => {
+      const project = projectById(btn.dataset.restore ?? '')
+      if (project) confirmRestoreProject(project)
+    }
+  }
   for (const btn of document.querySelectorAll('[data-go]')) {
     btn.onclick = () => navigate(btn.dataset.go)
   }
+}
+
+/* ---------------- 归档 / 恢复确认（U116① W4，仅 admin 入口） ---------------- */
+
+const ARCHIVE_CONSEQUENCES = [
+  '归档后，该项目将从工作台和项目列表中移出，只保留在管理台的「已归档」分组。',
+  '该项目当前的云端工作区会话会被断开。',
+  '主机磁盘上的项目目录与代码不会被删除。',
+  '项目 Key 与路径会被释放，可能被新项目复用；恢复时若已被占用，将无法恢复。',
+  '之后可由管理员在「已归档」中恢复。'
+]
+
+const RESTORE_CONSEQUENCES = [
+  '恢复后项目重新进入在营列表。',
+  '配置了仓库的项目会先进入「准备中」，等待主机下次心跳准备，完成后才能打开。',
+  '若项目 Key 或路径已被其他在营项目占用，恢复会失败，项目保持归档。'
+]
+
+function projectById(projectId) {
+  return (
+    state.projects.find((p) => p.id === projectId) ??
+    state.archivedProjects.find((p) => p.id === projectId)
+  )
+}
+
+function consequencesHtml(lines) {
+  return `<ul class="dialog-consequences">${lines.map((line) => `<li>${line}</li>`).join('')}</ul>`
+}
+
+/** Confirm card for a destructive archive; cancel owns the first focus target (T10). */
+function confirmArchiveProject(project, { onSuccess } = {}) {
+  let backdrop
+  const close = () => backdrop?.querySelector('[data-action="close"]')?.click()
+  backdrop = dialog(`归档项目「${project.name}」？`, consequencesHtml(ARCHIVE_CONSEQUENCES), [
+    { label: '取消' },
+    {
+      label: '归档项目',
+      danger: true,
+      onClick: () => {
+        void runArchiveProject(project, { close, onSuccess })
+        return false
+      }
+    }
+  ])
+  return backdrop
+}
+
+function confirmRestoreProject(project, { onSuccess } = {}) {
+  let backdrop
+  const close = () => backdrop?.querySelector('[data-action="close"]')?.click()
+  backdrop = dialog(`恢复项目「${project.name}」？`, consequencesHtml(RESTORE_CONSEQUENCES), [
+    { label: '取消' },
+    {
+      label: '恢复项目',
+      primary: true,
+      onClick: () => {
+        void runRestoreProject(project, { close, onSuccess })
+        return false
+      }
+    }
+  ])
+  return backdrop
+}
+
+/** Re-render the list that owns the lifecycle action once a closing detail has popped. */
+function refreshAfterLifecycle() {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      const route = parseHash(location.hash)
+      if (detailRouteOf(route)) {
+        navigate('projects')
+      } else {
+        applyRoute(route, { force: true })
+      }
+      resolve()
+    }, 0)
+  })
+}
+
+async function runArchiveProject(project, { close, onSuccess } = {}) {
+  try {
+    await api(`/v1/projects/${project.id}/archive`, { method: 'POST' })
+  } catch (err) {
+    toast(`归档失败：${err.message ?? err}`)
+    if (err.status === 404) {
+      close()
+      onSuccess?.()
+      await refreshAfterLifecycle()
+    }
+    return
+  }
+  close()
+  onSuccess?.()
+  toast(`已归档「${project.name}」`)
+  await refreshAfterLifecycle()
+}
+
+async function runRestoreProject(project, { close, onSuccess } = {}) {
+  try {
+    await api(`/v1/projects/${project.id}/restore`, { method: 'POST' })
+  } catch (err) {
+    toast(`恢复失败：${err.message ?? err}`)
+    if (err.status === 404) {
+      close()
+      onSuccess?.()
+      await refreshAfterLifecycle()
+    }
+    return
+  }
+  close()
+  onSuccess?.()
+  toast(`已恢复「${project.name}」`)
+  await refreshAfterLifecycle()
 }
 
 /* ---------------- 内嵌工作区覆盖层（U46-3 · §4.2） ---------------- */
@@ -1411,33 +1549,57 @@ async function openProjectDetail(projectId, { tab = 'info', onClose } = {}) {
   let openedWorkspace = false
   const reason = openDisabledReason(cached)
   const extra = { grantsLoading: true, grants: [], hostRows: null }
+  let backdrop
+  const closeDetail = () => backdrop?.querySelector('[data-action="close"]')?.click()
+  const detailActions =
+    project.status === 'archived'
+      ? isAdmin()
+        ? [
+            {
+              label: '恢复项目',
+              primary: true,
+              onClick: () => {
+                confirmRestoreProject(project, { onSuccess: closeDetail })
+                return false
+              }
+            }
+          ]
+        : []
+      : [
+          {
+            label: '打开项目',
+            primary: true,
+            disabled: Boolean(reason),
+            title: reason ?? '进入项目工作区',
+            onClick: () => {
+              openedWorkspace = true
+              void openProjectWorkspace(projectId)
+            }
+          },
+          ...(isAdmin()
+            ? [
+                {
+                  label: '归档项目',
+                  danger: true,
+                  onClick: () => {
+                    confirmArchiveProject(project, { onSuccess: closeDetail })
+                    return false
+                  }
+                }
+              ]
+            : [])
+        ]
   // 详情层身份：静默移除后旧弹框的 Escape 监听不得影响新层（onClose 身份比对）。
   const detailEntry = { name: 'projects', id: projectId, remove: () => backdrop.remove() }
-  const backdrop = dialog(
-    '项目详情',
-    projectDetailHtml(project, extra),
-    [
-      {
-        label: '打开项目',
-        primary: true,
-        disabled: Boolean(reason),
-        title: reason ?? '进入项目工作区',
-        onClick: () => {
-          openedWorkspace = true
-          void openProjectWorkspace(projectId)
-        }
-      }
-    ],
-    {
-      wide: true,
-      sheet: true,
-      onClose: () => {
-        if (activeDetail !== detailEntry) return // 已被路由静默移除
-        activeDetail = null
-        if (!openedWorkspace) onClose?.()
-      }
+  backdrop = dialog('项目详情', projectDetailHtml(project, extra), detailActions, {
+    wide: true,
+    sheet: true,
+    onClose: () => {
+      if (activeDetail !== detailEntry) return // 已被路由静默移除
+      activeDetail = null
+      if (!openedWorkspace) onClose?.()
     }
-  )
+  })
   activeDetail = detailEntry
   const body = backdrop.querySelector('.dialog .body')
   const grantsPath = `/v1/projects/${projectId}/grants`
@@ -1491,11 +1653,14 @@ async function openProjectDetail(projectId, { tab = 'info', onClose } = {}) {
     })
     paintPermCards()
     // The refresh may have changed host state, so the primary action follows it.
-    const refreshedReason = openDisabledReason(project)
-    const openAction = backdrop.querySelector('[data-action="0"]')
-    if (openAction) {
-      openAction.disabled = Boolean(refreshedReason)
-      openAction.title = refreshedReason ?? '进入项目工作区'
+    // An archived detail's action 0 is 恢复项目, never the open gate.
+    if (project.status !== 'archived') {
+      const refreshedReason = openDisabledReason(project)
+      const openAction = backdrop.querySelector('[data-action="0"]')
+      if (openAction) {
+        openAction.disabled = Boolean(refreshedReason)
+        openAction.title = refreshedReason ?? '进入项目工作区'
+      }
     }
   }
   wireDetailCopy(backdrop)
@@ -1534,8 +1699,8 @@ function currentDeviceId() {
 const PROJECT_TABLE_HEAD =
   '<thead><tr><th>项目</th><th>仓库</th><th>主机</th><th>权限</th><th>下载策略</th><th class="actions">操作</th></tr></thead>'
 
-/** One desktop row; archived history rows drop every live entry but 详情 (U116① W3). */
-function projectTableRow(p, globalDefault) {
+/** One desktop row; archived history rows swap live entries for 详情/恢复 (U116① W3/W4). */
+function projectTableRow(p, globalDefault, { lifecycle = false } = {}) {
   return `<tr>
         <td><strong>${esc(p.name)}</strong> ${archivedBadge(p)}<div class="muted mono">${esc(p.path)}</div></td>
         <td class="mono muted">${esc(p.repoUrl)}</td>
@@ -1546,7 +1711,11 @@ function projectTableRow(p, globalDefault) {
             ? '<span class="badge lock">禁止</span>'
             : '<span class="badge">允许</span>'
         }</td>
-        <td class="actions">${p.status === 'archived' ? detailEntry(p) : projectRowActions(p)}</td>
+        <td class="actions">${
+          p.status === 'archived'
+            ? `${detailEntry(p)}${restoreEntry(p)}`
+            : projectRowActions(p, { lifecycle })
+        }</td>
       </tr>`
 }
 
@@ -1555,9 +1724,9 @@ function archivedGroupHtml(rows, globalDefault, { open = false } = {}) {
   return `<details class="archived-group"${open ? ' open' : ''}>
     <summary>已归档项目（${rows.length}）</summary>
     <div class="table-wrap archived-table">
-      <table>${PROJECT_TABLE_HEAD}<tbody>${rows.map((p) => projectTableRow(p, globalDefault)).join('')}</tbody></table>
+      <table>${PROJECT_TABLE_HEAD}<tbody>${rows.map((p) => projectTableRow(p, globalDefault, { lifecycle: true })).join('')}</tbody></table>
     </div>
-    <div class="project-list">${rows.map(projectListCard).join('')}</div>
+    <div class="project-list">${rows.map((p) => projectListCard(p, { lifecycle: true })).join('')}</div>
   </details>`
 }
 
@@ -1609,9 +1778,10 @@ async function renderProjects() {
     $('#projectList').hidden = archivedView
     const emptyRow = '<tr><td colspan="6" class="table-empty">没有匹配的项目</td></tr>'
     $('#projectBody').innerHTML =
-      rows.map((p) => projectTableRow(p, globalDefault)).join('') || emptyRow
+      rows.map((p) => projectTableRow(p, globalDefault, { lifecycle: true })).join('') || emptyRow
     $('#projectList').innerHTML =
-      rows.map(projectListCard).join('') || '<div class="card pad muted">没有匹配的项目</div>'
+      rows.map((p) => projectListCard(p, { lifecycle: true })).join('') ||
+      '<div class="card pad muted">没有匹配的项目</div>'
     const group = $('#archivedGroup')
     if (archivedView) {
       group.innerHTML =

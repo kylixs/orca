@@ -416,16 +416,26 @@ test('390×844：项目列表 chips 横滑、卡字段单行省略、操作 ≥4
       .first()
       .locator('.plc-actions .btn')
       .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height))
-    assert.equal(heights.length, 2, '详情 + 打开工作区')
+    assert.equal(heights.length, 3, '详情 + 归档 + 打开工作区')
     assert.ok(heights.every((height) => height >= 44), `actions >=44px, got ${heights.join(',')}`)
     assert.equal(
       await cards
         .first()
         .locator('.plc-actions .btn.sm')
         .count(),
-      2,
+      3,
       'compact buttons still hold the 44px mobile target'
     )
+    assert.equal(
+      await cards.first().locator('[data-archive]').count(),
+      1,
+      'admin card carries the 归档 entry'
+    )
+    const archiveHeight = await cards
+      .first()
+      .locator('[data-archive]')
+      .evaluate((el) => el.getBoundingClientRect().height)
+    assert.ok(archiveHeight >= 44, `归档 touch target >=44px, got ${archiveHeight}`)
 
     await page.click('#projectChips .chip[data-project-filter="offline"]')
     await page.waitForFunction(
