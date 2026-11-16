@@ -31,7 +31,14 @@
 | 令 | 内容 | 依赖 | 状态 |
 | --- | --- | --- | --- |
 | B-0 | 完整设计（复用 A 通道+autoRestoreFit 尺寸弹框+overlay suspend/end 语义+多用户 scope） | A 设计/V 诊断 | **设计在途** |
-| B-1..n | 按 B 设计切分（预计：bootstrap 枚举→双向订阅→PTY attach→关闭语义→autoRestoreFit 放行→e2e 双端同步） | A-5 之后 | 待切分 |
+| B-令1 | 纯投影模块+reducer 扩展 | A-令1（已落） | **可即开** |
+| B-令2 | bootstrap hook（capability 门控+subscribe/list+退避/负缓存） | A-令2/4 | 排队 |
+| B-令3 | 终端 attach/create/pending/ended/重开 | A-令5/6 | 排队 |
+| B-令4 | 关闭/激活/新建双向 | A-令3 | 与 B-令6 串行合并 |
+| B-令5 | suspend/end 协议+面板卸载策略 | — | 可并行 |
+| B-令6 | 尺寸冲突 overlay+claim/restoreFit+get/setAutoRestoreFit scope（含 **U98 抢尺寸修复**） | A-令3 | 排队 |
+| B-令7 | 回放边界+ended 阈值+孤儿兜底 | A-令3/7 | 排队 |
+| B-令8 | 端到端回归（双端同步 e2e） | 全部 | 收口 |
 
 ## 验收里程碑
 

@@ -427,3 +427,19 @@ E2E 断言升级（沿用 A 的 D 项）：把 U91 A-RESTART 的「新终端能�
 - T-B1（创建路径）、T-B2（活动同步）、T-B5（suspend 实现）、T-B6（setAutoRestoreFit scope）需要明确放行/否决。
 - Q-B1/Q-B3 建议在 A-令6/A-令7 完成后各补一条 characterization，再冻结 B-令3 的 ended 阈值与 B-令8 的宿主重启断言。
 - B-令1 可在 A-令1 后立即开；B-令2 必须等 A-令2/A-令4 合入。
+
+## 主会话审定（2026-11-16，B 部分）
+
+- **T5** 定：存储=宿主 `workspaceSession`（浏览器零句柄），与 A/T2 单一真源。
+- **T6** 定：B-1 不加 PTY 空闲 reaper；suspend 保活、显式 end 回收。
+- **T7** 定：任一端关闭=PTY 关+行退役（与 A8 语义一致；备选已否决）。
+- **T-B1** 定：新终端继续 `terminal.create(tabId,leafId)`；`createTerminal` 不开放。
+- **T-B2** 定：活动标签跨端同步（带 snapshot 回环保护；实测异常可退 notifyClients:false）。
+- **T-B3** 定：split 仅渲染活动 leaf+徽标，简易工作区不做分屏 UI。
+- **T-B4** 定：文件标签默认不做 B-2 单向投影。
+- **T-B5** 定：suspend=销毁 iframe+关 socket，PTY 保活。
+- **T-B6** 定：`setAutoRestoreFit` 放行必须带体内 terminal handle、仅写该 PTY 临时 override；不满足即只读（宿主全局设置不得裸放行——跨用户风险）。
+- **T-B7** 定：登出=suspend，不隐式 end。
+- **Q-B1..B8**：随 B-令实施逐项探针落实（不预先实现）。
+- **新增发现转台账**：订阅即抢尺寸 → U98（随 B-令6 修复）。
+- **流程**：B-令1 可即开（仅依赖 A-令1 已落）；B-令2 等 A-令2/4；B-令3 等 A-令5/6；B-令4+6 串行；B-令5 并行；B-令7/8 收口。
