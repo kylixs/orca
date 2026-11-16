@@ -369,4 +369,145 @@ describe('renderer-authored layout digest ownership', () => {
     )
     expect(afterFocus.activeGroupId).toBe(splitGroup.id)
   })
+
+  it('does not adopt an active group that does not hold the incoming active tab', () => {
+    const runtime = new OrcaRuntimeService()
+    runtime.setNotifier({ moveSessionTab: vi.fn() } as never)
+    const layout = {
+      type: 'split' as const,
+      direction: 'horizontal' as const,
+      first: { type: 'leaf' as const, groupId: 'group-left' },
+      second: { type: 'leaf' as const, groupId: 'group-right' }
+    }
+    const incoming: RuntimeMobileSessionTabsSnapshot = {
+      ...twoTabSnapshot(),
+      snapshotVersion: 5,
+      activeGroupId: 'group-left',
+      activeTabId: 'right-tab::leaf-1',
+      tabGroups: [
+        { id: 'group-left', activeTabId: 'left-tab', tabOrder: ['left-tab'] },
+        { id: 'group-right', activeTabId: 'right-tab', tabOrder: ['right-tab'] }
+      ],
+      tabGroupLayout: layout
+    }
+    setMobileSessionSnapshot(runtime, {
+      ...incoming,
+      publicationEpoch: 'headless:host-owned',
+      snapshotVersion: 10,
+      activeGroupId: 'group-right',
+      activeTabId: 'right-tab::leaf-1'
+    })
+    markRendererPublished(runtime, TEST_WORKTREE_ID, incoming)
+
+    syncRendererSnapshots(runtime, [incoming])
+
+    const stored = getStoredMobileSessionSnapshot(runtime, TEST_WORKTREE_ID)!
+    expect(stored.publicationEpoch).toBe('headless:host-owned')
+    // The pair is inconsistent (right-tab lives in group-right), so keep the host focus.
+    expect(stored.activeGroupId).toBe('group-right')
+  })
+
+  it('does not adopt an active group the host layout tree does not reference', () => {
+    const runtime = new OrcaRuntimeService()
+    runtime.setNotifier({ moveSessionTab: vi.fn() } as never)
+    const incoming: RuntimeMobileSessionTabsSnapshot = {
+      ...twoTabSnapshot(),
+      snapshotVersion: 5,
+      activeGroupId: 'group-orphan',
+      activeTabId: 'right-tab::leaf-1'
+    }
+    setMobileSessionSnapshot(runtime, {
+      ...incoming,
+      publicationEpoch: 'headless:host-owned',
+      snapshotVersion: 10,
+      activeGroupId: 'group-left',
+      activeTabId: 'left-tab::leaf-1',
+      tabGroups: [
+        { id: 'group-left', activeTabId: 'left-tab', tabOrder: ['left-tab', 'right-tab'] },
+        { id: 'group-orphan', activeTabId: 'right-tab', tabOrder: ['right-tab'] }
+      ],
+      tabGroupLayout: { type: 'leaf', groupId: 'group-left' }
+    })
+    markRendererPublished(runtime, TEST_WORKTREE_ID, incoming)
+
+    syncRendererSnapshots(runtime, [incoming])
+
+    const stored = getStoredMobileSessionSnapshot(runtime, TEST_WORKTREE_ID)!
+    expect(stored.publicationEpoch).toBe('headless:host-owned')
+    // group-orphan is in tabGroups but not in the host tree: it cannot take focus.
+    expect(stored.activeGroupId).toBe('group-left')
+  })
+
+  it('does not adopt an active group when the incoming frame omits its active tab', () => {
+    const runtime = new OrcaRuntimeService()
+    runtime.setNotifier({ moveSessionTab: vi.fn() } as never)
+    const incoming: RuntimeMobileSessionTabsSnapshot = {
+      ...twoTabSnapshot(),
+      snapshotVersion: 5,
+      activeGroupId: 'group-left',
+      activeTabId: null
+    }
+    setMobileSessionSnapshot(runtime, {
+      ...incoming,
+      publicationEpoch: 'headless:host-owned',
+      snapshotVersion: 10,
+      activeGroupId: 'group-right',
+      activeTabId: 'right-tab::leaf-1',
+      tabGroups: [
+        { id: 'group-left', activeTabId: 'left-tab', tabOrder: ['left-tab', 'right-tab'] },
+        { id: 'group-right', activeTabId: 'right-tab', tabOrder: ['right-tab'] }
+      ]
+    })
+    markRendererPublished(runtime, TEST_WORKTREE_ID, incoming)
+
+    syncRendererSnapshots(runtime, [incoming])
+
+    const stored = getStoredMobileSessionSnapshot(runtime, TEST_WORKTREE_ID)!
+    expect(stored.publicationEpoch).toBe('headless:host-owned')
+    // Without an active tab the pair cannot be validated: keep the host focus.
+    expect(stored.activeGroupId).toBe('group-right')
+  })
+
+  it('compares against the digest of the raw frame, not of the merged snapshot', () => {
+    const runtime = new OrcaRuntimeService()
+    runtime.setNotifier({ moveSessionTab: vi.fn() } as never)
+    const preservedAgent = {
+      type: 'agent-session' as const,
+      id: 'agent-session:preserved',
+      title: 'Preserved agent',
+      sessionId: 'preserved',
+      agent: 'claude',
+      isActive: false
+    }
+    // The host holds an agent-session tab the renderer knows nothing about.
+    setMobileSessionSnapshot(runtime, {
+      ...twoTabSnapshot(),
+      publicationEpoch: 'headless:host-owned',
+      snapshotVersion: 10,
+      tabGroups: [
+        {
+          id: 'group-left',
+          activeTabId: 'left-tab',
+          tabOrder: ['left-tab', 'right-tab', 'agent-session:preserved']
+        }
+      ],
+      tabs: [...twoTabSnapshot().tabs, preservedAgent]
+    })
+    const rawFrame = { ...twoTabSnapshot(), snapshotVersion: 5 }
+    markRendererPublished(runtime, TEST_WORKTREE_ID, rawFrame)
+
+    syncRendererSnapshots(runtime, [rawFrame])
+    // First sync merges the preserved agent-session tab into the host layout, so
+    // the merged snapshot's digest now differs from the raw frame's.
+    expect(
+      getStoredMobileSessionSnapshot(runtime, TEST_WORKTREE_ID)!.tabGroups![0]!.tabOrder
+    ).toContain('agent-session:preserved')
+
+    syncRendererSnapshots(runtime, [{ ...rawFrame, snapshotVersion: 6 }])
+
+    // If the accepted digest were taken from the merged snapshot, this resend
+    // would look authored and hand the layout back to the renderer.
+    const stored = getStoredMobileSessionSnapshot(runtime, TEST_WORKTREE_ID)!
+    expect(stored.publicationEpoch).toBe('headless:host-owned')
+  })
 })

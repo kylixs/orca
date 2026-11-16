@@ -1,6 +1,7 @@
 import type { OrcaRuntimeService } from './orca-runtime'
 import type { RuntimeMobileSessionTabsSnapshot } from '../../shared/runtime-types'
 import { getHeadlessMobileSessionGroupId } from './mobile-session-layout-projection'
+import { getMobileSessionSnapshotTabIdentityKeys } from './mobile-session-tab-merge'
 import {
   getMobileSessionAuthoredLayoutDigest,
   getMobileSessionTabGroupLayoutSignature
@@ -37,7 +38,7 @@ export function getStoredMobileSessionSnapshot(
 export function markRendererPublished(
   runtime: OrcaRuntimeService,
   worktree: string,
-  layout: Pick<RuntimeMobileSessionTabsSnapshot, 'tabGroups' | 'tabGroupLayout'>
+  layout: Pick<RuntimeMobileSessionTabsSnapshot, 'tabGroups' | 'tabGroupLayout' | 'tabs'>
 ): void {
   // Only an authoritative-window publication whose group layout still matches
   // the host makes a forwarded move applicable.
@@ -48,8 +49,10 @@ export function markRendererPublished(
   ).acceptedRendererMobileSnapshotByWorktree.set(worktree, {
     publicationEpoch: 'renderer-epoch',
     rendererVersion: 1,
-    rendererTabCount: 2,
-    rendererTabIdentityKeys: new Set(['left-tab::leaf-1', 'right-tab::leaf-1']),
+    rendererTabCount: layout.tabs.length,
+    rendererTabIdentityKeys: new Set(
+      layout.tabs.flatMap((tab) => getMobileSessionSnapshotTabIdentityKeys(tab))
+    ),
     rendererTabGroupLayoutSignature: getMobileSessionTabGroupLayoutSignature(layout),
     rendererAuthoredLayoutDigest: getMobileSessionAuthoredLayoutDigest(layout)
   })

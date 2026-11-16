@@ -192,10 +192,24 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
         accepted !== undefined &&
         this.isHeadlessBuiltMobileSessionPublicationBase(existing.publicationEpoch) &&
         (sameGeneration ? digestMatches : shapeMatches)
+      // Why: focus is adopted as a pair. A group that is not live in the host
+      // tree, or an incoming active tab the group does not hold, would highlight
+      // a group the tab is not in — keep the host's focus instead.
+      const incomingActiveTabTopLevelId =
+        typeof snapshot.activeTabId === 'string' && snapshot.activeTabId.length > 0
+          ? (this.resolveMobileSessionHostTabId(snapshot, snapshot.activeTabId) ??
+            snapshot.activeTabId)
+          : null
       const adoptIncomingActiveGroupId =
         snapshot.activeGroupId !== null &&
-        (existing?.tabGroups ?? []).some(
-          (group) => group.id === snapshot.activeGroupId && group.tabOrder.length > 0
+        existing !== undefined &&
+        this.isApplicableHeadlessTabGroupTarget(existing, snapshot.activeGroupId) &&
+        incomingActiveTabTopLevelId !== null &&
+        (existing.tabGroups ?? []).some(
+          (group) =>
+            group.id === snapshot.activeGroupId &&
+            group.tabOrder.length > 0 &&
+            group.tabOrder.includes(incomingActiveTabTopLevelId)
         )
       const nextSnapshot = preserveHostLayout
         ? {
