@@ -83,6 +83,52 @@ test('C6 未知路由保留 URL 并渲染 404，返回工作台恢复默认路�
   assert.equal(page.window.location.hash, '#/workbench')
 })
 
+test('C6 未知路由矩阵：已删页面/旧原型/畸形编码一律 404，且不回落工作台', async () => {
+  const cases = [
+    '#/members',
+    '#/diagnostics',
+    '#/project/payment-service',
+    '#/projects/%E0%A4%A',
+    '#/members/extra'
+  ]
+  for (const hash of cases) {
+    const page = loadWebConsolePage(service.url, { hash })
+    await page.settle()
+    await page.submitLogin(ADMIN[0], ADMIN[1])
+
+    assert.equal(page.text('#crumbs'), '页面不存在', `${hash} must render the 404 breadcrumb`)
+    assert.match(page.text('#content'), /页面不存在/, `${hash} must render the 404 view`)
+    assert.match(page.text('#content'), /返回工作台/)
+    assert.ok(
+      page.text('#content').includes(hash),
+      `the 404 view must show the original hash (${hash})`
+    )
+    assert.equal(page.window.location.hash, hash, `${hash} must never be rewritten`)
+    assert.equal(
+      page.window.document.querySelectorAll('#content table').length,
+      0,
+      `${hash} must not fall back to a list/workbench page`
+    )
+  }
+})
+
+test('C6/T5 403 与 404 不混用：无权管理路由 403，未知路由对同一非管理员 404', async () => {
+  const forbidden = loadWebConsolePage(service.url, { hash: '#/hosts' })
+  await forbidden.settle()
+  await forbidden.submitLogin(DEVELOPER[0], DEVELOPER[1])
+  assert.equal(forbidden.text('#crumbs'), '无权访问')
+  assert.match(forbidden.text('#content'), /没有平台管理权限/)
+  assert.equal(forbidden.window.location.hash, '#/hosts')
+
+  const unknown = loadWebConsolePage(service.url, { hash: '#/members' })
+  await unknown.settle()
+  await unknown.submitLogin(DEVELOPER[0], DEVELOPER[1])
+  assert.equal(unknown.text('#crumbs'), '页面不存在')
+  assert.match(unknown.text('#content'), /页面不存在/)
+  assert.doesNotMatch(unknown.text('#content'), /没有平台管理权限/)
+  assert.equal(unknown.window.location.hash, '#/members')
+})
+
 test('C5/C8 登录回跳与 403：非管理员深链保留 URL，刷新后仍是 403', async () => {
   const page = loadWebConsolePage(service.url, { hash: '#/hosts' })
   await page.settle()

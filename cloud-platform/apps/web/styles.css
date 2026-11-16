@@ -888,6 +888,32 @@ td.actions {
   margin-bottom: 12px;
 }
 
+/* R6/T14: 404/403 在窄视口保持桌面 schema，长 hash 不撑破页面。 */
+@media (max-width: 760px) {
+  :root {
+    --sidebar-w: 176px;
+  }
+  .topbar {
+    height: auto;
+    min-height: 52px;
+    flex-wrap: wrap;
+    gap: 2px 8px;
+    padding: 6px 12px;
+  }
+  .content {
+    padding: 16px 12px;
+  }
+  .forbidden {
+    padding: 0 8px;
+  }
+  .forbidden .box {
+    max-width: 100%;
+  }
+  .forbidden p .mono {
+    overflow-wrap: anywhere;
+  }
+}
+
 .toast {
   position: fixed;
   bottom: 24px;
