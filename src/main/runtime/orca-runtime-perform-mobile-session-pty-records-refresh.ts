@@ -103,6 +103,8 @@ export class OrcaRuntimeWithPerformMobileSessionPtyRecordsRefresh extends OrcaRu
       notifyClients?: boolean
       clientNavigationId?: string
       navigation?: RuntimeNavigationTarget
+      /** False for a pane mount mirror-attaching through activate; only a user tap persists. */
+      persistSelection?: boolean
       intent?: TabActivationIntent
     } = {}
   ): Promise<RuntimeMobileSessionTabsResult> {
@@ -207,7 +209,8 @@ export class OrcaRuntimeWithPerformMobileSessionPtyRecordsRefresh extends OrcaRu
               this.getMobileSessionTabsForWorktree(worktreeId),
               tab.id,
               navigation,
-              opts.clientNavigationId
+              opts.clientNavigationId,
+              opts.persistSelection !== false
             )
           }
           if (sessionId && parseAppSshPtyId(sessionId)) {
@@ -221,7 +224,8 @@ export class OrcaRuntimeWithPerformMobileSessionPtyRecordsRefresh extends OrcaRu
           this.getMobileSessionTabsForWorktree(worktreeId),
           tab.id,
           navigation,
-          opts.clientNavigationId
+          opts.clientNavigationId,
+          opts.persistSelection !== false
         )
       }
       const callerSnapshot = this.getMobileSessionTabsForWorktree(
@@ -251,14 +255,19 @@ export class OrcaRuntimeWithPerformMobileSessionPtyRecordsRefresh extends OrcaRu
       // Why: a paired web/remote tap is explicit intent, so it must survive reload even when a
       // renderer window owns the live publication and cannot persist it (U138). The desktop path
       // (host window republishing focus) is skipped to avoid a conflicting second write.
-      if (opts.clientNavigationId && !(targetsHost && this.notifier?.focusTerminal)) {
+      if (
+        opts.persistSelection !== false &&
+        opts.clientNavigationId &&
+        !(targetsHost && this.notifier?.focusTerminal)
+      ) {
         this.persistPairedClientMobileSessionTabActivation(worktreeId, snapshot!, targetTab)
       }
       return this.applyMobileSessionTabNavigation(
         this.getMobileSessionTabsForWorktree(worktreeId),
         targetTab.id,
         navigation,
-        opts.clientNavigationId
+        opts.clientNavigationId,
+        opts.persistSelection !== false
       )
     } else if (tab.type === 'browser') {
       // Why: browser mobile tabs are renderer-owned unified tabs; focusing the
@@ -275,7 +284,8 @@ export class OrcaRuntimeWithPerformMobileSessionPtyRecordsRefresh extends OrcaRu
       this.getMobileSessionTabsForWorktree(worktreeId),
       tab.id,
       navigation,
-      opts.clientNavigationId
+      opts.clientNavigationId,
+      opts.persistSelection !== false
     )
   }
 }

@@ -25,7 +25,8 @@ export class OrcaRuntimeWithApplyMobileSessionTabNavigation extends OrcaRuntimeW
     snapshot: RuntimeMobileSessionTabsResult,
     activeTabId: string,
     navigation: RuntimeNavigationTarget,
-    clientNavigationId?: string
+    clientNavigationId?: string,
+    persistClientSelection = true
   ): RuntimeMobileSessionTabsResult {
     let callerSnapshot: RuntimeMobileSessionTabsResult | null = null
     if (navigationTargetsClients(navigation)) {
@@ -51,11 +52,15 @@ export class OrcaRuntimeWithApplyMobileSessionTabNavigation extends OrcaRuntimeW
       }
     } else if (clientNavigationId) {
       // Why: follow-host still starts as caller navigation; the host is an additional target, not a replacement owner.
-      callerSnapshot = this.clientSessionTabSelections.activate(
-        this.withSessionTabsHolds(snapshot, clientNavigationId),
-        clientNavigationId,
-        activeTabId
-      )
+      callerSnapshot =
+        persistClientSelection === false && navigation === 'caller'
+          ? // A pane mount is not a tap: project the caller's existing selection, never overwrite it (U138).
+            this.projectMobileSessionTabsForClient(snapshot, clientNavigationId)
+          : this.clientSessionTabSelections.activate(
+              this.withSessionTabsHolds(snapshot, clientNavigationId),
+              clientNavigationId,
+              activeTabId
+            )
       this.emitMobileSessionTabsSnapshotToClient(callerSnapshot, clientNavigationId)
     }
     if (clientNavigationId) {

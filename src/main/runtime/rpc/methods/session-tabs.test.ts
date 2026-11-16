@@ -43,6 +43,7 @@ describe('session tab RPC methods', () => {
     expect(runtime.activateMobileSessionTab).toHaveBeenCalledWith('id:wt-1', 'tab-1', 'leaf-1', {
       notifyClients: false,
       clientNavigationId: undefined,
+      persistSelection: true,
       navigation: 'caller'
     })
   })
@@ -70,6 +71,7 @@ describe('session tab RPC methods', () => {
     expect(runtime.activateMobileSessionTab).toHaveBeenCalledWith('id:wt-1', 'tab-1', undefined, {
       notifyClients: true,
       clientNavigationId: 'device-a',
+      persistSelection: true,
       navigation: 'caller'
     })
   })
@@ -122,6 +124,7 @@ describe('session tab RPC methods', () => {
     expect(runtime.activateMobileSessionTab).toHaveBeenCalledWith('id:wt-1', 'tab-1', undefined, {
       notifyClients: false,
       clientNavigationId: undefined,
+      persistSelection: true,
       navigation: 'caller'
     })
   })

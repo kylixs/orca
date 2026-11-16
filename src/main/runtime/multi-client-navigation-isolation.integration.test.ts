@@ -557,7 +557,6 @@ describe('paired runtime navigation isolation', () => {
       params: {
         worktree: `id:${SESSION_WORKTREE_ID}`,
         tabId: 'client-a-tab',
-        navigation: 'caller',
         notifyClients: false
       }
     })
@@ -567,7 +566,6 @@ describe('paired runtime navigation isolation', () => {
       params: {
         worktree: `id:${SESSION_WORKTREE_ID}`,
         tabId: 'client-b-tab',
-        navigation: 'caller',
         notifyClients: false
       }
     })
@@ -593,7 +591,6 @@ describe('paired runtime navigation isolation', () => {
       params: {
         worktree: `id:${SESSION_WORKTREE_ID}`,
         tabId: 'client-a2-tab',
-        navigation: 'caller',
         notifyClients: false
       }
     })
@@ -762,7 +759,6 @@ describe('paired runtime navigation isolation', () => {
         params: {
           worktree: `id:${SESSION_WORKTREE_ID}`,
           tabId,
-          navigation: 'caller',
           notifyClients: false
         }
       })
