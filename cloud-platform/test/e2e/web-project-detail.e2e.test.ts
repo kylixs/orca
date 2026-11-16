@@ -33,6 +33,7 @@ let service: Service
 let adminToken = ''
 let devToken = ''
 let detailHostId = ''
+let detailHostCredential = ''
 let maintHostId = ''
 let detailProjectId = ''
 let failedProjectId = ''
@@ -134,6 +135,7 @@ before(async () => {
 
   const detailHost = await registerHost('dev-detail', 17031)
   detailHostId = detailHost.hostId
+  detailHostCredential = detailHost.credential
   const maintHost = await registerHost('dev-detail-maint', 17033)
   maintHostId = maintHost.hostId
   // Never beaten: the heartbeat window lapses and this host is the offline row.
@@ -249,6 +251,63 @@ function projectCard(page: WebConsolePage, key: string): HTMLElement {
 
 function lastToast(page: WebConsolePage): string {
   return [...page.window.document.querySelectorAll('.toast')].at(-1)?.textContent ?? ''
+}
+
+function dialogOpen(page: WebConsolePage): boolean {
+  return page.window.document.querySelector('.dialog-backdrop') !== null
+}
+
+/** Waits for the route's own list fetch and row paint. */
+async function rowWhenRendered(page: WebConsolePage, name: string): Promise<HTMLElement> {
+  for (let round = 0; round < 20; round += 1) {
+    const row = [...page.window.document.querySelectorAll<HTMLElement>('#content tbody tr')].find(
+      (candidate) => candidate.textContent?.includes(name)
+    )
+    if (row) {
+      return row
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  return rowFor(page, name)
+}
+
+/** Logs in, then opens 我的项目 and the 登记项目 dialog (M120a entry). */
+async function openRegistration(page: WebConsolePage): Promise<void> {
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  await page.clickNav('projects')
+  const entry = page.window.document.querySelector<HTMLElement>('#registerProjectBtn')
+  assert.ok(entry, 'the admin must see the 登记项目 entry')
+  entry.click()
+  await page.settle()
+  assert.ok(dialogOpen(page), 'the registration dialog must open')
+}
+
+function fillRegistration(
+  page: WebConsolePage,
+  form: { name: string; key: string; host: string; path: string; repo: string; branch: string }
+): void {
+  const fields: Record<string, string> = {
+    regName: form.name,
+    regKey: form.key,
+    regHost: form.host,
+    regPath: form.path,
+    regRepo: form.repo,
+    regBranch: form.branch
+  }
+  for (const [id, value] of Object.entries(fields)) {
+    const field = page.window.document.querySelector<HTMLInputElement | HTMLSelectElement>(`#${id}`)
+    assert.ok(field, `the registration dialog must render #${id}`)
+    field.value = value
+  }
+}
+
+function submitRegistration(page: WebConsolePage): void {
+  const button = page.window.document.querySelector<HTMLButtonElement>(
+    '.dialog-backdrop [data-action="0"]'
+  )
+  assert.ok(button, 'the registration dialog must render the 登记 action')
+  button.click()
 }
 
 /** The detail dialog stays open under its confirmations: drive the top-most one. */
@@ -730,4 +789,141 @@ test('U67-4-3 管理卡=主机推导只读：仅控制/管理主体 + 前往主�
   assert.ok(manageChips.includes('platform-admins'), 'the host manage card owns the derived source')
 
   matrix.u67_4_3 = { derived: subjects, jump: '#/hosts/<id>?tab=perms' }
+}, 120_000)
+
+/**
+ * G07 (AC-M3-07/21, C15): the provisioning→ready UI states, the detail dialog's
+ * refresh-failure banner, copy actions and the independent session-page link.
+ */
+const G07_CLONE_KEY = 'g07-clone'
+const G07_FAILED_KEY = 'g07-clone-failed'
+const G07_CLONE_REPO = 'git@git.example.com:pay/g07-clone.git'
+const G07_FAILED_REPO = 'https://git.example.com/team/g07-failed.git'
+const G07_FAILURE = 'git clone failed: G07 authentication required'
+
+test('G07-1 repoUrl 登记 → toast「克隆中」→ 详情「准备中」→ 宿主回报 ok →「就绪」', async () => {
+  const page = loadWebConsolePage(service.url)
+  await openRegistration(page)
+  fillRegistration(page, {
+    name: G07_CLONE_KEY,
+    key: G07_CLONE_KEY,
+    host: detailHostId,
+    path: `/srv/work/${G07_CLONE_KEY}`,
+    repo: G07_CLONE_REPO,
+    branch: 'main'
+  })
+  submitRegistration(page)
+  await page.settle()
+
+  assert.match(lastToast(page), /项目已登记，克隆中，就绪后可打开/)
+  assert.equal(dialogOpen(page), false, 'the registration dialog closes on success')
+
+  const created = (
+    (await api('/v1/projects')).body.projects as {
+      id: string
+      key: string
+      status: string
+      repoUrl: string
+    }[]
+  ).find((project) => project.key === G07_CLONE_KEY)
+  assert.ok(created, 'the repo-backed project must exist on the platform')
+  assert.equal(created.status, 'provisioning', 'a repo URL stays provisioning until the host reports')
+  assert.equal(created.repoUrl, G07_CLONE_REPO)
+
+  await page.clickNav('workbench')
+  const openDetail = async (): Promise<string> => {
+    const row = await rowWhenRendered(page, G07_CLONE_KEY)
+    ;(entryIn(row, '详情') as HTMLButtonElement).click()
+    await page.settle()
+    return dialogBody(page).textContent ?? ''
+  }
+
+  assert.match(await openDetail(), /准备中/, 'before the host report the badge says 准备中')
+  ;(dialogButton(page, '关闭') as HTMLButtonElement).click()
+  await page.settle()
+
+  await beatHost(detailHostId, detailHostCredential, [{ projectId: created.id, ok: true }])
+  assert.match(await openDetail(), /就绪/, 'the host report flips the detail badge to 就绪')
+
+  const fresh = (await api(`/v1/projects/${created.id}`)).body as { status: string }
+  assert.equal(fresh.status, 'ready', 'the platform also holds ready')
+
+  matrix.g07_1 = { key: G07_CLONE_KEY, toast: /克隆中/.source, states: ['准备中', '就绪'] }
+}, 120_000)
+
+test('G07-2 宿主回报克隆失败 → 详情「准备失败」+ 失败原因', async () => {
+  const projectId = await createProject(G07_FAILED_KEY, detailHostId, { repoUrl: G07_FAILED_REPO })
+  await grant(projectId, 'platform-admins')
+  await beatHost(detailHostId, detailHostCredential, [
+    { projectId, ok: false, error: G07_FAILURE }
+  ])
+
+  const page = await loginAs('admin', 'Adm1n!')
+  const row = await rowWhenRendered(page, G07_FAILED_KEY)
+  ;(entryIn(row, '详情') as HTMLButtonElement).click()
+  await page.settle()
+  const text = dialogBody(page).textContent ?? ''
+
+  assert.match(text, /准备失败/, 'the failed badge is shown')
+  assert.ok(text.includes(G07_FAILURE), 'the provisioningError reason is shown inline')
+  assert.match(text, /准备失败原因/, 'the reason has its own labelled row')
+
+  matrix.g07_2 = { status: '准备失败', error: G07_FAILURE }
+}, 120_000)
+
+test('G07-3 详情刷新 GET 失败 → 顶部黄条，缓存数据仍展示', async () => {
+  const page = await loginAs('admin', 'Adm1n!')
+  page.fail('GET', `/v1/projects/${detailProjectId}`)
+  ;(entryIn(rowFor(page, 'detail-project'), '详情') as HTMLButtonElement).click()
+  await page.settle()
+
+  const warn = page.window.document.querySelector<HTMLElement>('.dialog-backdrop .note.warn')
+  assert.ok(warn, 'a failed project refresh renders the yellow note')
+  assert.match(warn.textContent ?? '', /未能刷新项目信息，以下为最近一次加载的数据/)
+  const text = dialogBody(page).textContent ?? ''
+  assert.ok(text.includes('detail-project'), 'the cached row still fills the dialog')
+  assert.match(text, /就绪/, 'the cached status is kept rather than blanked')
+
+  matrix.g07_3 = { banner: warn.textContent?.trim(), cached: 'detail-project' }
+}, 120_000)
+
+test('G07-4 路径/仓库复制 toast「已复制」；在线宿主详情含独立页链接', async () => {
+  const payload = (await api(`/v1/projects/${detailProjectId}`)).body as {
+    path: string
+    repoUrl: string
+    sessionPageUrl: string
+    hostStatus: string
+  }
+  assert.equal(payload.hostStatus, 'online', 'the independent-page link is asserted on an online host')
+  assert.ok(payload.sessionPageUrl, 'an online host with TLS + direct address has a session page')
+
+  const page = await loginAs('admin', 'Adm1n!')
+  ;(entryIn(rowFor(page, 'detail-project'), '详情') as HTMLButtonElement).click()
+  await page.settle()
+
+  const link = [...dialogBody(page).querySelectorAll<HTMLAnchorElement>('a')].find(
+    (candidate) => candidate.getAttribute('href') === payload.sessionPageUrl
+  )
+  assert.ok(link, 'the detail dialog carries the independent session-page link')
+  assert.equal(link.textContent?.trim(), '在独立页打开会话页')
+  assert.equal(link.getAttribute('target'), '_blank')
+  assert.equal(link.getAttribute('rel'), 'noopener')
+
+  const copies: string[] = []
+  Object.defineProperty(page.window.navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText: (value: string) => (copies.push(value), Promise.resolve()) }
+  })
+  for (const value of [payload.path, payload.repoUrl]) {
+    const button = page.window.document.querySelector<HTMLButtonElement>(
+      `.dialog-backdrop [data-copy="${value}"]`
+    )
+    assert.ok(button, `the detail dialog carries a copy button for ${value}`)
+    button.click()
+    await page.settle()
+  }
+  assert.deepEqual(copies, [payload.path, payload.repoUrl], 'both copy buttons write their value')
+  assert.equal(lastToast(page), '已复制', 'copy is confirmed with the shared toast')
+
+  matrix.g07_4 = { copied: copies, sessionPageUrl: payload.sessionPageUrl }
 }, 120_000)
