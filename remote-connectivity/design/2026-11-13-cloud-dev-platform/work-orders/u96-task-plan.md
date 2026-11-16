@@ -33,7 +33,7 @@
 | B-0 | 完整设计（复用 A 通道+autoRestoreFit 尺寸弹框+overlay suspend/end 语义+多用户 scope） | A 设计/V 诊断 | **设计在途** |
 | B-令1 | 纯投影模块+reducer 扩展 | A-令1（已落） | **✅ 完成** `1f91ac00efc`（投影/合并/幂等/活动兜底 11 例+44 绿） |
 | B-令2 | bootstrap hook（capability 门控+subscribe/list+退避/负缓存） | A-令2/4 | **✅ 完成** `d2847b50b7d`（hook+负缓存+闭包重试环修复；5 新例 42 绿） |
-| B-令3 | 终端 attach/create/pending/ended/重开 | A-令5/6 | 排队 |
+| B-令3 | 终端 attach/create/pending/ended/重开 | A-令5/6 | **✅ 完成** `6d1999cd60f`（三态决策；双 PTY 消除实证 0 调用；A-7 接线完成；310 绿） |
 | B-令4 | 关闭/激活/新建双向 | A-令3 | **✅ 完成** `d1902c398c8`（回环保护/拒绝语义/降级；61 绿）；**过渡态申报：新终端可能双 PTY，B-令3 attach 落地即消除（B-令3 必做项）** |
 | B-令5 | suspend/end 协议+面板卸载策略 | — | **✅ 完成** `8f986d89e90`（suspend 保活/end 回收/logout=suspend；features 协商；278 测试+overlay 8/8） |
 | B-令6 | 尺寸冲突 overlay+claim/restoreFit+get/setAutoRestoreFit scope（含 **U98 抢尺寸修复**） | A-令3 | **✅ 完成** `4b3e9365482`（U98 订阅被动化+per-PTY override 全局零写+overlay；78 绿；面板瘦身 302 行） |
