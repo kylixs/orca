@@ -1269,11 +1269,15 @@ async function openProjectDetail(projectId, { tab = 'info', onClose } = {}) {
     if (!holder) return
     holder.innerHTML = permCardsHtml(PROJECT_ROLE_CARDS, extra.grants ?? [], {
       kind: 'project',
+      // 审定二：卡头/卡尾不暴露权限位；chips 只留名字 + 类型。
+      showBits: false,
+      showLevel: false,
       header:
         '项目级授权仅影响当前项目，不扩大到所在主机或其它项目（FR-9.11③）。下载位仍受项目 / 全局下载策略独立约束。',
       footnote: PERM_FOOTNOTE,
       datalistPrefix: 'project',
-      hostRows: extra.hostRows
+      hostRows: extra.hostRows,
+      hostId: project.hostId
     })
     wirePermCards(holder, {
       grantsPath,
@@ -1289,6 +1293,11 @@ async function openProjectDetail(projectId, { tab = 'info', onClose } = {}) {
         paintPermCards()
       }
     })
+    // 管理卡只读：写入口在主机弹框（FR-9.11③），这里只做跳转。
+    const jump = holder.querySelector('[data-open-host-detail]')
+    if (jump) {
+      jump.onclick = () => navigate('hosts', { id: jump.dataset.openHostDetail }, { tab: 'perms' })
+    }
   }
   const paint = () => {
     if (!backdrop.isConnected) {
@@ -2249,22 +2258,32 @@ function permDatalistsHtml(prefix) {
 }
 
 /** 项目弹框的管理卡：主机推导只读视图（FR-9.11③ 不扩大），不可添加/移除。 */
-function projectDerivedCardHtml(hostRows) {
-  const chips =
+function projectDerivedCardHtml(hostRows, hostId) {
+  // 仅主机控制/管理卡主体参与推导；只读持有者（仅 view）不列（§2.3）。
+  const derived =
     hostRows == null
+      ? null
+      : hostRows.filter((row) => ['control', 'manage'].includes(hostRoleOf(row.permissions)))
+  const sourceLabel = { control: '控制卡', manage: '管理卡' }
+  const chips =
+    derived == null
       ? '<span class="muted">未能读取主机授权</span>'
-      : hostRows
-          .filter((row) => row.permissions.includes('view'))
+      : derived
           .map((row) => {
-            const full = row.permissions.includes('provision')
-            return `<span class="perm-chip"><span class="mono">${esc(subjectLabel(row))}</span> <span class="muted">${row.subjectType === 'group' ? '组' : '用户'}</span> <span class="badge">${full ? '全权（来源）' : '只读（上限）'}</span></span>`
+            const source = sourceLabel[hostRoleOf(row.permissions)] ?? ''
+            return `<span class="perm-chip"><span class="mono">${esc(subjectLabel(row))}</span> <span class="muted">${row.subjectType === 'group' ? '组' : '用户'}</span> <span class="badge">来源：${source}</span></span>`
           })
-          .join('') || '<span class="muted">暂无主机级主体</span>'
+          .join('') || '<span class="muted">该主机暂无控制 / 管理主体。</span>'
   return `
     <div class="perm-card" data-card="derived">
-      <div class="perm-card-head"><strong>管理</strong><span class="badge">主机推导 · 只读</span></div>
+      <div class="perm-card-head"><strong>管理</strong><span class="badge">主机推导 · 只读</span>${derived == null ? '' : `<span class="muted">${derived.length} 个主体</span>`}</div>
       <p class="muted perm-card-desc">项目级无「管理」权限位：归档 / 登记归创建者或平台管理员，主机维护属主机授权。下方为按 U65 推导在本项目获得权限的主机级主体——在主机详情弹框维护，项目授权不扩大到主机级。</p>
       <div class="perm-chips">${chips}</div>
+      ${
+        hostId
+          ? `<div class="toolbar perm-add"><span class="muted">无添加入口 · <button class="btn ghost sm" data-open-host-detail="${esc(hostId)}">前往主机详情弹框 →</button></span></div>`
+          : ''
+      }
     </div>`
 }
 
@@ -2309,7 +2328,7 @@ function permCardsHtml(cards, rows, options) {
           .join('')}</div>
       </div>`
     : ''
-  const derivedCard = kind === 'project' ? projectDerivedCardHtml(options.hostRows) : ''
+  const derivedCard = kind === 'project' ? projectDerivedCardHtml(options.hostRows, options.hostId) : ''
   return `
       ${options.header ? `<div class="note">${esc(options.header)}</div>` : ''}
       <div data-perm-cards>${cardsHtml}${leftoverCard}${derivedCard}</div>

@@ -225,6 +225,45 @@ function dialogButton(page: WebConsolePage, label: string): HTMLButtonElement | 
   )
 }
 
+/** Opens the 详情 dialog for a workbench row and switches to the 权限 tab. */
+async function openPermTab(page: WebConsolePage, name: string): Promise<void> {
+  const detail = entryIn(rowFor(page, name), '详情') as HTMLButtonElement
+  assert.ok(detail, `${name}: the admin row must carry the 详情 entry`)
+  detail.click()
+  await page.settle()
+  const tab = page.window.document.querySelector<HTMLButtonElement>(
+    '.dialog-backdrop [data-auth-tab="perms"]'
+  )
+  assert.ok(tab, 'the project dialog must offer the 权限 tab')
+  tab.click()
+  await page.settle()
+}
+
+function projectCard(page: WebConsolePage, key: string): HTMLElement {
+  const card = page.window.document.querySelector<HTMLElement>(
+    `#projectPermCards [data-perm-cards] > [data-card="${key}"]`
+  )
+  assert.ok(card, `the permission tab must render the ${key} card`)
+  return card
+}
+
+function lastToast(page: WebConsolePage): string {
+  return [...page.window.document.querySelectorAll('.toast')].at(-1)?.textContent ?? ''
+}
+
+/** The detail dialog stays open under its confirmations: drive the top-most one. */
+function topDialog(page: WebConsolePage): HTMLElement {
+  const dialogs = [
+    ...page.window.document.querySelectorAll<HTMLElement>('.dialog-backdrop .dialog')
+  ]
+  assert.ok(dialogs.length > 0, 'a confirmation dialog must be open')
+  return dialogs[dialogs.length - 1]
+}
+
+function confirmTopDialog(page: WebConsolePage): void {
+  topDialog(page).querySelector<HTMLButtonElement>('[data-action="0"]')!.click()
+}
+
 function captureOpened(page: WebConsolePage): { opened: string[] } {
   const opened: string[] = []
   page.window.open = ((url?: string | URL) => {
@@ -466,4 +505,229 @@ test('W46-D6 Escape 关闭弹框且焦点回到「详情」按钮', async () => 
   assert.equal(page.window.document.activeElement, detail, 'focus returns to the opener')
 
   matrix.d6 = { escapeClosed: true, focusReturned: 'detail' }
+}, 120_000)
+
+/**
+ * U67-4: 项目详情弹框「信息|权限」tab 化。权限 tab 的查看/控制卡写项目 grants
+ * （位并集，复用 U67 共享渲染/交互），管理卡是主机授权推导只读视图（FR-9.11③），
+ * 只做跳转，不提供任何写入口。
+ */
+test('U67-4-1 项目弹框 tab 化：信息|权限；三卡结构 + FR-9.11③ 头注', async () => {
+  const page = await loginAs('admin', 'Adm1n!')
+  ;(entryIn(rowFor(page, 'detail-project'), '详情') as HTMLButtonElement).click()
+  await page.settle()
+  const body = dialogBody(page)
+  const tabs = [...body.querySelectorAll<HTMLButtonElement>('[data-auth-tab]')]
+  assert.deepEqual(
+    tabs.map((tab) => tab.dataset.authTab),
+    ['info', 'perms'],
+    'the dialog carries 信息|权限 tabs in order'
+  )
+  assert.deepEqual(
+    tabs.map((tab) => tab.textContent?.trim()),
+    ['信息', '权限']
+  )
+  assert.equal(
+    body.querySelector<HTMLElement>('[data-auth-panel="perms"]')!.hidden,
+    true,
+    'information is the default tab'
+  )
+
+  tabs[1].click()
+  await page.settle()
+  assert.equal(body.querySelector<HTMLElement>('[data-auth-panel="info"]')!.hidden, true)
+  assert.equal(body.querySelector<HTMLElement>('[data-auth-panel="perms"]')!.hidden, false)
+
+  const header = page.window.document.querySelector<HTMLElement>('#projectPermCards > .note')!
+  assert.match(header.textContent ?? '', /FR-9\.11③/, 'the header cites FR-9.11③')
+  assert.match(
+    header.textContent ?? '',
+    /不扩大到所在主机或其它项目/,
+    'the header states project grants never widen to the host'
+  )
+
+  const cards = [
+    ...page.window.document.querySelectorAll<HTMLElement>(
+      '#projectPermCards [data-perm-cards] > .perm-card'
+    )
+  ]
+  assert.deepEqual(
+    cards.map((card) => card.dataset.card),
+    ['view', 'control', 'derived'],
+    'cards render 查看/控制/管理(推导)'
+  )
+  for (const key of ['view', 'control']) {
+    const head = projectCard(page, key).querySelector<HTMLElement>('.perm-card-head')!
+    assert.match(head.textContent ?? '', /个主体/, `${key} head carries the subject count`)
+    assert.doesNotMatch(
+      head.textContent ?? '',
+      /open|file:read|terminal|agent|browser|download/,
+      `${key} head exposes no permission bits`
+    )
+  }
+
+  const derived = projectCard(page, 'derived')
+  assert.match(derived.textContent ?? '', /主机推导 · 只读/)
+  assert.match(derived.textContent ?? '', /项目级无「管理」权限位/)
+  assert.match(derived.textContent ?? '', /项目授权不扩大到主机级/)
+  assert.equal(derived.querySelector('[data-perm-add]'), null, '管理卡 has no add entry')
+  assert.equal(derived.querySelector('.perm-chip-x'), null, '管理卡 chips are not removable')
+  const jump = derived.querySelector<HTMLButtonElement>('[data-open-host-detail]')
+  assert.ok(jump, '管理卡 carries the host-detail jump link')
+  assert.equal(jump.textContent?.trim(), '前往主机详情弹框 →')
+
+  matrix.u67_4_1 = { tabs: ['信息', '权限'], cards: ['view', 'control', 'derived'] }
+}, 120_000)
+
+test('U67-4-2 查看/控制卡可写：整行 PUT、覆盖确认与移除危险确认', async () => {
+  const subject = 'zhangsan'
+  const grantsPath = `/v1/projects/${detailProjectId}/grants`
+  // Start from a clean row: this case owns zhangsan's project grant.
+  await api(grantsPath, {
+    method: 'PUT',
+    body: JSON.stringify({ subjectType: 'user', subjectId: subject, permissions: [] })
+  })
+
+  const page = await loginAs('admin', 'Adm1n!')
+  await openPermTab(page, 'detail-project')
+  const chipOf = (key: string): HTMLElement | undefined =>
+    [...projectCard(page, key).querySelectorAll<HTMLElement>('.perm-chip')].find(
+      (chip) => chip.querySelector('.mono')?.textContent === subject
+    )
+
+  const addTo = async (key: string): Promise<void> => {
+    const card = projectCard(page, key)
+    card.querySelector<HTMLInputElement>('[data-perm-subject]')!.value = subject
+    const select = card.querySelector<HTMLSelectElement>('[data-perm-type]')!
+    select.value = 'user'
+    select.dispatchEvent(new page.window.Event('change', { bubbles: true }))
+    card.querySelector<HTMLButtonElement>('[data-perm-add]')!.click()
+    await page.settle()
+  }
+  const puts = (): number =>
+    page.calls().filter((call) => call === `PUT ${grantsPath}`).length
+
+  await addTo('view')
+  assert.equal(puts(), 1, 'a fresh subject saves immediately with one PUT')
+  assert.match(lastToast(page), /已保存「查看」授权/)
+  assert.ok(chipOf('view'), 'the new chip lands in the 查看 card')
+  let row = (await api(grantsPath)).body.grants.find(
+    (grant: { username?: string }) => grant.username === subject
+  )
+  assert.deepEqual(
+    [...row.permissions].sort(),
+    ['file:read', 'open'],
+    '查看 card writes exactly open + file:read'
+  )
+
+  // Adding the same subject to 控制 confirms first (one row, union of bits).
+  await addTo('control')
+  const overwrite = topDialog(page)
+  assert.match(overwrite.textContent ?? '', /覆盖现有授权/)
+  assert.match(overwrite.textContent ?? '', /级别：查看 → 查看\+控制/)
+  assert.equal(puts(), 1, 'the overwrite never reaches the platform before confirmation')
+  confirmTopDialog(page)
+  await page.settle()
+  assert.equal(puts(), 2, 'confirming sends exactly one union PUT')
+  row = (await api(grantsPath)).body.grants.find(
+    (grant: { username?: string }) => grant.username === subject
+  )
+  assert.deepEqual(
+    [...row.permissions].sort(),
+    ['agent', 'browser', 'download', 'file:read', 'file:write', 'open', 'terminal'],
+    '控制 card unions its operation bits into the row'
+  )
+  assert.ok(chipOf('control'), 'the chip also renders under 控制')
+
+  // Removing from 控制 leaves the 查看 bits: immediate PUT, no danger dialog.
+  chipOf('control')!.querySelector<HTMLButtonElement>('.perm-chip-x')!.click()
+  await page.settle()
+  assert.equal(puts(), 3)
+  assert.match(lastToast(page), /级别：查看\+控制 → 查看/)
+  row = (await api(grantsPath)).body.grants.find(
+    (grant: { username?: string }) => grant.username === subject
+  )
+  assert.deepEqual([...row.permissions].sort(), ['file:read', 'open'])
+
+  // Removing the last card empties the row: danger confirm with the 60s notice.
+  chipOf('view')!.querySelector<HTMLButtonElement>('.perm-chip-x')!.click()
+  await page.settle()
+  const danger = topDialog(page)
+  assert.match(danger.textContent ?? '', /移除全部授权/)
+  assert.match(danger.textContent ?? '', /≤60 秒/, 'the danger confirm states the session cutoff')
+  assert.equal(puts(), 3, 'the empty-row removal waits for confirmation')
+  confirmTopDialog(page)
+  await page.settle()
+  assert.equal(puts(), 4, 'confirming deletes the row with one PUT')
+  const remaining = (await api(grantsPath)).body.grants
+  assert.equal(
+    remaining.some((grant) => grant.username === subject),
+    false,
+    'the subject holds no project grant afterwards'
+  )
+
+  matrix.u67_4_2 = { view: ['open', 'file:read'], controlUnion: 7, removed: true }
+}, 120_000)
+
+test('U67-4-3 管理卡=主机推导只读：仅控制/管理主体 + 前往主机详情跳转', async () => {
+  const seeds = [
+    { subjectType: 'group', subjectId: 'developers', permissions: ['view'] },
+    { subjectType: 'user', subjectId: 'zhangsan', permissions: ['view', 'provision'] },
+    { subjectType: 'group', subjectId: 'platform-admins', permissions: ['provision', 'maintain'] }
+  ]
+  for (const seed of seeds) {
+    const res = await api(`/v1/hosts/${detailHostId}/grants`, {
+      method: 'PUT',
+      body: JSON.stringify(seed)
+    })
+    assert.equal(res.status, 200, JSON.stringify(res.body))
+  }
+
+  const page = await loginAs('admin', 'Adm1n!')
+  await openPermTab(page, 'detail-project')
+  const derived = projectCard(page, 'derived')
+  const chips = [...derived.querySelectorAll<HTMLElement>('.perm-chip')]
+  const subjects = chips.map((chip) => chip.querySelector('.mono')?.textContent ?? '').sort()
+  assert.deepEqual(
+    subjects,
+    ['platform-admins', 'zhangsan'],
+    'only host 控制/管理 subjects derive into the project card; 只读 holders are omitted'
+  )
+  const chipFor = (name: string): HTMLElement => {
+    const chip = chips.find((candidate) => candidate.querySelector('.mono')?.textContent === name)
+    assert.ok(chip, `the derived card must carry a chip for ${name}`)
+    return chip
+  }
+  assert.match(chipFor('zhangsan').textContent ?? '', /来源：控制卡/)
+  assert.match(chipFor('platform-admins').textContent ?? '', /来源：管理卡/)
+  assert.equal(
+    derived.querySelectorAll('.perm-chip-x').length,
+    0,
+    'derived chips expose no remove control'
+  )
+
+  derived.querySelector<HTMLButtonElement>('[data-open-host-detail]')!.click()
+  await page.settle()
+  assert.equal(
+    page.window.location.hash,
+    `#/hosts/${detailHostId}?tab=perms`,
+    'the jump opens the host detail URL on its 权限 tab'
+  )
+  const drawer = page.window.document.querySelector<HTMLElement>('.drawer')
+  assert.ok(drawer, 'the host drawer replaces the project dialog')
+  assert.equal(
+    drawer.querySelector<HTMLElement>('.detail-tab.active')!.dataset.authTab,
+    'perms',
+    'the host drawer lands on 权限'
+  )
+  const hostCards = [
+    ...drawer.querySelectorAll<HTMLElement>('[data-perm-cards] > .perm-card[data-card]')
+  ].map((card) => card.dataset.card)
+  assert.deepEqual(hostCards, ['view', 'control', 'manage'])
+  const manageChips = [
+    ...drawer.querySelectorAll<HTMLElement>('[data-card="manage"] .perm-chip .mono')
+  ].map((node) => node.textContent)
+  assert.ok(manageChips.includes('platform-admins'), 'the host manage card owns the derived source')
+
+  matrix.u67_4_3 = { derived: subjects, jump: '#/hosts/<id>?tab=perms' }
 }, 120_000)
