@@ -31,6 +31,7 @@ import {
   hostSessionMirrorSettleForPatchlessFrame,
   type HostSessionMirrorSettle
 } from './mirror-settle'
+import { consumeHostLayoutAdoption, hasPendingHostLayoutAdoption } from './host-layout-adoption'
 import {
   beginWebRuntimeWakeTerminalRespawn,
   endWebRuntimeWakeTerminalRespawn,
@@ -88,14 +89,14 @@ export function installActiveSessionTabsSubscription({
   const environment = useAppStore
     .getState()
     .runtimeEnvironments.find(({ id }) => id === environmentId)
-  const isCloudSession =
-    environment !== undefined && isCloudSessionRuntimeEnvironment(environment)
+  const isCloudSession = environment !== undefined && isCloudSessionRuntimeEnvironment(environment)
   if (isCloudSession && !shouldMirrorCloudSessionTabs(environmentId)) {
     return undefined
   }
   // Why: a cloud workspace can be entered again without a page reload, and the client-owned
   // placement mark from the previous visit would keep the host layout from restoring its tab
-  // groups. Each subscription install is one workspace entry, so re-adopt once per install.
+  // groups. The entry action arms the adoption explicitly (U113); this install-time flag remains
+  // the fallback for entries that never reached an entry action. Both share one consumption.
   let pendingHostLayoutAdoption = isCloudSession
   const expectedTrackingGeneration = getWebSessionTabsTrackingGeneration(environmentId)
   let requestedInitialTerminal = false
@@ -177,7 +178,9 @@ export function installActiveSessionTabsSubscription({
       // Why consume only with host groups: a frame that carries no layout has nothing to
       // adopt, so the entry keeps waiting for the inventory that actually holds the groups.
       const adoptHostLayout =
-        pendingHostLayoutAdoption && (recovered.tabGroups?.length ?? 0) > 0
+        isCloudSession &&
+        (pendingHostLayoutAdoption || hasPendingHostLayoutAdoption(activeWorktreeId)) &&
+        (recovered.tabGroups?.length ?? 0) > 0
       settle = applyWebSessionTabsStorePatch(
         (state) =>
           applyWebSessionTabsSnapshot(
@@ -205,6 +208,7 @@ export function installActiveSessionTabsSubscription({
       visibilitySnapshotAccepted.current(environmentId, recovered, receivedFrame, runtimeId)
       if (adoptHostLayout) {
         pendingHostLayoutAdoption = false
+        consumeHostLayoutAdoption(activeWorktreeId)
       }
       // Why here and only on an applied frame: this is the mirror's answer about the worktree. A
       // bootstrap whose create resolved without a row was parked until that answer arrived; a

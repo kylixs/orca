@@ -14,6 +14,7 @@ import {
   type WebCloudWorkspaceBootstrapPorts
 } from './web-cloud-workspace-store-ports'
 import {
+  clearWebCloudSessionCapabilities,
   recordWebCloudSessionCapabilities,
   shouldMirrorCloudSessionTabs
 } from './web-cloud-session-capabilities'
@@ -151,6 +152,12 @@ async function runBootstrap(
       return
     }
     if (info === null) {
+      // Why clear: the host refused to describe itself, so a record from an earlier pairing must
+      // not keep authorizing the restore family for whatever host answers now (U113/D4).
+      const environmentId = ports.environment()?.id
+      if (environmentId) {
+        clearWebCloudSessionCapabilities(environmentId)
+      }
       // A shape-checked read fails on the host's refusal reply and on anything
       // malformed; a host predating the method throws instead (handled below).
       const refusal = readObjectValue(response)
@@ -263,6 +270,12 @@ async function runBootstrap(
       // A host predating the method answers method_not_found; that is permanent,
       // while every other failure is worth one idempotent retry.
       const legacyHost = hasRuntimeRpcErrorCode(error, 'method_not_found')
+      const environmentId = ports.environment()?.id
+      if (environmentId) {
+        // Why a failed probe clears: an old host's `method_not_found` proves no `workspace.info`
+        // consent exists, so a stale record must not re-enable the restore family (U113/D4).
+        clearWebCloudSessionCapabilities(environmentId)
+      }
       fallback({
         reason: legacyHost ? 'unsupported-host' : 'failed',
         detail: error instanceof Error ? error.message : String(error),

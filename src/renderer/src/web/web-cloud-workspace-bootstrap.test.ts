@@ -20,7 +20,9 @@ import type {
   WebCloudWorkspaceBootstrapPorts
 } from './web-cloud-workspace-store-ports'
 import { CLOUD_SESSION_TABS_RESTORE_CAPABILITY } from '../../../shared/cloud-workspace-info'
+import { replaceRuntimeEnvironmentRevisions } from '../runtime/runtime-environment-revision'
 import {
+  recordWebCloudSessionCapabilities,
   resetWebCloudSessionCapabilities,
   shouldMirrorCloudSessionTabs
 } from './web-cloud-session-capabilities'
@@ -190,10 +192,16 @@ describe('web cloud workspace bootstrap (W13b)', () => {
   beforeEach(() => {
     resetWebCloudWorkspaceBootstrap()
     resetWebCloudSessionCapabilities()
+    // The capability record is fenced by the pairing revision it was probed against (D4).
+    replaceRuntimeEnvironmentRevisions([
+      { id: 'web-bootstrap-env', createdAt: 1, pairingRevision: 1 }
+    ])
   })
 
   afterEach(() => {
     resetWebCloudWorkspaceBootstrap()
+    resetWebCloudSessionCapabilities()
+    replaceRuntimeEnvironmentRevisions([])
     vi.restoreAllMocks()
   })
 
@@ -452,6 +460,24 @@ describe('web cloud workspace bootstrap (W13b)', () => {
 
     expect(harness.waitForSessionTabsRestore).not.toHaveBeenCalled()
     expect(harness.activateWorkspace).toHaveBeenCalledTimes(1)
+  })
+
+  it('clears a stale capability record when the host predates workspace.info (D4)', async () => {
+    recordWebCloudSessionCapabilities('web-bootstrap-env', [CLOUD_SESSION_TABS_RESTORE_CAPABILITY])
+    expect(shouldMirrorCloudSessionTabs('web-bootstrap-env')).toBe(true)
+
+    const harness = makeHarness({
+      info: async () => {
+        throw Object.assign(new Error("Method 'workspace.info' was not found."), {
+          code: 'method_not_found'
+        })
+      }
+    })
+    await startWebCloudWorkspaceBootstrapForTests(harness.ports)
+
+    // An old host proves no consent exists; the previous pairing's record must not survive it.
+    expect(readWebCloudWorkspaceBootstrapStatus().fallbackReason).toBe('unsupported-host')
+    expect(shouldMirrorCloudSessionTabs('web-bootstrap-env')).toBe(false)
   })
 
   it('keeps the cloud skip when the host predates the capabilities field', async () => {

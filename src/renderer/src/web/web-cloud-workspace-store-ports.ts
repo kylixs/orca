@@ -5,6 +5,7 @@ import type { RuntimeHostStatusSnapshot } from '../../../shared/runtime-host-sta
 import type { Repo } from '../../../shared/repo-types'
 import type { Worktree } from '../../../shared/worktree/types'
 import { useAppStore } from '../store'
+import { requestHostLayoutAdoption } from '../runtime/web-session-tabs-sync/host-layout-adoption'
 import { waitForHostSessionMirrorHydration } from '../runtime/host-session-mirror-hydration'
 import { getPathDisplayName } from '../store/terminals/workspace-terminal-placeholders'
 import { cloudSessionProjectDisplayName } from './web-cloud-connect'
@@ -43,10 +44,7 @@ export type WebCloudWorkspaceBootstrapPorts = {
    * store (or the wait times out). Without it a fresh page seeds a terminal
    * before the restored tabs land and renders an extra tab.
    */
-  waitForSessionTabsRestore: (input: {
-    environmentId: string
-    worktreeId: string
-  }) => Promise<void>
+  waitForSessionTabsRestore: (input: { environmentId: string; worktreeId: string }) => Promise<void>
   activateWorkspace: (input: {
     worktreeId: string
     executionHostId: ExecutionHostId
@@ -92,13 +90,12 @@ export function defaultWebCloudWorkspacePorts(): WebCloudWorkspaceBootstrapPorts
     fetchWorktrees: (repoId, executionHostId) =>
       useAppStore.getState().fetchWorktrees(repoId, { executionHostId }),
     waitForSessionTabsRestore: ({ environmentId, worktreeId }) =>
-      waitForHostSessionMirrorHydration(
-        environmentId,
-        worktreeId,
-        SESSION_TABS_RESTORE_WAIT_MS
-      ),
+      waitForHostSessionMirrorHydration(environmentId, worktreeId, SESSION_TABS_RESTORE_WAIT_MS),
     activateWorkspace: ({ worktreeId, executionHostId, mountExplorer }) => {
       const state = useAppStore.getState()
+      // Why an explicit entry request: re-entering the same checkout keeps activeWorktreeId, so
+      // the tab stream does not reinstall and the host layout would stay suppressed (U113).
+      requestHostLayoutAdoption(worktreeId)
       // Why the local pipeline and not activateAndRevealWorktree: a cloud ticket's
       // host refuses both host-notify paths (`worktree.activate`, `session.tabs.*`)
       // and 'live' host authority suppresses local seeding, so the checkout would

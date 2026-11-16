@@ -1,6 +1,10 @@
-import { useEffect, useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react'
 import { lastVerifiedRuntimeStatus } from '../../../../shared/runtime-host-status'
 import { useAppStore } from '../../store'
+import {
+  getWebCloudSessionCapabilitiesRevision,
+  subscribeWebCloudSessionCapabilities
+} from '../../web/web-cloud-session-capabilities'
 import { getExplicitRuntimeEnvironmentIdForWorktree } from '../../lib/worktree-runtime-owner'
 import { useRuntimeSessionMirrorEnvironmentKeys } from '../use-runtime-session-mirror-environment-key'
 import { sessionTabsFreshnessKey } from './tracking'
@@ -33,6 +37,12 @@ export function useWebSessionTabsSync(): void {
   const workspaceSessionReady = useAppStore((state) => state.workspaceSessionReady)
   const { environmentKey: runtimeSessionMirrorEnvironmentKey, resubscribeSignal } =
     useRuntimeSessionMirrorEnvironmentKeys()
+  // Why a dependency: `workspace.info` records capabilities after the first effect pass, and an
+  // effect that already ran on "not advertised" would otherwise stay silent forever (U113/D3).
+  const capabilitiesRevision = useSyncExternalStore(
+    subscribeWebCloudSessionCapabilities,
+    getWebCloudSessionCapabilitiesRevision
+  )
   const activeWorktreeRuntimeEnvironmentId = useAppStore((state) =>
     getExplicitRuntimeEnvironmentIdForWorktree(state, state.activeWorktreeId)
   )
@@ -105,7 +115,12 @@ export function useWebSessionTabsSync(): void {
     })
     // `resubscribeSignal` is a dependency and never an argument: a regained host needs its streams
     // reinstalled, but the mirror state they refill is stamped with the key, which has not moved.
-  }, [runtimeSessionMirrorEnvironmentKey, resubscribeSignal, workspaceSessionReady])
+  }, [
+    runtimeSessionMirrorEnvironmentKey,
+    resubscribeSignal,
+    workspaceSessionReady,
+    capabilitiesRevision
+  ])
 
   useEffect(() => {
     return installActiveSessionTabsSubscription({
@@ -125,6 +140,7 @@ export function useWebSessionTabsSync(): void {
     activeWorktreeRuntimeHostContactEpoch,
     activeWorktreeRuntimePairingRevision,
     activeWorktreeRuntimeId,
-    workspaceSessionReady
+    workspaceSessionReady,
+    capabilitiesRevision
   ])
 }

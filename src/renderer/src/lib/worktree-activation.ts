@@ -12,6 +12,7 @@ import { resumeSleepingAgentSessionsForWorktree } from '@/lib/resume-sleeping-ag
 import { shouldAutoCreateInitialTerminal } from '@/components/terminal/initial-terminal'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { isCloudSessionRuntimeEnvironmentId } from '../../../shared/runtime-environments'
+import { requestHostLayoutAdoption } from '@/runtime/web-session-tabs-sync/host-layout-adoption'
 import { folderWorkspaceKey, parseWorkspaceKey } from '../../../shared/workspace-scope'
 import {
   folderWorkspaceActivationBlocked,
@@ -221,6 +222,16 @@ export function activateAndRevealWorktree(
   }
 
   // 3. Core activation: setActiveWorktree also restores per-worktree state, clears unread, bumps dead PTY generations, refreshes GitHub
+  // Why before setActiveWorktree: a same-worktree re-entry keeps that id, so the tab stream never
+  // reinstalls; this explicit entry request is what re-adopts the host layout (U113).
+  if (
+    isCloudSessionRuntimeEnvironmentId(
+      state.runtimeEnvironments,
+      getRuntimeEnvironmentIdForWorktree(state, wt.id)
+    )
+  ) {
+    requestHostLayoutAdoption(worktreeId)
+  }
   state.setActiveWorktree(worktreeId, opts?.executionHostId)
   const postActivationState = useAppStore.getState()
   const ownerRuntimeEnvironmentId = getRuntimeEnvironmentIdForWorktree(postActivationState, wt.id)

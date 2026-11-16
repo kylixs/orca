@@ -8,6 +8,7 @@ import {
   resetWebCloudSessionCapabilities
 } from '../../web/web-cloud-session-capabilities'
 import { refreshWebRuntimeSessionTabsSnapshot } from '../web-runtime-session-snapshot'
+import { replaceRuntimeEnvironmentRevisions } from '../runtime-environment-revision'
 import { installActiveSessionTabsSubscription } from './active-session-subscription'
 import { installGlobalSessionTabsSubscriptions } from './global-session-subscription'
 
@@ -86,11 +87,16 @@ beforeEach(() => {
   call = vi.fn(() => new Promise<never>(() => {}))
   Object.assign(window, { api: { runtimeEnvironments: { subscribe, call } } })
   resetWebCloudSessionCapabilities()
+  // The capability record is fenced by the pairing revision it was probed against (D4).
+  replaceRuntimeEnvironmentRevisions([
+    { id: CLOUD_ENVIRONMENT_ID, createdAt: 1, pairingRevision: 1 }
+  ])
   useAppStore.setState({ runtimeEnvironments: [cloudEnvironment()] })
 })
 
 afterEach(() => {
   resetWebCloudSessionCapabilities()
+  replaceRuntimeEnvironmentRevisions([])
   useAppStore.setState({ runtimeEnvironments: [] })
 })
 
