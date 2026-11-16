@@ -1824,7 +1824,7 @@ function hostRow(h) {
     <td class="mono">${esc(h.directAddrs.join('<br>') || '—')}</td>
     <td class="mono">${esc(h.relayRoute ?? '—')}</td>
     <td>${hostRelayCell(h)}</td>
-    <td>${esc(h.orcaVersion)} <span class="muted">p${h.protocolVersion}</span></td>
+    <td>${esc(h.orcaVersion || '—')} <span class="muted">p${h.protocolVersion}</span></td>
     <td>${relative(h.lastHeartbeatAt)}</td>
     <td><span class="dot ${dot}"></span> ${status}</td>
     <td class="actions"><button class="btn sm" data-host="${h.id}">详情</button></td>
@@ -1947,9 +1947,9 @@ async function showHost(hostId, { tab = 'info', onClose } = {}) {
     <div data-auth-panel="info">
       <dl class="kv">
         <dt>主机 ID</dt><dd class="mono">${esc(host.id)}</dd>
-        <dt>指纹</dt><dd class="mono">${esc(host.fingerprint)}</dd>
+        <dt>TLS 指纹</dt><dd class="mono">${esc(host.tlsFingerprint ?? '未上报')}</dd>
         <dt>E2EE 公钥</dt><dd class="mono">${esc(host.e2eePublicKey)}</dd>
-        <dt>版本</dt><dd>${esc(host.orcaVersion)} · 协议 v${host.protocolVersion}</dd>
+        <dt>版本</dt><dd>${esc(host.orcaVersion || '—')} · 协议 v${host.protocolVersion}</dd>
         <dt>网络位置</dt><dd>${esc(host.zone)}</dd>
         <dt>直连地址</dt><dd class="mono">${esc(host.directAddrs.join(', ') || '—')}</dd>
         <dt>中继路由</dt><dd class="mono">${esc(host.relayRoute ?? '—')}</dd>
