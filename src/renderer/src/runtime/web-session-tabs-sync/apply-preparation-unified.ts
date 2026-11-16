@@ -17,6 +17,7 @@ export function prepareWebSessionTabsSnapshotUnified(
     snapshot,
     environmentId,
     worktreeId,
+    options,
     navigationIntentTab,
     honorSnapshotActiveFocus,
     terminalSurfaceTabs,
@@ -35,6 +36,8 @@ export function prepareWebSessionTabsSnapshotUnified(
     hostGroupIdByTabId,
     targetGroupId
   } = base
+  // Why: set once per cloud workspace entry by the active subscription (U104).
+  const adoptHostLayout = options?.adoptHostLayout === true
   const mirroredTerminalUnifiedTabs = mirroredTerminalTabs.map((entry) =>
     buildTerminalUnifiedTab(
       entry.tab,
@@ -128,6 +131,7 @@ export function prepareWebSessionTabsSnapshotUnified(
       : null
   const nextActiveTerminalId =
     intentTerminalId ??
+    (adoptHostLayout ? activeMirroredTerminalId : null) ??
     currentActiveTerminalStillExists ??
     (snapshot.activeTabType === 'terminal'
       ? (activeMirroredTerminalId ?? mirroredTerminalTabEntries[0]?.id)
@@ -198,8 +202,19 @@ export function prepareWebSessionTabsSnapshotUnified(
             ? (intentMirroredEditor?.unifiedTab.id ?? null)
             : null
     : null
+  // Why: the previous visit's visible tab is not an intent from this visit, so adoption wins.
+  const adoptedHostActiveUnifiedTabId = adoptHostLayout
+    ? snapshot.activeTabType === 'agent-session'
+      ? (activeMirroredAgentTabId ?? null)
+      : snapshot.activeTabType === 'browser'
+        ? (activeMirroredBrowserTabId ?? null)
+        : snapshot.activeTabType === 'markdown' || snapshot.activeTabType === 'file'
+          ? (activeMirroredEditorTabId ?? null)
+          : (activeMirroredTerminalId ?? null)
+    : null
   const nextActiveUnifiedTabId =
     intentUnifiedTabId ??
+    adoptedHostActiveUnifiedTabId ??
     currentVisibleUnifiedTabId ??
     reservedEmptyPreviewFallbackTabId ??
     (snapshot.activeTabType === 'agent-session'

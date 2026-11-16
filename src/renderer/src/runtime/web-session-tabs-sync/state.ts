@@ -72,6 +72,8 @@ export type WebSessionTabsSnapshotApplyOptions = {
   contentScope?: 'all' | 'agent-session'
   preserveLocalLayout?: boolean
   terminalPtyMode?: 'local' | 'remote'
+  /** Re-enter the host's order/active/layout once per cloud workspace entry (U104). */
+  adoptHostLayout?: boolean
 }
 
 export type TrackedWebSessionTabsWorktree = {

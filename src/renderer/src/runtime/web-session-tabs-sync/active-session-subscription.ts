@@ -88,13 +88,15 @@ export function installActiveSessionTabsSubscription({
   const environment = useAppStore
     .getState()
     .runtimeEnvironments.find(({ id }) => id === environmentId)
-  if (
-    environment !== undefined &&
-    isCloudSessionRuntimeEnvironment(environment) &&
-    !shouldMirrorCloudSessionTabs(environmentId)
-  ) {
+  const isCloudSession =
+    environment !== undefined && isCloudSessionRuntimeEnvironment(environment)
+  if (isCloudSession && !shouldMirrorCloudSessionTabs(environmentId)) {
     return undefined
   }
+  // Why: a cloud workspace can be entered again without a page reload, and the client-owned
+  // placement mark from the previous visit would keep the host layout from restoring its tab
+  // groups. Each subscription install is one workspace entry, so re-adopt once per install.
+  let pendingHostLayoutAdoption = isCloudSession
   const expectedTrackingGeneration = getWebSessionTabsTrackingGeneration(environmentId)
   let requestedInitialTerminal = false
   let requestedRespawnAfterWake = false
@@ -172,8 +174,19 @@ export function installActiveSessionTabsSubscription({
         })
     if (decision.apply) {
       const replayed = isRuntimeSubscriptionReplayResponse(response)
+      // Why consume only with host groups: a frame that carries no layout has nothing to
+      // adopt, so the entry keeps waiting for the inventory that actually holds the groups.
+      const adoptHostLayout =
+        pendingHostLayoutAdoption && (recovered.tabGroups?.length ?? 0) > 0
       settle = applyWebSessionTabsStorePatch(
-        (state) => applyWebSessionTabsSnapshot(state, recovered, environmentId),
+        (state) =>
+          applyWebSessionTabsSnapshot(
+            state,
+            recovered,
+            environmentId,
+            Date.now(),
+            adoptHostLayout ? { adoptHostLayout: true } : undefined
+          ),
         {
           frames: [
             {
@@ -190,6 +203,9 @@ export function installActiveSessionTabsSubscription({
         event.type === 'updated' && !replayed
       )
       visibilitySnapshotAccepted.current(environmentId, recovered, receivedFrame, runtimeId)
+      if (adoptHostLayout) {
+        pendingHostLayoutAdoption = false
+      }
       // Why here and only on an applied frame: this is the mirror's answer about the worktree. A
       // bootstrap whose create resolved without a row was parked until that answer arrived; a
       // pending create keeps its claim (see the latch module). The predicate above already ran with

@@ -47,6 +47,12 @@ export function prepareWebSessionTabsSnapshotGroups(
   // append never-seen tabs, drop vanished ones, and honor explicit focus intent. Host order,
   // host actives, and host layout apply only on first adoption (no client groups yet).
   const clientOwnedPlacement = (() => {
+    // Why: re-entering a cloud workspace keeps this client's group records from the previous
+    // visit, which would otherwise suppress the host order/layout forever (U104). The caller
+    // sets this once per entry (never per frame), so later client moves stay client-owned.
+    if (options?.adoptHostLayout) {
+      return null
+    }
     // Why: a preserveLocalLayout owner keeps the local layout authoritative, so placement
     // is client-owned even before any local group record exists — first adoption on an
     // empty worktree must repair a rendered-leaf-without-record or materialize a rendered
