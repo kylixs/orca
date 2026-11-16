@@ -2,6 +2,7 @@ import * as React from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import type { WebglAddon } from '@xterm/addon-webgl'
+import { Badge } from '@/components/ui/badge'
 import { createBrowserUuid } from '@/lib/browser-uuid'
 import { buildDefaultTerminalOptions } from '@/lib/pane-manager/pane-terminal-options'
 import { getTerminalWebglAddonConstructor } from '@/lib/pane-manager/terminal-webgl-addon-loader'
@@ -15,6 +16,12 @@ import {
   readStringArray
 } from '../../../shared/json-fields'
 import { RELEASE_SYNCHRONIZED_OUTPUT } from '../../../shared/terminal-mode-reset-profiles'
+import {
+  formatTerminalEchoBadge,
+  formatTerminalEchoTooltip,
+  TerminalEchoLatencyMeter,
+  type TerminalEchoStats
+} from './cloud-terminal-echo-latency'
 import type {
   CloudSubscribeOutcome,
   CloudSubscription,
@@ -88,6 +95,10 @@ export function CloudTerminalPanel({
   title = 'cloud-admin',
   active = true
 }: CloudTerminalPanelProps): React.JSX.Element {
+  // U84a observation: one meter per panel (one PTY); it only timestamps keys
+  // and the write callbacks xterm already runs, never the data path itself.
+  const echoMeter = React.useMemo(() => new TerminalEchoLatencyMeter({ label: title }), [title])
+  const [echoStats, setEchoStats] = React.useState<TerminalEchoStats>(() => echoMeter.stats())
   const [state, setState] = React.useState<PanelState>({ kind: 'booting' })
   const hostRef = React.useRef<HTMLDivElement | null>(null)
   const termRef = React.useRef<Terminal | null>(null)
@@ -251,8 +262,21 @@ export function CloudTerminalPanel({
       }
       if (type === 'data') {
         const chunk = readString(event, 'chunk')
-        if (chunk !== null && chunk !== '') {
-          termRef.current?.write(chunk)
+        const term = termRef.current
+        if (chunk !== null && chunk !== '' && term) {
+          if (echoMeter.hasPendingKeys()) {
+            // The callback rides the same write and fires once xterm has parsed
+            // the echo into the buffer; with no key pending the call keeps its
+            // original single-argument shape.
+            term.write(chunk, () => {
+              const sample = echoMeter.recordEcho()
+              if (sample !== null) {
+                setEchoStats(echoMeter.stats())
+              }
+            })
+          } else {
+            term.write(chunk)
+          }
         }
       }
     }
@@ -310,6 +334,9 @@ export function CloudTerminalPanel({
             return
           }
           subscription = outcome.subscription
+          // A drop loses the echoes in flight; those keys must not match the
+          // first chunk after the reconnect.
+          echoMeter.clearPending()
           setState({ kind: 'live' })
         })
         .catch((error: unknown) => {
@@ -411,7 +438,7 @@ export function CloudTerminalPanel({
     }
     // One PTY per workspace path; a different path belongs to a different panel.
     // The title is the create-time name of that PTY, never a live relabel.
-  }, [rpc, subscribe, workspacePath, title, clientId, pushViewport])
+  }, [rpc, subscribe, workspacePath, title, clientId, pushViewport, echoMeter])
 
   // Keystrokes name the live handle; a dropping link shows its state instead of
   // throwing into the tree.
@@ -423,11 +450,14 @@ export function CloudTerminalPanel({
     const input = term.onData((data) => {
       const handle = handleRef.current
       if (handle !== null) {
+        echoMeter.recordKey()
         void rpc('terminal.send', { terminal: handle, text: data })
       }
     })
     return () => input.dispose()
-  }, [rpc])
+  }, [rpc, echoMeter])
+
+  const echoBadge = formatTerminalEchoBadge(echoStats)
 
   return (
     <section
@@ -436,15 +466,26 @@ export function CloudTerminalPanel({
     >
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-medium text-foreground">终端</h2>
-        <span className="text-xs text-muted-foreground" data-testid="cloud-terminal-state">
-          {state.kind === 'booting'
-            ? '正在连接…'
-            : state.kind === 'live'
-              ? '实时'
-              : state.kind === 'reconnecting'
-                ? `已断开，正在重连…${state.code ? `（${state.code}）` : ''}`
-                : `连接失败（${state.code}）`}
-        </span>
+        <div className="flex items-center gap-2">
+          {echoBadge !== null ? (
+            <Badge
+              variant="hostContext"
+              data-testid="cloud-terminal-echo-latency"
+              title={formatTerminalEchoTooltip(echoStats)}
+            >
+              {echoBadge}
+            </Badge>
+          ) : null}
+          <span className="text-xs text-muted-foreground" data-testid="cloud-terminal-state">
+            {state.kind === 'booting'
+              ? '正在连接…'
+              : state.kind === 'live'
+                ? '实时'
+                : state.kind === 'reconnecting'
+                  ? `已断开，正在重连…${state.code ? `（${state.code}）` : ''}`
+                  : `连接失败（${state.code}）`}
+          </span>
+        </div>
       </div>
       <div
         ref={hostRef}
