@@ -40,11 +40,13 @@ import { createRemoteAudit, type AuditSink } from './audit-writer-client.ts'
 import { createSigningKeyRing } from './signing-key-ring.ts'
 import type { AuditEvent, AuditEventInput } from './store.ts'
 import { openAuditLogFile } from './audit-log-file.ts'
+import { attachStorePersistence } from './store-persistence.ts'
 import { startInternalChannel } from './internal-channel.ts'
 import { ldapProfile, MockLdapAdapter, type LdapAdapter } from './ldap.ts'
 import {
   Store,
   type Device,
+  type Grant,
   type Host,
   type HostPermission,
   type InstallDownloadToken,
@@ -745,6 +747,9 @@ export function createApp(config: ApiConfig): ApiHandle {
   const expiresInSeconds = Math.ceil(accessTtlMs / 1000)
   const auditLogPath = config.auditLogPath ?? process.env.AUDIT_LOG_PATH ?? null
   const store = new Store()
+  // U131: dev-store snapshots are opt-in; without the env var the store stays in memory.
+  const storeFile = (process.env.ORCA_PLATFORM_STORE_FILE ?? '').trim()
+  const storePersistence = storeFile ? attachStorePersistence(store, { file: storeFile }) : null
   // Production must inject a secret; the fallback exists only for local tests.
   const internalToken =
     config.internalToken ??
@@ -1270,74 +1275,99 @@ export function createApp(config: ApiConfig): ApiHandle {
       ldapRequiredGroup ? { requiredGroup: ldapRequiredGroup } : undefined
     )
 
-  // Seed: admin, developer, host, project, grants.
-  const admin = store.seedUser({
-    username: 'admin',
-    displayName: '李静',
-    dept: '平台工程部',
-    email: 'admin@example.com',
-    groups: ['platform-admins'],
-    roles: ['platform:admin', 'developer'],
-    status: 'active'
-  })
-  const dev = store.seedUser({
-    username: 'zhangsan',
-    displayName: '张伟',
-    dept: '支付研发部',
-    email: 'zhangsan@example.com',
-    groups: ['developers', 'team-payment'],
-    roles: ['developer'],
-    status: 'active'
-  })
-  const host: Host = {
-    id: 'host_dev001',
-    name: 'dev-001',
-    fingerprint: 'sha256:hostfingerprint001',
-    tlsFingerprint: 'sha256:hosttls001',
-    e2eePublicKey: 'MCowBQYDK2VuAyEAhostpublickeyplaceholder0000000000=',
-    orcaVersion: '1.5.0',
-    protocolVersion: 3,
-    zone: 'intranet',
-    directAddrs: ['127.0.0.1:16768'],
-    relayRoute: 'dev-001',
-    capabilities: ['pty', 'files', 'git', 'managed-credential'],
-    projectsRoot: null,
-    projectDirs: [],
-    status: 'online',
-    maintenanceReason: null,
-    lastHeartbeatAt: now(),
-    credentialHash: null,
-    revokedAt: null
+  // Seed: admin, developer, host, project, grants. A restored snapshot already
+  // holds these; re-seeding would mint new user ids that grants no longer match.
+  const admin =
+    store.usersByName.get('admin') ??
+    store.seedUser({
+      username: 'admin',
+      displayName: '李静',
+      dept: '平台工程部',
+      email: 'admin@example.com',
+      groups: ['platform-admins'],
+      roles: ['platform:admin', 'developer'],
+      status: 'active'
+    })
+  const dev =
+    store.usersByName.get('zhangsan') ??
+    store.seedUser({
+      username: 'zhangsan',
+      displayName: '张伟',
+      dept: '支付研发部',
+      email: 'zhangsan@example.com',
+      groups: ['developers', 'team-payment'],
+      roles: ['developer'],
+      status: 'active'
+    })
+  const host: Host =
+    store.hosts.get('host_dev001') ??
+    ({
+      id: 'host_dev001',
+      name: 'dev-001',
+      fingerprint: 'sha256:hostfingerprint001',
+      tlsFingerprint: 'sha256:hosttls001',
+      e2eePublicKey: 'MCowBQYDK2VuAyEAhostpublickeyplaceholder0000000000=',
+      orcaVersion: '1.5.0',
+      protocolVersion: 3,
+      zone: 'intranet',
+      directAddrs: ['127.0.0.1:16768'],
+      relayRoute: 'dev-001',
+      capabilities: ['pty', 'files', 'git', 'managed-credential'],
+      projectsRoot: null,
+      projectDirs: [],
+      status: 'online',
+      maintenanceReason: null,
+      lastHeartbeatAt: now(),
+      credentialHash: null,
+      revokedAt: null
+    } satisfies Host)
+  if (!store.hosts.has(host.id)) {
+    store.hosts.set(host.id, host)
+    store.hostsByName.set(host.name, host)
   }
-  store.hosts.set(host.id, host)
-  store.hostsByName.set(host.name, host)
 
-  const project: Project = {
-    id: 'proj_payment',
-    key: 'payment-service',
-    name: 'payment-service',
-    repoUrl: 'git@git.example.com:pay/payment-service.git',
-    hostId: host.id,
-    path: '/srv/work/payment-service',
-    defaultBranch: 'main',
-    downloadPolicy: 'deny',
-    status: 'ready',
-    createdAt: now()
+  const project: Project =
+    store.projects.get('proj_payment') ??
+    ({
+      id: 'proj_payment',
+      key: 'payment-service',
+      name: 'payment-service',
+      repoUrl: 'git@git.example.com:pay/payment-service.git',
+      hostId: host.id,
+      path: '/srv/work/payment-service',
+      defaultBranch: 'main',
+      downloadPolicy: 'deny',
+      status: 'ready',
+      createdAt: now()
+    } satisfies Project)
+  if (!store.projects.has(project.id)) {
+    store.projects.set(project.id, project)
+    store.projectsByKey.set(project.key, project)
   }
-  store.projects.set(project.id, project)
-  store.projectsByKey.set(project.key, project)
-  store.grants.push({
+  const seededGrant: Grant = {
     projectId: project.id,
     subjectType: 'group',
     subjectId: 'team-payment',
     permissions: ['open', 'terminal', 'agent', 'file:read', 'file:write']
-  })
-  store.relayRoutes.set('dev-001', {
-    routeKey: 'dev-001',
-    hostId: host.id,
-    target: '127.0.0.1:16768',
-    version: 1
-  })
+  }
+  if (
+    !store.grants.some(
+      (grant) =>
+        grant.projectId === seededGrant.projectId &&
+        grant.subjectType === seededGrant.subjectType &&
+        grant.subjectId === seededGrant.subjectId
+    )
+  ) {
+    store.grants.push(seededGrant)
+  }
+  if (!store.relayRoutes.has('dev-001')) {
+    store.relayRoutes.set('dev-001', {
+      routeKey: 'dev-001',
+      hostId: host.id,
+      target: '127.0.0.1:16768',
+      version: 1
+    })
+  }
 
   function resolveToken(req: IncomingMessage): AuthedRequest | null {
     const header = req.headers.authorization
@@ -4579,6 +4609,8 @@ export function createApp(config: ApiConfig): ApiHandle {
       return signingKeys.current()
     },
     close: async () => {
+      storePersistence?.flushNow()
+      storePersistence?.stop()
       await internalChannel?.close()
       await new Promise<void>((resolve) => server.close(() => resolve()))
     },

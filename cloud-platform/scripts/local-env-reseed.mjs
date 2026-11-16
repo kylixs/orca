@@ -11,8 +11,7 @@
  * --platform-only restarts only the platform process (implies --restart-platform)
  * and refreshes the web release snapshot it serves. Host processes are never
  * killed, re-enrolled, or health-rebuilt, so their PTYs survive; host assertions
- * are deferred instead of retried. The dev platform keeps its store in memory, so
- * a restart starts empty: hosts stay offline until a full reseed.
+ * are deferred instead of retried; U131 snapshots the store to run/platform-store.json.
  */
 import fs from 'node:fs'
 import os from 'node:os'
@@ -156,6 +155,7 @@ async function ensurePlatform(paths, options) {
       PLATFORM_TLS_CERT_PATH: paths.platformCert,
       PLATFORM_TLS_KEY_PATH: paths.platformKey,
       ORCA_CLOUD_WEB_ROOT: path.join(ROOT, 'cloud-platform/apps/web'),
+      ORCA_PLATFORM_STORE_FILE: path.join(options.root, 'run/platform-store.json'),
       // U126: keep superseded builds so a cached browser page keeps resolving.
       ORCA_CLOUD_WEB_ARCHIVE: path.join(options.root, 'web-archive')
     },
@@ -276,12 +276,7 @@ async function seedProjects(api, tokens, paths) {
           }
       let result
       try {
-        result = await ensureProject(
-          api,
-          self ? tokens.dev.accessToken : adminToken,
-          spec,
-          self
-        )
+        result = await ensureProject(api, self ? tokens.dev.accessToken : adminToken, spec, self)
       } catch (error) {
         console.warn(`[reseed] warn project ${key} skipped: ${error.message}`)
         skipped.push(key)
