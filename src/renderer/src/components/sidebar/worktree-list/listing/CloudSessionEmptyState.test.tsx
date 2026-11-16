@@ -43,6 +43,7 @@ function ports(args: {
     }),
     worktreesForRepo: () => [],
     fetchWorktrees: async () => true,
+    waitForSessionTabsRestore: async () => {},
     activateWorkspace: () => {}
   }
 }

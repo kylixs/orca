@@ -87,6 +87,9 @@ type Harness = {
     >
   >
   fetchWorktrees: ReturnType<typeof vi.fn<(repoId: string, hostId: string) => Promise<boolean>>>
+  waitForSessionTabsRestore: ReturnType<
+    typeof vi.fn<(input: { environmentId: string; worktreeId: string }) => Promise<void>>
+  >
   activateWorkspace: ReturnType<
     typeof vi.fn<
       (input: { worktreeId: string; executionHostId: string; mountExplorer: boolean }) => void
@@ -127,6 +130,9 @@ function makeHarness(args?: {
   const fetchWorktrees = vi.fn<(repoId: string, hostId: string) => Promise<boolean>>(
     async () => true
   )
+  const waitForSessionTabsRestore = vi.fn<
+    (input: { environmentId: string; worktreeId: string }) => Promise<void>
+  >(async () => {})
   const activateWorkspace =
     vi.fn<
       (input: { worktreeId: string; executionHostId: string; mountExplorer: boolean }) => void
@@ -144,6 +150,7 @@ function makeHarness(args?: {
     ensureRepoRow,
     worktreesForRepo: () => args?.worktrees ?? [worktreeFixture()],
     fetchWorktrees,
+    waitForSessionTabsRestore,
     activateWorkspace
   }
   return {
@@ -152,6 +159,7 @@ function makeHarness(args?: {
     ensure,
     ensureRepoRow,
     fetchWorktrees,
+    waitForSessionTabsRestore,
     activateWorkspace,
     emitTransport: (transport) => {
       for (const listener of transportListeners) {
@@ -420,6 +428,30 @@ describe('web cloud workspace bootstrap (W13b)', () => {
 
     expect(readWebCloudWorkspaceBootstrapStatus().phase).toBe('done')
     expect(shouldMirrorCloudSessionTabs('web-bootstrap-env')).toBe(true)
+  })
+
+  it('waits for the restored inventory before activating, so the seed is only a fallback', async () => {
+    const harness = makeHarness({
+      info: async () => workspaceInfo({ capabilities: [CLOUD_SESSION_TABS_RESTORE_CAPABILITY] })
+    })
+    await startWebCloudWorkspaceBootstrapForTests(harness.ports)
+
+    expect(harness.waitForSessionTabsRestore).toHaveBeenCalledWith({
+      environmentId: 'web-bootstrap-env',
+      worktreeId: `repo_1::${WORKSPACE_PATH}`
+    })
+    // Inventory settles first; activateWorkspace keeps its own emptiness check as the fallback.
+    expect(harness.waitForSessionTabsRestore.mock.invocationCallOrder[0]).toBeLessThan(
+      harness.activateWorkspace.mock.invocationCallOrder[0]!
+    )
+  })
+
+  it('does not wait for inventory on a legacy host and seeds right away', async () => {
+    const harness = makeHarness()
+    await startWebCloudWorkspaceBootstrapForTests(harness.ports)
+
+    expect(harness.waitForSessionTabsRestore).not.toHaveBeenCalled()
+    expect(harness.activateWorkspace).toHaveBeenCalledTimes(1)
   })
 
   it('keeps the cloud skip when the host predates the capabilities field', async () => {

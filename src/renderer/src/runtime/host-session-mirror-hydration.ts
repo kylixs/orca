@@ -12,10 +12,12 @@ import { getRuntimeEnvironmentConnectionGeneration } from '@/store/slices/runtim
  */
 
 type ParkedMirrorWaiter = { environmentId: string; worktreeId: string; run: () => void }
+type HydrationWaiter = { environmentId: string; worktreeId: string; resolve: () => void }
 
 const hydratedGenerationByEnvironment = new Map<string, number>()
 const hydratedGenerationByWorktree = new Map<string, number>()
 const parkedWaitersByWorktree = new Map<string, ParkedMirrorWaiter>()
+const hydrationWaiters = new Set<HydrationWaiter>()
 export const MAX_PARKED_HOST_SESSION_MIRROR_WAITERS = 512
 
 function worktreeKey(environmentId: string, worktreeId: string): string {
@@ -66,6 +68,19 @@ function drainParkedWaiters(matches: (waiter: ParkedMirrorWaiter) => boolean): v
   }
 }
 
+function drainHydrationWaiters(environmentId: string, worktreeId?: string): void {
+  for (const waiter of hydrationWaiters) {
+    if (waiter.environmentId !== environmentId) {
+      continue
+    }
+    if (worktreeId !== undefined && waiter.worktreeId !== worktreeId) {
+      continue
+    }
+    hydrationWaiters.delete(waiter)
+    waiter.resolve()
+  }
+}
+
 /**
  * Settles the whole environment. Call only for a full inventory ALREADY applied
  * to the store — never for a failure, which is `unverifiable` and no evidence a
@@ -78,6 +93,7 @@ export function markHostSessionMirrorHydrated(environmentId: string): void {
     getRuntimeEnvironmentConnectionGeneration(environmentId)
   )
   drainParkedWaiters((waiter) => waiter.environmentId === environmentId)
+  drainHydrationWaiters(environmentId)
 }
 
 /** Settles one worktree, for a single-worktree frame already applied to the
@@ -93,6 +109,40 @@ export function markHostSessionMirrorWorktreeHydrated(
   drainParkedWaiters(
     (waiter) => waiter.environmentId === environmentId && waiter.worktreeId === worktreeId
   )
+  drainHydrationWaiters(environmentId, worktreeId)
+}
+
+/**
+ * Resolves when this client has applied the host's restored inventory (full or
+ * per-worktree) for the given workspace. Times out so a host that never
+ * publishes cannot wedge the caller; callers seed their own fallback after.
+ */
+export function waitForHostSessionMirrorHydration(
+  environmentId: string,
+  worktreeId: string,
+  timeoutMs: number
+): Promise<void> {
+  if (hasHostSessionMirrorHydrated(environmentId, worktreeId)) {
+    return Promise.resolve()
+  }
+  return new Promise((resolve) => {
+    let done = false
+    const waiter: HydrationWaiter = {
+      environmentId,
+      worktreeId,
+      resolve: () => {
+        if (done) {
+          return
+        }
+        done = true
+        clearTimeout(timer)
+        hydrationWaiters.delete(waiter)
+        resolve()
+      }
+    }
+    const timer = setTimeout(waiter.resolve, timeoutMs)
+    hydrationWaiters.add(waiter)
+  })
 }
 
 /** Why: waiters survive this reset — a re-pair or effect restart replaces the
@@ -138,4 +188,10 @@ export function resetHostSessionMirrorHydrationForTests(): void {
   hydratedGenerationByEnvironment.clear()
   hydratedGenerationByWorktree.clear()
   parkedWaitersByWorktree.clear()
+  // Why resolve: a pending wait from the previous case would otherwise keep its promise alive forever.
+  const pending = [...hydrationWaiters]
+  hydrationWaiters.clear()
+  for (const waiter of pending) {
+    waiter.resolve()
+  }
 }

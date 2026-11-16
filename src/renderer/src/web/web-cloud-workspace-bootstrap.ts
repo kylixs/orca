@@ -13,7 +13,10 @@ import {
   defaultWebCloudWorkspacePorts,
   type WebCloudWorkspaceBootstrapPorts
 } from './web-cloud-workspace-store-ports'
-import { recordWebCloudSessionCapabilities } from './web-cloud-session-capabilities'
+import {
+  recordWebCloudSessionCapabilities,
+  shouldMirrorCloudSessionTabs
+} from './web-cloud-session-capabilities'
 
 /**
  * The cloud session's workspace bootstrap (W13 design §4): `workspace.info` →
@@ -243,6 +246,15 @@ async function runBootstrap(
         retryable: true
       })
       return
+    }
+    // Why: a restoring host publishes the session's tabs; seeding before that
+    // lands would add a terminal the user never opened. Legacy hosts advertise
+    // no capability and keep the immediate fallback.
+    if (shouldMirrorCloudSessionTabs(environment.id)) {
+      await ports.waitForSessionTabsRestore({ environmentId: environment.id, worktreeId })
+      if (isCancelled()) {
+        return
+      }
     }
     ports.activateWorkspace({ worktreeId, executionHostId, mountExplorer: fileReadGranted })
     setStatus({ ...IDLE, phase: 'done' })

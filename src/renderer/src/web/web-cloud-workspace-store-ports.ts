@@ -5,6 +5,7 @@ import type { RuntimeHostStatusSnapshot } from '../../../shared/runtime-host-sta
 import type { Repo } from '../../../shared/repo-types'
 import type { Worktree } from '../../../shared/worktree/types'
 import { useAppStore } from '../store'
+import { waitForHostSessionMirrorHydration } from '../runtime/host-session-mirror-hydration'
 import { getPathDisplayName } from '../store/terminals/workspace-terminal-placeholders'
 import { cloudSessionProjectDisplayName } from './web-cloud-connect'
 import { readStoredWebRuntimeEnvironment } from './web-runtime-environment'
@@ -37,6 +38,15 @@ export type WebCloudWorkspaceBootstrapPorts = {
   }) => Promise<Repo | null>
   worktreesForRepo: (repoId: string) => readonly Worktree[]
   fetchWorktrees: (repoId: string, executionHostId: ExecutionHostId) => Promise<unknown>
+  /**
+   * Resolves once the host's restored tab inventory has been applied to the
+   * store (or the wait times out). Without it a fresh page seeds a terminal
+   * before the restored tabs land and renders an extra tab.
+   */
+  waitForSessionTabsRestore: (input: {
+    environmentId: string
+    worktreeId: string
+  }) => Promise<void>
   activateWorkspace: (input: {
     worktreeId: string
     executionHostId: ExecutionHostId
@@ -53,6 +63,9 @@ export function cloudWorkspaceProjectDisplayName(
   const name = cloudSessionProjectDisplayName(environmentName).trim()
   return name || getPathDisplayName(projectRoot, projectRoot)
 }
+
+/** A restored inventory normally lands in well under a second; a host that never publishes must not wedge activation. */
+const SESSION_TABS_RESTORE_WAIT_MS = 5_000
 
 export function defaultWebCloudWorkspacePorts(): WebCloudWorkspaceBootstrapPorts {
   return {
@@ -78,6 +91,12 @@ export function defaultWebCloudWorkspacePorts(): WebCloudWorkspaceBootstrapPorts
     worktreesForRepo: (repoId) => useAppStore.getState().worktreesByRepo[repoId] ?? [],
     fetchWorktrees: (repoId, executionHostId) =>
       useAppStore.getState().fetchWorktrees(repoId, { executionHostId }),
+    waitForSessionTabsRestore: ({ environmentId, worktreeId }) =>
+      waitForHostSessionMirrorHydration(
+        environmentId,
+        worktreeId,
+        SESSION_TABS_RESTORE_WAIT_MS
+      ),
     activateWorkspace: ({ worktreeId, executionHostId, mountExplorer }) => {
       const state = useAppStore.getState()
       // Why the local pipeline and not activateAndRevealWorktree: a cloud ticket's
