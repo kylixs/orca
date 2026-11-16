@@ -16,6 +16,8 @@ import {
   dispatchFloatingWorkspaceGuestSelectIndex
 } from '@/lib/floating-workspace-guest-bridge'
 
+import { markUserInitiatedTerminalCreate } from '@/runtime/web-session-user-initiated-create'
+
 import { useAppStore } from '../../store'
 function getWorktreeRuntimeEnvironmentId(worktreeId: string | null | undefined): string | null {
   return getRuntimeEnvironmentIdForWorktree(useAppStore.getState(), worktreeId)
@@ -49,6 +51,8 @@ export function registerTabLifecycleIpcBridge(unsubs: (() => void)[]): void {
           return
         }
         const newTab = store.createTab(worktreeId)
+        // Why: Cmd/Ctrl+T inside a cloud guest is the user's click; its pane must persist the host selection (U155).
+        markUserInitiatedTerminalCreate(newTab.id)
         store.setActiveTabType('terminal', worktreeId)
         // Why: mirror Terminal.tsx handleNewTab so a new tab appends at the end, not index 0, when tabBarOrder is unset.
         const freshStore = useAppStore.getState()

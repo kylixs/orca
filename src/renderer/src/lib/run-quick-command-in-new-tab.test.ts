@@ -58,6 +58,28 @@ describe('runQuickCommandInNewTab', () => {
     mocks.launchAgentInNewTab.mockReset()
   })
 
+  it('marks the created tab as a user-initiated terminal create (U155)', async () => {
+    const {
+      clearUserInitiatedTerminalCreateForTests,
+      peekUserInitiatedTerminalCreate
+    } = await import('@/runtime/web-session-user-initiated-create')
+    clearUserInitiatedTerminalCreateForTests()
+
+    runQuickCommandInNewTab({
+      command: {
+        id: 'build',
+        label: 'Build',
+        action: 'terminal-command',
+        command: 'pnpm build',
+        appendEnter: true
+      },
+      worktreeId: 'wt-1',
+      groupId: 'group-1'
+    })
+
+    expect(peekUserInitiatedTerminalCreate('tab-new')).toBe(true)
+  })
+
   it('flattens multiline quick commands before queuing', () => {
     const result = runQuickCommandInNewTab({
       command: {

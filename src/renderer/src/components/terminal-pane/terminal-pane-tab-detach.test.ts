@@ -19,8 +19,11 @@ import {
 
 const toastErrorMock = vi.hoisted(() => vi.fn())
 vi.mock('sonner', () => ({ toast: { error: toastErrorMock } }))
-beforeEach(() => {
+beforeEach(async () => {
   toastErrorMock.mockClear()
+  const { clearUserInitiatedTerminalCreateForTests } =
+    await import('@/runtime/web-session-user-initiated-create')
+  clearUserInitiatedTerminalCreateForTests()
   // No local main holds these sessions, so each move stays in the renderer.
   vi.stubGlobal('window', {
     api: { pty: { moveLeafToNewTab: () => Promise.resolve({ status: 'not_held' }) } }
@@ -177,6 +180,54 @@ describe('resolveTerminalTabStripDropTarget', () => {
 })
 
 describe('detachTerminalPaneToTab', () => {
+  it('marks a detached pane that must spawn a new PTY (U155)', async () => {
+    const store = createStore(unboundSplitLayout())
+    const { peekUserInitiatedTerminalCreate } =
+      await import('@/runtime/web-session-user-initiated-create')
+
+    await detachTerminalPaneToTab({
+      getStore: () => store,
+      manager: {
+        getPanes: () => [{ id: 1 }, { id: 2 }],
+        getLeafId: () => LEAF_2,
+        detachPaneForExternalMove: () => true
+      },
+      persistLayoutSnapshot: vi.fn(),
+      sourcePaneId: 2,
+      sourceTabId: SOURCE_TAB_ID,
+      targetGroupId: TARGET_GROUP_ID,
+      worktreeId: WORKTREE_ID
+    })
+
+    const options = vi.mocked(store.createTab).mock.calls[0]?.[3]
+    expect(options?.pendingActivationSpawn).toBe(true)
+    expect(peekUserInitiatedTerminalCreate('tab-detached')).toBe(true)
+  })
+
+  it('does not mark the reuse branch that reattaches an existing PTY (U155)', async () => {
+    const store = createStore(splitLayout())
+    const { peekUserInitiatedTerminalCreate } =
+      await import('@/runtime/web-session-user-initiated-create')
+
+    await detachTerminalPaneToTab({
+      getStore: () => store,
+      manager: {
+        getPanes: () => [{ id: 1 }, { id: 2 }],
+        getLeafId: () => LEAF_2,
+        detachPaneForExternalMove: () => true
+      },
+      persistLayoutSnapshot: vi.fn(),
+      sourcePaneId: 2,
+      sourceTabId: SOURCE_TAB_ID,
+      targetGroupId: TARGET_GROUP_ID,
+      worktreeId: WORKTREE_ID
+    })
+
+    const options = vi.mocked(store.createTab).mock.calls[0]?.[3]
+    expect(options?.initialPtyId).toBe('remote:env-1@@terminal-1')
+    expect(peekUserInitiatedTerminalCreate('tab-detached')).toBe(false)
+  })
+
   it.each([LEAF_1, LEAF_2])('moves chat mode only with its owning leaf %s', async (chatLeafId) => {
     const store = createStore({ ...splitLayout(), chatLeafId })
     await detachTerminalPaneToTab({

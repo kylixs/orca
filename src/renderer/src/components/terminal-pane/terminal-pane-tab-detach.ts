@@ -5,6 +5,7 @@ import { createBrowserUuid } from '@/lib/browser-uuid'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import type { TerminalLeafMoveRequest } from '../../../../shared/terminal-leaf-move'
 import { commitTerminalSurfaceClose } from '@/store/terminals/terminal-surface-close-intent'
+import { markUserInitiatedTerminalCreate } from '@/runtime/web-session-user-initiated-create'
 import type { PaneCwdEntry } from './resolve-split-cwd'
 import { detachTerminalLayoutLeaf } from './terminal-layout-leaf-detach'
 export {
@@ -208,6 +209,10 @@ function applyMove(
       : { initialLeafId: leafId }),
     recordInteraction: true
   })
+  if (!ptyId) {
+    // Why: only the no-bound-PTY branch spawns a new terminal; the reused-PTY branch is passive (U155).
+    markUserInitiatedTerminalCreate(tab.id)
+  }
   const afterCreateStore = args.getStore()
   moveCreatedTabToIndex({
     groupId: args.targetGroupId,
