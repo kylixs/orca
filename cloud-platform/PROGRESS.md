@@ -3869,6 +3869,13 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **重建 web/renderer（生产）完成**（`evidence/p3-build-20261117-074016/`）：web served `fb496c0f…`==磁盘（L1/L2 编译证据）、renderer 含 U157 相位守卫/U169 映射、无 e2e 探针、exposeStore false；P3 批独立审计在跑。
 - 待用户裁定：数据采集 A+/P1/审计存储二期。
 
+### 2026-11-17 09:1x 轮：P3 批审计 PASS；U166 交付复验 PASS
+
+- **P3 批审计 PASS**：L1 不误回收、L2 契约一致、U157 不卡相位；仅两条 P3 措辞观察；50/50 相邻、tc 0。
+- **U166 交付复验 PASS**（`evidence/u166-resmoke-20261117-074509/`）：served `fb496c0f`==磁盘；表单登录→`orca.webCloudSession` v1→刷新恢复 8 tabs；console error 0/pageerror 0/requestfailed 0。
+- **U170 登记（P3）**：无 project 参数时表单自动选首个项目（在已吊销宿主上）→ 409；建议默认跳过不可用项目。
+- 主线阻塞不变：等待用户三项裁定。
+
 ### 四通道并发执行（启动，2026-11-14）
 
 按细粒度拆分与三权分立纪律并发起跑：通道② **W6a**（中继浏览器模式，relay.ts 域）、通道③ **W10**（客户端零 env 登录，src/main+renderer 登录域）、通道④ **W5a**（详情页终端组件，cloud-admin 域）三个实现代理并行；通道① 等在途 W2（QA 修复）完成后接 W8。每令完成→独立测试代理→独立审计代理→主会话关闭放行下一个。
