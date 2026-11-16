@@ -55,8 +55,9 @@ function isAuditEvent(value: unknown): value is AuditEvent {
     typeof event.seq === 'number' &&
     typeof event.ts === 'number' &&
     typeof event.eventType === 'string' &&
-    typeof event.actor === 'string' &&
-    typeof event.targetType === 'string' &&
+    // Nullable in AuditEvent: system/host events carry no actor or target type.
+    (typeof event.actor === 'string' || event.actor === null) &&
+    (typeof event.targetType === 'string' || event.targetType === null) &&
     typeof event.result === 'string' &&
     typeof event.prevHash === 'string' &&
     typeof event.hash === 'string'
