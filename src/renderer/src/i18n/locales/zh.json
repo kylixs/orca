@@ -17690,6 +17690,11 @@
         "attention": "需要处理",
         "running": "已运行 {{value0}}",
         "filter": "显示聊天"
+      },
+      "tab-bar": {
+        "web-runtime-tab-move-mirror": {
+          "failed": "无法在主机上移动该标签页。"
+        }
       }
     },
     "i18n": {
