@@ -2543,7 +2543,7 @@ svg { display: block; }
 
 <div class="notice">
   <svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>
-  <span>角色语义：普通 = 项目 / 主机使用面（按资源授权）；审计 = + 审计查询与目录读取，不可管控；管理员 = 全管控面 + 授权卡片写入。LDAP platform-admins 组成员首次登录映射为管理员，此后按用户覆盖优先，再次登录不会被同步覆盖。</span>
+  <span>角色语义：普通 = 项目 / 主机使用面（按资源授权）；审计 = + 审计查询（目录保持 admin-only），不可管控；管理员 = 全管控面 + 授权卡片写入。新用户首登角色一律普通（LDAP 组→角色种子映射已废除）；升权经用户管理页覆盖（roleOverride 优先、不被回灌），登录准入由 LDAP 分组门槛独立控制。</span>
 </div>
 </section>
       <section class="page" data-page="audit" hidden><div class="page-head">
