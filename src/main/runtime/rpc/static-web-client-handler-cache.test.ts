@@ -94,16 +94,19 @@ it('gives hashed assets immutable caching and HTML no-cache', async () => {
   })
   expect(asset.status).toBe(200)
   expect(asset.headers['cache-control']).toBe('public, max-age=31536000, immutable')
+  expect(asset.headers['referrer-policy']).toBe('no-referrer')
   expect(asset.headers.etag).toBeTruthy()
   expect(asset.headers.vary).toMatch(/accept-encoding/i)
 
   const index = await rawGet(`${base}/web-index.html`, { 'accept-encoding': 'identity' })
   expect(index.status).toBe(200)
   expect(index.headers['cache-control']).toBe('no-cache')
+  expect(index.headers['referrer-policy']).toBe('no-referrer')
 
   const unhashed = await rawGet(`${base}/cmaps/font.bcmap`, { 'accept-encoding': 'identity' })
   expect(unhashed.status).toBe(200)
   expect(unhashed.headers['cache-control']).toBe('max-age=300')
+  expect(unhashed.headers['referrer-policy']).toBe('no-referrer')
 
   observed.cacheHeaders = {
     hashed: {
@@ -112,7 +115,8 @@ it('gives hashed assets immutable caching and HTML no-cache', async () => {
       vary: asset.headers.vary
     },
     html: { cacheControl: index.headers['cache-control'] },
-    unhashed: { cacheControl: unhashed.headers['cache-control'] }
+    unhashed: { cacheControl: unhashed.headers['cache-control'] },
+    referrerPolicy: asset.headers['referrer-policy']
   }
 })
 
@@ -156,6 +160,7 @@ it('answers If-None-Match with a 304 and no body', async () => {
   expect(revalidated.body).toHaveLength(0)
   expect(revalidated.headers.etag).toBe(etag)
   expect(revalidated.headers['cache-control']).toBe('public, max-age=31536000, immutable')
+  expect(revalidated.headers['referrer-policy']).toBe('no-referrer')
 
   observed.revalidation = {
     status: revalidated.status,

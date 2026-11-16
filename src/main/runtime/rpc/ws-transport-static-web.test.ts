@@ -78,6 +78,7 @@ describe('WebSocketTransport static web client', () => {
     const admin = await fetch(`${base}/cloud-admin.html`)
     expect(admin.status).toBe(200)
     expect(admin.headers.get('content-type')).toContain('text/html')
+    expect(admin.headers.get('referrer-policy')).toBe('no-referrer')
     await expect(admin.text()).resolves.toBe('<html>admin</html>')
 
     // Same mapping the web client gets when a reverse proxy forwards a prefix.
@@ -91,9 +92,11 @@ describe('WebSocketTransport static web client', () => {
 
     const unknown = await fetch(`${base}/admin.html`)
     expect(unknown.status).toBe(404)
+    expect(unknown.headers.get('referrer-policy')).toBe('no-referrer')
 
     const traversal = await fetch(`${base}/assets/%2e%2e%2fpackage.json`)
     expect(traversal.status).toBe(400)
+    expect(traversal.headers.get('referrer-policy')).toBe('no-referrer')
 
     const traversalBackslash = await fetch(`${base}/cloud-admin.html%5C..%5Cpackage.json`)
     expect(traversalBackslash.status).toBe(400)

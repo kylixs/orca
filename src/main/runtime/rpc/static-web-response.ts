@@ -7,6 +7,8 @@ import { extname } from 'node:path'
 export const STATIC_HASHED_CACHE_CONTROL = 'public, max-age=31536000, immutable'
 export const STATIC_HTML_CACHE_CONTROL = 'no-cache'
 export const STATIC_UNHASHED_CACHE_CONTROL = 'max-age=300'
+/** Console URLs carry project ids in query/hash; no outbound referrer is needed. */
+export const STATIC_REFERRER_POLICY = 'no-referrer'
 
 const COMPRESSIBLE_EXTENSIONS = new Set(['.js', '.css', '.html', '.svg', '.json', '.map'])
 

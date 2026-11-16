@@ -8,6 +8,7 @@ import {
   ifNoneMatchMatches,
   isCompressibleStaticPath,
   staticCacheControl,
+  STATIC_REFERRER_POLICY,
   weakStaticEtag
 } from './static-web-response'
 
@@ -42,6 +43,8 @@ async function handleStaticRequest(
   if (response.destroyed) {
     return
   }
+  // Covers every path below: 200, 304, and the status-only errors.
+  response.setHeader('Referrer-Policy', STATIC_REFERRER_POLICY)
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     response.setHeader('Allow', 'GET, HEAD')
     writeHttpStatus(response, 405)

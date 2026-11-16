@@ -174,13 +174,15 @@ it.each(['success', 'failure'])(
     const response = request()
     expect(observed.statCalls).toBe(1)
     const ended = vi.spyOn(response, 'end')
+    // The fixed Referrer-Policy header is written before any stat; abandonment must add nothing.
+    const headersBeforeAbandon = response.setHeader.mock.calls.length
     const closed = once(response, 'close')
     response.destroy()
     await closed
     releaseStat()
     await expect.poll(() => observed.completedStats).toBe(1)
     expect(observed.streams).toHaveLength(0)
-    expect(response.setHeader).not.toHaveBeenCalled()
+    expect(response.setHeader.mock.calls.length).toBe(headersBeforeAbandon)
     expect(ended).not.toHaveBeenCalled()
   }
 )
