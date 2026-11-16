@@ -584,10 +584,15 @@ async function loadProjects({ includeArchived = false } = {}) {
   // workbench/settings lists (U53③/T2). Admin's project page opts into a
   // separate list for its history group (U116①).
   const withArchived = includeArchived && isAdmin()
-  const body = await api(`/v1/projects${withArchived ? '?includeArchived=1' : ''}`)
-  const all = body.projects ?? []
-  state.projects = all.filter((p) => p.status !== 'archived')
-  state.archivedProjects = withArchived ? all.filter((p) => p.status === 'archived') : []
+  // The live list keeps the plain URL so its failure stays observable (M8 error state).
+  const [body, archiveBody] = await Promise.all([
+    api('/v1/projects'),
+    withArchived ? api('/v1/projects?includeArchived=1') : Promise.resolve(null)
+  ])
+  state.projects = (body.projects ?? []).filter((p) => p.status !== 'archived')
+  state.archivedProjects = withArchived
+    ? (archiveBody.projects ?? []).filter((p) => p.status === 'archived')
+    : []
   return state.projects
 }
 
