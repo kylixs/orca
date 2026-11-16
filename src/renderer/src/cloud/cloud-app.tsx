@@ -83,17 +83,6 @@ function CloudEmbedProgress({ error }: { error: string | null }): React.JSX.Elem
   )
 }
 
-function CloudEmbedSessionMissing(): React.JSX.Element {
-  return (
-    <div
-      data-testid="cloud-embed-unavailable"
-      className="flex h-full items-center justify-center p-8 text-center text-sm text-muted-foreground"
-    >
-      嵌入会话不可用，请从管理台重新打开项目。
-    </div>
-  )
-}
-
 export type CloudAppProps = {
   bridge: CloudBridge | null
   /** U46-4: non-null when the console embeds this page (`?embed=1&project=<id>`). */
@@ -336,11 +325,32 @@ export function CloudApp({
       )
     }
     if (session.status === 'signed-out' && !handoffCode) {
+      // T11: a reload whose persisted session is gone still names its project,
+      // so signing in here reopens it (the auto-open effect below runs once).
       return (
-        <>
-          <CloudEmbedSessionMissing />
+        <div className="flex h-full flex-col bg-background">
+          <p
+            role="status"
+            data-testid="cloud-embed-notice"
+            className="border-b border-border bg-muted px-6 py-2 text-sm text-muted-foreground"
+          >
+            嵌入会话已失效，请重新登录。登录成功后将自动打开该项目。
+          </p>
+          <div className="min-h-0 flex-1">
+            <CloudLoginPanel
+              submitting={false}
+              error={session.error}
+              notice={session.notice}
+              defaultPlatformUrl={session.loginContext?.platformUrl ?? null}
+              defaultUsername={session.loginContext?.username ?? null}
+              addressLocked={session.loginContext?.locked ?? false}
+              onSignIn={(username, password, platformUrl) =>
+                void session.signIn(username, password, platformUrl)
+              }
+            />
+          </div>
           {dialogs}
-        </>
+        </div>
       )
     }
     return (

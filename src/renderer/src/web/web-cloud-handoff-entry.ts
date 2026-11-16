@@ -135,7 +135,16 @@ export type EnterWorkspaceViaHandoffInput = {
 
 export type EnterWorkspaceViaHandoffResult =
   | { status: 'entered'; projectName: string; runtimeId: string }
-  | { status: 'failed'; notice: string; apiUrl: string }
+  | { status: 'failed'; notice: string; apiUrl: string; forbidden?: true }
+
+/** A 403 is terminal: no sign-in can turn it into access to the same project. */
+function isForbiddenHandoffError(error: unknown): boolean {
+  return (
+    (error instanceof WebCloudSessionError && error.code === 'PROJECT_FORBIDDEN') ||
+    (error instanceof WebCloudConnectError &&
+      error.code === WEB_CLOUD_CONNECT_ERROR_CODE.projectNotVisible)
+  )
+}
 
 /** How long the entry screen waits for the platform before falling back to sign-in. */
 export const WEB_CLOUD_HANDOFF_ENTRY_TIMEOUT_MS = 10_000
@@ -166,7 +175,8 @@ async function openWorkspaceViaWebHandoff(
   const failed = (error: unknown): EnterWorkspaceViaHandoffResult => ({
     status: 'failed',
     notice: webCloudHandoffFailureNotice(error),
-    apiUrl: entry.apiUrl
+    apiUrl: entry.apiUrl,
+    ...(isForbiddenHandoffError(error) ? { forbidden: true as const } : {})
   })
   if (!entry.apiUrl) {
     return failed(null)
@@ -276,7 +286,7 @@ export async function enterWorkspaceViaWebHandoff(
 export type WebCloudHandoffEntryState =
   | { status: 'idle' }
   | { status: 'entering' }
-  | { status: 'failed'; notice: string; apiUrl: string }
+  | { status: 'failed'; notice: string; apiUrl: string; forbidden?: true }
 
 const HANDOFF_IDLE: WebCloudHandoffEntryState = { status: 'idle' }
 
@@ -300,7 +310,12 @@ export function useWebCloudHandoffEntry(onEntered: () => void): {
           onEnteredRef.current()
           return
         }
-        setState({ status: 'failed', notice: result.notice, apiUrl: result.apiUrl })
+        setState({
+          status: 'failed',
+          notice: result.notice,
+          apiUrl: result.apiUrl,
+          ...(result.forbidden ? { forbidden: true as const } : {})
+        })
       })
       .catch((error: unknown) =>
         setState({

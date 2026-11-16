@@ -2,7 +2,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   normalizeWebCloudWorkspaceUrl,
-  readWebCloudWorkspaceLocation
+  readWebCloudWorkspaceLocation,
+  webCloudWorkspaceLocationError
 } from './web-cloud-workspace-location'
 
 describe('web-cloud-workspace-location', () => {
@@ -54,5 +55,24 @@ describe('web-cloud-workspace-location', () => {
       apiUrl: 'https://cloud.test',
       projectId: null
     })
+  })
+
+  it('U106-W3: unusable project ids and platform addresses are 404 inputs', () => {
+    expect(
+      webCloudWorkspaceLocationError({ apiUrl: 'https://cloud.test', projectId: 'proj_1234abcd' })
+    ).toBeNull()
+    expect(webCloudWorkspaceLocationError({ apiUrl: null, projectId: null })).toBeNull()
+    expect(
+      webCloudWorkspaceLocationError({ apiUrl: null, projectId: 'not a project id' })
+    ).toBe('invalid-project')
+    expect(
+      webCloudWorkspaceLocationError({ apiUrl: null, projectId: 'proj_<script>' })
+    ).toBe('invalid-project')
+    expect(
+      webCloudWorkspaceLocationError({ apiUrl: 'javascript:alert(1)', projectId: null })
+    ).toBe('invalid-api')
+    expect(
+      webCloudWorkspaceLocationError({ apiUrl: 'not-a-url', projectId: 'proj_1' })
+    ).toBe('invalid-api')
   })
 })

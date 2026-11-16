@@ -20,6 +20,8 @@ type WebConnectCloudFormProps = {
   initialApiUrl?: string | null
   /** The project named by the entry URL; sign-in returns to that page. */
   initialProjectId?: string | null
+  /** The named project is not openable; the caller replaces the form with a 403 page. */
+  onProjectUnavailable?: (apiUrl: string) => void
   onConnected: () => void
 }
 
@@ -56,6 +58,7 @@ export default function WebConnectCloudForm({
   existingEnvironment,
   initialApiUrl = null,
   initialProjectId = null,
+  onProjectUnavailable,
   onConnected
 }: WebConnectCloudFormProps): React.JSX.Element {
   // The handoff entry URL's ?api= wins: it is the platform the code came from.
@@ -104,6 +107,15 @@ export default function WebConnectCloudForm({
       onConnected()
     } catch (err) {
       const code = errorCodeOf(err) ?? WEB_CLOUD_CONNECT_ERROR_CODE.connectFailed
+      // A forbidden project is not a login problem: show the terminal 403 page
+      // instead of asking the user to sign in again.
+      if (
+        onProjectUnavailable &&
+        (code === WEB_CLOUD_CONNECT_ERROR_CODE.projectNotVisible || code === 'PROJECT_FORBIDDEN')
+      ) {
+        onProjectUnavailable(apiUrl.trim())
+        return
+      }
       setError({ code, message: cloudConnectErrorMessage(code, err) })
     } finally {
       setConnecting(false)

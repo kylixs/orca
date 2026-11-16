@@ -14,6 +14,7 @@ import {
 import { parseWebPairingInput } from './web-pairing'
 import { WebRuntimeClient } from './web-runtime-client'
 import WebConnectCloudForm from './WebConnectCloudForm'
+import WebCloudWorkspaceError from './WebCloudWorkspaceError'
 import type { RuntimeStatus } from '../../../shared/runtime-types'
 import { translate } from '@/i18n/i18n'
 
@@ -25,6 +26,8 @@ type WebConnectProps = {
   initialCloudApiUrl?: string | null
   /** The URL's project, opened after sign-in so a refresh returns to that page. */
   initialProjectId?: string | null
+  /** A project the account cannot open is a terminal page, not a retry prompt. */
+  onProjectUnavailable?: (apiUrl: string) => void
   onConnected: () => void
 }
 
@@ -35,6 +38,7 @@ export default function WebConnect({
   initialNotice = null,
   initialCloudApiUrl = null,
   initialProjectId = null,
+  onProjectUnavailable,
   onConnected
 }: WebConnectProps): React.JSX.Element {
   const existingEnvironment = readStoredWebRuntimeEnvironment()
@@ -43,6 +47,7 @@ export default function WebConnect({
   const [pairingCode, setPairingCode] = useState(initialPairingInput ?? '')
   const [error, setError] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
+  const [projectErrorApiUrl, setProjectErrorApiUrl] = useState<string | null>(null)
   const parsedOffer = useMemo(() => parseWebPairingInput(pairingCode), [pairingCode])
   const autoConnectAttempted = useRef(false)
 
@@ -124,6 +129,10 @@ export default function WebConnect({
     setError(null)
   }
 
+  if (projectErrorApiUrl !== null) {
+    return <WebCloudWorkspaceError kind="forbidden" apiUrl={projectErrorApiUrl} />
+  }
+
   return (
     <div className="flex min-h-dvh items-center justify-center bg-background px-4 py-6 text-foreground">
       <div className="flex w-full max-w-[520px] flex-col gap-5 rounded-lg border border-border bg-card p-5 shadow-sm">
@@ -168,6 +177,14 @@ export default function WebConnect({
               existingEnvironment={existingEnvironment}
               initialApiUrl={initialCloudApiUrl}
               initialProjectId={initialProjectId}
+              {...(onProjectUnavailable
+                ? {
+                    onProjectUnavailable: (apiUrl: string) => {
+                      setProjectErrorApiUrl(apiUrl)
+                      onProjectUnavailable(apiUrl)
+                    }
+                  }
+                : { onProjectUnavailable: setProjectErrorApiUrl })}
               onConnected={onConnected}
             />
           </TabsContent>

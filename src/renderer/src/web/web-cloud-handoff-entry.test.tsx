@@ -285,6 +285,34 @@ describe('enterWorkspaceViaWebHandoff（换发→打开项目→落存储）', (
     expect(stores.session.values.has(SESSION_KEY)).toBe(false)
   })
 
+  it('U106-W3: a 403 from the entry is terminal, not another sign-in', async () => {
+    redeemMock.redeemWebHandoff.mockResolvedValue({
+      apiUrl: ENTRY.apiUrl,
+      accessToken: 'access-3',
+      refreshToken: 'refresh-3',
+      deviceId: 'device-3',
+      user: { displayName: '张三' }
+    })
+    connectMock.connectCloudProjectWithSession.mockRejectedValue(
+      new WebCloudConnectError(
+        WEB_CLOUD_CONNECT_ERROR_CODE.projectNotVisible,
+        'project not visible'
+      )
+    )
+
+    const result = await enterWorkspaceViaWebHandoff({
+      entry: ENTRY,
+      deviceKeyStore: storages().device,
+      sessionStorage: new RecordingStorage()
+    })
+
+    expect(result.status).toBe('failed')
+    if (result.status === 'failed') {
+      expect(result.forbidden).toBe(true)
+      expect(result.apiUrl).toBe(ENTRY.apiUrl)
+    }
+  })
+
   it('prefills nothing when the entry URL carried no platform address', async () => {
     const result = await enterWorkspaceViaWebHandoff({
       entry: { code: 'c', projectId: 'proj_1', apiUrl: '' },

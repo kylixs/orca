@@ -14,6 +14,37 @@ function readParam(search: string, name: string): string | null {
   return value || null
 }
 
+export type WebCloudWorkspaceLocationError = 'invalid-project' | 'invalid-api'
+
+/** Platform project ids are opaque (`proj_…`): a shape check, not a UUID check. */
+const PROJECT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' || url.protocol === 'http:'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * U106-W3: an address we cannot even name a project with is a 404 page, not a
+ * failed sign-in. Rejecting the shape also keeps `javascript:` in `api` from
+ * ever reaching a fetch or a rendered link.
+ */
+export function webCloudWorkspaceLocationError(
+  location: WebCloudWorkspaceLocation
+): WebCloudWorkspaceLocationError | null {
+  if (location.projectId !== null && !PROJECT_ID_PATTERN.test(location.projectId)) {
+    return 'invalid-project'
+  }
+  if (location.apiUrl !== null && !isHttpUrl(location.apiUrl)) {
+    return 'invalid-api'
+  }
+  return null
+}
+
 export function readWebCloudWorkspaceLocation(location: {
   search: string
 }): WebCloudWorkspaceLocation {

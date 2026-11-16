@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import type {
   CloudConnectionEvent,
@@ -216,6 +216,34 @@ describe('U46-4 embed 入口', () => {
     await waitFor(() => expect(screen.getByText('payment-svc')).toBeTruthy())
     expect(bridge.openCalls).toEqual(['p1'])
     expect(posted.filter((message) => message.type === 'ready')).toHaveLength(1)
+  })
+
+  it('T11 刷新后持久会话已失效 → 登录表单（非空白），登录后自动打开同项目', async () => {
+    const bridge = makeBridge({ platformUrl: 'https://platform.example' })
+    render(
+      <CloudApp
+        bridge={bridge}
+        embed={{ projectId: 'p1', handoffCode: null }}
+        postToParent={() => undefined}
+      />
+    )
+
+    await waitFor(() =>
+      expect(screen.getByTestId('cloud-embed-notice').textContent).toContain('嵌入会话已失效')
+    )
+    expect(screen.queryByTestId('cloud-embed-unavailable')).toBeNull()
+    expect(bridge.openCalls).toEqual([])
+    expect(screen.getByLabelText('域账号')).toBeTruthy()
+
+    await waitFor(() =>
+      expect((screen.getByLabelText('平台地址') as HTMLInputElement).value).toBe(
+        'https://platform.example'
+      )
+    )
+    fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'secret' } })
+    fireEvent.submit(screen.getByRole('button', { name: '登录' }).closest('form')!)
+
+    await waitFor(() => expect(bridge.openCalls).toEqual(['p1']))
   })
 
   it('父窗口 close 收尾并回 closed；logout 走 bridge.logout', async () => {

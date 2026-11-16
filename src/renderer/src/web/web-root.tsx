@@ -11,20 +11,24 @@ import {
   readPairingInputFromLocation
 } from './web-pairing'
 import {
+  clearWebHandoffFromAddressBar,
   readWebCloudApiUrlFromLocation,
   readWebCloudHandoffEntry,
   useWebCloudHandoffEntry
 } from './web-cloud-handoff-entry'
 import {
   normalizeWebCloudWorkspaceUrl,
-  readWebCloudWorkspaceLocation
+  readWebCloudWorkspaceLocation,
+  webCloudWorkspaceLocationError
 } from './web-cloud-workspace-location'
+import WebCloudWorkspaceError from './WebCloudWorkspaceError'
 import {
   createBrowserWebCloudSessionStorage,
   readPersistedWebCloudSession
 } from './web-cloud-session-storage'
 import { createLocalStorageWebCloudDeviceKey } from './web-cloud-device-key'
 import { resumeWebCloudSession, webCloudResumeFailureNotice } from './web-cloud-session-resume'
+import type { WebCloudSessionResumeResult } from './web-cloud-session-resume'
 import {
   clearStoredWebRuntimeEnvironment,
   createStoredWebRuntimeEnvironment,
@@ -50,24 +54,33 @@ function WebRoot(): React.JSX.Element {
     // id stays, so a spent code still has a page to return to after sign-in.
     const handoffEntry = readWebCloudHandoffEntry(window.location)
     if (handoffEntry) {
-      normalizeWebCloudWorkspaceUrl({
+      const handoffLocation = {
         apiUrl: handoffEntry.apiUrl || null,
         projectId: handoffEntry.projectId
-      })
+      }
+      const locationError = webCloudWorkspaceLocationError(handoffLocation)
+      if (locationError) {
+        // The code must never outlive its use, even when the address is unusable.
+        clearWebHandoffFromAddressBar()
+      } else {
+        normalizeWebCloudWorkspaceUrl({
+          apiUrl: handoffEntry.apiUrl || null,
+          projectId: handoffEntry.projectId
+        })
+      }
       return {
         decision: null,
         cloudSessionEnded: false,
         handoffEntry,
         cloudApiUrl: handoffEntry.apiUrl || null,
-        workspaceLocation: {
-          apiUrl: handoffEntry.apiUrl || null,
-          projectId: handoffEntry.projectId
-        },
+        workspaceLocation: handoffLocation,
+        locationError,
         resume: null
       }
     }
     const initialPairingInput = readPairingInputFromLocation(window.location)
     const workspaceLocation = readWebCloudWorkspaceLocation(window.location)
+    const locationError = webCloudWorkspaceLocationError(workspaceLocation)
     const storedEnvironment = readStoredWebRuntimeEnvironment()
     const cloudSessionEnded =
       storedEnvironment !== null && isCloudSessionWebEnvironment(storedEnvironment)
@@ -91,6 +104,7 @@ function WebRoot(): React.JSX.Element {
     // U103-B1: a saved cloud login resumes the workspace instead of forcing the
     // sign-in form. An explicit pairing input or a live pairing environment wins.
     const canResume =
+      locationError === null &&
       initialPairingInput === null &&
       (storedEnvironment === null || cloudSessionEnded) &&
       workspaceLocation.apiUrl !== null &&
@@ -106,6 +120,7 @@ function WebRoot(): React.JSX.Element {
       // plain refresh both keep the platform address on the sign-in form.
       cloudApiUrl: workspaceLocation.apiUrl ?? readWebCloudApiUrlFromLocation(window.location),
       workspaceLocation,
+      locationError,
       resume: canResume
         ? {
             location: workspaceLocation,
@@ -134,14 +149,20 @@ function WebRoot(): React.JSX.Element {
   const handoff = useWebCloudHandoffEntry(() => setHasEnvironment(true))
   const handoffStarted = useRef(false)
   useEffect(() => {
-    if (!startup.handoffEntry || handoffStarted.current) {
+    if (!startup.handoffEntry || startup.locationError || handoffStarted.current) {
       return
     }
     handoffStarted.current = true
     handoff.begin(startup.handoffEntry)
-  }, [startup.handoffEntry, handoff])
+  }, [startup.handoffEntry, startup.locationError, handoff])
   const [resumeState, setResumeState] = useState<
-    { status: 'idle' } | { status: 'running' } | { status: 'failed'; notice: string | null }
+    | { status: 'idle' }
+    | { status: 'running' }
+    | {
+        status: 'failed'
+        result: WebCloudSessionResumeResult | null
+        notice: string | null
+      }
   >({ status: 'idle' })
   const resumeStarted = useRef(false)
   useEffect(() => {
@@ -169,12 +190,14 @@ function WebRoot(): React.JSX.Element {
         }
         setResumeState({
           status: 'failed',
+          result,
           notice: webCloudResumeFailureNotice(result)
         })
       })
       .catch(() =>
         setResumeState({
           status: 'failed',
+          result: null,
           notice: translate(
             'auto.web.WebConnect.resumeFailed',
             'The saved cloud session could not be resumed. Sign in to continue.'
@@ -183,7 +206,35 @@ function WebRoot(): React.JSX.Element {
       )
   }, [startup.resume])
 
+  const [projectErrorApiUrl, setProjectErrorApiUrl] = useState<string | null>(null)
+
   if (!hasEnvironment) {
+    if (startup.locationError) {
+      return (
+        <WebCloudWorkspaceError kind="not-found" apiUrl={startup.workspaceLocation.apiUrl} />
+      )
+    }
+    // Why no sign-in form here: signing in again cannot grant a project the
+    // account already could not see, and would silently swap the page.
+    if (projectErrorApiUrl !== null) {
+      return <WebCloudWorkspaceError kind="forbidden" apiUrl={projectErrorApiUrl} />
+    }
+    if (resumeState.status === 'failed' && resumeState.result?.status === 'project-unavailable') {
+      return (
+        <WebCloudWorkspaceError
+          kind="forbidden"
+          apiUrl={startup.workspaceLocation.apiUrl ?? startup.cloudApiUrl}
+        />
+      )
+    }
+    if (handoff.state.status === 'failed' && handoff.state.forbidden) {
+      return (
+        <WebCloudWorkspaceError
+          kind="forbidden"
+          apiUrl={startup.workspaceLocation.apiUrl ?? startup.cloudApiUrl}
+        />
+      )
+    }
     if (handoff.state.status === 'entering' || resumeState.status === 'running') {
       return (
         <div className="flex min-h-dvh items-center justify-center bg-background px-4 text-foreground">
@@ -217,6 +268,7 @@ function WebRoot(): React.JSX.Element {
         }
         initialCloudApiUrl={handoffFailure?.apiUrl ?? startup.cloudApiUrl}
         initialProjectId={startup.workspaceLocation.projectId}
+        onProjectUnavailable={(apiUrl) => setProjectErrorApiUrl(apiUrl)}
         onConnected={() => setHasEnvironment(true)}
       />
     )
