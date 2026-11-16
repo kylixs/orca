@@ -28,6 +28,8 @@ export type WebConsolePage = {
   release: () => Promise<void>
   /** Every request the page made, as `METHOD path`. */
   calls: () => string[]
+  /** JSON bodies of requests that carried one, in call order. */
+  bodies: () => { call: string; body: unknown }[]
 }
 
 /**
@@ -54,6 +56,7 @@ export function loadWebConsolePage(
   const failing = new Map<string, number>()
   const stubbed = new Map<string, { status: number; body: unknown }>()
   const requests: string[] = []
+  const sentBodies: { call: string; body: unknown }[] = []
   const heldPaths = new Set<string>()
   const held = new Map<
     string,
@@ -74,6 +77,13 @@ export function loadWebConsolePage(
     const method = (init?.method ?? 'GET').toUpperCase()
     requests.push(`${method} ${path}`)
     const key = `${method} ${path}`
+    if (typeof init?.body === 'string') {
+      try {
+        sentBodies.push({ call: key, body: JSON.parse(init.body) })
+      } catch {
+        sentBodies.push({ call: key, body: init.body })
+      }
+    }
     if (heldPaths.delete(key)) {
       return new Promise((resolve) => {
         const waiters = held.get(key) ?? []
@@ -220,6 +230,7 @@ export function loadWebConsolePage(
       await Promise.all(pending)
       await new Promise((resolve) => setTimeout(resolve, 25))
     },
-    calls: () => [...requests]
+    calls: () => [...requests],
+    bodies: () => [...sentBodies]
   }
 }

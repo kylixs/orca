@@ -444,11 +444,7 @@ test('M120c2-7 行级保存整页重绘保留滚动与焦点：连续改行不�
   await page.settle()
 
   assert.equal(policyPuts(page, otherId), putsBefore + 1, 'exactly one policy write for the row')
-  assert.equal(
-    scroller.scrollTop,
-    640,
-    'the redraw must not throw the admin back to the top (m-7)'
-  )
+  assert.equal(scroller.scrollTop, 640, 'the redraw must not throw the admin back to the top (m-7)')
   const refocused = selectFor(page, otherId)
   assert.notEqual(refocused, target, 'the redraw really did build a fresh row')
   assert.equal(
@@ -471,5 +467,141 @@ test('M120c2-7 行级保存整页重绘保留滚动与焦点：连续改行不�
   record(
     'row-save-viewport',
     '行级保存整页重绘后滚动位置保持（640）、焦点回到所改行；服务端钉住 allow（m-7）'
+  )
+}, 120_000)
+
+test('M120c2-8 全局保存携带 expectedVersion：成功后本地与服务端版本同步加一', async () => {
+  const seen = await adminApi('/v1/policies/download')
+  assert.equal(seen.status, 200, JSON.stringify(seen.body))
+  assert.equal(seen.body.downloadDefault, 'deny', 'precondition: the shipped default')
+  const seenVersion = seen.body.version as number
+
+  const page = await openSettings('admin', 'Adm1n!')
+  const allow = page.window.document.querySelector<HTMLInputElement>('input[name=dl][value=allow]')!
+  allow.checked = true
+  page.window.document.querySelector<HTMLButtonElement>('#savePolicy')!.click()
+  await page.settle()
+
+  const put = page.bodies().findLast((entry) => entry.call === 'PUT /v1/policies/download')
+  assert.ok(put, 'the save must carry a body')
+  const body = put.body as { downloadDefault?: string; expectedVersion?: number }
+  assert.equal(body.downloadDefault, 'allow')
+  assert.equal(body.expectedVersion, seenVersion, 'the save pins the version it read')
+
+  const after = await adminApi('/v1/policies/download')
+  assert.equal(after.body.downloadDefault, 'allow')
+  assert.equal(after.body.version, seenVersion + 1, 'the platform version advanced once')
+  assert.match(page.text('#content'), /当前版本 v\d+/, 'the card still shows a version')
+  assert.match(lastToast(page), /已保存，30 秒内生效/)
+
+  // Keep the shipped default for any later run.
+  const restored = await adminApi('/v1/policies/download', {
+    method: 'PUT',
+    body: JSON.stringify({ downloadDefault: 'deny' })
+  })
+  assert.equal(restored.status, 200, JSON.stringify(restored.body))
+
+  saveEvidence(EVIDENCE, 'expected-version-save.json', {
+    sent: { downloadDefault: 'allow', expectedVersion: seenVersion },
+    resultVersion: after.body.version,
+    toast: '已保存，30 秒内生效；跟随全局 2 个项目，独立覆盖 0 个不受影响'
+  })
+  record(
+    'expected-version',
+    `全局保存 PUT 携带 expectedVersion=${seenVersion}，成功 toast 且服务端版本 ${seenVersion}→${seenVersion + 1}`
+  )
+}, 120_000)
+
+test('M120c2-9 全局保存 409 冲突：保留所选、展示服务端值、刷新后重试成功', async () => {
+  const seeded = await adminApi('/v1/policies/download', {
+    method: 'PUT',
+    body: JSON.stringify({ downloadDefault: 'deny' })
+  })
+  assert.equal(seeded.status, 200, JSON.stringify(seeded.body))
+  const seen = await adminApi('/v1/policies/download')
+  const seenVersion = seen.body.version as number
+  const fakeServerVersion = seenVersion + 7
+
+  const page = await openSettings('admin', 'Adm1n!')
+  const allow = page.window.document.querySelector<HTMLInputElement>('input[name=dl][value=allow]')!
+  allow.checked = true
+  page.fail('PUT', '/v1/policies/download', {
+    status: 409,
+    body: {
+      error: {
+        code: 'POLICY_VERSION_CONFLICT',
+        message: '下载策略已被他人修改，请刷新后重试。',
+        details: {
+          version: fakeServerVersion,
+          downloadDefault: 'deny',
+          readRatePerHour: { calls: 1000, bytes: 1048576 }
+        }
+      }
+    }
+  })
+  page.window.document.querySelector<HTMLButtonElement>('#savePolicy')!.click()
+  await page.settle()
+
+  const conflict = page.window.document.querySelector<HTMLElement>('#policyConflict')!
+  assert.ok(conflict, 'the conflict must be reported in the global card')
+  assert.equal(conflict.hidden, false)
+  const conflictText = conflict.textContent ?? ''
+  assert.match(conflictText, /策略已被他人修改/, 'the reason is stated, not a generic failure')
+  assert.match(conflictText, new RegExp(`服务端当前版本 v${fakeServerVersion}`))
+  assert.match(conflictText, /全局默认\s*禁止/, 'the platform value is shown')
+  assert.equal(
+    page.window.document.querySelector<HTMLInputElement>('input[name=dl][value=allow]')!.checked,
+    true,
+    'the admin choice is kept, not silently discarded'
+  )
+  const retryButton = page.window.document.querySelector<HTMLButtonElement>('#policyConflictRetry')
+  assert.ok(retryButton, 'a refresh-and-retry action is offered')
+  assert.equal(retryButton.textContent, '刷新后重试')
+
+  const unchanged = await adminApi('/v1/policies/download')
+  assert.equal(unchanged.body.version, seenVersion, 'the refused write stored nothing')
+  assert.equal(unchanged.body.downloadDefault, 'deny')
+
+  page.clearFails()
+  const getsBefore = page.calls().filter((call) => call === 'GET /v1/policies/download').length
+  retryButton.click()
+  await page.settle()
+
+  const retryPut = page.bodies().findLast((entry) => entry.call === 'PUT /v1/policies/download')!
+  const retryBody = retryPut.body as { downloadDefault?: string; expectedVersion?: number }
+  assert.equal(
+    page.calls().filter((call) => call === 'GET /v1/policies/download').length > getsBefore,
+    true,
+    'retry re-reads the platform version first'
+  )
+  assert.equal(retryBody.downloadDefault, 'allow', 'retry replays the admin choice')
+  assert.equal(retryBody.expectedVersion, seenVersion, 'retry uses the refreshed version')
+
+  const after = await adminApi('/v1/policies/download')
+  assert.equal(after.body.downloadDefault, 'allow', 'the retried save landed')
+  assert.equal(after.body.version, seenVersion + 1)
+  assert.equal(
+    page.window.document.querySelector<HTMLElement>('#policyConflict')?.hidden ?? true,
+    true,
+    'the conflict notice is gone after the successful retry'
+  )
+  assert.match(lastToast(page), /已保存/)
+
+  const restored = await adminApi('/v1/policies/download', {
+    method: 'PUT',
+    body: JSON.stringify({ downloadDefault: 'deny' })
+  })
+  assert.equal(restored.status, 200, JSON.stringify(restored.body))
+
+  saveEvidence(EVIDENCE, 'version-conflict-ui.json', {
+    stubVersion: fakeServerVersion,
+    serverHeld: { version: seenVersion, downloadDefault: 'deny' },
+    choicePreserved: 'allow',
+    retry: { expectedVersion: seenVersion, downloadDefault: 'allow' },
+    result: { version: after.body.version, downloadDefault: after.body.downloadDefault }
+  })
+  record(
+    'version-conflict',
+    '409 注入：卡内黄条报冲突与服务端版本/值、radio 保留 allow、服务端未变；刷新后重试先 GET 再以新版本重放 allow 成功'
   )
 }, 120_000)

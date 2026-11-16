@@ -3160,6 +3160,26 @@ function policyOverrides(projects) {
   return { following: live.length - overrides.length, overrides }
 }
 
+/** U136④b: a stale admin keeps their radio choice; the card states the version
+ * and value the platform holds, and retry re-reads before replaying the choice. */
+function showPolicyConflict(value, details, retry) {
+  const note = $('#policyConflict')
+  const server = details.downloadDefault === 'allow' ? '允许' : '禁止'
+  const pending = value === 'allow' ? '允许' : '禁止'
+  note.hidden = false
+  note.innerHTML = `<strong>策略已被他人修改</strong>：服务端当前版本 v${esc(details.version ?? '?')}，全局默认 <strong>${server}</strong>。你选择的「${pending}」尚未保存。`
+  const button = document.createElement('button')
+  button.className = 'btn'
+  button.id = 'policyConflictRetry'
+  button.textContent = '刷新后重试'
+  button.style.marginLeft = '8px'
+  button.onclick = () => {
+    button.disabled = true
+    void retry(value)
+  }
+  note.append(button)
+}
+
 async function renderSettings() {
   const [policy, projects] = await Promise.all([api('/v1/policies/download'), loadProjects()])
   const globalDefault = policy.downloadDefault
@@ -3193,6 +3213,7 @@ async function renderSettings() {
         <span><strong>允许下载</strong><br><span class="muted">保留导出通道，仍记录审计。</span></span>
       </label>
       <div class="note warn">内容级 DLP（终端复制、文件内容读取）一期不做阻断，仅限速与审计。</div>
+      <div class="note warn" id="policyConflict" hidden></div>
       <button class="btn primary" id="savePolicy">保存</button>
       <span class="muted" style="margin-left:8px">当前版本 v${policy.version}</span>
     </div>
@@ -3209,25 +3230,53 @@ async function renderSettings() {
           : '<p class="muted">暂无项目覆盖，全部项目跟随全局默认。</p>'
       }
     </div>`
-  $('#savePolicy').onclick = async () => {
-    const value = document.querySelector('input[name=dl]:checked').value
+  const saveGlobalPolicy = async (value, expectedVersion) => {
+    let saved
     try {
-      await api('/v1/policies/download', {
+      saved = await api('/v1/policies/download', {
         method: 'PUT',
-        body: JSON.stringify({ downloadDefault: value })
+        body: JSON.stringify({ downloadDefault: value, expectedVersion })
       })
     } catch (err) {
+      if (err.status === 409 && err.code === 'POLICY_VERSION_CONFLICT') {
+        showPolicyConflict(value, err.body?.error?.details ?? {}, retryAfterRefresh)
+        return
+      }
       // A silent failure would leave the form claiming a policy that never landed
       // (M116-QA-009): report it and redraw from the value the platform holds.
       toast(`保存失败：${err.message ?? err}`)
       renderSettings()
       return
     }
+    // U136④b: the next save compares against the version this write produced.
+    policy.version = saved.version
     // FR-9.4 的生效范围：翻转全局时告诉管理员谁跟着走、谁被钉住不受影响。
     toast(
       `已保存，30 秒内生效；跟随全局 ${following} 个项目，独立覆盖 ${overrides.length} 个不受影响`
     )
     renderSettings()
+  }
+  // U136④b: re-read the platform version, then replay the admin's live choice
+  // instead of silently discarding it on a 409.
+  const retryAfterRefresh = async (value) => {
+    const chosen = document.querySelector('input[name=dl]:checked')?.value ?? value
+    let fresh
+    try {
+      fresh = await api('/v1/policies/download')
+    } catch (err) {
+      toast(`刷新失败：${err.message ?? err}`)
+      const button = $('#policyConflictRetry')
+      if (button) {
+        button.disabled = false
+      }
+      return
+    }
+    $('#policyConflict').hidden = true
+    await saveGlobalPolicy(chosen, fresh.version)
+  }
+  $('#savePolicy').onclick = () => {
+    const value = document.querySelector('input[name=dl]:checked').value
+    void saveGlobalPolicy(value, policy.version)
   }
   for (const select of content().querySelectorAll('[data-policy-select]')) {
     select.onchange = () => void saveProjectPolicy(select.dataset.policySelect ?? '', select.value)
