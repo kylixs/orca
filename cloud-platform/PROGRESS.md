@@ -3643,6 +3643,14 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **残余转 U153**：quick 场景 9-10 红，形态=客户端 `activate {materializeOnly:true, notifyClients:false}`（用户手势被当投影）→ 宿主不移动 active、客户端本地 intent 领先；已登记并派事件级诊断。
 - **探针复审不可签字**（`test-reports/u138-probe-hardened-audit.md`）：H-A 归因取错帧、宿主内存与持久同源、缺方向 token；已派探针修正 A（口径单源 + 判据收紧 + `client-ahead-host`）。**在探针修正完成前，race 绿按「无条件红样本、红签名未再出现」表述，不签「未复现」。**
 
+### 2026-11-17 02:3x 轮：U153 钉→实现、探针签字条件闭环
+
+- **U153 P1 钉**（`b5b290c55a0`）：D1 红=`user-created cloud tab completion must send session.tabs.activate`；D2 红=`global subscribeAll apply must resolve hostActiveAuthoritative`；负控（被动 mount 仍 materializeOnly；非 cloud/有 focus intent 不带权威）绿；相邻 28+2 expected fail。
+- **修复前基线（可签字口径）**：`conclusive=true`，25 点 **15 绿/10 红**（reload 12/12、reopen 3/3、quick **0/10**）；红=`client-ahead-host`×5（opened）/`host-frame-not-won`×5（closed）；构建身份与探针 sha256 已记录（`evidence/exploratory-r8/u153-before-20261117-022917/`）。
+- **探针签字复审：有条件可签字**（无 P0/P1）：仅引用 `conclusive:true`；仅「宿主持久+投影+客户端」，宿主内存未观测/H-B 不判定；仅本机 rig；`reproduced` 与 `conclusive` 同引、分场景表述。残留 P2/P3 打磨已派。
+- **U153 P2 实现（D1+D2 同批）在途**：用户手势创建补非 materialize 的 tap activate + focus intent（显式 `userInitiated`）；全局 apply 接 `resolveHostActiveApplyOptions`。
+- **基线刷新**：m09 更新 v2/U153 状态。
+
 ### 四通道并发执行（启动，2026-11-14）
 
 按细粒度拆分与三权分立纪律并发起跑：通道② **W6a**（中继浏览器模式，relay.ts 域）、通道③ **W10**（客户端零 env 登录，src/main+renderer 登录域）、通道④ **W5a**（详情页终端组件，cloud-admin 域）三个实现代理并行；通道① 等在途 W2（QA 修复）完成后接 W8。每令完成→独立测试代理→独立审计代理→主会话关闭放行下一个。
