@@ -3786,6 +3786,12 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **W9 A 线不可判定**：production 模式重建使 `exposeStore=false`、`window.__store` 缺失（U36 族复发）→ 登记 **U165**；产品侧 checkout 已创建且 Active（证据 `checkout-proof.txt`）。
 - **处置**：`npx electron-vite build --mode e2e` 重建 main/preload 后重跑 A 线（进行中）；生产重建（去仪器化）在 A 线通过后执行。
 
+### 2026-11-17 06:3x 轮：W9 双线全绿（e2e 模式）；生产重建收尾
+
+- **W9 A 线 PASS 1/1**（e2e 模式 main/preload/renderer；39.5s）；**B 线 2/2 绿**（v3 构建）。首次 A 线失败为 `out/renderer` 仍 production（monaco e2e probe 折叠，U36 同族），补建后通过；main 两模式字节一致。
+- **U165 闭环**：构建口味矩阵处置有效（§2-25）。
+- **生产重建（去仪器化）+ `--platform-only` 刷新 + 去仪器化核验**在跑；完成后出总账收口报告。
+
 ### 四通道并发执行（启动，2026-11-14）
 
 按细粒度拆分与三权分立纪律并发起跑：通道② **W6a**（中继浏览器模式，relay.ts 域）、通道③ **W10**（客户端零 env 登录，src/main+renderer 登录域）、通道④ **W5a**（详情页终端组件，cloud-admin 域）三个实现代理并行；通道① 等在途 W2（QA 修复）完成后接 W8。每令完成→独立测试代理→独立审计代理→主会话关闭放行下一个。
