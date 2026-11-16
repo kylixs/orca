@@ -4,15 +4,19 @@ import { login, saveEvidence, spawnService, type Service } from './harness.ts'
 import { loadWebConsolePage, type WebConsolePage } from './web-console-page.ts'
 
 /**
- * M120c2 (QA-015 / FR-9.4): the settings page grows a per-project override card
- * beside the global one, driven through the real console files against a real
- * platform process.
+ * M120c2 (QA-015 / FR-9.4, G27): the settings page grows a per-project policy
+ * card beside the global one, driven through the real console files against a
+ * real platform process.
  *
- * - the card lists exactly the projects the platform holds a pinned override
- *   for (`downloadPolicyExplicit`, M120c1), never the follow-global ones
- * - the scope line counts both groups, and a global save names them in its toast
+ * - the card lists every live project, pinned overrides and follow-global rows
+ *   alike (G27 replaced the pinned-only override list); archived projects are
+ *   not managed here
+ * - the scope line counts all, followers and overrides, and a global save names
+ *   the last two in its toast
  * - a row select saves in place: 禁止/允许 pins one PUT, 跟随全局 sends
- *   `inherit:true` and the row leaves the list
+ *   `inherit:true`, and the row stays in the full list with its source badge
+ *   flipped back to follow-global
+ * - every row save carries the shared `expectedVersion`
  * - a pinned 禁止 survives a global flip while a follow-global project follows
  *   it — the effective value, not the stored one, drives every badge
  * - a failing save reports and redraws from the platform's value (QA-009)
@@ -83,9 +87,9 @@ async function projectPolicy(): Promise<PolicyView> {
 }
 
 /**
- * The override card lists pinned rows only (§5.3: a follow-global project has
- * nothing to edit there), so the tests pin and un-pin the way any other admin
- * client would — through the M120c1 endpoint.
+ * The table lists every live project, its row state derived from the platform,
+ * so the tests seed pins and follow-global rows the way any other admin client
+ * would — through the M120c1 endpoint.
  */
 async function setOverride(downloadPolicy?: string): Promise<void> {
   const res = await adminApi(POLICY_PATH, {
@@ -156,31 +160,48 @@ after(async () => {
   })
 })
 
-test('M120c2-1 零覆盖：清单为空、范围统计正确、副标题如实', async () => {
+test('M120c2-1 零覆盖：全量在营项目入列、范围统计正确、副标题如实', async () => {
   await setOverride()
   assert.equal(await globalDefault(), 'deny', 'precondition: the shipped default is deny')
 
   const page = await openSettings('admin', 'Adm1n!')
   const content = page.text('#content')
-  assert.match(content, /下载策略：全局默认与项目覆盖。/, 'the subtitle says what the page does')
+  assert.match(content, /下载策略：全局默认与项目策略。/, 'the subtitle says what the page does')
   assert.doesNotMatch(content, /客户端最低版本/, 'no setting the page does not have')
-  assert.match(content, /暂无项目覆盖，全部项目跟随全局默认。/, 'an empty override list is stated')
+  assert.match(content, /项目下载策略/, 'the card is the full project policy list')
+  assert.doesNotMatch(
+    content,
+    /暂无项目覆盖，全部项目跟随全局默认。/,
+    'a follow-global project still gets an editable row (G27 full listing)'
+  )
   assert.match(
     page.text('#policyScope'),
-    /跟随全局默认\s*1\s*个项目\s*·\s*独立覆盖\s*0\s*个项目/,
+    /全部\s*1\s*个\s*·\s*跟随全局\s*1\s*个\s*·\s*独立覆盖\s*0\s*个/,
     'the seeded project is the only live one and follows the default'
   )
-  assert.equal(overrideSelects(page).length, 0, 'nothing to edit while nothing is pinned')
+  assert.equal(overrideSelects(page).length, 1, 'the follow-global row is listed and editable')
+  const select = selectFor(page, PROJECT)
+  assert.equal(select.value, 'inherit', 'a follow-global row shows the inherit state')
+  assert.equal(select.dataset.policyValue, 'inherit', 'the row carries the platform value')
+  const inheritOption = select.querySelector<HTMLOptionElement>('option[value=inherit]')!
+  assert.match(inheritOption.textContent ?? '', /当前：禁止/, 'the inherit option names the live global')
+  const row = select.closest('tr')
+  assert.match(
+    row?.querySelector('[data-policy-source]')?.textContent ?? '',
+    /^跟随全局$/,
+    'the follow row carries the 跟随全局 source badge'
+  )
+  assert.match(row?.textContent ?? '', /当前生效：禁止/)
 
   saveEvidence(EVIDENCE, 'empty-overrides.json', {
-    subtitle: '下载策略：全局默认与项目覆盖。',
+    subtitle: '下载策略：全局默认与项目策略。',
     scopeLine: page.text('#policyScope'),
-    emptyNote: '暂无项目覆盖，全部项目跟随全局默认。'
+    followRow: { state: 'inherit', source: '跟随全局', effective: '当前生效：禁止' }
   })
-  record('empty-state', '零覆盖 → 空态文案 + 统计 跟随全局 1 / 独立覆盖 0 + 副标题改为真实能力')
+  record('empty-state', '零覆盖 → 跟随行照常入列（inherit + 跟随全局徽标 + 当前生效），统计 全部 1/跟随 1/覆盖 0，副标题改为真实能力')
 }, 120_000)
 
-test('M120c2-2 覆盖清单只列 explicit 项目：非覆盖项目不出现，徽标与生效值同行', async () => {
+test('M120c2-2 全量清单含跟随行：显式覆盖徽标标明来源，跟随行 value=inherit', async () => {
   const created = await adminApi('/v1/projects', {
     method: 'POST',
     body: JSON.stringify({
@@ -199,35 +220,48 @@ test('M120c2-2 覆盖清单只列 explicit 项目：非覆盖项目不出现，�
   const page = await openSettings('admin', 'Adm1n!')
   const card = overrideCard(page)
   assert.match(card, /payment-service/, 'the pinned project is listed')
-  assert.doesNotMatch(card, /order-service/, 'a follow-global project is not listed')
-  assert.equal(overrideSelects(page).length, 1, 'exactly one editable row')
+  assert.match(card, /order-service/, 'the follow-global project is listed too (G27)')
+  assert.equal(overrideSelects(page).length, 2, 'every live project has one editable row')
 
-  const select = selectFor(page, PROJECT)
-  assert.equal(select.value, 'deny', 'the select shows the stored override')
-  const row = select.closest('tr')
-  assert.match(row?.textContent ?? '', /覆盖/, 'the pinned row carries the 覆盖 badge')
-  assert.match(row?.textContent ?? '', /当前生效：禁止/)
+  const pinned = selectFor(page, PROJECT)
+  assert.equal(pinned.value, 'deny', 'the select shows the stored override')
+  const pinnedRow = pinned.closest('tr')
+  assert.match(
+    pinnedRow?.querySelector('[data-policy-source]')?.textContent ?? '',
+    /独立覆盖（与全局相同）/,
+    'an explicit value equal to the global is labeled as pinned, not inherited'
+  )
+  assert.match(pinnedRow?.textContent ?? '', /当前生效：禁止/)
+
+  const follower = selectFor(page, followProjectId)
+  assert.equal(follower.value, 'inherit', 'the follow-global row is not pinned')
+  assert.match(
+    follower.closest('tr')?.querySelector('[data-policy-source]')?.textContent ?? '',
+    /^跟随全局$/,
+    'the follow row says it follows instead of claiming an override'
+  )
+  assert.match(follower.closest('tr')?.textContent ?? '', /当前生效：禁止/)
   assert.match(
     page.text('#policyScope'),
-    /跟随全局默认\s*1\s*个项目\s*·\s*独立覆盖\s*1\s*个项目/,
-    'the scope line counts both groups'
+    /全部\s*2\s*个\s*·\s*跟随全局\s*1\s*个\s*·\s*独立覆盖\s*1\s*个/,
+    'the scope line counts all live projects and both groups'
   )
 
   saveEvidence(EVIDENCE, 'override-listing.json', {
-    listed: ['payment-service'],
-    notListed: ['order-service'],
+    listed: ['payment-service（独立覆盖（与全局相同））', 'order-service（跟随全局）'],
     scopeLine: page.text('#policyScope'),
-    rowBadge: '覆盖',
-    rowEffective: '当前生效：禁止'
+    followValue: follower.value,
+    pinnedEffective: '当前生效：禁止'
   })
   record(
     'override-listing',
-    'explicit 项目入列（覆盖徽标 + 生效值），非 explicit 的 order-service 不入列；统计 跟随 1 / 覆盖 1'
+    '全量清单：payment-service 显式 deny（徽标 独立覆盖（与全局相同））+ order-service 跟随（value=inherit、徽标 跟随全局）；统计 全部 2/跟随 1/覆盖 1'
   )
 }, 120_000)
 
-test('M120c2-3 选「跟随全局」发 PUT inherit：行移出清单且 effective 回落全局', async () => {
+test('M120c2-3 选「跟随全局」发 PUT inherit+expectedVersion：行留在清单且 effective 回落全局', async () => {
   await setOverride('deny')
+  const seenVersion = (await adminApi('/v1/policies/download')).body.version as number
   const page = await openSettings('admin', 'Adm1n!')
   const putsBefore = policyPuts(page)
 
@@ -235,7 +269,13 @@ test('M120c2-3 选「跟随全局」发 PUT inherit：行移出清单且 effecti
   await page.settle()
 
   assert.equal(policyPuts(page), putsBefore + 1, 'exactly one policy write for the row')
-  assert.match(lastToast(page), /已恢复跟随全局默认/)
+  const put = page.bodies().findLast((entry) => entry.call === `PUT ${POLICY_PATH}`)
+  assert.deepEqual(
+    put?.body,
+    { inherit: true, expectedVersion: seenVersion },
+    'the inherit shape carries the shared version'
+  )
+  assert.match(lastToast(page), /已恢复跟随全局默认，将随宿主心跳生效/)
   const view = await projectView(PROJECT)
   assert.equal(
     view.downloadPolicyExplicit,
@@ -244,31 +284,46 @@ test('M120c2-3 选「跟随全局」发 PUT inherit：行移出清单且 effecti
   )
   const policy = await projectPolicy()
   assert.equal(policy.effective, policy.globalDefault, 'the project follows the default again')
+  assert.equal(
+    (await adminApi('/v1/policies/download')).body.version,
+    seenVersion + 1,
+    'the row write advances the shared version'
+  )
 
-  assert.equal(overrideSelects(page).length, 0, 'the row leaves the list')
-  assert.match(page.text('#content'), /暂无项目覆盖，全部项目跟随全局默认。/)
+  assert.equal(overrideSelects(page).length, 2, 'the row stays in the full list (no longer leaves)')
+  const followSelect = selectFor(page, PROJECT)
+  assert.equal(followSelect.value, 'inherit', 'the row redraws in the inherit state')
+  assert.match(
+    followSelect.closest('tr')?.querySelector('[data-policy-source]')?.textContent ?? '',
+    /^跟随全局$/,
+    'the source badge flips from override to follow'
+  )
+  assert.match(followSelect.closest('tr')?.textContent ?? '', /当前生效：禁止/)
   assert.match(
     page.text('#policyScope'),
-    /跟随全局默认\s*2\s*个项目\s*·\s*独立覆盖\s*0\s*个项目/,
-    'the counts follow the row out'
+    /全部\s*2\s*个\s*·\s*跟随全局\s*2\s*个\s*·\s*独立覆盖\s*0\s*个/,
+    'the counts follow the row back into the follow group'
   )
 
   saveEvidence(EVIDENCE, 'inherit-row.json', {
     putRequests: 1,
+    putBody: { inherit: true, expectedVersion: seenVersion },
     downloadPolicyExplicit: view.downloadPolicyExplicit,
     effective: policy.effective,
     scopeLine: page.text('#policyScope')
   })
   record(
     'inherit',
-    '行内选 跟随全局 → 1 次 PUT inherit → explicit=false、effective=全局、行移出清单且统计回落 2/0'
+    '行内选 跟随全局 → 1 次 PUT {inherit:true, expectedVersion:v} → explicit=false、effective=全局、行仍留清单且徽标转 跟随全局；统计 全部 2/跟随 2/覆盖 0'
   )
 }, 120_000)
 
 test('M120c2-4 显式禁止覆盖钉住：全局翻转为 allow 后该行不变，跟随者随之改变', async () => {
   await setOverride('deny')
   const page = await openSettings('admin', 'Adm1n!')
-  assert.equal(overrideSelects(page).length, 1, 'the pinned row is listed before the flip')
+  assert.equal(overrideSelects(page).length, 2, 'both live rows — pinned and following — are listed')
+  assert.equal(selectFor(page, PROJECT).value, 'deny', 'the pinned row is listed before the flip')
+  assert.equal(selectFor(page, followProjectId).value, 'inherit', 'the follower is listed before the flip')
 
   // Flip the global default through the UI and read the blast radius off the toast.
   const allow = page.window.document.querySelector<HTMLInputElement>('input[name=dl][value=allow]')!
@@ -286,6 +341,16 @@ test('M120c2-4 显式禁止覆盖钉住：全局翻转为 allow 后该行不变�
   const pinned = selectFor(page, PROJECT)
   assert.equal(pinned.value, 'deny')
   assert.match(pinned.closest('tr')?.textContent ?? '', /当前生效：禁止/)
+
+  // The follow row keeps its inherit state and picks the new global up.
+  const followerSelect = selectFor(page, followProjectId)
+  assert.equal(followerSelect.value, 'inherit', 'the flip must not turn the follower into a pin')
+  assert.match(
+    followerSelect.querySelector<HTMLOptionElement>('option[value=inherit]')?.textContent ?? '',
+    /当前：允许/,
+    'the inherit option states the new global'
+  )
+  assert.match(followerSelect.closest('tr')?.textContent ?? '', /当前生效：允许/)
 
   // The workbench badge is the effective value: the stored-deny follower no longer
   // misreads as 禁用 (the §5.1-1 misreport this work order fixes).
@@ -333,27 +398,41 @@ test('M120c2-4 显式禁止覆盖钉住：全局翻转为 allow 后该行不变�
   })
   record(
     'pinned-vs-flip',
-    '全局翻转为 allow：钉住项目仍 禁止（行 + 工作台徽标 + 列表列），跟随项目转为 允许——全部按生效值渲染；toast 报跟随/覆盖数'
+    '全局翻转为 allow：钉住项目仍 禁止（行 + 工作台徽标 + 列表列），跟随项目保持 inherit 且生效转为 允许——全部按生效值渲染；toast 报跟随/覆盖数'
   )
 }, 120_000)
 
 test('M120c2-5 覆盖保存失败：toast 上报并按服务端值重绘回滚', async () => {
   await setOverride('deny')
+  const seenVersion = (await adminApi('/v1/policies/download')).body.version as number
   const page = await openSettings('admin', 'Adm1n!')
   const putsBefore = policyPuts(page)
+  const rowsBefore = overrideSelects(page).length
+  assert.equal(rowsBefore, 2, 'precondition: both live projects are listed')
 
   page.fail('PUT', POLICY_PATH)
   choose(page, PROJECT, 'allow')
   await page.settle()
 
   assert.equal(policyPuts(page), putsBefore + 1, 'the save was attempted exactly once')
+  const put = page.bodies().findLast((entry) => entry.call === `PUT ${POLICY_PATH}`)
+  assert.deepEqual(
+    put?.body,
+    { downloadPolicy: 'allow', expectedVersion: seenVersion },
+    'the failed row save still carried the shared version'
+  )
   const toast = lastToast(page)
   assert.match(toast, /保存失败/, 'the failure is reported in the page')
   assert.match(toast, /模拟平台故障/, 'the platform reason is carried')
   const select = selectFor(page, PROJECT)
   assert.equal(select.value, 'deny', 'the row falls back to the value the platform holds')
   assert.equal(
-    page.window.document.querySelectorAll('[data-policy-row]').length,
+    overrideSelects(page).length,
+    rowsBefore,
+    'the redraw keeps one row per live project'
+  )
+  assert.equal(
+    page.window.document.querySelectorAll(`[data-policy-row="${PROJECT}"]`).length,
     1,
     'the redraw replaces the row instead of duplicating it'
   )
@@ -369,7 +448,7 @@ test('M120c2-5 覆盖保存失败：toast 上报并按服务端值重绘回滚',
   })
   record(
     'save-failure',
-    'PUT 注入 503 → toast 保存失败：模拟平台故障，行重绘回 deny 且无重复行，服务端覆盖不变'
+    'PUT 注入 503 → toast 保存失败：模拟平台故障，行重绘回 deny 且仍为 2 行无重复，服务端覆盖不变'
   )
 }, 120_000)
 
@@ -432,7 +511,11 @@ test('M120c2-7 行级保存整页重绘保留滚动与焦点：连续改行不�
   assert.equal(pinOther.status, 200, JSON.stringify(pinOther.body))
 
   const page = await openSettings('admin', 'Adm1n!')
-  assert.equal(overrideSelects(page).length, 2, 'both pinned rows are listed')
+  assert.equal(
+    overrideSelects(page).length,
+    3,
+    'every live project — both pinned and the following one — is listed'
+  )
   const scroller = page.window.document.querySelector<HTMLElement>('#content')!
   scroller.scrollTop = 640
   const target = selectFor(page, otherId)
@@ -452,7 +535,7 @@ test('M120c2-7 行级保存整页重绘保留滚动与焦点：连续改行不�
     refocused,
     'focus lands back on the row that was saved'
   )
-  assert.equal(overrideSelects(page).length, 2, 'both rows survive the redraw')
+  assert.equal(overrideSelects(page).length, 3, 'all rows survive the redraw')
   const view = await projectView(otherId)
   assert.equal(view.downloadPolicyExplicit, true, 'the pin landed server-side')
   assert.equal(view.downloadPolicy, 'allow')
@@ -504,7 +587,7 @@ test('M120c2-8 全局保存携带 expectedVersion：成功后本地与服务端�
   saveEvidence(EVIDENCE, 'expected-version-save.json', {
     sent: { downloadDefault: 'allow', expectedVersion: seenVersion },
     resultVersion: after.body.version,
-    toast: '已保存，将随宿主心跳生效；跟随全局 2 个项目，独立覆盖 0 个不受影响'
+    toast: '已保存，将随宿主心跳生效；跟随全局 1 个项目，独立覆盖 2 个不受影响'
   })
   record(
     'expected-version',
