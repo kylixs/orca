@@ -183,7 +183,10 @@
     "audit:anti-slop": "node config/scripts/sync-anti-slop-plugin.mjs && oxlint --config config/oxlint-anti-slop.json src config tests mobile --deny-warnings",
     "sync:anti-slop-plugin": "node config/scripts/sync-anti-slop-plugin.mjs",
     "build:packages": "pnpm --filter @orca/process-host build",
-    "check:process-host-imports": "node config/scripts/check-process-host-imports.mjs"
+    "check:process-host-imports": "node config/scripts/check-process-host-imports.mjs",
+    "test:tier:smoke": "node cloud-platform/scripts/run-test-tier.mjs smoke",
+    "test:tier:critical": "node cloud-platform/scripts/run-test-tier.mjs critical",
+    "test:tier:changed": "node cloud-platform/scripts/run-test-tier.mjs changed"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.284",
