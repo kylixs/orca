@@ -442,6 +442,9 @@ v2 **非目标**。FR-4.11 只定义 bash one-liner，验收矩阵的 Linux 行�
 
 ---
 
+
+> 归属同步（2026-11-17 17:3x，U183 v3 §5.3）：命令预检/systemd 探测 helper 由 **U183 R12** 新建并拥有（`cloud-platform/apps/api/src/install-script-command.ts`），H9/H10 消费，不再依赖 U182 批 2。
+
 ## 6. 与 U182 的边界与串行顺序（P1-5）
 
 U182 批 2 的范围（`defect-ledger.md` U182 ⑥⑦）：可移植 hostname/IP、openssl 回退与 SAN、**systemd 探测**、**命令预检**、relay 安装。
