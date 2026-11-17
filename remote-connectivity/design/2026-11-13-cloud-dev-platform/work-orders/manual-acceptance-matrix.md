@@ -43,4 +43,5 @@
 - zhangsan/lisi `roleSource` 为 admin-override（角色值正确）
 - 持久快照：`~/orca-local-env/run/platform-store.json`；审计链文件 `platform-audit.log`
 - 平台重启方式：`local-env-reseed.mjs --platform-only`（保宿主/PTY）；宿主升级需重建 `out/main` 后重启宿主
+| C7 | 宿主重启收敛（原人工项） | **已自动化**：`cloud-platform/scripts/verify-host-restart-convergence.mjs`（dry-run/精确重启/90s 收敛/旧 pid 清零/窗口归属断言/summary 自证）。2026-11-17 实跑 PASS：dev-local-02 `72408→79348`、03 `72409→79349`、收敛 2272ms、旧 pid 残留 0、新增窗口 0、`/health` 200。 | 无需人工；部署后执行该脚本即可 |
 | B9 | 桌面客户端冒烟三连门（协议 §2-75） | **已实现并机检**：`cloud-platform/scripts/smoke/desktop-smoke-gate.mjs`（S1 W9a 启动+工作区 / S2 C6 拖拽+宿主 oracle / S3 headless serve 激活，串行、失败即停、执行面校验≥1s）。HEAD `8d5c72e766e` 三连全过（37.0/49.0/15.1s，零可见窗口） | 无需决策；任何影响桌面的改动后必须重跑，未过不得启动其它测试 |

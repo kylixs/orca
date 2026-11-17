@@ -107,7 +107,7 @@ export async function findAdvertisedHost(api, adminToken, options, host) {
   return found?.online && advertised ? found : null
 }
 
-export async function ensureHost(api, paths, options, host, token, adminToken) {
+export async function ensureHost(api, paths, options, host, token, adminToken, timeoutMs = 120000) {
   const entry = path.join(ROOT, 'out/main/index.js')
   if (!exists(entry)) {
     throw new Error(`missing build: ${entry} — run pnpm build:electron-vite`)
@@ -135,7 +135,7 @@ export async function ensureHost(api, paths, options, host, token, adminToken) {
   const found = await waitFor(
     `host ${host.name} online`,
     () => findAdvertisedHost(api, adminToken, options, host),
-    120000,
+    timeoutMs,
     1000
   )
   return { pid, host: found, reused: false }
