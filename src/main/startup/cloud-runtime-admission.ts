@@ -209,8 +209,12 @@ function startEnrolled(
       })
       if (!enrolled.ok) {
         // Do not fall through to "serve without a gate": an enrolled-mode host that
-        // cannot enrol must fail visibly.
-        throw new Error(`cloud host enrolment failed: ${enrolled.error}`)
+        // cannot enrol must fail visibly, keeping the code/status a CLI can classify.
+        const { code, status, detail } = enrolled.error
+        const suffix = status === undefined ? '' : ` (HTTP ${status})`
+        throw new Error(
+          `cloud host enrolment failed: ${code}${suffix}${detail ? `: ${detail}` : ''}`
+        )
       }
       stored = enrolled.value
       if (userDataPath) {

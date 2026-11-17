@@ -16,7 +16,7 @@ import {
   setAppEnvironment,
   type AppEnvironment
 } from '../../shared/app-environment'
-import { setSecretStore, type SecretStore } from '../../shared/secret-store'
+import { setSecretStore } from '../../shared/secret-store'
 import type { ServeReadiness } from '../server/serve-readiness'
 import { resolveOrcadInstallRoot, resolveOrcadPath, resolveUserDataPath } from './orcad-app-paths'
 import { getOrcadCliLauncherPath, prepareOrcadCliLauncher } from './orcad-cli-launcher'
@@ -37,6 +37,8 @@ import {
   changedAiVaultSearchSettings,
   type AiVaultSearchSettings
 } from '../../shared/ai-vault-search-settings'
+import { ensureOrcadAppVersion, startOrcadRpc } from './orcad-cloud-admission'
+import { createOrcadSecretStore } from './orcad-node-secret-store'
 
 export { parseArgs }
 
@@ -79,28 +81,11 @@ function createNodeAppEnvironment(): AppEnvironment {
   }
 }
 
-/**
- * Why not silently plaintext: `isEncryptionAvailable() === false` already makes every
- * caller fall back to unsealed storage, which is a security posture, not a detail.
- * `describeProtectionGap()` gives the reason a client can surface.
- */
-function createNodeSecretStore(): SecretStore {
-  return {
-    isEncryptionAvailable: () => false,
-    encryptString: () => {
-      throw new Error('orcad_secret_sealing_unavailable')
-    },
-    decryptString: () => {
-      throw new Error('orcad_secret_sealing_unavailable')
-    },
-    describeProtectionGap: () =>
-      'This host has no OS keyring, so credentials are stored unencrypted. Pair from a desktop to manage secrets, or install and unlock a keyring.'
-  }
-}
-
 export function installOrcadHostAdapters(): void {
+  // Admission sends this in `/v1/hosts/register`; the launcher only exports ORCA_VERSION.
+  ensureOrcadAppVersion()
   setAppEnvironment(createNodeAppEnvironment())
-  setSecretStore(createNodeSecretStore())
+  setSecretStore(createOrcadSecretStore())
 }
 
 export type OrcadOptions = {
@@ -160,6 +145,9 @@ async function startOrcadRuntime(
 ): Promise<Pick<OrcadHandle, 'readiness'>> {
   const { OrcaRuntimeService } = await import('../runtime/orca-runtime')
   const { OrcaRuntimeRpcServer } = await import('../runtime/runtime-rpc')
+  const { cloudRuntimeAdmission, cloudAdmissionOption } =
+    await import('../startup/cloud-runtime-admission')
+  const { attachRuntimeToCloudAdmission } = await import('../startup/cloud-runtime-attach')
   const { registerHeadlessPtyRuntime, getLocalPtyProvider, getSshPtyProvider } =
     await import('../ipc/pty')
   const { getAppEnvironment } = await import('../../shared/app-environment')
@@ -363,11 +351,16 @@ async function startOrcadRuntime(
     // once a device has connected, so a loopback deployment would silently go wide one
     // restart after its first client paired.
     pinnedBindHost: bindHost,
-    ...(options.port !== undefined ? { wsPort: options.port, preferPinnedWsPort: true } : {})
+    ...(options.port !== undefined ? { wsPort: options.port, preferPinnedWsPort: true } : {}),
+    ...cloudAdmissionOption(process.env, { userDataPath: runtimeUserDataPath })
   })
   // Stops first: no RPC may write while the rest of the runtime is torn down.
   registerCleanup(() => rpc.stop())
-  await rpc.start()
+  await startOrcadRpc(
+    rpc,
+    cloudRuntimeAdmission(process.env, { userDataPath: runtimeUserDataPath }),
+    (value) => attachRuntimeToCloudAdmission(rpc, value)
+  )
   startOrcadAutomations(runtime, profileStore, registerCleanup)
   const pushService = DesktopPushService.create({
     runtime,

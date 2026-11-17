@@ -102,7 +102,19 @@ export function storeHostCredential(userDataPath: string, value: CloudHostCreden
   hardenExistingSecureFile(path)
 }
 
-export type EnrollOutcome = { ok: true; value: CloudHostCredential } | { ok: false; error: string }
+/** Why structured: a caller must tell a spent token (409) from a transport failure. */
+export type CloudHostEnrolmentError = {
+  /** Stable platform `error.code`, or a local code for transport/protocol failures. */
+  code: string
+  /** HTTP status when the platform answered; absent when the request never landed. */
+  status?: number
+  /** Transport message or missing-field description, for logs. */
+  detail?: string
+}
+
+export type EnrollOutcome =
+  | { ok: true; value: CloudHostCredential }
+  | { ok: false; error: CloudHostEnrolmentError }
 
 export async function enrollCloudHost(
   input: EnrollInput,
@@ -130,17 +142,30 @@ export async function enrollCloudHost(
       signal: AbortSignal.timeout(10_000)
     })
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+    return {
+      ok: false,
+      error: {
+        code: 'transport',
+        detail: error instanceof Error ? error.message : String(error)
+      }
+    }
   }
   if (!res.ok) {
     const code = readString(readField(await res.json().catch(() => null), 'error'), 'code')
-    return { ok: false, error: code ?? `register failed: ${res.status}` }
+    return { ok: false, error: { code: code ?? 'register_failed', status: res.status } }
   }
   const body: unknown = await res.json()
   const hostId = readString(body, 'hostId')
   const credential = readString(body, 'credential')
   if (hostId === null || credential === null) {
-    return { ok: false, error: 'register response missing hostId/credential' }
+    return {
+      ok: false,
+      error: {
+        code: 'protocol',
+        status: res.status,
+        detail: 'register response missing hostId/credential'
+      }
+    }
   }
   return {
     ok: true,
