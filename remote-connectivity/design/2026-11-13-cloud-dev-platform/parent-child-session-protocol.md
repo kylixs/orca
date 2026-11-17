@@ -195,6 +195,8 @@
 
 122. **每令声明文件占用集（同次固化——`server.ts` 双写判例）**：派令必须显式列出「允许修改」与「禁止修改」的文件/目录集，派发前核对与在途代理是否重叠；热点文件（`server.ts`、`app.js`、PROGRESS、台账）同时只授予一个写入者，冲突时排队或拆分。判例：U181 与 D19 并行改 `server.ts`，D19 靠过滤补丁侥幸未丢改动。
 
+123. **改 `apps/web/app.js` 必须同步快照 pin（2026-11-18 固化——`dd37b0004a2` 判例）**：任何提交触碰 `cloud-platform/apps/web/app.js`，必须 `rg -n "HEAD_APP_SHA256|sha256Lf" cloud-platform/test/e2e` 找出全部 pin 并按既有 LF 归一口径重算；套件出现 **cancelled 而非 fail** 时优先怀疑 pin 过期（断言在钩子中会让子用例整批 cancelled）。判例：`dd37b0004a2` 重构内联 onclick 后未更新 pin，HEAD 上 `u197-migration-browser` 6 例 cancelled，D17 复审才发现。
+
 
 ## 2b. 并行模式（用户 2026-11-14 指令：不要串行开发，单独完整链路验收，发现即修不堵塞）
 
