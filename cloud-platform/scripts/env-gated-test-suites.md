@@ -33,3 +33,11 @@
 | 长跑采样 | runner 启动**独立子进程采样器**（`resource-sampler.mjs`）；不再依赖主进程事件循环（曾被 `spawnSync` 阻塞导致 samples=0） | 判例 U179 |
 | 任意全量段 | 串行排队（§2-73），不得两段并行；并行只允许「一个全量 + 轻量单测」 |
 | Electron/e2e | `electron-headless` 项目 + `ORCA_BACKGROUND_LAUNCH=1 ORCA_SUPPRESS_DIALOGS=1`；启动整体超时 120s，超时强制关闭（§2-74） |
+
+## 容器 e2e 门（U183 R13c/R14，2026-11-17 判例）
+
+| 门 | 要求 | 判例 |
+| --- | --- | --- |
+| 镜像 | Node ≥22.18 **且** bash/curl/openssl/tar/sha256sum/find/hostname/setsid 可用；默认 `orca-e2e-node24-bookworm:local`，可用 `ORCA_E2E_RELAY_IMAGE` 覆盖。构建：`docker build -f cloud-platform/scripts/relay-e2e-image.Dockerfile -t orca-e2e-node24-bookworm:local .` | `node:24-bookworm-slim` 缺 curl/openssl（U185）；`jlc-deb12:rust` 无 node（R13c INVALID） |
+| 平台地址 | 干净容器不能访问宿主 loopback；必须经宿主 TLS 终结代理（自签 CA、CN/SAN=`host.docker.internal`），容器内 `CURL_CA_BUNDLE`/`NODE_EXTRA_CA_CERTS` 指向只读挂载的 CA | 非 loopback http 会被生成器以 400 `RELAY_BUNDLE_INSECURE_URL` 拒绝（产品策略正确） |
+| 判定 | Docker/镜像/工具/Node 任一缺失 → `INVALID + skipReason`，不得 stub 冒充 PASS | R13c 首轮 INVALID（`evidence/u183-r13c-20261117T110158Z/`）；修复后 PASS（`evidence/u183-r13c-20261117T111349Z/`） |

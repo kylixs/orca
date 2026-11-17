@@ -132,10 +132,27 @@ export function makeTempWorkspace(): { root: string; projectRoot: string } {
   return { root, projectRoot }
 }
 
-export function makeTlsCerts(): { key: string; cert: string; dir: string } {
+export type TlsCertOptions = {
+  commonName?: string
+  subjectAltName?: string
+  /** Mark the cert as a CA so it can also serve as the peer's trust anchor. */
+  trustAnchor?: boolean
+}
+
+export function makeTlsCerts(options: TlsCertOptions = {}): {
+  key: string
+  cert: string
+  dir: string
+} {
   const dir = mkdtempSync(join(tmpdir(), 'orca-cloud-cert-'))
   const key = join(dir, 'server.key')
   const cert = join(dir, 'server.crt')
+  const subjectAltName =
+    options.subjectAltName ?? 'DNS:dev-001.relay.local,DNS:localhost,IP:127.0.0.1'
+  const extensions = ['-addext', `subjectAltName=${subjectAltName}`]
+  if (options.trustAnchor) {
+    extensions.push('-addext', 'basicConstraints=critical,CA:TRUE')
+  }
   execFileSync('openssl', [
     'req',
     '-x509',
@@ -149,9 +166,8 @@ export function makeTlsCerts(): { key: string; cert: string; dir: string } {
     '-days',
     '1',
     '-subj',
-    '/CN=dev-001.relay.local',
-    '-addext',
-    'subjectAltName=DNS:dev-001.relay.local,DNS:localhost,IP:127.0.0.1'
+    `/CN=${options.commonName ?? 'dev-001.relay.local'}`,
+    ...extensions
   ])
   return { key, cert, dir }
 }

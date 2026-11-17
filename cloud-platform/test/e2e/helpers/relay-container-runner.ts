@@ -122,6 +122,8 @@ export type RelayEvidenceOptions = {
   harness?: Pick<ContainerHarness, 'available' | 'skipReason'>
   /** Override for replaying/tests; defaults to the write time. */
   generatedAt?: string
+  /** Task label in summary.json; R13b's default keeps older callers stable. */
+  task?: string
 }
 
 export type RelayEvidenceIssue = {
@@ -288,7 +290,7 @@ export function collectRelayEvidence(
   const validation = runValidator(dir)
 
   const summary = {
-    task: 'U183 R13b relay install in clean container',
+    task: options.task ?? 'U183 R13b relay install in clean container',
     generatedAt,
     verdict,
     skipReason,

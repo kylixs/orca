@@ -1,11 +1,15 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { startTcpDelayHop, type TcpDelayHop } from '../harness.ts'
+import { readFileSync } from 'node:fs'
+import { request as httpRequest } from 'node:http'
+import { createServer as createHttpsServer } from 'node:https'
+import { startTcpDelayHop } from '../harness.ts'
 
 /**
- * U183 R13a: a clean Debian container plus a host-side TCP forwarder, so a
- * relay installer can be exercised against a platform running on this machine.
- * Nothing here is product code; it only owns container/forwarder lifetime.
+ * U183 R13a: a clean Debian container plus a host-side forwarder (plain TCP or,
+ * with `tls`, an https terminator), so a relay installer can be exercised
+ * against a platform running on this machine. Nothing here is product code; it
+ * only owns container/forwarder lifetime.
  */
 
 export const DEFAULT_CONTAINER_IMAGE = 'jlc-deb12:rust'
@@ -50,6 +54,20 @@ export type ContainerHarnessOptions = {
   image?: string
   /** How long tool probing may take after `docker run`. */
   probeTimeoutMs?: number
+  /**
+   * Terminate TLS on the host with this key/cert instead of a plain TCP hop, so
+   * the container-facing platform URL is https (production refuses non-loopback
+   * http install URLs). The cert is mounted read-only as the container CA bundle.
+   */
+  tls?: { key: string; cert: string }
+}
+
+/** Mounted into the container as its only trust anchor; the private key stays on the host. */
+const CONTAINER_CA_PATH = '/tmp/orca-e2e-ca.pem'
+
+type HostForwarder = {
+  port: number
+  close: () => Promise<void>
 }
 
 type RunResult = ContainerExecResult & { notFound: boolean }
@@ -108,6 +126,55 @@ function runCommand(
 
 function docker(args: string[], timeoutMs = 20_000): Promise<RunResult> {
   return runCommand('docker', args, timeoutMs)
+}
+
+/**
+ * TLS terminator in front of the platform's loopback http listener. It keeps the
+ * container-facing Host header and announces `https`, which is exactly what the
+ * platform's requestOrigin reads when it embeds the install URL.
+ */
+async function startHttpsTerminator(
+  targetPort: number,
+  tls: { key: string; cert: string }
+): Promise<HostForwarder> {
+  const server = createHttpsServer(
+    { key: readFileSync(tls.key), cert: readFileSync(tls.cert) },
+    (req, res) => {
+      const upstream = httpRequest(
+        {
+          host: '127.0.0.1',
+          port: targetPort,
+          method: req.method,
+          path: req.url,
+          headers: { ...req.headers, host: req.headers.host, 'x-forwarded-proto': 'https' }
+        },
+        (upstreamRes) => {
+          res.writeHead(upstreamRes.statusCode ?? 502, upstreamRes.headers)
+          upstreamRes.pipe(res)
+        }
+      )
+      upstream.on('error', () => {
+        if (!res.headersSent) {
+          res.writeHead(502)
+        }
+        res.end()
+      })
+      req.pipe(upstream)
+    }
+  )
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '0.0.0.0', () => resolve())
+  })
+  const address = server.address()
+  const port = typeof address === 'object' && address ? address.port : 0
+  return {
+    port,
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.close(() => resolve())
+      })
+  }
 }
 
 function unavailableHarness(
@@ -232,9 +299,11 @@ export async function startContainerHarness(
   }
 
   const containerName = `relay-e2e-${randomBytes(4).toString('hex')}`
-  let hop: TcpDelayHop | null = null
+  let hop: HostForwarder | null = null
   try {
-    hop = await startTcpDelayHop(options.platformPort, { bindHost: '0.0.0.0' })
+    hop = options.tls
+      ? await startHttpsTerminator(options.platformPort, options.tls)
+      : await startTcpDelayHop(options.platformPort, { bindHost: '0.0.0.0' })
   } catch (error) {
     return unavailableHarness(
       image,
@@ -248,6 +317,8 @@ export async function startContainerHarness(
   // desktop-provided route.
   const hostArgs =
     process.platform === 'linux' ? ['--add-host=host.docker.internal:host-gateway'] : []
+  // Only the public cert is mounted; the private key never enters the container.
+  const tlsMountArgs = options.tls ? ['-v', `${options.tls.cert}:${CONTAINER_CA_PATH}:ro`] : []
   const run = await docker(
     [
       'run',
@@ -256,6 +327,7 @@ export async function startContainerHarness(
       '--name',
       containerName,
       ...hostArgs,
+      ...tlsMountArgs,
       '-e',
       `HOME=${CONTAINER_HOME}`,
       '--entrypoint',
@@ -271,7 +343,12 @@ export async function startContainerHarness(
     throw new Error(`docker run failed (${run.exitCode}): ${run.stderr.trim()}`)
   }
 
-  const platformUrl = `http://host.docker.internal:${hop.port}`
+  const scheme = options.tls ? 'https' : 'http'
+  const platformUrl = `${scheme}://host.docker.internal:${hop.port}`
+  // Every install, health check and relay child inherits this trust anchor.
+  const execEnvArgs = options.tls
+    ? ['-e', `CURL_CA_BUNDLE=${CONTAINER_CA_PATH}`, '-e', `NODE_EXTRA_CA_CERTS=${CONTAINER_CA_PATH}`]
+    : []
   const harness: ContainerHarness = {
     available: true,
     image,
@@ -281,7 +358,10 @@ export async function startContainerHarness(
     capabilities: emptyCapabilities(),
     platformUrl,
     execInContainer: async (command) => {
-      const result = await docker(['exec', containerName, '/bin/bash', '-c', command], 120_000)
+      const result = await docker(
+        ['exec', ...execEnvArgs, containerName, '/bin/bash', '-c', command],
+        120_000
+      )
       return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr }
     },
     getContainerPlatformUrl: () => platformUrl,
