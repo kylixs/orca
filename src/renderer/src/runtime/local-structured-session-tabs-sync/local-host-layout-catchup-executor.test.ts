@@ -41,6 +41,7 @@ const H2 = 'host-right'
 const EPOCH = 'epoch-catchup'
 
 type SyncState = WebSessionTabsSyncState & WorktreeRuntimeOwnerState
+type CatchupCommitPatch = WebSessionTabsSyncState | Partial<WebSessionTabsSyncState>
 
 function terminalTab(id: string, sortOrder: number): TerminalTab {
   return {
@@ -172,8 +173,8 @@ async function run(
   state: SyncState,
   call: LocalHostLayoutCatchupCall,
   overrides: Partial<RunLocalHostLayoutCatchupArgs> = {}
-): Promise<{ outcome: LocalHostLayoutCatchupOutcome; commits: unknown[] }> {
-  const commits: unknown[] = []
+): Promise<{ outcome: LocalHostLayoutCatchupOutcome; commits: CatchupCommitPatch[] }> {
+  const commits: CatchupCommitPatch[] = []
   const outcome = await runLocalHostLayoutCatchup({
     worktreeId: WT,
     state,
@@ -214,7 +215,7 @@ describe('U163 V4: local host layout catch-up executor', () => {
     expect(calls[0]?.params).toEqual({ worktree: WT })
     expect(commits).toHaveLength(1)
 
-    const merged = { ...state, ...(commits[0] as Partial<SyncState>) }
+    const merged = { ...state, ...commits[0] }
     // B4-b: the exact member set is preseeded before apply, so the old group merges into H1.
     expect(merged.groupsByWorktree[WT]?.map((entry) => entry.id)).toEqual([H1, H2])
     expect(merged.groupsByWorktree[WT]?.some((entry) => entry.id === LOCAL_GROUP)).toBe(false)

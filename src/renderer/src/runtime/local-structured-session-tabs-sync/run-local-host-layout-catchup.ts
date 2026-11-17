@@ -101,9 +101,12 @@ function isSessionTabsResult(value: unknown): value is RuntimeMobileSessionTabsR
   if (typeof value !== 'object' || value === null) {
     return false
   }
-  // SAFETY: the list reply is the runtime's own session-tabs contract; `tabs` must be an array.
-  const candidate = value as Partial<RuntimeMobileSessionTabsResult>
-  return Array.isArray(candidate.tabs) && typeof candidate.worktree === 'string'
+  return (
+    'tabs' in value &&
+    Array.isArray(value.tabs) &&
+    'worktree' in value &&
+    typeof value.worktree === 'string'
+  )
 }
 
 /** Desktop local host publishes the renderer's own tab ids, so group members map to themselves. */

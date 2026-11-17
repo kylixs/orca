@@ -1,6 +1,7 @@
 /**
  * @vitest-environment happy-dom
  */
+import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -88,15 +89,21 @@ function addPanelGeometry(groupId: string, panelRect: DOMRect, bodyRect: DOMRect
   return panel
 }
 
-function makeDragEvent(activeData: TabDragItemData, pointer: { x: number; y: number }) {
+type DragTestEvent = DragStartEvent & Pick<DragEndEvent, 'over' | 'delta'>
+
+function makeDragEvent(
+  activeData: TabDragItemData,
+  pointer: { x: number; y: number }
+): DragTestEvent {
   return {
     active: {
+      id: activeData.unifiedTabId,
       data: { current: activeData },
-      rect: { current: { initial: null } }
+      rect: { current: { initial: null, translated: null } }
     },
     over: null,
     delta: { x: 0, y: 0 },
-    activatorEvent: { clientX: pointer.x, clientY: pointer.y }
+    activatorEvent: new MouseEvent('pointerdown', { clientX: pointer.x, clientY: pointer.y })
   }
 }
 
@@ -481,7 +488,7 @@ describe('useTabDragSplit gesture latch', () => {
     const event = makeDragEvent(makeDragData('group-1'), { x: 120, y: 20 })
 
     act(() => {
-      drag.onDragStart(event as unknown as Parameters<typeof drag.onDragStart>[0])
+      drag.onDragStart(event)
       window.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }))
     })
     expect(isTabDragGestureActive()).toBe(true)
@@ -496,11 +503,7 @@ describe('useTabDragSplit gesture latch', () => {
   it('releases the latch when the dragging hook unmounts', () => {
     const drag = renderDragHook()
     act(() =>
-      drag.onDragStart(
-        makeDragEvent(makeDragData('group-1'), { x: 120, y: 20 }) as unknown as Parameters<
-          typeof drag.onDragStart
-        >[0]
-      )
+      drag.onDragStart(makeDragEvent(makeDragData('group-1'), { x: 120, y: 20 }))
     )
     expect(isTabDragGestureActive()).toBe(true)
 

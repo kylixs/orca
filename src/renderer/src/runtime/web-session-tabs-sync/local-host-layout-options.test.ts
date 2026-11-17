@@ -103,13 +103,7 @@ function apply(
   frame: RuntimeMobileSessionTabsResult,
   options?: Parameters<typeof applyWebSessionTabsSnapshot>[4]
 ): WebSessionTabsSyncState {
-  const patch = applyWebSessionTabsSnapshot(
-    state,
-    frame,
-    ENV,
-    NOW,
-    options
-  ) as Partial<WebSessionTabsSyncState>
+  const patch = applyWebSessionTabsSnapshot(state, frame, ENV, NOW, options)
   return { ...state, ...patch }
 }
 
