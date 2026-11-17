@@ -44,6 +44,7 @@ import { parseAuditQuery } from './audit-query.ts'
 import type { AuditExportJob, AuditExportJobStore } from './audit-export-jobs.ts'
 import { createAuditExportStore, startAuditExportCleanup } from './audit-export-runtime.ts'
 import {
+  AuditExportWorker,
   DEFAULT_AUDIT_EXPORT_MAX_BYTES,
   DEFAULT_AUDIT_EXPORT_MAX_EVENTS
 } from './audit-export-worker.ts'
@@ -179,6 +180,8 @@ export type ApiHandle = {
   audit: AuditChain
   /** U202 E9: file-backed export jobs shared by export routes and cleanup. */
   auditExportStore: AuditExportJobStore
+  /** U201 E6b: drains queued export jobs; the accept route schedules a pass. */
+  auditExportWorker: AuditExportWorker
   signingKey: SigningKey
   listen: () => Promise<number>
   close: () => Promise<void>
@@ -1903,6 +1906,34 @@ export function createApp(config: ApiConfig): ApiHandle {
       chain.restore(auditLog.load())
     }
     return chain
+  }
+
+  // U201 E6b: the worker pages synchronously, so it can only drive an in-process
+  // chain; a remote writer answers asynchronously and fails the job explicitly.
+  const auditExportWorker = new AuditExportWorker({
+    store: auditExportStore,
+    query: (filter) => {
+      const result = audit.query(filter)
+      if (result instanceof Promise) {
+        throw new Error('audit export worker requires the local synchronous audit chain')
+      }
+      return result
+    }
+  })
+  /**
+   * One pass per accepted job, after the 202 is written. setImmediate callbacks
+   * are serial on this event loop and `markRunning` persists before any yield,
+   * so overlapping accepts cannot both claim the same queued job.
+   */
+  function scheduleAuditExportRun(): void {
+    setImmediate(() => {
+      try {
+        auditExportWorker.processQueuedAuditExports(1)
+      } catch (error) {
+        // The 202 is already sent; a worker fault must not surface as a response error.
+        console.error('[audit-export] worker run failed:', error)
+      }
+    })
   }
 
   /**
@@ -5396,13 +5427,17 @@ export function createApp(config: ApiConfig): ApiHandle {
         )
       }
 
-      return json(res, 202, {
+      json(res, 202, {
         jobId: job.jobId,
         status: job.status,
         format: job.format,
         requestedAt: job.createdAt,
         expiresAt: job.expiresAt
       })
+      // Response is written; run the job outside this handler so a slow export
+      // or worker fault can never alter the accepted 202.
+      scheduleAuditExportRun()
+      return
     }
 
     // ---- audit: export status (U202 E7) ----
@@ -6189,6 +6224,7 @@ export function createApp(config: ApiConfig): ApiHandle {
     store,
     audit,
     auditExportStore,
+    auditExportWorker,
     get signingKey() {
       return signingKeys.current()
     },

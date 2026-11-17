@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { AuditExportJobStore } from '../../apps/api/src/audit-export-jobs.ts'
 import { spawnService, type Service } from './harness.ts'
 
 /**
@@ -20,6 +21,7 @@ let adminToken = ''
 let auditorToken = ''
 let userToken = ''
 let auditorUserId = ''
+let adminUserId = ''
 
 type ExportBody = {
   jobId?: string
@@ -127,6 +129,11 @@ before(async () => {
     headers: { authorization: `Bearer ${adminToken}` }
   })
   const users: { users?: { id?: string; username?: string }[] } = await usersRes.json()
+  const admin = users.users?.find((user) => user.username === 'admin')
+  if (!admin?.id) {
+    throw new Error('seeded admin must exist')
+  }
+  adminUserId = admin.id
   const zhangsan = users.users?.find((user) => user.username === 'zhangsan')
   if (!zhangsan?.id) {
     throw new Error('seeded user zhangsan must exist')
@@ -152,7 +159,7 @@ after(async () => {
 })
 
 describe('审计导出受理（真实平台进程）', () => {
-  test('E5-1 admin 得到 202 与 queued job.json；响应字段齐全且 no-store', async () => {
+  test('E5-1 admin 得到 202 与任务落盘；响应字段齐全且 no-store', async () => {
     const dirsBefore = jobDirs().length
     const res = await postExport(adminToken, validBody())
 
@@ -168,7 +175,8 @@ describe('审计导出受理（真实平台进程）', () => {
 
     const job = readJob(jobId)
     assert.equal(job.jobId, jobId)
-    assert.equal(job.status, 'queued')
+    // E6b: the worker starts after the 202, so the file may already be running/succeeded.
+    assert.ok(['queued', 'running', 'succeeded'].includes(job.status ?? ''), job.status)
     assert.equal(job.format, 'csv')
     assert.equal(job.requestedByUsername, 'admin')
     assert.equal(job.deleteAfterDownload, false)
@@ -180,7 +188,7 @@ describe('审计导出受理（真实平台进程）', () => {
     assert.equal(res.status, 202)
     assert.equal(res.body.format, 'jsonl')
     const job = readJob(res.body.jobId ?? '')
-    assert.equal(job.status, 'queued')
+    assert.ok(['queued', 'running', 'succeeded'].includes(job.status ?? ''), job.status)
     assert.equal(job.format, 'jsonl')
     assert.equal(job.requestedByUsername, 'zhangsan')
   })
@@ -235,11 +243,22 @@ describe('审计导出受理（真实平台进程）', () => {
     assert.equal(res.body.error?.code, 'INVALID_QUERY')
   })
 
-  test('E5-8 并发上限：第 2 个仍受理，第 3 个 → 429 EXPORT_BUSY', async () => {
-    // E5-1 already left one active job for admin; this fills the documented
-    // per-user limit of two, so the next request is refused.
-    const second = await postExport(adminToken, validBody())
-    assert.equal(second.status, 202)
+  test('E5-8 并发上限：活动任务达上限时 → 429 EXPORT_BUSY', async () => {
+    // E6b consumes accepted jobs immediately, so accepted requests cannot hold
+    // the quota open. Seed two queued jobs for the admin directly instead.
+    const store = new AuditExportJobStore({
+      root: exportDir,
+      perUserActiveLimit: 2,
+      globalActiveLimit: 8
+    })
+    for (let index = 0; index < 2; index += 1) {
+      store.create({
+        requestedBy: adminUserId,
+        requestedByUsername: 'admin',
+        query: { limit: 50 },
+        format: 'csv'
+      })
+    }
 
     const dirsBefore = jobDirs().length
     const third = await postExport(adminToken, validBody())
@@ -256,7 +275,7 @@ describe('审计导出受理（真实平台进程）', () => {
 
     const event = events.find((entry) => {
       const jobId = entry.metadata?.jobId
-      return typeof jobId === 'string' && JOB_ID.test(jobId)
+      return entry.actor === 'admin' && typeof jobId === 'string' && JOB_ID.test(jobId)
     })
     assert.ok(event, 'accepted export event must carry its jobId')
     assert.equal(event.actor, 'admin')
@@ -273,6 +292,6 @@ describe('审计导出受理（真实平台进程）', () => {
 
     const jobId = typeof metadata.jobId === 'string' ? metadata.jobId : ''
     const job = readJob(jobId)
-    assert.equal(job.status, 'queued')
+    assert.ok(['queued', 'running', 'succeeded'].includes(job.status ?? ''), job.status)
   })
 })
