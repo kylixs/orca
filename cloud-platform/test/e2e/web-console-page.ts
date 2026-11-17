@@ -304,8 +304,11 @@ export function loadWebConsolePage(
       const pending: Promise<void>[] = []
       for (const waiters of held.values()) {
         for (const waiter of waiters.splice(0)) {
+          // Why drop the signal: abort detaches the consumer, it cannot un-send a
+          // request already on the wire. The page must discard the late response.
+          const init = waiter.init ? { ...waiter.init, signal: undefined } : undefined
           pending.push(
-            realFetch(waiter.input, waiter.init)
+            realFetch(waiter.input, init)
               .catch(() => new Response(null, { status: 503 }))
               .then((response) => waiter.resolve(absorbSetCookies(response)))
           )

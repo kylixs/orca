@@ -13,12 +13,18 @@ const ORIGIN = 'https://web.u229-startup.local'
 const apps: ApiHandle[] = []
 
 async function start(
-  options: { accessTtlMs?: number; cookieMode?: string; publicOrigin?: string } = {}
+  options: {
+    accessTtlMs?: number
+    cookieMode?: string
+    publicOrigin?: string
+    refreshGraceMs?: number
+  } = {}
 ): Promise<string> {
   const app = createApp({
     port: 0,
     accessTtlMs: options.accessTtlMs ?? 60_000,
     refreshTtlMs: 60_000,
+    refreshGraceMs: options.refreshGraceMs,
     internalToken: 'u229-startup-resilience',
     cookieMode: options.cookieMode ?? 'auto',
     publicOrigin: options.publicOrigin ?? ''
@@ -26,6 +32,16 @@ async function start(
   apps.push(app)
   const port = await app.listen()
   return `http://127.0.0.1:${port}`
+}
+
+/** A real Cookie session, established through the console's own login form. */
+async function cookieSessionJar(base: string): Promise<Map<string, string>> {
+  const jar = new Map<string, string>()
+  const bootstrap = loadWebConsolePage(base, { platformOrigin: ORIGIN, cookieJar: jar })
+  await bootstrap.settle()
+  await bootstrap.submitLogin('admin', 'Adm1n!')
+  assert.ok(jar.get('orca_refresh'), 'precondition: login must set the refresh Cookie')
+  return jar
 }
 
 async function legacyRefreshToken(base: string): Promise<string> {
@@ -196,5 +212,149 @@ describe('U229 F11 未处理拒绝', () => {
     } finally {
       process.off('unhandledRejection', onRejection)
     }
+  })
+})
+
+describe('U234 启动超时的迟到结果必须被丢弃', () => {
+  test('Cookie 路径：超时后迟到的成功刷新不得执行迁移闸门', async () => {
+    const base = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const jar = await cookieSessionJar(base)
+    const page = loadWebConsolePage(base, {
+      timerScale: 0.01,
+      platformOrigin: ORIGIN,
+      cookieJar: jar,
+      storage: {
+        'orca.authMode': 'cookie',
+        'orca.access': 'legacy-access',
+        'orca.refresh': 'legacy-refresh',
+        'orca.tokenOwner': 'admin'
+      },
+      holdOnLoad: ['POST /v1/auth/refresh']
+    })
+    await page.settle()
+
+    assert.equal(page.hidden('#view-login'), false, 'the timeout must land on login')
+
+    await page.release()
+    await page.settle()
+
+    assert.equal(page.hidden('#view-app'), true, 'a late refresh must not revive the app shell')
+    assert.equal(
+      page.window.localStorage.getItem('orca.access'),
+      'legacy-access',
+      'an abandoned refresh is not proof the Cookie transport migrated'
+    )
+    assert.equal(page.window.localStorage.getItem('orca.refresh'), 'legacy-refresh')
+    assert.equal(page.window.localStorage.getItem('orca.tokenOwner'), 'admin')
+  })
+
+  test('旧模式：迟到的 body 刷新不得写入新令牌，重载仍停在登录页', async () => {
+    const base = await start({ cookieMode: 'never', refreshGraceMs: 0 })
+    const refreshToken = await legacyRefreshToken(base)
+    const page = loadWebConsolePage(base, {
+      timerScale: 0.01,
+      storage: { 'orca.access': 'expired-access', 'orca.refresh': refreshToken },
+      holdOnLoad: ['POST /v1/auth/refresh']
+    })
+    await page.settle()
+
+    assert.equal(page.hidden('#view-login'), false, 'the timeout must land on login')
+
+    await page.release()
+    await page.settle()
+
+    assert.equal(page.hidden('#view-app'), true, 'a late refresh must not revive the app shell')
+    assert.equal(
+      page.window.localStorage.getItem('orca.access'),
+      'expired-access',
+      'the abandoned refresh must not persist its access token'
+    )
+    assert.equal(
+      page.window.localStorage.getItem('orca.refresh'),
+      refreshToken,
+      'the abandoned refresh must not persist its rotated refresh token'
+    )
+
+    // The held request did reach the platform, so the stale token is now spent.
+    // A reload may only resume from what the page actually kept.
+    const reload = loadWebConsolePage(base, {
+      storage: {
+        'orca.access': page.window.localStorage.getItem('orca.access') ?? '',
+        'orca.refresh': page.window.localStorage.getItem('orca.refresh') ?? ''
+      }
+    })
+    await reload.settle()
+    assert.equal(reload.hidden('#view-login'), false, 'reload must not resume a discarded session')
+    assert.equal(reload.hidden('#view-app'), true)
+  })
+})
+
+describe('U234 刷新状态判决', () => {
+  async function expiredPage() {
+    const base = await start({ accessTtlMs: 1000 })
+    const page = loadWebConsolePage(base)
+    await page.settle()
+    await page.submitLogin('admin', 'Adm1n!')
+    await delay(1300)
+    return page
+  }
+
+  for (const status of [400, 403, 408, 429]) {
+    const rejected = status === 400
+    test(`刷新 ${status} → ${rejected ? 'rejected（登出）' : 'error（保留会话）'}`, async () => {
+      const page = await expiredPage()
+      const logoutsBefore = logoutCalls(page).length
+      page.fail('POST', '/v1/auth/refresh', {
+        status,
+        body: { error: { code: 'SIMULATED', message: '模拟平台响应' } }
+      })
+      await page.clickNav('relays')
+
+      if (rejected) {
+        assert.equal(page.hidden('#view-login'), false, '400 is a session verdict')
+        assert.equal(page.hidden('#view-app'), true)
+        assert.equal(logoutCalls(page).length - logoutsBefore, 1)
+      } else {
+        assert.equal(page.hidden('#view-app'), false, `${status} must keep the session`)
+        assert.equal(page.hidden('#view-login'), true)
+        assert.equal(logoutCalls(page).length, logoutsBefore)
+      }
+    })
+  }
+
+  test('刷新 422（其余 4xx）同样是会话判决，不得永久保会话', async () => {
+    const page = await expiredPage()
+    const logoutsBefore = logoutCalls(page).length
+    page.fail('POST', '/v1/auth/refresh', {
+      status: 422,
+      body: { error: { code: 'UNPROCESSABLE', message: '模拟平台响应' } }
+    })
+    await page.clickNav('relays')
+
+    assert.equal(page.hidden('#view-login'), false, 'a 422 request was understood and refused')
+    assert.equal(page.hidden('#view-app'), true)
+    assert.equal(logoutCalls(page).length - logoutsBefore, 1)
+  })
+})
+
+describe('U234 登出单飞', () => {
+  test('同一代内双击登出只发一次网络请求', async () => {
+    const base = await start()
+    const page = loadWebConsolePage(base)
+    await page.settle()
+    await page.submitLogin('admin', 'Adm1n!')
+    const logoutsBefore = logoutCalls(page).length
+
+    const button = page.window.document.querySelector<HTMLElement>('#logoutBtn')!
+    button.click()
+    button.click()
+    await page.settle()
+
+    assert.equal(
+      logoutCalls(page).length - logoutsBefore,
+      1,
+      'the second click must reuse the logout already on the wire'
+    )
+    assert.equal(page.hidden('#view-login'), false)
   })
 })

@@ -123,6 +123,12 @@ function abortRefreshFlights() {
   refreshInFlight = null
 }
 
+/** U234: startup gave up on this generation; a late refresh must land as `stale`. */
+function abandonStartupAuth() {
+  state.authEpoch += 1
+  abortRefreshFlights()
+}
+
 /** U232: login supersedes every outstanding logout, not just the newest one. */
 function abortLogoutFlights() {
   for (const controller of logoutControllers) controller.abort()
@@ -144,9 +150,12 @@ function clearLegacyTokens() {
   localStorage.removeItem(TOKEN_OWNER_KEY)
 }
 
-/** U229 F7: only 400/401 are session verdicts; an outage or throttle keeps it. */
+/** U234: 403/408/429/5xx are outages or throttles and keep the session; every
+ * other 4xx was understood and refused, so it is a session verdict. */
 function refreshVerdict(status) {
-  return status === 400 || status === 401 ? 'rejected' : 'error'
+  if (status === 403 || status === 408 || status === 429 || status >= 500) return 'error'
+  if (status >= 400 && status < 500) return 'rejected'
+  return 'error'
 }
 
 /** One no-body Cookie refresh. Success is also the migration gate for old keys. */
@@ -242,7 +251,11 @@ function legacyOwnerAllowsFallback() {
   return false
 }
 
-/** `ok` | `rejected` (HTTP 4xx/5xx) | `error` (transport failure) | `stale`. */
+/**
+ * U234 four-state contract: `ok` renewed; `rejected` a session verdict
+ * (400/401/other 4xx); `error` no verdict (403/408/429/5xx/transport);
+ * `stale` an abandoned generation whose result must be discarded.
+ */
 function refreshSession(staleAccess, { startup = false } = {}) {
   // The token this request carried is already gone: someone else renewed first.
   if (state.accessToken !== staleAccess) {
@@ -2776,7 +2789,7 @@ async function renderRelays({ keepTable = false } = {}) {
     </div>`
   // U229 F11: the click handler owns the rejection; never leak it to the window.
   $('#addRelayBtn').onclick = () => {
-    void addRelayDialog().catch((err) => toast(`添加中继失败：${err.message ?? err}`))
+    void addRelayDialog().catch((err) => toast(`添加中继失败：${String(err ?? '未知错误')}`))
   }
   $('#refreshRelaysBtn').onclick = () => void renderRelays({ keepTable: true })
   wireRelayDetails()
@@ -5282,10 +5295,15 @@ window.addEventListener('hashchange', () => {
     if (state.cookieMode) {
       // U229 F5: both startup awaits are bounded, so a hung refresh or /v1/me
       // lands on showLogin() instead of leaving both views hidden forever.
-      const refresh = await withTimeout(
-        refreshSession(state.accessToken, { startup: true }),
-        STARTUP_TIMEOUT_MS
-      )
+      let refresh = 'error'
+      try {
+        refresh = await withTimeout(
+          refreshSession(state.accessToken, { startup: true }),
+          STARTUP_TIMEOUT_MS
+        )
+      } catch {
+        // U234: a timed-out refresh is abandoned below, never merely ignored.
+      }
       if (refresh === 'ok') {
         try {
           // Why retried: the bootstrap must not start a second refresh chain.
@@ -5300,6 +5318,9 @@ window.addEventListener('hashchange', () => {
           // fall through to the login view
         }
       }
+      // U234: the startup flow is over; a late refresh must see a new generation
+      // and return `stale` instead of rewriting state or localStorage.
+      abandonStartupAuth()
       if (cachedUser) localStorage.removeItem('orca.user')
       showLogin()
       return
@@ -5316,12 +5337,15 @@ window.addEventListener('hashchange', () => {
         return
       } catch {
         state.accessToken = ''
+        // U234: a request that timed out may still complete; abandon its refresh.
+        abandonStartupAuth()
       }
     }
     if (cachedUser) localStorage.removeItem('orca.user')
     showLogin()
   } catch {
     // U221 F2: a transport failure must land on the login view, never a blank page.
+    abandonStartupAuth()
     if (cachedUser) localStorage.removeItem('orca.user')
     showLogin()
   }
