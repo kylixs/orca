@@ -6,7 +6,11 @@ import { appendFileSync, mkdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-const REPO = '/Users/gongdewei/work/projects/orca'
+// Repo root derived from this script (<repo>/cloud-platform/scripts/...), not a user-specific path.
+export const REPO = resolve(import.meta.dirname, '..', '..')
+
+// Test runtime provisioned under a temp root (e.g. /tmp/node24.5.0/bin/node).
+const TEST_RUNTIME_PATTERN = /^\/(?:private\/)?tmp\/node[^/\s]*\/bin\/node$/
 
 // Processes that belong to the live dev environment or the current run are never touched.
 const KEEP_PATTERNS = [/orca-local-env/, /host-supervisor\.mjs/, /forwarder\.mjs/, /relay\.mjs/]
@@ -24,17 +28,25 @@ const TEST_PATTERNS = [
   /\/private\/var\/folders\/.*\/T\/orca-/
 ]
 
+export function executableToken(command) {
+  return command.trim().split(/\s+/)[0] ?? ''
+}
+
+// Only executables we can prove belong to this repo's test runs are eligible.
+export function isProjectTestExecutable(command, repoRoot = REPO) {
+  const executable = executableToken(command)
+  return executable.startsWith(`${repoRoot}/node_modules/`) || TEST_RUNTIME_PATTERN.test(executable)
+}
+
 export function classifyProcess(
   command,
   ageSeconds,
-  { keepPatterns = KEEP_PATTERNS, testPatterns = TEST_PATTERNS } = {}
+  { keepPatterns = KEEP_PATTERNS, testPatterns = TEST_PATTERNS, repoRoot = REPO } = {}
 ) {
   if (keepPatterns.some((pattern) => pattern.test(command))) return 'keep'
-  if (!command.includes(REPO) && !testPatterns.some((pattern) => pattern.test(command)))
-    return 'unrelated'
-  const isTestOwned = testPatterns.some((pattern) => pattern.test(command))
-  if (!isTestOwned) return 'unrelated'
-  if (ageSeconds < 1800) return 'recent' // may belong to the run that is in flight
+  if (!isProjectTestExecutable(command, repoRoot)) return 'unrelated'
+  if (!testPatterns.some((pattern) => pattern.test(command))) return 'unrelated'
+  if (ageSeconds <= 1800) return 'recent' // may belong to the run that is in flight
   return 'cleanup'
 }
 
@@ -73,6 +85,13 @@ export function selectTargets(psOutput, options) {
   return { targets, kept }
 }
 
+// Re-sample before SIGKILL: a recycled PID shows a different command line and must be spared.
+export function revalidateTarget(psOutput, target) {
+  return parseProcesses(psOutput).some(
+    (row) => row.pid === target.pid && row.command === target.command
+  )
+}
+
 async function main(argv) {
   const apply = argv.includes('--yes')
   const outDir = resolve(
@@ -105,7 +124,13 @@ async function main(argv) {
       targets.map((target) => Promise.resolve(process.kill(target.pid, 'SIGTERM')))
     )
     await new Promise((done) => setTimeout(done, 1500))
+    const after = spawnSync('ps', ['-axo', 'pid=,ppid=,etime=,command='], { encoding: 'utf8' })
+    let skipped = 0
     for (const target of targets) {
+      if (!revalidateTarget(after.stdout ?? '', target)) {
+        skipped += 1
+        continue
+      }
       try {
         process.kill(target.pid, 0)
         process.kill(target.pid, 'SIGKILL')
@@ -113,6 +138,7 @@ async function main(argv) {
         // already gone
       }
     }
+    if (skipped > 0) console.log(`skipped-identity-mismatch=${skipped}`)
   }
   return 0
 }

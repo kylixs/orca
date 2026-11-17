@@ -2,7 +2,7 @@
 // Desktop smoke gate: run the first three desktop smoke specs in order.
 // A failed step stops the gate; remaining tests must not start until it is fixed.
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, readFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, statSync, unlinkSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -25,10 +25,11 @@ export const SMOKE_STEPS = [
 ]
 
 const MIN_TEST_MS = 1000
+export const STEP_TIMEOUT_MS = 10 * 60 * 1000
 
-function runStep(step, outDir) {
+export function runStep(step, outDir, { spawn = spawnSync, timeoutMs = STEP_TIMEOUT_MS } = {}) {
   const jsonPath = join(outDir, `${step.id}.json`)
-  const result = spawnSync(
+  const result = spawn(
     'npx',
     [
       'playwright',
@@ -49,10 +50,17 @@ function runStep(step, outDir) {
         PLAYWRIGHT_JSON_OUTPUT_NAME: jsonPath
       },
       encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: timeoutMs
     }
   )
-  return { ...step, status: result.status, stdout: result.stdout, stderr: result.stderr }
+  return {
+    ...step,
+    status: result.status,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    timedOut: result.error?.code === 'ETIMEDOUT'
+  }
 }
 
 // Guard: a step is only valid evidence if a real test ran for long enough.
@@ -67,34 +75,56 @@ function specDurationMs(spec) {
   )
 }
 
-export function validateRun(jsonPath) {
+export function validateRun(jsonPath, { startedAt } = {}) {
   const report = JSON.parse(readFileSync(jsonPath, 'utf8'))
   const tests = collectSpecs(report.suites)
   const passed = tests.filter((spec) => spec.ok === true)
   const ranLongEnough = passed.every((spec) => specDurationMs(spec) >= MIN_TEST_MS)
+  const stale = startedAt !== undefined && statSync(jsonPath).mtimeMs < startedAt
   return {
     specCount: tests.length,
     passed: passed.length,
     ranLongEnough,
-    valid: passed.length > 0 && ranLongEnough
+    stale,
+    valid: !stale && passed.length > 0 && ranLongEnough
   }
 }
 
-export function runSmokeGate(outDir) {
+function timestampedOutDir(startedAt) {
+  return `cloud-platform/evidence/desktop-smoke-gate-${startedAt}`
+}
+
+export function runSmokeGate(outDir, { runStep: runStepFn = runStep, now = Date.now } = {}) {
+  const startedAt = now()
   // Why: Playwright resolves the JSON reporter path against the config dir, so a
   // relative outDir would land under tests/ and validateRun would ENOENT.
-  const absoluteOutDir = resolve(outDir)
+  const absoluteOutDir = resolve(outDir ?? timestampedOutDir(startedAt))
   mkdirSync(absoluteOutDir, { recursive: true })
   const results = []
   for (const step of SMOKE_STEPS) {
-    const run = runStep(step, absoluteOutDir)
-    const evidence = run.status === 0 ? validateRun(join(absoluteOutDir, `${step.id}.json`)) : null
+    const jsonPath = join(absoluteOutDir, `${step.id}.json`)
+    // Never let a previous run's JSON stand in for this run's evidence.
+    try {
+      unlinkSync(jsonPath)
+    } catch {
+      // no stale evidence
+    }
+    const run = runStepFn(step, absoluteOutDir)
+    let evidence = null
+    if (run.status === 0) {
+      try {
+        evidence = validateRun(jsonPath, { startedAt })
+      } catch (error) {
+        evidence = { valid: false, error: error.message }
+      }
+    }
     results.push({ ...run, evidence })
-    const failed = run.status !== 0 || !evidence?.valid
+    const failed = run.status !== 0 || run.timedOut || !evidence?.valid
     if (failed) {
       console.error(
         `smoke gate FAILED at ${step.id} (${step.purpose}); exit=${run.status}; ` +
-          `evidence=${JSON.stringify(evidence)}; fix before running any other suite`
+          `timedOut=${Boolean(run.timedOut)}; evidence=${JSON.stringify(evidence)}; ` +
+          'fix before running any other suite'
       )
       return { ok: false, results }
     }
@@ -104,7 +134,6 @@ export function runSmokeGate(outDir) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const outDir = process.argv[2] ?? 'cloud-platform/evidence/desktop-smoke-gate'
-  const { ok } = runSmokeGate(outDir)
+  const { ok } = runSmokeGate(process.argv[2])
   process.exit(ok ? 0 : 1)
 }

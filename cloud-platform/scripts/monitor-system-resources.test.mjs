@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict'
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
-import { parseProcessTable, summarize, violations } from './monitor-system-resources.mjs'
+import {
+  parseArgs,
+  parseProcessTable,
+  runWithMonitor,
+  summarize,
+  violations
+} from './monitor-system-resources.mjs'
 
 const TABLE = `pid rss command
 100 204800 /usr/bin/node server.js
@@ -32,4 +41,42 @@ test('violations flag node count, rss, and load thresholds', () => {
 test('violations stay quiet under limits', () => {
   const value = summarize(parseProcessTable(TABLE), [0.5, 0, 0], 8)
   assert.deepEqual(violations(value, { maxNode: 8, maxRssGb: 8, maxLoad: 4 }), [])
+})
+
+test('parseArgs exports options and warns instead of silently disabling NaN limits', () => {
+  const warnings = []
+  const options = parseArgs(
+    ['--interval=abc', '--max-node=abc', '--max-rss-gb=NaN', '--max-load=x', '--', 'node'],
+    (message) => warnings.push(message)
+  )
+  assert.equal(options.intervalSec, 5)
+  assert.equal(options.maxNode, 24)
+  assert.equal(options.maxRssGb, 12)
+  assert.equal(options.maxLoad, 0)
+  assert.deepEqual(options.command, ['node'])
+  assert.equal(warnings.length, 3)
+  assert.ok(warnings.every((message) => message.includes('ignored invalid')))
+})
+
+test('parseArgs keeps valid limits', () => {
+  const options = parseArgs(['--max-node=40', '--max-rss-gb=8', '--max-load=2.5'], () => {})
+  assert.equal(options.maxNode, 40)
+  assert.equal(options.maxRssGb, 8)
+  assert.equal(options.maxLoad, 2.5)
+})
+
+test('runWithMonitor survives a missing command and still writes the summary', async () => {
+  const outDir = mkdtempSync(join(tmpdir(), 'resource-monitor-spawn-'))
+  const code = await runWithMonitor({
+    intervalSec: 60,
+    outDir,
+    maxNode: 24,
+    maxRssGb: 12,
+    maxLoad: 0,
+    command: ['orca-command-that-does-not-exist-xyz']
+  })
+  assert.equal(code, 1)
+  assert.equal(existsSync(join(outDir, 'system-resources-summary.json')), true)
+  const summary = JSON.parse(readFileSync(join(outDir, 'system-resources-summary.json'), 'utf8'))
+  assert.equal(summary.samples, 0)
 })

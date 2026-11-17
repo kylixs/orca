@@ -1,13 +1,18 @@
 #!/usr/bin/env node
 // Tiered test runner: run only what this change needs. Full suites are release-gate only.
 import { spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { startMonitor } from './monitor-system-resources.mjs'
 import { selectTargets } from './cleanup-test-processes.mjs'
-import { pathToFileURL } from 'node:url'
+
+// Repo root derived from this script, so tiers work from any cwd (IDE task, subdirectory).
+export const REPO = resolve(import.meta.dirname, '..', '..')
 
 const VITEST = 'node_modules/.bin/vitest'
 const VITEST_CONFIG = 'config/vitest.config.ts'
+const VALID_TIERS = new Set(['critical', 'changed', 'smoke', 'full'])
 
 // Tier 1: user-visible business paths. Keep this list small and stable.
 export const CRITICAL_VITEST = [
@@ -76,44 +81,103 @@ export function changedTargets(changedFiles) {
   return { vitest: [...vitest], cloudE2E: [...cloudE2E] }
 }
 
-function changedFiles() {
-  const result = spawnSync('git', ['diff', '--name-only', 'HEAD'], { encoding: 'utf8' })
-  const committed = spawnSync('git', ['diff', '--name-only', 'origin/main...HEAD'], {
-    encoding: 'utf8'
-  })
-  const files = `${result.stdout}\n${committed.stdout}`
+function git(args) {
+  return spawnSync('git', args, { encoding: 'utf8' })
+}
+
+function splitLines(stdout) {
+  return (stdout ?? '')
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
-  return [...new Set(files)]
 }
 
-function runVitest(paths) {
-  const existing = paths.filter((path) => existsSync(path))
-  if (existing.length === 0) return 0
+// Checks every git call and adds untracked files; missing origin/main degrades loudly.
+export function changedFiles({ gitRun = git, warn = console.warn } = {}) {
+  const files = new Set()
+  const local = gitRun(['diff', '--name-only', 'HEAD'])
+  if (local.error) throw new Error(`git diff failed: ${local.error.message}`)
+  if (local.status !== 0) throw new Error(`git diff exited ${local.status}: ${local.stderr ?? ''}`)
+  splitLines(local.stdout).forEach((file) => files.add(file))
+
+  const base = gitRun(['rev-parse', '--verify', '--quiet', 'origin/main'])
+  if (base.status === 0) {
+    const committed = gitRun(['diff', '--name-only', 'origin/main...HEAD'])
+    if (committed.error) throw new Error(`git diff origin/main failed: ${committed.error.message}`)
+    if (committed.status !== 0) {
+      throw new Error(`git diff origin/main exited ${committed.status}: ${committed.stderr ?? ''}`)
+    }
+    splitLines(committed.stdout).forEach((file) => files.add(file))
+  } else {
+    warn('[changed] origin/main missing; coverage limited to uncommitted + untracked files')
+  }
+
+  const untracked = gitRun(['ls-files', '--others', '--exclude-standard'])
+  if (untracked.error) throw new Error(`git ls-files failed: ${untracked.error.message}`)
+  if (untracked.status !== 0) {
+    throw new Error(`git ls-files exited ${untracked.status}: ${untracked.stderr ?? ''}`)
+  }
+  splitLines(untracked.stdout).forEach((file) => files.add(file))
+  return [...files]
+}
+
+// Expands glob segments (only '*' is used by the mapping) instead of trusting existsSync.
+export function expandTests(paths, { readdir = readdirSync, exists = existsSync } = {}) {
+  const expanded = []
+  for (const path of paths) {
+    if (!path.includes('*')) {
+      if (exists(path)) expanded.push(path)
+      continue
+    }
+    const slash = path.lastIndexOf('/')
+    const dir = slash === -1 ? '.' : path.slice(0, slash)
+    const pattern = path.slice(slash + 1)
+    const regex = new RegExp(`^${pattern.split('*').map(escapeRegex).join('.*')}$`)
+    let entries = []
+    try {
+      entries = readdir(dir)
+    } catch {
+      entries = []
+    }
+    const matched = entries
+      .filter((entry) => regex.test(entry))
+      .map((entry) => (dir === '.' ? entry : join(dir, entry)))
+      .sort()
+    expanded.push(...matched)
+  }
+  return [...new Set(expanded)]
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+export function runVitest(paths, { run: runFn = run } = {}) {
+  const existing = expandTests(paths)
+  if (existing.length === 0) {
+    console.warn('[changed] no vitest tests matched the changed files')
+    return 0
+  }
   // Contract: worker count stays at the config default (2 locally); integration runs stay sequential.
-  return run(VITEST, ['run', '--config', VITEST_CONFIG, ...existing], {
+  return runFn(VITEST, ['run', '--config', VITEST_CONFIG, ...existing], {
     ORCA_BACKGROUND_LAUNCH: '1',
     ORCA_SUPPRESS_DIALOGS: '1'
   })
 }
 
-function runCloudE2E(paths) {
-  const existing = paths.filter((path) => existsSync(path))
-  if (existing.length === 0) return 0
-  return run('node', ['--test', '--test-concurrency=1', '--test-reporter=spec', ...existing], {
+export function runCloudE2E(paths, { run: runFn = run } = {}) {
+  const existing = expandTests(paths)
+  if (existing.length === 0) {
+    console.warn('[changed] no cloud e2e tests matched the changed files')
+    return 0
+  }
+  return runFn('node', ['--test', '--test-concurrency=1', '--test-reporter=spec', ...existing], {
     ORCA_BACKGROUND_LAUNCH: '1',
     ORCA_SUPPRESS_DIALOGS: '1'
   })
 }
 
-function main(argv) {
-  const tier = argv[0]
-  const monitor = startMonitor({
-    intervalSec: 5,
-    outDir: `cloud-platform/evidence/resource-monitor-${tier ?? 'unknown'}-${Date.now()}`,
-    limits: { maxNode: 24, maxRssGb: 12, maxLoad: 0 }
-  })
+function cleanupStaleProcesses() {
   // Why: leftover Electron/daemon processes from earlier runs poison later runs.
   const ps = spawnSync('ps', ['-axo', 'pid=,ppid=,etime=,command='], { encoding: 'utf8' })
   const stale = selectTargets(ps.stdout ?? '').targets
@@ -125,34 +189,54 @@ function main(argv) {
     }
   }
   if (stale.length > 0) console.log(`[cleanup] terminated ${stale.length} stale test processes`)
+}
+
+export function main(
+  argv,
+  {
+    startMonitor: start = startMonitor,
+    cleanup = cleanupStaleProcesses,
+    chdir = process.chdir,
+    run: runFn = run
+  } = {}
+) {
+  const tier = argv[0]
+  // Reject unsupported tiers before any side effect (mkdir, monitor, process cleanup).
+  if (!VALID_TIERS.has(tier)) {
+    console.error('usage: run-test-tier.mjs <smoke|critical|changed|full>')
+    return 2
+  }
+  if (tier === 'full') {
+    console.error('full tier is a release gate: use the documented L4 run (serial, node>=24.16)')
+    return 2
+  }
+  // Why: every path below is repo-relative; running from a subdirectory used to pass zero tests.
+  chdir(REPO)
+  const monitor = start({
+    intervalSec: 5,
+    outDir: `cloud-platform/evidence/resource-monitor-${tier}-${Date.now()}`,
+    limits: { maxNode: 24, maxRssGb: 12, maxLoad: 0 }
+  })
+  cleanup()
   const finish = (code) => {
     monitor.stop()
     return code
   }
   if (tier === 'critical') {
-    const vitest = runVitest(CRITICAL_VITEST)
+    const vitest = runVitest(CRITICAL_VITEST, { run: runFn })
     if (vitest !== 0) return finish(vitest)
-    return finish(runCloudE2E(CRITICAL_CLOUD_E2E))
+    return finish(runCloudE2E(CRITICAL_CLOUD_E2E, { run: runFn }))
   }
   if (tier === 'changed') {
     const targets = changedTargets(changedFiles())
     console.log(
       `changed tier: ${targets.vitest.length} vitest paths, ${targets.cloudE2E.length} cloud e2e paths`
     )
-    const vitest = runVitest(targets.vitest)
+    const vitest = runVitest(targets.vitest, { run: runFn })
     if (vitest !== 0) return finish(vitest)
-    return finish(runCloudE2E(targets.cloudE2E))
+    return finish(runCloudE2E(targets.cloudE2E, { run: runFn }))
   }
-  if (tier === 'smoke') {
-    return finish(run('node', ['cloud-platform/scripts/smoke/desktop-smoke-gate.mjs']))
-  }
-  if (tier === 'full') {
-    console.error('full tier is a release gate: use the documented L4 run (serial, node>=24.16)')
-    return 2
-  }
-  finish(2)
-  console.error('usage: run-test-tier.mjs <smoke|critical|changed|full>')
-  return 2
+  return finish(runFn('node', ['cloud-platform/scripts/smoke/desktop-smoke-gate.mjs']))
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

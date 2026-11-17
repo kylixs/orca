@@ -61,17 +61,33 @@ export function violations(sampleValue, limits) {
   return found
 }
 
+export function sanitizeLimits(limits, warn = console.warn) {
+  const value = (candidate, fallback, label) => {
+    if (candidate === undefined) return fallback
+    if (Number.isFinite(candidate)) return candidate
+    warn(`[resource-watch] ignored invalid ${label}=${candidate}; using ${fallback}`)
+    return fallback
+  }
+  return {
+    maxNode: value(limits?.maxNode, 24, 'maxNode'),
+    maxRssGb: value(limits?.maxRssGb, 12, 'maxRssGb'),
+    maxLoad: value(limits?.maxLoad, 0, 'maxLoad')
+  }
+}
+
 export function startMonitor({ intervalSec, outDir, limits }) {
   mkdirSync(outDir, { recursive: true })
+  const safeInterval = Number.isFinite(intervalSec) && intervalSec > 0 ? intervalSec : 5
+  const safeLimits = sanitizeLimits(limits)
   const jsonl = join(outDir, 'system-resources.jsonl')
   const samples = []
   const timer = setInterval(() => {
     const value = { at: new Date().toISOString(), ...sample() }
     samples.push(value)
     appendFileSync(jsonl, `${JSON.stringify(value)}\n`)
-    const bad = violations(value, limits)
+    const bad = violations(value, safeLimits)
     for (const message of bad) console.warn(`[resource-watch] ${message}`)
-  }, intervalSec * 1000)
+  }, safeInterval * 1000)
   timer.unref?.()
   return {
     stop() {
@@ -94,13 +110,13 @@ export function startMonitor({ intervalSec, outDir, limits }) {
   }
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv, warn = console.warn) {
   const options = {
     intervalSec: 5,
     outDir: 'cloud-platform/evidence/resource-monitor',
-    maxNode: 24,
-    maxRssGb: 12,
-    maxLoad: 0,
+    maxNode: undefined,
+    maxRssGb: undefined,
+    maxLoad: undefined,
     command: []
   }
   let index = 0
@@ -121,22 +137,31 @@ function parseArgs(argv) {
   }
   options.intervalSec =
     Number.isFinite(options.intervalSec) && options.intervalSec > 0 ? options.intervalSec : 5
-  return options
+  const limits = sanitizeLimits(options, warn)
+  return { ...options, ...limits }
 }
 
 export async function runWithMonitor(options) {
   const outDir = resolve(options.outDir)
   const monitor = startMonitor({
     intervalSec: options.intervalSec,
-    outDir: options.outDir,
+    outDir,
     limits: { maxNode: options.maxNode, maxRssGb: options.maxRssGb, maxLoad: options.maxLoad }
   })
   const [cmd, ...args] = options.command
-  const code = await new Promise((done) => {
-    const child = spawn(cmd, args, { stdio: 'inherit' })
-    child.on('exit', (exitCode) => done(exitCode ?? 1))
-  })
-  monitor.stop()
+  let code = 1
+  try {
+    code = await new Promise((done) => {
+      const child = spawn(cmd, args, { stdio: 'inherit' })
+      child.on('error', (error) => {
+        console.error(`[resource-watch] failed to spawn ${cmd}: ${error.message}`)
+        done(1)
+      })
+      child.on('exit', (exitCode) => done(exitCode ?? 1))
+    })
+  } finally {
+    monitor.stop()
+  }
   return code
 }
 
