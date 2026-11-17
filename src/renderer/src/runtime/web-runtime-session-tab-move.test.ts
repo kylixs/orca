@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   resolveHostSessionTabIdForWebSessionTab: vi.fn(),
   resolveHostSessionGroupIdForWebSessionGroup: vi.fn(),
   isKnownHostSessionGroupId: vi.fn(),
+  hasKnownHostSessionGroups: vi.fn(),
   trackTerminalPaneSplit: vi.fn(),
   deliverLaunchPromptToAgentTab: vi.fn(),
   seedNativeChatLaunchDraftForAgentTab: vi.fn(),
@@ -48,7 +49,8 @@ vi.mock('./web-session-tabs-sync', () => ({
   },
   resolveHostSessionTabIdForWebSessionTab: mocks.resolveHostSessionTabIdForWebSessionTab,
   resolveHostSessionGroupIdForWebSessionGroup: mocks.resolveHostSessionGroupIdForWebSessionGroup,
-  isKnownHostSessionGroupId: mocks.isKnownHostSessionGroupId
+  isKnownHostSessionGroupId: mocks.isKnownHostSessionGroupId,
+  hasKnownHostSessionGroups: mocks.hasKnownHostSessionGroups
 }))
 
 vi.mock('@/lib/feature-education-telemetry', () => ({
@@ -82,6 +84,8 @@ describe('moveWebRuntimeSessionTab', () => {
     mocks.applyWebSessionTabsSnapshot.mockReturnValue({ state: 'after' })
     mocks.resolveHostSessionGroupIdForWebSessionGroup.mockReturnValue(null)
     mocks.isKnownHostSessionGroupId.mockReturnValue(false)
+    // Why: web sessions always apply host layout frames, so the known-group set exists.
+    mocks.hasKnownHostSessionGroups.mockReturnValue(true)
   })
 
   afterEach(() => {
@@ -446,5 +450,217 @@ describe('moveWebRuntimeSessionTab', () => {
     ).resolves.toBe(false)
 
     expect(runtimeCall).not.toHaveBeenCalled()
+  })
+
+  it('resolves a paired desktop split target from the host inventory', async () => {
+    // Why: a desktop paired window never applies web-session layout frames, so its
+    // group ids are client-minted and only membership in the host inventory identifies
+    // the group the host must split.
+    mocks.hasKnownHostSessionGroups.mockReturnValue(false)
+    mocks.resolveHostSessionTabIdForWebSessionTab.mockReturnValue(null)
+    mocks.resolveHostSessionGroupIdForWebSessionGroup.mockReturnValue(null)
+    mocks.isKnownHostSessionGroupId.mockReturnValue(false)
+    const runtimeCall = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: 'list',
+        ok: true,
+        result: {
+          tabGroups: [{ id: 'host-group-left', tabOrder: ['host-tab-1', 'host-tab-9'] }]
+        }
+      })
+      .mockResolvedValueOnce({
+        id: 'move',
+        ok: true,
+        result: { moved: true }
+      })
+
+    vi.stubGlobal('window', {
+      api: {
+        runtimeEnvironments: {
+          call: runtimeCall
+        }
+      }
+    })
+
+    await expect(
+      moveWebRuntimeSessionTab({
+        worktreeId: WORKTREE_ID,
+        tabId: 'host-tab-1',
+        targetGroupId: 'client-group-left',
+        kind: 'split',
+        splitDirection: 'right'
+      })
+    ).resolves.toBe(true)
+
+    expect(runtimeCall).toHaveBeenNthCalledWith(1, {
+      selector: ENVIRONMENT_ID,
+      method: 'session.tabs.list',
+      params: { worktree: `id:${WORKTREE_ID}` },
+      timeoutMs: 15_000
+    })
+    expect(runtimeCall).toHaveBeenNthCalledWith(2, {
+      selector: ENVIRONMENT_ID,
+      method: 'session.tabs.move',
+      params: {
+        worktree: `id:${WORKTREE_ID}`,
+        tabId: 'host-tab-1',
+        targetGroupId: 'host-group-left',
+        kind: 'split',
+        splitDirection: 'right'
+      },
+      timeoutMs: 15_000
+    })
+  })
+
+  it('mirrors a paired desktop reorder through the host group that owns the tab', async () => {
+    mocks.hasKnownHostSessionGroups.mockReturnValue(false)
+    mocks.resolveHostSessionTabIdForWebSessionTab.mockReturnValue(null)
+    mocks.resolveHostSessionGroupIdForWebSessionGroup.mockReturnValue(null)
+    mocks.isKnownHostSessionGroupId.mockReturnValue(false)
+    const runtimeCall = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: 'list',
+        ok: true,
+        result: {
+          tabGroups: [{ id: 'host-group-right', tabOrder: ['host-tab-1', 'host-tab-2'] }]
+        }
+      })
+      .mockResolvedValueOnce({
+        id: 'move',
+        ok: true,
+        result: { moved: true }
+      })
+
+    vi.stubGlobal('window', {
+      api: {
+        runtimeEnvironments: {
+          call: runtimeCall
+        }
+      }
+    })
+
+    await expect(
+      moveWebRuntimeSessionTab({
+        worktreeId: WORKTREE_ID,
+        tabId: 'host-tab-2',
+        targetGroupId: 'client-group-right',
+        kind: 'reorder',
+        tabOrder: ['host-tab-2', 'host-tab-1']
+      })
+    ).resolves.toBe(true)
+
+    expect(runtimeCall).toHaveBeenNthCalledWith(2, {
+      selector: ENVIRONMENT_ID,
+      method: 'session.tabs.move',
+      params: {
+        worktree: `id:${WORKTREE_ID}`,
+        tabId: 'host-tab-2',
+        targetGroupId: 'host-group-right',
+        kind: 'reorder',
+        tabOrder: ['host-tab-2', 'host-tab-1']
+      },
+      timeoutMs: 15_000
+    })
+  })
+
+  it('refuses a paired desktop split the host inventory cannot attribute', async () => {
+    mocks.hasKnownHostSessionGroups.mockReturnValue(false)
+    mocks.resolveHostSessionTabIdForWebSessionTab.mockReturnValue(null)
+    mocks.resolveHostSessionGroupIdForWebSessionGroup.mockReturnValue(null)
+    mocks.isKnownHostSessionGroupId.mockReturnValue(false)
+    const runtimeCall = vi.fn().mockResolvedValueOnce({
+      id: 'list',
+      ok: true,
+      result: { tabGroups: [{ id: 'host-group-left', tabOrder: ['host-tab-9'] }] }
+    })
+
+    vi.stubGlobal('window', {
+      api: {
+        runtimeEnvironments: {
+          call: runtimeCall
+        }
+      }
+    })
+
+    await expect(
+      moveWebRuntimeSessionTab({
+        worktreeId: WORKTREE_ID,
+        tabId: 'host-tab-1',
+        targetGroupId: 'client-group-left',
+        kind: 'split',
+        splitDirection: 'right'
+      })
+    ).resolves.toBe(false)
+
+    expect(runtimeCall).toHaveBeenCalledTimes(1)
+    expect(runtimeCall).toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'session.tabs.list' })
+    )
+  })
+
+  it('resolves a paired desktop move-to-group target from the local peers', async () => {
+    mocks.hasKnownHostSessionGroups.mockReturnValue(false)
+    mocks.resolveHostSessionTabIdForWebSessionTab.mockReturnValue(null)
+    mocks.resolveHostSessionGroupIdForWebSessionGroup.mockReturnValue(null)
+    mocks.isKnownHostSessionGroupId.mockReturnValue(false)
+    mocks.getState.mockReturnValue({
+      settings: { activeRuntimeEnvironmentId: ENVIRONMENT_ID },
+      setActiveWorktree: mocks.setActiveWorktree,
+      groupsByWorktree: {
+        [WORKTREE_ID]: [
+          {
+            id: 'client-group-right',
+            activeTabId: 'host-peer',
+            tabOrder: ['host-peer', 'host-tab-2']
+          }
+        ]
+      }
+    })
+    const runtimeCall = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: 'list',
+        ok: true,
+        result: {
+          tabGroups: [
+            { id: 'host-group-source', tabOrder: ['host-tab-2'] },
+            { id: 'host-group-right', tabOrder: ['host-peer'] }
+          ]
+        }
+      })
+      .mockResolvedValueOnce({ id: 'move', ok: true, result: { moved: true } })
+
+    vi.stubGlobal('window', {
+      api: {
+        runtimeEnvironments: {
+          call: runtimeCall
+        }
+      }
+    })
+
+    await expect(
+      moveWebRuntimeSessionTab({
+        worktreeId: WORKTREE_ID,
+        tabId: 'host-tab-2',
+        targetGroupId: 'client-group-right',
+        kind: 'move-to-group',
+        index: 1
+      })
+    ).resolves.toBe(true)
+
+    expect(runtimeCall).toHaveBeenNthCalledWith(2, {
+      selector: ENVIRONMENT_ID,
+      method: 'session.tabs.move',
+      params: {
+        worktree: `id:${WORKTREE_ID}`,
+        tabId: 'host-tab-2',
+        targetGroupId: 'host-group-right',
+        kind: 'move-to-group',
+        index: 1
+      },
+      timeoutMs: 15_000
+    })
   })
 })

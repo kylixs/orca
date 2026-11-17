@@ -127,6 +127,17 @@ export function isKnownHostSessionGroupId(args: {
   )
 }
 
+/** Whether this renderer has ever applied a host layout frame for the worktree. */
+export function hasKnownHostSessionGroups(args: {
+  environmentId: string
+  worktreeId: string
+}): boolean {
+  return (
+    hostSessionGroupIdsByEnvironmentAndWorktree.get(args.environmentId)?.has(args.worktreeId) ??
+    false
+  )
+}
+
 export function clearHostSessionGroupIdMappings(environmentId: string, worktreeId: string): void {
   for (const key of hostSessionGroupIdByLocalKey.keys()) {
     if (isMappingKeyForWorktree(key, environmentId, worktreeId)) {

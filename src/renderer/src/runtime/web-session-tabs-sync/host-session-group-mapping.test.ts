@@ -10,6 +10,7 @@ import {
   clearHostSessionGroupIdMappings,
   clearHostSessionGroupIdMappingsForEnvironment,
   hostSessionGroupMappingsForWorktree,
+  hasKnownHostSessionGroups,
   isKnownHostSessionGroupId,
   resetHostSessionGroupIdMappingsForTests,
   resolveHostSessionGroupIdForWebSessionGroup,
@@ -231,6 +232,24 @@ describe('host session group id mapping', () => {
         groupId: 'host-split'
       })
     ).toBe(true)
+  })
+
+  it('reports whether any host layout frame has been applied for the worktree', () => {
+    resetHostSessionGroupIdMappingsForTests()
+    const scope = { environmentId: ENVIRONMENT_ID, worktreeId: WORKTREE_ID }
+    // Why: a desktop paired window never applies these frames; the absence is how a
+    // move tells "native host ids" apart from "web local ids needing a mapping".
+    expect(hasKnownHostSessionGroups(scope)).toBe(false)
+
+    record(
+      [localGroup('local-split', ['local-a'])],
+      [hostGroup('host-split', ['host-a'])],
+      hostToLocal({ 'host-a': 'local-a' })
+    )
+    expect(hasKnownHostSessionGroups(scope)).toBe(true)
+
+    clearWebSessionTabsTrackingForEnvironment(ENVIRONMENT_ID)
+    expect(hasKnownHostSessionGroups(scope)).toBe(false)
   })
 
   it('drops mappings when the environment tracking is torn down', () => {
