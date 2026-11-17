@@ -182,6 +182,9 @@
 113. **批量文本编辑须扫 U+FFFD（同次固化——台账/PROGRESS 多次乱码判例）**：用脚本批量改台账/日志后，提交前对触及文件跑 `python3 -c "import sys; [print(f) for f in sys.argv[1:] if '\ufffd' in open(f,encoding='utf-8').read()]" <files>`；命中即按最小 diff 修复。`check-ledger-table.mjs` 已内置台账 U+FFFD 守卫，其他文档仍靠本步。
 114. **交付/验收摘要须独立事实审计（同次固化）**：向用户呈报「完成/基线/计数」类摘要前，由非撰写方逐项核对状态句、计数、已关闭清单与未闭项同 HEAD/台账一致；发现偏差先修文档再呈报。判例：本轮 final-delivery 摘要交由独立代理核对计数与状态。
 
+115. **主会话命令显式定位仓库根（2026-11-18 04:00 复盘固化——cwd 漂移判例）**：跨工具调用时 shell 的 cwd 会漂移（曾在 `cloud-platform/` 下执行 `git add cloud-platform/...`、`node cloud-platform/scripts/...` 与相对路径 python 脚本而失败多次）。规则：每条 Bash 命令内先 `cd /Users/gongdewei/work/projects/orca`（或使用绝对路径），不得依赖上一条命令的 cwd；后台命令同理在命令内显式定位。
+116. **分批复审的母行当轮关闭（同次固化——U229 台账漏翻绿判例）**：一个缺陷行拆成多批子项（a/b1/b2）时，最后一个子项 APPROVED 当轮必须更新母行状态与关闭依据；只在 PROGRESS 记录「已 APPROVED」不算关闭。判例：U229 三个子批复审全部通过后母行仍为红，直到交付文档审计才发现。
+
 
 ## 2b. 并行模式（用户 2026-11-14 指令：不要串行开发，单独完整链路验收，发现即修不堵塞）
 
