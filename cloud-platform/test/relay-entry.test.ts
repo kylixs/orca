@@ -34,10 +34,7 @@ function makeRelayTree(): RelayTree {
   mkdirSync(join(release, 'packages/contract/src'), { recursive: true })
   cpSync(join(RELAY_SRC, 'relay.ts'), join(release, 'apps/relay/src/relay.ts'))
   cpSync(join(RELAY_SRC, 'sni.ts'), join(release, 'apps/relay/src/sni.ts'))
-  cpSync(
-    join(RELAY_SRC, 'relay-version.ts'),
-    join(release, 'apps/relay/src/relay-version.ts')
-  )
+  cpSync(join(RELAY_SRC, 'relay-version.ts'), join(release, 'apps/relay/src/relay-version.ts'))
   cpSync(
     join(CONTRACT_SRC, 'internal-fetch.ts'),
     join(release, 'packages/contract/src/internal-fetch.ts')
@@ -113,8 +110,8 @@ async function stopChild(child: ChildProcess): Promise<void> {
 async function captureAnnouncement(
   entry: string,
   extraEnv: NodeJS.ProcessEnv
-): Promise<{ id: string; port: number }> {
-  const bodies: Array<{ id: string; port: number }> = []
+): Promise<{ id: string; port: number; installNonce?: string }> {
+  const bodies: Array<{ id: string; port: number; installNonce?: string }> = []
   const platform: Server = createServer((req, res) => {
     let body = ''
     req.on('data', (chunk: Buffer) => (body += chunk.toString()))
@@ -125,7 +122,7 @@ async function captureAnnouncement(
         return
       }
       if (req.url === '/v1/internal/relay-endpoint') {
-        const parsed = JSON.parse(body) as { id: string; port: number }
+        const parsed = JSON.parse(body) as { id: string; port: number; installNonce?: string }
         bodies.push(parsed)
         res.writeHead(204)
         res.end()
@@ -249,5 +246,23 @@ describe('RELAY_ID（R3）', () => {
     const { entry } = makeRelayTree()
     const body = await captureAnnouncement(entry, {})
     assert.equal(body.id, `relay:${body.port}`)
+  })
+})
+
+describe('installNonce（R10a）', () => {
+  test('ORCA_CLOUD_INSTALL_NONCE 进入上报 payload', async () => {
+    const { entry } = makeRelayTree()
+    const body = await captureAnnouncement(entry, {
+      ORCA_CLOUD_INSTALL_NONCE: 'install-AbC_123-'
+    })
+    assert.equal(body.installNonce, 'install-AbC_123-')
+  })
+
+  test('未设置或空白时不发送该字段（旧平台不必认识它）', async () => {
+    const { entry } = makeRelayTree()
+    const absent = await captureAnnouncement(entry, {})
+    assert.equal('installNonce' in absent, false)
+    const blank = await captureAnnouncement(entry, { ORCA_CLOUD_INSTALL_NONCE: '  ' })
+    assert.equal('installNonce' in blank, false)
   })
 })

@@ -4,6 +4,7 @@ import {
   BROWSER_ROUTE_KEY_PATTERN,
   createRelayNodeRegistry,
   ipOfDirectAddr,
+  parseInstallNonce,
   parseRelayRegistration,
   routeKeyFromDirectAddrs
 } from '../apps/api/src/relay-nodes.ts'
@@ -20,11 +21,13 @@ describe('中继注册体解析：host 三种情况', () => {
     assert.deepEqual(parseRelayRegistration({ port: 18443, host: 'relay.example.test' }), {
       host: 'relay.example.test',
       browserHost: undefined,
+      installNonce: undefined,
       port: 18443
     })
     assert.deepEqual(parseRelayRegistration({ port: 18443, host: '  relay.example.test  ' }), {
       host: 'relay.example.test',
       browserHost: undefined,
+      installNonce: undefined,
       port: 18443
     })
   })
@@ -38,6 +41,7 @@ describe('中继注册体解析：host 三种情况', () => {
       id: 'relay-a',
       host: undefined,
       browserHost: undefined,
+      installNonce: undefined,
       port: 18443
     })
   })
@@ -112,6 +116,33 @@ describe('中继注册体解析：browserHost 白名单（W6b）', () => {
       false,
       'the untrusted value must not reach the log'
     )
+  })
+})
+
+describe('中继注册体解析：installNonce（U183 R10a）', () => {
+  test('合法 nonce 保留并去掉首尾空白', () => {
+    assert.equal(
+      parseRelayRegistration({ port: 18443, installNonce: ' install-AbC_123-' })?.installNonce,
+      'install-AbC_123-'
+    )
+    assert.equal(parseInstallNonce({ installNonce: 'install-AbC_123-' }), 'install-AbC_123-')
+  })
+
+  test('缺失、null、空白串与非字符串：缺失回退为 undefined', () => {
+    assert.equal(parseRelayRegistration({ port: 18443 })?.installNonce, undefined)
+    assert.equal(parseInstallNonce({}), undefined)
+    assert.equal(parseInstallNonce({ installNonce: null }), undefined)
+    assert.equal(parseInstallNonce({ installNonce: '   ' }), undefined)
+  })
+
+  test('非字符串、白名单外字符、超 128 字符都是非法', () => {
+    assert.equal(parseInstallNonce({ installNonce: 42 }), null)
+    for (const bad of ['has space', 'semi;colon', 'slash/path', 'dotted.nonce', '中文']) {
+      assert.equal(parseInstallNonce({ installNonce: bad }), null, bad)
+    }
+    assert.equal(parseInstallNonce({ installNonce: 'a'.repeat(128) }), 'a'.repeat(128))
+    assert.equal(parseInstallNonce({ installNonce: 'a'.repeat(129) }), null)
+    assert.equal(parseRelayRegistration({ port: 18443, installNonce: 'a'.repeat(129) }), null)
   })
 })
 
@@ -214,6 +245,25 @@ describe('中继注册表：browserHost 随最新注册体（W6b）', () => {
   })
 })
 
+describe('中继注册表：installNonce 随最新注册体（U183 R10a）', () => {
+  test('未报时为空串，报了才有值（旧中继兼容）', () => {
+    const registry = createRelayNodeRegistry()
+    assert.equal(registry.register({ id: 'relay-old', port: 18443 }, 1_000).installNonce, '')
+    const node = registry.register(
+      { id: 'relay-new', installNonce: 'install-AbC_123-', port: 18444 },
+      2_000
+    )
+    assert.equal(node.installNonce, 'install-AbC_123-')
+  })
+
+  test('再次注册未报 nonce：清空（重启成旧版本后旧值不得冒充本次安装）', () => {
+    const registry = createRelayNodeRegistry()
+    registry.register({ id: 'relay-a', installNonce: 'install-AbC_123-', port: 18443 }, 1_000)
+    const refreshed = registry.register({ id: 'relay-a', port: 18443 }, 2_000)
+    assert.equal(refreshed.installNonce, '')
+  })
+})
+
 describe('默认路由键：取上报 IP 而非主机名', () => {
   test('IPv4 带端口的直连地址 → ip-<点改横线>', () => {
     assert.equal(routeKeyFromDirectAddrs(['192.168.2.202:5210'], 'dev-001'), 'ip-192-168-2-202')
@@ -294,7 +344,10 @@ describe('中继 env 解析：安装脚本名优先，旧名兼容，降级必�
     assert.equal(resolved.apiUrl, 'http://127.0.0.1:18787')
     assert.equal(resolved.internalToken, 'internal-test-token')
     assert.equal(resolved.warnings.length, 2)
-    assert.match(resolved.warnings[0], /ORCA_CLOUD_API_URL unset; defaulting to http:\/\/127\.0\.0\.1:18787/)
+    assert.match(
+      resolved.warnings[0],
+      /ORCA_CLOUD_API_URL unset; defaulting to http:\/\/127\.0\.0\.1:18787/
+    )
     assert.match(resolved.warnings[1], /ORCA_CLOUD_INTERNAL_TOKEN unset/)
   })
 

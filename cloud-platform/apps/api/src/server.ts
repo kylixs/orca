@@ -91,6 +91,7 @@ import {
 import { checkWebContract, readWebContract } from './web-contract.ts'
 import {
   createRelayNodeRegistry,
+  parseInstallNonce,
   parseRelayRegistration,
   routeKeyFromDirectAddrs,
   BROWSER_ROUTE_KEY_PATTERN,
@@ -3678,6 +3679,7 @@ export function createApp(config: ApiConfig): ApiHandle {
           id: node.id,
           host: node.host,
           browserHost: node.browserHost,
+          installNonce: node.installNonce,
           port: node.port,
           online: now() - node.lastSeenAt <= relayAliveMs,
           lastSeenAt: node.lastSeenAt
@@ -4721,6 +4723,16 @@ export function createApp(config: ApiConfig): ApiHandle {
         return error(res, 401, 'INTERNAL_TOKEN_INVALID', '内部令牌无效。', traceId)
       }
       const body = await readJson(req)
+      const installNonce = parseInstallNonce(body)
+      if (installNonce === null) {
+        return error(
+          res,
+          400,
+          'RELAY_INSTALL_NONCE_INVALID',
+          '中继安装 nonce 无效（最多 128 个字母、数字、_ 或 -）。',
+          traceId
+        )
+      }
       const registration = parseRelayRegistration(body)
       if (!registration) {
         return error(res, 400, 'RELAY_PORT_INVALID', '中继端口无效。', traceId)
@@ -4730,7 +4742,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       // registered from. A co-located test relay keeps today's 127.0.0.1.
       const source = (req.socket.remoteAddress ?? '').replace(/^::ffff:/, '')
       const node = relayNodes.register(
-        { ...registration, ...(registration.host ? {} : { host: source }) },
+        { ...registration, installNonce, ...(registration.host ? {} : { host: source }) },
         now()
       )
       return json(res, 200, {

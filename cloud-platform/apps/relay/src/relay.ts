@@ -29,6 +29,8 @@ export type RelayOptions = {
   port: number
   /** How the platform knows this relay; defaults to `relay:<port>`. */
   id?: string
+  /** U183 R10a: optional nonce echoed back so the installer can self-check. */
+  installNonce?: string
   /** The address clients dial (NAT/DNS name); default is the registration's source IP. */
   publicHost?: string
   /** Control-plane URL for route sync. HTTPS here means mTLS is used. */
@@ -429,6 +431,8 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           id: options.id ?? `relay:${announcedPort}`,
+          // Old platforms ignore an unknown field; absent keeps old relays old.
+          ...(options.installNonce ? { installNonce: options.installNonce } : {}),
           // Where clients should dial us: an explicit advertise wins (NAT),
           // otherwise the platform falls back to the registration's source IP.
           ...(options.publicHost ? { host: options.publicHost } : {}),
@@ -774,6 +778,7 @@ if (isMainModule(process.argv[1], import.meta.url)) {
       port: Number(process.env.PORT ?? 18443),
       // Explicit id wins; announce still derives `relay:<bound port>` otherwise.
       id: process.env.ORCA_CLOUD_RELAY_ID?.trim() || undefined,
+      installNonce: process.env.ORCA_CLOUD_INSTALL_NONCE?.trim() || undefined,
       apiUrl: envConfig.apiUrl,
       internalToken: envConfig.internalToken,
       keyPath: process.env.INTERNAL_TLS_KEY,

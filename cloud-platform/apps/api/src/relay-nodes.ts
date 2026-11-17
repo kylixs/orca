@@ -12,6 +12,10 @@ export const RELAY_ALIVE_DEFAULT_MS = 30_000
  */
 export const BROWSER_ROUTE_KEY_PATTERN = /^[A-Za-z0-9_-]+$/
 
+/** U183 R10a: an install nonce is opaque to the platform, but its shape is pinned. */
+export const INSTALL_NONCE_MAX_LENGTH = 128
+export const INSTALL_NONCE_PATTERN = /^[A-Za-z0-9_-]+$/
+
 export type RelayNode = {
   id: string
   /**
@@ -26,6 +30,11 @@ export type RelayNode = {
    * the edge off stops being advertised at its next registration.
    */
   browserHost: string
+  /**
+   * U183 R10a: the nonce minted by the install that started this relay, echoed
+   * for the installer's self-check. Empty when the relay predates the field.
+   */
+  installNonce: string
   port: number
   lastSeenAt: number
   /** Order of first registration; it is the priority clients fall back in. */
@@ -39,6 +48,7 @@ export type RelayNodeRegistry = {
       id?: string | undefined
       host?: string | undefined
       browserHost?: string | undefined
+      installNonce?: string | undefined
       port: number
     },
     nowMs: number
@@ -60,9 +70,20 @@ export function createRelayNodeRegistry(): RelayNodeRegistry {
       const host = input.host && input.host.length > 0 ? input.host : (existing?.host ?? '')
       // Not sticky on purpose: an absent browserHost means the edge is off now.
       const browserHost = input.browserHost ?? ''
+      // Not sticky: an old relay that restarts without the field must not keep
+      // impersonating the install that minted the previous nonce.
+      const installNonce = input.installNonce ?? ''
       const node: RelayNode = existing
-        ? { ...existing, host, browserHost, port: input.port, lastSeenAt: nowMs }
-        : { id, host, browserHost, port: input.port, lastSeenAt: nowMs, order: nextOrder++ }
+        ? { ...existing, host, browserHost, installNonce, port: input.port, lastSeenAt: nowMs }
+        : {
+            id,
+            host,
+            browserHost,
+            installNonce,
+            port: input.port,
+            lastSeenAt: nowMs,
+            order: nextOrder++
+          }
       nodes.set(id, node)
       return node
     },
@@ -130,10 +151,28 @@ function warnRejectedBrowserHost(value: string): void {
   )
 }
 
-/** Reads a relay registration body; a bad port is the only thing that invalidates it. */
-export function parseRelayRegistration(
-  body: unknown
-): { id?: string; host?: string; browserHost?: string; port: number } | null {
+/**
+ * Reads the optional install nonce: absent (old relay) is `undefined`, malformed
+ * is `null`. Callers map the latter to their own error code.
+ */
+export function parseInstallNonce(body: unknown): string | undefined | null {
+  const raw = field(body, 'installNonce')
+  if (raw === undefined || raw === null) return undefined
+  if (typeof raw !== 'string') return null
+  const trimmed = raw.trim()
+  if (trimmed === '') return undefined
+  if (trimmed.length > INSTALL_NONCE_MAX_LENGTH || !INSTALL_NONCE_PATTERN.test(trimmed)) return null
+  return trimmed
+}
+
+/** Reads a relay registration body; a bad port or nonce invalidates it. */
+export function parseRelayRegistration(body: unknown): {
+  id?: string
+  host?: string
+  browserHost?: string
+  installNonce?: string
+  port: number
+} | null {
   const rawPort = field(body, 'port')
   const port = typeof rawPort === 'number' ? rawPort : Number(rawPort)
   if (!Number.isInteger(port) || port <= 0 || port > 65535) {
@@ -151,5 +190,9 @@ export function parseRelayRegistration(
   }
   const rawId = field(body, 'id')
   const id = typeof rawId === 'string' ? rawId : ''
-  return id === '' ? { host, browserHost, port } : { id, host, browserHost, port }
+  const installNonce = parseInstallNonce(body)
+  if (installNonce === null) return null
+  return id === ''
+    ? { host, browserHost, installNonce, port }
+    : { id, host, browserHost, installNonce, port }
 }
