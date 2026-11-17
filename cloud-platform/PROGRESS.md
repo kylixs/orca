@@ -4113,3 +4113,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U191 落地**（本次）：容器证据分类补 69 → `service-install`、75 → `busy`；runner 13/13 绿；R14c 重跑（`evidence/u183-r14c-20261117T113125Z/`）N5=service-install、N7 三轮均 `(0,ok)/(75,busy)`。清单补 macOS `COPYFILE_DISABLE=1` 条目。
 - **U183 闭环**（本次）：22 令全部落地，提交与验证见设计附录 C；容器正向 R13c + 负向 R14a–R14d 全 PASS；实现期偏离 U184/U186–U191 全部关闭。台账 U183、U182 翻绿；剩余 U181 验收（H11–H13）仍依赖打包 `orca-ide` 二进制。
 - **授权组合复验（首轮）**：常驻平台预检通过（health 200、三身份登录、种子存在但 ID 已 reseed）。API 矩阵 47/60 失败均为驱动硬编码旧 ID（U192）；Web 矩阵执行 8/17，P4/H1/H2/H3 失败或 fatal，经核实为驱动与 U67 语义漂移（browser 第六位、provisionPolicy 弃用、抽屉 tab 重构），未发现确证产品回归（U193）。证据 `evidence/authz-reverify-2026-11-17T11-37-04Z/`（validate exit 0、平台健康未变）。修复驱动并重放中。
+- **U54 P2 批（QA-018/019/027）落地**：中继时间统一 `zh-CN`（表格+卡片）；toast `role=status`/`aria-live=polite`、`#content` 加载期 `aria-busy`；登录错误 `#loginError role=alert`、密码框 `aria-invalid`/`aria-describedby`（重试成功清除）。`web-exploratory-fixes` 27/27 绿（新增 3 例）。

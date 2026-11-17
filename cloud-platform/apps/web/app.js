@@ -103,6 +103,8 @@ function setTokens(access, refresh) {
 function toast(text) {
   const el = document.createElement('div')
   el.className = 'toast'
+  el.setAttribute('role', 'status')
+  el.setAttribute('aria-live', 'polite')
   el.textContent = text
   document.body.appendChild(el)
   setTimeout(() => el.remove(), 2400)
@@ -393,11 +395,13 @@ function applyRoute(route, { force = false } = {}) {
 
 /** One failed fetch must not leave the page stuck on its own spinner (M116-QA-011). */
 async function loadContent(render) {
-  content().innerHTML = '<p class="muted">加载中…</p>'
+  const container = content()
+  container.setAttribute('aria-busy', 'true')
+  container.innerHTML = '<p class="muted">加载中…</p>'
   try {
     return await render()
   } catch (err) {
-    content().innerHTML = `
+    container.innerHTML = `
       <div class="forbidden">
         <div class="box">
           <h1>加载失败</h1>
@@ -406,6 +410,8 @@ async function loadContent(render) {
         </div>
       </div>`
     $('#retryContent').onclick = () => void loadContent(render)
+  } finally {
+    container.setAttribute('aria-busy', 'false')
   }
 }
 
@@ -2498,7 +2504,7 @@ function relayRow(r) {
     <td class="mono">${esc(r.id)}</td>
     <td class="mono">${esc(`${r.host}:${r.port}`)}</td>
     <td><span class="dot ${r.online ? 'online' : 'offline'}"></span> ${r.online ? '在线' : '离线'}</td>
-    <td class="muted">${new Date(r.lastSeenAt).toLocaleString()}</td>
+    <td class="muted">${new Date(r.lastSeenAt).toLocaleString('zh-CN')}</td>
   </tr>`
 }
 
@@ -2511,7 +2517,7 @@ function relayCard(r) {
       <span class="badge ${r.online ? 'ok' : ''}">${r.online ? '在线' : '离线'}</span>
     </div>
     <div class="hlc-line mono">${esc(`${r.host}:${r.port}`)}</div>
-    <div class="hlc-line muted">最近注册 ${new Date(r.lastSeenAt).toLocaleString()}</div>
+    <div class="hlc-line muted">最近注册 ${new Date(r.lastSeenAt).toLocaleString('zh-CN')}</div>
   </article>`
 }
 
@@ -4368,22 +4374,30 @@ function showLogin() {
 
 /* ---------------- bootstrap ---------------- */
 
+// M116-QA-018: the inline error is announced, and the password field points at it.
+$('#loginError').setAttribute('role', 'alert')
+
 $('#loginForm').onsubmit = async (event) => {
   event.preventDefault()
   // G03: a programmatic second submit must not race the in-flight login.
   if ($('#loginBtn').disabled) return
   const username = $('#username').value.trim()
   const password = $('#password').value
+  const passwordEl = $('#password')
   const errorEl = $('#loginError')
   errorEl.hidden = true
   $('#username').classList.remove('invalid')
-  $('#password').classList.remove('invalid')
+  passwordEl.classList.remove('invalid')
+  passwordEl.removeAttribute('aria-invalid')
+  passwordEl.removeAttribute('aria-describedby')
   // An empty submit must not reach the server and burn lockout attempts (M116-QA-012).
   if (username === '' || password === '') {
     errorEl.textContent = '请输入域账号和密码。'
     errorEl.hidden = false
     $('#username').classList.add('invalid')
-    $('#password').classList.add('invalid')
+    passwordEl.classList.add('invalid')
+    passwordEl.setAttribute('aria-invalid', 'true')
+    passwordEl.setAttribute('aria-describedby', 'loginError')
     $('#username').focus()
     return
   }
@@ -4400,8 +4414,10 @@ $('#loginForm').onsubmit = async (event) => {
           ? '账号或密码错误，请重试。'
           : err.message
     errorEl.hidden = false
-    $('#password').classList.add('invalid')
-    $('#password').focus()
+    passwordEl.classList.add('invalid')
+    passwordEl.setAttribute('aria-invalid', 'true')
+    passwordEl.setAttribute('aria-describedby', 'loginError')
+    passwordEl.focus()
   } finally {
     $('#loginBtn').disabled = false
     $('#loginBtn').textContent = '登录'

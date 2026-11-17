@@ -1027,3 +1027,86 @@ test('U116 工作台心跳文案反映后端在线判定窗口', async () => {
   assert.doesNotMatch(text, /心跳 15 秒/, 'the old 15s copy must be gone')
   record('U116', '工作台统计卡心跳文案改为「60 秒无心跳转离线」，与 HOST_OFFLINE_DEFAULT_MS 一致')
 }, 120_000)
+
+test('U54 QA-019 中继最近注册时间按 zh-CN 渲染', async () => {
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  page.fail('GET', '/v1/relays', {
+    status: 200,
+    body: {
+      relays: [
+        {
+          id: 'relay-qa019',
+          host: '10.20.30.40',
+          port: 7443,
+          online: true,
+          lastSeenAt: '2026-11-17T04:05:06.000Z'
+        }
+      ]
+    }
+  })
+  await page.clickNav('relays')
+
+  const cells = [
+    page.window.document.querySelector<HTMLElement>('#content tbody tr td:last-child'),
+    page.window.document.querySelector<HTMLElement>('[data-relay-card="relay-qa019"] .hlc-line.muted')
+  ]
+  for (const cell of cells) {
+    const text = cell?.textContent ?? ''
+    assert.match(text, /\d{4}\/\d{1,2}\/\d{1,2}/, `zh-CN date expected in ${text}`)
+    assert.doesNotMatch(text, /(AM|PM)|\d{1,2}\/\d{1,2}\/\d{4}/, 'no en-US date format')
+  }
+}, 120_000)
+
+test('U54 QA-027 toast 与加载态带读屏语义', async () => {
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+
+  // A copy action always ends in a toast, without depending on a seeded relay.
+  await page.clickNav('relays')
+  page.window.document.querySelector<HTMLButtonElement>('#addRelayBtn')!.click()
+  await page.settle()
+  const copy = [...page.window.document.querySelectorAll<HTMLButtonElement>('button')].find(
+    (button) => button.textContent?.includes('复制命令')
+  )
+  assert.ok(copy, 'the relay install dialog offers a copy action')
+  copy.click()
+  const toast = page.window.document.querySelector<HTMLElement>('.toast')
+  assert.ok(toast, 'the copy action shows a toast')
+  assert.equal(toast.getAttribute('role'), 'status')
+  assert.equal(toast.getAttribute('aria-live'), 'polite')
+
+  // Hold one of the projects page's fetches so the loading state stays observable.
+  page.hold('GET', '/v1/policies/download')
+  await page.clickNav('projects')
+  const container = page.window.document.querySelector<HTMLElement>('#content')!
+  assert.equal(container.getAttribute('aria-busy'), 'true', 'loading content is marked busy')
+  assert.match(container.textContent ?? '', /加载中/)
+  await page.release()
+  await page.settle()
+  assert.notEqual(container.getAttribute('aria-busy'), 'true', 'finished content is not busy')
+}, 120_000)
+
+test('U54 QA-018 登录网络错误可被读屏读取，重试成功后清除', async () => {
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  page.abort('POST', '/v1/auth/login')
+  await page.submitLogin('admin', 'Adm1n!')
+
+  const errorEl = page.window.document.querySelector<HTMLElement>('#loginError')!
+  const password = page.window.document.querySelector<HTMLInputElement>('#password')!
+  assert.equal(errorEl.id, 'loginError')
+  assert.equal(errorEl.getAttribute('role'), 'alert')
+  assert.match(errorEl.textContent ?? '', /网络异常，请稍后重试/)
+  assert.equal(page.hidden('#loginError'), false)
+  assert.equal(page.hidden('#view-app'), true, 'a network failure keeps the user on login')
+  assert.equal(password.getAttribute('aria-invalid'), 'true')
+  assert.equal(password.getAttribute('aria-describedby'), 'loginError')
+
+  await page.submitLogin('admin', 'Adm1n!')
+  assert.equal(page.hidden('#view-app'), false, 'the retry succeeds')
+  assert.equal(password.hasAttribute('aria-invalid'), false)
+  assert.equal(password.hasAttribute('aria-describedby'), false)
+}, 120_000)
