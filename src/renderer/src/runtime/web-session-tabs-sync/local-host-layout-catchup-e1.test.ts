@@ -5,7 +5,10 @@ import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-
 import type { Tab } from '../../../../shared/tab-types'
 import type { TerminalTab } from '../../../../shared/terminal-tab-types'
 import type { WorktreeRuntimeOwnerState } from '../../lib/worktree-runtime-owner'
-import { useLocalHostLayoutCatchup } from '../../app-shell/use-local-host-layout-catchup'
+import {
+  HOST_LAYOUT_CATCHUP_STORAGE_KEY,
+  useLocalHostLayoutCatchup
+} from '../../app-shell/use-local-host-layout-catchup'
 import type { LocalHostLayoutCatchupOptions } from '../../app-shell/use-local-host-layout-catchup'
 import { LOCAL_STRUCTURED_SESSION_OWNER } from '../local-structured-session-owner'
 import {
@@ -235,6 +238,7 @@ async function runDirect(
 }
 
 beforeEach(() => {
+  window.localStorage.setItem(HOST_LAYOUT_CATCHUP_STORAGE_KEY, '1')
   resetWebSessionTabsSyncTestState()
   resetLocalStructuredSessionVersionForTests()
   resetLocalHostLayoutCatchupForTests()

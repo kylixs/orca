@@ -16,6 +16,18 @@ import {
   type RunLocalHostLayoutCatchupArgs
 } from '../runtime/local-structured-session-tabs-sync/run-local-host-layout-catchup'
 
+/** U176: opt-in only — a desktop renderer already adopts host layout on its own. */
+export const HOST_LAYOUT_CATCHUP_STORAGE_KEY = 'orca.debug.hostLayoutCatchup'
+
+export function isHostLayoutCatchupEnabled(): boolean {
+  try {
+    return globalThis.localStorage?.getItem(HOST_LAYOUT_CATCHUP_STORAGE_KEY) === '1'
+  } catch {
+    // A blocked storage getter must not break app-shell mounting.
+    return false
+  }
+}
+
 type CatchupStoreState = Pick<AppState, 'activeWorktreeId' | 'workspaceSessionReady'>
 
 /** Pre-fetch probes: the hook only screens C1/C2/C3/C8 before the executor reads the layout. */
@@ -74,11 +86,19 @@ export type LocalHostLayoutCatchupOptions = {
  * U163 V5 trigger hook: focus, visibility resume, online and system resume each run at most one
  * catch-up for the active worktree. Mounted only by `useAppShellServices`; popout windows use a
  * separate root (`popout.tsx` -> DashboardPopoutRoot) and must not adopt the main window's layout.
+ *
+ * U176: off by default (`orca.debug.hostLayoutCatchup=1` opts in). True-stack runs showed the
+ * desktop renderer already adopts the host layout before focus, so the catch-up only paid one
+ * `session.tabs.list` per focus with no benefit. Disabled means no listeners, no subscriptions,
+ * no store subscription and no executor call; the effect's first line returns.
  */
 export function useLocalHostLayoutCatchup(options: LocalHostLayoutCatchupOptions = {}): void {
   const optionsRef = useRef(options)
   optionsRef.current = options
   useEffect(() => {
+    if (!isHostLayoutCatchupEnabled()) {
+      return
+    }
     const options = optionsRef.current
     const isWebClient = options.isWebClient ?? isWebClientLocation
     if (isWebClient()) {

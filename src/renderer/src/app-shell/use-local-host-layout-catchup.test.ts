@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { act, renderHook } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   beginTabDragGesture,
   endTabDragGesture,
@@ -15,6 +15,7 @@ import type {
   RunLocalHostLayoutCatchupArgs
 } from '../runtime/local-structured-session-tabs-sync/run-local-host-layout-catchup'
 import {
+  HOST_LAYOUT_CATCHUP_STORAGE_KEY,
   useLocalHostLayoutCatchup,
   type LocalHostLayoutCatchupOptions
 } from './use-local-host-layout-catchup'
@@ -38,6 +39,22 @@ function createHarness(overrides: Partial<LocalHostLayoutCatchupOptions> = {}) {
   const settleListeners = new Set<() => void>()
   const decisions: HostLayoutCatchupDecision[] = []
   const outcomes: LocalHostLayoutCatchupOutcome[] = []
+  const subscribeVisibility = vi.fn((onChange: () => void) => {
+    visibilityListener = onChange
+    return unsubscribeVisibility
+  })
+  const subscribeSystemResumed = vi.fn((callback: () => void) => {
+    systemResumeCallback = callback
+    return unsubscribeSystemResumed
+  })
+  const subscribePublishSettled = vi.fn((onSettled: () => void) => {
+    settleListeners.add(onSettled)
+    return () => settleListeners.delete(onSettled)
+  })
+  const subscribeStructuredReconnect = vi.fn((callback: () => void) => {
+    reconnectCallback = callback
+    return unsubscribeReconnect
+  })
 
   const runCatchup = vi.fn(async (_args: RunLocalHostLayoutCatchupArgs) => {
     const outcome: LocalHostLayoutCatchupOutcome = pending
@@ -57,22 +74,10 @@ function createHarness(overrides: Partial<LocalHostLayoutCatchupOptions> = {}) {
     isWindowFocused: () => focused,
     getVisible: () => visible,
     isPublishPending: () => pending,
-    subscribeVisibility: (onChange) => {
-      visibilityListener = onChange
-      return unsubscribeVisibility
-    },
-    subscribeSystemResumed: (callback) => {
-      systemResumeCallback = callback
-      return unsubscribeSystemResumed
-    },
-    subscribePublishSettled: (onSettled) => {
-      settleListeners.add(onSettled)
-      return () => settleListeners.delete(onSettled)
-    },
-    subscribeStructuredReconnect: (callback) => {
-      reconnectCallback = callback
-      return unsubscribeReconnect
-    },
+    subscribeVisibility,
+    subscribeSystemResumed,
+    subscribePublishSettled,
+    subscribeStructuredReconnect,
     decide,
     runCatchup,
     ...overrides
@@ -84,6 +89,10 @@ function createHarness(overrides: Partial<LocalHostLayoutCatchupOptions> = {}) {
     runCatchup,
     decisions,
     outcomes,
+    subscribeVisibility,
+    subscribeSystemResumed,
+    subscribePublishSettled,
+    subscribeStructuredReconnect,
     setVisible: (next: boolean) => {
       visible = next
     },
@@ -117,6 +126,35 @@ async function flush(): Promise<void> {
 describe('useLocalHostLayoutCatchup', () => {
   beforeEach(() => {
     resetTabDragGestureRegistryForTests()
+    // U176: the hook is opt-in; these scenarios exercise the enabled path.
+    window.localStorage.setItem(HOST_LAYOUT_CATCHUP_STORAGE_KEY, '1')
+  })
+
+  afterEach(() => {
+    window.localStorage.removeItem(HOST_LAYOUT_CATCHUP_STORAGE_KEY)
+  })
+
+  it('registers nothing and calls no executor while the switch is off', async () => {
+    window.localStorage.removeItem(HOST_LAYOUT_CATCHUP_STORAGE_KEY)
+    const harness = createHarness()
+    const addEventListener = vi.spyOn(window, 'addEventListener')
+
+    renderHook(() => useLocalHostLayoutCatchup(harness.deps))
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'))
+      window.dispatchEvent(new Event('online'))
+    })
+    await flush()
+
+    expect(addEventListener).not.toHaveBeenCalledWith('focus', expect.any(Function))
+    expect(addEventListener).not.toHaveBeenCalledWith('online', expect.any(Function))
+    expect(harness.subscribeVisibility).not.toHaveBeenCalled()
+    expect(harness.subscribeSystemResumed).not.toHaveBeenCalled()
+    expect(harness.subscribeStructuredReconnect).not.toHaveBeenCalled()
+    expect(harness.subscribePublishSettled).not.toHaveBeenCalled()
+    expect(harness.decide).not.toHaveBeenCalled()
+    expect(harness.runCatchup).not.toHaveBeenCalled()
+    addEventListener.mockRestore()
   })
 
   it('runs one catch-up for the active worktree on window focus', async () => {
