@@ -4155,3 +4155,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U206 F16 修复**：worker 终态失败消息按 code 固定短句（超限/写入失败/审计不可用/兜底），异常原文仅 `console.error`，不落 job.json、不返回客户端；新增「异常含绝对路径不外泄」判别。worker 16/16、status 11/11。
 - **U201 E13/关闭**：设计回填（`audit_exports` 字段、下载子路径、错误码、token 语义）；实施记录 §9.1 覆盖全部 P2 修复与 F9 决策；U201/U206 关闭。最终验证：导出单测（jobs/format/worker/runtime/drain）全绿、7 套 e2e **46/46**、Web 导出 13/13 + 回归 39/39。剩余：U202 统计卡、U197 令牌存储待裁定。
 - **U201 Web 真实浏览器验收 PASS**：真 headless Chromium（自起 API + resident Playwright）——能力探测→审计页筛选→确认框摘要→jsonl POST→轮询→**真实 download 事件**→4 行 JSONL 全可解析且 eventType=login；6/6 断言，连续两次通过。证据 `evidence/u201-web-browser-2026-11-17T13-19-03-936Z/`（截图+下载文件+summary，validate exit 0），18787 未触碰、自起进程按 PID 清理。注意：token 每次状态读取轮换，UI 成功后不再读状态（已按此实现），后续若加“刷新状态”会失效屏上链接。
+- **U209 修复**：受理改进程内预占位（`reserveAuditExportSlot`：active+pending 对比每用户/全局上限，`finally` 释放，幂等），并发 3 POST 在 limit=2 下稳定 2×202 + 1×429 且只建 2 个 job；失败/异常不泄漏。`audit-export` 14/14 连跑 3 次、fullchain 4/4。多副本仍依赖 D1。

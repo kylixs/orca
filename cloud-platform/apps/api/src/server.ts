@@ -2012,6 +2012,47 @@ export function createApp(config: ApiConfig): ApiHandle {
     trigger: scheduleAuditExportRun,
     intervalMs: config.auditExportSweepMs ?? resolveAuditExportSweepIntervalMs(process.env)
   })
+  // U209: acceptance reserves synchronously, then releases in `finally`, so
+  // concurrent POSTs cannot all pass the same on-disk quota snapshot. Pending
+  // slots live only in this process (multiple replicas still rely on D1).
+  const auditExportPendingByUser = new Map<string, number>()
+  let auditExportPendingGlobal = 0
+  function reserveAuditExportSlot(
+    userId: string
+  ): { ok: true; release: () => void } | { ok: false; reason: 'per-user' | 'global' } {
+    const pendingForUser = auditExportPendingByUser.get(userId) ?? 0
+    if (
+      auditExportStore.countActive(userId) + pendingForUser >=
+      auditExportStore.perUserActiveLimit
+    ) {
+      return { ok: false, reason: 'per-user' }
+    }
+    if (
+      auditExportStore.countActive() + auditExportPendingGlobal >=
+      auditExportStore.globalActiveLimit
+    ) {
+      return { ok: false, reason: 'global' }
+    }
+    auditExportPendingByUser.set(userId, pendingForUser + 1)
+    auditExportPendingGlobal += 1
+    let released = false
+    return {
+      ok: true,
+      release: () => {
+        if (released) {
+          return
+        }
+        released = true
+        const remaining = (auditExportPendingByUser.get(userId) ?? 1) - 1
+        if (remaining > 0) {
+          auditExportPendingByUser.set(userId, remaining)
+        } else {
+          auditExportPendingByUser.delete(userId)
+        }
+        auditExportPendingGlobal -= 1
+      }
+    }
+  }
 
   /**
    * U115: the copied install command runs without a session, so the wizard mints
@@ -5487,88 +5528,92 @@ export function createApp(config: ApiConfig): ApiHandle {
         parsedQuery.value.since ?? frozenUntil - (recent ? AUDIT_RECENT_WINDOW_MS : AUDIT_WINDOW_MS)
       parsedQuery.value.until = frozenUntil
 
-      const quota = auditExportStore.checkQuota(authed.user.id)
-      if (!quota.ok) {
+      const slot = reserveAuditExportSlot(authed.user.id)
+      if (!slot.ok) {
         return error(res, 429, 'EXPORT_BUSY', '导出任务过多，请稍后再试。', traceId, {
-          reason: quota.reason
+          reason: slot.reason
         })
       }
 
-      // F12: mint the id and record acceptance *before* the job directory
-      // exists, so a crash can never leave an export that is not on the chain.
-      const jobId = generateAuditExportJobId()
-      const deleteAfterDownload = body.deleteAfterDownload === true
       try {
-        await audit.append({
-          eventType: 'audit_export',
-          actor: authed.user.username,
-          targetType: 'audit',
-          targetId: jobId,
-          result: 'success',
-          traceId,
-          metadata: {
-            jobId,
-            phase: 'accepted',
-            format,
-            query: parsedQuery.value,
-            limits: {
-              maxEvents: DEFAULT_AUDIT_EXPORT_MAX_EVENTS,
-              maxBytes: DEFAULT_AUDIT_EXPORT_MAX_BYTES
-            },
-            expiresAt: nowMs + auditExportStore.ttlMs,
-            deleteAfterDownload
-          }
-        })
-      } catch {
-        // Fail closed: without an acceptance record the job must not exist.
-        return error(
-          res,
-          500,
-          'EXPORT_AUDIT_UNAVAILABLE',
-          '审计日志不可写，导出任务未创建。',
-          traceId
-        )
-      }
-
-      let job: AuditExportJob
-      try {
-        job = auditExportStore.create({
-          jobId,
-          requestedBy: authed.user.id,
-          requestedByUsername: authed.user.username,
-          query: parsedQuery.value,
-          format,
-          deleteAfterDownload
-        })
-      } catch {
-        // Best effort: the 500 is the client-visible contract; never mask it.
+        // F12: mint the id and record acceptance *before* the job directory
+        // exists, so a crash can never leave an export that is not on the chain.
+        const jobId = generateAuditExportJobId()
+        const deleteAfterDownload = body.deleteAfterDownload === true
         try {
           await audit.append({
             eventType: 'audit_export',
             actor: authed.user.username,
             targetType: 'audit',
             targetId: jobId,
-            result: 'failure',
+            result: 'success',
             traceId,
-            metadata: { jobId, phase: 'accepted', format, errorCode: 'EXPORT_CREATE_FAILED' }
+            metadata: {
+              jobId,
+              phase: 'accepted',
+              format,
+              query: parsedQuery.value,
+              limits: {
+                maxEvents: DEFAULT_AUDIT_EXPORT_MAX_EVENTS,
+                maxBytes: DEFAULT_AUDIT_EXPORT_MAX_BYTES
+              },
+              expiresAt: nowMs + auditExportStore.ttlMs,
+              deleteAfterDownload
+            }
           })
         } catch {
-          // The acceptance event is already on the chain; nothing else to do.
+          // Fail closed: without an acceptance record the job must not exist.
+          return error(
+            res,
+            500,
+            'EXPORT_AUDIT_UNAVAILABLE',
+            '审计日志不可写，导出任务未创建。',
+            traceId
+          )
         }
-        return error(res, 500, 'EXPORT_CREATE_FAILED', '导出任务创建失败。', traceId)
-      }
 
-      json(res, 202, {
-        jobId: job.jobId,
-        status: job.status,
-        format: job.format,
-        requestedAt: job.createdAt,
-        expiresAt: job.expiresAt
-      })
-      // Response is written; run the job outside this handler so a slow export
-      // or worker fault can never alter the accepted 202.
-      scheduleAuditExportRun()
-      return
+        let job: AuditExportJob
+        try {
+          job = auditExportStore.create({
+            jobId,
+            requestedBy: authed.user.id,
+            requestedByUsername: authed.user.username,
+            query: parsedQuery.value,
+            format,
+            deleteAfterDownload
+          })
+        } catch {
+          // Best effort: the 500 is the client-visible contract; never mask it.
+          try {
+            await audit.append({
+              eventType: 'audit_export',
+              actor: authed.user.username,
+              targetType: 'audit',
+              targetId: jobId,
+              result: 'failure',
+              traceId,
+              metadata: { jobId, phase: 'accepted', format, errorCode: 'EXPORT_CREATE_FAILED' }
+            })
+          } catch {
+            // The acceptance event is already on the chain; nothing else to do.
+          }
+          return error(res, 500, 'EXPORT_CREATE_FAILED', '导出任务创建失败。', traceId)
+        }
+
+        json(res, 202, {
+          jobId: job.jobId,
+          status: job.status,
+          format: job.format,
+          requestedAt: job.createdAt,
+          expiresAt: job.expiresAt
+        })
+        // Response is written; run the job outside this handler so a slow export
+        // or worker fault can never alter the accepted 202.
+        scheduleAuditExportRun()
+        return
+      } finally {
+        slot.release()
+      }
     }
 
     // ---- audit: export status (U202 E7) ----

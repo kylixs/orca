@@ -441,6 +441,30 @@ describe('审计导出受理（真实平台进程）', () => {
     )
   })
 
+  test('E5-14 并发受理：每用户上限 2 时恰好 2×202、1×429（预占位）', async () => {
+    // zhangsan has no active jobs: every earlier request was awaited to terminal.
+    const dirsBefore = jobDirs().length
+    const responses = await Promise.all([
+      postExport(auditorToken, validBody()),
+      postExport(auditorToken, validBody()),
+      postExport(auditorToken, validBody())
+    ])
+
+    const accepted = responses.filter((res) => res.status === 202)
+    const rejected = responses.filter((res) => res.status === 429)
+    assert.equal(accepted.length, 2, JSON.stringify(responses.map((res) => res.status)))
+    assert.equal(rejected.length, 1, JSON.stringify(responses.map((res) => res.status)))
+    assert.equal(rejected[0].body.error?.code, 'EXPORT_BUSY')
+    assert.equal(rejected[0].body.error?.details?.reason, 'per-user')
+    assert.equal(jobDirs().length, dirsBefore + 2, 'only the two accepted requests may land')
+
+    await Promise.all(accepted.map((res) => waitForTerminal(res.body.jobId ?? '')))
+    // A released slot must be reusable: the burst cannot leak pending counts.
+    const after = await postExport(auditorToken, validBody())
+    assert.equal(after.status, 202)
+    await waitForTerminal(after.body.jobId ?? '')
+  })
+
   test('E5-8 并发上限：活动任务达上限时 → 429 EXPORT_BUSY', async () => {
     // E6b consumes accepted jobs immediately, so accepted requests cannot hold
     // the quota open. Seed two queued jobs for the admin directly instead.
