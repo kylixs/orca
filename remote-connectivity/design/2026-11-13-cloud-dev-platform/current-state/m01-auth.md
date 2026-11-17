@@ -89,7 +89,7 @@
 | 带 Cookie 但无 Origin    | 登录/handoff → `401 SESSION_EXPIRED`，不按 Cookie 源解析                                                                          | `server.ts:1988-1994,3402-3405`；`refresh-cookie` 149                                 |
 | 刷新被拒                 | 客户端 `logout()`，清本地并回登录页                                                                                              | `app.js:67-74`                                                                         |
 | refresh 过期/会话已撤销  | 服务端 `401 SESSION_EXPIRED` 并清 Cookie                                                                                         | `server.ts:3543-3546,3672-3675`                                                        |
-| 禁用账号                 | **已修复（U228 `39ad743d793`）**：登录非 active → 403 `USER_DISABLED`（审计 login denied、不发令牌/Cookie）；刷新 Cookie/body 两源在 current/previous/宽限前统一检查 → 撤销+bump epoch+清 Cookie+401；客户端重放仍 401 即登出（旧行为见探索 E1） | `server.ts:2819-2834`（HEAD）；`test-reports/u197-auth-exploration-20261118.md` E1     |
+| 禁用账号                 | **已修复（U228 `39ad743d793`）**：登录非 active → 403 `USER_DISABLED`（审计 login denied、不发令牌/Cookie）；刷新 Cookie/body 两源在 current/previous/宽限前统一检查 → 撤销+bump epoch+清 Cookie+401；客户端重放仍 401 即登出（旧行为见探索 E1） | `server.ts:3493-3503`（登录）、`3583-3605`（Cookie 刷新）、`3729-3752`（body 刷新）；`test-reports/u197-auth-exploration-20261118.md` E1     |
 
 **服务端认证语义（现状）**
 

@@ -4228,3 +4228,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - 并发 3 路：U229b1（F3/F4/F10 客户端/U230③）、U230④ 测试补强、U229a 独立复审。
 - **U230④ 测试缺口补齐**（`19da39a2081`，304 行仅测试）：Cookie previous/宽限分支禁用、已删用户 body/Cookie 刷新、假 body+有效 Cookie、禁用登录不建 device、`/v1/audit/verify` 全链 5 例；修复前快照 4 失败/1 通过，主会话复跑 5/5。U230 余 ①审计事件语义、②并发重复待事件词汇批次；③随 U229b1。
 - **认证回归批（U229a 后）**：9 个 Web 套件 **69 pass / 2 skip（D17、AC7 skip 桩）/ 0 fail**（71 tests，11 suites，约 73s）——web-refresh-cookie、session-renewal、u197-web-cookie-browser、u198、u228-web、u229 两套、u197-migration、ac-probes。
+- **F1 登录与准入业务流刷新**（`0a5978c9335`，+54/−25）：登录双形态、三态刷新（含 U229 `stale` 代际）、页面恢复、登出双凭证+重试+多标签被动、迁移 AC9a/⛔AC9b-9c；失败分支 9→15（CSRF/重复 Cookie/Cookie 缺失/传输失败/禁用账号 403/refresh 5xx 如实标 U229 F7）；服务端状态机补 Cookie 属性/不轮换/宽限/模式解析/禁用撤销/登出 body 撤销。m01 禁用账号行号同步修正为实际位置。
