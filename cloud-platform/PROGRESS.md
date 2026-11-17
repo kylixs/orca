@@ -4157,3 +4157,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U201 Web 真实浏览器验收 PASS**：真 headless Chromium（自起 API + resident Playwright）——能力探测→审计页筛选→确认框摘要→jsonl POST→轮询→**真实 download 事件**→4 行 JSONL 全可解析且 eventType=login；6/6 断言，连续两次通过。证据 `evidence/u201-web-browser-2026-11-17T13-19-03-936Z/`（截图+下载文件+summary，validate exit 0），18787 未触碰、自起进程按 PID 清理。注意：token 每次状态读取轮换，UI 成功后不再读状态（已按此实现），后续若加“刷新状态”会失效屏上链接。
 - **U209 修复**：受理改进程内预占位（`reserveAuditExportSlot`：active+pending 对比每用户/全局上限，`finally` 释放，幂等），并发 3 POST 在 limit=2 下稳定 2×202 + 1×429 且只建 2 个 job；失败/异常不泄漏。`audit-export` 14/14 连跑 3 次、fullchain 4/4。多副本仍依赖 D1。
 - **U206 复核残留修复**：分块路径写前登记 + `failJob` 兜底清扫（仅当前 job 目录内 `.part-*`/`.tmp` 普通文件，保留 job.json），新增 ENOSPC 半写单测（17/17）；remote-writer e2e POST 前轮询 login 事件（≤5s），连跑 3 次稳定；fullchain 4/4；§9.1 单写者措辞按事实修正。
+- **U206 重新关闭**：残留修复后导出单测 91/91、e2e 49/49（含隔离/远端写者）；U201/U205/U206/U207/U209 全部 🟢。剩余待裁定：U202 统计卡、U197/QA-032 令牌存储、U196 最近使用、U163 处置；U181 验收待打包 `orca-ide`。
