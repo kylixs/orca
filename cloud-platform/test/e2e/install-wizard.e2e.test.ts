@@ -8,6 +8,8 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
+  readlinkSync,
   statSync,
   symlinkSync,
   writeFileSync
@@ -115,7 +117,16 @@ const SPARSE_TOOLS = [
   'mv',
   'node',
   'shasum',
-  'sha256sum'
+  'sha256sum',
+  // U183 R6: listing, extraction and activation.
+  'tar',
+  'find',
+  'readlink',
+  'ln',
+  'cut',
+  'sort',
+  'tr',
+  'head'
 ]
 
 function makeSparsePath(home: string, stubs: Record<string, string>, omit: string[] = []): string {
@@ -174,9 +185,38 @@ if [ -n "$out" ]; then printf 'tampered relay bundle' > "$out"; exit 0; fi
 echo 200
 `
 
+/** U183 R6: a real, extractable relay source tree for tar fixtures. */
+function seedRelaySource(dir: string): void {
+  mkdirSync(join(dir, 'apps/relay/src'), { recursive: true })
+  mkdirSync(join(dir, 'packages/contract/src'), { recursive: true })
+  writeFileSync(join(dir, 'VERSION'), '{"schemaVersion":1,"relayCodeVersion":"0.1.0"}\n')
+  writeFileSync(join(dir, 'apps/relay/src/relay.ts'), `// relay ${dir}\n`)
+  writeFileSync(join(dir, 'packages/contract/src/internal-fetch.ts'), '// internal-fetch\n')
+}
+
+function runTar(args: string[]): void {
+  const proc = spawnSync('tar', args, { encoding: 'utf8' })
+  assert.equal(proc.status, 0, proc.stderr)
+}
+
+/** Builds the real tgz + sha the install script downloads and unpacks. */
+function buildBundle(
+  mutate?: (dir: string) => void,
+  tarArgs?: (dir: string, out: string) => string[]
+): { bytes: Buffer; sha: string } {
+  const dir = mkdtempSync(join(tmpdir(), 'orca-bundle-src-'))
+  const out = join(mkdtempSync(join(tmpdir(), 'orca-bundle-out-')), 'bundle.tgz')
+  seedRelaySource(dir)
+  mutate?.(dir)
+  runTar(tarArgs ? tarArgs(dir, out) : ['-czf', out, '-C', dir, 'VERSION', 'apps', 'packages'])
+  const bytes = readFileSync(out)
+  return { bytes, sha: createHash('sha256').update(bytes).digest('hex') }
+}
+
 /** U183 R5: a real content-addressed bundle whose bytes the script can verify. */
-const BUNDLE_BODY = 'fake relay tarball bytes'
-const BUNDLE_SHA = createHash('sha256').update(BUNDLE_BODY).digest('hex')
+const BENIGN_BUNDLE = buildBundle()
+const BUNDLE_BODY = BENIGN_BUNDLE.bytes
+const BUNDLE_SHA = BENIGN_BUNDLE.sha
 
 /** U183 R4: a relay root + entry that the preflight accepts. */
 function makeRelayRoot(home: string): string {
@@ -1065,4 +1105,138 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
       await shortApi.stop()
     }
   }, 120_000)
+})
+
+describe('U183 R6: tar 安全检查、解包与原子激活', () => {
+  function withSha(script: string, sha: string): string {
+    return script.replace(/^ORCA_RELAY_BUNDLE_SHA256=.*$/m, `ORCA_RELAY_BUNDLE_SHA256=${sha}`)
+  }
+
+  async function runOfflineBundle(bundle: { bytes: Buffer; sha: string }) {
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const relayRoot = makeRelayRoot(home)
+    const bundlePath = join(home, 'offline-bundle.tgz')
+    writeFileSync(bundlePath, bundle.bytes)
+    const bin = makeSparsePath(home, { node: NODE_2218_STUB, curl: FAILING_CURL_STUB })
+    const script = withSha(await fetchRelayScript(), bundle.sha)
+    const run = runInstallScript(script, home, {
+      PATH: bin,
+      ORCA_RELAY_ROOT: relayRoot,
+      ORCA_RELAY_BUNDLE: bundlePath
+    })
+    return { ...run, home, relayRoot }
+  }
+
+  test('生成脚本含类型白名单、空目录解包参数与原子切换', async () => {
+    const script = await fetchRelayScript()
+    assert.match(script, /tar -tvzf/)
+    assert.match(script, /ORCA_RELAY_TAR_TYPES/)
+    assert.match(script, /--no-same-owner --no-same-permissions/)
+    assert.match(script, /--no-overwrite-dir/)
+    assert.match(script, /\.tmp-\$\$/)
+    assert.match(script, /mv -T/)
+    assert.match(script, /previous/)
+  })
+
+  test('U183 R6: symlink 条目的恶意包以 69 退出且无 releases 残留', async () => {
+    const bundle = buildBundle((dir) =>
+      symlinkSync('/etc/passwd', join(dir, 'apps/relay/evil-link'))
+    )
+    const run = await runOfflineBundle(bundle)
+    assert.equal(run.status, 69, run.stderr)
+    assert.match(run.stderr, /（69）/)
+    assert.equal(existsSync(join(run.relayRoot, 'releases')), false)
+    assert.equal(existsSync(join(run.home, '.orca-cloud', 'relay.env')), false)
+  })
+
+  test('U183 R6: 绝对路径条目的恶意包以 69 退出', async () => {
+    const bundle = buildBundle(undefined, (dir, out) => [
+      '-cPzf',
+      out,
+      '-C',
+      dir,
+      join(dir, 'VERSION'),
+      join(dir, 'apps'),
+      join(dir, 'packages')
+    ])
+    const run = await runOfflineBundle(bundle)
+    assert.equal(run.status, 69, run.stderr)
+    assert.match(run.stderr, /绝对路径|69/)
+    assert.equal(existsSync(join(run.relayRoot, 'releases')), false)
+  })
+
+  test('U183 R6: .. 条目的恶意包以 69 退出', async () => {
+    const bundle = buildBundle(undefined, (dir, out) => [
+      '-czf',
+      out,
+      '-C',
+      join(dir, 'apps'),
+      '../VERSION'
+    ])
+    const run = await runOfflineBundle(bundle)
+    assert.equal(run.status, 69, run.stderr)
+    assert.match(run.stderr, /\.\.|69/)
+    assert.equal(existsSync(join(run.relayRoot, 'releases')), false)
+  })
+
+  test('U183 R6: 良性包解包正确，current 指向、previous 保留', async () => {
+    const second = buildBundle((dir) =>
+      writeFileSync(join(dir, 'apps/relay/src/relay.ts'), '// relay v2\n')
+    )
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const relayRoot = makeRelayRoot(home)
+    const bin = makeSparsePath(home, { node: NODE_2218_STUB, curl: FAILING_CURL_STUB })
+    const script = await fetchRelayScript()
+    const run = (bundle: { bytes: Buffer; sha: string }) => {
+      const path = join(home, `bundle-${bundle.sha.slice(0, 8)}.tgz`)
+      writeFileSync(path, bundle.bytes)
+      return runInstallScript(withSha(script, bundle.sha), home, {
+        PATH: bin,
+        ORCA_RELAY_ROOT: relayRoot,
+        ORCA_RELAY_BUNDLE: path
+      })
+    }
+
+    const first = run(BENIGN_BUNDLE)
+    assert.equal(first.status, 0, first.stderr)
+    assert.equal(readlinkSync(join(relayRoot, 'current')), `releases/${BENIGN_BUNDLE.sha}`)
+    assert.equal(statSync(join(relayRoot, 'current', 'apps/relay/src/relay.ts')).isFile(), true)
+    assert.equal(existsSync(join(relayRoot, 'previous')), false)
+
+    const upgrade = run(second)
+    assert.equal(upgrade.status, 0, upgrade.stderr)
+    assert.equal(readlinkSync(join(relayRoot, 'current')), `releases/${second.sha}`)
+    assert.equal(readlinkSync(join(relayRoot, 'previous')), `releases/${BENIGN_BUNDLE.sha}`)
+    assert.deepEqual(
+      readdirSync(join(relayRoot, 'releases')).filter((name) => name.includes('.tmp-')),
+      []
+    )
+  })
+
+  test('U183 R6: 同 sha 重跑跳过解包且不覆盖 previous', async () => {
+    const first = buildBundle()
+    const second = buildBundle((dir) =>
+      writeFileSync(join(dir, 'apps/relay/src/relay.ts'), '// relay v2\n')
+    )
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const relayRoot = makeRelayRoot(home)
+    const bin = makeSparsePath(home, { node: NODE_2218_STUB, curl: FAILING_CURL_STUB })
+    const script = await fetchRelayScript()
+    const run = (bundle: { bytes: Buffer; sha: string }) => {
+      const path = join(home, `bundle-${bundle.sha.slice(0, 8)}.tgz`)
+      writeFileSync(path, bundle.bytes)
+      return runInstallScript(withSha(script, bundle.sha), home, {
+        PATH: bin,
+        ORCA_RELAY_ROOT: relayRoot,
+        ORCA_RELAY_BUNDLE: path
+      })
+    }
+    assert.equal(run(first).status, 0)
+    assert.equal(run(second).status, 0)
+    const rerun = run(second)
+    assert.equal(rerun.status, 0, rerun.stderr)
+    assert.match(rerun.stdout, /跳过解包/)
+    assert.equal(readlinkSync(join(relayRoot, 'current')), `releases/${second.sha}`)
+    assert.equal(readlinkSync(join(relayRoot, 'previous')), `releases/${first.sha}`)
+  })
 })

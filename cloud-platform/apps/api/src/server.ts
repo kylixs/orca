@@ -572,6 +572,93 @@ fi
   printf '%s\\n' ${shellQuote(`ORCA_RELAY_DOWNLOAD_TLS=${bundle.downloadTls ? '1' : '0'}`)}
 `
     : ''
+  // U183 R6: type/path whitelist, empty-dir extraction, real-tree recheck and
+  // atomic activation. Violations exit 69; a failed activation exits 70.
+  const bundleUnpack = bundle
+    ? `# U183 R6: inspect entries before extracting, then switch current atomically.
+ORCA_RELAY_RELEASES_DIR="$ORCA_RELAY_ROOT/releases"
+ORCA_RELAY_RELEASE_DIR="$ORCA_RELAY_RELEASES_DIR/$ORCA_RELAY_BUNDLE_SHA256"
+ORCA_RELAY_CURRENT_LINK="$ORCA_RELAY_ROOT/current"
+ORCA_RELAY_RELEASE_REUSED=0
+if [ -L "$ORCA_RELAY_CURRENT_LINK" ] && [ "$(readlink "$ORCA_RELAY_CURRENT_LINK")" = "releases/$ORCA_RELAY_BUNDLE_SHA256" ]; then
+  ORCA_RELAY_RELEASE_REUSED=1
+  echo ">> 当前版本已是 $ORCA_RELAY_BUNDLE_SHA256，跳过解包"
+else
+  # Allow only regular files and directories; x/g (pax), l/h, b/c, p and s fail.
+  if ! ORCA_RELAY_TAR_TYPES="$(tar -tvzf "$ORCA_RELAY_BUNDLE_FILE" | cut -c1 | sort -u | tr -d '\\n')"; then
+    echo ">> bundle 无法读取条目（69）" >&2
+    exit 69
+  fi
+  case "$ORCA_RELAY_TAR_TYPES" in
+    ''|*[!d-]*)
+      echo ">> bundle 含非法条目类型（69）：$ORCA_RELAY_TAR_TYPES" >&2
+      exit 69 ;;
+  esac
+  if ! ORCA_RELAY_TAR_NAMES="$(tar -tzf "$ORCA_RELAY_BUNDLE_FILE")"; then
+    echo ">> bundle 无法读取条目名（69）" >&2
+    exit 69
+  fi
+  if printf '%s\\n' "$ORCA_RELAY_TAR_NAMES" | grep -Eq '(^/|(^|/)\\.\\.(/|$))'; then
+    echo ">> bundle 含绝对路径或 .. 条目（69）" >&2
+    exit 69
+  fi
+  if printf '%s\\n' "$ORCA_RELAY_TAR_NAMES" | grep -Ev '^(VERSION|apps/|packages/)' >/dev/null; then
+    echo ">> bundle 含白名单之外的顶层条目（69）" >&2
+    exit 69
+  fi
+  ORCA_RELAY_TAR_OVERWRITE_FLAG=""
+  if tar --version 2>/dev/null | head -n 1 | grep -q 'GNU tar'; then
+    ORCA_RELAY_TAR_OVERWRITE_FLAG="--no-overwrite-dir"
+  fi
+  mkdir -p "$ORCA_RELAY_RELEASES_DIR"
+  ORCA_RELAY_RELEASE_TMP="$ORCA_RELAY_RELEASE_DIR.tmp-$$"
+  rm -rf "$ORCA_RELAY_RELEASE_TMP"
+  mkdir -p "$ORCA_RELAY_RELEASE_TMP"
+  if ! tar -xzf "$ORCA_RELAY_BUNDLE_FILE" -C "$ORCA_RELAY_RELEASE_TMP" --no-same-owner --no-same-permissions $ORCA_RELAY_TAR_OVERWRITE_FLAG; then
+    rm -rf "$ORCA_RELAY_RELEASE_TMP"
+    echo ">> bundle 解包失败（69）" >&2
+    exit 69
+  fi
+  # Re-check the real tree: only regular files and directories may survive.
+  if [ -n "$(find "$ORCA_RELAY_RELEASE_TMP" ! -type f ! -type d -print -quit)" ]; then
+    rm -rf "$ORCA_RELAY_RELEASE_TMP"
+    echo ">> bundle 解包后含非普通文件/目录（69）" >&2
+    exit 69
+  fi
+  for ORCA_RELAY_REQUIRED in VERSION apps/relay/src/relay.ts packages/contract/src/internal-fetch.ts; do
+    if [ ! -f "$ORCA_RELAY_RELEASE_TMP/$ORCA_RELAY_REQUIRED" ]; then
+      rm -rf "$ORCA_RELAY_RELEASE_TMP"
+      echo ">> bundle 缺少必需文件 $ORCA_RELAY_REQUIRED（69）" >&2
+      exit 69
+    fi
+  done
+  rm -rf "$ORCA_RELAY_RELEASE_DIR"
+  if ! mv "$ORCA_RELAY_RELEASE_TMP" "$ORCA_RELAY_RELEASE_DIR"; then
+    rm -rf "$ORCA_RELAY_RELEASE_TMP"
+    echo ">> bundle 释放目录落位失败（69）" >&2
+    exit 69
+  fi
+fi
+
+if [ "$ORCA_RELAY_RELEASE_REUSED" = "0" ]; then
+  # Keep the old target as previous only when the sha actually changes.
+  ORCA_RELAY_OLD_TARGET="$(readlink "$ORCA_RELAY_CURRENT_LINK" 2>/dev/null || true)"
+  if [ -n "$ORCA_RELAY_OLD_TARGET" ] && [ "$ORCA_RELAY_OLD_TARGET" != "releases/$ORCA_RELAY_BUNDLE_SHA256" ]; then
+    ln -sfn "$ORCA_RELAY_OLD_TARGET" "$ORCA_RELAY_ROOT/previous.new" || { echo ">> 记录 previous 失败（70）" >&2; exit 70; }
+    if ! mv -T "$ORCA_RELAY_ROOT/previous.new" "$ORCA_RELAY_ROOT/previous" 2>/dev/null; then
+      rm -f "$ORCA_RELAY_ROOT/previous"
+      mv "$ORCA_RELAY_ROOT/previous.new" "$ORCA_RELAY_ROOT/previous" || { echo ">> 记录 previous 失败（70）" >&2; exit 70; }
+    fi
+  fi
+  ln -sfn "releases/$ORCA_RELAY_BUNDLE_SHA256" "$ORCA_RELAY_CURRENT_LINK.new" || { echo ">> 创建新 current 链接失败（70）" >&2; exit 70; }
+  if ! mv -T "$ORCA_RELAY_CURRENT_LINK.new" "$ORCA_RELAY_CURRENT_LINK" 2>/dev/null; then
+    rm -f "$ORCA_RELAY_CURRENT_LINK.new"
+    ln -sfn "releases/$ORCA_RELAY_BUNDLE_SHA256" "$ORCA_RELAY_CURRENT_LINK" || { echo ">> 切换 current 失败（70）" >&2; exit 70; }
+  fi
+  echo ">> 已激活版本 $ORCA_RELAY_BUNDLE_SHA256"
+fi
+`
+    : ''
   // U183 R5: download and pin the bundle; failures are 65 (unavailable),
   // 66 (checksum) and 67 (manifest mismatch).
   const bundleAcquire = bundle
@@ -675,6 +762,7 @@ case "$ORCA_HEALTH_CODE" in
 esac
 
 ${bundleAcquire}
+${bundleUnpack}
 mkdir -p "$ORCA_ENV_DIR"
 chmod 700 "$ORCA_ENV_DIR" 2>/dev/null || true
 
