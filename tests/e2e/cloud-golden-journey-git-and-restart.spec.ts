@@ -2,7 +2,6 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import {
-  _electron as electron,
   expect,
   test,
   type Browser,
@@ -11,6 +10,10 @@ import {
   type Frame,
   type Page
 } from '@stablyai/playwright-test'
+import {
+  firstWindowWithStartupGuard,
+  launchElectronAppWithStartupGuard
+} from './helpers/electron-startup-guard'
 import { chromium } from 'playwright'
 import { closeElectronAppForE2E } from './helpers/electron-process-shutdown'
 import { createElectronHomeIsolation } from './helpers/electron-home-isolation'
@@ -104,7 +107,7 @@ async function launchHost(
     extraEnv,
     userDataDir
   })
-  return electron.launch({
+  return launchElectronAppWithStartupGuard({
     args: getOrcaElectronLaunchArgs(path.join(process.cwd(), 'out', 'main', 'index.js'), false),
     env: {
       ...isolation.env,
@@ -147,7 +150,7 @@ test.beforeAll(async () => {
     }),
     mkdtempSync(path.join(root, 'host-ud-'))
   )
-  await host.firstWindow({ timeout: HOST_ONLINE_TIMEOUT_MS })
+  await firstWindowWithStartupGuard(host, { timeout: HOST_ONLINE_TIMEOUT_MS })
   await waitForHostOnline(platform.url, adminToken, HOST_NAME, HOST_ONLINE_TIMEOUT_MS)
   const hostsBody: unknown = await (
     await fetch(`${platform.url}/v1/hosts`, {

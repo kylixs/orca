@@ -1,13 +1,11 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import { expect, test, type ElectronApplication, type Page } from '@stablyai/playwright-test'
 import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Page
-} from '@stablyai/playwright-test'
+  firstWindowWithStartupGuard,
+  launchElectronAppWithStartupGuard
+} from './helpers/electron-startup-guard'
 import { closeElectronAppForE2E } from './helpers/electron-process-shutdown'
 import { createElectronHomeIsolation } from './helpers/electron-home-isolation'
 import { getOrcaElectronLaunchArgs } from './helpers/electron-launch-args'
@@ -264,7 +262,7 @@ async function launchOrca(
     extraEnv,
     userDataDir
   })
-  return electron.launch({
+  return launchElectronAppWithStartupGuard({
     args: getOrcaElectronLaunchArgs(path.join(process.cwd(), 'out', 'main', 'index.js'), false),
     env: {
       ...isolation.env,
@@ -316,7 +314,7 @@ test.beforeAll(async () => {
         }),
         mkdtempSync(path.join(root, 'host-ud-'))
       )
-      await app.firstWindow({ timeout: 120_000 })
+      await firstWindowWithStartupGuard(app, { timeout: 120_000 })
       await waitForHostOnline(platform.url, adminToken, HOST_NAME, 120_000)
       const hostsBody: unknown = await (
         await fetch(`${platform.url}/v1/hosts`, {
@@ -431,7 +429,7 @@ test('W9a 桌面黄金旅程：登录 → 打开项目（直连）→ 终端 →
         mkdtempSync(path.join(session.root, 'client-ud-')),
         { completedOnboarding: true }
       )
-      const page = await client.firstWindow({ timeout: 120_000 })
+      const page = await firstWindowWithStartupGuard(client, { timeout: 120_000 })
       await page.waitForLoadState('domcontentloaded')
       // W11: the workspace shell lands first; the sign-in dialog hangs off the
       // status bar segment, and the address comes from the runtime login context.

@@ -10,13 +10,11 @@
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import { expect, test, type ElectronApplication, type Page } from '@stablyai/playwright-test'
 import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Page
-} from '@stablyai/playwright-test'
+  firstWindowWithStartupGuard,
+  launchElectronAppWithStartupGuard
+} from './helpers/electron-startup-guard'
 import { closeElectronAppForE2E } from './helpers/electron-process-shutdown'
 import { createElectronHomeIsolation } from './helpers/electron-home-isolation'
 import { getOrcaElectronLaunchArgs } from './helpers/electron-launch-args'
@@ -110,7 +108,7 @@ async function launchOrca(
     extraEnv,
     userDataDir
   })
-  return electron.launch({
+  return launchElectronAppWithStartupGuard({
     args: getOrcaElectronLaunchArgs(path.join(process.cwd(), 'out', 'main', 'index.js'), false),
     env: {
       ...isolation.env,
@@ -316,7 +314,7 @@ test('C6 desktop: drag a cloud session tab across groups (paired client)', async
       hostUserDataDir
     )
   )
-  await host.firstWindow({ timeout: 120_000 })
+  await firstWindowWithStartupGuard(host, { timeout: 120_000 })
   const hostRecord = await step('wait-host-online', () =>
     waitForHostOnline(platform.url, adminToken, HOST_NAME, 120_000)
   )
@@ -357,7 +355,7 @@ test('C6 desktop: drag a cloud session tab across groups (paired client)', async
   )
 
   try {
-    const page = await client.firstWindow({ timeout: 120_000 })
+    const page = await firstWindowWithStartupGuard(client, { timeout: 120_000 })
     const consoleLogs: string[] = []
     page.on('console', (message) => {
       if (message.type() === 'warning' || message.type() === 'error') {

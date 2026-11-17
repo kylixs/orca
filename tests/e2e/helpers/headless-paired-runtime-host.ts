@@ -4,7 +4,8 @@ import { createServer } from 'node:net'
 import type { AddressInfo } from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
-import { _electron as electron, type ElectronApplication } from '@stablyai/playwright-test'
+import type { ElectronApplication } from '@stablyai/playwright-test'
+import { launchElectronAppWithStartupGuard } from './electron-startup-guard'
 import { RuntimeClient } from '../../../src/cli/runtime/client'
 import { getE2ECompletedOnboardingProfile } from './e2e-completed-onboarding-profile'
 import { getOrcaElectronLaunchArgs } from './electron-launch-args'
@@ -132,7 +133,7 @@ export async function launchHeadlessPairedRuntimeHost(
     }
     const mainPath = path.join(process.cwd(), 'out', 'main', 'index.js')
     const launchServeProcess = (): Promise<ElectronApplication> =>
-      electron.launch({
+      launchElectronAppWithStartupGuard({
         ...(options.executablePath ? { executablePath: options.executablePath } : {}),
         args: [
           ...(options.executablePath ? [] : getOrcaElectronLaunchArgs(mainPath, false)),

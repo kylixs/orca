@@ -2,13 +2,16 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import {
-  _electron as electron,
   expect,
   test,
   chromium,
   type ElectronApplication,
   type Page
 } from '@stablyai/playwright-test'
+import {
+  firstWindowWithStartupGuard,
+  launchElectronAppWithStartupGuard
+} from './helpers/electron-startup-guard'
 import { closeElectronAppForE2E } from './helpers/electron-process-shutdown'
 import { createElectronHomeIsolation } from './helpers/electron-home-isolation'
 import { getOrcaElectronLaunchArgs } from './helpers/electron-launch-args'
@@ -66,7 +69,7 @@ async function launchOrca(
     extraEnv,
     userDataDir
   })
-  return electron.launch({
+  return launchElectronAppWithStartupGuard({
     args: getOrcaElectronLaunchArgs(path.join(process.cwd(), 'out', 'main', 'index.js'), false),
     env: {
       ...isolation.env,
@@ -105,7 +108,7 @@ async function startStack(): Promise<Stack> {
     }),
     mkdtempSync(path.join(root, 'host-ud-'))
   )
-  await host.firstWindow({ timeout: 120_000 })
+  await firstWindowWithStartupGuard(host, { timeout: 120_000 })
   const hostId = (await waitForHostOnline(platform.url, adminToken, HOST_NAME, 120_000)).id
 
   const created = await fetch(`${platform.url}/v1/projects`, {
@@ -189,7 +192,7 @@ test('M113-2 原生桌面：登录页、已登录工作区、连接诊断面板�
     mkdtempSync(path.join(stack!.clientRoot, 'client-'))
   )
   try {
-    const page = await client.firstWindow({ timeout: 120_000 })
+    const page = await firstWindowWithStartupGuard(client, { timeout: 120_000 })
     await page.waitForLoadState('domcontentloaded')
     await page.waitForSelector('#cloud-username', { state: 'visible', timeout: 60_000 })
     await shoot(page, 'cloud-native-login')

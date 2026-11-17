@@ -9,12 +9,15 @@
  */
 
 import {
-  _electron as electron,
   expect,
   type ElectronApplication,
   type Page,
   type TestInfo
 } from '@stablyai/playwright-test'
+import {
+  firstWindowWithStartupGuard,
+  launchElectronAppWithStartupGuard
+} from './electron-startup-guard'
 import { execSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
@@ -166,7 +169,7 @@ export function createRestartSession(
 
   const launch = async (options?: LaunchOptions): Promise<LaunchedOrca> => {
     runtimeWsPort ??= await reserveRestartRuntimeWsPort()
-    const app = await electron.launch({
+    const app = await launchElectronAppWithStartupGuard({
       args: [...getOrcaElectronLaunchArgs(mainPath, headful), ...(options?.extraArgs ?? [])],
       env: {
         ...homeIsolation.env,
@@ -190,7 +193,7 @@ export function createRestartSession(
       )
       assertElectronResolvedIsolatedHome(resolvedHome, homeIsolation)
       await options?.beforeFirstWindow?.(app)
-      const page = await app.firstWindow({ timeout: 120_000 })
+      const page = await firstWindowWithStartupGuard(app, { timeout: 120_000 })
       await page.waitForLoadState('domcontentloaded')
       await page.waitForFunction(() => Boolean(window.__store), null, { timeout: 30_000 })
       return { app, page }
@@ -200,9 +203,7 @@ export function createRestartSession(
     }
   }
 
-  const close = async (app: ElectronApplication): Promise<void> => {
-    await closeElectronAppForE2E(app)
-  }
+  const close = (app: ElectronApplication): Promise<void> => closeElectronAppForE2E(app)
 
   // Startup refusals exit before a renderer exists; capture their output from process creation.
   const launchUntilExit = async (executablePath: string): Promise<ProcessResult> => {

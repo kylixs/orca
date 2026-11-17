@@ -3,7 +3,11 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { _electron as electron, type ElectronApplication } from '@stablyai/playwright-test'
+import type { ElectronApplication } from '@stablyai/playwright-test'
+import {
+  firstWindowWithStartupGuard,
+  launchElectronAppWithStartupGuard
+} from './helpers/electron-startup-guard'
 import { test, expect, forwardElectronProcessLogs } from './helpers/orca-app'
 import { TEST_REPO_PATH_FILE } from './global-setup'
 import { getE2ECompletedOnboardingProfile } from './helpers/e2e-completed-onboarding-profile'
@@ -134,7 +138,7 @@ test('promotes the headless owner without replacing its daemon terminal', async 
   )
 
   try {
-    serveApp = await electron.launch({
+    serveApp = await launchElectronAppWithStartupGuard({
       args: [...getOrcaElectronLaunchArgs(mainPath, false), '--serve', '--serve-no-pairing'],
       env
     })
@@ -239,7 +243,7 @@ test('promotes the headless owner without replacing its daemon terminal', async 
         ptyId: originalPtyId
       })
 
-    const page = await serveApp.firstWindow({ timeout: 60_000 })
+    const page = await firstWindowWithStartupGuard(serveApp, { timeout: 60_000 })
     await page.waitForLoadState('domcontentloaded')
     await page.waitForFunction(() => Boolean(window.__store), null, { timeout: 30_000 })
     await waitForSessionReady(page)

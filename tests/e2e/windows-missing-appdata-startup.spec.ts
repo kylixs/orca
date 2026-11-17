@@ -1,7 +1,8 @@
 import { existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { _electron as electron, type ElectronApplication } from '@stablyai/playwright-test'
+import type { ElectronApplication } from '@stablyai/playwright-test'
+import { launchElectronAppWithStartupGuard } from './helpers/electron-startup-guard'
 import { test, expect, forwardElectronProcessLogs } from './helpers/orca-app'
 import { getOrcaElectronLaunchArgs } from './helpers/electron-launch-args'
 import { cleanupE2EDaemons, closeElectronAppForE2E } from './helpers/electron-process-shutdown'
@@ -29,7 +30,7 @@ test('orca serve starts on Windows when the home has no AppData folder', async (
 
   let serveApp: ElectronApplication | null = null
   try {
-    serveApp = await electron.launch({
+    serveApp = await launchElectronAppWithStartupGuard({
       args: [...getOrcaElectronLaunchArgs(mainPath, false), '--serve', '--serve-no-pairing'],
       env: Object.fromEntries(
         Object.entries(isolation.env).filter(

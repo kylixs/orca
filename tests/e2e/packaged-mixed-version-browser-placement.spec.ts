@@ -3,12 +3,11 @@ import type { AddressInfo } from 'node:net'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import type { ElectronApplication, Page, TestInfo } from '@stablyai/playwright-test'
 import {
-  _electron as electron,
-  type ElectronApplication,
-  type Page,
-  type TestInfo
-} from '@stablyai/playwright-test'
+  firstWindowWithStartupGuard,
+  launchElectronAppWithStartupGuard
+} from './helpers/electron-startup-guard'
 
 import { expect, forwardElectronProcessLogs, test } from './helpers/orca-app'
 import { getE2ECompletedOnboardingProfile } from './helpers/e2e-completed-onboarding-profile'
@@ -157,7 +156,7 @@ async function launchPackagedPairedClient(args: {
       extraEnv: {},
       userDataDir
     })
-    app = await electron.launch({
+    app = await launchElectronAppWithStartupGuard({
       executablePath: args.executablePath,
       args: [],
       env: {
@@ -172,7 +171,7 @@ async function launchPackagedPairedClient(args: {
       await app.evaluate(({ app: electronApp }) => electronApp.getPath('home')),
       homeIsolation
     )
-    const page = await app.firstWindow({ timeout: 120_000 })
+    const page = await firstWindowWithStartupGuard(app, { timeout: 120_000 })
     await page.waitForLoadState('domcontentloaded')
     const [status, version, environmentId] = await Promise.all([
       page.evaluate(() => window.api.runtime.getStatus()),

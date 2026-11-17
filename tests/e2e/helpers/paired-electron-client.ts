@@ -2,12 +2,11 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
+import type { ElectronApplication, Page, TestInfo } from '@stablyai/playwright-test'
 import {
-  _electron as electron,
-  type ElectronApplication,
-  type Page,
-  type TestInfo
-} from '@stablyai/playwright-test'
+  firstWindowWithStartupGuard,
+  launchElectronAppWithStartupGuard
+} from './electron-startup-guard'
 
 import { getE2ECompletedOnboardingProfile } from './e2e-completed-onboarding-profile'
 import { getOrcaElectronLaunchArgs } from './electron-launch-args'
@@ -179,7 +178,7 @@ export async function launchPairedElectronClient(
     userDataDir
   })
   const mainPath = path.join(process.cwd(), 'out', 'main', 'index.js')
-  const app = await electron.launch({
+  const app = await launchElectronAppWithStartupGuard({
     args: getOrcaElectronLaunchArgs(mainPath, false),
     env: {
       ...homeIsolation.env,
@@ -199,7 +198,7 @@ export async function launchPairedElectronClient(
       ),
       homeIsolation
     )
-    const page = await app.firstWindow({ timeout: 120_000 })
+    const page = await firstWindowWithStartupGuard(app, { timeout: 120_000 })
     await page.waitForLoadState('domcontentloaded')
     await page.waitForFunction(() => Boolean(window.__store), null, { timeout: 30_000 })
     await page.waitForFunction(

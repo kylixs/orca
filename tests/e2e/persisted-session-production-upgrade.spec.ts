@@ -1,11 +1,10 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import type { ElectronApplication, Page, TestInfo } from '@stablyai/playwright-test'
 import {
-  _electron as electron,
-  type ElectronApplication,
-  type Page,
-  type TestInfo
-} from '@stablyai/playwright-test'
+  firstWindowWithStartupGuard,
+  launchElectronAppWithStartupGuard
+} from './helpers/electron-startup-guard'
 import { DEFAULT_LOCAL_ORCA_PROFILE_ID } from '../../src/shared/orca-profiles'
 import { PTY_SESSION_ID_SEPARATOR } from '../../src/shared/pty-session-id-format'
 import { forwardElectronProcessLogs, test, expect } from './helpers/orca-app'
@@ -141,7 +140,7 @@ async function launchPackagedOldProfile(args: {
     extraEnv: {},
     userDataDir: args.userDataDir
   })
-  const app = await electron.launch({
+  const app = await launchElectronAppWithStartupGuard({
     executablePath: args.executablePath,
     args: [...getElectronIsolatedKeychainArgs(), `--user-data-dir=${args.userDataDir}`],
     env: {
@@ -164,7 +163,7 @@ async function launchPackagedOldProfile(args: {
     if (!areSameHomePath(resolvedUserDataDir, args.userDataDir)) {
       throw new Error('Packaged old build escaped the disposable user-data boundary')
     }
-    await app.firstWindow({ timeout: 120_000 })
+    await firstWindowWithStartupGuard(app, { timeout: 120_000 })
     let apiPage: Page | undefined
     await expect
       .poll(

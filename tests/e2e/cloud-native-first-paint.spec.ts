@@ -1,12 +1,11 @@
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import { expect, test, type ElectronApplication } from '@stablyai/playwright-test'
 import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication
-} from '@stablyai/playwright-test'
+  firstWindowWithStartupGuard,
+  launchElectronAppWithStartupGuard
+} from './helpers/electron-startup-guard'
 import { closeElectronAppForE2E } from './helpers/electron-process-shutdown'
 import { createElectronHomeIsolation } from './helpers/electron-home-isolation'
 import { getOrcaElectronLaunchArgs } from './helpers/electron-launch-args'
@@ -86,7 +85,7 @@ async function launchOrca(
     extraEnv,
     userDataDir
   })
-  return electron.launch({
+  return launchElectronAppWithStartupGuard({
     args: getOrcaElectronLaunchArgs(path.join(process.cwd(), 'out', 'main', 'index.js'), false),
     env: {
       ...isolation.env,
@@ -120,7 +119,7 @@ async function startStack(): Promise<Stack> {
     }),
     mkdtempSync(path.join(root, 'host-ud-'))
   )
-  await host.firstWindow({ timeout: 120_000 })
+  await firstWindowWithStartupGuard(host, { timeout: 120_000 })
   const hostId = (await waitForHostOnline(platform.url, adminToken, HOST_NAME, 120_000)).id
 
   const created = await fetch(`${platform.url}/v1/projects`, {
@@ -189,7 +188,7 @@ async function signIn(
   const clientUserData = mkdtempSync(path.join(stack.clientRoot, `client-${index}-`))
   const app = await launchOrca(stack.clientEnv, clientUserData)
   try {
-    const page = await app.firstWindow({ timeout: 120_000 })
+    const page = await firstWindowWithStartupGuard(app, { timeout: 120_000 })
     await page.waitForLoadState('domcontentloaded')
     // W11: sign-in lives in the status bar segment's dialog, not a full page.
     await openCloudLoginDialog(page)

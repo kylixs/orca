@@ -16,7 +16,6 @@
 import {
   test as base,
   expect as playwrightExpect,
-  _electron as electron,
   type Page,
   type ElectronApplication,
   type TestInfo
@@ -25,6 +24,10 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { cleanupE2EDaemons, closeElectronAppForE2E } from './electron-process-shutdown'
+import {
+  firstWindowWithStartupGuard,
+  launchElectronAppWithStartupGuard
+} from './electron-startup-guard'
 import { getOrcaElectronLaunchArgs } from './electron-launch-args'
 import { retryTransientMainEvaluate } from './electron-main-evaluate-retry'
 import { getE2ECompletedOnboardingProfile } from './e2e-completed-onboarding-profile'
@@ -225,7 +228,7 @@ export const test = base.extend<OrcaTestFixtures, OrcaWorkerFixtures>({
     if (recordVideoDir) {
       mkdirSync(recordVideoDir, { recursive: true })
     }
-    const app = await electron.launch({
+    const app = await launchElectronAppWithStartupGuard({
       args: [...orcaAppExtraArgs, ...getOrcaElectronLaunchArgs(mainPath, headful)],
       ...(slowMo > 0 ? { slowMo } : {}),
       ...(recordVideoDir ? { recordVideo: { dir: recordVideoDir } } : {}),
@@ -294,7 +297,7 @@ export const test = base.extend<OrcaTestFixtures, OrcaWorkerFixtures>({
     // Why: the Electron app may take a while to create the first window,
     // especially on cold start with no prior dev userData. Isolated per-test
     // profiles make late-suite launches slower, so use the full test budget.
-    const page = await electronApp.firstWindow({ timeout: 120_000 })
+    const page = await firstWindowWithStartupGuard(electronApp, { timeout: 120_000 })
     await page.waitForLoadState('domcontentloaded')
 
     // Wait for the store to be available
