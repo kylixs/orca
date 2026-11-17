@@ -3,7 +3,7 @@
 // A failed step stops the gate; remaining tests must not start until it is fixed.
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 export const SMOKE_STEPS = [
@@ -81,11 +81,14 @@ export function validateRun(jsonPath) {
 }
 
 export function runSmokeGate(outDir) {
-  mkdirSync(outDir, { recursive: true })
+  // Why: Playwright resolves the JSON reporter path against the config dir, so a
+  // relative outDir would land under tests/ and validateRun would ENOENT.
+  const absoluteOutDir = resolve(outDir)
+  mkdirSync(absoluteOutDir, { recursive: true })
   const results = []
   for (const step of SMOKE_STEPS) {
-    const run = runStep(step, outDir)
-    const evidence = run.status === 0 ? validateRun(join(outDir, `${step.id}.json`)) : null
+    const run = runStep(step, absoluteOutDir)
+    const evidence = run.status === 0 ? validateRun(join(absoluteOutDir, `${step.id}.json`)) : null
     results.push({ ...run, evidence })
     const failed = run.status !== 0 || !evidence?.valid
     if (failed) {
