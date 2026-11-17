@@ -4153,3 +4153,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U206 F14/F18 修复**：job.json 校验加严（状态/数值/format/objectKey/token hash/query 类型；损坏视为不存在），写路径 lstat 拒绝符号链接与非目录；CSV 增加 UTF-8 BOM（JSONL 不加），worker 流式产物同步写入 BOM 并计入 bytes。jobs 31、format 13、worker 16、导出 e2e 39/39。
 - **U206 F15/F13 修复**：`ApiConfig` 增导出目录/TTL/配额/token TTL/清扫间隔与 `now` 注入（config > env（`ORCA_AUDIT_EXPORT_*`）> 默认），store/worker/状态/下载/capabilities 全部读取同一配置；注入时钟 + 500ms TTL 测试稳定触发 410。F13 注释改为事实（带 token 可区分状态，依赖 96-bit jobId 与所有者签发）。runtime 24 例、capabilities 3 例绿。
 - **U206 F16 修复**：worker 终态失败消息按 code 固定短句（超限/写入失败/审计不可用/兜底），异常原文仅 `console.error`，不落 job.json、不返回客户端；新增「异常含绝对路径不外泄」判别。worker 16/16、status 11/11。
+- **U201 E13/关闭**：设计回填（`audit_exports` 字段、下载子路径、错误码、token 语义）；实施记录 §9.1 覆盖全部 P2 修复与 F9 决策；U201/U206 关闭。最终验证：导出单测（jobs/format/worker/runtime/drain）全绿、7 套 e2e **46/46**、Web 导出 13/13 + 回归 39/39。剩余：U202 统计卡、U197 令牌存储待裁定。

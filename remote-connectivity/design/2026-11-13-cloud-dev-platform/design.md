@@ -1187,7 +1187,7 @@ Sec-WebSocket-Protocol: orca-runtime, orca-cred.<base64url(credential)>
 | `revocations` | target_type, target_id, reason, created_at, expires_at | (target_type, target_id) |
 | `relay_routes` | route_key, host_id, target, version, updated_at | route_key 唯一 |
 | `audit_events` | id, seq, ts, actor, event_type, target, result, trace_id, metadata, prev_hash, hash | (seq) 唯一, (ts), (actor), (event_type), (trace_id) |
-| `audit_exports` | id, requested_by, query, status, object_key, expires_at | (requested_by) |
+| `audit_exports` | id, requested_by, query, format, status, object_key, created_at, started_at, finished_at, expires_at, total_events, bytes, error, delete_after_download, downloaded_at, download_token_hash, download_token_expires_at | (requested_by) |
 | `schema_keys` | kid, public_key, not_before, not_after, status | kid 唯一 |
 
 ### 13.2 审计存储（修订：单写入序列）
