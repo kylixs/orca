@@ -4276,3 +4276,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U242 落地**（`ecd8f046512`，3 文件）：`finishStartupMe()` 统一两条成功分支（消除 19 行重复，行为逐字一致）；补 legacy hold `/v1/me` + 错误密码、启动在途登出两例（关闭守卫回退→2 红）；六套件 76 pass/2 skip；pin 同步。主会话复跑 28 pass/1 skip；待复审。
 - **U241②③ 落地**（`278791fc5bd`，3 文件）：`revokeSessionOnce()` 幂等撤销统一所有撤销点（过期/已撤销/reuse/禁用/登出/设备批量），epoch 一致；`rendezvous()` 2s 超时兜底；新套件 `u241-revocation-epoch` 3 例（回退红）；代理回归 94/94 + 32/32，主会话 65/65。待复审。
 - **U242 复审 APPROVED**：`finishStartupMe()` 与两处原逻辑逐字等价（守卫条件/字段拼装/`bindLegacyTokenOwner` 位置/`enterApp` 顺序/异常语义）；两例为「关闭守卫」mutation 红（非 parent-red，台账按此表述）；pin 一致；回归 22/22 + 32/32。台账 U242 翻 🟢。
+- **U241②③ 复审 APPROVED**：全仓 session 撤销仅 `revokeSessionOnce` 单写点、覆盖 8 类路径；过期/审计/响应不变；设备批量逐 session bump 合理；屏障 2s 有余量；archive 父提交 3/3 红。台账 U241 翻 🟢。观察另立 **U243（🟡）**：过期撤销+幂等登出导致「刷新过期→自动登出」零链上事件（事件词汇批）、屏障零到达未处理 rejection 噪音。
