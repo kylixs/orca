@@ -4254,3 +4254,5 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **Web 回归批 182/183，唯一失败为并发假红**：`u80-mobile-users` LDAP 徽标 30s 超时；单独复跑 **5/5**。10 套件一次性默认高并发 + 探索/复审争用所致；已按 §2-77/78 以 `--test-concurrency=2` 重跑（`/tmp/web-regress-u234b.log`）。批量 e2e 命令须带并发上限（下时段复盘固化）。
 - **Web 回归批 CONC=2 复跑 183/183**（HEAD `7139dcb957c`，EXIT=0，约 4.6 分钟）：确认 `u80-mobile-users` 唯一失败为并发争用假红；U234 改动零回归。批量 e2e 后续统一 `--test-concurrency=2`。
 - **认证修复端到端重放 PASS（40/40）**：干净 archive HEAD + 真实 API/Chromium，4 轮×10 场景——E1 禁用账号三子场景全 PASS（403/刷新 401/登出清理）、F1a 登出-刷新不复活、F1b 跨账号不回退、F2 无 owner 键清且不 body 回退、F3 慢登出不清新 Cookie、F4 grace 回显不持久化、F5 启动 10s 出登录页且迟到 200 不复活、F7 503 保会话；pageerror 0。结论落盘 `test-reports/u197-auth-replay-20261118.md`（原证据 /tmp 易失）。历史 E1 SUSPECT 已收敛。
+- **U238 修复落地**（`e8141633f2a`，3 文件）：toast 去 `Error:` 前缀（红证据）；单飞用例标题更正；启动 IIFE 以 `startupEpoch` 判断——登录已超越代际时四条失败路径静默返回（不踢回已登录用户；判断须在 `abandonStartupAuth` 自增前，中途自擒回归）；补 2 例。宽 4xx 代理场景接受登记。
+- **认证套件最终基线（U238 后干净树）**：18 套件 **206 tests / 204 pass / 2 skip（AC9c、AC15(g) 均 D17）/ 0 fail**（`--test-concurrency=2`，约 3 分钟）。
