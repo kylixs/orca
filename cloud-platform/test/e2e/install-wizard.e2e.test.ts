@@ -612,7 +612,8 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     assert.doesNotMatch(run.stderr, /unbound variable/, run.stderr)
     assert.equal(run.status, 0, run.stderr)
     assert.match(run.stdout, /环境已就绪/)
-    const envFile = readFileSync(join(run.home, '.orca-cloud', 'relay.env'), 'utf8')
+    // U183 R8: the relay env lives at <ROOT>/relay.env, beside the unit's file.
+    const envFile = readFileSync(join(relayRoot, 'relay.env'), 'utf8')
     assert.ok(envFile.includes(`ORCA_CLOUD_API_URL=${api.url}`))
   })
 
@@ -1062,11 +1063,11 @@ exit 1
 
     const first = runInstallScript(script, home, { ORCA_RELAY_ROOT: relayRoot })
     assert.equal(first.status, 0, first.stderr)
-    const envFile = join(home, '.orca-cloud', 'relay.env')
+    const envFile = join(relayRoot, 'relay.env')
     assert.equal(statSync(envFile).mode & 0o777, 0o600)
     // Atomic write: mktemp + mv leaves no intermediate file visible.
     assert.deepEqual(
-      readdirSync(join(home, '.orca-cloud')).filter((name) => name.startsWith('relay.env.')),
+      readdirSync(relayRoot).filter((name) => name.startsWith('relay.env.')),
       []
     )
     const env = readRelayEnv(envFile)
@@ -1086,10 +1087,7 @@ exit 1
     assert.equal(rerun.ORCA_CLOUD_RELAY_ID, env.ORCA_CLOUD_RELAY_ID)
     assert.equal(rerun.ORCA_CLOUD_API_URL, env.ORCA_CLOUD_API_URL)
     assert.equal(rerun.ORCA_RELAY_BUNDLE_SHA256, env.ORCA_RELAY_BUNDLE_SHA256)
-    assert.equal(
-      readdirSync(join(home, '.orca-cloud')).filter((n) => n.startsWith('relay.env.')).length,
-      0
-    )
+    assert.equal(readdirSync(relayRoot).filter((n) => n.startsWith('relay.env.')).length, 0)
   })
 
   test('U183 R7: env 只经 mktemp + mv 落位，不直接截断 relay.env', async () => {
@@ -1166,7 +1164,7 @@ exit 1
     assert.equal(run.status, 0, run.stderr)
     assert.match(run.stdout, /离线 bundle/)
     assert.equal(existsSync(join(relayRoot, 'downloads')), false)
-    assert.equal(existsSync(join(home, '.orca-cloud', 'relay.env')), true)
+    assert.equal(existsSync(join(relayRoot, 'relay.env')), true)
   })
 
   test('U183 R5: 离线文件 sha 不符以 66 退出且不删除用户文件', async () => {
@@ -1184,6 +1182,85 @@ exit 1
     assert.match(run.stderr, /（66）/)
     assert.equal(existsSync(offline), true)
     assert.equal(existsSync(join(home, '.orca-cloud', 'relay.env')), false)
+  })
+
+  describe('U183 R8: relay systemd 用户单元安装', () => {
+    const RELAY_UNIT_PATH = '.config/systemd/user/orca-relay.service'
+    /** Logs every invocation so the test can prove the exact systemctl verbs. */
+    const RELAY_SYSTEMCTL_OK = `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$HOME/systemctl.log"
+exit 0
+`
+    const RELAY_SYSTEMCTL_ENABLE_FAILS = `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$HOME/systemctl.log"
+case "$*" in *enable*) exit 1 ;; esac
+exit 0
+`
+
+    function makeRelaySystemdHome(systemctl: string): {
+      home: string
+      relayRoot: string
+      nodeBin: string
+    } {
+      const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+      const relayRoot = makeRelayRoot(home)
+      const bin = makeSparsePath(home, { node: NODE_2218_STUB, systemctl })
+      return { home, relayRoot, nodeBin: join(bin, 'node') }
+    }
+
+    test('写 orca-relay.service：current 入口、绝对 env、无 78、enable --now', async () => {
+      const { home, relayRoot, nodeBin } = makeRelaySystemdHome(RELAY_SYSTEMCTL_OK)
+      const run = runInstallScript(await fetchRelayScript(), home, {
+        PATH: join(home, 'sparse-bin'),
+        ORCA_RELAY_ROOT: relayRoot
+      })
+
+      assert.equal(run.status, 0, run.stderr)
+      const unit = readFileSync(join(home, RELAY_UNIT_PATH), 'utf8')
+      assert.match(unit, /^\[Unit\]$/m)
+      assert.match(unit, /^Description=Orca Cloud 中继$/m)
+      assert.match(unit, /^StartLimitIntervalSec=\d+$/m)
+      assert.match(unit, /^StartLimitBurst=5$/m)
+      assert.equal(unit.includes(`EnvironmentFile=${relayRoot}/relay.env`), true)
+      assert.equal(
+        unit.includes(`ExecStart=${nodeBin} ${relayRoot}/current/apps/relay/src/relay.ts`),
+        true
+      )
+      // 78 is the install-script code; the relay unit must never restart-block on it.
+      assert.doesNotMatch(unit, /RestartPreventExitStatus/)
+      assert.match(unit, /^WantedBy=default\.target$/m)
+
+      const calls = readFileSync(join(home, 'systemctl.log'), 'utf8')
+      assert.match(calls, /--user daemon-reload/)
+      assert.match(calls, /--user enable --now orca-relay\.service/)
+      // systemd owns the process; no nohup duplicate beside it.
+      assert.doesNotMatch(run.stdout, /nohup .*relay\.ts/)
+    })
+
+    test('systemctl enable --now 失败 → 69 relay_service_install_failed', async () => {
+      const { home, relayRoot } = makeRelaySystemdHome(RELAY_SYSTEMCTL_ENABLE_FAILS)
+      const run = runInstallScript(await fetchRelayScript(), home, {
+        PATH: join(home, 'sparse-bin'),
+        ORCA_RELAY_ROOT: relayRoot
+      })
+
+      assert.equal(run.status, 69, run.stderr)
+      assert.match(run.stderr, /relay_service_install_failed/)
+    })
+
+    test('非 systemd 路径不写 relay 单元，保持 nohup 语义', async () => {
+      const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+      const relayRoot = makeRelayRoot(home)
+      const bin = makeSparsePath(home, { node: NODE_2218_STUB })
+      const run = runInstallScript(await fetchRelayScript(), home, {
+        PATH: bin,
+        ORCA_RELAY_ROOT: relayRoot
+      })
+
+      assert.equal(run.status, 0, run.stderr)
+      assert.equal(existsSync(join(home, RELAY_UNIT_PATH)), false)
+      assert.match(run.stdout, /nohup .*relay\.ts/)
+    })
   })
 
   test('开发者拉取脚本 403，拒绝与成功都写入 install_script 审计且不含令牌明文', async () => {
@@ -1427,7 +1504,7 @@ describe('U183 R6: tar 安全检查、解包与原子激活', () => {
     assert.equal(run.status, 67, run.stderr)
     assert.match(run.stderr, /（67）/)
     assert.equal(existsSync(join(run.relayRoot, 'releases')), false)
-    assert.equal(existsSync(join(run.home, '.orca-cloud', 'relay.env')), false)
+    assert.equal(existsSync(join(run.relayRoot, 'relay.env')), false)
   })
 
   test('U183 R6: 绝对路径条目的恶意包以 67 退出', async () => {

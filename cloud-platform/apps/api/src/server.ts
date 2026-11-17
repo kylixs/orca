@@ -52,7 +52,7 @@ import {
   shellQuote,
   systemdAvailable
 } from './install-script-command.ts'
-import { renderHostUnit } from './systemd-unit-template.ts'
+import { renderHostUnit, renderRelayUnit } from './systemd-unit-template.ts'
 import { attachStorePersistence } from './store-persistence.ts'
 import { startInternalChannel } from './internal-channel.ts'
 import { ldapProfile, MockLdapAdapter, type LdapAdapter } from './ldap.ts'
@@ -816,7 +816,10 @@ fi
 set -euo pipefail
 umask 077
 
-ORCA_ENV_FILE="\${ORCA_ENV_FILE:-$HOME/.orca-cloud/relay.env}"
+# U183 R8: the unit's EnvironmentFile is <ROOT>/relay.env, so the env must live
+# there too; the root is also what isolates co-located relays.
+ORCA_RELAY_ROOT="\${ORCA_RELAY_ROOT:-$HOME/.orca-cloud/relay}"
+ORCA_ENV_FILE="\${ORCA_ENV_FILE:-$ORCA_RELAY_ROOT/relay.env}"
 ORCA_ENV_DIR="$(dirname "$ORCA_ENV_FILE")"
 ${bundleVars}
 
@@ -826,7 +829,6 @@ ${bundleVars}
 ORCA_NODE_BIN="$(command -v node 2>/dev/null || true)"
 ${requireCommand('node', '未找到 node（64）：本脚本不安装中继运行时，请安装 Node.js >=22.18 并确保其在 PATH 中', 64)}
 ${requireNodeVersion('"$ORCA_NODE_BIN"', 22, 18, 'Node.js 版本过低（64）：中继需要 >=22.18')}
-ORCA_RELAY_ROOT="\${ORCA_RELAY_ROOT:-$HOME/.orca-cloud/relay}"
 ORCA_RELAY_ENTRY="$ORCA_RELAY_ROOT/cloud-platform/apps/relay/src/relay.ts"
 if [ ! -f "$ORCA_RELAY_ENTRY" ]; then
   echo ">> 未找到中继程序 $ORCA_RELAY_ENTRY（78）：本脚本不安装中继代码，请把 Orca 仓库放到该路径，或设置 ORCA_RELAY_ROOT" >&2
@@ -886,26 +888,33 @@ chmod 600 "$ORCA_ENV_FILE"
 echo ">> 环境已就绪：$ORCA_ENV_FILE"
 
 if ${systemdAvailable()}; then
+  # U183 R8: install the user unit from the shared H10a template. Its
+  # EnvironmentFile is <ROOT>/relay.env and its ExecStart follows current,
+  # so a rollback only flips the symlink.
+  ORCA_RELAY_UNIT_FILE="$HOME/.config/systemd/user/orca-relay.service"
+  mkdir -p "$(dirname "$ORCA_RELAY_UNIT_FILE")"
+  cat > "$ORCA_RELAY_UNIT_FILE" <<ORCA_RELAY_UNIT
+${renderRelayUnit({ nodePath: '$ORCA_NODE_BIN', root: '$ORCA_RELAY_ROOT' })}ORCA_RELAY_UNIT
+  echo ">> 已写入 systemd 用户单元：$ORCA_RELAY_UNIT_FILE"
+  if ! systemctl --user daemon-reload || ! systemctl --user enable --now orca-relay.service; then
+    echo ">> systemd 用户服务安装失败（69 / relay_service_install_failed）：请检查 systemctl --user 是否可用后重试" >&2
+    echo ">> 单元文件保留在 $ORCA_RELAY_UNIT_FILE" >&2
+    exit 69
+  fi
+  # U183 R10b: self-proof call site (MainPID + cmdline + install nonce).
+  # R8 only wires it; the proof itself lands with R10b.
+  orca_relay_self_proof() { :; }
+  orca_relay_self_proof
+
   cat <<ORCA_NEXT
 
-后续命令在中继机上执行：
-1) 前台启动中继（调试）：
+中继已由 systemd 用户服务托管：orca-relay.service（配置文件 $ORCA_ENV_FILE）。
+1) 查看状态：systemctl --user status orca-relay.service
+2) 停止：systemctl --user stop orca-relay.service
+3) 前台调试前先停止服务：
+   systemctl --user stop orca-relay.service
    set -a; . "$ORCA_ENV_FILE"; set +a
-   $ORCA_NODE_BIN $ORCA_RELAY_ENTRY
-2) systemd 用户单元（开机自启）：
-   mkdir -p ~/.config/systemd/user
-   cat > ~/.config/systemd/user/orca-relay.service <<'UNIT'
-[Unit]
-Description=Orca Cloud 中继
-[Service]
-EnvironmentFile=%h/.orca-cloud/relay.env
-ExecStart=$ORCA_NODE_BIN $ORCA_RELAY_ENTRY
-Restart=on-failure
-[Install]
-WantedBy=default.target
-UNIT
-   systemctl --user daemon-reload
-   systemctl --user enable --now orca-relay.service
+   $ORCA_NODE_BIN $ORCA_RELAY_ROOT/current/apps/relay/src/relay.ts
 
 说明：RELAY_PUBLIC_HOST 填客户端可达地址（NAT/跨网段必填）；缺省时平台记录注册来源 IP。
 ORCA_NEXT
