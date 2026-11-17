@@ -670,10 +670,25 @@ set -a; . "$ORCA_ENV_FILE"; set +a
 # H9b: with user systemd the unit owns the process — it restarts on failure and
 # survives logout/reboot. No nohup beside it (two instances fight the profile lock).
 if ${systemdAvailable()}; then
-  ORCA_UNIT_FILE="$HOME/.config/systemd/user/orca-cloud-host.service"
+  # U181 P2: ORCA_ENV_FILE is the single env source; %h keeps the design default.
+  ORCA_UNIT_ENV_FILE="$ORCA_ENV_FILE"
+  if [ "$ORCA_ENV_FILE" = "$HOME/.orca-cloud/host.env" ]; then
+    ORCA_UNIT_ENV_FILE='%h/.orca-cloud/host.env'
+  fi
+  # U181 P2: design §5.1 names the unit orca-host.service.
+  ORCA_UNIT_FILE="$HOME/.config/systemd/user/orca-host.service"
+  # Stop the pre-rename unit so two services cannot fight the profile lock.
+  ORCA_LEGACY_UNIT_FILE="$HOME/.config/systemd/user/orca-cloud-host.service"
+  if [ -f "$ORCA_LEGACY_UNIT_FILE" ]; then
+    systemctl --user disable --now orca-cloud-host.service >/dev/null 2>&1 || true
+    rm -f "$ORCA_LEGACY_UNIT_FILE"
+  fi
   mkdir -p "$(dirname "$ORCA_UNIT_FILE")"
   cat > "$ORCA_UNIT_FILE" <<ORCA_HOST_UNIT
-${renderHostUnit({ binPath: '$ORCA_HOST_BIN' })}ORCA_HOST_UNIT
+${renderHostUnit({
+  binPath: '$ORCA_HOST_BIN',
+  environmentFile: '$ORCA_UNIT_ENV_FILE'
+})}ORCA_HOST_UNIT
   echo ">> 已写入 systemd 用户单元：$ORCA_UNIT_FILE"
   # H10b: StartLimit needs systemd >=229; degrade instead of writing dead keys.
   ORCA_SYSTEMD_VERSION="$(systemctl --version 2>/dev/null | head -n 1 | awk '{print $2}' || true)"
@@ -692,7 +707,7 @@ ${renderHostUnit({ binPath: '$ORCA_HOST_BIN' })}ORCA_HOST_UNIT
   if command -v loginctl >/dev/null 2>&1 && ! loginctl enable-linger; then
     echo ">> 警告：loginctl enable-linger 失败，注销后宿主会停止；请手动执行 loginctl enable-linger" >&2
   fi
-  if ! systemctl --user daemon-reload || ! systemctl --user enable --now orca-cloud-host.service; then
+  if ! systemctl --user daemon-reload || ! systemctl --user enable --now orca-host.service; then
     echo ">> systemd 用户服务安装失败（69）：请检查 systemctl --user 是否可用后重试" >&2
     echo ">> 单元文件保留在 $ORCA_UNIT_FILE" >&2
     exit 69
@@ -793,12 +808,12 @@ fi
 if ${systemdAvailable()}; then
   cat <<ORCA_NEXT
 
-宿主已由 systemd 用户服务托管：orca-cloud-host.service（日志 $ORCA_HOST_LOG）。
+宿主已由 systemd 用户服务托管：orca-host.service（日志 $ORCA_HOST_LOG）。
 后续可选命令在开发机上执行：
-1) 查看状态：systemctl --user status orca-cloud-host.service
-2) 停止：systemctl --user stop orca-cloud-host.service
+1) 查看状态：systemctl --user status orca-host.service
+2) 停止：systemctl --user stop orca-host.service
 3) 前台调试前先停止服务：
-   systemctl --user stop orca-cloud-host.service
+   systemctl --user stop orca-host.service
    set -a; . "$ORCA_ENV_FILE"; set +a
    $ORCA_HOST_BIN --host-mode
 ORCA_NEXT

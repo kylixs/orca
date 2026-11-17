@@ -9,7 +9,9 @@ import { hostInstallScript } from '../apps/api/src/server.ts'
 
 const HOST_UNIT = `[Unit]
 Description=Orca Cloud 宿主代理
-StartLimitIntervalSec=60
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
 StartLimitBurst=5
 
 [Service]
@@ -74,10 +76,20 @@ WantedBy=default.target
     )
   })
 
-  test('renderHostUnit 含 78 与 host.env，且无退出码 3', () => {
+  test('renderHostUnit 含 78、network-online 与 host.env，且无退出码 3', () => {
     assert.equal(renderHostUnit({ binPath: '/usr/bin/orca-ide' }), HOST_UNIT)
     assert.match(HOST_UNIT, /^RestartPreventExitStatus=78$/m)
     assert.doesNotMatch(HOST_UNIT, /RestartPreventExitStatus=.*\b3\b/)
+    assert.match(HOST_UNIT, /^StartLimitIntervalSec=300$/m)
+  })
+
+  test('renderHostUnit 接受 ORCA_ENV_FILE 覆盖后的 EnvironmentFile', () => {
+    const unit = renderHostUnit({
+      binPath: '/usr/bin/orca-ide',
+      environmentFile: '/srv/orca/host.env'
+    })
+    assert.match(unit, /^EnvironmentFile=\/srv\/orca\/host\.env$/m)
+    assert.match(unit, /^StartLimitIntervalSec=300$/m)
   })
 
   test('renderRelayUnit 用 current 入口与 <root>/relay.env，且不含 78', () => {
@@ -123,10 +135,18 @@ WantedBy=default.target
 
   test('host 安装脚本仍嵌入字节等价的 unit', () => {
     const script = hostInstallScript({ platformUrl: 'https://platform.example', token: 'tok' })
-    assert.ok(script.includes(renderHostUnit({ binPath: '$ORCA_HOST_BIN' })))
+    assert.ok(
+      script.includes(
+        renderHostUnit({
+          binPath: '$ORCA_HOST_BIN',
+          environmentFile: '$ORCA_UNIT_ENV_FILE'
+        })
+      )
+    )
     assert.match(script, /^Description=Orca Cloud 宿主代理$/m)
-    assert.match(script, /^EnvironmentFile=%h\/\.orca-cloud\/host\.env$/m)
+    assert.match(script, /^EnvironmentFile=\$ORCA_UNIT_ENV_FILE$/m)
     assert.match(script, /^ExecStart=\$ORCA_HOST_BIN --host-mode$/m)
     assert.match(script, /^RestartPreventExitStatus=78$/m)
+    assert.match(script, /orca-host\.service/)
   })
 })

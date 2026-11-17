@@ -1,4 +1,11 @@
-import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -15,6 +22,13 @@ function seedCredential(dataRoot: string): string {
   const path = join(dataRoot, CLOUD_HOST_CREDENTIAL_FILENAME)
   writeFileSync(path, JSON.stringify(CREDENTIAL), { mode: 0o600 })
   return path
+}
+
+function backupPathOf(dataRoot: string): string {
+  const name = readdirSync(dataRoot).find((entry) =>
+    entry.startsWith(`${CLOUD_HOST_CREDENTIAL_FILENAME}.bak-`)
+  )
+  return join(dataRoot, name ?? `${CLOUD_HOST_CREDENTIAL_FILENAME}.bak-missing`)
 }
 
 describe('--reenroll credential transaction', () => {
@@ -43,7 +57,7 @@ describe('--reenroll credential transaction', () => {
     )
   })
 
-  it('keeps a credential written after a late failure instead of restoring an invalid one', () => {
+  it('keeps a credential written after a late failure and removes the dead backup', () => {
     const dataRoot = temporaryDataRoot()
     const credentialPath = seedCredential(dataRoot)
     const transaction = beginHostCredentialReenrollment(dataRoot)
@@ -53,6 +67,30 @@ describe('--reenroll credential transaction', () => {
     transaction?.rollback()
 
     expect(JSON.parse(readFileSync(credentialPath, 'utf8'))).toEqual(replacement)
+    expect(existsSync(backupPathOf(dataRoot))).toBe(false)
+  })
+
+  it('deletes the old backup once re-registration succeeds', () => {
+    const dataRoot = temporaryDataRoot()
+    const credentialPath = seedCredential(dataRoot)
+    const transaction = beginHostCredentialReenrollment(dataRoot)
+    writeFileSync(credentialPath, JSON.stringify({ ...CREDENTIAL, credential: 'new' }), {
+      mode: 0o600
+    })
+
+    transaction?.commit()
+
+    expect(existsSync(backupPathOf(dataRoot))).toBe(false)
+  })
+
+  it('keeps the backup when commit runs without a stored replacement', () => {
+    const dataRoot = temporaryDataRoot()
+    seedCredential(dataRoot)
+    const transaction = beginHostCredentialReenrollment(dataRoot)
+
+    transaction?.commit()
+
+    expect(existsSync(backupPathOf(dataRoot))).toBe(true)
   })
 
   it('does nothing when there is no credential to replace', () => {

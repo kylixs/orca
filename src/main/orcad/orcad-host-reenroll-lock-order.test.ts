@@ -21,7 +21,7 @@ const calls = vi.hoisted(() => {
     }),
     beginReenrollment: vi.fn(() => {
       order.push('reenroll')
-      return { rollback: vi.fn() }
+      return { rollback: vi.fn(), commit: vi.fn() }
     })
   }
 })
@@ -77,7 +77,7 @@ describe('--reenroll runs inside the orcad instance lock', () => {
 
   it('rolls the credential back when startup after re-enrolment fails', async () => {
     const rollback = vi.fn()
-    calls.beginReenrollment.mockReturnValueOnce({ rollback })
+    calls.beginReenrollment.mockReturnValueOnce({ rollback, commit: vi.fn() })
 
     await expect(
       startOrcadWithHost(
@@ -91,5 +91,21 @@ describe('--reenroll runs inside the orcad instance lock', () => {
     ).rejects.toThrow('registration failed')
 
     expect(rollback).toHaveBeenCalledOnce()
+  })
+
+  it('commits the re-enrolment after startup succeeds', async () => {
+    const commit = vi.fn()
+    calls.beginReenrollment.mockReturnValueOnce({ rollback: vi.fn(), commit })
+
+    await startOrcadWithHost(
+      '/data',
+      async () => ({ readiness: 'ready' }),
+      () => {},
+      {
+        reenroll: true
+      }
+    )
+
+    expect(commit).toHaveBeenCalledOnce()
   })
 })

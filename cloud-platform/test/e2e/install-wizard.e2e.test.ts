@@ -920,7 +920,8 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
   })
 
   describe('H9b: systemd 用户单元生成', () => {
-    const UNIT_PATH = '.config/systemd/user/orca-cloud-host.service'
+    const UNIT_PATH = '.config/systemd/user/orca-host.service'
+    const LEGACY_UNIT_PATH = '.config/systemd/user/orca-cloud-host.service'
 
     /** Logs every invocation so the test can prove the exact systemctl verbs. */
     const SYSTEMCTL_STUB = `#!/usr/bin/env bash
@@ -960,7 +961,7 @@ exit 1
       return join(home, 'sparse-bin')
     }
 
-    test('写 orca-cloud-host.service：单元键齐全、RestartPreventExitStatus 只含 78', async () => {
+    test('写 orca-host.service：单元键齐全、StartLimit 300、RestartPreventExitStatus 只含 78', async () => {
       const home = makeSystemdHome({ systemctl: SYSTEMCTL_STUB, loginctl: LOGINCTL_OK })
       const run = runInstallScript(await fetchHostScript(), home, {
         PATH: pathOf(home),
@@ -971,7 +972,9 @@ exit 1
       const unit = readFileSync(join(home, UNIT_PATH), 'utf8')
       assert.match(unit, /^\[Unit\]$/m)
       assert.match(unit, /^Description=Orca Cloud 宿主代理$/m)
-      assert.match(unit, /^StartLimitIntervalSec=\d+$/m)
+      assert.match(unit, /^After=network-online\.target$/m)
+      assert.match(unit, /^Wants=network-online\.target$/m)
+      assert.match(unit, /^StartLimitIntervalSec=300$/m)
       assert.match(unit, /^StartLimitBurst=5$/m)
       assert.match(unit, /^EnvironmentFile=%h\/\.orca-cloud\/host\.env$/m)
       assert.match(unit, /^ExecStart=.+orca-ide --host-mode$/m)
@@ -986,9 +989,45 @@ exit 1
       assert.match(readFileSync(join(home, 'loginctl.log'), 'utf8'), /enable-linger/)
       const calls = readFileSync(join(home, 'systemctl.log'), 'utf8')
       assert.match(calls, /--user daemon-reload/)
-      assert.match(calls, /--user enable --now orca-cloud-host\.service/)
+      assert.match(calls, /--user enable --now orca-host\.service/)
       // systemd owns the process; no nohup duplicate beside it.
       assert.doesNotMatch(run.stdout, /nohup .*--host-mode/)
+      assert.match(run.stdout, /orca-host\.service/)
+      assert.equal(existsSync(join(home, LEGACY_UNIT_PATH)), false)
+    })
+
+    test('ORCA_ENV_FILE 覆盖：unit 指向自定义 EnvironmentFile', async () => {
+      const home = makeSystemdHome({ systemctl: SYSTEMCTL_STUB, loginctl: LOGINCTL_OK })
+      const customEnv = join(home, 'custom-config', 'host.env')
+      const run = runInstallScript(await fetchHostScript(), home, {
+        PATH: pathOf(home),
+        ORCA_ENV_FILE: customEnv,
+        ORCA_HOST_STATE_TIMEOUT: '0'
+      })
+
+      assert.equal(run.status, 0, run.stderr)
+      const unit = readFileSync(join(home, UNIT_PATH), 'utf8')
+      assert.ok(unit.includes(`EnvironmentFile=${customEnv}`), unit)
+      assert.equal(existsSync(customEnv), true)
+    })
+
+    test('旧 orca-cloud-host.service 在改名后被停用并删除', async () => {
+      const home = makeSystemdHome({ systemctl: SYSTEMCTL_STUB, loginctl: LOGINCTL_OK })
+      const legacyUnit = join(home, LEGACY_UNIT_PATH)
+      mkdirSync(dirname(legacyUnit), { recursive: true })
+      writeFileSync(legacyUnit, '[Unit]\nDescription=legacy\n')
+
+      const run = runInstallScript(await fetchHostScript(), home, {
+        PATH: pathOf(home),
+        ORCA_HOST_STATE_TIMEOUT: '0'
+      })
+
+      assert.equal(run.status, 0, run.stderr)
+      assert.equal(existsSync(legacyUnit), false)
+      assert.equal(existsSync(join(home, UNIT_PATH)), true)
+      const calls = readFileSync(join(home, 'systemctl.log'), 'utf8')
+      assert.match(calls, /--user disable --now orca-cloud-host\.service/)
+      assert.match(calls, /--user enable --now orca-host\.service/)
     })
 
     test('U187/H10b: systemd <229 剔除 StartLimit 并降级 Restart=no', async () => {
@@ -1080,7 +1119,7 @@ exit 0
       assert.match(run.stderr, /未找到 Orca 宿主程序/)
       assert.doesNotMatch(run.stderr, /gnome-orca-should-not-run/)
       assert.equal(existsSync(join(home, '.orca-cloud', 'host.env')), false)
-      assert.equal(existsSync(join(home, '.config/systemd/user/orca-cloud-host.service')), false)
+      assert.equal(existsSync(join(home, '.config/systemd/user/orca-host.service')), false)
     })
 
     test('macOS 可以回退裸 orca', async () => {
@@ -1094,6 +1133,10 @@ exit 0
 
       assert.equal(run.status, 0, run.stderr)
       assert.equal(existsSync(join(home, '.orca-cloud', 'host.env')), true)
+      // macOS has no user systemd; it must use the wrapper, never a unit name.
+      assert.match(run.stdout, /run-host\.sh/)
+      assert.doesNotMatch(run.stdout, /orca-cloud-host\.service/)
+      assert.doesNotMatch(run.stdout, /orca-host\.service/)
     })
 
     test('ORCA_CLI 显式路径优先，即使 Linux 只有 GNOME orca', async () => {
@@ -1114,7 +1157,7 @@ exit 0
 
       assert.equal(run.status, 0, run.stderr)
       assert.equal(existsSync(marker), false, 'bare orca must never be selected')
-      const unit = readFileSync(join(home, '.config/systemd/user/orca-cloud-host.service'), 'utf8')
+      const unit = readFileSync(join(home, '.config/systemd/user/orca-host.service'), 'utf8')
       assert.equal(unit.includes(`ExecStart=${explicit} --host-mode`), true)
     })
   })
@@ -1151,7 +1194,7 @@ exit 0
       assert.match(run.stderr, /host mode preflight failed/)
       assert.match(run.stderr, /宿主配置无效/)
       assert.equal(existsSync(join(home, '.orca-cloud', 'host.env')), false)
-      assert.equal(existsSync(join(home, '.config/systemd/user/orca-cloud-host.service')), false)
+      assert.equal(existsSync(join(home, '.config/systemd/user/orca-host.service')), false)
     })
 
     test('运行时失败 → 64，不写 env/unit', async () => {
@@ -1168,7 +1211,7 @@ exit 0
       assert.equal(run.status, 64, run.stderr)
       assert.match(run.stderr, /宿主运行时不可用/)
       assert.equal(existsSync(join(home, '.orca-cloud', 'host.env')), false)
-      assert.equal(existsSync(join(home, '.config/systemd/user/orca-cloud-host.service')), false)
+      assert.equal(existsSync(join(home, '.config/systemd/user/orca-host.service')), false)
     })
   })
 

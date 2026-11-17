@@ -74,14 +74,19 @@ export function renderSystemdUnit(input: SystemdUnitInput): string {
   return `${lines.join('\n')}\n`
 }
 
-export function renderHostUnit(input: { binPath: string }): string {
+export function renderHostUnit(input: { binPath: string; environmentFile?: string }): string {
   const binPath = requireText('binPath', input.binPath)
+  const environmentFile = requireText(
+    'environmentFile',
+    input.environmentFile ?? '%h/.orca-cloud/host.env'
+  )
   return renderSystemdUnit({
     description: 'Orca Cloud 宿主代理',
     execStart: `${binPath} --host-mode`,
-    environmentFile: '%h/.orca-cloud/host.env',
+    environmentFile,
     restartPreventExitStatus: 78,
-    startLimitIntervalSec: 60,
+    extraUnitLines: ['After=network-online.target', 'Wants=network-online.target'],
+    startLimitIntervalSec: 300,
     startLimitBurst: 5
   })
 }

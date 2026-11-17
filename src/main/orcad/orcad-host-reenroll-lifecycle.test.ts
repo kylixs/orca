@@ -99,7 +99,29 @@ describe('--reenroll after the instance lock is acquired', () => {
       NEW
     )
     expect(statSync(join(root, CLOUD_HOST_CREDENTIAL_FILENAME)).mode & 0o777).toBe(0o600)
-    expect(backups(root)).toHaveLength(1)
+    // The old credential is dead once the replacement landed; it must not stay on disk.
+    expect(backups(root)).toEqual([])
+  })
+
+  it('keeps the replacement and drops the dead old backup when a later startup step fails', async () => {
+    const root = dataRootWithCredential()
+
+    await expect(
+      startOrcadWithHost(
+        root,
+        async () => {
+          storeHostCredential(root, NEW)
+          throw new Error('rpc bind failed')
+        },
+        () => {},
+        { reenroll: true }
+      )
+    ).rejects.toThrow('rpc bind failed')
+
+    expect(JSON.parse(readFileSync(join(root, CLOUD_HOST_CREDENTIAL_FILENAME), 'utf8'))).toEqual(
+      NEW
+    )
+    expect(backups(root)).toEqual([])
   })
 
   it('leaves the old credential intact when re-registration fails', async () => {

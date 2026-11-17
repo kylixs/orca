@@ -131,7 +131,7 @@ export async function startOrcadWithHost<T extends object>(
   let admission: ProfileStateRuntimeAdmission | undefined
   let browserProvider: ReturnType<typeof startOrcadBrowserProvider> | undefined
   try {
-    return await startOrcadWithLifecycle(
+    const result = await startOrcadWithLifecycle(
       async (registerCleanup) => {
         admission = acquireProfileStateRuntimeAdmission(userDataPath)
         // Why not awaited: a desktop sidecar's authorization UI must not hold RPC readiness hostage.
@@ -156,6 +156,9 @@ export async function startOrcadWithHost<T extends object>(
         await host.stop()
       }
     )
+    // The replacement credential is persisted, so the old backup is a dead secret.
+    reenrollment?.commit()
+    return result
   } catch (error) {
     reenrollment?.rollback()
     throw error
