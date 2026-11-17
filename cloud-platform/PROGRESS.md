@@ -4334,3 +4334,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U219 关闭（D17）**：P2 修复 `296dcf40ac7` 经二次复审 APPROVED（语义/epoch/降级/pin/两变异全部核对）；六套件 67/67、0 cancelled。遗留 4 项 P3 已派补强批。台账 U219 翻 🟢——U197 实现类前置全部清空。
 - **快照哈希复审 CHANGES-REQUIRED**：功能与覆盖正确，但 P1=旧明文快照加载后**磁盘不清理**（`lastWritten` 预置使 flush 跳过；重启/优雅关闭仍留明文）→ 已派修（恢复后差异即写回、写盘失败不阻塞启动、补三条用例）；P2=快照仍明文存 `accessTokens`/`webHandoffs`（随 D18 裁定）；P3=`SNAPSHOT_VERSION` 未升版。覆盖核对：写入 2 处/查找 4 处均哈希，回退语义成立；变异两处均红。
 - **U181 A3 落地**（`d7c4c2e2814`，5 文件 +162/−2）：`orca_host_online` 转换事件（四字段、仅转换时一行、走 stderr 日志流避免污染 readiness JSON）、设计命名 `heartbeatError`→`lastErrorCode`；主会话复跑 3 文件 38/38（代理 6 文件 75/75），变异即红。A4（journalctl + reenroll 提示 + 码表文档尾项）已派。
+- **快照 P1 修复落地**（`51f2e2066f3`，2 文件 +184/−14）：旧明文快照加载即写回哈希形态（启动即去明文、flush no-op 不回退、写盘失败仅 warn 并重试）；`SNAPSHOT_VERSION` 升 2、读取接受 1/2。store-persistence **13/13**、refresh-cookie 53/53（主会话复跑），变异删「立即写回」→ 3 例红。二次复审在途。
