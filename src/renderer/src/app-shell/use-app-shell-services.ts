@@ -15,6 +15,7 @@ import { useRadixBodyPointerEventsRecovery } from '../hooks/useRadixBodyPointerE
 import { useGitStatusPolling } from '../components/right-sidebar/useGitStatusPolling'
 import { useOsc52ClipboardDefaultOnNotice } from '../components/terminal-pane/osc52-clipboard-default-on-notice'
 import { useWebSessionTabsSync } from '../runtime/web-session-tabs-sync'
+import { useLocalHostLayoutCatchup } from './use-local-host-layout-catchup'
 import { useLocalStructuredSessionTabsSync } from '../runtime/local-structured-session-tabs-sync'
 import { useHostStructuredAgentsSync } from '../runtime/host-structured-agents-sync'
 import { useHostModelCatalogSnapshotsSync } from '../runtime/host-model-catalog-snapshots-sync'
@@ -42,6 +43,8 @@ export function useAppShellServices(): void {
   useClosedEditorTabCleanup()
   useRadixBodyPointerEventsRecovery()
   useWebSessionTabsSync()
+  // Why: only the main app-shell adopts host layout; popout roots never call this hook.
+  useLocalHostLayoutCatchup()
   useLocalStructuredSessionTabsSync()
   useHostStructuredAgentsSync()
   useHostModelCatalogSnapshotsSync()
