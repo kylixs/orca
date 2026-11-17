@@ -22,6 +22,12 @@ npm 快捷入口：`pnpm test:tier:smoke` / `pnpm test:tier:critical` / `pnpm te
 - 原因：Node < 24.16 的 `node:sqlite` 在 TEXT 的 NUL 处截断，制造台账簇等环境假红（见 `env-gated-test-suites.md`）。每次运行都会打印实际版本：`[runtime] node <version> (<execPath>)`。
 - 不要用 Electron 内置 Node 跑含证书/EC 的套件（BoringSSL `DECODE_ERROR`）。
 
+## 证据校验（§3a 机检）
+
+每次长跑/验收后：
+`node cloud-platform/scripts/validate-evidence.mjs <evidence-dir> --max-age-hours=24`
+须 PASS（目录内 `summary.json` 或 `results.json` 有效且非空、JSON 可解析、未过期）。长跑代理必须同时写出 `summary.json`（任务、verdict、关键值、产物 sha），避免只留文本产物。
+
 ## 原则
 
 1. **默认只跑 T2**：`git diff HEAD` 与 `origin/main...HEAD` 的文件映射到目录级测试；没有映射时明确输出「无受影响测试」。
