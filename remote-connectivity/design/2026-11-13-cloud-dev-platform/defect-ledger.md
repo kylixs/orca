@@ -206,6 +206,9 @@
 | U194 | 🟢    | **共享 Playwright `ui.login` 可见性竞态（P3，测试基建）**：重放时一次 S1 在 `#username` 可见性上 30s 超时（reload 与 `#view-app` 渲染之间），重放即绿；非断言失败、状态已还原。 | `evidence/authz-reverify2-2026-11-17T11-43-13Z/`（agent 报告） | **处置**：登录助手改为等待 app shell 可见后再返回（或移除自触发 reload），重放 3 次无重试；归入测试基建打磨。**修复 `d8d75e3ca3e`**：等待表单/app shell 二选一；30/30 登录循环、矩阵 2 次无超时（`evidence/u194-login-race-2026-11-17T11-49-50Z/`）。 |
 | U195 | 🟢    | **H2 检查数组多包一层（P3，测试基建）**：`run-authz-combo-web.mjs` H2 的 `expectChecks` 收到 `[entries.map(...)]`，内层数组被当作无 `.ok` 的失败项 → 汇总 failed=1，而 6 个叶子检查全 ok；由 `aa6d1e40013` 修复时引入。 | `evidence/u194-login-race-2026-11-17T11-49-50Z/matrix-run1.log` | **处置**：恢复 spread（去掉外层数组）；重跑 Web 矩阵确认 22/22。**修复 `d8d75e3ca3e`**：去掉外层数组；重放 22/22（`evidence/u195-h2-fix-20261117T115225Z/`）。 |
 | U196 | ⚪    | **「最近使用」缺数据源（P3，产品增强）**：`Project`/`projectView` 无 `updatedAt`（只有 `createdAt`），前端 QA-024 只能按创建时间倒序，「最近更新」标签在该字段下发前不出现。属 QA-024 未覆盖的半项。 | `cloud-platform/apps/api/src/store.ts:61`、`server.ts:2700-2729` | **处置**：待裁定「最近使用」定义（打开/连接/心跳哪类事件更新）；定案后后端加字段并补测试，未定前保持创建时间排序与现状文案。 |
+| U198 | 🟡    | **刷新页面不回退 refresh（P2）**：页面恢复只用 access 调 `/v1/me`（`apps/web/app.js:4551-4566`），access 过期后刷新直接回登录页，12h refresh 形同虚设。 | U197 设计令（`work-orders/u197-token-storage-design.md`） | **处置**：随 QA-032 存储方案一起修（方案 B 下用 HttpOnly Cookie 换新 access；方案 A 下用 sessionStorage refresh）；补「access 过期刷新页面仍保持会话」断言。 |
+| U199 | 🟡    | **多标签刷新无协调可撤销整 session（P2）**：两标签各自持同一 refresh；A 刷新轮换后 B 仍用旧 token，服务端复用检测撤销整个 session（`server.ts:3192-3195`）。无 storage/BroadcastChannel 协调。 | 同上 | **处置**：随 QA-032 定案；方案 B 加轮换宽限（30–60s）+ Origin 校验；方案 A 需自建跨标签中继；补多标签并发刷新用例（只轮换一次、均保持登录）。 |
+| U200 | ⚪    | **Web 无 CSP（P2 安全纵深）**：静态响应仅 `referrer-policy`（`static-delivery.ts:15-17`），页面 37 处 `innerHTML` 依赖人工 `esc()`；与 QA-032 的 XSS 面叠加。 | 同上 | **处置**：待裁定（U197 待决策 #10）：是否同批上线 script CSP（需处理 16 处内联 style）；上线前不得宣称 XSS 面已收口。 |
 
 ## 流程整改（用户指令驱动）
 
