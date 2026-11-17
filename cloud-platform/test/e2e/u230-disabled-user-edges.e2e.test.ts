@@ -136,6 +136,9 @@ function rendezvous(timeoutMs = 2_000): () => Promise<void> {
     timeoutMs
   )
   timer.unref()
+  // U243②: if no request ever reaches the barrier nobody awaits `gate`; keep
+  // the timeout rejection from surfacing as an unhandled rejection.
+  gate.catch(() => {})
   return async () => {
     arrivals += 1
     if (arrivals === 2) {

@@ -4278,3 +4278,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U242 复审 APPROVED**：`finishStartupMe()` 与两处原逻辑逐字等价（守卫条件/字段拼装/`bindLegacyTokenOwner` 位置/`enterApp` 顺序/异常语义）；两例为「关闭守卫」mutation 红（非 parent-red，台账按此表述）；pin 一致；回归 22/22 + 32/32。台账 U242 翻 🟢。
 - **U241②③ 复审 APPROVED**：全仓 session 撤销仅 `revokeSessionOnce` 单写点、覆盖 8 类路径；过期/审计/响应不变；设备批量逐 session bump 合理；屏障 2s 有余量；archive 父提交 3/3 红。台账 U241 翻 🟢。观察另立 **U243（🟡）**：过期撤销+幂等登出导致「刷新过期→自动登出」零链上事件（事件词汇批）、屏障零到达未处理 rejection 噪音。
 - **最终认证批（U241 后）**：20 套件 **220 tests / 218 pass / 2 skip（D17）/ 0 fail**（CONC=2，EXIT=0）。交付摘要与矩阵更新为最终基线；U243 记为唯一遗留（①事件词汇批、②测试噪音）。
+- **U243② 修复**：`rendezvous()` 的 gate 加 `.catch(() => {})`，零到达不再产生未处理 rejection 噪音；u230 9/9。U243① 仍随事件词汇批。
