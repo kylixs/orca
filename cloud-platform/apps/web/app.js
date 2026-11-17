@@ -354,6 +354,8 @@ function applyRoute(route, { force = false } = {}) {
   state.route = route.name
   state.routeParams = route.params
   state.routeQuery = route.query
+  // A poll belongs to the audit view; leaving it must not keep fetching.
+  if (route.name !== 'audit') stopAuditExportPolling()
   $('#crumbs').textContent = TITLES[route.name] ?? route.name
 
   // 覆盖层是路由状态：离开工作区路由或换项目时先静默移除，历史由浏览器自己走。
@@ -3840,6 +3842,230 @@ function auditQueryParams(filter, cursor) {
   return params
 }
 
+/* ---------------- 审计导出（U201 E11） ---------------- */
+
+const AUDIT_EXPORT_POLL_INTERVAL_MS = 1_000
+const AUDIT_EXPORT_POLL_DEADLINE_MS = 60_000
+/** 以 tick 数兜底：间隔固定 1s 时 60 次即 60s，也让测试不必真等一分钟。 */
+const AUDIT_EXPORT_POLL_MAX_TICKS = 60
+const AUDIT_EXPORT_RANGE_LABELS = Object.freeze({
+  '24': '最近 24 小时',
+  '168': '最近 7 天',
+  '744': '最近 31 天'
+})
+const AUDIT_RESULT_TEXT = Object.freeze({ success: '成功', failure: '失败', denied: '拒绝' })
+
+let auditExportPoll = null
+let auditExportPollGeneration = 0
+
+/** 只保留一个定时器：任何一次停止都会让在途 tick 的整体被丢弃。 */
+function stopAuditExportPolling() {
+  auditExportPollGeneration += 1
+  if (auditExportPoll) {
+    clearTimeout(auditExportPoll.timer)
+    auditExportPoll = null
+  }
+}
+
+/** 复用查询参数构造器，导出筛选永远与当前列表 URL 同源。 */
+function auditExportRequestBody(filter, format) {
+  const params = auditQueryParams(filter, undefined)
+  const body = { format, confirm: true }
+  const eventType = params.get('eventType')
+  if (eventType) body.eventTypes = [eventType]
+  for (const key of [
+    'eventFamily',
+    'q',
+    'fileName',
+    'since',
+    'until',
+    'username',
+    'projectId',
+    'hostId',
+    'result',
+    'traceId'
+  ]) {
+    const value = params.get(key)
+    if (value) body[key] = value
+  }
+  return body
+}
+
+function auditExportFilterSummary(filter) {
+  const items = []
+  if (filter.since || filter.until) {
+    const since = filter.since ? new Date(filter.since).toLocaleString('zh-CN') : '不限'
+    const until = filter.until ? new Date(filter.until).toLocaleString('zh-CN') : '现在'
+    items.push(`时间：${esc(since)} 至 ${esc(until)}`)
+  } else {
+    items.push(`时间：${AUDIT_EXPORT_RANGE_LABELS[filter.range] ?? AUDIT_EXPORT_RANGE_LABELS['168']}`)
+  }
+  const optionText = (selector) =>
+    $(selector)?.selectedOptions?.[0]?.textContent?.trim() || ''
+  if (filter.event) {
+    const label =
+      auditEventOptions(state.auditStatus).find(([value]) => value === filter.event)?.[1] ??
+      filter.event
+    items.push(`操作类型：${esc(label)}`)
+  }
+  if (filter.projectId) {
+    items.push(`项目：${esc(optionText('#auditProject') || filter.projectId)}`)
+  }
+  if (filter.hostId) {
+    items.push(`主机：${esc(optionText('#auditHost') || filter.hostId)}`)
+  }
+  if (filter.username) items.push(`用户：${esc(filter.username)}`)
+  if (filter.fileName) items.push(`文件名：${esc(filter.fileName)}`)
+  if (filter.q) items.push(`关键字：${esc(filter.q)}`)
+  if (filter.traceId) items.push(`traceId：${esc(filter.traceId)}`)
+  if (filter.result) {
+    items.push(`结果：${esc(AUDIT_RESULT_TEXT[filter.result] ?? filter.result)}`)
+  }
+  return `<ul class="muted">${items.map((item) => `<li>${item}</li>`).join('')}</ul>`
+}
+
+function auditExportErrorText(err) {
+  const code = err?.code
+  if (err?.status === 403) return '无导出权限：仅管理员或审计员可以导出审计日志。'
+  if (err?.status === 429 || code === 'EXPORT_BUSY') return '导出任务过多，请稍后再试。'
+  if (code === 'EXPORT_CONFIRM_REQUIRED') return '导出需要二次确认。'
+  if (code === 'TIME_WINDOW_TOO_LARGE') {
+    return '查询时间窗最大 31 天，请缩小时间范围后再导出。'
+  }
+  if (err?.status === 400 || code === 'INVALID_QUERY') {
+    return `导出条件无效：${err?.message ?? String(err)}`
+  }
+  if (err?.status === 404 || code === 'EXPORT_NOT_FOUND') return '导出任务不存在。'
+  if (
+    err?.status === 410 ||
+    code === 'EXPORT_EXPIRED' ||
+    code === 'EXPORT_DOWNLOAD_GONE'
+  ) {
+    return '导出任务已过期，请重新发起导出。'
+  }
+  return `导出失败：${err?.message ?? String(err)}`
+}
+
+function startAuditExportPolling(jobId, statusEl) {
+  stopAuditExportPolling()
+  const generation = auditExportPollGeneration
+  const startedAt = Date.now()
+  let ticks = 0
+  const finish = (text, tone) => {
+    if (statusEl) {
+      statusEl.textContent = text
+      if (tone) statusEl.dataset.tone = tone
+    }
+    stopAuditExportPolling()
+  }
+  const tick = async () => {
+    if (generation !== auditExportPollGeneration || !auditExportPoll) return
+    ticks += 1
+    let job
+    try {
+      job = await api(`/v1/audit/exports/${encodeURIComponent(jobId)}`)
+    } catch (err) {
+      if (generation !== auditExportPollGeneration) return
+      finish(auditExportErrorText(err), 'danger')
+      return
+    }
+    // The dialog may have closed while the request was in flight.
+    if (generation !== auditExportPollGeneration || !auditExportPoll) return
+    if (job.status === 'succeeded') {
+      finish(
+        `导出已生成（${String(job.format ?? '').toUpperCase()}，共 ${job.totalEvents ?? 0} 条，${job.bytes ?? 0} 字节）。`,
+        'ok'
+      )
+      return
+    }
+    if (job.status === 'failed') {
+      finish(`导出失败：${job.error?.message ?? job.error?.code ?? '未知原因'}`, 'danger')
+      return
+    }
+    if (
+      ticks >= AUDIT_EXPORT_POLL_MAX_TICKS ||
+      Date.now() - startedAt >= AUDIT_EXPORT_POLL_DEADLINE_MS
+    ) {
+      finish('导出仍在进行，已超过 60 秒；请稍后重试或缩小筛选范围。', 'warn')
+      return
+    }
+    if (statusEl) {
+      statusEl.textContent = job.status === 'running' ? '正在生成导出文件…' : '已排队，等待生成…'
+    }
+    auditExportPoll.timer = setTimeout(tick, AUDIT_EXPORT_POLL_INTERVAL_MS)
+  }
+  auditExportPoll = { timer: setTimeout(tick, AUDIT_EXPORT_POLL_INTERVAL_MS), jobId }
+}
+
+function openAuditExportDialog() {
+  const capability = state.auditStatus?.auditExport
+  if (!capability) return
+  const formats = (Array.isArray(capability.formats) ? capability.formats : ['csv', 'jsonl'])
+    .filter((format) => format === 'csv' || format === 'jsonl')
+  if (formats.length === 0) return
+  const filter = state.auditFilter ?? {}
+  const ttlSeconds = Number(capability.jobTtlSeconds)
+  const ttlText =
+    Number.isFinite(ttlSeconds) && ttlSeconds > 0
+      ? `任务有效期约 ${Math.max(1, Math.round(ttlSeconds / 60))} 分钟`
+      : '任务会在一段时间后过期'
+  const radios = formats
+    .map(
+      (format, index) =>
+        `<label class="radio"><input type="radio" name="auditExportFormat" value="${esc(format)}"${index === 0 ? ' checked' : ''}> ${format === 'csv' ? 'CSV（表格）' : 'JSONL（逐行 JSON）'}</label>`
+    )
+    .join('')
+  let busy = false
+  const backdrop = dialog(
+    '导出审计日志',
+    `<p class="muted">按当前筛选条件生成导出文件。文件包含敏感审计数据，请妥善保管；${esc(ttlText)}。</p>
+     ${auditExportFilterSummary(filter)}
+     <fieldset class="field"><legend>格式</legend>${radios}</fieldset>
+     <p class="inline-error" id="auditExportStatus" role="status" aria-live="polite" hidden></p>`,
+    [
+      {
+        label: '开始导出',
+        primary: true,
+        onClick: () => {
+          // A second click while the first request is in flight must not POST twice.
+          if (busy) return false
+          busy = true
+          const selected = backdrop.querySelector('input[name="auditExportFormat"]:checked')
+          const format = selected?.value ?? formats[0]
+          const statusEl = backdrop.querySelector('#auditExportStatus')
+          const confirmButton = backdrop.querySelector('[data-action="0"]')
+          if (statusEl) {
+            statusEl.hidden = false
+            statusEl.textContent = '正在发起导出…'
+            statusEl.dataset.tone = ''
+          }
+          if (confirmButton) confirmButton.disabled = true
+          void (async () => {
+            try {
+              const job = await api('/v1/audit/export', {
+                method: 'POST',
+                body: JSON.stringify(auditExportRequestBody(filter, format))
+              })
+              if (statusEl) statusEl.textContent = '已受理，正在生成导出文件…'
+              startAuditExportPolling(job.jobId, statusEl)
+            } catch (err) {
+              if (statusEl) {
+                statusEl.textContent = auditExportErrorText(err)
+                statusEl.dataset.tone = 'danger'
+              }
+              if (confirmButton) confirmButton.disabled = false
+              busy = false
+            }
+          })()
+          return false // keep the dialog open while the job runs
+        }
+      }
+    ],
+    { sheet: isMobileViewport(), onClose: () => stopAuditExportPolling() }
+  )
+  return backdrop
+}
+
 /** U73: 每次查询持一代号，仅最新一代可落 state/渲染；被取代的查询整体丢弃。 */
 let auditQueryGeneration = 0
 
@@ -3848,6 +4074,9 @@ async function renderAudit(loadMore = false) {
   // Only 「加载更早」 accumulates onto what is shown; a fresh view re-queries, so
   // leaving and returning can never resurrect a stale accumulation (M116-QA-002).
   if (!loadMore) {
+    // A re-query (new filter / navigation back) owns a new result set; an old
+    // export poll must not keep writing into a dialog for the previous view.
+    stopAuditExportPolling()
     state.auditEvents = null
     state.auditCursor = null
   }
@@ -3887,11 +4116,18 @@ async function renderAudit(loadMore = false) {
   const projects = projectsBody?.projects ?? []
   const hosts = (hostsBody?.hosts ?? []).filter((host) => !host.revokedAt)
   const terms = [filter.q, filter.fileName].filter(Boolean)
+  // U201 E11: only a platform that advertises export gets the entry point; an
+  // older server has no `auditExport` field, so no button appears.
+  const exportCapability = state.auditStatus?.auditExport
   const conditionCount = auditConditionCount(filter)
   // U80 M6: phone starts folded; the desktop pane stays open (and unchanged).
   const filterOpen = !isMobileViewport()
   content().innerHTML = `
-    <div class="page-head"><div><h1>审计日志</h1><p>查询身份、连接、文件下载与复制、下载拦截与管理操作事件。只追加、哈希链校验；保留 180 天，查询时间窗最大 31 天。已显示 ${events.length} 条。</p></div></div>
+    <div class="page-head"><div><h1>审计日志</h1><p>查询身份、连接、文件下载与复制、下载拦截与管理操作事件。只追加、哈希链校验；保留 180 天，查询时间窗最大 31 天。已显示 ${events.length} 条。</p></div>${
+      exportCapability
+        ? '<div><button class="btn" type="button" id="auditExport">导出</button></div>'
+        : ''
+    }</div>
     ${auditGapMarkup(state.auditStatus)}
     ${auditHealthMarkup(state.auditStatus)}
     <details class="audit-coverage">
@@ -4028,6 +4264,8 @@ async function renderAudit(loadMore = false) {
   }
   const more = $('#auditMore')
   if (more) more.onclick = () => renderAudit(true)
+  const exportButton = $('#auditExport')
+  if (exportButton) exportButton.onclick = () => openAuditExportDialog()
   const verifyBtn = $('#auditVerify')
   if (verifyBtn) {
     verifyBtn.onclick = async () => {
