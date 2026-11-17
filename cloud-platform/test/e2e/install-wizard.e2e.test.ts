@@ -2006,7 +2006,8 @@ exit 0
 
     const hostCmd = await wizard
       .nav('hosts', '#registerHostBtn')
-      .then(() => wizard.click('#registerHostBtn', '#installCmd'))
+      .then(() => wizard.click('#registerHostBtn', '#generateHostTokenBtn'))
+      .then(() => wizard.click('#generateHostTokenBtn', '#installCmd'))
     const hostDownload = /download=([\w-]+)/.exec(hostCmd)?.[1] ?? ''
     const token = /token=([\w-]+)/.exec(hostCmd)?.[1] ?? ''
     assert.notEqual(hostDownload, '', 'the wizard must embed a download token')

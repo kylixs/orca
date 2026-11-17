@@ -721,6 +721,8 @@ test('390×844：主机详情全屏 sheet 换行不溢出，注册命令可横�
     await page.waitForFunction(() => !document.querySelector('.drawer'))
 
     await page.click('#registerHostBtn')
+    await page.waitForSelector('#generateHostTokenBtn')
+    await page.click('#generateHostTokenBtn')
     await page.waitForSelector('#installCmd')
     const pre = await page.locator('#installCmd').evaluate((el) => {
       const style = getComputedStyle(el)
@@ -733,7 +735,7 @@ test('390×844：主机详情全屏 sheet 换行不溢出，注册命令可横�
     assert.equal(pre.overflowX, 'auto')
     assert.equal(pre.scrolls, true, 'the one-liner is wider than the phone dialog')
     assert.ok(pre.right <= 391, 'the command block stays inside the viewport')
-    const copy = page.locator('.dialog .foot .btn', { hasText: '复制命令' })
+    const copy = page.locator('#copyInstallCmd')
     const copyHeight = await copy.evaluate((el) => el.getBoundingClientRect().height)
     assert.ok(copyHeight >= 44, `copy target >=44px, got ${copyHeight}`)
     await copy.click()

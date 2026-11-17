@@ -223,6 +223,7 @@
 | U214 | 🟡    | **U197 令牌存储实施（QA-032）**：设计 v5 已 APPROVED；S1 默认关闭的 Cookie 基础设施落地（`fc64325bf10`，37/37）；S2 刷新双读/grace/CSRF/能力标记在途；S4 Web 切换与 S5 真实浏览器验收未派。**部署启用 cookieMode 前置**：S2+S5 完成且 D5–D10 裁定；S1 单独启用会断刷新。 | `work-orders/u197-token-storage-design.md` v5；S1 提交 | **处置**：按 6 步序列推进；关闭条件=AC1–AC17 在真实浏览器与 in-process 双轨全绿+用户裁定启用范围。 |
 | U215 | 🟡    | **U197 S2 实现与 v5 设计冲突（流程/语义）**：设计 §2B-2 明确「Cookie 源绝不轮换」，S2 代理按任务书（主会话 brief 误写「Cookie 命中 current 轮换」）实现为 Cookie current 轮换并加测试；两者不可同时满足。副作用：Cookie 客户端每次刷新换值；与已批准不变式/AC 不符。根因：主会话 brief 复述设计时写错（§2-89 违规）。 | `work-orders/u197-token-storage-design.md:175-180`；S2 未提交改动 | **处置**：以设计为准——Cookie current 不轮换（只发 access、同值重发 Cookie 并滑动 TTL；previous 宽限不续期）；轮换仅 body 源 current；测试改为断言 Cookie 刷新不改变 token 集合；主会话 brief 不再复述语义细节。 |
 | U216 | ⚪    | **Cookie 同值重发需内存明文 refresh（P3 安全权衡）**：v5 §2B-2 要求 Cookie 源以同一 refresh 值重发，服务端必须保留 current 明文（`Session.currentRefreshToken`），与「仅存哈希」原则冲突；仅内存、不落盘，进程内存泄漏即等同会话失守。替代是 Cookie 源轮换（需改设计）。 | U215/v5 §2B-2；pending-decisions D16 | **处置**：按 v5 接受并记录；若用户选轮换则回到 U215 修订设计并复审。 |
+| U217 | 🟢    | **QA-033 变更遗漏两处测试适配（测试漂移）**：`registerHostDialog` 改为点「生成注册命令」才申领后，`install-wizard.e2e`（hostCmd 直接等 `#installCmd`）与 `u80-mobile-shell`（复制按钮仍在 `.dialog .foot`）未同步，导致 `#installCmd` 30s 超时与「复制命令」定位失败；S2 全量回归发现。 | 两套件失败日志 | **修复（同提交）**：两处改为先点 `#generateHostTokenBtn` 再等 `#installCmd`；复制按钮改 `#copyInstallCmd`；install-wizard + u80-mobile-shell **97/97**。**§2-91 教训**：交互变更必须全 web 套件回归，不只相关文件。 |
 
 ## 流程整改（用户指令驱动）
 
