@@ -173,6 +173,13 @@ function enrolmentErrorFromStatus(
   }
 }
 
+function protocolFailure(status: number, detail: string): EnrollOutcome {
+  return {
+    ok: false,
+    error: { code: 'protocol', retryable: false, httpStatus: status, detail }
+  }
+}
+
 /** Design §3.3: host mode retries transport/5xx inside the process, then exits 1. */
 export const HOST_ENROLMENT_RETRY_DELAYS_MS: readonly number[] = [1_000, 5_000, 15_000]
 
@@ -243,19 +250,17 @@ export async function enrollCloudHost(
     const code = readString(readField(await res.json().catch(() => null), 'error'), 'code')
     return { ok: false, error: enrolmentErrorFromStatus(res.status, code) }
   }
-  const body: unknown = await res.json()
+  let body: unknown
+  try {
+    body = await res.json()
+  } catch {
+    // Design §3.4: a lost or malformed 201 body is a protocol fault, not a runtime one.
+    return protocolFailure(res.status, 'register response was not valid JSON')
+  }
   const hostId = readString(body, 'hostId')
   const credential = readString(body, 'credential')
   if (hostId === null || credential === null) {
-    return {
-      ok: false,
-      error: {
-        code: 'protocol',
-        retryable: false,
-        httpStatus: res.status,
-        detail: 'register response missing hostId/credential'
-      }
-    }
+    return protocolFailure(res.status, 'register response missing hostId/credential')
   }
   return {
     ok: true,

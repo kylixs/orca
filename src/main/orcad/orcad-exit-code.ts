@@ -31,7 +31,9 @@ export const HOST_MODE_FAILURE_EXIT_CODES: Readonly<Record<string, number>> = {
   host_config_invalid: HOST_MODE_EXIT_CONFIGURATION,
   runtime_unavailable: HOST_MODE_EXIT_CONFIGURATION,
   profile_in_use: HOST_MODE_EXIT_CONFIGURATION,
-  heartbeat_unauthorized: HOST_MODE_EXIT_CONFIGURATION
+  heartbeat_unauthorized: HOST_MODE_EXIT_CONFIGURATION,
+  // 4xx with no more specific code: the platform rejected this registration.
+  register_failed: HOST_MODE_EXIT_CONFIGURATION
 }
 
 /** A code with no row is unclassified; retryability then decides (1 retryable, 78 terminal). */

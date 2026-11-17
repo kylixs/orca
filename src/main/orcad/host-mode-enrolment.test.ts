@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CloudHostEnrolmentFailure } from '../cloud-platform/cloud-host-enrollment'
 import { startCloudRuntimeAdmission } from '../startup/cloud-runtime-admission'
+import { enrollHostCredential } from '../startup/cloud-host-enrolment-startup'
 import { awaitHostModeEnrolment, hostModeFailurePhase } from './host-mode-enrolment'
 import { admitOrcadCloudRuntime } from './orcad-host-mode-startup'
 import { resolveOrcadExitCode } from './orcad-exit-code'
@@ -85,6 +86,13 @@ describe('host mode enrolment classification', () => {
     { code: 'host_config_invalid', retryable: false, exitCode: 78, phase: 'config' },
     { code: 'runtime_unavailable', retryable: false, exitCode: 78, phase: 'runtime' },
     { code: 'profile_in_use', retryable: false, exitCode: 78, phase: 'enrolment' },
+    {
+      httpStatus: 403,
+      code: 'register_failed',
+      retryable: false,
+      exitCode: 78,
+      phase: 'enrolment'
+    },
     { code: 'network', retryable: true, exitCode: 1, phase: 'enrolment' },
     { httpStatus: 503, code: 'http_5xx', retryable: true, exitCode: 1, phase: 'enrolment' },
     { code: 'heartbeat_failed', retryable: true, exitCode: 1, phase: 'enrolment' },
@@ -116,6 +124,38 @@ describe('host mode enrolment classification', () => {
       })
     }
   )
+
+  // P2-11: a 201 whose body is unreadable must stay protocol/enrolment, not runtime_unavailable.
+  it('keeps a malformed 201 response as protocol/enrolment with exit 78', async () => {
+    const enrolmentError = await capture(
+      enrollHostCredential({
+        apiUrl: 'https://cloud.example.com',
+        hostToken: 'host-token',
+        hostName: 'host-a',
+        directAddrs: [],
+        retry: {
+          enabled: true,
+          fetchImpl: async () => new Response('not-json', { status: 201 }),
+          retryDelaysMs: [],
+          sleep: () => Promise.resolve()
+        }
+      })
+    )
+    const onFailure = vi.fn(recordFailure)
+
+    const thrown = await capture(
+      awaitHostModeEnrolment(admission(Promise.reject(enrolmentError)), true, onFailure)
+    )
+
+    expect(thrown).toMatchObject({ code: 'protocol', retryable: false, httpStatus: 201 })
+    expect(resolveOrcadExitCode(thrown)).toBe(78)
+    expect(readState()).toMatchObject({
+      status: 'error',
+      phase: 'enrolment',
+      lastErrorCode: 'protocol',
+      retryable: false
+    })
+  })
 
   it('keeps actionable guidance for the terminal registration failures', async () => {
     const cases = [

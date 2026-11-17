@@ -155,13 +155,18 @@ describe('host mode exit code matrix', () => {
     ['host_config_invalid', false, 78],
     ['runtime_unavailable', false, 78],
     ['profile_in_use', false, 78],
-    ['heartbeat_unauthorized', false, 78]
+    ['heartbeat_unauthorized', false, 78],
+    ['register_failed', false, 78]
   ] as const)('maps %s (retryable=%s) to exit %i', (code, retryable, expected) => {
     const failure = new CloudHostEnrolmentFailure({ code, retryable })
 
     expect(hostModeExitCodeForFailure(code, retryable)).toBe(expected)
     expect(resolveOrcadExitCode(failure)).toBe(expected)
     expect(resolveOrcadExitCode(new Error('unclassified'))).toBe(ORCAD_EXIT_FAILED)
+  })
+
+  it('registers register_failed explicitly rather than through the retryability fallback', () => {
+    expect(HOST_MODE_FAILURE_EXIT_CODES.register_failed).toBe(ORCAD_EXIT_CONFIGURATION)
   })
 
   it('never publishes the Electron-only exit 3', () => {
