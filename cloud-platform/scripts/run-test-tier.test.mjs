@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import test from 'node:test'
 import {
   CRITICAL_CLOUD_E2E,
@@ -13,6 +13,7 @@ import {
   ensureSupportedNode,
   isSupportedNode,
   main,
+  resolveTierScript,
   runCloudE2E
 } from './run-test-tier.mjs'
 
@@ -97,6 +98,25 @@ test('changedFiles surfaces git failures instead of silently passing', () => {
     return { status: 0, stdout: '', stderr: '' }
   }
   assert.throws(() => changedFiles({ gitRun }), /not a git repository/)
+})
+
+test('resolves the tier script against the repo root, not the caller cwd', () => {
+  const expected = resolve(REPO, 'cloud-platform/scripts/run-test-tier.mjs')
+  assert.equal(resolveTierScript(), expected)
+  assert.equal(existsSync(resolveTierScript()), true)
+})
+
+test('resolves repo-relative tier scripts under REPO', () => {
+  assert.equal(
+    resolveTierScript('cloud-platform/scripts/x.mjs'),
+    resolve(REPO, 'cloud-platform/scripts/x.mjs')
+  )
+})
+
+test('keeps absolute tier script paths unchanged', () => {
+  const absolute = resolve(tmpdir(), 'x.mjs')
+  assert.equal(resolveTierScript(absolute), absolute)
+  assert.equal(resolveTierScript(absolute), resolve(REPO, absolute))
 })
 
 test('full and unknown tiers are rejected before any side effect', async () => {
