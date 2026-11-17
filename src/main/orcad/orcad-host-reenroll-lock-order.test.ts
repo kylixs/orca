@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const calls = vi.hoisted(() => {
   const order: string[] = []
@@ -43,6 +43,11 @@ vi.mock('../runtime/runtime-browser-commands-factory', () => ({
 import { startOrcadWithHost } from './orcad-lifecycle'
 
 describe('--reenroll runs inside the orcad instance lock', () => {
+  beforeEach(() => {
+    calls.order.length = 0
+    vi.clearAllMocks()
+  })
+
   it('takes the lock before it reads or renames any credential', async () => {
     calls.order.length = 0
     await startOrcadWithHost(
