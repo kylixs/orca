@@ -1781,3 +1781,14 @@ test('M116-QA-030 筛选后行内详情按钮仍打开对应主机', async () =>
   assert.match(drawer!.textContent ?? '', /维护中/, 'the drawer carries the derived verdict')
   record('QA-030-detail', '搜索后行内「详情」仍绑定该主机并打开抽屉（名称 + 维护中）')
 }, 120_000)
+
+test('WEB-R2-012 管理员项目页副标题说明为管理员视图', async () => {
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  await page.clickNav('projects')
+  const subtitle =
+    page.window.document.querySelector('#content .page-head p')?.textContent ?? ''
+  assert.match(subtitle, /管理员视图/)
+  assert.doesNotMatch(subtitle, /仅展示你有「打开项目」权限的项目/)
+}, 120_000)

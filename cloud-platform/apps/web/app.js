@@ -1827,7 +1827,7 @@ async function renderProjects() {
   const archived = isAdmin() ? state.archivedProjects : []
   content().innerHTML = `
     <div class="page-head">
-      <div><h1>我的项目</h1><p>仅展示你有「打开项目」权限的项目。</p></div>
+      <div><h1>我的项目</h1><p>${isAdmin() ? '管理员视图：展示全部项目（含管理员可见、未授权）。' : '仅展示你有「打开项目」权限的项目。'}</p></div>
       <div style="display:flex;gap:8px">
         ${isAdmin() ? '<button class="btn primary" id="registerProjectBtn">登记项目</button>' : ''}
         <button class="btn" onclick="location.reload()">刷新</button>
