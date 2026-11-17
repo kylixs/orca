@@ -337,7 +337,7 @@ describe('审计导出受理（真实平台进程）', () => {
     assert.ok((controlJob.totalEvents ?? 0) > 0, 'unfiltered export must see fixture events')
   })
 
-  test('E5-11 默认窗口：q/fileName 无时间界为 7 天，其余为 31 天', async () => {
+  test('E5-11 默认窗口在受理时冻结：q/fileName 7 天，其余 31 天，until=受理时刻', async () => {
     const qBefore = Date.now()
     const qRes = await postExport(adminToken, {
       confirm: true,
@@ -351,7 +351,11 @@ describe('审计导出受理（真实平台进程）', () => {
       Math.abs(qSince - (qBefore - AUDIT_RECENT_WINDOW_MS)) <= 5_000,
       `q filter must default to 7 days, got ${qSince}`
     )
-    assert.equal(qJob.query?.until, undefined)
+    const qUntil = typeof qJob.query?.until === 'number' ? qJob.query.until : Number.NaN
+    assert.ok(
+      Math.abs(qUntil - (qJob.createdAt ?? 0)) <= 5_000,
+      `an absent until must freeze at acceptance, got ${qUntil}`
+    )
 
     const defaultBefore = Date.now()
     const defaultRes = await postExport(adminToken, { confirm: true, format: 'csv' })
@@ -363,7 +367,78 @@ describe('审计导出受理（真实平台进程）', () => {
       Math.abs(defaultSince - (defaultBefore - AUDIT_WINDOW_MS)) <= 5_000,
       `an unfiltered export must keep the 31-day window, got ${defaultSince}`
     )
-    assert.equal(defaultJob.query?.until, undefined)
+    const defaultUntil =
+      typeof defaultJob.query?.until === 'number' ? defaultJob.query.until : Number.NaN
+    assert.ok(
+      Math.abs(defaultUntil - (defaultJob.createdAt ?? 0)) <= 5_000,
+      `an unfiltered export must freeze until at acceptance, got ${defaultUntil}`
+    )
+  })
+
+  test('E5-12 显式时间界原样冻结；未来 until 夹到受理时刻并写入受理审计', async () => {
+    const since = Date.now() - 2 * 60 * 60_000
+    const until = Date.now() - 60 * 60_000
+    const explicit = await postExport(adminToken, {
+      confirm: true,
+      format: 'csv',
+      since: new Date(since).toISOString(),
+      until: new Date(until).toISOString()
+    })
+    assert.equal(explicit.status, 202)
+    const explicitJob = await waitForTerminal(explicit.body.jobId ?? '')
+    assert.equal(explicitJob.query?.since, since)
+    assert.equal(explicitJob.query?.until, until)
+
+    const log = await auditEvents({ eventType: 'audit_export', result: 'success' })
+    const accepted = log.events?.find(
+      (entry) =>
+        entry.metadata?.jobId === explicit.body.jobId && entry.metadata?.phase === 'accepted'
+    )
+    assert.ok(accepted, 'accepted export must be audited')
+    const auditedQuery = accepted.metadata?.query
+    assert.ok(isRecord(auditedQuery))
+    assert.equal(auditedQuery.since, since)
+    assert.equal(auditedQuery.until, until)
+
+    const futureBefore = Date.now()
+    const future = await postExport(adminToken, {
+      confirm: true,
+      format: 'csv',
+      until: new Date(Date.now() + 24 * 60 * 60_000).toISOString()
+    })
+    assert.equal(future.status, 202)
+    const futureJob = await waitForTerminal(future.body.jobId ?? '')
+    const futureUntil =
+      typeof futureJob.query?.until === 'number' ? futureJob.query.until : Number.NaN
+    assert.ok(
+      Math.abs(futureUntil - (futureJob.createdAt ?? 0)) <= 5_000,
+      `a future until must clamp to acceptance, got ${futureUntil}`
+    )
+    assert.ok(futureUntil < futureBefore + 5_000, `future until leaked: ${futureUntil}`)
+  })
+
+  test('E5-13 并发受理的任务串行执行且都会完成（drain 闸门）', async () => {
+    const body = (keyword: string): Record<string, unknown> => ({
+      confirm: true,
+      format: 'csv',
+      q: keyword,
+      since: new Date(Date.now() - 60 * 60_000).toISOString()
+    })
+    const [first, second] = await Promise.all([
+      postExport(auditorToken, body('no-such-keyword-a')),
+      postExport(auditorToken, body('no-such-keyword-b'))
+    ])
+    assert.equal(first.status, 202)
+    assert.equal(second.status, 202)
+
+    const jobs = await Promise.all([
+      waitForTerminal(first.body.jobId ?? ''),
+      waitForTerminal(second.body.jobId ?? '')
+    ])
+    assert.deepEqual(
+      jobs.map((job) => job.status),
+      ['succeeded', 'succeeded']
+    )
   })
 
   test('E5-8 并发上限：活动任务达上限时 → 429 EXPORT_BUSY', async () => {

@@ -40,7 +40,7 @@ import {
   type SigningKey
 } from '../../../packages/contract/src/credential.ts'
 import { AuditChain, type AuditSummary } from './audit.ts'
-import { AUDIT_WINDOW_MS, parseAuditQuery } from './audit-query.ts'
+import { AUDIT_RECENT_WINDOW_MS, AUDIT_WINDOW_MS, parseAuditQuery } from './audit-query.ts'
 import {
   AUDIT_EXPORT_OBJECT_KEYS,
   DEFAULT_AUDIT_EXPORT_DOWNLOAD_TOKEN_TTL_MS,
@@ -1853,6 +1853,42 @@ function validateFileEventMetadata(input: {
   return { ok: true, metadata, excerptDropped }
 }
 
+/**
+ * Serializes accepted-export drains per process: a trigger during a pass queues
+ * one sequential follow-up, so passes never overlap and no accepted job is
+ * dropped. The pass is scheduled so the 202 flushes first; faults are logged only.
+ */
+export function createAuditExportDrain(
+  run: () => Promise<unknown>,
+  schedule: (callback: () => void) => unknown = setImmediate
+): () => void {
+  let inFlight: Promise<unknown> | null = null
+  let pending = 0
+  const start = (): void => {
+    inFlight = new Promise<void>((resolve) => {
+      schedule(resolve)
+    })
+      .then(run)
+      .catch((error: unknown) => {
+        console.error('[audit-export] worker run failed:', error)
+      })
+      .finally(() => {
+        inFlight = null
+        if (pending > 0) {
+          pending -= 1
+          start()
+        }
+      })
+  }
+  return () => {
+    if (inFlight) {
+      pending += 1
+      return
+    }
+    start()
+  }
+}
+
 export function createApp(config: ApiConfig): ApiHandle {
   const now = config.now ?? (() => Date.now())
   const accessTtlMs = config.accessTtlMs ?? ACCESS_TTL_MS
@@ -1937,18 +1973,12 @@ export function createApp(config: ApiConfig): ApiHandle {
     }
   })
   /**
-   * One pass per accepted job, after the 202 is written. `runAuditExportJob`
-   * persists `markRunning` before its first await, so overlapping passes (and
-   * overlapping setImmediate callbacks) cannot both claim a queued job.
+   * One pass per accepted job, after the 202 is written. The drain gate keeps a
+   * single pass in flight per process; `markRunning` stays the ownership claim.
    */
-  function scheduleAuditExportRun(): void {
-    setImmediate(() => {
-      // The 202 is already sent; a worker fault must not surface as a response error.
-      void auditExportWorker
-        .processQueuedAuditExports(1)
-        .catch((error: unknown) => console.error('[audit-export] worker run failed:', error))
-    })
-  }
+  const scheduleAuditExportRun = createAuditExportDrain(() =>
+    auditExportWorker.processQueuedAuditExports(1)
+  )
 
   /**
    * U115: the copied install command runs without a session, so the wizard mints
@@ -5408,18 +5438,21 @@ export function createApp(config: ApiConfig): ApiHandle {
         if (Number.isNaN(requestedUntil)) {
           return error(res, 400, 'INVALID_QUERY', 'until 不是有效时间。', traceId)
         }
-        // Clamp only a future until so the exported set stays stable; an absent
-        // until is left to the parser's default window.
+        // Clamp a future until; freezing below also caps an absent until at now.
         params.set('until', new Date(Math.min(requestedUntil, nowMs)).toISOString())
       }
       const parsedQuery = parseAuditQuery(params, nowMs)
       if (!parsedQuery.ok) {
         return error(res, 400, parsedQuery.code, parsedQuery.message, traceId)
       }
-      // Design §2.4 default window: q/fileName → 7d (parser), everything else 31d.
-      if (parsedQuery.value.since === undefined && parsedQuery.value.until === undefined) {
-        parsedQuery.value.since = nowMs - AUDIT_WINDOW_MS
-      }
+      // Freeze the exported set at acceptance: the worker must not page past what
+      // the caller saw. Defaults stay q/fileName → 7d, everything else 31d.
+      const frozenUntil = Math.min(parsedQuery.value.until ?? nowMs, nowMs)
+      const recent =
+        parsedQuery.value.keyword !== undefined || parsedQuery.value.fileName !== undefined
+      parsedQuery.value.since =
+        parsedQuery.value.since ?? frozenUntil - (recent ? AUDIT_RECENT_WINDOW_MS : AUDIT_WINDOW_MS)
+      parsedQuery.value.until = frozenUntil
 
       const quota = auditExportStore.checkQuota(authed.user.id)
       if (!quota.ok) {
