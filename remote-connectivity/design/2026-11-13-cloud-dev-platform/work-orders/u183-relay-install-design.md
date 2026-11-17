@@ -1373,3 +1373,36 @@ R13c ─ {R14a, R14b, R14c, R14d}
 | --- | --- | --- |
 | v1 | 2026-11-17 | 初稿（`f34e2c437a8`），方案 A + 14 令 |
 | v2 | 2026-11-17 | 处理评审 3 个 P0、6 个 P1、7 个 P2；入口守卫、VERSION/清单、完整 unit、tar 类型检查、MainPID/nonce、归属裁定、bundle 契约、拆分为 22 令；v1 原文保留于附录 A |
+
+---
+
+## 附录 C：落地对账（2026-11-17）
+
+全部 22 令（R1–R15，其中 R10/R11/R13/R14 各拆 a/b/c/d）已落地；下列提交均已在分支上核验。
+
+| 令 | 提交 | 验证 |
+| --- | --- | --- |
+| R1 确定性 bundle 构建 | `d3c6b45195e` | build-relay-bundle 自测 5 例；两次构建同 sha |
+| R2 bundle 路由 + 内嵌 sha | `919f35e3cc3` | install-wizard 12 例 + 回归 67 |
+| R3 realpath 入口守卫 | `61560b6ddac` | relay-entry 7 例 |
+| R4 预检 64/68/78 | `77ff4fef82d` | install-wizard 55 → 后续套件 |
+| R5 下载/sha/清单/离线 | `abcaf2c2d73` | 6 钉 + 四套 76/76 |
+| R6 tar 白名单/解包/切换 | `0a1ee1e3bc7` | 35+42 例 |
+| R7 env 原子写 + nonce/id | `4f08de6c7fe` | 42+55 例 |
+| R8 systemd unit 安装 | `8471cd1231a` | unit 文本 + enable 失败 69 |
+| R9 无 systemd wrapper/pid | `063968f5003` | 60+56 例 |
+| R10a announce 带 nonce | `f230790ddc6` | relay-install-nonce 35+16+12 |
+| R10b 自证（MainPID/pid + nonce + 时钟） | `f5c3061d8f4` | 自证 5 场景；install-wizard 121 例 |
+| R11a 安装锁/幂等 | `f69c8aa0dfe` | 锁 75、同 sha、previous 规则 |
+| R11b 升级/回滚/N-1 | `c47d740a73b` | 74+28 例 |
+| R12 脚本命令 helper | `a0e78a1d1f1` | helper 5 例 |
+| R13a 容器 harness | `bd0b2ae8b48` | 自测 5 例 |
+| R13b 运行器 + 证据契约 | `0db9dff4ead` | 13 例 |
+| R13c 容器正向 e2e | `1afd4595c5e` | PASS `evidence/u183-r13c-20261117T111608Z/` |
+| R14a N1/N3/N4 | `5a16d760ef8` | PASS `evidence/u183-r14a-20261117T112202Z/` |
+| R14b N2/N6 | `1f42295aa03` | PASS `evidence/u183-r14b-20261117T112539Z/`（U189 后） |
+| R14c N5/N7 | `ba5a4fad58c` | PASS `evidence/u183-r14c-20261117T113125Z/`（U191 后分类） |
+| R14d N8 | `c6d2941d539` | PASS `evidence/u183-r14d-20261117T112558Z/` |
+| R15 下载缓存清理 | `e8e557bee3a` | install-wizard 77/77（含 3 新例） |
+
+实现期偏离与修复（均已在 defect-ledger 关闭）：U184 bundle 模式不再要求仓库 checkout；U186 仓库模式 launcher 用自身入口；U187 unit 对齐 §3.2 + systemd<229 降级；U188 仓库模式需 `ORCA_RELAY_ALLOW_UNVERIFIED=1`；U189 凭据失败停止中继；U190/U191 证据退出码分类补 70/69/75。
