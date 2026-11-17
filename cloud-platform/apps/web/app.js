@@ -5279,6 +5279,25 @@ window.addEventListener('hashchange', () => {
   applyRoute(parseHash(location.hash))
 })
 
+/** U242: shared startup completion. Returns true when a newer generation owns the
+ * view and this late `/v1/me` must not enter the app. */
+function finishStartupMe(me, startupEpoch, cachedUser) {
+  // U239: a login/logout during the await owns the newer generation.
+  // U240: a failed login is a newer generation without a session; its view must return.
+  if (state.authEpoch !== startupEpoch) {
+    if (!state.user) {
+      if (cachedUser) localStorage.removeItem('orca.user')
+      showLogin()
+    }
+    return true
+  }
+  state.user = { ...me.user, displayName: me.user.displayName, dept: me.user.dept }
+  // U222 N3/U225 N3R: bind the legacy keys once the account is known.
+  bindLegacyTokenOwner(me.user.username)
+  enterApp()
+  return false
+}
+
 // restore session
 ;(async () => {
   // U238: a login during startup is a newer generation; its continuation must not
@@ -5313,21 +5332,7 @@ window.addEventListener('hashchange', () => {
         try {
           // Why retried: the bootstrap must not start a second refresh chain.
           const me = await withTimeout(api('/v1/me', {}, { retried: true }), STARTUP_TIMEOUT_MS)
-          // U239: a login/logout during the await owns the newer generation.
-          // U240: a failed login is a newer generation without a session; its view must return.
-          if (state.authEpoch !== startupEpoch) {
-            if (!state.user) {
-              if (cachedUser) localStorage.removeItem('orca.user')
-              showLogin()
-            }
-            return
-          }
-          state.user = { ...me.user, displayName: me.user.displayName, dept: me.user.dept }
-          // U225 N3R: a stale cookie marker can survive a server downgraded to
-          // never; the body fallback restored the legacy keys, so bind them.
-          bindLegacyTokenOwner(me.user.username)
-          enterApp()
-          return
+          return finishStartupMe(me, startupEpoch, cachedUser)
         } catch {
           // fall through to the login view
         }
@@ -5346,21 +5351,7 @@ window.addEventListener('hashchange', () => {
       try {
         // U229 F5: the legacy token path includes its own body refresh.
         const me = await withTimeout(api('/v1/me'), STARTUP_TIMEOUT_MS)
-        // U239: a login/logout during the await owns the newer generation.
-        // U240: a failed login is a newer generation without a session; its view must return.
-        if (state.authEpoch !== startupEpoch) {
-          if (!state.user) {
-            if (cachedUser) localStorage.removeItem('orca.user')
-            showLogin()
-          }
-          return
-        }
-        state.user = { ...me.user, displayName: me.user.displayName, dept: me.user.dept }
-        // U222 N3: a body refresh at startup has no user yet, so bind the
-        // legacy keys once the account is known.
-        bindLegacyTokenOwner(me.user.username)
-        enterApp()
-        return
+        return finishStartupMe(me, startupEpoch, cachedUser)
       } catch {
         // U238/U239: never clear a newer login's tokens or views, but a failed
         // login (no user) must still fall through. Runs before abandonStartupAuth().

@@ -539,3 +539,77 @@ describe('U240 启动 /v1/me 在途时失败登录', () => {
     )
   })
 })
+
+describe('U242 启动成功续集：旧模式迟到 200 与在途登出', () => {
+  test('旧模式迟到 200：失败登录后仍停在登录页，旧 orca.user 缓存清除', async () => {
+    const base = await start({ cookieMode: 'never' })
+    const session = await legacySession(base)
+    const page = loadWebConsolePage(base, {
+      storage: {
+        'orca.access': session.accessToken,
+        'orca.refresh': session.refreshToken,
+        'orca.tokenOwner': 'admin',
+        'orca.user': JSON.stringify({ username: 'stale-account', displayName: '旧账号' })
+      },
+      holdOnLoad: ['GET /v1/me']
+    })
+    await page.settle()
+    assert.ok(page.calls().includes('GET /v1/me'), 'precondition: startup /v1/me is on the wire')
+
+    await page.submitLogin('admin', 'wrong-password')
+    assert.equal(page.hidden('#view-login'), true, 'precondition: the failed login leaves views as-is')
+
+    await page.release()
+    await page.settle()
+
+    assert.equal(
+      page.hidden('#view-login'),
+      false,
+      'a failed login is a newer generation without a session; the view must return to login'
+    )
+    assert.equal(page.hidden('#view-app'), true, 'the late 200 must not enter the app')
+    assert.equal(
+      page.window.localStorage.getItem('orca.user'),
+      null,
+      'the stale cached user must be cleared'
+    )
+  })
+
+  test('启动 /v1/me 在途时登出：迟到 200 不复活会话，logout 不重复', async () => {
+    const base = await start({ cookieMode: 'never' })
+    const session = await legacySession(base)
+    const page = loadWebConsolePage(base, {
+      storage: {
+        'orca.access': session.accessToken,
+        'orca.refresh': session.refreshToken,
+        'orca.tokenOwner': 'admin',
+        'orca.user': JSON.stringify({ username: 'admin', displayName: '平台管理员' })
+      },
+      holdOnLoad: ['GET /v1/me']
+    })
+    await page.settle()
+    assert.ok(page.calls().includes('GET /v1/me'), 'precondition: startup /v1/me is on the wire')
+
+    // Why fail the sign-out: a revoked session would make the late /v1/me a 401,
+    // which cannot prove the success-path guard discards it. With the platform
+    // unreachable the held /v1/me still answers 200 — exactly the late result
+    // that must not revive the session.
+    page.fail('POST', '/v1/auth/logout')
+    page.window.document.querySelector<HTMLButtonElement>('#logoutBtn')!.click()
+    await page.settle()
+    const logoutsAfterSignOut = logoutCalls(page).length
+    assert.equal(logoutsAfterSignOut, 1, 'precondition: the sign-out reached the platform once')
+
+    await page.release()
+    await page.settle()
+
+    assert.equal(page.hidden('#view-login'), false, 'the user must stay on the login view')
+    assert.equal(page.hidden('#view-app'), true, 'a late startup /v1/me must not revive the session')
+    assert.equal(page.window.localStorage.getItem('orca.user'), null)
+    assert.equal(
+      logoutCalls(page).length,
+      logoutsAfterSignOut,
+      'discarding the late result must not amplify logout'
+    )
+  })
+})
