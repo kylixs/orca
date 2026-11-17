@@ -1,6 +1,5 @@
 import { after, before, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
 import { createServer as createNetServer } from 'node:net'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -34,19 +33,28 @@ import { ROOT, spawnService, type Service } from './harness.ts'
  * refresh) or the body fallback with the literal "undefined". It never issues
  * the design's one no-body probe, and the legacy keys survive until a later
  * load has learned `refreshCookie: true`. The assertions below pin that fact
- * instead of claiming the designed behaviour.
+ * instead of claiming the designed behaviour, and the test title carries the
+ * `INVALID-FACT（不计 AC15(g)）` prefix so a pass count is never read as
+ * AC15(g) acceptance. The designed single-reload migration is a skip stub,
+ * blocked by U219/D17.
  *
  * The legacy build is served from a temporary web root: the current build is
- * pinned to HEAD at `/` (the release store snapshots it at startup), and the
- * pre-S4 app.js is fulfilled behind `/legacy.html`, so both builds share one
- * origin, one cookie jar and one localStorage.
+ * read from the working tree at `/` (no `git show`, so a shallow clone still
+ * works), and the pre-S4 app.js comes from the checked-in snapshot
+ * `test/fixtures/u197-legacy-app.js.snapshot`, so both builds share one origin,
+ * one cookie jar and one localStorage.
  */
 
 const HOST = '127.0.0.1'
 const READY = /\[api\] listening on http:\/\/127\.0\.0\.1:(\d+)/
-/** Parent of the S4 commit: the console before any Cookie capability existed. */
-const LEGACY_APP_REV = '15e5ea8ae6b^'
-const ACCESS_TTL_MS = 6000
+/** Checked-in snapshot of `apps/web/app.js` at `15e5ea8ae6b^` (= `e97878fb55a`).
+ * The `.snapshot` suffix keeps oxlint/oxfmt from rewriting an exact copy. */
+const LEGACY_APP_FIXTURE = join(ROOT, 'test/fixtures/u197-legacy-app.js.snapshot')
+/**
+ * Long enough that the freshly minted legacy access survives the login
+ * assertions on a slow runner (N3); tests that need a 401 still wait it out.
+ */
+const ACCESS_TTL_MS = 15_000
 const USERNAME = 'admin'
 const PASSWORD = 'Adm1n!'
 const VIEW_APP = '#view-app'
@@ -85,20 +93,19 @@ async function reservePort(): Promise<number> {
   return address.port
 }
 
-function headAsset(name: string): string {
-  return execFileSync('git', ['-C', ROOT, 'show', `HEAD:cloud-platform/apps/web/${name}`], {
-    encoding: 'utf8'
-  })
+function webAsset(name: string): string {
+  return readFileSync(join(ROOT, 'apps/web', name), 'utf8')
 }
 
 function buildLegacyWebRoot(): void {
   webRoot = join(workDir, 'web')
-  // Pin the current build to HEAD, so an uncommitted working-tree edit in
-  // another lane cannot silently become the fixture under test.
+  // Read the app assets from the working tree, not `git show HEAD:` — a shallow
+  // clone has no usable history, and the test is meant to exercise the build
+  // under test rather than a historical one.
   for (const name of ['index.html', 'app.js', 'styles.css', 'router/routes.js']) {
     const target = join(webRoot, name)
     mkdirSync(dirname(target), { recursive: true })
-    writeFileSync(target, headAsset(name))
+    writeFileSync(target, webAsset(name))
   }
   const index = readFileSync(join(webRoot, 'index.html'), 'utf8')
   const legacyScript = '<script type="module" src="/legacy-app.js"></script>'
@@ -110,11 +117,7 @@ function buildLegacyWebRoot(): void {
     join(webRoot, 'legacy.html'),
     index.replace('<script type="module" src="/app.js"></script>', legacyScript)
   )
-  legacyAppSource = execFileSync(
-    'git',
-    ['-C', ROOT, 'show', `${LEGACY_APP_REV}:cloud-platform/apps/web/app.js`],
-    { encoding: 'utf8' }
-  )
+  legacyAppSource = readFileSync(LEGACY_APP_FIXTURE, 'utf8')
   assert.ok(legacyAppSource.length > 1000, 'the pre-S4 build must be readable')
   assert.equal(
     legacyAppSource.includes('orca.authMode'),
@@ -332,6 +335,14 @@ describe('U197 AC9d / AC15(g) 真实 Chromium 迁移与旧构建夹具', () => {
       await replayed
       await delay(200)
 
+      // The in-page refresh (and the replayed business call) still belong to the
+      // pre-S4 build: no `/v1/auth/*` request may carry the new web contract.
+      assert.equal(
+        calls.every((call) => call.contract === undefined),
+        true,
+        'the legacy page never sends the web contract header, even after the in-page refresh'
+      )
+
       assert.equal(trace.bodies.length, 1, 'one body refresh for the in-page 401')
       const sent = JSON.parse(trace.bodies[0] ?? '{}') as Record<string, unknown>
       assert.equal(
@@ -363,7 +374,7 @@ describe('U197 AC9d / AC15(g) 真实 Chromium 迁移与旧构建夹具', () => {
     }
   })
 
-  test('AC15(g) 换回新构建：单次重载不是无 body 刷新（INVALID），后续加载才清理旧键', async () => {
+  test('INVALID-FACT（不计 AC15(g)）换回新构建：单次重载不是无 body 刷新，后续加载才清理旧键', async () => {
     const context = await browser.newContext()
     const page = await context.newPage()
     try {
@@ -371,9 +382,21 @@ describe('U197 AC9d / AC15(g) 真实 Chromium 迁移与旧构建夹具', () => {
       // orca.refresh === "undefined", no capability marker.
       await gotoLegacy(page)
       await loginThroughUi(page)
+      const loginCompletedAt = Date.now()
       assert.equal((await readStoredAuth(page)).refresh, 'undefined')
       assert.ok(await refreshCookie(context))
 
+      // N3 timing: the access token is minted at login and lives ACCESS_TTL_MS
+      // (15 s). Everything between login and the first load below is local and
+      // normally finishes in well under a second; 5 s is kept as margin so a
+      // slow runner fails here loudly instead of mis-reading a lateness-induced
+      // refresh as the (absent) design behaviour.
+      assert.ok(
+        Date.now() - loginCompletedAt < ACCESS_TTL_MS - 5000,
+        'the first current-build load must happen while legacy access is still valid'
+      )
+
+      // ── 事实钉住（FACT，仅描述当前实现；不计 AC15(g)）──
       // First load of the current build while the access token is still valid.
       const immediate = traceRefresh(page)
       await page.goto(`${api.url}/`, { waitUntil: 'domcontentloaded' })
@@ -395,9 +418,16 @@ describe('U197 AC9d / AC15(g) 真实 Chromium 迁移与旧构建夹具', () => {
       // The access token expires; the current build still falls back to the
       // legacy body contract (with the literal), which the Cookie rescues.
       await delay(ACCESS_TTL_MS + 700)
+      const fallbackCookieBefore = await refreshCookie(context)
+      assert.ok(fallbackCookieBefore, 'the legacy Cookie must still be present')
+      const fallbackResponse = page.waitForResponse(
+        (response) => isRefreshRequest(response.request()),
+        { timeout: 20_000 }
+      )
       const fallback = traceRefresh(page)
       await page.reload({ waitUntil: 'domcontentloaded' })
       await page.waitForSelector(VIEW_APP, { state: 'visible', timeout: 20_000 })
+      const fallbackBody = (await (await fallbackResponse).json()) as Record<string, unknown>
       await delay(300)
 
       assert.equal(fallback.bodies.length, 1, 'the expired load refreshes once')
@@ -411,10 +441,26 @@ describe('U197 AC9d / AC15(g) 真实 Chromium 迁移与旧构建夹具', () => {
         'undefined'
       )
       assert.deepEqual(fallback.statuses, [200], 'the Cookie keeps the fake body benign')
+      assert.equal(
+        'refreshToken' in fallbackBody,
+        false,
+        'a fake body must never become a refresh in the response'
+      )
+      const fallbackCookieAfter = await refreshCookie(context)
+      assert.ok(fallbackCookieAfter, 'the Cookie must survive the body fallback')
+      assert.equal(
+        fallbackCookieAfter.value,
+        fallbackCookieBefore.value,
+        'a fake body refresh is Cookie-sourced, so the Cookie is not rotated'
+      )
       const afterFallback = await readStoredAuth(page)
       assert.equal(afterFallback.refresh, 'undefined', 'keys are kept until a no-body success')
       assert.equal(afterFallback.mode, 'cookie', 'refreshCookie:true finally proves the capability')
 
+      // ── 设计期望（AC15(g)）──
+      // AC15(g) wants the one no-body migration on the FIRST reload. The current
+      // build only reaches it on a later load once the marker is learned; the
+      // single-reload expectation stays blocked (see the skip stub below).
       // With the marker learned, the next reload performs the one no-body
       // Cookie refresh and only then deletes the legacy keys (session still live).
       const noBody = traceRefresh(page)
@@ -435,6 +481,11 @@ describe('U197 AC9d / AC15(g) 真实 Chromium 迁移与旧构建夹具', () => {
       await context.close()
     }
   })
+
+  // AC15(g) 的设计期望：从 pre-S4 状态出发，第一次重载就完成无 body Cookie
+  // 迁移。当前构建要等到后续加载学到 refreshCookie 才做到（见上方 INVALID-FACT
+  // 用例），所以这里只留 skip 桩，避免把事实钉住误读为 AC15(g) 已验收。
+  test('AC15(g) 单次重载迁移（blocked）', { skip: 'blocked by U219/D17' }, () => {})
 
   test('判别力：伪造 orca_refresh + 假 body 必须 401 SESSION_EXPIRED', async () => {
     const context = await browser.newContext()
