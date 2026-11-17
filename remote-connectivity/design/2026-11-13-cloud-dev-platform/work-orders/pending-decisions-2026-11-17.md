@@ -139,8 +139,8 @@
 
 | 项 | 状态 | 证据 |
 | --- | --- | --- |
-| 前提被真栈证伪 | 已确认：V8a-1 单窗、V8a-2 第二客户端均无法造出「宿主 2 / 桌面 1」稳定分歧，桌面约 1.5s 内自动采纳 | `defect-ledger.md` U176（L188）；`u163-desktop-layout-apply-design.md` 附录 D.1/D.2 |
-| C1 闸门矛盾 | 已确认：`executionHostIsLocal===false` 才 skip，而本地正是「已自动采纳」子集，非本地反被排除 | 附录 D.3；`host-layout-catchup-decision.ts:79`、`run-local-host-layout-catchup.ts:178-179` |
+| 前提未验证（复诊） | **更正（2026-11-18）**：V8a-1/V8a-2 两轮真栈无效——未开 opt-in、无 headless 前置、`waitForTimeout(1500)` 非实测时延、未统计入站转发；分歧实际由宿主转发、桌面 renderer 应用 split。前提既未被证伪也未被证实 | `test-reports/u176-catchup-premise-recheck.md`；`defect-ledger.md` U176 |
+| C1 闸门矛盾 | **部分更正**：非本地宿主有 `session.tabs.subscribe` 活动流应用完整快照，本地普通 worktree 反而没有；C1 只跑本地与缺口位置一致，原「矛盾」表述不准确 | 附录 D.3；复诊报告 |
 | 当前处置 | **(c) 已落地**：钩子默认关闭，`localStorage['orca.debug.hostLayoutCatchup']==='1'` 才启用；关闭态无订阅/无 list 调用 | 提交 `c11e8b8b79e`；`src/renderer/src/app-shell/use-local-host-layout-catchup.ts` |
 | 代码/测试保留 | V1–V7 全部保留（预 seed、组去重、焦点 pin 等已验证语义） | 附录 D.4；提交 `b4b34687de3`…`d5429c64eb3` |
 | 设计记录 | 附录 D 已入库 | 提交 `c04be66113c` |
