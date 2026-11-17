@@ -4275,3 +4275,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U241① 复审 APPROVED**：幂等覆盖全部 target、审计归属如实（success/denied 各归实际撤销路径）、epoch 只 +1、200/清 Cookie 不变、半 body 交错顺序无关；archive 红证据（回退→2 fail）；五套件 82/82。台账 U241 记录 ① 闭环；②（reuse/过期 epoch）③（屏障超时）仍开；新增观察：已删用户撤销无 success 审计（既有）。
 - **U242 落地**（`ecd8f046512`，3 文件）：`finishStartupMe()` 统一两条成功分支（消除 19 行重复，行为逐字一致）；补 legacy hold `/v1/me` + 错误密码、启动在途登出两例（关闭守卫回退→2 红）；六套件 76 pass/2 skip；pin 同步。主会话复跑 28 pass/1 skip；待复审。
 - **U241②③ 落地**（`278791fc5bd`，3 文件）：`revokeSessionOnce()` 幂等撤销统一所有撤销点（过期/已撤销/reuse/禁用/登出/设备批量），epoch 一致；`rendezvous()` 2s 超时兜底；新套件 `u241-revocation-epoch` 3 例（回退红）；代理回归 94/94 + 32/32，主会话 65/65。待复审。
+- **U242 复审 APPROVED**：`finishStartupMe()` 与两处原逻辑逐字等价（守卫条件/字段拼装/`bindLegacyTokenOwner` 位置/`enterApp` 顺序/异常语义）；两例为「关闭守卫」mutation 红（非 parent-red，台账按此表述）；pin 一致；回归 22/22 + 32/32。台账 U242 翻 🟢。
