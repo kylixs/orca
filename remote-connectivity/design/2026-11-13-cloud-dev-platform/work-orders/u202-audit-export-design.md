@@ -496,3 +496,25 @@ POST → queued → running → succeeded
 - `cloud-platform/apps/api/src/server.ts:233-235`、`:290-294`（hashToken/safeEqual）、`:1901-1938`（一次性下载 token 先例）、`:3022`、`:3440`（no-store 先例）
 - `cloud-platform/apps/web/app.js:44-63`（api）、`:3431`（标签）、`:3798-3990`（审计页）、`:3956`（工具栏）、`:4374`（dialog）
 - `cloud-platform/test/e2e/audit-trace-window.e2e.test.ts:1-35`（e2e 夹具与注入时钟先例）
+
+---
+
+## 9. 实施记录（2026-11-17）
+
+| 令 | 状态 | 提交 |
+| --- | --- | --- |
+| E1 查询解析抽取 | 完成 | `90813b943fe`（24 单测 + 审计 e2e 17/17） |
+| E2 导出事件类型/标签 | 完成 | `4516b807c73`（目录 2 例 + 状态 e2e 3 例） |
+| E3 任务存储/生命周期 | 完成 | `30ddca4d064`（12 例；命名按设计 `succeeded`/`createdAt`） |
+| E4 CSV/JSONL 序列化 | 完成 | `1be0ffab984`（12 例；BOM 留 E8 按 D9） |
+| E5 受理路由 | 完成 | `e211ed0dfa2`（9 e2e；D3/D4/D7 按建议默认） |
+| E6 worker | 完成 | `9a119fbf50d`（7 例） |
+| E6b worker 触发接线（U204） | 进行中 | — |
+| E7a 下载 token 原语 | 完成 | `9e5300e5914`（18 例） |
+| E7 状态端点 | 完成 | `720cb9a96d3`（10 e2e；每次读取轮换 token） |
+| E8 下载端点 | 待派 | — |
+| E9 清理/恢复/env/隔离 | 完成 | `a43bbde1fe0` + `492bf54b076`（35+2 例） |
+| E10 能力字段 | 待派 | — |
+| E11–E13 Web/文档 | 待派 | — |
+
+已采纳的默认（待正式裁定可回退）：D3 超限异步失败；D4 100k 行 / 64 MiB / 1h / 每用户 2 / 全局 8；D7 创建审计 fail-closed；D1 单写者文件存储（多副本见 U201 风险）。环境变量按本文件 §3.2 使用 `ORCA_AUDIT_EXPORT_DIR`，兼容旧别名 `ORCA_AUDIT_EXPORT_ROOT`。
