@@ -187,21 +187,28 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
             ? shapeMatches
             : accepted.rendererAuthoredLayoutDigest ===
               getMobileSessionAuthoredLayoutDigest(snapshot)
+      // Why: a fresh process has no accepted publication, but a persisted host
+      // split is still host-authored layout. A serve-only hydrate synthesizes
+      // one throwaway group, where the desktop renderer is the first real author.
+      const firstOpenHostLayoutAuthority =
+        accepted === undefined &&
+        existing !== undefined &&
+        this.isHeadlessBuiltMobileSessionPublicationBase(existing.publicationEpoch) &&
+        ((existing.tabGroups?.length ?? 0) > 1 || existing.tabGroupLayout !== undefined)
       const preserveHostLayout =
         existing !== undefined &&
-        accepted !== undefined &&
-        this.isHeadlessBuiltMobileSessionPublicationBase(existing.publicationEpoch) &&
-        (sameGeneration ? digestMatches : shapeMatches)
+        (firstOpenHostLayoutAuthority ||
+          (accepted !== undefined &&
+            this.isHeadlessBuiltMobileSessionPublicationBase(existing.publicationEpoch) &&
+            (sameGeneration ? digestMatches : shapeMatches)))
       // Why: focus is adopted as a pair. A group that is not live in the host
       // tree, or an incoming active tab the group does not hold, would highlight
       // a group the tab is not in — keep the host's focus instead.
       // Why fencedSnapshot: a tab retired by a fence must not license its group.
       const incomingActiveTabTopLevelId =
         typeof fencedSnapshot.activeTabId === 'string' && fencedSnapshot.activeTabId.length > 0
-          ? (this.resolveMobileSessionHostTabId(
-              fencedSnapshot,
-              fencedSnapshot.activeTabId
-            ) ?? fencedSnapshot.activeTabId)
+          ? (this.resolveMobileSessionHostTabId(fencedSnapshot, fencedSnapshot.activeTabId) ??
+            fencedSnapshot.activeTabId)
           : null
       const adoptIncomingActiveGroupId =
         fencedSnapshot.activeGroupId !== null &&
@@ -248,6 +255,10 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
           ? nextSnapshot
           : { ...nextSnapshot, snapshotVersion: storedVersion }
       )
+      // Why: on first open there is no prior renderer baseline, and the frame
+      // just failed to supersede the host layout — record the host layout as the
+      // baseline so the renderer's own stale tree is never treated as authored.
+      const acceptedLayoutBase = firstOpenHostLayoutAuthority ? existing : snapshot
       this.acceptedRendererMobileSnapshotByWorktree.set(snapshot.worktree, {
         publicationEpoch: snapshot.publicationEpoch,
         rendererVersion: snapshot.snapshotVersion,
@@ -255,9 +266,11 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
         rendererTabIdentityKeys: new Set(
           fencedSnapshot.tabs.flatMap((tab) => getMobileSessionSnapshotTabIdentityKeys(tab))
         ),
-        rendererTabGroupLayoutSignature: getMobileSessionTabGroupLayoutSignature(snapshot),
-        // Why: from the raw incoming frame, so host-preserved tabs never enter it.
-        rendererAuthoredLayoutDigest: getMobileSessionAuthoredLayoutDigest(snapshot)
+        rendererTabGroupLayoutSignature:
+          getMobileSessionTabGroupLayoutSignature(acceptedLayoutBase),
+        // Why: the raw frame (or host base on first open), so host-preserved
+        // tabs never enter the renderer-authored digest.
+        rendererAuthoredLayoutDigest: getMobileSessionAuthoredLayoutDigest(acceptedLayoutBase)
       })
     }
     for (const [worktreeId, existing] of [...this.mobileSessionTabsByWorktree.entries()]) {
