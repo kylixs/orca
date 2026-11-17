@@ -65,3 +65,14 @@ node cloud-platform/scripts/monitor-system-resources.mjs \
 > 注意（2026-11-17）：校验器的 freshness 取目录内最新 mtime，**回填/重写 `summary.json` 会刷新它**；审计历史证据时应同时核对 `summary.json` 的 `generatedAt` 与原始产物 mtime，不能只看 PASS。
 >
 > 因此审计任何可能被回填过的目录时必须加 `--check-generated-at`：它按 `summary.json.generatedAt`（而非 mtime）判断新鲜度，缺失/不可解析/超窗分别报 `summary-generated-at-missing` / `summary-generated-at-invalid` / `summary-generated-at-stale`；不传该选项时行为与旧版完全一致。对已回填目录（如 2026-11-17 补写 `summary.json` 的 `u106-restart-window-20261117-132713`、`desktop-smoke-1794889582`、`final-build-prod-20261117-131941`、`resource-monitor-changed-1794895271990`），`generatedAt` 记录的是回填写入时间（`2026-11-17T06:54:21Z`），只能证明「回填时点的产物快照」，**不证明原始 run 的时间**；引用时须与目录内原始产物 mtime/内容一并说明。
+
+## relay 容器 e2e 前提与 skip 语义（2026-11-17 U183 R13a）
+
+夹具：`cloud-platform/test/e2e/helpers/relay-container-harness.ts`；自测：`cloud-platform/test/e2e/relay-container-harness.e2e.test.ts`（`node --test test/e2e/relay-container-harness.e2e.test.ts`）。
+
+- **前提**：本机 Docker daemon 可用；本地缓存 `jlc-deb12:rust`（Debian 12 amd64，含 bash/curl/openssl，**无 Node**）。夹具**不拉镜像**（Docker Hub 不可达）。
+- **skip 语义**：Docker CLI/daemon 不可用、镜像缺失、镜像缺 bash/curl/openssl、工具探测超时 → `startContainerHarness()` 返回 `available=false` 与 `skipReason`，**不抛错、不计失败**；用例用 `t.skip(skipReason)` 显式跳过。`docker run` 等其它启动错误仍抛错（环境坏了要红）。
+- **容器**：每次唯一名 `relay-e2e-<rand>`，`--rm`，注入临时 HOME（容器内 `/tmp/orca-relay-e2e-home`，`harness.homeDir` 为实测值）；Linux 自动加 `--add-host=host.docker.internal:host-gateway`，macOS 用 Docker Desktop/OrbStack 自带解析。
+- **平台可达**：夹具在本机 `0.0.0.0:<随机端口>` 起 TCP forwarder（复用 `startTcpDelayHop`，延迟 0），容器内用 `getContainerPlatformUrl()` = `http://host.docker.internal:<forwarderPort>`；`checkPlatformReachable(path = '/health')` 用容器内 curl 探测。平台须由调用方先启动。
+- **Node 缺失**：记录为 `capabilities.node=false`，不当作产品失败。依赖 Node 的 R13c/R14 用例据此 skip；**R14a 的 N4（无 Node → 64）是负向断言，必须执行，不能 skip**。
+- **收尾**：`stop()` 只 `docker rm -f <唯一名>` 并关闭自起 forwarder；进程退出钩子兜底清理本进程创建的容器。**禁止宽域 `pkill`**。

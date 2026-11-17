@@ -40,9 +40,7 @@ async function reapSpawned(): Promise<void> {
   for (const service of pending) service.proc.kill('SIGTERM')
   await Promise.race([
     Promise.all(
-      pending.map(
-        (service) => new Promise<void>((done) => service.proc.once('exit', () => done()))
-      )
+      pending.map((service) => new Promise<void>((done) => service.proc.once('exit', () => done())))
     ),
     new Promise<void>((resolve) => setTimeout(resolve, REAP_GRACE_MS).unref())
   ])
@@ -216,16 +214,25 @@ export function readEvidence(path: string): string {
 
 export type TcpDelayHop = {
   url: string
+  port: number
   /** Delays the target→caller direction, so a response is late by this much. */
   setDelayMs: (ms: number) => void
   close: () => Promise<void>
+}
+
+export type TcpHopOptions = {
+  /** Forwarder listen address. Containers need 0.0.0.0 to reach the host. */
+  bindHost?: string
 }
 
 /**
  * A TCP hop whose replies can be held back, so a latency budget can be shown to
  * move with the path instead of being a constant. Delay 0 is a pass-through.
  */
-export async function startTcpDelayHop(targetPort: number | (() => number)): Promise<TcpDelayHop> {
+export async function startTcpDelayHop(
+  targetPort: number | (() => number),
+  options: TcpHopOptions = {}
+): Promise<TcpDelayHop> {
   let delayMs = 0
   const server = createNetServer((caller) => {
     const target = connectNet(
@@ -255,10 +262,13 @@ export async function startTcpDelayHop(targetPort: number | (() => number)): Pro
     caller.on('close', () => target.destroy())
     target.on('close', () => caller.destroy())
   })
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()))
+  await new Promise<void>((resolve) =>
+    server.listen(0, options.bindHost ?? '127.0.0.1', () => resolve())
+  )
   const port = (server.address() as { port: number }).port
   return {
     url: `http://127.0.0.1:${port}`,
+    port,
     setDelayMs: (ms) => {
       delayMs = ms
     },
