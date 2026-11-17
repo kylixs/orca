@@ -5310,6 +5310,7 @@ export function createApp(config: ApiConfig): ApiHandle {
           // Every admin action is audited, including a repeat that revokes nothing:
           // the marker refresh below is real state hosts act on. Remaining dedupe
           // against unrelated markers (grant_changed etc.) is wrong here.
+          // The write-ahead event can only report the pre-audit target count.
           if (
             !(await recordAudit(
               res,
@@ -5331,8 +5332,18 @@ export function createApp(config: ApiConfig): ApiHandle {
           ) {
             throw USER_SESSION_REVOKE_AUDIT_FAILED
           }
+          // U249 P2-4: a login that lands during the audit await is absent from
+          // `live` and would escape. Re-enumerate after the audit (no awaits in
+          // the round, so a session cannot slip between enumeration and revoke)
+          // until a round revokes nothing; capped so a broken invariant cannot spin.
           let count = 0
-          for (const session of live) if (revokeSessionOnce(session)) count += 1
+          for (let round = 0; round < 3; round += 1) {
+            const pending = [...store.sessions.values()].filter(
+              (session) => session.userId === target.id && session.revokedAt === null
+            )
+            if (pending.length === 0) break
+            for (const session of pending) if (revokeSessionOnce(session)) count += 1
+          }
           // Established WSS sessions bypass the platform, so the host ticket must die too.
           // Refreshing (not appending) moves `since` past any earlier grant marker,
           // so tickets issued after that marker are covered as well.

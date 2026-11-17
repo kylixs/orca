@@ -527,6 +527,95 @@ describe('U244 管理员强制下线（真实 createApp + HTTP）', () => {
     }
   })
 
+  test('审计写入窗口内并发登录的新会话随后被撤销；窗口后登录不受影响（U249 P2-4）', async () => {
+    const { app, base } = await start()
+    const zhang = app.store.usersByName.get('zhangsan')
+    assert.ok(zhang)
+    assert.equal((await login(base, 'zhangsan', 'Passw0rd!')).status, 200)
+    const admin = await login(base, 'admin', 'Adm1n!')
+    const token = admin.body.accessToken ?? ''
+    const sessionIdsBefore = new Set(sessionsOf(app, zhang.id).map((session) => session.id))
+
+    // Park the leader inside its write-ahead audit, the exact U249 race window.
+    const originalAppend = app.audit.append.bind(app.audit)
+    let releaseAudit: () => void = () => {}
+    const auditGate = new Promise<void>((resolve) => {
+      releaseAudit = resolve
+    })
+    let signalAuditEntered: () => void = () => {}
+    const auditEntered = new Promise<void>((resolve) => {
+      signalAuditEntered = resolve
+    })
+    let watchdog: ReturnType<typeof setTimeout> | undefined
+    app.audit.append = async (input) => {
+      if (input.eventType === 'session_revoke' && input.result === 'success') {
+        signalAuditEntered()
+        // A forgotten release must fail the case, not hang the runner.
+        watchdog = setTimeout(releaseAudit, 5_000)
+        watchdog.unref()
+        await auditGate
+      }
+      return originalAppend(input)
+    }
+    try {
+      const forced = revoke(base, token, zhang.id)
+      await auditEntered
+      // Two logins start and finish entirely inside the audit await. Both must
+      // lose: they may be rejected or revoked afterwards, but never survive.
+      const windowLogins = await Promise.all([
+        login(base, 'zhangsan', 'Passw0rd!'),
+        login(base, 'zhangsan', 'Passw0rd!')
+      ])
+      assert.deepEqual(
+        windowLogins.map((entry) => entry.status),
+        [200, 200],
+        'the window logins themselves are not blocked'
+      )
+      const minted = sessionsOf(app, zhang.id).filter(
+        (session) => !sessionIdsBefore.has(session.id)
+      )
+      assert.equal(minted.length, 2, 'each window login mints one session')
+      releaseAudit()
+
+      const response = await forced
+      assert.equal(response.status, 200)
+      assert.deepEqual((await response.json()) as RevokeBody, {
+        ok: true,
+        revokedSessions: 3
+      })
+      for (const session of minted) {
+        assert.ok(session.revokedAt !== null, 'a session minted during the audit must die too')
+        assert.equal(session.epoch, 2, 'the window session epoch must be bumped exactly once')
+      }
+      for (const entry of windowLogins) {
+        const me = await fetch(`${base}/v1/me`, {
+          headers: { authorization: `Bearer ${entry.body.accessToken ?? ''}` }
+        })
+        assert.equal(me.status, 401, 'the window access token must be dead')
+      }
+      // The audit stays write-ahead: it reports the pre-audit target count.
+      const successEvents = app.store.audit.filter(
+        (entry) => entry.eventType === 'session_revoke' && entry.result === 'success'
+      )
+      assert.equal(successEvents.length, 1, 'one leader action, one audit event')
+      assert.equal(successEvents[0]?.metadata.revokedSessions, 1)
+
+      // A login after the request settled is a normal login and must survive.
+      const after = await login(base, 'zhangsan', 'Passw0rd!')
+      assert.equal(after.status, 200)
+      const liveAfter = sessionsOf(app, zhang.id).filter((session) => session.revokedAt === null)
+      assert.equal(liveAfter.length, 1, 'only the post-window login stays live')
+      const me = await fetch(`${base}/v1/me`, {
+        headers: { authorization: `Bearer ${after.body.accessToken ?? ''}` }
+      })
+      assert.equal(me.status, 200)
+    } finally {
+      if (watchdog) clearTimeout(watchdog)
+      releaseAudit()
+      app.audit.append = originalAppend
+    }
+  })
+
   test('未知用户 404；无会话用户 200 且仍写宿主撤销', async () => {
     const { app, base } = await start()
     const admin = await login(base, 'admin', 'Adm1n!')
