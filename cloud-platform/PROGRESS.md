@@ -4214,3 +4214,6 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **AC7 双标签登出闭环**（`7e24da22a4c`，仅测试）：同 context 两页真实 Chromium——A 登出后 B 无主动广播（实测 PASSIVE），下一次业务请求 401→Cookie refresh 401→回登录页；旧 Cookie 刷新 401；测试保留 ACTIVE 分支检测。主会话复跑 **13 pass/1 skip**。矩阵 AC7 翻 🟢（🟢17/🟡0/🔴3/⚪1），合并基线 116/114/2（含 REG 123/121/2）。
 - **cloud-platform 单测全绿**（HEAD `3fba29ab271`）：`test/*.test.ts` **200/200**（35 suites）+ `apps/api/test/*.test.ts` **108/108**（27 suites），合计 **308/308**；U197 系列改动（refresh-cookie/worker/runtime 等）无单测回归。Web 全量 321/321 与 T1 已在本轮早前记录。
 - **U227 弱断言补强落地**（`10a8c24d24a`，测试 only）：重复 Cookie 补「不续期」（`refreshExpiresAt` 前后相等）；伪 XFP 刷新补响应形态（`refreshCookie=true`、无 `refreshToken`）与 `refreshHash` 不变；auto 降级告警按允许回退在用例名注明见 S1（warnOnce 去重）。三条均反转让证红，S2 **38/38**。台账 U227 翻 🟢。
+- **认证/会话探索扩面（33 场景，真实 API+真实 Chromium，两套部署）**：32 PASS、1 SUSPECT；全程 pageerror 0，console 仅预期 401 日志。结论写入 `test-reports/u197-auth-exploration-20261118.md`（原证据 /tmp 易失，保留结论）。
+  - 覆盖登录失败/连续 reload/back-forward/过期恢复/登出（含 abort 补发）/多标签（含跨标签登出）/Cookie 边界（清 Cookie、重复 Cookie、marker 与 pending 篡改）/刷新网络失败自愈/legacy→cookie 回滚/可访问性。
+  - **新发现 U228（🟡）**：禁用账号登录 200 → 坏壳（业务 401、刷新 200）；login/refresh 不复查 `user.status`（基线 MVP，与 U221–U227 无关），客户端一次重放仍 401 不登出。已派修。
