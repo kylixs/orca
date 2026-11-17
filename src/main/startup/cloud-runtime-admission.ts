@@ -2,9 +2,11 @@ import { createCloudAgentClient, type CloudAgentClient } from '../cloud-platform
 import type { CloudAgentConfig } from '../cloud-platform/cloud-agent-config'
 import { cloudAgentConfigFromEnv } from '../cloud-platform/cloud-agent-env'
 import {
-  enrollCloudHost,
+  enrollHostCredential,
+  type HostEnrolmentStartupInput
+} from './cloud-host-enrolment-startup'
+import {
   readStoredHostCredential,
-  storeHostCredential,
   type CloudHostCredential
 } from '../cloud-platform/cloud-host-enrollment'
 import { resolveCloudHostTls } from '../cloud-platform/cloud-host-tls'
@@ -114,6 +116,12 @@ export type CloudAdmissionOptions = {
   /** Extra addresses to advertise (e.g. a fabric IP) in addition to the bound port. */
   directAddrs?: string[]
   relayTarget?: string
+  /** Host mode retries transport/5xx registration failures inside the process. */
+  retryEnrolment?: boolean
+  /** Test seams for the retry loop; production uses fetch and 1s/5s/15s. */
+  fetchImpl?: typeof fetch
+  retryDelaysMs?: readonly number[]
+  sleep?: (ms: number) => Promise<void>
 }
 
 /**
@@ -196,30 +204,23 @@ function startEnrolled(
     const hostTls = resolveCloudHostTls(env)
     let stored = userDataPath ? readStoredHostCredential(userDataPath) : null
     if (!stored) {
-      const enrolled = await enrollCloudHost({
+      stored = await enrollHostCredential({
+        userDataPath,
         apiUrl,
         hostToken,
         hostName,
-        // Nothing is listening yet; the heartbeat reports the real port later.
         directAddrs: options.directAddrs ?? [],
-        relayTarget: options.relayTarget,
+        ...(options.relayTarget ? { relayTarget: options.relayTarget } : {}),
         ...(hostTls ? { tlsFingerprint: hostTls.fingerprint } : {}),
         ...(env.ORCA_APP_VERSION ? { orcaVersion: env.ORCA_APP_VERSION } : {}),
-        ...(projectsRoot ? { projectsRoot } : {})
+        ...(projectsRoot ? { projectsRoot } : {}),
+        retry: {
+          enabled: options.retryEnrolment === true,
+          ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+          ...(options.retryDelaysMs ? { retryDelaysMs: options.retryDelaysMs } : {}),
+          ...(options.sleep ? { sleep: options.sleep } : {})
+        } satisfies HostEnrolmentStartupInput['retry']
       })
-      if (!enrolled.ok) {
-        // Do not fall through to "serve without a gate": an enrolled-mode host that
-        // cannot enrol must fail visibly, keeping the code/status a CLI can classify.
-        const { code, status, detail } = enrolled.error
-        const suffix = status === undefined ? '' : ` (HTTP ${status})`
-        throw new Error(
-          `cloud host enrolment failed: ${code}${suffix}${detail ? `: ${detail}` : ''}`
-        )
-      }
-      stored = enrolled.value
-      if (userDataPath) {
-        storeHostCredential(userDataPath, stored)
-      }
     }
     admittedHost = stored
     const config: CloudAgentConfig = {
@@ -229,6 +230,7 @@ function startEnrolled(
       internalToken: env.ORCA_CLOUD_INTERNAL_TOKEN ?? '',
       hostId: stored.hostId,
       hostName: stored.hostName,
+      ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
       heartbeat: {
         hostId: stored.hostId,
         credential: stored.credential,

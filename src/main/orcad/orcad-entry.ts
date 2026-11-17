@@ -38,6 +38,7 @@ import {
   type AiVaultSearchSettings
 } from '../../shared/ai-vault-search-settings'
 import { ensureOrcadAppVersion, startOrcadRpc } from './orcad-cloud-admission'
+import { awaitHostModeEnrolment, hostAdmissionOptions } from './host-mode-enrolment'
 import { createOrcadSecretStore } from './orcad-node-secret-store'
 import { beginHostModeStateFromEnv, publishHostModeOnlineAfterStart } from './orcad-host-mode-state'
 
@@ -348,21 +349,21 @@ async function startOrcadRuntime(
   publishHeadlessRuntimeGraph(runtime)
 
   const bindHost = resolveOrcadBindHost(options.bind)
+  const admissionOptions = hostAdmissionOptions(runtimeUserDataPath, options.hostMode === true)
+  const admission = cloudRuntimeAdmission(process.env, admissionOptions)
   const rpc = new OrcaRuntimeRpcServer({
     runtime,
     userDataPath: runtimeUserDataPath,
     enableWebSocket: true,
-    // Why pinned and not `exposeNetworkByDefault`: an unattended host's exposure must be
-    // exactly what the operator asked for, on every launch. The default path widens itself
-    // once a device has connected, so a loopback deployment would silently go wide one
-    // restart after its first client paired.
+    // Why pinned: unattended-host exposure must match the operator's choice on every launch;
+    // the default path silently widens after the first client pairs.
     pinnedBindHost: bindHost,
     ...(options.port !== undefined ? { wsPort: options.port, preferPinnedWsPort: true } : {}),
-    ...cloudAdmissionOption(process.env, { userDataPath: runtimeUserDataPath })
+    ...cloudAdmissionOption(process.env, admissionOptions)
   })
   // Stops first: no RPC may write while the rest of the runtime is torn down.
   registerCleanup(() => rpc.stop())
-  const admission = cloudRuntimeAdmission(process.env, { userDataPath: runtimeUserDataPath })
+  await awaitHostModeEnrolment(admission, options.hostMode === true)
   await startOrcadRpc(rpc, admission, (value) => attachRuntimeToCloudAdmission(rpc, value))
   publishHostModeOnlineAfterStart(hostModeState, admission)
   startOrcadAutomations(runtime, profileStore, registerCleanup)

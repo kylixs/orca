@@ -102,12 +102,14 @@ export function storeHostCredential(userDataPath: string, value: CloudHostCreden
   hardenExistingSecureFile(path)
 }
 
-/** Why structured: a caller must tell a spent token (409) from a transport failure. */
+/** Why structured: a caller must tell a spent token (401) from a transport failure. */
 export type CloudHostEnrolmentError = {
-  /** Stable platform `error.code`, or a local code for transport/protocol failures. */
+  /** Stable code, or a local code for transport/protocol failures. */
   code: string
+  /** Whether the same request may succeed later (network/5xx). */
+  retryable: boolean
   /** HTTP status when the platform answered; absent when the request never landed. */
-  status?: number
+  httpStatus?: number
   /** Transport message or missing-field description, for logs. */
   detail?: string
 }
@@ -115,6 +117,92 @@ export type CloudHostEnrolmentError = {
 export type EnrollOutcome =
   | { ok: true; value: CloudHostCredential }
   | { ok: false; error: CloudHostEnrolmentError }
+
+/** Actionable operator text for the failures a restart cannot repair. */
+const ENROLMENT_GUIDANCE: Record<string, string> = {
+  host_token_invalid:
+    '令牌已被使用或过期。若平台 /v1/hosts 已存在同名主机，则上一次注册已成功但响应丢失；请确认该主机后重新生成安装命令（不要重复使用本命令）。',
+  host_revoked: '主机已被平台吊销。请管理员恢复该主机，或更换主机名后重新生成安装命令。',
+  host_name_required: '缺少主机名。请在 host.env 中设置 ORCA_CLOUD_HOST_NAME 后重启服务。'
+}
+
+/** Carries the classification and the operator-facing remedy to the process entry. */
+export class CloudHostEnrolmentFailure extends Error {
+  readonly code: string
+  readonly retryable: boolean
+  readonly httpStatus: number | null
+
+  constructor(failure: CloudHostEnrolmentError) {
+    const status = failure.httpStatus === undefined ? '' : ` (HTTP ${failure.httpStatus})`
+    const guidance = ENROLMENT_GUIDANCE[failure.code]
+    super(
+      `cloud host enrolment failed: ${failure.code}${status}${failure.detail ? `: ${failure.detail}` : ''}${guidance ? `. ${guidance}` : ''}`
+    )
+    this.name = 'CloudHostEnrolmentFailure'
+    this.code = failure.code
+    this.retryable = failure.retryable
+    this.httpStatus = failure.httpStatus ?? null
+  }
+}
+
+const NON_RETRYABLE_CODES: Record<number, string> = {
+  400: 'host_name_required',
+  401: 'host_token_invalid',
+  409: 'host_revoked'
+}
+
+/** Platform wire codes that the host mode contract publishes in lowercase. */
+const PLATFORM_CODE_ALIASES: Record<string, string> = {
+  HOST_TOKEN_INVALID: 'host_token_invalid',
+  HOST_REVOKED: 'host_revoked',
+  HOST_NAME_REQUIRED: 'host_name_required'
+}
+
+/** Stable code/retryability for an HTTP failure, preferring the platform's own code. */
+function enrolmentErrorFromStatus(
+  status: number,
+  platformCode: string | null
+): CloudHostEnrolmentError {
+  const retryable = status >= 500
+  const normalized =
+    platformCode === null ? null : (PLATFORM_CODE_ALIASES[platformCode] ?? platformCode)
+  return {
+    code: normalized ?? NON_RETRYABLE_CODES[status] ?? (retryable ? 'http_5xx' : 'register_failed'),
+    retryable,
+    httpStatus: status
+  }
+}
+
+/** Design §3.3: host mode retries transport/5xx inside the process, then exits 1. */
+export const HOST_ENROLMENT_RETRY_DELAYS_MS: readonly number[] = [1_000, 5_000, 15_000]
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+export type EnrolmentRetryOptions = {
+  fetchImpl?: typeof fetch
+  /** Test seam; production uses 1s/5s/15s. */
+  retryDelaysMs?: readonly number[]
+  sleep?: (ms: number) => Promise<void>
+}
+
+export async function enrollCloudHostWithRetry(
+  input: EnrollInput,
+  options: EnrolmentRetryOptions = {}
+): Promise<EnrollOutcome> {
+  const delays = options.retryDelaysMs ?? HOST_ENROLMENT_RETRY_DELAYS_MS
+  const wait = options.sleep ?? sleepMs
+  let outcome = await enrollCloudHost(input, options.fetchImpl)
+  for (const delay of delays) {
+    if (outcome.ok || !outcome.error.retryable) {
+      return outcome
+    }
+    await wait(delay)
+    outcome = await enrollCloudHost(input, options.fetchImpl)
+  }
+  return outcome
+}
 
 export async function enrollCloudHost(
   input: EnrollInput,
@@ -145,14 +233,15 @@ export async function enrollCloudHost(
     return {
       ok: false,
       error: {
-        code: 'transport',
+        code: 'network',
+        retryable: true,
         detail: error instanceof Error ? error.message : String(error)
       }
     }
   }
   if (!res.ok) {
     const code = readString(readField(await res.json().catch(() => null), 'error'), 'code')
-    return { ok: false, error: { code: code ?? 'register_failed', status: res.status } }
+    return { ok: false, error: enrolmentErrorFromStatus(res.status, code) }
   }
   const body: unknown = await res.json()
   const hostId = readString(body, 'hostId')
@@ -162,7 +251,8 @@ export async function enrollCloudHost(
       ok: false,
       error: {
         code: 'protocol',
-        status: res.status,
+        retryable: false,
+        httpStatus: res.status,
         detail: 'register response missing hostId/credential'
       }
     }
