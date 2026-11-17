@@ -838,12 +838,38 @@ mkdir -p "$ORCA_ENV_DIR"
 chmod 700 "$ORCA_ENV_DIR" 2>/dev/null || true
 
 echo ">> 写入环境配置 $ORCA_ENV_FILE"
+# U183 R7: RELAY_ID is stable once written; a rerun keeps the existing identity.
+ORCA_RELAY_PORT="\${PORT:-18443}"
+ORCA_RELAY_ID=""
+if [ -f "$ORCA_ENV_FILE" ]; then
+  while IFS='=' read -r ORCA_ENV_KEY ORCA_ENV_VALUE; do
+    if [ "$ORCA_ENV_KEY" = "ORCA_CLOUD_RELAY_ID" ] && [ -n "$ORCA_ENV_VALUE" ]; then
+      ORCA_RELAY_ID="$ORCA_ENV_VALUE"
+    fi
+  done < "$ORCA_ENV_FILE"
+fi
+if [ -z "$ORCA_RELAY_ID" ]; then
+  ORCA_RELAY_HOST="$(hostname 2>/dev/null || true)"
+  if [ -z "$ORCA_RELAY_HOST" ]; then ORCA_RELAY_HOST="relay"; fi
+  ORCA_RELAY_ID="$ORCA_RELAY_HOST:$ORCA_RELAY_PORT"
+fi
+# U183 R7/R10a: this install's nonce, announced by the running relay (1-128 chars).
+ORCA_INSTALL_NONCE="$(openssl rand -hex 16 2>/dev/null || true)"
+if [ -z "$ORCA_INSTALL_NONCE" ]; then
+  ORCA_INSTALL_NONCE="$(date +%s 2>/dev/null || printf '0')-$$"
+fi
+# One atomic write: a rerun replaces the whole file, never appends or truncates it.
+ORCA_ENV_TMP="$(mktemp "\${ORCA_ENV_FILE}.XXXXXX")"
 {
   printf 'ORCA_CLOUD_API_URL=%s\\n' "$ORCA_PLATFORM_URL"
   printf '%s\\n' ${shellQuote(`ORCA_CLOUD_INTERNAL_TOKEN=${input.internalToken}`)}
-  printf 'PORT=%s\\n' "\${PORT:-18443}"
+  printf 'PORT=%s\\n' "$ORCA_RELAY_PORT"
   printf 'RELAY_PUBLIC_HOST=%s\\n' "\${RELAY_PUBLIC_HOST:-}"
-${bundleEnv}} > "$ORCA_ENV_FILE"
+  printf 'ORCA_CLOUD_RELAY_ID=%s\\n' "$ORCA_RELAY_ID"
+  printf 'ORCA_CLOUD_INSTALL_NONCE=%s\\n' "$ORCA_INSTALL_NONCE"
+${bundleEnv}} > "$ORCA_ENV_TMP"
+chmod 600 "$ORCA_ENV_TMP"
+mv -f "$ORCA_ENV_TMP" "$ORCA_ENV_FILE"
 chmod 600 "$ORCA_ENV_FILE"
 echo ">> 环境已就绪：$ORCA_ENV_FILE"
 

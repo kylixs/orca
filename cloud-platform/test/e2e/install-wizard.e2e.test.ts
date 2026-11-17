@@ -267,6 +267,18 @@ function makeRelayRoot(home: string): string {
   return relayRoot
 }
 
+/** U183 R7: KEY=VALUE relay.env, systemd EnvironmentFile syntax. */
+function readRelayEnv(file: string): Record<string, string> {
+  const env: Record<string, string> = {}
+  for (const line of readFileSync(file, 'utf8').split('\n')) {
+    const at = line.indexOf('=')
+    if (at > 0) {
+      env[line.slice(0, at)] = line.slice(at + 1)
+    }
+  }
+  return env
+}
+
 /** The generated host script for a fresh one-time token. */
 async function fetchHostScript(): Promise<string> {
   const token = await mintHostToken()
@@ -930,6 +942,51 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     // R5: the verified bundle lands at downloads/<sha>.tgz, no .part survives.
     assert.equal(existsSync(join(relayRoot, 'downloads', `${BUNDLE_SHA}.tgz`)), true)
     assert.equal(existsSync(join(relayRoot, 'downloads', `${BUNDLE_SHA}.tgz.part`)), false)
+  })
+
+  test('U183 R7: relay.env 原子写，含 nonce、稳定 RELAY_ID 与受管字段', async () => {
+    const home = makeInstallHome()
+    const relayRoot = makeRelayRoot(home)
+    const script = await fetchRelayScript()
+
+    const first = runInstallScript(script, home, { ORCA_RELAY_ROOT: relayRoot })
+    assert.equal(first.status, 0, first.stderr)
+    const envFile = join(home, '.orca-cloud', 'relay.env')
+    assert.equal(statSync(envFile).mode & 0o777, 0o600)
+    // Atomic write: mktemp + mv leaves no intermediate file visible.
+    assert.deepEqual(
+      readdirSync(join(home, '.orca-cloud')).filter((name) => name.startsWith('relay.env.')),
+      []
+    )
+    const env = readRelayEnv(envFile)
+    assert.match(env.ORCA_CLOUD_INSTALL_NONCE ?? '', /^[A-Za-z0-9_-]{1,128}$/)
+    assert.equal(env.PORT, '18443')
+    assert.match(env.ORCA_CLOUD_RELAY_ID ?? '', /^.+:18443$/)
+    assert.equal(env.ORCA_CLOUD_API_URL, api.url)
+    assert.equal(env.ORCA_RELAY_BUNDLE_SHA256, BUNDLE_SHA)
+    assert.equal(env.ORCA_CLOUD_INTERNAL_TOKEN, INTERNAL_TOKEN)
+
+    // A rerun is a fresh install: new nonce, same identity and managed keys.
+    const second = runInstallScript(script, home, { ORCA_RELAY_ROOT: relayRoot })
+    assert.equal(second.status, 0, second.stderr)
+    const rerun = readRelayEnv(envFile)
+    assert.notEqual(rerun.ORCA_CLOUD_INSTALL_NONCE, env.ORCA_CLOUD_INSTALL_NONCE)
+    assert.match(rerun.ORCA_CLOUD_INSTALL_NONCE ?? '', /^[A-Za-z0-9_-]{1,128}$/)
+    assert.equal(rerun.ORCA_CLOUD_RELAY_ID, env.ORCA_CLOUD_RELAY_ID)
+    assert.equal(rerun.ORCA_CLOUD_API_URL, env.ORCA_CLOUD_API_URL)
+    assert.equal(rerun.ORCA_RELAY_BUNDLE_SHA256, env.ORCA_RELAY_BUNDLE_SHA256)
+    assert.equal(
+      readdirSync(join(home, '.orca-cloud')).filter((n) => n.startsWith('relay.env.')).length,
+      0
+    )
+  })
+
+  test('U183 R7: env 只经 mktemp + mv 落位，不直接截断 relay.env', async () => {
+    const script = await fetchRelayScript()
+    assert.match(script, /mktemp "\$\{ORCA_ENV_FILE\}\.XXXXXX"/)
+    assert.match(script, /chmod 600 "\$ORCA_ENV_TMP"/)
+    assert.match(script, /mv -f "\$ORCA_ENV_TMP" "\$ORCA_ENV_FILE"/)
+    assert.doesNotMatch(script, />\s*"\$ORCA_ENV_FILE"/)
   })
 
   test('U183 R5: 脚本带受限下载参数、双 sha 探测与离线逃生口', async () => {
