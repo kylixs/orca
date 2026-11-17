@@ -17,6 +17,8 @@ export type OrcadOptions = {
   bind?: string
   /** `orca-ide --host-mode`: serve as the platform-enrolled headless host. */
   hostMode?: boolean
+  /** One-shot with `--host-mode`: replace the stored credential under the instance lock. */
+  reenroll?: boolean
   /** Validate host-mode configuration/runtime without registering or serving. */
   preflight?: boolean
 }

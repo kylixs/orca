@@ -1,11 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { formatServeRuntimeSelection } from '../../shared/orcad-local-serve-selection'
 import type { runProcess } from '@orca/process-host'
 import {
   orcadServeArgs,
   preflightOrcadHostRuntime,
   resolveLocalServeRuntime,
-  serveOptionArgs
+  serveOptionArgs,
+  serveWithOrcad
 } from './serve-orcad-launch'
 
 type RunProcess = typeof runProcess
@@ -145,6 +149,36 @@ describe('orca serve asking the app which host to run', () => {
       '/work/app'
     ])
     expect(orcadServeArgs({})).toEqual(['--bind', '0.0.0.0'])
+  })
+
+  it('forwards --reenroll to orcad and leaves the credential for the locked host', () => {
+    expect(orcadServeArgs({ hostMode: true, reenroll: true })).toEqual([
+      '--bind',
+      '0.0.0.0',
+      '--host-mode',
+      '--reenroll'
+    ])
+
+    const userDataPath = mkdtempSync(join(tmpdir(), 'orca-cli-reenroll-'))
+    const credentialPath = join(userDataPath, 'orca-cloud-host.json')
+    writeFileSync(credentialPath, '{"credential":"old"}', { mode: 0o600 })
+
+    // A failed spawn is still after every pre-spawn step; the credential must be untouched.
+    expect(() =>
+      serveWithOrcad(
+        { kind: 'orcad', runtime: '/rt/node', entry: '/slot/orcad.js', version: '1' },
+        { hostMode: true, reenroll: true },
+        userDataPath,
+        {},
+        () => {
+          throw new Error('spawn failed')
+        }
+      )
+    ).toThrow('spawn failed')
+
+    expect(readFileSync(credentialPath, 'utf8')).toBe('{"credential":"old"}')
+    expect(readdirSync(userDataPath)).toEqual(['orca-cloud-host.json'])
+    expect(existsSync(credentialPath)).toBe(true)
   })
 
   it('spells the same flags with the --serve- prefix for the Electron host', () => {

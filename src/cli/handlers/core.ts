@@ -113,6 +113,7 @@ export const CORE_HANDLERS: Record<string, CommandHandler> = {
     const grantDesktopControl = flags.get('grant-desktop-control') === true
     const recipeJson = flags.get('recipe-json') === true
     const hostMode = flags.get('host-mode') === true
+    const reenroll = flags.get('reenroll') === true
     const preflight = flags.get('preflight') === true
     const pairingAddressValue = flags.get('pairing-address')
     const pairingAddress = typeof pairingAddressValue === 'string' ? pairingAddressValue : null
@@ -123,6 +124,7 @@ export const CORE_HANDLERS: Record<string, CommandHandler> = {
       recipeJson,
       projectRoot,
       hostMode,
+      reenroll,
       preflight,
       pairingAddress
     })
@@ -163,7 +165,8 @@ export const CORE_HANDLERS: Record<string, CommandHandler> = {
       grantDesktopControl,
       recipeJson,
       projectRoot,
-      ...(hostMode ? { hostMode: true } : {})
+      ...(hostMode ? { hostMode: true } : {}),
+      ...(reenroll ? { reenroll: true } : {})
     })
     process.exitCode = exitCode
   },

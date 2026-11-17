@@ -90,6 +90,11 @@ describe('parseArgs', () => {
     expect(() => parseArgs(['--bind'])).toThrow('--bind expects a value')
     expect(() => parseArgs(['--bind', '--json'])).not.toThrow()
   })
+
+  it('accepts --reenroll only with --host-mode', () => {
+    expect(parseArgs(['--host-mode', '--reenroll'])).toEqual({ hostMode: true, reenroll: true })
+    expect(() => parseArgs(['--reenroll'])).toThrow('--reenroll requires --host-mode')
+  })
 })
 
 describe('resolveOrcadExitCode', () => {

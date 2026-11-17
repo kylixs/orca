@@ -80,7 +80,8 @@ export async function startOrcad(options: OrcadOptions = {}): Promise<OrcadHandl
         closeOrcadObservability()
         closeOrcadObservability = () => {}
       }
-    }
+    },
+    { reenroll: options.reenroll === true }
   )
   const version = getAppEnvironment().getVersion()
   return {

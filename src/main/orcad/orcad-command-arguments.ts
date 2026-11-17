@@ -21,6 +21,7 @@ Options:
   --recipe-json            Print only the VM recipe line; requires --project-root.
   --project-root <dir>     Existing absolute project directory for --recipe-json.
   --host-mode              Serve as the platform-enrolled headless host.
+  --reenroll               With --host-mode, re-register: back up the stored credential and enrol again.
   --preflight              With --host-mode, validate config and the slot, then exit.
   --help, -h               Print this text and exit without starting the server.
 
@@ -61,6 +62,8 @@ export function parseArgs(argv: string[]): OrcadCommandArguments {
       options.recipeJson = true
     } else if (arg === '--host-mode') {
       options.hostMode = true
+    } else if (arg === '--reenroll') {
+      options.reenroll = true
     } else if (arg === '--preflight') {
       options.preflight = true
     } else if (arg === '--project-root') {
@@ -96,6 +99,9 @@ export function parseArgs(argv: string[]): OrcadCommandArguments {
   }
   if (options.preflight && !options.hostMode) {
     throw new Error('--preflight requires --host-mode')
+  }
+  if (options.reenroll && !options.hostMode) {
+    throw new Error('--reenroll requires --host-mode')
   }
   return options
 }

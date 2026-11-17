@@ -204,4 +204,18 @@ describe('host mode CLI entry', () => {
     expect(serveOrcaAppMock).not.toHaveBeenCalled()
     expect(errors.join('')).toContain('--preflight requires --host-mode')
   })
+
+  it('forwards --reenroll to the host launch and touches no credential', async () => {
+    await main(['--host-mode', '--reenroll'], '/tmp/repo')
+
+    expect(serveArgs()).toMatchObject({ hostMode: true, reenroll: true })
+  })
+
+  it('requires --host-mode for --reenroll', async () => {
+    await main(['serve', '--reenroll'], '/tmp/repo')
+
+    expect(process.exitCode).toBe(1)
+    expect(serveOrcaAppMock).not.toHaveBeenCalled()
+    expect(errors.join('')).toContain('--reenroll requires --host-mode')
+  })
 })

@@ -27,6 +27,8 @@ export type ServeOrcaAppArgs = {
   projectRoot?: string | null
   /** `orca-ide --host-mode`: the platform host, always orcad, never an Electron fallback. */
   hostMode?: boolean
+  /** One-shot with host mode: orcad replaces the credential under its instance lock. */
+  reenroll?: boolean
 }
 
 /** A first run may download and verify the pinned Node; bound it well past that. */
@@ -172,6 +174,7 @@ export function orcadServeArgs(args: ServeOrcaAppArgs): string[] {
     '--bind',
     '0.0.0.0',
     ...(args.hostMode ? ['--host-mode'] : []),
+    ...(args.reenroll ? ['--reenroll'] : []),
     ...serveOptionArgs(args, '--')
   ]
 }

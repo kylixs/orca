@@ -3,6 +3,7 @@ import { startOrcadBrowserProvider } from './orcad-browser-startup'
 import { OrcadRuntimeLifetime, type OrcadRuntimeCleanup } from './orcad-runtime-lifetime'
 import type { OrcadManagedStopInstance } from '../../shared/orcad-stop-request'
 import { acquireOrcadInstanceLock } from './orcad-instance-lock'
+import { beginHostCredentialReenrollment } from './host-credential-reenrollment'
 import { ORCAD_BUNDLED_LAUNCHER_ENV } from './orcad-bundled-runtime'
 import { resolveOrcadExitCode } from './orcad-exit-code'
 import { recordAgentSessionRuntimeEnd } from '../runtime/agent-session-runtime-end-record'
@@ -108,42 +109,57 @@ export async function startOrcadWithLifecycle<T extends object>(
   }
 }
 
+export type OrcadHostStartOptions = {
+  /** One-shot `--host-mode --reenroll`: replace the stored credential under the instance lock. */
+  reenroll?: boolean
+}
+
 /** Keep profile admission and the instance lock until every runtime writer has stopped. */
 export async function startOrcadWithHost<T extends object>(
   userDataPath: string,
   start: (registerCleanup: (cleanup: OrcadRuntimeCleanup) => void) => Promise<T>,
-  runQuitHandlers: () => void
+  runQuitHandlers: () => void,
+  options: OrcadHostStartOptions = {}
 ): Promise<T & { stop(): Promise<void>; instance: OrcadManagedStopInstance }> {
   const instanceLock = acquireOrcadInstanceLock(userDataPath)
+  // Why after the lock: a live host must refuse before its credential is renamed, and the lock
+  // is the only proof that no other process still owns this profile.
+  const reenrollment =
+    options.reenroll === true ? beginHostCredentialReenrollment(userDataPath) : null
   const { pid, startedAtMs, nonce } = instanceLock.record
   const instance = { pid, startedAtMs, nonce, lockPath: instanceLock.path }
   let admission: ProfileStateRuntimeAdmission | undefined
   let browserProvider: ReturnType<typeof startOrcadBrowserProvider> | undefined
-  return startOrcadWithLifecycle(
-    async (registerCleanup) => {
-      admission = acquireProfileStateRuntimeAdmission(userDataPath)
-      // Why not awaited: a desktop sidecar's authorization UI must not hold RPC readiness hostage.
-      browserProvider = startOrcadBrowserProvider({ userDataPath })
-      return { ...(await start(registerCleanup)), instance }
-    },
-    async (runtimeCleanupSucceeded) => {
-      // Failed teardown keeps both fences until the process actually exits.
-      const host = new OrcadRuntimeLifetime(() => {
-        if (runtimeCleanupSucceeded) {
-          instanceLock.release()
-        }
-      })
-      host.add(({ failed }) => {
-        if (runtimeCleanupSucceeded && !failed) {
-          admission?.release()
-        }
-      })
-      host.add(() => runQuitHandlers())
-      host.add(() => setRuntimeBrowserCommandsFactory(null))
-      host.add(() => browserProvider?.stop())
-      await host.stop()
-    }
-  )
+  try {
+    return await startOrcadWithLifecycle(
+      async (registerCleanup) => {
+        admission = acquireProfileStateRuntimeAdmission(userDataPath)
+        // Why not awaited: a desktop sidecar's authorization UI must not hold RPC readiness hostage.
+        browserProvider = startOrcadBrowserProvider({ userDataPath })
+        return { ...(await start(registerCleanup)), instance }
+      },
+      async (runtimeCleanupSucceeded) => {
+        // Failed teardown keeps both fences until the process actually exits.
+        const host = new OrcadRuntimeLifetime(() => {
+          if (runtimeCleanupSucceeded) {
+            instanceLock.release()
+          }
+        })
+        host.add(({ failed }) => {
+          if (runtimeCleanupSucceeded && !failed) {
+            admission?.release()
+          }
+        })
+        host.add(() => runQuitHandlers())
+        host.add(() => setRuntimeBrowserCommandsFactory(null))
+        host.add(() => browserProvider?.stop())
+        await host.stop()
+      }
+    )
+  } catch (error) {
+    reenrollment?.rollback()
+    throw error
+  }
 }
 
 export async function flushOrcadProfileStoreForShutdown(store: {

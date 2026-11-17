@@ -8,6 +8,8 @@ export type ServeOptionValidationInput = {
   projectRoot: string | null | undefined
   /** `orca-ide --host-mode`: platform-owned headless host, never an interactive pairing offer. */
   hostMode?: boolean
+  /** One-shot with host mode: re-register under the orcad instance lock. */
+  reenroll?: boolean
   preflight?: boolean
   pairingAddress?: string | null
 }
@@ -15,6 +17,9 @@ export type ServeOptionValidationInput = {
 export function getServeOptionValidationError(options: ServeOptionValidationInput): string | null {
   if (options.preflight && !options.hostMode) {
     return '--preflight requires --host-mode.'
+  }
+  if (options.reenroll && !options.hostMode) {
+    return '--reenroll requires --host-mode.'
   }
   if (options.hostMode) {
     if (options.mobilePairing) {
