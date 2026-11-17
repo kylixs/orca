@@ -278,16 +278,35 @@ function parseRefreshGraceMs(value: number | string | null | undefined): number 
   return Math.min(parsed, MAX_REFRESH_GRACE_MS)
 }
 
-async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
+async function readJson(
+  req: IncomingMessage,
+  maxBytes?: number
+): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = []
-  for await (const chunk of req) chunks.push(chunk as Buffer)
-  if (chunks.length === 0) return {}
+  let size = 0
+  let oversized = false
+  for await (const chunk of req) {
+    const buffer = chunk as Buffer
+    size += buffer.length
+    // Keep draining an oversized body so the connection stays usable, but
+    // discard it: the caller treats it as no body.
+    if (maxBytes !== undefined && size > maxBytes) {
+      oversized = true
+      chunks.length = 0
+      continue
+    }
+    if (!oversized) chunks.push(buffer)
+  }
+  if (oversized || chunks.length === 0) return {}
   try {
     return JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>
   } catch {
     return {}
   }
 }
+
+/** A logout body only ever carries a refresh token; anything larger is ignored. */
+const LOGOUT_BODY_MAX_BYTES = 16 * 1024
 
 function e2eeKeyFingerprint(e2eePublicKeyB64: string): string {
   const digest = createHash('sha256').update(Buffer.from(e2eePublicKeyB64, 'base64')).digest('hex')
@@ -3903,38 +3922,59 @@ export function createApp(config: ApiConfig): ApiHandle {
       const cookieParse = parseRefreshCookie(req.headers.cookie)
       const cookieToken = cookieParse.kind === 'present' ? cookieParse.value : ''
       const cookieSessionId = cookieToken === '' ? undefined : store.refreshTokens.get(cookieToken)
+      // U229 F10: with an expired access token and no Cookie, a legacy client has
+      // no server-side locator; the body may carry the refresh token instead.
+      // Never let a malformed or oversized body turn sign-out into an error.
+      let body: Record<string, unknown> = {}
+      try {
+        body = await readJson(req, LOGOUT_BODY_MAX_BYTES)
+      } catch {
+        body = {}
+      }
+      const bodyToken = typeof body.refreshToken === 'string' ? body.refreshToken : ''
+      const bodySessionId = bodyToken === '' ? undefined : store.refreshTokens.get(bodyToken)
       const targets = new Set<string>()
       if (auth) targets.add(auth.sessionId)
       if (cookieSessionId !== undefined) targets.add(cookieSessionId)
+      if (bodySessionId !== undefined) targets.add(bodySessionId)
       for (const sessionId of targets) {
         const session = store.sessions.get(sessionId)
         if (!session) continue
         session.revokedAt = now()
         bumpEpoch(session.id)
       }
-      if (auth) {
-        await audit.append({
-          eventType: 'logout',
-          actor: auth.user.username,
-          targetType: 'session',
-          targetId: auth.sessionId,
-          result: 'success',
-          traceId
-        })
-      } else if (cookieSessionId !== undefined) {
-        // Cookie-only logout (expired Bearer): best-effort, never blocks sign-out.
-        const session = store.sessions.get(cookieSessionId)
+      // One logout event per revoked session, deduped by the target set (U220 N2).
+      for (const sessionId of targets) {
+        const session = store.sessions.get(sessionId)
         const user = session ? store.users.get(session.userId) : undefined
-        if (user) {
-          audit.appendBestEffort({
-            eventType: 'logout',
-            actor: user.username,
-            targetType: 'session',
-            targetId: cookieSessionId,
-            result: 'success',
-            traceId
-          })
+        if (!session || !user) continue
+        const event = {
+          eventType: 'logout',
+          actor: user.username,
+          targetType: 'session',
+          targetId: sessionId,
+          result: 'success' as const,
+          traceId
         }
+        if (auth && sessionId === auth.sessionId) {
+          await audit.append(event)
+        } else {
+          // Cookie/body-only logout (expired Bearer): best-effort, never blocks sign-out.
+          audit.appendBestEffort(event)
+        }
+      }
+      // A forged value must neither revoke nor reveal anything; record the denial
+      // without the token itself.
+      if (bodyToken !== '' && bodySessionId === undefined) {
+        audit.appendBestEffort({
+          eventType: 'logout',
+          actor: null,
+          targetType: 'session',
+          targetId: null,
+          result: 'denied',
+          traceId,
+          metadata: { reason: 'UNKNOWN_REFRESH' }
+        })
       }
       return json(res, 200, { ok: true })
     }
