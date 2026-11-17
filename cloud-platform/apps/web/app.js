@@ -5314,7 +5314,14 @@ window.addEventListener('hashchange', () => {
           // Why retried: the bootstrap must not start a second refresh chain.
           const me = await withTimeout(api('/v1/me', {}, { retried: true }), STARTUP_TIMEOUT_MS)
           // U239: a login/logout during the await owns the newer generation.
-          if (state.authEpoch !== startupEpoch) return
+          // U240: a failed login is a newer generation without a session; its view must return.
+          if (state.authEpoch !== startupEpoch) {
+            if (!state.user) {
+              if (cachedUser) localStorage.removeItem('orca.user')
+              showLogin()
+            }
+            return
+          }
           state.user = { ...me.user, displayName: me.user.displayName, dept: me.user.dept }
           // U225 N3R: a stale cookie marker can survive a server downgraded to
           // never; the body fallback restored the legacy keys, so bind them.
@@ -5340,7 +5347,14 @@ window.addEventListener('hashchange', () => {
         // U229 F5: the legacy token path includes its own body refresh.
         const me = await withTimeout(api('/v1/me'), STARTUP_TIMEOUT_MS)
         // U239: a login/logout during the await owns the newer generation.
-        if (state.authEpoch !== startupEpoch) return
+        // U240: a failed login is a newer generation without a session; its view must return.
+        if (state.authEpoch !== startupEpoch) {
+          if (!state.user) {
+            if (cachedUser) localStorage.removeItem('orca.user')
+            showLogin()
+          }
+          return
+        }
         state.user = { ...me.user, displayName: me.user.displayName, dept: me.user.dept }
         // U222 N3: a body refresh at startup has no user yet, so bind the
         // legacy keys once the account is known.

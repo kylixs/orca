@@ -503,3 +503,39 @@ describe('U239 启动续集的代际边界', () => {
     await page.release()
   })
 })
+
+describe('U240 启动 /v1/me 在途时失败登录', () => {
+  test('迟到 200 放行后登录视图回来，旧 orca.user 缓存清除', async () => {
+    const base = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const jar = await cookieSessionJar(base)
+    const page = loadWebConsolePage(base, {
+      platformOrigin: ORIGIN,
+      cookieJar: jar,
+      storage: {
+        'orca.authMode': 'cookie',
+        'orca.user': JSON.stringify({ username: 'stale-account', displayName: '旧账号' })
+      },
+      holdOnLoad: ['GET /v1/me']
+    })
+    await page.settle()
+    assert.ok(page.calls().includes('GET /v1/me'), 'precondition: startup /v1/me is on the wire')
+
+    await page.submitLogin('admin', 'wrong-password')
+    assert.equal(page.hidden('#view-login'), true, 'precondition: the failed login leaves views as-is')
+
+    await page.release()
+    await page.settle()
+
+    assert.equal(
+      page.hidden('#view-login'),
+      false,
+      'a failed login is a newer generation without a session; the view must return to login'
+    )
+    assert.equal(page.hidden('#view-app'), true, 'the late 200 must not enter the app')
+    assert.equal(
+      page.window.localStorage.getItem('orca.user'),
+      null,
+      'the stale cached user must be cleared'
+    )
+  })
+})
