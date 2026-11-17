@@ -17,6 +17,7 @@ export type RelayExitClass =
   | 'checksum'
   | 'manifest'
   | 'platform-unreachable'
+  | 'relay-not-online'
   | 'config'
   | 'other'
 
@@ -30,6 +31,7 @@ const EXIT_CLASS_BY_CODE = new Map<number, RelayExitClass>([
   [66, 'checksum'],
   [67, 'manifest'],
   [68, 'platform-unreachable'],
+  [70, 'relay-not-online'],
   [78, 'config']
 ])
 

@@ -84,8 +84,8 @@ test('classifies every documented installer exit code', () => {
     [66, 'checksum'],
     [67, 'manifest'],
     [68, 'platform-unreachable'],
+    [70, 'relay-not-online'],
     [78, 'config'],
-    [70, 'other'],
     [1, 'other'],
     [124, 'other']
   ])
