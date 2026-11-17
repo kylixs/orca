@@ -101,3 +101,7 @@
 /resources/skills/*.json linguist-generated=true text eol=lf
 # Vitest writes snapshots with LF, so checkout bytes must match on every host.
 **/__snapshots__/*.snap text eol=lf
+
+# U197 U225: byte-pinned test fixtures / console asset — CRLF checkout would break the pinned hashes
+/cloud-platform/apps/web/app.js text eol=lf
+/cloud-platform/test/fixtures/u197-legacy-app.js.snapshot text eol=lf
