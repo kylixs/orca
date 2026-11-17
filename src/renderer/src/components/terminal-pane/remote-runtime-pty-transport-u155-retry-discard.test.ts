@@ -63,6 +63,11 @@ function activationParams(): Record<string, unknown>[] {
     .map((call) => call[0]?.params ?? {})
 }
 
+/** A durable tap is the only activation that carries `intent: 'user'`; mirrors use materializeOnly. */
+function userTapActivations(): Record<string, unknown>[] {
+  return activationParams().filter((params) => params.intent === 'user')
+}
+
 async function markAndCreateTransport() {
   const { markUserInitiatedTerminalCreate } =
     await import('@/runtime/web-session-user-initiated-create')
@@ -175,6 +180,53 @@ describe('U155: retry and unusable create answers discard the gesture', () => {
       await import('@/runtime/web-session-user-initiated-create')
     expect(peekUserInitiatedTerminalCreate(LOCAL_TAB_ID)).toBe(false)
     // Why: a discarded gesture must not leak a durable tap through any other activation (U157 P3-C).
+    expect(activationParams()).toHaveLength(0)
+  })
+
+  it('does not replay the durable tap when the same transport connects again', async () => {
+    let createAttempts = 0
+    runtimeCall.mockImplementation(async (request: { method: string }) => {
+      if (request.method === 'terminal.create') {
+        createAttempts += 1
+        return createResult({
+          handle: `remote-pty-u155-${createAttempts}`,
+          tabId: `u155-host-tab-${createAttempts}`,
+          leafId: `u155-host-leaf-${createAttempts}`
+        })
+      }
+      return { ok: true, result: {} }
+    })
+
+    const transport = await markAndCreateTransport()
+    await transport.connect({ url: '', callbacks: {} })
+    expect(userTapActivations(), 'the first create owns the click').toHaveLength(1)
+
+    // Why: automatic recovery and online/resume re-enter connect(); the gesture is per transport,
+    // not per connect, so the replay must stay passive (U155).
+    runtimeCall.mockClear()
+    await transport.connect({ url: '', callbacks: {} })
+    expect(userTapActivations()).toHaveLength(0)
+
+    const { peekUserInitiatedTerminalCreate } =
+      await import('@/runtime/web-session-user-initiated-create')
+    expect(peekUserInitiatedTerminalCreate(LOCAL_TAB_ID, ENV)).toBe(false)
+  })
+
+  it('discards the mark when create fails on a non-recoverable error', async () => {
+    runtimeCall.mockImplementation(async (request: { method: string }) => {
+      if (request.method === 'terminal.create') {
+        throw new Error('terminal create rejected by host policy')
+      }
+      return { ok: true, result: {} }
+    })
+
+    const transport = await markAndCreateTransport()
+    await transport.connect({ url: '', callbacks: {} })
+
+    const { peekUserInitiatedTerminalCreate } =
+      await import('@/runtime/web-session-user-initiated-create')
+    // Why: the throw skips every consumer, so only the catch discard can clear the mark (U155).
+    expect(peekUserInitiatedTerminalCreate(LOCAL_TAB_ID, ENV)).toBe(false)
     expect(activationParams()).toHaveLength(0)
   })
 })
