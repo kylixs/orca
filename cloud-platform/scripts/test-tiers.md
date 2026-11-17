@@ -18,3 +18,15 @@
 3. **不重复测试**：同一改动连续多次运行同一层视为浪费；T0/T1 通过后，除非改动文件集合变化，否则不再重复。
 4. **并发上限**：本机 vitest 默认 2 workers（`ORCA_TEST_MAX_WORKERS` 可覆盖，CI 保持默认）；平台 `node --test` 固定 `--test-concurrency=1`；Electron/e2e 一律 `electron-headless` + 后台/抑制变量。
 5. **全量不是默认动作**：`full` 层被脚本显式拒绝，须走发版前 L4 流程并记录证据。
+
+## 资源监控（2026-11-17 新增）
+
+```bash
+node cloud-platform/scripts/monitor-system-resources.mjs \
+  --interval=5 --out=cloud-platform/evidence/resource-monitor-<ts> \
+  --max-node=24 --max-rss-gb=12 --max-load=0 -- <要运行的测试命令>
+```
+
+- 采样内容：进程数、node/Electron 进程数、总 RSS、loadavg、Top5 内存进程；每 5s 一行写入 `system-resources.jsonl`。
+- 超阈值打印 `[resource-watch]` 警告；结束写 `system-resources-summary.json`（peak 值）。
+- 用途：长跑（L4/T1/冒烟）必须带监控；出现 node 进程数或 RSS 异常增长即判资源问题、先停再查。
