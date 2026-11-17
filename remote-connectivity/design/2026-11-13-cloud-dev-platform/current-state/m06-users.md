@@ -66,7 +66,7 @@
 
 管理员强制下线（U244 / FR-1.6，API-only）：
 
-- 端点 `POST /v1/users/{id}/sessions/revoke`（`cloud-platform/apps/api/src/server.ts:5196-5259`）；body 仅可选 `reason`（≤200 字，请求体上限 4KB，`:319-321`）。
+- 端点 `POST /v1/users/{id}/sessions/revoke`（`cloud-platform/apps/api/src/server.ts:5210-5281`）；body 仅可选 `reason`（≤200 字，请求体上限 4KB，`:319-321`）。
 - 计数语义（U245②）：审计 metadata `revokedSessions` 为目标 session 数（写审计前快照），响应 `revokedSessions` 为本次实际撤销数；远程审计写期间的并发撤销可致 metadata 略高估（安全结果不受影响）。
 - 权限与审计：`platform:admin`；非管理员 403 + `session_revoke` denied 审计（`requiredPermission=platform:admin`）。写前经 `auditAllowsMutations` 门禁，审计链不可写时 503 且**不撤销任何 session / 不写宿主撤销集合**（fail-closed）。
 - 撤销范围：逐活跃 session `revokeSessionOnce`（epoch+1 → 旧 access 立即 401，refresh 401 并清 Cookie）；`appendRevocation('user', username, 'admin_force_offline')` 让已建 WSS 宿主票据一并失效；**不写 device 撤销**。并发/重复由 `withUserSessionRevokeLock`（`:2989-3009`）串行化：并发只撤一次且只写一条审计，重复请求返回 `revokedSessions:0`、不重复写审计。
