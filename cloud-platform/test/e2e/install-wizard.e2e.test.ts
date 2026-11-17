@@ -777,6 +777,117 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     assert.doesNotMatch(run.stdout, /systemctl --user enable/)
   })
 
+  describe('H9b: systemd 用户单元生成', () => {
+    const UNIT_PATH = '.config/systemd/user/orca-cloud-host.service'
+
+    /** Logs every invocation so the test can prove the exact systemctl verbs. */
+    const SYSTEMCTL_STUB = `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$HOME/systemctl.log"
+exit 0
+`
+    const SYSTEMCTL_ENABLE_FAILS = `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$HOME/systemctl.log"
+case "$*" in *enable*) exit 1 ;; esac
+exit 0
+`
+    const LOGINCTL_OK = `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$HOME/loginctl.log"
+exit 0
+`
+    const LOGINCTL_FAILS = `#!/usr/bin/env bash
+echo "linger denied" >&2
+exit 1
+`
+
+    // Sparse PATH has no real `hostname` fallback, so the bare invocation must
+    // answer too (HOSTNAME_STUB only covers -s/-I).
+    const ADVERTISING_HOSTNAME =
+      '#!/usr/bin/env bash\ncase "$1" in -s) echo orca-test-host ;; *) echo orca-test-host ;; esac\n'
+
+    function makeSystemdHome(stubs: Record<string, string>): string {
+      const home = makeInstallHome()
+      makeSparsePath(home, {
+        hostname: ADVERTISING_HOSTNAME,
+        'orca-ide': ORCA_STUB,
+        ...stubs
+      })
+      return home
+    }
+
+    function pathOf(home: string): string {
+      return join(home, 'sparse-bin')
+    }
+
+    test('写 orca-cloud-host.service：单元键齐全、RestartPreventExitStatus 只含 78', async () => {
+      const home = makeSystemdHome({ systemctl: SYSTEMCTL_STUB, loginctl: LOGINCTL_OK })
+      const run = runInstallScript(await fetchHostScript(), home, {
+        PATH: pathOf(home),
+        ORCA_HOST_STATE_TIMEOUT: '0'
+      })
+
+      assert.equal(run.status, 0, run.stderr)
+      const unit = readFileSync(join(home, UNIT_PATH), 'utf8')
+      assert.match(unit, /^\[Unit\]$/m)
+      assert.match(unit, /^Description=Orca Cloud 宿主代理$/m)
+      assert.match(unit, /^StartLimitIntervalSec=\d+$/m)
+      assert.match(unit, /^StartLimitBurst=5$/m)
+      assert.match(unit, /^EnvironmentFile=%h\/\.orca-cloud\/host\.env$/m)
+      assert.match(unit, /^ExecStart=.+orca-ide --host-mode$/m)
+      assert.match(unit, /^Restart=on-failure$/m)
+      assert.match(unit, /^RestartSec=5$/m)
+      assert.match(unit, /^RestartPreventExitStatus=78$/m)
+      // Design v3: exit 3 was a dead configuration and must not come back.
+      assert.doesNotMatch(unit, /RestartPreventExitStatus=.*3/)
+      assert.match(unit, /^WantedBy=default\.target$/m)
+
+      // Linger is best-effort and the unit is activated through systemctl.
+      assert.match(readFileSync(join(home, 'loginctl.log'), 'utf8'), /enable-linger/)
+      const calls = readFileSync(join(home, 'systemctl.log'), 'utf8')
+      assert.match(calls, /--user daemon-reload/)
+      assert.match(calls, /--user enable --now orca-cloud-host\.service/)
+      // systemd owns the process; no nohup duplicate beside it.
+      assert.doesNotMatch(run.stdout, /nohup .*--host-mode/)
+    })
+
+    test('loginctl enable-linger 失败只告警，安装继续', async () => {
+      const home = makeSystemdHome({ systemctl: SYSTEMCTL_STUB, loginctl: LOGINCTL_FAILS })
+      const run = runInstallScript(await fetchHostScript(), home, {
+        PATH: pathOf(home),
+        ORCA_HOST_STATE_TIMEOUT: '0'
+      })
+
+      assert.equal(run.status, 0, run.stderr)
+      assert.match(run.stderr, /loginctl enable-linger 失败/)
+      assert.match(readFileSync(join(home, 'systemctl.log'), 'utf8'), /enable --now/)
+    })
+
+    test('systemctl enable --now 失败 → 退出码 69', async () => {
+      const home = makeSystemdHome({
+        systemctl: SYSTEMCTL_ENABLE_FAILS,
+        loginctl: LOGINCTL_OK
+      })
+      const run = runInstallScript(await fetchHostScript(), home, {
+        PATH: pathOf(home),
+        ORCA_HOST_STATE_TIMEOUT: '0'
+      })
+
+      assert.equal(run.status, 69, run.stderr)
+      assert.match(run.stderr, /systemd 用户服务安装失败（69）/)
+    })
+
+    test('非 systemd 路径不写用户单元，保持 nohup 语义', async () => {
+      const home = makeSystemdHome({})
+      const run = runInstallScript(await fetchHostScript(), home, {
+        PATH: pathOf(home),
+        ORCA_HOST_STATE_TIMEOUT: '0'
+      })
+
+      assert.equal(run.status, 0, run.stderr)
+      assert.equal(existsSync(join(home, UNIT_PATH)), false)
+      assert.match(run.stdout, /nohup .*--host-mode/)
+    })
+  })
+
   test('U182: 缺少 orca/orca-ide 时 fail-fast，不写配置', async () => {
     const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
     const bin = makeSparsePath(home, { hostname: HOSTNAME_STUB })

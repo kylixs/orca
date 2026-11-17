@@ -504,10 +504,46 @@ echo ">> 环境已就绪：$ORCA_ENV_FILE"
 # and /health are diagnostics, never an "online" verdict.
 ORCA_HOST_LOG="\${ORCA_HOST_LOG:-$HOME/.orca-cloud/host.log}"
 mkdir -p "$(dirname "$ORCA_HOST_LOG")"
-echo ">> 后台启动 Orca 宿主（--host-mode）：$ORCA_HOST_BIN --host-mode"
+ORCA_HOST_PID=""
+echo ">> 启动 Orca 宿主（--host-mode）：$ORCA_HOST_BIN --host-mode"
 set -a; . "$ORCA_ENV_FILE"; set +a
-nohup "$ORCA_HOST_BIN" --host-mode >> "$ORCA_HOST_LOG" 2>&1 &
-ORCA_HOST_PID=$!
+
+# H9b: with user systemd the unit owns the process — it restarts on failure and
+# survives logout/reboot. No nohup beside it (two instances fight the profile lock).
+if ${systemdAvailable()}; then
+  ORCA_UNIT_FILE="$HOME/.config/systemd/user/orca-cloud-host.service"
+  mkdir -p "$(dirname "$ORCA_UNIT_FILE")"
+  cat > "$ORCA_UNIT_FILE" <<ORCA_HOST_UNIT
+[Unit]
+Description=Orca Cloud 宿主代理
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+EnvironmentFile=%h/.orca-cloud/host.env
+ExecStart=$ORCA_HOST_BIN --host-mode
+Restart=on-failure
+RestartSec=5
+RestartPreventExitStatus=78
+
+[Install]
+WantedBy=default.target
+ORCA_HOST_UNIT
+  echo ">> 已写入 systemd 用户单元：$ORCA_UNIT_FILE"
+  # Linger is best-effort: without it the host still runs until logout.
+  if command -v loginctl >/dev/null 2>&1 && ! loginctl enable-linger; then
+    echo ">> 警告：loginctl enable-linger 失败，注销后宿主会停止；请手动执行 loginctl enable-linger" >&2
+  fi
+  if ! systemctl --user daemon-reload || ! systemctl --user enable --now orca-cloud-host.service; then
+    echo ">> systemd 用户服务安装失败（69）：请检查 systemctl --user 是否可用后重试" >&2
+    echo ">> 单元文件保留在 $ORCA_UNIT_FILE" >&2
+    exit 69
+  fi
+else
+  # U182: containers/WSL/macOS have no user systemd; keep the plain nohup path.
+  nohup "$ORCA_HOST_BIN" --host-mode >> "$ORCA_HOST_LOG" 2>&1 &
+  ORCA_HOST_PID=$!
+fi
 
 # State self-check (design §4.3): schema v2, online, successful heartbeat, a
 # non-empty hostId and a live pid. 0 (ORCA_HOST_STATE_TIMEOUT) skips the wait.
@@ -559,25 +595,14 @@ fi
 if ${systemdAvailable()}; then
   cat <<ORCA_NEXT
 
-宿主已在后台启动（pid $ORCA_HOST_PID，日志 $ORCA_HOST_LOG）。
+宿主已由 systemd 用户服务托管：orca-cloud-host.service（日志 $ORCA_HOST_LOG）。
 后续可选命令在开发机上执行：
-1) 前台调试前先停止后台实例：kill $ORCA_HOST_PID
+1) 查看状态：systemctl --user status orca-cloud-host.service
+2) 停止：systemctl --user stop orca-cloud-host.service
+3) 前台调试前先停止服务：
+   systemctl --user stop orca-cloud-host.service
    set -a; . "$ORCA_ENV_FILE"; set +a
    $ORCA_HOST_BIN --host-mode
-2) systemd 用户单元（开机自启；先停止上面的后台实例，避免 profile 锁冲突）：
-   mkdir -p ~/.config/systemd/user
-   cat > ~/.config/systemd/user/orca-host.service <<'UNIT'
-[Unit]
-Description=Orca Cloud 宿主代理
-[Service]
-EnvironmentFile=%h/.orca-cloud/host.env
-ExecStart=$ORCA_HOST_BIN --host-mode
-Restart=on-failure
-[Install]
-WantedBy=default.target
-UNIT
-   systemctl --user daemon-reload
-   systemctl --user enable --now orca-host.service
 ORCA_NEXT
 else
   # U182: containers/WSL/macOS have no user systemd; print runnable commands
