@@ -166,6 +166,8 @@ export type ApiConfig = {
   refreshGraceMs?: number
   /** U230②: test-only barrier awaited before a disabled-session revoke, to interleave refreshes. */
   beforeDisabledSessionRevoke?: () => void | Promise<void>
+  /** U244: test-only barrier awaited before an admin force-offline revokes user sessions. */
+  beforeUserSessionRevoke?: () => void | Promise<void>
   /** How long a host stays "online" without a heartbeat; tests shrink it to observe the flip. */
   hostOfflineMs?: number
   /** One-time web-handoff code lifetime (FR-3.10); tests shrink it to exercise expiry. */
@@ -314,6 +316,9 @@ async function readJson(
 
 /** A logout body only ever carries a refresh token; anything larger is ignored. */
 const LOGOUT_BODY_MAX_BYTES = 16 * 1024
+/** U244: the force-offline body only carries an optional audit note. */
+const FORCE_OFFLINE_BODY_MAX_BYTES = 4 * 1024
+const FORCE_OFFLINE_REASON_MAX_CHARS = 200
 
 function e2eeKeyFingerprint(e2eePublicKeyB64: string): string {
   const digest = createHash('sha256').update(Buffer.from(e2eePublicKeyB64, 'base64')).digest('hex')
@@ -2977,6 +2982,33 @@ export function createApp(config: ApiConfig): ApiHandle {
   }
 
   /**
+   * U244: two admin force-offline requests for one user may race. Serialising
+   * audit+revoke makes the epoch bump and its audit event happen exactly once;
+   * the follower then sees zero live sessions and reports 0.
+   */
+  const userSessionRevokeQueues = new Map<string, Promise<void>>()
+
+  async function withUserSessionRevokeLock<T>(
+    userId: string,
+    action: () => Promise<T>
+  ): Promise<T> {
+    const previous = userSessionRevokeQueues.get(userId) ?? Promise.resolve()
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const tail = previous.then(() => gate)
+    userSessionRevokeQueues.set(userId, tail)
+    await previous
+    try {
+      return await action()
+    } finally {
+      release()
+      if (userSessionRevokeQueues.get(userId) === tail) userSessionRevokeQueues.delete(userId)
+    }
+  }
+
+  /**
    * Every live relay, in registration order (AC-23). A dead relay is dropped from
    * the list rather than being handed to a client that would only time out on it;
    * if none has checked in recently, the last known one is still offered so a
@@ -5157,6 +5189,73 @@ export function createApp(config: ApiConfig): ApiHandle {
         revokeUserCredentials(target.username, 'role_changed')
       }
       return json(res, 200, { ok: true, roles: target.roles, source: 'admin-override' })
+    }
+
+    // U244 / FR-1.6: admin force-offline — kill every platform session and the
+    // host ticket, but not the devices (force-offline is not device loss).
+    const userSessionsRevokePath = path.match(/^\/v1\/users\/([\w-]+)\/sessions\/revoke$/)
+    if (userSessionsRevokePath && req.method === 'POST') {
+      const authed = requireAuth()
+      if (!authed) return
+      const targetId = userSessionsRevokePath[1]
+      if (!isAdmin(authed.user)) {
+        return denyPrivileged(res, traceId, authed.user, {
+          eventType: 'session_revoke',
+          targetType: 'user',
+          targetId,
+          permission: 'platform:admin'
+        })
+      }
+      if (!auditAllowsMutations(res, traceId)) return
+      const body = await readJson(req, FORCE_OFFLINE_BODY_MAX_BYTES)
+      const rawReason = typeof body.reason === 'string' ? body.reason.trim() : ''
+      const reason = rawReason.slice(0, FORCE_OFFLINE_REASON_MAX_CHARS)
+      const target = store.users.get(targetId)
+      if (!target) {
+        return error(res, 404, 'USER_NOT_FOUND', '用户不存在。', traceId)
+      }
+      // Test-only barrier: both racing requests pause here before serialising.
+      await config.beforeUserSessionRevoke?.()
+      let auditFailed = false
+      const revokedSessions = await withUserSessionRevokeLock(target.id, async () => {
+        const live = [...store.sessions.values()].filter(
+          (session) => session.userId === target.id && session.revokedAt === null
+        )
+        const alreadyRevoked = store.revocations.some(
+          (entry) => entry.targetType === 'user' && entry.targetId === target.username
+        )
+        // A repeat after the same revoke already landed changes nothing and writes no second event.
+        if (live.length === 0 && alreadyRevoked) return 0
+        if (
+          !(await recordAudit(
+            res,
+            {
+              eventType: 'session_revoke',
+              actor: authed.user.username,
+              targetType: 'user',
+              targetId: target.id,
+              result: 'success',
+              traceId,
+              metadata: {
+                username: target.username,
+                revokedSessions: live.length,
+                ...(reason === '' ? {} : { reason })
+              }
+            },
+            traceId
+          ))
+        ) {
+          auditFailed = true
+          return 0
+        }
+        let count = 0
+        for (const session of live) if (revokeSessionOnce(session)) count += 1
+        // Established WSS sessions bypass the platform, so the host ticket must die too.
+        appendRevocation('user', target.username, 'admin_force_offline')
+        return count
+      })
+      if (auditFailed) return
+      return json(res, 200, { ok: true, revokedSessions })
     }
 
     // ---- hosts ----

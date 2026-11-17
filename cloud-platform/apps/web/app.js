@@ -3646,6 +3646,7 @@ const AUDIT_EVENT_FALLBACK_TYPES = [
   'project_access',
   'grant_update',
   'role_update',
+  'session_revoke',
   'host_register',
   'host_revoke',
   'policy_update',
@@ -3693,6 +3694,7 @@ const AUDIT_EVENT_LABELS = {
   provision_assign: '开通分配',
   relay_list: '中继列表',
   role_update: '角色变更',
+  session_revoke: '会话撤销',
   signing_key_rotate: '签名密钥轮换',
   user_list: '用户列表',
   web_handoff: '会话交接'
