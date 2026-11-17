@@ -4315,3 +4315,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **Web 全量当前 HEAD 重跑完成**：其余 22 套件 **137/137**（HEAD `59ed8666`，CONC=2）+ latency **1/1** 单跑；连同 183/183，Web 全量 **321/321** 均为当前代码基线，交付摘要更新。
 - **D17/D10 按设计字面开始实施**（裁定仍可覆盖）：AC9b/AC9c/AC15(g) 迁移探测（无标记 → 1 次无 body + 失败 1 次 body；旧服务端写 `legacy` 防重复探测）改造中；CSP Report-Only 仅 HTML 文档（草稿策略，阶段 1）落点 `sendStaticAsset` 改造中。两令均含测试与独立复审计划。
 - **D10 阶段 1 落地**（`0fd4062f33c`，3 文件）：CSP `Report-Only` 仅 HTML 文档——`STATIC_CSP_REPORT_ONLY` 不入共享头；`sendStaticAsset` 可选参数；hashed/release/回退三处接线；`ORCA_CLOUD_CSP_REPORT_ONLY=off` 可关（默认开）。新套件 2 例（入口/hashed/回退带；JS/CSS/JSON/下载/404 不带；关闭 env 不带）+ web-release 回归；主会话 3/3。未做：内联 onclick 重构（等 D17 令释放 app.js）、真实浏览器零违规观测、report-uri、宿主侧。待独立复审。
+- **D10 阶段 1 复审 APPROVED**：头不扩散（JSON/导出/404/JS 不带）、200/304/回退接线、env off、策略逐字与草稿一致；变异回退接线即红。未完成：真实浏览器零违规（T2/T3）与内联 onclick 重构；P3 补强 4 项待做。
