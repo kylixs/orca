@@ -3469,6 +3469,20 @@ export function createApp(config: ApiConfig): ApiHandle {
         return refuseNotAdmitted()
       }
       let user = store.usersByName.get(username)
+      // U228: a disabled account must not sign in. Refuse after the password
+      // check but before any device/session/token/Cookie is created.
+      if (user && user.status !== 'active') {
+        audit.appendBestEffort({
+          eventType: 'login',
+          actor: user.username,
+          targetType: 'session',
+          targetId: null,
+          result: 'denied',
+          traceId,
+          metadata: { reason: 'USER_DISABLED' }
+        })
+        return error(res, 403, 'USER_DISABLED', '账号已停用，请联系平台管理员。', traceId)
+      }
       if (!user) {
         user = store.seedUser({
           username,
@@ -3542,6 +3556,24 @@ export function createApp(config: ApiConfig): ApiHandle {
         // Re-check after the body read: a concurrent revoke must still 401.
         if (cookieSession.revokedAt || cookieSession.refreshExpiresAt < now()) {
           clearRefreshCookie(res)
+          return error(res, 401, 'SESSION_EXPIRED', '会话已失效，请重新登录。', traceId)
+        }
+        // U228: a disabled account must not renew. Revoke before any branch so
+        // current, previous and grace values all fail the same way.
+        const cookieUser = store.users.get(cookieSession.userId)
+        if (!cookieUser || cookieUser.status !== 'active') {
+          cookieSession.revokedAt = now()
+          bumpEpoch(cookieSession.id)
+          clearRefreshCookie(res)
+          audit.appendBestEffort({
+            eventType: 'logout',
+            actor: cookieUser?.username ?? null,
+            targetType: 'session',
+            targetId: cookieSession.id,
+            result: 'denied',
+            traceId,
+            metadata: { reason: 'USER_DISABLED', source: 'cookie' }
+          })
           return error(res, 401, 'SESSION_EXPIRED', '会话已失效，请重新登录。', traceId)
         }
         const cookieHash = hashToken(cookieValue)
@@ -3671,6 +3703,23 @@ export function createApp(config: ApiConfig): ApiHandle {
       const session = sessionId ? store.sessions.get(sessionId) : undefined
       if (!session || session.revokedAt || session.refreshExpiresAt < now()) {
         if (refreshCookieEnabled()) clearRefreshCookie(res)
+        return error(res, 401, 'SESSION_EXPIRED', '会话已失效，请重新登录。', traceId)
+      }
+      // U228: a disabled account must not renew through the body source either.
+      const sessionUser = store.users.get(session.userId)
+      if (!sessionUser || sessionUser.status !== 'active') {
+        session.revokedAt = now()
+        bumpEpoch(session.id)
+        if (refreshCookieEnabled()) clearRefreshCookie(res)
+        audit.appendBestEffort({
+          eventType: 'logout',
+          actor: sessionUser?.username ?? null,
+          targetType: 'session',
+          targetId: session.id,
+          result: 'denied',
+          traceId,
+          metadata: { reason: 'USER_DISABLED', source: 'body' }
+        })
         return error(res, 401, 'SESSION_EXPIRED', '会话已失效，请重新登录。', traceId)
       }
       const isCurrent = safeEqual(session.refreshHash, hashToken(token))

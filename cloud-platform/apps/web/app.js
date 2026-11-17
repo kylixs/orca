@@ -65,12 +65,19 @@ async function api(path, init = {}, { retried = false } = {}) {
     }
   })
   // U197: in Cookie mode the session is provable without a body refresh token.
-  if (res.status === 401 && !retried && (state.cookieMode || state.refreshToken)) {
-    const refresh = await refreshSession(accessToken)
-    if (refresh === 'ok') return api(path, init, { retried: true })
-    // U222 N1: a transport failure is not a verdict on the session. Keep it and
-    // let the caller see the failed request; only an HTTP rejection signs out.
-    if (refresh === 'rejected') logout()
+  if (res.status === 401) {
+    if (!retried && (state.cookieMode || state.refreshToken)) {
+      const refresh = await refreshSession(accessToken)
+      if (refresh === 'ok') return api(path, init, { retried: true })
+      // U222 N1: a transport failure is not a verdict on the session. Keep it and
+      // let the caller see the failed request; only an HTTP rejection signs out.
+      if (refresh === 'rejected') logout()
+    } else if (retried) {
+      // U228: one refresh + one replay both 401 means the session is dead (for
+      // example the account was disabled). Sign out instead of leaving a shell
+      // that only shows "加载失败"; logout never refreshes, so this cannot loop.
+      logout()
+    }
   }
   const body = res.status === 204 ? {} : await res.json().catch(() => ({}))
   if (!res.ok) {
