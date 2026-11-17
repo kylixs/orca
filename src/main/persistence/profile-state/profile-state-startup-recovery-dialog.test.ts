@@ -1,7 +1,14 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const { showMessageBoxMock } = vi.hoisted(() => ({ showMessageBoxMock: vi.fn() }))
+
+vi.mock('electron', () => ({ dialog: { showMessageBox: showMessageBoxMock } }))
+
 import {
   chooseProfileStateCopy,
-  presentProfileStateStartupRecoveryDialog
+  presentProfileStateStartupRecoveryDialog,
+  showProfileStateCopyMessageBox,
+  showProfileStateRecoveryMessageBox
 } from './profile-state-startup-recovery-dialog'
 
 describe('profile state startup recovery dialog', () => {
@@ -95,5 +102,69 @@ describe('profile state startup recovery dialog', () => {
     const showMessageBox = vi.fn().mockResolvedValue({ response: 2 })
     await chooseProfileStateCopy({ showMessageBox })
     expect(showMessageBox.mock.calls[0][0].detail).not.toContain('Last saved')
+  })
+})
+
+describe('non-interactive profile state answers', () => {
+  beforeEach(() => {
+    process.env.ORCA_SUPPRESS_DIALOGS = '1'
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    delete process.env.ORCA_SUPPRESS_DIALOGS
+    vi.restoreAllMocks()
+    showMessageBoxMock.mockReset()
+  })
+
+  it('answers the copy prompt with Quit, never choosing a copy to apply', async () => {
+    await expect(
+      showProfileStateCopyMessageBox({
+        buttons: ['Use SQLite (Recommended)', 'Use JSON', 'Quit'],
+        defaultId: 0,
+        cancelId: 2,
+        title: 'Choose profile state',
+        message: 'This profile has two saved copies that don’t match.'
+      })
+    ).resolves.toEqual({ response: 2, checkboxChecked: false })
+    expect(showMessageBoxMock).not.toHaveBeenCalled()
+
+    // Quit maps to no choice, so index.ts skips the destructive relaunch.
+    await expect(
+      chooseProfileStateCopy({ showMessageBox: showProfileStateCopyMessageBox })
+    ).resolves.toBeUndefined()
+  })
+
+  it('answers the recovery prompt with its Quit button, not the copy command', async () => {
+    await expect(
+      showProfileStateRecoveryMessageBox({
+        buttons: ['Copy recovery command', 'Quit'],
+        defaultId: 1,
+        cancelId: 1,
+        title: 'Orca profile state cannot be opened',
+        message: 'Orca cannot safely open this profile.'
+      })
+    ).resolves.toEqual({ response: 1, checkboxChecked: false })
+
+    const copyToClipboard = vi.fn()
+    await presentProfileStateStartupRecoveryDialog({
+      message: 'SQLite state is unreadable.',
+      recoveryCommand: 'orca profile state exports',
+      showMessageBox: showProfileStateRecoveryMessageBox,
+      copyToClipboard
+    })
+    expect(copyToClipboard).not.toHaveBeenCalled()
+  })
+
+  it('answers the single-button recovery prompt with Quit', async () => {
+    await expect(
+      showProfileStateRecoveryMessageBox({
+        buttons: ['Quit'],
+        defaultId: 0,
+        cancelId: 0,
+        title: 'Orca profile state cannot be opened',
+        message: 'Orca cannot safely open this profile.'
+      })
+    ).resolves.toEqual({ response: 0, checkboxChecked: false })
   })
 })

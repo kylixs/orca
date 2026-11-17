@@ -1,5 +1,6 @@
 import { statSync } from 'node:fs'
 import type { MessageBoxOptions, MessageBoxReturnValue } from 'electron'
+import { showUserMessageBox } from '../../startup/non-interactive-launch'
 import { getActiveProfileStateLocation } from './profile-state-active-location'
 import { profileStateDatabaseFiles } from './profile-state-storage-classification'
 
@@ -97,4 +98,21 @@ export async function chooseProfileStateCopy(
     ].join('\n')
   })
   return response === 0 ? 'current-sqlite' : response === 1 ? 'current-json' : undefined
+}
+
+/** Non-interactive launches must never pick a copy; Quit (2) is the only safe answer. */
+export const PROFILE_STATE_COPY_QUIT_RESPONSE = 2
+
+/** Injected by index.ts: a suppressed launch answers Quit instead of rewriting profile state. */
+export function showProfileStateCopyMessageBox(
+  options: MessageBoxOptions
+): Promise<MessageBoxReturnValue> {
+  return showUserMessageBox(options, undefined, PROFILE_STATE_COPY_QUIT_RESPONSE)
+}
+
+/** Injected by index.ts: a suppressed launch answers the dialog's cancel button (Quit). */
+export function showProfileStateRecoveryMessageBox(
+  options: MessageBoxOptions
+): Promise<MessageBoxReturnValue> {
+  return showUserMessageBox(options, undefined, options.cancelId ?? 0)
 }

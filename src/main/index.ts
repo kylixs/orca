@@ -23,10 +23,11 @@ import { recordDurableCrashBreadcrumb } from './crash-reporting/durable-crash-br
 import {
   chooseProfileStateCopy,
   presentProfileStateStartupRecoveryDialog,
-  readProfileStateCopySavedTimes
+  readProfileStateCopySavedTimes,
+  showProfileStateCopyMessageBox,
+  showProfileStateRecoveryMessageBox
 } from './persistence/profile-state/profile-state-startup-recovery-dialog'
 import { profileStateDesktopRecoveryArgs } from './startup/profile-state-recovery-preflight'
-import { showUserMessageBox } from './startup/non-interactive-launch'
 
 function openMainWindow(options: { revealOnDidFinishLoad?: boolean } = {}): BrowserWindow {
   return openMainWindowController(options)
@@ -143,7 +144,7 @@ if (preflightReady) {
             const userDataPath = app.getPath('userData')
             const choice = await chooseProfileStateCopy({
               ...readProfileStateCopySavedTimes(userDataPath),
-              showMessageBox: (options) => showUserMessageBox(options)
+              showMessageBox: showProfileStateCopyMessageBox
             })
             if (choice !== undefined) {
               // Recovery needs both profile locks, which only a fresh process can own safely.
@@ -162,7 +163,7 @@ if (preflightReady) {
             ...(failureClass === 'recovery-required' || failureClass === 'ambiguous-authority'
               ? { recoveryCommand: 'orca profile state exports' }
               : {}),
-            showMessageBox: (options) => showUserMessageBox(options),
+            showMessageBox: showProfileStateRecoveryMessageBox,
             copyToClipboard: (text) => clipboard.writeText(text)
           })
         } catch (dialogError) {
