@@ -123,6 +123,6 @@ Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self'; styl
 ### 待验证（含验证命令）
 
 1. ~~本地 http 宿主是否存在 handoff 路径（决定 `frame-src` 是否需 `http:`）~~ **已由代码确认：handoff 硬编码 `https://`（`server.ts:6591-6595`，含回退），无 http handoff；`frame-src` 不需要 `http:`**。保留 §5 T5 作回归，确认两种部署下握手仍成立。
-2. `frame-ancestors 'none'` 是否有实际嵌入方。`rg -n "<iframe|<webview" src/renderer/src mobile --glob '!**/*.test.*'`，逐个确认加载 URL 是否��控制台（命中含文件/PDF/notebook 预览、移动 HTML 预览、聊天 srcdoc、插件壳与桌面 `<webview>` guest；未发现加载本控制台者）。强制前需实测 Electron `<webview>` guest 是否受 `frame-ancestors` 约束。
+2. `frame-ancestors 'none'` 是否有实际嵌入方。`rg -n "<iframe|<webview" src/renderer/src mobile --glob '!**/*.test.*'`，逐个确认加载 URL 是否为控制台（命中含文件/PDF/notebook 预览、移动 HTML 预览、聊天 srcdoc、插件壳与桌面 `<webview>` guest；未发现加载本控制台者）。强制前需实测 Electron `<webview>` guest 是否受 `frame-ancestors` 约束。
 3. Chromium 对 `link rel=icon` 的 `img-src` 执行行为。按 §5 T6 实跑确认。
 4. `style-src 'unsafe-inline'` 移除后的真实违规数（当前 16 处静态属性之外，是否还有 `setAttribute('style')` 或第三方代码）。`rg -n "setAttribute\\('style'" cloud-platform/apps/web`。
