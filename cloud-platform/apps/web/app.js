@@ -110,8 +110,24 @@ async function api(path, init = {}, { retried = false } = {}) {
 /** U134: parallel 401s share one rotation — a second refresh with the already
  * rotated token would kill the session and sign the user out. */
 let refreshInFlight = null
-/** U229 F3: a late logout response would clear the Cookie a newer login set. */
-let logoutInFlight = null
+/** U232: every refresh request is abortable; auth transitions cancel them all. */
+const refreshControllers = new Set()
+/** U229 F3 / U232: a late logout response would clear the Cookie a newer login
+ * set, so every in-flight logout is tracked and a login aborts them all. */
+const logoutControllers = new Set()
+
+/** U232: an aborted refresh is not a verdict on the session; the caller decides. */
+function abortRefreshFlights() {
+  for (const controller of refreshControllers) controller.abort()
+  refreshControllers.clear()
+  refreshInFlight = null
+}
+
+/** U232: login supersedes every outstanding logout, not just the newest one. */
+function abortLogoutFlights() {
+  for (const controller of logoutControllers) controller.abort()
+  logoutControllers.clear()
+}
 
 function setCookieMode(enabled) {
   state.cookieMode = enabled
@@ -134,26 +150,29 @@ function refreshVerdict(status) {
 }
 
 /** One no-body Cookie refresh. Success is also the migration gate for old keys. */
-async function refreshWithCookie(epoch) {
+async function refreshWithCookie(epoch, signal) {
   let res
   try {
     res = await fetch('/v1/auth/refresh', {
       method: 'POST',
       credentials: 'same-origin',
+      signal,
       headers: {
         'content-type': 'application/json',
         [WEB_CONTRACT_HEADER]: String(WEB_CONTRACT_VERSION)
       }
     })
   } catch {
+    // U232: an aborted refresh belongs to an abandoned generation, never an outage.
+    if (signal.aborted || state.authEpoch !== epoch) return 'stale'
     // U221 F2 / U222 N1: transport failure, never an escaped rejection.
-    return state.authEpoch === epoch ? 'error' : 'stale'
+    return 'error'
   }
   // U229 F1: every await boundary checks ownership before touching state.
-  if (state.authEpoch !== epoch) return 'stale'
+  if (signal.aborted || state.authEpoch !== epoch) return 'stale'
   if (!res.ok) return refreshVerdict(res.status)
   const body = await res.json().catch(() => ({}))
-  if (state.authEpoch !== epoch) return 'stale'
+  if (signal.aborted || state.authEpoch !== epoch) return 'stale'
   if (typeof body.accessToken !== 'string' || body.accessToken === '') return 'rejected'
   state.accessToken = body.accessToken
   clearLegacyTokens()
@@ -162,14 +181,15 @@ async function refreshWithCookie(epoch) {
 }
 
 /** Legacy body refresh; also the one fallback when the Cookie was lost. */
-async function refreshWithBody(epoch) {
-  if (state.authEpoch !== epoch) return 'stale'
+async function refreshWithBody(epoch, signal) {
+  if (signal.aborted || state.authEpoch !== epoch) return 'stale'
   const requestedRefresh = state.refreshToken
   if (!requestedRefresh) return 'rejected'
   let res
   try {
     res = await fetch('/v1/auth/refresh', {
       method: 'POST',
+      signal,
       headers: {
         'content-type': 'application/json',
         [WEB_CONTRACT_HEADER]: String(WEB_CONTRACT_VERSION)
@@ -177,13 +197,14 @@ async function refreshWithBody(epoch) {
       body: JSON.stringify({ refreshToken: requestedRefresh })
     })
   } catch {
+    if (signal.aborted || state.authEpoch !== epoch) return 'stale'
     // U221 F2 / U222 N1: the caller decides, but this is never a crash.
-    return state.authEpoch === epoch ? 'error' : 'stale'
+    return 'error'
   }
-  if (state.authEpoch !== epoch) return 'stale'
+  if (signal.aborted || state.authEpoch !== epoch) return 'stale'
   if (!res.ok) return refreshVerdict(res.status)
   const body = await res.json().catch(() => ({}))
-  if (state.authEpoch !== epoch) return 'stale'
+  if (signal.aborted || state.authEpoch !== epoch) return 'stale'
   if (typeof body.accessToken !== 'string' || body.accessToken === '') return 'rejected'
   if (body.refreshCookie === true) {
     // Server now issues Cookies, but no no-body success yet: keep the old keys.
@@ -234,24 +255,29 @@ function refreshSession(staleAccess, { startup = false } = {}) {
   }
   if (!refreshInFlight) {
     const epoch = state.authEpoch
+    // U232: a login/logout aborts this fetch; its late Set-Cookie must never land.
+    const controller = new AbortController()
+    refreshControllers.add(controller)
     let flight
     flight = (async () => {
       try {
         // Cookie first; at most one body fallback per cascade, never a loop.
         if (state.cookieMode) {
-          const cookie = await refreshWithCookie(epoch)
+          const cookie = await refreshWithCookie(epoch, controller.signal)
           if (cookie === 'stale') return 'stale'
           if (cookie === 'ok') return 'ok'
           // U222 N1: an unreachable server proves nothing about the Cookie
           // session, so do not spend the legacy body token on it.
           if (cookie === 'error') return 'error'
-          if (state.authEpoch !== epoch) return 'stale'
+          if (controller.signal.aborted || state.authEpoch !== epoch) return 'stale'
           // U229 F2: at startup an ownerless legacy key is stale pre-U221 data,
           // not a credential for whichever account it happens to point at.
           if (startup && !legacyOwnerAllowsFallback()) return 'rejected'
         }
-        return await refreshWithBody(epoch)
+        return await refreshWithBody(epoch, controller.signal)
       } finally {
+        // U232: only this flight may remove its own controller.
+        refreshControllers.delete(controller)
         // U229 F1: an old flight must not clear the new session's in-flight ref.
         if (refreshInFlight === flight) refreshInFlight = null
       }
@@ -4972,14 +4998,12 @@ function confirmDialog(text) {
 async function login(username, password) {
   // U229 F1: requesting a login already abandons the previous generation.
   state.authEpoch += 1
-  refreshInFlight = null
+  // U232: no refresh or logout from the previous session may write after this.
+  abortRefreshFlights()
   // U229 F3: a logout that has not answered yet could clear the Cookie this
-  // login is about to set; abort it and drop the retry marker.
-  if (logoutInFlight) {
-    logoutInFlight.abort()
-    logoutInFlight = null
-    localStorage.removeItem(PENDING_LOGOUT_KEY)
-  }
+  // login is about to set; abort it. U232: keep `orca.pendingLogout` until the
+  // login actually succeeds — a failed attempt must still be retried on reload.
+  abortLogoutFlights()
   let res
   try {
     res = await fetch('/v1/auth/login', {
@@ -5022,7 +5046,7 @@ async function login(username, password) {
   }
   // A successful login is its own generation; an in-flight refresh is now stale.
   state.authEpoch += 1
-  refreshInFlight = null
+  abortRefreshFlights()
   // U197: only a real Set-Cookie response sets the capability. Anything else
   // (old server, never mode, non-browser) keeps the localStorage contract.
   // U229 F2: an ownerless pre-U221 key is not this account's fallback; only an
@@ -5044,9 +5068,9 @@ async function login(username, password) {
 /** U221 F4: tell the server, and only forget the pending marker once it heard us. */
 async function sendLogout(refreshToken = state.refreshToken) {
   const accessToken = state.accessToken
-  // U229 F3: keep the controller so a fresh login can discard this response.
+  // U232: every logout is tracked, so a login can abort all of them.
   const controller = new AbortController()
-  logoutInFlight = controller
+  logoutControllers.add(controller)
   const hasRefresh = typeof refreshToken === 'string' && refreshToken !== ''
   try {
     const res = await fetch('/v1/auth/logout', {
@@ -5069,14 +5093,15 @@ async function sendLogout(refreshToken = state.refreshToken) {
   } catch {
     // Keep the marker so the next page load retries once.
   } finally {
-    if (logoutInFlight === controller) logoutInFlight = null
+    // U232: a newer logout keeps its own controller; this one only leaves its own.
+    logoutControllers.delete(controller)
   }
 }
 
 function logout() {
   // U229 F1: sign-out is a new generation; no in-flight refresh may write after it.
   state.authEpoch += 1
-  refreshInFlight = null
+  abortRefreshFlights()
   // R10: the overlay goes first, and the iframe is told to drop its session.
   closeWorkspaceForLogout()
   // U221 F4: the HttpOnly Cookie can only be cleared by the server, so remember
@@ -5084,8 +5109,9 @@ function logout() {
   localStorage.setItem(PENDING_LOGOUT_KEY, '1')
   // U229 F10: read the refresh token before clearLegacyTokens() wipes it.
   // U229 F11: a logout already on the wire locates the same session; concurrent
-  // 401s must not amplify it into repeated revocations.
-  if (!logoutInFlight) void sendLogout(state.refreshToken)
+  // 401s must not amplify it into repeated revocations. U232: the whole set is
+  // tracked, so a login aborts every one of them.
+  if (logoutControllers.size === 0) void sendLogout(state.refreshToken)
   state.accessToken = ''
   state.user = null
   state.directory = null

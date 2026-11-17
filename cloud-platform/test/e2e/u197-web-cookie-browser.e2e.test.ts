@@ -9,6 +9,7 @@ import {
   request as playwrightRequest,
   type Browser,
   type BrowserContext,
+  type Cookie,
   type Page,
   type Request
 } from 'playwright'
@@ -155,6 +156,26 @@ async function refreshCookieOf(context: BrowserContext) {
   // Secure cookies do not match an http URL for cookies(url), so read the jar.
   const cookies = await context.cookies()
   return cookies.find((cookie) => cookie.name === 'orca_refresh' && cookie.path === '/v1/auth')
+}
+
+/**
+ * U232: `route.fetch()` has already sent the request, and Playwright applies its
+ * Set-Cookie to the shared jar immediately. Tests that model a *late* arrival
+ * must undo that early application or they cannot observe the race at all.
+ */
+async function restoreCookie(context: BrowserContext, cookie: Cookie): Promise<void> {
+  await context.clearCookies()
+  await context.addCookies([
+    {
+      name: cookie.name,
+      value: cookie.value,
+      domain: cookie.domain === '' ? HOST : cookie.domain,
+      path: cookie.path,
+      httpOnly: cookie.httpOnly,
+      secure: cookie.secure,
+      sameSite: cookie.sameSite
+    }
+  ])
 }
 
 async function openConsole(base: string): Promise<{ context: BrowserContext; page: Page }> {
@@ -470,10 +491,12 @@ describe('U197 S5 Web 客户端真实 Chromium：Cookie 会话 / 迁移 / 回退
     }
   })
 
-  test('U229 F3 慢 logout 晚于新登录：新 Cookie 保留且业务 200', async () => {
+  test('U232 F3 慢 logout 晚于新登录：真响应被丢弃，新 Cookie 保留且业务 200', async () => {
     const { context, page } = await openConsole(shortAccess.url)
     try {
       await loginThroughUi(page)
+      const cookieBeforeLogout = await refreshCookieOf(context)
+      assert.ok(cookieBeforeLogout, 'login must set an HttpOnly Cookie')
 
       let releaseLogout = (): void => {}
       const logoutGate = new Promise<void>((resolve) => {
@@ -483,33 +506,62 @@ describe('U197 S5 Web 客户端真实 Chromium：Cookie 会话 / 迁移 / 回退
       const held = new Promise<void>((resolve) => {
         logoutHeld = resolve
       })
+      let logoutSettled = (): void => {}
+      const settled = new Promise<void>((resolve) => {
+        logoutSettled = resolve
+      })
+      let exchange: { status: number; setCookie: string } | null = null
+      const logoutRequests: string[] = []
+
+      page.on('request', (request) => {
+        if (new URL(request.url()).pathname === '/v1/auth/logout') {
+          logoutRequests.push(request.method())
+        }
+      })
       await page.route('**/v1/auth/logout', async (route) => {
+        // Real server response: its 200 is the proof the platform saw the logout,
+        // and its Set-Cookie is the clearing header a late arrival would apply.
+        const response = await route.fetch()
+        exchange = {
+          status: response.status(),
+          setCookie: response.headers()['set-cookie'] ?? ''
+        }
+        // `route.fetch()` applied that Set-Cookie early; undo it so this test
+        // observes the late delivery the UI is racing against.
+        await restoreCookie(context, cookieBeforeLogout)
         logoutHeld()
         await logoutGate
-        // The login aborts this fetch, so the late response must be discarded.
-        await route.continue().catch(() => {})
+        await route.fulfill({ response }).catch(() => {})
+        logoutSettled()
       })
 
       await page.locator('#logoutBtn').click()
       await held
       await page.waitForSelector(VIEW_LOGIN, { state: 'visible', timeout: 15_000 })
+      const observed = exchange as { status: number; setCookie: string } | null
+      assert.equal(logoutRequests[0], 'POST', 'the network event reached the logout path')
+      assert.equal(observed?.status, 200, 'the server actually received the logout')
+      assert.match(
+        observed?.setCookie ?? '',
+        /orca_refresh=[^;]*;.*Max-Age=0/is,
+        'the delayed real response carries the clearing Cookie header'
+      )
 
-      // The held logout has not answered yet; a fresh login must win the race.
+      // The held logout has not been delivered yet; a fresh login must win the race.
       await loginThroughUi(page)
-      assert.ok(await refreshCookieOf(context), 'the new login must set a Cookie')
+      const newCookie = await refreshCookieOf(context)
+      assert.ok(newCookie, 'the new login must set a Cookie')
+      assert.notEqual(newCookie.value, cookieBeforeLogout.value, 'a new session, not a resend')
 
       releaseLogout()
+      await settled
       await delay(300)
 
-      assert.ok(
-        await refreshCookieOf(context),
-        'the late logout response must not clear the new Cookie'
-      )
-      const stored = await readStoredAuth(page)
-      assert.equal(stored.mode, 'cookie')
-      assert.equal(stored.refresh, null, 'Cookie mode never persists a refresh token')
+      const afterLate = await refreshCookieOf(context)
+      assert.ok(afterLate, 'the late logout response must not clear the new Cookie')
+      assert.equal(afterLate.value, newCookie.value, 'the new login Cookie must survive')
 
-      // The access token lapses: only Cookie refresh can serve the next call.
+      // The access token lapses: only the new Cookie can serve the next call.
       await delay(1700)
       const replayed = page.waitForResponse(
         (response) =>
@@ -520,6 +572,91 @@ describe('U197 S5 Web 客户端真实 Chromium：Cookie 会话 / 迁移 / 回退
       await replayed
       assert.equal(await isVisible(page, VIEW_APP), true)
       assert.equal(await isVisible(page, VIEW_LOGIN), false)
+    } finally {
+      await context.close()
+    }
+  })
+
+  test('U232 refresh 竞态：旧刷新晚于重登，新 Cookie 与业务请求都存活', async () => {
+    const { context, page } = await openConsole(shortAccess.url)
+    try {
+      await loginThroughUi(page)
+      const cookieBeforeRefresh = await refreshCookieOf(context)
+      assert.ok(cookieBeforeRefresh)
+      // Let the access token lapse so a business click starts a Cookie refresh.
+      await delay(1900)
+
+      let releaseRefresh = (): void => {}
+      const refreshGate = new Promise<void>((resolve) => {
+        releaseRefresh = resolve
+      })
+      let refreshHeld = (): void => {}
+      const held = new Promise<void>((resolve) => {
+        refreshHeld = resolve
+      })
+      let refreshSettled = (): void => {}
+      const settled = new Promise<void>((resolve) => {
+        refreshSettled = resolve
+      })
+      let exchange: { status: number; setCookie: string } | null = null
+
+      await page.route('**/v1/auth/refresh', async (route) => {
+        const response = await route.fetch()
+        exchange = {
+          status: response.status(),
+          setCookie: response.headers()['set-cookie'] ?? ''
+        }
+        // Undo the early Set-Cookie so the release models a late delivery.
+        await restoreCookie(context, cookieBeforeRefresh)
+        refreshHeld()
+        await refreshGate
+        await route.fulfill({ response }).catch(() => {})
+        refreshSettled()
+      })
+
+      // The expired access token gets a 401; its refresh is held mid-flight.
+      await page.locator('.nav-item[data-route="relays"]').click()
+      await held
+      const observed = exchange as { status: number; setCookie: string } | null
+      assert.equal(observed?.status, 200, 'the platform answered the held refresh')
+      assert.match(observed?.setCookie ?? '', /orca_refresh=/i, 'the real refresh re-sends its Cookie')
+
+      // Log out while the refresh is in flight, then log in as another account.
+      await page.locator('#logoutBtn').click()
+      await page.waitForSelector(VIEW_LOGIN, { state: 'visible', timeout: 15_000 })
+      await page.fill('#username', 'zhangsan')
+      await page.fill('#password', 'Passw0rd!')
+      await page.click('#loginBtn')
+      await page.waitForSelector(VIEW_APP, { state: 'visible', timeout: 20_000 })
+      const newCookie = await refreshCookieOf(context)
+      assert.ok(newCookie, 'the second login must set a Cookie')
+      assert.notEqual(newCookie.value, cookieBeforeRefresh.value)
+
+      releaseRefresh()
+      await settled
+      await page.unroute('**/v1/auth/refresh')
+      await delay(300)
+
+      const afterLate = await refreshCookieOf(context)
+      assert.ok(afterLate, 'the stale refresh must not clear the new Cookie')
+      assert.equal(afterLate.value, newCookie.value, 'the second session keeps its Cookie')
+
+      // The new access token expires; the session must renew from the new Cookie
+      // and keep serving, not fall back to the earlier account.
+      await delay(1900)
+      const replayed = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/v1/projects' && response.status() === 200,
+        { timeout: 20_000 }
+      )
+      await page.locator('.nav-item[data-route="projects"]').click()
+      await replayed
+      await page.waitForFunction(() =>
+        (document.querySelector('#content')?.textContent ?? '').includes('我的项目')
+      )
+      assert.equal(await isVisible(page, VIEW_APP), true)
+      assert.equal(await isVisible(page, VIEW_LOGIN), false)
+      assert.equal((await page.locator('#userName').textContent())?.trim(), '张伟')
     } finally {
       await context.close()
     }
