@@ -299,7 +299,12 @@ async function readJson(
   }
   if (oversized || chunks.length === 0) return {}
   try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>
+    const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+    // U236: `null` and scalars have no fields, so treat them exactly like an
+    // absent body instead of letting `body.x` throw a 500. Arrays pass through.
+    if (parsed === null || typeof parsed !== 'object') return {}
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: non-null object from JSON.parse is an array or plain object; callers only read properties.
+    return parsed as Record<string, unknown>
   } catch {
     return {}
   }
