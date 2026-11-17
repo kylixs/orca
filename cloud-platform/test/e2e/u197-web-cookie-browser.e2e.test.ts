@@ -363,7 +363,7 @@ describe('U197 S5 Web 客户端真实 Chromium：Cookie 会话 / 迁移 / 回退
     }
   })
 
-  test('never / 无 PUBLIC_ORIGIN：登录仍写 localStorage，无 Cookie、无标记', async () => {
+  test('never / 无 PUBLIC_ORIGIN：登录仍写 localStorage，无 Cookie、记为 legacy', async () => {
     const { context, page } = await openConsole(legacyMode.url)
     try {
       await loginThroughUi(page)
@@ -371,7 +371,7 @@ describe('U197 S5 Web 客户端真实 Chromium：Cookie 会话 / 迁移 / 回退
       const stored = await readStoredAuth(page)
       assert.ok(stored.access, 'legacy access must be persisted')
       assert.ok(stored.refresh, 'legacy refresh must be persisted')
-      assert.equal(stored.mode, null, 'never mode must not set the capability marker')
+      assert.equal(stored.mode, 'legacy', 'a login without refreshCookie classifies the deployment')
       assert.equal(await refreshCookieOf(context), undefined)
 
       // The old contract reloads from localStorage without any refresh call.
@@ -947,12 +947,51 @@ describe('U197 S5 Web 客户端真实 Chromium：Cookie 会话 / 迁移 / 回退
     }
   })
 
-  test(
-    'AC9c 清空 localStorage 后仅凭 Cookie 恢复',
-    { skip: 'blocked by D17/U219: the unproven-capability Cookie probe is undecided' },
-    async () => {
-      // Deliberately empty: AC9c depends on the D17 decision, so no passing
-      // assertion may be written here yet.
+  test('AC9c 清空 localStorage 后仅凭 Cookie 恢复：一次无 body 刷新进入应用', async () => {
+    const { context, page } = await openConsole(cookieMode.url)
+    try {
+      await loginThroughUi(page)
+      assert.ok(await refreshCookieOf(context), 'precondition: the Cookie session exists')
+
+      // AC9c: no localStorage at all, not even the capability marker.
+      await page.evaluate(() => window.localStorage.clear())
+
+      const trace = traceRefresh(page)
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.waitForSelector(VIEW_APP, { state: 'visible', timeout: 20_000 })
+      await delay(200)
+
+      assert.equal(trace.bodies.length, 1, 'exactly one no-body Cookie probe')
+      assert.equal(trace.bodies[0], null, 'the probe must not carry a body')
+      assert.deepEqual(trace.statuses, [200], 'the Cookie alone restores the session')
+      assert.equal((await readStoredAuth(page)).mode, 'cookie')
+      assert.equal(await isVisible(page, VIEW_LOGIN), false)
+    } finally {
+      await context.close()
     }
-  )
+  })
+
+  test('AC9c 无标记 + 无旧键 + Cookie 缺失：一次失败后登录，无第二次刷新', async () => {
+    const context = await browser.newContext()
+    const page = await context.newPage()
+    try {
+      await page.goto(`${cookieMode.url}/`, { waitUntil: 'domcontentloaded' })
+      await page.waitForSelector(VIEW_LOGIN, { state: 'visible', timeout: 15_000 })
+      await page.evaluate(() => window.localStorage.clear())
+
+      const trace = traceRefresh(page)
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.waitForSelector(VIEW_LOGIN, { state: 'visible', timeout: 15_000 })
+      // Any retry loop would land another request inside this window.
+      await delay(900)
+
+      assert.equal(trace.bodies.length, 1, 'one probe only, never a loop')
+      assert.equal(trace.bodies[0], null, 'no legacy key means no body fallback')
+      assert.deepEqual(trace.statuses, [401], 'the missing Cookie is refused')
+      assert.equal(await isVisible(page, VIEW_APP), false)
+      assert.equal(await isVisible(page, VIEW_LOGIN), true)
+    } finally {
+      await context.close()
+    }
+  })
 })

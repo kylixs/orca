@@ -154,10 +154,14 @@ describe('U230③ 重放 401 只在 SESSION_EXPIRED 时登出', () => {
     await page.submitLogin('admin', 'Adm1n!')
     await delay(1300)
 
+    // The unproven-capability load already spent one probe; count the 401 only.
+    const refreshesBefore = page
+      .calls()
+      .filter((call) => call === 'POST /v1/auth/refresh').length
     page.hold('POST', '/v1/auth/refresh')
     await page.clickNav('relays')
     assert.equal(
-      page.calls().filter((call) => call === 'POST /v1/auth/refresh').length,
+      page.calls().filter((call) => call === 'POST /v1/auth/refresh').length - refreshesBefore,
       1,
       'the 401 started one held refresh'
     )

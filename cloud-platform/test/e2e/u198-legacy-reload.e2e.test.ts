@@ -170,7 +170,7 @@ describe('U198 旧 localStorage 模式：access 过期后 reload 仍用 refresh 
     try {
       await loginThroughUi(page)
       const before = await readStoredAuth(page)
-      assert.equal(before.mode, null, 'never mode must not write the Cookie marker')
+      assert.equal(before.mode, 'legacy', 'a never server is classified as legacy')
       assert.ok(before.access, 'legacy login must persist access')
       assert.ok(before.refresh, 'legacy login must persist refresh')
 
@@ -210,7 +210,7 @@ describe('U198 旧 localStorage 模式：access 过期后 reload 仍用 refresh 
       assert.notEqual(after.access, before.access, 'the access token must rotate')
       assert.ok(after.refresh, 'the rotated refresh token is persisted')
       assert.notEqual(after.refresh, before.refresh, 'the refresh token must rotate')
-      assert.equal(after.mode, null, 'a never server must not teach the Cookie marker')
+      assert.equal(after.mode, 'legacy', 'a never server is classified as legacy')
       assert.equal(
         await page.evaluate(() => window.localStorage.getItem('orca.tokenOwner')),
         USERNAME,

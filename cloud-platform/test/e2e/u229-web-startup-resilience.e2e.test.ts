@@ -104,7 +104,11 @@ describe('U229 F5 启动挂起必须落到登录页', () => {
     const refreshToken = await legacyRefreshToken(base)
     const page = loadWebConsolePage(base, {
       timerScale: 0.01,
-      storage: { 'orca.access': 'expired-access', 'orca.refresh': refreshToken },
+      storage: {
+        'orca.authMode': 'legacy',
+        'orca.access': 'expired-access',
+        'orca.refresh': refreshToken
+      },
       holdOnLoad: ['POST /v1/auth/refresh']
     })
     await page.settle()
@@ -155,13 +159,15 @@ describe('U229 F7 刷新错误分类', () => {
     await delay(1300)
 
     const logoutsBefore = logoutCalls(page).length
+    // The unproven-capability load already spent one probe.
+    const refreshesBefore = refreshCalls(page).length
     page.fail('POST', '/v1/auth/refresh', {
       status: 503,
       body: { error: { code: 'PLATFORM_UNAVAILABLE', message: '模拟平台故障' } }
     })
     await page.clickNav('relays')
 
-    assert.equal(refreshCalls(page).length, 1, 'the 401 must attempt one refresh')
+    assert.equal(refreshCalls(page).length - refreshesBefore, 1, 'the 401 must attempt one refresh')
     assert.equal(logoutCalls(page).length, logoutsBefore, 'an outage is not a session verdict')
     assert.equal(page.hidden('#view-app'), false, 'the app shell must stay visible')
     assert.equal(page.hidden('#view-login'), true)
@@ -266,7 +272,11 @@ describe('U234 启动超时的迟到结果必须被丢弃', () => {
     const refreshToken = await legacyRefreshToken(base)
     const page = loadWebConsolePage(base, {
       timerScale: 0.01,
-      storage: { 'orca.access': 'expired-access', 'orca.refresh': refreshToken },
+      storage: {
+        'orca.authMode': 'legacy',
+        'orca.access': 'expired-access',
+        'orca.refresh': refreshToken
+      },
       holdOnLoad: ['POST /v1/auth/refresh']
     })
     await page.settle()
@@ -292,6 +302,7 @@ describe('U234 启动超时的迟到结果必须被丢弃', () => {
     // A reload may only resume from what the page actually kept.
     const reload = loadWebConsolePage(base, {
       storage: {
+        'orca.authMode': 'legacy',
         'orca.access': page.window.localStorage.getItem('orca.access') ?? '',
         'orca.refresh': page.window.localStorage.getItem('orca.refresh') ?? ''
       }
@@ -455,6 +466,7 @@ describe('U239 启动续集的代际边界', () => {
     const session = await legacySession(base)
     const page = loadWebConsolePage(base, {
       storage: {
+        'orca.authMode': 'legacy',
         'orca.access': session.accessToken,
         'orca.refresh': session.refreshToken,
         'orca.tokenOwner': 'admin'
@@ -546,6 +558,7 @@ describe('U242 启动成功续集：旧模式迟到 200 与在途登出', () => 
     const session = await legacySession(base)
     const page = loadWebConsolePage(base, {
       storage: {
+        'orca.authMode': 'legacy',
         'orca.access': session.accessToken,
         'orca.refresh': session.refreshToken,
         'orca.tokenOwner': 'admin',
@@ -580,6 +593,7 @@ describe('U242 启动成功续集：旧模式迟到 200 与在途登出', () => 
     const session = await legacySession(base)
     const page = loadWebConsolePage(base, {
       storage: {
+        'orca.authMode': 'legacy',
         'orca.access': session.accessToken,
         'orca.refresh': session.refreshToken,
         'orca.tokenOwner': 'admin',

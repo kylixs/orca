@@ -57,6 +57,23 @@ function refreshBodies(page: ReturnType<typeof loadWebConsolePage>) {
   return page.bodies().filter((entry) => entry.call === 'POST /v1/auth/refresh')
 }
 
+function refreshStatuses(page: WebConsolePage): (number | undefined)[] {
+  const calls = page.calls()
+  return page.statuses().filter((_, index) => calls[index] === 'POST /v1/auth/refresh')
+}
+
+function storedAuth(page: WebConsolePage): {
+  access: string | null
+  refresh: string | null
+  mode: string | null
+} {
+  return {
+    access: page.window.localStorage.getItem('orca.access'),
+    refresh: page.window.localStorage.getItem('orca.refresh'),
+    mode: page.window.localStorage.getItem('orca.authMode')
+  }
+}
+
 /** Contract header values for one call kind, aligned with `page.calls()`. */
 function contractValues(page: WebConsolePage, call: string): (string | undefined)[] {
   const calls = page.calls()
@@ -74,13 +91,20 @@ describe('U197 S4 Web Cookie mode（happy-dom + 真实 createApp）', () => {
     const base = await start()
     const page = loadWebConsolePage(base)
     await page.settle()
+    // AC9c: an unknown capability probes the Cookie once before the login view.
+    assert.equal(refreshCalls(page).length, 1, 'one unproven-capability probe')
+    const probesBeforeLogin = refreshCalls(page).length
     await page.submitLogin('admin', 'Adm1n!')
 
     assert.equal(page.hidden('#view-app'), false)
     assert.ok(page.window.localStorage.getItem('orca.access'), 'access must stay persisted')
     assert.ok(page.window.localStorage.getItem('orca.refresh'), 'refresh must stay persisted')
-    assert.equal(page.window.localStorage.getItem('orca.authMode'), null)
-    assert.equal(refreshCalls(page).length, 0, 'login must not probe refresh')
+    assert.equal(
+      page.window.localStorage.getItem('orca.authMode'),
+      'legacy',
+      'a login without the marker confirms the localStorage contract'
+    )
+    assert.equal(refreshCalls(page).length, probesBeforeLogin, 'login must not probe refresh')
   })
 
   test('refreshCookie:true → access 仅内存、不写入新 refresh', async () => {
@@ -294,7 +318,11 @@ describe('U197 S4 Web Cookie mode（happy-dom + 真实 createApp）', () => {
   test('U221 F2 旧模式 body 刷新传输失败 → 登录页，不出现空白页', async () => {
     const base = await start()
     const page = loadWebConsolePage(base, {
-      storage: { 'orca.access': 'stale-access', 'orca.refresh': 'stale-refresh' },
+      storage: {
+        'orca.authMode': 'legacy',
+        'orca.access': 'stale-access',
+        'orca.refresh': 'stale-refresh'
+      },
       abortOnLoad: ['POST /v1/auth/refresh']
     })
     await page.settle()
@@ -586,5 +614,80 @@ describe('U197 S4 Web Cookie mode（happy-dom + 真实 createApp）', () => {
         `${call} must declare x-orca-web-contract: 1`
       )
     }
+  })
+
+  test('AC9b 未知标记 + 旧键 + 旧服务端：1 次无 body + 1 次 body，保留旧键并记 legacy', async () => {
+    const base = await start({ cookieMode: 'never', publicOrigin: '' })
+    const legacy = await legacyTokens(base)
+    const page = loadWebConsolePage(base, {
+      storage: {
+        'orca.refresh': legacy.refreshToken,
+        'orca.tokenOwner': 'admin',
+        'orca.user': JSON.stringify({ username: 'admin' })
+      }
+    })
+    await page.settle()
+
+    assert.equal(page.hidden('#view-app'), false, 'the body fallback restores the session')
+    assert.equal(refreshCalls(page).length, 2, 'exactly one probe plus one body fallback')
+    const bodies = refreshBodies(page)
+    assert.equal(bodies.length, 1, 'only the fallback carries a body')
+    assert.equal(
+      (bodies[0]?.body as Record<string, unknown>).refreshToken,
+      legacy.refreshToken,
+      'the fallback sends the legacy key verbatim'
+    )
+    assert.deepEqual(
+      refreshStatuses(page),
+      [401, 200],
+      'the no-body probe is refused, the body fallback succeeds'
+    )
+    // No marker in the body response ⇒ old server; the keys must survive.
+    const stored = storedAuth(page)
+    assert.ok(stored.refresh, 'the legacy refresh must be kept, not deleted')
+    assert.ok(stored.access, 'the localStorage contract keeps persisting access')
+    assert.equal(stored.mode, 'legacy', 'the old server is remembered to skip future probes')
+
+    // A later load is already classified: no probe, no refresh.
+    const reload = loadWebConsolePage(base, {
+      storage: {
+        'orca.authMode': 'legacy',
+        'orca.access': stored.access ?? '',
+        'orca.refresh': stored.refresh ?? '',
+        'orca.tokenOwner': 'admin'
+      }
+    })
+    await reload.settle()
+    assert.equal(refreshCalls(reload).length, 0, 'a known legacy deployment is not probed again')
+    assert.equal(reload.hidden('#view-app'), false)
+    assert.equal(reload.hidden('#view-login'), true)
+  })
+
+  test('AC9b 未知标记 + 旧键 + 新服务端：一次无 body 成功即删旧键并进入 Cookie 模式', async () => {
+    const base = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const jar = new Map<string, string>()
+    const first = loadWebConsolePage(base, { platformOrigin: ORIGIN, cookieJar: jar })
+    await first.settle()
+    await first.submitLogin('admin', 'Adm1n!')
+    assert.ok(jar.get('orca_refresh'), 'precondition: a real Cookie session exists')
+
+    const page = loadWebConsolePage(base, {
+      platformOrigin: ORIGIN,
+      cookieJar: jar,
+      storage: {
+        'orca.access': 'legacy-access-u197-ac9b',
+        'orca.refresh': 'legacy-refresh-u197-ac9b'
+      }
+    })
+    await page.settle()
+
+    assert.equal(page.hidden('#view-app'), false)
+    assert.equal(refreshCalls(page).length, 1, 'the proven Cookie needs one no-body refresh')
+    assert.equal(refreshBodies(page).length, 0, 'no body fallback is spent')
+    assert.deepEqual(refreshStatuses(page), [200])
+    const stored = storedAuth(page)
+    assert.equal(stored.access, null, 'legacy access is deleted after the no-body success')
+    assert.equal(stored.refresh, null, 'legacy refresh is deleted after the no-body success')
+    assert.equal(stored.mode, 'cookie')
   })
 })

@@ -148,13 +148,17 @@ describe('平台会话续期（真实 createApp + HTTP）', () => {
     assert.ok(refreshBefore, 'login must persist a refresh token')
 
     await new Promise((resolve) => setTimeout(resolve, 2200))
+    // The unproven-capability load already spent one probe; count this expiry.
+    const renewalsBefore = page
+      .calls()
+      .filter((call) => call === 'POST /v1/auth/refresh').length
     const before = page.calls().filter((call) => call === 'GET /v1/relays').length
     await page.clickNav('relays')
     const after = page.calls().filter((call) => call === 'GET /v1/relays').length
 
     assert.equal(after - before, 2, 'the expired request must be replayed exactly once')
     assert.equal(
-      page.calls().filter((call) => call === 'POST /v1/auth/refresh').length,
+      page.calls().filter((call) => call === 'POST /v1/auth/refresh').length - renewalsBefore,
       1,
       'one expiry renews once'
     )
@@ -225,12 +229,15 @@ describe('平台会话续期（真实 createApp + HTTP）', () => {
       body: { error: { code: 'SESSION_EXPIRED', message: '会话已过期' } }
     })
     await new Promise((resolve) => setTimeout(resolve, 1800))
+    const renewalsBefore = page
+      .calls()
+      .filter((call) => call === 'POST /v1/auth/refresh').length
     await page.clickNav('relays')
 
     assert.equal(page.hidden('#view-app'), true, 'a failed refresh must leave the app shell')
     assert.equal(page.hidden('#view-login'), false, 'the login view must be visible')
     assert.equal(
-      page.calls().filter((call) => call === 'POST /v1/auth/refresh').length,
+      page.calls().filter((call) => call === 'POST /v1/auth/refresh').length - renewalsBefore,
       1,
       'the 401 must attempt refresh exactly once'
     )
@@ -289,6 +296,15 @@ describe('平台会话续期（真实 createApp + HTTP）', () => {
       null,
       'the cached user must be removed'
     )
-    assert.deepEqual(page.calls(), [], 'without an access token the page must not call /v1/me')
+    assert.deepEqual(
+      page.calls().filter((call) => call === 'GET /v1/me'),
+      [],
+      'without an access token the page must not call /v1/me'
+    )
+    assert.equal(
+      page.calls().filter((call) => call === 'POST /v1/auth/refresh').length,
+      1,
+      'the unknown capability is probed once before the login view'
+    )
   })
 })

@@ -5,6 +5,8 @@ import { buildHash, DEFAULT_ROUTE, parseHash } from './router/routes.js'
 /** U197: capability flag only — never a credential. Absence means “unknown”. */
 const AUTH_MODE_KEY = 'orca.authMode'
 const COOKIE_AUTH_MODE = 'cookie'
+/** U197 AC9b: a proven Cookie-less server, so loads stop paying the probe. */
+const LEGACY_AUTH_MODE = 'legacy'
 /** U221 F3: which account wrote the legacy localStorage tokens. */
 const TOKEN_OWNER_KEY = 'orca.tokenOwner'
 /** U221 F4: set when a logout could not reach the server; retried on next load. */
@@ -141,6 +143,13 @@ function setCookieMode(enabled) {
   else localStorage.removeItem(AUTH_MODE_KEY)
 }
 
+/** U197 AC9b: remember a proven Cookie-less deployment; a later
+ * `refreshCookie: true` overwrites this with Cookie mode. */
+function setLegacyMode() {
+  state.cookieMode = false
+  localStorage.setItem(AUTH_MODE_KEY, LEGACY_AUTH_MODE)
+}
+
 /** U197: deleting the legacy keys is allowed only after a no-body Cookie refresh
  * has succeeded — that is the proof the HttpOnly transport actually works. */
 function clearLegacyTokens() {
@@ -232,8 +241,9 @@ async function refreshWithBody(epoch, signal) {
     if (!state.cookieMode) localStorage.setItem('orca.access', body.accessToken)
     return 'ok'
   }
-  // Marker missing: old server. Resume the plain localStorage contract.
-  setCookieMode(false)
+  // Marker missing: old server. Resume the plain localStorage contract and
+  // remember it so a later load does not probe the Cookie again.
+  setLegacyMode()
   setTokens(
     body.accessToken,
     typeof body.refreshToken === 'string' ? body.refreshToken : state.refreshToken
@@ -256,7 +266,7 @@ function legacyOwnerAllowsFallback() {
  * (400/401/other 4xx); `error` no verdict (403/408/429/5xx/transport);
  * `stale` an abandoned generation whose result must be discarded.
  */
-function refreshSession(staleAccess, { startup = false } = {}) {
+function refreshSession(staleAccess, { startup = false, migrating = false } = {}) {
   // The token this request carried is already gone: someone else renewed first.
   if (state.accessToken !== staleAccess) {
     // An empty token means logout won the race; never report that as renewed.
@@ -271,17 +281,28 @@ function refreshSession(staleAccess, { startup = false } = {}) {
     flight = (async () => {
       try {
         // Cookie first; at most one body fallback per cascade, never a loop.
-        if (state.cookieMode) {
+        // `migrating` forces the no-body probe while the mode is still unknown.
+        if (state.cookieMode || migrating) {
           const cookie = await refreshWithCookie(epoch, controller.signal)
           if (cookie === 'stale') return 'stale'
-          if (cookie === 'ok') return 'ok'
+          if (cookie === 'ok') {
+            // AC9b: a no-body success is the migration gate, even if an old
+            // server omits the marker on this response.
+            if (migrating) setCookieMode(true)
+            return 'ok'
+          }
           // U222 N1: an unreachable server proves nothing about the Cookie
           // session, so do not spend the legacy body token on it.
           if (cookie === 'error') return 'error'
           if (controller.signal.aborted || state.authEpoch !== epoch) return 'stale'
+          // AC9b: remember the refusal so the next load does not probe again.
+          if (migrating) setLegacyMode()
           // U229 F2: at startup an ownerless legacy key is stale pre-U221 data,
           // not a credential for whichever account it happens to point at.
-          if (startup && !legacyOwnerAllowsFallback()) return 'rejected'
+          // AC9b: while the mode is unknown the key is the intended fallback
+          // (pre-U221 data has no owner), so the check applies only to a proven
+          // Cookie deployment.
+          if (startup && !migrating && !legacyOwnerAllowsFallback()) return 'rejected'
         }
         return await refreshWithBody(epoch, controller.signal)
       } finally {
@@ -5070,7 +5091,10 @@ async function login(username, password) {
   }
   // U221 F4: a fresh login supersedes a logout that never reached the server.
   localStorage.removeItem(PENDING_LOGOUT_KEY)
-  setCookieMode(body.refreshCookie === true)
+  // U197 AC9b: only a real Set-Cookie response proves Cookie mode. Anything
+  // else is a confirmed legacy deployment, so later loads skip the probe.
+  if (body.refreshCookie === true) setCookieMode(true)
+  else setLegacyMode()
   state.user = body.user
   setTokens(body.accessToken, body.refreshToken)
   state.deviceId = body.device.id
@@ -5314,6 +5338,34 @@ function finishStartupMe(me, startupEpoch, cachedUser) {
       // U222 N2: switch views first — a hung logout retry must never blank the page.
       showLogin()
       void sendLogout()
+      return
+    }
+    // U197 AC9b/AC9c: the capability is unproven. Probe the Cookie exactly once
+    // (no body); a refusal spends at most one body fallback, then the mode is
+    // remembered so the next load does not probe again.
+    if (localStorage.getItem(AUTH_MODE_KEY) === null) {
+      let refresh = 'error'
+      try {
+        refresh = await withTimeout(
+          refreshSession(state.accessToken, { startup: true, migrating: true }),
+          STARTUP_TIMEOUT_MS
+        )
+      } catch {
+        // U234: a timed-out probe is abandoned below, never merely ignored.
+      }
+      if (refresh === 'ok') {
+        try {
+          // Why retried: the bootstrap must not start a second refresh chain.
+          const me = await withTimeout(api('/v1/me', {}, { retried: true }), STARTUP_TIMEOUT_MS)
+          return finishStartupMe(me, startupEpoch, cachedUser)
+        } catch {
+          // fall through to the login view
+        }
+      }
+      if (state.authEpoch !== startupEpoch && state.user) return
+      abandonStartupAuth()
+      if (cachedUser) localStorage.removeItem('orca.user')
+      showLogin()
       return
     }
     // U197: a proven Cookie deployment recovers from the HttpOnly cookie alone.

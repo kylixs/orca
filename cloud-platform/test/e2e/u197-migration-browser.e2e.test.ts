@@ -26,18 +26,9 @@ import { ROOT, spawnService, type Service } from './harness.ts'
  * legacy `setTokens` persists the literal string "undefined"; the server treats
  * that body value as a fake body, so an in-page 401 gets a 200 without a new
  * refresh, without rotating the Cookie and without revoking the session. The
- * last step swaps back to the current build on the same origin.
- *
- * INVALID finding (AC15(g) single reload): the current build only probes the
- * Cookie when `orca.authMode === 'cookie'`. A pre-S4 browser has no marker, so
- * the first load of the new build either takes the valid-access path (zero
- * refresh) or the body fallback with the literal "undefined". It never issues
- * the design's one no-body probe, and the legacy keys survive until a later
- * load has learned `refreshCookie: true`. The assertions below pin that fact
- * instead of claiming the designed behaviour, and the test title carries the
- * `INVALID-FACT（不计 AC15(g)）` prefix so a pass count is never read as
- * AC15(g) acceptance. The designed single-reload migration is a skip stub,
- * blocked by U219/D17.
+ * final step swaps back to the current build on the same origin: with no
+ * capability marker it probes the Cookie once, and that no-body success is the
+ * single-reload migration that deletes the legacy keys.
  *
  * The legacy build is served from a temporary web root: the current build is
  * read from the working tree at `/` (no `git show`, so a shallow clone still
@@ -56,7 +47,7 @@ const LEGACY_APP_FIXTURE = join(ROOT, 'test/fixtures/u197-legacy-app.js.snapshot
  * change: `sha256sum apps/web/app.js` (macOS/Linux) or
  * `Get-FileHash -Algorithm SHA256 apps/web/app.js` (Windows), then rerun.
  * U225 F1: compared LF-normalised (`sha256Lf`), so line endings never matter. */
-const HEAD_APP_SHA256 = '2e782f50ce6673a58d66d2145cf2d5b569406c41aee5b577da454fe9b476c6df'
+const HEAD_APP_SHA256 = '1af98665fe95e512fe06cb6695208aff4bf90db4103c4fa208fda770b8eb5fa7'
 /** U225 P3: sha256 of the fixture body after its 13-line provenance header
  * (`tail -n +14 test/fixtures/u197-legacy-app.js.snapshot | sha256sum`). */
 const LEGACY_FIXTURE_BODY_SHA256 =
@@ -435,7 +426,7 @@ describe('U197 AC9d / AC15(g) 真实 Chromium 迁移与旧构建夹具', () => {
     }
   })
 
-  test('INVALID-FACT（not-AC15g）换回新构建：单次重载不是无 body 刷新，后续加载才清理旧键', async () => {
+  test('AC15(g) 换回新构建：首次加载即一次无 body 成功并删除旧键', async () => {
     const context = await browser.newContext()
     const page = await context.newPage()
     try {
@@ -447,122 +438,44 @@ describe('U197 AC9d / AC15(g) 真实 Chromium 迁移与旧构建夹具', () => {
       assert.equal((await readStoredAuth(page)).refresh, 'undefined')
       assert.ok(await refreshCookie(context))
 
-      // N3 timing: the access token is minted at login and lives ACCESS_TTL_MS
-      // (15 s). Everything between login and the first load below is local and
-      // normally finishes in well under a second; 5 s is kept as margin so a
-      // slow runner fails here loudly instead of mis-reading a lateness-induced
-      // refresh as the (absent) design behaviour.
+      // The legacy access token is still valid here: the unknown marker must
+      // still trigger the one no-body probe, proving the probe is not merely a
+      // late-401 path.
       assert.ok(
         Date.now() - loginCompletedAt < ACCESS_TTL_MS - 5000,
         'the first current-build load must happen while legacy access is still valid'
       )
 
-      // ── 事实钉住（FACT，仅描述当前实现；不计 AC15(g)）──
-      // First load of the current build while the access token is still valid.
-      // U225 N2: record the `/v1/me` success itself — the pre-load guard cannot
-      // see a slow navigation that outlives the token, and a late refresh must
-      // fail as an explicit timing verdict instead of a mis-read refresh count.
-      const meResponse = page.waitForResponse(
-        (response) =>
-          new URL(response.url()).pathname === '/v1/me' && response.status() === 200,
-        { timeout: 20_000 }
-      )
       const immediate = traceRefresh(page)
       await page.goto(`${api.url}/`, { waitUntil: 'domcontentloaded' })
       await page.waitForSelector(VIEW_APP, { state: 'visible', timeout: 20_000 })
-      await meResponse
-      const meCompletedAt = Date.now()
-      assert.ok(
-        meCompletedAt - loginCompletedAt < ACCESS_TTL_MS - 1000,
-        `the first current-build load reached /v1/me ${meCompletedAt - loginCompletedAt}ms ` +
-          `after login; the ${ACCESS_TTL_MS}ms access token must still be valid, so any ` +
-          'refresh on this load is a timing artefact, not the tested behaviour'
-      )
       await delay(300)
 
-      // FACT (INVALID vs AC15(g)): the marker is unknown, so the current build
-      // takes the plain localStorage path. It does not probe the Cookie.
-      assert.equal(
-        immediate.bodies.length,
-        0,
-        'INVALID: the new build does not issue the AC15(g) no-body probe on this load'
-      )
-      const afterImmediate = await readStoredAuth(page)
-      assert.equal(afterImmediate.refresh, 'undefined', 'the legacy key is still there')
-      assert.equal(afterImmediate.mode, null, 'nothing taught the marker')
-      assert.equal(await page.locator(VIEW_LOGIN).isVisible(), false)
+      assert.equal(immediate.bodies.length, 1, 'exactly one migration refresh on the first load')
+      assert.equal(immediate.bodies[0], null, 'the migration probe carries no body')
+      assert.deepEqual(immediate.statuses, [200], 'the Cookie alone proves the session')
 
-      // The access token expires; the current build still falls back to the
-      // legacy body contract (with the literal), which the Cookie rescues.
-      await delay(ACCESS_TTL_MS + 700)
-      const fallbackCookieBefore = await refreshCookie(context)
-      assert.ok(fallbackCookieBefore, 'the legacy Cookie must still be present')
-      const fallbackResponse = page.waitForResponse(
-        (response) => isRefreshRequest(response.request()),
-        { timeout: 20_000 }
-      )
-      const fallback = traceRefresh(page)
-      await page.reload({ waitUntil: 'domcontentloaded' })
-      await page.waitForSelector(VIEW_APP, { state: 'visible', timeout: 20_000 })
-      const fallbackBody = (await (await fallbackResponse).json()) as Record<string, unknown>
-      await delay(300)
-
-      assert.equal(fallback.bodies.length, 1, 'the expired load refreshes once')
-      assert.equal(
-        fallback.bodies[0] !== null,
-        true,
-        'INVALID: the refresh is a body fallback, not the AC15(g) no-body probe'
-      )
-      assert.equal(
-        (JSON.parse(fallback.bodies[0] ?? '{}') as Record<string, unknown>).refreshToken,
-        'undefined'
-      )
-      assert.deepEqual(fallback.statuses, [200], 'the Cookie keeps the fake body benign')
-      assert.equal(
-        'refreshToken' in fallbackBody,
-        false,
-        'a fake body must never become a refresh in the response'
-      )
-      const fallbackCookieAfter = await refreshCookie(context)
-      assert.ok(fallbackCookieAfter, 'the Cookie must survive the body fallback')
-      assert.equal(
-        fallbackCookieAfter.value,
-        fallbackCookieBefore.value,
-        'a fake body refresh is Cookie-sourced, so the Cookie is not rotated'
-      )
-      const afterFallback = await readStoredAuth(page)
-      assert.equal(afterFallback.refresh, 'undefined', 'keys are kept until a no-body success')
-      assert.equal(afterFallback.mode, 'cookie', 'refreshCookie:true finally proves the capability')
-
-      // ── 设计期望（AC15(g)）──
-      // AC15(g) wants the one no-body migration on the FIRST reload. The current
-      // build only reaches it on a later load once the marker is learned; the
-      // single-reload expectation stays blocked (see the skip stub below).
-      // With the marker learned, the next reload performs the one no-body
-      // Cookie refresh and only then deletes the legacy keys (session still live).
-      const noBody = traceRefresh(page)
-      await page.reload({ waitUntil: 'domcontentloaded' })
-      await page.waitForSelector(VIEW_APP, { state: 'visible', timeout: 20_000 })
-      await delay(300)
-
-      assert.equal(noBody.bodies.length, 1, 'exactly one no-body refresh')
-      assert.equal(noBody.bodies[0], null, 'the refreshed request carries no body')
-      assert.deepEqual(noBody.statuses, [200], 'the session survived the fake-body refresh')
-      const afterNoBody = await readStoredAuth(page)
-      assert.equal(afterNoBody.access, null, 'legacy access is deleted')
-      assert.equal(afterNoBody.refresh, null, 'legacy refresh is deleted')
-      assert.equal(afterNoBody.mode, 'cookie')
+      const migrated = await readStoredAuth(page)
+      assert.equal(migrated.access, null, 'legacy access is deleted by the no-body success')
+      assert.equal(migrated.refresh, null, 'the literal "undefined" key is deleted too')
+      assert.equal(migrated.mode, 'cookie', 'a no-body success proves Cookie-only mode')
       assert.equal(await page.locator(VIEW_APP).isVisible(), true)
       assert.equal(await page.locator(VIEW_LOGIN).isVisible(), false)
+
+      // The migration is final: the next load refreshes via the Cookie again and
+      // never re-creates a localStorage token.
+      const next = traceRefresh(page)
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.waitForSelector(VIEW_APP, { state: 'visible', timeout: 20_000 })
+      await delay(200)
+
+      assert.equal(next.bodies.length, 1, 'one Cookie refresh per load')
+      assert.equal(next.bodies[0], null)
+      assert.equal((await readStoredAuth(page)).refresh, null, 'no key comes back')
     } finally {
       await context.close()
     }
   })
-
-  // AC15(g) 的设计期望：从 pre-S4 状态出发，第一次重载就完成无 body Cookie
-  // 迁移。当前构建要等到后续加载学到 refreshCookie 才做到（见上方 INVALID-FACT
-  // 用例），所以这里只留 skip 桩，避免把事实钉住误读为 AC15(g) 已验收。
-  test('AC15(g) 单次重载迁移（blocked）', { skip: 'blocked by U219/D17' }, () => {})
 
   // U229 F2 supersedes the U225 N3R ownerless branch: a cookie marker can
   // outlive the deployment that set it, but an ownerless pre-U221 key cannot
@@ -576,7 +489,11 @@ describe('U197 AC9d / AC15(g) 真实 Chromium 迁移与旧构建夹具', () => {
       await loginThroughUi(page)
 
       const stored = await readStoredAuth(page)
-      assert.equal(stored.mode, null, 'a never server must not teach the marker')
+      assert.equal(
+        stored.mode,
+        'legacy',
+        'a login without refreshCookie classifies the deployment as legacy'
+      )
       assert.ok(stored.refresh, 'the legacy contract persists a body refresh')
       // Model pre-U221 data plus a marker left by an earlier cookie deployment.
       await page.evaluate(() => {

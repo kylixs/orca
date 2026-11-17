@@ -76,9 +76,11 @@ describe('U229 F1 刷新代际', () => {
     assert.equal(page.hidden('#view-app'), false)
 
     await delay(1300)
+    // The unknown-capability load already spent one probe; count the 401 only.
+    const refreshesBefore = refreshCalls(page).length
     page.hold('POST', '/v1/auth/refresh')
     await page.clickNav('relays')
-    assert.equal(refreshCalls(page).length, 1, 'the 401 started one held refresh')
+    assert.equal(refreshCalls(page).length - refreshesBefore, 1, 'the 401 started one held refresh')
 
     page.window.document.querySelector<HTMLElement>('#logoutBtn')!.click()
     await page.settle()
@@ -108,9 +110,10 @@ describe('U229 F1 刷新代际', () => {
     assert.equal(page.hidden('#view-app'), false)
 
     await delay(6300)
+    const refreshesBefore = refreshCalls(page).length
     page.hold('POST', '/v1/auth/refresh')
     await page.clickNav('relays')
-    assert.equal(refreshCalls(page).length, 1)
+    assert.equal(refreshCalls(page).length - refreshesBefore, 1)
 
     page.window.document.querySelector<HTMLElement>('#logoutBtn')!.click()
     await page.settle()
@@ -185,11 +188,14 @@ describe('U229 F2 无 owner 旧键不得跨账号回退', () => {
     // Cookie lost (blocked/cleared). The old account's key must not revive it.
     jar.delete('orca_refresh')
     await delay(1300)
+    // The unproven-capability startup used the ownerless key once (AC9b); only
+    // a body refresh after login would be the cross-account regression.
+    const bodiesBefore = refreshBodies(page).length
     await page.clickNav('relays')
     await page.settle()
 
     assert.equal(
-      refreshBodies(page).length,
+      refreshBodies(page).length - bodiesBefore,
       0,
       'there is no trusted body credential to fall back to'
     )
