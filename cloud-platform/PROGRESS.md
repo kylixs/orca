@@ -4227,3 +4227,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U228 关闭（复审 APPROVED）**：检查位置/边界/审计/客户端递归/测试真实性核验，`git archive` 快照先红 4/5、修复后 5/5 + 相关 92/92。P3 观察登记 **U230（🟡）**：审计事件语义倒置、并发重复、客户端 401 范围（并入 U229b）、测试缺口（已派补）。台账 U228 翻 🟢。
 - 并发 3 路：U229b1（F3/F4/F10 客户端/U230③）、U230④ 测试补强、U229a 独立复审。
 - **U230④ 测试缺口补齐**（`19da39a2081`，304 行仅测试）：Cookie previous/宽限分支禁用、已删用户 body/Cookie 刷新、假 body+有效 Cookie、禁用登录不建 device、`/v1/audit/verify` 全链 5 例；修复前快照 4 失败/1 通过，主会话复跑 5/5。U230 余 ①审计事件语义、②并发重复待事件词汇批次；③随 U229b1。
+- **认证回归批（U229a 后）**：9 个 Web 套件 **69 pass / 2 skip（D17、AC7 skip 桩）/ 0 fail**（71 tests，11 suites，约 73s）——web-refresh-cookie、session-renewal、u197-web-cookie-browser、u198、u228-web、u229 两套、u197-migration、ac-probes。
