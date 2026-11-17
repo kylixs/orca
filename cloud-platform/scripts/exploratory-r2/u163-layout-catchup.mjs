@@ -354,48 +354,58 @@ async function main() {
     record('phaseC.active-worktree-set', wt)
     await page.waitForTimeout(1500)
   }
+  for (let i = 0; i < 40; i += 1) {
+    const ready = await page.evaluate(() => window.__store.getState().workspaceSessionReady)
+    if (ready) {
+      break
+    }
+    await page.waitForTimeout(500)
+  }
+  record('phaseC.ready', await page.evaluate(() => window.__store.getState().workspaceSessionReady))
   const baseline = await sample(page, 'C.cold-baseline', wt)
 
-  const focusSupport = await page.evaluate(() => {
-    window.dispatchEvent(new Event('blur'))
-    const hadFocus = document.hasFocus()
-    const fixture = hadFocus
-      ? null
-      : 'document.hasFocus overridden (headless hidden window cannot hold OS focus)'
-    if (!hadFocus) {
-      document.hasFocus = () => true
+  // Why live divergence: at cold start the persisted host layout and the window layout share one
+  // profile source, so reproduce the mobile-client path — a host-RPC split now must move the host
+  // without the desktop store adopting it.
+  const preSplit = await hostList(page, wt)
+  const preSplitGroup = preSplit.ok ? preSplit.groups[0] : null
+  const hostSplit = preSplitGroup
+    ? await hostCall(page, 'session.tabs.move', {
+        kind: 'split',
+        worktree: wt,
+        tabId: preSplitGroup.tabOrder?.at(-1) ?? preSplitGroup.activeTabId,
+        targetGroupId: preSplitGroup.id,
+        splitDirection: 'right'
+      })
+    : { ok: false, error: 'no host group' }
+  record('C.host-split', hostSplit)
+  await page.waitForTimeout(1200)
+  const diverged = await sample(page, 'C.host-split', wt)
+
+  // One real focus edge, with the outbound census installed before the dispatch.
+  const calls = await page.evaluate(async () => {
+    const methods = []
+    const patched = window.api.runtime
+    if (typeof patched?.call === 'function' && !patched.__u163wrapped) {
+      const original = patched.call.bind(patched)
+      patched.call = async (args) => {
+        methods.push(args?.method ?? '?')
+        return original(args)
+      }
+      patched.__u163wrapped = true
     }
+    window.dispatchEvent(new Event('blur'))
+    const hadFocusBefore = document.hasFocus()
     window.dispatchEvent(new Event('focus'))
+    await new Promise((r) => setTimeout(r, 1500))
     return {
-      hadFocusBefore: hadFocus,
-      fixture,
+      methods,
+      hadFocusBefore,
       focusedAfter: document.hasFocus(),
       visibility: document.visibilityState
     }
   })
-  record('phaseC.focus-edge', focusSupport)
-
-  // Outbound census starts before the focus dispatch above only partially; wrap and fire a second real edge.
-  const calls = await page.evaluate(async () => {
-    const methods = []
-    const patch = (obj) => {
-      if (!obj || typeof obj.call !== 'function' || obj.__u163wrapped) {
-        return
-      }
-      const original = obj.call.bind(obj)
-      obj.call = async (args) => {
-        methods.push(args?.method ?? '?')
-        return original(args)
-      }
-      obj.__u163wrapped = true
-    }
-    patch(window.api.runtime)
-    window.dispatchEvent(new Event('blur'))
-    window.dispatchEvent(new Event('focus'))
-    await new Promise((r) => setTimeout(r, 1500))
-    return { methods }
-  })
-  record('phaseC.outbound-second-edge', calls)
+  record('phaseC.focus-edge', calls)
   const immediate = await sample(page, 'C.immediate', wt)
   await page.waitForTimeout(3000)
   const plus3s = await sample(page, 'C.plus3s', wt)
@@ -439,14 +449,21 @@ async function main() {
     baselineStoreGroups: baseline.storeGroups,
     hostGroups: baseline.hostGroups
   })
-  out.verdict = out.assertions['0_baseline_local_1_group'].pass
-    ? Object.values(out.assertions).every((a) => a.pass)
-      ? 'PASS'
-      : 'FAIL'
-    : 'INVALID'
+  assert('0b_host_split_local_stayed_1', diverged.hostGroups === 2 && diverged.storeGroups === 1, {
+    hostGroups: diverged.hostGroups,
+    storeGroups: diverged.storeGroups,
+    hostSplit
+  })
+  out.verdict =
+    out.assertions['0_baseline_local_1_group'].pass &&
+    out.assertions['0b_host_split_local_stayed_1'].pass
+      ? Object.values(out.assertions).every((a) => a.pass)
+        ? 'PASS'
+        : 'FAIL'
+      : 'INVALID'
   if (out.verdict === 'INVALID') {
     out.invalidReason =
-      'cold-open baseline was not 1 local group; scenario A precondition unavailable'
+      'scenario A precondition unavailable: baseline local != 1 group, or the host split reached the local store'
   }
   await page.screenshot({ path: path.join(EVIDENCE, 'C-cold-open.png') }).catch(() => {})
   await app.close()
