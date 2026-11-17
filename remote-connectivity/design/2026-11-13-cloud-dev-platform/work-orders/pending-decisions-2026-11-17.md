@@ -192,3 +192,20 @@
 
 | D16 | Cookie 源「同值重发」需在内存保留 current refresh 明文（`Session.currentRefreshToken`），与「仅存哈希」原则冲突 | 先接受（仅内存、不落盘；进程内存泄漏即等同会话失守），或改为「Cookie 源也轮换」（需改 v5 不变式并重新评审） | 按 v5 同值重发；实现注明明文仅内存 | U215/v5 §2B-2 |
 | D17 | U197 迁移分支「能力未知（无标记）」是否在加载发一次无 body 探测？覆盖 AC9b（有旧键）与 AC9c（无旧键、清 localStorage 后 Cookie 仍有效）；探测失败是否写 signed-out/legacy 标记避免每次加载重试 | 采纳设计字面（1 次无 body → 1 次 body 回退）；若确认旧服务端部署期成本不可接受，则修订 AC9b 为「标记缺失时按渐进路径，由下一次 401/登录响应迁移」 | 维持 S4 现状（无探测，渐进迁移），AC9b/AC9c 修订；或加 signed-out 标记后按设计探测 | 每次加载多 1 个失败请求（旧服务端/已登出用户），而渐进迁移最多延迟到 access 过期；清 localStorage 用户即使 Cookie 有效也停在登录页（U221 F1） | `u197-token-storage-design.md` AC9b；U219 |
+
+## 附：D17/D10 一页决策简报（2026-11-18，U197 实施收口）
+
+**当前状态**：U197 S1/S2/S4/S5 全部落地并双轨验收；AC 🟢16 / 🟡1（AC7 双标签登出）/ 🔴3（AC9b、AC9c、AC15(g)）/ ⚪1（AC10）。cookieMode 默认关闭，未启用。
+
+### D17（阻断 AC9b/AC9c/AC15(g)）
+- 问题：无 `orca.authMode` 标记时，客户端无法判断服务端是否支持 Cookie，当前按旧模式渐进迁移（access 过期后一次 body 刷新才置标记）。
+- 选项 A（设计字面）：加载时先发一次无 body Cookie 探测，失败再发一次 body 回退；建议失败后写 `legacy`/signed-out 标记，避免旧服务端期每次加载重试。
+  - 代价：旧服务端/已登出用户每次加载多 1 个失败请求（可被标记收敛）；收益：AC9b/AC9c/AC15(g) 全部达标，清 localStorage 用户凭有效 Cookie 单次恢复。
+- 选项 B（修订设计）：维持渐进迁移，只修 AC9b/AC9c/AC15(g) 文本为「下一次 401/登录响应迁移」。
+  - 代价：设计修订 + 复审；收益：无额外请求，旧部署零影响。
+- 建议：A（带 legacy 标记）。若选 B，需同步修订 AC9b/AC9c/AC15(g) 并重新评审。
+
+### D10（AC10 与部署）
+- 草稿已 APPROVED（`u197-csp-draft.md`）：Report-Only 仅 HTML 文档、console 观测；`script-src 'self'`（先重构 `app.js:1942` 3 行）、`style-src-attr 'unsafe-inline'`、`frame-src 'self' https:`、`img-src 'self' data:`、不引入 UIR；阶段 1 无需上报端点。
+- 待裁：CSP 是否先于 cookieMode 启用（草稿建议「先 CSP RO，观察 7 天/2 发布后升强制」；D10 原文为「同批」）；O4 是否新增上报端点；O5/O7 宿主面是否同批（须独立策略评估，禁止照抄）。
+- 建议：接受草稿排序与指令集；O4 暂不做，O5/O7 单独立项。
