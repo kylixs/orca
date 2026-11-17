@@ -62,7 +62,7 @@
 - `roleOverride` 一旦写入即每次登录重算角色：登录时若存在 `roleOverride`，`roles = USER_PAGE_ROLES[roleOverride]`（LDAP 组不推导角色）；`roleSource` 即 `roleOverride ? 'admin-override' : 'default'`（`default` = 首登 `['developer']` 的默认角色；历史服务端曾发 `'ldap'`）。
 - 实时生效：access token 为 opaque 键，角色每请求重算；升级不撤销凭证，降级（仅 admin 降出）撤销用户凭证。
 - 审计：成功写 `role_update`（from/to/username/revoked）；拒绝写 `role_update` denied（requiredPermission=platform:admin）；被拒的列表读写 `user_list` denied。
-- 停用：`requireAuth` 对 `user.status !== 'active'` 返回 null（已签发 token 全部失效）；当前**无任何页面/接口把账号置为 disabled**，也没有登录时的显式拒绝分支（登录仍签发 token，但随后所有 API 401）。角色 PUT 服务端未校验 `target.status`，停用锁定仅在 UI。
+- 停用：`requireAuth` 对 `user.status !== 'active'` 返回 null（已签发 token 全部失效）；当前**无任何页面/接口把账号置为 disabled**（停用态仅由数据层产生）。登录对非 active 用户返回 403 `USER_DISABLED`、不签发令牌/Cookie（U228 `39ad743d793`）；角色 PUT 服务端校验 `target.status`，停用账号 409 `USER_DISABLED` + denied 审计（U135 `cbbcb130086`）。
 
 管理员强制下线（U244 / FR-1.6，API-only）：
 

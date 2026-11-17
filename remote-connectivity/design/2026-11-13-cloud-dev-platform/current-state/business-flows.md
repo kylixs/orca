@@ -40,7 +40,7 @@
    - **never / 旧服务端**：body 含 `accessToken/refreshToken`，客户端写 `orca.access`/`orca.refresh`。
    - 两模式都写 `orca.user`/`orca.device`；旧模式另写 `orca.tokenOwner`（账号归属，防跨账号回退）。可见反馈：侧栏出现显示名/部门/角色 chip。［来源 m01-A2、m01 §3 登录响应形态］
 3. **进入主框架并恢复目标路由**：读启动时捕获的 hash；空 hash 或 `#/login` → `#/workbench`，其余 hash 原样恢复；非管理员直达管理路由 → 403 页且保留 URL。可见反馈：面包屑/导航高亮对应页面。［来源 m01-B4、m02-B4/B6］
-4. **业务请求 401 → 一次刷新 + 一次重放**：`api()` 只尝试一次（`app.js:70-108`）。Cookie 模式先发一次无 body `/v1/auth/refresh`（`credentials:'same-origin'`）；无 Cookie 可解析时才用 body 回退（`app.js:259-297`）。刷新三态：`ok` → 重放原请求一次；`rejected`（HTTP 非 2xx）→ `logout()` 回登录页；`error`（传输失败）→ **不登出**，把原 401 交给调用方（`app.js:155-242`）。并发 401 共享一次刷新（`app.js:110-112`）。U229 F1 另加 `stale` 内部态：旧代际/已登出的刷新结果不写状态、不重放、不登出（`app.js:70-108,155-242`）。可见反馈：用户无感，仅被拒时回登录页。［来源 m01-A7；HEAD `fb8d57347f4`］
+4. **业务请求 401 → 一次刷新 + 一次重放**：`api()` 只尝试一次（`app.js:70-108`）。Cookie 模式先发一次无 body `/v1/auth/refresh`（`credentials:'same-origin'`）；无 Cookie 可解析时才用 body 回退（`app.js:259-297`）。刷新四态：`ok` → 重放原请求一次；`rejected`（HTTP 400/401）→ `logout()` 回登录页；`error`（403/408/429/5xx 与传输失败）→ **不登出**，把原 401 交给调用方（`app.js:155-242`，U234 F7）。并发 401 共享一次刷新（`app.js:110-112`）。U229 F1 另加 `stale` 内部态：旧代际/已登出的刷新结果不写状态、不重放、不登出（`app.js:70-108,155-242`）。可见反馈：用户无感，仅被拒时回登录页。［来源 m01-A7；HEAD `fb8d57347f4`］
 5. **刷新/重开页面恢复**：
    - **Cookie 模式**：一次无 body 刷新 → 成功后 `GET /v1/me`（`retried:true`，不启动第二条刷新链）→ 进主框架（`app.js:5314-5339`）。
    - **旧模式**：有 access 时 `GET /v1/me`，401 触发 body 刷新并重放一次（`app.js:5352-5368`；`u198-legacy-reload` 断言顺序 `/v1/me:401 → refresh:200 → /v1/me:200`）。
