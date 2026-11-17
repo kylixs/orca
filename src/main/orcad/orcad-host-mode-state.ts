@@ -4,7 +4,6 @@ import {
   cloudHostStatePath,
   startingCloudHostState,
   writeCloudHostState,
-  writeStartingCloudHostState,
   type CloudHostState,
   type CloudHostStatePhase
 } from '../startup/cloud-host-state'
@@ -24,6 +23,10 @@ export type HostModeStateContext = {
   platformUrl: string | null
   /** Set once a terminal verdict stopped the process, so it stops exactly once. */
   terminal: boolean
+  /** Set once a graceful stop persisted `stopped`. */
+  stopped: boolean
+  /** Last persisted snapshot, so `stopped` keeps hostId/registeredAt/heartbeat fields. */
+  lastState: CloudHostState | null
 }
 
 /** The admission slice state publication reads; narrow so tests need no client. */
@@ -44,22 +47,99 @@ export function beginHostModeState(input: {
   platformUrl?: string | null
   now?: number
 }): HostModeStateContext {
-  const context: HostModeStateContext = {
-    statePath: cloudHostStatePath(input.userDataPath),
+  const statePath = cloudHostStatePath(input.userDataPath)
+  const initial = startingCloudHostState({
     pid: input.pid,
     startedAt: input.startedAt,
     hostName: input.hostName ?? null,
     platformUrl: input.platformUrl ?? null,
-    terminal: false
-  }
-  writeStartingCloudHostState(context.statePath, {
-    pid: context.pid,
-    startedAt: context.startedAt,
-    hostName: context.hostName,
-    platformUrl: context.platformUrl,
     now: input.now
   })
-  return context
+  writeCloudHostState(statePath, initial)
+  return {
+    statePath,
+    pid: input.pid,
+    startedAt: input.startedAt,
+    hostName: input.hostName ?? null,
+    platformUrl: input.platformUrl ?? null,
+    terminal: false,
+    stopped: false,
+    lastState: initial
+  }
+}
+
+function persist(context: HostModeStateContext, state: CloudHostState): CloudHostState {
+  writeCloudHostState(context.statePath, state)
+  context.lastState = state
+  return state
+}
+
+function baseState(context: HostModeStateContext, now: number): CloudHostState {
+  const { pid, startedAt, hostName, platformUrl } = context
+  return startingCloudHostState({ pid, startedAt, hostName, platformUrl, now })
+}
+
+/** Design §4.2.3: entering registration, before the register request is sent. */
+export function writeHostModeEnrollingState(
+  context: HostModeStateContext,
+  input: { now?: number } = {}
+): CloudHostState {
+  const now = input.now ?? Date.now()
+  return persist(context, {
+    ...baseState(context, now),
+    status: 'enrolling',
+    phase: 'enrolment'
+  })
+}
+
+/** Design §4.2.4: the credential exists, before the first heartbeat verdict lands. */
+export function writeHostModeRegisteredState(
+  context: HostModeStateContext,
+  host: { hostId: string; registeredAt: number },
+  input: { now?: number } = {}
+): CloudHostState {
+  const now = input.now ?? Date.now()
+  return persist(context, {
+    ...baseState(context, now),
+    status: 'registered',
+    phase: 'heartbeat',
+    hostId: host.hostId,
+    registeredAt: host.registeredAt
+  })
+}
+
+/** Admission callbacks that publish §4.2.3–4; desktop launches have no state file. */
+export function hostModeStateHooks(context: HostModeStateContext | null): {
+  onEnrolling?: () => void
+  onRegistered?: (host: { hostId: string; registeredAt: number }) => void
+} {
+  if (!context) {
+    return {}
+  }
+  return {
+    onEnrolling: () => writeHostModeEnrollingState(context),
+    onRegistered: (host) => writeHostModeRegisteredState(context, host)
+  }
+}
+
+/** Design §4.2.8: a graceful stop persists `stopped` once; failures own the final state. */
+export function writeHostModeStoppedStateOnShutdown(
+  context: HostModeStateContext | null,
+  cleanupState: { failed: boolean },
+  now = Date.now()
+): CloudHostState | null {
+  if (
+    !context ||
+    cleanupState.failed ||
+    context.terminal ||
+    context.stopped ||
+    context.lastState?.status === 'error' // keeps the failure code, not a clean stop
+  ) {
+    return null
+  }
+  context.stopped = true
+  const last = context.lastState ?? baseState(context, now)
+  return persist(context, { ...last, status: 'stopped', updatedAt: now })
 }
 
 /** Online is a heartbeat verdict; a failed or absent verdict keeps the previous state. */
@@ -72,24 +152,18 @@ export function writeHostModeOnlineState(
   }
   const now = input.now ?? Date.now()
   const state: CloudHostState = {
-    ...startingCloudHostState({
-      pid: context.pid,
-      startedAt: context.startedAt,
-      hostName: context.hostName,
-      platformUrl: context.platformUrl,
-      now
-    }),
+    ...baseState(context, now),
     status: 'online',
     phase: 'heartbeat',
     hostId: input.hostId,
+    registeredAt: context.lastState?.registeredAt ?? null,
     lastHeartbeatAt: input.health.lastHeartbeatAt,
     lastHeartbeatOk: true,
     lastHeartbeatHttpStatus: input.health.lastHeartbeatHttpStatus,
     lastErrorCode: null,
     retryable: false
   }
-  writeCloudHostState(context.statePath, state)
-  return state
+  return persist(context, state)
 }
 
 type HostModeHeartbeatVerdict =
@@ -214,16 +288,11 @@ export function writeHostModeFailureState(
 ): CloudHostState {
   const now = input.now ?? Date.now()
   const state: CloudHostState = {
-    ...startingCloudHostState({
-      pid: context.pid,
-      startedAt: context.startedAt,
-      hostName: context.hostName,
-      platformUrl: context.platformUrl,
-      now
-    }),
+    ...baseState(context, now),
     status: input.status ?? 'error',
     phase: input.phase,
-    hostId: input.hostId ?? null,
+    hostId: input.hostId ?? context.lastState?.hostId ?? null,
+    registeredAt: context.lastState?.registeredAt ?? null,
     lastHeartbeatAt: input.health?.lastHeartbeatAt ?? null,
     lastHeartbeatOk: input.health?.lastHeartbeatOk ?? false,
     lastHeartbeatHttpStatus: input.health?.lastHeartbeatHttpStatus ?? null,
@@ -231,8 +300,7 @@ export function writeHostModeFailureState(
     lastErrorDetail: input.detail ?? null,
     retryable: input.retryable
   }
-  writeCloudHostState(context.statePath, state)
-  return state
+  return persist(context, state)
 }
 
 /** Startup failure path: the phase comes from where the failure was raised. */

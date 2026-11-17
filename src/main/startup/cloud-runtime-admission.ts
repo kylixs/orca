@@ -123,6 +123,8 @@ export type CloudAdmissionOptions = {
   fetchImpl?: typeof fetch
   retryDelaysMs?: readonly number[]
   sleep?: (ms: number) => Promise<void>
+  /** Design §4.2.3–4: host mode writes `enrolling`, then `registered`, before the first beat. */
+  onRegistrationState?: (event: 'enrolling' | CloudHostCredential) => void
 }
 
 /**
@@ -171,16 +173,10 @@ export function startCloudRuntimeAdmission(
   // Only an explicit host token means "serve as a host": `ORCA_CLOUD_API_URL`
   // alone is the client's prefilled platform address (W10), and demanding host
   // identity for it refused to start plain clients.
-  if (!env.ORCA_CLOUD_INTERNAL_TOKEN) {
-    return null
-  }
-  return startPolling(env)
+  return env.ORCA_CLOUD_INTERNAL_TOKEN ? startPolling(env) : null
 }
 
-/**
- * Registered host: enrol once (persisting the credential), then keep the
- * platform's policy and revocation view current over the heartbeat.
- */
+/** Registered host: enrol once (persisting the credential), then heartbeat policy/revocation. */
 function startEnrolled(
   env: NodeJS.ProcessEnv,
   apiUrl: string,
@@ -202,16 +198,15 @@ function startEnrolled(
   let admission: (headers: CloudUpgradeHeaders) => CloudUpgradeDecision = notEnrolledAdmission()
 
   const ready = (async () => {
-    const { userDataPath } = options
     // Absent means this host does not offer developer self-service projects.
     const projectsRoot = env.ORCA_CLOUD_PROJECTS_ROOT?.trim() || undefined
-    // The same certificate the runtime listens with, announced to the platform so
-    // clients can check the `wss://` address they are handed.
+    // The certificate the runtime listens with, so clients can verify the `wss://` address.
     const hostTls = resolveCloudHostTls(env)
-    let stored = userDataPath ? readStoredHostCredential(userDataPath) : null
+    let stored = options.userDataPath ? readStoredHostCredential(options.userDataPath) : null
     if (!stored) {
+      options.onRegistrationState?.('enrolling')
       stored = await enrollHostCredential({
-        userDataPath,
+        userDataPath: options.userDataPath,
         apiUrl,
         hostToken,
         hostName,
@@ -229,6 +224,7 @@ function startEnrolled(
       })
     }
     admittedHost = stored
+    options.onRegistrationState?.(stored)
     const config: CloudAgentConfig = {
       apiUrl,
       internalUrl: env.ORCA_CLOUD_INTERNAL_URL,
@@ -241,8 +237,7 @@ function startEnrolled(
         hostId: stored.hostId,
         credential: stored.credential,
         ...(projectsRoot ? { projectsRoot, projectDirs: () => listProjectDirs(projectsRoot) } : {}),
-        // Clients derive the E2EE key from this, so it must come from the runtime
-        // that will actually answer — the enrolment call ran before it existed.
+        // Clients derive the E2EE key from this, so it must come from the answering runtime.
         e2eePublicKeyB64: () => boundRuntime?.getE2EEPublicKey() ?? null,
         tlsFingerprint: () => hostTls?.fingerprint ?? null,
         orcaVersion: () => env.ORCA_APP_VERSION ?? null,
@@ -326,12 +321,10 @@ export function attachCloudRuntime(runtime: CloudRuntimeTarget): void {
 
 /**
  * Injectable core of `attachCloudRuntime`: binds revocations and installs the
- * access guard plus the provision/audit reporters.
- *
- * A first start enrols over the network, so the client does not exist yet when
- * the RPC server is constructed and attached; the wiring then follows `ready`.
- * Skipping it there left enrolled hosts permanently without a provision reporter
- * (the platform never saw `failed`) and without the download guard.
+ * access guard plus the provision/audit reporters, following `ready` because a
+ * first start enrols over the network before the client exists. Skipping the
+ * wiring left enrolled hosts without a provision reporter (the platform never
+ * saw `failed`) and without the download guard.
  */
 export { attachRuntimeToCloudAdmission, installCloudAccessGuard } from './cloud-runtime-attach'
 

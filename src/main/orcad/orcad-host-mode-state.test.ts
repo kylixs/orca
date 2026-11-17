@@ -3,14 +3,31 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cloudHostStatePath, isCloudHostStateOnline } from '../startup/cloud-host-state'
+import { startCloudRuntimeAdmission } from '../startup/cloud-runtime-admission'
 import type { CloudHeartbeatHealth } from '../cloud-platform/cloud-heartbeat-health'
 import {
   beginHostModeState,
+  hostModeStateHooks,
   publishHostModeInitialStateWhenReady,
   watchHostModeHeartbeat,
+  writeHostModeFailureState,
   writeHostModeOnlineState,
+  writeHostModeStoppedStateOnShutdown,
   type HostModeAdmission
 } from './orcad-host-mode-state'
+
+const ENV: NodeJS.ProcessEnv = {
+  ORCA_CLOUD_API_URL: 'https://platform.test',
+  ORCA_CLOUD_HOST_TOKEN: 'one-time-token',
+  ORCA_CLOUD_HOST_NAME: 'host-a'
+}
+
+function json(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' }
+  })
+}
 
 const OK_HEALTH: CloudHeartbeatHealth = {
   lastHeartbeatAt: 1_700_000_000_000,
@@ -29,6 +46,10 @@ function readState(statePath: string): Record<string, unknown> {
     throw new Error('host state file is not an object')
   }
   return parsed
+}
+
+function readStatus(statePath: string): string {
+  return String(readState(statePath).status)
 }
 
 function admission(health: CloudHeartbeatHealth, ready = Promise.resolve()): HostModeAdmission {
@@ -307,5 +328,137 @@ describe('host mode heartbeat watcher', () => {
     watcher.unwatch()
 
     expect(watcher.listeners()).toBe(0)
+  })
+})
+
+describe('host mode registration state sequence', () => {
+  let dir: string
+  let statePath: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'orca-host-mode-sequence-'))
+    statePath = cloudHostStatePath(dir)
+  })
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  function fetchPlatform(observeRegister: () => void): typeof fetch {
+    return async (input) => {
+      const url = String(input)
+      if (url.endsWith('/v1/hosts/register')) {
+        observeRegister()
+        return json(201, { hostId: 'host_1', credential: 'cred_1' })
+      }
+      if (url.endsWith('/v1/jwks')) {
+        return json(200, { keys: [] })
+      }
+      if (url.includes('/heartbeat')) {
+        return json(200, {
+          policyVersion: 1,
+          policies: {},
+          revoked: {},
+          maintenance: null,
+          hostRevoked: false,
+          provisionAssignments: [],
+          auditCapabilities: { fileEvents: false }
+        })
+      }
+      throw new Error(`unexpected request: ${url}`)
+    }
+  }
+
+  it('persists starting → enrolling → registered → online on a successful 201', async () => {
+    const observed: string[] = []
+    const context = beginHostModeState({ userDataPath: dir, pid: 1, startedAt: 2 })
+    observed.push(readStatus(statePath))
+    const hooks = hostModeStateHooks(context)
+
+    const admission = startCloudRuntimeAdmission(ENV, {
+      userDataPath: dir,
+      fetchImpl: fetchPlatform(() => {
+        // The enrolling write must already be durable when the register call leaves.
+        observed.push(readStatus(statePath))
+      }),
+      onRegistrationState: (event) => {
+        if (event === 'enrolling') {
+          hooks.onEnrolling?.()
+          return
+        }
+        hooks.onRegistered?.(event)
+        observed.push(readStatus(statePath))
+      }
+    })
+
+    await admission!.ready
+    expect(readState(statePath)).toMatchObject({
+      status: 'registered',
+      phase: 'heartbeat',
+      hostId: 'host_1',
+      registeredAt: expect.any(Number)
+    })
+
+    await publishHostModeInitialStateWhenReady(context, admission!)
+
+    expect(observed).toEqual(['starting', 'enrolling', 'registered'])
+    expect(readState(statePath)).toMatchObject({
+      status: 'online',
+      hostId: 'host_1',
+      registeredAt: expect.any(Number),
+      lastErrorCode: null
+    })
+    admission!.stop()
+  })
+
+  it('writes stopped exactly once on the graceful shutdown path and keeps registration fields', async () => {
+    const context = beginHostModeState({ userDataPath: dir, pid: 9, startedAt: 10 })
+    writeHostModeOnlineState(context, {
+      hostId: 'host_123',
+      health: OK_HEALTH,
+      now: 11
+    })
+
+    const stopped = writeHostModeStoppedStateOnShutdown(context, { failed: false }, 12)
+
+    expect(stopped?.status).toBe('stopped')
+    expect(readState(statePath)).toMatchObject({
+      status: 'stopped',
+      hostId: 'host_123',
+      updatedAt: 12
+    })
+    // A second signal must not rewrite the final state.
+    expect(writeHostModeStoppedStateOnShutdown(context, { failed: false }, 13)).toBeNull()
+    expect(readState(statePath).updatedAt).toBe(12)
+  })
+
+  it('does not replace a failure or a failed teardown with stopped', () => {
+    const context = beginHostModeState({ userDataPath: dir, pid: 1, startedAt: 2 })
+    writeHostModeFailureState(context, {
+      code: 'host_token_invalid',
+      retryable: false,
+      phase: 'enrolment',
+      now: 3
+    })
+
+    expect(writeHostModeStoppedStateOnShutdown(context, { failed: false })).toBeNull()
+    expect(readState(statePath)).toMatchObject({
+      status: 'error',
+      lastErrorCode: 'host_token_invalid'
+    })
+  })
+
+  it('persists the error code only as lastErrorCode', () => {
+    const context = beginHostModeState({ userDataPath: dir, pid: 1, startedAt: 2 })
+    writeHostModeFailureState(context, {
+      code: 'heartbeat_failed',
+      retryable: true,
+      phase: 'heartbeat',
+      now: 3
+    })
+
+    const state = readState(statePath)
+    expect(state.lastErrorCode).toBe('heartbeat_failed')
+    expect(state).not.toHaveProperty('heartbeatError')
   })
 })

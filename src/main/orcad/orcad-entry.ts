@@ -37,7 +37,9 @@ import { hostAdmissionOptions } from './host-mode-enrolment'
 import { createOrcadSecretStore } from './orcad-node-secret-store'
 import {
   beginHostModeStateFromEnv,
-  publishHostModeInitialStateAfterStart
+  hostModeStateHooks,
+  publishHostModeInitialStateAfterStart,
+  writeHostModeStoppedStateOnShutdown
 } from './orcad-host-mode-state'
 import {
   admitOrcadCloudRuntime,
@@ -160,6 +162,10 @@ async function startOrcadRuntime(
   // invalidate the previous process's verdict before enrolment begins.
   const hostModeState =
     options.hostMode === true ? beginHostModeStateFromEnv(runtimeUserDataPath) : null
+  // Design §4.2.8: SIGTERM/SIGINT reach the graceful teardown; a failed teardown keeps its state.
+  registerCleanup((state) => {
+    writeHostModeStoppedStateOnShutdown(hostModeState, state)
+  })
   // A missing `orca` command must never keep the server from starting.
   await prepareOrcadCliLauncher().catch((error: unknown) => {
     console.warn('[orcad] Could not prepare the profile CLI launcher', error)
@@ -305,7 +311,10 @@ async function startOrcadRuntime(
   publishHeadlessRuntimeGraph(runtime)
 
   const bindHost = resolveOrcadBindHost(options.bind)
-  const admissionOptions = hostAdmissionOptions(runtimeUserDataPath, options.hostMode === true)
+  const admissionOptions = {
+    ...hostAdmissionOptions(runtimeUserDataPath, options.hostMode === true),
+    ...hostModeStateHooks(hostModeState)
+  }
   const admission = admitOrcadCloudRuntime({
     create: () => cloudRuntimeAdmission(process.env, admissionOptions),
     state: hostModeState
