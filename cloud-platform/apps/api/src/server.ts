@@ -1255,7 +1255,25 @@ if ${systemdAvailable()}; then
   # R11a: identical reruns must not recreate the unit (nor restart it needlessly).
   ORCA_RELAY_UNIT_TMP="$ORCA_RELAY_UNIT_FILE.tmp.$$"
   cat > "$ORCA_RELAY_UNIT_TMP" <<ORCA_RELAY_UNIT
-${renderRelayUnit({ nodePath: '$ORCA_NODE_BIN', root: '$ORCA_RELAY_ROOT', entry: '$ORCA_RELAY_ENTRY' })}ORCA_RELAY_UNIT
+${renderRelayUnit({
+  nodePath: '$ORCA_NODE_BIN',
+  root: '$ORCA_RELAY_ROOT',
+  entry: '$ORCA_RELAY_ENTRY',
+  workingDirectory: bundle ? '$ORCA_RELAY_ROOT/current' : '$ORCA_RELAY_ROOT'
+})}ORCA_RELAY_UNIT
+  # U187: StartLimit needs systemd >=229; older hosts degrade to Restart=no.
+  ORCA_SYSTEMD_VERSION="$(systemctl --version 2>/dev/null | head -n 1 | awk '{print $2}' || true)"
+  case "$ORCA_SYSTEMD_VERSION" in
+    ''|*[!0-9]*) : ;;
+    *)
+      if [ "$ORCA_SYSTEMD_VERSION" -lt 229 ]; then
+        echo ">> 警告：systemd $ORCA_SYSTEMD_VERSION < 229，StartLimit 不可用，降级为 Restart=no" >&2
+        ORCA_RELAY_UNIT_DEGRADED="$ORCA_RELAY_UNIT_TMP.degraded"
+        grep -vE '^(StartLimitIntervalSec|StartLimitBurst)=' "$ORCA_RELAY_UNIT_TMP" \\
+          | sed 's/^Restart=on-failure$/Restart=no/' > "$ORCA_RELAY_UNIT_DEGRADED"
+        mv -f "$ORCA_RELAY_UNIT_DEGRADED" "$ORCA_RELAY_UNIT_TMP"
+      fi ;;
+  esac
   if [ -f "$ORCA_RELAY_UNIT_FILE" ] && cmp -s "$ORCA_RELAY_UNIT_TMP" "$ORCA_RELAY_UNIT_FILE"; then
     rm -f "$ORCA_RELAY_UNIT_TMP"
     echo ">> systemd 用户单元未变化，跳过重写：$ORCA_RELAY_UNIT_FILE"

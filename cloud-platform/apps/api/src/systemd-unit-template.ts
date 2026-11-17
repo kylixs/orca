@@ -13,7 +13,10 @@ export type SystemdUnitInput = {
   restartPreventExitStatus?: number
   startLimitIntervalSec?: number
   startLimitBurst: number
+  extraUnitLines?: string[]
   extraServiceLines?: string[]
+  restart?: string
+  restartSec?: number
 }
 
 function requireText(name: string, value: string): string {
@@ -44,7 +47,12 @@ export function renderSystemdUnit(input: SystemdUnitInput): string {
       ? undefined
       : requirePositiveInteger('restartPreventExitStatus', input.restartPreventExitStatus)
 
+  const restart = input.restart === undefined ? 'on-failure' : requireText('restart', input.restart)
+  const restartSec =
+    input.restartSec === undefined ? 5 : requirePositiveInteger('restartSec', input.restartSec)
+
   const lines = ['[Unit]', `Description=${description}`]
+  for (const line of input.extraUnitLines ?? []) lines.push(requireText('extraUnitLines', line))
   if (startLimitIntervalSec !== undefined) {
     lines.push(`StartLimitIntervalSec=${startLimitIntervalSec}`)
   }
@@ -54,8 +62,8 @@ export function renderSystemdUnit(input: SystemdUnitInput): string {
     '[Service]',
     `EnvironmentFile=${environmentFile}`,
     `ExecStart=${execStart}`,
-    'Restart=on-failure',
-    'RestartSec=5'
+    `Restart=${restart}`,
+    `RestartSec=${restartSec}`
   )
   if (restartPreventExitStatus !== undefined) {
     lines.push(`RestartPreventExitStatus=${restartPreventExitStatus}`)
@@ -83,15 +91,24 @@ export function renderRelayUnit(input: {
   root: string
   /** U186: defaults to the bundle release entry; repo mode passes its own. */
   entry?: string
+  /** U187: defaults to <root>/current; repo mode has no current dir. */
+  workingDirectory?: string
 }): string {
   const nodePath = requireText('nodePath', input.nodePath)
   // POSIX unit path: do not use path.join (it would emit backslashes on Windows).
   const root = requireText('root', input.root).replace(/\/+$/, '')
   const entry = requireText('entry', input.entry ?? `${root}/current/apps/relay/src/relay.ts`)
+  const workingDirectory = requireText(
+    'workingDirectory',
+    input.workingDirectory ?? `${root}/current`
+  )
   return renderSystemdUnit({
     description: 'Orca Cloud 中继',
     execStart: `${nodePath} ${entry}`,
     environmentFile: `${root}/relay.env`,
+    extraUnitLines: ['After=network-online.target', 'Wants=network-online.target'],
+    extraServiceLines: ['Type=simple', `WorkingDirectory=${workingDirectory}`],
+    restartSec: 2,
     startLimitIntervalSec: 60,
     startLimitBurst: 5
   })

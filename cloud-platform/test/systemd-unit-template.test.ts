@@ -25,6 +25,8 @@ WantedBy=default.target
 
 const RELAY_UNIT = `[Unit]
 Description=Orca Cloud 中继
+After=network-online.target
+Wants=network-online.target
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
@@ -32,7 +34,9 @@ StartLimitBurst=5
 EnvironmentFile=/opt/orca/relay.env
 ExecStart=/usr/bin/node /opt/orca/current/apps/relay/src/relay.ts
 Restart=on-failure
-RestartSec=5
+RestartSec=2
+Type=simple
+WorkingDirectory=/opt/orca/current
 
 [Install]
 WantedBy=default.target
@@ -90,12 +94,14 @@ WantedBy=default.target
     const unit = renderRelayUnit({
       nodePath: '/usr/bin/node',
       root: '/opt/orca',
-      entry: '/opt/orca/cloud-platform/apps/relay/src/relay.ts'
+      entry: '/opt/orca/cloud-platform/apps/relay/src/relay.ts',
+      workingDirectory: '/opt/orca'
     })
     assert.match(
       unit,
       /^ExecStart=\/usr\/bin\/node \/opt\/orca\/cloud-platform\/apps\/relay\/src\/relay\.ts$/m
     )
+    assert.match(unit, /^WorkingDirectory=\/opt\/orca$/m)
     assert.doesNotMatch(unit, /\/current\//)
   })
 

@@ -139,6 +139,8 @@ const SPARSE_TOOLS = [
   'head',
   // U183 R11a: unit content comparison skips identical rewrites.
   'cmp',
+  // U187: legacy systemd degrades StartLimit/Restart in the rendered unit.
+  'sed',
   // U183 R9: background launch and liveness settling.
   'nohup',
   'sleep',
@@ -1537,6 +1539,12 @@ printf '%s\\n' "$*" >> "$HOME/systemctl.log"
 case "$*" in *enable*) exit 1 ;; esac
 exit 0
 `
+    /** U187: systemd <229; StartLimit is unusable and must be dropped. */
+    const RELAY_SYSTEMCTL_LEGACY = `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$HOME/systemctl.log"
+if [ "$1" = "--version" ]; then echo "systemd 219"; fi
+exit 0
+`
 
     function makeRelaySystemdHome(systemctl: string): {
       home: string
@@ -1560,6 +1568,8 @@ exit 0
       const unit = readFileSync(join(home, RELAY_UNIT_PATH), 'utf8')
       assert.match(unit, /^\[Unit\]$/m)
       assert.match(unit, /^Description=Orca Cloud 中继$/m)
+      assert.match(unit, /^After=network-online\.target$/m)
+      assert.match(unit, /^Wants=network-online\.target$/m)
       assert.match(unit, /^StartLimitIntervalSec=\d+$/m)
       assert.match(unit, /^StartLimitBurst=5$/m)
       assert.equal(unit.includes(`EnvironmentFile=${relayRoot}/relay.env`), true)
@@ -1567,6 +1577,10 @@ exit 0
         unit.includes(`ExecStart=${nodeBin} ${relayRoot}/current/apps/relay/src/relay.ts`),
         true
       )
+      assert.match(unit, /^Restart=on-failure$/m)
+      assert.match(unit, /^RestartSec=2$/m)
+      assert.match(unit, /^Type=simple$/m)
+      assert.equal(unit.includes(`WorkingDirectory=${relayRoot}/current`), true)
       // 78 is the install-script code; the relay unit must never restart-block on it.
       assert.doesNotMatch(unit, /RestartPreventExitStatus/)
       assert.match(unit, /^WantedBy=default\.target$/m)
@@ -1576,6 +1590,19 @@ exit 0
       assert.match(calls, /--user enable --now orca-relay\.service/)
       // systemd owns the process; no nohup duplicate beside it.
       assert.doesNotMatch(run.stdout, /nohup .*relay\.ts/)
+    })
+
+    test('U187: systemd <229 剔除 StartLimit 并降级 Restart=no', async () => {
+      const { home, relayRoot } = makeRelaySystemdHome(RELAY_SYSTEMCTL_LEGACY)
+      const run = runInstallScript(await fetchRelayScript(), home, {
+        PATH: join(home, 'sparse-bin'),
+        ORCA_RELAY_ROOT: relayRoot
+      })
+      assert.equal(run.status, 0, run.stderr)
+      assert.match(run.stderr, /systemd 219 < 229/)
+      const unit = readFileSync(join(home, RELAY_UNIT_PATH), 'utf8')
+      assert.doesNotMatch(unit, /StartLimit/)
+      assert.match(unit, /^Restart=no$/m)
     })
 
     test('systemctl enable --now 失败 → 69 relay_service_install_failed', async () => {
