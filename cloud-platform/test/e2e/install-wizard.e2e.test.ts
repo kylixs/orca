@@ -135,7 +135,10 @@ const SPARSE_TOOLS = [
   'head',
   // U183 R9: background launch and liveness settling.
   'nohup',
-  'sleep'
+  'sleep',
+  // U183 R10b: process identity (macOS has no /proc) and log tail on timeout.
+  'ps',
+  'tail'
 ]
 
 function makeSparsePath(home: string, stubs: Record<string, string>, omit: string[] = []): string {
@@ -362,6 +365,9 @@ function runInstallScript(
       // H9a: legacy cases end before the host runs; only the self-check suite
       // waits. 0 disables the readiness poll.
       ORCA_HOST_STATE_TIMEOUT: '0',
+      // U183 R10b: legacy cases do not run a relay that can announce itself.
+      // The self-proof suite opts back in with a short timeout.
+      ORCA_RELAY_PROOF_TIMEOUT: '0',
       ...envOverrides
     }
   })
@@ -1594,6 +1600,222 @@ exit 0
       assert.match(run.stderr, /relay_start_failed/)
       assert.equal(existsSync(join(relayRoot, 'relay.pid')), false)
       assert.equal(existsSync(join(relayRoot, 'run-relay.sh')), true)
+    })
+  })
+
+  describe('U183 R10b: relay 安装自证', () => {
+    /** Fake platform in its own process: the installer runs through spawnSync,
+     * which would block an in-process server's event loop. It records the
+     * relay's announce and serves that nonce back on the internal list. */
+    const PROOF_SERVER_SOURCE = `import { createServer } from 'node:http'
+const staleMs = Number(process.env.PROOF_STALE_MS ?? 0)
+const nonceSuffix = process.env.PROOF_NONCE_SUFFIX ?? ''
+let id = ''
+let nonce = ''
+const server = createServer((req, res) => {
+  const path = new URL(req.url ?? '/', 'http://127.0.0.1').pathname
+  if (path === '/health') { res.statusCode = 200; res.end('ok'); return }
+  if (path === '/v1/internal/relay-endpoint' && req.method === 'POST') {
+    let body = ''
+    req.on('data', (chunk) => (body += chunk))
+    req.on('end', () => {
+      try {
+        const parsed = JSON.parse(body)
+        id = parsed.id ?? ''
+        nonce = (parsed.installNonce ?? '') + nonceSuffix
+      } catch {}
+      res.setHeader('content-type', 'application/json')
+      res.end('{"ok":true}')
+    })
+    return
+  }
+  if (path === '/v1/internal/relays') {
+    const relays = id
+      ? [{ id, host: '', browserHost: '', installNonce: nonce, port: 18443, lastSeenAt: Date.now() - staleMs, order: 1, online: true }]
+      : []
+    res.setHeader('content-type', 'application/json')
+    res.end(JSON.stringify({ aliveMs: 30000, relays }))
+    return
+  }
+  res.statusCode = 404
+  res.end('not found')
+})
+server.listen(0, '127.0.0.1', () => console.log('[proof] listening on http://127.0.0.1:' + server.address().port))
+`
+
+    let proofScriptPath = ''
+    before(() => {
+      const dir = mkdtempSync(join(tmpdir(), 'orca-proof-platform-'))
+      proofScriptPath = join(dir, 'proof-platform.mjs')
+      writeFileSync(proofScriptPath, PROOF_SERVER_SOURCE)
+    })
+
+    function startProof(staleMs = 0, nonceSuffix = ''): Promise<Service> {
+      return spawnService(
+        proofScriptPath,
+        { PROOF_STALE_MS: String(staleMs), PROOF_NONCE_SUFFIX: nonceSuffix },
+        /\[proof\] listening on http:\/\/127\.0\.0\.1:(\d+)/,
+        'relay-proof-platform'
+      )
+    }
+
+    /** Wrapper branch: announce like relay.ts does, then stay alive with the
+     * entry name in argv so the installer's cmdline check sees relay.ts. */
+    function relayProofNodeStub(): string {
+      return `#!/usr/bin/env bash
+if [ "$1" = "-p" ]; then echo 22.18.0; exit 0; fi
+if [ "$1" = "--version" ]; then echo v22.18.0; exit 0; fi
+curl -sS -X POST -H 'content-type: application/json' -d "{\\"id\\":\\"$ORCA_CLOUD_RELAY_ID\\",\\"port\\":$PORT,\\"installNonce\\":\\"$ORCA_CLOUD_INSTALL_NONCE\\"}" "$ORCA_CLOUD_API_URL/v1/internal/relay-endpoint" >/dev/null 2>&1 || true
+exec -a relay.ts sleep 60
+`
+    }
+
+    /** systemd branch: MainPID is a live process named relay.ts after it
+     * announces the current nonce (read from the unit's EnvironmentFile). */
+    const SYSTEMCTL_PROOF_STUB = `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$HOME/systemctl.log"
+case "$*" in
+  *"show -p MainPID --value orca-relay.service"*)
+    if [ ! -s "$HOME/relay-mainpid" ]; then
+      (
+        . "$ORCA_RELAY_ROOT/relay.env"
+        curl -sS -X POST -H 'content-type: application/json' -d "{\\"id\\":\\"$ORCA_CLOUD_RELAY_ID\\",\\"port\\":$PORT,\\"installNonce\\":\\"$ORCA_CLOUD_INSTALL_NONCE\\"}" "$ORCA_CLOUD_API_URL/v1/internal/relay-endpoint" >/dev/null 2>&1 || true
+      )
+      ( exec -a relay.ts sleep 60 ) >/dev/null 2>&1 &
+      echo $! > "$HOME/relay-mainpid"
+    fi
+    cat "$HOME/relay-mainpid"
+    exit 0 ;;
+esac
+exit 0
+`
+
+    /** systemd branch with a MainPID that cannot be alive. */
+    const SYSTEMCTL_DEAD_MAINPID = `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$HOME/systemctl.log"
+case "$*" in
+  *"show -p MainPID --value orca-relay.service"*) echo 999999; exit 0 ;;
+esac
+exit 0
+`
+
+    function killMainPid(home: string): void {
+      try {
+        process.kill(Number(readFileSync(join(home, 'relay-mainpid'), 'utf8').trim()), 'SIGKILL')
+      } catch {
+        // Already gone.
+      }
+    }
+
+    async function runProofScript(
+      home: string,
+      relayRoot: string,
+      bin: string,
+      platformUrl: string,
+      extraEnv: Record<string, string> = {}
+    ): Promise<ReturnType<typeof runInstallScript>> {
+      const offline = join(home, 'proof-bundle.tgz')
+      writeFileSync(offline, BUNDLE_BODY)
+      // The fake platform answers /health and the relay list; the bundle is
+      // supplied offline so only self-proof talks to it.
+      const script = (await fetchRelayScript()).replaceAll(api.url, platformUrl)
+      return runInstallScript(script, home, {
+        PATH: bin,
+        ORCA_RELAY_ROOT: relayRoot,
+        ORCA_RELAY_BUNDLE: offline,
+        ORCA_RELAY_PROOF_TIMEOUT: '5',
+        ORCA_RELAY_PROOF_INTERVAL: '0.2',
+        ...extraEnv
+      })
+    }
+
+    test('pid 文件 + nonce 匹配 online → 0（打印自证通过）', async () => {
+      const proof = await startProof()
+      const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+      const relayRoot = makeRelayRoot(home)
+      const bin = makeSparsePath(home, { node: relayProofNodeStub() })
+      try {
+        const run = await runProofScript(home, relayRoot, bin, proof.url)
+        assert.equal(run.status, 0, run.stderr)
+        assert.match(run.stdout, /中继自证通过/)
+      } finally {
+        killRelayPid(relayRoot)
+        await proof.stop()
+      }
+    })
+
+    test('systemd MainPID + nonce 匹配 online → 0', async () => {
+      const proof = await startProof()
+      const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+      const relayRoot = makeRelayRoot(home)
+      const bin = makeSparsePath(home, {
+        node: NODE_2218_STUB,
+        systemctl: SYSTEMCTL_PROOF_STUB
+      })
+      try {
+        const run = await runProofScript(home, relayRoot, bin, proof.url)
+        assert.equal(run.status, 0, run.stderr)
+        assert.match(run.stdout, /中继自证通过/)
+        assert.match(readFileSync(join(home, 'systemctl.log'), 'utf8'), /show -p MainPID/)
+      } finally {
+        killMainPid(home)
+        await proof.stop()
+      }
+    })
+
+    test('MainPID 进程已死 → 70 且打印 pid 状态', async () => {
+      const proof = await startProof()
+      const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+      const relayRoot = makeRelayRoot(home)
+      const bin = makeSparsePath(home, {
+        node: NODE_2218_STUB,
+        systemctl: SYSTEMCTL_DEAD_MAINPID
+      })
+      try {
+        const run = await runProofScript(home, relayRoot, bin, proof.url, {
+          ORCA_RELAY_PROOF_TIMEOUT: '2'
+        })
+        assert.equal(run.status, 70, run.stdout)
+        assert.match(run.stderr, /pid=999999/)
+        assert.match(run.stderr, /relay_not_online_timeout/)
+      } finally {
+        await proof.stop()
+      }
+    })
+
+    test('online 但 nonce 不符 → 等待超时后 70（旧进程不能冒名）', async () => {
+      const proof = await startProof(0, '-stale')
+      const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+      const relayRoot = makeRelayRoot(home)
+      const bin = makeSparsePath(home, { node: relayProofNodeStub() })
+      try {
+        const run = await runProofScript(home, relayRoot, bin, proof.url, {
+          ORCA_RELAY_PROOF_TIMEOUT: '2'
+        })
+        assert.equal(run.status, 70, run.stdout)
+        assert.match(run.stderr, /relay_not_online_timeout/)
+        assert.match(run.stderr, /installNonce/)
+      } finally {
+        killRelayPid(relayRoot)
+        await proof.stop()
+      }
+    })
+
+    test('lastSeenAt 偏离平台时钟 >5s → 70（时钟偏差夹具）', async () => {
+      const proof = await startProof(20_000)
+      const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+      const relayRoot = makeRelayRoot(home)
+      const bin = makeSparsePath(home, { node: relayProofNodeStub() })
+      try {
+        const run = await runProofScript(home, relayRoot, bin, proof.url, {
+          ORCA_RELAY_PROOF_TIMEOUT: '2'
+        })
+        assert.equal(run.status, 70, run.stdout)
+        assert.match(run.stderr, /relay_not_online_timeout/)
+      } finally {
+        killRelayPid(relayRoot)
+        await proof.stop()
+      }
     })
   })
 

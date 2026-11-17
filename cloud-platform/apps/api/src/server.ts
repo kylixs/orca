@@ -916,6 +916,8 @@ fi
 ${requireWritableDir('$ORCA_RELAY_ROOT', '安装根不可写（78）：请设置 ORCA_RELAY_ROOT 指向当前用户可写目录后重试')}
 
 ORCA_PLATFORM_URL=${shellQuote(input.platformUrl)}
+# U183 R10b: the installer itself queries the internal relay list.
+ORCA_CLOUD_INTERNAL_TOKEN=${shellQuote(input.internalToken)}
 echo ">> 平台连通性检查"
 # U182: no redirect following; only an explicit 2xx is healthy, and bounded time
 # so a black-holed DNS/gateway cannot hang the install.
@@ -966,6 +968,136 @@ mv -f "$ORCA_ENV_TMP" "$ORCA_ENV_FILE"
 chmod 600 "$ORCA_ENV_FILE"
 echo ">> 环境已就绪：$ORCA_ENV_FILE"
 
+# U183 R10b: prove this install's relay is the process that came online.
+# Local pid (systemd MainPID or the wrapper pid file) plus its cmdline carry
+# process identity; the platform is only asked whether this install's nonce is
+# online, so a stale relay reusing RELAY_ID cannot impersonate the new one.
+orca_relay_self_proof() {
+  local proof_timeout="\${ORCA_RELAY_PROOF_TIMEOUT:-60}"
+  local proof_interval="\${ORCA_RELAY_PROOF_INTERVAL:-2}"
+  local proof_body proof_headers proof_pid proof_status proof_json proof_entry
+  local proof_nonce proof_last_seen proof_now_ms proof_date proof_epoch proof_date_ms
+  local proof_skew_ms proof_abs_skew proof_tolerance proof_diff proof_ok proof_degraded=0
+  local ORCA_RELAY_CMDLINE=""
+  if [ "$proof_timeout" = "0" ]; then
+    return 0
+  fi
+  proof_body="$(mktemp)"
+  proof_headers="$(mktemp)"
+  ORCA_RELAY_PROOF_DEADLINE=$((SECONDS + proof_timeout))
+  while :; do
+    if [ "$ORCA_RELAY_PROOF_KIND" = "systemd" ]; then
+      proof_pid="$(systemctl --user show -p MainPID --value orca-relay.service 2>/dev/null || true)"
+    else
+      proof_pid="$(cat "$ORCA_RELAY_ROOT/relay.pid" 2>/dev/null || true)"
+    fi
+    proof_pid="$(printf '%s' "$proof_pid" | tr -d '[:space:]')"
+    if [ -z "$proof_pid" ] || [ "$proof_pid" = "0" ] || ! kill -0 "$proof_pid" 2>/dev/null; then
+      echo ">> 中继进程不存在（pid=\${proof_pid:-<空>}）：自证失败（70 / relay_not_online_timeout）" >&2
+      rm -f "$proof_body" "$proof_headers"
+      exit 70
+    fi
+    # Linux exposes /proc; macOS has no it, so fall back to ps.
+    if [ -r "/proc/$proof_pid/cmdline" ]; then
+      ORCA_RELAY_CMDLINE="$(tr '\\0' ' ' < "/proc/$proof_pid/cmdline" 2>/dev/null || true)"
+    else
+      ORCA_RELAY_CMDLINE="$(ps -p "$proof_pid" -o command= 2>/dev/null || true)"
+    fi
+    case "$ORCA_RELAY_CMDLINE" in
+      *relay.ts*) ;;
+      *)
+        echo ">> 中继进程 cmdline 不含 relay.ts（pid=$proof_pid）：自证失败（70 / relay_not_online_timeout）" >&2
+        rm -f "$proof_body" "$proof_headers"
+        exit 70 ;;
+    esac
+
+    proof_status="$(curl -sS --connect-timeout 5 --max-time 10 -D "$proof_headers" -o "$proof_body" -w '%{http_code}' \
+      -H "x-internal-token: $ORCA_CLOUD_INTERNAL_TOKEN" \
+      "$ORCA_PLATFORM_URL/v1/internal/relays" 2>/dev/null || true)"
+    case "$proof_status" in
+      401|403)
+        echo ">> 内部令牌不匹配（HTTP $proof_status）：安装命令已失效或内部控制令牌不一致，请让管理员重新生成" >&2
+        rm -f "$proof_body" "$proof_headers"
+        exit 70 ;;
+    esac
+
+    proof_ok=0
+    if [ "$proof_status" = "200" ]; then
+      proof_json="$(tr -d '[:space:]' < "$proof_body" 2>/dev/null || true)"
+      proof_entry="$(printf '%s' "$proof_json" | tr '}' '\\n' | grep -F "\\"id\\":\\"$ORCA_RELAY_ID\\"" | head -n 1 || true)"
+      case "$proof_entry" in
+        *'"online":true'*) proof_ok=1 ;;
+      esac
+      if [ "$proof_ok" = "1" ]; then
+        proof_nonce="$(printf '%s' "$proof_entry" | grep -o '"installNonce":"[^"]*"' | cut -d: -f2 | tr -d '"' || true)"
+        if [ -z "$proof_nonce" ]; then
+          # Old relay or old platform: fall back to identity + online, but say so.
+          if [ "$proof_degraded" = "0" ]; then
+            echo ">> 警告：平台未回显安装 nonce（旧中继或旧平台），退回进程身份 + online 自证" >&2
+            proof_degraded=1
+          fi
+        elif [ "$proof_nonce" != "$ORCA_INSTALL_NONCE" ]; then
+          proof_ok=0
+        fi
+      fi
+      if [ "$proof_ok" = "1" ]; then
+        # lastSeenAt is platform epoch ms; estimate platform clock from Date.
+        proof_last_seen="$(printf '%s' "$proof_entry" | grep -o '"lastSeenAt":[0-9]*' | cut -d: -f2 || true)"
+        proof_now_ms=$(( $(date +%s) * 1000 ))
+        proof_date="$(grep -i '^date:' "$proof_headers" 2>/dev/null | head -n 1 | cut -d' ' -f2- | tr -d '\\r' || true)"
+        proof_date_ms=""
+        if [ -n "$proof_date" ]; then
+          if proof_epoch="$(date -u -d "$proof_date" +%s 2>/dev/null)"; then
+            proof_date_ms=$((proof_epoch * 1000))
+          elif proof_epoch="$(date -j -u -f '%a, %d %b %Y %H:%M:%S GMT' "$proof_date" +%s 2>/dev/null)"; then
+            proof_date_ms=$((proof_epoch * 1000))
+          fi
+        fi
+        proof_skew_ms=0
+        if [ -n "$proof_date_ms" ] && [ "$proof_date_ms" -gt 0 ]; then
+          proof_skew_ms=$((proof_now_ms - proof_date_ms))
+        fi
+        proof_abs_skew=$proof_skew_ms
+        case "$proof_abs_skew" in -*) proof_abs_skew=$((-proof_abs_skew)) ;; esac
+        proof_tolerance=5000
+        if [ "$proof_abs_skew" -gt 3000 ]; then
+          proof_tolerance=$((proof_abs_skew + 2000))
+        fi
+        if [ -z "$proof_last_seen" ]; then
+          proof_ok=0
+        else
+          proof_diff=$((proof_now_ms - proof_skew_ms - proof_last_seen))
+          case "$proof_diff" in -*) proof_diff=$((-proof_diff)) ;; esac
+          if [ "$proof_diff" -gt "$proof_tolerance" ]; then
+            proof_ok=0
+          fi
+        fi
+      fi
+    fi
+
+    if [ "$proof_ok" = "1" ]; then
+      echo ">> 中继自证通过（id=$ORCA_RELAY_ID pid=$proof_pid）"
+      rm -f "$proof_body" "$proof_headers"
+      return 0
+    fi
+    [ "$SECONDS" -lt "$ORCA_RELAY_PROOF_DEADLINE" ] || break
+    sleep "$proof_interval"
+  done
+
+  echo ">> 中继未通过自证（70 / relay_not_online_timeout）" >&2
+  echo ">> pid=$proof_pid cmdline=\${ORCA_RELAY_CMDLINE:-<空>}" >&2
+  echo ">> 平台 /v1/internal/relays 响应：" >&2
+  cat "$proof_body" >&2 2>/dev/null || true
+  echo ">> 中继日志尾部：" >&2
+  if [ "$ORCA_RELAY_PROOF_KIND" = "systemd" ]; then
+    journalctl --user -u orca-relay.service -n 20 --no-pager >&2 2>/dev/null || true
+  else
+    tail -n 20 "$ORCA_RELAY_ROOT/relay.log" >&2 2>/dev/null || true
+  fi
+  rm -f "$proof_body" "$proof_headers"
+  exit 70
+}
+
 if ${systemdAvailable()}; then
   # U183 R8: install the user unit from the shared H10a template. Its
   # EnvironmentFile is <ROOT>/relay.env and its ExecStart follows current,
@@ -980,9 +1112,8 @@ ${renderRelayUnit({ nodePath: '$ORCA_NODE_BIN', root: '$ORCA_RELAY_ROOT' })}ORCA
     echo ">> 单元文件保留在 $ORCA_RELAY_UNIT_FILE" >&2
     exit 69
   fi
-  # U183 R10b: self-proof call site (MainPID + cmdline + install nonce).
-  # R8 only wires it; the proof itself lands with R10b.
-  orca_relay_self_proof() { :; }
+  # U183 R10b: MainPID + cmdline identity, then this install's nonce online.
+  ORCA_RELAY_PROOF_KIND=systemd
   orca_relay_self_proof
 
   cat <<ORCA_NEXT
@@ -1037,8 +1168,8 @@ ORCA_RELAY_WRAPPER
     rm -f "$ORCA_RELAY_PID_FILE"
     exit 69
   fi
-  # U183 R10b: self-proof call site (pid + cmdline + install nonce).
-  orca_relay_self_proof() { :; }
+  # U183 R10b: wrapper pid + cmdline identity, then this install's nonce online.
+  ORCA_RELAY_PROOF_KIND=pid
   orca_relay_self_proof
 
   cat <<ORCA_NEXT
