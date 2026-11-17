@@ -76,3 +76,18 @@ node cloud-platform/scripts/monitor-system-resources.mjs \
 - **平台可达**：夹具在本机 `0.0.0.0:<随机端口>` 起 TCP forwarder（复用 `startTcpDelayHop`，延迟 0），容器内用 `getContainerPlatformUrl()` = `http://host.docker.internal:<forwarderPort>`；`checkPlatformReachable(path = '/health')` 用容器内 curl 探测。平台须由调用方先启动。
 - **Node 缺失**：记录为 `capabilities.node=false`，不当作产品失败。依赖 Node 的 R13c/R14 用例据此 skip；**R14a 的 N4（无 Node → 64）是负向断言，必须执行，不能 skip**。
 - **收尾**：`stop()` 只 `docker rm -f <唯一名>` 并关闭自起 forwarder；进程退出钩子兜底清理本进程创建的容器。**禁止宽域 `pkill`**。
+
+## 证据结构（2026-11-17 U183 R13b）
+
+运行器：`cloud-platform/test/e2e/helpers/relay-container-runner.ts`；自测：`cloud-platform/test/e2e/relay-container-runner.e2e.test.ts`（mock harness，不启容器）。
+
+- **目录**：`cloud-platform/evidence/u183-container-<ts>/`（`<ts>` = UTC `YYYYMMDDTHHMMSSZ`，由 `createRelayEvidenceDir()` 生成）。
+- **文件**：
+  - `summary.json`：`task`、`generatedAt`（ISO，必需，供 `--check-generated-at`）、`verdict`、`skipReason`、每步 `{name, exitCode, classification, skipped}`、`validation` 结果。
+  - `results.json`：每步完整结果 + `stdoutFile`/`stderrFile`/字节数/`durationMs`/`timedOut`。
+  - `<NN>-<step>.stdout.log` / `.stderr.log`：原始流，不做脱敏（调用方负责不写入令牌）。
+  - `validate-evidence.log`：自动校验的原始输出。
+- **verdict**：`pass`（每步 exitCode=0）/ `fail`（任一步非 0）/ `null`（harness 不可用或任一步 skipped；此时 `skipReason` 必填）。
+- **退出码分类**（`classifyRelayExitCode`）：`0 ok`、`64 usage`、`65 unavailable`、`66 checksum`、`67 manifest`、`68 platform-unreachable`、`78 config`、其余 `other`（含超时 124 与启动失败 70）。
+- **skip 门禁**：`runRelayInstallInContainer()` 在 `harness.available=false` 时不执行命令，返回 `exitCode=null / classification=skipped`；`collectRelayEvidence()` 据此写 `verdict=null`，不抛错、不计失败。
+- **自动校验**：`collectRelayEvidence()` 写盘后自动跑 `validate-evidence.mjs <dir> --check-generated-at --json`，结果写入 `summary.validation` 与日志；失败只 `console.warn`，不阻断证据落盘。
