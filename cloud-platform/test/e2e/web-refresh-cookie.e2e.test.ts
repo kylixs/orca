@@ -389,6 +389,165 @@ describe('U197 S4 Web Cookie mode（happy-dom + 真实 createApp）', () => {
     assert.equal(jar.has('orca_refresh'), false, 'the retried logout cleared the Cookie')
   })
 
+  test('U222 N1 页内刷新传输失败保留会话，恢复网络后重试成功', async () => {
+    const base = await start({ accessTtlMs: 1200 })
+    const page = loadWebConsolePage(base)
+    await page.settle()
+    await page.submitLogin('admin', 'Adm1n!')
+    assert.equal(page.hidden('#view-app'), false)
+    const accessBefore = page.window.localStorage.getItem('orca.access')
+    const refreshBefore = page.window.localStorage.getItem('orca.refresh')
+    assert.ok(accessBefore)
+    assert.ok(refreshBefore)
+
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+    const logoutCalls = (): number =>
+      page.calls().filter((call) => call === 'POST /v1/auth/logout').length
+    const logoutBefore = logoutCalls()
+
+    page.abort('POST', '/v1/auth/refresh')
+    await page.clickNav('relays')
+
+    assert.equal(logoutCalls(), logoutBefore, 'a transport failure must not revoke the session')
+    assert.equal(page.hidden('#view-app'), false, 'the app shell must stay visible')
+    assert.equal(page.hidden('#view-login'), true)
+    assert.equal(
+      page.window.localStorage.getItem('orca.access'),
+      accessBefore,
+      'the persisted tokens must survive'
+    )
+    assert.equal(page.window.localStorage.getItem('orca.refresh'), refreshBefore)
+
+    // Network restored: the next request renews and replays normally.
+    await page.clickNav('relays')
+    assert.equal(page.hidden('#view-app'), false)
+    assert.equal(page.hidden('#view-login'), true)
+    assert.match(page.text('#content'), /中继/, 'the retry after recovery must render')
+    assert.notEqual(
+      page.window.localStorage.getItem('orca.refresh'),
+      refreshBefore,
+      'the successful retry rotates the refresh token'
+    )
+  })
+
+  test('U222 N2 pendingLogout 请求挂起时登录页立即可见', async () => {
+    const base = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const page = loadWebConsolePage(base, {
+      platformOrigin: ORIGIN,
+      cookieJar: new Map(),
+      storage: { 'orca.pendingLogout': '1' },
+      holdOnLoad: ['POST /v1/auth/logout']
+    })
+    await page.settle()
+
+    assert.equal(page.hidden('#view-login'), false, 'the login view must be visible')
+    assert.equal(page.hidden('#view-app'), true, 'never a blank page')
+    assert.equal(
+      page.window.localStorage.getItem('orca.pendingLogout'),
+      '1',
+      'a hung retry keeps the marker'
+    )
+
+    await page.release()
+    await page.settle()
+    assert.equal(page.hidden('#view-login'), false)
+  })
+
+  test('U222 N3 旧模式启动 body 刷新成功后补写 tokenOwner', async () => {
+    const base = await start()
+    const legacy = await legacyTokens(base)
+    const page = loadWebConsolePage(base, {
+      storage: { 'orca.access': 'expired-access', 'orca.refresh': legacy.refreshToken }
+    })
+    await page.settle()
+
+    assert.equal(page.hidden('#view-app'), false)
+    assert.equal(
+      page.window.localStorage.getItem('orca.tokenOwner'),
+      'admin',
+      'the startup body refresh must bind the persisted tokens to the account'
+    )
+  })
+
+  test('U222 N3 Cookie 模式启动不写持久化 owner', async () => {
+    const base = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const jar = new Map<string, string>()
+    const first = loadWebConsolePage(base, { platformOrigin: ORIGIN, cookieJar: jar })
+    await first.settle()
+    await first.submitLogin('admin', 'Adm1n!')
+    assert.ok(jar.get('orca_refresh'))
+
+    const second = loadWebConsolePage(base, {
+      platformOrigin: ORIGIN,
+      cookieJar: jar,
+      storage: { 'orca.authMode': 'cookie' }
+    })
+    await second.settle()
+
+    assert.equal(second.hidden('#view-app'), false)
+    assert.equal(
+      second.window.localStorage.getItem('orca.tokenOwner'),
+      null,
+      'Cookie mode must never write a persisted token owner'
+    )
+  })
+
+  test('U222 N4 旧模式 body 刷新声明 x-orca-web-contract', async () => {
+    const base = await start({ accessTtlMs: 1200 })
+    const page = loadWebConsolePage(base)
+    await page.settle()
+    await page.submitLogin('admin', 'Adm1n!')
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+    await page.clickNav('relays')
+
+    assert.equal(refreshBodies(page).length, 1, 'the legacy path must use a body refresh')
+    const values = contractValues(page, 'POST /v1/auth/refresh')
+    assert.ok(values.length > 0)
+    assert.ok(
+      values.every((value) => value === '1'),
+      'the body refresh must declare x-orca-web-contract: 1'
+    )
+  })
+
+  test('U222 N4 新登录清除 pendingLogout 标记', async () => {
+    const base = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const page = loadWebConsolePage(base, {
+      platformOrigin: ORIGIN,
+      cookieJar: new Map(),
+      storage: { 'orca.pendingLogout': '1' },
+      abortOnLoad: ['POST /v1/auth/logout']
+    })
+    await page.settle()
+    assert.equal(page.hidden('#view-login'), false)
+    assert.equal(page.window.localStorage.getItem('orca.pendingLogout'), '1', 'precondition')
+
+    await page.submitLogin('admin', 'Adm1n!')
+
+    assert.equal(page.hidden('#view-app'), false)
+    assert.equal(page.window.localStorage.getItem('orca.pendingLogout'), null)
+  })
+
+  test('U222 N4 登出收到 401 清除 pendingLogout 标记', async () => {
+    const base = await start()
+    const page = loadWebConsolePage(base)
+    await page.settle()
+    await page.submitLogin('admin', 'Adm1n!')
+    page.fail('POST', '/v1/auth/logout', {
+      status: 401,
+      body: { error: { code: 'SESSION_EXPIRED', message: '会话已过期' } }
+    })
+
+    page.window.document.querySelector<HTMLElement>('#logoutBtn')!.click()
+    await page.settle()
+
+    assert.equal(page.hidden('#view-login'), false)
+    assert.equal(
+      page.window.localStorage.getItem('orca.pendingLogout'),
+      null,
+      'a reached 401 proves the credential is gone, so the retry marker must clear'
+    )
+  })
+
   test('U221 F5 /v1/auth/* 请求声明 x-orca-web-contract', async () => {
     const base = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
     const page = loadWebConsolePage(base, {

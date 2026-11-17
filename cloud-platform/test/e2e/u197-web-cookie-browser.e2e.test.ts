@@ -492,6 +492,49 @@ describe('U197 S5 Web 客户端真实 Chromium：Cookie 会话 / 迁移 / 回退
     }
   })
 
+  test('U222 N1 页内刷新传输失败：保留会话，恢复后重试成功', async () => {
+    const { context, page } = await openConsole(shortAccess.url)
+    try {
+      await loginThroughUi(page)
+      await delay(1900)
+      const logoutCalls: string[] = []
+      page.on('request', (request) => {
+        if (new URL(request.url()).pathname === '/v1/auth/logout') logoutCalls.push(request.url())
+      })
+      let aborted = 0
+      await page.route('**/v1/auth/refresh', (route) => {
+        aborted += 1
+        return route.abort()
+      })
+
+      await page.locator('.nav-item[data-route="relays"]').click()
+      await delay(800)
+
+      assert.ok(aborted >= 1, 'the in-page refresh must have been attempted')
+      assert.equal(logoutCalls.length, 0, 'a transport failure must not revoke the session')
+      assert.equal(await isVisible(page, VIEW_APP), true, 'the app shell stays visible')
+      assert.equal(await isVisible(page, VIEW_LOGIN), false, 'the user stays signed in')
+      assert.ok(await refreshCookieOf(context), 'the HttpOnly session must survive')
+
+      // Network restored: the next request renews and replays normally.
+      await page.unroute('**/v1/auth/refresh')
+      const replayed = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/v1/relays' && response.status() === 200,
+        { timeout: 20_000 }
+      )
+      await page.locator('.nav-item[data-route="relays"]').click()
+      await replayed
+      await page.waitForFunction(() =>
+        (document.querySelector('#content')?.textContent ?? '').includes('中继')
+      )
+      assert.equal(await isVisible(page, VIEW_APP), true)
+      assert.equal(await isVisible(page, VIEW_LOGIN), false)
+    } finally {
+      await context.close()
+    }
+  })
+
   test('刷新传输失败 → 登录页，不空白且无未捕获异常', async () => {
     const { context, page } = await openConsole(cookieMode.url)
     try {

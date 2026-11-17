@@ -66,8 +66,11 @@ async function api(path, init = {}, { retried = false } = {}) {
   })
   // U197: in Cookie mode the session is provable without a body refresh token.
   if (res.status === 401 && !retried && (state.cookieMode || state.refreshToken)) {
-    if (await refreshSession(accessToken)) return api(path, init, { retried: true })
-    logout()
+    const refresh = await refreshSession(accessToken)
+    if (refresh === 'ok') return api(path, init, { retried: true })
+    // U222 N1: a transport failure is not a verdict on the session. Keep it and
+    // let the caller see the failed request; only an HTTP rejection signs out.
+    if (refresh === 'rejected') logout()
   }
   const body = res.status === 204 ? {} : await res.json().catch(() => ({}))
   if (!res.ok) {
@@ -112,21 +115,21 @@ async function refreshWithCookie() {
       }
     })
   } catch {
-    // U221 F2: a transport failure is a failed probe, not an escaped rejection.
-    return false
+    // U221 F2 / U222 N1: transport failure, never an escaped rejection.
+    return 'error'
   }
-  if (!res.ok) return false
+  if (!res.ok) return 'rejected'
   const body = await res.json().catch(() => ({}))
-  if (typeof body.accessToken !== 'string' || body.accessToken === '') return false
+  if (typeof body.accessToken !== 'string' || body.accessToken === '') return 'rejected'
   state.accessToken = body.accessToken
   clearLegacyTokens()
   if (body.refreshCookie === true) setCookieMode(true)
-  return true
+  return 'ok'
 }
 
 /** Legacy body refresh; also the one fallback when the Cookie was lost. */
 async function refreshWithBody() {
-  if (!state.refreshToken) return false
+  if (!state.refreshToken) return 'rejected'
   let res
   try {
     res = await fetch('/v1/auth/refresh', {
@@ -138,12 +141,12 @@ async function refreshWithBody() {
       body: JSON.stringify({ refreshToken: state.refreshToken })
     })
   } catch {
-    // U221 F2: the caller treats this as “refresh failed”, never as a crash.
-    return false
+    // U221 F2 / U222 N1: the caller decides, but this is never a crash.
+    return 'error'
   }
-  if (!res.ok) return false
+  if (!res.ok) return 'rejected'
   const body = await res.json().catch(() => ({}))
-  if (typeof body.accessToken !== 'string' || body.accessToken === '') return false
+  if (typeof body.accessToken !== 'string' || body.accessToken === '') return 'rejected'
   if (body.refreshCookie === true) {
     // Server now issues Cookies, but no no-body success yet: keep the old keys.
     setCookieMode(true)
@@ -151,7 +154,7 @@ async function refreshWithBody() {
     if (typeof body.refreshToken === 'string' && body.refreshToken !== '') {
       state.refreshToken = body.refreshToken
     }
-    return true
+    return 'ok'
   }
   // Marker missing: old server. Resume the plain localStorage contract.
   setCookieMode(false)
@@ -159,18 +162,23 @@ async function refreshWithBody() {
     body.accessToken,
     typeof body.refreshToken === 'string' ? body.refreshToken : state.refreshToken
   )
-  return true
+  return 'ok'
 }
 
+/** `ok` | `rejected` (HTTP 4xx/5xx) | `error` (transport failure). */
 function refreshSession(staleAccess) {
   // The token this request carried is already gone: someone else renewed first.
-  if (state.accessToken !== staleAccess) return Promise.resolve(true)
+  if (state.accessToken !== staleAccess) return Promise.resolve('ok')
   if (!refreshInFlight) {
     refreshInFlight = (async () => {
       try {
         // Cookie first; at most one body fallback per cascade, never a loop.
         if (state.cookieMode) {
-          if (await refreshWithCookie()) return true
+          const cookie = await refreshWithCookie()
+          if (cookie === 'ok') return 'ok'
+          // U222 N1: an unreachable server proves nothing about the Cookie
+          // session, so do not spend the legacy body token on it.
+          if (cookie === 'error') return 'error'
         }
         return await refreshWithBody()
       } finally {
@@ -190,6 +198,15 @@ function setTokens(access, refresh) {
   localStorage.setItem('orca.refresh', refresh)
   // U221 F3: bind persisted tokens to the account that wrote them.
   if (state.user?.username) localStorage.setItem(TOKEN_OWNER_KEY, state.user.username)
+}
+
+/** U222 N3: a startup refresh runs before `state.user` exists; bind the legacy
+ * keys once `/v1/me` names the account. Cookie mode never owns persisted keys. */
+function bindLegacyTokenOwner(username) {
+  if (state.cookieMode) return
+  if (!localStorage.getItem('orca.refresh')) return
+  if (localStorage.getItem(TOKEN_OWNER_KEY) !== null) return
+  localStorage.setItem(TOKEN_OWNER_KEY, username)
 }
 
 function toast(text) {
@@ -5116,15 +5133,16 @@ window.addEventListener('hashchange', () => {
     // U221 F4: a pending logout means the last one never reached the server.
     // Do not auto-enter (and do not probe the Cookie) until it is retried.
     if (localStorage.getItem(PENDING_LOGOUT_KEY) === '1') {
-      await sendLogout()
       if (cachedUser) localStorage.removeItem('orca.user')
+      // U222 N2: switch views first — a hung logout retry must never blank the page.
       showLogin()
+      void sendLogout()
       return
     }
     // U197: a proven Cookie deployment recovers from the HttpOnly cookie alone.
     // One refresh attempt only; a failure signs out instead of retrying.
     if (state.cookieMode) {
-      if (await refreshSession(state.accessToken)) {
+      if ((await refreshSession(state.accessToken)) === 'ok') {
         try {
           // Why retried: the bootstrap must not start a second refresh chain.
           const me = await api('/v1/me', {}, { retried: true })
@@ -5143,6 +5161,9 @@ window.addEventListener('hashchange', () => {
       try {
         const me = await api('/v1/me')
         state.user = { ...me.user, displayName: me.user.displayName, dept: me.user.dept }
+        // U222 N3: a body refresh at startup has no user yet, so bind the
+        // legacy keys once the account is known.
+        bindLegacyTokenOwner(me.user.username)
         enterApp()
         return
       } catch {

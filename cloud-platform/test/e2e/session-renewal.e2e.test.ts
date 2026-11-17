@@ -183,7 +183,18 @@ describe('平台会话续期（真实 createApp + HTTP）', () => {
     const refreshCallsBefore = page
       .calls()
       .filter((call) => call === 'POST /v1/auth/refresh').length
+    const callsBefore = page.calls().length
     await page.clickNav('projects')
+
+    // U222 N4: both original requests must really have been refused with 401,
+    // otherwise "they shared one refresh" could be vacuously true.
+    const calls = page.calls()
+    const statuses = page.statuses()
+    for (const path of ['GET /v1/projects', 'GET /v1/policies/download']) {
+      const index = calls.findIndex((call, i) => i >= callsBefore && call === path)
+      assert.ok(index >= callsBefore, `${path} must have been requested on this navigation`)
+      assert.equal(statuses[index], 401, `${path} must start from an expired 401`)
+    }
 
     const refreshCalls = page.calls().filter((call) => call === 'POST /v1/auth/refresh')
     assert.equal(

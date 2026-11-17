@@ -30,6 +30,8 @@ export type WebConsolePage = {
   release: () => Promise<void>
   /** Every request the page made, as `METHOD path`. */
   calls: () => string[]
+  /** Response status per call, aligned with `calls()`; undefined for a rejected/hung fetch. */
+  statuses: () => (number | undefined)[]
   /** Authorization header sent with each call, aligned with `calls()`. */
   authHeaders: () => (string | undefined)[]
   /** A request header sent with each call, aligned with `calls()`. */
@@ -58,6 +60,8 @@ export function loadWebConsolePage(
     cookieJar?: Map<string, string>
     /** Requests that reject at the fetch boundary before the bootstrap runs. */
     abortOnLoad?: string[]
+    /** Requests held at the page boundary before the bootstrap runs. */
+    holdOnLoad?: string[]
     /** Requests answered by a stub/failure before the bootstrap runs. */
     failOnLoad?: { call: string; status?: number; respond?: { status: number; body: unknown } }[]
   } = {}
@@ -82,6 +86,7 @@ export function loadWebConsolePage(
   const aborted = new Set<string>()
   const requests: string[] = []
   const sentAuth: (string | undefined)[] = []
+  const sentStatuses: (number | undefined)[] = []
   const sentHeaders: Headers[] = []
   const cookieJar = options.cookieJar
   const absorbSetCookies = (response: Response): Response => {
@@ -112,6 +117,7 @@ export function loadWebConsolePage(
   const heldPaths = new Set<string>()
   // Pre-seed failures so the bootstrap's own first requests can be faulted.
   for (const call of options.abortOnLoad ?? []) aborted.add(call)
+  for (const call of options.holdOnLoad ?? []) heldPaths.add(call)
   for (const entry of options.failOnLoad ?? []) {
     if (entry.respond) stubbed.set(entry.call, entry.respond)
     else failing.set(entry.call, entry.status ?? 503)
@@ -134,6 +140,7 @@ export function loadWebConsolePage(
       typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url
     const method = (init?.method ?? 'GET').toUpperCase()
     requests.push(`${method} ${path}`)
+    const callIndex = sentStatuses.push(undefined) - 1
     sentAuth.push(new Headers(init?.headers).get('authorization') ?? undefined)
     sentHeaders.push(new Headers(init?.headers))
     const key = `${method} ${path}`
@@ -147,7 +154,14 @@ export function loadWebConsolePage(
     if (heldPaths.delete(key)) {
       return new Promise((resolve) => {
         const waiters = held.get(key) ?? []
-        waiters.push({ input: `${platformUrl}${path}`, init: outboundInit(init), resolve })
+        waiters.push({
+          input: `${platformUrl}${path}`,
+          init: outboundInit(init),
+          resolve: (response) => {
+            sentStatuses[callIndex] = response.status
+            resolve(response)
+          }
+        })
         held.set(key, waiters)
       })
     }
@@ -165,14 +179,17 @@ export function loadWebConsolePage(
         status: failure ?? 503,
         body: { error: { code: 'SIMULATED_FAILURE', message: '模拟平台故障' } }
       }
-      return Promise.resolve(
-        new Response(JSON.stringify(respond.body), {
-          status: respond.status,
-          headers: { 'content-type': 'application/json' }
-        })
-      )
+      const response = new Response(JSON.stringify(respond.body), {
+        status: respond.status,
+        headers: { 'content-type': 'application/json' }
+      })
+      sentStatuses[callIndex] = response.status
+      return Promise.resolve(response)
     }
-    return realFetch(`${platformUrl}${path}`, outboundInit(init)).then(absorbSetCookies)
+    return realFetch(`${platformUrl}${path}`, outboundInit(init)).then((response) => {
+      sentStatuses[callIndex] = response.status
+      return absorbSetCookies(response)
+    })
   }
 
   // The router is an ES module the browser imports; `new Function` has no module
@@ -299,6 +316,7 @@ export function loadWebConsolePage(
       await new Promise((resolve) => setTimeout(resolve, 25))
     },
     calls: () => [...requests],
+    statuses: () => [...sentStatuses],
     authHeaders: () => [...sentAuth],
     headerValues: (name) => sentHeaders.map((headers) => headers.get(name) ?? undefined),
     bodies: () => [...sentBodies]
