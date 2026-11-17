@@ -10,6 +10,7 @@ import path from 'node:path'
 import http from 'node:http'
 import https from 'node:https'
 import { fileURLToPath } from 'node:url'
+import { summarizeChecks } from './authz-driver-check.mjs'
 
 const ROOT = path.resolve(fileURLToPath(new URL('../../..', import.meta.url)))
 const BASE = process.env.ORCA_QA_BASE || 'https://127.0.0.1:18787'
@@ -100,8 +101,9 @@ function combo(entry) {
   return entry
 }
 function expectChecks(dimension, id, title, checks, extra = {}) {
-  const failed = checks.filter((c) => !c.ok)
-  return combo({ dimension, id, title, checks, ok: failed.length === 0, failed, ...extra })
+  // U195: a nested/malformed check must throw, not become an opaque failure.
+  const { failed, ok } = summarizeChecks(id, checks)
+  return combo({ dimension, id, title, checks, ok, failed, ...extra })
 }
 
 const tokens = {}
