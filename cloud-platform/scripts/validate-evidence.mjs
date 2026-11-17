@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Evidence-integrity gate (§3a): required files exist, are non-empty, JSON parses, and are fresh.
-// Usage: node validate-evidence.mjs <evidence-dir> [--require=a.json,b.log] [--max-age-hours=24] [--json]
+// Usage: node validate-evidence.mjs <evidence-dir> [--require=a.json,b.log] [--max-age-hours=24] [--check-generated-at] [--json]
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -27,11 +27,14 @@ export function parseArgs(argv) {
   let requireValue
   let maxAgeHours = null
   let json = false
+  let checkGeneratedAt = false
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
     if (arg === '--json') {
       json = true
+    } else if (arg === '--check-generated-at') {
+      checkGeneratedAt = true
     } else if (arg.startsWith('--require=')) {
       requireValue = arg.slice('--require='.length)
     } else if (arg === '--require') {
@@ -50,7 +53,13 @@ export function parseArgs(argv) {
   if (positional.length !== 1) {
     throw new Error('expected exactly one <evidence-dir>')
   }
-  return { dir: positional[0], required: parseRequireFlag(requireValue), maxAgeHours, json }
+  return {
+    dir: positional[0],
+    required: parseRequireFlag(requireValue),
+    maxAgeHours,
+    checkGeneratedAt,
+    json
+  }
 }
 
 function parseMaxAge(value) {
@@ -76,7 +85,7 @@ function isNonEmpty(entry, name) {
 export function collectEvidenceIssues(
   dirEntries,
   required = [],
-  { now = Date.now(), maxAgeHours = null } = {}
+  { now = Date.now(), maxAgeHours = null, checkGeneratedAt = false } = {}
 ) {
   const issues = []
   const byName = new Map(dirEntries.map((entry) => [entry.name, entry]))
@@ -101,7 +110,68 @@ export function collectEvidenceIssues(
     }
   }
 
+  if (checkGeneratedAt) {
+    issues.push(...inspectGeneratedAt(byName.get('summary.json'), { now, maxAgeHours }))
+  }
+
   return { issues, latestMtime }
+}
+
+const ISO_DATETIME_PREFIX = /^\d{4}-\d{2}-\d{2}T/
+
+// mtime can be refreshed by backfilling; generatedAt is the durable freshness signal.
+function inspectGeneratedAt(entry, { now, maxAgeHours }) {
+  if (!entry) {
+    return []
+  }
+  let parsed
+  try {
+    parsed = JSON.parse(entry.text)
+  } catch {
+    return [
+      {
+        code: 'summary-generated-at-invalid',
+        file: 'summary.json',
+        message: 'summary.json is not valid JSON, so generatedAt cannot be read'
+      }
+    ]
+  }
+  const value = parsed && typeof parsed === 'object' ? parsed.generatedAt : undefined
+  if (value == null) {
+    return [
+      {
+        code: 'summary-generated-at-missing',
+        file: 'summary.json',
+        message: 'summary.json has no generatedAt (backfilled summaries must declare it)'
+      }
+    ]
+  }
+  if (
+    typeof value !== 'string' ||
+    !ISO_DATETIME_PREFIX.test(value) ||
+    !Number.isFinite(Date.parse(value))
+  ) {
+    return [
+      {
+        code: 'summary-generated-at-invalid',
+        file: 'summary.json',
+        message: `generatedAt is not a parseable ISO timestamp: ${JSON.stringify(value)}`
+      }
+    ]
+  }
+  if (maxAgeHours != null) {
+    const ageHours = (now - Date.parse(value)) / HOUR_MS
+    if (ageHours > maxAgeHours) {
+      return [
+        {
+          code: 'summary-generated-at-stale',
+          file: 'summary.json',
+          message: `generatedAt is ${ageHours.toFixed(1)}h old (limit ${maxAgeHours}h)`
+        }
+      ]
+    }
+  }
+  return []
 }
 
 function inspectDefaultGroup(byName) {
@@ -211,12 +281,15 @@ function main(argv = process.argv.slice(2)) {
   } catch (error) {
     console.error(`validate-evidence: ${error.message}`)
     console.error(
-      'usage: validate-evidence.mjs <evidence-dir> [--require=a,b] [--max-age-hours=24] [--json]'
+      'usage: validate-evidence.mjs <evidence-dir> [--require=a,b] [--max-age-hours=24] [--check-generated-at] [--json]'
     )
     return 1
   }
 
-  const result = validateEvidenceDir(args.dir, args.required, { maxAgeHours: args.maxAgeHours })
+  const result = validateEvidenceDir(args.dir, args.required, {
+    maxAgeHours: args.maxAgeHours,
+    checkGeneratedAt: args.checkGeneratedAt
+  })
   if (args.json) {
     console.log(JSON.stringify({ dir: args.dir, ...result }, null, 2))
   } else {

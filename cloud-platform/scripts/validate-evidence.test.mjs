@@ -109,6 +109,91 @@ test('parseRequireFlag trims, dedupes, and rejects an empty list', () => {
   assert.throws(() => parseRequireFlag(' , '), /at least one file/)
 })
 
+// --check-generated-at: summary.json.generatedAt must be present, parseable, and (with a window)
+// recent. mtime alone is spoofable by backfilling, so generatedAt is the durable freshness signal.
+const NOW = Date.parse('2026-11-17T12:00:00Z')
+
+function summaryEntry(generatedAt) {
+  const payload = generatedAt === undefined ? '{"ok":true}' : JSON.stringify({ generatedAt })
+  return { name: 'summary.json', size: payload.length, mtimeMs: NOW, text: payload }
+}
+
+test('--check-generated-at passes when generatedAt is inside the window', () => {
+  const { issues } = collectEvidenceIssues([summaryEntry('2026-11-17T06:00:00Z')], [], {
+    now: NOW,
+    maxAgeHours: 24,
+    checkGeneratedAt: true
+  })
+  assert.deepEqual(
+    issues.map((issue) => issue.code),
+    []
+  )
+})
+
+test('--check-generated-at fails stale generatedAt with an exact code', () => {
+  const { issues } = collectEvidenceIssues([summaryEntry('2026-11-15T06:00:00Z')], [], {
+    now: NOW,
+    maxAgeHours: 24,
+    checkGeneratedAt: true
+  })
+  assert.deepEqual(
+    issues.map((issue) => issue.code),
+    ['summary-generated-at-stale']
+  )
+  assert.equal(issues[0].file, 'summary.json')
+})
+
+test('--check-generated-at fails a missing or malformed generatedAt', () => {
+  const missing = collectEvidenceIssues([summaryEntry(undefined)], [], {
+    now: NOW,
+    checkGeneratedAt: true
+  })
+  assert.deepEqual(
+    missing.issues.map((issue) => issue.code),
+    ['summary-generated-at-missing']
+  )
+
+  const malformed = collectEvidenceIssues([summaryEntry('last tuesday')], [], {
+    now: NOW,
+    checkGeneratedAt: true
+  })
+  assert.deepEqual(
+    malformed.issues.map((issue) => issue.code),
+    ['summary-generated-at-invalid']
+  )
+})
+
+test('--check-generated-at without --max-age-hours only checks presence and parseability', () => {
+  const old = collectEvidenceIssues([summaryEntry('2020-01-01T00:00:00Z')], [], {
+    now: NOW,
+    checkGeneratedAt: true
+  })
+  assert.deepEqual(old.issues, [])
+
+  const missing = collectEvidenceIssues([summaryEntry(undefined)], [], {
+    now: NOW,
+    checkGeneratedAt: true
+  })
+  assert.deepEqual(
+    missing.issues.map((issue) => issue.code),
+    ['summary-generated-at-missing']
+  )
+})
+
+test('default behaviour ignores generatedAt entirely', () => {
+  const result = validateEvidenceDir(fixture({ 'summary.json': '{not json' }), [], {})
+  assert.equal(result.ok, false)
+  assert.deepEqual(
+    result.issues.map((issue) => issue.code),
+    ['invalid-json']
+  )
+
+  const stale = fixture({ 'summary.json': '{"generatedAt":"2020-01-01T00:00:00Z"}' })
+  const ignored = validateEvidenceDir(stale, [], { maxAgeHours: 24 })
+  assert.equal(ignored.ok, true)
+  assert.deepEqual(ignored.issues, [])
+})
+
 test('CLI exits 0/1 and prints PASS/FAIL', () => {
   const passDir = fixture({ 'summary.json': '{"ok":true}' })
   const pass = spawnSync(process.execPath, [SCRIPT, passDir], { encoding: 'utf8' })
@@ -119,4 +204,13 @@ test('CLI exits 0/1 and prints PASS/FAIL', () => {
   const fail = spawnSync(process.execPath, [SCRIPT, failDir], { encoding: 'utf8' })
   assert.equal(fail.status, 1)
   assert.match(fail.stdout, /^FAIL evidence:/)
+
+  const backfilled = fixture({ 'summary.json': '{"generatedAt":"2020-01-01T00:00:00Z"}' })
+  const checked = spawnSync(
+    process.execPath,
+    [SCRIPT, backfilled, '--check-generated-at', '--max-age-hours=24'],
+    { encoding: 'utf8' }
+  )
+  assert.equal(checked.status, 1)
+  assert.match(checked.stdout, /\[summary-generated-at-stale\]/)
 })

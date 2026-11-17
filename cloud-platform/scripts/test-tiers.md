@@ -25,8 +25,8 @@ npm 快捷入口：`pnpm test:tier:smoke` / `pnpm test:tier:critical` / `pnpm te
 ## 证据校验（§3a 机检）
 
 每次长跑/验收后：
-`node cloud-platform/scripts/validate-evidence.mjs <evidence-dir> --max-age-hours=24`
-须 PASS（目录内 `summary.json` 或 `results.json` 有效且非空、JSON 可解析、未过期）。长跑代理必须同时写出 `summary.json`（任务、verdict、关键值、产物 sha），避免只留文本产物。
+`node cloud-platform/scripts/validate-evidence.mjs <evidence-dir> --max-age-hours=24 --check-generated-at`
+须 PASS（目录内 `summary.json` 或 `results.json` 有效且非空、JSON 可解析、未过期，且 `summary.json.generatedAt` 存在、可解析、在窗口内）。长跑代理必须同时写出 `summary.json`（任务、verdict、关键值、产物 sha、`generatedAt`），避免只留文本产物。
 
 ## 原则
 
@@ -53,7 +53,7 @@ node cloud-platform/scripts/monitor-system-resources.mjs \
 
 ## 证据完整性（2026-11-17）
 
-- 证据目录须过 `node cloud-platform/scripts/validate-evidence.mjs <evidence-dir> [--require=run.log,summary.json] [--max-age-hours=24]`（PASS 才可引用；自测：`pnpm test:evidence`）。
+- 证据目录须过 `node cloud-platform/scripts/validate-evidence.mjs <evidence-dir> [--require=run.log,summary.json] [--max-age-hours=24] [--check-generated-at]`（PASS 才可引用；自测：`pnpm test:evidence`）。
 
 ## 测试进程生命周期（2026-11-17 用户指令）
 
@@ -63,3 +63,5 @@ node cloud-platform/scripts/monitor-system-resources.mjs \
 - **收尾责任**：任何 harness/驱动必须按 PID 清理自己派生的进程（禁用宽域 `pkill`），全量/长跑结束由调用方再跑一次清理器校验 `matched=0`。
 
 > 注意（2026-11-17）：校验器的 freshness 取目录内最新 mtime，**回填/重写 `summary.json` 会刷新它**；审计历史证据时应同时核对 `summary.json` 的 `generatedAt` 与原始产物 mtime，不能只看 PASS。
+>
+> 因此审计任何可能被回填过的目录时必须加 `--check-generated-at`：它按 `summary.json.generatedAt`（而非 mtime）判断新鲜度，缺失/不可解析/超窗分别报 `summary-generated-at-missing` / `summary-generated-at-invalid` / `summary-generated-at-stale`；不传该选项时行为与旧版完全一致。对已回填目录（如 2026-11-17 补写 `summary.json` 的 `u106-restart-window-20261117-132713`、`desktop-smoke-1794889582`、`final-build-prod-20261117-131941`、`resource-monitor-changed-1794895271990`），`generatedAt` 记录的是回填写入时间（`2026-11-17T06:54:21Z`），只能证明「回填时点的产物快照」，**不证明原始 run 的时间**；引用时须与目录内原始产物 mtime/内容一并说明。
