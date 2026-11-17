@@ -8,6 +8,8 @@
 export const AUDIT_EVENT_TYPES: readonly string[] = [
   'audit_query',
   'audit_verify',
+  'audit_export',
+  'audit_export_download',
   'connection_rejected',
   'device_revoke',
   'directory_read',

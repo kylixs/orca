@@ -3431,6 +3431,8 @@ const AUDIT_EVENT_FALLBACK_TYPES = [
 const AUDIT_EVENT_LABELS = {
   audit_query: '审计查询',
   audit_verify: '审计校验',
+  audit_export: '审计导出',
+  audit_export_download: '审计导出下载',
   connection_rejected: '连接拒绝',
   device_revoke: '设备撤销',
   directory_read: '目录读取',

@@ -4125,3 +4125,5 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U201 E1 落地**：审计查询参数解析抽为 `apps/api/src/audit-query.ts`（`parseAuditQuery(params, nowMs)`，保留 `INVALID_QUERY` / `TIME_WINDOW_TOO_LARGE` 与全部边界：limit 钳制、eventTypes 1–20/≤64、family、fileName/q、since/until、31 天窗口与 7 天关键字默认）；server.ts 审计 GET 改用该函数，行为逐字等价。新单测 24/24，审计 e2e 17/17。
 - **QA-033 测试适配**：`web-host-lifecycle-feedback` 两个用例按「打开不签发、点击生成才申领」更新——打开 0 次 POST；生成 1 次并渲染命令；失败显示行内错误且弹框保留供重试。G09 套件 + 主机相关 3 套 18/18 绿（回归发现于提交后，符合 §2-91「改交互须跑完整相关套件」）。
 - **U201 E4 落地**：新增 `apps/api/src/audit-export-format.ts`（固定 11 列表头、RFC 4180、`= + - @ Tab CR` 公式中性化、metadata JSON 列、JSONL 单行保序）+ 单测 12/12；BOM 留待 E6/E8 写盘阶段按 D9 决定。
+- **U201 E2 落地**：审计事件目录新增 `audit_export` / `audit_export_download`，Web 标签「审计导出/审计导出下载」；目录单测 2/2、审计状态 e2e 3/3 绿。
+- **web e2e 全量回归**：20 个套件分 3 批（并发 2）共 **164 例全绿**（66+18+80）；`app.js` 本轮改动（路由代次、中继详情、复制、策略幂等、注册令牌、主机筛选、ARIA）未见回归。
