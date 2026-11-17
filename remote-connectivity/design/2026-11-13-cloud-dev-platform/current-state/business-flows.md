@@ -27,53 +27,82 @@
 ### 1. 入口
 
 - 未登录打开平台根地址 `/`（或会话恢复失败）→ 登录视图 `#view-login`（M1 §2）。
-- 兼容入口 `#/login`：未登录显示登录页，已登录跳默认路由（M2 §2，U106 已落地）。
+- 兼容入口 `#/login`：未登录显示登录页并保留目标 hash，已登录跳默认路由（HEAD `app.js:491-499`；全站唯一 URL 路由 U106 仍在途，不影响该页级行为）。
 - 退出入口：侧栏用户盒「退出」（仅已登录）。
-- 已登录且本地有 access token 时刷新/重开页面，走会话恢复而非登录页（M1 A8）。
+- 已登录且本地有会话时刷新/重开页面，走会话恢复而非登录页：Cookie 模式看 `orca.authMode='cookie'`，旧模式看 access token（M1 A8）。
+- 迁移入口：旧构建换新构建后首次加载**不做能力探测**，按旧 localStorage 契约恢复；直到一次响应带 `refreshCookie:true` 才切 Cookie 模式（见步骤 8）。
 
 ### 2. 步骤与状态迁移
 
-1. **输入域账号/密码并提交**：前端先 trim 非空校验 → `POST /v1/auth/login`（`username/password/deviceId/deviceName/devicePubKey:'web-client'`）→ 服务端 LDAP 校验 + 准入组闸门 → 返回 `accessToken/refreshToken/expiresIn/user/device`。可见反馈：按钮变「登录中…」并禁用，成功后进入主框架。［来源 m01-A2］
-2. **会话落地**：写 `localStorage` 的 `orca.access`、`orca.refresh`、`orca.user`、`orca.device`；内存 `state` 持用户与权限。可见反馈：侧栏出现显示名/部门/角色 chip。［来源 m01-A2、m02 §4］
+1. **输入域账号/密码并提交**：前端先 trim 非空校验 → `POST /v1/auth/login`（`username/password/deviceId/deviceName/devicePubKey:'web-client'`）→ 服务端 LDAP 校验 + 准入组闸门 + 禁用账号检查 → 200。可见反馈：按钮变「登录中…」并禁用，成功后进入主框架。［来源 m01-A2、m01 §3］
+2. **登录双形态与会话落地**：
+   - **Cookie 模式**（登录 `Origin` 与 `ORCA_CLOUD_PUBLIC_ORIGIN` 同源且 Cookie 模式生效）：响应 `Set-Cookie: orca_refresh=…`，body 仅 `accessToken/refreshCookie:true/expiresIn/user/device`（**无** `refreshToken`）。客户端写 `orca.authMode='cookie'`，access 只存内存，`localStorage` 不落令牌。
+   - **never / 旧服务端**：body 含 `accessToken/refreshToken`，客户端写 `orca.access`/`orca.refresh`。
+   - 两模式都写 `orca.user`/`orca.device`；旧模式另写 `orca.tokenOwner`（账号归属，防跨账号回退）。可见反馈：侧栏出现显示名/部门/角色 chip。［来源 m01-A2、m01 §3 登录响应形态］
 3. **进入主框架并恢复目标路由**：读启动时捕获的 hash；空 hash 或 `#/login` → `#/workbench`，其余 hash 原样恢复；非管理员直达管理路由 → 403 页且保留 URL。可见反馈：面包屑/导航高亮对应页面。［来源 m01-B4、m02-B4/B6］
-4. **业务请求 401 → 静默续会话**：`api()` 发现 401 且有 refreshToken → `POST /v1/auth/refresh` → 服务端旋转 access+refresh → 重放原请求一次；refresh 失败 → `logout()` 回登录页。可见反馈：用户无感（失败才回登录页）。［来源 m01-A7］
-5. **刷新/重开页面恢复**：有 access token → `GET /v1/me` 恢复用户并进主框架；仅缓存 user 无 token 不构成登录态。可见反馈：直接回到原 hash 页面或工作台。［来源 m01-A8、m02-B4］
+4. **业务请求 401 → 一次刷新 + 一次重放**：`api()` 只尝试一次（`app.js:57-84`）。Cookie 模式先发一次无 body `/v1/auth/refresh`（`credentials:'same-origin'`）；无 Cookie 可解析时才用 body 回退（`app.js:169-190`）。刷新三态：`ok` → 重放原请求一次；`rejected`（HTTP 非 2xx）→ `logout()` 回登录页；`error`（传输失败）→ **不登出**，把原 401 交给调用方（`app.js:105-166`）。并发 401 共享一次刷新（`app.js:86-88`）。U229 F1 另加 `stale` 内部态：旧代际/已登出的刷新结果不写状态、不重放、不登出（`app.js:64-84,105-166`）。可见反馈：用户无感，仅被拒时回登录页。［来源 m01-A7；HEAD `fb8d57347f4`］
+5. **刷新/重开页面恢复**：
+   - **Cookie 模式**：一次无 body 刷新 → 成功后 `GET /v1/me`（`retried:true`，不启动第二条刷新链）→ 进主框架（`app.js:5144-5162`）。
+   - **旧模式**：有 access 时 `GET /v1/me`，401 触发 body 刷新并重放一次（`app.js:5163-5175`；`u198-legacy-reload` 断言顺序 `/v1/me:401 → refresh:200 → /v1/me:200`）。
+   - `orca.pendingLogout=1` 时**先显示登录页**再补发一次登出，不自动进入（`app.js:5135-5141`）。
+   - 可见反馈：直接回到原 hash 页面或工作台；失败则登录页。［来源 m01-A8、m01 §3 页面恢复分支］
 6. **密码显示切换**：点击密码框眼睛图标，`password`/`text` 切换，不触发请求。［来源 m01-A6］
-7. **退出**：向工作区 iframe 发 `logout`（不结束宿主 PTY）→ 尽力 `POST /v1/auth/logout`（撤销 session 并 bump epoch）→ 清空 access/refresh/user、清空登录框输入、隐藏错误 → 回登录页。可见反馈：登录页且输入为空。［来源 m01-A9］
+7. **退出**：关闭工作区 iframe（不结束宿主 PTY）→ 置 `orca.pendingLogout=1` → 异步 `POST /v1/auth/logout`（Bearer + 同源 Cookie；服务端另接受可选 body `refreshToken`，见状态机要点）→ 服务端清 Cookie 多作用域并撤销 Bearer/Cookie/body 定位到的**全部** session → 本地清 access/refresh/tokenOwner、`orca.authMode`、缓存 user 与登录框输入 → 回登录页。请求网络失败保留标记，下次加载重试一次；收到 2xx 或 401 即删标记（`app.js:4946-4990`）。多标签为**被动**登出：另一标签下一次请求 401 → 刷新被拒 → 登出。可见反馈：登录页且输入为空。［来源 m01-A9、m01 §3；服务端 U229 F10 `ec1b10e691d`］
+8. **迁移**：
+   - **AC9a（标记真 + 旧键）**：Cookie 刷新成功是迁移闸门，成功后才删 `orca.access`/`orca.refresh`/`orca.tokenOwner`（`clearLegacyTokens`，`app.js:106-128`）。
+   - **AC9b/AC9c ⛔ 未实现**：无 `orca.authMode` 标记时**不**发起无 body 探测；仅有效 Cookie、无旧键的浏览器首次加载不恢复；旧构建换新构建首次加载不迁移，access 过期后才走一次 body 回退并置标记。阻塞于 D17/U219（`u197-migration-browser` AC15(g) skip、`u197-web-cookie-browser` AC9c skip）。［来源 m01-A8 迁移分支、m01 §7 U219/D17］
 
-**服务端状态机要点**：密码只经 LDAP adapter 校验（生产 LDAPS simple-bind；仓库内仅 Mock）；access TTL 30 分钟、refresh TTL 12 小时并每次旋转；refresh 重放撤销会话；锁定计数共享时跨副本累计，不可达则登录 503 fail-closed（m01 §3）。
+**服务端状态机要点**：
+
+- **Cookie 属性**：`orca_refresh`，`Path=/v1/auth`、`HttpOnly`、`SameSite=Lax`、`Max-Age=ceil(refreshTTL/1000)`；下发不带 Domain（`refresh-cookie.ts:60-80`、`server.ts:2021-2031`）。清理覆盖 host-only `/v1/auth` + Domain `/v1/auth`（origin 为域名时）+ 旧构建 `Path=/` 三条作用域，IP 字面量省略 Domain（`refresh-cookie.ts:93-113`、`server.ts:2033-2047`）。
+- **模式**：`auto`（默认）/`always`/`never`；`auto` 无有效 `ORCA_CLOUD_PUBLIC_ORIGIN` 降级 `never` 并告警一次，`always` 无 origin 启动即失败，非法值回落 `auto`（`refresh-cookie.ts:173-212`、`server.ts:1958-1967`）。`Secure`：`always` 强制；`auto` 在 https 或 loopback http 加，非 loopback http 省略并告警（`refresh-cookie.ts:193-211`）。
+- **同源判定**：只看请求 `Origin` 与配置的 `PUBLIC_ORIGIN`，不用 Host/X-Forwarded-Proto（`server.ts:1973-1977`、`refresh-cookie.ts:134-148`）；origin 规范化 scheme/host 小写、去默认端口与尾斜杠。
+- **刷新双读**：能解析出 Cookie session 时以 Cookie 为准，body 只作回显/宽限判定（`server.ts:3527-3535`）。Cookie 源**不轮换**：current 每次命中只续 access、滑动 `refreshExpiresAt`、同值重发 Cookie；previous 宽限内只发 access、不续期不重发，宽限外或既非 current 也非 previous → 撤销 session + 401 + `refresh.reuse_detected`（`server.ts:3566-3664`）。body 源：current 正常轮换并置 `previousRefreshHash/graceUntil`，同源时例外地同时 `Set-Cookie`；previous 宽限内回显请求值、不轮换；未知 token 直接 401（`server.ts:3667-3731`）。
+- **grace**：默认 30 秒、上限 60 秒；`ORCA_CLOUD_REFRESH_GRACE_MS`，`0`=严格复用，非法/负数回落默认（`server.ts:138-140,270-279`）。
+- **禁用账号**：登录非 active → 403 `USER_DISABLED`（审计 login denied，不发令牌/Cookie）；刷新 Cookie/body 两源在 current/previous/宽限判定前统一检查 → 撤销 + bump epoch + 清 Cookie + 401（`server.ts:3493-3503,3583-3605,3729-3752`）。
+- **登出**：先清 Cookie 三作用域，再按 Bearer session、Cookie session、body `refreshToken` session 合并去重撤销并 bump epoch；未知 body 值 200 不撤销并记 `logout denied reason=UNKNOWN_REFRESH`（`server.ts:3911-3970`；U229 F10）。session 撤销后旧 refresh 无法再换 access。
+- **重复 Cookie**：`orca_refresh` 出现两次（同名/多 Cookie 头）→ 登录/handoff/刷新/登出一律硬 `401 SESSION_EXPIRED`，清三作用域，不回退 body、不轮换、不撤销 session（刷新）（`server.ts:1979-1982,3395-3399,3522-3526,3737-3741,3844-3847`）。
 
 ### 3. 失败分支
 
-1. **空账号或空密码** → 客户端拦截，不发请求，账号/密码框标红，行内「请输入域账号和密码。」，焦点回账号框。用户动作：补齐后重试。［来源 m01-A1］
-2. **密码错误** → `401 INVALID_CREDENTIALS`，失败计数 +1；行内「账号或密码错误，请重试。」，密码框标红聚焦。用户动作：重新输入。［来源 m01-A3］
-3. **连续 5 次失败** → `423 ACCOUNT_LOCKED`（默认 15 分钟）；显示「连续 5 次失败，账号已锁定 15 分钟。」；锁定期间再试直接 423 并记 `login/failure reason=locked`。用户动作：等待 15 分钟或联系管理员。［来源 m01-A4］
-4. **账号不在 LDAP 准入组** → `401 LDAP_GROUP_NOT_ADMITTED`（adapter filter miss 与平台闸门同码同文案）；写 `login/failure reason=ldap_group_denied`；**不计数也不清锁定**。显示「账号未加入平台准入组。」。用户动作：申请入组后重试。［来源 m01-A5］
-5. **锁定服务不可达** → 登录 `503 PLATFORM_UNAVAILABLE`（fail-closed）。用户动作：稍后重试/联系管理员；界面无专门中文映射（仅服务端语义）。［来源 m01 §3 锁定计数］
-6. **refresh 失败** → 直接本地登出回登录页（不保留半登录态）。用户动作：重新登录。［来源 m01-A7］
-7. **`GET /v1/me` 失败（含 refresh 后仍 401）** → 清 access、移除缓存 user、显示登录页；仅缓存 user 不足以进入。用户动作：重新登录。［来源 m01-A8］
-8. **登出请求失败** → 错误被吞，本地仍清空并回登录页。用户动作：无（本地已退出）。［来源 m01-A9］
-9. **登录请求网络不可达**（fetch 拒绝，非 HTTP 错误） → 行内「网络异常，请稍后重试」，按钮恢复可点；不回显底层异常。请求在途时按钮禁用「登录中…」，重复提交不新增请求。［来源 m01 §7 / G03］
+| #  | 分支                                 | 现象                                                                                                                                                                                     | 用户动作                | 来源                                                                     |
+| -- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------------ |
+| 1  | 空账号或空密码                       | 客户端拦截，不发请求；账号/密码框标红，行内「请输入域账号和密码。」，焦点回账号框                                                                                                       | 补齐后重试              | m01-A1                                                                   |
+| 2  | 密码错误                             | `401 INVALID_CREDENTIALS`，失败计数 +1；行内「账号或密码错误，请重试。」，密码框标红聚焦                                                                                                | 重新输入                | m01-A3                                                                   |
+| 3  | 连续 5 次失败                        | `423 ACCOUNT_LOCKED`（默认 15 分钟）；行内「连续 5 次失败，账号已锁定 15 分钟。」；锁定期间再试直接 423 并记 `login/failure reason=locked`                                              | 等待 15 分钟/联系管理员 | m01-A4                                                                   |
+| 4  | 账号不在 LDAP 准入组                 | `401 LDAP_GROUP_NOT_ADMITTED`（adapter filter miss 与平台闸门同码同文案）；审计 `reason=ldap_group_denied`；**不计数也不清锁定**；行内「账号未加入平台准入组。」                           | 申请入组后重试          | m01-A5                                                                   |
+| 5  | 锁定服务不可达                       | 登录 `503 PLATFORM_UNAVAILABLE`（fail-closed）；界面无专门中文映射（仅服务端语义）                                                                                                       | 稍后重试/联系管理员     | m01 §3 锁定计数                                                          |
+| 6  | CSRF 403                             | Cookie 认证刷新缺失/跨源/`null` Origin，或 `content-type` 非 `application/json` → `403 CSRF_REJECTED`，无续期/清理副作用；配置 PUBLIC_ORIGIN 时外来 Origin 登录 → 403，不下发 body refresh | 从平台同源页面重试      | m01 §3 失败分支；`server.ts:2009-2019,3406-3409,3536-3540`               |
+| 7  | 重复 Cookie 401                      | `orca_refresh` 出现两次（同名/多 Cookie 头）→ 登录/handoff/刷新/登出硬 `401 SESSION_EXPIRED`，清三作用域；**不回退 body、不轮换、不撤销 session**（刷新）                                 | 清除 Cookie 后重新登录  | m01 §3；`server.ts:1979-1982,3395-3399,3522-3526,3737-3741,3844-3847`    |
+| 8  | Cookie 缺失                          | 服务端回退 body 刷新；Cookie 模式客户端若无旧 refresh → `rejected` → 回登录，无循环；启动时一次失败即登录页                                                                               | 重新登录                | m01 §3；`app.js:5144-5161`                                               |
+| 9  | 传输失败                             | 客户端记 `error`：页内请求**不登出**、保留会话、恢复后可重试；启动探测失败 → 登录页，不空白/无未捕获异常                                                                                  | 恢复网络后重试          | m01 §3；`app.js:117-120,143-146,176-183`                                 |
+| 10 | 禁用账号 403 `USER_DISABLED`         | 登录非 active → 403（审计 login denied，不发令牌/Cookie）；刷新 Cookie/body 两源 → 撤销+bump epoch+清 Cookie+401                                                                          | 联系管理员              | m01 §3；`server.ts:3493-3503,3583-3605,3729-3752`                        |
+| 11 | refresh 5xx/429                      | ⛔ **HEAD 仍误登出**：客户端对刷新任意 `!res.ok` 判 `rejected`，`api()` 随即 `logout()`；5xx/429 不代表会话失效                                                                           | 重新登录（已知缺陷）    | `app.js:105-166`；defect-ledger U229 F7                                  |
+| 12 | refresh 被拒（4xx）                  | `logout()`，清本地并回登录页                                                                                                                                                             | 重新登录                | m01-A7                                                                   |
+| 13 | `GET /v1/me` 失败（含 refresh 后仍 401） | 清 access、移除缓存 user、显示登录页；仅缓存 user 不足以进入；重放仍 401 在 HEAD 直接登出（U228）                                                                                         | 重新登录                | m01-A8                                                                   |
+| 14 | 登出请求失败                         | 错误被吞，本地仍清空并回登录页；`orca.pendingLogout` 保留，下次加载先显示登录页再重试一次                                                                                                 | 无（本地已退出）        | m01-A9                                                                   |
+| 15 | 登录请求网络不可达（fetch 拒绝）     | 行内「网络异常，请稍后重试」，按钮恢复可点；不回显底层异常；请求在途按钮禁用「登录中…」，重复提交不新增请求                                                                                | 检查网络后重试          | m01 §7 / G03                                                             |
 
 ### 4. 涉及 API / 事件 / 存储
 
 | 面   | 内容                                                                                                                                          |
 | ---- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| API  | `POST /v1/auth/login`、`POST /v1/auth/refresh`、`POST /v1/auth/logout`、`GET /v1/me`                                                          |
-| 事件 | `login` success/failure（`INVALID_CREDENTIALS`/`locked`/`ldap_group_denied`）、denied 审计族                                                  |
-| 存储 | 浏览器 `orca.access`/`orca.refresh`/`orca.user`/`orca.device`；平台 `store.users`、会话/锁定计数（共享服务或进程内）                          |
-| 配置 | `ORCA_CLOUD_ACCESS_TTL_MS`、`ORCA_CLOUD_REFRESH_TTL_MS`、`ORCA_CLOUD_LDAP_REQUIRED_GROUP`/`ldapRequiredGroup`、`ORCA_CLOUD_LOGIN_LOCKOUT_URL` |
+| API  | `POST /v1/auth/login`、`POST /v1/auth/refresh`、`POST /v1/auth/logout`（服务端接受可选 body `refreshToken`）、`GET /v1/me`                       |
+| 事件 | `login` success/failure（`INVALID_CREDENTIALS`/`locked`/`ldap_group_denied`/`USER_DISABLED`）、`logout` success/denied、`refresh.reuse_detected`、`refresh.grace_reuse`、denied 审计族 |
+| 存储 | 浏览器 Cookie 模式：`orca.user`/`orca.device`/`orca.authMode`/`orca.pendingLogout`（access 仅内存）；旧模式另写 `orca.access`/`orca.refresh`/`orca.tokenOwner`。Cookie：`orca_refresh`。平台：`store.users`、`store.sessions`、`store.refreshTokens`、锁定计数（共享服务或进程内） |
+| 配置 | `ORCA_CLOUD_ACCESS_TTL_MS`、`ORCA_CLOUD_REFRESH_TTL_MS`、`ORCA_CLOUD_REFRESH_GRACE_MS`、`ORCA_CLOUD_COOKIE_MODE`、`ORCA_CLOUD_PUBLIC_ORIGIN`、`ORCA_CLOUD_LDAP_REQUIRED_GROUP`/`ldapRequiredGroup`、`ORCA_CLOUD_LOGIN_LOCKOUT_URL` |
 
 ### 5. 已有测试 / 探索路径
 
 - 测试：[ldap-admission.test.ts](../../../../cloud-platform/test/ldap-admission.test.ts)、[ldap-mock-required-group.test.ts](../../../../cloud-platform/test/ldap-mock-required-group.test.ts)、[ldap-admission.e2e.test.ts](../../../../cloud-platform/test/e2e/ldap-admission.e2e.test.ts)、[login-lockout-shared.e2e.test.ts](../../../../cloud-platform/test/e2e/login-lockout-shared.e2e.test.ts)、[session-renewal.e2e.test.ts](../../../../cloud-platform/test/e2e/session-renewal.e2e.test.ts)、[web-exploratory-fixes.e2e.test.ts](../../../../cloud-platform/test/e2e/web-exploratory-fixes.e2e.test.ts)（M116-QA-012 空提交零请求、R5-① 退出清空凭据）、[web-admin-gating.e2e.test.ts](../../../../cloud-platform/test/e2e/web-admin-gating.e2e.test.ts)、[u106-console-routing.e2e.test.ts](../../../../cloud-platform/test/e2e/u106-console-routing.e2e.test.ts)（登录回跳、深链刷新）。
+- Cookie/会话专项（U197/U218/U228/U229）：[refresh-cookie.test.ts](../../../../cloud-platform/test/refresh-cookie.test.ts)（Cookie 解析/序列化/清理/模式）、[refresh-cookie.e2e.test.ts](../../../../cloud-platform/test/e2e/refresh-cookie.e2e.test.ts)（双读/grace/CSRF/重复 Cookie/登出撤销）、[u197-cookie-browser.e2e.test.ts](../../../../cloud-platform/test/e2e/u197-cookie-browser.e2e.test.ts)（真实 Chromium Cookie 罐）、[u197-web-cookie-browser.e2e.test.ts](../../../../cloud-platform/test/e2e/u197-web-cookie-browser.e2e.test.ts)（迁移 AC9a、重载一次刷新、多标签被动登出、AC9c skip）、[web-refresh-cookie.e2e.test.ts](../../../../cloud-platform/test/e2e/web-refresh-cookie.e2e.test.ts)（旧契约兼容、删键时机、U221/U222 硬化）、[u197-ac-probes.e2e.test.ts](../../../../cloud-platform/test/e2e/u197-ac-probes.e2e.test.ts)、[u197-migration-browser.e2e.test.ts](../../../../cloud-platform/test/e2e/u197-migration-browser.e2e.test.ts)、[u198-legacy-reload.e2e.test.ts](../../../../cloud-platform/test/e2e/u198-legacy-reload.e2e.test.ts)、[u228-disabled-user-session.e2e.test.ts](../../../../cloud-platform/test/e2e/u228-disabled-user-session.e2e.test.ts)、[u228-web-disabled-session.e2e.test.ts](../../../../cloud-platform/test/e2e/u228-web-disabled-session.e2e.test.ts)。
 - 探索：[web-console-paths.md](../../../../cloud-platform/scripts/exploratory-r2/web-console-paths.md) L1-L8（空提交/错误凭据/密码可见性/正确登录/退出残留/会话刷新）；[api-paths.md](../../../../cloud-platform/scripts/exploratory-r2/api-paths.md) A1-A16（登录/刷新/登出边界）。
 
 ### 6. 覆盖状态
 
-- 正常步骤 **7**，已覆盖 **7**（S4 浏览器 401→refresh→单请求重放已由 T05 新增用例钉住，`session-renewal.e2e.test.ts`；并行 401 竞态另见 G28；S6 密码切换由 U54 WEB-R2-011 e2e 覆盖（web-exploratory-fixes :838-854））。
-- 失败分支 **9**，已覆盖 **6**（E1/E2/E3/E4/E5/E9）；未覆盖：E6 refresh 失败 UI、E7 仅缓存 user 路径、E8 登出失败静默。
-- 已知未实现：无（登录链路本身已实现）；U103 属工作区侧刷新，不在本链路。
+- 正常步骤 **8**，已覆盖 **7**（401→refresh→单请求重放由 `session-renewal`/`u197-web-cookie-browser` 钉住；密码切换由 `web-exploratory-fixes` 覆盖）；第 8 步迁移仅 AC9a 已覆盖，AC9b/AC9c ⛔ 未实现（U219/D17）。
+- 失败分支 **15**，已覆盖 **14**；未覆盖：refresh 5xx/429 仍按 `rejected` 误登出（U229 F7，HEAD 未修）。
+- 已知未实现/缺口：迁移探测（U219/D17）；U103 属工作区侧刷新，不在本链路。
 
 ---
 
