@@ -111,6 +111,12 @@ import {
 } from './static-delivery.ts'
 import { checkWebContract, readWebContract } from './web-contract.ts'
 import {
+  parseRefreshCookie,
+  resolveRefreshCookieConfig,
+  sameOrigin,
+  serializeRefreshCookie
+} from './refresh-cookie.ts'
+import {
   createRelayNodeRegistry,
   parseInstallNonce,
   parseRelayRegistration,
@@ -147,6 +153,10 @@ export type ApiConfig = {
   accessTtlMs?: number
   /** Refresh-token lifetime; tests shrink it to exercise expiry. */
   refreshTtlMs?: number
+  /** U197 S1: refresh-cookie mode (auto|always|never); defaults to ORCA_CLOUD_COOKIE_MODE. */
+  cookieMode?: string
+  /** U197 S1: platform public origin; auto/always require it. */
+  publicOrigin?: string
   /** How long a host stays "online" without a heartbeat; tests shrink it to observe the flip. */
   hostOfflineMs?: number
   /** One-time web-handoff code lifetime (FR-3.10); tests shrink it to exercise expiry. */
@@ -1924,6 +1934,60 @@ export function createApp(config: ApiConfig): ApiHandle {
     ''
   ).trim()
   const expiresInSeconds = Math.ceil(accessTtlMs / 1000)
+  const refreshCookieConfig = resolveRefreshCookieConfig({
+    mode: config.cookieMode ?? process.env.ORCA_CLOUD_COOKIE_MODE,
+    publicOrigin: config.publicOrigin ?? process.env.ORCA_CLOUD_PUBLIC_ORIGIN,
+    refreshTtlMs
+  })
+
+  /** S1: enabled means the operator configured a usable origin (`never` is inert). */
+  function refreshCookieEnabled(): boolean {
+    return refreshCookieConfig.mode !== 'never'
+  }
+
+  /**
+   * S1 issues the Cookie only for the platform's own origin. Judged from Origin
+   * against ORCA_CLOUD_PUBLIC_ORIGIN — never requestOrigin(), whose XFP is forgeable.
+   */
+  function issuesRefreshCookie(req: IncomingMessage): boolean {
+    return (
+      refreshCookieEnabled() &&
+      sameOrigin(req.headers.origin, refreshCookieConfig.publicOrigin)
+    )
+  }
+
+  /** A duplicate or indistinguishable orca_refresh is a hard 401, never a fallback. */
+  function hasAmbiguousRefreshCookie(req: IncomingMessage): boolean {
+    return (
+      refreshCookieEnabled() && parseRefreshCookie(req.headers.cookie).kind === 'duplicate'
+    )
+  }
+
+  function setRefreshCookie(res: ServerResponse, value: string): void {
+    res.setHeader('cache-control', 'no-store')
+    res.setHeader(
+      'set-cookie',
+      serializeRefreshCookie({
+        value,
+        secure: refreshCookieConfig.secure,
+        maxAgeSeconds: refreshCookieConfig.maxAgeSeconds
+      })
+    )
+  }
+
+  /** Same attributes as the issue path, or the browser keeps the old Cookie. */
+  function clearRefreshCookie(res: ServerResponse): void {
+    res.setHeader('cache-control', 'no-store')
+    res.setHeader(
+      'set-cookie',
+      serializeRefreshCookie({
+        value: '',
+        secure: refreshCookieConfig.secure,
+        maxAgeSeconds: 0
+      })
+    )
+  }
+
   const auditLogPath = config.auditLogPath ?? process.env.AUDIT_LOG_PATH ?? null
   const store = new Store()
   // U131: dev-store snapshots are opt-in; without the env var the store stays in memory.
@@ -3237,6 +3301,10 @@ export function createApp(config: ApiConfig): ApiHandle {
 
     // ---- auth ----
     if (req.method === 'POST' && path === '/v1/auth/login') {
+      if (hasAmbiguousRefreshCookie(req)) {
+        res.setHeader('cache-control', 'no-store')
+        return error(res, 401, 'SESSION_EXPIRED', '会话状态异常，请清除 Cookie 后重试。', traceId)
+      }
       const body = await readJson(req)
       const username = String(body.username ?? '')
       const password = String(body.password ?? '')
@@ -3327,8 +3395,12 @@ export function createApp(config: ApiConfig): ApiHandle {
         traceId
       })
       const permissions = user.roles.flatMap((r) => ROLE_PERMISSIONS[r] ?? [])
+      // S1: a same-origin browser keeps the refresh token in the Cookie, so the
+      // body carries only the access token; everyone else keeps the old body.
+      const issueCookie = issuesRefreshCookie(req)
+      if (issueCookie) setRefreshCookie(res, tokens.refreshToken)
       return json(res, 200, {
-        ...tokens,
+        ...(issueCookie ? { accessToken: tokens.accessToken } : tokens),
         expiresIn: expiresInSeconds,
         user: {
           id: user.id,
@@ -3343,6 +3415,12 @@ export function createApp(config: ApiConfig): ApiHandle {
     }
 
     if (req.method === 'POST' && path === '/v1/auth/refresh') {
+      // S1 does not consume the Cookie yet; a duplicate is still a hard 401 with
+      // no rotation or revocation, so the body path below is not reached.
+      if (hasAmbiguousRefreshCookie(req)) {
+        res.setHeader('cache-control', 'no-store')
+        return error(res, 401, 'SESSION_EXPIRED', '会话已失效，请重新登录。', traceId)
+      }
       const body = await readJson(req)
       const token = String(body.refreshToken ?? '')
       const sessionId = store.refreshTokens.get(token)
@@ -3373,6 +3451,10 @@ export function createApp(config: ApiConfig): ApiHandle {
     // ---- web handoff (FR-3.10): a browser trades its one-time code for a session ----
     // Deliberately before token resolution: the caller has no session yet.
     if (req.method === 'POST' && path === '/v1/web/handoff') {
+      if (hasAmbiguousRefreshCookie(req)) {
+        res.setHeader('cache-control', 'no-store')
+        return error(res, 401, 'SESSION_EXPIRED', '会话状态异常，请清除 Cookie 后重试。', traceId)
+      }
       const body = await readJson(req)
       const code = String(body.code ?? '')
       const fingerprint = codeFingerprint(code)
@@ -3449,8 +3531,12 @@ export function createApp(config: ApiConfig): ApiHandle {
         metadata: { projectId: project.id, codeFingerprint: fingerprint }
       })
       const permissions = user.roles.flatMap((r) => ROLE_PERMISSIONS[r] ?? [])
+      // S1: platform same-origin gets the Cookie and no body refresh; the
+      // host-served cross-origin pages keep the new body token (Cookie is dropped).
+      const issueCookie = issuesRefreshCookie(req)
+      if (issueCookie) setRefreshCookie(res, tokens.refreshToken)
       return json(res, 200, {
-        ...tokens,
+        ...(issueCookie ? { accessToken: tokens.accessToken } : tokens),
         expiresIn: expiresInSeconds,
         user: {
           id: user.id,
@@ -3465,6 +3551,13 @@ export function createApp(config: ApiConfig): ApiHandle {
     }
 
     if (req.method === 'POST' && path === '/v1/auth/logout') {
+      if (hasAmbiguousRefreshCookie(req)) {
+        clearRefreshCookie(res)
+        return error(res, 401, 'SESSION_EXPIRED', '会话状态异常，请清除 Cookie 后重试。', traceId)
+      }
+      // S1: clear before resolving Bearer — an expired access token must not
+      // leave the Cookie behind.
+      if (refreshCookieEnabled()) clearRefreshCookie(res)
       const auth = resolveToken(req)
       if (auth) {
         const session = store.sessions.get(auth.sessionId)

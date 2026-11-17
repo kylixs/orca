@@ -4173,3 +4173,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U213 关闭（U197 v5 经最终复核 APPROVED）**：P0 边界全部收口；复核 P2 精度项已修（清理 Path `/v1/auth`、Origin 不一致 403 不降级、迁移分支 2 的 QA-032 过渡窗口明示、AC15(e) 补 `refreshCookie`）。实现待 D5–D15 裁定后按 6 步序列排期。
 - **收尾核验**：测试进程清理 dry-run `matched=0`（kept 13，无本项目残留）；U211 roleSource 改动补充回归 `u80-mobile-users` 5/5 绿。
 - **web e2e 全量回归（今日最终）**：20 个套件 **178/178 全绿**（并发 2，约 6.8 分钟），覆盖审计导出 UI、导入/交接/归档/工作区、用户与授权页、移动端、真实浏览器导出等；今日 `app.js`/roleSource/筛选/ARIA 改动无回归。
+- **U197 S1 落地（默认关闭）**：新增 `refresh-cookie.ts`（解析/重复检测/序列化/同源规范化/模式解析；auto 无 PUBLIC_ORIGIN→never 单次告警、always 拒启；Secure 按 https/loopback）；server 登录/交接同源下发 Cookie 且 body 无 refresh、登出无条件清 Cookie、刷新/登录/交接重复 Cookie 硬 401 无副作用；不改刷新语义（S2）。单测 20 + e2e 10 + session-renewal 7 = 37/37，���有行为不变。**S2 完成前不得启用 cookieMode**（否则刷新断链）。
