@@ -157,9 +157,12 @@ function seedHostSessionGroupIdMappings(args: {
     }
   }
   // Why: an unresolved host-backed group would be republished as a duplicate, so defer this frame.
+  // A literal id hit needs no mapping (mirrors the preseed skip above), so it is not unresolved.
+  const hostGroupIds = new Set(hostGroups.map((hostGroup) => hostGroup.id))
   const hostBackedLocalTabIds = new Set(args.hostToLocalTabId.values())
   return localGroups.some(
     (group) =>
+      !hostGroupIds.has(group.id) &&
       resolveHostSessionGroupIdForWebSessionGroup({ ...scope, groupId: group.id }) === null &&
       group.tabOrder.some((tabId) => hostBackedLocalTabIds.has(tabId))
   )

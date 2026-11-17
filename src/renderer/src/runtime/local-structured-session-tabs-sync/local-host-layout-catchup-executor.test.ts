@@ -56,11 +56,11 @@ function terminalTab(id: string, sortOrder: number): TerminalTab {
   }
 }
 
-function unifiedTerminalTab(id: string, sortOrder: number): Tab {
+function unifiedTerminalTab(id: string, sortOrder: number, groupId = LOCAL_GROUP): Tab {
   return {
     id,
     entityId: id,
-    groupId: LOCAL_GROUP,
+    groupId,
     worktreeId: WT,
     contentType: 'terminal',
     label: id,
@@ -72,21 +72,25 @@ function unifiedTerminalTab(id: string, sortOrder: number): Tab {
 }
 
 /** One local group of {t1,t2}, with t3 still ungrouped locally. */
-function localState(): SyncState {
+function localState(groupId = LOCAL_GROUP): SyncState {
   return makeState({
     activeTabId: T1,
     activeTabIdByWorktree: { [WT]: T1 },
     activeTabType: 'terminal',
     activeTabTypeByWorktree: { [WT]: 'terminal' },
-    activeGroupIdByWorktree: { [WT]: LOCAL_GROUP },
+    activeGroupIdByWorktree: { [WT]: groupId },
     tabsByWorktree: { [WT]: [terminalTab(T1, 0), terminalTab(T2, 1), terminalTab(T3, 2)] },
     unifiedTabsByWorktree: {
-      [WT]: [unifiedTerminalTab(T1, 0), unifiedTerminalTab(T2, 1), unifiedTerminalTab(T3, 2)]
+      [WT]: [
+        unifiedTerminalTab(T1, 0, groupId),
+        unifiedTerminalTab(T2, 1, groupId),
+        unifiedTerminalTab(T3, 2, groupId)
+      ]
     },
     groupsByWorktree: {
       [WT]: [
         {
-          id: LOCAL_GROUP,
+          id: groupId,
           worktreeId: WT,
           activeTabId: T1,
           tabOrder: [T1, T2],
@@ -273,6 +277,45 @@ describe('U163 V4: local host layout catch-up executor', () => {
     expect(mappingFor(LOCAL_GROUP)).toBeNull()
     expect(localStructuredSessionVersionByWorktree.has(WT)).toBe(false)
     expect(localStructuredSessionEpochHistoryByWorktree.has(WT)).toBe(false)
+  })
+
+  it('applies a literal-equal group id without a preseeded mapping', async () => {
+    // The local group already carries the host's id, so the apply path indexes it directly.
+    const state = localState(H1)
+    const { call, calls } = fakeCall([{ ok: true, result: hostSnapshot() }])
+
+    const { outcome, commits } = await run(state, call)
+
+    expect(outcome).toEqual({ status: 'applied', groupCount: 2 })
+    expect(calls.map((request) => request.method)).toEqual(['session.tabs.list'])
+    expect(commits).toHaveLength(1)
+    const merged = { ...state, ...commits[0] }
+    expect(merged.groupsByWorktree[WT]?.map((entry) => entry.id)).toEqual([H1, H2])
+  })
+
+  it('still refuses an ambiguous member-set match when ids differ', async () => {
+    // Two host groups share {t1,t2}, so no unique match exists and the frame must not apply.
+    const { call, calls } = fakeCall([
+      {
+        ok: true,
+        result: hostSnapshot({
+          tabGroups: [group('host-a', [T1, T2]), group('host-b', [T1, T2])],
+          tabGroupLayout: {
+            type: 'split',
+            direction: 'horizontal',
+            first: { type: 'leaf', groupId: 'host-a' },
+            second: { type: 'leaf', groupId: 'host-b' }
+          }
+        })
+      }
+    ])
+
+    const { outcome, commits } = await run(localState(), call)
+
+    expect(outcome).toEqual({ status: 'skipped', reason: 'catchup:unmapped-group' })
+    expect(calls).toHaveLength(1)
+    expect(commits).toHaveLength(0)
+    expect(mappingFor(LOCAL_GROUP)).toBeNull()
   })
 
   it('skips a reply that is not newer than the applied cursor', async () => {
