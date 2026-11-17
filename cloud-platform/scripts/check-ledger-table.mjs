@@ -29,6 +29,13 @@ export function checkLedgerTable(text) {
   if (headerIndex === -1) return ['ledger table header (| # |) not found']
   const expected = cells(lines[headerIndex]).length
   const issues = []
+  // U+FFFD means an edit or tool mangled UTF-8; the text is already corrupted
+  // even when the table structure still parses.
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index].includes(String.fromCharCode(0xfffd))) {
+      issues.push(`line ${index + 1}: replacement character (U+FFFD) — corrupted UTF-8`)
+    }
+  }
   for (let index = headerIndex + 1; index < lines.length; index += 1) {
     const line = lines[index]
     if (/^##\s/.test(line)) return issues

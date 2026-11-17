@@ -30,3 +30,10 @@ test('reports an invalid status glyph', () => {
 test('reports a missing header', () => {
   assert.deepEqual(checkLedgerTable('# empty\n'), ['ledger table header (| # |) not found'])
 })
+
+test('reports replacement characters from a mangled edit', () => {
+  const corrupted = String.fromCharCode(0xfffd)
+  const text = `${HEADER}| U1 | 🟢 | bad ${corrupted} bytes | r | a |\n`
+  const issues = checkLedgerTable(text)
+  assert.ok(issues.some((issue) => issue.includes('replacement character')))
+})
