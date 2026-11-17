@@ -1031,6 +1031,7 @@ flowchart TB
 | GET | `/v1/audit/events?cursor=&limit=` | 审计查询（时间窗 ≤31 天，必须分页） | 否 |
 | POST | `/v1/audit/export` | 审计导出（异步任务） | 否 |
 | GET | `/v1/audit/exports/{jobId}` | 导出任务状态与下载链接（限时） | 否 |
+| GET | `/v1/audit/exports/{jobId}/download?token=` | 下载导出产物（一次性 token，自包含；`no-store`/`nosniff`） | 否 |
 | GET/PUT | `/v1/policies/download` | 全局下载策略 | 否 |
 | GET/PUT | `/v1/users/{id}/roles` | 用户角色覆盖 | 否 |
 | GET | `/v1/client/config` | 客户端托管配置 | 是 |
