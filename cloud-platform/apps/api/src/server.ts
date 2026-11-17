@@ -711,6 +711,14 @@ ORCA_RELAY_BUNDLE_URL=${shellQuote(bundleUrl)}
 ORCA_RELAY_SCHEMA_VERSION=${bundle.schemaVersion}
 ORCA_RELAY_CODE_VERSION=${shellQuote(bundle.relayCodeVersion)}
 ORCA_RELAY_DOWNLOAD_TLS=${bundle.downloadTls ? '1' : '0'}
+# R11a: a current link already at this sha means there is nothing to acquire.
+ORCA_RELAY_RELEASES_DIR="$ORCA_RELAY_ROOT/releases"
+ORCA_RELAY_RELEASE_DIR="$ORCA_RELAY_RELEASES_DIR/$ORCA_RELAY_BUNDLE_SHA256"
+ORCA_RELAY_CURRENT_LINK="$ORCA_RELAY_ROOT/current"
+ORCA_RELAY_RELEASE_REUSED=0
+if [ -L "$ORCA_RELAY_CURRENT_LINK" ] && [ "$(readlink "$ORCA_RELAY_CURRENT_LINK")" = "releases/$ORCA_RELAY_BUNDLE_SHA256" ]; then
+  ORCA_RELAY_RELEASE_REUSED=1
+fi
 # R5 bundle 下载命令参数（TLS 平台强制 https；本地 http 仅靠 sha 钉死）。
 ORCA_RELAY_BUNDLE_CURL_OPTS=(${bundle.downloadTls ? "-fsSL --proto '=https' --tlsv1.2" : '-fsSL'})
 ${
@@ -734,13 +742,8 @@ fi
   // atomic activation. Any safety, unpack or activation failure exits 67.
   const bundleUnpack = bundle
     ? `# U183 R6: inspect entries before extracting, then switch current atomically.
-ORCA_RELAY_RELEASES_DIR="$ORCA_RELAY_ROOT/releases"
-ORCA_RELAY_RELEASE_DIR="$ORCA_RELAY_RELEASES_DIR/$ORCA_RELAY_BUNDLE_SHA256"
-ORCA_RELAY_CURRENT_LINK="$ORCA_RELAY_ROOT/current"
-ORCA_RELAY_RELEASE_REUSED=0
-if [ -L "$ORCA_RELAY_CURRENT_LINK" ] && [ "$(readlink "$ORCA_RELAY_CURRENT_LINK")" = "releases/$ORCA_RELAY_BUNDLE_SHA256" ]; then
-  ORCA_RELAY_RELEASE_REUSED=1
-  echo ">> 当前版本已是 $ORCA_RELAY_BUNDLE_SHA256，跳过解包"
+if [ "$ORCA_RELAY_RELEASE_REUSED" = "1" ]; then
+  echo ">> 当前版本已是 $ORCA_RELAY_BUNDLE_SHA256，跳过下载、跳过解包与激活"
 else
   # Allow only regular files and directories; x/g (pax), l/h, b/c, p and s fail.
   if ! ORCA_RELAY_TAR_TYPES="$(tar -tvzf "$ORCA_RELAY_BUNDLE_FILE" | cut -c1 | sort -u | tr -d '\\n')"; then
@@ -825,6 +828,8 @@ fi
   // 66 (checksum) and 67 (manifest mismatch).
   const bundleAcquire = bundle
     ? `# U183 R5: acquire the pinned bundle and verify it before any env write.
+# R11a: same-sha reruns have nothing to download or verify.
+if [ "$ORCA_RELAY_RELEASE_REUSED" = "0" ]; then
 ORCA_RELAY_BUNDLE_FILE=""
 ORCA_RELAY_BUNDLE_OFFLINE=0
 if [ -n "\${ORCA_RELAY_BUNDLE:-}" ]; then
@@ -888,6 +893,7 @@ if [ "$ORCA_RELAY_BUNDLE_OFFLINE" = "0" ]; then
   fi
   rm -f "$ORCA_RELAY_MANIFEST_FILE"
 fi
+fi
 `
     : ''
   return `#!/usr/bin/env bash
@@ -914,6 +920,38 @@ if [ ! -f "$ORCA_RELAY_ENTRY" ]; then
   exit 78
 fi
 ${requireWritableDir('$ORCA_RELAY_ROOT', '安装根不可写（78）：请设置 ORCA_RELAY_ROOT 指向当前用户可写目录后重试')}
+
+# U183 R11a: portable mkdir lock (flock is not on every target). The lock holds
+# the installer pid so a crashed run is detected as stale instead of blocking.
+ORCA_RELAY_LOCK_DIR="$ORCA_RELAY_ROOT/.install.lock"
+ORCA_RELAY_LOCK_OWNER=0
+orca_relay_lock_release() {
+  if [ "$ORCA_RELAY_LOCK_OWNER" = "1" ]; then
+    rm -rf "$ORCA_RELAY_LOCK_DIR"
+  fi
+}
+trap orca_relay_lock_release EXIT
+if ! mkdir "$ORCA_RELAY_LOCK_DIR" 2>/dev/null; then
+  ORCA_RELAY_LOCK_PID="$(tr -d '[:space:]' < "$ORCA_RELAY_LOCK_DIR/pid" 2>/dev/null || true)"
+  # A concurrent installer may have mkdir'd but not written pid yet.
+  if [ -z "$ORCA_RELAY_LOCK_PID" ]; then
+    sleep 1
+    ORCA_RELAY_LOCK_PID="$(tr -d '[:space:]' < "$ORCA_RELAY_LOCK_DIR/pid" 2>/dev/null || true)"
+  fi
+  if [ -n "$ORCA_RELAY_LOCK_PID" ] && kill -0 "$ORCA_RELAY_LOCK_PID" 2>/dev/null; then
+    echo ">> 另一个安装正在进行（pid=$ORCA_RELAY_LOCK_PID）：请稍后重试（75 / relay_install_busy）" >&2
+    exit 75
+  fi
+  echo ">> 清理残留安装锁（pid=\${ORCA_RELAY_LOCK_PID:-<空>} 已不存在）"
+  rm -rf "$ORCA_RELAY_LOCK_DIR"
+  if ! mkdir "$ORCA_RELAY_LOCK_DIR" 2>/dev/null; then
+    echo ">> 无法获取安装锁（75 / relay_install_busy）：$ORCA_RELAY_LOCK_DIR" >&2
+    exit 75
+  fi
+fi
+ORCA_RELAY_LOCK_OWNER=1
+printf '%s\\n' "$$" > "$ORCA_RELAY_LOCK_DIR/pid"
+printf '%s\\n' "$(date +%s 2>/dev/null || printf '0')" > "$ORCA_RELAY_LOCK_DIR/started"
 
 ORCA_PLATFORM_URL=${shellQuote(input.platformUrl)}
 # U183 R10b: the installer itself queries the internal relay list.
@@ -1104,9 +1142,17 @@ if ${systemdAvailable()}; then
   # so a rollback only flips the symlink.
   ORCA_RELAY_UNIT_FILE="$HOME/.config/systemd/user/orca-relay.service"
   mkdir -p "$(dirname "$ORCA_RELAY_UNIT_FILE")"
-  cat > "$ORCA_RELAY_UNIT_FILE" <<ORCA_RELAY_UNIT
+  # R11a: identical reruns must not recreate the unit (nor restart it needlessly).
+  ORCA_RELAY_UNIT_TMP="$ORCA_RELAY_UNIT_FILE.tmp.$$"
+  cat > "$ORCA_RELAY_UNIT_TMP" <<ORCA_RELAY_UNIT
 ${renderRelayUnit({ nodePath: '$ORCA_NODE_BIN', root: '$ORCA_RELAY_ROOT' })}ORCA_RELAY_UNIT
-  echo ">> 已写入 systemd 用户单元：$ORCA_RELAY_UNIT_FILE"
+  if [ -f "$ORCA_RELAY_UNIT_FILE" ] && cmp -s "$ORCA_RELAY_UNIT_TMP" "$ORCA_RELAY_UNIT_FILE"; then
+    rm -f "$ORCA_RELAY_UNIT_TMP"
+    echo ">> systemd 用户单元未变化，跳过重写：$ORCA_RELAY_UNIT_FILE"
+  else
+    mv -f "$ORCA_RELAY_UNIT_TMP" "$ORCA_RELAY_UNIT_FILE"
+    echo ">> 已写入 systemd 用户单元：$ORCA_RELAY_UNIT_FILE"
+  fi
   if ! systemctl --user daemon-reload || ! systemctl --user enable --now orca-relay.service; then
     echo ">> systemd 用户服务安装失败（69 / relay_service_install_failed）：请检查 systemctl --user 是否可用后重试" >&2
     echo ">> 单元文件保留在 $ORCA_RELAY_UNIT_FILE" >&2

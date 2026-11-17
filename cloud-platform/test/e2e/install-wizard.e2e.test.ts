@@ -133,6 +133,8 @@ const SPARSE_TOOLS = [
   'sort',
   'tr',
   'head',
+  // U183 R11a: unit content comparison skips identical rewrites.
+  'cmp',
   // U183 R9: background launch and liveness settling.
   'nohup',
   'sleep',
@@ -332,9 +334,17 @@ async function fetchHostScript(): Promise<string> {
 }
 
 async function fetchRelayScript(): Promise<string> {
-  const res = await fetch(`${api.url}/install/relay.sh`, { headers: auth(adminToken) })
-  assert.equal(res.status, 200)
-  return res.text()
+  // Undici can reuse a keep-alive socket just as the API closes it; one retry
+  // keeps a long test file from flaking on a reset before the request is sent.
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const res = await fetch(`${api.url}/install/relay.sh`, { headers: auth(adminToken) })
+      assert.equal(res.status, 200)
+      return await res.text()
+    } catch (error) {
+      if (attempt >= 1) throw error
+    }
+  }
 }
 
 /**
@@ -2165,5 +2175,110 @@ describe('U183 R6: tar 安全检查、解包与原子激活', () => {
     assert.match(rerun.stdout, /跳过解包/)
     assert.equal(readlinkSync(join(relayRoot, 'current')), `releases/${second.sha}`)
     assert.equal(readlinkSync(join(relayRoot, 'previous')), `releases/${first.sha}`)
+  })
+})
+
+describe('U183 R11a: 安装锁、同 sha 幂等与 previous 规则', () => {
+  const RELAY_UNIT_PATH = '.config/systemd/user/orca-relay.service'
+  const SYSTEMCTL_OK = '#!/usr/bin/env bash\nexit 0\n'
+
+  function withSha(script: string, sha: string): string {
+    return script.replace(/^ORCA_RELAY_BUNDLE_SHA256=.*$/m, `ORCA_RELAY_BUNDLE_SHA256=${sha}`)
+  }
+
+  function makeSystemdHome(): { home: string; relayRoot: string; bin: string } {
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const relayRoot = makeRelayRoot(home)
+    const bin = makeSparsePath(home, { node: NODE_2218_STUB, systemctl: SYSTEMCTL_OK })
+    return { home, relayRoot, bin }
+  }
+
+  function runBundle(
+    script: string,
+    home: string,
+    bin: string,
+    relayRoot: string,
+    bundle: { bytes: Buffer; sha: string }
+  ) {
+    const path = join(home, `r11a-${bundle.sha.slice(0, 8)}.tgz`)
+    writeFileSync(path, bundle.bytes)
+    return runInstallScript(withSha(script, bundle.sha), home, {
+      PATH: bin,
+      ORCA_RELAY_ROOT: relayRoot,
+      ORCA_RELAY_BUNDLE: path
+    })
+  }
+
+  test('生成脚本用 mkdir 原子锁并以 75 relay_install_busy 拒绝并发安装', async () => {
+    const script = await fetchRelayScript()
+    assert.match(script, /ORCA_RELAY_LOCK_DIR="\$ORCA_RELAY_ROOT\/\.install\.lock"/)
+    assert.match(script, /mkdir "\$ORCA_RELAY_LOCK_DIR"/)
+    assert.match(script, /relay_install_busy/)
+    assert.match(script, /exit 75/)
+    assert.match(script, /trap orca_relay_lock_release EXIT/)
+
+    const { home, relayRoot, bin } = makeSystemdHome()
+    mkdirSync(join(relayRoot, '.install.lock'))
+    writeFileSync(join(relayRoot, '.install.lock', 'pid'), `${process.pid}\n`)
+    const run = runInstallScript(script, home, { PATH: bin, ORCA_RELAY_ROOT: relayRoot })
+    assert.equal(run.status, 75, run.stderr)
+    assert.match(run.stderr, /relay_install_busy/)
+    assert.equal(existsSync(join(relayRoot, '.install.lock')), true)
+  })
+
+  test('死 pid 的残留锁被清理，安装继续', async () => {
+    const { home, relayRoot, bin } = makeSystemdHome()
+    const dead = spawnSync('bash', ['-c', 'exit 0'])
+    mkdirSync(join(relayRoot, '.install.lock'))
+    writeFileSync(join(relayRoot, '.install.lock', 'pid'), `${dead.pid}\n`)
+
+    const run = runBundle(await fetchRelayScript(), home, bin, relayRoot, BENIGN_BUNDLE)
+    assert.equal(run.status, 0, run.stderr)
+    assert.match(run.stdout, /清理残留安装锁/)
+    assert.equal(existsSync(join(relayRoot, '.install.lock')), false)
+  })
+
+  test('同 sha 重跑：不覆盖 previous、不重写 unit、仍刷新 nonce', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const relayRoot = makeRelayRoot(home)
+    const bin = makeSparsePath(home, { node: NODE_2218_STUB, systemctl: SYSTEMCTL_OK })
+    const script = await fetchRelayScript()
+    const second = buildBundle((dir) =>
+      writeFileSync(join(dir, 'apps/relay/src/relay.ts'), '// relay v2\n')
+    )
+
+    assert.equal(runBundle(script, home, bin, relayRoot, BENIGN_BUNDLE).status, 0)
+    assert.equal(runBundle(script, home, bin, relayRoot, second).status, 0)
+    const unit = join(home, RELAY_UNIT_PATH)
+    const before = statSync(unit, { bigint: true })
+    const nonceBefore = readRelayEnv(join(relayRoot, 'relay.env')).ORCA_CLOUD_INSTALL_NONCE
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    const rerun = runBundle(script, home, bin, relayRoot, second)
+    assert.equal(rerun.status, 0, rerun.stderr)
+    assert.match(rerun.stdout, /跳过下载/)
+    assert.equal(readlinkSync(join(relayRoot, 'current')), `releases/${second.sha}`)
+    assert.equal(readlinkSync(join(relayRoot, 'previous')), `releases/${BENIGN_BUNDLE.sha}`)
+    const after = statSync(unit, { bigint: true })
+    assert.equal(after.ino, before.ino)
+    assert.equal(after.mtimeNs, before.mtimeNs)
+    assert.match(rerun.stdout, /跳过重写/)
+    assert.notEqual(
+      readRelayEnv(join(relayRoot, 'relay.env')).ORCA_CLOUD_INSTALL_NONCE,
+      nonceBefore
+    )
+  })
+
+  test('失败路径经 EXIT trap 释放安装锁', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const relayRoot = makeRelayRoot(home)
+    const bin = makeSparsePath(home, { node: NODE_2218_STUB, curl: FAILING_CURL_STUB })
+    const run = runInstallScript(await fetchRelayScript(), home, {
+      PATH: bin,
+      ORCA_RELAY_ROOT: relayRoot,
+      ORCA_RELAY_BUNDLE: join(home, 'missing-offline-bundle.tgz')
+    })
+    assert.equal(run.status, 65, run.stderr)
+    assert.equal(existsSync(join(relayRoot, '.install.lock')), false)
   })
 })
