@@ -18,7 +18,7 @@
 
 | 门 | 要求 | 判例 |
 | --- | --- | --- |
-| Node 版本（跑 `src/main` 全量 / 台账持久化簇） | **Node ≥ 24.16.0**，或直接使用 Electron 内置 Node（43.7.5 → v24.21.0，`ELECTRON_RUN_AS_NODE=1`） | Node v24.5.0 的 `node:sqlite` 在 TEXT 中遇 NUL 截断，`agentSessionOperationKey`（`\u0000` 分隔）重开后整行丢失 → 34 例假红；Electron Node 下 113/113 绿（`evidence/l4-ledger-node-matrix-20261117-110016/`） |
+| Node 版本（跑 `src/main` 全量 / 台账持久化簇） | **Node ≥ 24.16.0**（可用 `npx -y node@24.16.0 node_modules/vitest/vitest.mjs ...`）；**不要**用 Electron 内置 Node 跑含证书/EC 的套件 | Node v24.5.0 的 `node:sqlite` 在 TEXT 中遇 NUL 截断，`agentSessionOperationKey`（`\u0000` 分隔）重开后整行丢失 → 34 例假红；Electron Node 下台账簇 113/113 绿（`evidence/l4-ledger-node-matrix-20261117-110016/`），但 Electron 的 BoringSSL 不支持部分 EC 运算（`elliptic curve routines: DECODE_ERROR`），会让 ws-transport/profile-state 等批出现假红（2026-11-17 12:2x 判例）；仅在**只涉 sqlite 且无 crypto** 的定向簇可用 Electron Node |
 | 后台启动 | 任何 Electron/宿主相关测试与 L4 main 全量：`ORCA_BACKGROUND_LAUNCH=1` | 缺少时 browser-manager 两文件 41 例硬断言失败 |
 
 可选加固（未实施）：持久化键改 JSON 编码 + `engines.node` 收紧至 `>=24.16`（需迁移旧行，列为 P3）。
