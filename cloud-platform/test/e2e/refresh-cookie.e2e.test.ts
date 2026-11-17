@@ -314,6 +314,18 @@ describe('U197 S1 refresh cookie（真实 createApp + HTTP）', () => {
     })
     assert.equal(res.status, 200)
   })
+
+  test('COOKIE_MODE=never：body 刷新不下发 Cookie、无能力标记、返回新 refresh (AC15d)', async () => {
+    const { base } = await start({ cookieMode: 'never', publicOrigin: ORIGIN })
+    const first = (await (await login(base)).json()) as Record<string, unknown>
+    const res = await refresh(base, String(first.refreshToken))
+    assert.equal(res.status, 200)
+    assert.deepEqual(res.headers.getSetCookie(), [], 'never mode must not set a cookie')
+    const body = (await res.json()) as Record<string, unknown>
+    assert.equal('refreshCookie' in body, false, 'no capability flag without a cookie')
+    assert.equal(typeof body.refreshToken, 'string', 'never mode keeps the body contract')
+    assert.notEqual(body.refreshToken, first.refreshToken, 'body current rotates in never mode')
+  })
 })
 
 describe('U197 S2 刷新双读 / grace / CSRF（真实 createApp + HTTP）', () => {
