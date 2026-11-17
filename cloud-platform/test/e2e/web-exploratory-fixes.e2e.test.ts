@@ -1069,6 +1069,90 @@ test('U54 WEB-R2-016 审计支持按 traceId 精确筛选', async () => {
   record('WEB-R2-016', `审计筛选新增 traceId 精确条件（${traceId}），查询透传且条件保持`)
 }, 120_000)
 
+test('U54 WEB-R2-016 traceId 同步 URL、随导出请求，重置清空', async () => {
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  await page.clickNav('audit')
+  const latest = await adminApi('/v1/audit/events?limit=1')
+  const traceId: string = latest.body.events[0]?.traceId ?? ''
+  assert.ok(traceId.length > 12, `precondition: a traceId exists (${traceId})`)
+
+  const input = page.window.document.querySelector<HTMLInputElement>('#auditTrace')!
+  input.value = traceId
+  page.window.document.querySelector<HTMLButtonElement>('#auditApply')!.click()
+  await page.settle()
+
+  assert.match(
+    decodeURIComponent(page.window.location.hash),
+    new RegExp(`traceId=${traceId}`),
+    'the traceId condition must be written to the URL for reload/deep links'
+  )
+
+  page.window.document.querySelector<HTMLButtonElement>('#auditExport')!.click()
+  await page.settle()
+  page.window.document.querySelector<HTMLElement>('[data-action="0"]')!.click()
+  await page.settle()
+  const exportCall = page
+    .bodies()
+    .filter(({ call }) => call === 'POST /v1/audit/export')
+    .at(-1)
+  assert.ok(exportCall, 'the export dialog must POST a job')
+  assert.equal(
+    (exportCall.body as { traceId?: string }).traceId,
+    traceId,
+    'the export request body must reuse the current traceId filter'
+  )
+  page.window.document.querySelector<HTMLElement>('[data-action="close"]')!.click()
+  await page.settle()
+
+  page.window.document.querySelector<HTMLButtonElement>('#auditReset')!.click()
+  await page.settle()
+  assert.equal(page.window.document.querySelector<HTMLInputElement>('#auditTrace')!.value, '')
+  assert.doesNotMatch(
+    decodeURIComponent(page.window.location.hash),
+    /traceId=/,
+    'reset must drop traceId from the URL too'
+  )
+  record('WEB-R2-016', 'traceId 写入 URL、导出请求体携带该条件、重置同时清空输入与 URL')
+}, 120_000)
+
+test('U54 WEB-R2-014 长文本筛选输入限制 128 字符，密码框不受限', async () => {
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  const password = page.window.document.querySelector<HTMLInputElement>('#password')!
+  assert.equal(
+    password.hasAttribute('maxlength'),
+    false,
+    'a password must not be length-capped by the client'
+  )
+
+  await page.submitLogin('admin', 'Adm1n!')
+  await page.clickNav('projects')
+  assert.equal(
+    page.window.document.querySelector<HTMLInputElement>('#projectSearch')!.maxLength,
+    128,
+    'the project search must cap input at 128 characters'
+  )
+
+  await page.clickNav('hosts')
+  assert.equal(
+    page.window.document.querySelector<HTMLInputElement>('#hostSearch')!.maxLength,
+    128,
+    'the host search must cap input at 128 characters'
+  )
+
+  await page.clickNav('audit')
+  for (const selector of ['#auditKeyword', '#auditFileName', '#auditTrace']) {
+    assert.equal(
+      page.window.document.querySelector<HTMLInputElement>(selector)!.maxLength,
+      128,
+      `${selector} must cap input at 128 characters`
+    )
+  }
+  record('WEB-R2-014', '项目/主机搜索与审计 q/fileName/traceId 均限制 128 字符，密码框不设上限')
+}, 120_000)
+
 test('U116 工作台心跳文案反映后端在线判定窗口', async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()

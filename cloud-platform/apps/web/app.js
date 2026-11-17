@@ -1834,7 +1834,7 @@ async function renderProjects() {
       </div>
     </div>
     <div class="toolbar">
-      <input class="input grow" id="projectSearch" placeholder="搜索项目名、仓库或主机">
+      <input class="input grow" id="projectSearch" placeholder="搜索项目名、仓库或主机" maxlength="128">
     </div>
     <div class="project-chips" id="projectChips" role="group" aria-label="项目状态筛选">
       <button class="chip is-on" type="button" data-project-filter="all">全部状态</button>
@@ -2115,7 +2115,7 @@ async function renderHosts() {
     </div>
     <div class="note">中继路由由平台单向同步；未知 SNI 默认黑洞。下载默认策略：<strong>${policy.downloadDefault === 'deny' ? '禁止' : '允许'}</strong>（v${policy.version}）。</div>
     <div class="toolbar">
-      <input class="input grow" id="hostSearch" placeholder="搜索主机名、ID、zone 或直连地址">
+      <input class="input grow" id="hostSearch" placeholder="搜索主机名、ID、zone 或直连地址" maxlength="128">
     </div>
     <div class="project-chips" id="hostChips" role="group" aria-label="主机状态筛选">
       <button class="chip is-on" type="button" data-host-filter="all">全部</button>
@@ -4244,7 +4244,7 @@ async function renderAudit(loadMore = false) {
     <details class="audit-filter-shell" id="auditFilterShell"${filterOpen ? ' open' : ''}>
       <summary class="audit-filter-summary">筛选${conditionCount ? ` · ${conditionCount} 条件` : ''}</summary>
       <div class="audit-filter" role="search" aria-label="审计查询">
-      <input class="input span-4" id="auditKeyword" type="search" placeholder="关键字：类型 / 路径 / 文件名 / 账号 / 项目（2–128 字符）" autocomplete="off" aria-label="关键字">
+      <input class="input span-4" id="auditKeyword" type="search" placeholder="关键字：类型 / 路径 / 文件名 / 账号 / 项目（2–128 字符）" autocomplete="off" maxlength="128" aria-label="关键字">
       <select class="select span-2" id="auditRange" aria-label="时间范围">
         <option value="24">最近 24 小时</option>
         <option value="168">最近 7 天（默认）</option>
@@ -4283,7 +4283,7 @@ async function renderAudit(loadMore = false) {
             : '<option value="" disabled>无可见主机（需主机权限）</option>'
         }
       </select>
-      <input class="input span-3" id="auditFileName" placeholder="文件名（1–128 字符）" autocomplete="off" aria-label="文件名">
+      <input class="input span-3" id="auditFileName" placeholder="文件名（1–128 字符）" autocomplete="off" maxlength="128" aria-label="文件名">
       <input class="input span-3" id="auditTrace" placeholder="traceId（精确）" autocomplete="off" maxlength="128" aria-label="traceId">
       <select class="select span-3" id="auditResult" aria-label="结果">
         <option value="">全部结果</option>
