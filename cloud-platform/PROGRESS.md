@@ -4326,3 +4326,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U237 关闭（D19）**：复审 APPROVED + 两项 P2 修复（`fb7e2e8c958`）——探索脚本 P28/Y19/Y20 期望改 400、新套件补 403/503 优先级钉子；主会话复跑 `u237`+`audit-fail-closed` **17/17**。台账 U237 翻 🟢。注：该提交卷入 `run-api-exploratory.mjs` 既有整文件格式化（会话开始前即存在），语义改动仅 3 处。
 - **U197 AC 矩阵推进至 21/21**（本地 `test-reports/u197-ac-coverage.md`）：AC10 由 ⚪ 转 🟢——D10 阶段 1 头 + 字面量钉死 + 真实 Chromium 零违规（`dd37b0004a2`）且独立复审 APPROVED（三变异均红）；D17 已把 AC9b/9c/15(g) 转绿。剩余门禁：D17 独立复审结论、D10 P2 加固（策略精确相等 / 全目录静态扫描）、全量基线复跑。
 - **U200 关闭（D10 阶段 1）**：P2 加固 `d0d1ec28fe7`——control 页钉死生产策略文本（精确相等）、`apps/web` 全目录内联 handler 静态扫描；主会话复跑 12/12，两处变异均红。台账 U200 翻 🟢；阶段 2（report-uri / 强制化 / 宿主侧）单列。
+- **U181 A1 落地**（`9f1a0c21939`，5 文件 +95/−12）：注册 201 但 body 非 JSON 由 `runtime_unavailable` 改为 `protocol`（`retryable=false`、`phase=enrolment`），`register_failed` 显式映射 78；vitest 57/57（主会话复跑），变异回退即红。U181 退出码批 A2（自证 90→120、host `/health` 1→68）已派。
