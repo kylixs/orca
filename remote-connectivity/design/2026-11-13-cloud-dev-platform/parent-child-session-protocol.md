@@ -185,6 +185,9 @@
 115. **主会话命令显式定位仓库根（2026-11-18 04:00 复盘固化——cwd 漂移判例）**：跨工具调用时 shell 的 cwd 会漂移（曾在 `cloud-platform/` 下执行 `git add cloud-platform/...`、`node cloud-platform/scripts/...` 与相对路径 python 脚本而失败多次）。规则：每条 Bash 命令内先 `cd /Users/gongdewei/work/projects/orca`（或使用绝对路径），不得依赖上一条命令的 cwd；后台命令同理在命令内显式定位。
 116. **分批复审的母行当轮关闭（同次固化——U229 台账漏翻绿判例）**：一个缺陷行拆成多批子项（a/b1/b2）时，最后一个子项 APPROVED 当轮必须更新母行状态与关闭依据；只在 PROGRESS 记录「已 APPROVED」不算关闭。判例：U229 三个子批复审全部通过后母行仍为红，直到交付文档审计才发现。
 
+117. **脚本改文档必须保持原始换行（2026-11-18 05:00 复盘固化——LGA 设计整文件重排判例）**：用 python 编辑 Markdown 时，读写都必须 `open(..., encoding='utf-8', newline='')`；默认 `newline=None` 会把 CRLF 归一为 LF，造成整文件 diff（本轮 `ldap-group-admission-design.md` 121 行伪变更，已 soft reset 重做）。提交前跑 `git show --numstat` 核对：纯文本修正应为个位数行。
+118. **认证/审计类新端点先写不变式表（同次固化——U244 三轮复审判例）**：新增鉴权/审计/撤销类端点前，先列出「凭据来源 × 失败语义（fail-closed 顺序）× 幂等键/去重语义 × 撤销范围（session/票据/device）× 审计时序与字段」不变式表，实现与复审逐项对照；幂等定义必须写明以什么为键（不得用「任意相关撤销记录」代替）。判例：U244 首版以任意 user 撤销判定幂等（P2），二版 follower 伪 200（P2），三轮才收敛。
+
 
 ## 2b. 并行模式（用户 2026-11-14 指令：不要串行开发，单独完整链路验收，发现即修不堵塞）
 
