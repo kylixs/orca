@@ -29,5 +29,7 @@
 | 场景 | 规则 |
 | --- | --- |
 | 本机全量（vitest） | 默认 **2 workers**（`config/vitest.config.ts` 自动生效）；需要更少/更多时用 `ORCA_TEST_MAX_WORKERS=N` 覆盖；CI（`CI=1`）保持 vitest 默认 |
+| 分层 runner（`run-test-tier`） | **强制 Node ≥24.16**：低于时 exit 3 并给出 `npx -y node@24.16.0 …` 命令；`ORCA_TEST_NODE_AUTO=1` 自动重执行；运行时版本打印在首行 | 判例 U179：node 24.5 下 T2 出现 17 例 sqlite 假红 |
+| 长跑采样 | runner 启动**独立子进程采样器**（`resource-sampler.mjs`）；不再依赖主进程事件循环（曾被 `spawnSync` 阻塞导致 samples=0） | 判例 U179 |
 | 任意全量段 | 串行排队（§2-73），不得两段并行；并行只允许「一个全量 + 轻量单测」 |
 | Electron/e2e | `electron-headless` 项目 + `ORCA_BACKGROUND_LAUNCH=1 ORCA_SUPPRESS_DIALOGS=1`；启动整体超时 120s，超时强制关闭（§2-74） |
