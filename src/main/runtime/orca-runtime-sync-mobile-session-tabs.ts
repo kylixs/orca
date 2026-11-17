@@ -70,8 +70,9 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
       notify: false
     })
     // Why: graph sync must scan each persisted host session once, not once per workspace.
+    const sessionScan = this.getWorkspaceSessionScan(Boolean(this.offscreenBrowserBackend))
     const worktreeSessionsToHydrate = new Map<string, WorkspaceSessionState | null>(
-      this.getWorkspaceSessionHydrationTargets(Boolean(this.offscreenBrowserBackend))
+      sessionScan.hydrationTargets
     )
     if (this.offscreenBrowserBackend) {
       for (const snapshot of acceptedSnapshots) {
@@ -155,7 +156,10 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
       // resurrect tabs the renderer owns, so only the layout is adopted.
       const persistedHostLayout =
         existing === undefined
-          ? this.getPersistedMobileSessionHostLayout(snapshot.worktree)
+          ? this.getPersistedMobileSessionHostLayout(
+              snapshot.worktree,
+              sessionScan.ownerSessionsByWorktree.get(snapshot.worktree) ?? null
+            )
           : undefined
       const hostLayoutBase = existing ?? persistedHostLayout
       // Why: judge renderer publication ordering against the renderer's own
@@ -378,9 +382,11 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
   // the renderer owns, so only the layout is adopted — and only a real split,
   // matching the hydrate criterion that restores persisted groups.
   protected getPersistedMobileSessionHostLayout(
-    worktreeId: string
+    worktreeId: string,
+    session: WorkspaceSessionState | null
   ): Pick<RuntimeMobileSessionTabsSnapshot, 'tabGroups' | 'tabGroupLayout'> | undefined {
-    const session = this.getWorkspaceSessionForWorktree(worktreeId)
+    // Why: the sync's single host scan already resolved this worktree's owner
+    // session; refetching it here is the U174 amplification.
     const tabGroups = session?.tabGroups?.[worktreeId]
     if ((tabGroups?.length ?? 0) <= 1) {
       return undefined

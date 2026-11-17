@@ -625,13 +625,10 @@ describe('OrcaRuntimeService', () => {
   })
 
   it('scans ordinary persisted sessions once instead of once per graph workspace', () => {
-    const tabsByWorktree = Object.fromEntries(
-      Array.from({ length: 100 }, (_, index) => [
-        `${TEST_REPO_ID}::/tmp/worktree-${index}`,
-        [{ id: `tab-${index}`, ptyId: `${TEST_REPO_ID}::/tmp/worktree-${index}@@pty` }]
-      ])
-    )
-    const session = { tabsByWorktree, terminalLayoutsByTabId: {} }
+    let session: {
+      tabsByWorktree: Record<string, { id: string; ptyId: string }[]>
+      terminalLayoutsByTabId: Record<string, unknown>
+    } = { tabsByWorktree: {}, terminalLayoutsByTabId: {} }
     const getWorkspaceSession = vi.fn(() => session)
     const runtime = new OrcaRuntimeService({
       ...store,
@@ -639,22 +636,35 @@ describe('OrcaRuntimeService', () => {
       getWorkspaceSessionHostIds: () => ['local']
     } as never)
 
-    runtime.syncWindowGraph(1, {
-      tabs: [],
-      leaves: [],
-      mobileSessionTabs: Object.keys(tabsByWorktree).map((worktree) => ({
-        worktree,
-        publicationEpoch: 'large-profile',
-        snapshotVersion: 1,
-        activeGroupId: null,
-        activeTabId: null,
-        activeTabType: null,
-        tabs: []
-      }))
-    })
+    // Why: every sync is a fresh publication, so each pass must still scan the
+    // persisted partition exactly once — the amplification is per workspace.
+    for (let pass = 0; pass < 3; pass += 1) {
+      const tabsByWorktree = Object.fromEntries(
+        Array.from({ length: 100 }, (_, index) => {
+          const worktree = `${TEST_REPO_ID}::/tmp/pass-${pass}-worktree-${index}`
+          return [worktree, [{ id: `tab-${index}`, ptyId: `${worktree}@@pty` }]]
+        })
+      )
+      session = { tabsByWorktree, terminalLayoutsByTabId: {} }
+      getWorkspaceSession.mockClear()
 
-    expect(getWorkspaceSession).toHaveBeenCalledTimes(1)
-    expect(runtime.getStatus().graphStatus).toBe('ready')
+      runtime.syncWindowGraph(1, {
+        tabs: [],
+        leaves: [],
+        mobileSessionTabs: Object.keys(tabsByWorktree).map((worktree) => ({
+          worktree,
+          publicationEpoch: `large-profile-${pass}`,
+          snapshotVersion: 1,
+          activeGroupId: null,
+          activeTabId: null,
+          activeTabType: null,
+          tabs: []
+        }))
+      })
+
+      expect(getWorkspaceSession).toHaveBeenCalledTimes(1)
+      expect(runtime.getStatus().graphStatus).toBe('ready')
+    }
   })
 
   it('hydrates runtime-owned candidates from one host-session read', () => {

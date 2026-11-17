@@ -207,9 +207,7 @@ export class OrcaRuntimeWithGetRuntimeId extends OrcaRuntimeWithHasExactPersiste
     return this.workspaceSessions.getKnownWorktreeIds()
   }
 
-  protected getWorkspaceSessionHydrationTargets(
-    includeAllPersistedWorktrees: boolean
-  ): Map<string, WorkspaceSessionState> {
-    return this.workspaceSessions.getHydrationTargets(includeAllPersistedWorktrees)
+  protected getWorkspaceSessionScan(includeAllPersistedWorktrees: boolean) {
+    return this.workspaceSessions.getSessionScan(includeAllPersistedWorktrees)
   }
 }

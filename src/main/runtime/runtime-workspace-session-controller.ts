@@ -23,6 +23,12 @@ type RuntimeWorkspaceSessionDependencies = {
   ) => boolean
 }
 
+export type RuntimeWorkspaceSessionScan = {
+  /** Every worktree mapped to its resolved owner session, candidate or not. */
+  ownerSessionsByWorktree: Map<string, WorkspaceSessionState>
+  hydrationTargets: Map<string, WorkspaceSessionState>
+}
+
 export class RuntimeWorkspaceSessionController {
   constructor(private readonly deps: RuntimeWorkspaceSessionDependencies) {}
 
@@ -164,9 +170,15 @@ export class RuntimeWorkspaceSessionController {
   }
 
   getHydrationTargets(includeAllPersistedWorktrees: boolean): Map<string, WorkspaceSessionState> {
+    return this.getSessionScan(includeAllPersistedWorktrees).hydrationTargets
+  }
+
+  // One host-partition read scan serves both headless hydration and persisted
+  // host-layout lookups, so a graph sync never refetches per workspace.
+  getSessionScan(includeAllPersistedWorktrees: boolean): RuntimeWorkspaceSessionScan {
     const store = this.deps.getStore()
     if (!store) {
-      return new Map()
+      return { ownerSessionsByWorktree: new Map(), hydrationTargets: new Map() }
     }
     const repos = store?.getRepos?.() ?? []
     const repoHostIdByRepoId = new Map(
@@ -190,7 +202,8 @@ export class RuntimeWorkspaceSessionController {
       hostIds.add(hostId)
     }
 
-    const targets = new Map<string, WorkspaceSessionState>()
+    const ownerSessionsByWorktree = new Map<string, WorkspaceSessionState>()
+    const hydrationTargets = new Map<string, WorkspaceSessionState>()
     const sessionsByHostId = new Map<ExecutionHostId, WorkspaceSessionState>()
     for (const hostId of hostIds) {
       const session = store?.getWorkspaceSession?.(hostId)
@@ -215,15 +228,18 @@ export class RuntimeWorkspaceSessionController {
           (candidateHostId) =>
             sessionsByHostId.get(candidateHostId) ?? store.getWorkspaceSession!(candidateHostId)
         )
+        if (ownerHostId !== hostId) {
+          continue
+        }
+        ownerSessionsByWorktree.set(worktreeId, session)
         if (
-          ownerHostId === hostId &&
-          (includeAllPersistedWorktrees ||
-            this.deps.hasRuntimeOwnedPtyCandidate(session, worktreeId, tabs))
+          includeAllPersistedWorktrees ||
+          this.deps.hasRuntimeOwnedPtyCandidate(session, worktreeId, tabs)
         ) {
-          targets.set(worktreeId, session)
+          hydrationTargets.set(worktreeId, session)
         }
       }
     }
-    return targets
+    return { ownerSessionsByWorktree, hydrationTargets }
   }
 }
