@@ -243,16 +243,19 @@ describe('U197 S1 refresh cookie（真实 createApp + HTTP）', () => {
   })
 
   test('重复 orca_refresh：刷新硬 401，且不轮换、不撤销 session', async () => {
-    const { base } = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const { app, base } = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
     const first = (await (await login(base)).json()) as Record<string, unknown>
     const refreshToken = String(first.refreshToken)
 
+    const session = onlySession(app)
+    const expiresBefore = session.refreshExpiresAt
     const ambiguous = await refresh(base, refreshToken, {
       cookie: 'orca_refresh=a; orca_refresh=b'
     })
     assert.equal(ambiguous.status, 401)
     const duplicateBody = (await ambiguous.json()) as { error?: { code?: string } }
     assert.equal(duplicateBody.error?.code, 'SESSION_EXPIRED')
+    assert.equal(session.refreshExpiresAt, expiresBefore, 'a duplicate Cookie must not renew')
 
     // The same body token still rotates: the duplicate path had no side effect.
     const afterDuplicate = await refresh(base, refreshToken)
@@ -845,6 +848,8 @@ describe('U218 登出撤销 / 多作用域清理 / Origin / 审计（真实 crea
     assert.equal(loginBody.refreshCookie, true)
     assert.equal('refreshToken' in loginBody, false)
     assert.match(cookieOf(loginRes), /Secure/)
+    const session = onlySession(app)
+    const hashBefore = session.refreshHash
 
     const dev = app.store.usersByName.get('zhangsan')
     assert.ok(dev)
@@ -864,10 +869,15 @@ describe('U218 登出撤销 / 多作用域清理 / Origin / 审计（真实 crea
 
     const refreshRes = await refreshWithCookie(base, cookieValueOf(loginRes), forged)
     assert.equal(refreshRes.status, 200)
-    assert.equal(((await refreshRes.json()) as Record<string, unknown>).refreshCookie, true)
+    const refreshBody = (await refreshRes.json()) as Record<string, unknown>
+    assert.equal(refreshBody.refreshCookie, true)
+    assert.equal('refreshToken' in refreshBody, false, 'Cookie-source refresh returns no token')
+    assert.equal(session.refreshHash, hashBefore, 'forged XFP/Host must not rotate the session')
   })
 
-  test('AC16 启动矩阵：always 无 origin 拒启，auto 降级 never', () => {
+  // Auto degrade warning is process-wide warnOnce, already fired by S1; it is
+  // asserted in test/refresh-cookie.test.ts, not here.
+  test('AC16 启动矩阵：always 无 origin 拒启，auto 降级 never（告警断言见 S1）', () => {
     assert.throws(
       () =>
         createApp({
