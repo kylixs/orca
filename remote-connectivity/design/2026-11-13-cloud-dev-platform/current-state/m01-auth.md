@@ -1,7 +1,7 @@
 # M1 登录与认证（现状）
 
 > 基线提交：`fe35a9d355a`（2026-11-18）｜来源：`cloud-platform/apps/web/app.js`、`cloud-platform/apps/api/src/{server.ts,refresh-cookie.ts,web-release.ts}` 代码阅读 + 已提交套件。文中行号均指该 HEAD（工作树若含未提交改动会使行号偏移）。
-> 刷新记录：2026-11-18 按 HEAD `fe35a9d355a` 重写，覆盖 U197 Cookie 会话（登录形态/双读刷新/页面恢复/登出）、U218 登出撤销与 CSRF、U219/D17 迁移缺口、U220 Origin 边界、U221–U223 客户端硬化、U225–U227 测试收紧。U228（禁用账号登录/刷新复查）尚未合入 HEAD，文内标「修复中」。
+> 刷新记录：2026-11-18 按 HEAD `39ad743d793`（U228 后）整理，覆盖 U197 Cookie 会话（登录形态/双读刷新/页面恢复/登出）、U218 登出撤销与 CSRF、U219/D17 迁移缺口、U220 Origin 边界、U221–U223 客户端硬化、U225–U227 测试收紧。U228（禁用账号登录/刷新复查）已合入 `39ad743d793`（登录/刷新拒绝非 active 并撤销会话；客户端重放仍 401 即登出）。
 > 本次未启动 18787（探测 `000`），界面描述以生产管理台代码为准。
 
 ## 1. 页面/界面布局
@@ -38,7 +38,7 @@
 | A4  | 连续 5 次失败                              | 服务端 `423 ACCOUNT_LOCKED`（计数共享时跨副本累计；进程内默认 5 次 / 15 分钟）                                                                                                                                                                                                                                                                                        | 无        | 行内「连续 5 次失败，账号已锁定 15 分钟。」；锁定期间再试直接 423「账号已锁定，请 15 分钟后再试。」并记审计 `login/failure reason=locked`                             | 无         |
 | A5  | 账号不在 LDAP 准组                         | 服务端 `401 LDAP_GROUP_NOT_ADMITTED`；两条拒绝路径（adapter filter miss / 平台闸门）同码同文案；审计 `reason=ldap_group_denied`；**不计数也不清锁定**                                                                                                                                                                                                                  | 无        | 行内显示服务端文案「账号未加入平台准入组。」                                                                                                                          | 准入组由 `ORCA_CLOUD_LDAP_REQUIRED_GROUP`（或 config `ldapRequiredGroup`）控制；空白=关闭 |
 | A6  | 点击密码框眼睛                             | 明文/密文切换                                                                                                                                                                                                                                                                                                                                                         | 无        | —                                                                                                                                                                     | 无         |
-| A7  | 任意业务请求返回 401                       | `api()` 只尝试**一次刷新+一次重放**（`app.js:57-84`）。Cookie 模式先发一次无 body `/v1/auth/refresh`（`credentials:'same-origin'`）；无 Cookie 可解析时才用 body 回退（`app.js:169-190`）。刷新结果三态：`ok` 重放；`rejected`（HTTP 非 2xx）→ `logout()`；`error`（传输失败）→ **不登出**，失败原请求交给调用方（`app.js:105-166`）。并发 401 共享一次刷新（`app.js:86-88`） | 无        | 刷新被拒 → 清会话回登录页。**重放仍 401**：HEAD 仅把错误抛给调用方、**不自动登出**（会停留在只显示「加载失败」的壳）；U228 修复中，未提交 diff 在 `retried` 分支补 `logout()` | 已登录     |
+| A7  | 任意业务请求返回 401                       | `api()` 只尝试**一次刷新+一次重放**（`app.js:57-84`）。Cookie 模式先发一次无 body `/v1/auth/refresh`（`credentials:'same-origin'`）；无 Cookie 可解析时才用 body 回退（`app.js:169-190`）。刷新结果三态：`ok` 重放；`rejected`（HTTP 非 2xx）→ `logout()`；`error`（传输失败）→ **不登出**，失败原请求交给调用方（`app.js:105-166`）。并发 401 共享一次刷新（`app.js:86-88`） | 无        | 刷新被拒 → 清会话回登录页。**重放仍 401**：`retried` 分支直接 `logout()` 回登录页（U228 `39ad743d793`，裸 fetch 不递归） | 已登录     |
 | A8  | 刷新/重开页面                              | **Cookie 模式**：一次无 body 刷新 → 成功后 `GET /v1/me`（`retried:true`，不启动第二条刷新链）→ 进主框架（`app.js:5144-5162`）。**旧模式**：有 access 时 `GET /v1/me`，401 触发 body 刷新并重放一次（`app.js:5163-5175`；`u198-legacy-reload` 断言顺序 `/v1/me:401 → refresh:200 → /v1/me:200`）。`orca.pendingLogout=1` 时**先显示登录页**再补发一次登出、不自动进入（`app.js:5135-5141`） | 无        | 刷新失败/`/v1/me` 失败 → 移除缓存 user、显示登录页。仅缓存 user、无 access/无 Cookie 模式时直接登录页（`session-renewal` AC-M1-14）                                      | 有本地会话 |
 | A9  | 点击「退出」                               | 关闭工作区 iframe → 置 `orca.pendingLogout=1` → 异步 `POST /v1/auth/logout`（同时带 Bearer 与同源 Cookie；服务端清 Cookie 的多作用域并撤销 Bearer/Cookie 定位到的**全部** session，`server.ts:3843-3891`）→ 本地清 access/refresh/tokenOwner、`orca.authMode`、缓存 user 与登录框输入 → 回登录页。请求网络失败保留标记，下次加载重试一次；收到 2xx 或 401 即删标记（`app.js:4946-4990`）。多标签为**被动**登出：另一标签下一次请求 401 → 刷新被拒 → 登出（`u197-web-cookie-browser` AC7） | 无        | 登出请求失败被吞，本地仍清空；HttpOnly Cookie 由下次加载的补发清理                                                                                                    | 已登录     |
 
@@ -89,7 +89,7 @@
 | 带 Cookie 但无 Origin    | 登录/handoff → `401 SESSION_EXPIRED`，不按 Cookie 源解析                                                                          | `server.ts:1988-1994,3402-3405`；`refresh-cookie` 149                                 |
 | 刷新被拒                 | 客户端 `logout()`，清本地并回登录页                                                                                              | `app.js:67-74`                                                                         |
 | refresh 过期/会话已撤销  | 服务端 `401 SESSION_EXPIRED` 并清 Cookie                                                                                         | `server.ts:3543-3546,3672-3675`                                                        |
-| 禁用账号                 | **HEAD 未复查**：登录不检查 `user.status`（仅业务请求的 `resolveToken` 拒绝）；登录 200 → 业务 401、刷新仍 200、重放 401、不自动登出（探索 E1）。**U228 修复中**（未提交 diff：登录/刷新拒绝非 active 并撤销会话、客户端重放仍 401 即登出） | `server.ts:2819-2834`（HEAD）；`test-reports/u197-auth-exploration-20261118.md` E1     |
+| 禁用账号                 | **已修复（U228 `39ad743d793`）**：登录非 active → 403 `USER_DISABLED`（审计 login denied、不发令牌/Cookie）；刷新 Cookie/body 两源在 current/previous/宽限前统一检查 → 撤销+bump epoch+清 Cookie+401；客户端重放仍 401 即登出（旧行为见探索 E1） | `server.ts:2819-2834`（HEAD）；`test-reports/u197-auth-exploration-20261118.md` E1     |
 
 **服务端认证语义（现状）**
 
@@ -123,7 +123,7 @@
 - 🟢 U221/U222：启动/页内传输失败不空白、不误登出；`tokenOwner` 防跨账号回退；`pendingLogout` 重试；`/v1/auth/*` 携带 `x-orca-web-contract`。
 - 🟢 U225/U226/U227：迁移夹具、never 模式刷新契约、XFP/重复 Cookie 断言收紧（测试）。
 - 🟡 U219/D17：迁移分支 AC9b/AC9c「能力未知探测」未实现；首次加载不迁移，依赖后续登录/响应逐步开启。
-- 🔴 U228：禁用账号仍可登录并续期（探索 E1）；修复未合入 HEAD。
+- ✅ U228：禁用账号登录/刷新拒绝与撤销已合入 `39ad743d793`（新套件 `u228-disabled-user-session` / `u228-web-disabled-session`）。
 - 🟡 U106：全站唯一 URL 路由（含登录回跳/刷新恢复）在途；现状仅 hash 页级恢复。
 - 🔴 U103：刷新 Orca Web 停留在旧登录界面（工作区侧续会话，非平台登录页）。
 
@@ -156,8 +156,8 @@
 ## 7. 未覆盖 / 存疑
 
 - ⛔ **U219/D17（AC9b/AC9c/AC15(g)）**：迁移分支「无能力标记时加载先发一次无 body 探测」未实现；`u197-migration-browser` 的 AC15(g) 单次重载用例与 `u197-web-cookie-browser` 的 AC9c 均为 skip。现状是渐进迁移，且换新构建首次加载不迁移（INVALID-FACT 已如实标注）。
-- ⛔ **U228**：禁用账号的登录/刷新复查与客户端「重放仍 401 即登出」在 HEAD 未合入；探索 E1 的真实行为（登录 200、刷新 200、重放 401、不登出）仍是现状。
-- 浏览器端「Cookie 模式页内 401 → 刷新 → 重放仍 401」的**自动登出**分支无已提交 e2e（U228 修复需补）。
+- ✅ **U228**：禁用账号登录/刷新复查与「重放仍 401 即登出」已合入；覆盖见 `u228-disabled-user-session.e2e.test.ts`、`u228-web-disabled-session.e2e.test.ts`。
+- 浏览器端「重放仍 401 → 自动登出」目前由 happy-dom 套件覆盖（`u228-web-disabled-session`）；真实 Chromium 同分支未单列（P3）。
 - 生产 LDAPS adapter 不在本仓库实现（仅 Mock），真实 bind/`memberOf` 过滤行为无法从当前代码验证。
 - 「刷新后仅缓存 user、无 token」路径由 `session-renewal` AC-M1-14 覆盖（happy-dom），真实 Chromium 无同名用例。
 - 登录页密码显示切换仍仅手测（WEB-R2-011）。
