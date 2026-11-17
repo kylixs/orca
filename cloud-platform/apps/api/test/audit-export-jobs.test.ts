@@ -19,6 +19,7 @@ import {
   DEFAULT_AUDIT_EXPORT_DOWNLOAD_TOKEN_TTL_MS,
   DEFAULT_AUDIT_EXPORT_TTL_MS,
   AuditExportJobStore,
+  ensureAuditExportJobDir,
   generateAuditExportJobId,
   isValidAuditExportJobId,
   resolveAuditExportJobDir,
@@ -511,6 +512,96 @@ describe('原子写与符号链接防护', () => {
     const store = new AuditExportJobStore({ root })
     assert.equal(store.read(job.jobId), null)
     assert.equal(store.remove(job.jobId), false)
+  })
+})
+
+describe('job.json 字段校验', () => {
+  /** Rewrites the persisted job with one damaged field and returns the store. */
+  function corrupt(patch: Record<string, unknown>): {
+    store: AuditExportJobStore
+    jobId: string
+  } {
+    const store = new AuditExportJobStore({ root: tempRoot(), now: () => 1_000 })
+    const jobId = store.create(jobInput()).jobId
+    const job = store.read(jobId)
+    assert.ok(job)
+    writeFileSync(path.join(store.root, jobId, 'job.json'), JSON.stringify({ ...job, ...patch }))
+    return { store, jobId }
+  }
+
+  test('损坏字段（错误类型/负值/未知取值）读回 null', () => {
+    const damaged: Record<string, unknown>[] = [
+      { requestedBy: 42 },
+      { status: 'expired' },
+      { status: 'done' },
+      { createdAt: '1000' },
+      { expiresAt: -1 },
+      { startedAt: -5 },
+      { finishedAt: 'tomorrow' },
+      { totalEvents: -1 },
+      { bytes: '10' },
+      { query: 'limit=10' },
+      { query: null },
+      { format: 'xml' },
+      { objectKey: 'events.xml' },
+      { objectKey: 'events.jsonl' },
+      { downloadTokenHash: 'abc' },
+      { downloadTokenHash: 'A'.repeat(64) },
+      { downloadedAt: -1 },
+      { downloadTokenExpiresAt: 'soon' },
+      { error: { code: 1, message: 'x' } },
+      { deleteAfterDownload: 'yes' }
+    ]
+    for (const patch of damaged) {
+      const { store, jobId } = corrupt(patch)
+      assert.equal(store.read(jobId), null, JSON.stringify(patch))
+    }
+  })
+
+  test('合法终态字段（含 null 与 64 位 hex）仍可读回', () => {
+    const store = new AuditExportJobStore({ root: tempRoot(), now: () => 1_000 })
+    const jobId = store.create(jobInput()).jobId
+    store.markRunning(jobId)
+    store.markSucceeded(jobId, { totalEvents: 2, bytes: 3 })
+    const token = store.issueDownloadToken(jobId)
+    assert.ok(token)
+    const read = store.read(jobId)
+    assert.equal(read?.downloadTokenHash?.length, 64)
+    assert.equal(read?.startedAt, 1_000)
+  })
+})
+
+describe('写路径目录防护', () => {
+  test('符号链接任务目录拒绝写入，且不改动原目标', () => {
+    const root = tempRoot()
+    const target = tempRoot()
+    const jobId = generateAuditExportJobId()
+    const dir = path.join(root, jobId)
+    symlinkSync(target, dir)
+
+    assert.throws(() => ensureAuditExportJobDir(dir), /not a directory/)
+    assert.deepEqual(readdirSync(target), [])
+  })
+
+  test('非目录任务路径拒绝写入且内容不变', () => {
+    const root = tempRoot()
+    const jobId = generateAuditExportJobId()
+    const file = path.join(root, jobId)
+    writeFileSync(file, 'occupied')
+
+    assert.throws(() => ensureAuditExportJobDir(file), /not a directory/)
+    assert.equal(readFileSync(file, 'utf8'), 'occupied')
+  })
+
+  test('root 不存在时创建 0700 任务目录，已存在时不重建', () => {
+    const root = path.join(tempRoot(), 'missing-root')
+    const dir = path.join(root, generateAuditExportJobId())
+    ensureAuditExportJobDir(dir)
+    assert.equal(statSync(dir).isDirectory(), true)
+    assert.equal(fileMode(dir), 0o700)
+
+    ensureAuditExportJobDir(dir)
+    assert.equal(fileMode(dir), 0o700)
   })
 })
 

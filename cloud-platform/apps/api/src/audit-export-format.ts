@@ -24,6 +24,8 @@ export type AuditExportCsvColumn = (typeof AUDIT_EXPORT_CSV_COLUMNS)[number]
 
 export const AUDIT_EXPORT_CSV_HEADER = AUDIT_EXPORT_CSV_COLUMNS.join(',')
 export const AUDIT_EXPORT_CSV_EOL = '\r\n'
+/** UTF-8 BOM: Excel needs it to detect UTF-8 and render Chinese correctly (D9). */
+export const AUDIT_EXPORT_CSV_BOM = '\uFEFF'
 
 // Tab and CR are spreadsheet formula prefixes too (design §4.5).
 const FORMULA_PREFIX = /^[=+\-@\t\r]/
@@ -53,10 +55,10 @@ export function toAuditCsvRow(event: AuditEvent): string {
   return AUDIT_EXPORT_CSV_COLUMNS.map((column) => csvField(text(event[column]))).join(',')
 }
 
-/** Header plus one CRLF-terminated record per event. */
+/** BOM, then header, then one CRLF-terminated record per event. */
 export function serializeAuditCsv(events: readonly AuditEvent[]): string {
   const rows = [AUDIT_EXPORT_CSV_HEADER, ...events.map(toAuditCsvRow)]
-  return rows.join(AUDIT_EXPORT_CSV_EOL) + AUDIT_EXPORT_CSV_EOL
+  return AUDIT_EXPORT_CSV_BOM + rows.join(AUDIT_EXPORT_CSV_EOL) + AUDIT_EXPORT_CSV_EOL
 }
 
 /** One JSONL record including its trailing newline; JSON.stringify escapes CR/LF. */

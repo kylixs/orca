@@ -102,24 +102,85 @@ export function resolveAuditExportObjectPath(
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
-const PERSISTED_STATUSES = ['queued', 'running', 'succeeded', 'failed']
+const PERSISTED_STATUSES = ['queued', 'running', 'succeeded', 'failed'] as const
+const DOWNLOAD_TOKEN_HASH_PATTERN = /^[0-9a-f]{64}$/
 
+const isFiniteNonNegative = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0
+
+const isNullableFiniteNonNegative = (value: unknown): value is number | null =>
+  value === null || isFiniteNonNegative(value)
+
+function isPersistedStatus(value: unknown): value is PersistedAuditExportStatus {
+  return PERSISTED_STATUSES.some((status) => status === value)
+}
+
+function isDownloadTokenHash(value: unknown): value is string | null {
+  return value === null || (typeof value === 'string' && DOWNLOAD_TOKEN_HASH_PATTERN.test(value))
+}
+
+function isJobError(value: unknown): value is AuditExportJobError | null {
+  return (
+    value === null ||
+    (isRecord(value) && typeof value.code === 'string' && typeof value.message === 'string')
+  )
+}
+
+/**
+ * A damaged record is treated as absent: every field a reader branches on is
+ * type-checked, and objectKey must correspond to the declared format.
+ */
 function isAuditExportJob(value: unknown): value is AuditExportJob {
   if (!isRecord(value)) {
+    return false
+  }
+  const format = value.format
+  if (format !== 'csv' && format !== 'jsonl') {
     return false
   }
   return (
     typeof value.jobId === 'string' &&
     typeof value.requestedBy === 'string' &&
     typeof value.requestedByUsername === 'string' &&
-    typeof value.createdAt === 'number' &&
-    typeof value.expiresAt === 'number' &&
-    typeof value.objectKey === 'string' &&
+    isFiniteNonNegative(value.createdAt) &&
+    isFiniteNonNegative(value.expiresAt) &&
+    isNullableFiniteNonNegative(value.startedAt) &&
+    isNullableFiniteNonNegative(value.finishedAt) &&
+    isNullableFiniteNonNegative(value.totalEvents) &&
+    isNullableFiniteNonNegative(value.bytes) &&
+    isNullableFiniteNonNegative(value.downloadedAt) &&
+    isNullableFiniteNonNegative(value.downloadTokenExpiresAt) &&
+    value.objectKey === AUDIT_EXPORT_OBJECT_KEYS[format] &&
     typeof value.deleteAfterDownload === 'boolean' &&
     isRecord(value.query) &&
-    (value.format === 'csv' || value.format === 'jsonl') &&
-    PERSISTED_STATUSES.some((status) => status === value.status)
+    isPersistedStatus(value.status) &&
+    isDownloadTokenHash(value.downloadTokenHash) &&
+    isJobError(value.error)
   )
+}
+
+/**
+ * Creates the job directory when missing, otherwise proves it is a real
+ * directory. lstat (not stat) is deliberate: a symlink squatted on the job dir
+ * must never redirect the job.json rename onto an attacker-chosen target.
+ */
+export function ensureAuditExportJobDir(dir: string): void {
+  let entry
+  try {
+    entry = lstatSync(dir)
+  } catch (error) {
+    if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') {
+      throw error
+    }
+    mkdirSync(dir, { recursive: true, mode: 0o700 })
+    entry = lstatSync(dir)
+  }
+  if (!entry.isDirectory()) {
+    throw Object.assign(new Error(`audit export job path is not a directory: ${dir}`), {
+      code: 'UNSAFE_EXPORT_DIR'
+    })
+  }
+  chmodSync(dir, 0o700)
 }
 
 /** Writes 0600 tmp+rename; on failure removes the tmp so no half record survives. */
@@ -513,8 +574,7 @@ export class AuditExportJobStore {
     if (!dir) {
       throw new Error(`invalid audit export job id: ${job.jobId}`)
     }
-    mkdirSync(dir, { recursive: true, mode: 0o700 })
-    chmodSync(dir, 0o700)
+    ensureAuditExportJobDir(dir)
     writeAuditExportJobFileAtomic(path.join(dir, AUDIT_EXPORT_JOB_FILE), job)
   }
 }

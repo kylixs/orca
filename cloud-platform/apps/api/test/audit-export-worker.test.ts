@@ -112,7 +112,8 @@ const objectPathFor = (root: string, jobId: string, format: AuditExportFormat) =
   return file
 }
 
-const csvDataRows = (content: string) => content.split('\r\n').filter((line) => line !== '')
+const csvDataRows = (content: string) =>
+  content.replace(/^﻿/, '').split('\r\n').filter((line) => line !== '')
 
 /** Chunk scratch files live beside the object; none may survive a terminal run. */
 const partFiles = (dir: string) => readdirSync(dir).filter((name) => name.includes('.part-'))

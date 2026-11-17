@@ -1,6 +1,7 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  AUDIT_EXPORT_CSV_BOM,
   AUDIT_EXPORT_CSV_COLUMNS,
   AUDIT_EXPORT_CSV_EOL,
   AUDIT_EXPORT_CSV_HEADER,
@@ -33,7 +34,9 @@ const event = (over: Partial<AuditEvent> = {}): AuditEvent => ({
 })
 
 /** Minimal RFC 4180 reader used to prove the emitted quoting is reversible. */
-function parseCsv(input: string): string[][] {
+function parseCsv(source: string): string[][] {
+  // The exporter prepends a UTF-8 BOM; a reader skips it like Excel does.
+  const input = source.startsWith(AUDIT_EXPORT_CSV_BOM) ? source.slice(1) : source
   const rows: string[][] = []
   let row: string[] = []
   let field = ''
@@ -89,12 +92,27 @@ const columnsOf = (row: string[]): Record<string, string> =>
   Object.fromEntries(AUDIT_EXPORT_CSV_COLUMNS.map((column, index) => [column, row[index]]))
 
 describe('audit export CSV', () => {
-  test('fixed header and empty export is header plus CRLF', () => {
+  test('fixed header and empty export is BOM plus header plus CRLF', () => {
     assert.equal(
       AUDIT_EXPORT_CSV_HEADER,
       'seq,ts,eventType,actor,targetType,targetId,result,traceId,metadata,prevHash,hash'
     )
-    assert.equal(serializeAuditCsv([]), AUDIT_EXPORT_CSV_HEADER + AUDIT_EXPORT_CSV_EOL)
+    assert.equal(
+      serializeAuditCsv([]),
+      AUDIT_EXPORT_CSV_BOM + AUDIT_EXPORT_CSV_HEADER + AUDIT_EXPORT_CSV_EOL
+    )
+  })
+
+  test('CSV starts with a UTF-8 BOM so Excel decodes Chinese; JSONL does not', () => {
+    const csv = serializeAuditCsv([event({ actor: '张三' })])
+    assert.equal(csv.charCodeAt(0), 0xfeff)
+    assert.deepEqual(
+      [...Buffer.from(csv, 'utf8').subarray(0, 3)],
+      [0xef, 0xbb, 0xbf]
+    )
+    // The BOM is not part of the first column's name.
+    assert.equal(parseCsv(csv)[0]![0], 'seq')
+    assert.notEqual(serializeAuditJsonl([event()]).charCodeAt(0), 0xfeff)
   })
 
   test('commas, quotes, and newlines round-trip through a standard reader', () => {

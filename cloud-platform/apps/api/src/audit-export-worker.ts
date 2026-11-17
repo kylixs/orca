@@ -21,6 +21,7 @@ import path from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import type { AuditQuery, AuditQueryResult } from './audit.ts'
 import {
+  AUDIT_EXPORT_CSV_BOM,
   AUDIT_EXPORT_CSV_EOL,
   AUDIT_EXPORT_CSV_HEADER,
   toAuditCsvRow,
@@ -260,7 +261,10 @@ export class AuditExportWorker {
     const token = `${process.pid}.${randomBytes(6).toString('hex')}`
     let bytes =
       job.format === 'csv'
-        ? Buffer.byteLength(AUDIT_EXPORT_CSV_HEADER + AUDIT_EXPORT_CSV_EOL, 'utf8')
+        ? Buffer.byteLength(
+            AUDIT_EXPORT_CSV_BOM + AUDIT_EXPORT_CSV_HEADER + AUDIT_EXPORT_CSV_EOL,
+            'utf8'
+          )
         : 0
     let totalEvents = 0
     let cursor: number | undefined
@@ -352,8 +356,12 @@ export class AuditExportWorker {
     try {
       mkdirSync(dir, { recursive: true, mode: 0o700 })
       chmodSync(dir, 0o700)
-      // CSV needs its header before any row; JSONL has no preamble.
-      await writeFile(tmp, format === 'csv' ? AUDIT_EXPORT_CSV_HEADER + AUDIT_EXPORT_CSV_EOL : '', {
+      // CSV needs its BOM+header before any row; JSONL has no preamble.
+      const preamble =
+        format === 'csv'
+          ? AUDIT_EXPORT_CSV_BOM + AUDIT_EXPORT_CSV_HEADER + AUDIT_EXPORT_CSV_EOL
+          : ''
+      await writeFile(tmp, preamble, {
         encoding: 'utf8',
         mode: 0o600
       })
