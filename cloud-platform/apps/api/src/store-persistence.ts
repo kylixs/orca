@@ -29,12 +29,14 @@ import type { Store } from './store.ts'
  */
 
 /**
- * 2: refresh keys are `sha256:` digests (U233). v1 files may still carry plaintext
- * keys and are read and rewritten on load; a pre-v2 binary rejects v2 outright
- * instead of treating a digest as a plaintext key.
+ * 1: refresh keys are `sha256:<digest>` (U233) and a pre-U233 binary can still load
+ * users/sessions/projects from the file; only refresh fails, forcing re-login.
+ * U249: the digest shape is marked by `refreshTokensHashed` instead of a version
+ * bump, so rolling back to a v1 binary never wipes the rest of the state. Version 2
+ * files (the short-lived bump) are still readable and rewritten as v1.
  */
-export const SNAPSHOT_VERSION = 2
-/** v1 predates the digest format; its refresh keys are migrated on load. */
+export const SNAPSHOT_VERSION = 1
+/** Readers accept the legacy v1 shape and files written by the withdrawn v2 bump. */
 const READABLE_SNAPSHOT_VERSIONS = new Set<unknown>([1, 2])
 export const DEFAULT_SNAPSHOT_INTERVAL_MS = 2_000
 export const DEFAULT_AUDIT_LIMIT = 10_000
@@ -50,10 +52,13 @@ function digestRefreshToken(token: string): string {
 }
 
 /** Snapshot keys are digests; pre-U233 files carried plaintext, hashed on load. */
-function restoredRefreshTokenKey(key: string): string {
+function restoredRefreshTokenKey(key: string, hashed: boolean): string {
+  if (!hashed) {
+    return digestRefreshToken(key)
+  }
   return key.startsWith(REFRESH_TOKEN_DIGEST_PREFIX)
     ? key.slice(REFRESH_TOKEN_DIGEST_PREFIX.length)
-    : digestRefreshToken(key)
+    : key
 }
 
 type AccessTokenEntry = {
@@ -65,6 +70,8 @@ type AccessTokenEntry = {
 
 export type SnapshotDocument = {
   version: typeof SNAPSHOT_VERSION
+  /** Marks prefixed digest keys without a version bump (U249). */
+  refreshTokensHashed: true
   users: Entry<User>[]
   devices: Entry<Device>[]
   sessions: Entry<Session>[]
@@ -143,6 +150,7 @@ export function snapshotOf(store: Store, auditLimit = DEFAULT_AUDIT_LIMIT): Snap
   const audit = auditLimit > 0 ? store.audit.slice(-auditLimit) : []
   return {
     version: SNAPSHOT_VERSION,
+    refreshTokensHashed: true,
     users: [...store.users.entries()],
     devices: [...store.devices.entries()],
     // U197 v5: the plaintext current refresh is in-memory only (U216).
@@ -218,31 +226,12 @@ export function restoreSnapshot(
   const audit = arrayOf<AuditEvent>(parsed.audit, 'audit')
   const auditSeq = requireNumber(parsed.auditSeq, 'auditSeq')
   const auditTip = requireString(parsed.auditTip, 'auditTip')
+  // v2 was the withdrawn version bump (U249); its keys are always prefixed.
+  const hashedRefreshTokens = parsed.refreshTokensHashed === true || parsed.version === 2
 
-  store.users = new Map(users)
-  store.usersByName = new Map(users.map(([, user]) => [user.username, user]))
-  store.devices = new Map(devices)
-  store.sessions = new Map(sessions)
-  store.accessTokens = new Map(accessTokens)
-  store.refreshTokens = new Map(
-    refreshTokens.map(([key, sessionId]): Entry<string> => [
-      restoredRefreshTokenKey(key),
-      sessionId
-    ])
-  )
-  store.hosts = new Map(hosts)
-  store.hostsByName = new Map(hosts.map(([, host]) => [host.name, host]))
-  store.projects = new Map(projects)
-  store.projectsByKey = new Map(projects.map(([, project]) => [project.key, project]))
-  store.grants = grants
-  store.hostGrants = hostGrants
-  store.revocations = revocations
-  store.relayRoutes = new Map(relayRoutes)
-  store.hostTokens = hostTokens
-  store.installDownloadTokens = installDownloadTokens
-  store.webHandoffs = new Map(webHandoffs)
-  // `policies` is a single object; rebuild its shape so a partial file keeps defaults.
-  store.policies = {
+  // U249 P2-3: validate and build locals before committing anything, so a failed
+  // restore never leaves a half-applied snapshot in memory.
+  const policies: Store['policies'] = {
     downloadDefault: parsed.policies.downloadDefault === 'allow' ? 'allow' : 'deny',
     version: requireNumber(parsed.policies.version, 'policies.version'),
     readRatePerHour: isRecord(parsed.policies.readRatePerHour)
@@ -258,6 +247,29 @@ export function restoreSnapshot(
         }
       : store.policies.readRatePerHour
   }
+  const refreshTokenEntries = refreshTokens.map(([key, sessionId]): Entry<string> => [
+    restoredRefreshTokenKey(key, hashedRefreshTokens),
+    sessionId
+  ])
+
+  store.users = new Map(users)
+  store.usersByName = new Map(users.map(([, user]) => [user.username, user]))
+  store.devices = new Map(devices)
+  store.sessions = new Map(sessions)
+  store.accessTokens = new Map(accessTokens)
+  store.refreshTokens = new Map(refreshTokenEntries)
+  store.hosts = new Map(hosts)
+  store.hostsByName = new Map(hosts.map(([, host]) => [host.name, host]))
+  store.projects = new Map(projects)
+  store.projectsByKey = new Map(projects.map(([, project]) => [project.key, project]))
+  store.grants = grants
+  store.hostGrants = hostGrants
+  store.revocations = revocations
+  store.relayRoutes = new Map(relayRoutes)
+  store.hostTokens = hostTokens
+  store.installDownloadTokens = installDownloadTokens
+  store.webHandoffs = new Map(webHandoffs)
+  store.policies = policies
   // Truncated audit is intentional; `auditSeq`/`auditTip` keep the live chain tip.
   store.audit = auditLimit > 0 ? audit.slice(-auditLimit) : []
   store.auditSeq = auditSeq
@@ -274,9 +286,9 @@ function writeAtomic(file: string, text: string): void {
 
 /**
  * Restores the snapshot (if any) and schedules change-only flushes. A missing file
- * starts empty; an unreadable one (corrupt JSON or unsupported version) is warned
- * about, left untouched on disk, and starts with an empty store so the platform
- * must still boot.
+ * starts empty. An unreadable one (corrupt JSON or unsupported version) is renamed
+ * to `<file>.corrupt-<ts>` so the only copy survives the first flush, then the
+ * platform boots with an empty store and writes a fresh snapshot.
  */
 export function attachStorePersistence(
   store: Store,
@@ -295,10 +307,18 @@ export function attachStorePersistence(
       restoredText = readFileSync(file, 'utf8')
       restoreSnapshot(store, restoredText, auditLimit)
     } catch (error) {
-      // Unreadable snapshot: start empty but keep the bytes for diagnosis; the
-      // next real state change replaces them.
+      // U249 P2-2: preserve the unreadable bytes before any flush can overwrite
+      // them; the fresh snapshot then lands on the now-free original path.
       restoredText = null
-      log.warn(`[store-persistence] ignoring ${file}: ${String(error)}`)
+      const backup = `${file}.corrupt-${Date.now()}`
+      try {
+        renameSync(file, backup)
+        log.warn(`[store-persistence] ignoring ${file}: ${String(error)} (kept as ${backup})`)
+      } catch (renameError) {
+        log.warn(
+          `[store-persistence] ignoring ${file}: ${String(error)} (backup failed: ${String(renameError)})`
+        )
+      }
     }
     if (restoredText !== null) {
       try {

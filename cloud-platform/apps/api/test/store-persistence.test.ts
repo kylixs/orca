@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Store } from '../src/store.ts'
@@ -219,61 +219,106 @@ describe('平台 dev store 快照：序列化与恢复', () => {
 })
 
 describe('平台 dev store 快照：损坏与默认关闭', () => {
-  test('损坏 JSON 快照：启动不抛错、文件逐字节不变、起空 store', () => {
+  /** U249 P2-2: the unreadable file must survive the first timer tick, renamed. */
+  async function assertUnreadableSnapshotPreserved(
+    name: string,
+    original: Buffer
+  ): Promise<void> {
     const root = tempRoot()
     try {
-      const broken = path.join(root, 'broken.json')
-      // Invalid UTF-8 plus non-JSON bytes: any rewrite would change these bytes.
-      const original = Buffer.from([
-        0x7b, 0x6e, 0x6f, 0x74, 0x2d, 0x6a, 0x73, 0x6f, 0x6e, 0xff, 0x00
-      ])
-      writeFileSync(broken, original)
+      const file = path.join(root, name)
+      writeFileSync(file, original)
       const store = new Store()
       const warnings: string[] = []
-      assert.doesNotThrow(() =>
-        attachStorePersistence(store, {
-          file: broken,
-          intervalMs: 60_000,
-          log: { warn: (message?: unknown) => warnings.push(String(message)) }
-        }).stop()
-      )
-      assert.equal(store.users.size, 0)
-      assert.equal(store.hosts.size, 0)
-      assert.equal(warnings.length, 1)
-      assert.ok(
-        readFileSync(broken).equals(original),
-        'an unreadable snapshot must stay byte-identical for diagnosis'
-      )
+      const handle = attachStorePersistence(store, {
+        file,
+        intervalMs: 50,
+        log: { warn: (message?: unknown) => warnings.push(String(message)) }
+      })
+      try {
+        assert.equal(existsSync(file), false, 'an unreadable snapshot must be renamed away')
+        const backups = readdirSync(root).filter((entry) =>
+          entry.startsWith(`${name}.corrupt-`)
+        )
+        assert.equal(backups.length, 1, 'exactly one corrupt backup')
+        assert.ok(
+          readFileSync(path.join(root, backups[0]!)).equals(original),
+          'the preserved bytes must stay byte-identical for diagnosis'
+        )
+
+        // Let at least one 50ms flush tick run: it must not touch the backup.
+        await new Promise((resolve) => setTimeout(resolve, 150))
+        assert.equal(warnings.length, 1)
+        const rewritten = JSON.parse(readFileSync(file, 'utf8')) as {
+          version: number
+          users: unknown[]
+        }
+        assert.equal(rewritten.version, SNAPSHOT_VERSION)
+        assert.deepEqual(rewritten.users, [])
+        assert.equal(store.users.size, 0)
+        assert.equal(store.hosts.size, 0)
+      } finally {
+        handle.stop()
+      }
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
+  }
+
+  test('损坏 JSON 快照：改名保留原字节，首个 tick 写入合法空快照', async () => {
+    // Invalid UTF-8 plus non-JSON bytes: any rewrite would change these bytes.
+    await assertUnreadableSnapshotPreserved(
+      'broken.json',
+      Buffer.from([0x7b, 0x6e, 0x6f, 0x74, 0x2d, 0x6a, 0x73, 0x6f, 0x6e, 0xff, 0x00])
+    )
   })
 
-  test('不支持的快照版本：启动不抛错、文件逐字节不变、起空 store', () => {
-    const root = tempRoot()
-    try {
-      const wrongVersion = path.join(root, 'wrong-version.json')
-      const original = Buffer.from(JSON.stringify({ version: 99, marker: 'keep-me' }), 'utf8')
-      writeFileSync(wrongVersion, original)
-      const store = new Store()
-      const warnings: string[] = []
-      assert.doesNotThrow(() =>
-        attachStorePersistence(store, {
-          file: wrongVersion,
-          intervalMs: 60_000,
-          log: { warn: (message?: unknown) => warnings.push(String(message)) }
-        }).stop()
-      )
-      assert.equal(store.users.size, 0)
-      assert.equal(store.hosts.size, 0)
-      assert.equal(warnings.length, 1)
-      assert.ok(
-        readFileSync(wrongVersion).equals(original),
-        'an unsupported version must stay byte-identical for diagnosis'
-      )
-    } finally {
-      rmSync(root, { recursive: true, force: true })
+  test('不支持的快照版本：改名保留原字节，首个 tick 写入合法空快照', async () => {
+    await assertUnreadableSnapshotPreserved(
+      'wrong-version.json',
+      Buffer.from(JSON.stringify({ version: 99, marker: 'keep-me' }), 'utf8')
+    )
+  })
+
+  test('policies 校验失败时不部分应用：users/sessions/policies 保持为空/默认', () => {
+    const source = new Store()
+    source.seedUser({
+      username: 'partial',
+      displayName: 'Partial',
+      dept: 'eng',
+      email: 'partial@example.test',
+      groups: [],
+      roles: ['developer'],
+      status: 'active'
+    })
+    source.sessions.set('sess_partial', {
+      id: 'sess_partial',
+      userId: 'user_partial',
+      deviceId: 'device_partial',
+      epoch: 1,
+      refreshHash: 'hash-partial',
+      refreshExpiresAt: 1,
+      revokedAt: null
+    })
+    const snapshot = JSON.parse(serializeSnapshot(source)) as {
+      policies: Record<string, unknown>
     }
+    delete snapshot.policies.version
+
+    const restored = new Store()
+    assert.throws(
+      () => restoreSnapshot(restored, JSON.stringify(snapshot)),
+      /policies\.version/
+    )
+    // U249 P2-3: nothing may be committed when validation fails.
+    assert.equal(restored.users.size, 0)
+    assert.equal(restored.usersByName.size, 0)
+    assert.equal(restored.sessions.size, 0)
+    assert.equal(restored.policies.version, 1)
+    assert.deepEqual(restored.policies.readRatePerHour, {
+      calls: 600,
+      bytes: 64 * 1024 * 1024
+    })
   })
 
   test('env 未设置时不加载也不创建快照文件', async () => {
@@ -370,10 +415,12 @@ describe('平台 dev store 快照：refresh token 明文剥离（U233 F6）', ()
     })
     const snapshot = JSON.parse(serializeSnapshot(source)) as {
       version: number
+      refreshTokensHashed?: boolean
       refreshTokens: [string, string][]
     }
-    // Pre-U233 format: version 1 and the map key was the plaintext token itself.
+    // Pre-U233 format: version 1, no digest marker, the map key was the plaintext token.
     snapshot.version = 1
+    delete snapshot.refreshTokensHashed
     snapshot.refreshTokens = [[token, 'sess_legacy']]
 
     const restored = new Store()
@@ -396,9 +443,11 @@ describe('平台 dev store 快照：refresh token 明文剥离（U233 F6）', ()
     })
     const snapshot = JSON.parse(serializeSnapshot(source)) as {
       version: number
+      refreshTokensHashed?: boolean
       refreshTokens: [string, string][]
     }
     snapshot.version = 1
+    delete snapshot.refreshTokensHashed
     snapshot.refreshTokens = [[token, 'sess_legacy_disk']]
     writeFileSync(file, JSON.stringify(snapshot), 'utf8')
   }
@@ -533,30 +582,157 @@ describe('平台 dev store 快照：refresh token 明文剥离（U233 F6）', ()
   })
 })
 
-describe('平台 dev store 快照：版本兼容（U233 读端）', () => {
-  test('写出 v2，读取端接受 v1 与 v2，未知版本拒绝', () => {
-    const digest = createHash('sha256').update('v1-token').digest('hex')
+describe('平台 dev store 快照：版本兼容与回滚（U233/U249）', () => {
+  const digestOf = (token: string): string => createHash('sha256').update(token).digest('hex')
+
+  test('写出 v1 + 哈希标记，读取端接受 v1/v2，未知版本拒绝', () => {
+    const digest = digestOf('v1-token')
     const source = new Store()
     source.refreshTokens.set(digest, 'sess_v1')
     const current = JSON.parse(serializeSnapshot(source)) as Record<string, unknown> & {
       refreshTokens: [string, string][]
     }
     assert.equal(current.version, SNAPSHOT_VERSION)
-    assert.equal(SNAPSHOT_VERSION, 2)
+    assert.equal(SNAPSHOT_VERSION, 1)
+    assert.equal(current.refreshTokensHashed, true)
 
-    const v1 = { ...current, version: 1 }
-    const fromV1 = new Store()
-    restoreSnapshot(fromV1, JSON.stringify(v1))
-    assert.equal(fromV1.refreshTokens.get(digest), 'sess_v1')
+    const fromV1 = { ...current }
+    delete fromV1.refreshTokensHashed
+    fromV1.refreshTokens = [[digest, 'sess_v1']]
+    const legacy = new Store()
+    restoreSnapshot(legacy, JSON.stringify(fromV1))
+    assert.equal(legacy.refreshTokens.get(digestOf(digest)), 'sess_v1')
 
     const fromV2 = new Store()
-    restoreSnapshot(fromV2, JSON.stringify(current))
+    restoreSnapshot(fromV2, JSON.stringify({ ...current, version: 2 }))
     assert.equal(fromV2.refreshTokens.get(digest), 'sess_v1')
 
     assert.throws(
       () => restoreSnapshot(new Store(), JSON.stringify({ ...current, version: 3 })),
       /version 3 is not supported/
     )
+  })
+
+  test('回滚：v1 旧读取端能加载 users/sessions/projects，只有刷新需要重登', () => {
+    const token = 'rollback-refresh-token'
+    const source = new Store()
+    source.seedUser({
+      username: 'rollback',
+      displayName: 'Rollback',
+      dept: 'eng',
+      email: 'rollback@example.test',
+      groups: [],
+      roles: ['developer'],
+      status: 'active'
+    })
+    source.sessions.set('sess_rollback', {
+      id: 'sess_rollback',
+      userId: 'user_rollback',
+      deviceId: 'device_rollback',
+      epoch: 1,
+      refreshHash: digestOf(token),
+      refreshExpiresAt: 1,
+      revokedAt: null
+    })
+    source.projects.set('proj_rollback', {
+      id: 'proj_rollback',
+      key: 'rollback',
+      name: 'rollback',
+      repoUrl: '',
+      hostId: 'host_rollback',
+      path: '/tmp/rollback',
+      defaultBranch: 'main',
+      downloadPolicy: 'deny',
+      status: 'ready',
+      createdAt: 1
+    })
+    source.refreshTokens.set(digestOf(token), 'sess_rollback')
+
+    const doc = JSON.parse(serializeSnapshot(source)) as {
+      version: number
+      refreshTokensHashed?: boolean
+      users: unknown[]
+      sessions: unknown[]
+      projects: unknown[]
+      refreshTokens: [string, string][]
+    }
+    // A pre-U233 binary accepted exactly version 1 and kept these arrays verbatim.
+    assert.equal(doc.version, 1)
+    assert.equal(doc.refreshTokensHashed, true)
+    assert.equal(doc.users.length, 1)
+    assert.equal(doc.sessions.length, 1)
+    assert.equal(doc.projects.length, 1)
+
+    // The key is a digest, never the plaintext token, so the old reader's
+    // plaintext lookup misses and the user re-logs in instead of losing state.
+    const [[snapshotKey, sessionId]] = doc.refreshTokens
+    assert.ok(snapshotKey!.startsWith('sha256:'))
+    assert.notEqual(snapshotKey, token)
+    assert.equal(sessionId, 'sess_rollback')
+
+    // The new reader strips the marker prefix exactly once (no double hash).
+    const restored = new Store()
+    restoreSnapshot(restored, JSON.stringify(doc))
+    assert.equal(restored.users.size, 1)
+    assert.equal(restored.sessions.size, 1)
+    assert.equal(restored.projects.size, 1)
+    assert.equal(restored.refreshTokens.get(digestOf(token)), 'sess_rollback')
+    assert.equal(restored.refreshTokens.has(snapshotKey!), false)
+  })
+
+  test('已写出的 v2 文件可加载，并在启动时降级写回 v1 + 标记', () => {
+    const root = tempRoot()
+    const file = path.join(root, 'platform-store.json')
+    const token = 'v2-file-token'
+    try {
+      const source = new Store()
+      source.seedUser({
+        username: 'v2',
+        displayName: 'V2',
+        dept: '',
+        email: '',
+        groups: [],
+        roles: [],
+        status: 'active'
+      })
+      source.sessions.set('sess_v2_file', {
+        id: 'sess_v2_file',
+        userId: 'user_v2',
+        deviceId: 'device_v2',
+        epoch: 1,
+        refreshHash: digestOf(token),
+        refreshExpiresAt: 1,
+        revokedAt: null
+      })
+      source.refreshTokens.set(digestOf(token), 'sess_v2_file')
+      const v2 = JSON.parse(serializeSnapshot(source)) as Record<string, unknown>
+      v2.version = 2
+      delete v2.refreshTokensHashed
+      writeFileSync(file, JSON.stringify(v2), 'utf8')
+
+      const store = new Store()
+      const handle = attachStorePersistence(store, {
+        file,
+        intervalMs: 60_000,
+        log: { warn: () => {} }
+      })
+      try {
+        assert.equal(store.users.size, 1)
+        assert.equal(store.sessions.size, 1)
+        assert.equal(store.refreshTokens.get(digestOf(token)), 'sess_v2_file')
+
+        const onDisk = JSON.parse(readFileSync(file, 'utf8')) as {
+          version: number
+          refreshTokensHashed?: boolean
+        }
+        assert.equal(onDisk.version, 1, 'a v2 file must be rewritten as v1')
+        assert.equal(onDisk.refreshTokensHashed, true)
+      } finally {
+        handle.stop()
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })
 
