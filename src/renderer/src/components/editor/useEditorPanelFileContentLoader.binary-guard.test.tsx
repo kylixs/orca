@@ -67,6 +67,7 @@ describe('desktop editor binary guard', () => {
   it('lets previewable binaries (images and PDFs) through to the read path', () => {
     expect(isKnownBinaryEditorFile('/root/repo/screenshot.png')).toBe(false)
     expect(isKnownBinaryEditorFile('/root/repo/photo.jpg')).toBe(false)
+    expect(isKnownBinaryEditorFile('/root/repo/photo.avif')).toBe(false)
     expect(isKnownBinaryEditorFile('/root/repo/manual.pdf')).toBe(false)
   })
 
@@ -131,6 +132,25 @@ describe('desktop editor file loader binary guard', () => {
 
     expect(fileContents[id]).toEqual({ content: '', isBinary: true })
     expect(mocks.readRuntimeFileContent).not.toHaveBeenCalled()
+  })
+
+  it('reads a .png through the host exactly once and keeps its image payload', async () => {
+    const imageContent: FileContent = {
+      content: 'iVBORw0KGgo=',
+      isBinary: true,
+      isImage: true,
+      mimeType: 'image/png'
+    }
+    mocks.readRuntimeFileContent.mockResolvedValue(imageContent)
+    const filePath = `${ROOT}screenshot.png`
+    const id = openFile(filePath)
+
+    await act(async () => {
+      await load!(filePath, id, WORKTREE, 'screenshot.png')
+    })
+
+    expect(mocks.readRuntimeFileContent).toHaveBeenCalledTimes(1)
+    expect(fileContents[id]).toEqual(imageContent)
   })
 
   it('turns host text containing NUL into the binary placeholder', async () => {

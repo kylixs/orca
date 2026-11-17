@@ -12,6 +12,10 @@ describe('hasBinaryFileExtension', () => {
     expect(hasBinaryFileExtension('assets/map.svg')).toBe(false)
   })
 
+  it('classifies avif as an image binary like the main-process preview list', () => {
+    expect(hasBinaryFileExtension('assets/photo.avif')).toBe(true)
+  })
+
   it('rejects text files, dotfiles, and extensionless paths', () => {
     expect(hasBinaryFileExtension('src/index.ts')).toBe(false)
     expect(hasBinaryFileExtension('.gitignore')).toBe(false)

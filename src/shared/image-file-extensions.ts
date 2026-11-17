@@ -1,5 +1,6 @@
 export const IMAGE_FILE_MIME_TYPES: Record<string, string> = {
   '.png': 'image/png',
+  '.avif': 'image/avif',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.gif': 'image/gif',
