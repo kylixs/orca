@@ -2,6 +2,7 @@ import { test, before, after, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -136,12 +137,39 @@ const HOSTNAME_STUB =
 
 const ORCA_STUB = '#!/usr/bin/env bash\nexit 0\n'
 
+/** U183 R4: the relay preflight asks node for its version via `-p`. */
+function nodeStub(version: string): string {
+  return `#!/usr/bin/env bash
+if [ "$1" = "-p" ]; then echo ${version}; exit 0; fi
+if [ "$1" = "--version" ]; then echo v${version}; fi
+exit 0
+`
+}
+
+const NODE_2218_STUB = nodeStub('22.18.0')
+const NODE_21_STUB = nodeStub('21.7.0')
+
+/** U183 R4: a relay root + entry that the preflight accepts. */
+function makeRelayRoot(home: string): string {
+  const relayRoot = join(home, 'orca-cloud')
+  const entry = join(relayRoot, 'cloud-platform', 'apps', 'relay', 'src', 'relay.ts')
+  mkdirSync(join(relayRoot, 'cloud-platform', 'apps', 'relay', 'src'), { recursive: true })
+  writeFileSync(entry, '')
+  return relayRoot
+}
+
 /** The generated host script for a fresh one-time token. */
 async function fetchHostScript(): Promise<string> {
   const token = await mintHostToken()
   const res = await fetch(`${api.url}/install/host.sh?token=${token}`, {
     headers: auth(adminToken)
   })
+  assert.equal(res.status, 200)
+  return res.text()
+}
+
+async function fetchRelayScript(): Promise<string> {
+  const res = await fetch(`${api.url}/install/relay.sh`, { headers: auth(adminToken) })
   assert.equal(res.status, 200)
   return res.text()
 }
@@ -347,7 +375,10 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     assert.equal(res.headers.get('cache-control'), 'no-store')
     const script = await res.text()
     assert.match(script, /^#!\/usr\/bin\/env bash/)
-    assert.ok(script.includes(`ORCA_CLOUD_API_URL=${api.url}`), 'platform address must be embedded')
+    assert.ok(
+      script.includes(`ORCA_PLATFORM_URL='${api.url}'`),
+      'platform address must be embedded'
+    )
     assert.ok(
       script.includes(`ORCA_CLOUD_INTERNAL_TOKEN=${INTERNAL_TOKEN}`),
       'internal token must be embedded'
@@ -612,44 +643,84 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     assert.equal(existsSync(join(home, '.orca-cloud', 'host.env')), false)
   })
 
-  test('U182: relay 缺 node 时 fail-fast', async () => {
-    const res = await fetch(`${api.url}/install/relay.sh`, { headers: auth(adminToken) })
-    assert.equal(res.status, 200)
+  test('U183 R4: relay 缺 node 时以 64 失败且不写配置', async () => {
     const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
     const bin = makeSparsePath(home, {}, ['node'])
-    const run = runInstallScript(await res.text(), home, { PATH: bin })
-
-    assert.notEqual(run.status, 0)
+    const run = runInstallScript(await fetchRelayScript(), home, { PATH: bin })
+    assert.equal(run.status, 64, run.stderr)
     assert.match(run.stderr, /未找到 node/)
+    assert.equal(existsSync(join(home, '.orca-cloud', 'relay.env')), false)
   })
 
-  test('U182: relay 缺中继代码时 fail-fast，不假装安装', async () => {
-    const res = await fetch(`${api.url}/install/relay.sh`, { headers: auth(adminToken) })
-    assert.equal(res.status, 200)
+  test('U183 R4: Node 21 以 64 失败且安装根无 release', async () => {
     const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
-    const bin = makeSparsePath(home, { node: '#!/usr/bin/env bash\nexit 0\n' })
-    const run = runInstallScript(await res.text(), home, {
-      PATH: bin,
-      ORCA_RELAY_ROOT: join(home, 'missing-relay')
-    })
-
-    assert.notEqual(run.status, 0)
-    assert.match(run.stderr, /未找到中继程序/)
-  })
-
-  test('U182: relay 无 systemctl 时打印 nohup 启动命令且安装成功', async () => {
-    const res = await fetch(`${api.url}/install/relay.sh`, { headers: auth(adminToken) })
-    assert.equal(res.status, 200)
-    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
-    const relayRoot = join(home, 'orca-cloud')
-    mkdirSync(join(relayRoot, 'cloud-platform', 'apps', 'relay', 'src'), { recursive: true })
-    writeFileSync(join(relayRoot, 'cloud-platform', 'apps', 'relay', 'src', 'relay.ts'), '')
-    const bin = makeSparsePath(home, { node: '#!/usr/bin/env bash\nexit 0\n' })
-    const run = runInstallScript(await res.text(), home, {
+    const relayRoot = makeRelayRoot(home)
+    const bin = makeSparsePath(home, { node: NODE_21_STUB })
+    const run = runInstallScript(await fetchRelayScript(), home, {
       PATH: bin,
       ORCA_RELAY_ROOT: relayRoot
     })
+    assert.equal(run.status, 64, run.stderr)
+    assert.match(run.stderr, /版本过低.*21\.7\.0/)
+    assert.equal(existsSync(join(home, '.orca-cloud', 'relay.env')), false)
+    assert.equal(existsSync(join(relayRoot, 'releases')), false)
+  })
 
+  test('U183 R4: relay 缺中继代码时以 78 失败，不假装安装', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const bin = makeSparsePath(home, { node: NODE_2218_STUB })
+    const run = runInstallScript(await fetchRelayScript(), home, {
+      PATH: bin,
+      ORCA_RELAY_ROOT: join(home, 'missing-relay')
+    })
+    assert.equal(run.status, 78, run.stderr)
+    assert.match(run.stderr, /未找到中继程序/)
+    assert.equal(existsSync(join(home, '.orca-cloud', 'relay.env')), false)
+  })
+
+  test('U183 R4: 安装根不可写以 78 失败且不写配置', async (t) => {
+    if (process.getuid?.() === 0) {
+      t.skip('root 可写任意目录')
+      return
+    }
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const relayRoot = makeRelayRoot(home)
+    const bin = makeSparsePath(home, { node: NODE_2218_STUB })
+    chmodSync(relayRoot, 0o500)
+    try {
+      const run = runInstallScript(await fetchRelayScript(), home, {
+        PATH: bin,
+        ORCA_RELAY_ROOT: relayRoot
+      })
+      assert.equal(run.status, 78, run.stderr)
+      assert.match(run.stderr, /安装根不可写/)
+      assert.equal(existsSync(join(home, '.orca-cloud', 'relay.env')), false)
+    } finally {
+      chmodSync(relayRoot, 0o700)
+    }
+  })
+
+  test('U183 R4: 平台健康检查失败以 68 失败，不写 env', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const relayRoot = makeRelayRoot(home)
+    const bin = makeSparsePath(home, { node: NODE_2218_STUB })
+    // Point this copy at a closed port to exercise health without stopping the API.
+    const script = (await fetchRelayScript()).replace(api.url, 'http://127.0.0.1:1')
+    const run = runInstallScript(script, home, { PATH: bin, ORCA_RELAY_ROOT: relayRoot })
+    assert.equal(run.status, 68, run.stderr)
+    assert.match(run.stderr, /健康检查失败（68/)
+    assert.equal(existsSync(join(home, '.orca-cloud', 'relay.env')), false)
+    assert.equal(existsSync(join(relayRoot, 'releases')), false)
+  })
+
+  test('U183 R4: relay 无 systemctl 时打印 nohup 启动命令且安装成功', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const relayRoot = makeRelayRoot(home)
+    const bin = makeSparsePath(home, { node: NODE_2218_STUB })
+    const run = runInstallScript(await fetchRelayScript(), home, {
+      PATH: bin,
+      ORCA_RELAY_ROOT: relayRoot
+    })
     assert.equal(run.status, 0, run.stderr)
     assert.match(run.stdout, /未检测到 systemctl/)
     assert.match(run.stdout, /nohup .*relay\.ts/)

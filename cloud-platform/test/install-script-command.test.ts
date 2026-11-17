@@ -2,6 +2,8 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   requireCommand,
+  requireNodeVersion,
+  requireWritableDir,
   shellQuote,
   systemdAvailable
 } from '../apps/api/src/install-script-command.ts'
@@ -24,6 +26,22 @@ describe('U183 R12: install-script command helper', () => {
 
   test('systemdAvailable 是可作 if 条件的 systemctl 探测', () => {
     assert.match(systemdAvailable(), /command -v systemctl/)
+  })
+
+  test('requireNodeVersion 以 64 拒绝低于门槛的 Node', () => {
+    const snippet = requireNodeVersion('"$NODE_BIN"', 22, 18, 'Node.js 版本过低（64）')
+    assert.match(snippet, /process\.versions\.node/)
+    assert.match(snippet, /-lt 22/)
+    assert.match(snippet, /-lt 18/)
+    assert.match(snippet, /exit 64/)
+  })
+
+  test('requireWritableDir 以 78 拒绝不可写的安装根', () => {
+    const snippet = requireWritableDir('$ORCA_RELAY_ROOT', '安装根不可写（78）')
+    assert.match(snippet, /mkdir -p "\$ORCA_RELAY_ROOT"/)
+    assert.match(snippet, /-w "\$ORCA_RELAY_ROOT"/)
+    assert.match(snippet, /安装根不可写/)
+    assert.match(snippet, /exit 78/)
   })
 
   test('shellQuote 复用单引号转义实现', () => {

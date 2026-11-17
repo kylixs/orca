@@ -30,3 +30,32 @@ fi`
 export function systemdAvailable(): string {
   return 'command -v systemctl >/dev/null 2>&1'
 }
+
+/** Fail with EX_USAGE (64) unless `nodeExpr` reports at least the given version. */
+export function requireNodeVersion(
+  nodeExpr: string,
+  minMajor: number,
+  minMinor: number,
+  message: string,
+  exitCode = 64
+): string {
+  return `ORCA_NODE_VERSION="$(${nodeExpr} -p 'process.versions.node' 2>/dev/null || true)"
+case "$ORCA_NODE_VERSION" in
+  ''|*[!0-9.]*) echo ${shellQuote(`>> ${message}`)} >&2; exit ${exitCode} ;;
+esac
+ORCA_NODE_MAJOR="\${ORCA_NODE_VERSION%%.*}"
+ORCA_NODE_REST="\${ORCA_NODE_VERSION#*.}"
+ORCA_NODE_MINOR="\${ORCA_NODE_REST%%.*}"
+if [ "$ORCA_NODE_MAJOR" -lt ${minMajor} ] || { [ "$ORCA_NODE_MAJOR" -eq ${minMajor} ] && [ "$ORCA_NODE_MINOR" -lt ${minMinor} ]; }; then
+  echo ${shellQuote(`>> ${message}`)}"（当前 $ORCA_NODE_VERSION）" >&2
+  exit ${exitCode}
+fi`
+}
+
+/** Fail with EX_CONFIG (78) unless `dirExpr` exists or can be created and written. */
+export function requireWritableDir(dirExpr: string, message: string, exitCode = 78): string {
+  return `if ! mkdir -p "${dirExpr}" 2>/dev/null || [ ! -w "${dirExpr}" ]; then
+  echo ${shellQuote(`>> ${message}`)} >&2
+  exit ${exitCode}
+fi`
+}

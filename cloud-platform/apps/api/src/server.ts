@@ -44,7 +44,13 @@ import { createRemoteAudit, type AuditSink } from './audit-writer-client.ts'
 import { createSigningKeyRing } from './signing-key-ring.ts'
 import type { AuditEvent, AuditEventInput } from './store.ts'
 import { openAuditLogFile } from './audit-log-file.ts'
-import { requireCommand, shellQuote, systemdAvailable } from './install-script-command.ts'
+import {
+  requireCommand,
+  requireNodeVersion,
+  requireWritableDir,
+  shellQuote,
+  systemdAvailable
+} from './install-script-command.ts'
 import { attachStorePersistence } from './store-persistence.ts'
 import { startInternalChannel } from './internal-channel.ts'
 import { ldapProfile, MockLdapAdapter, type LdapAdapter } from './ldap.ts'
@@ -450,39 +456,41 @@ umask 077
 ORCA_ENV_FILE="\${ORCA_ENV_FILE:-$HOME/.orca-cloud/relay.env}"
 ORCA_ENV_DIR="$(dirname "$ORCA_ENV_FILE")"
 
-# U182: this script does not install the relay — check the runtime and the
-# entry it will print, and fail instead of claiming an unusable install.
+# U183 R4: preflight before any write. Node missing/old is EX_USAGE (64);
+# an unusable entry or install root is EX_CONFIG (78); platform unreachable
+# is 68. A failed preflight leaves no relay.env and no release behind.
 ORCA_NODE_BIN="$(command -v node 2>/dev/null || true)"
-${requireCommand('node', '未找到 node：本脚本不安装中继运行时，请先安装 Node.js 并确保其在 PATH 中')}
-ORCA_RELAY_ROOT="\${ORCA_RELAY_ROOT:-/opt/orca-cloud}"
+${requireCommand('node', '未找到 node（64）：本脚本不安装中继运行时，请安装 Node.js >=22.18 并确保其在 PATH 中', 64)}
+${requireNodeVersion('"$ORCA_NODE_BIN"', 22, 18, 'Node.js 版本过低（64）：中继需要 >=22.18')}
+ORCA_RELAY_ROOT="\${ORCA_RELAY_ROOT:-$HOME/.orca-cloud/relay}"
 ORCA_RELAY_ENTRY="$ORCA_RELAY_ROOT/cloud-platform/apps/relay/src/relay.ts"
 if [ ! -f "$ORCA_RELAY_ENTRY" ]; then
-  echo ">> 未找到中继程序 $ORCA_RELAY_ENTRY：本脚本不安装中继代码，请先把 Orca 仓库放到该路径，或设置 ORCA_RELAY_ROOT" >&2
-  exit 1
+  echo ">> 未找到中继程序 $ORCA_RELAY_ENTRY（78）：本脚本不安装中继代码，请把 Orca 仓库放到该路径，或设置 ORCA_RELAY_ROOT" >&2
+  exit 78
 fi
+${requireWritableDir('$ORCA_RELAY_ROOT', '安装根不可写（78）：请设置 ORCA_RELAY_ROOT 指向当前用户可写目录后重试')}
+
+ORCA_PLATFORM_URL=${shellQuote(input.platformUrl)}
+echo ">> 平台连通性检查"
+# U182: no redirect following; only an explicit 2xx is healthy, and bounded time
+# so a black-holed DNS/gateway cannot hang the install.
+ORCA_HEALTH_CODE="$(curl -sS --connect-timeout 5 --max-time 10 -o /dev/null -w '%{http_code}' "$ORCA_PLATFORM_URL/health")" || ORCA_HEALTH_CODE=000
+case "$ORCA_HEALTH_CODE" in
+  2??) ;;
+  *) echo ">> 平台健康检查失败（68 / HTTP $ORCA_HEALTH_CODE）：$ORCA_PLATFORM_URL/health 不可达" >&2; exit 68 ;;
+esac
 
 mkdir -p "$ORCA_ENV_DIR"
 chmod 700 "$ORCA_ENV_DIR" 2>/dev/null || true
 
 echo ">> 写入环境配置 $ORCA_ENV_FILE"
 {
-  printf '%s\\n' ${shellQuote(`ORCA_CLOUD_API_URL=${input.platformUrl}`)}
+  printf 'ORCA_CLOUD_API_URL=%s\\n' "$ORCA_PLATFORM_URL"
   printf '%s\\n' ${shellQuote(`ORCA_CLOUD_INTERNAL_TOKEN=${input.internalToken}`)}
   printf 'PORT=%s\\n' "\${PORT:-18443}"
   printf 'RELAY_PUBLIC_HOST=%s\\n' "\${RELAY_PUBLIC_HOST:-}"
 } > "$ORCA_ENV_FILE"
 chmod 600 "$ORCA_ENV_FILE"
-
-echo ">> 平台连通性检查"
-# U180: the health check needs the URL we just wrote; load it without dropping -u.
-set -a; . "$ORCA_ENV_FILE"; set +a
-# U182: no redirect following; only an explicit 2xx is healthy, and bounded time
-# so a black-holed DNS/gateway cannot hang the install.
-ORCA_HEALTH_CODE="$(curl -sS --connect-timeout 5 --max-time 10 -o /dev/null -w '%{http_code}' "$ORCA_CLOUD_API_URL/health")" || ORCA_HEALTH_CODE=000
-case "$ORCA_HEALTH_CODE" in
-  2??) ;;
-  *) echo ">> 平台健康检查失败（HTTP $ORCA_HEALTH_CODE）：$ORCA_CLOUD_API_URL/health 不可达" >&2; exit 1 ;;
-esac
 echo ">> 环境已就绪：$ORCA_ENV_FILE"
 
 if ${systemdAvailable()}; then
