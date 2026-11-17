@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   chromium,
+  request as playwrightRequest,
   type Browser,
   type BrowserContext,
   type Page,
@@ -469,6 +470,107 @@ describe('U197 S5 Web 客户端真实 Chromium：Cookie 会话 / 迁移 / 回退
     }
   })
 
+  /**
+   * AC7 real-browser, second tab: logout clears the Cookie and revokes the
+   * session; "the other tab switches to login within N seconds **or** is
+   * passively signed out by its next request". This build has no `storage` /
+   * BroadcastChannel listener, so the measured contract is the passive one:
+   * B stays on the app until its next business request gets 401, then the
+   * existing 401 → refresh → rejected → logout path signs it out. The test
+   * measures the mode instead of assuming it (a 3s window is offered first);
+   * whichever branch runs is reported as a test diagnostic.
+   */
+  test('AC7 双标签登出：B 下一次业务请求被动回登录，旧 Cookie 刷新 401', async (t) => {
+    const { context, page: tabA } = await openConsole(cookieMode.url)
+    try {
+      await loginThroughUi(tabA)
+      // Second page in the same context: shared Cookie jar and localStorage.
+      const tabB = await context.newPage()
+      await tabB.goto(`${cookieMode.url}/`, { waitUntil: 'domcontentloaded' })
+      await tabB.waitForSelector(VIEW_APP, { state: 'visible', timeout: 20_000 })
+      assert.equal(await isVisible(tabA, VIEW_APP), true)
+
+      const cookieBefore = await refreshCookieOf(context)
+      assert.ok(cookieBefore, 'login must set the shared HttpOnly Cookie')
+      // Let B's initial workbench render finish so its requests are not mistaken
+      // for requests caused by the logout.
+      await delay(500)
+
+      // Business calls only: the active/passive verdict must not count auth traffic.
+      const bBusiness: { path: string; status: number }[] = []
+      const bRefreshStatuses: number[] = []
+      tabB.on('response', (response) => {
+        const path = new URL(response.url()).pathname
+        if (path === '/v1/auth/refresh') {
+          bRefreshStatuses.push(response.status())
+        }
+        if (path.startsWith('/v1/') && !path.startsWith('/v1/auth/')) {
+          bBusiness.push({ path, status: response.status() })
+        }
+      })
+      let bBusinessRequests = 0
+      tabB.on('request', (request) => {
+        const path = new URL(request.url()).pathname
+        if (path.startsWith('/v1/') && !path.startsWith('/v1/auth/')) {
+          bBusinessRequests += 1
+        }
+      })
+
+      // Tab A signs out through the real UI button.
+      const logoutResponse = tabA.waitForResponse(
+        (response) => new URL(response.url()).pathname === '/v1/auth/logout',
+        { timeout: 20_000 }
+      )
+      await tabA.locator('#logoutBtn').click()
+      assert.equal((await logoutResponse).status(), 200)
+      await tabA.waitForSelector(VIEW_LOGIN, { state: 'visible', timeout: 15_000 })
+      assert.equal(await isVisible(tabA, VIEW_APP), false, 'A returns to login')
+      assert.equal(await refreshCookieOf(context), undefined, 'A cleared the shared Cookie')
+
+      // AC7 window: did B switch to login without issuing anything itself?
+      await delay(3000)
+      const bSwitchedAlone =
+        (await isVisible(tabB, VIEW_LOGIN)) && bBusinessRequests === 0
+
+      if (bSwitchedAlone) {
+        t.diagnostic('AC7 second-tab logout: ACTIVE (login without a business request)')
+        assert.equal(await isVisible(tabB, VIEW_APP), false)
+      } else {
+        // Not implemented in this build; assert the design's "or" branch.
+        t.diagnostic('AC7 second-tab logout: PASSIVE (next business request 401)')
+        if (!(await isVisible(tabB, VIEW_LOGIN))) {
+          await tabB.locator('.nav-item[data-route="relays"]').click()
+          await tabB.waitForSelector(VIEW_LOGIN, { state: 'visible', timeout: 15_000 })
+        }
+        assert.equal(await isVisible(tabB, VIEW_APP), false, 'B also lands on login')
+        assert.ok(bBusiness.length >= 1, 'B reached the server after logout')
+        assert.deepEqual(
+          bBusiness.map((entry) => entry.status),
+          bBusiness.map(() => 401),
+          'the next business request is refused'
+        )
+        assert.deepEqual(bRefreshStatuses, [401], 'the post-logout Cookie refresh is refused')
+      }
+
+      // Server consequence: the pre-logout Cookie value must no longer refresh.
+      const probe = await playwrightRequest.newContext()
+      try {
+        const oldCookieRefresh = await probe.post(`${cookieMode.url}/v1/auth/refresh`, {
+          headers: {
+            origin: cookieMode.url,
+            'content-type': 'application/json',
+            cookie: `orca_refresh=${cookieBefore.value}`
+          }
+        })
+        assert.equal(oldCookieRefresh.status(), 401, 'the revoked session cannot refresh')
+      } finally {
+        await probe.dispose()
+      }
+    } finally {
+      await context.close()
+    }
+  })
+
   test('伪造 orca.authMode=cookie 且无 Cookie：一次失败刷新后回登录，无循环', async () => {
     const context = await browser.newContext()
     const page = await context.newPage()
@@ -499,7 +601,9 @@ describe('U197 S5 Web 客户端真实 Chromium：Cookie 会话 / 迁移 / 回退
       await delay(1900)
       const logoutCalls: string[] = []
       page.on('request', (request) => {
-        if (new URL(request.url()).pathname === '/v1/auth/logout') logoutCalls.push(request.url())
+        if (new URL(request.url()).pathname === '/v1/auth/logout') {
+          logoutCalls.push(request.url())
+        }
       })
       let aborted = 0
       await page.route('**/v1/auth/refresh', (route) => {
