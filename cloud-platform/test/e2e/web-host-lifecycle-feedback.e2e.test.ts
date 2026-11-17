@@ -166,7 +166,8 @@ test('G09-1 抽屉「进入维护模式」→ 行变维护中、项目打开入�
   assert.equal(open.disabled, true, 'a project on a maintenance host cannot be opened')
   assert.match(open.title, /维护/)
 
-  cases['maintenance-enter'] = '抽屉进入维护 → POST {enabled:true,reason}；列表行维护中；项目打开禁用（主机维护中）'
+  cases['maintenance-enter'] =
+    '抽屉进入维护 → POST {enabled:true,reason}；列表行维护中；项目打开禁用（主机维护中）'
 }, 120_000)
 
 test('G09-2 下线：样式化确认卡取消零 DELETE，确认后行变已吊销', async () => {
@@ -220,8 +221,14 @@ test('G09-3 注册弹框「复制命令」：写入完整命令、toast 已复�
 
   assert.equal(callsTo(page, 'POST', '/v1/hosts/tokens'), 1, 'the dialog mints one token')
   const command = page.window.document.querySelector('#installCmd')?.textContent ?? ''
-  assert.match(command, /^bash <\(curl -fsSL https:\/\/web\.console\.local\/install\/host\.sh\?/)
+  assert.match(
+    command,
+    /^curl -fsSL "https:\/\/web\.console\.local\/install\/host\.sh\?/,
+    'command downloads the script explicitly (U182: no bash <(curl …) pipe)'
+  )
   assert.match(command, /token=/)
+  assert.match(command, /\|\| exit 1/, 'command propagates download/exec failure')
+  assert.doesNotMatch(command, /bash <\(curl/)
 
   page.window.document
     .querySelector<HTMLButtonElement>('.dialog-backdrop [data-action="0"]')!
@@ -244,7 +251,11 @@ test('G09-4 失败态：令牌/维护/下线请求失败均 toast 原因且状�
   page.window.document.querySelector<HTMLButtonElement>('#registerHostBtn')!.click()
   await page.settle()
   assert.match(lastToast(page), /^注册主机失败：模拟平台故障$/)
-  assert.equal(page.window.document.querySelector('.dialog-backdrop'), null, 'a failed mint opens no dialog')
+  assert.equal(
+    page.window.document.querySelector('.dialog-backdrop'),
+    null,
+    'a failed mint opens no dialog'
+  )
 
   await openHostDrawer(page, failHostId)
   const maintenancePath = `/v1/hosts/${failHostId}/maintenance`
@@ -268,5 +279,6 @@ test('G09-4 失败态：令牌/维护/下线请求失败均 toast 原因且状�
   assert.equal((await hostFromPlatform(failHostId)).revokedAt ?? null, null)
 
   page.clearFails()
-  cases['failure-toast'] = '令牌 500 → 注册主机失败：模拟平台故障（不开弹框）；维护 500 → 进入维护模式失败、状态 online；下线 500 → 下线主机失败、未吊销'
+  cases['failure-toast'] =
+    '令牌 500 → 注册主机失败：模拟平台故障（不开弹框）；维护 500 → 进入维护模式失败、状态 online；下线 500 → 下线主机失败、未吊销'
 }, 120_000)
