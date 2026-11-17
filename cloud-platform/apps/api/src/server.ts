@@ -40,8 +40,10 @@ import {
   type SigningKey
 } from '../../../packages/contract/src/credential.ts'
 import { AuditChain, type AuditSummary } from './audit.ts'
-import { parseAuditQuery } from './audit-query.ts'
+import { AUDIT_WINDOW_MS, parseAuditQuery } from './audit-query.ts'
 import {
+  AUDIT_EXPORT_OBJECT_KEYS,
+  DEFAULT_AUDIT_EXPORT_DOWNLOAD_TOKEN_TTL_MS,
   resolveAuditExportObjectPath,
   type AuditExportJob,
   type AuditExportJobStore
@@ -5636,7 +5638,16 @@ export function createApp(config: ApiConfig): ApiHandle {
         },
         // U78 additive: the authoritative eventType catalog, so the console's
         // 操作类型 dropdown derives from the server instead of drifting from it.
-        eventTypes: [...AUDIT_EVENT_TYPES]
+        eventTypes: [...AUDIT_EVENT_TYPES],
+        // U201 E10 additive capability probe: clients call export only when listed.
+        auditExport: {
+          formats: Object.keys(AUDIT_EXPORT_OBJECT_KEYS),
+          maxWindowDays: AUDIT_WINDOW_MS / 86_400_000,
+          maxRows: DEFAULT_AUDIT_EXPORT_MAX_EVENTS,
+          maxBytes: DEFAULT_AUDIT_EXPORT_MAX_BYTES,
+          jobTtlSeconds: auditExportStore.ttlMs / 1000,
+          downloadTokenTtlSeconds: DEFAULT_AUDIT_EXPORT_DOWNLOAD_TOKEN_TTL_MS / 1000
+        }
       })
     }
 
