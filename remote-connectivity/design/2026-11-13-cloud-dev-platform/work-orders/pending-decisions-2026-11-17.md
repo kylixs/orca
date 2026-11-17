@@ -194,6 +194,7 @@
 | D17 | U197 迁移分支「能力未知（无标记）」是否在加载发一次无 body 探测？覆盖 AC9b（有旧键）与 AC9c（无旧键、清 localStorage 后 Cookie 仍有效）；探测失败是否写 signed-out/legacy 标记避免每次加载重试 | 采纳设计字面（1 次无 body → 1 次 body 回退）；若确认旧服务端部署期成本不可接受，则修订 AC9b 为「标记缺失时按渐进路径，由下一次 401/登录响应迁移」 | 维持 S4 现状（无探测，渐进迁移），AC9b/AC9c 修订；或加 signed-out 标记后按设计探测 | 每次加载多 1 个失败请求（旧服务端/已登出用户），而渐进迁移最多延迟到 access 过期；清 localStorage 用户即使 Cookie 有效也停在登录页（U221 F1） | `u197-token-storage-design.md` AC9b；U219 |
 | D18 | U233 F6：`refreshTokens`（明文 key）与 `sessions` 无界增长；`ORCA_PLATFORM_STORE_FILE` 开发快照会含明文 refresh | 增加 sweep：撤销/过期 session 及其 token 在宽限结束后删除；保持明文内存 map（U216 已接受），快照仍剥离 `currentRefreshToken` | 不处理，仅文档登记（长期运行内存增长） | 长跑进程内存与快照敏感面；修复不改变线上协议 | 台账 U233 F6 |
 | D19 | U237：状态变更端点（maintenance/policy PUT、项目 PATCH）是否要求显式必填字段，拒绝空 body/`null` 的「默认语义」？ | 加必填校验（400），避免意外请求静默变更状态 | 维持现状（空 body 走默认值） | 变更会拒绝既有 `{}` 调用语义，需确认无客户端依赖 | U236 复审观察 |
+| D20 | U243①「刷新过期→自动登出」是否新增 `session.expired` 审计事件（方案 A）；事件名/result/actor/是否带 expiredAt | A：新增 `session.expired`（`result=success`、`actor=username`、`targetType=session`、metadata{reason:EXPIRED,source,expiredAt}、best-effort、由 `revokeSessionOnce` 首个撤销者写 1 条） | 不新增（链上该序列无撤销事件） | 新事件进下拉/筛选；旧客户端加性兼容（勿加 eventFamily） | `test-reports/u243-session-expiry-event-brief.md` |
 
 ## 附：D17/D10 一页决策简报（2026-11-18，U197 实施收口）
 
