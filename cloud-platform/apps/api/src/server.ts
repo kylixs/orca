@@ -302,6 +302,8 @@ if [ ! -s "\$ORCA_TLS_CERT" ] || [ ! -s "\$ORCA_TLS_KEY" ]; then
 fi
 
 echo ">> 平台连通性检查"
+# U180: the health check needs the URL we just wrote; load it without dropping -u.
+set -a; . "\$ORCA_ENV_FILE"; set +a
 curl -fsS "\$ORCA_CLOUD_API_URL/health" > /dev/null
 echo ">> 环境已就绪：\$ORCA_ENV_FILE"
 
@@ -347,6 +349,8 @@ echo ">> 写入环境配置 \$ORCA_ENV_FILE"
 } > "\$ORCA_ENV_FILE"
 
 echo ">> 平台连通性检查"
+# U180: the health check needs the URL we just wrote; load it without dropping -u.
+set -a; . "\$ORCA_ENV_FILE"; set +a
 curl -fsS "\$ORCA_CLOUD_API_URL/health" > /dev/null
 echo ">> 环境已就绪：\$ORCA_ENV_FILE"
 

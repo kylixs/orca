@@ -1,6 +1,8 @@
 import { test, before, after, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Window } from 'happy-dom'
 import { buildHash, DEFAULT_ROUTE, parseHash } from '../../apps/web/router/routes.js'
@@ -59,6 +61,42 @@ async function mintRelayDownload(): Promise<string> {
 /** Extracts the URL from `bash <(curl -fsSL <url>)`, i.e. what the target machine runs. */
 function commandUrl(command: string): string {
   return /curl -fsSL ([^)\s]+)/.exec(command)?.[1] ?? ''
+}
+
+/**
+ * U180: runs a generated script the way a clean host does — `bash -u`, a fresh
+ * HOME, and no ORCA_* in the environment. Only PATH survives so curl/openssl/hostname
+ * resolve; the platform's own 127.0.0.1 server is the /health stub.
+ */
+function runInstallScript(script: string): {
+  status: number | null
+  stdout: string
+  stderr: string
+  home: string
+} {
+  const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+  // Skip the openssl step: the host script only needs the health call here.
+  mkdirSync(join(home, '.orca-cloud', 'tls'), { recursive: true })
+  writeFileSync(join(home, '.orca-cloud', 'tls', 'host.crt'), 'stub')
+  writeFileSync(join(home, '.orca-cloud', 'tls', 'host.key'), 'stub')
+  // `hostname -I` is Linux-only; stub it so the clean-shell run is host-agnostic.
+  mkdirSync(join(home, 'bin'))
+  writeFileSync(
+    join(home, 'bin', 'hostname'),
+    '#!/usr/bin/env bash\ncase "$1" in -s|-I) echo orca-test-host ;; *) echo orca-test-host ;; esac\n',
+    { mode: 0o755 }
+  )
+  const result = spawnSync('bash', ['-u'], {
+    input: script,
+    encoding: 'utf8',
+    cwd: home,
+    env: {
+      PATH: `${join(home, 'bin')}:${process.env.PATH ?? ''}`,
+      HOME: home,
+      TMPDIR: process.env.TMPDIR ?? '/tmp'
+    }
+  })
+  return { status: result.status, stdout: result.stdout, stderr: result.stderr, home }
 }
 
 type AuditEvent = { eventType: string; actor: string | null; result: string; metadata: unknown }
@@ -253,6 +291,36 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     })
   })
 
+  test('U180: host.sh 在干净 shell（无外部 ORCA_* env）中跑过健康检查', async () => {
+    const health = await fetch(`${api.url}/health`)
+    assert.equal(health.status, 200, 'the local platform must answer the health stub')
+
+    const token = await mintHostToken()
+    const res = await fetch(`${api.url}/install/host.sh?token=${token}`, {
+      headers: auth(adminToken)
+    })
+    assert.equal(res.status, 200)
+    const run = runInstallScript(await res.text())
+
+    assert.doesNotMatch(run.stderr, /unbound variable/, run.stderr)
+    assert.equal(run.status, 0, run.stderr)
+    assert.match(run.stdout, /环境已就绪/)
+    const envFile = readFileSync(join(run.home, '.orca-cloud', 'host.env'), 'utf8')
+    assert.ok(envFile.includes(`ORCA_CLOUD_API_URL=${api.url}`))
+  })
+
+  test('U180: relay.sh 同样在干净 shell 中跑过健康检查', async () => {
+    const res = await fetch(`${api.url}/install/relay.sh`, { headers: auth(adminToken) })
+    assert.equal(res.status, 200)
+    const run = runInstallScript(await res.text())
+
+    assert.doesNotMatch(run.stderr, /unbound variable/, run.stderr)
+    assert.equal(run.status, 0, run.stderr)
+    assert.match(run.stdout, /环境已就绪/)
+    const envFile = readFileSync(join(run.home, '.orca-cloud', 'relay.env'), 'utf8')
+    assert.ok(envFile.includes(`ORCA_CLOUD_API_URL=${api.url}`))
+  })
+
   test('开发者拉取脚本 403，拒绝与成功都写入 install_script 审计且不含令牌明文', async () => {
     const token = await mintHostToken()
     for (const path of [`/install/host.sh?token=${token}`, '/install/relay.sh']) {
@@ -271,10 +339,10 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     )
     const successes = events.filter((event) => event.result === 'success')
     assert.ok(successes.length >= 2, 'both script kinds must record their own disclosure')
-    assert.deepEqual(successes.map((event) => (event.metadata as { type: string }).type).sort(), [
-      'host',
-      'relay'
-    ])
+    const successTypes = successes.map((event) => (event.metadata as { type: string }).type)
+    for (const kind of ['host', 'relay']) {
+      assert.ok(successTypes.includes(kind), `${kind} disclosure must be recorded`)
+    }
     assert.ok(
       successes.every((event) => !JSON.stringify(event.metadata).includes(token)),
       'no token plaintext in the audit metadata'
