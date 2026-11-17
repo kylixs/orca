@@ -5313,6 +5313,8 @@ window.addEventListener('hashchange', () => {
         try {
           // Why retried: the bootstrap must not start a second refresh chain.
           const me = await withTimeout(api('/v1/me', {}, { retried: true }), STARTUP_TIMEOUT_MS)
+          // U239: a login/logout during the await owns the newer generation.
+          if (state.authEpoch !== startupEpoch) return
           state.user = { ...me.user, displayName: me.user.displayName, dept: me.user.dept }
           // U225 N3R: a stale cookie marker can survive a server downgraded to
           // never; the body fallback restored the legacy keys, so bind them.
@@ -5323,8 +5325,9 @@ window.addEventListener('hashchange', () => {
           // fall through to the login view
         }
       }
-      // U238: a login superseded this startup generation; leave its session alone.
-      if (state.authEpoch !== startupEpoch) return
+      // U238/U239: only a successful newer login owns the view; a failed login
+      // still needs the login view. The guard runs before abandonStartupAuth().
+      if (state.authEpoch !== startupEpoch && state.user) return
       // U234: the startup flow is over; a late refresh must see a new generation
       // and return `stale` instead of rewriting state or localStorage.
       abandonStartupAuth()
@@ -5336,6 +5339,8 @@ window.addEventListener('hashchange', () => {
       try {
         // U229 F5: the legacy token path includes its own body refresh.
         const me = await withTimeout(api('/v1/me'), STARTUP_TIMEOUT_MS)
+        // U239: a login/logout during the await owns the newer generation.
+        if (state.authEpoch !== startupEpoch) return
         state.user = { ...me.user, displayName: me.user.displayName, dept: me.user.dept }
         // U222 N3: a body refresh at startup has no user yet, so bind the
         // legacy keys once the account is known.
@@ -5343,9 +5348,9 @@ window.addEventListener('hashchange', () => {
         enterApp()
         return
       } catch {
-        // U238: never clear a newer login's tokens or views. The guard runs before
-        // abandonStartupAuth() bumps the epoch below.
-        if (state.authEpoch !== startupEpoch) return
+        // U238/U239: never clear a newer login's tokens or views, but a failed
+        // login (no user) must still fall through. Runs before abandonStartupAuth().
+        if (state.authEpoch !== startupEpoch && state.user) return
         state.accessToken = ''
         // U234: a request that timed out may still complete; abandon its refresh.
         abandonStartupAuth()
@@ -5354,13 +5359,14 @@ window.addEventListener('hashchange', () => {
         return
       }
     }
-    // No credentials to resume: this generation still owns the view.
-    if (state.authEpoch !== startupEpoch) return
+    // No credentials to resume: only a successful newer login owns the view.
+    if (state.authEpoch !== startupEpoch && state.user) return
     if (cachedUser) localStorage.removeItem('orca.user')
     showLogin()
   } catch {
-    // U238: a login superseded this startup generation; never sign it out.
-    if (state.authEpoch !== startupEpoch) return
+    // U238/U239: never sign out a successful newer login; a failed one still
+    // needs the login view.
+    if (state.authEpoch !== startupEpoch && state.user) return
     // U221 F2: a transport failure must land on the login view, never a blank page.
     abandonStartupAuth()
     if (cachedUser) localStorage.removeItem('orca.user')

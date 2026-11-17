@@ -44,7 +44,9 @@ async function cookieSessionJar(base: string): Promise<Map<string, string>> {
   return jar
 }
 
-async function legacyRefreshToken(base: string): Promise<string> {
+async function legacySession(
+  base: string
+): Promise<{ accessToken: string; refreshToken: string }> {
   const res = await fetch(`${base}/v1/auth/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -52,8 +54,13 @@ async function legacyRefreshToken(base: string): Promise<string> {
   })
   assert.equal(res.status, 200)
   const body = (await res.json()) as Record<string, unknown>
+  assert.equal(typeof body.accessToken, 'string')
   assert.equal(typeof body.refreshToken, 'string')
-  return String(body.refreshToken)
+  return { accessToken: String(body.accessToken), refreshToken: String(body.refreshToken) }
+}
+
+async function legacyRefreshToken(base: string): Promise<string> {
+  return (await legacySession(base)).refreshToken
 }
 
 function refreshCalls(page: WebConsolePage): string[] {
@@ -391,7 +398,7 @@ describe('U238 启动续集不得踢回已登录用户', () => {
     await page.release()
   })
 
-  test('启动刷新放行后返回 401：已登录用户仍停留在应用', async () => {
+  test('启动刷新迟到 stale（放行后已登录）不踢回', async () => {
     const base = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
     const page = loadWebConsolePage(base, {
       platformOrigin: ORIGIN,
@@ -411,5 +418,88 @@ describe('U238 启动续集不得踢回已登录用户', () => {
       'a late startup 401 must not sign out a login that superseded it'
     )
     assert.equal(page.hidden('#view-login'), true, 'the user must stay in the app')
+  })
+})
+
+describe('U239 启动续集的代际边界', () => {
+  test('Cookie 启动 /v1/me 在途时登录另一账号：迟到结果不得覆盖新会话', async () => {
+    const base = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const jar = await cookieSessionJar(base)
+    const page = loadWebConsolePage(base, {
+      platformOrigin: ORIGIN,
+      cookieJar: jar,
+      storage: { 'orca.authMode': 'cookie' },
+      holdOnLoad: ['GET /v1/me']
+    })
+    await page.settle()
+    assert.ok(page.calls().includes('GET /v1/me'), 'precondition: startup /v1/me is on the wire')
+
+    await page.submitLogin('zhangsan', 'Passw0rd!')
+    assert.equal(page.hidden('#view-app'), false, 'precondition: the new login entered the app')
+    assert.equal(page.text('#userName'), '张伟')
+
+    await page.release()
+    await page.settle()
+
+    assert.equal(
+      page.text('#userName'),
+      '张伟',
+      'a late startup /v1/me must not overwrite the newer login'
+    )
+    assert.equal(page.hidden('#view-app'), false)
+    assert.equal(page.hidden('#view-login'), true)
+  })
+
+  test('旧模式启动 /v1/me 在途时登录另一账号：迟到结果不得覆盖新会话', async () => {
+    const base = await start({ cookieMode: 'never' })
+    const session = await legacySession(base)
+    const page = loadWebConsolePage(base, {
+      storage: {
+        'orca.access': session.accessToken,
+        'orca.refresh': session.refreshToken,
+        'orca.tokenOwner': 'admin'
+      },
+      holdOnLoad: ['GET /v1/me']
+    })
+    await page.settle()
+    assert.ok(page.calls().includes('GET /v1/me'), 'precondition: startup /v1/me is on the wire')
+
+    await page.submitLogin('zhangsan', 'Passw0rd!')
+    assert.equal(page.hidden('#view-app'), false, 'precondition: the new login entered the app')
+
+    await page.release()
+    await page.settle()
+
+    assert.equal(
+      page.text('#userName'),
+      '张伟',
+      'a late startup /v1/me must not overwrite the newer login'
+    )
+    assert.equal(page.hidden('#view-app'), false)
+    assert.equal(page.hidden('#view-login'), true)
+  })
+
+  test('启动刷新挂起期间登录失败：超时后仍落到登录页', async () => {
+    const base = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const page = loadWebConsolePage(base, {
+      // 10s × 0.5 = 5s: the failed login lands well before the timeout.
+      timerScale: 0.5,
+      platformOrigin: ORIGIN,
+      cookieJar: new Map(),
+      storage: { 'orca.authMode': 'cookie' },
+      holdOnLoad: ['POST /v1/auth/refresh']
+    })
+    await page.submitLogin('admin', 'wrong-password')
+    await delay(3200)
+    await page.settle()
+
+    assert.equal(
+      page.hidden('#view-login'),
+      false,
+      'a failed login is a newer generation but not a session; the timeout must still show login'
+    )
+    assert.equal(page.hidden('#view-app'), true)
+
+    await page.release()
   })
 })
