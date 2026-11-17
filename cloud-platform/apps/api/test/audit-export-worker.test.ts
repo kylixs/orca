@@ -114,6 +114,9 @@ const objectPathFor = (root: string, jobId: string, format: AuditExportFormat) =
 
 const csvDataRows = (content: string) => content.split('\r\n').filter((line) => line !== '')
 
+/** Chunk scratch files live beside the object; none may survive a terminal run. */
+const partFiles = (dir: string) => readdirSync(dir).filter((name) => name.includes('.part-'))
+
 function parseJsonRecord(line: string): Record<string, unknown> {
   const value: unknown = JSON.parse(line)
   assert.ok(typeof value === 'object' && value !== null && !Array.isArray(value))
@@ -139,7 +142,9 @@ describe('分页、排序与产物', () => {
     const result = await worker.runAuditExportJob(job.jobId)
 
     assert.equal(result.status, 'succeeded')
-    if (result.status !== 'succeeded') return
+    if (result.status !== 'succeeded') {
+      return
+    }
     assert.equal(result.totalEvents, 450)
 
     assert.equal(chain.calls.length, 3)
@@ -168,6 +173,65 @@ describe('分页、排序与产物', () => {
     assert.equal(saved?.status, 'succeeded')
     assert.equal(saved?.totalEvents, 450)
     assert.equal(saved?.bytes, Buffer.byteLength(readFileSync(file, 'utf8')))
+  })
+
+  test('1200 条按 200/页 翻 6 页，分块拼接后无残留、表头与行数正确', async () => {
+    const root = tempRoot()
+    const time = clock()
+    const events = Array.from({ length: 1200 }, (_, index) => event(index + 1))
+    const chain = fakeChain(events)
+    const { store, worker } = makeWorker(root, chain, { now: time.now })
+
+    const csvJob = store.create({
+      requestedBy: 'user_1',
+      requestedByUsername: 'alice',
+      query: { limit: 200 },
+      format: 'csv'
+    })
+    const jsonlJob = store.create({
+      requestedBy: 'user_1',
+      requestedByUsername: 'alice',
+      query: { limit: 200 },
+      format: 'jsonl'
+    })
+
+    assert.equal((await worker.runAuditExportJob(csvJob.jobId)).status, 'succeeded')
+    // Six full data pages, plus the empty probe the chain asks for after a full last page.
+    assert.equal(chain.calls.length, 7)
+    assert.deepEqual(
+      chain.calls.map((call) => call.cursor),
+      [undefined, 1001, 801, 601, 401, 201, 1]
+    )
+    chain.calls.length = 0
+    assert.equal((await worker.runAuditExportJob(jsonlJob.jobId)).status, 'succeeded')
+    assert.equal(chain.calls.length, 7)
+
+    const csvFile = objectPathFor(root, csvJob.jobId, 'csv')
+    const csv = readFileSync(csvFile, 'utf8')
+    const rows = csvDataRows(csv)
+    assert.equal(rows.length, 1201)
+    assert.equal(rows[0], AUDIT_EXPORT_CSV_HEADER)
+    assert.equal(rows.filter((line) => line === AUDIT_EXPORT_CSV_HEADER).length, 1)
+    assert.equal(rows[1]?.split(',')[0], '1')
+    assert.equal(rows.at(-1)?.split(',')[0], '1200')
+    assert.deepEqual(partFiles(path.dirname(csvFile)), [])
+
+    const jsonlFile = objectPathFor(root, jsonlJob.jobId, 'jsonl')
+    const jsonl = readFileSync(jsonlFile, 'utf8')
+    const lines = jsonl.trimEnd().split('\n')
+    assert.equal(lines.length, 1200)
+    assert.deepEqual(
+      lines.map((line) => parseJsonRecord(line).seq),
+      events.map((entry) => entry.seq)
+    )
+    assert.deepEqual(partFiles(path.dirname(jsonlFile)), [])
+
+    const savedCsv = store.read(csvJob.jobId)
+    assert.equal(savedCsv?.totalEvents, 1200)
+    assert.equal(savedCsv?.bytes, Buffer.byteLength(csv))
+    const savedJsonl = store.read(jsonlJob.jobId)
+    assert.equal(savedJsonl?.totalEvents, 1200)
+    assert.equal(savedJsonl?.bytes, Buffer.byteLength(jsonl))
   })
 
   test('CSV 与 JSONL 两种格式都可读回', async () => {
@@ -297,6 +361,10 @@ describe('失败终态不留产物', () => {
       assert.equal(eventsResult.error.code, AUDIT_EXPORT_ERROR_TOO_LARGE)
     }
     assert.equal(existsSync(objectPathFor(root, eventsJob.jobId, 'csv')), false)
+    assert.deepEqual(
+      partFiles(path.dirname(objectPathFor(root, eventsJob.jobId, 'csv'))),
+      []
+    )
     const failed = byEvents.store.read(eventsJob.jobId)
     assert.equal(failed?.status, 'failed')
     assert.equal(failed?.error?.code, AUDIT_EXPORT_ERROR_TOO_LARGE)
@@ -315,6 +383,10 @@ describe('失败终态不留产物', () => {
       assert.equal(bytesResult.error.code, AUDIT_EXPORT_ERROR_TOO_LARGE)
     }
     assert.equal(existsSync(objectPathFor(rootBytes, bytesJob.jobId, 'jsonl')), false)
+    assert.deepEqual(
+      partFiles(path.dirname(objectPathFor(rootBytes, bytesJob.jobId, 'jsonl'))),
+      []
+    )
   })
 
   test('对象写入失败记为 EXPORT_WRITE_FAILED，无半截文件', async () => {
@@ -499,7 +571,9 @@ describe('远端异步审计查询（auditWriterUrls 拓扑）', () => {
     const result = await worker.runAuditExportJob(job.jobId)
 
     assert.equal(result.status, 'succeeded')
-    if (result.status !== 'succeeded') return
+    if (result.status !== 'succeeded') {
+      return
+    }
     assert.equal(result.totalEvents, 450)
     assert.equal(chain.calls.length, 3)
     assert.deepEqual(
@@ -542,6 +616,44 @@ describe('远端异步审计查询（auditWriterUrls 拓扑）', () => {
       assert.equal(result.error.code, AUDIT_EXPORT_ERROR_AUDIT_UNAVAILABLE)
     }
     assert.equal(existsSync(objectPathFor(root, job.jobId, 'csv')), false)
+    assert.equal(store.read(job.jobId)?.status, 'failed')
+    assert.equal(store.read(job.jobId)?.error?.code, AUDIT_EXPORT_ERROR_AUDIT_UNAVAILABLE)
+  })
+
+  test('第 2 页 reject 时清理已写分块并记为 EXPORT_AUDIT_UNAVAILABLE', async () => {
+    const root = tempRoot()
+    const time = clock()
+    const events = Array.from({ length: 450 }, (_, index) => event(index + 1))
+    const chain = fakeChain(events)
+    const store = new AuditExportJobStore({ root, now: time.now })
+    let calls = 0
+    const worker = new AuditExportWorker({
+      store,
+      now: time.now,
+      query: async (filter) => {
+        calls += 1
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        if (calls === 2) {
+          throw new Error('remote writer unreachable')
+        }
+        return chain.query(filter)
+      }
+    })
+    const job = store.create({
+      requestedBy: 'user_1',
+      requestedByUsername: 'alice',
+      query: { limit: 200 },
+      format: 'csv'
+    })
+
+    const result = await worker.runAuditExportJob(job.jobId)
+    assert.equal(result.status, 'failed')
+    if (result.status === 'failed') {
+      assert.equal(result.error.code, AUDIT_EXPORT_ERROR_AUDIT_UNAVAILABLE)
+    }
+    const objectPath = objectPathFor(root, job.jobId, 'csv')
+    assert.equal(existsSync(objectPath), false)
+    assert.deepEqual(partFiles(path.dirname(objectPath)), [])
     assert.equal(store.read(job.jobId)?.status, 'failed')
     assert.equal(store.read(job.jobId)?.error?.code, AUDIT_EXPORT_ERROR_AUDIT_UNAVAILABLE)
   })

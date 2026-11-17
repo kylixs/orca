@@ -7,20 +7,22 @@
 import { randomBytes } from 'node:crypto'
 import {
   chmodSync,
+  createReadStream,
+  createWriteStream,
   existsSync,
   mkdirSync,
   readdirSync,
   renameSync,
   rmSync,
-  writeFileSync
+  statSync
 } from 'node:fs'
+import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { pipeline } from 'node:stream/promises'
 import type { AuditQuery, AuditQueryResult } from './audit.ts'
 import {
   AUDIT_EXPORT_CSV_EOL,
   AUDIT_EXPORT_CSV_HEADER,
-  serializeAuditCsv,
-  serializeAuditJsonl,
   toAuditCsvRow,
   toAuditJsonlLine
 } from './audit-export-format.ts'
@@ -81,9 +83,19 @@ export type AuditExportWorkerOptions = {
   pageSize?: number
 }
 
-type CollectResult =
-  | { ok: true; events: AuditEvent[]; bytes: number }
+type ChunkFile = { path: string; bytes: number }
+
+type StreamResult =
+  | { ok: true; chunks: ChunkFile[]; bytes: number; totalEvents: number }
   | { ok: false; code: string; message: string }
+
+/** Distinguishes local write faults from query faults so the failure code is unchanged. */
+class AuditExportWriteError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'AuditExportWriteError'
+  }
+}
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
@@ -142,53 +154,40 @@ export class AuditExportWorker {
       })
     }
 
-    let collected: CollectResult
+    let streamed: StreamResult
     try {
-      collected = await this.collect(running)
+      streamed = await this.writePagesToChunks(running, objectPath)
     } catch (error) {
+      const writeFailed = error instanceof AuditExportWriteError
       return this.failJob(running, objectPath, {
-        code: AUDIT_EXPORT_ERROR_AUDIT_UNAVAILABLE,
-        message: `审计查询失败：${errorMessage(error)}`
+        code: writeFailed ? AUDIT_EXPORT_ERROR_WRITE_FAILED : AUDIT_EXPORT_ERROR_AUDIT_UNAVAILABLE,
+        message: writeFailed
+          ? `导出产物写入失败：${errorMessage(error)}`
+          : `审计查询失败：${errorMessage(error)}`
       })
     }
-    if (!collected.ok) {
+    if (!streamed.ok) {
       return this.failJob(running, objectPath, {
-        code: collected.code,
-        message: collected.message
+        code: streamed.code,
+        message: streamed.message
       })
     }
 
-    // The chain pages newest-first; export is chronological (design §4.5).
-    let body: string
+    // Chunks are already chronological; assembly streams them in reverse page order.
     let bytes: number
     try {
-      collected.events.sort((a, b) => a.seq - b.seq)
-      body = this.serialize(running.format, collected.events)
-      bytes = Buffer.byteLength(body, 'utf8')
+      bytes = await this.assembleObjectFile(objectPath, running.format, streamed.chunks)
     } catch (error) {
-      return this.failJob(running, objectPath, {
-        code: AUDIT_EXPORT_ERROR_WRITE_FAILED,
-        message: `导出序列化失败：${errorMessage(error)}`
-      })
-    }
-    if (bytes > this.maxBytes) {
-      return this.failJob(running, objectPath, {
-        code: AUDIT_EXPORT_ERROR_TOO_LARGE,
-        message: `导出字节数 ${bytes} 超过上限 ${this.maxBytes}。`
-      })
-    }
-
-    try {
-      this.writeObjectFile(objectPath, body)
-    } catch (error) {
+      this.removeChunks(streamed.chunks)
       return this.failJob(running, objectPath, {
         code: AUDIT_EXPORT_ERROR_WRITE_FAILED,
         message: `导出产物写入失败：${errorMessage(error)}`
       })
     }
+    this.removeChunks(streamed.chunks)
 
     const done = this.store.markSucceeded(jobId, {
-      totalEvents: collected.events.length,
+      totalEvents: streamed.totalEvents,
       bytes
     })
     if (!done) {
@@ -206,14 +205,14 @@ export class AuditExportWorker {
         jobId,
         phase: 'finished',
         format: running.format,
-        totalEvents: collected.events.length,
+        totalEvents: streamed.totalEvents,
         bytes
       }
     })
     return {
       jobId,
       status: 'succeeded',
-      totalEvents: collected.events.length,
+      totalEvents: streamed.totalEvents,
       bytes,
       objectPath
     }
@@ -249,82 +248,143 @@ export class AuditExportWorker {
     return results
   }
 
-  private async collect(job: AuditExportJob): Promise<CollectResult> {
-    const events: AuditEvent[] = []
+  /**
+   * Pages newest-first and writes each page, chronological internally, to its own
+   * `.part-N` file. Only one page's events and serialized body are held at a time.
+   */
+  private async writePagesToChunks(
+    job: AuditExportJob,
+    objectPath: string
+  ): Promise<StreamResult> {
+    const chunks: ChunkFile[] = []
+    const token = `${process.pid}.${randomBytes(6).toString('hex')}`
     let bytes =
       job.format === 'csv'
         ? Buffer.byteLength(AUDIT_EXPORT_CSV_HEADER + AUDIT_EXPORT_CSV_EOL, 'utf8')
         : 0
+    let totalEvents = 0
     let cursor: number | undefined
-    for (;;) {
-      const filter: AuditQuery = {
-        limit: this.pageSize,
-        actor: job.query.actor,
-        eventType: job.query.eventType,
-        eventTypes: job.query.eventTypes,
-        result: job.query.result,
-        traceId: job.query.traceId,
-        fileName: job.query.fileName,
-        keyword: job.query.keyword,
-        since: job.query.since,
-        until: job.query.until,
-        username: job.query.username,
-        projectId: job.query.projectId,
-        hostId: job.query.hostId,
-        cursor
+    try {
+      try {
+        const dir = path.dirname(objectPath)
+        mkdirSync(dir, { recursive: true, mode: 0o700 })
+        chmodSync(dir, 0o700)
+      } catch (error) {
+        throw new AuditExportWriteError(errorMessage(error))
       }
-      const page = await this.query(filter)
-      for (const event of page.events) {
-        events.push(event)
-        bytes += this.eventBytes(event, job.format)
-      }
-      if (events.length > this.maxEvents) {
-        return {
-          ok: false,
-          code: AUDIT_EXPORT_ERROR_TOO_LARGE,
-          message: `导出事件数 ${events.length} 超过上限 ${this.maxEvents}。`
+      for (;;) {
+        const filter: AuditQuery = {
+          limit: this.pageSize,
+          actor: job.query.actor,
+          eventType: job.query.eventType,
+          eventTypes: job.query.eventTypes,
+          result: job.query.result,
+          traceId: job.query.traceId,
+          fileName: job.query.fileName,
+          keyword: job.query.keyword,
+          since: job.query.since,
+          until: job.query.until,
+          username: job.query.username,
+          projectId: job.query.projectId,
+          hostId: job.query.hostId,
+          cursor
         }
-      }
-      if (bytes > this.maxBytes) {
-        return {
-          ok: false,
-          code: AUDIT_EXPORT_ERROR_TOO_LARGE,
-          message: `导出字节数超过上限 ${this.maxBytes}。`
+        const page = await this.query(filter)
+        if (page.events.length > 0) {
+          // The chain returns newest-first; a chunk must be chronological too.
+          const events = [...page.events].sort((a, b) => a.seq - b.seq)
+          let body: string
+          try {
+            body = this.serializePage(job.format, events)
+          } catch (error) {
+            throw new AuditExportWriteError(errorMessage(error))
+          }
+          const chunkPath = `${objectPath}.${token}.part-${chunks.length}`
+          try {
+            await writeFile(chunkPath, body, { encoding: 'utf8', mode: 0o600 })
+          } catch (error) {
+            throw new AuditExportWriteError(errorMessage(error))
+          }
+          const chunkBytes = Buffer.byteLength(body, 'utf8')
+          chunks.push({ path: chunkPath, bytes: chunkBytes })
+          totalEvents += events.length
+          bytes += chunkBytes
         }
+        if (totalEvents > this.maxEvents) {
+          this.removeChunks(chunks)
+          return {
+            ok: false,
+            code: AUDIT_EXPORT_ERROR_TOO_LARGE,
+            message: `导出事件数 ${totalEvents} 超过上限 ${this.maxEvents}。`
+          }
+        }
+        if (bytes > this.maxBytes) {
+          this.removeChunks(chunks)
+          return {
+            ok: false,
+            code: AUDIT_EXPORT_ERROR_TOO_LARGE,
+            message: `导出字节数超过上限 ${this.maxBytes}。`
+          }
+        }
+        if (page.events.length === 0 || page.nextCursor === null) {
+          return { ok: true, chunks, bytes, totalEvents }
+        }
+        // A cursor that fails to move would page forever; treat it as a query fault.
+        if (cursor !== undefined && page.nextCursor >= cursor) {
+          throw new Error(`审计分页游标未推进（${cursor} -> ${page.nextCursor}）`)
+        }
+        cursor = page.nextCursor
       }
-      if (page.events.length === 0 || page.nextCursor === null) {
-        return { ok: true, events, bytes }
-      }
-      // A cursor that fails to move would page forever; treat it as a query fault.
-      if (cursor !== undefined && page.nextCursor >= cursor) {
-        throw new Error(`审计分页游标未推进（${cursor} -> ${page.nextCursor}）`)
-      }
-      cursor = page.nextCursor
+    } catch (error) {
+      this.removeChunks(chunks)
+      throw error
     }
   }
 
-  private eventBytes(event: AuditEvent, format: AuditExportFormat): number {
-    const chunk =
-      format === 'csv' ? toAuditCsvRow(event) + AUDIT_EXPORT_CSV_EOL : toAuditJsonlLine(event)
-    return Buffer.byteLength(chunk, 'utf8')
-  }
-
-  private serialize(format: AuditExportFormat, events: readonly AuditEvent[]): string {
-    return format === 'csv' ? serializeAuditCsv(events) : serializeAuditJsonl(events)
-  }
-
-  /** tmp+rename in the job dir, 0600; a failure removes the tmp so nothing partial survives. */
-  private writeObjectFile(objectPath: string, body: string): void {
+  /** Freshest page first in `chunks`, so the final file is assembled back-to-front. */
+  private async assembleObjectFile(
+    objectPath: string,
+    format: AuditExportFormat,
+    chunks: readonly ChunkFile[]
+  ): Promise<number> {
     const dir = path.dirname(objectPath)
     const tmp = `${objectPath}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`
     try {
       mkdirSync(dir, { recursive: true, mode: 0o700 })
       chmodSync(dir, 0o700)
-      writeFileSync(tmp, body, { encoding: 'utf8', mode: 0o600 })
+      // CSV needs its header before any row; JSONL has no preamble.
+      await writeFile(tmp, format === 'csv' ? AUDIT_EXPORT_CSV_HEADER + AUDIT_EXPORT_CSV_EOL : '', {
+        encoding: 'utf8',
+        mode: 0o600
+      })
+      for (let index = chunks.length - 1; index >= 0; index -= 1) {
+        const chunk = chunks[index]
+        if (!chunk) {
+          continue
+        }
+        await pipeline(
+          createReadStream(chunk.path),
+          createWriteStream(tmp, { flags: 'a', mode: 0o600 })
+        )
+      }
+      const bytes = statSync(tmp).size
       renameSync(tmp, objectPath)
+      return bytes
     } catch (error) {
       this.removeObjectFile(tmp)
       throw error
+    }
+  }
+
+  private serializePage(format: AuditExportFormat, events: readonly AuditEvent[]): string {
+    return format === 'csv'
+      ? events.map((event) => toAuditCsvRow(event) + AUDIT_EXPORT_CSV_EOL).join('')
+      : events.map(toAuditJsonlLine).join('')
+  }
+
+  private removeChunks(chunks: readonly ChunkFile[]): void {
+    for (const chunk of chunks) {
+      this.removeObjectFile(chunk.path)
     }
   }
 
