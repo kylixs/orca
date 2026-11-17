@@ -28,7 +28,12 @@ type AuditEvent = {
 }
 
 async function start(
-  options: { cookieMode?: string; publicOrigin?: string; refreshGraceMs?: number } = {}
+  options: {
+    cookieMode?: string
+    publicOrigin?: string
+    refreshGraceMs?: number
+    beforeDisabledSessionRevoke?: () => void | Promise<void>
+  } = {}
 ): Promise<{ app: ApiHandle; base: string }> {
   const app = createApp({
     port: 0,
@@ -37,6 +42,7 @@ async function start(
     refreshGraceMs: options.refreshGraceMs,
     internalToken: 'u230-token',
     cookieMode: options.cookieMode,
+    beforeDisabledSessionRevoke: options.beforeDisabledSessionRevoke,
     // Empty string pins "unconfigured" even if the developer shell exports one.
     publicOrigin: options.publicOrigin ?? ''
   })
@@ -110,6 +116,20 @@ function auditOf(app: ApiHandle, sessionId: string): AuditEvent[] {
       event.targetId === sessionId &&
       event.metadata?.reason === 'USER_DISABLED'
   )
+}
+
+/** Holds every refresh at the revoke barrier until both have arrived. */
+function rendezvous(): () => Promise<void> {
+  let arrivals = 0
+  let release: () => void = () => {}
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  return async () => {
+    arrivals += 1
+    if (arrivals === 2) release()
+    await gate
+  }
 }
 
 after(async () => {
@@ -300,6 +320,65 @@ describe('U230 停用账号边界（真实 createApp + HTTP）', () => {
     for (const secret of ['Passw0rd!', cookie]) {
       assert.equal(serialized.includes(secret), false, 'audit metadata must never carry a secret')
     }
+  })
+
+  test('并发 Cookie 刷新（已禁用）：两条均 401，撤销一次、epoch +1、审计恰 1 条', async () => {
+    const { app, base } = await start({
+      cookieMode: 'auto',
+      publicOrigin: ORIGIN,
+      beforeDisabledSessionRevoke: rendezvous()
+    })
+    const loggedIn = await login(base, 'admin', 'Adm1n!', { origin: ORIGIN })
+    assert.equal(loggedIn.status, 200)
+    const cookie = cookieValueOf(loggedIn.res)
+    const user = app.store.usersByName.get('admin')
+    assert.ok(user)
+    const session = sessionOf(app, user.id)
+    user.status = 'disabled'
+
+    const [first, second] = await Promise.all([
+      refreshCookie(base, cookie),
+      refreshCookie(base, cookie)
+    ])
+
+    assert.equal(first.status, 401)
+    assert.equal(second.status, 401)
+    assert.equal(((await first.json()) as LoginBody).error?.code, 'SESSION_EXPIRED')
+    assert.equal(((await second.json()) as LoginBody).error?.code, 'SESSION_EXPIRED')
+    assert.ok(session.revokedAt, 'the disabled session must be revoked')
+    assert.equal(session.epoch, 2, 'the epoch may only be bumped once')
+    const events = auditOf(app, session.id)
+    assert.equal(events.length, 1, 'one session, one disabled refusal audit')
+    assert.equal(events[0]?.metadata.source, 'cookie')
+  })
+
+  test('并发 body 刷新（已禁用）：两条均 401，撤销一次、epoch +1、审计恰 1 条', async () => {
+    const { app, base } = await start({
+      beforeDisabledSessionRevoke: rendezvous()
+    })
+    const loggedIn = await login(base, 'zhangsan', 'Passw0rd!')
+    assert.equal(loggedIn.status, 200)
+    const refreshToken = loggedIn.body.refreshToken ?? ''
+    assert.ok(refreshToken)
+    const user = app.store.usersByName.get('zhangsan')
+    assert.ok(user)
+    const session = sessionOf(app, user.id)
+    user.status = 'disabled'
+
+    const [first, second] = await Promise.all([
+      refreshBody(base, refreshToken),
+      refreshBody(base, refreshToken)
+    ])
+
+    assert.equal(first.status, 401)
+    assert.equal(second.status, 401)
+    assert.equal(((await first.json()) as LoginBody).error?.code, 'SESSION_EXPIRED')
+    assert.equal(((await second.json()) as LoginBody).error?.code, 'SESSION_EXPIRED')
+    assert.ok(session.revokedAt, 'the disabled session must be revoked')
+    assert.equal(session.epoch, 2, 'the epoch may only be bumped once')
+    const events = auditOf(app, session.id)
+    assert.equal(events.length, 1, 'one session, one disabled refusal audit')
+    assert.equal(events[0]?.metadata.source, 'body')
   })
 })
 

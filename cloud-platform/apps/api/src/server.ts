@@ -164,6 +164,8 @@ export type ApiConfig = {
   publicOrigin?: string
   /** U197 S2: previous-refresh grace window; defaults to ORCA_CLOUD_REFRESH_GRACE_MS. */
   refreshGraceMs?: number
+  /** U230②: test-only barrier awaited before a disabled-session revoke, to interleave refreshes. */
+  beforeDisabledSessionRevoke?: () => void | Promise<void>
   /** How long a host stays "online" without a heartbeat; tests shrink it to observe the flip. */
   hostOfflineMs?: number
   /** One-time web-handoff code lifetime (FR-3.10); tests shrink it to exercise expiry. */
@@ -2941,6 +2943,31 @@ export function createApp(config: ApiConfig): ApiHandle {
   }
 
   /**
+   * U230②: a disabled session is revoked and audited at most once. The re-check
+   * after the barrier keeps concurrent refreshes from double-bumping the epoch.
+   */
+  async function revokeDisabledSession(
+    session: Session,
+    user: User | undefined,
+    source: 'cookie' | 'body',
+    traceId: string
+  ): Promise<void> {
+    await config.beforeDisabledSessionRevoke?.()
+    if (session.revokedAt !== null) return
+    session.revokedAt = now()
+    bumpEpoch(session.id)
+    audit.appendBestEffort({
+      eventType: 'logout',
+      actor: user?.username ?? null,
+      targetType: 'session',
+      targetId: session.id,
+      result: 'denied',
+      traceId,
+      metadata: { reason: 'USER_DISABLED', source }
+    })
+  }
+
+  /**
    * Every live relay, in registration order (AC-23). A dead relay is dropped from
    * the list rather than being handed to a client that would only time out on it;
    * if none has checked in recently, the last known one is still offered so a
@@ -3589,18 +3616,8 @@ export function createApp(config: ApiConfig): ApiHandle {
         // current, previous and grace values all fail the same way.
         const cookieUser = store.users.get(cookieSession.userId)
         if (!cookieUser || cookieUser.status !== 'active') {
-          cookieSession.revokedAt = now()
-          bumpEpoch(cookieSession.id)
+          await revokeDisabledSession(cookieSession, cookieUser, 'cookie', traceId)
           clearRefreshCookie(res)
-          audit.appendBestEffort({
-            eventType: 'logout',
-            actor: cookieUser?.username ?? null,
-            targetType: 'session',
-            targetId: cookieSession.id,
-            result: 'denied',
-            traceId,
-            metadata: { reason: 'USER_DISABLED', source: 'cookie' }
-          })
           return error(res, 401, 'SESSION_EXPIRED', '会话已失效，请重新登录。', traceId)
         }
         const cookieHash = hashToken(cookieValue)
@@ -3744,18 +3761,8 @@ export function createApp(config: ApiConfig): ApiHandle {
       // U228: a disabled account must not renew through the body source either.
       const sessionUser = store.users.get(session.userId)
       if (!sessionUser || sessionUser.status !== 'active') {
-        session.revokedAt = now()
-        bumpEpoch(session.id)
+        await revokeDisabledSession(session, sessionUser, 'body', traceId)
         if (refreshCookieEnabled()) clearRefreshCookie(res)
-        audit.appendBestEffort({
-          eventType: 'logout',
-          actor: sessionUser?.username ?? null,
-          targetType: 'session',
-          targetId: session.id,
-          result: 'denied',
-          traceId,
-          metadata: { reason: 'USER_DISABLED', source: 'body' }
-        })
         return error(res, 401, 'SESSION_EXPIRED', '会话已失效，请重新登录。', traceId)
       }
       const isCurrent = safeEqual(session.refreshHash, hashToken(token))
