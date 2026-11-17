@@ -184,12 +184,13 @@ extracts the table, then inventories controls and layout.
 
 ### Examples (PS-4, both modes)
 
-| File                     | Mode        | What it shows                                                                 |
-| ------------------------ | ----------- | ----------------------------------------------------------------------------- |
-| `example-journey.mjs`    | smoke       | minimal login → workbench → assert → return evidence                          |
-| `extension-demo.mjs`     | smoke       | extraction-first loop: extractText/State → assert → detail → extractTable     |
-| `example-explore.mjs`    | exploration | `discover` → `extractText`/`extractState` → findings-shaped `{meta,findings}` |
-| `example-regression.mjs` | regression  | login → open project detail → assertion chain; exits 1 on first failure       |
+| File                       | Mode        | What it shows                                                                 |
+| -------------------------- | ----------- | ----------------------------------------------------------------------------- |
+| `example-journey.mjs`      | smoke       | minimal login → workbench → assert → return evidence                          |
+| `extension-demo.mjs`       | smoke       | extraction-first loop: extractText/State → assert → detail → extractTable     |
+| `example-explore.mjs`      | exploration | `discover` → `extractText`/`extractState` → findings-shaped `{meta,findings}` |
+| `example-regression.mjs`   | regression  | login → open project detail → assertion chain; exits 1 on first failure       |
+| `web-journey-13-gates.mjs` | gate        | 13-gate golden journey (DOM = store = host); exits 2 INVALID without store    |
 
 `example-explore.mjs` records non-blocking observations as findings (M116 shape:
 `id/severity/page/title/steps/expected/actual/evidence`) instead of aborting.
@@ -211,6 +212,20 @@ node cloud-platform/scripts/playwright-server/example-regression.mjs
 curl -s -H "$H" -H 'content-type: application/json' \
   -d '{"script":"example-explore.mjs","params":{"role":"admin"}}' \
   127.0.0.1:$PORT/tabs/t1/execute
+```
+
+### Web golden journey (13 gates)
+
+`web-journey-13-gates.mjs` is standalone-only: it drives the console plus several
+workspace popups and asserts DOM = store = host. Before any journey page operation
+the preflight checks `window.__store` through CDP; when the served bundle was built
+without `VITE_EXPOSE_STORE=true` it prints `verdict: INVALID`, exits 2, and emits no
+gate conclusions. Run it against a disposable snapshot (§2-11), not the live rig.
+
+```bash
+NODE_TLS_REJECT_UNAUTHORIZED=0 ORCA_QA_BASE=https://127.0.0.1:18787 \
+node cloud-platform/scripts/playwright-server/web-journey-13-gates.mjs \
+  --out cloud-platform/evidence/journey-$(date +%s)
 ```
 
 ## Prototype comparison (PS-3)
