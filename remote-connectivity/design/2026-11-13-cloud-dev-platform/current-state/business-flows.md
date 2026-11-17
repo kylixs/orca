@@ -27,7 +27,7 @@
 ### 1. 入口
 
 - 未登录打开平台根地址 `/`（或会话恢复失败）→ 登录视图 `#view-login`（M1 §2）。
-- 兼容入口 `#/login`：未登录显示登录页并保留目标 hash，已登录跳默认路由（HEAD `app.js:491-499`；全站唯一 URL 路由 U106 仍在途，不影响该页级行为）。
+- 兼容入口 `#/login`：未登录显示登录页并保留目标 hash，已登录跳默认路由（HEAD `app.js:553-561`；全站唯一 URL 路由 U106 仍在途，不影响该页级行为）。
 - 退出入口：侧栏用户盒「退出」（仅已登录）。
 - 已登录且本地有会话时刷新/重开页面，走会话恢复而非登录页：Cookie 模式看 `orca.authMode='cookie'`，旧模式看 access token（M1 A8）。
 - 迁移入口：旧构建换新构建后首次加载**不做能力探测**，按旧 localStorage 契约恢复；直到一次响应带 `refreshCookie:true` 才切 Cookie 模式（见步骤 8）。
@@ -40,16 +40,16 @@
    - **never / 旧服务端**：body 含 `accessToken/refreshToken`，客户端写 `orca.access`/`orca.refresh`。
    - 两模式都写 `orca.user`/`orca.device`；旧模式另写 `orca.tokenOwner`（账号归属，防跨账号回退）。可见反馈：侧栏出现显示名/部门/角色 chip。［来源 m01-A2、m01 §3 登录响应形态］
 3. **进入主框架并恢复目标路由**：读启动时捕获的 hash；空 hash 或 `#/login` → `#/workbench`，其余 hash 原样恢复；非管理员直达管理路由 → 403 页且保留 URL。可见反馈：面包屑/导航高亮对应页面。［来源 m01-B4、m02-B4/B6］
-4. **业务请求 401 → 一次刷新 + 一次重放**：`api()` 只尝试一次（`app.js:57-84`）。Cookie 模式先发一次无 body `/v1/auth/refresh`（`credentials:'same-origin'`）；无 Cookie 可解析时才用 body 回退（`app.js:169-190`）。刷新三态：`ok` → 重放原请求一次；`rejected`（HTTP 非 2xx）→ `logout()` 回登录页；`error`（传输失败）→ **不登出**，把原 401 交给调用方（`app.js:105-166`）。并发 401 共享一次刷新（`app.js:86-88`）。U229 F1 另加 `stale` 内部态：旧代际/已登出的刷新结果不写状态、不重放、不登出（`app.js:64-84,105-166`）。可见反馈：用户无感，仅被拒时回登录页。［来源 m01-A7；HEAD `fb8d57347f4`］
+4. **业务请求 401 → 一次刷新 + 一次重放**：`api()` 只尝试一次（`app.js:70-108`）。Cookie 模式先发一次无 body `/v1/auth/refresh`（`credentials:'same-origin'`）；无 Cookie 可解析时才用 body 回退（`app.js:259-297`）。刷新三态：`ok` → 重放原请求一次；`rejected`（HTTP 非 2xx）→ `logout()` 回登录页；`error`（传输失败）→ **不登出**，把原 401 交给调用方（`app.js:155-242`）。并发 401 共享一次刷新（`app.js:110-112`）。U229 F1 另加 `stale` 内部态：旧代际/已登出的刷新结果不写状态、不重放、不登出（`app.js:70-108,155-242`）。可见反馈：用户无感，仅被拒时回登录页。［来源 m01-A7；HEAD `fb8d57347f4`］
 5. **刷新/重开页面恢复**：
-   - **Cookie 模式**：一次无 body 刷新 → 成功后 `GET /v1/me`（`retried:true`，不启动第二条刷新链）→ 进主框架（`app.js:5144-5162`）。
-   - **旧模式**：有 access 时 `GET /v1/me`，401 触发 body 刷新并重放一次（`app.js:5163-5175`；`u198-legacy-reload` 断言顺序 `/v1/me:401 → refresh:200 → /v1/me:200`）。
-   - `orca.pendingLogout=1` 时**先显示登录页**再补发一次登出，不自动进入（`app.js:5135-5141`）。
+   - **Cookie 模式**：一次无 body 刷新 → 成功后 `GET /v1/me`（`retried:true`，不启动第二条刷新链）→ 进主框架（`app.js:5314-5339`）。
+   - **旧模式**：有 access 时 `GET /v1/me`，401 触发 body 刷新并重放一次（`app.js:5352-5368`；`u198-legacy-reload` 断言顺序 `/v1/me:401 → refresh:200 → /v1/me:200`）。
+   - `orca.pendingLogout=1` 时**先显示登录页**再补发一次登出，不自动进入（`app.js:5310-5318`）。
    - 可见反馈：直接回到原 hash 页面或工作台；失败则登录页。［来源 m01-A8、m01 §3 页面恢复分支］
 6. **密码显示切换**：点击密码框眼睛图标，`password`/`text` 切换，不触发请求。［来源 m01-A6］
-7. **退出**：关闭工作区 iframe（不结束宿主 PTY）→ 置 `orca.pendingLogout=1` → 异步 `POST /v1/auth/logout`（Bearer + 同源 Cookie；服务端另接受可选 body `refreshToken`，见状态机要点）→ 服务端清 Cookie 多作用域并撤销 Bearer/Cookie/body 定位到的**全部** session → 本地清 access/refresh/tokenOwner、`orca.authMode`、缓存 user 与登录框输入 → 回登录页。请求网络失败保留标记，下次加载重试一次；收到 2xx 或 401 即删标记（`app.js:4946-4990`）。多标签为**被动**登出：另一标签下一次请求 401 → 刷新被拒 → 登出。可见反馈：登录页且输入为空。［来源 m01-A9、m01 §3；服务端 U229 F10 `ec1b10e691d`］
+7. **退出**：关闭工作区 iframe（不结束宿主 PTY）→ 置 `orca.pendingLogout=1` → 异步 `POST /v1/auth/logout`（Bearer + 同源 Cookie；服务端另接受可选 body `refreshToken`，见状态机要点）→ 服务端清 Cookie 多作用域并撤销 Bearer/Cookie/body 定位到的**全部** session → 本地清 access/refresh/tokenOwner、`orca.authMode`、缓存 user 与登录框输入 → 回登录页。请求网络失败保留标记，下次加载重试一次；收到 2xx 或 401 即删标记（`app.js:5081-5145`）。多标签为**被动**登出：另一标签下一次请求 401 → 刷新被拒 → 登出。可见反馈：登录页且输入为空。［来源 m01-A9、m01 §3；服务端 U229 F10 `ec1b10e691d`］
 8. **迁移**：
-   - **AC9a（标记真 + 旧键）**：Cookie 刷新成功是迁移闸门，成功后才删 `orca.access`/`orca.refresh`/`orca.tokenOwner`（`clearLegacyTokens`，`app.js:106-128`）。
+   - **AC9a（标记真 + 旧键）**：Cookie 刷新成功是迁移闸门，成功后才删 `orca.access`/`orca.refresh`/`orca.tokenOwner`（`clearLegacyTokens`，`app.js:146-152`）。
    - **AC9b/AC9c ⛔ 未实现**：无 `orca.authMode` 标记时**不**发起无 body 探测；仅有效 Cookie、无旧键的浏览器首次加载不恢复；旧构建换新构建首次加载不迁移，access 过期后才走一次 body 回退并置标记。阻塞于 D17/U219（`u197-migration-browser` AC15(g) skip、`u197-web-cookie-browser` AC9c skip）。［来源 m01-A8 迁移分支、m01 §7 U219/D17］
 
 **服务端状态机要点**：
@@ -74,10 +74,10 @@
 | 5  | 锁定服务不可达                       | 登录 `503 PLATFORM_UNAVAILABLE`（fail-closed）；界面无专门中文映射（仅服务端语义）                                                                                                       | 稍后重试/联系管理员     | m01 §3 锁定计数                                                          |
 | 6  | CSRF 403                             | Cookie 认证刷新缺失/跨源/`null` Origin，或 `content-type` 非 `application/json` → `403 CSRF_REJECTED`，无续期/清理副作用；配置 PUBLIC_ORIGIN 时外来 Origin 登录 → 403，不下发 body refresh | 从平台同源页面重试      | m01 §3 失败分支；`server.ts:2040-2050,3515-3518,3659-3663`               |
 | 7  | 重复 Cookie 401                      | `orca_refresh` 出现两次（同名/多 Cookie 头）→ 登录/handoff/刷新/登出硬 `401 SESSION_EXPIRED`，清三作用域；**不回退 body、不轮换、不撤销 session**（刷新）                                 | 清除 Cookie 后重新登录  | m01 §3；`server.ts:2010-2013,3501-3504,3645-3648,3890-3893,4005-4008,4074-4075`    |
-| 8  | Cookie 缺失                          | 服务端回退 body 刷新；Cookie 模式客户端若无旧 refresh → `rejected` → 回登录，无循环；启动时一次失败即登录页                                                                               | 重新登录                | m01 §3；`app.js:5144-5161`                                               |
-| 9  | 传输失败                             | 客户端记 `error`：页内请求**不登出**、保留会话、恢复后可重试；启动探测失败 → 登录页，不空白/无未捕获异常                                                                                  | 恢复网络后重试          | m01 §3；`app.js:117-120,143-146,176-183`                                 |
+| 8  | Cookie 缺失                          | 服务端回退 body 刷新；Cookie 模式客户端若无旧 refresh → `rejected` → 回登录，无循环；启动时一次失败即登录页                                                                               | 重新登录                | m01 §3；`app.js:5314-5337`                                               |
+| 9  | 传输失败                             | 客户端记 `error`：页内请求**不登出**、保留会话、恢复后可重试；启动探测失败 → 登录页，不空白/无未捕获异常                                                                                  | 恢复网络后重试          | m01 §3；`app.js:174-179,208-212,278-280`                                 |
 | 10 | 禁用账号 403 `USER_DISABLED`         | 登录非 active → 403（审计 login denied，不发令牌/Cookie）；刷新 Cookie/body 两源 → 撤销+bump epoch+清 Cookie+401                                                                          | 联系管理员              | m01 §3；`server.ts:3581-3594,3673-3680,3822-3828`                        |
-| 11 | refresh 5xx/429                      | ⛔ **HEAD 仍误登出**：客户端对刷新任意 `!res.ok` 判 `rejected`，`api()` 随即 `logout()`；5xx/429 不代表会话失效                                                                           | 重新登录（已知缺陷）    | `app.js:105-166`；defect-ledger U229 F7                                  |
+| 11 | refresh 5xx/429                      | ⛔ **HEAD 仍误登出**：客户端对刷新任意 `!res.ok` 判 `rejected`，`api()` 随即 `logout()`；5xx/429 不代表会话失效                                                                           | 重新登录（已知缺陷）    | `app.js:155-242`；defect-ledger U229 F7                                  |
 | 12 | refresh 被拒（4xx）                  | `logout()`，清本地并回登录页                                                                                                                                                             | 重新登录                | m01-A7                                                                   |
 | 13 | `GET /v1/me` 失败（含 refresh 后仍 401） | 清 access、移除缓存 user、显示登录页；仅缓存 user 不足以进入；重放仍 401 在 HEAD 直接登出（U228）                                                                                         | 重新登录                | m01-A8                                                                   |
 | 14 | 登出请求失败                         | 错误被吞，本地仍清空并回登录页；`orca.pendingLogout` 保留，下次加载先显示登录页再重试一次                                                                                                 | 无（本地已退出）        | m01-A9                                                                   |
