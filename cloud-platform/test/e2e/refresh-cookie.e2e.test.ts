@@ -1254,3 +1254,62 @@ describe('U233 认证端点边界（真实 createApp + HTTP）', () => {
     assert.ok(session.revokedAt !== null)
   })
 })
+
+describe('U235 非对象 refresh body（真实 createApp + HTTP）', () => {
+  // JSON.parse can yield these at runtime despite the declared object type.
+  const nonObjectBodies = ['null', '42', '"x"', '[]']
+
+  function refreshRaw(
+    base: string,
+    rawBody: string,
+    headers: Record<string, string> = {}
+  ): Promise<Response> {
+    return fetch(`${base}/v1/auth/refresh`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...headers },
+      body: rawBody
+    })
+  }
+
+  for (const rawBody of nonObjectBodies) {
+    test(`Cookie 源 body=${rawBody}：按空 body 处理，200 且不回显 refresh`, async () => {
+      const { app, base } = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+      const loginRes = await login(base, { origin: ORIGIN })
+      assert.equal(loginRes.status, 200)
+      const cookie = cookieValueOf(loginRes)
+      const session = onlySession(app)
+      const hashBefore = session.refreshHash
+
+      const res = await refreshRaw(base, rawBody, {
+        origin: ORIGIN,
+        cookie: `orca_refresh=${cookie}`
+      })
+      assert.equal(res.status, 200)
+      const body = (await res.json()) as Record<string, unknown>
+      assert.equal('refreshToken' in body, false, 'a non-object body has no refresh to echo')
+      assert.equal(typeof body.accessToken, 'string')
+      assert.equal(cookieValueOf(res), cookie)
+      assert.equal(onlySession(app).refreshHash, hashBefore, 'the Cookie source must not rotate')
+    })
+
+    test(`无 Cookie body=${rawBody}：按无 refresh 值处理，401 而不是 500`, async () => {
+      const { app, base } = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+      const first = (await (await login(base)).json()) as Record<string, unknown>
+      const validToken = String(first.refreshToken)
+      assert.equal(typeof first.refreshToken, 'string')
+
+      const res = await refreshRaw(base, rawBody)
+      assert.equal(res.status, 401)
+      assert.equal(
+        ((await res.json()) as { error: { code: string } }).error.code,
+        'SESSION_EXPIRED'
+      )
+      assert.equal(onlySession(app).revokedAt, null, 'an empty value must not guess a session')
+
+      const valid = await refresh(base, validToken)
+      assert.equal(valid.status, 200, 'a valid body still refreshes')
+      const validBody = (await valid.json()) as Record<string, unknown>
+      assert.equal(typeof validBody.refreshToken, 'string')
+    })
+  }
+})

@@ -3604,7 +3604,12 @@ export function createApp(config: ApiConfig): ApiHandle {
           !cookieIsCurrent &&
           cookieSession.previousRefreshHash !== undefined &&
           safeEqual(cookieSession.previousRefreshHash, cookieHash)
-        const bodyToken = typeof body.refreshToken === 'string' ? body.refreshToken : ''
+        // U235: JSON.parse can yield null/scalar/array at runtime, so treat a
+        // non-object body as absent instead of dereferencing it.
+        const bodyToken =
+          body !== null && typeof body === 'object' && typeof body.refreshToken === 'string'
+            ? body.refreshToken
+            : ''
         const bodyHash = bodyToken === '' ? undefined : hashToken(bodyToken)
         const bodyIsCurrent =
           bodyHash !== undefined && safeEqual(cookieSession.refreshHash, bodyHash)
@@ -3720,7 +3725,10 @@ export function createApp(config: ApiConfig): ApiHandle {
 
       // Body fallback: the legacy path, unchanged except for the grace window.
       const body = await readJson(req)
-      const token = String(body.refreshToken ?? '')
+      // U235: a non-object body carries no refresh value.
+      const rawBodyToken =
+        body !== null && typeof body === 'object' ? body.refreshToken : undefined
+      const token = String(rawBodyToken ?? '')
       const sessionId = store.refreshTokens.get(token)
       const session = sessionId ? store.sessions.get(sessionId) : undefined
       if (!session || session.revokedAt || session.refreshExpiresAt < now()) {
