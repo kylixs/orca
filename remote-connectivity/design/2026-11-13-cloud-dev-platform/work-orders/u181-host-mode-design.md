@@ -230,7 +230,7 @@ ExecStart=/usr/bin/orca-ide --host-mode
 | --- | --- | --- | --- |
 | 1 | 脚本 | 预检命令/CLI 路径/profile 可写（U182 批 2 的 helper） | 非 0，不消耗令牌 |
 | 2 | 脚本 | 原子写 `host.env`（`ORCA_USER_DATA_PATH`、`ORCA_CLOUD_*`、TLS 路径） | 非 0，不启动 |
-| 3 | 脚本 | `/health` 可达性检查（已有，2xx） | 非 0，不消耗令牌 |
+| 3 | 脚本 | `/health` 可达性检查（已有，2xx） | 68（与 relay 同码），不消耗令牌 |
 | 4 | 脚本 | `orca-ide --host-mode --preflight` | 78，不消耗令牌 |
 | 5 | 脚本 | 安装并 `enable --now` 服务 | 安装失败 78；服务启动失败由状态文件/退出码判定 |
 | 6 | 宿主 | `startEnrolled`：有 `orca-cloud-host.json` 则跳过注册 | 见 §3.3 |
@@ -268,6 +268,7 @@ ExecStart=/usr/bin/orca-ide --host-mode
 | 409 `HOST_REVOKED` | `host_revoked` | 否 | 78 | 平台吊销；令牌已焚 |
 | 400 `HOST_NAME_REQUIRED` | `host_name_required` | 否 | 78 | 缺 `ORCA_CLOUD_HOST_NAME`；注意它在 `ready` 之外**同步抛出**（`cloud-runtime-admission.ts:181-184`），host mode 必须 try/catch 映射 |
 | 201 响应丢失/畸形 | `protocol` | 否 | 78 | 本地无凭据；重试只会得到 401；提示「平台可能已注册」 |
+| 其他 4xx（非 400/401/409） | `register_failed` | 否 | 78 | 平台拒绝但无更具体的稳定码 |
 | 凭据写盘失败 | `credential_write_failed` | 否 | 78 | profile 权限/磁盘 |
 | 缺 api/token/host name，或 admission 为 null | `host_config_invalid` | 否 | 78 | host mode 明确要求云配置 |
 | orcad 槽/pinned Node 不可用 | `runtime_unavailable` | 否 | 78 | preflight 已拦截 |
@@ -290,7 +291,7 @@ ExecStart=/usr/bin/orca-ide --host-mode
 3. 脚本对 401 的文案必须包含可操作分支：
    「令牌已被使用或过期。若平台 `/v1/hosts` 已存在同名主机，则上一次注册已成功但响应丢失；请确认该主机后重新生成安装命令（不要重复使用本命令）。」
 
-这样「网络没到」与「令牌已焚」在状态文件和脚本输出上可判别，而不是都表现为 90s 超时。
+这样「网络没到」与「令牌已焚」在状态文件和脚本输出上可判别，而不是都表现为 120s 超时。
 
 ---
 

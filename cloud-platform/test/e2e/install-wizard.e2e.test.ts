@@ -993,6 +993,9 @@ exit 1
       // systemd owns the process; no nohup duplicate beside it.
       assert.doesNotMatch(run.stdout, /nohup .*--host-mode/)
       assert.match(run.stdout, /orca-host\.service/)
+      // U181 P2-9: journald owns the logs; host.log does not exist here.
+      assert.match(run.stdout, /journalctl --user -u orca-host\.service/)
+      assert.doesNotMatch(run.stdout, /host\.log/)
       assert.equal(existsSync(join(home, LEGACY_UNIT_PATH)), false)
     })
 
@@ -1084,6 +1087,119 @@ exit 0
       assert.equal(run.status, 0, run.stderr)
       assert.equal(existsSync(join(home, UNIT_PATH)), false)
       assert.match(run.stdout, /nohup setsid .*run-host\.sh/)
+      // U181 P2-9: without systemd the file tail stays the log source.
+      assert.match(run.stdout, /host\.log/)
+      assert.doesNotMatch(run.stdout, /journalctl/)
+    })
+
+    test('U181 P2-9: systemd 超时诊断走 journalctl，不指向 host.log', async () => {
+      const now = Date.now()
+      const home = makeInstallHome()
+      const stateDir = join(home, '.orca-cloud', 'profile')
+      mkdirSync(stateDir, { recursive: true })
+      writeFileSync(
+        join(stateDir, 'orca-cloud-host-state.json'),
+        JSON.stringify(
+          {
+            schemaVersion: 2,
+            status: 'starting',
+            hostId: null,
+            platformUrl: api.url,
+            startedAt: now,
+            lastHeartbeatOk: false,
+            lastHeartbeatAt: now,
+            pid: 0
+          },
+          null,
+          2
+        )
+      )
+      const bin = makeSparsePath(home, {
+        hostname: ADVERTISING_HOSTNAME,
+        'orca-ide': ORCA_STUB,
+        systemctl: SYSTEMCTL_STUB,
+        loginctl: LOGINCTL_OK,
+        journalctl: `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$HOME/journalctl.log"
+echo "journal-tail: orca-host"
+`
+      })
+      const run = runInstallScript(await fetchHostScript(), home, {
+        PATH: bin,
+        ORCA_HOST_STATE_TIMEOUT: '2'
+      })
+
+      assert.equal(run.status, 70, run.stderr)
+      assert.match(run.stderr, /journalctl --user -u orca-host\.service/)
+      assert.doesNotMatch(run.stderr, /host\.log/)
+      assert.match(run.stderr, /journal-tail: orca-host/)
+      assert.match(
+        readFileSync(join(home, 'journalctl.log'), 'utf8'),
+        /--user -u orca-host\.service -n 40 --no-pager/
+      )
+    })
+  })
+
+  describe('U181 P2-10: 已有凭据时的 --reenroll 提示', () => {
+    const ADVERTISING_HOSTNAME =
+      '#!/usr/bin/env bash\ncase "$1" in -s) echo orca-test-host ;; *) echo orca-test-host ;; esac\n'
+    const SYSTEMCTL_STUB = `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$HOME/systemctl.log"
+exit 0
+`
+    const LOGINCTL_OK = `#!/usr/bin/env bash
+exit 0
+`
+    const CREDENTIAL_PATH = '.orca-cloud/profile/orca-cloud-host.json'
+
+    test('重跑（已有 orca-cloud-host.json）→ 输出解析后的 --host-mode --reenroll', async () => {
+      const home = makeInstallHome()
+      mkdirSync(join(home, '.orca-cloud', 'profile'), { recursive: true })
+      writeFileSync(join(home, CREDENTIAL_PATH), '{"hostId":"host_old"}')
+      const bin = makeSparsePath(home, {
+        hostname: ADVERTISING_HOSTNAME,
+        'orca-ide': ORCA_STUB,
+        systemctl: SYSTEMCTL_STUB,
+        loginctl: LOGINCTL_OK
+      })
+      const run = runInstallScript(await fetchHostScript(), home, {
+        PATH: bin,
+        ORCA_HOST_STATE_TIMEOUT: '0'
+      })
+
+      assert.equal(run.status, 0, run.stderr)
+      assert.match(run.stdout, /--host-mode --reenroll/)
+      // The hint must be runnable: the resolved ORCA_CLI path, not a bare name.
+      assert.ok(
+        run.stdout.includes(`"${join(bin, 'orca-ide')}" --host-mode --reenroll`),
+        run.stdout
+      )
+    })
+
+    test('首次安装（凭据由本次运行写入）→ 不提示 --reenroll', async () => {
+      const home = makeInstallHome()
+      // enable --now writes the credential synchronously, before the output block.
+      const systemctlWritesCredential = `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$HOME/systemctl.log"
+case "$*" in
+  *enable*) mkdir -p "$HOME/.orca-cloud/profile"; : > "$HOME/.orca-cloud/profile/orca-cloud-host.json" ;;
+esac
+exit 0
+`
+      const bin = makeSparsePath(home, {
+        hostname: ADVERTISING_HOSTNAME,
+        'orca-ide': ORCA_STUB,
+        systemctl: systemctlWritesCredential,
+        loginctl: LOGINCTL_OK
+      })
+      const run = runInstallScript(await fetchHostScript(), home, {
+        PATH: bin,
+        ORCA_HOST_STATE_TIMEOUT: '0'
+      })
+
+      assert.equal(run.status, 0, run.stderr)
+      assert.equal(existsSync(join(home, CREDENTIAL_PATH)), true)
+      assert.doesNotMatch(run.stdout, /--reenroll/)
     })
   })
 

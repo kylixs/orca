@@ -76,6 +76,31 @@ describe('U183 R12: install-script command helper', () => {
     assert.doesNotMatch(script, /ORCA_HOST_STATE_TIMEOUT:-90/)
   })
 
+  test('U181 P2-9: systemd 用 journalctl 排障，非 systemd 仍 tail host.log', () => {
+    const script = hostInstallScript({
+      platformUrl: 'https://platform.example',
+      token: 'tok'
+    })
+    // The supervisor is recorded at the branch, not re-probed at the timeout.
+    assert.match(script, /ORCA_HOST_SUPERVISOR=systemd/)
+    assert.match(script, /ORCA_HOST_SUPERVISOR=nohup/)
+    assert.match(script, /journalctl --user -u orca-host\.service -n 40 --no-pager/)
+    assert.match(script, /tail -n 40 "\$ORCA_HOST_LOG"/)
+  })
+
+  test('U181 P2-10: 已有凭据时两段输出都提示 --reenroll（仍是 CLI 参数）', () => {
+    const script = hostInstallScript({
+      platformUrl: 'https://platform.example',
+      token: 'tok'
+    })
+    // Checked before launch so this run's own credential cannot trigger the hint.
+    assert.match(script, /ORCA_HAD_CREDENTIAL/)
+    assert.match(script, /orca-cloud-host\.json/)
+    // One hint in the systemd block, one in the no-systemd block.
+    assert.equal(script.match(/--host-mode --reenroll/g)?.length, 2)
+    assert.doesNotMatch(script, /ORCA_CLOUD_REENROLL/)
+  })
+
   test('host/relay 生成脚本都消费 helper 片段', () => {
     const host = hostInstallScript({ platformUrl: 'https://platform.example', token: 'tok' })
     const relay = relayInstallScript({

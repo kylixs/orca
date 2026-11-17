@@ -587,6 +587,11 @@ if ! mkdir -p "$ORCA_USER_DATA_PATH"; then
 fi
 chmod 700 "$ORCA_USER_DATA_PATH" 2>/dev/null || true
 
+# U181 P2-10: capture before launch; the host writes its credential on this run,
+# which must not be mistaken for "already enrolled".
+ORCA_HAD_CREDENTIAL=0
+if [ -f "$ORCA_USER_DATA_PATH/orca-cloud-host.json" ]; then ORCA_HAD_CREDENTIAL=1; fi
+
 # U181 P1-4: preflight before host.env/unit or any service start. A failed
 # verdict is config (78) or runtime (64); it can never become a timeout.
 ORCA_PREFLIGHT_OUT="$(mktemp "\${TMPDIR:-/tmp}/orca-preflight-out-XXXXXX")"
@@ -670,6 +675,9 @@ set -a; . "$ORCA_ENV_FILE"; set +a
 # H9b: with user systemd the unit owns the process — it restarts on failure and
 # survives logout/reboot. No nohup beside it (two instances fight the profile lock).
 if ${systemdAvailable()}; then
+  # U181 P2-9: record the supervisor here; the timeout/output paths must not
+  # re-probe systemctl (a PATH drift would pick a different answer).
+  ORCA_HOST_SUPERVISOR=systemd
   # U181 P2: ORCA_ENV_FILE is the single env source; %h keeps the design default.
   ORCA_UNIT_ENV_FILE="$ORCA_ENV_FILE"
   if [ "$ORCA_ENV_FILE" = "$HOME/.orca-cloud/host.env" ]; then
@@ -713,6 +721,7 @@ ${renderHostUnit({
     exit 69
   fi
 else
+  ORCA_HOST_SUPERVISOR=nohup
   # H10b: no user systemd (container/WSL/macOS). A wrapper makes host.env the
   # single config source and records the real pid ($! may be setsid).
   ORCA_HOST_WRAPPER="$HOME/.orca-cloud/run-host.sh"
@@ -799,25 +808,41 @@ if [ "$ORCA_STATE_WAIT" -gt 0 ]; then
     else
       echo ">> 状态文件不存在：$ORCA_STATE_FILE" >&2
     fi
-    echo ">> 宿主日志（$ORCA_HOST_LOG）尾部：" >&2
-    tail -n 40 "$ORCA_HOST_LOG" >&2 2>/dev/null || true
+    # U181 P2-9: systemd logs go to journald; only the nohup path owns host.log.
+    if [ "$ORCA_HOST_SUPERVISOR" = systemd ] && command -v journalctl >/dev/null 2>&1; then
+      echo ">> 宿主日志（journalctl --user -u orca-host.service）尾部：" >&2
+      journalctl --user -u orca-host.service -n 40 --no-pager >&2 2>/dev/null || true
+    else
+      echo ">> 宿主日志（$ORCA_HOST_LOG）尾部：" >&2
+      tail -n 40 "$ORCA_HOST_LOG" >&2 2>/dev/null || true
+    fi
     exit 70
   fi
   echo ">> 宿主已上线：hostId=$ORCA_STATE_HOST_ID pid=$ORCA_STATE_PID"
 fi
 
-if ${systemdAvailable()}; then
+if [ "$ORCA_HOST_SUPERVISOR" = systemd ]; then
   cat <<ORCA_NEXT
 
-宿主已由 systemd 用户服务托管：orca-host.service（日志 $ORCA_HOST_LOG）。
+宿主已由 systemd 用户服务托管：orca-host.service（日志：journalctl --user -u orca-host.service）。
 后续可选命令在开发机上执行：
 1) 查看状态：systemctl --user status orca-host.service
-2) 停止：systemctl --user stop orca-host.service
-3) 前台调试前先停止服务：
+2) 查看日志：journalctl --user -u orca-host.service -n 40 --no-pager
+3) 停止：systemctl --user stop orca-host.service
+4) 前台调试前先停止服务：
    systemctl --user stop orca-host.service
    set -a; . "$ORCA_ENV_FILE"; set +a
    $ORCA_HOST_BIN --host-mode
 ORCA_NEXT
+  if [ "$ORCA_HAD_CREDENTIAL" = 1 ]; then
+    cat <<ORCA_REENROLL
+
+5) 重新注册（一次性参数；成功后旧凭据失效，新凭据写入 host.env）：
+   systemctl --user stop orca-host.service
+   set -a; . "$ORCA_ENV_FILE"; set +a
+   "$ORCA_HOST_BIN" --host-mode --reenroll
+ORCA_REENROLL
+  fi
 else
   # U182: containers/WSL/macOS have no user systemd; print runnable commands
   # instead of instructions that are guaranteed to fail.
@@ -830,6 +855,15 @@ else
 2) 重新后台启动：
    nohup setsid "$ORCA_HOST_WRAPPER" >> "$ORCA_HOST_LOG" 2>&1 &
 ORCA_NEXT
+  if [ "$ORCA_HAD_CREDENTIAL" = 1 ]; then
+    cat <<ORCA_REENROLL
+
+3) 重新注册（一次性参数；需先停止上面的进程，成功后旧凭据失效）：
+   kill "$ORCA_HOST_PID"
+   set -a; . "$ORCA_ENV_FILE"; set +a
+   "$ORCA_HOST_BIN" --host-mode --reenroll
+ORCA_REENROLL
+  fi
 fi
 `
 }
