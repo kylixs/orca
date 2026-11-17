@@ -8,7 +8,8 @@ import { Store } from '../src/store.ts'
 import {
   attachStorePersistence,
   restoreSnapshot,
-  serializeSnapshot
+  serializeSnapshot,
+  SNAPSHOT_VERSION
 } from '../src/store-persistence.ts'
 import { createApp } from '../src/server.ts'
 
@@ -235,7 +236,7 @@ describe('平台 dev store 快照：损坏与默认关闭', () => {
       assert.equal(warnings.length, 1)
 
       const wrongVersion = path.join(root, 'wrong-version.json')
-      writeFileSync(wrongVersion, JSON.stringify({ version: 2 }), 'utf8')
+      writeFileSync(wrongVersion, JSON.stringify({ version: 99 }), 'utf8')
       const store2 = new Store()
       const warnings2: string[] = []
       attachStorePersistence(store2, {
@@ -343,9 +344,11 @@ describe('平台 dev store 快照：refresh token 明文剥离（U233 F6）', ()
       revokedAt: null
     })
     const snapshot = JSON.parse(serializeSnapshot(source)) as {
+      version: number
       refreshTokens: [string, string][]
     }
-    // Pre-U233 format: the map key was the plaintext token itself.
+    // Pre-U233 format: version 1 and the map key was the plaintext token itself.
+    snapshot.version = 1
     snapshot.refreshTokens = [[token, 'sess_legacy']]
 
     const restored = new Store()
@@ -353,6 +356,151 @@ describe('平台 dev store 快照：refresh token 明文剥离（U233 F6）', ()
 
     assert.equal(restored.refreshTokens.has(token), false)
     assert.equal(restored.refreshTokens.get(digestOf(token)), 'sess_legacy')
+  })
+
+  function writeLegacySnapshot(file: string, token: string): void {
+    const source = new Store()
+    source.sessions.set('sess_legacy_disk', {
+      id: 'sess_legacy_disk',
+      userId: 'user_legacy',
+      deviceId: 'device_legacy',
+      epoch: 1,
+      refreshHash: digestOf(token),
+      refreshExpiresAt: 1,
+      revokedAt: null
+    })
+    const snapshot = JSON.parse(serializeSnapshot(source)) as {
+      version: number
+      refreshTokens: [string, string][]
+    }
+    snapshot.version = 1
+    snapshot.refreshTokens = [[token, 'sess_legacy_disk']]
+    writeFileSync(file, JSON.stringify(snapshot), 'utf8')
+  }
+
+  test('旧明文快照加载后磁盘立即被清洗，无需等待状态变更', () => {
+    const root = tempRoot()
+    const file = path.join(root, 'platform-store.json')
+    const token = 'legacy-plaintext-token-on-disk'
+    try {
+      writeLegacySnapshot(file, token)
+
+      const store = new Store()
+      const handle = attachStorePersistence(store, {
+        file,
+        intervalMs: 60_000,
+        log: { warn: () => {} }
+      })
+      try {
+        assert.equal(store.refreshTokens.get(digestOf(token)), 'sess_legacy_disk')
+        const onDisk = readFileSync(file, 'utf8')
+        assert.equal(onDisk.includes(token), false, 'disk must be cleaned on load')
+        const decoded = JSON.parse(onDisk) as {
+          version: number
+          refreshTokens: [string, string][]
+        }
+        assert.equal(decoded.version, SNAPSHOT_VERSION)
+        for (const [key] of decoded.refreshTokens) {
+          assert.ok(key.startsWith('sha256:'), 'every key must be a digest')
+        }
+      } finally {
+        handle.stop()
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test('清洗后 flush（close/SIGTERM 走同一路径）仍保持摘要形态', () => {
+    const root = tempRoot()
+    const file = path.join(root, 'platform-store.json')
+    const token = 'legacy-plaintext-flush-token'
+    try {
+      writeLegacySnapshot(file, token)
+
+      const store = new Store()
+      const handle = attachStorePersistence(store, {
+        file,
+        intervalMs: 60_000,
+        log: { warn: () => {} }
+      })
+      try {
+        handle.flushNow()
+        const onDisk = readFileSync(file, 'utf8')
+        assert.equal(onDisk.includes(token), false)
+        assert.equal(onDisk, serializeSnapshot(store))
+      } finally {
+        handle.stop()
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test('立即写回失败不阻断启动，内存可用且下一次 flush 重试成功', () => {
+    const root = tempRoot()
+    const file = path.join(root, 'platform-store.json')
+    const token = 'legacy-plaintext-retry-token'
+    try {
+      writeLegacySnapshot(file, token)
+
+      const store = new Store()
+      const warnings: unknown[] = []
+      let attempts = 0
+      const handle = attachStorePersistence(store, {
+        file,
+        intervalMs: 60_000,
+        log: { warn: (...args: unknown[]) => warnings.push(args) },
+        writeFile: (target, text) => {
+          attempts += 1
+          if (attempts === 1) {
+            throw new Error('injected write failure')
+          }
+          writeFileSync(target, text, { encoding: 'utf8', mode: 0o600 })
+        }
+      })
+      try {
+        assert.equal(attempts, 1)
+        assert.equal(warnings.length, 1, 'write failure must be logged')
+        assert.equal(store.refreshTokens.get(digestOf(token)), 'sess_legacy_disk')
+        assert.equal(readFileSync(file, 'utf8').includes(token), true, 'file unchanged on failure')
+
+        handle.flushNow()
+        assert.equal(attempts, 2)
+        assert.equal(readFileSync(file, 'utf8').includes(token), false)
+      } finally {
+        handle.stop()
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('平台 dev store 快照：版本兼容（U233 读端）', () => {
+  test('写出 v2，读取端接受 v1 与 v2，未知版本拒绝', () => {
+    const digest = createHash('sha256').update('v1-token').digest('hex')
+    const source = new Store()
+    source.refreshTokens.set(digest, 'sess_v1')
+    const current = JSON.parse(serializeSnapshot(source)) as Record<string, unknown> & {
+      refreshTokens: [string, string][]
+    }
+    assert.equal(current.version, SNAPSHOT_VERSION)
+    assert.equal(SNAPSHOT_VERSION, 2)
+
+    const v1 = { ...current, version: 1 }
+    const fromV1 = new Store()
+    restoreSnapshot(fromV1, JSON.stringify(v1))
+    assert.equal(fromV1.refreshTokens.get(digest), 'sess_v1')
+
+    const fromV2 = new Store()
+    restoreSnapshot(fromV2, JSON.stringify(current))
+    assert.equal(fromV2.refreshTokens.get(digest), 'sess_v1')
+
+    assert.throws(
+      () => restoreSnapshot(new Store(), JSON.stringify({ ...current, version: 3 })),
+      /version 3 is not supported/
+    )
   })
 })
 

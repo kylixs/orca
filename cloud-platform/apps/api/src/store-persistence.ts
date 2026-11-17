@@ -28,7 +28,14 @@ import type { Store } from './store.ts'
  * their current in-memory behaviour.
  */
 
-export const SNAPSHOT_VERSION = 1
+/**
+ * 2: refresh keys are `sha256:` digests (U233). v1 files may still carry plaintext
+ * keys and are read and rewritten on load; a pre-v2 binary rejects v2 outright
+ * instead of treating a digest as a plaintext key.
+ */
+export const SNAPSHOT_VERSION = 2
+/** v1 predates the digest format; its refresh keys are migrated on load. */
+const READABLE_SNAPSHOT_VERSIONS = new Set<unknown>([1, 2])
 export const DEFAULT_SNAPSHOT_INTERVAL_MS = 2_000
 export const DEFAULT_AUDIT_LIMIT = 10_000
 
@@ -56,7 +63,7 @@ type AccessTokenEntry = {
   expiresAt: number
 }
 
-export type SnapshotV1 = {
+export type SnapshotDocument = {
   version: typeof SNAPSHOT_VERSION
   users: Entry<User>[]
   devices: Entry<Device>[]
@@ -83,6 +90,8 @@ export type StorePersistenceOptions = {
   intervalMs?: number
   auditLimit?: number
   log?: WarnLog
+  /** Test seam replacing the atomic writer. */
+  writeFile?: (file: string, text: string) => void
 }
 
 export type StorePersistenceHandle = {
@@ -130,7 +139,7 @@ function requireString(value: unknown, field: string): string {
 }
 
 /** Builds the on-disk shape; indexes and transient login locks are not persisted. */
-export function snapshotOf(store: Store, auditLimit = DEFAULT_AUDIT_LIMIT): SnapshotV1 {
+export function snapshotOf(store: Store, auditLimit = DEFAULT_AUDIT_LIMIT): SnapshotDocument {
   const audit = auditLimit > 0 ? store.audit.slice(-auditLimit) : []
   return {
     version: SNAPSHOT_VERSION,
@@ -182,8 +191,8 @@ export function restoreSnapshot(
   if (!isRecord(parsed)) {
     throw new Error('snapshot is not an object')
   }
-  if (parsed.version !== SNAPSHOT_VERSION) {
-    throw new Error(`snapshot version ${String(parsed.version)} is not ${SNAPSHOT_VERSION}`)
+  if (!READABLE_SNAPSHOT_VERSIONS.has(parsed.version)) {
+    throw new Error(`snapshot version ${String(parsed.version)} is not supported`)
   }
   if (!isRecord(parsed.policies)) {
     throw new Error('snapshot policies is not an object')
@@ -275,19 +284,32 @@ export function attachStorePersistence(
   const intervalMs = options.intervalMs ?? DEFAULT_SNAPSHOT_INTERVAL_MS
   const auditLimit = options.auditLimit ?? DEFAULT_AUDIT_LIMIT
   const log = options.log ?? console
+  const writeFile = options.writeFile ?? writeAtomic
 
   let lastWritten: string | null = null
   if (existsSync(file)) {
+    let restoredText: string | null = null
     try {
-      const text = readFileSync(file, 'utf8')
-      restoreSnapshot(store, text, auditLimit)
-      // The restored state is the baseline, so an idle restart does not rewrite it.
-      lastWritten = serializeSnapshot(store, auditLimit)
+      restoredText = readFileSync(file, 'utf8')
+      restoreSnapshot(store, restoredText, auditLimit)
     } catch (error) {
       // A corrupt snapshot must not keep the platform down; start empty and heal
       // the file on the next write.
       log.warn(`[store-persistence] ignoring ${file}: ${String(error)}`)
-      lastWritten = null
+    }
+    if (restoredText !== null) {
+      try {
+        const serialized = serializeSnapshot(store, auditLimit)
+        if (serialized !== restoredText) {
+          // Legacy (plaintext or v1) file: clean it now, since change-only flushes
+          // would otherwise leave the old bytes on disk indefinitely.
+          writeFile(file, serialized)
+        }
+        lastWritten = serialized
+      } catch (error) {
+        // Keep the restored memory state; `lastWritten` stays null so the next flush retries.
+        log.warn(`[store-persistence] rewrite failed for ${file}: ${String(error)}`)
+      }
     }
   }
 
@@ -297,7 +319,7 @@ export function attachStorePersistence(
       if (text === lastWritten) {
         return
       }
-      writeAtomic(file, text)
+      writeFile(file, text)
       lastWritten = text
     } catch (error) {
       log.warn(`[store-persistence] write failed for ${file}: ${String(error)}`)
