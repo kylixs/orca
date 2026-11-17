@@ -110,6 +110,7 @@
 - `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/u72-u73-audit-role-race.e2e.test.ts`：审计员入口/页面渲染、管理员不回退、开发者 403、双击查询与清除后查询的 latest-wins、auditor 空下拉解释（U72-4）、链健康/容量区块与校验按钮成功/409（U72-5，U136③）。
 - `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/audit-verify.e2e.test.ts`：链校验 200/409、校验动作入链、非授权 403（API 层）。
 - `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/audit-fail-closed.e2e.test.ts`、`audit-writer.e2e.test.ts`、`audit-writer-standby.e2e.test.ts`、`audit-anchor.e2e.test.ts`、`audit-query-latency.e2e.test.ts`、`audit-trace-window.e2e.test.ts`：写失败 fail-closed、单写者/备用、锚点、延迟、trace 窗口。
+- `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/authorization-combination-matrix.e2e.test.ts`（U247，`34b49057f7d`）：34 端点 × admin/auditor/developer + 匿名/强制下线/禁用身份 113/113；`denyPrivileged` 型 403 均回查 `GET /v1/audit/events` 命中（含 targetId）；`archive`/`restore` 对非管理员 404 且不写 denial（观察，台账 U247）。
 - 证据：`/Users/gongdewei/work/projects/orca/cloud-platform/evidence/u66-5-audit-ui/`、`.../u66-2-query/`、`.../u71-audit-gap/`、`.../u72u73-fix/`、`.../m31-audit-verify/`、`.../u66-final-reverify/`；U86 前后截图与文字提取在 `/Users/gongdewei/work/projects/orca/evidence/u86-fix/`（audit-before/after-layout.json 含控件坐标、hintPresent=false）。
 
 未覆盖：

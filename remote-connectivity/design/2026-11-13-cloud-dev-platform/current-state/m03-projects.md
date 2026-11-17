@@ -89,6 +89,7 @@
 | 打开         | `POST /v1/projects/:id/web-handoff`；iframe 消息 `ready/dirty/closed/suspended/ended`（`source='orca-cloud-admin'`，校验 origin 与 source window）      |
 | 归档/恢复    | `POST /v1/projects/:id/archive                                                                                                                          | restore`（仅 API） |
 | 下载策略覆盖 | `PUT /v1/projects/:id/policy`（平台设置页，M8）                                                                                                         |
+| 更新（仅 API） | `PUT /v1/projects/:id` body 至少含 `repoUrl` 或 `defaultBranch`（显式 `null` 合法）；缺失 → 400 `PROJECT_UPDATE_INVALID`；`path`/`hostId` → 400 `PROJECT_FIELD_IMMUTABLE`（先于必填判定）；校验在认证/授权/`auditAllowsMutations` 之后（`server.ts:4693-4712`，`097025df563`） |
 
 ## 5. 已知缺陷（台账）
 

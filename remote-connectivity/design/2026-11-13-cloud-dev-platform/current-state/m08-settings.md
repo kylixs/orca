@@ -54,9 +54,9 @@
 ## 4. 数据来源
 
 - `GET /v1/policies/download` → `{ downloadDefault: 'deny'|'allow', version }`。
-- `PUT /v1/policies/download` body `{ downloadDefault, expectedVersion? }` → 新版本；版本不匹配 → 409 `POLICY_VERSION_CONFLICT`（`error.details` 含服务端 `version`、`downloadDefault`、`readRatePerHour`）；写 `policy_update` 审计（target `download`，失败含 `reason/expectedVersion/resultVersion`）。
+- `PUT /v1/policies/download` body `{ downloadDefault, expectedVersion? }` → 新版本；版本不匹配 → 409 `POLICY_VERSION_CONFLICT`（`error.details` 含服务端 `version`、`downloadDefault`、`readRatePerHour`）；写 `policy_update` 审计（target `download`，失败含 `reason/expectedVersion/resultVersion`）。`downloadDefault` 必填 `allow`/`deny`，缺失或非法 → 400 `POLICY_INVALID`（不再默认 deny；校验在认证/授权/`auditAllowsMutations` 之后，`server.ts:6568-6582`，`097025df563`）。
 - `GET /v1/projects` → 项目的 `downloadPolicy`、`downloadPolicyExplicit`、`status`、`name`、`path`；前端计算 `following` / `overrides`。
-- `PUT /v1/projects/{id}/policy` body `{ downloadPolicy }` 或 `{ inherit: true }`（可另带 `readRatePerHour`，本页不发）→ 写 `policy_update` 审计；`inherit` 的 metadata 带 `inherited`，不误记 `downloadPolicy`。
+- `PUT /v1/projects/{id}/policy` body `{ downloadPolicy }` 或 `{ inherit: true }`（可另带 `readRatePerHour`，本页不发）→ 写 `policy_update` 审计；`inherit` 的 metadata 带 `inherited`，不误记 `downloadPolicy`。非 `inherit:true` 时 `downloadPolicy` 必须为 `allow`/`deny`，否则 400 `POLICY_INVALID`（校验在认证/授权/`auditAllowsMutations` 之后，`server.ts:5001-5024`，`097025df563`）。
 - 生效值读取：项目视图 `downloadPolicy`（已按全局/覆盖计算）。
 
 ## 5. 已知缺陷与观察

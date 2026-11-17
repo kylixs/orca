@@ -78,6 +78,8 @@
 | 中继路由       | 平台内存 `relayRoutes`（routeKey → hostId/target/version/`updatedAt`〔U146：写入时间或在线心跳确认时间〕）；宿主注册/心跳写入，吊销删除；中继侧单向同步 |
 | 开发者主机选择 | `GET /v1/hosts/available`（无凭证；online/provisionable/projectDirs/provisionAllowed/accessLevel）                     |
 
+- 维护端点必填 `enabled`（布尔）：缺失/字符串/`null`/`0` → 400 `HOST_MAINTENANCE_INVALID`，不再默认进入维护；校验在认证/授权/`auditAllowsMutations`、`HOST_REVOKED` 之后（`server.ts:5803-5811`，`097025df563`）。
+
 ## 5. 已知缺陷（台账）
 
 - 🟢 U19：项目登记未校验主机在线（主机页状态与项目创建共用 `hostOnline` 判定）。
