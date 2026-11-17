@@ -3,6 +3,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { startMonitor } from './monitor-system-resources.mjs'
+import { selectTargets } from './cleanup-test-processes.mjs'
 import { pathToFileURL } from 'node:url'
 
 const VITEST = 'node_modules/.bin/vitest'
@@ -113,6 +114,17 @@ function main(argv) {
     outDir: `cloud-platform/evidence/resource-monitor-${tier ?? 'unknown'}-${Date.now()}`,
     limits: { maxNode: 24, maxRssGb: 12, maxLoad: 0 }
   })
+  // Why: leftover Electron/daemon processes from earlier runs poison later runs.
+  const ps = spawnSync('ps', ['-axo', 'pid=,ppid=,etime=,command='], { encoding: 'utf8' })
+  const stale = selectTargets(ps.stdout ?? '').targets
+  for (const row of stale) {
+    try {
+      process.kill(row.pid, 'SIGTERM')
+    } catch {
+      // already gone
+    }
+  }
+  if (stale.length > 0) console.log(`[cleanup] terminated ${stale.length} stale test processes`)
   const finish = (code) => {
     monitor.stop()
     return code

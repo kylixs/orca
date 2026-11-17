@@ -31,3 +31,10 @@ node cloud-platform/scripts/monitor-system-resources.mjs \
 - 采样内容：进程数、node/Electron 进程数、总 RSS、loadavg、Top5 内存进程；每 5s 一行写入 `system-resources.jsonl`。
 - 超阈值打印 `[resource-watch]` 警告；结束写 `system-resources-summary.json`（peak 值）。
 - 用途：长跑（L4/T1/冒烟）必须带监控；出现 node 进程数或 RSS 异常增长即判资源问题、先停再查。
+
+## 测试进程生命周期（2026-11-17 用户指令）
+
+- **只处理本项目进程**：清理器 `cloud-platform/scripts/cleanup-test-processes.mjs` 仅匹配本项目路径与测试临时目录（`/tmp/orca-*`、`/private/tmp/{u*,w*,c6,gate,smoke,resmon}-*`、本仓 `node_modules/.pnpm/electron*`），**保留** `~/orca-local-env` 的 supervisor/forwarder/relay 与 30 分钟内启动的在途测试进程。
+- **默认演练、显式执行**：默认 dry-run 打印 `would kill`；`--yes` 才 TERM→1.5s→KILL，并把报告写入 `evidence/process-cleanup/process-cleanup.jsonl`。
+- **自动前置**：`run-test-tier.mjs` 每次运行前自动清理>30 分钟的本项目测试残留，避免残留进程污染后续结果。
+- **收尾责任**：任何 harness/驱动必须按 PID 清理自己派生的进程（禁用宽域 `pkill`），全量/长跑结束由调用方再跑一次清理器校验 `matched=0`。

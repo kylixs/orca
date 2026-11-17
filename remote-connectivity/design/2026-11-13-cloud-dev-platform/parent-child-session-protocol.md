@@ -117,6 +117,8 @@
 
 79. **长跑必须带资源监控（2026-11-17 13:2x 用户指令固化）**：任何全量/长跑测试必须经 `cloud-platform/scripts/monitor-system-resources.mjs` 包裹（默认阈值 node/electron ≤24、总 RSS ≤12GB，按机器调整），记录 `system-resources.jsonl` 与 peak summary；出现进程数/RSS 异常增长时先停跑定位，不得继续叠加测试。实测基线（本机 13:2x）：82 个 node/electron 进程、总 RSS 22.8GB。
 
+80. **测试进程生命周期（2026-11-17 13:3x 用户指令固化）**：测试派生的进程必须可回收且不跨轮残留——①harness 按 PID 清理；②长跑/全量结束跑 `cloud-platform/scripts/cleanup-test-processes.mjs` 校验 `matched=0`（默认 dry-run，`--yes` 才 TERM→KILL）；③清理器只处理本项目路径与测试临时目录，保留 `~/orca-local-env` 的 supervisor/forwarder/relay 与 30 分钟内启动的在途进程；④`run-test-tier.mjs` 已内置运行前自动清理。
+
 ## 2b. 并行模式（用户 2026-11-14 指令：不要串行开发，单独完整链路验收，发现即修不堵塞）
 
 1. **开发令派发不再以「前一令测试/审计通过」为前置**：实现落地即放行下一开发令（同通道后续令与跨通道均可）；文件域不相交仍是硬约束（防工作树碰撞与提交卷入）。
