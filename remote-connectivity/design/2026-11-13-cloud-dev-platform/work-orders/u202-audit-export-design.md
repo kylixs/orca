@@ -135,11 +135,12 @@
 | 400 | `EXPORT_CONFIRM_REQUIRED` | `confirm !== true` |
 | 401 | `SESSION_EXPIRED` | 未登录/会话失效 |
 | 403 | `PERMISSION_DENIED` | 非 admin 且非 auditor；同时写 `audit_export` denied 事件 |
-| 404 | `EXPORT_NOT_FOUND` | 未知 jobId、非本人 job、产物不存在 |
+| 404 | `EXPORT_NOT_FOUND` | 未知 jobId、非本人 job、下载 token 缺失/不匹配 |
 | 410 | `EXPORT_EXPIRED` | job 已过 `expiresAt` |
-| 410 | `EXPORT_DOWNLOAD_GONE` | 下载 token 过期或已使用 |
+| 410 | `EXPORT_DOWNLOAD_GONE` | 下载 token 过期/已使用，或产物缺失/已删除 |
 | 429 | `EXPORT_BUSY` | 超过每用户/全局并发上限 |
 | 500 | `EXPORT_WRITE_FAILED` | 产物/任务文件写入失败（异步任务状态 `failed`） |
+| 500 | `EXPORT_CREATE_FAILED` | 受理后任务落盘失败（已 write-ahead 写受理审计） |
 | 500 | `EXPORT_AUDIT_UNAVAILABLE` | 导出审计事件无法落链（创建阶段 fail-closed） |
 | 500 | `EXPORT_TOO_LARGE` | 扫描超过行数/字节上限（异步任务状态 `failed`，删除半成品） |
 | 500 | `EXPORT_INTERRUPTED` | 进程重启时 `queued`/`running` 任务被标记失败 |
