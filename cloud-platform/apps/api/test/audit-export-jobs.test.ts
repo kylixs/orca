@@ -97,6 +97,18 @@ describe('jobId 校验与路径安全', () => {
 })
 
 describe('任务往返、权限与状态迁移', () => {
+  test('create 接受预生成 jobId，仍校验格式与碰撞', () => {
+    const root = tempRoot()
+    const store = new AuditExportJobStore({ root })
+    const jobId = generateAuditExportJobId()
+    const job = store.create(jobInput({ jobId }))
+    assert.equal(job.jobId, jobId)
+    assert.equal(job.status, 'queued')
+
+    assert.throws(() => store.create(jobInput({ jobId: '../escape' })), /invalid audit export job id/)
+    assert.throws(() => store.create(jobInput({ jobId })), /collision/)
+  })
+
   test('create/read/update/remove 往返并落 0700/0600', () => {
     const root = tempRoot()
     const store = new AuditExportJobStore({ root })
@@ -222,6 +234,28 @@ describe('启动恢复', () => {
     assert.deepEqual(store.read(failed.jobId), failedJob)
     // A second pass has nothing left to recover.
     assert.deepEqual(store.recoverInterrupted(), [])
+  })
+
+  test('恢复清理半成品：删除 events.* 与 *.tmp，保留 job.json；终态不清理', () => {
+    const store = new AuditExportJobStore({ root: tempRoot(), ttlMs: 60_000, now: () => 1_000 })
+    const running = store.create(jobInput({ format: 'csv' }))
+    store.markRunning(running.jobId)
+    const dir = path.join(store.root, running.jobId)
+    writeFileSync(path.join(dir, 'events.csv'), 'seq,ts\r\n')
+    writeFileSync(path.join(dir, 'events.jsonl'), '{"seq":1}\n')
+    writeFileSync(path.join(dir, `events.csv.${process.pid}.abc.tmp`), 'partial')
+
+    const succeeded = store.create(jobInput())
+    store.markRunning(succeeded.jobId)
+    store.markSucceeded(succeeded.jobId, { totalEvents: 1, bytes: 2 })
+    const succeededDir = path.join(store.root, succeeded.jobId)
+    writeFileSync(path.join(succeededDir, 'events.csv'), 'kept')
+    writeFileSync(path.join(succeededDir, 'orphan.tmp'), 'kept')
+
+    assert.deepEqual(store.recoverInterrupted(), [running.jobId])
+    assert.equal(store.read(running.jobId)?.status, 'failed')
+    assert.deepEqual(readdirSync(dir), ['job.json'])
+    assert.deepEqual(readdirSync(succeededDir).sort(), ['events.csv', 'job.json', 'orphan.tmp'])
   })
 
   test('过期任务不恢复，交由 prune 处理', () => {

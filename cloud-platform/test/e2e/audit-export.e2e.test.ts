@@ -41,6 +41,7 @@ type AuditPage = {
     eventType?: string
     actor?: string
     result?: string
+    ts?: number
     metadata?: Record<string, unknown>
   }[]
 }
@@ -309,8 +310,11 @@ describe('审计导出受理（真实平台进程）', () => {
 
     // The acceptance audit event snapshots the same full filter set.
     const log = await auditEvents({ eventType: 'audit_export', result: 'success' })
-    const accepted = log.events?.find((entry) => entry.metadata?.jobId === jobId)
+    const accepted = log.events?.find(
+      (entry) => entry.metadata?.jobId === jobId && entry.metadata?.phase === 'accepted'
+    )
     assert.ok(accepted, 'accepted export must be audited with its jobId')
+    assert.equal(accepted.metadata?.phase, 'accepted')
     const auditedQuery = accepted.metadata?.query
     assert.ok(isRecord(auditedQuery))
     assert.deepEqual(
@@ -394,12 +398,18 @@ describe('审计导出受理（真实平台进程）', () => {
 
     const event = events.find((entry) => {
       const jobId = entry.metadata?.jobId
-      return entry.actor === 'admin' && typeof jobId === 'string' && JOB_ID.test(jobId)
+      return (
+        entry.actor === 'admin' &&
+        entry.metadata?.phase === 'accepted' &&
+        typeof jobId === 'string' &&
+        JOB_ID.test(jobId)
+      )
     })
     assert.ok(event, 'accepted export event must carry its jobId')
     assert.equal(event.actor, 'admin')
 
     const metadata = event.metadata ?? {}
+    assert.equal(metadata.phase, 'accepted')
     assert.equal(metadata.format, 'csv')
     assert.equal(typeof metadata.query, 'object')
     assert.ok(metadata.limits !== undefined, 'event must state the row/byte caps')
@@ -412,5 +422,10 @@ describe('审计导出受理（真实平台进程）', () => {
     const jobId = typeof metadata.jobId === 'string' ? metadata.jobId : ''
     const job = readJob(jobId)
     assert.ok(['queued', 'running', 'succeeded'].includes(job.status ?? ''), job.status)
+    // F12: acceptance is on the chain no later than the directory that holds the job.
+    assert.ok(
+      typeof event.ts === 'number' && typeof job.createdAt === 'number' && event.ts <= job.createdAt,
+      `acceptance audit (${event.ts}) must precede job.json (${job.createdAt})`
+    )
   })
 })

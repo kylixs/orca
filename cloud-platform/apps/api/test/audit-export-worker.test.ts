@@ -8,7 +8,9 @@ import {
   AUDIT_EXPORT_ERROR_AUDIT_UNAVAILABLE,
   AUDIT_EXPORT_ERROR_TOO_LARGE,
   AUDIT_EXPORT_ERROR_WRITE_FAILED,
-  AuditExportWorker
+  AuditExportWorker,
+  type AuditExportAuditSink,
+  type AuditExportTerminalAuditEvent
 } from '../src/audit-export-worker.ts'
 import { AUDIT_EXPORT_CSV_HEADER } from '../src/audit-export-format.ts'
 import {
@@ -82,6 +84,7 @@ type WorkerOverrides = {
   maxBytes?: number
   pageSize?: number
   ttlMs?: number
+  audit?: AuditExportAuditSink
 }
 
 function makeWorker(root: string, chain: ReturnType<typeof fakeChain>, over: WorkerOverrides = {}) {
@@ -89,6 +92,18 @@ function makeWorker(root: string, chain: ReturnType<typeof fakeChain>, over: Wor
   const store = new AuditExportJobStore({ root, now: over.now, ttlMs })
   const worker = new AuditExportWorker({ store, query: chain.query, ...workerOptions })
   return { store, worker }
+}
+
+/** Sync recorder; `append` still returns a promise like the real sink. */
+function recordingAudit() {
+  const events: AuditExportTerminalAuditEvent[] = []
+  const audit: AuditExportAuditSink = {
+    append: (event) => {
+      events.push(event)
+      return Promise.resolve()
+    }
+  }
+  return { audit, events }
 }
 
 const objectPathFor = (root: string, jobId: string, format: AuditExportFormat) => {
@@ -359,6 +374,100 @@ describe('失败终态不留产物', () => {
     }
     assert.equal(existsSync(objectPathFor(root, job.jobId, 'csv')), false)
     assert.equal(store.read(job.jobId)?.status, 'failed')
+  })
+})
+
+describe('终态审计（best-effort）', () => {
+  test('成功写一条 phase=finished 事件，含 totalEvents/bytes', async () => {
+    const root = tempRoot()
+    const chain = fakeChain([event(1), event(2)])
+    const { audit, events } = recordingAudit()
+    const { store, worker } = makeWorker(root, chain, { audit })
+
+    const job = store.create({
+      requestedBy: 'user_1',
+      requestedByUsername: 'alice',
+      query: { limit: 200 },
+      format: 'csv'
+    })
+    const result = worker.runAuditExportJob(job.jobId)
+    assert.equal(result.status, 'succeeded')
+    await Promise.resolve()
+
+    assert.equal(events.length, 1)
+    const [audited] = events
+    assert.equal(audited.eventType, 'audit_export')
+    assert.equal(audited.actor, 'alice')
+    assert.equal(audited.targetId, job.jobId)
+    assert.equal(audited.result, 'success')
+    assert.deepEqual(audited.metadata, {
+      jobId: job.jobId,
+      phase: 'finished',
+      format: 'csv',
+      totalEvents: 2,
+      bytes: result.status === 'succeeded' ? result.bytes : -1
+    })
+  })
+
+  test('失败写一条 phase=finished 事件，含 errorCode', async () => {
+    const root = tempRoot()
+    const chain = fakeChain([event(1), event(2), event(3)])
+    const { audit, events } = recordingAudit()
+    const { store, worker } = makeWorker(root, chain, { audit, maxEvents: 1 })
+
+    const job = store.create({
+      requestedBy: 'user_1',
+      requestedByUsername: 'alice',
+      query: { limit: 200 },
+      format: 'jsonl'
+    })
+    assert.equal(worker.runAuditExportJob(job.jobId).status, 'failed')
+    await Promise.resolve()
+
+    assert.equal(events.length, 1)
+    assert.equal(events[0]?.result, 'failure')
+    assert.deepEqual(events[0]?.metadata, {
+      jobId: job.jobId,
+      phase: 'finished',
+      format: 'jsonl',
+      errorCode: AUDIT_EXPORT_ERROR_TOO_LARGE
+    })
+  })
+
+  test('审计抛错或拒绝不影响任务终态', async () => {
+    const root = tempRoot()
+    const chain = fakeChain([event(1)])
+    const throwing: AuditExportAuditSink = {
+      append: () => {
+        throw new Error('audit down')
+      }
+    }
+    const { store, worker } = makeWorker(root, chain, { audit: throwing })
+    const job = store.create({
+      requestedBy: 'user_1',
+      requestedByUsername: 'alice',
+      query: { limit: 200 },
+      format: 'csv'
+    })
+
+    const result = worker.runAuditExportJob(job.jobId)
+    assert.equal(result.status, 'succeeded')
+    assert.equal(store.read(job.jobId)?.status, 'succeeded')
+    assert.ok(existsSync(objectPathFor(root, job.jobId, 'csv')))
+
+    const rejecting: AuditExportAuditSink = { append: () => Promise.reject(new Error('down')) }
+    const { store: store2, worker: worker2 } = makeWorker(tempRoot(), fakeChain([event(1)]), {
+      audit: rejecting
+    })
+    const job2 = store2.create({
+      requestedBy: 'user_1',
+      requestedByUsername: 'alice',
+      query: { limit: 200 },
+      format: 'csv'
+    })
+    assert.equal(worker2.runAuditExportJob(job2.jobId).status, 'succeeded')
+    await Promise.resolve()
+    assert.equal(store2.read(job2.jobId)?.status, 'succeeded')
   })
 })
 

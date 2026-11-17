@@ -54,10 +54,27 @@ export type AuditExportRunResult =
   | { jobId: string; status: 'failed'; error: AuditExportJobError }
   | { jobId: string; status: 'skipped'; reason: AuditExportSkipReason }
 
+/** Terminal audit event (U201 E6): acceptance is recorded by the HTTP route. */
+export type AuditExportTerminalAuditEvent = {
+  eventType: string
+  actor?: string
+  targetType: string
+  targetId: string
+  result: 'success' | 'failure'
+  traceId?: string
+  metadata?: Record<string, unknown>
+}
+
+export type AuditExportAuditSink = {
+  append: (event: AuditExportTerminalAuditEvent) => Promise<void>
+}
+
 export type AuditExportWorkerOptions = {
   store: AuditExportJobStore
   /** Same shape as `AuditChain.query`; injected so tests need no real chain. */
   query: (filter: AuditQuery) => AuditQueryResult
+  /** Terminal (`phase: finished`) events are best-effort; failures never alter the job. */
+  audit?: AuditExportAuditSink
   now?: () => number
   maxEvents?: number
   maxBytes?: number
@@ -74,6 +91,7 @@ const errorMessage = (error: unknown): string =>
 export class AuditExportWorker {
   private readonly store: AuditExportJobStore
   private readonly query: (filter: AuditQuery) => AuditQueryResult
+  private readonly audit: AuditExportAuditSink | null
   private readonly clock: () => number
   private readonly maxEvents: number
   private readonly maxBytes: number
@@ -82,6 +100,7 @@ export class AuditExportWorker {
   constructor(options: AuditExportWorkerOptions) {
     this.store = options.store
     this.query = options.query
+    this.audit = options.audit ?? null
     this.clock = options.now ?? Date.now
     this.maxEvents = options.maxEvents ?? DEFAULT_AUDIT_EXPORT_MAX_EVENTS
     this.maxBytes = options.maxBytes ?? DEFAULT_AUDIT_EXPORT_MAX_BYTES
@@ -117,7 +136,7 @@ export class AuditExportWorker {
 
     const objectPath = resolveAuditExportObjectPath(this.store.root, jobId, running.format)
     if (!objectPath) {
-      return this.failJob(jobId, null, {
+      return this.failJob(running, null, {
         code: AUDIT_EXPORT_ERROR_WRITE_FAILED,
         message: '导出产物路径无效。'
       })
@@ -127,13 +146,13 @@ export class AuditExportWorker {
     try {
       collected = this.collect(running)
     } catch (error) {
-      return this.failJob(jobId, objectPath, {
+      return this.failJob(running, objectPath, {
         code: AUDIT_EXPORT_ERROR_AUDIT_UNAVAILABLE,
         message: `审计查询失败：${errorMessage(error)}`
       })
     }
     if (!collected.ok) {
-      return this.failJob(jobId, objectPath, {
+      return this.failJob(running, objectPath, {
         code: collected.code,
         message: collected.message
       })
@@ -147,13 +166,13 @@ export class AuditExportWorker {
       body = this.serialize(running.format, collected.events)
       bytes = Buffer.byteLength(body, 'utf8')
     } catch (error) {
-      return this.failJob(jobId, objectPath, {
+      return this.failJob(running, objectPath, {
         code: AUDIT_EXPORT_ERROR_WRITE_FAILED,
         message: `导出序列化失败：${errorMessage(error)}`
       })
     }
     if (bytes > this.maxBytes) {
-      return this.failJob(jobId, objectPath, {
+      return this.failJob(running, objectPath, {
         code: AUDIT_EXPORT_ERROR_TOO_LARGE,
         message: `导出字节数 ${bytes} 超过上限 ${this.maxBytes}。`
       })
@@ -162,7 +181,7 @@ export class AuditExportWorker {
     try {
       this.writeObjectFile(objectPath, body)
     } catch (error) {
-      return this.failJob(jobId, objectPath, {
+      return this.failJob(running, objectPath, {
         code: AUDIT_EXPORT_ERROR_WRITE_FAILED,
         message: `导出产物写入失败：${errorMessage(error)}`
       })
@@ -177,6 +196,20 @@ export class AuditExportWorker {
       this.removeObjectFile(objectPath)
       return { jobId, status: 'skipped', reason: 'expired' }
     }
+    this.emitTerminalAudit({
+      eventType: 'audit_export',
+      actor: running.requestedByUsername,
+      targetType: 'audit',
+      targetId: jobId,
+      result: 'success',
+      metadata: {
+        jobId,
+        phase: 'finished',
+        format: running.format,
+        totalEvents: collected.events.length,
+        bytes
+      }
+    })
     return {
       jobId,
       status: 'succeeded',
@@ -296,7 +329,7 @@ export class AuditExportWorker {
   }
 
   private failJob(
-    jobId: string,
+    job: AuditExportJob,
     objectPath: string | null,
     error: AuditExportJobError
   ): AuditExportRunResult {
@@ -304,11 +337,42 @@ export class AuditExportWorker {
       this.removeObjectFile(objectPath)
     }
     try {
-      this.store.markFailed(jobId, error)
+      this.store.markFailed(job.jobId, error)
     } catch {
       // An expired/gone job still surfaces the failure to the caller.
     }
-    return { jobId, status: 'failed', error }
+    this.emitTerminalAudit({
+      eventType: 'audit_export',
+      actor: job.requestedByUsername,
+      targetType: 'audit',
+      targetId: job.jobId,
+      result: 'failure',
+      metadata: {
+        jobId: job.jobId,
+        phase: 'finished',
+        format: job.format,
+        errorCode: error.code
+      }
+    })
+    return { jobId: job.jobId, status: 'failed', error }
+  }
+
+  /**
+   * Best-effort by design: the job record is the client-visible truth, so an
+   * audit outage must not roll back a terminal state. Remote writers are async
+   * while `runAuditExportJob` is sync, so rejection is handled off the call.
+   */
+  private emitTerminalAudit(event: AuditExportTerminalAuditEvent): void {
+    if (!this.audit) {
+      return
+    }
+    try {
+      void Promise.resolve(this.audit.append(event)).catch((error: unknown) => {
+        console.error('[audit-export] terminal audit failed:', errorMessage(error))
+      })
+    } catch (error) {
+      console.error('[audit-export] terminal audit failed:', errorMessage(error))
+    }
   }
 
   private readRoot() {

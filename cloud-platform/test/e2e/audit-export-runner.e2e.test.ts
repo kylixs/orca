@@ -30,6 +30,13 @@ type StatusBody = {
   error?: { code?: string; message?: string }
 }
 type JsonlEvent = { seq?: number; eventType?: string }
+type AuditPage = {
+  events?: {
+    eventType?: string
+    result?: string
+    metadata?: Record<string, unknown>
+  }[]
+}
 
 async function login(username: string, password: string, deviceName: string): Promise<string> {
   const res = await fetch(`${api.url}/v1/auth/login`, {
@@ -60,6 +67,28 @@ async function status(jobId: string): Promise<StatusBody> {
   })
   assert.equal(res.status, 200)
   return await res.json()
+}
+
+/** Terminal events are best-effort and may land just after the job record. */
+async function finishedAuditEvent(jobId: string) {
+  const deadline = Date.now() + POLL_BUDGET_MS
+  for (;;) {
+    const res = await fetch(`${api.url}/v1/audit/events?eventType=audit_export&limit=200`, {
+      headers: { authorization: `Bearer ${adminToken}` }
+    })
+    assert.equal(res.status, 200)
+    const page: AuditPage = await res.json()
+    const found = page.events?.find(
+      (event) => event.metadata?.jobId === jobId && event.metadata?.phase === 'finished'
+    )
+    if (found) {
+      return found
+    }
+    if (Date.now() > deadline) {
+      assert.fail(`no finished audit event for ${jobId}`)
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
 }
 
 /** Polls the status endpoint; the elapsed assertion keeps the budget honest. */
@@ -122,6 +151,14 @@ describe('审计导出执行器（真实平台进程）', () => {
     assert.ok((body.bytes ?? 0) > 0, 'succeeded export must report its byte size')
     assert.equal(typeof body.startedAt, 'number')
     assert.equal(typeof body.finishedAt, 'number')
+
+    // F2: the terminal state is mirrored onto the audit chain by the worker.
+    const terminal = await finishedAuditEvent(jobId)
+    assert.equal(terminal.eventType, 'audit_export')
+    assert.equal(terminal.result, 'success')
+    assert.equal(terminal.metadata?.format, 'jsonl')
+    assert.equal(terminal.metadata?.totalEvents, body.totalEvents)
+    assert.equal(terminal.metadata?.bytes, body.bytes)
 
     const lines = readArtifact(jobId)
       .split('\n')
