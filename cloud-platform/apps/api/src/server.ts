@@ -962,7 +962,12 @@ ORCA_RELAY_ENTRY="$ORCA_RELAY_ROOT/current/apps/relay/src/relay.ts"`
 if [ ! -f "$ORCA_RELAY_ENTRY" ]; then
   echo ">> 未找到中继程序 $ORCA_RELAY_ENTRY（78）：本脚本不安装中继代码，请把 Orca 仓库放到该路径，或设置 ORCA_RELAY_ROOT" >&2
   exit 78
-fi`
+fi
+if [ "\${ORCA_RELAY_ALLOW_UNVERIFIED:-}" != "1" ]; then
+  echo ">> 仓库/未校验目录安装需 ORCA_RELAY_ALLOW_UNVERIFIED=1（78）：仅限开发，生产请使用 bundle" >&2
+  exit 78
+fi
+echo ">> 警告：使用未校验的中继目录 $ORCA_RELAY_ENTRY（仅限开发）" >&2`
 }
 ${requireWritableDir('$ORCA_RELAY_ROOT', '安装根不可写（78）：请设置 ORCA_RELAY_ROOT 指向当前用户可写目录后重试')}
 

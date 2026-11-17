@@ -1744,16 +1744,34 @@ exit 0
       const bin = makeSparsePath(home, { node: NODE_2218_ALIVE_STUB })
       const run = runInstallScript(await fetchRelayScriptRepoMode(), home, {
         PATH: bin,
-        ORCA_RELAY_ROOT: relayRoot
+        ORCA_RELAY_ROOT: relayRoot,
+        ORCA_RELAY_ALLOW_UNVERIFIED: '1'
       })
       try {
         assert.equal(run.status, 0, run.stderr)
+        assert.match(run.stderr, /警告：使用未校验的中继目录/)
         const wrapper = readFileSync(join(relayRoot, 'run-relay.sh'), 'utf8')
         assert.equal(wrapper.includes(`exec "${join(bin, 'node')}" "${repoEntry}"`), true)
         assert.doesNotMatch(wrapper, /current\/apps\/relay/)
       } finally {
         killRelayPid(relayRoot)
       }
+    })
+
+    test('U188: 仓库模式未给 ALLOW_UNVERIFIED 时以 78 拒绝', async () => {
+      const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+      const relayRoot = makeRelayRoot(home)
+      const repoEntry = join(relayRoot, 'cloud-platform', 'apps', 'relay', 'src', 'relay.ts')
+      mkdirSync(dirname(repoEntry), { recursive: true })
+      writeFileSync(repoEntry, '')
+      const bin = makeSparsePath(home, { node: NODE_2218_ALIVE_STUB })
+      const run = runInstallScript(await fetchRelayScriptRepoMode(), home, {
+        PATH: bin,
+        ORCA_RELAY_ROOT: relayRoot
+      })
+      assert.equal(run.status, 78, run.stderr)
+      assert.match(run.stderr, /ORCA_RELAY_ALLOW_UNVERIFIED=1/)
+      assert.equal(existsSync(join(relayRoot, 'relay.env')), false)
     })
   })
 
