@@ -4300,3 +4300,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U244 follower 修复落地**（`a62d3944156`，2 文件）：队列值携带 outcome，follower 仅在 leader 成功时返回 0，否则作为新 leader 重试；审计失败哨兵 Symbol 避免二次响应；新用例断言审计故障并发下无 200-with-0、双 503、无副作用；恢复后 [0,1]、epoch+1、1 条审计。U244 9/9，代理 cloud-platform 全量 1175（1173/2skip/0fail）。最终复审中。
 - **U244 最终复审 APPROVED**：follower 仅 leader 成功才返回 0、失败重试；多 follower [1,0,0]/全 503 双向正确；Symbol 仅吞哨兵、队列 finally 清理；父提交精确红；9/9、相邻 44/44。台账 U244 翻 🟢。P3 观察并入 U245：`recurringRendezvous` 无超时、at-least-once 边界、自撤策略。
 - **最终认证+审计回归批（U244/U246 后）**：24 套件 **250 tests / 248 pass / 2 skip / 0 fail**（CONC=2，EXIT=0）；cloud-platform 全量（U246 后代理）1175/1173/2。交付摘要更新：认证 21 套件 229/227/2、新增 U244/U246 关闭项与审计原子性说明。
+- **单测复跑**：`test/*.test.ts` + `apps/api/test/*.test.ts` = **311/311**（U246 新增 3 例）；矩阵加固附录补 U244/U246 状态。至此交付基线：认证 21 套件 229/227/2、认证+审计 24 套件 250/248/2、单测 311、cloud-platform 全量 1175/1173/2、Web 321、T1 EXIT=0、重放 40/40、soak 30/30。
