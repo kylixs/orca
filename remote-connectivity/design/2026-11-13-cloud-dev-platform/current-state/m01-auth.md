@@ -42,6 +42,13 @@
 | A8  | 刷新/重开页面                              | **Cookie 模式**：一次无 body 刷新 → 成功后 `GET /v1/me`（`retried:true`，不启动第二条刷新链）→ 进主框架（`app.js:5144-5162`）。**旧模式**：有 access 时 `GET /v1/me`，401 触发 body 刷新并重放一次（`app.js:5163-5175`；`u198-legacy-reload` 断言顺序 `/v1/me:401 → refresh:200 → /v1/me:200`）。`orca.pendingLogout=1` 时**先显示登录页**再补发一次登出、不自动进入（`app.js:5135-5141`） | 无        | 刷新失败/`/v1/me` 失败 → 移除缓存 user、显示登录页。仅缓存 user、无 access/无 Cookie 模式时直接登录页（`session-renewal` AC-M1-14）                                      | 有本地会话 |
 | A9  | 点击「退出」                               | 关闭工作区 iframe → 置 `orca.pendingLogout=1` → 异步 `POST /v1/auth/logout`（同时带 Bearer 与同源 Cookie；服务端清 Cookie 的多作用域并撤销 Bearer/Cookie 定位到的**全部** session，`server.ts:3843-3891`）→ 本地清 access/refresh/tokenOwner、`orca.authMode`、缓存 user 与登录框输入 → 回登录页。请求网络失败保留标记，下次加载重试一次；收到 2xx 或 401 即删标记（`app.js:4946-4990`）。多标签为**被动**登出：另一标签下一次请求 401 → 刷新被拒 → 登出（`u197-web-cookie-browser` AC7） | 无        | 登出请求失败被吞，本地仍清空；HttpOnly Cookie 由下次加载的补发清理                                                                                                    | 已登录     |
 
+**会话代际与迁移 owner 策略（U229）**
+
+- `state.authEpoch`：`login()` 发起/成功、`logout()` 自增并清空 `refreshInFlight`；刷新在每次 await 后校验代际，过期结果返回 `'stale'` 且**不写** state/storage、不改能力标记、不登出（`app.js:59-232`）。`api()` 遇 `'stale'` 把原 401 交回调用方，不重放。
+- 旧键 owner：登录成功时 `orca.tokenOwner` 为空或与本次用户名不同 → 清除旧键；Cookie 模式启动且 Cookie 刷新失败时，仅 owner 与 `orca.user` 一致才允许 body 回退，否则清键（`app.js:187-226, 4982-4985`）。无 owner 的 pre-U221 键不再作为回退来源（跨账号防护）。
+- 登出：请求体携带 `{refreshToken}`（非 Cookie 模式），服务端据此定位并撤销 legacy 会话（U229 F10）；慢登出响应在重新登录后被 abort，不再清除新 Cookie（U229 F3）。
+- grace 回显：body 回退响应 `refreshToken` 等于请求值且无 `refreshCookie` → 视为未轮换，只更新 access、保留标记与旧键（U229 F4）。
+
 **登录响应形态（HEAD）**
 
 - Cookie 下发的判定只看 `Origin` 与配置的 `ORCA_CLOUD_PUBLIC_ORIGIN` 是否同源，**不用 Host/X-Forwarded-Proto**（`server.ts:1973-1977`、`refresh-cookie.ts:134-148`）。
