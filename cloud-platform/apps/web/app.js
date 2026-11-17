@@ -5095,6 +5095,7 @@ async function login(username, password) {
   localStorage.removeItem(PENDING_LOGOUT_KEY)
   // U197 AC9b: only a real Set-Cookie response proves Cookie mode. Anything
   // else is a confirmed legacy deployment, so later loads skip the probe.
+  // U219 deviation 1: a login without `refreshCookie` is also remembered as `legacy`.
   if (body.refreshCookie === true) setCookieMode(true)
   else setLegacyMode()
   state.user = body.user
@@ -5353,7 +5354,10 @@ function finishStartupMe(me, startupEpoch, cachedUser) {
           STARTUP_TIMEOUT_MS
         )
       } catch {
-        // U234: a timed-out probe is abandoned below, never merely ignored.
+        // U234: a timeout is an `error` verdict, not abandonment. With a persistent
+        // access token the flow continues via /v1/me and the probe is not aborted;
+        // a late result lands only while this generation still owns the epoch —
+        // login/logout bump it, so the result turns `stale`.
       }
       if (refresh === 'ok') {
         try {

@@ -748,4 +748,47 @@ describe('U197 S4 Web Cookie mode（happy-dom + 真实 createApp）', () => {
     assert.equal(stored.refresh, null)
     assert.equal(stored.mode, 'cookie', 'the success itself is the migration gate')
   })
+
+  test('U219 偏差 1 登录响应无 refreshCookie：把 cookie 标记改写为 legacy 并持久化旧键', async () => {
+    // D17 review N4: a 200 login that omits `refreshCookie` is treated as a
+    // proven legacy deployment, not as "unknown". Starting from a stale cookie
+    // marker isolates the login branch: only the login response may reclassify it.
+    const base = await start({ cookieMode: 'never', publicOrigin: '' })
+    const other = await legacyTokens(base) // the same server omits the marker
+    const page = loadWebConsolePage(base, { storage: { 'orca.authMode': 'cookie' } })
+    await page.settle()
+    assert.equal(
+      page.hidden('#view-login'),
+      false,
+      'precondition: the stale marker cannot resume a session'
+    )
+    const probesBeforeLogin = refreshCalls(page).length
+    await page.submitLogin('admin', 'Adm1n!')
+
+    assert.equal(page.hidden('#view-app'), false)
+    const stored = storedAuth(page)
+    assert.equal(stored.mode, 'legacy', 'no marker in the login 200 writes the legacy verdict')
+    assert.ok(stored.access, 'the localStorage contract persists access')
+    assert.ok(stored.refresh, 'the localStorage contract persists refresh')
+    assert.notEqual(stored.access, other.accessToken, 'this login is not a migration of the probe')
+    assert.equal(refreshCalls(page).length, probesBeforeLogin, 'the login itself spends no refresh')
+    assert.equal(refreshBodies(page).length, 0, 'the login spends no body fallback')
+
+    // A later load trusts the marker: no probe and no refresh.
+    const reload = loadWebConsolePage(base, {
+      storage: {
+        'orca.authMode': 'legacy',
+        'orca.access': stored.access ?? '',
+        'orca.refresh': stored.refresh ?? '',
+        'orca.tokenOwner': 'admin'
+      }
+    })
+    await reload.settle()
+    assert.equal(
+      refreshCalls(reload).length,
+      0,
+      'a confirmed legacy deployment is not probed again'
+    )
+    assert.equal(reload.hidden('#view-app'), false)
+  })
 })

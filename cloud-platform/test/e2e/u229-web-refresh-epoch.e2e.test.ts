@@ -33,7 +33,7 @@ async function legacyTokens(
   base: string,
   username = 'zhangsan',
   password = 'Passw0rd!'
-): Promise<{ refreshToken: string }> {
+): Promise<{ accessToken: string; refreshToken: string }> {
   const res = await fetch(`${base}/v1/auth/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -41,7 +41,7 @@ async function legacyTokens(
   })
   assert.equal(res.status, 200)
   const body = (await res.json()) as Record<string, unknown>
-  return { refreshToken: String(body.refreshToken) }
+  return { accessToken: String(body.accessToken), refreshToken: String(body.refreshToken) }
 }
 
 function refreshCalls(page: WebConsolePage): string[] {
@@ -278,6 +278,109 @@ describe('U229 F2 无 owner 旧键不得跨账号回退', () => {
       page.window.localStorage.getItem('orca.refresh'),
       legacy.refreshToken,
       'an owner-bound key must not be cleared just because the user cache is gone'
+    )
+  })
+})
+
+describe('U197 D17 迁移探测：超时与迟到结果', () => {
+  test('N2a 未知标记 + 无 body 探测超时：持久 access 进应用，不写 legacy', async () => {
+    // D17 N2①: the migrating probe is held past STARTUP_TIMEOUT_MS. A timeout is
+    // `error` (no verdict), so a persistent access token still resumes via /v1/me.
+    const base = await start({ cookieMode: 'never' })
+    const legacy = await legacyTokens(base, 'admin', 'Adm1n!')
+    const page = loadWebConsolePage(base, {
+      // 10s × 0.01 = 100ms: settle() is long enough to observe the timeout.
+      timerScale: 0.01,
+      storage: { 'orca.access': legacy.accessToken, 'orca.refresh': legacy.refreshToken },
+      holdOnLoad: ['POST /v1/auth/refresh']
+    })
+    await page.settle()
+
+    assert.equal(page.hidden('#view-app'), false, 'the valid access token resumes the app')
+    assert.equal(page.hidden('#view-login'), true)
+    assert.equal(
+      page.window.localStorage.getItem('orca.authMode'),
+      null,
+      'a timeout is not a legacy verdict'
+    )
+    assert.equal(page.window.localStorage.getItem('orca.access'), legacy.accessToken)
+    assert.equal(page.window.localStorage.getItem('orca.refresh'), legacy.refreshToken)
+    assert.equal(refreshCalls(page).length, 1, 'exactly the one held probe')
+    assert.equal(refreshBodies(page).length, 0, 'a timeout spends no body fallback')
+    assert.ok(page.calls().includes('GET /v1/me'), 'recovery runs through the persistent token')
+    // The held probe is deliberately not released: its late result is N2b.
+  })
+
+  test('N2b 迁移探测迟到（登出 abort 后 resolve）：stale 不落状态，不再探测', async () => {
+    const base = await start({ cookieMode: 'never' })
+    const legacy = await legacyTokens(base, 'admin', 'Adm1n!')
+    const page = loadWebConsolePage(base, {
+      timerScale: 0.01,
+      storage: { 'orca.access': legacy.accessToken, 'orca.refresh': legacy.refreshToken },
+      holdOnLoad: ['POST /v1/auth/refresh']
+    })
+    await page.settle()
+    assert.equal(page.hidden('#view-app'), false, 'precondition: the timeout resumed the app')
+
+    // Logout is a new generation: it bumps the epoch and aborts the held probe.
+    page.window.document.querySelector<HTMLElement>('#logoutBtn')!.click()
+    await page.settle()
+    assert.equal(page.hidden('#view-login'), false, 'precondition: logout landed on login')
+
+    await page.release()
+    await page.settle()
+
+    assert.equal(page.hidden('#view-login'), false, 'the late result must not revive the session')
+    assert.equal(page.hidden('#view-app'), true)
+    assert.equal(
+      page.window.localStorage.getItem('orca.authMode'),
+      null,
+      'a stale result writes no marker'
+    )
+    assert.equal(page.window.localStorage.getItem('orca.access'), null)
+    assert.equal(page.window.localStorage.getItem('orca.refresh'), null)
+    assert.equal(refreshCalls(page).length, 1, 'the stale probe is not followed by another one')
+    assert.equal(refreshBodies(page).length, 0, 'no body fallback after the abort')
+  })
+})
+
+describe('U197 D17 未知模式 ownerless 旧键', () => {
+  test('N3 未知标记 + 他人 ownerless 旧键 + 有效 Cookie：Cookie 成功即迁移并删除旧键', async () => {
+    const base = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const jar = new Map<string, string>()
+    const bootstrap = loadWebConsolePage(base, { platformOrigin: ORIGIN, cookieJar: jar })
+    await bootstrap.settle()
+    await bootstrap.submitLogin('admin', 'Adm1n!')
+    assert.ok(jar.get('orca_refresh'), 'precondition: a real Cookie session')
+
+    const other = await legacyTokens(base, 'zhangsan', 'Passw0rd!')
+    const page = loadWebConsolePage(base, {
+      platformOrigin: ORIGIN,
+      cookieJar: jar,
+      // Unknown marker + another account's key with no owner binding.
+      storage: { 'orca.refresh': other.refreshToken }
+    })
+    await page.settle()
+
+    // U219 expected migration: while the capability is unknown, startup may spend
+    // one no-body probe; here the valid Cookie wins, so the ownerless key is
+    // deleted unused — it is never sent as a body for another account.
+    assert.equal(page.hidden('#view-app'), false, 'the valid Cookie restores the session')
+    assert.equal(page.hidden('#view-login'), true)
+    assert.equal(refreshCalls(page).length, 1, 'one no-body probe')
+    assert.equal(refreshBodies(page).length, 0, 'the ownerless key is never spent')
+    assert.equal(page.window.localStorage.getItem('orca.authMode'), 'cookie')
+    assert.equal(page.window.localStorage.getItem('orca.access'), null)
+    assert.equal(
+      page.window.localStorage.getItem('orca.refresh'),
+      null,
+      'the ownerless key is deleted after the no-body success'
+    )
+    assert.equal(page.window.localStorage.getItem('orca.tokenOwner'), null)
+    assert.equal(
+      page.text('#userName'),
+      '李静',
+      'the Cookie session is the admin, not the key owner'
     )
   })
 })
