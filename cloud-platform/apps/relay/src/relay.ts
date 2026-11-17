@@ -6,7 +6,8 @@ import {
 } from 'node:https'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
-import { readFileSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { mtlsFetch } from '../../../packages/contract/src/internal-fetch.ts'
 import { extractSni } from './sni.ts'
 
@@ -192,7 +193,9 @@ export type RelayEnvResolution = {
  * that quietly dials the loopback default stays "listening" while syncing
  * nothing, which is the failure mode U38 shipped with.
  */
-export function resolveRelayEnv(env: Record<string, string | undefined> = process.env): RelayEnvResolution {
+export function resolveRelayEnv(
+  env: Record<string, string | undefined> = process.env
+): RelayEnvResolution {
   const warnings: string[] = []
   const preferredApi = env.ORCA_CLOUD_API_URL?.trim()
   const legacyApi = env.API_URL?.trim()
@@ -221,11 +224,15 @@ export function resolveRelayEnv(env: Record<string, string | undefined> = proces
   if (preferredToken) {
     internalToken = preferredToken
     if (legacyToken && legacyToken !== preferredToken) {
-      warnings.push('[relay] ORCA_CLOUD_INTERNAL_TOKEN and legacy INTERNAL_TOKEN disagree; using ORCA_CLOUD_INTERNAL_TOKEN')
+      warnings.push(
+        '[relay] ORCA_CLOUD_INTERNAL_TOKEN and legacy INTERNAL_TOKEN disagree; using ORCA_CLOUD_INTERNAL_TOKEN'
+      )
     }
   } else if (legacyToken) {
     internalToken = legacyToken
-    warnings.push('[relay] ORCA_CLOUD_INTERNAL_TOKEN unset; using legacy INTERNAL_TOKEN — rename the key in the env file')
+    warnings.push(
+      '[relay] ORCA_CLOUD_INTERNAL_TOKEN unset; using legacy INTERNAL_TOKEN — rename the key in the env file'
+    )
   } else {
     internalToken = DEFAULT_INTERNAL_TOKEN
     warnings.push(
@@ -233,6 +240,73 @@ export function resolveRelayEnv(env: Record<string, string | undefined> = proces
     )
   }
   return { apiUrl, internalToken, warnings }
+}
+
+/** `--preflight` verdicts; 64 is a host/tool problem, 78 a terminal config one. */
+export type RelayPreflightResult =
+  | { ok: true; id: string; port: number }
+  | { ok: false; exitCode: 64 | 78; reason: string }
+
+const MIN_NODE = { major: 22, minor: 18 } as const
+export const PREFLIGHT_NODE_EXIT = 64
+export const PREFLIGHT_CONFIG_EXIT = 78
+
+function nodeVersionAtLeast(version: string): boolean {
+  const [major, minor] = version.replace(/^v/, '').split('.').map(Number)
+  if (!Number.isInteger(major) || !Number.isInteger(minor)) return false
+  return major > MIN_NODE.major || (major === MIN_NODE.major && minor >= MIN_NODE.minor)
+}
+
+/**
+ * Validates config only: no listen, no HTTP, no registration. The install script
+ * runs this against the real release path (and a symlinked path) before
+ * activating anything, so a broken env fails there instead of in the service.
+ */
+export function preflightRelay(
+  env: Record<string, string | undefined> = process.env,
+  nodeVersion: string = process.versions.node
+): RelayPreflightResult {
+  if (!nodeVersionAtLeast(nodeVersion)) {
+    return {
+      ok: false,
+      exitCode: PREFLIGHT_NODE_EXIT,
+      reason: `node ${nodeVersion} is older than ${MIN_NODE.major}.${MIN_NODE.minor}`
+    }
+  }
+  const fail = (reason: string): RelayPreflightResult => ({
+    ok: false,
+    exitCode: PREFLIGHT_CONFIG_EXIT,
+    reason
+  })
+  const apiUrl = env.ORCA_CLOUD_API_URL?.trim()
+  if (!apiUrl) return fail('ORCA_CLOUD_API_URL is required')
+  try {
+    const protocol = new URL(apiUrl).protocol
+    if (protocol !== 'http:' && protocol !== 'https:') {
+      return fail(`ORCA_CLOUD_API_URL must be http(s), got ${protocol}`)
+    }
+  } catch {
+    return fail('ORCA_CLOUD_API_URL is not a valid URL')
+  }
+  if (!env.ORCA_CLOUD_INTERNAL_TOKEN?.trim()) {
+    return fail('ORCA_CLOUD_INTERNAL_TOKEN is required')
+  }
+  const port = Number(env.PORT?.trim() || 18443)
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    return fail(`PORT must be an integer in 0..65535, got ${env.PORT}`)
+  }
+  const id = env.ORCA_CLOUD_RELAY_ID?.trim() || `relay:${port}`
+  return { ok: true, id, port }
+}
+
+/** Main-module check that survives both a `current` symlink and a symlinked prefix. */
+export function isMainModule(argv1: string | undefined, moduleUrl: string): boolean {
+  if (!argv1) return false
+  try {
+    return realpathSync(argv1) === realpathSync(fileURLToPath(moduleUrl))
+  } catch {
+    return false
+  }
 }
 
 /** All three env vars must be set: a half-configured browser listener is worse than none. */
@@ -332,7 +406,9 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
     // platform can be reached, which is exactly when re-registering is meaningful.
     // A failed announce must still be loud: the node silently ages off the live list.
     await announce().catch((error: unknown) => {
-      console.warn(`[relay] announce failed (node may drop off the live list): ${describeError(error)}`)
+      console.warn(
+        `[relay] announce failed (node may drop off the live list): ${describeError(error)}`
+      )
     })
   }
 
@@ -677,27 +753,41 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  // Print the resolution verdicts before listening: a degraded env must be the
-  // first thing in the log, not a mystery behind a silent sync failure (U38).
-  const envConfig = resolveRelayEnv()
-  for (const line of envConfig.warnings) console.warn(line)
-  const relay = await startRelay({
-    port: Number(process.env.PORT ?? 18443),
-    apiUrl: envConfig.apiUrl,
-    internalToken: envConfig.internalToken,
-    keyPath: process.env.INTERNAL_TLS_KEY,
-    certPath: process.env.INTERNAL_TLS_CERT,
-    caPath: process.env.INTERNAL_TLS_CA,
-    publicHost: process.env.RELAY_PUBLIC_HOST?.trim() || undefined,
-    sniSuffix: process.env.RELAY_SNI_SUFFIX ?? undefined,
-    maxConnectionsPerIp: process.env.RELAY_MAX_CONN_PER_IP
-      ? Number(process.env.RELAY_MAX_CONN_PER_IP)
-      : undefined,
-    controlTimeoutMs: process.env.CONTROL_TIMEOUT_MS
-      ? Number(process.env.CONTROL_TIMEOUT_MS)
-      : undefined,
-    browser: browserOptionsFromEnv()
-  })
-  console.log(`[relay] listening on :${relay.port}, routes=${relay.routes().size}`)
+if (isMainModule(process.argv[1], import.meta.url)) {
+  if (process.argv.includes('--preflight')) {
+    const preflight = preflightRelay()
+    if (!preflight.ok) {
+      console.error(`[relay] preflight failed: ${preflight.reason}`)
+      process.exitCode = preflight.exitCode
+    } else {
+      console.log(
+        `[relay] preflight ok id=${preflight.id} port=${preflight.port} node=${process.versions.node}`
+      )
+    }
+  } else {
+    // Print the resolution verdicts before listening: a degraded env must be the
+    // first thing in the log, not a mystery behind a silent sync failure (U38).
+    const envConfig = resolveRelayEnv()
+    for (const line of envConfig.warnings) console.warn(line)
+    const relay = await startRelay({
+      port: Number(process.env.PORT ?? 18443),
+      // Explicit id wins; announce still derives `relay:<bound port>` otherwise.
+      id: process.env.ORCA_CLOUD_RELAY_ID?.trim() || undefined,
+      apiUrl: envConfig.apiUrl,
+      internalToken: envConfig.internalToken,
+      keyPath: process.env.INTERNAL_TLS_KEY,
+      certPath: process.env.INTERNAL_TLS_CERT,
+      caPath: process.env.INTERNAL_TLS_CA,
+      publicHost: process.env.RELAY_PUBLIC_HOST?.trim() || undefined,
+      sniSuffix: process.env.RELAY_SNI_SUFFIX ?? undefined,
+      maxConnectionsPerIp: process.env.RELAY_MAX_CONN_PER_IP
+        ? Number(process.env.RELAY_MAX_CONN_PER_IP)
+        : undefined,
+      controlTimeoutMs: process.env.CONTROL_TIMEOUT_MS
+        ? Number(process.env.CONTROL_TIMEOUT_MS)
+        : undefined,
+      browser: browserOptionsFromEnv()
+    })
+    console.log(`[relay] listening on :${relay.port}, routes=${relay.routes().size}`)
+  }
 }
