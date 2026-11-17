@@ -4324,3 +4324,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **D19/矩阵文档同步**（`8b5569c06b2`，6 文件 +10/−3）：m03/m04/m08/m07/m11 与 test-plan 记录 4 端点必填、错误码与矩阵 113 例、U247 观察；引用锚点按现码核对。
 - **D10 阶段 1 收尾**（`dd37b0004a2`，2 文件 +449/−1）：`app.js:2067` 唯一内联 onclick 重构（`apps/web` 0 命中）；新 `u197-csp-zero-violation` 5 例——登录/项目页/跨源工作区 iframe/web-handoff popup 全程零违规，附检测通道自证（隔离页 `script-src-elem`/`script-src-attr` 双向触发）；真实 Chromium 控制台在 Report-Only 下不使用旧 `[Report Only]` 字样，套件同时匹配新旧措辞。主会话复跑 11/11。待复审。
 - **U237 关闭（D19）**：复审 APPROVED + 两项 P2 修复（`fb7e2e8c958`）——探索脚本 P28/Y19/Y20 期望改 400、新套件补 403/503 优先级钉子；主会话复跑 `u237`+`audit-fail-closed` **17/17**。台账 U237 翻 🟢。注：该提交卷入 `run-api-exploratory.mjs` 既有整文件格式化（会话开始前即存在），语义改动仅 3 处。
+- **U197 AC 矩阵推进至 21/21**（本地 `test-reports/u197-ac-coverage.md`）：AC10 由 ⚪ 转 🟢——D10 阶段 1 头 + 字面量钉死 + 真实 Chromium 零违规（`dd37b0004a2`）且独立复审 APPROVED（三变异均红）；D17 已把 AC9b/9c/15(g) 转绿。剩余门禁：D17 独立复审结论、D10 P2 加固（策略精确相等 / 全目录静态扫描）、全量基线复跑。
