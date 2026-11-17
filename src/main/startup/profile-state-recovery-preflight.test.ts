@@ -32,6 +32,7 @@ import {
 } from '../persistence/profile-state/profile-state-documents'
 import { writeProfileStateDatabaseSnapshotAsync } from '../persistence/profile-state/profile-state-database-snapshot'
 import * as marker from './http1-compatibility-marker'
+import { isNonInteractiveLaunch, showUserMessageBox } from './non-interactive-launch'
 import {
   profileStateDesktopRecoveryArgs,
   runProfileStateRecoveryPreflight
@@ -70,6 +71,20 @@ vi.mock('node:fs', async (original) => {
 })
 
 const roots: string[] = []
+const NON_INTERACTIVE_ENV = [
+  'ORCA_BACKGROUND_LAUNCH',
+  'ORCA_E2E_HEADLESS',
+  'ORCA_SUPPRESS_DIALOGS',
+  'ELECTRON_RUN_AS_NODE'
+] as const
+
+/** These cases cover the interactive dialog; the shared runner sets suppression vars. */
+function clearNonInteractiveEnv(): void {
+  for (const key of NON_INTERACTIVE_ENV) {
+    vi.stubEnv(key, '')
+  }
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.requestSingleInstanceLock.mockReturnValue(true)
@@ -78,8 +93,7 @@ beforeEach(() => {
   vi.stubEnv('ORCA_USER_DATA_PATH', '/stale/inherited/root')
   vi.stubEnv('ORCA_BYPASS_SINGLE_INSTANCE_LOCK', '1')
   vi.stubEnv('ORCA_E2E_ENFORCE_SINGLE_INSTANCE_LOCK', '0')
-  // The shared runner sets this; these cases cover the interactive recovery dialog.
-  vi.stubEnv('ORCA_BACKGROUND_LAUNCH', '')
+  clearNonInteractiveEnv()
 })
 afterEach(() => {
   vi.restoreAllMocks()
@@ -150,6 +164,20 @@ describe('Electron recovery preflight', () => {
     expect(mocks.setPath).not.toHaveBeenCalled()
     expect(mocks.exit).not.toHaveBeenCalled()
   })
+
+  it.each(NON_INTERACTIVE_ENV)(
+    'treats %s as a non-interactive launch without showing a dialog',
+    async (key) => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      vi.stubEnv(key, '1')
+      expect(isNonInteractiveLaunch()).toBe(true)
+      await expect(showUserMessageBox({ message: 'recovery failed' })).resolves.toEqual({
+        response: 0,
+        checkboxChecked: false
+      })
+      expect(mocks.showMessageBox).not.toHaveBeenCalled()
+    }
+  )
 
   it.each(['json', 'current-json'] as const)(
     'restores %s under both locks despite ordinary singleton bypasses',
