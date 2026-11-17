@@ -715,6 +715,7 @@ ORCA_RELAY_DOWNLOAD_TLS=${bundle.downloadTls ? '1' : '0'}
 ORCA_RELAY_RELEASES_DIR="$ORCA_RELAY_ROOT/releases"
 ORCA_RELAY_RELEASE_DIR="$ORCA_RELAY_RELEASES_DIR/$ORCA_RELAY_BUNDLE_SHA256"
 ORCA_RELAY_CURRENT_LINK="$ORCA_RELAY_ROOT/current"
+ORCA_RELAY_DOWNLOAD_DIR="$ORCA_RELAY_ROOT/downloads"
 ORCA_RELAY_RELEASE_REUSED=0
 if [ -L "$ORCA_RELAY_CURRENT_LINK" ] && [ "$(readlink "$ORCA_RELAY_CURRENT_LINK")" = "releases/$ORCA_RELAY_BUNDLE_SHA256" ]; then
   ORCA_RELAY_RELEASE_REUSED=1
@@ -836,7 +837,6 @@ if [ -n "\${ORCA_RELAY_BUNDLE:-}" ]; then
   fi
   echo ">> 使用离线 bundle：$ORCA_RELAY_BUNDLE_FILE"
 else
-  ORCA_RELAY_DOWNLOAD_DIR="$ORCA_RELAY_ROOT/downloads"
   mkdir -p "$ORCA_RELAY_DOWNLOAD_DIR"
   ORCA_RELAY_BUNDLE_TARGET="$ORCA_RELAY_DOWNLOAD_DIR/$ORCA_RELAY_BUNDLE_SHA256.tgz"
   if [ -f "$ORCA_RELAY_BUNDLE_TARGET" ]; then
@@ -1175,6 +1175,31 @@ orca_relay_prune_releases() {
   done
 }
 
+# R15: bundle cache keeps only the current and previous shas; a failed run's
+# .part files are diagnostics and expire after 7 days.
+orca_relay_prune_downloads() {
+  [ -n "\${ORCA_RELAY_DOWNLOAD_DIR:-}" ] || return 0
+  [ -d "$ORCA_RELAY_DOWNLOAD_DIR" ] || return 0
+  local current_target previous_target keep_current keep_previous entry name
+  current_target="$(readlink "$ORCA_RELAY_CURRENT_LINK" 2>/dev/null || true)"
+  previous_target="$(readlink "$ORCA_RELAY_ROOT/previous" 2>/dev/null || true)"
+  keep_current="\${current_target#releases/}"
+  keep_previous="\${previous_target#releases/}"
+  for entry in "$ORCA_RELAY_DOWNLOAD_DIR"/*.tgz; do
+    [ -e "$entry" ] || continue
+    name="\${entry##*/}"
+    name="\${name%.tgz}"
+    [ "\${#name}" -eq 64 ] || continue
+    case "$name" in *[!0-9a-f]*) continue ;; esac
+    if [ "$name" = "$keep_current" ] || [ "$name" = "$keep_previous" ]; then
+      continue
+    fi
+    rm -f "$entry"
+    echo ">> 清理无主 bundle 缓存 $name.tgz"
+  done
+  find "$ORCA_RELAY_DOWNLOAD_DIR" -maxdepth 1 -name '*.part' -mtime +7 -exec rm -f {} + 2>/dev/null || true
+}
+
 # R11b: a failed upgrade rolls back to previous, restarts and re-proves. A
 # same-sha rerun has no new version to blame, so it never produces a rollback.
 orca_relay_rollback() {
@@ -1260,6 +1285,7 @@ ${renderRelayUnit({ nodePath: '$ORCA_NODE_BIN', root: '$ORCA_RELAY_ROOT' })}ORCA
     orca_relay_handle_proof_failure
   fi
   orca_relay_prune_releases
+  orca_relay_prune_downloads
 
   cat <<ORCA_NEXT
 
@@ -1343,6 +1369,7 @@ ORCA_RELAY_WRAPPER
     orca_relay_handle_proof_failure
   fi
   orca_relay_prune_releases
+  orca_relay_prune_downloads
 
   cat <<ORCA_NEXT
 

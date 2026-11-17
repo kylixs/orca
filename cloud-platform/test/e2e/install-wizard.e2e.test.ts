@@ -13,6 +13,8 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  unlinkSync,
+  utimesSync,
   writeFileSync
 } from 'node:fs'
 import { request } from 'node:http'
@@ -36,6 +38,8 @@ const WEB_SOURCE = join(new URL('../../', import.meta.url).pathname, 'apps/web')
 let api: Service
 let adminToken = ''
 let devToken = ''
+// R15: tests serve extra bundle versions by writing here after startup.
+let bundleDir = ''
 
 function auth(token: string): Record<string, string> {
   return { 'content-type': 'application/json', authorization: `Bearer ${token}` }
@@ -579,7 +583,7 @@ function loadWizard(platformUrl: string) {
 
 before(async () => {
   // U183 R5: serve one verified bundle so relay.sh carries the download steps.
-  const bundleDir = mkdtempSync(join(tmpdir(), 'orca-install-bundles-'))
+  bundleDir = mkdtempSync(join(tmpdir(), 'orca-install-bundles-'))
   writeFileSync(join(bundleDir, `relay-bundle-${BUNDLE_SHA}.tgz`), BUNDLE_BODY)
   writeFileSync(
     join(bundleDir, `relay-bundle-${BUNDLE_SHA}.manifest.json`),
@@ -2483,6 +2487,112 @@ exec -a relay.ts sleep 60
     } finally {
       killRelayPid(relayRoot)
       await proof.stop()
+    }
+  })
+})
+
+describe('U183 R15: 下载缓存只保留 current/previous', () => {
+  async function fetchRelayScriptForSha(sha: string): Promise<string> {
+    const res = await fetch(`${api.url}/install/relay.sh?sha=${sha}`, {
+      headers: auth(adminToken)
+    })
+    assert.equal(res.status, 200)
+    return res.text()
+  }
+
+  function serveBundle(bundle: { bytes: Buffer; sha: string }): void {
+    writeFileSync(join(bundleDir, `relay-bundle-${bundle.sha}.tgz`), bundle.bytes)
+    writeFileSync(
+      join(bundleDir, `relay-bundle-${bundle.sha}.manifest.json`),
+      JSON.stringify(
+        {
+          bundleSha256: bundle.sha,
+          schemaVersion: 1,
+          relayCodeVersion: '0.1.0',
+          files: ['VERSION', 'apps/relay/src/relay.ts']
+        },
+        null,
+        2
+      )
+    )
+  }
+
+  const V2_BUNDLE = buildBundle((dir) =>
+    writeFileSync(join(dir, 'apps/relay/src/relay.ts'), '// relay v2\n')
+  )
+
+  test('生成脚本含缓存清理函数与 7 天 .part 清理', async () => {
+    const script = await fetchRelayScript()
+    assert.match(script, /orca_relay_prune_downloads/)
+    assert.match(script, /-mtime \+7/)
+  })
+
+  test('成功后只留 current/previous 的 tgz，旧 .part 过期清理，非本脚本文件不动', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const relayRoot = makeRelayRoot(home)
+    const bin = makeSparsePath(home, { node: NODE_2218_ALIVE_STUB })
+    const downloads = join(relayRoot, 'downloads')
+    mkdirSync(downloads, { recursive: true })
+    const stale = join(downloads, `${'a'.repeat(64)}.tgz`)
+    writeFileSync(stale, 'stale')
+    const oldPart = join(downloads, `${BUNDLE_SHA}.tgz.part`)
+    writeFileSync(oldPart, 'old')
+    const old = new Date(Date.now() - 8 * 86400_000)
+    utimesSync(oldPart, old, old)
+    const freshPart = join(downloads, 'fresh.part')
+    writeFileSync(freshPart, 'fresh')
+    const note = join(downloads, 'operator.txt')
+    writeFileSync(note, 'keep')
+    const run = runInstallScript(await fetchRelayScript(), home, {
+      PATH: bin,
+      ORCA_RELAY_ROOT: relayRoot
+    })
+    try {
+      assert.equal(run.status, 0, run.stderr)
+      assert.equal(existsSync(stale), false)
+      assert.match(run.stdout, /清理无主 bundle 缓存/)
+      assert.equal(existsSync(join(downloads, `${BUNDLE_SHA}.tgz`)), true)
+      assert.equal(existsSync(oldPart), false)
+      assert.equal(existsSync(freshPart), true)
+      assert.equal(existsSync(note), true)
+    } finally {
+      killRelayPid(relayRoot)
+    }
+  })
+
+  test('升级后保留 current 与 previous 的 tgz，重跑命中缓存', async () => {
+    serveBundle(V2_BUNDLE)
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const relayRoot = makeRelayRoot(home)
+    const bin = makeSparsePath(home, { node: NODE_2218_ALIVE_STUB })
+    const downloads = join(relayRoot, 'downloads')
+    const first = runInstallScript(await fetchRelayScript(), home, {
+      PATH: bin,
+      ORCA_RELAY_ROOT: relayRoot
+    })
+    try {
+      assert.equal(first.status, 0, first.stderr)
+      const second = runInstallScript(await fetchRelayScriptForSha(V2_BUNDLE.sha), home, {
+        PATH: bin,
+        ORCA_RELAY_ROOT: relayRoot
+      })
+      assert.equal(second.status, 0, second.stderr)
+      assert.deepEqual(
+        readdirSync(downloads)
+          .filter((name) => name.endsWith('.tgz'))
+          .sort(),
+        [`${BUNDLE_SHA}.tgz`, `${V2_BUNDLE.sha}.tgz`].sort()
+      )
+      // A missing current link forces the acquire path; the kept tgz is reused.
+      unlinkSync(join(relayRoot, 'current'))
+      const rerun = runInstallScript(await fetchRelayScriptForSha(V2_BUNDLE.sha), home, {
+        PATH: bin,
+        ORCA_RELAY_ROOT: relayRoot
+      })
+      assert.equal(rerun.status, 0, rerun.stderr)
+      assert.match(rerun.stdout, /复用已下载 bundle/)
+    } finally {
+      killRelayPid(relayRoot)
     }
   })
 })
