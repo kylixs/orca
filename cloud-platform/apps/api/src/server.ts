@@ -5405,6 +5405,62 @@ export function createApp(config: ApiConfig): ApiHandle {
       })
     }
 
+    // ---- audit: export status (U202 E7) ----
+    // Ownership is the creator only (admins/auditors included): a foreign or
+    // unknown id is the same 404, so this cannot probe job existence.
+    const exportStatus = path.match(/^\/v1\/audit\/exports\/([^/]+)$/)
+    if (req.method === 'GET' && exportStatus) {
+      // The success response carries a fresh download token — never cached.
+      res.setHeader('cache-control', 'no-store')
+      const authed = requireAuth()
+      if (!authed) {
+        return
+      }
+      if (!isAdmin(authed.user) && !authed.user.roles.includes('platform:auditor')) {
+        return denyPrivileged(res, traceId, authed.user, {
+          eventType: 'audit_export',
+          targetType: 'audit',
+          permission: 'platform:auditor'
+        })
+      }
+      const job = auditExportStore.read(exportStatus[1])
+      if (!job || job.requestedBy !== authed.user.id) {
+        return error(res, 404, 'EXPORT_NOT_FOUND', '导出任务不存在。', traceId)
+      }
+      if (auditExportStore.isExpired(job)) {
+        return error(res, 410, 'EXPORT_EXPIRED', '导出任务已过期。', traceId)
+      }
+
+      const body: Record<string, unknown> = {
+        jobId: job.jobId,
+        status: job.status,
+        format: job.format,
+        requestedAt: job.createdAt,
+        expiresAt: job.expiresAt
+      }
+      if (job.startedAt !== null) body.startedAt = job.startedAt
+      if (job.finishedAt !== null) body.finishedAt = job.finishedAt
+      if (job.totalEvents !== null) body.totalEvents = job.totalEvents
+      if (job.bytes !== null) body.bytes = job.bytes
+      if (job.error !== null) body.error = job.error
+
+      if (job.status === 'succeeded') {
+        if (job.downloadedAt !== null) {
+          // A consumed artifact cannot be fetched again; say why no URL is sent.
+          body.downloaded = true
+          body.downloadUnavailableReason = 'already_downloaded'
+        } else {
+          // Every status read rotates the hash, invalidating the previous link.
+          const issued = auditExportStore.issueDownloadToken(job.jobId)
+          if (!issued) {
+            return error(res, 410, 'EXPORT_EXPIRED', '导出任务已过期。', traceId)
+          }
+          body.downloadUrl = `/v1/audit/exports/${job.jobId}/download?token=${encodeURIComponent(issued.token)}`
+        }
+      }
+      return json(res, 200, body)
+    }
+
     // ---- audit: write health ----
     if (req.method === 'GET' && path === '/v1/audit/status') {
       const authed = requireAuth()
