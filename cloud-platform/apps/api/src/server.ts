@@ -579,6 +579,19 @@ if ${systemdAvailable()}; then
   cat > "$ORCA_UNIT_FILE" <<ORCA_HOST_UNIT
 ${renderHostUnit({ binPath: '$ORCA_HOST_BIN' })}ORCA_HOST_UNIT
   echo ">> 已写入 systemd 用户单元：$ORCA_UNIT_FILE"
+  # H10b: StartLimit needs systemd >=229; degrade instead of writing dead keys.
+  ORCA_SYSTEMD_VERSION="$(systemctl --version 2>/dev/null | head -n 1 | awk '{print $2}' || true)"
+  case "$ORCA_SYSTEMD_VERSION" in
+    ''|*[!0-9]*) : ;;
+    *)
+      if [ "$ORCA_SYSTEMD_VERSION" -lt 229 ]; then
+        echo ">> 警告：systemd $ORCA_SYSTEMD_VERSION < 229，StartLimit 不可用，降级为 Restart=no（宿主内部有界重试）" >&2
+        ORCA_UNIT_DEGRADED="$ORCA_UNIT_FILE.degraded"
+        grep -vE '^(StartLimitIntervalSec|StartLimitBurst)=' "$ORCA_UNIT_FILE" \\
+          | sed 's/^Restart=on-failure$/Restart=no/' > "$ORCA_UNIT_DEGRADED"
+        mv -f "$ORCA_UNIT_DEGRADED" "$ORCA_UNIT_FILE"
+      fi ;;
+  esac
   # Linger is best-effort: without it the host still runs until logout.
   if command -v loginctl >/dev/null 2>&1 && ! loginctl enable-linger; then
     echo ">> 警告：loginctl enable-linger 失败，注销后宿主会停止；请手动执行 loginctl enable-linger" >&2
@@ -589,9 +602,32 @@ ${renderHostUnit({ binPath: '$ORCA_HOST_BIN' })}ORCA_HOST_UNIT
     exit 69
   fi
 else
-  # U182: containers/WSL/macOS have no user systemd; keep the plain nohup path.
-  nohup "$ORCA_HOST_BIN" --host-mode >> "$ORCA_HOST_LOG" 2>&1 &
+  # H10b: no user systemd (container/WSL/macOS). A wrapper makes host.env the
+  # single config source and records the real pid ($! may be setsid).
+  ORCA_HOST_WRAPPER="$HOME/.orca-cloud/run-host.sh"
+  ORCA_HOST_PID_FILE="$HOME/.orca-cloud/host.pid"
+  cat > "$ORCA_HOST_WRAPPER" <<ORCA_HOST_WRAPPER
+#!/usr/bin/env bash
+# Orca Cloud host launcher (H10b). host.env is the single config source.
+set -eu
+set -a
+. "$ORCA_ENV_FILE"
+set +a
+echo \$\$ > "$ORCA_HOST_PID_FILE"
+exec "$ORCA_HOST_BIN" --host-mode
+ORCA_HOST_WRAPPER
+  chmod 700 "$ORCA_HOST_WRAPPER"
+  if command -v setsid >/dev/null 2>&1; then
+    nohup setsid "$ORCA_HOST_WRAPPER" >> "$ORCA_HOST_LOG" 2>&1 &
+  else
+    nohup "$ORCA_HOST_WRAPPER" >> "$ORCA_HOST_LOG" 2>&1 &
+  fi
   ORCA_HOST_PID=$!
+  ORCA_HOST_DEADLINE=$((SECONDS + 10))
+  while [ ! -s "$ORCA_HOST_PID_FILE" ] && [ "$SECONDS" -lt "$ORCA_HOST_DEADLINE" ]; do
+    sleep 0.2
+  done
+  ORCA_HOST_PID="$(cat "$ORCA_HOST_PID_FILE" 2>/dev/null || printf '%s' "$ORCA_HOST_PID")"
 fi
 
 # State self-check (design §4.3): schema v2, online, successful heartbeat, a
@@ -676,13 +712,11 @@ else
   cat <<ORCA_NEXT
 
 宿主已在后台启动（pid $ORCA_HOST_PID，日志 $ORCA_HOST_LOG）。
+启动脚本：$ORCA_HOST_WRAPPER（已 chmod 700，source host.env 后 exec --host-mode）。
 未检测到 systemctl：容器 / WSL / macOS 不支持用户级自启。后续可选命令：
-1) 前台调试前先停止后台实例：kill $ORCA_HOST_PID
-   set -a; . "$ORCA_ENV_FILE"; set +a
-   $ORCA_HOST_BIN --host-mode
-2) nohup 后台启动（可重复执行）：
-   set -a; . "$ORCA_ENV_FILE"; set +a
-   nohup $ORCA_HOST_BIN --host-mode >> "$HOME/.orca-cloud/host.log" 2>&1 &
+1) 停止：kill "$ORCA_HOST_PID"
+2) 重新后台启动：
+   nohup setsid "$ORCA_HOST_WRAPPER" >> "$ORCA_HOST_LOG" 2>&1 &
 ORCA_NEXT
 fi
 `

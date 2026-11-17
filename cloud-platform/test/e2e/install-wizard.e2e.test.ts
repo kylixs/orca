@@ -653,7 +653,7 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     assert.match(script, /RELAY_PUBLIC_HOST/)
     // U183 R9: the launcher resolves node and runs the current release entry.
     assert.match(script, /command -v node/)
-    assert.match(script, /\$ORCA_NODE_BIN \$ORCA_RELAY_ROOT\/current\/apps\/relay\/src\/relay\.ts/)
+    assert.match(script, /\$ORCA_NODE_BIN \$ORCA_RELAY_ENTRY/)
     // U184: bundle installs carry their own code; no repo checkout on the target.
     assert.doesNotMatch(script, /未找到中继程序/)
     assert.match(
@@ -910,8 +910,13 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
 
     assert.equal(run.status, 0, run.stderr)
     assert.match(run.stdout, /未检测到 systemctl/)
-    assert.match(run.stdout, /nohup .*--host-mode/)
+    // H10b: the nohup line launches the wrapper, which owns host.env + pid.
+    assert.match(run.stdout, /启动脚本：.*run-host\.sh/)
+    assert.match(run.stdout, /nohup setsid .*run-host\.sh/)
     assert.doesNotMatch(run.stdout, /systemctl --user enable/)
+    const wrapper = readFileSync(join(home, '.orca-cloud', 'run-host.sh'), 'utf8')
+    assert.match(wrapper, /^set -a$/m)
+    assert.match(wrapper, /exec ".*orca-ide" --host-mode/)
   })
 
   describe('H9b: systemd 用户单元生成', () => {
@@ -986,6 +991,24 @@ exit 1
       assert.doesNotMatch(run.stdout, /nohup .*--host-mode/)
     })
 
+    test('U187/H10b: systemd <229 剔除 StartLimit 并降级 Restart=no', async () => {
+      const legacySystemctl = `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$HOME/systemctl.log"
+if [ "$1" = "--version" ]; then echo "systemd 219"; fi
+exit 0
+`
+      const home = makeSystemdHome({ systemctl: legacySystemctl, loginctl: LOGINCTL_OK })
+      const run = runInstallScript(await fetchHostScript(), home, {
+        PATH: pathOf(home),
+        ORCA_HOST_STATE_TIMEOUT: '0'
+      })
+      assert.equal(run.status, 0, run.stderr)
+      assert.match(run.stderr, /systemd 219 < 229/)
+      const unit = readFileSync(join(home, UNIT_PATH), 'utf8')
+      assert.doesNotMatch(unit, /StartLimit/)
+      assert.match(unit, /^Restart=no$/m)
+    })
+
     test('loginctl enable-linger 失败只告警，安装继续', async () => {
       const home = makeSystemdHome({ systemctl: SYSTEMCTL_STUB, loginctl: LOGINCTL_FAILS })
       const run = runInstallScript(await fetchHostScript(), home, {
@@ -1021,7 +1044,7 @@ exit 1
 
       assert.equal(run.status, 0, run.stderr)
       assert.equal(existsSync(join(home, UNIT_PATH)), false)
-      assert.match(run.stdout, /nohup .*--host-mode/)
+      assert.match(run.stdout, /nohup setsid .*run-host\.sh/)
     })
   })
 
