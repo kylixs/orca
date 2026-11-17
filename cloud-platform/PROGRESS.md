@@ -3960,3 +3960,11 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 2. **本机已收口的能力项**：平台无业务流量（M85）、中继无明文（M86）、浏览器与原生渲染 P95（M97/M107-1）、宿主 TLS 与客户端指纹校验（M108/M109）、§5.1 六项性能（M102–M106）、300×30min 负载（M110）。
 3. **仍需环境的项**（详见指引 §6）：AC-32 WAF/DMZ、G-04 的 Redis Stream 队列与 PostgreSQL/对象存储归档（部署形态落地时实现并回归 AC-26）、生产容量复测（沿用 `load-300.test.ts`）、平台 CA 真实证书链、Windows/WSL/SSH 宿主机关键路径。
 4. **L4 全量回归**：发版前单独执行，含桌面 Electron 渲染验证。
+
+### 收尾回归批（定向，2026-11-17 08:5x）
+
+U138 残余全家族收口（U153–U171）后的改动面定向回归，**非全量**（L4 全量仍留在发版前单独执行）。
+
+- **批 A（renderer/runtime 域）**：255 套件 / 1973 用例，pass 1970 / **fail 0** / skip 3（`web-runtime-direct-proxy-live.integration.test.ts` 由 `ORCA_REMOTE_ACCESS_PAIRING_INPUT` 环境门控，预期跳过）。范围：web-session-tabs-sync 18、runtime-session/rpc/手势自建 20、pty-transport 30、tab-bar 78、tab-group 3、renderer/web 68、main/runtime mobile-session 系 38。证据 `evidence/regression-batch-a-20261117-085358/`。
+- **批 B（平台 e2e）**：24 文件 / 157 用例，pass 157 / **fail 0** / skip 0。覆盖项目归档/下载策略/策略版本冲突/详情/主机生命周期/中继路由新鲜度/u64 端口漂移/u79 中继绑定/u80 mobile 六套/撤销与宿主授权；各套件 `PORT=0` 自起，未触碰 18787 持久环境。证据 `evidence/regression-batch-b-20261117T085406/`。
+- 三桶分类：今日引入 0 / 既有失败 0 / 环境相关 0（批 A 的 3 skip 为预期门控）。未修改任何代码。
