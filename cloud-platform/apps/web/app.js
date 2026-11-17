@@ -2157,6 +2157,15 @@ function hostVerdict(h) {
   return { status, dot, tone }
 }
 
+/** QA-029: absolute zh-CN plus the relative phrase, or a placeholder. */
+function hostHeartbeatText(ts) {
+  const at = Number.isFinite(ts) ? new Date(ts) : null
+  if (!at || Number.isNaN(at.getTime())) {
+    return '<span class="muted">—</span>'
+  }
+  return `${at.toLocaleString('zh-CN')} <span class="muted">（${relative(at.getTime())}）</span>`
+}
+
 function hostRow(h) {
   const { status, dot } = hostVerdict(h)
   return `<tr>
@@ -2329,25 +2338,53 @@ function installCommand(url) {
   return `curl -fsSL "${url}" -o "${file}" && bash "${file}" && rm -f "${file}" || { echo '安装失败：命令已失效或网络不可达，请让管理员重新生成'; false; } || exit 1`
 }
 
-async function registerHostDialog() {
-  let body
-  try {
-    body = await api('/v1/hosts/tokens', { method: 'POST' })
-  } catch (err) {
-    toast(`注册主机失败：${err.message ?? err}`)
-    return
-  }
-  // U115: the target machine has no session, so the one-liner carries a
-  // short-lived one-time download token alongside the registration token.
-  const download = body.downloadToken ? `download=${encodeURIComponent(body.downloadToken)}&` : ''
-  const url = `${location.origin}/install/host.sh?${download}token=${body.token}`
-  const cmd = installCommand(url)
-  dialog(
+/**
+ * QA-033: opening the dialog mints nothing — a cancelled open used to leave a
+ * live token behind. The token is requested only from 生成注册命令.
+ */
+function registerHostDialog() {
+  const view = dialog(
     '注册主机',
-    `<p>在目标开发机执行以下命令完成注册。脚本会写入环境配置并生成自签证书，命令 10 分钟内有效且只能下载一次；注册令牌 24 小时内有效且只能使用一次。</p>
-     <pre id="installCmd">${esc(cmd)}</pre>`,
-    [copyCommandAction(cmd)]
+    `<p>在目标开发机执行生成的命令完成注册。脚本会写入环境配置并生成自签证书：下载令牌 10 分钟内有效且只能下载一次；注册令牌 24 小时内有效且只能使用一次。</p>
+     <p class="muted">点击「生成注册命令」后才会签发令牌；直接关闭不会产生令牌。</p>
+     <div class="toolbar"><button class="btn primary" id="generateHostTokenBtn">生成注册命令</button></div>
+     <p class="inline-error" id="registerHostTokenError" hidden></p>
+     <div id="installCmdHolder"></div>`,
+    []
   )
+  const button = view.querySelector('#generateHostTokenBtn')
+  const holder = view.querySelector('#installCmdHolder')
+  const error = view.querySelector('#registerHostTokenError')
+  let inFlight = false
+  button.onclick = async () => {
+    if (inFlight || button.disabled) {
+      return
+    }
+    inFlight = true
+    button.disabled = true
+    error.hidden = true
+    error.textContent = ''
+    try {
+      const body = await api('/v1/hosts/tokens', { method: 'POST' })
+      // U115: the target machine has no session, so the one-liner carries a
+      // short-lived one-time download token alongside the registration token.
+      const download = body.downloadToken
+        ? `download=${encodeURIComponent(body.downloadToken)}&`
+        : ''
+      const url = `${location.origin}/install/host.sh?${download}token=${body.token}`
+      const cmd = installCommand(url)
+      holder.innerHTML = `<pre id="installCmd">${esc(cmd)}</pre>
+        <div class="toolbar"><button class="btn" id="copyInstallCmd">复制命令</button></div>`
+      holder.querySelector('#copyInstallCmd').onclick = () => void copyText(cmd)
+      button.textContent = '已生成注册命令'
+    } catch (err) {
+      error.textContent = `生成注册命令失败：${err.message ?? err}`
+      error.hidden = false
+      button.disabled = false
+    } finally {
+      inFlight = false
+    }
+  }
 }
 
 async function showHost(hostId, { tab = 'info', onClose } = {}) {
@@ -2375,8 +2412,9 @@ async function showHost(hostId, { tab = 'info', onClose } = {}) {
         <dt>中继绑定</dt><dd class="mono">${esc(host.relayTarget ?? '—')}${hostRelayOfflineNote(host)}</dd>
         <dt>路由确认</dt><dd data-relay-freshness="${esc(host.id)}">${relayRouteFreshness(host)}</dd>
         <dt>能力</dt><dd>${esc(host.capabilities.join(', '))}</dd>
-        <dt>最近心跳</dt><dd>${relative(host.lastHeartbeatAt)}</dd>
-        ${host.revokedAt ? `<dt>状态</dt><dd>已吊销（${new Date(host.revokedAt).toLocaleString('zh-CN')}）</dd>` : ''}
+        <dt>状态</dt><dd>${hostVerdict(host).status}${host.revokedAt ? `（${new Date(host.revokedAt).toLocaleString('zh-CN')}）` : ''}</dd>
+        <dt>维护原因</dt><dd>${esc(host.maintenanceReason ?? '—')}</dd>
+        <dt>最近心跳</dt><dd>${hostHeartbeatText(host.lastHeartbeatAt)}</dd>
       </dl>
       <div class="toolbar" style="margin-top:20px">
         <button class="btn" id="maintenanceBtn" ${host.revokedAt ? 'disabled title="主机已下线"' : ''}>${host.status === 'maintenance' ? '结束维护' : '进入维护模式'}</button>
@@ -3082,6 +3120,7 @@ function permCardsHtml(cards, rows, options) {
           <select class="select" data-perm-type="${esc(card.key)}"><option value="${userFirst ? 'user' : 'group'}">${userFirst ? '用户' : '组'}</option><option value="${userFirst ? 'group' : 'user'}">${userFirst ? '组' : '用户'}</option></select>
           <button class="btn sm" data-perm-add="${esc(card.key)}">添加</button>
         </div>
+        <p class="inline-error" data-perm-hint="${esc(card.key)}" hidden></p>
       </div>`
     })
     .join('')
@@ -3151,10 +3190,19 @@ function wirePermCards(root, options) {
       const select = root.querySelector(`[data-perm-type="${button.dataset.permAdd}"]`)
       const subjectId = input?.value.trim() ?? ''
       if (!card) return
+      const hint = root.querySelector(`[data-perm-hint="${card.key}"]`)
       if (subjectId === '') {
+        // QA-028: inline hint stays next to the field, not only a transient toast.
+        if (hint) {
+          hint.textContent = '请输入组名或用户名后再添加'
+          hint.hidden = false
+        }
         toast('请输入组名或用户名后再添加')
         input?.focus()
         return
+      }
+      if (hint) {
+        hint.hidden = true
       }
       const subjectType = select.value
       const existing = rows.find(
@@ -3295,7 +3343,8 @@ function wirePermCards(root, options) {
             : `宿主无法解析组成员，将断开该${options.noun}当前全部在线会话（≤60 秒内生效，FR-1.7）。`
         dialog(
           '移除全部授权',
-          `<p>${esc(subjectLabel(row))}（${row.subjectType === 'group' ? '组' : '用户'}）</p><p>${esc(blast)}</p>`,
+          `<p>${esc(subjectLabel(row))}（${row.subjectType === 'group' ? '组' : '用户'}）</p><p>${esc(blast)}</p>
+           <p class="muted">此操作不可撤销；如需恢复访问，必须重新授权。</p>`,
           [{ label: '确认移除', danger: true, primary: true, onClick: () => void save() }]
         )
         return

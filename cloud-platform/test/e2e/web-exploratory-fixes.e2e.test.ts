@@ -1334,3 +1334,164 @@ test('U54 QA-025 未变化不保存、请求中重复点击只发一次 PUT', as
     `未改动 0 PUT（策略未变化）；请求中双击 1 PUT 且按钮 disabled；${currentValue} → ${opposite} → 恢复`
   )
 }, 120_000)
+
+test('M116-QA-028 完整移除授权先确认：取消零 PUT，确认一行 PUT 后行消失', async () => {
+  const projectId = 'proj_payment'
+  const grantsPath = `/v1/projects/${projectId}/grants`
+  // A row sitting in exactly one card: removing that card is a full removal.
+  const seeded = await adminApi(grantsPath, {
+    method: 'PUT',
+    body: JSON.stringify({ subjectType: 'user', subjectId: 'zhangsan', permissions: ['open'] })
+  })
+  assert.equal(seeded.status, 200, JSON.stringify(seeded.body))
+
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  await openPermTab(page, 'payment-service')
+  const puts = () => page.calls().filter((call) => call === `PUT ${grantsPath}`).length
+  const before = puts()
+
+  chipX(permCard(page, 'view'), 'zhangsan').click()
+  await page.settle()
+  const dialog = topDialog(page)
+  assert.match(dialog.textContent ?? '', /zhangsan/, 'the confirmation must name the subject')
+  assert.match(dialog.textContent ?? '', /不可撤销/, 'the copy must warn the removal is irreversible')
+  assert.match(dialog.textContent ?? '', /重新授权/, 'the copy must say access needs a new grant')
+  assert.equal(puts(), before, 'the removal must not reach the platform before confirmation')
+
+  // Cancel: no write, the row is still there.
+  dialog.querySelector<HTMLButtonElement>('[data-action="close"]')!.click()
+  await page.settle()
+  assert.equal(puts(), before, 'cancelling sends no PUT')
+  assert.equal(
+    (await adminApi(grantsPath)).body.grants.some((g: GrantRow) => g.username === 'zhangsan'),
+    true,
+    'the row survives a cancelled removal'
+  )
+
+  chipX(permCard(page, 'view'), 'zhangsan').click()
+  await page.settle()
+  confirmTopDialog(page)
+  await page.settle()
+  assert.equal(puts(), before + 1, 'confirming sends exactly one PUT')
+  assert.equal(
+    (await adminApi(grantsPath)).body.grants.some((g: GrantRow) => g.username === 'zhangsan'),
+    false,
+    'the confirmed removal drops the row'
+  )
+  assert.doesNotMatch(
+    permCard(page, 'view').textContent ?? '',
+    /zhangsan/,
+    'the refreshed card no longer lists the subject'
+  )
+  record('QA-028-remove', '点 ✕ 先确认（主体名 + 不可撤销/重新授权）；取消 0 PUT 行保留；确认 1 PUT 行消失')
+}, 120_000)
+
+test('M116-QA-028 空主体授予显示行内提示且不发写请求', async () => {
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  await openPermTab(page, 'payment-service')
+  const card = permCard(page, 'view')
+  const writes = () =>
+    page.calls().filter(
+      (call) =>
+        (call.startsWith('PUT /v1/projects/') || call.startsWith('POST /v1/projects/'))
+    ).length
+  const before = writes()
+
+  card.querySelector<HTMLInputElement>('[data-perm-subject]')!.value = ''
+  card.querySelector<HTMLButtonElement>('[data-perm-add]')!.click()
+  await page.settle()
+
+  const hint = card.querySelector<HTMLElement>('[data-perm-hint]')
+  assert.ok(hint, 'the add row must render an inline hint element')
+  assert.equal(hint!.hidden, false, 'the empty subject must surface the hint')
+  assert.match(hint!.textContent ?? '', /请输入组名或用户名/, 'the hint says what is missing')
+  assert.equal(writes(), before, 'an empty subject sends no write request')
+  record('QA-028-empty', '空主体点添加 → 行内提示「请输入组名或用户名」可见，零写请求')
+}, 120_000)
+
+test('M116-QA-029 主机抽屉展示状态、维护原因与最近心跳绝对+相对时间', async () => {
+  const reason = '季度演练'
+  const set = await adminApi(`/v1/hosts/${liveHostId}/maintenance`, {
+    method: 'POST',
+    body: JSON.stringify({ enabled: true, reason })
+  })
+  assert.equal(set.status, 200, JSON.stringify(set.body))
+
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  await page.clickNav('hosts')
+  rowFor(page, 'dev-live').querySelector<HTMLButtonElement>('[data-host]')!.click()
+  await page.settle()
+
+  const drawer = page.window.document.querySelector<HTMLElement>('.drawer-backdrop')
+  assert.ok(drawer, 'the host drawer must open')
+  const kv = drawer!.querySelector<HTMLElement>('dl.kv')
+  assert.ok(kv, 'the info tab renders the key/value list')
+  const ddOf = (label: string): HTMLElement => {
+    const dt = [...kv!.querySelectorAll('dt')].find((el) => el.textContent?.trim() === label)
+    assert.ok(dt, `the drawer must carry ${label}`)
+    return dt!.nextElementSibling as HTMLElement
+  }
+
+  assert.match(ddOf('状态').textContent ?? '', /维护中/, 'status derives from the host verdict')
+  assert.equal(ddOf('维护原因').textContent, reason, 'the maintenance reason is shown verbatim')
+  const heartbeat = ddOf('最近心跳').textContent ?? ''
+  assert.match(heartbeat, /\d{4}\/\d{1,2}\/\d{1,2}/, 'absolute zh-CN time expected')
+  assert.match(heartbeat, /刚刚|分钟前/, 'relative time expected alongside it')
+
+  await adminApi(`/v1/hosts/${liveHostId}/maintenance`, {
+    method: 'POST',
+    body: JSON.stringify({ enabled: false })
+  })
+  record('QA-029', `抽屉信息页：状态=维护中、维护原因=${reason}、最近心跳=zh-CN 绝对时间（相对）`)
+}, 120_000)
+
+test('M116-QA-033 注册主机弹层打开不签发令牌，点击生成后才申领且只发一次', async () => {
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  await page.clickNav('hosts')
+  const tokenCalls = () =>
+    page.calls().filter((call) => call === 'POST /v1/hosts/tokens').length
+  assert.equal(tokenCalls(), 0)
+
+  page.window.document.querySelector<HTMLButtonElement>('#registerHostBtn')!.click()
+  await page.settle()
+  assert.equal(tokenCalls(), 0, 'opening the dialog mints no token')
+  assert.match(topDialog(page).textContent ?? '', /生成注册命令/)
+  topDialog(page).querySelector<HTMLButtonElement>('[data-action="close"]')!.click()
+  await page.settle()
+  assert.equal(tokenCalls(), 0, 'closing before generating mints no token')
+
+  page.window.document.querySelector<HTMLButtonElement>('#registerHostBtn')!.click()
+  await page.settle()
+  const generate = page.window.document.querySelector<HTMLButtonElement>(
+    '#generateHostTokenBtn'
+  )!
+  assert.ok(generate, 'the dialog offers 生成注册命令')
+  page.hold('POST', '/v1/hosts/tokens')
+  generate.click()
+  generate.click()
+  await new Promise((resolve) => setTimeout(resolve, 25))
+  assert.equal(tokenCalls(), 1, 'a double click while in flight sends exactly one request')
+  assert.equal(generate.disabled, true, 'the button disables while in flight')
+
+  await page.release()
+  await page.settle()
+  assert.equal(tokenCalls(), 1, 'the in-flight request completes once')
+  const command = page.window.document.querySelector<HTMLElement>('#installCmd')
+  assert.ok(command, 'the generated command renders in place')
+  assert.match(command!.textContent ?? '', /install\/host\.sh/, 'the command targets the installer')
+  assert.match(command!.textContent ?? '', /token=/, 'the command carries the registration token')
+  assert.ok(page.window.document.querySelector('#copyInstallCmd'), 'a copy action renders with it')
+
+  generate.click()
+  await page.settle()
+  assert.equal(tokenCalls(), 1, 'no further token is minted after the command is generated')
+  record('QA-033', '打开弹层 0 次 POST /v1/hosts/tokens；取消 0 次；生成请求在途双击 1 次并渲染命令+复制')
+}, 120_000)
