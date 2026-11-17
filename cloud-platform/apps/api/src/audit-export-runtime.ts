@@ -4,6 +4,7 @@
  */
 import {
   AuditExportJobStore,
+  DEFAULT_AUDIT_EXPORT_DOWNLOAD_TOKEN_TTL_MS,
   DEFAULT_AUDIT_EXPORT_GLOBAL_LIMIT,
   DEFAULT_AUDIT_EXPORT_PER_USER_LIMIT,
   DEFAULT_AUDIT_EXPORT_ROOT,
@@ -30,24 +31,42 @@ export function resolveAuditExportSweepIntervalMs(env: Env = process.env): numbe
   return positiveInt(env.ORCA_AUDIT_EXPORT_SWEEP_MS, DEFAULT_AUDIT_EXPORT_SWEEP_INTERVAL_MS)
 }
 
+/** Download-link lifetime: config/env override, then the five-minute default. */
+export function resolveAuditExportTokenTtlMs(env: Env = process.env): number {
+  return positiveInt(env.ORCA_AUDIT_EXPORT_TOKEN_TTL_MS, DEFAULT_AUDIT_EXPORT_DOWNLOAD_TOKEN_TTL_MS)
+}
+
+/** `ApiConfig` overrides for the process-wide store; absent fields use env. */
+export type AuditExportStoreOverrides = {
+  dir?: string
+  ttlMs?: number
+  perUserActiveLimit?: number
+  globalActiveLimit?: number
+  now?: () => number
+}
+
 /**
  * Work order §3.4 names ORCA_AUDIT_EXPORT_DIR; ORCA_AUDIT_EXPORT_ROOT stays as
- * a compatibility alias. DIR wins, then ROOT, then the default location.
+ * a compatibility alias. An explicit override wins, then DIR, then ROOT, then
+ * the default location.
  */
-export function createAuditExportStore(env: Env = process.env): AuditExportJobStore {
-  const dir = (env.ORCA_AUDIT_EXPORT_DIR ?? '').trim()
+export function createAuditExportStore(
+  env: Env = process.env,
+  overrides: AuditExportStoreOverrides = {}
+): AuditExportJobStore {
+  const dir = (overrides.dir ?? '').trim() || (env.ORCA_AUDIT_EXPORT_DIR ?? '').trim()
   const legacyRoot = (env.ORCA_AUDIT_EXPORT_ROOT ?? '').trim()
   return new AuditExportJobStore({
     root: dir || legacyRoot || DEFAULT_AUDIT_EXPORT_ROOT,
-    ttlMs: positiveInt(env.ORCA_AUDIT_EXPORT_TTL_MS, DEFAULT_AUDIT_EXPORT_TTL_MS),
-    perUserActiveLimit: positiveInt(
-      env.ORCA_AUDIT_EXPORT_PER_USER_LIMIT,
-      DEFAULT_AUDIT_EXPORT_PER_USER_LIMIT
-    ),
-    globalActiveLimit: positiveInt(
-      env.ORCA_AUDIT_EXPORT_GLOBAL_LIMIT,
-      DEFAULT_AUDIT_EXPORT_GLOBAL_LIMIT
-    )
+    ttlMs:
+      overrides.ttlMs ?? positiveInt(env.ORCA_AUDIT_EXPORT_TTL_MS, DEFAULT_AUDIT_EXPORT_TTL_MS),
+    perUserActiveLimit:
+      overrides.perUserActiveLimit ??
+      positiveInt(env.ORCA_AUDIT_EXPORT_PER_USER_LIMIT, DEFAULT_AUDIT_EXPORT_PER_USER_LIMIT),
+    globalActiveLimit:
+      overrides.globalActiveLimit ??
+      positiveInt(env.ORCA_AUDIT_EXPORT_GLOBAL_LIMIT, DEFAULT_AUDIT_EXPORT_GLOBAL_LIMIT),
+    now: overrides.now
   })
 }
 

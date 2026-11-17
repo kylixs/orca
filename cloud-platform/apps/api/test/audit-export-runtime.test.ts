@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import {
   AuditExportJobStore,
+  DEFAULT_AUDIT_EXPORT_DOWNLOAD_TOKEN_TTL_MS,
   DEFAULT_AUDIT_EXPORT_GLOBAL_LIMIT,
   DEFAULT_AUDIT_EXPORT_PER_USER_LIMIT,
   DEFAULT_AUDIT_EXPORT_ROOT,
@@ -15,11 +16,13 @@ import {
   DEFAULT_AUDIT_EXPORT_SWEEP_INTERVAL_MS,
   createAuditExportStore,
   resolveAuditExportSweepIntervalMs,
+  resolveAuditExportTokenTtlMs,
   startAuditExportCleanup,
   startAuditExportSweep,
   type AuditExportCleanupHandle,
   type AuditExportSweepHandle
 } from '../src/audit-export-runtime.ts'
+import { createApp } from '../src/server.ts'
 import type { CreateAuditExportJobInput } from '../src/audit-export-jobs.ts'
 
 /**
@@ -128,6 +131,65 @@ describe('createAuditExportStore', () => {
     assert.equal(store.ttlMs, DEFAULT_AUDIT_EXPORT_TTL_MS)
     assert.equal(store.perUserActiveLimit, DEFAULT_AUDIT_EXPORT_PER_USER_LIMIT)
     assert.equal(store.globalActiveLimit, DEFAULT_AUDIT_EXPORT_GLOBAL_LIMIT)
+  })
+
+  test('显式覆盖优先于 env，并把注入时钟传给 store', () => {
+    const dir = tempRoot()
+    const envDir = tempRoot()
+    try {
+      const store = createAuditExportStore(
+        {
+          ORCA_AUDIT_EXPORT_DIR: envDir,
+          ORCA_AUDIT_EXPORT_TTL_MS: '5000',
+          ORCA_AUDIT_EXPORT_PER_USER_LIMIT: '3',
+          ORCA_AUDIT_EXPORT_GLOBAL_LIMIT: '9'
+        },
+        {
+          dir,
+          ttlMs: 500,
+          perUserActiveLimit: 1,
+          globalActiveLimit: 2,
+          now: () => 42_000
+        }
+      )
+      assert.equal(store.root, path.resolve(dir))
+      assert.equal(store.ttlMs, 500)
+      assert.equal(store.perUserActiveLimit, 1)
+      assert.equal(store.globalActiveLimit, 2)
+      const job = store.create(jobInput())
+      assert.equal(job.createdAt, 42_000)
+      assert.equal(job.expiresAt, 42_500)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+      rmSync(envDir, { recursive: true, force: true })
+    }
+  })
+
+  test('空/未提供的覆盖回落 env 与默认值', () => {
+    const envDir = tempRoot()
+    try {
+      const store = createAuditExportStore(
+        { ORCA_AUDIT_EXPORT_DIR: envDir, ORCA_AUDIT_EXPORT_TTL_MS: '5000' },
+        { dir: '   ' }
+      )
+      assert.equal(store.root, path.resolve(envDir))
+      assert.equal(store.ttlMs, 5_000)
+    } finally {
+      rmSync(envDir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('resolveAuditExportTokenTtlMs', () => {
+  test('env 覆盖下载令牌 TTL，非法值回落五分钟默认', () => {
+    assert.equal(DEFAULT_AUDIT_EXPORT_DOWNLOAD_TOKEN_TTL_MS, 5 * 60_000)
+    assert.equal(resolveAuditExportTokenTtlMs({ ORCA_AUDIT_EXPORT_TOKEN_TTL_MS: '1000' }), 1000)
+    for (const bad of [undefined, '', '   ', '0', '-1', 'abc']) {
+      assert.equal(
+        resolveAuditExportTokenTtlMs({ ORCA_AUDIT_EXPORT_TOKEN_TTL_MS: bad }),
+        DEFAULT_AUDIT_EXPORT_DOWNLOAD_TOKEN_TTL_MS
+      )
+    }
   })
 })
 
@@ -452,6 +514,72 @@ describe('startAuditExportSweep', () => {
         resolveAuditExportSweepIntervalMs({ ORCA_AUDIT_EXPORT_SWEEP_MS: bad }),
         DEFAULT_AUDIT_EXPORT_SWEEP_INTERVAL_MS
       )
+    }
+  })
+})
+
+describe('createApp 导出配置注入', () => {
+  test('store/TTL/token TTL/capabilities/过期 410 全部使用注入配置与时钟', async () => {
+    const dir = tempRoot()
+    const clock = { value: 5_000_000 }
+    const app = createApp({
+      port: 0,
+      auditExportDir: dir,
+      auditExportTtlMs: 500,
+      auditExportTokenTtlMs: 1_234,
+      now: () => clock.value
+    })
+    try {
+      const port = await app.listen()
+      const base = `http://127.0.0.1:${port}`
+      assert.equal(app.auditExportStore.ttlMs, 500)
+      assert.equal(app.auditExportStore.root, path.resolve(dir))
+
+      const loginRes = await fetch(`${base}/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username: 'admin', password: 'Adm1n!', deviceName: 'config-clock' })
+      })
+      assert.equal(loginRes.status, 200)
+      const { accessToken } = (await loginRes.json()) as { accessToken?: string }
+      assert.ok(accessToken)
+      const auth = { authorization: `Bearer ${accessToken}` }
+
+      const statusRes = await fetch(`${base}/v1/audit/status`, { headers: auth })
+      const status = (await statusRes.json()) as {
+        auditExport?: { jobTtlSeconds?: number; downloadTokenTtlSeconds?: number }
+      }
+      assert.equal(statusRes.status, 200)
+      assert.equal(status.auditExport?.jobTtlSeconds, 0.5)
+      assert.equal(status.auditExport?.downloadTokenTtlSeconds, 1.234)
+
+      const createRes = await fetch(`${base}/v1/audit/export`, {
+        method: 'POST',
+        headers: { ...auth, 'content-type': 'application/json' },
+        body: JSON.stringify({ confirm: true, format: 'csv' })
+      })
+      assert.equal(createRes.status, 202)
+      const created = (await createRes.json()) as { jobId?: string; expiresAt?: number }
+      assert.ok(created.jobId)
+      assert.equal(created.expiresAt, clock.value + 500)
+
+      // No real sleep: the injected clock moves past the job TTL.
+      clock.value += 501
+      const expiredRes = await fetch(`${base}/v1/audit/exports/${created.jobId}`, { headers: auth })
+      assert.equal(expiredRes.status, 410)
+      const expired = (await expiredRes.json()) as { error?: { code?: string } }
+      assert.equal(expired.error?.code, 'EXPORT_EXPIRED')
+
+      // Download checks expiry before the credential, so it is a stable 410 too.
+      const downloadRes = await fetch(
+        `${base}/v1/audit/exports/${created.jobId}/download?token=irrelevant`
+      )
+      assert.equal(downloadRes.status, 410)
+      const download = (await downloadRes.json()) as { error?: { code?: string } }
+      assert.equal(download.error?.code, 'EXPORT_EXPIRED')
+    } finally {
+      await app.close()
+      rmSync(dir, { recursive: true, force: true })
     }
   })
 })

@@ -61,8 +61,12 @@ async function status(token: string): Promise<{ status: number; body: StatusBody
 before(async () => {
   api = await spawnService(
     'apps/api/src/server.ts',
-    // 15 minutes: proves the advertised job TTL follows the runtime override.
-    { PORT: '0', ORCA_AUDIT_EXPORT_TTL_MS: '900000' },
+    // 15 minutes / 2 minutes: proves both advertised TTLs follow runtime overrides.
+    {
+      PORT: '0',
+      ORCA_AUDIT_EXPORT_TTL_MS: '900000',
+      ORCA_AUDIT_EXPORT_TOKEN_TTL_MS: '120000'
+    },
     READY,
     'api'
   )
@@ -103,7 +107,7 @@ describe('审计状态导出能力字段（真实平台进程）', () => {
       maxRows: 100000,
       maxBytes: 67108864,
       jobTtlSeconds: 900,
-      downloadTokenTtlSeconds: 300
+      downloadTokenTtlSeconds: 120
     })
   })
 

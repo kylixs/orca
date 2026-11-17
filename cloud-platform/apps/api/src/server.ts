@@ -43,7 +43,6 @@ import { AuditChain, type AuditSummary } from './audit.ts'
 import { AUDIT_RECENT_WINDOW_MS, AUDIT_WINDOW_MS, parseAuditQuery } from './audit-query.ts'
 import {
   AUDIT_EXPORT_OBJECT_KEYS,
-  DEFAULT_AUDIT_EXPORT_DOWNLOAD_TOKEN_TTL_MS,
   generateAuditExportJobId,
   resolveAuditExportObjectPath,
   type AuditExportJob,
@@ -52,6 +51,7 @@ import {
 import {
   createAuditExportStore,
   resolveAuditExportSweepIntervalMs,
+  resolveAuditExportTokenTtlMs,
   startAuditExportCleanup,
   startAuditExportSweep
 } from './audit-export-runtime.ts'
@@ -153,6 +153,18 @@ export type ApiConfig = {
   handoffTtlMs?: number
   /** One-time install-script download token lifetime (U115); tests shrink it to exercise expiry. */
   installDownloadTtlMs?: number
+  /** Audit-export storage root; overrides ORCA_AUDIT_EXPORT_DIR/ROOT. */
+  auditExportDir?: string
+  /** Export job lifetime; tests shrink it to observe expiry without waiting an hour. */
+  auditExportTtlMs?: number
+  /** Active exports one user may hold at once. */
+  auditExportPerUserLimit?: number
+  /** Active exports the process may hold across all users. */
+  auditExportGlobalLimit?: number
+  /** Download-link lifetime; defaults to five minutes. */
+  auditExportTokenTtlMs?: number
+  /** Queued-export rescue sweep interval; tests shrink it to observe the rescue. */
+  auditExportSweepMs?: number
   /** U183 R2: where relay bundles are published; defaults to cloud-platform/dist/relay-bundles. */
   relayBundleDir?: string
   /** U183 R2: bundle sha the platform embeds when the request names none. */
@@ -1918,8 +1930,16 @@ export function createApp(config: ApiConfig): ApiHandle {
   const storeFile = (process.env.ORCA_PLATFORM_STORE_FILE ?? '').trim()
   const storePersistence = storeFile ? attachStorePersistence(store, { file: storeFile }) : null
   // U202 E9: one export store per process; startup prune plus unref'd periodic sweep.
-  const auditExportStore = createAuditExportStore()
+  const auditExportStore = createAuditExportStore(process.env, {
+    dir: config.auditExportDir,
+    ttlMs: config.auditExportTtlMs,
+    perUserActiveLimit: config.auditExportPerUserLimit,
+    globalActiveLimit: config.auditExportGlobalLimit,
+    now
+  })
   const auditExportCleanup = startAuditExportCleanup({ store: auditExportStore })
+  const auditExportTokenTtlMs =
+    config.auditExportTokenTtlMs ?? resolveAuditExportTokenTtlMs(process.env)
   // Production must inject a secret; the fallback exists only for local tests.
   const internalToken =
     config.internalToken ??
@@ -1961,6 +1981,7 @@ export function createApp(config: ApiConfig): ApiHandle {
   const auditExportWorker = new AuditExportWorker({
     store: auditExportStore,
     query: (filter) => audit.query(filter),
+    now,
     // Terminal events are best-effort (the worker never awaits them); the
     // adapter fills the nullable fields `AuditSink.append` requires.
     audit: {
@@ -1989,7 +2010,7 @@ export function createApp(config: ApiConfig): ApiHandle {
   const auditExportSweep = startAuditExportSweep({
     store: auditExportStore,
     trigger: scheduleAuditExportRun,
-    intervalMs: resolveAuditExportSweepIntervalMs()
+    intervalMs: config.auditExportSweepMs ?? resolveAuditExportSweepIntervalMs(process.env)
   })
 
   /**
@@ -5591,7 +5612,9 @@ export function createApp(config: ApiConfig): ApiHandle {
 
       if (job.status === 'succeeded') {
         // Every status read rotates the hash, invalidating the previous link.
-        const issued = auditExportStore.issueDownloadToken(job.jobId)
+        const issued = auditExportStore.issueDownloadToken(job.jobId, {
+          ttlMs: auditExportTokenTtlMs
+        })
         if (issued) {
           body.downloadUrl = `/v1/audit/exports/${job.jobId}/download?token=${encodeURIComponent(issued.token)}`
         } else if (job.deleteAfterDownload && job.downloadedAt !== null) {
@@ -5608,8 +5631,9 @@ export function createApp(config: ApiConfig): ApiHandle {
 
     // ---- audit: export download (U202 E8) ----
     // The link is self-contained: `token` is the credential, so no Bearer is
-    // accepted and no role gate runs here (§2.3). A bad token answers exactly
-    // like an unknown job, so this cannot probe job existence.
+    // accepted and no role gate runs here (§2.3). Because expiry is checked
+    // before the token, 410 vs 404 tells a caller whether a known id is expired
+    // or live/unknown; ids are 96-bit random and only the owner receives them.
     const exportDownload = path.match(/^\/v1\/audit\/exports\/([^/]+)\/download$/)
     if (req.method === 'GET' && exportDownload) {
       res.setHeader('cache-control', 'no-store')
@@ -5624,8 +5648,8 @@ export function createApp(config: ApiConfig): ApiHandle {
       // Redemption is atomic and marks the token used before any byte is sent.
       const token = url.searchParams.get('token')
       if (token === null) {
-        // Missing token is always the unknown-job answer, even for a consumed
-        // job, so this path cannot confirm that a job exists.
+        // No credential: answer as unknown. Expiry was checked first, so an
+        // expired job still answers 410 above.
         return error(res, 404, 'EXPORT_NOT_FOUND', '导出任务不存在。', traceId)
       }
       // Resolve the artifact before redeeming the token: a missing/corrupt file
@@ -5748,7 +5772,7 @@ export function createApp(config: ApiConfig): ApiHandle {
           maxRows: DEFAULT_AUDIT_EXPORT_MAX_EVENTS,
           maxBytes: DEFAULT_AUDIT_EXPORT_MAX_BYTES,
           jobTtlSeconds: auditExportStore.ttlMs / 1000,
-          downloadTokenTtlSeconds: DEFAULT_AUDIT_EXPORT_DOWNLOAD_TOKEN_TTL_MS / 1000
+          downloadTokenTtlSeconds: auditExportTokenTtlMs / 1000
         }
       })
     }
