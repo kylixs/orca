@@ -169,3 +169,23 @@
 | --- | --- |
 | U116② 创建向导目录选择器 | 用户已暂缓（manual-acceptance B2）；当前代码已具备心跳目录清单与选择/新建 UI，按现状不动 |
 | U116④ `project:owner` 可达性 | 用户已暂缓（manual-acceptance B3）；不排期 |
+
+---
+
+## 22:00 增补：新产生的待裁定项（2026-11-17）
+
+> 以下项均有设计/评审依据；未裁定前按「默认执行」保持现状，不影响已关闭的 U201/U205/U206/U209/U211。
+
+| 编号 | 决策问题 | 建议 | 待决策前默认 | 依据 |
+| --- | --- | --- | --- | --- |
+| D5 | U197 令牌存储是否按 **方案 B**（refresh HttpOnly Cookie + access 内存）推进？ | 按 B；若本周期不能改服务端，A 仅作不关闭 QA-032 的临时缓解 | 不实施，QA-032 保持开启 | `u197-token-storage-design.md` v3 §5 |
+| D6 | 响应形态判别（v3 已定死规则）与 body refresh 移除时点 | 采纳 v3：Cookie 源不返新 refresh；body 仅 current/previous 回显；移除按遥测+90 天期限 | v3 规则即默认，不再开放口径 | v3 §2B-2、迁移判据 |
+| D7 | Cookie 属性/生命周期/降级（名称/Path/SameSite、会话 vs Max-Age、`auto` 边界） | `orca_refresh`、`Path=/v1/auth`、`SameSite=Lax`、Max-Age=refresh TTL；`auto` 仅 https/loopback 下发并告警 | 采用建议默认 | v3 Cookie 默认值表 |
+| D8 | grace 默认值与审计 | 30s（上限 60s，`ORCA_CLOUD_REFRESH_GRACE_MS` 可配 0）；记录 `refresh.grace_reuse`/`refresh.reuse_detected` | 采用建议默认 | v3 grace 六条 |
+| D9 | 迁移/回退/body 移除判据 | 按 v3 状态机四分支；新 Web+旧服务端回退 localStorage；body 字段移除按遥测+期限 | 按 v3 状态机实现 | v3 迁移判据 |
+| D10 | 部署前置 + CSP + 关闭范围 | 单副本或粘性/共享 store；代理保证 Host/XFP；CSP 同批 Report-Only 起步；PII（`orca.user`）不在 QA-032 关闭条件 | 未满足前置不开启 Cookie 模式 | v3 §5-6/§2C |
+| D11 | 工作台统计卡与 FR-2.5 不一致（U202） | 修订 FR 对齐现状（下载策略卡为补充；今日会话数需另立数据源） | 不改 UI | `requirements.md:158` |
+| D12 | 「最近使用」数据源（U196） | 定义「打开/连接」为最近使用事件，后端加 `updatedAt` | 保持按创建时间排序 | U196 |
+| D13 | 克隆失败 UX（U54-008） | 项目列表内联显示 `provisioningError`（不预校验，失败原因来自宿主） | 保持现状（仅详情可见） | WEB-R2-008 |
+| D14 | host.* 拒绝逐请求 traceId（U210） | 需要逐请求关联时，主机为每条拒绝携带独立 traceId | 保持心跳批次 traceId | U210 |
+| D15 | LGA 待裁定批（U212）：撤销边界、嵌套组、混合版本副本、目录不可达、filter/DN 契约、bootstrap、枚举、大小写 | 先定撤销边界与嵌套组（阻断级）；其余按评审建议逐项 | 不改语义 | `test-reports/lga-design-review.md` |
