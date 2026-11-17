@@ -104,6 +104,7 @@ import {
   cacheControlForStaticName,
   sendStaticAsset,
   sendStaticNotFound,
+  STATIC_CSP_REPORT_ONLY,
   STATIC_HASHED_CACHE_CONTROL,
   STATIC_HTML_CACHE_CONTROL,
   STATIC_SECURITY_HEADERS,
@@ -7085,6 +7086,13 @@ export function createApp(config: ApiConfig): ApiHandle {
   })
   webReleases.archive()
 
+  // U197 S6 / U224: report-only CSP, HTML documents only; `off` rolls back without a redeploy.
+  const documentCspReportOnly =
+    (process.env.ORCA_CLOUD_CSP_REPORT_ONLY ?? '').trim().toLowerCase() === 'off'
+      ? undefined
+      : STATIC_CSP_REPORT_ONLY
+  const isHtmlDocument = (name: string): boolean => name.toLowerCase().endsWith('.html')
+
   /** Hashed assets are immutable; the hashed path is what makes an old page keep working. */
   function serveAsset(path: string, req: IncomingMessage, res: ServerResponse): boolean {
     // Nested names (router/routes.js) resolve the same way flat ones do.
@@ -7096,13 +7104,18 @@ export function createApp(config: ApiConfig): ApiHandle {
     if (!asset) {
       return false
     }
-    sendStaticAsset(req, res, {
-      name: asset.name,
-      contentType: asset.contentType,
-      cacheControl: STATIC_HASHED_CACHE_CONTROL,
-      etag: `"${asset.sha256}"`,
-      body: asset.bytes
-    })
+    sendStaticAsset(
+      req,
+      res,
+      {
+        name: asset.name,
+        contentType: asset.contentType,
+        cacheControl: STATIC_HASHED_CACHE_CONTROL,
+        etag: `"${asset.sha256}"`,
+        body: asset.bytes
+      },
+      isHtmlDocument(asset.name) ? documentCspReportOnly : undefined
+    )
     return true
   }
 
@@ -7125,25 +7138,36 @@ export function createApp(config: ApiConfig): ApiHandle {
       // ETag revalidation keeps the cost at a 304.
       const isEntry = name === 'index.html'
       res.setHeader('x-orca-web-build', webReleases.current().build)
-      sendStaticAsset(req, res, {
-        name,
-        contentType: current.contentType,
-        cacheControl: isEntry ? STATIC_HTML_CACHE_CONTROL : STATIC_UNHASHED_CACHE_CONTROL,
-        etag: `"${current.sha256}"`,
-        body: isEntry ? Buffer.from(webReleases.indexHtml()) : current.bytes
-      })
+      sendStaticAsset(
+        req,
+        res,
+        {
+          name,
+          contentType: current.contentType,
+          cacheControl: isEntry ? STATIC_HTML_CACHE_CONTROL : STATIC_UNHASHED_CACHE_CONTROL,
+          etag: `"${current.sha256}"`,
+          body: isEntry ? Buffer.from(webReleases.indexHtml()) : current.bytes
+        },
+        isHtmlDocument(name) ? documentCspReportOnly : undefined
+      )
       return
     }
     try {
       const target = join(config.webRoot ?? WEB_ROOT, name)
       const [fileStat, data] = await Promise.all([stat(target), readFile(target)])
-      sendStaticAsset(req, res, {
-        name,
-        contentType: 'text/html; charset=utf-8',
-        cacheControl: cacheControlForStaticName(name),
-        etag: weakStaticEtag(fileStat.size, fileStat.mtimeMs),
-        body: data
-      })
+      sendStaticAsset(
+        req,
+        res,
+        {
+          name,
+          contentType: 'text/html; charset=utf-8',
+          cacheControl: cacheControlForStaticName(name),
+          etag: weakStaticEtag(fileStat.size, fileStat.mtimeMs),
+          body: data
+        },
+        // The fallback labels every file text/html; the policy must follow the name.
+        isHtmlDocument(name) ? documentCspReportOnly : undefined
+      )
     } catch {
       sendStaticNotFound(res)
     }

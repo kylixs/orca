@@ -15,6 +15,13 @@ export const STATIC_REFERRER_POLICY = 'no-referrer'
 export const STATIC_SECURITY_HEADERS: Record<string, string> = {
   'referrer-policy': STATIC_REFERRER_POLICY
 }
+/**
+ * U197 S6 / U224 (D10 phase 1): report-only policy for HTML documents only.
+ * No upgrade-insecure-requests: deployments still include http loopback.
+ * `style-src 'unsafe-inline'` is a registered phase-1 exemption (16 attrs).
+ */
+export const STATIC_CSP_REPORT_ONLY =
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-src 'self' https:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
 
 const COMPRESSIBLE_EXTENSIONS = new Set(['.js', '.css', '.html', '.svg', '.json', '.map'])
 const GZIP_CACHE_LIMIT = 128
@@ -121,7 +128,8 @@ function appendVary(res: ServerResponse, value: string): void {
 export function sendStaticAsset(
   req: IncomingMessage,
   res: ServerResponse,
-  asset: StaticAssetResponse
+  asset: StaticAssetResponse,
+  documentCspReportOnly?: string
 ): void {
   const compressible = isCompressibleStaticName(asset.name)
   const headers: Record<string, string | number> = {
@@ -129,6 +137,9 @@ export function sendStaticAsset(
     'content-type': asset.contentType,
     'cache-control': asset.cacheControl,
     etag: asset.etag
+  }
+  if (documentCspReportOnly) {
+    headers['content-security-policy-report-only'] = documentCspReportOnly
   }
   if (compressible) {
     appendVary(res, 'Accept-Encoding')
