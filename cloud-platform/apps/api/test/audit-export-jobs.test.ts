@@ -105,7 +105,10 @@ describe('任务往返、权限与状态迁移', () => {
     assert.equal(job.jobId, jobId)
     assert.equal(job.status, 'queued')
 
-    assert.throws(() => store.create(jobInput({ jobId: '../escape' })), /invalid audit export job id/)
+    assert.throws(
+      () => store.create(jobInput({ jobId: '../escape' })),
+      /invalid audit export job id/
+    )
     assert.throws(() => store.create(jobInput({ jobId })), /collision/)
   })
 
@@ -214,10 +217,7 @@ describe('启动恢复', () => {
     const failedJob = store.markFailed(failed.jobId, { code: 'X', message: 'x' })
 
     time.set(2_000)
-    assert.deepEqual(
-      store.recoverInterrupted().sort(),
-      [queued.jobId, running.jobId].sort()
-    )
+    assert.deepEqual(store.recoverInterrupted().sort(), [queued.jobId, running.jobId].sort())
 
     for (const jobId of [queued.jobId, running.jobId]) {
       const job = store.read(jobId)
@@ -511,5 +511,38 @@ describe('原子写与符号链接防护', () => {
     const store = new AuditExportJobStore({ root })
     assert.equal(store.read(job.jobId), null)
     assert.equal(store.remove(job.jobId), false)
+  })
+})
+
+describe('listQueuedIds 只读清扫快照', () => {
+  test('仅返回未过期的 queued 合法任务', () => {
+    const time = clock(1_000)
+    const store = new AuditExportJobStore({ root: tempRoot(), ttlMs: 1_000, now: time.now })
+    const queued = store.create(jobInput())
+    const running = store.create(jobInput())
+    store.markRunning(running.jobId)
+    const done = store.create(jobInput())
+    store.markRunning(done.jobId)
+    store.markSucceeded(done.jobId, { totalEvents: 0, bytes: 0 })
+    const failed = store.create(jobInput())
+    store.markFailed(failed.jobId, { code: 'X', message: 'x' })
+
+    assert.deepEqual(store.listQueuedIds(), [queued.jobId])
+
+    time.set(2_000)
+    assert.deepEqual(store.listQueuedIds(), [])
+  })
+
+  test('跳过未知目录名、损坏记录与符号链接目录，且不写盘', () => {
+    const store = new AuditExportJobStore({ root: tempRoot() })
+    const queued = store.create(jobInput())
+    const corrupt = store.create(jobInput())
+    writeFileSync(path.join(store.root, corrupt.jobId, 'job.json'), 'not json\n')
+    mkdirSync(path.join(store.root, 'not-a-job-id'))
+    const outside = tempRoot()
+    const linked = new AuditExportJobStore({ root: outside }).create(jobInput()).jobId
+    symlinkSync(path.join(outside, linked), path.join(store.root, linked))
+
+    assert.deepEqual(store.listQueuedIds(), [queued.jobId])
   })
 })

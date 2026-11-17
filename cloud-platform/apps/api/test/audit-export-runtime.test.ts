@@ -12,9 +12,13 @@ import {
 } from '../src/audit-export-jobs.ts'
 import {
   DEFAULT_AUDIT_EXPORT_CLEANUP_INTERVAL_MS,
+  DEFAULT_AUDIT_EXPORT_SWEEP_INTERVAL_MS,
   createAuditExportStore,
+  resolveAuditExportSweepIntervalMs,
   startAuditExportCleanup,
-  type AuditExportCleanupHandle
+  startAuditExportSweep,
+  type AuditExportCleanupHandle,
+  type AuditExportSweepHandle
 } from '../src/audit-export-runtime.ts'
 import type { CreateAuditExportJobInput } from '../src/audit-export-jobs.ts'
 
@@ -69,10 +73,7 @@ describe('createAuditExportStore', () => {
   test('仅 ORCA_AUDIT_EXPORT_DIR 时生效', () => {
     const dir = tempRoot()
     try {
-      assert.equal(
-        createAuditExportStore({ ORCA_AUDIT_EXPORT_DIR: dir }).root,
-        path.resolve(dir)
-      )
+      assert.equal(createAuditExportStore({ ORCA_AUDIT_EXPORT_DIR: dir }).root, path.resolve(dir))
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -327,6 +328,130 @@ describe('startAuditExportCleanup', () => {
     } finally {
       cleanup?.stop()
       console.error = original
+    }
+  })
+})
+
+describe('startAuditExportSweep', () => {
+  test('存在 queued 任务时每个 tick 触发 drain', async () => {
+    let triggers = 0
+    const sweep = startAuditExportSweep({
+      store: { listQueuedIds: () => ['exp_000000000000000000000000'] },
+      trigger: () => {
+        triggers += 1
+      },
+      intervalMs: 10
+    })
+    try {
+      await waitFor(() => triggers >= 2)
+    } finally {
+      sweep.stop()
+    }
+  })
+
+  test('没有 queued 任务时不触发', async () => {
+    let listCalls = 0
+    let triggers = 0
+    const sweep = startAuditExportSweep({
+      store: {
+        listQueuedIds: () => {
+          listCalls += 1
+          return []
+        }
+      },
+      trigger: () => {
+        triggers += 1
+      },
+      intervalMs: 5
+    })
+    try {
+      await waitFor(() => listCalls >= 2)
+      assert.equal(triggers, 0)
+    } finally {
+      sweep.stop()
+    }
+  })
+
+  test('stop() 幂等且此后不再触发', async () => {
+    let triggers = 0
+    const sweep = startAuditExportSweep({
+      store: { listQueuedIds: () => ['exp_000000000000000000000000'] },
+      trigger: () => {
+        triggers += 1
+      },
+      intervalMs: 5
+    })
+    await waitFor(() => triggers >= 1)
+    sweep.stop()
+    sweep.stop()
+    const seen = triggers
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    assert.equal(triggers, seen)
+  })
+
+  test('trigger 抛错走 onError，后续 tick 继续', async () => {
+    const errors: Error[] = []
+    let calls = 0
+    const sweep = startAuditExportSweep({
+      store: { listQueuedIds: () => ['exp_000000000000000000000000'] },
+      trigger: () => {
+        calls += 1
+        throw new Error('boom')
+      },
+      intervalMs: 10,
+      onError: (error) => {
+        if (error instanceof Error) {
+          errors.push(error)
+        }
+      }
+    })
+    try {
+      await waitFor(() => calls >= 3)
+      assert.equal(errors[0]?.message, 'boom')
+      assert.ok(errors.length >= 3)
+    } finally {
+      sweep.stop()
+    }
+  })
+
+  test('listQueuedIds 抛错也走 onError 且不中断', async () => {
+    const errors: Error[] = []
+    let calls = 0
+    let sweep: AuditExportSweepHandle | undefined
+    assert.doesNotThrow(() => {
+      sweep = startAuditExportSweep({
+        store: {
+          listQueuedIds: () => {
+            calls += 1
+            throw new Error('list-boom')
+          }
+        },
+        trigger: () => {},
+        intervalMs: 10,
+        onError: (error) => {
+          if (error instanceof Error) {
+            errors.push(error)
+          }
+        }
+      })
+    })
+    try {
+      await waitFor(() => calls >= 2)
+      assert.equal(errors[0]?.message, 'list-boom')
+    } finally {
+      sweep?.stop()
+    }
+  })
+
+  test('ORCA_AUDIT_EXPORT_SWEEP_MS 覆盖且非法值回落默认', () => {
+    assert.equal(DEFAULT_AUDIT_EXPORT_SWEEP_INTERVAL_MS, 15_000)
+    assert.equal(resolveAuditExportSweepIntervalMs({ ORCA_AUDIT_EXPORT_SWEEP_MS: '100' }), 100)
+    assert.equal(resolveAuditExportSweepIntervalMs({ ORCA_AUDIT_EXPORT_SWEEP_MS: ' 250 ' }), 250)
+    for (const bad of [undefined, '', '   ', '0', '-1', 'abc', '1.5']) {
+      assert.equal(
+        resolveAuditExportSweepIntervalMs({ ORCA_AUDIT_EXPORT_SWEEP_MS: bad }),
+        DEFAULT_AUDIT_EXPORT_SWEEP_INTERVAL_MS
+      )
     }
   })
 })

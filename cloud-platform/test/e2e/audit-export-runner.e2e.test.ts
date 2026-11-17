@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnService, type Service } from './harness.ts'
+import { AuditExportJobStore } from '../../apps/api/src/audit-export-jobs.ts'
 
 /**
  * U201 E6b: the accept route (E5) schedules the export worker (E6) after the
@@ -118,7 +119,7 @@ before(async () => {
   exportDir = mkdtempSync(join(tmpdir(), 'orca-audit-export-runner-e2e-'))
   api = await spawnService(
     'apps/api/src/server.ts',
-    { PORT: '0', ORCA_AUDIT_EXPORT_DIR: exportDir },
+    { PORT: '0', ORCA_AUDIT_EXPORT_DIR: exportDir, ORCA_AUDIT_EXPORT_SWEEP_MS: '100' },
     READY,
     'api'
   )
@@ -194,4 +195,30 @@ describe('审计导出执行器（真实平台进程）', () => {
   // failure path here ends as `failed` in job.json; forcing one would require
   // corrupting the chain or disk mid-test, so that guard is asserted by code
   // review rather than an e2e fixture.
+
+  test('U206 F17 周期清扫：预置 queued 任务无需 POST 即执行到 succeeded', async () => {
+    // Written after startup, so recovery does not turn it into EXPORT_INTERRUPTED;
+    // this stands in for a job another replica accepted or a lost trigger.
+    const store = new AuditExportJobStore({ root: api.env.ORCA_AUDIT_EXPORT_DIR })
+    const job = store.create({
+      requestedBy: 'user_other_replica',
+      requestedByUsername: 'other-replica',
+      query: { limit: 200, since: Date.now() - 60 * 60_000 },
+      format: 'jsonl'
+    })
+
+    const deadline = Date.now() + 5_000
+    let last = store.read(job.jobId)
+    while (last?.status !== 'succeeded' && Date.now() < deadline) {
+      if (last?.status === 'failed') {
+        assert.fail(`swept export failed: ${JSON.stringify(last.error)}`)
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25))
+      last = store.read(job.jobId)
+    }
+
+    assert.equal(last?.status, 'succeeded', `sweep did not pick up ${job.jobId}`)
+    assert.ok((last?.totalEvents ?? 0) > 0, 'export window must contain the login events')
+    assert.ok(existsSync(join(exportDir, job.jobId, 'events.jsonl')))
+  })
 })

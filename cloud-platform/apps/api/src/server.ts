@@ -49,7 +49,12 @@ import {
   type AuditExportJob,
   type AuditExportJobStore
 } from './audit-export-jobs.ts'
-import { createAuditExportStore, startAuditExportCleanup } from './audit-export-runtime.ts'
+import {
+  createAuditExportStore,
+  resolveAuditExportSweepIntervalMs,
+  startAuditExportCleanup,
+  startAuditExportSweep
+} from './audit-export-runtime.ts'
 import {
   AuditExportWorker,
   DEFAULT_AUDIT_EXPORT_MAX_BYTES,
@@ -1979,6 +1984,13 @@ export function createApp(config: ApiConfig): ApiHandle {
   const scheduleAuditExportRun = createAuditExportDrain(() =>
     auditExportWorker.processQueuedAuditExports(1)
   )
+  // U206 F17: another replica (or a lost trigger) can leave a job queued, so a
+  // low-frequency tick rescues it without waiting on a POST.
+  const auditExportSweep = startAuditExportSweep({
+    store: auditExportStore,
+    trigger: scheduleAuditExportRun,
+    intervalMs: resolveAuditExportSweepIntervalMs()
+  })
 
   /**
    * U115: the copied install command runs without a session, so the wizard mints
@@ -6435,6 +6447,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       return signingKeys.current()
     },
     close: async () => {
+      auditExportSweep.stop()
       auditExportCleanup.stop()
       storePersistence?.flushNow()
       storePersistence?.stop()

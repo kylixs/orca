@@ -272,6 +272,25 @@ export class AuditExportJobStore {
     return this.transition(jobId, 'failed', () => ({ finishedAt: this.clock(), error }))
   }
 
+  /**
+   * Read-only snapshot for the periodic sweep: unexpired `queued` jobs only.
+   * Unknown names, symlinks, and torn records are skipped, never written.
+   */
+  listQueuedIds(): string[] {
+    const ids: string[] = []
+    for (const entry of this.readRoot()) {
+      if (!entry.isDirectory() || !isValidAuditExportJobId(entry.name)) {
+        continue
+      }
+      const job = this.read(entry.name)
+      if (!job || job.status !== 'queued' || this.isExpired(job)) {
+        continue
+      }
+      ids.push(job.jobId)
+    }
+    return ids
+  }
+
   /** Active = queued/running and not yet expired; optional owner scopes it per user. */
   countActive(requestedBy?: string): number {
     let count = 0
