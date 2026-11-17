@@ -1,8 +1,8 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
-import { readFile, stat } from 'node:fs/promises'
-import { readFileSync } from 'node:fs'
+import { lstat, readFile, rm, stat } from 'node:fs/promises'
+import { createReadStream, readFileSync } from 'node:fs'
 import { join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { validateProjectPath } from '../../../packages/contract/src/project-path.ts'
@@ -41,7 +41,11 @@ import {
 } from '../../../packages/contract/src/credential.ts'
 import { AuditChain, type AuditSummary } from './audit.ts'
 import { parseAuditQuery } from './audit-query.ts'
-import type { AuditExportJob, AuditExportJobStore } from './audit-export-jobs.ts'
+import {
+  resolveAuditExportObjectPath,
+  type AuditExportJob,
+  type AuditExportJobStore
+} from './audit-export-jobs.ts'
 import { createAuditExportStore, startAuditExportCleanup } from './audit-export-runtime.ts'
 import {
   AuditExportWorker,
@@ -5494,6 +5498,107 @@ export function createApp(config: ApiConfig): ApiHandle {
         }
       }
       return json(res, 200, body)
+    }
+
+    // ---- audit: export download (U202 E8) ----
+    // The link is self-contained: `token` is the credential, so no Bearer is
+    // accepted and no role gate runs here (§2.3). A bad token answers exactly
+    // like an unknown job, so this cannot probe job existence.
+    const exportDownload = path.match(/^\/v1\/audit\/exports\/([^/]+)\/download$/)
+    if (req.method === 'GET' && exportDownload) {
+      res.setHeader('cache-control', 'no-store')
+      const jobId = exportDownload[1]
+      const job = auditExportStore.read(jobId)
+      if (!job) {
+        return error(res, 404, 'EXPORT_NOT_FOUND', '导出任务不存在。', traceId)
+      }
+      if (auditExportStore.isExpired(job)) {
+        return error(res, 410, 'EXPORT_EXPIRED', '导出任务已过期。', traceId)
+      }
+      // Redemption is atomic and marks the token used before any byte is sent.
+      const token = url.searchParams.get('token')
+      if (token === null) {
+        // Missing token is always the unknown-job answer, even for a consumed
+        // job, so this path cannot confirm that a job exists.
+        return error(res, 404, 'EXPORT_NOT_FOUND', '导出任务不存在。', traceId)
+      }
+      // Resolve the artifact before redeeming the token: a missing/corrupt file
+      // must not consume a one-shot link nor write a success audit event.
+      const artifactPath = resolveAuditExportObjectPath(
+        auditExportStore.root,
+        job.jobId,
+        job.format
+      )
+      if (!artifactPath) {
+        return error(res, 410, 'EXPORT_DOWNLOAD_GONE', '导出产物已不可用。', traceId)
+      }
+      let artifactBytes: number
+      try {
+        // lstat rejects a symlink squatted on the artifact name.
+        const info = await lstat(artifactPath)
+        if (!info.isFile()) {
+          throw new Error('artifact is not a regular file')
+        }
+        artifactBytes = info.size
+      } catch {
+        return error(res, 410, 'EXPORT_DOWNLOAD_GONE', '导出产物已不可用。', traceId)
+      }
+      const consumed = auditExportStore.consumeDownloadToken(jobId, token)
+      if (!consumed.ok) {
+        switch (consumed.reason) {
+          case 'expired':
+            return error(res, 410, 'EXPORT_EXPIRED', '导出任务已过期。', traceId)
+          case 'consumed':
+            return error(res, 410, 'EXPORT_DOWNLOAD_GONE', '下载链接已使用。', traceId)
+          default:
+            return error(res, 404, 'EXPORT_NOT_FOUND', '导出任务不存在。', traceId)
+        }
+      }
+      // Audit before sending: a download that cannot be recorded must not
+      // happen (fail-closed, like export creation). Never log the token; the
+      // job id is the correlation key.
+      try {
+        await audit.append({
+          eventType: 'audit_export_download',
+          actor: job.requestedByUsername,
+          targetType: 'audit',
+          targetId: job.jobId,
+          result: 'success',
+          traceId,
+          metadata: {
+            jobId: job.jobId,
+            format: job.format,
+            totalEvents: job.totalEvents,
+            bytes: job.bytes
+          }
+        })
+      } catch {
+        return error(res, 500, 'EXPORT_AUDIT_UNAVAILABLE', '审计日志不可写，下载已取消。', traceId)
+      }
+      res.writeHead(200, {
+        ...STATIC_SECURITY_HEADERS,
+        'content-type':
+          job.format === 'csv' ? 'text/csv; charset=utf-8' : 'application/x-ndjson; charset=utf-8',
+        'content-disposition': `attachment; filename="audit-export-${job.jobId}.${job.format}"`,
+        'content-length': String(artifactBytes),
+        'cache-control': 'no-store',
+        'x-content-type-options': 'nosniff'
+      })
+      const stream = createReadStream(artifactPath)
+      stream.on('error', () => {
+        // Headers are already out; abort rather than leave a truncated 200.
+        res.destroy()
+      })
+      if (job.deleteAfterDownload) {
+        res.once('finish', () => {
+          // Keep job.json for polling; only the one-shot artifact is removed.
+          void rm(artifactPath, { force: true }).catch((error: unknown) => {
+            console.error('[audit-export] artifact delete failed:', error)
+          })
+        })
+      }
+      stream.pipe(res)
+      return
     }
 
     // ---- audit: write health ----
