@@ -20,6 +20,7 @@ type LoginBody = {
   refreshToken?: string
   error?: { code?: string; message?: string }
   user?: { id: string }
+  device?: { id: string }
 }
 
 type RevokeBody = { ok?: boolean; revokedSessions?: number; error?: { code?: string } }
@@ -39,12 +40,14 @@ async function start(
     publicOrigin?: string
     auditLogPath?: string
     beforeUserSessionRevoke?: () => void | Promise<void>
+    now?: () => number
   } = {}
 ): Promise<{ app: ApiHandle; base: string }> {
   const app = createApp({
     port: 0,
     accessTtlMs: 60_000,
     refreshTtlMs: 60_000,
+    now: options.now,
     internalToken: 'u244-token',
     cookieMode: options.cookieMode,
     beforeUserSessionRevoke: options.beforeUserSessionRevoke,
@@ -100,6 +103,50 @@ function revoke(
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
     body: JSON.stringify(body)
   })
+}
+
+function logout(base: string, token: string): Promise<Response> {
+  return fetch(`${base}/v1/auth/logout`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify({})
+  })
+}
+
+async function updateUserGrant(
+  base: string,
+  token: string,
+  projectId: string,
+  subjectId: string,
+  permissions: string[]
+): Promise<Response> {
+  return fetch(`${base}/v1/projects/${projectId}/grants`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify({ subjectType: 'user', subjectId, permissions })
+  })
+}
+
+async function connectProject(
+  base: string,
+  token: string,
+  projectId: string,
+  deviceId: string
+): Promise<Response> {
+  return fetch(`${base}/v1/projects/${projectId}/connect`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify({ deviceId, clientVersion: '1.5.0' })
+  })
+}
+
+function credentialPayload(credential: string): { iat: number; iatMs?: number } {
+  const segment = credential.split('.')[1]
+  assert.ok(segment, 'credential must carry a payload segment')
+  return JSON.parse(Buffer.from(segment, 'base64url').toString('utf8')) as {
+    iat: number
+    iatMs?: number
+  }
 }
 
 function sessionsOf(app: ApiHandle, userId: string) {
@@ -183,6 +230,69 @@ describe('U244 管理员强制下线（真实 createApp + HTTP）', () => {
     for (const device of devices) {
       assert.equal(device.revokedAt, null, 'force-offline is not a device loss')
     }
+  })
+
+  test('授权变更后强制下线仍刷新撤销标记并留痕，不把合法动作误判为 no-op', async () => {
+    const baseClock = 1_700_000_000_000
+    let clock = baseClock
+    const { app, base } = await start({ now: () => clock })
+    const zhang = app.store.usersByName.get('zhangsan')
+    assert.ok(zhang)
+    const admin = await login(base, 'admin', 'Adm1n!')
+    assert.equal(admin.status, 200)
+    const token = admin.body.accessToken ?? ''
+
+    // T1: an ordinary grant edit writes a user revocation marker of its own.
+    clock = baseClock + 1_000
+    const granted = await updateUserGrant(base, token, 'proj_payment', zhang.id, ['open'])
+    assert.equal(granted.status, 200)
+    const marker = app.store.revocations.find(
+      (entry) => entry.targetType === 'user' && entry.targetId === zhang.username
+    )
+    assert.ok(marker, 'the grant edit must seed the user marker')
+    assert.equal(marker.at, clock)
+    assert.equal(marker.reason, 'grant_changed')
+
+    // Login after the grant edit, mint a host ticket issued after T1, then go idle.
+    clock = baseClock + 2_000
+    const zhangLogin = await login(base, 'zhangsan', 'Passw0rd!')
+    assert.equal(zhangLogin.status, 200)
+    const deviceId = zhangLogin.body.device?.id
+    assert.ok(deviceId, 'login must report the device it created')
+    const zhangToken = zhangLogin.body.accessToken ?? ''
+    const ticket = await connectProject(base, zhangToken, 'proj_payment', deviceId)
+    assert.equal(ticket.status, 200)
+    const payload = credentialPayload(((await ticket.json()) as { credential: string }).credential)
+    assert.equal(payload.iatMs, clock, 'the host ticket is newer than the grant marker')
+    assert.equal((await logout(base, zhangToken)).status, 200)
+    assert.equal(
+      sessionsOf(app, zhang.id).filter((session) => session.revokedAt === null).length,
+      0,
+      'logout leaves no live session behind'
+    )
+
+    // T2: force-offline must move the marker past the ticket minted at Tm.
+    clock = baseClock + 3_000
+    const forced = await revoke(base, token, zhang.id)
+    assert.equal(forced.status, 200)
+    assert.deepEqual((await forced.json()) as RevokeBody, { ok: true, revokedSessions: 0 })
+
+    const markers = app.store.revocations.filter(
+      (entry) => entry.targetType === 'user' && entry.targetId === zhang.username
+    )
+    assert.equal(markers.length, 1, 'a refresh must not grow the revocation list')
+    assert.equal(markers[0]?.at, clock, '`since` must advance past the grant marker')
+    assert.equal(markers[0]?.reason, 'admin_force_offline')
+    assert.ok((payload.iatMs ?? 0) < (markers[0]?.at ?? 0), 'the host ticket is now covered')
+
+    const successEvents = app.store.audit.filter(
+      (entry) =>
+        entry.eventType === 'session_revoke' &&
+        entry.result === 'success' &&
+        entry.targetId === zhang.id
+    )
+    assert.equal(successEvents.length, 1, 'the admin action must be audited exactly once')
+    assert.equal(successEvents[0]?.metadata.revokedSessions, 0)
   })
 
   test('宿主撤销集合写入 user:<username>，内部端点可查', async () => {
@@ -278,7 +388,7 @@ describe('U244 管理员强制下线（真实 createApp + HTTP）', () => {
     }
   })
 
-  test('并发撤销只生效一次、只写一条审计；重复请求返回 0', async () => {
+  test('并发撤销只生效一次、只写一条审计；重复请求返回 0 但仍留痕', async () => {
     const { app, base } = await start({ beforeUserSessionRevoke: rendezvous() })
     assert.equal((await login(base, 'zhangsan', 'Passw0rd!')).status, 200)
     const admin = await login(base, 'admin', 'Adm1n!')
@@ -311,13 +421,11 @@ describe('U244 管理员强制下线（真实 createApp + HTTP）', () => {
     const repeat = await revoke(base, token, zhang.id)
     assert.equal(repeat.status, 200)
     assert.equal(((await repeat.json()) as RevokeBody).revokedSessions, 0)
-    assert.equal(
-      app.store.audit.filter(
-        (entry) => entry.eventType === 'session_revoke' && entry.result === 'success'
-      ).length,
-      1,
-      'an idempotent repeat writes no second audit'
+    const afterRepeat = app.store.audit.filter(
+      (entry) => entry.eventType === 'session_revoke' && entry.result === 'success'
     )
+    assert.equal(afterRepeat.length, 2, 'a non-concurrent repeat is still an admin action')
+    assert.equal(afterRepeat[1]?.metadata.revokedSessions, 0)
   })
 
   test('未知用户 404；无会话用户 200 且仍写宿主撤销', async () => {

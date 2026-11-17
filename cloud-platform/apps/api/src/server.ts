@@ -2990,8 +2990,11 @@ export function createApp(config: ApiConfig): ApiHandle {
 
   async function withUserSessionRevokeLock<T>(
     userId: string,
-    action: () => Promise<T>
+    action: (follower: boolean) => Promise<T>
   ): Promise<T> {
+    // A caller that finds a request already queued is a follower: the leader
+    // performs (and audits) the revoke, so the follower must not duplicate it.
+    const follower = userSessionRevokeQueues.has(userId)
     const previous = userSessionRevokeQueues.get(userId) ?? Promise.resolve()
     let release: () => void = () => {}
     const gate = new Promise<void>((resolve) => {
@@ -3001,7 +3004,7 @@ export function createApp(config: ApiConfig): ApiHandle {
     userSessionRevokeQueues.set(userId, tail)
     await previous
     try {
-      return await action()
+      return await action(follower)
     } finally {
       release()
       if (userSessionRevokeQueues.get(userId) === tail) userSessionRevokeQueues.delete(userId)
@@ -5217,15 +5220,16 @@ export function createApp(config: ApiConfig): ApiHandle {
       // Test-only barrier: both racing requests pause here before serialising.
       await config.beforeUserSessionRevoke?.()
       let auditFailed = false
-      const revokedSessions = await withUserSessionRevokeLock(target.id, async () => {
+      const revokedSessions = await withUserSessionRevokeLock(target.id, async (follower) => {
+        // A concurrent follower re-enters after the leader already revoked,
+        // audited and refreshed the marker; reporting 0 avoids a duplicate event.
+        if (follower) return 0
         const live = [...store.sessions.values()].filter(
           (session) => session.userId === target.id && session.revokedAt === null
         )
-        const alreadyRevoked = store.revocations.some(
-          (entry) => entry.targetType === 'user' && entry.targetId === target.username
-        )
-        // A repeat after the same revoke already landed changes nothing and writes no second event.
-        if (live.length === 0 && alreadyRevoked) return 0
+        // Every admin action is audited, including a repeat that revokes nothing:
+        // the marker refresh below is real state hosts act on. Remaining dedupe
+        // against unrelated markers (grant_changed etc.) is wrong here.
         if (
           !(await recordAudit(
             res,
@@ -5251,6 +5255,8 @@ export function createApp(config: ApiConfig): ApiHandle {
         let count = 0
         for (const session of live) if (revokeSessionOnce(session)) count += 1
         // Established WSS sessions bypass the platform, so the host ticket must die too.
+        // Refreshing (not appending) moves `since` past any earlier grant marker,
+        // so tickets issued after that marker are covered as well.
         appendRevocation('user', target.username, 'admin_force_offline')
         return count
       })
