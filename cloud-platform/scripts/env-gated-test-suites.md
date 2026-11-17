@@ -23,3 +23,11 @@
 | Node 发行形态 | 需要 `include/node` 的测试（`ssh-relay-node-headers`）须用**官方 Node 发行包**，`npx node@…` 不含 headers | npx 包缺 `include/node` → `expected '' to be '<prefix>'`（2 例）；官方 v24.16.0 包定向复跑 8/8 通过 |
 
 可选加固（未实施）：持久化键改 JSON 编码 + `engines.node` 收紧至 `>=24.16`（需迁移旧行，列为 P3）。
+
+## 并发与资源门（2026-11-17 用户指令）
+
+| 场景 | 规则 |
+| --- | --- |
+| 本机全量（vitest） | 默认 **2 workers**（`config/vitest.config.ts` 自动生效）；需要更少/更多时用 `ORCA_TEST_MAX_WORKERS=N` 覆盖；CI（`CI=1`）保持 vitest 默认 |
+| 任意全量段 | 串行排队（§2-73），不得两段并行；并行只允许「一个全量 + 轻量单测」 |
+| Electron/e2e | `electron-headless` 项目 + `ORCA_BACKGROUND_LAUNCH=1 ORCA_SUPPRESS_DIALOGS=1`；启动整体超时 120s，超时强制关闭（§2-74） |

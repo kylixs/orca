@@ -90,6 +90,13 @@ const projects = [
   }
 ]
 
+function resolveMaxWorkers(): number | undefined {
+  const fromEnv = Number.parseInt(process.env.ORCA_TEST_MAX_WORKERS ?? '', 10)
+  if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv
+  if (process.env.CI) return process.platform === 'win32' ? 4 : undefined
+  return process.platform === 'win32' ? 4 : 2
+}
+
 export default defineConfig({
   ...transforms,
   test: {
@@ -101,6 +108,8 @@ export default defineConfig({
         }
       : {}),
     projects,
-    ...(process.platform === 'win32' ? { maxWorkers: 4 } : {})
+    // Why: local full runs spawn many node/electron children; default to 2 workers
+    // unless overridden (CI keeps vitest's own default). ORCA_TEST_MAX_WORKERS wins.
+    ...(resolveMaxWorkers() !== undefined ? { maxWorkers: resolveMaxWorkers() } : {})
   }
 })
