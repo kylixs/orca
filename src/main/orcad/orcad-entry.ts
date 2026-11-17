@@ -35,7 +35,10 @@ import {
 import { ensureOrcadAppVersion, startOrcadRpc } from './orcad-cloud-admission'
 import { hostAdmissionOptions } from './host-mode-enrolment'
 import { createOrcadSecretStore } from './orcad-node-secret-store'
-import { beginHostModeStateFromEnv, publishHostModeOnlineAfterStart } from './orcad-host-mode-state'
+import {
+  beginHostModeStateFromEnv,
+  publishHostModeInitialStateAfterStart
+} from './orcad-host-mode-state'
 import {
   createHostModeFatalRelay,
   hostModeStartupGate,
@@ -321,7 +324,7 @@ async function startOrcadRuntime(
     state: hostModeState
   })
   await startOrcadRpc(rpc, admission, (value) => attachRuntimeToCloudAdmission(rpc, value))
-  publishHostModeOnlineAfterStart(hostModeState, admission)
+  publishHostModeInitialStateAfterStart(hostModeState, admission, onHostModeFatal)
   // Design §3.3: a rejected credential after online is terminal, not a failed beat to spin on.
   installHostModeHeartbeatWatch({
     state: hostModeState,

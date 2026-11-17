@@ -64,10 +64,24 @@ export type HostModeFatalRelay = {
 /** Connects the runtime's terminal verdict to a listener the entry installs after startup. */
 export function createHostModeFatalRelay(): HostModeFatalRelay {
   let listener: ((exitCode: number) => void) | null = null
+  // A first-beat rejection can land before `main` registers; dropping it left
+  // the process running with an `error` state and no exit.
+  let pending: number | null = null
   return {
-    notify: (exitCode) => listener?.(exitCode),
+    notify: (exitCode) => {
+      if (listener) {
+        listener(exitCode)
+        return
+      }
+      pending = exitCode
+    },
     register: (next) => {
       listener = next
+      if (pending !== null) {
+        const exitCode = pending
+        pending = null
+        next(exitCode)
+      }
     }
   }
 }

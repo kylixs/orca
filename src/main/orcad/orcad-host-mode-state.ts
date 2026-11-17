@@ -22,6 +22,8 @@ export type HostModeStateContext = {
   startedAt: number
   hostName: string | null
   platformUrl: string | null
+  /** Set once a terminal verdict stopped the process, so it stops exactly once. */
+  terminal: boolean
 }
 
 /** The admission slice state publication reads; narrow so tests need no client. */
@@ -47,7 +49,8 @@ export function beginHostModeState(input: {
     pid: input.pid,
     startedAt: input.startedAt,
     hostName: input.hostName ?? null,
-    platformUrl: input.platformUrl ?? null
+    platformUrl: input.platformUrl ?? null,
+    terminal: false
   }
   writeStartingCloudHostState(context.statePath, {
     pid: context.pid,
@@ -89,24 +92,76 @@ export function writeHostModeOnlineState(
   return state
 }
 
+type HostModeHeartbeatVerdict =
+  | { kind: 'online' }
+  | { kind: 'failure'; code: string; fatal: boolean }
+
+/**
+ * Shared by the first beat and every later one, so `online`/`degraded`/`error`
+ * cannot drift between the startup path and the watcher.
+ */
+function heartbeatVerdict(health: CloudHeartbeatHealth): HostModeHeartbeatVerdict | null {
+  if (health.lastHeartbeatOk === true) {
+    return { kind: 'online' }
+  }
+  if (health.lastErrorCode === null) {
+    return null
+  }
+  // 401 and a revoked host are terminal; every other failure may clear on retry.
+  const fatal =
+    health.lastErrorCode === 'heartbeat_unauthorized' || health.lastErrorCode === 'host_revoked'
+  return { kind: 'failure', code: health.lastErrorCode, fatal }
+}
+
+/** Persist one heartbeat verdict; a terminal one stops the host exactly once. */
+function applyHostModeHeartbeatVerdict(input: {
+  context: HostModeStateContext
+  admission: HostModeAdmission
+  health: CloudHeartbeatHealth
+  onTerminal?: (exitCode: number) => void
+}): CloudHostState | null {
+  if (input.context.terminal) {
+    return null
+  }
+  const verdict = heartbeatVerdict(input.health)
+  if (!verdict) {
+    return null
+  }
+  const hostId = input.admission.host()?.hostId ?? null
+  if (verdict.kind === 'online') {
+    return writeHostModeOnlineState(input.context, { hostId, health: input.health })
+  }
+  const state = writeHostModeFailureState(input.context, {
+    code: verdict.code,
+    retryable: !verdict.fatal,
+    status: verdict.fatal ? 'error' : 'degraded',
+    phase: 'heartbeat',
+    hostId,
+    health: input.health
+  })
+  if (verdict.fatal) {
+    input.context.terminal = true
+    input.onTerminal?.(hostModeExitCodeForFailure(verdict.code, false))
+  }
+  return state
+}
+
 /**
  * First heartbeat path: `ready` only resolves once the client has attempted a
- * beat, so a true `lastHeartbeatOk` is that beat's verdict. Rejections and
- * failed verdicts stay in `starting`; failure classification belongs to H6/H7.
+ * beat, so its verdict is the launch's first verdict — `online` on success,
+ * `degraded` while a retryable failure continues, `error` + exit 78 on rejection.
  */
-export async function publishHostModeOnlineWhenReady(
+export async function publishHostModeInitialStateWhenReady(
   context: HostModeStateContext,
-  admission: HostModeAdmission
+  admission: HostModeAdmission,
+  onTerminal?: (exitCode: number) => void
 ): Promise<CloudHostState | null> {
   await admission.ready
   const health = admission.client?.snapshot()
   if (!health) {
     return null
   }
-  return writeHostModeOnlineState(context, {
-    hostId: admission.host()?.hostId ?? null,
-    health
-  })
+  return applyHostModeHeartbeatVerdict({ context, admission, health, onTerminal })
 }
 
 /** orcad's startup entry: host identity comes from the same env admission reads. */
@@ -125,16 +180,19 @@ export function beginHostModeStateFromEnv(
 }
 
 /** Fire-and-forget after the RPC start; readiness must not wait on the platform. */
-export function publishHostModeOnlineAfterStart(
+export function publishHostModeInitialStateAfterStart(
   context: HostModeStateContext | null,
-  admission: HostModeAdmission | null
+  admission: HostModeAdmission | null,
+  onTerminal?: (exitCode: number) => void
 ): void {
   if (!context || !admission) {
     return
   }
-  void publishHostModeOnlineWhenReady(context, admission).catch((error: unknown) => {
-    console.warn('[orcad] could not publish host state online:', error)
-  })
+  void publishHostModeInitialStateWhenReady(context, admission, onTerminal).catch(
+    (error: unknown) => {
+      console.warn('[orcad] could not publish host state:', error)
+    }
+  )
 }
 
 export type HostModeFailureStateInput = {
@@ -206,34 +264,22 @@ export function watchHostModeHeartbeat(input: {
   }
   let terminal = false
   return client.onRefresh(() => {
-    if (terminal) {
+    if (terminal || input.context.terminal) {
       return
     }
     const health = client.snapshot()
-    if (health.lastHeartbeatOk === true) {
-      writeHostModeOnlineState(input.context, {
-        hostId: input.admission.host()?.hostId ?? null,
-        health
-      })
+    const verdict = heartbeatVerdict(health)
+    if (!verdict) {
       return
     }
-    if (health.lastErrorCode === null) {
-      return
-    }
-    // 401 and a revoked host are both terminal; only retryable failures stay degraded.
-    const fatal =
-      health.lastErrorCode === 'heartbeat_unauthorized' || health.lastErrorCode === 'host_revoked'
-    writeHostModeFailureState(input.context, {
-      code: health.lastErrorCode,
-      retryable: !fatal,
-      status: fatal ? 'error' : 'degraded',
-      phase: 'heartbeat',
-      hostId: input.admission.host()?.hostId ?? null,
-      health
-    })
-    if (fatal) {
+    if (verdict.kind === 'failure' && verdict.fatal) {
       terminal = true
-      input.onTerminal(hostModeExitCodeForFailure(health.lastErrorCode, false))
     }
+    applyHostModeHeartbeatVerdict({
+      context: input.context,
+      admission: input.admission,
+      health,
+      onTerminal: input.onTerminal
+    })
   })
 }

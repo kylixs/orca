@@ -6,7 +6,7 @@ import { cloudHostStatePath, isCloudHostStateOnline } from '../startup/cloud-hos
 import type { CloudHeartbeatHealth } from '../cloud-platform/cloud-heartbeat-health'
 import {
   beginHostModeState,
-  publishHostModeOnlineWhenReady,
+  publishHostModeInitialStateWhenReady,
   watchHostModeHeartbeat,
   writeHostModeOnlineState,
   type HostModeAdmission
@@ -73,7 +73,7 @@ describe('host mode state file', () => {
       startedAt: 1_700_000_000_000
     })
 
-    await publishHostModeOnlineWhenReady(context, admission(OK_HEALTH, ready))
+    await publishHostModeInitialStateWhenReady(context, admission(OK_HEALTH, ready))
     expect(seenBeforeHeartbeat).toBe('starting')
   })
 
@@ -86,7 +86,7 @@ describe('host mode state file', () => {
       platformUrl: 'https://cloud.example.com'
     })
 
-    const online = await publishHostModeOnlineWhenReady(context, admission(OK_HEALTH))
+    const online = await publishHostModeInitialStateWhenReady(context, admission(OK_HEALTH))
 
     expect(online).not.toBeNull()
     expect(isCloudHostStateOnline(online!)).toBe(true)
@@ -104,14 +104,27 @@ describe('host mode state file', () => {
     })
   })
 
-  it('leaves starting when the first heartbeat failed', async () => {
+  it('persists degraded when the first heartbeat failed retryably', async () => {
     const context = beginHostModeState({ userDataPath: dir, pid: 1, startedAt: 2 })
-    const failed = { ...OK_HEALTH, lastHeartbeatAt: null, lastHeartbeatOk: false }
+    const failed = {
+      ...OK_HEALTH,
+      lastHeartbeatAt: null,
+      lastHeartbeatOk: false,
+      lastHeartbeatHttpStatus: 503,
+      lastErrorCode: 'heartbeat_failed'
+    }
 
-    const online = await publishHostModeOnlineWhenReady(context, admission(failed))
+    const state = await publishHostModeInitialStateWhenReady(context, admission(failed))
 
-    expect(online).toBeNull()
-    expect(readState(statePath).status).toBe('starting')
+    expect(state?.status).toBe('degraded')
+    expect(readState(statePath)).toMatchObject({
+      status: 'degraded',
+      phase: 'heartbeat',
+      lastHeartbeatOk: false,
+      lastHeartbeatHttpStatus: 503,
+      lastErrorCode: 'heartbeat_failed',
+      retryable: true
+    })
   })
 
   it('does not publish online without a heartbeat verdict', () => {
