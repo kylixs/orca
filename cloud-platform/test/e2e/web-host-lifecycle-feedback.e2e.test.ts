@@ -219,7 +219,11 @@ test('G09-3 注册弹框「复制命令」：写入完整命令、toast 已复�
   page.window.document.querySelector<HTMLButtonElement>('#registerHostBtn')!.click()
   await page.settle()
 
-  assert.equal(callsTo(page, 'POST', '/v1/hosts/tokens'), 1, 'the dialog mints one token')
+  // QA-033: opening mints nothing; the token comes from the explicit action.
+  assert.equal(callsTo(page, 'POST', '/v1/hosts/tokens'), 0, 'opening mints no token')
+  page.window.document.querySelector<HTMLButtonElement>('#generateHostTokenBtn')!.click()
+  await page.settle()
+  assert.equal(callsTo(page, 'POST', '/v1/hosts/tokens'), 1, 'generate mints one token')
   const command = page.window.document.querySelector('#installCmd')?.textContent ?? ''
   assert.match(
     command,
@@ -231,7 +235,7 @@ test('G09-3 注册弹框「复制命令」：写入完整命令、toast 已复�
   assert.doesNotMatch(command, /bash <\(curl/)
 
   page.window.document
-    .querySelector<HTMLButtonElement>('.dialog-backdrop [data-action="0"]')!
+    .querySelector<HTMLButtonElement>('#copyInstallCmd')!
     .click()
   await page.settle()
 
@@ -250,11 +254,17 @@ test('G09-4 失败态：令牌/维护/下线请求失败均 toast 原因且状�
   page.fail('POST', '/v1/hosts/tokens', { status: 500, body: FAILURE_BODY })
   page.window.document.querySelector<HTMLButtonElement>('#registerHostBtn')!.click()
   await page.settle()
-  assert.match(lastToast(page), /^注册主机失败：模拟平台故障$/)
-  assert.equal(
+  assert.equal(callsTo(page, 'POST', '/v1/hosts/tokens'), 0, 'opening mints no token')
+  page.window.document.querySelector<HTMLButtonElement>('#generateHostTokenBtn')!.click()
+  await page.settle()
+  assert.equal(callsTo(page, 'POST', '/v1/hosts/tokens'), 1, 'generate attempts one mint')
+  assert.match(
+    page.window.document.querySelector('#registerHostTokenError')?.textContent ?? '',
+    /^生成注册命令失败：模拟平台故障$/
+  )
+  assert.ok(
     page.window.document.querySelector('.dialog-backdrop'),
-    null,
-    'a failed mint opens no dialog'
+    'a refused mint keeps the dialog open for retry'
   )
 
   await openHostDrawer(page, failHostId)
