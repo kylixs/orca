@@ -4333,3 +4333,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **快照明文剥离落地**（`57327d771e2`，3 文件 +118/−25）：`refreshTokens` key 改 `sha256:` 摘要、旧明文快照加载即重建、`server.ts` 写入/查找全链路先哈希；store-persistence 9/9、refresh-cookie+session-renewal 60/60（主会话复跑）。独立复审在途（重点：遗漏读写点、`currentRefreshTokenOf` 回退）。
 - **U219 关闭（D17）**：P2 修复 `296dcf40ac7` 经二次复审 APPROVED（语义/epoch/降级/pin/两变异全部核对）；六套件 67/67、0 cancelled。遗留 4 项 P3 已派补强批。台账 U219 翻 🟢——U197 实现类前置全部清空。
 - **快照哈希复审 CHANGES-REQUIRED**：功能与覆盖正确，但 P1=旧明文快照加载后**磁盘不清理**（`lastWritten` 预置使 flush 跳过；重启/优雅关闭仍留明文）→ 已派修（恢复后差异即写回、写盘失败不阻塞启动、补三条用例）；P2=快照仍明文存 `accessTokens`/`webHandoffs`（随 D18 裁定）；P3=`SNAPSHOT_VERSION` 未升版。覆盖核对：写入 2 处/查找 4 处均哈希，回退语义成立；变异两处均红。
+- **U181 A3 落地**（`d7c4c2e2814`，5 文件 +162/−2）：`orca_host_online` 转换事件（四字段、仅转换时一行、走 stderr 日志流避免污染 readiness JSON）、设计命名 `heartbeatError`→`lastErrorCode`；主会话复跑 3 文件 38/38（代理 6 文件 75/75），变异即红。A4（journalctl + reenroll 提示 + 码表文档尾项）已派。
