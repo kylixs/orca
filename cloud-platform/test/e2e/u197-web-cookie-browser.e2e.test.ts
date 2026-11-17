@@ -470,6 +470,61 @@ describe('U197 S5 Web 客户端真实 Chromium：Cookie 会话 / 迁移 / 回退
     }
   })
 
+  test('U229 F3 慢 logout 晚于新登录：新 Cookie 保留且业务 200', async () => {
+    const { context, page } = await openConsole(shortAccess.url)
+    try {
+      await loginThroughUi(page)
+
+      let releaseLogout = (): void => {}
+      const logoutGate = new Promise<void>((resolve) => {
+        releaseLogout = resolve
+      })
+      let logoutHeld = (): void => {}
+      const held = new Promise<void>((resolve) => {
+        logoutHeld = resolve
+      })
+      await page.route('**/v1/auth/logout', async (route) => {
+        logoutHeld()
+        await logoutGate
+        // The login aborts this fetch, so the late response must be discarded.
+        await route.continue().catch(() => {})
+      })
+
+      await page.locator('#logoutBtn').click()
+      await held
+      await page.waitForSelector(VIEW_LOGIN, { state: 'visible', timeout: 15_000 })
+
+      // The held logout has not answered yet; a fresh login must win the race.
+      await loginThroughUi(page)
+      assert.ok(await refreshCookieOf(context), 'the new login must set a Cookie')
+
+      releaseLogout()
+      await delay(300)
+
+      assert.ok(
+        await refreshCookieOf(context),
+        'the late logout response must not clear the new Cookie'
+      )
+      const stored = await readStoredAuth(page)
+      assert.equal(stored.mode, 'cookie')
+      assert.equal(stored.refresh, null, 'Cookie mode never persists a refresh token')
+
+      // The access token lapses: only Cookie refresh can serve the next call.
+      await delay(1700)
+      const replayed = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/v1/relays' && response.status() === 200,
+        { timeout: 20_000 }
+      )
+      await page.locator('.nav-item[data-route="relays"]').click()
+      await replayed
+      assert.equal(await isVisible(page, VIEW_APP), true)
+      assert.equal(await isVisible(page, VIEW_LOGIN), false)
+    } finally {
+      await context.close()
+    }
+  })
+
   /**
    * AC7 real-browser, second tab: logout clears the Cookie and revokes the
    * session; "the other tab switches to login within N seconds **or** is

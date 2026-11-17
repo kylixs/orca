@@ -68,6 +68,7 @@ async function api(path, init = {}, { retried = false } = {}) {
       ...(init.headers ?? {})
     }
   })
+  const body = res.status === 204 ? {} : await res.json().catch(() => ({}))
   // U197: in Cookie mode the session is provable without a body refresh token.
   if (res.status === 401) {
     if (!retried && state.authEpoch === epoch && (state.cookieMode || state.refreshToken)) {
@@ -79,13 +80,12 @@ async function api(path, init = {}, { retried = false } = {}) {
       // let the caller see the failed request; only an HTTP rejection signs out.
       if (refresh === 'rejected' && state.authEpoch === epoch) logout()
     } else if (retried && state.authEpoch === epoch) {
-      // U228: one refresh + one replay both 401 means the session is dead (for
-      // example the account was disabled). Sign out instead of leaving a shell
-      // that only shows "加载失败"; logout never refreshes, so this cannot loop.
-      logout()
+      // U228/U230③: only a session verdict signs out; an authorization 401
+      // belongs to the caller. No code means a pre-U230 server.
+      const code = body.error?.code
+      if (!code || code === 'SESSION_EXPIRED') logout()
     }
   }
-  const body = res.status === 204 ? {} : await res.json().catch(() => ({}))
   if (!res.ok) {
     const err = new Error(body.error?.message ?? `请求失败 (${res.status})`)
     err.code = body.error?.code
@@ -99,6 +99,8 @@ async function api(path, init = {}, { retried = false } = {}) {
 /** U134: parallel 401s share one rotation — a second refresh with the already
  * rotated token would kill the session and sign the user out. */
 let refreshInFlight = null
+/** U229 F3: a late logout response would clear the Cookie a newer login set. */
+let logoutInFlight = null
 
 function setCookieMode(enabled) {
   state.cookieMode = enabled
@@ -146,7 +148,8 @@ async function refreshWithCookie(epoch) {
 /** Legacy body refresh; also the one fallback when the Cookie was lost. */
 async function refreshWithBody(epoch) {
   if (state.authEpoch !== epoch) return 'stale'
-  if (!state.refreshToken) return 'rejected'
+  const requestedRefresh = state.refreshToken
+  if (!requestedRefresh) return 'rejected'
   let res
   try {
     res = await fetch('/v1/auth/refresh', {
@@ -155,7 +158,7 @@ async function refreshWithBody(epoch) {
         'content-type': 'application/json',
         [WEB_CONTRACT_HEADER]: String(WEB_CONTRACT_VERSION)
       },
-      body: JSON.stringify({ refreshToken: state.refreshToken })
+      body: JSON.stringify({ refreshToken: requestedRefresh })
     })
   } catch {
     // U221 F2 / U222 N1: the caller decides, but this is never a crash.
@@ -173,6 +176,14 @@ async function refreshWithBody(epoch) {
     if (typeof body.refreshToken === 'string' && body.refreshToken !== '') {
       state.refreshToken = body.refreshToken
     }
+    return 'ok'
+  }
+  // U229 F4: a grace reuse echoes the request value without rotating. That is
+  // not an old server, so keep the marker and stored keys; refresh never lands
+  // in memory or localStorage, and only the access token moves.
+  if (body.refreshToken === requestedRefresh) {
+    state.accessToken = body.accessToken
+    if (!state.cookieMode) localStorage.setItem('orca.access', body.accessToken)
     return 'ok'
   }
   // Marker missing: old server. Resume the plain localStorage contract.
@@ -4943,6 +4954,13 @@ async function login(username, password) {
   // U229 F1: requesting a login already abandons the previous generation.
   state.authEpoch += 1
   refreshInFlight = null
+  // U229 F3: a logout that has not answered yet could clear the Cookie this
+  // login is about to set; abort it and drop the retry marker.
+  if (logoutInFlight) {
+    logoutInFlight.abort()
+    logoutInFlight = null
+    localStorage.removeItem(PENDING_LOGOUT_KEY)
+  }
   let res
   try {
     res = await fetch('/v1/auth/login', {
@@ -4994,23 +5012,34 @@ async function login(username, password) {
 }
 
 /** U221 F4: tell the server, and only forget the pending marker once it heard us. */
-async function sendLogout() {
+async function sendLogout(refreshToken = state.refreshToken) {
   const accessToken = state.accessToken
+  // U229 F3: keep the controller so a fresh login can discard this response.
+  const controller = new AbortController()
+  logoutInFlight = controller
+  const hasRefresh = typeof refreshToken === 'string' && refreshToken !== ''
   try {
     const res = await fetch('/v1/auth/logout', {
       method: 'POST',
       // U197: the Cookie is the credential in Cookie mode; the expired Bearer
       // stays attached so the server can revoke whichever session it can locate.
       credentials: 'same-origin',
+      signal: controller.signal,
       headers: {
         [WEB_CONTRACT_HEADER]: String(WEB_CONTRACT_VERSION),
+        // U229 F10: a legacy client may have no Cookie and an expired Bearer;
+        // the body token is then the only locator the server can revoke.
+        ...(hasRefresh ? { 'content-type': 'application/json' } : {}),
         ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {})
-      }
+      },
+      ...(hasRefresh ? { body: JSON.stringify({ refreshToken }) } : {})
     })
     // 401 means the server was reached and the credential is already gone.
     if (res.ok || res.status === 401) localStorage.removeItem(PENDING_LOGOUT_KEY)
   } catch {
     // Keep the marker so the next page load retries once.
+  } finally {
+    if (logoutInFlight === controller) logoutInFlight = null
   }
 }
 
@@ -5023,7 +5052,8 @@ function logout() {
   // U221 F4: the HttpOnly Cookie can only be cleared by the server, so remember
   // that the request still owes the platform until a response proves otherwise.
   localStorage.setItem(PENDING_LOGOUT_KEY, '1')
-  void sendLogout()
+  // U229 F10: read the refresh token before clearLegacyTokens() wipes it.
+  void sendLogout(state.refreshToken)
   state.accessToken = ''
   state.user = null
   state.directory = null

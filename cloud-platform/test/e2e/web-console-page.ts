@@ -307,7 +307,7 @@ export function loadWebConsolePage(
           pending.push(
             realFetch(waiter.input, waiter.init)
               .catch(() => new Response(null, { status: 503 }))
-              .then((response) => waiter.resolve(response))
+              .then((response) => waiter.resolve(absorbSetCookies(response)))
           )
         }
       }
