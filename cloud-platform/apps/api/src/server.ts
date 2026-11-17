@@ -1915,17 +1915,11 @@ export function createApp(config: ApiConfig): ApiHandle {
     return chain
   }
 
-  // U201 E6b: the worker pages synchronously, so it can only drive an in-process
-  // chain; a remote writer answers asynchronously and fails the job explicitly.
+  // U205 F3: the worker awaits each page, so the in-process chain (sync) and a
+  // remote writer (`auditWriterUrls`, promise-returning) both drive exports.
   const auditExportWorker = new AuditExportWorker({
     store: auditExportStore,
-    query: (filter) => {
-      const result = audit.query(filter)
-      if (result instanceof Promise) {
-        throw new Error('audit export worker requires the local synchronous audit chain')
-      }
-      return result
-    },
+    query: (filter) => audit.query(filter),
     // Terminal events are best-effort (the worker never awaits them); the
     // adapter fills the nullable fields `AuditSink.append` requires.
     audit: {
@@ -1943,18 +1937,16 @@ export function createApp(config: ApiConfig): ApiHandle {
     }
   })
   /**
-   * One pass per accepted job, after the 202 is written. setImmediate callbacks
-   * are serial on this event loop and `markRunning` persists before any yield,
-   * so overlapping accepts cannot both claim the same queued job.
+   * One pass per accepted job, after the 202 is written. `runAuditExportJob`
+   * persists `markRunning` before its first await, so overlapping passes (and
+   * overlapping setImmediate callbacks) cannot both claim a queued job.
    */
   function scheduleAuditExportRun(): void {
     setImmediate(() => {
-      try {
-        auditExportWorker.processQueuedAuditExports(1)
-      } catch (error) {
-        // The 202 is already sent; a worker fault must not surface as a response error.
-        console.error('[audit-export] worker run failed:', error)
-      }
+      // The 202 is already sent; a worker fault must not surface as a response error.
+      void auditExportWorker
+        .processQueuedAuditExports(1)
+        .catch((error: unknown) => console.error('[audit-export] worker run failed:', error))
     })
   }
 

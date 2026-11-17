@@ -123,7 +123,7 @@ function parseJsonRecord(line: string): Record<string, unknown> {
 }
 
 describe('分页、排序与产物', () => {
-  test('450 条按 200/页 翻 3 页，游标正确，导出为 seq 升序', () => {
+  test('450 条按 200/页 翻 3 页，游标正确，导出为 seq 升序', async () => {
     const root = tempRoot()
     const time = clock()
     const events = Array.from({ length: 450 }, (_, index) => event(index + 1))
@@ -136,7 +136,7 @@ describe('分页、排序与产物', () => {
       query: { limit: 50, since: 1_699_000_000_000, until: 1_800_000_000_000 },
       format: 'csv'
     })
-    const result = worker.runAuditExportJob(job.jobId)
+    const result = await worker.runAuditExportJob(job.jobId)
 
     assert.equal(result.status, 'succeeded')
     if (result.status !== 'succeeded') return
@@ -170,7 +170,7 @@ describe('分页、排序与产物', () => {
     assert.equal(saved?.bytes, Buffer.byteLength(readFileSync(file, 'utf8')))
   })
 
-  test('CSV 与 JSONL 两种格式都可读回', () => {
+  test('CSV 与 JSONL 两种格式都可读回', async () => {
     const root = tempRoot()
     const time = clock()
     const events = Array.from({ length: 5 }, (_, index) => event(index + 1))
@@ -190,8 +190,8 @@ describe('分页、排序与产物', () => {
       format: 'jsonl'
     })
 
-    assert.equal(worker.runAuditExportJob(csvJob.jobId).status, 'succeeded')
-    assert.equal(worker.runAuditExportJob(jsonlJob.jobId).status, 'succeeded')
+    assert.equal((await worker.runAuditExportJob(csvJob.jobId)).status, 'succeeded')
+    assert.equal((await worker.runAuditExportJob(jsonlJob.jobId)).status, 'succeeded')
 
     const csvRows = csvDataRows(readFileSync(objectPathFor(root, csvJob.jobId, 'csv'), 'utf8'))
     assert.equal(csvRows.length, 6)
@@ -212,7 +212,7 @@ describe('分页、排序与产物', () => {
 })
 
 describe('过滤字段完整转发', () => {
-  test('job.query 的字段全部进入 audit.query，仅 limit/游标由 worker 决定', () => {
+  test('job.query 的字段全部进入 audit.query，仅 limit/游标由 worker 决定', async () => {
     const root = tempRoot()
     const time = clock()
     const chain = fakeChain([])
@@ -238,7 +238,7 @@ describe('过滤字段完整转发', () => {
       format: 'jsonl'
     })
 
-    const result = worker.runAuditExportJob(job.jobId)
+    const result = await worker.runAuditExportJob(job.jobId)
     assert.equal(result.status, 'succeeded')
     assert.equal(chain.calls.length, 1)
     const call = chain.calls[0]
@@ -279,7 +279,7 @@ describe('过滤字段完整转发', () => {
 })
 
 describe('失败终态不留产物', () => {
-  test('超过 maxEvents 或 maxBytes 记为 EXPORT_TOO_LARGE 且无对象文件', () => {
+  test('超过 maxEvents 或 maxBytes 记为 EXPORT_TOO_LARGE 且无对象文件', async () => {
     const root = tempRoot()
     const time = clock()
     const chain = fakeChain(Array.from({ length: 50 }, (_, index) => event(index + 1)))
@@ -291,7 +291,7 @@ describe('失败终态不留产物', () => {
       query: { limit: 200 },
       format: 'csv'
     })
-    const eventsResult = byEvents.worker.runAuditExportJob(eventsJob.jobId)
+    const eventsResult = await byEvents.worker.runAuditExportJob(eventsJob.jobId)
     assert.equal(eventsResult.status, 'failed')
     if (eventsResult.status === 'failed') {
       assert.equal(eventsResult.error.code, AUDIT_EXPORT_ERROR_TOO_LARGE)
@@ -309,7 +309,7 @@ describe('失败终态不留产物', () => {
       query: { limit: 200 },
       format: 'jsonl'
     })
-    const bytesResult = byBytes.worker.runAuditExportJob(bytesJob.jobId)
+    const bytesResult = await byBytes.worker.runAuditExportJob(bytesJob.jobId)
     assert.equal(bytesResult.status, 'failed')
     if (bytesResult.status === 'failed') {
       assert.equal(bytesResult.error.code, AUDIT_EXPORT_ERROR_TOO_LARGE)
@@ -317,7 +317,7 @@ describe('失败终态不留产物', () => {
     assert.equal(existsSync(objectPathFor(rootBytes, bytesJob.jobId, 'jsonl')), false)
   })
 
-  test('对象写入失败记为 EXPORT_WRITE_FAILED，无半截文件', () => {
+  test('对象写入失败记为 EXPORT_WRITE_FAILED，无半截文件', async () => {
     const root = tempRoot()
     const time = clock()
     const chain = fakeChain(Array.from({ length: 3 }, (_, index) => event(index + 1)))
@@ -333,7 +333,7 @@ describe('失败终态不留产物', () => {
     const objectPath = objectPathFor(root, job.jobId, 'csv')
     mkdirSync(objectPath)
 
-    const result = worker.runAuditExportJob(job.jobId)
+    const result = await worker.runAuditExportJob(job.jobId)
     assert.equal(result.status, 'failed')
     if (result.status === 'failed') {
       assert.equal(result.error.code, AUDIT_EXPORT_ERROR_WRITE_FAILED)
@@ -349,7 +349,7 @@ describe('失败终态不留产物', () => {
     assert.equal(failed?.error?.code, AUDIT_EXPORT_ERROR_WRITE_FAILED)
   })
 
-  test('查询抛错记为 EXPORT_AUDIT_UNAVAILABLE 且无对象文件', () => {
+  test('查询抛错记为 EXPORT_AUDIT_UNAVAILABLE 且无对象文件', async () => {
     const root = tempRoot()
     const time = clock()
     const store = new AuditExportJobStore({ root, now: time.now })
@@ -367,7 +367,7 @@ describe('失败终态不留产物', () => {
       format: 'csv'
     })
 
-    const result = worker.runAuditExportJob(job.jobId)
+    const result = await worker.runAuditExportJob(job.jobId)
     assert.equal(result.status, 'failed')
     if (result.status === 'failed') {
       assert.equal(result.error.code, AUDIT_EXPORT_ERROR_AUDIT_UNAVAILABLE)
@@ -390,7 +390,7 @@ describe('终态审计（best-effort）', () => {
       query: { limit: 200 },
       format: 'csv'
     })
-    const result = worker.runAuditExportJob(job.jobId)
+    const result = await worker.runAuditExportJob(job.jobId)
     assert.equal(result.status, 'succeeded')
     await Promise.resolve()
 
@@ -421,7 +421,7 @@ describe('终态审计（best-effort）', () => {
       query: { limit: 200 },
       format: 'jsonl'
     })
-    assert.equal(worker.runAuditExportJob(job.jobId).status, 'failed')
+    assert.equal((await worker.runAuditExportJob(job.jobId)).status, 'failed')
     await Promise.resolve()
 
     assert.equal(events.length, 1)
@@ -450,7 +450,7 @@ describe('终态审计（best-effort）', () => {
       format: 'csv'
     })
 
-    const result = worker.runAuditExportJob(job.jobId)
+    const result = await worker.runAuditExportJob(job.jobId)
     assert.equal(result.status, 'succeeded')
     assert.equal(store.read(job.jobId)?.status, 'succeeded')
     assert.ok(existsSync(objectPathFor(root, job.jobId, 'csv')))
@@ -465,14 +465,118 @@ describe('终态审计（best-effort）', () => {
       query: { limit: 200 },
       format: 'csv'
     })
-    assert.equal(worker2.runAuditExportJob(job2.jobId).status, 'succeeded')
+    assert.equal((await worker2.runAuditExportJob(job2.jobId)).status, 'succeeded')
     await Promise.resolve()
     assert.equal(store2.read(job2.jobId)?.status, 'succeeded')
   })
 })
 
+describe('远端异步审计查询（auditWriterUrls 拓扑）', () => {
+  /** Mirrors `createRemoteAudit`: every page resolves on a later microtask. */
+  function asyncChain(events: AuditEvent[]) {
+    const sync = fakeChain(events)
+    const query = async (filter: AuditQuery): Promise<AuditQueryResult> => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      return sync.query(filter)
+    }
+    return { query, calls: sync.calls }
+  }
+
+  test('Promise 查询多页（450 条 > 200/页）仍正确分页、升序导出并 succeeded', async () => {
+    const root = tempRoot()
+    const time = clock()
+    const events = Array.from({ length: 450 }, (_, index) => event(index + 1))
+    const chain = asyncChain(events)
+    const store = new AuditExportJobStore({ root, now: time.now })
+    const worker = new AuditExportWorker({ store, query: chain.query, now: time.now })
+
+    const job = store.create({
+      requestedBy: 'user_1',
+      requestedByUsername: 'alice',
+      query: { limit: 50 },
+      format: 'jsonl'
+    })
+    const result = await worker.runAuditExportJob(job.jobId)
+
+    assert.equal(result.status, 'succeeded')
+    if (result.status !== 'succeeded') return
+    assert.equal(result.totalEvents, 450)
+    assert.equal(chain.calls.length, 3)
+    assert.deepEqual(
+      chain.calls.map((call) => call.cursor),
+      [undefined, 251, 51]
+    )
+
+    const lines = readFileSync(objectPathFor(root, job.jobId, 'jsonl'), 'utf8')
+      .trimEnd()
+      .split('\n')
+    assert.deepEqual(
+      lines.map((line) => parseJsonRecord(line).seq),
+      events.map((entry) => entry.seq)
+    )
+    assert.equal(store.read(job.jobId)?.status, 'succeeded')
+  })
+
+  test('某页 Promise reject 记为 EXPORT_AUDIT_UNAVAILABLE 且无对象文件', async () => {
+    const root = tempRoot()
+    const time = clock()
+    const store = new AuditExportJobStore({ root, now: time.now })
+    const worker = new AuditExportWorker({
+      store,
+      now: time.now,
+      query: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        throw new Error('remote writer unreachable')
+      }
+    })
+    const job = store.create({
+      requestedBy: 'user_1',
+      requestedByUsername: 'alice',
+      query: { limit: 200 },
+      format: 'csv'
+    })
+
+    const result = await worker.runAuditExportJob(job.jobId)
+    assert.equal(result.status, 'failed')
+    if (result.status === 'failed') {
+      assert.equal(result.error.code, AUDIT_EXPORT_ERROR_AUDIT_UNAVAILABLE)
+    }
+    assert.equal(existsSync(objectPathFor(root, job.jobId, 'csv')), false)
+    assert.equal(store.read(job.jobId)?.status, 'failed')
+    assert.equal(store.read(job.jobId)?.error?.code, AUDIT_EXPORT_ERROR_AUDIT_UNAVAILABLE)
+  })
+
+  test('processQueuedAuditExports 串行 await Promise 查询并返回结果数组', async () => {
+    const root = tempRoot()
+    const time = clock()
+    const chain = asyncChain(Array.from({ length: 4 }, (_, index) => event(index + 1)))
+    const store = new AuditExportJobStore({ root, now: time.now })
+    const worker = new AuditExportWorker({ store, query: chain.query, now: time.now })
+    const first = store.create({
+      requestedBy: 'user_1',
+      requestedByUsername: 'alice',
+      query: { limit: 200 },
+      format: 'csv'
+    })
+    const second = store.create({
+      requestedBy: 'user_1',
+      requestedByUsername: 'alice',
+      query: { limit: 200 },
+      format: 'jsonl'
+    })
+
+    const results = await worker.processQueuedAuditExports()
+    // Same-millisecond creates are ordered by jobId (deterministic pass order).
+    const pairs = results.map((entry) => `${entry.jobId}:${entry.status}`)
+    const want = [first.jobId, second.jobId].map((jobId) => `${jobId}:succeeded`)
+    assert.deepEqual(pairs.sort(), want.sort())
+    assert.equal(store.read(first.jobId)?.status, 'succeeded')
+    assert.equal(store.read(second.jobId)?.status, 'succeeded')
+  })
+})
+
 describe('只处理 queued', () => {
-  test('非 queued 与已过期任务被跳过；processQueuedAuditExports 只挑 queued', () => {
+  test('非 queued 与已过期任务被跳过；processQueuedAuditExports 只挑 queued', async () => {
     const root = tempRoot()
     const time = clock()
     const chain = fakeChain(Array.from({ length: 4 }, (_, index) => event(index + 1)))
@@ -502,18 +606,18 @@ describe('只处理 queued', () => {
     store.markSucceeded(terminal.jobId, { totalEvents: 0, bytes: 0 })
 
     // limit=1 takes the oldest queued job only.
-    const printed = worker.processQueuedAuditExports(1)
+    const printed = await worker.processQueuedAuditExports(1)
     assert.equal(printed.length, 1)
     assert.equal(printed[0]?.jobId, first.jobId)
     assert.equal(store.read(second.jobId)?.status, 'queued')
 
-    const rest = worker.processQueuedAuditExports()
+    const rest = await worker.processQueuedAuditExports()
     assert.deepEqual(
       rest.map((entry) => entry.jobId),
       [second.jobId]
     )
     assert.equal(store.read(terminal.jobId)?.status, 'succeeded')
-    assert.equal(worker.runAuditExportJob(terminal.jobId).status, 'skipped')
+    assert.equal((await worker.runAuditExportJob(terminal.jobId)).status, 'skipped')
 
     // Expired queued job is left queued (derived expiry), not failed.
     const expiring = store.create({
@@ -523,20 +627,20 @@ describe('只处理 queued', () => {
       format: 'csv'
     })
     time.set(expiring.expiresAt + 1)
-    assert.deepEqual(worker.runAuditExportJob(expiring.jobId), {
+    assert.deepEqual(await worker.runAuditExportJob(expiring.jobId), {
       jobId: expiring.jobId,
       status: 'skipped',
       reason: 'expired'
     })
     assert.equal(store.read(expiring.jobId)?.status, 'queued')
-    assert.equal(worker.processQueuedAuditExports().length, 0)
+    assert.equal((await worker.processQueuedAuditExports()).length, 0)
   })
 
-  test('不存在的 jobId 返回 skipped/not-found', () => {
+  test('不存在的 jobId 返回 skipped/not-found', async () => {
     const root = tempRoot()
     const chain = fakeChain([])
     const { worker } = makeWorker(root, chain)
-    assert.deepEqual(worker.runAuditExportJob('exp_0123456789abcdef01234567'), {
+    assert.deepEqual(await worker.runAuditExportJob('exp_0123456789abcdef01234567'), {
       jobId: 'exp_0123456789abcdef01234567',
       status: 'skipped',
       reason: 'not-found'

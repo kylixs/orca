@@ -71,8 +71,8 @@ export type AuditExportAuditSink = {
 
 export type AuditExportWorkerOptions = {
   store: AuditExportJobStore
-  /** Same shape as `AuditChain.query`; injected so tests need no real chain. */
-  query: (filter: AuditQuery) => AuditQueryResult
+  /** Local chain answers synchronously; a remote writer answers with a promise. */
+  query: (filter: AuditQuery) => AuditQueryResult | Promise<AuditQueryResult>
   /** Terminal (`phase: finished`) events are best-effort; failures never alter the job. */
   audit?: AuditExportAuditSink
   now?: () => number
@@ -90,7 +90,7 @@ const errorMessage = (error: unknown): string =>
 
 export class AuditExportWorker {
   private readonly store: AuditExportJobStore
-  private readonly query: (filter: AuditQuery) => AuditQueryResult
+  private readonly query: (filter: AuditQuery) => AuditQueryResult | Promise<AuditQueryResult>
   private readonly audit: AuditExportAuditSink | null
   private readonly clock: () => number
   private readonly maxEvents: number
@@ -112,7 +112,7 @@ export class AuditExportWorker {
   }
 
   /** Runs one job. A non-queued/expired/missing job is skipped, never mutated. */
-  runAuditExportJob(jobId: string): AuditExportRunResult {
+  async runAuditExportJob(jobId: string): Promise<AuditExportRunResult> {
     const job = this.store.read(jobId)
     if (!job) {
       return { jobId, status: 'skipped', reason: 'not-found' }
@@ -144,7 +144,7 @@ export class AuditExportWorker {
 
     let collected: CollectResult
     try {
-      collected = this.collect(running)
+      collected = await this.collect(running)
     } catch (error) {
       return this.failJob(running, objectPath, {
         code: AUDIT_EXPORT_ERROR_AUDIT_UNAVAILABLE,
@@ -219,8 +219,12 @@ export class AuditExportWorker {
     }
   }
 
-  /** FIFO pass over queued jobs; the timer/route will call this later (E9). */
-  processQueuedAuditExports(limit?: number): AuditExportRunResult[] {
+  /**
+   * FIFO pass over queued jobs; serial so two jobs never write concurrently.
+   * `markRunning` is the cross-call claim: every caller persists it before its
+   * first await, so an overlapping pass sees the job as no longer queued.
+   */
+  async processQueuedAuditExports(limit?: number): Promise<AuditExportRunResult[]> {
     const jobs: AuditExportJob[] = []
     for (const entry of this.readRoot()) {
       if (!entry.isDirectory() || !isValidAuditExportJobId(entry.name)) {
@@ -238,10 +242,14 @@ export class AuditExportWorker {
       limit === undefined || !Number.isFinite(limit)
         ? jobs.length
         : Math.max(0, Math.floor(limit))
-    return jobs.slice(0, wanted).map((job) => this.runAuditExportJob(job.jobId))
+    const results: AuditExportRunResult[] = []
+    for (const job of jobs.slice(0, wanted)) {
+      results.push(await this.runAuditExportJob(job.jobId))
+    }
+    return results
   }
 
-  private collect(job: AuditExportJob): CollectResult {
+  private async collect(job: AuditExportJob): Promise<CollectResult> {
     const events: AuditEvent[] = []
     let bytes =
       job.format === 'csv'
@@ -265,7 +273,7 @@ export class AuditExportWorker {
         hostId: job.query.hostId,
         cursor
       }
-      const page = this.query(filter)
+      const page = await this.query(filter)
       for (const event of page.events) {
         events.push(event)
         bytes += this.eventBytes(event, job.format)
@@ -359,8 +367,8 @@ export class AuditExportWorker {
 
   /**
    * Best-effort by design: the job record is the client-visible truth, so an
-   * audit outage must not roll back a terminal state. Remote writers are async
-   * while `runAuditExportJob` is sync, so rejection is handled off the call.
+   * audit outage must not roll back a terminal state. The sink may be remote,
+   * so rejection is handled off the caller's await path.
    */
   private emitTerminalAudit(event: AuditExportTerminalAuditEvent): void {
     if (!this.audit) {
