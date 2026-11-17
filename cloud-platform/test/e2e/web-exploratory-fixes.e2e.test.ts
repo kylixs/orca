@@ -49,6 +49,16 @@ async function adminApi(
 
 let adminToken = ''
 
+/** Four hosts, one per verdict, for the M116-QA-030 host filter cases. */
+type HostFilterFixture = {
+  onlineHostId: string
+  maintenanceHostId: string
+  offlineHostId: string
+  revokedHostId: string
+}
+let hostFilterFixture: HostFilterFixture | undefined
+let hostFilterBeat: ReturnType<typeof setInterval> | undefined
+
 before(async () => {
   service = await spawnService(
     'apps/api/src/server.ts',
@@ -93,6 +103,7 @@ before(async () => {
 
 after(async () => {
   if (beat) clearInterval(beat)
+  if (hostFilterBeat) clearInterval(hostFilterBeat)
   await service?.stop()
   saveEvidence(EVIDENCE, 'f2-summary.json', {
     qa: 'M116 exploratory QA round 1 (P1 batch)',
@@ -111,6 +122,46 @@ function rowFor(page: WebConsolePage, name: string): HTMLElement {
 
 function openButtons(page: WebConsolePage): HTMLButtonElement[] {
   return [...page.window.document.querySelectorAll<HTMLButtonElement>('#content [data-open]')]
+}
+
+/**
+ * M116-QA-030: one host per verdict. The online one keeps beating so it stays
+ * 在线; the offline one never beats again, so its registration beat lapses.
+ */
+async function ensureHostFilterFixture(): Promise<HostFilterFixture> {
+  if (hostFilterFixture) return hostFilterFixture
+  const register = (name: string, addr: string) =>
+    registerHost({ apiUrl: service.url, adminToken, name, directAddr: addr, relayTarget: addr })
+  const online = await register('qa-filter-online', '127.0.0.1:17101')
+  const maintenance = await register('qa-filter-maint', '127.0.0.1:17102')
+  const maintained = await adminApi(`/v1/hosts/${maintenance.hostId}/maintenance`, {
+    method: 'POST',
+    body: JSON.stringify({ enabled: true, reason: '筛选用例' })
+  })
+  assert.equal(maintained.status, 200, JSON.stringify(maintained.body))
+  const offline = await register('qa-filter-offline', '127.0.0.1:17103')
+  const revoked = await register('qa-filter-revoked', '127.0.0.1:17104')
+  const revokedRes = await adminApi(`/v1/hosts/${revoked.hostId}`, { method: 'DELETE' })
+  assert.equal(revokedRes.status, 200, JSON.stringify(revokedRes.body))
+
+  hostFilterBeat = setInterval(() => {
+    void fetch(`${service.url}/v1/hosts/${online.hostId}/heartbeat`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${online.credential}`
+      },
+      body: JSON.stringify({ status: 'online' })
+    }).catch(() => undefined)
+  }, 300)
+  await new Promise((resolve) => setTimeout(resolve, 1700))
+  hostFilterFixture = {
+    onlineHostId: online.hostId,
+    maintenanceHostId: maintenance.hostId,
+    offlineHostId: offline.hostId,
+    revokedHostId: revoked.hostId
+  }
+  return hostFilterFixture
 }
 
 test('M116-QA-012 空登录不发起请求、不计失败', async () => {
@@ -1494,4 +1545,155 @@ test('M116-QA-033 注册主机弹层打开不签发令牌，点击生成后才�
   await page.settle()
   assert.equal(tokenCalls(), 1, 'no further token is minted after the command is generated')
   record('QA-033', '打开弹层 0 次 POST /v1/hosts/tokens；取消 0 次；生成请求在途双击 1 次并渲染命令+复制')
+}, 120_000)
+
+test('M116-QA-030 主机搜索按名称/地址/zone 过滤，空态与清空恢复', async () => {
+  await ensureHostFilterFixture()
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  await page.clickNav('hosts')
+  const doc = page.window.document
+  const search = doc.querySelector<HTMLInputElement>('#hostSearch')
+  assert.ok(search, 'the hosts page must offer a search box')
+  const tableText = (): string[] =>
+    [...doc.querySelectorAll<HTMLElement>('#hostBody tr')].map((tr) => tr.textContent ?? '')
+  const cardText = (): string[] =>
+    [...doc.querySelectorAll<HTMLElement>('#hostList .host-list-card')].map(
+      (card) => card.textContent ?? ''
+    )
+  const type = (value: string): void => {
+    search.value = value
+    search.dispatchEvent(new page.window.Event('input', { bubbles: true }))
+  }
+  const baseline = tableText().length
+  assert.ok(baseline > 0, 'precondition: the host table renders')
+  assert.equal(cardText().length, baseline)
+
+  // Case-insensitive, trimmed, and the mobile card follows the table.
+  type('  QA-FILTER-MAINT  ')
+  assert.equal(tableText().length, 1)
+  assert.match(tableText()[0], /qa-filter-maint/)
+  assert.equal(cardText().length, 1)
+  assert.match(cardText()[0], /qa-filter-maint/)
+
+  // Direct address and id resolve to the same host.
+  type('127.0.0.1:17101')
+  assert.equal(tableText().length, 1)
+  assert.match(tableText()[0], /qa-filter-online/)
+  assert.match(cardText()[0], /qa-filter-online/)
+  type('qa-filter-revoked')
+  assert.equal(tableText().length, 1)
+  assert.match(tableText()[0], /qa-filter-revoked/)
+
+  // Zone matches every intranet host.
+  type('intranet')
+  assert.equal(tableText().length, baseline)
+  assert.equal(cardText().length, baseline)
+
+  // No match: both faces show the same empty copy.
+  type('no-such-host')
+  assert.equal(tableText().length, 1, 'the empty table still shows its colspan row')
+  assert.match(tableText()[0], /没有符合条件的主机/)
+  assert.equal(cardText().length, 0)
+  assert.match(doc.querySelector<HTMLElement>('#hostList')!.textContent ?? '', /没有符合条件的主机/)
+
+  // Clearing restores every row and card.
+  type('')
+  assert.equal(tableText().length, baseline)
+  assert.equal(cardText().length, baseline)
+  record(
+    'QA-030-search',
+    '搜索 qa-filter-maint（大小写/空白无关）、127.0.0.1:17101、qa-filter-revoked、intranet 均命中；无匹配显示「没有符合条件的主机」；清空恢复'
+  )
+}, 120_000)
+
+test('M116-QA-030 主机状态 chips 覆盖在线/维护中/离线/已吊销并可恢复全部', async () => {
+  await ensureHostFilterFixture()
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  await page.clickNav('hosts')
+  const doc = page.window.document
+  const chip = (filter: string): HTMLButtonElement =>
+    doc.querySelector<HTMLButtonElement>(`#hostChips [data-host-filter="${filter}"]`)!
+  const rows = (): string[] =>
+    [...doc.querySelectorAll<HTMLElement>('#hostBody tr')].map((tr) => tr.textContent ?? '')
+  const cards = (): string[] =>
+    [...doc.querySelectorAll<HTMLElement>('#hostList .host-list-card')].map(
+      (card) => card.textContent ?? ''
+    )
+  const select = (filter: string): void => chip(filter).click()
+  assert.ok(chip('all').classList.contains('is-on'), '全部 starts selected')
+  assert.equal(chip('all').getAttribute('type'), 'button')
+
+  select('online')
+  assert.equal(chip('online').classList.contains('is-on'), true)
+  assert.equal(chip('all').classList.contains('is-on'), false, 'chips are single-select')
+  assert.ok(rows().length > 0 && rows().every((row) => /在线/.test(row)))
+  assert.ok(rows().some((row) => row.includes('qa-filter-online')))
+  assert.equal(
+    rows().some((row) => /qa-filter-(maint|offline|revoked)/.test(row)),
+    false,
+    'only 在线 hosts survive the chip'
+  )
+  assert.ok(cards().length > 0 && cards().every((card) => /在线/.test(card)))
+  assert.ok(cards().some((card) => card.includes('qa-filter-online')))
+
+  select('maintenance')
+  assert.ok(rows().length > 0 && rows().every((row) => /维护中/.test(row)))
+  assert.ok(rows().some((row) => row.includes('qa-filter-maint')))
+  assert.equal(rows().some((row) => /qa-filter-(online|offline|revoked)/.test(row)), false)
+  assert.ok(cards().some((card) => card.includes('qa-filter-maint')))
+
+  select('offline')
+  assert.ok(rows().length > 0 && rows().every((row) => /离线/.test(row)))
+  assert.ok(rows().some((row) => row.includes('qa-filter-offline')))
+  assert.equal(rows().some((row) => /qa-filter-(online|maint|revoked)/.test(row)), false)
+  assert.ok(cards().some((card) => card.includes('qa-filter-offline')))
+
+  select('revoked')
+  assert.ok(rows().length > 0 && rows().every((row) => /已吊销/.test(row)))
+  assert.ok(rows().some((row) => row.includes('qa-filter-revoked')))
+  assert.equal(rows().some((row) => /qa-filter-(online|maint|offline)/.test(row)), false)
+  assert.ok(cards().some((card) => card.includes('qa-filter-revoked')))
+
+  // Back to 全部: every fixture host is visible on both faces again.
+  select('all')
+  assert.equal(chip('all').classList.contains('is-on'), true)
+  for (const name of ['qa-filter-online', 'qa-filter-maint', 'qa-filter-offline', 'qa-filter-revoked']) {
+    assert.ok(rows().some((row) => row.includes(name)), `${name} returns to the table`)
+    assert.ok(cards().some((card) => card.includes(name)), `${name} returns to the cards`)
+  }
+  record(
+    'QA-030-chips',
+    '在线/维护中/离线/已吊销 chip 各只保留对应主机（表格与移动卡一致），切回全部恢复'
+  )
+}, 120_000)
+
+test('M116-QA-030 筛选后行内详情按钮仍打开对应主机', async () => {
+  const fixture = await ensureHostFilterFixture()
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  await page.clickNav('hosts')
+  const doc = page.window.document
+  const search = doc.querySelector<HTMLInputElement>('#hostSearch')!
+  search.value = 'qa-filter-maint'
+  search.dispatchEvent(new page.window.Event('input', { bubbles: true }))
+
+  const row = [...doc.querySelectorAll<HTMLElement>('#hostBody tr')].find((candidate) =>
+    candidate.textContent?.includes('qa-filter-maint')
+  )
+  assert.ok(row, 'the filtered row is rendered')
+  const detail = row!.querySelector<HTMLButtonElement>('[data-host]')
+  assert.equal(detail?.dataset.host, fixture.maintenanceHostId, 'the button carries the real host id')
+  detail!.click()
+  await page.settle()
+
+  const drawer = doc.querySelector<HTMLElement>('.drawer-backdrop')
+  assert.ok(drawer, 'the filtered row 详情 must still open its drawer')
+  assert.match(drawer!.textContent ?? '', /qa-filter-maint/, 'the drawer names the filtered host')
+  assert.match(drawer!.textContent ?? '', /维护中/, 'the drawer carries the derived verdict')
+  record('QA-030-detail', '搜索后行内「详情」仍绑定该主机并打开抽屉（名称 + 维护中）')
 }, 120_000)

@@ -2104,36 +2104,82 @@ async function registerProjectDialog() {
 
 async function renderHosts() {
   const [hostsBody, policy] = await Promise.all([api('/v1/hosts'), api('/v1/policies/download')])
-  state.lastHosts = hostsBody.hosts
+  const hosts = hostsBody.hosts
+  state.lastHosts = hosts
   content().innerHTML = `
     <div class="page-head">
       <div><h1>主机</h1><p>已注册开发机、心跳状态与直连/中继路径。</p></div>
       <button class="btn primary" id="registerHostBtn">注册主机</button>
     </div>
     <div class="note">中继路由由平台单向同步；未知 SNI 默认黑洞。下载默认策略：<strong>${policy.downloadDefault === 'deny' ? '禁止' : '允许'}</strong>（v${policy.version}）。</div>
+    <div class="toolbar">
+      <input class="input grow" id="hostSearch" placeholder="搜索主机名、ID、zone 或直连地址">
+    </div>
+    <div class="project-chips" id="hostChips" role="group" aria-label="主机状态筛选">
+      <button class="chip is-on" type="button" data-host-filter="all">全部</button>
+      <button class="chip" type="button" data-host-filter="online">在线</button>
+      <button class="chip" type="button" data-host-filter="maintenance">维护中</button>
+      <button class="chip" type="button" data-host-filter="offline">离线</button>
+      <button class="chip" type="button" data-host-filter="revoked">已吊销</button>
+    </div>
     <div class="table-wrap" id="hostTableWrap">
       <table>
         <thead><tr><th>主机</th><th>直连地址</th><th>中继路由</th><th>中继</th><th>版本</th><th>心跳</th><th>状态</th><th class="actions">操作</th></tr></thead>
-        <tbody>
-          ${hostsBody.hosts.map(hostRow).join('') || '<tr><td colspan="8" class="table-empty">尚未注册主机</td></tr>'}
-        </tbody>
+        <tbody id="hostBody"></tbody>
       </table>
     </div>
-    <div class="host-list">
-      ${hostsBody.hosts.map(hostCard).join('') || '<p class="card table-empty">尚未注册主机</p>'}
-    </div>`
-  $('#registerHostBtn').onclick = registerHostDialog
-  for (const btn of document.querySelectorAll('[data-host]')) {
-    btn.onclick = () => openDetailFromList('hosts', btn.dataset.host ?? '')
+    <div class="host-list" id="hostList"></div>`
+  // 与项目页同款筛选：状态单选 + 文本过滤，重绘时整表与移动卡一起重绑定。
+  let statusFilter = 'all'
+  const STATUS_BY_FILTER = {
+    online: '在线',
+    maintenance: '维护中',
+    offline: '离线',
+    revoked: '已吊销'
   }
-  for (const btn of document.querySelectorAll('[data-host-more]')) {
-    btn.onclick = () => {
-      const host = state.lastHosts.find((h) => h.id === btn.dataset.hostMore)
-      if (host) {
-        hostActionsDialog(host)
+  const matchesStatus = (h) =>
+    statusFilter === 'all' || hostVerdict(h).status === STATUS_BY_FILTER[statusFilter]
+  const matchesText = (h, needle) =>
+    !needle ||
+    `${h.name} ${h.id} ${h.zone ?? ''} ${(h.directAddrs ?? []).join(' ')}`
+      .toLowerCase()
+      .includes(needle)
+  const wireHostActions = () => {
+    for (const btn of document.querySelectorAll('[data-host]')) {
+      btn.onclick = () => openDetailFromList('hosts', btn.dataset.host ?? '')
+    }
+    for (const btn of document.querySelectorAll('[data-host-more]')) {
+      btn.onclick = () => {
+        const host = state.lastHosts.find((h) => h.id === btn.dataset.hostMore)
+        if (host) {
+          hostActionsDialog(host)
+        }
       }
     }
   }
+  const draw = (filter = '') => {
+    const needle = filter.trim().toLowerCase()
+    const visible = hosts.filter((h) => matchesStatus(h) && matchesText(h, needle))
+    const emptyText = hosts.length === 0 ? '尚未注册主机' : '没有符合条件的主机'
+    $('#hostBody').innerHTML =
+      visible.map(hostRow).join('') ||
+      `<tr><td colspan="8" class="table-empty">${emptyText}</td></tr>`
+    $('#hostList').innerHTML =
+      visible.map(hostCard).join('') || `<p class="card table-empty">${emptyText}</p>`
+    wireHostActions()
+  }
+  draw()
+  $('#hostSearch').oninput = (e) => draw(e.target.value)
+  for (const chip of document.querySelectorAll('#hostChips .chip')) {
+    chip.onclick = () => {
+      statusFilter = chip.dataset.hostFilter ?? 'all'
+      for (const other of document.querySelectorAll('#hostChips .chip')) {
+        other.classList.toggle('is-on', other === chip)
+      }
+      draw($('#hostSearch').value)
+    }
+  }
+  $('#registerHostBtn').onclick = registerHostDialog
 }
 
 /** The heartbeat window decides liveness: a stored "online" must not keep a
