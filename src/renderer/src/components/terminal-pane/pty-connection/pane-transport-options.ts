@@ -51,7 +51,9 @@ export function buildPaneTransportOptions(session: ConnectPanePtySession): IpcPt
     leafId: session.pane.leafId,
     ...(session.deps.placement ? { placement: session.deps.placement } : {}),
     activate: session.deps.isActiveRef.current && session.deps.isVisibleRef.current,
-    ...(peekUserInitiatedTerminalCreate(session.deps.tabId) ? { userInitiated: true } : {}),
+    ...(peekUserInitiatedTerminalCreate(session.deps.tabId, session.runtimeEnvironmentId)
+      ? { userInitiated: true }
+      : {}),
     ...(session.shellOverride ? { shellOverride: session.shellOverride } : {}),
     ...(session.projectRuntime ? { projectRuntime: session.projectRuntime } : {}),
     ...(session.terminalColorQueryReplies

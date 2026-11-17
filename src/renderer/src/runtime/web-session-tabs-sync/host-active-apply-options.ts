@@ -18,7 +18,10 @@ export function resolveHostActiveApplyOptions(args: {
   const adoptHostLayout = args.isCloudSession && args.pendingAdoption && args.hasHostGroups
   // Why: between the click and the create reply the host still publishes the pre-create active;
   // following it would undo the optimistic tab and invalidate the focus intent that follows (U161).
-  const userCreateInFlight = peekUserInitiatedTerminalCreateForWorktree(args.worktreeId)
+  const userCreateInFlight = peekUserInitiatedTerminalCreateForWorktree(
+    args.worktreeId,
+    args.environmentId
+  )
   const followHostActive =
     args.isCloudSession &&
     !userCreateInFlight &&

@@ -7,8 +7,13 @@ import {
   resetWebSessionTabsSnapshotFreshnessForTests
 } from './tracking-lifecycle'
 import {
+  clearHostSessionGroupIdMappings,
+  clearHostSessionGroupIdMappingsForEnvironment,
+  hostSessionGroupMappingsForWorktree,
+  isKnownHostSessionGroupId,
+  resetHostSessionGroupIdMappingsForTests,
   resolveHostSessionGroupIdForWebSessionGroup,
-  isKnownHostSessionGroupId
+  setHostSessionGroupIdMapping
 } from './tracking-mappings'
 
 const ENVIRONMENT_ID = 'environment-1'
@@ -240,5 +245,69 @@ describe('host session group id mapping', () => {
     clearWebSessionTabsTrackingForEnvironment(ENVIRONMENT_ID)
 
     expect(resolve('local-split')).toBeNull()
+  })
+})
+
+describe('U169 L4: unambiguous mapping keys for colon-bearing ids', () => {
+  beforeEach(() => resetHostSessionGroupIdMappingsForTests())
+
+  it('keeps two triples that a colon join would collapse apart', () => {
+    setHostSessionGroupIdMapping(
+      { environmentId: 'env', worktreeId: 'a:b', groupId: 'c' },
+      'host-a-b-c'
+    )
+    setHostSessionGroupIdMapping(
+      { environmentId: 'env', worktreeId: 'a', groupId: 'b:c' },
+      'host-a-bc'
+    )
+
+    expect(
+      resolveHostSessionGroupIdForWebSessionGroup({
+        environmentId: 'env',
+        worktreeId: 'a:b',
+        groupId: 'c'
+      })
+    ).toBe('host-a-b-c')
+    expect(
+      resolveHostSessionGroupIdForWebSessionGroup({
+        environmentId: 'env',
+        worktreeId: 'a',
+        groupId: 'b:c'
+      })
+    ).toBe('host-a-bc')
+
+    // The old `env:a:` prefix also leaked the `a:b` entry into worktree `a`.
+    expect([...hostSessionGroupMappingsForWorktree('env', 'a')]).toEqual([['b:c', 'host-a-bc']])
+    expect([...hostSessionGroupMappingsForWorktree('env', 'a:b')]).toEqual([['c', 'host-a-b-c']])
+
+    clearHostSessionGroupIdMappings('env', 'a')
+    expect(
+      resolveHostSessionGroupIdForWebSessionGroup({
+        environmentId: 'env',
+        worktreeId: 'a:b',
+        groupId: 'c'
+      })
+    ).toBe('host-a-b-c')
+  })
+
+  it('keeps a colon-bearing environment id from colliding with another triple', () => {
+    setHostSessionGroupIdMapping(
+      { environmentId: 'env:1', worktreeId: 'wt', groupId: 'g' },
+      'host-env-one'
+    )
+    setHostSessionGroupIdMapping(
+      { environmentId: 'env', worktreeId: '1:wt', groupId: 'g' },
+      'host-other'
+    )
+
+    clearHostSessionGroupIdMappingsForEnvironment('env')
+
+    expect(
+      resolveHostSessionGroupIdForWebSessionGroup({
+        environmentId: 'env:1',
+        worktreeId: 'wt',
+        groupId: 'g'
+      })
+    ).toBe('host-env-one')
   })
 })

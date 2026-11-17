@@ -734,7 +734,7 @@ export function createRemoteRuntimePtyTransport(
     ) {
       // Why: no host selection can follow this answer, so the gesture must not outlive it (U155).
       if (tabId) {
-        discardUserInitiatedTerminalCreate(tabId)
+        discardUserInitiatedTerminalCreate(tabId, environmentId)
       }
       return
     }
@@ -749,7 +749,7 @@ export function createRemoteRuntimePtyTransport(
       expectedCurrentLocalTabId
     )
     if (tabId) {
-      consumeUserInitiatedTerminalCreate(tabId)
+      consumeUserInitiatedTerminalCreate(tabId, environmentId)
     }
     // Why fire-and-forget: the host persists a tap; pane readiness must not wait on it.
     void callRuntimeForEnvironment<RuntimeMobileSessionTabsResult>(
@@ -2721,7 +2721,7 @@ export function createRemoteRuntimePtyTransport(
     }
     userInitiatedCreateAttempted = false
     userInitiatedCreateRearmedForReconnect = true
-    markUserInitiatedTerminalCreate(tabId, worktreeId)
+    markUserInitiatedTerminalCreate(tabId, worktreeId, currentRuntimeEnvironmentId)
   }
 
   let connectForRecovery: PtyTransport['connect'] = (options) => transport.connect(options)
@@ -2896,7 +2896,7 @@ export function createRemoteRuntimePtyTransport(
         if (!created) {
           // Why: a failed create never reaches the consumer; drop the gesture so a remount stays passive.
           if (userInitiated === true && tabId) {
-            discardUserInitiatedTerminalCreate(tabId)
+            discardUserInitiatedTerminalCreate(tabId, createEnvironmentId)
           }
           if (!destroyed && lifecycleEpoch === connectLifecycleEpoch) {
             connecting = false
@@ -2945,7 +2945,7 @@ export function createRemoteRuntimePtyTransport(
               expectedCurrentLocalTabId
             )
           } else if (userInitiated === true && tabId) {
-            discardUserInitiatedTerminalCreate(tabId)
+            discardUserInitiatedTerminalCreate(tabId, createEnvironmentId)
           }
           if (
             !hostSnapshotOwnsLaunch(created, createEnvironmentId) &&
@@ -2962,7 +2962,7 @@ export function createRemoteRuntimePtyTransport(
           if (createFinishedOnPassiveReplay) {
             // Why: this create only finished on a replay, so the original click no longer owns it (U155).
             if (tabId) {
-              discardUserInitiatedTerminalCreate(tabId)
+              discardUserInitiatedTerminalCreate(tabId, createEnvironmentId)
             }
           } else {
             selectUserCreatedHostTab(
@@ -3011,7 +3011,7 @@ export function createRemoteRuntimePtyTransport(
       } catch (error) {
         // Why: the create never completed, so the click gesture must not survive into a remount.
         if (userInitiated === true && tabId) {
-          discardUserInitiatedTerminalCreate(tabId)
+          discardUserInitiatedTerminalCreate(tabId, createEnvironmentId)
         }
         if (!destroyed && lifecycleEpoch === connectLifecycleEpoch) {
           connecting = false

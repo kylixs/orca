@@ -61,7 +61,11 @@ export function useTabGroupCreationCommands({
       // Why: this Split entry point always seeds a fresh terminal (tab-drag can open other directions).
       const terminal = createTab(worktreeId, newGroupId)
       // Why: the Split command is a user gesture; passive mounts never mark.
-      markUserInitiatedTerminalCreate(terminal.id, worktreeId)
+      markUserInitiatedTerminalCreate(
+        terminal.id,
+        worktreeId,
+        getRuntimeEnvironmentIdForWorktree(useAppStore.getState(), worktreeId)
+      )
       recordTerminalTabGroupSplit(terminal)
       setActiveTab(terminal.id)
       setActiveTabType('terminal', worktreeId)
@@ -171,7 +175,7 @@ export function useTabGroupCreationCommands({
           return
         }
         const terminal = createTab(worktreeId, groupId, shellOverride)
-        markUserInitiatedTerminalCreate(terminal.id, worktreeId)
+        markUserInitiatedTerminalCreate(terminal.id, worktreeId, environmentId)
         setActiveTab(terminal.id)
         setActiveTabType('terminal', worktreeId)
         focusTerminalTabSurface(terminal.id)

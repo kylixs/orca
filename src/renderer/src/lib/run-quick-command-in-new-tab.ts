@@ -1,4 +1,5 @@
 import { useAppStore } from '@/store'
+import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { persistAgentLaunchTabOrder } from '@/lib/launch-agent-tab-order'
 import { launchAgentInNewTab } from '@/lib/launch-agent-in-new-tab'
 import { newAgentLaunchRequestId } from '@/lib/agent-launch-request-id'
@@ -107,7 +108,11 @@ export function runQuickCommandInNewTab({
     quickCommandLabel: command.label
   })
   // Why: a quick-command tab in a cloud repo worktree is client-owned; the click must persist (U155).
-  markUserInitiatedTerminalCreate(tab.id, worktreeId)
+  markUserInitiatedTerminalCreate(
+    tab.id,
+    worktreeId,
+    getRuntimeEnvironmentIdForWorktree(store, worktreeId)
+  )
 
   store.queueTabStartupCommand(tab.id, {
     command: flattenTerminalQuickCommand(command).command

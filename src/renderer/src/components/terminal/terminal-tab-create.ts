@@ -47,7 +47,7 @@ export function createNewTerminalTab(
     options?.startupCwd ? { startupCwd: options.startupCwd } : undefined
   )
   // Why: file-tree "New Terminal" is a user gesture; a passive pane mount never reaches this entry.
-  markUserInitiatedTerminalCreate(newTab.id, activeWorktreeId)
+  markUserInitiatedTerminalCreate(newTab.id, activeWorktreeId, runtimeEnvironmentId)
   state.setActiveTabType('terminal', activeWorktreeId)
   // Why: persist the tab bar order with the new terminal at the end of the
   // current visual order. Without this, reconcileTabOrder falls back to

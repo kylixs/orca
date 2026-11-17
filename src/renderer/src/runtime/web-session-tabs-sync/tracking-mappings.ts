@@ -5,12 +5,41 @@ import {
 } from './state'
 import { resolveWebAgentSessionHandoff } from '../web-agent-session-handoff'
 
+// Why: ids can carry `:` (e.g. `id:path` selectors), so a joined string would let two different
+// (environment, worktree, id) triples collide. A JSON tuple is unambiguous (U169 L4).
+type MappingKeyTuple = [environmentId: string, worktreeId: string, localId: string]
+
+function encodeMappingKey(tuple: MappingKeyTuple): string {
+  return JSON.stringify(tuple)
+}
+
+function parseMappingKey(key: string): MappingKeyTuple | null {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(key)
+  } catch {
+    return null
+  }
+  if (!Array.isArray(parsed) || parsed.length !== 3) {
+    return null
+  }
+  const [environmentId, worktreeId, localId] = parsed
+  if (
+    typeof environmentId !== 'string' ||
+    typeof worktreeId !== 'string' ||
+    typeof localId !== 'string'
+  ) {
+    return null
+  }
+  return [environmentId, worktreeId, localId]
+}
+
 function hostSessionTabMappingKey(args: {
   environmentId: string
   worktreeId: string
   tabId: string
 }): string {
-  return `${args.environmentId}:${args.worktreeId}:${args.tabId}`
+  return encodeMappingKey([args.environmentId, args.worktreeId, args.tabId])
 }
 
 // Why: a client-owned split mints a local group id the host never saw, so a mirrored
@@ -25,7 +54,12 @@ function hostSessionGroupMappingKey(args: {
   worktreeId: string
   groupId: string
 }): string {
-  return `${args.environmentId}:${args.worktreeId}:${args.groupId}`
+  return encodeMappingKey([args.environmentId, args.worktreeId, args.groupId])
+}
+
+function isMappingKeyForWorktree(key: string, environmentId: string, worktreeId: string): boolean {
+  const parsed = parseMappingKey(key)
+  return parsed !== null && parsed[0] === environmentId && parsed[1] === worktreeId
 }
 
 export function setHostSessionGroupIdMapping(
@@ -50,11 +84,13 @@ export function hostSessionGroupMappingsForWorktree(
   environmentId: string,
   worktreeId: string
 ): Map<string, string> {
-  const prefix = hostSessionGroupMappingKey({ environmentId, worktreeId, groupId: '' })
   const entries = new Map<string, string>()
   for (const [key, hostGroupId] of hostSessionGroupIdByLocalKey) {
-    if (key.startsWith(prefix)) {
-      entries.set(key.slice(prefix.length), hostGroupId)
+    if (isMappingKeyForWorktree(key, environmentId, worktreeId)) {
+      const localGroupId = parseMappingKey(key)?.[2]
+      if (localGroupId !== undefined) {
+        entries.set(localGroupId, hostGroupId)
+      }
     }
   }
   return entries
@@ -92,9 +128,8 @@ export function isKnownHostSessionGroupId(args: {
 }
 
 export function clearHostSessionGroupIdMappings(environmentId: string, worktreeId: string): void {
-  const prefix = hostSessionGroupMappingKey({ environmentId, worktreeId, groupId: '' })
   for (const key of hostSessionGroupIdByLocalKey.keys()) {
-    if (key.startsWith(prefix)) {
+    if (isMappingKeyForWorktree(key, environmentId, worktreeId)) {
       hostSessionGroupIdByLocalKey.delete(key)
     }
   }
@@ -106,9 +141,8 @@ export function clearHostSessionGroupIdMappings(environmentId: string, worktreeI
 }
 
 export function clearHostSessionGroupIdMappingsForEnvironment(environmentId: string): void {
-  const prefix = `${environmentId}:`
   for (const key of hostSessionGroupIdByLocalKey.keys()) {
-    if (key.startsWith(prefix)) {
+    if (parseMappingKey(key)?.[0] === environmentId) {
       hostSessionGroupIdByLocalKey.delete(key)
     }
   }
@@ -169,13 +203,13 @@ export function hostSessionTabIdsByLocalTabForWorktree(
   environmentId: string,
   worktreeId: string
 ): Map<string, string> {
-  const prefix = hostSessionTabMappingKey({ environmentId, worktreeId, tabId: '' })
   const keys = hostSessionTabMappingKeysByEnvironmentAndWorktree.get(environmentId)?.get(worktreeId)
   const entries = new Map<string, string>()
   for (const key of keys ?? []) {
     const hostTabId = hostSessionTabIdByLocalKey.get(key)
-    if (hostTabId !== undefined) {
-      entries.set(key.slice(prefix.length), hostTabId)
+    const localTabId = parseMappingKey(key)?.[2]
+    if (hostTabId !== undefined && localTabId !== undefined) {
+      entries.set(localTabId, hostTabId)
     }
   }
   return entries

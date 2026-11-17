@@ -19,6 +19,7 @@ import { retireUnboundIpcTerminalPane } from './retire-unbound-ipc-terminal-pane
 import { capturePendingTerminalPaneClose } from './terminal-pane-close-admission'
 import { commitTerminalSurfaceClose } from '@/store/terminals/terminal-surface-close-intent'
 import { noteAgentLaunchPaneClosedByUser } from '@/lib/agent-launch-pane-closes'
+import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 
 export function useTerminalPaneCloseActions(controller: TerminalPaneBindingController) {
   const confirmedCloseRef = useRef<(() => void) | null>(null)
@@ -253,7 +254,8 @@ export function useTerminalPaneCloseActions(controller: TerminalPaneBindingContr
         sourceTabId: tabId,
         targetGroupId: target.groupId,
         targetIndex: target.insertionIndex,
-        worktreeId
+        worktreeId,
+        runtimeEnvironmentId: getRuntimeEnvironmentIdForWorktree(useAppStore.getState(), worktreeId)
       }).catch((error) => console.warn('[terminal-pane-detach] move failed', error))
       return true
     },

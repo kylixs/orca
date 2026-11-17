@@ -60,4 +60,27 @@ describe('U154: user-initiated terminal create ledger', () => {
     markUserInitiatedTerminalCreate('no-worktree-tab')
     expect(peekUserInitiatedTerminalCreateForWorktree('wt-a')).toBe(false)
   })
+
+  it('scopes a gesture to its environment when two environments share a worktree (U161 R3)', () => {
+    markUserInitiatedTerminalCreate('tab-env-a', 'wt-shared', 'env-a')
+    markUserInitiatedTerminalCreate('tab-env-b', 'wt-shared', 'env-b')
+
+    expect(peekUserInitiatedTerminalCreateForWorktree('wt-shared', 'env-a')).toBe(true)
+    expect(peekUserInitiatedTerminalCreateForWorktree('wt-shared', 'env-b')).toBe(true)
+    expect(peekUserInitiatedTerminalCreateForWorktree('wt-shared', 'env-c')).toBe(false)
+
+    // A-ing a gesture must not let the other environment borrow it.
+    consumeUserInitiatedTerminalCreate('tab-env-a', 'env-a')
+    expect(peekUserInitiatedTerminalCreateForWorktree('wt-shared', 'env-a')).toBe(false)
+    expect(peekUserInitiatedTerminalCreateForWorktree('wt-shared', 'env-b')).toBe(true)
+  })
+
+  it('keeps an env-less legacy mark out of a scoped worktree query', () => {
+    markUserInitiatedTerminalCreate('legacy-tab', 'wt-shared')
+
+    expect(peekUserInitiatedTerminalCreateForWorktree('wt-shared', 'env-a')).toBe(false)
+    // Unscoped (legacy) readers still see it.
+    expect(peekUserInitiatedTerminalCreateForWorktree('wt-shared')).toBe(true)
+    expect(peekUserInitiatedTerminalCreate('legacy-tab')).toBe(true)
+  })
 })

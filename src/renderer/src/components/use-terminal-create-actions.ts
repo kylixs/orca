@@ -66,7 +66,7 @@ export function useTerminalCreateActions(controller: TerminalColdActivationContr
       }
       const newTab = createTab(activeWorktreeId, undefined, shellOverride)
       // Why: user click — the finished host create may select the tab; passive mounts never mark.
-      markUserInitiatedTerminalCreate(newTab.id, activeWorktreeId)
+      markUserInitiatedTerminalCreate(newTab.id, activeWorktreeId, runtimeEnvironmentId)
       setActiveTabType('terminal', activeWorktreeId)
       const state = useAppStore.getState()
       const currentTerminals = state.tabsByWorktree[activeWorktreeId] ?? []

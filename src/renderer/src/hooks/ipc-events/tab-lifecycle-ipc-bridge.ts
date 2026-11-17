@@ -52,7 +52,7 @@ export function registerTabLifecycleIpcBridge(unsubs: (() => void)[]): void {
         }
         const newTab = store.createTab(worktreeId)
         // Why: Cmd/Ctrl+T inside a cloud guest is the user's click; its pane must persist the host selection (U155).
-        markUserInitiatedTerminalCreate(newTab.id, worktreeId)
+        markUserInitiatedTerminalCreate(newTab.id, worktreeId, environmentId)
         store.setActiveTabType('terminal', worktreeId)
         // Why: mirror Terminal.tsx handleNewTab so a new tab appends at the end, not index 0, when tabBarOrder is unset.
         const freshStore = useAppStore.getState()

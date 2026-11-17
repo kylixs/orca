@@ -230,7 +230,7 @@ describe('U161 visible tab strip', () => {
   beforeEach(resetWebSessionTabsSyncTestState)
 
   it('renders the new tab active after the create echo', () => {
-    markUserInitiatedTerminalCreate(PROVISIONAL_ID, WT)
+    markUserInitiatedTerminalCreate(PROVISIONAL_ID, WT, ENV)
     let state = apply(optimisticState(), hostFrame(1, OLD_HOST))
     recordWebSessionFocusIntent({ environmentId: ENV }, WT, NEW_HOST, NEW_LEAF, PROVISIONAL_ID)
     consumeUserInitiatedTerminalCreate(PROVISIONAL_ID)

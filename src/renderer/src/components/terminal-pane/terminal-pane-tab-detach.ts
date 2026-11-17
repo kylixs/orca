@@ -84,6 +84,8 @@ type DetachTerminalPaneToTabArgs = {
   targetGroupId: string
   targetIndex?: number
   worktreeId: string
+  /** Runtime environment owning the source pane; scopes the U161 create gesture. */
+  runtimeEnvironmentId?: string | null
 }
 
 // Leaves whose move main is committing; a repeat drop meanwhile is a no-op.
@@ -211,7 +213,7 @@ function applyMove(
   })
   if (!ptyId) {
     // Why: only the no-bound-PTY branch spawns a new terminal; the reused-PTY branch is passive (U155).
-    markUserInitiatedTerminalCreate(tab.id, worktreeId)
+    markUserInitiatedTerminalCreate(tab.id, worktreeId, args.runtimeEnvironmentId)
   }
   const afterCreateStore = args.getStore()
   moveCreatedTabToIndex({

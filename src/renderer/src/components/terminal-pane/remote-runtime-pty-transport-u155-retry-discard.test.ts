@@ -66,7 +66,7 @@ function activationParams(): Record<string, unknown>[] {
 async function markAndCreateTransport() {
   const { markUserInitiatedTerminalCreate } =
     await import('@/runtime/web-session-user-initiated-create')
-  markUserInitiatedTerminalCreate(LOCAL_TAB_ID)
+  markUserInitiatedTerminalCreate(LOCAL_TAB_ID, undefined, ENV)
   const { createRemoteRuntimePtyTransport } = await import('./remote-runtime-pty-transport')
   const transport = createRemoteRuntimePtyTransport(ENV, {
     worktreeId: WORKTREE,

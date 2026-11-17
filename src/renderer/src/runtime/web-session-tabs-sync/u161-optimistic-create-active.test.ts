@@ -171,7 +171,7 @@ function activeGroupTabId(state: WebSessionTabsSyncState): string | null {
 }
 
 function markCreateGesture(): void {
-  markUserInitiatedTerminalCreate(PROVISIONAL_ID, WT)
+  markUserInitiatedTerminalCreate(PROVISIONAL_ID, WT, ENV)
 }
 
 function recordCreateIntent(expectedCurrentLocalTabId: string | null = PROVISIONAL_ID): void {
@@ -241,6 +241,31 @@ describe('U161 optimistic create vs host-active authority', () => {
     const after = { ...before, ...patch }
     expect(after.activeTabIdByWorktree[WT]).toBe(PROVISIONAL_ID)
     expect(activeGroupTabId(after)).toBe(PROVISIONAL_ID)
+  })
+
+  it('scopes the in-flight gesture to its environment when worktreeIds collide (R3)', () => {
+    markCreateGesture()
+
+    const ownOptions = resolveHostActiveApplyOptions({
+      environmentId: ENV,
+      worktreeId: WT,
+      isCloudSession: true,
+      pendingAdoption: false,
+      hasHostGroups: true
+    }).options
+    const otherOptions = resolveHostActiveApplyOptions({
+      environmentId: 'other-environment',
+      worktreeId: WT,
+      isCloudSession: true,
+      pendingAdoption: false,
+      hasHostGroups: true
+    }).options
+
+    expect(ownOptions, 'the gesture owns its own environment').toBeUndefined()
+    expect(
+      otherOptions,
+      'another environment with the same worktreeId must keep following host active'
+    ).toEqual({ hostActiveAuthoritative: true })
   })
 
   it('cancels the intent when the user switches to a third tab during the round trip (U154)', () => {
