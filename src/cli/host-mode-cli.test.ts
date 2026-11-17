@@ -5,6 +5,7 @@ const {
   runtimeClientConstructorMock,
   serveOrcaAppMock,
   preflightHostModeRuntimeMock,
+  preflightHostModeProfileMock,
   getDefaultUserDataPathMock,
   addEnvironmentFromPairingCodeMock,
   listEnvironmentsMock,
@@ -14,6 +15,7 @@ const {
   runtimeClientConstructorMock: vi.fn(),
   serveOrcaAppMock: vi.fn(),
   preflightHostModeRuntimeMock: vi.fn(),
+  preflightHostModeProfileMock: vi.fn(),
   getDefaultUserDataPathMock: vi.fn(() => '/tmp/orca-user-data'),
   addEnvironmentFromPairingCodeMock: vi.fn(),
   listEnvironmentsMock: vi.fn(),
@@ -27,6 +29,7 @@ vi.mock('./runtime-client', async () => {
     runtimeClientConstructorMock,
     serveOrcaAppMock,
     preflightHostModeRuntimeMock,
+    preflightHostModeProfileMock,
     getDefaultUserDataPathMock
   })
 })
@@ -86,6 +89,12 @@ describe('host mode CLI entry', () => {
       ok: true,
       detail: 'orcad 0.1.0 on pinned Node 24.21.0'
     })
+    preflightHostModeProfileMock.mockReset()
+    preflightHostModeProfileMock.mockResolvedValue({
+      id: 'profile',
+      ok: true,
+      detail: '/tmp/orca-user-data'
+    })
     errors = []
     stderr = []
     stdout = []
@@ -130,6 +139,7 @@ describe('host mode CLI entry', () => {
     expect(process.exitCode).toBe(HOST_MODE_EXIT_OK)
     expect(serveOrcaAppMock).not.toHaveBeenCalled()
     expect(preflightHostModeRuntimeMock).toHaveBeenCalledOnce()
+    expect(preflightHostModeProfileMock).toHaveBeenCalledOnce()
     expect(fetchMock).not.toHaveBeenCalled()
     expect(process.env.ORCA_CLOUD_HOST_TOKEN).toBe('token')
     expect(errors.join('')).toBe('')
@@ -138,6 +148,7 @@ describe('host mode CLI entry', () => {
       ok: true,
       checks: [
         { id: 'config', ok: true, detail: null },
+        { id: 'profile', ok: true, detail: '/tmp/orca-user-data' },
         { id: 'runtime', ok: true, detail: 'orcad 0.1.0 on pinned Node 24.21.0' }
       ]
     })
@@ -150,6 +161,7 @@ describe('host mode CLI entry', () => {
     expect(serveOrcaAppMock).not.toHaveBeenCalled()
     // Why not called: a broken config already decides the exit; the slot must not be materialized.
     expect(preflightHostModeRuntimeMock).not.toHaveBeenCalled()
+    expect(preflightHostModeProfileMock).not.toHaveBeenCalled()
     expect(stderr.join('')).toContain('ORCA_CLOUD_API_URL')
     expect(JSON.parse(stdout.join(''))).toMatchObject({
       ok: false,
@@ -174,9 +186,52 @@ describe('host mode CLI entry', () => {
       ok: false,
       checks: [
         { id: 'config', ok: true },
+        { id: 'profile', ok: true },
         { id: 'runtime', ok: false, detail: 'this Orca install carries no orcad template' }
       ]
     })
+  })
+
+  it('reports a held instance lock as profile_in_use without network or token use', async () => {
+    Object.assign(process.env, CLOUD_ENV)
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    preflightHostModeProfileMock.mockResolvedValue({
+      id: 'profile',
+      ok: false,
+      detail: 'profile_in_use: another host is already running on /tmp/orca-user-data (pid 42)'
+    })
+
+    await main(['--host-mode', '--preflight'], '/tmp/repo')
+
+    expect(process.exitCode).toBe(HOST_MODE_EXIT_CONFIGURATION)
+    expect(serveOrcaAppMock).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(process.env.ORCA_CLOUD_HOST_TOKEN).toBe('token')
+    expect(stderr.join('')).toContain('profile_in_use')
+    const result = JSON.parse(stdout.join('')) as {
+      ok: boolean
+      checks: { id: string; ok: boolean }[]
+    }
+    expect(result.ok).toBe(false)
+    expect(result.checks.map((check) => check.id)).toEqual(['config', 'profile', 'runtime'])
+    expect(result.checks[0]).toMatchObject({ id: 'config', ok: true })
+    expect(result.checks[1]).toMatchObject({ id: 'profile', ok: false })
+  })
+
+  it('reports an unwritable profile as a configuration exit', async () => {
+    Object.assign(process.env, CLOUD_ENV)
+    preflightHostModeProfileMock.mockResolvedValue({
+      id: 'profile',
+      ok: false,
+      detail: 'profile_unwritable: EACCES'
+    })
+
+    await main(['--host-mode', '--preflight'], '/tmp/repo')
+
+    expect(process.exitCode).toBe(HOST_MODE_EXIT_CONFIGURATION)
+    expect(serveOrcaAppMock).not.toHaveBeenCalled()
+    expect(stderr.join('')).toContain('profile_unwritable')
   })
 
   it('prints usage plus valid flags for an unknown host-mode flag', async () => {

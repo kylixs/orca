@@ -22,7 +22,7 @@ export function getHostModeConfigError(env: NodeJS.ProcessEnv): string | null {
   return missing.length > 0 ? `host mode requires ${missing.join(', ')}` : null
 }
 
-export type HostModePreflightCheckId = 'config' | 'runtime'
+export type HostModePreflightCheckId = 'config' | 'profile' | 'runtime'
 
 /** One preflight verdict. `detail` is a human-readable cause, never a credential. */
 export type HostModePreflightCheck = {

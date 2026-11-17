@@ -1,8 +1,14 @@
 import { spawn } from 'node:child_process'
 import type { CommandHandler } from '../dispatch'
 import { formatCliStatus, formatStatus, printResult } from '../format'
-import { RuntimeClientError, preflightHostModeRuntime, serveOrcaApp } from '../runtime-client'
+import {
+  RuntimeClientError,
+  preflightHostModeProfile,
+  preflightHostModeRuntime,
+  serveOrcaApp
+} from '../runtime-client'
 import { stripElectronRunAsNode } from '../runtime/launch'
+import { resolveLaunchUserDataPath } from '../runtime/launch-user-data-path'
 import { resolveCliStatusCaller } from '../runtime/status-caller'
 import { getServeOptionValidationError } from '../../shared/serve-option-validation'
 import {
@@ -140,6 +146,7 @@ export const CORE_HANDLERS: Record<string, CommandHandler> = {
       // Why skip the slot when config is broken: its exit code is already decided, and
       // materializing may download the pinned Node.
       if (configError === null) {
+        checks.push(await preflightHostModeProfile(resolveLaunchUserDataPath()))
         checks.push(await preflightHostModeRuntime())
       }
       const result = hostModePreflightResult(checks)

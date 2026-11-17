@@ -7,6 +7,8 @@ export type RuntimeClientModuleMocks = {
   getDefaultUserDataPathMock: Mock
   /** Defaults to a passing runtime check so unrelated CLI tests never touch the slot. */
   preflightHostModeRuntimeMock?: Mock
+  /** Defaults to a passing profile check so unrelated CLI tests never touch the data root. */
+  preflightHostModeProfileMock?: Mock
 }
 
 export type WorktreeAwarenessMocks = {
@@ -62,6 +64,13 @@ export async function createRuntimeClientModuleMock(mocks: RuntimeClientModuleMo
     preflightHostModeRuntime:
       mocks.preflightHostModeRuntimeMock ??
       vi.fn(async () => ({ id: 'runtime' as const, ok: true, detail: 'orcad test' })),
+    preflightHostModeProfile:
+      mocks.preflightHostModeProfileMock ??
+      vi.fn(async (userDataPath: string) => ({
+        id: 'profile' as const,
+        ok: true,
+        detail: userDataPath
+      })),
     getDefaultUserDataPath: mocks.getDefaultUserDataPathMock
   }
 }

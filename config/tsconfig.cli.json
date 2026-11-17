@@ -84,6 +84,13 @@
     "../src/main/persistence/profile-state/profile-state-access.ts",
     "../src/main/persistence/profile-state/profile-state-access-owner.ts",
     "../src/main/persistence/profile-state/profile-state-access-identity.ts",
+    // Why: `--preflight` reads the orcad instance lock before the host takes the profile.
+    "../src/main/orcad/orcad-instance-lock.ts",
+    "../src/main/orcad/orcad-process-start-time.ts",
+    "../src/main/orcad/orcad-data-root-privacy.ts",
+    "../src/main/daemon/daemon-process-inspection.ts",
+    "../src/main/daemon/daemon-incarnation-evidence-types.ts",
+    "../src/main/daemon/daemon-hello-protocol.ts",
     "../src/main/windows-native-registry.ts",
     "../src/main/windows/windows-command-line-recovery-health.ts",
     "../src/main/windows/windows-process-table.ts",

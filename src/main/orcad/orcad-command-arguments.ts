@@ -1,6 +1,15 @@
 import type { OrcadOptions } from './orcad-entry'
+import { getServeOptionValidationError } from '../../shared/serve-option-validation'
 import { DEFAULT_WS_PORT } from '../runtime/runtime-rpc/runtime-rpc-pairing-types'
 import { ORCAD_LOOPBACK_BIND_HOST } from './orcad-bind-address'
+
+/** A host-mode flag conflict: a configuration fault, so a supervisor must not restart on it. */
+export class OrcadHostModeFlagConflictError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'OrcadHostModeFlagConflictError'
+  }
+}
 
 export const ORCAD_USAGE = `orcad — the Orca runtime served without Electron.
 
@@ -89,6 +98,23 @@ export function parseArgs(argv: string[]): OrcadCommandArguments {
       i += 1
     } else {
       throw new Error(`Unknown argument: ${arg}`)
+    }
+  }
+  // Why shared: orcad can be launched directly, bypassing the CLI's conflict checks.
+  if (options.hostMode) {
+    const conflict = getServeOptionValidationError({
+      noPairing: options.noPairing === true,
+      mobilePairing: options.mobilePairing === true,
+      grantDesktopControl: options.grantDesktopControl === true,
+      recipeJson: options.recipeJson === true,
+      projectRoot: options.projectRoot,
+      hostMode: true,
+      reenroll: options.reenroll === true,
+      preflight: options.preflight === true,
+      pairingAddress: options.pairingAddress
+    })
+    if (conflict) {
+      throw new OrcadHostModeFlagConflictError(conflict)
     }
   }
   if (options.grantDesktopControl && (options.noPairing || options.mobilePairing)) {

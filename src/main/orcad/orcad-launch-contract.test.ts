@@ -95,6 +95,31 @@ describe('parseArgs', () => {
     expect(parseArgs(['--host-mode', '--reenroll'])).toEqual({ hostMode: true, reenroll: true })
     expect(() => parseArgs(['--reenroll'])).toThrow('--reenroll requires --host-mode')
   })
+
+  it('refuses host-mode pairing flags with a configuration exit, matching the CLI', () => {
+    // Direct orcad invocation bypasses the CLI; the same conflicts must still be refused.
+    expect(() => parseArgs(['--host-mode', '--mobile-pairing'])).toThrow(
+      '--mobile-pairing is not available in host mode'
+    )
+    expect(() => parseArgs(['--host-mode', '--grant-desktop-control'])).toThrow(
+      '--grant-desktop-control is not available in host mode'
+    )
+    expect(() => parseArgs(['--host-mode', '--pairing-address', 'host.example'])).toThrow(
+      '--pairing-address is not available in host mode'
+    )
+    expect(() => parseArgs(['--host-mode', '--recipe-json', '--project-root', '/work'])).toThrow(
+      '--recipe-json is not available in host mode'
+    )
+    expect(parseArgs(['--host-mode', '--no-pairing'])).toEqual({
+      hostMode: true,
+      noPairing: true
+    })
+    try {
+      parseArgs(['--host-mode', '--mobile-pairing'])
+    } catch (error) {
+      expect(resolveOrcadExitCode(error)).toBe(ORCAD_EXIT_CONFIGURATION)
+    }
+  })
 })
 
 describe('resolveOrcadExitCode', () => {
