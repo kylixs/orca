@@ -269,6 +269,60 @@ if [ -n "$out" ]; then printf 'tampered relay bundle' > "$out"; exit 0; fi
 echo 200
 `
 
+/** U183 R10b/R11b: fake platform that records a relay announce and serves the
+ * nonce back on /v1/internal/relays. Runs in its own process because the
+ * installer runs through spawnSync, which would block an in-process server. */
+const RELAY_PROOF_SERVER_SOURCE = `import { createServer } from 'node:http'
+const staleMs = Number(process.env.PROOF_STALE_MS ?? 0)
+const nonceSuffix = process.env.PROOF_NONCE_SUFFIX ?? ''
+let id = ''
+let nonce = ''
+const server = createServer((req, res) => {
+  const path = new URL(req.url ?? '/', 'http://127.0.0.1').pathname
+  if (path === '/health') { res.statusCode = 200; res.end('ok'); return }
+  if (path === '/v1/internal/relay-endpoint' && req.method === 'POST') {
+    let body = ''
+    req.on('data', (chunk) => (body += chunk))
+    req.on('end', () => {
+      try {
+        const parsed = JSON.parse(body)
+        id = parsed.id ?? ''
+        nonce = (parsed.installNonce ?? '') + nonceSuffix
+      } catch {}
+      res.setHeader('content-type', 'application/json')
+      res.end('{"ok":true}')
+    })
+    return
+  }
+  if (path === '/v1/internal/relays') {
+    const relays = id
+      ? [{ id, host: '', browserHost: '', installNonce: nonce, port: 18443, lastSeenAt: Date.now() - staleMs, order: 1, online: true }]
+      : []
+    res.setHeader('content-type', 'application/json')
+    res.end(JSON.stringify({ aliveMs: 30000, relays }))
+    return
+  }
+  res.statusCode = 404
+  res.end('not found')
+})
+server.listen(0, '127.0.0.1', () => console.log('[proof] listening on http://127.0.0.1:' + server.address().port))
+`
+
+let relayProofScriptPath = ''
+function startRelayProofPlatform(staleMs = 0, nonceSuffix = ''): Promise<Service> {
+  if (!relayProofScriptPath) {
+    const dir = mkdtempSync(join(tmpdir(), 'orca-proof-platform-'))
+    relayProofScriptPath = join(dir, 'proof-platform.mjs')
+    writeFileSync(relayProofScriptPath, RELAY_PROOF_SERVER_SOURCE)
+  }
+  return spawnService(
+    relayProofScriptPath,
+    { PROOF_STALE_MS: String(staleMs), PROOF_NONCE_SUFFIX: nonceSuffix },
+    /\[proof\] listening on http:\/\/127\.0\.0\.1:(\d+)/,
+    'relay-proof-platform'
+  )
+}
+
 /** U183 R6: a real, extractable relay source tree for tar fixtures. */
 function seedRelaySource(dir: string): void {
   mkdirSync(join(dir, 'apps/relay/src'), { recursive: true })
@@ -1617,41 +1671,7 @@ exit 0
     /** Fake platform in its own process: the installer runs through spawnSync,
      * which would block an in-process server's event loop. It records the
      * relay's announce and serves that nonce back on the internal list. */
-    const PROOF_SERVER_SOURCE = `import { createServer } from 'node:http'
-const staleMs = Number(process.env.PROOF_STALE_MS ?? 0)
-const nonceSuffix = process.env.PROOF_NONCE_SUFFIX ?? ''
-let id = ''
-let nonce = ''
-const server = createServer((req, res) => {
-  const path = new URL(req.url ?? '/', 'http://127.0.0.1').pathname
-  if (path === '/health') { res.statusCode = 200; res.end('ok'); return }
-  if (path === '/v1/internal/relay-endpoint' && req.method === 'POST') {
-    let body = ''
-    req.on('data', (chunk) => (body += chunk))
-    req.on('end', () => {
-      try {
-        const parsed = JSON.parse(body)
-        id = parsed.id ?? ''
-        nonce = (parsed.installNonce ?? '') + nonceSuffix
-      } catch {}
-      res.setHeader('content-type', 'application/json')
-      res.end('{"ok":true}')
-    })
-    return
-  }
-  if (path === '/v1/internal/relays') {
-    const relays = id
-      ? [{ id, host: '', browserHost: '', installNonce: nonce, port: 18443, lastSeenAt: Date.now() - staleMs, order: 1, online: true }]
-      : []
-    res.setHeader('content-type', 'application/json')
-    res.end(JSON.stringify({ aliveMs: 30000, relays }))
-    return
-  }
-  res.statusCode = 404
-  res.end('not found')
-})
-server.listen(0, '127.0.0.1', () => console.log('[proof] listening on http://127.0.0.1:' + server.address().port))
-`
+    const PROOF_SERVER_SOURCE = RELAY_PROOF_SERVER_SOURCE
 
     let proofScriptPath = ''
     before(() => {
@@ -2280,5 +2300,174 @@ describe('U183 R11a: 安装锁、同 sha 幂等与 previous 规则', () => {
     })
     assert.equal(run.status, 65, run.stderr)
     assert.equal(existsSync(join(relayRoot, '.install.lock')), false)
+  })
+})
+
+describe('U183 R11b: 升级、自动回滚与 N-1 保留', () => {
+  function withSha(script: string, sha: string): string {
+    return script.replace(/^ORCA_RELAY_BUNDLE_SHA256=.*$/m, `ORCA_RELAY_BUNDLE_SHA256=${sha}`)
+  }
+
+  /** Wrapper branch stub. `CRASH` in the active release entry makes it exit,
+   * modelling a bundle that unpacks but never comes online. `force-crash`
+   * makes even the rolled-back release fail. */
+  function relayNodeStub(options: { announce?: boolean } = {}): string {
+    const announce =
+      options.announce === false
+        ? ''
+        : `curl -sS -X POST -H 'content-type: application/json' -d "{\\"id\\":\\"$ORCA_CLOUD_RELAY_ID\\",\\"port\\":$PORT,\\"installNonce\\":\\"$ORCA_CLOUD_INSTALL_NONCE\\"}" "$ORCA_CLOUD_API_URL/v1/internal/relay-endpoint" >/dev/null 2>&1 || true`
+    return `#!/usr/bin/env bash
+if [ "$1" = "-p" ]; then echo 22.18.0; exit 0; fi
+if [ "$1" = "--version" ]; then echo v22.18.0; exit 0; fi
+if [ -f "$HOME/force-crash" ]; then exit 1; fi
+if grep -q 'CRASH' "$ORCA_RELAY_ROOT/current/apps/relay/src/relay.ts" 2>/dev/null; then exit 1; fi
+${announce}
+exec -a relay.ts sleep 60
+`
+  }
+
+  function makeR11bHome(node: string): { home: string; relayRoot: string; bin: string } {
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const relayRoot = makeRelayRoot(home)
+    const bin = makeSparsePath(home, { node })
+    return { home, relayRoot, bin }
+  }
+
+  function runBundle(
+    script: string,
+    home: string,
+    bin: string,
+    relayRoot: string,
+    platformUrl: string,
+    bundle: { bytes: Buffer; sha: string },
+    extraEnv: Record<string, string> = {}
+  ): ReturnType<typeof runInstallScript> {
+    const offline = join(home, `r11b-${bundle.sha.slice(0, 8)}.tgz`)
+    writeFileSync(offline, bundle.bytes)
+    return runInstallScript(withSha(script.replaceAll(api.url, platformUrl), bundle.sha), home, {
+      PATH: bin,
+      ORCA_RELAY_ROOT: relayRoot,
+      ORCA_RELAY_BUNDLE: offline,
+      ORCA_RELAY_PROOF_TIMEOUT: '5',
+      ORCA_RELAY_PROOF_INTERVAL: '0.2',
+      ORCA_RELAY_ROLLBACK_PROOF_TIMEOUT: '2',
+      ...extraEnv
+    })
+  }
+
+  const V2_BUNDLE = buildBundle((dir) =>
+    writeFileSync(join(dir, 'apps/relay/src/relay.ts'), '// relay v2\n')
+  )
+  const V3_BUNDLE = buildBundle((dir) =>
+    writeFileSync(join(dir, 'apps/relay/src/relay.ts'), '// relay v3\n')
+  )
+  const CRASH_BUNDLE = buildBundle((dir) =>
+    writeFileSync(join(dir, 'apps/relay/src/relay.ts'), '// CRASH relay v2\n')
+  )
+
+  test('生成脚本：重启服务、清理旧 release、回滚标记', async () => {
+    const script = await fetchRelayScript()
+    assert.match(script, /systemctl --user restart orca-relay\.service/)
+    assert.match(script, /rollback=ok/)
+    assert.match(script, /rollback=failed/)
+    assert.match(script, /orca_relay_prune_releases/)
+    assert.match(script, /ORCA_RELAY_RELEASES_DIR/)
+  })
+
+  test('升级成功：releases 只保留 current+previous，非 sha 条目不动', async () => {
+    const proof = await startRelayProofPlatform()
+    const { home, relayRoot, bin } = makeR11bHome(relayNodeStub())
+    const script = await fetchRelayScript()
+    try {
+      assert.equal(runBundle(script, home, bin, relayRoot, proof.url, BENIGN_BUNDLE).status, 0)
+      assert.equal(readlinkSync(join(relayRoot, 'current')), `releases/${BENIGN_BUNDLE.sha}`)
+      assert.equal(runBundle(script, home, bin, relayRoot, proof.url, V2_BUNDLE).status, 0)
+
+      // Only this script's sha-named release dirs may be pruned.
+      mkdirSync(join(relayRoot, 'releases', 'not-a-sha'), { recursive: true })
+      mkdirSync(join(relayRoot, 'releases', 'f'.repeat(64)), { recursive: true })
+      writeFileSync(join(relayRoot, 'releases', 'keep-me'), 'operator note')
+
+      const upgrade = runBundle(script, home, bin, relayRoot, proof.url, V3_BUNDLE)
+      assert.equal(upgrade.status, 0, upgrade.stderr)
+      assert.equal(readlinkSync(join(relayRoot, 'current')), `releases/${V3_BUNDLE.sha}`)
+      assert.equal(readlinkSync(join(relayRoot, 'previous')), `releases/${V2_BUNDLE.sha}`)
+      assert.deepEqual(
+        readdirSync(join(relayRoot, 'releases')).sort(),
+        ['f'.repeat(64), V2_BUNDLE.sha, V3_BUNDLE.sha, 'keep-me', 'not-a-sha'].sort()
+      )
+      assert.match(upgrade.stdout, /清理旧 release/)
+    } finally {
+      killRelayPid(relayRoot)
+      await proof.stop()
+    }
+  })
+
+  test('自证超时：回滚 current→previous、重启并再次自证，70 rollback=ok', async () => {
+    const proof = await startRelayProofPlatform()
+    const { home, relayRoot, bin } = makeR11bHome(relayNodeStub())
+    const script = await fetchRelayScript()
+    try {
+      assert.equal(runBundle(script, home, bin, relayRoot, proof.url, BENIGN_BUNDLE).status, 0)
+      const upgrade = runBundle(script, home, bin, relayRoot, proof.url, CRASH_BUNDLE)
+      assert.equal(upgrade.status, 70, upgrade.stderr)
+      assert.match(upgrade.stderr, /rollback=ok/)
+      assert.match(upgrade.stderr, /已回滚到/)
+      assert.equal(readlinkSync(join(relayRoot, 'current')), `releases/${BENIGN_BUNDLE.sha}`)
+      assert.equal(readlinkSync(join(relayRoot, 'previous')), `releases/${BENIGN_BUNDLE.sha}`)
+    } finally {
+      killRelayPid(relayRoot)
+      await proof.stop()
+    }
+  })
+
+  test('回滚后仍不上线：70 且打印尝试回滚与回滚失败两条日志', async () => {
+    const proof = await startRelayProofPlatform()
+    const { home, relayRoot, bin } = makeR11bHome(relayNodeStub())
+    const script = await fetchRelayScript()
+    try {
+      assert.equal(runBundle(script, home, bin, relayRoot, proof.url, BENIGN_BUNDLE).status, 0)
+      writeFileSync(join(home, 'force-crash'), '1')
+      const upgrade = runBundle(script, home, bin, relayRoot, proof.url, V2_BUNDLE)
+      assert.equal(upgrade.status, 70, upgrade.stderr)
+      const lines = upgrade.stderr.split('\n')
+      assert.ok(
+        lines.some((line) => line.includes('尝试回滚')),
+        upgrade.stderr
+      )
+      assert.ok(
+        lines.some((line) => line.includes('rollback=failed')),
+        upgrade.stderr
+      )
+      assert.equal(readlinkSync(join(relayRoot, 'current')), `releases/${BENIGN_BUNDLE.sha}`)
+    } finally {
+      killRelayPid(relayRoot)
+      await proof.stop()
+    }
+  })
+
+  test('同 sha 重跑失败不回滚（无假回滚）', async () => {
+    const proof = await startRelayProofPlatform()
+    const { home, relayRoot, bin } = makeR11bHome(relayNodeStub())
+    const script = await fetchRelayScript()
+    try {
+      assert.equal(runBundle(script, home, bin, relayRoot, proof.url, BENIGN_BUNDLE).status, 0)
+      assert.equal(runBundle(script, home, bin, relayRoot, proof.url, V2_BUNDLE).status, 0)
+
+      // A relay that starts but never announces the fresh nonce: self-proof
+      // times out, yet a same-sha rerun must leave current untouched.
+      const silentBin = makeSparsePath(mkdtempSync(join(tmpdir(), 'orca-silent-')), {
+        node: relayNodeStub({ announce: false })
+      })
+      const rerun = runBundle(script, home, silentBin, relayRoot, proof.url, V2_BUNDLE, {
+        ORCA_RELAY_PROOF_TIMEOUT: '2'
+      })
+      assert.equal(rerun.status, 70, rerun.stderr)
+      assert.doesNotMatch(rerun.stderr, /rollback=ok/)
+      assert.equal(readlinkSync(join(relayRoot, 'current')), `releases/${V2_BUNDLE.sha}`)
+    } finally {
+      killRelayPid(relayRoot)
+      await proof.stop()
+    }
   })
 })

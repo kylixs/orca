@@ -803,23 +803,18 @@ else
     echo ">> bundle 释放目录落位失败（67）" >&2
     exit 67
   fi
+  # R11b: provenance marker — prune never removes a directory this script did
+  # not create, even if an operator happened to name it like a sha.
+  printf '%s\\n' "$ORCA_RELAY_BUNDLE_SHA256" > "$ORCA_RELAY_RELEASE_DIR/.orca-relay-release"
 fi
 
 if [ "$ORCA_RELAY_RELEASE_REUSED" = "0" ]; then
   # Keep the old target as previous only when the sha actually changes.
   ORCA_RELAY_OLD_TARGET="$(readlink "$ORCA_RELAY_CURRENT_LINK" 2>/dev/null || true)"
   if [ -n "$ORCA_RELAY_OLD_TARGET" ] && [ "$ORCA_RELAY_OLD_TARGET" != "releases/$ORCA_RELAY_BUNDLE_SHA256" ]; then
-    ln -sfn "$ORCA_RELAY_OLD_TARGET" "$ORCA_RELAY_ROOT/previous.new" || { echo ">> 记录 previous 失败（67）" >&2; exit 67; }
-    if ! mv -T "$ORCA_RELAY_ROOT/previous.new" "$ORCA_RELAY_ROOT/previous" 2>/dev/null; then
-      rm -f "$ORCA_RELAY_ROOT/previous"
-      mv "$ORCA_RELAY_ROOT/previous.new" "$ORCA_RELAY_ROOT/previous" || { echo ">> 记录 previous 失败（67）" >&2; exit 67; }
-    fi
+    orca_relay_atomic_link "$ORCA_RELAY_OLD_TARGET" "$ORCA_RELAY_ROOT/previous" || { echo ">> 记录 previous 失败（67）" >&2; exit 67; }
   fi
-  ln -sfn "releases/$ORCA_RELAY_BUNDLE_SHA256" "$ORCA_RELAY_CURRENT_LINK.new" || { echo ">> 创建新 current 链接失败（67）" >&2; exit 67; }
-  if ! mv -T "$ORCA_RELAY_CURRENT_LINK.new" "$ORCA_RELAY_CURRENT_LINK" 2>/dev/null; then
-    rm -f "$ORCA_RELAY_CURRENT_LINK.new"
-    ln -sfn "releases/$ORCA_RELAY_BUNDLE_SHA256" "$ORCA_RELAY_CURRENT_LINK" || { echo ">> 切换 current 失败（67）" >&2; exit 67; }
-  fi
+  orca_relay_atomic_link "releases/$ORCA_RELAY_BUNDLE_SHA256" "$ORCA_RELAY_CURRENT_LINK" || { echo ">> 切换 current 失败（67）" >&2; exit 67; }
   echo ">> 已激活版本 $ORCA_RELAY_BUNDLE_SHA256"
 fi
 `
@@ -906,6 +901,17 @@ umask 077
 ORCA_RELAY_ROOT="\${ORCA_RELAY_ROOT:-$HOME/.orca-cloud/relay}"
 ORCA_ENV_FILE="\${ORCA_ENV_FILE:-$ORCA_RELAY_ROOT/relay.env}"
 ORCA_ENV_DIR="$(dirname "$ORCA_ENV_FILE")"
+# R11b: upgraded releases survive as previous until the next sha change.
+ORCA_RELAY_RELEASE_REUSED=0
+ORCA_RELAY_PROOF_FAILURE=""
+# R11b: point a symlink at a release via rename, so readers never see a gap.
+orca_relay_atomic_link() {
+  ln -sfn "$1" "$2.new" || return 1
+  if ! mv -T "$2.new" "$2" 2>/dev/null; then
+    rm -f "$2.new"
+    ln -sfn "$1" "$2" || return 1
+  fi
+}
 ${bundleVars}
 
 # U183 R4: preflight before any write. Node missing/old is EX_USAGE (64);
@@ -1011,7 +1017,7 @@ echo ">> 环境已就绪：$ORCA_ENV_FILE"
 # process identity; the platform is only asked whether this install's nonce is
 # online, so a stale relay reusing RELAY_ID cannot impersonate the new one.
 orca_relay_self_proof() {
-  local proof_timeout="\${ORCA_RELAY_PROOF_TIMEOUT:-60}"
+  local proof_timeout="\${1:-\${ORCA_RELAY_PROOF_TIMEOUT:-60}}"
   local proof_interval="\${ORCA_RELAY_PROOF_INTERVAL:-2}"
   local proof_body proof_headers proof_pid proof_status proof_json proof_entry
   local proof_nonce proof_last_seen proof_now_ms proof_date proof_epoch proof_date_ms
@@ -1032,8 +1038,9 @@ orca_relay_self_proof() {
     proof_pid="$(printf '%s' "$proof_pid" | tr -d '[:space:]')"
     if [ -z "$proof_pid" ] || [ "$proof_pid" = "0" ] || ! kill -0 "$proof_pid" 2>/dev/null; then
       echo ">> 中继进程不存在（pid=\${proof_pid:-<空>}）：自证失败（70 / relay_not_online_timeout）" >&2
+      ORCA_RELAY_PROOF_FAILURE="process"
       rm -f "$proof_body" "$proof_headers"
-      exit 70
+      return 1
     fi
     # Linux exposes /proc; macOS has no it, so fall back to ps.
     if [ -r "/proc/$proof_pid/cmdline" ]; then
@@ -1045,8 +1052,9 @@ orca_relay_self_proof() {
       *relay.ts*) ;;
       *)
         echo ">> 中继进程 cmdline 不含 relay.ts（pid=$proof_pid）：自证失败（70 / relay_not_online_timeout）" >&2
+        ORCA_RELAY_PROOF_FAILURE="process"
         rm -f "$proof_body" "$proof_headers"
-        exit 70 ;;
+        return 1 ;;
     esac
 
     proof_status="$(curl -sS --connect-timeout 5 --max-time 10 -D "$proof_headers" -o "$proof_body" -w '%{http_code}' \
@@ -1055,8 +1063,9 @@ orca_relay_self_proof() {
     case "$proof_status" in
       401|403)
         echo ">> 内部令牌不匹配（HTTP $proof_status）：安装命令已失效或内部控制令牌不一致，请让管理员重新生成" >&2
+        ORCA_RELAY_PROOF_FAILURE="credentials"
         rm -f "$proof_body" "$proof_headers"
-        exit 70 ;;
+        return 1 ;;
     esac
 
     proof_ok=0
@@ -1115,6 +1124,7 @@ orca_relay_self_proof() {
 
     if [ "$proof_ok" = "1" ]; then
       echo ">> 中继自证通过（id=$ORCA_RELAY_ID pid=$proof_pid）"
+      ORCA_RELAY_PROOF_FAILURE=""
       rm -f "$proof_body" "$proof_headers"
       return 0
     fi
@@ -1133,7 +1143,75 @@ orca_relay_self_proof() {
     tail -n 20 "$ORCA_RELAY_ROOT/relay.log" >&2 2>/dev/null || true
   fi
   rm -f "$proof_body" "$proof_headers"
+  ORCA_RELAY_PROOF_FAILURE="timeout"
+  return 1
+}
+
+# R11b: keep only current and previous; only sha-named dirs this script owns.
+orca_relay_prune_releases() {
+  [ -n "\${ORCA_RELAY_RELEASES_DIR:-}" ] || return 0
+  local current_target previous_target entry name
+  current_target="$(readlink "$ORCA_RELAY_CURRENT_LINK" 2>/dev/null || true)"
+  previous_target="$(readlink "$ORCA_RELAY_ROOT/previous" 2>/dev/null || true)"
+  for entry in "$ORCA_RELAY_RELEASES_DIR"/*; do
+    [ -e "$entry" ] || continue
+    [ -L "$entry" ] && continue
+    [ -d "$entry" ] || continue
+    # Provenance: only dirs unpacked by this script carry the marker.
+    [ -f "$entry/.orca-relay-release" ] || continue
+    name="\${entry##*/}"
+    [ "\${#name}" -eq 64 ] || continue
+    case "$name" in *[!0-9a-f]*) continue ;; esac
+    if [ "releases/$name" = "$current_target" ] || [ "releases/$name" = "$previous_target" ]; then
+      continue
+    fi
+    rm -rf "$entry"
+    echo ">> 清理旧 release $name（保留 current/previous）"
+  done
+}
+
+# R11b: a failed upgrade rolls back to previous, restarts and re-proves. A
+# same-sha rerun has no new version to blame, so it never produces a rollback.
+orca_relay_rollback() {
+  local rollback_target=""
+  rollback_target="$(readlink "$ORCA_RELAY_ROOT/previous" 2>/dev/null || true)"
+  if [ -z "$rollback_target" ]; then
+    echo ">> rollback=failed：previous 链接不可读（70）" >&2
+    exit 70
+  fi
+  echo ">> 尝试回滚到 previous=$rollback_target（新版本未上线）" >&2
+  if ! orca_relay_atomic_link "$rollback_target" "$ORCA_RELAY_ROOT/current"; then
+    echo ">> rollback=failed previous=$rollback_target：切换 current 失败（70）" >&2
+    exit 70
+  fi
+  if ! orca_relay_restart; then
+    echo ">> rollback=failed previous=$rollback_target：回滚版本启动失败（70）" >&2
+    exit 70
+  fi
+  if orca_relay_self_proof "\${ORCA_RELAY_ROLLBACK_PROOF_TIMEOUT:-30}"; then
+    echo ">> rollback=ok previous=$rollback_target：已回滚到 \${rollback_target#releases/}，新版本未上线（70 / relay_rollback_succeeded）" >&2
+    exit 70
+  fi
+  echo ">> rollback=failed previous=$rollback_target：回滚后仍未上线（70）" >&2
   exit 70
+}
+
+orca_relay_handle_proof_failure() {
+  # Credentials are not a version defect: rolling back cannot fix a bad token.
+  if [ "$ORCA_RELAY_PROOF_FAILURE" = "credentials" ]; then
+    exit 70
+  fi
+  if [ "$ORCA_RELAY_RELEASE_REUSED" = "1" ] || [ ! -L "$ORCA_RELAY_ROOT/previous" ]; then
+    exit 70
+  fi
+  orca_relay_rollback
+}
+
+orca_relay_handle_start_failure() {
+  if [ "$ORCA_RELAY_RELEASE_REUSED" = "1" ] || [ ! -L "$ORCA_RELAY_ROOT/previous" ]; then
+    exit 69
+  fi
+  orca_relay_rollback
 }
 
 if ${systemdAvailable()}; then
@@ -1142,6 +1220,8 @@ if ${systemdAvailable()}; then
   # so a rollback only flips the symlink.
   ORCA_RELAY_UNIT_FILE="$HOME/.config/systemd/user/orca-relay.service"
   mkdir -p "$(dirname "$ORCA_RELAY_UNIT_FILE")"
+  ORCA_RELAY_UNIT_EXISTED=0
+  if [ -f "$ORCA_RELAY_UNIT_FILE" ]; then ORCA_RELAY_UNIT_EXISTED=1; fi
   # R11a: identical reruns must not recreate the unit (nor restart it needlessly).
   ORCA_RELAY_UNIT_TMP="$ORCA_RELAY_UNIT_FILE.tmp.$$"
   cat > "$ORCA_RELAY_UNIT_TMP" <<ORCA_RELAY_UNIT
@@ -1158,9 +1238,23 @@ ${renderRelayUnit({ nodePath: '$ORCA_NODE_BIN', root: '$ORCA_RELAY_ROOT' })}ORCA
     echo ">> 单元文件保留在 $ORCA_RELAY_UNIT_FILE" >&2
     exit 69
   fi
+  # R11b: an existing unit must be restarted so a new release (or a refreshed
+  # nonce) actually runs; enable --now is a no-op on an active service.
+  orca_relay_restart() {
+    systemctl --user restart orca-relay.service
+  }
+  if [ "$ORCA_RELAY_UNIT_EXISTED" = "1" ]; then
+    if ! orca_relay_restart; then
+      echo ">> 中继服务重启失败（69 / relay_service_install_failed）" >&2
+      exit 69
+    fi
+  fi
   # U183 R10b: MainPID + cmdline identity, then this install's nonce online.
   ORCA_RELAY_PROOF_KIND=systemd
-  orca_relay_self_proof
+  if ! orca_relay_self_proof; then
+    orca_relay_handle_proof_failure
+  fi
+  orca_relay_prune_releases
 
   cat <<ORCA_NEXT
 
@@ -1196,27 +1290,54 @@ ORCA_RELAY_WRAPPER
   # U183 R9: $! is the nohup/setsid wrapper, not the relay. The wrapper writes
   # its own $$ (it execs node, so the pid does not change) — that is the pid
   # we record, no pgrep/ps fan-out needed.
-  rm -f "$ORCA_RELAY_PID_FILE"
-  if command -v setsid >/dev/null 2>&1; then
-    nohup setsid "$ORCA_RELAY_WRAPPER" >> "$ORCA_RELAY_LOG" 2>&1 &
-  else
-    nohup "$ORCA_RELAY_WRAPPER" >> "$ORCA_RELAY_LOG" 2>&1 &
-  fi
-  ORCA_RELAY_DEADLINE=$((SECONDS + 10))
-  while [ ! -s "$ORCA_RELAY_PID_FILE" ] && [ "$SECONDS" -lt "$ORCA_RELAY_DEADLINE" ]; do
-    sleep 0.2
-  done
-  ORCA_RELAY_PID="$(cat "$ORCA_RELAY_PID_FILE" 2>/dev/null || true)"
-  # Give an immediately-crashing relay time to die so kill -0 is truthful.
-  sleep 1
-  if [ -z "$ORCA_RELAY_PID" ] || ! kill -0 "$ORCA_RELAY_PID" 2>/dev/null; then
-    echo ">> relay 启动失败（69 / relay_start_failed）：请查看 $ORCA_RELAY_LOG" >&2
+  orca_relay_stop_wrapper() {
+    local old_pid="" waited=0
+    old_pid="$(cat "$ORCA_RELAY_PID_FILE" 2>/dev/null || true)"
+    old_pid="$(printf '%s' "$old_pid" | tr -d '[:space:]')"
+    if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+      kill "$old_pid" 2>/dev/null || true
+      while kill -0 "$old_pid" 2>/dev/null && [ "$waited" -lt 50 ]; do
+        sleep 0.2
+        waited=$((waited + 1))
+      done
+      kill -9 "$old_pid" 2>/dev/null || true
+    fi
     rm -f "$ORCA_RELAY_PID_FILE"
-    exit 69
-  fi
-  # U183 R10b: wrapper pid + cmdline identity, then this install's nonce online.
+  }
+  orca_relay_start_wrapper() {
+    orca_relay_stop_wrapper
+    if command -v setsid >/dev/null 2>&1; then
+      nohup setsid "$ORCA_RELAY_WRAPPER" >> "$ORCA_RELAY_LOG" 2>&1 &
+    else
+      nohup "$ORCA_RELAY_WRAPPER" >> "$ORCA_RELAY_LOG" 2>&1 &
+    fi
+    ORCA_RELAY_DEADLINE=$((SECONDS + 10))
+    while [ ! -s "$ORCA_RELAY_PID_FILE" ] && [ "$SECONDS" -lt "$ORCA_RELAY_DEADLINE" ]; do
+      sleep 0.2
+    done
+    ORCA_RELAY_PID="$(cat "$ORCA_RELAY_PID_FILE" 2>/dev/null || true)"
+    # Give an immediately-crashing relay time to die so kill -0 is truthful.
+    sleep 1
+    if [ -z "$ORCA_RELAY_PID" ] || ! kill -0 "$ORCA_RELAY_PID" 2>/dev/null; then
+      rm -f "$ORCA_RELAY_PID_FILE"
+      return 1
+    fi
+    return 0
+  }
+  orca_relay_restart() {
+    orca_relay_start_wrapper
+  }
+  # U183 R10b: wrapper pid + cmdline identity; set before any start failure so
+  # a rollback re-proof reads the same kind.
   ORCA_RELAY_PROOF_KIND=pid
-  orca_relay_self_proof
+  if ! orca_relay_start_wrapper; then
+    echo ">> relay 启动失败（69 / relay_start_failed）：请查看 $ORCA_RELAY_LOG" >&2
+    orca_relay_handle_start_failure
+  fi
+  if ! orca_relay_self_proof; then
+    orca_relay_handle_proof_failure
+  fi
+  orca_relay_prune_releases
 
   cat <<ORCA_NEXT
 
