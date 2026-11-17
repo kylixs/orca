@@ -52,6 +52,7 @@ import {
   shellQuote,
   systemdAvailable
 } from './install-script-command.ts'
+import { renderHostUnit } from './systemd-unit-template.ts'
 import { attachStorePersistence } from './store-persistence.ts'
 import { startInternalChannel } from './internal-channel.ts'
 import { ldapProfile, MockLdapAdapter, type LdapAdapter } from './ldap.ts'
@@ -514,21 +515,7 @@ if ${systemdAvailable()}; then
   ORCA_UNIT_FILE="$HOME/.config/systemd/user/orca-cloud-host.service"
   mkdir -p "$(dirname "$ORCA_UNIT_FILE")"
   cat > "$ORCA_UNIT_FILE" <<ORCA_HOST_UNIT
-[Unit]
-Description=Orca Cloud 宿主代理
-StartLimitIntervalSec=60
-StartLimitBurst=5
-
-[Service]
-EnvironmentFile=%h/.orca-cloud/host.env
-ExecStart=$ORCA_HOST_BIN --host-mode
-Restart=on-failure
-RestartSec=5
-RestartPreventExitStatus=78
-
-[Install]
-WantedBy=default.target
-ORCA_HOST_UNIT
+${renderHostUnit({ binPath: '$ORCA_HOST_BIN' })}ORCA_HOST_UNIT
   echo ">> 已写入 systemd 用户单元：$ORCA_UNIT_FILE"
   # Linger is best-effort: without it the host still runs until logout.
   if command -v loginctl >/dev/null 2>&1 && ! loginctl enable-linger; then
