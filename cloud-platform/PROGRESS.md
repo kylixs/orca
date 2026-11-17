@@ -4015,3 +4015,5 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **登记 U176（U163 前提可能失效）**：本地宿主已自动采纳 + C1 闸门 skip 非本地宿主 → 当前补齐车道无收益、仅剩每次 focus 一次 list 成本；v1「桌面无 apply 通道」判断与当前 HEAD 不符。处置：钩子改默认关闭显式开关（代码/测试保留）、设计补附录 D、V8b 暂停；**是否彻底移除/仅非本地启用/保留开关待用户裁定**（`9a0b268377c`）。
 - **L4 main 剩余 10 例 stale 修复**（`43b42fe3f4b`，4 个测试文件）：A 启动激活 mock 补 `ipcMain`/`BrowserWindow`（`a884e35073a` 后链路无条件走云 IPC）；B 终端分帧按 U84b 新语义重写（首写孤立 ≤256B 立即 flush，余量合并 1 帧，未回退）；C rename retention 改用「新 runtime 重建不触发 onPtyExit」，并新增「certified 退出退役 durable 行」钉。17/17 绿。
 - **U106-T12 现网生效**（`evidence/u106-live-restart-20261117-110957/`）：平台重启 pid 33522（11:10:16）；静态 404/200 均带 `referrer-policy: no-referrer`；宿主双在线未重启；登录与 `/v1/hosts` 冒烟 200。口径：HEAD 请求走 JSON 404 不带该头（既有行为，已披露），验证须用 GET。
+- **U163 管线审计 P0 修复**（`048c2aaa166`）：预 seed 守卫与 `continue` 对称——「本地组 id 直接命中宿主组 id」不再判 `catchup:unmapped-group`（原死锁：literal 组不建映射→守卫 skip→维护步骤永不执行）。新增 literal-equal 钉（红→绿）+ 异 id 歧义负控仍 unmapped；6 套件 58 例绿。
+- **L4 正式复跑启动**：main（Electron Node 24.21 + `ORCA_BACKGROUND_LAUNCH=1`，4 workers）与 renderer（3 workers）并行，含首跑后全部修复；结果回流后出 L4 总判据。
