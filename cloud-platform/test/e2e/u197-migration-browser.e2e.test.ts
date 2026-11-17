@@ -1,5 +1,6 @@
 import { after, before, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { createServer as createNetServer } from 'node:net'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -50,6 +51,15 @@ const READY = /\[api\] listening on http:\/\/127\.0\.0\.1:(\d+)/
 /** Checked-in snapshot of `apps/web/app.js` at `15e5ea8ae6b^` (= `e97878fb55a`).
  * The `.snapshot` suffix keeps oxlint/oxfmt from rewriting an exact copy. */
 const LEGACY_APP_FIXTURE = join(ROOT, 'test/fixtures/u197-legacy-app.js.snapshot')
+/** U225 N1: this suite reads the working tree, so pin the exact console build the
+ * assertions were written against. Update after an intentional `apps/web/app.js`
+ * change: `sha256sum apps/web/app.js` (macOS/Linux) or
+ * `Get-FileHash -Algorithm SHA256 apps/web/app.js` (Windows), then rerun. */
+const HEAD_APP_SHA256 = 'f45ebb05d60b889f43f78a1898cab16560215f49078d1c52aa954ecf7c906aa9'
+/** U225 P3: sha256 of the fixture body after its 13-line provenance header
+ * (`tail -n +14 test/fixtures/u197-legacy-app.js.snapshot | sha256sum`). */
+const LEGACY_FIXTURE_BODY_SHA256 =
+  '55dedf7b6be2eb67f8d8002b06a9b8530d759bfa29717eb0c27c78c6bae23566'
 /**
  * Long enough that the freshly minted legacy access survives the login
  * assertions on a slow runner (N3); tests that need a 401 still wait it out.
@@ -78,6 +88,9 @@ let workDir = ''
 let webRoot = ''
 let legacyAppSource = ''
 let api: Service
+/** U225 N3R: a pre-U197 (`never`) deployment the browser may still reach after
+ * a stale cookie marker is left behind. */
+let apiNever: Service
 
 async function reservePort(): Promise<number> {
   const server = createNetServer()
@@ -97,11 +110,22 @@ function webAsset(name: string): string {
   return readFileSync(join(ROOT, 'apps/web', name), 'utf8')
 }
 
+function sha256(text: string): string {
+  return createHash('sha256').update(text).digest('hex')
+}
+
 function buildLegacyWebRoot(): void {
   webRoot = join(workDir, 'web')
   // Read the app assets from the working tree, not `git show HEAD:` — a shallow
   // clone has no usable history, and the test is meant to exercise the build
-  // under test rather than a historical one.
+  // under test rather than a historical one. The hash pin makes that dependency
+  // explicit: an uncommitted edit must be acknowledged here first (U225 N1).
+  assert.equal(
+    sha256(webAsset('app.js')),
+    HEAD_APP_SHA256,
+    'apps/web/app.js differs from the build this migration suite pins; recompute ' +
+      'HEAD_APP_SHA256 (see its comment) or revert the unexpected change'
+  )
   for (const name of ['index.html', 'app.js', 'styles.css', 'router/routes.js']) {
     const target = join(webRoot, name)
     mkdirSync(dirname(target), { recursive: true })
@@ -119,6 +143,13 @@ function buildLegacyWebRoot(): void {
   )
   legacyAppSource = readFileSync(LEGACY_APP_FIXTURE, 'utf8')
   assert.ok(legacyAppSource.length > 1000, 'the pre-S4 build must be readable')
+  // U225 P3: the 13-line provenance header is expected; the body is the exact
+  // pre-S4 console the assertions describe, so pin it too.
+  assert.equal(
+    sha256(legacyAppSource.split('\n').slice(13).join('\n')),
+    LEGACY_FIXTURE_BODY_SHA256,
+    'the legacy fixture body drifted; regenerate it from git or update the pin'
+  )
   assert.equal(
     legacyAppSource.includes('orca.authMode'),
     false,
@@ -160,12 +191,32 @@ before(async () => {
     READY,
     'api-u197-migration-browser'
   )
+  const neverPort = await reservePort()
+  apiNever = await spawnService(
+    'apps/api/src/server.ts',
+    {
+      PORT: String(neverPort),
+      INTERNAL_TOKEN: 'u197-migration-browser-never',
+      ORCA_CLOUD_COOKIE_MODE: 'never',
+      ORCA_CLOUD_PUBLIC_ORIGIN: '',
+      ORCA_CLOUD_WEB_ROOT: webRoot,
+      ORCA_CLOUD_ACCESS_TTL_MS: String(ACCESS_TTL_MS),
+      AUDIT_LOG_PATH: join(workDir, 'audit-migration-never.log'),
+      ORCA_PLATFORM_STORE_FILE: '',
+      ORCA_CLOUD_LDAP_REQUIRED_GROUP: '',
+      ORCA_CLOUD_LOGIN_LOCKOUT_URL: '',
+      ORCA_CLOUD_AUDIT_WRITER_URL: '',
+      ORCA_CLOUD_AUDIT_WRITER_URLS: ''
+    },
+    READY,
+    'api-u197-migration-browser-never'
+  )
   browser = await chromium.launch({ headless: true })
 }, 180_000)
 
 after(async () => {
   await browser?.close()
-  await api?.stop()
+  await Promise.all([api?.stop(), apiNever?.stop()])
   if (workDir !== '') {
     rmSync(workDir, { recursive: true, force: true })
   }
@@ -374,7 +425,7 @@ describe('U197 AC9d / AC15(g) 真实 Chromium 迁移与旧构建夹具', () => {
     }
   })
 
-  test('INVALID-FACT（不计 AC15(g)）换回新构建：单次重载不是无 body 刷新，后续加载才清理旧键', async () => {
+  test('INVALID-FACT（not-AC15g）换回新构建：单次重载不是无 body 刷新，后续加载才清理旧键', async () => {
     const context = await browser.newContext()
     const page = await context.newPage()
     try {
@@ -398,9 +449,25 @@ describe('U197 AC9d / AC15(g) 真实 Chromium 迁移与旧构建夹具', () => {
 
       // ── 事实钉住（FACT，仅描述当前实现；不计 AC15(g)）──
       // First load of the current build while the access token is still valid.
+      // U225 N2: record the `/v1/me` success itself — the pre-load guard cannot
+      // see a slow navigation that outlives the token, and a late refresh must
+      // fail as an explicit timing verdict instead of a mis-read refresh count.
+      const meResponse = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/v1/me' && response.status() === 200,
+        { timeout: 20_000 }
+      )
       const immediate = traceRefresh(page)
       await page.goto(`${api.url}/`, { waitUntil: 'domcontentloaded' })
       await page.waitForSelector(VIEW_APP, { state: 'visible', timeout: 20_000 })
+      await meResponse
+      const meCompletedAt = Date.now()
+      assert.ok(
+        meCompletedAt - loginCompletedAt < ACCESS_TTL_MS - 1000,
+        `the first current-build load reached /v1/me ${meCompletedAt - loginCompletedAt}ms ` +
+          `after login; the ${ACCESS_TTL_MS}ms access token must still be valid, so any ` +
+          'refresh on this load is a timing artefact, not the tested behaviour'
+      )
       await delay(300)
 
       // FACT (INVALID vs AC15(g)): the marker is unknown, so the current build
@@ -486,6 +553,75 @@ describe('U197 AC9d / AC15(g) 真实 Chromium 迁移与旧构建夹具', () => {
   // 迁移。当前构建要等到后续加载学到 refreshCookie 才做到（见上方 INVALID-FACT
   // 用例），所以这里只留 skip 桩，避免把事实钉住误读为 AC15(g) 已验收。
   test('AC15(g) 单次重载迁移（blocked）', { skip: 'blocked by U219/D17' }, () => {})
+
+  // U225 N3R: a cookie marker can outlive the deployment that set it. Against a
+  // pre-U197 (`never`) server the startup Cookie probe fails, the body fallback
+  // resumes the legacy contract, and `/v1/me` must bind the restored keys.
+  test('U225 N3R Cookie 标记 + never 服务端：启动 body 回退成功后补写 tokenOwner', async () => {
+    const context = await browser.newContext()
+    const page = await context.newPage()
+    try {
+      await page.goto(`${apiNever.url}/`, { waitUntil: 'domcontentloaded' })
+      await page.waitForSelector(VIEW_LOGIN, { state: 'visible', timeout: 15_000 })
+      await loginThroughUi(page)
+
+      const stored = await readStoredAuth(page)
+      assert.equal(stored.mode, null, 'a never server must not teach the marker')
+      assert.ok(stored.refresh, 'the legacy contract persists a body refresh')
+      // Model pre-U221 data plus a marker left by an earlier cookie deployment.
+      await page.evaluate(() => {
+        window.localStorage.removeItem('orca.tokenOwner')
+        window.localStorage.setItem('orca.authMode', 'cookie')
+      })
+
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.waitForSelector(VIEW_APP, { state: 'visible', timeout: 20_000 })
+      const after = await page.evaluate(() => ({
+        owner: window.localStorage.getItem('orca.tokenOwner'),
+        mode: window.localStorage.getItem('orca.authMode'),
+        access: window.localStorage.getItem('orca.access'),
+        refresh: window.localStorage.getItem('orca.refresh')
+      }))
+
+      assert.equal(
+        after.owner,
+        USERNAME,
+        'the startup body fallback must bind the restored legacy keys to the account'
+      )
+      assert.equal(after.mode, null, 'the never server clears the stale marker')
+      assert.ok(after.access, 'the fallback persists the access token')
+      assert.ok(after.refresh, 'the fallback persists the refresh token')
+      assert.equal(await page.locator(VIEW_LOGIN).isVisible(), false)
+    } finally {
+      await context.close()
+    }
+  })
+
+  test('U225 N3R 纯 Cookie 模式成功刷新不写 tokenOwner', async () => {
+    const context = await browser.newContext()
+    const page = await context.newPage()
+    try {
+      await page.goto(`${api.url}/`, { waitUntil: 'domcontentloaded' })
+      await page.waitForSelector(VIEW_LOGIN, { state: 'visible', timeout: 15_000 })
+      await loginThroughUi(page)
+      assert.equal(
+        await page.evaluate(() => window.localStorage.getItem('orca.tokenOwner')),
+        null,
+        'cookie login persists no local token, so it owns no localStorage account'
+      )
+
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.waitForSelector(VIEW_APP, { state: 'visible', timeout: 20_000 })
+      assert.equal(
+        await page.evaluate(() => window.localStorage.getItem('orca.tokenOwner')),
+        null,
+        'the Cookie startup success must not write a localStorage owner'
+      )
+      assert.equal((await readStoredAuth(page)).mode, 'cookie')
+    } finally {
+      await context.close()
+    }
+  })
 
   test('判别力：伪造 orca_refresh + 假 body 必须 401 SESSION_EXPIRED', async () => {
     const context = await browser.newContext()

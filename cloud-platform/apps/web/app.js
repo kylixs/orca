@@ -5147,6 +5147,9 @@ window.addEventListener('hashchange', () => {
           // Why retried: the bootstrap must not start a second refresh chain.
           const me = await api('/v1/me', {}, { retried: true })
           state.user = { ...me.user, displayName: me.user.displayName, dept: me.user.dept }
+          // U225 N3R: a stale cookie marker can survive a server downgraded to
+          // never; the body fallback restored the legacy keys, so bind them.
+          bindLegacyTokenOwner(me.user.username)
           enterApp()
           return
         } catch {
