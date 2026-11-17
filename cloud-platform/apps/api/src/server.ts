@@ -2984,30 +2984,41 @@ export function createApp(config: ApiConfig): ApiHandle {
   /**
    * U244: two admin force-offline requests for one user may race. Serialising
    * audit+revoke makes the epoch bump and its audit event happen exactly once;
-   * the follower then sees zero live sessions and reports 0.
+   * the follower then sees zero live sessions and reports 0. A follower only
+   * defers to the leader when that leader actually succeeded — a failed audit
+   * left the work undone, so it retries as the next leader.
    */
-  const userSessionRevokeQueues = new Map<string, Promise<void>>()
+  type UserSessionRevokeQueueEntry = { tail: Promise<void>; outcome?: { ok: boolean } }
+  const userSessionRevokeQueues = new Map<string, UserSessionRevokeQueueEntry>()
+  /** The leader's audit write already answered 503; the lock must not record success. */
+  const USER_SESSION_REVOKE_AUDIT_FAILED = Symbol('user-session-revoke-audit-failed')
 
   async function withUserSessionRevokeLock<T>(
     userId: string,
     action: (follower: boolean) => Promise<T>
   ): Promise<T> {
-    // A caller that finds a request already queued is a follower: the leader
-    // performs (and audits) the revoke, so the follower must not duplicate it.
-    const follower = userSessionRevokeQueues.has(userId)
-    const previous = userSessionRevokeQueues.get(userId) ?? Promise.resolve()
+    const queued = userSessionRevokeQueues.get(userId)
+    const previous = queued?.tail ?? Promise.resolve()
     let release: () => void = () => {}
     const gate = new Promise<void>((resolve) => {
       release = resolve
     })
-    const tail = previous.then(() => gate)
-    userSessionRevokeQueues.set(userId, tail)
+    const entry: UserSessionRevokeQueueEntry = { tail: previous.then(() => gate) }
+    userSessionRevokeQueues.set(userId, entry)
     await previous
+    const follower = queued?.outcome?.ok === true
     try {
-      return await action(follower)
+      const value = await action(follower)
+      entry.outcome = { ok: true }
+      return value
+    } catch (failure) {
+      entry.outcome = { ok: false }
+      throw failure
     } finally {
       release()
-      if (userSessionRevokeQueues.get(userId) === tail) userSessionRevokeQueues.delete(userId)
+      if (userSessionRevokeQueues.get(userId) === entry) {
+        userSessionRevokeQueues.delete(userId)
+      }
     }
   }
 
@@ -5219,48 +5230,54 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
       // Test-only barrier: both racing requests pause here before serialising.
       await config.beforeUserSessionRevoke?.()
-      let auditFailed = false
-      const revokedSessions = await withUserSessionRevokeLock(target.id, async (follower) => {
-        // A concurrent follower re-enters after the leader already revoked,
-        // audited and refreshed the marker; reporting 0 avoids a duplicate event.
-        if (follower) return 0
-        const live = [...store.sessions.values()].filter(
-          (session) => session.userId === target.id && session.revokedAt === null
-        )
-        // Every admin action is audited, including a repeat that revokes nothing:
-        // the marker refresh below is real state hosts act on. Remaining dedupe
-        // against unrelated markers (grant_changed etc.) is wrong here.
-        if (
-          !(await recordAudit(
-            res,
-            {
-              eventType: 'session_revoke',
-              actor: authed.user.username,
-              targetType: 'user',
-              targetId: target.id,
-              result: 'success',
-              traceId,
-              metadata: {
-                username: target.username,
-                revokedSessions: live.length,
-                ...(reason === '' ? {} : { reason })
-              }
-            },
-            traceId
-          ))
-        ) {
-          auditFailed = true
-          return 0
+      let revokedSessions: number
+      try {
+        revokedSessions = await withUserSessionRevokeLock(target.id, async (follower) => {
+          // A follower re-enters after a successful leader already revoked,
+          // audited and refreshed the marker; reporting 0 avoids a duplicate event.
+          if (follower) return 0
+          const live = [...store.sessions.values()].filter(
+            (session) => session.userId === target.id && session.revokedAt === null
+          )
+          // Every admin action is audited, including a repeat that revokes nothing:
+          // the marker refresh below is real state hosts act on. Remaining dedupe
+          // against unrelated markers (grant_changed etc.) is wrong here.
+          if (
+            !(await recordAudit(
+              res,
+              {
+                eventType: 'session_revoke',
+                actor: authed.user.username,
+                targetType: 'user',
+                targetId: target.id,
+                result: 'success',
+                traceId,
+                metadata: {
+                  username: target.username,
+                  revokedSessions: live.length,
+                  ...(reason === '' ? {} : { reason })
+                }
+              },
+              traceId
+            ))
+          ) {
+            throw USER_SESSION_REVOKE_AUDIT_FAILED
+          }
+          let count = 0
+          for (const session of live) if (revokeSessionOnce(session)) count += 1
+          // Established WSS sessions bypass the platform, so the host ticket must die too.
+          // Refreshing (not appending) moves `since` past any earlier grant marker,
+          // so tickets issued after that marker are covered as well.
+          appendRevocation('user', target.username, 'admin_force_offline')
+          return count
+        })
+      } catch (failure) {
+        // recordAudit already answered 503; the follower retries as leader instead.
+        if (failure === USER_SESSION_REVOKE_AUDIT_FAILED) {
+          return
         }
-        let count = 0
-        for (const session of live) if (revokeSessionOnce(session)) count += 1
-        // Established WSS sessions bypass the platform, so the host ticket must die too.
-        // Refreshing (not appending) moves `since` past any earlier grant marker,
-        // so tickets issued after that marker are covered as well.
-        appendRevocation('user', target.username, 'admin_force_offline')
-        return count
-      })
-      if (auditFailed) return
+        throw failure
+      }
       return json(res, 200, { ok: true, revokedSessions })
     }
 

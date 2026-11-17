@@ -161,6 +161,27 @@ async function auditEvents(base: string, token: string, query: string): Promise<
   return ((await res.json()) as { events: AuditEvent[] }).events
 }
 
+/** Pairwise barrier that re-arms, so one test can gate several concurrent rounds. */
+function recurringRendezvous(): () => Promise<void> {
+  let arrivals = 0
+  let releaseCurrent: () => void = () => {}
+  let current = new Promise<void>((resolve) => {
+    releaseCurrent = resolve
+  })
+  return async () => {
+    const gate = current
+    arrivals += 1
+    if (arrivals % 2 === 0) {
+      const release = releaseCurrent
+      current = new Promise<void>((resolve) => {
+        releaseCurrent = resolve
+      })
+      release()
+    }
+    await gate
+  }
+}
+
 function rendezvous(timeoutMs = 2_000): () => Promise<void> {
   let arrivals = 0
   let release: () => void = () => {}
@@ -426,6 +447,75 @@ describe('U244 管理员强制下线（真实 createApp + HTTP）', () => {
     )
     assert.equal(afterRepeat.length, 2, 'a non-concurrent repeat is still an admin action')
     assert.equal(afterRepeat[1]?.metadata.revokedSessions, 0)
+  })
+
+  test('leader 审计失败时 follower 重试而非虚假 200；审计恢复后仍只写一条', async () => {
+    const { app, base } = await start({ beforeUserSessionRevoke: recurringRendezvous() })
+    assert.equal((await login(base, 'zhangsan', 'Passw0rd!')).status, 200)
+    const admin = await login(base, 'admin', 'Adm1n!')
+    const zhang = app.store.usersByName.get('zhangsan')
+    assert.ok(zhang)
+    const session = sessionsOf(app, zhang.id)[0]
+    assert.ok(session)
+    const token = admin.body.accessToken ?? ''
+    const originalAppend = app.audit.append.bind(app.audit)
+    let auditDown = true
+    app.audit.append = (input) => {
+      if (auditDown) {
+        throw new Error('audit unavailable')
+      }
+      return originalAppend(input)
+    }
+    try {
+      const failed = await Promise.all([
+        revoke(base, token, zhang.id),
+        revoke(base, token, zhang.id)
+      ])
+      const failedBodies = await Promise.all(
+        failed.map(async (res) => ({ status: res.status, body: (await res.json()) as RevokeBody }))
+      )
+      assert.equal(
+        failedBodies.some((entry) => entry.status === 200 && entry.body.revokedSessions === 0),
+        false,
+        'a follower must not report a false success when the leader audit failed'
+      )
+      assert.deepEqual(
+        failedBodies.map((entry) => entry.status),
+        [503, 503],
+        'both requests fail closed while audit is down'
+      )
+      assert.equal(session.revokedAt, null, 'no revocation may happen without an audit record')
+      assert.equal(session.epoch, 1)
+      assert.equal(
+        app.store.revocations.some((entry) => entry.targetType === 'user'),
+        false,
+        'the host ticket must survive a refused audit write'
+      )
+      assert.equal(app.store.audit.filter((entry) => entry.eventType === 'session_revoke').length, 0)
+
+      auditDown = false
+      app.audit.append = originalAppend
+      const recovered = await Promise.all([
+        revoke(base, token, zhang.id),
+        revoke(base, token, zhang.id)
+      ])
+      assert.deepEqual(recovered.map((res) => res.status), [200, 200])
+      const counts = await Promise.all(recovered.map(async (res) => (await res.json()) as RevokeBody))
+      assert.deepEqual(
+        counts.map((body) => body.revokedSessions).sort(),
+        [0, 1],
+        'one leader revokes, the follower reports 0'
+      )
+      assert.ok(session.revokedAt !== null)
+      assert.equal(session.epoch, 2, 'the epoch may only be bumped once')
+      const events = app.store.audit.filter(
+        (entry) => entry.eventType === 'session_revoke' && entry.result === 'success'
+      )
+      assert.equal(events.length, 1, 'the recovered retry writes exactly one audit event')
+      assert.equal(events[0]?.metadata.revokedSessions, 1)
+    } finally {
+      app.audit.append = originalAppend
+    }
   })
 
   test('未知用户 404；无会话用户 200 且仍写宿主撤销', async () => {
