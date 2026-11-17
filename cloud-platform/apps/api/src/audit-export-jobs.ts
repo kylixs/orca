@@ -4,7 +4,7 @@
  * `<root>/<jobId>/job.json`, written tmp+rename so a crash never leaves a torn
  * record. `expired` is derived from `expiresAt` and never persisted.
  */
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import {
   chmodSync,
   existsSync,
@@ -26,6 +26,8 @@ export const DEFAULT_AUDIT_EXPORT_ROOT = path.join(homedir(), '.orca-cloud', 'au
 export const DEFAULT_AUDIT_EXPORT_TTL_MS = 60 * 60_000
 export const DEFAULT_AUDIT_EXPORT_PER_USER_LIMIT = 2
 export const DEFAULT_AUDIT_EXPORT_GLOBAL_LIMIT = 8
+/** Download links are single-use and short-lived (design §4.2). */
+export const DEFAULT_AUDIT_EXPORT_DOWNLOAD_TOKEN_TTL_MS = 5 * 60_000
 
 /** Object keys are server constants; a client can never name the artifact. */
 export const AUDIT_EXPORT_OBJECT_KEYS = { csv: 'events.csv', jsonl: 'events.jsonl' } as const
@@ -151,6 +153,27 @@ export type CreateAuditExportJobInput = {
 
 export type AuditExportQuotaResult = { ok: true } | { ok: false; reason: 'per-user' | 'global' }
 
+export type IssueAuditExportDownloadTokenOptions = { ttlMs?: number }
+
+export type AuditExportDownloadToken = { token: string; expiresAt: number }
+
+export type AuditExportDownloadTokenReason = 'invalid' | 'expired' | 'consumed' | 'not-ready'
+
+export type AuditExportDownloadTokenVerification =
+  | { ok: true }
+  | { ok: false; reason: AuditExportDownloadTokenReason }
+
+function hashDownloadToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex')
+}
+
+/** Length mismatch fails without timingSafeEqual throwing on unequal buffers. */
+function tokenHashesEqual(offeredHash: string, storedHash: string): boolean {
+  const left = Buffer.from(offeredHash)
+  const right = Buffer.from(storedHash)
+  return left.length === right.length && timingSafeEqual(left, right)
+}
+
 function canTransition(from: PersistedAuditExportStatus, to: PersistedAuditExportStatus): boolean {
   if (from === 'queued') {
     return to === 'running' || to === 'failed'
@@ -272,6 +295,52 @@ export class AuditExportJobStore {
     return { ok: true }
   }
 
+  /**
+   * Mints a fresh download token for a succeeded, unexpired job. Issuing
+   * overwrites the previous hash, so rotating immediately invalidates the old
+   * link (design §4.2: one active token per job). Only the caller sees the
+   * plaintext; storage keeps sha256.
+   */
+  issueDownloadToken(
+    jobId: string,
+    options: IssueAuditExportDownloadTokenOptions = {}
+  ): AuditExportDownloadToken | null {
+    const job = this.read(jobId)
+    if (!job || job.status !== 'succeeded' || this.isExpired(job)) {
+      return null
+    }
+    const ttlMs = options.ttlMs ?? DEFAULT_AUDIT_EXPORT_DOWNLOAD_TOKEN_TTL_MS
+    const token = randomBytes(24).toString('base64url')
+    const expiresAt = this.clock() + ttlMs
+    this.write({
+      ...job,
+      downloadTokenHash: hashDownloadToken(token),
+      downloadTokenExpiresAt: expiresAt
+    })
+    return { token, expiresAt }
+  }
+
+  /** Non-consuming check; a valid token stays usable until consumed or rotated. */
+  verifyDownloadToken(jobId: string, token: string): AuditExportDownloadTokenVerification {
+    const job = this.read(jobId)
+    return this.checkDownloadToken(job, token)
+  }
+
+  /**
+   * Single-use redemption: re-runs every check, then records `downloadedAt`.
+   * A second call reports `consumed` because that flag is checked before the
+   * hash. File deletion is the caller's job (`deleteAfterDownload`).
+   */
+  consumeDownloadToken(jobId: string, token: string): AuditExportDownloadTokenVerification {
+    const job = this.read(jobId)
+    const check = this.checkDownloadToken(job, token)
+    if (!check.ok || !job) {
+      return check
+    }
+    this.write({ ...job, downloadedAt: this.clock() })
+    return { ok: true }
+  }
+
   remove(jobId: string): boolean {
     const dir = resolveAuditExportJobDir(this.root, jobId)
     if (!dir || !this.isJobDir(dir)) {
@@ -302,6 +371,31 @@ export class AuditExportJobStore {
       removed.push(entry.name)
     }
     return removed
+  }
+
+  private checkDownloadToken(
+    job: AuditExportJob | null,
+    token: string
+  ): AuditExportDownloadTokenVerification {
+    if (!job || job.status !== 'succeeded') {
+      return { ok: false, reason: 'not-ready' }
+    }
+    if (this.isExpired(job)) {
+      return { ok: false, reason: 'expired' }
+    }
+    if (job.downloadedAt !== null) {
+      return { ok: false, reason: 'consumed' }
+    }
+    if (job.downloadTokenHash === null || job.downloadTokenExpiresAt === null) {
+      return { ok: false, reason: 'invalid' }
+    }
+    if (job.downloadTokenExpiresAt <= this.clock()) {
+      return { ok: false, reason: 'expired' }
+    }
+    if (!tokenHashesEqual(hashDownloadToken(token), job.downloadTokenHash)) {
+      return { ok: false, reason: 'invalid' }
+    }
+    return { ok: true }
   }
 
   private readRoot() {

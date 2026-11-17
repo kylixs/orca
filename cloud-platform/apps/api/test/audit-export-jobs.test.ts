@@ -1,9 +1,11 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readdirSync,
   rmSync,
   statSync,
@@ -14,6 +16,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import {
   AUDIT_EXPORT_JOB_ID_PATTERN,
+  DEFAULT_AUDIT_EXPORT_DOWNLOAD_TOKEN_TTL_MS,
   DEFAULT_AUDIT_EXPORT_TTL_MS,
   AuditExportJobStore,
   generateAuditExportJobId,
@@ -214,6 +217,134 @@ describe('并发计数与配额', () => {
     time.set(20_000)
     assert.equal(store.countActive(), 0)
     assert.deepEqual(store.checkQuota('u1'), { ok: true })
+  })
+})
+
+describe('下载 token 生命周期', () => {
+  const succeeded = (store: AuditExportJobStore): string => {
+    const job = store.create(jobInput())
+    store.markRunning(job.jobId)
+    store.markSucceeded(job.jobId, { totalEvents: 3, bytes: 42 })
+    return job.jobId
+  }
+
+  test('签发→验证→消费→重复消费返回 consumed', () => {
+    const time = clock(1_000)
+    const store = new AuditExportJobStore({ root: tempRoot(), now: time.now })
+    const jobId = succeeded(store)
+
+    const issued = store.issueDownloadToken(jobId)
+    assert.ok(issued)
+    assert.equal(issued.expiresAt, 1_000 + DEFAULT_AUDIT_EXPORT_DOWNLOAD_TOKEN_TTL_MS)
+    assert.deepEqual(store.verifyDownloadToken(jobId, issued.token), { ok: true })
+
+    assert.deepEqual(store.consumeDownloadToken(jobId, issued.token), { ok: true })
+    assert.equal(store.read(jobId)?.downloadedAt, 1_000)
+    assert.deepEqual(store.consumeDownloadToken(jobId, issued.token), {
+      ok: false,
+      reason: 'consumed'
+    })
+    assert.deepEqual(store.verifyDownloadToken(jobId, issued.token), {
+      ok: false,
+      reason: 'consumed'
+    })
+  })
+
+  test('再次签发轮换 token，旧 token 立即 invalid', () => {
+    const store = new AuditExportJobStore({ root: tempRoot(), now: () => 1_000 })
+    const jobId = succeeded(store)
+
+    const first = store.issueDownloadToken(jobId)
+    const second = store.issueDownloadToken(jobId)
+    assert.ok(first && second)
+    assert.notEqual(first.token, second.token)
+    assert.deepEqual(store.verifyDownloadToken(jobId, first.token), {
+      ok: false,
+      reason: 'invalid'
+    })
+    assert.deepEqual(store.verifyDownloadToken(jobId, second.token), { ok: true })
+  })
+
+  test('注入时钟越过 TTL 后 verify/consume 返回 expired', () => {
+    const time = clock(1_000)
+    const store = new AuditExportJobStore({ root: tempRoot(), now: time.now })
+    const jobId = succeeded(store)
+    const issued = store.issueDownloadToken(jobId, { ttlMs: 1_000 })
+    assert.ok(issued)
+
+    time.set(1_999)
+    assert.deepEqual(store.verifyDownloadToken(jobId, issued.token), { ok: true })
+    time.set(2_000)
+    assert.deepEqual(store.verifyDownloadToken(jobId, issued.token), {
+      ok: false,
+      reason: 'expired'
+    })
+    assert.deepEqual(store.consumeDownloadToken(jobId, issued.token), {
+      ok: false,
+      reason: 'expired'
+    })
+    assert.equal(store.read(jobId)?.downloadedAt, null)
+  })
+
+  test('非 succeeded 任务不可签发，verify 返回 not-ready', () => {
+    const store = new AuditExportJobStore({ root: tempRoot(), now: () => 1_000 })
+    const queued = store.create(jobInput())
+    assert.equal(store.issueDownloadToken(queued.jobId), null)
+    assert.deepEqual(store.verifyDownloadToken(queued.jobId, 'any-token'), {
+      ok: false,
+      reason: 'not-ready'
+    })
+
+    store.markFailed(queued.jobId, { code: 'X', message: 'x' })
+    assert.equal(store.issueDownloadToken(queued.jobId), null)
+
+    const running = store.create(jobInput())
+    store.markRunning(running.jobId)
+    assert.equal(store.issueDownloadToken(running.jobId), null)
+    assert.deepEqual(store.consumeDownloadToken(running.jobId, 'any-token'), {
+      ok: false,
+      reason: 'not-ready'
+    })
+  })
+
+  test('过期任务不可签发', () => {
+    const time = clock(1_000)
+    const store = new AuditExportJobStore({ root: tempRoot(), ttlMs: 500, now: time.now })
+    const jobId = succeeded(store)
+    time.set(1_500)
+    assert.equal(store.issueDownloadToken(jobId), null)
+
+    // A token minted while live dies with the job, not only with its own TTL.
+    time.set(1_400)
+    const issued = store.issueDownloadToken(jobId)
+    assert.ok(issued)
+    time.set(1_501)
+    assert.deepEqual(store.verifyDownloadToken(jobId, issued.token), {
+      ok: false,
+      reason: 'expired'
+    })
+  })
+
+  test('落盘只存 sha256，明文 token 不出现；异长 token 不抛异常', () => {
+    const store = new AuditExportJobStore({ root: tempRoot(), now: () => 1_000 })
+    const jobId = succeeded(store)
+    const issued = store.issueDownloadToken(jobId)
+    assert.ok(issued)
+
+    const raw = readFileSync(path.join(store.root, jobId, 'job.json'), 'utf8')
+    assert.equal(raw.includes(issued.token), false)
+    const job = store.read(jobId)
+    assert.ok(job)
+    assert.equal(job.downloadTokenHash, createHash('sha256').update(issued.token).digest('hex'))
+    assert.match(job.downloadTokenHash ?? '', /^[0-9a-f]{64}$/)
+
+    for (const token of ['', 'x', 'a'.repeat(1_000)]) {
+      assert.doesNotThrow(() => store.verifyDownloadToken(jobId, token))
+      assert.deepEqual(store.verifyDownloadToken(jobId, token), {
+        ok: false,
+        reason: 'invalid'
+      })
+    }
   })
 })
 
