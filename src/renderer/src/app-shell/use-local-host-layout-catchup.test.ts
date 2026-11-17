@@ -1,6 +1,11 @@
 // @vitest-environment happy-dom
 import { act, renderHook } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  beginTabDragGesture,
+  endTabDragGesture,
+  resetTabDragGestureRegistryForTests
+} from '../components/tab-group/tab-drag-gesture-registry'
 import {
   decideHostLayoutCatchup,
   type HostLayoutCatchupDecision
@@ -22,6 +27,7 @@ function createHarness(overrides: Partial<LocalHostLayoutCatchupOptions> = {}) {
   let pending = false
   let visibilityListener: (() => void) | null = null
   let systemResumeCallback: (() => void) | null = null
+  let reconnectCallback: (() => void) | null = null
   const unsubscribeVisibility = vi.fn(() => {
     visibilityListener = null
   })
@@ -51,7 +57,6 @@ function createHarness(overrides: Partial<LocalHostLayoutCatchupOptions> = {}) {
     isWindowFocused: () => focused,
     getVisible: () => visible,
     isPublishPending: () => pending,
-    isGestureActive: () => false,
     subscribeVisibility: (onChange) => {
       visibilityListener = onChange
       return unsubscribeVisibility
@@ -64,7 +69,10 @@ function createHarness(overrides: Partial<LocalHostLayoutCatchupOptions> = {}) {
       settleListeners.add(onSettled)
       return () => settleListeners.delete(onSettled)
     },
-    subscribeStructuredReconnect: () => unsubscribeReconnect,
+    subscribeStructuredReconnect: (callback) => {
+      reconnectCallback = callback
+      return unsubscribeReconnect
+    },
     decide,
     runCatchup,
     ...overrides
@@ -87,6 +95,7 @@ function createHarness(overrides: Partial<LocalHostLayoutCatchupOptions> = {}) {
     },
     fireVisibilityChange: () => visibilityListener?.(),
     fireSystemResume: () => systemResumeCallback?.(),
+    fireReconnect: () => reconnectCallback?.(),
     settlePublish: () => {
       pending = false
       for (const listener of settleListeners) {
@@ -106,6 +115,10 @@ async function flush(): Promise<void> {
 }
 
 describe('useLocalHostLayoutCatchup', () => {
+  beforeEach(() => {
+    resetTabDragGestureRegistryForTests()
+  })
+
   it('runs one catch-up for the active worktree on window focus', async () => {
     const harness = createHarness()
     renderHook(() => useLocalHostLayoutCatchup(harness.deps))
@@ -212,5 +225,42 @@ describe('useLocalHostLayoutCatchup', () => {
     expect(harness.decisions).toHaveLength(1)
     expect(harness.decisions[0]).toEqual({ action: 'apply', reason: 'ready' })
     expect(harness.runCatchup).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips while a tab drag gesture is held and resumes after it ends', async () => {
+    const harness = createHarness()
+    renderHook(() => useLocalHostLayoutCatchup(harness.deps))
+
+    beginTabDragGesture()
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'))
+    })
+    await flush()
+
+    expect(harness.decisions).toEqual([{ action: 'skip', reason: 'gesture-active' }])
+    expect(harness.runCatchup).not.toHaveBeenCalled()
+
+    endTabDragGesture()
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'))
+    })
+    await flush()
+
+    expect(harness.runCatchup).toHaveBeenCalledTimes(1)
+  })
+
+  it('runs one catch-up for a structured session reconnect signal', async () => {
+    const harness = createHarness()
+    renderHook(() => useLocalHostLayoutCatchup(harness.deps))
+
+    await act(async () => {
+      harness.fireReconnect()
+    })
+    await flush()
+
+    expect(harness.runCatchup).toHaveBeenCalledTimes(1)
+    expect(harness.runCatchup).toHaveBeenCalledWith(
+      expect.objectContaining({ worktreeId: WORKTREE_ID })
+    )
   })
 })

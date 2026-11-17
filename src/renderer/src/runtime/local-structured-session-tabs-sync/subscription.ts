@@ -16,6 +16,7 @@ import {
   applyStructuredSessionTabSnapshots,
   type StructuredSessionSnapshotApplyOptions
 } from './snapshot-apply'
+import { emitStructuredSessionReconnect } from './structured-session-reconnect-signal'
 
 // The refresh is supplied here rather than imported by the repair lane, so nothing the snapshot
 // apply depends on depends back on it.
@@ -94,6 +95,8 @@ export async function startLocalStructuredSessionTabsSync(args: {
           if (activeHandle === handle) {
             activeHandle = null
           }
+          // One signal per reconnect boundary; the retry's resubscribe must not emit again.
+          emitStructuredSessionReconnect()
           scheduleSubscribeRetry()
           return
         }
@@ -117,6 +120,8 @@ export async function startLocalStructuredSessionTabsSync(args: {
           if (reconnectTimer !== null) {
             clearTimeout(reconnectTimer)
           }
+          // One signal per reconnect boundary; the retry's resubscribe must not emit again.
+          emitStructuredSessionReconnect()
           scheduleSubscribeRetry()
         }
       }

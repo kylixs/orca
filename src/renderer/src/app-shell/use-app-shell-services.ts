@@ -17,6 +17,7 @@ import { useOsc52ClipboardDefaultOnNotice } from '../components/terminal-pane/os
 import { useWebSessionTabsSync } from '../runtime/web-session-tabs-sync'
 import { useLocalHostLayoutCatchup } from './use-local-host-layout-catchup'
 import { useLocalStructuredSessionTabsSync } from '../runtime/local-structured-session-tabs-sync'
+import { subscribeStructuredSessionReconnect } from '../runtime/local-structured-session-tabs-sync/structured-session-reconnect-signal'
 import { useHostStructuredAgentsSync } from '../runtime/host-structured-agents-sync'
 import { useHostModelCatalogSnapshotsSync } from '../runtime/host-model-catalog-snapshots-sync'
 import { useRemoteRuntimeRecoveryTriggers } from '../runtime/use-remote-runtime-recovery-triggers'
@@ -44,7 +45,7 @@ export function useAppShellServices(): void {
   useRadixBodyPointerEventsRecovery()
   useWebSessionTabsSync()
   // Why: only the main app-shell adopts host layout; popout roots never call this hook.
-  useLocalHostLayoutCatchup()
+  useLocalHostLayoutCatchup({ subscribeStructuredReconnect: subscribeStructuredSessionReconnect })
   useLocalStructuredSessionTabsSync()
   useHostStructuredAgentsSync()
   useHostModelCatalogSnapshotsSync()

@@ -4,6 +4,7 @@ import type { AppState } from '../store'
 import { getWindowParkVisible, subscribeWindowParkVisibility } from '../lib/window-park-visibility'
 import { isWebClientLocation } from '../lib/web-client-location'
 import { graphState } from '../runtime/sync-runtime-graph/graph-state'
+import { isTabDragGestureActive } from '../components/tab-group/tab-drag-gesture-registry'
 import {
   decideHostLayoutCatchup,
   type CatchupHostLayout,
@@ -59,11 +60,10 @@ export type LocalHostLayoutCatchupOptions = {
   getVisible?: () => boolean
   subscribeVisibility?: (onChange: () => void) => () => void
   isPublishPending?: () => boolean
-  /** V6 wires the global drag latch here. Until then no gesture defers the catch-up. */
   isGestureActive?: () => boolean
   subscribePublishSettled?: (onSettled: () => void) => () => void
   subscribeSystemResumed?: (callback: () => void) => () => void
-  /** V6 wires the structured `end`/resubscribe signal here; undefined = only the four sources. */
+  /** Wired by `useAppShellServices` to the structured sync's one-shot reconnect signal. */
   subscribeStructuredReconnect?: (callback: () => void) => () => void
   isWebClient?: () => boolean
   decide?: (input: Parameters<typeof decideHostLayoutCatchup>[0]) => HostLayoutCatchupDecision
@@ -92,8 +92,7 @@ export function useLocalHostLayoutCatchup(options: LocalHostLayoutCatchupOptions
     const getVisible = options.getVisible ?? getWindowParkVisible
     const subscribeVisibility = options.subscribeVisibility ?? subscribeWindowParkVisibility
     const isPublishPending = options.isPublishPending ?? isGraphPublishPending
-    // TODO(U163 V6): replace with the global tab-drag gesture registry.
-    const isGestureActive = options.isGestureActive ?? ((): boolean => false)
+    const isGestureActive = options.isGestureActive ?? isTabDragGestureActive
     const subscribePublishSettled =
       options.subscribePublishSettled ??
       ((onSettled: () => void) => waitForGraphPublishSettled(isPublishPending, onSettled))

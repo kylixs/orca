@@ -7,6 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Tab, TabGroup, TabGroupLayoutNode } from '../../../../shared/tab-types'
 import { useAppStore } from '../../store'
 import type { TabDragItemData } from './useTabDragSplit'
+import {
+  isTabDragGestureActive,
+  resetTabDragGestureRegistryForTests
+} from './tab-drag-gesture-registry'
 import { shouldActivateTabDragFromDistanceSample } from './tab-drag-pointer-sensor'
 import {
   canDropTabForPaneColumnSplit,
@@ -182,6 +186,7 @@ afterEach(() => {
     container.remove()
   }
   document.body.replaceChildren()
+  resetTabDragGestureRegistryForTests()
   vi.clearAllMocks()
 })
 
@@ -446,5 +451,64 @@ describe('useTabDragSplit', () => {
       groupId: 'group-2',
       splitDirection: 'right'
     })
+  })
+})
+
+describe('useTabDragSplit gesture latch', () => {
+  it('holds the latch from drag start through the drop commit', () => {
+    const drag = renderDragHook()
+    const event = makeDragEvent(makeDragData('group-1'), { x: 120, y: 20 })
+
+    act(() => drag.onDragStart(event as unknown as Parameters<typeof drag.onDragStart>[0]))
+    expect(isTabDragGestureActive()).toBe(true)
+
+    act(() => drag.onDragEnd(event as unknown as Parameters<typeof drag.onDragEnd>[0]))
+    expect(isTabDragGestureActive()).toBe(false)
+  })
+
+  it('releases the latch on cancel', () => {
+    const drag = renderDragHook()
+    const event = makeDragEvent(makeDragData('group-1'), { x: 120, y: 20 })
+
+    act(() => drag.onDragStart(event as unknown as Parameters<typeof drag.onDragStart>[0]))
+    act(() => drag.onDragCancel())
+
+    expect(isTabDragGestureActive()).toBe(false)
+  })
+
+  it('releases the latch when the drag end event is missed', async () => {
+    const drag = renderDragHook()
+    const event = makeDragEvent(makeDragData('group-1'), { x: 120, y: 20 })
+
+    act(() => {
+      drag.onDragStart(event as unknown as Parameters<typeof drag.onDragStart>[0])
+      window.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }))
+    })
+    expect(isTabDragGestureActive()).toBe(true)
+
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 0))
+    })
+
+    expect(isTabDragGestureActive()).toBe(false)
+  })
+
+  it('releases the latch when the dragging hook unmounts', () => {
+    const drag = renderDragHook()
+    act(() =>
+      drag.onDragStart(
+        makeDragEvent(makeDragData('group-1'), { x: 120, y: 20 }) as unknown as Parameters<
+          typeof drag.onDragStart
+        >[0]
+      )
+    )
+    expect(isTabDragGestureActive()).toBe(true)
+
+    for (const { container, root } of mounted.splice(0)) {
+      act(() => root.unmount())
+      container.remove()
+    }
+
+    expect(isTabDragGestureActive()).toBe(false)
   })
 })

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import {
   closestCenter,
   pointerWithin,
@@ -30,6 +30,7 @@ import { canDropTabIntoPaneBody, isTabDragData, type TabDragItemData } from './t
 import { useTabDragGestureLifecycle } from './tab-drag-gesture-lifecycle'
 import { useTabDragHoverPreview, type HoveredTabDropTarget } from './tab-drag-hover-preview'
 import { commitTabDragDrop } from './tab-drag-drop-commit'
+import { beginTabDragGesture, endTabDragGesture } from './tab-drag-gesture-registry'
 
 export type { HoveredTabInsertion }
 export type { HoveredTabDropTarget }
@@ -104,6 +105,7 @@ export function useTabDragSplit({
   const [activeDrag, setActiveDrag] = useState<TabDragItemData | null>(null)
   const preDragActivationSnapshotRef = useRef<TabDragActivationSnapshot | null>(null)
   const tabDragActiveRef = useRef(false)
+  const tabDragGestureHeldRef = useRef(false)
   const dragGeometryRef = useRef<TabGroupPanelGeometrySnapshot | null>(null)
   const clearDragStateRef = useRef<() => void>(() => {})
   const tabInsertion = useHoveredTabInsertion(isTabDragData, getDragPointer)
@@ -140,7 +142,18 @@ export function useTabDragSplit({
   const pointerSensor = useSensor(TabDragPointerSensor, pointerSensorOptions)
   const sensors = useSensors(pointerSensor)
 
+  const releaseTabDragGesture = useCallback(() => {
+    if (!tabDragGestureHeldRef.current) {
+      return
+    }
+    tabDragGestureHeldRef.current = false
+    endTabDragGesture()
+  }, [])
+  // Why: a hidden worktree can unmount mid-drag without dnd-kit delivering an end.
+  useEffect(() => () => releaseTabDragGesture(), [releaseTabDragGesture])
+
   const clearDragState = useCallback(() => {
+    releaseTabDragGesture()
     tabDragActiveRef.current = false
     releaseWebviewDragPassthrough()
     releaseMissedEndFallback()
@@ -152,6 +165,7 @@ export function useTabDragSplit({
   }, [
     clearHoveredDropTarget,
     releaseMissedEndFallback,
+    releaseTabDragGesture,
     releaseWebviewDragPassthrough,
     tabInsertion
   ])
@@ -203,6 +217,8 @@ export function useTabDragSplit({
 
       setActiveDrag(dragData)
       tabDragActiveRef.current = true
+      beginTabDragGesture()
+      tabDragGestureHeldRef.current = true
       installMissedEndFallback()
       dragGeometryRef.current = captureTabGroupPanelGeometrySnapshot(worktreeId)
       preDragActivationSnapshotRef.current = captureTabDragActivationSnapshot(worktreeId)
