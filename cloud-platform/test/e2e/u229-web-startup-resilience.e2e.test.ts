@@ -208,6 +208,12 @@ describe('U229 F11 未处理拒绝', () => {
 
       const toast = page.window.document.querySelector<HTMLElement>('.toast')
       assert.match(toast?.textContent ?? '', /添加中继失败/, 'the failure must surface as a toast')
+      // U238: callers read the platform message, never a raw `Error:` stringification.
+      assert.doesNotMatch(
+        toast?.textContent ?? '',
+        /Error:/,
+        'the toast must show the platform message without an Error prefix'
+      )
       assert.deepEqual(rejections, [], 'the click handler must not leak an unhandled rejection')
     } finally {
       process.off('unhandledRejection', onRejection)
@@ -338,7 +344,7 @@ describe('U234 刷新状态判决', () => {
 })
 
 describe('U234 登出单飞', () => {
-  test('同一代内双击登出只发一次网络请求', async () => {
+  test('双击登出：每次 logout 自增代际，凭在途 logout 单飞只发一次请求', async () => {
     const base = await start()
     const page = loadWebConsolePage(base)
     await page.settle()
@@ -356,5 +362,54 @@ describe('U234 登出单飞', () => {
       'the second click must reuse the logout already on the wire'
     )
     assert.equal(page.hidden('#view-login'), false)
+  })
+})
+
+describe('U238 启动续集不得踢回已登录用户', () => {
+  test('启动刷新挂起时登录成功：超时续集不得登出', async () => {
+    const base = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const page = loadWebConsolePage(base, {
+      // 10s × 0.2 = 2s: long enough for the login, short enough to observe the timeout.
+      timerScale: 0.2,
+      platformOrigin: ORIGIN,
+      cookieJar: new Map(),
+      storage: { 'orca.authMode': 'cookie' },
+      holdOnLoad: ['POST /v1/auth/refresh']
+    })
+    await page.submitLogin('admin', 'Adm1n!')
+    assert.equal(page.hidden('#view-app'), false, 'precondition: login entered the app')
+
+    await delay(1500)
+    await page.settle()
+
+    assert.equal(
+      page.hidden('#view-app'),
+      false,
+      'a startup timeout must not sign out a login that superseded it'
+    )
+    assert.equal(page.hidden('#view-login'), true, 'the user must stay in the app')
+    await page.release()
+  })
+
+  test('启动刷新放行后返回 401：已登录用户仍停留在应用', async () => {
+    const base = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const page = loadWebConsolePage(base, {
+      platformOrigin: ORIGIN,
+      cookieJar: new Map(),
+      storage: { 'orca.authMode': 'cookie' },
+      holdOnLoad: ['POST /v1/auth/refresh']
+    })
+    await page.submitLogin('admin', 'Adm1n!')
+    assert.equal(page.hidden('#view-app'), false, 'precondition: login entered the app')
+
+    await page.release()
+    await page.settle()
+
+    assert.equal(
+      page.hidden('#view-app'),
+      false,
+      'a late startup 401 must not sign out a login that superseded it'
+    )
+    assert.equal(page.hidden('#view-login'), true, 'the user must stay in the app')
   })
 })

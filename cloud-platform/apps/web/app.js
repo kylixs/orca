@@ -2789,7 +2789,9 @@ async function renderRelays({ keepTable = false } = {}) {
     </div>`
   // U229 F11: the click handler owns the rejection; never leak it to the window.
   $('#addRelayBtn').onclick = () => {
-    void addRelayDialog().catch((err) => toast(`添加中继失败：${String(err ?? '未知错误')}`))
+    void addRelayDialog().catch((err) =>
+      toast(`添加中继失败：${err instanceof Error ? err.message : String(err ?? '未知错误')}`)
+    )
   }
   $('#refreshRelaysBtn').onclick = () => void renderRelays({ keepTable: true })
   wireRelayDetails()
@@ -5279,6 +5281,9 @@ window.addEventListener('hashchange', () => {
 
 // restore session
 ;(async () => {
+  // U238: a login during startup is a newer generation; its continuation must not
+  // abandon that session or send the user back to the login view.
+  const startupEpoch = state.authEpoch
   const cachedUser = localStorage.getItem('orca.user')
   try {
     // U221 F4: a pending logout means the last one never reached the server.
@@ -5318,6 +5323,8 @@ window.addEventListener('hashchange', () => {
           // fall through to the login view
         }
       }
+      // U238: a login superseded this startup generation; leave its session alone.
+      if (state.authEpoch !== startupEpoch) return
       // U234: the startup flow is over; a late refresh must see a new generation
       // and return `stale` instead of rewriting state or localStorage.
       abandonStartupAuth()
@@ -5336,14 +5343,24 @@ window.addEventListener('hashchange', () => {
         enterApp()
         return
       } catch {
+        // U238: never clear a newer login's tokens or views. The guard runs before
+        // abandonStartupAuth() bumps the epoch below.
+        if (state.authEpoch !== startupEpoch) return
         state.accessToken = ''
         // U234: a request that timed out may still complete; abandon its refresh.
         abandonStartupAuth()
+        if (cachedUser) localStorage.removeItem('orca.user')
+        showLogin()
+        return
       }
     }
+    // No credentials to resume: this generation still owns the view.
+    if (state.authEpoch !== startupEpoch) return
     if (cachedUser) localStorage.removeItem('orca.user')
     showLogin()
   } catch {
+    // U238: a login superseded this startup generation; never sign it out.
+    if (state.authEpoch !== startupEpoch) return
     // U221 F2: a transport failure must land on the login view, never a blank page.
     abandonStartupAuth()
     if (cachedUser) localStorage.removeItem('orca.user')
