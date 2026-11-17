@@ -4328,3 +4328,6 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U200 关闭（D10 阶段 1）**：P2 加固 `d0d1ec28fe7`——control 页钉死生产策略文本（精确相等）、`apps/web` 全目录内联 handler 静态扫描；主会话复跑 12/12，两处变异均红。台账 U200 翻 🟢；阶段 2（report-uri / 强制化 / 宿主侧）单列。
 - **U181 A1 落地**（`9f1a0c21939`，5 文件 +95/−12）：注册 201 但 body 非 JSON 由 `runtime_unavailable` 改为 `protocol`（`retryable=false`、`phase=enrolment`），`register_failed` 显式映射 78；vitest 57/57（主会话复跑），变异回退即红。U181 退出码批 A2（自证 90→120、host `/health` 1→68）已派。
 - **D18 简报落地**（本地 `test-reports/u233-d18-token-gc-brief-20261118.md`）：sessions/refreshTokens/accessTokens 三表无删除路径；实测 0.79 KB/登录、0.24 KB/Cookie 刷新、0.46 KB/legacy 轮换（百人十年约 550 MB）；**快照明文子项仍成立**（`store-persistence.ts:132` 明文 token key），已单独派修（不依赖 GC 裁定）；推荐方案 A（惰性 + 60s unref sweep + retention），A2 需与 D20 同批。台账 U233 已记录。
+- **U181 A2 落地**（`4e53de0aa69`）：自证超时 90→120s、host `/health` 失败码 1→68；install-wizard 83/83、install-script-command 9/9（主会话复跑），变异均红。A3（`orca_host_online` 事件 + 文档命名）已派。
+- **D17 P2 修复落地**（`296dcf40ac7`，4 文件 +76/−7）：探测 `error` 且持久 access 非空时进应用（不花 body、不写 legacy），pin 同步；主会话复跑六套件 **67/67**（`u197-migration-browser` 6/6 恢复），二次复审在途。
+- **快照明文剥离落地**（`57327d771e2`，3 文件 +118/−25）：`refreshTokens` key 改 `sha256:` 摘要、旧明文快照加载即重建、`server.ts` 写入/查找全链路先哈希；store-persistence 9/9、refresh-cookie+session-renewal 60/60（主会话复跑）。独立复审在途（重点：遗漏读写点、`currentRefreshTokenOf` 回退）。
