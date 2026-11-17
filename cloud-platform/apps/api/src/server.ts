@@ -283,10 +283,9 @@ function parseRefreshGraceMs(value: number | string | null | undefined): number 
   return Math.min(parsed, MAX_REFRESH_GRACE_MS)
 }
 
-async function readJson(
-  req: IncomingMessage,
-  maxBytes?: number
-): Promise<Record<string, unknown>> {
+type ReadBodyResult = { body: Record<string, unknown>; oversized: boolean }
+
+async function readBody(req: IncomingMessage, maxBytes?: number): Promise<ReadBodyResult> {
   const chunks: Buffer[] = []
   let size = 0
   let oversized = false
@@ -302,18 +301,29 @@ async function readJson(
     }
     if (!oversized) chunks.push(buffer)
   }
-  if (oversized || chunks.length === 0) return {}
+  if (oversized) return { body: {}, oversized: true }
+  if (chunks.length === 0) return { body: {}, oversized: false }
   try {
     const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'))
     // U236: `null` and scalars have no fields, so treat them exactly like an
     // absent body instead of letting `body.x` throw a 500. Arrays pass through.
-    if (parsed === null || typeof parsed !== 'object') return {}
+    if (parsed === null || typeof parsed !== 'object') return { body: {}, oversized: false }
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: non-null object from JSON.parse is an array or plain object; callers only read properties.
-    return parsed as Record<string, unknown>
+    return { body: parsed as Record<string, unknown>, oversized: false }
   } catch {
-    return {}
+    return { body: {}, oversized: false }
   }
 }
+
+async function readJson(
+  req: IncomingMessage,
+  maxBytes?: number
+): Promise<Record<string, unknown>> {
+  return (await readBody(req, maxBytes)).body
+}
+
+/** Login/refresh bodies carry only credentials; logout uses the same cap. */
+const AUTH_BODY_MAX_BYTES = 16 * 1024
 
 /** A logout body only ever carries a refresh token; anything larger is ignored. */
 const LOGOUT_BODY_MAX_BYTES = 16 * 1024
@@ -3561,7 +3571,12 @@ export function createApp(config: ApiConfig): ApiHandle {
         res.setHeader('cache-control', 'no-store')
         return error(res, 403, 'CSRF_REJECTED', '请求来源不受信任。', traceId)
       }
-      const body = await readJson(req)
+      const loginBody = await readBody(req, AUTH_BODY_MAX_BYTES)
+      if (loginBody.oversized) {
+        res.setHeader('cache-control', 'no-store')
+        return error(res, 413, 'PAYLOAD_TOO_LARGE', '请求体过大。', traceId)
+      }
+      const body = loginBody.body
       const username = String(body.username ?? '')
       const password = String(body.password ?? '')
       const lockState = await loginLockState(username)
@@ -3707,7 +3722,12 @@ export function createApp(config: ApiConfig): ApiHandle {
           res.setHeader('cache-control', 'no-store')
           return error(res, 403, 'CSRF_REJECTED', '请求来源不受信任。', traceId)
         }
-        const body = await readJson(req)
+        const cookieBody = await readBody(req, AUTH_BODY_MAX_BYTES)
+        if (cookieBody.oversized) {
+          res.setHeader('cache-control', 'no-store')
+          return error(res, 413, 'PAYLOAD_TOO_LARGE', '请求体过大。', traceId)
+        }
+        const body = cookieBody.body
         // Re-check after the body read: a concurrent revoke must still 401.
         if (cookieSession.revokedAt || cookieSession.refreshExpiresAt < now()) {
           // U241 ②: revoking on expiry makes old access tokens fail immediately;
@@ -3849,7 +3869,12 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
 
       // Body fallback: the legacy path, unchanged except for the grace window.
-      const body = await readJson(req)
+      const fallbackBody = await readBody(req, AUTH_BODY_MAX_BYTES)
+      if (fallbackBody.oversized) {
+        res.setHeader('cache-control', 'no-store')
+        return error(res, 413, 'PAYLOAD_TOO_LARGE', '请求体过大。', traceId)
+      }
+      const body = fallbackBody.body
       // U235/U236: readJson normalises null/scalars to {}; an array has no
       // refreshToken field, so the empty-token path covers it too.
       const rawBodyToken =

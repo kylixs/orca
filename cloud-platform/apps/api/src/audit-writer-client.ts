@@ -111,6 +111,23 @@ export function createRemoteAudit(options: {
     }
   }
 
+  /**
+   * Pre-U246 writers answer AUDIT_CHAIN_BROKEN for a transient sink failure too.
+   * Their /v1/status still reports the real reason, so only a verified break is
+   * latched; an unreachable probe stays retryable rather than stopping every
+   * replica until a restart.
+   */
+  const verifiedChainBroken = async (): Promise<boolean> => {
+    try {
+      const res = await call('/v1/status')
+      if (!res.ok) return false
+      const body = (await res.json().catch(() => null)) as { reason?: unknown } | null
+      return body?.reason === 'chain_broken'
+    } catch {
+      return false
+    }
+  }
+
   const append = async (input: AuditEventInput): Promise<AuditEvent> => {
     let res: Response
     try {
@@ -127,12 +144,21 @@ export function createRemoteAudit(options: {
       const body = (await res.json().catch(() => null)) as { error?: { code?: string } } | null
       const refused = body?.error?.code
       if (res.status === 503 && refused === 'AUDIT_CHAIN_BROKEN') {
+        // Once a break is verified it stays latched until the process restarts.
+        if (!health.ok && health.reason === 'chain_broken') {
+          throw Object.assign(new Error('audit chain broken'), { code: 'AUDIT_CHAIN_BROKEN' })
+        }
+        if (!(await verifiedChainBroken())) {
+          const detail = 'audit writer write failed'
+          markWriteFailed(detail)
+          throw Object.assign(new Error(detail), { code: 'AUDIT_UNAVAILABLE' })
+        }
         health = { ok: false, reason: 'chain_broken', detail: 'audit writer chain broken' }
         throw Object.assign(new Error('audit chain broken'), { code: 'AUDIT_CHAIN_BROKEN' })
       }
       if (res.status === 503 && refused === 'AUDIT_WRITE_FAILED') {
         // Transient sink failure: retryable, and never latched as a broken chain.
-        // Older writers send no such code and fall through to AUDIT_UNAVAILABLE.
+        // Writers older than U246 report this as AUDIT_CHAIN_BROKEN instead.
         const detail = 'audit writer write failed'
         markWriteFailed(detail)
         throw Object.assign(new Error(detail), { code: 'AUDIT_UNAVAILABLE' })
