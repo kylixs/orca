@@ -52,7 +52,7 @@ Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self'; styl
 | `font-src` | `'self'` | 当前无 `@font-face`、无外链字体 |
 | `connect-src` | `'self'` | 控制台只有同源 `fetch`；无 WebSocket/SSE |
 | `frame-src` | `'self' https:` | **必须显式列出**。工作区覆盖层 iframe 指向宿主/中继的 `https://.../cloud-admin.html`，若沿用 v5 草案（只有 `default-src 'self'`）会被 `default-src` 回退拦截，直接打断「打开项目工作区」。`window.open` 新标签不受此约束 |
-| `frame-ancestors` | `'none'` | 控制台按顶层文档加载（浏览器/桌面视图/移动 WebView 均为顶层，非 frame）。`rg '<iframe|<webview' src/renderer/src mobile` 的命中均为文件预览/HTML 预览，未发现加载本控制台的 frame 宿主；若未来要嵌，须改此值 |
+| `frame-ancestors` | `'none'` | 控制台按顶层文档加载（浏览器/桌面视图/移动 WebView 均为顶层，非 frame）。`rg '<iframe|<webview' src/renderer/src mobile` 的命中包括：文件/PDF/notebook 预览（`html-file-renderer.tsx:22`、`pdf-file-renderer.tsx:31`、`IpynbHtmlOutput.tsx:35`）、移动 HTML 预览（`MobileHtmlPreview.web.tsx:138`）、聊天视觉帧（`MobileNativeChatVisualFrame.web.tsx:37`）、插件壳 srcdoc（`PluginPanel.tsx:220`，`sandbox="allow-scripts"`）与桌面浏览器面板 `<webview>`（可加载任意 URL 的 guest）；未发现显式加载本控制台的 frame 宿主。若未来要嵌，须改此值 |
 | `base-uri` | `'none'` | 无 `<base>`；比 v5 草案的 `'self'` 更严且无成本 |
 | `form-action` | `'self'` | 登录表单无 `action`，JS 接管；`'self'` 保留无 JS 时的同源回退 |
 | `object-src` | `'none'` | 无 `<object>`/`<embed>` |
@@ -61,7 +61,7 @@ Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self'; styl
 
 ## 3. 上报通道
 
-现状：无任何 CSP 端点。`/v1/*` 有 Web 契约门禁（`server.ts:3365-3380`），但 `checkWebContract` 对**缺失**头返回 ok（`web-contract.ts:29-33`），只有「带头但非法/低于 min/高于 max」才 426；浏览器自动上报虽不带该头，实测不会被 426。上报端点仍放 `/v1/` 外，理由是它不属于版本化前端契约、且需免认证/免 Cookie，避免未来门禁语义收紧时被误伤。验证：单测断言 `checkWebContract(null)` 等于 `{ ok: true, offered: WEB_CONTRACT_VERSION }`；HTTP 层用无头 `POST /v1/__csp_probe` 断言状态**不是 426**（预期 404），例如 `curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:<port>/v1/__csp_probe`。
+现状：无任何 CSP 端点。`/v1/*` 有 Web 契约门禁（`server.ts:3365-3380`），但 `checkWebContract` 对**缺失**头返回 ok（`web-contract.ts:29-33`），只有「带头但非法/低于 min/高于 max」才 426；浏览器自动上报虽不带该头，实测不会被 426。上报端点仍放 `/v1/` 外，理由是它不属于版本化前端契约、且需免认证/免 Cookie，避免未来门禁语义收紧时被误伤。验证：拟新增单测断言 `checkWebContract(null)` 等于 `{ ok: true, offered: WEB_CONTRACT_VERSION }`（现有 `test/e2e/web-release.e2e.test.ts:105-107` 已覆盖同语义：无头请求 401 而非 426）；`/v1/__csp_probe` 为拟新增探针，预期 404（未知 `/v1/` POST 落到 `server.ts:6483`），例如 `curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:<port>/v1/__csp_probe`。
 
 | 方案 | 做法 | 代价 | 评价 |
 | --- | --- | --- | --- |
@@ -102,7 +102,7 @@ Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self'; styl
 | # | 用例 | 断言 | 落点 |
 | --- | --- | --- | --- |
 | T1 | 头存在性与范围 | `GET /`、`/index.html` 带 `content-security-policy-report-only`（阶段 1）或 `content-security-policy`（阶段 3）；`/v1/*` JSON 不带 | 新增 in-process 断言 |
-| T2 | 零违规主流程（含内联 onclick） | 登录 → 项目列表/详情 → 主机 → 用户 → 设置，**并显式点击刷新按钮**（`app.js:1942` 未重构时）或先完成 3 行重构；收集 console 与 `securitypolicyviolation`，断言 0 条；Report-Only 与强制各跑一遍 | 复用 `test/e2e/u197-cookie-browser.e2e.test.ts`（resident Playwright chromium，`:9`, `:140`） |
+| T2 | 零违规主流程（含内联 onclick） | 登录 → 项目列表/详情 → 主机 → 用户 → 设置，**并显式点击刷新按钮**（`app.js:1942` 未重构时）或先完成 3 行重构；收集 console 与 `securitypolicyviolation`，断言 0 条；Report-Only 与强制各跑一遍 | 复用 `test/e2e/u197-cookie-browser.e2e.test.ts`（in-process Playwright chromium：`before` 中 launch、跨用例复用；`:9`, `:140`） |
 | T3 | 下载/导出 | 在 resident Playwright 中走「能力探测 → 确认 → POST → 轮询 → 下载」全流程；点 `#auditExportDownload`（`app.js:4103-4115`）后字节落盘，无违规；确认不依赖 blob | `cloud-platform/test/e2e/web-audit-export-browser.e2e.test.ts`（resident Playwright + headless Chromium；`audit-export-download.e2e.test.ts` 是 node:test 进程内用例，不是浏览器测试） |
 | T4 | WebSocket | 控制台无 socket（检索为空）；打开工作区覆盖层，断言 iframe 变 `ready`、子文档自身的 WebSocket 不受父文档 `connect-src` 限制 | `app.js:1450-1461`；宿主侧既有工作区用例 |
 | T5 | 跨源 handoff | `POST /v1/projects/:id/web-handoff` 后，跨源 iframe 加载并完成 `postMessage` 握手；**故意移除 `frame-src` 时此用例必须失败**（防回退到 `default-src 'self'`） | `app.js:1424-1461`；iframe 源仅 `server.ts:6591-6595`（`:2950` 是中继入口、`:2998` 是主机详情链接，非 iframe 源） |
@@ -123,6 +123,6 @@ Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self'; styl
 ### 待验证（含验证命令）
 
 1. ~~本地 http 宿主是否存在 handoff 路径（决定 `frame-src` 是否需 `http:`）~~ **已由代码确认：handoff 硬编码 `https://`（`server.ts:6591-6595`，含回退），无 http handoff；`frame-src` 不需要 `http:`**。保留 §5 T5 作回归，确认两种部署下握手仍成立。
-2. `frame-ancestors 'none'` 是否有实际嵌入方。`rg -n "<iframe|<webview" src/renderer/src mobile --glob '!**/*.test.*'`，逐个确认加载 URL 是否为控制台（当前命中均为文件/HTML 预览）。
+2. `frame-ancestors 'none'` 是否有实际嵌入方。`rg -n "<iframe|<webview" src/renderer/src mobile --glob '!**/*.test.*'`，逐个确认加载 URL 是否��控制台（命中含文件/PDF/notebook 预览、移动 HTML 预览、聊天 srcdoc、插件壳与桌面 `<webview>` guest；未发现加载本控制台者）。强制前需实测 Electron `<webview>` guest 是否受 `frame-ancestors` 约束。
 3. Chromium 对 `link rel=icon` 的 `img-src` 执行行为。按 §5 T6 实跑确认。
 4. `style-src 'unsafe-inline'` 移除后的真实违规数（当前 16 处静态属性之外，是否还有 `setAttribute('style')` 或第三方代码）。`rg -n "setAttribute\\('style'" cloud-platform/apps/web`。
