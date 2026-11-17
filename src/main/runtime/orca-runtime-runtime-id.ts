@@ -152,6 +152,13 @@ export class OrcaRuntimeWithRuntimeId {
       // Why: shape alone cannot tell a content-only resend from a same-shape
       // member/order change, so ownership compares the renderer-authored layout.
       rendererAuthoredLayoutDigest?: string
+      // Why: the host-seeded values above are the host layout, so a content/focus
+      // resend from the still-stale renderer compares unequal and would take
+      // over. Keep the raw first frame separate: while pending, only a raw
+      // digest change may hand layout authority to the renderer.
+      rendererRawLayoutSignature?: string
+      rendererRawLayoutDigest?: string
+      hostLayoutAuthorityPending?: boolean
     }
   >()
 

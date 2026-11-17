@@ -226,10 +226,19 @@ export class OrcaRuntimeWithCloseHeadlessMobileTerminalTab extends OrcaRuntimeWi
     hostSnapshot: RuntimeMobileSessionTabsSnapshot
   ): boolean {
     const accepted = this.acceptedRendererMobileSnapshotByWorktree.get(worktreeId)
+    if (accepted === undefined) {
+      return false
+    }
+    // Why: on first open the accepted signature is seeded from the HOST layout,
+    // so comparing it to the host is tautologically true while the renderer is
+    // still stale. The raw frame signature is what the renderer actually holds.
+    const layoutSignature =
+      accepted.hostLayoutAuthorityPending === true
+        ? accepted.rendererRawLayoutSignature
+        : accepted.rendererTabGroupLayoutSignature
     return (
-      accepted !== undefined &&
-      accepted.rendererTabGroupLayoutSignature ===
-        getMobileSessionTabGroupLayoutSignature(hostSnapshot)
+      layoutSignature !== undefined &&
+      layoutSignature === getMobileSessionTabGroupLayoutSignature(hostSnapshot)
     )
   }
 

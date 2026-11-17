@@ -139,6 +139,14 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
     for (const snapshot of acceptedSnapshots) {
       nextWorktrees.add(snapshot.worktree)
       const existing = this.mobileSessionTabsByWorktree.get(snapshot.worktree)
+      // Why: a renderer frame can beat the first list/hydrate. The persisted
+      // layout is still host-authored, but projecting its tabs here would
+      // resurrect tabs the renderer owns, so only the layout is adopted.
+      const persistedHostLayout =
+        existing === undefined
+          ? this.getPersistedMobileSessionHostLayout(snapshot.worktree)
+          : undefined
+      const hostLayoutBase = existing ?? persistedHostLayout
       // Why: judge renderer publication ordering against the renderer's own
       // last-accepted (epoch, version) — the renderer reuses one pair for
       // byte-identical content, so a same-epoch version <= the accepted one is
@@ -174,33 +182,45 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
       // content-only resend from a same-shape member/order change. Across a
       // renderer reload versions are incomparable, so the first frame is the new
       // generation's baseline and only a different tree takes over.
+      const rawLayoutSignature = getMobileSessionTabGroupLayoutSignature(snapshot)
+      const rawLayoutDigest = getMobileSessionAuthoredLayoutDigest(snapshot)
       const sameGeneration =
         accepted !== undefined && accepted.publicationEpoch === snapshot.publicationEpoch
       const shapeMatches =
-        accepted !== undefined &&
-        getMobileSessionTabGroupLayoutSignature(snapshot) ===
-          accepted.rendererTabGroupLayoutSignature
+        accepted !== undefined && rawLayoutSignature === accepted.rendererTabGroupLayoutSignature
       const digestMatches =
         accepted === undefined
           ? false
           : accepted.rendererAuthoredLayoutDigest === undefined
             ? shapeMatches
-            : accepted.rendererAuthoredLayoutDigest ===
-              getMobileSessionAuthoredLayoutDigest(snapshot)
+            : accepted.rendererAuthoredLayoutDigest === rawLayoutDigest
+      // Why: on first open the accepted baseline is the host layout, so a
+      // content/focus resend from the still-stale renderer compares unequal.
+      // Keep the raw first-frame digest: only a raw layout change is takeover.
+      const rendererLayoutUnchangedSinceHostPreservation =
+        accepted !== undefined &&
+        accepted.hostLayoutAuthorityPending === true &&
+        accepted.rendererRawLayoutDigest !== undefined &&
+        accepted.rendererRawLayoutDigest === rawLayoutDigest
       // Why: a fresh process has no accepted publication, but a persisted host
       // split is still host-authored layout. A serve-only hydrate synthesizes
       // one throwaway group, where the desktop renderer is the first real author.
+      const hostLayoutIsHeadlessAuthored =
+        existing !== undefined
+          ? this.isHeadlessBuiltMobileSessionPublicationBase(existing.publicationEpoch)
+          : persistedHostLayout !== undefined
       const firstOpenHostLayoutAuthority =
         accepted === undefined &&
-        existing !== undefined &&
-        this.isHeadlessBuiltMobileSessionPublicationBase(existing.publicationEpoch) &&
-        ((existing.tabGroups?.length ?? 0) > 1 || existing.tabGroupLayout !== undefined)
+        hostLayoutBase !== undefined &&
+        hostLayoutIsHeadlessAuthored &&
+        ((hostLayoutBase.tabGroups?.length ?? 0) > 1 || hostLayoutBase.tabGroupLayout !== undefined)
       const preserveHostLayout =
-        existing !== undefined &&
+        hostLayoutBase !== undefined &&
         (firstOpenHostLayoutAuthority ||
           (accepted !== undefined &&
-            this.isHeadlessBuiltMobileSessionPublicationBase(existing.publicationEpoch) &&
-            (sameGeneration ? digestMatches : shapeMatches)))
+            hostLayoutIsHeadlessAuthored &&
+            (rendererLayoutUnchangedSinceHostPreservation ||
+              (sameGeneration ? digestMatches : shapeMatches))))
       // Why: focus is adopted as a pair. A group that is not live in the host
       // tree, or an incoming active tab the group does not hold, would highlight
       // a group the tab is not in — keep the host's focus instead.
@@ -212,10 +232,10 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
           : null
       const adoptIncomingActiveGroupId =
         fencedSnapshot.activeGroupId !== null &&
-        existing !== undefined &&
-        this.isApplicableHeadlessTabGroupTarget(existing, fencedSnapshot.activeGroupId) &&
+        hostLayoutBase !== undefined &&
+        this.isApplicableHeadlessTabGroupTarget(hostLayoutBase, fencedSnapshot.activeGroupId) &&
         incomingActiveTabTopLevelId !== null &&
-        (existing.tabGroups ?? []).some(
+        (hostLayoutBase.tabGroups ?? []).some(
           (group) =>
             group.id === fencedSnapshot.activeGroupId &&
             group.tabOrder.length > 0 &&
@@ -226,20 +246,28 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
             ...mergedSnapshot,
             // Keep host ownership of the layout: the renderer still has to
             // author a changed layout before its groups take over.
-            publicationEpoch: existing.publicationEpoch,
-            tabGroups: existing.tabGroups,
-            tabGroupLayout: existing.tabGroupLayout,
+            publicationEpoch:
+              existing?.publicationEpoch ?? `headless-hydrated:${Date.now().toString(36)}`,
+            tabGroups: hostLayoutBase.tabGroups,
+            tabGroupLayout: hostLayoutBase.tabGroupLayout,
             activeGroupId: adoptIncomingActiveGroupId
               ? fencedSnapshot.activeGroupId
-              : existing.activeGroupId,
+              : existing !== undefined
+                ? existing.activeGroupId
+                : mergedSnapshot.activeGroupId,
             // Why paired: a rejected focus must not leave any renderer frame
             // field behind, or the stored pair can name a tab outside the group.
+            // A layout-only baseline has no tabs, so the incoming pair stands.
             activeTabId: adoptIncomingActiveGroupId
               ? mergedSnapshot.activeTabId
-              : existing.activeTabId,
+              : existing !== undefined
+                ? existing.activeTabId
+                : mergedSnapshot.activeTabId,
             activeTabType: adoptIncomingActiveGroupId
               ? mergedSnapshot.activeTabType
-              : existing.activeTabType
+              : existing !== undefined
+                ? existing.activeTabType
+                : mergedSnapshot.activeTabType
           }
         : mergedSnapshot
       // Why: clients drop same-epoch frames whose version isn't strictly newer,
@@ -258,7 +286,24 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
       // Why: on first open there is no prior renderer baseline, and the frame
       // just failed to supersede the host layout — record the host layout as the
       // baseline so the renderer's own stale tree is never treated as authored.
-      const acceptedLayoutBase = firstOpenHostLayoutAuthority ? existing : snapshot
+      // The raw frame is kept alongside it (and survives every preserved resend)
+      // so a content/focus-only frame cannot be mistaken for a layout takeover.
+      const preservedRawLayoutSignature = firstOpenHostLayoutAuthority
+        ? rawLayoutSignature
+        : rendererLayoutUnchangedSinceHostPreservation
+          ? accepted?.rendererRawLayoutSignature
+          : undefined
+      const preservedRawLayoutDigest = firstOpenHostLayoutAuthority
+        ? rawLayoutDigest
+        : rendererLayoutUnchangedSinceHostPreservation
+          ? accepted?.rendererRawLayoutDigest
+          : undefined
+      const keepHostLayoutAuthority =
+        hostLayoutBase !== undefined &&
+        (firstOpenHostLayoutAuthority || rendererLayoutUnchangedSinceHostPreservation) &&
+        preservedRawLayoutSignature !== undefined &&
+        preservedRawLayoutDigest !== undefined
+      const acceptedLayoutBase = keepHostLayoutAuthority ? hostLayoutBase : snapshot
       this.acceptedRendererMobileSnapshotByWorktree.set(snapshot.worktree, {
         publicationEpoch: snapshot.publicationEpoch,
         rendererVersion: snapshot.snapshotVersion,
@@ -270,7 +315,14 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
           getMobileSessionTabGroupLayoutSignature(acceptedLayoutBase),
         // Why: the raw frame (or host base on first open), so host-preserved
         // tabs never enter the renderer-authored digest.
-        rendererAuthoredLayoutDigest: getMobileSessionAuthoredLayoutDigest(acceptedLayoutBase)
+        rendererAuthoredLayoutDigest: getMobileSessionAuthoredLayoutDigest(acceptedLayoutBase),
+        ...(keepHostLayoutAuthority
+          ? {
+              rendererRawLayoutSignature: preservedRawLayoutSignature,
+              rendererRawLayoutDigest: preservedRawLayoutDigest,
+              hostLayoutAuthorityPending: true
+            }
+          : {})
       })
     }
     for (const [worktreeId, existing] of [...this.mobileSessionTabsByWorktree.entries()]) {
@@ -308,5 +360,28 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
       }
     }
     return changedWorktreeIds
+  }
+
+  // Why: a renderer frame can beat the first list/hydrate. The persisted split
+  // is still host-authored, but projecting its tabs here would resurrect tabs
+  // the renderer owns, so only the layout is adopted — and only a real split,
+  // matching the hydrate criterion that restores persisted groups.
+  protected getPersistedMobileSessionHostLayout(
+    worktreeId: string
+  ): Pick<RuntimeMobileSessionTabsSnapshot, 'tabGroups' | 'tabGroupLayout'> | undefined {
+    const session = this.getWorkspaceSessionForWorktree(worktreeId)
+    const tabGroups = session?.tabGroups?.[worktreeId]
+    if ((tabGroups?.length ?? 0) <= 1) {
+      return undefined
+    }
+    return {
+      tabGroups: tabGroups?.map((group) => ({
+        id: group.id,
+        activeTabId: group.activeTabId,
+        tabOrder: [...group.tabOrder],
+        ...(group.recentTabIds ? { recentTabIds: [...group.recentTabIds] } : {})
+      })),
+      tabGroupLayout: session?.tabGroupLayouts?.[worktreeId]
+    }
   }
 }

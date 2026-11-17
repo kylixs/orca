@@ -118,6 +118,53 @@ describe('first-open host layout authority (U172)', () => {
     ])
   })
 
+  it('keeps the host split across a content-only resend from the stale renderer', async () => {
+    const { runtimeStore } = makeRuntimeStoreWithWorkspaceSession(makeHostSplitSession())
+    const runtime = new OrcaRuntimeService(runtimeStore as never)
+
+    await runtime.listMobileSessionTabs(`id:${TEST_WORKTREE_ID}`)
+    syncRendererSnapshots(runtime, [makeStaleOneGroupRendererFrame()])
+
+    // Same stale 1-group layout, newer content (a renamed tab).
+    const renamedTabs = terminalSnapshotTabs(['host-tab', 'host-tab-2', 'host-tab-3'])
+    renamedTabs[0] = { ...renamedTabs[0]!, title: 'renamed-tab-1' }
+    syncRendererSnapshots(runtime, [
+      { ...makeStaleOneGroupRendererFrame(), snapshotVersion: 2, tabs: renamedTabs }
+    ])
+
+    const after = await runtime.listMobileSessionTabs(`id:${TEST_WORKTREE_ID}`)
+    expect(after.tabGroups?.map((group) => group.id)).toEqual([HOST_GROUP_LEFT, HOST_GROUP_RIGHT])
+  })
+
+  it('keeps the host split across a focus-only resend from the stale renderer', async () => {
+    const { runtimeStore } = makeRuntimeStoreWithWorkspaceSession(makeHostSplitSession())
+    const runtime = new OrcaRuntimeService(runtimeStore as never)
+
+    await runtime.listMobileSessionTabs(`id:${TEST_WORKTREE_ID}`)
+    syncRendererSnapshots(runtime, [makeStaleOneGroupRendererFrame()])
+    syncRendererSnapshots(runtime, [
+      {
+        ...makeStaleOneGroupRendererFrame(),
+        snapshotVersion: 2,
+        activeTabId: 'host-tab-2::leaf'
+      }
+    ])
+
+    const after = await runtime.listMobileSessionTabs(`id:${TEST_WORKTREE_ID}`)
+    expect(after.tabGroups?.map((group) => group.id)).toEqual([HOST_GROUP_LEFT, HOST_GROUP_RIGHT])
+  })
+
+  it('cold-hydrates the persisted split when the renderer frame arrives before any list', async () => {
+    const { runtimeStore } = makeRuntimeStoreWithWorkspaceSession(makeHostSplitSession())
+    const runtime = new OrcaRuntimeService(runtimeStore as never)
+
+    // No prior listMobileSessionTabs: the first publication is the first touch.
+    syncRendererSnapshots(runtime, [makeStaleOneGroupRendererFrame()])
+
+    const after = await runtime.listMobileSessionTabs(`id:${TEST_WORKTREE_ID}`)
+    expect(after.tabGroups?.map((group) => group.id)).toEqual([HOST_GROUP_LEFT, HOST_GROUP_RIGHT])
+  })
+
   it('lets a genuinely authored layout take over after the first-open baseline', async () => {
     const { runtimeStore } = makeRuntimeStoreWithWorkspaceSession(makeHostSplitSession())
     const runtime = new OrcaRuntimeService(runtimeStore as never)
