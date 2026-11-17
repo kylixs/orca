@@ -4256,3 +4256,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **认证修复端到端重放 PASS（40/40）**：干净 archive HEAD + 真实 API/Chromium，4 轮×10 场景——E1 禁用账号三子场景全 PASS（403/刷新 401/登出清理）、F1a 登出-刷新不复活、F1b 跨账号不回退、F2 无 owner 键清且不 body 回退、F3 慢登出不清新 Cookie、F4 grace 回显不持久化、F5 启动 10s 出登录页且迟到 200 不复活、F7 503 保会话；pageerror 0。结论落盘 `test-reports/u197-auth-replay-20261118.md`（原证据 /tmp 易失）。历史 E1 SUSPECT 已收敛。
 - **U238 修复落地**（`e8141633f2a`，3 文件）：toast 去 `Error:` 前缀（红证据）；单飞用例标题更正；启动 IIFE 以 `startupEpoch` 判断——登录已超越代际时四条失败路径静默返回（不踢回已登录用户；判断须在 `abandonStartupAuth` 自增前，中途自擒回归）；补 2 例。宽 4xx 代理场景接受登记。
 - **认证套件最终基线（U238 后干净树）**：18 套件 **206 tests / 204 pass / 2 skip（AC9c、AC15(g) 均 D17）/ 0 fail**（`--test-concurrency=2`，约 3 分钟）。
+- **单元套件复跑**：`test/*.test.ts` + `apps/api/test/*.test.ts` = **308/308**（62 suites，4.6s），U228–U238 改动无单测回归。AC 矩阵加固附录状态同步（U231/U232/U234/U235/U236 关闭，U238 复审中）。T1 关键业务在最终基线重跑（后台）。
