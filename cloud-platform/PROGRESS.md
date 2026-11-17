@@ -4281,3 +4281,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U243② 修复**：`rendezvous()` 的 gate 加 `.catch(() => {})`，零到达不再产生未处理 rejection 噪音；u230 9/9。U243① 仍随事件词汇批。
 - **m01 补撤销一致性说明**（U241）：所有 session 撤销经 `revokeSessionOnce`（置 `revokedAt`+bump、幂等），覆盖 8 类路径；过期零审计/reuse 一条；已知刷新过期→自动登出暂无链上事件（U243①）。最终 Web 回归批（CONC=2）后台运行中。
 - **最终 Web 回归批（CONC=2）183/183**（HEAD `6ae654d52ae`，EXIT=0，约 4.9 分钟）：U241/U242 后 app.js 零回归；交付摘要 Web 基线更新。T1 最终基线后台重跑中。
+- **T1 最终基线 EXIT=0**（HEAD `4e8f059f946`）：cloud-platform 关键业务 **50/50**；Electron vitest **18138 pass / 31 skip**；交付摘要 T1 行更新为最终值。至此 U197 认证子系统最终基线齐备：认证 220/218/2、Web 321（183 当前 HEAD）、单测 308/308、T1 EXIT=0、重放 40/40。
