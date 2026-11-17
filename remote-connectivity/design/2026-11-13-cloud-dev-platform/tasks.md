@@ -34,6 +34,7 @@
 | T108 | 心跳、地址表、离线判定、撤销集合下发 | 心跳接口、状态机 | T107 | AC-08 |
 | T109 | 连接凭证签发（绑定 workspaceRoot + devicePubKey）与 JWKS 轮换 | `credentials` 模块、KMS 接入 | T106, T108 | 凭证可独立验签；AC-31 |
 | T110 | 设备列表与吊销接口 | `/v1/me/devices` | T103 | 设备吊销即时生效 |
+| T110a | 管理员强制下线端点 + 测试（FR-1.6） | `POST /v1/users/{id}/sessions/revoke`、`u244-admin-force-offline.e2e.test.ts` | T103, T110 | 已实现 `d0b4f064797`；Web UI 待定 |
 | T111 | 审计事件模型与**单写入序列**写入服务 | `audit-writer`、哈希链、锚点 | T101 | AC-26 |
 | T112 | 审计查询与异步导出 | 查询接口、导出任务 | T111 | AC-13 |
 | T113 | 平台 API 集成测试 | 测试套件 | T102–T112 | 关键路径全覆盖 |

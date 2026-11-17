@@ -29,7 +29,7 @@
      弹框底部说明：角色变更写 role_update 审计、覆盖优先于平台默认角色、降级断开云会话、列表只读仅此处修改。
      不展示创建时间/最近登录（users API 无该字段，不虚构）。
 - **分页**：无。`GET /v1/users` 一次返回全部账号，查询三条件均为**客户端过滤**（零 wire 变更），页脚只显示总数/筛选数。
-- **无**：新建用户、删除用户、启用/停用操作、批量操作、排序、导出、服务端分页。
+- **无**：新建用户、删除用户、启用/停用操作、管理员强制下线按钮（U244 仅 API，UI 待 D15 批次）、批量操作、排序、导出、服务端分页。
 
 ## 2. 菜单与入口
 
@@ -54,6 +54,7 @@
 | 3.10 | 确认降级（admin→非 admin）               | 同上 PUT；后端记 `role_update` metadata `revoked=true` 并 `revokeUserCredentials`，旧 token 下一请求失去管控面（≤60 秒心跳撤销）                                             | 确认按钮 `danger`，文案「管理员 → 审计」「降级将断开该用户当前云会话（≤60 秒）」          | 同 3.9                                                                              |
 | 3.11 | 停用账号                                 | 列表/详情正常显示「已停用」；详情角色下拉 disabled，change 处理器也二次拦截                                                                                                  | 无                                                                                        | 无                                                                                  |
 | 3.12 | 关闭详情                                 | 同 3.7                                                                                                                                                                       | 无                                                                                        | 无                                                                                  |
+| 3.13 | 管理员强制下线（**仅 API，Web 暂无按钮**） | `POST /v1/users/{id}/sessions/revoke` body `{reason?}` → `{ok:true, revokedSessions:N}`。撤销该用户全部 session（epoch+1，旧 access 立即 401；refresh 401 并清 Cookie），并写 `user:<username>` 宿主撤销集合；**不吊销 device**；重复/并发幂等 | 无（API-only；Web 按钮待 D15 批次）                                                        | 403 `PERMISSION_DENIED`（denied 审计）/ 404 `USER_NOT_FOUND` / 503 `AUDIT_CHAIN_BROKEN`（审计不可写则不撤销，fail-closed） |
 
 角色语义（服务端）：
 
@@ -63,12 +64,21 @@
 - 审计：成功写 `role_update`（from/to/username/revoked）；拒绝写 `role_update` denied（requiredPermission=platform:admin）；被拒的列表读写 `user_list` denied。
 - 停用：`requireAuth` 对 `user.status !== 'active'` 返回 null（已签发 token 全部失效）；当前**无任何页面/接口把账号置为 disabled**，也没有登录时的显式拒绝分支（登录仍签发 token，但随后所有 API 401）。角色 PUT 服务端未校验 `target.status`，停用锁定仅在 UI。
 
+管理员强制下线（U244 / FR-1.6，API-only）：
+
+- 端点 `POST /v1/users/{id}/sessions/revoke`（`cloud-platform/apps/api/src/server.ts:5196-5259`）；body 仅可选 `reason`（≤200 字，请求体上限 4KB，`:319-321`）。
+- 权限与审计：`platform:admin`；非管理员 403 + `session_revoke` denied 审计（`requiredPermission=platform:admin`）。写前经 `auditAllowsMutations` 门禁，审计链不可写时 503 且**不撤销任何 session / 不写宿主撤销集合**（fail-closed）。
+- 撤销范围：逐活跃 session `revokeSessionOnce`（epoch+1 → 旧 access 立即 401，refresh 401 并清 Cookie）；`appendRevocation('user', username, 'admin_force_offline')` 让已建 WSS 宿主票据一并失效；**不写 device 撤销**。并发/重复由 `withUserSessionRevokeLock`（`:2989-3009`）串行化：并发只撤一次且只写一条审计，重复请求返回 `revokedSessions:0`、不重复写审计。
+- **Web 暂无按钮**：用户管理页只有「详情」与角色修改，强制下线为 API-only；UI 待 D15 批次（`work-orders/pending-decisions-2026-11-17.md` U244）。
+- 测试：`cloud-platform/test/e2e/u244-admin-force-offline.e2e.test.ts`。
+
 ## 4. 数据来源
 
 - `GET /v1/users`（admin-only）→ `{ users: [{ id, username, displayName, dept, groups, roles, status, role, roleSource }] }`。
 - `PUT /v1/users/{id}/roles` body `{ role }` → `{ ok:true, roles, source:'admin-override' }`；400 `ROLE_INVALID`；404 `USER_NOT_FOUND`。
+- `POST /v1/users/{id}/sessions/revoke`（admin-only）body `{ reason? }` → `{ ok:true, revokedSessions }`；403 `PERMISSION_DENIED`；404 `USER_NOT_FOUND`；503 `AUDIT_CHAIN_BROKEN`。
 - `GET /v1/me`（刷新会话时读取当前用户角色）。
-- 审计：`role_update`、`user_list`。
+- 审计：`role_update`、`user_list`、`session_revoke`（管理员强制下线成功/拒绝）。
 - 存储：`store.users`（`status: active|disabled`、`roles`、`roleOverride`）；LDAP 登录准入在认证路径，不在此页。
 
 ## 5. 已知缺陷与观察
