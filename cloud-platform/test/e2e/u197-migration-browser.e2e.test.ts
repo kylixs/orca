@@ -56,7 +56,7 @@ const LEGACY_APP_FIXTURE = join(ROOT, 'test/fixtures/u197-legacy-app.js.snapshot
  * change: `sha256sum apps/web/app.js` (macOS/Linux) or
  * `Get-FileHash -Algorithm SHA256 apps/web/app.js` (Windows), then rerun.
  * U225 F1: compared LF-normalised (`sha256Lf`), so line endings never matter. */
-const HEAD_APP_SHA256 = 'f45ebb05d60b889f43f78a1898cab16560215f49078d1c52aa954ecf7c906aa9'
+const HEAD_APP_SHA256 = '7f9da003347eb1fcf7ec1094d676f55eb940cf5e7ca3fa7aa18cf0231fe37d45'
 /** U225 P3: sha256 of the fixture body after its 13-line provenance header
  * (`tail -n +14 test/fixtures/u197-legacy-app.js.snapshot | sha256sum`). */
 const LEGACY_FIXTURE_BODY_SHA256 =
@@ -296,6 +296,9 @@ describe('U197 AC9d / AC15(g) 真实 Chromium 迁移与旧构建夹具', () => {
         window.localStorage.setItem('orca.authMode', 'cookie')
         window.localStorage.setItem('orca.access', 'stale-access-u197-ac9d')
         window.localStorage.setItem('orca.refresh', 'stale-refresh-u197-ac9d')
+        // U229 F2: an ownerless key no longer qualifies for the body fallback.
+        window.localStorage.setItem('orca.tokenOwner', 'admin')
+        window.localStorage.setItem('orca.user', JSON.stringify({ username: 'admin' }))
       })
 
       const trace = traceRefresh(page)
@@ -561,10 +564,10 @@ describe('U197 AC9d / AC15(g) 真实 Chromium 迁移与旧构建夹具', () => {
   // 用例），所以这里只留 skip 桩，避免把事实钉住误读为 AC15(g) 已验收。
   test('AC15(g) 单次重载迁移（blocked）', { skip: 'blocked by U219/D17' }, () => {})
 
-  // U225 N3R: a cookie marker can outlive the deployment that set it. Against a
-  // pre-U197 (`never`) server the startup Cookie probe fails, the body fallback
-  // resumes the legacy contract, and `/v1/me` must bind the restored keys.
-  test('U225 N3R Cookie 标记 + never 服务端：启动 body 回退成功后补写 tokenOwner', async () => {
+  // U229 F2 supersedes the U225 N3R ownerless branch: a cookie marker can
+  // outlive the deployment that set it, but an ownerless pre-U221 key cannot
+  // prove which account it belongs to, so it must not drive a body fallback.
+  test('U229 F2 Cookie 标记 + never 服务端：无 owner 旧键不回退、清键并回登录', async () => {
     const context = await browser.newContext()
     const page = await context.newPage()
     try {
@@ -582,7 +585,7 @@ describe('U197 AC9d / AC15(g) 真实 Chromium 迁移与旧构建夹具', () => {
       })
 
       await page.reload({ waitUntil: 'domcontentloaded' })
-      await page.waitForSelector(VIEW_APP, { state: 'visible', timeout: 20_000 })
+      await page.waitForSelector(VIEW_LOGIN, { state: 'visible', timeout: 20_000 })
       const after = await page.evaluate(() => ({
         owner: window.localStorage.getItem('orca.tokenOwner'),
         mode: window.localStorage.getItem('orca.authMode'),
@@ -590,15 +593,12 @@ describe('U197 AC9d / AC15(g) 真实 Chromium 迁移与旧构建夹具', () => {
         refresh: window.localStorage.getItem('orca.refresh')
       }))
 
-      assert.equal(
-        after.owner,
-        USERNAME,
-        'the startup body fallback must bind the restored legacy keys to the account'
-      )
-      assert.equal(after.mode, null, 'the never server clears the stale marker')
-      assert.ok(after.access, 'the fallback persists the access token')
-      assert.ok(after.refresh, 'the fallback persists the refresh token')
-      assert.equal(await page.locator(VIEW_LOGIN).isVisible(), false)
+      assert.equal(after.owner, null)
+      assert.equal(after.access, null, 'the untrusted legacy access is deleted')
+      assert.equal(after.refresh, null, 'the untrusted legacy refresh is deleted')
+      assert.equal(after.mode, 'cookie', 'the marker is not a credential and stays put')
+      assert.equal(await page.locator(VIEW_APP).isVisible(), false)
+      assert.equal(await page.locator(VIEW_LOGIN).isVisible(), true)
     } finally {
       await context.close()
     }

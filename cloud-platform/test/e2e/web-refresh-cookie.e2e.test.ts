@@ -89,7 +89,8 @@ describe('U197 S4 Web Cookie mode（happy-dom + 真实 createApp）', () => {
     const page = loadWebConsolePage(base, {
       platformOrigin: ORIGIN,
       cookieJar: jar,
-      storage: { 'orca.refresh': 'legacy-refresh' }
+      // U229 F2: only an owner match may survive a login as a migration path.
+      storage: { 'orca.refresh': 'legacy-refresh', 'orca.tokenOwner': 'admin' }
     })
     await page.settle()
     assert.equal(page.window.localStorage.getItem('orca.access'), null, 'precondition')
@@ -177,7 +178,13 @@ describe('U197 S4 Web Cookie mode（happy-dom + 真实 createApp）', () => {
     const page = loadWebConsolePage(base, {
       platformOrigin: ORIGIN,
       cookieJar: new Map(),
-      storage: { 'orca.refresh': legacy.refreshToken, 'orca.authMode': 'cookie' }
+      // U229 F2: AC9a migration requires the key's owner to match the cached user.
+      storage: {
+        'orca.refresh': legacy.refreshToken,
+        'orca.authMode': 'cookie',
+        'orca.tokenOwner': 'admin',
+        'orca.user': JSON.stringify({ username: 'admin' })
+      }
     })
     await page.settle()
 
@@ -196,7 +203,13 @@ describe('U197 S4 Web Cookie mode（happy-dom + 真实 createApp）', () => {
     const page = loadWebConsolePage(base, {
       platformOrigin: ORIGIN,
       cookieJar: new Map(),
-      storage: { 'orca.refresh': 'expired-refresh', 'orca.authMode': 'cookie' }
+      // U229 F2: a trusted owner keeps the one-shot body fallback.
+      storage: {
+        'orca.refresh': 'expired-refresh',
+        'orca.authMode': 'cookie',
+        'orca.tokenOwner': 'admin',
+        'orca.user': JSON.stringify({ username: 'admin' })
+      }
     })
     await page.settle()
 
@@ -240,7 +253,8 @@ describe('U197 S4 Web Cookie mode（happy-dom + 真实 createApp）', () => {
     const page = loadWebConsolePage(base, {
       platformOrigin: ORIGIN,
       cookieJar: jar,
-      storage: { 'orca.refresh': 'legacy-refresh' }
+      // U229 F2: only an owner match may survive a login as a migration path.
+      storage: { 'orca.refresh': 'legacy-refresh', 'orca.tokenOwner': 'admin' }
     })
     await page.settle()
     await page.submitLogin('admin', 'Adm1n!')

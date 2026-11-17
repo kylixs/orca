@@ -18,6 +18,8 @@ const state = {
   refreshToken: localStorage.getItem('orca.refresh') ?? '',
   /** U197: refresh is an HttpOnly cookie; tokens stay in memory. */
   cookieMode: localStorage.getItem(AUTH_MODE_KEY) === COOKIE_AUTH_MODE,
+  /** U229 F1: bumps on login/logout; an older refresh may not write into it. */
+  authEpoch: 0,
   user: null,
   projects: [],
   /** Admin-only history list; live views never read it (U116①/T2). */
@@ -55,6 +57,8 @@ function relative(ts) {
 }
 
 async function api(path, init = {}, { retried = false } = {}) {
+  // U229 F1: a 401 only belongs to the epoch that sent this request.
+  const epoch = state.authEpoch
   const accessToken = state.accessToken
   const res = await fetch(path, {
     ...init,
@@ -66,13 +70,15 @@ async function api(path, init = {}, { retried = false } = {}) {
   })
   // U197: in Cookie mode the session is provable without a body refresh token.
   if (res.status === 401) {
-    if (!retried && (state.cookieMode || state.refreshToken)) {
+    if (!retried && state.authEpoch === epoch && (state.cookieMode || state.refreshToken)) {
       const refresh = await refreshSession(accessToken)
-      if (refresh === 'ok') return api(path, init, { retried: true })
+      // U229 F1: a stale result is not a verdict on the current session; hand the
+      // original 401 to the caller without replaying or signing anyone out.
+      if (refresh === 'ok' && state.authEpoch === epoch) return api(path, init, { retried: true })
       // U222 N1: a transport failure is not a verdict on the session. Keep it and
       // let the caller see the failed request; only an HTTP rejection signs out.
-      if (refresh === 'rejected') logout()
-    } else if (retried) {
+      if (refresh === 'rejected' && state.authEpoch === epoch) logout()
+    } else if (retried && state.authEpoch === epoch) {
       // U228: one refresh + one replay both 401 means the session is dead (for
       // example the account was disabled). Sign out instead of leaving a shell
       // that only shows "加载失败"; logout never refreshes, so this cannot loop.
@@ -110,7 +116,7 @@ function clearLegacyTokens() {
 }
 
 /** One no-body Cookie refresh. Success is also the migration gate for old keys. */
-async function refreshWithCookie() {
+async function refreshWithCookie(epoch) {
   let res
   try {
     res = await fetch('/v1/auth/refresh', {
@@ -123,10 +129,13 @@ async function refreshWithCookie() {
     })
   } catch {
     // U221 F2 / U222 N1: transport failure, never an escaped rejection.
-    return 'error'
+    return state.authEpoch === epoch ? 'error' : 'stale'
   }
+  // U229 F1: every await boundary checks ownership before touching state.
+  if (state.authEpoch !== epoch) return 'stale'
   if (!res.ok) return 'rejected'
   const body = await res.json().catch(() => ({}))
+  if (state.authEpoch !== epoch) return 'stale'
   if (typeof body.accessToken !== 'string' || body.accessToken === '') return 'rejected'
   state.accessToken = body.accessToken
   clearLegacyTokens()
@@ -135,7 +144,8 @@ async function refreshWithCookie() {
 }
 
 /** Legacy body refresh; also the one fallback when the Cookie was lost. */
-async function refreshWithBody() {
+async function refreshWithBody(epoch) {
+  if (state.authEpoch !== epoch) return 'stale'
   if (!state.refreshToken) return 'rejected'
   let res
   try {
@@ -149,10 +159,12 @@ async function refreshWithBody() {
     })
   } catch {
     // U221 F2 / U222 N1: the caller decides, but this is never a crash.
-    return 'error'
+    return state.authEpoch === epoch ? 'error' : 'stale'
   }
+  if (state.authEpoch !== epoch) return 'stale'
   if (!res.ok) return 'rejected'
   const body = await res.json().catch(() => ({}))
+  if (state.authEpoch !== epoch) return 'stale'
   if (typeof body.accessToken !== 'string' || body.accessToken === '') return 'rejected'
   if (body.refreshCookie === true) {
     // Server now issues Cookies, but no no-body success yet: keep the old keys.
@@ -172,26 +184,52 @@ async function refreshWithBody() {
   return 'ok'
 }
 
-/** `ok` | `rejected` (HTTP 4xx/5xx) | `error` (transport failure). */
-function refreshSession(staleAccess) {
+/** U229 F2: a pre-U221 key with no owner cannot prove it belongs to this browser. */
+function legacyOwnerAllowsFallback() {
+  const owner = localStorage.getItem(TOKEN_OWNER_KEY)
+  let username = null
+  try {
+    username = JSON.parse(localStorage.getItem('orca.user') ?? '').username ?? null
+  } catch {
+    username = null
+  }
+  if (owner !== null && owner !== '' && username === owner) return true
+  clearLegacyTokens()
+  return false
+}
+
+/** `ok` | `rejected` (HTTP 4xx/5xx) | `error` (transport failure) | `stale`. */
+function refreshSession(staleAccess, { startup = false } = {}) {
   // The token this request carried is already gone: someone else renewed first.
-  if (state.accessToken !== staleAccess) return Promise.resolve('ok')
+  if (state.accessToken !== staleAccess) {
+    // An empty token means logout won the race; never report that as renewed.
+    return Promise.resolve(state.accessToken === '' ? 'stale' : 'ok')
+  }
   if (!refreshInFlight) {
-    refreshInFlight = (async () => {
+    const epoch = state.authEpoch
+    let flight
+    flight = (async () => {
       try {
         // Cookie first; at most one body fallback per cascade, never a loop.
         if (state.cookieMode) {
-          const cookie = await refreshWithCookie()
+          const cookie = await refreshWithCookie(epoch)
+          if (cookie === 'stale') return 'stale'
           if (cookie === 'ok') return 'ok'
           // U222 N1: an unreachable server proves nothing about the Cookie
           // session, so do not spend the legacy body token on it.
           if (cookie === 'error') return 'error'
+          if (state.authEpoch !== epoch) return 'stale'
+          // U229 F2: at startup an ownerless legacy key is stale pre-U221 data,
+          // not a credential for whichever account it happens to point at.
+          if (startup && !legacyOwnerAllowsFallback()) return 'rejected'
         }
-        return await refreshWithBody()
+        return await refreshWithBody(epoch)
       } finally {
-        refreshInFlight = null
+        // U229 F1: an old flight must not clear the new session's in-flight ref.
+        if (refreshInFlight === flight) refreshInFlight = null
       }
     })()
+    refreshInFlight = flight
   }
   return refreshInFlight
 }
@@ -4902,6 +4940,9 @@ function confirmDialog(text) {
 /* ---------------- auth ---------------- */
 
 async function login(username, password) {
+  // U229 F1: requesting a login already abandons the previous generation.
+  state.authEpoch += 1
+  refreshInFlight = null
   let res
   try {
     res = await fetch('/v1/auth/login', {
@@ -4931,12 +4972,15 @@ async function login(username, password) {
     err.code = body.error?.code
     throw err
   }
+  // A successful login is its own generation; an in-flight refresh is now stale.
+  state.authEpoch += 1
+  refreshInFlight = null
   // U197: only a real Set-Cookie response sets the capability. Anything else
   // (old server, never mode, non-browser) keeps the localStorage contract.
-  // U221 F3: tokens left by another account must never serve as this account's
-  // fallback; a missing owner is pre-U221 data and keeps the migration path.
+  // U229 F2: an ownerless pre-U221 key is not this account's fallback; only an
+  // owner match may survive to complete the migration.
   const previousOwner = localStorage.getItem(TOKEN_OWNER_KEY)
-  if (previousOwner !== null && previousOwner !== body.user.username) {
+  if (localStorage.getItem('orca.refresh') && previousOwner !== body.user.username) {
     clearLegacyTokens()
   }
   // U221 F4: a fresh login supersedes a logout that never reached the server.
@@ -4971,6 +5015,9 @@ async function sendLogout() {
 }
 
 function logout() {
+  // U229 F1: sign-out is a new generation; no in-flight refresh may write after it.
+  state.authEpoch += 1
+  refreshInFlight = null
   // R10: the overlay goes first, and the iframe is told to drop its session.
   closeWorkspaceForLogout()
   // U221 F4: the HttpOnly Cookie can only be cleared by the server, so remember
@@ -5149,7 +5196,7 @@ window.addEventListener('hashchange', () => {
     // U197: a proven Cookie deployment recovers from the HttpOnly cookie alone.
     // One refresh attempt only; a failure signs out instead of retrying.
     if (state.cookieMode) {
-      if ((await refreshSession(state.accessToken)) === 'ok') {
+      if ((await refreshSession(state.accessToken, { startup: true })) === 'ok') {
         try {
           // Why retried: the bootstrap must not start a second refresh chain.
           const me = await api('/v1/me', {}, { retried: true })
