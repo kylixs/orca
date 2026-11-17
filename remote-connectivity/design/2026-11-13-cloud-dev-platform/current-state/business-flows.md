@@ -77,7 +77,7 @@
 | 8  | Cookie 缺失                          | 服务端回退 body 刷新；Cookie 模式客户端若无旧 refresh → `rejected` → 回登录，无循环；启动时一次失败即登录页                                                                               | 重新登录                | m01 §3；`app.js:5314-5337`                                               |
 | 9  | 传输失败                             | 客户端记 `error`：页内请求**不登出**、保留会话、恢复后可重试；启动探测失败 → 登录页，不空白/无未捕获异常                                                                                  | 恢复网络后重试          | m01 §3；`app.js:174-179,208-212,278-280`                                 |
 | 10 | 禁用账号 403 `USER_DISABLED`         | 登录非 active → 403（审计 login denied，不发令牌/Cookie）；刷新 Cookie/body 两源 → 撤销+bump epoch+清 Cookie+401                                                                          | 联系管理员              | m01 §3；`server.ts:3581-3594,3673-3680,3822-3828`                        |
-| 11 | refresh 5xx/429                      | ⛔ **HEAD 仍误登出**：客户端对刷新任意 `!res.ok` 判 `rejected`，`api()` 随即 `logout()`；5xx/429 不代表会话失效                                                                           | 重新登录（已知缺陷）    | `app.js:155-242`；defect-ledger U229 F7                                  |
+| 11 | refresh 5xx/429                      | ✅ 已修（U234 F7）：`refreshVerdict` 将 403/408/429/5xx 判为 `error`——**不登出、保会话**，业务错误交给调用方                                                                                   | 稍后重试                | `app.js:155-159`；U234                                                  |
 | 12 | refresh 被拒（4xx）                  | `logout()`，清本地并回登录页                                                                                                                                                             | 重新登录                | m01-A7                                                                   |
 | 13 | `GET /v1/me` 失败（含 refresh 后仍 401） | 清 access、移除缓存 user、显示登录页；仅缓存 user 不足以进入；重放仍 401 在 HEAD 直接登出（U228）                                                                                         | 重新登录                | m01-A8                                                                   |
 | 14 | 登出请求失败                         | 错误被吞，本地仍清空并回登录页；`orca.pendingLogout` 保留，下次加载先显示登录页再重试一次                                                                                                 | 无（本地已退出）        | m01-A9                                                                   |
@@ -101,7 +101,7 @@
 ### 6. 覆盖状态
 
 - 正常步骤 **8**，已覆盖 **7**（401→refresh→单请求重放由 `session-renewal`/`u197-web-cookie-browser` 钉住；密码切换由 `web-exploratory-fixes` 覆盖）；第 8 步迁移仅 AC9a 已覆盖，AC9b/AC9c ⛔ 未实现（U219/D17）。
-- 失败分支 **15**，已覆盖 **14**；未覆盖：refresh 5xx/429 仍按 `rejected` 误登出（U229 F7，HEAD 未修）。
+- 失败分支 **15**，已覆盖 **15**（refresh 5xx/429 误登出已由 U234 F7 修复）。
 - 已知未实现/缺口：迁移探测（U219/D17）；U103 属工作区侧刷新，不在本链路。
 
 ---
