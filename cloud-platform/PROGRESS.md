@@ -3976,3 +3976,5 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **e2e 快照复跑**：隔离 worktree `ec41c367` 内 `VITE_EXPOSE_STORE=true --mode e2e` 重建 → 旅程 **13/13 PASS**，a2 三方一致（DOM = store = 宿主，16ms），主树 `out/` 未动，快照宿主按 PID 清理。证据 `evidence/journey-e2e-20261117-0912/`。
 - **U163 P3 设计 v1 + 双独立评审**（代码事实 / 产品语义）：均 CHANGES-REQUIRED——revision 无宿主代际（重启后永久 no-op）、失焦≠没在看、焦点采纳与权威矩阵 §2-5 冲突、第二份 apply 路径、E1/E5 伪绿。主会话裁定**收窄**：只做「获焦/可见/重连时单次 `list` 布局补齐」，不新增 wire 字段，连续应用车道暂缓；复用面清单已出（`refreshLocalStructuredSessionTabs`/`buildMirroredHostGroups`/`updateHostSessionGroupIdMappings` 等现成件）。v2 修订在途。
 - 现网状态 m09 已同步 U169-L3 与收窄方向（`39ebafa5341`）。
+
+- **W9 双线在 HEAD 复跑（U171 之后）**：快照 `39ebafa5341`（= `ec41c367` + 1 docs）e2e 口味重建；**A 线 1/1 PASS**（desktop 黄金旅程，route=direct、PTY 回显 546ms、marker×3、审计 4 条全在基线）、**B 线 2/2 PASS**（黄金旅程 + 终端流式/文件树双证）；补跑 **C6 桌面拖拽 1/1 PASS**（宿主 oracle：跨组移动成员一致、组内顺序 `dom == host == [e00cdc01, c653b80d]`、四阶段 toast 空）。主树 `out/` 未动、快照按 PID 清理。证据 `evidence/w9-head-20261117-091324/`。**结论：当前 HEAD 双线黄金旅程全绿**（web 13/13 + W9 A/B）。
