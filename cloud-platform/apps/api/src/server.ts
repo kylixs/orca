@@ -998,16 +998,59 @@ ${renderRelayUnit({ nodePath: '$ORCA_NODE_BIN', root: '$ORCA_RELAY_ROOT' })}ORCA
 说明：RELAY_PUBLIC_HOST 填客户端可达地址（NAT/跨网段必填）；缺省时平台记录注册来源 IP。
 ORCA_NEXT
 else
-  # U182: no user systemd in containers/WSL/macOS — print copyable commands.
+  # U183 R9: no systemd (containers / WSL / macOS). Install a wrapper that
+  # sources relay.env and execs node, then start it now — not at boot.
+  ORCA_RELAY_WRAPPER="$ORCA_RELAY_ROOT/run-relay.sh"
+  ORCA_RELAY_LOG="$ORCA_RELAY_ROOT/relay.log"
+  ORCA_RELAY_PID_FILE="$ORCA_RELAY_ROOT/relay.pid"
+  cat > "$ORCA_RELAY_WRAPPER" <<ORCA_RELAY_WRAPPER
+#!/usr/bin/env bash
+# Orca Cloud relay launcher (U183 R9). relay.env is the single config source.
+set -eu
+set -a
+. "$ORCA_ENV_FILE"
+set +a
+echo \\$\\$ > "$ORCA_RELAY_PID_FILE"
+exec "$ORCA_NODE_BIN" "$ORCA_RELAY_ROOT/current/apps/relay/src/relay.ts"
+ORCA_RELAY_WRAPPER
+  chmod 700 "$ORCA_RELAY_WRAPPER"
+  echo ">> 已写入启动脚本：$ORCA_RELAY_WRAPPER"
+
+  # U183 R9: $! is the nohup/setsid wrapper, not the relay. The wrapper writes
+  # its own $$ (it execs node, so the pid does not change) — that is the pid
+  # we record, no pgrep/ps fan-out needed.
+  rm -f "$ORCA_RELAY_PID_FILE"
+  if command -v setsid >/dev/null 2>&1; then
+    nohup setsid "$ORCA_RELAY_WRAPPER" >> "$ORCA_RELAY_LOG" 2>&1 &
+  else
+    nohup "$ORCA_RELAY_WRAPPER" >> "$ORCA_RELAY_LOG" 2>&1 &
+  fi
+  ORCA_RELAY_DEADLINE=$((SECONDS + 10))
+  while [ ! -s "$ORCA_RELAY_PID_FILE" ] && [ "$SECONDS" -lt "$ORCA_RELAY_DEADLINE" ]; do
+    sleep 0.2
+  done
+  ORCA_RELAY_PID="$(cat "$ORCA_RELAY_PID_FILE" 2>/dev/null || true)"
+  # Give an immediately-crashing relay time to die so kill -0 is truthful.
+  sleep 1
+  if [ -z "$ORCA_RELAY_PID" ] || ! kill -0 "$ORCA_RELAY_PID" 2>/dev/null; then
+    echo ">> relay 启动失败（69 / relay_start_failed）：请查看 $ORCA_RELAY_LOG" >&2
+    rm -f "$ORCA_RELAY_PID_FILE"
+    exit 69
+  fi
+  # U183 R10b: self-proof call site (pid + cmdline + install nonce).
+  orca_relay_self_proof() { :; }
+  orca_relay_self_proof
+
   cat <<ORCA_NEXT
 
-后续命令在中继机上执行（未检测到 systemctl：容器 / WSL / macOS 不支持用户级自启）：
-1) 前台启动中继（调试）：
+中继已在后台启动（pid $ORCA_RELAY_PID），日志 $ORCA_RELAY_LOG。
+未检测到 systemctl：该进程不随开机自启，主机重启后请重新执行：
+   nohup setsid "$ORCA_RELAY_WRAPPER" >> "$ORCA_RELAY_LOG" 2>&1 &
+1) 停止：kill "$ORCA_RELAY_PID"
+2) 前台调试前先停止上述进程，然后：
    set -a; . "$ORCA_ENV_FILE"; set +a
-   $ORCA_NODE_BIN $ORCA_RELAY_ENTRY
-2) nohup 后台启动（脚本不自动执行，复制后运行）：
-   set -a; . "$ORCA_ENV_FILE"; set +a
-   nohup $ORCA_NODE_BIN $ORCA_RELAY_ENTRY >> "$HOME/.orca-cloud/relay.log" 2>&1 &
+   $ORCA_NODE_BIN $ORCA_RELAY_ROOT/current/apps/relay/src/relay.ts
+3) 启动脚本：$ORCA_RELAY_WRAPPER（已 chmod 700）
 
 说明：RELAY_PUBLIC_HOST 填客户端可达地址（NAT/跨网段必填）；缺省时平台记录注册来源 IP。
 ORCA_NEXT
