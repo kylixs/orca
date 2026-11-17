@@ -19,9 +19,13 @@ const EVIDENCE = 'u47-static-cache'
 type RawReply = { status: number; headers: IncomingHttpHeaders; body: Buffer }
 
 /** Raw HTTP so the test, not fetch, decides whether the body is decompressed. */
-function rawGet(url: string, headers: Record<string, string> = {}): Promise<RawReply> {
+function rawRequest(
+  url: string,
+  method: 'GET' | 'HEAD',
+  headers: Record<string, string> = {}
+): Promise<RawReply> {
   return new Promise((resolve, reject) => {
-    const req = httpRequest(url, { method: 'GET', headers }, (res) => {
+    const req = httpRequest(url, { method, headers }, (res) => {
       const chunks: Buffer[] = []
       res.on('data', (chunk: Buffer) => chunks.push(chunk))
       res.on('end', () =>
@@ -36,6 +40,10 @@ function rawGet(url: string, headers: Record<string, string> = {}): Promise<RawR
     req.on('error', reject)
     req.end()
   })
+}
+
+function rawGet(url: string, headers: Record<string, string> = {}): Promise<RawReply> {
+  return rawRequest(url, 'GET', headers)
 }
 
 function makeWebRoot(): string {
@@ -142,6 +150,38 @@ test('U47 静态资源：不可变缓存头、HTML 短缓存、gzip 协商与 ET
         cacheControl: notModified.headers['cache-control']
       }
     })
+  } finally {
+    await app.close()
+  }
+})
+
+/**
+ * U106-T12 residual: HEAD never enters the static branch, so it lands on the
+ * unified JSON 404 — that exit (and any unknown API path) must carry the same
+ * Referrer-Policy as a static hit.
+ */
+test('U106-T12 非 GET（HEAD）与未知 API 404 携带 Referrer-Policy', async () => {
+  const webRoot = makeWebRoot()
+  const archiveDir = join(mkdtempSync(join(tmpdir(), 'orca-static-head-archive-')), 'releases')
+  mkdirSync(archiveDir, { recursive: true })
+  const app = createApp({ port: 0, webRoot, webReleaseArchiveDir: archiveDir })
+  try {
+    const port = await app.listen()
+    const base = `http://127.0.0.1:${port}`
+    const release = (await (await fetch(`${base}/v1/web/release`)).json()) as ReleaseBody
+    const appPath = release.assets['app.js']?.path ?? ''
+    assert.match(appPath, /^\/assets\/[0-9a-f]{6,32}\/app\.js$/)
+
+    for (const path of ['/', appPath]) {
+      const head = await rawRequest(`${base}${path}`, 'HEAD')
+      assert.equal(head.status, 404, `HEAD ${path} keeps the existing non-GET fallthrough status`)
+      assert.equal(head.headers['referrer-policy'], 'no-referrer', `HEAD ${path}`)
+      assert.equal(head.body.length, 0)
+    }
+
+    const unknown = await rawGet(`${base}/v1/no-such-endpoint`)
+    assert.equal(unknown.status, 404)
+    assert.equal(unknown.headers['referrer-policy'], 'no-referrer', 'unknown API path')
   } finally {
     await app.close()
   }

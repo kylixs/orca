@@ -76,6 +76,7 @@ import {
   sendStaticNotFound,
   STATIC_HASHED_CACHE_CONTROL,
   STATIC_HTML_CACHE_CONTROL,
+  STATIC_SECURITY_HEADERS,
   STATIC_UNHASHED_CACHE_CONTROL,
   weakStaticEtag
 } from './static-delivery.ts'
@@ -167,7 +168,11 @@ type AuthedRequest = { user: User; sessionId: string }
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body)
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
+  // Every JSON exit, including the HEAD/404 fallthrough, carries the static security headers.
+  res.writeHead(status, {
+    ...STATIC_SECURITY_HEADERS,
+    'content-type': 'application/json; charset=utf-8'
+  })
   res.end(payload)
 }
 
