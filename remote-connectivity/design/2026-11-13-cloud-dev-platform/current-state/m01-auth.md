@@ -140,7 +140,16 @@
 - 🟡 U106：全站唯一 URL 路由（含登录回跳/刷新恢复）在途；现状仅 hash 页级恢复。
 - 🔴 U103：刷新 Orca Web 停留在旧登录界面（工作区侧续会话，非平台登录页）。
 
-## 6. 测试覆盖
+## 6. 认证端点不变式表（§2-118）
+
+| 端点 | 凭据来源 | fail-closed 顺序 | 幂等/去重键 | 撤销范围 | 审计 |
+|---|---|---|---|---|---|
+| `POST /v1/auth/login` | 账密 + LDAP | 锁定/组门/禁用 → 签发；无写审计失败回滚 | 无（每次登录新 device/session） | — | `login` success/denied（禁用/错密）；失败无副作用 |
+| `POST /v1/auth/refresh` | Cookie 优先 / body 回退 | CSRF→重复 Cookie→撤销/过期→禁用→轮换 | session 内 current/previous + grace | 过期/reuse/禁用/管理员 → revoked+epoch；Cookie 源不轮换 | `refresh.grace_reuse`/`reuse_detected`；过期零事件（U243① 待 D20） |
+| `POST /v1/auth/logout` | Bearer + Cookie + 可选 body refresh | 清 Cookie → 定位全部显式凭据 → 撤销（已撤销跳过） | `revokedAt`（U241 幂等） | session（不吊销 device） | `logout` success（已撤销不重复）/denied（UNKNOWN_REFRESH/USER_DISABLED） |
+| `POST /v1/users/:id/sessions/revoke` | Bearer（admin） | 权限→审计可写→撤销；审计失败 503 无副作用 | per-user 队列 leader outcome；`revokedAt` | 全部 session + user 撤销集合；不吊销 device | `session_revoke` success（leader 每次）/denied；并发 follower 无 |
+
+## 7. 测试覆盖
 
 **认证/会话专项（HEAD 已提交）**
 
@@ -174,7 +183,7 @@
 - `cloud-platform/test/e2e/u106-console-routing.e2e.test.ts`：登录回跳与深链刷新（联动 M2）。
 - `cloud-platform/test/cloud-admission-parity.test.ts`：平台/宿主凭证实现一致性（认证凭证族，不含登录 UI）。
 
-## 7. 未覆盖 / 存疑
+## 8. 未覆盖 / 存疑
 
 - ⛔ **U219/D17（AC9b/AC9c/AC15(g)）**：迁移分支「无能力标记时加载先发一次无 body 探测」未实现；`u197-migration-browser` 的 AC15(g) 单次重载用例与 `u197-web-cookie-browser` 的 AC9c 均为 skip。现状是渐进迁移，且换新构建首次加载不迁移（INVALID-FACT 已如实标注）。
 - ✅ **U228**：禁用账号登录/刷新复查与「重放仍 401 即登出」已合入；覆盖见 `u228-disabled-user-session.e2e.test.ts`、`u228-web-disabled-session.e2e.test.ts`。
