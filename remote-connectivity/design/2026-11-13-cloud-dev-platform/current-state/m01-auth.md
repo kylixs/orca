@@ -149,6 +149,13 @@
 - `cloud-platform/test/e2e/u197-ac-probes.e2e.test.ts`：**真实 Chromium**——AC1 登录/刷新/登出后存储无令牌；AC2 access 过期 reload 恰好一次无 body 刷新；AC4 存储/Cookie/URL/console/响应体/审计均无 refresh。
 - `cloud-platform/test/e2e/u197-migration-browser.e2e.test.ts`：**真实 Chromium**——AC9d 标记真 + 无有效 Cookie + 失效旧键（1 次无 body + 1 次 body，均 401，保留旧键）；AC15(g) 旧构建字面量 `undefined` 夹具；INVALID-FACT 换新构建首次加载不迁移；AC15(g) 单次重载迁移 **skip**；U225 N3R Cookie 标记 + never 服务端补写 `tokenOwner`、纯 Cookie 模式不写；伪造 Cookie + 假 body 判别力。
 - `cloud-platform/test/e2e/u198-legacy-reload.e2e.test.ts`：**真实 Chromium**——旧 localStorage 模式 access 过期 reload 恰一次 body 刷新、access/refresh 轮换、`tokenOwner` 回填；负例失效 refresh + 过期 access 恰一次 401 后回登录、无循环。
+- `cloud-platform/test/e2e/u228-disabled-user-session.e2e.test.ts` / `u228-web-disabled-session.e2e.test.ts`：**in-process + happy-dom**——禁用登录 403 不建 session/device、刷新两源撤销+bump+清 Cookie、旧 access 立即 401；客户端重放仍 401 即登出、启动路径同分支仅一次刷新（U228）。
+- `cloud-platform/test/e2e/u229-web-refresh-epoch.e2e.test.ts`：**happy-dom**——刷新在途登出不复活、跨账号覆盖被代际拦截、登录清无 owner/异 owner 旧键、Cookie 启动无 owner 不回退（U229 F1/F2）。
+- `cloud-platform/test/e2e/u229-web-logout-grace.e2e.test.ts`：**happy-dom**——grace 回显不持久化 previous/不改标记、登出携带 body refresh、非 SESSION_EXPIRED 401 不登出（U229 F3/F4、U230③）。
+- `cloud-platform/test/e2e/u229-web-startup-resilience.e2e.test.ts`：**happy-dom（timerScale）**——启动挂起超时落登录页、登录 200 非契约响应校验、刷新 503 保会话、未处理拒绝修复（U229 F5/F6/F7/F11）。
+- `cloud-platform/test/e2e/u230-disabled-user-edges.e2e.test.ts`：**in-process**——Cookie previous/宽限禁用、已删用户两源、假 body+有效 Cookie、禁用登录不建 device、`/v1/audit/verify` 全链（U230④）。
+- `cloud-platform/test/e2e/u229-logout-body.e2e.test.ts`：**in-process**——登出 body refresh 撤销、未知值 200 不撤销并审计、非对象 body（null/标量/数组）不 500（U229 F10、U232）。
+- `cloud-platform/test/e2e/u197-web-cookie-browser.e2e.test.ts` 内新增：U232 慢登出（`route.fetch()`+延迟 fulfill）不清新 Cookie、refresh 在途跨登录不覆盖新 Cookie。
 - 探索报告（工作文档，不入库）：`cloud-platform/test-reports/u197-auth-exploration-20261118.md`——真实 API + 真实 headless Chromium 32 PASS / 1 SUSPECT（E1=U228），覆盖禁用账号、多标签、Cookie 边界、传输失败、legacy→cookie 回滚。
 
 **既有登录/准入套件**
