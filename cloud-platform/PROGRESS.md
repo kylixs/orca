@@ -3894,6 +3894,14 @@ W8 审计通过（0 blocker/major）：断言钉死目标变异、位置合理�
 - **键硬化**（`a2d8c9706b4`）：账本环境维度 + 映射 JSON 元组；**U162 leaf 持久化**（`2ba764f074f`）：同父换 leaf 写 `activeLeafId`。
 - **C6 证据/spec 审计**在跑。
 
+### 2026-11-17 09:5x 轮：U171 闭环；最终构建/部署/C6/冒烟全 PASS
+
+- **U171（`b669acce995`）**：桌面配对窗口无 known 宿主组集合导致 move 误判；修复=无布局帧时经 `session.tabs.list` 按成员解析目标组（失败诚实 false+toast）。**C6 spec PASS**。
+- **最终统一构建**（`evidence/final-build-c6-20261117-084805/`）：main `a5857b77`（U162 leaf/U168）、preload `9727610c`、web `a74552de`（U171/键硬化）；无仪器化；full reseed 双宿主加载新 main、`failures=[]`。
+- **复验**：C6 1 passed（51.3s，toast 全空、reorder 宿主一致）；web 表单登录默认选可用项目→刷新恢复、served=磁盘、console/page 0。
+- **加固审计**：键硬化 PASS（9 生产调用全带环境）、U162 leaf PASS（同父/无跨字段）。
+- 主线等待用户三项裁定；人工验收仅剩 G04/G24 部署项。
+
 ### 四通道并发执行（启动，2026-11-14）
 
 按细粒度拆分与三权分立纪律并发起跑：通道② **W6a**（中继浏览器模式，relay.ts 域）、通道③ **W10**（客户端零 env 登录，src/main+renderer 登录域）、通道④ **W5a**（详情页终端组件，cloud-admin 域）三个实现代理并行；通道① 等在途 W2（QA 修复）完成后接 W8。每令完成→独立测试代理→独立审计代理→主会话关闭放行下一个。
