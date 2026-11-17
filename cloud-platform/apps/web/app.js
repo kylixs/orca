@@ -5,6 +5,13 @@ import { buildHash, DEFAULT_ROUTE, parseHash } from './router/routes.js'
 /** U197: capability flag only — never a credential. Absence means “unknown”. */
 const AUTH_MODE_KEY = 'orca.authMode'
 const COOKIE_AUTH_MODE = 'cookie'
+/** U221 F3: which account wrote the legacy localStorage tokens. */
+const TOKEN_OWNER_KEY = 'orca.tokenOwner'
+/** U221 F4: set when a logout could not reach the server; retried on next load. */
+const PENDING_LOGOUT_KEY = 'orca.pendingLogout'
+/** U221 F5: keep in sync with WEB_CONTRACT_VERSION in apps/api/src/web-release.ts. */
+const WEB_CONTRACT_HEADER = 'x-orca-web-contract'
+const WEB_CONTRACT_VERSION = 1
 
 const state = {
   accessToken: localStorage.getItem('orca.access') ?? '',
@@ -89,15 +96,25 @@ function clearLegacyTokens() {
   state.refreshToken = ''
   localStorage.removeItem('orca.access')
   localStorage.removeItem('orca.refresh')
+  localStorage.removeItem(TOKEN_OWNER_KEY)
 }
 
 /** One no-body Cookie refresh. Success is also the migration gate for old keys. */
 async function refreshWithCookie() {
-  const res = await fetch('/v1/auth/refresh', {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: { 'content-type': 'application/json' }
-  })
+  let res
+  try {
+    res = await fetch('/v1/auth/refresh', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'content-type': 'application/json',
+        [WEB_CONTRACT_HEADER]: String(WEB_CONTRACT_VERSION)
+      }
+    })
+  } catch {
+    // U221 F2: a transport failure is a failed probe, not an escaped rejection.
+    return false
+  }
   if (!res.ok) return false
   const body = await res.json().catch(() => ({}))
   if (typeof body.accessToken !== 'string' || body.accessToken === '') return false
@@ -110,11 +127,20 @@ async function refreshWithCookie() {
 /** Legacy body refresh; also the one fallback when the Cookie was lost. */
 async function refreshWithBody() {
   if (!state.refreshToken) return false
-  const res = await fetch('/v1/auth/refresh', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ refreshToken: state.refreshToken })
-  })
+  let res
+  try {
+    res = await fetch('/v1/auth/refresh', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        [WEB_CONTRACT_HEADER]: String(WEB_CONTRACT_VERSION)
+      },
+      body: JSON.stringify({ refreshToken: state.refreshToken })
+    })
+  } catch {
+    // U221 F2: the caller treats this as “refresh failed”, never as a crash.
+    return false
+  }
   if (!res.ok) return false
   const body = await res.json().catch(() => ({}))
   if (typeof body.accessToken !== 'string' || body.accessToken === '') return false
@@ -162,6 +188,8 @@ function setTokens(access, refresh) {
   state.refreshToken = refresh
   localStorage.setItem('orca.access', access)
   localStorage.setItem('orca.refresh', refresh)
+  // U221 F3: bind persisted tokens to the account that wrote them.
+  if (state.user?.username) localStorage.setItem(TOKEN_OWNER_KEY, state.user.username)
 }
 
 function toast(text) {
@@ -4854,7 +4882,10 @@ async function login(username, password) {
   try {
     res = await fetch('/v1/auth/login', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        [WEB_CONTRACT_HEADER]: String(WEB_CONTRACT_VERSION)
+      },
       body: JSON.stringify({
         username,
         password,
@@ -4878,24 +4909,50 @@ async function login(username, password) {
   }
   // U197: only a real Set-Cookie response sets the capability. Anything else
   // (old server, never mode, non-browser) keeps the localStorage contract.
+  // U221 F3: tokens left by another account must never serve as this account's
+  // fallback; a missing owner is pre-U221 data and keeps the migration path.
+  const previousOwner = localStorage.getItem(TOKEN_OWNER_KEY)
+  if (previousOwner !== null && previousOwner !== body.user.username) {
+    clearLegacyTokens()
+  }
+  // U221 F4: a fresh login supersedes a logout that never reached the server.
+  localStorage.removeItem(PENDING_LOGOUT_KEY)
   setCookieMode(body.refreshCookie === true)
-  setTokens(body.accessToken, body.refreshToken)
   state.user = body.user
+  setTokens(body.accessToken, body.refreshToken)
   state.deviceId = body.device.id
   localStorage.setItem('orca.user', JSON.stringify(body.user))
   localStorage.setItem('orca.device', body.device.id)
 }
 
+/** U221 F4: tell the server, and only forget the pending marker once it heard us. */
+async function sendLogout() {
+  const accessToken = state.accessToken
+  try {
+    const res = await fetch('/v1/auth/logout', {
+      method: 'POST',
+      // U197: the Cookie is the credential in Cookie mode; the expired Bearer
+      // stays attached so the server can revoke whichever session it can locate.
+      credentials: 'same-origin',
+      headers: {
+        [WEB_CONTRACT_HEADER]: String(WEB_CONTRACT_VERSION),
+        ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {})
+      }
+    })
+    // 401 means the server was reached and the credential is already gone.
+    if (res.ok || res.status === 401) localStorage.removeItem(PENDING_LOGOUT_KEY)
+  } catch {
+    // Keep the marker so the next page load retries once.
+  }
+}
+
 function logout() {
   // R10: the overlay goes first, and the iframe is told to drop its session.
   closeWorkspaceForLogout()
-  void fetch('/v1/auth/logout', {
-    method: 'POST',
-    // U197: the Cookie is the credential in Cookie mode; the expired Bearer
-    // stays attached so the server can revoke whichever session it can locate.
-    ...(state.cookieMode ? { credentials: 'same-origin' } : {}),
-    headers: { authorization: `Bearer ${state.accessToken}` }
-  }).catch(() => undefined)
+  // U221 F4: the HttpOnly Cookie can only be cleared by the server, so remember
+  // that the request still owes the platform until a response proves otherwise.
+  localStorage.setItem(PENDING_LOGOUT_KEY, '1')
+  void sendLogout()
   state.accessToken = ''
   state.user = null
   state.directory = null
@@ -5055,34 +5112,48 @@ window.addEventListener('hashchange', () => {
 // restore session
 ;(async () => {
   const cachedUser = localStorage.getItem('orca.user')
-  // U197: a proven Cookie deployment recovers from the HttpOnly cookie alone.
-  // One refresh attempt only; a failure signs out instead of retrying.
-  if (state.cookieMode) {
-    if (await refreshSession(state.accessToken)) {
+  try {
+    // U221 F4: a pending logout means the last one never reached the server.
+    // Do not auto-enter (and do not probe the Cookie) until it is retried.
+    if (localStorage.getItem(PENDING_LOGOUT_KEY) === '1') {
+      await sendLogout()
+      if (cachedUser) localStorage.removeItem('orca.user')
+      showLogin()
+      return
+    }
+    // U197: a proven Cookie deployment recovers from the HttpOnly cookie alone.
+    // One refresh attempt only; a failure signs out instead of retrying.
+    if (state.cookieMode) {
+      if (await refreshSession(state.accessToken)) {
+        try {
+          // Why retried: the bootstrap must not start a second refresh chain.
+          const me = await api('/v1/me', {}, { retried: true })
+          state.user = { ...me.user, displayName: me.user.displayName, dept: me.user.dept }
+          enterApp()
+          return
+        } catch {
+          // fall through to the login view
+        }
+      }
+      if (cachedUser) localStorage.removeItem('orca.user')
+      showLogin()
+      return
+    }
+    if (state.accessToken) {
       try {
-        // Why retried: the bootstrap must not start a second refresh chain.
-        const me = await api('/v1/me', {}, { retried: true })
+        const me = await api('/v1/me')
         state.user = { ...me.user, displayName: me.user.displayName, dept: me.user.dept }
         enterApp()
         return
       } catch {
-        // fall through to the login view
+        state.accessToken = ''
       }
     }
     if (cachedUser) localStorage.removeItem('orca.user')
     showLogin()
-    return
+  } catch {
+    // U221 F2: a transport failure must land on the login view, never a blank page.
+    if (cachedUser) localStorage.removeItem('orca.user')
+    showLogin()
   }
-  if (state.accessToken) {
-    try {
-      const me = await api('/v1/me')
-      state.user = { ...me.user, displayName: me.user.displayName, dept: me.user.dept }
-      enterApp()
-      return
-    } catch {
-      state.accessToken = ''
-    }
-  }
-  if (cachedUser) localStorage.removeItem('orca.user')
-  showLogin()
 })()

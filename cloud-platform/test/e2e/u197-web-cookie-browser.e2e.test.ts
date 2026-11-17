@@ -44,6 +44,7 @@ let browser: Browser
 let workDir = ''
 let cookieMode: Service
 let legacyMode: Service
+let shortAccess: Service
 
 async function reservePort(): Promise<number> {
   const server = createNetServer()
@@ -63,7 +64,8 @@ function startApi(
   key: string,
   mode: string,
   publicOrigin: string,
-  port: number
+  port: number,
+  extraEnv: Record<string, string> = {}
 ): Promise<Service> {
   return spawnService(
     'apps/api/src/server.ts',
@@ -79,7 +81,8 @@ function startApi(
       ORCA_CLOUD_LDAP_REQUIRED_GROUP: '',
       ORCA_CLOUD_LOGIN_LOCKOUT_URL: '',
       ORCA_CLOUD_AUDIT_WRITER_URL: '',
-      ORCA_CLOUD_AUDIT_WRITER_URLS: ''
+      ORCA_CLOUD_AUDIT_WRITER_URLS: '',
+      ...extraEnv
     },
     READY,
     `api-u197-web-${key}`
@@ -91,15 +94,24 @@ before(async () => {
   // Sequential: a reserved port is only safe until the next listener takes it.
   const cookiePort = await reservePort()
   const legacyPort = await reservePort()
+  const shortPort = await reservePort()
   cookieMode = await startApi('cookie', 'always', `http://${HOST}:${cookiePort}`, cookiePort)
   // never + no PUBLIC_ORIGIN is the pre-U197 deployment contract.
   legacyMode = await startApi('legacy', 'never', '', legacyPort)
+  // A short access TTL makes a page-internal 401 observable without a reload.
+  shortAccess = await startApi(
+    'short',
+    'always',
+    `http://${HOST}:${shortPort}`,
+    shortPort,
+    { ORCA_CLOUD_ACCESS_TTL_MS: '1500' }
+  )
   browser = await chromium.launch({ headless: true })
 }, 180_000)
 
 after(async () => {
   await browser?.close()
-  await Promise.all([cookieMode?.stop(), legacyMode?.stop()])
+  await Promise.all([cookieMode?.stop(), legacyMode?.stop(), shortAccess?.stop()])
   if (workDir !== '') {
     rmSync(workDir, { recursive: true, force: true })
   }
@@ -351,4 +363,160 @@ describe('U197 S5 Web 客户端真实 Chromium：Cookie 会话 / 迁移 / 回退
       await context.close()
     }
   })
+
+  test('AC14 页内业务请求 401 → 恰一次 Cookie 刷新并重放成功', async () => {
+    const { context, page } = await openConsole(shortAccess.url)
+    try {
+      await loginThroughUi(page)
+      const trace = traceRefresh(page)
+      await delay(1900)
+
+      const replayed = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/v1/relays' && response.status() === 200,
+        { timeout: 20_000 }
+      )
+      await page.locator('.nav-item[data-route="relays"]').click()
+      await replayed
+      await page.waitForFunction(() =>
+        (document.querySelector('#content')?.textContent ?? '').includes('中继')
+      )
+      await delay(150)
+
+      assert.equal(trace.bodies.length, 1, 'one Cookie refresh for the in-page 401')
+      assert.equal(trace.bodies[0], null, 'no body token in Cookie mode')
+      assert.deepEqual(trace.statuses, [200])
+      assert.equal(await isVisible(page, VIEW_APP), true)
+      assert.equal(await isVisible(page, VIEW_LOGIN), false, 'the user stays signed in')
+    } finally {
+      await context.close()
+    }
+  })
+
+  test('Cookie 模式并发 401 只刷新一次（同页两请求）', async () => {
+    const { context, page } = await openConsole(shortAccess.url)
+    try {
+      await loginThroughUi(page)
+      const trace = traceRefresh(page)
+      await delay(1900)
+
+      const projects = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/v1/projects' && response.status() === 200,
+        { timeout: 20_000 }
+      )
+      const policy = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/v1/policies/download' &&
+          response.status() === 200,
+        { timeout: 20_000 }
+      )
+      await page.locator('.nav-item[data-route="projects"]').click()
+      await Promise.all([projects, policy])
+      await page.waitForFunction(() =>
+        (document.querySelector('#content')?.textContent ?? '').includes('我的项目')
+      )
+      await delay(150)
+
+      assert.equal(trace.bodies.length, 1, 'simultaneous 401s must share one refresh')
+      assert.equal(trace.bodies[0], null)
+      assert.deepEqual(trace.statuses, [200])
+      assert.equal(await isVisible(page, VIEW_APP), true)
+      assert.equal(await isVisible(page, VIEW_LOGIN), false)
+    } finally {
+      await context.close()
+    }
+  })
+
+  test('真实登出：清 Cookie、旧键与标记并回登录页', async () => {
+    const { context, page } = await openConsole(cookieMode.url)
+    try {
+      await loginThroughUi(page)
+      assert.ok(await refreshCookieOf(context))
+      // Simulate a browser left behind by an older build: legacy keys still exist.
+      await page.evaluate((username) => {
+        window.localStorage.setItem('orca.access', 'legacy-access')
+        window.localStorage.setItem('orca.refresh', 'legacy-refresh')
+        window.localStorage.setItem('orca.tokenOwner', username)
+      }, USERNAME)
+
+      const responded = page.waitForResponse(
+        (response) => new URL(response.url()).pathname === '/v1/auth/logout',
+        { timeout: 20_000 }
+      )
+      await page.locator('#logoutBtn').click()
+      assert.equal((await responded).status(), 200)
+      await page.waitForSelector(VIEW_LOGIN, { state: 'visible', timeout: 15_000 })
+      await delay(250)
+
+      const stored = await page.evaluate(() => ({
+        access: window.localStorage.getItem('orca.access'),
+        refresh: window.localStorage.getItem('orca.refresh'),
+        mode: window.localStorage.getItem('orca.authMode'),
+        owner: window.localStorage.getItem('orca.tokenOwner'),
+        pending: window.localStorage.getItem('orca.pendingLogout')
+      }))
+      assert.equal(stored.access, null)
+      assert.equal(stored.refresh, null)
+      assert.equal(stored.mode, null)
+      assert.equal(stored.owner, null)
+      assert.equal(stored.pending, null, 'a reached logout leaves no pending marker')
+      assert.equal(await refreshCookieOf(context), undefined, 'the Cookie is cleared')
+      assert.equal(await isVisible(page, VIEW_APP), false)
+      assert.equal(await isVisible(page, VIEW_LOGIN), true)
+    } finally {
+      await context.close()
+    }
+  })
+
+  test('伪造 orca.authMode=cookie 且无 Cookie：一次失败刷新后回登录，无循环', async () => {
+    const context = await browser.newContext()
+    const page = await context.newPage()
+    try {
+      await page.goto(`${cookieMode.url}/`, { waitUntil: 'domcontentloaded' })
+      await page.waitForSelector(VIEW_LOGIN, { state: 'visible', timeout: 15_000 })
+      await page.evaluate(() => window.localStorage.setItem('orca.authMode', 'cookie'))
+
+      const trace = traceRefresh(page)
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.waitForSelector(VIEW_LOGIN, { state: 'visible', timeout: 15_000 })
+      await delay(800)
+
+      assert.equal(trace.bodies.length, 1, 'exactly one failed probe')
+      assert.equal(trace.bodies[0], null, 'no legacy key means no body fallback')
+      assert.deepEqual(trace.statuses, [401])
+      assert.equal(await isVisible(page, VIEW_APP), false)
+      assert.equal(await isVisible(page, VIEW_LOGIN), true)
+    } finally {
+      await context.close()
+    }
+  })
+
+  test('刷新传输失败 → 登录页，不空白且无未捕获异常', async () => {
+    const { context, page } = await openConsole(cookieMode.url)
+    try {
+      await loginThroughUi(page)
+      const pageErrors: string[] = []
+      page.on('pageerror', (error) => pageErrors.push(String(error)))
+      await page.route('**/v1/auth/refresh', (route) => route.abort())
+      await page.reload({ waitUntil: 'domcontentloaded' })
+
+      await page.waitForSelector(VIEW_LOGIN, { state: 'visible', timeout: 15_000 })
+      await delay(300)
+      assert.equal(await isVisible(page, VIEW_APP), false)
+      assert.equal(await isVisible(page, VIEW_LOGIN), true, 'never a blank page')
+      assert.deepEqual(pageErrors, [], 'the failed probe must not escape as a page error')
+    } finally {
+      await context.close()
+    }
+  })
+
+  test(
+    'AC9c 清空 localStorage 后仅凭 Cookie 恢复',
+    { skip: 'blocked by D17/U219: the unproven-capability Cookie probe is undecided' },
+    async () => {
+      // Deliberately empty: AC9c depends on the D17 decision, so no passing
+      // assertion may be written here yet.
+    }
+  )
 })

@@ -32,6 +32,8 @@ export type WebConsolePage = {
   calls: () => string[]
   /** Authorization header sent with each call, aligned with `calls()`. */
   authHeaders: () => (string | undefined)[]
+  /** A request header sent with each call, aligned with `calls()`. */
+  headerValues: (name: string) => (string | undefined)[]
   /** JSON bodies of requests that carried one, in call order. */
   bodies: () => { call: string; body: unknown }[]
 }
@@ -54,6 +56,10 @@ export function loadWebConsolePage(
      */
     platformOrigin?: string
     cookieJar?: Map<string, string>
+    /** Requests that reject at the fetch boundary before the bootstrap runs. */
+    abortOnLoad?: string[]
+    /** Requests answered by a stub/failure before the bootstrap runs. */
+    failOnLoad?: { call: string; status?: number; respond?: { status: number; body: unknown } }[]
   } = {}
 ): WebConsolePage {
   // Why scale: the ready timeout is 20s; a test needs to observe it (and two
@@ -76,6 +82,7 @@ export function loadWebConsolePage(
   const aborted = new Set<string>()
   const requests: string[] = []
   const sentAuth: (string | undefined)[] = []
+  const sentHeaders: Headers[] = []
   const cookieJar = options.cookieJar
   const absorbSetCookies = (response: Response): Response => {
     if (!cookieJar) return response
@@ -103,6 +110,12 @@ export function loadWebConsolePage(
   }
   const sentBodies: { call: string; body: unknown }[] = []
   const heldPaths = new Set<string>()
+  // Pre-seed failures so the bootstrap's own first requests can be faulted.
+  for (const call of options.abortOnLoad ?? []) aborted.add(call)
+  for (const entry of options.failOnLoad ?? []) {
+    if (entry.respond) stubbed.set(entry.call, entry.respond)
+    else failing.set(entry.call, entry.status ?? 503)
+  }
   const held = new Map<
     string,
     { input: string; init: RequestInit | undefined; resolve: (response: Response) => void }[]
@@ -122,6 +135,7 @@ export function loadWebConsolePage(
     const method = (init?.method ?? 'GET').toUpperCase()
     requests.push(`${method} ${path}`)
     sentAuth.push(new Headers(init?.headers).get('authorization') ?? undefined)
+    sentHeaders.push(new Headers(init?.headers))
     const key = `${method} ${path}`
     if (typeof init?.body === 'string') {
       try {
@@ -286,6 +300,7 @@ export function loadWebConsolePage(
     },
     calls: () => [...requests],
     authHeaders: () => [...sentAuth],
+    headerValues: (name) => sentHeaders.map((headers) => headers.get(name) ?? undefined),
     bodies: () => [...sentBodies]
   }
 }
