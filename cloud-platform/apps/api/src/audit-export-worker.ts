@@ -218,11 +218,18 @@ export class AuditExportWorker {
     for (;;) {
       const filter: AuditQuery = {
         limit: this.pageSize,
+        actor: job.query.actor,
+        eventType: job.query.eventType,
         eventTypes: job.query.eventTypes,
+        result: job.query.result,
+        traceId: job.query.traceId,
         fileName: job.query.fileName,
         keyword: job.query.keyword,
         since: job.query.since,
         until: job.query.until,
+        username: job.query.username,
+        projectId: job.query.projectId,
+        hostId: job.query.hostId,
         cursor
       }
       const page = this.query(filter)

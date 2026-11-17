@@ -5293,20 +5293,34 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (!parsedQuery.ok) {
         return error(res, 400, parsedQuery.code, parsedQuery.message, traceId)
       }
-      const { limit, eventTypes, fileName, keyword, since: querySince, until } = parsedQuery.value
-      const page = await audit.query({
-        actor: url.searchParams.get('actor') ?? undefined,
-        eventType: url.searchParams.get('eventType') ?? undefined,
+      const {
+        limit,
+        actor,
+        eventType,
         eventTypes,
-        result: url.searchParams.get('result') ?? undefined,
-        traceId: url.searchParams.get('traceId') ?? undefined,
+        result,
+        traceId: queryTraceId,
+        fileName,
+        keyword,
+        since: querySince,
+        until,
+        username,
+        projectId,
+        hostId
+      } = parsedQuery.value
+      const page = await audit.query({
+        actor,
+        eventType,
+        eventTypes,
+        result,
+        traceId: queryTraceId,
         since: querySince,
         until,
         fileName,
         keyword,
-        username: url.searchParams.get('username') ?? undefined,
-        projectId: url.searchParams.get('projectId') ?? undefined,
-        hostId: url.searchParams.get('hostId') ?? undefined,
+        username,
+        projectId,
+        hostId,
         limit,
         cursor: url.searchParams.get('cursor') ? Number(url.searchParams.get('cursor')) : undefined
       })
@@ -5352,7 +5366,20 @@ export function createApp(config: ApiConfig): ApiHandle {
         }
         params.set('eventTypes', body.eventTypes.join(','))
       }
-      const stringFilters = ['eventFamily', 'fileName', 'q', 'keyword', 'since'] as const
+      const stringFilters = [
+        'eventFamily',
+        'eventType',
+        'actor',
+        'username',
+        'projectId',
+        'hostId',
+        'fileName',
+        'q',
+        'keyword',
+        'result',
+        'traceId',
+        'since'
+      ] as const
       for (const key of stringFilters) {
         const value = body[key]
         if (value === undefined) {
@@ -5368,16 +5395,22 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (rawUntil !== undefined && typeof rawUntil !== 'string') {
         return error(res, 400, 'INVALID_QUERY', 'until 必须是字符串。', traceId)
       }
-      // Clamp to the request instant so the exported set stays stable even when
-      // the caller names a future until.
-      const requestedUntil = rawUntil === undefined ? nowMs : Date.parse(rawUntil)
-      if (Number.isNaN(requestedUntil)) {
-        return error(res, 400, 'INVALID_QUERY', 'until 不是有效时间。', traceId)
+      if (rawUntil !== undefined) {
+        const requestedUntil = Date.parse(rawUntil)
+        if (Number.isNaN(requestedUntil)) {
+          return error(res, 400, 'INVALID_QUERY', 'until 不是有效时间。', traceId)
+        }
+        // Clamp only a future until so the exported set stays stable; an absent
+        // until is left to the parser's default window.
+        params.set('until', new Date(Math.min(requestedUntil, nowMs)).toISOString())
       }
-      params.set('until', new Date(Math.min(requestedUntil, nowMs)).toISOString())
       const parsedQuery = parseAuditQuery(params, nowMs)
       if (!parsedQuery.ok) {
         return error(res, 400, parsedQuery.code, parsedQuery.message, traceId)
+      }
+      // Design §2.4 default window: q/fileName → 7d (parser), everything else 31d.
+      if (parsedQuery.value.since === undefined && parsedQuery.value.until === undefined) {
+        parsedQuery.value.since = nowMs - AUDIT_WINDOW_MS
       }
 
       const quota = auditExportStore.checkQuota(authed.user.id)

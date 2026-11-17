@@ -12,13 +12,20 @@ export type AuditQueryErrorCode = 'INVALID_QUERY' | 'TIME_WINDOW_TOO_LARGE'
 
 export type AuditQueryFilters = {
   limit: number
+  actor?: string
+  eventType?: string
   /** Explicit eventTypes win over the eventFamily shortcut. */
   eventTypes?: string[]
+  result?: string
+  traceId?: string
   fileName?: string
   keyword?: string
   /** Effective lower bound: explicit since, else 31d before until, else 7d for q/fileName. */
   since?: number
   until?: number
+  username?: string
+  projectId?: string
+  hostId?: string
 }
 
 export type AuditQueryParseResult =
@@ -58,6 +65,12 @@ export function parseAuditQuery(
   }
   // Explicit eventTypes wins over the family shortcut and over eventType.
   const eventTypes = rawEventTypes.length > 0 ? rawEventTypes : familyTypes
+
+  // Same free-text semantics as the query route's inline reads: trim, blank is absent.
+  const optionalText = (key: string): string | undefined => {
+    const raw = (params.get(key) ?? '').trim()
+    return raw === '' ? undefined : raw
+  }
 
   const fileNameRaw = (params.get('fileName') ?? '').trim()
   if (fileNameRaw.length > 128) {
@@ -102,6 +115,20 @@ export function parseAuditQuery(
 
   return {
     ok: true,
-    value: { limit, eventTypes, fileName, keyword, since: querySince, until }
+    value: {
+      limit,
+      actor: optionalText('actor'),
+      eventType: optionalText('eventType'),
+      eventTypes,
+      result: optionalText('result'),
+      traceId: optionalText('traceId'),
+      fileName,
+      keyword,
+      since: querySince,
+      until,
+      username: optionalText('username'),
+      projectId: optionalText('projectId'),
+      hostId: optionalText('hostId')
+    }
   }
 }

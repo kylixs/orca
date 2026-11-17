@@ -4,6 +4,10 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AuditExportJobStore } from '../../apps/api/src/audit-export-jobs.ts'
+import {
+  AUDIT_RECENT_WINDOW_MS,
+  AUDIT_WINDOW_MS
+} from '../../apps/api/src/audit-query.ts'
 import { spawnService, type Service } from './harness.ts'
 
 /**
@@ -49,6 +53,8 @@ type JobFile = {
   format?: string
   requestedByUsername?: string
   deleteAfterDownload?: boolean
+  totalEvents?: number
+  query?: Record<string, unknown>
 }
 
 async function login(username: string, password: string, deviceName: string): Promise<string> {
@@ -104,6 +110,25 @@ function readJob(jobId: string): JobFile {
   const file = join(exportDir, jobId, 'job.json')
   assert.ok(existsSync(file), `job.json missing for ${jobId}`)
   return JSON.parse(readFileSync(file, 'utf8'))
+}
+
+/** The worker starts after the 202 via setImmediate; poll the atomic job file. */
+async function waitForTerminal(jobId: string): Promise<JobFile> {
+  const deadline = Date.now() + 10_000
+  for (;;) {
+    const job = readJob(jobId)
+    if (job.status === 'succeeded' || job.status === 'failed') {
+      return job
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`job ${jobId} did not finish (status=${job.status})`)
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }
 
 before(async () => {
@@ -241,6 +266,100 @@ describe('审计导出受理（真实平台进程）', () => {
     const res = await postExport(adminToken, validBody({ eventTypes }))
     assert.equal(res.status, 400)
     assert.equal(res.body.error?.code, 'INVALID_QUERY')
+  })
+
+  test('E5-10 全部过滤字段生效：不存在的精确值导出 0 条，对照 >0', async () => {
+    const filters = {
+      eventType: 'no_such_event_type',
+      actor: 'no_such_actor',
+      result: 'no_such_result',
+      traceId: 'no_such_trace',
+      username: 'no_such_user',
+      projectId: 'no_such_project',
+      hostId: 'no_such_host'
+    }
+    const res = await postExport(adminToken, validBody(filters))
+    assert.equal(res.status, 202)
+    const jobId = res.body.jobId ?? ''
+    const job = await waitForTerminal(jobId)
+    assert.equal(job.status, 'succeeded')
+    assert.equal(job.totalEvents, 0)
+    assert.deepEqual(
+      {
+        eventType: job.query?.eventType,
+        actor: job.query?.actor,
+        result: job.query?.result,
+        traceId: job.query?.traceId,
+        username: job.query?.username,
+        projectId: job.query?.projectId,
+        hostId: job.query?.hostId
+      },
+      filters
+    )
+
+    const artifact = join(exportDir, jobId, 'events.csv')
+    assert.equal(existsSync(artifact), true)
+    // Empty export: CSV header only.
+    assert.equal(
+      readFileSync(artifact, 'utf8')
+        .split('\r\n')
+        .filter((line) => line !== '').length,
+      1
+    )
+
+    // The acceptance audit event snapshots the same full filter set.
+    const log = await auditEvents({ eventType: 'audit_export', result: 'success' })
+    const accepted = log.events?.find((entry) => entry.metadata?.jobId === jobId)
+    assert.ok(accepted, 'accepted export must be audited with its jobId')
+    const auditedQuery = accepted.metadata?.query
+    assert.ok(isRecord(auditedQuery))
+    assert.deepEqual(
+      {
+        eventType: auditedQuery.eventType,
+        actor: auditedQuery.actor,
+        result: auditedQuery.result,
+        traceId: auditedQuery.traceId,
+        username: auditedQuery.username,
+        projectId: auditedQuery.projectId,
+        hostId: auditedQuery.hostId
+      },
+      filters
+    )
+
+    const control = await postExport(adminToken, validBody())
+    assert.equal(control.status, 202)
+    const controlJob = await waitForTerminal(control.body.jobId ?? '')
+    assert.equal(controlJob.status, 'succeeded')
+    assert.ok((controlJob.totalEvents ?? 0) > 0, 'unfiltered export must see fixture events')
+  })
+
+  test('E5-11 默认窗口：q/fileName 无时间界为 7 天，其余为 31 天', async () => {
+    const qBefore = Date.now()
+    const qRes = await postExport(adminToken, {
+      confirm: true,
+      format: 'csv',
+      q: 'no-such-keyword'
+    })
+    assert.equal(qRes.status, 202)
+    const qJob = await waitForTerminal(qRes.body.jobId ?? '')
+    const qSince = typeof qJob.query?.since === 'number' ? qJob.query.since : Number.NaN
+    assert.ok(
+      Math.abs(qSince - (qBefore - AUDIT_RECENT_WINDOW_MS)) <= 5_000,
+      `q filter must default to 7 days, got ${qSince}`
+    )
+    assert.equal(qJob.query?.until, undefined)
+
+    const defaultBefore = Date.now()
+    const defaultRes = await postExport(adminToken, { confirm: true, format: 'csv' })
+    assert.equal(defaultRes.status, 202)
+    const defaultJob = await waitForTerminal(defaultRes.body.jobId ?? '')
+    const defaultSince =
+      typeof defaultJob.query?.since === 'number' ? defaultJob.query.since : Number.NaN
+    assert.ok(
+      Math.abs(defaultSince - (defaultBefore - AUDIT_WINDOW_MS)) <= 5_000,
+      `an unfiltered export must keep the 31-day window, got ${defaultSince}`
+    )
+    assert.equal(defaultJob.query?.until, undefined)
   })
 
   test('E5-8 并发上限：活动任务达上限时 → 429 EXPORT_BUSY', async () => {

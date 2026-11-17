@@ -196,6 +196,73 @@ describe('分页、排序与产物', () => {
   })
 })
 
+describe('过滤字段完整转发', () => {
+  test('job.query 的字段全部进入 audit.query，仅 limit/游标由 worker 决定', () => {
+    const root = tempRoot()
+    const time = clock()
+    const chain = fakeChain([])
+    const { store, worker } = makeWorker(root, chain, { now: time.now })
+    const job = store.create({
+      requestedBy: 'user_1',
+      requestedByUsername: 'alice',
+      query: {
+        limit: 50,
+        actor: 'user:alice',
+        eventType: 'file_copy',
+        eventTypes: ['file_copy'],
+        result: 'success',
+        traceId: 'trace_1',
+        fileName: 'report.csv',
+        keyword: 'report',
+        since: 1_699_000_000_000,
+        until: 1_800_000_000_000,
+        username: 'alice',
+        projectId: 'proj_1',
+        hostId: 'host_1'
+      },
+      format: 'jsonl'
+    })
+
+    const result = worker.runAuditExportJob(job.jobId)
+    assert.equal(result.status, 'succeeded')
+    assert.equal(chain.calls.length, 1)
+    const call = chain.calls[0]
+    assert.ok(call)
+    assert.deepEqual(
+      {
+        actor: call.actor,
+        eventType: call.eventType,
+        eventTypes: call.eventTypes,
+        result: call.result,
+        traceId: call.traceId,
+        fileName: call.fileName,
+        keyword: call.keyword,
+        since: call.since,
+        until: call.until,
+        username: call.username,
+        projectId: call.projectId,
+        hostId: call.hostId
+      },
+      {
+        actor: 'user:alice',
+        eventType: 'file_copy',
+        eventTypes: ['file_copy'],
+        result: 'success',
+        traceId: 'trace_1',
+        fileName: 'report.csv',
+        keyword: 'report',
+        since: 1_699_000_000_000,
+        until: 1_800_000_000_000,
+        username: 'alice',
+        projectId: 'proj_1',
+        hostId: 'host_1'
+      }
+    )
+    assert.equal(call.limit, 200)
+    assert.equal(call.cursor, undefined)
+  })
+})
+
 describe('失败终态不留产物', () => {
   test('超过 maxEvents 或 maxBytes 记为 EXPORT_TOO_LARGE 且无对象文件', () => {
     const root = tempRoot()

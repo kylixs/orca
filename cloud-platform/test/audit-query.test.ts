@@ -146,6 +146,77 @@ describe('audit query parser: fileName and keyword', () => {
   })
 })
 
+describe('audit query parser: exact-match filters', () => {
+  test('parses actor/eventType/result/traceId/username/projectId/hostId', () => {
+    const parsed = value(
+      'actor=user%3Aalice&eventType=file_download&result=success&traceId=trace_1' +
+        '&username=alice&projectId=proj_1&hostId=host_1'
+    )
+    assert.deepEqual(
+      {
+        actor: parsed.actor,
+        eventType: parsed.eventType,
+        result: parsed.result,
+        traceId: parsed.traceId,
+        username: parsed.username,
+        projectId: parsed.projectId,
+        hostId: parsed.hostId
+      },
+      {
+        actor: 'user:alice',
+        eventType: 'file_download',
+        result: 'success',
+        traceId: 'trace_1',
+        username: 'alice',
+        projectId: 'proj_1',
+        hostId: 'host_1'
+      }
+    )
+  })
+
+  test('trims each value and treats blank as absent', () => {
+    const padded = value(
+      'actor=%20user%3Aalice%20&eventType=%20file_download%20&result=%20success%20' +
+        '&traceId=%20trace_1%20&username=%20alice%20&projectId=%20proj_1%20&hostId=%20host_1%20'
+    )
+    assert.equal(padded.actor, 'user:alice')
+    assert.equal(padded.eventType, 'file_download')
+    assert.equal(padded.result, 'success')
+    assert.equal(padded.traceId, 'trace_1')
+    assert.equal(padded.username, 'alice')
+    assert.equal(padded.projectId, 'proj_1')
+    assert.equal(padded.hostId, 'host_1')
+
+    const blank = value(
+      'actor=&eventType=%20&result=&traceId=%20%20&username=&projectId=&hostId=%20'
+    )
+    assert.equal(blank.actor, undefined)
+    assert.equal(blank.eventType, undefined)
+    assert.equal(blank.result, undefined)
+    assert.equal(blank.traceId, undefined)
+    assert.equal(blank.username, undefined)
+    assert.equal(blank.projectId, undefined)
+    assert.equal(blank.hostId, undefined)
+  })
+
+  test('keeps eventType alongside eventTypes (eventTypes wins at query time)', () => {
+    const parsed = value('eventType=user_login&eventTypes=file_copy')
+    assert.equal(parsed.eventType, 'user_login')
+    assert.deepEqual(parsed.eventTypes, ['file_copy'])
+  })
+
+  test('does not change the default window for exact-match filters', () => {
+    assert.equal(value('actor=alice').since, undefined)
+    assert.equal(value('actor=alice').until, undefined)
+    assert.equal(value('actor=alice&q=secret').since, NOW - AUDIT_RECENT_WINDOW_MS)
+
+    const until = new Date(NOW).toISOString()
+    const parsed = value(`hostId=host_1&until=${until}`)
+    assert.equal(parsed.since, NOW - AUDIT_WINDOW_MS)
+    assert.equal(parsed.until, NOW)
+  })
+})
+
 describe('audit query parser: time bounds', () => {
   const until = new Date(NOW).toISOString()
 
