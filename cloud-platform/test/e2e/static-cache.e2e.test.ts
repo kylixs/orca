@@ -105,6 +105,17 @@ test('U47 静态资源：不可变缓存头、HTML 短缓存、gzip 协商与 ET
     assert.equal(notModified.headers['cache-control'], 'public, max-age=31536000, immutable')
     assert.equal(notModified.headers['referrer-policy'], 'no-referrer')
 
+    // ⑦ Static misses are static responses too: an absent icon / stale hashed
+    // asset must carry the same security header rather than a bare 404.
+    const missingIcon = await rawGet(`${base}/favicon.ico`, { 'accept-encoding': 'identity' })
+    assert.equal(missingIcon.status, 404)
+    assert.equal(missingIcon.headers['referrer-policy'], 'no-referrer')
+    const staleAsset = await rawGet(`${base}/assets/deadbeef/app.js`, {
+      'accept-encoding': 'identity'
+    })
+    assert.equal(staleAsset.status, 404)
+    assert.equal(staleAsset.headers['referrer-policy'], 'no-referrer')
+
     saveEvidence(EVIDENCE, 'platform-static.json', {
       build: release.build,
       hashedAsset: {

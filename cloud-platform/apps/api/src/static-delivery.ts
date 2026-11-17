@@ -11,6 +11,10 @@ export const STATIC_HTML_CACHE_CONTROL = 'no-cache'
 export const STATIC_UNHASHED_CACHE_CONTROL = 'max-age=300'
 /** Console URLs carry project ids in query/hash; no outbound referrer is needed. */
 export const STATIC_REFERRER_POLICY = 'no-referrer'
+/** Hits and misses share these: a static 404 is still a static response. */
+export const STATIC_SECURITY_HEADERS: Record<string, string> = {
+  'referrer-policy': STATIC_REFERRER_POLICY
+}
 
 const COMPRESSIBLE_EXTENSIONS = new Set(['.js', '.css', '.html', '.svg', '.json', '.map'])
 const GZIP_CACHE_LIMIT = 128
@@ -121,9 +125,9 @@ export function sendStaticAsset(
 ): void {
   const compressible = isCompressibleStaticName(asset.name)
   const headers: Record<string, string | number> = {
+    ...STATIC_SECURITY_HEADERS,
     'content-type': asset.contentType,
     'cache-control': asset.cacheControl,
-    'referrer-policy': STATIC_REFERRER_POLICY,
     etag: asset.etag
   }
   if (compressible) {
@@ -145,4 +149,13 @@ export function sendStaticAsset(
   headers['content-length'] = asset.body.length
   res.writeHead(200, headers)
   res.end(asset.body)
+}
+
+/** Unknown web path: same security headers as a hit, and no cacheable body. */
+export function sendStaticNotFound(res: ServerResponse): void {
+  res.writeHead(404, {
+    ...STATIC_SECURITY_HEADERS,
+    'content-type': 'text/plain; charset=utf-8'
+  })
+  res.end('not found')
 }

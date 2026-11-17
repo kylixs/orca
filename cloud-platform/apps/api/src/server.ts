@@ -73,6 +73,7 @@ import {
 import {
   cacheControlForStaticName,
   sendStaticAsset,
+  sendStaticNotFound,
   STATIC_HASHED_CACHE_CONTROL,
   STATIC_HTML_CACHE_CONTROL,
   STATIC_UNHASHED_CACHE_CONTROL,
@@ -4838,8 +4839,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         body: data
       })
     } catch {
-      res.writeHead(404)
-      res.end('not found')
+      sendStaticNotFound(res)
     }
   }
 
