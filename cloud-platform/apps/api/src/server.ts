@@ -3419,6 +3419,9 @@ export function createApp(config: ApiConfig): ApiHandle {
       // U218 §2B-9: a Cookie without Origin is not a browser login, and a
       // foreign Origin must never degrade to a readable body refresh.
       if (carriesRefreshCookieWithoutOrigin(req)) {
+        // U233 F2: an unparseable/stale Cookie must be cleared, or the jar keeps
+        // replaying it and every login stays 401.
+        clearRefreshCookie(res)
         res.setHeader('cache-control', 'no-store')
         return error(res, 401, 'SESSION_EXPIRED', '会话状态异常，请清除 Cookie 后重试。', traceId)
       }
@@ -3810,6 +3813,9 @@ export function createApp(config: ApiConfig): ApiHandle {
       // U218 §2B-9: the host cross-origin handoff (an Origin) stays valid, but a
       // Cookie without Origin is never parsed as a Cookie source.
       if (carriesRefreshCookieWithoutOrigin(req)) {
+        // U233 F2: clear the stale Cookie before refusing, or a cookie-jar client
+        // is locked out permanently.
+        clearRefreshCookie(res)
         res.setHeader('cache-control', 'no-store')
         return error(res, 401, 'SESSION_EXPIRED', '会话状态异常，请清除 Cookie 后重试。', traceId)
       }
@@ -3855,11 +3861,13 @@ export function createApp(config: ApiConfig): ApiHandle {
       const user = store.users.get(consumed.entry.userId)
       const project = store.projects.get(consumed.entry.projectId)
       if (!user || user.status !== 'active' || !project || project.status === 'archived') {
+        // U233 F3: only an archived project is project_archived; a missing or
+        // disabled subject is subject_gone.
         await deny(
           410,
           'HANDOFF_GONE',
           '交接码无效或已使用。',
-          user && project ? 'project_archived' : 'subject_gone',
+          !user || user.status !== 'active' || !project ? 'subject_gone' : 'project_archived',
           user?.username ?? null
         )
         return
@@ -3909,10 +3917,10 @@ export function createApp(config: ApiConfig): ApiHandle {
     }
 
     if (req.method === 'POST' && path === '/v1/auth/logout') {
-      if (hasAmbiguousRefreshCookie(req)) {
-        clearRefreshCookie(res)
-        return error(res, 401, 'SESSION_EXPIRED', '会话状态异常，请清除 Cookie 后重试。', traceId)
-      }
+      // U233 F1: an ambiguous Cookie is still a hard 401, but Bearer/body are
+      // explicit locators and must be revoked before returning it. The Cookie
+      // itself stays unguessed.
+      const ambiguousCookie = hasAmbiguousRefreshCookie(req)
       // U218: clearing never depends on the mode — a stale Cookie from an
       // earlier deployment must not survive logout.
       clearRefreshCookie(res)
@@ -3956,12 +3964,9 @@ export function createApp(config: ApiConfig): ApiHandle {
           result: 'success' as const,
           traceId
         }
-        if (auth && sessionId === auth.sessionId) {
-          await audit.append(event)
-        } else {
-          // Cookie/body-only logout (expired Bearer): best-effort, never blocks sign-out.
-          audit.appendBestEffort(event)
-        }
+        // U233 F5: every logout target is best-effort — a failed audit write
+        // must not turn a completed revocation into a 500.
+        audit.appendBestEffort(event)
       }
       // A forged value must neither revoke nor reveal anything; record the denial
       // without the token itself.
@@ -3975,6 +3980,9 @@ export function createApp(config: ApiConfig): ApiHandle {
           traceId,
           metadata: { reason: 'UNKNOWN_REFRESH' }
         })
+      }
+      if (ambiguousCookie) {
+        return error(res, 401, 'SESSION_EXPIRED', '会话状态异常，请清除 Cookie 后重试。', traceId)
       }
       return json(res, 200, { ok: true })
     }

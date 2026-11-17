@@ -227,7 +227,7 @@ describe('U229 F10 Cookie 模式回归（真实 createApp + HTTP）', () => {
     }
   }
 
-  test('重复 Cookie：登出仍硬 401 并清理，不撤销 session', async () => {
+  test('U233 F1 重复 Cookie + body refresh：登出仍硬 401 并清理，但 body 会话撤销', async () => {
     const { app, base } = await start({
       cookieMode: 'auto',
       publicOrigin: ORIGIN,
@@ -245,7 +245,8 @@ describe('U229 F10 Cookie 模式回归（真实 createApp + HTTP）', () => {
     const headers = res.headers.getSetCookie()
     assert.equal(headers.length, 3)
     for (const header of headers) assert.match(header, /Max-Age=0/)
-    assert.equal(session.revokedAt, null)
+    assert.ok(session.revokedAt !== null, 'the explicit body refresh must still be revoked')
+    assert.equal((await refresh(base, cookie)).status, 401)
   })
 
   test('Cookie 登出：清三种作用域并撤销，Cookie 刷新 401', async () => {
@@ -286,5 +287,28 @@ describe('U229 F10 Cookie 模式回归（真实 createApp + HTTP）', () => {
     })
     assert.equal(res.status, 200)
     for (const session of sessions(app)) assert.ok(session.revokedAt !== null)
+  })
+})
+
+describe('U233 F5 登出审计 best-effort（真实 createApp + HTTP）', () => {
+  test('Bearer 目标审计写入失败：仍 200，且会话已撤销', async () => {
+    const { app, base } = await start()
+    const first = (await (await login(base)).json()) as Record<string, unknown>
+    const accessToken = authOf(first)
+    const refreshToken = refreshOf(first)
+    const session = sessions(app)[0]
+    assert.ok(session)
+
+    app.audit.append = () => {
+      throw new Error('audit sink down')
+    }
+
+    const res = await logout(base, {
+      headers: { authorization: `Bearer ${accessToken}` },
+      body: { refreshToken }
+    })
+    assert.equal(res.status, 200, 'an audit failure must not turn sign-out into 500')
+    assert.ok(session.revokedAt !== null)
+    assert.equal((await refresh(base, refreshToken)).status, 401)
   })
 })

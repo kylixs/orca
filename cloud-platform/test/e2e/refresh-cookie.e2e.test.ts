@@ -1079,3 +1079,178 @@ describe('U218 登出撤销 / 多作用域清理 / Origin / 审计（真实 crea
     )
   })
 })
+
+describe('U233 认证端点边界（真实 createApp + HTTP）', () => {
+  const duplicateCookie = 'orca_refresh=a; orca_refresh=b'
+
+  function assertClears(response: Response): void {
+    const headers = response.headers.getSetCookie()
+    assert.equal(headers.length, 3, JSON.stringify(headers))
+    assert.ok(headers.some((header) => header.startsWith('orca_refresh=; Path=/v1/auth;')))
+    assert.ok(headers.some((header) => /Domain=console\.example\.com/.test(header)))
+    assert.ok(headers.some((header) => header.startsWith('orca_refresh=; Path=/;')))
+    for (const header of headers) {
+      assert.match(header, /Max-Age=0/)
+    }
+  }
+
+  test('F1 重复 Cookie + 有效 Bearer：401 仍撤销显式会话，旧 access/refresh 立即 401', async () => {
+    const { app, base } = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const first = (await (await login(base)).json()) as Record<string, unknown>
+    const accessToken = String(first.accessToken)
+    const refreshToken = String(first.refreshToken)
+    const session = onlySession(app)
+
+    const res = await fetch(`${base}/v1/auth/logout`, {
+      method: 'POST',
+      headers: {
+        origin: ORIGIN,
+        authorization: `Bearer ${accessToken}`,
+        cookie: duplicateCookie
+      }
+    })
+    assert.equal(res.status, 401)
+    assert.equal(
+      ((await res.json()) as { error?: { code?: string } }).error?.code,
+      'SESSION_EXPIRED'
+    )
+    assertClears(res)
+    assert.ok(session.revokedAt !== null, 'the explicit Bearer session must be revoked')
+
+    const renewed = await refresh(base, refreshToken)
+    assert.equal(renewed.status, 401, 'the old refresh must fail immediately')
+    const me = await fetch(`${base}/v1/me`, {
+      headers: { authorization: `Bearer ${accessToken}` }
+    })
+    assert.equal(me.status, 401, 'the old access token must fail immediately')
+  })
+
+  test('F1 重复 Cookie + body refresh：401 且 body 定位的会话撤销', async () => {
+    const { app, base } = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const first = (await (await login(base)).json()) as Record<string, unknown>
+    const refreshToken = String(first.refreshToken)
+    const session = onlySession(app)
+
+    const res = await fetch(`${base}/v1/auth/logout`, {
+      method: 'POST',
+      headers: { origin: ORIGIN, cookie: duplicateCookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ refreshToken })
+    })
+    assert.equal(res.status, 401)
+    assertClears(res)
+    assert.ok(session.revokedAt !== null, 'the body refresh must locate and revoke the session')
+    assert.equal((await refresh(base, refreshToken)).status, 401)
+  })
+
+  test('F1 仅重复 Cookie：401 且不猜测撤销任何会话', async () => {
+    const { app, base } = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const first = (await (await login(base)).json()) as Record<string, unknown>
+    const refreshToken = String(first.refreshToken)
+    const session = onlySession(app)
+
+    const res = await fetch(`${base}/v1/auth/logout`, {
+      method: 'POST',
+      headers: { origin: ORIGIN, cookie: duplicateCookie }
+    })
+    assert.equal(res.status, 401)
+    assertClears(res)
+    assert.equal(session.revokedAt, null, 'an ambiguous Cookie must not be guessed at')
+    assert.equal((await refresh(base, refreshToken)).status, 200)
+  })
+
+  test('F2 单 Cookie 无 Origin：登录/交接 401 且清三种作用域', async () => {
+    const { app, base } = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const staleCookie = { cookie: 'orca_refresh=stale-u233' }
+
+    const loginRes = await login(base, staleCookie)
+    assert.equal(loginRes.status, 401)
+    assertClears(loginRes)
+
+    const dev = app.store.usersByName.get('zhangsan')
+    assert.ok(dev)
+    app.store.webHandoffs.set('u233-no-origin', {
+      userId: dev.id,
+      projectId: 'proj_payment',
+      expiresAt: Date.now() + 60_000
+    })
+    const handoffRes = await fetch(`${base}/v1/web/handoff`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...staleCookie },
+      body: JSON.stringify({ code: 'u233-no-origin' })
+    })
+    assert.equal(handoffRes.status, 401)
+    assertClears(handoffRes)
+    assert.equal(app.store.webHandoffs.has('u233-no-origin'), true)
+  })
+
+  test('刷新未知 Cookie + 有效 body current：200 轮换 + 单条 Set-Cookie', async () => {
+    const { base } = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const first = (await (await login(base)).json()) as Record<string, unknown>
+    const refreshToken = String(first.refreshToken)
+
+    const res = await refresh(base, refreshToken, {
+      origin: ORIGIN,
+      cookie: 'orca_refresh=unknown-u233'
+    })
+    assert.equal(res.status, 200)
+    const cookies = res.headers.getSetCookie()
+    assert.equal(cookies.length, 1, JSON.stringify(cookies))
+    assert.match(cookies[0] ?? '', /^orca_refresh=[A-Za-z0-9_-]+;/)
+    const body = (await res.json()) as Record<string, unknown>
+    assert.equal(typeof body.refreshToken, 'string')
+    assert.notEqual(body.refreshToken, refreshToken)
+  })
+
+  test('刷新禁用用户 + 缺失/异源 Origin：403 且会话不撤销（CSRF 先于撤销）', async () => {
+    const { app, base } = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const loginRes = await login(base, { origin: ORIGIN })
+    assert.equal(loginRes.status, 200)
+    const cookie = cookieValueOf(loginRes)
+    const session = onlySession(app)
+    const user = app.store.users.get(session.userId)
+    assert.ok(user)
+    user.status = 'disabled'
+
+    const missingOrigin = await fetch(`${base}/v1/auth/refresh`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: `orca_refresh=${cookie}` },
+      body: '{}'
+    })
+    assert.equal(missingOrigin.status, 403)
+
+    const foreignOrigin = await fetch(`${base}/v1/auth/refresh`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: 'https://evil.example',
+        cookie: `orca_refresh=${cookie}`
+      },
+      body: '{}'
+    })
+    assert.equal(foreignOrigin.status, 403)
+    assert.equal(session.revokedAt, null, 'CSRF rejection must not revoke')
+    assert.equal(
+      app.store.audit.some((event) => event.eventType === 'logout'),
+      false,
+      'CSRF rejection must not log a revocation'
+    )
+  })
+
+  test('登出禁用用户仅 Cookie：200 且撤销', async () => {
+    const { app, base } = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const loginRes = await login(base, { origin: ORIGIN })
+    assert.equal(loginRes.status, 200)
+    const cookie = cookieValueOf(loginRes)
+    const session = onlySession(app)
+    const user = app.store.users.get(session.userId)
+    assert.ok(user)
+    user.status = 'disabled'
+
+    const res = await fetch(`${base}/v1/auth/logout`, {
+      method: 'POST',
+      headers: { origin: ORIGIN, cookie: `orca_refresh=${cookie}` }
+    })
+    assert.equal(res.status, 200)
+    assert.ok(session.revokedAt !== null)
+  })
+})

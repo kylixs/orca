@@ -302,3 +302,52 @@ describe('U230 停用账号边界（真实 createApp + HTTP）', () => {
     }
   })
 })
+
+describe('U233 F3 交接拒绝 reason 分流（真实 createApp + HTTP）', () => {
+  type DenyBody = { error?: { code?: string; details?: { reason?: string } } }
+
+  async function redeem(base: string, code: string): Promise<{ status: number; body: DenyBody }> {
+    const res = await fetch(`${base}/v1/web/handoff`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code })
+    })
+    return { status: res.status, body: (await res.json()) as DenyBody }
+  }
+
+  test('禁用用户：reason=subject_gone，不再误记 project_archived', async () => {
+    const { app, base } = await start()
+    const user = app.store.usersByName.get('zhangsan')
+    assert.ok(user)
+    user.status = 'disabled'
+    app.store.webHandoffs.set('u233-disabled-handoff', {
+      userId: user.id,
+      projectId: 'proj_payment',
+      expiresAt: Date.now() + 60_000
+    })
+
+    const { status, body } = await redeem(base, 'u233-disabled-handoff')
+    assert.equal(status, 410)
+    assert.equal(body.error?.code, 'HANDOFF_GONE')
+    assert.equal(body.error?.details?.reason, 'subject_gone')
+    assert.notEqual(body.error?.details?.reason, 'project_archived')
+  })
+
+  test('归档项目：reason=project_archived', async () => {
+    const { app, base } = await start()
+    const user = app.store.usersByName.get('zhangsan')
+    const project = app.store.projects.get('proj_payment')
+    assert.ok(user)
+    assert.ok(project)
+    project.status = 'archived'
+    app.store.webHandoffs.set('u233-archived-handoff', {
+      userId: user.id,
+      projectId: project.id,
+      expiresAt: Date.now() + 60_000
+    })
+
+    const { status, body } = await redeem(base, 'u233-archived-handoff')
+    assert.equal(status, 410)
+    assert.equal(body.error?.details?.reason, 'project_archived')
+  })
+})
