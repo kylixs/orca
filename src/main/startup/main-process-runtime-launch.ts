@@ -10,6 +10,7 @@ import { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
 import { attachCloudRuntime, cloudAdmissionOption } from './cloud-runtime-admission'
 import { resolveE2EWsPort } from './e2e-runtime-ws-port'
 import { registerMobileHandlers } from '../ipc/mobile'
+import { installCloudPlatformIpc } from '../ipc/cloud-platform'
 import { getLocalPtyProvider, registerHeadlessPtyRuntime } from '../ipc/pty'
 import { LocalPtyProvider } from '../providers/local-pty-provider'
 import { publishHeadlessRuntimeGraph } from '../runtime/headless-runtime-graph'
@@ -54,9 +55,8 @@ export type MainProcessRuntimeLaunchOptions = {
 }
 
 function settleDesktopActivation(): void {
-  const gate = state.desktopActivationGate
-  if (gate) {
-    settleServeDesktopActivation(gate, {
+  if (state.desktopActivationGate) {
+    settleServeDesktopActivation(state.desktopActivationGate, {
       hasPersistentPtyProvider: !(getLocalPtyProvider() instanceof LocalPtyProvider)
     })
   }
@@ -94,6 +94,9 @@ function installRuntimeRpc(
     ...cloudAdmissionOption(process.env, { userDataPath: getCanonicalUserDataPath() })
   })
   attachCloudRuntime(runtimeRpc)
+  // Why here: the renderer IPC surface needs Electron, so it must not live in the
+  // admission graph that orcad imports. Installed unconditionally, cloud or not.
+  installCloudPlatformIpc()
   state.runtimeRpc = runtimeRpc
   registerMobileHandlers(runtimeRpc, {
     getRelayStatus: getDesktopRelayStatus,

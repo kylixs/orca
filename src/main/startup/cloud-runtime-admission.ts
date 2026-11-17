@@ -305,8 +305,8 @@ function startPolling(env: NodeJS.ProcessEnv): CloudRuntimeAdmission {
 }
 
 /**
- * Post-start wiring: revocation → live sockets, and the renderer IPC surface.
- * One call so the runtime launch path stays a single line.
+ * Post-start wiring: revocation → live sockets. The Electron launch path installs
+ * its renderer IPC separately so this module stays importable by orcad on Node.
  */
 export function attachCloudRuntime(runtime: CloudRuntimeTarget): void {
   attachRuntimeToCloudAdmission(runtime, cloudRuntimeAdmission())

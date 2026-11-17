@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installFakeAppEnvironment } from '../../../config/scripts/vitest-host-ports-setup'
 import { readArrayValue, readField, readString } from '../../shared/json-fields'
 import { parsePairingCode } from '../../shared/pairing'
@@ -58,6 +58,10 @@ vi.mock('electron', () => ({
   app: { isPackaged: false }
 }))
 
+/** U181 H1：IPC 面归 Electron 启动路径，admission 的 attach 不得再触达它。 */
+const cloudPlatformIpc = vi.hoisted(() => ({ installCloudPlatformIpc: vi.fn() }))
+vi.mock('../ipc/cloud-platform', () => cloudPlatformIpc)
+
 /** Unroutable loopback port: poll-mode refresh attempts fail fast, never hang. */
 const DEAD_PLATFORM = 'http://127.0.0.1:9'
 
@@ -70,6 +74,10 @@ const emptySnapshot = (): CloudAgentSnapshot => ({
   policyVersion: null,
   lastRefreshAt: null,
   lastError: null,
+  lastHeartbeatAt: null,
+  lastHeartbeatOk: null,
+  lastHeartbeatHttpStatus: null,
+  lastErrorCode: null,
   maintenance: null,
   hostRevoked: false
 })
@@ -187,6 +195,10 @@ function saveEvidence(file: string, content: unknown): void {
 }
 
 describe('attach 装机时序（桩准入）', () => {
+  beforeEach(() => {
+    cloudPlatformIpc.installCloudPlatformIpc.mockClear()
+  })
+
   it('首启（enrollment 在途）：attach 当刻不装机，ready 兑现后补装', async () => {
     const enrolment = deferred()
     const { admission, enroll } = stubAdmission(null, enrolment.promise)
@@ -194,6 +206,7 @@ describe('attach 装机时序（桩准入）', () => {
 
     attachRuntimeToCloudAdmission(target, admission)
     expect(target.installed).toEqual([])
+    expect(cloudPlatformIpc.installCloudPlatformIpc).not.toHaveBeenCalled()
 
     const fake = stubClient()
     enroll(fake.client)
@@ -246,15 +259,17 @@ describe('attach 装机时序（桩准入）', () => {
 
     attachRuntimeToCloudAdmission(target, admission)
     expect(target.installed).toEqual(['guard', 'provision-reporter', 'audit-sink'])
+    expect(cloudPlatformIpc.installCloudPlatformIpc).not.toHaveBeenCalled()
     await Promise.resolve()
     await Promise.resolve()
     expect(target.installed).toEqual(['guard', 'provision-reporter', 'audit-sink'])
   })
 
-  it('非云构建（无准入）：只装渲染端 IPC，不装机', () => {
+  it('非云构建（无准入）：不装机，也不安装渲染端 IPC（IPC 归 Electron 启动路径）', () => {
     const target = recordingTarget()
     attachRuntimeToCloudAdmission(target, null)
     expect(target.installed).toEqual([])
+    expect(cloudPlatformIpc.installCloudPlatformIpc).not.toHaveBeenCalled()
   })
 
   it('对照：poll 模式行为不变——client 即刻在，attach 同步装机', () => {

@@ -1,14 +1,13 @@
 import { createCloudAccessGuard } from '../cloud-platform/cloud-access-guard'
 import type { CloudAgentClient } from '../cloud-platform/cloud-agent-client'
 import { createCloudProvisionAssignmentExecutor } from '../cloud-platform/cloud-provision-assignment'
-import { installCloudPlatformIpc } from '../ipc/cloud-platform'
 import type { CloudRuntimeAdmission, CloudRuntimeTarget } from './cloud-runtime-admission'
 
 /**
- * Post-start wiring of a runtime to the cloud client: the renderer IPC surface,
- * revocation → live sockets, the download/read-budget guard, and the heartbeat
- * reporters. Split from the admission lifecycle so `attachCloudRuntime` stays a
- * single call on the launch path.
+ * Post-start wiring of a runtime to the cloud client: revocation → live sockets,
+ * the download/read-budget guard, and the heartbeat reporters. The Electron
+ * renderer IPC surface is installed by the Electron launch path instead, so this
+ * module stays importable from orcad on plain Node.
  */
 
 /** Installs the policy/read-budget guard; the client's snapshot is read per call. */
@@ -72,7 +71,6 @@ export function attachRuntimeToCloudAdmission(
   admission: AttachableCloudAdmission | null
 ): void {
   if (!admission) {
-    installCloudPlatformIpc()
     return
   }
   admission.bindRuntime(runtime)
@@ -94,5 +92,4 @@ export function attachRuntimeToCloudAdmission(
       (error: unknown) => console.error('[cloud] host enrolment failed:', error)
     )
   }
-  installCloudPlatformIpc()
 }

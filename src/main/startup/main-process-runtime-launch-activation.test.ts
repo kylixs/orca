@@ -28,6 +28,19 @@ vi.mock('electron', () => ({
   BrowserWindow: electronBrowserWindow
 }))
 vi.mock('@electron-toolkit/utils', () => ({ is: { dev: false } }))
+
+/**
+ * U181 H1: the launch path owns the renderer IPC install. Mock both the admission
+ * (forced to null) and the IPC surface so the assertion is about the call site,
+ * not a cloud environment inherited from the developer shell.
+ */
+const cloudAdmission = vi.hoisted(() => ({
+  cloudAdmissionOption: vi.fn(() => ({})),
+  attachCloudRuntime: vi.fn()
+}))
+vi.mock('./cloud-runtime-admission', () => cloudAdmission)
+const cloudPlatformIpc = vi.hoisted(() => ({ installCloudPlatformIpc: vi.fn() }))
+vi.mock('../ipc/cloud-platform', () => cloudPlatformIpc)
 vi.mock('../orca-profiles/profile-cloud-auth-config', () => ({
   getOrcaCloudAuthConfig: () => ({ configured: false })
 }))
@@ -188,6 +201,8 @@ describe('desktop startup activation', () => {
   beforeEach(() => {
     windows = []
     showWindowWithoutStealingFocus.mockClear()
+    cloudPlatformIpc.installCloudPlatformIpc.mockClear()
+    cloudAdmission.attachCloudRuntime.mockClear()
     ipcHandles = new Set()
     trustedRendererId = null
     firstLoadListeners = []
@@ -267,6 +282,17 @@ describe('desktop startup activation', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('installs cloud-platform IPC on the launch path with no cloud admission', async () => {
+    await initializeMainProcessReady({
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the launch only calls once() on the returned window.
+      openMainWindow: () => openMainWindow() as unknown as NonNullable<typeof state.mainWindow>,
+      handleMacAppActivation: vi.fn()
+    })
+
+    expect(cloudAdmission.attachCloudRuntime).toHaveBeenCalledTimes(1)
+    expect(cloudPlatformIpc.installCloudPlatformIpc).toHaveBeenCalledTimes(1)
   })
 
   it('does not replay an activation when launch fails before the startup window', async () => {
