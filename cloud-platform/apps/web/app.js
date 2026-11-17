@@ -12,6 +12,8 @@ const PENDING_LOGOUT_KEY = 'orca.pendingLogout'
 /** U221 F5: keep in sync with WEB_CONTRACT_VERSION in apps/api/src/web-release.ts. */
 const WEB_CONTRACT_HEADER = 'x-orca-web-contract'
 const WEB_CONTRACT_VERSION = 1
+/** U229 F5: a platform that never answers must not hold both views hidden. */
+const STARTUP_TIMEOUT_MS = 10_000
 
 const state = {
   accessToken: localStorage.getItem('orca.access') ?? '',
@@ -54,6 +56,15 @@ function relative(ts) {
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`
   return `${Math.floor(diff / 86_400_000)} 天前`
+}
+
+/** U229 F5: race the startup request against the clock; the loser is ignored. */
+function withTimeout(promise, ms) {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('启动请求超时')), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
 }
 
 async function api(path, init = {}, { retried = false } = {}) {
@@ -117,6 +128,11 @@ function clearLegacyTokens() {
   localStorage.removeItem(TOKEN_OWNER_KEY)
 }
 
+/** U229 F7: only 400/401 are session verdicts; an outage or throttle keeps it. */
+function refreshVerdict(status) {
+  return status === 400 || status === 401 ? 'rejected' : 'error'
+}
+
 /** One no-body Cookie refresh. Success is also the migration gate for old keys. */
 async function refreshWithCookie(epoch) {
   let res
@@ -135,7 +151,7 @@ async function refreshWithCookie(epoch) {
   }
   // U229 F1: every await boundary checks ownership before touching state.
   if (state.authEpoch !== epoch) return 'stale'
-  if (!res.ok) return 'rejected'
+  if (!res.ok) return refreshVerdict(res.status)
   const body = await res.json().catch(() => ({}))
   if (state.authEpoch !== epoch) return 'stale'
   if (typeof body.accessToken !== 'string' || body.accessToken === '') return 'rejected'
@@ -165,7 +181,7 @@ async function refreshWithBody(epoch) {
     return state.authEpoch === epoch ? 'error' : 'stale'
   }
   if (state.authEpoch !== epoch) return 'stale'
-  if (!res.ok) return 'rejected'
+  if (!res.ok) return refreshVerdict(res.status)
   const body = await res.json().catch(() => ({}))
   if (state.authEpoch !== epoch) return 'stale'
   if (typeof body.accessToken !== 'string' || body.accessToken === '') return 'rejected'
@@ -2736,7 +2752,10 @@ async function renderRelays({ keepTable = false } = {}) {
     <div class="relay-list">
       ${body.relays.map((relay, index) => relayCard(relay, index)).join('') || '<p class="card table-empty">尚未注册中继</p>'}
     </div>`
-  $('#addRelayBtn').onclick = addRelayDialog
+  // U229 F11: the click handler owns the rejection; never leak it to the window.
+  $('#addRelayBtn').onclick = () => {
+    void addRelayDialog().catch((err) => toast(`添加中继失败：${err.message ?? err}`))
+  }
   $('#refreshRelaysBtn').onclick = () => void renderRelays({ keepTable: true })
   wireRelayDetails()
 }
@@ -4990,6 +5009,17 @@ async function login(username, password) {
     err.code = body.error?.code
     throw err
   }
+  // U229 F6: a 200 that omits the contract is a platform fault, never a login.
+  if (
+    typeof body.accessToken !== 'string' ||
+    body.accessToken === '' ||
+    !body.user?.username ||
+    !body.device?.id
+  ) {
+    const err = new Error('平台响应异常，请稍后重试')
+    err.code = 'PLATFORM_UNAVAILABLE'
+    throw err
+  }
   // A successful login is its own generation; an in-flight refresh is now stale.
   state.authEpoch += 1
   refreshInFlight = null
@@ -5053,7 +5083,9 @@ function logout() {
   // that the request still owes the platform until a response proves otherwise.
   localStorage.setItem(PENDING_LOGOUT_KEY, '1')
   // U229 F10: read the refresh token before clearLegacyTokens() wipes it.
-  void sendLogout(state.refreshToken)
+  // U229 F11: a logout already on the wire locates the same session; concurrent
+  // 401s must not amplify it into repeated revocations.
+  if (!logoutInFlight) void sendLogout(state.refreshToken)
   state.accessToken = ''
   state.user = null
   state.directory = null
@@ -5226,10 +5258,16 @@ window.addEventListener('hashchange', () => {
     // U197: a proven Cookie deployment recovers from the HttpOnly cookie alone.
     // One refresh attempt only; a failure signs out instead of retrying.
     if (state.cookieMode) {
-      if ((await refreshSession(state.accessToken, { startup: true })) === 'ok') {
+      // U229 F5: both startup awaits are bounded, so a hung refresh or /v1/me
+      // lands on showLogin() instead of leaving both views hidden forever.
+      const refresh = await withTimeout(
+        refreshSession(state.accessToken, { startup: true }),
+        STARTUP_TIMEOUT_MS
+      )
+      if (refresh === 'ok') {
         try {
           // Why retried: the bootstrap must not start a second refresh chain.
-          const me = await api('/v1/me', {}, { retried: true })
+          const me = await withTimeout(api('/v1/me', {}, { retried: true }), STARTUP_TIMEOUT_MS)
           state.user = { ...me.user, displayName: me.user.displayName, dept: me.user.dept }
           // U225 N3R: a stale cookie marker can survive a server downgraded to
           // never; the body fallback restored the legacy keys, so bind them.
@@ -5246,7 +5284,8 @@ window.addEventListener('hashchange', () => {
     }
     if (state.accessToken) {
       try {
-        const me = await api('/v1/me')
+        // U229 F5: the legacy token path includes its own body refresh.
+        const me = await withTimeout(api('/v1/me'), STARTUP_TIMEOUT_MS)
         state.user = { ...me.user, displayName: me.user.displayName, dept: me.user.dept }
         // U222 N3: a body refresh at startup has no user yet, so bind the
         // legacy keys once the account is known.
