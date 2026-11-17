@@ -105,6 +105,22 @@ describe('U197 S1 refresh cookie serialization', () => {
       'orca_refresh=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax'
     ])
   })
+
+  test('U220: an IP-literal platform host omits the invalid Domain clear header', () => {
+    for (const domain of ['127.0.0.1', '::1', '[::1]']) {
+      const clear = serializeRefreshCookieClear({ secure: true, domain })
+      assert.equal(clear.length, 2, `${domain} must clear exactly the two host-only scopes`)
+      for (const header of clear) {
+        assert.doesNotMatch(header, /Domain=/)
+        assert.match(header, /Max-Age=0/)
+      }
+    }
+    // A host name keeps all three scopes, unchanged.
+    assert.equal(
+      serializeRefreshCookieClear({ secure: true, domain: 'console.example.com' }).length,
+      3
+    )
+  })
 })
 
 describe('U197 S1 origin normalization', () => {

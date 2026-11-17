@@ -5,6 +5,8 @@
  * so an unconfigured deployment keeps the existing body-token contract.
  */
 
+import { isIP } from 'node:net'
+
 export const REFRESH_COOKIE_NAME = 'orca_refresh'
 export const REFRESH_COOKIE_PATH = '/v1/auth'
 
@@ -77,6 +79,12 @@ export function serializeRefreshCookie(input: {
   return parts.join('; ')
 }
 
+/** IPv4/IPv6 literal, accepting the bracketed form `new URL().hostname` returns. */
+function isIpLiteralHostname(hostname: string): boolean {
+  const bare = hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname
+  return isIP(bare) !== 0
+}
+
 /**
  * U218: one clear header is not enough. A cookie can coexist as host-only and
  * `Domain`-scoped on the same Path (browsers send both), and older builds used
@@ -87,16 +95,18 @@ export function serializeRefreshCookieClear(input: {
   /** Platform host for the Domain-scoped deletion; omitted without an origin. */
   domain?: string | null
 }): string[] {
-  const clear = (path: string, domain?: string): string => {
+  // RFC 6265 requires a host name; an IP literal (IPv6 bracketed) is invalid.
+  const domain = input.domain && !isIpLiteralHostname(input.domain) ? input.domain : undefined
+  const clear = (path: string, scopedDomain?: string): string => {
     const parts = [`${REFRESH_COOKIE_NAME}=`, `Path=${path}`]
-    if (domain) parts.push(`Domain=${domain}`)
+    if (scopedDomain) parts.push(`Domain=${scopedDomain}`)
     parts.push('Max-Age=0', 'HttpOnly', 'SameSite=Lax')
     if (input.secure) parts.push('Secure')
     return parts.join('; ')
   }
   return [
     clear(REFRESH_COOKIE_PATH),
-    ...(input.domain ? [clear(REFRESH_COOKIE_PATH, input.domain)] : []),
+    ...(domain ? [clear(REFRESH_COOKIE_PATH, domain)] : []),
     clear('/')
   ]
 }

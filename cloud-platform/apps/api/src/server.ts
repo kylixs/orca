@@ -1987,7 +1987,9 @@ export function createApp(config: ApiConfig): ApiHandle {
    */
   function carriesRefreshCookieWithoutOrigin(req: IncomingMessage): boolean {
     return (
-      req.headers.origin === undefined && parseRefreshCookie(req.headers.cookie).kind !== 'absent'
+      refreshCookieEnabled() &&
+      req.headers.origin === undefined &&
+      parseRefreshCookie(req.headers.cookie).kind !== 'absent'
     )
   }
 
@@ -3870,6 +3872,20 @@ export function createApp(config: ApiConfig): ApiHandle {
           result: 'success',
           traceId
         })
+      } else if (cookieSessionId !== undefined) {
+        // Cookie-only logout (expired Bearer): best-effort, never blocks sign-out.
+        const session = store.sessions.get(cookieSessionId)
+        const user = session ? store.users.get(session.userId) : undefined
+        if (user) {
+          audit.appendBestEffort({
+            eventType: 'logout',
+            actor: user.username,
+            targetType: 'session',
+            targetId: cookieSessionId,
+            result: 'success',
+            traceId
+          })
+        }
       }
       return json(res, 200, { ok: true })
     }

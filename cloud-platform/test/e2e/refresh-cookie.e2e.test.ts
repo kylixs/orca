@@ -948,4 +948,112 @@ describe('U218 登出撤销 / 多作用域清理 / Origin / 审计（真实 crea
       assert.equal(serialized.includes(token), false, 'audit metadata must never carry a token')
     }
   })
+
+  test('U220 N1: COOKIE_MODE=never 下无 Origin + 旧 Cookie 的登录/交接仍按旧契约成功', async () => {
+    const { app, base } = await start({ cookieMode: 'never', publicOrigin: ORIGIN })
+    const stale = { cookie: 'orca_refresh=stale-from-earlier-deployment' }
+
+    const loginRes = await login(base, stale)
+    assert.equal(loginRes.status, 200)
+    assert.deepEqual(loginRes.headers.getSetCookie(), [], 'never must not touch the stale Cookie')
+    const loginBody = (await loginRes.json()) as Record<string, unknown>
+    assert.equal(typeof loginBody.refreshToken, 'string')
+
+    const dev = app.store.usersByName.get('zhangsan')
+    assert.ok(dev)
+    app.store.webHandoffs.set('never-stale-code', {
+      userId: dev.id,
+      projectId: 'proj_payment',
+      expiresAt: Date.now() + 60_000
+    })
+    const handoffRes = await fetch(`${base}/v1/web/handoff`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...stale },
+      body: JSON.stringify({ code: 'never-stale-code' })
+    })
+    assert.equal(handoffRes.status, 200)
+    assert.deepEqual(handoffRes.headers.getSetCookie(), [])
+    assert.equal(
+      typeof ((await handoffRes.json()) as Record<string, unknown>).refreshToken,
+      'string'
+    )
+
+    // A Cookie-less script login is unaffected.
+    const scriptRes = await login(base)
+    assert.equal(scriptRes.status, 200)
+    assert.equal(
+      typeof ((await scriptRes.json()) as Record<string, unknown>).refreshToken,
+      'string'
+    )
+  })
+
+  test('U220 N3: IP 字面量 PUBLIC_ORIGIN 的清除头无 Domain，域名仍三条', async () => {
+    for (const publicOrigin of ['http://127.0.0.1:18787', 'http://[::1]:18787']) {
+      const { base } = await start({ cookieMode: 'auto', publicOrigin })
+      const res = await fetch(`${base}/v1/auth/logout`, { method: 'POST' })
+      assert.equal(res.status, 200)
+      const headers = res.headers.getSetCookie()
+      assert.equal(headers.length, 2, `${publicOrigin}: ${JSON.stringify(headers)}`)
+      for (const header of headers) assert.doesNotMatch(header, /Domain=/)
+      assert.ok(headers.some((header) => /^orca_refresh=; Path=\/v1\/auth;/.test(header)))
+      assert.ok(headers.some((header) => /^orca_refresh=; Path=\/;/.test(header)))
+    }
+
+    const { base } = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const domainRes = await fetch(`${base}/v1/auth/logout`, { method: 'POST' })
+    assert.equal(domainRes.headers.getSetCookie().length, 3)
+    assert.ok(
+      domainRes.headers.getSetCookie().some((header) => /Domain=console\.example\.com/.test(header))
+    )
+  })
+
+  test('U220 N2: access 过期 + Cookie 登出补一条 logout 审计，Bearer 登出不重复', async () => {
+    const { app, base } = await start({
+      cookieMode: 'auto',
+      publicOrigin: ORIGIN,
+      accessTtlMs: 200
+    })
+    const { cookie, body } = await cookieLogin(base)
+    const session = onlySession(app)
+    const user = app.store.users.get(session.userId)
+    assert.ok(user)
+    await new Promise((resolve) => setTimeout(resolve, 350))
+
+    const cookieOnly = await fetch(`${base}/v1/auth/logout`, {
+      method: 'POST',
+      headers: {
+        origin: ORIGIN,
+        authorization: `Bearer ${String(body.accessToken)}`,
+        cookie: `orca_refresh=${cookie}`
+      }
+    })
+    assert.equal(cookieOnly.status, 200)
+    assert.ok(session.revokedAt !== null)
+
+    const cookieLogoutEvents = app.store.audit.filter((event) => event.eventType === 'logout')
+    assert.equal(cookieLogoutEvents.length, 1, 'Cookie-only logout must be audited exactly once')
+    const [cookieEvent] = cookieLogoutEvents
+    assert.ok(cookieEvent)
+    assert.equal(cookieEvent.actor, user.username)
+    assert.equal(cookieEvent.targetId, session.id)
+    assert.equal(JSON.stringify(cookieEvent.metadata ?? {}).includes(cookie), false)
+
+    // The normal Bearer path still writes exactly one event, not two.
+    const second = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const bearerLogin = await cookieLogin(second.base)
+    const bearerLogout = await fetch(`${second.base}/v1/auth/logout`, {
+      method: 'POST',
+      headers: {
+        origin: ORIGIN,
+        authorization: `Bearer ${String(bearerLogin.body.accessToken)}`,
+        cookie: `orca_refresh=${bearerLogin.cookie}`
+      }
+    })
+    assert.equal(bearerLogout.status, 200)
+    assert.equal(
+      second.app.store.audit.filter((event) => event.eventType === 'logout').length,
+      1,
+      'Bearer logout must not also emit the Cookie-only event'
+    )
+  })
 })

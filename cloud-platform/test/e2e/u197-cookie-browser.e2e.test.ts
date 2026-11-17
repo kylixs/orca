@@ -412,7 +412,7 @@ describe('U197 S5 真实 Chromium：Cookie 刷新 / CSRF / 重复 Cookie', () =>
     }
   })
 
-  test('4. 重复 Cookie 硬 401：不回退 body、不撤销 session、清理三种作用域', async () => {
+  test('4. 重复 Cookie 硬 401：不回退 body、不撤销 session、清理作用域（IP 无 Domain）', async () => {
     const { context, page } = await openPage(always.url)
     try {
       const before = await signIn(page, always.url, 'u197-duplicate')
@@ -450,15 +450,15 @@ describe('U197 S5 真实 Chromium：Cookie 刷新 / CSRF / 重复 Cookie', () =>
       const clears = await setCookieHeaders(bodyFallback.response)
       assert.equal(
         clears.length,
-        3,
-        `expected three clearing scopes, got ${JSON.stringify(clears)}`
+        2,
+        `expected two clearing scopes for an IP host, got ${JSON.stringify(clears)}`
       )
       for (const header of clears) {
         assert.match(header, /^orca_refresh=;/)
         assert.match(header, /Max-Age=0/)
+        assert.doesNotMatch(header, /Domain=/)
       }
       assert.ok(clears.some((header) => /^orca_refresh=; Path=\/v1\/auth;/.test(header)))
-      assert.ok(clears.some((header) => /Domain=127\.0\.0\.1/.test(header)))
       assert.ok(clears.some((header) => /^orca_refresh=; Path=\/;/.test(header)))
 
       // The duplicate 401 itself must not revoke: re-seed the real Cookie and
