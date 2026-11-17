@@ -246,7 +246,7 @@ describe('U229 F2 无 owner 旧键不得跨账号回退', () => {
     assert.equal(page.window.localStorage.getItem('orca.refresh'), legacy.refreshToken)
   })
 
-  test('U231 AC9b owner 有值但 user 缓存缺失：仍允许 body 回退并保留旧键', async () => {
+  test('U231 owner 有值但 user 缓存缺失：仍允许 body 回退并保留旧键（非 AC9b，AC9b 见 D17）', async () => {
     const base = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
     const legacy = await legacyTokens(base, 'admin', 'Adm1n!')
     const page = loadWebConsolePage(base, {
