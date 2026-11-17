@@ -51,7 +51,7 @@ export const CHANGE_RULES = [
   { prefix: 'src/main/startup/', tests: ['src/main/startup'] },
   { prefix: 'src/main/ssh/', tests: ['src/main/ssh'] },
   { prefix: 'src/shared/', tests: ['src/shared'] },
-  { prefix: 'cloud-platform/apps/api/', tests: [], cloudE2E: ['cloud-platform/test/e2e'] },
+  { prefix: 'cloud-platform/apps/api/', tests: [], cloudE2E: CRITICAL_CLOUD_E2E },
   {
     prefix: 'cloud-platform/apps/web/',
     tests: [],
@@ -228,10 +228,14 @@ export function main(
     return finish(runCloudE2E(CRITICAL_CLOUD_E2E, { run: runFn }))
   }
   if (tier === 'changed') {
-    const targets = changedTargets(changedFiles())
+    const files = changedFiles()
+    const targets = changedTargets(files)
     console.log(
       `changed tier: ${targets.vitest.length} vitest paths, ${targets.cloudE2E.length} cloud e2e paths`
     )
+    if (files.some((file) => file.startsWith('cloud-platform/apps/api/'))) {
+      console.log('[changed] api 改动如需全树验证请显式跑 T1（critical）或 T3（发版 L4）')
+    }
     const vitest = runVitest(targets.vitest, { run: runFn })
     if (vitest !== 0) return finish(vitest)
     return finish(runCloudE2E(targets.cloudE2E, { run: runFn }))

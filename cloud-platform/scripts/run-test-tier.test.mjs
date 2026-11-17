@@ -21,10 +21,10 @@ test('maps renderer runtime changes to their suite', () => {
   assert.deepEqual(targets.cloudE2E, [])
 })
 
-test('maps platform api changes to the cloud e2e tree', () => {
+test('maps platform api changes to the critical cloud e2e set, not the whole tree', () => {
   const targets = changedTargets(['cloud-platform/apps/api/src/server.ts'])
   assert.deepEqual(targets.vitest, [])
-  assert.deepEqual(targets.cloudE2E, ['cloud-platform/test/e2e'])
+  assert.deepEqual(targets.cloudE2E, CRITICAL_CLOUD_E2E)
 })
 
 test('ignores unrelated files', () => {
