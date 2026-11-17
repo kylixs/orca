@@ -4161,3 +4161,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U54 WEB-R2-014/016 落地**：核对确认 traceId 筛选（URL 同步/导出/重置）已在分支存在，未重复实现；补输入长度约束（项目/主机搜索、审计 keyword/fileName 128；密码框不受限）与 2 条回归测试（traceId 全链路、maxlength）。`web-exploratory-fixes` 41/41。
 - **U54 WEB-R2-012 落地**：管理员项目页副标题改为「管理员视图：展示全部项目（含管理员可见、未授权）」，非管理员保持原文案；新增断言（41→42 例）。
 - **WEB-R2-010 定性（非缺陷）**：只读复现 600 条 host.* 事件——152 个重复组、seq 均不同、metadata 逐字节一致、90 个连续组 hash 链自洽、`/v1/audit/verify` ok；机制为同一心跳批次内多次真实拒绝共用请求 traceId（`appendHostAuditReports`）。证据 `evidence/u54-web-r2-010-20261117T133436Z/`（validate exit 0）。残余可观测性建议登记 U210（⚪，逐请求 traceId）。
+- **U54 收尾回归**：`web-exploratory-fixes` **42/42**（含新增 traceId/maxlength/管理员副标题 3 例）；WEB-R2-010 定性为非缺陷（输入侧重复，证据 `evidence/u54-web-r2-010-20261117T133436Z/`），残余可观测性建议 U210。U54 仅剩 008（克隆失败 UX）待裁定；U203 仅剩 QA-030 统计卡（U202）与 QA-032 令牌（U197）待裁定。
