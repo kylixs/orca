@@ -215,6 +215,43 @@ describe('U229 F10 legacy 登出携带 refreshToken（真实 createApp + HTTP）
   })
 })
 
+describe('U232 非对象登出 body 视为空 body（真实 createApp + HTTP）', () => {
+  // Raw JSON literals, not stringified objects: JSON.parse can return null or a
+  // scalar, so dereferencing body.refreshToken must not become a 500.
+  for (const raw of ['null', '42', '"x"', '[]']) {
+    test(`body=${raw}：200，有效 Bearer 仍撤销且不写 denied 审计`, async () => {
+      const { app, base } = await start()
+      const first = (await (await login(base)).json()) as Record<string, unknown>
+      const access = authOf(first)
+      const refreshToken = refreshOf(first)
+      const session = sessions(app)[0]
+      assert.ok(session)
+
+      const res = await logout(base, {
+        headers: { authorization: `Bearer ${access}` },
+        body: raw
+      })
+      assert.equal(res.status, 200)
+      assert.ok(session.revokedAt !== null)
+      assert.equal((await refresh(base, refreshToken)).status, 401)
+      assert.equal(logoutEvents(app).filter((event) => event.result === 'denied').length, 0)
+    })
+  }
+
+  test('无 Bearer/Cookie 且 body=null：200，不撤销任何会话', async () => {
+    const { app, base } = await start()
+    const first = (await (await login(base)).json()) as Record<string, unknown>
+    const refreshToken = refreshOf(first)
+    const session = sessions(app)[0]
+    assert.ok(session)
+
+    const res = await logout(base, { body: 'null' })
+    assert.equal(res.status, 200)
+    assert.equal(session.revokedAt, null)
+    assert.equal((await refresh(base, refreshToken)).status, 200)
+  })
+})
+
 describe('U229 F10 Cookie 模式回归（真实 createApp + HTTP）', () => {
   async function cookieLogin(base: string) {
     const res = await login(base, { origin: ORIGIN })

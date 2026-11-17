@@ -3939,7 +3939,12 @@ export function createApp(config: ApiConfig): ApiHandle {
       } catch {
         body = {}
       }
-      const bodyToken = typeof body.refreshToken === 'string' ? body.refreshToken : ''
+      // U232: JSON.parse can yield null/scalar/array at runtime, so guard the
+      // dereference instead of trusting the declared object type.
+      const bodyToken =
+        body !== null && typeof body === 'object' && typeof body.refreshToken === 'string'
+          ? body.refreshToken
+          : ''
       const bodySessionId = bodyToken === '' ? undefined : store.refreshTokens.get(bodyToken)
       const targets = new Set<string>()
       if (auth) targets.add(auth.sessionId)
