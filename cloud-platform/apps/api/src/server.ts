@@ -41,6 +41,8 @@ import {
 } from '../../../packages/contract/src/credential.ts'
 import { AuditChain, type AuditSummary } from './audit.ts'
 import { parseAuditQuery } from './audit-query.ts'
+import type { AuditExportJobStore } from './audit-export-jobs.ts'
+import { createAuditExportStore, startAuditExportCleanup } from './audit-export-runtime.ts'
 import { AUDIT_EVENT_TYPES } from './audit-event-catalog.ts'
 import { createRemoteAudit, type AuditSink } from './audit-writer-client.ts'
 import { createSigningKeyRing } from './signing-key-ring.ts'
@@ -171,6 +173,8 @@ export type ApiConfig = {
 export type ApiHandle = {
   store: Store
   audit: AuditChain
+  /** U202 E9: file-backed export jobs shared by export routes and cleanup. */
+  auditExportStore: AuditExportJobStore
   signingKey: SigningKey
   listen: () => Promise<number>
   close: () => Promise<void>
@@ -1858,6 +1862,9 @@ export function createApp(config: ApiConfig): ApiHandle {
   // U131: dev-store snapshots are opt-in; without the env var the store stays in memory.
   const storeFile = (process.env.ORCA_PLATFORM_STORE_FILE ?? '').trim()
   const storePersistence = storeFile ? attachStorePersistence(store, { file: storeFile }) : null
+  // U202 E9: one export store per process; startup prune plus unref'd periodic sweep.
+  const auditExportStore = createAuditExportStore()
+  const auditExportCleanup = startAuditExportCleanup({ store: auditExportStore })
   // Production must inject a secret; the fallback exists only for local tests.
   const internalToken =
     config.internalToken ??
@@ -5992,10 +5999,12 @@ export function createApp(config: ApiConfig): ApiHandle {
     internalPort: () => internalChannel?.port ?? null,
     store,
     audit,
+    auditExportStore,
     get signingKey() {
       return signingKeys.current()
     },
     close: async () => {
+      auditExportCleanup.stop()
       storePersistence?.flushNow()
       storePersistence?.stop()
       await internalChannel?.close()
