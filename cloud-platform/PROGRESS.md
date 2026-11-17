@@ -4095,3 +4095,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U183 R11a 落地**（`f69c8aa0dfe`）：`mkdir` 安装锁（pid/时间、1s 重读、死锁清理、竞争者 75、trap EXIT 释放）；同 sha 幂等（跳过下载/解包/激活、env 重写新 nonce、unit `cmp -s` 不重写、previous 不动）；65 失败路径释放锁；四套全绿。
 - **stale 断言修复**（`02365119bd9`）：`web-host-lifecycle-feedback` 仍断言旧 `bash <(curl …)` 形态（U182 批 1 已改为显式下载 + `|| exit 1`）；已更新为断言新形态并禁止旧管道；4/4 绿。
 - **U181 P2-C 落地**（`7c1bfdab001`）：preflight 增 profile 可写探针（无残留）与实例锁只读检查（活锁→`profile_in_use`/78 并提示 pid，死锁可回收）；orcad 直调复用 CLI 冲突规则拒绝 pairing 类 flags（78）；checks 顺序 config→profile→runtime；CLI/orcad 2234 例绿、tc:node/tc:cli 通过。
+- **U183 R11b 落地**（`c47d740a73b`）：升级（`orca_relay_atomic_link`、systemd `restart`、非 systemd 先停旧再启、同 sha 重跑也重启以刷新 nonce）；自证失败返回类型化原因，异 sha 升级且 previous 存在 → 切回 previous + 重启 + 30s 复证，stderr `rollback=ok`/`rollback=failed`（码表无 71，用 70）；N-1 清理仅删带 `.orca-relay-release` 标记的自有目录；74+28 例绿。**R13c 在途**（干净容器正向 e2e）。
