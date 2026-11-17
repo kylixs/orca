@@ -297,12 +297,39 @@ umask 077
 
 ORCA_ENV_FILE="\${ORCA_ENV_FILE:-$HOME/.orca-cloud/host.env}"
 ORCA_ENV_DIR="$(dirname "$ORCA_ENV_FILE")"
+
+# U182: fail before writing anything when the host binary is absent — every
+# printed start command must be one this machine can actually run.
+ORCA_HOST_BIN="$(command -v orca-ide 2>/dev/null || command -v orca 2>/dev/null || true)"
+if [ -z "$ORCA_HOST_BIN" ]; then
+  echo ">> 未找到 Orca 宿主程序：请先安装 orca-ide（Linux）或 orca，并确保其在 PATH 中" >&2
+  exit 1
+fi
+
+ORCA_HOST_NAME="$(hostname -s 2>/dev/null || hostname 2>/dev/null || true)"
+# U182: hostname -I is Linux-only. Probe hostname -I → macOS ipconfig → plain
+# hostname; an empty advertise address is a failed install, never "success".
+if [ -n "\${ADVERTISE_HOST:-}" ]; then
+  ORCA_ADVERTISE="$ADVERTISE_HOST"
+else
+  ORCA_ADVERTISE="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+  if [ -z "$ORCA_ADVERTISE" ] && command -v ipconfig >/dev/null 2>&1; then
+    ORCA_ADVERTISE="$(ipconfig getifaddr en0 2>/dev/null || true)"
+  fi
+  if [ -z "$ORCA_ADVERTISE" ]; then
+    ORCA_ADVERTISE="$(hostname 2>/dev/null || true)"
+  fi
+fi
+if [ -z "$ORCA_ADVERTISE" ]; then
+  echo ">> 无法自动探测本机地址（hostname -I / ipconfig getifaddr en0 / hostname 均失败）。" >&2
+  echo ">> 请显式设置 ADVERTISE_HOST=<本机可达 IP> 后重试。" >&2
+  exit 1
+fi
+
 mkdir -p "$ORCA_ENV_DIR"
 chmod 700 "$ORCA_ENV_DIR" 2>/dev/null || true
 
 echo ">> 写入环境配置 $ORCA_ENV_FILE"
-ORCA_HOST_NAME="$(hostname -s 2>/dev/null || hostname)"
-ORCA_ADVERTISE="\${ADVERTISE_HOST:-$(hostname -I 2>/dev/null | awk '{print $1}')}"
 {
   # ORCA_CLOUD_* is what the host binary reads; the bare aliases stay for env
   # files and docs written before the rename (same family as U38). Untrusted
@@ -325,10 +352,45 @@ if [ ! -s "$ORCA_TLS_CERT" ] || [ ! -s "$ORCA_TLS_KEY" ]; then
   echo ">> 生成自签 TLS 证书（openssl）"
   mkdir -p "$(dirname "$ORCA_TLS_CERT")"
   chmod 700 "$(dirname "$ORCA_TLS_CERT")" 2>/dev/null || true
-  openssl req -x509 -newkey rsa:2048 -nodes -days 365 \\
-    -keyout "$ORCA_TLS_KEY" -out "$ORCA_TLS_CERT" \\
-    -subj "/CN=$(hostname -s 2>/dev/null || hostname)" \\
-    -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" >/dev/null 2>&1
+  # U182: -addext needs OpenSSL >= 1.1.1; older builds get a temp config, and
+  # every openssl error stays on stderr instead of being swallowed.
+  ORCA_OPENSSL_VER="$(openssl version 2>/dev/null | awk '{print $2}' || true)"
+  ORCA_OPENSSL_ADDEXT=1
+  case "$ORCA_OPENSSL_VER" in
+    0.*|1.0.*|1.1.0*) ORCA_OPENSSL_ADDEXT=0 ;;
+  esac
+  ORCA_TLS_OK=0
+  if [ "$ORCA_OPENSSL_ADDEXT" = 1 ]; then
+    if openssl req -x509 -newkey rsa:2048 -nodes -days 365 \\
+      -keyout "$ORCA_TLS_KEY" -out "$ORCA_TLS_CERT" \\
+      -subj "/CN=$ORCA_HOST_NAME" \\
+      -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" >/dev/null; then
+      ORCA_TLS_OK=1
+    fi
+  else
+    ORCA_SSL_CONF="$(mktemp "\${TMPDIR:-/tmp}/orca-openssl-XXXXXX.cnf")"
+    cat > "$ORCA_SSL_CONF" <<ORCA_SSL_CONF_EOF
+[req]
+distinguished_name = dn
+x509_extensions = v3_req
+prompt = no
+[dn]
+CN = $ORCA_HOST_NAME
+[v3_req]
+subjectAltName = DNS:localhost,IP:127.0.0.1
+ORCA_SSL_CONF_EOF
+    if openssl req -x509 -newkey rsa:2048 -nodes -days 365 \\
+      -keyout "$ORCA_TLS_KEY" -out "$ORCA_TLS_CERT" \\
+      -config "$ORCA_SSL_CONF" >/dev/null; then
+      ORCA_TLS_OK=1
+    fi
+    rm -f "$ORCA_SSL_CONF"
+  fi
+  if [ "$ORCA_TLS_OK" != 1 ]; then
+    echo ">> 自签 TLS 证书生成失败（openssl \${ORCA_OPENSSL_VER:-unknown}）：请检查上面的 openssl 错误；" >&2
+    echo ">> 或设置 ORCA_TLS_CERT/ORCA_TLS_KEY 指向已有证书后重试。" >&2
+    exit 1
+  fi
 fi
 # U182: always write the paths; a rerun with an existing cert used to drop them,
 # which silently downgraded the host listener to plaintext.
@@ -347,12 +409,13 @@ case "$ORCA_HEALTH_CODE" in
 esac
 echo ">> 环境已就绪：\$ORCA_ENV_FILE"
 
-cat <<'ORCA_NEXT'
+if command -v systemctl >/dev/null 2>&1; then
+  cat <<ORCA_NEXT
 
 后续命令在开发机上执行：
 1) 前台启动 Orca 宿主模式（调试，注册并开始心跳）：
-   set -a; . "\$ORCA_ENV_FILE"; set +a
-   orca --host-mode
+   set -a; . "$ORCA_ENV_FILE"; set +a
+   $ORCA_HOST_BIN --host-mode
 2) systemd 用户单元（开机自启）：
    mkdir -p ~/.config/systemd/user
    cat > ~/.config/systemd/user/orca-host.service <<'UNIT'
@@ -360,7 +423,7 @@ cat <<'ORCA_NEXT'
 Description=Orca Cloud 宿主代理
 [Service]
 EnvironmentFile=%h/.orca-cloud/host.env
-ExecStart=/usr/bin/orca --host-mode
+ExecStart=$ORCA_HOST_BIN --host-mode
 Restart=on-failure
 [Install]
 WantedBy=default.target
@@ -368,6 +431,20 @@ UNIT
    systemctl --user daemon-reload
    systemctl --user enable --now orca-host.service
 ORCA_NEXT
+else
+  # U182: containers/WSL/macOS have no user systemd; print runnable commands
+  # instead of instructions that are guaranteed to fail. Never auto-background.
+  cat <<ORCA_NEXT
+
+后续命令在开发机上执行（未检测到 systemctl：容器 / WSL / macOS 不支持用户级自启）：
+1) 前台启动 Orca 宿主模式（调试，注册并开始心跳）：
+   set -a; . "$ORCA_ENV_FILE"; set +a
+   $ORCA_HOST_BIN --host-mode
+2) nohup 后台启动（脚本不自动执行，复制后运行）：
+   set -a; . "$ORCA_ENV_FILE"; set +a
+   nohup $ORCA_HOST_BIN --host-mode >> "$HOME/.orca-cloud/host.log" 2>&1 &
+ORCA_NEXT
+fi
 `
 }
 
@@ -379,6 +456,21 @@ umask 077
 
 ORCA_ENV_FILE="\${ORCA_ENV_FILE:-$HOME/.orca-cloud/relay.env}"
 ORCA_ENV_DIR="$(dirname "$ORCA_ENV_FILE")"
+
+# U182: this script does not install the relay — check the runtime and the
+# entry it will print, and fail instead of claiming an unusable install.
+ORCA_NODE_BIN="$(command -v node 2>/dev/null || true)"
+if [ -z "$ORCA_NODE_BIN" ]; then
+  echo ">> 未找到 node：本脚本不安装中继运行时，请先安装 Node.js 并确保其在 PATH 中" >&2
+  exit 1
+fi
+ORCA_RELAY_ROOT="\${ORCA_RELAY_ROOT:-/opt/orca-cloud}"
+ORCA_RELAY_ENTRY="$ORCA_RELAY_ROOT/cloud-platform/apps/relay/src/relay.ts"
+if [ ! -f "$ORCA_RELAY_ENTRY" ]; then
+  echo ">> 未找到中继程序 $ORCA_RELAY_ENTRY：本脚本不安装中继代码，请先把 Orca 仓库放到该路径，或设置 ORCA_RELAY_ROOT" >&2
+  exit 1
+fi
+
 mkdir -p "$ORCA_ENV_DIR"
 chmod 700 "$ORCA_ENV_DIR" 2>/dev/null || true
 
@@ -403,12 +495,13 @@ case "$ORCA_HEALTH_CODE" in
 esac
 echo ">> 环境已就绪：$ORCA_ENV_FILE"
 
-cat <<'ORCA_NEXT'
+if command -v systemctl >/dev/null 2>&1; then
+  cat <<ORCA_NEXT
 
 后续命令在中继机上执行：
-1) 前台启动中继（调试；需要仓库代码）：
-   set -a; . "\$ORCA_ENV_FILE"; set +a
-   node cloud-platform/apps/relay/src/relay.ts
+1) 前台启动中继（调试）：
+   set -a; . "$ORCA_ENV_FILE"; set +a
+   $ORCA_NODE_BIN $ORCA_RELAY_ENTRY
 2) systemd 用户单元（开机自启）：
    mkdir -p ~/.config/systemd/user
    cat > ~/.config/systemd/user/orca-relay.service <<'UNIT'
@@ -416,7 +509,7 @@ cat <<'ORCA_NEXT'
 Description=Orca Cloud 中继
 [Service]
 EnvironmentFile=%h/.orca-cloud/relay.env
-ExecStart=/usr/bin/env node /opt/orca-cloud/cloud-platform/apps/relay/src/relay.ts
+ExecStart=$ORCA_NODE_BIN $ORCA_RELAY_ENTRY
 Restart=on-failure
 [Install]
 WantedBy=default.target
@@ -426,6 +519,21 @@ UNIT
 
 说明：RELAY_PUBLIC_HOST 填客户端可达地址（NAT/跨网段必填）；缺省时平台记录注册来源 IP。
 ORCA_NEXT
+else
+  # U182: no user systemd in containers/WSL/macOS — print copyable commands.
+  cat <<ORCA_NEXT
+
+后续命令在中继机上执行（未检测到 systemctl：容器 / WSL / macOS 不支持用户级自启）：
+1) 前台启动中继（调试）：
+   set -a; . "$ORCA_ENV_FILE"; set +a
+   $ORCA_NODE_BIN $ORCA_RELAY_ENTRY
+2) nohup 后台启动（脚本不自动执行，复制后运行）：
+   set -a; . "$ORCA_ENV_FILE"; set +a
+   nohup $ORCA_NODE_BIN $ORCA_RELAY_ENTRY >> "$HOME/.orca-cloud/relay.log" 2>&1 &
+
+说明：RELAY_PUBLIC_HOST 填客户端可达地址（NAT/跨网段必填）；缺省时平台记录注册来源 IP。
+ORCA_NEXT
+fi
 `
 }
 
@@ -992,7 +1100,9 @@ export function createApp(config: ApiConfig): ApiHandle {
     const subjectType = body.subjectType === 'group' ? 'group' : 'user'
     const subjectId = typeof body.subjectId === 'string' ? body.subjectId.trim() : ''
     const next = Array.isArray(body.permissions)
-      ? body.permissions.filter((permission): permission is string => typeof permission === 'string')
+      ? body.permissions.filter(
+          (permission): permission is string => typeof permission === 'string'
+        )
       : []
     // The stored row is keyed by the resolved user id, not the submitted username.
     const resolved = resolveGrantSubject(store, subjectType, subjectId)
@@ -3965,8 +4075,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         const subjectId = resolved.subjectId
         const username = resolved.subjectType === 'user' ? resolved.username : null
         const previous = store.hostGrants.find(
-          (g) =>
-            g.hostId === hostId && g.subjectType === subjectType && g.subjectId === subjectId
+          (g) => g.hostId === hostId && g.subjectType === subjectType && g.subjectId === subjectId
         )
         const removedPermissions = (previous?.permissions ?? []).filter(
           (permission) => !permissions.includes(permission)

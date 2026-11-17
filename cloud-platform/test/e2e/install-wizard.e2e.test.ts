@@ -1,7 +1,15 @@
 import { test, before, after, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  statSync,
+  symlinkSync,
+  writeFileSync
+} from 'node:fs'
 import { request } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -83,7 +91,59 @@ function makeInstallHome(): string {
     '#!/usr/bin/env bash\ncase "$1" in -s|-I) echo orca-test-host ;; *) echo orca-test-host ;; esac\n',
     { mode: 0o755 }
   )
+  // U182: the install script now resolves the host binary before writing env.
+  writeFileSync(join(home, 'bin', 'orca'), '#!/usr/bin/env bash\nexit 0\n', { mode: 0o755 })
   return home
+}
+
+/** U182: a PATH containing only the tools the script needs — no systemctl,
+ * no ipconfig, no real node unless asked for. Keeps the probes deterministic
+ * on Linux CI and macOS (where the real PATH differs). */
+const SPARSE_TOOLS = [
+  'bash',
+  'dirname',
+  'mkdir',
+  'chmod',
+  'cat',
+  'awk',
+  'curl',
+  'mktemp',
+  'rm',
+  'node'
+]
+
+function makeSparsePath(home: string, stubs: Record<string, string>, omit: string[] = []): string {
+  const bin = join(home, 'sparse-bin')
+  mkdirSync(bin, { recursive: true })
+  const dirs = (process.env.PATH ?? '').split(':').filter(Boolean)
+  for (const name of SPARSE_TOOLS) {
+    if (name in stubs || omit.includes(name)) {
+      continue
+    }
+    const source = dirs.map((dir) => join(dir, name)).find((candidate) => existsSync(candidate))
+    if (source) {
+      symlinkSync(source, join(bin, name))
+    }
+  }
+  for (const [name, body] of Object.entries(stubs)) {
+    writeFileSync(join(bin, name), body, { mode: 0o755 })
+  }
+  return bin
+}
+
+const HOSTNAME_STUB =
+  '#!/usr/bin/env bash\ncase "$1" in -s) echo orca-test-host ;; -I) exit 1 ;; *) exit 0 ;; esac\n'
+
+const ORCA_STUB = '#!/usr/bin/env bash\nexit 0\n'
+
+/** The generated host script for a fresh one-time token. */
+async function fetchHostScript(): Promise<string> {
+  const token = await mintHostToken()
+  const res = await fetch(`${api.url}/install/host.sh?token=${token}`, {
+    headers: auth(adminToken)
+  })
+  assert.equal(res.status, 200)
+  return res.text()
 }
 
 /**
@@ -93,7 +153,8 @@ function makeInstallHome(): string {
  */
 function runInstallScript(
   script: string,
-  home = makeInstallHome()
+  home = makeInstallHome(),
+  envOverrides: Record<string, string> = {}
 ): {
   status: number | null
   stdout: string
@@ -109,7 +170,8 @@ function runInstallScript(
     env: {
       PATH: `${join(home, 'bin')}:${process.env.PATH ?? ''}`,
       HOME: home,
-      TMPDIR: process.env.TMPDIR ?? '/tmp'
+      TMPDIR: process.env.TMPDIR ?? '/tmp',
+      ...envOverrides
     }
   })
   return { status: result.status, stdout: result.stdout, stderr: result.stderr, home }
@@ -291,7 +353,9 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
       'internal token must be embedded'
     )
     assert.match(script, /RELAY_PUBLIC_HOST/)
-    assert.match(script, /node cloud-platform\/apps\/relay\/src\/relay\.ts/)
+    // U182: the printed start command uses the resolved node/entry paths.
+    assert.match(script, /command -v node/)
+    assert.match(script, /\$ORCA_NODE_BIN \$ORCA_RELAY_ENTRY/)
     saveEvidence(EVIDENCE, 'install-relay-script.txt', script)
   })
 
@@ -361,7 +425,13 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
   test('U180: relay.sh 同样在干净 shell 中跑过健康检查', async () => {
     const res = await fetch(`${api.url}/install/relay.sh`, { headers: auth(adminToken) })
     assert.equal(res.status, 200)
-    const run = runInstallScript(await res.text())
+    const home = makeInstallHome()
+    // U182: the script verifies the relay entry it is about to print.
+    const relayRoot = join(home, 'orca-cloud')
+    const relayEntry = join(relayRoot, 'cloud-platform', 'apps', 'relay', 'src', 'relay.ts')
+    mkdirSync(join(relayRoot, 'cloud-platform', 'apps', 'relay', 'src'), { recursive: true })
+    writeFileSync(relayEntry, '')
+    const run = runInstallScript(await res.text(), home, { ORCA_RELAY_ROOT: relayRoot })
 
     assert.doesNotMatch(run.stderr, /unbound variable/, run.stderr)
     assert.equal(run.status, 0, run.stderr)
@@ -437,6 +507,152 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     assert.notEqual(run.status, 0)
     assert.match(run.stderr, /平台健康检查失败/)
     assert.ok(elapsed < 15_000, `health check took ${elapsed}ms`)
+  })
+
+  test('U182: 无 hostname -I 且无替代地址 → fail-fast，不写空 ADVERTISE_HOST', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const bin = makeSparsePath(home, { hostname: HOSTNAME_STUB, orca: ORCA_STUB })
+    const run = runInstallScript(await fetchHostScript(), home, { PATH: bin })
+
+    assert.notEqual(run.status, 0)
+    assert.match(run.stderr, /无法自动探测本机地址/)
+    assert.match(run.stderr, /ADVERTISE_HOST/)
+    assert.equal(existsSync(join(home, '.orca-cloud', 'host.env')), false)
+  })
+
+  test('U182: 无 hostname -I 时回退 ipconfig getifaddr en0', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    mkdirSync(join(home, '.orca-cloud', 'tls'), { recursive: true })
+    writeFileSync(join(home, '.orca-cloud', 'tls', 'host.crt'), 'stub')
+    writeFileSync(join(home, '.orca-cloud', 'tls', 'host.key'), 'stub')
+    const bin = makeSparsePath(home, {
+      hostname: HOSTNAME_STUB,
+      ipconfig: '#!/usr/bin/env bash\n[ "$1" = getifaddr ] && echo 10.9.8.7\n',
+      orca: ORCA_STUB
+    })
+    const run = runInstallScript(await fetchHostScript(), home, { PATH: bin })
+
+    assert.equal(run.status, 0, run.stderr)
+    const env = readFileSync(join(home, '.orca-cloud', 'host.env'), 'utf8')
+    assert.match(env, /^ADVERTISE_HOST=10\.9\.8\.7$/m)
+    assert.match(env, /^ORCA_CLOUD_ADVERTISE_HOST=10\.9\.8\.7$/m)
+  })
+
+  test('U182: openssl 失败保留 stderr 并 exit 1', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const bin = makeSparsePath(home, {
+      hostname:
+        '#!/usr/bin/env bash\ncase "$1" in -s|-I) echo orca-test-host ;; *) echo orca-test-host ;; esac\n',
+      orca: ORCA_STUB,
+      openssl: '#!/usr/bin/env bash\necho "openssl-stub-boom" >&2\nexit 1\n'
+    })
+    const run = runInstallScript(await fetchHostScript(), home, { PATH: bin })
+
+    assert.notEqual(run.status, 0)
+    assert.match(run.stderr, /openssl-stub-boom/)
+    assert.match(run.stderr, /自签 TLS 证书生成失败/)
+  })
+
+  test('U182: OpenSSL 1.0.2 降级为临时 config 生成 SAN，不使用 -addext', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const marker = join(home, 'openssl-args.txt')
+    const opensslStub = [
+      '#!/usr/bin/env bash',
+      'if [ "$1" = version ]; then echo "OpenSSL 1.0.2k-fips  26 Jan 2017"; exit 0; fi',
+      `printf '%s\\n' "$@" > '${marker}'`,
+      'while [ $# -gt 0 ]; do',
+      '  case "$1" in',
+      '    -keyout) printf key > "$2"; shift 2 ;;',
+      '    -out) printf cert > "$2"; shift 2 ;;',
+      '    *) shift ;;',
+      '  esac',
+      'done',
+      'exit 0'
+    ].join('\n')
+    const bin = makeSparsePath(home, {
+      hostname:
+        '#!/usr/bin/env bash\ncase "$1" in -s|-I) echo orca-test-host ;; *) echo orca-test-host ;; esac\n',
+      orca: ORCA_STUB,
+      openssl: opensslStub
+    })
+    const run = runInstallScript(await fetchHostScript(), home, { PATH: bin })
+
+    assert.equal(run.status, 0, run.stderr)
+    const args = readFileSync(marker, 'utf8')
+    assert.match(args, /-config/)
+    assert.doesNotMatch(args, /-addext/)
+  })
+
+  test('U182: 无 systemctl 时打印 nohup 启动命令且安装成功', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    mkdirSync(join(home, '.orca-cloud', 'tls'), { recursive: true })
+    writeFileSync(join(home, '.orca-cloud', 'tls', 'host.crt'), 'stub')
+    writeFileSync(join(home, '.orca-cloud', 'tls', 'host.key'), 'stub')
+    const bin = makeSparsePath(home, {
+      hostname:
+        '#!/usr/bin/env bash\ncase "$1" in -s|-I) echo orca-test-host ;; *) echo orca-test-host ;; esac\n',
+      orca: ORCA_STUB
+    })
+    const run = runInstallScript(await fetchHostScript(), home, { PATH: bin })
+
+    assert.equal(run.status, 0, run.stderr)
+    assert.match(run.stdout, /未检测到 systemctl/)
+    assert.match(run.stdout, /nohup .*--host-mode/)
+    assert.doesNotMatch(run.stdout, /systemctl --user enable/)
+  })
+
+  test('U182: 缺少 orca/orca-ide 时 fail-fast，不写配置', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const bin = makeSparsePath(home, { hostname: HOSTNAME_STUB })
+    const run = runInstallScript(await fetchHostScript(), home, { PATH: bin })
+
+    assert.notEqual(run.status, 0)
+    assert.match(run.stderr, /未找到 Orca 宿主程序/)
+    assert.match(run.stderr, /orca-ide/)
+    assert.equal(existsSync(join(home, '.orca-cloud', 'host.env')), false)
+  })
+
+  test('U182: relay 缺 node 时 fail-fast', async () => {
+    const res = await fetch(`${api.url}/install/relay.sh`, { headers: auth(adminToken) })
+    assert.equal(res.status, 200)
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const bin = makeSparsePath(home, {}, ['node'])
+    const run = runInstallScript(await res.text(), home, { PATH: bin })
+
+    assert.notEqual(run.status, 0)
+    assert.match(run.stderr, /未找到 node/)
+  })
+
+  test('U182: relay 缺中继代码时 fail-fast，不假装安装', async () => {
+    const res = await fetch(`${api.url}/install/relay.sh`, { headers: auth(adminToken) })
+    assert.equal(res.status, 200)
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const bin = makeSparsePath(home, { node: '#!/usr/bin/env bash\nexit 0\n' })
+    const run = runInstallScript(await res.text(), home, {
+      PATH: bin,
+      ORCA_RELAY_ROOT: join(home, 'missing-relay')
+    })
+
+    assert.notEqual(run.status, 0)
+    assert.match(run.stderr, /未找到中继程序/)
+  })
+
+  test('U182: relay 无 systemctl 时打印 nohup 启动命令且安装成功', async () => {
+    const res = await fetch(`${api.url}/install/relay.sh`, { headers: auth(adminToken) })
+    assert.equal(res.status, 200)
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const relayRoot = join(home, 'orca-cloud')
+    mkdirSync(join(relayRoot, 'cloud-platform', 'apps', 'relay', 'src'), { recursive: true })
+    writeFileSync(join(relayRoot, 'cloud-platform', 'apps', 'relay', 'src', 'relay.ts'), '')
+    const bin = makeSparsePath(home, { node: '#!/usr/bin/env bash\nexit 0\n' })
+    const run = runInstallScript(await res.text(), home, {
+      PATH: bin,
+      ORCA_RELAY_ROOT: relayRoot
+    })
+
+    assert.equal(run.status, 0, run.stderr)
+    assert.match(run.stdout, /未检测到 systemctl/)
+    assert.match(run.stdout, /nohup .*relay\.ts/)
   })
 
   test('开发者拉取脚本 403，拒绝与成功都写入 install_script 审计且不含令牌明文', async () => {
