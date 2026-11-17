@@ -107,6 +107,10 @@
 
 74. **后台/测试启动零窗口零对话框（同次固化——用户弹框报告）**：`ORCA_BACKGROUND_LAUNCH=1`/`ORCA_E2E_HEADLESS=1`/`ORCA_SUPPRESS_DIALOGS=1`/`ELECTRON_RUN_AS_NODE` 下，所有 `dialog.show*` 必须静默（日志 + 默认应答），严重启动失败必须 `app.exit`。验收站点须断言「无可见窗口、无对话框」；诊断时禁止直接启动 Electron 二进制（如 `Electron -e ...`、把 `.ts` 当应用入口），只能经 harness 启动，且残留进程按 PID 清理。
 
+75. **冒烟三连门（2026-11-17 12:4x 用户指令固化）**：任何更大范围测试之前，先跑桌面冒烟三连——S1 启动+工作区（`cloud-golden-journey-desktop.spec.ts`）、S2 拖拽镜像+宿主 oracle（`c6-desktop-drag.spec.ts`）、S3 headless serve 激活（`headless-serve-desktop-activation.spec.ts`），由 `cloud-platform/scripts/smoke/desktop-smoke-gate.mjs` 串行执行（`electron-headless`）。**前三个未通过必须先修，不得继续其它套件**；门槛在脚本内机检，不靠人工判断。
+
+76. **测试有效性（同次固化——「启动即失败但显示通过」判例）**：测试必须证明自己进入了真实步骤，而不是只验证了启动/空跑。①每个冒烟/门禁步骤必须由机器校验「至少 1 个用例真实通过且执行时长 ≥1s」（脚本内 `validateRun`）；②新增测试默认附判别力变异（去实现必红）；③断言必须落在用户可见行为或契约字段，禁止只断言「函数被调用」而无结果；④「0 fail」必须同时报告执行面（用例数/时长），空跑不得计为通过。
+
 ## 2b. 并行模式（用户 2026-11-14 指令：不要串行开发，单独完整链路验收，发现即修不堵塞）
 
 1. **开发令派发不再以「前一令测试/审计通过」为前置**：实现落地即放行下一开发令（同通道后续令与跨通道均可）；文件域不相交仍是硬约束（防工作树碰撞与提交卷入）。
