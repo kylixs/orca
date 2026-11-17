@@ -2943,6 +2943,17 @@ export function createApp(config: ApiConfig): ApiHandle {
   }
 
   /**
+   * U241 ②: every revocation kills already-issued access tokens exactly once.
+   * A session revoked elsewhere (logout, disabled refresh, reuse) keeps its epoch.
+   */
+  function revokeSessionOnce(session: Session): boolean {
+    if (session.revokedAt !== null) return false
+    session.revokedAt = now()
+    bumpEpoch(session.id)
+    return true
+  }
+
+  /**
    * U230②: a disabled session is revoked and audited at most once. The re-check
    * after the barrier keeps concurrent refreshes from double-bumping the epoch.
    */
@@ -2953,9 +2964,7 @@ export function createApp(config: ApiConfig): ApiHandle {
     traceId: string
   ): Promise<void> {
     await config.beforeDisabledSessionRevoke?.()
-    if (session.revokedAt !== null) return
-    session.revokedAt = now()
-    bumpEpoch(session.id)
+    if (!revokeSessionOnce(session)) return
     audit.appendBestEffort({
       eventType: 'logout',
       actor: user?.username ?? null,
@@ -3609,6 +3618,9 @@ export function createApp(config: ApiConfig): ApiHandle {
         const body = await readJson(req)
         // Re-check after the body read: a concurrent revoke must still 401.
         if (cookieSession.revokedAt || cookieSession.refreshExpiresAt < now()) {
+          // U241 ②: revoking on expiry makes old access tokens fail immediately;
+          // an already-revoked session is left untouched (no second bump).
+          revokeSessionOnce(cookieSession)
           clearRefreshCookie(res)
           return error(res, 401, 'SESSION_EXPIRED', '会话已失效，请重新登录。', traceId)
         }
@@ -3647,7 +3659,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         // A value that maps to this session but is neither current nor previous
         // is a replay, as is a previous hit outside the window (§5.3/§5.5).
         if (!cookieIsCurrent && !cookieIsPrevious) {
-          cookieSession.revokedAt = now()
+          revokeSessionOnce(cookieSession)
           clearRefreshCookie(res)
           audit.appendBestEffort({
             eventType: 'refresh.reuse_detected',
@@ -3665,7 +3677,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         // access, but nothing is rotated or renewed and no Cookie is re-sent.
         if (cookieIsPrevious) {
           if (!inGrace) {
-            cookieSession.revokedAt = now()
+            revokeSessionOnce(cookieSession)
             clearRefreshCookie(res)
             audit.appendBestEffort({
               eventType: 'refresh.reuse_detected',
@@ -3697,7 +3709,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         // A previous body value outside the window is a replay even when the
         // Cookie itself is current (§5.5).
         if (bodyIsPrevious && !inGrace) {
-          cookieSession.revokedAt = now()
+          revokeSessionOnce(cookieSession)
           clearRefreshCookie(res)
           audit.appendBestEffort({
             eventType: 'refresh.reuse_detected',
@@ -3755,6 +3767,9 @@ export function createApp(config: ApiConfig): ApiHandle {
       const sessionId = store.refreshTokens.get(token)
       const session = sessionId ? store.sessions.get(sessionId) : undefined
       if (!session || session.revokedAt || session.refreshExpiresAt < now()) {
+        // U241 ②: an expired session is revoked once so its access tokens die
+        // now instead of at the next access-TTL boundary.
+        if (session) revokeSessionOnce(session)
         if (refreshCookieEnabled()) clearRefreshCookie(res)
         return error(res, 401, 'SESSION_EXPIRED', '会话已失效，请重新登录。', traceId)
       }
@@ -3788,7 +3803,7 @@ export function createApp(config: ApiConfig): ApiHandle {
             expiresIn: expiresInSeconds
           })
         }
-        session.revokedAt = now()
+        revokeSessionOnce(session)
         if (refreshCookieEnabled()) clearRefreshCookie(res)
         audit.appendBestEffort({
           eventType: 'refresh.reuse_detected',
@@ -3977,9 +3992,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       const revokedSessions: string[] = []
       for (const sessionId of targets) {
         const session = store.sessions.get(sessionId)
-        if (!session || session.revokedAt !== null) continue
-        session.revokedAt = now()
-        bumpEpoch(session.id)
+        if (!session || !revokeSessionOnce(session)) continue
         revokedSessions.push(sessionId)
       }
       // One logout event per newly revoked session, deduped by the target set (U220 N2).
@@ -4189,10 +4202,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
       device.revokedAt = now()
       for (const session of store.sessions.values()) {
-        if (session.deviceId === device.id && !session.revokedAt) {
-          session.revokedAt = now()
-          bumpEpoch(session.id)
-        }
+        if (session.deviceId === device.id) revokeSessionOnce(session)
       }
       // Established WSS sessions bypass the platform, so revocation must reach hosts too.
       appendRevocation('device', device.id, 'device_revoked')

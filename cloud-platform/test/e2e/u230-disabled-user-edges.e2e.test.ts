@@ -118,16 +118,30 @@ function auditOf(app: ApiHandle, sessionId: string): AuditEvent[] {
   )
 }
 
-/** Holds every refresh at the revoke barrier until both have arrived. */
-function rendezvous(): () => Promise<void> {
+/**
+ * Holds every refresh at the revoke barrier until both have arrived. U241 ③:
+ * if the second request never reaches it, fail in 2s instead of hanging until
+ * the runner's own timeout.
+ */
+function rendezvous(timeoutMs = 2_000): () => Promise<void> {
   let arrivals = 0
   let release: () => void = () => {}
-  const gate = new Promise<void>((resolve) => {
+  let fail: (error: Error) => void = () => {}
+  const gate = new Promise<void>((resolve, reject) => {
     release = resolve
+    fail = reject
   })
+  const timer = setTimeout(
+    () => fail(new Error(`the second refresh did not reach the barrier within ${timeoutMs}ms`)),
+    timeoutMs
+  )
+  timer.unref()
   return async () => {
     arrivals += 1
-    if (arrivals === 2) release()
+    if (arrivals === 2) {
+      clearTimeout(timer)
+      release()
+    }
     await gate
   }
 }
