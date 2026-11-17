@@ -63,6 +63,7 @@
 - Cookie 源**不轮换**：current 每次命中只续 access、滑动 `refreshExpiresAt`、同值重发 Cookie（`refreshCookie:true`）；重建失败时保留浏览器原 Cookie（`server.ts:3647-3664`）。
 - previous（宽限内）只发 access，不续期、不重发 Cookie；宽限外或既非 current 也非 previous → 撤销 session + 401 + `refresh.reuse_detected`（`server.ts:3566-3631`）。
 - body 源（无 Cookie 或 Cookie 无法解析）：current 正常轮换并置 `previousRefreshHash/graceUntil`，同源时例外地同时 `Set-Cookie`；previous 在宽限内回显请求值、不轮换；宽限外撤销并 401；未知 token 直接 401（不撤销未知会话）（`server.ts:3667-3731`）。
+- 撤销一致性（U241）：所有 session 级撤销经 `revokeSessionOnce`——仅在 `revokedAt === null` 时置值并 `bumpEpoch`（幂等）；覆盖过期/已撤销拒绝、reuse 三处、禁用、登出、设备批量。过期路径零审计、reuse 恰一条；已撤销再命中不重复 bump。**已知**：刷新过期后客户端自动登出时链上无撤销事件（U243①，待事件词汇批）。
 - 客户端三态 `ok/rejected/error`，只有 `rejected` 触发登出（`app.js:105-190`）。
 
 **页面恢复分支（HEAD）**
