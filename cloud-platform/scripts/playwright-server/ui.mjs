@@ -133,15 +133,19 @@ export function createUi({
       return step(`login:${role}`, async () => {
         const credentials = resolveRole(role, opts)
         await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded' })
-        if (
-          await page
-            .locator('#view-app')
-            .isVisible()
-            .catch(() => false)
-        ) {
+        // Both views start hidden; bootstrap reveals exactly one after /v1/me.
+        await page.waitForFunction(
+          () =>
+            !document.querySelector('#view-login')?.hidden ||
+            !document.querySelector('#view-app')?.hidden,
+          null,
+          { timeout: 20000 }
+        )
+        if (!(await page.locator('#view-login').isVisible())) {
           log(`already logged in as ${role}`)
           return { role, reused: true }
         }
+        await page.locator('#username').waitFor({ state: 'visible', timeout: 10000 })
         await page.fill('#username', credentials.username)
         await page.fill('#password', credentials.password)
         await page.click('#loginBtn')

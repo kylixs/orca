@@ -918,13 +918,11 @@ async function main() {
     'D2 host drawer x dual host',
     'H2',
     '三身份跨主机自助建项目矩阵',
-    [
-      Object.entries(selfMatrix).map(([key, val]) => ({
-        name: `${key} -> ${val.expected}`,
-        ok: val.status === val.expected,
-        actual: val
-      }))
-    ],
+    Object.entries(selfMatrix).map(([key, val]) => ({
+      name: `${key} -> ${val.expected}`,
+      ok: val.status === val.expected,
+      actual: val
+    })),
     {
       premise:
         '同 H1：zhangsan 基线直授已移除；允许与否只看 provision 位（admin 例外），policy 不参与'
