@@ -21,6 +21,13 @@ import { isWebSessionBrowserPlacementGroupReserved } from '../web-session-browse
 import { resolveWebSessionReorderedOrder } from '../web-session-reorder-intent'
 import { mapHostRecentTabIds } from './tab-group-layout-tree'
 import { pushRecentTabId, sanitizeRecentTabIds } from './state-equality-core'
+import {
+  memberSetKey,
+  resolveClaimedLocalGroups,
+  resolveUniqueHostGroupIdByMemberSet
+} from './host-group-claim'
+
+export { resolveUniqueHostGroupIdByMemberSet }
 
 export function buildHostToLocalTabIdMap({
   terminalSurfaces,
@@ -104,8 +111,6 @@ export function updateHostSessionGroupIdMappings(args: {
       args.hostGroups.map((group) => group.id)
     )
   }
-  const memberSetKey = (tabIds: Iterable<string>): string =>
-    [...new Set(tabIds)].sort().join('\u0000')
   const hostBackedLocalTabIds = new Set(args.hostToLocalTabId.values())
   const localMemberSet = (tabIds: readonly string[]): Set<string> =>
     new Set(tabIds.filter((tabId) => hostBackedLocalTabIds.has(tabId)))
@@ -136,11 +141,15 @@ export function updateHostSessionGroupIdMappings(args: {
         )
       : null
     // Why: same rule as the create side below — a host group with no host-backed members identifies nothing.
-    if (
-      !hostMembers ||
-      hostMembers.size === 0 ||
-      memberSetKey(hostMembers) !== memberSetKey(localMemberSet(localGroup.tabOrder))
-    ) {
+    if (!hostMembers || hostMembers.size === 0) {
+      clearHostSessionGroupIdMapping({ ...scope, groupId: localGroupId })
+      continue
+    }
+    // Why: P1-6 — an unmirrored host member may arrive next frame; dropping it would fabricate a mismatch.
+    if (hostGroup?.tabOrder.some((tabId) => !args.hostToLocalTabId.has(tabId))) {
+      continue
+    }
+    if (memberSetKey(hostMembers) !== memberSetKey(localMemberSet(localGroup.tabOrder))) {
       clearHostSessionGroupIdMapping({ ...scope, groupId: localGroupId })
     }
   }
@@ -148,30 +157,17 @@ export function updateHostSessionGroupIdMappings(args: {
   if (!args.hostGroups || args.hostGroups.length === 0) {
     return
   }
-  const hostGroupIdsByMemberSet = new Map<string, string[]>()
-  for (const hostGroup of args.hostGroups) {
-    const localTabIds = hostGroup.tabOrder
-      .map((tabId) => args.hostToLocalTabId.get(tabId))
-      .filter((tabId): tabId is string => tabId !== undefined)
-    if (localTabIds.length === 0) {
-      continue
-    }
-    const key = memberSetKey(localTabIds)
-    hostGroupIdsByMemberSet.set(key, [...(hostGroupIdsByMemberSet.get(key) ?? []), hostGroup.id])
-  }
   for (const localGroup of args.localGroups) {
     if (resolveHostSessionGroupIdForWebSessionGroup({ ...scope, groupId: localGroup.id })) {
       continue
     }
-    const hostBackedMembers = localMemberSet(localGroup.tabOrder)
-    // Why: local-only tabs have no host row, so only the host-backed subset can identify the group.
-    if (hostBackedMembers.size === 0) {
-      continue
-    }
-    const matches = hostGroupIdsByMemberSet.get(memberSetKey(hostBackedMembers))
-    // Why: two host groups with the same members are ambiguous; guessing could target the wrong one.
-    if (matches?.length === 1) {
-      setHostSessionGroupIdMapping({ ...scope, groupId: localGroup.id }, matches[0])
+    const hostGroupId = resolveUniqueHostGroupIdByMemberSet({
+      localGroup,
+      hostGroups: args.hostGroups,
+      hostToLocalTabId: args.hostToLocalTabId
+    })
+    if (hostGroupId !== undefined) {
+      setHostSessionGroupIdMapping({ ...scope, groupId: localGroup.id }, hostGroupId)
     }
   }
 }
@@ -250,8 +246,18 @@ export function buildMirroredHostGroups({
   const orderedGroups: TabGroup[] = []
   const seen = new Set<string>()
 
+  // Why: U163 — a mapped local group already stands for its host group; treating it as leftover duplicates the group.
+  const { localGroupByHostGroupId: claimedLocalGroupByHostGroupId, mappedLocalGroupIds } =
+    resolveClaimedLocalGroups({
+      environmentId,
+      worktreeId,
+      localGroups: strippedGroups,
+      hostGroups
+    })
+
   for (const hostGroup of hostGroups) {
-    const existing = groupsById.get(hostGroup.id)
+    const existing =
+      groupsById.get(hostGroup.id) ?? claimedLocalGroupByHostGroupId.get(hostGroup.id)
     const localHostOrder = hostGroup.tabOrder
       .map((tabId) => hostToLocalTabId.get(tabId))
       .filter(
@@ -304,6 +310,8 @@ export function buildMirroredHostGroups({
   for (const group of strippedGroups) {
     if (
       !seen.has(group.id) &&
+      // Why: claimed groups (present or host-deleted) already have their host group's fate.
+      !mappedLocalGroupIds.has(group.id) &&
       (group.tabOrder.length > 0 ||
         isWebSessionBrowserPlacementGroupReserved({ worktreeId, groupId: group.id }))
     ) {
