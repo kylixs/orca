@@ -148,7 +148,7 @@ test('D4-b 停用账号详情：角色控件 disabled + 锁定文案，强改不
     roles: ['developer'],
     status: 'active',
     role: 'developer',
-    roleSource: 'ldap'
+    roleSource: 'default'
   }
 
   const page = loadWebConsolePage(service.url, { hash: '#/workbench' })

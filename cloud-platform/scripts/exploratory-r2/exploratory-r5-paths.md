@@ -10,7 +10,7 @@
 
 ## 数据依赖（缺失时路径记为不可执行，不记通过）
 
-- `/v1/users` 至少 1 个 `role=admin`、2 个 `role=developer`，账号状态均为 `active`；`roleSource` 为 `ldap` 或 `admin-override`。
+- `/v1/users` 至少 1 个 `role=admin`、2 个 `role=developer`，账号状态均为 `active`；`roleSource` 为 `default` 或 `admin-override`。
 - `/v1/audit/events` 在最近 7 天内有 `eventType=login & result=success` 且 `actor=admin` 的组合结果（数量随登录次数增长，r5 实测 14–17 条）。
 - `demo-app`（`proj_6dc390d2`）主机在线，admin 具备 `open + terminal`：控制台「打开」进入内嵌工作区，iframe 为宿主侧 `cloud-admin.html`。
 
@@ -53,7 +53,7 @@
 
 ### P1'-7 来源标记
 
-- 检查点：每行「角色来源」列文本 = API `roleSource` 映射：`ldap → LDAP 同步`（muted 文本）、`admin-override → 管理员覆盖`（`span.badge.ok`）。
+- 检查点：每行「角色来源」列文本 = API `roleSource` 映射：`default → 平台默认`（muted 文本）、`admin-override → 管理员覆盖`（`span.badge.ok`）。
 
 ## P2' 审计查询网格改版（U86）
 

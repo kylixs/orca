@@ -20,6 +20,7 @@ export type CloudLoginPanelProps = {
 
 /** Error codes come from the platform; the copy is ours (AC-30 vocabulary). */
 const ERROR_COPY: Record<string, string> = {
+  LDAP_GROUP_NOT_ADMITTED: '账号未加入平台准入组。',
   INVALID_CREDENTIALS: '账号或密码不正确。',
   ACCOUNT_LOCKED: '账号已锁定，请 15 分钟后再试。',
   RATE_LIMITED: '尝试过于频繁，请稍后再试。',

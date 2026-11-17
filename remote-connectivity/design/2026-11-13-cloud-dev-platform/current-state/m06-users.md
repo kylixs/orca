@@ -7,7 +7,7 @@
 
 路由 `#/users`，面包屑「用户管理」。
 
-- **页头**：标题「用户管理」；副标题「平台账号与角色设置。用户与组来自 LDAP 同步；角色为按用户覆盖，覆盖记录留审计。」；右侧 toolbar 两枚徽标：LDAP 准入徽标（U145：`GET /v1/users` 加性字段 `ldap.requiredGroup` 有值显示「LDAP 准入组：<组名>」，未配置显示「LDAP 准入：未配置」，旧服务端无该字段回退中性「LDAP 分组准入」；不声明同步状态）、「N 个账号」。
+- **页头**：标题「用户管理」；副标题「平台账号与角色设置。用户与组来自 LDAP；角色以平台默认为基线，按用户覆盖，覆盖记录留审计。」；右侧 toolbar 两枚徽标：LDAP 准入徽标（U145：`GET /v1/users` 加性字段 `ldap.requiredGroup` 有值显示「LDAP 准入组：<组名>」，未配置显示「LDAP 准入：未配置」，旧服务端无该字段回退中性「LDAP 分组准入」；不声明同步状态）、「N 个账号」。
 - **模型说明条**（`.note`）：「角色 ≠ 资源授权（两层模型）」整段：本页角色决定管控面/审计面可见性；资源授权在项目/主机详情弹框权限页签；管理员角色不等于项目内全权，打开项目仍需显式授权。
 - **查询栏**（`.toolbar[role=search]`，5 个控件）：
   - `#userSearch` 搜索框（占宽），占位「用户名关键字：显示名或账号，如 张伟 / zhangwei」；
@@ -19,14 +19,14 @@
 - **表格**（7 列，与原型逐字对照）：`用户` / `部门` / `LDAP 组` / `角色` / `角色来源` / `状态` / `操作`。
   - 用户列：显示名加粗 + 账号（等宽灰字）；
   - 角色列：纯文本（普通/审计/管理员），**无行内控件**；
-  - 角色来源：`admin-override` 显示绿徽标「管理员覆盖」，否则灰字「LDAP 同步」；
+  - 角色来源：`admin-override` 显示绿徽标「管理员覆盖」，否则灰字「平台默认」；
   - 状态：绿点「活跃」/ 灰点「已停用」；
   - 操作：唯一按钮「详情」（ghost）。
 - **页脚**（`#usersFoot`）：「共 N 个账号[ · 当前筛选 M 个] · 服务端按请求实时判定角色；角色降级会断开当前云会话（≤60 秒），升级即时生效、不断会话。变更可在审计日志按「角色变更 · role_update」筛选。」
 - **空态**：单行 `colspan="7"` 文案「没有符合筛选条件的账号——请调整关键字或重置条件」。
 - **详情弹框**（`dialog(..., {wide:true})`，标题「用户详情 · <显示名>」）：7 个字段的 `dl.kv`：
   1. 显示名；2. 账号（等宽）；3. 部门；4. LDAP 组（逗号分隔，空为 —）；5. 平台角色（`select[data-detail-role]`，活跃账号可改，停用账号 disabled 并显示「已停用账号不可修改角色」）；6. 角色来源（同列表）；7. 状态（同列表）。
-     弹框底部说明：角色变更写 role_update 审计、覆盖优先于 LDAP、降级断开云会话、列表只读仅此处修改。
+     弹框底部说明：角色变更写 role_update 审计、覆盖优先于平台默认角色、降级断开云会话、列表只读仅此处修改。
      不展示创建时间/最近登录（users API 无该字段，不虚构）。
 - **分页**：无。`GET /v1/users` 一次返回全部账号，查询三条件均为**客户端过滤**（零 wire 变更），页脚只显示总数/筛选数。
 - **无**：新建用户、删除用户、启用/停用操作、批量操作、排序、导出、服务端分页。
@@ -58,7 +58,7 @@
 角色语义（服务端）：
 
 - 页面角色映射：`developer`→`['developer']`；`auditor`→`['developer','platform:auditor']`；`admin`→`['developer','platform:admin']`。
-- `roleOverride` 一旦写入即优先于 LDAP：登录时若存在 `roleOverride`，每次重算 `roles = USER_PAGE_ROLES[roleOverride]`（LDAP 组不再推导角色）；`roleSource` 即 `roleOverride ? 'admin-override' : 'ldap'`。
+- `roleOverride` 一旦写入即每次登录重算角色：登录时若存在 `roleOverride`，`roles = USER_PAGE_ROLES[roleOverride]`（LDAP 组不推导角色）；`roleSource` 即 `roleOverride ? 'admin-override' : 'default'`（`default` = 首登 `['developer']` 的默认角色；历史服务端曾发 `'ldap'`）。
 - 实时生效：access token 为 opaque 键，角色每请求重算；升级不撤销凭证，降级（仅 admin 降出）撤销用户凭证。
 - 审计：成功写 `role_update`（from/to/username/revoked）；拒绝写 `role_update` denied（requiredPermission=platform:admin）；被拒的列表读写 `user_list` denied。
 - 停用：`requireAuth` 对 `user.status !== 'active'` 返回 null（已签发 token 全部失效）；当前**无任何页面/接口把账号置为 disabled**，也没有登录时的显式拒绝分支（登录仍签发 token，但随后所有 API 401）。角色 PUT 服务端未校验 `target.status`，停用锁定仅在 UI。

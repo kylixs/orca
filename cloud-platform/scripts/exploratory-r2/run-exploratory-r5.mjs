@@ -25,7 +25,7 @@ const SHOTS = path.join(OUT, 'screenshots')
 fs.mkdirSync(SHOTS, { recursive: true })
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const ROLE_LABELS = { developer: '普通', auditor: '审计', admin: '管理员' }
-const SOURCE_LABELS = { ldap: 'LDAP 同步', 'admin-override': '管理员覆盖' }
+const SOURCE_LABELS = { default: '平台默认', 'admin-override': '管理员覆盖' }
 
 const checks = []
 const paths = { "P1'": true, "P2'": true, "P3'": true }
@@ -149,7 +149,7 @@ try {
   const sourceMismatches = sourceRows.filter((row) => {
     const user = users.find((u) => u.username === row.username)
     if (!user) return true
-    const expected = SOURCE_LABELS[user.roleSource] ?? 'LDAP 同步'
+    const expected = SOURCE_LABELS[user.roleSource] ?? '平台默认'
     return row.source !== expected || (user.roleSource === 'admin-override') !== row.badge
   })
   check("P1'", 'P1-7 role source marks', sourceMismatches.length === 0, sourceRows)

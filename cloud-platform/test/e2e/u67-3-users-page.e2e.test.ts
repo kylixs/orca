@@ -11,7 +11,7 @@ import { loadWebConsolePage } from './web-console-page.ts'
  * - 列表 GET /v1/users（admin-only）+ 非 admin 403 + denied 审计
  * - 角色写入 PUT /v1/users/{id}/roles：role_update 审计、服务端门禁实时生效
  *   （access token 是 opaque 键，角色每请求重算）、管理员降级撤凭证
- * - roleOverride 优先于 LDAP 种子：再次登录不被同步覆盖
+ * - roleOverride 优先于默认种子：再次登录不被默认角色覆盖
  * - UI（U81/U82）：#/users 页渲染 + 原型结构对照 + 查询四态 + 只读列表 +
  *   详情弹框字段 + 弹框内角色修改确认链（降级 danger）→ 列表/弹框/来源同步
  */
@@ -40,7 +40,7 @@ type UserRow = {
   roles: string[]
   status: string
   role: 'developer' | 'auditor' | 'admin'
-  roleSource: 'ldap' | 'admin-override'
+  roleSource: 'default' | 'admin-override'
 }
 
 async function api(
@@ -98,8 +98,8 @@ test('UG-6 UI：admin 渲染 #/users 页（U81 查询四态 + U82 只读列表/�
   const listed = await api('/v1/users')
   assert.equal(listed.status, 200)
   zhangsanId = listed.body.users.find((u: UserRow) => u.username === 'zhangsan').id
-  // 变更前的来源是 LDAP 同步：翻转断言需要这个起点。
-  assert.equal(listed.body.users.find((u: UserRow) => u.username === 'zhangsan').roleSource, 'ldap')
+  // 变更前的来源是平台默认角色：翻转断言需要这个起点。
+  assert.equal(listed.body.users.find((u: UserRow) => u.username === 'zhangsan').roleSource, 'default')
   // 本套件 before 已登录 admin/zhangsan/lisi 三个账号，目录即这三行。
   assert.deepEqual(listed.body.users.map((u: UserRow) => u.username).sort(), [
     'admin',
@@ -254,7 +254,7 @@ test('UG-6 UI：admin 渲染 #/users 页（U81 查询四态 + U82 只读列表/�
   assert.equal(doc.querySelector('[data-user-role]'), null)
   assert.equal(doc.querySelectorAll('#usersBody [data-user-detail]').length, 3)
   assert.equal(rowText('zhangsan').includes('普通'), true, 'the role renders as plain text')
-  assert.equal(rowText('zhangsan').includes('LDAP 同步'), true)
+  assert.equal(rowText('zhangsan').includes('平台默认'), true)
 
   // ---- U82 详情弹框：字段集 = users API 实有字段（不虚构创建时间/最近登录） ----
   ;(doc.querySelector(`[data-user-detail="${zhangsanId}"]`) as HTMLElement).click()
@@ -272,7 +272,7 @@ test('UG-6 UI：admin 渲染 #/users 页（U81 查询四态 + U82 只读列表/�
   assert.equal(detailValues[2].trim(), '支付研发部')
   assert.match(detailValues[3], /developers, team-payment/)
   assert.match(detailValues[4], /点击可修改/)
-  assert.match(detailValues[5], /LDAP 同步/)
+  assert.match(detailValues[5], /平台默认/)
   assert.match(detailValues[6], /活跃/)
   const detailRole = () => detail().querySelector<HTMLSelectElement>('[data-detail-role]')!
   assert.equal(detailRole().value, 'developer')
@@ -286,7 +286,7 @@ test('UG-6 UI：admin 渲染 #/users 页（U81 查询四态 + U82 只读列表/�
   assert.match(confirmText, /角色变更/)
   assert.match(confirmText, /张伟（zhangsan）：普通 → 审计/)
   assert.match(confirmText, /role_update 审计/)
-  assert.match(confirmText, /按用户覆盖优先于 LDAP 同步/)
+  assert.match(confirmText, /按用户覆盖优先于平台默认角色/)
   assert.match(confirmText, /升级即时生效，不断开会话/)
   const upConfirm = confirmUp.querySelector<HTMLButtonElement>('[data-action="0"]')!
   assert.equal(upConfirm.textContent?.trim(), '确认变更')
@@ -362,7 +362,7 @@ test('UG-6 UI：admin 渲染 #/users 页（U81 查询四态 + U82 只读列表/�
   })
 }, 120_000)
 
-test('UG-2/UG-4：角色变更实时生效 + role_update 审计 + override 优先于 LDAP 重登录', async () => {
+test('UG-2/UG-4：角色变更实时生效 + role_update 审计 + override 优先于默认种子重登录', async () => {
   // UI 测试已把 zhangsan 升为审计；先复位为普通，拿到「升级前无审计面」的起点。
   const reset = await api(`/v1/users/${zhangsanId}/roles`, {
     method: 'PUT',
@@ -464,7 +464,7 @@ test('UG-1：非 admin 直调 GET/PUT 均 403 + denied 审计（requiredPermissi
   // 越权未落任何变更
   const unchanged = await userByName('lisi')
   assert.equal(unchanged.role, 'developer')
-  assert.equal(unchanged.roleSource, 'ldap')
+  assert.equal(unchanged.roleSource, 'default')
 
   saveEvidence(EVIDENCE, 'denied-writes.json', {
     listDenied: listDenied.status,

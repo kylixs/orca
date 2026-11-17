@@ -2675,10 +2675,10 @@ function relayCard(r, index) {
   </article>`
 }
 
-/* ---------------- 用户管理（U67-3：平台级身份，覆盖优先于 LDAP 同步） ---------------- */
+/* ---------------- 用户管理（U67-3：平台级身份，覆盖优先于平台默认角色） ---------------- */
 
 const USER_PAGE_ROLE_LABELS = { developer: '普通', auditor: '审计', admin: '管理员' }
-const USER_SOURCE_LABELS = { ldap: 'LDAP 同步', 'admin-override': '管理员覆盖' }
+const USER_SOURCE_LABELS = { default: '平台默认', 'admin-override': '管理员覆盖' }
 /** U81：查询条件客户端过滤（零 wire 变更）；跨重绘保留，角色变更后筛选不丢。 */
 let userFilter = { query: '', role: 'all', status: 'all' }
 
@@ -2715,7 +2715,7 @@ async function renderUsersPage() {
     <div class="page-head">
       <div>
         <h1>用户管理</h1>
-        <p>平台账号与角色设置。用户与组来自 LDAP 同步；角色为按用户覆盖，覆盖记录留审计。</p>
+        <p>平台账号与角色设置。用户与组来自 LDAP；角色以平台默认为基线，按用户覆盖，覆盖记录留审计。</p>
       </div>
       <div class="toolbar">
         ${ldapAdmissionBadge(body.ldap)}
@@ -2801,7 +2801,7 @@ function filterUsers(users) {
 function userSourceMarkup(source) {
   return source === 'admin-override'
     ? `<span class="badge ok">${esc(USER_SOURCE_LABELS[source])}</span>`
-    : `<span class="muted">${esc(USER_SOURCE_LABELS[source] ?? 'LDAP 同步')}</span>`
+    : `<span class="muted">${esc(USER_SOURCE_LABELS[source] ?? '平台默认')}</span>`
 }
 
 function statusMarkup(status) {
@@ -2842,7 +2842,7 @@ function userCard(user) {
       <span class="badge ${active ? 'ok' : ''}">${active ? '活跃' : '已停用'}</span>
     </div>
     <div class="ulc-line mono">${esc(user.username)} · ${esc(user.dept)}</div>
-    <div class="ulc-role"><span class="badge">${esc(role)}</span><span class="muted">${esc(USER_SOURCE_LABELS[user.roleSource] ?? 'LDAP 同步')}</span></div>
+    <div class="ulc-role"><span class="badge">${esc(role)}</span><span class="muted">${esc(USER_SOURCE_LABELS[user.roleSource] ?? '平台默认')}</span></div>
     <div class="ulc-actions"><button class="btn sm" data-user-detail="${esc(user.id)}">详情</button></div>
   </article>`
 }
@@ -2883,7 +2883,7 @@ function userDetailMarkup(user) {
     <dt>角色来源</dt><dd>${userSourceMarkup(user.roleSource)}</dd>
     <dt>状态</dt><dd>${statusMarkup(user.status)}</dd>
   </dl>
-  <p class="muted" style="margin-top:12px">角色变更写入 role_update 审计，按用户覆盖优先于 LDAP 同步；降级将断开该用户当前云会话（≤60 秒），升级即时生效。列表只读，角色修改仅在此处进行。</p>`
+  <p class="muted" style="margin-top:12px">角色变更写入 role_update 审计，按用户覆盖优先于平台默认角色；降级将断开该用户当前云会话（≤60 秒），升级即时生效。列表只读，角色修改仅在此处进行。</p>`
 }
 
 function openUserDetail(user, { onClose } = {}) {
@@ -2926,7 +2926,7 @@ function confirmUserRoleChange(user, next, onChanged) {
   dialog(
     '角色变更',
     `<p><strong>${esc(user.displayName)}（${esc(user.username)}）</strong>：${USER_PAGE_ROLE_LABELS[user.role]} → ${USER_PAGE_ROLE_LABELS[next]}。</p>
-     <p class="muted">变更写入 role_update 审计；按用户覆盖优先于 LDAP 同步，再次登录不会被同步覆盖。</p>
+     <p class="muted">变更写入 role_update 审计；按用户覆盖优先于平台默认角色，再次登录不会被默认角色覆盖。</p>
      ${demote ? '<p class="note warn">降级将断开该用户当前云会话（≤60 秒）。</p>' : '<p class="muted">升级即时生效，不断开会话。</p>'}`,
     [
       {

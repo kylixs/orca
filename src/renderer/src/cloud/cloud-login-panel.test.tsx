@@ -129,4 +129,8 @@ describe('云端登录表单的平台地址（M119/W10）', () => {
     expect(cloudErrorMessage('PLATFORM_ADDRESS_INVALID')).toContain('平台地址格式不正确')
     expect(cloudErrorMessage('PLATFORM_ADDRESS_REQUIRED')).toContain('请填写平台地址')
   })
+
+  it('LDAP 准入组拒绝给出可读提示，而不是裸露错误码', () => {
+    expect(cloudErrorMessage('LDAP_GROUP_NOT_ADMITTED')).toBe('账号未加入平台准入组。')
+  })
 })

@@ -219,6 +219,13 @@ describe('云端工作台界面', () => {
     expect(screen.getByLabelText('域账号')).toBeTruthy()
   })
 
+  it('LDAP 准入组拒绝同样映射为中文提示', async () => {
+    await signIn(makeBridge({ loginError: 'LDAP_GROUP_NOT_ADMITTED' }))
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toContain('账号未加入平台准入组')
+    )
+  })
+
   it('未知错误码回退到原始码，便于排查而不是吞掉', async () => {
     await signIn(makeBridge({ loginError: 'SOME_NEW_CODE' }))
     await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('SOME_NEW_CODE'))

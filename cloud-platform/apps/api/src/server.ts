@@ -4541,7 +4541,7 @@ export function createApp(config: ApiConfig): ApiHandle {
           roles: user.roles,
           status: user.status,
           role: userPageRole(user.roles),
-          roleSource: user.roleOverride ? 'admin-override' : 'ldap'
+          roleSource: user.roleOverride ? 'admin-override' : 'default'
         }))
       })
     }
