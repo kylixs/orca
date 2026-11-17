@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { makePaneKey } from '../../../shared/stable-pane-id'
 import { setupTerminalCreateSurfacing } from './ipc-events-terminal-create-test-harness'
 
@@ -34,15 +34,21 @@ describe('useIpcEvents updater integration', () => {
     await Promise.resolve()
     await Promise.resolve()
     expect(createFloatingWorkspaceTerminalTab).not.toHaveBeenCalled()
-    expect(createWebRuntimeSessionTerminal).toHaveBeenCalledWith({
-      worktreeId: 'wt-1',
-      // Why: multi-host scopes the new terminal to the worktree's own runtime
-      // env (null here -> falls back to the active env inside the helper).
-      environmentId: null,
-      activate: true
-    })
+    // Why: no active web runtime session, so the local store path owns the tab.
+    expect(createWebRuntimeSessionTerminal).not.toHaveBeenCalled()
     expect(createTab).toHaveBeenCalledWith('wt-1')
     expect(setActiveTabType).toHaveBeenCalledWith('terminal', 'wt-1')
+
+    // Why: the two paths are mutually exclusive; a web runtime session must not fall through to createTab.
+    const { isWebRuntimeSessionActive } = await import('@/runtime/web-runtime-session')
+    vi.mocked(isWebRuntimeSessionActive).mockReturnValueOnce(true)
+    createTab.mockClear()
+    newTerminalTabListenerRef.current()
+    // Why: multi-host scopes the new terminal to the worktree's own runtime
+    // env (null here -> falls back to the active env inside the helper).
+    const runtimeTerminalArgs = { worktreeId: 'wt-1', environmentId: null, activate: true }
+    expect(createWebRuntimeSessionTerminal).toHaveBeenCalledWith(runtimeTerminalArgs)
+    expect(createTab).not.toHaveBeenCalled()
 
     // Exact regression sequence: Local default -> connect/navigate Windows 2 ->
     // reveal a local terminal -> restart. Connection and navigation are transient.
