@@ -43,6 +43,25 @@ function isWorktreeRetraction(
   return (snapshot as Partial<RuntimeMobileSessionTabsRemovedResult>).removed === true
 }
 
+/** Record an applied publication: advance the version cursor and retire the prior epoch. */
+export function recordAppliedSessionPublication(
+  worktreeId: string,
+  snapshot: Pick<RuntimeMobileSessionTabsResult, 'publicationEpoch' | 'snapshotVersion'>
+): void {
+  localStructuredSessionVersionByWorktree.set(worktreeId, {
+    publicationEpoch: snapshot.publicationEpoch,
+    snapshotVersion: snapshot.snapshotVersion
+  })
+  localStructuredSessionEpochHistoryByWorktree.set(
+    worktreeId,
+    noteRetiredValue(
+      localStructuredSessionEpochHistoryByWorktree.get(worktreeId),
+      snapshot.publicationEpoch,
+      8
+    )
+  )
+}
+
 export type StructuredSessionSnapshotApplyOptions = {
   /**
    * Marks these snapshots as an authoritative `session.tabs.listAll` response, which exempts them
@@ -187,14 +206,7 @@ export function applyLocalStructuredSessionTabSnapshots<
       }
       continue
     }
-    localStructuredSessionVersionByWorktree.set(snapshot.worktree, {
-      publicationEpoch: snapshot.publicationEpoch,
-      snapshotVersion: snapshot.snapshotVersion
-    })
-    localStructuredSessionEpochHistoryByWorktree.set(
-      snapshot.worktree,
-      noteRetiredValue(epochHistory, snapshot.publicationEpoch, 8)
-    )
+    recordAppliedSessionPublication(snapshot.worktree, snapshot)
   }
   // Drop publisher cursors for worktrees that no longer exist. Without this,
   // every deleted worktree leaves an entry for the lifetime of the renderer.

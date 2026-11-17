@@ -245,6 +245,17 @@ export function prepareWebSessionTabsSnapshotUnified(
     editorTabs: mirroredEditorTabs,
     agentTabs: mirroredAgentTabs
   })
+  // Why: a layout-only local-host frame omits terminal surfaces, so group members need the
+  // identity mapping the design gives this option (U163 V2a).
+  if (options?.hostTabIdsAreLocalTabIds === true) {
+    for (const group of snapshot.tabGroups ?? []) {
+      for (const tabId of group.tabOrder) {
+        if (validUnifiedTabIds.has(tabId)) {
+          hostToLocalTabId.set(tabId, tabId)
+        }
+      }
+    }
+  }
   updateHostSessionTabIdMappings({
     environmentId,
     worktreeId,
