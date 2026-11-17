@@ -40,7 +40,9 @@ export function prepareWebSessionTabsSnapshotUnified(
   const adoptHostLayout = options?.adoptHostLayout === true
   // Why: the host is the single active-tab authority on cloud sessions; the one-shot entry
   // adoption is not enough because the host can publish a corrected value on a later frame (U138).
-  const honorHostActive = adoptHostLayout || options?.hostActiveAuthoritative === true
+  const honorHostActive =
+    (adoptHostLayout && options?.preserveLocalFocus !== true) ||
+    options?.hostActiveAuthoritative === true
   const mirroredTerminalUnifiedTabs = mirroredTerminalTabs.map((entry) =>
     buildTerminalUnifiedTab(
       entry.tab,

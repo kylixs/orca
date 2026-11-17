@@ -148,7 +148,8 @@ export function prepareWebSessionTabsSnapshotBase(
   }
   const currentTerminalTabs = state.tabsByWorktree[worktreeId] ?? []
   const existingTerminalById = new Map(currentTerminalTabs.map((tab) => [tab.id, tab]))
-  const reconcilesNonAgentTabs = options?.contentScope !== 'agent-session'
+  const layoutOnly = options?.layoutOnly === true
+  const reconcilesNonAgentTabs = !layoutOnly && options?.contentScope !== 'agent-session'
   const terminalSurfaceTabs = reconcilesNonAgentTabs
     ? snapshot.tabs.filter(isTerminalSurfaceTab)
     : []
@@ -197,21 +198,25 @@ export function prepareWebSessionTabsSnapshotBase(
           )
       )
     : currentTerminalTabs
-  const mirroredTerminalTabs = buildMirroredTerminalTabs(
-    snapshot,
-    environmentId,
-    existingTerminalById,
-    state.terminalLayoutsByTabId,
-    retainedTerminalTabs.length,
-    now,
-    callerFocusIntentTab?.type === 'terminal'
-      ? {
-          parentTabId: callerFocusIntentTab.parentTabId,
-          leafId: callerFocusIntentTab.leafId
-        }
-      : undefined,
-    options?.terminalPtyMode
-  )
+  // Why: a layout-only frame from the local host carries the renderer's own terminals; mirroring
+  // it would rebuild local terminal tabs (B1).
+  const mirroredTerminalTabs = layoutOnly
+    ? []
+    : buildMirroredTerminalTabs(
+        snapshot,
+        environmentId,
+        existingTerminalById,
+        state.terminalLayoutsByTabId,
+        retainedTerminalTabs.length,
+        now,
+        callerFocusIntentTab?.type === 'terminal'
+          ? {
+              parentTabId: callerFocusIntentTab.parentTabId,
+              leafId: callerFocusIntentTab.leafId
+            }
+          : undefined,
+        options?.terminalPtyMode
+      )
   const mirroredTerminalTabEntries = mirroredTerminalTabs.map((entry) => entry.tab)
   const retainedTerminalIds = new Set(retainedTerminalTabs.map((tab) => tab.id))
   // Why an empty row rather than a deleted key: an explicit empty row is the closed-last-terminal

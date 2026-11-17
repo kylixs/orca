@@ -76,6 +76,12 @@ export type WebSessionTabsSnapshotApplyOptions = {
   adoptHostLayout?: boolean
   /** Follow the host's active tab on every frame; a pending caller focus intent still wins (U138). */
   hostActiveAuthoritative?: boolean
+  /** Keep the local active tab/group even when `adoptHostLayout` adopts the host layout (U163). */
+  preserveLocalFocus?: boolean
+  /** Adopt only the host's layout shape; never mirror its terminal content (U163). */
+  layoutOnly?: boolean
+  /** The host publishes this renderer's own tab ids, so host ids need no surface mapping (U163). */
+  hostTabIdsAreLocalTabIds?: boolean
 }
 
 export type TrackedWebSessionTabsWorktree = {
