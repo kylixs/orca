@@ -1268,6 +1268,13 @@ orca_relay_rollback() {
 orca_relay_handle_proof_failure() {
   # Credentials are not a version defect: rolling back cannot fix a bad token.
   if [ "$ORCA_RELAY_PROOF_FAILURE" = "credentials" ]; then
+    # U189: this token can never register, so do not leave a relay running.
+    echo ">> 停止本次启动的中继进程（令牌无效，无法上线）" >&2
+    if [ "$ORCA_RELAY_PROOF_KIND" = "systemd" ]; then
+      systemctl --user stop orca-relay.service >/dev/null 2>&1 || true
+    else
+      orca_relay_stop_wrapper
+    fi
     exit 70
   fi
   if [ "$ORCA_RELAY_RELEASE_REUSED" = "1" ] || [ ! -L "$ORCA_RELAY_ROOT/previous" ]; then

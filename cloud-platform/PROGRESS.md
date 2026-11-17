@@ -4107,3 +4107,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U188 落地**（本次）：仓库模式（无 bundle）预检要求 `ORCA_RELAY_ALLOW_UNVERIFIED=1`，否则 78 并提示；置位时打印「使用未校验的中继目录」警告。bundle 模式不受影响；U186/U188/U184 3/3 绿。
 - **U183 R14b 落地**（本次）：容器负向 II——N2 健康 500 → 68（宿主临时端点，容器内实测可达 500）、N6 内部令牌 401 → 70（stderr 含「内部令牌不匹配」，不出现 rollback）；N2 无 env/release/lock，N6 无回滚。证据 `evidence/u183-r14b-20261117T112331Z/`（verdict=pass、validate exit 0、容器无残留）。发现两条 P2：U189（凭据失败后中继进程遗留，待定处置）、U190（证据分类缺 70 映射，待补）。**R14c 在途**（N5 崩溃首装/升级回滚、N7 并发 75）。
 - **U190 落地**（本次）：容器证据退出码映射补 70 → `relay-not-online`（原记 `other`），runner 自测 13/13 绿；R14b 证据分类待重跑刷新。
+- **U189 落地**（本次）：凭据失败（内部令牌 401）分支在 exit 70 前停止本次启动的中继（systemd `stop` / wrapper pid 清理）并打印原因，避免留下永远无法登记的常驻进程；R14b 新增 `n6-credential-failure-stops-relay` 断言，10 step 全绿，证据 `evidence/u183-r14b-20261117T112539Z/`（70 分类已为 `relay-not-online`）。

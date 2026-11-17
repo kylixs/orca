@@ -296,6 +296,12 @@ test('U183 R14b: unhealthy platform and bad internal token fail closed', async (
       `-H 'x-internal-token: ${WRONG_INTERNAL_TOKEN}' '${platformUrl}/v1/internal/relays' 2>/dev/null || true)"; ` +
       `printf 'status=%s\\n' "$status"; cat /tmp/n6-401-body 2>/dev/null || true`
   )
+  // U189: a credential failure must stop the relay it just started.
+  const n6NoProcessCheck = await harness.execInContainer(
+    'fail=0; for f in /proc/[0-9]*/cmdline; do ' +
+      `  if tr '\\0' ' ' < "$f" 2>/dev/null | grep -Eq 'relay[.]ts'; then echo "unexpected-process:$f"; fail=1; fi; ` +
+      'done; echo "no-relay-processes"; exit $fail'
+  )
   const n6StateBeforeCleanup = await harness.execInContainer(
     `root="${N6_ROOT}"; echo "--- root ---"; ls -A "$root" 2>/dev/null || echo '<root absent>'; ` +
       `echo "--- current ---"; readlink "$root/current" 2>/dev/null || echo '<no current>'; ` +
@@ -344,6 +350,7 @@ test('U183 R14b: unhealthy platform and bad internal token fail closed', async (
   const n6MessageOk =
     n6Run.stderr.includes('内部令牌不匹配') && n6Run.stderr.includes('请让管理员重新生成')
   const n6NoRollback = !n6Run.stderr.includes('rollback=')
+  const n6StoppedRelay = n6NoProcessCheck.exitCode === 0
   const n6Platform401 = n6Probe.stdout.includes('status=401')
   const n6CleanupOk = n6Cleanup.exitCode === 0
 
@@ -409,6 +416,12 @@ test('U183 R14b: unhealthy platform and bad internal token fail closed', async (
       `platform did not answer 401 for the corrupted token: ${n6Probe.stdout.trim()}`
     ),
     assertionStep(
+      'n6-credential-failure-stops-relay',
+      n6StoppedRelay,
+      { check: n6NoProcessCheck },
+      `a relay.ts process survived the credential failure: ${n6NoProcessCheck.stdout}`
+    ),
+    assertionStep(
       'n6-relay-process-cleanup',
       n6CleanupOk,
       { stateBeforeCleanup: n6StateBeforeCleanup, cleanup: n6Cleanup },
@@ -438,6 +451,7 @@ test('U183 R14b: unhealthy platform and bad internal token fail closed', async (
   assert.ok(n6ExitOk, `N6 expected exit 70, got ${n6Run.exitCode}: ${n6Run.stderr}`)
   assert.ok(n6MessageOk, `N6 stderr missing token mismatch/hint: ${n6Run.stderr}`)
   assert.ok(n6NoRollback, `N6 rollback marker appeared: ${n6Run.stderr}`)
+  assert.ok(n6StoppedRelay, `N6 left a relay process behind: ${n6NoProcessCheck.stdout}`)
   assert.ok(n6Platform401, `N6 platform probe: ${n6Probe.stdout}`)
   assert.ok(n6CleanupOk, `N6 cleanup: ${n6Cleanup.stdout}`)
 
