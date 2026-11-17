@@ -514,7 +514,11 @@ POST → queued → running → succeeded
 | E7 状态端点 | 完成 | `720cb9a96d3`（10 e2e；每次读取轮换 token） |
 | E8 下载端点 | 待派 | — |
 | E9 清理/恢复/env/隔离 | 完成 | `a43bbde1fe0` + `492bf54b076`（35+2 例） |
-| E10 能力字段 | 待派 | — |
-| E11–E13 Web/文档 | 待派 | — |
+| E10 能力字段 | 完成 | `a3b9395a5ac`（3 e2e） |
+| E11 Web 入口/轮询 | 进行中 | — |
+| E12 Web 下载 | 待派 | — |
+| E13 设计回填/台账 | 待派 | — |
 
 已采纳的默认（待正式裁定可回退）：D3 超限异步失败；D4 100k 行 / 64 MiB / 1h / 每用户 2 / 全局 8；D7 创建审计 fail-closed；D1 单写者文件存储（多副本见 U201 风险）。环境变量按本文件 §3.2 使用 `ORCA_AUDIT_EXPORT_DIR`，兼容旧别名 `ORCA_AUDIT_EXPORT_ROOT`。
+
+**独立审计（2026-11-17 20:41，`cloud-platform/test-reports/u201-export-audit.md`，本地不提交）**：CHANGES-REQUIRED。P1=F1 过滤字段丢弃、F2 终态不落链、F3 远端写者下必失败、F4 token 一次性语义；P2=F6–F18；测试/文档缺口=F20/F21。修复顺序：F1/F7 → F2/F11/F12 → F3 → F4 → 全链路 e2e；台账 U205/U206/U207。
