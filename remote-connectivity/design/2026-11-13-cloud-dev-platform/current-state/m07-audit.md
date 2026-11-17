@@ -75,6 +75,7 @@
 - `GET /v1/audit/verify` → 200 `{ok:true, checked, tip}` / 409 `{ok:false, checked, brokenAtSeq}`，并把 `audit_verify` 写入链；控制台「校验审计链」按钮消费两种结果（U136③）。
 - `GET /v1/projects`、`GET /v1/hosts`：仅用于项目/主机筛选下拉；`/v1/hosts` 对 auditor 403、`/v1/projects` 对 auditor 只返回其有 `open` 授权的项目（通常为空），空列表时下拉显示解释选项（U136③）。
 - 审计链来源：平台 audit writer（单写者哈希链）；`host.audit_gap` 由宿主心跳 delta 落链（U71）。
+- 写入语义（U246，`audit.ts:154-190`）：先算 seq/hash → `persist` → 成功后才推进内存 `auditSeq/tip`；写盘失败时链状态完全不变（不产生 phantom success），`appendBestEffort` 返回 false 无残留。writer 区分可重试 `write_failed`（503 `AUDIT_WRITE_FAILED`，恢复无需重启、`/health` 透真实状态）与 `chain_broken`（503 `AUDIT_CHAIN_BROKEN`，需人工处理）。已知边界为 **at-least-once**：远端已提交但响应丢失、或批量中途失败后的重试会产生新 seq 的重复逻辑事件（平台 API 走单事件路径不受影响）。
 - **持久化（2026-11-16）**：dev 平台启用 `AUDIT_LOG_PATH` 追加式审计文件，重启后 `prevHash` 续接（实测 `verify ok:true` 跨 `--platform-only` 重启）；事件字段 `actor/targetType/targetId/traceId` 合法可为 null（U133 修校验器，此前该类事件会被误判 corrupt）。
 
 ## 5. 已知缺陷与观察

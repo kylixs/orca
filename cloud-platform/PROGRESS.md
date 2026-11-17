@@ -4296,3 +4296,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U244 修复后复审**：原 P2 CLOSED（grant 变体红证据真实、8/8）；**新 P2**：并发 follower 只凭「已排队」返回 200/0，不检查 leader 成功——leader 审计失败 503 时 follower 伪 200 而实际未撤销（fail-open）。已派修：队列条目携带 leader outcome，follower 在 leader 失败时作为新 leader 重试；补「屏障 + 注入审计失败」用例。
 - **U246 修复落地**（`071e56be47f`，6 文件）：`audit.ts` 改为「persist 成功后才 push/推进 seq/tip」，失败不动 store 且 `appendBestEffort` 无残留；writer 区分 `write_failed`（可重试、恢复无需重启、新码 `AUDIT_WRITE_FAILED`）与 `chain_broken`，`/health` 透真实状态；client 映射为可重试 `AUDIT_UNAVAILABLE`。M32-1 新增失败后 verify 不增/无 phantom/重启 200；审计回归 61/61，主会话复跑 30/30。待复审。
 - **U246 复审 APPROVED**：单写者/串行原子性成立、失败后 store/seq/tip/verify 不变、health=write_failed、phantom 消失；writer 重试同 seq 不重复、client 新旧兼容；archive 父提交 unit 3/3 红、writer e2e 500→503。台账 U246 翻 🟢。已知 at-least-once 边界（响应丢失/批量中途）记录为文档项。观察：/health 200+body、detail 或含路径（低风险）。
+- **m07 审计现状补写入语义**（U246）：先 persist 后推进内存、失败无 phantom、writer 区分 write_failed（可重试/无需重启/health 真实）与 chain_broken、已知 at-least-once 边界。
