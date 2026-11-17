@@ -294,7 +294,7 @@ WantedBy=default.target
 
 **nonce（第二证据，跨版本安全）**：
 
-- 第 9 步生成本次安装 nonce，写入 `relay.env` 的 `ORCA_RELAY_INSTALL_NONCE`。
+- 第 9 步生成本次安装 nonce，写入 `relay.env` 的 `ORCA_CLOUD_INSTALL_NONCE`。
 - relay 的 announce 请求体新增**可选** `installNonce` 字段；平台 `/v1/internal/relays` 回显（可选字段，旧服务端忽略、旧中继不发送）。
 - 新中继 + 旧平台：平台不回显，脚本回退到进程身份 + `online`，打印一条降级警告。
 - 旧中继 + 新平台：无 nonce，脚本同样回退。
@@ -1145,7 +1145,7 @@ WantedBy=default.target
 
 **nonce（第二证据，跨版本安全）**：
 
-- 第 9 步生成本次安装 nonce，写入 `relay.env` 的 `ORCA_RELAY_INSTALL_NONCE`。
+- 第 9 步生成本次安装 nonce，写入 `relay.env` 的 `ORCA_CLOUD_INSTALL_NONCE`。
 - relay 的 announce 请求体新增**可选** `installNonce` 字段；平台 `/v1/internal/relays` 回显（可选字段，旧服务端忽略、旧中继不发送）。
 - 新中继 + 旧平台：平台不回显，脚本回退到进程身份 + `online`，打印一条降级警告。
 - 旧中继 + 新平台：无 nonce，脚本同样回退。
