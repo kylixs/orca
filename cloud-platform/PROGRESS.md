@@ -4122,3 +4122,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U54 P2 批（QA-028/029/033 前半）落地**：移除授权确认补「不可撤销/需重新授权」文案，空主体给持久行内提示；主机抽屉补状态（在线/维护/离线/已吊销）、维护原因、绝对+相对心跳；注册主机弹层改为点击「生成注册命令」才申领令牌（打开/取消零请求，在途禁重复）。`web-exploratory-fixes` 36/36 绿（新增 4 例）。
 - **U201 工作令落地**（审计导出）：新增 `work-orders/u202-audit-export-design.md`——契约（POST /v1/audit/export、GET status、补充 /download）、任务存储与 1h 生命周期、审计自身落审计（`audit_export`/`audit_export_download`，创建 fail-closed）、一次性下载 token、CSV 注入防护、能力字段兼容；拆 E1–E13（各 ≤20 分钟）与 16 项待决策。**未实现**，待裁 D1/D3/D4 等后按 E 序列派工。
 - **U54 P2 批（QA-030 主机页筛选）落地**：主机页新增搜索（名称/ID/zone/直连地址）与状态 chips（全部/在线/维护中/离线/已吊销），表格与移动卡同步过滤、空态区分「尚未注册/没有符合条件」、重绘后行内按钮重新绑定、无新增轮询。`web-exploratory-fixes` 39/39 绿（新增 3 例）。
+- **U201 E1 落地**：审计查询参数解析抽为 `apps/api/src/audit-query.ts`（`parseAuditQuery(params, nowMs)`，保留 `INVALID_QUERY` / `TIME_WINDOW_TOO_LARGE` 与全部边界：limit 钳制、eventTypes 1–20/≤64、family、fileName/q、since/until、31 天窗口与 7 天关键字默认）；server.ts 审计 GET 改用该函数，行为逐字等价。新单测 24/24，审计 e2e 17/17。
