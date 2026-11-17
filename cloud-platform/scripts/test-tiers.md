@@ -1,0 +1,20 @@
+# 测试分层（避免每次全量）
+
+> 2026-11-17 用户指令固化：减少并发单测/集成测试、降低资源占用、先测关键业务、避免每次全量。
+
+## 分层与命令
+
+| 层 | 何时用 | 命令 | 并发 |
+| --- | --- | --- | --- |
+| T0 冒烟三连 | **任何改动/任何更大范围测试之前**（§2-75） | `node cloud-platform/scripts/smoke/desktop-smoke-gate.mjs` | 串行，`electron-headless` |
+| T1 关键业务 | 提交前/合并前；覆盖会话、终端、持久化、平台权限与审计 | `node cloud-platform/scripts/run-test-tier.mjs critical` | vitest 默认 2 workers；平台 e2e `--test-concurrency=1` |
+| T2 改动面 | 日常迭代（默认选项） | `node cloud-platform/scripts/run-test-tier.mjs changed` | 同 T1，仅跑受影响目录 |
+| T3 全量（L4） | **发版前**或明确要求 | 见 PROGRESS 的 L4 记录（真 Node ≥24.16，串行分段） | 单段串行，禁止两段并行（§2-73） |
+
+## 原则
+
+1. **默认只跑 T2**：`git diff HEAD` 与 `origin/main...HEAD` 的文件映射到目录级测试；没有映射时明确输出「无受影响测试」。
+2. **T1 优先关键业务**：会话/布局同步、终端传输、profile-state 持久化、平台项目/权限/审计/撤销/中继新鲜度；不在 T1 的用例留给 T2/T3。
+3. **不重复测试**：同一改动连续多次运行同一层视为浪费；T0/T1 通过后，除非改动文件集合变化，否则不再重复。
+4. **并发上限**：本机 vitest 默认 2 workers（`ORCA_TEST_MAX_WORKERS` 可覆盖，CI 保持默认）；平台 `node --test` 固定 `--test-concurrency=1`；Electron/e2e 一律 `electron-headless` + 后台/抑制变量。
+5. **全量不是默认动作**：`full` 层被脚本显式拒绝，须走发版前 L4 流程并记录证据。
