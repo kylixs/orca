@@ -452,5 +452,5 @@ focus / visibility-resume / online|system-resume / (structured) reconnect
 | B2 V8a 拆 a-1/a-2 + 入站/出站分别计数 | 通过 | main | `ui:moveSessionTab` 用 `onMoveSessionTab` 入站监听 |
 | B3 C7 表名/un-retire 副作用/纯判定 | 通过 | main | 与已落地 V1 `catchupFreshnessVerdict(history 入参、克隆不写表)` 一致 |
 | B4 产品路径必须 1→2（预 seed；1→3 仅负控） | 通过（收紧采纳） | main | 防重复组被写成宿主布局后不可收敛 |
-| 拆分 V1→V2a→V2b→V3→V4→V5→V6→V7→V8 | 通过 | main | **V1 已落地**（`b4b34687de3`），实际路径 `src/renderer/src/runtime/local-structtured-session-tabs-sync/host-layout-catchup-decision.ts`；后续令从该模块 import，不再新建 `local-host-layout-catchup/` 目录 |
+| 拆分 V1→V2a→V2b→V3→V4→V5→V6→V7→V8 | 通过 | main | **V1 已落地**（`b4b34687de3`），实际路径 `src/renderer/src/runtime/local-structured-session-tabs-sync/host-layout-catchup-decision.ts`；后续令从该模块 import，不再新建 `local-host-layout-catchup/` 目录 |
 | 残余 R9–R11 披露 | 接受 | main | R10（pending 长期保留走 headless 兜底）由 U172 审计确认 fail-safe |
