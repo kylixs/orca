@@ -4,7 +4,10 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { createApp, type ApiHandle } from '../../apps/api/src/server.ts'
-import { STATIC_CSP_REPORT_ONLY } from '../../apps/api/src/static-delivery.ts'
+import {
+  STATIC_CSP_REPORT_ONLY,
+  STATIC_SECURITY_HEADERS
+} from '../../apps/api/src/static-delivery.ts'
 import {
   AuditExportJobStore,
   resolveAuditExportObjectPath
@@ -153,5 +156,80 @@ test('U197 S6：ORCA_CLOUD_CSP_REPORT_ONLY=off 时不带该头（可回滚）', 
     const res = await fetch(`${base}${path}`)
     assert.equal(res.status, 200, path)
     assert.equal(res.headers.get(HEADER), null, path)
+  }
+})
+
+/**
+ * The imported constant is only a name: pin the directives so weakening the
+ * policy (dropping frame-ancestors, allowing inline script, forcing https)
+ * fails here rather than silently shipping in report-only.
+ */
+test('U197 S6：HTML 策略关键指令逐条钉死，弱化即失败', async () => {
+  const { base } = await start()
+  const res = await fetch(`${base}/index.html`)
+  assert.equal(res.status, 200)
+  const policy = res.headers.get(HEADER)
+  assert.ok(policy, 'HTML document must carry the policy')
+
+  for (const directive of [
+    "frame-src 'self' https:",
+    "img-src 'self' data:",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "frame-ancestors 'none'"
+  ]) {
+    assert.ok(policy.includes(directive), directive)
+  }
+  assert.ok(!policy.includes('upgrade-insecure-requests'), 'loopback http must keep working')
+  assert.ok(!policy.includes("script-src 'unsafe-inline'"), 'inline script stays blocked')
+})
+
+test('U197 S6：共享静态头集合不含任何 CSP key（导出/JSON 不继承策略）', () => {
+  for (const key of Object.keys(STATIC_SECURITY_HEADERS)) {
+    assert.ok(
+      !key.toLowerCase().includes('content-security-policy'),
+      `STATIC_SECURITY_HEADERS must not carry ${key}`
+    )
+  }
+})
+
+test('U197 S6：304 重验证继承策略——HTML 带、JS 不带', async () => {
+  const { base } = await start()
+
+  const html = await fetch(`${base}/index.html`)
+  assert.equal(html.status, 200)
+  const htmlEtag = html.headers.get('etag')
+  assert.ok(htmlEtag)
+  await html.text()
+  const htmlNotModified = await fetch(`${base}/index.html`, {
+    headers: { 'if-none-match': htmlEtag }
+  })
+  assert.equal(htmlNotModified.status, 304)
+  assert.equal(htmlNotModified.headers.get(HEADER), STATIC_CSP_REPORT_ONLY)
+
+  const js = await fetch(`${base}/app.js`)
+  assert.equal(js.status, 200)
+  assert.equal(js.headers.get(HEADER), null)
+  const jsEtag = js.headers.get('etag')
+  assert.ok(jsEtag)
+  await js.text()
+  const jsNotModified = await fetch(`${base}/app.js`, {
+    headers: { 'if-none-match': jsEtag }
+  })
+  assert.equal(jsNotModified.status, 304)
+  assert.equal(jsNotModified.headers.get(HEADER), null)
+})
+
+test('U197 S6：开关 env 语义——trim 后 off 关闭，false/0 保持开启', async () => {
+  const off = await start({ cspEnv: ' off ' })
+  const offRes = await fetch(`${off.base}/index.html`)
+  assert.equal(offRes.status, 200)
+  assert.equal(offRes.headers.get(HEADER), null, 'trimmed off rolls back')
+
+  for (const value of ['false', '0']) {
+    const on = await start({ cspEnv: value })
+    const res = await fetch(`${on.base}/index.html`)
+    assert.equal(res.status, 200, value)
+    assert.equal(res.headers.get(HEADER), STATIC_CSP_REPORT_ONLY, value)
   }
 })
