@@ -3,7 +3,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CloudHostEnrolmentFailure } from '../cloud-platform/cloud-host-enrollment'
+import { startCloudRuntimeAdmission } from '../startup/cloud-runtime-admission'
 import { awaitHostModeEnrolment, hostModeFailurePhase } from './host-mode-enrolment'
+import { admitOrcadCloudRuntime } from './orcad-host-mode-startup'
 import { resolveOrcadExitCode } from './orcad-exit-code'
 import { beginHostModeState, recordHostModeEnrolmentFailure } from './orcad-host-mode-state'
 
@@ -129,6 +131,33 @@ describe('host mode enrolment classification', () => {
       }
       expect(thrown.message).toMatch(guidance)
     }
+  })
+
+  // Contract §3.3: the missing host name is thrown synchronously, before `ready`.
+  it('maps a missing host name to exit 78 and persists the verdict', () => {
+    let thrown: unknown
+    try {
+      admitOrcadCloudRuntime({
+        create: () =>
+          startCloudRuntimeAdmission({
+            ORCA_CLOUD_API_URL: 'https://cloud.example.com',
+            ORCA_CLOUD_HOST_TOKEN: 'host-token'
+          }),
+        state: context
+      })
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBeInstanceOf(CloudHostEnrolmentFailure)
+    expect(thrown).toMatchObject({ code: 'host_name_required', retryable: false })
+    expect(resolveOrcadExitCode(thrown)).toBe(78)
+    expect(readState()).toMatchObject({
+      status: 'error',
+      phase: 'enrolment',
+      lastErrorCode: 'host_name_required',
+      retryable: false
+    })
   })
 
   it('treats a missing admission as a configuration fault', async () => {

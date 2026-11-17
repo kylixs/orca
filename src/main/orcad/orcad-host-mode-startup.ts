@@ -1,4 +1,4 @@
-import type { CloudHostEnrolmentFailure } from '../cloud-platform/cloud-host-enrollment'
+import { CloudHostEnrolmentFailure } from '../cloud-platform/cloud-host-enrollment'
 import type { CloudRuntimeAdmission } from '../startup/cloud-runtime-admission'
 import { awaitHostModeEnrolment, hostModeFailurePhase } from './host-mode-enrolment'
 import {
@@ -34,6 +34,24 @@ function failureState(failure: CloudHostEnrolmentFailure): {
     code: failure.code,
     retryable: failure.retryable,
     phase: hostModeFailurePhase(failure.code)
+  }
+}
+
+/**
+ * Admission can reject before `ready` exists (missing host name), so the startup
+ * gate never sees it. Persist that verdict here; the entry still throws for exit 78.
+ */
+export function admitOrcadCloudRuntime(input: {
+  create: () => CloudRuntimeAdmission | null
+  state: HostModeStateContext | null
+}): CloudRuntimeAdmission | null {
+  try {
+    return input.create()
+  } catch (error) {
+    if (input.state && error instanceof CloudHostEnrolmentFailure) {
+      recordHostModeEnrolmentFailure(input.state, failureState(error))
+    }
+    throw error
   }
 }
 

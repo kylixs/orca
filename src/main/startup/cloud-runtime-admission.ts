@@ -6,6 +6,7 @@ import {
   type HostEnrolmentStartupInput
 } from './cloud-host-enrolment-startup'
 import {
+  CloudHostEnrolmentFailure,
   readStoredHostCredential,
   type CloudHostCredential
 } from '../cloud-platform/cloud-host-enrollment'
@@ -188,7 +189,12 @@ function startEnrolled(
 ): CloudRuntimeAdmission {
   const hostName = env.ORCA_CLOUD_HOST_NAME
   if (!hostName) {
-    throw new Error('Cloud mode is incomplete: missing ORCA_CLOUD_HOST_NAME')
+    // Synchronous, outside `ready`, so host mode must map this itself (design §3.3).
+    throw new CloudHostEnrolmentFailure({
+      code: 'host_name_required',
+      retryable: false,
+      detail: 'missing ORCA_CLOUD_HOST_NAME'
+    })
   }
   let client: CloudAgentClient | null = null
   let admittedHost: CloudHostCredential | null = null

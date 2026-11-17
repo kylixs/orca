@@ -40,6 +40,7 @@ import {
   publishHostModeInitialStateAfterStart
 } from './orcad-host-mode-state'
 import {
+  admitOrcadCloudRuntime,
   createHostModeFatalRelay,
   hostModeStartupGate,
   installHostModeHeartbeatWatch,
@@ -305,7 +306,10 @@ async function startOrcadRuntime(
 
   const bindHost = resolveOrcadBindHost(options.bind)
   const admissionOptions = hostAdmissionOptions(runtimeUserDataPath, options.hostMode === true)
-  const admission = cloudRuntimeAdmission(process.env, admissionOptions)
+  const admission = admitOrcadCloudRuntime({
+    create: () => cloudRuntimeAdmission(process.env, admissionOptions),
+    state: hostModeState
+  })
   const rpc = new OrcaRuntimeRpcServer({
     runtime,
     userDataPath: runtimeUserDataPath,
