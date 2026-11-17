@@ -256,13 +256,18 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
     if (inFlight) {
       return inFlight
     }
+    // Why: the fixed tick is retained; a degraded heartbeat just skips ticks until
+    // its backoff window elapses (10s → 30s → 60s).
+    if (!heartbeatHealth.allowsAttempt(now())) {
+      return Promise.resolve()
+    }
     inFlight = refreshOnce()
       .catch((error: unknown) => {
         lastError = error instanceof Error ? error.message : String(error)
         // A thrown refresh never reached a verdict on the beat; report it, or the
         // state writer would keep the previous `online`.
         if (config.heartbeat) {
-          heartbeatHealth.recordRefreshFailure()
+          heartbeatHealth.recordRefreshFailure(now())
         }
         notifyRefresh()
       })

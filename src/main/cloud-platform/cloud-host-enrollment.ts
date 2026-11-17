@@ -299,7 +299,7 @@ export type HeartbeatResult = {
   auditCapabilities: unknown
 }
 
-export type HeartbeatErrorCode = 'heartbeat_unauthorized' | 'heartbeat_failed'
+export type HeartbeatErrorCode = 'heartbeat_unauthorized' | 'heartbeat_failed' | 'host_revoked'
 
 /** Why structured: a rejected beat must keep its HTTP status, not collapse into null. */
 export type HeartbeatAttempt =
@@ -324,10 +324,16 @@ export async function sendHeartbeat(
     })
     httpStatus = res.status
     if (!res.ok) {
+      const errorCode: HeartbeatErrorCode =
+        httpStatus === 401
+          ? 'heartbeat_unauthorized'
+          : httpStatus === 409
+            ? 'host_revoked'
+            : 'heartbeat_failed'
       return {
         ok: false,
         httpStatus,
-        errorCode: httpStatus === 401 ? 'heartbeat_unauthorized' : 'heartbeat_failed',
+        errorCode,
         result: null
       }
     }

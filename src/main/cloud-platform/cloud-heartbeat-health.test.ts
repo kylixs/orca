@@ -15,14 +15,14 @@ function heartbeatBody(): Record<string, unknown> {
   return { policyVersion: 1, policies: null, revoked: null, maintenance: null }
 }
 
-function config(fetchImpl: typeof fetch): CloudAgentConfig {
+function config(fetchImpl: typeof fetch, now: () => number = () => NOW): CloudAgentConfig {
   return {
     apiUrl: 'https://platform.test',
     internalToken: 'internal',
     hostId: 'host_1',
     hostName: 'dev-001',
     fetchImpl,
-    now: () => NOW,
+    now,
     heartbeat: { hostId: 'host_1', credential: 'cred_1' }
   }
 }
@@ -176,5 +176,125 @@ describe('cloud agent heartbeat health', () => {
       lastErrorCode: 'heartbeat_failed'
     })
     expect(client.snapshot().lastError).not.toBeNull()
+  })
+
+  it('backs heartbeat retries off 10s, 30s, then 60s while degraded', async () => {
+    let at = NOW
+    let beats = 0
+    const client = createCloudAgentClient(
+      config(
+        fetchWith(async () => {
+          beats += 1
+          return new Response('', { status: 503 })
+        }),
+        () => at
+      )
+    )
+
+    await client.refresh()
+    expect(beats).toBe(1)
+    expect(client.snapshot()).toMatchObject({
+      lastHeartbeatOk: false,
+      lastHeartbeatHttpStatus: 503,
+      lastErrorCode: 'heartbeat_failed'
+    })
+
+    at = NOW + 9_999
+    await client.refresh()
+    expect(beats).toBe(1)
+
+    at = NOW + 10_000
+    await client.refresh()
+    expect(beats).toBe(2)
+
+    at += 29_999
+    await client.refresh()
+    expect(beats).toBe(2)
+
+    at += 1
+    await client.refresh()
+    expect(beats).toBe(3)
+
+    at += 59_999
+    await client.refresh()
+    expect(beats).toBe(3)
+
+    at += 1
+    await client.refresh()
+    expect(beats).toBe(4)
+    expect(client.snapshot().lastHeartbeatOk).toBe(false)
+  })
+
+  it('returns to online and resets the backoff after a successful beat', async () => {
+    let at = NOW
+    let healthy = false
+    let beats = 0
+    const client = createCloudAgentClient(
+      config(
+        fetchWith(async () => {
+          beats += 1
+          return healthy ? jsonResponse(heartbeatBody()) : new Response('', { status: 500 })
+        }),
+        () => at
+      )
+    )
+
+    await client.refresh()
+    at = NOW + 10_000
+    healthy = true
+    await client.refresh()
+
+    expect(beats).toBe(2)
+    expect(client.snapshot()).toMatchObject({
+      lastHeartbeatOk: true,
+      lastHeartbeatHttpStatus: 200,
+      lastHeartbeatAt: at,
+      lastErrorCode: null
+    })
+
+    // A later failure schedules its first retry only 10s out again.
+    healthy = false
+    at += 10_000
+    await client.refresh()
+    at += 9_999
+    await client.refresh()
+    expect(beats).toBe(3)
+    at += 1
+    await client.refresh()
+    expect(beats).toBe(4)
+  })
+
+  it('classifies a 409 heartbeat as a terminal host revocation', async () => {
+    const client = createCloudAgentClient(
+      config(
+        fetchWith(
+          async () =>
+            new Response(JSON.stringify({ error: { code: 'HOST_REVOKED' } }), { status: 409 })
+        )
+      )
+    )
+
+    await client.refresh()
+
+    expect(client.snapshot()).toMatchObject({
+      lastHeartbeatOk: false,
+      lastHeartbeatHttpStatus: 409,
+      lastErrorCode: 'host_revoked'
+    })
+  })
+
+  it('classifies hostRevoked on an accepted beat as a terminal revocation', async () => {
+    const client = createCloudAgentClient(
+      config(fetchWith(async () => jsonResponse({ ...heartbeatBody(), hostRevoked: true })))
+    )
+
+    await client.refresh()
+
+    expect(client.snapshot()).toMatchObject({
+      hostRevoked: true,
+      lastHeartbeatOk: false,
+      lastHeartbeatHttpStatus: 200,
+      lastErrorCode: 'host_revoked'
+    })
   })
 })

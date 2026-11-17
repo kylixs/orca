@@ -218,8 +218,63 @@ describe('host mode heartbeat watcher', () => {
     expect(readState(statePath)).toMatchObject({
       status: 'degraded',
       phase: 'heartbeat',
+      lastHeartbeatAt: OK_HEALTH.lastHeartbeatAt,
       lastErrorCode: 'heartbeat_failed',
       retryable: true
+    })
+  })
+
+  it('treats host_revoked like 401: error state, terminal once', () => {
+    const watcher = watch(OK_HEALTH)
+
+    watcher.beat({
+      lastHeartbeatAt: OK_HEALTH.lastHeartbeatAt,
+      lastHeartbeatOk: false,
+      lastHeartbeatHttpStatus: 409,
+      lastErrorCode: 'host_revoked'
+    })
+    watcher.beat({
+      lastHeartbeatAt: OK_HEALTH.lastHeartbeatAt,
+      lastHeartbeatOk: false,
+      lastHeartbeatHttpStatus: 409,
+      lastErrorCode: 'host_revoked'
+    })
+
+    expect(watcher.onTerminal).toHaveBeenCalledExactlyOnceWith(78)
+    expect(readState(statePath)).toMatchObject({
+      status: 'error',
+      phase: 'heartbeat',
+      hostId: 'host_123',
+      lastHeartbeatAt: OK_HEALTH.lastHeartbeatAt,
+      lastHeartbeatOk: false,
+      lastHeartbeatHttpStatus: 409,
+      lastErrorCode: 'host_revoked',
+      retryable: false
+    })
+  })
+
+  it('returns to online and clears the error after a successful beat', () => {
+    const watcher = watch(OK_HEALTH)
+
+    watcher.beat({
+      lastHeartbeatAt: null,
+      lastHeartbeatOk: false,
+      lastHeartbeatHttpStatus: 503,
+      lastErrorCode: 'heartbeat_failed'
+    })
+    const recovered = 1_700_000_020_000
+    watcher.beat({ ...OK_HEALTH, lastHeartbeatAt: recovered })
+
+    expect(watcher.onTerminal).not.toHaveBeenCalled()
+    expect(readState(statePath)).toMatchObject({
+      status: 'online',
+      phase: 'heartbeat',
+      hostId: 'host_123',
+      lastHeartbeatAt: recovered,
+      lastHeartbeatOk: true,
+      lastHeartbeatHttpStatus: 200,
+      lastErrorCode: null,
+      retryable: false
     })
   })
 

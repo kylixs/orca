@@ -192,8 +192,8 @@ export function recordHostModeEnrolmentFailure(
 }
 
 /**
- * Watches post-online heartbeat verdicts. Only a rejected credential is terminal:
- * a sustained 401 would otherwise leave an unauthorized host spinning forever.
+ * Watches post-online heartbeat verdicts. A rejected credential or a revoked host
+ * is terminal: either would otherwise leave the host spinning forever.
  */
 export function watchHostModeHeartbeat(input: {
   context: HostModeStateContext
@@ -210,19 +210,28 @@ export function watchHostModeHeartbeat(input: {
       return
     }
     const health = client.snapshot()
-    if (health.lastHeartbeatOk === true || health.lastErrorCode === null) {
+    if (health.lastHeartbeatOk === true) {
+      writeHostModeOnlineState(input.context, {
+        hostId: input.admission.host()?.hostId ?? null,
+        health
+      })
       return
     }
-    const unauthorized = health.lastErrorCode === 'heartbeat_unauthorized'
+    if (health.lastErrorCode === null) {
+      return
+    }
+    // 401 and a revoked host are both terminal; only retryable failures stay degraded.
+    const fatal =
+      health.lastErrorCode === 'heartbeat_unauthorized' || health.lastErrorCode === 'host_revoked'
     writeHostModeFailureState(input.context, {
       code: health.lastErrorCode,
-      retryable: !unauthorized,
-      status: unauthorized ? 'error' : 'degraded',
+      retryable: !fatal,
+      status: fatal ? 'error' : 'degraded',
       phase: 'heartbeat',
       hostId: input.admission.host()?.hostId ?? null,
       health
     })
-    if (unauthorized) {
+    if (fatal) {
       terminal = true
       input.onTerminal(hostModeExitCodeForFailure(health.lastErrorCode, false))
     }
