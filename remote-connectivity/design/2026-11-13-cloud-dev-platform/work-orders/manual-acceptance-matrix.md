@@ -35,7 +35,7 @@
 | C4 | U164 布局所有权（headless 同形状写入后不交还） | 同形状成员/顺序变更在 headless-authored worktree 上可能被丢弃并闪回（`moved:true` 后回滚） | 披露为 P2；v4 排期（layoutRevision） |
 | C5 | U163 组 id 未水合瞬态 | 本地 UUID 未水合时 move 抛错并 toast 失败（诚实失败） | 可接受；hydrate 后恢复正常 |
 | C6 | 桌面 Electron 真实拖拽抽验（U164/U169） | 云会话拖拽/重排已在 Orca Web 真机验证（宿主 DB 落盘+刷新保持）；桌面 renderer 已含 U169（07:26 补建）但未做真机拖拽 | 建议人工抽验一次桌面拖拽/组重排 |
-| G24 | 宿主安装脚本矩阵（Linux/CentOS7/Windows） | **Linux 部分已自动化验证**：Debian 12 amd64 容器执行向导 one-liner → exit 0 → 注册 201 → 首心跳 online → 重复令牌 401（`evidence/g24-linux-fixed-20261117T153424/`）；曾阻断的 U180（`ORCA_CLOUD_API_URL` 未加载）已修复 | CentOS7 需镜像可用。**Windows 范围待确认**：需求 FR-4.11 只定义 bash one-liner，全仓无 `host.cmd`/`.ps1` 路径；若开发机含 Windows，需新增需求与实现，否则 G24 的 Windows 行应移出 v1 范围 |
+| G24 | 宿主安装脚本矩阵（Linux/CentOS7/Windows） | **Linux 部分仅「脚本执行」通过，接入未通过**：Debian 12 容器 one-liner exit 0（U180 已修，`evidence/g24-linux-fixed-20261117T153424/`）；但脚本本身**不注册不启动**（U181 P0，`orca --host-mode` 无实现），此前的 201/online 是协议 curl 重放，**非脚本产生**。G24 判据需待 U181 落地后重测 | CentOS7 需镜像可用。**Windows 范围待确认**：需求 FR-4.11 只定义 bash one-liner，全仓无 `host.cmd`/`.ps1` 路径；若开发机含 Windows，需新增需求与实现，否则 G24 的 Windows 行应移出 v1 范围 |
 | C7 | 运行中宿主窗口内存快照 | 宿主已跑生产 main（07:01），但已打开窗口仍用旧 preload/renderer；新窗口/重启后才加载 07:26 renderer | 部署时执行一次宿主重启即可收敛（PTY 会重建） |
 
 ## D. 环境注意事项
