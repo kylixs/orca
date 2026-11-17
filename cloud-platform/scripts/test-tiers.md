@@ -11,6 +11,8 @@
 | T2 改动面 | 日常迭代（默认选项） | `node cloud-platform/scripts/run-test-tier.mjs changed` | 同 T1，仅跑受影响目录 |
 | T3 全量（L4） | **发版前**或明确要求 | 见 PROGRESS 的 L4 记录（真 Node ≥24.16，串行分段） | 单段串行，禁止两段并行（§2-73） |
 
+npm 快捷入口：`pnpm test:tier:smoke` / `pnpm test:tier:critical` / `pnpm test:tier:changed`（均自动带资源监控与运行前进程清理）。
+
 ## 原则
 
 1. **默认只跑 T2**：`git diff HEAD` 与 `origin/main...HEAD` 的文件映射到目录级测试；没有映射时明确输出「无受影响测试」。
