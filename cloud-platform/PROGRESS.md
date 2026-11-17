@@ -4269,3 +4269,5 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U230② 并发撤销去重落地**（`e56e8cf32aa`）：`revokeDisabledSession` 撤销前重查 `revokedAt`——已撤销则跳过审计/epoch，同一 session 并发刷新最多一条 `logout/denied`；新增可选 `ApiConfig.beforeDisabledSessionRevoke` 测试屏障（生产零差异）；可控交错红→绿 2 例；回归 72/72。待复审。
 - **U230② 复审 APPROVED**：幂等覆盖两源、审计唯一、epoch 只 +1、401/清 Cookie 不变、测试屏障无生产影响（无 env 映射）；独立 archive 红证据（移除重查→epoch 3）。台账 U230 ② 记录闭环（① 仍待事件词汇批）。P3 登记 **U241（🟡）**：登出循环 `revokedAt` 重查、reuse/过期撤销 epoch 一致性、屏障超时兜底。
 - **U240 修复落地**（`fd26edda0be`，3 文件）：两条启动成功分支守卫改为「代际变且无 `state.user` → 清 cachedUser + `showLogin()`（幂等）再 return」——失败登录不再空白页；成功登录仍只丢迟到结果。新用例父提交红、现绿；startup-resilience 20/20、六套件 74 pass/2 skip；pin 同步。待复审。
+- **最终认证批（U240 后）**：18 套件 **212 tests / 210 pass / 2 skip（D17）/ 0 fail**（CONC=2，EXIT=0）。交付摘要基线更新。
+- **U241① 登出幂等落地**（`10e43b32415`）：登出循环对已撤销 session 跳过 bump/审计（200/Cookie 清理不变）；新套件 `u241-logout-idempotent` 3 例（确定性交错红→绿）+ 回归 86/86；主会话复跑 17/17。待复审；②③ 未动。
