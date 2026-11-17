@@ -1,6 +1,7 @@
 import type { applyWorktreeRecordUpdates } from './apply-worktree-records'
 import { withWorktreeEntry, sameStringArray } from './state-equality-core'
 import { toVisibleTabType } from './state-equality-files'
+import { resolveActiveGroupId, resolveLocalFocusPin } from './local-host-focus-pin'
 import {
   collectLayoutGroupIds,
   appendTabGroupLayout,
@@ -42,12 +43,22 @@ export function applyActiveStateUpdates(context: ActiveStateContext) {
     intentBrowserWorkspaceId
   } = context
 
-  const nextActiveGroupId = clientOwnedPlacement
-    ? clientOwnedPlacement.activeGroupId
-    : (nextGroups?.find((group) => group.activeTabId === nextActiveUnifiedTabId)?.id ??
-      nextGroups?.find((group) => group.id === snapshot.activeGroupId)?.id ??
-      nextGroups?.[0]?.id ??
-      null)
+  // Why: a layout catch-up adopts host shapes but never host focus (U163 T2).
+  const focusPin = resolveLocalFocusPin({
+    enabled: options?.preserveLocalFocus === true && options?.hostActiveAuthoritative !== true,
+    worktreeId,
+    state,
+    nextGroups
+  })
+
+  const nextActiveGroupId = resolveActiveGroupId({
+    focusPin,
+    clientOwnedGroupId: clientOwnedPlacement?.activeGroupId,
+    localActiveGroupId: state.activeGroupIdByWorktree[worktreeId],
+    nextGroups,
+    nextActiveUnifiedTabId,
+    snapshotActiveGroupId: snapshot.activeGroupId
+  })
   const nextActiveGroupIdByWorktree =
     nextGroups && state.activeGroupIdByWorktree[worktreeId] !== nextActiveGroupId
       ? withWorktreeEntry(
@@ -133,20 +144,19 @@ export function applyActiveStateUpdates(context: ActiveStateContext) {
     (a, b) => sameStringArray(a ?? [], b ?? []),
     context.batchContext
   )
+  const nextActiveTabIdByWorktreeValue =
+    intentMirroredAgent?.unifiedTab.id ??
+    focusPin.tabId ??
+    (options?.hostActiveAuthoritative && snapshot.activeTabType === 'terminal'
+      ? nextActiveTerminalId
+      : (currentVisibleStructuredTabId ?? nextActiveTerminalId))
   const nextActiveTabIdByWorktree =
-    (state.activeTabIdByWorktree[worktreeId] ?? null) !==
-    (intentMirroredAgent?.unifiedTab.id ??
-      (options?.hostActiveAuthoritative && snapshot.activeTabType === 'terminal'
-        ? nextActiveTerminalId
-        : (currentVisibleStructuredTabId ?? nextActiveTerminalId)))
+    (state.activeTabIdByWorktree[worktreeId] ?? null) !== nextActiveTabIdByWorktreeValue
       ? withWorktreeEntry(
           state,
           'activeTabIdByWorktree',
           worktreeId,
-          intentMirroredAgent?.unifiedTab.id ??
-            (options?.hostActiveAuthoritative && snapshot.activeTabType === 'terminal'
-              ? nextActiveTerminalId
-              : (currentVisibleStructuredTabId ?? nextActiveTerminalId)),
+          nextActiveTabIdByWorktreeValue,
           (current, next) => (current ?? null) === next,
           context.batchContext,
           false
@@ -231,14 +241,19 @@ export function applyActiveStateUpdates(context: ActiveStateContext) {
           : nextActiveEditorFileId
             ? ('editor' as const)
             : ('terminal' as const)
+  const pinnedVisibleUnifiedTab = focusPin.tabId
+    ? (nextUnifiedTabs?.find((tab) => tab.id === focusPin.tabId) ?? null)
+    : null
   const nextVisibleTabType = honorSnapshotActiveFocus
     ? (focusIntentVisibleTabType ??
       currentVisibleTabTypeStillValid ??
       snapshotVisibleTabType ??
       fallbackVisibleTabType)
-    : options?.hostActiveAuthoritative
-      ? (snapshotVisibleTabType ?? currentVisibleTabTypeStillValid ?? fallbackVisibleTabType)
-      : (currentVisibleTabTypeStillValid ?? snapshotVisibleTabType ?? fallbackVisibleTabType)
+    : pinnedVisibleUnifiedTab
+      ? toVisibleTabType(pinnedVisibleUnifiedTab)
+      : options?.hostActiveAuthoritative
+        ? (snapshotVisibleTabType ?? currentVisibleTabTypeStillValid ?? fallbackVisibleTabType)
+        : (currentVisibleTabTypeStillValid ?? snapshotVisibleTabType ?? fallbackVisibleTabType)
 
   const currentActiveTerminalStillValid =
     state.activeTabId && (nextTerminalTabs ?? []).some((tab) => tab.id === state.activeTabId)
@@ -249,10 +264,12 @@ export function applyActiveStateUpdates(context: ActiveStateContext) {
       ? state.activeFileId
       : null
   const nextActiveTabId = isActiveWorktree
-    ? (intentMirroredAgent?.unifiedTab.id ??
-      (snapshot.activeTabType === 'terminal'
-        ? nextActiveTerminalId
-        : (currentActiveTerminalStillValid ?? nextActiveTerminalId)))
+    ? focusPin.active && intentMirroredAgent === null
+      ? state.activeTabId
+      : (intentMirroredAgent?.unifiedTab.id ??
+        (snapshot.activeTabType === 'terminal'
+          ? nextActiveTerminalId
+          : (currentActiveTerminalStillValid ?? nextActiveTerminalId)))
     : state.activeTabId
   const nextActiveBrowserTabId = isActiveWorktree
     ? nextActiveBrowserWorkspaceId
