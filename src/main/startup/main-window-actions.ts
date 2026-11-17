@@ -1,4 +1,4 @@
-import { app, clipboard, dialog, type BrowserWindow, type Tray } from 'electron'
+import { app, clipboard, type BrowserWindow, type Tray } from 'electron'
 import type { UpdateCheckOptions } from '../../shared/update-status-types'
 import { recordCrashBreadcrumb } from '../crash-reporting/crash-breadcrumb-store'
 import { recordDurableCrashBreadcrumb } from '../crash-reporting/durable-crash-breadcrumb'
@@ -23,6 +23,7 @@ import {
   type RendererRecoveryPromptFailure
 } from '../window/renderer-recovery-prompt'
 import { probeRendererLaunchCapacity } from '../window/renderer-launch-failure-probe'
+import { showUserMessageBox } from './non-interactive-launch'
 
 // The window module injects this callback to avoid a cycle between actions and lifecycle code.
 let openWindow: (options?: { revealOnDidFinishLoad?: boolean }) => BrowserWindow
@@ -190,7 +191,7 @@ export async function showRendererRecoveryPrompt(
     showMessageBox: (options) => {
       const window =
         state.mainWindow && !state.mainWindow.isDestroyed() ? state.mainWindow : undefined
-      return window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options)
+      return showUserMessageBox(options, window)
     },
     copyToClipboard: (text) => clipboard.writeText(text),
     reload: () => {

@@ -1,9 +1,10 @@
-import { app, dialog, type BrowserWindow, type MessageBoxOptions } from 'electron'
+import { app, type BrowserWindow, type MessageBoxOptions } from 'electron'
 import { profileStateWriterFailureOutcome } from '../persistence/profile-state/profile-state-writer-errors'
 import { recordProfileStateWriteFailureReport } from '../persistence/profile-state/profile-state-writer-diagnostics'
 import { isBackgroundLaunch } from '../window/foreground-activation-policy'
 import { waitForWindowToShow } from '../window/wait-for-window-to-show'
 import { mainProcessState } from './main-process-state'
+import { isNonInteractiveLaunch, showUserMessageBox } from './non-interactive-launch'
 
 let presenting = false
 
@@ -24,7 +25,7 @@ export function profileStateWriteFailureDialogOptions(error: Error): MessageBoxO
 export function reportProfileStateWriteFailure(error: Error): void {
   const options = profileStateWriteFailureDialogOptions(error)
   console.error(`[persistence] ${options.message} ${options.detail}`, error)
-  if (mainProcessState.isServeMode || isBackgroundLaunch()) {
+  if (mainProcessState.isServeMode || isBackgroundLaunch() || isNonInteractiveLaunch()) {
     recordProfileStateWriteFailureReport(error, 'suppressed')
     return
   }
@@ -64,7 +65,7 @@ async function presentOnMainWindow(error: Error, options: MessageBoxOptions): Pr
           return
         }
         recordProfileStateWriteFailureReport(error, 'dialog')
-        await dialog.showMessageBox(window, options)
+        await showUserMessageBox(options, window)
         return
       }
     } else if (!deferred) {

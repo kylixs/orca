@@ -1,5 +1,11 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+// The shared runner sets ORCA_BACKGROUND_LAUNCH=1; these cases cover the interactive path.
+delete process.env.ORCA_BACKGROUND_LAUNCH
+delete process.env.ORCA_E2E_HEADLESS
+delete process.env.ORCA_SUPPRESS_DIALOGS
+delete process.env.ELECTRON_RUN_AS_NODE
 import type { CollectedBundle } from '../observability/bundle'
 import type * as NodeFs from 'node:fs'
 

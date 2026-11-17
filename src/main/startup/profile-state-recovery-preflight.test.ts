@@ -78,6 +78,8 @@ beforeEach(() => {
   vi.stubEnv('ORCA_USER_DATA_PATH', '/stale/inherited/root')
   vi.stubEnv('ORCA_BYPASS_SINGLE_INSTANCE_LOCK', '1')
   vi.stubEnv('ORCA_E2E_ENFORCE_SINGLE_INSTANCE_LOCK', '0')
+  // The shared runner sets this; these cases cover the interactive recovery dialog.
+  vi.stubEnv('ORCA_BACKGROUND_LAUNCH', '')
 })
 afterEach(() => {
   vi.restoreAllMocks()

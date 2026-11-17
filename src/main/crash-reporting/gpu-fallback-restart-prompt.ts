@@ -1,4 +1,5 @@
-import { dialog, type BrowserWindow, type MessageBoxOptions } from 'electron'
+import type { BrowserWindow, MessageBoxOptions } from 'electron'
+import { showUserMessageBox } from '../startup/non-interactive-launch'
 
 export type GpuFallbackRestartDecision = 'restart' | 'continue'
 
@@ -16,8 +17,7 @@ const GPU_FALLBACK_RESTART_OPTIONS: MessageBoxOptions = {
 export async function promptForGpuFallbackRestart(
   parentWindow?: BrowserWindow
 ): Promise<GpuFallbackRestartDecision> {
-  const { response } = parentWindow
-    ? await dialog.showMessageBox(parentWindow, GPU_FALLBACK_RESTART_OPTIONS)
-    : await dialog.showMessageBox(GPU_FALLBACK_RESTART_OPTIONS)
+  // Non-interactive launches answer the cancel button ("Keep Running") and keep defaults.
+  const { response } = await showUserMessageBox(GPU_FALLBACK_RESTART_OPTIONS, parentWindow, 1)
   return response === 0 ? 'restart' : 'continue'
 }

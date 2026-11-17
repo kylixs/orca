@@ -1,9 +1,10 @@
-import { app, dialog } from 'electron'
+import { app } from 'electron'
 import { formatProfileStateStartupFailure } from '../persistence/profile-state/profile-state-startup-failure'
 import { isBackgroundLaunch } from '../window/foreground-activation-policy'
 import { mainProcessState as state } from './main-process-state'
 import { SINGLE_INSTANCE_ALREADY_RUNNING_EXIT_CODE } from './single-instance-lock'
 import { acquireDesktopProfileInstanceLock } from './desktop-profile-instance-lock'
+import { isNonInteractiveLaunch, showUserErrorBox } from './non-interactive-launch'
 
 /** False when orcad holds the profile; unlike a second desktop, nothing else would say why. */
 export function acquireDesktopProfileLockOrExplain(userDataPath: string): boolean {
@@ -23,7 +24,7 @@ export function handleMainProcessPreflightFailure(error: unknown, exitCode = 1):
   const message =
     formatProfileStateStartupFailure(error) ??
     (error instanceof Error ? error.message : String(error))
-  const shouldShowDialog = !state.isServeMode && !isBackgroundLaunch()
+  const shouldShowDialog = !state.isServeMode && !isBackgroundLaunch() && !isNonInteractiveLaunch()
   state.desktopActivationGate = null
   const admission = state.profileStateAdmission
   state.profileStateAdmission = undefined
@@ -35,7 +36,7 @@ export function handleMainProcessPreflightFailure(error: unknown, exitCode = 1):
 
   const showDialogAndExit = (): void => {
     try {
-      dialog.showErrorBox('Orca could not start', message)
+      showUserErrorBox('Orca could not start', message)
     } catch (dialogError) {
       console.warn('[startup] Could not show startup failure:', dialogError)
     } finally {
@@ -51,6 +52,8 @@ export function handleMainProcessPreflightFailure(error: unknown, exitCode = 1):
   } else if (shouldShowDialog) {
     showDialogAndExit()
   } else {
+    // Never hang a background/test launch waiting for a dialog nobody will see.
+    console.error(`[startup] Orca could not start: ${message}`)
     app.exit(exitCode)
   }
 }

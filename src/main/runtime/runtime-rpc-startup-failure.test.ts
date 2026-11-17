@@ -1,16 +1,24 @@
 import { EventEmitter } from 'node:events'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { showMessageBoxMock, trackMock } = vi.hoisted(() => ({
+const { showMessageBoxMock, trackMock, exitMock } = vi.hoisted(() => ({
   showMessageBoxMock: vi.fn(),
-  trackMock: vi.fn()
+  trackMock: vi.fn(),
+  exitMock: vi.fn()
 }))
 
 vi.mock('electron', () => ({
+  app: { exit: exitMock },
   dialog: {
     showMessageBox: showMessageBoxMock
   }
 }))
+
+// The shared runner sets ORCA_BACKGROUND_LAUNCH=1; these cases cover the interactive path.
+delete process.env.ORCA_BACKGROUND_LAUNCH
+delete process.env.ORCA_E2E_HEADLESS
+delete process.env.ORCA_SUPPRESS_DIALOGS
+delete process.env.ELECTRON_RUN_AS_NODE
 
 vi.mock('../i18n/main-i18n', () => ({
   // Why: substitute every supplied placeholder, not just {{cause}} — a mock that ignores one
@@ -72,6 +80,7 @@ function flushMicrotasks(): Promise<void> {
 describe('runtime RPC startup failure reporting', () => {
   beforeEach(() => {
     showMessageBoxMock.mockReset().mockResolvedValue({ response: 0 })
+    exitMock.mockReset()
     trackMock.mockReset()
   })
 
@@ -140,6 +149,23 @@ describe('runtime RPC startup failure reporting', () => {
       '[runtime] Failed to record RPC startup failure telemetry:',
       telemetryError
     )
+    consoleError.mockRestore()
+  })
+
+  it('exits without a dialog in a non-interactive launch', async () => {
+    vi.stubEnv('ORCA_BACKGROUND_LAUNCH', '1')
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const error = new Error('metadata write failed')
+
+    await showRuntimeRpcStartupFailureDialog(createParentWindow(), error)
+
+    expect(showMessageBoxMock).not.toHaveBeenCalled()
+    expect(exitMock).toHaveBeenCalledExactlyOnceWith(1)
+    expect(consoleError).toHaveBeenCalledWith(
+      '[runtime] Local command transport failed to start; exiting:',
+      error
+    )
+    vi.unstubAllEnvs()
     consoleError.mockRestore()
   })
 

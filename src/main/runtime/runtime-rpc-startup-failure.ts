@@ -1,7 +1,8 @@
-import { dialog, type BrowserWindow, type MessageBoxOptions } from 'electron'
+import { app, type BrowserWindow, type MessageBoxOptions } from 'electron'
 
 import type { RuntimeRpcStartErrorClass } from '../../shared/telemetry-events'
 import { translateMain } from '../i18n/main-i18n'
+import { isNonInteractiveLaunch, showUserMessageBox } from '../startup/non-interactive-launch'
 import { track } from '../telemetry/client'
 import { waitForWindowToShow } from '../window/wait-for-window-to-show'
 
@@ -129,11 +130,17 @@ export async function showRuntimeRpcStartupFailureDialog(
   parentWindow: BrowserWindow,
   error: unknown
 ): Promise<void> {
+  if (isNonInteractiveLaunch()) {
+    // A background/test launch has no one to dismiss the dialog, so fail instead of hanging.
+    console.error('[runtime] Local command transport failed to start; exiting:', error)
+    app.exit(1)
+    return
+  }
   if (!(await waitForWindowToShow(parentWindow))) {
     return
   }
   try {
-    await dialog.showMessageBox(parentWindow, createRuntimeRpcStartupFailureDialogOptions(error))
+    await showUserMessageBox(createRuntimeRpcStartupFailureDialogOptions(error), parentWindow)
   } catch (dialogError) {
     console.error('[runtime] Failed to show RPC startup failure dialog:', dialogError)
   }

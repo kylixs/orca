@@ -2,6 +2,12 @@ import { EventEmitter } from 'node:events'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ProfileStateWriterError } from '../persistence/profile-state/profile-state-writer-errors'
 
+// The shared runner sets ORCA_BACKGROUND_LAUNCH=1; these cases cover the interactive path.
+delete process.env.ORCA_BACKGROUND_LAUNCH
+delete process.env.ORCA_E2E_HEADLESS
+delete process.env.ORCA_SUPPRESS_DIALOGS
+delete process.env.ELECTRON_RUN_AS_NODE
+
 const fixture = await vi.hoisted(async () => {
   const events = await import('node:events')
   const state: { isServeMode: boolean; isQuitting: boolean; mainWindow: unknown } = {

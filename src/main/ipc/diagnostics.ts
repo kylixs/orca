@@ -18,7 +18,7 @@
 // renderer triggers the flow; main reads the URL from a build-time
 // constant or env var and does the POST itself.
 
-import { app, dialog, ipcMain, shell } from 'electron'
+import { app, ipcMain, shell } from 'electron'
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs'
 import { arch as osArch, platform as osPlatform, release as osRelease, tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -35,6 +35,7 @@ import {
   resolveDiagnosticOrcaChannel,
   resolveDiagnosticTokenEndpoint
 } from '../observability/diagnostic-upload-endpoint'
+import { showUserMessageBox } from '../startup/non-interactive-launch'
 
 export type DiagnosticsBundlePreview = Omit<CollectedBundle, 'payload'>
 type UploadBundleIpcResult = UploadBundleResult | { canceled: true }
@@ -190,17 +191,22 @@ function isTicketId(value: unknown): value is string {
 }
 
 async function confirmBundleUpload(bundle: CollectedBundle): Promise<boolean> {
-  const result = await dialog.showMessageBox({
-    type: 'question',
-    buttons: ['Send', 'Cancel'],
-    defaultId: 1,
-    cancelId: 1,
-    title: 'Send this file to support?',
-    message: 'This uploads the redacted app diagnostics file you reviewed.',
-    detail: `Diagnostic ID: ${bundle.bundleSubmissionId}\nDiagnostic records: ${bundle.spanCount}\nSize: ${Math.round(
-      bundle.bytes / 1024
-    )} KB`
-  })
+  // Non-interactive launches answer Cancel rather than auto-uploading diagnostics.
+  const result = await showUserMessageBox(
+    {
+      type: 'question',
+      buttons: ['Send', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      title: 'Send this file to support?',
+      message: 'This uploads the redacted app diagnostics file you reviewed.',
+      detail: `Diagnostic ID: ${bundle.bundleSubmissionId}\nDiagnostic records: ${bundle.spanCount}\nSize: ${Math.round(
+        bundle.bytes / 1024
+      )} KB`
+    },
+    undefined,
+    1
+  )
   return result.response === 0
 }
 

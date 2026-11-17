@@ -3,6 +3,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// The shared runner sets ORCA_BACKGROUND_LAUNCH=1; these cases cover the interactive path.
+delete process.env.ORCA_BACKGROUND_LAUNCH
+delete process.env.ORCA_E2E_HEADLESS
+delete process.env.ORCA_SUPPRESS_DIALOGS
+delete process.env.ELECTRON_RUN_AS_NODE
+
 // Hoisted with the vi.mock factory below. 'Keep Running' — the prompt firing at all is the signal.
 const { showMessageBox, userData } = vi.hoisted(() => ({
   showMessageBox: vi.fn(async () => ({ response: 1 })),

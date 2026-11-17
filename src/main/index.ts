@@ -1,4 +1,4 @@
-import { app, clipboard, dialog, type BrowserWindow } from 'electron'
+import { app, clipboard, type BrowserWindow } from 'electron'
 import { parseSkillShareId } from '../shared/skill-share-link'
 import { createMacAppActivationHandler } from './window/macos-app-activation'
 import { isBackgroundLaunch } from './window/foreground-activation-policy'
@@ -26,6 +26,7 @@ import {
   readProfileStateCopySavedTimes
 } from './persistence/profile-state/profile-state-startup-recovery-dialog'
 import { profileStateDesktopRecoveryArgs } from './startup/profile-state-recovery-preflight'
+import { showUserMessageBox } from './startup/non-interactive-launch'
 
 function openMainWindow(options: { revealOnDidFinishLoad?: boolean } = {}): BrowserWindow {
   return openMainWindowController(options)
@@ -142,7 +143,7 @@ if (preflightReady) {
             const userDataPath = app.getPath('userData')
             const choice = await chooseProfileStateCopy({
               ...readProfileStateCopySavedTimes(userDataPath),
-              showMessageBox: (options) => dialog.showMessageBox(options)
+              showMessageBox: (options) => showUserMessageBox(options)
             })
             if (choice !== undefined) {
               // Recovery needs both profile locks, which only a fresh process can own safely.
@@ -161,7 +162,7 @@ if (preflightReady) {
             ...(failureClass === 'recovery-required' || failureClass === 'ambiguous-authority'
               ? { recoveryCommand: 'orca profile state exports' }
               : {}),
-            showMessageBox: (options) => dialog.showMessageBox(options),
+            showMessageBox: (options) => showUserMessageBox(options),
             copyToClipboard: (text) => clipboard.writeText(text)
           })
         } catch (dialogError) {

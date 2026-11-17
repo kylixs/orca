@@ -1,4 +1,5 @@
-import { dialog, type BrowserWindow, type MessageBoxOptions } from 'electron'
+import type { BrowserWindow, MessageBoxOptions } from 'electron'
+import { showUserMessageBox } from '../startup/non-interactive-launch'
 
 export type GpuFallbackRecoveredLaunchDecision = 'keep-safe' | 'retry-hardware'
 
@@ -16,9 +17,7 @@ const GPU_FALLBACK_RECOVERED_LAUNCH_OPTIONS: MessageBoxOptions = {
 export async function promptForGpuFallbackRecoveredLaunch(
   parentWindow?: BrowserWindow
 ): Promise<GpuFallbackRecoveredLaunchDecision> {
-  const { response } = parentWindow
-    ? await dialog.showMessageBox(parentWindow, GPU_FALLBACK_RECOVERED_LAUNCH_OPTIONS)
-    : await dialog.showMessageBox(GPU_FALLBACK_RECOVERED_LAUNCH_OPTIONS)
+  const { response } = await showUserMessageBox(GPU_FALLBACK_RECOVERED_LAUNCH_OPTIONS, parentWindow)
   return response === 1 ? 'retry-hardware' : 'keep-safe'
 }
 

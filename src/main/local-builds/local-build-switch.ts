@@ -1,4 +1,5 @@
 import { app, dialog, type BrowserWindow } from 'electron'
+import { showUserMessageBox } from '../startup/non-interactive-launch'
 import { SCHEMA_VERSION } from '../../shared/constants'
 import { compareAppVersions } from '../../shared/app-version'
 import { assertLocalBuildCompatibility } from './local-build-compatibility'
@@ -44,9 +45,8 @@ export async function chooseLocalBuild(
       cancelId: 1,
       noLink: true
     }
-    const confirmation = await (window
-      ? dialog.showMessageBox(window, messageBoxOptions)
-      : dialog.showMessageBox(messageBoxOptions))
+    // Non-interactive launches answer Cancel rather than silently switching builds.
+    const confirmation = await showUserMessageBox(messageBoxOptions, window ?? undefined, 1)
     if (confirmation.response === 0) {
       return candidate
     }

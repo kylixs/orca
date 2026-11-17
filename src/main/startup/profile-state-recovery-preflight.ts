@@ -1,6 +1,6 @@
 import { writeFileSync, realpathSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
-import { app, dialog } from 'electron'
+import { app } from 'electron'
 import {
   PROFILE_STATE_DESKTOP_RECOVERY_FLAG,
   PROFILE_STATE_RECOVERY_FLAG,
@@ -13,6 +13,7 @@ import {
 import { acquireProfileStateMaintenance } from '../persistence/profile-state/profile-state-access'
 import { rollbackProfileState } from '../persistence/profile-state/profile-state-recovery-command'
 import { applyBackgroundActivationPolicy } from '../window/foreground-activation-policy'
+import { showUserMessageBox } from './non-interactive-launch'
 import { acquireSingleInstanceLock } from './single-instance-lock'
 
 /** The process owning both locks performs recovery before Electron can initialize a runtime. */
@@ -72,7 +73,7 @@ function runDesktopRecovery(argv: readonly string[]): void {
   void app
     .whenReady()
     .then(() =>
-      dialog.showMessageBox({
+      showUserMessageBox({
         type: 'error',
         buttons: ['Quit'],
         title: 'Orca profile state was not changed',
