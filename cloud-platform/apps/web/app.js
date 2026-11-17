@@ -232,16 +232,12 @@ async function refreshWithBody(epoch, signal) {
   return 'ok'
 }
 
-/** U229 F2: a pre-U221 key with no owner cannot prove it belongs to this browser. */
+/** U229 F2: a pre-U221 key with no owner cannot prove it belongs to this browser.
+ * U231: owner is a static binding; `orca.user` may be missing after a startup
+ * transport failure, so an owner-bound key still falls back (no cross-account risk). */
 function legacyOwnerAllowsFallback() {
   const owner = localStorage.getItem(TOKEN_OWNER_KEY)
-  let username = null
-  try {
-    username = JSON.parse(localStorage.getItem('orca.user') ?? '').username ?? null
-  } catch {
-    username = null
-  }
-  if (owner !== null && owner !== '' && username === owner) return true
+  if (owner !== null && owner !== '') return true
   clearLegacyTokens()
   return false
 }

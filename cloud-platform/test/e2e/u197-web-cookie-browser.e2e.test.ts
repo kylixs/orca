@@ -662,6 +662,103 @@ describe('U197 S5 Web 客户端真实 Chromium：Cookie 会话 / 迁移 / 回退
     }
   })
 
+  test('U231 F3 Cookie 无 body 探测在途时登出：旧响应的 Set-Cookie 不复活会话', async () => {
+    const { context, page } = await openConsole(shortAccess.url)
+    try {
+      await loginThroughUi(page)
+      const cookieBeforeRefresh = await refreshCookieOf(context)
+      assert.ok(cookieBeforeRefresh)
+      // Let the access token lapse so a business click starts the Cookie probe.
+      await delay(1900)
+
+      let releaseRefresh = (): void => {}
+      const refreshGate = new Promise<void>((resolve) => {
+        releaseRefresh = resolve
+      })
+      let refreshHeld = (): void => {}
+      const held = new Promise<void>((resolve) => {
+        refreshHeld = resolve
+      })
+      let refreshSettled = (): void => {}
+      const settled = new Promise<void>((resolve) => {
+        refreshSettled = resolve
+      })
+      const bodies: (string | null)[] = []
+      let exchange: { status: number; setCookie: string } | null = null
+
+      await page.route('**/v1/auth/refresh', async (route) => {
+        bodies.push(route.request().postData())
+        const response = await route.fetch()
+        exchange = {
+          status: response.status(),
+          setCookie: response.headers()['set-cookie'] ?? ''
+        }
+        // Undo the early jar write so the release models a late delivery.
+        await restoreCookie(context, cookieBeforeRefresh)
+        refreshHeld()
+        await refreshGate
+        await route.fulfill({ response }).catch(() => {})
+        refreshSettled()
+      })
+
+      // The expired access token gets a 401; its no-body probe is held mid-flight.
+      await page.locator('.nav-item[data-route="relays"]').click()
+      await held
+      assert.deepEqual(bodies, [null], 'the held refresh is the no-body Cookie probe')
+      const observed = exchange as { status: number; setCookie: string } | null
+      assert.equal(observed?.status, 200, 'the platform answered the held probe')
+      assert.match(
+        observed?.setCookie ?? '',
+        /orca_refresh=/i,
+        'the real probe re-sends its Cookie'
+      )
+
+      // Log out while the probe is in flight, then log in as another account.
+      await page.locator('#logoutBtn').click()
+      await page.waitForSelector(VIEW_LOGIN, { state: 'visible', timeout: 15_000 })
+      assert.equal(await refreshCookieOf(context), undefined, 'logout clears the Cookie')
+      await page.fill('#username', 'zhangsan')
+      await page.fill('#password', 'Passw0rd!')
+      await page.click('#loginBtn')
+      await page.waitForSelector(VIEW_APP, { state: 'visible', timeout: 20_000 })
+      const newCookie = await refreshCookieOf(context)
+      assert.ok(newCookie, 'the second login must set a Cookie')
+      assert.notEqual(newCookie.value, cookieBeforeRefresh.value)
+
+      releaseRefresh()
+      await settled
+      await page.unroute('**/v1/auth/refresh')
+      await delay(300)
+
+      const afterLate = await refreshCookieOf(context)
+      assert.ok(afterLate, 'the stale probe must not clear the new Cookie')
+      assert.equal(
+        afterLate.value,
+        newCookie.value,
+        'the stale probe Set-Cookie must not resurrect the earlier session'
+      )
+      assert.equal(await isVisible(page, VIEW_APP), true)
+      assert.equal(await isVisible(page, VIEW_LOGIN), false)
+
+      // The new access token lapses; only the new Cookie may serve the next call.
+      await delay(1900)
+      const replayed = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/v1/projects' && response.status() === 200,
+        { timeout: 20_000 }
+      )
+      await page.locator('.nav-item[data-route="projects"]').click()
+      await replayed
+      await page.waitForFunction(() =>
+        (document.querySelector('#content')?.textContent ?? '').includes('我的项目')
+      )
+      assert.equal(await isVisible(page, VIEW_APP), true)
+      assert.equal(await isVisible(page, VIEW_LOGIN), false)
+    } finally {
+      await context.close()
+    }
+  })
+
   /**
    * AC7 real-browser, second tab: logout clears the Cookie and revokes the
    * session; "the other tab switches to login within N seconds **or** is

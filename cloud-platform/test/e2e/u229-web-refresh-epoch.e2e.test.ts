@@ -99,14 +99,15 @@ describe('U229 F1 刷新代际', () => {
   })
 
   test('F1b 刷新在途时登出并登录另一账号：旧结果不得覆盖新会话', async () => {
-    // Longer TTL: the /v1/me proof runs after the stale release plus settle.
-    const base = await start({ cookieMode: 'never', accessTtlMs: 2500 })
+    // U231 P3: ≥5000ms leaves room for login + held refresh + a second login on
+    // a slow runner; the previous 2500ms could lapse mid-assertion (false red).
+    const base = await start({ cookieMode: 'never', accessTtlMs: 6000 })
     const page = loadWebConsolePage(base)
     await page.settle()
     await page.submitLogin('admin', 'Adm1n!')
     assert.equal(page.hidden('#view-app'), false)
 
-    await delay(2800)
+    await delay(6300)
     page.hold('POST', '/v1/auth/refresh')
     await page.clickNav('relays')
     assert.equal(refreshCalls(page).length, 1)
@@ -243,5 +244,31 @@ describe('U229 F2 无 owner 旧键不得跨账号回退', () => {
     assert.equal(refreshCalls(page).length, 2, 'one Cookie probe plus one body fallback')
     assert.equal(refreshBodies(page).length, 1)
     assert.equal(page.window.localStorage.getItem('orca.refresh'), legacy.refreshToken)
+  })
+
+  test('U231 AC9b owner 有值但 user 缓存缺失：仍允许 body 回退并保留旧键', async () => {
+    const base = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const legacy = await legacyTokens(base, 'admin', 'Adm1n!')
+    const page = loadWebConsolePage(base, {
+      platformOrigin: ORIGIN,
+      cookieJar: new Map(),
+      storage: {
+        'orca.authMode': 'cookie',
+        'orca.refresh': legacy.refreshToken,
+        // Owner is the static binding; a startup transport failure may have
+        // dropped the `orca.user` cache without invalidating these keys.
+        'orca.tokenOwner': 'admin'
+      }
+    })
+    await page.settle()
+
+    assert.equal(page.hidden('#view-app'), false)
+    assert.equal(refreshCalls(page).length, 2, 'one Cookie probe plus one body fallback')
+    assert.equal(refreshBodies(page).length, 1)
+    assert.equal(
+      page.window.localStorage.getItem('orca.refresh'),
+      legacy.refreshToken,
+      'an owner-bound key must not be cleared just because the user cache is gone'
+    )
   })
 })
