@@ -4218,3 +4218,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
   - 覆盖登录失败/连续 reload/back-forward/过期恢复/登出（含 abort 补发）/多标签（含跨标签登出）/Cookie 边界（清 Cookie、重复 Cookie、marker 与 pending 篡改）/刷新网络失败自愈/legacy→cookie 回滚/可访问性。
   - **新发现 U228（🟡）**：禁用账号登录 200 → 坏壳（业务 401、刷新 200）；login/refresh 不复查 `user.status`（基线 MVP，与 U221–U227 无关），客户端一次重放仍 401 不登出。已派修。
 - **冷读审计（app.js 认证状态机）CHANGES-REQUIRED**：F1/F2 两个 P1（刷新在途+登出/再登录→会话复活/跨账号；无 owner 旧键 Cookie 丢失→回退成旧账号），F3–F7 P2（慢 logout 清新 Cookie、grace 回显误判、启动挂起空白页、登录 200 毒化、5xx 误登出），F8–F11 P3。结论落盘 `test-reports/u197-cold-audit-20261118.md`，登记 U229（🔴）。修复须与 U228 串行改 `app.js`（§2-90），待 U228 落地后按 F1/F2→其余顺序派修。
+- **m01-auth 现状文档刷新**（`58f9c50b749`，+100/−27）：更新到 HEAD `fe35a9d355a`——登录双形态（Cookie/never）、刷新三态与 401 守卫、页面恢复（Cookie 一次刷新/旧模式 401→body 重放）、登出双凭证撤销与 pendingLogout、多标签被动登出、失败分支与测试索引（8 套件分 in-process/happy-dom/真实 Chromium）；U228 标「修复中」、D17 标 ⛔。**U228 落地后需回填禁用账号与重放 401 自动登出行为**。
