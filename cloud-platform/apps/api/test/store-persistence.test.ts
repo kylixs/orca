@@ -1,5 +1,6 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -278,6 +279,80 @@ describe('平台 dev store 快照：损坏与默认关闭', () => {
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
+  })
+})
+
+describe('平台 dev store 快照：refresh token 明文剥离（U233 F6）', () => {
+  const digestOf = (token: string): string => createHash('sha256').update(token).digest('hex')
+
+  test('快照文本不含明文 refresh token，重启后仍可用它刷新', async () => {
+    const root = tempRoot()
+    const file = path.join(root, 'platform-store.json')
+    try {
+      const first = withEnv(file, () => createApp({ port: 0 }))
+      const firstBase = `http://127.0.0.1:${await first.listen()}`
+      const loginRes = await fetch(`${firstBase}/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username: 'admin', password: 'Adm1n!', deviceName: 'u233-snapshot' })
+      })
+      assert.equal(loginRes.status, 200)
+      const loginBody = (await loginRes.json()) as Record<string, unknown>
+      const refreshToken = String(loginBody.refreshToken)
+      assert.ok(refreshToken.length > 0)
+      await first.close()
+
+      const text = readFileSync(file, 'utf8')
+      assert.equal(text.includes(refreshToken), false, 'snapshot text must not carry the token')
+      const decoded = JSON.parse(text) as { refreshTokens: [string, string][] }
+      for (const [key] of decoded.refreshTokens) {
+        assert.equal(key.includes(refreshToken), false, 'no snapshot key may be a plaintext token')
+      }
+
+      // Restore: the digest lookup must still map the original token to its session.
+      const second = withEnv(file, () => createApp({ port: 0 }))
+      const secondBase = `http://127.0.0.1:${await second.listen()}`
+      try {
+        assert.equal(second.store.refreshTokens.has(refreshToken), false)
+        const refreshed = await fetch(`${secondBase}/v1/auth/refresh`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ refreshToken })
+        })
+        assert.equal(refreshed.status, 200)
+        const refreshedBody = (await refreshed.json()) as Record<string, unknown>
+        assert.equal(typeof refreshedBody.accessToken, 'string')
+      } finally {
+        await second.close()
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test('旧快照的明文 key 可加载，并在内存中重建为摘要', () => {
+    const token = 'legacy-plaintext-refresh-token'
+    const source = new Store()
+    source.sessions.set('sess_legacy', {
+      id: 'sess_legacy',
+      userId: 'user_legacy',
+      deviceId: 'device_legacy',
+      epoch: 1,
+      refreshHash: digestOf(token),
+      refreshExpiresAt: 1,
+      revokedAt: null
+    })
+    const snapshot = JSON.parse(serializeSnapshot(source)) as {
+      refreshTokens: [string, string][]
+    }
+    // Pre-U233 format: the map key was the plaintext token itself.
+    snapshot.refreshTokens = [[token, 'sess_legacy']]
+
+    const restored = new Store()
+    restoreSnapshot(restored, JSON.stringify(snapshot))
+
+    assert.equal(restored.refreshTokens.has(token), false)
+    assert.equal(restored.refreshTokens.get(digestOf(token)), 'sess_legacy')
   })
 })
 

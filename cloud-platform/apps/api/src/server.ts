@@ -2904,7 +2904,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       epoch: session.epoch,
       expiresAt: now() + accessTtlMs
     })
-    store.refreshTokens.set(refreshToken, session.id)
+    store.refreshTokens.set(hashToken(refreshToken), session.id)
     return { accessToken, refreshToken }
   }
 
@@ -2920,24 +2920,18 @@ export function createApp(config: ApiConfig): ApiHandle {
   }
 
   /**
-   * Cookie-source refresh re-sends the same value (v5 §2B-2), but the session
-   * stores only the hash. `currentRefreshToken` is in-memory plaintext; the map
-   * scan covers sessions created before that field existed.
+   * Cookie-source refresh re-sends the same value (v5 §2B-2). The token map
+   * stores digests only (U233), so a restored session falls back to the value
+   * the caller already verified against `refreshHash`.
    */
-  function currentRefreshTokenOf(session: Session): string | null {
+  function currentRefreshTokenOf(session: Session, presented: string): string | null {
     if (
       session.currentRefreshToken !== undefined &&
       safeEqual(session.refreshHash, hashToken(session.currentRefreshToken))
     ) {
       return session.currentRefreshToken
     }
-    for (const [token, sessionId] of store.refreshTokens) {
-      if (sessionId === session.id && safeEqual(session.refreshHash, hashToken(token))) {
-        session.currentRefreshToken = token
-        return token
-      }
-    }
-    return null
+    return safeEqual(session.refreshHash, hashToken(presented)) ? presented : null
   }
 
   /**
@@ -3668,7 +3662,8 @@ export function createApp(config: ApiConfig): ApiHandle {
         ? parseRefreshCookie(req.headers.cookie)
         : ({ kind: 'absent' } as const)
       const cookieValue = cookieParse.kind === 'present' ? cookieParse.value : ''
-      const cookieSessionId = cookieValue === '' ? undefined : store.refreshTokens.get(cookieValue)
+      const cookieSessionId =
+        cookieValue === '' ? undefined : store.refreshTokens.get(hashToken(cookieValue))
       const cookieSession = cookieSessionId ? store.sessions.get(cookieSessionId) : undefined
 
       // U197 S2: Cookie first; the body is consulted only when no Cookie resolves.
@@ -3806,10 +3801,9 @@ export function createApp(config: ApiConfig): ApiHandle {
         // current value.
         const renew = !bodyIsPrevious
         if (renew) cookieSession.refreshExpiresAt = now() + refreshTtlMs
-        // Reconstruction reads in-memory plaintext (`currentRefreshToken`, then
-        // the token map for sessions predating it). If it is unavailable, keep
-        // the browser's existing Cookie rather than rotate or fail the refresh.
-        const sameValue = currentRefreshTokenOf(cookieSession)
+        // Reconstruction reads in-memory plaintext (`currentRefreshToken`), then
+        // falls back to the Cookie already verified current above.
+        const sameValue = currentRefreshTokenOf(cookieSession, cookieValue)
         const resendCookie = renew && sameValue !== null
         if (resendCookie) setRefreshCookie(res, sameValue)
         return json(res, 200, {
@@ -3827,7 +3821,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       const rawBodyToken =
         body !== null && typeof body === 'object' ? body.refreshToken : undefined
       const token = String(rawBodyToken ?? '')
-      const sessionId = store.refreshTokens.get(token)
+      const sessionId = store.refreshTokens.get(hashToken(token))
       const session = sessionId ? store.sessions.get(sessionId) : undefined
       if (!session || session.revokedAt || session.refreshExpiresAt < now()) {
         // U241 ②: an expired session is revoked once so its access tokens die
@@ -3888,7 +3882,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       session.refreshHash = hashToken(refreshToken)
       session.currentRefreshToken = refreshToken
       session.refreshExpiresAt = now() + refreshTtlMs
-      store.refreshTokens.set(refreshToken, session.id)
+      store.refreshTokens.set(hashToken(refreshToken), session.id)
       // The one place that may both set the Cookie and return a newly minted
       // body refresh: a Cookie-less legacy caller has no other credential.
       const issueCookie = issuesRefreshCookie(req)
@@ -4028,7 +4022,8 @@ export function createApp(config: ApiConfig): ApiHandle {
       // Cookie too and revoke both when they differ (§2B-3).
       const cookieParse = parseRefreshCookie(req.headers.cookie)
       const cookieToken = cookieParse.kind === 'present' ? cookieParse.value : ''
-      const cookieSessionId = cookieToken === '' ? undefined : store.refreshTokens.get(cookieToken)
+      const cookieSessionId =
+        cookieToken === '' ? undefined : store.refreshTokens.get(hashToken(cookieToken))
       // U229 F10: with an expired access token and no Cookie, a legacy client has
       // no server-side locator; the body may carry the refresh token instead.
       // Never let a malformed or oversized body turn sign-out into an error.
@@ -4044,7 +4039,8 @@ export function createApp(config: ApiConfig): ApiHandle {
         body !== null && typeof body === 'object' && typeof body.refreshToken === 'string'
           ? body.refreshToken
           : ''
-      const bodySessionId = bodyToken === '' ? undefined : store.refreshTokens.get(bodyToken)
+      const bodySessionId =
+        bodyToken === '' ? undefined : store.refreshTokens.get(hashToken(bodyToken))
       const targets = new Set<string>()
       if (auth) targets.add(auth.sessionId)
       if (cookieSessionId !== undefined) targets.add(cookieSessionId)

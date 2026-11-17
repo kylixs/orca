@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type {
@@ -33,6 +34,20 @@ export const DEFAULT_AUDIT_LIMIT = 10_000
 
 type Entry<T> = [string, T]
 type WarnLog = { warn: (...args: unknown[]) => void }
+
+/** Snapshot marker so a digest is never mistaken for a legacy plaintext key. */
+const REFRESH_TOKEN_DIGEST_PREFIX = 'sha256:'
+
+function digestRefreshToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex')
+}
+
+/** Snapshot keys are digests; pre-U233 files carried plaintext, hashed on load. */
+function restoredRefreshTokenKey(key: string): string {
+  return key.startsWith(REFRESH_TOKEN_DIGEST_PREFIX)
+    ? key.slice(REFRESH_TOKEN_DIGEST_PREFIX.length)
+    : digestRefreshToken(key)
+}
 
 type AccessTokenEntry = {
   sessionId: string
@@ -121,15 +136,17 @@ export function snapshotOf(store: Store, auditLimit = DEFAULT_AUDIT_LIMIT): Snap
     version: SNAPSHOT_VERSION,
     users: [...store.users.entries()],
     devices: [...store.devices.entries()],
-    // U197 v5: the plaintext current refresh is in-memory only (U216); a
-    // restored session re-derives it from `refreshTokens` via currentRefreshTokenOf.
+    // U197 v5: the plaintext current refresh is in-memory only (U216).
     sessions: [...store.sessions.entries()].map(([id, session]): Entry<Session> => {
       const persisted = { ...session }
       delete persisted.currentRefreshToken
       return [id, persisted]
     }),
     accessTokens: [...store.accessTokens.entries()],
-    refreshTokens: [...store.refreshTokens.entries()],
+    // U233 F6: the map is keyed by sha256(token), so no plaintext reaches disk.
+    refreshTokens: [...store.refreshTokens.entries()].map(
+      ([digest, sessionId]): Entry<string> => [`${REFRESH_TOKEN_DIGEST_PREFIX}${digest}`, sessionId]
+    ),
     hosts: [...store.hosts.entries()],
     projects: [...store.projects.entries()],
     grants: store.grants,
@@ -198,7 +215,12 @@ export function restoreSnapshot(
   store.devices = new Map(devices)
   store.sessions = new Map(sessions)
   store.accessTokens = new Map(accessTokens)
-  store.refreshTokens = new Map(refreshTokens)
+  store.refreshTokens = new Map(
+    refreshTokens.map(([key, sessionId]): Entry<string> => [
+      restoredRefreshTokenKey(key),
+      sessionId
+    ])
+  )
   store.hosts = new Map(hosts)
   store.hostsByName = new Map(hosts.map(([, host]) => [host.name, host]))
   store.projects = new Map(projects)
