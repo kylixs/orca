@@ -7,6 +7,7 @@ import {
   type CloudHostState,
   type CloudHostStatePhase
 } from '../startup/cloud-host-state'
+import { emitHostModeOnlineEvent } from './host-mode-online-event'
 import { hostModeExitCodeForFailure } from './orcad-exit-code'
 
 /**
@@ -70,6 +71,7 @@ export function beginHostModeState(input: {
 
 function persist(context: HostModeStateContext, state: CloudHostState): CloudHostState {
   writeCloudHostState(context.statePath, state)
+  emitHostModeOnlineEvent(context.lastState, state)
   context.lastState = state
   return state
 }

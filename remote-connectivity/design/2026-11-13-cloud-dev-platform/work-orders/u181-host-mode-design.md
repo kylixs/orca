@@ -366,7 +366,7 @@ profile 隔离同时解决桌面共存与实例锁（沿用现有 `serve-user-da
 
 H5 的改动：
 
-1. `CloudAgentSnapshot` 增加 `lastHeartbeatAt`、`lastHeartbeatOk`、`lastHeartbeatHttpStatus`、`heartbeatError`；
+1. `CloudAgentSnapshot` 增加 `lastHeartbeatAt`、`lastHeartbeatOk`、`lastHeartbeatHttpStatus`、`lastErrorCode`；
 2. `sendHeartbeat` 从 `HeartbeatResult | null` 改为能保留 HTTP 状态（200/401/5xx）与网络错误；
 3. 成功、心跳被拒、抛异常三条路径都更新上述字段并通知 `onRefresh` 监听者；
 4. host mode 的「首心跳成功」只认 `lastHeartbeatOk === true`，不认 `lastRefreshAt`，也不比对 `lastError === 'heartbeat failed'` 字符串。
