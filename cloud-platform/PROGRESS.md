@@ -4172,3 +4172,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U197 v5 修订**：Cookie 模式同源判定只认 `ORCA_CLOUD_PUBLIC_ORIGIN`（未配置 auto→never 告警、always 拒绝启动；代理头默认不采信）；§2B-9 限定登录/交接，刷新 body 源 current 为唯一「设 Cookie+新签 refresh」例外；旧字面量改为「会被发送但永不被接受/不轮换/不撤销」；AC15(a)-(g) + AC16（XFP 伪造）+ AC17（重复 Cookie 硬 401 不回退、host-only/Domain 清理、单 Cookie 不误拒）。diff 47/25，待最终复核。
 - **U213 关闭（U197 v5 经最终复核 APPROVED）**：P0 边界全部收口；复核 P2 精度项已修（清理 Path `/v1/auth`、Origin 不一致 403 不降级、迁移分支 2 的 QA-032 过渡窗口明示、AC15(e) 补 `refreshCookie`）。实现待 D5–D15 裁定后按 6 步序列排期。
 - **收尾核验**：测试进程清理 dry-run `matched=0`（kept 13，无本项目残留）；U211 roleSource 改动补充回归 `u80-mobile-users` 5/5 绿。
+- **web e2e 全量回归（今日最终）**：20 个套件 **178/178 全绿**（并发 2，约 6.8 分钟），覆盖审计导出 UI、导入/交接/归档/工作区、用户与授权页、移动端、真实浏览器导出等；今日 `app.js`/roleSource/筛选/ARIA 改动无回归。
