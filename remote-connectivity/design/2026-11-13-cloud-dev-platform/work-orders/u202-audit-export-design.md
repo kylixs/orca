@@ -104,7 +104,7 @@
   - `content-disposition: attachment; filename="audit-export-<jobId>.csv|jsonl"`
   - `cache-control: no-store`
   - `x-content-type-options: nosniff`（新增，降低浏览器嗅探风险）
-- 失败：`404 EXPORT_NOT_FOUND`（job/产物不存在）、`410 EXPORT_DOWNLOAD_GONE`（token 过期或已使用）、`410 EXPORT_EXPIRED`（job 过期）。
+- 失败：`404 EXPORT_NOT_FOUND`（job/产物不存在）、`404 EXPORT_NOT_FOUND`（token 缺失/已使用/被轮换）与 `410 EXPORT_DOWNLOAD_GONE`（token TTL 过期或产物已删除）、`410 EXPORT_EXPIRED`（job 过期）。
 - 不支持 `Range`（导出产物是一次性小文件；实现前不宣称可续传）。
 - 该路径是纯新增；旧 peer 不会请求它。
 
@@ -135,9 +135,9 @@
 | 400 | `EXPORT_CONFIRM_REQUIRED` | `confirm !== true` |
 | 401 | `SESSION_EXPIRED` | 未登录/会话失效 |
 | 403 | `PERMISSION_DENIED` | 非 admin 且非 auditor；同时写 `audit_export` denied 事件 |
-| 404 | `EXPORT_NOT_FOUND` | 未知 jobId、非本人 job、下载 token 缺失/不匹配 |
+| 404 | `EXPORT_NOT_FOUND` | 未知 jobId、非本人 job、下载 token 缺失/不匹配/已使用或被轮换 |
 | 410 | `EXPORT_EXPIRED` | job 已过 `expiresAt` |
-| 410 | `EXPORT_DOWNLOAD_GONE` | 下载 token 过期/已使用，或产物缺失/已删除 |
+| 410 | `EXPORT_DOWNLOAD_GONE` | 下载 token TTL 过期，或产物缺失/已删除 |
 | 429 | `EXPORT_BUSY` | 超过每用户/全局并发上限 |
 | 500 | `EXPORT_WRITE_FAILED` | 产物/任务文件写入失败（异步任务状态 `failed`） |
 | 500 | `EXPORT_CREATE_FAILED` | 受理后任务落盘失败（已 write-ahead 写受理审计） |
@@ -258,7 +258,7 @@ POST → queued → running → succeeded
 
 - token：`randomBytes(24).toString('base64url')`，仅在 URL 中出现；服务端只存 `hashToken(token)`（`server.ts:233-235`），比较用 `safeEqual`（`server.ts:290-294`）。
 - 每次 `GET /v1/audit/exports/{jobId}` 成功态响应签发**新** token，并覆盖旧的 `downloadTokenHash`（同一 job 同时只有一个活动 token）。
-- TTL 5 分钟；下载时在写响应体**之前**把 token 标记为已使用（更新 `job.json`），第二次使用返回 `410 EXPORT_DOWNLOAD_GONE`。
+- TTL 5 分钟；下载时在写响应体**之前**把 token 标记为已使用（更新 `job.json`），第二次使用（hash 已清空/被轮换）返回 `404 EXPORT_NOT_FOUND`；产物缺失返回 `410 EXPORT_DOWNLOAD_GONE`。
 - token 绑定 jobId 与 `requestedBy`：token 只能下载其所属 job，换 jobId 无效。
 - token 不写审计、不写普通日志；如需关联，可记录 `sha256:` 前缀指纹（模式同 `server.ts:235-238` 的 `codeFingerprint`），但本方案默认不记。
 
@@ -369,15 +369,15 @@ POST → queued → running → succeeded
 - 文件域：`cloud-platform/apps/api/src/server.ts`、e2e 测试
 - 内容：鉴权、所有权、过期 410、未知/他人 job 404、成功态签发并轮换下载 token、`no-store`。
 - 验收：`queued/running` 无 `downloadUrl`；`succeeded` 有；每次调用后旧 token 失效；过期任务 410；他人 job 404（不泄露存在性）。
-- 测试点：未知 job 404；他人 job 404；expired 410；failed 返回 error 且无链接；轮换后旧 token 下载 410；响应头 `cache-control: no-store`。
+- 测试点：未知 job 404；他人 job 404；expired 410；failed 返回 error 且无链接；轮换后旧 token 下载 404（不泄露存在性）；响应头 `cache-control: no-store`。
 - 估时：15–20 分钟。
 
 ### E8：`GET /v1/audit/exports/{jobId}/download`
 
 - 文件域：`cloud-platform/apps/api/src/server.ts`、e2e 测试
 - 内容：token 校验（哈希 + 常量时间比较 + TTL + 一次性）、job 归属/过期、路径安全、正确 content-type/disposition、`no-store`/`nosniff`、下载审计、可选下载后删除。
-- 验收：首次下载成功且字节与产物一致；二次 410；过期 token 410；错误 jobId/token 组合 404/410；响应头齐全；审计事件写入且不含 token。
-- 测试点：token 缺失 401/404（按契约定为 404，不泄露）；token 换 jobId；`..`/绝对路径 jobId；job 过期；`deleteAfterDownload=true` 后产物删除、再次下载 410；CSV/JSONL 两种头部；审计链含 `audit_export_download`。
+- 验收：首次下载成功且字节与产物一致；旧 token 二次使用 404；token TTL 过期 410；错误 jobId/token 组合 404/410；响应头齐全；审计事件写入且不含 token。
+- 测试点：token 缺失 401/404（按契约定为 404，不泄露）；token 换 jobId；`..`/绝对路径 jobId；job 过期；`deleteAfterDownload=true` 后产物删除、状态不再签发、带旧 token 下载 410；CSV/JSONL 两种头部；审计链含 `audit_export_download`。
 - 估时：20 分钟。
 
 ### E9：启动恢复、定时清理与配置
@@ -434,7 +434,8 @@ POST → queued → running → succeeded
 | 未知 jobId | 404 `EXPORT_NOT_FOUND` | E7 |
 | 他人 jobId | 404（不区分存在性） | E7/E8 |
 | job 过期 | 410 `EXPORT_EXPIRED` | E7/E8/E9 |
-| 下载 token 过期/二次使用 | 410 `EXPORT_DOWNLOAD_GONE` | E8 |
+| token TTL 过期 / 产物已删除 | 410 `EXPORT_DOWNLOAD_GONE` | E8 |
+| token 二次使用 / 被轮换 | 404 `EXPORT_NOT_FOUND` | E8 |
 | 超过每用户/全局活动任务 | 429 `EXPORT_BUSY` | E5 |
 | 行数/字节超限 | 任务 `failed` `EXPORT_TOO_LARGE`，无半成品 | E6 |
 | 写盘失败 | 任务 `failed` `EXPORT_WRITE_FAILED` | E6 |
