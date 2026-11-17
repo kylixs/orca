@@ -5,8 +5,10 @@ import {
   startingCloudHostState,
   writeCloudHostState,
   writeStartingCloudHostState,
-  type CloudHostState
+  type CloudHostState,
+  type CloudHostStatePhase
 } from '../startup/cloud-host-state'
+import { hostModeExitCodeForFailure } from './orcad-exit-code'
 
 /**
  * Host-mode lifecycle around the U181 §4.2 state file. Only the host process
@@ -25,7 +27,10 @@ export type HostModeStateContext = {
 /** The admission slice state publication reads; narrow so tests need no client. */
 export type HostModeAdmission = {
   ready: Promise<void>
-  client: { snapshot(): CloudHeartbeatHealth } | null
+  client: {
+    snapshot(): CloudHeartbeatHealth
+    onRefresh?: (listener: () => void) => () => void
+  } | null
   host(): { hostId: string } | null
 }
 
@@ -129,5 +134,97 @@ export function publishHostModeOnlineAfterStart(
   }
   void publishHostModeOnlineWhenReady(context, admission).catch((error: unknown) => {
     console.warn('[orcad] could not publish host state online:', error)
+  })
+}
+
+export type HostModeFailureStateInput = {
+  code: string
+  retryable: boolean
+  phase: CloudHostStatePhase
+  /** `error` for terminal faults, `degraded` for a failure the next beat may clear. */
+  status?: 'error' | 'degraded'
+  hostId?: string | null
+  health?: CloudHeartbeatHealth
+  detail?: string | null
+  now?: number
+}
+
+/** Design §4.2.7: persist the stable code and retryability before the process exits. */
+export function writeHostModeFailureState(
+  context: HostModeStateContext,
+  input: HostModeFailureStateInput
+): CloudHostState {
+  const now = input.now ?? Date.now()
+  const state: CloudHostState = {
+    ...startingCloudHostState({
+      pid: context.pid,
+      startedAt: context.startedAt,
+      hostName: context.hostName,
+      platformUrl: context.platformUrl,
+      now
+    }),
+    status: input.status ?? 'error',
+    phase: input.phase,
+    hostId: input.hostId ?? null,
+    lastHeartbeatAt: input.health?.lastHeartbeatAt ?? null,
+    lastHeartbeatOk: input.health?.lastHeartbeatOk ?? false,
+    lastHeartbeatHttpStatus: input.health?.lastHeartbeatHttpStatus ?? null,
+    lastErrorCode: input.code,
+    lastErrorDetail: input.detail ?? null,
+    retryable: input.retryable
+  }
+  writeCloudHostState(context.statePath, state)
+  return state
+}
+
+/** Startup failure path: the phase comes from where the failure was raised. */
+export function recordHostModeEnrolmentFailure(
+  context: HostModeStateContext,
+  failure: { code: string; retryable: boolean; phase: CloudHostStatePhase },
+  hostId: string | null = null
+): CloudHostState {
+  return writeHostModeFailureState(context, {
+    code: failure.code,
+    retryable: failure.retryable,
+    phase: failure.phase,
+    hostId
+  })
+}
+
+/**
+ * Watches post-online heartbeat verdicts. Only a rejected credential is terminal:
+ * a sustained 401 would otherwise leave an unauthorized host spinning forever.
+ */
+export function watchHostModeHeartbeat(input: {
+  context: HostModeStateContext
+  admission: HostModeAdmission
+  onTerminal: (exitCode: number) => void
+}): () => void {
+  const client = input.admission.client
+  if (!client?.onRefresh) {
+    return () => {}
+  }
+  let terminal = false
+  return client.onRefresh(() => {
+    if (terminal) {
+      return
+    }
+    const health = client.snapshot()
+    if (health.lastHeartbeatOk === true || health.lastErrorCode === null) {
+      return
+    }
+    const unauthorized = health.lastErrorCode === 'heartbeat_unauthorized'
+    writeHostModeFailureState(input.context, {
+      code: health.lastErrorCode,
+      retryable: !unauthorized,
+      status: unauthorized ? 'error' : 'degraded',
+      phase: 'heartbeat',
+      hostId: input.admission.host()?.hostId ?? null,
+      health
+    })
+    if (unauthorized) {
+      terminal = true
+      input.onTerminal(hostModeExitCodeForFailure(health.lastErrorCode, false))
+    }
   })
 }

@@ -8,10 +8,13 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { parseArgs } from './orcad-entry'
 import {
+  HOST_MODE_FAILURE_EXIT_CODES,
   ORCAD_EXIT_CONFIGURATION,
   ORCAD_EXIT_FAILED,
+  hostModeExitCodeForFailure,
   resolveOrcadExitCode
 } from './orcad-exit-code'
+import { CloudHostEnrolmentFailure } from '../cloud-platform/cloud-host-enrollment'
 import { startOrcadWithLifecycle } from './orcad-lifecycle'
 import {
   beginAgentSessionRuntimeRecord,
@@ -105,6 +108,37 @@ describe('resolveOrcadExitCode', () => {
       ORCAD_EXIT_CONFIGURATION
     )
     expect(ORCAD_EXIT_CONFIGURATION).not.toBe(ORCAD_EXIT_FAILED)
+  })
+})
+
+describe('host mode exit code matrix', () => {
+  // Design §3.3, hardcoded here so remapping a code in production turns this red.
+  it.each([
+    ['network', true, 1],
+    ['http_5xx', true, 1],
+    ['heartbeat_failed', true, 1],
+    ['host_token_invalid', false, 78],
+    ['host_revoked', false, 78],
+    ['host_name_required', false, 78],
+    ['protocol', false, 78],
+    ['credential_write_failed', false, 78],
+    ['host_config_invalid', false, 78],
+    ['runtime_unavailable', false, 78],
+    ['profile_in_use', false, 78],
+    ['heartbeat_unauthorized', false, 78]
+  ] as const)('maps %s (retryable=%s) to exit %i', (code, retryable, expected) => {
+    const failure = new CloudHostEnrolmentFailure({ code, retryable })
+
+    expect(hostModeExitCodeForFailure(code, retryable)).toBe(expected)
+    expect(resolveOrcadExitCode(failure)).toBe(expected)
+    expect(resolveOrcadExitCode(new Error('unclassified'))).toBe(ORCAD_EXIT_FAILED)
+  })
+
+  it('never publishes the Electron-only exit 3', () => {
+    expect(Object.values(HOST_MODE_FAILURE_EXIT_CODES)).not.toContain(3)
+    expect(new Set(Object.values(HOST_MODE_FAILURE_EXIT_CODES))).toEqual(
+      new Set([ORCAD_EXIT_FAILED, ORCAD_EXIT_CONFIGURATION])
+    )
   })
 })
 

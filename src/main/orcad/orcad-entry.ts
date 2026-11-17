@@ -11,15 +11,11 @@
  * Chromium proves available at startup.
  */
 import process from 'node:process'
-import {
-  getAppEnvironment,
-  setAppEnvironment,
-  type AppEnvironment
-} from '../../shared/app-environment'
+import { getAppEnvironment, setAppEnvironment } from '../../shared/app-environment'
 import { setSecretStore } from '../../shared/secret-store'
-import type { ServeReadiness } from '../server/serve-readiness'
-import { resolveOrcadInstallRoot, resolveOrcadPath, resolveUserDataPath } from './orcad-app-paths'
-import { getOrcadCliLauncherPath, prepareOrcadCliLauncher } from './orcad-cli-launcher'
+import { resolveOrcadInstallRoot, resolveUserDataPath } from './orcad-app-paths'
+import { prepareOrcadCliLauncher } from './orcad-cli-launcher'
+import { createNodeAppEnvironment } from './orcad-node-app-environment'
 import { describeOrcadBindExposure, resolveOrcadBindHost } from './orcad-bind-address'
 import {
   flushOrcadProfileStoreForShutdown,
@@ -30,7 +26,6 @@ import { ORCAD_USAGE, parseArgs } from './orcad-command-arguments'
 import type { OrcadRuntimeCleanup } from './orcad-runtime-lifetime'
 import { installOrcadStopRequestListeners } from './orcad-stop-request-listener'
 import { prepareOrcadManagedStop } from './orcad-managed-stop-admission'
-import type { OrcadManagedStopContext } from '../../shared/orcad-stop-request'
 import { beginOrcadIdleExit, bindOrcadIdleShutdown } from './orcad-managed-idle-exit-host'
 import { orcadAutomationsKeepHostBusy, startOrcadAutomations } from './orcad-automations'
 import {
@@ -38,83 +33,30 @@ import {
   type AiVaultSearchSettings
 } from '../../shared/ai-vault-search-settings'
 import { ensureOrcadAppVersion, startOrcadRpc } from './orcad-cloud-admission'
-import { awaitHostModeEnrolment, hostAdmissionOptions } from './host-mode-enrolment'
+import { hostAdmissionOptions } from './host-mode-enrolment'
 import { createOrcadSecretStore } from './orcad-node-secret-store'
 import { beginHostModeStateFromEnv, publishHostModeOnlineAfterStart } from './orcad-host-mode-state'
+import {
+  createHostModeFatalRelay,
+  hostModeStartupGate,
+  installHostModeHeartbeatWatch,
+  type HostModeFatalRelay
+} from './orcad-host-mode-startup'
+import type { OrcadHandle, OrcadOptions } from './orcad-options'
 
+export type { OrcadHandle, OrcadOptions } from './orcad-options'
 export { parseArgs }
 
 let runOrcadQuitHandlers = (): void => {}
 let closeOrcadObservability = (): void => {}
 
-function createNodeAppEnvironment(): AppEnvironment {
-  const quitHandlers: (() => void)[] = []
-  // The main signal handler awaits runtime and browser teardown before process.exit.
-  // Keep will-quit callbacks synchronous, but never let them pre-empt that async barrier.
-  runOrcadQuitHandlers = (): void => {
-    const errors: unknown[] = []
-    for (const handler of quitHandlers.splice(0)) {
-      try {
-        handler()
-      } catch (error) {
-        errors.push(error)
-      }
-    }
-    // Why throw: a quit handler that failed may leave a writer running, which keeps the lock.
-    if (errors.length > 0) {
-      throw new AggregateError(errors, 'orcad_quit_handlers_failed')
-    }
-  }
-  return {
-    getPath: resolveOrcadPath,
-    getAppPath: () => resolveOrcadInstallRoot(),
-    getVersion: () => process.env.ORCA_VERSION ?? '0.0.0-orcad',
-    // Why still true: consumers read this as "production build, not a dev checkout" —
-    // it gates HTTPS-only skill downloads, the real CLI command name, and shell-PATH
-    // hydration. Answering false to satisfy a path resolver would relax a security
-    // posture. Layout questions must ask whether the app root is an asar archive
-    // instead (see parcel-watcher-entry-path.ts).
-    isPackaged: () => true,
-    getCliLauncherPath: getOrcadCliLauncherPath,
-    onWillQuit: (handler) => quitHandlers.push(handler),
-    exit: (code = 0) => process.exit(code),
-    // Why []: there are no Chromium processes on this host to measure.
-    getAppMetrics: () => []
-  }
-}
-
 export function installOrcadHostAdapters(): void {
   // Admission sends this in `/v1/hosts/register`; the launcher only exports ORCA_VERSION.
   ensureOrcadAppVersion()
-  setAppEnvironment(createNodeAppEnvironment())
+  const { environment, runQuitHandlers } = createNodeAppEnvironment()
+  runOrcadQuitHandlers = runQuitHandlers
+  setAppEnvironment(environment)
   setSecretStore(createOrcadSecretStore())
-}
-
-export type OrcadOptions = {
-  port?: number
-  json?: boolean
-  noPairing?: boolean
-  pairingAddress?: string
-  /** Desktop `orca serve` parity: a mobile-scoped offer with a terminal QR. */
-  mobilePairing?: boolean
-  /** Lets the paired runtime client drive this machine's desktop (computer.*). */
-  grantDesktopControl?: boolean
-  /** Desktop `orca serve` parity: print only the ephemeral-VM recipe line. */
-  recipeJson?: boolean
-  projectRoot?: string
-  /** Literal IP to bind. Defaults to loopback; see orcad-bind-address.ts. */
-  bind?: string
-  /** `orca-ide --host-mode`: serve as the platform-enrolled headless host. */
-  hostMode?: boolean
-  /** Validate host-mode configuration/runtime without registering or serving. */
-  preflight?: boolean
-}
-
-export type OrcadHandle = {
-  readiness: ServeReadiness
-  /** What an instance-bound stop request must name to stop this process. */
-  managedStop: OrcadManagedStopContext
-  stop(): Promise<void>
 }
 
 /**
@@ -124,9 +66,12 @@ export type OrcadHandle = {
  */
 export async function startOrcad(options: OrcadOptions = {}): Promise<OrcadHandle> {
   installOrcadHostAdapters()
+  const hostModeFatal: HostModeFatalRelay | null =
+    options.hostMode === true ? createHostModeFatalRelay() : null
   const { readiness, instance, stop } = await startOrcadWithHost(
     resolveUserDataPath(),
-    (registerCleanup) => startOrcadRuntime(options, registerCleanup),
+    (registerCleanup) =>
+      startOrcadRuntime(options, registerCleanup, (exitCode) => hostModeFatal?.notify(exitCode)),
     () => {
       try {
         runOrcadQuitHandlers()
@@ -138,12 +83,18 @@ export async function startOrcad(options: OrcadOptions = {}): Promise<OrcadHandl
     }
   )
   const version = getAppEnvironment().getVersion()
-  return { readiness, managedStop: { version, runtimeId: readiness.runtimeId, instance }, stop }
+  return {
+    readiness,
+    managedStop: { version, runtimeId: readiness.runtimeId, instance },
+    stop,
+    ...(hostModeFatal ? { onHostModeFatal: hostModeFatal.register } : {})
+  }
 }
 
 async function startOrcadRuntime(
   options: OrcadOptions,
-  registerCleanup: (cleanup: OrcadRuntimeCleanup) => void
+  registerCleanup: (cleanup: OrcadRuntimeCleanup) => void,
+  onHostModeFatal: (exitCode: number) => void
 ): Promise<Pick<OrcadHandle, 'readiness'>> {
   const { OrcaRuntimeService } = await import('../runtime/orca-runtime')
   const { OrcaRuntimeRpcServer } = await import('../runtime/runtime-rpc')
@@ -363,9 +314,20 @@ async function startOrcadRuntime(
   })
   // Stops first: no RPC may write while the rest of the runtime is torn down.
   registerCleanup(() => rpc.stop())
-  await awaitHostModeEnrolment(admission, options.hostMode === true)
+  await hostModeStartupGate({
+    admission,
+    hostMode: options.hostMode === true,
+    state: hostModeState
+  })
   await startOrcadRpc(rpc, admission, (value) => attachRuntimeToCloudAdmission(rpc, value))
   publishHostModeOnlineAfterStart(hostModeState, admission)
+  // Design §3.3: a rejected credential after online is terminal, not a failed beat to spin on.
+  installHostModeHeartbeatWatch({
+    state: hostModeState,
+    admission,
+    registerCleanup,
+    onTerminal: onHostModeFatal
+  })
   startOrcadAutomations(runtime, profileStore, registerCleanup)
   const pushService = DesktopPushService.create({
     runtime,
@@ -409,6 +371,10 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
   const startup = startOrcad(options)
   const requestShutdown = installOrcadShutdownSignals(async () => (await startup).stop())
   const handle = await startup
+  // Design §3.3: terminal heartbeat verdicts stop gracefully, then exit with the matrix code.
+  handle.onHostModeFatal?.((exitCode) => {
+    requestShutdown('host-mode heartbeat unauthorized', undefined, exitCode)
+  })
   // Why after startup: a managed request must name the runtime and instance this run became.
   installOrcadStopRequestListeners(() => requestShutdown('stop request'), {
     installRoot: resolveOrcadInstallRoot(),

@@ -136,6 +136,22 @@ describe('orcad profile-state shutdown', () => {
     }
   })
 
+  it('exits 0 after a clean stop and carries a terminal failure code', async () => {
+    vi.spyOn(process, 'on').mockImplementation(() => process)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the stub only records the code; nothing after process.exit runs in these paths.
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      installOrcadShutdownSignals(async () => {})('SIGTERM')
+      await vi.waitFor(() => expect(exit).toHaveBeenLastCalledWith(0))
+
+      installOrcadShutdownSignals(async () => {})('heartbeat unauthorized', undefined, 78)
+      await vi.waitFor(() => expect(exit).toHaveBeenLastCalledWith(78))
+    } finally {
+      vi.restoreAllMocks()
+    }
+  })
+
   it('flushes durably before closing the profile store', async () => {
     const events: string[] = []
     const store = {
