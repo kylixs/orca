@@ -209,7 +209,7 @@
 | U198 | 🟡    | **刷新页面不回退 refresh（P2）**：页面恢复只用 access 调 `/v1/me`（`apps/web/app.js:4551-4566`），access 过期后刷新直接回登录页，12h refresh 形同虚设。 | U197 设计令（`work-orders/u197-token-storage-design.md`） | **处置**：随 QA-032 存储方案一起修（方案 B 下用 HttpOnly Cookie 换新 access；方案 A 下用 sessionStorage refresh）；补「access 过期刷新页面仍保持会话」断言。 |
 | U199 | 🟡    | **多标签刷新无协调可撤销整 session（P2）**：两标签各自持同一 refresh；A 刷新轮换后 B 仍用旧 token，服务端复用检测撤销整个 session（`server.ts:3192-3195`）。无 storage/BroadcastChannel 协调。 | 同上 | **处置**：随 QA-032 定案；方案 B 加轮换宽限（30–60s）+ Origin 校验；方案 A 需自建跨标签中继；补多标签并发刷新用例（只轮换一次、均保持登录）。 |
 | U200 | ⚪    | **Web 无 CSP（P2 安全纵深）**：静态响应仅 `referrer-policy`（`static-delivery.ts:15-17`），页面 37 处 `innerHTML` 依赖人工 `esc()`；与 QA-032 的 XSS 面叠加。 | 同上 | **处置**：待裁定（U197 待决策 #10）：是否同批上线 script CSP（需处理 16 处内联 style）；上线前不得宣称 XSS 面已收口。 |
-| U201 | 🟡    | **审计导出端点未实现（P2）**：M116-QA-031 的「无导出」不是缺按钮——设计已定义 `POST /v1/audit/export`（异步任务）与 `GET /v1/audit/exports/{jobId}`（限时下载），当前均未实现；事件类型下拉已由 `/v1/audit/status` 目录补齐，仅导出缺失。 | `design.md:1034-1035`、`server.ts:5327-5361` | **处置**：先出工作令（异步任务存储/过期/权限/审计自身落审计），按 ≤20 分钟拆分；未实现前 UI 不得显示导出入口。**E1 落地 `90813b943fe`**：查询解析抽 `audit-query.ts`（24 单测 + 审计 e2e 17/17）；E2–E13 待 D1/D3/D4/D7 等裁定。 |
+| U201 | 🟡    | **审计导出端点未实现（P2）**：M116-QA-031 的「无导出」不是缺按钮——设计已定义 `POST /v1/audit/export`（异步任务）与 `GET /v1/audit/exports/{jobId}`（限时下载），当前均未实现；事件类型下拉已由 `/v1/audit/status` 目录补齐，仅导出缺失。 | `design.md:1034-1035`、`server.ts:5327-5361` | **处置**：先出工作令（异步任务存储/过期/权限/审计自身落审计），按 ≤20 分钟拆分；未实现前 UI 不得显示导出入口。**E1 落地 `90813b943fe`**：查询解析抽 `audit-query.ts`（24 单测 + 审计 e2e 17/17）；E2–E13 待 D1/D3/D4/D7 等裁定。**E4 落地 `1be0ffab984`**：CSV/JSONL 纯序列化 12 例绿。 |
 
 ## 流程整改（用户指令驱动）
 
