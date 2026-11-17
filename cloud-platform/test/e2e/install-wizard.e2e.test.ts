@@ -357,11 +357,11 @@ const BUNDLE_BODY = BENIGN_BUNDLE.bytes
 const BUNDLE_SHA = BENIGN_BUNDLE.sha
 
 /** U183 R4: a relay root + entry that the preflight accepts. */
+// U184: the default (bundle) script installs its own code, so a clean root is
+// an empty writable dir — planting a repo checkout here masked that defect.
 function makeRelayRoot(home: string): string {
   const relayRoot = join(home, 'orca-cloud')
-  const entry = join(relayRoot, 'cloud-platform', 'apps', 'relay', 'src', 'relay.ts')
-  mkdirSync(join(relayRoot, 'cloud-platform', 'apps', 'relay', 'src'), { recursive: true })
-  writeFileSync(entry, '')
+  mkdirSync(relayRoot, { recursive: true })
   return relayRoot
 }
 
@@ -399,6 +399,13 @@ async function fetchRelayScript(): Promise<string> {
       if (attempt >= 1) throw error
     }
   }
+}
+
+/** U184: an empty `sha` opts into the legacy repo-checkout script. */
+async function fetchRelayScriptRepoMode(): Promise<string> {
+  const res = await fetch(`${api.url}/install/relay.sh?sha=`, { headers: auth(adminToken) })
+  assert.equal(res.status, 200)
+  return res.text()
 }
 
 /**
@@ -641,6 +648,12 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     // U183 R9: the launcher resolves node and runs the current release entry.
     assert.match(script, /command -v node/)
     assert.match(script, /\$ORCA_NODE_BIN \$ORCA_RELAY_ROOT\/current\/apps\/relay\/src\/relay\.ts/)
+    // U184: bundle installs carry their own code; no repo checkout on the target.
+    assert.doesNotMatch(script, /未找到中继程序/)
+    assert.match(
+      script,
+      /ORCA_RELAY_ENTRY="\$ORCA_RELAY_ROOT\/current\/apps\/relay\/src\/relay\.ts"/
+    )
     saveEvidence(EVIDENCE, 'install-relay-script.txt', script)
   })
 
@@ -1303,10 +1316,12 @@ exit 0
     assert.equal(existsSync(join(relayRoot, 'releases')), false)
   })
 
-  test('U183 R4: relay 缺中继代码时以 78 失败，不假装安装', async () => {
+  test('U184: 仓库模式缺入口以 78 失败，不假装安装', async () => {
     const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
     const bin = makeSparsePath(home, { node: NODE_2218_STUB })
-    const run = runInstallScript(await fetchRelayScript(), home, {
+    const script = await fetchRelayScriptRepoMode()
+    assert.match(script, /cloud-platform\/apps\/relay\/src\/relay\.ts/)
+    const run = runInstallScript(script, home, {
       PATH: bin,
       ORCA_RELAY_ROOT: join(home, 'missing-relay')
     })

@@ -920,11 +920,16 @@ ${bundleVars}
 ORCA_NODE_BIN="$(command -v node 2>/dev/null || true)"
 ${requireCommand('node', '未找到 node（64）：本脚本不安装中继运行时，请安装 Node.js >=22.18 并确保其在 PATH 中', 64)}
 ${requireNodeVersion('"$ORCA_NODE_BIN"', 22, 18, 'Node.js 版本过低（64）：中继需要 >=22.18')}
-ORCA_RELAY_ENTRY="$ORCA_RELAY_ROOT/cloud-platform/apps/relay/src/relay.ts"
+${
+  bundle
+    ? `# U184: bundle mode ships its own code under current/; no repo checkout needed.
+ORCA_RELAY_ENTRY="$ORCA_RELAY_ROOT/current/apps/relay/src/relay.ts"`
+    : `ORCA_RELAY_ENTRY="$ORCA_RELAY_ROOT/cloud-platform/apps/relay/src/relay.ts"
 if [ ! -f "$ORCA_RELAY_ENTRY" ]; then
   echo ">> 未找到中继程序 $ORCA_RELAY_ENTRY（78）：本脚本不安装中继代码，请把 Orca 仓库放到该路径，或设置 ORCA_RELAY_ROOT" >&2
   exit 78
-fi
+fi`
+}
 ${requireWritableDir('$ORCA_RELAY_ROOT', '安装根不可写（78）：请设置 ORCA_RELAY_ROOT 指向当前用户可写目录后重试')}
 
 # U183 R11a: portable mkdir lock (flock is not on every target). The lock holds
