@@ -41,8 +41,12 @@ import {
 } from '../../../packages/contract/src/credential.ts'
 import { AuditChain, type AuditSummary } from './audit.ts'
 import { parseAuditQuery } from './audit-query.ts'
-import type { AuditExportJobStore } from './audit-export-jobs.ts'
+import type { AuditExportJob, AuditExportJobStore } from './audit-export-jobs.ts'
 import { createAuditExportStore, startAuditExportCleanup } from './audit-export-runtime.ts'
+import {
+  DEFAULT_AUDIT_EXPORT_MAX_BYTES,
+  DEFAULT_AUDIT_EXPORT_MAX_EVENTS
+} from './audit-export-worker.ts'
 import { AUDIT_EVENT_TYPES } from './audit-event-catalog.ts'
 import { createRemoteAudit, type AuditSink } from './audit-writer-client.ts'
 import { createSigningKeyRing } from './signing-key-ring.ts'
@@ -5270,6 +5274,135 @@ export function createApp(config: ApiConfig): ApiHandle {
         cursor: url.searchParams.get('cursor') ? Number(url.searchParams.get('cursor')) : undefined
       })
       return json(res, 200, page)
+    }
+
+    // ---- audit: export acceptance (U202 E5) ----
+    // Sync work only: validate, quota, persist a queued job and record it. The
+    // worker (E6) drains the job; status/download endpoints are E7/E8.
+    if (req.method === 'POST' && path === '/v1/audit/export') {
+      // Every exit here is a token-bearing, per-request answer — never cached.
+      res.setHeader('cache-control', 'no-store')
+      const authed = requireAuth()
+      if (!authed) {
+        return
+      }
+      if (!isAdmin(authed.user) && !authed.user.roles.includes('platform:auditor')) {
+        return denyPrivileged(res, traceId, authed.user, {
+          eventType: 'audit_export',
+          targetType: 'audit',
+          permission: 'platform:auditor'
+        })
+      }
+
+      const body = await readJson(req)
+      if (body.confirm !== true) {
+        return error(res, 400, 'EXPORT_CONFIRM_REQUIRED', '审计导出需要二次确认。', traceId)
+      }
+      const format = body.format
+      if (format !== 'csv' && format !== 'jsonl') {
+        return error(res, 400, 'INVALID_QUERY', 'format 仅支持 csv/jsonl。', traceId)
+      }
+
+      // Map the same-named body filters onto the shared parser so the export
+      // filter semantics cannot drift from GET /v1/audit/events.
+      const params = new URLSearchParams()
+      if (body.eventTypes !== undefined) {
+        if (
+          !Array.isArray(body.eventTypes) ||
+          body.eventTypes.some((type) => typeof type !== 'string')
+        ) {
+          return error(res, 400, 'INVALID_QUERY', 'eventTypes 必须是字符串数组。', traceId)
+        }
+        params.set('eventTypes', body.eventTypes.join(','))
+      }
+      const stringFilters = ['eventFamily', 'fileName', 'q', 'keyword', 'since'] as const
+      for (const key of stringFilters) {
+        const value = body[key]
+        if (value === undefined) {
+          continue
+        }
+        if (typeof value !== 'string') {
+          return error(res, 400, 'INVALID_QUERY', `${key} 必须是字符串。`, traceId)
+        }
+        params.set(key, value)
+      }
+      const nowMs = now()
+      const rawUntil = body.until
+      if (rawUntil !== undefined && typeof rawUntil !== 'string') {
+        return error(res, 400, 'INVALID_QUERY', 'until 必须是字符串。', traceId)
+      }
+      // Clamp to the request instant so the exported set stays stable even when
+      // the caller names a future until.
+      const requestedUntil = rawUntil === undefined ? nowMs : Date.parse(rawUntil)
+      if (Number.isNaN(requestedUntil)) {
+        return error(res, 400, 'INVALID_QUERY', 'until 不是有效时间。', traceId)
+      }
+      params.set('until', new Date(Math.min(requestedUntil, nowMs)).toISOString())
+      const parsedQuery = parseAuditQuery(params, nowMs)
+      if (!parsedQuery.ok) {
+        return error(res, 400, parsedQuery.code, parsedQuery.message, traceId)
+      }
+
+      const quota = auditExportStore.checkQuota(authed.user.id)
+      if (!quota.ok) {
+        return error(res, 429, 'EXPORT_BUSY', '导出任务过多，请稍后再试。', traceId, {
+          reason: quota.reason
+        })
+      }
+
+      let job: AuditExportJob
+      try {
+        job = auditExportStore.create({
+          requestedBy: authed.user.id,
+          requestedByUsername: authed.user.username,
+          query: parsedQuery.value,
+          format,
+          deleteAfterDownload: body.deleteAfterDownload === true
+        })
+      } catch {
+        return error(res, 500, 'EXPORT_CREATE_FAILED', '导出任务创建失败。', traceId)
+      }
+
+      // Fail closed: an unrecorded export must not exist. Create first (the
+      // store owns the jobId), then roll the job back if the audit append fails.
+      try {
+        await audit.append({
+          eventType: 'audit_export',
+          actor: authed.user.username,
+          targetType: 'audit',
+          targetId: job.jobId,
+          result: 'success',
+          traceId,
+          metadata: {
+            jobId: job.jobId,
+            format,
+            query: parsedQuery.value,
+            limits: {
+              maxEvents: DEFAULT_AUDIT_EXPORT_MAX_EVENTS,
+              maxBytes: DEFAULT_AUDIT_EXPORT_MAX_BYTES
+            },
+            expiresAt: job.expiresAt,
+            deleteAfterDownload: job.deleteAfterDownload
+          }
+        })
+      } catch {
+        auditExportStore.remove(job.jobId)
+        return error(
+          res,
+          500,
+          'EXPORT_AUDIT_UNAVAILABLE',
+          '审计日志不可写，导出任务未创建。',
+          traceId
+        )
+      }
+
+      return json(res, 202, {
+        jobId: job.jobId,
+        status: job.status,
+        format: job.format,
+        requestedAt: job.createdAt,
+        expiresAt: job.expiresAt
+      })
     }
 
     // ---- audit: write health ----
