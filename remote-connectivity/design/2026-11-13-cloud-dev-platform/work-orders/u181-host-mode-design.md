@@ -205,7 +205,7 @@ Linux 上**不使用**裸 `orca`（除非 `ORCA_CLI` 明确指向）。这也修
 - 解析并物化 orcad 槽与 pinned Node（复用选择器的 materialize 路径，可能首次下载，超时 10 分钟）；
 - 检查 profile 实例锁是否被占；
 - **不构造 admission、不发注册/心跳 HTTP**，因此不会消耗令牌。
-- 退出码：0 就绪；78 配置/运行时不可用。
+- 退出码：CLI 层 0 就绪、78 配置/运行时不可用；安装器把运行时不可用重分类为 64，配置失败保持 78。
 
 脚本在启动服务前先跑 preflight，把「运行时坏了」从「注册失败」中分离出来。这是 P0-1 的正面修复：验收不再依赖安装脚本临时补图形栈。
 
@@ -231,8 +231,8 @@ ExecStart=/usr/bin/orca-ide --host-mode
 | 1 | 脚本 | 预检命令/CLI 路径/profile 可写（U182 批 2 的 helper） | 非 0，不消耗令牌 |
 | 2 | 脚本 | 原子写 `host.env`（`ORCA_USER_DATA_PATH`、`ORCA_CLOUD_*`、TLS 路径） | 非 0，不启动 |
 | 3 | 脚本 | `/health` 可达性检查（已有，2xx） | 68（与 relay 同码），不消耗令牌 |
-| 4 | 脚本 | `orca-ide --host-mode --preflight` | 78，不消耗令牌 |
-| 5 | 脚本 | 安装并 `enable --now` 服务 | 安装失败 78；服务启动失败由状态文件/退出码判定 |
+| 4 | 脚本 | `orca-ide --host-mode --preflight` | CLI 78；安装器区分配置 78 / 运行时 64，不消耗令牌 |
+| 5 | 脚本 | 安装并 `enable --now` 服务 | 安装失败 69（仅 systemd）；服务启动失败由状态文件/退出码判定 |
 | 6 | 宿主 | `startEnrolled`：有 `orca-cloud-host.json` 则跳过注册 | 见 §3.3 |
 | 7 | 宿主 | 无凭据：`POST /v1/hosts/register`；201 后持久化凭据 | 401/409/400 不重试；网络可重试 |
 | 8 | 宿主 | `refresh()` 首心跳；成功即 `status=online` | 失败保持 `registered/degraded`，10s 后重试 |
@@ -486,7 +486,7 @@ H1–H8c 不依赖 U182 批 2，可先并行推进；H9 起被批 2 阻塞。
 
 - Debian 12 amd64（或等效 glibc 基线），**无 display、无 Xvfb、无 Chromium**；
 - 已安装 Orca 包（deb/rpm/AppImage 解包），包含 `orcad` 模板与 pinned Node；或安装脚本显式执行 `--preflight` 完成槽物化；
-- 目标机有 `bash/curl/openssl`（脚本本身仍需要），但**不要求** `xvfb`/`libgtk` 等；
+- 目标机有 `bash/curl/openssl`（脚本本身仍需要），但**不需要** display / Xvfb / Chromium 进程；打包的 `orca-ide` 仍需 Electron loader 库（deb `Depends` 中的 `libgtk-3-0`/`libnss3`/`libnotify4` 等）；
 - 无既有 Orca profile，无外部 `ORCA_*`；
 - `orca-ide` 在 PATH（deb 的 `/usr/bin/orca-ide`），或设置 `ORCA_CLI`。
 
