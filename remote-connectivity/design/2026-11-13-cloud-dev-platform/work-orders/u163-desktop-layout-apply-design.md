@@ -1,5 +1,6 @@
 # U163 P3 设计令 v4：桌面渲染窗口的「宿主布局 → renderer」单次补齐
 
+> **状态（v5）：前提已被真栈证伪，钩子默认关闭，待裁定。** 2026-11-17 · V1–V7 已落地；V8a-1/V8a-2 均 INVALID（分歧前置不成立）；V8b/V8c 暂停；详见附录 D。
 > 2026-11-17 · 取代同日 v3（v1/v2 关键分析保留为附录 A/B，v3 评审定位保留为附录 C）· P3（U163 v3/v4 残余）
 > 前置：U172 已修复并独立复审 **APPROVED**（`22753c8aee4`，`cloud-platform/test-reports/u172-v2-audit.md`）。v3 收口了 v2 评审（`u163-design-review-v2.md`）的 B1–B5 与 P1/P2；**v4 只修 v3 评审（`cloud-platform/test-reports/u163-design-review-v3.md`）的 B1–B4，不扩大范围**。
 > 依据：`defect-ledger.md` U163/U164/U167/U168/U169 行、`u138-active-tab-authority-matrix.md` §2-5、`u153-quick-tab-authority-design.md`、主会话 2026-11-17 裁定 T1–T4。
@@ -454,3 +455,67 @@ focus / visibility-resume / online|system-resume / (structured) reconnect
 | B4 产品路径必须 1→2（预 seed；1→3 仅负控） | 通过（收紧采纳） | main | 防重复组被写成宿主布局后不可收敛 |
 | 拆分 V1→V2a→V2b→V3→V4→V5→V6→V7→V8 | 通过 | main | **V1 已落地**（`b4b34687de3`），实际路径 `src/renderer/src/runtime/local-structured-session-tabs-sync/host-layout-catchup-decision.ts`；后续令从该模块 import，不再新建 `local-host-layout-catchup/` 目录 |
 | 残余 R9–R11 披露 | 接受 | main | R10（pending 长期保留走 headless 兜底）由 U172 审计确认 fail-safe |
+| v5 状态（附录 D：真栈证伪 + 钩子默认关闭 + V8b/V8c 暂停） | 待用户裁定 | — | 三选一：彻底移除 / 仅非本地宿主启用 / 保留开关待需求 |
+
+---
+
+## 附录 D：真栈证伪与前提失效（v5，2026-11-17）
+
+> 来源：`cloud-platform/evidence/u163-v8a1-1794887000/u163-v8a1.json`、`u163-v8a2-1780000500/u163-v8a2.json`、`u163-v8a2-1780000600/u163-v8a2.json`；台账 U176。§1–§12 的 v4 设计文本保留原样，本附录只记录前提失效与当前处置。
+
+### D.1 两轮真栈方法与采样
+
+**V8a-1（单窗口）**：`ORCA_BACKGROUND_LAUNCH=1` + CDP 隐藏渲染器；宿主状态在 renderer 内经 `session.tabs.list` 读取，split 由同一 renderer 发出，焦点边沿在渲染器内派发并包裹 `window.api.runtime.call` 计出站方法。RPC、结构化同步与 store 同进程。
+
+**V8a-2（独立第二客户端）**：在同一桌面 renderer 之外启动独立 Chromium web client（`login`/`hostCall`，独立 store），由该客户端对同一本地 worktree 发起 split；桌面 renderer 的 host/store/DOM 分别采样。两次独立运行（stamp `1780000500`、`1780000600`）结果一致。
+
+采样表（host = `session.tabs.list` 组数；store = `groupsByWorktree` 组数；DOM = 可见 tab strip 数）：
+
+| 轮次 | 采样 | 相对动作 | host | store | DOM | 出站 `runtime.call` |
+| --- | --- | --- | --- | --- | --- | --- |
+| V8a-1 | `C.cold-baseline` | 冷启动静止 | 1 | 1 | 1 | — |
+| V8a-1 | `C.host-split` | 本 renderer split 后 +1.2s | 2 | 2 | 2 | （move 由本 renderer 发出） |
+| V8a-1 | `C.immediate` | focus 边沿后 | 2 | 2 | 2 | `[]` |
+| V8a-1 | `C.plus3s` | +3s | 2 | 2 | 2 | — |
+| V8a-2 | `B1.baseline` | 冷启动静止 | 1 | 1 | 1 | — |
+| V8a-2 | `B2.web-split` | 第二客户端 split 后 +1.5s | 2 | 2 | 2 | — |
+| V8a-2 | `B3.immediate` | 桌面 focus 边沿后 | 2 | 2 | 2 | `[]`（`wrapped.call=false`） |
+| V8a-2 | `B3.plus3s` | +3s | 2 | 2 | 2 | — |
+
+关键事实：
+
+1. Split 之后、focus 之前，桌面 store 与 DOM 已等于宿主组数（约 1.5s 内），**不存在「宿主已变、桌面未变」的稳定分歧窗口**。
+2. focus 边沿没有任何 `session.tabs.list` 出站（钩子默认关闭；即使打开也无可补的差异）。V8a-2 的 `focus-edge` 记录 `methods: []`。
+3. 桌面自动采纳不止形状：`B2.web-split` 时本地 `activeGroupId` 已切到宿主新组 `995f6cb9-...`（V8a-1 为 `774e873f-...`）。这说明现有流通道**连 active 一起采纳**；§5.3「只应用形状」只约束新增补齐车道，不能反推现有通道行为。
+4. 两轮 harness 均判 `INVALID`（V8a-2 的断言 0b「第二客户端与桌面分歧」不成立），是**前提不成立**，不是补齐实现产品红。
+
+### D.2 证伪结论
+
+在当前 HEAD（含 U164/U171 之后的同步语义）的**本地宿主**上：
+
+- 桌面 renderer 经既有 `session.tabs.subscribeAll` / 广播路径自动采纳宿主布局（含 active），设计所假设的稳定分歧窗口无法复现。
+- v1 §1.3/§2.4 的「桌面没有宿主→renderer 的布局 apply 通道」判断**已不成立**（至少对本地宿主）；§1.1 F2–F5 描述的是结构化订阅投影只保留 agent-session，但布局仍经其他同步路径到达 store。
+- 若缺口仍存在，只可能在**非本地执行宿主**（SSH/远端/WSL 远端）或特殊时序，需要新的真实证据才能定位。
+
+### D.3 C1 闸门矛盾（当前车道无收益）
+
+- 补齐决策 C1：`executionHostIsLocal === false` → `skip`（`host-layout-catchup-decision.ts:79`；执行器经 `getExecutionHostIdForWorktree(...) === 'local'` 求值，`run-local-host-layout-catchup.ts:178-179`）。
+- 本地宿主恰是「已自动采纳、无需补齐」的场景；非本地宿主（唯一可能残留缺口）被 C1 排他性跳过。
+- 结论：现设计只覆盖「本地」子集，而该子集没有可补差异；每次 focus 的净成本是一次 `session.tabs.list`，净收益为零。要让车道重新有意义，必须先有「非本地宿主下桌面布局确实不跟随」的证据，并重新裁定 C1。
+
+### D.4 状态更新
+
+| 项 | 状态 | 证据/落点 |
+| --- | --- | --- |
+| V1–V7 | 已落地，代码与测试保留 | V1 `b4b34687de3`、V2a `00b7d7ae6de`、V2b `abf495b30a6`、V3 `1c6aca72e9a`、V4 `2a612cf147b`、V5 `9835364e469`、V6 `4a1a6808cb4`、V7 `d5429c64eb3` |
+| V5 钩子 | **默认关闭**，显式 opt-in（开关） | `HOST_LAYOUT_CATCHUP_STORAGE_KEY = 'orca.debug.hostLayoutCatchup'`，`localStorage` 值为 `'1'` 才挂监听（`src/renderer/src/app-shell/use-local-host-layout-catchup.ts`）；关闭时无监听、无可见性/恢复订阅、无 store 订阅、无执行器调用 |
+| V8a-1 / V8a-2 | INVALID（前提不成立） | D.1 |
+| V8b | 暂停（不再做变异红） | 依赖一个可复现的分歧窗口 |
+| V8c（后续真栈复验，未在 §7 定义） | 暂停 | 同上 |
+| 重评估条件 | 出现**真实用户证据**：SSH/远端宿主下桌面布局不跟随（或 U164/U171 语义回退使本地重新出现稳定分歧） | 由主会话/用户裁定 |
+
+### D.5 本轮不做的事
+
+1. 不删除 V1–V7 已落地模块与测试；它们是未来「非本地宿主」车道的现成件，删除会丢失已验证的 C7 / 组去重 / 预 seed 语义。
+2. 不扩展车道范围：不新增 wire 字段、不做连续帧车道、不覆盖 popout、不改焦点权威。
+3. 在用户裁定前不做产品代码改动（本附录只改文档）；三选一（彻底移除 / 仅非本地启用 / 保留开关待需求）留给主会话裁定。
