@@ -4245,3 +4245,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U236 复审 APPROVED**：仅 `null`/标量受影响（数组/对象/空串/非法 JSON 不变）、26 调用点无顶层数组依赖、4xx 无漂移、局部守卫冗余无害、红证据真实；父提交 8 fail/1 pass、当前 86/86。台账 U236 翻 🟢。观察登记 **U237（🟡）**：maintenance/policy PUT 等「空 body 即变更」端点缺必填校验（`null` 与 `{}` 同语义），建议补 400。
 - **U232 复审 APPROVED**：signal 覆盖两条 refresh、await 边界先判 abort/epoch、controller Set 生命周期正确；F3/refresh 用例红证据实证（隔离 worktree 回退 abort 后两例均失败于目标断言）；回归 15/1skip、6/1skip、22/22、7/7、9/9。台账 U232 翻 🟢。P3 观察记录：登录失败保留 pendingLogout 无用例、login abort 后旧服务端会话残留至过期（接受）、`restoreCookie()` 清全 jar（当前仅一个 Cookie）。
 - **服务端回归批绿**（HEAD `09c9038c9ec`）：platform / host-authorization / project-registration-validation / audit-anchor / policy-version-conflict / admin-authorization-directory **46/46**（EXIT=0）；U233/U235/U236 服务端改动零回归。m01 补「非对象 body / 登出重复 Cookie / refresh null」失败行与 U236 套件索引。
+- **U232 补测落地**（`62b0cf5de1c`）：新套件 `u232-pending-logout-retry` 2 例——启动 pending 重试失败保留标记（且不探测会话）；错误密码登录失败标记仍在、正确登录后清标记且不再补发。主会话复跑 2/2。U235 独立复审在途。
