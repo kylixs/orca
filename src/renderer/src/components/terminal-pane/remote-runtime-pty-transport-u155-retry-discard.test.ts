@@ -212,6 +212,80 @@ describe('U155: retry and unusable create answers discard the gesture', () => {
     expect(peekUserInitiatedTerminalCreate(LOCAL_TAB_ID, ENV)).toBe(false)
   })
 
+  it('discards the mark when the host reply carries no created terminal', async () => {
+    let createCalls = 0
+    runtimeCall.mockImplementation(async (request: { method: string }) => {
+      if (request.method === 'terminal.create') {
+        createCalls += 1
+        // A reply with no `result` unwraps to undefined, so createWithUnknownOutcomeRecovery
+        // exits its loop with null and the `!created` branch owns the gesture.
+        return { ok: true }
+      }
+      return { ok: true, result: {} }
+    })
+
+    const transport = await markAndCreateTransport()
+    await transport.connect({ url: '', callbacks: {} })
+
+    // Why: no consumer ever saw a terminal, so only the !created discard can clear the mark.
+    expect(createCalls).toBe(1)
+    const { peekUserInitiatedTerminalCreate } =
+      await import('@/runtime/web-session-user-initiated-create')
+    expect(peekUserInitiatedTerminalCreate(LOCAL_TAB_ID, ENV)).toBe(false)
+    expect(activationParams()).toHaveLength(0)
+  })
+
+  it('discards a fresh mark when a create reply lands after the transport was destroyed', async () => {
+    let createCalls = 0
+    let resolveLateCreate!: (value: unknown) => void
+    const lateCreateReply = new Promise<unknown>((resolve) => {
+      resolveLateCreate = resolve
+    })
+    runtimeCall.mockImplementation(async (request: { method: string }) => {
+      if (request.method === 'terminal.create') {
+        createCalls += 1
+        return createCalls === 1
+          ? createResult({
+              handle: 'remote-pty-u155-1',
+              tabId: 'u155-host-tab-1',
+              leafId: 'u155-host-leaf-1'
+            })
+          : lateCreateReply
+      }
+      return { ok: true, result: {} }
+    })
+
+    const transport = await markAndCreateTransport()
+    await transport.connect({ url: '', callbacks: {} })
+
+    // Why: this replay owns no gesture, but a mark can outlive the first attempt; arm one so the
+    // destroyed/epoch branch has to clear it (U155 residual).
+    const { markUserInitiatedTerminalCreate, peekUserInitiatedTerminalCreate } =
+      await import('@/runtime/web-session-user-initiated-create')
+    markUserInitiatedTerminalCreate(LOCAL_TAB_ID, undefined, ENV)
+    runtimeCall.mockClear()
+
+    const replayConnect = transport.connect({ url: '', callbacks: {} })
+    await vi.waitFor(() => expect(createCalls).toBe(2))
+
+    // Why: the mirror unmounts mid-create; the late reply must not select a tab or keep the mark.
+    if (!transport.destroy) {
+      throw new Error('transport must expose destroy()')
+    }
+    transport.destroy()
+    resolveLateCreate(
+      createResult({
+        handle: 'remote-pty-u155-late',
+        tabId: 'u155-host-tab-late',
+        leafId: 'u155-host-leaf-late'
+      })
+    )
+
+    await expect(replayConnect).resolves.toBeUndefined()
+    expect(peekUserInitiatedTerminalCreate(LOCAL_TAB_ID, ENV)).toBe(false)
+    expect(activationParams()).toHaveLength(0)
+  })
+
   it('discards the mark when create fails on a non-recoverable error', async () => {
     runtimeCall.mockImplementation(async (request: { method: string }) => {
       if (request.method === 'terminal.create') {
