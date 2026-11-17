@@ -3968,3 +3968,11 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **批 A（renderer/runtime 域）**：255 套件 / 1973 用例，pass 1970 / **fail 0** / skip 3（`web-runtime-direct-proxy-live.integration.test.ts` 由 `ORCA_REMOTE_ACCESS_PAIRING_INPUT` 环境门控，预期跳过）。范围：web-session-tabs-sync 18、runtime-session/rpc/手势自建 20、pty-transport 30、tab-bar 78、tab-group 3、renderer/web 68、main/runtime mobile-session 系 38。证据 `evidence/regression-batch-a-20261117-085358/`。
 - **批 B（平台 e2e）**：24 文件 / 157 用例，pass 157 / **fail 0** / skip 0。覆盖项目归档/下载策略/策略版本冲突/详情/主机生命周期/中继路由新鲜度/u64 端口漂移/u79 中继绑定/u80 mobile 六套/撤销与宿主授权；各套件 `PORT=0` 自起，未触碰 18787 持久环境。证据 `evidence/regression-batch-b-20261117T085406/`。
 - 三桶分类：今日引入 0 / 既有失败 0 / 环境相关 0（批 A 的 3 skip 为预期门控）。未修改任何代码。
+
+### 残项收口 + 部署态复验 + U163 设计评审（2026-11-17 09:0x–09:2x）
+
+- **U164/U169/U152 残项证据级审计**（`test-reports/u164-u169-residual-audit.md`）：U164 P3 焦点瞬时不一致已消除（成对采纳 + 3 钉）、F2–F5 均已消除；U152 残留 P2 三项随 `26240894d97` 消除；U169 L1/L2/L4 已消除，**仅 L3 仍成立（P3，设计内诚实失败，不开新号）**。台账已更新（`ec41c367600`）。
+- **部署产物金旅程**：在 08:48 生产产物（去仪器化、`__store` 编译期折叠）上直接跑 → **INVALID**（脚本 a2 依赖 store oracle，与 journey-final8 非同口味；证据 `evidence/journey-deployed-20261117-090500/`）。
+- **e2e 快照复跑**：隔离 worktree `ec41c367` 内 `VITE_EXPOSE_STORE=true --mode e2e` 重建 → 旅程 **13/13 PASS**，a2 三方一致（DOM = store = 宿主，16ms），主树 `out/` 未动，快照宿主按 PID 清理。证据 `evidence/journey-e2e-20261117-0912/`。
+- **U163 P3 设计 v1 + 双独立评审**（代码事实 / 产品语义）：均 CHANGES-REQUIRED——revision 无宿主代际（重启后永久 no-op）、失焦≠没在看、焦点采纳与权威矩阵 §2-5 冲突、第二份 apply 路径、E1/E5 伪绿。主会话裁定**收窄**：只做「获焦/可见/重连时单次 `list` 布局补齐」，不新增 wire 字段，连续应用车道暂缓；复用面清单已出（`refreshLocalStructuredSessionTabs`/`buildMirroredHostGroups`/`updateHostSessionGroupIdMappings` 等现成件）。v2 修订在途。
+- 现网状态 m09 已同步 U169-L3 与收窄方向（`39ebafa5341`）。
