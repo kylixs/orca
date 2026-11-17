@@ -12,8 +12,21 @@ const launchHooks = vi.hoisted(() => ({
   duringInstallDirRepair: (): void => {},
   failBeforeWindow: false
 }))
+// Why: the launch chain now reaches attachCloudRuntime unconditionally, which installs
+// cloud-platform IPC and enumerates windows even in ordinary desktop mode.
+const electronIpcMain = vi.hoisted(() => ({
+  handle: vi.fn(),
+  removeHandler: vi.fn(),
+  on: vi.fn()
+}))
+const electronBrowserWindow = vi.hoisted(() => ({ getAllWindows: vi.fn(() => []) }))
 
-vi.mock('electron', () => ({ app: electronApp, powerMonitor: { on: vi.fn() } }))
+vi.mock('electron', () => ({
+  app: electronApp,
+  powerMonitor: { on: vi.fn() },
+  ipcMain: electronIpcMain,
+  BrowserWindow: electronBrowserWindow
+}))
 vi.mock('@electron-toolkit/utils', () => ({ is: { dev: false } }))
 vi.mock('../orca-profiles/profile-cloud-auth-config', () => ({
   getOrcaCloudAuthConfig: () => ({ configured: false })

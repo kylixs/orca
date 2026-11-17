@@ -264,16 +264,30 @@ describe('terminal multiplex RPC', () => {
         )
       )
 
+      // U84b: an isolated first small write flushes at once; the rest of the burst coalesces.
       dataListenerRef.current?.('a')
       dataListenerRef.current?.('b')
+      dataListenerRef.current?.('c')
+
+      const framesBeforeTimer = binaryFrames
+        .map((frame) => decodeTerminalStreamFrame(frame))
+        .filter((frame) => frame?.opcode === TerminalStreamOpcode.Output)
+      expect(framesBeforeTimer).toHaveLength(1)
+      expect(framesBeforeTimer[0]?.streamId).toBe(5)
+      expect(
+        framesBeforeTimer[0] ? decodeTerminalStreamText(framesBeforeTimer[0].payload) : ''
+      ).toBe('a')
+
       await vi.runOnlyPendingTimersAsync()
 
       const outputFrames = binaryFrames
         .map((frame) => decodeTerminalStreamFrame(frame))
         .filter((frame) => frame?.opcode === TerminalStreamOpcode.Output)
-      expect(outputFrames).toHaveLength(1)
+      expect(outputFrames).toHaveLength(2)
       expect(outputFrames[0]?.streamId).toBe(5)
-      expect(outputFrames[0] ? decodeTerminalStreamText(outputFrames[0].payload) : '').toBe('ab')
+      expect(outputFrames[0] ? decodeTerminalStreamText(outputFrames[0].payload) : '').toBe('a')
+      expect(outputFrames[1]?.streamId).toBe(5)
+      expect(outputFrames[1] ? decodeTerminalStreamText(outputFrames[1].payload) : '').toBe('bc')
 
       handlers.get(5)?.(
         decodeTerminalStreamFrame(

@@ -49,7 +49,9 @@ describe('terminal rename before renderer graph hydration', () => {
 
       expect(getSession().tabsByWorktree[TEST_WORKTREE_ID][0].customTitle).toBe(title)
       expect(renameTerminal).toHaveBeenCalledWith('host-tab', title)
-      runtime.onPtyExit('omp-initial-pty', 0)
+      // Why: a headless host restart has no PTY exit event. Simulating the replacement with
+      // onPtyExit would retire the durable row (a different lifecycle; see the certified-exit
+      // test below), so a new runtime re-attaches the same tab and spawns the replacement PTY.
       const restored = new OrcaRuntimeService(checkedStore)
       restored.setPtyController({
         spawn: vi.fn(async () => ({ id: 'omp-replacement-pty' })),
@@ -64,6 +66,33 @@ describe('terminal rename before renderer graph hydration', () => {
       expect(getSession().tabsByWorktree[TEST_WORKTREE_ID][0].customTitle).toBe(title)
     }
   )
+  it('retires the durable row when a certified PTY exit is observed', async () => {
+    const session = makeWorkspaceSessionWithHeadlessTerminal()
+    session.tabsByWorktree[TEST_WORKTREE_ID][0].customTitle = 'Retired name'
+    const { runtimeStore, getSession } = makeRuntimeStoreWithWorkspaceSession(session)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: The shared fixture supplies RuntimeStore methods; its legacy Mock return type loses callable signatures.
+    const checkedStore = runtimeStore as RuntimeStore
+    const runtime = new OrcaRuntimeService(checkedStore)
+    runtime.setNotifier(createMobileCreateTestNotifier(vi.fn()))
+    runtime.setPtyController({
+      spawn: vi.fn(async () => ({ id: 'omp-initial-pty' })),
+      write: () => true,
+      kill: () => true,
+      getForegroundProcess: async () => null
+    })
+    const created = await runtime.createTerminal(`id:${TEST_WORKTREE_ID}`, {
+      tabId: 'host-tab',
+      leafId: HEADLESS_LEAF_ID
+    })
+    await runtime.renameTerminal(created.handle, 'Retired name')
+    expect(getSession().tabsByWorktree[TEST_WORKTREE_ID][0].customTitle).toBe('Retired name')
+
+    await runtime.onPtyExit('omp-initial-pty', 0)
+
+    // Why: a certified exit is absence, not a PTY replacement. The durable row must be retired
+    // instead of surviving as a ghost that carries the manual title into a later process.
+    expect(getSession().tabsByWorktree[TEST_WORKTREE_ID]).toEqual([])
+  })
   it('does not recreate a closed persisted tab from a surviving PTY record', async () => {
     const session = makeWorkspaceSessionWithHeadlessTerminal()
     const { runtimeStore, getSession, setSession } = makeRuntimeStoreWithWorkspaceSession(session)

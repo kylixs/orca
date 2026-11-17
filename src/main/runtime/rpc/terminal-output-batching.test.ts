@@ -71,19 +71,26 @@ describe('terminal output batching', () => {
       if (!emitData) {
         throw new Error('missing terminal data listener')
       }
+      // U84b: an isolated first small write is interactive output and flushes at
+      // once; the rest of the same burst still coalesces on the 5ms timer.
       emitData('a')
       emitData('b')
+      emitData('c')
 
-      expect(messages.map((msg) => JSON.parse(msg).result?.type)).not.toContain('data')
+      const typesBeforeTimer = messages.map((msg) => JSON.parse(msg).result?.type)
+      expect(typesBeforeTimer.filter((type) => type === 'data')).toHaveLength(1)
 
       await vi.runOnlyPendingTimersAsync()
 
       const dataMessages = messages
         .map((msg) => JSON.parse(msg))
         .filter((message) => message.result?.type === 'data')
-      expect(dataMessages).toHaveLength(1)
+      expect(dataMessages).toHaveLength(2)
       expect(dataMessages[0]).toMatchObject({
-        result: { type: 'data', chunk: 'ab' }
+        result: { type: 'data', chunk: 'a' }
+      })
+      expect(dataMessages[1]).toMatchObject({
+        result: { type: 'data', chunk: 'bc' }
       })
 
       runtime.cleanupSubscription('terminal-1:desktop-1')
@@ -160,18 +167,27 @@ describe('terminal output batching', () => {
       if (!emitData) {
         throw new Error('missing terminal data listener')
       }
+      // U84b: the isolated first write flushes immediately; the rest of the burst coalesces.
       emitData('a')
       emitData('b')
+      emitData('c')
 
-      expect(messages.map((msg) => JSON.parse(msg).result?.type)).not.toContain('data')
+      const framesBeforeTimer = binaryFrames
+        .map((frame) => decodeTerminalStreamFrame(frame))
+        .filter((frame) => frame?.opcode === TerminalStreamOpcode.Output)
+      expect(framesBeforeTimer).toHaveLength(1)
+      expect(
+        framesBeforeTimer[0] ? decodeTerminalStreamText(framesBeforeTimer[0].payload) : ''
+      ).toBe('a')
 
       await vi.runOnlyPendingTimersAsync()
 
       const outputFrames = binaryFrames
         .map((frame) => decodeTerminalStreamFrame(frame))
         .filter((frame) => frame?.opcode === TerminalStreamOpcode.Output)
-      expect(outputFrames).toHaveLength(1)
-      expect(outputFrames[0] ? decodeTerminalStreamText(outputFrames[0].payload) : '').toBe('ab')
+      expect(outputFrames).toHaveLength(2)
+      expect(outputFrames[0] ? decodeTerminalStreamText(outputFrames[0].payload) : '').toBe('a')
+      expect(outputFrames[1] ? decodeTerminalStreamText(outputFrames[1].payload) : '').toBe('bc')
 
       runtime.cleanupSubscription('terminal-1:desktop-1')
       await dispatchPromise
