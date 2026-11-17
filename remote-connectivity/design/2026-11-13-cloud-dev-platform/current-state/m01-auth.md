@@ -1,6 +1,6 @@
 # M1 登录与认证（现状）
 
-> 基线提交：`fe35a9d355a`（2026-11-18）｜来源：`cloud-platform/apps/web/app.js`、`cloud-platform/apps/api/src/{server.ts,refresh-cookie.ts,web-release.ts}` 代码阅读 + 已提交套件。文中行号均指该 HEAD（工作树若含未提交改动会使行号偏移）。
+> 基线提交：`a5d6d2162b4`（2026-11-18）｜来源：`cloud-platform/apps/web/app.js`、`cloud-platform/apps/api/src/{server.ts,refresh-cookie.ts,web-release.ts}` 代码阅读 + 已提交套件。文中行号均指该 HEAD（工作树若含未提交改动会使行号偏移）。
 > 刷新记录：2026-11-18 按 HEAD `39ad743d793`（U228 后）整理，覆盖 U197 Cookie 会话（登录形态/双读刷新/页面恢复/登出）、U218 登出撤销与 CSRF、U219/D17 迁移缺口、U220 Origin 边界、U221–U223 客户端硬化、U225–U227 测试收紧。U228（禁用账号登录/刷新复查）已合入 `39ad743d793`（登录/刷新拒绝非 active 并撤销会话；客户端重放仍 401 即登出）。
 > 本次未启动 18787（探测 `000`），界面描述以生产管理台代码为准。
 
@@ -38,71 +38,71 @@
 | A4  | 连续 5 次失败                              | 服务端 `423 ACCOUNT_LOCKED`（计数共享时跨副本累计；进程内默认 5 次 / 15 分钟）                                                                                                                                                                                                                                                                                        | 无        | 行内「连续 5 次失败，账号已锁定 15 分钟。」；锁定期间再试直接 423「账号已锁定，请 15 分钟后再试。」并记审计 `login/failure reason=locked`                             | 无         |
 | A5  | 账号不在 LDAP 准组                         | 服务端 `401 LDAP_GROUP_NOT_ADMITTED`；两条拒绝路径（adapter filter miss / 平台闸门）同码同文案；审计 `reason=ldap_group_denied`；**不计数也不清锁定**                                                                                                                                                                                                                  | 无        | 行内显示服务端文案「账号未加入平台准入组。」                                                                                                                          | 准入组由 `ORCA_CLOUD_LDAP_REQUIRED_GROUP`（或 config `ldapRequiredGroup`）控制；空白=关闭 |
 | A6  | 点击密码框眼睛                             | 明文/密文切换                                                                                                                                                                                                                                                                                                                                                         | 无        | —                                                                                                                                                                     | 无         |
-| A7  | 任意业务请求返回 401                       | `api()` 只尝试**一次刷新+一次重放**（`app.js:57-84`）。Cookie 模式先发一次无 body `/v1/auth/refresh`（`credentials:'same-origin'`）；无 Cookie 可解析时才用 body 回退（`app.js:169-190`）。刷新结果四态：`ok` 重放；`rejected`（HTTP **400/401**）→ `logout()`；`error`（403/408/429/5xx 与传输失败）→ **不登出**，失败原请求交给调用方；`stale`（auth 代际已变）→ 不写状态/不登出，交回原 401（`app.js` U229/U232）。并发 401 共享一次刷新（`app.js:86-88`） | 无        | 刷新被拒 → 清会话回登录页。**重放仍 401**：`retried` 分支直接 `logout()` 回登录页（U228 `39ad743d793`，裸 fetch 不递归） | 已登录     |
-| A8  | 刷新/重开页面                              | **Cookie 模式**：一次无 body 刷新 → 成功后 `GET /v1/me`（`retried:true`，不启动第二条刷新链）→ 进主框架（`app.js:5144-5162`）。**旧模式**：有 access 时 `GET /v1/me`，401 触发 body 刷新并重放一次（`app.js:5163-5175`；`u198-legacy-reload` 断言顺序 `/v1/me:401 → refresh:200 → /v1/me:200`）。`orca.pendingLogout=1` 时**先显示登录页**再补发一次登出、不自动进入（`app.js:5135-5141`） | 无        | 刷新失败/`/v1/me` 失败 → 移除缓存 user、显示登录页。仅缓存 user、无 access/无 Cookie 模式时直接登录页（`session-renewal` AC-M1-14）                                      | 有本地会话 |
-| A9  | 点击「退出」                               | 关闭工作区 iframe → 置 `orca.pendingLogout=1` → 异步 `POST /v1/auth/logout`（同时带 Bearer 与同源 Cookie；服务端清 Cookie 的多作用域并撤销 Bearer/Cookie 定位到的**全部** session，`server.ts:3843-3891`）→ 本地清 access/refresh/tokenOwner、`orca.authMode`、缓存 user 与登录框输入 → 回登录页。请求网络失败保留标记，下次加载重试一次；收到 2xx 或 401 即删标记（`app.js:4946-4990`）。多标签为**被动**登出：另一标签下一次请求 401 → 刷新被拒 → 登出（`u197-web-cookie-browser` AC7） | 无        | 登出请求失败被吞，本地仍清空；HttpOnly Cookie 由下次加载的补发清理                                                                                                    | 已登录     |
+| A7  | 任意业务请求返回 401                       | `api()` 只尝试**一次刷新+一次重放**（`app.js:70-108`）。Cookie 模式先发一次无 body `/v1/auth/refresh`（`credentials:'same-origin'`）；无 Cookie 可解析时才用 body 回退（`app.js:259-297`）。刷新结果四态：`ok` 重放；`rejected`（HTTP **400/401**）→ `logout()`；`error`（403/408/429/5xx 与传输失败）→ **不登出**，失败原请求交给调用方；`stale`（auth 代际已变）→ 不写状态/不登出，交回原 401（`app.js` U229/U232）。并发 401 共享一次刷新（`app.js:110-112`） | 无        | 刷新被拒 → 清会话回登录页。**重放仍 401**：`retried` 分支直接 `logout()` 回登录页（U228 `39ad743d793`，裸 fetch 不递归） | 已登录     |
+| A8  | 刷新/重开页面                              | **Cookie 模式**：一次无 body 刷新 → 成功后 `GET /v1/me`（`retried:true`，不启动第二条刷新链）→ 进主框架（`app.js:5321-5350`）。**旧模式**：有 access 时 `GET /v1/me`，401 触发 body 刷新并重放一次（`app.js:5352-5367`；`u198-legacy-reload` 断言顺序 `/v1/me:401 → refresh:200 → /v1/me:200`）。`orca.pendingLogout=1` 时**先显示登录页**再补发一次登出、不自动进入（`app.js:5312-5317`） | 无        | 刷新失败/`/v1/me` 失败 → 移除缓存 user、显示登录页。仅缓存 user、无 access/无 Cookie 模式时直接登录页（`session-renewal` AC-M1-14）                                      | 有本地会话 |
+| A9  | 点击「退出」                               | 关闭工作区 iframe → 置 `orca.pendingLogout=1` → 异步 `POST /v1/auth/logout`（同时带 Bearer 与同源 Cookie；服务端清 Cookie 的多作用域并撤销 Bearer/Cookie 定位到的**全部** session，`server.ts:4001-4078`）→ 本地清 access/refresh/tokenOwner、`orca.authMode`、缓存 user 与登录框输入 → 回登录页。请求网络失败保留标记，下次加载重试一次；收到 2xx 或 401 即删标记（`app.js:5081-5145`）。多标签为**被动**登出：另一标签下一次请求 401 → 刷新被拒 → 登出（`u197-web-cookie-browser` AC7） | 无        | 登出请求失败被吞，本地仍清空；HttpOnly Cookie 由下次加载的补发清理                                                                                                    | 已登录     |
 
 **会话代际与迁移 owner 策略（U229）**
 
-- `state.authEpoch`：`login()` 发起/成功、`logout()` 自增并清空 `refreshInFlight`；刷新在每次 await 后校验代际，过期结果返回 `'stale'` 且**不写** state/storage、不改能力标记、不登出（`app.js:59-232`）。`api()` 遇 `'stale'` 把原 401 交回调用方，不重放。
-- 旧键 owner：登录成功时 `orca.tokenOwner` 为空或与本次用户名不同 → 清除旧键；Cookie 模式启动且 Cookie 刷新失败时，仅 owner 与 `orca.user` 一致才允许 body 回退，否则清键（`app.js:187-226, 4982-4985`）。无 owner 的 pre-U221 键不再作为回退来源（跨账号防护）。
+- `state.authEpoch`：`login()` 发起/成功、`logout()` 自增并清空 `refreshInFlight`；刷新在每次 await 后校验代际，过期结果返回 `'stale'` 且**不写** state/storage、不改能力标记、不登出（`app.js:70-297`）。`api()` 遇 `'stale'` 把原 401 交回调用方，不重放。
+- 旧键 owner：登录成功时 `orca.tokenOwner` 为空或与本次用户名不同 → 清除旧键；Cookie 模式启动且 Cookie 刷新失败时，仅 owner 与 `orca.user` 一致才允许 body 回退，否则清键（`app.js:244-252,281-284,5067-5070`）。无 owner 的 pre-U221 键不再作为回退来源（跨账号防护）。
 - 登出：请求体携带 `{refreshToken}`（非 Cookie 模式），服务端据此定位并撤销 legacy 会话（U229 F10）；慢登出响应在重新登录后被 abort，不再清除新 Cookie（U229 F3）。
 - grace 回显：body 回退响应 `refreshToken` 等于请求值且无 `refreshCookie` → 视为未轮换，只更新 access、保留标记与旧键（U229 F4）。
 
 **登录响应形态（HEAD）**
 
-- Cookie 下发的判定只看 `Origin` 与配置的 `ORCA_CLOUD_PUBLIC_ORIGIN` 是否同源，**不用 Host/X-Forwarded-Proto**（`server.ts:1973-1977`、`refresh-cookie.ts:134-148`）。
-- 同源登录：`Set-Cookie` + body `{accessToken, refreshCookie:true, expiresIn, user, device}`，body **无** `refreshToken`（`server.ts:3500-3516`）。
-- 非同源/无 Origin/`never`：body `{accessToken, refreshToken, expiresIn, user, device}`，无 Cookie（`server.ts:3502-3505`）。
-- 平台同源 handoff 同 Cookie 模式；宿主跨源 handoff 保留 body refresh（`server.ts:3826-3829`）。
-- 客户端能力标记：`orca.authMode='cookie'`（`app.js:5-7,90-94`）；账号归属标记：`orca.tokenOwner`（`app.js:8-9,199-210`）；登出欠账标记：`orca.pendingLogout`（`app.js:10-11`）。
+- Cookie 下发的判定只看 `Origin` 与配置的 `ORCA_CLOUD_PUBLIC_ORIGIN` 是否同源，**不用 Host/X-Forwarded-Proto**（`server.ts:2004-2008`、`refresh-cookie.ts:134-148`）。
+- 同源登录：`Set-Cookie` + body `{accessToken, refreshCookie:true, expiresIn, user, device}`，body **无** `refreshToken`（`server.ts:3622-3639`）。
+- 非同源/无 Origin/`never`：body `{accessToken, refreshToken, expiresIn, user, device}`，无 Cookie（`server.ts:3625-3628`）。
+- 平台同源 handoff 同 Cookie 模式；宿主跨源 handoff 保留 body refresh（`server.ts:3984-3987`）。
+- 客户端能力标记：`orca.authMode='cookie'`（`app.js:5-7,138-142`）；账号归属标记：`orca.tokenOwner`（`app.js:8-9,299-317`）；登出欠账标记：`orca.pendingLogout`（`app.js:10-11`）。
 
 **刷新语义（HEAD）**
 
-- 服务端**双读**：能解析出 Cookie session 时以 Cookie 为准，body 只作回显/宽限判定（`server.ts:3527-3535`）。
-- Cookie 源**不轮换**：current 每次命中只续 access、滑动 `refreshExpiresAt`、同值重发 Cookie（`refreshCookie:true`）；重建失败时保留浏览器原 Cookie（`server.ts:3647-3664`）。
-- previous（宽限内）只发 access，不续期、不重发 Cookie；宽限外或既非 current 也非 previous → 撤销 session + 401 + `refresh.reuse_detected`（`server.ts:3566-3631`）。
-- body 源（无 Cookie 或 Cookie 无法解析）：current 正常轮换并置 `previousRefreshHash/graceUntil`，同源时例外地同时 `Set-Cookie`；previous 在宽限内回显请求值、不轮换；宽限外撤销并 401；未知 token 直接 401（不撤销未知会话）（`server.ts:3667-3731`）。
+- 服务端**双读**：能解析出 Cookie session 时以 Cookie 为准，body 只作回显/宽限判定（`server.ts:3650-3658`）。
+- Cookie 源**不轮换**：current 每次命中只续 access、滑动 `refreshExpiresAt`、同值重发 Cookie（`refreshCookie:true`）；重建失败时保留浏览器原 Cookie（`server.ts:3786-3803`）。
+- previous（宽限内）只发 access，不续期、不重发 Cookie；宽限外或既非 current 也非 previous → 撤销 session + 401 + `refresh.reuse_detected`（`server.ts:3705-3769`）。
+- body 源（无 Cookie 或 Cookie 无法解析）：current 正常轮换并置 `previousRefreshHash/graceUntil`，同源时例外地同时 `Set-Cookie`；previous 在宽限内回显请求值、不轮换；宽限外撤销并 401；未知 token 直接 401（不撤销未知会话）（`server.ts:3806-3884`）。
 - 撤销一致性（U241）：所有 session 级撤销经 `revokeSessionOnce`——仅在 `revokedAt === null` 时置值并 `bumpEpoch`（幂等）；覆盖过期/已撤销拒绝、reuse 三处、禁用、登出、设备批量。过期路径零审计、reuse 恰一条；已撤销再命中不重复 bump。**已知**：刷新过期后客户端自动登出时链上无撤销事件（U243①，待事件词汇批）。
-- 客户端三态 `ok/rejected/error`，只有 `rejected` 触发登出（`app.js:105-190`）。
+- 客户端三态 `ok/rejected/error`，只有 `rejected` 触发登出（`app.js:155-297`）。
 
 **页面恢复分支（HEAD）**
 
-- Cookie 模式：一次无 body 刷新；成功才删旧键（`refreshWithCookie` 成功后 `clearLegacyTokens`），随后 `/v1/me`（`app.js:106-128,5144-5162`）。
-- 旧模式：`/v1/me` 401 → body 刷新 → 重放（`app.js:5163-5175`）。启动期 body 刷新成功后在 `/v1/me` 拿到用户名时补写 `tokenOwner`（`app.js:205-210`；`u198-legacy-reload`、`web-refresh-cookie` U222 N3）。
+- Cookie 模式：一次无 body 刷新；成功才删旧键（`refreshWithCookie` 成功后 `clearLegacyTokens`），随后 `/v1/me`（`app.js:162-190,5321-5350`）。
+- 旧模式：`/v1/me` 401 → body 刷新 → 重放（`app.js:5352-5367`）。启动期 body 刷新成功后在 `/v1/me` 拿到用户名时补写 `tokenOwner`（`app.js:312-317`；`u198-legacy-reload`、`web-refresh-cookie` U222 N3）。
 - 迁移分支 **⛔ 未实现**：无 `orca.authMode` 标记时**不**发起无 body 探测；AC9b（有旧键）与 AC9c（无旧键、仅有效 Cookie）字面行为不成立，阻塞于 D17/U219（`u197-migration-browser` AC15(g) skip、`u197-web-cookie-browser` AC9c skip）。旧构建换新构建后首次加载不刷新，access 过期后才走一次 body 回退并置标记（`u197-migration-browser` INVALID-FACT）。
 
 **会话参数与配置（HEAD）**
 
 | 项          | 现状                                                                                                                                                                 | 来源                                                    |
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| access TTL  | 默认 30 分钟；`ORCA_CLOUD_ACCESS_TTL_MS` / `accessTtlMs` 可覆盖                                                                                                       | `server.ts:136,1939`                                    |
-| refresh TTL | 默认 12 小时；`ORCA_CLOUD_REFRESH_TTL_MS` / `refreshTtlMs` 可覆盖                                                                                                     | `server.ts:137,1940`                                    |
-| grace       | 默认 30 秒，上限 60 秒；`ORCA_CLOUD_REFRESH_GRACE_MS`；`0`=严格复用；非法/负数回落默认                                                                                | `server.ts:138-140,270-279`                             |
-| Cookie 属性 | `Path=/v1/auth`、`HttpOnly`、`SameSite=Lax`、`Max-Age=ceil(refreshTTL/1000)`；下发不带 Domain；`Secure` 见下                                                         | `refresh-cookie.ts:60-80`；`server.ts:2021-2031`        |
-| 清理作用域  | host-only `/v1/auth` + Domain `/v1/auth`（origin 为域名时）+ 旧构建 `Path=/`；重复 Cookie 也按这三条清                                                                 | `refresh-cookie.ts:93-113`；`server.ts:2033-2047`       |
-| 模式        | `auto`（默认）/`always`/`never`；`auto` 无有效 origin 降级 `never` 并告警一次；`always` 无 origin 启动即失败；非法值回落 `auto`                                       | `refresh-cookie.ts:173-212`；`server.ts:1958-1967`      |
+| access TTL  | 默认 30 分钟；`ORCA_CLOUD_ACCESS_TTL_MS` / `accessTtlMs` 可覆盖                                                                                                       | `server.ts:136,1970`                                    |
+| refresh TTL | 默认 12 小时；`ORCA_CLOUD_REFRESH_TTL_MS` / `refreshTtlMs` 可覆盖                                                                                                     | `server.ts:137,1971`                                    |
+| grace       | 默认 30 秒，上限 60 秒；`ORCA_CLOUD_REFRESH_GRACE_MS`；`0`=严格复用；非法/负数回落默认                                                                                | `server.ts:138-140,274-283`                             |
+| Cookie 属性 | `Path=/v1/auth`、`HttpOnly`、`SameSite=Lax`、`Max-Age=ceil(refreshTTL/1000)`；下发不带 Domain；`Secure` 见下                                                         | `refresh-cookie.ts:60-80`；`server.ts:2052-2062`        |
+| 清理作用域  | host-only `/v1/auth` + Domain `/v1/auth`（origin 为域名时）+ 旧构建 `Path=/`；重复 Cookie 也按这三条清                                                                 | `refresh-cookie.ts:93-113`；`server.ts:2064-2078`       |
+| 模式        | `auto`（默认）/`always`/`never`；`auto` 无有效 origin 降级 `never` 并告警一次；`always` 无 origin 启动即失败；非法值回落 `auto`                                       | `refresh-cookie.ts:173-212`；`server.ts:1989-1998`      |
 | Secure      | `always` 强制加；`auto` 在 https 或 loopback http 加；非 loopback http 省略并告警                                                                                    | `refresh-cookie.ts:193-211`                             |
-| PUBLIC_ORIGIN | 规范化 origin（scheme/host 小写、去默认端口与尾斜杠）；只用于同源判断与 Cookie 作用域，不信任 XFP/Host                                                                 | `refresh-cookie.ts:115-148`；`server.ts:1969-1977`      |
+| PUBLIC_ORIGIN | 规范化 origin（scheme/host 小写、去默认端口与尾斜杠）；只用于同源判断与 Cookie 作用域，不信任 XFP/Host                                                                 | `refresh-cookie.ts:115-148`；`server.ts:2000-2008`      |
 
 **失败分支（HEAD）**
 
 | 分支                     | 现象                                                                                                                             | 来源                                                                                   |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| CSRF 403                 | Cookie 认证的刷新缺失/跨源/`null` Origin，或 `content-type` 不是 `application/json` → `403 CSRF_REJECTED`，无续期/清理副作用       | `server.ts:2009-2019,3536-3540`；`refresh-cookie` CSRF 用例                            |
-| 重复 Cookie 401          | `orca_refresh` 出现两次（同名/多 Cookie 头）→ 登录/handoff/刷新/登出一律硬 `401 SESSION_EXPIRED`，清三种作用域，**不回退 body、不轮换、不撤销 session**（刷新） | `server.ts:1979-1982,3395-3399,3522-3526,3737-3741,3844-3847`；`refresh-cookie` 245/267 |
-| Cookie 缺失              | 服务端回退 body 刷新；Cookie 模式客户端若无旧 refresh → `rejected` → 回登录，无循环                                               | `server.ts:3667-3675`；`app.js:5144-5161`；`u197-web-cookie-browser`                   |
-| 传输失败                 | 客户端记为 `error`：页内请求**不登出**、保留会话、恢复后可重试；启动探测失败→登录页，不空白/无未捕获异常（启动含 10s 超时，U229 F5）                          | `app.js:117-120,143-146,176-183`；`web-refresh-cookie` U222 N1、`u197-web-cookie-browser` 597/642 |
+| CSRF 403                 | Cookie 认证的刷新缺失/跨源/`null` Origin，或 `content-type` 不是 `application/json` → `403 CSRF_REJECTED`，无续期/清理副作用       | `server.ts:2040-2050,3659-3663`；`refresh-cookie` CSRF 用例                            |
+| 重复 Cookie 401          | `orca_refresh` 出现两次（同名/多 Cookie 头）→ 登录/handoff/刷新/登出一律硬 `401 SESSION_EXPIRED`，清三种作用域，**不回退 body、不轮换、不撤销 session**（刷新） | `server.ts:2010-2013,3501-3504,3645-3648,3890-3893,4005-4008,4074-4075`；`refresh-cookie` 245/267 |
+| Cookie 缺失              | 服务端回退 body 刷新；Cookie 模式客户端若无旧 refresh → `rejected` → 回登录，无循环                                               | `server.ts:3806-3820`；`app.js:5321-5350`；`u197-web-cookie-browser`                   |
+| 传输失败                 | 客户端记为 `error`：页内请求**不登出**、保留会话、恢复后可重试；启动探测失败→登录页，不空白/无未捕获异常（启动含 10s 超时，U229 F5）                          | `app.js:174-179,208-212,273-285`；`web-refresh-cookie` U222 N1、`u197-web-cookie-browser` 597/642 |
 | 刷新 5xx/429/403         | 客户端归 `error`：不登出、保留会话，业务错误交给调用方（U229 F7） | `app.js` `refreshVerdict`；`u229-web-startup-resilience` |
 | 登录 200 非契约响应      | 校验 `accessToken/user.username/device.id`，不满足抛 `PLATFORM_UNAVAILABLE`「平台响应异常」，不写 `"undefined"`（U229 F6） | `u229-web-startup-resilience` |
 | 非对象 JSON body         | `readJson` 将 `null`/标量归一为 `{}`（数组/对象保留），各端点返回既有 4xx 而非 500（U236） | `u236-non-object-body` |
 | 登出带重复 Cookie        | 清三作用域后仍用 Bearer/body 显式凭据撤销，响应保持 401；仅重复 Cookie 不猜测撤销（U233 F1） | `refresh-cookie.e2e`、`u229-logout-body` |
 | refresh 请求体为 `null`  | 视为假 body：Cookie 源 200 不回显/不轮换；无 Cookie 401（U235） | `u235-refresh-null`（`refresh-cookie.e2e` 内） |
-| 外来 Origin 登录         | 配置了 PUBLIC_ORIGIN 时非平台 Origin 登录 → `403 CSRF_REJECTED`，不下发 body refresh                                              | `server.ts:2001-2007,3406-3409`；`refresh-cookie` 139                                 |
-| 带 Cookie 但无 Origin    | 登录/handoff → `401 SESSION_EXPIRED`，不按 Cookie 源解析                                                                          | `server.ts:1988-1994,3402-3405`；`refresh-cookie` 149                                 |
-| 刷新被拒                 | 客户端 `logout()`，清本地并回登录页                                                                                              | `app.js:67-74`                                                                         |
-| refresh 过期/会话已撤销  | 服务端 `401 SESSION_EXPIRED` 并清 Cookie                                                                                         | `server.ts:3543-3546,3672-3675`                                                        |
-| 禁用账号                 | **已修复（U228 `39ad743d793`）**：登录非 active → 403 `USER_DISABLED`（审计 login denied、不发令牌/Cookie）；刷新 Cookie/body 两源在 current/previous/宽限前统一检查 → 撤销+bump epoch+清 Cookie+401；客户端重放仍 401 即登出（旧行为见探索 E1） | `server.ts:3493-3503`（登录）、`3583-3605`（Cookie 刷新）、`3729-3752`（body 刷新）；`test-reports/u197-auth-exploration-20261118.md` E1     |
+| 外来 Origin 登录         | 配置了 PUBLIC_ORIGIN 时非平台 Origin 登录 → `403 CSRF_REJECTED`，不下发 body refresh                                              | `server.ts:2032-2038,3515-3518`；`refresh-cookie` 139                                 |
+| 带 Cookie 但无 Origin    | 登录/handoff → `401 SESSION_EXPIRED`，不按 Cookie 源解析                                                                          | `server.ts:2019-2025,3508-3514`；`refresh-cookie` 149                                 |
+| 刷新被拒                 | 客户端 `logout()`，清本地并回登录页                                                                                              | `app.js:84-98`                                                                         |
+| refresh 过期/会话已撤销  | 服务端 `401 SESSION_EXPIRED` 并清 Cookie                                                                                         | `server.ts:3665-3672,3815-3820`                                                        |
+| 禁用账号                 | **已修复（U228 `39ad743d793`）**：登录非 active → 403 `USER_DISABLED`（审计 login denied、不发令牌/Cookie）；刷新 Cookie/body 两源在 current/previous/宽限前统一检查 → 撤销+bump epoch+清 Cookie+401；客户端重放仍 401 即登出（旧行为见探索 E1） | `server.ts:3581-3594`（登录）、`3673-3680`（Cookie 刷新）、`3822-3828`（body 刷新）；`test-reports/u197-auth-exploration-20261118.md` E1     |
 
 **服务端认证语义（现状）**
 
@@ -110,7 +110,7 @@
 - 准入组语义（U69a 裁定）：**组=登录准入，不是角色映射**；新用户首登角色一律 `developer`，角色由平台内用户管理覆盖（`roleOverride` 优先）。
 - 会话：access/refresh TTL 见上表；旧 body 模式 refresh 每次旋转，旧值宽限期内可复用、宽限期外撤销会话；Cookie 模式 refresh 不轮换。
 - 锁定计数：配置 `ORCA_CLOUD_LOGIN_LOCKOUT_URL` 时走共享服务（不可达 → 登录 `503 PLATFORM_UNAVAILABLE`，fail-closed）；未配置时进程内计数（5 次 / 15 分钟）。
-- 审计：登录成功/失败、登出、`refresh.reuse_detected`、`refresh.grace_reuse` 均落链；复用事件只记来源，不记 token（`server.ts:3571-3579,3600-3608,3684-3692`；`refresh-cookie` 审计用例）。
+- 审计：登录成功/失败、登出、`refresh.reuse_detected`、`refresh.grace_reuse` 均落链；复用事件只记来源，不记 token（`server.ts:3710-3718,3739-3747,3837-3845`；`refresh-cookie` 审计用例）。
 
 ## 4. 数据来源
 
