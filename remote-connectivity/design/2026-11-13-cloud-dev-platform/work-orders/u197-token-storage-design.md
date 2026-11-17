@@ -1,8 +1,8 @@
 # U197：M116-QA-032 令牌存储加固设计
 
-- 版本：v3（依据 `cloud-platform/test-reports/u197-token-design-rereview.md`（本地，只读）修订）
-- 基线：以符号名为准，行号按 `5bfc3d4c9f7` 重算；v2 复审报告同 HEAD
-- 状态：v3 草案，待复审/裁定（本文只出方案，不改 `apps/**` 与测试）
+- 版本：v4（依据 v3 的 P0 聚焦复审结论修订；v3 依据 `cloud-platform/test-reports/u197-token-design-rereview.md`（本地，只读））
+- 基线：以符号名为准，行号按 `5bfc3d4c9f7` 重算；v2/v3 复审报告同 HEAD
+- 状态：v4 草案，待复审/裁定（本文只出方案，不改 `apps/**` 与测试）
 - 缺陷：M116-QA-032（P2，U54 台账）——`orca.access` / `orca.refresh` 明文存 `localStorage`
 - 范围：`cloud-platform/apps/web` 平台 Web 控制台及其同源 API（`cloud-platform/apps/api`）
 - 台账原始记录：`remote-connectivity/design/2026-11-13-cloud-dev-platform/test-reports/exploratory-qa-web.md:277`
@@ -36,6 +36,17 @@
 | 锚点与默认值 | §1、§2B、§4、§5 | 符号名 + 重算行号；TTL env 对齐；`graceMs`/Cookie 可执行默认；能力标记位置统一 |
 | handoff 跨源 | §2B「handoff 跨源」、§3 兼容、§5-6 | 区分平台同源与宿主跨源；宿主路径 Cookie 不生效，写明当前限制 |
 | 待决策 | §5 | 重切为 6 条互不重叠 |
+
+## 修订记录（v4，依据 v3 的 P0 聚焦复审）
+
+| 复审项 | 落点 | 要点 |
+|---|---|---|
+| 签发响应泄漏 refresh | §2B 第 1/9 条、§3 矩阵、§4 AC15 | 登录（`server.ts:3318-3338`）与平台同源交接（`:3440-3464`）成功响应：仅当实际下发同源 refresh Cookie 时响应体无 `refreshToken`；宿主跨源/非浏览器保留 body refresh |
+| 判据归属 | §2B 第 9 条 | 只看服务端「是否设置 Cookie」；`refreshCookie` 与 body 形态严格同源；禁止按请求头/客户端声明 |
+| 非浏览器调用 | §2B 第 1/6 条 | 无 `Origin` 按非浏览器处理：不下发 Cookie、保留 body refresh（浏览器同源 POST 必带 `Origin`） |
+| 同名 Cookie | §2B 第 4 条 | 不同 `Path` 取最具体；同 `Path` 重复则拒绝（DoS 而非泄漏）；禁止首/末值覆盖 |
+| 旧的同源页面 | §3 兼容说明、§4 AC15 | 登录后无 body refresh 时的 Cookie 恢复与重载路径；`"undefined"` 不作为凭据 |
+| 绝对寿命 | §5-4 | Cookie 源 + 空 body 滑动续期；会话绝对寿命若为安全目标需另裁定 |
 
 ---
 
@@ -148,7 +159,7 @@
 
 **服务端改动**
 
-1. 登录（`server.ts:3239`）、刷新（`3345-3371`）、Web 交接（`3375-3467`）在成功响应中下发 refresh cookie；交接仅对平台同源请求下发（宿主跨源见下方「handoff 跨源」），属性默认值见「Cookie 默认值」。
+1. 登录（`server.ts:3239`）、刷新（`3345-3371`）、Web 交接（`3375-3467`）在成功响应中下发 refresh cookie；**仅平台同源请求下发**（无 `Origin` 的非浏览器调用不下发；宿主跨源见下方「handoff 跨源」），属性默认值见「Cookie 默认值」；登录/交接的响应体规则见第 9 条。
 2. 刷新接口响应形态按**实际认证来源**决定，不使用请求头/客户端声明（P0-1 写死）：
    - **认证来源判定**：请求带有效 refresh Cookie 即 Cookie 源；否则 body `refreshToken` 非空且能定位 session 为 body 源；都没有 → 401。来源判定顺序固定为 Cookie 优先、body 回退（第 5 条第 4 点）。
    - **Cookie 为认证来源：绝不轮换、响应体绝不返回服务端新签 refresh。**
@@ -163,6 +174,7 @@
      - 其他：401 `SESSION_EXPIRED`。
 3. 登出（`server.ts:3467-3484`）**无论 Bearer 是否有效/过期**都 `Set-Cookie ... Max-Age=0`；Bearer 有效则撤销其 session；Cookie 可定位 session 且与 Bearer 的 session 不同时也一并撤销；Bearer 缺失/无效但 Cookie 可定位时按 Cookie 撤销；两者都没有也清 Cookie 并返回 200。清理 Path/属性必须与下发时一致，否则清不掉。
 4. CSRF 校验**只作用于实际使用 Cookie 的请求**（P1-3）：要求 `Origin` 与可信源精确一致，并校验 `content-type: application/json`；可按需加 `Sec-Fetch-Site: same-origin`。可信源优先取新增配置 `ORCA_CLOUD_PUBLIC_ORIGIN`，未配置时才回退 `requestOrigin(req)`（`server.ts:314-324`，依赖 Host/`X-Forwarded-Proto`）。Cookie 路径拒绝缺失 `Origin` 与 `Origin: null`；跨站返回 403 且不轮换。仅 body 认证的旧客户端与宿主跨源 Bearer 通道保持现状，不受该检查影响。
+   Cookie 解析优先级（v4）：按 RFC 6265 只解析 `Cookie` 请求头，`;` 分段、每段首个 `=` 切分；`orca_refresh` 同名不同 `Path` 时**取最具体的 `Path`**（本设计只设 `/v1/auth`，更具体者必为同源后续设置，优先采用）；同名**同 `Path` 出现重复或无法区分时拒绝请求（401，按无有效 Cookie 处理，不轮换、不续期、不撤销 session）**——宁可 DoS，不作顺序猜测；禁止实现成「首个/末尾覆盖」。旧 `Path`（如 `/`）的残留值不得胜出，改 Path 时先按旧 Path 清一次。
 5. 轮换宽限语义（P1-1 定死，六条，与第 2 条一致）：
    1. session 持有 `refreshHash`（current）、`previousRefreshHash`、`graceUntil`；只有 **body 源 current** 完成一次轮换时才前进：签发新 refresh、把旧 current 写入 previous、设 `graceUntil = now + graceMs`。Cookie 源一律不轮换（第 2 条）。
    2. previous 在窗口内（`now < graceUntil`）命中：**不轮换、不续期**（不延长 session/refresh/grace）、**不签发新 token**，只签发 access；请求未提供 body 时响应无 refresh，提供了则原样回显该请求值（绝不以 current 或新 token 替换）。
@@ -171,9 +183,14 @@
    5. 命中 previous 但窗口已过，等同复用旧 token，按现有复用检测撤销整个 session（`server.ts:3353-3359`）。
    6. `graceMs` 可配，允许 `0`（严格复用检测；并发刷新的第二请求会撤销 session）；默认 `30_000`，env `ORCA_CLOUD_REFRESH_GRACE_MS`，上限 `60_000`。
    宽限审计：新增 `refresh.grace_reuse`（窗口内命中 previous）与 `refresh.reuse_detected`（撤销）事件，落入现有审计出口（与 `web_handoff` 的 `appendBestEffort` 同一目录），只记录 session/来源类型，不记录 token 值。
-6. 能力标记（统一）：**删除 `x-orca-web-contract` 作为响应决策的选项**；能力只走响应字段 `refreshCookie: true`。出现位置统一为登录、刷新、交接三类成功响应，且**仅当该响应实际为平台同源请求下发了可用的 refresh `Set-Cookie`**（无 `Origin` 的非浏览器调用按同源处理；`ORCA_CLOUD_COOKIE_MODE=never` 时省略）；其他情况一律省略该字段（不写 `false`）。旧前端忽略它；新前端只有看到 `true` 才进入 Cookie 模式。
+6. 能力标记（统一）：**删除 `x-orca-web-contract` 作为响应决策的选项**；能力只走响应字段 `refreshCookie: true`。出现位置统一为登录、刷新、交接三类成功响应，且**仅当该响应实际为平台同源请求下发了可用的 refresh `Set-Cookie`**（无 `Origin` 的调用按非浏览器处理、不下发 Cookie；`ORCA_CLOUD_COOKIE_MODE=never` 时省略）；其他情况一律省略该字段（不写 `false`）。旧前端忽略它；新前端只有看到 `true` 才进入 Cookie 模式。该字段与签发响应的 body 形态严格同源（第 9 条）。
 7. Cookie 模式配置（P1-2）：`ORCA_CLOUD_COOKIE_MODE=auto|always|never`，默认 `auto`。`always` 强制 `Secure`；`auto` 在 https 或 loopback 下带 `Secure`，在非 loopback 的纯 http 下必须**显式降级并输出一次告警**（不得静默丢失 Cookie）；`never` 不下发 Cookie（仅用于排障）。
 8. 失败路径副作用（P2）：`SESSION_EXPIRED` 时清除 refresh Cookie；CSRF 403 **不清 Cookie、不撤销 session**；登出清 Cookie（`Max-Age=0`）并撤销 session。三条必须在同一测试矩阵中断言。
+9. **签发接口（登录/交接）响应体（v4 定死）**：`POST /v1/auth/login`（`server.ts:3318-3338`）与 `POST /v1/web/handoff`（`server.ts:3440-3464`）的成功响应**当且仅当该响应实际下发了可用的同源 refresh `Set-Cookie`（即第 6 条的 `refreshCookie: true` 条件成立）时，响应体不含 `refreshToken`**；未下发 Cookie 时（宿主跨源、`ORCA_CLOUD_COOKIE_MODE=never`、无 `Origin` 的非浏览器调用）保留 body refresh（本次新签），否则宿主页面无法获得凭据。
+   - 判据只由服务端「本次是否设置 Cookie」自决；禁止根据请求头、客户端版本、新增请求参数或 `x-orca-web-contract` 判断。
+   - `refreshCookie` 与 body 形态严格同源：出现该字段 ⇔ 响应体无 `refreshToken`；省略该字段 ⇔ body 保留 refresh。不得出现「有标记但体有 refresh」或「无标记但体无 refresh」。
+   - 宿主跨源 handoff 必须**不下发 Cookie**（CORS 不回 `access-control-allow-credentials`，浏览器即便收到也会丢弃 `Set-Cookie`），否则会同时丢掉 Cookie 与 body token。
+   - 非浏览器调用不回传 Cookie，走 body 源；若客户端回传了 Cookie 却无 `Origin`，按第 4 条 401（不按 Cookie 源解析）。
 
 **Cookie 默认值（可执行）**
 
@@ -191,7 +208,7 @@ TTL 变量统一：access 用 `ORCA_CLOUD_ACCESS_TTL_MS`（`server.ts:6559`）�
 **handoff 跨源（P1-1 写死）**
 
 - **平台同源**（平台控制台从 API 同源加载）：Cookie 正常存取，适用方案 B 全部行为。
-- **宿主跨源**（`cloud-admin.html` / `web-index.html` 由宿主 TLS 直连或中继浏览器边缘托管，调用 `${apiUrl}/v1/web/handoff`）：`web-cloud-request.ts:27-42` 使用 fetch 默认 `credentials: same-origin`，且 CORS 只回 `access-control-allow-origin`、不回 `access-control-allow-credentials`（`server.ts:3127-3137`）。因此浏览器**既不发送也不保存**平台 Cookie；handoff 响应里的 `Set-Cookie` 被丢弃，`refreshCookie` 也不会出现。宿主页面继续 Bearer + `orca.webCloudSession`（`web-cloud-session-storage.ts:15,50-57`）。
+- **宿主跨源**（`cloud-admin.html` / `web-index.html` 由宿主 TLS 直连或中继浏览器边缘托管，调用 `${apiUrl}/v1/web/handoff`）：`web-cloud-request.ts:27-42` 使用 fetch 默认 `credentials: same-origin`，且 CORS 只回 `access-control-allow-origin`、不回 `access-control-allow-credentials`（`server.ts:3127-3137`）。因此浏览器**既不发送也不保存**平台 Cookie；handoff 响应里的 `Set-Cookie` 被丢弃，`refreshCookie` 也不会出现。宿主页面继续 Bearer + `orca.webCloudSession`（`web-cloud-session-storage.ts:15,50-57`）；按第 9 条，该路径响应体保留**新签** `refreshToken`。
 - 当前限制：Cookie 模式只覆盖平台控制台，**不覆盖 handoff 路径**。要让宿主 Cookie 生效需 `credentials: 'include'` + `Access-Control-Allow-Credentials: true` + `SameSite=None; Secure`（并受第三方 Cookie 限制），本设计不做，列入 §5-6 范围裁定。
 
 **前端改动**
@@ -230,6 +247,7 @@ TTL 变量统一：access 用 `ORCA_CLOUD_ACCESS_TTL_MS`（`server.ts:6559`）�
 - 页内 401（不 reload）触发一次 Cookie 刷新并重放成功；登出在 access 已过期 + Cookie 有效时仍清 Cookie 并撤销 session。
 - body 回退路径；Origin 拒绝（含缺失/`null`）；跨标签并发刷新；页面刷新恢复；旧前端 e2e。
 - 能力标记缺失时的回退（新前端 + 旧服务端）；Cookie 丢失后只失败一次并回登录页（不重复刷新）。
+- 签发响应形态（第 9 条）：同源登录/交接无 body refresh 且 `refreshCookie: true`；宿主跨源 handoff 有新签 body refresh；无 `Origin` 脚本调用两者都保留。
 
 **测试策略（P1-5 定死）**
 
@@ -240,7 +258,7 @@ TTL 变量统一：access 用 `ORCA_CLOUD_ACCESS_TTL_MS`（`server.ts:6559`）�
 
 **迁移与回退判据（P1-4 定死）**
 
-- 服务端先行判据：双读（Cookie 优先、body 回退）生效；登录/刷新/交接在同源请求下发 Cookie；刷新响应带 `refreshCookie`；Cookie 源 + current/previous body 原样回显请求值、假 body 不回 refresh；body 源 current 返回新签发 refresh。以上全部通过独立服务端验收后，才可发布 Web。
+- 服务端先行判据：双读（Cookie 优先、body 回退）生效；登录/刷新/交接在同源请求下发 Cookie；刷新响应带 `refreshCookie`；同源登录/交接成功响应**无** `refreshToken`，宿主跨源/非浏览器仍有 body refresh（第 9 条）；Cookie 源 + current/previous body 原样回显请求值、假 body 不回 refresh；body 源 current 返回新签发 refresh。以上全部通过独立服务端验收后，才可发布 Web。
 - Web 后行判据：真实 Chromium 中一次无 body 刷新成功拿到 access，且该次响应 `Set-Cookie` 生效（`document.cookie` 不可见）后，才删除遗留 `localStorage` 键并切换为内存 + Cookie。
 - 新 Web + 旧服务端：能力标记缺失时回退 `localStorage`（临时延续缺陷，QA-032 在该组合下保持未关闭）；不得回退 `sessionStorage`（多标签会强制重登）。
 - 回退顺序：先回滚 Web（旧构建仍可由归档资源服务，`web-release.ts:60-110`），再回滚服务端；禁止先回滚服务端，否则已切换 Cookie-only 的页面无法恢复。
@@ -317,14 +335,14 @@ TTL 变量统一：access 用 `ORCA_CLOUD_ACCESS_TTL_MS`（`server.ts:6559`）�
 1. 只有 B 让 refresh token 对同源脚本不可读，直接消除“XSS 长期外带 refresh”的核心风险；sessionStorage（A）只是把持久窃取改成当次窃取。
 2. 平台前端与 API 同源（`server.ts:3228-3236`、`6443-6475`），Cookie 是最自然的传输方式，不需要跨源改造；现有宿主页面的 Bearer 通道不受影响。
 3. B 顺带修复页面刷新恢复缺口（`app.js:4987-5005`）：Cookie 自动携带，刷新页面即可换新 access。
-4. 兼容性可控：body 源刷新继续返回新 `refreshToken`；已有 Cookie 的旧页面收到的是其请求值的原样回显，不会写入 `undefined`；旧前端无需改动。前端和 API 独立发布、旧资源归档的机制（`web-release.ts:1-9`）要求这种双栈窗口。
+4. 兼容性可控：body 源刷新继续返回新 `refreshToken`；已有 Cookie 的旧页面在刷新时收到的是其请求值的原样回显，不会写入 `undefined`；同源登录/交接的**新会话**按第 9 条不回 body refresh，旧页面靠一次重载 + Cookie 恢复，刷新路径无需改动。前端和 API 独立发布、旧资源归档的机制（`web-release.ts:1-9`）要求这种双栈窗口。
 5. 与未来 SSO 方向一致；C 的 CSP 可以作为并行纵深，不阻塞 B。
 
 **备选：方案 A**，仅在服务端改动无法在本周期落地时采用。必须明确它不关闭 QA-032 的 XSS 外带面，并且会让新标签必须重新登录；若要保留多标签体验，需要额外的 `BroadcastChannel` 中继，复杂度会追上 B，却没有 B 的安全收益。
 
 **建议实施顺序**
 
-1. 服务端：下发 Cookie、双读（Cookie 优先，body 回退）、Origin/content-type 校验、轮换宽限、`refreshCookie` 标记；响应形态按 §2B 第 2 条（Cookie 源永不新签、current/previous 原样回显、假 body 不回；仅 body 源 current 返回新签发）。
+1. 服务端：下发 Cookie、双读（Cookie 优先，body 回退）、Origin/content-type 校验、轮换宽限、`refreshCookie` 标记；响应形态按 §2B 第 2 条（Cookie 源永不新签、current/previous 原样回显、假 body 不回；仅 body 源 current 返回新签发）与第 9 条（同源登录/交接不回 body refresh）。
 2. Web：能力标记为真时切换为“access 内存 + Cookie refresh”，在一次无 body 刷新成功后删除 `localStorage` 令牌键；标记缺失时回退 `localStorage`（见 §2B 迁移判据与 §5）。
 3. 清理：兼容窗口结束后，才考虑停止返回 body refresh / 提升 Web 契约版本；本次不排期。
 4. 并行纵深：严格脚本 CSP（Report-Only 起步）、遗留键清理、登出跨标签通知。
@@ -335,6 +353,7 @@ TTL 变量统一：access 用 `ORCA_CLOUD_ACCESS_TTL_MS`（`server.ts:6559`）�
 - 旧 Web 客户端（包括部署前加载、仍由归档资源服务的旧页面）：继续用 body `refreshToken`，服务端双读；无 Cookie 时行为不变，它忽略 `Set-Cookie`。
 - 旧客户端矩阵补充「已有 Cookie + body 请求」：服务端已下发 Cookie 后，旧页面仍会带 body refresh 刷新。响应必须让旧页面拿到**非 `undefined`** 的 refresh，否则 `setTokens(body.accessToken, undefined)` 会写入字符串 `"undefined"` 并掉线（`app.js:96-101`、`4815`）。v3 的保证是：请求值属于本 session 的 current/previous 时**原样回显该值**；任意假 body 不回 refresh。
 - 宿主跨源 handoff：见 §2B「handoff 跨源」，Cookie 不生效，保持 body token + Bearer。
+- 旧同源页面**新登录**：登录响应按第 9 条不含 `refreshToken`，但已同时下发 Cookie。旧 `app.js` 执行 `setTokens(body.accessToken, undefined)`（`app.js:4815`、`96-101`）：内存 `state.refreshToken` 为 `undefined`（falsy），`api()` 的 401 分支（`app.js:54-58`）因此不发起 body 刷新，**该值也永不被当作 refresh 凭据发送**；`localStorage` 只会留下字面量 `"undefined"`（非令牌值，AC1 的令牌值扫描不受影响，新构建加载后的迁移分支会删除）。恢复路径：Cookie 已在登录时设置，页面重载即由 `index.html` 的 `no-cache`（`server.ts:6458-6465`）拿到新构建，按 §2B 迁移状态机以一次无 body Cookie 刷新恢复。已知限制：旧标签内 access 过期后不自恢复（与 §1.2 现状一致），需一次重载。
 
 | 请求形态 | 认证来源 | 响应体 |
 |---|---|---|
@@ -344,6 +363,8 @@ TTL 变量统一：access 用 `ORCA_CLOUD_ACCESS_TTL_MS`（`server.ts:6559`）�
 | 任意页面：已有 Cookie + 假 body | Cookie | 按无 body Cookie 请求处理：不轮换、同一 Cookie 续期；响应体无 `refreshToken` |
 | 新页面：仅 Cookie | Cookie | 只含 `accessToken`/`expiresIn`，无 `refreshToken` |
 | 新页面：Cookie 丢失 | 无 | 401，前端一次失败后回登录 |
+| 平台同源登录/交接成功（Cookie 已下发） | Cookie 下发 | 无 `refreshToken`（仍含 `accessToken`/`expiresIn`/`user`/`device`，`refreshCookie: true`） |
+| 宿主跨源 handoff 成功（Cookie 不生效） | 无 Cookie | 含**新签发** body `refreshToken`（维持现状） |
 - 新 Web 客户端 + 旧服务端：服务端没有能力标记，客户端不得假定 Cookie 存在；必须保留回退路径，否则页面刷新即掉线。
 - 新服务端 + 旧客户端：服务端仍接受 body，轮换宽限不改变响应结构。
 - 旧客户端在无 Cookie 时仍看到“轮换语义没变”（每次返回新 refresh）；一旦服务端下发 Cookie，旧页面的 body refresh 改为原样回显、不再轮换，但字段始终存在且非 `undefined`。
@@ -372,6 +393,7 @@ TTL 变量统一：access 用 `ORCA_CLOUD_ACCESS_TTL_MS`（`server.ts:6559`）�
 | AC12 | Cookie 丢失回退不死循环（P1-2，覆盖 AC9c/AC9d 的无旧键与失败分支）：手动删除 refresh Cookie 后触发刷新，前端只发起 1 次刷新，失败后清内存 access 并回登录页；若存在旧键，最多再回退 1 次 body 刷新 | Playwright 请求计数 + 页面可见性 |
 | AC13 | 失败路径副作用（P2）：`SESSION_EXPIRED` 响应清 Cookie；CSRF 403 不清 Cookie、不撤销 session；登出清 Cookie（`Max-Age=0`） | 响应头 + Cookie jar 检查，三者在同一矩阵 |
 | AC14 | 页内 401（reload 之外，P1-3）：access 过期后在当前页触发一次业务请求，前端恰好发起一次 Cookie 刷新并重放成功，页面保持登录；不出现第二次自动刷新 | 短 access TTL + Playwright 网络计数；不调用 `reload()` |
+| AC15 | 签发响应不泄漏 refresh（v4，三类请求）：(a) 平台同源 `POST /v1/auth/login` 与 `POST /v1/web/handoff` 成功响应 **JSON 无 `refreshToken` 键**且 `refreshCookie === true`、响应含可用 `Set-Cookie`；(b) 宿主跨源 handoff（非平台 `Origin`）成功响应**仍含新签发 `refreshToken`** 且无 `refreshCookie`；(c) 无 `Origin` 的脚本调用不下发 Cookie、含 `refreshToken`。旧同源页面（旧 `app.js` 夹具）登录后：响应无 body refresh、Cookie 已设，内存 refresh 为 falsy、不发起 body 刷新、`"undefined"` 从未作为 refresh 被服务端接受（按假 body 处理）；重载后由一次无 body Cookie 刷新恢复 | in-process 原始 HTTP 三档 + 真实 Chromium 旧构建夹具；断言 JSON 键集合、`refreshCookie` 与 body 形态一一对应（第 9 条）、`Set-Cookie` 属性、`ApiHandle.store` 中 session 未被撤销 |
 
 多标签口径：Cookie 源不轮换，断言哈希不变且无 `SESSION_EXPIRED`；body 源旧客户端断言 current 哈希最多前进一次。宽限只允许中间态短暂存在。
 
@@ -384,6 +406,6 @@ TTL 注入口径（P2）：`ORCA_CLOUD_ACCESS_TTL_MS` 只用于缩短 access TTL
 1. **B 推进与 SSO 路线**：确认方案 B 为关闭 QA-032 的唯一路径；本周期不能改服务端时，A 只作临时缓解且 QA-032 保持未关闭。未来 SSO 是否按 Cookie 承载设计（若是，B 为前置约束）。
 2. **响应形态判别口径**（P0-1/P0-2 规则已定，不再开放）：current/previous 判定用常量时间哈希比较的实现归属；假 body 命中时是否新增 `refresh.body_rejected` 审计；回显值是否进入访问日志的脱敏检查。不得改变「Cookie 源绝不新签、仅原样回显」的结论。
 3. **Cookie 属性、生命周期与降级**：确认默认名 `orca_refresh`、`Path=/v1/auth`、`SameSite=Lax`、`Max-Age=refresh TTL`；是否改用会话 Cookie（关闭浏览器即结束）；`ORCA_CLOUD_COOKIE_MODE=auto` 在非 loopback 纯 http 下告警后是否放行。
-4. **grace 与审计**：默认 `graceMs=30_000`、上限 `60_000` 是否接受，生产是否允许 `0`；`refresh.grace_reuse` / `refresh.reuse_detected` 的审计目录与告警阈值；多标签登出是否用 `BroadcastChannel` 即时切换（否则接受下一次请求被动登出）。
+4. **grace 与审计**：默认 `graceMs=30_000`、上限 `60_000` 是否接受，生产是否允许 `0`；`refresh.grace_reuse` / `refresh.reuse_detected` 的审计目录与告警阈值；多标签登出是否用 `BroadcastChannel` 即时切换（否则接受下一次请求被动登出）。**绝对寿命（v4 标注）**：Cookie 源 + 空 body 刷新会以同一 refresh 值重发 `Set-Cookie` 并推进 `refreshExpiresAt`（滑动续期），活跃会话没有绝对上限；若「会话绝对寿命」（如 12 小时封顶、强制重登）是安全目标，需另行裁定并引入 `sessionStartedAt`/绝对 `expiresAt`，本设计不提供。
 5. **迁移、回退与 body 移除**：四分支状态机是否按 §2B 执行；新 Web + 旧服务端回退 `localStorage` 是否接受（该组合下 QA-032 保持未关闭）；回滚顺序固定为 Web 先、服务端后；body refresh 移除是否接受「遥测 30/14 天 + 90 天期限兜底」与强制旧标签重登。
 6. **部署前置、CSP 与关闭范围**：TLS、反向代理的 Host/`X-Forwarded-Proto`、`ORCA_CLOUD_PUBLIC_ORIGIN` 的配置责任；多副本必须粘性会话或共享 store；CSP 是否与 B 同批（`style-src 'unsafe-inline'` 为过渡豁免）；宿主跨源 handoff 的 Cookie 不生效是否接受为当前限制；QA-032 关闭只认平台同源 Cookie-only 刷新，TTL 缩短、`orca.user` PII、宿主 `orca.webCloudSession` 均不纳入关闭条件。
