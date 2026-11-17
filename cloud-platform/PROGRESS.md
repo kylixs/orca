@@ -4248,3 +4248,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U232 补测落地**（`62b0cf5de1c`）：新套件 `u232-pending-logout-retry` 2 例——启动 pending 重试失败保留标记（且不探测会话）；错误密码登录失败标记仍在、正确登录后清标记且不再补发。主会话复跑 2/2。U235 独立复审在途。
 - **U231 修复落地**（`c53a890affe`，4 文件）：`legacyOwnerAllowsFallback` 对非空 owner 即允许回退（user 缓存可因启动传输失败缺失；无 owner 仍清键）；F1b TTL 2500→6000ms；新增真实 Chromium「无 body 探测在途跨登出换账号」用例（旧响应不复活旧会话、新 Cookie 服务业务）；migration pin 同步。主会话复跑 3 套件 **29 pass/2 skip**；误命名用例已更正（非 AC9b）。U235 复审在途。
 - **U235 复审 APPROVED**：null 按假 body/无 body、标量/数组行为不变、与 U236 归一无冲突（守卫冗余但无害）、安全检查先于 body 解析、回归 97/97（主会话复跑 67/67 子集）。台账 U235 翻 🟢；修正过期注释（readJson 已归一）。P3 记录：守卫可后续清理。
+- **U234 修复落地**（`bd55fbddcae`，4 文件）：`abandonStartupAuth()`（epoch++ + abort）覆盖三条启动失败/超时路径，迟到 refresh 返回 `stale` 不写状态；四态契约注释；`refreshVerdict` 收紧（403/408/429/5xx→error；其余 4xx→rejected；非 4xx→error）；F11 空值安全；单飞钉住。新用例 3 红→绿；主会话复跑 4 套件 **39 pass/2 skip**。待复审（重点 harness `release()` 剥离 abort 是否失真）。
