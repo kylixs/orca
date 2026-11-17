@@ -56,11 +56,22 @@ function runStep(step, outDir) {
 }
 
 // Guard: a step is only valid evidence if a real test ran for long enough.
+function collectSpecs(suites) {
+  return (suites ?? []).flatMap((suite) => [...(suite.specs ?? []), ...collectSpecs(suite.suites)])
+}
+
+function specDurationMs(spec) {
+  return Math.max(
+    0,
+    ...(spec.tests ?? []).flatMap((test) => (test.results ?? []).map((r) => r.duration ?? 0))
+  )
+}
+
 export function validateRun(jsonPath) {
   const report = JSON.parse(readFileSync(jsonPath, 'utf8'))
-  const tests = report.suites.flatMap((suite) => suite.specs ?? [])
+  const tests = collectSpecs(report.suites)
   const passed = tests.filter((spec) => spec.ok === true)
-  const ranLongEnough = passed.every((spec) => (spec.duration ?? 0) >= MIN_TEST_MS)
+  const ranLongEnough = passed.every((spec) => specDurationMs(spec) >= MIN_TEST_MS)
   return {
     specCount: tests.length,
     passed: passed.length,
