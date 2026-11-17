@@ -4205,3 +4205,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U222/U223 复审 APPROVED**：U222 N1/N2/N4 CLOSED、N3 PARTIAL（Cookie marker + 回滚/never 时 body 回退令牌无 owner，窄路径）；U223 结构性区分/快照 sha256 一致/TTL 假红方向/新断言全部核验。两行翻 🟢。残留登记 **U225（🟡）** 并派修：N3R owner 回填扩展至 Cookie 启动分支、迁移测试干净树守卫、加载后 TTL 断言、事实用例标题去子串、快照 sha256 守卫、真实并发两 401 断言。
 - **U224 CSP 复审 12/13 闭环**：唯一剩余 P3（`frame-ancestors` 命中枚举误写为「均为文件预览」）与两处措辞已修（`f6214f8cbaf`/`1e62748b23f`）——完整枚举含移动 HTML 预览、聊天/插件 srcdoc、桌面 `<webview>` guest；T2 引用更正为 in-process Chromium；验证段改为拟新增单测 + 现有 `web-release.e2e.test.ts:105-107` 同语义。待最终确认。
 - **U224 关闭（CSP 草稿复审 APPROVED）**：13/13 闭环；草稿结论「D10 可按 Report-Only 推进」成立，O6「CSP 不单独关闭 QA-032」保留。台账 U224 翻 🟢。
+- **U225 修复落地**（`68d6525dd87`，2 文件）：N3R Cookie 启动分支 `/v1/me` 成功补 `bindLegacyTokenOwner`（纯 Cookie 不写），新增真实 Chromium 两用例；N1 迁移测试对工作树 app.js 加 sha256 守卫（与 HEAD 一致，主会话核验）；N2 加载后 `/v1/me` 时刻 < TTL−1s 断言；P3 事实用例去 `AC15(g)` 子串、fixture 正文 sha256 断言。主会话独立复跑 3 套件 **40 pass/2 skip/0 fail**。待复审。
