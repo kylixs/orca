@@ -45,6 +45,10 @@ node cloud-platform/scripts/monitor-system-resources.mjs \
 - **tier runner 用独立子进程采样**：`run-test-tier.mjs` 启动 `resource-sampler.mjs` 子进程，结束后 SIGTERM 并等待 summary。采样不依赖 runner 事件循环，因此 `spawnSync` 阻塞期间仍持续落盘（U179 修复；旧实现 `samples=0`）。
 - 用途：长跑（L4/T1/冒烟）必须带监控；出现 node 进程数或 RSS 异常增长即判资源问题、先停再查。
 
+## 证据完整性（2026-11-17）
+
+- 证据目录须过 `node cloud-platform/scripts/validate-evidence.mjs <evidence-dir> [--require=run.log,summary.json] [--max-age-hours=24]`（PASS 才可引用；自测：`pnpm test:evidence`）。
+
 ## 测试进程生命周期（2026-11-17 用户指令）
 
 - **只处理本项目进程**：清理器 `cloud-platform/scripts/cleanup-test-processes.mjs` 仅匹配本项目路径与测试临时目录（`/tmp/orca-*`、`/private/tmp/{u*,w*,c6,gate,smoke,resmon}-*`、本仓 `node_modules/.pnpm/electron*`），**保留** `~/orca-local-env` 的 supervisor/forwarder/relay 与 30 分钟内启动的在途测试进程。
