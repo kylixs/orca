@@ -41,7 +41,7 @@ export function summarize(rows, loadAvg, cpuCount) {
   }
 }
 
-function sample() {
+export function sampleSystem() {
   const ps = spawnSync('ps', ['-axo', 'pid=,rss=,command='], { encoding: 'utf8' })
   const rows = parseProcessTable(`pid rss command\n${ps.stdout ?? ''}`)
   const loadAvg = process.loadavg?.() ?? []
@@ -82,7 +82,7 @@ export function startMonitor({ intervalSec, outDir, limits }) {
   const jsonl = join(outDir, 'system-resources.jsonl')
   const samples = []
   const timer = setInterval(() => {
-    const value = { at: new Date().toISOString(), ...sample() }
+    const value = { at: new Date().toISOString(), ...sampleSystem() }
     samples.push(value)
     appendFileSync(jsonl, `${JSON.stringify(value)}\n`)
     const bad = violations(value, safeLimits)

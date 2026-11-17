@@ -4,11 +4,13 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { startMonitor } from './monitor-system-resources.mjs'
+import { startSamplerProcess } from './resource-sampler.mjs'
 import { selectTargets } from './cleanup-test-processes.mjs'
 
 // Repo root derived from this script, so tiers work from any cwd (IDE task, subdirectory).
 export const REPO = resolve(import.meta.dirname, '..', '..')
+export const MIN_NODE_VERSION = '24.16.0'
+export const TIER_SCRIPT = 'cloud-platform/scripts/run-test-tier.mjs'
 
 const VITEST = 'node_modules/.bin/vitest'
 const VITEST_CONFIG = 'config/vitest.config.ts'
@@ -177,6 +179,61 @@ export function runCloudE2E(paths, { run: runFn = run } = {}) {
   })
 }
 
+function parseVersionParts(version) {
+  const match = String(version ?? '')
+    .trim()
+    .match(/^v?(\d+)\.(\d+)\.(\d+)/)
+  return match ? match.slice(1, 4).map(Number) : null
+}
+
+export function isSupportedNode(version, minimum = MIN_NODE_VERSION) {
+  const current = parseVersionParts(version)
+  const required = parseVersionParts(minimum)
+  if (!current || !required) return false
+  for (let index = 0; index < 3; index += 1) {
+    if (current[index] !== required[index]) return current[index] > required[index]
+  }
+  return true
+}
+
+function defaultReexec({ argv, env, script = TIER_SCRIPT }) {
+  const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx'
+  const result = spawnSync(npx, ['-y', `node@${MIN_NODE_VERSION}`, script, ...argv], {
+    stdio: 'inherit',
+    env
+  })
+  if (result.error) throw result.error
+  return result.status ?? 1
+}
+
+// Why: node:sqlite truncates TEXT at NUL before 24.16, which reads as product failures.
+export function ensureSupportedNode({
+  version = process.versions.node,
+  execPath = process.execPath,
+  argv = [],
+  env = process.env,
+  script = TIER_SCRIPT,
+  reexec = defaultReexec,
+  log = console.log,
+  error = console.error
+} = {}) {
+  log(`[runtime] node ${version} (${execPath}); required >= ${MIN_NODE_VERSION}`)
+  if (isSupportedNode(version)) return { ok: true, code: 0 }
+  if (env.ORCA_TEST_NODE_AUTO === '1') {
+    log(
+      `[runtime] node ${version} < ${MIN_NODE_VERSION}; re-executing via npx node@${MIN_NODE_VERSION}`
+    )
+    return { ok: false, code: reexec({ argv, env, script }) }
+  }
+  error(`[runtime] refusing to run: node ${version} < ${MIN_NODE_VERSION}`)
+  error('[runtime] older node:sqlite truncates TEXT at NUL and produces false failures')
+  error(
+    `[runtime] re-run with: npx -y node@${MIN_NODE_VERSION} ${script} ${argv.join(' ') || '<tier>'}`
+  )
+  error('[runtime] or set ORCA_TEST_NODE_AUTO=1 to re-exec automatically')
+  return { ok: false, code: 3 }
+}
+
 function cleanupStaleProcesses() {
   // Why: leftover Electron/daemon processes from earlier runs poison later runs.
   const ps = spawnSync('ps', ['-axo', 'pid=,ppid=,etime=,command='], { encoding: 'utf8' })
@@ -191,58 +248,75 @@ function cleanupStaleProcesses() {
   if (stale.length > 0) console.log(`[cleanup] terminated ${stale.length} stale test processes`)
 }
 
-export function main(
+export async function main(
   argv,
   {
-    startMonitor: start = startMonitor,
+    startSampler = startSamplerProcess,
     cleanup = cleanupStaleProcesses,
     chdir = process.chdir,
-    run: runFn = run
+    run: runFn = run,
+    version = process.versions.node,
+    execPath = process.execPath,
+    env = process.env,
+    reexec,
+    log = console.log,
+    error = console.error
   } = {}
 ) {
   const tier = argv[0]
   // Reject unsupported tiers before any side effect (mkdir, monitor, process cleanup).
   if (!VALID_TIERS.has(tier)) {
-    console.error('usage: run-test-tier.mjs <smoke|critical|changed|full>')
+    error('usage: run-test-tier.mjs <smoke|critical|changed|full>')
     return 2
   }
   if (tier === 'full') {
-    console.error('full tier is a release gate: use the documented L4 run (serial, node>=24.16)')
+    error('full tier is a release gate: use the documented L4 run (serial, node>=24.16)')
     return 2
   }
+  const gate = ensureSupportedNode({
+    version,
+    execPath,
+    argv,
+    env,
+    log,
+    error,
+    ...(reexec ? { reexec } : {})
+  })
+  // A re-executed child carries the verdict; the parent must not run the tier twice.
+  if (!gate.ok) return gate.code
   // Why: every path below is repo-relative; running from a subdirectory used to pass zero tests.
   chdir(REPO)
-  const monitor = start({
+  const sampler = startSampler({
     intervalSec: 5,
     outDir: `cloud-platform/evidence/resource-monitor-${tier}-${Date.now()}`,
     limits: { maxNode: 24, maxRssGb: 12, maxLoad: 0 }
   })
-  cleanup()
-  const finish = (code) => {
-    monitor.stop()
-    return code
-  }
-  if (tier === 'critical') {
-    const vitest = runVitest(CRITICAL_VITEST, { run: runFn })
-    if (vitest !== 0) return finish(vitest)
-    return finish(runCloudE2E(CRITICAL_CLOUD_E2E, { run: runFn }))
-  }
-  if (tier === 'changed') {
-    const files = changedFiles()
-    const targets = changedTargets(files)
-    console.log(
-      `changed tier: ${targets.vitest.length} vitest paths, ${targets.cloudE2E.length} cloud e2e paths`
-    )
-    if (files.some((file) => file.startsWith('cloud-platform/apps/api/'))) {
-      console.log('[changed] api 改动如需全树验证请显式跑 T1（critical）或 T3（发版 L4）')
+  try {
+    cleanup()
+    if (tier === 'critical') {
+      const vitest = runVitest(CRITICAL_VITEST, { run: runFn })
+      if (vitest !== 0) return vitest
+      return runCloudE2E(CRITICAL_CLOUD_E2E, { run: runFn })
     }
-    const vitest = runVitest(targets.vitest, { run: runFn })
-    if (vitest !== 0) return finish(vitest)
-    return finish(runCloudE2E(targets.cloudE2E, { run: runFn }))
+    if (tier === 'changed') {
+      const files = changedFiles()
+      const targets = changedTargets(files)
+      log(
+        `changed tier: ${targets.vitest.length} vitest paths, ${targets.cloudE2E.length} cloud e2e paths`
+      )
+      if (files.some((file) => file.startsWith('cloud-platform/apps/api/'))) {
+        log('[changed] api 改动如需全树验证请显式跑 T1（critical）或 T3（发版 L4）')
+      }
+      const vitest = runVitest(targets.vitest, { run: runFn })
+      if (vitest !== 0) return vitest
+      return runCloudE2E(targets.cloudE2E, { run: runFn })
+    }
+    return runFn('node', ['cloud-platform/scripts/smoke/desktop-smoke-gate.mjs'])
+  } finally {
+    await sampler.stop()
   }
-  return finish(runFn('node', ['cloud-platform/scripts/smoke/desktop-smoke-gate.mjs']))
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  process.exit(main(process.argv.slice(2)))
+  process.exit(await main(process.argv.slice(2)))
 }

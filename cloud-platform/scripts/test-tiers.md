@@ -13,6 +13,15 @@
 
 npm 快捷入口：`pnpm test:tier:smoke` / `pnpm test:tier:critical` / `pnpm test:tier:changed`（均自动带资源监控与运行前进程清理）。
 
+## 运行时门（2026-11-17 U179）
+
+- `run-test-tier.mjs` 启动任何 tier 前先校验执行它的 Node：**必须 ≥ 24.16.0**（真 Node，非 Electron）。
+- Node < 24.16 时**拒绝运行**（exit 3，不 chdir/不清理/不启动监控），打印可用命令：
+  `npx -y node@24.16.0 cloud-platform/scripts/run-test-tier.mjs <tier>`。
+- 设 `ORCA_TEST_NODE_AUTO=1` 时自动用 `npx -y node@24.16.0` 重新执行自身并透传参数；npx 会把 24.16 的 `node` 放到 PATH 前面，vitest 的 `#!/usr/bin/env node` 也随之落到正确版本。
+- 原因：Node < 24.16 的 `node:sqlite` 在 TEXT 的 NUL 处截断，制造台账簇等环境假红（见 `env-gated-test-suites.md`）。每次运行都会打印实际版本：`[runtime] node <version> (<execPath>)`。
+- 不要用 Electron 内置 Node 跑含证书/EC 的套件（BoringSSL `DECODE_ERROR`）。
+
 ## 原则
 
 1. **默认只跑 T2**：`git diff HEAD` 与 `origin/main...HEAD` 的文件映射到目录级测试；没有映射时明确输出「无受影响测试」。
@@ -33,6 +42,7 @@ node cloud-platform/scripts/monitor-system-resources.mjs \
 
 - 采样内容：进程数、node/Electron 进程数、总 RSS、loadavg、Top5 内存进程；每 5s 一行写入 `system-resources.jsonl`。
 - 超阈值打印 `[resource-watch]` 警告；结束写 `system-resources-summary.json`（peak 值）。
+- **tier runner 用独立子进程采样**：`run-test-tier.mjs` 启动 `resource-sampler.mjs` 子进程，结束后 SIGTERM 并等待 summary。采样不依赖 runner 事件循环，因此 `spawnSync` 阻塞期间仍持续落盘（U179 修复；旧实现 `samples=0`）。
 - 用途：长跑（L4/T1/冒烟）必须带监控；出现 node 进程数或 RSS 异常增长即判资源问题、先停再查。
 
 ## 测试进程生命周期（2026-11-17 用户指令）
