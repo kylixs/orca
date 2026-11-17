@@ -4131,3 +4131,5 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U201 E6 落地**：`AuditExportWorker`（注入 store/query/now/上限）——cursor 分页（页 ≤200、游标不前进即失败）、按 seq 升序导出、maxEvents/maxBytes 超限 `EXPORT_TOO_LARGE`、写盘失败 `EXPORT_WRITE_FAILED`、查询不可用 `EXPORT_AUDIT_UNAVAILABLE`、tmp+rename 无半截产物；`processQueuedAuditExports` 供 E9 复用。E3/E4/E6 31/31 绿。
 - **U201 E9（清理段）落地**：`audit-export-runtime.ts`——env 构造 store（TTL/配额可覆盖）、启动即清理 + 5 分钟 unref 定时、`stop()/runNow()`、错误不外抛；`createApp` 接线单例 store（`ApiHandle.auditExportStore`）并在 `close()` 停表。8 例 + jobs 12 例绿。**未完成**：启动恢复（queued/running → failed/EXPORT_INTERRUPTED）、env 名应为 `ORCA_AUDIT_EXPORT_DIR`（当前 ROOT）、测试默认触达真实 home 目录 → E9b 跟进。
 - **U201 E7a 落地**：`AuditExportJobStore` 下载 token 原语——24 字节随机、只存 sha256、5 分钟 TTL、每次签发轮换旧 token、`verify` 不消费、`consume` 一次性并记 `downloadedAt`；非 succeeded/过期不可签发；常量时间比较。jobs 测试 12→18 绿。待 E7 路由：先 read 判 404/410，已消费不返回 downloadUrl；多副本需锁（D1）。
+- **cloud-platform 单测回归**：`test/*.test.ts` + `apps/api/test/*.test.ts` 共 **237/237**（47 suites）绿。
+- **台账缺口补登记 U203**：M116 探索 P2×18 此前未在台账建号（只在 PLAN/PROGRESS/gitignored findings），现建立唯一入口并逐项记录状态；余 QA-030 统计卡（U202）、QA-031 导出（U201）、QA-032 令牌（U197）。
