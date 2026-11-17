@@ -4331,3 +4331,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U181 A2 落地**（`4e53de0aa69`）：自证超时 90→120s、host `/health` 失败码 1→68；install-wizard 83/83、install-script-command 9/9（主会话复跑），变异均红。A3（`orca_host_online` 事件 + 文档命名）已派。
 - **D17 P2 修复落地**（`296dcf40ac7`，4 文件 +76/−7）：探测 `error` 且持久 access 非空时进应用（不花 body、不写 legacy），pin 同步；主会话复跑六套件 **67/67**（`u197-migration-browser` 6/6 恢复），二次复审在途。
 - **快照明文剥离落地**（`57327d771e2`，3 文件 +118/−25）：`refreshTokens` key 改 `sha256:` 摘要、旧明文快照加载即重建、`server.ts` 写入/查找全链路先哈希；store-persistence 9/9、refresh-cookie+session-renewal 60/60（主会话复跑）。独立复审在途（重点：遗漏读写点、`currentRefreshTokenOf` 回退）。
+- **U219 关闭（D17）**：P2 修复 `296dcf40ac7` 经二次复审 APPROVED（语义/epoch/降级/pin/两变异全部核对）；六套件 67/67、0 cancelled。遗留 4 项 P3 已派补强批。台账 U219 翻 🟢——U197 实现类前置全部清空。
