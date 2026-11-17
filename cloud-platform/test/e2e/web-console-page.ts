@@ -30,6 +30,8 @@ export type WebConsolePage = {
   release: () => Promise<void>
   /** Every request the page made, as `METHOD path`. */
   calls: () => string[]
+  /** Authorization header sent with each call, aligned with `calls()`. */
+  authHeaders: () => (string | undefined)[]
   /** JSON bodies of requests that carried one, in call order. */
   bodies: () => { call: string; body: unknown }[]
 }
@@ -46,6 +48,12 @@ export function loadWebConsolePage(
     hash?: string
     /** localStorage seeded before the page's bootstrap runs (cached-session cases). */
     storage?: Record<string, string>
+    /**
+     * U197: when set, every request carries this Origin and a shared cookie jar
+     * is maintained, so the page can exercise the real Cookie transport.
+     */
+    platformOrigin?: string
+    cookieJar?: Map<string, string>
   } = {}
 ): WebConsolePage {
   // Why scale: the ready timeout is 20s; a test needs to observe it (and two
@@ -67,6 +75,32 @@ export function loadWebConsolePage(
   const stubbed = new Map<string, { status: number; body: unknown }>()
   const aborted = new Set<string>()
   const requests: string[] = []
+  const sentAuth: (string | undefined)[] = []
+  const cookieJar = options.cookieJar
+  const absorbSetCookies = (response: Response): Response => {
+    if (!cookieJar) return response
+    for (const raw of response.headers.getSetCookie()) {
+      const [pair, ...attributes] = raw.split(';')
+      const equals = (pair ?? '').indexOf('=')
+      if (equals === -1) continue
+      const name = (pair ?? '').slice(0, equals).trim()
+      const value = (pair ?? '').slice(equals + 1).trim()
+      if (name === '') continue
+      const expired = attributes.some((attribute) => /^\s*max-age=0\s*$/i.test(attribute))
+      if (value === '' || expired) cookieJar.delete(name)
+      else cookieJar.set(name, value)
+    }
+    return response
+  }
+  const outboundInit = (init?: RequestInit): RequestInit | undefined => {
+    if (!options.platformOrigin && !cookieJar) return init
+    const headers = new Headers(init?.headers)
+    if (options.platformOrigin) headers.set('origin', options.platformOrigin)
+    if (cookieJar && cookieJar.size > 0) {
+      headers.set('cookie', [...cookieJar].map(([name, value]) => `${name}=${value}`).join('; '))
+    }
+    return { ...init, headers }
+  }
   const sentBodies: { call: string; body: unknown }[] = []
   const heldPaths = new Set<string>()
   const held = new Map<
@@ -87,6 +121,7 @@ export function loadWebConsolePage(
       typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url
     const method = (init?.method ?? 'GET').toUpperCase()
     requests.push(`${method} ${path}`)
+    sentAuth.push(new Headers(init?.headers).get('authorization') ?? undefined)
     const key = `${method} ${path}`
     if (typeof init?.body === 'string') {
       try {
@@ -98,7 +133,7 @@ export function loadWebConsolePage(
     if (heldPaths.delete(key)) {
       return new Promise((resolve) => {
         const waiters = held.get(key) ?? []
-        waiters.push({ input: `${platformUrl}${path}`, init, resolve })
+        waiters.push({ input: `${platformUrl}${path}`, init: outboundInit(init), resolve })
         held.set(key, waiters)
       })
     }
@@ -123,7 +158,7 @@ export function loadWebConsolePage(
         })
       )
     }
-    return realFetch(`${platformUrl}${path}`, init)
+    return realFetch(`${platformUrl}${path}`, outboundInit(init)).then(absorbSetCookies)
   }
 
   // The router is an ES module the browser imports; `new Function` has no module
@@ -250,6 +285,7 @@ export function loadWebConsolePage(
       await new Promise((resolve) => setTimeout(resolve, 25))
     },
     calls: () => [...requests],
+    authHeaders: () => [...sentAuth],
     bodies: () => [...sentBodies]
   }
 }

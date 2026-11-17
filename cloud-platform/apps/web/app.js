@@ -2,9 +2,15 @@
 
 import { buildHash, DEFAULT_ROUTE, parseHash } from './router/routes.js'
 
+/** U197: capability flag only — never a credential. Absence means “unknown”. */
+const AUTH_MODE_KEY = 'orca.authMode'
+const COOKIE_AUTH_MODE = 'cookie'
+
 const state = {
   accessToken: localStorage.getItem('orca.access') ?? '',
   refreshToken: localStorage.getItem('orca.refresh') ?? '',
+  /** U197: refresh is an HttpOnly cookie; tokens stay in memory. */
+  cookieMode: localStorage.getItem(AUTH_MODE_KEY) === COOKIE_AUTH_MODE,
   user: null,
   projects: [],
   /** Admin-only history list; live views never read it (U116①/T2). */
@@ -41,7 +47,7 @@ function relative(ts) {
   return `${Math.floor(diff / 86_400_000)} 天前`
 }
 
-async function api(path, init = {}) {
+async function api(path, init = {}, { retried = false } = {}) {
   const accessToken = state.accessToken
   const res = await fetch(path, {
     ...init,
@@ -51,8 +57,9 @@ async function api(path, init = {}) {
       ...(init.headers ?? {})
     }
   })
-  if (res.status === 401 && state.refreshToken) {
-    if (await refreshSession(accessToken)) return api(path, init)
+  // U197: in Cookie mode the session is provable without a body refresh token.
+  if (res.status === 401 && !retried && (state.cookieMode || state.refreshToken)) {
+    if (await refreshSession(accessToken)) return api(path, init, { retried: true })
     logout()
   }
   const body = res.status === 204 ? {} : await res.json().catch(() => ({}))
@@ -70,21 +77,76 @@ async function api(path, init = {}) {
  * rotated token would kill the session and sign the user out. */
 let refreshInFlight = null
 
+function setCookieMode(enabled) {
+  state.cookieMode = enabled
+  if (enabled) localStorage.setItem(AUTH_MODE_KEY, COOKIE_AUTH_MODE)
+  else localStorage.removeItem(AUTH_MODE_KEY)
+}
+
+/** U197: deleting the legacy keys is allowed only after a no-body Cookie refresh
+ * has succeeded — that is the proof the HttpOnly transport actually works. */
+function clearLegacyTokens() {
+  state.refreshToken = ''
+  localStorage.removeItem('orca.access')
+  localStorage.removeItem('orca.refresh')
+}
+
+/** One no-body Cookie refresh. Success is also the migration gate for old keys. */
+async function refreshWithCookie() {
+  const res = await fetch('/v1/auth/refresh', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' }
+  })
+  if (!res.ok) return false
+  const body = await res.json().catch(() => ({}))
+  if (typeof body.accessToken !== 'string' || body.accessToken === '') return false
+  state.accessToken = body.accessToken
+  clearLegacyTokens()
+  if (body.refreshCookie === true) setCookieMode(true)
+  return true
+}
+
+/** Legacy body refresh; also the one fallback when the Cookie was lost. */
+async function refreshWithBody() {
+  if (!state.refreshToken) return false
+  const res = await fetch('/v1/auth/refresh', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ refreshToken: state.refreshToken })
+  })
+  if (!res.ok) return false
+  const body = await res.json().catch(() => ({}))
+  if (typeof body.accessToken !== 'string' || body.accessToken === '') return false
+  if (body.refreshCookie === true) {
+    // Server now issues Cookies, but no no-body success yet: keep the old keys.
+    setCookieMode(true)
+    state.accessToken = body.accessToken
+    if (typeof body.refreshToken === 'string' && body.refreshToken !== '') {
+      state.refreshToken = body.refreshToken
+    }
+    return true
+  }
+  // Marker missing: old server. Resume the plain localStorage contract.
+  setCookieMode(false)
+  setTokens(
+    body.accessToken,
+    typeof body.refreshToken === 'string' ? body.refreshToken : state.refreshToken
+  )
+  return true
+}
+
 function refreshSession(staleAccess) {
   // The token this request carried is already gone: someone else renewed first.
   if (state.accessToken !== staleAccess) return Promise.resolve(true)
   if (!refreshInFlight) {
     refreshInFlight = (async () => {
       try {
-        const res = await fetch('/v1/auth/refresh', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ refreshToken: state.refreshToken })
-        })
-        if (!res.ok) return false
-        const body = await res.json()
-        setTokens(body.accessToken, body.refreshToken)
-        return true
+        // Cookie first; at most one body fallback per cascade, never a loop.
+        if (state.cookieMode) {
+          if (await refreshWithCookie()) return true
+        }
+        return await refreshWithBody()
       } finally {
         refreshInFlight = null
       }
@@ -95,6 +157,8 @@ function refreshSession(staleAccess) {
 
 function setTokens(access, refresh) {
   state.accessToken = access
+  // U197: Cookie mode keeps tokens in memory only; never persist a refresh.
+  if (state.cookieMode) return
   state.refreshToken = refresh
   localStorage.setItem('orca.access', access)
   localStorage.setItem('orca.refresh', refresh)
@@ -4812,6 +4876,9 @@ async function login(username, password) {
     err.code = body.error?.code
     throw err
   }
+  // U197: only a real Set-Cookie response sets the capability. Anything else
+  // (old server, never mode, non-browser) keeps the localStorage contract.
+  setCookieMode(body.refreshCookie === true)
   setTokens(body.accessToken, body.refreshToken)
   state.user = body.user
   state.deviceId = body.device.id
@@ -4824,15 +4891,17 @@ function logout() {
   closeWorkspaceForLogout()
   void fetch('/v1/auth/logout', {
     method: 'POST',
+    // U197: the Cookie is the credential in Cookie mode; the expired Bearer
+    // stays attached so the server can revoke whichever session it can locate.
+    ...(state.cookieMode ? { credentials: 'same-origin' } : {}),
     headers: { authorization: `Bearer ${state.accessToken}` }
   }).catch(() => undefined)
   state.accessToken = ''
-  state.refreshToken = ''
   state.user = null
   state.directory = null
   state.archivedProjects = []
-  localStorage.removeItem('orca.access')
-  localStorage.removeItem('orca.refresh')
+  clearLegacyTokens()
+  setCookieMode(false)
   localStorage.removeItem('orca.user')
   // U53②: the next user must not find the previous credentials one click away.
   $('#username').value = ''
@@ -4986,6 +5055,24 @@ window.addEventListener('hashchange', () => {
 // restore session
 ;(async () => {
   const cachedUser = localStorage.getItem('orca.user')
+  // U197: a proven Cookie deployment recovers from the HttpOnly cookie alone.
+  // One refresh attempt only; a failure signs out instead of retrying.
+  if (state.cookieMode) {
+    if (await refreshSession(state.accessToken)) {
+      try {
+        // Why retried: the bootstrap must not start a second refresh chain.
+        const me = await api('/v1/me', {}, { retried: true })
+        state.user = { ...me.user, displayName: me.user.displayName, dept: me.user.dept }
+        enterApp()
+        return
+      } catch {
+        // fall through to the login view
+      }
+    }
+    if (cachedUser) localStorage.removeItem('orca.user')
+    showLogin()
+    return
+  }
   if (state.accessToken) {
     try {
       const me = await api('/v1/me')
