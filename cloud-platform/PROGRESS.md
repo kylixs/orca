@@ -4018,3 +4018,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U163 管线审计 P0 修复**（`048c2aaa166`）：预 seed 守卫与 `continue` 对称——「本地组 id 直接命中宿主组 id」不再判 `catchup:unmapped-group`（原死锁：literal 组不建映射→守卫 skip→维护步骤永不执行）。新增 literal-equal 钉（红→绿）+ 异 id 歧义负控仍 unmapped；6 套件 58 例绿。
 - **L4 正式复跑启动**：main（Electron Node 24.21 + `ORCA_BACKGROUND_LAUNCH=1`，4 workers）与 renderer（3 workers）并行，含首跑后全部修复；结果回流后出 L4 总判据。
 - **L4 复跑事故（2026-11-17 11:16）**：main（Electron Node 4 workers）与 renderer（3 workers）两段全量并行启动，5 分钟后两进程同时被杀、均无 results.json（疑内存压力），证据目录仅剩截断 run.log。处置：改为**串行**——先 renderer（4 workers），完成后单独跑 main；已通知两个原代理不要自行重跑并回传退出前日志线索。后续固化（12:00 复盘）：全量段禁止并行。
+- **并行被杀事故补充**（两代理回传）：main 217 文件完成即被杀（净 291s），renderer 350/4789 完成即被杀；wrapper 与 worker 同组终止、无 OOM 日志、无 JS 栈，属外部终止。main 在被杀前出现 **10 个超时型失败**（`codex-app-server-teardown` 4、`codex-app-server-connection` 5、`wsl-hook-relay-live` 1，均 15–16s）——带并行争用特征，**不作为产品红**，串行复跑时逐项对照。两 run 均不作任何结论。
