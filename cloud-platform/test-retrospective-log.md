@@ -944,3 +944,37 @@
 - 效率：本时段 U181 落 7 令（H5/H6/H7/H8a/H8b/H8c/H9a），U183 落 R1/R2/R3/R4/R5/R6/R7/R10a/R12/R13a/R13b。
 - 覆盖率：install-wizard 42、relay-nodes 25、relay-install-nonce、u183-relay-bundle 12、container harness 5、runner 13、orcad 529。
 - 准确率：假绿 1（H8c 隔离）已纠正；码表偏离 1（由任务书引入）已纠正；漏判 0；分级准确率维持。
+
+## 2026-11-17 19:00 复盘（本时段：U183 R13c 正向容器翻绿、U184–U188、R15、R14a、U181 H10b）
+
+**(a) 工具本身**
+- **容器 e2e 环境缺口（U185）**：`jlc-deb12:rust` 无 Node；`node:24-bookworm-slim` 缺 curl/openssl；完整 Debian Node 镜像拉取被代理阻断。最终用「slim + apt 装 curl/openssl」派生镜像；Dockerfile 已入库。教训：容器套件的镜像能力（Node/bash/curl/openssl/tar/sha256sum/find/setsid）必须写在清单里并带构建入口，否则每个代理都重踩一遍。
+- **TLS 路径**：非 loopback http 被生成器以 400 `RELAY_BUNDLE_INSECURE_URL` 拒绝（产品策略正确）。宿主自签 TLS 终结 + 容器挂 CA（`CURL_CA_BUNDLE`/`NODE_EXTRA_CA_CERTS`）是通用解法，已沉淀在 `env-gated-test-suites.md`。
+- **`SPARSE_TOOLS` 漏 `sed`**：U187 在安装脚本里引入 `sed`，旧 systemd 夹具 exit 127；补齐后绿。生成脚本新增外部命令与测试 PATH 清单没有联动机制。
+- **cwd 漂移**：Bash 工具在 `cloud-platform/` 与仓库根之间切换，一次 `cat >> cloud-platform/PROGRESS.md` 从子目录执行导致未写入且后续提交缺文件；多命令写入统一从仓库根开始。
+- **R14a 探针自身缺陷**：`node --version || echo` 使缺 Node 探针恒 0；首轮失败运行保留作记录，修正后 PASS——属测试自身假红，未污染产品结论。
+
+**(b) 测试遗漏**
+- **U184 假绿**：`makeRelayRoot` 预建仓库 checkout，使「bundle 模式仍要求仓库路径」在所有 install-wizard 用例中不可见；容器正向 e2e 首次暴露。已改为空可写根，并保留仓库模式专用用例。
+- 新增覆盖：R15 缓存清理 3 例；U186 仓库模式入口 1 例；U187/U188 各 1 例；R13c 容器正向 1 例；R14a 容器负向 1 例（8 step）。
+- 仍缺：R14b/c/d（N2/N6/N5/N7/N8）、H11–H13（需打包 orca-ide）、Windows 形态、LDAPS 真环境。
+
+**(c) 错判**
+- **验证不充分即判绿 2 次**：入口变量替换后只跑聚焦 describe（8/8 绿），完整套件仍红在旧字面量 `$ORCA_NODE_BIN $ORCA_RELAY_ROOT/current/...`；H10b 改 nohup 文案后同理。两次均在提交前被完整套件捕获（0 逃逸），但「聚焦绿=可提交」的判断不成立。
+- 分级抽查：U184 P1（干净主机必失败）、U185/U186/U187/U188 P2 均与影响面相符；5/5。
+- 漏判 0：U186/U187/U188 由设计与实现对照主动发现，非失败后追认。
+
+**(d) 方法缺口**
+- 生成脚本文本是「字符串产物」，没有类型/字段级约束；改一个变量名会同时影响脚本、unit、输出文案与多处文本断言，而聚焦测试只覆盖部分断言。
+- 设计一致性靠人工逐段读（本时段 U187 unit 字段、U188 逃生口），无机械对照手段。
+- 夹具「预置生产应自产内容」的边界未成文，导致假绿。
+
+**实验改进（已固化）**
+- **§2-91 生成脚本文本变更的验证范围**：符号/句式替换后必须 grep 全部旧字面量并跑完整脚本套件；聚焦绿不构成提交依据。本时段两次判例均验证有效（完整套件捕获陈旧断言）。
+- **§2-92 生成脚本新增外部命令同步清单**：同一提交内更新 `SPARSE_TOOLS` 与容器镜像探测/Dockerfile，并保留缺命令判别。
+- **§2-93 夹具不得预置被测流程应自行产生的输入**：预置既有状态必须显式命名并单独成例（U184 判例）。
+
+**度量快照**
+- 效率：R13c 1 轮 INVALID + 1 轮 PASS；R14a 2 轮（含自身探针修复）；install-wizard 完整套件 3 轮（80 例/轮，约 90s/轮）。
+- 覆盖率：install-wizard 74→80；容器套件新增 2 个文件（R13c 正向、R14a 负向 8 step）。
+- 准确率：假红 1（测试自身探针，已纠正）；假绿 1（U184，已纠正）；验证不充分 2（提交前捕获，0 逃逸）；漏判 0；分级准确率 5/5。
