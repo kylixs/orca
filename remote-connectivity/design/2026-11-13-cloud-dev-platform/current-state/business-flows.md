@@ -150,7 +150,7 @@
 
 1. **管理台发起打开**：mint 一次性 handoff（同页 `surface:'admin'`）→ 创建全屏覆盖层与 iframe。可见反馈：覆盖层「准备中」，顶栏项目名/分支。［来源 m03-C11］
 2. **嵌入页兑换与 bootstrap**：读 hash → 立即从地址栏抹掉 handoff → 兑换会话 → `workspace.info` 解析 project/workspace/perms/capabilities → `repo.add` 注册项目根 → `project.provision`/`worktree.list`/`worktree.createManaged`（幂等）→ `activateWorkspace`（`file:read` 决定是否挂 Explorer）。可见反馈：ready / fallback 横幅。［来源 m09 §3.1、m10 §2］
-3. **宿主标签镜像与收养**：能力协商 `cloud.session-tabs-restore.v1` → `session.tabs.list/listAll/subscribe` 拉宿主镜像 → `applyWebSessionTabsSnapshot` → `adoptHostLayout` 每次进入工作区收养一次（U104 已修）→ 之后 client-owned。可见反馈：终端标签组/active/layout 出现。［来源 m09 §3.2］
+3. **宿主标签镜像与收养**：能力协商 `cloud.session-tabs-restore.v1` → `session.tabs.list/listAll/subscribe` 拉宿主镜像 → `applyWebSessionTabsSnapshot` → `adoptHostLayout` 每次进入工作区收养一次（U104 已修）→ 之后 client-owned；首开 renderer 发布不覆盖宿主 headless 布局（U172，真栈 PASS）；headless-authored 布局变更仍触发 republish（U175）。可见反馈：终端标签组/active/layout 出现。［来源 m09 §3.2、U172/U174/U175］
 4. **终端内容回放**：订阅初始快照（512 KiB / 1000 行，客户端可请求至 2 MiB，超限 `truncated`）；PTY 已死/宿主重启显示「会话已结束（宿主已重启或终端已退出）」+ 同标签一键重开。可见反馈：历史输出可见、无空白假活。［来源 m09 §3.3］
 5. **关闭工作区**：脏文件先走三选确认；关闭握手后覆盖层移除、回原路由，宿主 PTY 按 suspend 语义保留（显式 end 见 F4）。可见反馈：覆盖层消失、路由不变。［来源 m03-C11、workspace-paths P18］
 6. **F5 刷新（当前能力边界）**：简易工作区/Orca Web 凭持久会话 `resumeWebCloudSession` 静默续会话并回到同一 project（`?api&project` 保留）；**管理台覆盖层刷新仍回落工作台、覆盖层丢失——未实现（U106 R4）**。可见反馈：嵌入页/Orca Web 回到工作区；管理台回工作台。［来源 m09 §3.4、m02 §2、U106 §1 #5］

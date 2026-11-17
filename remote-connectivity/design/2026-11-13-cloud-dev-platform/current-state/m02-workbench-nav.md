@@ -82,7 +82,7 @@ hash 形态 `#/<路径>?<查询>`，路由表在 `cloud-platform/apps/web/router
 | T9     | 未做   | 静默续会话失败分支属 W1/W2。                                                                            |
 | T10    | 未做   | URL project 权威性（无 fallback）属 W1/W2。                                                             |
 | T11    | 未做   | 嵌入页失效改登录表单属 W3。                                                                             |
-| T12    | 已实现 | 控制台 URL 无 token/code、project id 可分享；静态响应统一 `Referrer-Policy: no-referrer`（比 same-origin 建议更严），e2e 覆盖 hashed/HTML/unhashed/304。 |
+| T12    | 已实现 | 控制台 URL 无 token/code、project id 可分享；静态响应统一 `Referrer-Policy: no-referrer`（比 same-origin 建议更严），e2e 覆盖 hashed/HTML/unhashed/304/静态未命中 404（`99df73d008a`）。**现网生效（2026-11-17 11:1x，`evidence/u106-live-restart-20261117-110957/`）**：GET `/favicon.ico` 与 `/assets/deadbeef/app.js` → 404 且带头；HEAD（`curl -I`）走 JSON 404 不带头，属既有口径，验证须用 GET。 |
 | T13    | 未做   | 多标签各自 URL/重新 mint 无专门实现与 e2e。                                                             |
 | T14    | 偏差   | 404/403 窄视口同 schema 已实现并测试（R6）；管理台其余页面未做响应式；原生 App 不接（符合）。           |
 
