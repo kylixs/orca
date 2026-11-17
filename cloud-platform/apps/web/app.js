@@ -2286,6 +2286,16 @@ function copyCommandAction(cmd) {
   }
 }
 
+/**
+ * U182: `bash <(curl …)` exits 0 when the download fails, because bash then
+ * runs an empty program. Download first so failure is observable, and tell the
+ * operator to regenerate the one-time command.
+ */
+function installCommand(url) {
+  const file = '${TMPDIR:-/tmp}/orca-install-$$.sh'
+  return `curl -fsSL "${url}" -o "${file}" && bash "${file}" && rm -f "${file}" || { echo '安装失败：命令已失效或网络不可达，请让管理员重新生成'; false; } || exit 1`
+}
+
 async function registerHostDialog() {
   let body
   try {
@@ -2297,7 +2307,8 @@ async function registerHostDialog() {
   // U115: the target machine has no session, so the one-liner carries a
   // short-lived one-time download token alongside the registration token.
   const download = body.downloadToken ? `download=${encodeURIComponent(body.downloadToken)}&` : ''
-  const cmd = `bash <(curl -fsSL ${location.origin}/install/host.sh?${download}token=${body.token})`
+  const url = `${location.origin}/install/host.sh?${download}token=${body.token}`
+  const cmd = installCommand(url)
   dialog(
     '注册主机',
     `<p>在目标开发机执行以下命令完成注册。脚本会写入环境配置并生成自签证书，命令 10 分钟内有效且只能下载一次；注册令牌 24 小时内有效且只能使用一次。</p>
@@ -2468,9 +2479,11 @@ async function addRelayDialog() {
   // U115: the target machine has no session, so the command carries a one-time
   // download token; the internal token still never travels in the URL.
   const body = await api('/v1/relays/install-tokens', { method: 'POST' })
-  const cmd = body.downloadToken
-    ? `bash <(curl -fsSL ${location.origin}/install/relay.sh?download=${encodeURIComponent(body.downloadToken)})`
-    : `bash <(curl -fsSL ${location.origin}/install/relay.sh)`
+  const cmd = installCommand(
+    body.downloadToken
+      ? `${location.origin}/install/relay.sh?download=${encodeURIComponent(body.downloadToken)}`
+      : `${location.origin}/install/relay.sh`
+  )
   dialog(
     '添加中继',
     `<p>在中继机执行以下命令完成注册上线。命令 10 分钟内有效且只能下载一次；内部控制令牌由脚本端点注入，不出现在 URL 中。</p>

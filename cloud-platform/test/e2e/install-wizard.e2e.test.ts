@@ -1,7 +1,8 @@
 import { test, before, after, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { request } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Window } from 'happy-dom'
@@ -58,24 +59,20 @@ async function mintRelayDownload(): Promise<string> {
   return ((await res.json()) as { downloadToken: string }).downloadToken
 }
 
-/** Extracts the URL from `bash <(curl -fsSL <url>)`, i.e. what the target machine runs. */
+/** Extracts the URL from the wizard command, i.e. what the target machine runs. */
 function commandUrl(command: string): string {
-  return /curl -fsSL ([^)\s]+)/.exec(command)?.[1] ?? ''
+  return /curl -fsSL "([^"]+)"/.exec(command)?.[1] ?? ''
 }
 
-/**
- * U180: runs a generated script the way a clean host does — `bash -u`, a fresh
- * HOME, and no ORCA_* in the environment. Only PATH survives so curl/openssl/hostname
- * resolve; the platform's own 127.0.0.1 server is the /health stub.
- */
-function runInstallScript(script: string): {
-  status: number | null
-  stdout: string
-  stderr: string
-  home: string
-} {
+/** U182: the copied one-liner must make a failed download observable. */
+function expectedInstallCommand(url: string): string {
+  const file = '${TMPDIR:-/tmp}/orca-install-$$.sh'
+  return `curl -fsSL "${url}" -o "${file}" && bash "${file}" && rm -f "${file}" || { echo '安装失败：命令已失效或网络不可达，请让管理员重新生成'; false; } || exit 1`
+}
+
+/** A clean-host HOME with TLS stubs so the script skips openssl. */
+function makeInstallHome(): string {
   const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
-  // Skip the openssl step: the host script only needs the health call here.
   mkdirSync(join(home, '.orca-cloud', 'tls'), { recursive: true })
   writeFileSync(join(home, '.orca-cloud', 'tls', 'host.crt'), 'stub')
   writeFileSync(join(home, '.orca-cloud', 'tls', 'host.key'), 'stub')
@@ -86,10 +83,29 @@ function runInstallScript(script: string): {
     '#!/usr/bin/env bash\ncase "$1" in -s|-I) echo orca-test-host ;; *) echo orca-test-host ;; esac\n',
     { mode: 0o755 }
   )
+  return home
+}
+
+/**
+ * U180: runs a generated script the way a clean host does — `bash -u`, a fresh
+ * HOME, and no ORCA_* in the environment. Only PATH survives so curl/openssl/hostname
+ * resolve; the platform's own 127.0.0.1 server is the /health stub.
+ */
+function runInstallScript(
+  script: string,
+  home = makeInstallHome()
+): {
+  status: number | null
+  stdout: string
+  stderr: string
+  home: string
+} {
   const result = spawnSync('bash', ['-u'], {
     input: script,
     encoding: 'utf8',
     cwd: home,
+    // A health check without a bounded curl must not hang the suite.
+    timeout: 60_000,
     env: {
       PATH: `${join(home, 'bin')}:${process.env.PATH ?? ''}`,
       HOME: home,
@@ -97,6 +113,37 @@ function runInstallScript(script: string): {
     }
   })
   return { status: result.status, stdout: result.stdout, stderr: result.stderr, home }
+}
+
+/** Raw Host header: fetch/undici may rewrite it, so use http.request. */
+function fetchWithHost(
+  path: string,
+  host: string
+): Promise<{
+  status: number
+  body: string
+  headers: Record<string, string | string[] | undefined>
+}> {
+  const url = new URL(path, api.url)
+  return new Promise((resolve, reject) => {
+    const req = request(
+      {
+        hostname: url.hostname,
+        port: url.port,
+        path: `${url.pathname}${url.search}`,
+        method: 'GET',
+        headers: { host, authorization: `Bearer ${adminToken}` }
+      },
+      (res) => {
+        let body = ''
+        res.setEncoding('utf8')
+        res.on('data', (chunk) => (body += chunk))
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, body, headers: res.headers }))
+      }
+    )
+    req.on('error', reject)
+    req.end()
+  })
 }
 
 type AuditEvent = { eventType: string; actor: string | null; result: string; metadata: unknown }
@@ -234,6 +281,8 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     const res = await fetch(`${api.url}/install/relay.sh`, { headers: auth(adminToken) })
     assert.equal(res.status, 200)
     assert.match(res.headers.get('content-type') ?? '', /text\/x-shellscript/)
+    // U182: the body embeds a secret and must not be cached anywhere.
+    assert.equal(res.headers.get('cache-control'), 'no-store')
     const script = await res.text()
     assert.match(script, /^#!\/usr\/bin\/env bash/)
     assert.ok(script.includes(`ORCA_CLOUD_API_URL=${api.url}`), 'platform address must be embedded')
@@ -321,6 +370,75 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     assert.ok(envFile.includes(`ORCA_CLOUD_API_URL=${api.url}`))
   })
 
+  test('U182: 恶意 Host 不能注入安装脚本，执行后无副作用', async () => {
+    const marker = join(tmpdir(), `orca-pwned-${process.pid}-${Date.now()}`)
+    const payloads = [
+      `evil"; touch ${marker}; echo "`,
+      `evil$(touch ${marker})`,
+      `evil\`touch ${marker}\``
+    ]
+    for (const host of payloads) {
+      const token = await mintHostToken()
+      const res = await fetchWithHost(`/install/host.sh?token=${token}`, host)
+      assert.equal(res.status, 200, host)
+      assert.ok(!res.body.includes(marker), 'the Host header must not reach the script')
+      const syntax = spawnSync('bash', ['-n'], { input: res.body, encoding: 'utf8' })
+      assert.equal(syntax.status, 0, `${host}: ${syntax.stderr}`)
+      const run = runInstallScript(res.body)
+      assert.equal(run.status, 0, run.stderr)
+    }
+    assert.equal(existsSync(marker), false, 'the injected command must not run')
+  })
+
+  test('U182: 重跑保留 TLS 路径；env 0600、目录 0700', async () => {
+    const home = makeInstallHome()
+    const firstToken = await mintHostToken()
+    const first = await fetch(`${api.url}/install/host.sh?token=${firstToken}`, {
+      headers: auth(adminToken)
+    })
+    assert.equal(first.status, 200)
+    const run1 = runInstallScript(await first.text(), home)
+    assert.equal(run1.status, 0, run1.stderr)
+
+    // The rerun (new token, cert already present) used to drop both TLS lines,
+    // silently downgrading the host listener to plaintext.
+    const secondToken = await mintHostToken()
+    const second = await fetch(`${api.url}/install/host.sh?token=${secondToken}`, {
+      headers: auth(adminToken)
+    })
+    assert.equal(second.status, 200)
+    const run2 = runInstallScript(await second.text(), home)
+    assert.equal(run2.status, 0, run2.stderr)
+
+    const envFile = join(home, '.orca-cloud', 'host.env')
+    const env = readFileSync(envFile, 'utf8')
+    assert.match(env, /^ORCA_CLOUD_TLS_CERT_PATH=.+$/m)
+    assert.match(env, /^ORCA_CLOUD_TLS_KEY_PATH=.+$/m)
+    assert.ok(env.includes(`ORCA_CLOUD_HOST_TOKEN=${secondToken}`))
+    assert.equal(statSync(envFile).mode & 0o777, 0o600)
+    assert.equal(statSync(join(home, '.orca-cloud')).mode & 0o777, 0o700)
+  })
+
+  test('U182: 健康检查对不可达地址快速失败', async () => {
+    const token = await mintHostToken()
+    const res = await fetch(`${api.url}/install/host.sh?token=${token}`, {
+      headers: auth(adminToken)
+    })
+    assert.equal(res.status, 200)
+    const script = (await res.text()).replace(
+      `ORCA_CLOUD_API_URL=${api.url}`,
+      'ORCA_CLOUD_API_URL=http://192.0.2.1:81'
+    )
+    assert.ok(script.includes('http://192.0.2.1:81'))
+    assert.match(script, /--connect-timeout 5 --max-time 10/)
+    const started = Date.now()
+    const run = runInstallScript(script)
+    const elapsed = Date.now() - started
+    assert.notEqual(run.status, 0)
+    assert.match(run.stderr, /平台健康检查失败/)
+    assert.ok(elapsed < 15_000, `health check took ${elapsed}ms`)
+  })
+
   test('开发者拉取脚本 403，拒绝与成功都写入 install_script 审计且不含令牌明文', async () => {
     const token = await mintHostToken()
     for (const path of [`/install/host.sh?token=${token}`, '/install/relay.sh']) {
@@ -377,8 +495,12 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     assert.notEqual(token, '', 'the wizard must embed a registration token')
     assert.equal(
       hostCmd,
-      `bash <(curl -fsSL ${api.url}/install/host.sh?download=${hostDownload}&token=${token})`
+      expectedInstallCommand(`${api.url}/install/host.sh?download=${hostDownload}&token=${token}`)
     )
+    // U182: `bash <(curl …)` exits 0 on a failed download; the copied command
+    // must instead fail visibly and tell the admin to regenerate it.
+    assert.match(hostCmd, /\|\| \{ echo '.*请让管理员重新生成'; false; \} \|\| exit 1$/)
+    assert.ok(hostCmd.includes('|| exit 1'))
     // The exact URL the admin copies must answer WITHOUT any Authorization header:
     // that is what `curl -fsSL` on the target machine actually sends.
     const hostUrl = commandUrl(hostCmd)
@@ -396,7 +518,7 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     assert.notEqual(relayDownload, '', 'the relay wizard must embed a download token')
     assert.equal(
       relayCmd,
-      `bash <(curl -fsSL ${api.url}/install/relay.sh?download=${relayDownload})`
+      expectedInstallCommand(`${api.url}/install/relay.sh?download=${relayDownload}`)
     )
     assert.doesNotMatch(relayCmd, /token=/, 'the internal token must not travel in the URL')
     const relayUrl = commandUrl(relayCmd)

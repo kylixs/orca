@@ -238,6 +238,25 @@ function isDirectAddrForm(addr: string): boolean {
 }
 
 /**
+ * U182: a Host header is attacker-controlled. Only a bare `host[:port]` may be
+ * spliced into the install script, and only an `http`/`https` proxy scheme.
+ */
+function isSafeOriginHost(value: string): boolean {
+  const match = value.match(
+    /^(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?)(?::(\d{1,5}))?$/
+  )
+  if (!match) {
+    return false
+  }
+  const port = match[2]
+  if (port !== undefined && (Number(port) < 1 || Number(port) > 65535)) {
+    return false
+  }
+  const host = match[1]
+  return host.startsWith('[') || (!host.includes('..') && !host.endsWith('.'))
+}
+
+/**
  * The platform origin as the caller's browser sees it (proxy scheme + request
  * Host): a link the platform hands out must reach the platform the caller is
  * actually talking to, which a configured constant cannot know.
@@ -247,9 +266,16 @@ function requestOrigin(req: IncomingMessage): string {
   // When this listener terminates TLS itself (U41) there is no proxy to announce
   // the scheme, so the encrypted socket is the only signal.
   const ownScheme = 'encrypted' in req.socket && req.socket.encrypted === true ? 'https' : 'http'
-  return `${forwardedScheme ?? ownScheme}://${
-    req.headers.host ?? `127.0.0.1:${req.socket.localPort ?? 0}`
-  }`
+  const scheme =
+    forwardedScheme === 'http' || forwardedScheme === 'https' ? forwardedScheme : ownScheme
+  const rawHost = (req.headers.host ?? '').trim()
+  const host = isSafeOriginHost(rawHost) ? rawHost : `127.0.0.1:${req.socket.localPort ?? 0}`
+  return `${scheme}://${host}`
+}
+
+/** U182: embed untrusted values as one single-quoted shell literal. */
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`
 }
 
 function safeEqual(a: string, b: string): boolean {
@@ -267,44 +293,58 @@ function hostInstallScript(input: { platformUrl: string; token: string }): strin
   return `#!/usr/bin/env bash
 # Orca Cloud 开发机接入脚本（平台生成；内嵌一次性注册令牌，注册一次后失效）
 set -euo pipefail
-
-ORCA_ENV_FILE="\${ORCA_ENV_FILE:-\$HOME/.orca-cloud/host.env}"
-mkdir -p "\$(dirname "\$ORCA_ENV_FILE")"
 umask 077
 
-echo ">> 写入环境配置 \$ORCA_ENV_FILE"
-ORCA_HOST_NAME="\$(hostname -s 2>/dev/null || hostname)"
-ORCA_ADVERTISE="\${ADVERTISE_HOST:-\$(hostname -I 2>/dev/null | awk '{print \$1}')}"
+ORCA_ENV_FILE="\${ORCA_ENV_FILE:-$HOME/.orca-cloud/host.env}"
+ORCA_ENV_DIR="$(dirname "$ORCA_ENV_FILE")"
+mkdir -p "$ORCA_ENV_DIR"
+chmod 700 "$ORCA_ENV_DIR" 2>/dev/null || true
+
+echo ">> 写入环境配置 $ORCA_ENV_FILE"
+ORCA_HOST_NAME="$(hostname -s 2>/dev/null || hostname)"
+ORCA_ADVERTISE="\${ADVERTISE_HOST:-$(hostname -I 2>/dev/null | awk '{print $1}')}"
 {
   # ORCA_CLOUD_* is what the host binary reads; the bare aliases stay for env
-  # files and docs written before the rename (same family as U38).
-  echo "ORCA_CLOUD_API_URL=${input.platformUrl}"
-  echo "ORCA_CLOUD_HOST_TOKEN=${input.token}"
-  echo "ORCA_CLOUD_HOST_NAME=\$ORCA_HOST_NAME"
-  echo "ORCA_CLOUD_ADVERTISE_HOST=\$ORCA_ADVERTISE"
-  echo "ORCA_CLOUD_PROJECTS_ROOT=\${PROJECTS_ROOT:-/srv/work}"
-  echo "HOST_TOKEN=${input.token}"
-  echo "HOST_NAME=\$ORCA_HOST_NAME"
-  echo "ADVERTISE_HOST=\$ORCA_ADVERTISE"
-  echo "PROJECTS_ROOT=\${PROJECTS_ROOT:-/srv/work}"
-} > "\$ORCA_ENV_FILE"
+  # files and docs written before the rename (same family as U38). Untrusted
+  # values are emitted as one quoted literal so the script cannot be injected.
+  printf '%s\\n' ${shellQuote(`ORCA_CLOUD_API_URL=${input.platformUrl}`)}
+  printf '%s\\n' ${shellQuote(`ORCA_CLOUD_HOST_TOKEN=${input.token}`)}
+  printf 'ORCA_CLOUD_HOST_NAME=%s\\n' "$ORCA_HOST_NAME"
+  printf 'ORCA_CLOUD_ADVERTISE_HOST=%s\\n' "$ORCA_ADVERTISE"
+  printf 'ORCA_CLOUD_PROJECTS_ROOT=%s\\n' "\${PROJECTS_ROOT:-/srv/work}"
+  printf '%s\\n' ${shellQuote(`HOST_TOKEN=${input.token}`)}
+  printf 'HOST_NAME=%s\\n' "$ORCA_HOST_NAME"
+  printf 'ADVERTISE_HOST=%s\\n' "$ORCA_ADVERTISE"
+  printf 'PROJECTS_ROOT=%s\\n' "\${PROJECTS_ROOT:-/srv/work}"
+} > "$ORCA_ENV_FILE"
+chmod 600 "$ORCA_ENV_FILE"
 
-ORCA_TLS_CERT="\${ORCA_TLS_CERT:-\$HOME/.orca-cloud/tls/host.crt}"
-ORCA_TLS_KEY="\${ORCA_TLS_KEY:-\$HOME/.orca-cloud/tls/host.key}"
-if [ ! -s "\$ORCA_TLS_CERT" ] || [ ! -s "\$ORCA_TLS_KEY" ]; then
+ORCA_TLS_CERT="\${ORCA_TLS_CERT:-$HOME/.orca-cloud/tls/host.crt}"
+ORCA_TLS_KEY="\${ORCA_TLS_KEY:-$HOME/.orca-cloud/tls/host.key}"
+if [ ! -s "$ORCA_TLS_CERT" ] || [ ! -s "$ORCA_TLS_KEY" ]; then
   echo ">> 生成自签 TLS 证书（openssl）"
-  mkdir -p "\$(dirname "\$ORCA_TLS_CERT")"
+  mkdir -p "$(dirname "$ORCA_TLS_CERT")"
+  chmod 700 "$(dirname "$ORCA_TLS_CERT")" 2>/dev/null || true
   openssl req -x509 -newkey rsa:2048 -nodes -days 365 \\
-    -keyout "\$ORCA_TLS_KEY" -out "\$ORCA_TLS_CERT" \\
-    -subj "/CN=\$(hostname -s 2>/dev/null || hostname)" \\
+    -keyout "$ORCA_TLS_KEY" -out "$ORCA_TLS_CERT" \\
+    -subj "/CN=$(hostname -s 2>/dev/null || hostname)" \\
     -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" >/dev/null 2>&1
-  printf 'ORCA_CLOUD_TLS_CERT_PATH=%s\\nORCA_CLOUD_TLS_KEY_PATH=%s\\n' "\$ORCA_TLS_CERT" "\$ORCA_TLS_KEY" >> "\$ORCA_ENV_FILE"
 fi
+# U182: always write the paths; a rerun with an existing cert used to drop them,
+# which silently downgraded the host listener to plaintext.
+printf 'ORCA_CLOUD_TLS_CERT_PATH=%s\\nORCA_CLOUD_TLS_KEY_PATH=%s\\n' "$ORCA_TLS_CERT" "$ORCA_TLS_KEY" >> "$ORCA_ENV_FILE"
+chmod 600 "$ORCA_ENV_FILE"
 
 echo ">> 平台连通性检查"
 # U180: the health check needs the URL we just wrote; load it without dropping -u.
-set -a; . "\$ORCA_ENV_FILE"; set +a
-curl -fsS "\$ORCA_CLOUD_API_URL/health" > /dev/null
+set -a; . "$ORCA_ENV_FILE"; set +a
+# U182: no redirect following; only an explicit 2xx is healthy, and bounded time
+# so a black-holed DNS/gateway cannot hang the install.
+ORCA_HEALTH_CODE="$(curl -sS --connect-timeout 5 --max-time 10 -o /dev/null -w '%{http_code}' "$ORCA_CLOUD_API_URL/health")" || ORCA_HEALTH_CODE=000
+case "$ORCA_HEALTH_CODE" in
+  2??) ;;
+  *) echo ">> 平台健康检查失败（HTTP $ORCA_HEALTH_CODE）：$ORCA_CLOUD_API_URL/health 不可达" >&2; exit 1 ;;
+esac
 echo ">> 环境已就绪：\$ORCA_ENV_FILE"
 
 cat <<'ORCA_NEXT'
@@ -335,24 +375,33 @@ function relayInstallScript(input: { platformUrl: string; internalToken: string 
   return `#!/usr/bin/env bash
 # Orca Cloud 中继接入脚本（平台生成；内嵌内部控制令牌，仅管理员可见）
 set -euo pipefail
-
-ORCA_ENV_FILE="\${ORCA_ENV_FILE:-\$HOME/.orca-cloud/relay.env}"
-mkdir -p "\$(dirname "\$ORCA_ENV_FILE")"
 umask 077
 
-echo ">> 写入环境配置 \$ORCA_ENV_FILE"
+ORCA_ENV_FILE="\${ORCA_ENV_FILE:-$HOME/.orca-cloud/relay.env}"
+ORCA_ENV_DIR="$(dirname "$ORCA_ENV_FILE")"
+mkdir -p "$ORCA_ENV_DIR"
+chmod 700 "$ORCA_ENV_DIR" 2>/dev/null || true
+
+echo ">> 写入环境配置 $ORCA_ENV_FILE"
 {
-  echo "ORCA_CLOUD_API_URL=${input.platformUrl}"
-  echo "ORCA_CLOUD_INTERNAL_TOKEN=${input.internalToken}"
-  echo "PORT=\${PORT:-18443}"
-  echo "RELAY_PUBLIC_HOST=\${RELAY_PUBLIC_HOST:-}"
-} > "\$ORCA_ENV_FILE"
+  printf '%s\\n' ${shellQuote(`ORCA_CLOUD_API_URL=${input.platformUrl}`)}
+  printf '%s\\n' ${shellQuote(`ORCA_CLOUD_INTERNAL_TOKEN=${input.internalToken}`)}
+  printf 'PORT=%s\\n' "\${PORT:-18443}"
+  printf 'RELAY_PUBLIC_HOST=%s\\n' "\${RELAY_PUBLIC_HOST:-}"
+} > "$ORCA_ENV_FILE"
+chmod 600 "$ORCA_ENV_FILE"
 
 echo ">> 平台连通性检查"
 # U180: the health check needs the URL we just wrote; load it without dropping -u.
-set -a; . "\$ORCA_ENV_FILE"; set +a
-curl -fsS "\$ORCA_CLOUD_API_URL/health" > /dev/null
-echo ">> 环境已就绪：\$ORCA_ENV_FILE"
+set -a; . "$ORCA_ENV_FILE"; set +a
+# U182: no redirect following; only an explicit 2xx is healthy, and bounded time
+# so a black-holed DNS/gateway cannot hang the install.
+ORCA_HEALTH_CODE="$(curl -sS --connect-timeout 5 --max-time 10 -o /dev/null -w '%{http_code}' "$ORCA_CLOUD_API_URL/health")" || ORCA_HEALTH_CODE=000
+case "$ORCA_HEALTH_CODE" in
+  2??) ;;
+  *) echo ">> 平台健康检查失败（HTTP $ORCA_HEALTH_CODE）：$ORCA_CLOUD_API_URL/health 不可达" >&2; exit 1 ;;
+esac
+echo ">> 环境已就绪：$ORCA_ENV_FILE"
 
 cat <<'ORCA_NEXT'
 
@@ -2277,7 +2326,11 @@ export function createApp(config: ApiConfig): ApiHandle {
           via: downloadMatch ? 'download-token' : 'session'
         }
       })
-      res.writeHead(200, { 'content-type': 'text/x-shellscript; charset=utf-8' })
+      res.writeHead(200, {
+        'content-type': 'text/x-shellscript; charset=utf-8',
+        // U182: the body embeds a secret; no shared cache may keep it.
+        'cache-control': 'no-store'
+      })
       res.end(script)
       return
     }
