@@ -350,6 +350,32 @@ export class AuditExportJobStore {
     return true
   }
 
+  /**
+   * Work order §E9: a job left queued/running by a crash or restart can never
+   * finish, so it is failed with EXPORT_INTERRUPTED. Terminal jobs are left
+   * untouched, and expired ones are left to pruneExpired.
+   */
+  recoverInterrupted(): string[] {
+    const recovered: string[] = []
+    for (const entry of this.readRoot()) {
+      if (!entry.isDirectory() || !isValidAuditExportJobId(entry.name)) {
+        continue
+      }
+      const job = this.read(entry.name)
+      if (!job || (job.status !== 'queued' && job.status !== 'running') || this.isExpired(job)) {
+        continue
+      }
+      const updated = this.transition(job.jobId, 'failed', () => ({
+        finishedAt: this.clock(),
+        error: { code: 'EXPORT_INTERRUPTED', message: '进程重启导致任务中断' }
+      }))
+      if (updated) {
+        recovered.push(entry.name)
+      }
+    }
+    return recovered
+  }
+
   /** Removes expired job dirs and orphan job dirs (no readable job.json); symlinks are skipped. */
   pruneExpired(): string[] {
     const now = this.clock()

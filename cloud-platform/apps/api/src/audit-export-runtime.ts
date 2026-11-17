@@ -23,10 +23,15 @@ function positiveInt(value: string | undefined, fallback: number): number {
     : fallback
 }
 
+/**
+ * Work order §3.4 names ORCA_AUDIT_EXPORT_DIR; ORCA_AUDIT_EXPORT_ROOT stays as
+ * a compatibility alias. DIR wins, then ROOT, then the default location.
+ */
 export function createAuditExportStore(env: Env = process.env): AuditExportJobStore {
-  const root = (env.ORCA_AUDIT_EXPORT_ROOT ?? '').trim()
+  const dir = (env.ORCA_AUDIT_EXPORT_DIR ?? '').trim()
+  const legacyRoot = (env.ORCA_AUDIT_EXPORT_ROOT ?? '').trim()
   return new AuditExportJobStore({
-    root: root || DEFAULT_AUDIT_EXPORT_ROOT,
+    root: dir || legacyRoot || DEFAULT_AUDIT_EXPORT_ROOT,
     ttlMs: positiveInt(env.ORCA_AUDIT_EXPORT_TTL_MS, DEFAULT_AUDIT_EXPORT_TTL_MS),
     perUserActiveLimit: positiveInt(
       env.ORCA_AUDIT_EXPORT_PER_USER_LIMIT,
@@ -40,8 +45,8 @@ export function createAuditExportStore(env: Env = process.env): AuditExportJobSt
 }
 
 export type AuditExportCleanupOptions = {
-  /** Only pruning is needed, so tests can substitute a throwing double. */
-  store: Pick<AuditExportJobStore, 'pruneExpired'>
+  /** Only recovery and pruning are needed, so tests can substitute a double. */
+  store: Pick<AuditExportJobStore, 'recoverInterrupted' | 'pruneExpired'>
   intervalMs?: number
   onError?: (error: unknown) => void
 }
@@ -52,8 +57,9 @@ export type AuditExportCleanupHandle = {
 }
 
 /**
- * Runs one prune immediately, then on an unref'd interval. A failed sweep is
- * reported, never rethrown: cleanup must not crash the long-lived API process.
+ * Recovers interrupted jobs once, before the first prune, then prunes
+ * immediately and on an unref'd interval. Failures are reported, never
+ * rethrown: housekeeping must not crash the long-lived API process.
  */
 export function startAuditExportCleanup(
   options: AuditExportCleanupOptions
@@ -64,15 +70,28 @@ export function startAuditExportCleanup(
       ? requested
       : DEFAULT_AUDIT_EXPORT_CLEANUP_INTERVAL_MS
 
+  const report = (error: unknown): void => {
+    if (options.onError) {
+      options.onError(error)
+    } else {
+      console.error('[audit-export] cleanup failed:', error)
+    }
+  }
+
+  let recoveryAttempted = false
   const runNow = (): void => {
+    if (!recoveryAttempted) {
+      recoveryAttempted = true
+      try {
+        options.store.recoverInterrupted()
+      } catch (error) {
+        report(error)
+      }
+    }
     try {
       options.store.pruneExpired()
     } catch (error) {
-      if (options.onError) {
-        options.onError(error)
-      } else {
-        console.error('[audit-export] cleanup failed:', error)
-      }
+      report(error)
     }
   }
 

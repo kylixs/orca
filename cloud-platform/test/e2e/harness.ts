@@ -14,6 +14,8 @@ export type Service = {
   url: string
   port: number
   logs: string[]
+  /** The exact env the child was started with (after isolation defaults). */
+  env: Record<string, string | undefined>
   stop: () => Promise<void>
 }
 
@@ -71,16 +73,30 @@ export function saveEvidence(name: string, file: string, content: unknown): stri
   return target
 }
 
-/** Spawns a service and waits for a `[name] ... :port` line on stdout. */
+/**
+ * Spawns a service and waits for a `[name] ... :port` line on stdout.
+ * Each service gets its own temporary audit-export dir unless the caller sets
+ * one, so e2e runs never touch the real `~/.orca-cloud/audit-exports`.
+ */
 export function spawnService(
   script: string,
   env: Record<string, string>,
   readyPattern: RegExp,
   name: string
 ): Promise<Service> {
+  // A caller naming either var owns the location; otherwise isolate per service.
+  const isolatedAuditDir =
+    env.ORCA_AUDIT_EXPORT_DIR === undefined && env.ORCA_AUDIT_EXPORT_ROOT === undefined
+      ? mkdtempSync(join(tmpdir(), 'orca-audit-exports-'))
+      : undefined
+  const childEnv: Record<string, string | undefined> = {
+    ...process.env,
+    ...(isolatedAuditDir ? { ORCA_AUDIT_EXPORT_DIR: isolatedAuditDir } : {}),
+    ...env
+  }
   const proc = spawn(process.execPath, [script], {
     cwd: ROOT,
-    env: { ...process.env, ...env },
+    env: childEnv,
     stdio: ['ignore', 'pipe', 'pipe']
   })
   const logs: string[] = []
@@ -95,7 +111,7 @@ export function spawnService(
       proc.kill('SIGTERM')
       setTimeout(() => proc.kill('SIGKILL'), 2000)
     })
-  const service: Service = { proc, url: '', port: 0, logs, stop }
+  const service: Service = { proc, url: '', port: 0, logs, env: childEnv, stop }
   spawned.add(service)
   proc.once('exit', () => spawned.delete(service))
   return new Promise((resolve, reject) => {

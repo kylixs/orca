@@ -188,6 +188,69 @@ describe('过期判定与清理', () => {
   })
 })
 
+describe('启动恢复', () => {
+  test('queued/running → failed/EXPORT_INTERRUPTED，终态不动', () => {
+    const time = clock(1_000)
+    const store = new AuditExportJobStore({ root: tempRoot(), ttlMs: 60_000, now: time.now })
+    const queued = store.create(jobInput())
+    const running = store.create(jobInput())
+    store.markRunning(running.jobId)
+    const succeeded = store.create(jobInput())
+    store.markRunning(succeeded.jobId)
+    const done = store.markSucceeded(succeeded.jobId, { totalEvents: 2, bytes: 3 })
+    const failed = store.create(jobInput())
+    const failedJob = store.markFailed(failed.jobId, { code: 'X', message: 'x' })
+
+    time.set(2_000)
+    assert.deepEqual(
+      store.recoverInterrupted().sort(),
+      [queued.jobId, running.jobId].sort()
+    )
+
+    for (const jobId of [queued.jobId, running.jobId]) {
+      const job = store.read(jobId)
+      assert.equal(job?.status, 'failed')
+      assert.equal(job?.finishedAt, 2_000)
+      assert.deepEqual(job?.error, {
+        code: 'EXPORT_INTERRUPTED',
+        message: '进程重启导致任务中断'
+      })
+    }
+    // startedAt is evidence of how far the interrupted job got, so it stays.
+    assert.equal(store.read(running.jobId)?.startedAt, 1_000)
+    assert.deepEqual(store.read(succeeded.jobId), done)
+    assert.deepEqual(store.read(failed.jobId), failedJob)
+    // A second pass has nothing left to recover.
+    assert.deepEqual(store.recoverInterrupted(), [])
+  })
+
+  test('过期任务不恢复，交由 prune 处理', () => {
+    const time = clock(1_000)
+    const store = new AuditExportJobStore({ root: tempRoot(), ttlMs: 500, now: time.now })
+    const expired = store.create(jobInput())
+    time.set(1_500)
+    const live = store.create(jobInput())
+
+    assert.deepEqual(store.recoverInterrupted(), [live.jobId])
+    assert.equal(store.read(expired.jobId)?.status, 'queued')
+    assert.deepEqual(store.pruneExpired(), [expired.jobId])
+  })
+
+  test('忽略孤儿任务目录与符号链接', () => {
+    const root = tempRoot()
+    const store = new AuditExportJobStore({ root, now: () => 1_000 })
+    const orphan = `exp_${'d'.repeat(24)}`
+    mkdirSync(path.join(root, orphan))
+    const target = path.join(root, 'link-target')
+    mkdirSync(target)
+    const link = `exp_${'e'.repeat(24)}`
+    symlinkSync(target, path.join(root, link))
+
+    assert.deepEqual(store.recoverInterrupted(), [])
+    assert.equal(existsSync(path.join(root, orphan)), true)
+  })
+})
+
 describe('并发计数与配额', () => {
   test('只统计 queued/running，并在过期后释放名额', () => {
     const time = clock(1_000)

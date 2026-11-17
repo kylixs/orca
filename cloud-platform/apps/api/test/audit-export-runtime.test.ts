@@ -51,6 +51,46 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2_000): Promise<voi
 }
 
 describe('createAuditExportStore', () => {
+  test('ORCA_AUDIT_EXPORT_DIR 优先于兼容别名 ORCA_AUDIT_EXPORT_ROOT', () => {
+    const dir = tempRoot()
+    const legacy = tempRoot()
+    try {
+      const store = createAuditExportStore({
+        ORCA_AUDIT_EXPORT_DIR: ` ${dir} `,
+        ORCA_AUDIT_EXPORT_ROOT: legacy
+      })
+      assert.equal(store.root, path.resolve(dir))
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+      rmSync(legacy, { recursive: true, force: true })
+    }
+  })
+
+  test('仅 ORCA_AUDIT_EXPORT_DIR 时生效', () => {
+    const dir = tempRoot()
+    try {
+      assert.equal(
+        createAuditExportStore({ ORCA_AUDIT_EXPORT_DIR: dir }).root,
+        path.resolve(dir)
+      )
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('DIR 为空串时回落到 ROOT 别名', () => {
+    const legacy = tempRoot()
+    try {
+      const store = createAuditExportStore({
+        ORCA_AUDIT_EXPORT_DIR: '   ',
+        ORCA_AUDIT_EXPORT_ROOT: legacy
+      })
+      assert.equal(store.root, path.resolve(legacy))
+    } finally {
+      rmSync(legacy, { recursive: true, force: true })
+    }
+  })
+
   test('env 覆盖 root/TTL/配额', () => {
     const root = tempRoot()
     try {
@@ -91,6 +131,86 @@ describe('createAuditExportStore', () => {
 })
 
 describe('startAuditExportCleanup', () => {
+  test('首次清理前先恢复中断任务，且只恢复一次', () => {
+    const calls: string[] = []
+    const cleanup = startAuditExportCleanup({
+      store: {
+        recoverInterrupted: (): string[] => {
+          calls.push('recover')
+          return []
+        },
+        pruneExpired: (): string[] => {
+          calls.push('prune')
+          return []
+        }
+      },
+      intervalMs: 60_000
+    })
+    try {
+      assert.deepEqual(calls, ['recover', 'prune'])
+      cleanup.runNow()
+      assert.deepEqual(calls, ['recover', 'prune', 'prune'])
+    } finally {
+      cleanup.stop()
+    }
+  })
+
+  test('启动时把 queued/running 任务恢复为 failed', () => {
+    const root = tempRoot()
+    try {
+      const store = new AuditExportJobStore({ root, ttlMs: 60_000 })
+      const queued = store.create(jobInput())
+      const running = store.create(jobInput())
+      store.markRunning(running.jobId)
+
+      const cleanup = startAuditExportCleanup({ store, intervalMs: 60_000 })
+      try {
+        for (const jobId of [queued.jobId, running.jobId]) {
+          const job = store.read(jobId)
+          assert.equal(job?.status, 'failed')
+          assert.deepEqual(job?.error, {
+            code: 'EXPORT_INTERRUPTED',
+            message: '进程重启导致任务中断'
+          })
+        }
+      } finally {
+        cleanup.stop()
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test('恢复失败走 onError，仍继续清理', async () => {
+    const errors: Error[] = []
+    const calls: string[] = []
+    const cleanup = startAuditExportCleanup({
+      store: {
+        recoverInterrupted: (): string[] => {
+          calls.push('recover')
+          throw new Error('recover-boom')
+        },
+        pruneExpired: (): string[] => {
+          calls.push('prune')
+          return []
+        }
+      },
+      intervalMs: 20,
+      onError: (error) => {
+        if (error instanceof Error) {
+          errors.push(error)
+        }
+      }
+    })
+    try {
+      await waitFor(() => calls.filter((call) => call === 'prune').length >= 2)
+      assert.equal(errors[0]?.message, 'recover-boom')
+      assert.equal(calls.filter((call) => call === 'recover').length, 1)
+    } finally {
+      cleanup.stop()
+    }
+  })
+
   test('启动时立即清理过期任务目录', () => {
     const root = tempRoot()
     try {
@@ -156,6 +276,7 @@ describe('startAuditExportCleanup', () => {
     const errors: Error[] = []
     let calls = 0
     const failingStore = {
+      recoverInterrupted: (): string[] => [],
       pruneExpired: (): string[] => {
         calls += 1
         throw new Error('boom')
@@ -194,6 +315,7 @@ describe('startAuditExportCleanup', () => {
       assert.doesNotThrow(() => {
         cleanup = startAuditExportCleanup({
           store: {
+            recoverInterrupted: (): string[] => [],
             pruneExpired: (): string[] => {
               throw new Error('boom')
             }
