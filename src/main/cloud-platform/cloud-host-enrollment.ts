@@ -184,6 +184,13 @@ export type HeartbeatResult = {
   auditCapabilities: unknown
 }
 
+export type HeartbeatErrorCode = 'heartbeat_unauthorized' | 'heartbeat_failed'
+
+/** Why structured: a rejected beat must keep its HTTP status, not collapse into null. */
+export type HeartbeatAttempt =
+  | { ok: true; httpStatus: number; errorCode: null; result: HeartbeatResult }
+  | { ok: false; httpStatus: number | null; errorCode: HeartbeatErrorCode; result: null }
+
 export async function sendHeartbeat(
   apiUrl: string,
   credential: string,
@@ -191,7 +198,8 @@ export async function sendHeartbeat(
   body: Record<string, unknown>,
   fetchImpl: typeof fetch = fetch,
   timeoutMs = 3_000
-): Promise<HeartbeatResult | null> {
+): Promise<HeartbeatAttempt> {
+  let httpStatus: number | null = null
   try {
     const res = await fetchImpl(`${apiUrl}/v1/hosts/${hostId}/heartbeat`, {
       method: 'POST',
@@ -199,26 +207,38 @@ export async function sendHeartbeat(
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs)
     })
+    httpStatus = res.status
     if (!res.ok) {
-      return null
+      return {
+        ok: false,
+        httpStatus,
+        errorCode: httpStatus === 401 ? 'heartbeat_unauthorized' : 'heartbeat_failed',
+        result: null
+      }
     }
     const parsed: unknown = await res.json()
     const policyVersion = readNumber(parsed, 'policyVersion')
     if (policyVersion === null) {
-      return null
+      return { ok: false, httpStatus, errorCode: 'heartbeat_failed', result: null }
     }
     const maintenance = readObjectValue(readField(parsed, 'maintenance'))
     return {
-      policyVersion,
-      policies: readField(parsed, 'policies'),
-      revoked: readField(parsed, 'revoked'),
-      maintenance:
-        maintenance === null ? null : { reason: readString(maintenance, 'reason') ?? '' },
-      hostRevoked: readField(parsed, 'hostRevoked') === true,
-      provisionAssignments: readField(parsed, 'provisionAssignments'),
-      auditCapabilities: readField(parsed, 'auditCapabilities')
+      ok: true,
+      httpStatus,
+      errorCode: null,
+      result: {
+        policyVersion,
+        policies: readField(parsed, 'policies'),
+        revoked: readField(parsed, 'revoked'),
+        maintenance:
+          maintenance === null ? null : { reason: readString(maintenance, 'reason') ?? '' },
+        hostRevoked: readField(parsed, 'hostRevoked') === true,
+        provisionAssignments: readField(parsed, 'provisionAssignments'),
+        auditCapabilities: readField(parsed, 'auditCapabilities')
+      }
     }
   } catch {
-    return null
+    // A network failure has no status; keep null rather than inventing one.
+    return { ok: false, httpStatus, errorCode: 'heartbeat_failed', result: null }
   }
 }

@@ -12,6 +12,7 @@ import {
   type CloudUpgradeHeaders
 } from './cloud-upgrade-admission'
 import { createCloudConnectionSessions } from './cloud-connection-sessions'
+import { createCloudHeartbeatHealth, type CloudHeartbeatHealth } from './cloud-heartbeat-health'
 import { parseCloudPolicies, type CloudPolicies } from './cloud-policies'
 import type { CloudProvisionReport } from './cloud-project-provision'
 import {
@@ -22,12 +23,8 @@ import { createCloudProvisionReportQueue } from './cloud-provision-report-queue'
 import { createCloudHostAuditQueue, type CloudHostAuditSink } from './cloud-host-audit'
 import { createCloudFileEventDelivery, type CloudFileEventDelivery } from './cloud-file-event-audit'
 import { fetchControlPlaneReads } from './cloud-agent-endpoint-fetch'
-import {
-  createCloudAdmissionLedger,
-  isRevokedTicket,
-  notifyRevokedTokens,
-  type AdmittedTicket
-} from './cloud-admission-ledger'
+import { createCloudAdmissionLedger } from './cloud-admission-ledger'
+import { createCloudRevocationNotifier } from './cloud-agent-revocation-notifier'
 
 /**
  * Host-side client for the cloud platform's control plane.
@@ -49,7 +46,7 @@ export type CloudAgentSnapshot = {
   maintenance: { reason: string } | null
   /** True once the platform revoked this host; it never clears. */
   hostRevoked: boolean
-}
+} & CloudHeartbeatHealth
 
 /**
  * Session-cap gate for accepted upgrades. The ticket is verified before the
@@ -101,6 +98,7 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
   let revocations = emptyRevocations()
   let lastRefreshAt: number | null = null
   let lastError: string | null = null
+  const heartbeatHealth = createCloudHeartbeatHealth()
   let lastMaintenance: { reason: string } | null = null
   let hostRevoked = false
   let policies: CloudPolicies | null = null
@@ -123,6 +121,12 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
     perHost: config.maxSessionsPerHost,
     perDeviceSockets: config.maxSocketsPerDeviceSession
   })
+  const { emitRevokedSessions, revokeAllAdmitted } = createCloudRevocationNotifier({
+    ledger,
+    sessions,
+    revocations: () => revocations,
+    listeners: revokeListeners
+  })
 
   const snapshot = (): CloudAgentSnapshot => ({
     kids: [...keys.keys()],
@@ -131,9 +135,17 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
     policyVersion,
     lastRefreshAt,
     lastError,
+    ...heartbeatHealth.snapshot(),
     maintenance: lastMaintenance,
     hostRevoked
   })
+
+  function notifyRefresh(): void {
+    const current = snapshot()
+    for (const listener of listeners) {
+      listener(current)
+    }
+  }
 
   async function refreshOnce(): Promise<void> {
     const reads = await fetchControlPlaneReads({
@@ -169,28 +181,30 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
         fetchImpl,
         timeoutMs
       )
-      if (beat) {
+      heartbeatHealth.record(beat, now())
+      if (beat.ok) {
+        const result = beat.result
         // Why by sequence: a report queued while this beat was in flight is newer
         // than anything the platform just accepted.
         provisionReports.clearThrough(provisionBatch.seq)
         auditEvents.clearThrough(auditBatch.seq)
-        fileEvents.noteCapabilities(beat.auditCapabilities)
-        const parsed = parseRevocations(beat.revoked)
+        fileEvents.noteCapabilities(result.auditCapabilities)
+        const parsed = parseRevocations(result.revoked)
         if (parsed) {
           revocations = parsed
         }
         // Keep the last good pack: a malformed one must not silently reopen exports.
-        const parsedPolicies = parseCloudPolicies(beat.policies)
+        const parsedPolicies = parseCloudPolicies(result.policies)
         if (parsedPolicies) {
           policies = parsedPolicies
         }
-        policyVersion = beat.policyVersion
-        lastMaintenance = beat.maintenance
+        policyVersion = result.policyVersion
+        lastMaintenance = result.maintenance
         // U37: assignments ride the beat; a revoked host takes none, a bad listener breaks nothing.
-        if (!beat.hostRevoked) {
-          notifyProvisionAssignments(provisionAssignmentListeners, beat.provisionAssignments)
+        if (!result.hostRevoked) {
+          notifyProvisionAssignments(provisionAssignmentListeners, result.provisionAssignments)
         }
-        if (beat.hostRevoked) {
+        if (result.hostRevoked) {
           // Why: a host-wide revocation has no per-ticket `since`; every admitted
           // ticket is dead, and the platform will never admit another.
           hostRevoked = true
@@ -214,43 +228,11 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
       }
     }
     lastRefreshAt = Date.now()
-    const current = snapshot()
-    for (const listener of listeners) {
-      listener(current)
-    }
+    notifyRefresh()
     emitRevokedSessions()
     if (hostRevoked) {
       stopClient()
     }
-  }
-
-  /**
-   * Tickets admitted before the revocation `since` are dead; their live sockets
-   * must be closed too, otherwise a revoked device keeps its session forever.
-   */
-  function emitRevokedSessions(): void {
-    const revokedTokens: string[] = []
-    for (const [jti, ticket] of ledger.entries()) {
-      if (!isRevokedTicket(jti, ticket, revocations)) {
-        continue
-      }
-      ledger.forget(jti)
-      sessions.forget(ticket.credential)
-      revokedTokens.push(ticket.deviceToken)
-    }
-    notifyRevokedTokens(revokeListeners, revokedTokens)
-  }
-
-  /** Host-wide revocation: close every admitted socket, regardless of its ticket age. */
-  function revokeAllAdmitted(): void {
-    const drained = ledger.drain()
-    for (const ticket of drained) {
-      sessions.forget(ticket.credential)
-    }
-    notifyRevokedTokens(
-      revokeListeners,
-      drained.map((ticket: AdmittedTicket) => ticket.deviceToken)
-    )
   }
 
   function stopClient(): void {
@@ -277,6 +259,12 @@ export function createCloudAgentClient(config: CloudAgentConfig): CloudAgentClie
     inFlight = refreshOnce()
       .catch((error: unknown) => {
         lastError = error instanceof Error ? error.message : String(error)
+        // A thrown refresh never reached a verdict on the beat; report it, or the
+        // state writer would keep the previous `online`.
+        if (config.heartbeat) {
+          heartbeatHealth.recordRefreshFailure()
+        }
+        notifyRefresh()
       })
       .finally(() => {
         inFlight = null
