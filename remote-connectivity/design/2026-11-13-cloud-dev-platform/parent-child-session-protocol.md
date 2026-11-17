@@ -119,6 +119,10 @@
 
 80. **测试进程生命周期（2026-11-17 13:3x 用户指令固化）**：测试派生的进程必须可回收且不跨轮残留——①harness 按 PID 清理；②长跑/全量结束跑 `cloud-platform/scripts/cleanup-test-processes.mjs` 校验 `matched=0`（默认 dry-run，`--yes` 才 TERM→KILL）；③清理器只处理本项目路径与测试临时目录，保留 `~/orca-local-env` 的 supervisor/forwarder/relay 与 30 分钟内启动的在途进程；④`run-test-tier.mjs` 已内置运行前自动清理。
 
+81. **测试工具必须自带测试与演练模式（2026-11-17 13:00 复盘固化）**：新增门禁/监控/清理/分层等测试工具须带 `node:test` 单测，并提供 dry-run（默认不破坏）；工具首跑暴露的缺陷修复后必须补钉。判例：冒烟门相对路径 ENOENT、清理器 KILL 阶段 unref、监控 limits 未接线，均在首次使用才暴露。
+
+82. **判红前先证运行时口径（同次固化——Electron-Node 两轮浪费）**：任何失败判定前必须证明运行时与配置属于受支持组合——真 Node 官方发行包 ≥24.16（`include/node` 存在）、未设 `ELECTRON_RUN_AS_NODE`、已设 `ORCA_BACKGROUND_LAUNCH=1`/`ORCA_SUPPRESS_DIALOGS=1`、构建口味匹配（e2e oracle vs production）。口径可疑时先换口径复跑，不得直接判产品红。判例：Electron 内置 Node 的 BoringSSL 与 `process.execPath` 进程模型制造 93 例假红。
+
 ## 2b. 并行模式（用户 2026-11-14 指令：不要串行开发，单独完整链路验收，发现即修不堵塞）
 
 1. **开发令派发不再以「前一令测试/审计通过」为前置**：实现落地即放行下一开发令（同通道后续令与跨通道均可）；文件域不相交仍是硬约束（防工作树碰撞与提交卷入）。
