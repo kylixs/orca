@@ -97,7 +97,9 @@ function makeInstallHome(): string {
     { mode: 0o755 }
   )
   // U182: the install script now resolves the host binary before writing env.
+  // U181 P1-3: `orca-ide` is the portable name; `orca` stays for macOS fallback.
   writeFileSync(join(home, 'bin', 'orca'), '#!/usr/bin/env bash\nexit 0\n', { mode: 0o755 })
+  writeFileSync(join(home, 'bin', 'orca-ide'), '#!/usr/bin/env bash\nexit 0\n', { mode: 0o755 })
   return home
 }
 
@@ -116,6 +118,9 @@ const SPARSE_TOOLS = [
   'mktemp',
   'rm',
   'mv',
+  // U181 P1-2/P1-3: readiness baseline and platform detection.
+  'date',
+  'uname',
   'node',
   'shasum',
   'sha256sum',
@@ -170,6 +175,9 @@ function makeHostStateHome(
   // fixture) is written literally. The function form keeps `$$` literal.
   const json = JSON.stringify(state, null, 2).replace('"pid": 0', () => '"pid": $$')
   const body = `#!/usr/bin/env bash
+case "$*" in
+  *--preflight*) exit 0 ;;
+esac
 state="$HOME/.orca-cloud/profile/orca-cloud-host-state.json"
 mkdir -p "$(dirname "$state")"
 cat > "$state" <<JSON
@@ -688,7 +696,7 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
 
   test('U182: 无 hostname -I 且无替代地址 → fail-fast，不写空 ADVERTISE_HOST', async () => {
     const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
-    const bin = makeSparsePath(home, { hostname: HOSTNAME_STUB, orca: ORCA_STUB })
+    const bin = makeSparsePath(home, { hostname: HOSTNAME_STUB, 'orca-ide': ORCA_STUB })
     const run = runInstallScript(await fetchHostScript(), home, { PATH: bin })
 
     assert.notEqual(run.status, 0)
@@ -705,7 +713,7 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     const bin = makeSparsePath(home, {
       hostname: HOSTNAME_STUB,
       ipconfig: '#!/usr/bin/env bash\n[ "$1" = getifaddr ] && echo 10.9.8.7\n',
-      orca: ORCA_STUB
+      'orca-ide': ORCA_STUB
     })
     const run = runInstallScript(await fetchHostScript(), home, { PATH: bin })
 
@@ -720,7 +728,7 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     const bin = makeSparsePath(home, {
       hostname:
         '#!/usr/bin/env bash\ncase "$1" in -s|-I) echo orca-test-host ;; *) echo orca-test-host ;; esac\n',
-      orca: ORCA_STUB,
+      'orca-ide': ORCA_STUB,
       openssl: '#!/usr/bin/env bash\necho "openssl-stub-boom" >&2\nexit 1\n'
     })
     const run = runInstallScript(await fetchHostScript(), home, { PATH: bin })
@@ -749,7 +757,7 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     const bin = makeSparsePath(home, {
       hostname:
         '#!/usr/bin/env bash\ncase "$1" in -s|-I) echo orca-test-host ;; *) echo orca-test-host ;; esac\n',
-      orca: ORCA_STUB,
+      'orca-ide': ORCA_STUB,
       openssl: opensslStub
     })
     const run = runInstallScript(await fetchHostScript(), home, { PATH: bin })
@@ -768,7 +776,7 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     const bin = makeSparsePath(home, {
       hostname:
         '#!/usr/bin/env bash\ncase "$1" in -s|-I) echo orca-test-host ;; *) echo orca-test-host ;; esac\n',
-      orca: ORCA_STUB
+      'orca-ide': ORCA_STUB
     })
     const run = runInstallScript(await fetchHostScript(), home, { PATH: bin })
 
@@ -901,14 +909,129 @@ exit 1
     assert.equal(run.status, 78, 'preflight failure keeps EX_CONFIG')
   })
 
+  describe('U181 P1-3: CLI 路径解析', () => {
+    const LINUX_UNAME = '#!/usr/bin/env bash\necho Linux\n'
+    const DARWIN_UNAME = '#!/usr/bin/env bash\necho Darwin\n'
+    const ADVERTISING_HOSTNAME =
+      '#!/usr/bin/env bash\ncase "$1" in -s) echo orca-test-host ;; *) echo orca-test-host ;; esac\n'
+
+    test('Linux 只有裸 orca（GNOME 桩）→ 78，且不写 env/unit', async () => {
+      const home = makeInstallHome()
+      const bin = makeSparsePath(home, {
+        hostname: ADVERTISING_HOSTNAME,
+        uname: LINUX_UNAME,
+        orca: '#!/usr/bin/env bash\necho gnome-orca-should-not-run >&2\nexit 0\n',
+        systemctl: '#!/usr/bin/env bash\nexit 0\n'
+      })
+      const run = runInstallScript(await fetchHostScript(), home, { PATH: bin })
+
+      assert.equal(run.status, 78, run.stderr)
+      assert.match(run.stderr, /未找到 Orca 宿主程序/)
+      assert.doesNotMatch(run.stderr, /gnome-orca-should-not-run/)
+      assert.equal(existsSync(join(home, '.orca-cloud', 'host.env')), false)
+      assert.equal(existsSync(join(home, '.config/systemd/user/orca-cloud-host.service')), false)
+    })
+
+    test('macOS 可以回退裸 orca', async () => {
+      const home = makeInstallHome()
+      const bin = makeSparsePath(home, {
+        hostname: ADVERTISING_HOSTNAME,
+        uname: DARWIN_UNAME,
+        orca: ORCA_STUB
+      })
+      const run = runInstallScript(await fetchHostScript(), home, { PATH: bin })
+
+      assert.equal(run.status, 0, run.stderr)
+      assert.equal(existsSync(join(home, '.orca-cloud', 'host.env')), true)
+    })
+
+    test('ORCA_CLI 显式路径优先，即使 Linux 只有 GNOME orca', async () => {
+      const home = makeInstallHome()
+      const marker = join(home, 'gnome-orca-ran')
+      const explicit = join(home, 'custom-orca-ide')
+      writeFileSync(explicit, '#!/usr/bin/env bash\nexit 0\n', { mode: 0o755 })
+      const bin = makeSparsePath(home, {
+        hostname: ADVERTISING_HOSTNAME,
+        uname: LINUX_UNAME,
+        orca: `#!/usr/bin/env bash\ntouch '${marker}'\nexit 0\n`,
+        systemctl: '#!/usr/bin/env bash\nexit 0\n'
+      })
+      const run = runInstallScript(await fetchHostScript(), home, {
+        PATH: bin,
+        ORCA_CLI: explicit
+      })
+
+      assert.equal(run.status, 0, run.stderr)
+      assert.equal(existsSync(marker), false, 'bare orca must never be selected')
+      const unit = readFileSync(join(home, '.config/systemd/user/orca-cloud-host.service'), 'utf8')
+      assert.equal(unit.includes(`ExecStart=${explicit} --host-mode`), true)
+    })
+  })
+
+  describe('U181 P1-4: preflight 前置', () => {
+    const ADVERTISING_HOSTNAME =
+      '#!/usr/bin/env bash\ncase "$1" in -s) echo orca-test-host ;; *) echo orca-test-host ;; esac\n'
+
+    function preflightHome(hostBody: string): { home: string; bin: string } {
+      const home = makeInstallHome()
+      const bin = makeSparsePath(home, {
+        hostname: ADVERTISING_HOSTNAME,
+        uname: '#!/usr/bin/env bash\necho Linux\n',
+        'orca-ide': hostBody,
+        systemctl: '#!/usr/bin/env bash\nexit 0\n'
+      })
+      return { home, bin }
+    }
+
+    test('配置失败 → 78，打印其 stdout/stderr，不写 env/unit', async () => {
+      const { home, bin } = preflightHome(`#!/usr/bin/env bash
+case "$*" in
+  *--preflight*)
+    echo '{"ok":false,"checks":[{"id":"config","ok":false,"detail":"missing ORCA_CLOUD_HOST_NAME"}]}'
+    echo 'host mode preflight failed: config: missing ORCA_CLOUD_HOST_NAME' >&2
+    exit 78 ;;
+esac
+exit 0
+`)
+      const run = runInstallScript(await fetchHostScript(), home, { PATH: bin })
+
+      assert.equal(run.status, 78, run.stderr)
+      assert.match(run.stderr, /"id":"config"/)
+      assert.match(run.stderr, /host mode preflight failed/)
+      assert.match(run.stderr, /宿主配置无效/)
+      assert.equal(existsSync(join(home, '.orca-cloud', 'host.env')), false)
+      assert.equal(existsSync(join(home, '.config/systemd/user/orca-cloud-host.service')), false)
+    })
+
+    test('运行时失败 → 64，不写 env/unit', async () => {
+      const { home, bin } = preflightHome(`#!/usr/bin/env bash
+case "$*" in
+  *--preflight*)
+    echo '{"ok":false,"checks":[{"id":"runtime","ok":false,"detail":"orcad slot unavailable"}]}'
+    exit 78 ;;
+esac
+exit 0
+`)
+      const run = runInstallScript(await fetchHostScript(), home, { PATH: bin })
+
+      assert.equal(run.status, 64, run.stderr)
+      assert.match(run.stderr, /宿主运行时不可用/)
+      assert.equal(existsSync(join(home, '.orca-cloud', 'host.env')), false)
+      assert.equal(existsSync(join(home, '.config/systemd/user/orca-cloud-host.service')), false)
+    })
+  })
+
   describe('H9a: 安装脚本状态自证', () => {
     test('status=online、lastHeartbeatOk=true、hostId、存活 pid → 0', async () => {
+      const now = Date.now()
       const home = makeHostStateHome({
         schemaVersion: 2,
         status: 'online',
         hostId: 'host_h9a',
+        platformUrl: api.url,
+        startedAt: now,
         lastHeartbeatOk: true,
-        lastHeartbeatAt: Date.now(),
+        lastHeartbeatAt: now,
         pid: 0
       })
       try {
@@ -924,11 +1047,15 @@ exit 1
     })
 
     test('status=starting 不算在线 → 70，打印状态摘录与日志路径', async () => {
+      const now = Date.now()
       const home = makeHostStateHome({
         schemaVersion: 2,
         status: 'starting',
         hostId: null,
+        platformUrl: api.url,
+        startedAt: now,
         lastHeartbeatOk: false,
+        lastHeartbeatAt: now,
         pid: 0
       })
       try {
@@ -944,12 +1071,16 @@ exit 1
     })
 
     test('pid 不存在 → 70', async () => {
+      const now = Date.now()
       const home = makeHostStateHome(
         {
           schemaVersion: 2,
           status: 'online',
           hostId: 'host_dead',
+          platformUrl: api.url,
+          startedAt: now,
           lastHeartbeatOk: true,
+          lastHeartbeatAt: now,
           pid: 999999
         },
         { stayAlive: false }
@@ -967,6 +1098,76 @@ exit 1
       })
       assert.equal(run.status, 70, run.stdout)
       assert.match(run.stderr, /状态文件不存在/)
+    })
+
+    // U181 P1-2: a stale `online` from an earlier process must never be success.
+    test('startedAt 早于本次安装起点 → 70（防旧状态）', async () => {
+      const now = Date.now()
+      const home = makeHostStateHome({
+        schemaVersion: 2,
+        status: 'online',
+        hostId: 'host_stale_start',
+        platformUrl: api.url,
+        startedAt: now - 3_600_000,
+        lastHeartbeatOk: true,
+        lastHeartbeatAt: now,
+        pid: 0
+      })
+      try {
+        const run = runInstallScript(await fetchHostScript(), home, {
+          ORCA_HOST_STATE_TIMEOUT: '2'
+        })
+        assert.equal(run.status, 70, run.stdout)
+        assert.match(run.stderr, /退出码 70/)
+      } finally {
+        killStateHost(home)
+      }
+    })
+
+    test('lastHeartbeatAt 超过 30s → 70（心跳不新鲜）', async () => {
+      const now = Date.now()
+      const home = makeHostStateHome({
+        schemaVersion: 2,
+        status: 'online',
+        hostId: 'host_stale_heartbeat',
+        platformUrl: api.url,
+        startedAt: now,
+        lastHeartbeatOk: true,
+        lastHeartbeatAt: now - 60_000,
+        pid: 0
+      })
+      try {
+        const run = runInstallScript(await fetchHostScript(), home, {
+          ORCA_HOST_STATE_TIMEOUT: '2'
+        })
+        assert.equal(run.status, 70, run.stdout)
+        assert.match(run.stderr, /退出码 70/)
+      } finally {
+        killStateHost(home)
+      }
+    })
+
+    test('platformUrl 与本次平台不一致 → 70（跨平台复用）', async () => {
+      const now = Date.now()
+      const home = makeHostStateHome({
+        schemaVersion: 2,
+        status: 'online',
+        hostId: 'host_other_platform',
+        platformUrl: 'https://other-platform.example',
+        startedAt: now,
+        lastHeartbeatOk: true,
+        lastHeartbeatAt: now,
+        pid: 0
+      })
+      try {
+        const run = runInstallScript(await fetchHostScript(), home, {
+          ORCA_HOST_STATE_TIMEOUT: '2'
+        })
+        assert.equal(run.status, 70, run.stdout)
+        assert.match(run.stderr, /退出码 70/)
+      } finally {
+        killStateHost(home)
+      }
     })
   })
 

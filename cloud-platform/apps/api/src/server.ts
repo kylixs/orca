@@ -381,13 +381,35 @@ export function hostInstallScript(input: { platformUrl: string; token: string })
 set -euo pipefail
 umask 077
 
+# U181 P1-2: readiness baseline; a state file written before this moment is stale.
+ORCA_INSTALL_STARTED_AT_MS="$(( $(date +%s) * 1000 ))"
+
 ORCA_ENV_FILE="\${ORCA_ENV_FILE:-$HOME/.orca-cloud/host.env}"
 ORCA_ENV_DIR="$(dirname "$ORCA_ENV_FILE")"
 
-# U182: fail before writing anything when the host binary is absent — every
-# printed start command must be one this machine can actually run.
-ORCA_HOST_BIN="$(command -v orca-ide 2>/dev/null || command -v orca 2>/dev/null || true)"
-${requireCommand(['orca-ide', 'orca'], '未找到 Orca 宿主程序：请先安装 orca-ide（Linux）或 orca，并确保其在 PATH 中')}
+# U181 P1-3: ORCA_CLI is an explicit override; Linux never falls back to a bare
+# orca binary (GNOME Orca screen reader), macOS may.
+ORCA_HOST_BIN=""
+if [ -n "\${ORCA_CLI:-}" ]; then
+  if [ -x "$ORCA_CLI" ]; then
+    case "$ORCA_CLI" in
+      /*) ORCA_HOST_BIN="$ORCA_CLI" ;;
+      */*) ORCA_HOST_BIN="$(cd "\${ORCA_CLI%/*}" 2>/dev/null && pwd)/\${ORCA_CLI##*/}" ;;
+      *) ORCA_HOST_BIN="$(pwd)/$ORCA_CLI" ;;
+    esac
+  else
+    echo ">> ORCA_CLI 不可执行：$ORCA_CLI" >&2
+    exit 78
+  fi
+elif command -v orca-ide >/dev/null 2>&1; then
+  ORCA_HOST_BIN="$(command -v orca-ide)"
+elif [ "$(uname -s 2>/dev/null || true)" = Darwin ] && command -v orca >/dev/null 2>&1; then
+  ORCA_HOST_BIN="$(command -v orca)"
+fi
+if [ -z "$ORCA_HOST_BIN" ] || [ ! -x "$ORCA_HOST_BIN" ]; then
+  echo ">> 未找到 Orca 宿主程序：请先安装 orca-ide（Linux）或 orca（macOS），或设置 ORCA_CLI 指向可执行文件" >&2
+  exit 78
+fi
 
 ORCA_HOST_NAME="$(hostname -s 2>/dev/null || hostname 2>/dev/null || true)"
 # U182: hostname -I is Linux-only. Probe hostname -I → macOS ipconfig → plain
@@ -461,6 +483,46 @@ ORCA_SSL_CONF_EOF
     exit 1
   fi
 fi
+
+# U181 P1-2: the readiness poll needs a profile the host can write.
+if ! mkdir -p "$ORCA_USER_DATA_PATH"; then
+  echo ">> profile 目录不可写：$ORCA_USER_DATA_PATH" >&2
+  exit 78
+fi
+chmod 700 "$ORCA_USER_DATA_PATH" 2>/dev/null || true
+
+# U181 P1-4: preflight before host.env/unit or any service start. A failed
+# verdict is config (78) or runtime (64); it can never become a timeout.
+ORCA_PREFLIGHT_OUT="$(mktemp "\${TMPDIR:-/tmp}/orca-preflight-out-XXXXXX")"
+ORCA_PREFLIGHT_ERR="$(mktemp "\${TMPDIR:-/tmp}/orca-preflight-err-XXXXXX")"
+ORCA_PREFLIGHT_CODE=0
+ORCA_CLOUD_API_URL=${shellQuote(input.platformUrl)} \\
+ORCA_CLOUD_HOST_TOKEN=${shellQuote(input.token)} \\
+ORCA_CLOUD_HOST_NAME="$ORCA_HOST_NAME" \\
+ORCA_USER_DATA_PATH="$ORCA_USER_DATA_PATH" \\
+ORCA_CLOUD_TLS_CERT_PATH="$ORCA_TLS_CERT" \\
+ORCA_CLOUD_TLS_KEY_PATH="$ORCA_TLS_KEY" \\
+  "$ORCA_HOST_BIN" --host-mode --preflight >"$ORCA_PREFLIGHT_OUT" 2>"$ORCA_PREFLIGHT_ERR" || ORCA_PREFLIGHT_CODE=$?
+if [ "$ORCA_PREFLIGHT_CODE" -ne 0 ]; then
+  echo ">> 宿主预检失败（--preflight 退出码 $ORCA_PREFLIGHT_CODE）：" >&2
+  cat "$ORCA_PREFLIGHT_OUT" >&2 2>/dev/null || true
+  cat "$ORCA_PREFLIGHT_ERR" >&2 2>/dev/null || true
+  ORCA_PREFLIGHT_EXIT=78
+  # Why: the CLI reports both halves as 78; the failed check id keeps "runtime
+  # broken" (64) distinct from "config broken" (78) for the operator.
+  if [ "$ORCA_PREFLIGHT_CODE" -eq 64 ] || grep -q '"id":"runtime","ok":false' "$ORCA_PREFLIGHT_OUT" 2>/dev/null; then
+    ORCA_PREFLIGHT_EXIT=64
+  fi
+  rm -f "$ORCA_PREFLIGHT_OUT" "$ORCA_PREFLIGHT_ERR"
+  if [ "$ORCA_PREFLIGHT_EXIT" -eq 64 ]; then
+    echo ">> 宿主运行时不可用（preflight → 64）：请检查 orcad 槽、pinned Node 与 profile 目录" >&2
+  else
+    echo ">> 宿主配置无效（preflight → 78）：请检查 ORCA_CLOUD_* 配置后重试" >&2
+  fi
+  exit "$ORCA_PREFLIGHT_EXIT"
+fi
+rm -f "$ORCA_PREFLIGHT_OUT" "$ORCA_PREFLIGHT_ERR"
+echo ">> 宿主预检通过"
 
 echo ">> 写入环境配置 $ORCA_ENV_FILE"
 # H9a: one atomic write. A rerun must never leave half a config behind, and
@@ -551,12 +613,29 @@ if [ "$ORCA_STATE_WAIT" -gt 0 ]; then
       ORCA_STATE_HEARTBEAT="$(_orca_state_field lastHeartbeatOk)"
       ORCA_STATE_HOST_ID="$(_orca_state_field hostId)"
       ORCA_STATE_PID="$(_orca_state_field pid)"
+      ORCA_STATE_STARTED_AT="$(_orca_state_field startedAt)"
+      ORCA_STATE_HEARTBEAT_AT="$(_orca_state_field lastHeartbeatAt)"
+      ORCA_STATE_PLATFORM_URL="$(_orca_state_field platformUrl)"
       case "$ORCA_STATE_PID" in ''|*[!0-9]*) ORCA_STATE_PID=0 ;; esac
+      # U181 P1-2: accept seconds fixtures as well as the schema's epoch ms.
+      case "$ORCA_STATE_STARTED_AT" in ''|*[!0-9]*) ORCA_STATE_STARTED_AT=0 ;; esac
+      if [ "$ORCA_STATE_STARTED_AT" -gt 0 ] && [ "$ORCA_STATE_STARTED_AT" -lt 100000000000 ]; then
+        ORCA_STATE_STARTED_AT=$(( ORCA_STATE_STARTED_AT * 1000 ))
+      fi
+      case "$ORCA_STATE_HEARTBEAT_AT" in ''|*[!0-9]*) ORCA_STATE_HEARTBEAT_AT=0 ;; esac
+      if [ "$ORCA_STATE_HEARTBEAT_AT" -gt 0 ] && [ "$ORCA_STATE_HEARTBEAT_AT" -lt 100000000000 ]; then
+        ORCA_STATE_HEARTBEAT_AT=$(( ORCA_STATE_HEARTBEAT_AT * 1000 ))
+      fi
+      ORCA_NOW_MS="$(( $(date +%s) * 1000 ))"
       if [ "$ORCA_STATE_SCHEMA" = 2 ] \\
         && [ "$ORCA_STATE_STATUS" = online ] \\
         && [ "$ORCA_STATE_HEARTBEAT" = true ] \\
         && [ -n "$ORCA_STATE_HOST_ID" ] && [ "$ORCA_STATE_HOST_ID" != null ] \\
-        && [ "$ORCA_STATE_PID" -gt 0 ] && kill -0 "$ORCA_STATE_PID" 2>/dev/null; then
+        && [ "$ORCA_STATE_PID" -gt 0 ] && kill -0 "$ORCA_STATE_PID" 2>/dev/null \\
+        && [ "$ORCA_STATE_STARTED_AT" -gt 0 ] && [ "$ORCA_STATE_STARTED_AT" -ge "$ORCA_INSTALL_STARTED_AT_MS" ] \\
+        && [ "$ORCA_STATE_HEARTBEAT_AT" -gt 0 ] && [ "$ORCA_STATE_HEARTBEAT_AT" -le "$ORCA_NOW_MS" ] \\
+        && [ "$(( ORCA_NOW_MS - ORCA_STATE_HEARTBEAT_AT ))" -le 30000 ] \\
+        && [ "$ORCA_STATE_PLATFORM_URL" = "$ORCA_CLOUD_API_URL" ]; then
         ORCA_STATE_OK=1
         break
       fi
