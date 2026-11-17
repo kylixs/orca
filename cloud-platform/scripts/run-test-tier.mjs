@@ -198,7 +198,9 @@ export function isSupportedNode(version, minimum = MIN_NODE_VERSION) {
 
 function defaultReexec({ argv, env, script = TIER_SCRIPT }) {
   const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx'
-  const result = spawnSync(npx, ['-y', `node@${MIN_NODE_VERSION}`, script, ...argv], {
+  // REPO-relative by default, so the re-exec works from any cwd.
+  const target = resolve(REPO, script)
+  const result = spawnSync(npx, ['-y', `node@${MIN_NODE_VERSION}`, target, ...argv], {
     stdio: 'inherit',
     env
   })

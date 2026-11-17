@@ -4257,3 +4257,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U238 修复落地**（`e8141633f2a`，3 文件）：toast 去 `Error:` 前缀（红证据）；单飞用例标题更正；启动 IIFE 以 `startupEpoch` 判断——登录已超越代际时四条失败路径静默返回（不踢回已登录用户；判断须在 `abandonStartupAuth` 自增前，中途自擒回归）；补 2 例。宽 4xx 代理场景接受登记。
 - **认证套件最终基线（U238 后干净树）**：18 套件 **206 tests / 204 pass / 2 skip（AC9c、AC15(g) 均 D17）/ 0 fail**（`--test-concurrency=2`，约 3 分钟）。
 - **单元套件复跑**：`test/*.test.ts` + `apps/api/test/*.test.ts` = **308/308**（62 suites，4.6s），U228–U238 改动无单测回归。AC 矩阵加固附录状态同步（U231/U232/U234/U235/U236 关闭，U238 复审中）。T1 关键业务在最终基线重跑（后台）。
+- **测试运行器修复**：`run-test-tier.mjs` 的 npx 重执行按 cwd 解析脚本路径，从 `cloud-platform/` 目录调用会拼成 `cloud-platform/cloud-platform/scripts/...`（EXIT=1 假失败）。改为 `resolve(REPO, script)` 绝对路径；从子目录重跑 T1 验证中。
