@@ -61,3 +61,5 @@ node cloud-platform/scripts/monitor-system-resources.mjs \
 - **默认演练、显式执行**：默认 dry-run 打印 `would kill`；`--yes` 才 TERM→1.5s→KILL，并把报告写入 `evidence/process-cleanup/process-cleanup.jsonl`。
 - **自动前置**：`run-test-tier.mjs` 每次运行前自动清理>30 分钟的本项目测试残留，避免残留进程污染后续结果。
 - **收尾责任**：任何 harness/驱动必须按 PID 清理自己派生的进程（禁用宽域 `pkill`），全量/长跑结束由调用方再跑一次清理器校验 `matched=0`。
+
+> 注意（2026-11-17）：校验器的 freshness 取目录内最新 mtime，**回填/重写 `summary.json` 会刷新它**；审计历史证据时应同时核对 `summary.json` 的 `generatedAt` 与原始产物 mtime，不能只看 PASS。
