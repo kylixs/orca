@@ -4171,3 +4171,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U197 v4 修订**：登录/平台同源交接在**实际下发 Cookie 时**响应体不含 refresh（`refreshCookie:true` 与 body 形态一一对应），宿主跨源/无 Origin/`COOKIE_MODE=never` 保留 body token；Wire 矩阵+AC15；Cookie 同名不同 Path 取最具体、重复即 401 且无副作用；标注旧 app.js 会写字符串 "undefined" 但永不作凭据、非令牌值；无 Origin 改按非浏览器处理。diff 32/10，待最终聚焦复核。
 - **U197 v5 修订**：Cookie 模式同源判定只认 `ORCA_CLOUD_PUBLIC_ORIGIN`（未配置 auto→never 告警、always 拒绝启动；代理头默认不采信）；§2B-9 限定登录/交接，刷新 body 源 current 为唯一「设 Cookie+新签 refresh」例外；旧字面量改为「会被发送但永不被接受/不轮换/不撤销」；AC15(a)-(g) + AC16（XFP 伪造）+ AC17（重复 Cookie 硬 401 不回退、host-only/Domain 清理、单 Cookie 不误拒）。diff 47/25，待最终复核。
 - **U213 关闭（U197 v5 经最终复核 APPROVED）**：P0 边界全部收口；复核 P2 精度项已修（清理 Path `/v1/auth`、Origin 不一致 403 不降级、迁移分支 2 的 QA-032 过渡窗口明示、AC15(e) 补 `refreshCookie`）。实现待 D5–D15 裁定后按 6 步序列排期。
+- **收尾核验**：测试进程清理 dry-run `matched=0`（kept 13，无本项目残留）；U211 roleSource 改动补充回归 `u80-mobile-users` 5/5 绿。
