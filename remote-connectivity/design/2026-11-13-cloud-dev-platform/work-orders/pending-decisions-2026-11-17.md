@@ -184,7 +184,7 @@
 | D8 | grace 默认值与审计 | 30s（上限 60s，`ORCA_CLOUD_REFRESH_GRACE_MS` 可配 0）；记录 `refresh.grace_reuse`/`refresh.reuse_detected` | 采用建议默认 | v3 grace 六条 |
 | D9 | 迁移/回退/body 移除判据 | 按 v3 状态机四分支；新 Web+旧服务端回退 localStorage；body 字段移除按遥测+期限 | 按 v3 状态机实现 | v3 迁移判据 |
 | D10 | 部署前置 + CSP + 关闭范围（CSP 草稿已备：`u197-csp-draft.md`，`script-src 'self'` 可行、style 需 inline、frame-src/img-src 已修正） | 单副本或粘性/共享 store；代理保证 Host/XFP；CSP 同批 Report-Only 起步；PII（`orca.user`）不在 QA-032 关闭条件 | 未满足前置不开启 Cookie 模式 | v3 §5-6/§2C |
-| D11 | 工作台统计卡与 FR-2.5 不一致（U202） | 修订 FR 对齐现状（下载策略卡为补充；今日会话数需另立数据源） | 不改 UI | `requirements.md:158` |
+| D11 | 工作台统计卡与 FR-2.5 不一致（U202）。**简报已备**：`test-reports/u202-stats-brief-20261118.md`（推荐修订 FR 对齐四卡；今日会话/待审批下载标二期；主机卡改去重或更名；QA-030 含搜索/通知部分需拆分） | 修订 FR 对齐现状（下载策略卡为补充；今日会话数需另立数据源） | 不改 UI | `requirements.md:158`；`u202-stats-brief-20261118.md` |
 | D12 | 「最近使用」数据源（U196）。**简报已备**：`test-reports/u196-recent-use-brief-20261118.md`（推荐项目 `lastUsedAt`，仅成功打开/连接写；前端 `lastUsedAt ?? updatedAt ?? createdAt`；待拍板 D12-1..6） | 定义「打开/连接」为最近使用事件，后端加 `lastUsedAt`（不沿用 `updatedAt`） | 保持按创建时间排序 | U196；`u196-recent-use-brief-20261118.md` |
 | D13 | 克隆失败 UX（U54-008） | 项目列表内联显示 `provisioningError`（不预校验，失败原因来自宿主） | 保持现状（仅详情可见） | WEB-R2-008 |
 | D14 | host.* 拒绝逐请求 traceId（U210） | 需要逐请求关联时，主机为每条拒绝携带独立 traceId | 保持心跳批次 traceId | U210 |
