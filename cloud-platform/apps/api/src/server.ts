@@ -4,6 +4,7 @@ import { createServer as createHttpsServer } from 'node:https'
 import { readFile, stat } from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
 import { join, normalize } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { validateProjectPath } from '../../../packages/contract/src/project-path.ts'
 import { validateProjectRepoUrl } from '../../../packages/contract/src/repo-url.ts'
 import { validateProjectDefaultBranch } from '../../../packages/contract/src/branch-name.ts'
@@ -130,6 +131,10 @@ export type ApiConfig = {
   handoffTtlMs?: number
   /** One-time install-script download token lifetime (U115); tests shrink it to exercise expiry. */
   installDownloadTtlMs?: number
+  /** U183 R2: where relay bundles are published; defaults to cloud-platform/dist/relay-bundles. */
+  relayBundleDir?: string
+  /** U183 R2: bundle sha the platform embeds when the request names none. */
+  relayBundleSha?: string
   /** Append-only audit log; absent keeps the chain in memory (tests). */
   auditLogPath?: string
   /** Single audit writer shared by replicas; absent keeps the local chain. */
@@ -284,6 +289,83 @@ function safeEqual(a: string, b: string): boolean {
   const left = Buffer.from(a)
   const right = Buffer.from(b)
   return left.length === right.length && timingSafeEqual(left, right)
+}
+
+/** U183 R2: published bundle location; R1 writes here by default. */
+const DEFAULT_RELAY_BUNDLE_DIR = fileURLToPath(
+  new URL('../../../dist/relay-bundles', import.meta.url)
+)
+const RELAY_BUNDLE_SHA_PATTERN = /^[0-9a-f]{64}$/
+const RELAY_BUNDLE_ROUTE_PATTERN = /^\/install\/relay-bundle\/([^/]+)\.(tgz|manifest\.json)$/
+
+type RelayBundleManifest = {
+  bundleSha256: string
+  schemaVersion: number
+  relayCodeVersion: string
+}
+
+function parseRelayBundleManifest(value: unknown): RelayBundleManifest | null {
+  if (typeof value !== 'object' || value === null) return null
+  const sha = Reflect.get(value, 'bundleSha256')
+  const schemaVersion = Reflect.get(value, 'schemaVersion')
+  const relayCodeVersion = Reflect.get(value, 'relayCodeVersion')
+  if (
+    typeof sha !== 'string' ||
+    typeof schemaVersion !== 'number' ||
+    !Number.isInteger(schemaVersion) ||
+    typeof relayCodeVersion !== 'string'
+  ) {
+    return null
+  }
+  return { bundleSha256: sha, schemaVersion, relayCodeVersion }
+}
+
+type RelayBundleManifestResult =
+  | { ok: true; manifest: RelayBundleManifest }
+  | { ok: false; status: number; code: string; message: string }
+
+/** The manifest is an out-of-band deployment artifact, never served to clients. */
+async function readRelayBundleManifest(
+  dir: string,
+  sha: string
+): Promise<RelayBundleManifestResult> {
+  let raw: string
+  try {
+    raw = await readFile(join(dir, `relay-bundle-${sha}.manifest.json`), 'utf8')
+  } catch {
+    return {
+      ok: false,
+      status: 500,
+      code: 'RELAY_BUNDLE_MANIFEST_MISSING',
+      message: 'relay bundle 清单缺失：部署不完整。'
+    }
+  }
+  const parsed: unknown = (() => {
+    try {
+      return JSON.parse(raw)
+    } catch {
+      return null
+    }
+  })()
+  const valid = parseRelayBundleManifest(parsed)
+  if (!valid || valid.bundleSha256 !== sha) {
+    return {
+      ok: false,
+      status: 500,
+      code: 'RELAY_BUNDLE_MANIFEST_INVALID',
+      message: 'relay bundle 清单与包不一致。'
+    }
+  }
+  return { ok: true, manifest: valid }
+}
+
+function isLoopbackHost(hostname: string): boolean {
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname === '[::1]'
+  )
 }
 
 /**
@@ -447,7 +529,48 @@ fi
 `
 }
 
-export function relayInstallScript(input: { platformUrl: string; internalToken: string }): string {
+export type RelayBundleEmbed = {
+  sha256: string
+  schemaVersion: number
+  relayCodeVersion: string
+  /** https platforms force the download proto; local http keeps the sha pin only. */
+  downloadTls: boolean
+}
+
+export function relayInstallScript(input: {
+  platformUrl: string
+  internalToken: string
+  bundle?: RelayBundleEmbed
+}): string {
+  const bundle = input.bundle
+  const bundleUrl = bundle ? `${input.platformUrl}/install/relay-bundle/${bundle.sha256}.tgz` : ''
+  const bundleVars = bundle
+    ? `
+# U183 R2: content-addressed bundle pinned by sha; the URL must match the route.
+ORCA_RELAY_BUNDLE_SHA256=${shellQuote(bundle.sha256)}
+ORCA_RELAY_BUNDLE_URL=${shellQuote(bundleUrl)}
+ORCA_RELAY_SCHEMA_VERSION=${bundle.schemaVersion}
+ORCA_RELAY_CODE_VERSION=${shellQuote(bundle.relayCodeVersion)}
+ORCA_RELAY_DOWNLOAD_TLS=${bundle.downloadTls ? '1' : '0'}
+# R5 bundle 下载命令参数（TLS 平台强制 https；本地 http 仅靠 sha 钉死）。
+ORCA_RELAY_BUNDLE_CURL_OPTS=(${bundle.downloadTls ? "-fsSL --proto '=https' --tlsv1.2" : '-fsSL'})
+${
+  bundle.downloadTls
+    ? ''
+    : `if [ "$ORCA_RELAY_DOWNLOAD_TLS" = "0" ]; then
+  echo ">> 警告：平台地址不是 https，bundle 下载未强制 TLS（仅限本地测试）" >&2
+fi
+`
+}`
+    : ''
+  const bundleEnv = bundle
+    ? `  printf '%s\\n' ${shellQuote(`ORCA_RELAY_BUNDLE_SHA256=${bundle.sha256}`)}
+  printf '%s\\n' ${shellQuote(`ORCA_RELAY_BUNDLE_URL=${bundleUrl}`)}
+  printf '%s\\n' ${shellQuote(`ORCA_RELAY_SCHEMA_VERSION=${bundle.schemaVersion}`)}
+  printf '%s\\n' ${shellQuote(`ORCA_RELAY_CODE_VERSION=${bundle.relayCodeVersion}`)}
+  printf '%s\\n' ${shellQuote(`ORCA_RELAY_DOWNLOAD_TLS=${bundle.downloadTls ? '1' : '0'}`)}
+`
+    : ''
   return `#!/usr/bin/env bash
 # Orca Cloud 中继接入脚本（平台生成；内嵌内部控制令牌，仅管理员可见）
 set -euo pipefail
@@ -455,6 +578,7 @@ umask 077
 
 ORCA_ENV_FILE="\${ORCA_ENV_FILE:-$HOME/.orca-cloud/relay.env}"
 ORCA_ENV_DIR="$(dirname "$ORCA_ENV_FILE")"
+${bundleVars}
 
 # U183 R4: preflight before any write. Node missing/old is EX_USAGE (64);
 # an unusable entry or install root is EX_CONFIG (78); platform unreachable
@@ -489,7 +613,7 @@ echo ">> 写入环境配置 $ORCA_ENV_FILE"
   printf '%s\\n' ${shellQuote(`ORCA_CLOUD_INTERNAL_TOKEN=${input.internalToken}`)}
   printf 'PORT=%s\\n' "\${PORT:-18443}"
   printf 'RELAY_PUBLIC_HOST=%s\\n' "\${RELAY_PUBLIC_HOST:-}"
-} > "$ORCA_ENV_FILE"
+${bundleEnv}} > "$ORCA_ENV_FILE"
 chmod 600 "$ORCA_ENV_FILE"
 echo ">> 环境已就绪：$ORCA_ENV_FILE"
 
@@ -926,6 +1050,14 @@ export function createApp(config: ApiConfig): ApiHandle {
     Number(process.env.ORCA_CLOUD_HOST_OFFLINE_MS ?? HOST_OFFLINE_DEFAULT_MS)
   const handoffTtlMs = config.handoffTtlMs ?? HANDOFF_TTL_MS
   const installDownloadTtlMs = config.installDownloadTtlMs ?? INSTALL_DOWNLOAD_TTL_MS
+  const relayBundleDir =
+    config.relayBundleDir ?? process.env.ORCA_RELAY_BUNDLE_DIR ?? DEFAULT_RELAY_BUNDLE_DIR
+  // U183 R2: an explicit sha wins; without one the legacy script stays bundle-free.
+  const configuredRelayBundleSha = (
+    config.relayBundleSha ??
+    process.env.ORCA_RELAY_BUNDLE_SHA ??
+    ''
+  ).trim()
   const expiresInSeconds = Math.ceil(accessTtlMs / 1000)
   const auditLogPath = config.auditLogPath ?? process.env.AUDIT_LOG_PATH ?? null
   const store = new Store()
@@ -2071,6 +2203,35 @@ export function createApp(config: ApiConfig): ApiHandle {
 
     if (path === '/health') return json(res, 200, { ok: true, time: now() })
 
+    // ---- U183 R2: relay bundles are public and content-addressed ----
+    // Registered before the /install/* admin gate: the tarball holds no secret,
+    // and the admin-issued script pins the sha it must receive.
+    if (req.method === 'GET' && path.startsWith('/install/relay-bundle/')) {
+      const route = RELAY_BUNDLE_ROUTE_PATTERN.exec(path)
+      if (!route) return error(res, 404, 'NOT_FOUND', '接口不存在。', traceId)
+      const [, sha, extension] = route
+      if (!RELAY_BUNDLE_SHA_PATTERN.test(sha)) {
+        return error(res, 400, 'RELAY_BUNDLE_SHA_INVALID', 'bundle sha 非法。', traceId)
+      }
+      const dir = await stat(relayBundleDir).catch(() => null)
+      if (!dir?.isDirectory()) {
+        return error(res, 503, 'RELAY_BUNDLE_UNAVAILABLE', 'relay bundle 目录未配置。', traceId)
+      }
+      const body = await readFile(join(relayBundleDir, `relay-bundle-${sha}.${extension}`)).catch(
+        () => null
+      )
+      if (!body) return error(res, 404, 'RELAY_BUNDLE_NOT_FOUND', 'bundle 不存在。', traceId)
+      res.writeHead(200, {
+        'content-type':
+          extension === 'tgz' ? 'application/gzip' : 'application/json; charset=utf-8',
+        'content-length': body.byteLength,
+        // Task contract: bundle responses are never cached, even though the name is content-addressed.
+        'cache-control': 'no-store'
+      })
+      res.end(body)
+      return
+    }
+
     // ---- frontend release (AC-19): public, a console bootstraps before it has a token ----
     if (req.method === 'GET' && path === '/v1/web/release') {
       const release = webReleases.current()
@@ -2400,6 +2561,48 @@ export function createApp(config: ApiConfig): ApiHandle {
       // The operator pastes this command on the target machine, so the embedded
       // address must be the one the wizard page saw.
       const platformUrl = requestOrigin(req)
+      const bundleSha = (url.searchParams.get('sha') ?? configuredRelayBundleSha).trim()
+      let bundleEmbed: RelayBundleEmbed | undefined
+      if (kind === 'relay' && bundleSha) {
+        if (!RELAY_BUNDLE_SHA_PATTERN.test(bundleSha)) {
+          return error(res, 400, 'RELAY_BUNDLE_SHA_INVALID', 'bundle sha 非法。', traceId)
+        }
+        const origin = new URL(platformUrl)
+        const downloadTls = origin.protocol === 'https:'
+        // B2: an https-only proto restriction would break local http platforms;
+        // instead, production (non-loopback http) refuses to generate a script.
+        if (!downloadTls && !isLoopbackHost(origin.hostname)) {
+          return error(
+            res,
+            400,
+            'RELAY_BUNDLE_INSECURE_URL',
+            '生产平台必须使用 https 下发 relay bundle。',
+            traceId
+          )
+        }
+        const dir = await stat(relayBundleDir).catch(() => null)
+        const archive = dir?.isDirectory()
+          ? await readFile(join(relayBundleDir, `relay-bundle-${bundleSha}.tgz`)).catch(() => null)
+          : null
+        if (!archive) {
+          return error(
+            res,
+            503,
+            'RELAY_BUNDLE_UNAVAILABLE',
+            '目标 relay bundle 不存在，无法生成安装脚本。',
+            traceId
+          )
+        }
+        const manifest = await readRelayBundleManifest(relayBundleDir, bundleSha)
+        if (!manifest.ok)
+          return error(res, manifest.status, manifest.code, manifest.message, traceId)
+        bundleEmbed = {
+          sha256: bundleSha,
+          schemaVersion: manifest.manifest.schemaVersion,
+          relayCodeVersion: manifest.manifest.relayCodeVersion,
+          downloadTls
+        }
+      }
       let script: string
       let tokenEmbedded = false
       if (kind === 'host') {
@@ -2414,7 +2617,11 @@ export function createApp(config: ApiConfig): ApiHandle {
         tokenEmbedded = true
         script = hostInstallScript({ platformUrl, token })
       } else {
-        script = relayInstallScript({ platformUrl, internalToken })
+        script = relayInstallScript({
+          platformUrl,
+          internalToken,
+          ...(bundleEmbed ? { bundle: bundleEmbed } : {})
+        })
       }
       // Burn only now: a request that failed the script's own checks must not
       // spend the admin's one shot.
