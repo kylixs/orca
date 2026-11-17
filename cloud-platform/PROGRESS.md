@@ -4240,3 +4240,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U229b2 复审 APPROVED**（隔离 worktree；父提交 F5a/F5b/F6/F7a/F11 红、F7b 防回归，与自报一致）：超时 finally 清理、契约校验在写入前、四态与 abort 兼容、单飞清理无条件。P3 另立 **U234（🟡）**：启动超时不 abort/不 bump epoch（迟到 refresh 仍写 state/storage）、返回契约注释过期、refreshVerdict 白名单过宽、`err.message` 空值、四态/单飞/真实 10s 缺钉住用例。
 - **U232 登出空 body 守卫**（`c362721293f`）：`body=null`/标量/数组视为无 body——清 Cookie/Bearer 撤销/200 语义不变（先红：null 两例 500）；补 5 例，`u229-logout-body` 14/14。顺带核对发现 refresh 两处同类解引用 → 登记 **U235（🟡）** 并派修（null/标量 → 500）。
 - **m01 测试索引补齐**：新增 U228/U229（epoch/logout-grace/startup-resilience/logout-body）/U230/U232 套件条目与覆盖范围；F1 业务流与 m01 与 HEAD 认证实现同步（除待裁定项）。
+- **U235 refresh 空 body 守卫**（`f0977d7c42f`）：Cookie/body 两分支先判对象——`null` 视为假 body/无 body，`42`/`"x"`/`[]` 行为不变（原本不抛）；补 8 例，四套件 **97/97**。顺带核对发现 ~19 个端点同类解引用 → 登记 **U236（🟡）** 并派修（`readJson` 非对象归一为 `{}` + 代表性端点测试）。
