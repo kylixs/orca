@@ -189,3 +189,5 @@
 | D13 | 克隆失败 UX（U54-008） | 项目列表内联显示 `provisioningError`（不预校验，失败原因来自宿主） | 保持现状（仅详情可见） | WEB-R2-008 |
 | D14 | host.* 拒绝逐请求 traceId（U210） | 需要逐请求关联时，主机为每条拒绝携带独立 traceId | 保持心跳批次 traceId | U210 |
 | D15 | LGA 待裁定批（U212）：撤销边界、嵌套组、混合版本副本、目录不可达、filter/DN 契约、bootstrap、枚举、大小写 | 先定撤销边界与嵌套组（阻断级）；其余按评审建议逐项 | 不改语义 | `test-reports/lga-design-review.md` |
+
+| D16 | Cookie 源「同值重发」需在内存保留 current refresh 明文（`Session.currentRefreshToken`），与「仅存哈希」原则冲突 | 先接受（仅内存、不落盘；进程内存泄漏即等同会话失守），或改为「Cookie 源也轮换」（需改 v5 不变式并重新评审） | 按 v5 同值重发；实现注明明文仅内存 | U215/v5 §2B-2 |
