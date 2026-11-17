@@ -86,6 +86,19 @@ WantedBy=default.target
     assert.equal(renderRelayUnit({ nodePath: '/usr/bin/node', root: '/opt/orca/' }), RELAY_UNIT)
   })
 
+  test('renderRelayUnit 接受自定义入口（仓库模式）', () => {
+    const unit = renderRelayUnit({
+      nodePath: '/usr/bin/node',
+      root: '/opt/orca',
+      entry: '/opt/orca/cloud-platform/apps/relay/src/relay.ts'
+    })
+    assert.match(
+      unit,
+      /^ExecStart=\/usr\/bin\/node \/opt\/orca\/cloud-platform\/apps\/relay\/src\/relay\.ts$/m
+    )
+    assert.doesNotMatch(unit, /\/current\//)
+  })
+
   test('缺少必填参数直接报错', () => {
     const base = {
       description: 'Demo',

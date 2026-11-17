@@ -19,7 +19,7 @@ import {
 } from 'node:fs'
 import { request } from 'node:http'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { Window } from 'happy-dom'
 import { buildHash, DEFAULT_ROUTE, parseHash } from '../../apps/web/router/routes.js'
 import { registerHost, saveEvidence, spawnService, type Service } from './harness.ts'
@@ -1683,6 +1683,27 @@ exit 0
       assert.match(run.stderr, /relay_start_failed/)
       assert.equal(existsSync(join(relayRoot, 'relay.pid')), false)
       assert.equal(existsSync(join(relayRoot, 'run-relay.sh')), true)
+    })
+
+    test('U186: 仓库模式 launcher 指向仓库入口，不回落到 current', async () => {
+      const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+      const relayRoot = makeRelayRoot(home)
+      const repoEntry = join(relayRoot, 'cloud-platform', 'apps', 'relay', 'src', 'relay.ts')
+      mkdirSync(dirname(repoEntry), { recursive: true })
+      writeFileSync(repoEntry, '')
+      const bin = makeSparsePath(home, { node: NODE_2218_ALIVE_STUB })
+      const run = runInstallScript(await fetchRelayScriptRepoMode(), home, {
+        PATH: bin,
+        ORCA_RELAY_ROOT: relayRoot
+      })
+      try {
+        assert.equal(run.status, 0, run.stderr)
+        const wrapper = readFileSync(join(relayRoot, 'run-relay.sh'), 'utf8')
+        assert.equal(wrapper.includes(`exec "${join(bin, 'node')}" "${repoEntry}"`), true)
+        assert.doesNotMatch(wrapper, /current\/apps\/relay/)
+      } finally {
+        killRelayPid(relayRoot)
+      }
     })
   })
 

@@ -1255,7 +1255,7 @@ if ${systemdAvailable()}; then
   # R11a: identical reruns must not recreate the unit (nor restart it needlessly).
   ORCA_RELAY_UNIT_TMP="$ORCA_RELAY_UNIT_FILE.tmp.$$"
   cat > "$ORCA_RELAY_UNIT_TMP" <<ORCA_RELAY_UNIT
-${renderRelayUnit({ nodePath: '$ORCA_NODE_BIN', root: '$ORCA_RELAY_ROOT' })}ORCA_RELAY_UNIT
+${renderRelayUnit({ nodePath: '$ORCA_NODE_BIN', root: '$ORCA_RELAY_ROOT', entry: '$ORCA_RELAY_ENTRY' })}ORCA_RELAY_UNIT
   if [ -f "$ORCA_RELAY_UNIT_FILE" ] && cmp -s "$ORCA_RELAY_UNIT_TMP" "$ORCA_RELAY_UNIT_FILE"; then
     rm -f "$ORCA_RELAY_UNIT_TMP"
     echo ">> systemd 用户单元未变化，跳过重写：$ORCA_RELAY_UNIT_FILE"
@@ -1295,7 +1295,7 @@ ${renderRelayUnit({ nodePath: '$ORCA_NODE_BIN', root: '$ORCA_RELAY_ROOT' })}ORCA
 3) 前台调试前先停止服务：
    systemctl --user stop orca-relay.service
    set -a; . "$ORCA_ENV_FILE"; set +a
-   $ORCA_NODE_BIN $ORCA_RELAY_ROOT/current/apps/relay/src/relay.ts
+   $ORCA_NODE_BIN $ORCA_RELAY_ENTRY
 
 说明：RELAY_PUBLIC_HOST 填客户端可达地址（NAT/跨网段必填）；缺省时平台记录注册来源 IP。
 ORCA_NEXT
@@ -1313,7 +1313,7 @@ set -a
 . "$ORCA_ENV_FILE"
 set +a
 echo \\$\\$ > "$ORCA_RELAY_PID_FILE"
-exec "$ORCA_NODE_BIN" "$ORCA_RELAY_ROOT/current/apps/relay/src/relay.ts"
+exec "$ORCA_NODE_BIN" "$ORCA_RELAY_ENTRY"
 ORCA_RELAY_WRAPPER
   chmod 700 "$ORCA_RELAY_WRAPPER"
   echo ">> 已写入启动脚本：$ORCA_RELAY_WRAPPER"
@@ -1379,7 +1379,7 @@ ORCA_RELAY_WRAPPER
 1) 停止：kill "$ORCA_RELAY_PID"
 2) 前台调试前先停止上述进程，然后：
    set -a; . "$ORCA_ENV_FILE"; set +a
-   $ORCA_NODE_BIN $ORCA_RELAY_ROOT/current/apps/relay/src/relay.ts
+   $ORCA_NODE_BIN $ORCA_RELAY_ENTRY
 3) 启动脚本：$ORCA_RELAY_WRAPPER（已 chmod 700）
 
 说明：RELAY_PUBLIC_HOST 填客户端可达地址（NAT/跨网段必填）；缺省时平台记录注册来源 IP。

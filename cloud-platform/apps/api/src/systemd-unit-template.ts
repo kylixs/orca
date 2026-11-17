@@ -78,13 +78,19 @@ export function renderHostUnit(input: { binPath: string }): string {
   })
 }
 
-export function renderRelayUnit(input: { nodePath: string; root: string }): string {
+export function renderRelayUnit(input: {
+  nodePath: string
+  root: string
+  /** U186: defaults to the bundle release entry; repo mode passes its own. */
+  entry?: string
+}): string {
   const nodePath = requireText('nodePath', input.nodePath)
   // POSIX unit path: do not use path.join (it would emit backslashes on Windows).
   const root = requireText('root', input.root).replace(/\/+$/, '')
+  const entry = requireText('entry', input.entry ?? `${root}/current/apps/relay/src/relay.ts`)
   return renderSystemdUnit({
     description: 'Orca Cloud 中继',
-    execStart: `${nodePath} ${root}/current/apps/relay/src/relay.ts`,
+    execStart: `${nodePath} ${entry}`,
     environmentFile: `${root}/relay.env`,
     startLimitIntervalSec: 60,
     startLimitBurst: 5
