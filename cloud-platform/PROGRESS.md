@@ -4226,3 +4226,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U229a 修复落地**（F1/F2 P1，`fb8d57347f4`，4 文件）：`state.authEpoch` 代际——login 发起/成功、logout 自增并清 in-flight，刷新每个 await 后校验（过期结果 `'stale'`、不写 state/storage、不登出不误刷），`api()` 代际不一致不刷新不登出；`legacyOwnerAllowsFallback`——登录清无 owner/异 owner 旧键，Cookie 启动 body 回退前校验 owner 与 `orca.user`（无 owner 不回退）。新套件 `u229-web-refresh-epoch` 6 例（F1a/F1b/F2×2 红→绿，2 防回归），主会话复跑 4 套件 **36 pass/1 skip**。有意行为：F2 取代 U225 N3R 无 owner 回退（改为清键回登录），AC9d 补种可信 owner。
 - **U228 关闭（复审 APPROVED）**：检查位置/边界/审计/客户端递归/测试真实性核验，`git archive` 快照先红 4/5、修复后 5/5 + 相关 92/92。P3 观察登记 **U230（🟡）**：审计事件语义倒置、并发重复、客户端 401 范围（并入 U229b）、测试缺口（已派补）。台账 U228 翻 🟢。
 - 并发 3 路：U229b1（F3/F4/F10 客户端/U230③）、U230④ 测试补强、U229a 独立复审。
+- **U230④ 测试缺口补齐**（`19da39a2081`，304 行仅测试）：Cookie previous/宽限分支禁用、已删用户 body/Cookie 刷新、假 body+有效 Cookie、禁用登录不建 device、`/v1/audit/verify` 全链 5 例；修复前快照 4 失败/1 通过，主会话复跑 5/5。U230 余 ①审计事件语义、②并发重复待事件词汇批次；③随 U229b1。
