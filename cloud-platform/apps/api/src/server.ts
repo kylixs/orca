@@ -44,6 +44,7 @@ import { createRemoteAudit, type AuditSink } from './audit-writer-client.ts'
 import { createSigningKeyRing } from './signing-key-ring.ts'
 import type { AuditEvent, AuditEventInput } from './store.ts'
 import { openAuditLogFile } from './audit-log-file.ts'
+import { requireCommand, shellQuote, systemdAvailable } from './install-script-command.ts'
 import { attachStorePersistence } from './store-persistence.ts'
 import { startInternalChannel } from './internal-channel.ts'
 import { ldapProfile, MockLdapAdapter, type LdapAdapter } from './ldap.ts'
@@ -273,11 +274,6 @@ function requestOrigin(req: IncomingMessage): string {
   return `${scheme}://${host}`
 }
 
-/** U182: embed untrusted values as one single-quoted shell literal. */
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`
-}
-
 function safeEqual(a: string, b: string): boolean {
   const left = Buffer.from(a)
   const right = Buffer.from(b)
@@ -289,7 +285,7 @@ function safeEqual(a: string, b: string): boolean {
  * target machine needs and prints the follow-up commands; it never prompts, so
  * `bash <(curl …)` stays unattended-safe.
  */
-function hostInstallScript(input: { platformUrl: string; token: string }): string {
+export function hostInstallScript(input: { platformUrl: string; token: string }): string {
   return `#!/usr/bin/env bash
 # Orca Cloud 开发机接入脚本（平台生成；内嵌一次性注册令牌，注册一次后失效）
 set -euo pipefail
@@ -301,10 +297,7 @@ ORCA_ENV_DIR="$(dirname "$ORCA_ENV_FILE")"
 # U182: fail before writing anything when the host binary is absent — every
 # printed start command must be one this machine can actually run.
 ORCA_HOST_BIN="$(command -v orca-ide 2>/dev/null || command -v orca 2>/dev/null || true)"
-if [ -z "$ORCA_HOST_BIN" ]; then
-  echo ">> 未找到 Orca 宿主程序：请先安装 orca-ide（Linux）或 orca，并确保其在 PATH 中" >&2
-  exit 1
-fi
+${requireCommand(['orca-ide', 'orca'], '未找到 Orca 宿主程序：请先安装 orca-ide（Linux）或 orca，并确保其在 PATH 中')}
 
 ORCA_HOST_NAME="$(hostname -s 2>/dev/null || hostname 2>/dev/null || true)"
 # U182: hostname -I is Linux-only. Probe hostname -I → macOS ipconfig → plain
@@ -409,7 +402,7 @@ case "$ORCA_HEALTH_CODE" in
 esac
 echo ">> 环境已就绪：\$ORCA_ENV_FILE"
 
-if command -v systemctl >/dev/null 2>&1; then
+if ${systemdAvailable()}; then
   cat <<ORCA_NEXT
 
 后续命令在开发机上执行：
@@ -448,7 +441,7 @@ fi
 `
 }
 
-function relayInstallScript(input: { platformUrl: string; internalToken: string }): string {
+export function relayInstallScript(input: { platformUrl: string; internalToken: string }): string {
   return `#!/usr/bin/env bash
 # Orca Cloud 中继接入脚本（平台生成；内嵌内部控制令牌，仅管理员可见）
 set -euo pipefail
@@ -460,10 +453,7 @@ ORCA_ENV_DIR="$(dirname "$ORCA_ENV_FILE")"
 # U182: this script does not install the relay — check the runtime and the
 # entry it will print, and fail instead of claiming an unusable install.
 ORCA_NODE_BIN="$(command -v node 2>/dev/null || true)"
-if [ -z "$ORCA_NODE_BIN" ]; then
-  echo ">> 未找到 node：本脚本不安装中继运行时，请先安装 Node.js 并确保其在 PATH 中" >&2
-  exit 1
-fi
+${requireCommand('node', '未找到 node：本脚本不安装中继运行时，请先安装 Node.js 并确保其在 PATH 中')}
 ORCA_RELAY_ROOT="\${ORCA_RELAY_ROOT:-/opt/orca-cloud}"
 ORCA_RELAY_ENTRY="$ORCA_RELAY_ROOT/cloud-platform/apps/relay/src/relay.ts"
 if [ ! -f "$ORCA_RELAY_ENTRY" ]; then
@@ -495,7 +485,7 @@ case "$ORCA_HEALTH_CODE" in
 esac
 echo ">> 环境已就绪：$ORCA_ENV_FILE"
 
-if command -v systemctl >/dev/null 2>&1; then
+if ${systemdAvailable()}; then
   cat <<ORCA_NEXT
 
 后续命令在中继机上执行：
