@@ -4094,3 +4094,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U183 R10b 落地**（`f5c3061d8f4`）：自证实现——进程身份（systemd `MainPID` / 非 systemd `relay.pid`，`kill -0` + cmdline 含 `relay.ts`）+ `installNonce` 匹配平台 `/v1/internal/relays`（旧中继空 nonce 降级为身份+online 并警告）+ 平台时钟偏移容差 `max(5s,|skew|+2s)`；401/403 立即 70；超时 60s → 70 并打印 pid/cmdline/relays/日志尾；121 例绿。**R11a 在途**（安装锁/同 sha 幂等/previous 规则）。
 - **U183 R11a 落地**（`f69c8aa0dfe`）：`mkdir` 安装锁（pid/时间、1s 重读、死锁清理、竞争者 75、trap EXIT 释放）；同 sha 幂等（跳过下载/解包/激活、env 重写新 nonce、unit `cmp -s` 不重写、previous 不动）；65 失败路径释放锁；四套全绿。
 - **stale 断言修复**（`02365119bd9`）：`web-host-lifecycle-feedback` 仍断言旧 `bash <(curl …)` 形态（U182 批 1 已改为显式下载 + `|| exit 1`）；已更新为断言新形态并禁止旧管道；4/4 绿。
+- **U181 P2-C 落地**（`7c1bfdab001`）：preflight 增 profile 可写探针（无残留）与实例锁只读检查（活锁→`profile_in_use`/78 并提示 pid，死锁可回收）；orcad 直调复用 CLI 冲突规则拒绝 pairing 类 flags（78）；checks 顺序 config→profile→runtime；CLI/orcad 2234 例绿、tc:node/tc:cli 通过。
