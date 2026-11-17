@@ -398,22 +398,36 @@ function applyRoute(route, { force = false } = {}) {
     }
     // 显式重绘同一详情时先收起旧层，避免叠两个弹框。
     removeActiveDetail()
-    void loadContent(render).then((result) => {
-      if (appliedRoute === signature) void openRouteDetail(route, result)
+    const epoch = ++contentEpoch
+    void loadContent(render, epoch).then((result) => {
+      if (epoch === contentEpoch && appliedRoute === signature) void openRouteDetail(route, result)
     })
     return
   }
   void loadContent(render)
 }
 
+/**
+ * QA-022: renders are generation-tagged so a slow page cannot overwrite the
+ * route the user has since moved to. A stale render redraws the live route once
+ * instead of forcing every renderer to abort its own write.
+ */
+let contentEpoch = 0
+
 /** One failed fetch must not leave the page stuck on its own spinner (M116-QA-011). */
-async function loadContent(render) {
+async function loadContent(render, epoch = ++contentEpoch) {
   const container = content()
   container.setAttribute('aria-busy', 'true')
   container.innerHTML = '<p class="muted">加载中…</p>'
   try {
-    return await render()
+    const result = await render()
+    if (epoch !== contentEpoch) {
+      // The renderer just wrote stale content; collapse to the current route.
+      applyRoute(parseHash(location.hash), { force: true })
+    }
+    return result
   } catch (err) {
+    if (epoch !== contentEpoch) return
     container.innerHTML = `
       <div class="forbidden">
         <div class="box">
@@ -424,7 +438,7 @@ async function loadContent(render) {
       </div>`
     $('#retryContent').onclick = () => void loadContent(render)
   } finally {
-    container.setAttribute('aria-busy', 'false')
+    if (epoch === contentEpoch) container.setAttribute('aria-busy', 'false')
   }
 }
 
@@ -650,7 +664,10 @@ async function renderWorkbench() {
   const globalDefault = policy.downloadDefault
   const online = projects.filter((p) => p.hostStatus === 'online').length
   const denied = projects.filter((p) => effectiveDownloadPolicy(p, globalDefault) === 'deny').length
-  const recent = projects.slice(0, 3)
+  // QA-024: "最近" means most recently updated, not store insertion order.
+  const recent = [...projects]
+    .sort((a, b) => (b.updatedAt ?? b.createdAt) - (a.updatedAt ?? a.createdAt))
+    .slice(0, 3)
   const tipDismissed = localStorage.getItem(WORKSPACE_TIP_KEY) === '1'
   content().innerHTML = `
     <div class="page-head">
@@ -766,6 +783,7 @@ function projectCard(p, globalDefault) {
         <span>${esc(p.hostName ?? '—')}</span>
         <span class="badge">${esc(p.defaultBranch)}</span>
         <span>创建于 ${relative(p.createdAt ?? Date.now())}</span>
+        ${typeof p.updatedAt === 'number' ? `<span>最近更新 ${relative(p.updatedAt)}</span>` : ''}
         ${hostStatusBadge(p)}
       </div>
       <div class="foot">
@@ -4057,31 +4075,49 @@ async function renderSettings() {
       ${table}
     </div>
     </div>`
+  let saving = false
   const saveGlobalPolicy = async (value, expectedVersion) => {
-    let saved
-    try {
-      saved = await api('/v1/policies/download', {
-        method: 'PUT',
-        body: JSON.stringify({ downloadDefault: value, expectedVersion })
-      })
-    } catch (err) {
-      if (err.status === 409 && err.code === 'POLICY_VERSION_CONFLICT') {
-        showPolicyConflict(value, err.body?.error?.details ?? {}, retryAfterRefresh)
-        return
-      }
-      // A silent failure would leave the form claiming a policy that never landed
-      // (M116-QA-009): report it and redraw from the value the platform holds.
-      toast(`保存失败：${err.message ?? err}`)
-      renderSettings()
+    // QA-025: one save at a time; a re-click during the request adds no PUT.
+    if (saving) return
+    // Nothing to send when the choice already is the platform's value.
+    if (value === policy.downloadDefault) {
+      toast('策略未变化')
       return
     }
-    // U136④b: the next save compares against the version this write produced.
-    policy.version = saved.version
-    // FR-9.4 的生效范围：翻转全局时告诉管理员谁跟着走、谁被钉住不受影响。
-    toast(
-      `已保存，将随宿主心跳生效；跟随全局 ${following} 个项目，独立覆盖 ${overrides.length} 个不受影响`
-    )
-    renderSettings()
+    const button = $('#savePolicy')
+    saving = true
+    if (button) button.disabled = true
+    try {
+      let saved
+      try {
+        saved = await api('/v1/policies/download', {
+          method: 'PUT',
+          body: JSON.stringify({ downloadDefault: value, expectedVersion })
+        })
+      } catch (err) {
+        if (err.status === 409 && err.code === 'POLICY_VERSION_CONFLICT') {
+          showPolicyConflict(value, err.body?.error?.details ?? {}, retryAfterRefresh)
+          return
+        }
+        // A silent failure would leave the form claiming a policy that never landed
+        // (M116-QA-009): report it and redraw from the value the platform holds.
+        toast(`保存失败：${err.message ?? err}`)
+        renderSettings()
+        return
+      }
+      // U136④b: the next save compares against the version this write produced.
+      policy.version = saved.version
+      policy.downloadDefault = value
+      // FR-9.4 的生效范围：翻转全局时告诉管理员谁跟着走、谁被钉住不受影响。
+      toast(
+        `已保存，将随宿主心跳生效；跟随全局 ${following} 个项目，独立覆盖 ${overrides.length} 个不受影响`
+      )
+      renderSettings()
+    } finally {
+      saving = false
+      const liveButton = $('#savePolicy')
+      if (liveButton) liveButton.disabled = false
+    }
   }
   // U136④b: re-read the platform version, then replay the admin's live choice
   // instead of silently discarding it on a 409.
@@ -4102,7 +4138,9 @@ async function renderSettings() {
     await saveGlobalPolicy(chosen, fresh.version)
   }
   $('#savePolicy').onclick = () => {
-    const value = document.querySelector('input[name=dl]:checked').value
+    if (saving) return
+    const value = document.querySelector('input[name=dl]:checked')?.value
+    if (!value) return
     void saveGlobalPolicy(value, policy.version)
   }
   const search = $('#policySearch')

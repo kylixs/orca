@@ -1233,3 +1233,104 @@ test('U54 QA-018 登录网络错误可被读屏读取，重试成功后清除', 
   assert.equal(password.hasAttribute('aria-invalid'), false)
   assert.equal(password.hasAttribute('aria-describedby'), false)
 }, 120_000)
+
+test('U54 QA-022 慢页面返回不覆盖已切换的页面', async () => {
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+
+  // Settings blocks on its policy read; hosts is the fast destination the user
+  // switches to before the slow page lands.
+  page.hold('GET', '/v1/policies/download')
+  await page.clickNav('settings')
+  assert.match(page.text('#content'), /加载中/, 'the slow page is still loading')
+
+  await page.clickNav('hosts')
+  assert.match(page.text('#content'), /已注册开发机/)
+  assert.match(page.text('#crumbs'), /主机/)
+
+  // The stale settings read now resolves: it must not repaint over hosts.
+  await page.release()
+  await page.settle()
+
+  assert.match(page.text('#crumbs'), /主机/, 'the breadcrumb stays on hosts')
+  assert.match(page.text('#content'), /已注册开发机/, 'the body stays on hosts')
+  assert.doesNotMatch(page.text('#content'), /平台设置/, 'the slow page must not write back')
+  record('QA-022', '设置页慢请求返回后，面包屑与主体均为当前的主机页')
+}, 120_000)
+
+test('U54 QA-024 最近项目按最近更新时间排序而非数组顺序', async () => {
+  for (const suffix of ['alpha', 'bravo', 'charlie', 'delta']) {
+    const name = `recent-${suffix}`
+    const res = await adminApi('/v1/projects', {
+      method: 'POST',
+      body: JSON.stringify({ key: name, name, hostId: liveHostId, path: `/srv/work/${name}` })
+    })
+    assert.equal(res.status, 201, JSON.stringify(res.body))
+    // Distinct createdAt values keep the expected order deterministic.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  await page.clickNav('workbench')
+
+  const cards = [
+    ...page.window.document.querySelectorAll<HTMLElement>('.project-card .name-text')
+  ].map((el) => el.textContent?.trim())
+  assert.equal(cards.length, 3, '最近项目 renders exactly three cards')
+  assert.deepEqual(
+    cards,
+    ['recent-delta', 'recent-charlie', 'recent-bravo'],
+    'newest first; the oldest of the four is not surfaced'
+  )
+  record('QA-024', `最近项目顺序 ${cards.join(' > ')}（最新创建在前）`)
+}, 120_000)
+
+test('U54 QA-025 未变化不保存、请求中重复点击只发一次 PUT', async () => {
+  const current = await adminApi('/v1/policies/download')
+  const currentValue: 'allow' | 'deny' = current.body.downloadDefault === 'allow' ? 'allow' : 'deny'
+  const opposite: 'allow' | 'deny' = currentValue === 'deny' ? 'allow' : 'deny'
+
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  await page.clickNav('settings')
+  const puts = () => page.calls().filter((call) => call === 'PUT /v1/policies/download')
+  const radio = (value: string): HTMLInputElement =>
+    page.window.document.querySelector<HTMLInputElement>(`input[name=dl][value=${value}]`)!
+
+  // Choosing the value the platform already holds sends nothing.
+  radio(currentValue).checked = true
+  page.window.document.querySelector<HTMLButtonElement>('#savePolicy')!.click()
+  await page.settle()
+  assert.equal(puts().length, 0, 'an unchanged choice must not PUT')
+  assert.match(lastToast(page), /策略未变化/)
+
+  // One changed save; double-clicking while it is in flight still sends one PUT.
+  radio(opposite).checked = true
+  page.hold('PUT', '/v1/policies/download')
+  const save = page.window.document.querySelector<HTMLButtonElement>('#savePolicy')!
+  save.click()
+  save.click()
+  await new Promise((resolve) => setTimeout(resolve, 25))
+  assert.equal(puts().length, 1, 'a double click sends exactly one PUT')
+  assert.equal(save.disabled, true, 'the save button is disabled while the request is in flight')
+
+  await page.release()
+  await page.settle()
+  const after = await adminApi('/v1/policies/download')
+  assert.equal(after.body.downloadDefault, opposite, 'the one PUT lands')
+
+  // Leave the platform as the suite found it.
+  const restored = await adminApi('/v1/policies/download', {
+    method: 'PUT',
+    body: JSON.stringify({ downloadDefault: currentValue, expectedVersion: after.body.version })
+  })
+  assert.equal(restored.status, 200)
+  record(
+    'QA-025',
+    `未改动 0 PUT（策略未变化）；请求中双击 1 PUT 且按钮 disabled；${currentValue} → ${opposite} → 恢复`
+  )
+}, 120_000)
