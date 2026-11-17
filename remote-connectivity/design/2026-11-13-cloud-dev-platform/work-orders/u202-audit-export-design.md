@@ -524,3 +524,20 @@ POST → queued → running → succeeded
 已采纳的默认（待正式裁定可回退）：D3 超限异步失败；D4 100k 行 / 64 MiB / 1h / 每用户 2 / 全局 8；D7 创建审计 fail-closed；D1 单写者文件存储（多副本见 U201 风险）。环境变量按本文件 §3.2 使用 `ORCA_AUDIT_EXPORT_DIR`，兼容旧别名 `ORCA_AUDIT_EXPORT_ROOT`。
 
 **独立审计（2026-11-17 20:41，`cloud-platform/test-reports/u201-export-audit.md`，本地不提交）**：CHANGES-REQUIRED。P1=F1 过滤字段丢弃、F2 终态不落链、F3 远端写者下必失败、F4 token 一次性语义；P2=F6–F18；测试/文档缺口=F20/F21。修复顺序：F1/F7 → F2/F11/F12 → F3 → F4 → 全链路 e2e；台账 U205/U206/U207。
+
+### 9.1 复审 P2 修复（2026-11-17 21:xx）
+
+| 项 | 处理 | 提交 |
+| --- | --- | --- |
+| 跨 pass 并发 | 进程级单槽 drain（在飞时排队补跑），异常只记录 | `b73ba4a2399` |
+| 集合未冻结 | 受理时 `until=min(until??now,now)`、默认 `since=until-(q\|fileName?7d:31d)` | `b73ba4a2399` |
+| F10 内存 | 分页流式：每页升序写分块，逆序 pipeline 拼接，峰值 O(页) | `bd43eabd1f3` |
+| F17 周期清扫 | `listQueuedIds` + 15s unref sweep（`ORCA_AUDIT_EXPORT_SWEEP_MS`） | `61063525447` |
+| F14 校验/写路径 | job.json 字段/`objectKey`/hash 严格校验；写前 lstat 拒绝符号链接 | `94d1ec46367` |
+| F18 BOM | CSV 加 UTF-8 BOM（流式产物亦写入并计 bytes），JSONL 不加 | `94d1ec46367` |
+| F15 配置注入 | `ApiConfig` 导出目录/TTL/配额/token TTL/sweep/`now` 全量注入 | `af799e7d0a1` |
+| F13 | 注释改为事实：带 token 可区分状态，依赖 96-bit jobId 与所有者签发 | `af799e7d0a1` |
+| F9 下载审计顺序 | **保留 fail-closed**：先消费 token、再审计、后发送；审计失败返回 500 且 token 已用（用户需重建任务）。理由：未落链的下载不得发生；替代（审计先于消费）会产生「已审计未交付」 | `71934e99f24` + 本记录 |
+| F16 错误脱敏 | 失败 message 固定短句，异常详情仅服务端日志 | 本批 |
+
+多副本/共享目录（D1）仍未决；当前单写者文件存储假设在能力字段与文档中已声明。
