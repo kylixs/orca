@@ -4305,3 +4305,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U176 关闭（非关键项自主处置）**：按复诊建议保留默认关闭，以主进程路由 4 例 + V7 E1 为验证终点，不再投入真栈复验；D4 行标注关闭，三处文档此前已更正。U245② 计数语义补入 m06（metadata=目标数、响应=实际数、并发可略高估）。
 - **不变式表核对并修正**（`b9ae609df0a`，4/4 行）：login 补 Cookie/Origin/锁定 503 前置、device 复用与 failure/denied 区分；refresh 修正「重复 Cookie 先于 CSRF、CSRF 仅 Cookie 源」并补 reuse 步骤与禁用刷新事件；logout 注明仅撤销显式凭据命中 session、USER_DISABLED 来源；force-offline 补链健康预检与 follower 重试语义。核对方指出 m01 §2 旧行号漂移（未引用，暂不重刷）。
 - **U197 关闭检查清单成稿**（`test-reports/u197-closure-checklist-20261118.md`，本地）：D17-A/B、D10、D18/D19/D20 与实施内容/双轨验收一一映射；QA-032 关闭五前置；风险提示。已在 pending-decisions 附二链接。当前无在途代理、无非裁定可派任务。
+- **D12/U196 简报落地**（`test-reports/u196-recent-use-brief-20261118.md`）：现状 `updatedAt ?? createdAt` 但 API 从不返回 updatedAt（排序恒创建时间）；推荐新增可选 `lastUsedAt`，仅成功 `project_connect`/`web_handoff` 签发时写、`projectView` 加性返回、前端回退链；审计聚合/localStorage 方案不推荐。D12 行已指向简报并列出 D12-1..6 拍板点。
