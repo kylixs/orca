@@ -20,6 +20,8 @@ Options:
                            cannot combine with --no-pairing or --mobile-pairing.
   --recipe-json            Print only the VM recipe line; requires --project-root.
   --project-root <dir>     Existing absolute project directory for --recipe-json.
+  --host-mode              Serve as the platform-enrolled headless host.
+  --preflight              With --host-mode, validate config and the slot, then exit.
   --help, -h               Print this text and exit without starting the server.
 
 Environment:
@@ -57,6 +59,10 @@ export function parseArgs(argv: string[]): OrcadCommandArguments {
       options.grantDesktopControl = true
     } else if (arg === '--recipe-json') {
       options.recipeJson = true
+    } else if (arg === '--host-mode') {
+      options.hostMode = true
+    } else if (arg === '--preflight') {
+      options.preflight = true
     } else if (arg === '--project-root') {
       const value = argv[i + 1]
       if (!value) {
@@ -87,6 +93,9 @@ export function parseArgs(argv: string[]): OrcadCommandArguments {
   }
   if (options.recipeJson && !options.projectRoot) {
     throw new Error('--recipe-json requires --project-root')
+  }
+  if (options.preflight && !options.hostMode) {
+    throw new Error('--preflight requires --host-mode')
   }
   return options
 }

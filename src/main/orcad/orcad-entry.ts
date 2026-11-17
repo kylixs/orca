@@ -117,6 +117,10 @@ export type OrcadOptions = {
   projectRoot?: string
   /** Literal IP to bind. Defaults to loopback; see orcad-bind-address.ts. */
   bind?: string
+  /** `orca-ide --host-mode`: serve as the platform-enrolled headless host. */
+  hostMode?: boolean
+  /** Validate host-mode configuration/runtime without registering or serving. */
+  preflight?: boolean
 }
 
 export type OrcadHandle = {

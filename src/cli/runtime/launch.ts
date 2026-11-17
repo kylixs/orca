@@ -21,6 +21,7 @@ import {
 } from './serve-update-supervisor'
 import { RuntimeClientError } from './types'
 import { SERVE_RUNTIME_ELECTRON, SERVE_RUNTIME_ENV } from '../../shared/orcad-local-serve-selection'
+import { HOST_MODE_EXIT_CONFIGURATION } from '../../shared/host-mode-contract'
 import {
   resolveLocalServeRuntime,
   serveOptionArgs,
@@ -113,6 +114,11 @@ export function serveOrcaApp(args: ServeOrcaAppArgs = {}): Promise<number> {
   }
   // Why one value: the selector, orcad and Electron must all serve the profile the caller chose.
   const userDataPath = resolveLaunchUserDataPath()
+  // Why: host mode is a platform-owned runtime with no interactive offer, so it must never
+  // silently degrade to Electron — an Electron fallback would register nothing and still exit 0.
+  if (args.hostMode) {
+    return serveWithSelectedRuntime(executable, args, userDataPath, true)
+  }
   // Why synchronous on the opt-out: it must spawn Electron exactly as before, without asking.
   if (process.env[SERVE_RUNTIME_ENV] === SERVE_RUNTIME_ELECTRON) {
     return serveWithElectron(executable, args, userDataPath)
@@ -123,7 +129,8 @@ export function serveOrcaApp(args: ServeOrcaAppArgs = {}): Promise<number> {
 async function serveWithSelectedRuntime(
   executable: string,
   args: ServeOrcaAppArgs,
-  userDataPath: string
+  userDataPath: string,
+  requireOrcad = false
 ): Promise<number> {
   const selection = await resolveLocalServeRuntime({
     executable,
@@ -134,6 +141,12 @@ async function serveWithSelectedRuntime(
   if (selection.kind === 'orcad') {
     process.stderr.write(`[serve] running on orcad ${selection.version}\n`)
     return serveWithOrcad(selection, args, userDataPath, stripElectronRunAsNode(process.env))
+  }
+  if (requireOrcad) {
+    process.stderr.write(
+      `[host-mode] orcad is required but unavailable: ${selection.reason ?? 'unknown reason'}\n`
+    )
+    return HOST_MODE_EXIT_CONFIGURATION
   }
   if (selection.reason) {
     process.stderr.write(`[serve] using Electron serve: ${selection.reason}\n`)

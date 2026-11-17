@@ -6,9 +6,30 @@ export type ServeOptionValidationInput = {
   grantDesktopControl?: boolean
   recipeJson: boolean
   projectRoot: string | null | undefined
+  /** `orca-ide --host-mode`: platform-owned headless host, never an interactive pairing offer. */
+  hostMode?: boolean
+  preflight?: boolean
+  pairingAddress?: string | null
 }
 
 export function getServeOptionValidationError(options: ServeOptionValidationInput): string | null {
+  if (options.preflight && !options.hostMode) {
+    return '--preflight requires --host-mode.'
+  }
+  if (options.hostMode) {
+    if (options.mobilePairing) {
+      return '--mobile-pairing is not available in host mode.'
+    }
+    if (options.grantDesktopControl) {
+      return '--grant-desktop-control is not available in host mode.'
+    }
+    if (options.pairingAddress) {
+      return '--pairing-address is not available in host mode.'
+    }
+    if (options.recipeJson) {
+      return '--recipe-json is not available in host mode.'
+    }
+  }
   if (options.noPairing && options.mobilePairing) {
     return 'Use either --mobile-pairing or --no-pairing, not both.'
   }

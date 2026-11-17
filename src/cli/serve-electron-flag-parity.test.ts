@@ -10,7 +10,14 @@ import { SERVE_COMMAND_SPECS } from './specs/serve'
 // Global flags with no `--serve-*` counterpart:
 // - help: a help launch is refused outright, not translated (see serve-mode-argv's HELP_FLAGS).
 // - pairing-code / environment: nothing in src/main reads them, so they ride through untouched.
-const UNTRANSLATED_GLOBAL_FLAGS = new Set(['help', 'pairing-code', 'environment'])
+// - host-mode / preflight: platform-host flags; Electron has no host mode to rewrite them into.
+const UNTRANSLATED_GLOBAL_FLAGS = new Set([
+  'help',
+  'pairing-code',
+  'environment',
+  'host-mode',
+  'preflight'
+])
 
 const serveSpec = SERVE_COMMAND_SPECS.find((spec) => spec.path.join(' ') === 'serve')
 const translatedFlags = [...new Set(serveSpec?.allowedFlags ?? [])].filter(

@@ -5,6 +5,11 @@ import { RuntimeClientError, serveOrcaApp } from '../runtime-client'
 import { stripElectronRunAsNode } from '../runtime/launch'
 import { resolveCliStatusCaller } from '../runtime/status-caller'
 import { getServeOptionValidationError } from '../../shared/serve-option-validation'
+import {
+  getHostModeConfigError,
+  HOST_MODE_EXIT_CONFIGURATION,
+  HOST_MODE_EXIT_OK
+} from '../../shared/host-mode-contract'
 
 function envRecord(): Record<string, string> {
   // Why: the `orca` launcher runs Orca's Electron binary as Node, so this CLI
@@ -104,27 +109,47 @@ export const CORE_HANDLERS: Record<string, CommandHandler> = {
     const mobilePairing = flags.get('mobile-pairing') === true
     const grantDesktopControl = flags.get('grant-desktop-control') === true
     const recipeJson = flags.get('recipe-json') === true
+    const hostMode = flags.get('host-mode') === true
+    const preflight = flags.get('preflight') === true
+    const pairingAddressValue = flags.get('pairing-address')
+    const pairingAddress = typeof pairingAddressValue === 'string' ? pairingAddressValue : null
     const validationError = getServeOptionValidationError({
       noPairing,
       mobilePairing,
       grantDesktopControl,
       recipeJson,
-      projectRoot
+      projectRoot,
+      hostMode,
+      preflight,
+      pairingAddress
     })
     if (validationError) {
       throw new RuntimeClientError('invalid_argument', validationError)
     }
+    if (preflight) {
+      // Why: preflight exists to separate "runtime is broken" from "enrolment failed";
+      // it must not start the host, call the platform, or consume the token.
+      const configError = getHostModeConfigError(process.env)
+      if (configError) {
+        process.stderr.write(`host mode preflight failed: ${configError}\n`)
+        process.exitCode = HOST_MODE_EXIT_CONFIGURATION
+        return
+      }
+      process.exitCode = HOST_MODE_EXIT_OK
+      return
+    }
     const port = getOptionalServePort(flags)
-    const pairingAddressValue = flags.get('pairing-address')
     const exitCode = await serveOrcaApp({
       json,
       port,
-      pairingAddress: typeof pairingAddressValue === 'string' ? pairingAddressValue : null,
-      noPairing,
+      pairingAddress,
+      // Why: host mode is a platform-owned runtime, so it never prints an interactive offer.
+      noPairing: noPairing || hostMode,
       mobilePairing,
       grantDesktopControl,
       recipeJson,
-      projectRoot
+      projectRoot,
+      ...(hostMode ? { hostMode: true } : {})
     })
     process.exitCode = exitCode
   },

@@ -24,6 +24,8 @@ export type ServeOrcaAppArgs = {
   grantDesktopControl?: boolean
   recipeJson?: boolean
   projectRoot?: string | null
+  /** `orca-ide --host-mode`: the platform host, always orcad, never an Electron fallback. */
+  hostMode?: boolean
 }
 
 /** A first run may download and verify the pinned Node; bound it well past that. */
@@ -135,5 +137,10 @@ export function serveOptionArgs(args: ServeOrcaAppArgs, prefix: '--' | '--serve-
 }
 
 export function orcadServeArgs(args: ServeOrcaAppArgs): string[] {
-  return ['--bind', '0.0.0.0', ...serveOptionArgs(args, '--')]
+  return [
+    '--bind',
+    '0.0.0.0',
+    ...(args.hostMode ? ['--host-mode'] : []),
+    ...serveOptionArgs(args, '--')
+  ]
 }

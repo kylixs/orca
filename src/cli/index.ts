@@ -9,6 +9,7 @@ import {
   validateCommandAndFlags
 } from './args'
 import { readOrcaCliVersion } from './cli-version'
+import { HOST_MODE_FLAG } from '../shared/host-mode-contract'
 import { dispatch } from './dispatch'
 import {
   assertEnvironmentSelectorResolvable,
@@ -80,6 +81,11 @@ export async function main(
     }
     process.stdout.write(`${version}\n`)
     return
+  }
+  if (argv[0] === `--${HOST_MODE_FLAG}`) {
+    // Why: `orca-ide --host-mode` is the unit/script form; `serve --host-mode` is the
+    // discoverable one. Promoting the alias keeps a single parser and flag contract.
+    argv = ['serve', ...argv]
   }
   if (argv[0] === 'agent-teams-tmux') {
     await runAgentTeamsTmuxShim(argv.slice(1))
