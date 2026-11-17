@@ -1059,6 +1059,127 @@ test('U54 QA-019 中继最近注册时间按 zh-CN 渲染', async () => {
   }
 }, 120_000)
 
+test('U54 QA-020 中继行与卡片可展开详情（绝对+相对时间），且不自动轮询', async () => {
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  const lastSeenAt = new Date(Date.now() - 3 * 60_000).toISOString()
+  page.fail('GET', '/v1/relays', {
+    status: 200,
+    body: {
+      relays: [
+        { id: 'relay-qa020', host: '10.20.30.40', port: 7443, online: true, lastSeenAt },
+        { id: 'relay-qa020-empty', host: '10.20.30.41', port: 7443, online: false }
+      ]
+    }
+  })
+  await page.clickNav('relays')
+  const doc = page.window.document
+
+  const toggle = doc.querySelector<HTMLButtonElement>(
+    '#relayTableWrap [data-relay-toggle]'
+  )!
+  assert.ok(toggle, 'the table row must offer a detail toggle')
+  const detailId = toggle.getAttribute('aria-controls')!
+  const detail = doc.getElementById(detailId)!
+  assert.equal(toggle.getAttribute('aria-expanded'), 'false')
+  assert.equal(detail.hidden, true, 'the detail starts collapsed')
+
+  toggle.click()
+  assert.equal(toggle.getAttribute('aria-expanded'), 'true')
+  assert.equal(detail.hidden, false)
+  const text = detail.textContent ?? ''
+  assert.match(text, /relay-qa020/, 'the detail carries the node id')
+  assert.match(text, /10\.20\.30\.40:7443/, 'the detail carries host:port')
+  assert.match(text, /在线/, 'the detail carries the online state')
+  assert.match(text, /\d{4}\/\d{1,2}\/\d{1,2}/, 'absolute zh-CN time expected')
+  assert.match(text, /3 分钟前/, 'relative time expected')
+
+  toggle.click()
+  assert.equal(toggle.getAttribute('aria-expanded'), 'false')
+  assert.equal(detail.hidden, true, 'a second click collapses it')
+
+  // The phone card behaves the same, and a missing last-seen shows a placeholder.
+  const card = doc.querySelector<HTMLElement>('[data-relay-card="relay-qa020-empty"]')!
+  const cardToggle = card.querySelector<HTMLButtonElement>('[data-relay-toggle]')!
+  const cardDetail = doc.getElementById(cardToggle.getAttribute('aria-controls')!)!
+  cardToggle.click()
+  assert.equal(cardToggle.getAttribute('aria-expanded'), 'true')
+  assert.equal(cardDetail.hidden, false)
+  assert.match(cardDetail.textContent ?? '', /relay-qa020-empty/)
+  assert.match(cardDetail.textContent ?? '', /10\.20\.30\.41:7443/)
+  assert.match(cardDetail.textContent ?? '', /暂无数据/, 'missing detail data shows a placeholder')
+
+  // QA-013 still holds: expanding a row never starts a timer-driven refresh.
+  const listCalls = () => page.calls().filter((call) => call === 'GET /v1/relays').length
+  const baseline = listCalls()
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  assert.equal(listCalls(), baseline, 'detail expansion must not poll')
+  record('QA-020', '中继表行/卡片展开详情（id、host:port、在线、绝对+相对时间），aria-expanded 切换，无自动轮询')
+}, 120_000)
+
+test('U54 QA-021 复制失败提示手动复制且不产生未捕获异常', async () => {
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+
+  const rejections: unknown[] = []
+  const windowErrors: unknown[] = []
+  const onRejection = (reason: unknown): void => {
+    rejections.push(reason)
+  }
+  const onWindowError = (event: unknown): void => {
+    windowErrors.push(event)
+  }
+  const originalWarn = console.warn
+  let warnings = 0
+  process.on('unhandledRejection', onRejection)
+  page.window.addEventListener('unhandledrejection', onWindowError)
+  page.window.addEventListener('error', onWindowError)
+  console.warn = (...args: unknown[]): void => {
+    if (args[0] === '复制失败') {
+      warnings += 1
+      return
+    }
+    originalWarn(...args)
+  }
+  try {
+    Object.defineProperty(page.window.navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: () => Promise.reject(new Error('clipboard denied')) }
+    })
+    await page.clickNav('relays')
+    page.window.document.querySelector<HTMLButtonElement>('#addRelayBtn')!.click()
+    await page.settle()
+    const copy = [...page.window.document.querySelectorAll<HTMLButtonElement>('button')].find(
+      (button) => button.textContent?.includes('复制命令')
+    )
+    assert.ok(copy, 'the relay install dialog offers a copy action')
+
+    copy.click()
+    await page.settle()
+    const failedToast = page.window.document.querySelector<HTMLElement>('.toast')
+    assert.equal(failedToast?.textContent, '复制失败，请手动复制')
+    assert.ok(warnings >= 1, 'the failure must be logged')
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    assert.deepEqual(rejections, [], 'no unhandled rejection may escape')
+    assert.deepEqual(windowErrors, [], 'no window error may fire')
+
+    Object.defineProperty(page.window.navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: () => Promise.resolve() }
+    })
+    copy.click()
+    await page.settle()
+    const toasts = [...page.window.document.querySelectorAll<HTMLElement>('.toast')]
+    assert.equal(toasts.at(-1)?.textContent, '已复制', 'a successful copy says so')
+    record('QA-021', 'writeText 失败 → toast「复制失败，请手动复制」+ console.warn，零未捕获异常；成功 →「已复制」')
+  } finally {
+    process.off('unhandledRejection', onRejection)
+    console.warn = originalWarn
+  }
+}, 120_000)
+
 test('U54 QA-027 toast 与加载态带读屏语义', async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
@@ -1073,6 +1194,8 @@ test('U54 QA-027 toast 与加载态带读屏语义', async () => {
   )
   assert.ok(copy, 'the relay install dialog offers a copy action')
   copy.click()
+  // The clipboard write is awaited before the toast, so let the microtask land.
+  await new Promise((resolve) => setTimeout(resolve, 0))
   const toast = page.window.document.querySelector<HTMLElement>('.toast')
   assert.ok(toast, 'the copy action shows a toast')
   assert.equal(toast.getAttribute('role'), 'status')

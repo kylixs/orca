@@ -110,6 +110,19 @@ function toast(text) {
   setTimeout(() => el.remove(), 2400)
 }
 
+/** Single clipboard entry: never rejects, so callers cannot leak an unhandled rejection. */
+async function copyText(value) {
+  try {
+    await navigator.clipboard.writeText(value)
+    toast('已复制')
+    return true
+  } catch (err) {
+    console.warn('复制失败', err)
+    toast('复制失败，请手动复制')
+    return false
+  }
+}
+
 /* ---------------- routing ---------------- */
 
 const ADMIN_ROUTES = new Set(['hosts', 'relays', 'users', 'audit', 'settings'])
@@ -1568,10 +1581,7 @@ function projectDetailHtml(p, extra = {}) {
 
 function wireDetailCopy(backdrop) {
   for (const button of backdrop.querySelectorAll('[data-copy]')) {
-    button.onclick = () => {
-      void navigator.clipboard?.writeText(button.dataset.copy ?? '')
-      toast('已复制')
-    }
+    button.onclick = () => void copyText(button.dataset.copy ?? '')
   }
 }
 
@@ -2285,8 +2295,7 @@ function copyCommandAction(cmd) {
     label: '复制命令',
     primary: false,
     onClick: () => {
-      navigator.clipboard?.writeText(cmd)
-      toast('已复制')
+      void copyText(cmd)
       return false
     }
   }
@@ -2451,15 +2460,49 @@ async function renderRelays({ keepTable = false } = {}) {
       <table>
         <thead><tr><th>节点 ID</th><th>客户端地址</th><th>状态</th><th>最近注册时间</th></tr></thead>
         <tbody>
-          ${body.relays.map(relayRow).join('') || '<tr><td colspan="4" class="table-empty">尚未注册中继</td></tr>'}
+          ${body.relays.map((relay, index) => relayRow(relay, index)).join('') || '<tr><td colspan="4" class="table-empty">尚未注册中继</td></tr>'}
         </tbody>
       </table>
     </div>
     <div class="relay-list">
-      ${body.relays.map(relayCard).join('') || '<p class="card table-empty">尚未注册中继</p>'}
+      ${body.relays.map((relay, index) => relayCard(relay, index)).join('') || '<p class="card table-empty">尚未注册中继</p>'}
     </div>`
   $('#addRelayBtn').onclick = addRelayDialog
   $('#refreshRelaysBtn').onclick = () => void renderRelays({ keepTable: true })
+  wireRelayDetails()
+}
+
+/** U54 QA-020: expand/collapse is local view state; no timer and no re-fetch. */
+function wireRelayDetails() {
+  for (const button of content().querySelectorAll('[data-relay-toggle]')) {
+    button.onclick = () => {
+      const detail = document.getElementById(button.getAttribute('aria-controls'))
+      if (!detail) {
+        return
+      }
+      const expanded = button.getAttribute('aria-expanded') === 'true'
+      button.setAttribute('aria-expanded', String(!expanded))
+      detail.hidden = expanded
+    }
+  }
+}
+
+/** QA-020: last-seen as absolute zh-CN plus a relative phrase; placeholder when absent. */
+function relayLastSeen(value) {
+  const at = value ? new Date(value) : null
+  if (!at || Number.isNaN(at.getTime())) {
+    return '<span class="muted">暂无数据</span>'
+  }
+  return `${at.toLocaleString('zh-CN')} <span class="muted">（${relative(at.getTime())}）</span>`
+}
+
+function relayDetail(r) {
+  return `<dl class="kv">
+    <dt>节点 ID</dt><dd class="mono">${r.id ? esc(r.id) : '—'}</dd>
+    <dt>客户端地址</dt><dd class="mono">${r.host != null && r.port != null ? esc(`${r.host}:${r.port}`) : '—'}</dd>
+    <dt>在线状态</dt><dd>${r.online ? '在线' : '离线'}</dd>
+    <dt>最近注册</dt><dd>${relayLastSeen(r.lastSeenAt)}</dd>
+  </dl>`
 }
 
 /** Persistent inline failure (STYLEGUIDE: read/retry stays on screen, not a toast). */
@@ -2499,25 +2542,32 @@ async function addRelayDialog() {
   )
 }
 
-function relayRow(r) {
+function relayRow(r, index) {
   return `<tr>
     <td class="mono">${esc(r.id)}</td>
     <td class="mono">${esc(`${r.host}:${r.port}`)}</td>
     <td><span class="dot ${r.online ? 'online' : 'offline'}"></span> ${r.online ? '在线' : '离线'}</td>
-    <td class="muted">${new Date(r.lastSeenAt).toLocaleString('zh-CN')}</td>
+    <td class="muted">${new Date(r.lastSeenAt).toLocaleString('zh-CN')}
+      <button class="btn sm" type="button" data-relay-toggle aria-expanded="false" aria-controls="relay-detail-${index}">详情</button>
+    </td>
+  </tr>
+  <tr id="relay-detail-${index}" hidden>
+    <td colspan="4">${relayDetail(r)}</td>
   </tr>`
 }
 
 /** U80 M4: phone face of the relay table; same data, desktop keeps the table. */
-function relayCard(r) {
+function relayCard(r, index) {
   return `<article class="card relay-list-card" data-relay-card="${esc(r.id)}">
     <div class="hlc-head">
       <span class="dot ${r.online ? 'online' : 'offline'}"></span>
       <strong class="hlc-name mono">${esc(r.id)}</strong>
       <span class="badge ${r.online ? 'ok' : ''}">${r.online ? '在线' : '离线'}</span>
+      <button class="btn sm" type="button" data-relay-toggle aria-expanded="false" aria-controls="relay-card-detail-${index}">详情</button>
     </div>
     <div class="hlc-line mono">${esc(`${r.host}:${r.port}`)}</div>
     <div class="hlc-line muted">最近注册 ${new Date(r.lastSeenAt).toLocaleString('zh-CN')}</div>
+    <div id="relay-card-detail-${index}" hidden>${relayDetail(r)}</div>
   </article>`
 }
 
@@ -3572,10 +3622,7 @@ function openAuditEventDetail(event, terms) {
   const backdrop = dialog('审计事件详情', auditEventDetailMarkup(event, terms), [], { sheet: true })
   const copy = backdrop.querySelector('#auditTraceCopy')
   if (copy) {
-    copy.onclick = () => {
-      navigator.clipboard?.writeText(event.traceId ?? '')
-      toast('已复制')
-    }
+    copy.onclick = () => void copyText(event.traceId ?? '')
   }
 }
 
@@ -3887,16 +3934,10 @@ async function renderAudit(loadMore = false) {
     }
   }
   for (const btn of document.querySelectorAll('[data-trace]')) {
-    btn.onclick = () => {
-      navigator.clipboard?.writeText(btn.dataset.trace)
-      toast('已复制')
-    }
+    btn.onclick = () => void copyText(btn.dataset.trace)
   }
   for (const btn of document.querySelectorAll('[data-copy-file]')) {
-    btn.onclick = () => {
-      navigator.clipboard?.writeText(btn.dataset.copyFile)
-      toast('已复制')
-    }
+    btn.onclick = () => void copyText(btn.dataset.copyFile)
   }
   // The excerpt row is rendered closed; expanding must not re-query the page.
   for (const btn of document.querySelectorAll('[data-expand]')) {
