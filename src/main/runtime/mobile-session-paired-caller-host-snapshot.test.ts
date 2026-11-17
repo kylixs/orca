@@ -8,7 +8,7 @@ import type { RuntimeMobileSessionTabsSnapshot } from '../../shared/runtime-type
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import { OrcaRuntimeService } from './orca-runtime'
 import { publishHeadlessRuntimeGraph } from './headless-runtime-graph'
-import { deriveHeadlessLegacyTerminalLeafId } from './mobile-session-layout-projection'
+import { deriveHeadlessLegacyTerminalLeafId, getHeadlessMobileSessionGroupId } from './mobile-session-layout-projection'
 
 const WT = 'repo-1::/tmp/worktree-a'
 const selector = `id:${WT}`
@@ -100,9 +100,56 @@ function createRuntime(initialSession: WorkspaceSessionState = makeSession()) {
     // Bind the spawn-time pane identity so the headless projection reads these as ready panes.
     runtime.registerPty(`pty-${id}`, WT, null, { tabId: id, leafId: leafOf(id) })
   }
+  // Split layouts bind non-legacy leaves; register those panes too so they project as ready.
+  for (const [tabId, layout] of Object.entries(initialSession.terminalLayoutsByTabId ?? {})) {
+    for (const [leafId, ptyId] of Object.entries(layout.ptyIdsByLeafId ?? {})) {
+      runtime.registerPty(ptyId, WT, null, { tabId, leafId })
+    }
+  }
   const snapshot = () =>
     (runtime as unknown as RuntimeInternals).mobileSessionTabsByWorktree.get(WT)
   return { runtime, getSession: () => session, snapshot }
+}
+
+/** tab-b is already the durable active tab and owns two leaves; the left leaf is active. */
+function makeSplitSession(groupId = getHeadlessMobileSessionGroupId(WT)): {
+  session: WorkspaceSessionState
+  leftLeaf: string
+  rightLeaf: string
+} {
+  const session = makeSession()
+  const leftLeaf = leafOf('tab-b')
+  const rightLeaf = leafOf('tab-b-right')
+  session.activeTabId = 'tab-b'
+  session.activeTabIdByWorktree = { [WT]: 'tab-b' }
+  session.activeGroupIdByWorktree = { [WT]: groupId }
+  session.tabGroups = {
+    [WT]: [
+      {
+        id: groupId,
+        worktreeId: WT,
+        activeTabId: 'tab-b',
+        tabOrder: ['tab-a', 'tab-b', 'tab-c']
+      }
+    ]
+  }
+  session.terminalLayoutsByTabId = {
+    'tab-b': {
+      root: {
+        type: 'split',
+        direction: 'vertical',
+        first: { type: 'leaf', leafId: leftLeaf },
+        second: { type: 'leaf', leafId: rightLeaf }
+      },
+      activeLeafId: leftLeaf,
+      expandedLeafId: null,
+      ptyIdsByLeafId: {
+        [leftLeaf]: 'pty-tab-b-left',
+        [rightLeaf]: 'pty-tab-b-right'
+      }
+    }
+  }
+  return { session, leftLeaf, rightLeaf }
 }
 
 function tabParent(snapshot: {
@@ -113,7 +160,12 @@ function tabParent(snapshot: {
   return active?.parentTabId ?? active?.id ?? null
 }
 
-function rendererMobileSessionTabs(activeTabId: string) {
+type RendererLeaf = { leafId: string; ptyId: string }
+
+function rendererMobileSessionTabs(
+  activeTabId: string,
+  leavesByParentTabId: Record<string, RendererLeaf[]> = {}
+) {
   return {
     worktree: WT,
     publicationEpoch: 'renderer:host',
@@ -122,28 +174,33 @@ function rendererMobileSessionTabs(activeTabId: string) {
     activeTabId,
     activeTabType: 'terminal' as const,
     tabGroups: [{ id: 'group-1', activeTabId: 'tab-c', tabOrder: ['tab-a', 'tab-b', 'tab-c'] }],
-    tabs: ['tab-a', 'tab-b', 'tab-c'].map((id) => ({
-      type: 'terminal' as const,
-      id: `${id}::${leafOf(id)}`,
-      parentTabId: id,
-      leafId: leafOf(id),
-      ptyId: `pty-${id}`,
-      title: id,
-      isActive: activeTabId === `${id}::${leafOf(id)}`
-    }))
+    tabs: ['tab-a', 'tab-b', 'tab-c'].flatMap((id) =>
+      (leavesByParentTabId[id] ?? [{ leafId: leafOf(id), ptyId: `pty-${id}` }]).map(
+        ({ leafId, ptyId }) => ({
+          type: 'terminal' as const,
+          id: `${id}::${leafId}`,
+          parentTabId: id,
+          leafId,
+          ptyId,
+          title: id,
+          isActive: activeTabId === `${id}::${leafId}`
+        })
+      )
+    )
   }
 }
 
 function publishRendererSnapshot(
   runtime: OrcaRuntimeService,
-  activeTabId = `tab-c::${leafOf('tab-c')}`
+  activeTabId = `tab-c::${leafOf('tab-c')}`,
+  leavesByParentTabId: Record<string, RendererLeaf[]> = {}
 ) {
   runtime.attachWindow(1)
   runtime.markGraphReady(1)
   runtime.syncWindowGraph(1, {
     tabs: [],
     leaves: [],
-    mobileSessionTabs: [rendererMobileSessionTabs(activeTabId)]
+    mobileSessionTabs: [rendererMobileSessionTabs(activeTabId, leavesByParentTabId)]
   })
 }
 
@@ -302,5 +359,81 @@ describe('U162 paired caller activation keeps the headless host snapshot in sync
     const mounted = await runtime.listMobileSessionTabs(selector, 'device-mount')
     expect(mounted.activeTabId).toBe(`tab-b::${leafOf('tab-b')}`)
     expect(tabParent(mounted)).toBe('tab-b')
+  })
+
+  // U162 P3-3: the durable tab is already active, so this took the early-return path and only
+  // the live leaf moved; a host rebuild then restored the previous leaf.
+  it('persists a same-parent leaf switch that the durable active tab already satisfies', async () => {
+    const { session, leftLeaf, rightLeaf } = makeSplitSession()
+    const { runtime, getSession, snapshot } = createRuntime(session)
+    await runtime.listMobileSessionTabs(selector)
+    expect(snapshot()?.activeTabId).toBe(`tab-b::${leftLeaf}`)
+    const sessionBefore = getSession()
+
+    await runtime.activateMobileSessionTab(selector, 'tab-b', rightLeaf, {
+      notifyClients: false,
+      clientNavigationId: 'device-web',
+      navigation: 'caller'
+    })
+
+    expect(getSession().terminalLayoutsByTabId?.['tab-b']?.activeLeafId).toBe(rightLeaf)
+    // A same-parent leaf switch must never rewrite tab or group ownership.
+    expect(getSession().activeTabId).toBe(sessionBefore.activeTabId)
+    expect(getSession().activeTabIdByWorktree).toEqual(sessionBefore.activeTabIdByWorktree)
+    expect(getSession().tabGroups?.[WT]?.[0]?.activeTabId).toBe('tab-b')
+
+    // The headless publication follows the durable leaf for a device with no selection.
+    expect(snapshot()?.activeTabId).toBe(`tab-b::${rightLeaf}`)
+
+    // A host rebuild reads the persisted leaf, not the pre-switch one.
+    const rebuilt = createRuntime(getSession())
+    const freshDevice = await rebuilt.runtime.listMobileSessionTabs(selector, 'device-new')
+    expect(freshDevice.activeTabId).toBe(`tab-b::${rightLeaf}`)
+  })
+
+  it('persists the same-parent leaf under a renderer publication without moving its snapshot', async () => {
+    const { session, leftLeaf, rightLeaf } = makeSplitSession('group-1')
+    const { runtime, getSession, snapshot } = createRuntime(session)
+    publishRendererSnapshot(runtime, `tab-b::${leftLeaf}`, {
+      'tab-b': [
+        { leafId: leftLeaf, ptyId: 'pty-tab-b-left' },
+        { leafId: rightLeaf, ptyId: 'pty-tab-b-right' }
+      ]
+    })
+    const before = snapshot()
+
+    await runtime.activateMobileSessionTab(selector, 'tab-b', rightLeaf, {
+      notifyClients: false,
+      clientNavigationId: 'device-web',
+      navigation: 'caller'
+    })
+
+    expect(getSession().terminalLayoutsByTabId?.['tab-b']?.activeLeafId).toBe(rightLeaf)
+    // The renderer owns the live publication; the in-memory snapshot must not be reclassified.
+    expect(snapshot()).toBe(before)
+    expect(snapshot()?.activeTabId).toBe(`tab-b::${leftLeaf}`)
+    expect(snapshot()?.publicationEpoch).toMatch(/^renderer:/)
+
+    const freshDevice = await runtime.listMobileSessionTabs(selector, 'device-new')
+    expect(freshDevice.activeTabId).toBe(`tab-b::${rightLeaf}`)
+  })
+
+  it('does not write the same-parent leaf for a materialize-only mount', async () => {
+    const { session, leftLeaf, rightLeaf } = makeSplitSession()
+    const { runtime, getSession, snapshot } = createRuntime(session)
+    await runtime.listMobileSessionTabs(selector)
+    const sessionBefore = getSession()
+    const before = snapshot()
+
+    await runtime.activateMobileSessionTab(selector, 'tab-b', rightLeaf, {
+      notifyClients: false,
+      navigation: 'caller',
+      clientNavigationId: 'device-mount',
+      materializeOnly: true
+    })
+
+    expect(getSession()).toBe(sessionBefore)
+    expect(getSession().terminalLayoutsByTabId?.['tab-b']?.activeLeafId).toBe(leftLeaf)
+    expect(snapshot()).toBe(before)
   })
 })

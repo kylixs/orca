@@ -275,6 +275,22 @@ export class OrcaRuntimeWithApplyMobileSessionTabNavigation extends OrcaRuntimeW
       session.activeTabId === tab.parentTabId &&
       (!activeGroupId || persistedGroupActive === tab.parentTabId)
     ) {
+      // Why U162: a same-parent leaf switch lands here with the durable tab already active, so
+      // returning left the old leaf persisted and a host rebuild restored it. Only the leaf is
+      // written; tab and group ownership already match and must not be touched.
+      const sameTabLayout = session.terminalLayoutsByTabId?.[tab.parentTabId]
+      if (sameTabLayout && sameTabLayout.activeLeafId !== tab.leafId) {
+        this.setWorkspaceSessionForWorktree(worktreeId, {
+          ...session,
+          terminalLayoutsByTabId: {
+            ...session.terminalLayoutsByTabId,
+            [tab.parentTabId]: {
+              ...cloneTerminalLayoutSnapshot(sameTabLayout),
+              activeLeafId: tab.leafId
+            }
+          }
+        })
+      }
       this.syncHeadlessMobileSessionSnapshotActiveTab(worktreeId, tab, activeGroupId)
       return
     }
