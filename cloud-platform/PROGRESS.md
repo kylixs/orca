@@ -4308,3 +4308,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **D12/U196 简报落地**（`test-reports/u196-recent-use-brief-20261118.md`）：现状 `updatedAt ?? createdAt` 但 API 从不返回 updatedAt（排序恒创建时间）；推荐新增可选 `lastUsedAt`，仅成功 `project_connect`/`web_handoff` 签发时写、`projectView` 加性返回、前端回退链；审计聚合/localStorage 方案不推荐。D12 行已指向简报并列出 D12-1..6 拍板点。
 - **D11/U202 简报落地**（`test-reports/u202-stats-brief-20261118.md`）：FR-2.5 四卡 vs 现实现差异——今日会话缺失（无定义、审计查询全链扫描/权限限管理员）、待审批下载属二期、主机卡实为「在线主机上的项目数」、可访问项目含 provisioning/failed；推荐修订 FR 对齐四卡、今日会话/待审批标二期、主机卡去重或更名；今日会话若保留需服务端聚合 + 缓存 + 降级。
   - **台账更正**：M116-QA-030 = 工作台搜索/筛选/通知 + 统计卡两部分；`cb14d9920a4` 实为主机页（编号碰撞）。U203 已更正并注明关闭 QA-030 前需拆分两项。
+- **m01 与 F1 行号刷新**（`920e17795d9`，46/46 行最小 diff）：m01 44 处 server/app 引用 + 基线号更新；business-flows F1 14 处 server.ts 引用；全部按当前 HEAD 逐条核对，无待验证项。F1 段 app.js 引用仍未刷（另派）。
