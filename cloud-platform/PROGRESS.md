@@ -4124,3 +4124,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U54 P2 批（QA-030 主机页筛选）落地**：主机页新增搜索（名称/ID/zone/直连地址）与状态 chips（全部/在线/维护中/离线/已吊销），表格与移动卡同步过滤、空态区分「尚未注册/没有符合条件」、重绘后行内按钮重新绑定、无新增轮询。`web-exploratory-fixes` 39/39 绿（新增 3 例）。
 - **U201 E1 落地**：审计查询参数解析抽为 `apps/api/src/audit-query.ts`（`parseAuditQuery(params, nowMs)`，保留 `INVALID_QUERY` / `TIME_WINDOW_TOO_LARGE` 与全部边界：limit 钳制、eventTypes 1–20/≤64、family、fileName/q、since/until、31 天窗口与 7 天关键字默认）；server.ts 审计 GET 改用该函数，行为逐字等价。新单测 24/24，审计 e2e 17/17。
 - **QA-033 测试适配**：`web-host-lifecycle-feedback` 两个用例按「打开不签发、点击生成才申领」更新——打开 0 次 POST；生成 1 次并渲染命令；失败显示行内错误且弹框保留供重试。G09 套件 + 主机相关 3 套 18/18 绿（回归发现于提交后，符合 §2-91「改交互须跑完整相关套件」）。
+- **U201 E4 落地**：新增 `apps/api/src/audit-export-format.ts`（固定 11 列表头、RFC 4180、`= + - @ Tab CR` 公式中性化、metadata JSON 列、JSONL 单行保序）+ 单测 12/12；BOM 留待 E6/E8 写盘阶段按 D9 决定。
