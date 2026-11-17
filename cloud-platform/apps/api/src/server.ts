@@ -4684,6 +4684,17 @@ export function createApp(config: ApiConfig): ApiHandle {
         if ('path' in body || 'hostId' in body) {
           return error(res, 400, 'PROJECT_FIELD_IMMUTABLE', '项目路径与主机不允许修改。', traceId)
         }
+        // U237 D1: an empty body used to reset status/provisioningError and log
+        // a success without changing a field. Explicit null still clears.
+        if (!('repoUrl' in body) && !('defaultBranch' in body)) {
+          return error(
+            res,
+            400,
+            'PROJECT_UPDATE_INVALID',
+            '至少提供 repoUrl 或 defaultBranch 之一。',
+            traceId
+          )
+        }
         let nextRepoUrl = found.repoUrl
         if ('repoUrl' in body) {
           const verdict = validateProjectRepoUrl(body.repoUrl)
@@ -4986,6 +4997,16 @@ export function createApp(config: ApiConfig): ApiHandle {
         // it drops the explicit flag and ignores any downloadPolicy in the body.
         // Old clients never send it, so their requests take the pinned branch.
         const inherit = body.inherit === true
+        // U237 D2: a missing/typo'd downloadPolicy used to be coerced to `deny`.
+        if (!inherit && body.downloadPolicy !== 'allow' && body.downloadPolicy !== 'deny') {
+          return error(
+            res,
+            400,
+            'POLICY_INVALID',
+            'downloadPolicy 必须是 allow 或 deny，或传 inherit:true。',
+            traceId
+          )
+        }
         const nextPolicy = body.downloadPolicy === 'allow' ? 'allow' : 'deny'
         const rate = parseReadRate(body.readRatePerHour)
         if (rate.kind === 'invalid') {
@@ -5768,12 +5789,12 @@ export function createApp(config: ApiConfig): ApiHandle {
           return error(res, 409, 'HOST_REVOKED', '主机已下线，不能再进入维护模式。', traceId)
         }
         const body = await readJson(req)
-        // U58 H23: `enabled: "false"` used to enter maintenance, the opposite of
-        // what the caller asked for. Only a real boolean may steer this switch.
-        if (body.enabled !== undefined && typeof body.enabled !== 'boolean') {
-          return error(res, 400, 'HOST_MAINTENANCE_INVALID', 'enabled 必须是布尔值。', traceId)
+        // U58 H23 + U237: `enabled: "false"` used to enter maintenance, and a
+        // missing `enabled` did too. Only a real boolean may steer this switch.
+        if (typeof body.enabled !== 'boolean') {
+          return error(res, 400, 'HOST_MAINTENANCE_INVALID', 'enabled 必须是布尔值（必填）。', traceId)
         }
-        const nextStatus = body.enabled === false ? 'online' : 'maintenance'
+        const nextStatus = body.enabled ? 'maintenance' : 'online'
         const nextReason = body.reason ? String(body.reason) : '计划维护'
         if (
           !(await recordAudit(
@@ -6539,13 +6560,9 @@ export function createApp(config: ApiConfig): ApiHandle {
         }
         if (!auditAllowsMutations(res, traceId)) return
         const body = await readJson(req)
-        // U58 Y14: an unknown value used to be coerced to `deny`, so a typo
-        // silently changed the platform policy. Refuse it instead.
-        if (
-          body.downloadDefault !== undefined &&
-          body.downloadDefault !== 'allow' &&
-          body.downloadDefault !== 'deny'
-        ) {
+        // U58 Y14 + U237: an unknown or missing value used to be coerced to
+        // `deny`, silently changing the platform policy. Refuse it instead.
+        if (body.downloadDefault !== 'allow' && body.downloadDefault !== 'deny') {
           return error(res, 400, 'POLICY_INVALID', 'downloadDefault 仅支持 allow/deny。', traceId)
         }
         const nextDefault = body.downloadDefault === 'allow' ? 'allow' : 'deny'
