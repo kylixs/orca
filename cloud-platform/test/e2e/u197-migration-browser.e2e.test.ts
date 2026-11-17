@@ -54,7 +54,8 @@ const LEGACY_APP_FIXTURE = join(ROOT, 'test/fixtures/u197-legacy-app.js.snapshot
 /** U225 N1: this suite reads the working tree, so pin the exact console build the
  * assertions were written against. Update after an intentional `apps/web/app.js`
  * change: `sha256sum apps/web/app.js` (macOS/Linux) or
- * `Get-FileHash -Algorithm SHA256 apps/web/app.js` (Windows), then rerun. */
+ * `Get-FileHash -Algorithm SHA256 apps/web/app.js` (Windows), then rerun.
+ * U225 F1: compared LF-normalised (`sha256Lf`), so line endings never matter. */
 const HEAD_APP_SHA256 = 'f45ebb05d60b889f43f78a1898cab16560215f49078d1c52aa954ecf7c906aa9'
 /** U225 P3: sha256 of the fixture body after its 13-line provenance header
  * (`tail -n +14 test/fixtures/u197-legacy-app.js.snapshot | sha256sum`). */
@@ -114,6 +115,12 @@ function sha256(text: string): string {
   return createHash('sha256').update(text).digest('hex')
 }
 
+/** U225 F1: pins are LF-normalised so a CRLF checkout (Windows autocrlf) can't
+ * fake a mismatch — or tempt someone to pin the CRLF hash. */
+function sha256Lf(text: string): string {
+  return sha256(text.replace(/\r\n/g, '\n'))
+}
+
 function buildLegacyWebRoot(): void {
   webRoot = join(workDir, 'web')
   // Read the app assets from the working tree, not `git show HEAD:` — a shallow
@@ -121,7 +128,7 @@ function buildLegacyWebRoot(): void {
   // under test rather than a historical one. The hash pin makes that dependency
   // explicit: an uncommitted edit must be acknowledged here first (U225 N1).
   assert.equal(
-    sha256(webAsset('app.js')),
+    sha256Lf(webAsset('app.js')),
     HEAD_APP_SHA256,
     'apps/web/app.js differs from the build this migration suite pins; recompute ' +
       'HEAD_APP_SHA256 (see its comment) or revert the unexpected change'
@@ -146,7 +153,7 @@ function buildLegacyWebRoot(): void {
   // U225 P3: the 13-line provenance header is expected; the body is the exact
   // pre-S4 console the assertions describe, so pin it too.
   assert.equal(
-    sha256(legacyAppSource.split('\n').slice(13).join('\n')),
+    sha256Lf(legacyAppSource.split('\n').slice(13).join('\n')),
     LEGACY_FIXTURE_BODY_SHA256,
     'the legacy fixture body drifted; regenerate it from git or update the pin'
   )
