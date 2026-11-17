@@ -4247,3 +4247,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **服务端回归批绿**（HEAD `09c9038c9ec`）：platform / host-authorization / project-registration-validation / audit-anchor / policy-version-conflict / admin-authorization-directory **46/46**（EXIT=0）；U233/U235/U236 服务端改动零回归。m01 补「非对象 body / 登出重复 Cookie / refresh null」失败行与 U236 套件索引。
 - **U232 补测落地**（`62b0cf5de1c`）：新套件 `u232-pending-logout-retry` 2 例——启动 pending 重试失败保留标记（且不探测会话）；错误密码登录失败标记仍在、正确登录后清标记且不再补发。主会话复跑 2/2。U235 独立复审在途。
 - **U231 修复落地**（`c53a890affe`，4 文件）：`legacyOwnerAllowsFallback` 对非空 owner 即允许回退（user 缓存可因启动传输失败缺失；无 owner 仍清键）；F1b TTL 2500→6000ms；新增真实 Chromium「无 body 探测在途跨登出换账号」用例（旧响应不复活旧会话、新 Cookie 服务业务）；migration pin 同步。主会话复跑 3 套件 **29 pass/2 skip**；误命名用例已更正（非 AC9b）。U235 复审在途。
+- **U235 复审 APPROVED**：null 按假 body/无 body、标量/数组行为不变、与 U236 归一无冲突（守卫冗余但无害）、安全检查先于 body 解析、回归 97/97（主会话复跑 67/67 子集）。台账 U235 翻 🟢；修正过期注释（readJson 已归一）。P3 记录：守卫可后续清理。
