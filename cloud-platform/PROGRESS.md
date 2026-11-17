@@ -4314,3 +4314,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **文档一致性巡检（§2-119）**（`8f28602216f`）：修正 5 文件 7 处过期表述——m06 登录禁用/角色校验（U228/U135）、F1 刷新四态（U234）、LGA 设计强制下线已实现（U244 两提交）、test-plan U244 7→9 例与审计语义、D15 行 U244 状态。指定项确认无过期；待裁定项保持原样。提交后 5 文件干净。
 - **Web 全量当前 HEAD 重跑完成**：其余 22 套件 **137/137**（HEAD `59ed8666`，CONC=2）+ latency **1/1** 单跑；连同 183/183，Web 全量 **321/321** 均为当前代码基线，交付摘要更新。
 - **D17/D10 按设计字面开始实施**（裁定仍可覆盖）：AC9b/AC9c/AC15(g) 迁移探测（无标记 → 1 次无 body + 失败 1 次 body；旧服务端写 `legacy` 防重复探测）改造中；CSP Report-Only 仅 HTML 文档（草稿策略，阶段 1）落点 `sendStaticAsset` 改造中。两令均含测试与独立复审计划。
+- **D10 阶段 1 落地**（`0fd4062f33c`，3 文件）：CSP `Report-Only` 仅 HTML 文档——`STATIC_CSP_REPORT_ONLY` 不入共享头；`sendStaticAsset` 可选参数；hashed/release/回退三处接线；`ORCA_CLOUD_CSP_REPORT_ONLY=off` 可关（默认开）。新套件 2 例（入口/hashed/回退带；JS/CSS/JSON/下载/404 不带；关闭 env 不带）+ web-release 回归；主会话 3/3。未做：内联 onclick 重构（等 D17 令释放 app.js）、真实浏览器零违规观测、report-uri、宿主侧。待独立复审。
