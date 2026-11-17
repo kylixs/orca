@@ -4252,3 +4252,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U231 复审 APPROVED**：非空 owner 不构成新跨账号能力（标签写入需同源脚本，refresh 本在同源存储）；自然路径 owner/token 不错配；无 owner 仍清、异 owner 登录仍清；红证据双重可信（旧检查→U231 用例红；禁用 abort→竞态用例红）；pin 一致；回归全绿。台账 U231 翻 🟢；P3 记录：注释措辞、用例命名覆盖、Cookie 断言时序、明确拒绝后重复探测。
 - **U234 复审 APPROVED**：三条启动路径 epoch+abort 无微任务窗口、成功路径不误 abort、`/v1/me` 迟到 401 不登出；harness 剥离 signal 为真实验证所需且未变松；8 例 3 红→绿、单飞钉有效、pin 一致。台账 U234 翻 🟢。P3 登记 **U238（🟡）**：toast `Error:` 前缀、宽 4xx 代理场景（接受）、单飞用例命名、启动挂起期间登录被 continuation 踢回（既有）。已派修 ①③④。
 - **Web 回归批 182/183，唯一失败为并发假红**：`u80-mobile-users` LDAP 徽标 30s 超时；单独复跑 **5/5**。10 套件一次性默认高并发 + 探索/复审争用所致；已按 §2-77/78 以 `--test-concurrency=2` 重跑（`/tmp/web-regress-u234b.log`）。批量 e2e 命令须带并发上限（下时段复盘固化）。
+- **Web 回归批 CONC=2 复跑 183/183**（HEAD `7139dcb957c`，EXIT=0，约 4.6 分钟）：确认 `u80-mobile-users` 唯一失败为并发争用假红；U234 改动零回归。批量 e2e 后续统一 `--test-concurrency=2`。
