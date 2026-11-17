@@ -168,6 +168,15 @@ function recurringRendezvous(): () => Promise<void> {
   let current = new Promise<void>((resolve) => {
     releaseCurrent = resolve
   })
+  // U245④: a partner that never arrives must fail fast, not hang the runner.
+  const awaitGate = (gate: Promise<void>) => {
+    let timer: ReturnType<typeof setTimeout>
+    const timeout = new Promise<void>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('barrier partner did not arrive')), 2_000)
+      timer.unref()
+    })
+    return Promise.race([gate, timeout]).finally(() => clearTimeout(timer))
+  }
   return async () => {
     const gate = current
     arrivals += 1
@@ -178,7 +187,7 @@ function recurringRendezvous(): () => Promise<void> {
       })
       release()
     }
-    await gate
+    await awaitGate(gate)
   }
 }
 
