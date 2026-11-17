@@ -89,7 +89,7 @@
 | ---- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | API  | `POST /v1/auth/login`、`POST /v1/auth/refresh`、`POST /v1/auth/logout`（服务端接受可选 body `refreshToken`）、`GET /v1/me`                       |
 | 事件 | `login` success/failure（`INVALID_CREDENTIALS`/`locked`/`ldap_group_denied`/`USER_DISABLED`）、`logout` success/denied、`refresh.reuse_detected`、`refresh.grace_reuse`、denied 审计族 |
-| 存储 | 浏览器 Cookie 模式：`orca.user`/`orca.device`/`orca.authMode`/`orca.pendingLogout`（access 仅内存）；旧模式另写 `orca.access`/`orca.refresh`/`orca.tokenOwner`。Cookie：`orca_refresh`。平台：`store.users`、`store.sessions`、`store.refreshTokens`、锁定计数（共享服务或进程内） |
+| 存储 | 浏览器 Cookie 模式：`orca.user`/`orca.device`/`orca.authMode`/`orca.pendingLogout`（access 仅内存）；旧模式另写 `orca.access`/`orca.refresh`/`orca.tokenOwner`。Cookie：`orca_refresh`。平台：`store.users`、`store.sessions`、`store.refreshTokens`、锁定计数（共享服务或进程内）。`refreshTokens` 的 key 自 `57327d771e2` 起为 `sha256:` 摘要（查找先哈希，`currentRefreshTokenOf` 回退用已校验的 Cookie 值）；开发快照自 `51f2e2066f3` 起为 v2、旧明文快照加载即写回哈希形态（U233） |
 | 配置 | `ORCA_CLOUD_ACCESS_TTL_MS`、`ORCA_CLOUD_REFRESH_TTL_MS`、`ORCA_CLOUD_REFRESH_GRACE_MS`、`ORCA_CLOUD_COOKIE_MODE`、`ORCA_CLOUD_PUBLIC_ORIGIN`、`ORCA_CLOUD_LDAP_REQUIRED_GROUP`/`ldapRequiredGroup`、`ORCA_CLOUD_LOGIN_LOCKOUT_URL` |
 
 ### 5. 已有测试 / 探索路径
