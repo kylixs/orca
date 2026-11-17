@@ -3971,14 +3971,19 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (auth) targets.add(auth.sessionId)
       if (cookieSessionId !== undefined) targets.add(cookieSessionId)
       if (bodySessionId !== undefined) targets.add(bodySessionId)
+      // U241 ①: an already revoked session (disabled refresh, reuse detection)
+      // must not bump the epoch or log a second success; the 200 and Cookie
+      // clearing still happen below.
+      const revokedSessions: string[] = []
       for (const sessionId of targets) {
         const session = store.sessions.get(sessionId)
-        if (!session) continue
+        if (!session || session.revokedAt !== null) continue
         session.revokedAt = now()
         bumpEpoch(session.id)
+        revokedSessions.push(sessionId)
       }
-      // One logout event per revoked session, deduped by the target set (U220 N2).
-      for (const sessionId of targets) {
+      // One logout event per newly revoked session, deduped by the target set (U220 N2).
+      for (const sessionId of revokedSessions) {
         const session = store.sessions.get(sessionId)
         const user = session ? store.users.get(session.userId) : undefined
         if (!session || !user) continue
