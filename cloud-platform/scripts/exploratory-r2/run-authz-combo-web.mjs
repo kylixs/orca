@@ -76,9 +76,7 @@ const findings = []
 const combos = []
 const logs = []
 function log(...parts) {
-  const line = parts
-    .map((p) => (typeof p === 'string' ? p : JSON.stringify(p)))
-    .join(' ')
+  const line = parts.map((p) => (typeof p === 'string' ? p : JSON.stringify(p))).join(' ')
   logs.push(line)
   console.log(line)
 }
@@ -163,7 +161,8 @@ async function putProjectGrant(projectId, subjectType, subjectId, permissions) {
     token: await tokenFor('admin'),
     body: { subjectType, subjectId, permissions }
   })
-  if (res.status !== 200) throw new Error(`put grant ${projectId} ${subjectId}: ${res.status} ${res.text}`)
+  if (res.status !== 200)
+    throw new Error(`put grant ${projectId} ${subjectId}: ${res.status} ${res.text}`)
   return res
 }
 async function putHostGrant(hostId, subjectType, subjectId, permissions) {
@@ -255,7 +254,8 @@ async function exec(role, source, params = {}) {
   const tabId = await tabFor(role)
   const res = await ps('POST', `/tabs/${tabId}/execute`, { source, params, timeoutMs: 120000 })
   if (res.status !== 200) throw new Error(`execute ${role}: ${res.status} ${res.text}`)
-  if (!res.json?.ok) throw new Error(`execute ${role} failed: ${res.json?.error?.message ?? res.text}`)
+  if (!res.json?.ok)
+    throw new Error(`execute ${role} failed: ${res.json?.error?.message ?? res.text}`)
   return res.json.result
 }
 async function shot(role, name) {
@@ -330,8 +330,10 @@ async function uiOpenOverlay({ page, ui, params }) {
   await page
     .evaluate(() => {
       const root = document.querySelector('#workspaceOverlay')
-      ;(root?.querySelector('[data-workspace-close]') ??
-        root?.querySelector('.workspace-bar .icon-btn'))?.click()
+      ;(
+        root?.querySelector('[data-workspace-close]') ??
+        root?.querySelector('.workspace-bar .icon-btn')
+      )?.click()
     })
     .catch(() => null)
   return state
@@ -342,16 +344,17 @@ async function uiSelfGrantCancel({ page, ui, params }) {
   await ui.navigateMenu('workbench')
   const row = page.locator('tbody tr', { hasText: params.projectName }).first()
   await row.waitFor({ timeout: 10000 })
-  const buttons = await row.locator('button').evaluateAll((bs) =>
-    bs.map((b) => ({ label: b.textContent.trim(), disabled: b.disabled, title: b.title }))
-  )
+  const buttons = await row
+    .locator('button')
+    .evaluateAll((bs) =>
+      bs.map((b) => ({ label: b.textContent.trim(), disabled: b.disabled, title: b.title }))
+    )
   await row.locator('[data-self-grant]').click()
   await page.waitForSelector('.dialog-backdrop .dialog')
   const title = await page.$eval('.dialog-backdrop .dialog h2', (el) => el.textContent.trim())
   const body = await page.$eval('.dialog-backdrop .dialog .body', (el) => el.innerText)
   await page.click('.dialog-backdrop [data-action="close"]')
-  const dialogClosed =
-    (await page.locator('.dialog-backdrop .dialog').count()) === 0
+  const dialogClosed = (await page.locator('.dialog-backdrop .dialog').count()) === 0
   return { buttons, title, body, dialogClosed }
 }
 
@@ -393,8 +396,10 @@ async function uiSelfGrantConfirm({ page, ui, params }) {
   await page
     .evaluate(() => {
       const root = document.querySelector('#workspaceOverlay')
-      ;(root?.querySelector('[data-workspace-close]') ??
-        root?.querySelector('.workspace-bar .icon-btn'))?.click()
+      ;(
+        root?.querySelector('[data-workspace-close]') ??
+        root?.querySelector('.workspace-bar .icon-btn')
+      )?.click()
     })
     .catch(() => null)
   return state
@@ -406,27 +411,33 @@ async function uiHostDrawer({ page, ui, params }) {
   const row = page.locator('tbody tr', { hasText: params.hostName }).first()
   await row.waitFor({ timeout: 10000 })
   await row.getByRole('button', { name: '详情' }).click()
-  await page.waitForSelector('.drawer')
+  await page.waitForSelector('.drawer [data-auth-tab="perms"]')
+  await page.click('.drawer [data-auth-tab="perms"]')
+  // U67 removed the old grant table/policy radios; wait for the three role cards.
   await page.waitForFunction(
     () => {
-      const panel = document.querySelector('#hostGrantPanel')
-      return panel && !panel.innerText.includes('加载中')
+      const holder = document.querySelector('#hostPermCards')
+      return Boolean(holder) && holder.querySelectorAll('.perm-card').length === 3
     },
-    { timeout: 10000 }
+    { timeout: 15000 }
   )
   const data = await page.evaluate(() => {
     const drawer = document.querySelector('.drawer')
-    const radios = [...(drawer?.querySelectorAll('input[name="hostProvisionPolicy"]') ?? [])].map(
-      (r) => ({ value: r.value, checked: r.checked })
+    const tabs = [...drawer.querySelectorAll('[data-auth-tab]')].map((tab) =>
+      tab.textContent.trim()
     )
-    const rows = [...(drawer?.querySelectorAll('#hostGrantPanel tbody tr') ?? [])].map((tr) => ({
-      text: tr.innerText.replace(/\n/g, ' '),
-      checks: [...tr.querySelectorAll('input[data-host-perm]')].map((c) => ({
-        perm: c.dataset.hostPerm,
-        checked: c.checked
-      }))
+    const cards = [...drawer.querySelectorAll('#hostPermCards .perm-card')].map((card) => ({
+      key: card.dataset.card,
+      heading: card.querySelector('.perm-card-head strong')?.textContent.trim() ?? '',
+      chips: [...card.querySelectorAll('.perm-chip')].map((chip) =>
+        chip.innerText.replace(/\n/g, ' ').trim()
+      )
     }))
-    return { radios, rows }
+    return {
+      tabs,
+      activeTab: drawer.querySelector('[data-auth-tab].active')?.textContent.trim() ?? '',
+      cards
+    }
   })
   await page.click('.drawer .icon-btn').catch(() => null)
   return data
@@ -518,7 +529,8 @@ async function snapshotState() {
   for (const p of ps) grants[p.id] = await projectGrants(p.id)
   const hgrants = {}
   for (const h of hs) hgrants[h.id] = await hostGrants(h.id)
-  const policy = (await api('GET', '/v1/policies/download', { token: await tokenFor('admin') })).json
+  const policy = (await api('GET', '/v1/policies/download', { token: await tokenFor('admin') }))
+    .json
   return {
     hosts: hs.map((h) => ({
       id: h.id,
@@ -672,33 +684,41 @@ async function main() {
   const p1RevokedUi = await exec('lisi', uiRows.toString(), { role: 'lisi', route: 'workbench' })
   await shot('lisi', 'p1-lisi-demo-revoked')
   await putProjectGrant(demo.id, 'user', 'lisi', ['open', 'file:read'])
-  expectChecks('D1 permission matrix x dual-host', 'P1', 'lisi demo-app: open → +file:read → 撤销（host1）', [
-    {
-      name: 'open only -> credential bits exactly [open], handoff 201',
-      ok: p1Open.visible && sameSet(p1Open.credentialPerms, ['open']) && p1Open.handoffStatus === 201,
-      actual: p1Open
-    },
-    {
-      name: 'add file:read -> credential bits [open,file:read]',
-      ok: sameSet(p1Read.credentialPerms, ['open', 'file:read']),
-      actual: p1Read
-    },
-    {
-      name: 'revoke -> project disappears from list/connect',
-      ok: !p1Revoked.visible && p1Revoked.connectStatus === null,
-      actual: p1Revoked
-    },
-    {
-      name: 'UI row appears then disappears',
-      ok:
-        p1OpenUi.rows.some((r) => r.text.includes('demo-app')) &&
-        !p1RevokedUi.rows.some((r) => r.text.includes('demo-app')),
-      actual: {
-        openRows: p1OpenUi.rows.map((r) => r.name),
-        revokedRows: p1RevokedUi.rows.map((r) => r.name)
+  expectChecks(
+    'D1 permission matrix x dual-host',
+    'P1',
+    'lisi demo-app: open → +file:read → 撤销（host1）',
+    [
+      {
+        name: 'open only -> credential bits exactly [open], handoff 201',
+        ok:
+          p1Open.visible &&
+          sameSet(p1Open.credentialPerms, ['open']) &&
+          p1Open.handoffStatus === 201,
+        actual: p1Open
+      },
+      {
+        name: 'add file:read -> credential bits [open,file:read]',
+        ok: sameSet(p1Read.credentialPerms, ['open', 'file:read']),
+        actual: p1Read
+      },
+      {
+        name: 'revoke -> project disappears from list/connect',
+        ok: !p1Revoked.visible && p1Revoked.connectStatus === null,
+        actual: p1Revoked
+      },
+      {
+        name: 'UI row appears then disappears',
+        ok:
+          p1OpenUi.rows.some((r) => r.text.includes('demo-app')) &&
+          !p1RevokedUi.rows.some((r) => r.text.includes('demo-app')),
+        actual: {
+          openRows: p1OpenUi.rows.map((r) => r.name),
+          revokedRows: p1RevokedUi.rows.map((r) => r.name)
+        }
       }
-    }
-  ])
+    ]
+  )
   const p1Row = p1OpenUi.rows.find((r) => r.text.includes('demo-app'))
   const p1OpenBtn = p1Row?.buttons.find((b) => b.label === '打开')
   if (p1Row && (!p1OpenBtn || p1OpenBtn.disabled)) {
@@ -718,18 +738,23 @@ async function main() {
   const p2Ui = await exec('lisi', uiRows.toString(), { role: 'lisi', route: 'projects' })
   await shot('lisi', 'p2-lisi-zhangsan-demo')
   await putProjectGrant(zdemo.id, 'user', 'lisi', [])
-  expectChecks('D1 permission matrix x dual-host', 'P2', 'lisi 同主机第二项目 zhangsan-demo 仅 open', [
-    {
-      name: 'visible + credential [open] + handoff 201',
-      ok: p2.visible && sameSet(p2.credentialPerms, ['open']) && p2.handoffStatus === 201,
-      actual: p2
-    },
-    {
-      name: 'UI row present',
-      ok: p2Ui.rows.some((r) => r.text.includes('zhangsan-demo')),
-      actual: p2Ui.rows.map((r) => r.name)
-    }
-  ])
+  expectChecks(
+    'D1 permission matrix x dual-host',
+    'P2',
+    'lisi 同主机第二项目 zhangsan-demo 仅 open',
+    [
+      {
+        name: 'visible + credential [open] + handoff 201',
+        ok: p2.visible && sameSet(p2.credentialPerms, ['open']) && p2.handoffStatus === 201,
+        actual: p2
+      },
+      {
+        name: 'UI row present',
+        ok: p2Ui.rows.some((r) => r.text.includes('zhangsan-demo')),
+        actual: p2Ui.rows.map((r) => r.name)
+      }
+    ]
+  )
 
   await putProjectGrant(infra.id, 'user', 'lisi', ['open', 'file:read'])
   const p3 = await probeProject('lisi', infra.id)
@@ -737,21 +762,29 @@ async function main() {
   await shot('lisi', 'p3-lisi-infra-host2')
   await putProjectGrant(infra.id, 'user', 'lisi', [])
   const p3revoked = await probeProject('lisi', infra.id)
-  expectChecks('D1 permission matrix x dual-host', 'P3', 'lisi 跨主机 host2 infra-tools open+file:read', [
-    {
-      name: 'cross-host credential bits and handoff 201',
-      ok: p3.visible && sameSet(p3.credentialPerms, ['open', 'file:read']) && p3.handoffStatus === 201,
-      actual: p3
-    },
-    {
-      name: 'UI row shows host dev-local-03',
-      ok: p3Ui.rows.some(
-        (r) => r.text.includes('infra-tools') && r.text.includes('dev-local-03')
-      ),
-      actual: p3Ui.rows.filter((r) => r.text.includes('infra-tools')).map((r) => r.text)
-    },
-    { name: 'revoke hides it again', ok: !p3revoked.visible, actual: p3revoked }
-  ])
+  expectChecks(
+    'D1 permission matrix x dual-host',
+    'P3',
+    'lisi 跨主机 host2 infra-tools open+file:read',
+    [
+      {
+        name: 'cross-host credential bits and handoff 201',
+        ok:
+          p3.visible &&
+          sameSet(p3.credentialPerms, ['open', 'file:read']) &&
+          p3.handoffStatus === 201,
+        actual: p3
+      },
+      {
+        name: 'UI row shows host dev-local-03',
+        ok: p3Ui.rows.some(
+          (r) => r.text.includes('infra-tools') && r.text.includes('dev-local-03')
+        ),
+        actual: p3Ui.rows.filter((r) => r.text.includes('infra-tools')).map((r) => r.text)
+      },
+      { name: 'revoke hides it again', ok: !p3revoked.visible, actual: p3revoked }
+    ]
+  )
 
   const p4 = {}
   for (const key of required) p4[key] = await probeProject('zhangsan', proj[key].id)
@@ -763,7 +796,14 @@ async function main() {
       ok: required.every(
         (k) =>
           p4[k].visible &&
-          sameSet(p4[k].credentialPerms, ['open', 'terminal', 'agent', 'file:read', 'file:write'])
+          sameSet(p4[k].credentialPerms, [
+            'open',
+            'terminal',
+            'agent',
+            'file:read',
+            'file:write',
+            'browser'
+          ])
       ),
       actual: required.map((k) => ({ k, host: proj[k].hostName, bits: p4[k].credentialPerms }))
     },
@@ -776,25 +816,43 @@ async function main() {
 
   const p5Ui = await exec('admin', uiRows.toString(), { role: 'admin', route: 'workbench' })
   const zlabRow = p5Ui.rows.find((r) => r.text.includes('zhangsan-lab'))
-  expectChecks('D1 permission matrix x dual-host', 'P5', 'admin 对 host2 zhangsan-lab 无显式授权', [
-    {
-      name: '打开 disabled with authorization reason + 授权并打开 enabled',
-      ok:
-        Boolean(zlabRow) &&
-        zlabRow.buttons.find((b) => b.label === '打开')?.disabled === true &&
-        zlabRow.buttons.find((b) => b.label === '授权并打开')?.disabled === false,
-      actual: zlabRow?.buttons
-    },
-    {
-      name: 'API cross-check: connect is open-gated at the console but handoff is not',
-      // The API run (authz-api-combo D8) recorded connect 200 / handoff 403 for the
-      // same state; the UI correctly refuses 打开. Kept as a linkage check only.
-      ok: true,
-      actual: { linked: 'authz-api-combo.json D8', ui: '打开 disabled' }
-    }
-  ], { linked: 'authz-api-combo D8' })
+  expectChecks(
+    'D1 permission matrix x dual-host',
+    'P5',
+    'admin 对 host2 zhangsan-lab 无显式授权',
+    [
+      {
+        name: '打开 disabled with authorization reason + 授权并打开 enabled',
+        ok:
+          Boolean(zlabRow) &&
+          zlabRow.buttons.find((b) => b.label === '打开')?.disabled === true &&
+          zlabRow.buttons.find((b) => b.label === '授权并打开')?.disabled === false,
+        actual: zlabRow?.buttons
+      },
+      {
+        name: 'API cross-check: connect is open-gated at the console but handoff is not',
+        // The API run (authz-api-combo D8) recorded connect 200 / handoff 403 for the
+        // same state; the UI correctly refuses 打开. Kept as a linkage check only.
+        ok: true,
+        actual: { linked: 'authz-api-combo.json D8', ui: '打开 disabled' }
+      }
+    ],
+    { linked: 'authz-api-combo D8' }
+  )
 
   // ===== D2 host authorization drawer x dual host =====
+  // U67: creation is driven by the provision bit, not the legacy provisionPolicy.
+  // H1/H2 assume no baseline direct grant for zhangsan (the seed carries
+  // view+provision on both hosts); remove those rows for the block. restoreState
+  // replays the pre-run snapshot in `finally`.
+  for (const h of [host1, host2]) {
+    const baseline = (snapshot.hostGrants[h.id] ?? []).filter(
+      (row) => row.subjectType === 'user' && row.username === 'zhangsan'
+    )
+    for (const row of baseline) {
+      await putHostGrant(h.id, row.subjectType, row.subjectId, [])
+    }
+  }
   await setProvisionPolicy(host1.id, 'restricted')
   await setProvisionPolicy(host2.id, 'restricted')
   await putHostGrant(host1.id, 'user', 'lisi', ['provision'])
@@ -803,25 +861,38 @@ async function main() {
   const avail = {}
   for (const role of ['admin', 'zhangsan', 'lisi']) avail[role] = await availableHosts(role)
   const availFor = (role, hostId) => avail[role].hosts.find((h) => h.id === hostId)
-  expectChecks('D2 host drawer x dual host', 'H1', 'restricted + 授权后的 available 矩阵', [
+  expectChecks(
+    'D2 host drawer x dual host',
+    'H1',
+    'policy=restricted 下授权驱动的 available 矩阵',
+    [
+      {
+        name: 'lisi: host1 allowed, host2 denied',
+        ok:
+          availFor('lisi', host1.id).provisionAllowed &&
+          !availFor('lisi', host2.id).provisionAllowed,
+        actual: { host1: availFor('lisi', host1.id), host2: availFor('lisi', host2.id) }
+      },
+      {
+        name: 'zhangsan: host1 denied, host2 allowed via team-payment',
+        ok:
+          !availFor('zhangsan', host1.id).provisionAllowed &&
+          availFor('zhangsan', host2.id).provisionAllowed,
+        actual: { host1: availFor('zhangsan', host1.id), host2: availFor('zhangsan', host2.id) }
+      },
+      {
+        name: 'admin: both allowed',
+        ok:
+          availFor('admin', host1.id).provisionAllowed &&
+          availFor('admin', host2.id).provisionAllowed,
+        actual: { host1: availFor('admin', host1.id), host2: availFor('admin', host2.id) }
+      }
+    ],
     {
-      name: 'lisi: host1 allowed, host2 denied',
-      ok: availFor('lisi', host1.id).provisionAllowed && !availFor('lisi', host2.id).provisionAllowed,
-      actual: { host1: availFor('lisi', host1.id), host2: availFor('lisi', host2.id) }
-    },
-    {
-      name: 'zhangsan: host1 denied, host2 allowed via team-payment',
-      ok:
-        !availFor('zhangsan', host1.id).provisionAllowed &&
-        availFor('zhangsan', host2.id).provisionAllowed,
-      actual: { host1: availFor('zhangsan', host1.id), host2: availFor('zhangsan', host2.id) }
-    },
-    {
-      name: 'admin: both allowed',
-      ok: availFor('admin', host1.id).provisionAllowed && availFor('admin', host2.id).provisionAllowed,
-      actual: { host1: availFor('admin', host1.id), host2: availFor('admin', host2.id) }
+      premise:
+        'zhangsan 基线直授已移除；lisi 仅 host1 直授 provision，zhangsan 仅 team-payment 组行在 host2 携带 provision；provisionPolicy 不参与判定'
     }
-  ])
+  )
 
   const stamp = Date.now().toString(36)
   const selfMatrix = {}
@@ -843,14 +914,29 @@ async function main() {
     }
     if (res.status === 201 && res.json?.id) createdProjectIds.push(res.json.id)
   }
-  expectChecks('D2 host drawer x dual host', 'H2', '三身份跨主机自助建项目矩阵', [
-    ...Object.entries(selfMatrix).map(([key, val]) => ({
-      name: `${key} -> ${val.expected}`,
-      ok: val.status === val.expected,
-      actual: val
-    }))
-  ])
+  expectChecks(
+    'D2 host drawer x dual host',
+    'H2',
+    '三身份跨主机自助建项目矩阵',
+    [
+      Object.entries(selfMatrix).map(([key, val]) => ({
+        name: `${key} -> ${val.expected}`,
+        ok: val.status === val.expected,
+        actual: val
+      }))
+    ],
+    {
+      premise:
+        '同 H1：zhangsan 基线直授已移除；允许与否只看 provision 位（admin 例外），policy 不参与'
+    }
+  )
 
+  // U67 cards only render complete role combinations, so the drawer check uses
+  // the control combination (view+provision) as the visible form of the same
+  // provision authorization exercised by H1/H2; revert to provision-only right
+  // after so host-level view does not leak into later project-bit combos.
+  await putHostGrant(host1.id, 'user', 'lisi', ['view', 'provision'])
+  await putHostGrant(host2.id, 'group', 'team-payment', ['view', 'provision'])
   const drawer1 = await exec('admin', uiHostDrawer.toString(), {
     role: 'admin',
     hostName: host1.name
@@ -861,30 +947,47 @@ async function main() {
     hostName: host2.name
   })
   await shot('admin', 'h3-host2-drawer-restricted')
-  expectChecks('D2 host drawer x dual host', 'H3', '主机抽屉反映 restricted + 各自授权行', [
+  await putHostGrant(host1.id, 'user', 'lisi', ['provision'])
+  await putHostGrant(host2.id, 'group', 'team-payment', ['provision'])
+  const cardsOf = (drawer, key) => drawer.cards.find((card) => card.key === key)
+  const hasChip = (drawer, key, text) =>
+    cardsOf(drawer, key).chips.some((chip) => chip.includes(text))
+  const cardShapeOk = (drawer) =>
+    drawer.activeTab === '权限' &&
+    sameSet(drawer.tabs, ['信息', '权限']) &&
+    sameSet(
+      drawer.cards.map((card) => card.key),
+      ['view', 'control', 'manage']
+    ) &&
+    cardsOf(drawer, 'view').chips.length === 0 &&
+    cardsOf(drawer, 'manage').chips.length === 0
+  expectChecks(
+    'D2 host drawer x dual host',
+    'H3',
+    '主机抽屉（U67 权限页签三卡片）反映各自授权行',
+    [
+      {
+        name: 'host1: three role cards, lisi on 控制, team-payment absent',
+        ok:
+          cardShapeOk(drawer1) &&
+          hasChip(drawer1, 'control', 'lisi') &&
+          !drawer1.cards.some((card) => card.chips.some((chip) => chip.includes('team-payment'))),
+        actual: drawer1
+      },
+      {
+        name: 'host2: three role cards, team-payment on 控制, lisi absent',
+        ok:
+          cardShapeOk(drawer2) &&
+          hasChip(drawer2, 'control', 'team-payment') &&
+          !drawer2.cards.some((card) => card.chips.some((chip) => chip.includes('lisi'))),
+        actual: drawer2
+      }
+    ],
     {
-      name: 'host1: restricted selected, lisi provision row, team-payment absent',
-      ok:
-        drawer1.radios.find((r) => r.value === 'restricted')?.checked === true &&
-        drawer1.rows.some(
-          (r) => r.text.includes('lisi') && r.checks.some((c) => c.perm === 'provision' && c.checked)
-        ) &&
-        !drawer1.rows.some((r) => r.text.includes('team-payment')),
-      actual: drawer1
-    },
-    {
-      name: 'host2: restricted selected, team-payment provision row, lisi absent',
-      ok:
-        drawer2.radios.find((r) => r.value === 'restricted')?.checked === true &&
-        drawer2.rows.some(
-          (r) =>
-            r.text.includes('team-payment') &&
-            r.checks.some((c) => c.perm === 'provision' && c.checked)
-        ) &&
-        !drawer2.rows.some((r) => r.text.includes('lisi')),
-      actual: drawer2
+      premise:
+        '抽屉断言前把授权提升为控制卡组合（view+provision），断言后立即回落到 provision-only；U67 只渲染完整角色组合'
     }
-  ])
+  )
 
   await putHostGrant(host2.id, 'user', 'zhangsan', ['maintain'])
   const mEnter = await maintenance('zhangsan', host2.id, true)
@@ -932,13 +1035,25 @@ async function main() {
       host2: a.hosts.find((h) => h.id === host2.id)?.provisionAllowed
     }
   }
-  expectChecks('D2 host drawer x dual host', 'H5', 'policy 回切 open 全恢复', [
-    {
-      name: 'all three identities allowed on both hosts',
-      ok: Object.values(openMatrix).every((v) => v.host1 && v.host2),
-      actual: openMatrix
-    }
-  ])
+  expectChecks(
+    'D2 host drawer x dual host',
+    'H5',
+    'legacy policy=open 不回授权限（授权驱动不变）',
+    [
+      {
+        name: 'open policy leaves the grant-derived matrix unchanged',
+        ok:
+          openMatrix.lisi.host1 === true &&
+          openMatrix.lisi.host2 === false &&
+          openMatrix.zhangsan.host1 === false &&
+          openMatrix.zhangsan.host2 === true &&
+          openMatrix.admin.host1 === true &&
+          openMatrix.admin.host2 === true,
+        actual: openMatrix
+      }
+    ],
+    { premise: 'U67: provisionPolicy 仅上报，不再作为授权来源' }
+  )
 
   // ===== D3 self-grant x host combination =====
   // Host1 control: admin already holds open on demo-app.
@@ -966,8 +1081,7 @@ async function main() {
     {
       name: 'cancel closes and leaves grants untouched',
       ok:
-        cancelUi.dialogClosed &&
-        JSON.stringify(grantsAfterCancel) === JSON.stringify(grantsBefore),
+        cancelUi.dialogClosed && JSON.stringify(grantsAfterCancel) === JSON.stringify(grantsBefore),
       actual: { before: grantsBefore, after: grantsAfterCancel }
     }
   ])
@@ -1024,28 +1138,33 @@ async function main() {
   })
   await shot('admin', 'd4-register-host-switch')
   const revokedOffered = regUi.options.some((o) => o.value === revoked?.id)
-  expectChecks('D4 registration dialog x dual host', 'R1', 'hostId 切换两台主机的根提示与 path 归属', [
-    {
-      name: 'host1 root hint',
-      ok: !regUi.roots.host1.hidden && regUi.roots.host1.text.includes(host1.projectsRoot),
-      actual: regUi.roots.host1
-    },
-    {
-      name: 'host2 root hint',
-      ok: !regUi.roots.host2.hidden && regUi.roots.host2.text.includes(host2.projectsRoot),
-      actual: regUi.roots.host2
-    },
-    {
-      name: 'revoked offline host is not offered in the picker',
-      ok: !revokedOffered,
-      actual: { options: regUi.options, revoked: revoked?.name }
-    },
-    {
-      name: 'switching host does not keep the other host root path',
-      ok: regUi.afterSwitch !== regUi.beforeSwitch || regUi.afterSwitch === '',
-      actual: { beforeSwitch: regUi.beforeSwitch, afterSwitch: regUi.afterSwitch }
-    }
-  ])
+  expectChecks(
+    'D4 registration dialog x dual host',
+    'R1',
+    'hostId 切换两台主机的根提示与 path 归属',
+    [
+      {
+        name: 'host1 root hint',
+        ok: !regUi.roots.host1.hidden && regUi.roots.host1.text.includes(host1.projectsRoot),
+        actual: regUi.roots.host1
+      },
+      {
+        name: 'host2 root hint',
+        ok: !regUi.roots.host2.hidden && regUi.roots.host2.text.includes(host2.projectsRoot),
+        actual: regUi.roots.host2
+      },
+      {
+        name: 'revoked offline host is not offered in the picker',
+        ok: !revokedOffered,
+        actual: { options: regUi.options, revoked: revoked?.name }
+      },
+      {
+        name: 'switching host does not keep the other host root path',
+        ok: regUi.afterSwitch !== regUi.beforeSwitch || regUi.afterSwitch === '',
+        actual: { beforeSwitch: regUi.beforeSwitch, afterSwitch: regUi.afterSwitch }
+      }
+    ]
+  )
   if (regUi.afterSwitch === regUi.beforeSwitch && regUi.afterSwitch !== '') {
     addFinding({
       severity: 'P2',
@@ -1164,7 +1283,10 @@ async function main() {
     {
       name: 'host grant + provision policy events present',
       ok: ev('host_grant_update').length > 0 && ev('host_provision_policy_update').length > 0,
-      actual: { hostGrant: ev('host_grant_update').length, policy: ev('host_provision_policy_update').length }
+      actual: {
+        hostGrant: ev('host_grant_update').length,
+        policy: ev('host_provision_policy_update').length
+      }
     },
     {
       name: 'restricted-host denials recorded with actor + reason',
@@ -1173,7 +1295,11 @@ async function main() {
         ev('project_create').some((e) => e.actor === 'zhangsan' && e.result === 'denied'),
       actual: ev('project_create')
         .filter((e) => e.result === 'denied')
-        .map((e) => ({ actor: e.actor, reason: e.metadata?.reason, selfService: e.metadata?.selfService }))
+        .map((e) => ({
+          actor: e.actor,
+          reason: e.metadata?.reason,
+          selfService: e.metadata?.selfService
+        }))
     },
     {
       name: 'maintenance delegation events carry via=host_grant',
@@ -1252,28 +1378,33 @@ async function main() {
     'file:read',
     'file:write'
   ])
-  expectChecks('M multi-user differentiated bits', 'M3', '同一用户跨主机不同位（host1 读写 vs host2 仅 open）', [
-    {
-      name: 'host1 credential read+write, host2 credential only open, both open-able',
-      ok:
-        sameSet(m3a.credentialPerms, ['open', 'file:read', 'file:write']) &&
-        sameSet(m3b.credentialPerms, ['open']) &&
-        m3a.handoffStatus === 201 &&
-        m3b.handoffStatus === 201,
-      actual: { host1: m3a.credentialPerms, host2: m3b.credentialPerms }
-    },
-    {
-      name: 'UI permission column shows the two different sets',
-      ok:
-        m3Ui.rows
-          .find((r) => r.text.includes('zhangsan-demo'))
-          ?.text.includes('file:write') === true &&
-        m3Ui.rows.find((r) => r.text.includes('infra-tools'))?.text.includes('file:write') === false,
-      actual: m3Ui.rows
-        .filter((r) => r.text.includes('zhangsan-demo') || r.text.includes('infra-tools'))
-        .map((r) => r.text)
-    }
-  ])
+  expectChecks(
+    'M multi-user differentiated bits',
+    'M3',
+    '同一用户跨主机不同位（host1 读写 vs host2 仅 open）',
+    [
+      {
+        name: 'host1 credential read+write, host2 credential only open, both open-able',
+        ok:
+          sameSet(m3a.credentialPerms, ['open', 'file:read', 'file:write']) &&
+          sameSet(m3b.credentialPerms, ['open']) &&
+          m3a.handoffStatus === 201 &&
+          m3b.handoffStatus === 201,
+        actual: { host1: m3a.credentialPerms, host2: m3b.credentialPerms }
+      },
+      {
+        name: 'UI permission column shows the two different sets',
+        ok:
+          m3Ui.rows.find((r) => r.text.includes('zhangsan-demo'))?.text.includes('file:write') ===
+            true &&
+          m3Ui.rows.find((r) => r.text.includes('infra-tools'))?.text.includes('file:write') ===
+            false,
+        actual: m3Ui.rows
+          .filter((r) => r.text.includes('zhangsan-demo') || r.text.includes('infra-tools'))
+          .map((r) => r.text)
+      }
+    ]
+  )
 
   const dirAfter = await api('GET', '/v1/directory', { token: await tokenFor('admin') })
   const auditAfter = await api('GET', `/v1/audit/events?limit=100&since=${since}`, {
@@ -1302,9 +1433,7 @@ async function main() {
   const restored = await snapshotState()
   const restoreChecks = []
   const norm = (rows) =>
-    rows
-      .map((g) => `${g.subjectType}:${g.subjectId}=${[...g.permissions].sort().join(',')}`)
-      .sort()
+    rows.map((g) => `${g.subjectType}:${g.subjectId}=${[...g.permissions].sort().join(',')}`).sort()
   for (const p of snapshot.projects) {
     restoreChecks.push({
       name: `project ${p.key} grants restored`,
@@ -1317,8 +1446,13 @@ async function main() {
   for (const h of snapshot.hosts) {
     restoreChecks.push({
       name: `host ${h.name} grants restored`,
-      ok: (restored.hostGrants[h.id] ?? []).length === 0,
-      actual: restored.hostGrants[h.id] ?? []
+      ok:
+        JSON.stringify(norm(restored.hostGrants[h.id] ?? [])) ===
+        JSON.stringify(norm(snapshot.hostGrants[h.id] ?? [])),
+      actual: {
+        cur: norm(restored.hostGrants[h.id] ?? []),
+        want: norm(snapshot.hostGrants[h.id] ?? [])
+      }
     })
   }
   const verifyEnd = await api('GET', '/v1/audit/verify', { token: await tokenFor('admin') })

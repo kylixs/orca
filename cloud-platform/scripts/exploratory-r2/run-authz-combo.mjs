@@ -24,12 +24,15 @@ const BASE = process.env.ORCA_LOCAL_PLATFORM_URL || 'https://127.0.0.1:18787'
 const CA = fs.readFileSync(path.join(ENV_ROOT, 'tls/ca.pem'))
 const STAMP = Date.now().toString(36).slice(-6)
 
-const H2 = 'host_ce9225f7' // dev-local-02
-const H3 = 'host_a1481892' // dev-local-03
-const P_DEMO = 'proj_ec90a17a' // h2 demo-app
-const P_ZHAN = 'proj_03cfcd4e' // h2 zhangsan-demo
-const P_INFRA = 'proj_fc96a124' // h3 infra-tools
-const P_LAB = 'proj_7f8495e4' // h3 zhangsan-lab
+// Seed IDs change on every reseed: discover by host name / project key at run
+// time and fail INVALID before any mutation when a required seed is missing (U192).
+let H2
+let H3
+let P_DEMO
+let P_ZHAN
+let P_INFRA
+let P_LAB
+let P_PAYMENT
 
 const PEOPLE = {
   admin: { username: 'admin', password: 'Adm1n!', groups: ['platform-admins'] },
@@ -253,6 +256,63 @@ function rowOf(rows, subjectType, subjectId) {
   return rows.find((row) => row.subjectType === subjectType && row.subjectId === subjectId)
 }
 
+/** Resolve seed IDs by stable host name / project key; abort before any mutation. */
+async function discoverSeeds() {
+  const hostsRes = await request('GET', '/v1/hosts', { token: tokens.admin })
+  const projectsRes = await request('GET', '/v1/projects?includeArchived=0', {
+    token: tokens.admin
+  })
+  if (hostsRes.status !== 200 || projectsRes.status !== 200) {
+    fs.writeSync(
+      2,
+      `INVALID: seed discovery failed: GET /v1/hosts -> ${hostsRes.status}, GET /v1/projects -> ${projectsRes.status}\n`
+    )
+    process.exit(2)
+  }
+  const hostByName = new Map((hostsRes.json?.hosts ?? []).map((host) => [host.name, host]))
+  const projectByKey = new Map(
+    (projectsRes.json?.projects ?? []).map((project) => [project.key, project])
+  )
+  const missing = []
+  const host = (name) => {
+    const found = hostByName.get(name)
+    if (!found) {
+      missing.push(`host ${name}`)
+    }
+    return found
+  }
+  const project = (key) => {
+    const found = projectByKey.get(key)
+    if (!found) {
+      missing.push(`project ${key}`)
+    }
+    return found
+  }
+  H2 = host('dev-local-02')?.id
+  H3 = host('dev-local-03')?.id
+  P_DEMO = project('demo-app')?.id
+  P_ZHAN = project('zhangsan-demo')?.id
+  P_INFRA = project('infra-tools')?.id
+  P_LAB = project('zhangsan-lab')?.id
+  P_PAYMENT = project('payment-service')?.id
+  if (missing.length) {
+    fs.writeSync(2, `INVALID: missing required seed(s) on ${BASE}: ${missing.join(', ')}\n`)
+    process.exit(2)
+  }
+  const seeds = {
+    hosts: { 'dev-local-02': H2, 'dev-local-03': H3 },
+    projects: {
+      'demo-app': P_DEMO,
+      'zhangsan-demo': P_ZHAN,
+      'infra-tools': P_INFRA,
+      'zhangsan-lab': P_LAB,
+      'payment-service': P_PAYMENT
+    }
+  }
+  console.log('[env] seeds', seeds)
+  return seeds
+}
+
 async function main() {
   const auditSince = new Date(Date.now() - 2000).toISOString()
   const probeProjects = []
@@ -261,6 +321,7 @@ async function main() {
   // ---------- Phase 0: identities and baseline ----------
   const logins = {}
   for (const name of Object.keys(PEOPLE)) logins[name] = await login(name)
+  const seeds = await discoverSeeds()
   record({
     id: 'A1',
     area: 'identity',
@@ -270,7 +331,12 @@ async function main() {
     actual: Object.fromEntries(
       Object.entries(logins).map(([name, res]) => [
         name,
-        { status: res.status, userId: res.json?.user?.id, deviceId: res.json?.device?.id, roles: res.json?.user?.roles }
+        {
+          status: res.status,
+          userId: res.json?.user?.id,
+          deviceId: res.json?.device?.id,
+          roles: res.json?.user?.roles
+        }
       ])
     ),
     severity: 'P2',
@@ -340,7 +406,7 @@ async function main() {
     evidence: { note: '共享实例：其它操作者的行以 ENV 记录，不作为缺陷' }
   })
 
-  const seedProjectIds = [P_DEMO, P_ZHAN, P_INFRA, P_LAB, 'proj_payment']
+  const seedProjectIds = [P_DEMO, P_ZHAN, P_INFRA, P_LAB, P_PAYMENT]
   const projectBaseline = new Map()
   for (const projectId of seedProjectIds) {
     const snapshot = await getProjectGrants(projectId)
@@ -367,12 +433,14 @@ async function main() {
       {
         name: 'admin has open on h2/h3 seeds used for handoff',
         ok: [P_DEMO, P_ZHAN, P_INFRA].every((id) =>
-          projectBaseline.get(id).some(
-            (row) =>
-              row.subjectType === 'user' &&
-              row.subjectId === users.admin.id &&
-              row.permissions.includes('open')
-          )
+          projectBaseline
+            .get(id)
+            .some(
+              (row) =>
+                row.subjectType === 'user' &&
+                row.subjectId === users.admin.id &&
+                row.permissions.includes('open')
+            )
         )
       }
     ],
@@ -441,8 +509,14 @@ async function main() {
     severity: 'P1',
     checks: [
       { name: 'put 200', ok: res.status === 200 },
-      { name: 'h3 row', ok: rowOf(h3.rows, 'user', users.lisi.id)?.permissions?.includes('provision') === true },
-      { name: 'h2 unaffected', ok: rowOf(h2.rows, 'user', users.lisi.id)?.permissions?.includes('provision') === true }
+      {
+        name: 'h3 row',
+        ok: rowOf(h3.rows, 'user', users.lisi.id)?.permissions?.includes('provision') === true
+      },
+      {
+        name: 'h2 unaffected',
+        ok: rowOf(h2.rows, 'user', users.lisi.id)?.permissions?.includes('provision') === true
+      }
     ]
   })
 
@@ -499,15 +573,19 @@ async function main() {
     combo: '超集往返（provision+view → provision）',
     endpoint: 'PUT /v1/hosts/{id}/grants',
     expected: '超集 200 原样回读；回落 200 仅 provision',
-    actual: { superset: rowOf((await getHostGrants(H2)).rows, 'user', users.lisi.id), supersetOk: superset },
+    actual: {
+      superset: rowOf((await getHostGrants(H2)).rows, 'user', users.lisi.id),
+      supersetOk: superset
+    },
     severity: 'P2',
     checks: [
       { name: 'superset exact', ok: superset },
       {
         name: 'round-trip back',
-        ok: sameSet(rowOf((await getHostGrants(H2)).rows, 'user', users.lisi.id)?.permissions ?? [], [
-          'provision'
-        ])
+        ok: sameSet(
+          rowOf((await getHostGrants(H2)).rows, 'user', users.lisi.id)?.permissions ?? [],
+          ['provision']
+        )
       }
     ]
   })
@@ -588,7 +666,10 @@ async function main() {
     },
     severity: 'P3',
     checks: [
-      { name: 'user 400', ok: missUser.status === 400 && missUser.json?.error?.code === 'USER_NOT_FOUND' },
+      {
+        name: 'user 400',
+        ok: missUser.status === 400 && missUser.json?.error?.code === 'USER_NOT_FOUND'
+      },
       {
         name: 'group 400 x2',
         ok:
@@ -605,14 +686,22 @@ async function main() {
   })
 
   res = await putHostGrant(H2, lisiSub, ['provision'], tokens.zhangsan)
-  const denyAudit = await auditQuery({ actor: 'zhangsan', eventType: 'host_grant_update', since: auditSince })
+  const denyAudit = await auditQuery({
+    actor: 'zhangsan',
+    eventType: 'host_grant_update',
+    since: auditSince
+  })
   record({
     id: 'B10',
     area: 'host-grants',
     combo: '开发者写主机授权被拒',
     endpoint: 'PUT /v1/hosts/{id}/grants',
     expected: '403 PERMISSION_DENIED + denied 审计（host_grant_update, targetId=host）',
-    actual: { status: res.status, code: res.json?.error?.code, audit: denyAudit.events.map((event) => ({ r: event.result, t: event.targetId })) },
+    actual: {
+      status: res.status,
+      code: res.json?.error?.code,
+      audit: denyAudit.events.map((event) => ({ r: event.result, t: event.targetId }))
+    },
     severity: 'P2',
     checks: [
       { name: '403', ok: res.status === 403 && res.json?.error?.code === 'PERMISSION_DENIED' },
@@ -693,10 +782,17 @@ async function main() {
     combo: '删除未知主体（空数组）',
     endpoint: 'PUT /v1/hosts/{id}/grants',
     expected: '400 USER_NOT_FOUND（先解析后删除），无行被删',
-    actual: { status: emptyUnknown.status, code: emptyUnknown.json?.error?.code, rows: (await getHostGrants(H2)).rows.length },
+    actual: {
+      status: emptyUnknown.status,
+      code: emptyUnknown.json?.error?.code,
+      rows: (await getHostGrants(H2)).rows.length
+    },
     severity: 'P3',
     checks: [
-      { name: '400', ok: emptyUnknown.status === 400 && emptyUnknown.json?.error?.code === 'USER_NOT_FOUND' },
+      {
+        name: '400',
+        ok: emptyUnknown.status === 400 && emptyUnknown.json?.error?.code === 'USER_NOT_FOUND'
+      },
       { name: 'rows intact', ok: (await getHostGrants(H2)).rows.length === 2 }
     ]
   })
@@ -711,7 +807,10 @@ async function main() {
     actual: { status: groupAsUser.status, code: groupAsUser.json?.error?.code },
     severity: 'P3',
     checks: [
-      { name: '400', ok: groupAsUser.status === 400 && groupAsUser.json?.error?.code === 'GROUP_NOT_FOUND' }
+      {
+        name: '400',
+        ok: groupAsUser.status === 400 && groupAsUser.json?.error?.code === 'GROUP_NOT_FOUND'
+      }
     ]
   })
 
@@ -786,20 +885,43 @@ async function main() {
     area: 'provision-policy',
     combo: '双主机 restricted 下的可见自助资格',
     endpoint: 'PUT /v1/hosts/{id}/provision-policy + GET /v1/hosts/available',
-    expected:
-      'lisi: h2 true(直授)/h3 false；zhangsan: h2 false/h3 false；admin: 两台 true',
+    expected: 'lisi: h2 true(直授)/h3 false；zhangsan: h2 false/h3 false；admin: 两台 true',
     actual: {
       policy: [pA.status, pB.status],
-      lisi: [availLisiRestricted.byId.get(H2)?.provisionAllowed, availLisiRestricted.byId.get(H3)?.provisionAllowed],
-      zhangsan: [availZhangRestricted.byId.get(H2)?.provisionAllowed, availZhangRestricted.byId.get(H3)?.provisionAllowed],
-      admin: [availAdminRestricted.byId.get(H2)?.provisionAllowed, availAdminRestricted.byId.get(H3)?.provisionAllowed]
+      lisi: [
+        availLisiRestricted.byId.get(H2)?.provisionAllowed,
+        availLisiRestricted.byId.get(H3)?.provisionAllowed
+      ],
+      zhangsan: [
+        availZhangRestricted.byId.get(H2)?.provisionAllowed,
+        availZhangRestricted.byId.get(H3)?.provisionAllowed
+      ],
+      admin: [
+        availAdminRestricted.byId.get(H2)?.provisionAllowed,
+        availAdminRestricted.byId.get(H3)?.provisionAllowed
+      ]
     },
     severity: 'P2',
     checks: [
       { name: 'policies 200', ok: pA.status === 200 && pB.status === 200 },
-      { name: 'lisi per-host', ok: availLisiRestricted.byId.get(H2)?.provisionAllowed === true && availLisiRestricted.byId.get(H3)?.provisionAllowed === false },
-      { name: 'zhangsan both false', ok: availZhangRestricted.byId.get(H2)?.provisionAllowed === false && availZhangRestricted.byId.get(H3)?.provisionAllowed === false },
-      { name: 'admin both true', ok: availAdminRestricted.byId.get(H2)?.provisionAllowed === true && availAdminRestricted.byId.get(H3)?.provisionAllowed === true }
+      {
+        name: 'lisi per-host',
+        ok:
+          availLisiRestricted.byId.get(H2)?.provisionAllowed === true &&
+          availLisiRestricted.byId.get(H3)?.provisionAllowed === false
+      },
+      {
+        name: 'zhangsan both false',
+        ok:
+          availZhangRestricted.byId.get(H2)?.provisionAllowed === false &&
+          availZhangRestricted.byId.get(H3)?.provisionAllowed === false
+      },
+      {
+        name: 'admin both true',
+        ok:
+          availAdminRestricted.byId.get(H2)?.provisionAllowed === true &&
+          availAdminRestricted.byId.get(H3)?.provisionAllowed === true
+      }
     ]
   })
 
@@ -820,13 +942,24 @@ async function main() {
     combo: 'restricted 主机上无 provision 直授 → 自助建项目',
     endpoint: 'POST /v1/projects/self',
     expected: '403 HOST_PROVISION_FORBIDDEN；审计 project_create/denied reason',
-    actual: { status: lisiH3Denied.status, code: lisiH3Denied.json?.error?.code, audit: deniedAudit.events.slice(0, 3).map((event) => event.metadata) },
+    actual: {
+      status: lisiH3Denied.status,
+      code: lisiH3Denied.json?.error?.code,
+      audit: deniedAudit.events.slice(0, 3).map((event) => event.metadata)
+    },
     severity: 'P2',
     checks: [
-      { name: '403', ok: lisiH3Denied.status === 403 && lisiH3Denied.json?.error?.code === 'HOST_PROVISION_FORBIDDEN' },
+      {
+        name: '403',
+        ok:
+          lisiH3Denied.status === 403 &&
+          lisiH3Denied.json?.error?.code === 'HOST_PROVISION_FORBIDDEN'
+      },
       {
         name: 'audit reason',
-        ok: deniedAudit.events.some((event) => event.metadata?.reason === 'HOST_PROVISION_FORBIDDEN')
+        ok: deniedAudit.events.some(
+          (event) => event.metadata?.reason === 'HOST_PROVISION_FORBIDDEN'
+        )
       }
     ]
   })
@@ -840,7 +973,9 @@ async function main() {
     scratch.push(lisiH2Create.json.id)
     probeProjects.push(lisiH2Create.json.id)
   }
-  const lisiH2Grants = lisiH2Create.json?.id ? await getProjectGrants(lisiH2Create.json.id) : { rows: [] }
+  const lisiH2Grants = lisiH2Create.json?.id
+    ? await getProjectGrants(lisiH2Create.json.id)
+    : { rows: [] }
   record({
     id: 'C3',
     area: 'provision-policy',
@@ -858,7 +993,13 @@ async function main() {
       { name: '201', ok: lisiH2Create.status === 201 },
       {
         name: 'auto grant exact',
-        ok: sameSet(lisiH2Create.json?.permissions ?? [], ['open', 'terminal', 'agent', 'file:read', 'file:write'])
+        ok: sameSet(lisiH2Create.json?.permissions ?? [], [
+          'open',
+          'terminal',
+          'agent',
+          'file:read',
+          'file:write'
+        ])
       }
     ]
   })
@@ -887,7 +1028,10 @@ async function main() {
     },
     severity: 'P2',
     checks: [
-      { name: 'provisionAllowed via group', ok: availZhangGroup.byId.get(H2)?.provisionAllowed === true },
+      {
+        name: 'provisionAllowed via group',
+        ok: availZhangGroup.byId.get(H2)?.provisionAllowed === true
+      },
       { name: '201', ok: zhangH2Create.status === 201 }
     ]
   })
@@ -926,7 +1070,12 @@ async function main() {
     actual: { status: lisiH3StillDenied.status, code: lisiH3StillDenied.json?.error?.code },
     severity: 'P1',
     checks: [
-      { name: '403', ok: lisiH3StillDenied.status === 403 && lisiH3StillDenied.json?.error?.code === 'HOST_PROVISION_FORBIDDEN' }
+      {
+        name: '403',
+        ok:
+          lisiH3StillDenied.status === 403 &&
+          lisiH3StillDenied.json?.error?.code === 'HOST_PROVISION_FORBIDDEN'
+      }
     ]
   })
 
@@ -977,8 +1126,7 @@ async function main() {
     area: 'provision-policy',
     combo: '直授行删除后组行仍生效（组/用户行并集，无 deny 覆盖）',
     endpoint: 'PUT host grants + GET available + POST self',
-    expected:
-      '删除 lisi 直授后，developers 组行仍给 lisi provision → available=true 且自助 201',
+    expected: '删除 lisi 直授后，developers 组行仍给 lisi provision → available=true 且自助 201',
     actual: {
       beforeRows: h2.rows,
       beforeRemove,
@@ -1013,17 +1161,33 @@ async function main() {
     endpoint: 'PUT host grants [] × 两组/两主机 + GET available + POST self',
     expected: 'lisi 两台 provisionAllowed=false；自助 403 HOST_PROVISION_FORBIDDEN',
     actual: {
-      avail: [noGrantLisi.byId.get(H2)?.provisionAllowed, noGrantLisi.byId.get(H3)?.provisionAllowed],
+      avail: [
+        noGrantLisi.byId.get(H2)?.provisionAllowed,
+        noGrantLisi.byId.get(H3)?.provisionAllowed
+      ],
       create: { status: noGrantCreate.status, code: noGrantCreate.json?.error?.code }
     },
     severity: 'P1',
     checks: [
-      { name: 'both false', ok: noGrantLisi.byId.get(H2)?.provisionAllowed === false && noGrantLisi.byId.get(H3)?.provisionAllowed === false },
-      { name: 'create 403', ok: noGrantCreate.status === 403 && noGrantCreate.json?.error?.code === 'HOST_PROVISION_FORBIDDEN' }
+      {
+        name: 'both false',
+        ok:
+          noGrantLisi.byId.get(H2)?.provisionAllowed === false &&
+          noGrantLisi.byId.get(H3)?.provisionAllowed === false
+      },
+      {
+        name: 'create 403',
+        ok:
+          noGrantCreate.status === 403 &&
+          noGrantCreate.json?.error?.code === 'HOST_PROVISION_FORBIDDEN'
+      }
     ]
   })
 
-  const omitted = await selfCreate(tokens.lisi, { name: `combo-lisi-auto-${STAMP}`, dir: `combo-lisi-auto-${STAMP}` })
+  const omitted = await selfCreate(tokens.lisi, {
+    name: `combo-lisi-auto-${STAMP}`,
+    dir: `combo-lisi-auto-${STAMP}`
+  })
   record({
     id: 'C10',
     area: 'provision-policy',
@@ -1043,7 +1207,10 @@ async function main() {
     severity: 'P3',
     checks: [
       { name: 'denied', ok: omitted.status === 409 },
-      { name: 'authorization-aware code', ok: omitted.json?.error?.code === 'NO_PROVISIONABLE_HOST' }
+      {
+        name: 'authorization-aware code',
+        ok: omitted.json?.error?.code === 'NO_PROVISIONABLE_HOST'
+      }
     ],
     evidence: { note: 'selectSelfServiceHost 只按 online+projectsRoot 计数，provision 门禁在其后' }
   })
@@ -1068,12 +1235,24 @@ async function main() {
     area: 'provision-policy',
     combo: '在途自助创建 × open→restricted 并发（4 轮）',
     endpoint: 'PUT provision-policy ∥ POST /v1/projects/self',
-    expected: '每轮 create ∈ {201(判定时仍 open), 403 HOST_PROVISION_FORBIDDEN}；无 5xx；终态 restricted',
-    actual: { races: raceResults, finalMode: (await available(tokens.lisi)).byId.get(H2)?.provisionAllowed },
+    expected:
+      '每轮 create ∈ {201(判定时仍 open), 403 HOST_PROVISION_FORBIDDEN}；无 5xx；终态 restricted',
+    actual: {
+      races: raceResults,
+      finalMode: (await available(tokens.lisi)).byId.get(H2)?.provisionAllowed
+    },
     severity: 'P1',
     checks: [
-      { name: 'no 5xx', ok: raceResults.every((row) => row.flip === 200 && (row.create === 201 || row.create === 403)) },
-      { name: 'final restricted', ok: (await available(tokens.lisi)).byId.get(H2)?.provisionAllowed === false }
+      {
+        name: 'no 5xx',
+        ok: raceResults.every(
+          (row) => row.flip === 200 && (row.create === 201 || row.create === 403)
+        )
+      },
+      {
+        name: 'final restricted',
+        ok: (await available(tokens.lisi)).byId.get(H2)?.provisionAllowed === false
+      }
     ]
   })
 
@@ -1085,29 +1264,50 @@ async function main() {
     combo: '非法 mode / 开发者写策略',
     endpoint: 'PUT /v1/hosts/{id}/provision-policy',
     expected: '400 HOST_PROVISION_POLICY_INVALID；开发者 403 PERMISSION_DENIED',
-    actual: { badMode: { status: badMode.status, code: badMode.json?.error?.code }, dev: devPolicy.status, devCode: devPolicy.json?.error?.code },
+    actual: {
+      badMode: { status: badMode.status, code: badMode.json?.error?.code },
+      dev: devPolicy.status,
+      devCode: devPolicy.json?.error?.code
+    },
     severity: 'P2',
     checks: [
-      { name: 'invalid mode 400', ok: badMode.status === 400 && badMode.json?.error?.code === 'HOST_PROVISION_POLICY_INVALID' },
-      { name: 'developer 403', ok: devPolicy.status === 403 && devPolicy.json?.error?.code === 'PERMISSION_DENIED' }
+      {
+        name: 'invalid mode 400',
+        ok: badMode.status === 400 && badMode.json?.error?.code === 'HOST_PROVISION_POLICY_INVALID'
+      },
+      {
+        name: 'developer 403',
+        ok: devPolicy.status === 403 && devPolicy.json?.error?.code === 'PERMISSION_DENIED'
+      }
     ]
   })
 
-  // Restore policies to their documented default.
-  await setPolicy(H2, 'open')
-  await setPolicy(H3, 'open')
+  // Restore policies to their documented default. U67: this only records the
+  // legacy field; the provision bit alone grants creation.
+  const policyOpenH2 = await setPolicy(H2, 'open')
+  const policyOpenH3 = await setPolicy(H3, 'open')
   const availOpen = await available(tokens.lisi)
   record({
     id: 'C13',
     area: 'provision-policy',
-    combo: 'restricted→open 往返恢复',
+    combo: 'restricted→open 往返恢复（policy 不再回授权限）',
     endpoint: 'PUT provision-policy + GET /v1/hosts/available',
-    expected: '两台恢复 open；lisi 两台 provisionAllowed=true（无授权也可自助）',
-    actual: { h2: availOpen.byId.get(H2)?.provisionAllowed, h3: availOpen.byId.get(H3)?.provisionAllowed },
+    expected:
+      '两台 policy 恢复 open（PUT 200）；无 provision 位的 lisi 两台 provisionAllowed=false（授权驱动）',
+    actual: {
+      policyPut: { h2: policyOpenH2.status, h3: policyOpenH3.status },
+      h2: availOpen.byId.get(H2)?.provisionAllowed,
+      h3: availOpen.byId.get(H3)?.provisionAllowed
+    },
     severity: 'P2',
     checks: [
-      { name: 'h2 open', ok: availOpen.byId.get(H2)?.provisionAllowed === true },
-      { name: 'h3 open', ok: availOpen.byId.get(H3)?.provisionAllowed === true }
+      { name: 'policy PUT 200', ok: policyOpenH2.status === 200 && policyOpenH3.status === 200 },
+      {
+        name: 'policy does not grant',
+        ok:
+          availOpen.byId.get(H2)?.provisionAllowed === false &&
+          availOpen.byId.get(H3)?.provisionAllowed === false
+      }
     ]
   })
 
@@ -1126,16 +1326,39 @@ async function main() {
     expected:
       'demo(h2)=open,file:read；infra(h3)=open,file:write；两票据 perms 与各自项目视图逐位一致',
     actual: {
-      demo: { view: lisiDemoView.json?.permissions, ticket: lisiDemoConn.payload?.perms, aud: lisiDemoConn.payload?.aud },
-      infra: { view: lisiInfraView.json?.permissions, ticket: lisiInfraConn.payload?.perms, aud: lisiInfraConn.payload?.aud }
+      demo: {
+        view: lisiDemoView.json?.permissions,
+        ticket: lisiDemoConn.payload?.perms,
+        aud: lisiDemoConn.payload?.aud
+      },
+      infra: {
+        view: lisiInfraView.json?.permissions,
+        ticket: lisiInfraConn.payload?.perms,
+        aud: lisiInfraConn.payload?.aud
+      }
     },
     severity: 'P1',
     checks: [
-      { name: 'demo view', ok: sameSet(lisiDemoView.json?.permissions ?? [], ['open', 'file:read']) },
-      { name: 'infra view', ok: sameSet(lisiInfraView.json?.permissions ?? [], ['open', 'file:write']) },
-      { name: 'demo ticket', ok: sameSet(lisiDemoConn.payload?.perms ?? [], ['open', 'file:read']) },
-      { name: 'infra ticket', ok: sameSet(lisiInfraConn.payload?.perms ?? [], ['open', 'file:write']) },
-      { name: 'ticket host binding', ok: lisiDemoConn.payload?.host === H2 && lisiInfraConn.payload?.host === H3 }
+      {
+        name: 'demo view',
+        ok: sameSet(lisiDemoView.json?.permissions ?? [], ['open', 'file:read'])
+      },
+      {
+        name: 'infra view',
+        ok: sameSet(lisiInfraView.json?.permissions ?? [], ['open', 'file:write'])
+      },
+      {
+        name: 'demo ticket',
+        ok: sameSet(lisiDemoConn.payload?.perms ?? [], ['open', 'file:read'])
+      },
+      {
+        name: 'infra ticket',
+        ok: sameSet(lisiInfraConn.payload?.perms ?? [], ['open', 'file:write'])
+      },
+      {
+        name: 'ticket host binding',
+        ok: lisiDemoConn.payload?.host === H2 && lisiInfraConn.payload?.host === H3
+      }
     ]
   })
 
@@ -1152,7 +1375,15 @@ async function main() {
     actual: { demo: lisiDemoConn2.payload?.perms, infra: lisiInfraConn2.payload?.perms },
     severity: 'P1',
     checks: [
-      { name: 'demo perms', ok: sameSet(lisiDemoConn2.payload?.perms ?? [], ['open', 'terminal', 'file:read', 'file:write']) },
+      {
+        name: 'demo perms',
+        ok: sameSet(lisiDemoConn2.payload?.perms ?? [], [
+          'open',
+          'terminal',
+          'file:read',
+          'file:write'
+        ])
+      },
       { name: 'infra perms', ok: sameSet(lisiInfraConn2.payload?.perms ?? [], ['open']) }
     ]
   })
@@ -1168,14 +1399,31 @@ async function main() {
     endpoint: 'POST /v1/projects/{id}/web-handoff',
     expected:
       '201；URL 的 project 参数分别为两个项目 id；page 主机分别对应 h2/h3 的 relay 入口；api=平台 origin',
-    actual: { demo: brief(demoUrl, 260), infra: brief(infraUrl, 260), statuses: [lisiDemoHandoff.status, lisiInfraHandoff.status] },
+    actual: {
+      demo: brief(demoUrl, 260),
+      infra: brief(infraUrl, 260),
+      statuses: [lisiDemoHandoff.status, lisiInfraHandoff.status]
+    },
     severity: 'P2',
     checks: [
       { name: 'both 201', ok: lisiDemoHandoff.status === 201 && lisiInfraHandoff.status === 201 },
-      { name: 'demo project param', ok: demoUrl.includes(`project=${P_DEMO}`) && demoUrl.includes('embed=1') },
-      { name: 'infra project param', ok: infraUrl.includes(`project=${P_INFRA}`) && infraUrl.includes('embed=1') },
-      { name: 'host routing', ok: demoUrl.includes('dev-local-02') && infraUrl.includes('dev-local-03') },
-      { name: 'api param', ok: demoUrl.includes(encodeURIComponent(BASE)) && infraUrl.includes(encodeURIComponent(BASE)) }
+      {
+        name: 'demo project param',
+        ok: demoUrl.includes(`project=${P_DEMO}`) && demoUrl.includes('embed=1')
+      },
+      {
+        name: 'infra project param',
+        ok: infraUrl.includes(`project=${P_INFRA}`) && infraUrl.includes('embed=1')
+      },
+      {
+        name: 'host routing',
+        ok: demoUrl.includes('dev-local-02') && infraUrl.includes('dev-local-03')
+      },
+      {
+        name: 'api param',
+        ok:
+          demoUrl.includes(encodeURIComponent(BASE)) && infraUrl.includes(encodeURIComponent(BASE))
+      }
     ]
   })
 
@@ -1203,10 +1451,19 @@ async function main() {
     },
     severity: 'P1',
     checks: [
-      { name: 'zhangsan union', ok: sameSet(zhangConn.payload?.perms ?? [], ['open', 'file:read', 'terminal']) },
+      {
+        name: 'zhangsan union',
+        ok: sameSet(zhangConn.payload?.perms ?? [], ['open', 'file:read', 'terminal'])
+      },
       { name: 'lisi own row', ok: sameSet(lisiConn.payload?.perms ?? [], ['open', 'file:write']) },
-      { name: 'view == ticket (zhangsan)', ok: sameSet(zhangView.json?.permissions ?? [], zhangConn.payload?.perms ?? []) },
-      { name: 'view == ticket (lisi)', ok: sameSet(lisiView.json?.permissions ?? [], lisiConn.payload?.perms ?? []) }
+      {
+        name: 'view == ticket (zhangsan)',
+        ok: sameSet(zhangView.json?.permissions ?? [], zhangConn.payload?.perms ?? [])
+      },
+      {
+        name: 'view == ticket (lisi)',
+        ok: sameSet(lisiView.json?.permissions ?? [], lisiConn.payload?.perms ?? [])
+      }
     ]
   })
 
@@ -1223,8 +1480,14 @@ async function main() {
     actual: { zhangsan: zhangConn2.payload?.perms, lisi: lisiConn2.payload?.perms },
     severity: 'P1',
     checks: [
-      { name: 'zhangsan loses group read', ok: sameSet(zhangConn2.payload?.perms ?? [], ['open', 'terminal']) },
-      { name: 'lisi unchanged', ok: sameSet(lisiConn2.payload?.perms ?? [], ['open', 'file:write']) }
+      {
+        name: 'zhangsan loses group read',
+        ok: sameSet(zhangConn2.payload?.perms ?? [], ['open', 'terminal'])
+      },
+      {
+        name: 'lisi unchanged',
+        ok: sameSet(lisiConn2.payload?.perms ?? [], ['open', 'file:write'])
+      }
     ]
   })
 
@@ -1238,12 +1501,26 @@ async function main() {
     area: 'identity-matrix',
     combo: '同一用户跨项目跨主机不同位（zhangsan: h3 read / h2 write+terminal）',
     endpoint: 'PUT project grants × 2 + POST connect × 2',
-    expected: 'lab(h3)=open,file:read；zhangsan-demo(h2)=open,file:write,terminal；票据 host 分别 H3/H2',
-    actual: { lab: { p: zhangLab.payload?.perms, host: zhangLab.payload?.host }, zhan: { p: zhangZhan.payload?.perms, host: zhangZhan.payload?.host } },
+    expected:
+      'lab(h3)=open,file:read；zhangsan-demo(h2)=open,file:write,terminal；票据 host 分别 H3/H2',
+    actual: {
+      lab: { p: zhangLab.payload?.perms, host: zhangLab.payload?.host },
+      zhan: { p: zhangZhan.payload?.perms, host: zhangZhan.payload?.host }
+    },
     severity: 'P1',
     checks: [
-      { name: 'lab', ok: sameSet(zhangLab.payload?.perms ?? [], ['open', 'file:read']) && zhangLab.payload?.host === H3 },
-      { name: 'zhan', ok: sameSet(zhangZhan.payload?.perms ?? [], ['open', 'file:write', 'terminal']) && zhangZhan.payload?.host === H2 }
+      {
+        name: 'lab',
+        ok:
+          sameSet(zhangLab.payload?.perms ?? [], ['open', 'file:read']) &&
+          zhangLab.payload?.host === H3
+      },
+      {
+        name: 'zhan',
+        ok:
+          sameSet(zhangZhan.payload?.perms ?? [], ['open', 'file:write', 'terminal']) &&
+          zhangZhan.payload?.host === H2
+      }
     ]
   })
 
@@ -1257,7 +1534,8 @@ async function main() {
     area: 'identity-matrix',
     combo: '无授权用户 vs 授权用户（同项目）',
     endpoint: 'GET project / connect / GET grants / POST web-handoff',
-    expected: '无 open → GET/connect/grants 404 PROJECT_NOT_FOUND；handoff 403/404；不得泄露授权矩阵',
+    expected:
+      '无 open → GET/connect/grants 404 PROJECT_NOT_FOUND；handoff 403/404；不得泄露授权矩阵',
     actual: {
       get: lisiLabGet.status,
       getCode: lisiLabGet.json?.error?.code,
@@ -1272,7 +1550,10 @@ async function main() {
       { name: 'get 404', ok: lisiLabGet.status === 404 },
       { name: 'connect 404', ok: lisiLabConn.res.status === 404 },
       { name: 'grants not readable', ok: lisiLabGrants.status === 404 },
-      { name: 'handoff rejected', ok: lisiLabHandoff.status === 403 || lisiLabHandoff.status === 404 }
+      {
+        name: 'handoff rejected',
+        ok: lisiLabHandoff.status === 403 || lisiLabHandoff.status === 404
+      }
     ]
   })
 
@@ -1284,7 +1565,8 @@ async function main() {
     area: 'identity-matrix',
     combo: 'admin 无显式 open 的项目（zhangsan-lab）',
     endpoint: 'POST connect / POST web-handoff',
-    expected: 'admin 可见项目但无 open → connect/handoff 均拒绝（open 是显式位，admin 不隐式持有）',
+    expected:
+      'admin 可见项目但无 open → connect/handoff 均 403 PROJECT_FORBIDDEN（open 是显式位，admin 不隐式持有）',
     actual: {
       connect: adminLabConn.res.status,
       connectCode: adminLabConn.res.json?.error?.code,
@@ -1295,11 +1577,19 @@ async function main() {
     },
     severity: 'P2',
     checks: [
-      { name: 'connect rejected', ok: adminLabConn.res.status === 404 },
-      { name: 'handoff rejected', ok: adminLabHandoff.status === 403 || adminLabHandoff.status === 404 }
+      {
+        name: 'connect rejected',
+        ok:
+          adminLabConn.res.status === 403 &&
+          adminLabConn.res.json?.error?.code === 'PROJECT_FORBIDDEN'
+      },
+      {
+        name: 'handoff rejected',
+        ok: adminLabHandoff.status === 403 || adminLabHandoff.status === 404
+      }
     ],
     evidence: {
-      note: '项目门禁对 admin 放行（adminAccess），handleConnect 不再校验 open；handoff 同谓词返回 403'
+      note: 'U67 后 connect 与 web-handoff 共用 open 谓词：admin 可见项目但不隐式持有 open，两端均 403'
     }
   })
 
@@ -1354,13 +1644,18 @@ async function main() {
       }
     }
     for (const row of baselineRows) {
-      await putProjectGrant(projectId, { type: row.subjectType, id: row.subjectId }, row.permissions)
+      await putProjectGrant(
+        projectId,
+        { type: row.subjectType, id: row.subjectId },
+        row.permissions
+      )
     }
   }
   const restoreProjectChecks = []
   for (const [projectId, baselineRows] of projectBaseline) {
     const current = (await getProjectGrants(projectId)).rows
-    const norm = (rows) => rows.map((row) => `${rowKey(row)}=${[...row.permissions].sort().join(',')}`).sort()
+    const norm = (rows) =>
+      rows.map((row) => `${rowKey(row)}=${[...row.permissions].sort().join(',')}`).sort()
     restoreProjectChecks.push({
       projectId,
       ok: sameSet(norm(current), norm(baselineRows))
@@ -1381,45 +1676,83 @@ async function main() {
   const dirBeforeHostGroup = await directory()
   await putHostGrant(H2, devGroup, ['provision'])
   const dirAfterHostGroup = await directory()
-  const dirUnknownHost = await putHostGrant(H2, { type: 'group', id: `ghost-${STAMP}` }, ['provision'])
-  const dirUnknownHost2 = await putHostGrant(H2, { type: 'group', id: `ghost-${STAMP}` }, ['provision'])
+  const dirUnknownHost = await putHostGrant(H2, { type: 'group', id: `ghost-${STAMP}` }, [
+    'provision'
+  ])
+  const dirUnknownHost2 = await putHostGrant(H2, { type: 'group', id: `ghost-${STAMP}` }, [
+    'provision'
+  ])
   const dirAfterUnknown = await directory()
   record({
     id: 'E1',
     area: 'directory',
     combo: '目录组清单 × 主机组授权演进',
     endpoint: 'PUT host grants(group) + GET /v1/directory',
-    expected:
-      '已在目录中的组重复授权不新增条目；未知组 400 ×2 且目录不变（knownGroups 并集去重）',
+    expected: '已在目录中的组重复授权不新增条目；未知组 400 ×2 且目录不变（knownGroups 并集去重）',
     actual: {
       before: dirBeforeHostGroup.json?.groups,
       afterHostGrant: dirAfterHostGroup.json?.groups,
       afterUnknown: dirAfterUnknown.json?.groups,
-      unknown: [{ status: dirUnknownHost.status, code: dirUnknownHost.json?.error?.code }, { status: dirUnknownHost2.status, code: dirUnknownHost2.json?.error?.code }]
+      unknown: [
+        { status: dirUnknownHost.status, code: dirUnknownHost.json?.error?.code },
+        { status: dirUnknownHost2.status, code: dirUnknownHost2.json?.error?.code }
+      ]
     },
     severity: 'P3',
     checks: [
-      { name: 'no duplicate growth', ok: sameSet(dirAfterHostGroup.json?.groups ?? [], dirBeforeHostGroup.json?.groups ?? []) },
-      { name: 'unknown 400 x2', ok: dirUnknownHost.status === 400 && dirUnknownHost2.status === 400 },
-      { name: 'directory unchanged', ok: sameSet(dirAfterUnknown.json?.groups ?? [], dirBeforeHostGroup.json?.groups ?? []) }
+      {
+        name: 'no duplicate growth',
+        ok: sameSet(dirAfterHostGroup.json?.groups ?? [], dirBeforeHostGroup.json?.groups ?? [])
+      },
+      {
+        name: 'unknown 400 x2',
+        ok: dirUnknownHost.status === 400 && dirUnknownHost2.status === 400
+      },
+      {
+        name: 'directory unchanged',
+        ok: sameSet(dirAfterUnknown.json?.groups ?? [], dirBeforeHostGroup.json?.groups ?? [])
+      }
     ],
-    evidence: { note: '未知组在解析前被拒，故 hostGrants 组主体不可能引入新组；目录增长只能来自登录用户组' }
+    evidence: {
+      note: '未知组在解析前被拒，故 hostGrants 组主体不可能引入新组；目录增长只能来自登录用户组'
+    }
   })
 
-  const dirProjectUnknown = await putProjectGrant(P_LAB, { type: 'group', id: `ghost2-${STAMP}` }, ['open'])
-  const dirProjectUnknown2 = await putProjectGrant(P_LAB, { type: 'group', id: `ghost2-${STAMP}` }, ['open'])
+  const dirProjectUnknown = await putProjectGrant(P_LAB, { type: 'group', id: `ghost2-${STAMP}` }, [
+    'open'
+  ])
+  const dirProjectUnknown2 = await putProjectGrant(
+    P_LAB,
+    { type: 'group', id: `ghost2-${STAMP}` },
+    ['open']
+  )
   record({
     id: 'E2',
     area: 'directory',
     combo: '项目组授权 × 未知组幂等',
     endpoint: 'PUT /v1/projects/{id}/grants',
     expected: '400 GROUP_NOT_FOUND ×2；目录与项目授权不变',
-    actual: { statuses: [dirProjectUnknown.status, dirProjectUnknown2.status], codes: [dirProjectUnknown.json?.error?.code, dirProjectUnknown2.json?.error?.code], grants: (await getProjectGrants(P_LAB)).rows.map(rowKey) },
+    actual: {
+      statuses: [dirProjectUnknown.status, dirProjectUnknown2.status],
+      codes: [dirProjectUnknown.json?.error?.code, dirProjectUnknown2.json?.error?.code],
+      grants: (await getProjectGrants(P_LAB)).rows.map(rowKey)
+    },
     severity: 'P3',
     checks: [
-      { name: 'both 400', ok: dirProjectUnknown.status === 400 && dirProjectUnknown2.status === 400 },
-      { name: 'codes', ok: dirProjectUnknown.json?.error?.code === 'GROUP_NOT_FOUND' && dirProjectUnknown2.json?.error?.code === 'GROUP_NOT_FOUND' },
-      { name: 'no row', ok: !(await getProjectGrants(P_LAB)).rows.some((row) => row.subjectId === `ghost2-${STAMP}`) }
+      {
+        name: 'both 400',
+        ok: dirProjectUnknown.status === 400 && dirProjectUnknown2.status === 400
+      },
+      {
+        name: 'codes',
+        ok:
+          dirProjectUnknown.json?.error?.code === 'GROUP_NOT_FOUND' &&
+          dirProjectUnknown2.json?.error?.code === 'GROUP_NOT_FOUND'
+      },
+      {
+        name: 'no row',
+        ok: !(await getProjectGrants(P_LAB)).rows.some((row) => row.subjectId === `ghost2-${STAMP}`)
+      }
     ]
   })
 
@@ -1436,11 +1769,15 @@ async function main() {
     expected: '组清单中 developers 只出现一次（并集去重），不随引用数增长',
     actual: {
       groups: dirDedup.json?.groups,
-      developersCount: (dirDedup.json?.groups ?? []).filter((group) => group === 'developers').length
+      developersCount: (dirDedup.json?.groups ?? []).filter((group) => group === 'developers')
+        .length
     },
     severity: 'P3',
     checks: [
-      { name: 'deduped', ok: (dirDedup.json?.groups ?? []).filter((group) => group === 'developers').length === 1 }
+      {
+        name: 'deduped',
+        ok: (dirDedup.json?.groups ?? []).filter((group) => group === 'developers').length === 1
+      }
     ]
   })
 
@@ -1453,41 +1790,69 @@ async function main() {
     expected: '开发者 403 PERMISSION_DENIED',
     actual: { status: dirDev.status, code: dirDev.json?.error?.code },
     severity: 'P2',
-    checks: [{ name: '403', ok: dirDev.status === 403 && dirDev.json?.error?.code === 'PERMISSION_DENIED' }]
+    checks: [
+      { name: '403', ok: dirDev.status === 403 && dirDev.json?.error?.code === 'PERMISSION_DENIED' }
+    ]
   })
 
   await putHostGrant(H2, devGroup, [])
 
   // ---------- Phase 5: boundary combinations ----------
   const key = `r2c-key-${STAMP}`
-  const h2Key = await adminCreate({ hostId: H2, key, name: key, projectPath: `/tmp/orca-r2-combo/${key}-h2` })
+  const h2Key = await adminCreate({
+    hostId: H2,
+    key,
+    name: key,
+    projectPath: `/tmp/orca-r2-combo/${key}-h2`
+  })
   if (h2Key.status === 201) {
     scratch.push(h2Key.json.id)
     probeProjects.push(h2Key.json.id)
     await putProjectGrant(h2Key.json.id, adminSub, ['open'])
   }
-  const h3SameKey = await adminCreate({ hostId: H3, key, name: key, projectPath: `/tmp/orca-r2-combo/${key}-h3` })
+  const h3SameKey = await adminCreate({
+    hostId: H3,
+    key,
+    name: key,
+    projectPath: `/tmp/orca-r2-combo/${key}-h3`
+  })
   record({
     id: 'F1',
     area: 'boundary',
     combo: '双主机同 key 项目共存合法性',
     endpoint: 'POST /v1/projects × 2',
     expected: 'key 为平台级唯一（design §DB: key 唯一）→ 第二台 409 PROJECT_EXISTS',
-    actual: { h2: { status: h2Key.status, id: h2Key.json?.id }, h3: { status: h3SameKey.status, code: h3SameKey.json?.error?.code } },
+    actual: {
+      h2: { status: h2Key.status, id: h2Key.json?.id },
+      h3: { status: h3SameKey.status, code: h3SameKey.json?.error?.code }
+    },
     severity: 'P2',
     checks: [
       { name: 'h2 201', ok: h2Key.status === 201 },
-      { name: 'h3 rejected globally', ok: h3SameKey.status === 409 && h3SameKey.json?.error?.code === 'PROJECT_EXISTS' }
+      {
+        name: 'h3 rejected globally',
+        ok: h3SameKey.status === 409 && h3SameKey.json?.error?.code === 'PROJECT_EXISTS'
+      }
     ]
   })
 
   const sharedPath = `/tmp/orca-r2-combo/shared-${STAMP}`
-  const h2Shared = await adminCreate({ hostId: H2, key: `r2c-shared-h2-${STAMP}`, name: 'shared-h2', projectPath: sharedPath })
+  const h2Shared = await adminCreate({
+    hostId: H2,
+    key: `r2c-shared-h2-${STAMP}`,
+    name: 'shared-h2',
+    projectPath: sharedPath
+  })
   if (h2Shared.status === 201) {
     scratch.push(h2Shared.json.id)
     probeProjects.push(h2Shared.json.id)
   }
-  const h3Shared = await adminCreate({ hostId: H3, key: `r2c-shared-h3-${STAMP}`, name: 'shared-h3', projectPath: sharedPath })
+  const h3Shared = await adminCreate({
+    hostId: H3,
+    key: `r2c-shared-h3-${STAMP}`,
+    name: 'shared-h3',
+    projectPath: sharedPath
+  })
   if (h3Shared.status === 201) {
     scratch.push(h3Shared.json.id)
     probeProjects.push(h3Shared.json.id)
@@ -1498,16 +1863,26 @@ async function main() {
     combo: '跨主机 path 占用（同一绝对路径登记到两台主机）',
     endpoint: 'POST /v1/projects × 2',
     expected: 'design 的占用键是 (host_id, path) → 不同主机同路径应 201 共存',
-    actual: { h2: { status: h2Shared.status, id: h2Shared.json?.id }, h3: { status: h3Shared.status, id: h3Shared.json?.id, code: h3Shared.json?.error?.code } },
+    actual: {
+      h2: { status: h2Shared.status, id: h2Shared.json?.id },
+      h3: { status: h3Shared.status, id: h3Shared.json?.id, code: h3Shared.json?.error?.code }
+    },
     severity: 'P2',
     checks: [
       { name: 'h2 201', ok: h2Shared.status === 201 },
       { name: 'h3 allowed on another host', ok: h3Shared.status === 201 }
     ],
-    evidence: { note: 'projectPathTaken(store,path) 只比较 path，不含 hostId（project-occupancy.ts:20）' }
+    evidence: {
+      note: 'projectPathTaken(store,path) 只比较 path，不含 hostId（project-occupancy.ts:20）'
+    }
   })
 
-  const h3Unique = await adminCreate({ hostId: H3, key: `r2c-unique-h3-${STAMP}`, name: 'unique-h3', projectPath: `/tmp/orca-r2-combo/unique-h3-${STAMP}` })
+  const h3Unique = await adminCreate({
+    hostId: H3,
+    key: `r2c-unique-h3-${STAMP}`,
+    name: 'unique-h3',
+    projectPath: `/tmp/orca-r2-combo/unique-h3-${STAMP}`
+  })
   if (h3Unique.status === 201) {
     scratch.push(h3Unique.json.id)
     probeProjects.push(h3Unique.json.id)
@@ -1524,10 +1899,16 @@ async function main() {
   })
 
   // Admin-surface handoff routing for the two hosts' probe projects.
-  const adminOpenH2 = h2Key.status === 201 ? await putProjectGrant(h2Key.json.id, adminSub, ['open']) : null
-  const adminOpenH3 = h3Unique.status === 201 ? await putProjectGrant(h3Unique.json.id, adminSub, ['open']) : null
-  const hoffH2 = h2Key.status === 201 ? await handoff('admin', h2Key.json.id, 'admin') : { status: 0, json: {} }
-  const hoffH3 = h3Unique.status === 201 ? await handoff('admin', h3Unique.json.id, 'admin') : { status: 0, json: {} }
+  const adminOpenH2 =
+    h2Key.status === 201 ? await putProjectGrant(h2Key.json.id, adminSub, ['open']) : null
+  const adminOpenH3 =
+    h3Unique.status === 201 ? await putProjectGrant(h3Unique.json.id, adminSub, ['open']) : null
+  const hoffH2 =
+    h2Key.status === 201 ? await handoff('admin', h2Key.json.id, 'admin') : { status: 0, json: {} }
+  const hoffH3 =
+    h3Unique.status === 201
+      ? await handoff('admin', h3Unique.json.id, 'admin')
+      : { status: 0, json: {} }
   const h2Url = hoffH2.json?.url ?? ''
   const h3Url = hoffH3.json?.url ?? ''
   record({
@@ -1537,26 +1918,51 @@ async function main() {
     endpoint: 'POST /v1/projects/{id}/web-handoff {surface:admin}',
     expected:
       '201 ×2；URL 分别指向 dev-local-02 / dev-local-03 的 cloud-admin.html；embed=1、project=<对应 id>、#handoff 码存在',
-    actual: { grants: [adminOpenH2?.status, adminOpenH3?.status], urls: [brief(h2Url, 240), brief(h3Url, 240)], statuses: [hoffH2.status, hoffH3.status] },
+    actual: {
+      grants: [adminOpenH2?.status, adminOpenH3?.status],
+      urls: [brief(h2Url, 240), brief(h3Url, 240)],
+      statuses: [hoffH2.status, hoffH3.status]
+    },
     severity: 'P2',
     checks: [
       { name: 'both 201', ok: hoffH2.status === 201 && hoffH3.status === 201 },
-      { name: 'page per host', ok: h2Url.includes('dev-local-02') && h3Url.includes('dev-local-03') },
-      { name: 'project params', ok: h2Url.includes(`project=${h2Key.json?.id}`) && h3Url.includes(`project=${h3Unique.json?.id}`) },
-      { name: 'embed + handoff code', ok: h2Url.includes('embed=1') && h2Url.includes('#handoff=') && h3Url.includes('#handoff=') }
+      {
+        name: 'page per host',
+        ok: h2Url.includes('dev-local-02') && h3Url.includes('dev-local-03')
+      },
+      {
+        name: 'project params',
+        ok:
+          h2Url.includes(`project=${h2Key.json?.id}`) &&
+          h3Url.includes(`project=${h3Unique.json?.id}`)
+      },
+      {
+        name: 'embed + handoff code',
+        ok: h2Url.includes('embed=1') && h2Url.includes('#handoff=') && h3Url.includes('#handoff=')
+      }
     ]
   })
 
   const h3Code = h3Url.split('#handoff=')[1]?.split('&')[0]
-  const redeem1 = await request('POST', '/v1/web/handoff', { body: { code: h3Code }, headers: { 'x-orca-web-contract': '1' } })
-  const redeem2 = await request('POST', '/v1/web/handoff', { body: { code: h3Code }, headers: { 'x-orca-web-contract': '1' } })
+  const redeem1 = await request('POST', '/v1/web/handoff', {
+    body: { code: h3Code },
+    headers: { 'x-orca-web-contract': '1' }
+  })
+  const redeem2 = await request('POST', '/v1/web/handoff', {
+    body: { code: h3Code },
+    headers: { 'x-orca-web-contract': '1' }
+  })
   record({
     id: 'F5',
     area: 'handoff',
     combo: '双主机 admin handoff 兑换与单次语义',
     endpoint: 'POST /v1/web/handoff',
     expected: '首次 200（签发 token），重放 410 HANDOFF_GONE',
-    actual: { first: redeem1.status, replay: redeem2.status, replayCode: redeem2.json?.error?.code },
+    actual: {
+      first: redeem1.status,
+      replay: redeem2.status,
+      replayCode: redeem2.json?.error?.code
+    },
     severity: 'P2',
     checks: [
       { name: 'first 200', ok: redeem1.status === 200 },
@@ -1565,9 +1971,17 @@ async function main() {
   })
 
   // Self-service derived paths use different roots per host, so same dir coexists.
+  // U67: creation needs the provision bit; grant it explicitly instead of the
+  // legacy policy=open assumption.
+  await putHostGrant(H2, lisiSub, ['provision'])
+  await putHostGrant(H3, lisiSub, ['provision'])
   const sameDir = `combo-samedir-${STAMP}`
   const lisiDirH2 = await selfCreate(tokens.lisi, { hostId: H2, name: sameDir, dir: sameDir })
-  const lisiDirH3 = await selfCreate(tokens.lisi, { hostId: H3, name: `${sameDir}-h3`, dir: sameDir })
+  const lisiDirH3 = await selfCreate(tokens.lisi, {
+    hostId: H3,
+    name: `${sameDir}-h3`,
+    dir: sameDir
+  })
   for (const created of [lisiDirH2, lisiDirH3]) {
     if (created.status === 201) {
       scratch.push(created.json.id)
@@ -1580,22 +1994,37 @@ async function main() {
     combo: '自助建项目同目录名跨主机（平台推导路径）',
     endpoint: 'POST /v1/projects/self × 2',
     expected: '两主机根不同 → 两个项目 201；记录路径分别为各自根下同名单级目录',
-    actual: { h2: { status: lisiDirH2.status, path: lisiDirH2.json?.path }, h3: { status: lisiDirH3.status, path: lisiDirH3.json?.path } },
+    actual: {
+      h2: { status: lisiDirH2.status, path: lisiDirH2.json?.path },
+      h3: { status: lisiDirH3.status, path: lisiDirH3.json?.path }
+    },
     severity: 'P2',
     checks: [
       { name: 'both 201', ok: lisiDirH2.status === 201 && lisiDirH3.status === 201 },
       { name: 'paths differ', ok: lisiDirH2.json?.path !== lisiDirH3.json?.path }
     ]
   })
+  await putHostGrant(H2, lisiSub, [])
+  await putHostGrant(H3, lisiSub, [])
 
   const keyAgain = `r2c-key2-${STAMP}`
-  const keyH2 = await adminCreate({ hostId: H2, key: keyAgain, name: keyAgain, projectPath: `/tmp/orca-r2-combo/${keyAgain}` })
+  const keyH2 = await adminCreate({
+    hostId: H2,
+    key: keyAgain,
+    name: keyAgain,
+    projectPath: `/tmp/orca-r2-combo/${keyAgain}`
+  })
   if (keyH2.status === 201) {
     scratch.push(keyH2.json.id)
     probeProjects.push(keyH2.json.id)
   }
   await archiveProject(keyH2.json?.id)
-  const keyH3AfterArchive = await adminCreate({ hostId: H3, key: keyAgain, name: keyAgain, projectPath: `/tmp/orca-r2-combo/${keyAgain}-h3` })
+  const keyH3AfterArchive = await adminCreate({
+    hostId: H3,
+    key: keyAgain,
+    name: keyAgain,
+    projectPath: `/tmp/orca-r2-combo/${keyAgain}-h3`
+  })
   if (keyH3AfterArchive.status === 201) {
     scratch.push(keyH3AfterArchive.json.id)
     probeProjects.push(keyH3AfterArchive.json.id)
@@ -1606,7 +2035,11 @@ async function main() {
     combo: '归档释放 key 后跨主机复用',
     endpoint: 'POST archive + POST /v1/projects',
     expected: '归档项目不再占 key → 另一主机同 key 201',
-    actual: { h2: keyH2.status, h3: keyH3AfterArchive.status, code: keyH3AfterArchive.json?.error?.code },
+    actual: {
+      h2: keyH2.status,
+      h3: keyH3AfterArchive.status,
+      code: keyH3AfterArchive.json?.error?.code
+    },
     severity: 'P2',
     checks: [
       { name: 'h2 201', ok: keyH2.status === 201 },
@@ -1616,16 +2049,31 @@ async function main() {
 
   // ---------- Phase 6: audit ----------
   const auditTypes = {}
-  for (const eventType of ['host_grant_update', 'host_provision_policy_update', 'grant_update', 'web_handoff', 'project_create']) {
+  for (const eventType of [
+    'host_grant_update',
+    'host_provision_policy_update',
+    'grant_update',
+    'web_handoff',
+    'project_create'
+  ]) {
     const page = await auditQuery({ eventType, since: auditSince, limit: 200 })
-    auditTypes[eventType] = { status: page.res.status, count: page.events.length, sample: page.events[0]?.metadata }
+    auditTypes[eventType] = {
+      status: page.res.status,
+      count: page.events.length,
+      sample: page.events[0]?.metadata
+    }
   }
-  const hostGrantComboEvents = (await auditQuery({ eventType: 'host_grant_update', since: auditSince, limit: 200 })).events
-  const policyComboEvents = (await auditQuery({ eventType: 'host_provision_policy_update', since: auditSince, limit: 200 })).events
+  const hostGrantComboEvents = (
+    await auditQuery({ eventType: 'host_grant_update', since: auditSince, limit: 200 })
+  ).events
+  const policyComboEvents = (
+    await auditQuery({ eventType: 'host_provision_policy_update', since: auditSince, limit: 200 })
+  ).events
   record({
     id: 'G1',
     area: 'audit',
-    combo: '组合变更审计事件序列（host_grant_update / provision_policy / grant_update / web_handoff）',
+    combo:
+      '组合变更审计事件序列（host_grant_update / provision_policy / grant_update / web_handoff）',
     endpoint: 'GET /v1/audit/events?eventType=…',
     expected:
       '各事件类型均有记录；host_grant_update 含 subjectType/subjectId/permissions/hostId；provision 含 mode',
@@ -1643,18 +2091,38 @@ async function main() {
       {
         name: 'grant metadata complete',
         ok: hostGrantComboEvents.some(
-          (event) => event.metadata?.hostId && event.metadata?.subjectType && event.metadata?.subjectId && Array.isArray(event.metadata?.permissions)
+          (event) =>
+            event.metadata?.hostId &&
+            event.metadata?.subjectType &&
+            event.metadata?.subjectId &&
+            Array.isArray(event.metadata?.permissions)
         )
       },
       {
         name: 'policy metadata mode',
-        ok: policyComboEvents.some((event) => event.metadata?.mode === 'restricted' || event.metadata?.mode === 'open')
+        ok: policyComboEvents.some(
+          (event) => event.metadata?.mode === 'restricted' || event.metadata?.mode === 'open'
+        )
       }
     ]
   })
 
-  const deniedCreateEvents = (await auditQuery({ eventType: 'project_create', result: 'denied', since: auditSince, limit: 200 })).events
-  const deniedHostGrant = (await auditQuery({ eventType: 'host_grant_update', result: 'denied', since: auditSince, limit: 200 })).events
+  const deniedCreateEvents = (
+    await auditQuery({
+      eventType: 'project_create',
+      result: 'denied',
+      since: auditSince,
+      limit: 200
+    })
+  ).events
+  const deniedHostGrant = (
+    await auditQuery({
+      eventType: 'host_grant_update',
+      result: 'denied',
+      since: auditSince,
+      limit: 200
+    })
+  ).events
   record({
     id: 'G2',
     area: 'audit',
@@ -1663,7 +2131,10 @@ async function main() {
     expected:
       'project_create denied 含 HOST_PROVISION_FORBIDDEN/selfService；host_grant_update denied 含 actor=zhangsan',
     actual: {
-      projectCreateDenied: deniedCreateEvents.filter((event) => event.metadata?.selfService).slice(0, 4).map((event) => ({ a: event.actor, r: event.metadata?.reason })),
+      projectCreateDenied: deniedCreateEvents
+        .filter((event) => event.metadata?.selfService)
+        .slice(0, 4)
+        .map((event) => ({ a: event.actor, r: event.metadata?.reason })),
       hostGrantDenied: deniedHostGrant.map((event) => ({ a: event.actor, t: event.targetId }))
     },
     severity: 'P2',
@@ -1671,7 +2142,9 @@ async function main() {
       {
         name: 'self-service denial reason',
         ok: deniedCreateEvents.some(
-          (event) => event.metadata?.selfService === true && event.metadata?.reason === 'HOST_PROVISION_FORBIDDEN'
+          (event) =>
+            event.metadata?.selfService === true &&
+            event.metadata?.reason === 'HOST_PROVISION_FORBIDDEN'
         )
       },
       {
@@ -1681,8 +2154,22 @@ async function main() {
     ]
   })
 
-  const deniedPolicyEvents = (await auditQuery({ eventType: 'host_provision_policy_update', result: 'denied', since: auditSince, limit: 200 })).events
-  const deniedGrantEvents = (await auditQuery({ eventType: 'host_grant_update', result: 'denied', since: auditSince, limit: 200 })).events
+  const deniedPolicyEvents = (
+    await auditQuery({
+      eventType: 'host_provision_policy_update',
+      result: 'denied',
+      since: auditSince,
+      limit: 200
+    })
+  ).events
+  const deniedGrantEvents = (
+    await auditQuery({
+      eventType: 'host_grant_update',
+      result: 'denied',
+      since: auditSince,
+      limit: 200
+    })
+  ).events
   record({
     id: 'G4',
     area: 'audit',
@@ -1691,25 +2178,36 @@ async function main() {
     expected:
       '设计表要求 denied 也带 hostId/mode（策略）与 hostId/subjectType/subjectId/permissions（授权）',
     actual: {
-      policyDenied: deniedPolicyEvents.map((event) => ({ targetId: event.targetId, metadata: event.metadata })),
-      grantDenied: deniedGrantEvents.map((event) => ({ targetId: event.targetId, metadata: event.metadata }))
+      policyDenied: deniedPolicyEvents.map((event) => ({
+        targetId: event.targetId,
+        metadata: event.metadata
+      })),
+      grantDenied: deniedGrantEvents.map((event) => ({
+        targetId: event.targetId,
+        metadata: event.metadata
+      }))
     },
     severity: 'P3',
     checks: [
       {
         name: 'policy denied carries hostId+mode',
         ok: deniedPolicyEvents.every(
-          (event) => event.metadata?.hostId && (event.metadata?.mode === 'open' || event.metadata?.mode === 'restricted')
+          (event) =>
+            event.metadata?.hostId &&
+            (event.metadata?.mode === 'open' || event.metadata?.mode === 'restricted')
         )
       },
       {
         name: 'grant denied carries hostId+subject',
         ok: deniedGrantEvents.every(
-          (event) => event.metadata?.hostId && event.metadata?.subjectType && event.metadata?.subjectId
+          (event) =>
+            event.metadata?.hostId && event.metadata?.subjectType && event.metadata?.subjectId
         )
       }
     ],
-    evidence: { note: 'denyPrivileged 在读取 body 前拒绝，只写通用 {reason, requiredPermission}；hostId 仅在 targetId' }
+    evidence: {
+      note: 'denyPrivileged 在读取 body 前拒绝，只写通用 {reason, requiredPermission}；hostId 仅在 targetId'
+    }
   })
 
   const verifyAfter = await request('GET', '/v1/audit/verify', { token: tokens.admin })
@@ -1719,11 +2217,18 @@ async function main() {
     combo: '组合变更后审计链完整性',
     endpoint: 'GET /v1/audit/verify',
     expected: '200 ok=true',
-    actual: { status: verifyAfter.status, ok: verifyAfter.json?.ok, checked: verifyAfter.json?.checked },
+    actual: {
+      status: verifyAfter.status,
+      ok: verifyAfter.json?.ok,
+      checked: verifyAfter.json?.checked
+    },
     severity: 'P0',
     checks: [
       { name: 'ok', ok: verifyAfter.status === 200 && verifyAfter.json?.ok === true },
-      { name: 'checked grew', ok: Number(verifyAfter.json?.checked) > Number(verifyBaseline.json?.checked) }
+      {
+        name: 'checked grew',
+        ok: Number(verifyAfter.json?.checked) > Number(verifyBaseline.json?.checked)
+      }
     ]
   })
 
@@ -1757,19 +2262,24 @@ async function main() {
     h3: (await getHostGrants(H3)).rows
   }
   const sameRows = (left, right) => {
-    const norm = (rows) => rows.map((row) => `${rowKey(row)}=${[...row.permissions].sort().join(',')}`).sort()
+    const norm = (rows) =>
+      rows.map((row) => `${rowKey(row)}=${[...row.permissions].sort().join(',')}`).sort()
     return JSON.stringify(norm(left)) === JSON.stringify(norm(right))
   }
   const finalPolicy = {
     h2: (await available(tokens.admin)).byId.get(H2)?.provisionAllowed,
     h3: (await available(tokens.admin)).byId.get(H3)?.provisionAllowed
   }
-  const finalProjects = await request('GET', '/v1/projects?includeArchived=1', { token: tokens.admin })
-  const finalById = new Map((finalProjects.json?.projects ?? []).map((project) => [project.id, project]))
+  const finalProjects = await request('GET', '/v1/projects?includeArchived=1', {
+    token: tokens.admin
+  })
+  const finalById = new Map(
+    (finalProjects.json?.projects ?? []).map((project) => [project.id, project])
+  )
   const probeArchived = [...new Set(probeProjects)].every(
     (projectId) => finalById.get(projectId)?.status === 'archived'
   )
-  const seedIntact = [P_DEMO, P_ZHAN, P_INFRA, P_LAB, 'proj_payment'].every(
+  const seedIntact = [P_DEMO, P_ZHAN, P_INFRA, P_LAB, P_PAYMENT].every(
     (projectId) => finalById.get(projectId)?.status === 'ready'
   )
   record({
@@ -1787,13 +2297,20 @@ async function main() {
       policy: finalPolicy,
       probeArchived,
       seedIntact,
-      activeProjects: (finalProjects.json?.projects ?? []).filter((project) => project.status !== 'archived').length
+      activeProjects: (finalProjects.json?.projects ?? []).filter(
+        (project) => project.status !== 'archived'
+      ).length
     },
     severity: 'P1',
     checks: [
       { name: 'archives 200', ok: archiveResults.every((row) => row.status === 200) },
       { name: 'probe projects archived', ok: probeArchived },
-      { name: 'host grants restored to snapshot', ok: sameRows(restoredHostGrants.h2, hostGrantSnapshot.h2) && sameRows(restoredHostGrants.h3, hostGrantSnapshot.h3) },
+      {
+        name: 'host grants restored to snapshot',
+        ok:
+          sameRows(restoredHostGrants.h2, hostGrantSnapshot.h2) &&
+          sameRows(restoredHostGrants.h3, hostGrantSnapshot.h3)
+      },
       { name: 'policy open', ok: finalPolicy.h2 === true && finalPolicy.h3 === true },
       { name: 'seed projects ready', ok: seedIntact }
     ],
@@ -1831,9 +2348,13 @@ async function main() {
   const output = {
     generatedAt: nowIso(),
     platform: BASE,
+    seeds,
     hosts: { h2: H2, h3: H3 },
     identities: Object.fromEntries(
-      Object.entries(users).map(([name, user]) => [name, { id: user.id, deviceId: devices[name].id, groups: PEOPLE[name].groups }])
+      Object.entries(users).map(([name, user]) => [
+        name,
+        { id: user.id, deviceId: devices[name].id, groups: PEOPLE[name].groups }
+      ])
     ),
     summary: {
       totalCases: cases.length,
@@ -1846,7 +2367,9 @@ async function main() {
       }, {}),
       restored: {
         projectGrants: restoreProjectChecks.every((row) => row.ok),
-        hostGrants: sameRows(restoredHostGrants.h2, hostGrantSnapshot.h2) && sameRows(restoredHostGrants.h3, hostGrantSnapshot.h3),
+        hostGrants:
+          sameRows(restoredHostGrants.h2, hostGrantSnapshot.h2) &&
+          sameRows(restoredHostGrants.h3, hostGrantSnapshot.h3),
         provisionPolicies: finalPolicy.h2 === true && finalPolicy.h3 === true,
         probeProjectsArchived: archiveResults.every((row) => row.status === 200) && probeArchived
       },
@@ -1866,7 +2389,16 @@ async function main() {
     `${JSON.stringify({ generatedAt: output.generatedAt, requests: raw }, null, 2)}\n`
   )
   console.log(
-    JSON.stringify({ total: cases.length, passed: cases.length - findings.length, failed: findings.length, byLevel }, null, 2)
+    JSON.stringify(
+      {
+        total: cases.length,
+        passed: cases.length - findings.length,
+        failed: findings.length,
+        byLevel
+      },
+      null,
+      2
+    )
   )
 }
 
