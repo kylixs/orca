@@ -572,6 +572,75 @@ fi
   printf '%s\\n' ${shellQuote(`ORCA_RELAY_DOWNLOAD_TLS=${bundle.downloadTls ? '1' : '0'}`)}
 `
     : ''
+  // U183 R5: download and pin the bundle; failures are 65 (unavailable),
+  // 66 (checksum) and 67 (manifest mismatch).
+  const bundleAcquire = bundle
+    ? `# U183 R5: acquire the pinned bundle and verify it before any env write.
+ORCA_RELAY_BUNDLE_FILE=""
+ORCA_RELAY_BUNDLE_OFFLINE=0
+if [ -n "\${ORCA_RELAY_BUNDLE:-}" ]; then
+  ORCA_RELAY_BUNDLE_OFFLINE=1
+  ORCA_RELAY_BUNDLE_FILE="$ORCA_RELAY_BUNDLE"
+  if [ ! -f "$ORCA_RELAY_BUNDLE_FILE" ]; then
+    echo ">> 离线 bundle 不存在（65）：$ORCA_RELAY_BUNDLE_FILE" >&2
+    exit 65
+  fi
+  echo ">> 使用离线 bundle：$ORCA_RELAY_BUNDLE_FILE"
+else
+  ORCA_RELAY_DOWNLOAD_DIR="$ORCA_RELAY_ROOT/downloads"
+  mkdir -p "$ORCA_RELAY_DOWNLOAD_DIR"
+  ORCA_RELAY_BUNDLE_TARGET="$ORCA_RELAY_DOWNLOAD_DIR/$ORCA_RELAY_BUNDLE_SHA256.tgz"
+  if [ -f "$ORCA_RELAY_BUNDLE_TARGET" ]; then
+    ORCA_RELAY_BUNDLE_FILE="$ORCA_RELAY_BUNDLE_TARGET"
+    echo ">> 复用已下载 bundle"
+  else
+    ORCA_RELAY_BUNDLE_FILE="$ORCA_RELAY_BUNDLE_TARGET.part"
+    echo ">> 下载 relay bundle"
+    if ! curl "\${ORCA_RELAY_BUNDLE_CURL_OPTS[@]}" --connect-timeout 10 --max-time 120 -o "$ORCA_RELAY_BUNDLE_FILE" "$ORCA_RELAY_BUNDLE_URL"; then
+      rm -f "$ORCA_RELAY_BUNDLE_FILE"
+      echo ">> bundle 下载失败（65）：$ORCA_RELAY_BUNDLE_URL" >&2
+      exit 65
+    fi
+  fi
+fi
+
+if command -v sha256sum >/dev/null 2>&1; then
+  ORCA_RELAY_ACTUAL_SHA="$(sha256sum "$ORCA_RELAY_BUNDLE_FILE" | awk '{print $1}')"
+elif command -v shasum >/dev/null 2>&1; then
+  ORCA_RELAY_ACTUAL_SHA="$(shasum -a 256 "$ORCA_RELAY_BUNDLE_FILE" | awk '{print $1}')"
+else
+  echo ">> 未找到 sha256sum/shasum（64）：无法校验 relay bundle" >&2
+  exit 64
+fi
+if [ "$ORCA_RELAY_ACTUAL_SHA" != "$ORCA_RELAY_BUNDLE_SHA256" ]; then
+  if [ "$ORCA_RELAY_BUNDLE_OFFLINE" = "0" ]; then rm -f "$ORCA_RELAY_BUNDLE_FILE"; fi
+  echo ">> bundle 校验失败（66）：sha256 与脚本内嵌值不符" >&2
+  exit 66
+fi
+if [ "$ORCA_RELAY_BUNDLE_OFFLINE" = "0" ]; then
+  if [ "$ORCA_RELAY_BUNDLE_FILE" != "$ORCA_RELAY_BUNDLE_TARGET" ]; then
+    mv "$ORCA_RELAY_BUNDLE_FILE" "$ORCA_RELAY_BUNDLE_TARGET"
+    ORCA_RELAY_BUNDLE_FILE="$ORCA_RELAY_BUNDLE_TARGET"
+  fi
+  ORCA_RELAY_MANIFEST_URL="\${ORCA_RELAY_BUNDLE_URL%.tgz}.manifest.json"
+  ORCA_RELAY_MANIFEST_FILE="$ORCA_RELAY_DOWNLOAD_DIR/$ORCA_RELAY_BUNDLE_SHA256.manifest.json.part"
+  echo ">> 校验 relay bundle 清单"
+  if ! curl "\${ORCA_RELAY_BUNDLE_CURL_OPTS[@]}" --connect-timeout 10 --max-time 120 -o "$ORCA_RELAY_MANIFEST_FILE" "$ORCA_RELAY_MANIFEST_URL"; then
+    rm -f "$ORCA_RELAY_MANIFEST_FILE"
+    echo ">> bundle 清单获取失败（67）：$ORCA_RELAY_MANIFEST_URL" >&2
+    exit 67
+  fi
+  if ! { grep -Fq "\\"bundleSha256\\": \\"$ORCA_RELAY_BUNDLE_SHA256\\"" "$ORCA_RELAY_MANIFEST_FILE" &&
+    grep -Fq "\\"schemaVersion\\": $ORCA_RELAY_SCHEMA_VERSION" "$ORCA_RELAY_MANIFEST_FILE" &&
+    grep -Fq "\\"relayCodeVersion\\": \\"$ORCA_RELAY_CODE_VERSION\\"" "$ORCA_RELAY_MANIFEST_FILE"; }; then
+    rm -f "$ORCA_RELAY_MANIFEST_FILE"
+    echo ">> bundle 清单与脚本内嵌值不符（67）" >&2
+    exit 67
+  fi
+  rm -f "$ORCA_RELAY_MANIFEST_FILE"
+fi
+`
+    : ''
   return `#!/usr/bin/env bash
 # Orca Cloud 中继接入脚本（平台生成；内嵌内部控制令牌，仅管理员可见）
 set -euo pipefail
@@ -605,6 +674,7 @@ case "$ORCA_HEALTH_CODE" in
   *) echo ">> 平台健康检查失败（68 / HTTP $ORCA_HEALTH_CODE）：$ORCA_PLATFORM_URL/health 不可达" >&2; exit 68 ;;
 esac
 
+${bundleAcquire}
 mkdir -p "$ORCA_ENV_DIR"
 chmod 700 "$ORCA_ENV_DIR" 2>/dev/null || true
 

@@ -1,6 +1,7 @@
 import { test, before, after, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import {
   chmodSync,
   existsSync,
@@ -107,10 +108,14 @@ const SPARSE_TOOLS = [
   'chmod',
   'cat',
   'awk',
+  'grep',
   'curl',
   'mktemp',
   'rm',
-  'node'
+  'mv',
+  'node',
+  'shasum',
+  'sha256sum'
 ]
 
 function makeSparsePath(home: string, stubs: Record<string, string>, omit: string[] = []): string {
@@ -148,6 +153,30 @@ exit 0
 
 const NODE_2218_STUB = nodeStub('22.18.0')
 const NODE_21_STUB = nodeStub('21.7.0')
+
+/** U183 R5: health answers 200, every download fails like a closed endpoint. */
+const FAILING_CURL_STUB = `#!/usr/bin/env bash
+for arg in "$@"; do
+  if [ "$arg" = "%{http_code}" ]; then echo 200; exit 0; fi
+done
+exit 22
+`
+
+/** U183 R5: health answers 200; the download writes tampered bytes. */
+const TAMPERING_CURL_STUB = `#!/usr/bin/env bash
+prev=""
+out=""
+for arg in "$@"; do
+  if [ "$prev" = "-o" ] && [ "$arg" != "/dev/null" ]; then out="$arg"; fi
+  prev="$arg"
+done
+if [ -n "$out" ]; then printf 'tampered relay bundle' > "$out"; exit 0; fi
+echo 200
+`
+
+/** U183 R5: a real content-addressed bundle whose bytes the script can verify. */
+const BUNDLE_BODY = 'fake relay tarball bytes'
+const BUNDLE_SHA = createHash('sha256').update(BUNDLE_BODY).digest('hex')
 
 /** U183 R4: a relay root + entry that the preflight accepts. */
 function makeRelayRoot(home: string): string {
@@ -338,9 +367,30 @@ function loadWizard(platformUrl: string) {
 }
 
 before(async () => {
+  // U183 R5: serve one verified bundle so relay.sh carries the download steps.
+  const bundleDir = mkdtempSync(join(tmpdir(), 'orca-install-bundles-'))
+  writeFileSync(join(bundleDir, `relay-bundle-${BUNDLE_SHA}.tgz`), BUNDLE_BODY)
+  writeFileSync(
+    join(bundleDir, `relay-bundle-${BUNDLE_SHA}.manifest.json`),
+    JSON.stringify(
+      {
+        bundleSha256: BUNDLE_SHA,
+        schemaVersion: 1,
+        relayCodeVersion: '0.1.0',
+        files: ['VERSION', 'apps/relay/src/relay.ts']
+      },
+      null,
+      2
+    )
+  )
   api = await spawnService(
     'apps/api/src/server.ts',
-    { PORT: '0', INTERNAL_TOKEN },
+    {
+      PORT: '0',
+      INTERNAL_TOKEN,
+      ORCA_RELAY_BUNDLE_DIR: bundleDir,
+      ORCA_RELAY_BUNDLE_SHA: BUNDLE_SHA
+    },
     /\[api\] listening on http:\/\/127\.0\.0\.1:(\d+)/,
     'api-install-wizard'
   )
@@ -705,7 +755,7 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     const relayRoot = makeRelayRoot(home)
     const bin = makeSparsePath(home, { node: NODE_2218_STUB })
     // Point this copy at a closed port to exercise health without stopping the API.
-    const script = (await fetchRelayScript()).replace(api.url, 'http://127.0.0.1:1')
+    const script = (await fetchRelayScript()).replaceAll(api.url, 'http://127.0.0.1:1')
     const run = runInstallScript(script, home, { PATH: bin, ORCA_RELAY_ROOT: relayRoot })
     assert.equal(run.status, 68, run.stderr)
     assert.match(run.stderr, /健康检查失败（68/)
@@ -724,6 +774,95 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     assert.equal(run.status, 0, run.stderr)
     assert.match(run.stdout, /未检测到 systemctl/)
     assert.match(run.stdout, /nohup .*relay\.ts/)
+    // R5: the verified bundle lands at downloads/<sha>.tgz, no .part survives.
+    assert.equal(existsSync(join(relayRoot, 'downloads', `${BUNDLE_SHA}.tgz`)), true)
+    assert.equal(existsSync(join(relayRoot, 'downloads', `${BUNDLE_SHA}.tgz.part`)), false)
+  })
+
+  test('U183 R5: 脚本带受限下载参数、双 sha 探测与离线逃生口', async () => {
+    const script = await fetchRelayScript()
+    assert.match(script, /--connect-timeout 10 --max-time 120/)
+    assert.match(script, /ORCA_RELAY_BUNDLE:-/)
+    assert.match(script, /sha256sum|shasum/)
+    assert.match(script, /manifest\.json/)
+  })
+
+  test('U183 R5: bundle 下载失败以 65 退出，不留临时文件与 env', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const relayRoot = makeRelayRoot(home)
+    const bin = makeSparsePath(home, { node: NODE_2218_STUB, curl: FAILING_CURL_STUB })
+    const run = runInstallScript(await fetchRelayScript(), home, {
+      PATH: bin,
+      ORCA_RELAY_ROOT: relayRoot
+    })
+    assert.equal(run.status, 65, run.stderr)
+    assert.match(run.stderr, /（65）/)
+    assert.equal(existsSync(join(relayRoot, 'downloads', `${BUNDLE_SHA}.tgz.part`)), false)
+    assert.equal(existsSync(join(relayRoot, 'downloads', `${BUNDLE_SHA}.tgz`)), false)
+    assert.equal(existsSync(join(home, '.orca-cloud', 'relay.env')), false)
+  })
+
+  test('U183 R5: sha256 与内嵌值不符以 66 退出并删除坏包', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const relayRoot = makeRelayRoot(home)
+    const bin = makeSparsePath(home, { node: NODE_2218_STUB, curl: TAMPERING_CURL_STUB })
+    const run = runInstallScript(await fetchRelayScript(), home, {
+      PATH: bin,
+      ORCA_RELAY_ROOT: relayRoot
+    })
+    assert.equal(run.status, 66, run.stderr)
+    assert.match(run.stderr, /（66）/)
+    assert.equal(existsSync(join(relayRoot, 'downloads', `${BUNDLE_SHA}.tgz.part`)), false)
+    assert.equal(existsSync(join(relayRoot, 'downloads', `${BUNDLE_SHA}.tgz`)), false)
+    assert.equal(existsSync(join(home, '.orca-cloud', 'relay.env')), false)
+  })
+
+  test('U183 R5: 清单 schema 与脚本内嵌值不符以 67 退出', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const relayRoot = makeRelayRoot(home)
+    const bin = makeSparsePath(home, { node: NODE_2218_STUB })
+    const script = (await fetchRelayScript()).replace(
+      /^ORCA_RELAY_SCHEMA_VERSION=1$/m,
+      'ORCA_RELAY_SCHEMA_VERSION=2'
+    )
+    const run = runInstallScript(script, home, { PATH: bin, ORCA_RELAY_ROOT: relayRoot })
+    assert.equal(run.status, 67, run.stderr)
+    assert.match(run.stderr, /（67）/)
+    assert.equal(existsSync(join(home, '.orca-cloud', 'relay.env')), false)
+  })
+
+  test('U183 R5: ORCA_RELAY_BUNDLE 离线路径跳过下载且校验通过', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const relayRoot = makeRelayRoot(home)
+    const offline = join(home, 'offline-bundle.tgz')
+    writeFileSync(offline, BUNDLE_BODY)
+    const bin = makeSparsePath(home, { node: NODE_2218_STUB, curl: FAILING_CURL_STUB })
+    const run = runInstallScript(await fetchRelayScript(), home, {
+      PATH: bin,
+      ORCA_RELAY_ROOT: relayRoot,
+      ORCA_RELAY_BUNDLE: offline
+    })
+    assert.equal(run.status, 0, run.stderr)
+    assert.match(run.stdout, /离线 bundle/)
+    assert.equal(existsSync(join(relayRoot, 'downloads')), false)
+    assert.equal(existsSync(join(home, '.orca-cloud', 'relay.env')), true)
+  })
+
+  test('U183 R5: 离线文件 sha 不符以 66 退出且不删除用户文件', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
+    const relayRoot = makeRelayRoot(home)
+    const offline = join(home, 'offline-bundle.tgz')
+    writeFileSync(offline, 'tampered offline bundle')
+    const bin = makeSparsePath(home, { node: NODE_2218_STUB })
+    const run = runInstallScript(await fetchRelayScript(), home, {
+      PATH: bin,
+      ORCA_RELAY_ROOT: relayRoot,
+      ORCA_RELAY_BUNDLE: offline
+    })
+    assert.equal(run.status, 66, run.stderr)
+    assert.match(run.stderr, /（66）/)
+    assert.equal(existsSync(offline), true)
+    assert.equal(existsSync(join(home, '.orca-cloud', 'relay.env')), false)
   })
 
   test('开发者拉取脚本 403，拒绝与成功都写入 install_script 审计且不含令牌明文', async () => {
