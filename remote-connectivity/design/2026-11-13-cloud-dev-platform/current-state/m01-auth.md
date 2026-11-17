@@ -144,10 +144,10 @@
 
 | 端点 | 凭据来源 | fail-closed 顺序 | 幂等/去重键 | 撤销范围 | 审计 |
 |---|---|---|---|---|---|
-| `POST /v1/auth/login` | 账密 + LDAP | 锁定/组门/禁用 → 签发；无写审计失败回滚 | 无（每次登录新 device/session） | — | `login` success/denied（禁用/错密）；失败无副作用 |
-| `POST /v1/auth/refresh` | Cookie 优先 / body 回退 | CSRF→重复 Cookie→撤销/过期→禁用→轮换 | session 内 current/previous + grace | 过期/reuse/禁用/管理员 → revoked+epoch；Cookie 源不轮换 | `refresh.grace_reuse`/`reuse_detected`；过期零事件（U243① 待 D20） |
-| `POST /v1/auth/logout` | Bearer + Cookie + 可选 body refresh | 清 Cookie → 定位全部显式凭据 → 撤销（已撤销跳过） | `revokedAt`（U241 幂等） | session（不吊销 device） | `logout` success（已撤销不重复）/denied（UNKNOWN_REFRESH/USER_DISABLED） |
-| `POST /v1/users/:id/sessions/revoke` | Bearer（admin） | 权限→审计可写→撤销；审计失败 503 无副作用 | per-user 队列 leader outcome；`revokedAt` | 全部 session + user 撤销集合；不吊销 device | `session_revoke` success（leader 每次）/denied；并发 follower 无 |
+| `POST /v1/auth/login` | 账密 + LDAP | 重复 Cookie/Origin → 锁定（服务不可达 503）→ 凭据 → 组门 → 禁用 → 签发；审计 best-effort 不回滚 | 每次登录新 session；device 复用有效 deviceId，否则新建 | — | `login` success / failure（错密、锁定、组门）/ denied（禁用） |
+| `POST /v1/auth/refresh` | Cookie 优先 / body 回退 | 重复 Cookie → CSRF（仅 Cookie 源）→ 撤销/过期 → 禁用 → reuse/grace → 轮换 | session 内 current/previous + grace | 过期/reuse/禁用 → revoked+epoch（已撤销不二次 bump）；Cookie 源不轮换 | `refresh.grace_reuse`/`reuse_detected`；禁用刷新写 `logout` denied（USER_DISABLED）；过期零事件（U243① 待 D20） |
+| `POST /v1/auth/logout` | Bearer + Cookie + 可选 body refresh | 清 Cookie → 定位全部显式凭据 → 撤销（已撤销跳过；重复 Cookie 只记标志，显式凭据仍撤） | `revokedAt`（U241 幂等） | 仅显式凭据命中的 session（不吊销 device、不写 user 撤销集合） | `logout` success（已撤销不重复）/denied（UNKNOWN_REFRESH；USER_DISABLED 由刷新禁用路径写入） |
+| `POST /v1/users/:id/sessions/revoke` | Bearer（admin） | auth→admin→链健康预检→404 检查→leader `recordAudit`（失败即 503 且无撤销/无标记）→撤销→user 撤销集合 | per-user 队列 leader outcome（leader 失败时 follower 重试为新 leader）；`revokedAt` | 全部 session + user 撤销集合；不吊销 device | `session_revoke` success（leader 每次，含零撤销）/denied；并发 follower 无 |
 
 ## 7. 测试覆盖
 
