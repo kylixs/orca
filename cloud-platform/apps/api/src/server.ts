@@ -84,6 +84,7 @@ import {
   type HostPermission,
   type InstallDownloadToken,
   type Project,
+  type Session,
   type User
 } from './store.ts'
 import { parseReadRate } from './policy-rate.ts'
@@ -133,6 +134,9 @@ import {
 
 const ACCESS_TTL_MS = 30 * 60_000
 const REFRESH_TTL_MS = 12 * 60 * 60_000
+/** U197 S2: previous-token grace; `0` means strict reuse detection. */
+const DEFAULT_REFRESH_GRACE_MS = 30_000
+const MAX_REFRESH_GRACE_MS = 60_000
 const CREDENTIAL_TTL_S = 60
 const HOST_OFFLINE_DEFAULT_MS = 60_000
 /** U37: per-beat cap on the heartbeat's provision kick; the rest waits for the next beat. */
@@ -157,6 +161,8 @@ export type ApiConfig = {
   cookieMode?: string
   /** U197 S1: platform public origin; auto/always require it. */
   publicOrigin?: string
+  /** U197 S2: previous-refresh grace window; defaults to ORCA_CLOUD_REFRESH_GRACE_MS. */
+  refreshGraceMs?: number
   /** How long a host stays "online" without a heartbeat; tests shrink it to observe the flip. */
   hostOfflineMs?: number
   /** One-time web-handoff code lifetime (FR-3.10); tests shrink it to exercise expiry. */
@@ -258,6 +264,17 @@ function parseExpectedVersion(
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
     ? { kind: 'set', version: value }
     : { kind: 'invalid' }
+}
+
+/**
+ * U197 S2: `0` is a meaningful strict-reuse setting, so an absent value must not
+ * coerce to 0; invalid values fall back to the default rather than disabling grace.
+ */
+function parseRefreshGraceMs(value: number | string | null | undefined): number {
+  if (value === undefined || value === null || value === '') return DEFAULT_REFRESH_GRACE_MS
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed < 0) return DEFAULT_REFRESH_GRACE_MS
+  return Math.min(parsed, MAX_REFRESH_GRACE_MS)
 }
 
 async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
@@ -1920,6 +1937,9 @@ export function createApp(config: ApiConfig): ApiHandle {
   const now = config.now ?? (() => Date.now())
   const accessTtlMs = config.accessTtlMs ?? ACCESS_TTL_MS
   const refreshTtlMs = config.refreshTtlMs ?? REFRESH_TTL_MS
+  const refreshGraceMs = parseRefreshGraceMs(
+    config.refreshGraceMs ?? process.env.ORCA_CLOUD_REFRESH_GRACE_MS
+  )
   const hostOfflineMs =
     config.hostOfflineMs ??
     Number(process.env.ORCA_CLOUD_HOST_OFFLINE_MS ?? HOST_OFFLINE_DEFAULT_MS)
@@ -1951,16 +1971,25 @@ export function createApp(config: ApiConfig): ApiHandle {
    */
   function issuesRefreshCookie(req: IncomingMessage): boolean {
     return (
-      refreshCookieEnabled() &&
-      sameOrigin(req.headers.origin, refreshCookieConfig.publicOrigin)
+      refreshCookieEnabled() && sameOrigin(req.headers.origin, refreshCookieConfig.publicOrigin)
     )
   }
 
   /** A duplicate or indistinguishable orca_refresh is a hard 401, never a fallback. */
   function hasAmbiguousRefreshCookie(req: IncomingMessage): boolean {
-    return (
-      refreshCookieEnabled() && parseRefreshCookie(req.headers.cookie).kind === 'duplicate'
-    )
+    return refreshCookieEnabled() && parseRefreshCookie(req.headers.cookie).kind === 'duplicate'
+  }
+
+  /**
+   * U197 S2: CSRF applies only to Cookie-authenticated requests. The trusted
+   * origin is the configured one — never a request-header-derived origin.
+   */
+  function passesCookieCsrf(req: IncomingMessage): boolean {
+    if (!sameOrigin(req.headers.origin, refreshCookieConfig.publicOrigin)) return false
+    const header = req.headers['content-type']
+    const raw = Array.isArray(header) ? header[0] : header
+    if (raw === undefined) return false
+    return raw.split(';')[0]?.trim().toLowerCase() === 'application/json'
   }
 
   function setRefreshCookie(res: ServerResponse, value: string): void {
@@ -2781,13 +2810,14 @@ export function createApp(config: ApiConfig): ApiHandle {
   ): { accessToken: string; refreshToken: string } {
     const accessToken = randomBytes(32).toString('base64url')
     const refreshToken = randomBytes(32).toString('base64url')
-    const session = {
+    const session: Session = {
       id: `sess_${randomUUID()}`,
       userId: user.id,
       deviceId,
       epoch: 1,
       refreshHash: hashToken(refreshToken),
       refreshExpiresAt: now() + refreshTtlMs,
+      currentRefreshToken: refreshToken,
       revokedAt: null
     }
     store.sessions.set(session.id, session)
@@ -2799,6 +2829,38 @@ export function createApp(config: ApiConfig): ApiHandle {
     })
     store.refreshTokens.set(refreshToken, session.id)
     return { accessToken, refreshToken }
+  }
+
+  function issueAccessToken(session: Session): string {
+    const accessToken = randomBytes(32).toString('base64url')
+    store.accessTokens.set(accessToken, {
+      sessionId: session.id,
+      userId: session.userId,
+      epoch: session.epoch,
+      expiresAt: now() + accessTtlMs
+    })
+    return accessToken
+  }
+
+  /**
+   * Cookie-source refresh re-sends the same value (v5 §2B-2), but the session
+   * stores only the hash. `currentRefreshToken` is in-memory plaintext; the map
+   * scan covers sessions created before that field existed.
+   */
+  function currentRefreshTokenOf(session: Session): string | null {
+    if (
+      session.currentRefreshToken !== undefined &&
+      safeEqual(session.refreshHash, hashToken(session.currentRefreshToken))
+    ) {
+      return session.currentRefreshToken
+    }
+    for (const [token, sessionId] of store.refreshTokens) {
+      if (sessionId === session.id && safeEqual(session.refreshHash, hashToken(token))) {
+        session.currentRefreshToken = token
+        return token
+      }
+    }
+    return null
   }
 
   /**
@@ -3400,7 +3462,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       const issueCookie = issuesRefreshCookie(req)
       if (issueCookie) setRefreshCookie(res, tokens.refreshToken)
       return json(res, 200, {
-        ...(issueCookie ? { accessToken: tokens.accessToken } : tokens),
+        ...(issueCookie ? { accessToken: tokens.accessToken, refreshCookie: true } : tokens),
         expiresIn: expiresInSeconds,
         user: {
           id: user.id,
@@ -3415,37 +3477,203 @@ export function createApp(config: ApiConfig): ApiHandle {
     }
 
     if (req.method === 'POST' && path === '/v1/auth/refresh') {
-      // S1 does not consume the Cookie yet; a duplicate is still a hard 401 with
-      // no rotation or revocation, so the body path below is not reached.
+      // A duplicate or indistinguishable Cookie is a hard 401: never fall back
+      // to the body, or an attacker could rotate a valid body token via it.
       if (hasAmbiguousRefreshCookie(req)) {
         res.setHeader('cache-control', 'no-store')
         return error(res, 401, 'SESSION_EXPIRED', '会话已失效，请重新登录。', traceId)
       }
+      const cookieParse = refreshCookieEnabled()
+        ? parseRefreshCookie(req.headers.cookie)
+        : ({ kind: 'absent' } as const)
+      const cookieValue = cookieParse.kind === 'present' ? cookieParse.value : ''
+      const cookieSessionId = cookieValue === '' ? undefined : store.refreshTokens.get(cookieValue)
+      const cookieSession = cookieSessionId ? store.sessions.get(cookieSessionId) : undefined
+
+      // U197 S2: Cookie first; the body is consulted only when no Cookie resolves.
+      if (cookieSession) {
+        // CSRF has no side effects: reject before any renewal or clear.
+        if (!passesCookieCsrf(req)) {
+          res.setHeader('cache-control', 'no-store')
+          return error(res, 403, 'CSRF_REJECTED', '请求来源不受信任。', traceId)
+        }
+        const body = await readJson(req)
+        // Re-check after the body read: a concurrent revoke must still 401.
+        if (cookieSession.revokedAt || cookieSession.refreshExpiresAt < now()) {
+          clearRefreshCookie(res)
+          return error(res, 401, 'SESSION_EXPIRED', '会话已失效，请重新登录。', traceId)
+        }
+        const cookieHash = hashToken(cookieValue)
+        const cookieIsCurrent = safeEqual(cookieSession.refreshHash, cookieHash)
+        const cookieIsPrevious =
+          !cookieIsCurrent &&
+          cookieSession.previousRefreshHash !== undefined &&
+          safeEqual(cookieSession.previousRefreshHash, cookieHash)
+        const bodyToken = typeof body.refreshToken === 'string' ? body.refreshToken : ''
+        const bodyHash = bodyToken === '' ? undefined : hashToken(bodyToken)
+        const bodyIsCurrent =
+          bodyHash !== undefined && safeEqual(cookieSession.refreshHash, bodyHash)
+        const bodyIsPrevious =
+          bodyHash !== undefined &&
+          cookieSession.previousRefreshHash !== undefined &&
+          safeEqual(cookieSession.previousRefreshHash, bodyHash)
+        const inGrace = cookieSession.graceUntil !== undefined && now() < cookieSession.graceUntil
+        // Echo only a value this session owns; a fake or foreign body value must
+        // never become a refresh in the response.
+        const echoRefresh = bodyIsCurrent || bodyIsPrevious
+
+        // A value that maps to this session but is neither current nor previous
+        // is a replay, as is a previous hit outside the window (§5.3/§5.5).
+        if (!cookieIsCurrent && !cookieIsPrevious) {
+          cookieSession.revokedAt = now()
+          clearRefreshCookie(res)
+          audit.appendBestEffort({
+            eventType: 'refresh.reuse_detected',
+            actor: null,
+            targetType: 'session',
+            targetId: cookieSession.id,
+            result: 'failure',
+            traceId,
+            metadata: { source: 'cookie' }
+          })
+          return error(res, 401, 'SESSION_EXPIRED', '会话已失效，请重新登录。', traceId)
+        }
+
+        // v5 §2B-2/§5.2: a stale Cookie inside the grace window still mints
+        // access, but nothing is rotated or renewed and no Cookie is re-sent.
+        if (cookieIsPrevious) {
+          if (!inGrace) {
+            cookieSession.revokedAt = now()
+            clearRefreshCookie(res)
+            audit.appendBestEffort({
+              eventType: 'refresh.reuse_detected',
+              actor: null,
+              targetType: 'session',
+              targetId: cookieSession.id,
+              result: 'failure',
+              traceId,
+              metadata: { source: 'cookie' }
+            })
+            return error(res, 401, 'SESSION_EXPIRED', '会话已失效，请重新登录。', traceId)
+          }
+          audit.appendBestEffort({
+            eventType: 'refresh.grace_reuse',
+            actor: null,
+            targetType: 'session',
+            targetId: cookieSession.id,
+            result: 'success',
+            traceId,
+            metadata: { source: 'cookie' }
+          })
+          return json(res, 200, {
+            accessToken: issueAccessToken(cookieSession),
+            ...(echoRefresh ? { refreshToken: bodyToken } : {}),
+            expiresIn: expiresInSeconds
+          })
+        }
+
+        // A previous body value outside the window is a replay even when the
+        // Cookie itself is current (§5.5).
+        if (bodyIsPrevious && !inGrace) {
+          cookieSession.revokedAt = now()
+          clearRefreshCookie(res)
+          audit.appendBestEffort({
+            eventType: 'refresh.reuse_detected',
+            actor: null,
+            targetType: 'session',
+            targetId: cookieSession.id,
+            result: 'failure',
+            traceId,
+            metadata: { source: 'cookie' }
+          })
+          return error(res, 401, 'SESSION_EXPIRED', '会话已失效，请重新登录。', traceId)
+        }
+
+        // v5 §2B-2: the Cookie is the credential, so it never rotates and the
+        // server never mints a new refresh here. Every hit except the
+        // previous-body grace echo slides the expiry and re-sends the identical
+        // current value.
+        const renew = !bodyIsPrevious
+        if (renew) cookieSession.refreshExpiresAt = now() + refreshTtlMs
+        // Reconstruction reads in-memory plaintext (`currentRefreshToken`, then
+        // the token map for sessions predating it). If it is unavailable, keep
+        // the browser's existing Cookie rather than rotate or fail the refresh.
+        const sameValue = currentRefreshTokenOf(cookieSession)
+        const resendCookie = renew && sameValue !== null
+        if (resendCookie) setRefreshCookie(res, sameValue)
+        return json(res, 200, {
+          accessToken: issueAccessToken(cookieSession),
+          ...(echoRefresh ? { refreshToken: bodyToken } : {}),
+          expiresIn: expiresInSeconds,
+          ...(resendCookie ? { refreshCookie: true } : {})
+        })
+      }
+
+      // Body fallback: the legacy path, unchanged except for the grace window.
       const body = await readJson(req)
       const token = String(body.refreshToken ?? '')
       const sessionId = store.refreshTokens.get(token)
       const session = sessionId ? store.sessions.get(sessionId) : undefined
       if (!session || session.revokedAt || session.refreshExpiresAt < now()) {
+        if (refreshCookieEnabled()) clearRefreshCookie(res)
         return error(res, 401, 'SESSION_EXPIRED', '会话已失效，请重新登录。', traceId)
       }
-      if (!safeEqual(session.refreshHash, hashToken(token))) {
+      const isCurrent = safeEqual(session.refreshHash, hashToken(token))
+      if (!isCurrent) {
+        const isPrevious =
+          session.previousRefreshHash !== undefined &&
+          safeEqual(session.previousRefreshHash, hashToken(token))
+        if (isPrevious && session.graceUntil !== undefined && now() < session.graceUntil) {
+          // Grace hit: no rotation and no renewal; echo the request value so an
+          // old page does not write the literal "undefined".
+          audit.appendBestEffort({
+            eventType: 'refresh.grace_reuse',
+            actor: null,
+            targetType: 'session',
+            targetId: session.id,
+            result: 'success',
+            traceId,
+            metadata: { source: 'body' }
+          })
+          return json(res, 200, {
+            accessToken: issueAccessToken(session),
+            refreshToken: token,
+            expiresIn: expiresInSeconds
+          })
+        }
         session.revokedAt = now()
+        if (refreshCookieEnabled()) clearRefreshCookie(res)
+        audit.appendBestEffort({
+          eventType: 'refresh.reuse_detected',
+          actor: null,
+          targetType: 'session',
+          targetId: session.id,
+          result: 'failure',
+          traceId,
+          metadata: { source: 'body' }
+        })
         return error(res, 401, 'SESSION_EXPIRED', '会话已失效，请重新登录。', traceId)
       }
       // Why kept: a replayed old token must still identify this session, so the
       // hash mismatch below can revoke it instead of reading as an unknown token.
-      const accessToken = randomBytes(32).toString('base64url')
+      const accessToken = issueAccessToken(session)
       const refreshToken = randomBytes(32).toString('base64url')
+      session.previousRefreshHash = session.refreshHash
+      session.graceUntil = now() + refreshGraceMs
       session.refreshHash = hashToken(refreshToken)
+      session.currentRefreshToken = refreshToken
       session.refreshExpiresAt = now() + refreshTtlMs
-      store.accessTokens.set(accessToken, {
-        sessionId: session.id,
-        userId: session.userId,
-        epoch: session.epoch,
-        expiresAt: now() + accessTtlMs
-      })
       store.refreshTokens.set(refreshToken, session.id)
-      return json(res, 200, { accessToken, refreshToken, expiresIn: expiresInSeconds })
+      // The one place that may both set the Cookie and return a newly minted
+      // body refresh: a Cookie-less legacy caller has no other credential.
+      const issueCookie = issuesRefreshCookie(req)
+      if (issueCookie) setRefreshCookie(res, refreshToken)
+      return json(res, 200, {
+        accessToken,
+        refreshToken,
+        expiresIn: expiresInSeconds,
+        ...(issueCookie ? { refreshCookie: true } : {})
+      })
     }
 
     // ---- web handoff (FR-3.10): a browser trades its one-time code for a session ----
@@ -3536,7 +3764,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       const issueCookie = issuesRefreshCookie(req)
       if (issueCookie) setRefreshCookie(res, tokens.refreshToken)
       return json(res, 200, {
-        ...(issueCookie ? { accessToken: tokens.accessToken } : tokens),
+        ...(issueCookie ? { accessToken: tokens.accessToken, refreshCookie: true } : tokens),
         expiresIn: expiresInSeconds,
         user: {
           id: user.id,

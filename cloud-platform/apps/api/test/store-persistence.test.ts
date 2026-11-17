@@ -312,4 +312,27 @@ describe('平台 dev store 快照：重启与种子幂等', () => {
       rmSync(root, { recursive: true, force: true })
     }
   })
+
+  test('快照不落盘 currentRefreshToken（U197 仅内存明文）', () => {
+    const store = new Store()
+    store.sessions.set('sess_u197', {
+      id: 'sess_u197',
+      userId: 'user_u197',
+      deviceId: 'device_u197',
+      epoch: 1,
+      refreshHash: 'hash-current',
+      refreshExpiresAt: 1,
+      currentRefreshToken: 'plaintext-current',
+      revokedAt: null
+    })
+    const snapshot = JSON.parse(serializeSnapshot(store)) as {
+      sessions: [string, Record<string, unknown>][]
+    }
+    assert.equal('currentRefreshToken' in snapshot.sessions[0]![1], false)
+
+    const restored = new Store()
+    restoreSnapshot(restored, serializeSnapshot(store))
+    assert.equal(restored.sessions.get('sess_u197')?.refreshHash, 'hash-current')
+    assert.equal(restored.sessions.get('sess_u197')?.currentRefreshToken, undefined)
+  })
 })

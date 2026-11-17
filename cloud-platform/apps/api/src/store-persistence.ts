@@ -121,7 +121,13 @@ export function snapshotOf(store: Store, auditLimit = DEFAULT_AUDIT_LIMIT): Snap
     version: SNAPSHOT_VERSION,
     users: [...store.users.entries()],
     devices: [...store.devices.entries()],
-    sessions: [...store.sessions.entries()],
+    // U197 v5: the plaintext current refresh is in-memory only (U216); a
+    // restored session re-derives it from `refreshTokens` via currentRefreshTokenOf.
+    sessions: [...store.sessions.entries()].map(([id, session]): Entry<Session> => {
+      const persisted = { ...session }
+      delete persisted.currentRefreshToken
+      return [id, persisted]
+    }),
     accessTokens: [...store.accessTokens.entries()],
     refreshTokens: [...store.refreshTokens.entries()],
     hosts: [...store.hosts.entries()],

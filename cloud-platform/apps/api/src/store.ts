@@ -29,6 +29,15 @@ export type Session = {
   epoch: number
   refreshHash: string
   refreshExpiresAt: number
+  /** U197 S2: previous rotated value, accepted only until `graceUntil`. */
+  previousRefreshHash?: string
+  graceUntil?: number
+  /**
+   * U197 v5 §2B-2: Cookie-source refresh re-sends the same refresh value, so
+   * its plaintext must stay in memory. Excluded from store snapshots; a heap
+   * dump or process-memory leak still exposes live sessions (U216).
+   */
+  currentRefreshToken?: string
   revokedAt: number | null
 }
 

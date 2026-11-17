@@ -13,8 +13,18 @@ const ACCESS_TTL_MS = 1200
 const REFRESH_TTL_MS = 60_000
 const apps: ApiHandle[] = []
 
-async function start(accessTtlMs: number, refreshTtlMs: number): Promise<string> {
-  const app = createApp({ port: 0, accessTtlMs, refreshTtlMs, internalToken: 'renewal-token' })
+async function start(
+  accessTtlMs: number,
+  refreshTtlMs: number,
+  refreshGraceMs?: number
+): Promise<string> {
+  const app = createApp({
+    port: 0,
+    accessTtlMs,
+    refreshTtlMs,
+    refreshGraceMs,
+    internalToken: 'renewal-token'
+  })
   apps.push(app)
   const port = await app.listen()
   return `http://127.0.0.1:${port}`
@@ -76,7 +86,9 @@ after(async () => {
 
 describe('平台会话续期（真实 createApp + HTTP）', () => {
   test('短 TTL 过期 → 刷新旋转 → 旧 token 复用作废会话', async () => {
-    const base = await start(ACCESS_TTL_MS, REFRESH_TTL_MS)
+    // U197 S2: strict reuse detection is the graceMs=0 contract; the default
+    // 30s grace would echo this old token instead of revoking.
+    const base = await start(ACCESS_TTL_MS, REFRESH_TTL_MS, 0)
     const first = await login(base)
     const access1 = accessOf(first)
     const refresh1 = refreshOf(first)

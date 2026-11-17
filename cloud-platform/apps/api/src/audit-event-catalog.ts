@@ -46,6 +46,8 @@ export const AUDIT_EVENT_TYPES: readonly string[] = [
   'project_update',
   'projects_root_change',
   'provision_assign',
+  'refresh.grace_reuse',
+  'refresh.reuse_detected',
   'relay_list',
   'role_update',
   'signing_key_rotate',
