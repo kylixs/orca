@@ -4208,3 +4208,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U225 修复落地**（`68d6525dd87`，2 文件）：N3R Cookie 启动分支 `/v1/me` 成功补 `bindLegacyTokenOwner`（纯 Cookie 不写），新增真实 Chromium 两用例；N1 迁移测试对工作树 app.js 加 sha256 守卫（与 HEAD 一致，主会话核验）；N2 加载后 `/v1/me` 时刻 < TTL−1s 断言；P3 事实用例去 `AC15(g)` 子串、fixture 正文 sha256 断言。主会话独立复跑 3 套件 **40 pass/2 skip/0 fail**。待复审。
 - **U225 复审 CHANGES-REQUIRED（1 P2）→ 已修**：`cfaa08a0e01` 在迁移测试加 `sha256Lf`（CRLF 归一）用于两处 pin，避免 Windows autocrlf 检出造成假红与「把 CRLF 哈希写进常量」；主会话复跑 6 pass/1 skip/0 fail，待最终确认。其余 N3R/N2/P3 均 CLOSED。
 - **T1 关键业务回归通过**（HEAD `553529d16d2`，Node 24.16 自动切换）：cloud-platform 段 **50/50**（3 suites：策略版本冲突/权限矩阵/项目策略三态等）、Electron 段 vitest critical 全绿，EXIT=0；server.ts 经 U218/U220 改动后关键路径零回归。
+- **U225 关闭**：复审 APPROVED（F1 CLOSED，`sha256Lf` 归一且不可绕过；N3R/N1/N2/P3 全部闭环）。补充 `f086e2dfd2a` 以 `.gitattributes` 为 `apps/web/app.js` 与旧构建快照固定 `text eol=lf`，与仓库既有字节哈希先例一致。台账 U225 翻 🟢。
