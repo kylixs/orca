@@ -4127,3 +4127,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U201 E4 落地**：新增 `apps/api/src/audit-export-format.ts`（固定 11 列表头、RFC 4180、`= + - @ Tab CR` 公式中性化、metadata JSON 列、JSONL 单行保序）+ 单测 12/12；BOM 留待 E6/E8 写盘阶段按 D9 决定。
 - **U201 E2 落地**：审计事件目录新增 `audit_export` / `audit_export_download`，Web 标签「审计导出/审计导出下载」；目录单测 2/2、审计状态 e2e 3/3 绿。
 - **web e2e 全量回归**：20 个套件分 3 批（并发 2）共 **164 例全绿**（66+18+80）；`app.js` 本轮改动（路由代次、中继详情、复制、策略幂等、注册令牌、主机筛选、ARIA）未见回归。
+- **U201 E3 落地**：`apps/api/src/audit-export-jobs.ts`——jobId `exp_<24hex>` 白名单 + resolve 前缀校验、`<root>/<jobId>/job.json` 原子写（0700/0600）、状态机（queued/running/succeeded/failed，expired 派生）、注入时钟过期与清理（含孤儿目录/符号链接拒绝）、每用户 2/全局 8 并发计数与配额；命名按设计回填 `succeeded`/`createdAt`（响应字段 `requestedAt` 由 E5 映射）。E3+E4 测试 24/24。
