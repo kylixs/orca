@@ -219,33 +219,58 @@ describe('平台 dev store 快照：序列化与恢复', () => {
 })
 
 describe('平台 dev store 快照：损坏与默认关闭', () => {
-  test('损坏 JSON 与版本不符都被忽略，起空 store 并 warn', () => {
+  test('损坏 JSON 快照：启动不抛错、文件逐字节不变、起空 store', () => {
     const root = tempRoot()
     try {
       const broken = path.join(root, 'broken.json')
-      writeFileSync(broken, '{not-json', 'utf8')
+      // Invalid UTF-8 plus non-JSON bytes: any rewrite would change these bytes.
+      const original = Buffer.from([
+        0x7b, 0x6e, 0x6f, 0x74, 0x2d, 0x6a, 0x73, 0x6f, 0x6e, 0xff, 0x00
+      ])
+      writeFileSync(broken, original)
       const store = new Store()
       const warnings: string[] = []
-      attachStorePersistence(store, {
-        file: broken,
-        intervalMs: 60_000,
-        log: { warn: (message?: unknown) => warnings.push(String(message)) }
-      }).stop()
+      assert.doesNotThrow(() =>
+        attachStorePersistence(store, {
+          file: broken,
+          intervalMs: 60_000,
+          log: { warn: (message?: unknown) => warnings.push(String(message)) }
+        }).stop()
+      )
       assert.equal(store.users.size, 0)
       assert.equal(store.hosts.size, 0)
       assert.equal(warnings.length, 1)
+      assert.ok(
+        readFileSync(broken).equals(original),
+        'an unreadable snapshot must stay byte-identical for diagnosis'
+      )
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
 
+  test('不支持的快照版本：启动不抛错、文件逐字节不变、起空 store', () => {
+    const root = tempRoot()
+    try {
       const wrongVersion = path.join(root, 'wrong-version.json')
-      writeFileSync(wrongVersion, JSON.stringify({ version: 99 }), 'utf8')
-      const store2 = new Store()
-      const warnings2: string[] = []
-      attachStorePersistence(store2, {
-        file: wrongVersion,
-        intervalMs: 60_000,
-        log: { warn: (message?: unknown) => warnings2.push(String(message)) }
-      }).stop()
-      assert.equal(store2.users.size, 0)
-      assert.equal(warnings2.length, 1)
+      const original = Buffer.from(JSON.stringify({ version: 99, marker: 'keep-me' }), 'utf8')
+      writeFileSync(wrongVersion, original)
+      const store = new Store()
+      const warnings: string[] = []
+      assert.doesNotThrow(() =>
+        attachStorePersistence(store, {
+          file: wrongVersion,
+          intervalMs: 60_000,
+          log: { warn: (message?: unknown) => warnings.push(String(message)) }
+        }).stop()
+      )
+      assert.equal(store.users.size, 0)
+      assert.equal(store.hosts.size, 0)
+      assert.equal(warnings.length, 1)
+      assert.ok(
+        readFileSync(wrongVersion).equals(original),
+        'an unsupported version must stay byte-identical for diagnosis'
+      )
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -429,6 +454,37 @@ describe('平台 dev store 快照：refresh token 明文剥离（U233 F6）', ()
         const onDisk = readFileSync(file, 'utf8')
         assert.equal(onDisk.includes(token), false)
         assert.equal(onDisk, serializeSnapshot(store))
+      } finally {
+        handle.stop()
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test('清洗后立即 flush 不产生第二次写（no-op）', () => {
+    const root = tempRoot()
+    const file = path.join(root, 'platform-store.json')
+    try {
+      writeLegacySnapshot(file, 'legacy-plaintext-noop-token')
+
+      const store = new Store()
+      let writes = 0
+      const handle = attachStorePersistence(store, {
+        file,
+        intervalMs: 60_000,
+        log: { warn: () => {} },
+        writeFile: (target, text) => {
+          writes += 1
+          writeFileSync(target, text, { encoding: 'utf8', mode: 0o600 })
+        }
+      })
+      try {
+        assert.equal(writes, 1, 'legacy snapshot is cleaned on load')
+        handle.flushNow()
+        assert.equal(writes, 1, 'flush without a state change must not write again')
+        handle.flushNow()
+        assert.equal(writes, 1)
       } finally {
         handle.stop()
       }

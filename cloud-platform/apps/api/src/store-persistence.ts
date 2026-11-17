@@ -273,8 +273,10 @@ function writeAtomic(file: string, text: string): void {
 }
 
 /**
- * Restores the snapshot (if any) and schedules change-only flushes. A broken file
- * is reported and ignored: the platform must still start.
+ * Restores the snapshot (if any) and schedules change-only flushes. A missing file
+ * starts empty; an unreadable one (corrupt JSON or unsupported version) is warned
+ * about, left untouched on disk, and starts with an empty store so the platform
+ * must still boot.
  */
 export function attachStorePersistence(
   store: Store,
@@ -293,16 +295,18 @@ export function attachStorePersistence(
       restoredText = readFileSync(file, 'utf8')
       restoreSnapshot(store, restoredText, auditLimit)
     } catch (error) {
-      // A corrupt snapshot must not keep the platform down; start empty and heal
-      // the file on the next write.
+      // Unreadable snapshot: start empty but keep the bytes for diagnosis; the
+      // next real state change replaces them.
+      restoredText = null
       log.warn(`[store-persistence] ignoring ${file}: ${String(error)}`)
     }
     if (restoredText !== null) {
       try {
         const serialized = serializeSnapshot(store, auditLimit)
         if (serialized !== restoredText) {
-          // Legacy (plaintext or v1) file: clean it now, since change-only flushes
-          // would otherwise leave the old bytes on disk indefinitely.
+          // Only a successful restore reaches here. Clean a legacy (plaintext or
+          // v1) file now, since change-only flushes would otherwise leave the old
+          // bytes on disk indefinitely.
           writeFile(file, serialized)
         }
         lastWritten = serialized
