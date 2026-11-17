@@ -408,25 +408,11 @@ if [ -z "$ORCA_ADVERTISE" ]; then
   exit 1
 fi
 
+ORCA_USER_DATA_PATH="\${ORCA_HOST_PROFILE:-$HOME/.orca-cloud/profile}"
+ORCA_STATE_FILE="$ORCA_USER_DATA_PATH/orca-cloud-host-state.json"
+
 mkdir -p "$ORCA_ENV_DIR"
 chmod 700 "$ORCA_ENV_DIR" 2>/dev/null || true
-
-echo ">> 写入环境配置 $ORCA_ENV_FILE"
-{
-  # ORCA_CLOUD_* is what the host binary reads; the bare aliases stay for env
-  # files and docs written before the rename (same family as U38). Untrusted
-  # values are emitted as one quoted literal so the script cannot be injected.
-  printf '%s\\n' ${shellQuote(`ORCA_CLOUD_API_URL=${input.platformUrl}`)}
-  printf '%s\\n' ${shellQuote(`ORCA_CLOUD_HOST_TOKEN=${input.token}`)}
-  printf 'ORCA_CLOUD_HOST_NAME=%s\\n' "$ORCA_HOST_NAME"
-  printf 'ORCA_CLOUD_ADVERTISE_HOST=%s\\n' "$ORCA_ADVERTISE"
-  printf 'ORCA_CLOUD_PROJECTS_ROOT=%s\\n' "\${PROJECTS_ROOT:-/srv/work}"
-  printf '%s\\n' ${shellQuote(`HOST_TOKEN=${input.token}`)}
-  printf 'HOST_NAME=%s\\n' "$ORCA_HOST_NAME"
-  printf 'ADVERTISE_HOST=%s\\n' "$ORCA_ADVERTISE"
-  printf 'PROJECTS_ROOT=%s\\n' "\${PROJECTS_ROOT:-/srv/work}"
-} > "$ORCA_ENV_FILE"
-chmod 600 "$ORCA_ENV_FILE"
 
 ORCA_TLS_CERT="\${ORCA_TLS_CERT:-$HOME/.orca-cloud/tls/host.crt}"
 ORCA_TLS_KEY="\${ORCA_TLS_KEY:-$HOME/.orca-cloud/tls/host.key}"
@@ -474,9 +460,32 @@ ORCA_SSL_CONF_EOF
     exit 1
   fi
 fi
-# U182: always write the paths; a rerun with an existing cert used to drop them,
-# which silently downgraded the host listener to plaintext.
-printf 'ORCA_CLOUD_TLS_CERT_PATH=%s\\nORCA_CLOUD_TLS_KEY_PATH=%s\\n' "$ORCA_TLS_CERT" "$ORCA_TLS_KEY" >> "$ORCA_ENV_FILE"
+
+echo ">> 写入环境配置 $ORCA_ENV_FILE"
+# H9a: one atomic write. A rerun must never leave half a config behind, and
+# the TLS paths are always present (a rerun used to drop them).
+ORCA_ENV_TMP="$(mktemp "\${ORCA_ENV_FILE}.XXXXXX")"
+{
+  # ORCA_CLOUD_* is what the host binary reads; the bare aliases stay for env
+  # files and docs written before the rename (same family as U38). Untrusted
+  # values are emitted as one quoted literal so the script cannot be injected.
+  printf '%s\\n' ${shellQuote(`ORCA_CLOUD_API_URL=${input.platformUrl}`)}
+  printf '%s\\n' ${shellQuote(`ORCA_CLOUD_HOST_TOKEN=${input.token}`)}
+  printf 'ORCA_CLOUD_HOST_NAME=%s\\n' "$ORCA_HOST_NAME"
+  printf 'ORCA_CLOUD_ADVERTISE_HOST=%s\\n' "$ORCA_ADVERTISE"
+  printf 'ORCA_CLOUD_PROJECTS_ROOT=%s\\n' "\${PROJECTS_ROOT:-/srv/work}"
+  printf '%s\\n' ${shellQuote(`HOST_TOKEN=${input.token}`)}
+  printf 'HOST_NAME=%s\\n' "$ORCA_HOST_NAME"
+  printf 'ADVERTISE_HOST=%s\\n' "$ORCA_ADVERTISE"
+  printf 'PROJECTS_ROOT=%s\\n' "\${PROJECTS_ROOT:-/srv/work}"
+  # H9a: host mode pins a dedicated profile, which is also where it writes the
+  # readiness file the self-check below reads.
+  printf 'ORCA_USER_DATA_PATH=%s\\n' "$ORCA_USER_DATA_PATH"
+  printf 'ORCA_CLOUD_TLS_CERT_PATH=%s\\n' "$ORCA_TLS_CERT"
+  printf 'ORCA_CLOUD_TLS_KEY_PATH=%s\\n' "$ORCA_TLS_KEY"
+} > "$ORCA_ENV_TMP"
+chmod 600 "$ORCA_ENV_TMP"
+mv -f "$ORCA_ENV_TMP" "$ORCA_ENV_FILE"
 chmod 600 "$ORCA_ENV_FILE"
 
 echo ">> 平台连通性检查"
@@ -489,16 +498,73 @@ case "$ORCA_HEALTH_CODE" in
   2??) ;;
   *) echo ">> 平台健康检查失败（HTTP $ORCA_HEALTH_CODE）：$ORCA_CLOUD_API_URL/health 不可达" >&2; exit 1 ;;
 esac
-echo ">> 环境已就绪：\$ORCA_ENV_FILE"
+echo ">> 环境已就绪：$ORCA_ENV_FILE"
+
+# H9a: start the host now. The readiness file is the only success proof; logs
+# and /health are diagnostics, never an "online" verdict.
+ORCA_HOST_LOG="\${ORCA_HOST_LOG:-$HOME/.orca-cloud/host.log}"
+mkdir -p "$(dirname "$ORCA_HOST_LOG")"
+echo ">> 后台启动 Orca 宿主（--host-mode）：$ORCA_HOST_BIN --host-mode"
+set -a; . "$ORCA_ENV_FILE"; set +a
+nohup "$ORCA_HOST_BIN" --host-mode >> "$ORCA_HOST_LOG" 2>&1 &
+ORCA_HOST_PID=$!
+
+# State self-check (design §4.3): schema v2, online, successful heartbeat, a
+# non-empty hostId and a live pid. 0 (ORCA_HOST_STATE_TIMEOUT) skips the wait.
+ORCA_STATE_WAIT="\${ORCA_HOST_STATE_TIMEOUT:-90}"
+case "$ORCA_STATE_WAIT" in ''|*[!0-9]*) ORCA_STATE_WAIT=90 ;; esac
+if [ "$ORCA_STATE_WAIT" -gt 0 ]; then
+  _orca_state_field() {
+    { grep -o "\\"$1\\"[[:space:]]*:[[:space:]]*[^,}]*" "$ORCA_STATE_FILE" 2>/dev/null \\
+        | head -n 1 | cut -d: -f2- | tr -d ' "' ; } || true
+  }
+  echo ">> 等待宿主上线（状态文件 $ORCA_STATE_FILE，超时 \${ORCA_STATE_WAIT}s）"
+  ORCA_STATE_DEADLINE=$(( $(date +%s) + ORCA_STATE_WAIT ))
+  ORCA_STATE_OK=0
+  while :; do
+    if [ -s "$ORCA_STATE_FILE" ]; then
+      ORCA_STATE_SCHEMA="$(_orca_state_field schemaVersion)"
+      ORCA_STATE_STATUS="$(_orca_state_field status)"
+      ORCA_STATE_HEARTBEAT="$(_orca_state_field lastHeartbeatOk)"
+      ORCA_STATE_HOST_ID="$(_orca_state_field hostId)"
+      ORCA_STATE_PID="$(_orca_state_field pid)"
+      case "$ORCA_STATE_PID" in ''|*[!0-9]*) ORCA_STATE_PID=0 ;; esac
+      if [ "$ORCA_STATE_SCHEMA" = 2 ] \\
+        && [ "$ORCA_STATE_STATUS" = online ] \\
+        && [ "$ORCA_STATE_HEARTBEAT" = true ] \\
+        && [ -n "$ORCA_STATE_HOST_ID" ] && [ "$ORCA_STATE_HOST_ID" != null ] \\
+        && [ "$ORCA_STATE_PID" -gt 0 ] && kill -0 "$ORCA_STATE_PID" 2>/dev/null; then
+        ORCA_STATE_OK=1
+        break
+      fi
+    fi
+    if [ "$(date +%s)" -ge "$ORCA_STATE_DEADLINE" ]; then break; fi
+    sleep 1
+  done
+  if [ "$ORCA_STATE_OK" != 1 ]; then
+    echo ">> 宿主未在 \${ORCA_STATE_WAIT}s 内上线（退出码 70）" >&2
+    if [ -s "$ORCA_STATE_FILE" ]; then
+      echo ">> 状态文件摘录（$ORCA_STATE_FILE）：" >&2
+      sed -n '1,24p' "$ORCA_STATE_FILE" >&2 || true
+    else
+      echo ">> 状态文件不存在：$ORCA_STATE_FILE" >&2
+    fi
+    echo ">> 宿主日志（$ORCA_HOST_LOG）尾部：" >&2
+    tail -n 40 "$ORCA_HOST_LOG" >&2 2>/dev/null || true
+    exit 70
+  fi
+  echo ">> 宿主已上线：hostId=$ORCA_STATE_HOST_ID pid=$ORCA_STATE_PID"
+fi
 
 if ${systemdAvailable()}; then
   cat <<ORCA_NEXT
 
-后续命令在开发机上执行：
-1) 前台启动 Orca 宿主模式（调试，注册并开始心跳）：
+宿主已在后台启动（pid $ORCA_HOST_PID，日志 $ORCA_HOST_LOG）。
+后续可选命令在开发机上执行：
+1) 前台调试前先停止后台实例：kill $ORCA_HOST_PID
    set -a; . "$ORCA_ENV_FILE"; set +a
    $ORCA_HOST_BIN --host-mode
-2) systemd 用户单元（开机自启）：
+2) systemd 用户单元（开机自启；先停止上面的后台实例，避免 profile 锁冲突）：
    mkdir -p ~/.config/systemd/user
    cat > ~/.config/systemd/user/orca-host.service <<'UNIT'
 [Unit]
@@ -515,14 +581,15 @@ UNIT
 ORCA_NEXT
 else
   # U182: containers/WSL/macOS have no user systemd; print runnable commands
-  # instead of instructions that are guaranteed to fail. Never auto-background.
+  # instead of instructions that are guaranteed to fail.
   cat <<ORCA_NEXT
 
-后续命令在开发机上执行（未检测到 systemctl：容器 / WSL / macOS 不支持用户级自启）：
-1) 前台启动 Orca 宿主模式（调试，注册并开始心跳）：
+宿主已在后台启动（pid $ORCA_HOST_PID，日志 $ORCA_HOST_LOG）。
+未检测到 systemctl：容器 / WSL / macOS 不支持用户级自启。后续可选命令：
+1) 前台调试前先停止后台实例：kill $ORCA_HOST_PID
    set -a; . "$ORCA_ENV_FILE"; set +a
    $ORCA_HOST_BIN --host-mode
-2) nohup 后台启动（脚本不自动执行，复制后运行）：
+2) nohup 后台启动（可重复执行）：
    set -a; . "$ORCA_ENV_FILE"; set +a
    nohup $ORCA_HOST_BIN --host-mode >> "$HOME/.orca-cloud/host.log" 2>&1 &
 ORCA_NEXT
@@ -573,7 +640,7 @@ fi
 `
     : ''
   // U183 R6: type/path whitelist, empty-dir extraction, real-tree recheck and
-  // atomic activation. Violations exit 69; a failed activation exits 70.
+  // atomic activation. Any safety, unpack or activation failure exits 67.
   const bundleUnpack = bundle
     ? `# U183 R6: inspect entries before extracting, then switch current atomically.
 ORCA_RELAY_RELEASES_DIR="$ORCA_RELAY_ROOT/releases"
@@ -586,25 +653,25 @@ if [ -L "$ORCA_RELAY_CURRENT_LINK" ] && [ "$(readlink "$ORCA_RELAY_CURRENT_LINK"
 else
   # Allow only regular files and directories; x/g (pax), l/h, b/c, p and s fail.
   if ! ORCA_RELAY_TAR_TYPES="$(tar -tvzf "$ORCA_RELAY_BUNDLE_FILE" | cut -c1 | sort -u | tr -d '\\n')"; then
-    echo ">> bundle 无法读取条目（69）" >&2
-    exit 69
+    echo ">> bundle 无法读取条目（67）" >&2
+    exit 67
   fi
   case "$ORCA_RELAY_TAR_TYPES" in
     ''|*[!d-]*)
-      echo ">> bundle 含非法条目类型（69）：$ORCA_RELAY_TAR_TYPES" >&2
-      exit 69 ;;
+      echo ">> bundle 含非法条目类型（67）：$ORCA_RELAY_TAR_TYPES" >&2
+      exit 67 ;;
   esac
   if ! ORCA_RELAY_TAR_NAMES="$(tar -tzf "$ORCA_RELAY_BUNDLE_FILE")"; then
-    echo ">> bundle 无法读取条目名（69）" >&2
-    exit 69
+    echo ">> bundle 无法读取条目名（67）" >&2
+    exit 67
   fi
   if printf '%s\\n' "$ORCA_RELAY_TAR_NAMES" | grep -Eq '(^/|(^|/)\\.\\.(/|$))'; then
-    echo ">> bundle 含绝对路径或 .. 条目（69）" >&2
-    exit 69
+    echo ">> bundle 含绝对路径或 .. 条目（67）" >&2
+    exit 67
   fi
   if printf '%s\\n' "$ORCA_RELAY_TAR_NAMES" | grep -Ev '^(VERSION|apps/|packages/)' >/dev/null; then
-    echo ">> bundle 含白名单之外的顶层条目（69）" >&2
-    exit 69
+    echo ">> bundle 含白名单之外的顶层条目（67）" >&2
+    exit 67
   fi
   ORCA_RELAY_TAR_OVERWRITE_FLAG=""
   if tar --version 2>/dev/null | head -n 1 | grep -q 'GNU tar'; then
@@ -616,27 +683,31 @@ else
   mkdir -p "$ORCA_RELAY_RELEASE_TMP"
   if ! tar -xzf "$ORCA_RELAY_BUNDLE_FILE" -C "$ORCA_RELAY_RELEASE_TMP" --no-same-owner --no-same-permissions $ORCA_RELAY_TAR_OVERWRITE_FLAG; then
     rm -rf "$ORCA_RELAY_RELEASE_TMP"
-    echo ">> bundle 解包失败（69）" >&2
-    exit 69
+    # Do not leave an empty releases/ behind when nothing was activated.
+    rmdir "$ORCA_RELAY_RELEASES_DIR" 2>/dev/null || true
+    echo ">> bundle 解包失败（67）" >&2
+    exit 67
   fi
   # Re-check the real tree: only regular files and directories may survive.
   if [ -n "$(find "$ORCA_RELAY_RELEASE_TMP" ! -type f ! -type d -print -quit)" ]; then
     rm -rf "$ORCA_RELAY_RELEASE_TMP"
-    echo ">> bundle 解包后含非普通文件/目录（69）" >&2
-    exit 69
+    rmdir "$ORCA_RELAY_RELEASES_DIR" 2>/dev/null || true
+    echo ">> bundle 解包后含非普通文件/目录（67）" >&2
+    exit 67
   fi
   for ORCA_RELAY_REQUIRED in VERSION apps/relay/src/relay.ts packages/contract/src/internal-fetch.ts; do
     if [ ! -f "$ORCA_RELAY_RELEASE_TMP/$ORCA_RELAY_REQUIRED" ]; then
       rm -rf "$ORCA_RELAY_RELEASE_TMP"
-      echo ">> bundle 缺少必需文件 $ORCA_RELAY_REQUIRED（69）" >&2
-      exit 69
+      rmdir "$ORCA_RELAY_RELEASES_DIR" 2>/dev/null || true
+      echo ">> bundle 缺少必需文件 $ORCA_RELAY_REQUIRED（67）" >&2
+      exit 67
     fi
   done
   rm -rf "$ORCA_RELAY_RELEASE_DIR"
   if ! mv "$ORCA_RELAY_RELEASE_TMP" "$ORCA_RELAY_RELEASE_DIR"; then
     rm -rf "$ORCA_RELAY_RELEASE_TMP"
-    echo ">> bundle 释放目录落位失败（69）" >&2
-    exit 69
+    echo ">> bundle 释放目录落位失败（67）" >&2
+    exit 67
   fi
 fi
 
@@ -644,16 +715,16 @@ if [ "$ORCA_RELAY_RELEASE_REUSED" = "0" ]; then
   # Keep the old target as previous only when the sha actually changes.
   ORCA_RELAY_OLD_TARGET="$(readlink "$ORCA_RELAY_CURRENT_LINK" 2>/dev/null || true)"
   if [ -n "$ORCA_RELAY_OLD_TARGET" ] && [ "$ORCA_RELAY_OLD_TARGET" != "releases/$ORCA_RELAY_BUNDLE_SHA256" ]; then
-    ln -sfn "$ORCA_RELAY_OLD_TARGET" "$ORCA_RELAY_ROOT/previous.new" || { echo ">> 记录 previous 失败（70）" >&2; exit 70; }
+    ln -sfn "$ORCA_RELAY_OLD_TARGET" "$ORCA_RELAY_ROOT/previous.new" || { echo ">> 记录 previous 失败（67）" >&2; exit 67; }
     if ! mv -T "$ORCA_RELAY_ROOT/previous.new" "$ORCA_RELAY_ROOT/previous" 2>/dev/null; then
       rm -f "$ORCA_RELAY_ROOT/previous"
-      mv "$ORCA_RELAY_ROOT/previous.new" "$ORCA_RELAY_ROOT/previous" || { echo ">> 记录 previous 失败（70）" >&2; exit 70; }
+      mv "$ORCA_RELAY_ROOT/previous.new" "$ORCA_RELAY_ROOT/previous" || { echo ">> 记录 previous 失败（67）" >&2; exit 67; }
     fi
   fi
-  ln -sfn "releases/$ORCA_RELAY_BUNDLE_SHA256" "$ORCA_RELAY_CURRENT_LINK.new" || { echo ">> 创建新 current 链接失败（70）" >&2; exit 70; }
+  ln -sfn "releases/$ORCA_RELAY_BUNDLE_SHA256" "$ORCA_RELAY_CURRENT_LINK.new" || { echo ">> 创建新 current 链接失败（67）" >&2; exit 67; }
   if ! mv -T "$ORCA_RELAY_CURRENT_LINK.new" "$ORCA_RELAY_CURRENT_LINK" 2>/dev/null; then
     rm -f "$ORCA_RELAY_CURRENT_LINK.new"
-    ln -sfn "releases/$ORCA_RELAY_BUNDLE_SHA256" "$ORCA_RELAY_CURRENT_LINK" || { echo ">> 切换 current 失败（70）" >&2; exit 70; }
+    ln -sfn "releases/$ORCA_RELAY_BUNDLE_SHA256" "$ORCA_RELAY_CURRENT_LINK" || { echo ">> 切换 current 失败（67）" >&2; exit 67; }
   fi
   echo ">> 已激活版本 $ORCA_RELAY_BUNDLE_SHA256"
 fi

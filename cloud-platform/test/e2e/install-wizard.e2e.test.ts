@@ -10,6 +10,7 @@ import {
   readFileSync,
   readdirSync,
   readlinkSync,
+  rmSync,
   statSync,
   symlinkSync,
   writeFileSync
@@ -153,6 +154,45 @@ const HOSTNAME_STUB =
 
 const ORCA_STUB = '#!/usr/bin/env bash\nexit 0\n'
 
+/** H9a: a fake host-mode process that publishes the readiness file then stays
+ * alive so the installer's `kill -0` liveness check passes. */
+function makeHostStateHome(
+  state: Record<string, unknown>,
+  options: { stayAlive?: boolean } = {}
+): string {
+  const home = mkdtempSync(join(tmpdir(), 'orca-install-h9a-'))
+  mkdirSync(join(home, '.orca-cloud', 'tls'), { recursive: true })
+  writeFileSync(join(home, '.orca-cloud', 'tls', 'host.crt'), 'stub')
+  writeFileSync(join(home, '.orca-cloud', 'tls', 'host.key'), 'stub')
+  mkdirSync(join(home, 'bin'))
+  writeFileSync(join(home, 'bin', 'hostname'), HOSTNAME_STUB, { mode: 0o755 })
+  // `"pid": 0` is a placeholder for the stub's own $$; a real pid (dead-pid
+  // fixture) is written literally. The function form keeps `$$` literal.
+  const json = JSON.stringify(state, null, 2).replace('"pid": 0', () => '"pid": $$')
+  const body = `#!/usr/bin/env bash
+state="$HOME/.orca-cloud/profile/orca-cloud-host-state.json"
+mkdir -p "$(dirname "$state")"
+cat > "$state" <<JSON
+${json}
+JSON
+${options.stayAlive === false ? 'exit 0' : 'exec sleep 60'}
+`
+  writeFileSync(join(home, 'bin', 'orca-ide'), body, { mode: 0o755 })
+  return home
+}
+
+function killStateHost(home: string): void {
+  try {
+    const file = join(home, '.orca-cloud', 'profile', 'orca-cloud-host-state.json')
+    const pid = (JSON.parse(readFileSync(file, 'utf8')) as { pid?: number }).pid
+    if (pid) {
+      process.kill(pid, 'SIGKILL')
+    }
+  } catch {
+    // File or process already gone; nothing to clean up.
+  }
+}
+
 /** U183 R4: the relay preflight asks node for its version via `-p`. */
 function nodeStub(version: string): string {
   return `#!/usr/bin/env bash
@@ -268,6 +308,9 @@ function runInstallScript(
       PATH: `${join(home, 'bin')}:${process.env.PATH ?? ''}`,
       HOME: home,
       TMPDIR: process.env.TMPDIR ?? '/tmp',
+      // H9a: legacy cases end before the host runs; only the self-check suite
+      // waits. 0 disables the readiness poll.
+      ORCA_HOST_STATE_TIMEOUT: '0',
       ...envOverrides
     }
   })
@@ -731,6 +774,76 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     assert.match(run.stderr, /未找到 Orca 宿主程序/)
     assert.match(run.stderr, /orca-ide/)
     assert.equal(existsSync(join(home, '.orca-cloud', 'host.env')), false)
+    assert.equal(run.status, 78, 'preflight failure keeps EX_CONFIG')
+  })
+
+  describe('H9a: 安装脚本状态自证', () => {
+    test('status=online、lastHeartbeatOk=true、hostId、存活 pid → 0', async () => {
+      const home = makeHostStateHome({
+        schemaVersion: 2,
+        status: 'online',
+        hostId: 'host_h9a',
+        lastHeartbeatOk: true,
+        lastHeartbeatAt: Date.now(),
+        pid: 0
+      })
+      try {
+        const run = runInstallScript(await fetchHostScript(), home, {
+          ORCA_HOST_STATE_TIMEOUT: '8'
+        })
+        assert.equal(run.status, 0, run.stderr)
+        assert.match(run.stdout, /宿主已上线/)
+        assert.match(run.stdout, /host_h9a/)
+      } finally {
+        killStateHost(home)
+      }
+    })
+
+    test('status=starting 不算在线 → 70，打印状态摘录与日志路径', async () => {
+      const home = makeHostStateHome({
+        schemaVersion: 2,
+        status: 'starting',
+        hostId: null,
+        lastHeartbeatOk: false,
+        pid: 0
+      })
+      try {
+        const run = runInstallScript(await fetchHostScript(), home, {
+          ORCA_HOST_STATE_TIMEOUT: '2'
+        })
+        assert.equal(run.status, 70, run.stdout)
+        assert.match(run.stderr, /状态文件摘录/)
+        assert.match(run.stderr, /host\.log/)
+      } finally {
+        killStateHost(home)
+      }
+    })
+
+    test('pid 不存在 → 70', async () => {
+      const home = makeHostStateHome(
+        {
+          schemaVersion: 2,
+          status: 'online',
+          hostId: 'host_dead',
+          lastHeartbeatOk: true,
+          pid: 999999
+        },
+        { stayAlive: false }
+      )
+      const run = runInstallScript(await fetchHostScript(), home, {
+        ORCA_HOST_STATE_TIMEOUT: '2'
+      })
+      assert.equal(run.status, 70, run.stdout)
+    })
+
+    test('宿主未写状态文件 → 70', async () => {
+      const home = makeInstallHome()
+      const run = runInstallScript(await fetchHostScript(), home, {
+        ORCA_HOST_STATE_TIMEOUT: '1'
+      })
+      assert.equal(run.status, 70, run.stdout)
+      assert.match(run.stderr, /状态文件不存在/)
+    })
   })
 
   test('U183 R4: relay 缺 node 时以 64 失败且不写配置', async () => {
@@ -1138,18 +1251,18 @@ describe('U183 R6: tar 安全检查、解包与原子激活', () => {
     assert.match(script, /previous/)
   })
 
-  test('U183 R6: symlink 条目的恶意包以 69 退出且无 releases 残留', async () => {
+  test('U183 R6: symlink 条目的恶意包以 67 退出且无 releases 残留', async () => {
     const bundle = buildBundle((dir) =>
       symlinkSync('/etc/passwd', join(dir, 'apps/relay/evil-link'))
     )
     const run = await runOfflineBundle(bundle)
-    assert.equal(run.status, 69, run.stderr)
-    assert.match(run.stderr, /（69）/)
+    assert.equal(run.status, 67, run.stderr)
+    assert.match(run.stderr, /（67）/)
     assert.equal(existsSync(join(run.relayRoot, 'releases')), false)
     assert.equal(existsSync(join(run.home, '.orca-cloud', 'relay.env')), false)
   })
 
-  test('U183 R6: 绝对路径条目的恶意包以 69 退出', async () => {
+  test('U183 R6: 绝对路径条目的恶意包以 67 退出', async () => {
     const bundle = buildBundle(undefined, (dir, out) => [
       '-cPzf',
       out,
@@ -1160,12 +1273,12 @@ describe('U183 R6: tar 安全检查、解包与原子激活', () => {
       join(dir, 'packages')
     ])
     const run = await runOfflineBundle(bundle)
-    assert.equal(run.status, 69, run.stderr)
-    assert.match(run.stderr, /绝对路径|69/)
+    assert.equal(run.status, 67, run.stderr)
+    assert.match(run.stderr, /绝对路径|67/)
     assert.equal(existsSync(join(run.relayRoot, 'releases')), false)
   })
 
-  test('U183 R6: .. 条目的恶意包以 69 退出', async () => {
+  test('U183 R6: .. 条目的恶意包以 67 退出', async () => {
     const bundle = buildBundle(undefined, (dir, out) => [
       '-czf',
       out,
@@ -1174,9 +1287,18 @@ describe('U183 R6: tar 安全检查、解包与原子激活', () => {
       '../VERSION'
     ])
     const run = await runOfflineBundle(bundle)
-    assert.equal(run.status, 69, run.stderr)
-    assert.match(run.stderr, /\.\.|69/)
+    assert.equal(run.status, 67, run.stderr)
+    assert.match(run.stderr, /\.\.|67/)
     assert.equal(existsSync(join(run.relayRoot, 'releases')), false)
+  })
+
+  test('U183 R6: 缺少必需文件的包以 67 退出且无 releases 残留', async () => {
+    const bundle = buildBundle((dir) => rmSync(join(dir, 'apps/relay/src/relay.ts')))
+    const run = await runOfflineBundle(bundle)
+    assert.equal(run.status, 67, run.stderr)
+    assert.match(run.stderr, /缺少必需文件.*（67）/)
+    const releases = join(run.relayRoot, 'releases')
+    assert.deepEqual(existsSync(releases) ? readdirSync(releases) : [], [])
   })
 
   test('U183 R6: 良性包解包正确，current 指向、previous 保留', async () => {

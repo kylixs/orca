@@ -48,6 +48,23 @@ describe('U183 R12: install-script command helper', () => {
     assert.equal(shellQuote("a'b"), `'a'\\''b'`)
   })
 
+  test('H9a: host 脚本解析宿主程序真实路径并以 --host-mode 启动', () => {
+    const script = hostInstallScript({
+      platformUrl: 'https://platform.example',
+      token: 'tok'
+    })
+    // ORCA_HOST_BIN is the resolved absolute path from `command -v`.
+    assert.match(script, /ORCA_HOST_BIN="\$\(command -v orca-ide/)
+    assert.match(script, /\$ORCA_HOST_BIN --host-mode/)
+    // Bare `orca` must never be the start command (GNOME Orca collision).
+    assert.doesNotMatch(script, /(^|[^A-Za-z_])orca --host-mode/)
+    // Host mode pins its own profile so the state file path is predictable.
+    assert.match(script, /ORCA_USER_DATA_PATH=/)
+    assert.match(script, /orca-cloud-host-state\.json/)
+    // Re-enrolment is a one-shot CLI flag, never a persistent env entry.
+    assert.doesNotMatch(script, /ORCA_CLOUD_REENROLL/)
+  })
+
   test('host/relay 生成脚本都消费 helper 片段', () => {
     const host = hostInstallScript({ platformUrl: 'https://platform.example', token: 'tok' })
     const relay = relayInstallScript({
