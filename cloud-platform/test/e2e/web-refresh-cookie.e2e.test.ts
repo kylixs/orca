@@ -690,4 +690,62 @@ describe('U197 S4 Web Cookie mode（happy-dom + 真实 createApp）', () => {
     assert.equal(stored.refresh, null, 'legacy refresh is deleted after the no-body success')
     assert.equal(stored.mode, 'cookie')
   })
+
+  test('D17 未知标记 + 有效 access + 探测 503：进应用，不花 body 回退，不写 legacy', async () => {
+    const base = await start({ cookieMode: 'never', publicOrigin: '' })
+    const legacy = await legacyTokens(base)
+    const page = loadWebConsolePage(base, {
+      storage: {
+        'orca.access': legacy.accessToken,
+        'orca.refresh': legacy.refreshToken
+      },
+      // U197 D17: the no-body probe is an outage, not a session verdict.
+      failOnLoad: [{ call: 'POST /v1/auth/refresh', status: 503 }]
+    })
+    await page.settle()
+
+    assert.equal(page.hidden('#view-app'), false, 'the valid access token still restores the app')
+    assert.equal(page.hidden('#view-login'), true)
+    assert.equal(refreshCalls(page).length, 1, 'exactly one probe per load, never retried')
+    assert.equal(refreshBodies(page).length, 0, 'an outage must not spend the body fallback')
+    assert.deepEqual(refreshStatuses(page), [503])
+    assert.ok(
+      page.calls().includes('GET /v1/me'),
+      'recovery must continue through the persistent access token'
+    )
+    const stored = storedAuth(page)
+    assert.equal(stored.mode, null, 'an outage is not proof of a legacy deployment')
+    assert.equal(stored.access, legacy.accessToken, 'the persistent access token is kept')
+    assert.equal(stored.refresh, legacy.refreshToken, 'the legacy refresh key is kept')
+  })
+
+  test('未知标记 + 无 body 探测 200 但缺 refreshCookie：仍按一次探测进入 Cookie 模式', async () => {
+    // D17 review F5: pin the existing fallback at app.js `refreshWithCookie`
+    // → `if (migrating) setCookieMode(true)`. A 200 that renews the access token
+    // is the migration gate even when an old/reduced server omits the marker.
+    const base = await start({ cookieMode: 'never', publicOrigin: '' })
+    const legacy = await legacyTokens(base)
+    const page = loadWebConsolePage(base, {
+      storage: {
+        'orca.access': legacy.accessToken,
+        'orca.refresh': legacy.refreshToken,
+        'orca.tokenOwner': 'admin'
+      },
+      failOnLoad: [
+        {
+          call: 'POST /v1/auth/refresh',
+          respond: { status: 200, body: { accessToken: legacy.accessToken } }
+        }
+      ]
+    })
+    await page.settle()
+
+    assert.equal(page.hidden('#view-app'), false)
+    assert.equal(refreshCalls(page).length, 1, 'the no-body success is the only probe')
+    assert.equal(refreshBodies(page).length, 0, 'no body fallback is spent')
+    const stored = storedAuth(page)
+    assert.equal(stored.access, null, 'a no-body success deletes the legacy keys')
+    assert.equal(stored.refresh, null)
+    assert.equal(stored.mode, 'cookie', 'the success itself is the migration gate')
+  })
 })

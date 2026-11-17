@@ -4,8 +4,10 @@ import { createApp, type ApiHandle } from '../../apps/api/src/server.ts'
 import { loadWebConsolePage, type WebConsolePage } from './web-console-page.ts'
 
 /**
- * U229 F1/F2: a refresh result belongs to the auth epoch that started it, and an
- * ownerless legacy refresh key is never a body-fallback credential.
+ * U229 F1/F2: a refresh result belongs to the auth epoch that started it. The
+ * ownerless-key guard holds only in an already-proven Cookie deployment; D17's
+ * unknown-mode startup probe may spend a pre-U221 key once — the expected
+ * migration recorded as U219.
  */
 
 const ORIGIN = 'https://web.u229.local'
@@ -190,6 +192,7 @@ describe('U229 F2 无 owner 旧键不得跨账号回退', () => {
     await delay(1300)
     // The unproven-capability startup used the ownerless key once (AC9b); only
     // a body refresh after login would be the cross-account regression.
+    // D17/U219: that startup fallback is the expected migration, not a leak.
     const bodiesBefore = refreshBodies(page).length
     await page.clickNav('relays')
     await page.settle()

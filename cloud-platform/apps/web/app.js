@@ -5364,11 +5364,19 @@ function finishStartupMe(me, startupEpoch, cachedUser) {
           // fall through to the login view
         }
       }
+      // U197 D17: an outage during the probe (403/408/429/5xx/transport) is no
+      // session verdict. A still-valid access token continues through the
+      // normal `/v1/me` path below — no second probe, no body fallback, no
+      // `legacy` marker. `cookieMode` is still false here, so that branch is
+      // skipped and the persistent-token path runs instead.
+      const keepAccess = refresh === 'error' && state.accessToken !== ''
       if (state.authEpoch !== startupEpoch && state.user) return
-      abandonStartupAuth()
-      if (cachedUser) localStorage.removeItem('orca.user')
-      showLogin()
-      return
+      if (!keepAccess) {
+        abandonStartupAuth()
+        if (cachedUser) localStorage.removeItem('orca.user')
+        showLogin()
+        return
+      }
     }
     // U197: a proven Cookie deployment recovers from the HttpOnly cookie alone.
     // One refresh attempt only; a failure signs out instead of retrying.
