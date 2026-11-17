@@ -33,7 +33,11 @@ export function summarize(rows, loadAvg, cpuCount) {
       .slice()
       .sort((a, b) => b.rssKb - a.rssKb)
       .slice(0, 5)
-      .map((row) => ({ pid: row.pid, rssMb: Math.round(row.rssKb / 1024), command: row.command.slice(0, 80) }))
+      .map((row) => ({
+        pid: row.pid,
+        rssMb: Math.round(row.rssKb / 1024),
+        command: row.command.slice(0, 80)
+      }))
   }
 }
 
@@ -57,7 +61,7 @@ export function violations(sampleValue, limits) {
   return found
 }
 
-function startMonitor({ intervalSec, outDir, limits }) {
+export function startMonitor({ intervalSec, outDir, limits }) {
   mkdirSync(outDir, { recursive: true })
   const jsonl = join(outDir, 'system-resources.jsonl')
   const samples = []
@@ -77,10 +81,13 @@ function startMonitor({ intervalSec, outDir, limits }) {
           nodeProcessCount: Math.max(acc.nodeProcessCount, cur.nodeProcessCount),
           rssGb: Math.max(acc.rssGb, cur.rssGb)
         }),
-        { nodeProcessCount: 0, rssGb: 0 },
+        { nodeProcessCount: 0, rssGb: 0 }
       )
       const summary = { samples: samples.length, peak, jsonl }
-      writeFileSync(join(outDir, 'system-resources-summary.json'), `${JSON.stringify(summary, null, 2)}\n`)
+      writeFileSync(
+        join(outDir, 'system-resources-summary.json'),
+        `${JSON.stringify(summary, null, 2)}\n`
+      )
       console.log(`[resource-watch] samples=${summary.samples} peak=${JSON.stringify(peak)}`)
       return summary
     }
@@ -88,7 +95,14 @@ function startMonitor({ intervalSec, outDir, limits }) {
 }
 
 function parseArgs(argv) {
-  const options = { intervalSec: 5, outDir: 'cloud-platform/evidence/resource-monitor', maxNode: 24, maxRssGb: 12, maxLoad: 0, command: [] }
+  const options = {
+    intervalSec: 5,
+    outDir: 'cloud-platform/evidence/resource-monitor',
+    maxNode: 24,
+    maxRssGb: 12,
+    maxLoad: 0,
+    command: []
+  }
   let index = 0
   for (; index < argv.length; index += 1) {
     const arg = argv[index]
@@ -105,7 +119,8 @@ function parseArgs(argv) {
     else if (key === 'max-rss-gb') options.maxRssGb = Number(value)
     else if (key === 'max-load') options.maxLoad = Number(value)
   }
-  options.intervalSec = Number.isFinite(options.intervalSec) && options.intervalSec > 0 ? options.intervalSec : 5
+  options.intervalSec =
+    Number.isFinite(options.intervalSec) && options.intervalSec > 0 ? options.intervalSec : 5
   return options
 }
 
@@ -114,7 +129,7 @@ export async function runWithMonitor(options) {
   const monitor = startMonitor({
     intervalSec: options.intervalSec,
     outDir: options.outDir,
-    limits: { maxNode: options.maxNode, maxRssGb: options.maxRssGb, maxLoad: options.maxLoad },
+    limits: { maxNode: options.maxNode, maxRssGb: options.maxRssGb, maxLoad: options.maxLoad }
   })
   const [cmd, ...args] = options.command
   const code = await new Promise((done) => {
@@ -128,7 +143,9 @@ export async function runWithMonitor(options) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const options = parseArgs(process.argv.slice(2))
   if (options.command.length === 0) {
-    console.error('usage: monitor-system-resources.mjs [--interval=5] [--out=dir] [--max-node=24] [--max-rss-gb=12] -- <command...>')
+    console.error(
+      'usage: monitor-system-resources.mjs [--interval=5] [--out=dir] [--max-node=24] [--max-rss-gb=12] -- <command...>'
+    )
     process.exit(2)
   }
   runWithMonitor(options).then((code) => process.exit(code))

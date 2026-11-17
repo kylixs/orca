@@ -2,6 +2,7 @@
 // Tiered test runner: run only what this change needs. Full suites are release-gate only.
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { startMonitor } from './monitor-system-resources.mjs'
 import { pathToFileURL } from 'node:url'
 
 const VITEST = 'node_modules/.bin/vitest'
@@ -107,10 +108,19 @@ function runCloudE2E(paths) {
 
 function main(argv) {
   const tier = argv[0]
+  const monitor = startMonitor({
+    intervalSec: 5,
+    outDir: `cloud-platform/evidence/resource-monitor-${tier ?? 'unknown'}-${Date.now()}`,
+    limits: { maxNode: 24, maxRssGb: 12, maxLoad: 0 }
+  })
+  const finish = (code) => {
+    monitor.stop()
+    return code
+  }
   if (tier === 'critical') {
     const vitest = runVitest(CRITICAL_VITEST)
-    if (vitest !== 0) return vitest
-    return runCloudE2E(CRITICAL_CLOUD_E2E)
+    if (vitest !== 0) return finish(vitest)
+    return finish(runCloudE2E(CRITICAL_CLOUD_E2E))
   }
   if (tier === 'changed') {
     const targets = changedTargets(changedFiles())
@@ -118,16 +128,17 @@ function main(argv) {
       `changed tier: ${targets.vitest.length} vitest paths, ${targets.cloudE2E.length} cloud e2e paths`
     )
     const vitest = runVitest(targets.vitest)
-    if (vitest !== 0) return vitest
-    return runCloudE2E(targets.cloudE2E)
+    if (vitest !== 0) return finish(vitest)
+    return finish(runCloudE2E(targets.cloudE2E))
   }
   if (tier === 'smoke') {
-    return run('node', ['cloud-platform/scripts/smoke/desktop-smoke-gate.mjs'])
+    return finish(run('node', ['cloud-platform/scripts/smoke/desktop-smoke-gate.mjs']))
   }
   if (tier === 'full') {
     console.error('full tier is a release gate: use the documented L4 run (serial, node>=24.16)')
     return 2
   }
+  finish(2)
   console.error('usage: run-test-tier.mjs <smoke|critical|changed|full>')
   return 2
 }
