@@ -4209,3 +4209,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U225 复审 CHANGES-REQUIRED（1 P2）→ 已修**：`cfaa08a0e01` 在迁移测试加 `sha256Lf`（CRLF 归一）用于两处 pin，避免 Windows autocrlf 检出造成假红与「把 CRLF 哈希写进常量」；主会话复跑 6 pass/1 skip/0 fail，待最终确认。其余 N3R/N2/P3 均 CLOSED。
 - **T1 关键业务回归通过**（HEAD `553529d16d2`，Node 24.16 自动切换）：cloud-platform 段 **50/50**（3 suites：策略版本冲突/权限矩阵/项目策略三态等）、Electron 段 vitest critical 全绿，EXIT=0；server.ts 经 U218/U220 改动后关键路径零回归。
 - **U225 关闭**：复审 APPROVED（F1 CLOSED，`sha256Lf` 归一且不可绕过；N3R/N1/N2/P3 全部闭环）。补充 `f086e2dfd2a` 以 `.gitattributes` 为 `apps/web/app.js` 与旧构建快照固定 `text eol=lf`，与仓库既有字节哈希先例一致。台账 U225 翻 🟢。
+- **AC 矩阵独立审计与修订**：19 行 OK、1 GAP（AC15(d) never 刷新缺断言）、1 WARN（AC14 应绿）。修复 `e12c442453b`——S2 新增 never 刷新用例（不下发 Cookie、无能力标记、body 新 refresh），**38/38**；矩阵改为 🟢16/🟡1（AC7 双标签登出 UI）/🔴3（AC9b/9c/15g，D17）/⚪1（AC10/D10），并更正证据归属与基线（114/112/2；含 REG 121/119/2）。台账 U226 翻 🟢。
