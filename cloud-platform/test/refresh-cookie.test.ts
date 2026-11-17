@@ -5,7 +5,8 @@ import {
   parseRefreshCookie,
   resolveRefreshCookieConfig,
   sameOrigin,
-  serializeRefreshCookie
+  serializeRefreshCookie,
+  serializeRefreshCookieClear
 } from '../apps/api/src/refresh-cookie.ts'
 
 describe('U197 S1 refresh cookie parsing', () => {
@@ -87,13 +88,33 @@ describe('U197 S1 refresh cookie serialization', () => {
       assert.throws(() => serializeRefreshCookie({ value, secure: false, maxAgeSeconds: 1 }))
     }
   })
+
+  test('clearing covers host-only, Domain, and the legacy Path=/ scope', () => {
+    const clear = serializeRefreshCookieClear({ secure: true, domain: 'console.example.com' })
+    assert.deepEqual(clear, [
+      'orca_refresh=; Path=/v1/auth; Max-Age=0; HttpOnly; SameSite=Lax; Secure',
+      'orca_refresh=; Path=/v1/auth; Domain=console.example.com; Max-Age=0; HttpOnly; SameSite=Lax; Secure',
+      'orca_refresh=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax; Secure'
+    ])
+  })
+
+  test('clearing without a configured origin omits Domain but still clears Path=/', () => {
+    const clear = serializeRefreshCookieClear({ secure: false, domain: null })
+    assert.deepEqual(clear, [
+      'orca_refresh=; Path=/v1/auth; Max-Age=0; HttpOnly; SameSite=Lax',
+      'orca_refresh=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax'
+    ])
+  })
 })
 
 describe('U197 S1 origin normalization', () => {
   test('lowercases, drops the default port and the trailing slash', () => {
     assert.equal(normalizeOrigin('HTTPS://Console.Example.COM:443/'), 'https://console.example.com')
     assert.equal(normalizeOrigin('http://Console.Example.COM:80'), 'http://console.example.com')
-    assert.equal(normalizeOrigin('https://console.example.com:8443'), 'https://console.example.com:8443')
+    assert.equal(
+      normalizeOrigin('https://console.example.com:8443'),
+      'https://console.example.com:8443'
+    )
   })
 
   test('rejects non-http, credentials, paths, queries and the literal null', () => {

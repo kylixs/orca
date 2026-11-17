@@ -27,7 +27,7 @@ const REFRESH_TTL_MS = 120_000
 const REFRESH_MAX_AGE = 120
 const READY = /\[api\] listening on http:\/\/127\.0\.0\.1:(\d+)/
 
-type ServiceKey = 'always' | 'never' | 'unconfigured'
+type ServiceKey = 'always' | 'never' | 'unconfigured' | 'domain'
 type AuthEvaluation = { status: number; body: Record<string, unknown>; documentCookie: string }
 
 let browser: Browser
@@ -36,9 +36,16 @@ let webRoot = ''
 let always: Service
 let never: Service
 let unconfigured: Service
+let domain: Service
+let domainUrl = ''
 let otherOriginServer: HttpServer | undefined
 let otherOrigin = ''
-const observed: Record<ServiceKey, string[]> = { always: [], never: [], unconfigured: [] }
+const observed: Record<ServiceKey, string[]> = {
+  always: [],
+  never: [],
+  unconfigured: [],
+  domain: []
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object'
@@ -115,22 +122,30 @@ before(async () => {
   const neverPort = await reservePort()
   const unconfiguredPort = await reservePort()
   const otherPort = await reservePort()
+  const domainPort = await reservePort()
   const alwaysOrigin = `http://${HOST}:${alwaysPort}`
   always = await startApi('always', 'always', alwaysOrigin, alwaysPort)
   never = await startApi('never', 'never', `http://${HOST}:${neverPort}`, neverPort)
   unconfigured = await startApi('unconfigured', 'auto', '', unconfiguredPort)
+  // A DNS name makes a Domain-scoped cookie observable; `auto` over plain http
+  // drops Secure (non-loopback) so Chromium actually sends it.
+  domainUrl = `http://console.test:${String(domainPort)}`
+  domain = await startApi('domain', 'auto', domainUrl, domainPort)
   otherOriginServer = createHttpServer((_req, res) => {
     res.setHeader('content-type', 'text/html; charset=utf-8')
     res.end('<!doctype html><html><body><div id="other-origin">other</div></body></html>')
   })
   await listenHttp(otherOriginServer, otherPort)
   otherOrigin = `http://${HOST}:${otherPort}`
-  browser = await chromium.launch({ headless: true })
+  browser = await chromium.launch({
+    headless: true,
+    args: ['--host-resolver-rules=MAP console.test 127.0.0.1']
+  })
 }, 180_000)
 
 after(async () => {
   await browser?.close()
-  await Promise.all([always?.stop(), never?.stop(), unconfigured?.stop()])
+  await Promise.all([always?.stop(), never?.stop(), unconfigured?.stop(), domain?.stop()])
   await closeHttp(otherOriginServer)
   if (workDir !== '') {
     rmSync(workDir, { recursive: true, force: true })
@@ -397,12 +412,13 @@ describe('U197 S5 真实 Chromium：Cookie 刷新 / CSRF / 重复 Cookie', () =>
     }
   })
 
-  test('4. 重复 Cookie 硬 401：不回退 body、不撤销 session', async () => {
+  test('4. 重复 Cookie 硬 401：不回退 body、不撤销 session、清理三种作用域', async () => {
     const { context, page } = await openPage(always.url)
     try {
       const before = await signIn(page, always.url, 'u197-duplicate')
       // addCookies is the only way to make a second HttpOnly cookie; page script
       // cannot write it and fetch cannot set a forbidden Cookie header.
+      // The legacy Path=/ scope also exercises the historical cleanup header.
       await context.addCookies([
         {
           name: 'orca_refresh',
@@ -423,15 +439,6 @@ describe('U197 S5 真实 Chromium：Cookie 刷新 / CSRF / 重复 Cookie', () =>
         ['/', '/v1/auth']
       )
 
-      const duplicate = await refresh(page, always.url, { contentType: 'application/json' })
-      assert.equal(duplicate.result.status, 401)
-      assert.equal(errorCode(duplicate.result.body), 'SESSION_EXPIRED')
-      assert.equal(
-        (await setCookieHeaders(duplicate.response)).length,
-        0,
-        'a duplicate is a hard 401, not a clear'
-      )
-
       // A valid body token must not rescue the request: no body fallback.
       const bodyFallback = await refresh(page, always.url, {
         contentType: 'application/json',
@@ -440,17 +447,76 @@ describe('U197 S5 真实 Chromium：Cookie 刷新 / CSRF / 重复 Cookie', () =>
       assert.equal(bodyFallback.result.status, 401)
       assert.equal(errorCode(bodyFallback.result.body), 'SESSION_EXPIRED')
 
-      // Drop only the decoy; the session must still be alive on the real cookie.
-      await context.clearCookies({ name: 'orca_refresh', path: '/' })
+      const clears = await setCookieHeaders(bodyFallback.response)
+      assert.equal(
+        clears.length,
+        3,
+        `expected three clearing scopes, got ${JSON.stringify(clears)}`
+      )
+      for (const header of clears) {
+        assert.match(header, /^orca_refresh=;/)
+        assert.match(header, /Max-Age=0/)
+      }
+      assert.ok(clears.some((header) => /^orca_refresh=; Path=\/v1\/auth;/.test(header)))
+      assert.ok(clears.some((header) => /Domain=127\.0\.0\.1/.test(header)))
+      assert.ok(clears.some((header) => /^orca_refresh=; Path=\/;/.test(header)))
+
+      // The duplicate 401 itself must not revoke: re-seed the real Cookie and
+      // the same value still refreshes.
       const remaining = await storedCookie(context)
-      assert.ok(remaining)
-      assert.equal(remaining.value, before.value)
+      assert.equal(remaining, undefined, 'the duplicate response clears the browser jar')
+      await context.addCookies([
+        {
+          name: 'orca_refresh',
+          value: before.value,
+          url: `${always.url}/v1/auth`,
+          httpOnly: true,
+          secure: true,
+          sameSite: 'Lax'
+        }
+      ])
       const recovered = await refresh(page, always.url, { contentType: 'application/json' })
       assert.equal(recovered.result.status, 200)
       assert.equal(recovered.result.body.refreshCookie, true)
       const after = await storedCookie(context)
       assert.ok(after)
       assert.equal(after.value, before.value)
+    } finally {
+      await context.close()
+    }
+  })
+
+  test('4b. host-only 与 Domain 并存：同样硬 401 并同时清理两个作用域', async () => {
+    const { context, page } = await openPage(domainUrl)
+    try {
+      const before = await signIn(page, domainUrl, 'u197-domain-duplicate')
+      await context.addCookies([
+        {
+          name: 'orca_refresh',
+          value: 'u197domaindecoy',
+          domain: '.console.test',
+          path: '/v1/auth',
+          httpOnly: true,
+          secure: false,
+          sameSite: 'Lax'
+        }
+      ])
+      const scoped = (await context.cookies()).filter(
+        (cookie) => cookie.name === 'orca_refresh' && cookie.path === '/v1/auth'
+      )
+      assert.equal(scoped.length, 2, 'host-only and Domain cookies coexist')
+
+      const duplicate = await refresh(page, domainUrl, { contentType: 'application/json' })
+      assert.equal(duplicate.result.status, 401)
+      assert.equal(errorCode(duplicate.result.body), 'SESSION_EXPIRED')
+      const clears = await setCookieHeaders(duplicate.response)
+      assert.equal(clears.length, 3)
+      assert.ok(clears.some((header) => /^orca_refresh=; Path=\/v1\/auth;/.test(header)))
+      assert.ok(clears.some((header) => /Domain=console\.test/.test(header)))
+
+      const left = (await context.cookies()).filter((cookie) => cookie.name === 'orca_refresh')
+      assert.deepEqual(left, [], 'both scopes must be gone')
+      assert.equal(before.value.length > 0, true)
     } finally {
       await context.close()
     }

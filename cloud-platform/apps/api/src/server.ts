@@ -115,7 +115,8 @@ import {
   parseRefreshCookie,
   resolveRefreshCookieConfig,
   sameOrigin,
-  serializeRefreshCookie
+  serializeRefreshCookie,
+  serializeRefreshCookieClear
 } from './refresh-cookie.ts'
 import {
   createRelayNodeRegistry,
@@ -1981,6 +1982,29 @@ export function createApp(config: ApiConfig): ApiHandle {
   }
 
   /**
+   * U218 §2B-9: a non-browser caller that replays a Cookie without an Origin is
+   * refused rather than parsed as a Cookie source.
+   */
+  function carriesRefreshCookieWithoutOrigin(req: IncomingMessage): boolean {
+    return (
+      req.headers.origin === undefined && parseRefreshCookie(req.headers.cookie).kind !== 'absent'
+    )
+  }
+
+  /**
+   * U218 §2B-9: with a configured platform origin, a browser login from any
+   * other Origin is refused instead of degrading to a readable body refresh.
+   * Handoff is exempt: host cross-origin pages legitimately trade a code.
+   */
+  function rejectsForeignLoginOrigin(req: IncomingMessage): boolean {
+    return (
+      refreshCookieEnabled() &&
+      req.headers.origin !== undefined &&
+      !sameOrigin(req.headers.origin, refreshCookieConfig.publicOrigin)
+    )
+  }
+
+  /**
    * U197 S2: CSRF applies only to Cookie-authenticated requests. The trusted
    * origin is the configured one — never a request-header-derived origin.
    */
@@ -2009,10 +2033,13 @@ export function createApp(config: ApiConfig): ApiHandle {
     res.setHeader('cache-control', 'no-store')
     res.setHeader(
       'set-cookie',
-      serializeRefreshCookie({
-        value: '',
+      serializeRefreshCookieClear({
         secure: refreshCookieConfig.secure,
-        maxAgeSeconds: 0
+        // Cookie Domain never carries a port; the issue path omits Domain, so
+        // both scopes are cleared for a browser that holds both.
+        domain: refreshCookieConfig.publicOrigin
+          ? new URL(refreshCookieConfig.publicOrigin).hostname
+          : null
       })
     )
   }
@@ -3364,8 +3391,19 @@ export function createApp(config: ApiConfig): ApiHandle {
     // ---- auth ----
     if (req.method === 'POST' && path === '/v1/auth/login') {
       if (hasAmbiguousRefreshCookie(req)) {
+        clearRefreshCookie(res)
         res.setHeader('cache-control', 'no-store')
         return error(res, 401, 'SESSION_EXPIRED', '会话状态异常，请清除 Cookie 后重试。', traceId)
+      }
+      // U218 §2B-9: a Cookie without Origin is not a browser login, and a
+      // foreign Origin must never degrade to a readable body refresh.
+      if (carriesRefreshCookieWithoutOrigin(req)) {
+        res.setHeader('cache-control', 'no-store')
+        return error(res, 401, 'SESSION_EXPIRED', '会话状态异常，请清除 Cookie 后重试。', traceId)
+      }
+      if (rejectsForeignLoginOrigin(req)) {
+        res.setHeader('cache-control', 'no-store')
+        return error(res, 403, 'CSRF_REJECTED', '请求来源不受信任。', traceId)
       }
       const body = await readJson(req)
       const username = String(body.username ?? '')
@@ -3480,6 +3518,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       // A duplicate or indistinguishable Cookie is a hard 401: never fall back
       // to the body, or an attacker could rotate a valid body token via it.
       if (hasAmbiguousRefreshCookie(req)) {
+        clearRefreshCookie(res)
         res.setHeader('cache-control', 'no-store')
         return error(res, 401, 'SESSION_EXPIRED', '会话已失效，请重新登录。', traceId)
       }
@@ -3589,6 +3628,20 @@ export function createApp(config: ApiConfig): ApiHandle {
           return error(res, 401, 'SESSION_EXPIRED', '会话已失效，请重新登录。', traceId)
         }
 
+        // U218 §2B-5: a previous-body hit while the Cookie is current is a
+        // windowed replay; audit it without recording the token value.
+        if (bodyIsPrevious) {
+          audit.appendBestEffort({
+            eventType: 'refresh.grace_reuse',
+            actor: null,
+            targetType: 'session',
+            targetId: cookieSession.id,
+            result: 'success',
+            traceId,
+            metadata: { source: 'body' }
+          })
+        }
+
         // v5 §2B-2: the Cookie is the credential, so it never rotates and the
         // server never mints a new refresh here. Every hit except the
         // previous-body grace echo slides the expiry and re-sends the identical
@@ -3680,6 +3733,13 @@ export function createApp(config: ApiConfig): ApiHandle {
     // Deliberately before token resolution: the caller has no session yet.
     if (req.method === 'POST' && path === '/v1/web/handoff') {
       if (hasAmbiguousRefreshCookie(req)) {
+        clearRefreshCookie(res)
+        res.setHeader('cache-control', 'no-store')
+        return error(res, 401, 'SESSION_EXPIRED', '会话状态异常，请清除 Cookie 后重试。', traceId)
+      }
+      // U218 §2B-9: the host cross-origin handoff (an Origin) stays valid, but a
+      // Cookie without Origin is never parsed as a Cookie source.
+      if (carriesRefreshCookieWithoutOrigin(req)) {
         res.setHeader('cache-control', 'no-store')
         return error(res, 401, 'SESSION_EXPIRED', '会话状态异常，请清除 Cookie 后重试。', traceId)
       }
@@ -3783,16 +3843,25 @@ export function createApp(config: ApiConfig): ApiHandle {
         clearRefreshCookie(res)
         return error(res, 401, 'SESSION_EXPIRED', '会话状态异常，请清除 Cookie 后重试。', traceId)
       }
-      // S1: clear before resolving Bearer — an expired access token must not
-      // leave the Cookie behind.
-      if (refreshCookieEnabled()) clearRefreshCookie(res)
+      // U218: clearing never depends on the mode — a stale Cookie from an
+      // earlier deployment must not survive logout.
+      clearRefreshCookie(res)
       const auth = resolveToken(req)
+      // An expired access token resolves to null, so locate the session from the
+      // Cookie too and revoke both when they differ (§2B-3).
+      const cookieParse = parseRefreshCookie(req.headers.cookie)
+      const cookieToken = cookieParse.kind === 'present' ? cookieParse.value : ''
+      const cookieSessionId = cookieToken === '' ? undefined : store.refreshTokens.get(cookieToken)
+      const targets = new Set<string>()
+      if (auth) targets.add(auth.sessionId)
+      if (cookieSessionId !== undefined) targets.add(cookieSessionId)
+      for (const sessionId of targets) {
+        const session = store.sessions.get(sessionId)
+        if (!session) continue
+        session.revokedAt = now()
+        bumpEpoch(session.id)
+      }
       if (auth) {
-        const session = store.sessions.get(auth.sessionId)
-        if (session) {
-          session.revokedAt = now()
-          bumpEpoch(session.id)
-        }
         await audit.append({
           eventType: 'logout',
           actor: auth.user.username,

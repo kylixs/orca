@@ -77,6 +77,30 @@ export function serializeRefreshCookie(input: {
   return parts.join('; ')
 }
 
+/**
+ * U218: one clear header is not enough. A cookie can coexist as host-only and
+ * `Domain`-scoped on the same Path (browsers send both), and older builds used
+ * `Path=/`; deleting all three prevents a permanent duplicate-Cookie lockout.
+ */
+export function serializeRefreshCookieClear(input: {
+  secure: boolean
+  /** Platform host for the Domain-scoped deletion; omitted without an origin. */
+  domain?: string | null
+}): string[] {
+  const clear = (path: string, domain?: string): string => {
+    const parts = [`${REFRESH_COOKIE_NAME}=`, `Path=${path}`]
+    if (domain) parts.push(`Domain=${domain}`)
+    parts.push('Max-Age=0', 'HttpOnly', 'SameSite=Lax')
+    if (input.secure) parts.push('Secure')
+    return parts.join('; ')
+  }
+  return [
+    clear(REFRESH_COOKIE_PATH),
+    ...(input.domain ? [clear(REFRESH_COOKIE_PATH, input.domain)] : []),
+    clear('/')
+  ]
+}
+
 /** scheme/host lowercase, default port dropped, trailing `/` dropped. */
 export function normalizeOrigin(value: string): string | null {
   const trimmed = value.trim()

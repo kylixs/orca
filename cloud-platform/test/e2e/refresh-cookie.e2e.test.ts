@@ -18,10 +18,11 @@ async function start(options: {
   publicOrigin?: string
   refreshTtlMs?: number
   refreshGraceMs?: number
+  accessTtlMs?: number
 }): Promise<Started> {
   const app = createApp({
     port: 0,
-    accessTtlMs: 60_000,
+    accessTtlMs: options.accessTtlMs ?? 60_000,
     refreshTtlMs: options.refreshTtlMs ?? 60_000,
     refreshGraceMs: options.refreshGraceMs,
     internalToken: 'cookie-token',
@@ -135,13 +136,41 @@ describe('U197 S1 refresh cookie（真实 createApp + HTTP）', () => {
     assert.equal(typeof body.refreshToken, 'string')
   })
 
-  test('宿主跨源（不同 Origin）：不下发 Cookie，保留 body refresh', async () => {
+  test('登录带非平台 Origin：403 且不返回 body refresh（宿主跨源 handoff 除外）', async () => {
     const { base } = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
     const res = await login(base, { origin: 'https://evil.example' })
-    assert.equal(res.status, 200)
+    assert.equal(res.status, 403)
     assert.deepEqual(res.headers.getSetCookie(), [])
     const body = (await res.json()) as Record<string, unknown>
-    assert.equal(typeof body.refreshToken, 'string')
+    assert.equal('refreshToken' in body, false)
+    assert.equal(body.error && (body.error as Record<string, unknown>).code, 'CSRF_REJECTED')
+  })
+
+  test('登录/交接带 Cookie 但无 Origin：401，不按 Cookie 源解析', async () => {
+    const { app, base } = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const cookie = { cookie: 'orca_refresh=some-stale-value' }
+    const loginRes = await login(base, cookie)
+    assert.equal(loginRes.status, 401)
+    assert.equal(
+      ((await loginRes.json()) as { error: { code: string } }).error.code,
+      'SESSION_EXPIRED'
+    )
+
+    const dev = app.store.usersByName.get('zhangsan')
+    assert.ok(dev)
+    app.store.webHandoffs.set('cookie-no-origin-code', {
+      userId: dev.id,
+      projectId: 'proj_payment',
+      expiresAt: Date.now() + 60_000
+    })
+    const handoffRes = await fetch(`${base}/v1/web/handoff`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...cookie },
+      body: JSON.stringify({ code: 'cookie-no-origin-code' })
+    })
+    assert.equal(handoffRes.status, 401)
+    // The code must not have been consumed by the refused call.
+    assert.equal(app.store.webHandoffs.has('cookie-no-origin-code'), true)
   })
 
   test('COOKIE_MODE=never：与旧行为一致（无 Cookie、body 有 refresh）', async () => {
@@ -232,12 +261,20 @@ describe('U197 S1 refresh cookie（真实 createApp + HTTP）', () => {
     assert.notEqual(renewed.refreshToken, refreshToken)
   })
 
-  test('重复 Cookie 在登录/交接同样硬 401 且不下发 Cookie', async () => {
+  test('重复 Cookie 在登录/交接/刷新/登出：硬 401 并清理三种作用域', async () => {
     const { app, base } = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
     const ambiguous = { origin: ORIGIN, cookie: 'orca_refresh=a; orca_refresh=b' }
+    const assertClears = (res: Response) => {
+      const headers = res.headers.getSetCookie()
+      assert.equal(headers.length, 3)
+      assert.ok(headers.some((h) => /^orca_refresh=; Path=\/v1\/auth;/.test(h)))
+      assert.ok(headers.some((h) => /Domain=console\.example\.com/.test(h)))
+      assert.ok(headers.some((h) => /^orca_refresh=; Path=\/;/.test(h)))
+      for (const header of headers) assert.match(header, /Max-Age=0/)
+    }
     const loginRes = await login(base, ambiguous)
     assert.equal(loginRes.status, 401)
-    assert.deepEqual(loginRes.headers.getSetCookie(), [])
+    assertClears(loginRes)
 
     const dev = app.store.usersByName.get('zhangsan')
     assert.ok(dev)
@@ -252,7 +289,21 @@ describe('U197 S1 refresh cookie（真实 createApp + HTTP）', () => {
       body: JSON.stringify({ code: 'dup-code' })
     })
     assert.equal(handoffRes.status, 401)
-    assert.deepEqual(handoffRes.headers.getSetCookie(), [])
+    assertClears(handoffRes)
+
+    const first = (await (await login(base)).json()) as Record<string, unknown>
+    const refreshRes = await refresh(base, String(first.refreshToken), {
+      cookie: 'orca_refresh=a; orca_refresh=b'
+    })
+    assert.equal(refreshRes.status, 401)
+    assertClears(refreshRes)
+
+    const logoutRes = await fetch(`${base}/v1/auth/logout`, {
+      method: 'POST',
+      headers: ambiguous
+    })
+    assert.equal(logoutRes.status, 401)
+    assertClears(logoutRes)
   })
 
   test('COOKIE_MODE=never：重复 Cookie 不影响旧刷新路径', async () => {
@@ -572,5 +623,329 @@ describe('U197 S2 刷新双读 / grace / CSRF（真实 createApp + HTTP）', () 
     const neverBody = (await neverLogin.json()) as Record<string, unknown>
     assert.equal(neverBody.refreshCookie, undefined)
     assert.deepEqual(neverLogin.headers.getSetCookie(), [])
+  })
+})
+
+describe('U218 登出撤销 / 多作用域清理 / Origin / 审计（真实 createApp + HTTP）', () => {
+  async function cookieLogin(base: string, options: { headers?: Record<string, string> } = {}) {
+    const res = await login(base, { origin: ORIGIN, ...options.headers })
+    assert.equal(res.status, 200)
+    return { res, cookie: cookieValueOf(res), body: (await res.json()) as Record<string, unknown> }
+  }
+
+  function allSessions(app: ApiHandle) {
+    return [...app.store.sessions.values()]
+  }
+
+  function assertCleared(response: Response, expected: number): string[] {
+    const headers = response.headers.getSetCookie()
+    assert.equal(headers.length, expected, JSON.stringify(headers))
+    for (const header of headers) {
+      assert.match(header, /^orca_refresh=;/)
+      assert.match(header, /Max-Age=0/)
+      assert.match(header, /HttpOnly/)
+      assert.match(header, /SameSite=Lax/)
+    }
+    return headers
+  }
+
+  test('AC7(a) Bearer 有效登出：撤销 Cookie session 并清三种作用域，重放刷新 401', async () => {
+    const { app, base } = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const { cookie, body } = await cookieLogin(base)
+    const session = onlySession(app)
+
+    const logout = await fetch(`${base}/v1/auth/logout`, {
+      method: 'POST',
+      headers: {
+        origin: ORIGIN,
+        authorization: `Bearer ${String(body.accessToken)}`,
+        cookie: `orca_refresh=${cookie}`
+      }
+    })
+    assert.equal(logout.status, 200)
+    const headers = assertCleared(logout, 3)
+    assert.ok(headers.some((header) => /^orca_refresh=; Path=\/v1\/auth;/.test(header)))
+    assert.ok(headers.some((header) => /Domain=console\.example\.com/.test(header)))
+    assert.ok(headers.some((header) => /^orca_refresh=; Path=\/;/.test(header)))
+    assert.ok(session.revokedAt !== null, 'the Cookie session must be revoked')
+
+    const replay = await refreshWithCookie(base, cookie, { origin: ORIGIN })
+    assert.equal(replay.status, 401)
+    assert.equal(
+      ((await replay.json()) as { error: { code: string } }).error.code,
+      'SESSION_EXPIRED'
+    )
+  })
+
+  test('AC7(b) access 已过期 + Cookie 有效：登出仍清 Cookie 并撤销 session', async () => {
+    const { app, base } = await start({
+      cookieMode: 'auto',
+      publicOrigin: ORIGIN,
+      accessTtlMs: 200
+    })
+    const { cookie, body } = await cookieLogin(base)
+    await new Promise((resolve) => setTimeout(resolve, 350))
+
+    const logout = await fetch(`${base}/v1/auth/logout`, {
+      method: 'POST',
+      headers: {
+        origin: ORIGIN,
+        authorization: `Bearer ${String(body.accessToken)}`,
+        cookie: `orca_refresh=${cookie}`
+      }
+    })
+    assert.equal(logout.status, 200)
+    assertCleared(logout, 3)
+    assert.ok(onlySession(app).revokedAt !== null)
+    assert.equal((await refreshWithCookie(base, cookie, { origin: ORIGIN })).status, 401)
+  })
+
+  test('Bearer=A、Cookie=B 两个 session：登出两者均撤销', async () => {
+    const { app, base } = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const a = await cookieLogin(base)
+    const bRes = await login(base)
+    assert.equal(bRes.status, 200)
+    const b = (await bRes.json()) as Record<string, unknown>
+    assert.equal(allSessions(app).length, 2)
+
+    const logout = await fetch(`${base}/v1/auth/logout`, {
+      method: 'POST',
+      headers: {
+        origin: ORIGIN,
+        authorization: `Bearer ${String(a.body.accessToken)}`,
+        cookie: `orca_refresh=${String(b.refreshToken)}`
+      }
+    })
+    assert.equal(logout.status, 200)
+    for (const session of allSessions(app)) {
+      assert.ok(session.revokedAt !== null, 'both the Bearer and Cookie sessions must be revoked')
+    }
+    const cookieB = String(b.refreshToken)
+    assert.equal((await refreshWithCookie(base, cookieB, { origin: ORIGIN })).status, 401)
+    const bearerA = await fetch(`${base}/v1/projects`, {
+      headers: { authorization: `Bearer ${String(a.body.accessToken)}` }
+    })
+    assert.equal(bearerA.status, 401)
+  })
+
+  test('仅 Cookie（Bearer 缺失）登出也撤销 Cookie session', async () => {
+    const { app, base } = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const { cookie } = await cookieLogin(base)
+    const logout = await fetch(`${base}/v1/auth/logout`, {
+      method: 'POST',
+      headers: { origin: ORIGIN, cookie: `orca_refresh=${cookie}` }
+    })
+    assert.equal(logout.status, 200)
+    assert.equal(allSessions(app)[0]?.revokedAt !== null, true)
+    assert.equal((await refreshWithCookie(base, cookie, { origin: ORIGIN })).status, 401)
+  })
+
+  test('COOKIE_MODE=never 登出依旧清 Cookie（不依赖启用状态）', async () => {
+    const { base } = await start({ cookieMode: 'never', publicOrigin: ORIGIN })
+    const logout = await fetch(`${base}/v1/auth/logout`, { method: 'POST' })
+    assert.equal(logout.status, 200)
+    const headers = assertCleared(logout, 2)
+    assert.ok(headers.some((header) => /^orca_refresh=; Path=\/v1\/auth;/.test(header)))
+    assert.ok(headers.some((header) => /^orca_refresh=; Path=\/;/.test(header)))
+  })
+
+  test('AC15(f) 旧字面量 "undefined"：有 Cookie 不轮换不撤销，无 Cookie 401', async () => {
+    const { app, base } = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const { cookie } = await cookieLogin(base)
+    const session = onlySession(app)
+    const hashBefore = session.refreshHash
+
+    const withCookie = await refreshWithCookie(
+      base,
+      cookie,
+      { origin: ORIGIN },
+      { refreshToken: 'undefined' }
+    )
+    assert.equal(withCookie.status, 200)
+    const body = (await withCookie.json()) as Record<string, unknown>
+    assert.equal('refreshToken' in body, false)
+    assert.equal(body.refreshCookie, true)
+    assert.equal(session.refreshHash, hashBefore)
+    assert.equal(session.revokedAt, null)
+
+    const withoutCookie = await refresh(base, 'undefined', { origin: ORIGIN })
+    assert.equal(withoutCookie.status, 401)
+    assert.equal(
+      ((await withoutCookie.json()) as { error: { code: string } }).error.code,
+      'SESSION_EXPIRED'
+    )
+    assert.equal(session.revokedAt, null, 'an unknown literal must not revoke a live session')
+  })
+
+  test('AC15(b) 宿主跨源 handoff：新签 body refresh、无 Cookie、无 refreshCookie', async () => {
+    const { app, base } = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const dev = app.store.usersByName.get('zhangsan')
+    assert.ok(dev)
+    app.store.webHandoffs.set('host-cross-code', {
+      userId: dev.id,
+      projectId: 'proj_payment',
+      expiresAt: Date.now() + 60_000
+    })
+    const res = await fetch(`${base}/v1/web/handoff`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://host.example' },
+      body: JSON.stringify({ code: 'host-cross-code' })
+    })
+    assert.equal(res.status, 200)
+    assert.deepEqual(res.headers.getSetCookie(), [], 'a cross-origin host never gets a Cookie')
+    const body = (await res.json()) as Record<string, unknown>
+    assert.equal(typeof body.refreshToken, 'string')
+    assert.equal(body.refreshCookie, undefined)
+    assert.equal(
+      (await refresh(base, String(body.refreshToken), { origin: 'https://host.example' })).status,
+      200
+    )
+  })
+
+  test('AC15(d) COOKIE_MODE=never：handoff 保留新签 body refresh，无能力标记', async () => {
+    const { app, base } = await start({ cookieMode: 'never', publicOrigin: ORIGIN })
+    const dev = app.store.usersByName.get('zhangsan')
+    assert.ok(dev)
+    app.store.webHandoffs.set('never-code', {
+      userId: dev.id,
+      projectId: 'proj_payment',
+      expiresAt: Date.now() + 60_000
+    })
+    const res = await fetch(`${base}/v1/web/handoff`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: ORIGIN },
+      body: JSON.stringify({ code: 'never-code' })
+    })
+    assert.equal(res.status, 200)
+    assert.deepEqual(res.headers.getSetCookie(), [])
+    const body = (await res.json()) as Record<string, unknown>
+    assert.equal(typeof body.refreshToken, 'string')
+    assert.equal(body.refreshCookie, undefined)
+  })
+
+  test('AC16 伪造 X-Forwarded-Proto / Host 不改变登录/交接/刷新形态', async () => {
+    const { app, base } = await start({ cookieMode: 'always', publicOrigin: ORIGIN })
+    const forged = { origin: ORIGIN, 'x-forwarded-proto': 'http', host: 'evil.example' }
+
+    const loginRes = await login(base, forged)
+    assert.equal(loginRes.status, 200)
+    const loginBody = (await loginRes.json()) as Record<string, unknown>
+    assert.equal(loginBody.refreshCookie, true)
+    assert.equal('refreshToken' in loginBody, false)
+    assert.match(cookieOf(loginRes), /Secure/)
+
+    const dev = app.store.usersByName.get('zhangsan')
+    assert.ok(dev)
+    app.store.webHandoffs.set('forged-code', {
+      userId: dev.id,
+      projectId: 'proj_payment',
+      expiresAt: Date.now() + 60_000
+    })
+    const handoffRes = await fetch(`${base}/v1/web/handoff`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...forged },
+      body: JSON.stringify({ code: 'forged-code' })
+    })
+    assert.equal(handoffRes.status, 200)
+    assert.equal(((await handoffRes.json()) as Record<string, unknown>).refreshCookie, true)
+    assert.match(cookieOf(handoffRes), /Secure/)
+
+    const refreshRes = await refreshWithCookie(base, cookieValueOf(loginRes), forged)
+    assert.equal(refreshRes.status, 200)
+    assert.equal(((await refreshRes.json()) as Record<string, unknown>).refreshCookie, true)
+  })
+
+  test('AC16 启动矩阵：always 无 origin 拒启，auto 降级 never', () => {
+    assert.throws(
+      () =>
+        createApp({
+          port: 0,
+          internalToken: 'u218-matrix',
+          cookieMode: 'always',
+          publicOrigin: ''
+        }),
+      /requires a valid ORCA_CLOUD_PUBLIC_ORIGIN/
+    )
+    const auto = createApp({
+      port: 0,
+      internalToken: 'u218-matrix',
+      cookieMode: 'auto',
+      publicOrigin: ''
+    })
+    apps.push(auto)
+  })
+
+  test('AC5 body 源并发：current 只轮换一次，previous 宽限命中', async () => {
+    const { app, base } = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const first = (await (await login(base)).json()) as Record<string, unknown>
+    const current = String(first.refreshToken)
+    const session = onlySession(app)
+    const beforeHash = session.refreshHash
+
+    const [a, b] = await Promise.all([refresh(base, current), refresh(base, current)])
+    for (const res of [a, b]) assert.equal(res.status, 200)
+    const bodies = (await Promise.all([a.json(), b.json()])) as Record<string, unknown>[]
+    const rotated = bodies.filter(
+      (body) => body.refreshToken !== undefined && body.refreshToken !== current
+    )
+    assert.equal(rotated.length, 1, 'exactly one request rotates')
+    assert.equal(
+      bodies.filter((body) => body.refreshToken === current).length,
+      1,
+      'the loser echoes the previous value inside grace'
+    )
+    assert.notEqual(session.refreshHash, beforeHash)
+    assert.ok(session.previousRefreshHash !== undefined)
+    assert.ok(session.graceUntil !== undefined && session.graceUntil > Date.now())
+    assert.equal(tokensForSession(app, session.id), 2, 'one old + one new token only')
+    assert.equal(session.revokedAt, null)
+  })
+
+  test('grace / reuse 审计事件只记录来源，不含 token', async () => {
+    const { app, base } = await start({ cookieMode: 'auto', publicOrigin: ORIGIN })
+    const first = (await (await login(base)).json()) as Record<string, unknown>
+    const previous = String(first.refreshToken)
+    const session = onlySession(app)
+
+    // Body source current rotates once and sets the Cookie; the old value is
+    // now `previous` inside the grace window.
+    const rotated = await refresh(base, previous, { origin: ORIGIN })
+    assert.equal(rotated.status, 200)
+    const current = String(((await rotated.json()) as Record<string, unknown>).refreshToken)
+    const cookie = cookieValueOf(rotated)
+
+    const grace = await refreshWithCookie(
+      base,
+      cookie,
+      { origin: ORIGIN },
+      { refreshToken: previous }
+    )
+    assert.equal(grace.status, 200)
+    const graceEvents = app.store.audit.filter(
+      (event) => event.eventType === 'refresh.grace_reuse' && event.targetId === session.id
+    )
+    assert.equal(graceEvents.length, 1, 'the Cookie-current + previous-body hit is audited once')
+    assert.deepEqual(graceEvents[0]?.metadata, { source: 'body' })
+
+    // Outside the window the same shape revokes and audits reuse_detected.
+    session.graceUntil = Date.now() - 1
+    const reuse = await refreshWithCookie(
+      base,
+      cookie,
+      { origin: ORIGIN },
+      { refreshToken: previous }
+    )
+    assert.equal(reuse.status, 401)
+    const reuseEvents = app.store.audit.filter(
+      (event) => event.eventType === 'refresh.reuse_detected' && event.targetId === session.id
+    )
+    assert.equal(reuseEvents.length, 1)
+    assert.deepEqual(reuseEvents[0]?.metadata, { source: 'cookie' })
+    assert.ok(session.revokedAt !== null)
+
+    const serialized = JSON.stringify(app.store.audit)
+    for (const token of [previous, current, cookie]) {
+      assert.equal(serialized.includes(token), false, 'audit metadata must never carry a token')
+    }
   })
 })
