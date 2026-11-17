@@ -1,6 +1,6 @@
 import { after, before, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync, rmSync } from 'node:fs'
+import { readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { createServer as createHttpsServer } from 'node:https'
 import type { Server as HttpsServer } from 'node:https'
 import { join } from 'node:path'
@@ -11,6 +11,7 @@ import {
   type Page,
   type Response
 } from 'playwright'
+import { STATIC_CSP_REPORT_ONLY } from '../../apps/api/src/static-delivery.ts'
 import { ROOT, login, makeTlsCerts, spawnService, type Service } from './harness.ts'
 
 /**
@@ -23,6 +24,8 @@ import { ROOT, login, makeTlsCerts, spawnService, type Service } from './harness
 const HEADER = 'content-security-policy-report-only'
 const READY = /\[api\] listening on http:\/\/127\.0\.0\.1:(\d+)/
 const WEB_SOURCE = join(ROOT, 'apps/web')
+/** Any ` on<event>=` in HTML, including handlers inside template strings. */
+const INLINE_HANDLER = /\son(?:click|change|submit|input|keydown|load|error)=/i
 const USERNAME = 'admin'
 const PASSWORD = 'Adm1n!'
 const PROJECT_KEY = 'u197-csp-project'
@@ -91,7 +94,7 @@ function startHost(): Promise<void> {
         'cache-control': 'no-store'
       }
       if (pathname === '/csp-control.html') {
-        headers[HEADER] = "script-src 'self'"
+        headers[HEADER] = STATIC_CSP_REPORT_ONLY
       }
       res.writeHead(200, headers)
       res.end(body)
@@ -173,7 +176,8 @@ function assertDocumentPolicy(response: Response | null): void {
   assert.ok(response, 'the console document must return a response')
   const policy = response.headers()[HEADER]
   assert.ok(policy, `the HTML document must carry ${HEADER}`)
-  assert.ok(policy.includes("script-src 'self'"), 'the policy must keep inline scripts blocked')
+  // Exact text: an appended `'unsafe-inline'` must turn this red.
+  assert.equal(policy, STATIC_CSP_REPORT_ONLY, 'the document policy must match the shipped constant')
 }
 
 function installObserver(context: BrowserContext): Promise<void> {
@@ -317,11 +321,15 @@ describe('U197 T2/T3 真实 Chromium：Report-Only CSP 全流程零违规', () =
         'function',
         'the refresh handler must be bound in app.js'
       )
-      assert.equal(
-        await observed.page.evaluate(
-          () => document.querySelectorAll('[onclick]').length
+      assert.deepEqual(
+        await observed.page.evaluate(() =>
+          [...document.querySelectorAll('*')].flatMap((element) =>
+            [...element.attributes]
+              .filter((attribute) => attribute.name.startsWith('on'))
+              .map((attribute) => `${element.tagName.toLowerCase()}:${attribute.name}`)
+          )
         ),
-        0,
+        [],
         'no element in the projects view may carry an inline handler'
       )
       await assertClean(observed, 'projects page')
@@ -413,7 +421,14 @@ describe('U197 T2/T3 真实 Chromium：Report-Only CSP 全流程零违规', () =
       page.on('console', (message) => {
         if (isCspConsoleReport(message.text())) consoleReports.push(message.text())
       })
-      await page.goto(`${hostBase}/csp-control.html`, { waitUntil: 'domcontentloaded' })
+      const control = await page.goto(`${hostBase}/csp-control.html`, {
+        waitUntil: 'domcontentloaded'
+      })
+      assert.equal(
+        control?.headers()[HEADER],
+        STATIC_CSP_REPORT_ONLY,
+        'the control page must exercise the shipped policy, byte for byte'
+      )
       // Inline scripts report at parse; an inline handler reports when invoked.
       await page.click('button')
       await page.waitForFunction(
@@ -442,5 +457,17 @@ describe('U197 T2/T3 真实 Chromium：Report-Only CSP 全流程零违规', () =
     } finally {
       await context.close()
     }
+  })
+
+  test('内联处理器静态扫描：apps/web 全量源文件零命中', () => {
+    const offenders: string[] = []
+    for (const entry of readdirSync(WEB_SOURCE, { recursive: true })) {
+      const filePath = join(WEB_SOURCE, entry)
+      if (!statSync(filePath).isFile()) continue
+      for (const [index, line] of readFileSync(filePath, 'utf8').split('\n').entries()) {
+        if (INLINE_HANDLER.test(line)) offenders.push(`${entry}:${index + 1}: ${line.trim()}`)
+      }
+    }
+    assert.deepEqual(offenders, [], 'apps/web must ship no inline event handler')
   })
 })
