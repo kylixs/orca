@@ -86,8 +86,18 @@ function createJob(ownerId: string, username: string, format: 'csv' | 'jsonl' = 
 }
 
 /** queued → running → succeeded; the store forbids skipping running. */
-function succeededJob(ownerId: string, username: string): string {
-  const jobId = createJob(ownerId, username)
+function succeededJob(
+  ownerId: string,
+  username: string,
+  over: { deleteAfterDownload?: boolean } = {}
+): string {
+  const jobId = store.create({
+    requestedBy: ownerId,
+    requestedByUsername: username,
+    query: baseQuery(),
+    format: 'csv',
+    deleteAfterDownload: over.deleteAfterDownload ?? false
+  }).jobId
   store.markRunning(jobId)
   store.markSucceeded(jobId, { totalEvents: 12, bytes: 345 })
   return jobId
@@ -223,7 +233,7 @@ describe('审计导出状态（真实平台进程）', () => {
     assert.deepEqual(store.verifyDownloadToken(jobId, secondToken), { ok: true })
   })
 
-  test('E7-6 已下载：返回 downloaded=true 且不再下发 downloadUrl', async () => {
+  test('E7-6 已下载不设 deleteAfterDownload：仍下发新 downloadUrl', async () => {
     const jobId = succeededJob(adminId, 'admin')
     const issued = store.issueDownloadToken(jobId)
     assert.ok(issued)
@@ -232,8 +242,29 @@ describe('审计导出状态（真实平台进程）', () => {
     const res = await getStatus(adminToken, jobId)
     assert.equal(res.status, 200)
     assert.equal(res.body.status, 'succeeded')
+    // The artifact survives, so status mints a replacement token.
+    assert.ok(res.body.downloadUrl?.startsWith(`/v1/audit/exports/${jobId}/download?token=`))
+    assert.equal(res.body.downloadUnavailableReason, undefined)
+    const rotated = tokenFromDownloadUrl(res.body.downloadUrl ?? '')
+    assert.deepEqual(store.verifyDownloadToken(jobId, rotated), { ok: true })
+    // The redeemed token stays dead.
+    assert.deepEqual(store.verifyDownloadToken(jobId, issued.token), {
+      ok: false,
+      reason: 'invalid'
+    })
+  })
+
+  test('E7-6b 已下载且 deleteAfterDownload：不再下发 downloadUrl，提示产物已删除', async () => {
+    const jobId = succeededJob(adminId, 'admin', { deleteAfterDownload: true })
+    const issued = store.issueDownloadToken(jobId)
+    assert.ok(issued)
+    assert.equal(store.consumeDownloadToken(jobId, issued.token).ok, true)
+
+    const res = await getStatus(adminToken, jobId)
+    assert.equal(res.status, 200)
+    assert.equal(res.body.status, 'succeeded')
     assert.equal(res.body.downloaded, true)
-    assert.equal(res.body.downloadUnavailableReason, 'already_downloaded')
+    assert.equal(res.body.downloadUnavailableReason, 'deleted_after_download')
     assert.equal(res.body.downloadUrl, undefined)
   })
 

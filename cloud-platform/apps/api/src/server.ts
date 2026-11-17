@@ -5545,17 +5545,17 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (job.error !== null) body.error = job.error
 
       if (job.status === 'succeeded') {
-        if (job.downloadedAt !== null) {
-          // A consumed artifact cannot be fetched again; say why no URL is sent.
-          body.downloaded = true
-          body.downloadUnavailableReason = 'already_downloaded'
-        } else {
-          // Every status read rotates the hash, invalidating the previous link.
-          const issued = auditExportStore.issueDownloadToken(job.jobId)
-          if (!issued) {
-            return error(res, 410, 'EXPORT_EXPIRED', '导出任务已过期。', traceId)
-          }
+        // Every status read rotates the hash, invalidating the previous link.
+        const issued = auditExportStore.issueDownloadToken(job.jobId)
+        if (issued) {
           body.downloadUrl = `/v1/audit/exports/${job.jobId}/download?token=${encodeURIComponent(issued.token)}`
+        } else if (job.deleteAfterDownload && job.downloadedAt !== null) {
+          // The artifact was removed after the first download; report why no
+          // link is sent instead of failing the status poll.
+          body.downloaded = true
+          body.downloadUnavailableReason = 'deleted_after_download'
+        } else {
+          return error(res, 410, 'EXPORT_EXPIRED', '导出任务已过期。', traceId)
         }
       }
       return json(res, 200, body)
@@ -5609,8 +5609,6 @@ export function createApp(config: ApiConfig): ApiHandle {
         switch (consumed.reason) {
           case 'expired':
             return error(res, 410, 'EXPORT_EXPIRED', '导出任务已过期。', traceId)
-          case 'consumed':
-            return error(res, 410, 'EXPORT_DOWNLOAD_GONE', '下载链接已使用。', traceId)
           default:
             return error(res, 404, 'EXPORT_NOT_FOUND', '导出任务不存在。', traceId)
         }

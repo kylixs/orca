@@ -159,7 +159,7 @@ export type IssueAuditExportDownloadTokenOptions = { ttlMs?: number }
 
 export type AuditExportDownloadToken = { token: string; expiresAt: number }
 
-export type AuditExportDownloadTokenReason = 'invalid' | 'expired' | 'consumed' | 'not-ready'
+export type AuditExportDownloadTokenReason = 'invalid' | 'expired' | 'not-ready'
 
 export type AuditExportDownloadTokenVerification =
   | { ok: true }
@@ -304,7 +304,8 @@ export class AuditExportJobStore {
    * Mints a fresh download token for a succeeded, unexpired job. Issuing
    * overwrites the previous hash, so rotating immediately invalidates the old
    * link (design §4.2: one active token per job). Only the caller sees the
-   * plaintext; storage keeps sha256.
+   * plaintext; storage keeps sha256. A `deleteAfterDownload` job whose artifact
+   * was already removed cannot be reissued.
    */
   issueDownloadToken(
     jobId: string,
@@ -312,6 +313,9 @@ export class AuditExportJobStore {
   ): AuditExportDownloadToken | null {
     const job = this.read(jobId)
     if (!job || job.status !== 'succeeded' || this.isExpired(job)) {
+      return null
+    }
+    if (job.deleteAfterDownload && job.downloadedAt !== null) {
       return null
     }
     const ttlMs = options.ttlMs ?? DEFAULT_AUDIT_EXPORT_DOWNLOAD_TOKEN_TTL_MS
@@ -332,9 +336,9 @@ export class AuditExportJobStore {
   }
 
   /**
-   * Single-use redemption: re-runs every check, then records `downloadedAt`.
-   * A second call reports `consumed` because that flag is checked before the
-   * hash. File deletion is the caller's job (`deleteAfterDownload`).
+   * Single-use redemption: clears the issuer hash, so the redeemed token is
+   * permanently invalid while a later status read can mint a new one. Records
+   * the first download time only. File deletion is the caller's job.
    */
   consumeDownloadToken(jobId: string, token: string): AuditExportDownloadTokenVerification {
     const job = this.read(jobId)
@@ -342,7 +346,12 @@ export class AuditExportJobStore {
     if (!check.ok || !job) {
       return check
     }
-    this.write({ ...job, downloadedAt: this.clock() })
+    this.write({
+      ...job,
+      downloadedAt: job.downloadedAt ?? this.clock(),
+      downloadTokenHash: null,
+      downloadTokenExpiresAt: null
+    })
     return { ok: true }
   }
 
@@ -436,17 +445,15 @@ export class AuditExportJobStore {
     if (this.isExpired(job)) {
       return { ok: false, reason: 'expired' }
     }
-    if (job.downloadedAt !== null) {
-      return { ok: false, reason: 'consumed' }
-    }
+    // Redeemed or rotated tokens leave no hash, so they are simply unknown.
     if (job.downloadTokenHash === null || job.downloadTokenExpiresAt === null) {
+      return { ok: false, reason: 'invalid' }
+    }
+    if (!tokenHashesEqual(hashDownloadToken(token), job.downloadTokenHash)) {
       return { ok: false, reason: 'invalid' }
     }
     if (job.downloadTokenExpiresAt <= this.clock()) {
       return { ok: false, reason: 'expired' }
-    }
-    if (!tokenHashesEqual(hashDownloadToken(token), job.downloadTokenHash)) {
-      return { ok: false, reason: 'invalid' }
     }
     return { ok: true }
   }

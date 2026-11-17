@@ -73,10 +73,15 @@ function seedSucceededJob(options: {
 function tokenFromStatus(jobId: string): Promise<string> {
   return getStatus(jobId).then((res) => {
     assert.equal(res.status, 200)
-    const token = new URL(res.body.downloadUrl ?? '', 'http://localhost').searchParams.get('token')
-    assert.ok(token, 'status must return a token')
-    return token
+    return tokenFromStatusFromUrl(res.body.downloadUrl)
   })
+}
+
+function tokenFromStatusFromUrl(downloadUrl: string | undefined): string {
+  assert.ok(downloadUrl, 'status must return a downloadUrl')
+  const token = new URL(downloadUrl, 'http://localhost').searchParams.get('token')
+  assert.ok(token, 'downloadUrl must carry a token')
+  return token
 }
 
 async function getStatus(jobId: string): Promise<{
@@ -142,7 +147,7 @@ after(async () => {
 })
 
 describe('审计导出下载（真实平台进程）', () => {
-  test('E8-1 CSV 下载：字节与产物一致，头部齐全；同一 token 二次下载 410', async () => {
+  test('E8-1 CSV 下载：字节与产物一致，头部齐全；同一 token 二次下载 404', async () => {
     const { jobId, artifactPath } = seedSucceededJob({
       format: 'csv',
       content: CSV,
@@ -164,10 +169,12 @@ describe('审计导出下载（真实平台进程）', () => {
     // The artifact stays because this job did not request deletion.
     assert.equal(existsSync(artifactPath), true)
 
+    // Redemption clears the issuer hash, so the token is indistinguishable
+    // from an unknown one (and cannot confirm the job exists).
     const again = await download(jobId, token)
-    assert.equal(again.status, 410)
+    assert.equal(again.status, 404)
     assert.equal(again.headers.get('cache-control'), 'no-store')
-    assert.equal(errorCode(again.body), 'EXPORT_DOWNLOAD_GONE')
+    assert.equal(errorCode(again.body), 'EXPORT_NOT_FOUND')
 
     // A missing token always answers as unknown, never confirming the job.
     const noToken = await download(jobId)
@@ -191,7 +198,7 @@ describe('审计导出下载（真实平台进程）', () => {
     assert.equal(res.body.split('\n').filter(Boolean).length, 2)
   })
 
-  test('E8-3 状态轮换：旧 token 404，新 token 下载成功，再次使用新 token 410', async () => {
+  test('E8-3 状态轮换：旧 token 404，新 token 下载成功，再次使用新 token 404', async () => {
     const { jobId } = seedSucceededJob({ format: 'csv', content: CSV, totalEvents: 2 })
     const first = await tokenFromStatus(jobId)
     const second = await tokenFromStatus(jobId)
@@ -206,8 +213,8 @@ describe('审计导出下载（真实平台进程）', () => {
     assert.equal(fresh.body, CSV)
 
     const reused = await download(jobId, second)
-    assert.equal(reused.status, 410)
-    assert.equal(errorCode(reused.body), 'EXPORT_DOWNLOAD_GONE')
+    assert.equal(reused.status, 404)
+    assert.equal(errorCode(reused.body), 'EXPORT_NOT_FOUND')
   })
 
   test('E8-4 token 缺失/错误 → 404，且不会烧掉有效 token', async () => {
@@ -267,20 +274,29 @@ describe('审计导出下载（真实平台进程）', () => {
     assert.equal(errorCode(res.body), 'EXPORT_EXPIRED')
   })
 
-  test('E8-8 已消费的 job 再取状态不再签发 token', async () => {
-    // Documents why a 410 after a successful download cannot be retried by
-    // polling: the store records `downloadedAt` and status withholds the link.
+  test('E8-8 已下载但产物保留：状态轮换出新 token，可再次下载成功', async () => {
     const { jobId } = seedSucceededJob({ format: 'csv', content: CSV, totalEvents: 2 })
-    const token = await tokenFromStatus(jobId)
-    assert.equal((await download(jobId, token)).status, 200)
+    const first = await tokenFromStatus(jobId)
+    assert.equal((await download(jobId, first)).status, 200)
 
+    // downloadedAt no longer blocks reissue: the artifact is still on disk.
     const status = await getStatus(jobId)
     assert.equal(status.status, 200)
-    assert.equal(status.body.downloaded, true)
-    assert.equal(status.body.downloadUrl, undefined)
+    assert.equal(status.body.downloaded, undefined)
+    const second = tokenFromStatusFromUrl(status.body.downloadUrl)
+    assert.notEqual(second, first)
+    assert.equal(
+      (await download(jobId, first)).status,
+      404,
+      'the redeemed token must not work again'
+    )
+
+    const again = await download(jobId, second)
+    assert.equal(again.status, 200)
+    assert.equal(again.body, CSV)
   })
 
-  test('E8-9 deleteAfterDownload：产物删除、job.json 保留，新 token 再下载 410', async () => {
+  test('E8-9 deleteAfterDownload：产物删除、job.json 保留、不再签发，新 token 下载 410', async () => {
     const { jobId, artifactPath, jobStore } = seedSucceededJob({
       format: 'csv',
       content: CSV,
@@ -295,12 +311,24 @@ describe('审计导出下载（真实平台进程）', () => {
 
     await waitForDeletion(artifactPath)
     assert.equal(existsSync(join(exportDir, jobId, 'job.json')), true)
+    // The artifact is gone, so the store refuses to mint another link.
+    assert.equal(jobStore.issueDownloadToken(jobId), null)
 
-    // Status will not reissue after consumption (E8-8), so mint directly to
-    // exercise the route's already-consumed branch with a fresh token.
-    const minted = jobStore.issueDownloadToken(jobId)
-    assert.ok(minted)
-    const gone = await download(jobId, minted.token)
+    const status = await getStatus(jobId)
+    assert.equal(status.status, 200)
+    assert.equal(status.body.downloaded, true)
+    assert.equal(status.body.downloadUrl, undefined)
+
+    // A valid token whose artifact vanished (e.g. deleted by a concurrent
+    // download or an operator) still answers 410 rather than 404.
+    const { jobId: vanishId, artifactPath: vanishPath } = seedSucceededJob({
+      format: 'csv',
+      content: CSV,
+      totalEvents: 2
+    })
+    const vanishToken = await tokenFromStatus(vanishId)
+    rmSync(vanishPath, { force: true })
+    const gone = await download(vanishId, vanishToken)
     assert.equal(gone.status, 410)
     assert.equal(errorCode(gone.body), 'EXPORT_DOWNLOAD_GONE')
   })

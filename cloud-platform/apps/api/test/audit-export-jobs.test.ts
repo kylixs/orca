@@ -318,14 +318,17 @@ describe('并发计数与配额', () => {
 })
 
 describe('下载 token 生命周期', () => {
-  const succeeded = (store: AuditExportJobStore): string => {
-    const job = store.create(jobInput())
+  const succeeded = (
+    store: AuditExportJobStore,
+    over: Partial<CreateAuditExportJobInput> = {}
+  ): string => {
+    const job = store.create(jobInput(over))
     store.markRunning(job.jobId)
     store.markSucceeded(job.jobId, { totalEvents: 3, bytes: 42 })
     return job.jobId
   }
 
-  test('签发→验证→消费→重复消费返回 consumed', () => {
+  test('签发→验证→消费：token 一次性；下载后仍可重新签发并再次消费', () => {
     const time = clock(1_000)
     const store = new AuditExportJobStore({ root: tempRoot(), now: time.now })
     const jobId = succeeded(store)
@@ -337,14 +340,42 @@ describe('下载 token 生命周期', () => {
 
     assert.deepEqual(store.consumeDownloadToken(jobId, issued.token), { ok: true })
     assert.equal(store.read(jobId)?.downloadedAt, 1_000)
+    // The redeemed token is dead: its hash was cleared, so it no longer matches.
     assert.deepEqual(store.consumeDownloadToken(jobId, issued.token), {
       ok: false,
-      reason: 'consumed'
+      reason: 'invalid'
     })
     assert.deepEqual(store.verifyDownloadToken(jobId, issued.token), {
       ok: false,
-      reason: 'consumed'
+      reason: 'invalid'
     })
+
+    // A later status read can mint a new token; only the first download time sticks.
+    time.set(5_000)
+    const reissued = store.issueDownloadToken(jobId)
+    assert.ok(reissued)
+    assert.notEqual(reissued.token, issued.token)
+    assert.deepEqual(store.verifyDownloadToken(jobId, reissued.token), { ok: true })
+    assert.deepEqual(store.consumeDownloadToken(jobId, reissued.token), { ok: true })
+    assert.equal(store.read(jobId)?.downloadedAt, 1_000)
+  })
+
+  test('deleteAfterDownload 且已下载：不再签发；未设置时始终可重新签发', () => {
+    const store = new AuditExportJobStore({ root: tempRoot(), now: () => 1_000 })
+    const deleted = succeeded(store, { deleteAfterDownload: true })
+    const first = store.issueDownloadToken(deleted)
+    assert.ok(first)
+    assert.deepEqual(store.consumeDownloadToken(deleted, first.token), { ok: true })
+    // The artifact is gone, so no link may be minted again.
+    assert.equal(store.issueDownloadToken(deleted), null)
+
+    const kept = succeeded(store)
+    const a = store.issueDownloadToken(kept)
+    assert.ok(a)
+    assert.deepEqual(store.consumeDownloadToken(kept, a.token), { ok: true })
+    const b = store.issueDownloadToken(kept)
+    assert.ok(b)
+    assert.deepEqual(store.verifyDownloadToken(kept, b.token), { ok: true })
   })
 
   test('再次签发轮换 token，旧 token 立即 invalid', () => {
