@@ -35,6 +35,10 @@ function makeRelayTree(): RelayTree {
   cpSync(join(RELAY_SRC, 'relay.ts'), join(release, 'apps/relay/src/relay.ts'))
   cpSync(join(RELAY_SRC, 'sni.ts'), join(release, 'apps/relay/src/sni.ts'))
   cpSync(
+    join(RELAY_SRC, 'relay-version.ts'),
+    join(release, 'apps/relay/src/relay-version.ts')
+  )
+  cpSync(
     join(CONTRACT_SRC, 'internal-fetch.ts'),
     join(release, 'packages/contract/src/internal-fetch.ts')
   )

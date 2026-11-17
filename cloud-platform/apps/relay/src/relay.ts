@@ -10,6 +10,7 @@ import { readFileSync, realpathSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { mtlsFetch } from '../../../packages/contract/src/internal-fetch.ts'
 import { extractSni } from './sni.ts'
+import { RELAY_CODE_VERSION } from './relay-version.ts'
 
 export type RelayRoute = { routeKey: string; hostId: string; target: string; version: number }
 
@@ -788,6 +789,8 @@ if (isMainModule(process.argv[1], import.meta.url)) {
         : undefined,
       browser: browserOptionsFromEnv()
     })
-    console.log(`[relay] listening on :${relay.port}, routes=${relay.routes().size}`)
+    console.log(
+      `[relay] listening on :${relay.port}, routes=${relay.routes().size}, relayCodeVersion=${RELAY_CODE_VERSION}`
+    )
   }
 }
