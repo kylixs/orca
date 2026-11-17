@@ -817,8 +817,8 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     const started = Date.now()
     const run = runInstallScript(script)
     const elapsed = Date.now() - started
-    assert.notEqual(run.status, 0)
-    assert.match(run.stderr, /平台健康检查失败/)
+    assert.equal(run.status, 68, run.stderr)
+    assert.match(run.stderr, /健康检查失败（68 \/ HTTP/)
     assert.ok(elapsed < 15_000, `health check took ${elapsed}ms`)
   })
 

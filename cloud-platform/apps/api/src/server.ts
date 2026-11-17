@@ -655,7 +655,7 @@ set -a; . "$ORCA_ENV_FILE"; set +a
 ORCA_HEALTH_CODE="$(curl -sS --connect-timeout 5 --max-time 10 -o /dev/null -w '%{http_code}' "$ORCA_CLOUD_API_URL/health")" || ORCA_HEALTH_CODE=000
 case "$ORCA_HEALTH_CODE" in
   2??) ;;
-  *) echo ">> 平台健康检查失败（HTTP $ORCA_HEALTH_CODE）：$ORCA_CLOUD_API_URL/health 不可达" >&2; exit 1 ;;
+  *) echo ">> 平台健康检查失败（68 / HTTP $ORCA_HEALTH_CODE）：$ORCA_CLOUD_API_URL/health 不可达" >&2; exit 68 ;;
 esac
 echo ">> 环境已就绪：$ORCA_ENV_FILE"
 
@@ -743,8 +743,9 @@ fi
 
 # State self-check (design §4.3): schema v2, online, successful heartbeat, a
 # non-empty hostId and a live pid. 0 (ORCA_HOST_STATE_TIMEOUT) skips the wait.
-ORCA_STATE_WAIT="\${ORCA_HOST_STATE_TIMEOUT:-90}"
-case "$ORCA_STATE_WAIT" in ''|*[!0-9]*) ORCA_STATE_WAIT=90 ;; esac
+# 120s covers the 61s worst-case enrolment (4×10s + 1/5/15s backoff) plus cold start.
+ORCA_STATE_WAIT="\${ORCA_HOST_STATE_TIMEOUT:-120}"
+case "$ORCA_STATE_WAIT" in ''|*[!0-9]*) ORCA_STATE_WAIT=120 ;; esac
 if [ "$ORCA_STATE_WAIT" -gt 0 ]; then
   _orca_state_field() {
     { grep -o "\\"$1\\"[[:space:]]*:[[:space:]]*[^,}]*" "$ORCA_STATE_FILE" 2>/dev/null \\

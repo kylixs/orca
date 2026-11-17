@@ -65,6 +65,17 @@ describe('U183 R12: install-script command helper', () => {
     assert.doesNotMatch(script, /ORCA_CLOUD_REENROLL/)
   })
 
+  test('U181 P2-8: 状态自证默认超时 120s（覆盖 61s 最坏注册路径）', () => {
+    const script = hostInstallScript({
+      platformUrl: 'https://platform.example',
+      token: 'tok'
+    })
+    assert.match(script, /ORCA_HOST_STATE_TIMEOUT:-120/)
+    // A non-numeric override falls back to the same default.
+    assert.match(script, /ORCA_STATE_WAIT=120/)
+    assert.doesNotMatch(script, /ORCA_HOST_STATE_TIMEOUT:-90/)
+  })
+
   test('host/relay 生成脚本都消费 helper 片段', () => {
     const host = hostInstallScript({ platformUrl: 'https://platform.example', token: 'tok' })
     const relay = relayInstallScript({
