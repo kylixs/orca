@@ -80,3 +80,10 @@ test('runWithMonitor survives a missing command and still writes the summary', a
   const summary = JSON.parse(readFileSync(join(outDir, 'system-resources-summary.json'), 'utf8'))
   assert.equal(summary.samples, 0)
 })
+
+test('real samples carry the OS load average', async () => {
+  const { sampleSystem } = await import('./monitor-system-resources.mjs')
+  const value = sampleSystem()
+  assert.equal(value.loadAvg.length, 3)
+  assert.ok(value.loadAvg.every((entry) => Number.isFinite(entry)))
+})

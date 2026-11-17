@@ -44,7 +44,8 @@ export function summarize(rows, loadAvg, cpuCount) {
 export function sampleSystem() {
   const ps = spawnSync('ps', ['-axo', 'pid=,rss=,command='], { encoding: 'utf8' })
   const rows = parseProcessTable(`pid rss command\n${ps.stdout ?? ''}`)
-  const loadAvg = process.loadavg?.() ?? []
+  // Why: process.loadavg does not exist; os.loadavg is the supported API.
+  const loadAvg = os.loadavg()
   return summarize(rows, loadAvg, os.cpus().length)
 }
 
