@@ -3609,8 +3609,8 @@ export function createApp(config: ApiConfig): ApiHandle {
           !cookieIsCurrent &&
           cookieSession.previousRefreshHash !== undefined &&
           safeEqual(cookieSession.previousRefreshHash, cookieHash)
-        // U235: JSON.parse can yield null/scalar/array at runtime, so treat a
-        // non-object body as absent instead of dereferencing it.
+        // U235/U236: readJson now normalises null/scalars to {}, so this is
+        // defence in depth; arrays are objects and simply carry no token.
         const bodyToken =
           body !== null && typeof body === 'object' && typeof body.refreshToken === 'string'
             ? body.refreshToken
@@ -3730,7 +3730,8 @@ export function createApp(config: ApiConfig): ApiHandle {
 
       // Body fallback: the legacy path, unchanged except for the grace window.
       const body = await readJson(req)
-      // U235: a non-object body carries no refresh value.
+      // U235/U236: readJson normalises null/scalars to {}; an array has no
+      // refreshToken field, so the empty-token path covers it too.
       const rawBodyToken =
         body !== null && typeof body === 'object' ? body.refreshToken : undefined
       const token = String(rawBodyToken ?? '')
@@ -3952,8 +3953,8 @@ export function createApp(config: ApiConfig): ApiHandle {
       } catch {
         body = {}
       }
-      // U232: JSON.parse can yield null/scalar/array at runtime, so guard the
-      // dereference instead of trusting the declared object type.
+      // U232/U236: readJson normalises non-object bodies to {}; keep the guard
+      // as defence in depth for the logout body token.
       const bodyToken =
         body !== null && typeof body === 'object' && typeof body.refreshToken === 'string'
           ? body.refreshToken
