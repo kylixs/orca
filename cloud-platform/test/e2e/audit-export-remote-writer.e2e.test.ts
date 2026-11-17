@@ -71,6 +71,21 @@ async function finishedAuditEvent(jobId: string) {
   }
 }
 
+/** Logins are appended best-effort; freezing at accept would otherwise export an empty set. */
+async function awaitLoginEvents(): Promise<void> {
+  const deadline = Date.now() + 5_000
+  for (;;) {
+    const res = await fetch(`${api.url}/v1/audit/events?eventType=login&limit=10`, {
+      headers: { authorization: `Bearer ${adminToken}` }
+    })
+    assert.equal(res.status, 200)
+    const page = (await res.json()) as AuditPage
+    if ((page.events?.length ?? 0) > 0) return
+    if (Date.now() > deadline) assert.fail('login events never became queryable')
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+}
+
 before(async () => {
   dir = mkdtempSync(join(tmpdir(), 'orca-audit-export-remote-'))
   exportDir = join(dir, 'exports')
@@ -102,6 +117,7 @@ after(async () => {
 })
 
 test('远端写者查询下导出仍 succeeded，产物可读且终态审计入链', async () => {
+  await awaitLoginEvents()
   const res = await fetch(`${api.url}/v1/audit/export`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${adminToken}` },

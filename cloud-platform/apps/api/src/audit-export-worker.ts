@@ -17,6 +17,7 @@ import {
   statSync
 } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
+import type { Dirent } from 'node:fs'
 import path from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import type { AuditQuery, AuditQueryResult } from './audit.ts'
@@ -82,6 +83,8 @@ export type AuditExportWorkerOptions = {
   maxEvents?: number
   maxBytes?: number
   pageSize?: number
+  /** Test seam: simulates short writes (ENOSPC) after the file is created. */
+  writeChunk?: (filePath: string, body: string) => Promise<void>
 }
 
 type ChunkFile = { path: string; bytes: number }
@@ -126,6 +129,7 @@ export class AuditExportWorker {
   private readonly maxEvents: number
   private readonly maxBytes: number
   private readonly pageSize: number
+  private readonly writeChunk: (filePath: string, body: string) => Promise<void>
 
   constructor(options: AuditExportWorkerOptions) {
     this.store = options.store
@@ -139,6 +143,9 @@ export class AuditExportWorker {
       Number.isFinite(requested) && requested > 0
         ? Math.min(requested, AUDIT_EXPORT_MAX_PAGE_SIZE)
         : AUDIT_EXPORT_MAX_PAGE_SIZE
+    this.writeChunk =
+      options.writeChunk ??
+      ((filePath, body) => writeFile(filePath, body, { encoding: 'utf8', mode: 0o600 }))
   }
 
   /** Runs one job. A non-queued/expired/missing job is skipped, never mutated. */
@@ -313,13 +320,16 @@ export class AuditExportWorker {
             throw new AuditExportWriteError(errorMessage(error))
           }
           const chunkPath = `${objectPath}.${token}.part-${chunks.length}`
+          // Register first: a short write (ENOSPC) still leaves a file to remove.
+          const chunk: ChunkFile = { path: chunkPath, bytes: 0 }
+          chunks.push(chunk)
           try {
-            await writeFile(chunkPath, body, { encoding: 'utf8', mode: 0o600 })
+            await this.writeChunk(chunkPath, body)
           } catch (error) {
             throw new AuditExportWriteError(errorMessage(error))
           }
           const chunkBytes = Buffer.byteLength(body, 'utf8')
-          chunks.push({ path: chunkPath, bytes: chunkBytes })
+          chunk.bytes = chunkBytes
           totalEvents += events.length
           bytes += chunkBytes
         }
@@ -405,6 +415,28 @@ export class AuditExportWorker {
     }
   }
 
+  /**
+   * Backstop for unregistered churn: scratch files live only beside the object,
+   * so only `.part-`/`.tmp` entries in this job's dir are removed; job.json stays.
+   */
+  private sweepScratchFiles(objectPath: string): void {
+    const dir = path.dirname(objectPath)
+    let entries: Dirent[]
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      if (!entry.isFile()) {
+        continue
+      }
+      if (entry.name.includes('.part-') || entry.name.endsWith('.tmp')) {
+        this.removeObjectFile(path.join(dir, entry.name))
+      }
+    }
+  }
+
   private failJob(
     job: AuditExportJob,
     objectPath: string | null,
@@ -413,6 +445,7 @@ export class AuditExportWorker {
     const error: AuditExportJobError = { code, message: failureMessage(code) }
     if (objectPath) {
       this.removeObjectFile(objectPath)
+      this.sweepScratchFiles(objectPath)
     }
     try {
       this.store.markFailed(job.jobId, error)

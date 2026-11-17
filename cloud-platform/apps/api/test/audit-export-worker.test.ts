@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { AuditQuery, AuditQueryResult } from '../src/audit.ts'
@@ -85,6 +85,7 @@ type WorkerOverrides = {
   pageSize?: number
   ttlMs?: number
   audit?: AuditExportAuditSink
+  writeChunk?: (filePath: string, body: string) => Promise<void>
 }
 
 function makeWorker(root: string, chain: ReturnType<typeof fakeChain>, over: WorkerOverrides = {}) {
@@ -442,6 +443,44 @@ describe('失败终态不留产物', () => {
     assert.equal(failed?.status, 'failed')
     assert.equal(failed?.error?.code, AUDIT_EXPORT_ERROR_WRITE_FAILED)
     assert.equal(failed?.error?.message, '导出产物写入失败。')
+  })
+
+  test('分块写入部分字节后 ENOSPC，仍记 EXPORT_WRITE_FAILED 且只留 job.json', async () => {
+    const root = tempRoot()
+    const time = clock()
+    const events = Array.from({ length: 4 }, (_, index) => event(index + 1))
+    const chain = fakeChain(events)
+    let writes = 0
+    const { store, worker } = makeWorker(root, chain, {
+      now: time.now,
+      pageSize: 2,
+      writeChunk: async (filePath, body) => {
+        writes += 1
+        if (writes === 1) {
+          writeFileSync(filePath, body)
+          return
+        }
+        // ENOSPC after partial bytes: the file already exists when the error is thrown.
+        writeFileSync(filePath, body.slice(0, 7))
+        throw Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' })
+      }
+    })
+    const job = store.create({
+      requestedBy: 'user_1',
+      requestedByUsername: 'alice',
+      query: { limit: 200 },
+      format: 'jsonl'
+    })
+
+    const result = await worker.runAuditExportJob(job.jobId)
+    assert.equal(result.status, 'failed')
+    if (result.status === 'failed') {
+      assert.equal(result.error.code, AUDIT_EXPORT_ERROR_WRITE_FAILED)
+      assert.equal(result.error.message, '导出产物写入失败。')
+    }
+    const jobDir = path.dirname(objectPathFor(root, job.jobId, 'jsonl'))
+    assert.deepEqual(readdirSync(jobDir), ['job.json'])
+    assert.equal(store.read(job.jobId)?.status, 'failed')
   })
 
   test('查询抛错记为 EXPORT_AUDIT_UNAVAILABLE 且无对象文件', async () => {

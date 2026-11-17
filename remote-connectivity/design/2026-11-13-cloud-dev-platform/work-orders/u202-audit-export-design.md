@@ -540,4 +540,4 @@ POST → queued → running → succeeded
 | F9 下载审计顺序 | **保留 fail-closed**：先消费 token、再审计、后发送；审计失败返回 500 且 token 已用（用户需重建任务）。理由：未落链的下载不得发生；替代（审计先于消费）会产生「已审计未交付」 | `71934e99f24` + 本记录 |
 | F16 错误脱敏 | 失败 message 固定短句，异常详情仅服务端日志 | 本批 |
 
-多副本/共享目录（D1）仍未决；当前单写者文件存储假设在能力字段与文档中已声明。
+多副本/共享目录（D1）仍未决；单写者文件存储假设仅在本文档声明（§5/D1），`GET /v1/audit/status` 的 `auditExport` 能力字段仅设计 §5 的六项（`formats`、`maxWindowDays`、`maxRows`、`maxBytes`、`jobTtlSeconds`、`downloadTokenTtlSeconds`），不含部署拓扑。
