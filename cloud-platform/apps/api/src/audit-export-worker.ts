@@ -88,7 +88,24 @@ type ChunkFile = { path: string; bytes: number }
 
 type StreamResult =
   | { ok: true; chunks: ChunkFile[]; bytes: number; totalEvents: number }
-  | { ok: false; code: string; message: string }
+  | { ok: false; code: string }
+
+/**
+ * Client-visible messages are fixed per code: `job.error` is polled by admins
+ * and auditors, so exception text and absolute paths must never reach it.
+ */
+const failureMessage = (code: string): string => {
+  switch (code) {
+    case AUDIT_EXPORT_ERROR_TOO_LARGE:
+      return '导出数据超过上限。'
+    case AUDIT_EXPORT_ERROR_WRITE_FAILED:
+      return '导出产物写入失败。'
+    case AUDIT_EXPORT_ERROR_AUDIT_UNAVAILABLE:
+      return '审计查询不可用。'
+    default:
+      return '导出失败。'
+  }
+}
 
 /** Distinguishes local write faults from query faults so the failure code is unchanged. */
 class AuditExportWriteError extends Error {
@@ -149,29 +166,23 @@ export class AuditExportWorker {
 
     const objectPath = resolveAuditExportObjectPath(this.store.root, jobId, running.format)
     if (!objectPath) {
-      return this.failJob(running, null, {
-        code: AUDIT_EXPORT_ERROR_WRITE_FAILED,
-        message: '导出产物路径无效。'
-      })
+      return this.failJob(running, null, AUDIT_EXPORT_ERROR_WRITE_FAILED)
     }
 
     let streamed: StreamResult
     try {
       streamed = await this.writePagesToChunks(running, objectPath)
     } catch (error) {
+      console.error('[audit-export]', error)
       const writeFailed = error instanceof AuditExportWriteError
-      return this.failJob(running, objectPath, {
-        code: writeFailed ? AUDIT_EXPORT_ERROR_WRITE_FAILED : AUDIT_EXPORT_ERROR_AUDIT_UNAVAILABLE,
-        message: writeFailed
-          ? `导出产物写入失败：${errorMessage(error)}`
-          : `审计查询失败：${errorMessage(error)}`
-      })
+      return this.failJob(
+        running,
+        objectPath,
+        writeFailed ? AUDIT_EXPORT_ERROR_WRITE_FAILED : AUDIT_EXPORT_ERROR_AUDIT_UNAVAILABLE
+      )
     }
     if (!streamed.ok) {
-      return this.failJob(running, objectPath, {
-        code: streamed.code,
-        message: streamed.message
-      })
+      return this.failJob(running, objectPath, streamed.code)
     }
 
     // Chunks are already chronological; assembly streams them in reverse page order.
@@ -179,11 +190,9 @@ export class AuditExportWorker {
     try {
       bytes = await this.assembleObjectFile(objectPath, running.format, streamed.chunks)
     } catch (error) {
+      console.error('[audit-export]', error)
       this.removeChunks(streamed.chunks)
-      return this.failJob(running, objectPath, {
-        code: AUDIT_EXPORT_ERROR_WRITE_FAILED,
-        message: `导出产物写入失败：${errorMessage(error)}`
-      })
+      return this.failJob(running, objectPath, AUDIT_EXPORT_ERROR_WRITE_FAILED)
     }
     this.removeChunks(streamed.chunks)
 
@@ -316,19 +325,11 @@ export class AuditExportWorker {
         }
         if (totalEvents > this.maxEvents) {
           this.removeChunks(chunks)
-          return {
-            ok: false,
-            code: AUDIT_EXPORT_ERROR_TOO_LARGE,
-            message: `导出事件数 ${totalEvents} 超过上限 ${this.maxEvents}。`
-          }
+          return { ok: false, code: AUDIT_EXPORT_ERROR_TOO_LARGE }
         }
         if (bytes > this.maxBytes) {
           this.removeChunks(chunks)
-          return {
-            ok: false,
-            code: AUDIT_EXPORT_ERROR_TOO_LARGE,
-            message: `导出字节数超过上限 ${this.maxBytes}。`
-          }
+          return { ok: false, code: AUDIT_EXPORT_ERROR_TOO_LARGE }
         }
         if (page.events.length === 0 || page.nextCursor === null) {
           return { ok: true, chunks, bytes, totalEvents }
@@ -407,8 +408,9 @@ export class AuditExportWorker {
   private failJob(
     job: AuditExportJob,
     objectPath: string | null,
-    error: AuditExportJobError
+    code: string
   ): AuditExportRunResult {
+    const error: AuditExportJobError = { code, message: failureMessage(code) }
     if (objectPath) {
       this.removeObjectFile(objectPath)
     }

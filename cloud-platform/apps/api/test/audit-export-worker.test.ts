@@ -126,6 +126,20 @@ function parseJsonRecord(line: string): Record<string, unknown> {
   return value as Record<string, unknown>
 }
 
+/**
+ * U206 F16: `job.error.message` is polled by admins/auditors, so it must be a
+ * fixed code-based sentence — never exception text or an absolute path.
+ */
+function assertSanitizedMessage(message: string | undefined, leaked?: string) {
+  assert.equal(typeof message, 'string')
+  assert.ok(message && message.length > 0)
+  assert.equal(message.includes('/'), false)
+  assert.equal(message.includes('\\'), false)
+  if (leaked) {
+    assert.equal(message.includes(leaked), false)
+  }
+}
+
 describe('分页、排序与产物', () => {
   test('450 条按 200/页 翻 3 页，游标正确，导出为 seq 升序', async () => {
     const root = tempRoot()
@@ -360,6 +374,8 @@ describe('失败终态不留产物', () => {
     assert.equal(eventsResult.status, 'failed')
     if (eventsResult.status === 'failed') {
       assert.equal(eventsResult.error.code, AUDIT_EXPORT_ERROR_TOO_LARGE)
+      assert.equal(eventsResult.error.message, '导出数据超过上限。')
+      assertSanitizedMessage(eventsResult.error.message)
     }
     assert.equal(existsSync(objectPathFor(root, eventsJob.jobId, 'csv')), false)
     assert.deepEqual(
@@ -369,6 +385,8 @@ describe('失败终态不留产物', () => {
     const failed = byEvents.store.read(eventsJob.jobId)
     assert.equal(failed?.status, 'failed')
     assert.equal(failed?.error?.code, AUDIT_EXPORT_ERROR_TOO_LARGE)
+    assert.equal(failed?.error?.message, '导出数据超过上限。')
+    assertSanitizedMessage(failed?.error?.message)
 
     const rootBytes = tempRoot()
     const byBytes = makeWorker(rootBytes, chain, { now: time.now, maxBytes: 128 })
@@ -382,6 +400,7 @@ describe('失败终态不留产物', () => {
     assert.equal(bytesResult.status, 'failed')
     if (bytesResult.status === 'failed') {
       assert.equal(bytesResult.error.code, AUDIT_EXPORT_ERROR_TOO_LARGE)
+      assert.equal(bytesResult.error.message, '导出数据超过上限。')
     }
     assert.equal(existsSync(objectPathFor(rootBytes, bytesJob.jobId, 'jsonl')), false)
     assert.deepEqual(
@@ -410,6 +429,8 @@ describe('失败终态不留产物', () => {
     assert.equal(result.status, 'failed')
     if (result.status === 'failed') {
       assert.equal(result.error.code, AUDIT_EXPORT_ERROR_WRITE_FAILED)
+      assert.equal(result.error.message, '导出产物写入失败。')
+      assertSanitizedMessage(result.error.message, objectPath)
     }
     assert.equal(existsSync(objectPath), false)
     const jobDir = path.dirname(objectPath)
@@ -420,17 +441,21 @@ describe('失败终态不留产物', () => {
     const failed = store.read(job.jobId)
     assert.equal(failed?.status, 'failed')
     assert.equal(failed?.error?.code, AUDIT_EXPORT_ERROR_WRITE_FAILED)
+    assert.equal(failed?.error?.message, '导出产物写入失败。')
   })
 
   test('查询抛错记为 EXPORT_AUDIT_UNAVAILABLE 且无对象文件', async () => {
     const root = tempRoot()
     const time = clock()
     const store = new AuditExportJobStore({ root, now: time.now })
+    // The exception carries an absolute path; none of it may reach job.error.message.
+    const leakedPath = '/Users/alice/private/audit-chain.json'
+    const leakyError = new Error(`ENOENT: open ${leakedPath} failed`)
     const worker = new AuditExportWorker({
       store,
       now: time.now,
       query: () => {
-        throw new Error('remote writer unreachable')
+        throw leakyError
       }
     })
     const job = store.create({
@@ -444,9 +469,13 @@ describe('失败终态不留产物', () => {
     assert.equal(result.status, 'failed')
     if (result.status === 'failed') {
       assert.equal(result.error.code, AUDIT_EXPORT_ERROR_AUDIT_UNAVAILABLE)
+      assert.equal(result.error.message, '审计查询不可用。')
+      assertSanitizedMessage(result.error.message, leakedPath)
+      assert.equal(result.error.message.includes('ENOENT'), false)
     }
     assert.equal(existsSync(objectPathFor(root, job.jobId, 'csv')), false)
     assert.equal(store.read(job.jobId)?.status, 'failed')
+    assert.equal(store.read(job.jobId)?.error?.message, '审计查询不可用。')
   })
 })
 
@@ -615,10 +644,13 @@ describe('远端异步审计查询（auditWriterUrls 拓扑）', () => {
     assert.equal(result.status, 'failed')
     if (result.status === 'failed') {
       assert.equal(result.error.code, AUDIT_EXPORT_ERROR_AUDIT_UNAVAILABLE)
+      assert.equal(result.error.message, '审计查询不可用。')
+      assertSanitizedMessage(result.error.message, 'remote writer unreachable')
     }
     assert.equal(existsSync(objectPathFor(root, job.jobId, 'csv')), false)
     assert.equal(store.read(job.jobId)?.status, 'failed')
     assert.equal(store.read(job.jobId)?.error?.code, AUDIT_EXPORT_ERROR_AUDIT_UNAVAILABLE)
+    assert.equal(store.read(job.jobId)?.error?.message, '审计查询不可用。')
   })
 
   test('第 2 页 reject 时清理已写分块并记为 EXPORT_AUDIT_UNAVAILABLE', async () => {

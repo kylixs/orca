@@ -4152,3 +4152,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U206 F10 修复**：worker 改分页流式——每页 ≤200 条按 seq 升序写独立分块，全部取回后逆序 `pipeline` 拼接（CSV 先表头），`statSync` 得 bytes 后 rename；成功/超限/异常均清理分块与 tmp；峰值内存 O(页×单事件)+64KiB，不随总量增长。单测 16/16（1200 条 6 页、页间 reject、part 清零）、格式/drain 31/31、runner+fullchain 7/7。
 - **U206 F14/F18 修复**：job.json 校验加严（状态/数值/format/objectKey/token hash/query 类型；损坏视为不存在），写路径 lstat 拒绝符号链接与非目录；CSV 增加 UTF-8 BOM（JSONL 不加），worker 流式产物同步写入 BOM 并计入 bytes。jobs 31、format 13、worker 16、导出 e2e 39/39。
 - **U206 F15/F13 修复**：`ApiConfig` 增导出目录/TTL/配额/token TTL/清扫间隔与 `now` 注入（config > env（`ORCA_AUDIT_EXPORT_*`）> 默认），store/worker/状态/下载/capabilities 全部读取同一配置；注入时钟 + 500ms TTL 测试稳定触发 410。F13 注释改为事实（带 token 可区分状态，依赖 96-bit jobId 与所有者签发）。runtime 24 例、capabilities 3 例绿。
+- **U206 F16 修复**：worker 终态失败消息按 code 固定短句（超限/写入失败/审计不可用/兜底），异常原文仅 `console.error`，不落 job.json、不返回客户端；新增「异常含绝对路径不外泄」判别。worker 16/16、status 11/11。
