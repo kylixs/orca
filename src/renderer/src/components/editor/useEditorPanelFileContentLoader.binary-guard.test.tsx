@@ -64,6 +64,12 @@ describe('desktop editor binary guard', () => {
     expect(isKnownBinaryEditorFile('/root/repo/icon.svg')).toBe(false)
   })
 
+  it('lets previewable binaries (images and PDFs) through to the read path', () => {
+    expect(isKnownBinaryEditorFile('/root/repo/screenshot.png')).toBe(false)
+    expect(isKnownBinaryEditorFile('/root/repo/photo.jpg')).toBe(false)
+    expect(isKnownBinaryEditorFile('/root/repo/manual.pdf')).toBe(false)
+  })
+
   it('downgrades NUL-bearing content that the host returned as text', () => {
     expect(guardEditorFileContent({ content: 'AB\u0000CD', isBinary: false })).toEqual({
       content: '',
