@@ -35,7 +35,8 @@ export type AuditSink = {
     | { ok: true; checked: number; tip: string }
     | { ok: false; brokenAtSeq: number; checked: number }
     | Promise<
-        { ok: true; checked: number; tip: string } | { ok: false; brokenAtSeq: number; checked: number }
+        | { ok: true; checked: number; tip: string }
+        | { ok: false; brokenAtSeq: number; checked: number }
       >
   getHealth: () => AuditHealth
   readonly size: number
@@ -128,6 +129,13 @@ export function createRemoteAudit(options: {
       if (res.status === 503 && refused === 'AUDIT_CHAIN_BROKEN') {
         health = { ok: false, reason: 'chain_broken', detail: 'audit writer chain broken' }
         throw Object.assign(new Error('audit chain broken'), { code: 'AUDIT_CHAIN_BROKEN' })
+      }
+      if (res.status === 503 && refused === 'AUDIT_WRITE_FAILED') {
+        // Transient sink failure: retryable, and never latched as a broken chain.
+        // Older writers send no such code and fall through to AUDIT_UNAVAILABLE.
+        const detail = 'audit writer write failed'
+        markWriteFailed(detail)
+        throw Object.assign(new Error(detail), { code: 'AUDIT_UNAVAILABLE' })
       }
       const detail = `audit writer answered ${res.status}`
       markWriteFailed(detail)

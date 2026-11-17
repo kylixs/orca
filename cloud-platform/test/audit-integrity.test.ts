@@ -107,3 +107,103 @@ describe('审计哈希链：可验证性与篡改检测', () => {
     assert.equal(chain.verify().ok, true)
   })
 })
+
+describe('审计哈希链：落盘失败不提交内存（U246）', () => {
+  function chainWithSink(): {
+    store: Store
+    chain: AuditChain
+    persisted: AuditEvent[]
+    fail: () => void
+    recover: () => void
+  } {
+    const store = new Store()
+    const persisted: AuditEvent[] = []
+    let failing = false
+    const chain = new AuditChain(store, (event) => {
+      if (failing) throw new Error('EACCES: audit log is read-only')
+      persisted.push(event)
+    })
+    return {
+      store,
+      chain,
+      persisted,
+      fail: () => {
+        failing = true
+      },
+      recover: () => {
+        failing = false
+      }
+    }
+  }
+
+  function sample(targetId: string): Parameters<AuditChain['append']>[0] {
+    return {
+      eventType: 'project_create',
+      actor: 'admin',
+      targetType: 'project',
+      targetId,
+      result: 'success'
+    }
+  }
+
+  test('persist 抛错时 store/seq/tip/verify.checked 不变，health=write_failed', () => {
+    const { store, chain, fail } = chainWithSink()
+    chain.append(sample('before'))
+    const before = {
+      size: store.audit.length,
+      seq: store.auditSeq,
+      tip: store.auditTip,
+      checked: chain.verify().checked
+    }
+
+    fail()
+    assert.throws(() => chain.append(sample('blocked')), /EACCES/)
+
+    assert.equal(store.audit.length, before.size, '失败事件不得残留')
+    assert.equal(store.auditSeq, before.seq, 'seq 不得前移')
+    assert.equal(store.auditTip, before.tip, 'tip 不得前移')
+    assert.deepEqual(chain.verify(), {
+      ok: true,
+      checked: before.checked,
+      tip: before.tip
+    })
+    const health = chain.getHealth()
+    assert.equal(health.ok, false)
+    assert.ok(!health.ok && health.reason === 'write_failed')
+  })
+
+  test('appendBestEffort 落盘失败返回 false 且无残留', () => {
+    const { store, chain, fail } = chainWithSink()
+    fail()
+    assert.equal(chain.appendBestEffort(sample('best-effort')), false)
+    assert.equal(store.audit.length, 0)
+    assert.equal(store.auditSeq, 0)
+    assert.equal(store.auditTip, 'GENESIS')
+    assert.deepEqual(chain.verify(), { ok: true, checked: 0, tip: 'GENESIS' })
+  })
+
+  test('恢复后下一条衔接最后持久化条目，重建链 verify ok', () => {
+    const { chain, persisted, fail, recover } = chainWithSink()
+    chain.append(sample('one'))
+    const tail = persisted.at(-1)
+    fail()
+    assert.throws(() => chain.append(sample('phantom')))
+    recover()
+    const next = chain.append(sample('two'))
+
+    assert.equal(next.seq, (tail?.seq ?? 0) + 1, 'seq 不得跳号')
+    assert.equal(next.prevHash, tail?.hash, 'prevHash 必须衔接落盘尾部')
+    assert.deepEqual(
+      persisted.map((event) => event.targetId),
+      ['one', 'two'],
+      '磁盘上只有真正落盘的事件'
+    )
+
+    const rebuiltStore = new Store()
+    const rebuilt = new AuditChain(rebuiltStore)
+    rebuilt.restore(persisted)
+    const verdict = rebuilt.verify()
+    assert.equal(verdict.ok, true)
+    if (verdict.ok) assert.equal(verdict.checked, persisted.length)
+  })
+})

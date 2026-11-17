@@ -103,19 +103,22 @@ export async function startAuditWriter(options: {
   }
 
   const promoteTimer = lease
-    ? setInterval(() => {
-        if (leader) {
-          // A promoted standby stamps its own id; the old holder must stop here.
-          if (!lease.assertLeadership()) leader = false
-          return
-        }
-        if (!lease.acquire()) return
-        void serialize(() => {
-          // Appends landed while this process was standby; re-read before taking over.
-          if (log) chain.restore(log.load())
-          leader = true
-        })
-      }, Math.max(50, Math.floor((options.leaseTtlMs ?? DEFAULT_LEASE_TTL_MS) / 4)))
+    ? setInterval(
+        () => {
+          if (leader) {
+            // A promoted standby stamps its own id; the old holder must stop here.
+            if (!lease.assertLeadership()) leader = false
+            return
+          }
+          if (!lease.acquire()) return
+          void serialize(() => {
+            // Appends landed while this process was standby; re-read before taking over.
+            if (log) chain.restore(log.load())
+            leader = true
+          })
+        },
+        Math.max(50, Math.floor((options.leaseTtlMs ?? DEFAULT_LEASE_TTL_MS) / 4))
+      )
     : null
 
   const canAppend = (): boolean => leader && (lease === null || lease.assertLeadership())
@@ -150,7 +153,7 @@ export async function startAuditWriter(options: {
     const url = new URL(req.url ?? '/', 'http://writer')
     if (url.pathname === '/health') {
       return json(res, 200, {
-        ok: true,
+        ...chain.getHealth(),
         role: leader ? 'leader' : 'standby',
         events: chain.size,
         tip: chain.tip
@@ -172,9 +175,10 @@ export async function startAuditWriter(options: {
       }
       // Why refuse at the source: once the chain is broken, every replica must
       // stop minting grants, not just the one that noticed (AC-26 fail-closed).
-      // Why refuse at the source: once the chain is broken, every replica must
-      // stop minting grants, not just the one that noticed (AC-26 fail-closed).
-      if (!chain.getHealth().ok) {
+      // A write failure is transient, so the append below is attempted instead:
+      // a recovered disk heals without a writer restart.
+      const health = chain.getHealth()
+      if (!health.ok && health.reason === 'chain_broken') {
         return json(res, 503, { error: { code: 'AUDIT_CHAIN_BROKEN' } })
       }
       // Why a distinct code: the replica should fail over, not treat this as a
@@ -182,7 +186,18 @@ export async function startAuditWriter(options: {
       if (!canAppend()) {
         return json(res, 503, { error: { code: 'AUDIT_WRITER_STANDBY' } })
       }
-      const appended = await append(raw)
+      let appended: AuditEvent[]
+      try {
+        appended = await append(raw)
+      } catch (error) {
+        const failed = chain.getHealth()
+        if (!failed.ok && failed.reason === 'write_failed') {
+          // New code on the existing error.code field: old clients fall through
+          // to AUDIT_UNAVAILABLE and retry instead of latching a broken chain.
+          return json(res, 503, { error: { code: 'AUDIT_WRITE_FAILED' } })
+        }
+        throw error
+      }
       return json(res, 200, { events: appended })
     }
 

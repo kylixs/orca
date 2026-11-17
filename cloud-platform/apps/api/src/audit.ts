@@ -166,23 +166,25 @@ export class AuditChain {
       traceId: input.traceId,
       metadata: input.metadata ?? {}
     }
-    const hash = createHash('sha256').update(`${prevHash}|${canonicalJson(body)}`).digest('hex')
+    const hash = createHash('sha256')
+      .update(`${prevHash}|${canonicalJson(body)}`)
+      .digest('hex')
     const event: AuditEvent = { ...input, seq, ts, prevHash, hash }
+    try {
+      this.persist?.(event)
+    } catch (error) {
+      // Commit memory only after the log: a phantom tail event would be counted by
+      // verify/query and become the next event's predecessor, breaking the log on restart.
+      this.markUnhealthy('write_failed', error instanceof Error ? error.message : String(error))
+      throw error
+    }
     this.store.audit.push(event)
     this.store.auditSeq = seq
     this.store.auditTip = hash
-    try {
-      this.persist?.(event)
-      // A successful write clears a transient write failure; a broken chain stays
-      // latched until the log is repaired and the process restarts.
-      if (!this.health.ok && this.health.reason === 'write_failed') {
-        this.health = { ok: true }
-      }
-    } catch (error) {
-      // Recorded in memory but not durable: treat the log as unreliable so the next
-      // sensitive mutation is refused instead of silently going unrecorded.
-      this.markUnhealthy('write_failed', error instanceof Error ? error.message : String(error))
-      throw error
+    // A successful write clears a transient write failure; a broken chain stays
+    // latched until the log is repaired and the process restarts.
+    if (!this.health.ok && this.health.reason === 'write_failed') {
+      this.health = { ok: true }
     }
     return event
   }
@@ -199,7 +201,9 @@ export class AuditChain {
    * Recomputes the chain from GENESIS. `checked` is how many events were verified,
    * so an empty log reports 0 rather than a vacuous "ok" that looks like coverage.
    */
-  verify(): { ok: true; checked: number; tip: string } | { ok: false; brokenAtSeq: number; checked: number } {
+  verify():
+    | { ok: true; checked: number; tip: string }
+    | { ok: false; brokenAtSeq: number; checked: number } {
     let prev = 'GENESIS'
     let checked = 0
     for (const event of this.store.audit) {
@@ -214,7 +218,9 @@ export class AuditChain {
         traceId: event.traceId,
         metadata: event.metadata ?? {}
       }
-      const expected = createHash('sha256').update(`${prev}|${canonicalJson(body)}`).digest('hex')
+      const expected = createHash('sha256')
+        .update(`${prev}|${canonicalJson(body)}`)
+        .digest('hex')
       if (event.prevHash !== prev || event.hash !== expected) {
         this.markUnhealthy('chain_broken', `broken at seq ${event.seq}`)
         return { ok: false, brokenAtSeq: event.seq, checked }
@@ -241,7 +247,11 @@ export class AuditChain {
       if (filter.cursor && event.seq >= filter.cursor) continue
       if (filter.since && event.ts < filter.since) continue
       if (filter.until !== undefined && event.ts > filter.until) continue
-      if (types ? !types.has(event.eventType) : filter.eventType && event.eventType !== filter.eventType) {
+      if (
+        types
+          ? !types.has(event.eventType)
+          : filter.eventType && event.eventType !== filter.eventType
+      ) {
         continue
       }
       if (filter.actor && event.actor !== filter.actor) continue
@@ -279,7 +289,10 @@ export class AuditChain {
       str(metadata.subject),
       str(metadata.projectKey)
     ]
-    const text = parts.filter((part) => part !== '').join('\n').toLowerCase()
+    const text = parts
+      .filter((part) => part !== '')
+      .join('\n')
+      .toLowerCase()
     this.searchCache.set(event, text)
     return text
   }

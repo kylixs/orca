@@ -67,6 +67,25 @@ async function auditStatus(service: Service, token: string): Promise<Json> {
   return (await res.json()) as Json
 }
 
+async function auditVerify(
+  service: Service,
+  token: string
+): Promise<{ status: number; body: Json }> {
+  const res = await fetch(`${service.url}/v1/audit/verify`, {
+    headers: { authorization: `Bearer ${token}` }
+  })
+  return { status: res.status, body: (await res.json()) as Json }
+}
+
+async function auditEvents(service: Service, token: string, query: string): Promise<Json[]> {
+  const res = await fetch(`${service.url}/v1/audit/events?${query}`, {
+    headers: { authorization: `Bearer ${token}` }
+  })
+  assert.equal(res.status, 200)
+  const body = (await res.json()) as { events: Json[] }
+  return body.events
+}
+
 function errorCode(body: Json): unknown {
   const error = body.error
   return error !== null && typeof error === 'object' ? (error as Json).code : undefined
@@ -75,12 +94,15 @@ function errorCode(body: Json): unknown {
 describe('审计不可写时敏感操作 fail-closed（真实平台进程）', () => {
   test('M32-1 日志文件只读：建项目被拒 503 且确实没建，读取与登录仍可用；恢复后重新可用', async () => {
     const logPath = join(mkdtempSync(join(tmpdir(), 'orca-audit-fc-')), 'audit.jsonl')
-    const service = await startWithLog(logPath)
+    let service = await startWithLog(logPath)
     try {
       const token = await login(service)
 
       const before = await createProject(service, token, 'fc-before')
       assert.equal(before.status, 201, 'sanity: writable audit allows the mutation')
+      const verifyBefore = await auditVerify(service, token)
+      assert.equal(verifyBefore.status, 200)
+      const checkedBefore = verifyBefore.body.checked as number
 
       chmodSync(logPath, 0o400)
       const blocked = await createProject(service, token, 'fc-blocked')
@@ -92,6 +114,16 @@ describe('审计不可写时敏感操作 fail-closed（真实平台进程）', (
       assert.ok(!keys.includes('fc-blocked'), 'a refused mutation must not take effect')
       assert.ok(keys.includes('fc-before'))
 
+      // U246: a failed persist must not become a phantom event. The first verify
+      // appended one audit_verify event; the refused project must add none.
+      const verifyAfterFailure = await auditVerify(service, token)
+      assert.equal(verifyAfterFailure.status, 200, '验证本身仍可读')
+      assert.equal(verifyAfterFailure.body.checked, checkedBefore + 1, '失败条目不得被 verify 计入')
+      const projectEvents = await auditEvents(service, token, 'eventType=project_create&limit=50')
+      const keysAudited = projectEvents.map((event) => (event.metadata as Json | undefined)?.key)
+      assert.ok(!keysAudited.includes('fc-blocked'), '被拒项目不得留下 phantom success')
+      assert.ok(keysAudited.includes('fc-before'))
+
       // Reads and the liveness probe stay available for diagnosis.
       const health = await fetch(`${service.url}/health`)
       assert.equal(health.status, 200)
@@ -102,6 +134,8 @@ describe('审计不可写时敏感操作 fail-closed（真实平台进程）', (
       assert.equal(status.ok, false)
       assert.equal(status.reason, 'write_failed')
       assert.equal(status.persisted, true)
+      const statusChain = status.chain as { lastSeq: number }
+      assert.equal(statusChain.lastSeq, checkedBefore + 1, 'seq 不得为失败条目前移')
 
       chmodSync(logPath, 0o600)
       // Why a fresh request: the refusal is recorded per-request, so recovery is
@@ -109,10 +143,22 @@ describe('审计不可写时敏感操作 fail-closed（真实平台进程）', (
       const recovered = await createProject(service, token, 'fc-after')
       assert.equal(recovered.status, 201)
 
+      // U246: the log is a valid chain again — previously the phantom tail left a
+      // seq gap and every restart failed verify with 409.
+      await service.stop()
+      service = await startWithLog(logPath)
+      const restartToken = await login(service)
+      const verifyAfterRestart = await auditVerify(service, restartToken)
+      assert.equal(verifyAfterRestart.status, 200, '重启后链必须连续')
+      assert.equal(verifyAfterRestart.body.ok, true)
+
       saveEvidence(EVIDENCE, 'm32-1-readonly-log.json', {
         blocked: blocked.body,
         status,
-        recovered: recovered.status
+        recovered: recovered.status,
+        checkedBefore,
+        checkedAfterFailure: verifyAfterFailure.body.checked,
+        verifyAfterRestart: verifyAfterRestart.body
       })
     } finally {
       chmodSync(logPath, 0o600)
@@ -196,10 +242,17 @@ describe('fail-closed 覆盖全部敏感写（真实平台进程）', () => {
             fetch(`${service.url}/v1/projects/proj_payment/grants`, {
               method: 'PUT',
               headers: auth,
-              body: JSON.stringify({ subjectType: 'group', subjectId: 'team-payment', permissions: [] })
+              body: JSON.stringify({
+                subjectType: 'group',
+                subjectId: 'team-payment',
+                permissions: []
+              })
             })
         },
-        { name: 'host_token', call: () => fetch(`${service.url}/v1/hosts/tokens`, { method: 'POST', headers: auth }) },
+        {
+          name: 'host_token',
+          call: () => fetch(`${service.url}/v1/hosts/tokens`, { method: 'POST', headers: auth })
+        },
         {
           name: 'maintenance',
           call: () =>
@@ -220,7 +273,8 @@ describe('fail-closed 覆盖全部敏感写（真实平台进程）', () => {
         },
         {
           name: 'device_revoke',
-          call: () => fetch(`${service.url}/v1/me/devices/${deviceId}`, { method: 'DELETE', headers: auth })
+          call: () =>
+            fetch(`${service.url}/v1/me/devices/${deviceId}`, { method: 'DELETE', headers: auth })
         }
       ]
       const results: Record<string, number> = {}
@@ -239,9 +293,9 @@ describe('fail-closed 覆盖全部敏感写（真实平台进程）', () => {
         await fetch(`${service.url}/v1/policies/download`, { headers: auth })
       ).json()) as { downloadDefault: string }
       assert.equal(policy.downloadDefault, 'deny')
-      const hosts = (await (
-        await fetch(`${service.url}/v1/hosts`, { headers: auth })
-      ).json()) as { hosts: { id: string; status: string }[] }
+      const hosts = (await (await fetch(`${service.url}/v1/hosts`, { headers: auth })).json()) as {
+        hosts: { id: string; status: string }[]
+      }
       assert.equal(hosts.hosts.find((host) => host.id === 'host_dev001')?.status, 'online')
       // The device still works: a revoked device would fail its next login.
       await login(service)
