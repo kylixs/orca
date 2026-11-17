@@ -3870,6 +3870,7 @@ function stopAuditExportPolling() {
 /** 复用查询参数构造器，导出筛选永远与当前列表 URL 同源。 */
 function auditExportRequestBody(filter, format) {
   const params = auditQueryParams(filter, undefined)
+  // D8: the server default controls deletion (false); the UI only reflects it.
   const body = { format, confirm: true }
   const eventType = params.get('eventType')
   if (eventType) body.eventTypes = [eventType]
@@ -3924,6 +3925,13 @@ function auditExportFilterSummary(filter) {
   return `<ul class="muted">${items.map((item) => `<li>${item}</li>`).join('')}</ul>`
 }
 
+const AUDIT_EXPORT_EXPIRED_TEXT = '导出任务已过期，请重新导出。'
+
+function isAuditExportExpired(err) {
+  const code = err?.code
+  return err?.status === 410 || code === 'EXPORT_EXPIRED' || code === 'EXPORT_DOWNLOAD_GONE'
+}
+
 function auditExportErrorText(err) {
   const code = err?.code
   if (err?.status === 403) return '无导出权限：仅管理员或审计员可以导出审计日志。'
@@ -3936,26 +3944,98 @@ function auditExportErrorText(err) {
     return `导出条件无效：${err?.message ?? String(err)}`
   }
   if (err?.status === 404 || code === 'EXPORT_NOT_FOUND') return '导出任务不存在。'
-  if (
-    err?.status === 410 ||
-    code === 'EXPORT_EXPIRED' ||
-    code === 'EXPORT_DOWNLOAD_GONE'
-  ) {
-    return '导出任务已过期，请重新发起导出。'
-  }
+  if (isAuditExportExpired(err)) return AUDIT_EXPORT_EXPIRED_TEXT
   return `导出失败：${err?.message ?? String(err)}`
 }
 
-function startAuditExportPolling(jobId, statusEl) {
+function setAuditExportStatus(statusEl, text, tone) {
+  if (!statusEl) return
+  statusEl.hidden = false
+  statusEl.dataset.tone = tone ?? ''
+  statusEl.textContent = text
+}
+
+function appendAuditExportText(statusEl, text) {
+  if (statusEl) statusEl.appendChild(document.createTextNode(` ${text}`))
+}
+
+/** The expired job cannot be resumed; retry reopens the confirmation dialog. */
+function showAuditExportExpired(statusEl, onRetry) {
+  if (!statusEl) return
+  setAuditExportStatus(statusEl, AUDIT_EXPORT_EXPIRED_TEXT, 'danger')
+  if (typeof onRetry !== 'function') return
+  const retry = document.createElement('button')
+  retry.type = 'button'
+  retry.className = 'btn'
+  retry.id = 'auditExportRetry'
+  retry.textContent = '重新导出'
+  retry.onclick = onRetry
+  statusEl.appendChild(document.createTextNode(' '))
+  statusEl.appendChild(retry)
+}
+
+/**
+ * U201 E12: the download is a same-origin `<a download>` whose token lives in the
+ * URL — no Authorization header, and `download` avoids opening a focusable window.
+ * Redemption consumes the token before bytes are sent, so the link retires on click.
+ */
+function renderAuditExportSucceeded(statusEl, job, deleteAfterDownload) {
+  if (!statusEl) return
+  setAuditExportStatus(
+    statusEl,
+    `导出已生成（${String(job.format ?? '').toUpperCase()}，共 ${job.totalEvents ?? 0} 条，${job.bytes ?? 0} 字节）。`,
+    'ok'
+  )
+  const url = typeof job.downloadUrl === 'string' ? job.downloadUrl : ''
+  // F4 moves single-use to the token: a reason then means "no current link", not
+  // "artifact already downloaded"; either way no link is offered.
+  const consumed = job.downloaded === true || Boolean(job.downloadUnavailableReason)
+  if (url) {
+    const link = document.createElement('a')
+    link.className = 'btn primary'
+    link.id = 'auditExportDownload'
+    link.setAttribute('download', '')
+    link.href = url
+    link.textContent = '下载'
+    let retired = false
+    link.addEventListener('click', () => {
+      if (retired) return
+      retired = true
+      // The URL is dead even if the transfer fails; never offer it again.
+      setTimeout(() => {
+        link.remove()
+        appendAuditExportText(
+          statusEl,
+          deleteAfterDownload
+            ? '已下载，文件已删除；如需再次获取请重新导出。'
+            : '已下载，链接不可再用；如需再次获取请重新导出。'
+        )
+      }, 0)
+    })
+    statusEl.appendChild(document.createTextNode(' '))
+    statusEl.appendChild(link)
+    if (deleteAfterDownload) appendAuditExportText(statusEl, '下载后文件将删除。')
+    return
+  }
+  if (consumed) {
+    appendAuditExportText(
+      statusEl,
+      deleteAfterDownload
+        ? '该导出已下载过，文件已删除；如需再次获取请重新导出。'
+        : '该导出已下载过，链接不可再用；如需再次获取请重新导出。'
+    )
+    return
+  }
+  appendAuditExportText(statusEl, '下载链接暂不可用，请稍后重新导出。')
+}
+
+function startAuditExportPolling(jobId, statusEl, options = {}) {
   stopAuditExportPolling()
   const generation = auditExportPollGeneration
   const startedAt = Date.now()
   let ticks = 0
   const finish = (text, tone) => {
-    if (statusEl) {
-      statusEl.textContent = text
-      if (tone) statusEl.dataset.tone = tone
-    }
+    setAuditExportStatus(statusEl, text, tone)
     stopAuditExportPolling()
   }
   const tick = async () => {
@@ -3966,16 +4046,23 @@ function startAuditExportPolling(jobId, statusEl) {
       job = await api(`/v1/audit/exports/${encodeURIComponent(jobId)}`)
     } catch (err) {
       if (generation !== auditExportPollGeneration) return
+      if (isAuditExportExpired(err)) {
+        showAuditExportExpired(statusEl, options.onRetry)
+        stopAuditExportPolling()
+        return
+      }
       finish(auditExportErrorText(err), 'danger')
       return
     }
     // The dialog may have closed while the request was in flight.
     if (generation !== auditExportPollGeneration || !auditExportPoll) return
     if (job.status === 'succeeded') {
-      finish(
-        `导出已生成（${String(job.format ?? '').toUpperCase()}，共 ${job.totalEvents ?? 0} 条，${job.bytes ?? 0} 字节）。`,
-        'ok'
+      renderAuditExportSucceeded(
+        statusEl,
+        job,
+        job.deleteAfterDownload === true || options.deleteAfterDownload === true
       )
+      stopAuditExportPolling()
       return
     }
     if (job.status === 'failed') {
@@ -4047,8 +4134,15 @@ function openAuditExportDialog() {
                 body: JSON.stringify(auditExportRequestBody(filter, format))
               })
               if (statusEl) statusEl.textContent = '已受理，正在生成导出文件…'
-              startAuditExportPolling(job.jobId, statusEl)
+              startAuditExportPolling(job.jobId, statusEl, {
+                onRetry: reopen,
+                deleteAfterDownload: job.deleteAfterDownload === true
+              })
             } catch (err) {
+              if (isAuditExportExpired(err)) {
+                showAuditExportExpired(statusEl, reopen)
+                return
+              }
               if (statusEl) {
                 statusEl.textContent = auditExportErrorText(err)
                 statusEl.dataset.tone = 'danger'
@@ -4063,6 +4157,12 @@ function openAuditExportDialog() {
     ],
     { sheet: isMobileViewport(), onClose: () => stopAuditExportPolling() }
   )
+  const reopen = () => {
+    // Closing first drops the old dialog (and its Escape listener) before a fresh
+    // confirmation dialog mounts, so retry never stacks two overlays.
+    backdrop.querySelector('[data-action="close"]')?.click()
+    openAuditExportDialog()
+  }
   return backdrop
 }
 
