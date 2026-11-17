@@ -4336,3 +4336,5 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U181 A3 落地**（`d7c4c2e2814`，5 文件 +162/−2）：`orca_host_online` 转换事件（四字段、仅转换时一行、走 stderr 日志流避免污染 readiness JSON）、设计命名 `heartbeatError`→`lastErrorCode`；主会话复跑 3 文件 38/38（代理 6 文件 75/75），变异即红。A4（journalctl + reenroll 提示 + 码表文档尾项）已派。
 - **快照 P1 修复落地**（`51f2e2066f3`，2 文件 +184/−14）：旧明文快照加载即写回哈希形态（启动即去明文、flush no-op 不回退、写盘失败仅 warn 并重试）；`SNAPSHOT_VERSION` 升 2、读取接受 1/2。store-persistence **13/13**、refresh-cookie 53/53（主会话复跑），变异删「立即写回」→ 3 例红。二次复审在途。
 - **快照 P1 二次复审 APPROVED**：真实链路（手写 v1 明文 → `attachStorePersistence`/`createApp`/SIGTERM 子进程）均为「启动即清洗、写计数恰 1、flush no-op」；旧程序回滚读 v2 被拒自愈；变异删写回→3 例红、`lastWritten` 提前→1 例红。单测 13/13、e2e 63/63。**新 P3 已派修**：损坏/不支持版本快照现在会被空 store 立即覆盖（丢证据）→ 改为仅恢复成功时改写，并补「文件逐字节不变」用例。
+- **损坏快照保留修复**（`3daf2d6ee6c`，2 文件 +83/−23）：恢复失败分支置 `restoredText=null`——损坏 JSON/版本不支持时磁盘逐字节保留、空 store、仅 warn；补「清洗后立即 flush 不产生第二次写」断言。store-persistence **15/15**（主会话复跑），变异删该行 → 两例红。U233 明文/快照子项至此闭环（GC 主方案仍待 D18 裁定）。
+- **§2-111 冷读审计启动**（第三个并发位）：针对近期 6 处补丁（哈希/快照/D19/D17/U244/U246）的交互效应——重启后 Cookie 重发与宽限、撤销集与哈希命中、启动清洗与 SIGTERM、旧客户端对 400 的呈现、`authMode` 是否可能长期 null。
