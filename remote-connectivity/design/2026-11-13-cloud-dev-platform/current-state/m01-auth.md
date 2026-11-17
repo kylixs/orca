@@ -94,6 +94,9 @@
 | 传输失败                 | 客户端记为 `error`：页内请求**不登出**、保留会话、恢复后可重试；启动探测失败→登录页，不空白/无未捕获异常（启动含 10s 超时，U229 F5）                          | `app.js:117-120,143-146,176-183`；`web-refresh-cookie` U222 N1、`u197-web-cookie-browser` 597/642 |
 | 刷新 5xx/429/403         | 客户端归 `error`：不登出、保留会话，业务错误交给调用方（U229 F7） | `app.js` `refreshVerdict`；`u229-web-startup-resilience` |
 | 登录 200 非契约响应      | 校验 `accessToken/user.username/device.id`，不满足抛 `PLATFORM_UNAVAILABLE`「平台响应异常」，不写 `"undefined"`（U229 F6） | `u229-web-startup-resilience` |
+| 非对象 JSON body         | `readJson` 将 `null`/标量归一为 `{}`（数组/对象保留），各端点返回既有 4xx 而非 500（U236） | `u236-non-object-body` |
+| 登出带重复 Cookie        | 清三作用域后仍用 Bearer/body 显式凭据撤销，响应保持 401；仅重复 Cookie 不猜测撤销（U233 F1） | `refresh-cookie.e2e`、`u229-logout-body` |
+| refresh 请求体为 `null`  | 视为假 body：Cookie 源 200 不回显/不轮换；无 Cookie 401（U235） | `u235-refresh-null`（`refresh-cookie.e2e` 内） |
 | 外来 Origin 登录         | 配置了 PUBLIC_ORIGIN 时非平台 Origin 登录 → `403 CSRF_REJECTED`，不下发 body refresh                                              | `server.ts:2001-2007,3406-3409`；`refresh-cookie` 139                                 |
 | 带 Cookie 但无 Origin    | 登录/handoff → `401 SESSION_EXPIRED`，不按 Cookie 源解析                                                                          | `server.ts:1988-1994,3402-3405`；`refresh-cookie` 149                                 |
 | 刷新被拒                 | 客户端 `logout()`，清本地并回登录页                                                                                              | `app.js:67-74`                                                                         |
@@ -154,6 +157,7 @@
 - `cloud-platform/test/e2e/u229-web-logout-grace.e2e.test.ts`：**happy-dom**——grace 回显不持久化 previous/不改标记、登出携带 body refresh、非 SESSION_EXPIRED 401 不登出（U229 F3/F4、U230③）。
 - `cloud-platform/test/e2e/u229-web-startup-resilience.e2e.test.ts`：**happy-dom（timerScale）**——启动挂起超时落登录页、登录 200 非契约响应校验、刷新 503 保会话、未处理拒绝修复（U229 F5/F6/F7/F11）。
 - `cloud-platform/test/e2e/u230-disabled-user-edges.e2e.test.ts`：**in-process**——Cookie previous/宽限禁用、已删用户两源、假 body+有效 Cookie、禁用登录不建 device、`/v1/audit/verify` 全链（U230④）。
+- `cloud-platform/test/e2e/u236-non-object-body.e2e.test.ts`：**in-process**——7 端点 × `null`/标量/数组发送，断言 4xx 非 500 + 有效对象回归（U236）。
 - `cloud-platform/test/e2e/u229-logout-body.e2e.test.ts`：**in-process**——登出 body refresh 撤销、未知值 200 不撤销并审计、非对象 body（null/标量/数组）不 500（U229 F10、U232）。
 - `cloud-platform/test/e2e/u197-web-cookie-browser.e2e.test.ts` 内新增：U232 慢登出（`route.fetch()`+延迟 fulfill）不清新 Cookie、refresh 在途跨登录不覆盖新 Cookie。
 - 探索报告（工作文档，不入库）：`cloud-platform/test-reports/u197-auth-exploration-20261118.md`——真实 API + 真实 headless Chromium 32 PASS / 1 SUSPECT（E1=U228），覆盖禁用账号、多标签、Cookie 边界、传输失败、legacy→cookie 回滚。
