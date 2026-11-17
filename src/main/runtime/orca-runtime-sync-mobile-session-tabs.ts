@@ -105,9 +105,20 @@ export class OrcaRuntimeWithSyncMobileSessionTabs extends OrcaRuntimeWithWriteOr
       }
       // Why: a headless-authored layout is host-owned; a renderer that merely
       // withheld this worktree never saw it. Asking for a republish would only
-      // replay the renderer's stale frame and collapse the host's groups.
+      // replay the renderer's stale frame and collapse the host's groups —
+      // unless the stored snapshot no longer carries the accepted publication's
+      // tabs (a hydrate rebuilt it after main dropped them): only a republish
+      // can restore the renderer's content.
       if (existing && this.isHeadlessBuiltMobileSessionPublicationBase(existing.publicationEpoch)) {
-        continue
+        const storedKeys = new Set(
+          existing.tabs.flatMap((tab) => getMobileSessionSnapshotTabIdentityKeys(tab))
+        )
+        const keepsAcceptedTabs =
+          accepted === undefined ||
+          [...accepted.rendererTabIdentityKeys].every((key) => storedKeys.has(key))
+        if (keepsAcceptedTabs) {
+          continue
+        }
       }
       // Why: a fenced frame stays "published" renderer-side; asking for a
       // republish would only be fenced again on every sync.
