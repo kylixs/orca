@@ -21,3 +21,28 @@ export function getHostModeConfigError(env: NodeJS.ProcessEnv): string | null {
   const missing = HOST_MODE_REQUIRED_ENV.filter((name) => !env[name]?.trim())
   return missing.length > 0 ? `host mode requires ${missing.join(', ')}` : null
 }
+
+export type HostModePreflightCheckId = 'config' | 'runtime'
+
+/** One preflight verdict. `detail` is a human-readable cause, never a credential. */
+export type HostModePreflightCheck = {
+  id: HostModePreflightCheckId
+  ok: boolean
+  detail: string | null
+}
+
+/** Printed by `--preflight`; a supervisor reads `ok`, never a log line. */
+export type HostModePreflightResult = {
+  ok: boolean
+  checks: HostModePreflightCheck[]
+}
+
+export function hostModePreflightResult(
+  checks: readonly HostModePreflightCheck[]
+): HostModePreflightResult {
+  return { ok: checks.every((check) => check.ok), checks: [...checks] }
+}
+
+export function formatHostModePreflightResult(result: HostModePreflightResult): string {
+  return JSON.stringify(result)
+}

@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { formatServeRuntimeSelection } from '../../shared/orcad-local-serve-selection'
 import type { runProcess } from '@orca/process-host'
-import { orcadServeArgs, resolveLocalServeRuntime, serveOptionArgs } from './serve-orcad-launch'
+import {
+  orcadServeArgs,
+  preflightOrcadHostRuntime,
+  resolveLocalServeRuntime,
+  serveOptionArgs
+} from './serve-orcad-launch'
 
 type RunProcess = typeof runProcess
 
@@ -70,6 +75,47 @@ describe('orca serve asking the app which host to run', () => {
     expect(await resolveLocalServeRuntime(options, failing)).toEqual({
       kind: 'electron',
       reason: expect.stringContaining('spawn ENOENT')
+    })
+  })
+
+  it('passes preflight only for a materialized orcad slot with its pinned runtime', async () => {
+    const resolve = vi.fn<typeof resolveLocalServeRuntime>(async () => ({
+      kind: 'orcad',
+      runtime: '/slot/runtimes/node-sha/bin/node',
+      entry: '/slot/orcad-server.js',
+      version: '0.1.0'
+    }))
+
+    await expect(preflightOrcadHostRuntime(options, resolve)).resolves.toEqual({
+      id: 'runtime',
+      ok: true,
+      detail: expect.stringContaining('orcad 0.1.0')
+    })
+    expect(resolve).toHaveBeenCalledWith(options)
+  })
+
+  it('fails preflight when the selector fell back to Electron', async () => {
+    const resolve = vi.fn<typeof resolveLocalServeRuntime>(async () => ({
+      kind: 'electron',
+      reason: 'this Orca install carries no orcad template'
+    }))
+
+    await expect(preflightOrcadHostRuntime(options, resolve)).resolves.toEqual({
+      id: 'runtime',
+      ok: false,
+      detail: 'this Orca install carries no orcad template'
+    })
+  })
+
+  it('fails preflight instead of throwing when the selector crashed', async () => {
+    const resolve = vi.fn<typeof resolveLocalServeRuntime>(async () => {
+      throw new Error('spawn ENOENT')
+    })
+
+    await expect(preflightOrcadHostRuntime(options, resolve)).resolves.toEqual({
+      id: 'runtime',
+      ok: false,
+      detail: 'spawn ENOENT'
     })
   })
 

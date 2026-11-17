@@ -12,6 +12,7 @@ import {
 } from '../../shared/orcad-local-serve-selection'
 import { waitForRecipeJson } from './serve-recipe-json'
 import { superviseForegroundServe } from './serve-update-supervisor'
+import type { HostModePreflightCheck } from '../../shared/host-mode-contract'
 
 type SupervisorArgs = Parameters<typeof superviseForegroundServe>[0]
 
@@ -71,6 +72,36 @@ export async function resolveLocalServeRuntime(
     return {
       kind: 'electron',
       reason: `the app could not check orcad: ${error instanceof Error ? error.message : String(error)}`
+    }
+  }
+}
+
+type ResolveServeRuntime = typeof resolveLocalServeRuntime
+
+/**
+ * Host-mode preflight: ask the same selector `serve` uses. A successful orcad
+ * selection proves the slot materialized and its pinned Node ran the native
+ * preflight, so no separate version probe (and no host process) is needed.
+ */
+export async function preflightOrcadHostRuntime(
+  options: Parameters<ResolveServeRuntime>[0],
+  resolve: ResolveServeRuntime = resolveLocalServeRuntime
+): Promise<HostModePreflightCheck> {
+  try {
+    const selection = await resolve(options)
+    if (selection.kind === 'orcad') {
+      return { id: 'runtime', ok: true, detail: `orcad ${selection.version} on its pinned Node` }
+    }
+    return {
+      id: 'runtime',
+      ok: false,
+      detail: selection.reason ?? 'orcad is unavailable on this host'
+    }
+  } catch (error) {
+    return {
+      id: 'runtime',
+      ok: false,
+      detail: error instanceof Error ? error.message : String(error)
     }
   }
 }

@@ -1,14 +1,17 @@
 import { spawn } from 'node:child_process'
 import type { CommandHandler } from '../dispatch'
 import { formatCliStatus, formatStatus, printResult } from '../format'
-import { RuntimeClientError, serveOrcaApp } from '../runtime-client'
+import { RuntimeClientError, preflightHostModeRuntime, serveOrcaApp } from '../runtime-client'
 import { stripElectronRunAsNode } from '../runtime/launch'
 import { resolveCliStatusCaller } from '../runtime/status-caller'
 import { getServeOptionValidationError } from '../../shared/serve-option-validation'
 import {
+  formatHostModePreflightResult,
   getHostModeConfigError,
   HOST_MODE_EXIT_CONFIGURATION,
-  HOST_MODE_EXIT_OK
+  HOST_MODE_EXIT_OK,
+  hostModePreflightResult,
+  type HostModePreflightCheck
 } from '../../shared/host-mode-contract'
 
 function envRecord(): Record<string, string> {
@@ -129,13 +132,24 @@ export const CORE_HANDLERS: Record<string, CommandHandler> = {
     if (preflight) {
       // Why: preflight exists to separate "runtime is broken" from "enrolment failed";
       // it must not start the host, call the platform, or consume the token.
+      const checks: HostModePreflightCheck[] = []
       const configError = getHostModeConfigError(process.env)
-      if (configError) {
-        process.stderr.write(`host mode preflight failed: ${configError}\n`)
-        process.exitCode = HOST_MODE_EXIT_CONFIGURATION
-        return
+      checks.push({ id: 'config', ok: configError === null, detail: configError })
+      // Why skip the slot when config is broken: its exit code is already decided, and
+      // materializing may download the pinned Node.
+      if (configError === null) {
+        checks.push(await preflightHostModeRuntime())
       }
-      process.exitCode = HOST_MODE_EXIT_OK
+      const result = hostModePreflightResult(checks)
+      process.stdout.write(`${formatHostModePreflightResult(result)}\n`)
+      if (!result.ok) {
+        const causes = checks
+          .filter((check) => !check.ok)
+          .map((check) => `${check.id}: ${check.detail ?? 'unknown'}`)
+          .join('; ')
+        process.stderr.write(`host mode preflight failed: ${causes}\n`)
+      }
+      process.exitCode = result.ok ? HOST_MODE_EXIT_OK : HOST_MODE_EXIT_CONFIGURATION
       return
     }
     const port = getOptionalServePort(flags)

@@ -5,6 +5,8 @@ export type RuntimeClientModuleMocks = {
   runtimeClientConstructorMock: Mock
   serveOrcaAppMock: Mock
   getDefaultUserDataPathMock: Mock
+  /** Defaults to a passing runtime check so unrelated CLI tests never touch the slot. */
+  preflightHostModeRuntimeMock?: Mock
 }
 
 export type WorktreeAwarenessMocks = {
@@ -57,6 +59,9 @@ export async function createRuntimeClientModuleMock(mocks: RuntimeClientModuleMo
     RuntimeClientError,
     RuntimeRpcFailureError,
     serveOrcaApp: mocks.serveOrcaAppMock,
+    preflightHostModeRuntime:
+      mocks.preflightHostModeRuntimeMock ??
+      vi.fn(async () => ({ id: 'runtime' as const, ok: true, detail: 'orcad test' })),
     getDefaultUserDataPath: mocks.getDefaultUserDataPathMock
   }
 }

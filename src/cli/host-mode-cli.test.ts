@@ -4,6 +4,7 @@ const {
   callMock,
   runtimeClientConstructorMock,
   serveOrcaAppMock,
+  preflightHostModeRuntimeMock,
   getDefaultUserDataPathMock,
   addEnvironmentFromPairingCodeMock,
   listEnvironmentsMock,
@@ -12,6 +13,7 @@ const {
   callMock: vi.fn(),
   runtimeClientConstructorMock: vi.fn(),
   serveOrcaAppMock: vi.fn(),
+  preflightHostModeRuntimeMock: vi.fn(),
   getDefaultUserDataPathMock: vi.fn(() => '/tmp/orca-user-data'),
   addEnvironmentFromPairingCodeMock: vi.fn(),
   listEnvironmentsMock: vi.fn(),
@@ -24,6 +26,7 @@ vi.mock('./runtime-client', async () => {
     callMock,
     runtimeClientConstructorMock,
     serveOrcaAppMock,
+    preflightHostModeRuntimeMock,
     getDefaultUserDataPathMock
   })
 })
@@ -72,17 +75,29 @@ describe('host mode CLI entry', () => {
   const priorExitCode = process.exitCode
   let errors: string[]
   let stderr: string[]
+  let stdout: string[]
 
   beforeEach(() => {
     process.exitCode = 0
     serveOrcaAppMock.mockResolvedValue(0)
+    preflightHostModeRuntimeMock.mockReset()
+    preflightHostModeRuntimeMock.mockResolvedValue({
+      id: 'runtime',
+      ok: true,
+      detail: 'orcad 0.1.0 on pinned Node 24.21.0'
+    })
     errors = []
     stderr = []
+    stdout = []
     vi.spyOn(console, 'error').mockImplementation((...args) => {
       errors.push(args.map(String).join(' '))
     })
     vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
       stderr.push(String(chunk))
+      return true
+    })
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      stdout.push(String(chunk))
       return true
     })
   })
@@ -114,10 +129,18 @@ describe('host mode CLI entry', () => {
 
     expect(process.exitCode).toBe(HOST_MODE_EXIT_OK)
     expect(serveOrcaAppMock).not.toHaveBeenCalled()
+    expect(preflightHostModeRuntimeMock).toHaveBeenCalledOnce()
     expect(fetchMock).not.toHaveBeenCalled()
     expect(process.env.ORCA_CLOUD_HOST_TOKEN).toBe('token')
     expect(errors.join('')).toBe('')
     expect(stderr.join('')).toBe('')
+    expect(JSON.parse(stdout.join(''))).toEqual({
+      ok: true,
+      checks: [
+        { id: 'config', ok: true, detail: null },
+        { id: 'runtime', ok: true, detail: 'orcad 0.1.0 on pinned Node 24.21.0' }
+      ]
+    })
   })
 
   it('reports missing host configuration from preflight as a configuration exit', async () => {
@@ -125,7 +148,35 @@ describe('host mode CLI entry', () => {
 
     expect(process.exitCode).toBe(HOST_MODE_EXIT_CONFIGURATION)
     expect(serveOrcaAppMock).not.toHaveBeenCalled()
+    // Why not called: a broken config already decides the exit; the slot must not be materialized.
+    expect(preflightHostModeRuntimeMock).not.toHaveBeenCalled()
     expect(stderr.join('')).toContain('ORCA_CLOUD_API_URL')
+    expect(JSON.parse(stdout.join(''))).toMatchObject({
+      ok: false,
+      checks: [{ id: 'config', ok: false, detail: expect.stringContaining('ORCA_CLOUD_API_URL') }]
+    })
+  })
+
+  it('reports an unavailable orcad slot as a configuration exit', async () => {
+    Object.assign(process.env, CLOUD_ENV)
+    preflightHostModeRuntimeMock.mockResolvedValue({
+      id: 'runtime',
+      ok: false,
+      detail: 'this Orca install carries no orcad template'
+    })
+
+    await main(['--host-mode', '--preflight'], '/tmp/repo')
+
+    expect(process.exitCode).toBe(HOST_MODE_EXIT_CONFIGURATION)
+    expect(serveOrcaAppMock).not.toHaveBeenCalled()
+    expect(stderr.join('')).toContain('no orcad template')
+    expect(JSON.parse(stdout.join(''))).toMatchObject({
+      ok: false,
+      checks: [
+        { id: 'config', ok: true },
+        { id: 'runtime', ok: false, detail: 'this Orca install carries no orcad template' }
+      ]
+    })
   })
 
   it('prints usage plus valid flags for an unknown host-mode flag', async () => {

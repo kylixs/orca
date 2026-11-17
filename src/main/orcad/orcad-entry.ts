@@ -39,6 +39,7 @@ import {
 } from '../../shared/ai-vault-search-settings'
 import { ensureOrcadAppVersion, startOrcadRpc } from './orcad-cloud-admission'
 import { createOrcadSecretStore } from './orcad-node-secret-store'
+import { beginHostModeStateFromEnv, publishHostModeOnlineAfterStart } from './orcad-host-mode-state'
 
 export { parseArgs }
 
@@ -197,6 +198,11 @@ async function startOrcadRuntime(
   const { resolvePushGatewayOrigin } = await import('../runtime/push/push-gateway-origin')
 
   const runtimeUserDataPath = getAppEnvironment().getPath('userData')
+  // Why after the instance lock (this callback) and before any cloud call: a losing
+  // process must not erase the live host's `online`, but a new pid/startedAt must
+  // invalidate the previous process's verdict before enrolment begins.
+  const hostModeState =
+    options.hostMode === true ? beginHostModeStateFromEnv(runtimeUserDataPath) : null
   // A missing `orca` command must never keep the server from starting.
   await prepareOrcadCliLauncher().catch((error: unknown) => {
     console.warn('[orcad] Could not prepare the profile CLI launcher', error)
@@ -356,11 +362,9 @@ async function startOrcadRuntime(
   })
   // Stops first: no RPC may write while the rest of the runtime is torn down.
   registerCleanup(() => rpc.stop())
-  await startOrcadRpc(
-    rpc,
-    cloudRuntimeAdmission(process.env, { userDataPath: runtimeUserDataPath }),
-    (value) => attachRuntimeToCloudAdmission(rpc, value)
-  )
+  const admission = cloudRuntimeAdmission(process.env, { userDataPath: runtimeUserDataPath })
+  await startOrcadRpc(rpc, admission, (value) => attachRuntimeToCloudAdmission(rpc, value))
+  publishHostModeOnlineAfterStart(hostModeState, admission)
   startOrcadAutomations(runtime, profileStore, registerCleanup)
   const pushService = DesktopPushService.create({
     runtime,

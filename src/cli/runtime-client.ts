@@ -7,6 +7,7 @@ export {
   RuntimeClientError,
   RuntimeRpcFailureError,
   serveOrcaApp,
+  preflightHostModeRuntime,
   getDefaultUserDataPath,
   type RuntimeRpcFailure,
   type RuntimeRpcResponse,

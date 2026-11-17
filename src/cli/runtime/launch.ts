@@ -21,8 +21,12 @@ import {
 } from './serve-update-supervisor'
 import { RuntimeClientError } from './types'
 import { SERVE_RUNTIME_ELECTRON, SERVE_RUNTIME_ENV } from '../../shared/orcad-local-serve-selection'
-import { HOST_MODE_EXIT_CONFIGURATION } from '../../shared/host-mode-contract'
 import {
+  HOST_MODE_EXIT_CONFIGURATION,
+  type HostModePreflightCheck
+} from '../../shared/host-mode-contract'
+import {
+  preflightOrcadHostRuntime,
   resolveLocalServeRuntime,
   serveOptionArgs,
   serveWithOrcad,
@@ -105,6 +109,30 @@ function spawnDetached(command: string, args: string[], options: SpawnOptions): 
   // returns; openOrca already reports the user-facing timeout if startup fails.
   child.once('error', () => {})
   child.unref()
+}
+
+/**
+ * Host-mode runtime half of `--preflight`. It resolves the same slot the serve
+ * launch would, but never starts orcad, registers, or touches the token.
+ */
+export async function preflightHostModeRuntime(): Promise<HostModePreflightCheck> {
+  try {
+    const executable = resolveForegroundOrcaExecutable()
+    return await preflightOrcadHostRuntime({
+      executable,
+      appRoot: resolveAppRoot(),
+      userDataPath: resolveLaunchUserDataPath(),
+      // Why mirror host mode: a bundled macOS app would launch Electron, which
+      // host mode refuses, so preflight must refuse it for the same reason.
+      usesMacUpdateHandoff: getMacAppBundlePath(executable) !== null
+    })
+  } catch (error) {
+    return {
+      id: 'runtime',
+      ok: false,
+      detail: error instanceof Error ? error.message : String(error)
+    }
+  }
 }
 
 export function serveOrcaApp(args: ServeOrcaAppArgs = {}): Promise<number> {
