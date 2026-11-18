@@ -4440,3 +4440,5 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **test-plan 计数再刷新**（`d5c7858abf0`）：host-direct-addrs 8→**12**（U268 四例、复审 APPROVED）、U267 标「复审在途」并补共享模块已落地、新增 U269 行、合并重复的 U259 行。三个文件计数均为实测且运行前工作树干净。
 - **U267② 复审 CHANGES-REQUIRED（实现全对，仅测试缺口）→ 登记 U270**：模块契约/幂等/16 KiB 边界/已读豁免正确；**漂移点全矩阵实测**（public 401/403、internal 401/403/404/500 × 声明 2 MiB / chunked 13 B / 32 KiB / 已读 body）与父提交完全一致——本提交消除的是重复实现与潜在漂移，而非已可见差异。唯一 P2：**internal chunked 32 KiB 零覆盖**（删掉共享模块的 chunked 分支，mTLS 仍 11/11 绿，Node 隐式 dump 掩盖小 chunked）。U270 修复已派；**产品代码自 U268 后未再变动，最终认证基线已在后台启动**。
 - **最终认证基线（U268 后产品代码）：266/266，0 fail / 0 cancelled / 0 skip**（CONC=2，206s，`/tmp/auth-baseline-3.log`）。单测/矩阵/`tc:node`/`typecheck:cloud-e2e` 已随后台启动（日志 `/tmp/unit-baseline-3.log`、`/tmp/matrix-baseline-3.log`、`/tmp/tc-*.log`、退出码汇总 `/tmp/unit3-exit.txt`）。
+- **U267/U270 关闭**（`9f3a5534638` + `e4c0baffbfd`）：internal chunked 32 KiB 用例补齐（headers-first + 8 KiB 前缀、401 必达后续发触发排空；整帧算术 32,956），变异删共享模块 chunked 分支 → **仅新用例红**、13 B 仍绿。主会话复跑 mtls **12/12**。
+- **最终基线（产品代码 U268 后）**：认证 **266/266**、单测 **477/477**（0 skip）、矩阵 **113/113**。类型检查首跑因 **cwd 取错**（在 `cloud-platform/` 下执行 root 级 `pnpm` 脚本 → 脚本不存在）返回 1，已从仓库根重跑（未计入失败）。
