@@ -70,7 +70,7 @@
 
 - Cookie 模式：一次无 body 刷新；成功才删旧键（`refreshWithCookie` 成功后 `clearLegacyTokens`），随后 `/v1/me`（`app.js:162-190,5321-5350`）。
 - 旧模式：`/v1/me` 401 → body 刷新 → 重放（`app.js:5352-5367`）。启动期 body 刷新成功后在 `/v1/me` 拿到用户名时补写 `tokenOwner`（`app.js:312-317`；`u198-legacy-reload`、`web-refresh-cookie` U222 N3）。
-- 迁移分支 **⛔ 未实现**：无 `orca.authMode` 标记时**不**发起无 body 探测；AC9b（有旧键）与 AC9c（无旧键、仅有效 Cookie）字面行为不成立，阻塞于 D17/U219（`u197-migration-browser` AC15(g) skip、`u197-web-cookie-browser` AC9c skip）。旧构建换新构建后首次加载不刷新，access 过期后才走一次 body 回退并置标记（`u197-migration-browser` INVALID-FACT）。
+- 迁移分支 **⛔ 未实现**：无 `orca.authMode` 标记时**不**发起无 body 探测；AC9b（有旧键）与 AC9c（无旧键、仅有效 Cookie）字面行为不成立，阻塞于 D17/U219（`u197-migration-browser` AC15(g) skip、`u197-web-cookie-browser-race-probe` AC9c skip）。旧构建换新构建后首次加载不刷新，access 过期后才走一次 body 回退并置标记（`u197-migration-browser` INVALID-FACT）。
 
 **会话参数与配置（HEAD）**
 
@@ -92,7 +92,7 @@
 | CSRF 403                 | Cookie 认证的刷新缺失/跨源/`null` Origin，或 `content-type` 不是 `application/json` → `403 CSRF_REJECTED`，无续期/清理副作用       | `server.ts:2040-2050,3659-3663`；`refresh-cookie` CSRF 用例                            |
 | 重复 Cookie 401          | `orca_refresh` 出现两次（同名/多 Cookie 头）→ 登录/handoff/刷新/登出一律硬 `401 SESSION_EXPIRED`，清三种作用域，**不回退 body、不轮换、不撤销 session**（刷新） | `server.ts:2010-2013,3501-3504,3645-3648,3890-3893,4005-4008,4074-4075`；`refresh-cookie` 245/267 |
 | Cookie 缺失              | 服务端回退 body 刷新；Cookie 模式客户端若无旧 refresh → `rejected` → 回登录，无循环                                               | `server.ts:3806-3820`；`app.js:5321-5350`；`u197-web-cookie-browser`                   |
-| 传输失败                 | 客户端记为 `error`：页内请求**不登出**、保留会话、恢复后可重试；启动探测失败→登录页，不空白/无未捕获异常（启动含 10s 超时，U229 F5）                          | `app.js:174-179,208-212,273-285`；`web-refresh-cookie` U222 N1、`u197-web-cookie-browser` 597/642 |
+| 传输失败                 | 客户端记为 `error`：页内请求**不登出**、保留会话、恢复后可重试；启动探测失败→登录页，不空白/无未捕获异常（启动含 10s 超时，U229 F5）                          | `app.js:174-179,208-212,273-285`；`web-refresh-cookie` U222 N1、`u197-web-cookie-browser-race-probe` 496/541 |
 | 刷新 5xx/429/403         | 客户端归 `error`：不登出、保留会话，业务错误交给调用方（U229 F7） | `app.js` `refreshVerdict`；`u229-web-startup-resilience` |
 | 登录 200 非契约响应      | 校验 `accessToken/user.username/device.id`，不满足抛 `PLATFORM_UNAVAILABLE`「平台响应异常」，不写 `"undefined"`（U229 F6） | `u229-web-startup-resilience` |
 | 非对象 JSON body         | `readJson` 将 `null`/标量归一为 `{}`（数组/对象保留），各端点返回既有 4xx 而非 500（U236） | `u236-non-object-body` |
@@ -158,7 +158,7 @@
 - `cloud-platform/test/refresh-cookie.test.ts`：纯单元——Cookie 解析（缺失/空值/重复/多 header）、序列化属性与清理三作用域（含 IP 字面量省略 Domain）、origin 规范化/同源、模式解析（auto 降级/always 拒启/never 惰性/非法回落/Secure 判定）。**无浏览器**。
 - `cloud-platform/test/e2e/refresh-cookie.e2e.test.ts`：**in-process `createApp` + Node fetch**（非浏览器）——S1 登录/交接/刷新/登出的 Cookie 形态与能力标记、无 Origin/外来 Origin、never 回归；S2 双读/grace/CSRF/并发/审计；U218 登出撤销与多作用域、XFP/Host 伪造、启动矩阵。
 - `cloud-platform/test/e2e/u197-cookie-browser.e2e.test.ts`：**真实 Chromium + 真实 API 进程**——HttpOnly Cookie 罐、空 body 刷新同值重发与 TTL 滑动、跨 Origin/非 JSON 403、重复 Cookie 硬 401 与作用域清理、多标签刷新、never 模式单次告警、日志/审计无明文 refresh。
-- `cloud-platform/test/e2e/u197-web-cookie-browser.e2e.test.ts`：**真实 Chromium**——AC9a 标记真 + 旧键迁移、登录后 `document.cookie`/localStorage 无令牌、AC12 重载一次刷新进入、多标签同刷、Cookie 缺失/伪造标记一次失败回登录、AC14 页内 401 一次刷新重放、并发 401 只刷一次、真实登出清 Cookie/旧键/标记、AC7 双标签被动登出、U222 N1 传输失败保留会话、启动传输失败不空白；AC9c（清 localStorage 仅 Cookie）**skip（D17/U219）**。
+- `cloud-platform/test/e2e/u197-web-cookie-browser.e2e.test.ts`（主干）＋ `cloud-platform/test/e2e/u197-web-cookie-browser-race-probe.e2e.test.ts`（迁移/探测/竞态）：**真实 Chromium**——AC9a 标记真 + 旧键迁移、登录后 `document.cookie`/localStorage 无令牌、AC12 重载一次刷新进入、多标签同刷、Cookie 缺失/伪造标记一次失败回登录、AC14 页内 401 一次刷新重放、并发 401 只刷一次、真实登出清 Cookie/旧键/标记、AC7 双标签被动登出、U222 N1 传输失败保留会话、启动传输失败不空白；AC9c（清 localStorage 仅 Cookie）**skip（D17/U219）**。
 - `cloud-platform/test/e2e/web-refresh-cookie.e2e.test.ts`：**happy-dom + 真实 `createApp`**——无标记保持旧契约、`refreshCookie:true` 不落盘、重载恢复与删键时机、Cookie/body 双失败回登录、页内 401 无 refreshToken 也刷新、登出清理、U221 F2/F3/F4、U222 N1/N2/N3/N4、`x-orca-web-contract` 头。
 - `cloud-platform/test/e2e/session-renewal.e2e.test.ts`：**happy-dom + 真实 `createApp`**——短 TTL 旋转与旧 token 复用作废、refresh 过期拒绝、401 一次刷新一次重放（AC-M1-04）、并行 401 共享刷新（U134）、刷新失败/登出失败/仅缓存 user 的收尾（AC-M1-13/14/15）。
 - `cloud-platform/test/e2e/u197-ac-probes.e2e.test.ts`：**真实 Chromium**——AC1 登录/刷新/登出后存储无令牌；AC2 access 过期 reload 恰好一次无 body 刷新；AC4 存储/Cookie/URL/console/响应体/审计均无 refresh。
@@ -171,7 +171,7 @@
 - `cloud-platform/test/e2e/u230-disabled-user-edges.e2e.test.ts`：**in-process**——Cookie previous/宽限禁用、已删用户两源、假 body+有效 Cookie、禁用登录不建 device、`/v1/audit/verify` 全链（U230④）。
 - `cloud-platform/test/e2e/u236-non-object-body.e2e.test.ts`：**in-process**——7 端点 × `null`/标量/数组发送，断言 4xx 非 500 + 有效对象回归（U236）。
 - `cloud-platform/test/e2e/u229-logout-body.e2e.test.ts`：**in-process**——登出 body refresh 撤销、未知值 200 不撤销并审计、非对象 body（null/标量/数组）不 500（U229 F10、U232）。
-- `cloud-platform/test/e2e/u197-web-cookie-browser.e2e.test.ts` 内新增：U232 慢登出（`route.fetch()`+延迟 fulfill）不清新 Cookie、refresh 在途跨登录不覆盖新 Cookie。
+- `cloud-platform/test/e2e/u197-web-cookie-browser-race-probe.e2e.test.ts` 内新增：U232 慢登出（`route.fetch()`+延迟 fulfill）不清新 Cookie、refresh 在途跨登录不覆盖新 Cookie。
 - 探索报告（工作文档，不入库）：`cloud-platform/test-reports/u197-auth-exploration-20261118.md`——真实 API + 真实 headless Chromium 32 PASS / 1 SUSPECT（E1=U228），覆盖禁用账号、多标签、Cookie 边界、传输失败、legacy→cookie 回滚。
 
 **既有登录/准入套件**
@@ -187,10 +187,10 @@
 
 ## 8. 未覆盖 / 存疑
 
-- ⛔ **U219/D17（AC9b/AC9c/AC15(g)）**：迁移分支「无能力标记时加载先发一次无 body 探测」未实现；`u197-migration-browser` 的 AC15(g) 单次重载用例与 `u197-web-cookie-browser` 的 AC9c 均为 skip。现状是渐进迁移，且换新构建首次加载不迁移（INVALID-FACT 已如实标注）。
+- ⛔ **U219/D17（AC9b/AC9c/AC15(g)）**：迁移分支「无能力标记时加载先发一次无 body 探测」未实现；`u197-migration-browser` 的 AC15(g) 单次重载用例与 `u197-web-cookie-browser-race-probe` 的 AC9c 均为 skip。现状是渐进迁移，且换新构建首次加载不迁移（INVALID-FACT 已如实标注）。
 - ✅ **U228**：禁用账号登录/刷新复查与「重放仍 401 即登出」已合入；覆盖见 `u228-disabled-user-session.e2e.test.ts`、`u228-web-disabled-session.e2e.test.ts`。
 - 浏览器端「重放仍 401 → 自动登出」目前由 happy-dom 套件覆盖（`u228-web-disabled-session`）；真实 Chromium 同分支未单列（P3）。
 - 生产 LDAPS adapter 不在本仓库实现（仅 Mock），真实 bind/`memberOf` 过滤行为无法从当前代码验证。
 - 「刷新后仅缓存 user、无 token」路径由 `session-renewal` AC-M1-14 覆盖（happy-dom），真实 Chromium 无同名用例。
 - 登录页密码显示切换仍仅手测（WEB-R2-011）。
-- 探测/验证命令：`pnpm test cloud-platform/test/e2e/refresh-cookie.e2e.test.ts`、`…/u197-web-cookie-browser.e2e.test.ts`、`…/u198-legacy-reload.e2e.test.ts`（真实 Chromium 需本机可启动 headless Chromium）。
+- 探测/验证命令：`pnpm test cloud-platform/test/e2e/refresh-cookie.e2e.test.ts`、`…/u197-web-cookie-browser.e2e.test.ts`、`…/u197-web-cookie-browser-race-probe.e2e.test.ts`、`…/u198-legacy-reload.e2e.test.ts`（真实 Chromium 需本机可启动 headless Chromium）。
