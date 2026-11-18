@@ -50,6 +50,7 @@ export const SQLITE_RUNTIME_INCLUDE = [
   'src/main/cloud-platform/cloud-connect-diagnostics.test.ts',
   'src/main/cloud-platform/cloud-device-release.test.ts',
   'src/main/cloud-platform/cloud-file-panel.test.ts',
+  'src/main/cloud-platform/cloud-file-preview-guards.test.ts',
   'src/main/cloud-platform/cloud-git-boundary.test.ts',
   'src/main/cloud-platform/cloud-host-tls-pinning.test.ts',
   'src/main/cloud-platform/cloud-initial-worktree.test.ts',
