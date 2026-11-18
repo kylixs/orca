@@ -34,11 +34,12 @@ function json(res: ServerResponse, status: number, body: unknown): void {
 }
 
 /**
- * U250: bound the append body. A legal batch holds up to MAX_BATCH events, so a
- * flat 4 KiB cap would reject the documented workload; 1 KiB per event stays
- * bounded while covering a full batch, and an oversized body is dropped whole.
+ * U252: a legal batch holds up to MAX_BATCH events, and one file event can carry
+ * 4096 B of metadata (~4.4 KiB serialized). 16 KiB per event bounds the parsed
+ * batch at 16 MiB while covering every legal event shape.
  */
-const APPEND_BODY_MAX_BYTES = MAX_BATCH * 1024
+const MAX_EVENT_BYTES = 16 * 1024
+const APPEND_BODY_MAX_BYTES = MAX_BATCH * MAX_EVENT_BYTES
 
 async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = []
@@ -192,6 +193,12 @@ export async function startAuditWriter(options: {
       const raw = body.events
       if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_BATCH) {
         return json(res, 400, { error: { code: 'BATCH_INVALID', max: MAX_BATCH } })
+      }
+      // U252: the batch cap alone would let a 16 MiB single event through.
+      if (raw.some((event) => Buffer.byteLength(JSON.stringify(event) ?? '') > MAX_EVENT_BYTES)) {
+        return json(res, 400, {
+          error: { code: 'BATCH_INVALID', max: MAX_BATCH, maxEventBytes: MAX_EVENT_BYTES }
+        })
       }
       if (!raw.every(isAuditInput)) {
         return json(res, 400, { error: { code: 'EVENT_INVALID' } })

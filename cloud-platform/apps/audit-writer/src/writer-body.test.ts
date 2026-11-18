@@ -9,8 +9,10 @@ import { spawnService, type Service } from '../../../test/e2e/harness.ts'
  */
 
 const TOKEN = 'u250-writer-token'
-/** Mirrors writer.ts: MAX_BATCH (1000) events x 1 KiB each. */
-const APPEND_BODY_MAX_BYTES = 1000 * 1024
+/** Mirrors writer.ts: MAX_BATCH (1000) events x 16 KiB each. */
+const MAX_BATCH = 1000
+const MAX_EVENT_BYTES = 16 * 1024
+const APPEND_BODY_MAX_BYTES = MAX_BATCH * MAX_EVENT_BYTES
 let service: Service
 
 before(async () => {
@@ -92,4 +94,33 @@ test('a full 500-event batch (~60 KiB) still appends', async () => {
   const payload = (await res.json()) as { events: { seq: number }[] }
   assert.equal(payload.events.length, 500)
   assert.equal(await eventCount(), 501)
+})
+
+test('a full 1000-event batch with 4096-byte metadata still appends', async () => {
+  const metadata = { fileName: `f-${'x'.repeat(4090)}`, path: '/tmp' }
+  const events = Array.from({ length: MAX_BATCH }, (_, index) => ({
+    ...validEvent(),
+    targetId: `big-${index}`,
+    metadata
+  }))
+  const body = JSON.stringify({ events })
+  const size = Buffer.byteLength(body)
+  assert.ok(size > 4 * 1024 * 1024, `legal batch is only ${size} bytes`)
+  assert.ok(size < APPEND_BODY_MAX_BYTES, `legal batch is ${size} bytes`)
+  const res = await post('/v1/append', body)
+  assert.equal(res.status, 200)
+  const payload = (await res.json()) as { events: { seq: number }[] }
+  assert.equal(payload.events.length, MAX_BATCH)
+  assert.equal(await eventCount(), 501 + MAX_BATCH)
+})
+
+test('a single event over 16 KiB is rejected as BATCH_INVALID', async () => {
+  const event = { ...validEvent(), metadata: { blob: 'x'.repeat(MAX_EVENT_BYTES) } }
+  assert.ok(Buffer.byteLength(JSON.stringify(event)) > MAX_EVENT_BYTES)
+  const res = await post('/v1/append', JSON.stringify({ events: [event] }))
+  assert.equal(res.status, 400)
+  assert.deepEqual(await res.json(), {
+    error: { code: 'BATCH_INVALID', max: MAX_BATCH, maxEventBytes: MAX_EVENT_BYTES }
+  })
+  assert.equal(await eventCount(), 501 + MAX_BATCH)
 })
