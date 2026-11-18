@@ -45,7 +45,7 @@
 | AUTH-LOGIN-LOCKOUT | 5 次失败锁 15 分钟 | FR-1.4 | P0 | 🟢 | 100% | 契约 9/9、body 5/5、entry-module 9/9 |
 | AUTH-LDAP-ADMIT | LDAP 组门槛准入 | FR-1.5 | P1 | 🟢 | 100%（D15-1 已实施 `73bc4ce6647`：登录时组全量替换） | `ldap-admission` **14/14**（含移出组/去重 2 例，主会话复跑） |
 | AUTH-REVOKE-SELF | 自助登出与设备吊销 | FR-1.6 | P0 | 🟢 | 100% | u229/u241 套件 |
-| AUTH-REVOKE-FORCE | 管理员强制下线（含 3+ follower 并发） | FR-1.6 | P0 | 🟢 | 100% | **12/12** |
+| AUTH-REVOKE-FORCE | 管理员强制下线（含 3+ follower 并发、自撤/同级） | FR-1.6 | P0 | 🟢 | 100% | **14/14**（含 D23 两例） |
 | AUTH-PERM-PROPAGATE | 权限变更即时生效与 60s 断连 | FR-1.7 | P1 | 🟢 | 100% | policy/u244 相关 |
 | AUTH-COOKIE-MODE | Cookie 模式（auto/never/always） | FR-1.2 | P0 | 🟢 | 100%（D5–D10：同源默认关闭，检查单 `19c908da06f`；生产启用待运维） | u197 浏览器套件 9/9、认证基线 267/267 |
 | AUTH-PAGE-CSP | 认证页 CSP（Report-Only） | NFR 5.3（安全） | P0 | 🟢 | 100%（D10 维持 Report-Only，不启用 enforcement） | csp-zero 6/6 |
@@ -170,7 +170,7 @@
 |---|---|---|---|
 | ADMIN-CONSOLE-WORKBENCH | 🟢 | U316（QA-030 搜索/筛选/通知，FR 外增强，⚪ 挂账） | workbench 套件（AC-01） |
 | HOST-ONBOARD-WIZARD | 🟢 | U181（H11–H13 打包验收产物待出） | install-wizard 90/90；D25 手动构建 job |
-| AUTH-REVOKE-FORCE | 🟢 | U245③（D23 自撤/同级测试待补） | u244 12/12 |
+| AUTH-REVOKE-FORCE | 🟢 | U245 已关（D23 自撤/同级已补） | u244 **14/14** |
 | ADMIN-CONSOLE-WORKBENCH / QA-EVIDENCE-CHECKERS | 🟢 | U323（探索重放脚本标签漂移，非门禁） | U322 复审发现 |
 | —（无叶子：早期探索/FR 外增强） | ⚪ | U11/U12/U27/U32/U54/U56/U58/U74/U76/U116/U316 | 台账 §3.2 |
 | QA-TIMEOUT-GATE | 🟢 | U291/U313/U315/U317/U321/U324 已关 | 门禁套件 **92（91 pass/1 skip）**、扫描 296 文件 0 new；`evidence/m110-load-300` |
