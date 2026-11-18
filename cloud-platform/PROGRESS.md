@@ -4350,3 +4350,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **安装器码值归 78**（`a02e466c14d`，4 文件 ±15）：`ADVERTISE_HOST` 探测失败与自签 TLS 生成失败 64/69 → **78**（与设计 §2.4「配置失败保持 78」一致；69 专指 systemd 服务安装失败），设计 §3.1 步 1 补入两处；单测 12/12 + install-wizard 86/86（主会话复跑），两处变异均红。
 - **类型基线（当前 HEAD，`9514a376e96`）**：`pnpm typecheck:cloud-e2e` 与 `pnpm tc:node` 均 **EXIT=0**（含 build:packages 与 orcad 模板前置），确认 A1–A5 / U249 P3 / 冷读修复后无类型回归。
 - **审计健康状态机修复**（`4649b5eab4f`，3 文件）：`markUnhealthy` 不再首因锁存——`chain_broken` 可覆盖 `write_failed`（严重度升级），反向不降级；新增可选字段 `firstFailure`/`lastFailure` 经 `/health`、`/v1/status`、`/v1/audit/status` 透出（向后兼容）；`write_failed` 成功写盘仍清除、`chain_broken` 仍锁存到重启。新单测 3/3（主会话复跑），审计单元批 99/99、audit-fail-closed+audit-writer 5/5（代理侧，含真实 writer「先 write_failed 再断链」M32-4）。快照回滚批已派独立复审。
+- **U248 关闭**（`392eae5aecd`）：根因=测试在 `POST /v1/auth/logout` 响应到达前读 Cookie jar；原码单跑 20 次复现 2 次失败（第 11、16 次），修复为 `waitForResponse` 后单跑 **20/20**、并发 5 批 38/38。台账 U248 翻 🟢；该文件已释放，超长（1067 行 > 800）拆分令已派。
