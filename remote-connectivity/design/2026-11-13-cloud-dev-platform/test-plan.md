@@ -247,7 +247,7 @@ ORCA_BACKGROUND_LAUNCH=1 node --test --test-concurrency=2 \
 - 结论口径：报原始 `tests / pass / fail / skipped`；fail 按三类归属——① 产品缺陷、② 测试缺陷/陈旧 fixture、③ 环境/并发改写工作树（INVALID，单独复跑转绿）。跳过项不得从分母中抹掉。
 - 与子集基线的关系：§7.1 认证 24 文件 266、授权矩阵 113、T1 关键集均为子集，只能证明对应范围，不得替代全景结论；全仓结论必须由全景扫描支撑。
 - 已知环境噪声：扫描期间另一会话改写 `apps/web/app.js`，会让 `new Function`/模板解析瞬时失败（2026-11-18 第一轮 F2–F8）；此类红必须单独复跑确认后再归属。
-- 证据：`cloud-platform/test-reports/full-e2e-sweep-20261118.md`（第二轮 1141 tests / 1140 pass / 1 fail，唯一稳定红 U284）。
+- 证据：`cloud-platform/test-reports/full-e2e-sweep-20261118.md`（首轮 1141/1140/1，唯一稳定红 U284）；**收官 `full-e2e-sweep-final-20261118.md`：1141/1141/0，0 skipped，37 批全部 exit 0**（HEAD `0fa1d21b9c4`）。
 
 ## 8. 维护约定
 
