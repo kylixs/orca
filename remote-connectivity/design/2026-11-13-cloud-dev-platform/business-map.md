@@ -8,7 +8,7 @@
 
 ## 1. 编号与状态规则
 
-- 编号：`<域>-<子域>-<功能项>`，每级 2–4 位英文缩写，横线连接，如 `AUTH-LOGIN-LDAP`
+- 编号：`<域>-<子域>-<功能项>`，每级英文缩写（2–12 字符），横线连接，如 `AUTH-LOGIN-LDAP`
 - 状态：🟢 已交付（有回归与证据）/ 🟡 进行中或部分交付 / ⚪ 待决策或待开工
 - 进度：已交付验收项 ÷ 应有验收项（决策项按 0%，部分项按实际功能面估算）
 - 优先级：P0 必须（阻塞一期验收）/ P1 应做 / P2 二期或增强 / 「—」不参与产品优先级；带「（门禁）」「（过程交付）」「（形态扩展）」「（分期）」「（二期）」为限定说明
@@ -20,7 +20,7 @@
 |---|---|---|---|---|
 | AUTH | 身份认证与会话 | P0 | 🟢 | 100%（D15/D18/D20/D5–D10 全部落地） | 24 文件认证基线 **267/267**；锁定 **14/14**；ldap 14/14；u243 4/4 |
 | AZ | 授权与准入 | P0 | 🟢 | 100%（D15-1 已实施、LGA-6 收口） | 组合矩阵 **113/113**；api 授权 116/116；ldap 14/14 |
-| PRJ | 项目 | P0 | 🟢 | 100%（D22 已交付） | 归档/自助/详情/连接套件；web-project-entry **11/11** |
+| PRJ | 项目 | P0 | 🟢 | 100%（D22 已交付） | 归档/自助/详情/连接套件；web-project-entry **12/12** |
 | HOST | 开发机与中继 | P0 | 🟢 | 100% | mtls 12/12、relay 5/5、host-offline 1/1 等 |
 | CONN | 连接与选路 | P0 | 🟢 | 100% | 直连地址 12/12、畸形地址快照 5/5 |
 | FILE | 文件浏览与下载管控 | P0 | 🟡 | 87.5%（⚪专用下载 RPC，D21 缓登记） | 文件契约 e2e；宿主硬拦 guard 7/7；复制捕获 8/8 |
@@ -30,7 +30,7 @@
 | WEB | 平台 Web 控制台 | P0 | 🟢 | 100%（路由 P1 已修） | web-exploratory **45/45**、移动端用户页 5/5 |
 | MOB | 移动端形态 | P1 | 🟢 | 100%（响应式全屏 sheet 已覆盖，原型稿归二期） | u80-mobile-shell 390×844 sheet、m9fix 触控 44px |
 | DSGN | 设计原型与文档 | P1 | 🟢 | 100% | proto-tab-check **39/39** |
-| QA | 测试与门禁基建 | P0 | 🟢 | 100%（U317 已实施） | 全仓 e2e **1149/1149**；门禁 **84（83 pass/1 skip）**，基线 **0** |
+| QA | 测试与门禁基建 | P0 | 🟢 | 100%（U317 已实施） | 全仓 e2e **1149/1149**；门禁 **89（88 pass/1 skip）**，基线 **0** |
 
 ## 3. 功能项明细
 
@@ -148,11 +148,12 @@
 ## 4. 汇总与口径
 
 - 综合完成度：**69 / 70 = 98.6%**（定义：🟢计 1、🟡计 0.5、⚪计 0；域进度按同法计算）
+- 叶子外挂账（不计入 70 行）：U233 F4 认证拒绝审计（已设计、缓办）、U323/U324 工具项、FR 外增强 U316/U54 等，见台账
 - 叶子功能项 **70**：🟢 **69**、🟡 **0**、⚪ **1**（FILE-DL-RPC，D21 缓登记）
 - 计数口径：叶子行数按本文件表行实测（70），下次更新须重算并同步本节
 - 阻塞源（剩余）：cookieMode 生产启用待运维按检查单执行、D21-C9 缓（登记缺口）；其余决策项均已实施或收口
 - 所有计数为**指定范围基线**；「全仓无红」仅由 QA-E2E-SWEEP 的全景扫描支撑（协议 §2-142），不得以子集基线替代
-- 当日台账增量：U272–U313；唯一重开：WEB-ROUTING（U307→U310→U312），修复后回绿
+- 当日台账增量：U272–U324；唯一重开：WEB-ROUTING（U307→U310→U312），修复后回绿
 ## 5. 按地图推进的规则与顺序
 
 ### 5.1 规则（防止迷失方向）
@@ -168,17 +169,22 @@
 | 地图编号 | 状态 | 台账/决策 | 套件或证据 |
 |---|---|---|---|
 | ADMIN-CONSOLE-WORKBENCH | 🟢 | U316（QA-030 搜索/筛选/通知，FR 外增强，⚪ 挂账） | workbench 套件（AC-01） |
+| HOST-ONBOARD-WIZARD | 🟢 | U181（H11–H13 打包验收产物待出） | install-wizard 90/90；D25 手动构建 job |
+| AUTH-REVOKE-FORCE | 🟢 | U245③（D23 自撤/同级测试待补） | u244 12/12 |
+| ADMIN-CONSOLE-WORKBENCH / QA-EVIDENCE-CHECKERS | 🟢 | U323（探索重放脚本标签漂移，非门禁） | U322 复审发现 |
+| QA-TIMEOUT-GATE | 🟢 | U324（import 正则边界，P2，0 文件命中） | U321 复审 |
+| —（无叶子：早期探索/FR 外增强） | ⚪ | U11/U12/U27/U32/U54/U56/U58/U74/U76/U116/U316 | 台账 §3.2 |
 | QA-TIMEOUT-GATE | 🟢 | U291/U313/U315/U317/U321 已关 | 门禁套件 **89（88 pass/1 skip）**、扫描 296 文件 0 new；`evidence/m110-load-300` |
 | WEB-NAV-ROUTING | 🟢 | U307/U310/U312/U314（已关） | `web-exploratory-fixes` 45、U310 定向 1/1（主会话复跑） |
 | MOB-HOST-DETAIL | 🟢 | U278（已裁定不开发） | `u80-mobile-shell` 390×844 sheet、`u80-mobile-m9fix` 触控 44px |
 | AUTH-LOGIN-LOCKOUT | 🟢 | U289/U292/U293/U294/U296（已关） | 契约 9/9、entry-module 9/9、lockout 14/14 |
 | AUTH-COOKIE-MODE | 🟢 | D5–D10（检查单 `19c908da06f`）、U214 已关、U216 已接受 | u197 浏览器套件 9/9、认证基线 267/267 |
 | AUTH-PAGE-CSP | 🟢 | D10（维持 Report-Only） | csp-zero 6/6 |
-| AUTH-TOKEN-GC | 🟢 | D18（已实施 `b521fb87988`）、U233 F6 | `session-sweep` + `snapshot-credential-strip` 11/11 |
+| AUTH-TOKEN-GC | 🟢 | D18（已实施 `b521fb87988`）、U233 F6 已关；U233 F4 另挂并缓办 | `session-sweep` + `snapshot-credential-strip` 11/11 |
 | AUTH-SESSION-EXPIRE | 🟢 | D20（已实施）、U243/U230 | `u243-session-events` 4/4 |
 | AUTH-LDAP-ADMIT / AZ-LDAP-GROUP | 🟢/🟢 | D15-1（已实施 `73bc4ce6647`）、U212 已关；LGA-6 收口 | `ldap-admission` 14/14（主会话复跑）、准入设计 v3 |
 | AZ-ENUM-GUARD | 🟢 | D24（保留 404 静默）、U247 观察 | web-project-entry 10/10 |
-| PRJ-PROVISION-ERR | 🟢 | D22（已实施）、U54-008 | `web-project-entry` 11/11 |
+| PRJ-PROVISION-ERR | 🟢 | D22（已实施 `4a85e45bdce`）、U54 | `web-project-entry` 12/12 |
 | FILE-DL-RPC / FILE-COPY-CAPTURE | ⚪/🟢 | D21（C9 缓登记；C6 已落地）、U66 第二口径结案 | `cloud-file-copy-audit` 8/8 |
 | FILE-DL-HARDEN | 🟢 | U66 二期（已关） | guard 7/7、enforcement 4/4 |
 | CLIENT-INSTALL-ONELINER | 🟢 | U275/U276/U281/U283/U285/U288（已关） | 运行期 14/14、自检 2/2 |
