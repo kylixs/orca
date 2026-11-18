@@ -241,20 +241,78 @@ export type ApiHandle = {
 type AuthedRequest = { user: User; sessionId: string }
 
 /**
- * U258: the largest body any read-before-auth route accepts is 16 KiB, so a
- * larger unread body cannot be a legal single command. Chunked framing has no
- * known size and is treated as potentially unbounded.
+ * U258/U264: every route that can refuse before reading its body has a legal
+ * body cap of at most 16 KiB, so a larger unread body cannot be a single legal
+ * command. Chunked framing has no known size, so it is drained under a bound
+ * rather than closed outright (a small chunked refusal keeps keep-alive).
  */
 const UNREAD_BODY_CLOSE_BYTES = 16 * 1024
+const CHUNKED_DRAIN_LIMIT_BYTES = 16 * 1024
+const CHUNKED_DRAIN_TIMEOUT_MS = 250
 const requestByResponse = new WeakMap<ServerResponse, IncomingMessage>()
 const bodyReadRequests = new WeakSet<IncomingMessage>()
 
 /** Whether this response would leave a large, unread request body for Node to drain. */
 function leavesUnreadLargeBody(req: IncomingMessage | undefined): boolean {
   if (req === undefined || bodyReadRequests.has(req)) return false
-  if (req.headers['transfer-encoding'] !== undefined) return true
   const declared = Number(req.headers['content-length'])
   return Number.isFinite(declared) && declared > UNREAD_BODY_CLOSE_BYTES
+}
+
+/**
+ * U264: chunked framing hides its size. Consume what is already in flight so a
+ * small body keeps the connection, and destroy instead of draining an unknown
+ * (possibly endless) stream past the bound.
+ */
+function boundUnreadChunkedBody(req: IncomingMessage): void {
+  if (req.complete || bodyReadRequests.has(req)) return
+  let drained = 0
+  let done = false
+  const finish = (destroy: boolean): void => {
+    if (done) return
+    done = true
+    clearTimeout(timer)
+    req.off('data', onData)
+    req.off('end', onEnd)
+    req.off('error', onError)
+    if (destroy) req.destroy()
+    else req.resume()
+  }
+  const onData = (chunk: Buffer): void => {
+    drained += chunk.length
+    if (drained > CHUNKED_DRAIN_LIMIT_BYTES) finish(true)
+  }
+  const onEnd = (): void => finish(false)
+  const onError = (): void => finish(false)
+  const timer = setTimeout(() => finish(true), CHUNKED_DRAIN_TIMEOUT_MS)
+  req.on('data', onData)
+  req.on('end', onEnd)
+  req.on('error', onError)
+  req.resume()
+}
+
+/**
+ * U264: the one decision for an exit that leaves the body unread, applied by
+ * the `writeHead` wrapper so static files, OPTIONS and every raw 200 obey it.
+ */
+function applyUnreadBodyPolicy(req: IncomingMessage, res: ServerResponse): void {
+  if (res.headersSent || bodyReadRequests.has(req)) return
+  if (leavesUnreadLargeBody(req)) {
+    res.setHeader('connection', 'close')
+    return
+  }
+  if (req.headers['transfer-encoding'] !== undefined) boundUnreadChunkedBody(req)
+}
+
+/** U264: wrap `writeHead` once per response so no bare exit can skip the rule. */
+function installUnreadBodyPolicy(res: ServerResponse, req: IncomingMessage): void {
+  const writeHead = res.writeHead.bind(res)
+  // SAFETY: the wrapper accepts and forwards exactly the arguments Node passes
+  // to the overloaded `writeHead`; the cast only restores that overload type.
+  res.writeHead = ((...args: Parameters<typeof writeHead>) => {
+    applyUnreadBodyPolicy(req, res)
+    return writeHead(...args)
+  }) as ServerResponse['writeHead']
 }
 
 function json(res: ServerResponse, status: number, body: unknown): void {
@@ -3634,8 +3692,10 @@ export function createApp(config: ApiConfig): ApiHandle {
     res: ServerResponse,
     fromInternalChannel = false
   ): Promise<void> {
-    // U258: `json` needs the request to decide whether an unread body must close.
+    // U258/U264: `json` needs the request to decide whether an unread body must
+    // close; the wrapper covers every exit that writes its head directly.
     requestByResponse.set(res, req)
+    installUnreadBodyPolicy(res, req)
     const url = new URL(req.url ?? '/', 'http://localhost')
     const path = url.pathname
     const traceId = req.headers['x-trace-id']?.toString() ?? randomUUID()
@@ -7689,8 +7749,8 @@ export function createApp(config: ApiConfig): ApiHandle {
           handler: (req, res) => {
             const path = new URL(req.url ?? '/', 'https://internal').pathname
             if (!isInternalPath(path)) {
-              // U258: same unread-body close rule as the public listener's `json`.
-              if (leavesUnreadLargeBody(req)) res.setHeader('connection', 'close')
+              // U264: same unread-body rule as every public exit, chunked included.
+              applyUnreadBodyPolicy(req, res)
               res.writeHead(404, { 'content-type': 'application/json' })
               res.end(JSON.stringify({ error: { code: 'NOT_FOUND' } }))
               return Promise.resolve()
