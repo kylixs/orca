@@ -78,14 +78,14 @@ before(async () => {
     relayTarget: `127.0.0.1:${runtime.port}`
   })
   await new Promise((resolve) => setTimeout(resolve, 1_500))
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await runtime?.stop()
   await api?.stop()
 })
 
-test(`AC-22 ${SESSIONS} 并发会话 ${DURATION_S} 秒：连接、保持与稳态 RPC`, async () => {
+test(`AC-22 ${SESSIONS} 并发会话 ${DURATION_S} 秒：连接、保持与稳态 RPC`, { timeout: DURATION_S * 1_000 + 300_000 }, async () => {
   const entries: Entry[] = []
   const connectTimes: number[] = []
   const failureCodes = new Set<string>()
@@ -203,4 +203,4 @@ test(`AC-22 ${SESSIONS} 并发会话 ${DURATION_S} 秒：连接、保持与稳�
     node: process.version,
     platform: process.platform
   })
-}, DURATION_S * 1_000 + 300_000)
+})
