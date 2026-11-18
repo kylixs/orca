@@ -108,7 +108,7 @@ before(async () => {
   })
   assert.equal(created.status, 201, JSON.stringify(created.body))
   liveProjectId = (created.body as { id: string }).id
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   if (beat) clearInterval(beat)
@@ -173,7 +173,7 @@ async function ensureHostFilterFixture(): Promise<HostFilterFixture> {
   return hostFilterFixture
 }
 
-test('M116-QA-012 空登录不发起请求、不计失败', async () => {
+test('M116-QA-012 空登录不发起请求、不计失败', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('', '')
@@ -192,9 +192,9 @@ test('M116-QA-012 空登录不发起请求、不计失败', async () => {
     'the login endpoint must not be called'
   )
   record('QA-012', 'empty submit shows 请输入域账号和密码，未发出 POST /v1/auth/login')
-}, 120_000)
+})
 
-test('G03 登录网络不可达显示可读文案且按钮恢复', async () => {
+test('G03 登录网络不可达显示可读文案且按钮恢复', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   page.abort('POST', '/v1/auth/login')
@@ -211,9 +211,9 @@ test('G03 登录网络不可达显示可读文案且按钮恢复', async () => {
   assert.equal(button.disabled, false, 'a failed login must restore the button')
   assert.equal(button.textContent, '登录')
   record('G03-network', 'fetch 拒绝时显示「网络异常，请稍后重试」，按钮恢复可点，不泄露原始异常')
-}, 120_000)
+})
 
-test('G03 LDAP 准入拒绝逐字展示服务端文案', async () => {
+test('G03 LDAP 准入拒绝逐字展示服务端文案', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   page.fail('POST', '/v1/auth/login', {
@@ -232,9 +232,9 @@ test('G03 LDAP 准入拒绝逐字展示服务端文案', async () => {
     'the server admission copy must not be replaced by a generic failure'
   )
   record('G03-ldap', '401 LDAP_GROUP_NOT_ADMITTED 原样展示「账号未加入平台准入组。」')
-}, 120_000)
+})
 
-test('G03 登录中按钮禁用且重复提交不产生第二次请求', async () => {
+test('G03 登录中按钮禁用且重复提交不产生第二次请求', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   page.hold('POST', '/v1/auth/login')
@@ -259,9 +259,9 @@ test('G03 登录中按钮禁用且重复提交不产生第二次请求', async (
   await page.settle()
   assert.equal(page.hidden('#view-app'), false, 'the held login still completes')
   record('G03-pending', '请求在途时按钮禁用并显示「登录中…」，重复提交零新增请求')
-}, 120_000)
+})
 
-test('M116-QA-011 加载失败显示错误态并可重试', async () => {
+test('M116-QA-011 加载失败显示错误态并可重试', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
@@ -279,13 +279,13 @@ test('M116-QA-011 加载失败显示错误态并可重试', async () => {
   assert.doesNotMatch(page.text('#content'), /加载失败/)
   assert.match(page.text('#content'), /中继/, 'retry must re-render the route')
   record('QA-011', 'GET /v1/relays 失败 → 加载失败 + 重试按钮，恢复后重试渲染中继页')
-}, 120_000)
+})
 
 /**
  * F8 E1/E3 (AC-M5-09/11): a failed refresh keeps the last table and shows an
  * inline warning with a retry; the page still never auto-polls.
  */
-test('M116-QA-013 中继刷新失败提示并可重试，旧表保留且不自动轮询', async () => {
+test('M116-QA-013 中继刷新失败提示并可重试，旧表保留且不自动轮询', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
@@ -349,9 +349,9 @@ test('M116-QA-013 中继刷新失败提示并可重试，旧表保留且不自�
     'F8-E1/E3',
     '刷新失败 → .note.warn + 重试、旧行保留；1.2s 内无自动轮询；恢复后重试清除提示'
   )
-}, 120_000)
+})
 
-test('M116-QA-005 主机状态按心跳推导：静默主机不再显示在线', async () => {
+test('M116-QA-005 主机状态按心跳推导：静默主机不再显示在线', { timeout: 120_000 }, async () => {
   // The payload still carries the stale reported status; the console must not.
   const payload = await adminApi('/v1/hosts')
   const seeded = payload.body.hosts.find((h: { name: string }) => h.name === 'dev-001')
@@ -366,9 +366,9 @@ test('M116-QA-005 主机状态按心跳推导：静默主机不再显示在线',
   assert.match(row.textContent ?? '', /离线/)
   assert.doesNotMatch(row.textContent ?? '', /在线/, 'a silent host must not read as online')
   record('QA-005', 'dev-001 status=online 而 online=false → 主机页显示 离线')
-}, 120_000)
+})
 
-test('M116-QA-008 维护中的主机在项目列表显示维护原因', async () => {
+test('M116-QA-008 维护中的主机在项目列表显示维护原因', { timeout: 120_000 }, async () => {
   const set = await adminApi('/v1/hosts/host_dev001/maintenance', {
     method: 'POST',
     body: JSON.stringify({ enabled: true, reason: MAINTENANCE_REASON })
@@ -385,9 +385,9 @@ test('M116-QA-008 维护中的主机在项目列表显示维护原因', async ()
   assert.equal(open?.disabled, true, 'a project under maintenance cannot be opened')
   assert.match(open?.title ?? '', /维护/)
   record('QA-008', `工作台项目行显示 维护中 · ${MAINTENANCE_REASON}，打开禁用`)
-}, 120_000)
+})
 
-test('M116-QA-007 离线项目的三个打开入口全部禁用并带原因', async () => {
+test('M116-QA-007 离线项目的三个打开入口全部禁用并带原因', { timeout: 120_000 }, async () => {
   // Ending maintenance writes the stored status back to online while the
   // heartbeat stays silent: exactly the state the old UI mislabelled as live.
   const ended = await adminApi('/v1/hosts/host_dev001/maintenance', {
@@ -422,9 +422,9 @@ test('M116-QA-007 离线项目的三个打开入口全部禁用并带原因', as
   assert.equal(projectsOpen?.disabled, true, 'the projects page entry must be disabled')
   assert.match(projectsOpen?.title ?? '', /主机离线/)
   record('QA-007', '工作台卡片 + 工作台行 + 我的项目行 的打开按钮均禁用，title=主机离线')
-}, 120_000)
+})
 
-test('M116-QA-010 无授权管理员的权限列如实展示，打开需先授权', async () => {
+test('M116-QA-010 无授权管理员的权限列如实展示，打开需先授权', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
@@ -455,9 +455,9 @@ test('M116-QA-010 无授权管理员的权限列如实展示，打开需先授�
     'QA-010',
     'admin 无授权 → 管理员可见（未授权）+ 打开禁用；授予 platform-admins 后列出新权限且可打开'
   )
-}, 120_000)
+})
 
-test('M116-QA-006 已吊销主机明确标识且不能再进入维护', async () => {
+test('M116-QA-006 已吊销主机明确标识且不能再进入维护', { timeout: 120_000 }, async () => {
   const revoke = await adminApi('/v1/hosts/host_dev001', { method: 'DELETE' })
   assert.equal(revoke.status, 200)
 
@@ -492,9 +492,9 @@ test('M116-QA-006 已吊销主机明确标识且不能再进入维护', async ()
     'QA-006',
     '吊销后行与抽屉显示 已吊销（时间），按钮禁用；服务端对已吊销主机维护返回 409 HOST_REVOKED'
   )
-}, 120_000)
+})
 
-test('M116-QA-002 审计超过一页时给出提示并可加载更早', async () => {
+test('M116-QA-002 审计超过一页时给出提示并可加载更早', { timeout: 120_000 }, async () => {
   // Cross the 50-per-page boundary with real audited events.
   for (let round = 0; round < 55; round += 1) {
     await login(service.url, 'admin', 'Adm1n!')
@@ -522,9 +522,9 @@ test('M116-QA-002 审计超过一页时给出提示并可加载更早', async ()
     'an exhausted list must not keep the control'
   )
   record('QA-002', `共 ${all.body.events.length} 条：首屏 50 条 + 「加载更早」后与 API 总数一致`)
-}, 120_000)
+})
 
-test('M116-QA-003 审计筛选控件保持条件，支持一键重置', async () => {
+test('M116-QA-003 审计筛选控件保持条件，支持一键重置', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
@@ -575,9 +575,9 @@ test('M116-QA-003 审计筛选控件保持条件，支持一键重置', async ()
     .at(-1)
   assert.doesNotMatch(resetQuery ?? '', /eventType=/, 'reset must clear the conditions')
   record('QA-003', '查询后控件保持所选条件；二次查询同时携带 eventType 与 result；重置清空条件')
-}, 120_000)
+})
 
-test('M116-QA-004 traceId 完整展示且可复制', async () => {
+test('M116-QA-004 traceId 完整展示且可复制', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
@@ -596,9 +596,9 @@ test('M116-QA-004 traceId 完整展示且可复制', async () => {
   assert.equal(copy?.dataset.trace, traceId, 'the copy action must carry the full id')
   assert.equal(cell.querySelector('span')?.title, traceId, 'the full id must be available on hover')
   record('QA-004', `traceId ${traceId} 完整渲染并带复制按钮（不再截断 12 位）`)
-}, 120_000)
+})
 
-test('M116-QA-009 保存下载策略失败时提示并回滚', async () => {
+test('M116-QA-009 保存下载策略失败时提示并回滚', { timeout: 120_000 }, async () => {
   const before = await adminApi('/v1/policies/download')
   assert.equal(before.body.downloadDefault, 'deny')
 
@@ -629,7 +629,7 @@ test('M116-QA-009 保存下载策略失败时提示并回滚', async () => {
   assert.equal(afterFail.body.downloadDefault, 'deny')
   page.clearFails()
   record('QA-009', 'PUT 失败 → toast 保存失败 + 单选回滚为 deny，策略版本不变')
-}, 120_000)
+})
 
 type GrantRow = { subjectType: string; subjectId: string; username?: string }
 
@@ -701,7 +701,7 @@ function confirmTopDialog(page: WebConsolePage): void {
   topDialog(page).querySelector<HTMLButtonElement>('[data-action="0"]')!.click()
 }
 
-test('W2-M-1 授予/移除失败时提示且权限页签不被误刷新', async () => {
+test('W2-M-1 授予/移除失败时提示且权限页签不被误刷新', { timeout: 120_000 }, async () => {
   const projectId = 'proj_payment'
   const grantsPath = `/v1/projects/${projectId}/grants`
   const before = await adminApi(grantsPath)
@@ -806,9 +806,9 @@ test('W2-M-1 授予/移除失败时提示且权限页签不被误刷新', async 
     failedRemoval: '移除失败：模拟平台故障 + 页签不刷新、行保留',
     happyPath: '已保存「查看」授权 / 已移除该主体的全部授权 + 刷新'
   })
-}, 120_000)
+})
 
-test('W2-m-2 无主用户授权行标记已删除用户且不可移除', async () => {
+test('W2-m-2 无主用户授权行标记已删除用户且不可移除', { timeout: 120_000 }, async () => {
   const projectId = 'proj_payment'
   const page = loadWebConsolePage(service.url)
   await page.settle()
@@ -857,9 +857,9 @@ test('W2-m-2 无主用户授权行标记已删除用户且不可移除', async (
     deadRow: 'lsii → 已删除用户 标记，移除禁用',
     liveRows: 'zhangsan / team-payment → 无标记，移除可用'
   })
-}, 120_000)
+})
 
-test('R5-① 退出登录清空登录框凭据', async () => {
+test('R5-① 退出登录清空登录框凭据', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
@@ -878,9 +878,9 @@ test('R5-① 退出登录清空登录框凭据', async () => {
     usernameAfterLogout: username.value,
     passwordAfterLogout: password.value === '' ? '' : '<non-empty>'
   })
-}, 120_000)
+})
 
-test('R5-② 工作台/我的项目默认排除归档项目，归档行有徽标且不可打开', async () => {
+test('R5-② 工作台/我的项目默认排除归档项目，归档行有徽标且不可打开', { timeout: 120_000 }, async () => {
   const created = await adminApi('/v1/projects', {
     method: 'POST',
     body: JSON.stringify({
@@ -947,9 +947,9 @@ test('R5-② 工作台/我的项目默认排除归档项目，归档行有徽标
     liveListRequests: 'GET /v1/projects (no includeArchived)',
     fallback: 'stale archived rows are filtered out of live views'
   })
-}, 120_000)
+})
 
-test('R5-③ 重复添加授权先弹覆盖确认（级别并入），确认后才 PUT', async () => {
+test('R5-③ 重复添加授权先弹覆盖确认（级别并入），确认后才 PUT', { timeout: 120_000 }, async () => {
   const projectId = 'proj_payment'
   const grantsPath = `/v1/projects/${projectId}/grants`
   // Seed a control-only row so the 查看 add visibly unions a new level in.
@@ -1001,9 +1001,9 @@ test('R5-③ 重复添加授权先弹覆盖确认（级别并入），确认后�
     dialog: '覆盖现有授权（级别：控制 → 查看+控制，open + file:read 并入）',
     after: row.permissions
   })
-}, 120_000)
+})
 
-test('U54 WEB-R2-011 密码可见性按钮同步 aria-label 与 aria-pressed', async () => {
+test('U54 WEB-R2-011 密码可见性按钮同步 aria-label 与 aria-pressed', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   const button = page.window.document.querySelector<HTMLButtonElement>('#togglePassword')!
@@ -1019,9 +1019,9 @@ test('U54 WEB-R2-011 密码可见性按钮同步 aria-label 与 aria-pressed', a
   assert.equal(button.getAttribute('aria-label'), '显示密码')
   assert.equal(button.getAttribute('aria-pressed'), 'false')
   record('WEB-R2-011', '切换密码可见性时 aria-label 在 显示/隐藏密码 间同步，aria-pressed 随之切换')
-}, 120_000)
+})
 
-test('U54 WEB-R2-015 空主体添加授权给出提示并聚焦输入框', async () => {
+test('U54 WEB-R2-015 空主体添加授权给出提示并聚焦输入框', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
@@ -1041,9 +1041,9 @@ test('U54 WEB-R2-015 空主体添加授权给出提示并聚焦输入框', async
   )
   assert.equal(adds(), before, 'an empty subject must not reach the platform')
   record('WEB-R2-015', '空主体添加 → toast 请输入组名或用户名、输入框获得焦点、零 PUT')
-}, 120_000)
+})
 
-test('U54 WEB-R2-016 审计支持按 traceId 精确筛选', async () => {
+test('U54 WEB-R2-016 审计支持按 traceId 精确筛选', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
@@ -1076,9 +1076,9 @@ test('U54 WEB-R2-016 审计支持按 traceId 精确筛选', async () => {
     assert.match(tr.textContent ?? '', new RegExp(traceId), 'only that trace may be listed')
   }
   record('WEB-R2-016', `审计筛选新增 traceId 精确条件（${traceId}），查询透传且条件保持`)
-}, 120_000)
+})
 
-test('U54 WEB-R2-016 traceId 同步 URL、随导出请求，重置清空', async () => {
+test('U54 WEB-R2-016 traceId 同步 URL、随导出请求，重置清空', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
@@ -1124,9 +1124,9 @@ test('U54 WEB-R2-016 traceId 同步 URL、随导出请求，重置清空', async
     'reset must drop traceId from the URL too'
   )
   record('WEB-R2-016', 'traceId 写入 URL、导出请求体携带该条件、重置同时清空输入与 URL')
-}, 120_000)
+})
 
-test('U54 WEB-R2-014 长文本筛选输入限制 128 字符，密码框不受限', async () => {
+test('U54 WEB-R2-014 长文本筛选输入限制 128 字符，密码框不受限', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   const password = page.window.document.querySelector<HTMLInputElement>('#password')!
@@ -1160,9 +1160,9 @@ test('U54 WEB-R2-014 长文本筛选输入限制 128 字符，密码框不受限
     )
   }
   record('WEB-R2-014', '项目/主机搜索与审计 q/fileName/traceId 均限制 128 字符，密码框不设上限')
-}, 120_000)
+})
 
-test('U116 工作台心跳文案与后端默认离线窗一致', async () => {
+test('U116 工作台心跳文案与后端默认离线窗一致', { timeout: 120_000 }, async () => {
   // U116③: the card states the offline window, not a raw heartbeat interval.
   const serverSource = readFileSync(join(ROOT, 'apps/api/src/server.ts'), 'utf8')
   // Line-anchored: a same-named token in a comment or string must not be read as the constant.
@@ -1196,9 +1196,9 @@ test('U116 工作台心跳文案与后端默认离线窗一致', async () => {
     'the old bare beat-interval copy must be gone'
   )
   record('U116', `工作台统计卡心跳文案为「${seconds} 秒无心跳转离线」，与 HOST_OFFLINE_DEFAULT_MS 一致`)
-}, 120_000)
+})
 
-test('U54 QA-019 中继最近注册时间按 zh-CN 渲染', async () => {
+test('U54 QA-019 中继最近注册时间按 zh-CN 渲染', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
@@ -1227,9 +1227,9 @@ test('U54 QA-019 中继最近注册时间按 zh-CN 渲染', async () => {
     assert.match(text, /\d{4}\/\d{1,2}\/\d{1,2}/, `zh-CN date expected in ${text}`)
     assert.doesNotMatch(text, /(AM|PM)|\d{1,2}\/\d{1,2}\/\d{4}/, 'no en-US date format')
   }
-}, 120_000)
+})
 
-test('U54 QA-020 中继行与卡片可展开详情（绝对+相对时间），且不自动轮询', async () => {
+test('U54 QA-020 中继行与卡片可展开详情（绝对+相对时间），且不自动轮询', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
@@ -1286,9 +1286,9 @@ test('U54 QA-020 中继行与卡片可展开详情（绝对+相对时间），�
   await new Promise((resolve) => setTimeout(resolve, 300))
   assert.equal(listCalls(), baseline, 'detail expansion must not poll')
   record('QA-020', '中继表行/卡片展开详情（id、host:port、在线、绝对+相对时间），aria-expanded 切换，无自动轮询')
-}, 120_000)
+})
 
-test('U54 QA-021 复制失败提示手动复制且不产生未捕获异常', async () => {
+test('U54 QA-021 复制失败提示手动复制且不产生未捕获异常', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
@@ -1348,9 +1348,9 @@ test('U54 QA-021 复制失败提示手动复制且不产生未捕获异常', asy
     process.off('unhandledRejection', onRejection)
     console.warn = originalWarn
   }
-}, 120_000)
+})
 
-test('U54 QA-027 toast 与加载态带读屏语义', async () => {
+test('U54 QA-027 toast 与加载态带读屏语义', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
@@ -1380,9 +1380,9 @@ test('U54 QA-027 toast 与加载态带读屏语义', async () => {
   await page.release()
   await page.settle()
   assert.notEqual(container.getAttribute('aria-busy'), 'true', 'finished content is not busy')
-}, 120_000)
+})
 
-test('U54 QA-018 登录网络错误可被读屏读取，重试成功后清除', async () => {
+test('U54 QA-018 登录网络错误可被读屏读取，重试成功后清除', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   page.abort('POST', '/v1/auth/login')
@@ -1402,9 +1402,9 @@ test('U54 QA-018 登录网络错误可被读屏读取，重试成功后清除', 
   assert.equal(page.hidden('#view-app'), false, 'the retry succeeds')
   assert.equal(password.hasAttribute('aria-invalid'), false)
   assert.equal(password.hasAttribute('aria-describedby'), false)
-}, 120_000)
+})
 
-test('U54 QA-022 慢页面返回不覆盖已切换的页面', async () => {
+test('U54 QA-022 慢页面返回不覆盖已切换的页面', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
@@ -1427,9 +1427,9 @@ test('U54 QA-022 慢页面返回不覆盖已切换的页面', async () => {
   assert.match(page.text('#content'), /已注册开发机/, 'the body stays on hosts')
   assert.doesNotMatch(page.text('#content'), /平台设置/, 'the slow page must not write back')
   record('QA-022', '设置页慢请求返回后，面包屑与主体均为当前的主机页')
-}, 120_000)
+})
 
-test('U54 QA-024 最近项目按最近更新时间排序而非数组顺序', async () => {
+test('U54 QA-024 最近项目按最近更新时间排序而非数组顺序', { timeout: 120_000 }, async () => {
   for (const suffix of ['alpha', 'bravo', 'charlie', 'delta']) {
     const name = `recent-${suffix}`
     const res = await adminApi('/v1/projects', {
@@ -1456,9 +1456,9 @@ test('U54 QA-024 最近项目按最近更新时间排序而非数组顺序', asy
     'newest first; the oldest of the four is not surfaced'
   )
   record('QA-024', `最近项目顺序 ${cards.join(' > ')}（最新创建在前）`)
-}, 120_000)
+})
 
-test('U54 QA-025 未变化不保存、请求中重复点击只发一次 PUT', async () => {
+test('U54 QA-025 未变化不保存、请求中重复点击只发一次 PUT', { timeout: 120_000 }, async () => {
   const current = await adminApi('/v1/policies/download')
   const currentValue: 'allow' | 'deny' = current.body.downloadDefault === 'allow' ? 'allow' : 'deny'
   const opposite: 'allow' | 'deny' = currentValue === 'deny' ? 'allow' : 'deny'
@@ -1503,9 +1503,9 @@ test('U54 QA-025 未变化不保存、请求中重复点击只发一次 PUT', as
     'QA-025',
     `未改动 0 PUT（策略未变化）；请求中双击 1 PUT 且按钮 disabled；${currentValue} → ${opposite} → 恢复`
   )
-}, 120_000)
+})
 
-test('M116-QA-028 完整移除授权先确认：取消零 PUT，确认一行 PUT 后行消失', async () => {
+test('M116-QA-028 完整移除授权先确认：取消零 PUT，确认一行 PUT 后行消失', { timeout: 120_000 }, async () => {
   const projectId = 'proj_payment'
   const grantsPath = `/v1/projects/${projectId}/grants`
   // A row sitting in exactly one card: removing that card is a full removal.
@@ -1556,9 +1556,9 @@ test('M116-QA-028 完整移除授权先确认：取消零 PUT，确认一行 PUT
     'the refreshed card no longer lists the subject'
   )
   record('QA-028-remove', '点 ✕ 先确认（主体名 + 不可撤销/重新授权）；取消 0 PUT 行保留；确认 1 PUT 行消失')
-}, 120_000)
+})
 
-test('M116-QA-028 空主体授予显示行内提示且不发写请求', async () => {
+test('M116-QA-028 空主体授予显示行内提示且不发写请求', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
@@ -1581,9 +1581,9 @@ test('M116-QA-028 空主体授予显示行内提示且不发写请求', async ()
   assert.match(hint!.textContent ?? '', /请输入组名或用户名/, 'the hint says what is missing')
   assert.equal(writes(), before, 'an empty subject sends no write request')
   record('QA-028-empty', '空主体点添加 → 行内提示「请输入组名或用户名」可见，零写请求')
-}, 120_000)
+})
 
-test('M116-QA-029 主机抽屉展示状态、维护原因与最近心跳绝对+相对时间', async () => {
+test('M116-QA-029 主机抽屉展示状态、维护原因与最近心跳绝对+相对时间', { timeout: 120_000 }, async () => {
   const reason = '季度演练'
   const set = await adminApi(`/v1/hosts/${liveHostId}/maintenance`, {
     method: 'POST',
@@ -1619,9 +1619,9 @@ test('M116-QA-029 主机抽屉展示状态、维护原因与最近心跳绝对+�
     body: JSON.stringify({ enabled: false })
   })
   record('QA-029', `抽屉信息页：状态=维护中、维护原因=${reason}、最近心跳=zh-CN 绝对时间（相对）`)
-}, 120_000)
+})
 
-test('M116-QA-033 注册主机弹层打开不签发令牌，点击生成后才申领且只发一次', async () => {
+test('M116-QA-033 注册主机弹层打开不签发令牌，点击生成后才申领且只发一次', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
@@ -1664,9 +1664,9 @@ test('M116-QA-033 注册主机弹层打开不签发令牌，点击生成后才�
   await page.settle()
   assert.equal(tokenCalls(), 1, 'no further token is minted after the command is generated')
   record('QA-033', '打开弹层 0 次 POST /v1/hosts/tokens；取消 0 次；生成请求在途双击 1 次并渲染命令+复制')
-}, 120_000)
+})
 
-test('M116-QA-030 主机搜索按名称/地址/zone 过滤，空态与清空恢复', async () => {
+test('M116-QA-030 主机搜索按名称/地址/zone 过滤，空态与清空恢复', { timeout: 120_000 }, async () => {
   await ensureHostFilterFixture()
   const page = loadWebConsolePage(service.url)
   await page.settle()
@@ -1725,9 +1725,9 @@ test('M116-QA-030 主机搜索按名称/地址/zone 过滤，空态与清空恢�
     'QA-030-search',
     '搜索 qa-filter-maint（大小写/空白无关）、127.0.0.1:17101、qa-filter-revoked、intranet 均命中；无匹配显示「没有符合条件的主机」；清空恢复'
   )
-}, 120_000)
+})
 
-test('M116-QA-030 主机状态 chips 覆盖在线/维护中/离线/已吊销并可恢复全部', async () => {
+test('M116-QA-030 主机状态 chips 覆盖在线/维护中/离线/已吊销并可恢复全部', { timeout: 120_000 }, async () => {
   await ensureHostFilterFixture()
   const page = loadWebConsolePage(service.url)
   await page.settle()
@@ -1788,9 +1788,9 @@ test('M116-QA-030 主机状态 chips 覆盖在线/维护中/离线/已吊销并�
     'QA-030-chips',
     '在线/维护中/离线/已吊销 chip 各只保留对应主机（表格与移动卡一致），切回全部恢复'
   )
-}, 120_000)
+})
 
-test('M116-QA-030 筛选后行内详情按钮仍打开对应主机', async () => {
+test('M116-QA-030 筛选后行内详情按钮仍打开对应主机', { timeout: 120_000 }, async () => {
   const fixture = await ensureHostFilterFixture()
   const page = loadWebConsolePage(service.url)
   await page.settle()
@@ -1815,9 +1815,9 @@ test('M116-QA-030 筛选后行内详情按钮仍打开对应主机', async () =>
   assert.match(drawer!.textContent ?? '', /qa-filter-maint/, 'the drawer names the filtered host')
   assert.match(drawer!.textContent ?? '', /维护中/, 'the drawer carries the derived verdict')
   record('QA-030-detail', '搜索后行内「详情」仍绑定该主机并打开抽屉（名称 + 维护中）')
-}, 120_000)
+})
 
-test('WEB-R2-012 管理员项目页副标题说明为管理员视图', async () => {
+test('WEB-R2-012 管理员项目页副标题说明为管理员视图', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
@@ -1826,9 +1826,9 @@ test('WEB-R2-012 管理员项目页副标题说明为管理员视图', async () 
     page.window.document.querySelector('#content .page-head p')?.textContent ?? ''
   assert.equal(subtitle.trim(), '管理员视图：展示全部项目（含未授权项目）。')
   assert.doesNotMatch(subtitle, /仅展示你有「打开项目」权限的项目/)
-}, 120_000)
+})
 
-test('U58 W5 非法百分号转义路径返回 404 而不是 500', async () => {
+test('U58 W5 非法百分号转义路径返回 404 而不是 500', { timeout: 120_000 }, async () => {
   const res = await fetch(`${service.url}/%E0%A4%A`)
   const body = await res.text()
   assert.equal(res.status, 404, `malformed escape must be a 404, got ${res.status}: ${body}`)
@@ -1839,9 +1839,9 @@ test('U58 W5 非法百分号转义路径返回 404 而不是 500', async () => {
   )
   assert.doesNotMatch(body, /URI malformed/, 'the decoder error must not leak')
   assert.doesNotMatch(body, /INTERNAL_ERROR|at [\w./]+\s*\(/, 'no error code or stack')
-}, 120_000)
+})
 
-test('U58 W5 合法百分号编码路径仍正常返回', async () => {
+test('U58 W5 合法百分号编码路径仍正常返回', { timeout: 120_000 }, async () => {
   const res = await fetch(`${service.url}/%69ndex.html`)
   const body = await res.text()
   assert.equal(res.status, 200, `a valid encoded path still resolves: ${body.slice(0, 200)}`)
@@ -1851,4 +1851,4 @@ test('U58 W5 合法百分号编码路径仍正常返回', async () => {
     'the resolved entry must be served as text/html'
   )
   assert.match(body, /<html/i)
-}, 120_000)
+})

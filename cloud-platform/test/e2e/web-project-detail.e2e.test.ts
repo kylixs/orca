@@ -184,7 +184,7 @@ before(async () => {
   // Registration starts the host online; let the never-beaten one lapse.
   await new Promise((resolve) => setTimeout(resolve, 1800))
   matrix.setup = { detailProjectId, failedProjectId, detailHostId, maintHostId }
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   for (const beat of beats) {
@@ -341,7 +341,7 @@ async function loginAs(username: string, password: string): Promise<WebConsolePa
   return page
 }
 
-test('W46-D1 管理员「详情」是按钮；弹框出现且只有一次项目 GET、零写、零新标签', async () => {
+test('W46-D1 管理员「详情」是按钮；弹框出现且只有一次项目 GET、零写、零新标签', { timeout: 120_000 }, async () => {
   const page = await loginAs('admin', 'Adm1n!')
   const row = rowFor(page, 'detail-project')
   const button = entryIn(row, '详情')
@@ -377,9 +377,9 @@ test('W46-D1 管理员「详情」是按钮；弹框出现且只有一次项目 
   )
 
   matrix.d1 = { detailButton: 'BUTTON', calls, opened: opened.length }
-}, 120_000)
+})
 
-test('W46-D2 弹框字段逐项等于 payload；ID 可复制；失败原因按 failed 展示', async () => {
+test('W46-D2 弹框字段逐项等于 payload；ID 可复制；失败原因按 failed 展示', { timeout: 120_000 }, async () => {
   const payload = (await api(`/v1/projects/${detailProjectId}`)).body as Record<string, unknown>
   const page = await loginAs('admin', 'Adm1n!')
   ;(entryIn(rowFor(page, 'detail-project'), '详情') as HTMLButtonElement).click()
@@ -442,9 +442,9 @@ test('W46-D2 弹框字段逐项等于 payload；ID 可复制；失败原因按 f
     copied: copies,
     failedShowsError: FAILURE
   }
-}, 120_000)
+})
 
-test('W46-D3 开发者无入口；离线/维护行可看详情，弹框打开按钮与行内同因置灰', async () => {
+test('W46-D3 开发者无入口；离线/维护行可看详情，弹框打开按钮与行内同因置灰', { timeout: 120_000 }, async () => {
   const dev = await loginAs('zhangsan', 'Passw0rd!')
   assert.equal(
     entryIn(rowFor(dev, 'detail-project'), '详情'),
@@ -478,9 +478,9 @@ test('W46-D3 开发者无入口；离线/维护行可看详情，弹框打开按
   }
 
   matrix.d3 = { developerEntry: null, offline: '主机离线', maintenance: '主机维护中' }
-}, 120_000)
+})
 
-test('W46-D4 createdBy 只随 admin/auditor 下发（新增平台断言）', async () => {
+test('W46-D4 createdBy 只随 admin/auditor 下发（新增平台断言）', { timeout: 120_000 }, async () => {
   const adminView = await api('/v1/projects?includeArchived=1')
   const adminRow = (adminView.body.projects as Record<string, unknown>[]).find(
     (p) => p.id === detailProjectId
@@ -497,9 +497,9 @@ test('W46-D4 createdBy 只随 admin/auditor 下发（新增平台断言）', asy
   assert.equal('createdBy' in devRow, false, 'non-admin payloads stay byte-identical')
 
   matrix.d4 = { adminCreatedBy: adminRow.createdBy, developerHasKey: 'createdBy' in devRow }
-}, 120_000)
+})
 
-test('W46-D5 弹框「打开项目」关闭弹框并在同页覆盖层进入工作区（U46-3）', async () => {
+test('W46-D5 弹框「打开项目」关闭弹框并在同页覆盖层进入工作区（U46-3）', { timeout: 120_000 }, async () => {
   const page = await loginAs('admin', 'Adm1n!')
   const { opened } = captureOpened(page)
   ;(entryIn(rowFor(page, 'detail-project'), '详情') as HTMLButtonElement).click()
@@ -542,9 +542,9 @@ test('W46-D5 弹框「打开项目」关闭弹框并在同页覆盖层进入工�
     overlay: iframe.src.replace(/#handoff=[A-Za-z0-9_-]+/, '#handoff=<redacted>'),
     opened: opened.length
   }
-}, 120_000)
+})
 
-test('W46-D6 Escape 关闭弹框且焦点回到「详情」按钮', async () => {
+test('W46-D6 Escape 关闭弹框且焦点回到「详情」按钮', { timeout: 120_000 }, async () => {
   const page = await loginAs('admin', 'Adm1n!')
   const detail = entryIn(rowFor(page, 'detail-project'), '详情') as HTMLButtonElement
   detail.click()
@@ -564,14 +564,14 @@ test('W46-D6 Escape 关闭弹框且焦点回到「详情」按钮', async () => 
   assert.equal(page.window.document.activeElement, detail, 'focus returns to the opener')
 
   matrix.d6 = { escapeClosed: true, focusReturned: 'detail' }
-}, 120_000)
+})
 
 /**
  * U67-4: 项目详情弹框「信息|权限」tab 化。权限 tab 的查看/控制卡写项目 grants
  * （位并集，复用 U67 共享渲染/交互），管理卡是主机授权推导只读视图（FR-9.11③），
  * 只做跳转，不提供任何写入口。
  */
-test('U67-4-1 项目弹框 tab 化：信息|权限；三卡结构 + FR-9.11③ 头注', async () => {
+test('U67-4-1 项目弹框 tab 化：信息|权限；三卡结构 + FR-9.11③ 头注', { timeout: 120_000 }, async () => {
   const page = await loginAs('admin', 'Adm1n!')
   ;(entryIn(rowFor(page, 'detail-project'), '详情') as HTMLButtonElement).click()
   await page.settle()
@@ -636,9 +636,9 @@ test('U67-4-1 项目弹框 tab 化：信息|权限；三卡结构 + FR-9.11③ �
   assert.equal(jump.textContent?.trim(), '前往主机详情弹框 →')
 
   matrix.u67_4_1 = { tabs: ['信息', '权限'], cards: ['view', 'control', 'derived'] }
-}, 120_000)
+})
 
-test('U67-4-2 查看/控制卡可写：整行 PUT、覆盖确认与移除危险确认', async () => {
+test('U67-4-2 查看/控制卡可写：整行 PUT、覆盖确认与移除危险确认', { timeout: 120_000 }, async () => {
   const subject = 'zhangsan'
   const grantsPath = `/v1/projects/${detailProjectId}/grants`
   // Start from a clean row: this case owns zhangsan's project grant.
@@ -726,9 +726,9 @@ test('U67-4-2 查看/控制卡可写：整行 PUT、覆盖确认与移除危险�
   )
 
   matrix.u67_4_2 = { view: ['open', 'file:read'], controlUnion: 7, removed: true }
-}, 120_000)
+})
 
-test('U67-4-3 管理卡=主机推导只读：仅控制/管理主体 + 前往主机详情跳转', async () => {
+test('U67-4-3 管理卡=主机推导只读：仅控制/管理主体 + 前往主机详情跳转', { timeout: 120_000 }, async () => {
   const seeds = [
     { subjectType: 'group', subjectId: 'developers', permissions: ['view'] },
     { subjectType: 'user', subjectId: 'zhangsan', permissions: ['view', 'provision'] },
@@ -789,7 +789,7 @@ test('U67-4-3 管理卡=主机推导只读：仅控制/管理主体 + 前往主�
   assert.ok(manageChips.includes('platform-admins'), 'the host manage card owns the derived source')
 
   matrix.u67_4_3 = { derived: subjects, jump: '#/hosts/<id>?tab=perms' }
-}, 120_000)
+})
 
 /**
  * G07 (AC-M3-07/21, C15): the provisioning→ready UI states, the detail dialog's
@@ -801,7 +801,7 @@ const G07_CLONE_REPO = 'git@git.example.com:pay/g07-clone.git'
 const G07_FAILED_REPO = 'https://git.example.com/team/g07-failed.git'
 const G07_FAILURE = 'git clone failed: G07 authentication required'
 
-test('G07-1 repoUrl 登记 → toast「克隆中」→ 详情「准备中」→ 宿主回报 ok →「就绪」', async () => {
+test('G07-1 repoUrl 登记 → toast「克隆中」→ 详情「准备中」→ 宿主回报 ok →「就绪」', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await openRegistration(page)
   fillRegistration(page, {
@@ -849,9 +849,9 @@ test('G07-1 repoUrl 登记 → toast「克隆中」→ 详情「准备中」→ 
   assert.equal(fresh.status, 'ready', 'the platform also holds ready')
 
   matrix.g07_1 = { key: G07_CLONE_KEY, toast: /克隆中/.source, states: ['准备中', '就绪'] }
-}, 120_000)
+})
 
-test('G07-2 宿主回报克隆失败 → 详情「准备失败」+ 失败原因', async () => {
+test('G07-2 宿主回报克隆失败 → 详情「准备失败」+ 失败原因', { timeout: 120_000 }, async () => {
   const projectId = await createProject(G07_FAILED_KEY, detailHostId, { repoUrl: G07_FAILED_REPO })
   await grant(projectId, 'platform-admins')
   await beatHost(detailHostId, detailHostCredential, [
@@ -869,9 +869,9 @@ test('G07-2 宿主回报克隆失败 → 详情「准备失败」+ 失败原因'
   assert.match(text, /准备失败原因/, 'the reason has its own labelled row')
 
   matrix.g07_2 = { status: '准备失败', error: G07_FAILURE }
-}, 120_000)
+})
 
-test('G07-3 详情刷新 GET 失败 → 顶部黄条，缓存数据仍展示', async () => {
+test('G07-3 详情刷新 GET 失败 → 顶部黄条，缓存数据仍展示', { timeout: 120_000 }, async () => {
   const page = await loginAs('admin', 'Adm1n!')
   page.fail('GET', `/v1/projects/${detailProjectId}`)
   ;(entryIn(rowFor(page, 'detail-project'), '详情') as HTMLButtonElement).click()
@@ -885,9 +885,9 @@ test('G07-3 详情刷新 GET 失败 → 顶部黄条，缓存数据仍展示', a
   assert.match(text, /就绪/, 'the cached status is kept rather than blanked')
 
   matrix.g07_3 = { banner: warn.textContent?.trim(), cached: 'detail-project' }
-}, 120_000)
+})
 
-test('G07-4 路径/仓库复制 toast「已复制」；在线宿主详情含独立页链接', async () => {
+test('G07-4 路径/仓库复制 toast「已复制」；在线宿主详情含独立页链接', { timeout: 120_000 }, async () => {
   const payload = (await api(`/v1/projects/${detailProjectId}`)).body as {
     path: string
     repoUrl: string
@@ -926,4 +926,4 @@ test('G07-4 路径/仓库复制 toast「已复制」；在线宿主详情含独�
   assert.equal(lastToast(page), '已复制', 'copy is confirmed with the shared toast')
 
   matrix.g07_4 = { copied: copies, sessionPageUrl: payload.sessionPageUrl }
-}, 120_000)
+})

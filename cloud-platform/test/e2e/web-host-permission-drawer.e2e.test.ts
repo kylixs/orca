@@ -162,7 +162,7 @@ before(async () => {
     projectsRoot: '/srv/aa6'
   })
   hostId = host.hostId
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await service?.stop()
@@ -173,7 +173,7 @@ after(async () => {
   })
 })
 
-test('AA6-1 admin 打开主机详情权限页签：grants 一次、三卡片渲染、策略开关移除', async () => {
+test('AA6-1 admin 打开主机详情权限页签：grants 一次、三卡片渲染、策略开关移除', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await openPermTab(page, 'admin', 'Adm1n!')
 
@@ -192,9 +192,9 @@ test('AA6-1 admin 打开主机详情权限页签：grants 一次、三卡片渲�
     assert.match(permCard(page, key).textContent ?? '', /个主体/, `${key} card renders`)
   }
   // U67-3a 审定二：卡头只有角色名 + 主体计数，不暴露权限位。
-  const cardKeys = [...drawer(page).querySelectorAll<HTMLElement>(
-    '[data-perm-cards] > .perm-card[data-card]'
-  )].map((card) => card.dataset.card)
+  const cardKeys = [
+    ...drawer(page).querySelectorAll<HTMLElement>('[data-perm-cards] > .perm-card[data-card]')
+  ].map((card) => card.dataset.card)
   assert.deepEqual(cardKeys.slice(0, 3), ['view', 'control', 'manage'], 'cards are 查看/控制/管理')
   for (const key of ['view', 'control', 'manage']) {
     const head = permCard(page, key).querySelector<HTMLElement>('.perm-card-head')!
@@ -240,9 +240,9 @@ test('AA6-1 admin 打开主机详情权限页签：grants 一次、三卡片渲�
   })
   cases['drawer-default'] =
     'grants 1 次、目录 1 次；查看/控制/管理 三卡片渲染，策略开关与旧矩阵移除'
-}, 120_000)
+})
 
-test('AA6-2 查看卡添加组：整行即存 view 位，chip 只含名字+类型，未授权者自助 403', async () => {
+test('AA6-2 查看卡添加组：整行即存 view 位，chip 只含名字+类型，未授权者自助 403', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await openPermTab(page, 'admin', 'Adm1n!')
 
@@ -275,9 +275,9 @@ test('AA6-2 查看卡添加组：整行即存 view 位，chip 只含名字+类�
   saveEvidence(EVIDENCE, 'view-card.json', { rows, refused: refused.status })
   cases['view-card'] =
     '查看卡添加 team-payment → 立即 PUT 落 view 位；lisi 自助建项目 403 HOST_PROVISION_FORBIDDEN'
-}, 120_000)
+})
 
-test('AA6-3 控制卡加同一主体：角色调整确认 只读→全权，确认后整行即 view+provision', async () => {
+test('AA6-3 控制卡加同一主体：角色调整确认 只读→全权，确认后整行即 view+provision', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await openPermTab(page, 'admin', 'Adm1n!')
   const putsBefore = callsTo(page, 'PUT', `/v1/hosts/${hostId}/grants`)
@@ -285,9 +285,17 @@ test('AA6-3 控制卡加同一主体：角色调整确认 只读→全权，确�
   await addToCard(page, 'control', 'group', 'team-payment')
 
   const dialog = topDialog(page)
-  assert.match(dialog.textContent ?? '', /调整角色/, 'an existing subject must confirm the role change')
+  assert.match(
+    dialog.textContent ?? '',
+    /调整角色/,
+    'an existing subject must confirm the role change'
+  )
   assert.match(dialog.textContent ?? '', /级别：只读 → 全权/, 'the row reads as the new role')
-  assert.match(dialog.textContent ?? '', /升级即时生效，不断开会话/, 'an upgrade notes no disconnect')
+  assert.match(
+    dialog.textContent ?? '',
+    /升级即时生效，不断开会话/,
+    'an upgrade notes no disconnect'
+  )
   assert.equal(
     callsTo(page, 'PUT', `/v1/hosts/${hostId}/grants`),
     putsBefore,
@@ -319,9 +327,9 @@ test('AA6-3 控制卡加同一主体：角色调整确认 只读→全权，确�
 
   saveEvidence(EVIDENCE, 'control-overwrite.json', { group })
   cases['control-overwrite'] = '控制卡加已有主体 → 调整角色确认（只读→全权）→ 整行落 view+provision'
-}, 120_000)
+})
 
-test('AA6-4 非 admin：主机路由 403 页面，零 hosts/grants/目录请求', async () => {
+test('AA6-4 非 admin：主机路由 403 页面，零 hosts/grants/目录请求', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('zhangsan', 'Passw0rd!')
@@ -335,9 +343,9 @@ test('AA6-4 非 admin：主机路由 403 页面，零 hosts/grants/目录请求'
 
   saveEvidence(EVIDENCE, 'non-admin-calls.json', { calls: page.calls() })
   cases['non-admin'] = '开发者进入主机 → 无权访问，GET /v1/hosts、grants、directory 均为 0 次'
-}, 120_000)
+})
 
-test('AA6-5 添加失败：toast 报错、输入保留、平台状态不变（QA-009）', async () => {
+test('AA6-5 添加失败：toast 报错、输入保留、平台状态不变（QA-009）', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await openPermTab(page, 'admin', 'Adm1n!')
   const grantsPath = `/v1/hosts/${hostId}/grants`
@@ -365,13 +373,13 @@ test('AA6-5 添加失败：toast 报错、输入保留、平台状态不变（QA
   page.clearFails()
   saveEvidence(EVIDENCE, 'add-rollback.json', { toast: lastToast(page) })
   cases['add-rollback'] = 'PUT grants 503 → toast 授予失败、输入保留、平台行不变（QA-009）'
-}, 120_000)
+})
 
 /**
  * U67-3a 结构契约（审定二 · 位置即权限 · 层级单卡）：存储仍是位组合，读取时
  * 按 查看 < 控制 < 管理 推导唯一归属卡，主体不跨卡、chip 不带权限词尾注。
  */
-test('U67-3a 三卡结构：卡头无位徽标、chips 只有名字+类型、主体只出现在最高级别卡', async () => {
+test('U67-3a 三卡结构：卡头无位徽标、chips 只有名字+类型、主体只出现在最高级别卡', { timeout: 120_000 }, async () => {
   const rows = [
     { subjectType: 'group', subjectId: 'developers', permissions: ['view'] },
     { subjectType: 'user', subjectId: 'lisi', permissions: ['view', 'provision'] },
@@ -442,21 +450,25 @@ test('U67-3a 三卡结构：卡头无位徽标、chips 只有名字+类型、主
   })
   cases['u67-3a-structure'] =
     '三卡顺序固定；卡头无位徽标；chip 仅名字+类型；主体仅出现在最高级别卡且全局唯一'
-}, 120_000)
+})
 
 /**
  * U67-3b 写路径（审定二 · 位置即权限）：加卡 = 整行即目标卡位组；已在高卡不
  * 可降入低卡、同卡去重；调整角色走确认（降级 danger + 断会话文案）；移除整行
  * 危险确认；失败只报错、不改本地与平台状态。
  */
-test('U67-3b-1 三卡位映射：控制=view+provision，管理=provision+maintain（整行替换）', async () => {
+test('U67-3b-1 三卡位映射：控制=view+provision，管理=provision+maintain（整行替换）', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await openPermTab(page, 'admin', 'Adm1n!')
 
   await addToCard(page, 'control', 'user', 'zhangsan')
   assert.match(lastToast(page), /已保存「控制」授权：全权/)
   const zhangsan = (await hostGrants()).find((row) => subjectIs(row, 'zhangsan'))!
-  assert.deepEqual([...zhangsan.permissions].sort(), ['provision', 'view'], '控制 card writes exactly view+provision')
+  assert.deepEqual(
+    [...zhangsan.permissions].sort(),
+    ['provision', 'view'],
+    '控制 card writes exactly view+provision'
+  )
   assert.ok(chipOf(page, 'control', 'zhangsan'), 'the upgrade lands in the 控制 card')
 
   // developers currently holds only view → adding to 管理 is an upgrade that
@@ -479,9 +491,9 @@ test('U67-3b-1 三卡位映射：控制=view+provision，管理=provision+mainta
   saveEvidence(EVIDENCE, 'u67-3b-card-bits.json', { zhangsan, developers })
   cases['u67-3b-card-bits'] =
     '控制卡写 view+provision；管理卡写 provision+maintain（整行替换，不保留 view）'
-}, 120_000)
+})
 
-test('U67-3b-2 位置即权限：高卡主体不可降入低卡，同卡重复添加去重', async () => {
+test('U67-3b-2 位置即权限：高卡主体不可降入低卡，同卡重复添加去重', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await openPermTab(page, 'admin', 'Adm1n!')
   const grantsPath = `/v1/hosts/${hostId}/grants`
@@ -503,10 +515,11 @@ test('U67-3b-2 位置即权限：高卡主体不可降入低卡，同卡重复�
   )
 
   saveEvidence(EVIDENCE, 'u67-3b-hierarchy.json', { toast: lastToast(page) })
-  cases['u67-3b-hierarchy'] = '管理卡主体加入查看卡 → 提示不可降入；同卡重复添加 → 去重提示，均零 PUT'
-}, 120_000)
+  cases['u67-3b-hierarchy'] =
+    '管理卡主体加入查看卡 → 提示不可降入；同卡重复添加 → 去重提示，均零 PUT'
+})
 
-test('U67-3b-3 调整角色降级：danger 确认含 ≤60 秒断会话，确认后两卡同步刷新', async () => {
+test('U67-3b-3 调整角色降级：danger 确认含 ≤60 秒断会话，确认后两卡同步刷新', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await openPermTab(page, 'admin', 'Adm1n!')
   const grantsPath = `/v1/hosts/${hostId}/grants`
@@ -516,7 +529,11 @@ test('U67-3b-3 调整角色降级：danger 确认含 ≤60 秒断会话，确认
   const chip = chipOf(page, 'control', 'lisi')
   const adjust = chip.querySelector<HTMLButtonElement>('[data-perm-role]')
   assert.ok(adjust, 'a role chip offers 调整')
-  assert.doesNotMatch(chip.textContent ?? '', /查看|控制|管理/, 'the adjust control adds no permission words')
+  assert.doesNotMatch(
+    chip.textContent ?? '',
+    /查看|控制|管理/,
+    'the adjust control adds no permission words'
+  )
   adjust.click()
   await page.settle()
 
@@ -545,23 +562,25 @@ test('U67-3b-3 调整角色降级：danger 确认含 ≤60 秒断会话，确认
     false,
     'the control card no longer lists lisi (both cards redrawn)'
   )
-  assert.equal(callsTo(page, 'GET', grantsPath), loadsBefore + 1, 'success redraws from the platform')
+  assert.equal(
+    callsTo(page, 'GET', grantsPath),
+    loadsBefore + 1,
+    'success redraws from the platform'
+  )
   assert.match(lastToast(page), /调整为「查看」.*≤60 秒/)
 
   saveEvidence(EVIDENCE, 'u67-3b-adjust-down.json', { toast: lastToast(page) })
   cases['u67-3b-adjust-down'] =
     '调整角色 → danger 确认含断会话文案 → PUT view；主体从控制移入查看，两卡同步刷新'
-}, 120_000)
+})
 
-test('U67-3b-4 移除：危险确认含 ≤60 秒断会话，确认后整行删除', async () => {
+test('U67-3b-4 移除：危险确认含 ≤60 秒断会话，确认后整行删除', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await openPermTab(page, 'admin', 'Adm1n!')
   const grantsPath = `/v1/hosts/${hostId}/grants`
   const putsBefore = callsTo(page, 'PUT', grantsPath)
 
-  chipOf(page, 'manage', 'developers')
-    .querySelector<HTMLButtonElement>('.perm-chip-x')!
-    .click()
+  chipOf(page, 'manage', 'developers').querySelector<HTMLButtonElement>('.perm-chip-x')!.click()
   await page.settle()
 
   const dialog = topDialog(page)
@@ -584,24 +603,26 @@ test('U67-3b-4 移除：危险确认含 ≤60 秒断会话，确认后整行删�
 
   saveEvidence(EVIDENCE, 'u67-3b-remove.json', { rows })
   cases['u67-3b-remove'] = '移除 → 危险确认含 ≤60 秒断会话 → PUT []，行删除、chip 消失'
-}, 120_000)
+})
 
-test('U67-3b-5 写失败回滚：toast 报错、平台行不变、不重绘本地状态', async () => {
+test('U67-3b-5 写失败回滚：toast 报错、平台行不变、不重绘本地状态', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await openPermTab(page, 'admin', 'Adm1n!')
   const grantsPath = `/v1/hosts/${hostId}/grants`
   const loadsBefore = callsTo(page, 'GET', grantsPath)
 
   page.fail('PUT', grantsPath)
-  chipOf(page, 'view', 'lisi')
-    .querySelector<HTMLButtonElement>('.perm-chip-x')!
-    .click()
+  chipOf(page, 'view', 'lisi').querySelector<HTMLButtonElement>('.perm-chip-x')!.click()
   await page.settle()
   actionByText(topDialog(page), '确认移除').click()
   await page.settle()
 
   assert.match(lastToast(page), /移除失败/, 'the refusal is reported')
-  assert.equal(callsTo(page, 'GET', grantsPath), loadsBefore, 'a refusal never redraws from the platform')
+  assert.equal(
+    callsTo(page, 'GET', grantsPath),
+    loadsBefore,
+    'a refusal never redraws from the platform'
+  )
   assert.deepEqual(
     (await hostGrants()).find((row) => subjectIs(row, 'lisi'))?.permissions,
     ['view'],
@@ -612,4 +633,4 @@ test('U67-3b-5 写失败回滚：toast 报错、平台行不变、不重绘本�
   page.clearFails()
   saveEvidence(EVIDENCE, 'u67-3b-rollback.json', { toast: lastToast(page) })
   cases['u67-3b-rollback'] = '移除 PUT 503 → toast 移除失败、不重绘、平台行与本地 chip 不变'
-}, 120_000)
+})

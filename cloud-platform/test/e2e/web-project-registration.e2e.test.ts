@@ -80,7 +80,7 @@ before(async () => {
       body: JSON.stringify({ status: 'online' })
     }).catch(() => undefined)
   }, 400)
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   if (beat) {
@@ -202,7 +202,7 @@ async function openRegisterDialog(page: WebConsolePage, username: string, passwo
   assert.ok(dialogOpen(page), 'the registration dialog must open')
 }
 
-test('M120a-1 登记入口仅管理员可见；开发者直调接口 403 并写入拒绝审计', async () => {
+test('M120a-1 登记入口仅管理员可见；开发者直调接口 403 并写入拒绝审计', { timeout: 120_000 }, async () => {
   const adminPage = loadWebConsolePage(service.url)
   await adminPage.settle()
   await adminPage.submitLogin('admin', 'Adm1n!')
@@ -249,9 +249,9 @@ test('M120a-1 登记入口仅管理员可见；开发者直调接口 403 并写�
     'gating',
     'admin 见「登记项目」；开发者不见；直调 POST /v1/projects → 403 PERMISSION_DENIED + denied 审计'
   )
-}, 120_000)
+})
 
-test('M120a-2 必填缺失与非法 Key/路径在客户端拦截，0 请求', async () => {
+test('M120a-2 必填缺失与非法 Key/路径在客户端拦截，0 请求', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await openRegisterDialog(page, 'admin', 'Adm1n!')
   const before = postCount(page)
@@ -311,9 +311,9 @@ test('M120a-2 必填缺失与非法 Key/路径在客户端拦截，0 请求', as
     'client-validation',
     '空值/大写 Key/超 64/尾点/相对路径/..段/尾分隔符 → 字段级错误 + 0 请求'
   )
-}, 120_000)
+})
 
-test('M120a-3 真实平台登记成功：201、toast、列表新行、path 直供语义', async () => {
+test('M120a-3 真实平台登记成功：201、toast、列表新行、path 直供语义', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await openRegisterDialog(page, 'admin', 'Adm1n!')
 
@@ -378,9 +378,9 @@ test('M120a-3 真实平台登记成功：201、toast、列表新行、path 直�
     'success',
     '登记 reg-live → 201/ready、toast 项目已登记、列表新行（管理员可见（未授权）·可打开）、主机项目根提示出现'
   )
-}, 120_000)
+})
 
-test('M120a-4 带 repoUrl 登记：toast 提示克隆中，项目进入 provisioning', async () => {
+test('M120a-4 带 repoUrl 登记：toast 提示克隆中，项目进入 provisioning', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await openRegisterDialog(page, 'admin', 'Adm1n!')
   fillRegistration(page, {
@@ -412,9 +412,9 @@ test('M120a-4 带 repoUrl 登记：toast 提示克隆中，项目进入 provisio
     'repoUrl',
     '带 repoUrl 登记 → status=provisioning、toast「项目已登记，克隆中，就绪后可打开」'
   )
-}, 120_000)
+})
 
-test('M120a-5 重复 Key：409 PROJECT_EXISTS 落在 key 字段，弹层不关输入保留', async () => {
+test('M120a-5 重复 Key：409 PROJECT_EXISTS 落在 key 字段，弹层不关输入保留', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await openRegisterDialog(page, 'admin', 'Adm1n!')
   // The seeded project already owns this key, and the admin route's duplicate
@@ -453,9 +453,9 @@ test('M120a-5 重复 Key：409 PROJECT_EXISTS 落在 key 字段，弹层不关�
     'duplicate-key',
     '重复 Key → 409 PROJECT_EXISTS → key 字段「项目 Key 已存在。」，弹层不关、输入保留'
   )
-}, 120_000)
+})
 
-test('M120a-6 重复路径与平台侧非法路径都落在 path 字段（服务端 message 原样）', async () => {
+test('M120a-6 重复路径与平台侧非法路径都落在 path 字段（服务端 message 原样）', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await openRegisterDialog(page, 'admin', 'Adm1n!')
 
@@ -500,9 +500,9 @@ test('M120a-6 重复路径与平台侧非法路径都落在 path 字段（服务
     'path-errors',
     '重复路径 → 409 PROJECT_PATH_TAKEN 落 path 字段；/srv//x → 400 PROJECT_PATH_INVALID 服务端文案原样落 path 字段'
   )
-}, 120_000)
+})
 
-test('M120a-7 审计含 project_create 成功事件，筛选下拉含该事件并可过滤', async () => {
+test('M120a-7 审计含 project_create 成功事件，筛选下拉含该事件并可过滤', { timeout: 120_000 }, async () => {
   const events = await adminApi(
     '/v1/audit/events?eventType=project_create&result=success&limit=100'
   )
@@ -542,9 +542,9 @@ test('M120a-7 审计含 project_create 成功事件，筛选下拉含该事件�
     filteredRows: rows.length
   })
   record('audit', 'project_create 成功事件含 key/path；审计下拉含 project_create 且过滤结果非空')
-}, 120_000)
+})
 
-test('M120a-8 兜底错误映射：HOST_NOT_FOUND 落主机字段，其余落在弹层顶部', async () => {
+test('M120a-8 兜底错误映射：HOST_NOT_FOUND 落主机字段，其余落在弹层顶部', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await openRegisterDialog(page, 'admin', 'Adm1n!')
   fillRegistration(page, {
@@ -583,9 +583,9 @@ test('M120a-8 兜底错误映射：HOST_NOT_FOUND 落主机字段，其余落在
     'error-fallback',
     'HOST_NOT_FOUND → hostId 字段；无字段可归的失败 → 弹层顶部错误行，弹层保持可重试'
   )
-}, 120_000)
+})
 
-test('M120a-9 Key 失焦即校（§3.2）：blur 置错/合法清错、提交校验保留；主机字段错误控件变红', async () => {
+test('M120a-9 Key 失焦即校（§3.2）：blur 置错/合法清错、提交校验保留；主机字段错误控件变红', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await openRegisterDialog(page, 'admin', 'Adm1n!')
   const key = page.window.document.querySelector<HTMLInputElement>('#regKey')!
@@ -635,4 +635,4 @@ test('M120a-9 Key 失焦即校（§3.2）：blur 置错/合法清错、提交校
     'key-blur',
     'Key 失焦即校（非法置错/合法清错，0 请求），提交校验保留；.select.invalid 红边规则落地（m-1/m-2）'
   )
-}, 120_000)
+})

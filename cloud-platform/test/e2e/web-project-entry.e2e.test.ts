@@ -223,7 +223,7 @@ before(async () => {
       }).catch(() => undefined)
     }
   }, 400)
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   if (beat) {
@@ -265,7 +265,7 @@ function closeDetailDialog(page: WebConsolePage): void {
     ?.click()
 }
 
-test('W3-payload 宿主 TLS 直连首项生成 sessionPageUrl（含 ?api= 平台地址）', async () => {
+test('W3-payload 宿主 TLS 直连首项生成 sessionPageUrl（含 ?api= 平台地址）', { timeout: 120_000 }, async () => {
   const adminView = await api('/v1/projects')
   const live = adminView.body.projects.find((p: { key: string }) => p.key === 'live-project')
   assert.equal(
@@ -303,9 +303,9 @@ test('W3-payload 宿主 TLS 直连首项生成 sessionPageUrl（含 ?api= 平台
     developerSees: devLive.sessionPageUrl
   })
   matrix['payload'] = `TLS 直连 + ?api=${service.url} → ${live.sessionPageUrl}；开发者列表同值`
-}, 120_000)
+})
 
-test('W3-payload 无 TLS 指纹或无直连地址时 sessionPageUrl 为空串', async () => {
+test('W3-payload 无 TLS 指纹或无直连地址时 sessionPageUrl 为空串', { timeout: 120_000 }, async () => {
   const view = await api('/v1/projects')
   const plain = view.body.projects.find((p: { key: string }) => p.key === 'plain-project')
   const addrless = view.body.projects.find((p: { key: string }) => p.key === 'addrless-project')
@@ -316,9 +316,9 @@ test('W3-payload 无 TLS 指纹或无直连地址时 sessionPageUrl 为空串', 
     noDirectAddr: addrless.sessionPageUrl
   })
   matrix['payload-negative'] = '无 TLS 指纹 → ""；无直连地址 → ""'
-}, 120_000)
+})
 
-test('W3-payload 直连地址非 host:port 形态时注册即被拒（HOST_DIRECTADDRS_INVALID）', async () => {
+test('W3-payload 直连地址非 host:port 形态时注册即被拒（HOST_DIRECTADDRS_INVALID）', { timeout: 120_000 }, async () => {
   // U274/U265: an undialable address is refused at the boundary, so it can never
   // reach a project view as a sessionPageUrl. The token is single-use, so fetch
   // a fresh one for this negative case.
@@ -358,9 +358,9 @@ test('W3-payload 直连地址非 host:port 形态时注册即被拒（HOST_DIREC
   })
   matrix['payload-malformed-addr'] =
     '直连地址端口越界（99999）→ 注册 400 HOST_DIRECTADDRS_INVALID（U265 边界校验）'
-}, 120_000)
+})
 
-test('W3-admin 管理员入口：详情弹框（独立页链接在内），Orca Web 新标签', async () => {
+test('W3-admin 管理员入口：详情弹框（独立页链接在内），Orca Web 新标签', { timeout: 120_000 }, async () => {
   await announceBrowserEdge()
   const page = loadWebConsolePage(service.url)
   await page.settle()
@@ -435,9 +435,9 @@ test('W3-admin 管理员入口：详情弹框（独立页链接在内），Orca 
   })
   matrix['admin'] =
     '在线 → 详情为弹框按钮（内嵌 sessionPageUrl 独立页链接）、Orca Web 为 mint-per-click 动作按钮；无浏览器入口 → 仍可点击由平台裁定；离线 → 详情仍可点，弹框打开按钮 disabled title=主机离线'
-}, 120_000)
+})
 
-test('W3-orca-web 无 open 权限不渲染 Orca Web 入口', async () => {
+test('W3-orca-web 无 open 权限不渲染 Orca Web 入口', { timeout: 120_000 }, async () => {
   await announceBrowserEdge()
   const page = loadWebConsolePage(service.url)
   await page.settle()
@@ -457,9 +457,9 @@ test('W3-orca-web 无 open 权限不渲染 Orca Web 入口', async () => {
   assert.equal(openBtn?.disabled, true, 'a user without open cannot open the project')
   assert.match(openBtn?.title ?? '', /未授权/)
   matrix['orca-web-visibility'] = '有 open → 渲染；无 open（未授权管理员）→ 不渲染且打开置灰'
-}, 120_000)
+})
 
-test('W3-developer 开发者无详情入口，Orca Web 随权限与浏览器入口渲染', async () => {
+test('W3-developer 开发者无详情入口，Orca Web 随权限与浏览器入口渲染', { timeout: 120_000 }, async () => {
   await announceBrowserEdge()
   const page = loadWebConsolePage(service.url)
   await page.settle()
@@ -501,9 +501,9 @@ test('W3-developer 开发者无详情入口，Orca Web 随权限与浏览器入�
   })
   matrix['developer'] =
     '无详情入口；Orca Web 在线为动作按钮、无浏览器入口仍可点击、离线 title=主机离线；两页 actions 一致'
-}, 120_000)
+})
 
-test('W3c-open 打开走 admin handoff 进同页覆盖层，不再弹连接信息对话框', async () => {
+test('W3c-open 打开走 admin handoff 进同页覆盖层，不再弹连接信息对话框', { timeout: 120_000 }, async () => {
   await announceBrowserEdge()
   const page = loadWebConsolePage(service.url)
   await page.settle()
@@ -557,9 +557,9 @@ test('W3c-open 打开走 admin handoff 进同页覆盖层，不再弹连接信�
   })
   matrix['open-entry'] =
     '有 open 权限点「打开」→ POST admin web-handoff → 同页覆盖层 iframe(cloud-admin.html?embed=1) 进工作区；无连接信息对话框、无 /connect、无新标签'
-}, 120_000)
+})
 
-test('W3-admin 在线但无可直达会话页地址时详情仍可看，弹框无独立页链接', async () => {
+test('W3-admin 在线但无可直达会话页地址时详情仍可看，弹框无独立页链接', { timeout: 120_000 }, async () => {
   await announceBrowserEdge()
   const page = loadWebConsolePage(service.url)
   await page.settle()
@@ -598,9 +598,9 @@ test('W3-admin 在线但无可直达会话页地址时详情仍可看，弹框�
   })
   matrix['online-no-addr'] =
     '在线 + 无会话页地址 → 详情仍可点击开弹框、弹框内无独立页链接；Orca Web 仍可点击'
-}, 120_000)
+})
 
-test('W3-maintenance 维护态详情仍可看、打开与 Orca Web 置灰，退出维护恢复', async () => {
+test('W3-maintenance 维护态详情仍可看、打开与 Orca Web 置灰，退出维护恢复', { timeout: 120_000 }, async () => {
   await announceBrowserEdge()
   const entered = await api(`/v1/hosts/${maintHostId}/maintenance`, {
     method: 'POST',
@@ -674,9 +674,9 @@ test('W3-maintenance 维护态详情仍可看、打开与 Orca Web 置灰，退�
   })
   matrix['maintenance'] =
     '维护中 → 详情仍可点（弹框打开按钮 disabled title=主机维护中）、Orca Web 置灰；退出维护 → 详情弹框内独立页链接恢复（含 ?api=）、Orca Web 恢复可点击'
-}, 120_000)
+})
 
-test('W3-admin-open 离线宿主行：打开/Orca Web 置灰，详情仍可看', async () => {
+test('W3-admin-open 离线宿主行：打开/Orca Web 置灰，详情仍可看', { timeout: 120_000 }, async () => {
   await announceBrowserEdge()
   const page = loadWebConsolePage(service.url)
   await page.settle()
@@ -709,4 +709,4 @@ test('W3-admin-open 离线宿主行：打开/Orca Web 置灰，详情仍可看',
   saveEvidence(EVIDENCE, 'offline-admin-open-combo.json', titles)
   matrix['offline-combo'] =
     'admin+open+离线 → 打开/Orca Web disabled title=主机离线；详情仍可点，弹框打开项目同因置灰'
-}, 120_000)
+})

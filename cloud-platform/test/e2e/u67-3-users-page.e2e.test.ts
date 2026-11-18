@@ -88,13 +88,13 @@ before(async () => {
   adminToken = await login(service.url, 'admin', 'Adm1n!')
   zhangsanToken = await login(service.url, 'zhangsan', 'Passw0rd!')
   lisiToken = await login(service.url, 'lisi', 'Passw0rd!')
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await service?.stop()
 })
 
-test('UG-6 UI：admin 渲染 #/users 页（U81 查询四态 + U82 只读列表/详情弹框/确认链）', async () => {
+test('UG-6 UI：admin 渲染 #/users 页（U81 查询四态 + U82 只读列表/详情弹框/确认链）', { timeout: 120_000 }, async () => {
   const listed = await api('/v1/users')
   assert.equal(listed.status, 200)
   zhangsanId = listed.body.users.find((u: UserRow) => u.username === 'zhangsan').id
@@ -360,9 +360,9 @@ test('UG-6 UI：admin 渲染 #/users 页（U81 查询四态 + U82 只读列表/�
       confirmedPut: `PUT /v1/users/${zhangsanId}/roles`
     }
   })
-}, 120_000)
+})
 
-test('UG-2/UG-4：角色变更实时生效 + role_update 审计 + override 优先于默认种子重登录', async () => {
+test('UG-2/UG-4：角色变更实时生效 + role_update 审计 + override 优先于默认种子重登录', { timeout: 120_000 }, async () => {
   // UI 测试已把 zhangsan 升为审计；先复位为普通，拿到「升级前无审计面」的起点。
   const reset = await api(`/v1/users/${zhangsanId}/roles`, {
     method: 'PUT',
@@ -440,9 +440,9 @@ test('UG-2/UG-4：角色变更实时生效 + role_update 审计 + override 优�
     ug4: { reloginRoles: reloginBody.user.roles },
     realtimeBothWays: { afterDemote: afterDemote.status, afterPromote: afterPromote.status }
   })
-}, 120_000)
+})
 
-test('UG-1：非 admin 直调 GET/PUT 均 403 + denied 审计（requiredPermission=platform:admin）', async () => {
+test('UG-1：非 admin 直调 GET/PUT 均 403 + denied 审计（requiredPermission=platform:admin）', { timeout: 120_000 }, async () => {
   const listDenied = await api('/v1/users', { token: lisiToken })
   assert.equal(listDenied.status, 403)
   assert.equal(listDenied.body.error?.code, 'PERMISSION_DENIED')
@@ -472,9 +472,9 @@ test('UG-1：非 admin 直调 GET/PUT 均 403 + denied 审计（requiredPermissi
     requiredPermission: hit?.metadata.requiredPermission,
     roleUnchanged: unchanged.role
   })
-}, 120_000)
+})
 
-test('UG-3：管理员降级撤凭证（revocation + 断开）且重登录不再获得管理员', async () => {
+test('UG-3：管理员降级撤凭证（revocation + 断开）且重登录不再获得管理员', { timeout: 120_000 }, async () => {
   const listed = await api('/v1/users')
   lisiId = listed.body.users.find((u: UserRow) => u.username === 'lisi').id
 
@@ -527,9 +527,9 @@ test('UG-3：管理员降级撤凭证（revocation + 断开）且重登录不再
     oldTokenAfter: 403,
     reloginRoles: me.body.user.roles
   })
-}, 120_000)
+})
 
-test('契约负向：非法角色 400 ROLE_INVALID；未知用户 404 USER_NOT_FOUND', async () => {
+test('契约负向：非法角色 400 ROLE_INVALID；未知用户 404 USER_NOT_FOUND', { timeout: 120_000 }, async () => {
   const invalid = await api(`/v1/users/${zhangsanId}/roles`, {
     method: 'PUT',
     body: JSON.stringify({ role: 'superadmin' })
@@ -547,9 +547,9 @@ test('契约负向：非法角色 400 ROLE_INVALID；未知用户 404 USER_NOT_F
   // 负向不落库
   const zhangsan = await userByName('zhangsan')
   assert.equal(zhangsan.role, 'auditor')
-}, 120_000)
+})
 
-test('UG-6 UI：developer 无用户管理导航，强制路由显示无权限页', async () => {
+test('UG-6 UI：developer 无用户管理导航，强制路由显示无权限页', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('lisi', 'Passw0rd!')
@@ -570,4 +570,4 @@ test('UG-6 UI：developer 无用户管理导航，强制路由显示无权限页
     adminNavHidden: true,
     forcedRoute: { crumbs: page.text('#crumbs'), showsForbidden: true }
   })
-}, 120_000)
+})

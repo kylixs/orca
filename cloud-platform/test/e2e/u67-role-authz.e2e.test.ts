@@ -1,6 +1,13 @@
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { login, makeDeviceKey, registerHost, saveEvidence, spawnService, type Service } from './harness.ts'
+import {
+  login,
+  makeDeviceKey,
+  registerHost,
+  saveEvidence,
+  spawnService,
+  type Service
+} from './harness.ts'
 import { loadWebConsolePage } from './web-console-page.ts'
 
 /**
@@ -200,7 +207,7 @@ before(async () => {
   assert.equal(created3.status, 201, JSON.stringify(created3.body))
   p3 = created3.body.id
   await putProjectGrant(p3, 'group', 'team-payment', ['open', 'download'])
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await service?.stop()
@@ -211,7 +218,7 @@ after(async () => {
   })
 })
 
-test('U67-P1 查看（view）：推导全部项目可见，票据上限 open+file:read 压过更宽的项目行', async () => {
+test('U67-P1 查看（view）：推导全部项目可见，票据上限 open+file:read 压过更宽的项目行', { timeout: 120_000 }, async () => {
   // lisi starts with nothing: the seeded project must be invisible.
   assert.equal(
     (await visibleProjects(lisiToken)).some((row) => row.id === p1),
@@ -224,11 +231,7 @@ test('U67-P1 查看（view）：推导全部项目可见，票据上限 open+fil
   const lisiRows = await visibleProjects(lisiToken)
   const seen = lisiRows.find((row) => row.id === p1)
   assert.ok(seen, 'view derives visibility of every non-archived host project')
-  assert.deepEqual(
-    [...seen.permissions].sort(),
-    ['file:read', 'open'],
-    'the read-only ceiling'
-  )
+  assert.deepEqual([...seen.permissions].sort(), ['file:read', 'open'], 'the read-only ceiling')
   assert.equal(seen.hostAccess, 'read-only', 'the payload explains the cap')
   assert.equal(
     lisiRows.some((row) => row.hostId === hostB),
@@ -261,9 +264,9 @@ test('U67-P1 查看（view）：推导全部项目可见，票据上限 open+fil
     zhangsanTicketPerms: capped.perms,
     lisiTicketPerms: lisiTicket.perms
   })
-}, 120_000)
+})
 
-test('U67-P2 控制（view+provision）：全部项目可见、六操作位、download 仅继承，可自助创建', async () => {
+test('U67-P2 控制（view+provision）：全部项目可见、六操作位、download 仅继承，可自助创建', { timeout: 120_000 }, async () => {
   assert.equal((await putHostGrant(hostB, 'user', 'zhangsan', ['view', 'provision'])).status, 200)
 
   const rows = await visibleProjects(zhangsanToken)
@@ -283,10 +286,14 @@ test('U67-P2 控制（view+provision）：全部项目可见、六操作位、do
   )
 
   const bareTicket = await connect(p2, zhangsanToken, zhangsanDeviceId)
-  assert.deepEqual(
-    [...bareTicket.perms!].sort(),
-    ['agent', 'browser', 'file:read', 'file:write', 'open', 'terminal']
-  )
+  assert.deepEqual([...bareTicket.perms!].sort(), [
+    'agent',
+    'browser',
+    'file:read',
+    'file:write',
+    'open',
+    'terminal'
+  ])
   const inheritingTicket = await connect(p3, zhangsanToken, zhangsanDeviceId)
   assert.ok(inheritingTicket.perms!.includes('download'), 'the inherited bit rides the ticket')
 
@@ -313,9 +320,9 @@ test('U67-P2 控制（view+provision）：全部项目可见、六操作位、do
     selfOnB: selfOnB.status,
     selfOnA: selfOnA.body
   })
-}, 120_000)
+})
 
-test('U67-P4 项目授权不扩大：项目行只影响本项目，主机与兄弟项目均不衍生', async () => {
+test('U67-P4 项目授权不扩大：项目行只影响本项目，主机与兄弟项目均不衍生', { timeout: 120_000 }, async () => {
   // lisi has hostA view only; a project row on hostB must stay project-scoped.
   await putProjectGrant(p2, 'user', 'lisi', ['open', 'terminal'])
   const rows = await visibleProjects(lisiToken)
@@ -334,9 +341,9 @@ test('U67-P4 项目授权不扩大：项目行只影响本项目，主机与兄�
   )
   const ticket = await connect(p2, lisiToken, lisiDeviceId)
   assert.deepEqual([...ticket.perms!].sort(), ['open', 'terminal'])
-}, 120_000)
+})
 
-test('U67-P5 admin 旁路：项目内仍按项目行，payload 无 hostAccess', async () => {
+test('U67-P5 admin 旁路：项目内仍按项目行，payload 无 hostAccess', { timeout: 120_000 }, async () => {
   const res = await api('/v1/projects')
   const row = (res.body.projects as ProjectRow[]).find((candidate) => candidate.id === p2)
   assert.ok(row, 'the admin sees every project')
@@ -347,9 +354,9 @@ test('U67-P5 admin 旁路：项目内仍按项目行，payload 无 hostAccess', 
   const denied = await connect(p2, adminToken, (await loginAs('admin', 'Adm1n!')).deviceId)
   assert.equal(denied.status, 403, JSON.stringify(denied))
   assert.equal(denied.code, 'PROJECT_FORBIDDEN')
-}, 120_000)
+})
 
-test('U67-P6 管理（provision+maintain）：不推导可见性，创建与维护仍有效', async () => {
+test('U67-P6 管理（provision+maintain）：不推导可见性，创建与维护仍有效', { timeout: 120_000 }, async () => {
   assert.equal((await putHostGrant(hostA, 'user', 'lisi', ['provision', 'maintain'])).status, 200)
 
   // lisi already saw p1 via the hostA view grant… wait — this row ADDS bits to
@@ -381,12 +388,9 @@ test('U67-P6 管理（provision+maintain）：不推导可见性，创建与维�
     body: JSON.stringify({ enabled: true, reason: 'u67 manage card' })
   })
   assert.equal(maintainer.status, 200, JSON.stringify(maintainer.body))
-  const events = (
-    await api('/v1/audit/events?eventType=host_maintenance&result=success&limit=50')
-  ).body.events as { actor: string; targetId: string; metadata?: Record<string, unknown> }[]
-  const delegated = events.find(
-    (event) => event.actor === 'lisi' && event.targetId === hostA
-  )
+  const events = (await api('/v1/audit/events?eventType=host_maintenance&result=success&limit=50'))
+    .body.events as { actor: string; targetId: string; metadata?: Record<string, unknown> }[]
+  const delegated = events.find((event) => event.actor === 'lisi' && event.targetId === hostA)
   assert.equal(delegated?.metadata?.via, 'host_grant', 'the delegation is recorded')
   const restored = await api(`/v1/hosts/${hostA}/maintenance`, {
     method: 'POST',
@@ -399,9 +403,9 @@ test('U67-P6 管理（provision+maintain）：不推导可见性，创建与维�
     selfOnA: selfOnA.status,
     maintenanceVia: delegated?.metadata?.via
   })
-}, 120_000)
+})
 
-test('U67-P7 UI 三卡片→票据端到端：查看卡添加 lisi@hostB，票据按上限签发', async () => {
+test('U67-P7 UI 三卡片→票据端到端：查看卡添加 lisi@hostB，票据按上限签发', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
@@ -454,9 +458,9 @@ test('U67-P7 UI 三卡片→票据端到端：查看卡添加 lisi@hostB，票�
     derivedRow: seen,
     ticketPerms: ticket.perms
   })
-}, 120_000)
+})
 
-test('U45 被授权开发者管理项目被拒：PUT grants/策略/更新 403，读路径与既有授权不受影响', async () => {
+test('U45 被授权开发者管理项目被拒：PUT grants/策略/更新 403，读路径与既有授权不受影响', { timeout: 120_000 }, async () => {
   // zhangsan holds the wide team-payment row on p1: authorized to work, not to manage.
   assert.equal((await api(`/v1/projects/${p1}`, { token: zhangsanToken })).status, 200)
   assert.equal((await api(`/v1/projects/${p1}/grants`, { token: zhangsanToken })).status, 200)
@@ -513,7 +517,11 @@ test('U45 被授权开发者管理项目被拒：PUT grants/策略/更新 403，
 
   saveEvidence(EVIDENCE, 'u45-dev-manage-denied.json', {
     developer: 'zhangsan (wide team-payment project row)',
-    denied: { grantWrite: grantWrite.status, policyWrite: policyWrite.status, update: update.status },
+    denied: {
+      grantWrite: grantWrite.status,
+      policyWrite: policyWrite.status,
+      update: update.status
+    },
     auditedEventTypes: denied.map((event) => event.eventType)
   })
-}, 120_000)
+})

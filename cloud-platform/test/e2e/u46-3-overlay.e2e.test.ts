@@ -59,7 +59,7 @@ before(async () => {
     'api-u46-3-overlay'
   )
   adminToken = await login(service.url, 'admin', 'Adm1n!')
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await service?.stop()
@@ -142,7 +142,7 @@ function redactHandoff(url: string): string {
   return url.replace(/#handoff=[A-Za-z0-9_-]+/, '#handoff=<redacted>')
 }
 
-test('W46-O1 点「打开」恰一次 admin handoff → 覆盖层 iframe 换页，零新标签零 /connect', async () => {
+test('W46-O1 点「打开」恰一次 admin handoff → 覆盖层 iframe 换页，零新标签零 /connect', { timeout: 120_000 }, async () => {
   const page = await loginDevWorkbench()
   const { opened } = captureOpened(page)
   const before = page.calls()
@@ -194,9 +194,9 @@ test('W46-O1 点「打开」恰一次 admin handoff → 覆盖层 iframe 换页�
     opened: opened.length,
     surface: event.metadata.surface
   }
-}, 120_000)
+})
 
-test('W46-O2 签发失败 → 原因 + 在新标签打开 Orca Web → 无 surface 的第二次 POST + 恰一次新标签', async () => {
+test('W46-O2 签发失败 → 原因 + 在新标签打开 Orca Web → 无 surface 的第二次 POST + 恰一次新标签', { timeout: 120_000 }, async () => {
   const page = await loginDevWorkbench()
   const { opened } = captureOpened(page)
   page.fail('POST', HANDOFF_PATH)
@@ -236,9 +236,9 @@ test('W46-O2 签发失败 → 原因 + 在新标签打开 Orca Web → 无 surfa
     fallbackPath: url.pathname,
     opened: opened.length
   }
-}, 120_000)
+})
 
-test('W46-O2b 失败态 shell 已登记：登出同样移除（F-08）', async () => {
+test('W46-O2b 失败态 shell 已登记：登出同样移除（F-08）', { timeout: 120_000 }, async () => {
   const page = await loginDevWorkbench()
   page.fail('POST', HANDOFF_PATH)
   await openProject(page)
@@ -253,9 +253,9 @@ test('W46-O2b 失败态 shell 已登记：登出同样移除（F-08）', async (
     'logout releases the registered failure shell'
   )
   matrix.o2b = { failureShellRegistered: true, logoutRemoves: true }
-}, 120_000)
+})
 
-test('W46-O3 旧平台回 web-index.html → 不挂覆盖层，回落新标签 + toast', async () => {
+test('W46-O3 旧平台回 web-index.html → 不挂覆盖层，回落新标签 + toast', { timeout: 120_000 }, async () => {
   const page = await loginDevWorkbench()
   const { opened } = captureOpened(page)
   const legacy = `${DIRECT_ORIGIN}/web-index.html?api=${encodeURIComponent(service.url)}#handoff=legacy&project=${PROJECT_ID}`
@@ -276,9 +276,9 @@ test('W46-O3 旧平台回 web-index.html → 不挂覆盖层，回落新标签 +
   )
 
   matrix.o3 = { overlay: null, opened: opened.length, toast: true }
-}, 120_000)
+})
 
-test('W46-O4 ready/dirty 消息流 + 关闭握手（close→closed→移除）与 300ms 兜底', async () => {
+test('W46-O4 ready/dirty 消息流 + 关闭握手（close→closed→移除）与 300ms 兜底', { timeout: 120_000 }, async () => {
   const page = await loginDevWorkbench()
   const contentBefore = page.window.document.querySelector('#content')?.innerHTML ?? ''
   await openProject(page)
@@ -366,7 +366,7 @@ test('W46-O4 ready/dirty 消息流 + 关闭握手（close→closed→移除）�
     closeHandshake: 'close→closed→removed',
     fallback: '300ms'
   }
-}, 120_000)
+})
 
 async function waitUntil(cond: () => boolean, message: string, timeoutMs = 5000): Promise<void> {
   const started = Date.now()
@@ -379,7 +379,7 @@ async function waitUntil(cond: () => boolean, message: string, timeoutMs = 5000)
   assert.fail(message)
 }
 
-test('W46-O6 ready 超时保留失败态：重试重签 handoff+重建 iframe，次数用尽引导独立页', async () => {
+test('W46-O6 ready 超时保留失败态：重试重签 handoff+重建 iframe，次数用尽引导独立页', { timeout: 120_000 }, async () => {
   // 0.05 × 20s = 1s per ready attempt; the real timeout path still runs.
   const page = await loginDevWorkbench(0.05)
   const { opened } = captureOpened(page)
@@ -453,9 +453,9 @@ test('W46-O6 ready 超时保留失败态：重试重签 handoff+重建 iframe，
     handoffs: handoffs(),
     standalonePath: new URL(opened[0]).pathname
   }
-}, 120_000)
+})
 
-test('W46-O5 登出先移除覆盖层并 postMessage(logout)', async () => {
+test('W46-O5 登出先移除覆盖层并 postMessage(logout)', { timeout: 120_000 }, async () => {
   const page = await loginDevWorkbench()
   await openProject(page)
   const iframe = iframeOf(page)
@@ -479,9 +479,9 @@ test('W46-O5 登出先移除覆盖层并 postMessage(logout)', async () => {
   assert.equal(page.window.document.querySelector<HTMLElement>('#view-app')?.hidden, true)
 
   matrix.o5 = { logoutMessage: true, overlayRemoved: true, loginShown: true }
-}, 120_000)
+})
 
-test('W46-O7 suspend/end：能力声明决定按钮与消息；close 为 suspend，suspended/ended 均移除', async () => {
+test('W46-O7 suspend/end：能力声明决定按钮与消息；close 为 suspend，suspended/ended 均移除', { timeout: 120_000 }, async () => {
   const page = await loginDevWorkbench()
   await openProject(page)
   const iframe = iframeOf(page)
@@ -541,4 +541,4 @@ test('W46-O7 suspend/end：能力声明决定按钮与消息；close 为 suspend
   )
 
   matrix.o7 = { endGatedByFeature: true, close: 'suspend', end: 'explicit' }
-}, 120_000)
+})

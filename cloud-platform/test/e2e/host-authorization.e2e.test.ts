@@ -268,13 +268,13 @@ before(async () => {
     projectsRoot: '/srv/open'
   })
   openHostId = open.hostId
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await service?.stop()
 })
 
-test('AA2 三端点门禁：admin 可用，developer 403 且落 denied 审计', async () => {
+test('AA2 三端点门禁：admin 可用，developer 403 且落 denied 审计', { timeout: 120_000 }, async () => {
   const adminGet = await api(`/v1/hosts/${restrictedHostId}/grants`)
   assert.equal(adminGet.status, 200, JSON.stringify(adminGet.body))
   assert.deepEqual(adminGet.body.grants, [])
@@ -316,9 +316,9 @@ test('AA2 三端点门禁：admin 可用，developer 403 且落 denied 审计', 
   assert.equal(policyDenied.length, 1)
 
   saveEvidence(EVIDENCE, 'endpoint-gating.json', { grantDenied, policyDenied })
-}, 120_000)
+})
 
-test('AA2 授权写入：组/用户行、位校验、组名校验，全量替换且不改既有行', async () => {
+test('AA2 授权写入：组/用户行、位校验、组名校验，全量替换且不改既有行', { timeout: 120_000 }, async () => {
   const invalid = await putHostGrant(adminToken, restrictedHostId, 'group', 'team-payment', [
     'provision',
     'bogus'
@@ -364,9 +364,9 @@ test('AA2 授权写入：组/用户行、位校验、组名校验，全量替换
   )
 
   saveEvidence(EVIDENCE, 'grant-rows.json', await hostGrants(restrictedHostId))
-}, 120_000)
+})
 
-test('AA2 restricted 门禁：非授权主体 403 HOST_PROVISION_FORBIDDEN，授权组与管理員放行', async () => {
+test('AA2 restricted 门禁：非授权主体 403 HOST_PROVISION_FORBIDDEN，授权组与管理員放行', { timeout: 120_000 }, async () => {
   const policy = await setPolicy(adminToken, restrictedHostId, 'restricted')
   assert.equal(policy.status, 200, JSON.stringify(policy))
 
@@ -411,9 +411,9 @@ test('AA2 restricted 门禁：非授权主体 403 HOST_PROVISION_FORBIDDEN，授
   assert.equal(byAdmin.status, 201, JSON.stringify(byAdmin.body))
 
   saveEvidence(EVIDENCE, 'restricted-provision.json', { refused, denied, granted: granted.body })
-}, 120_000)
+})
 
-test('AA2 available 加性字段：按 provision 位区分，accessLevel 加性，其余字段不变', async () => {
+test('AA2 available 加性字段：按 provision 位区分，accessLevel 加性，其余字段不变', { timeout: 120_000 }, async () => {
   const forOther = (await available(otherToken)).find((host) => host.id === restrictedHostId)
   assert.ok(forOther)
   assert.equal(forOther.provisionAllowed, false)
@@ -469,9 +469,9 @@ test('AA2 available 加性字段：按 provision 位区分，accessLevel 加性�
     afterGrant,
     created: created.body
   })
-}, 120_000)
+})
 
-test('AA2 维护委派：maintain 位可进出维护并记 via，未授权者与吊销仍 admin-only', async () => {
+test('AA2 维护委派：maintain 位可进出维护并记 via，未授权者与吊销仍 admin-only', { timeout: 120_000 }, async () => {
   const delegated = await api(`/v1/hosts/${restrictedHostId}/maintenance`, {
     method: 'POST',
     token: otherToken,
@@ -526,11 +526,11 @@ test('AA2 维护委派：maintain 位可进出维护并记 via，未授权者与
     adminEvent,
     revokeDenied
   })
-}, 120_000)
+})
 
 // ---- AA3: branch matrix left uncovered by AA2, plus B2–B5 additions ----
 
-test('AA3 自助门禁分支：用户直授放行、按位判定、组名大小写、授予吊销即时生效、策略不再参与门禁', async () => {
+test('AA3 自助门禁分支：用户直授放行、按位判定、组名大小写、授予吊销即时生效、策略不再参与门禁', { timeout: 120_000 }, async () => {
   // AA2's maintenance test left both fixture hosts toggled; back online first.
   await restoreOnline(restrictedHostId)
   await restoreOnline(openHostId)
@@ -620,9 +620,9 @@ test('AA3 自助门禁分支：用户直授放行、按位判定、组名大小�
     openAgain,
     policyStillStored: hostView?.provisionPolicy
   })
-}, 120_000)
+})
 
-test('AA3 available 判定：逐字段投影加 accessLevel，用户直授计数，离线与未声明根目录不改变公式', async () => {
+test('AA3 available 判定：逐字段投影加 accessLevel，用户直授计数，离线与未声明根目录不改变公式', { timeout: 120_000 }, async () => {
   const restricted = (await available(otherToken)).find((host) => host.id === restrictedHostId)
   // Additive projection: accessLevel is the only new field; lisi holds no grant here.
   assert.deepEqual(restricted, {
@@ -695,9 +695,9 @@ test('AA3 available 判定：逐字段投影加 accessLevel，用户直授计数
     ),
     noRoot
   })
-}, 120_000)
+})
 
-test('AA3 维护委派与吊销：denied 审计、撤销恒 admin-only、吊销后委派不得复活主机', async () => {
+test('AA3 维护委派与吊销：denied 审计、撤销恒 admin-only、吊销后委派不得复活主机', { timeout: 120_000 }, async () => {
   const host = await registerHost({
     apiUrl: service.url,
     adminToken,
@@ -782,9 +782,9 @@ test('AA3 维护委派与吊销：denied 审计、撤销恒 admin-only、吊销�
     afterRevoke,
     selfAfterRevoke
   })
-}, 120_000)
+})
 
-test('U136⑤ 用户授权收缩：有效位收缩撤销该用户，扩容/同值不撤销', async () => {
+test('U136⑤ 用户授权收缩：有效位收缩撤销该用户，扩容/同值不撤销', { timeout: 120_000 }, async () => {
   const hostId = await newHost('dev-u136-user-shrink')
   assert.equal(
     (await putHostGrant(adminToken, hostId, 'user', 'zhangsan', ['view', 'provision'])).status,
@@ -860,9 +860,9 @@ test('U136⑤ 用户授权收缩：有效位收缩撤销该用户，扩容/同�
     expandMetadata: expandEvent.metadata,
     refusedMetadata: refusedEvent.metadata
   })
-}, 120_000)
+})
 
-test('U136⑤ 组授权收缩：组内用户撤销，组外用户不受影响', async () => {
+test('U136⑤ 组授权收缩：组内用户撤销，组外用户不受影响', { timeout: 120_000 }, async () => {
   const hostId = await newHost('dev-u136-group-shrink')
   assert.equal(
     (await putHostGrant(adminToken, hostId, 'group', 'team-payment', ['view', 'provision'])).status,
@@ -934,9 +934,9 @@ test('U136⑤ 组授权收缩：组内用户撤销，组外用户不受影响', 
     shrinkMetadata: shrinkEvent.metadata,
     clearMetadata: clearEvent.metadata
   })
-}, 120_000)
+})
 
-test('G25 runtimeCapabilities 只由注册落库：心跳上报与缺字段都不改写能力', async () => {
+test('G25 runtimeCapabilities 只由注册落库：心跳上报与缺字段都不改写能力', { timeout: 120_000 }, async () => {
   const host = await registerHostWithCapabilities('dev-g25-caps', ['pty'])
   assert.deepEqual(await hostCapabilities(host.hostId), ['pty'])
 
@@ -951,4 +951,4 @@ test('G25 runtimeCapabilities 只由注册落库：心跳上报与缺字段都�
   const upgraded = await registerHostWithCapabilities('dev-g25-caps', ['pty', 'files', 'git'])
   assert.equal(upgraded.hostId, host.hostId)
   assert.deepEqual(await hostCapabilities(host.hostId), ['pty', 'files', 'git'])
-}, 120_000)
+})

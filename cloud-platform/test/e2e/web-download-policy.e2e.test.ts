@@ -150,7 +150,7 @@ before(async () => {
   )
   adminToken = await login(service.url, 'admin', 'Adm1n!')
   devToken = await login(service.url, 'zhangsan', 'Passw0rd!')
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await service?.stop()
@@ -160,7 +160,7 @@ after(async () => {
   })
 })
 
-test('M120c2-1 零覆盖：全量在营项目入列、范围统计正确、副标题如实', async () => {
+test('M120c2-1 零覆盖：全量在营项目入列、范围统计正确、副标题如实', { timeout: 120_000 }, async () => {
   await setOverride()
   assert.equal(await globalDefault(), 'deny', 'precondition: the shipped default is deny')
 
@@ -199,9 +199,9 @@ test('M120c2-1 零覆盖：全量在营项目入列、范围统计正确、副�
     followRow: { state: 'inherit', source: '跟随全局', effective: '当前生效：禁止' }
   })
   record('empty-state', '零覆盖 → 跟随行照常入列（inherit + 跟随全局徽标 + 当前生效），统计 全部 1/跟随 1/覆盖 0，副标题改为真实能力')
-}, 120_000)
+})
 
-test('M120c2-2 全量清单含跟随行：显式覆盖徽标标明来源，跟随行 value=inherit', async () => {
+test('M120c2-2 全量清单含跟随行：显式覆盖徽标标明来源，跟随行 value=inherit', { timeout: 120_000 }, async () => {
   const created = await adminApi('/v1/projects', {
     method: 'POST',
     body: JSON.stringify({
@@ -257,9 +257,9 @@ test('M120c2-2 全量清单含跟随行：显式覆盖徽标标明来源，跟�
     'override-listing',
     '全量清单：payment-service 显式 deny（徽标 独立覆盖（与全局相同））+ order-service 跟随（value=inherit、徽标 跟随全局）；统计 全部 2/跟随 1/覆盖 1'
   )
-}, 120_000)
+})
 
-test('M120c2-3 选「跟随全局」发 PUT inherit+expectedVersion：行留在清单且 effective 回落全局', async () => {
+test('M120c2-3 选「跟随全局」发 PUT inherit+expectedVersion：行留在清单且 effective 回落全局', { timeout: 120_000 }, async () => {
   await setOverride('deny')
   const seenVersion = (await adminApi('/v1/policies/download')).body.version as number
   const page = await openSettings('admin', 'Adm1n!')
@@ -316,9 +316,9 @@ test('M120c2-3 选「跟随全局」发 PUT inherit+expectedVersion：行留在�
     'inherit',
     '行内选 跟随全局 → 1 次 PUT {inherit:true, expectedVersion:v} → explicit=false、effective=全局、行仍留清单且徽标转 跟随全局；统计 全部 2/跟随 2/覆盖 0'
   )
-}, 120_000)
+})
 
-test('M120c2-4 显式禁止覆盖钉住：全局翻转为 allow 后该行不变，跟随者随之改变', async () => {
+test('M120c2-4 显式禁止覆盖钉住：全局翻转为 allow 后该行不变，跟随者随之改变', { timeout: 120_000 }, async () => {
   await setOverride('deny')
   const page = await openSettings('admin', 'Adm1n!')
   assert.equal(overrideSelects(page).length, 2, 'both live rows — pinned and following — are listed')
@@ -400,9 +400,9 @@ test('M120c2-4 显式禁止覆盖钉住：全局翻转为 allow 后该行不变�
     'pinned-vs-flip',
     '全局翻转为 allow：钉住项目仍 禁止（行 + 工作台徽标 + 列表列），跟随项目保持 inherit 且生效转为 允许——全部按生效值渲染；toast 报跟随/覆盖数'
   )
-}, 120_000)
+})
 
-test('M120c2-5 覆盖保存失败：toast 上报并按服务端值重绘回滚', async () => {
+test('M120c2-5 覆盖保存失败：toast 上报并按服务端值重绘回滚', { timeout: 120_000 }, async () => {
   await setOverride('deny')
   const seenVersion = (await adminApi('/v1/policies/download')).body.version as number
   const page = await openSettings('admin', 'Adm1n!')
@@ -450,9 +450,9 @@ test('M120c2-5 覆盖保存失败：toast 上报并按服务端值重绘回滚',
     'save-failure',
     'PUT 注入 503 → toast 保存失败：模拟平台故障，行重绘回 deny 且仍为 2 行无重复，服务端覆盖不变'
   )
-}, 120_000)
+})
 
-test('M120c2-6 非管理员不可见：设置路由拒绝、不发策略写请求、接口 403', async () => {
+test('M120c2-6 非管理员不可见：设置路由拒绝、不发策略写请求、接口 403', { timeout: 120_000 }, async () => {
   await setOverride('deny')
   const page = loadWebConsolePage(service.url)
   await page.settle()
@@ -489,9 +489,9 @@ test('M120c2-6 非管理员不可见：设置路由拒绝、不发策略写请�
     'gating',
     '开发者：平台设置路由 → 无权访问、无覆盖卡、零策略写请求；直调 PUT /policy → 403 PERMISSION_DENIED 且状态不变'
   )
-}, 120_000)
+})
 
-test('M120c2-7 行级保存整页重绘保留滚动与焦点：连续改行不被弹回页顶', async () => {
+test('M120c2-7 行级保存整页重绘保留滚动与焦点：连续改行不被弹回页顶', { timeout: 120_000 }, async () => {
   await setOverride('deny')
   const created = await adminApi('/v1/projects', {
     method: 'POST',
@@ -551,9 +551,9 @@ test('M120c2-7 行级保存整页重绘保留滚动与焦点：连续改行不�
     'row-save-viewport',
     '行级保存整页重绘后滚动位置保持（640）、焦点回到所改行；服务端钉住 allow（m-7）'
   )
-}, 120_000)
+})
 
-test('M120c2-8 全局保存携带 expectedVersion：成功后本地与服务端版本同步加一', async () => {
+test('M120c2-8 全局保存携带 expectedVersion：成功后本地与服务端版本同步加一', { timeout: 120_000 }, async () => {
   const seen = await adminApi('/v1/policies/download')
   assert.equal(seen.status, 200, JSON.stringify(seen.body))
   assert.equal(seen.body.downloadDefault, 'deny', 'precondition: the shipped default')
@@ -593,9 +593,9 @@ test('M120c2-8 全局保存携带 expectedVersion：成功后本地与服务端�
     'expected-version',
     `全局保存 PUT 携带 expectedVersion=${seenVersion}，成功 toast 且服务端版本 ${seenVersion}→${seenVersion + 1}`
   )
-}, 120_000)
+})
 
-test('M120c2-9 全局保存 409 冲突：保留所选、展示服务端值、刷新后重试成功', async () => {
+test('M120c2-9 全局保存 409 冲突：保留所选、展示服务端值、刷新后重试成功', { timeout: 120_000 }, async () => {
   const seeded = await adminApi('/v1/policies/download', {
     method: 'PUT',
     body: JSON.stringify({ downloadDefault: 'deny' })
@@ -687,4 +687,4 @@ test('M120c2-9 全局保存 409 冲突：保留所选、展示服务端值、刷
     'version-conflict',
     '409 注入：卡内黄条报冲突与服务端版本/值、radio 保留 allow、服务端未变；刷新后重试先 GET 再以新版本重放 allow 成功'
   )
-}, 120_000)
+})
