@@ -2188,19 +2188,112 @@ describe('U257 审计事件体积全局护栏', () => {
     const token = await mintHostToken(base, admin.token)
     const body = JSON.stringify({ name: 'u257-race-host', protocolVersion: 3 })
 
-    const [first, second] = await Promise.all([
-      registerHost(base, token, body),
-      registerHost(base, token, body)
-    ])
-    assert.deepEqual(
-      [first.status, second.status].sort(),
-      [201, 401],
-      'the token reservation is synchronous, so only one request can win'
-    )
-    const hosts = [...app.store.hostsByName.values()].filter(
-      (host) => host.name === 'u257-race-host'
-    )
-    assert.equal(hosts.length, 1)
+    // Count the getter so both handlers are provably past the token check (and
+    // parked in the body read) before either can reach check-and-reserve.
+    const entry = app.store.hostTokens.at(-1)
+    assert.ok(entry)
+    let usedAtReads = 0
+    let usedAtWrites = 0
+    let usedAtValue: number | null = null
+    Object.defineProperty(entry, 'usedAt', {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        usedAtReads += 1
+        return usedAtValue
+      },
+      set: (value: number | null) => {
+        usedAtWrites += 1
+        usedAtValue = value
+      }
+    })
+
+    const registerUrl = `${base}/v1/hosts/register`
+    const hostsBefore = new Set(app.store.hosts.keys())
+    const bodyLength = Buffer.byteLength(body)
+    const prefixLength = Math.floor(body.length / 2)
+    type Parked = {
+      req: ReturnType<typeof httpRequest>
+      response: Promise<{ status: number; payload: Json }>
+    }
+    const park = (): Parked => {
+      let resolveResponse!: (value: { status: number; payload: Json }) => void
+      let rejectResponse!: (error: Error) => void
+      const response = new Promise<{ status: number; payload: Json }>((resolve, reject) => {
+        resolveResponse = resolve
+        rejectResponse = reject
+      })
+      const req = httpRequest(
+        registerUrl,
+        {
+          method: 'POST',
+          agent: false,
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${token}`,
+            'content-length': String(bodyLength)
+          }
+        },
+        (res) => {
+          let text = ''
+          res.setEncoding('utf8')
+          res.on('data', (chunk: string) => {
+            text += chunk
+          })
+          res.on('end', () => {
+            resolveResponse({ status: res.statusCode ?? 0, payload: JSON.parse(text) as Json })
+          })
+        }
+      )
+      req.on('error', rejectResponse)
+      // A failure before the response is awaited must not surface as unhandled.
+      void response.catch(() => undefined)
+      req.flushHeaders()
+      // Deliberately incomplete: the handler parses only on `end`.
+      req.write(body.slice(0, prefixLength))
+      return { req, response }
+    }
+    const first = park()
+    const second = park()
+    try {
+      const deadline = Date.now() + 2000
+      while (usedAtReads < 2) {
+        if (Date.now() > deadline) {
+          throw new Error(`only ${usedAtReads}/2 registrations reached the token check`)
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 2))
+      }
+      assert.equal(app.store.hosts.size, hostsBefore.size, 'no body was released yet')
+
+      // Release both bodies together; only the post-read recheck can stop the loser.
+      first.req.end(body.slice(prefixLength))
+      second.req.end(body.slice(prefixLength))
+      const results = await Promise.all([first.response, second.response])
+
+      assert.deepEqual(
+        results.map((result) => result.status).sort(),
+        [201, 401],
+        'the token reservation is synchronous, so only one request can win'
+      )
+      const created = results.find((result) => result.status === 201)
+      const refused = results.find((result) => result.status === 401)
+      assert.ok(created)
+      assert.ok(refused)
+      assert.equal(errorCode(refused.payload), 'HOST_TOKEN_INVALID')
+
+      // Count by host id: two successful registrations collapse into one
+      // hostsByName entry, so the name index used to hide the duplicate.
+      const hostId = String(created.payload.hostId)
+      const addedHosts = [...app.store.hosts.keys()].filter((id) => !hostsBefore.has(id))
+      assert.deepEqual(addedHosts, [hostId])
+      assert.equal(app.store.hosts.size, hostsBefore.size + 1)
+      assert.equal(app.store.hosts.get(hostId)?.name, 'u257-race-host')
+      assert.equal(usedAtWrites, 1, 'the single-use token is reserved exactly once')
+      assert.equal(typeof entry.usedAt, 'number')
+    } finally {
+      first.req.destroy()
+      second.req.destroy()
+    }
   })
 
   test('2 × 4096 CJK projectsRoot 的 root-change 事件不超限', async () => {
