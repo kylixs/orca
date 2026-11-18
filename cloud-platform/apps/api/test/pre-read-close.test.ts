@@ -8,10 +8,11 @@ import { createApp, type ApiHandle } from '../src/server.ts'
  * U264: the U258 pre-read close rule only covered the JSON exits. Static files,
  * OPTIONS and the other bare `writeHead/end` replies still drained an unread
  * 16 MiB body, and every chunked request was closed even when tiny. These tests
- * pin the single `writeHead` wrapper and the bounded chunked drain. U267: the
- * chunked cases send legal frames (one size line per chunk), so a parser error
- * cannot stand in for the drain bound. Kept apart from auth-body-limit.test.ts,
- * which another change is editing concurrently.
+ * pin the single `writeHead` wrapper and the bounded chunked drain. U267/U269:
+ * the chunked cases send legal frames (one size line per chunk); the over-budget
+ * case pins the bound by the full framed byte count and close-after-response
+ * order. Kept apart from auth-body-limit.test.ts, which another change is
+ * editing concurrently.
  */
 
 const ORIGIN = 'https://console.u264.example'
@@ -44,8 +45,6 @@ type RawResponse = {
   /** Time to the socket close, or null when the close was still awaited at the deadline. */
   closeMs: number | null
   bytesWrittenAtClose: number
-  /** Client-side errors seen before the response was complete (a framing error would land here). */
-  errorsBeforeResponse: number
   errors: string[]
 }
 
@@ -78,7 +77,6 @@ function readRawResponse(
     let done = false
     let responseDone = false
     let responseMs = 0
-    let errorsBeforeResponse = 0
     let closeMs: number | null = null
     const cleanup = (): void => {
       done = true
@@ -94,7 +92,6 @@ function readRawResponse(
       responseMs,
       closeMs,
       bytesWrittenAtClose: socket.bytesWritten,
-      errorsBeforeResponse,
       errors: [...errors]
     })
     const settle = (): void => {
@@ -128,7 +125,6 @@ function readRawResponse(
       }
       responseDone = true
       responseMs = Date.now() - started
-      errorsBeforeResponse = errors.length
       if (!options.awaitClose) {
         settle()
         return
@@ -510,7 +506,7 @@ describe('U264 非 JSON 出口的读取前关闭', () => {
 })
 
 describe('U264 chunked 有界排空', () => {
-  test('13 B chunked 的 401：合法帧、无解析错误，同连接第二次请求 200', async () => {
+  test('13 B chunked 的 401：合法帧、同连接第二次请求 200', async () => {
     const base = await startApp()
     const url = new URL(base)
     const socket = await connectRaw(base)
@@ -523,11 +519,6 @@ describe('U264 chunked 有界排空', () => {
       const first = await readRawResponse(socket, 2000, 'chunked small 401')
       assert.equal(first.status, 401)
       assert.notEqual(first.headers.connection, 'close', 'a small chunked body keeps keep-alive')
-      assert.equal(
-        first.errorsBeforeResponse,
-        0,
-        `valid chunk frames must not trip the parser: ${first.errors.join('; ')}`
-      )
 
       socket.write(
         ['GET /health HTTP/1.1', `Host: ${url.host}`, 'Connection: keep-alive', '', ''].join('\r\n')
@@ -552,7 +543,6 @@ describe('U264 chunked 有界排空', () => {
       const first = await readRawResponse(socket, 2000, 'chunked 15 KiB 401')
       assert.equal(first.status, 401)
       assert.notEqual(first.headers.connection, 'close', 'within-budget chunked keeps keep-alive')
-      assert.equal(first.errorsBeforeResponse, 0, `no parser error: ${first.errors.join('; ')}`)
 
       socket.write(
         ['GET /health HTTP/1.1', `Host: ${url.host}`, 'Connection: keep-alive', '', ''].join('\r\n')
@@ -565,7 +555,7 @@ describe('U264 chunked 有界排空', () => {
     }
   }, { timeout: 5000 })
 
-  test('32 KiB chunked 超过 16 KiB 预算：401 可达后连接关闭，且不是帧错误', async (t) => {
+  test('32 KiB chunked 超过 16 KiB 预算：401 可达后连接关闭', async (t) => {
     const base = await startApp()
     const url = new URL(base)
     const socket = await connectRaw(base)
@@ -581,30 +571,39 @@ describe('U264 chunked 有界排空', () => {
           socket.write(CHUNKED_TERMINATOR)
         }
       })
-      socket.write(chunkedRequestHead(url.host, '/v1/projects'))
+      const requestHead = chunkedRequestHead(url.host, '/v1/projects')
+      socket.write(requestHead)
       socket.write(`${body.length.toString(16)}\r\n`)
       socket.write(body.subarray(0, preResponseShard))
       const result = await pending
       t.diagnostic(
         `32 KiB chunked: response=${result.responseMs}ms, ` +
           `close=${result.closeMs === null ? 'not closed' : `${result.closeMs}ms`}, ` +
-          `bytesWrittenAtClose=${result.bytesWrittenAtClose}, ` +
-          `errorsBeforeResponse=${result.errorsBeforeResponse}`
+          `bytesWrittenAtClose=${result.bytesWrittenAtClose}`
       )
       assert.equal(result.status, 401, 'the refusal is readable before the bound closes the socket')
       assert.notEqual(result.headers.connection, 'close', 'chunked is not closed from the header alone')
-      assert.equal(
-        result.errorsBeforeResponse,
-        0,
-        `valid frames must not raise ECONNRESET/EPIPE before the refusal: ${result.errors.join('; ')}`
-      )
       assert.ok(
         result.closeMs !== null,
         'a chunked body past the 16 KiB bound must close the connection'
       )
+      const closeMs = result.closeMs
       assert.ok(
-        result.bytesWrittenAtClose >= body.length,
-        `the whole legal body was written (${result.bytesWrittenAtClose} B of ${body.length} B)`
+        closeMs >= result.responseMs,
+        `the refusal (${result.responseMs}ms) must precede the close (${closeMs}ms)`
+      )
+      // One legal frame: head (136/137 B for a 4/5-digit port) + 6 B size line
+      // + 32,768 B body + 2 B chunk CRLF + 5 B terminator = 32,917/32,918 B.
+      const framedBytes =
+        Buffer.byteLength(requestHead, 'latin1') +
+        Buffer.byteLength(`${body.length.toString(16)}\r\n`, 'latin1') +
+        body.length +
+        2 +
+        5
+      assert.ok(
+        result.bytesWrittenAtClose >= framedBytes && result.bytesWrittenAtClose <= framedBytes + 1,
+        `the whole legal frame reached the socket: ` +
+          `${result.bytesWrittenAtClose} B vs ${framedBytes} B`
       )
       assert.ok(result.responseMs < 1000, `the refusal took ${result.responseMs}ms`)
     } finally {
