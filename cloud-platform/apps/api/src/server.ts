@@ -3053,7 +3053,15 @@ export function createApp(config: ApiConfig): ApiHandle {
       'zhangsan',
       {
         password: 'Passw0rd!',
-        profile: ldapProfile({ username: 'zhangsan', displayName: '张伟', dept: '支付研发部' })
+        // The mock directory mirrors the seeded user: D15-1 replaces groups at
+        // sign-in, so a profile missing `team-payment` would silently drop the
+        // seeded proj_payment grant and empty every fixture that opens it.
+        profile: ldapProfile({
+          username: 'zhangsan',
+          displayName: '张伟',
+          dept: '支付研发部',
+          groups: ['developers', 'team-payment']
+        })
       }
     ],
     [
