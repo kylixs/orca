@@ -249,6 +249,18 @@ ORCA_BACKGROUND_LAUNCH=1 node --test --test-concurrency=2 \
 - 已知环境噪声：扫描期间另一会话改写 `apps/web/app.js`，会让 `new Function`/模板解析瞬时失败（2026-11-18 第一轮 F2–F8）；此类红必须单独复跑确认后再归属。
 - 证据：`cloud-platform/test-reports/full-e2e-sweep-20261118.md`（首轮 1141/1140/1，唯一稳定红 U284）；**首轮收官 `full-e2e-sweep-final-20261118.md`：1141/1141/0（HEAD `0fa1d21b9c4`）；第二轮收官 `full-e2e-sweep-final2-20261118.md`：147 文件 1143/1143/0，0 skipped，37 批全部 exit 0**（HEAD `691f4f404fb`）。
 
+### 7.3 node:test 超时形态门禁（静态检查）
+
+`node:test` 只认对象形态超时（`test(name, { timeout }, fn)` / `before(fn, { timeout })`）；数值第三参或 hook 数值第二参在 Node 24 被**静默忽略**（U287/U290/U300 判例）。
+
+```bash
+node cloud-platform/scripts/check-test-timeouts.mjs               # 工作区：只报基线外新增
+node cloud-platform/scripts/check-test-timeouts.mjs --from-head --check   # 已提交内容
+node cloud-platform/scripts/check-test-timeouts.mjs --update-baseline     # 由当前迁移批独占执行（§2-149）
+```
+
+基线与计数：内容键 = `文件 | 形态 | sha256(被调用名 + 非回调实参，空白折叠)[:12]` + 出现次数（行号不入键）。2026-11-18 状态：基线 **78**（hook 55 + 数值第三参 23）；批 1/批 2 已迁移 194 处（258 → 78）。编辑器/格式化造成的多行重排不产生新违规；扫描器对 `v` 标志嵌套字符类（`/[[a]/]/v`）为**已知不支持**，并有 skip 标注。
+
 ## 8. 维护约定
 
 - 新增/修改 AC 时先补测试断言，再写映射；不得用“测试名听起来覆盖”代替断言检查。
