@@ -578,7 +578,9 @@ describe('U244 管理员强制下线（真实 createApp + HTTP）', () => {
         assert.equal(session.epoch, 2, 'the revokedAt re-check keeps the epoch bump exactly once')
       }
     } finally {
-      if (watchdog) clearTimeout(watchdog)
+      if (watchdog) {
+        clearTimeout(watchdog)
+      }
       releaseAudit()
       app.audit.append = originalAppend
     }
@@ -744,7 +746,9 @@ describe('U244 管理员强制下线（真实 createApp + HTTP）', () => {
       })
       assert.equal(me.status, 200)
     } finally {
-      if (watchdog) clearTimeout(watchdog)
+      if (watchdog) {
+        clearTimeout(watchdog)
+      }
       releaseAudit()
       app.audit.append = originalAppend
     }
