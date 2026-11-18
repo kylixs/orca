@@ -739,6 +739,139 @@ function declaredHugeRawRequest(
   })
 }
 
+/**
+ * U258: declares 16 MiB, waits for the refusal from the header alone, and only
+ * then pumps the declared body. That ordering is what makes the bug legible —
+ * a kept-alive connection drains the whole 16 MiB after the 401, while a closed
+ * one accepts almost none — and it also avoids racing the server's reset with
+ * the response bytes. The pump is paced so neither kernel buffer can mask how
+ * much the server is willing to take.
+ */
+function pacedDeclaredBodyRequest(
+  base: string,
+  path: string,
+  declared: number,
+  headers: Record<string, string> = {}
+): Promise<{
+  status: number
+  connection: string | undefined
+  responseMs: number
+  closeMs: number
+  receivedResponse: boolean
+  closed: boolean
+  acceptedBytes: number
+  attemptedBytes: number
+}> {
+  return new Promise((resolve, reject) => {
+    const started = Date.now()
+    const url = new URL(base)
+    const socket = connect(Number(url.port), url.hostname)
+    const chunk = Buffer.alloc(32 * 1024, 'x')
+    let attempted = 0
+    let status = 0
+    let connection: string | undefined
+    let responseMs = 0
+    let closeMs = 0
+    let received = false
+    let closed = false
+    let settled = false
+    let writeTimer: NodeJS.Timeout | undefined
+    let headerBuffer = Buffer.alloc(0)
+    const finish = (): void => {
+      if (settled) return
+      settled = true
+      if (writeTimer !== undefined) clearInterval(writeTimer)
+      clearTimeout(deadline)
+      // Captured before destroy: the client-side view of how much the server
+      // was willing to take (the audit's own measurement basis).
+      const acceptedBytes = socket.bytesWritten
+      socket.destroy()
+      resolve({
+        status,
+        connection,
+        responseMs,
+        closeMs,
+        receivedResponse: received,
+        closed,
+        acceptedBytes,
+        attemptedBytes: attempted
+      })
+    }
+    const pump = (): void => {
+      writeTimer = setInterval(() => {
+        if (closed || attempted >= declared) {
+          if (writeTimer !== undefined) clearInterval(writeTimer)
+          if (attempted >= declared) finish()
+          return
+        }
+        const size = Math.min(chunk.length, declared - attempted)
+        try {
+          socket.write(chunk.subarray(0, size))
+          attempted += size
+        } catch {
+          // Writing after the reset is the expected outcome.
+        }
+      }, 2)
+    }
+    const deadline = setTimeout(() => {
+      if (settled) return
+      settled = true
+      if (writeTimer !== undefined) clearInterval(writeTimer)
+      const acceptedBytes = socket.bytesWritten
+      socket.destroy()
+      reject(
+        new Error(
+          `POST ${path}: neither the refusal nor the close settled within 5000ms ` +
+            `(accepted=${acceptedBytes} B, attempted=${attempted} B, ` +
+            `response=${received ? status : 'none'}, connection=${connection ?? 'none'}, ` +
+            `closed=${closed})`
+        )
+      )
+    }, 5000)
+    socket.once('connect', () => {
+      socket.write(
+        [
+          `POST ${path} HTTP/1.1`,
+          `Host: ${url.host}`,
+          'Content-Type: application/json',
+          `Content-Length: ${declared}`,
+          'Connection: keep-alive',
+          ...Object.entries(headers).map(([key, value]) => `${key}: ${value}`),
+          '',
+          ''
+        ].join('\r\n')
+      )
+    })
+    socket.on('data', (data: Buffer) => {
+      if (received) return
+      headerBuffer = Buffer.concat([headerBuffer, data])
+      const index = headerBuffer.indexOf('\r\n\r\n')
+      if (index === -1) return
+      const lines = headerBuffer.subarray(0, index).toString('latin1').split('\r\n')
+      status = Number(lines[0]?.split(' ')[1] ?? 0)
+      for (const line of lines.slice(1)) {
+        const colon = line.indexOf(':')
+        if (colon === -1) continue
+        if (line.slice(0, colon).trim().toLowerCase() === 'connection') {
+          connection = line.slice(colon + 1).trim()
+        }
+      }
+      received = true
+      responseMs = Date.now() - started
+      if (closed) finish()
+      else pump()
+    })
+    socket.on('close', () => {
+      closed = true
+      closeMs = Date.now() - started
+      finish()
+    })
+    socket.on('error', () => {
+      // Writing after the refusal is expected; the close carries the verdict.
+    })
+  })
+}
+
 after(async () => {
   await Promise.all(apps.map((app) => app.close()))
   await Promise.all(writers.map((writer) => writer.close()))
@@ -2185,4 +2318,136 @@ describe('U257 审计事件体积全局护栏', () => {
     assert.ok(Buffer.byteLength(JSON.stringify(event)) <= AUDIT_EVENT_MAX_BYTES)
     assert.equal((metadata.auditSize as Json).truncated, true)
   })
+})
+
+/**
+ * U258: a refusal answered before the body is read left Node to drain the rest
+ * after the response so keep-alive could continue; an unauthenticated 16 MiB
+ * POST was consumed in full. Above the 16 KiB per-command cap the refusal now
+ * closes the connection, while a normal small request keeps it.
+ */
+describe('U258 读取前拒绝：未读的大 body 不保持 keep-alive', () => {
+  const DECLARED_16_MIB = 16 * 1024 * 1024
+
+  function assertHugeUnreadBody(
+    label: string,
+    result: {
+      status: number
+      connection: string | undefined
+      receivedResponse: boolean
+      closed: boolean
+      responseMs: number
+      closeMs: number
+      acceptedBytes: number
+      attemptedBytes: number
+    },
+    expectedStatus: number
+  ): void {
+    assert.equal(result.receivedResponse, true, `${label}: the refusal must be readable`)
+    assert.equal(result.status, expectedStatus, `${label}: status`)
+    assert.equal(
+      result.connection,
+      'close',
+      `${label}: an unread oversized body must not keep the connection ` +
+        `(accepted=${result.acceptedBytes} B)`
+    )
+    assert.equal(result.closed, true, `${label}: the server did not close the connection`)
+    assert.ok(
+      result.acceptedBytes < 2 * 1024 * 1024,
+      `${label}: the server accepted ${result.acceptedBytes} B of 16 MiB`
+    )
+    assert.ok(result.responseMs < 1000, `${label}: the refusal took ${result.responseMs}ms`)
+    assert.ok(
+      result.closeMs < 1500,
+      `${label}: the close took ${result.closeMs}ms`
+    )
+  }
+
+  test('未认证 POST /v1/projects 声明 16 MiB → 401，消费字节远小于声明、连接关闭', async () => {
+    const base = await start()
+    const result = await pacedDeclaredBodyRequest(base, '/v1/projects', DECLARED_16_MIB)
+    assertHugeUnreadBody('unauth project create', result, 401)
+  }, { timeout: 8000 })
+
+  test('错误内部令牌 声明 16 MiB → 401，消费字节远小于声明、连接关闭', async () => {
+    const base = await start()
+    const result = await pacedDeclaredBodyRequest(
+      base,
+      '/v1/internal/relay-endpoint',
+      DECLARED_16_MIB,
+      { 'x-internal-token': 'u258-wrong-internal-token' }
+    )
+    assertHugeUnreadBody('wrong internal token', result, 401)
+  }, { timeout: 8000 })
+
+  test('无效注册令牌 声明 16 MiB → 401，消费字节远小于声明、连接关闭', async () => {
+    const base = await start()
+    const result = await pacedDeclaredBodyRequest(base, '/v1/hosts/register', DECLARED_16_MIB, {
+      authorization: 'Bearer u258-invalid-register-token'
+    })
+    assertHugeUnreadBody('invalid register token', result, 401)
+  }, { timeout: 8000 })
+
+  test('未知主机 heartbeat 声明 16 MiB → 404，消费字节远小于声明、连接关闭', async () => {
+    const base = await start()
+    const result = await pacedDeclaredBodyRequest(
+      base,
+      '/v1/hosts/host_u258_missing/heartbeat',
+      DECLARED_16_MIB,
+      { authorization: 'Bearer u258-invalid-host-credential' }
+    )
+    assertHugeUnreadBody('unknown host heartbeat', result, 404)
+  }, { timeout: 8000 })
+
+  test('小 body 的 401 仍保持 keep-alive：同连接第二次请求成功', async () => {
+    const base = await start()
+    const url = new URL(base)
+    const socket = await connectRaw(base)
+    try {
+      const smallBody = JSON.stringify({ note: 'small-401' })
+      socket.write(
+        [
+          'POST /v1/projects HTTP/1.1',
+          `Host: ${url.host}`,
+          'Content-Type: application/json',
+          `Content-Length: ${Buffer.byteLength(smallBody)}`,
+          'Connection: keep-alive',
+          '',
+          smallBody
+        ].join('\r\n')
+      )
+      const first = await readRawResponse(socket, 2000, 'small body 401')
+      assert.equal(first.status, 401)
+      assert.notEqual(first.headers.connection, 'close', 'a small unread body keeps keep-alive')
+
+      socket.write(['GET /health HTTP/1.1', `Host: ${url.host}`, 'Connection: keep-alive', '', ''].join('\r\n'))
+      const second = await readRawResponse(socket, 2000, 'health on the same connection')
+      assert.equal(second.status, 200, 'the same connection serves the next request')
+    } finally {
+      socket.destroy()
+    }
+  }, { timeout: 5000 })
+
+  test('合法登录不受影响：200 且同一连接继续复用', async () => {
+    const base = await start()
+    const agent = new Agent({ keepAlive: true, maxSockets: 1 })
+    try {
+      const first = await agentPost(
+        agent,
+        `${base}/v1/auth/login`,
+        JSON.stringify({ username: 'admin', password: 'Adm1n!', deviceName: 'u258-ka-1' })
+      )
+      const second = await agentPost(
+        agent,
+        `${base}/v1/auth/login`,
+        JSON.stringify({ username: 'admin', password: 'Adm1n!', deviceName: 'u258-ka-2' })
+      )
+      assert.equal(first.status, 200)
+      assert.equal(second.status, 200)
+      assert.equal(first.reused, false)
+      assert.equal(second.reused, true, 'a legal request keeps the connection usable')
+    } finally {
+      agent.destroy()
+    }
+  }, { timeout: 5000 })
 })

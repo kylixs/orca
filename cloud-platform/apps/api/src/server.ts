@@ -240,7 +240,32 @@ export type ApiHandle = {
 
 type AuthedRequest = { user: User; sessionId: string }
 
+/**
+ * U258: the largest body any read-before-auth route accepts is 16 KiB, so a
+ * larger unread body cannot be a legal single command. Chunked framing has no
+ * known size and is treated as potentially unbounded.
+ */
+const UNREAD_BODY_CLOSE_BYTES = 16 * 1024
+const requestByResponse = new WeakMap<ServerResponse, IncomingMessage>()
+const bodyReadRequests = new WeakSet<IncomingMessage>()
+
+/** Whether this response would leave a large, unread request body for Node to drain. */
+function leavesUnreadLargeBody(req: IncomingMessage | undefined): boolean {
+  if (req === undefined || bodyReadRequests.has(req)) return false
+  if (req.headers['transfer-encoding'] !== undefined) return true
+  const declared = Number(req.headers['content-length'])
+  return Number.isFinite(declared) && declared > UNREAD_BODY_CLOSE_BYTES
+}
+
 function json(res: ServerResponse, status: number, body: unknown): void {
+  // U258: a reply sent before the body is read leaves Node draining the rest of
+  // the request after the response so keep-alive can continue. Above the common
+  // per-command cap (or for chunked framing, where the size is unknown) refuse
+  // that drain by closing — an unauthenticated caller must not make the server
+  // consume an arbitrary body.
+  if (!res.headersSent && leavesUnreadLargeBody(requestByResponse.get(res))) {
+    res.setHeader('connection', 'close')
+  }
   const payload = JSON.stringify(body)
   // Every JSON exit, including the HEAD/404 fallthrough, carries the static security headers.
   res.writeHead(status, {
@@ -336,6 +361,9 @@ async function drainDeclaredBody(req: IncomingMessage): Promise<void> {
  * semantics and close too.
  */
 async function readBody(req: IncomingMessage, maxBytes?: number): Promise<ReadBodyResult> {
+  // U258: the body is consumed from here on, so a later rejection must not close
+  // the connection on its account (oversized paths close explicitly).
+  bodyReadRequests.add(req)
   const declaredLength = Number(req.headers['content-length'])
   if (maxBytes !== undefined && Number.isFinite(declaredLength) && declaredLength > maxBytes) {
     if (declaredLength <= OVERSIZE_DRAIN_LIMIT_BYTES) await drainDeclaredBody(req)
@@ -3604,6 +3632,8 @@ export function createApp(config: ApiConfig): ApiHandle {
     res: ServerResponse,
     fromInternalChannel = false
   ): Promise<void> {
+    // U258: `json` needs the request to decide whether an unread body must close.
+    requestByResponse.set(res, req)
     const url = new URL(req.url ?? '/', 'http://localhost')
     const path = url.pathname
     const traceId = req.headers['x-trace-id']?.toString() ?? randomUUID()
@@ -7615,6 +7645,8 @@ export function createApp(config: ApiConfig): ApiHandle {
           handler: (req, res) => {
             const path = new URL(req.url ?? '/', 'https://internal').pathname
             if (!isInternalPath(path)) {
+              // U258: same unread-body close rule as the public listener's `json`.
+              if (leavesUnreadLargeBody(req)) res.setHeader('connection', 'close')
               res.writeHead(404, { 'content-type': 'application/json' })
               res.end(JSON.stringify({ error: { code: 'NOT_FOUND' } }))
               return Promise.resolve()
