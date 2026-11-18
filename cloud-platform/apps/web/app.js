@@ -7,6 +7,9 @@ const AUTH_MODE_KEY = 'orca.authMode'
 const COOKIE_AUTH_MODE = 'cookie'
 /** U197 AC9b: a proven Cookie-less server, so loads stop paying the probe. */
 const LEGACY_AUTH_MODE = 'legacy'
+/** U249: an unproven capability backs off for a minute after a failed probe. */
+const AUTH_PROBE_BACKOFF_KEY = 'orca.authModeProbeFailedAt'
+const AUTH_PROBE_BACKOFF_MS = 60_000
 /** U221 F3: which account wrote the legacy localStorage tokens. */
 const TOKEN_OWNER_KEY = 'orca.tokenOwner'
 /** U221 F4: set when a logout could not reach the server; retried on next load. */
@@ -60,11 +63,14 @@ function relative(ts) {
   return `${Math.floor(diff / 86_400_000)} 天前`
 }
 
-/** U229 F5: race the startup request against the clock; the loser is ignored. */
-function withTimeout(promise, ms) {
+/** U229 F5/U249: race the startup request against the clock; a timeout aborts it. */
+function withTimeout(promise, ms, onTimeout) {
   let timer
   const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error('启动请求超时')), ms)
+    timer = setTimeout(() => {
+      onTimeout?.()
+      reject(new Error('启动请求超时'))
+    }, ms)
   })
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
 }
@@ -159,12 +165,29 @@ function clearLegacyTokens() {
   localStorage.removeItem(TOKEN_OWNER_KEY)
 }
 
-/** U234: 403/408/429/5xx are outages or throttles and keep the session; every
- * other 4xx was understood and refused, so it is a session verdict. */
+/** U234/U249: 403/408/426/429/5xx are outages, throttles or contract
+ * mismatches and keep the session; every other 4xx was understood and
+ * refused, so it is a session verdict. */
 function refreshVerdict(status) {
-  if (status === 403 || status === 408 || status === 429 || status >= 500) return 'error'
+  if (status === 403 || status === 408 || status === 426 || status === 429 || status >= 500) {
+    return 'error'
+  }
   if (status >= 400 && status < 500) return 'rejected'
   return 'error'
+}
+
+/** U249: a failed capability probe backs off for one minute, per tab only. */
+function probeBackoffActive(now = Date.now()) {
+  const raw = window.sessionStorage.getItem(AUTH_PROBE_BACKOFF_KEY)
+  if (raw === null) {
+    return false
+  }
+  const at = Number(raw)
+  if (!Number.isFinite(at) || at > now || now - at >= AUTH_PROBE_BACKOFF_MS) {
+    window.sessionStorage.removeItem(AUTH_PROBE_BACKOFF_KEY)
+    return false
+  }
+  return true
 }
 
 /** One no-body Cookie refresh. Success is also the migration gate for old keys. */
@@ -5348,16 +5371,30 @@ function finishStartupMe(me, startupEpoch, cachedUser) {
     // remembered so the next load does not probe again.
     if (localStorage.getItem(AUTH_MODE_KEY) === null) {
       let refresh = 'error'
-      try {
-        refresh = await withTimeout(
-          refreshSession(state.accessToken, { startup: true, migrating: true }),
-          STARTUP_TIMEOUT_MS
-        )
-      } catch {
-        // U234: a timeout is an `error` verdict, not abandonment. With a persistent
-        // access token the flow continues via /v1/me and the probe is not aborted;
-        // a late result lands only while this generation still owns the epoch —
-        // login/logout bump it, so the result turns `stale`.
+      // U249: a probe that just failed is not paid again on every load; a
+      // persistent access token still resumes below.
+      if (!probeBackoffActive()) {
+        try {
+          refresh = await withTimeout(
+            refreshSession(state.accessToken, { startup: true, migrating: true }),
+            STARTUP_TIMEOUT_MS,
+            () => {
+              // U249: the loser must not stay on the wire or hold the flight slot.
+              if (state.authEpoch === startupEpoch) {
+                abortRefreshFlights()
+              }
+            }
+          )
+        } catch {
+          // U234: a timeout is an `error` verdict, not abandonment. With a
+          // persistent access token the flow continues via /v1/me; the abort
+          // above guarantees a late result lands `stale`.
+        }
+        if (refresh === 'error') {
+          window.sessionStorage.setItem(AUTH_PROBE_BACKOFF_KEY, String(Date.now()))
+        } else if (refresh === 'ok' || refresh === 'rejected') {
+          window.sessionStorage.removeItem(AUTH_PROBE_BACKOFF_KEY)
+        }
       }
       if (refresh === 'ok') {
         try {
@@ -5391,7 +5428,13 @@ function finishStartupMe(me, startupEpoch, cachedUser) {
       try {
         refresh = await withTimeout(
           refreshSession(state.accessToken, { startup: true }),
-          STARTUP_TIMEOUT_MS
+          STARTUP_TIMEOUT_MS,
+          () => {
+            // U249: a timed-out refresh must not stay on the wire or block a retry.
+            if (state.authEpoch === startupEpoch) {
+              abortRefreshFlights()
+            }
+          }
         )
       } catch {
         // U234: a timed-out refresh is abandoned below, never merely ignored.

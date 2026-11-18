@@ -1000,4 +1000,68 @@ describe('U197 S5 Web 客户端真实 Chromium：Cookie 会话 / 迁移 / 回退
       await context.close()
     }
   })
+
+  test('U249 探测失败退避：60 秒内重载不再探测，结论出现后清除', async () => {
+    const { context, page } = await openConsole(legacyMode.url)
+    try {
+      await loginThroughUi(page)
+      const stored = await readStoredAuth(page)
+      assert.ok(stored.access, 'precondition: the legacy access token is persisted')
+      // Drop the capability marker so the next load must probe.
+      await page.evaluate(() => window.localStorage.removeItem('orca.authMode'))
+
+      // The probe fails at the transport boundary; the persistent access still resumes.
+      await page.route('**/v1/auth/refresh', (route) => route.abort())
+      const first = traceRefresh(page)
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.waitForSelector(VIEW_APP, { state: 'visible', timeout: 20_000 })
+      await delay(200)
+
+      assert.equal(first.bodies.length, 1, 'the first load probes once')
+      const backoffAt = await page.evaluate(() =>
+        window.sessionStorage.getItem('orca.authModeProbeFailedAt')
+      )
+      assert.ok(backoffAt, 'a failed probe records its timestamp in sessionStorage')
+      assert.equal(
+        await page.evaluate(() =>
+          window.localStorage.getItem('orca.authModeProbeFailedAt')
+        ),
+        null,
+        'the backoff must stay per tab, never localStorage'
+      )
+
+      // Inside the backoff window: the same tab must not probe again.
+      const second = traceRefresh(page)
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.waitForSelector(VIEW_APP, { state: 'visible', timeout: 20_000 })
+      await delay(800)
+
+      assert.equal(second.bodies.length, 0, 'the backoff must suppress the repeat probe')
+      assert.equal(await isVisible(page, VIEW_APP), true)
+      assert.equal(await isVisible(page, VIEW_LOGIN), false)
+
+      // Past the window the probe runs once more, and its 4xx conclusion clears
+      // the backoff so the next load stops paying for it.
+      await page.unroute('**/v1/auth/refresh')
+      await page.evaluate(() =>
+        window.sessionStorage.setItem('orca.authModeProbeFailedAt', String(Date.now() - 61_000))
+      )
+      const third = traceRefresh(page)
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.waitForSelector(VIEW_APP, { state: 'visible', timeout: 20_000 })
+      await delay(300)
+
+      assert.ok(third.bodies.length >= 1, 'an expired backoff must probe again')
+      assert.equal(
+        await page.evaluate(() =>
+          window.sessionStorage.getItem('orca.authModeProbeFailedAt')
+        ),
+        null,
+        'a 4xx probe conclusion clears the backoff'
+      )
+      assert.equal(await isVisible(page, VIEW_APP), true)
+    } finally {
+      await context.close()
+    }
+  })
 })

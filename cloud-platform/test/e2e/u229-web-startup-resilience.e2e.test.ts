@@ -627,3 +627,120 @@ describe('U242 启动成功续集：旧模式迟到 200 与在途登出', () => 
     )
   })
 })
+
+describe('U249 426 契约不匹配不是会话裁决', () => {
+  async function expiredPage(): Promise<WebConsolePage> {
+    const base = await start({ accessTtlMs: 1000 })
+    const page = loadWebConsolePage(base)
+    await page.settle()
+    await page.submitLogin('admin', 'Adm1n!')
+    await delay(1300)
+    return page
+  }
+
+  test('页内刷新 426：保留会话、不登出、不清凭据', async () => {
+    const page = await expiredPage()
+    const logoutsBefore = logoutCalls(page).length
+    const refreshesBefore = refreshCalls(page).length
+    page.fail('POST', '/v1/auth/refresh', {
+      status: 426,
+      body: {
+        error: {
+          code: 'WEB_CONTRACT_UNSUPPORTED',
+          message: '前端版本过旧或过新，请刷新页面获取最新版本。'
+        }
+      }
+    })
+    await page.clickNav('relays')
+
+    assert.equal(
+      refreshCalls(page).length - refreshesBefore,
+      1,
+      'the 401 must still attempt one refresh'
+    )
+    assert.equal(
+      logoutCalls(page).length,
+      logoutsBefore,
+      'a contract mismatch must not sign the user out'
+    )
+    assert.equal(page.hidden('#view-app'), false, 'the app shell must stay visible')
+    assert.equal(page.hidden('#view-login'), true)
+  })
+
+  test('启动探测 426：持久 access 续用，不得把部署误记为 legacy', async () => {
+    const base = await start({ cookieMode: 'never' })
+    const session = await legacySession(base)
+    const page = loadWebConsolePage(base, {
+      storage: {
+        'orca.access': session.accessToken,
+        'orca.refresh': session.refreshToken,
+        'orca.tokenOwner': 'admin'
+      },
+      failOnLoad: [
+        {
+          call: 'POST /v1/auth/refresh',
+          respond: {
+            status: 426,
+            body: {
+              error: {
+                code: 'WEB_CONTRACT_UNSUPPORTED',
+                message: '前端版本过旧或过新，请刷新页面获取最新版本。'
+              }
+            }
+          }
+        }
+      ]
+    })
+    await page.settle()
+
+    assert.equal(page.hidden('#view-app'), false, 'a valid access token must still resume')
+    assert.equal(page.hidden('#view-login'), true)
+    assert.equal(
+      page.window.localStorage.getItem('orca.authMode'),
+      null,
+      '426 is not a session verdict and must not write the legacy marker'
+    )
+    assert.deepEqual(
+      refreshCalls(page),
+      ['POST /v1/auth/refresh'],
+      'the failed probe must not spend a body fallback'
+    )
+  })
+})
+
+describe('U249 超时探测必须 abort 并让出 flight 槽位', () => {
+  test('探测超时后：access 续用，新 401 重新刷新而不是复用挂起请求', async () => {
+    const base = await start({ cookieMode: 'never' })
+    const session = await legacySession(base)
+    const page = loadWebConsolePage(base, {
+      // 10s × 0.01 = 100ms: observe the real timeout without waiting.
+      timerScale: 0.01,
+      storage: {
+        'orca.access': session.accessToken,
+        'orca.refresh': session.refreshToken,
+        'orca.tokenOwner': 'admin'
+      },
+      holdOnLoad: ['POST /v1/auth/refresh']
+    })
+    await page.settle()
+
+    assert.equal(page.hidden('#view-app'), false, 'the valid access token still resumes')
+    assert.deepEqual(refreshCalls(page), ['POST /v1/auth/refresh'], 'one hung probe')
+
+    const refreshesBefore = refreshCalls(page).length
+    page.fail('GET', '/v1/relays', {
+      status: 401,
+      body: { error: { code: 'SESSION_EXPIRED', message: '会话已失效' } }
+    })
+    await page.clickNav('relays')
+
+    assert.equal(
+      refreshCalls(page).length - refreshesBefore,
+      1,
+      'the timed-out probe must release its flight so a new 401 starts a fresh refresh'
+    )
+
+    await page.release()
+    await page.settle()
+  })
+})
