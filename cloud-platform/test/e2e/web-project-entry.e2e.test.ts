@@ -843,3 +843,77 @@ test(
       'failed + provisioningError → 工作台表/卡、我的项目表/卡均内联「准备失败：<reason>」；打开 disabled 且 title 同因；ready 行不显示'
   }
 )
+
+test(
+  'D22 provisioningError 注入转义：四个 surface 不生成 img，文本逐字一致',
+  { timeout: 120_000 },
+  async () => {
+    // U320: the host-supplied reason is untrusted text; every surface must let
+    // it land as text, never as live markup (and never double-escape it).
+    const injected = 'CLONE_FAILED: <img src=x onerror=alert(1)>'
+    const host = await registerHost({
+      name: 'dev-provision-xss',
+      directAddr: '127.0.0.1:17007',
+      tlsFingerprint: 'sha256:provision-xss'
+    })
+    const injectedProjectId = await createProject('provision-xss-project', host.hostId, {
+      repoUrl: 'https://git.example.com/team/provision-xss.git'
+    })
+    await reportProvisionFailure(host.hostId, host.credential, injectedProjectId, injected)
+
+    // Precondition: the payload travelled on the real projectView unchanged.
+    const view = await api('/v1/projects')
+    const failed = view.body.projects.find(
+      (p: { id: string }) => p.id === injectedProjectId
+    )
+    assert.ok(failed, 'the injected failure project is listed')
+    assert.equal(failed.status, 'failed')
+    assert.equal(failed.provisioningError, injected)
+
+    const page = loadWebConsolePage(service.url)
+    await page.settle()
+    await page.submitLogin('admin', 'Adm1n!')
+    await page.clickNav('workbench')
+
+    const assertInert = (scope: HTMLElement, label: string): void => {
+      const inline = scope.querySelector<HTMLElement>('[data-provisioning-error]')
+      assert.ok(inline, `${label}: the inline provisioning error is rendered`)
+      // Why ok(... === null), not equal(..., null): a failing equal() inspects the
+      // live element, and happy-dom's circular DOM graph blows up the reporter.
+      assert.ok(
+        scope.querySelector('img') === null,
+        `${label}: the payload never becomes DOM`
+      )
+      assert.equal(
+        inline.textContent,
+        `准备失败：${injected}`,
+        `${label}: the reason is shown verbatim, not double-escaped`
+      )
+    }
+
+    // 工作台 · 全部项目表 + 最近项目卡
+    assertInert(rowFor(page, 'provision-xss-project'), '工作台表行')
+    const card = [...page.window.document.querySelectorAll<HTMLElement>('.project-card')].find(
+      (candidate) => candidate.textContent?.includes('provision-xss-project')
+    )
+    assert.ok(card, 'the injected failure project is among the recent cards')
+    assertInert(card, '工作台最近项目卡')
+
+    // 我的项目 · 桌面表 + 手机卡
+    await page.clickNav('projects')
+    assertInert(rowFor(page, 'provision-xss-project'), '我的项目表行')
+    const listCard = [
+      ...page.window.document.querySelectorAll<HTMLElement>('.project-list-card')
+    ].find((candidate) => candidate.textContent?.includes('provision-xss-project'))
+    assert.ok(listCard, 'the phone card renders the same row data')
+    assertInert(listCard, '我的项目手机卡')
+
+    saveEvidence(EVIDENCE, 'provisioning-error-escaped.json', {
+      projectId: injectedProjectId,
+      provisioningError: injected,
+      surfaces: ['工作台表行', '工作台最近项目卡', '我的项目表行', '我的项目手机卡']
+    })
+    matrix['provisioning-error-escaped'] =
+      'failed + 含 HTML 的 provisioningError → 四 surface 内联元素无 img，textContent 逐字等于原串（无双重转义）'
+  }
+)
