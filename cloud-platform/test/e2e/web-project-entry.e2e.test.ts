@@ -171,14 +171,15 @@ before(async () => {
   const addrlessHost = await registerHost({ name: 'dev-addrless' })
   await createProject('addrless-project', addrlessHost.hostId)
 
-  // Registration stores directAddrs unvalidated, so an out-of-range port is the
-  // only way the isDirectAddrForm negative branch is reachable.
-  const badAddrHost = await registerHost({
-    name: 'dev-badaddr',
-    directAddr: '127.0.0.1:99999',
-    tlsFingerprint: 'sha256:badaddr'
+  // U274: directAddrs are validated at registration, so an out-of-range port can
+  // no longer be stored. This online host has a TLS fingerprint but no direct
+  // address — the reachable "no session page" state the console must render
+  // without an independent-page link.
+  const noSessionHost = await registerHost({
+    name: 'dev-nosession',
+    tlsFingerprint: 'sha256:nosession'
   })
-  await createProject('badaddr-project', badAddrHost.hostId)
+  await createProject('nosession-project', noSessionHost.hostId)
 
   // Two hosts with both entries visible to the admin: one is driven into
   // maintenance mid-run, the other is never beaten and so goes offline.
@@ -204,14 +205,14 @@ before(async () => {
       await grantOpen(project, subjectId)
     }
   }
-  for (const project of ['badaddr-project', 'maint-project', 'combo-project']) {
+  for (const project of ['nosession-project', 'maint-project', 'combo-project']) {
     await grantOpen(project, 'platform-admins')
   }
 
   // Keeps every beating host inside the heartbeat window; the rest stay silent
   // and are the offline side of the matrix.
   beat = setInterval(() => {
-    for (const host of [tlsHost, noEdgeHost, badAddrHost, maintHost]) {
+    for (const host of [tlsHost, noEdgeHost, noSessionHost, maintHost]) {
       void fetch(`${service.url}/v1/hosts/${host.hostId}/heartbeat`, {
         method: 'POST',
         headers: {
@@ -317,19 +318,46 @@ test('W3-payload 无 TLS 指纹或无直连地址时 sessionPageUrl 为空串', 
   matrix['payload-negative'] = '无 TLS 指纹 → ""；无直连地址 → ""'
 }, 120_000)
 
-test('W3-payload 直连地址非 host:port 形态时 sessionPageUrl 为空串', async () => {
-  const view = await api('/v1/projects')
-  const bad = view.body.projects.find((p: { key: string }) => p.key === 'badaddr-project')
+test('W3-payload 直连地址非 host:port 形态时注册即被拒（HOST_DIRECTADDRS_INVALID）', async () => {
+  // U274/U265: an undialable address is refused at the boundary, so it can never
+  // reach a project view as a sessionPageUrl. The token is single-use, so fetch
+  // a fresh one for this negative case.
+  const tokenRes = await fetch(`${service.url}/v1/hosts/tokens`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${adminToken}` }
+  })
+  const { token } = (await tokenRes.json()) as { token: string }
+  const res = await fetch(`${service.url}/v1/hosts/register`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      name: 'dev-badaddr',
+      fingerprint: 'sha256:dev-badaddr',
+      e2eePublicKeyB64: 'test-e2ee-key',
+      orcaVersion: '1.5.0',
+      protocolVersion: 3,
+      networkZone: 'intranet',
+      directAddrs: ['127.0.0.1:99999'],
+      relayTarget: '127.0.0.1:99999',
+      relayRoute: 'dev-badaddr',
+      runtimeCapabilities: ['pty', 'files'],
+      tlsFingerprint: 'sha256:badaddr'
+    })
+  })
+  const body = (await res.json()) as { error?: { code?: string } }
+  assert.equal(res.status, 400, JSON.stringify(body))
   assert.equal(
-    bad.sessionPageUrl,
-    '',
-    'a direct address outside host:port form must never become a session page URL'
+    body.error?.code,
+    'HOST_DIRECTADDRS_INVALID',
+    'an out-of-range port must be rejected before the host is stored'
   )
   saveEvidence(EVIDENCE, 'session-page-url-malformed-addr.json', {
     directAddr: '127.0.0.1:99999',
-    sessionPageUrl: bad.sessionPageUrl
+    status: res.status,
+    code: body.error?.code
   })
-  matrix['payload-malformed-addr'] = '直连地址端口越界（99999）→ ""（isDirectAddrForm 负例）'
+  matrix['payload-malformed-addr'] =
+    '直连地址端口越界（99999）→ 注册 400 HOST_DIRECTADDRS_INVALID（U265 边界校验）'
 }, 120_000)
 
 test('W3-admin 管理员入口：详情弹框（独立页链接在内），Orca Web 新标签', async () => {
@@ -538,7 +566,7 @@ test('W3-admin 在线但无可直达会话页地址时详情仍可看，弹框�
   await page.submitLogin('admin', 'Adm1n!')
   await page.clickNav('workbench')
 
-  const row = rowFor(page, 'badaddr-project')
+  const row = rowFor(page, 'nosession-project')
   const detail = entryIn(row, '详情') as HTMLButtonElement | null
   assert.ok(detail, 'an online host still renders the detail entry')
   // U46-2: the dialog reads platform data, so a missing session-page address no

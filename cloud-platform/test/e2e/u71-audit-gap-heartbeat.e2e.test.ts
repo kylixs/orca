@@ -12,6 +12,8 @@ import { saveEvidence } from './harness.ts'
 
 const INTERNAL_TOKEN = 'u71-internal'
 let clock = 1_900_000_000_000
+// U274: unique legal ports — U265's isDialableDirectAddr rejects out-of-range ones.
+let nextDirectPort = 17001
 let app: ApiHandle
 let url = ''
 let adminToken = ''
@@ -38,6 +40,7 @@ async function login(username: string, password: string): Promise<string> {
 }
 
 async function registerHost(name: string): Promise<{ hostId: string; credential: string }> {
+  const directAddr = `127.0.0.1:${nextDirectPort++}`
   const tokenRes = await fetch(`${url}/v1/hosts/tokens`, {
     method: 'POST',
     headers: { authorization: `Bearer ${adminToken}` }
@@ -53,8 +56,8 @@ async function registerHost(name: string): Promise<{ hostId: string; credential:
       orcaVersion: '1.5.0',
       protocolVersion: 3,
       networkZone: 'intranet',
-      directAddrs: [`127.0.0.1:1700${name.length}`],
-      relayTarget: `127.0.0.1:1700${name.length}`,
+      directAddrs: [directAddr],
+      relayTarget: directAddr,
       relayRoute: name,
       runtimeCapabilities: ['pty', 'files']
     })
