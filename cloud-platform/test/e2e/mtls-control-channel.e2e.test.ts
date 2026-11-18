@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { connect as tlsConnect, type ConnectionOptions, type TLSSocket } from 'node:tls'
 import { request } from 'node:https'
 import { mtlsFetch } from '../../packages/contract/src/internal-fetch.ts'
 import { makeTempWorkspace, saveEvidence, spawnService, type Service } from './harness.ts'
@@ -31,22 +32,131 @@ function makeMtlsCerts(): Certs {
     execFileSync('openssl', args, { cwd: dir, stdio: 'ignore' })
   }
   // Internal CA
-  sh(['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', 'ca.key', '-out', 'ca.crt', '-days', '1', '-subj', '/CN=orca-internal-ca'])
+  sh([
+    'req',
+    '-x509',
+    '-newkey',
+    'rsa:2048',
+    '-nodes',
+    '-keyout',
+    'ca.key',
+    '-out',
+    'ca.crt',
+    '-days',
+    '1',
+    '-subj',
+    '/CN=orca-internal-ca'
+  ])
   // Server
-  sh(['req', '-newkey', 'rsa:2048', '-nodes', '-keyout', 'server.key', '-out', 'server.csr', '-subj', '/CN=127.0.0.1'])
+  sh([
+    'req',
+    '-newkey',
+    'rsa:2048',
+    '-nodes',
+    '-keyout',
+    'server.key',
+    '-out',
+    'server.csr',
+    '-subj',
+    '/CN=127.0.0.1'
+  ])
   writeFileSync(
     join(dir, 'server.ext'),
     'subjectAltName=IP:127.0.0.1,DNS:localhost\nextendedKeyUsage=serverAuth\n'
   )
-  sh(['x509', '-req', '-in', 'server.csr', '-CA', 'ca.crt', '-CAkey', 'ca.key', '-CAcreateserial', '-out', 'server.crt', '-days', '1', '-extfile', 'server.ext'])
+  sh([
+    'x509',
+    '-req',
+    '-in',
+    'server.csr',
+    '-CA',
+    'ca.crt',
+    '-CAkey',
+    'ca.key',
+    '-CAcreateserial',
+    '-out',
+    'server.crt',
+    '-days',
+    '1',
+    '-extfile',
+    'server.ext'
+  ])
   // Relay client (signed by the internal CA)
-  sh(['req', '-newkey', 'rsa:2048', '-nodes', '-keyout', 'relay.key', '-out', 'relay.csr', '-subj', '/CN=orca-relay'])
+  sh([
+    'req',
+    '-newkey',
+    'rsa:2048',
+    '-nodes',
+    '-keyout',
+    'relay.key',
+    '-out',
+    'relay.csr',
+    '-subj',
+    '/CN=orca-relay'
+  ])
   writeFileSync(join(dir, 'client.ext'), 'extendedKeyUsage=clientAuth\n')
-  sh(['x509', '-req', '-in', 'relay.csr', '-CA', 'ca.crt', '-CAkey', 'ca.key', '-CAcreateserial', '-out', 'relay.crt', '-days', '1', '-extfile', 'client.ext'])
+  sh([
+    'x509',
+    '-req',
+    '-in',
+    'relay.csr',
+    '-CA',
+    'ca.crt',
+    '-CAkey',
+    'ca.key',
+    '-CAcreateserial',
+    '-out',
+    'relay.crt',
+    '-days',
+    '1',
+    '-extfile',
+    'client.ext'
+  ])
   // Rogue CA + client cert (must be rejected)
-  sh(['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', 'rogue-ca.key', '-out', 'rogue-ca.crt', '-days', '1', '-subj', '/CN=rogue-ca'])
-  sh(['req', '-newkey', 'rsa:2048', '-nodes', '-keyout', 'rogue.key', '-out', 'rogue.csr', '-subj', '/CN=orca-relay'])
-  sh(['x509', '-req', '-in', 'rogue.csr', '-CA', 'rogue-ca.crt', '-CAkey', 'rogue-ca.key', '-CAcreateserial', '-out', 'rogue.crt', '-days', '1', '-extfile', 'client.ext'])
+  sh([
+    'req',
+    '-x509',
+    '-newkey',
+    'rsa:2048',
+    '-nodes',
+    '-keyout',
+    'rogue-ca.key',
+    '-out',
+    'rogue-ca.crt',
+    '-days',
+    '1',
+    '-subj',
+    '/CN=rogue-ca'
+  ])
+  sh([
+    'req',
+    '-newkey',
+    'rsa:2048',
+    '-nodes',
+    '-keyout',
+    'rogue.key',
+    '-out',
+    'rogue.csr',
+    '-subj',
+    '/CN=orca-relay'
+  ])
+  sh([
+    'x509',
+    '-req',
+    '-in',
+    'rogue.csr',
+    '-CA',
+    'rogue-ca.crt',
+    '-CAkey',
+    'rogue-ca.key',
+    '-CAcreateserial',
+    '-out',
+    'rogue.crt',
+    '-days',
+    '1',
+    '-extfile',
+    'client.ext'
+  ])
 
   return {
     ca: join(dir, 'ca.crt'),
@@ -58,6 +168,238 @@ function makeMtlsCerts(): Certs {
     rogueCert: join(dir, 'rogue.crt'),
     rogueCa: join(dir, 'rogue-ca.crt')
   }
+}
+
+function tlsClientOptions(): ConnectionOptions {
+  return {
+    host: '127.0.0.1',
+    port: internalPort,
+    // The server cert covers DNS localhost; naming it avoids the IP-SNI warning.
+    servername: 'localhost',
+    key: readFileSync(certs.relayKey),
+    cert: readFileSync(certs.relayCert),
+    ca: readFileSync(certs.ca),
+    rejectUnauthorized: true
+  }
+}
+
+async function openTlsSocket(): Promise<TLSSocket> {
+  const socket = tlsConnect(tlsClientOptions())
+  socket.on('error', () => {
+    // Errors after a refusal are expected; each assertion reads the response first.
+  })
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      socket.destroy()
+      reject(new Error('TLS connect timed out'))
+    }, 2000)
+    socket.once('secureConnect', () => {
+      clearTimeout(timer)
+      resolve()
+    })
+    socket.once('error', (error: Error) => {
+      clearTimeout(timer)
+      reject(error)
+    })
+  })
+  return socket
+}
+
+type RawTlsResponse = { status: number; headers: Record<string, string>; body: string }
+
+/** Reads one framed response off a raw TLS socket. */
+function readTlsResponse(
+  socket: TLSSocket,
+  timeoutMs: number,
+  label: string
+): Promise<RawTlsResponse> {
+  return new Promise((resolve, reject) => {
+    let buffer = Buffer.alloc(0)
+    let headerEnd = -1
+    let expectedBody = 0
+    let chunked = false
+    let chunkCursor = 0
+    let chunkedBody = Buffer.alloc(0)
+    let status = 0
+    const headers: Record<string, string> = {}
+    let done = false
+    const cleanup = (): void => {
+      done = true
+      clearTimeout(timer)
+      socket.off('data', onData)
+      socket.off('close', onClose)
+      socket.off('error', onError)
+    }
+    const consumeChunked = (): boolean => {
+      while (true) {
+        const lineEnd = buffer.indexOf('\r\n', chunkCursor)
+        if (lineEnd === -1) return false
+        const size = Number.parseInt(buffer.subarray(chunkCursor, lineEnd).toString('latin1'), 16)
+        if (!Number.isFinite(size)) return false
+        const dataStart = lineEnd + 2
+        if (size === 0) return buffer.length >= dataStart + 2
+        if (buffer.length < dataStart + size + 2) return false
+        chunkedBody = Buffer.concat([chunkedBody, buffer.subarray(dataStart, dataStart + size)])
+        chunkCursor = dataStart + size + 2
+      }
+    }
+    const maybeResolve = (): void => {
+      if (done || headerEnd === -1) return
+      if (chunked) {
+        if (!consumeChunked()) return
+        cleanup()
+        resolve({ status, headers, body: chunkedBody.toString('utf8') })
+        return
+      }
+      if (buffer.length - headerEnd < expectedBody) return
+      cleanup()
+      resolve({
+        status,
+        headers,
+        body: buffer.subarray(headerEnd, headerEnd + expectedBody).toString('utf8')
+      })
+    }
+    const onData = (chunk: Buffer): void => {
+      buffer = Buffer.concat([buffer, chunk])
+      if (headerEnd === -1) {
+        const index = buffer.indexOf('\r\n\r\n')
+        if (index === -1) return
+        headerEnd = index + 4
+        const lines = buffer.subarray(0, index).toString('latin1').split('\r\n')
+        status = Number(lines[0]?.split(' ')[1] ?? 0)
+        for (const line of lines.slice(1)) {
+          const colon = line.indexOf(':')
+          if (colon === -1) continue
+          headers[line.slice(0, colon).trim().toLowerCase()] = line.slice(colon + 1).trim()
+        }
+        expectedBody = Number(headers['content-length'] ?? 0)
+        chunked = (headers['transfer-encoding'] ?? '').toLowerCase().includes('chunked')
+        chunkCursor = headerEnd
+      }
+      maybeResolve()
+    }
+    const onClose = (): void => {
+      if (done) return
+      maybeResolve()
+      if (done) return
+      cleanup()
+      reject(new Error(`${label}: socket closed before a complete response`))
+    }
+    const onError = (error: Error): void => {
+      if (done) return
+      maybeResolve()
+      if (done) return
+      cleanup()
+      reject(error)
+    }
+    const timer = setTimeout(() => {
+      cleanup()
+      reject(new Error(`${label}: no response within ${timeoutMs}ms`))
+    }, timeoutMs)
+    socket.on('data', onData)
+    socket.on('close', onClose)
+    socket.on('error', onError)
+  })
+}
+
+type DeclaredProbe = {
+  status: number
+  connection: string | undefined
+  receivedResponse: boolean
+  closed: boolean
+  acceptedBytes: number
+}
+
+/**
+ * Declares a body, waits for the refusal computed from headers alone, then
+ * pumps the declared bytes. A closed connection accepts only what was already
+ * in flight; the accepted count is far below the declaration.
+ */
+function pacedDeclaredTlsRequest(path: string, declared: number): Promise<DeclaredProbe> {
+  return new Promise((resolve, reject) => {
+    const socket = tlsConnect(tlsClientOptions())
+    const chunk = Buffer.alloc(32 * 1024, 'x')
+    let attempted = 0
+    let status = 0
+    let connection: string | undefined
+    let received = false
+    let closed = false
+    let settled = false
+    let writeTimer: NodeJS.Timeout | undefined
+    let headerBuffer = Buffer.alloc(0)
+    const finish = (): void => {
+      if (settled) return
+      settled = true
+      if (writeTimer !== undefined) clearInterval(writeTimer)
+      clearTimeout(deadline)
+      const acceptedBytes = socket.bytesWritten
+      socket.destroy()
+      resolve({ status, connection, receivedResponse: received, closed, acceptedBytes })
+    }
+    const pump = (): void => {
+      writeTimer = setInterval(() => {
+        if (closed || attempted >= declared) {
+          if (writeTimer !== undefined) clearInterval(writeTimer)
+          if (attempted >= declared) finish()
+          return
+        }
+        const size = Math.min(chunk.length, declared - attempted)
+        socket.write(chunk.subarray(0, size))
+        attempted += size
+      }, 2)
+    }
+    const deadline = setTimeout(() => {
+      if (settled) return
+      settled = true
+      if (writeTimer !== undefined) clearInterval(writeTimer)
+      const acceptedBytes = socket.bytesWritten
+      socket.destroy()
+      reject(
+        new Error(
+          `no refusal or close within 5000ms (accepted=${acceptedBytes} B, ` +
+            `response=${received ? status : 'none'}, connection=${connection ?? 'none'})`
+        )
+      )
+    }, 5000)
+    socket.once('secureConnect', () => {
+      socket.write(
+        [
+          `POST ${path} HTTP/1.1`,
+          'Host: 127.0.0.1',
+          'Content-Type: application/json',
+          'x-internal-token: wrong-token',
+          `Content-Length: ${declared}`,
+          'Connection: keep-alive',
+          '',
+          ''
+        ].join('\r\n')
+      )
+    })
+    socket.on('data', (data: Buffer) => {
+      if (received) return
+      headerBuffer = Buffer.concat([headerBuffer, data])
+      const index = headerBuffer.indexOf('\r\n\r\n')
+      if (index === -1) return
+      const lines = headerBuffer.subarray(0, index).toString('latin1').split('\r\n')
+      status = Number(lines[0]?.split(' ')[1] ?? 0)
+      for (const line of lines.slice(1)) {
+        const colon = line.indexOf(':')
+        if (colon === -1) continue
+        if (line.slice(0, colon).trim().toLowerCase() === 'connection') {
+          connection = line.slice(colon + 1).trim()
+        }
+      }
+      received = true
+      pump()
+    })
+    socket.on('close', () => {
+      closed = true
+      finish()
+    })
+    socket.on('error', () => {
+      // Writing after the refusal is expected; close carries the verdict.
+    })
+  })
 }
 
 let api: Service
@@ -177,7 +519,10 @@ describe('M9 内部通道 mTLS', () => {
     assert.equal(res.status, 200)
     const body = (await res.json()) as { routes: unknown[] }
     assert.ok(Array.isArray(body.routes))
-    saveEvidence(EVIDENCE, 'valid-client-success.json', { status: res.status, routes: body.routes.length })
+    saveEvidence(EVIDENCE, 'valid-client-success.json', {
+      status: res.status,
+      routes: body.routes.length
+    })
   })
 
   test('无客户端证书握手失败', async () => {
@@ -280,6 +625,78 @@ describe('M9 内部通道 mTLS', () => {
     assert.equal(body.error?.code, 'NOT_FOUND')
     saveEvidence(EVIDENCE, 'path-scope.json', { status: res.status, body })
   })
+
+  test(
+    'U267: 内部通道 404 声明 2 MiB → 先可读、connection: close、消费远小于声明',
+    async () => {
+      const declared = 2 * 1024 * 1024
+      const result = await pacedDeclaredTlsRequest('/v1/projects', declared)
+      assert.equal(result.receivedResponse, true, 'the refusal must be readable')
+      assert.equal(result.status, 404)
+      assert.equal(result.connection, 'close', 'an unread oversized body must close')
+      assert.equal(result.closed, true, 'the server did not close the connection')
+      assert.ok(
+        result.acceptedBytes < declared / 8,
+        `the server accepted ${result.acceptedBytes} B of ${declared} B`
+      )
+      saveEvidence(EVIDENCE, 'unread-declared-close.json', {
+        ...result,
+        declared
+      })
+    },
+    { timeout: 8000 }
+  )
+
+  test(
+    'U267: 13 B chunked 未读 body → keep-alive，同 TLS 连接第二次请求可用',
+    async () => {
+      const socket = await openTlsSocket()
+      const body = 'u267-chunk-13'
+      assert.equal(Buffer.byteLength(body), 13)
+      try {
+        socket.write(
+          [
+            'POST /v1/internal/relay-routes HTTP/1.1',
+            'Host: 127.0.0.1',
+            'Content-Type: application/json',
+            'x-internal-token: wrong-token',
+            'Transfer-Encoding: chunked',
+            'Connection: keep-alive',
+            '',
+            `${Buffer.byteLength(body).toString(16)}\r\n${body}\r\n0\r\n\r\n`
+          ].join('\r\n')
+        )
+        const first = await readTlsResponse(socket, 3000, 'chunked 13 B refusal')
+        assert.equal(first.status, 401)
+        assert.notEqual(first.headers.connection, 'close', 'a small chunked body keeps keep-alive')
+
+        socket.write(
+          [
+            'GET /v1/internal/relay-routes HTTP/1.1',
+            'Host: 127.0.0.1',
+            'x-internal-token: wrong-token',
+            'Connection: keep-alive',
+            '',
+            ''
+          ].join('\r\n')
+        )
+        const second = await readTlsResponse(socket, 3000, 'second request on the same TLS socket')
+        assert.equal(
+          second.status,
+          401,
+          'the refused chunked request must not wedge the connection'
+        )
+        saveEvidence(EVIDENCE, 'unread-chunked-reuse.json', {
+          firstStatus: first.status,
+          secondStatus: second.status,
+          firstConnection: first.headers.connection ?? null
+        })
+      } finally {
+        socket.destroy()
+      }
+    },
+    { timeout: 8000 }
+  )
 
   test('缺少内部令牌时即使 mTLS 通过也被拒', async () => {
     const res = await mtlsFetch(

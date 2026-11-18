@@ -78,6 +78,11 @@ import {
 import { renderHostUnit, renderRelayUnit } from './systemd-unit-template.ts'
 import { attachStorePersistence } from './store-persistence.ts'
 import { startInternalChannel } from './internal-channel.ts'
+import {
+  installUnreadBodyPolicy,
+  leavesUnreadLargeBody,
+  markRequestBodyRead
+} from './unread-body-policy.ts'
 import { ldapProfile, MockLdapAdapter, type LdapAdapter } from './ldap.ts'
 import {
   Store,
@@ -242,79 +247,14 @@ export type ApiHandle = {
 type AuthedRequest = { user: User; sessionId: string }
 
 /**
- * U258/U264: every route that can refuse before reading its body has a legal
- * body cap of at most 16 KiB, so a larger unread body cannot be a single legal
- * command. Chunked framing has no known size, so it is drained under a bound
- * rather than closed outright (a small chunked refusal keeps keep-alive).
+ * U258/U264: a pre-read refusal cannot know whether it is discarding a legal
+ * command — register accepts 64 KiB and heartbeat 1 MiB — so any unread
+ * declared body over 16 KiB is treated as unreplayable and the connection is
+ * closed. Legal callers read their body first and are unaffected. The policy
+ * itself lives in `unread-body-policy.ts`; this map lets `json()` apply it
+ * before the shared `writeHead` wrapper does.
  */
-const UNREAD_BODY_CLOSE_BYTES = 16 * 1024
-const CHUNKED_DRAIN_LIMIT_BYTES = 16 * 1024
-const CHUNKED_DRAIN_TIMEOUT_MS = 250
 const requestByResponse = new WeakMap<ServerResponse, IncomingMessage>()
-const bodyReadRequests = new WeakSet<IncomingMessage>()
-
-/** Whether this response would leave a large, unread request body for Node to drain. */
-function leavesUnreadLargeBody(req: IncomingMessage | undefined): boolean {
-  if (req === undefined || bodyReadRequests.has(req)) return false
-  const declared = Number(req.headers['content-length'])
-  return Number.isFinite(declared) && declared > UNREAD_BODY_CLOSE_BYTES
-}
-
-/**
- * U264: chunked framing hides its size. Consume what is already in flight so a
- * small body keeps the connection, and destroy instead of draining an unknown
- * (possibly endless) stream past the bound.
- */
-function boundUnreadChunkedBody(req: IncomingMessage): void {
-  if (req.complete || bodyReadRequests.has(req)) return
-  let drained = 0
-  let done = false
-  const finish = (destroy: boolean): void => {
-    if (done) return
-    done = true
-    clearTimeout(timer)
-    req.off('data', onData)
-    req.off('end', onEnd)
-    req.off('error', onError)
-    if (destroy) req.destroy()
-    else req.resume()
-  }
-  const onData = (chunk: Buffer): void => {
-    drained += chunk.length
-    if (drained > CHUNKED_DRAIN_LIMIT_BYTES) finish(true)
-  }
-  const onEnd = (): void => finish(false)
-  const onError = (): void => finish(false)
-  const timer = setTimeout(() => finish(true), CHUNKED_DRAIN_TIMEOUT_MS)
-  req.on('data', onData)
-  req.on('end', onEnd)
-  req.on('error', onError)
-  req.resume()
-}
-
-/**
- * U264: the one decision for an exit that leaves the body unread, applied by
- * the `writeHead` wrapper so static files, OPTIONS and every raw 200 obey it.
- */
-function applyUnreadBodyPolicy(req: IncomingMessage, res: ServerResponse): void {
-  if (res.headersSent || bodyReadRequests.has(req)) return
-  if (leavesUnreadLargeBody(req)) {
-    res.setHeader('connection', 'close')
-    return
-  }
-  if (req.headers['transfer-encoding'] !== undefined) boundUnreadChunkedBody(req)
-}
-
-/** U264: wrap `writeHead` once per response so no bare exit can skip the rule. */
-function installUnreadBodyPolicy(res: ServerResponse, req: IncomingMessage): void {
-  const writeHead = res.writeHead.bind(res)
-  // SAFETY: the wrapper accepts and forwards exactly the arguments Node passes
-  // to the overloaded `writeHead`; the cast only restores that overload type.
-  res.writeHead = ((...args: Parameters<typeof writeHead>) => {
-    applyUnreadBodyPolicy(req, res)
-    return writeHead(...args)
-  }) as ServerResponse['writeHead']
-}
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   // U258: a reply sent before the body is read leaves Node draining the rest of
@@ -422,7 +362,7 @@ async function drainDeclaredBody(req: IncomingMessage): Promise<void> {
 async function readBody(req: IncomingMessage, maxBytes?: number): Promise<ReadBodyResult> {
   // U258: the body is consumed from here on, so a later rejection must not close
   // the connection on its account (oversized paths close explicitly).
-  bodyReadRequests.add(req)
+  markRequestBodyRead(req)
   const declaredLength = Number(req.headers['content-length'])
   if (maxBytes !== undefined && Number.isFinite(declaredLength) && declaredLength > maxBytes) {
     if (declaredLength <= OVERSIZE_DRAIN_LIMIT_BYTES) await drainDeclaredBody(req)
@@ -7803,8 +7743,6 @@ export function createApp(config: ApiConfig): ApiHandle {
           handler: (req, res) => {
             const path = new URL(req.url ?? '/', 'https://internal').pathname
             if (!isInternalPath(path)) {
-              // U264: same unread-body rule as every public exit, chunked included.
-              applyUnreadBodyPolicy(req, res)
               res.writeHead(404, { 'content-type': 'application/json' })
               res.end(JSON.stringify({ error: { code: 'NOT_FOUND' } }))
               return Promise.resolve()
