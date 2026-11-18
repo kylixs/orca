@@ -50,7 +50,7 @@
 | AUTH-COOKIE-MODE | Cookie 模式（auto/never/always） | FR-1.2 | P0 | 🟡 | 95%（D5–D10 已定：同源默认关闭；部署检查单待写） | u197 浏览器套件 9/9 |
 | AUTH-PAGE-CSP | 认证页 CSP（Report-Only） | NFR 5.3（安全） | P0 | 🟢 | 100%（D10 维持 Report-Only，不启用 enforcement） | csp-zero 6/6 |
 | AUTH-COMPAT-LEGACY | 旧客户端兼容与启动恢复 | FR-9.8 | P2 | 🟢 | 100% | u198 2/2、u229 系列 |
-| AUTH-SESSION-EXPIRE | 过期自动登出与 `session.expired` 事件 | FR-1.6 | P0 | ⚪ | 0%（D20 已定：仅两个事件，待实施） | — |
+| AUTH-SESSION-EXPIRE | 过期自动登出与 `session.expired` 事件 | FR-1.6 | P0 | 🟢 | 100%（D20 已实施：`session.expired`/`session.revoked` 两事件） | `u243-session-events` 4/4（主会话复跑） |
 
 ### AZ 授权与准入
 
@@ -73,7 +73,7 @@
 | PRJ-LIFECYCLE-ARCHIVE | 归档/恢复与只读 30 天 | FR-3.4 | P1 | 🟢 | 100% | actions 7/7、detail 5/5、data 8/8 |
 | PRJ-ACCESS-CONNECT | 打开项目、会话复用与凭证签发 | FR-3.3/3.6 | P0 | 🟢 | 100% | project-connect 套件 |
 | PRJ-ACCESS-DETAIL | 详情页（信息/权限/会话页） | FR-3.5/3.8/3.9 | P1 | 🟢 | 100% | u106-detail 9/9 |
-| PRJ-PROVISION-ERR | 克隆失败原因呈现 | FR-3.2 | P0 | ⚪ | 0%（D22 已定：前端内联展示，待实施） | — |
+| PRJ-PROVISION-ERR | 克隆失败原因呈现 | FR-3.2 | P0 | 🟢 | 100%（D22 已实施：`provisioningErrorHtml` 内联于列表/详情/工作台） | `web-project-entry` 11/11（含 `[data-provisioning-error]` 断言，主会话复跑） |
 
 ### HOST 开发机与中继
 
@@ -148,7 +148,7 @@
 ## 4. 汇总与口径
 
 - 综合完成度：**(62 + 0.5×3) / 70 = 90.7%**（定义：🟢计 1、🟡计 0.5、⚪计 0；域进度按同法计算）
-- 叶子功能项 **70**：🟢 **62**、🟡 **3**（AUTH-LDAP-ADMIT、AUTH-COOKIE-MODE、QA-TIMEOUT-GATE）、⚪ **5**（AUTH-TOKEN-GC、AUTH-SESSION-EXPIRE、AZ-LDAP-GROUP、PRJ-PROVISION-ERR、FILE-DL-RPC）
+- 叶子功能项 **70**：🟢 **64**、🟡 **3**（AUTH-LDAP-ADMIT、AUTH-COOKIE-MODE、QA-TIMEOUT-GATE）、⚪ **3**（AUTH-TOKEN-GC、AZ-LDAP-GROUP、FILE-DL-RPC）
 - 计数口径：叶子行数按本文件表行实测（70），下次更新须重算并同步本节
 - 阻塞源（均已决策，剩余为实施/文档）：D18 待实施、D20 待实施、D15-1 待实施、D22 待实施、D5–D10 部署检查单待写、LGA-6 文档收口待办、D21-C9 缓（登记缺口）、U315 门禁词法残余
 - 所有计数为**指定范围基线**；「全仓无红」仅由 QA-E2E-SWEEP 的全景扫描支撑（协议 §2-142），不得以子集基线替代
@@ -174,10 +174,10 @@
 | AUTH-COOKIE-MODE | 🟡 | D5–D10（已定，部署检查单待写）、U216、U197 QA-032 | u197 浏览器套件 9/9、认证基线 267/267 |
 | AUTH-PAGE-CSP | 🟢 | D10（维持 Report-Only） | csp-zero 6/6 |
 | AUTH-TOKEN-GC | ⚪ | D18（已定，待实施）、U233 F6 | `u233-d18-token-gc-brief` |
-| AUTH-SESSION-EXPIRE | ⚪ | D20（已定，待实施）、U243/U230 | `u243-session-expiry-event-brief` |
+| AUTH-SESSION-EXPIRE | 🟢 | D20（已实施）、U243/U230 | `u243-session-events` 4/4 |
 | AUTH-LDAP-ADMIT / AZ-LDAP-GROUP | 🟡/⚪ | D15（已定，组替换待实施；LGA-6 文档收口待办）、U212 | ldap-admission 6/6、准入设计 v3 |
 | AZ-ENUM-GUARD | 🟢 | D24（保留 404 静默）、U247 观察 | web-project-entry 10/10 |
-| PRJ-PROVISION-ERR | ⚪ | D22（已定，待实施）、U54-008 | `decisions-log-20261118` §3 |
+| PRJ-PROVISION-ERR | 🟢 | D22（已实施）、U54-008 | `web-project-entry` 11/11 |
 | FILE-DL-RPC / FILE-COPY-CAPTURE | ⚪/🟢 | D21（C9 缓登记；C6 已落地）、U66 第二口径结案 | `cloud-file-copy-audit` 8/8 |
 | FILE-DL-HARDEN | 🟢 | U66 二期（已关） | guard 7/7、enforcement 4/4 |
 | CLIENT-INSTALL-ONELINER | 🟢 | U275/U276/U281/U283/U285/U288（已关） | 运行期 14/14、自检 2/2 |
