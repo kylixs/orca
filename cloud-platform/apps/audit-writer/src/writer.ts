@@ -228,6 +228,18 @@ export async function startAuditWriter(options: {
         .split(',')
         .map((type) => type.trim())
         .filter((type) => type !== '')
+      // U58: `Number()` accepted "1e3"/"1.5" and dropped NaN, hiding a wrong
+      // cursor as "no cursor"; only decimal non-negative safe integers pass.
+      const rawCursor = url.searchParams.get('cursor')
+      const cursor =
+        rawCursor === null
+          ? undefined
+          : /^\d+$/.test(rawCursor) && Number.isSafeInteger(Number(rawCursor))
+            ? Number(rawCursor)
+            : null
+      if (cursor === null) {
+        return json(res, 400, { error: { code: 'INVALID_QUERY' } })
+      }
       const page = chain.query({
         actor: url.searchParams.get('actor') ?? undefined,
         eventType: url.searchParams.get('eventType') ?? undefined,
@@ -242,7 +254,7 @@ export async function startAuditWriter(options: {
         projectId: url.searchParams.get('projectId') ?? undefined,
         hostId: url.searchParams.get('hostId') ?? undefined,
         limit: Math.min(Number(url.searchParams.get('limit') ?? 50), 200),
-        cursor: url.searchParams.get('cursor') ? Number(url.searchParams.get('cursor')) : undefined
+        cursor
       })
       return json(res, 200, page)
     }
