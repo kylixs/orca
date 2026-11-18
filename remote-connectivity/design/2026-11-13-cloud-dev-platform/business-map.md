@@ -18,19 +18,19 @@
 
 | 域 | 名称 | 优先级 | 状态 | 进度 | 测试证据 |
 |---|---|---|---|---|
-| AUTH | 身份认证与会话 | P0 | 🟡 | 73.1%（🟡cookieMode/CSP/LDAP 准入；⚪token GC/session.expired） | 24 文件认证基线 **267/267**；锁定相关 **14/14** |
-| AZ | 授权与准入 | P0 | 🟡 | 78.6%（🟡防探测 D24；⚪LDAP 组授权） | 组合矩阵 **113/113**；api 授权相关 116/116 |
+| AUTH | 身份认证与会话 | P0 | 🟡 | 76.9%（🟡cookieMode/LDAP 准入；⚪token GC/session.expired） | 24 文件认证基线 **267/267**；锁定相关 **14/14** |
+| AZ | 授权与准入 | P0 | 🟡 | 85.7%（⚪LDAP 组授权，LGA-6 收口待文档） | 组合矩阵 **113/113**；api 授权相关 116/116 |
 | PRJ | 项目 | P0 | 🟡 | 83.3%（⚪克隆失败呈现 D22） | 归档/自助/详情/连接等 e2e 套件 |
 | HOST | 开发机与中继 | P0 | 🟢 | 100% | mtls 12/12、relay 5/5、host-offline 1/1 等 |
 | CONN | 连接与选路 | P0 | 🟢 | 100% | 直连地址 12/12、畸形地址快照 5/5 |
-| FILE | 文件浏览与下载管控 | P0 | 🟡 | 75.0%（⚪专用下载 RPC、DOM 复制捕获） | 文件契约 e2e；宿主硬拦 guard 7/7 |
+| FILE | 文件浏览与下载管控 | P0 | 🟡 | 87.5%（⚪专用下载 RPC，D21 缓登记） | 文件契约 e2e；宿主硬拦 guard 7/7；复制捕获 8/8 |
 | AUD | 审计 | P0 | 🟢 | 100%（事件词汇批 D18/D20 待裁） | 审计链/writer/export/query 套件 |
 | ADMIN | 管理台 | P0 | 🟢 | 100% | web-admin-gating 3/3、directory 套件、矩阵 113/113 |
 | CLIENT | 客户端与企业定制 | P0 | 🟢 | 100% | install-wizard **90/90**、one-liner 运行期 **14/14** |
 | WEB | 平台 Web 控制台 | P0 | 🟢 | 98%（路由 P1 已修） | web-exploratory **45/45**、移动端用户页 5/5 |
-| MOB | 移动端形态 | P1 | ⚪ | 0%（主机详情 sheet 待裁定 U278） | u80-mobile-* 套件；主机详情 sheet 缺（U278） |
+| MOB | 移动端形态 | P1 | 🟢 | 100%（响应式全屏 sheet 已覆盖，原型稿归二期） | u80-mobile-shell 390×844 sheet、m9fix 触控 44px |
 | DSGN | 设计原型与文档 | P1 | 🟢 | 100% | proto-tab-check **39/39** |
-| QA | 测试与门禁基建 | P0 | 🟡 | 91.7%（🟡`load-300` 收尾） | 全仓 e2e **1143/1143**；超时门禁 40+18 |
+| QA | 测试与门禁基建 | P0 | 🟡 | 91.7%（🟡超时门禁残余 U315） | 全仓 e2e **1143/1143**；超时门禁 40+23，基线 **0** |
 
 ## 3. 功能项明细
 
@@ -41,16 +41,16 @@
 | AUTH-LOGIN-LDAP | LDAP/LDAPS 登录 bind | FR-1.1 | P0 | 🟢 | 100% | 认证基线（267） |
 | AUTH-TOKEN-ISSUE | 访问/刷新令牌签发与 30s 轮换宽限 | FR-1.2 | P0 | 🟢 | 100% | refresh-cookie 套件 |
 | AUTH-TOKEN-STORE | 令牌哈希入库与快照持久化 | FR-1.2（服务端） | P0 | 🟢 | 100% | store-persistence **21/21** |
-| AUTH-TOKEN-GC | 令牌回收与快照明文剥离 | FR-1.2（服务端） | P0 | ⚪ | 0%（D18） | — |
+| AUTH-TOKEN-GC | 令牌回收与快照明文剥离 | FR-1.2（服务端） | P0 | ⚪ | 0%（D18 已定：惰性+60s sweep+快照剥离，待实施） | — |
 | AUTH-LOGIN-LOCKOUT | 5 次失败锁 15 分钟 | FR-1.4 | P0 | 🟢 | 100% | 契约 9/9、body 5/5、entry-module 9/9 |
-| AUTH-LDAP-ADMIT | LDAP 组门槛准入 | FR-1.5 | P1 | 🟡 | 80%（D15） | ldap-admission 6/6 |
+| AUTH-LDAP-ADMIT | LDAP 组门槛准入 | FR-1.5 | P1 | 🟡 | 80%（D15 已定：登录时组全量替换，待实施） | ldap-admission 6/6 |
 | AUTH-REVOKE-SELF | 自助登出与设备吊销 | FR-1.6 | P0 | 🟢 | 100% | u229/u241 套件 |
 | AUTH-REVOKE-FORCE | 管理员强制下线（含 3+ follower 并发） | FR-1.6 | P0 | 🟢 | 100% | **12/12** |
 | AUTH-PERM-PROPAGATE | 权限变更即时生效与 60s 断连 | FR-1.7 | P1 | 🟢 | 100% | policy/u244 相关 |
-| AUTH-COOKIE-MODE | Cookie 模式（auto/never/always） | FR-1.2 | P0 | 🟡 | 95%（D5–D10） | u197 浏览器套件 9/9 |
-| AUTH-PAGE-CSP | 认证页 CSP（Report-Only） | NFR 5.3（安全） | P0 | 🟡 | 70%（D10） | csp-zero 6/6 |
+| AUTH-COOKIE-MODE | Cookie 模式（auto/never/always） | FR-1.2 | P0 | 🟡 | 95%（D5–D10 已定：同源默认关闭；部署检查单待写） | u197 浏览器套件 9/9 |
+| AUTH-PAGE-CSP | 认证页 CSP（Report-Only） | NFR 5.3（安全） | P0 | 🟢 | 100%（D10 维持 Report-Only，不启用 enforcement） | csp-zero 6/6 |
 | AUTH-COMPAT-LEGACY | 旧客户端兼容与启动恢复 | FR-9.8 | P2 | 🟢 | 100% | u198 2/2、u229 系列 |
-| AUTH-SESSION-EXPIRE | 过期自动登出与 `session.expired` 事件 | FR-1.6 | P0 | ⚪ | 0%（D20） | — |
+| AUTH-SESSION-EXPIRE | 过期自动登出与 `session.expired` 事件 | FR-1.6 | P0 | ⚪ | 0%（D20 已定：仅两个事件，待实施） | — |
 
 ### AZ 授权与准入
 
@@ -61,8 +61,8 @@
 | AZ-REVIEW-MATRIX | 角色×端点组合矩阵 | FR-9.3 | P0 | 🟢 | 100% | **113/113** |
 | AZ-GRANT-VALIDATE | 非法 subject/permission 拒绝、重复位去重 | FR-9.3 | P0 | 🟢 | 100% | dedupe **4/4**、u62 4/4 |
 | AZ-DENIAL-AUDIT | 越权拒绝审计 | FR-9.5 | P0 | 🟢 | 100% | admin-denial-audit |
-| AZ-ENUM-GUARD | 无权限项目防探测（404/不泄露） | FR-2.2 | P0 | 🟡 | 90%（D24） | web-project-entry 10/10 |
-| AZ-LDAP-GROUP | LDAP 组授权（LGA-1~6） | FR-1.5 | P1 | ⚪ | 0%（待评审派工） | — |
+| AZ-ENUM-GUARD | 无权限项目防探测（404/不泄露） | FR-2.2 | P0 | 🟢 | 100%（D24 保留操作级 404 静默，不新增审计通道） | web-project-entry 10/10 |
+| AZ-LDAP-GROUP | LDAP 组授权（LGA-1~6） | FR-1.5 | P1 | ⚪ | 0%（已裁定不新增功能；LGA-6 文档收口待办） | — |
 
 ### PRJ 项目
 
@@ -73,7 +73,7 @@
 | PRJ-LIFECYCLE-ARCHIVE | 归档/恢复与只读 30 天 | FR-3.4 | P1 | 🟢 | 100% | actions 7/7、detail 5/5、data 8/8 |
 | PRJ-ACCESS-CONNECT | 打开项目、会话复用与凭证签发 | FR-3.3/3.6 | P0 | 🟢 | 100% | project-connect 套件 |
 | PRJ-ACCESS-DETAIL | 详情页（信息/权限/会话页） | FR-3.5/3.8/3.9 | P1 | 🟢 | 100% | u106-detail 9/9 |
-| PRJ-PROVISION-ERR | 克隆失败原因呈现 | FR-3.2 | P0 | ⚪ | 0%（D22） | — |
+| PRJ-PROVISION-ERR | 克隆失败原因呈现 | FR-3.2 | P0 | ⚪ | 0%（D22 已定：前端内联展示，待实施） | — |
 
 ### HOST 开发机与中继
 
@@ -103,9 +103,9 @@
 | FILE-PATH-GUARD | 相对路径与 `..` 穿越拒绝 | FR-6.5 | P0 | 🟢 | 100% | file-contract |
 | FILE-DL-POLICY | 全局/项目下载策略与即时生效 | FR-7.1/7.2/7.6 | P0 | 🟢 | 100% | download-policy 套件 |
 | FILE-DL-HARDEN | 宿主侧硬拦（现有 RPC） | FR-7.3 | P0 | 🟢 | 100% | guard 7/7、enforcement 4/4 |
-| FILE-DL-RPC | 专用 `files.download` 流式 RPC | FR-9.12 | P0（分期） | ⚪ | 0%（D21-C9） | — |
+| FILE-DL-RPC | 专用 `files.download` 流式 RPC | FR-9.12 | P0（分期） | ⚪ | 0%（D21：缓；现有 readChunk 审计+宿主硬拦已覆盖，字面缺口登记） | — |
 | FILE-DL-AUDIT | 拦截/超阈值读取审计 | FR-7.4 | P0 | 🟢 | 100% | audit-file-events 套件 |
-| FILE-COPY-CAPTURE | DOM 选区复制捕获 | FR-9.14（FR-9.13–16 未入库） | P1（二期） | ⚪ | 0%（D21-C6） | — |
+| FILE-COPY-CAPTURE | DOM 选区复制捕获 | FR-9.14（FR-9.13–16 未入库） | P1（二期） | 🟢 | 100%（C6 已落地于云端简易工作区） | cloud-file-copy-audit **8/8** |
 
 ### AUD 审计
 
@@ -135,22 +135,22 @@
 | CLIENT-DIAGNOSTICS-REPORT | 客户端诊断上报 | FR-10.6 | P1 | 🟢 | 100% | m70 |
 | WEB-NAV-ROUTING | 控制台路由渲染与代次守卫 | FR-9.1 | P0 | 🟢 | 100%（P1 已修） | web-exploratory **45/45**（U310） |
 | WEB-SESSION-REFRESH | 刷新/多标签协调 | FR-1.2 | P0 | 🟢 | 100% | u197 套件、u80-users 5/5 |
-| MOB-HOST-DETAIL | 移动端主机详情 sheet | FR-9.1 | P1（形态扩展） | ⚪ | 0%（U278） | — |
+| MOB-HOST-DETAIL | 移动端主机详情 sheet | FR-9.1 | P1（形态扩展） | 🟢 | 100%（响应式全屏 sheet；原型稿归二期素材） | u80-mobile-shell 390×844 sheet、m9fix 触控 ≥44px |
 | DSGN-PROTO-U67 | U67 原型、验收截图与回归脚本 | — | P1（过程交付） | 🟢 | 100% | proto-tab-check **39/39** |
 | QA-AUTH-BASE | 认证 24 文件基线 | — | P0（门禁） | 🟢 | 100% | **267/267** |
 | QA-BASE-MATRIX | 授权组合矩阵基线 | — | P0（门禁） | 🟢 | 100% | **113/113** |
 | QA-E2E-SWEEP | 全仓 e2e 全景 | — | P0（门禁） | 🟢 | 100% | **1143/1143，0 skip** |
-| QA-TIMEOUT-GATE | 超时形态门禁与存量迁移 | — | P1（门禁） | 🟡 | 99%（270/272） | 门禁测试 40+18 |
+| QA-TIMEOUT-GATE | 超时形态门禁与存量迁移 | — | P1（门禁） | 🟡 | 99%（基线 0 已达成；U315 词法残余 2 形） | 门禁测试 40+23；300×1800 实跑 |
 | QA-TYPE-GATE | apps 类型门禁 | — | P1（门禁） | 🟢 | 100% | `tc:apps` 16→0 |
 | QA-EVIDENCE-CHECKERS | 台账表格/sha/编码校验 | — | P0（门禁） | 🟢 | 100% | 三脚本 + 自测 |
 
 
 ## 4. 汇总与口径
 
-- 综合完成度：**(58 + 0.5×5) / 70 = 86.4%**（定义：🟢计 1、🟡计 0.5、⚪计 0；域进度按同法计算）
-- 叶子功能项 **70**：🟢 **58**、🟡 **5**（AUTH-LDAP-ADMIT、AUTH-COOKIE-MODE、AUTH-CSP、AZ-ENUM-GUARD、QA-TIMEOUT-GATE）、⚪ **7**（AUTH-TOKEN-GC、AUTH-SESSION-EXPIRE、AZ-LDAP-GROUP、PRJ-PROVISION-ERR、FILE-DL-RPC、FILE-COPY-CAPTURE、MOB-DETAIL）
+- 综合完成度：**(62 + 0.5×3) / 70 = 90.7%**（定义：🟢计 1、🟡计 0.5、⚪计 0；域进度按同法计算）
+- 叶子功能项 **70**：🟢 **62**、🟡 **3**（AUTH-LDAP-ADMIT、AUTH-COOKIE-MODE、QA-TIMEOUT-GATE）、⚪ **5**（AUTH-TOKEN-GC、AUTH-SESSION-EXPIRE、AZ-LDAP-GROUP、PRJ-PROVISION-ERR、FILE-DL-RPC）
 - 计数口径：叶子行数按本文件表行实测（70），下次更新须重算并同步本节
-- 阻塞源：D5–D10（cookieMode）、D15（LDAP 撤销边界）、D18（token GC）、D20（session.expired）、D21（U66 第二口径）、D22（克隆失败呈现）、D24（拒绝留痕）、U278（移动端详情）
+- 阻塞源（均已决策，剩余为实施/文档）：D18 待实施、D20 待实施、D15-1 待实施、D22 待实施、D5–D10 部署检查单待写、LGA-6 文档收口待办、D21-C9 缓（登记缺口）、U315 门禁词法残余
 - 所有计数为**指定范围基线**；「全仓无红」仅由 QA-E2E-SWEEP 的全景扫描支撑（协议 §2-142），不得以子集基线替代
 - 当日台账增量：U272–U313；唯一重开：WEB-ROUTING（U307→U310→U312），修复后回绿
 ## 5. 按地图推进的规则与顺序
@@ -167,18 +167,18 @@
 
 | 地图编号 | 状态 | 台账/决策 | 套件或证据 |
 |---|---|---|---|
-| QA-TIMEOUT-GATE | 🟡 | U291（`load-300` 收尾）、U313（已关）、U315（新登记） | `check-test-timeouts.test.mjs` 40、`-numeric.test.mjs` 23；批 1–8 合跑记录 |
+| QA-TIMEOUT-GATE | 🟡 | U291（已关，基线 0）、U313（已关）、U315（残余词法） | `check-test-timeouts.test.mjs` 40、`-numeric.test.mjs` 23；批 1–9 合跑记录；`evidence/m110-load-300` |
 | WEB-NAV-ROUTING | 🟢 | U307/U310/U312/U314（已关） | `web-exploratory-fixes` 45、U310 定向 1/1（主会话复跑） |
-| MOB-HOST-DETAIL | ⚪ | U278 | `u80-mobile-*` 套件 |
+| MOB-HOST-DETAIL | 🟢 | U278（已裁定不开发） | `u80-mobile-shell` 390×844 sheet、`u80-mobile-m9fix` 触控 44px |
 | AUTH-LOGIN-LOCKOUT | 🟢 | U289/U292/U293/U294/U296（已关） | 契约 9/9、entry-module 9/9、lockout 14/14 |
-| AUTH-COOKIE-MODE | 🟡 | D5–D10、U216、U197 QA-032 | u197 浏览器套件 9/9、认证基线 267/267 |
-| AUTH-PAGE-CSP | 🟡 | D10、U224 | csp-zero 6/6 |
-| AUTH-TOKEN-GC | ⚪ | D18、U233 F6 | `u233-d18-token-gc-brief` |
-| AUTH-SESSION-EXPIRE | ⚪ | D20、U243/U230 | `u243-session-expiry-event-brief` |
-| AUTH-LDAP-ADMIT / AZ-LDAP-GROUP | 🟡/⚪ | D15、U212、LGA-1~6 | ldap-admission 6/6、准入设计 v3 |
-| AZ-ENUM-GUARD | 🟡 | D24、U247 观察 | web-project-entry 10/10 |
-| PRJ-PROVISION-ERR | ⚪ | D22、U54-008 | `pending-decisions` 附四 |
-| FILE-DL-RPC / FILE-COPY-CAPTURE | ⚪ | D21（C9/C6）、U66 第二口径 | `pending-decisions` 附三 |
+| AUTH-COOKIE-MODE | 🟡 | D5–D10（已定，部署检查单待写）、U216、U197 QA-032 | u197 浏览器套件 9/9、认证基线 267/267 |
+| AUTH-PAGE-CSP | 🟢 | D10（维持 Report-Only） | csp-zero 6/6 |
+| AUTH-TOKEN-GC | ⚪ | D18（已定，待实施）、U233 F6 | `u233-d18-token-gc-brief` |
+| AUTH-SESSION-EXPIRE | ⚪ | D20（已定，待实施）、U243/U230 | `u243-session-expiry-event-brief` |
+| AUTH-LDAP-ADMIT / AZ-LDAP-GROUP | 🟡/⚪ | D15（已定，组替换待实施；LGA-6 文档收口待办）、U212 | ldap-admission 6/6、准入设计 v3 |
+| AZ-ENUM-GUARD | 🟢 | D24（保留 404 静默）、U247 观察 | web-project-entry 10/10 |
+| PRJ-PROVISION-ERR | ⚪ | D22（已定，待实施）、U54-008 | `decisions-log-20261118` §3 |
+| FILE-DL-RPC / FILE-COPY-CAPTURE | ⚪/🟢 | D21（C9 缓登记；C6 已落地）、U66 第二口径结案 | `cloud-file-copy-audit` 8/8 |
 | FILE-DL-HARDEN | 🟢 | U66 二期（已关） | guard 7/7、enforcement 4/4 |
 | CLIENT-INSTALL-ONELINER | 🟢 | U275/U276/U281/U283/U285/U288（已关） | 运行期 14/14、自检 2/2 |
 | HOST-ONBOARD-REGISTER | 🟢 | U272（已关） | protocol-version 3/3 |
@@ -193,4 +193,4 @@
 2. **QA-E2E-SWEEP 复跑**（P0 门禁）：U310 产品改动后必须重跑全景，0 红才更新
 3. **WEB-NAV-ROUTING 收口**：U314 全量绿后转 100%
 4. **跨叶子维护批**（格式化债务，20+ e2e 文件 oxfmt-red）：单独提交，不改变语义
-5. **决策项**：按复盘文档 §4 的勾选清单，优先 D21/D22（P0 用户可见）→ D5–D10 → D18/D20 → D15/D24 → U278
+5. **决策项（已全部裁定，按减法顺序施工）**：D20+D18 → D22 → D15-1 → D21 C6 复核 + D11 需求文本 → D25 + D5–D10 检查单 → 文档收口批；详见 [`work-orders/decisions-log-20261118.md`](work-orders/decisions-log-20261118.md) §5
