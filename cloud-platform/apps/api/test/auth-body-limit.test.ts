@@ -2,6 +2,7 @@ import { after, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Agent, request as httpRequest } from 'node:http'
 import { createApp, type ApiHandle } from '../src/server.ts'
+import { startAuditWriter, type AuditWriter } from '../../audit-writer/src/writer.ts'
 
 /**
  * U249 P3-7: the unauthenticated login/refresh bodies were read without a cap.
@@ -22,6 +23,7 @@ const INTERNAL_TOKEN = 'u249-token'
 const PROJECT_ID = 'proj_payment'
 const HOST_ID = 'host_dev001'
 const apps: ApiHandle[] = []
+const writers: AuditWriter[] = []
 
 async function startApp(): Promise<{ app: ApiHandle; base: string }> {
   const app = createApp({
@@ -39,6 +41,28 @@ async function startApp(): Promise<{ app: ApiHandle; base: string }> {
 
 async function start(): Promise<string> {
   return (await startApp()).base
+}
+
+/** U254: the regression only exists behind the shared writer's 16 KiB event cap. */
+async function startAppWithWriter(): Promise<{
+  app: ApiHandle
+  base: string
+  writer: AuditWriter
+}> {
+  const writer = await startAuditWriter({ port: 0, internalToken: INTERNAL_TOKEN })
+  writers.push(writer)
+  const app = createApp({
+    port: 0,
+    accessTtlMs: 60_000,
+    refreshTtlMs: 60_000,
+    internalToken: INTERNAL_TOKEN,
+    cookieMode: 'auto',
+    publicOrigin: ORIGIN,
+    auditWriterUrl: `http://127.0.0.1:${writer.port}`
+  })
+  apps.push(app)
+  const port = await app.listen()
+  return { app, base: `http://127.0.0.1:${port}`, writer }
 }
 
 type Json = Record<string, unknown>
@@ -423,6 +447,7 @@ function agentPost(
 
 after(async () => {
   await Promise.all(apps.map((app) => app.close()))
+  await Promise.all(writers.map((writer) => writer.close()))
 })
 
 describe('U250 /v1/web/handoff body 上限（未认证）', () => {
@@ -1170,4 +1195,107 @@ describe('U251 P3 审计可用性检查先于 policy 读取', () => {
     assert.equal(errorCode((await res.json()) as Json), 'AUDIT_CHAIN_BROKEN')
     assert.equal(app.store.projects.get(PROJECT_ID)?.downloadPolicy, 'deny', 'nothing was written')
   }, { timeout: 5000 })
+})
+
+/**
+ * U254: the writer refuses any event over 16 KiB (`BATCH_INVALID`). These legal
+ * 16 KiB bodies had their oversized field copied verbatim into `metadata`, so
+ * the event was refused, the audit gate answered 503, and the operation never
+ * happened. The fields are now truncated at the audit landing point.
+ */
+describe('U254 超长 body 字段不得把审计事件撑过 writer 16 KiB', () => {
+  const MAINTENANCE_REASON_MAX_CHARS = 200
+  const PROJECT_KEY_MAX_CHARS = 64
+  // Just under the 16 KiB sensitive-write body cap; the audit envelope pushes
+  // the same value over the writer's per-event cap.
+  const OVERSIZED_FIELD_CHARS = SENSITIVE_WRITE_BODY_MAX_BYTES - 128
+
+  test('16 KiB maintenance reason → 2xx，维护生效且事件入链，reason 截断到 200', async () => {
+    const { app, base } = await startAppWithWriter()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u254-maintenance-admin')
+    const reason = 'r'.repeat(OVERSIZED_FIELD_CHARS)
+    const body = JSON.stringify({ enabled: true, reason })
+    assert.ok(Buffer.byteLength(body) < SENSITIVE_WRITE_BODY_MAX_BYTES, 'the body is legal')
+    assert.ok(
+      Buffer.byteLength(
+        JSON.stringify({
+          eventType: 'host_maintenance',
+          actor: 'admin',
+          targetType: 'host',
+          targetId: HOST_ID,
+          result: 'success',
+          traceId: '0'.repeat(36),
+          metadata: { enabled: true, reason }
+        })
+      ) > 16 * 1024,
+      'the untruncated event exceeds the writer cap'
+    )
+
+    const res = await authedJson(
+      base,
+      admin.token,
+      'POST',
+      `/v1/hosts/${HOST_ID}/maintenance`,
+      body
+    )
+    assert.equal(res.status, 200, await res.text())
+    assert.equal(app.store.hosts.get(HOST_ID)?.status, 'maintenance', '维护已生效')
+
+    const query = await authedJson(
+      base,
+      admin.token,
+      'GET',
+      '/v1/audit/events?eventType=host_maintenance&limit=200'
+    )
+    assert.equal(query.status, 200)
+    const events = (((await query.json()) as Json).events as Json[] | undefined) ?? []
+    assert.equal(events.length, 1, 'the maintenance event is in the chain')
+    const storedReason = (events[0]?.metadata as Json | undefined)?.reason
+    assert.equal(typeof storedReason, 'string')
+    assert.equal((storedReason as string).length, MAINTENANCE_REASON_MAX_CHARS)
+    assert.equal(storedReason, 'r'.repeat(MAINTENANCE_REASON_MAX_CHARS))
+  })
+
+  test('16 KiB 非法 project path → 400，拒绝事件入链，path 截断到 4096', async () => {
+    const { app, base } = await startAppWithWriter()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u254-path-admin')
+    const key = 'u254-path-oversize'
+    const path = pathOfLength(OVERSIZED_FIELD_CHARS)
+    const body = JSON.stringify({ hostId: HOST_ID, key, name: key, path, defaultBranch: 'main' })
+    assert.ok(Buffer.byteLength(body) < SENSITIVE_WRITE_BODY_MAX_BYTES, 'the body is legal')
+
+    const res = await authedJson(base, admin.token, 'POST', '/v1/projects', body)
+    const payload = (await res.json()) as Json
+    assert.equal(res.status, 400, JSON.stringify(payload))
+    assert.equal(errorCode(payload), 'PROJECT_PATH_INVALID')
+    assert.equal(app.store.projectsByKey.has(key), false, '拒绝时未创建项目')
+
+    const denied = await deniedAuditEvents(base, admin.token, 'admin')
+    const event = denied.find(
+      (entry) => (entry.metadata as Json | undefined)?.reason === 'PROJECT_PATH_INVALID'
+    )
+    assert.ok(event, 'the refused create is audited')
+    assert.equal(((event.metadata as Json).path as string).length, PROJECT_PATH_MAX_CHARS)
+  })
+
+  test('16 KiB 非法 project key → 400，拒绝事件入链，key 截断到 64', async () => {
+    const { app, base } = await startAppWithWriter()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u254-key-admin')
+    const key = 'k'.repeat(OVERSIZED_FIELD_CHARS)
+    const body = JSON.stringify({ hostId: HOST_ID, key })
+    assert.ok(Buffer.byteLength(body) < SENSITIVE_WRITE_BODY_MAX_BYTES, 'the body is legal')
+
+    const res = await authedJson(base, admin.token, 'POST', '/v1/projects', body)
+    const payload = (await res.json()) as Json
+    assert.equal(res.status, 400, JSON.stringify(payload))
+    assert.equal(errorCode(payload), 'PROJECT_KEY_INVALID')
+    assert.equal(app.store.projectsByKey.has(key), false, '拒绝时未创建项目')
+
+    const denied = await deniedAuditEvents(base, admin.token, 'admin')
+    const event = denied.find(
+      (entry) => (entry.metadata as Json | undefined)?.reason === 'PROJECT_KEY_INVALID'
+    )
+    assert.ok(event, 'the refused create is audited')
+    assert.equal(((event.metadata as Json).key as string).length, PROJECT_KEY_MAX_CHARS)
+  })
 })

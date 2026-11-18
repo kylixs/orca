@@ -4609,7 +4609,8 @@ export function createApp(config: ApiConfig): ApiHandle {
           targetId: null,
           result: 'denied',
           traceId,
-          metadata: { reason: keyVerdict.code, key: String(body.key ?? '') }
+          // U254: a 16 KiB key would push the event past the writer's 16 KiB cap.
+          metadata: { reason: keyVerdict.code, key: String(body.key ?? '').slice(0, 64) }
         })
         return error(res, 400, keyVerdict.code, keyVerdict.message, traceId)
       }
@@ -4649,7 +4650,8 @@ export function createApp(config: ApiConfig): ApiHandle {
           targetId: null,
           result: 'denied',
           traceId,
-          metadata: { reason: code, path: String(body.path ?? '') }
+          // U254: keep the event under the writer's 16 KiB cap; 4096 still locates it.
+          metadata: { reason: code, path: String(body.path ?? '').slice(0, PROJECT_PATH_MAX_CHARS) }
         })
         return error(res, 400, code, message, traceId)
       }
@@ -6078,7 +6080,8 @@ export function createApp(config: ApiConfig): ApiHandle {
               traceId,
               metadata: {
                 enabled: nextStatus === 'maintenance',
-                reason: nextReason,
+                // U254: a 16 KiB note would push the event past the writer's 16 KiB cap.
+                reason: nextReason.slice(0, 200),
                 ...(viaHostGrant ? { via: 'host_grant' } : {})
               }
             },

@@ -35,8 +35,8 @@ function json(res: ServerResponse, status: number, body: unknown): void {
 
 /**
  * U252: a legal batch holds up to MAX_BATCH events, and one file event can carry
- * 4096 B of metadata (~4.4 KiB serialized). 16 KiB per event bounds the parsed
- * batch at 16 MiB while covering every legal event shape.
+ * 4096 B of metadata (~4.4 KiB serialized). 16 KiB per event bounds the
+ * serialized request body at 16 MiB while covering every legal event shape.
  */
 const MAX_EVENT_BYTES = 16 * 1024
 const APPEND_BODY_MAX_BYTES = MAX_BATCH * MAX_EVENT_BYTES
