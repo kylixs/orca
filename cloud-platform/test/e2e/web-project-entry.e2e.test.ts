@@ -850,7 +850,7 @@ test(
   async () => {
     // U320: the host-supplied reason is untrusted text; every surface must let
     // it land as text, never as live markup (and never double-escape it).
-    const injected = 'CLONE_FAILED: <img src=x onerror=alert(1)>'
+    const injected = 'CLONE_FAILED: x"><img src=x onerror=alert(1)>'
     const host = await registerHost({
       name: 'dev-provision-xss',
       directAddr: '127.0.0.1:17007',
@@ -883,6 +883,10 @@ test(
       assert.ok(
         scope.querySelector('img') === null,
         `${label}: the payload never becomes DOM`
+      )
+      assert.ok(
+        inline.querySelector('img') === null,
+        `${label}: no markup inside the reason text node`
       )
       assert.equal(
         inline.textContent,
