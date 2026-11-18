@@ -171,9 +171,7 @@ test('fold operators and commas inside comments are not seen', () => {
   ].join('\n')
   const { violations, contexts } = scanSources([{ file: 'lex.ts', source: `${source}\n` }])
   assert.equal(violations.length, 4)
-  const signatures = violations.map((violation) =>
-    contexts.get('lex.ts').signatures.get(violation)
-  )
+  const signatures = violations.map((violation) => contexts.get('lex.ts').signatures.get(violation))
   assert.equal(signatures[0], signatures[1])
   assert.equal(signatures[2], signatures[3])
   assert.notEqual(signatures[0], signatures[2])
@@ -211,16 +209,85 @@ test('does not flag lookalikes of the newly recognized specials', () => {
     "test('b', fn, Infinity2)",
     "test('c', fn, myNaN)",
     "test('d', fn, Number.MAX_SAFE_INTEGER)",
-    "test('e', fn, globalThis.isNaN)"
+    "test('e', fn, globalThis.isNaN)",
+    "test('f', fn, Number['MAX_SAFE_INTEGER'])",
+    "test('g', fn, global.isNaN)",
+    "test('h', fn, Infinity2 satisfies number)"
   ].join('\n')
   assert.deepEqual(scanSource(`${source}\n`), [])
 })
 
-// U309 ②: `Infinity as number` is left as text (no evaluation, type kept in the key).
-test('asserted specials stay text-normalized in the baseline key', () => {
+// U311 ②: equivalent non-finite spellings collapse to one canonical special key, so a
+// pure spelling refactor at an already-ignored call site never reports a new violation.
+test('equivalent non-finite spellings share canonical special keys', () => {
   const key = (spelling) => callSignature('test', ["'a'", '() => {}', spelling])
-  assert.equal(key('Infinity as number'), "test('a',Infinityasnumber)")
-  assert.equal(key('Number.NaN'), "test('a',Number.NaN)")
+  assert.equal(key('Infinity'), "test('a',special:infinity)")
+  for (const spelling of [
+    'Number.POSITIVE_INFINITY',
+    'globalThis.Infinity',
+    'Infinity as number',
+    'Infinity satisfies number',
+    'Number . POSITIVE_INFINITY',
+    '(Number).POSITIVE_INFINITY',
+    'Number["POSITIVE_INFINITY"]',
+    'global.Infinity',
+    '+Infinity',
+    '((Infinity))'
+  ]) {
+    assert.equal(key(spelling), key('Infinity'), spelling)
+  }
+  assert.equal(key('Number.NEGATIVE_INFINITY'), key('-Infinity'))
+  assert.equal(key('-Number.NEGATIVE_INFINITY'), key('Infinity'))
+  for (const spelling of ['Number.NaN', 'globalThis.NaN', 'global.NaN', '-NaN', 'NaN as any']) {
+    assert.equal(key(spelling), key('NaN'), spelling)
+  }
+  assert.equal(key('NaN'), "test('a',special:nan)")
+  assert.notEqual(key('Infinity'), key('-Infinity'))
+})
+
+// U311 ①: a dot separated by spaces is still property access, and a generic call's `<`
+// is not an operator, so redundant parens fold across a unary sign on both forms.
+test('spaced property access and generic calls keep one key across unary parens', () => {
+  const key = (spelling) => callSignature('test', ["'a'", '() => {}', spelling])
+  assert.equal(key('-(obj. in)'), key('-obj. in'))
+  assert.equal(key('-(obj?.in)'), key('-obj?.in'))
+  assert.equal(key('-(f<T>())'), key('-f<T>()'))
+  assert.equal(key('-(f<T, U>())'), key('-f<T, U>()'))
+  // Real comparisons still split, so the conservative generic rule did not over-fold.
+  assert.notEqual(key('-(a < b)'), key('-a < b'))
+  assert.notEqual(key('-(a < b > (c))'), key('-a < b > (c)'))
+})
+
+// U311 ④: `?.` / `?.[` are member access, not the conditional operator.
+test('optional chaining is not treated as a binary operator', () => {
+  const key = (spelling) => callSignature('test', ["'a'", '() => {}', spelling])
+  assert.equal(key('-(a?.b)'), key('-a?.b'))
+  assert.equal(key('-(a?.[0])'), key('-a?.[0]'))
+  assert.notEqual(key('-(a ? b : c)'), key('-a ? b : c'))
+})
+
+// U311 ③: spaced dots, bracket/parenthesized object access and `satisfies` are all
+// ignored by node:test exactly like the bare spellings.
+test('flags spaced, bracketed, parenthesized and satisfies special spellings', () => {
+  const source = [
+    "test('a', fn, Number . POSITIVE_INFINITY)",
+    'test(\'b\', fn, Number["POSITIVE_INFINITY"])',
+    "test('c', fn, (Number).POSITIVE_INFINITY)",
+    "test('d', fn, global.Infinity)",
+    "test('e', fn, Infinity satisfies number)",
+    "test('f', fn, Number['NEGATIVE_INFINITY'])",
+    'test(\'g\', fn, (Number)["NaN"])',
+    'before(fn, globalThis . NaN)',
+    'after(fn, opts, Infinity satisfies number)'
+  ].join('\n')
+  assert.deepEqual(
+    scanSource(`${source}\n`),
+    Array.from({ length: 9 }, (_, index) => ({
+      file: '<memory>',
+      line: index + 1,
+      form: 'numeric-special'
+    }))
+  )
 })
 
 // U308 ④: boundary literal forms were only covered in test position before.

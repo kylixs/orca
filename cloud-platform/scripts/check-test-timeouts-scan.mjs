@@ -66,6 +66,15 @@ function displayPath(file, root = ROOT) {
 
 const blank = (char) => char !== '\n' && char !== '\r'
 
+// A keyword preceded (ignoring spaces) by `.`/`?.` is a property name. [U311]
+function isPropertyName(text, start) {
+  let cursor = start - 1
+  while (cursor >= 0 && /\s/.test(text[cursor])) {
+    cursor -= 1
+  }
+  return text[cursor] === '.'
+}
+
 // `/` opens a regex when the previous token cannot end an expression (else division).
 function isRegexStart(out, index) {
   let cursor = index - 1
@@ -85,7 +94,7 @@ function isRegexStart(out, index) {
       start -= 1
     }
     // A dotted name is a property, never a keyword (`obj.in / 2` is division). [U303]
-    if (out[start - 1] === '.') {
+    if (isPropertyName(out, start)) {
       return false
     }
     return REGEX_KEYWORDS.has(out.slice(start, cursor + 1).join(''))
@@ -238,6 +247,7 @@ function isAngleOpen(text, index) {
   return previous !== undefined && /[\w$>\]]/.test(previous)
 }
 
+// Ranges let callers recover raw text for positions that sanitize blanks (strings). [U311]
 function splitTopLevel(text, start, end) {
   const parts = []
   let depth = 0
@@ -254,13 +264,13 @@ function splitTopLevel(text, start, end) {
     } else if (char === '>' && angle > 0) {
       angle -= 1
     } else if (char === ',' && depth === 0 && angle === 0) {
-      parts.push(text.slice(partStart, index).trim())
+      parts.push({ start: partStart, end: index })
       partStart = index + 1
     }
   }
   const last = text.slice(partStart, end).trim()
   if (last.length > 0 || parts.length > 0) {
-    parts.push(last)
+    parts.push({ start: partStart, end })
   }
   return parts
 }
@@ -271,7 +281,9 @@ function objectHasTimeout(arg) {
     return false
   }
   const entries = splitTopLevel(text, 1, text.length - 1)
-  return entries.some((entry) => /^(?:timeout|['"]timeout['"])\s*:/.test(entry.trim()))
+  return entries.some(({ start, end }) =>
+    /^(?:timeout|['"]timeout['"])\s*:/.test(text.slice(start, end).trim())
+  )
 }
 
 function stripOuterParens(arg) {
@@ -290,6 +302,17 @@ function stripOuterParens(arg) {
 // count, so `-a` stays one operand while `-a + b` does not. [U309]
 const WORD_OPERATORS = new Set(['in', 'instanceof'])
 const SYMBOL_OPERATORS = new Set(['*', '/', '%', '?', '|', '&', '^', '=', '<', '>'])
+
+// Conservative generic call: `f<T>()` / `f<T, U>()` only — identifier before `<`,
+// simple identifier type arguments, then `(`. Richer type syntax stays an operator:
+// an extra key split is safe, while folding a real operator comparison is not. [U311]
+function genericCallEnd(text, index) {
+  if (!/[\w$>\]]/.test(text[index - 1] ?? '')) {
+    return -1
+  }
+  const match = /^<\s*[\w$]+(?:\s*,\s*[\w$]+)*\s*>\s*\(/.exec(text.slice(index))
+  return match ? index + match[0].indexOf('>') : -1
+}
 
 function hasTopLevelOperator(text) {
   let depth = 0
@@ -316,6 +339,17 @@ function hasTopLevelOperator(text) {
         }
         continue
       }
+      // `?.` / `?.[` / `?.(` are member access, not the conditional operator.
+      if (char === '?' && text[index + 1] === '.') {
+        continue
+      }
+      if (char === '<') {
+        const genericEnd = genericCallEnd(text, index)
+        if (genericEnd !== -1) {
+          index = genericEnd
+          continue
+        }
+      }
       if (SYMBOL_OPERATORS.has(char)) {
         return true
       }
@@ -324,8 +358,8 @@ function hasTopLevelOperator(text) {
         while (end < text.length && /[\w$]/.test(text[end])) {
           end += 1
         }
-        // A dotted name is a property (`obj.in`), never the `in` operator.
-        if (text[index - 1] !== '.' && WORD_OPERATORS.has(text.slice(index, end))) {
+        // A dotted name is a property (`obj. in`), never the `in` operator. [U311]
+        if (!isPropertyName(text, index) && WORD_OPERATORS.has(text.slice(index, end))) {
           return true
         }
         index = end - 1
@@ -426,20 +460,47 @@ function canonicalNumericLiteral(body, negative) {
   }
 }
 
-// Member-access spellings Node ignores just like the bare identifiers. [U309]
-const SPECIAL_NUMERIC_IDENTIFIER =
-  /^(?:Infinity|NaN|Number\.(?:POSITIVE_INFINITY|NEGATIVE_INFINITY|NaN)|globalThis\.(?:Infinity|NaN))$/
-// A TS `as` assertion does not change the value; the type stays in the text key. [U309]
-const TS_AS_ASSERTION = /\s+as\s+\S[\s\S]*$/
+// U311 ②: equivalent non-finite spellings share one canonical key, mirroring the U306
+// invariant that a pure spelling refactor never reports a new violation.
+const SPECIAL_OBJECT = String.raw`(?:Number|globalThis|global)`
+const SPECIAL_MEMBERS = new Map([
+  ['Infinity', 'special:infinity'],
+  ['POSITIVE_INFINITY', 'special:infinity'],
+  ['NEGATIVE_INFINITY', 'special:-infinity'],
+  ['NaN', 'special:nan']
+])
+const SPECIAL_ACCESS = new RegExp(
+  String.raw`^(?:(?:${SPECIAL_OBJECT}\s*\.|\(\s*${SPECIAL_OBJECT}\s*\)\s*\.)\s*)?(Infinity|NaN|POSITIVE_INFINITY|NEGATIVE_INFINITY)$`
+)
+const SPECIAL_BRACKET = new RegExp(
+  String.raw`^(?:${SPECIAL_OBJECT}\s*|\(\s*${SPECIAL_OBJECT}\s*\)\s*)\[\s*(['"])(Infinity|NaN|POSITIVE_INFINITY|NEGATIVE_INFINITY)\1\s*\]$`
+)
+// `as`/`satisfies` only annotate the type; the runtime value is unchanged. [U309/U311]
+const TS_TYPE_CLAUSE = /\s+(?:as|satisfies)\s+\S[\s\S]*$/
 
-// `Infinity`, `-Infinity`, `NaN` and their member-access spellings are silently
-// ignored by node:test too, but they are identifiers rather than numeric literals. [U308]
-function isSpecialNumericTimeout(arg) {
-  const body = peelNumericLiteral(arg).body
-  if (SPECIAL_NUMERIC_IDENTIFIER.test(body)) {
-    return true
-  }
-  return SPECIAL_NUMERIC_IDENTIFIER.test(body.replace(TS_AS_ASSERTION, '').trim())
+const applySpecialSign = (key, negative) =>
+  key === null || !negative || key === 'special:nan' ? key : flipSpecialSign(key)
+
+function flipSpecialSign(key) {
+  return key === 'special:infinity' ? 'special:-infinity' : 'special:infinity'
+}
+
+function canonicalSpecialBody(body) {
+  const text = body.trim().replace(TS_TYPE_CLAUSE, '').trim()
+  const member = SPECIAL_ACCESS.exec(text) ?? SPECIAL_BRACKET.exec(text)
+  return member ? SPECIAL_MEMBERS.get(member.at(-1)) : null
+}
+
+function canonicalSpecialKey(arg) {
+  const { negative, body } = peelNumericLiteral(arg)
+  return applySpecialSign(canonicalSpecialBody(body), negative)
+}
+
+// Raw text keeps bracketed string properties visible; the clean fallback covers a
+// comment inside the clause, which raw text would not parse. [U311]
+function pickSpecialArg(cleanArg, rawArg) {
+  const rawKey = canonicalSpecialKey(rawArg)
+  return rawKey !== null ? rawArg : canonicalSpecialKey(cleanArg) !== null ? cleanArg : null
 }
 
 function isNumericLiteral(arg) {
@@ -498,23 +559,27 @@ function scanSourceInternal(source, { file = '<memory>' } = {}) {
     if (closeIndex === -1) {
       continue
     }
-    const args = splitTopLevel(clean, openIndex + 1, closeIndex)
+    const parts = splitTopLevel(clean, openIndex + 1, closeIndex)
+    const args = parts.map((part) => clean.slice(part.start, part.end).trim())
+    const rawArgs = parts.map((part) => source.slice(part.start, part.end).trim())
+    // sanitize blanks string bodies, so recover raw text to see `Number["X"]`. [U311]
+    const specialArgs = parts.map((_, index) => pickSpecialArg(args[index], rawArgs[index]))
+    const signatureArgs = args.map((arg, index) => specialArgs[index] ?? arg)
     const line = lineAt(lineStarts, match.index)
     const push = (form) => {
       const violation = { file, line, form }
-      signatures.set(violation, callSignature(name, args))
+      signatures.set(violation, callSignature(name, signatureArgs))
       violations.push(violation)
     }
     if (name === 'test' || name === 'it') {
       if (args.length < 3) {
         continue
       }
-      const third = args[2]
-      if (isSpecialNumericTimeout(third)) {
+      if (specialArgs[2] !== null) {
         push(FORMS.NUMERIC_SPECIAL)
-      } else if (isNumericTimeout(third)) {
+      } else if (isNumericTimeout(args[2])) {
         push(FORMS.TEST_NUMERIC_THIRD)
-      } else if (objectHasTimeout(third)) {
+      } else if (objectHasTimeout(args[2])) {
         push(FORMS.TEST_OBJECT_THIRD)
       }
       continue
@@ -522,11 +587,11 @@ function scanSourceInternal(source, { file = '<memory>' } = {}) {
     if (args.length < 2) {
       continue
     }
-    if (isSpecialNumericTimeout(args[1])) {
+    if (specialArgs[1] !== null) {
       push(FORMS.NUMERIC_SPECIAL)
     } else if (isNumericTimeout(args[1])) {
       push(FORMS.HOOK_NUMERIC_SECOND)
-    } else if (args.length >= 3 && isSpecialNumericTimeout(args[2])) {
+    } else if (args.length >= 3 && specialArgs[2] !== null) {
       push(FORMS.NUMERIC_SPECIAL)
     } else if (args.length >= 3 && isNumericTimeout(args[2])) {
       // Node 24 reads hook options from arg 2, so a numeric third arg is dropped.
@@ -548,6 +613,10 @@ function normalizeNumericArg(arg) {
   const { negative, body } = peelNumericLiteral(arg)
   if (NUMERIC_LITERAL.test(body)) {
     return canonicalNumericLiteral(body, negative)
+  }
+  const special = canonicalSpecialBody(body)
+  if (special !== null) {
+    return applySpecialSign(special, negative)
   }
   // Expressions stay textual: fold redundant outer parens and canonicalize each
   // numeric token; never evaluate the expression (a scanner must not execute input,
