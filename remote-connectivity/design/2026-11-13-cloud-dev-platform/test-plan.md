@@ -198,7 +198,7 @@ pnpm run check:code-quality:changed
 
 ### 7.1 认证基线（24 文件 / 266 测试，可复现清单）
 
-历史台账只写「24 套件 / 266 tests」，无法复核文件构成；2026-11-18 12:4x 由 `/tmp/auth-baseline-3.log` 的 49 个顶层 suite 反推，49/49 精确对应下列 24 个文件（当前 HEAD 复跑 **266/266，0 fail / 0 skip**，`/tmp/auth-baseline-4.log`，206s）。
+历史台账只写「24 套件 / 266 tests」，无法复核文件构成；2026-11-18 12:4x 由 `/tmp/auth-baseline-3.log` 的 49 个顶层 suite 反推，49/49 精确对应下列 24 个文件（当前 HEAD 复跑 **267/267，0 fail / 0 skip**，`/tmp/auth-baseline-5.log`，206s；较 266 多出的 1 例为 U245-A「1 leader + 3 followers 并发撤销只审计一次」）。
 
 ```bash
 cd cloud-platform && ORCA_BACKGROUND_LAUNCH=1 node --test --test-concurrency=2 \
