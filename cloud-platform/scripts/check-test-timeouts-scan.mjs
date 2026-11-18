@@ -22,7 +22,8 @@ import {
   ROOT,
   SCAN_EXCLUSIONS,
   SCAN_SCOPE,
-  collectScopeFiles
+  collectScopeFiles,
+  importsNodeTest
 } from './check-test-timeouts-scope.mjs'
 
 export {
@@ -32,7 +33,8 @@ export {
   ROOT,
   SCAN_EXCLUSIONS,
   SCAN_SCOPE,
-  collectScopeFiles
+  collectScopeFiles,
+  importsNodeTest
 }
 
 export const PLATFORM_ROOT = path.join(ROOT, 'cloud-platform')

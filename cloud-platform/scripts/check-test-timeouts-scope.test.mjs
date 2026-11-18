@@ -11,7 +11,8 @@ import {
   NODE_TEST_IMPORT_SOURCE,
   SCAN_EXCLUSIONS,
   collectScopeFiles,
-  headScopeFiles
+  headScopeFiles,
+  importsNodeTest
 } from './check-test-timeouts.mjs'
 
 const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))
@@ -170,9 +171,10 @@ test('worktree and HEAD import patterns share one source', () => {
   assert.ok(!NODE_TEST_IMPORT.test("import test from 'node:test-extra'"))
 })
 
-// U321 ②: side-effect and dynamic imports join the shared pattern. The new
-// alternatives are anchored to a statement/expression boundary so text mentions in
-// strings and comments, and lookalike module ids, stay out of scope.
+// U321 ② / U324: side-effect imports and the dynamic prefilter share one pattern.
+// The raw dynamic alternative is deliberately loose about the preceding token, so
+// string/comment negatives are pinned through importsNodeTest(), which blanks
+// comments and literals before deciding whether the keyword is code.
 test('import pattern covers side-effect and dynamic node:test forms', () => {
   for (const source of [
     "import 'node:test'",
@@ -185,33 +187,101 @@ test('import pattern covers side-effect and dynamic node:test forms', () => {
     "const pending = import('node:test')"
   ]) {
     assert.ok(NODE_TEST_IMPORT.test(source), source)
+    assert.ok(importsNodeTest(source), source)
   }
   for (const source of [
-    "const label = \"import 'node:test'\"",
-    "const label = \"import('node:test')\"",
-    "// import 'node:test'",
-    "// import('node:test')",
-    "// await import('node:test')",
-    "/* import 'node:test' */",
-    "/* import('node:test') */",
     "import 'node:other'",
     "import('node:other')",
     "import test from 'node:test-extra'"
   ]) {
     assert.ok(!NODE_TEST_IMPORT.test(source), source)
+    assert.ok(!importsNodeTest(source), source)
   }
 })
 
-// U321 ②: end-to-end scope behavior for the new forms. A real side-effect/dynamic
-// importer is scanned; string/comment mentions and other modules are not.
+// U324 ①: the dynamic import position set covers expression contexts that the old
+// line-start/`(`/`=`/`,` anchors missed.
+test('dynamic imports in return/void/arrow/??/array/object positions count', () => {
+  for (const source of [
+    "return import('node:test')",
+    "void import('node:test')",
+    "const load = () => import('node:test')",
+    "const mod = cached ?? import('node:test')",
+    "const list = [import('node:test')]",
+    "const map = { test: import('node:test') }",
+    "const nested = fn(import('node:test'))"
+  ]) {
+    assert.ok(importsNodeTest(source), source)
+  }
+})
+
+// U324 ②: the same spelling inside comments or string/template/regex literals is
+// text, not code, and must not pull a file into scope. A line comment is covered by
+// the same code-view check (no line-start-anchor exception is needed).
+test('dynamic import text inside comments and literals is not code', () => {
+  for (const source of [
+    "// x = import('node:test')",
+    "/* x = import('node:test') */",
+    "const label = \"x = import('node:test')\"",
+    "const label = 'return import(\"node:test\")'",
+    "const template = `x = import('node:test')`",
+    "const pattern = /x = import('node:test')/"
+  ]) {
+    assert.ok(!importsNodeTest(source), source)
+  }
+})
+
+// U324: end-to-end scope behavior for the expanded positions. Real dynamic/side-effect
+// importers are scanned; comment/string mentions and other modules are not.
 test('scope recognizes side-effect and dynamic node:test imports only as code', () => {
   withTempRoot((root) => {
     writeFixture(root, 'scripts/side-effect.test.mjs', "import 'node:test'\n")
     writeFixture(root, 'scripts/dynamic.test.mjs', "const { test } = await import('node:test')\n")
-    writeFixture(root, 'scripts/string.test.mjs', 'const label = "import \'node:test\'"\n')
-    writeFixture(root, 'scripts/comment.test.mjs', "// import 'node:test'\n")
+    writeFixture(root, 'scripts/return.test.mjs', "return import('node:test')\n")
+    writeFixture(root, 'scripts/void.test.mjs', "void import('node:test')\n")
+    writeFixture(root, 'scripts/arrow.test.mjs', "const load = () => import('node:test')\n")
+    writeFixture(root, 'scripts/nullish.test.mjs', "const mod = cache ?? import('node:test')\n")
+    writeFixture(root, 'scripts/array.test.mjs', "const list = [import('node:test')]\n")
+    writeFixture(root, 'scripts/object.test.mjs', "const map = { test: import('node:test') }\n")
+    writeFixture(root, 'scripts/string.test.mjs', 'const label = "x = import(\'node:test\')"\n')
+    writeFixture(root, 'scripts/comment.test.mjs', "// x = import('node:test')\n")
+    writeFixture(root, 'scripts/block-comment.test.mjs', "/* x = import('node:test') */\n")
     writeFixture(root, 'scripts/other.test.mjs', "import 'node:other'\n")
     const files = collectScopeFiles({ root }).map((file) => toRelative(root, file))
-    assert.deepEqual(files.sort(), ['scripts/dynamic.test.mjs', 'scripts/side-effect.test.mjs'])
+    assert.deepEqual(files.sort(), [
+      'scripts/array.test.mjs',
+      'scripts/arrow.test.mjs',
+      'scripts/dynamic.test.mjs',
+      'scripts/nullish.test.mjs',
+      'scripts/object.test.mjs',
+      'scripts/return.test.mjs',
+      'scripts/side-effect.test.mjs',
+      'scripts/void.test.mjs'
+    ])
+  })
+})
+
+// U324: HEAD mode runs git grep as a text prefilter, then re-verifies each candidate
+// with the same code-view check, so a comment-only mention cannot enter the scope.
+test('headScopeFiles applies the code-only filter to committed content', () => {
+  withTempRoot((root) => {
+    writeFixture(root, 'code.test.mjs', "return import('node:test')\n")
+    writeFixture(root, 'comment.test.mjs', "// x = import('node:test')\n")
+    writeFixture(root, 'string.test.mjs', 'const label = "x = import(\'node:test\')"\n')
+    const git = (args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' })
+    git(['init', '-q'])
+    git(['add', '.'])
+    git([
+      '-c',
+      'user.name=t',
+      '-c',
+      'user.email=t@example.com',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '-qm',
+      'init'
+    ])
+    assert.deepEqual(headScopeFiles({ root }), ['code.test.mjs'])
   })
 })

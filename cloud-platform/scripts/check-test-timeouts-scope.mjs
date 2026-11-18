@@ -8,6 +8,7 @@
 import { existsSync, globSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { sanitize } from './check-test-timeouts-lexer.mjs'
 
 export const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)))
 
@@ -24,21 +25,54 @@ export const SOURCE_EXTENSIONS = new Set([
 // Matches the import forms the audit counted (default/named/namespace import and
 // CommonJS require) plus U321 side-effect (`import 'node:test'`) and dynamic
 // (`import('node:test')`) imports. `node:test` only.
-// U321 ②: the added forms are anchored to a statement boundary (`^` for side-effect
-// imports and standalone dynamic calls, a code delimiter for expressions such as
-// `= await import(...)`), so a string or comment that merely mentions the syntax
-// cannot pull a file into scope. Only POSIX ERE constructs are used (no lookbehind,
-// no non-capturing groups) because `git grep -E` evaluates the same text.
+// U324 ①: the dynamic alternative accepts any non-identifier character before
+// `import` (or the line start), so expression positions such as `return import(...)`,
+// `void import(...)`, `() => import(...)`, `?? import(...)`, and array/object literal
+// elements are all covered. That looseness is intentional: the raw pattern is an
+// enumeration prefilter (also used by `git grep -E`), and `importsNodeTest()` keeps a
+// match only when the keyword itself survives comment/string blanking. The
+// side-effect form keeps its line-start anchor. Only POSIX ERE constructs are used
+// (no lookbehind, no non-capturing groups) because `git grep -E` evaluates the same
+// text.
 // U317 ⑤: one authored pattern feeds both scopes. POSIX ERE (`git grep -E`) spells
 // whitespace `[[:space:]]`, while JS RegExp spells it `\s`; deriving both from the
 // same text keeps worktree and HEAD enumeration from drifting apart.
-export const NODE_TEST_IMPORT_SOURCE = String.raw`(from[[:space:]]*['"]node:test['"]|require[[:space:]]*\([[:space:]]*['"]node:test['"][[:space:]]*\)|^[[:space:]]*import[[:space:]]*['"]node:test['"]|(^[[:space:]]*|[=(,][[:space:]]*)(await[[:space:]]+)?import[[:space:]]*\([[:space:]]*['"]node:test['"][[:space:]]*\))`
+export const NODE_TEST_IMPORT_SOURCE = String.raw`(from[[:space:]]*['"]node:test['"]|require[[:space:]]*\([[:space:]]*['"]node:test['"][[:space:]]*\)|^[[:space:]]*import[[:space:]]*['"]node:test['"]|(^|[^A-Za-z0-9_$])import[[:space:]]*\([[:space:]]*['"]node:test['"][[:space:]]*\))`
 export const NODE_TEST_IMPORT_GREP = NODE_TEST_IMPORT_SOURCE
 // POSIX ERE `^` anchors to a physical line; the JS equivalent needs the `m` flag.
 export const NODE_TEST_IMPORT = new RegExp(
   NODE_TEST_IMPORT_SOURCE.replaceAll('[[:space:]]', String.raw`\s`),
   'm'
 )
+
+const NODE_TEST_IMPORT_GLOBAL = new RegExp(NODE_TEST_IMPORT.source, `${NODE_TEST_IMPORT.flags}g`)
+const IMPORT_KEYWORDS = ['import', 'require', 'from']
+
+// U324: the loose dynamic prefilter also matches syntax text inside comments and
+// string/template/regex literals. `sanitize()` blanks those regions with spaces at
+// the same offsets, so a match counts only when the matched keyword survives there
+// as code (a real `import('node:test')` keeps `import` while its argument string is
+// blanked; a comment or quoted mention loses the keyword too). Over-inclusion would
+// only add a file to the scan, but the goal is an exact code-only scope.
+export function importsNodeTest(source) {
+  const code = sanitize(source)
+  NODE_TEST_IMPORT_GLOBAL.lastIndex = 0
+  let match
+  while ((match = NODE_TEST_IMPORT_GLOBAL.exec(source)) !== null) {
+    for (const keyword of IMPORT_KEYWORDS) {
+      const offset = match[0].indexOf(keyword)
+      if (offset === -1) {
+        continue
+      }
+      const at = match.index + offset
+      if (code.slice(at, at + keyword.length) === keyword) {
+        return true
+      }
+      break
+    }
+  }
+  return false
+}
 
 export const SCAN_SCOPE = [
   '**/*.{ts,tsx,mts,cts,mjs,cjs,js} importing node:test',
@@ -208,7 +242,7 @@ export function collectScopeFiles({ root = ROOT, exclusions = SCAN_EXCLUSIONS } 
       } catch {
         return
       }
-      if (NODE_TEST_IMPORT.test(source)) {
+      if (importsNodeTest(source)) {
         files.add(absolute)
       }
     },

@@ -14,6 +14,7 @@ export {
   SCAN_EXCLUSIONS,
   SCAN_SCOPE,
   collectScopeFiles,
+  importsNodeTest,
   scanSource,
   scanTestTimeouts
 } from './check-test-timeouts-scan.mjs'

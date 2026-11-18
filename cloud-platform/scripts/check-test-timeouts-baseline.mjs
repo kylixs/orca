@@ -14,6 +14,7 @@ import {
   SCAN_EXCLUSIONS,
   SOURCE_EXTENSIONS,
   committedRunnerTargets,
+  importsNodeTest,
   isExcluded,
   runnerTokens
 } from './check-test-timeouts-scope.mjs'
@@ -35,9 +36,11 @@ function git(args, root) {
   return execFileSync('git', args, { cwd: root, encoding: 'utf8', maxBuffer: GIT_MAX_BUFFER })
 }
 
-// U315: exact import/require pattern, evaluated by git grep against committed
-// content. It cannot match helper comments such as "node:test ignores ...". U317 ⑤:
-// the pattern is exported by the scope module, shared with the worktree RegExp.
+// U315: import/require pattern, evaluated by git grep against committed content.
+// U324: the pattern is a loose enumeration prefilter (it can also match mentions
+// inside strings/comments); every candidate is re-verified with `importsNodeTest()`
+// against its committed content, so HEAD scope and worktree scope agree. U317 ⑤: the
+// pattern is exported by the scope module, shared with the worktree RegExp.
 const SOURCE_PATHSPECS = [...SOURCE_EXTENSIONS].map((extension) => `*${extension}`)
 
 function gitOrEmpty(args, root) {
@@ -84,7 +87,18 @@ export function headScopeFiles({ root = ROOT, ref = 'HEAD', exclusions = SCAN_EX
     }
     const prefix = `${ref}:`
     const file = entry.startsWith(prefix) ? entry.slice(prefix.length) : entry
-    if (listedSet.has(file) && !isExcluded(file, exclusions)) {
+    if (!listedSet.has(file) || isExcluded(file, exclusions)) {
+      continue
+    }
+    // U324: git grep prefiltered by text; comments and string literals can contain
+    // the same spelling, so confirm the keyword is code in committed content.
+    let source
+    try {
+      source = git(['show', `${ref}:${file}`], root)
+    } catch {
+      continue
+    }
+    if (importsNodeTest(source)) {
       files.add(file)
     }
   }
