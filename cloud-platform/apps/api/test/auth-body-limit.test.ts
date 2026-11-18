@@ -17,6 +17,7 @@ const AUTH_BODY_MAX_BYTES = 16 * 1024
 const INTERNAL_BODY_MAX_BYTES = 8 * 1024
 const SENSITIVE_WRITE_BODY_MAX_BYTES = 16 * 1024
 const REGISTER_BODY_MAX_BYTES = 64 * 1024
+const FORCE_OFFLINE_BODY_MAX_BYTES = 4 * 1024
 const DENIED_AUDIT_BODY_MAX_BYTES = 4 * 1024
 const HEARTBEAT_BODY_MAX_BYTES = 1024 * 1024
 const FILE_EVENT_METADATA_LIMIT = 4096
@@ -81,6 +82,14 @@ function login(base: string, body: string, headers: Record<string, string> = {})
 
 function refresh(base: string, body: string, headers: Record<string, string> = {}) {
   return fetch(`${base}/v1/auth/refresh`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...headers },
+    body
+  })
+}
+
+function logout(base: string, body: string, headers: Record<string, string> = {}) {
+  return fetch(`${base}/v1/auth/logout`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...headers },
     body
@@ -171,6 +180,26 @@ function registerBodyOfBytes(name: string, totalBytes: number): string {
   const suffix = '"}'
   const pad = 'x'.repeat(totalBytes - Buffer.byteLength(prefix) - Buffer.byteLength(suffix))
   const body = `${prefix}${pad}${suffix}`
+  assert.equal(Buffer.byteLength(body), totalBytes, 'the fixture must land on the exact boundary')
+  return body
+}
+
+/**
+ * U259 §1: a JSON body of an exact byte length. `padField` names the growable
+ * field, so endpoints that reject unknown keys (internal file events) can still
+ * be pinned at the boundary.
+ */
+function exactJsonBytes(
+  fields: Record<string, unknown>,
+  totalBytes: number,
+  padField = 'pad'
+): string {
+  const overhead = Buffer.byteLength(JSON.stringify({ ...fields, [padField]: '' }))
+  assert.ok(
+    totalBytes >= overhead,
+    `the fixture base is ${overhead} B, too large for the ${totalBytes} B boundary`
+  )
+  const body = JSON.stringify({ ...fields, [padField]: 'x'.repeat(totalBytes - overhead) })
   assert.equal(Buffer.byteLength(body), totalBytes, 'the fixture must land on the exact boundary')
   return body
 }
@@ -2640,5 +2669,455 @@ describe('U261 directAddrs 与项目 downloadPolicy 入口校验', () => {
       'deny',
       'an absent downloadPolicy keeps the deny default'
     )
+  })
+})
+
+describe('U259 §1 各档精确边界', () => {
+  test('B1 AUTH login 16 KiB：16,384 → 200 建会话；16,385 → 413 无会话、无成功审计', async () => {
+    const { app, base } = await startApp()
+    const accepted = await login(
+      base,
+      exactJsonBytes(
+        { username: 'admin', password: 'Adm1n!', deviceName: 'u259-b1-accepted' },
+        AUTH_BODY_MAX_BYTES
+      )
+    )
+    assert.equal(accepted.status, 200, await accepted.text())
+    assert.equal(app.store.sessions.size, 1, 'the boundary request signs in once')
+
+    const refusedName = 'u259-b1-refused'
+    const refused = await login(
+      base,
+      exactJsonBytes(
+        { username: 'admin', password: 'Adm1n!', deviceName: refusedName },
+        AUTH_BODY_MAX_BYTES + 1
+      )
+    )
+    assert.equal(refused.status, 413)
+    assert.equal(errorCode((await refused.json()) as Json), 'PAYLOAD_TOO_LARGE')
+    assert.equal(refused.headers.get('cache-control'), 'no-store')
+    assert.equal(refused.headers.get('connection'), 'close')
+    assert.equal(app.store.sessions.size, 1, 'the refused login creates no session')
+    const successes = app.store.audit.filter(
+      (event) => event.eventType === 'login' && event.result === 'success'
+    )
+    assert.equal(successes.length, 1, 'only the accepted login is audited')
+  })
+
+  test('B2 AUTH refresh body 16 KiB：16,384 → 200 轮换；16,385 → 413 不消耗 token', async () => {
+    const base = await start()
+    const first = (await (
+      await login(
+        base,
+        JSON.stringify({ username: 'admin', password: 'Adm1n!', deviceName: 'u259-b2-accepted' })
+      )
+    ).json()) as Json
+    const accepted = await refresh(
+      base,
+      exactJsonBytes({ refreshToken: first.refreshToken }, AUTH_BODY_MAX_BYTES)
+    )
+    const rotated = (await accepted.json()) as Json
+    assert.equal(accepted.status, 200, JSON.stringify(rotated))
+    assert.equal(typeof rotated.refreshToken, 'string')
+    assert.notEqual(rotated.refreshToken, first.refreshToken, 'the boundary refresh rotates once')
+
+    const second = (await (
+      await login(
+        base,
+        JSON.stringify({ username: 'admin', password: 'Adm1n!', deviceName: 'u259-b2-refused' })
+      )
+    ).json()) as Json
+    const token = String(second.refreshToken)
+    const refused = await refresh(
+      base,
+      exactJsonBytes({ refreshToken: token }, AUTH_BODY_MAX_BYTES + 1)
+    )
+    assert.equal(refused.status, 413)
+    assert.equal(errorCode((await refused.json()) as Json), 'PAYLOAD_TOO_LARGE')
+    assert.equal(refused.headers.get('cache-control'), 'no-store')
+    assert.equal(refused.headers.get('connection'), 'close')
+
+    const again = await refresh(base, JSON.stringify({ refreshToken: token }))
+    assert.equal(again.status, 200, 'the refused refresh neither rotated nor consumed the token')
+  })
+
+  test('B3 LOGOUT 16 KiB：16,384 → 撤销；16,385 → 200 空 body + 清除头，token 仍可用', async () => {
+    const base = await start()
+    const acceptedToken = String(
+      (
+        (await (
+          await login(
+            base,
+            JSON.stringify({
+              username: 'admin',
+              password: 'Adm1n!',
+              deviceName: 'u259-b3-accepted'
+            })
+          )
+        ).json()) as Json
+      ).refreshToken
+    )
+    const accepted = await logout(
+      base,
+      exactJsonBytes({ refreshToken: acceptedToken }, AUTH_BODY_MAX_BYTES)
+    )
+    assert.equal(accepted.status, 200, await accepted.text())
+    const cleared = accepted.headers.getSetCookie()
+    assert.ok(
+      cleared.some((entry) => entry.startsWith('orca_refresh=;') && entry.includes('Max-Age=0')),
+      'logout still clears the browser Cookie'
+    )
+    const revoked = await refresh(base, JSON.stringify({ refreshToken: acceptedToken }))
+    assert.equal(revoked.status, 401, 'the boundary logout revokes the session')
+
+    const keptToken = String(
+      (
+        (await (
+          await login(
+            base,
+            JSON.stringify({ username: 'admin', password: 'Adm1n!', deviceName: 'u259-b3-refused' })
+          )
+        ).json()) as Json
+      ).refreshToken
+    )
+    const refused = await logout(
+      base,
+      exactJsonBytes({ refreshToken: keptToken }, AUTH_BODY_MAX_BYTES + 1)
+    )
+    assert.equal(refused.status, 200, 'logout keeps its empty-body 200')
+    assert.equal(refused.headers.get('connection'), 'close')
+    assert.ok(
+      refused.headers
+        .getSetCookie()
+        .some((entry) => entry.startsWith('orca_refresh=;') && entry.includes('Max-Age=0')),
+      'the oversized logout still clears the Cookie'
+    )
+    const stillValid = await refresh(base, JSON.stringify({ refreshToken: keptToken }))
+    assert.equal(stillValid.status, 200, 'the discarded body did not revoke the session')
+  })
+
+  test('B4 INTERNAL 8 KiB：relay 与 file-events 各 8,192 → 成功；8,193 → 400 整包丢弃', async () => {
+    const base = await start()
+    const relayFields = { id: 'u259-relay', port: 28451, installNonce: 'u259-nonce' }
+    const relayOk = await postInternal(
+      base,
+      '/v1/internal/relay-endpoint',
+      exactJsonBytes(relayFields, INTERNAL_BODY_MAX_BYTES)
+    )
+    assert.equal(relayOk.status, 200, await relayOk.text())
+
+    const relayOver = await postInternal(
+      base,
+      '/v1/internal/relay-endpoint',
+      exactJsonBytes(relayFields, INTERNAL_BODY_MAX_BYTES + 1)
+    )
+    assert.equal(relayOver.status, 400)
+    assert.equal(errorCode((await relayOver.json()) as Json), 'RELAY_PORT_INVALID')
+    assert.equal(relayOver.headers.get('connection'), 'close')
+
+    const eventFields = { eventType: 'file_download', result: 'success' }
+    const eventOk = await postInternal(
+      base,
+      '/v1/internal/audit/file-events',
+      exactJsonBytes(eventFields, INTERNAL_BODY_MAX_BYTES, 'subject')
+    )
+    assert.equal(eventOk.status, 200, await eventOk.text())
+
+    const eventOver = await postInternal(
+      base,
+      '/v1/internal/audit/file-events',
+      exactJsonBytes(eventFields, INTERNAL_BODY_MAX_BYTES + 1, 'subject')
+    )
+    assert.equal(eventOver.status, 400)
+    assert.equal(errorCode((await eventOver.json()) as Json), 'INVALID_FILE_EVENT')
+    assert.equal(eventOver.headers.get('connection'), 'close')
+  })
+
+  test('B5 FORCE_OFFLINE 4 KiB：4,096 → reason 保留；4,097 → 200 空 body', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u259-b5-admin')
+
+    const acceptedTarget = await loginAs(base, 'zhangsan', 'Passw0rd!', 'u259-b5-accepted')
+    const accepted = await authedJson(
+      base,
+      admin.token,
+      'POST',
+      `/v1/users/${acceptedTarget.userId}/sessions/revoke`,
+      exactJsonBytes({ reason: 'r'.repeat(3600) }, FORCE_OFFLINE_BODY_MAX_BYTES)
+    )
+    const acceptedPayload = (await accepted.json()) as Json
+    assert.equal(accepted.status, 200, JSON.stringify(acceptedPayload))
+    assert.equal(acceptedPayload.revokedSessions, 1)
+
+    const refusedTarget = await loginAs(base, 'zhangsan', 'Passw0rd!', 'u259-b5-refused')
+    const refused = await authedJson(
+      base,
+      admin.token,
+      'POST',
+      `/v1/users/${refusedTarget.userId}/sessions/revoke`,
+      exactJsonBytes({ reason: 'r'.repeat(3600) }, FORCE_OFFLINE_BODY_MAX_BYTES + 1)
+    )
+    const refusedPayload = (await refused.json()) as Json
+    assert.equal(refused.status, 200, JSON.stringify(refusedPayload))
+    assert.equal(refusedPayload.revokedSessions, 1)
+    assert.equal(refused.headers.get('connection'), 'close')
+
+    const events = app.store.audit.filter(
+      (event) =>
+        event.eventType === 'session_revoke' &&
+        event.result === 'success' &&
+        event.targetId === acceptedTarget.userId
+    )
+    const withReason = events.find(
+      (event) => (event.metadata as Json | undefined)?.reason === 'r'.repeat(200)
+    )
+    assert.ok(withReason, 'the 4,096 B reason is kept, truncated to the audit limit')
+    assert.equal(((withReason.metadata as Json).reason as string).length, 200)
+
+    const withoutReason = events.find(
+      (event) => event !== withReason && !('reason' in (event.metadata as Json))
+    )
+    assert.ok(withoutReason, 'the 4,097 B body counts as empty')
+    assert.equal(
+      withoutReason.targetId,
+      acceptedTarget.userId,
+      'the refused request still revoked the fresh session'
+    )
+    assert.equal(refusedTarget.userId, acceptedTarget.userId)
+  })
+
+  test('B6 SENSITIVE WRITE 16 KiB：16,384 → 201；16,385 → 413 未建项目', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u259-b6-admin')
+    const acceptedKey = 'u259-bound-ok'
+    const accepted = await authedJson(
+      base,
+      admin.token,
+      'POST',
+      '/v1/projects',
+      exactJsonBytes(
+        {
+          hostId: HOST_ID,
+          key: acceptedKey,
+          name: acceptedKey,
+          path: '/srv/u259-bound-ok',
+          defaultBranch: 'main'
+        },
+        SENSITIVE_WRITE_BODY_MAX_BYTES
+      )
+    )
+    assert.equal(accepted.status, 201, await accepted.text())
+    assert.ok(app.store.projectsByKey.has(acceptedKey), 'the boundary body creates the project')
+
+    const refusedKey = 'u259-bound-no'
+    const refused = await authedJson(
+      base,
+      admin.token,
+      'POST',
+      '/v1/projects',
+      exactJsonBytes(
+        {
+          hostId: HOST_ID,
+          key: refusedKey,
+          name: refusedKey,
+          path: '/srv/u259-bound-no',
+          defaultBranch: 'main'
+        },
+        SENSITIVE_WRITE_BODY_MAX_BYTES + 1
+      )
+    )
+    assert.equal(refused.status, 413)
+    assert.equal(errorCode((await refused.json()) as Json), 'PAYLOAD_TOO_LARGE')
+    assert.equal(refused.headers.get('connection'), 'close')
+    assert.equal(
+      app.store.projectsByKey.has(refusedKey),
+      false,
+      'the refused create persists nothing'
+    )
+
+    const created = app.store.audit.filter(
+      (event) =>
+        event.eventType === 'project_create' &&
+        event.result === 'success' &&
+        (event.metadata as Json | undefined)?.key === acceptedKey
+    )
+    assert.equal(created.length, 1, 'exactly the accepted create is audited')
+    const refusedEvents = app.store.audit.filter(
+      (event) =>
+        event.eventType === 'project_create' &&
+        (event.metadata as Json | undefined)?.key === refusedKey
+    )
+    assert.equal(refusedEvents.length, 0, 'the refused create is not audited')
+  })
+
+  test('B7 HEARTBEAT 1 MiB：1,048,576 → 200 前进；1,048,577 → 413 状态不变', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u259-b7-admin')
+    const hostToken = await mintHostToken(base, admin.token)
+    const registered = await registerHost(
+      base,
+      hostToken,
+      JSON.stringify({ name: 'u259-heartbeat', protocolVersion: 3, networkZone: 'intranet' })
+    )
+    const host = (await registered.json()) as Json
+    assert.equal(registered.status, 201, JSON.stringify(host))
+    const hostId = String(host.hostId)
+    const stored = app.store.hosts.get(hostId)
+    assert.ok(stored)
+    const before = Date.now() - 60_000
+    stored.lastHeartbeatAt = before
+
+    const accepted = await postHeartbeat(
+      base,
+      hostId,
+      String(host.credential),
+      exactJsonBytes({ status: 'online' }, HEARTBEAT_BODY_MAX_BYTES)
+    )
+    assert.equal(accepted.status, 200, await accepted.text())
+    assert.equal(stored.status, 'online')
+    assert.ok(stored.lastHeartbeatAt > before, 'the boundary beat advances lastHeartbeatAt')
+    const afterAccepted = stored.lastHeartbeatAt
+
+    const refused = await postHeartbeat(
+      base,
+      hostId,
+      String(host.credential),
+      exactJsonBytes({ status: 'offline' }, HEARTBEAT_BODY_MAX_BYTES + 1)
+    )
+    assert.equal(refused.status, 413)
+    assert.equal(errorCode((await refused.json()) as Json), 'PAYLOAD_TOO_LARGE')
+    assert.equal(refused.headers.get('connection'), 'close')
+    assert.equal(stored.status, 'online', 'the refused beat does not apply offline')
+    assert.equal(stored.lastHeartbeatAt, afterAccepted, 'the refused beat does not touch the clock')
+  })
+
+  test('B8 DENIED 4 KiB：4,096 → 保留 subjectId；4,097 → 空 metadata', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u259-b8-admin')
+    const dev = await loginAs(base, 'zhangsan', 'Passw0rd!', 'u259-b8-dev')
+    const subjectId = 'u'.repeat(900)
+    const fields = { subjectType: 'user', subjectId, permissions: ['open'] }
+
+    const accepted = await authedJson(
+      base,
+      dev.token,
+      'PUT',
+      `/v1/projects/${PROJECT_ID}/grants`,
+      exactJsonBytes(fields, DENIED_AUDIT_BODY_MAX_BYTES)
+    )
+    assert.equal(accepted.status, 403)
+    assert.equal(errorCode((await accepted.json()) as Json), 'PERMISSION_DENIED')
+
+    const refused = await authedJson(
+      base,
+      dev.token,
+      'PUT',
+      `/v1/projects/${PROJECT_ID}/grants`,
+      exactJsonBytes(fields, DENIED_AUDIT_BODY_MAX_BYTES + 1)
+    )
+    assert.equal(refused.status, 403)
+    assert.equal(errorCode((await refused.json()) as Json), 'PERMISSION_DENIED')
+    assert.equal(refused.headers.get('connection'), 'close')
+
+    const events = (await deniedAuditEvents(base, admin.token, 'zhangsan')).filter(
+      (event) => event.eventType === 'grant_update'
+    )
+    const kept = events.find((event) => (event.metadata as Json).subjectId === subjectId)
+    assert.ok(kept, 'the 4,096 B body keeps the refused subject')
+    assert.deepEqual((kept.metadata as Json).permissions, ['open'])
+
+    const dropped = events.find(
+      (event) => event !== kept && (event.metadata as Json).subjectId === ''
+    )
+    assert.ok(dropped, 'the 4,097 B body counts as empty')
+    assert.deepEqual((dropped.metadata as Json).permissions, [])
+  })
+})
+
+describe('U259 §4 refresh Cookie 413 真断言', () => {
+  async function loginWithRefreshCookie(
+    app: ApiHandle,
+    base: string,
+    deviceName: string
+  ): Promise<{ cookie: string; sessionId: string }> {
+    const res = await login(
+      base,
+      JSON.stringify({ username: 'admin', password: 'Adm1n!', deviceName }),
+      { origin: ORIGIN }
+    )
+    assert.equal(res.status, 200, await res.text())
+    const cookie = res.headers.getSetCookie()[0]?.split(';')[0] ?? ''
+    assert.match(cookie, /^orca_refresh=/)
+    const sessions = [...app.store.sessions.values()]
+    assert.equal(sessions.length, 1, 'the cookie login creates one session')
+    const session = sessions[0]
+    assert.ok(session)
+    return { cookie, sessionId: session.id }
+  }
+
+  test('R1 413 响应无任何 Set-Cookie（不偷偷清 Cookie）', async () => {
+    const { app, base } = await startApp()
+    const { cookie } = await loginWithRefreshCookie(app, base, 'u259-r1')
+
+    const res = await refresh(base, oversized({}), { cookie, origin: ORIGIN })
+    assert.equal(res.status, 413)
+    assert.equal(errorCode((await res.json()) as Json), 'PAYLOAD_TOO_LARGE')
+    assert.equal(
+      res.headers.getSetCookie().length,
+      0,
+      'a refused refresh must neither clear nor rotate the Cookie'
+    )
+    assert.equal(res.headers.get('cache-control'), 'no-store')
+  })
+
+  test('R2 413 不轮换、不续期、不触发 reuse detection', async () => {
+    const { app, base } = await startApp()
+    const { cookie, sessionId } = await loginWithRefreshCookie(app, base, 'u259-r2')
+    const session = app.store.sessions.get(sessionId)
+    assert.ok(session)
+    const before = {
+      refreshHash: session.refreshHash,
+      previousRefreshHash: session.previousRefreshHash,
+      refreshExpiresAt: session.refreshExpiresAt
+    }
+
+    const res = await refresh(base, oversized({}), { cookie, origin: ORIGIN })
+    assert.equal(res.status, 413)
+    assert.equal(errorCode((await res.json()) as Json), 'PAYLOAD_TOO_LARGE')
+
+    assert.equal(session.refreshHash, before.refreshHash, 'refreshHash is unchanged')
+    assert.equal(
+      session.previousRefreshHash,
+      before.previousRefreshHash,
+      'previousRefreshHash is unchanged'
+    )
+    assert.equal(session.refreshExpiresAt, before.refreshExpiresAt, 'refreshExpiresAt is unchanged')
+    assert.equal(session.revokedAt, null, 'the refused refresh does not revoke the session')
+    const reuse = app.store.audit.filter(
+      (event) =>
+        event.eventType === 'refresh.reuse_detected' || event.eventType === 'refresh.grace_reuse'
+    )
+    assert.equal(reuse.length, 0, 'no reuse or grace event is written')
+  })
+
+  test('R3 同一 Cookie 随后小 body 刷新 200，且重发同一 Cookie 值', async () => {
+    const { app, base } = await startApp()
+    const { cookie, sessionId } = await loginWithRefreshCookie(app, base, 'u259-r3')
+
+    const refused = await refresh(base, oversized({}), { cookie, origin: ORIGIN })
+    assert.equal(refused.status, 413)
+    assert.equal(refused.headers.getSetCookie().length, 0)
+
+    const small = await refresh(base, '{}', { cookie, origin: ORIGIN })
+    const payload = (await small.json()) as Json
+    assert.equal(small.status, 200, JSON.stringify(payload))
+    assert.equal(payload.refreshCookie, true, 'the browser renewal re-sends the Cookie')
+    const resent = small.headers.getSetCookie()
+    assert.equal(resent.length, 1, 'one renewal Cookie')
+    assert.equal(resent[0]?.split(';')[0], cookie, 'the same value is re-sent, not cleared')
+    assert.equal(/Max-Age=0/.test(resent[0] ?? ''), false, 'the renewal is not a clear')
+    const session = app.store.sessions.get(sessionId)
+    assert.ok(session)
+    assert.equal(session.revokedAt, null, 'the session survives the refused refresh')
   })
 })
