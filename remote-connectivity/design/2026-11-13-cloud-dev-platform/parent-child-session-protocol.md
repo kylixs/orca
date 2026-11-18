@@ -197,6 +197,14 @@
 
 123. **改 `apps/web/app.js` 必须同步快照 pin（2026-11-18 固化——`dd37b0004a2` 判例）**：任何提交触碰 `cloud-platform/apps/web/app.js`，必须 `rg -n "HEAD_APP_SHA256|sha256Lf" cloud-platform/test/e2e` 找出全部 pin 并按既有 LF 归一口径重算；套件出现 **cancelled 而非 fail** 时优先怀疑 pin 过期（断言在钩子中会让子用例整批 cancelled）。判例：`dd37b0004a2` 重构内联 onclick 后未更新 pin，HEAD 上 `u197-migration-browser` 6 例 cancelled，D17 复审才发现。
 
+124. **检查器输出不得被管道截断（2026-11-18 08:00 复盘固化——坏台账行被判绿判例）**：`node scripts/check-*.mjs | tail -n && git commit` 会让管道末段（`tail`）返回 0，检查失败被吞。要么不接管道，要么 `set -o pipefail`，提交前独立再跑一次检查器并核对 `$?`。判例：`check-ledger-table` 已报 `line 191: 9 cells`，因接 `tail` 仍提交了坏行。
+
+125. **文档优先 Write/Edit，落盘后必跑编码守卫（同次固化——heredoc U+FFFD 判例）**：正文类 Markdown 用 Write/Edit 工具写入；必须用脚本时，写完立即跑 `node cloud-platform/scripts/check-doc-encoding.mjs` 并核对 `$?`。判例：本小时 3 次 heredoc 注入 U+FFFD（PROGRESS×2、台账×1），均靠写前断言拦下。
+
+126. **周期/版本类行为须真实跑满一个 tick 并覆盖旧读取器回滚（同次固化——快照保留与 v2 回滚判例）**：测试定时行为时禁止「长 interval + 立即 stop」伪装覆盖，至少跑满一个真实 tick；变更持久化格式/版本时，必须补「旧读取器读新文件」的行为用例（回滚影响面）。判例：`3daf2d6ee6c` 用 `intervalMs:60_000` 覆盖不到默认 2s 的首个 flush，实际仍被覆盖；`SNAPSHOT_VERSION=2` 两轮复审未覆盖旧二进制读 v2 导致全量状态丢失。
+
+127. **契约变更须全仓 grep 期望（同次固化——D19 探索脚本期望过期判例）**：改变端点返回值/状态码前，除命中测试外必须 `rg` 全仓期望源（`cloud-platform/scripts/exploratory-r2/`、夹具、旧客户端快照、`src/main/**` 调用方）；简报不得声称「只有 X 会受影响」而未做全仓检索。判例：D19 后 `run-api-exploratory.mjs` P28/Y19/Y20 仍期望 200。
+
 
 ## 2b. 并行模式（用户 2026-11-14 指令：不要串行开发，单独完整链路验收，发现即修不堵塞）
 
