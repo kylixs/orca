@@ -4541,3 +4541,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U313 独立复审通过并关闭**：五项声明全部复现——numeric **23/23**、主套件 **39 pass+1 skip**、公开导出 9 个不变、CLI 两模式 0 new、132 例组合矩阵差异仅预期两类；工作区 0 违规语料为弱证据，补 `ac1b623413d` 快照 203 文件 **2 vs 2** 零漂移；台账「三处变异」更正为两处有书面记录。P0/P1/P2=0，可关闭（`057dd34eeed`）。
 - **D20/D22 地图叶子实测关闭**：主会话复跑 `u243-session-events` **4/4**、`web-project-entry` **11/11**（含 `[data-provisioning-error]` 内联断言），地图 `AUTH-SESSION-EXPIRE`、`PRJ-PROVISION-ERR` 由 ⚪ 0% 改 🟢 100%；叶子统计 🟢62→**64**、⚪5→**3**（余 AUTH-TOKEN-GC、AZ-LDAP-GROUP、FILE-DL-RPC）。
 - **D18（AUTH-TOKEN-GC）已派实施**：只做 A1（惰性+60s sweep+快照剥离），规格按 `decision-auth-20261118.md` §D18；新增 `session-sweep.ts`、`snapshot-serialize.ts` 剥离、必补 8 类测试 + 3 个变异。代理完成后再由主会话回写台账/地图。
+- **AZ-LDAP-GROUP 收口关闭**（`9e0b2f22eff`）：裁定不新增功能，只做 LGA-6 收口——`current-state/m11-authz-model.md` 已有「LGA-6 组模型收口」裁定节、U211 已把 UI/文案改为「LDAP 准入组/未配置」；主会话复跑 `ldap-admission` **6/6**（0 fail）。地图该叶子 ⚪0%→🟢100%，叶子统计 🟢65/🟡3/⚪2（余 AUTH-TOKEN-GC、FILE-DL-RPC）；台账 U212 注明 LGA-6 已收口、余 D15-1 组替换待实施。
