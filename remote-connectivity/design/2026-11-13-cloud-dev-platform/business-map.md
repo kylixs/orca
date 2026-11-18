@@ -46,7 +46,7 @@
 | AUTH-LDAP-ADMIT | LDAP 组门槛准入 | FR-1.5 | P1 | 🟢 | 100%（D15-1 已实施 `73bc4ce6647`：登录时组全量替换） | `ldap-admission` **14/14**（含移出组/去重 2 例，主会话复跑） |
 | AUTH-REVOKE-SELF | 自助登出与设备吊销 | FR-1.6 | P0 | 🟢 | 100% | u229/u241 套件 |
 | AUTH-REVOKE-FORCE | 管理员强制下线（含 3+ follower 并发、自撤/同级） | FR-1.6 | P0 | 🟢 | 100% | **14/14**（含 D23 两例） |
-| AUTH-PERM-PROPAGATE | 权限变更即时生效与 60s 断连 | FR-1.7 | P1 | 🟢 | 100% | policy/u244 相关 |
+| AUTH-PERM-PROPAGATE | 权限变更即时生效与 60s 断连 | FR-1.7 | P1 | 🟢 | 100% | control-plane-isolation **3/3**（AC-12，第八轮）；u244 14/14 |
 | AUTH-COOKIE-MODE | Cookie 模式（auto/never/always） | FR-1.2 | P0 | 🟢 | 100%（D5–D10：同源默认关闭，检查单 `19c908da06f`；生产启用待运维） | u197 浏览器套件 9/9、认证基线 267/267 |
 | AUTH-PAGE-CSP | 认证页 CSP（Report-Only） | NFR 5.3（安全） | P0 | 🟢 | 100%（D10 维持 Report-Only，不启用 enforcement） | csp-zero 6/6 |
 | AUTH-COMPAT-LEGACY | 旧客户端兼容与启动恢复 | FR-9.8 | P2 | 🟢 | 100% | u198 2/2、u229 系列 |
@@ -112,7 +112,7 @@
 | 编号 | 功能 | FR | 优先级 | 状态 | 进度 | 测试 |
 |---|---|---|---|---|---|
 | AUD-CHAIN-VERIFY | 只追加哈希链与持久化顺序 | FR-8.1/8.2 | P0 | 🟢 | 100% | audit-anchor、audit-verify（AUD 组 3/3） |
-| AUD-APPEND-ATOMIC | 落盘失败不留内存残条 | FR-8.2 | P0 | 🟢 | 100% | u246 组 3/3（U244 为 11/11） |
+| AUD-APPEND-ATOMIC | 落盘失败不留内存残条 | FR-8.2 | P0 | 🟢 | 100% | u246 组 **3/3**（单测）；U244 **14/14** |
 | AUD-BODY-GUARD | 事件体积全局护栏与截断标记 | FR-8.1 | P0 | 🟢 | 100% | audit-event-size **17/17** |
 | AUD-QUERY-FILTER | 时间/用户/类型筛选、游标、31 天窗 | FR-8.3 | P0 | 🟢 | 100% | u66-2 8/8、query 28/28 |
 | AUD-EXPORT-DOWNLOAD | 审计员导出与二次确认 | FR-8.5 | P1 | 🟢 | 100% | audit-export **14/14**、audit-export-download **11/11** |
@@ -139,7 +139,7 @@
 | DSGN-PROTO-U67 | U67 原型、验收截图与回归脚本 | — | P1（过程交付） | 🟢 | 100% | proto-tab-check **39/39** |
 | QA-AUTH-BASE | 认证 24 文件基线 | — | P0（门禁） | 🟢 | 100% | **267/267** |
 | QA-BASE-MATRIX | 授权组合矩阵基线 | — | P0（门禁） | 🟢 | 100% | **113/113** |
-| QA-E2E-SWEEP | 全仓 e2e 全景 | — | P0（门禁） | 🟢 | 100% | **第八轮：148 文件 / 37 批 / 1150 tests（1147 pass / 0 fail / 3 env skip）**，hashes_same=yes |
+| QA-E2E-SWEEP | 全仓 e2e 全景 | — | P0（门禁） | 🟢 | 100% | **第八轮：148 文件 / 37 批 / 1150 tests（1147 pass / 0 fail / 3 env skip）**，hashes_same=yes；U326 拆分后 149 文件/1152，**待第九轮** |
 | QA-TIMEOUT-GATE | 超时形态门禁与存量迁移 | — | P1（门禁） | 🟢 | 100%（U317/U321 已实施；范围漂移提示非失败） | 门禁测试 **92（91 pass/1 skip）**；296 文件、0 new |
 | QA-TYPE-GATE | apps 类型门禁 | — | P1（门禁） | 🟢 | 100% | `tc:apps` 16→0 |
 | QA-EVIDENCE-CHECKERS | 台账表格/sha/编码校验 | — | P0（门禁） | 🟢 | 100% | 三脚本 + 自测 |
@@ -148,7 +148,7 @@
 ## 4. 汇总与口径
 
 - 综合完成度：**68.5 / 70 = 97.9%**（定义：🟢计 1、🟡计 0.5、⚪计 0；域进度按同法计算）
-- 叶子外挂账（不计入 70 行）：U233 F4 认证拒绝审计（已设计、缓办）、U323/U324 工具项、FR 外增强 U316/U54 等，见台账
+- 叶子外挂账（不计入 70 行）：U233 F4 认证拒绝审计（已设计、缓办）、U323 探索脚本工具项、U325 已升为叶子（FILE-BROWSER-PREVIEW）、FR 外增强 U316/U54 等，见台账
 - 叶子功能项 **70**：🟢 **68**、🟡 **1**（FILE-BROWSER-PREVIEW：实现待核、缺专项 e2e）、⚪ **1**（FILE-DL-RPC，D21 缓登记）
 - 计数口径：叶子行数按本文件表行实测（70），下次更新须重算并同步本节
 - 阻塞源（剩余）：cookieMode 生产启用待运维按检查单执行、D21-C9 缓（登记缺口）；其余决策项均已实施或收口
@@ -197,7 +197,7 @@
 ### 5.3 推荐推进顺序（P0 → P1，先施工后决策）
 
 1. **QA-TIMEOUT-GATE 收尾**（已完成）：`load-300` 提交（基线 0）→ U315 范围 → U317 七形（`a1e0a5c893b`）→ 回写本表；仅余 `FILE-DL-RPC`（D21 缓）
-2. **QA-E2E-SWEEP 复跑**（P0 门禁）：D15/D18/D20/D22 后已跑第七轮（1149/1149，`8cc353fce7e`）；后续任何 `apps/**`/`test/**` 改动仍需重跑，0 红才更新
+2. **QA-E2E-SWEEP 复跑**（P0 门禁）：第八轮 148 文件/1150 已绿；U326 拆分新增 2 例后为 149 文件/1152，**需第九轮**；后续任何 `apps/**`/`test/**` 改动仍需重跑，0 红才更新
 3. **WEB-NAV-ROUTING 收口**：U314 全量绿后转 100%
 4. **跨叶子维护批**（格式化债务，20+ e2e 文件 oxfmt-red）：单独提交，不改变语义
 5. **决策项（已全部裁定，按减法顺序施工）**：D20+D18 → D22 → D15-1 → D21 C6 复核 + D11 需求文本 → D25 + D5–D10 检查单 → 文档收口批；详见 [`work-orders/decisions-log-20261118.md`](work-orders/decisions-log-20261118.md) §5

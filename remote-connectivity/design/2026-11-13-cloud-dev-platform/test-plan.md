@@ -204,7 +204,7 @@ pnpm run check:code-quality:changed
 ```
 
 
-### 7.1 认证基线（24 文件 / 267 测试，可复现清单）
+### 7.1 认证基线（25 文件 / 267 已测 + 2 待复跑，可复现清单）
 
 历史台账只写「24 套件 / 266 tests」，无法复核文件构成；2026-11-18 12:4x 由 `/tmp/auth-baseline-3.log` 的 49 个顶层 suite 反推，49/49 精确对应下列 24 个文件（当前 HEAD 复跑 **267/267，0 fail / 0 skip**，最新证据 `/tmp/auth-baseline-6.log`（206.8s），历史 `-5.log` 同为 267；较 266 多出的 1 例为 U245-A「1 leader + 3 followers 并发撤销只审计一次」）。
 
@@ -233,6 +233,7 @@ test/e2e/u237-required-body-fields.e2e.test.ts \
 test/e2e/u241-logout-idempotent.e2e.test.ts \
 test/e2e/u241-revocation-epoch.e2e.test.ts \
 test/e2e/u244-admin-force-offline.e2e.test.ts \
+test/e2e/u244-admin-revoke-policy.e2e.test.ts \
 test/e2e/web-refresh-cookie.e2e.test.ts
 ```
 
