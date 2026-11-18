@@ -257,10 +257,18 @@ test('390×844：LDAP 准入徽标三态可读、长组名不溢出', async () =
       location.hash = '#/workbench'
     })
     await page.waitForFunction(() => location.hash === '#/workbench')
+    // Leaving while workbench is still rendering leaves two renders in flight; the
+    // app.js generation guard then replays the live route and can starve .page-head
+    // (U307). Wait for the route to be applied and settled before navigating on.
+    await page.waitForFunction(() => document.querySelector('#crumbs')?.textContent === '工作台')
+    await page.waitForFunction(
+      () => document.querySelector('#content')?.getAttribute('aria-busy') === 'false'
+    )
     await page.evaluate(() => {
       location.hash = '#/users'
     })
     await page.waitForFunction(() => location.hash === '#/users')
+    await page.waitForFunction(() => document.querySelector('#crumbs')?.textContent === '用户管理')
     await page.waitForSelector('#content .page-head')
   }
   try {
