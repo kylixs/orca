@@ -40,6 +40,17 @@ export type WebConsolePage = {
   hold: (method: string, path: string) => void
   /** Sends every held request on to the platform and lets the page settle. */
   release: () => Promise<void>
+  /**
+   * Sends exactly one held request matching `METHOD path` (exact, or a `*`
+   * suffix prefix), then resolves once its response reached the page and one
+   * macrotask elapsed, so the page's render continuation has run. Throws when
+   * no request is held, rather than silently releasing the wrong one.
+   *
+   * Serial-only: held requests form one FIFO queue per page; calling this (or
+   * `release`) concurrently, or reusing a page from parallel tests, interleaves
+   * responses and defeats the intended ordering.
+   */
+  releaseOne: (method: string, path: string) => Promise<void>
   /** Every request the page made, as `METHOD path`. */
   calls: () => string[]
   /** Response status per call, aligned with `calls()`; undefined for a rejected/hung fetch. */
@@ -134,10 +145,37 @@ export function loadWebConsolePage(
     if (entry.respond) stubbed.set(entry.call, entry.respond)
     else failing.set(entry.call, entry.status ?? 503)
   }
-  const held = new Map<
-    string,
-    { input: string; init: RequestInit | undefined; resolve: (response: Response) => void }[]
-  >()
+  type HeldRequest = {
+    input: string
+    init: RequestInit | undefined
+    resolve: (response: Response) => void
+  }
+  const held = new Map<string, HeldRequest[]>()
+  const sendHeld = (waiter: HeldRequest): Promise<void> => {
+    // Why drop the signal: abort detaches the consumer, it cannot un-send a
+    // request already on the wire. The page must discard the late response.
+    const init = waiter.init ? { ...waiter.init, signal: undefined } : undefined
+    return realFetch(waiter.input, init)
+      .catch(() => new Response(null, { status: 503 }))
+      .then((response) => waiter.resolve(absorbSetCookies(response)))
+  }
+  // First held request matching the call, in arrival order; `path*` is a prefix.
+  const takeHeld = (method: string, path: string): HeldRequest | undefined => {
+    const key = `${method.toUpperCase()} ${path}`
+    for (const [candidate, waiters] of held) {
+      const matches =
+        candidate === key || (path.endsWith('*') && candidate.startsWith(key.slice(0, -1)))
+      if (!matches || waiters.length === 0) {
+        continue
+      }
+      const [waiter] = waiters.splice(0, 1)
+      if (waiters.length === 0) {
+        held.delete(candidate)
+      }
+      return waiter
+    }
+    return undefined
+  }
   // A `*` suffix matches a path prefix, for endpoints whose query string is
   // computed at click time and cannot be named up front.
   const lookup = <T>(map: Map<string, T>, key: string): T | undefined => {
@@ -316,18 +354,20 @@ export function loadWebConsolePage(
       const pending: Promise<void>[] = []
       for (const waiters of held.values()) {
         for (const waiter of waiters.splice(0)) {
-          // Why drop the signal: abort detaches the consumer, it cannot un-send a
-          // request already on the wire. The page must discard the late response.
-          const init = waiter.init ? { ...waiter.init, signal: undefined } : undefined
-          pending.push(
-            realFetch(waiter.input, init)
-              .catch(() => new Response(null, { status: 503 }))
-              .then((response) => waiter.resolve(absorbSetCookies(response)))
-          )
+          pending.push(sendHeld(waiter))
         }
       }
       held.clear()
       await Promise.all(pending)
+      await new Promise((resolve) => setTimeout(resolve, 25))
+    },
+    releaseOne: async (method, path) => {
+      const waiter = takeHeld(method, path)
+      if (!waiter) {
+        throw new Error(`no held request for ${method.toUpperCase()} ${path}`)
+      }
+      await sendHeld(waiter)
+      // One macrotask turn: the page's fetch continuation (render/stale branch) runs.
       await new Promise((resolve) => setTimeout(resolve, 25))
     },
     calls: () => [...requests],
