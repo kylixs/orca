@@ -1165,21 +1165,36 @@ test('U54 WEB-R2-014 长文本筛选输入限制 128 字符，密码框不受限
 test('U116 工作台心跳文案与后端默认离线窗一致', async () => {
   // U116③: the card states the offline window, not a raw heartbeat interval.
   const serverSource = readFileSync(join(ROOT, 'apps/api/src/server.ts'), 'utf8')
-  const constant = /const HOST_OFFLINE_DEFAULT_MS = ([\d_]+)/.exec(serverSource)
+  // Line-anchored: a same-named token in a comment or string must not be read as the constant.
+  const constant = /^const HOST_OFFLINE_DEFAULT_MS = ([\d_]+)$/m.exec(serverSource)
   const windowMs = constant ? Number(constant[1].replaceAll('_', '')) : 0
-  assert.ok(windowMs > 0, 'the backend default offline window must stay readable')
+  assert.ok(
+    windowMs > 0,
+    'HOST_OFFLINE_DEFAULT_MS was not found as a top-level `const` line in apps/api/src/server.ts; the constant was renamed or moved — update this assertion'
+  )
   const seconds = windowMs / 1000
 
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
-  const text = page.window.document.querySelector('#content')!.textContent ?? ''
+  // Scope to the stat hint: #content textContent glues the numeric value to the hint.
+  const hint =
+    [...page.window.document.querySelectorAll<HTMLElement>('#content .stat')]
+      .find((card) => card.querySelector('.stat-label')?.textContent?.trim() === '主机在线')
+      ?.querySelector('.stat-hint')?.textContent ?? ''
+  assert.ok(hint, 'the 主机在线 stat card must render its hint')
+  // Digit boundary: `160 秒…` must not satisfy the match for a 60-second window.
   assert.match(
-    text,
-    new RegExp(`${seconds} 秒无心跳转离线`),
+    hint,
+    new RegExp(`(^|[^\\d])${seconds} 秒无心跳转离线`),
     'the copy must state the real offline window'
   )
-  assert.doesNotMatch(text, /心跳\s*\d+\s*秒/, 'the old bare beat-interval copy must be gone')
+  // Only the old bare-interval shape; future phrasing like `最近心跳 N 秒` stays allowed.
+  assert.doesNotMatch(
+    hint,
+    /(?<!最近)心跳\s*\d+\s*秒/,
+    'the old bare beat-interval copy must be gone'
+  )
   record('U116', `工作台统计卡心跳文案为「${seconds} 秒无心跳转离线」，与 HOST_OFFLINE_DEFAULT_MS 一致`)
 }, 120_000)
 
@@ -1817,6 +1832,11 @@ test('U58 W5 非法百分号转义路径返回 404 而不是 500', async () => {
   const res = await fetch(`${service.url}/%E0%A4%A`)
   const body = await res.text()
   assert.equal(res.status, 404, `malformed escape must be a 404, got ${res.status}: ${body}`)
+  assert.match(
+    res.headers.get('content-type') ?? '',
+    /^text\/plain\b/,
+    'a 404 must be served as text/plain'
+  )
   assert.doesNotMatch(body, /URI malformed/, 'the decoder error must not leak')
   assert.doesNotMatch(body, /INTERNAL_ERROR|at [\w./]+\s*\(/, 'no error code or stack')
 }, 120_000)
@@ -1825,5 +1845,10 @@ test('U58 W5 合法百分号编码路径仍正常返回', async () => {
   const res = await fetch(`${service.url}/%69ndex.html`)
   const body = await res.text()
   assert.equal(res.status, 200, `a valid encoded path still resolves: ${body.slice(0, 200)}`)
+  assert.match(
+    res.headers.get('content-type') ?? '',
+    /^text\/html\b/,
+    'the resolved entry must be served as text/html'
+  )
   assert.match(body, /<html/i)
 }, 120_000)
