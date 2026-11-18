@@ -9,9 +9,19 @@ export type AuditStore = Pick<import('./store.ts').Store, 'audit' | 'auditSeq' |
  * Single-writer hash chain. All API replicas funnel through this instance, so
  * `prevHash` never forks (design.md §13.2).
  */
+export type AuditFailureReason = 'write_failed' | 'chain_broken'
+
 export type AuditHealth =
   | { ok: true }
-  | { ok: false; reason: 'write_failed' | 'chain_broken'; detail: string }
+  | {
+      ok: false
+      reason: AuditFailureReason
+      detail: string
+      /** First reason observed; kept when a later failure escalates the verdict. */
+      firstFailure?: AuditFailureReason
+      /** Most recent reason, even when `reason` keeps the more severe one. */
+      lastFailure?: AuditFailureReason
+    }
 
 export type AuditQuery = {
   actor?: string
@@ -134,11 +144,25 @@ export class AuditChain {
     return this.health
   }
 
-  private markUnhealthy(reason: 'write_failed' | 'chain_broken', detail: string): void {
-    if (!this.health.ok) {
+  private markUnhealthy(reason: AuditFailureReason, detail: string): void {
+    const current = this.health
+    if (current.ok) {
+      this.health = { ok: false, reason, detail, firstFailure: reason, lastFailure: reason }
       return
     }
-    this.health = { ok: false, reason, detail }
+    // `chain_broken` is strictly more severe than a retryable write failure and
+    // must replace it; the reverse must never hide a real break.
+    if (reason === 'chain_broken' && current.reason === 'write_failed') {
+      this.health = {
+        ok: false,
+        reason,
+        detail,
+        firstFailure: current.firstFailure ?? current.reason,
+        lastFailure: reason
+      }
+      return
+    }
+    this.health = { ...current, lastFailure: reason }
   }
 
   /** For informational events: the caller keeps serving, but the platform is now unhealthy. */

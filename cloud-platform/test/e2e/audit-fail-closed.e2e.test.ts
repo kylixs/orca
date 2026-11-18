@@ -311,3 +311,113 @@ describe('fail-closed 覆盖全部敏感写（真实平台进程）', () => {
     }
   }, 40000)
 })
+
+describe('审计健康升级（真实 writer 进程）', () => {
+  const LEASE_TTL_MS = 300
+  const WRITER_TOKEN = 'u249-health-escalation'
+
+  async function startLeaseWriter(logPath: string, leasePath: string): Promise<Service> {
+    return spawnService(
+      'apps/audit-writer/src/writer.ts',
+      {
+        PORT: '0',
+        INTERNAL_TOKEN: WRITER_TOKEN,
+        AUDIT_LOG_PATH: logPath,
+        AUDIT_LEASE_PATH: leasePath,
+        AUDIT_LEASE_TTL_MS: String(LEASE_TTL_MS),
+        WRITER_ID: 'u249-writer'
+      },
+      /\[audit-writer\] listening on http:\/\/127\.0\.0\.1:(\d+)/,
+      'audit-writer-u249'
+    )
+  }
+
+  async function writerJson(url: string, path: string): Promise<Json> {
+    const res = await fetch(`${url}${path}`, { headers: { 'x-internal-token': WRITER_TOKEN } })
+    assert.equal(res.status, 200)
+    return (await res.json()) as Json
+  }
+
+  /** Poll a writer endpoint until the predicate holds; returns the last body either way. */
+  async function writerUntil(
+    url: string,
+    path: string,
+    predicate: (body: Json) => boolean,
+    timeoutMs = 8000
+  ): Promise<Json> {
+    const started = Date.now()
+    let last: Json = {}
+    while (Date.now() - started < timeoutMs) {
+      last = await writerJson(url, path)
+      if (predicate(last)) return last
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    return last
+  }
+
+  test('M32-4 write_failed 后发生真实断链：/v1/status 升级为 chain_broken 并保留 first/lastFailure', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'orca-u249-health-'))
+    const logPath = join(dir, 'audit.jsonl')
+    const leasePath = join(dir, 'writer.lease')
+    const writer = await startLeaseWriter(logPath, leasePath)
+    try {
+      const append = (targetId: string) =>
+        fetch(`${writer.url}/v1/append`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-internal-token': WRITER_TOKEN },
+          body: JSON.stringify({
+            events: [
+              {
+                eventType: 'project_connect',
+                actor: 'admin',
+                targetType: 'project',
+                targetId,
+                result: 'success',
+                traceId: null
+              }
+            ]
+          })
+        })
+      assert.equal((await append('one')).status, 200)
+
+      // First cause: a transient persist failure (retryable, not a break).
+      chmodSync(logPath, 0o400)
+      const refused = await append('two')
+      assert.equal(refused.status, 503)
+      assert.equal(errorCode((await refused.json()) as Json), 'AUDIT_WRITE_FAILED')
+      chmodSync(logPath, 0o600)
+
+      const failed = (await writerJson(writer.url, '/v1/status')) as Json
+      assert.equal(failed.ok, false)
+      assert.equal(failed.reason, 'write_failed')
+      assert.equal(failed.firstFailure, 'write_failed')
+      assert.equal(failed.lastFailure, 'write_failed')
+
+      // Second cause: rewrite the durable line, then make the writer re-read the
+      // log by losing and re-acquiring its lease. restore() now verifies a broken
+      // chain — strictly more severe than the earlier write failure.
+      const lines = readFileSync(logPath, 'utf8').split('\n').filter(Boolean)
+      const tampered = JSON.parse(lines[0]!) as { actor: string }
+      tampered.actor = 'ghost'
+      lines[0] = JSON.stringify(tampered)
+      writeFileSync(logPath, `${lines.join('\n')}\n`)
+      writeFileSync(leasePath, JSON.stringify({ holderId: 'intruder', since: Date.now() }))
+
+      const demoted = await writerUntil(writer.url, '/health', (body) => body.role === 'standby')
+      assert.equal(demoted.role, 'standby', 'lease takeover must demote this writer')
+      const promoted = await writerUntil(writer.url, '/health', (body) => body.role === 'leader')
+      assert.equal(promoted.role, 'leader', 'the writer must re-acquire its lease')
+
+      const escalated = (await writerJson(writer.url, '/v1/status')) as Json
+      assert.equal(escalated.ok, false)
+      assert.equal(escalated.reason, 'chain_broken', 'chain_broken must supersede write_failed')
+      assert.equal(escalated.firstFailure, 'write_failed', 'the earlier cause stays readable')
+      assert.equal(escalated.lastFailure, 'chain_broken')
+
+      saveEvidence(EVIDENCE, 'm32-4-health-escalation.json', { failed, escalated })
+    } finally {
+      chmodSync(logPath, 0o600)
+      await writer.stop()
+    }
+  }, 40000)
+})
