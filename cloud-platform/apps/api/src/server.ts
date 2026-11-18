@@ -4733,6 +4733,24 @@ export function createApp(config: ApiConfig): ApiHandle {
         })
         return error(res, 400, branchVerdict.code, branchVerdict.message, traceId)
       }
+      // U261 P45: an unknown value was silently coerced to deny; refuse it like
+      // the project/global policy routes (D2) instead of 201 with a changed policy.
+      if (
+        body.downloadPolicy !== undefined &&
+        body.downloadPolicy !== 'allow' &&
+        body.downloadPolicy !== 'deny'
+      ) {
+        await audit.append({
+          eventType: 'project_create',
+          actor: authed.user.username,
+          targetType: 'project',
+          targetId: null,
+          result: 'denied',
+          traceId,
+          metadata: { reason: 'POLICY_INVALID' }
+        })
+        return error(res, 400, 'POLICY_INVALID', 'downloadPolicy 必须是 allow 或 deny。', traceId)
+      }
       const created: Project = {
         id: `proj_${randomBytes(4).toString('hex')}`,
         key,
@@ -5843,6 +5861,30 @@ export function createApp(config: ApiConfig): ApiHandle {
           400,
           'PROJECTS_ROOT_INVALID',
           `主机项目根目录不能超过 ${PROJECT_PATH_MAX_CHARS} 个字符。`,
+          traceId
+        )
+      }
+      // U261 H8: an element check must run before the single-use token is spent.
+      // A non-string reached `ipOfDirectAddr` and became a 500 after the spend.
+      if (
+        body.directAddrs !== undefined &&
+        (!Array.isArray(body.directAddrs) ||
+          !body.directAddrs.every((addr) => typeof addr === 'string' && isDirectAddrForm(addr)))
+      ) {
+        audit.appendBestEffort({
+          eventType: 'host_register',
+          actor: 'agent',
+          targetType: 'host',
+          targetId: null,
+          result: 'denied',
+          traceId,
+          metadata: { reason: 'HOST_DIRECTADDRS_INVALID' }
+        })
+        return error(
+          res,
+          400,
+          'HOST_DIRECTADDRS_INVALID',
+          'directAddrs 必须是合法地址字符串数组。',
           traceId
         )
       }

@@ -2451,3 +2451,101 @@ describe('U258 读取前拒绝：未读的大 body 不保持 keep-alive', () => 
     }
   }, { timeout: 5000 })
 })
+
+/**
+ * U261: register accepted any element type and only failed later inside
+ * `ipOfDirectAddr`, which turned a field error into a 500 after the single-use
+ * token was spent. Project creation coerced an unknown downloadPolicy to deny.
+ */
+describe('U261 directAddrs 与项目 downloadPolicy 入口校验', () => {
+  test('register directAddrs 含非字符串/非法地址 → 400 HOST_DIRECTADDRS_INVALID，令牌可重试', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u261-directaddr-admin')
+
+    const token = await mintHostToken(base, admin.token)
+    const refused = await registerHost(
+      base,
+      token,
+      JSON.stringify({
+        name: 'u261-directaddr-host',
+        protocolVersion: 3,
+        directAddrs: [123]
+      })
+    )
+    const payload = (await refused.json()) as Json
+    assert.equal(refused.status, 400, JSON.stringify(payload))
+    assert.equal(errorCode(payload), 'HOST_DIRECTADDRS_INVALID')
+    assert.equal(app.store.hostsByName.has('u261-directaddr-host'), false)
+    assert.equal(app.store.hostTokens.at(-1)?.usedAt, null, 'the refusal spends no token')
+
+    const retried = await registerHost(
+      base,
+      token,
+      JSON.stringify({
+        name: 'u261-directaddr-host',
+        protocolVersion: 3,
+        directAddrs: ['10.0.0.5:16811']
+      })
+    )
+    assert.equal(retried.status, 201, await retried.text())
+    assert.ok(app.store.hostsByName.has('u261-directaddr-host'), 'the retry registers the host')
+
+    const badToken = await mintHostToken(base, admin.token)
+    const badAddr = await registerHost(
+      base,
+      badToken,
+      JSON.stringify({
+        name: 'u261-directaddr-bad',
+        protocolVersion: 3,
+        directAddrs: ['not a host']
+      })
+    )
+    const badPayload = (await badAddr.json()) as Json
+    assert.equal(badAddr.status, 400, JSON.stringify(badPayload))
+    assert.equal(errorCode(badPayload), 'HOST_DIRECTADDRS_INVALID')
+    assert.equal(app.store.hostTokens.at(-1)?.usedAt, null, 'the bad address spends no token')
+  })
+
+  test('POST /v1/projects：非法 downloadPolicy → 400 POLICY_INVALID 且不落库；缺省仍按 deny', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u261-policy-admin')
+    const fields = {
+      hostId: HOST_ID,
+      key: 'u261-policy-invalid',
+      name: 'u261-policy-invalid',
+      path: '/srv/work/u261-policy-invalid',
+      defaultBranch: 'main'
+    }
+
+    const refused = await authedJson(
+      base,
+      admin.token,
+      'POST',
+      '/v1/projects',
+      JSON.stringify({ ...fields, downloadPolicy: 'banana' })
+    )
+    const payload = (await refused.json()) as Json
+    assert.equal(refused.status, 400, JSON.stringify(payload))
+    assert.equal(errorCode(payload), 'POLICY_INVALID')
+    assert.equal(app.store.projectsByKey.has(fields.key), false, 'no project is written')
+
+    const omitted = await authedJson(
+      base,
+      admin.token,
+      'POST',
+      '/v1/projects',
+      JSON.stringify({
+        ...fields,
+        key: 'u261-policy-default',
+        name: 'u261-policy-default',
+        path: '/srv/work/u261-policy-default'
+      })
+    )
+    assert.equal(omitted.status, 201, await omitted.text())
+    assert.equal(
+      app.store.projectsByKey.get('u261-policy-default')?.downloadPolicy,
+      'deny',
+      'an absent downloadPolicy keeps the deny default'
+    )
+  })
+})
