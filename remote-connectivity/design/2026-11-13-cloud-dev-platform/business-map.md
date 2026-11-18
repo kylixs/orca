@@ -18,7 +18,7 @@
 
 | 域 | 名称 | 优先级 | 状态 | 进度 | 测试证据 |
 |---|---|---|---|---|
-| AUTH | 身份认证与会话 | P0 | 🟡 | 76.9%（🟡cookieMode/LDAP 准入；⚪token GC/session.expired） | 24 文件认证基线 **267/267**；锁定相关 **14/14** |
+| AUTH | 身份认证与会话 | P0 | 🟢 | 100%（D15/D18/D20/D5–D10 全部落地） | 24 文件认证基线 **267/267**；锁定 **14/14**；ldap 14/14；u243 4/4 |
 | AZ | 授权与准入 | P0 | 🟡 | 85.7%（🟡 组替换 D15-1 待实施；LGA-6 已收口） | 组合矩阵 **113/113**；api 授权相关 116/116 |
 | PRJ | 项目 | P0 | 🟡 | 83.3%（⚪克隆失败呈现 D22） | 归档/自助/详情/连接等 e2e 套件 |
 | HOST | 开发机与中继 | P0 | 🟢 | 100% | mtls 12/12、relay 5/5、host-offline 1/1 等 |
@@ -47,7 +47,7 @@
 | AUTH-REVOKE-SELF | 自助登出与设备吊销 | FR-1.6 | P0 | 🟢 | 100% | u229/u241 套件 |
 | AUTH-REVOKE-FORCE | 管理员强制下线（含 3+ follower 并发） | FR-1.6 | P0 | 🟢 | 100% | **12/12** |
 | AUTH-PERM-PROPAGATE | 权限变更即时生效与 60s 断连 | FR-1.7 | P1 | 🟢 | 100% | policy/u244 相关 |
-| AUTH-COOKIE-MODE | Cookie 模式（auto/never/always） | FR-1.2 | P0 | 🟡 | 95%（D5–D10 已定：同源默认关闭；部署检查单待写） | u197 浏览器套件 9/9 |
+| AUTH-COOKIE-MODE | Cookie 模式（auto/never/always） | FR-1.2 | P0 | 🟢 | 100%（D5–D10：同源默认关闭，检查单 `19c908da06f`；生产启用待运维） | u197 浏览器套件 9/9、认证基线 267/267 |
 | AUTH-PAGE-CSP | 认证页 CSP（Report-Only） | NFR 5.3（安全） | P0 | 🟢 | 100%（D10 维持 Report-Only，不启用 enforcement） | csp-zero 6/6 |
 | AUTH-COMPAT-LEGACY | 旧客户端兼容与启动恢复 | FR-9.8 | P2 | 🟢 | 100% | u198 2/2、u229 系列 |
 | AUTH-SESSION-EXPIRE | 过期自动登出与 `session.expired` 事件 | FR-1.6 | P0 | 🟢 | 100%（D20 已实施：`session.expired`/`session.revoked` 两事件） | `u243-session-events` 4/4（主会话复跑） |
@@ -147,10 +147,10 @@
 
 ## 4. 汇总与口径
 
-- 综合完成度：**(67 + 0.5×2) / 70 = 97.1%**（定义：🟢计 1、🟡计 0.5、⚪计 0；域进度按同法计算）
-- 叶子功能项 **70**：🟢 **67**、🟡 **2**（AUTH-COOKIE-MODE、QA-TIMEOUT-GATE）、⚪ **1**（FILE-DL-RPC）
+- 综合完成度：**(68 + 0.5×1) / 70 = 97.9%**（定义：🟢计 1、🟡计 0.5、⚪计 0；域进度按同法计算）
+- 叶子功能项 **70**：🟢 **68**、🟡 **1**（QA-TIMEOUT-GATE）、⚪ **1**（FILE-DL-RPC）
 - 计数口径：叶子行数按本文件表行实测（70），下次更新须重算并同步本节
-- 阻塞源（剩余）：AUTH-COOKIE-MODE 生产启用待运维执行检查单、D21-C9 缓（登记缺口）、U317 门禁两形；D15-1/D18/D20/D22/LGA-6/U315 已完成
+- 阻塞源（剩余）：cookieMode 生产启用待运维按检查单执行、D21-C9 缓（登记缺口）、U317 门禁两形；其余决策项均已实施或收口
 - 所有计数为**指定范围基线**；「全仓无红」仅由 QA-E2E-SWEEP 的全景扫描支撑（协议 §2-142），不得以子集基线替代
 - 当日台账增量：U272–U313；唯一重开：WEB-ROUTING（U307→U310→U312），修复后回绿
 ## 5. 按地图推进的规则与顺序
@@ -171,7 +171,7 @@
 | WEB-NAV-ROUTING | 🟢 | U307/U310/U312/U314（已关） | `web-exploratory-fixes` 45、U310 定向 1/1（主会话复跑） |
 | MOB-HOST-DETAIL | 🟢 | U278（已裁定不开发） | `u80-mobile-shell` 390×844 sheet、`u80-mobile-m9fix` 触控 44px |
 | AUTH-LOGIN-LOCKOUT | 🟢 | U289/U292/U293/U294/U296（已关） | 契约 9/9、entry-module 9/9、lockout 14/14 |
-| AUTH-COOKIE-MODE | 🟡 | D5–D10（已定，部署检查单待写）、U216、U197 QA-032 | u197 浏览器套件 9/9、认证基线 267/267 |
+| AUTH-COOKIE-MODE | 🟢 | D5–D10（检查单 `19c908da06f`）、U214 已关、U216 已接受 | u197 浏览器套件 9/9、认证基线 267/267 |
 | AUTH-PAGE-CSP | 🟢 | D10（维持 Report-Only） | csp-zero 6/6 |
 | AUTH-TOKEN-GC | 🟢 | D18（已实施 `b521fb87988`）、U233 F6 | `session-sweep` + `snapshot-credential-strip` 11/11 |
 | AUTH-SESSION-EXPIRE | 🟢 | D20（已实施）、U243/U230 | `u243-session-events` 4/4 |
