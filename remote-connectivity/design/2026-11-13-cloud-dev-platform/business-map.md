@@ -73,7 +73,7 @@
 | PRJ-LIFECYCLE-ARCHIVE | 归档/恢复与只读 30 天 | FR-3.4 | P1 | 🟢 | 100% | actions 7/7、detail 5/5、data 8/8 |
 | PRJ-ACCESS-CONNECT | 打开项目、会话复用与凭证签发 | FR-3.3/3.6 | P0 | 🟢 | 100% | project-connect 套件 |
 | PRJ-ACCESS-DETAIL | 详情页（信息/权限/会话页） | FR-3.5/3.8/3.9 | P1 | 🟢 | 100% | u106-detail 9/9 |
-| PRJ-PROVISION-ERR | 克隆失败原因呈现 | FR-3.2 | P0 | 🟢 | 100%（D22 已实施：`provisioningErrorHtml` 内联于列表/详情/工作台） | `web-project-entry` 11/11（含 `[data-provisioning-error]` 断言，主会话复跑） |
+| PRJ-PROVISION-ERR | 克隆失败原因呈现 | FR-3.2 | P0 | 🟢 | 100%（D22 已实施：内联于列表/详情/工作台；注入转义已测） | `web-project-entry` **12/12**（含注入载荷与无 img 断言） |
 
 ### HOST 开发机与中继
 
@@ -123,7 +123,7 @@
 
 | 编号 | 功能 | FR | 优先级 | 状态 | 进度 | 测试 |
 |---|---|---|---|---|---|
-| ADMIN-CONSOLE-WORKBENCH | 工作台四卡与项目表 | FR-2.1–2.6 | P0 | 🟢 | 100%（搜索/筛选/通知为 FR 外增强，另挂 U316） | workbench 套件（AC-01） |
+| ADMIN-CONSOLE-WORKBENCH | 工作台四卡与项目表 | FR-2.1–2.6 | P0 | 🟢 | 100%（四卡标签已按 D11 对齐；搜索/筛选/通知为 FR 外增强，另挂 U316） | `u70-workbench-cards` 3/3（在线项目）、AC-01 |
 | ADMIN-USERS-ROLES | 用户/角色管理 | FR-9.2 | P1 | 🟢 | 100% | u67-3-users 6/6 |
 | ADMIN-PERM-TAB | 位置即权限三卡片 | FR-9.3 | P0 | 🟢 | 100% | u67-3a/3b、drawer 11/11 |
 | ADMIN-CONSOLE-GATING | 管控面入口门控 | FR-9.7 | P0 | 🟢 | 100% | web-admin-gating 3/3（admin-gating 13 例另计） |
@@ -140,7 +140,7 @@
 | QA-AUTH-BASE | 认证 24 文件基线 | — | P0（门禁） | 🟢 | 100% | **267/267** |
 | QA-BASE-MATRIX | 授权组合矩阵基线 | — | P0（门禁） | 🟢 | 100% | **113/113** |
 | QA-E2E-SWEEP | 全仓 e2e 全景 | — | P0（门禁） | 🟢 | 100% | **1149/1149，0 skip**（第七轮，148 文件；U319 后定向复跑） |
-| QA-TIMEOUT-GATE | 超时形态门禁与存量迁移 | — | P1（门禁） | 🟢 | 100%（U317 已实施 `a1e0a5c893b`；范围漂移提示非失败） | 门禁测试 **84（83 pass/1 skip）**；296 文件、0 new |
+| QA-TIMEOUT-GATE | 超时形态门禁与存量迁移 | — | P1（门禁） | 🟢 | 100%（U317/U321 已实施；范围漂移提示非失败） | 门禁测试 **89（88 pass/1 skip）**；296 文件、0 new |
 | QA-TYPE-GATE | apps 类型门禁 | — | P1（门禁） | 🟢 | 100% | `tc:apps` 16→0 |
 | QA-EVIDENCE-CHECKERS | 台账表格/sha/编码校验 | — | P0（门禁） | 🟢 | 100% | 三脚本 + 自测 |
 
@@ -168,7 +168,7 @@
 | 地图编号 | 状态 | 台账/决策 | 套件或证据 |
 |---|---|---|---|
 | ADMIN-CONSOLE-WORKBENCH | 🟢 | U316（QA-030 搜索/筛选/通知，FR 外增强，⚪ 挂账） | workbench 套件（AC-01） |
-| QA-TIMEOUT-GATE | 🟢 | U291/U313/U315/U317 已关 | 门禁套件 **84（83 pass/1 skip）**、扫描 296 文件 0 new；`evidence/m110-load-300` |
+| QA-TIMEOUT-GATE | 🟢 | U291/U313/U315/U317/U321 已关 | 门禁套件 **89（88 pass/1 skip）**、扫描 296 文件 0 new；`evidence/m110-load-300` |
 | WEB-NAV-ROUTING | 🟢 | U307/U310/U312/U314（已关） | `web-exploratory-fixes` 45、U310 定向 1/1（主会话复跑） |
 | MOB-HOST-DETAIL | 🟢 | U278（已裁定不开发） | `u80-mobile-shell` 390×844 sheet、`u80-mobile-m9fix` 触控 44px |
 | AUTH-LOGIN-LOCKOUT | 🟢 | U289/U292/U293/U294/U296（已关） | 契约 9/9、entry-module 9/9、lockout 14/14 |
