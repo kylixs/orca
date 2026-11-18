@@ -1,14 +1,18 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   AUDIT_EVENT_MAX_BYTES,
   AUDIT_METADATA_MAX_BYTES,
   AuditChain,
   boundedAuditMetadata
 } from '../src/audit.ts'
+import { openAuditLogFile } from '../src/audit-log-file.ts'
 import { canonicalJson } from '../../../packages/contract/src/credential.ts'
 import { MAX_EVENT_BYTES } from '../../audit-writer/src/writer-limits.ts'
-import type { AuditEventInput, Store } from '../src/store.ts'
+import type { AuditEvent, AuditEventInput, Store } from '../src/store.ts'
 
 /**
  * U257: one bound applies at both write entries (`AuditChain.append` and the
@@ -39,9 +43,14 @@ function auditSizeOf(input: AuditEventInput): Record<string, unknown> {
   return mark as Record<string, unknown>
 }
 
-function newChain(): { audit: AuditChain; store: Pick<Store, 'audit' | 'auditSeq' | 'auditTip'> } {
-  const store = { audit: [], auditSeq: 0, auditTip: 'GENESIS' }
-  return { audit: new AuditChain(store), store }
+type AuditStoreView = Pick<Store, 'audit' | 'auditSeq' | 'auditTip'>
+
+function newChain(
+  persist?: (event: AuditEvent) => void,
+  now?: () => number
+): { audit: AuditChain; store: AuditStoreView } {
+  const store: AuditStoreView = { audit: [], auditSeq: 0, auditTip: 'GENESIS' }
+  return { audit: new AuditChain(store, persist, now), store }
 }
 
 describe('U257 审计事件归一器', () => {
@@ -123,6 +132,27 @@ describe('U257 审计事件归一器', () => {
     assert.equal(note, '😀'.repeat(1024))
   })
 
+  test('600 个 astral 字符未超码点上限：值原样且无 auditSize 标记', () => {
+    const emoji = '😀'.repeat(600)
+    const bounded = boundedAuditMetadata({ ...base, metadata: { note: emoji } })
+    assert.equal(bounded.truncated, false)
+    assert.equal(metadataOf(bounded.input).note, emoji)
+    assert.equal('auditSize' in metadataOf(bounded.input), false)
+  })
+
+  test('超过码点上限的 astral 字符串才截断，长度按码点计算', () => {
+    const emoji = '😀'.repeat(1_200)
+    const bounded = boundedAuditMetadata({ ...base, metadata: { note: emoji } })
+    assert.equal(bounded.truncated, true)
+    const note = metadataOf(bounded.input).note as string
+    // 1024 codepoints is 2048 UTF-16 units; both must agree with the cap.
+    assert.equal(Array.from(note).length, 1_024)
+    assert.equal(note.length, 2_048)
+    assert.equal(note, '😀'.repeat(1_024))
+    assert.equal(auditSizeOf(bounded.input).truncated, true)
+    assert.deepEqual(auditSizeOf(bounded.input).droppedFields, ['note'])
+  })
+
   test('数组中的 undefined 变成 null，JSON 往返后 canonicalJson 不变', () => {
     const bounded = boundedAuditMetadata({
       ...base,
@@ -132,6 +162,41 @@ describe('U257 审计事件归一器', () => {
     const metadata = metadataOf(bounded.input)
     const roundTripped: unknown = JSON.parse(JSON.stringify(metadata))
     assert.equal(canonicalJson(metadata), canonicalJson(roundTripped))
+  })
+
+  test('稀疏数组空洞归一为 null，JSON 往返后 canonicalJson 不变', () => {
+    const sparse: unknown[] = []
+    sparse[0] = 1
+    sparse[2] = 3
+    const bounded = boundedAuditMetadata({
+      ...base,
+      metadata: { sparse, withUndefined: [1, undefined, 2] }
+    })
+    const metadata = metadataOf(bounded.input)
+    assert.deepEqual(metadata.sparse, [1, null, 3])
+    assert.deepEqual(metadata.withUndefined, [1, null, 2])
+    const roundTripped: unknown = JSON.parse(JSON.stringify(metadata))
+    assert.equal(canonicalJson(metadata), canonicalJson(roundTripped))
+  })
+
+  test('稀疏数组落盘后重启 verify 仍 ok', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'orca-audit-sparse-'))
+    try {
+      const log = openAuditLogFile(join(dir, 'audit.log'))
+      const { audit } = newChain(log.append, () => 1_700_000_000_000)
+      const sparse: unknown[] = []
+      sparse[0] = 1
+      sparse[2] = 3
+      audit.append({ ...base, metadata: { sparse, list: [1, undefined, 2] } })
+      // A fresh chain reads what actually landed on disk, as a restart does.
+      const restarted = newChain()
+      restarted.audit.restore(log.load())
+      assert.deepEqual(restarted.audit.getHealth(), { ok: true })
+      assert.equal(restarted.audit.verify().ok, true)
+      assert.equal(restarted.audit.size, 1)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   test('归一后 hash 链仍可验证', () => {
@@ -197,5 +262,13 @@ describe('U257 审计事件归一器', () => {
   test('跨模块预算：API 事件上限给 writer 留出余量', () => {
     assert.ok(AUDIT_EVENT_MAX_BYTES + 256 <= MAX_EVENT_BYTES)
     assert.ok(AUDIT_METADATA_MAX_BYTES < AUDIT_EVENT_MAX_BYTES)
+  })
+
+  test('正常事件的序列化字节与 hash 不变', () => {
+    const { audit } = newChain(undefined, () => 1_700_000_000_000)
+    const event = audit.append({ ...base, metadata: { reason: 'PROJECT_PATH_INVALID' } })
+    // Pinned so any normalization drift on the normal path shows up here.
+    assert.equal(Buffer.byteLength(JSON.stringify(event)), 300)
+    assert.equal(event.hash, '4978ebca9056d619783217583d2cd12ce89de059e441976d8c45de7c8834d1f4')
   })
 })

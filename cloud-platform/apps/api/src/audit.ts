@@ -133,6 +133,36 @@ function jsonBytes(value: unknown): number {
   return serialized === undefined ? 0 : Buffer.byteLength(serialized)
 }
 
+/** Caps are codepoint counts; `.length` is UTF-16 units, so one astral char would count twice. */
+function countCodePoints(value: string): number {
+  let count = 0
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    if (code >= 0xd800 && code <= 0xdbff && index + 1 < value.length) {
+      const low = value.charCodeAt(index + 1)
+      if (low >= 0xdc00 && low <= 0xdfff) index += 1
+    }
+    count += 1
+  }
+  return count
+}
+
+/** Shrink rounds rescan the same strings; cache counts so the walk stays linear. */
+const charLengthCache = new Map<string, number>()
+const CHAR_LENGTH_CACHE_MAX_ENTRIES = 256
+const CHAR_LENGTH_CACHE_MAX_UNITS = 4096
+
+function charLength(value: string): number {
+  const cached = charLengthCache.get(value)
+  if (cached !== undefined) return cached
+  const length = countCodePoints(value)
+  if (value.length <= CHAR_LENGTH_CACHE_MAX_UNITS) {
+    if (charLengthCache.size >= CHAR_LENGTH_CACHE_MAX_ENTRIES) charLengthCache.clear()
+    charLengthCache.set(value, length)
+  }
+  return length
+}
+
 /** Codepoint-safe so a truncation never splits a surrogate pair. */
 function truncateChars(value: string, limit: number): string {
   return Array.from(value).slice(0, limit).join('')
@@ -147,7 +177,7 @@ function clipTopLevel(input: AuditEventInput): { top: AuditEventInput; clipped: 
   const text = (value: unknown, field: keyof typeof AUDIT_TOP_LEVEL_MAX): string => {
     const raw = typeof value === 'string' ? value : ''
     const limit = AUDIT_TOP_LEVEL_MAX[field]
-    if (raw.length > limit) {
+    if (charLength(raw) > limit) {
       clipped.push(field)
       return truncateChars(raw, limit)
     }
@@ -175,7 +205,7 @@ function sanitizeValue(
 ): unknown {
   if (typeof value === 'string') {
     const limit = key === null ? AUDIT_FIELD_MAX_CHARS : fieldLimit(key)
-    if (value.length > limit) {
+    if (charLength(value) > limit) {
       stats.truncated = true
       if (key !== null) noteField(stats, key)
       return truncateChars(value, limit)
@@ -198,12 +228,15 @@ function sanitizeValue(
       stats.truncated = true
       stats.droppedItems += value.length - kept.length
     }
-    return kept.map((item) => {
-      const sanitized = sanitizeValue(item, depth + 1, null, stats)
-      // `undefined` in an array makes canonicalJson emit an invalid fragment on
-      // restart, so verify would call the untouched chain broken.
-      return sanitized === undefined ? null : sanitized
-    })
+    const output: unknown[] = []
+    // Indexing, not `.map`: holes must become null too. JSON.stringify already
+    // writes a hole as null, but canonicalJson emits `[1,,3]`, so a restart would
+    // recompute a different hash and call the untouched chain broken.
+    for (let index = 0; index < kept.length; index += 1) {
+      const sanitized = sanitizeValue(kept[index], depth + 1, null, stats)
+      output.push(sanitized === undefined ? null : sanitized)
+    }
+    return output
   }
   const output: Record<string, unknown> = {}
   let count = 0
@@ -249,16 +282,17 @@ function findLongestString(
   best: { ref: StringRef | null }
 ): void {
   if (typeof value === 'string') {
+    const length = charLength(value)
     if (
-      value.length > AUDIT_STRING_MIN_CHARS &&
+      length > AUDIT_STRING_MIN_CHARS &&
       holder !== null &&
       key !== null &&
-      (best.ref === null || value.length > best.ref.length)
+      (best.ref === null || length > best.ref.length)
     ) {
       if (Array.isArray(holder) && typeof key === 'number') {
-        best.ref = { holder, index: key, length: value.length, field }
+        best.ref = { holder, index: key, length, field }
       } else if (!Array.isArray(holder) && typeof key === 'string') {
-        best.ref = { holder, key, length: value.length, field }
+        best.ref = { holder, key, length, field }
       }
     }
     return
@@ -282,8 +316,8 @@ function shrinkLongestString(metadata: Record<string, unknown>, stats: SanitizeS
   if (ref === null) return false
   const current = Array.isArray(ref.holder) ? ref.holder[ref.index] : ref.holder[ref.key]
   if (typeof current !== 'string') return false
-  const target = Math.max(AUDIT_STRING_MIN_CHARS, Math.floor(current.length / 2))
-  if (target >= current.length) return false
+  const target = Math.max(AUDIT_STRING_MIN_CHARS, Math.floor(ref.length / 2))
+  if (target >= ref.length) return false
   const shrunk = truncateChars(current, target)
   if (Array.isArray(ref.holder)) ref.holder[ref.index] = shrunk
   else ref.holder[ref.key] = shrunk
@@ -329,10 +363,12 @@ function boundMetadataBytes(
 }
 
 function shrinkTopLevel(input: AuditEventInput): AuditEventInput {
-  const shrinkText = (value: string): string =>
-    value.length > AUDIT_STRING_MIN_CHARS
-      ? truncateChars(value, Math.max(AUDIT_STRING_MIN_CHARS, Math.floor(value.length / 2)))
+  const shrinkText = (value: string): string => {
+    const length = charLength(value)
+    return length > AUDIT_STRING_MIN_CHARS
+      ? truncateChars(value, Math.max(AUDIT_STRING_MIN_CHARS, Math.floor(length / 2)))
       : value
+  }
   const shrinkNullable = (value: string | null): string | null =>
     value === null ? null : shrinkText(value)
   let next: AuditEventInput = { ...input }
@@ -397,6 +433,9 @@ export function boundedAuditMetadata(input: AuditEventInput): BoundedAuditInput 
     delete metadata.auditSize
     const hadMetadata = input.metadata !== undefined
     if (!stats.truncated && jsonBytes(metadata) <= AUDIT_METADATA_MAX_BYTES) {
+      // The normal path must be JSON-stable too: sparse arrays and undefined are
+      // where stringify-on-disk and canonicalJson-on-verify disagree.
+      assertJsonRoundTrip(metadata)
       const bounded: AuditEventInput = hadMetadata ? { ...top, metadata } : top
       return { input: bounded, truncated: false, originalBytes, droppedFields: [], droppedItems: 0 }
     }
