@@ -1,6 +1,6 @@
 # 业务地图验收矩阵（2026-11-18）
 
-- 上游：`../business-map.md`（70 叶子，🟢68/🟡1/⚪1，97.9%）
+- 上游：`../business-map.md`（70 叶子，🟢69/🟡0/⚪1，98.6%）
 - 今日门禁：第八轮全景 148 文件/37 批全 exit 0、1150（1147 pass/3 env skip）；认证 267/267；矩阵 113/113；门禁 92（91+1）；U326 拆分后 149 文件/1152 待第九轮
 
 | 域 | 编号 | 功能 | 状态 | 地图证据 | 今日验收 |
@@ -41,7 +41,7 @@
 | CONN 连接与选路 | CONN-DIRECT-ADDR | 直连地址校验与历史快照清洗 | 🟢 | 12/12 + 畸形快照 5/5 | 今日实跑 17/17（12+5；单测非 e2e） |
 | CONN 连接与选路 | CONN-RELAY-BOUND | 中继只转发、不做授权判定 | 🟢 | relay-hardening、edge-hygiene 5/5 | 第八轮全景覆盖 |
 | FILE 文件浏览与下载管控 | FILE-BROWSER-BROWSE | 文件浏览器（展开/搜索/只读） | 🟢 | file-contract **6/6**（M29-1 浏览/只读 1/1） | 今日实跑 6/6（M29-1） |
-| FILE 文件浏览与下载管控 | FILE-BROWSER-PREVIEW | 512KB 预览上限与二进制不可预览 | 🟡 | U325：补预览上限/二进制用例 | U325：专项用例缺，降 🟡 |
+| FILE 文件浏览与下载管控 | FILE-BROWSER-PREVIEW | 512KB 预览上限与二进制不可预览 | 🟢 | `cloud-file-preview-guards` **2/2**（真实 runtime/TLS） | 今日实跑 2/2（真实 runtime vitest，U325） |
 | FILE 文件浏览与下载管控 | FILE-PATH-GUARD | 相对路径与 `..` 穿越拒绝 | 🟢 | file-contract **6/6**（M29-2/3 2/2） | 今日实跑 6/6（M29-2/3 2/2） |
 | FILE 文件浏览与下载管控 | FILE-DL-POLICY | 全局/项目下载策略与即时生效 | 🟢 | download-policy 套件 | 第八轮全景覆盖 |
 | FILE 文件浏览与下载管控 | FILE-DL-HARDEN | 宿主侧硬拦（现有 RPC） | 🟢 | guard 7/7、enforcement 4/4 | 今日实跑 11/11（guard 7 + enforcement 4；vitest） |
@@ -80,4 +80,4 @@
 
 - 「今日验收」区分 e2e 与单测/脚本：只有 `cloud-platform/test/e2e/*.e2e.test.ts` 属第八轮全景；其余为今日直接实跑的 apps/api 单测、vitest 或脚本。
 - `relay-container-harness` 3 例因缺 Docker/镜像走既有降级 skip，需在容器环境补跑。
-- 未实施：`FILE-DL-RPC`（D21-C9 缓）；待补证据：`FILE-BROWSER-PREVIEW`（U325）；叶子外挂账：U181（H11–H13 产物）、U233 F4（缓办）、U323（工具项）。
+- 未实施：`FILE-DL-RPC`（D21-C9 缓）；叶子外挂账：U181（H11–H13 产物）、U233 F4（缓办）、U323（工具项）。

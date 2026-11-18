@@ -23,7 +23,7 @@
 | PRJ | 项目 | P0 | 🟢 | 100%（D22 已交付） | 归档/自助/详情/连接套件；web-project-entry **12/12** |
 | HOST | 开发机与中继 | P0 | 🟢 | 100% | mtls 12/12、relay 5/5、host-offline 1/1 等 |
 | CONN | 连接与选路 | P0 | 🟢 | 100% | 直连地址 12/12、畸形地址快照 5/5 |
-| FILE | 文件浏览与下载管控 | P0 | 🟡 | 81.3%（🟡预览上限缺专项 e2e；⚪专用下载 RPC 缓） | file-contract 6/6；宿主硬拦 guard 7/7；复制捕获 8/8 |
+| FILE | 文件浏览与下载管控 | P0 | 🟡 | 87.5%（⚪专用下载 RPC，D21 缓） | file-contract 6/6；预览守卫 2/2；宿主硬拦 11/11；复制捕获 8/8 |
 | AUD | 审计 | P0 | 🟢 | 100%（D18/D20 事件词汇已实施） | 审计链/writer/export/query 套件；u243 4/4 |
 | ADMIN | 管理台 | P0 | 🟢 | 100% | web-admin-gating 3/3、directory 套件、矩阵 113/113 |
 | CLIENT | 客户端与企业定制 | P0 | 🟢 | 100% | install-wizard **90/90**、one-liner 运行期 **14/14** |
@@ -99,7 +99,7 @@
 | 编号 | 功能 | FR | 优先级 | 状态 | 进度 | 测试 |
 |---|---|---|---|---|---|
 | FILE-BROWSER-BROWSE | 文件浏览器（展开/搜索/只读） | FR-6.1/6.2 | P0 | 🟢 | 100% | file-contract **6/6**（M29-1 浏览/只读 1/1） |
-| FILE-BROWSER-PREVIEW | 512KB 预览上限与二进制不可预览 | FR-6.3/6.4 | P1 | 🟡 | 80%（实现待核：`files-params.ts:84` 有 512KB 参数上限；**无专项 e2e**，file-contract 为借用证据） | U325：补预览上限/二进制用例 |
+| FILE-BROWSER-PREVIEW | 512KB 预览上限与二进制不可预览 | FR-6.3/6.4 | P1 | 🟢 | 100%（实现：`runtime-file-commands-*` 512KB 上限 + NUL 二进制；U325 已补专项） | `cloud-file-preview-guards` **2/2**（真实 runtime/TLS） |
 | FILE-PATH-GUARD | 相对路径与 `..` 穿越拒绝 | FR-6.5 | P0 | 🟢 | 100% | file-contract **6/6**（M29-2/3 2/2） |
 | FILE-DL-POLICY | 全局/项目下载策略与即时生效 | FR-7.1/7.2/7.6 | P0 | 🟢 | 100% | download-policy 套件 |
 | FILE-DL-HARDEN | 宿主侧硬拦（现有 RPC） | FR-7.3 | P0 | 🟢 | 100% | guard 7/7、enforcement 4/4 |
@@ -147,9 +147,9 @@
 
 ## 4. 汇总与口径
 
-- 综合完成度：**68.5 / 70 = 97.9%**（定义：🟢计 1、🟡计 0.5、⚪计 0；域进度按同法计算）
+- 综合完成度：**69 / 70 = 98.6%**（定义：🟢计 1、🟡计 0.5、⚪计 0；域进度按同法计算）
 - 叶子外挂账（不计入 70 行）：U233 F4 认证拒绝审计（已设计、缓办）、U323 探索脚本工具项、U325 已升为叶子（FILE-BROWSER-PREVIEW）、FR 外增强 U316/U54 等，见台账
-- 叶子功能项 **70**：🟢 **68**、🟡 **1**（FILE-BROWSER-PREVIEW：实现待核、缺专项 e2e）、⚪ **1**（FILE-DL-RPC，D21 缓登记）
+- 叶子功能项 **70**：🟢 **69**、🟡 **0**、⚪ **1**（FILE-DL-RPC，D21 缓登记）
 - 计数口径：叶子行数按本文件表行实测（70），下次更新须重算并同步本节
 - 阻塞源（剩余）：cookieMode 生产启用待运维按检查单执行、D21-C9 缓（登记缺口）；其余决策项均已实施或收口
 - 所有计数为**指定范围基线**；「全仓无红」仅由 QA-E2E-SWEEP 的全景扫描支撑（协议 §2-142），不得以子集基线替代
@@ -185,7 +185,7 @@
 | AZ-ENUM-GUARD | 🟢 | D24（保留 404 静默）、U247 观察 | web-project-entry 10/10 |
 | PRJ-PROVISION-ERR | 🟢 | D22（已实施 `4a85e45bdce`）、U54 | `web-project-entry` 12/12 |
 | FILE-DL-RPC / FILE-COPY-CAPTURE | ⚪/🟢 | D21（C9 缓登记；C6 已落地）、U66 第二口径结案 | `cloud-file-copy-audit` 8/8 |
-| FILE-BROWSER-PREVIEW | 🟡 | U325（预览上限/二进制缺专项 e2e） | 实现待核；file-contract 6/6 非专项 |
+| FILE-BROWSER-PREVIEW | 🟢 | U325 已关（`eb56df0cfab`） | `cloud-file-preview-guards` 2/2（真实 runtime） |
 | FILE-DL-HARDEN | 🟢 | U66 二期（已关） | guard 7/7、enforcement 4/4 |
 | CLIENT-INSTALL-ONELINER | 🟢 | U275/U276/U281/U283/U285/U288（已关） | 运行期 14/14、自检 2/2 |
 | HOST-ONBOARD-REGISTER | 🟢 | U272（已关） | protocol-version 3/3 |
