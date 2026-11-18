@@ -175,7 +175,8 @@ async function runInterrupted(interrupt: 'SIGINT' | 'SIGQUIT' = 'SIGINT'): Promi
 }
 
 describe('U275: the renderer evaluates in a single pass', () => {
-  bashTest('URL 中字面 ${file} 不被二次替换，\\${code} 仍解码', () => {
+  // Pure string assertions: no shell, so these must not be gated on POSIX bash.
+  test('URL 中字面 ${file} 不被二次替换，\\${code} 仍解码', () => {
     const url = 'https://platform.example/x/${file}/y'
     const rendered = installCommand(url)
 
@@ -188,7 +189,7 @@ describe('U275: the renderer evaluates in a single pass', () => {
 })
 
 describe('U275: template interpolation contract', () => {
-  bashTest('模板必须同时插值 ${file} 与 ${url}', () => {
+  test('模板必须同时插值 ${file} 与 ${url}', () => {
     assert.doesNotThrow(() => assertInstallTemplateInterpolations('a ${file} b ${url} c'))
     assert.throws(
       () => assertInstallTemplateInterpolations('a "${url}" -o /tmp/x.sh'),
@@ -202,7 +203,8 @@ describe('U275: template interpolation contract', () => {
 })
 
 describe('U275/U276: install one-liner runs under a real shell', () => {
-  bashTest('模板取自 app.js 源码，转义与引号不被测试重写', () => {
+  // Source-shape only; the cases below that spawn bash stay gated.
+  test('模板取自 app.js 源码，转义与引号不被测试重写', () => {
     assert.ok(INSTALL.source.includes('exit "$code"'))
     assert.ok(installCommand(INSTALL_URL).endsWith('exit "$code"'))
     assert.ok(installCommand(INSTALL_URL).includes('安装脚本退出码 ${code}，临时文件保留在'))

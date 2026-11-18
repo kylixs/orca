@@ -20,6 +20,8 @@ import { loadWebConsolePage, type WebConsolePage } from './web-console-page.ts'
 
 const EVIDENCE = 'g09-host-lifecycle-feedback'
 const FAILURE_BODY = { error: { code: 'SIMULATED_FAILURE', message: '模拟平台故障' } }
+// U285: read app.js once at module load; a mid-assertion re-read races a concurrent rewrite.
+const INSTALL = installCommandTemplateSource()
 
 let service: Service
 let adminToken = ''
@@ -229,14 +231,23 @@ test('G09-3 注册弹框「复制命令」：写入完整命令、toast 已复�
   await page.settle()
   assert.equal(callsTo(page, 'POST', '/v1/hosts/tokens'), 1, 'generate mints one token')
   const command = page.window.document.querySelector('#installCmd')?.textContent ?? ''
-  // Derive the expected command from app.js's own template so a template edit
-  // cannot stale this assertion; the contract itself is pinned below (U284).
   const installUrl = /curl -fsSL "([^"]+)"/.exec(command)?.[1]
   assert.ok(installUrl, 'command downloads the script from the install endpoint')
-  const { template, file } = installCommandTemplateSource()
+  // U285: pin the endpoint itself (origin + the server's install route) instead
+  // of echoing the command's own URL, so a drifted path cannot pass.
+  const endpoint = new URL(installUrl)
+  assert.equal(
+    endpoint.origin,
+    'https://web.console.local',
+    'the one-liner targets the console origin'
+  )
+  assert.equal(endpoint.pathname, '/install/host.sh', 'the install route path is pinned')
+  assert.ok(endpoint.searchParams.get('token'), 'the install URL carries the registration token')
+  // Derive the expected command from app.js's own template so a template edit
+  // cannot stale this assertion; the contract itself is pinned below (U284).
   assert.equal(
     command,
-    renderInstallCommand(template, file, installUrl),
+    renderInstallCommand(INSTALL.template, INSTALL.file, installUrl),
     'the dialog renders the current one-liner template verbatim'
   )
   assert.match(command, /token=/)
