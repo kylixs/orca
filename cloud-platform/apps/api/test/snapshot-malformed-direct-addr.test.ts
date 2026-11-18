@@ -19,6 +19,10 @@ const ORIGIN = 'https://console.u277.example'
 const INTERNAL_TOKEN = 'u277-token'
 const MALFORMED_ADDR = '127.0.0.1:99999'
 const VALID_ADDR = '127.0.0.1:17001'
+// U280: `isDirectAddrForm` rejects both, `new URL` accepts both. Only the
+// explicit pre-splice guard keeps these out of `sessionPageUrl`; `127.0.0.1:99999`
+// cannot show that because the URL parser rejects it too.
+const GUARD_ONLY_REJECTED_ADDRS = ['console.example/evil', 'user@evil.example']
 
 const apps: ApiHandle[] = []
 const tempDirs: string[] = []
@@ -158,6 +162,23 @@ describe('U277 快照恢复的畸形直连地址', () => {
     // Guard the exact failure mode: the malformed splice must not leak through.
     assert.equal(String(project.sessionPageUrl).includes('99999'), false)
   })
+
+  for (const addr of GUARD_ONLY_REJECTED_ADDRS) {
+    test(`U280：恢复 ${addr} 的快照：列表 200 且 sessionPageUrl 为空串`, async () => {
+      const { base } = await startWith(snapshotWithDirectAddr(addr))
+      const token = await loginAsAdmin(base)
+
+      const host = await listedHost(base, token)
+      // Both lists must answer 200 and the address must survive restore, so the
+      // empty URL below comes from the pre-splice guard, not string filtering.
+      assert.deepEqual(host.directAddrs, [addr])
+      assert.equal(host.tlsFingerprint, 'sha256:u277tls')
+
+      const project = await listedProject(base, token)
+      assert.equal(typeof project.sessionPageUrl, 'string', 'empty string, never null')
+      assert.equal(project.sessionPageUrl, '', `${addr} yields no session page URL`)
+    })
+  }
 
   test('对照：恢复 127.0.0.1:17001 的快照：sessionPageUrl 非空且可解析', async () => {
     const { base } = await startWith(snapshotWithDirectAddr(VALID_ADDR))

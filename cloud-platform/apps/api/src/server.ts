@@ -3436,7 +3436,9 @@ export function createApp(config: ApiConfig): ApiHandle {
    */
   function sessionPageUrlFor(h: Host | undefined, platformOrigin: string): string {
     const addr = h?.directAddrs[0]
-    if (!h || !addr || !h.tlsFingerprint || !isDirectAddrForm(addr)) {
+    // U280: form validity alone is not enough to know the splice parses; decide
+    // dialability before touching the URL so try/catch is not the only guard.
+    if (!h || !addr || !h.tlsFingerprint || !isDialableDirectAddr(addr)) {
       return ''
     }
     try {
