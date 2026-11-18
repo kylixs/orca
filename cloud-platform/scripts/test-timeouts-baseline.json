@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-18T09:04:34.830Z",
+  "generatedAt": "2026-11-18T09:17:18.157Z",
   "scanner": "cloud-platform/scripts/check-test-timeouts.mjs",
   "scanScope": [
     "cloud-platform/apps/**/test/**/*.ts",
@@ -8,10 +8,10 @@
   ],
   "scannedFiles": 203,
   "counts": {
-    "total": 65,
+    "total": 52,
     "byForm": {
-      "hook-numeric-second": 45,
-      "test-numeric-third": 20
+      "hook-numeric-second": 36,
+      "test-numeric-third": 16
     }
   },
   "entries": {
@@ -27,8 +27,6 @@
     "cloud-platform/test/e2e/audit-writer-write-failure.e2e.test.ts|test-numeric-third|bf31985b7f5c": 1,
     "cloud-platform/test/e2e/audit-writer.e2e.test.ts|hook-numeric-second|313f61641296": 1,
     "cloud-platform/test/e2e/audit-writer.e2e.test.ts|test-numeric-third|2d751bd3bfe1": 1,
-    "cloud-platform/test/e2e/ldap-admission.e2e.test.ts|hook-numeric-second|313f61641296": 1,
-    "cloud-platform/test/e2e/r3-api-hardening.e2e.test.ts|hook-numeric-second|313f61641296": 1,
     "cloud-platform/test/e2e/relay-browser-entry.e2e.test.ts|hook-numeric-second|313f61641296": 1,
     "cloud-platform/test/e2e/relay-browser-entry.e2e.test.ts|test-numeric-third|6b90b28364d0": 2,
     "cloud-platform/test/e2e/relay-browser-mode.e2e.test.ts|hook-numeric-second|904eebbe817b": 1,
@@ -36,8 +34,6 @@
     "cloud-platform/test/e2e/relay-endpoint-address.e2e.test.ts|hook-numeric-second|313f61641296": 1,
     "cloud-platform/test/e2e/relay-failover.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
     "cloud-platform/test/e2e/relay-failover.e2e.test.ts|test-numeric-third|d47c90131d9d": 1,
-    "cloud-platform/test/e2e/u106-console-mobile.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
-    "cloud-platform/test/e2e/u106-console-routing.e2e.test.ts|hook-numeric-second|313f61641296": 1,
     "cloud-platform/test/e2e/u106-detail-deeplink.e2e.test.ts|hook-numeric-second|313f61641296": 1,
     "cloud-platform/test/e2e/u106-filter-url.e2e.test.ts|hook-numeric-second|313f61641296": 1,
     "cloud-platform/test/e2e/u106-workspace-route.e2e.test.ts|hook-numeric-second|313f61641296": 1,
@@ -48,7 +44,6 @@
     "cloud-platform/test/e2e/u197-csp-zero-violation.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
     "cloud-platform/test/e2e/u197-migration-browser.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
     "cloud-platform/test/e2e/u197-web-cookie-browser.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
-    "cloud-platform/test/e2e/u198-legacy-reload.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
     "cloud-platform/test/e2e/u58-input-hardening.e2e.test.ts|hook-numeric-second|313f61641296": 1,
     "cloud-platform/test/e2e/u70-workbench-cards.e2e.test.ts|hook-numeric-second|313f61641296": 1,
     "cloud-platform/test/e2e/u79-host-relay-binding.e2e.test.ts|hook-numeric-second|cef9ed8ee77e": 1,
@@ -56,12 +51,9 @@
     "cloud-platform/test/e2e/u80-mobile-audit.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
     "cloud-platform/test/e2e/u80-mobile-global.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
     "cloud-platform/test/e2e/u80-mobile-m9fix.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
-    "cloud-platform/test/e2e/u80-mobile-settings.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
     "cloud-platform/test/e2e/u80-mobile-users.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
     "cloud-platform/test/e2e/ui-screenshots.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
     "cloud-platform/test/e2e/ui-screenshots.e2e.test.ts|test-numeric-third|2d751bd3bfe1": 1,
-    "cloud-platform/test/e2e/user-grant-resolution.e2e.test.ts|hook-numeric-second|313f61641296": 1,
-    "cloud-platform/test/e2e/user-grant-resolution.e2e.test.ts|test-numeric-third|47142d19e3d0": 2,
     "cloud-platform/test/e2e/web-audit-export-browser.e2e.test.ts|hook-numeric-second|775379c1db6b": 1,
     "cloud-platform/test/e2e/web-audit-export-browser.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
     "cloud-platform/test/e2e/web-handoff.e2e.test.ts|hook-numeric-second|313f61641296": 1,
@@ -70,10 +62,6 @@
     "cloud-platform/test/e2e/web-project-archive-detail.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
     "cloud-platform/test/e2e/web-project-archive-mobile.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
     "cloud-platform/test/e2e/web-relay-route-staleness.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
-    "cloud-platform/test/e2e/web-workbench-latency.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
-    "cloud-platform/test/e2e/web-workbench-latency.e2e.test.ts|test-numeric-third|1c0b4d7ea8ae": 1,
-    "cloud-platform/test/e2e/workbench-project-list-latency.e2e.test.ts|hook-numeric-second|21126a3f3b4f": 1,
-    "cloud-platform/test/e2e/workbench-project-list-latency.e2e.test.ts|test-numeric-third|1c0b4d7ea8ae": 1,
     "cloud-platform/test/load/load-300.test.ts|hook-numeric-second|313f61641296": 1,
     "cloud-platform/test/load/load-300.test.ts|test-numeric-third|80501fe11a85": 1
   }
