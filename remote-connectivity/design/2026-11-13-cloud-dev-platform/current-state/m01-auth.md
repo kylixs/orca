@@ -1,7 +1,7 @@
 # M1 登录与认证（现状）
 
-> 基线提交：`214a58f6f1c`（`server.ts` 行号按冻结代码 `28964a07a67` 校准，文档提交 `214a58f6f1c`；`app.js` 等引用为历史版本，原基线 `a5d6d2162b4`/2026-11-18）｜来源：`cloud-platform/apps/web/app.js`、`cloud-platform/apps/api/src/{server.ts,refresh-cookie.ts,web-release.ts}` 代码阅读 + 已提交套件。文中 `server.ts` 行号均指该 HEAD（工作树若含未提交改动会使行号偏移）。
-> 刷新记录：2026-11-18 按 HEAD `39ad743d793`（U228 后）整理，覆盖 U197 Cookie 会话（登录形态/双读刷新/页面恢复/登出）、U218 登出撤销与 CSRF、U219/D17 迁移探测、U220 Origin 边界、U221–U223 客户端硬化、U225–U227 测试收紧。U228（禁用账号登录/刷新复查）已合入 `39ad743d793`（登录/刷新拒绝非 active 并撤销会话；客户端重放仍 401 即登出）。
+> 基线提交：`cc99dff1726`（当前 HEAD；`server.ts` 行号按冻结代码 `28964a07a67` 校准，文档提交 `214a58f6f1c`；`app.js` 引用除 A8/页面恢复分支外为历史版本，原基线 `a5d6d2162b4`/2026-11-18）｜来源：`cloud-platform/apps/web/app.js`、`cloud-platform/apps/api/src/{server.ts,refresh-cookie.ts,web-release.ts}` 代码阅读 + 已提交套件。文中 `server.ts` 行号均指该 HEAD（工作树若含未提交改动会使行号偏移）。
+> 刷新记录：2026-11-18 按 HEAD `39ad743d793`（U228 后历史快照；当前 HEAD `cc99dff1726`）整理，覆盖 U197 Cookie 会话（登录形态/双读刷新/页面恢复/登出）、U218 登出撤销与 CSRF、U219/D17 迁移探测、U220 Origin 边界、U221–U223 客户端硬化、U225–U227 测试收紧。U228（禁用账号登录/刷新复查）已合入 `39ad743d793`（登录/刷新拒绝非 active 并撤销会话；客户端重放仍 401 即登出）。
 > 本次未启动 18787（探测 `000`），界面描述以生产管理台代码为准。
 
 ## 1. 页面/界面布局
@@ -39,7 +39,7 @@
 | A5  | 账号不在 LDAP 准组                         | 服务端 `401 LDAP_GROUP_NOT_ADMITTED`；两条拒绝路径（adapter filter miss / 平台闸门）同码同文案；审计 `reason=ldap_group_denied`；**不计数也不清锁定**                                                                                                                                                                                                                  | 无        | 行内显示服务端文案「账号未加入平台准入组。」                                                                                                                          | 准入组由 `ORCA_CLOUD_LDAP_REQUIRED_GROUP`（或 config `ldapRequiredGroup`）控制；空白=关闭 |
 | A6  | 点击密码框眼睛                             | 明文/密文切换                                                                                                                                                                                                                                                                                                                                                         | 无        | —                                                                                                                                                                     | 无         |
 | A7  | 任意业务请求返回 401                       | `api()` 只尝试**一次刷新+一次重放**（`app.js:70-108`）。Cookie 模式先发一次无 body `/v1/auth/refresh`（`credentials:'same-origin'`）；无 Cookie 可解析时才用 body 回退（`app.js:259-297`）。刷新结果四态：`ok` 重放；`rejected`（HTTP **400/401**）→ `logout()`；`error`（403/408/429/5xx 与传输失败）→ **不登出**，失败原请求交给调用方；`stale`（auth 代际已变）→ 不写状态/不登出，交回原 401（`app.js` U229/U232）。并发 401 共享一次刷新（`app.js:110-112`） | 无        | 刷新被拒 → 清会话回登录页。**重放仍 401**：`retried` 分支直接 `logout()` 回登录页（U228 `39ad743d793`，裸 fetch 不递归） | 已登录     |
-| A8  | 刷新/重开页面                              | **Cookie 模式**：一次无 body 刷新 → 成功后 `GET /v1/me`（`retried:true`，不启动第二条刷新链）→ 进主框架（`app.js:5321-5350`）。**旧模式**：有 access 时 `GET /v1/me`，401 触发 body 刷新并重放一次（`app.js:5352-5367`；`u198-legacy-reload` 断言顺序 `/v1/me:401 → refresh:200 → /v1/me:200`）。`orca.pendingLogout=1` 时**先显示登录页**再补发一次登出、不自动进入（`app.js:5312-5317`） | 无        | 刷新失败/`/v1/me` 失败 → 移除缓存 user、显示登录页。仅缓存 user、无 access/无 Cookie 模式时直接登录页（`session-renewal` AC-M1-14）                                      | 有本地会话 |
+| A8  | 刷新/重开页面                              | **Cookie 模式**：一次无 body 刷新 → 成功后 `GET /v1/me`（`retried:true`，不启动第二条刷新链）→ 进主框架（`app.js:5452-5488`）。**旧模式**：有 access 时 `GET /v1/me`，401 触发 body 刷新并重放一次（`app.js:5489-5505`；`u198-legacy-reload` 断言顺序 `/v1/me:401 → refresh:200 → /v1/me:200`）。`orca.pendingLogout=1` 时**先显示登录页**再补发一次登出、不自动进入（`app.js:5390-5396`） | 无        | 刷新失败/`/v1/me` 失败 → 移除缓存 user、显示登录页。仅缓存 user、无 access/无 Cookie 模式时直接登录页（`session-renewal` AC-M1-14）                                      | 有本地会话 |
 | A9  | 点击「退出」                               | 关闭工作区 iframe → 置 `orca.pendingLogout=1` → 异步 `POST /v1/auth/logout`（同时带 Bearer 与同源 Cookie；服务端清 Cookie 的多作用域并撤销 Bearer/Cookie 定位到的**全部** session，`server.ts:4353-4432`）→ 本地清 access/refresh/tokenOwner、`orca.authMode`、缓存 user 与登录框输入 → 回登录页。请求网络失败保留标记，下次加载重试一次；收到 2xx 或 401 即删标记（`app.js:5081-5145`）。多标签为**被动**登出：另一标签下一次请求 401 → 刷新被拒 → 登出（`u197-web-cookie-browser` AC7） | 无        | 登出请求失败被吞，本地仍清空；HttpOnly Cookie 由下次加载的补发清理                                                                                                    | 已登录     |
 
 **会话代际与迁移 owner 策略（U229）**
@@ -68,8 +68,8 @@
 
 **页面恢复分支（HEAD）**
 
-- Cookie 模式：一次无 body 刷新；成功才删旧键（`refreshWithCookie` 成功后 `clearLegacyTokens`），随后 `/v1/me`（`app.js:162-190,5321-5350`）。
-- 旧模式：`/v1/me` 401 → body 刷新 → 重放（`app.js:5352-5367`）。启动期 body 刷新成功后在 `/v1/me` 拿到用户名时补写 `tokenOwner`（`app.js:312-317`；`u198-legacy-reload`、`web-refresh-cookie` U222 N3）。
+- Cookie 模式：一次无 body 刷新；成功才删旧键（`refreshWithCookie` 成功后 `clearLegacyTokens`），随后 `/v1/me`（`app.js:194-222,5452-5488`）。
+- 旧模式：`/v1/me` 401 → body 刷新 → 重放（`app.js:5489-5505`）。启动期 body 刷新成功后在 `/v1/me` 拿到用户名时补写 `tokenOwner`（`app.js:356-361`；`u198-legacy-reload`、`web-refresh-cookie` U222 N3）。
 - 迁移分支 **已实现（U219/D17，`4e808df20f2`；后续 `296dcf40ac7`/`b0183c972f`）**：无 `orca.authMode` 标记时按「能力未知」处理——启动先发一次无 body 探测；成功即进入 Cookie 模式并删旧键（AC9b/AC9c），被拒时最多花一次 body 回退并写 `legacy`；探测传输故障（403/408/429/5xx/传输）不当会话裁决，有持久 access 时继续走 `/v1/me`，失败探测 60 秒退避（U249）。`u197-migration-browser` AC15(g) 与 `u197-web-cookie-browser-race-probe` AC9c 已去 skip。
 
 **会话参数与配置（HEAD）**
@@ -91,7 +91,7 @@
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | CSRF 403                 | Cookie 认证的刷新缺失/跨源/`null` Origin，或 `content-type` 不是 `application/json` → `403 CSRF_REJECTED`，无续期/清理副作用       | `server.ts:2344-2350,3995-3997`；`refresh-cookie` CSRF 用例                            |
 | 重复 Cookie 401          | `orca_refresh` 出现两次（同名/多 Cookie 头）→ 登录/handoff/刷新/登出一律硬 `401 SESSION_EXPIRED`，清三种作用域，**不回退 body、不轮换、不撤销 session**（刷新） | `server.ts:2310-2313,3830-3834,3977-3982,4242-4246,4357,4428-4430`；`refresh-cookie` 245/267 |
-| Cookie 缺失              | 服务端回退 body 刷新；Cookie 模式客户端若无旧 refresh → `rejected` → 回登录，无循环                                               | `server.ts:4144-4165`；`app.js:5321-5350`；`u197-web-cookie-browser`                   |
+| Cookie 缺失              | 服务端回退 body 刷新；Cookie 模式客户端若无旧 refresh → `rejected` → 回登录，无循环                                               | `server.ts:4144-4165`；`app.js:5452-5488`；`u197-web-cookie-browser`                   |
 | 传输失败                 | 客户端记为 `error`：页内请求**不登出**、保留会话、恢复后可重试；启动探测失败→登录页，不空白/无未捕获异常（启动含 10s 超时，U229 F5）                          | `app.js:174-179,208-212,273-285`；`web-refresh-cookie` U222 N1、`u197-web-cookie-browser-race-probe` 496/541 |
 | 刷新 5xx/429/403         | 客户端归 `error`：不登出、保留会话，业务错误交给调用方（U229 F7） | `app.js` `refreshVerdict`；`u229-web-startup-resilience` |
 | 登录 200 非契约响应      | 校验 `accessToken/user.username/device.id`，不满足抛 `PLATFORM_UNAVAILABLE`「平台响应异常」，不写 `"undefined"`（U229 F6） | `u229-web-startup-resilience` |

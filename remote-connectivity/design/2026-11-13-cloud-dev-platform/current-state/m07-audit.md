@@ -1,6 +1,6 @@
 # M7 审计（查询 / 结果表 / 事件详情 / 缺口状态 / 权限）
 
-> `server.ts` 行号按冻结代码 `28964a07a67` 校准（文档提交 `214a58f6f1c`；`server.ts` 的 `host_register` fail-closed 与单事件体积护栏段落）；`app.js`（L2077-2537）、`styles.css`（L914-1040）、`audit.ts` 及 `server.ts` L3660-3825 等引用为历史版本（原基线 `664a91e0322`，2026-11-16 工作区快照；工作树 U106-R3 未提交改动不影响审计页）。
+> `server.ts` 行号按冻结代码 `28964a07a67` 校准（文档提交 `214a58f6f1c`；`server.ts` 的 `host_register` fail-closed 与单事件体积护栏段落）；`app.js`（L2077-2537）、`styles.css`（L914-1040）、`audit.ts` 及 `server.ts` L3660-3825 等引用为历史版本（原基线 `664a91e0322`，2026-11-16 工作区快照；U106-R3 详情深链已合入 `9e436334e88`，不再作为工作树改动）。
 > 前端：`cloud-platform/apps/web/app.js`（`renderAudit` 及审计辅助函数，约 L2077-2537；样式 `cloud-platform/apps/web/styles.css` L914-1040）。后端：`cloud-platform/apps/api/src/server.ts`（`GET /v1/audit/events`、`/v1/audit/status`、`/v1/audit/verify`，约 L3660-3825）。
 
 ## 1. 页面/界面布局

@@ -1,6 +1,6 @@
 # M9 · Orca Web 工作区（现状基线）
 
-> **基线提交**：`664a91e0322`（2026-11-16）。本机工作树另有未提交的 U112/U113 修令改动（`cloud-simple-workspace-end-close.ts`、`host-layout-adoption.ts` 等尚未跟踪），**不计入本基线**，相应条目标注「在途」。
+> **基线提交**：`664a91e0322`（2026-11-16）。U112（`fee2402fb3a`/`737a3962428`）与 U113 A-fix1（`530807b7a18`）已合入，相应条目标注已实现。
 > 代码入口：`src/renderer/src/web/`（页面壳/入口/续会话）、`src/renderer/src/runtime/web-session-tabs-sync/`（宿主标签镜像）、`src/main/cloud-platform/cloud-session-tabs-scope.ts`（宿主 scope）。
 > 相关设计：`work-orders/w13-cloud-workspace-view-design.md`、`u96-tab-restore-design.md`、`u103-refresh-login-diagnosis.md`、`u106-routing-design.md`。
 
@@ -50,7 +50,7 @@ Orca Web 复用**完整原生 App 外壳**（`web-root.tsx` 懒加载 `../App`�
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 能力协商        | `workspace.info.capabilities` 可选字段 `cloud.session-tabs-restore.v1`；`shouldMirrorCloudSessionTabs` 三处共用（global 订阅 / active 订阅 / 快照 eager refresh），pairing revision 不符即 fail-closed                                                                                                                                   |
 | 宿主放行        | `session.tabs.list/listAll/subscribe/subscribeAll/activate/close/move` 归 `terminal` 权限；`createTerminal/setTabProps` 继续拒绝；`terminal.list/adoptOrphans` 云放行并做 worktree/handle scope                                                                                                                                          |
-| 清单应用        | `applyWebSessionTabsSnapshot` 系列；`adoptHostLayout` 每次**进入工作区**收养一次宿主镜像组/active/layout，之后 client-owned（U104，`b50c241e699`）；进入动作触发已由 U113 A-fix1 在途补强                                                                                                                                                |
+| 清单应用        | `applyWebSessionTabsSnapshot` 系列；`adoptHostLayout` 每次**进入工作区**收养一次宿主镜像组/active/layout，之后 client-owned（U104，`b50c241e699`）；进入动作触发已由 U113 A-fix1（`530807b7a18`）补强                                                                                                                                                |
 | 孤儿认领        | `recoverWebSessionTerminalOrphansBeforeApply` → `terminal.list` + `terminal.adoptOrphans`（按 worktree/handle 限界）                                                                                                                                                                                                                     |
 | 新建终端        | 客户端生成 `terminal-<uuid>` tabId + 裸 UUID leafId（U107），`terminal.create` 后由宿主发布/持久化；关闭经 `session.tabs.close`（U108 图代数围栏与镜像退役已修）。**U153 P2（`9171a3332f9`）**：用户手势创建在 create 返回宿主持久 id 后补一次**非 `materializeOnly`** 的 `session.tabs.activate`（tap 语义）+ `recordWebSessionFocusIntent`；被动 mount/镜像 attach 仍 `materializeOnly`。其余手势入口（文件树/split/shell）由 U154 补齐。 |
 | 多组            | 2 组恢复已真机验证（journey-8 控制台线 13/13 含 3 tabs/2 groups、B7 三次重开零互换；U99 move 超时已修）                                                                                                                                                                                                                                  |
@@ -64,13 +64,13 @@ Orca Web 复用**完整原生 App 外壳**（`web-root.tsx` 懒加载 `../App`�
 - 回放复用宿主订阅初始快照：`MOBILE_SNAPSHOT_BYTE_BUDGET` 512 KiB、`MOBILE_SUBSCRIBE_SCROLLBACK_ROWS` 1000 行；客户端可请求上限 2 MiB；超限带 `truncated`；**不提高任何上限**。
 - `localOnlyScrollbackByTabId` 永不离开宿主。
 - PTY 已死/宿主重启：显式「会话已结束（宿主已重启或终端已退出）」+ 同标签一键重开 PTY（`cloud-terminal-replay-boundary.tsx`，A2）；不显示空白假活。
-- 订阅断流当前有重连状态文案；退避重连缺口见 U112 D5（简易工作区审计连带）。
+- 订阅断流当前有重连状态文案；`session.tabs.subscribe` 按 500/1000/2000ms 退避重连，预算耗尽才降级（U112 D5，`737a3962428`）。
 
 ### 3.4 刷新 / 二次打开行为
 
 1. **刷新**：`web-root` 启动路由先抹 handoff；若存在持久云登录且 URL 带 `?api=` → `resumeWebCloudSession`（B1），否则登录页（`?api=` 预填、projectId 记忆）。
 2. **同一项目第 2/N 次打开**：`adoptHostLayout` 一次性收养宿主布局（U104 已修，`b50c241e699`）；客户端已有本地组后宿主 layout 不再覆盖（`apply-preparation-groups.ts`）。
-3. **刷新后真栈复跑**：U113 D1/D6 明确指出 release-2 仅 1 标签且 u103 证据为修复前，**待 v2 发布后真机 2 组 3 标签×关页/刷新/二开×3 复验**。
+3. **刷新后真栈复跑**：U113 A-retest 已完成，真机 2 组 3 标签×关页/刷新/二开×3 = 9/9 PASS（`evidence/u113-retest/summary.json`）。
 
 ## 4. 数据来源
 
@@ -95,7 +95,7 @@ Orca Web 复用**完整原生 App 外壳**（`web-root.tsx` 懒加载 `../App`�
 | [U100](../defect-ledger.md#L104) | ⚪   | 文件/编辑器标签不随重开恢复（用户裁定接受，需在验收文案注明）                                  |
 | [U109](../defect-ledger.md#L109) | 🟢   | 编译产物遮蔽源文件已清；web 域已删，components 域遗留                                          |
 
-**尚未实现的设计项**（现状 vs 设计）：
+**设计与实现边界**（现状 vs 设计）：
 
 - 标签级唯一 URL：按设计不承诺（现状=项目级 `?api=&project=`；U106 W1–W3 已落地）。
 - 旧宿主降级 A11「零拒绝探测」已实现，但真机旧版本矩阵未常设。
@@ -108,9 +108,9 @@ Orca Web 复用**完整原生 App 外壳**（`web-root.tsx` 懒加载 `../App`�
 | 黄金旅程       | `tests/e2e/cloud-golden-journey-orca-web.spec.ts`、`tests/e2e/cloud-golden-journey-git-and-restart.spec.ts`（reload 后路径一致/已连接/零 login-handoff/终端重连，U91）、`tests/e2e/cloud-web-workspace-view-negatives.spec.ts`                              |
 | 入口/续会话    | `src/renderer/src/web/web-cloud-handoff-entry.e2e.test.ts`、`web-cloud-session-renewal.e2e.test.ts`、`web-cloud-session-resume.test.ts`、`web-session-recovery.test.tsx`、`web-cloud-workspace-location.test.ts`（U106 W1）                                 |
 | Bootstrap/能力 | `web-cloud-workspace-bootstrap.test.ts`、`web-cloud-session-capabilities.test.ts`、`web-cloud-workspace-store-ports.test.ts`                                                                                                                                |
-| 标签镜像/收养  | `src/renderer/src/runtime/web-session-tabs-sync/*.test.ts`（含 `reentry-adoption-trigger.test.ts` **在途未跟踪**、`load-initial-cloud-orphan-recovery.test.ts`、`cloud-capability-gate.test.ts`）、`web-session-tabs-reentry-host-adoption.test.ts`（U104） |
+| 标签镜像/收养  | `src/renderer/src/runtime/web-session-tabs-sync/*.test.ts`（含 `reentry-adoption-trigger.test.ts`、`load-initial-cloud-orphan-recovery.test.ts`、`cloud-capability-gate.test.ts`）、`web-session-tabs-reentry-host-adoption.test.ts`（U104） |
 | 孤儿/终端      | `src/renderer/src/runtime/web-session-terminal-orphan-*.test.ts`、`src/renderer/src/cloud/cloud-terminal-panel.test.tsx`、`cloud-terminal-replay-boundary.test.tsx`                                                                                         |
 | 宿主 scope     | `src/main/cloud-platform/cloud-session-tabs-scope.test.ts`、`cloud-terminal-scope.test.ts`、`cloud-session-tabs-inventory` 相关套件                                                                                                                         |
 | 验收报告       | `test-reports/u96-a8.md`、`u96-b8.md`、`u111-audit-a.md`、`u111-audit-c.md`                                                                                                                                                                                 |
 
-**未覆盖/薄弱**：真机刷新与二次打开（U113 D1/A-retest）、2 组恢复、旧宿主 capability 降级真机矩阵、标签级 URL。
+**未覆盖/薄弱**：旧宿主 capability 降级真机矩阵、标签级 URL（按设计不承诺）；U113 真机刷新/二次打开矩阵已 9/9 通过（`evidence/u113-retest/`）。

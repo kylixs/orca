@@ -1,6 +1,6 @@
 # M5 中继（列表 / 状态 / 绑定关系可见性 / 安装向导）
 
-> 基线提交：`664a91e0322`（2026-11-16 工作区快照）。当前工作树另有未提交的 U106-R3 详情深链改动（`cloud-platform/apps/web/app.js`），不改变中继页行为；本文件按 HEAD 记录。
+> 基线提交：`664a91e0322`（2026-11-16 工作区快照）。U106-R3 详情深链已合入 `9e436334e88`（`cloud-platform/apps/web/app.js`），不改变中继页行为；本文件按 HEAD 记录。
 > 平台前端：`cloud-platform/apps/web/app.js`（`renderRelays` / `addRelayDialog` / `relayRow`，约 L1508-1550）。后端：`cloud-platform/apps/api/src/server.ts`（`GET /v1/relays`，约 L3015）。
 
 ## 1. 页面/界面布局
@@ -95,4 +95,4 @@
 
 ## 7. 基线提交
 
-`664a91e0322d90e4d32ce9d092526159c3052854`（分支 `feat/mobile-file-browser-terminal-html`）。工作树对 `cloud-platform/apps/web/app.js` 的 U106-R3 未提交改动不影响本模块。
+`664a91e0322d90e4d32ce9d092526159c3052854`（分支 `feat/mobile-file-browser-terminal-html`）。U106-R3（`9e436334e88`）的 `cloud-platform/apps/web/app.js` 改动已合入，不影响本模块。

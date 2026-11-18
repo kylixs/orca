@@ -1,6 +1,6 @@
 # M8 平台设置（下载策略）
 
-> 基线提交：`664a91e0322`（2026-11-16 工作区快照；工作树 U106-R3 未提交改动不影响设置页）。
+> 基线提交：`664a91e0322`（2026-11-16 工作区快照；U106-R3 已合入 `9e436334e88`，不影响设置页）。
 > 前端：`cloud-platform/apps/web/app.js`（`renderSettings` / `saveProjectPolicy` / `policyOverrides`，约 L2542-2648）。后端：`cloud-platform/apps/api/src/server.ts`（`GET/PUT /v1/policies/download`、`PUT /v1/projects/{id}/policy`）。
 
 ## 1. 页面/界面布局
@@ -94,4 +94,4 @@
 
 ## 7. 基线提交
 
-`664a91e0322d90e4d32ce9d092526159c3052854`。本模块无工作树在途改动。
+`664a91e0322d90e4d32ce9d092526159c3052854`。本模块无在途改动。

@@ -89,7 +89,7 @@ canCreateProjectOnHost = isAdmin || hostBits.has('provision')
 5. **审计**：授权写 `grant_update` / `host_grant_update`；拒绝写 denied；角色写 `role_update`。
 6. **组主体匹配精确、大小写敏感**：`user.groups` 与组授权 `subjectId` 按字符串精确匹配，不做大小写折叠/前缀匹配；LDAP 准入组同理 fail-closed（P2-5 运维规则）。
 
-## 5. 现状 vs 设计（尚未实现/有偏差）
+## 5. 现状与设计对齐
 
 | 设计项                                  | 现状                                                          | 结论                                                           |
 | --------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------- |
@@ -143,4 +143,4 @@ canCreateProjectOnHost = isAdmin || hostBits.has('provision')
 
 - 授权组合矩阵（U247，`34b49057f7d`）：34 端点 × admin/auditor/developer，另覆盖匿名 401、强制下线后旧 token 401、禁用用户既有 token 401/重登 403 `USER_DISABLED`；`denyPrivileged` 型 403 均回查 `GET /v1/audit/events` 命中（含 targetId）。观察：admin 不隐含项目 `open`（`/connect`、`/web-handoff` 403，详情/grants/policy 因 `isAdmin` 200）、auditor 项目列表为空但直读详情/grants/policy 200、`archive`/`restore` 对非管理员 404 且不写 denial、无 `/v1/settings*` 族；指向台账 U247。
 
-**未覆盖/薄弱**：下载二期宿主硬拦、roleOverride 与 LDAP 再登录竞态已有 `u72-u73` 覆盖；审定二主机 tab 位置即权限由 `web-host-permission-drawer` 覆盖；主机授权收缩触发凭证撤销已由 U136⑤（host-authorization e2e）覆盖。
+**未覆盖/薄弱**：roleOverride 与 LDAP 再登录竞态已有 `u72-u73` 覆盖；审定二主机 tab 位置即权限由 `web-host-permission-drawer` 覆盖；主机授权收缩触发凭证撤销已由 U136⑤（host-authorization e2e）覆盖。下载二期宿主硬拦已实现（`f01bc88272e`），由 `src/main/cloud-platform/cloud-download-read-enforcement.test.ts` 覆盖；单窗口 `files.readChunk` 读仍开放，属 FR-7.3 既定残余边界。
