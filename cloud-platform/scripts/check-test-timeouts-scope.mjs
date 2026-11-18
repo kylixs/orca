@@ -22,14 +22,22 @@ export const SOURCE_EXTENSIONS = new Set([
 ])
 
 // Matches the import forms the audit counted (default/named/namespace import and
-// CommonJS require); `node:test` only. Dynamic import is not used by node:test files.
+// CommonJS require) plus U321 side-effect (`import 'node:test'`) and dynamic
+// (`import('node:test')`) imports. `node:test` only.
+// U321 ②: the added forms are anchored to a statement boundary (`^` for side-effect
+// imports and standalone dynamic calls, a code delimiter for expressions such as
+// `= await import(...)`), so a string or comment that merely mentions the syntax
+// cannot pull a file into scope. Only POSIX ERE constructs are used (no lookbehind,
+// no non-capturing groups) because `git grep -E` evaluates the same text.
 // U317 ⑤: one authored pattern feeds both scopes. POSIX ERE (`git grep -E`) spells
 // whitespace `[[:space:]]`, while JS RegExp spells it `\s`; deriving both from the
 // same text keeps worktree and HEAD enumeration from drifting apart.
-export const NODE_TEST_IMPORT_SOURCE = String.raw`(from[[:space:]]*['"]node:test['"]|require[[:space:]]*\([[:space:]]*['"]node:test['"][[:space:]]*\))`
+export const NODE_TEST_IMPORT_SOURCE = String.raw`(from[[:space:]]*['"]node:test['"]|require[[:space:]]*\([[:space:]]*['"]node:test['"][[:space:]]*\)|^[[:space:]]*import[[:space:]]*['"]node:test['"]|(^[[:space:]]*|[=(,][[:space:]]*)(await[[:space:]]+)?import[[:space:]]*\([[:space:]]*['"]node:test['"][[:space:]]*\))`
 export const NODE_TEST_IMPORT_GREP = NODE_TEST_IMPORT_SOURCE
+// POSIX ERE `^` anchors to a physical line; the JS equivalent needs the `m` flag.
 export const NODE_TEST_IMPORT = new RegExp(
-  NODE_TEST_IMPORT_SOURCE.replaceAll('[[:space:]]', String.raw`\s`)
+  NODE_TEST_IMPORT_SOURCE.replaceAll('[[:space:]]', String.raw`\s`),
+  'm'
 )
 
 export const SCAN_SCOPE = [

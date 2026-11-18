@@ -88,6 +88,10 @@ const SPECIAL_MEMBERS = new Map([
   ['NaN', 'special:nan']
 ])
 const NUMBER_ONLY_MEMBERS = new Set(['POSITIVE_INFINITY', 'NEGATIVE_INFINITY'])
+// U321 ①: `Number.Infinity`/`Number?.Infinity` are `undefined` — Number exposes only
+// the signed infinities plus NaN. An undefined value is not a numeric infinity, so
+// these spellings stay unreported; bare `Infinity`/`globalThis.Infinity` still report.
+const NUMBER_UNDEFINED_MEMBERS = new Set(['Infinity'])
 
 // U317: access may use optional chaining and the bracket member may be a backtick
 // string. The object is normalized separately, so `((Number))` and `(Number as any)`
@@ -166,6 +170,9 @@ function specialMemberKey(object, member) {
     return NUMBER_ONLY_MEMBERS.has(member) ? null : key
   }
   if (object !== 'Number' && NUMBER_ONLY_MEMBERS.has(member)) {
+    return null
+  }
+  if (object === 'Number' && NUMBER_UNDEFINED_MEMBERS.has(member)) {
     return null
   }
   return key

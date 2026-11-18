@@ -313,6 +313,49 @@ test('does not flag bare or undefined-global signed infinity spellings', () => {
   assert.notEqual(key('globalThis.POSITIVE_INFINITY'), key('Infinity'))
 })
 
+// U321 ①: Number.Infinity/Number?.Infinity evaluate to `undefined` (Number exposes
+// only the signed infinities and NaN), so they are not numeric infinities and must
+// stay silent. Bare Infinity and globalThis.Infinity are real values and still report.
+test('does not flag Number.Infinity spellings that evaluate to undefined', () => {
+  const source = [
+    "test('a', fn, Number.Infinity)",
+    "test('b', fn, Number?.Infinity)",
+    'before(fn, Number["Infinity"])',
+    "test('c', fn, (Number).Infinity)",
+    "test('d', fn, (Number as any)?.Infinity)",
+    "test('e', fn, Number /* c */ . Infinity)",
+    "test('f', fn, Number.Infinity as number)",
+    'after(fn, opts, -Number?.Infinity)'
+  ].join('\n')
+  assert.deepEqual(scanSource(`${source}\n`), [])
+})
+
+test('still flags real Number infinity/NaN members and globals', () => {
+  const source = [
+    "test('a', fn, Number.POSITIVE_INFINITY)",
+    "test('b', fn, Number?.NEGATIVE_INFINITY)",
+    "test('c', fn, Number.NaN)",
+    'before(fn, globalThis.Infinity)',
+    "it('d', fn, Infinity)"
+  ].join('\n')
+  assert.deepEqual(
+    scanSource(`${source}\n`),
+    Array.from({ length: 5 }, (_, index) => ({
+      file: '<memory>',
+      line: index + 1,
+      form: 'numeric-special'
+    }))
+  )
+})
+
+test('Number.Infinity does not share the numeric infinity baseline key', () => {
+  const key = (spelling) => callSignature('test', ["'a'", '() => {}', spelling])
+  assert.equal(key('Number.POSITIVE_INFINITY'), key('Infinity'))
+  assert.equal(key('Number.NaN'), key('NaN'))
+  assert.notEqual(key('Number.Infinity'), key('Infinity'))
+  assert.notEqual(key('Number?.Infinity'), key('Infinity'))
+})
+
 
 // U311 ①: a dot separated by spaces is still property access, and a generic call's `<`
 // is not an operator, so redundant parens fold across a unary sign on both forms.

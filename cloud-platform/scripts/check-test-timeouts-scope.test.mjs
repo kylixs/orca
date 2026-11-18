@@ -162,8 +162,56 @@ test('worktree and HEAD import patterns share one source', () => {
   // with `[[:space:]]` translated to `\s`, so the two cannot drift.
   assert.equal(NODE_TEST_IMPORT_GREP, NODE_TEST_IMPORT_SOURCE)
   assert.equal(NODE_TEST_IMPORT.source, NODE_TEST_IMPORT_SOURCE.replaceAll('[[:space:]]', '\\s'))
+  // U321 ②: the POSIX `^` anchors per line, which needs the JS `m` flag.
+  assert.equal(NODE_TEST_IMPORT.flags, 'm')
   assert.ok(NODE_TEST_IMPORT.test("import test from 'node:test'"))
   assert.ok(NODE_TEST_IMPORT.test('const test = require("node:test")'))
   assert.ok(NODE_TEST_IMPORT.test('import test\n  from\n  "node:test"'))
   assert.ok(!NODE_TEST_IMPORT.test("import test from 'node:test-extra'"))
+})
+
+// U321 ②: side-effect and dynamic imports join the shared pattern. The new
+// alternatives are anchored to a statement/expression boundary so text mentions in
+// strings and comments, and lookalike module ids, stay out of scope.
+test('import pattern covers side-effect and dynamic node:test forms', () => {
+  for (const source of [
+    "import 'node:test'",
+    'import "node:test"',
+    "  import 'node:test'\n",
+    "import('node:test')",
+    "await import('node:test')",
+    'await import ( "node:test" )',
+    "const { test } = await import('node:test')",
+    "const pending = import('node:test')"
+  ]) {
+    assert.ok(NODE_TEST_IMPORT.test(source), source)
+  }
+  for (const source of [
+    "const label = \"import 'node:test'\"",
+    "const label = \"import('node:test')\"",
+    "// import 'node:test'",
+    "// import('node:test')",
+    "// await import('node:test')",
+    "/* import 'node:test' */",
+    "/* import('node:test') */",
+    "import 'node:other'",
+    "import('node:other')",
+    "import test from 'node:test-extra'"
+  ]) {
+    assert.ok(!NODE_TEST_IMPORT.test(source), source)
+  }
+})
+
+// U321 ②: end-to-end scope behavior for the new forms. A real side-effect/dynamic
+// importer is scanned; string/comment mentions and other modules are not.
+test('scope recognizes side-effect and dynamic node:test imports only as code', () => {
+  withTempRoot((root) => {
+    writeFixture(root, 'scripts/side-effect.test.mjs', "import 'node:test'\n")
+    writeFixture(root, 'scripts/dynamic.test.mjs', "const { test } = await import('node:test')\n")
+    writeFixture(root, 'scripts/string.test.mjs', 'const label = "import \'node:test\'"\n')
+    writeFixture(root, 'scripts/comment.test.mjs', "// import 'node:test'\n")
+    writeFixture(root, 'scripts/other.test.mjs', "import 'node:other'\n")
+    const files = collectScopeFiles({ root }).map((file) => toRelative(root, file))
+    assert.deepEqual(files.sort(), ['scripts/dynamic.test.mjs', 'scripts/side-effect.test.mjs'])
+  })
 })
