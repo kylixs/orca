@@ -202,7 +202,7 @@ before(async () => {
   shortTtlDevToken = (await login(shortTtl, 'zhangsan', 'Passw0rd!')).token
   const noDirectCredential = await registerNoDirectHost('w7a-no-direct')
   await heartbeatOnline(noDirectHostId, noDirectCredential)
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await api?.stop()

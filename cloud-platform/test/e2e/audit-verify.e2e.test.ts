@@ -165,7 +165,7 @@ describe('审计链落盘：重启续链与篡改检测（真实进程）', () =
     return { status: res.status, body: (await res.json()) as VerifyBody }
   }
 
-  test('M31-5 重启后从落盘日志续链：seq 继续递增，verify 通过', async () => {
+  test('M31-5 重启后从落盘日志续链：seq 继续递增，verify 通过', { timeout: 30000 }, async () => {
     const logPath = join(mkdtempSync(join(tmpdir(), 'orca-audit-chain-')), 'audit.jsonl')
     const first = await startWithLog(logPath)
     const firstToken = await tokenFor(first, 'admin', 'Adm1n!')
@@ -188,9 +188,9 @@ describe('审计链落盘：重启续链与篡改检测（真实进程）', () =
     } finally {
       await second.stop()
     }
-  }, 30000)
+  })
 
-  test('M31-6 日志被改写后重启：verify 明确报告断链位置，而不是静默通过', async () => {
+  test('M31-6 日志被改写后重启：verify 明确报告断链位置，而不是静默通过', { timeout: 30000 }, async () => {
     const logPath = join(mkdtempSync(join(tmpdir(), 'orca-audit-tamper-')), 'audit.jsonl')
     const first = await startWithLog(logPath)
     const token = await tokenFor(first, 'admin', 'Adm1n!')
@@ -215,9 +215,9 @@ describe('审计链落盘：重启续链与篡改检测（真实进程）', () =
     } finally {
       await second.stop()
     }
-  }, 30000)
+  })
 
-  test('M31-7 日志行不可解析时平台拒绝启动，而不是丢掉一部分链', async () => {
+  test('M31-7 日志行不可解析时平台拒绝启动，而不是丢掉一部分链', { timeout: 30000 }, async () => {
     const logPath = join(mkdtempSync(join(tmpdir(), 'orca-audit-corrupt-')), 'audit.jsonl')
     const first = await startWithLog(logPath)
     await tokenFor(first, 'admin', 'Adm1n!')
@@ -229,5 +229,5 @@ describe('审计链落盘：重启续链与篡改检测（真实进程）', () =
       // If it did start, that is the bug this case exists to catch.
       await second.stop()
     })
-  }, 30000)
+  })
 })

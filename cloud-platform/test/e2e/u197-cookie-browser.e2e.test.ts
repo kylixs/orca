@@ -141,7 +141,7 @@ before(async () => {
     headless: true,
     args: ['--host-resolver-rules=MAP console.test 127.0.0.1']
   })
-}, 180_000)
+}, { timeout: 180_000 })
 
 after(async () => {
   await browser?.close()

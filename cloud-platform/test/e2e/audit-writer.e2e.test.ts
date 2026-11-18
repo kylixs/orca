@@ -84,14 +84,14 @@ before(async () => {
   logPath = join(mkdtempSync(join(tmpdir(), 'orca-m80-audit-')), 'audit.log')
   writer = await startWriter(logPath)
   replicas = await Promise.all([0, 1, 2].map((index) => startReplica(writer.url, index)))
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await Promise.all(replicas.map((replica) => replica.stop()))
   await writer?.stop()
 })
 
-test('AC-26 三副本共用一个写入者：10 万条并发无分叉、可校验、篡改后各副本 fail-closed', async () => {
+test('AC-26 三副本共用一个写入者：10 万条并发无分叉、可校验、篡改后各副本 fail-closed', { timeout: 180_000 }, async () => {
   // ---- replica integration first: each replica's own audited mutation goes through the writer ----
   const replicaEvents: AuditEvent[] = []
   for (const replica of replicas) {
@@ -192,4 +192,4 @@ test('AC-26 三副本共用一个写入者：10 万条并发无分叉、可校�
     tamper: { line: victim + 1, brokenAtSeq: tampered.seq },
     replicaMutationStatusesAfterTamper: failClosed
   })
-}, 180_000)
+})

@@ -56,7 +56,7 @@ before(async () => {
     relayTarget: RELAY_TARGET
   })
   assert.notEqual(boundHost.hostId, '')
-}, 30_000)
+}, { timeout: 30_000 })
 
 after(async () => {
   await app?.close()
@@ -86,7 +86,7 @@ test('U79-1 /v1/hosts 载荷 wire-additive：relayTarget/relayOnline 呈现绑�
   })
 })
 
-test('U79-2 管理台宿主表「中继」列呈现绑定；中继静默后标记受影响宿主', async () => {
+test('U79-2 管理台宿主表「中继」列呈现绑定；中继静默后标记受影响宿主', { timeout: 60_000 }, async () => {
   // The relay goes silent: no further announce, the alive window lapses.
   clock = T0 + 31_000
 
@@ -123,4 +123,4 @@ test('U79-2 管理台宿主表「中继」列呈现绑定；中继静默后标�
     rowShows: ['relayTarget', '中继离线', '直连不受阻'],
     drawerShows: ['中继绑定', '中继离线']
   })
-}, 60_000)
+})

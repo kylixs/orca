@@ -143,7 +143,7 @@ before(async () => {
     method: 'PUT',
     body: JSON.stringify({ downloadPolicy: 'deny' })
   })
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await service?.stop()

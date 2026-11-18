@@ -90,7 +90,7 @@ before(async () => {
     'api-u197-ac-probes'
   )
   browser = await chromium.launch({ headless: true })
-}, 180_000)
+}, { timeout: 180_000 })
 
 after(async () => {
   await browser?.close()

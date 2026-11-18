@@ -279,7 +279,7 @@ before(async () => {
   adminToken = await login(api.url, USERNAME, PASSWORD)
   await seedHostAndProject()
   browser = await chromium.launch({ headless: true })
-}, 180_000)
+}, { timeout: 180_000 })
 
 after(async () => {
   await browser?.close()

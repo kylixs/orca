@@ -64,7 +64,7 @@ before(async () => {
       permissions: ['open']
     })
   })
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await service?.stop()
