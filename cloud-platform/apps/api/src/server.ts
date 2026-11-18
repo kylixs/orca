@@ -287,7 +287,7 @@ type ReadBodyResult = { body: Record<string, unknown>; oversized: boolean }
 
 /**
  * U251: a declared overage up to this budget is discarded before the refusal so
- * a client still writing the body reads the 413 instead of a connection reset.
+ * a client still writing a modest overage can read the refusal instead of a reset.
  * The drain is also time-boxed; an endless stream never holds the connection.
  */
 const OVERSIZE_DRAIN_LIMIT_BYTES = 2 * 1024 * 1024
@@ -325,10 +325,13 @@ async function drainDeclaredBody(req: IncomingMessage): Promise<void> {
 
 /**
  * U251: an over-cap body is refused at the first byte past the cap, never
- * drained without a bound. A `content-length` far over the cap is refused from
- * the header alone; a modest overage is discarded first (see above) so the 413
- * reaches a client that is mid-write. Callers answering 413 close the
- * connection; internal callers keep their empty-body semantics and close too.
+ * drained without a bound. Three cases: a declared overage within the drain
+ * budget is discarded first; a larger declared overage is refused from the
+ * header alone; a chunked overage pauses the stream. Only the first case lets a
+ * client that is still writing read the refusal, and no case guarantees it —
+ * a large declared or fast chunked writer may see a reset instead. Callers that
+ * answer 413 close the connection; internal callers keep their empty-body
+ * semantics and close too.
  */
 async function readBody(req: IncomingMessage, maxBytes?: number): Promise<ReadBodyResult> {
   const declaredLength = Number(req.headers['content-length'])
@@ -390,11 +393,23 @@ async function readBody(req: IncomingMessage, maxBytes?: number): Promise<ReadBo
   }
 }
 
-async function readJson(
+/**
+ * U255: an oversized body is never consumed, so preserving keep-alive would let
+ * Node drain the rest of it on response finish without a bound. Closing marks
+ * the connection unusable for another request while callers keep their old
+ * semantics (the body reads as {}). Per `readBody`:
+ * - declared overage ≤ 2 MiB: bounded drain, then the response;
+ * - declared overage > 2 MiB: header-only refusal plus close;
+ * - chunked overage: pause plus close, dropping the unread bytes.
+ */
+async function readJsonWithRes(
   req: IncomingMessage,
-  maxBytes?: number
+  res: ServerResponse,
+  maxBytes: number
 ): Promise<Record<string, unknown>> {
-  return (await readBody(req, maxBytes)).body
+  const { body, oversized } = await readBody(req, maxBytes)
+  if (oversized) res.setHeader('connection', 'close')
+  return body
 }
 
 /**
@@ -3908,7 +3923,7 @@ export function createApp(config: ApiConfig): ApiHandle {
           !cookieIsCurrent &&
           cookieSession.previousRefreshHash !== undefined &&
           safeEqual(cookieSession.previousRefreshHash, cookieHash)
-        // U235/U236: readJson now normalises null/scalars to {}, so this is
+        // U235/U236: readJsonWithRes now normalises null/scalars to {}, so this is
         // defence in depth; arrays are objects and simply carry no token.
         const bodyToken =
           body !== null && typeof body === 'object' && typeof body.refreshToken === 'string'
@@ -4033,7 +4048,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         return rejectOversizedBody(res, traceId)
       }
       const body = fallbackBody.body
-      // U235/U236: readJson normalises null/scalars to {}; an array has no
+      // U235/U236: readJsonWithRes normalises null/scalars to {}; an array has no
       // refreshToken field, so the empty-token path covers it too.
       const rawBodyToken =
         body !== null && typeof body === 'object' ? body.refreshToken : undefined
@@ -4254,11 +4269,11 @@ export function createApp(config: ApiConfig): ApiHandle {
       // Never let a malformed or oversized body turn sign-out into an error.
       let body: Record<string, unknown> = {}
       try {
-        body = await readJson(req, LOGOUT_BODY_MAX_BYTES)
+        body = await readJsonWithRes(req, res, LOGOUT_BODY_MAX_BYTES)
       } catch {
         body = {}
       }
-      // U232/U236: readJson normalises non-object bodies to {}; keep the guard
+      // U232/U236: readJsonWithRes normalises non-object bodies to {}; keep the guard
       // as defence in depth for the logout body token.
       const bodyToken =
         body !== null && typeof body === 'object' && typeof body.refreshToken === 'string'
@@ -5028,7 +5043,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         if (!isAdmin(authed.user) && !authed.user.roles.includes('project:owner')) {
           // AC-18: a refused grant write is a 403 *and* an audit event.
           // U62 G4: the event names the refused subject.
-          const body = await readJson(req, DENIED_AUDIT_BODY_MAX_BYTES)
+          const body = await readJsonWithRes(req, res, DENIED_AUDIT_BODY_MAX_BYTES)
           return denyPrivileged(res, traceId, authed.user, {
             eventType: 'grant_update',
             targetType: 'project',
@@ -5493,7 +5508,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         })
       }
       if (!auditAllowsMutations(res, traceId)) return
-      const body = await readJson(req, FORCE_OFFLINE_BODY_MAX_BYTES)
+      const body = await readJsonWithRes(req, res, FORCE_OFFLINE_BODY_MAX_BYTES)
       const rawReason = typeof body.reason === 'string' ? body.reason.trim() : ''
       const reason = rawReason.slice(0, FORCE_OFFLINE_REASON_MAX_CHARS)
       const target = store.users.get(targetId)
@@ -6132,7 +6147,7 @@ export function createApp(config: ApiConfig): ApiHandle {
           // AC-18: a refused host grant write is a 403 *and* an audit event.
           // U62 G4: the event names the refused subject, so the body is read
           // here even though the caller never reaches the mutation.
-          const body = await readJson(req, DENIED_AUDIT_BODY_MAX_BYTES)
+          const body = await readJsonWithRes(req, res, DENIED_AUDIT_BODY_MAX_BYTES)
           return denyPrivileged(res, traceId, authed.user, {
             eventType: 'host_grant_update',
             targetType: 'host',
@@ -6264,7 +6279,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         if (!isAdmin(authed.user)) {
           // U62 G4: the refused event records the attempted mode, so the body
           // is read for the record even though the caller never gets a write.
-          const body = await readJson(req, DENIED_AUDIT_BODY_MAX_BYTES)
+          const body = await readJsonWithRes(req, res, DENIED_AUDIT_BODY_MAX_BYTES)
           return denyPrivileged(res, traceId, authed.user, {
             eventType: 'host_provision_policy_update',
             targetType: 'host',

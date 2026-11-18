@@ -1,6 +1,7 @@
 import { after, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Agent, request as httpRequest } from 'node:http'
+import { connect, type Socket } from 'node:net'
 import { createApp, type ApiHandle } from '../src/server.ts'
 import { startAuditWriter, type AuditWriter } from '../../audit-writer/src/writer.ts'
 
@@ -442,6 +443,266 @@ function agentPost(
     )
     req.on('error', reject)
     req.end(body)
+  })
+}
+
+type RawResponse = { status: number; headers: Record<string, string>; body: string }
+
+/**
+ * U255: reads one response off a raw socket. The socket has to stay observable:
+ * the assertion is whether the server closed it or left a half-read body, which
+ * a client helper that owns the connection can tell apart.
+ */
+function readRawResponse(
+  socket: Socket,
+  timeoutMs: number,
+  label: string
+): Promise<RawResponse> {
+  return new Promise((resolve, reject) => {
+    let buffer = Buffer.alloc(0)
+    let headerEnd = -1
+    let expectedBody = 0
+    let chunked = false
+    let chunkCursor = 0
+    let chunkedBody = Buffer.alloc(0)
+    let status = 0
+    let headers: Record<string, string> = {}
+    let done = false
+    const cleanup = (): void => {
+      done = true
+      clearTimeout(timer)
+      socket.off('data', onData)
+      socket.off('close', onClose)
+      socket.off('error', onError)
+    }
+    // Server responses use chunked encoding: json() calls writeHead without a
+    // content-length, so the body length is only known at the framing level.
+    const consumeChunked = (): boolean => {
+      while (true) {
+        const lineEnd = buffer.indexOf('\r\n', chunkCursor)
+        if (lineEnd === -1) return false
+        const size = Number.parseInt(buffer.subarray(chunkCursor, lineEnd).toString('latin1'), 16)
+        if (!Number.isFinite(size)) return false
+        const dataStart = lineEnd + 2
+        if (size === 0) {
+          if (buffer.length < dataStart + 2) return false
+          return true
+        }
+        if (buffer.length < dataStart + size + 2) return false
+        chunkedBody = Buffer.concat([chunkedBody, buffer.subarray(dataStart, dataStart + size)])
+        chunkCursor = dataStart + size + 2
+      }
+    }
+    const maybeResolve = (): void => {
+      if (done || headerEnd === -1) return
+      if (chunked) {
+        if (!consumeChunked()) return
+        cleanup()
+        resolve({ status, headers, body: chunkedBody.toString('utf8') })
+        return
+      }
+      if (buffer.length - headerEnd < expectedBody) return
+      cleanup()
+      resolve({
+        status,
+        headers,
+        body: buffer.subarray(headerEnd, headerEnd + expectedBody).toString('utf8')
+      })
+    }
+    const onData = (chunk: Buffer): void => {
+      buffer = Buffer.concat([buffer, chunk])
+      if (headerEnd === -1) {
+        const index = buffer.indexOf('\r\n\r\n')
+        if (index === -1) return
+        headerEnd = index + 4
+        const lines = buffer.subarray(0, index).toString('latin1').split('\r\n')
+        status = Number(lines[0]?.split(' ')[1] ?? 0)
+        for (const line of lines.slice(1)) {
+          const colon = line.indexOf(':')
+          if (colon === -1) continue
+          headers[line.slice(0, colon).trim().toLowerCase()] = line.slice(colon + 1).trim()
+        }
+        expectedBody = Number(headers['content-length'] ?? 0)
+        chunked = (headers['transfer-encoding'] ?? '').toLowerCase().includes('chunked')
+        chunkCursor = headerEnd
+      }
+      maybeResolve()
+    }
+    const onClose = (): void => {
+      if (done) return
+      maybeResolve()
+      if (done) return
+      cleanup()
+      reject(new Error(`${label}: socket closed before a complete response`))
+    }
+    const onError = (error: Error): void => {
+      if (done) return
+      maybeResolve()
+      if (done) return
+      cleanup()
+      reject(error)
+    }
+    const timer = setTimeout(() => {
+      cleanup()
+      reject(new Error(`${label}: no response within ${timeoutMs}ms`))
+    }, timeoutMs)
+    socket.on('data', onData)
+    socket.on('close', onClose)
+    socket.on('error', onError)
+  })
+}
+
+async function connectRaw(base: string): Promise<Socket> {
+  const url = new URL(base)
+  const socket = connect(Number(url.port), url.hostname)
+  socket.on('error', () => {
+    // An EPIPE after the refusal is the expected outcome.
+  })
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      socket.destroy()
+      reject(new Error('raw socket connect timed out'))
+    }, 2000)
+    socket.once('connect', () => {
+      clearTimeout(timer)
+      resolve()
+    })
+    socket.once('error', (error: Error) => {
+      clearTimeout(timer)
+      reject(error)
+    })
+  })
+  return socket
+}
+
+function waitForClose(socket: Socket, timeoutMs: number): Promise<void> {
+  if (socket.destroyed) return Promise.resolve()
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      socket.off('close', onClose)
+      reject(new Error('the server did not close the refused connection'))
+    }, timeoutMs)
+    const onClose = (): void => {
+      clearTimeout(timer)
+      resolve()
+    }
+    socket.once('close', onClose)
+  })
+}
+
+/**
+ * U255: declares a body far over the cap and keeps writing until the server
+ * either accepts the whole declaration (the bug: Node dumps the request on
+ * response finish) or closes. `flushedAll`/`flushedBytes` are the side channel
+ * proving whether the declared payload was actually pushed through.
+ */
+function declaredHugeRawRequest(
+  base: string,
+  path: string,
+  declared: number,
+  headers: Record<string, string>,
+  method = 'POST',
+  settleOnResponse = false
+): Promise<{
+  status: number
+  connection: string | undefined
+  body: string
+  responseMs: number
+  closeMs: number
+  flushedBytes: number
+  flushedAll: boolean
+}> {
+  return new Promise((resolve, reject) => {
+    const started = Date.now()
+    const url = new URL(base)
+    const socket = connect(Number(url.port), url.hostname)
+    const chunk = Buffer.alloc(64 * 1024, 'x')
+    let written = 0
+    let flushedAll = false
+    let response: RawResponse | undefined
+    let responseMs = 0
+    let closeMs = 0
+    let settled = false
+    const settle = (): void => {
+      if (settled || !response) return
+      if (!settleOnResponse && !flushedAll && closeMs === 0) return
+      settled = true
+      clearTimeout(deadline)
+      // Capture before destroy: it is the only client-side view of what the
+      // server was willing to accept.
+      const flushedBytes = socket.bytesWritten
+      socket.destroy()
+      resolve({
+        status: response.status,
+        connection: response.headers.connection,
+        body: response.body,
+        responseMs,
+        closeMs,
+        flushedBytes,
+        flushedAll
+      })
+    }
+    const fail = (error: Error): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(deadline)
+      socket.destroy()
+      reject(error)
+    }
+    const deadline = setTimeout(() => {
+      fail(
+        new Error(
+          `${method} ${path}: the declared overage was neither answered nor closed within 3000ms ` +
+            `(flushed=${socket.bytesWritten} B, response=${response ? response.status : 'none'}, ` +
+            `connection=${response?.headers.connection ?? 'none'})`
+        )
+      )
+    }, 3000)
+    socket.on('error', () => {
+      // Writing after the refusal is expected; the close carries the verdict.
+    })
+    socket.on('close', () => {
+      closeMs = Date.now() - started
+      settle()
+    })
+    void readRawResponse(socket, 3000, 'declared overage').then((res) => {
+      response = res
+      responseMs = Date.now() - started
+      settle()
+    }, fail)
+    const pump = (): void => {
+      if (settled || written >= declared) return
+      const size = Math.min(chunk.length, declared - written)
+      written += size
+      let accepted = true
+      try {
+        accepted = socket.write(chunk.subarray(0, size))
+      } catch {
+        return
+      }
+      if (written >= declared) {
+        flushedAll = true
+        settle()
+        return
+      }
+      if (accepted) {
+        setImmediate(pump)
+      } else {
+        socket.once('drain', pump)
+      }
+    }
+    socket.once('connect', () => {
+      const lines = [
+        `${method} ${path} HTTP/1.1`,
+        `Host: ${url.host}`,
+        'Content-Type: application/json',
+        `Content-Length: ${declared}`,
+        'Connection: keep-alive',
+        ...Object.entries(headers).map(([key, value]) => `${key}: ${value}`)
+      ]
+      socket.write(`${lines.join('\r\n')}\r\n\r\n`)
+      pump()
+    })
   })
 }
 
@@ -1298,4 +1559,166 @@ describe('U254 超长 body 字段不得把审计事件撑过 writer 16 KiB', () 
     assert.ok(event, 'the refused create is audited')
     assert.equal(((event.metadata as Json).key as string).length, PROJECT_KEY_MAX_CHARS)
   })
+})
+
+/**
+ * U255: these five `readJson` callers discarded `oversized`, so the response
+ * kept keep-alive and Node drained the unread body without a bound. A declared
+ * body over the 2 MiB drain budget must be answered from the header alone and
+ * close; a chunked one must pause and close; the caller's old semantics (empty
+ * body, 403/200, audit event) stay the same.
+ */
+describe('U255 readJson 超限路径关闭 keep-alive', () => {
+  test('未认证 logout 声明 64 MiB：返回 200 后不再读走整包', async () => {
+    const base = await start()
+    const result = await declaredHugeRawRequest(base, '/v1/auth/logout', 64 * 1024 * 1024, {})
+
+    assert.equal(result.status, 200, 'logout keeps its empty-body 200')
+    assert.equal(
+      result.flushedAll,
+      false,
+      `the server accepted the full 64 MiB declaration (flushed=${result.flushedBytes} B, ` +
+        `connection=${String(result.connection)}, response=${result.responseMs}ms, close=${result.closeMs}ms)`
+    )
+    assert.equal(result.connection, 'close', 'an unread oversized body must not keep the connection')
+    assert.ok(
+      result.flushedBytes < 64 * 1024 * 1024 - 2 * 1024 * 1024,
+      `the server accepted ${result.flushedBytes} B of 64 MiB`
+    )
+    assert.ok(result.responseMs < 1000, `the response took ${result.responseMs}ms`)
+    assert.ok(result.closeMs > 0 && result.closeMs < 1500, `the close took ${result.closeMs}ms`)
+  }, { timeout: 8000 })
+
+  test('chunked 超限 logout：拒绝后同连接/新连接仍能继续请求', async () => {
+    const base = await start()
+    const url = new URL(base)
+    const socket = await connectRaw(base)
+    const chunk = Buffer.alloc(8 * 1024, 'x')
+    const pump = setInterval(() => {
+      socket.write(`${chunk.length.toString(16)}\r\n`)
+      socket.write(chunk)
+      socket.write('\r\n')
+    }, 2)
+    const chunkedHead = [
+      'POST /v1/auth/logout HTTP/1.1',
+      `Host: ${url.host}`,
+      'Content-Type: application/json',
+      'Transfer-Encoding: chunked',
+      'Connection: keep-alive'
+    ].join('\r\n')
+    socket.write(`${chunkedHead}\r\n\r\n`)
+
+    const first = await readRawResponse(socket, 3000, 'chunked logout')
+    clearInterval(pump)
+    assert.equal(first.status, 200, 'logout still answers 200 for a chunked overage')
+    const closed = first.headers.connection === 'close'
+    // A kept-alive connection is only usable if the server can still parse the
+    // next request; the body is deliberately never terminated, matching a client
+    // that keeps streaming past the cap.
+
+    const loginBody = JSON.stringify({
+      username: 'admin',
+      password: 'Adm1n!',
+      deviceName: 'u255-after-chunked'
+    })
+    const loginHead = [
+      'POST /v1/auth/login HTTP/1.1',
+      `Host: ${url.host}`,
+      'Content-Type: application/json',
+      `Content-Length: ${Buffer.byteLength(loginBody)}`,
+      'Connection: keep-alive'
+    ].join('\r\n')
+    const loginRequest = `${loginHead}\r\n\r\n${loginBody}`
+
+    let second: RawResponse
+    if (closed) {
+      await waitForClose(socket, 1000)
+      const fresh = await connectRaw(base)
+      fresh.write(loginRequest)
+      second = await readRawResponse(fresh, 3000, 'login after close')
+      fresh.destroy()
+    } else {
+      socket.write(loginRequest)
+      second = await readRawResponse(socket, 2500, 'login on the half-read connection')
+    }
+    socket.destroy()
+
+    assert.equal(second.status, 200, 'a refused chunked body must not wedge the connection')
+  }, { timeout: 8000 })
+
+  test('3 处 403 拒绝分支：超限 body 仍 403、关闭连接并写入 denied 审计', async () => {
+    const { base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u255-deny-admin')
+    const dev = await loginAs(base, 'zhangsan', 'Passw0rd!', 'u255-deny-dev')
+    const authorization = { authorization: `Bearer ${dev.token}` }
+    const paths = [
+      `/v1/projects/${PROJECT_ID}/grants`,
+      `/v1/hosts/${HOST_ID}/grants`,
+      `/v1/hosts/${HOST_ID}/provision-policy`
+    ]
+
+    for (const path of paths) {
+      const refused = await declaredHugeRawRequest(
+        base,
+        path,
+        8 * 1024 * 1024,
+        authorization,
+        'PUT',
+        true
+      )
+      assert.equal(refused.status, 403, `${path} must keep its 403`)
+      assert.equal(refused.connection, 'close', `${path} must close the unread connection`)
+      assert.equal(errorCode(JSON.parse(refused.body) as Json), 'PERMISSION_DENIED')
+    }
+
+    const events = await deniedAuditEvents(base, admin.token, 'zhangsan')
+    const projectEvent = events.find((event) => event.eventType === 'grant_update')
+    assert.ok(projectEvent, 'the refused project grant write is audited')
+    assert.equal((projectEvent.metadata as Json).subjectId, '')
+    const hostEvent = events.find((event) => event.eventType === 'host_grant_update')
+    assert.ok(hostEvent, 'the refused host grant write is audited')
+    assert.equal((hostEvent.metadata as Json).subjectId, '')
+    const policyEvent = events.find(
+      (event) => event.eventType === 'host_provision_policy_update'
+    )
+    assert.ok(policyEvent, 'the refused provision-policy write is audited')
+    assert.equal((policyEvent.metadata as Json).mode, '')
+  }, { timeout: 8000 })
+
+  test('force-offline：超限 body 仍 200 + 撤销，审计按空 body 记录', async () => {
+    const { app, base } = await startApp()
+    const dev = await loginAs(base, 'zhangsan', 'Passw0rd!', 'u255-force-dev')
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u255-force-admin')
+
+    const forced = await declaredHugeRawRequest(
+      base,
+      `/v1/users/${dev.userId}/sessions/revoke`,
+      8 * 1024 * 1024,
+      { authorization: `Bearer ${admin.token}` },
+      'POST',
+      true
+    )
+    assert.equal(forced.status, 200, 'force-offline keeps its 200')
+    assert.equal(forced.connection, 'close', 'the unread body must not keep the connection')
+    assert.deepEqual(JSON.parse(forced.body) as Json, { ok: true, revokedSessions: 1 })
+
+    const session = [...app.store.sessions.values()].find((entry) => entry.userId === dev.userId)
+    assert.ok(session, 'the dev session exists')
+    assert.notEqual(session.revokedAt, null, 'the session is revoked despite the oversized body')
+
+    const query = await authedJson(
+      base,
+      admin.token,
+      'GET',
+      '/v1/audit/events?eventType=session_revoke&result=success&limit=200'
+    )
+    assert.equal(query.status, 200)
+    const events = (((await query.json()) as Json).events as Json[] | undefined) ?? []
+    const event = events.find(
+      (entry) => entry.eventType === 'session_revoke' && entry.targetId === dev.userId
+    )
+    assert.ok(event, 'the revocation is still audited')
+    assert.equal((event.metadata as Json).revokedSessions, 1)
+    assert.equal('reason' in (event.metadata as Json), false, 'the oversized note was discarded')
+  }, { timeout: 8000 })
 })
