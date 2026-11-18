@@ -41,7 +41,7 @@
 | AUTH-LOGIN-LDAP | LDAP/LDAPS 登录 bind | FR-1.1 | P0 | 🟢 | 100% | 认证基线（267） |
 | AUTH-TOKEN-ISSUE | 访问/刷新令牌签发与 30s 轮换宽限 | FR-1.2 | P0 | 🟢 | 100% | refresh-cookie 套件 |
 | AUTH-TOKEN-STORE | 令牌哈希入库与快照持久化 | FR-1.2（服务端） | P0 | 🟢 | 100% | store-persistence **21/21** |
-| AUTH-TOKEN-GC | 令牌回收与快照明文剥离 | FR-1.2（服务端） | P0 | ⚪ | 0%（D18 已定：惰性+60s sweep+快照剥离，待实施） | — |
+| AUTH-TOKEN-GC | 令牌回收与快照明文剥离 | FR-1.2（服务端） | P0 | 🟢 | 100%（D18 A1 已实施 `b521fb87988`；A2 按裁定不做） | session-sweep + snapshot-credential-strip **11/11**（主会话复跑） |
 | AUTH-LOGIN-LOCKOUT | 5 次失败锁 15 分钟 | FR-1.4 | P0 | 🟢 | 100% | 契约 9/9、body 5/5、entry-module 9/9 |
 | AUTH-LDAP-ADMIT | LDAP 组门槛准入 | FR-1.5 | P1 | 🟡 | 80%（D15 已定：登录时组全量替换，待实施） | ldap-admission 6/6 |
 | AUTH-REVOKE-SELF | 自助登出与设备吊销 | FR-1.6 | P0 | 🟢 | 100% | u229/u241 套件 |
@@ -147,10 +147,10 @@
 
 ## 4. 汇总与口径
 
-- 综合完成度：**(65 + 0.5×3) / 70 = 95.0%**（定义：🟢计 1、🟡计 0.5、⚪计 0；域进度按同法计算）
-- 叶子功能项 **70**：🟢 **65**、🟡 **3**（AUTH-LDAP-ADMIT、AUTH-COOKIE-MODE、QA-TIMEOUT-GATE）、⚪ **2**（AUTH-TOKEN-GC、FILE-DL-RPC）
+- 综合完成度：**(66 + 0.5×3) / 70 = 96.4%**（定义：🟢计 1、🟡计 0.5、⚪计 0；域进度按同法计算）
+- 叶子功能项 **70**：🟢 **66**、🟡 **3**（AUTH-LDAP-ADMIT、AUTH-COOKIE-MODE、QA-TIMEOUT-GATE）、⚪ **1**（FILE-DL-RPC）
 - 计数口径：叶子行数按本文件表行实测（70），下次更新须重算并同步本节
-- 阻塞源（均已决策，剩余为实施/文档）：D18 待实施、D20 已实施、D15-1 待实施、D22 已实施、D5–D10 部署检查单待写、D21-C9 缓（登记缺口）、U315 门禁词法残余
+- 阻塞源（剩余）：D15-1 组替换待实施、D5–D10 部署检查单已交付（生产启用待运维）、D21-C9 缓（登记缺口）、U315 门禁词法残余；D18/D20/D22/LGA-6 已实施或收口
 - 所有计数为**指定范围基线**；「全仓无红」仅由 QA-E2E-SWEEP 的全景扫描支撑（协议 §2-142），不得以子集基线替代
 - 当日台账增量：U272–U313；唯一重开：WEB-ROUTING（U307→U310→U312），修复后回绿
 ## 5. 按地图推进的规则与顺序
@@ -173,7 +173,7 @@
 | AUTH-LOGIN-LOCKOUT | 🟢 | U289/U292/U293/U294/U296（已关） | 契约 9/9、entry-module 9/9、lockout 14/14 |
 | AUTH-COOKIE-MODE | 🟡 | D5–D10（已定，部署检查单待写）、U216、U197 QA-032 | u197 浏览器套件 9/9、认证基线 267/267 |
 | AUTH-PAGE-CSP | 🟢 | D10（维持 Report-Only） | csp-zero 6/6 |
-| AUTH-TOKEN-GC | ⚪ | D18（已定，待实施）、U233 F6 | `u233-d18-token-gc-brief` |
+| AUTH-TOKEN-GC | 🟢 | D18（已实施 `b521fb87988`）、U233 F6 | `session-sweep` + `snapshot-credential-strip` 11/11 |
 | AUTH-SESSION-EXPIRE | 🟢 | D20（已实施）、U243/U230 | `u243-session-events` 4/4 |
 | AUTH-LDAP-ADMIT / AZ-LDAP-GROUP | 🟡/🟢 | D15（已定，组替换待实施）、U212；LGA-6 已收口 | ldap-admission 6/6（复跑）、准入设计 v3 |
 | AZ-ENUM-GUARD | 🟢 | D24（保留 404 静默）、U247 观察 | web-project-entry 10/10 |
