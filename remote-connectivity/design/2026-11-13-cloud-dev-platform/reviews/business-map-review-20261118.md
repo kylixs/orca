@@ -41,7 +41,7 @@
 
 ## 3. 台账未关闭行（14 行 = 🟡3 + ⚪11，按处理方式分组）
 
-> 口径：按「非 🟢 全计」（含早期探索 ⚪）；仅统计活跃项时为 4 行（🟡）＋ FR 外增强。2026-11-18 实施波关闭 U212/U214/U243/U247/U315/U317/U318/U319。
+> 口径：按「非 🟢 全计」（含早期探索 ⚪）；仅统计活跃项时为 3 行（🟡：U181/U233/U323）。2026-11-18 实施波关闭 U212/U214/U243/U245/U247/U315/U317/U318/U319/U320/U321/U322/U325/U326。
 
 ### 3.1 活跃观察 / 待办（3 行 🟡）
 
@@ -51,7 +51,7 @@
 | U233 | 认证端点冷读审计 F4 | F6 已随 D18 关闭；F4 已出最小设计（1 个 `auth.denied` + 限流），**裁定缓办**：cookieMode 投产同批落地 |
 | U323 | 探索重放脚本标签漂移 | `statNum('主机在线')` → NaN 假失败；随用户探索 WIP 批修 |
 
-### 3.2 早期探索 / FR 外增强（11 个 ID / 5 个表行 ⚪）
+### 3.2 早期探索 / FR 外增强（11 个 ID / 4 个分组行；台账 ⚪ 行 11）
 
 | 行 | 摘要 | 处置 |
 |---|---|---|
@@ -120,5 +120,5 @@
 | 决策索引与决策包 | `../work-orders/decision-index-20261118.md`、`../work-orders/decisions-log-20261118.md`、`../work-orders/pending-decisions-2026-11-17.md`（附三 D21、附四 D22、附五 D25） |
 | 子会话协议（报告/证据/复盘纪律） | `../parent-child-session-protocol.md`、`../../DEVELOPMENT_PROCESS.md` |
 | 现状文档 | `../current-state/m01-auth.md`、`m02-workbench-nav.md`、`m03-projects.md`、`m04-hosts.md`、`m06-users.md`、`m07-audit.md`、`m11-authz-model.md` |
-| 关键测试报告（gitignored，随工作树） | `cloud-platform/test-reports/full-e2e-sweep-final3-20261118.md`、`auth-baseline-6-20261118.md`、`u197-closure-verdict-20261118.md`、`timeouts-burndown-plan-20261118.md`、`open-rows-triage-20261118.md`、`review-728c5d5-20261118.md`（U310 复现对照） |
+| 关键测试报告（gitignored，随工作树） | `cloud-platform/test-reports/full-e2e-sweep-final9-20261118.md`（最终门禁）、`full-e2e-sweep-final3-20261118.md`、`auth-baseline-6-20261118.md`、`u197-closure-verdict-20261118.md`、`timeouts-burndown-plan-20261118.md`、`open-rows-triage-20261118.md`、`review-728c5d5-20261118.md`（U310 复现对照） |
 | 证据目录 | `cloud-platform/evidence/`（gitignored）、`/tmp/e2e-sweep-final3/`（当次扫描日志） |
