@@ -99,9 +99,23 @@ function authedJson(
   })
 }
 
-function oversizedSensitive(fields: Record<string, unknown>): string {
+function oversizedBody(fields: Record<string, unknown>): string {
   // The named fields stay legible in the JSON; only the cap decides they are ignored.
   return JSON.stringify({ ...fields, pad: 'x'.repeat(SENSITIVE_WRITE_BODY_MAX_BYTES * 2) })
+}
+
+async function mintHostToken(base: string, token: string): Promise<string> {
+  const res = await authedJson(base, token, 'POST', '/v1/hosts/tokens')
+  assert.equal(res.status, 201, 'an admin may mint a host registration token')
+  return String(((await res.json()) as Json).token ?? '')
+}
+
+function registerHost(base: string, token: string, body: string): Promise<Response> {
+  return fetch(`${base}/v1/hosts/register`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body
+  })
 }
 
 async function deniedAuditEvents(base: string, token: string, actor: string): Promise<Json[]> {
@@ -296,7 +310,7 @@ describe('U250 档 2 已鉴权敏感写 body 上限（16 KiB）', () => {
         admin.token,
         entry.method,
         entry.path,
-        oversizedSensitive(entry.body)
+        oversizedBody(entry.body)
       )
       assert.equal(res.status, 413, `${entry.name} must answer 413`)
       assert.equal(
@@ -445,5 +459,166 @@ describe('U250 内部端点 body 上限（4 KiB，超限丢弃整包）', () => 
     const scalar = await postInternal(base, '/v1/internal/audit/file-events', 'null')
     assert.equal(scalar.status, 400)
     assert.equal(errorCode((await scalar.json()) as Json), 'INVALID_FILE_EVENT')
+  })
+})
+
+describe('U250 档 3 普通读写调用点 body 上限（16 KiB）', () => {
+  test('POST /v1/projects：超限 413 且不创建项目，正常 body 仍 201', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u250-tier3-project')
+    const before = app.store.projects.size
+    const fields = {
+      hostId: HOST_ID,
+      key: 'u250-bounded-project',
+      name: 'u250-bounded-project',
+      path: '/srv/work/u250-bounded-project',
+      defaultBranch: 'main'
+    }
+
+    const res = await authedJson(base, admin.token, 'POST', '/v1/projects', oversizedBody(fields))
+    assert.equal(res.status, 413)
+    assert.equal(errorCode((await res.json()) as Json), 'PAYLOAD_TOO_LARGE')
+    assert.equal(app.store.projects.size, before, 'the refused create adds no project')
+    assert.equal(
+      [...app.store.projects.values()].some((project) => project.key === fields.key),
+      false
+    )
+
+    const ok = await authedJson(base, admin.token, 'POST', '/v1/projects', JSON.stringify(fields))
+    assert.equal(ok.status, 201)
+    assert.ok(app.store.projectsByKey.has(fields.key), 'a normal body still creates the project')
+  })
+
+  test('POST /v1/hosts/register：超限 413 且不消耗注册令牌，错误可诊断', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u250-tier3-register')
+    const token = await mintHostToken(base, admin.token)
+    const fields = {
+      name: 'u250-bounded-host',
+      fingerprint: 'sha256:u250-bounded-host',
+      protocolVersion: 3,
+      networkZone: 'intranet'
+    }
+
+    const res = await registerHost(base, token, oversizedBody(fields))
+    assert.equal(res.status, 413)
+    const payload = (await res.json()) as Json
+    assert.equal(errorCode(payload), 'PAYLOAD_TOO_LARGE')
+    const failure = payload.error as Json
+    assert.equal(typeof failure.traceId, 'string', 'the wire refusal names a trace id')
+    assert.equal(app.store.hostsByName.has(fields.name), false)
+
+    // The token is single-use and must survive the refusal.
+    const retried = await registerHost(base, token, JSON.stringify(fields))
+    assert.equal(retried.status, 201)
+    assert.ok(app.store.hostsByName.has(fields.name))
+  })
+
+  test('POST /v1/audit/export：超限 413 且不创建导出任务', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u250-tier3-export')
+
+    const res = await authedJson(
+      base,
+      admin.token,
+      'POST',
+      '/v1/audit/export',
+      oversizedBody({ confirm: true, format: 'jsonl' })
+    )
+
+    assert.equal(res.status, 413)
+    assert.equal(errorCode((await res.json()) as Json), 'PAYLOAD_TOO_LARGE')
+    assert.equal(app.auditExportStore.countActive(admin.userId), 0, 'no job was accepted')
+  })
+
+  test('其余 6 个普通调用点超限同样 413', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u250-tier3-other-admin')
+    const dev = await loginAs(base, 'zhangsan', 'Passw0rd!', 'u250-tier3-other-dev')
+    const beforeProjects = app.store.projects.size
+
+    const cases: Array<{
+      name: string
+      token: string
+      method: string
+      path: string
+      body: Json
+    }> = [
+      {
+        name: '项目更新',
+        token: admin.token,
+        method: 'PUT',
+        path: `/v1/projects/${PROJECT_ID}`,
+        body: { repoUrl: 'https://git.example.com/u250/bounded.git' }
+      },
+      {
+        name: '自助项目创建',
+        token: dev.token,
+        method: 'POST',
+        path: '/v1/projects/self',
+        body: { name: 'u250-self-service' }
+      },
+      {
+        name: '主机维护',
+        token: admin.token,
+        method: 'POST',
+        path: `/v1/hosts/${HOST_ID}/maintenance`,
+        body: { enabled: true }
+      },
+      {
+        name: 'web 交接',
+        token: admin.token,
+        method: 'POST',
+        path: `/v1/projects/${PROJECT_ID}/web-handoff`,
+        body: { surface: 'admin' }
+      },
+      {
+        name: '连接',
+        token: admin.token,
+        method: 'POST',
+        path: `/v1/projects/${PROJECT_ID}/connect`,
+        body: {}
+      }
+    ]
+
+    for (const entry of cases) {
+      const res = await authedJson(
+        base,
+        entry.token,
+        entry.method,
+        entry.path,
+        oversizedBody(entry.body)
+      )
+      assert.equal(res.status, 413, `${entry.name} must answer 413`)
+      assert.equal(errorCode((await res.json()) as Json), 'PAYLOAD_TOO_LARGE', entry.name)
+    }
+
+    assert.equal(app.store.projects.size, beforeProjects, 'no project was created or replaced')
+    assert.equal(
+      app.store.projects.get(PROJECT_ID)?.repoUrl,
+      'git@git.example.com:pay/payment-service.git'
+    )
+    assert.equal(app.store.hosts.get(HOST_ID)?.status, 'online', 'maintenance was not applied')
+    assert.equal(app.store.webHandoffs.size, 0, 'no handoff code was minted')
+
+    // Heartbeat needs a registered host holding a valid credential.
+    const hostToken = await mintHostToken(base, admin.token)
+    const registered = await registerHost(
+      base,
+      hostToken,
+      JSON.stringify({ name: 'u250-beat-host', protocolVersion: 3, networkZone: 'intranet' })
+    )
+    assert.equal(registered.status, 201)
+    const host = (await registered.json()) as Json
+    const beat = await fetch(`${base}/v1/hosts/${String(host.hostId)}/heartbeat`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${String(host.credential)}`
+      },
+      body: oversizedBody({ status: 'online' })
+    })
+    assert.equal(beat.status, 413, 'heartbeat must answer 413')
+    assert.equal(errorCode((await beat.json()) as Json), 'PAYLOAD_TOO_LARGE')
   })
 })

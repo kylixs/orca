@@ -4454,7 +4454,8 @@ export function createApp(config: ApiConfig): ApiHandle {
         return error(res, 403, 'PERMISSION_DENIED', '需要平台管理权限。', traceId)
       }
       if (!auditAllowsMutations(res, traceId)) return
-      const body = await readJson(req)
+      const body = await readSensitiveWriteBody(req, res, traceId)
+      if (!body) return
       const hostId = String(body.hostId ?? '')
       const target = store.hosts.get(hostId)
       if (!target) return error(res, 400, 'HOST_NOT_FOUND', '主机不存在。', traceId)
@@ -4591,7 +4592,8 @@ export function createApp(config: ApiConfig): ApiHandle {
       const authed = requireAuth()
       if (!authed) return
       if (!auditAllowsMutations(res, traceId)) return
-      const body = await readJson(req)
+      const body = await readSensitiveWriteBody(req, res, traceId)
+      if (!body) return
       const deny = async (
         status: number,
         code: string,
@@ -4790,7 +4792,8 @@ export function createApp(config: ApiConfig): ApiHandle {
           // Same payload as unknown/unreadable: an archived project is not editable.
           return error(res, 404, 'PROJECT_NOT_FOUND', '项目不存在或无权访问。', traceId)
         }
-        const body = await readJson(req)
+        const body = await readSensitiveWriteBody(req, res, traceId)
+        if (!body) return
         if ('path' in body || 'hostId' in body) {
           return error(res, 400, 'PROJECT_FIELD_IMMUTABLE', '项目路径与主机不允许修改。', traceId)
         }
@@ -5599,7 +5602,11 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (!entry || entry.usedAt || entry.expiresAt < now()) {
         return error(res, 401, 'HOST_TOKEN_INVALID', '注册令牌无效或已使用。', traceId)
       }
-      const body = await readJson(req)
+      // U250 tier 3: cross-version hosts share this wire. A body over 16 KiB is
+      // refused with 413 PAYLOAD_TOO_LARGE plus the response traceId, so an old
+      // host's failure is diagnosable instead of a silent disconnect.
+      const body = await readSensitiveWriteBody(req, res, traceId)
+      if (!body) return
       const name = typeof body.name === 'string' ? body.name.trim() : ''
       // The token is single-use: refuse a nameless registration before spending it.
       if (name === '') {
@@ -5711,7 +5718,8 @@ export function createApp(config: ApiConfig): ApiHandle {
         if (!target.credentialHash || !safeEqual(target.credentialHash, hashToken(bearer))) {
           return error(res, 401, 'HOST_CREDENTIAL_INVALID', '主机凭证无效。', traceId)
         }
-        const body = await readJson(req)
+        const body = await readSensitiveWriteBody(req, res, traceId)
+        if (!body) return
         // Bad addresses would be stored and later splice into every project view;
         // reject the beat before anything is persisted (U57 H14).
         if (
@@ -5913,7 +5921,8 @@ export function createApp(config: ApiConfig): ApiHandle {
         if (target.revokedAt !== null) {
           return error(res, 409, 'HOST_REVOKED', '主机已下线，不能再进入维护模式。', traceId)
         }
-        const body = await readJson(req)
+        const body = await readSensitiveWriteBody(req, res, traceId)
+        if (!body) return
         // U58 H23 + U237: `enabled: "false"` used to enter maintenance, and a
         // missing `enabled` did too. Only a real boolean may steer this switch.
         if (typeof body.enabled !== 'boolean') {
@@ -6272,7 +6281,8 @@ export function createApp(config: ApiConfig): ApiHandle {
         })
       }
 
-      const body = await readJson(req)
+      const body = await readSensitiveWriteBody(req, res, traceId)
+      if (!body) return
       if (body.confirm !== true) {
         return error(res, 400, 'EXPORT_CONFIRM_REQUIRED', '审计导出需要二次确认。', traceId)
       }
@@ -6905,7 +6915,8 @@ export function createApp(config: ApiConfig): ApiHandle {
     traceId: string,
     platformOrigin: string
   ): Promise<void> {
-    const body = await readJson(req)
+    const body = await readSensitiveWriteBody(req, res, traceId)
+    if (!body) return
     // Additive wire field: an old console sends no body and keeps the pre-U46
     // entry, URL shape, status gates, and reply fields byte-for-byte.
     const surface = body.surface === 'admin' ? 'admin' : 'web'
@@ -7023,7 +7034,8 @@ export function createApp(config: ApiConfig): ApiHandle {
     project: Project,
     traceId: string
   ): Promise<void> {
-    const body = await readJson(req)
+    const body = await readSensitiveWriteBody(req, res, traceId)
+    if (!body) return
     // Same predicate as /web-handoff: adminAccess widens which projects a caller
     // can see, never the right to open one; `open` is an explicit bit.
     const permissions = effectiveProjectPermissions(store, project, user, isAdmin(user))
