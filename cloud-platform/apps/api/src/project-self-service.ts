@@ -9,6 +9,16 @@ export const SELF_SERVICE_PROJECT_LIMIT = 20
 /** Bound on the directory list a host may report per beat. */
 export const PROJECT_DIR_LIMIT = 200
 
+/**
+ * U256: the host root and every path derived from it share the admin create
+ * route's bound. 4096 matches Linux PATH_MAX; a longer derived path could never
+ * be persisted by the admin contract, so self-service must not mint one either.
+ */
+export const PROJECT_PATH_MAX_CHARS = 4096
+
+/** Filesystem name ceiling (UTF-8 bytes) the 64 KiB register budget assumes. */
+export const PROJECT_DIR_NAME_MAX_BYTES = 255
+
 export type ProjectDirVerdict =
   | { ok: true; dir: string }
   | { ok: false; code: 'INVALID_DIR' | 'PATH_OUTSIDE_ROOT'; message: string }
@@ -46,7 +56,13 @@ export function parseProjectDirs(value: unknown): string[] {
       continue
     }
     const name = entry.trim()
-    if (name !== '' && !DIR_SEPARATOR.test(name)) {
+    // U256: silently drop over-long names, matching how invalid entries are
+    // already dropped; the register cap's 200 × 255 B premise then holds.
+    if (
+      name !== '' &&
+      !DIR_SEPARATOR.test(name) &&
+      Buffer.byteLength(name, 'utf8') <= PROJECT_DIR_NAME_MAX_BYTES
+    ) {
       names.add(name)
     }
   }
@@ -120,20 +136,33 @@ export function selectSelfServiceHost(args: {
   return { ok: true, host: candidates[0] }
 }
 
+export type ProjectPathJoinVerdict =
+  | { ok: true; path: string }
+  | { ok: false; code: 'PATH_OUTSIDE_ROOT' | 'PROJECT_PATH_INVALID'; message: string }
+
 /**
  * Appends an already-validated key to the host's root, keeping that host's
  * separator style. Root-only values keep their separator (`/` and `C:\`).
  */
-export function joinProjectPath(root: string, key: string): string | null {
-  if (root === '/') {
-    return `/${key}`
+export function joinProjectPath(root: string, key: string): ProjectPathJoinVerdict {
+  const path =
+    root === '/'
+      ? `/${key}`
+      : /^[A-Za-z]:[\\/]$/.test(root)
+        ? `${root}${key}`
+        : `${root}${root.includes('\\') && !root.includes('/') ? '\\' : '/'}${key}`
+  if (!validateProjectPath(path).ok) {
+    return { ok: false, code: 'PATH_OUTSIDE_ROOT', message: '项目目录不在主机项目根目录内。' }
   }
-  if (/^[A-Za-z]:[\\/]$/.test(root)) {
-    return `${root}${key}`
+  // U256: a 4096-char root plus a 200-char dir would outgrow the create contract.
+  if (path.length > PROJECT_PATH_MAX_CHARS) {
+    return {
+      ok: false,
+      code: 'PROJECT_PATH_INVALID',
+      message: `项目路径不能超过 ${PROJECT_PATH_MAX_CHARS} 个字符。`
+    }
   }
-  const separator = root.includes('\\') && !root.includes('/') ? '\\' : '/'
-  const path = `${root}${separator}${key}`
-  return validateProjectPath(path).ok ? path : null
+  return { ok: true, path }
 }
 
 /**

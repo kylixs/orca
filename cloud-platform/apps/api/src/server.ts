@@ -13,6 +13,7 @@ import {
   validateProjectKey
 } from '../../../packages/contract/src/project-key.ts'
 import {
+  PROJECT_PATH_MAX_CHARS,
   SELF_SERVICE_PROJECT_LIMIT,
   countActiveProjectsCreatedBy,
   hasHostPermission,
@@ -474,20 +475,15 @@ const FORCE_OFFLINE_REASON_MAX_CHARS = 200
 const SENSITIVE_WRITE_BODY_MAX_BYTES = 16 * 1024
 
 /**
- * U252: the registration contract allows up to 200 projectDirs of 255 B each;
- * 200 × 255 B plus the envelope measured 52,232 B, 3.19x the shared 16 KiB cap.
- * 64 KiB admits that legal maximum with 1.25x headroom. Current TS hosts omit
- * the field, so this only protects cross-version and other host implementations;
- * raising the cap keeps their legal registrations from being refused.
+ * U252/U256: register allows 200 projectDirs of 255 B each and a projectsRoot
+ * bounded to `PROJECT_PATH_MAX_CHARS`, so the largest legal body measures ~56
+ * KiB. 64 KiB admits it with headroom. Without the root bound, a 15,003-char
+ * root plus 200 dirs measured 66,663 B and was refused as oversized.
+ * Current TS hosts omit projectDirs, so this only protects cross-version and
+ * other host implementations; raising the cap keeps their legal registrations
+ * from being refused.
  */
 const REGISTER_BODY_MAX_BYTES = 64 * 1024
-
-/**
- * U252: Linux PATH_MAX is 4096. An unbounded Windows extended path made a legal
- * create exceed the 16 KiB body cap, so the contract itself is bounded instead
- * of letting the body limit refuse an otherwise valid project.
- */
-const PROJECT_PATH_MAX_CHARS = 4096
 
 /**
  * U251: one beat carries the host's whole pending batch — 100 audit events whose
@@ -3488,7 +3484,9 @@ export function createApp(config: ApiConfig): ApiHandle {
       return commitProjectsRoot(target, null, traceId) ? null : 'PROJECTS_ROOT_CONFLICT'
     }
     const verdict = validateProjectPath(value)
-    if (!verdict.ok) {
+    // U256: an over-long root would derive paths the create contract refuses, and
+    // would break the register body budget that 64 KiB was sized for.
+    if (!verdict.ok || verdict.path.length > PROJECT_PATH_MAX_CHARS) {
       audit.appendBestEffort({
         eventType: 'host_projects_root_rejected',
         actor: 'agent',
@@ -3496,7 +3494,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         targetId: target.id,
         result: 'failure',
         traceId,
-        metadata: { reason: verdict.code }
+        metadata: { reason: verdict.ok ? 'PROJECT_PATH_INVALID' : verdict.code }
       })
       return 'PROJECTS_ROOT_INVALID'
     }
@@ -4817,10 +4815,16 @@ export function createApp(config: ApiConfig): ApiHandle {
         return await deny(409, 'PROJECT_KEY_TAKEN', '项目 Key 已被占用，请更换。')
       }
       const root = selection.host.projectsRoot
-      const projectPath = root === null ? null : joinProjectPath(root, dirVerdict.dir)
-      if (projectPath === null) {
+      if (root === null) {
         return await deny(400, 'PATH_OUTSIDE_ROOT', '项目目录不在主机项目根目录内。')
       }
+      const joined = joinProjectPath(root, dirVerdict.dir)
+      // U256: a long root can derive a path past the 4096-char contract; refuse
+      // it here, before any project row exists, instead of persisting it.
+      if (!joined.ok) {
+        return await deny(400, joined.code, joined.message)
+      }
+      const projectPath = joined.path
       if (projectPathTaken(store, selection.host.id, projectPath)) {
         return await deny(409, 'PROJECT_PATH_TAKEN', '该主机目录下已存在同路径的项目。')
       }
@@ -5762,6 +5766,29 @@ export function createApp(config: ApiConfig): ApiHandle {
       // The token is single-use: refuse a nameless registration before spending it.
       if (name === '') {
         return error(res, 400, 'HOST_NAME_REQUIRED', 'name 为必填的主机标识。', traceId)
+      }
+      // U256: bound the root before the single-use token is spent. A 15,003-char
+      // root is a field error (400), not an oversized-body refusal (413).
+      if (
+        typeof body.projectsRoot === 'string' &&
+        body.projectsRoot.length > PROJECT_PATH_MAX_CHARS
+      ) {
+        audit.appendBestEffort({
+          eventType: 'host_projects_root_rejected',
+          actor: 'agent',
+          targetType: 'host',
+          targetId: null,
+          result: 'failure',
+          traceId,
+          metadata: { reason: 'PROJECT_PATH_INVALID' }
+        })
+        return error(
+          res,
+          400,
+          'PROJECTS_ROOT_INVALID',
+          `主机项目根目录不能超过 ${PROJECT_PATH_MAX_CHARS} 个字符。`,
+          traceId
+        )
       }
       entry.usedAt = now()
       const existing = store.hostsByName.get(name)

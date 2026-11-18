@@ -162,6 +162,16 @@ function pathOfLength(length: number): string {
   return `/${'p'.repeat(length - 1)}`
 }
 
+/** U256: an ASCII register body of an exact byte length, to pin the cap boundary. */
+function registerBodyOfBytes(name: string, totalBytes: number): string {
+  const prefix = `{"name":"${name}","fingerprint":"sha256:${name}","protocolVersion":3,"networkZone":"intranet","pad":"`
+  const suffix = '"}'
+  const pad = 'x'.repeat(totalBytes - Buffer.byteLength(prefix) - Buffer.byteLength(suffix))
+  const body = `${prefix}${pad}${suffix}`
+  assert.equal(Buffer.byteLength(body), totalBytes, 'the fixture must land on the exact boundary')
+  return body
+}
+
 function repoUrlOfLength(length: number): string {
   const prefix = 'https://git.example.com/'
   const suffix = '.git'
@@ -1274,6 +1284,16 @@ describe('U252 项目 path 契约上限（4096 字符）', () => {
     assert.equal(res.status, 400)
     assert.equal(errorCode((await res.json()) as Json), 'PROJECT_PATH_INVALID')
     assert.equal(app.store.projectsByKey.has(key), false, 'the refused create adds no project')
+
+    // U256: the denial is auditable, and the recorded path stays bounded.
+    const denied = await deniedAuditEvents(base, admin.token, 'admin')
+    const event = denied.find(
+      (entry) => (entry.metadata as Json | undefined)?.reason === 'PROJECT_PATH_INVALID'
+    )
+    assert.ok(event, 'the refused create is audited')
+    assert.equal(event.targetType, 'project')
+    assert.equal(event.targetId, null)
+    assert.equal(((event.metadata as Json).path as string).length, PROJECT_PATH_MAX_CHARS)
   })
 
   test('path 4000 + repoUrl 4096 → 201，不再依赖 body 上限兜底', async () => {
@@ -1302,6 +1322,186 @@ describe('U252 项目 path 契约上限（4096 字符）', () => {
     const stored = app.store.projectsByKey.get(key)
     assert.equal(stored?.path.length, 4000)
     assert.equal(stored?.repoUrl.length, 4096)
+  })
+})
+
+describe('U256 projectsRoot 与自助派生路径上限', () => {
+  test('15,003 字符 projectsRoot 注册 → 400 PROJECTS_ROOT_INVALID，令牌未消耗', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u256-root-long-admin')
+    const token = await mintHostToken(base, admin.token)
+    const fields = {
+      name: 'u256-root-long',
+      fingerprint: 'sha256:u256-root-long',
+      protocolVersion: 3,
+      networkZone: 'intranet',
+      projectsRoot: pathOfLength(15_003)
+    }
+
+    const refused = await registerHost(base, token, JSON.stringify(fields))
+    const payload = (await refused.json()) as Json
+    // U256: a field error, not the body-cap 413 the unbounded root used to cause.
+    assert.ok(
+      Buffer.byteLength(JSON.stringify(fields)) < REGISTER_BODY_MAX_BYTES,
+      'the body is under the 64 KiB cap, so only field validation can refuse it'
+    )
+    assert.equal(refused.status, 400, JSON.stringify(payload))
+    assert.equal(errorCode(payload), 'PROJECTS_ROOT_INVALID')
+    assert.equal(app.store.hostsByName.has(fields.name), false)
+
+    const retried = await registerHost(
+      base,
+      token,
+      JSON.stringify({ ...fields, projectsRoot: '/srv/u256-long-retry' })
+    )
+    assert.equal(retried.status, 201, 'the single-use token survives a field refusal')
+    const host = (await retried.json()) as Json
+    assert.equal(app.store.hosts.get(String(host.hostId))?.projectsRoot, '/srv/u256-long-retry')
+  })
+
+  test('projectsRoot 4000 + 200 × 255 B 目录 → 201，合法最大包仍在 64 KiB 内', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u256-root-max-admin')
+    const token = await mintHostToken(base, admin.token)
+    const root = pathOfLength(4000)
+    const dirs = Array.from({ length: 200 }, (_, index) => {
+      const prefix = `dir${String(index).padStart(3, '0')}`
+      return `${prefix}${'d'.repeat(255 - prefix.length)}`
+    })
+    const body = JSON.stringify({
+      name: 'u256-root-max',
+      fingerprint: 'sha256:u256-root-max',
+      protocolVersion: 3,
+      networkZone: 'intranet',
+      projectsRoot: root,
+      projectDirs: dirs
+    })
+    const bytes = Buffer.byteLength(body)
+    assert.ok(bytes > SENSITIVE_WRITE_BODY_MAX_BYTES, `fixture is ${bytes} B, must exceed 16 KiB`)
+    assert.ok(bytes < REGISTER_BODY_MAX_BYTES, `fixture is ${bytes} B, must fit the 64 KiB cap`)
+
+    const res = await registerHost(base, token, body)
+    const payload = (await res.json()) as Json
+    assert.equal(res.status, 201, JSON.stringify(payload))
+    const stored = app.store.hosts.get(String(payload.hostId))
+    assert.equal(stored?.projectsRoot, root)
+    assert.deepEqual(stored?.projectDirs, [...dirs].sort(), 'all 200 legal directories were stored')
+  })
+
+  test('心跳超长 projectsRoot → 200 + PROJECTS_ROOT_INVALID，旧根保留', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u256-beat-root-admin')
+    const token = await mintHostToken(base, admin.token)
+    const registered = await registerHost(
+      base,
+      token,
+      JSON.stringify({ name: 'u256-beat-root', projectsRoot: '/srv/u256-beat' })
+    )
+    assert.equal(registered.status, 201)
+    const host = (await registered.json()) as Json
+    const beat = await postHeartbeat(
+      base,
+      String(host.hostId),
+      String(host.credential),
+      JSON.stringify({ status: 'online', projectsRoot: pathOfLength(PROJECT_PATH_MAX_CHARS + 1) })
+    )
+    assert.equal(beat.status, 200)
+    assert.equal(((await beat.json()) as Json).projectsRootRejected, 'PROJECTS_ROOT_INVALID')
+    assert.equal(app.store.hosts.get(String(host.hostId))?.projectsRoot, '/srv/u256-beat')
+  })
+
+  test('自助创建派生 path 超 4096 → 400 PROJECT_PATH_INVALID，且不落库', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u256-self-admin')
+    const token = await mintHostToken(base, admin.token)
+    const root = pathOfLength(PROJECT_PATH_MAX_CHARS)
+    const registered = await registerHost(
+      base,
+      token,
+      JSON.stringify({ name: 'u256-self-host', projectsRoot: root })
+    )
+    assert.equal(registered.status, 201)
+    const host = (await registered.json()) as Json
+    const hostId = String(host.hostId)
+    const granted = await authedJson(
+      base,
+      admin.token,
+      'PUT',
+      `/v1/hosts/${hostId}/grants`,
+      JSON.stringify({ subjectType: 'group', subjectId: 'developers', permissions: ['provision'] })
+    )
+    assert.equal(granted.status, 200, await granted.text())
+
+    const dev = await loginAs(base, 'zhangsan', 'Passw0rd!', 'u256-self-dev')
+    const key = 'u256-self-over'
+    const dir = 'd'.repeat(200)
+    assert.ok(root.length + 1 + dir.length > PROJECT_PATH_MAX_CHARS)
+    const res = await authedJson(
+      base,
+      dev.token,
+      'POST',
+      '/v1/projects/self',
+      JSON.stringify({ hostId, key, name: 'Self Over', dir })
+    )
+    const payload = (await res.json()) as Json
+    assert.equal(res.status, 400, JSON.stringify(payload))
+    assert.equal(errorCode(payload), 'PROJECT_PATH_INVALID')
+    assert.equal(app.store.projectsByKey.has(key), false, 'the refused create persists nothing')
+
+    const denied = await deniedAuditEvents(base, admin.token, 'zhangsan')
+    assert.ok(
+      denied.some(
+        (entry) => (entry.metadata as Json | undefined)?.reason === 'PROJECT_PATH_INVALID'
+      ),
+      'the refused self-service create is audited'
+    )
+  })
+
+  test('register 精确边界：65,536 B → 201，65,537 B → 413', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u256-boundary-admin')
+
+    const token = await mintHostToken(base, admin.token)
+    const accepted = await registerHost(
+      base,
+      token,
+      registerBodyOfBytes('u256-boundary-ok', REGISTER_BODY_MAX_BYTES)
+    )
+    assert.equal(accepted.status, 201, await accepted.text())
+
+    const overToken = await mintHostToken(base, admin.token)
+    const refused = await registerHost(
+      base,
+      overToken,
+      registerBodyOfBytes('u256-boundary-no', REGISTER_BODY_MAX_BYTES + 1)
+    )
+    assert.equal(refused.status, 413)
+    assert.equal(errorCode((await refused.json()) as Json), 'PAYLOAD_TOO_LARGE')
+    assert.equal(app.store.hostsByName.has('u256-boundary-no'), false)
+  })
+
+  test('projectDirs 名称按 UTF-8 字节限 255：255 B 保留，256 B/多字节超限丢弃', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u256-dirs-admin')
+    const token = await mintHostToken(base, admin.token)
+    const atLimit = 'a'.repeat(255)
+    const overAscii = 'b'.repeat(256)
+    const overUtf8 = '目'.repeat(86)
+    assert.equal(Buffer.byteLength(atLimit, 'utf8'), 255)
+    assert.ok(
+      overUtf8.length < 255 && Buffer.byteLength(overUtf8, 'utf8') > 255,
+      'a multi-byte name may fit in characters but not in bytes'
+    )
+
+    const res = await registerHost(
+      base,
+      token,
+      JSON.stringify({ name: 'u256-dirs', projectDirs: [atLimit, overAscii, overUtf8, 'keep'] })
+    )
+    const payload = (await res.json()) as Json
+    assert.equal(res.status, 201, JSON.stringify(payload))
+    const stored = app.store.hosts.get(String(payload.hostId))
+    assert.deepEqual(stored?.projectDirs, [atLimit, 'keep'].sort())
   })
 })
 
