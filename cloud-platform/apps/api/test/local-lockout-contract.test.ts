@@ -94,4 +94,73 @@ describe('本地与共享登录锁定契约同构（U289）', () => {
     })
     assert.equal(recorded.lockedUntil, NOW + LOCK_MS)
   })
+
+  test('锁定期间继续失败：逐次与共享完全一致，且不延长截止时间', () => {
+    const local = new Store()
+    const shared = createLockoutStore()
+    const username = 'u292-locked-failures'
+
+    for (let attempt = 0; attempt < MAX_FAILURES; attempt += 1) {
+      const localResult = local.recordLoginFailure(username, NOW)
+      const sharedResult = shared.recordFailure(username, NOW)
+      assert.deepEqual(localResult, sharedResult, `锁定前第 ${attempt + 1} 次失败`)
+    }
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const later = NOW + 1_000 * (attempt + 1)
+      const localResult = local.recordLoginFailure(username, later)
+      const sharedResult = shared.recordFailure(username, later)
+      assert.deepEqual(localResult, sharedResult, `锁定期间第 ${attempt + 1} 次失败`)
+      assert.equal(localResult.locked, true)
+      assert.equal(localResult.remaining, 0)
+      assert.equal(localResult.lockedUntil, NOW + LOCK_MS, '锁定截止时间不得被后续失败延长')
+      assert.deepEqual(
+        local.loginLockState(username, later),
+        shared.isLocked(username, later),
+        `锁定期间第 ${attempt + 1} 次失败的只读态`
+      )
+    }
+  })
+
+  test('三次失败后本地只读 remaining 与共享 isLocked 一致（=2）', () => {
+    const local = new Store()
+    const shared = createLockoutStore()
+    const username = 'u292-remaining'
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      assert.deepEqual(local.recordLoginFailure(username, NOW), shared.recordFailure(username, NOW))
+    }
+
+    const localState = local.loginLockState(username, NOW)
+    const sharedState = shared.isLocked(username, NOW)
+    assert.deepEqual(localState, sharedState)
+    assert.equal(localState.remaining, 2)
+    assert.equal(localState.locked, false)
+    assert.equal(localState.lockedUntil, 0)
+  })
+
+  test('锁过期后本地只读态与共享一致，且新失败重新从满额计数', () => {
+    const local = new Store()
+    const shared = createLockoutStore()
+    const username = 'u292-readonly-expiry'
+
+    for (let attempt = 0; attempt < MAX_FAILURES; attempt += 1) {
+      local.recordLoginFailure(username, NOW)
+      shared.recordFailure(username, NOW)
+    }
+
+    const afterExpiry = NOW + LOCK_MS + 1
+    const localState = local.loginLockState(username, afterExpiry)
+    const sharedState = shared.isLocked(username, afterExpiry)
+    assert.deepEqual(localState, sharedState)
+    assert.equal(localState.locked, false)
+    assert.equal(localState.remaining, MAX_FAILURES)
+    assert.equal(localState.lockedUntil, 0)
+
+    assert.deepEqual(
+      local.recordLoginFailure(username, afterExpiry),
+      shared.recordFailure(username, afterExpiry)
+    )
+    assert.equal(local.loginLockState(username, afterExpiry).remaining, MAX_FAILURES - 1)
+  })
 })

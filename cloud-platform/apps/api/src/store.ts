@@ -250,7 +250,13 @@ export class Store {
   }
 
   recordLoginFailure(username: string, now: number): LockoutState {
-    const record = this.loginAttempts.get(username) ?? { count: 0, lockedUntil: 0 }
+    const existing = this.loginAttempts.get(username)
+    // U292: a locked account ignores further failures, matching the shared store.
+    if (existing && existing.lockedUntil > now) {
+      return { locked: true, remaining: 0, lockedUntil: existing.lockedUntil }
+    }
+    // An expired lock starts a fresh count; stale failures must not carry over.
+    const record = existing && existing.lockedUntil === 0 ? existing : { count: 0, lockedUntil: 0 }
     record.count += 1
     if (record.count >= 5) {
       record.lockedUntil = now + 15 * 60_000
@@ -260,7 +266,7 @@ export class Store {
     const locked = record.lockedUntil > now
     return {
       locked,
-      remaining: locked ? 0 : 5 - record.count,
+      remaining: locked ? 0 : Math.max(0, 5 - record.count),
       lockedUntil: locked ? record.lockedUntil : 0
     }
   }
@@ -268,17 +274,21 @@ export class Store {
   /** Read-only view: checking a login must not increment the counter. */
   loginLockState(username: string, now: number): LockoutState {
     const record = this.loginAttempts.get(username)
-    if (!record || record.lockedUntil <= now) {
+    if (!record) {
       return { locked: false, remaining: 5, lockedUntil: 0 }
     }
-    return { locked: true, remaining: 0, lockedUntil: record.lockedUntil }
+    if (record.lockedUntil > now) {
+      return { locked: true, remaining: 0, lockedUntil: record.lockedUntil }
+    }
+    // U292: reset on read like the shared store, so an expired lock stays in the past.
+    if (record.lockedUntil !== 0) {
+      this.loginAttempts.delete(username)
+      return { locked: false, remaining: 5, lockedUntil: 0 }
+    }
+    return { locked: false, remaining: Math.max(0, 5 - record.count), lockedUntil: 0 }
   }
 
   clearLoginFailures(username: string): void {
     this.loginAttempts.delete(username)
-  }
-
-  isLocked(username: string, now: number): boolean {
-    return this.loginLockState(username, now).locked
   }
 }
