@@ -577,15 +577,19 @@ function isDirectAddrForm(addr: string): boolean {
  * U265: the form whitelist cannot prove `new URL` will accept the splice; an
  * address it refuses must be rejected before a token is spent or a host stored,
  * or every later project view (and project create) 500s on Invalid URL.
+ * Returns the parsed base so callers that need it do not parse the same address twice.
  */
-function isDialableDirectAddr(addr: string): boolean {
-  if (!isDirectAddrForm(addr)) return false
+function parseDialableDirectAddr(addr: string): URL | null {
+  if (!isDirectAddrForm(addr)) return null
   try {
-    new URL(`https://${addr}`)
-    return true
+    return new URL(`https://${addr}`)
   } catch {
-    return false
+    return null
   }
+}
+
+function isDialableDirectAddr(addr: string): boolean {
+  return parseDialableDirectAddr(addr) !== null
 }
 
 /**
@@ -3436,13 +3440,16 @@ export function createApp(config: ApiConfig): ApiHandle {
    */
   function sessionPageUrlFor(h: Host | undefined, platformOrigin: string): string {
     const addr = h?.directAddrs[0]
-    // U280: form validity alone is not enough to know the splice parses; decide
-    // dialability before touching the URL so try/catch is not the only guard.
-    if (!h || !addr || !h.tlsFingerprint || !isDialableDirectAddr(addr)) {
+    if (!h || !addr || !h.tlsFingerprint) {
       return ''
     }
+    // U280: form validity alone is not enough to know the splice parses; decide
+    // dialability before touching the URL so try/catch is not the only guard.
+    // The parsed base is reused, so the address is parsed once per session URL.
+    const base = parseDialableDirectAddr(addr)
+    if (!base) return ''
     try {
-      const page = new URL(`https://${addr}/cloud-admin.html`)
+      const page = new URL('/cloud-admin.html', base)
       page.searchParams.set('api', platformOrigin)
       return page.toString()
     } catch {

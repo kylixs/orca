@@ -19,10 +19,11 @@ const ORIGIN = 'https://console.u277.example'
 const INTERNAL_TOKEN = 'u277-token'
 const MALFORMED_ADDR = '127.0.0.1:99999'
 const VALID_ADDR = '127.0.0.1:17001'
-// U280: `isDirectAddrForm` rejects both, `new URL` accepts both. Only the
-// explicit pre-splice guard keeps these out of `sessionPageUrl`; `127.0.0.1:99999`
-// cannot show that because the URL parser rejects it too.
-const GUARD_ONLY_REJECTED_ADDRS = ['console.example/evil', 'user@evil.example']
+// U280: `isDirectAddrForm` rejects these, `new URL` accepts them. Only the
+// explicit pre-splice guard keeps them out of `sessionPageUrl`; `127.0.0.1:99999`
+// cannot show that because the URL parser rejects it too. Port 0 is the one
+// form-only port rejection `new URL` still accepts, so it observes the port check.
+const GUARD_ONLY_REJECTED_ADDRS = ['console.example/evil', 'user@evil.example', '127.0.0.1:0']
 
 const apps: ApiHandle[] = []
 const tempDirs: string[] = []
