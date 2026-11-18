@@ -1,6 +1,7 @@
 // Static scan: node:test ignores numeric timeout positions (Node 24).
 // Numeric third arg (test/it and hooks) and numeric second arg (hooks) are silently
-// dropped, as is an object third arg on test/it. See ledger U287/U290/U291/U295/U297/U303/U305.
+// dropped, as is an object third arg on test/it. See ledger
+// U287/U290/U291/U295/U297/U303/U305/U306/U308.
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,7 +19,8 @@ export const FORMS = {
   TEST_NUMERIC_THIRD: 'test-numeric-third',
   TEST_OBJECT_THIRD: 'test-object-third',
   HOOK_NUMERIC_SECOND: 'hook-numeric-second',
-  HOOK_NUMERIC_THIRD: 'hook-numeric-third'
+  HOOK_NUMERIC_THIRD: 'hook-numeric-third',
+  NUMERIC_SPECIAL: 'numeric-special'
 }
 
 const CALL_PATTERN = /(?<![\w$.])(beforeEach|afterEach|before|after|test|it)\s*\(/g
@@ -284,17 +286,77 @@ function stripOuterParens(arg) {
   return text
 }
 
+// Top-level binary operator or comma outside nested brackets. A leading unary sign
+// does not count, so `-a` stays one operand while `-a + b` does not.
+function hasTopLevelOperator(text) {
+  let depth = 0
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+    if (char === '(' || char === '[' || char === '{') {
+      depth += 1
+    } else if (char === ')' || char === ']' || char === '}') {
+      depth -= 1
+    } else if (depth === 0) {
+      if (char === ',') {
+        return true
+      }
+      if (
+        (char === '+' || char === '-' || char === '*' || char === '/' || char === '%') &&
+        index > 0
+      ) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
 // Strips outer parens only when the content is not a top-level sequence (`(a, b)`),
-// so `before(fn, (a, b))` never collapses into `before(fn, a, b)`.
+// so `before(fn, (a, b))` never collapses into `before(fn, a, b)`. Folds redundant
+// parens across unary signs too, so `-((EXPR))` and `-(EXPR)` share a key. [U308]
 function stripExpressionParens(arg) {
   let text = arg.trim()
+  let negative = false
+  let peeled = false
   for (;;) {
     const stripped = stripOuterParens(text)
-    if (stripped === text || splitTopLevel(stripped, 0, stripped.length).length > 1) {
-      return text
+    if (stripped !== text) {
+      if (splitTopLevel(stripped, 0, stripped.length).length > 1) {
+        return text
+      }
+      text = stripped
+      continue
     }
-    text = stripped
+    if (text[0] !== '+' && text[0] !== '-') {
+      return peeled ? composeSignedExpression(text, negative) : text
+    }
+    const rest = text.slice(1).trim()
+    // `--a`/`++a` are decrement/increment, not a foldable unary chain.
+    if (rest.length === 0 || rest[0] === text[0]) {
+      return peeled ? composeSignedExpression(text, negative) : text
+    }
+    const inner = stripOuterParens(rest)
+    if (inner !== rest) {
+      // Never peel a sign off a parenthesized sequence: `-((a, b))` keeps its shape.
+      if (splitTopLevel(inner, 0, inner.length).length > 1) {
+        return peeled ? composeSignedExpression(text, negative) : text
+      }
+    } else if (hasTopLevelOperator(rest)) {
+      // `-a + b` binds to `a`, not to `a + b`.
+      return peeled ? composeSignedExpression(text, negative) : text
+    }
+    if (text[0] === '-') {
+      negative = !negative
+    }
+    peeled = true
+    text = inner
   }
+}
+
+function composeSignedExpression(operand, negative) {
+  const needsParens =
+    operand.startsWith('+') || operand.startsWith('-') || hasTopLevelOperator(operand)
+  return `${negative ? '-' : ''}${needsParens ? `(${operand})` : operand}`
 }
 
 // `-((+5000))` -> { negative: true, body: '5000' }.
@@ -316,27 +378,36 @@ function peelNumericLiteral(arg) {
   }
 }
 
-// Exact for integer/radix/BigInt literals; fractions and exponents use Number.
-// BigInt drops the `n` on purpose (see normalizeNumericArg).
+// Number first: every literal form is compared by its runtime Number value. Safe
+// integers use plain decimal; larger integral values use BigInt to render the exact
+// double in plain decimal (never `1e+21`), so `1e21`, its full decimal spelling and
+// `0x3635C9ADC5DEA00000` share one key. BigInt literals drop the `n` on purpose and
+// share the key of an equal Number (Node ignores both alike). [U308]
 function canonicalNumericLiteral(body, negative) {
   const bigint = body.endsWith('n')
   const digits = (bigint ? body.slice(0, -1) : body).replace(/_/g, '')
-  const isRadix = /^0[xXoObB]/.test(digits)
   try {
-    if (bigint || isRadix || !/[.eE]/.test(digits)) {
-      const value = BigInt(digits)
-      return String(negative && value !== 0n ? -value : value)
-    }
-    const value = Number(digits)
+    const value = negative ? -Number(digits) : Number(digits)
     if (!Number.isFinite(value)) {
       throw new Error('non-finite')
     }
-    return String(negative ? -value : value)
+    if (Number.isSafeInteger(value) || !Number.isInteger(value)) {
+      return String(value)
+    }
+    return BigInt(value).toString()
   } catch {
     // Unparseable (e.g. `1e999` -> Infinity): keep the text with a marker so it
     // cannot collide with a parsed canonical value. [U306]
     return `raw:${negative ? '-' : ''}${digits}`
   }
+}
+
+const SPECIAL_NUMERIC_IDENTIFIER = /^(?:Infinity|NaN)$/
+
+// `Infinity`, `-Infinity` and `NaN` are silently ignored by node:test too, but they
+// are identifiers rather than numeric literals. [U308]
+function isSpecialNumericTimeout(arg) {
+  return SPECIAL_NUMERIC_IDENTIFIER.test(peelNumericLiteral(arg).body)
 }
 
 function isNumericLiteral(arg) {
@@ -407,7 +478,9 @@ function scanSourceInternal(source, { file = '<memory>' } = {}) {
         continue
       }
       const third = args[2]
-      if (isNumericTimeout(third)) {
+      if (isSpecialNumericTimeout(third)) {
+        push(FORMS.NUMERIC_SPECIAL)
+      } else if (isNumericTimeout(third)) {
         push(FORMS.TEST_NUMERIC_THIRD)
       } else if (objectHasTimeout(third)) {
         push(FORMS.TEST_OBJECT_THIRD)
@@ -417,8 +490,12 @@ function scanSourceInternal(source, { file = '<memory>' } = {}) {
     if (args.length < 2) {
       continue
     }
-    if (isNumericTimeout(args[1])) {
+    if (isSpecialNumericTimeout(args[1])) {
+      push(FORMS.NUMERIC_SPECIAL)
+    } else if (isNumericTimeout(args[1])) {
       push(FORMS.HOOK_NUMERIC_SECOND)
+    } else if (args.length >= 3 && isSpecialNumericTimeout(args[2])) {
+      push(FORMS.NUMERIC_SPECIAL)
     } else if (args.length >= 3 && isNumericTimeout(args[2])) {
       // Node 24 reads hook options from arg 2, so a numeric third arg is dropped.
       push(FORMS.HOOK_NUMERIC_THIRD)
