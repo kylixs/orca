@@ -87,6 +87,7 @@
 
 | 日期 | 触发 | 变化摘要 | 新增决策 | 遗留 |
 |---|---|---|---|---|
+| 2026-11-18 | 矩阵证据补采 | FILE-COPY-CAPTURE（vitest **8/8**）与 AUD-EXPORT-DOWNLOAD（**25/25** = 14+11）独立实跑，与矩阵/决策记录一致；第九轮报告独立复算进行中 | — | — |
 | 2026-11-18 | 第九轮全景（最终门禁） | 149 文件 / 38 批全 exit 0；**1152 tests（1149 pass / 0 fail / 3 env skip）**；`hashes_same=yes`；覆盖 U326 拆分后代码 | — | relay-container 3 例需 Docker 环境补跑 |
 | 2026-11-18 | 单测叶子新鲜复跑 | 「单测非 e2e」5 叶子二次实跑：AUTH-TOKEN-GC 11、HOST-ONBOARD-REGISTER 3、CONN-DIRECT-ADDR 17、AUD-CURSOR-GATE 7、AZ-GRANT-VALIDATE（dedupe）4，合计 **42/42**，与矩阵一致 | — | 第九轮全景 |
 | 2026-11-18 | U325 关闭 | 预览上限/二进制真实路径定位（512KB + NUL）并补真实 runtime 用例 `eb56df0cfab`（2/2，变异红）→ `FILE-BROWSER-PREVIEW` 恢复 🟢，地图 69/0/1（98.6%），台账 14 行（🟡3/⚪11） | — | 第九轮全景（149 文件/1152） |
