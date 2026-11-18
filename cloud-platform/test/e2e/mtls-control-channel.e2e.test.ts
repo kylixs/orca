@@ -685,6 +685,7 @@ describe('M9 内部通道 mTLS', () => {
 
   test(
     'U267: 内部通道 404 声明 2 MiB → 先可读、connection: close、消费远小于声明',
+    { timeout: 8000 },
     async () => {
       const declared = 2 * 1024 * 1024
       const result = await pacedDeclaredTlsRequest('/v1/projects', declared)
@@ -700,12 +701,12 @@ describe('M9 内部通道 mTLS', () => {
         ...result,
         declared
       })
-    },
-    { timeout: 8000 }
+    }
   )
 
   test(
     'U267: 13 B chunked 未读 body → keep-alive，同 TLS 连接第二次请求可用',
+    { timeout: 8000 },
     async () => {
       const socket = await openTlsSocket()
       const body = 'u267-chunk-13'
@@ -751,12 +752,12 @@ describe('M9 内部通道 mTLS', () => {
       } finally {
         socket.destroy()
       }
-    },
-    { timeout: 8000 }
+    }
   )
 
   test(
     'U270: 内部通道 chunked 32 KiB 超 16 KiB 预算 → 401 可达后连接关闭',
+    { timeout: 8000 },
     async (t) => {
       const socket = await openTlsSocket()
       const body = Buffer.alloc(32 * 1024, 'x')
@@ -831,8 +832,7 @@ describe('M9 内部通道 mTLS', () => {
       } finally {
         socket.destroy()
       }
-    },
-    { timeout: 8000 }
+    }
   )
 
   test('缺少内部令牌时即使 mTLS 通过也被拒', async () => {

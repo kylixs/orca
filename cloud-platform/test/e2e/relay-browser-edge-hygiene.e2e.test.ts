@@ -234,7 +234,7 @@ function tlsDial(port: number): Promise<TLSSocket> {
 }
 
 describe('W6a 回派回归：浏览器边缘 socket 卫生与 per-IP 上限', () => {
-  test('MAJ-1 升级半开：101 之前客户端断开，宿主侧 socket 归零', async () => {
+  test('MAJ-1 升级半开：101 之前客户端断开，宿主侧 socket 归零', { timeout: 20_000 }, async () => {
     const host = await startSilentHost()
     const source = await startRouteSource([
       { routeKey: KEY, hostId: 'host_hygiene', target: `127.0.0.1:${host.port}`, version: 1 }
@@ -279,9 +279,9 @@ describe('W6a 回派回归：浏览器边缘 socket 卫生与 per-IP 上限', ()
       await source.close()
       await host.close()
     }
-  }, { timeout: 20_000 })
+  })
 
-  test('MAJ-1 请求半体：POST 中途断开，宿主侧 socket 归零', async () => {
+  test('MAJ-1 请求半体：POST 中途断开，宿主侧 socket 归零', { timeout: 20_000 }, async () => {
     const host = await startEchoHost()
     const source = await startRouteSource([
       { routeKey: KEY, hostId: 'host_hygiene', target: `127.0.0.1:${host.port}`, version: 1 }
@@ -342,9 +342,9 @@ describe('W6a 回派回归：浏览器边缘 socket 卫生与 per-IP 上限', ()
       await source.close()
       await host.close()
     }
-  }, { timeout: 20_000 })
+  })
 
-  test('MAJ-2 浏览器监听单 IP 超限拒绝并计入 active', async () => {
+  test('MAJ-2 浏览器监听单 IP 超限拒绝并计入 active', { timeout: 20_000 }, async () => {
     const host = await startEchoHost()
     const source = await startRouteSource([
       { routeKey: KEY, hostId: 'host_hygiene', target: `127.0.0.1:${host.port}`, version: 1 }
@@ -390,9 +390,9 @@ describe('W6a 回派回归：浏览器边缘 socket 卫生与 per-IP 上限', ()
       await source.close()
       await host.close()
     }
-  }, { timeout: 20_000 })
+  })
 
-  test('MIN-1 路由表过期：升级与 HTTP 同答 503，恢复后回 101', async () => {
+  test('MIN-1 路由表过期：升级与 HTTP 同答 503，恢复后回 101', { timeout: 30_000 }, async () => {
     const host = await startEchoHost()
     const source = await startRouteSource([
       { routeKey: KEY, hostId: 'host_hygiene', target: `127.0.0.1:${host.port}`, version: 1 }
@@ -428,59 +428,67 @@ describe('W6a 回派回归：浏览器边缘 socket 卫生与 per-IP 上限', ()
       await source.close()
       await host.close()
     }
-  }, { timeout: 30_000 })
+  })
 
-  test('MIN-3 升级路径 hop-by-hop：剥代理头，保 WS 必需头与端到端头', async () => {
-    const host = await startEchoHost()
-    const source = await startRouteSource([
-      { routeKey: KEY, hostId: 'host_hygiene', target: `127.0.0.1:${host.port}`, version: 1 }
-    ])
-    const { relay, browserPort } = await startBrowserRelay(source)
-    try {
-      const ws = new WebSocket(`wss://127.0.0.1:${browserPort}/h/${KEY}/ws`, {
-        rejectUnauthorized: false,
-        // No `trailer` here: Node's own client refuses it on a non-chunked
-        // request, which is a client-side limit, not a relay property.
-        headers: {
-          'proxy-authorization': 'Basic cHJveHk6c2VjcmV0',
-          te: 'trailers',
-          'keep-alive': 'timeout=5',
-          'x-probe-endtoend': 'must-survive'
-        }
-      })
-      const first = await new Promise<string>((resolve, reject) => {
-        ws.once('message', (data) => resolve(data.toString()))
-        ws.once('error', reject)
-      })
-      const seen = (JSON.parse(first) as { headers: Record<string, string> }).headers
-      assert.match(String(seen.connection), /upgrade/i, 'Connection: Upgrade must survive the hop')
-      assert.equal(seen.upgrade, 'websocket', 'Upgrade must survive the hop')
-      assert.ok(seen['sec-websocket-key'], 'the WS handshake key must survive the hop')
-      assert.equal(
-        seen['proxy-authorization'],
-        undefined,
-        'client-to-proxy credentials die at the relay'
-      )
-      assert.equal(seen.te, undefined)
-      assert.equal(seen['keep-alive'], undefined)
-      assert.equal(
-        seen['x-probe-endtoend'],
-        'must-survive',
-        'end-to-end headers are not hop-scoped'
-      )
-      assert.equal(seen['x-forwarded-for'], '127.0.0.1', 'the source IP still travels on the hop')
-      const echoed = await new Promise<string>((resolve, reject) => {
-        ws.once('message', (data) => resolve(data.toString()))
-        ws.send('ping-hygiene')
-        setTimeout(() => reject(new Error('echo timeout')), 5_000)
-      })
-      assert.equal(echoed, 'echo:ping-hygiene', 'the upgraded session must stay bidirectional')
-      ws.close()
-      saveEvidence(EVIDENCE, 'min3-upgrade-hop-by-hop.json', { headersSeenByHost: seen, echoed })
-    } finally {
-      await relay.close()
-      await source.close()
-      await host.close()
+  test(
+    'MIN-3 升级路径 hop-by-hop：剥代理头，保 WS 必需头与端到端头',
+    { timeout: 20_000 },
+    async () => {
+      const host = await startEchoHost()
+      const source = await startRouteSource([
+        { routeKey: KEY, hostId: 'host_hygiene', target: `127.0.0.1:${host.port}`, version: 1 }
+      ])
+      const { relay, browserPort } = await startBrowserRelay(source)
+      try {
+        const ws = new WebSocket(`wss://127.0.0.1:${browserPort}/h/${KEY}/ws`, {
+          rejectUnauthorized: false,
+          // No `trailer` here: Node's own client refuses it on a non-chunked
+          // request, which is a client-side limit, not a relay property.
+          headers: {
+            'proxy-authorization': 'Basic cHJveHk6c2VjcmV0',
+            te: 'trailers',
+            'keep-alive': 'timeout=5',
+            'x-probe-endtoend': 'must-survive'
+          }
+        })
+        const first = await new Promise<string>((resolve, reject) => {
+          ws.once('message', (data) => resolve(data.toString()))
+          ws.once('error', reject)
+        })
+        const seen = (JSON.parse(first) as { headers: Record<string, string> }).headers
+        assert.match(
+          String(seen.connection),
+          /upgrade/i,
+          'Connection: Upgrade must survive the hop'
+        )
+        assert.equal(seen.upgrade, 'websocket', 'Upgrade must survive the hop')
+        assert.ok(seen['sec-websocket-key'], 'the WS handshake key must survive the hop')
+        assert.equal(
+          seen['proxy-authorization'],
+          undefined,
+          'client-to-proxy credentials die at the relay'
+        )
+        assert.equal(seen.te, undefined)
+        assert.equal(seen['keep-alive'], undefined)
+        assert.equal(
+          seen['x-probe-endtoend'],
+          'must-survive',
+          'end-to-end headers are not hop-scoped'
+        )
+        assert.equal(seen['x-forwarded-for'], '127.0.0.1', 'the source IP still travels on the hop')
+        const echoed = await new Promise<string>((resolve, reject) => {
+          ws.once('message', (data) => resolve(data.toString()))
+          ws.send('ping-hygiene')
+          setTimeout(() => reject(new Error('echo timeout')), 5_000)
+        })
+        assert.equal(echoed, 'echo:ping-hygiene', 'the upgraded session must stay bidirectional')
+        ws.close()
+        saveEvidence(EVIDENCE, 'min3-upgrade-hop-by-hop.json', { headersSeenByHost: seen, echoed })
+      } finally {
+        await relay.close()
+        await source.close()
+        await host.close()
+      }
     }
-  }, { timeout: 20_000 })
+  )
 })
