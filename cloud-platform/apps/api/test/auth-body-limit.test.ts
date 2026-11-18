@@ -13,9 +13,11 @@ const ORIGIN = 'https://console.u249.example'
 const AUTH_BODY_MAX_BYTES = 16 * 1024
 const INTERNAL_BODY_MAX_BYTES = 8 * 1024
 const SENSITIVE_WRITE_BODY_MAX_BYTES = 16 * 1024
+const REGISTER_BODY_MAX_BYTES = 64 * 1024
 const DENIED_AUDIT_BODY_MAX_BYTES = 4 * 1024
 const HEARTBEAT_BODY_MAX_BYTES = 1024 * 1024
 const FILE_EVENT_METADATA_LIMIT = 4096
+const PROJECT_PATH_MAX_CHARS = 4096
 const INTERNAL_TOKEN = 'u249-token'
 const PROJECT_ID = 'proj_payment'
 const HOST_ID = 'host_dev001'
@@ -105,6 +107,40 @@ function authedJson(
 function oversizedBody(fields: Record<string, unknown>): string {
   // The named fields stay legible in the JSON; only the cap decides they are ignored.
   return JSON.stringify({ ...fields, pad: 'x'.repeat(SENSITIVE_WRITE_BODY_MAX_BYTES * 2) })
+}
+
+function oversizedRegisterBody(fields: Record<string, unknown>): string {
+  // Registration now has its own cap, so the 16 KiB shape above is legal.
+  return JSON.stringify({ ...fields, pad: 'x'.repeat(REGISTER_BODY_MAX_BYTES * 2) })
+}
+
+/**
+ * U252: the registration contract allows 200 projectDirs; a name may reach the
+ * filesystem's 255 B limit, so the legal maximum measured ~52 KiB.
+ */
+function legalMaxRegistration(): { body: string; dirs: string[] } {
+  const dirs = Array.from({ length: 200 }, (_, index) => {
+    const prefix = `dir${String(index).padStart(3, '0')}`
+    return `${prefix}${'d'.repeat(255 - prefix.length)}`
+  })
+  const body = JSON.stringify({
+    name: 'u252-max-register',
+    fingerprint: 'sha256:u252-max-register',
+    protocolVersion: 3,
+    networkZone: 'intranet',
+    projectDirs: dirs
+  })
+  return { body, dirs }
+}
+
+function pathOfLength(length: number): string {
+  return `/${'p'.repeat(length - 1)}`
+}
+
+function repoUrlOfLength(length: number): string {
+  const prefix = 'https://git.example.com/'
+  const suffix = '.git'
+  return `${prefix}${'r'.repeat(length - prefix.length - suffix.length)}${suffix}`
 }
 
 async function mintHostToken(base: string, token: string): Promise<string> {
@@ -755,7 +791,8 @@ describe('U250 档 3 普通读写调用点 body 上限（16 KiB）', () => {
       networkZone: 'intranet'
     }
 
-    const res = await registerHost(base, token, oversizedBody(fields))
+    // U252: registration has its own 64 KiB cap, so the overage is 128 KiB.
+    const res = await registerHost(base, token, oversizedRegisterBody(fields))
     assert.equal(res.status, 413)
     const payload = (await res.json()) as Json
     assert.equal(errorCode(payload), 'PAYLOAD_TOO_LARGE')
@@ -873,6 +910,112 @@ describe('U250 档 3 普通读写调用点 body 上限（16 KiB）', () => {
       oversizedBody({ status: 'online' })
     )
     assert.equal(beat.status, 200, await beat.text())
+  })
+})
+
+describe('U252 register 独立 body 上限（64 KiB）', () => {
+  test('注册契约合法最大包（200 × 255 B projectDirs）→ 201，目录全部入存储', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u252-max-admin')
+    const token = await mintHostToken(base, admin.token)
+    const { body, dirs } = legalMaxRegistration()
+    const bytes = Buffer.byteLength(body)
+    assert.ok(bytes > SENSITIVE_WRITE_BODY_MAX_BYTES, `fixture is ${bytes} B, must exceed 16 KiB`)
+    assert.ok(bytes < REGISTER_BODY_MAX_BYTES, `fixture is ${bytes} B, must fit the 64 KiB cap`)
+
+    const res = await registerHost(base, token, body)
+    const payload = (await res.json()) as Json
+    assert.equal(res.status, 201, JSON.stringify(payload))
+    const stored = app.store.hosts.get(String(payload.hostId))
+    assert.equal(stored?.projectDirs.length, 200, 'every legal directory was stored')
+    assert.deepEqual(stored?.projectDirs, [...dirs].sort())
+  })
+
+  test('超过 64 KiB → 413 PAYLOAD_TOO_LARGE，且注册令牌未被消耗', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u252-huge-admin')
+    const token = await mintHostToken(base, admin.token)
+    const fields = {
+      name: 'u252-huge-host',
+      fingerprint: 'sha256:u252-huge-host',
+      protocolVersion: 3,
+      networkZone: 'intranet'
+    }
+
+    const huge = await registerHost(base, token, oversizedRegisterBody(fields))
+    assert.equal(huge.status, 413)
+    assert.equal(errorCode((await huge.json()) as Json), 'PAYLOAD_TOO_LARGE')
+    assert.equal(app.store.hostsByName.has(fields.name), false)
+
+    const retried = await registerHost(base, token, JSON.stringify(fields))
+    assert.equal(retried.status, 201, 'the single-use token survives the refusal')
+    assert.ok(app.store.hostsByName.has(fields.name))
+  })
+})
+
+describe('U252 项目 path 契约上限（4096 字符）', () => {
+  test('path 4096 字符 → 201，正常创建', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u252-path-4096-admin')
+    const path = pathOfLength(PROJECT_PATH_MAX_CHARS)
+    const key = 'u252-path-4096'
+
+    const res = await authedJson(
+      base,
+      admin.token,
+      'POST',
+      '/v1/projects',
+      JSON.stringify({ hostId: HOST_ID, key, name: key, path, defaultBranch: 'main' })
+    )
+    assert.equal(res.status, 201, await res.text())
+    const stored = [...app.store.projects.values()].find((project) => project.key === key)
+    assert.equal(stored?.path, path)
+  })
+
+  test('path 4097 字符 → 400 PROJECT_PATH_INVALID，且不创建项目', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u252-path-4097-admin')
+    const path = pathOfLength(PROJECT_PATH_MAX_CHARS + 1)
+    const key = 'u252-path-4097'
+
+    const res = await authedJson(
+      base,
+      admin.token,
+      'POST',
+      '/v1/projects',
+      JSON.stringify({ hostId: HOST_ID, key, name: key, path, defaultBranch: 'main' })
+    )
+    assert.equal(res.status, 400)
+    assert.equal(errorCode((await res.json()) as Json), 'PROJECT_PATH_INVALID')
+    assert.equal(app.store.projectsByKey.has(key), false, 'the refused create adds no project')
+  })
+
+  test('path 4000 + repoUrl 4096 → 201，不再依赖 body 上限兜底', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u252-path-repo-admin')
+    const path = pathOfLength(4000)
+    const repoUrl = repoUrlOfLength(4096)
+    assert.equal(repoUrl.length, 4096)
+    const key = 'u252-path-repo'
+
+    const res = await authedJson(
+      base,
+      admin.token,
+      'POST',
+      '/v1/projects',
+      JSON.stringify({
+        hostId: HOST_ID,
+        key,
+        name: key,
+        path,
+        repoUrl,
+        defaultBranch: 'main'
+      })
+    )
+    assert.equal(res.status, 201, await res.text())
+    const stored = app.store.projectsByKey.get(key)
+    assert.equal(stored?.path.length, 4000)
+    assert.equal(stored?.repoUrl.length, 4096)
   })
 })
 

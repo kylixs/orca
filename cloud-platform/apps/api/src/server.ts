@@ -459,6 +459,22 @@ const FORCE_OFFLINE_REASON_MAX_CHARS = 200
 const SENSITIVE_WRITE_BODY_MAX_BYTES = 16 * 1024
 
 /**
+ * U252: the registration contract allows up to 200 projectDirs of 255 B each;
+ * 200 × 255 B plus the envelope measured 52,232 B, 3.19x the shared 16 KiB cap.
+ * 64 KiB admits that legal maximum with 1.25x headroom. Current TS hosts omit
+ * the field, so this only protects cross-version and other host implementations;
+ * raising the cap keeps their legal registrations from being refused.
+ */
+const REGISTER_BODY_MAX_BYTES = 64 * 1024
+
+/**
+ * U252: Linux PATH_MAX is 4096. An unbounded Windows extended path made a legal
+ * create exceed the 16 KiB body cap, so the contract itself is bounded instead
+ * of letting the body limit refuse an otherwise valid project.
+ */
+const PROJECT_PATH_MAX_CHARS = 4096
+
+/**
  * U251: one beat carries the host's whole pending batch — 100 audit events whose
  * per-event metadata may reach 4096 B (`host-audit-ingest.ts`), 200 projectDirs
  * (200 B each), and 32 provision reports (500 B errors). A legal maximum
@@ -4622,7 +4638,10 @@ export function createApp(config: ApiConfig): ApiHandle {
         return error(res, 409, 'PROJECT_EXISTS', '项目 Key 已存在。', traceId)
       }
       const pathVerdict = validateProjectPath(body.path)
-      if (!pathVerdict.ok) {
+      const pathTooLong = pathVerdict.ok && pathVerdict.path.length > PROJECT_PATH_MAX_CHARS
+      if (!pathVerdict.ok || pathTooLong) {
+        const code = pathVerdict.ok ? 'PROJECT_PATH_INVALID' : pathVerdict.code
+        const message = pathVerdict.ok ? '项目路径不能超过 4096 个字符。' : pathVerdict.message
         await audit.append({
           eventType: 'project_create',
           actor: authed.user.username,
@@ -4630,9 +4649,9 @@ export function createApp(config: ApiConfig): ApiHandle {
           targetId: null,
           result: 'denied',
           traceId,
-          metadata: { reason: pathVerdict.code, path: String(body.path ?? '') }
+          metadata: { reason: code, path: String(body.path ?? '') }
         })
-        return error(res, 400, pathVerdict.code, pathVerdict.message, traceId)
+        return error(res, 400, code, message, traceId)
       }
       if (projectPathTaken(store, target.id, pathVerdict.path)) {
         return error(res, 409, 'PROJECT_PATH_TAKEN', '该主机目录下已存在同路径的项目。', traceId)
@@ -5715,10 +5734,12 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (!entry || entry.usedAt || entry.expiresAt < now()) {
         return error(res, 401, 'HOST_TOKEN_INVALID', '注册令牌无效或已使用。', traceId)
       }
-      // U250 tier 3: cross-version hosts share this wire. A body over 16 KiB is
-      // refused with 413 PAYLOAD_TOO_LARGE plus the response traceId, so an old
-      // host's failure is diagnosable instead of a silent disconnect.
-      const body = await readSensitiveWriteBody(req, res, traceId)
+      // U250 tier 3: cross-version hosts share this wire. A body over the
+      // register-specific cap is refused with 413 PAYLOAD_TOO_LARGE plus the
+      // response traceId, so an old host's failure is diagnosable instead of a
+      // silent disconnect. U252: register no longer reuses the 16 KiB command
+      // cap, because the contract's 200 projectDirs can legitimately reach 52 KiB.
+      const body = await readSensitiveWriteBody(req, res, traceId, REGISTER_BODY_MAX_BYTES)
       if (!body) return
       const name = typeof body.name === 'string' ? body.name.trim() : ''
       // The token is single-use: refuse a nameless registration before spending it.
