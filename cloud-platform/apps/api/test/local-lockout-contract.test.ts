@@ -217,4 +217,19 @@ describe('本地与共享登录锁定契约同构（U289）', () => {
     )
     assert.equal(local.loginLockState(username, afterExpiry).remaining, MAX_FAILURES - 1)
   })
+
+  test('第 MAX_FAILURES 次失败恰好锁定，读写路径对阈值同源（U296）', () => {
+    const local = new Store()
+    const username = 'u296-threshold'
+
+    let recorded: LockoutState = { locked: false, remaining: MAX_FAILURES, lockedUntil: 0 }
+    for (let attempt = 1; attempt <= MAX_FAILURES; attempt += 1) {
+      recorded = local.recordLoginFailure(username, NOW)
+      assert.equal(recorded.locked, attempt === MAX_FAILURES, `第 ${attempt} 次失败的锁定状态`)
+      assert.equal(recorded.remaining, MAX_FAILURES - attempt, `第 ${attempt} 次失败的剩余次数`)
+      assert.equal(recorded.lockedUntil, attempt === MAX_FAILURES ? NOW + LOCK_MS : 0)
+    }
+
+    assert.deepEqual(local.loginLockState(username, NOW), recorded, '读路径必须看到同一阈值结果')
+  })
 })

@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto'
+import { LOCK_MS } from '../../login-lockout/src/lockout.ts'
 import type { Permission } from '../../../packages/contract/src/credential.ts'
 import type { LockoutState } from './login-lockout-client.ts'
 
@@ -286,8 +287,8 @@ export class Store {
     // An expired lock starts a fresh count; stale failures must not carry over.
     const record = existing && existing.lockedUntil === 0 ? existing : { count: 0, lockedUntil: 0 }
     record.count += 1
-    if (record.count >= 5) {
-      record.lockedUntil = now + 15 * 60_000
+    if (record.count >= MAX_LOGIN_FAILURES) {
+      record.lockedUntil = now + LOCK_MS
       record.count = 0
     }
     this.loginAttempts.set(username, record)
