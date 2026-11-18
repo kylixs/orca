@@ -52,7 +52,10 @@ async function hostOnline(): Promise<boolean | undefined> {
 async function connect(): Promise<{ status: number; body: ErrorBody }> {
   const res = await fetch(`${api.url}/v1/projects/${projectId}/connect`, {
     method: 'POST',
-    headers: { ...{ authorization: `Bearer ${dev.accessToken}` }, 'content-type': 'application/json' },
+    headers: {
+      ...{ authorization: `Bearer ${dev.accessToken}` },
+      'content-type': 'application/json'
+    },
     body: JSON.stringify({
       deviceId: dev.device?.id,
       devicePubKey: Buffer.from('m74-device-key').toString('base64'),

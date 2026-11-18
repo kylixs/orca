@@ -115,9 +115,7 @@ async function deniedConnectAudits(projectId: string): Promise<AuditEvent[]> {
   })
   assert.equal(res.status, 200)
   const body = (await res.json()) as { events: AuditEvent[] }
-  return body.events.filter(
-    (e) => e.eventType === 'project_connect' && e.targetId === projectId
-  )
+  return body.events.filter((e) => e.eventType === 'project_connect' && e.targetId === projectId)
 }
 
 before(async () => {

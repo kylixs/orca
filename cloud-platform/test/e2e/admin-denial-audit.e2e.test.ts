@@ -29,12 +29,7 @@ let adminToken = ''
 let devToken = ''
 let projectId = ''
 
-async function call(
-  token: string,
-  path: string,
-  method = 'GET',
-  body?: unknown
-): Promise<number> {
+async function call(token: string, path: string, method = 'GET', body?: unknown): Promise<number> {
   const res = await fetch(`${service.url}${path}`, {
     method,
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
@@ -102,15 +97,9 @@ test('AC-18 每个管理接口的拒绝都写 denied 审计，且链仍可校验
   await attempt('PUT /v1/projects/:id/policy', 'policy_update', () =>
     call(devToken, `/v1/projects/${projectId}/policy`, 'PUT', { downloadPolicy: 'allow' })
   )
-  await attempt('GET /v1/audit/events', 'audit_query', () =>
-    call(devToken, '/v1/audit/events')
-  )
-  await attempt('GET /v1/audit/status', 'audit_query', () =>
-    call(devToken, '/v1/audit/status')
-  )
-  await attempt('GET /v1/audit/verify', 'audit_verify', () =>
-    call(devToken, '/v1/audit/verify')
-  )
+  await attempt('GET /v1/audit/events', 'audit_query', () => call(devToken, '/v1/audit/events'))
+  await attempt('GET /v1/audit/status', 'audit_query', () => call(devToken, '/v1/audit/status'))
+  await attempt('GET /v1/audit/verify', 'audit_verify', () => call(devToken, '/v1/audit/verify'))
   await attempt('POST /v1/admin/signing-keys/rotate', 'signing_key_rotate', () =>
     call(devToken, '/v1/admin/signing-keys/rotate', 'POST')
   )
@@ -131,7 +120,8 @@ test('AC-18 每个管理接口的拒绝都写 denied 审计，且链仍可校验
   const byActor = denied.filter((event) => event.actor === 'zhangsan')
   const seen = attempts.map((entry) => entry.eventType)
   const missing = seen.filter(
-    (eventType) => !byActor.some((event) => event.eventType === eventType && event.result === 'denied')
+    (eventType) =>
+      !byActor.some((event) => event.eventType === eventType && event.result === 'denied')
   )
   assert.deepEqual(missing, [], `no denied event for: ${missing.join(', ')}`)
 

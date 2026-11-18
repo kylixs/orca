@@ -49,7 +49,13 @@ function waitForLog(service: Service, pattern: RegExp, timeoutMs = 15_000): Prom
 function browserGet(path: string, port = browserPort): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     const req = tlsRequest(
-      { host: '127.0.0.1', port, path, servername: 'relay-browser.test', rejectUnauthorized: false },
+      {
+        host: '127.0.0.1',
+        port,
+        path,
+        servername: 'relay-browser.test',
+        rejectUnauthorized: false
+      },
       (res) => {
         const chunks: Buffer[] = []
         res.on('data', (chunk: Buffer) => chunks.push(chunk))

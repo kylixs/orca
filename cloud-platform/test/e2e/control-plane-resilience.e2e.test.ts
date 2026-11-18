@@ -17,7 +17,9 @@ type Hanging = {
  * `no-response`: accepts the request but never answers — the review-06 M2/N3 shape.
  * `stall-body`: sends headers immediately, then never ends the body.
  */
-async function startHangingControlPlane(mode: 'no-response' | 'stall-body' = 'no-response'): Promise<Hanging> {
+async function startHangingControlPlane(
+  mode: 'no-response' | 'stall-body' = 'no-response'
+): Promise<Hanging> {
   let total = 0
   let active = 0
   const sockets = new Set<import('node:net').Socket>()
@@ -88,41 +90,45 @@ describe('M12 控制面挂起：请求可中止，连接不堆积', () => {
     }
   })
 
-  test('响应头已到但响应体挂起时，轮询仍能继续（中止必须 settle Promise）', { timeout: 30000 }, async () => {
-    const hanging = await startHangingControlPlane('stall-body')
-    const workspace = makeTempWorkspace()
-    const tls = makeTlsCerts()
-    const runtime = await spawnService(
-      'apps/runtime/src/runtime-sim.ts',
-      {
-        PORT: '0',
-        API_URL: hanging.url,
-        PUBLIC_API_URL: hanging.url,
-        CONTROL_TIMEOUT_MS: '300',
-        HOST_ID: 'host_dev001',
-        HOST_NAME: 'dev-001',
-        SANDBOX_ROOT: workspace.root,
-        TLS_KEY: tls.key,
-        TLS_CERT: tls.cert
-      },
-      /\[runtime-sim\] dev-001 listening on :(\d+)/,
-      'runtime-stalled-body'
-    )
-    try {
-      await new Promise((r) => setTimeout(r, 3500))
-      const total = hanging.connections()
-      const active = hanging.active()
-      // If a mid-body abort left the promise pending, single-flight would freeze
-      // after the first cycle and `total` would stop at 3.
-      assert.ok(total >= 6, `polling must keep cycling, total=${total}`)
-      assert.ok(active <= 4, `sockets must be aborted, active=${active} total=${total}`)
-      assert.equal(runtime.proc.exitCode, null)
-      saveEvidence(EVIDENCE, 'runtime-aborts-stalled-body.json', { total, active })
-    } finally {
-      await runtime.stop()
-      await hanging.close()
+  test(
+    '响应头已到但响应体挂起时，轮询仍能继续（中止必须 settle Promise）',
+    { timeout: 30000 },
+    async () => {
+      const hanging = await startHangingControlPlane('stall-body')
+      const workspace = makeTempWorkspace()
+      const tls = makeTlsCerts()
+      const runtime = await spawnService(
+        'apps/runtime/src/runtime-sim.ts',
+        {
+          PORT: '0',
+          API_URL: hanging.url,
+          PUBLIC_API_URL: hanging.url,
+          CONTROL_TIMEOUT_MS: '300',
+          HOST_ID: 'host_dev001',
+          HOST_NAME: 'dev-001',
+          SANDBOX_ROOT: workspace.root,
+          TLS_KEY: tls.key,
+          TLS_CERT: tls.cert
+        },
+        /\[runtime-sim\] dev-001 listening on :(\d+)/,
+        'runtime-stalled-body'
+      )
+      try {
+        await new Promise((r) => setTimeout(r, 3500))
+        const total = hanging.connections()
+        const active = hanging.active()
+        // If a mid-body abort left the promise pending, single-flight would freeze
+        // after the first cycle and `total` would stop at 3.
+        assert.ok(total >= 6, `polling must keep cycling, total=${total}`)
+        assert.ok(active <= 4, `sockets must be aborted, active=${active} total=${total}`)
+        assert.equal(runtime.proc.exitCode, null)
+        saveEvidence(EVIDENCE, 'runtime-aborts-stalled-body.json', { total, active })
+      } finally {
+        await runtime.stop()
+        await hanging.close()
+      }
     }
-  })
+  )
 
   test('Relay 在挂起的控制面前仍能启动，且不堆积 socket', { timeout: 30000 }, async () => {
     const hanging = await startHangingControlPlane()

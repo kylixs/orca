@@ -260,7 +260,9 @@ describe('U66-1 文件审计事件落链', () => {
       assert.equal(outcome.status, 200, `event ${index}: ${JSON.stringify(outcome.body)}`)
       assert.equal(outcome.body.queued, true)
     }
-    const tenth = await postFileEvent(downloadEvent({ traceId: 'tr_rate_over', cloudSession: 'sess_rate' }))
+    const tenth = await postFileEvent(
+      downloadEvent({ traceId: 'tr_rate_over', cloudSession: 'sess_rate' })
+    )
     assert.equal(tenth.status, 429)
     assert.equal(tenth.body.reason, 'rate-limited')
     assert.equal(tenth.retryAfter, '60')
@@ -273,9 +275,7 @@ describe('U66-1 文件审计事件落链', () => {
 
   test('同 traceId 去重合并：savedName 补报不新增第二条下载事件', async () => {
     const session = 'sess_dedupe'
-    const first = await postFileEvent(
-      downloadEvent({ traceId: 'tr_merge', cloudSession: session })
-    )
+    const first = await postFileEvent(downloadEvent({ traceId: 'tr_merge', cloudSession: session }))
     assert.equal(first.body.queued, true, JSON.stringify(first.body))
     const before = fileEventCount()
 
@@ -341,7 +341,10 @@ describe('U66-1 文件审计事件落链', () => {
       downloadEvent({
         traceId: 'tr_bad_traversal',
         cloudSession: session,
-        metadata: { ...(downloadEvent().metadata as Record<string, unknown>), path: '../etc/passwd' }
+        metadata: {
+          ...(downloadEvent().metadata as Record<string, unknown>),
+          path: '../etc/passwd'
+        }
       })
     )
     assert.equal(traversal.status, 400)
@@ -371,7 +374,8 @@ describe('U66-1 文件审计事件落链', () => {
     )
     assert.equal(selfAttested.status, 400)
     assert.equal(
-      ((selfAttested.body.error as Record<string, unknown>).details as Record<string, unknown>).field,
+      ((selfAttested.body.error as Record<string, unknown>).details as Record<string, unknown>)
+        .field,
       'captureConfidence'
     )
 
@@ -386,7 +390,10 @@ describe('U66-1 文件审计事件落链', () => {
 
   test('内部认证与非云会话：401 / non-cloud-session 均不写链', async () => {
     const before = fileEventCount()
-    const wrongToken = await postFileEvent(downloadEvent({ traceId: 'tr_auth_wrong' }), 'wrong-token')
+    const wrongToken = await postFileEvent(
+      downloadEvent({ traceId: 'tr_auth_wrong' }),
+      'wrong-token'
+    )
     assert.equal(wrongToken.status, 401)
     const missingToken = await postFileEvent(downloadEvent({ traceId: 'tr_auth_missing' }), null)
     assert.equal(missingToken.status, 401)

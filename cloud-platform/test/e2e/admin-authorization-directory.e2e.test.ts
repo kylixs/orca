@@ -131,7 +131,9 @@ test('AA1 非 admin 读目录：403 且落 directory_read/denied 审计', { time
   assert.equal(res.status, 403)
   assert.equal((res.body.error as { code: string }).code, 'PERMISSION_DENIED')
 
-  const denied = (await deniedEvents('directory_read')).filter((event) => event.actor === 'zhangsan')
+  const denied = (await deniedEvents('directory_read')).filter(
+    (event) => event.actor === 'zhangsan'
+  )
   assert.equal(denied.length, 1, 'exactly one denied directory read is recorded')
   const [event] = denied
   assert.equal(event.targetType, 'directory')

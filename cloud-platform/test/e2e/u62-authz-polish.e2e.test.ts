@@ -1,6 +1,13 @@
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { login, makeDeviceKey, registerHost, saveEvidence, spawnService, type Service } from './harness.ts'
+import {
+  login,
+  makeDeviceKey,
+  registerHost,
+  saveEvidence,
+  spawnService,
+  type Service
+} from './harness.ts'
 
 /**
  * U62 authorization batch P3×6, against a real platform process (real API
@@ -83,7 +90,9 @@ async function heartbeat(hostId: string, credential: string): Promise<void> {
   assert.equal(res.status, 200, await res.text())
 }
 
-async function hostGrantRows(hostId: string): Promise<{ subjectType: string; subjectId: string; permissions: string[] }[]> {
+async function hostGrantRows(
+  hostId: string
+): Promise<{ subjectType: string; subjectId: string; permissions: string[] }[]> {
   const res = await api(`/v1/hosts/${hostId}/grants`)
   assert.equal(res.status, 200)
   return res.body.grants
@@ -94,7 +103,11 @@ async function putHostGrant(
   body: Record<string, unknown>,
   token = adminToken
 ): Promise<{ status: number; code?: string }> {
-  const res = await api(`/v1/hosts/${hostId}/grants`, { method: 'PUT', token, body: JSON.stringify(body) })
+  const res = await api(`/v1/hosts/${hostId}/grants`, {
+    method: 'PUT',
+    token,
+    body: JSON.stringify(body)
+  })
   return { status: res.status, code: res.body.error?.code }
 }
 
@@ -145,12 +158,23 @@ before(async () => {
   // zhangsan: view+provision on hostA only (visibility + one allowed host);
   // developers keeps a group row so the group form stays covered. lisi: none.
   assert.equal(
-    (await putHostGrant(hostA, { subjectType: 'user', subjectId: 'zhangsan', permissions: ['view', 'provision'] }))
-      .status,
+    (
+      await putHostGrant(hostA, {
+        subjectType: 'user',
+        subjectId: 'zhangsan',
+        permissions: ['view', 'provision']
+      })
+    ).status,
     200
   )
   assert.equal(
-    (await putHostGrant(hostB, { subjectType: 'group', subjectId: 'developers', permissions: ['view'] })).status,
+    (
+      await putHostGrant(hostB, {
+        subjectType: 'group',
+        subjectId: 'developers',
+        permissions: ['view']
+      })
+    ).status,
     200
   )
 
@@ -172,7 +196,8 @@ after(async () => {
       B12: 'subjectType role → 400 on both grant families, row untouched; omission still means user',
       C10: 'no provision-allowed host → 409 NO_PROVISIONABLE_HOST; single allowed host auto-picked',
       G4: 'denied events carry hostId+subject / hostId+mode field families',
-      popupSwitch: 'already fixed upstream (U61); replay evidence authz-replay-verify/popup-switch-replay.json pass'
+      popupSwitch:
+        'already fixed upstream (U61); replay evidence authz-replay-verify/popup-switch-replay.json pass'
     }
   })
 })
@@ -200,9 +225,10 @@ test('U62-B12：subjectType:"role" 在主机与项目授权两侧都是 400，�
     false,
     'no host row for the refused subjectType'
   )
-  const projectRows = (
-    await api(`/v1/projects/${p1}/grants`)
-  ).body.grants as { subjectType: string; subjectId: string }[]
+  const projectRows = (await api(`/v1/projects/${p1}/grants`)).body.grants as {
+    subjectType: string
+    subjectId: string
+  }[]
   assert.equal(
     projectRows.some((row) => row.subjectType !== 'user' && row.subjectType !== 'group'),
     false,
@@ -276,7 +302,11 @@ test('U62-C10：无 provision 可用主机时自助选择 409 NO_PROVISIONABLE_H
   )
   assert.equal(explicit.status, 403)
   assert.equal(errorCode(explicit.body), 'HOST_PROVISION_FORBIDDEN')
-  saveEvidence(EVIDENCE, 'c10-self-selection.json', { lisi, zhangsan: zhangsan.body, explicit: explicit.body })
+  saveEvidence(EVIDENCE, 'c10-self-selection.json', {
+    lisi,
+    zhangsan: zhangsan.body,
+    explicit: explicit.body
+  })
 })
 
 test('U62-G4：denied 授权/策略事件带 hostId+subject / hostId+mode 字段族', async () => {

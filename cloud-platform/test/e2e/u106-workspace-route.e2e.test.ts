@@ -101,7 +101,11 @@ function handoffsOf(page: WebConsolePage): string[] {
   return page.calls().filter((call) => call === `POST ${HANDOFF_PATH}`)
 }
 
-async function waitUntil(condition: () => boolean, message: string, timeoutMs = 5000): Promise<void> {
+async function waitUntil(
+  condition: () => boolean,
+  message: string,
+  timeoutMs = 5000
+): Promise<void> {
   const started = Date.now()
   while (Date.now() - started < timeoutMs) {
     if (condition()) return
@@ -115,7 +119,10 @@ test('R4 直链 #/workspace/<id> 直接挂覆盖层且只 mint 一次', async ()
   const page = await openDeepLink(hash)
 
   const overlay = overlayOf(page)
-  assert.match(overlay.querySelector('.workspace-title')?.textContent ?? '', new RegExp(PROJECT_NAME))
+  assert.match(
+    overlay.querySelector('.workspace-title')?.textContent ?? '',
+    new RegExp(PROJECT_NAME)
+  )
   assert.equal(page.window.location.hash, hash, 'the workspace URL stays canonical')
 
   const url = new URL(iframeOf(page).src)
@@ -218,8 +225,10 @@ test('R4 覆盖层打开时换项目 → hash 更新且旧层释放、新项目�
   const overlay = overlayOf(page)
   assert.match(overlay.querySelector('.workspace-title')?.textContent ?? '', /r4-second/)
   assert.equal(
-    page.calls().slice(before).filter((call) => call === `POST /v1/projects/${secondProjectId}/web-handoff`)
-      .length,
+    page
+      .calls()
+      .slice(before)
+      .filter((call) => call === `POST /v1/projects/${secondProjectId}/web-handoff`).length,
     1,
     'the new project mints exactly one handoff'
   )

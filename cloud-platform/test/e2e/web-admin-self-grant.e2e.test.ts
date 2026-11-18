@@ -363,7 +363,8 @@ test('AA5-3 已授权管理员：打开直接 handoff，无确认框无 PUT', { 
     dialogShown: false,
     overlay: redactHandoff(iframe.src)
   })
-  matrix['granted-admin'] = '已有 open 的 admin → 打开直接 POST admin web-handoff 进同页覆盖层，零确认框零 PUT'
+  matrix['granted-admin'] =
+    '已有 open 的 admin → 打开直接 POST admin web-handoff 进同页覆盖层，零确认框零 PUT'
 })
 
 test('AA5-4 非 admin：不渲染自授入口，直调 PUT 403、项目 404 语义不变', { timeout: 120_000 }, async () => {

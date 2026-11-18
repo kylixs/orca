@@ -96,7 +96,10 @@ describe('文件寻址：对齐真实 Orca 的 worktree + relativePath 契约', 
 
     const projectRead = await client.rpc('files.read', readFile(opened, 'README.md', 'project'))
     assert.equal(projectRead.ok, true)
-    assert.match(String((projectRead as { result: { content: string } }).result.content), /payment/i)
+    assert.match(
+      String((projectRead as { result: { content: string } }).result.content),
+      /payment/i
+    )
 
     const workspaceRead = await client.rpc(
       'files.read',
@@ -181,10 +184,7 @@ describe('文件寻址：对齐真实 Orca 的 worktree + relativePath 契约', 
     assert.equal(writeToProject.ok, false)
     assert.equal((writeToProject as { code: string }).code, 'PATH_OUTSIDE_ROOT')
 
-    const readFromProject = await client.rpc(
-      'files.read',
-      readFile(opened, 'README.md', 'project')
-    )
+    const readFromProject = await client.rpc('files.read', readFile(opened, 'README.md', 'project'))
     assert.equal(readFromProject.ok, true)
 
     saveEvidence(EVIDENCE, 'm29-4-write-boundary.json', { writeToProject, readFromProject })

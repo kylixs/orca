@@ -168,7 +168,7 @@ describe('U71 auditGap 同值不刷屏：心跳 delta 早退专测', () => {
     const restart = gapEvents(hostId)[0]
     assert.equal(restart.metadata.bootId, 'boot-new')
     assert.equal(restart.metadata.pending, 0)
-    assert.equal(restart.metadata.dropped, 3, 'lostPending = the old boot\'s pending')
+    assert.equal(restart.metadata.dropped, 3, "lostPending = the old boot's pending")
     assert.equal(restart.metadata.suppressed, 0)
     assert.equal(restart.metadata.rateLimited, 0)
   })
@@ -176,9 +176,6 @@ describe('U71 auditGap 同值不刷屏：心跳 delta 早退专测', () => {
   test('三台主机的 gap 事件后链校验通过', async () => {
     const verdict = await app.audit.verify()
     assert.equal(verdict.ok, true)
-    assert.equal(
-      app.store.audit.filter((event) => event.eventType === 'host.audit_gap').length,
-      4
-    )
+    assert.equal(app.store.audit.filter((event) => event.eventType === 'host.audit_gap').length, 4)
   })
 })

@@ -50,7 +50,11 @@ async function grantProvision(hostId: string): Promise<void> {
   const res = await fetch(`${api.url}/v1/hosts/${hostId}/grants`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json', ...auth(adminToken) },
-    body: JSON.stringify({ subjectType: 'group', subjectId: 'developers', permissions: ['provision'] })
+    body: JSON.stringify({
+      subjectType: 'group',
+      subjectId: 'developers',
+      permissions: ['provision']
+    })
   })
   assert.equal(res.status, 200, await res.text())
 }

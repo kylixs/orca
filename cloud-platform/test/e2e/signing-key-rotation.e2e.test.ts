@@ -31,7 +31,12 @@ afterEach(async () => {
 type LoginBody = { accessToken?: string; device?: { id: string } }
 type TicketBody = { credential?: string; error?: { code: string } }
 type JwksBody = { keys: { kid: string; publicKeyPem: string }[] }
-type RotateBody = { kid?: string; previousKid?: string; publishedKids?: string[]; error?: { code: string } }
+type RotateBody = {
+  kid?: string
+  previousKid?: string
+  publishedKids?: string[]
+  error?: { code: string }
+}
 
 const deviceKey = (username: string): string => Buffer.from(`m76-${username}`).toString('base64')
 
@@ -77,7 +82,9 @@ async function jwks(url: string): Promise<Map<string, string>> {
 }
 
 function kidOf(credential: string): string {
-  const header = JSON.parse(Buffer.from(credential.split('.')[0], 'base64url').toString('utf8')) as {
+  const header = JSON.parse(
+    Buffer.from(credential.split('.')[0], 'base64url').toString('utf8')
+  ) as {
     kid: string
   }
   return header.kid
@@ -111,7 +118,10 @@ test('AC-31 轮换后新旧 kid 并行验签，60 天后旧公钥不再发布', 
   // Why: a ticket in flight was signed by the retired key; hosts that already
   // refetched must still accept it rather than forcing a reconnect.
   const afterRotationKeys = await jwks(url)
-  assert.deepEqual([...afterRotationKeys.keys()].sort(), [...initialKeys.keys(), rotated.body.kid].sort())
+  assert.deepEqual(
+    [...afterRotationKeys.keys()].sort(),
+    [...initialKeys.keys(), rotated.body.kid].sort()
+  )
   const stillValid = verifyCredential(before, afterRotationKeys, Math.floor(clock / 1000))
   assert.equal(stillValid.ok, true)
   if (stillValid.ok) {

@@ -250,8 +250,22 @@ test('登记弹层切换主机：清空上一主机的路径、错误与无效�
     status: 200,
     body: {
       hosts: [
-        { id: 'host_u61_a', name: 'u61-a', online: true, status: 'online', revokedAt: null, projectsRoot: '/srv/root-a' },
-        { id: 'host_u61_b', name: 'u61-b', online: true, status: 'online', revokedAt: null, projectsRoot: '/srv/root-b' }
+        {
+          id: 'host_u61_a',
+          name: 'u61-a',
+          online: true,
+          status: 'online',
+          revokedAt: null,
+          projectsRoot: '/srv/root-a'
+        },
+        {
+          id: 'host_u61_b',
+          name: 'u61-b',
+          online: true,
+          status: 'online',
+          revokedAt: null,
+          projectsRoot: '/srv/root-b'
+        }
       ]
     }
   })

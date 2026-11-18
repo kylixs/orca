@@ -91,9 +91,7 @@ describe('U135 停用账号不能修改角色', () => {
       '/v1/audit/events?eventType=role_update&result=denied&limit=50'
     )
     assert.equal(denied.status, 200)
-    const event = (denied.body.events as AuditEvent[]).find(
-      (entry) => entry.targetId === target.id
-    )
+    const event = (denied.body.events as AuditEvent[]).find((entry) => entry.targetId === target.id)
     assert.ok(event, 'the refusal must leave a role_update denied event')
     assert.equal(event.actor, 'admin')
     assert.equal(event.result, 'denied')

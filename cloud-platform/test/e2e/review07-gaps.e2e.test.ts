@@ -8,7 +8,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CloudClient } from '../../apps/client/src/cloud-client.ts'
 import { mtlsFetch } from '../../packages/contract/src/internal-fetch.ts'
-import { makeTlsCerts, makeTempWorkspace, saveEvidence, spawnService, type Service } from './harness.ts'
+import {
+  makeTlsCerts,
+  makeTempWorkspace,
+  saveEvidence,
+  spawnService,
+  type Service
+} from './harness.ts'
 
 const EVIDENCE = 'm17-review07-gaps'
 
@@ -17,20 +23,97 @@ const EVIDENCE = 'm17-review07-gaps'
  * test. Each one here fails if its fix is reverted.
  */
 
-type Certs = { ca: string; serverKey: string; serverCert: string; clientKey: string; clientCert: string }
+type Certs = {
+  ca: string
+  serverKey: string
+  serverCert: string
+  clientKey: string
+  clientCert: string
+}
 
 function makeMtlsCerts(): Certs {
   const dir = mkdtempSync(join(tmpdir(), 'orca-cloud-gaps-'))
   const sh = (args: string[]): void => {
     execFileSync('openssl', args, { cwd: dir, stdio: 'ignore' })
   }
-  sh(['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', 'ca.key', '-out', 'ca.crt', '-days', '1', '-subj', '/CN=orca-internal-ca'])
-  sh(['req', '-newkey', 'rsa:2048', '-nodes', '-keyout', 'server.key', '-out', 'server.csr', '-subj', '/CN=127.0.0.1'])
-  writeFileSync(join(dir, 'server.ext'), 'subjectAltName=IP:127.0.0.1,DNS:localhost\nextendedKeyUsage=serverAuth\n')
-  sh(['x509', '-req', '-in', 'server.csr', '-CA', 'ca.crt', '-CAkey', 'ca.key', '-CAcreateserial', '-out', 'server.crt', '-days', '1', '-extfile', 'server.ext'])
-  sh(['req', '-newkey', 'rsa:2048', '-nodes', '-keyout', 'client.key', '-out', 'client.csr', '-subj', '/CN=orca-runtime'])
+  sh([
+    'req',
+    '-x509',
+    '-newkey',
+    'rsa:2048',
+    '-nodes',
+    '-keyout',
+    'ca.key',
+    '-out',
+    'ca.crt',
+    '-days',
+    '1',
+    '-subj',
+    '/CN=orca-internal-ca'
+  ])
+  sh([
+    'req',
+    '-newkey',
+    'rsa:2048',
+    '-nodes',
+    '-keyout',
+    'server.key',
+    '-out',
+    'server.csr',
+    '-subj',
+    '/CN=127.0.0.1'
+  ])
+  writeFileSync(
+    join(dir, 'server.ext'),
+    'subjectAltName=IP:127.0.0.1,DNS:localhost\nextendedKeyUsage=serverAuth\n'
+  )
+  sh([
+    'x509',
+    '-req',
+    '-in',
+    'server.csr',
+    '-CA',
+    'ca.crt',
+    '-CAkey',
+    'ca.key',
+    '-CAcreateserial',
+    '-out',
+    'server.crt',
+    '-days',
+    '1',
+    '-extfile',
+    'server.ext'
+  ])
+  sh([
+    'req',
+    '-newkey',
+    'rsa:2048',
+    '-nodes',
+    '-keyout',
+    'client.key',
+    '-out',
+    'client.csr',
+    '-subj',
+    '/CN=orca-runtime'
+  ])
   writeFileSync(join(dir, 'client.ext'), 'extendedKeyUsage=clientAuth\n')
-  sh(['x509', '-req', '-in', 'client.csr', '-CA', 'ca.crt', '-CAkey', 'ca.key', '-CAcreateserial', '-out', 'client.crt', '-days', '1', '-extfile', 'client.ext'])
+  sh([
+    'x509',
+    '-req',
+    '-in',
+    'client.csr',
+    '-CA',
+    'ca.crt',
+    '-CAkey',
+    'ca.key',
+    '-CAcreateserial',
+    '-out',
+    'client.crt',
+    '-days',
+    '1',
+    '-extfile',
+    'client.ext'
+  ])
   return {
     ca: join(dir, 'ca.crt'),
     serverKey: join(dir, 'server.key'),
@@ -69,7 +152,11 @@ after(async () => {
 
 describe('M17 评审 07 遗留用例', () => {
   test('F7-a 配置 mTLS 后，公网监听对内部路由返回 404（N6）', async () => {
-    for (const route of ['/v1/internal/policy', '/v1/internal/revocations', '/v1/internal/relay-routes']) {
+    for (const route of [
+      '/v1/internal/policy',
+      '/v1/internal/revocations',
+      '/v1/internal/relay-routes'
+    ]) {
       for (const token of ['gaps-non-default-token', 'internal-test-token', '']) {
         const res = await fetch(`${api.url}${route}`, {
           headers: token ? { 'x-internal-token': token } : {}
@@ -119,7 +206,10 @@ describe('M17 评审 07 遗留用例', () => {
       '/v1/internal/policy'
     )
     assert.equal(wrong.status, 401)
-    saveEvidence(EVIDENCE, 'non-default-internal-token.json', { ok: res.status, wrong: wrong.status })
+    saveEvidence(EVIDENCE, 'non-default-internal-token.json', {
+      ok: res.status,
+      wrong: wrong.status
+    })
   })
 
   test('F7-c TLS 控制面挂起时客户端中止并回收 socket', { timeout: 30000 }, async () => {
@@ -128,9 +218,10 @@ describe('M17 评审 07 遗留用例', () => {
     const tls = makeTlsCerts()
     let active = 0
     let total = 0
-    const hanging = createHttpsServer(
-      { key: readFileSync(certs.serverKey), cert: readFileSync(certs.serverCert) }
-    )
+    const hanging = createHttpsServer({
+      key: readFileSync(certs.serverKey),
+      cert: readFileSync(certs.serverCert)
+    })
     hanging.on('connection', (socket) => {
       total += 1
       active += 1
@@ -165,7 +256,10 @@ describe('M17 评审 07 遗留用例', () => {
     try {
       await new Promise((r) => setTimeout(r, 3500))
       assert.ok(total >= 3, `polling must have happened, total=${total}`)
-      assert.ok(active <= 4, `aborted TLS sockets must be released, active=${active} total=${total}`)
+      assert.ok(
+        active <= 4,
+        `aborted TLS sockets must be released, active=${active} total=${total}`
+      )
       assert.equal(runtime.proc.exitCode, null)
       saveEvidence(EVIDENCE, 'tls-abort-released.json', { total, active })
     } finally {
@@ -229,14 +323,11 @@ describe('M17 评审 07 遗留用例', () => {
       const projects = await client.listProjects()
       // Allow needs both halves: the policy (export class) and the grant
       // (`download` permission). The seeded team grant deliberately omits it.
-      const projectPolicy = await fetch(
-        `${isolatedApi.url}/v1/projects/${projects[0].id}/policy`,
-        {
-          method: 'PUT',
-          headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
-          body: JSON.stringify({ downloadPolicy: 'allow' })
-        }
-      )
+      const projectPolicy = await fetch(`${isolatedApi.url}/v1/projects/${projects[0].id}/policy`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ downloadPolicy: 'allow' })
+      })
       assert.equal(projectPolicy.status, 200)
       const grant = await fetch(`${isolatedApi.url}/v1/projects/${projects[0].id}/grants`, {
         method: 'PUT',

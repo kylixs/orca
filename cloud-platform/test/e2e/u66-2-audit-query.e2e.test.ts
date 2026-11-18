@@ -104,7 +104,9 @@ async function query(params: Record<string, string | number | undefined>): Promi
   return (await res.json()) as Page
 }
 
-async function queryStatus(token: string): Promise<{ status: number; body: Status | { error?: { code?: string } } }> {
+async function queryStatus(
+  token: string
+): Promise<{ status: number; body: Status | { error?: { code?: string } } }> {
   const res = await fetch(`${url}/v1/audit/status`, { headers: auth(token) })
   return { status: res.status, body: (await res.json()) as Status | { error?: { code?: string } } }
 }
@@ -229,7 +231,12 @@ test('U66-2-1 四条件组合矩阵：since/until + eventTypes + actor + fileNam
   const wrongName = await query({ ...base, actor: 'alice', fileName: 'no-such-file' })
   assert.deepEqual(seqsOf(wrongName), [])
 
-  const wrongType = await query({ ...base, actor: 'alice', eventTypes: 'file_copy', fileName: 'blocked' })
+  const wrongType = await query({
+    ...base,
+    actor: 'alice',
+    eventTypes: 'file_copy',
+    fileName: 'blocked'
+  })
   assert.deepEqual(seqsOf(wrongType), [])
 
   // until is inclusive and drops the event just past it.
@@ -262,7 +269,10 @@ test('U66-2-2 fileName/q：大小写不敏感、白名单、字面量、长度�
   assert.deepEqual(seqsOf(await query({ ...window, q: 'PAYMENT' })), expectedPayment)
   assert.deepEqual(seqsOf(await query({ ...window, fileName: 'payment' })), expectedPayment)
   // Chained AND: both conditions must hold.
-  assert.deepEqual(seqsOf(await query({ ...window, q: 'payment', fileName: 'notes' })), [seq('e8'), seq('e2')])
+  assert.deepEqual(seqsOf(await query({ ...window, q: 'payment', fileName: 'notes' })), [
+    seq('e8'),
+    seq('e2')
+  ])
 
   // Whitelist: branch/reason/excerpt are not searched.
   assert.deepEqual(seqsOf(await query({ ...window, q: 'secret-branch' })), [])
@@ -327,10 +337,10 @@ test('U66-2-3 eventTypes 多值 OR / eventFamily 快捷 / 显式集合优先', a
   assert.deepEqual(seqsOf(await query({ ...window, eventFamily: 'copy' })), [seq('e5'), seq('e2')])
 
   // Explicit eventTypes wins over both the family and the single eventType.
-  assert.deepEqual(seqsOf(await query({ ...window, eventFamily: 'download', eventTypes: 'file_copy' })), [
-    seq('e5'),
-    seq('e2')
-  ])
+  assert.deepEqual(
+    seqsOf(await query({ ...window, eventFamily: 'download', eventTypes: 'file_copy' })),
+    [seq('e5'), seq('e2')]
+  )
   assert.deepEqual(
     seqsOf(await query({ ...window, eventType: 'file_copy', eventTypes: 'file_download' })),
     [seq('e8'), seq('e6'), seq('e4'), seq('e1')]
@@ -345,7 +355,10 @@ test('U66-2-3 eventTypes 多值 OR / eventFamily 快捷 / 显式集合优先', a
     headers: auth(adminToken)
   })
   assert.equal(invalid.status, 400)
-  assert.equal(((await invalid.json()) as { error?: { code?: string } }).error?.code, 'INVALID_QUERY')
+  assert.equal(
+    ((await invalid.json()) as { error?: { code?: string } }).error?.code,
+    'INVALID_QUERY'
+  )
 
   saveEvidence(EVIDENCE, 'event-types-family.json', {
     multi: [seq('e8'), seq('e6'), seq('e5'), seq('e4'), seq('e2'), seq('e1')],
@@ -372,7 +385,10 @@ test('U66-2-4 until/since 边界、31 天窗口、关键字隐式 7 天', async 
     headers: auth(adminToken)
   })
   assert.equal(invalidUntil.status, 400)
-  assert.equal(((await invalidUntil.json()) as { error?: { code?: string } }).error?.code, 'INVALID_QUERY')
+  assert.equal(
+    ((await invalidUntil.json()) as { error?: { code?: string } }).error?.code,
+    'INVALID_QUERY'
+  )
 
   // A bad since keeps the old client behavior: silently ignored.
   assert.deepEqual(seqsOf(await query({ since: 'not-a-date', eventTypes: 'file_download' })), [

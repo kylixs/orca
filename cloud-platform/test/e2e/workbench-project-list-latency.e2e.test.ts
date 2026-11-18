@@ -159,7 +159,10 @@ test('M106-1 200 个项目的工作台列表加载 P95 ≤ 500ms；注入 700ms 
     samples.push(await listSample(page))
   }
   const normal = statsOf(samples.map((entry) => entry.elapsedMs))
-  assert.ok(samples.every((entry) => entry.rows === PROJECTS), JSON.stringify(samples))
+  assert.ok(
+    samples.every((entry) => entry.rows === PROJECTS),
+    JSON.stringify(samples)
+  )
   assertListBudget(normal, BUDGET_MS)
 
   // Same rows must really be rendered, not just counted.

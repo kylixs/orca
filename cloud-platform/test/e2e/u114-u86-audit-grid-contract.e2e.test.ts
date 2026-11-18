@@ -71,9 +71,21 @@ test('U86 基础网格：12 列 + span 类 + 三行跨度合计 12', () => {
   const spans = [...markup.matchAll(/class="[^"]*span-(\d)[^"]*"/g)].map((m) => Number(m[1]))
   assert.deepEqual(spans, [4, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3])
   const rows = [spans.slice(0, 5), spans.slice(5, 9), spans.slice(9)]
-  assert.equal(rows[0].reduce((a, b) => a + b, 0), 12, 'row 1: keyword + range + since + until + type')
-  assert.equal(rows[1].reduce((a, b) => a + b, 0), 12, 'row 2: actor + project + host + fileName')
-  assert.equal(rows[2].reduce((a, b) => a + b, 0) + 6, 12, 'row 3: trace + result + actions(span 6)')
+  assert.equal(
+    rows[0].reduce((a, b) => a + b, 0),
+    12,
+    'row 1: keyword + range + since + until + type'
+  )
+  assert.equal(
+    rows[1].reduce((a, b) => a + b, 0),
+    12,
+    'row 2: actor + project + host + fileName'
+  )
+  assert.equal(
+    rows[2].reduce((a, b) => a + b, 0) + 6,
+    12,
+    'row 3: trace + result + actions(span 6)'
+  )
 })
 
 test('U86 响应式断点：1100px 收 6 列，700px 收 2 列，span 同步收敛', () => {

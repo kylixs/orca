@@ -37,7 +37,9 @@ async function signInAs(username: string, password: string): Promise<Page> {
   await page.click('#loginBtn')
   await page.waitForFunction(() => {
     const app = document.querySelector('#view-app')
-    return Boolean(app) && !app.hidden && document.querySelectorAll('#content table tbody tr').length > 0
+    return (
+      Boolean(app) && !app.hidden && document.querySelectorAll('#content table tbody tr').length > 0
+    )
   })
   return page
 }
@@ -87,7 +89,7 @@ test('M113-1 管理与开发者 Web 页面截图', { timeout: 180_000 }, async (
     await admin.waitForTimeout(300)
     await shot(admin, `web-admin-${route}`)
   }
-  assert.notEqual((await admin.locator('#adminNav').count()), 0, 'admin must see the admin nav')
+  assert.notEqual(await admin.locator('#adminNav').count(), 0, 'admin must see the admin nav')
   await admin.context().close()
 
   saveEvidence('m113-acceptance-screenshots', 'web-shots.json', {

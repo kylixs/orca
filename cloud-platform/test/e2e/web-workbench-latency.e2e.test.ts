@@ -72,7 +72,10 @@ async function sample(index: number, extraDelayMs = 0): Promise<Sample> {
         const app = document.querySelector('#view-app')
         if (!app || app.hidden) return false
         const rows = document.querySelectorAll('#content table tbody tr')
-        return rows.length > 0 && !document.querySelector('#content .muted')?.textContent?.includes('加载中')
+        return (
+          rows.length > 0 &&
+          !document.querySelector('#content .muted')?.textContent?.includes('加载中')
+        )
       },
       undefined,
       { timeout: 15_000 }
@@ -80,7 +83,11 @@ async function sample(index: number, extraDelayMs = 0): Promise<Sample> {
     const elapsedMs = Date.now() - started
     const projectRows = await page.locator('#content table tbody tr').count()
     const text = await page.textContent('#content')
-    assert.match(text ?? '', /payment-service/, `sample ${index}: workbench must list the visible project`)
+    assert.match(
+      text ?? '',
+      /payment-service/,
+      `sample ${index}: workbench must list the visible project`
+    )
     assert.equal(await page.isHidden('#adminNav'), true, 'a developer must not see the admin nav')
     return { elapsedMs, projectRows }
   } finally {

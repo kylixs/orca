@@ -133,10 +133,7 @@ describe('M58 管理员修正项目来源（真实平台）', () => {
 
     const opaqueUrl = await updateProject(adminToken, { repoUrl: 'not-a-valid-url' })
     assert.equal(opaqueUrl.status, 400)
-    assert.equal(
-      (opaqueUrl.body as { error?: { code: string } }).error?.code,
-      'REPO_URL_INVALID'
-    )
+    assert.equal((opaqueUrl.body as { error?: { code: string } }).error?.code, 'REPO_URL_INVALID')
 
     const badBranch = await updateProject(adminToken, { defaultBranch: 'has space' })
     assert.equal(badBranch.status, 400)
@@ -168,7 +165,9 @@ describe('M58 管理员修正项目来源（真实平台）', () => {
     })
     assert.equal(archived.status, 200)
 
-    const denied = await updateProject(adminToken, { repoUrl: 'https://git.example.com/pay/m58-again.git' })
+    const denied = await updateProject(adminToken, {
+      repoUrl: 'https://git.example.com/pay/m58-again.git'
+    })
     assert.equal(denied.status, 404)
     assert.equal((denied.body as { error?: { code: string } }).error?.code, 'PROJECT_NOT_FOUND')
   })

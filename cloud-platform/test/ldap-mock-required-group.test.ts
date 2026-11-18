@@ -17,7 +17,12 @@ function makeAccounts(groups: Record<string, string[]>) {
       username,
       {
         password: PASSWORD,
-        profile: ldapProfile({ username, displayName: username, dept: 'platform', groups: userGroups })
+        profile: ldapProfile({
+          username,
+          displayName: username,
+          dept: 'platform',
+          groups: userGroups
+        })
       }
     ])
   )

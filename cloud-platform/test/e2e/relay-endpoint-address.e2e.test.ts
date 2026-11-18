@@ -1,12 +1,7 @@
 import { test, before, after, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { startRelay, type RelayHandle } from '../../apps/relay/src/relay.ts'
-import {
-  registerHost,
-  saveEvidence,
-  spawnService,
-  type Service
-} from './harness.ts'
+import { registerHost, saveEvidence, spawnService, type Service } from './harness.ts'
 
 /**
  * M114b: the address a client dials for the relay must be the address the relay
@@ -47,7 +42,11 @@ async function connectTicket(): Promise<ConnectBody> {
   const res = await fetch(`${api.url}/v1/projects/${projectId}/connect`, {
     method: 'POST',
     headers: auth(devToken),
-    body: JSON.stringify({ deviceId: devDeviceId, devicePubKey: DEVICE_PUBKEY, clientVersion: '1.5.0' })
+    body: JSON.stringify({
+      deviceId: devDeviceId,
+      devicePubKey: DEVICE_PUBKEY,
+      clientVersion: '1.5.0'
+    })
   })
   const body = (await res.json()) as ConnectBody
   assert.equal(res.status, 200, JSON.stringify(body))
@@ -213,9 +212,12 @@ describe('M114b 中继地址与中继管理页门禁', () => {
     )
     assert.equal((body as { error?: { code: string } }).error?.code, 'PERMISSION_DENIED')
 
-    const audit = await fetch(`${api.url}/v1/audit/events?eventType=relay_list&result=denied&limit=50`, {
-      headers: auth(adminToken)
-    })
+    const audit = await fetch(
+      `${api.url}/v1/audit/events?eventType=relay_list&result=denied&limit=50`,
+      {
+        headers: auth(adminToken)
+      }
+    )
     assert.equal(audit.status, 200)
     const { events } = (await audit.json()) as {
       events: { actor: string | null; result: string; eventType: string }[]
@@ -223,7 +225,9 @@ describe('M114b 中继地址与中继管理页门禁', () => {
     assert.ok(
       events.some(
         (event) =>
-          event.actor === 'zhangsan' && event.result === 'denied' && event.eventType === 'relay_list'
+          event.actor === 'zhangsan' &&
+          event.result === 'denied' &&
+          event.eventType === 'relay_list'
       ),
       JSON.stringify(events.slice(0, 5))
     )

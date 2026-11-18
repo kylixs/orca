@@ -24,7 +24,10 @@ function auth(token: string): Record<string, string> {
   return { 'content-type': 'application/json', authorization: `Bearer ${token}` }
 }
 
-async function createProject(token: string, body: Record<string, unknown>): Promise<{
+async function createProject(
+  token: string,
+  body: Record<string, unknown>
+): Promise<{
   status: number
   body: unknown
 }> {

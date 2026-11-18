@@ -39,7 +39,11 @@ function payload(overrides: Partial<CredentialPayload> = {}): CredentialPayload 
 test('凭证：签名与验签往返', () => {
   const key = generateSigningKey('kid-1')
   const token = signCredential(payload(), key)
-  const result = verifyCredential(token, new Map([['kid-1', key.publicKeyPem]]), Math.floor(Date.now() / 1000))
+  const result = verifyCredential(
+    token,
+    new Map([['kid-1', key.publicKeyPem]]),
+    Math.floor(Date.now() / 1000)
+  )
   assert.equal(result.ok, true)
 })
 
@@ -50,7 +54,11 @@ test('凭证：篡改载荷导致验签失败', () => {
   const decoded = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'))
   decoded.perms.push('download')
   const tampered = `${header}.${Buffer.from(JSON.stringify(decoded)).toString('base64url')}.${sig}`
-  const result = verifyCredential(tampered, new Map([['kid-1', key.publicKeyPem]]), Math.floor(Date.now() / 1000))
+  const result = verifyCredential(
+    tampered,
+    new Map([['kid-1', key.publicKeyPem]]),
+    Math.floor(Date.now() / 1000)
+  )
   assert.equal(result.ok, false)
   assert.equal(result.ok === false ? result.reason : '', 'bad_signature')
 })
@@ -59,10 +67,10 @@ test('凭证：过期与未知 kid', () => {
   const key = generateSigningKey('kid-1')
   const now = Math.floor(Date.now() / 1000)
   const expired = signCredential(payload({ iat: now - 300, exp: now - 200 }), key)
-  assert.deepEqual(
-    verifyCredential(expired, new Map([['kid-1', key.publicKeyPem]]), now),
-    { ok: false, reason: 'expired' }
-  )
+  assert.deepEqual(verifyCredential(expired, new Map([['kid-1', key.publicKeyPem]]), now), {
+    ok: false,
+    reason: 'expired'
+  })
   const valid = signCredential(payload(), key)
   assert.deepEqual(verifyCredential(valid, new Map(), now), { ok: false, reason: 'unknown_kid' })
 })
@@ -111,10 +119,22 @@ test('路径边界：拒绝穿越与绝对逃逸', () => {
 
 test('路径边界：Windows 盘符、跨盘与分隔符', () => {
   const root = 'C:\\srv\\work\\payment-service\\.orca-worktrees\\zhangsan'
-  assert.equal(isInsideRoot(root, 'C:\\srv\\work\\payment-service\\.orca-worktrees\\zhangsan\\src\\a.ts'), true)
+  assert.equal(
+    isInsideRoot(root, 'C:\\srv\\work\\payment-service\\.orca-worktrees\\zhangsan\\src\\a.ts'),
+    true
+  )
   assert.equal(isInsideRoot(root, 'D:\\evil\\x.ts'), false, 'cross-drive must be rejected')
-  assert.equal(isInsideRoot(root, 'C:\\srv\\work\\payment-service\\.orca-worktrees\\zhangsan2\\a.ts'), false)
-  assert.equal(isInsideRoot(root, 'C:\\srv\\work\\payment-service\\.orca-worktrees\\zhangsan\\..\\..\\..\\etc'), false)
+  assert.equal(
+    isInsideRoot(root, 'C:\\srv\\work\\payment-service\\.orca-worktrees\\zhangsan2\\a.ts'),
+    false
+  )
+  assert.equal(
+    isInsideRoot(
+      root,
+      'C:\\srv\\work\\payment-service\\.orca-worktrees\\zhangsan\\..\\..\\..\\etc'
+    ),
+    false
+  )
   // Mixed separators must still resolve correctly.
   assert.equal(isInsideRoot('C:\\root', 'C:/root/child'), true)
   // Bare relative paths are rejected outright.

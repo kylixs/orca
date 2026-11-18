@@ -276,12 +276,26 @@ test('AC-23 双中继注册；杀一个后平台不再下发，客户端 5 次�
 
   // ---- failover path: an endpoint list that still names the dead relay first ----
   const staleList: RelayEndpoint[] = [
-    { priority: 99, url: `wss://127.0.0.1:${relayA.port}/`, routeKey: 'm83-route', sni: 'm83-route.relay.local' },
-    { priority: 100, url: `wss://127.0.0.1:${relayB.port}/`, routeKey: 'm83-route', sni: 'm83-route.relay.local' }
+    {
+      priority: 99,
+      url: `wss://127.0.0.1:${relayA.port}/`,
+      routeKey: 'm83-route',
+      sni: 'm83-route.relay.local'
+    },
+    {
+      priority: 100,
+      url: `wss://127.0.0.1:${relayB.port}/`,
+      routeKey: 'm83-route',
+      sni: 'm83-route.relay.local'
+    }
   ]
   const failedOver = await openWithBackoff(staleList)
   assert.equal(failedOver.ok, true)
-  assert.equal(failedOver.attempts, 2, 'the dead endpoint fails once, the survivor succeeds on attempt 2')
+  assert.equal(
+    failedOver.attempts,
+    2,
+    'the dead endpoint fails once, the survivor succeeds on attempt 2'
+  )
   assert.equal(failedOver.usedPort, relayB.port)
 
   saveEvidence(EVIDENCE, 'relay-failover.json', {

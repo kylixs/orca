@@ -23,7 +23,12 @@ const EVIDENCE = 'm16-control-plane-isolation'
  * the bug lived in (one endpoint hanging while the others stayed healthy).
  */
 
-type Revocations = { projects: unknown[]; users: unknown[]; devices: { id: string; since: number }[]; jtis: string[] }
+type Revocations = {
+  projects: unknown[]
+  users: unknown[]
+  devices: { id: string; since: number }[]
+  jtis: string[]
+}
 
 type Fake = {
   url: string
@@ -138,7 +143,12 @@ describe('M16 控制面三路隔离与撤销快照 fail-closed', () => {
       setTimeout(() => resolve(null), 12_000)
     })
 
-    fake.setRevocations({ projects: [], users: [], devices: [{ id: deviceId, since: Date.now() }], jtis: [] })
+    fake.setRevocations({
+      projects: [],
+      users: [],
+      devices: [{ id: deviceId, since: Date.now() }],
+      jtis: []
+    })
     const closeInfo = await closed
     assert.ok(closeInfo, 'revocation must land even while the policy endpoint hangs')
     assert.equal(closeInfo.code, 4403)
@@ -168,7 +178,12 @@ describe('M16 控制面三路隔离与撤销快照 fail-closed', () => {
     const ticket = await probe.requestConnect(projects[0].id)
     probe.close()
 
-    fake.setRevocations({ projects: [], users: [], devices: [{ id: deviceId, since: Date.now() }], jtis: [] })
+    fake.setRevocations({
+      projects: [],
+      users: [],
+      devices: [{ id: deviceId, since: Date.now() }],
+      jtis: []
+    })
     await new Promise((r) => setTimeout(r, 1600)) // let the poller take it
 
     const rejectedWhileRevoked = await attempt(projects[0].id, ticket.credential)
@@ -196,12 +211,19 @@ async function attempt(
   credential: string
 ): Promise<{ status?: number; reject?: string; opened?: boolean }> {
   return new Promise((resolve) => {
-    const ws = new WebSocket(`wss://127.0.0.1:${runtime.port}/`, ['orca-runtime', `orca-cred.${credential}`], {
-      rejectUnauthorized: false,
-      headers: { 'x-orca-device-pubkey': devicePubKeyOf(credential) }
-    })
+    const ws = new WebSocket(
+      `wss://127.0.0.1:${runtime.port}/`,
+      ['orca-runtime', `orca-cred.${credential}`],
+      {
+        rejectUnauthorized: false,
+        headers: { 'x-orca-device-pubkey': devicePubKeyOf(credential) }
+      }
+    )
     ws.once('unexpected-response', (_req, res) => {
-      resolve({ status: res.statusCode, reject: res.headers['x-orca-reject'] as string | undefined })
+      resolve({
+        status: res.statusCode,
+        reject: res.headers['x-orca-reject'] as string | undefined
+      })
       ws.terminate()
     })
     ws.once('open', () => {

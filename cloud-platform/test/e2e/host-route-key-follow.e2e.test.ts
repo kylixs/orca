@@ -28,8 +28,13 @@ function auth(token: string): Record<string, string> {
   return { 'content-type': 'application/json', authorization: `Bearer ${token}` }
 }
 
-async function registerHost(body: Record<string, unknown>): Promise<{ hostId: string; credential: string }> {
-  const tokenRes = await fetch(`${api.url}/v1/hosts/tokens`, { method: 'POST', headers: auth(adminToken) })
+async function registerHost(
+  body: Record<string, unknown>
+): Promise<{ hostId: string; credential: string }> {
+  const tokenRes = await fetch(`${api.url}/v1/hosts/tokens`, {
+    method: 'POST',
+    headers: auth(adminToken)
+  })
   assert.equal(tokenRes.status, 201)
   const { token } = (await tokenRes.json()) as { token: string }
   const res = await fetch(`${api.url}/v1/hosts/register`, {
@@ -51,11 +56,7 @@ async function registerHost(body: Record<string, unknown>): Promise<{ hostId: st
   return { hostId: registered.hostId, credential: registered.credential }
 }
 
-async function heartbeat(
-  hostId: string,
-  credential: string,
-  directAddrs: string[]
-): Promise<void> {
+async function heartbeat(hostId: string, credential: string, directAddrs: string[]): Promise<void> {
   const res = await fetch(`${api.url}/v1/hosts/${hostId}/heartbeat`, {
     method: 'POST',
     headers: auth(credential),
@@ -96,9 +97,16 @@ async function projectConnect(hostId: string, key: string): Promise<RelayEndpoin
   const res = await fetch(`${api.url}/v1/projects/${project.id}/connect`, {
     method: 'POST',
     headers: auth(devToken),
-    body: JSON.stringify({ deviceId: devDeviceId, devicePubKey: DEVICE_PUBKEY, clientVersion: '1.5.0' })
+    body: JSON.stringify({
+      deviceId: devDeviceId,
+      devicePubKey: DEVICE_PUBKEY,
+      clientVersion: '1.5.0'
+    })
   })
-  const body = (await res.json()) as { endpoints?: { relay: RelayEndpoint[] }; error?: { code: string } }
+  const body = (await res.json()) as {
+    endpoints?: { relay: RelayEndpoint[] }
+    error?: { code: string }
+  }
   assert.equal(res.status, 200, JSON.stringify(body))
   return body.endpoints?.relay ?? []
 }
@@ -131,7 +139,12 @@ before(async () => {
   devDeviceId = devBody.device?.id ?? ''
   assert.ok(devToken !== '' && devDeviceId !== '')
 
-  relay = await startRelay({ port: 0, id: 'relay-follow', apiUrl: api.url, internalToken: INTERNAL_TOKEN })
+  relay = await startRelay({
+    port: 0,
+    id: 'relay-follow',
+    apiUrl: api.url,
+    internalToken: INTERNAL_TOKEN
+  })
 }, { timeout: 120_000 })
 
 after(async () => {
@@ -171,7 +184,10 @@ describe('M114a 默认路由键取上报 IP 并随心跳跟随', () => {
     assert.equal(view.relayRoute, 'explicit-route')
     const routes = await routeTable()
     assert.ok(routes.some((route) => route.routeKey === 'explicit-route'))
-    assert.equal(routes.some((route) => route.routeKey === 'ip-10-0-0-9'), false)
+    assert.equal(
+      routes.some((route) => route.routeKey === 'ip-10-0-0-9'),
+      false
+    )
     saveEvidence(EVIDENCE, 'route-key-explicit.json', { view, routes })
   })
 
@@ -193,7 +209,11 @@ describe('M114a 默认路由键取上报 IP 并随心跳跟随', () => {
     const view = await hostView('m114-follow')
     assert.equal(view.relayRoute, 'ip-192-168-2-77')
     const after = await routeTable()
-    assert.equal(after.some((route) => route.routeKey === 'ip-192-168-2-202'), false, JSON.stringify(after))
+    assert.equal(
+      after.some((route) => route.routeKey === 'ip-192-168-2-202'),
+      false,
+      JSON.stringify(after)
+    )
     const moved = after.find((route) => route.routeKey === 'ip-192-168-2-77')
     assert.ok(moved, JSON.stringify(after))
     assert.equal(moved.target, '127.0.0.1:9', 'the upstream target must carry over')
@@ -203,7 +223,12 @@ describe('M114a 默认路由键取上报 IP 并随心跳跟随', () => {
     // The label a client dials is the new one, end to end.
     const endpoints = await projectConnect(host.hostId, 'm114-follow-svc')
     assert.equal(endpoints[0]?.sni, 'ip-192-168-2-77.relay.local')
-    saveEvidence(EVIDENCE, 'route-key-follows.json', { before: original, view, moved, endpoint: endpoints[0] })
+    saveEvidence(EVIDENCE, 'route-key-follows.json', {
+      before: original,
+      view,
+      moved,
+      endpoint: endpoints[0]
+    })
   })
 
   test('注册拍无地址的宿主由心跳补齐路由表项，晚同步的中继拉取即得', async () => {

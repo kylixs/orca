@@ -64,7 +64,11 @@ function permTabLoads(page: WebConsolePage): number {
 }
 
 /** Logs in and opens the seeded project's permission tab in the detail dialog. */
-async function openPermTab(page: WebConsolePage, username: string, password: string): Promise<void> {
+async function openPermTab(
+  page: WebConsolePage,
+  username: string,
+  password: string
+): Promise<void> {
   await page.settle()
   await page.submitLogin(username, password)
   const detail = page.window.document.querySelector<HTMLButtonElement>('[data-detail]')
@@ -88,9 +92,9 @@ function card(page: WebConsolePage, key: string): HTMLElement {
 }
 
 function optionValues(page: WebConsolePage, selector: string): string[] {
-  return [
-    ...page.window.document.querySelectorAll<HTMLOptionElement>(`${selector} option`)
-  ].map((option) => option.value)
+  return [...page.window.document.querySelectorAll<HTMLOptionElement>(`${selector} option`)].map(
+    (option) => option.value
+  )
 }
 
 before(async () => {
@@ -132,7 +136,9 @@ test('AA4-1 admin 打开权限页签：拉一次目录，用户/组 datalist 含
   const users = optionValues(page, 'datalist#projectUserOptions')
   assert.deepEqual(users, seededUsers, 'user options submit usernames, not ids')
   const zhangsan = [
-    ...page.window.document.querySelectorAll<HTMLOptionElement>('datalist#projectUserOptions option')
+    ...page.window.document.querySelectorAll<HTMLOptionElement>(
+      'datalist#projectUserOptions option'
+    )
   ].find((option) => option.value === 'zhangsan')
   assert.ok(zhangsan, 'zhangsan must be pickable')
   assert.match(zhangsan.textContent ?? '', /张伟/, 'the hint carries the display name')
@@ -156,7 +162,8 @@ test('AA4-1 admin 打开权限页签：拉一次目录，用户/组 datalist 含
     userHint: zhangsan.textContent,
     defaultList: 'projectGroupOptions'
   })
-  cases['admin-datalist'] = `目录 1 次；用户 ${users.length} 个（值=username，提示含显示名/部门），组 ${groups.length} 个`
+  cases['admin-datalist'] =
+    `目录 1 次；用户 ${users.length} 个（值=username，提示含显示名/部门），组 ${groups.length} 个`
 })
 
 test('AA4-2 未知组提交：GROUP_NOT_FOUND 明确 toast，输入保留，页签不变', { timeout: 120_000 }, async () => {
@@ -187,7 +194,8 @@ test('AA4-2 未知组提交：GROUP_NOT_FOUND 明确 toast，输入保留，页�
     permTabLoads: permTabLoads(page),
     storedGrants: before
   })
-  cases['unknown-group'] = '未知组 → toast「授予失败：组不存在或平台未见过该组。」，输入保留，页签 0 刷新，服务端 0 死行'
+  cases['unknown-group'] =
+    '未知组 → toast「授予失败：组不存在或平台未见过该组。」，输入保留，页签 0 刷新，服务端 0 死行'
 })
 
 test('AA4-3 非 admin：无「详情」入口，零目录请求，直调 PUT grants 仍 403', { timeout: 120_000 }, async () => {

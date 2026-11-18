@@ -3,7 +3,14 @@ import assert from 'node:assert/strict'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { login, saveEvidence, spawnService, startTcpDelayHop, type Service, type TcpDelayHop } from './harness.ts'
+import {
+  login,
+  saveEvidence,
+  spawnService,
+  startTcpDelayHop,
+  type Service,
+  type TcpDelayHop
+} from './harness.ts'
 
 /**
  * M105 (requirements §5.1): an audit query over a 31-day window answers in
@@ -61,7 +68,14 @@ async function appendCorpus(target: number): Promise<void> {
   while (appended < target) {
     const count = Math.min(BATCH, target - appended)
     const events = Array.from({ length: count }, (_, offset) => ({
-      eventType: offset % 4 === 0 ? 'project_connect' : offset % 4 === 1 ? 'file_read' : offset % 4 === 2 ? 'terminal_open' : 'path_denied',
+      eventType:
+        offset % 4 === 0
+          ? 'project_connect'
+          : offset % 4 === 1
+            ? 'file_read'
+            : offset % 4 === 2
+              ? 'terminal_open'
+              : 'path_denied',
       actor: `user-${(appended + offset) % 50}`,
       targetType: 'project',
       targetId: `proj-${(appended + offset) % 200}`,

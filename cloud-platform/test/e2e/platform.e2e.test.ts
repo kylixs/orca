@@ -15,7 +15,6 @@ import {
   type Service
 } from './harness.ts'
 
-
 /**
  * Real Orca addresses files as { worktree, relativePath }, not as a project-absolute
  * path. The simulator accepts exactly that shape so these cases speak the real
@@ -169,11 +168,13 @@ describe('平台端到端（真实进程 / TCP / TLS / Ed25519）', () => {
     const client = new CloudClient(api.url)
     await client.login('zhangsan', 'Passw0rd!')
     const projects = await client.listProjects()
-    const opened = await client.openProject(projects[0].id, { probeTimeoutMs: 500 }).catch((err) => {
-      console.error('E2 failure relay logs:', relay.logs.join(''))
-      console.error('E2 failure runtime logs:', runtime.logs.join(''))
-      throw err
-    })
+    const opened = await client
+      .openProject(projects[0].id, { probeTimeoutMs: 500 })
+      .catch((err) => {
+        console.error('E2 failure relay logs:', relay.logs.join(''))
+        console.error('E2 failure runtime logs:', runtime.logs.join(''))
+        throw err
+      })
     assert.equal(opened.route, 'relay')
 
     const who = await client.rpc('sessions.whoami')
@@ -323,9 +324,13 @@ describe('平台端到端（真实进程 / TCP / TLS / Ed25519）', () => {
 
     const replay = await new Promise<{ status?: number; error?: string }>((resolve) => {
       const WebSocket = requireWs()
-      const ws = new WebSocket(`wss://127.0.0.1:${runtimePort}/`, ['orca-runtime', `orca-cred.${staleCredential}`], {
-        rejectUnauthorized: false
-      })
+      const ws = new WebSocket(
+        `wss://127.0.0.1:${runtimePort}/`,
+        ['orca-runtime', `orca-cred.${staleCredential}`],
+        {
+          rejectUnauthorized: false
+        }
+      )
       ws.once('open', () => {
         ws.close()
         resolve({ status: 101 })
@@ -367,7 +372,8 @@ describe('平台端到端（真实进程 / TCP / TLS / Ed25519）', () => {
     mkdirSync(outside, { recursive: true })
     const linkPath = join(workspace.projectRoot, '.orca-worktrees', 'zhangsan', 'escape')
     mkdirSync(join(workspace.projectRoot, '.orca-worktrees', 'zhangsan'), { recursive: true })
-    if (existsSync(linkPath)) (await import('node:fs')).rmSync(linkPath, { recursive: true, force: true })
+    if (existsSync(linkPath))
+      (await import('node:fs')).rmSync(linkPath, { recursive: true, force: true })
     symlinkSync(outside, linkPath, 'dir')
 
     const client = new CloudClient(api.url)
@@ -403,10 +409,14 @@ describe('平台端到端（真实进程 / TCP / TLS / Ed25519）', () => {
 
     const WebSocket = requireWs()
     const replay = await new Promise<{ status?: number; error?: string }>((resolve) => {
-      const ws = new WebSocket(`wss://127.0.0.1:${runtimePort}/`, ['orca-runtime', `orca-cred.${credential}`], {
-        rejectUnauthorized: false,
-        headers: { 'x-orca-device-pubkey': 'attacker-device-public-key' }
-      })
+      const ws = new WebSocket(
+        `wss://127.0.0.1:${runtimePort}/`,
+        ['orca-runtime', `orca-cred.${credential}`],
+        {
+          rejectUnauthorized: false,
+          headers: { 'x-orca-device-pubkey': 'attacker-device-public-key' }
+        }
+      )
       ws.once('open', () => {
         ws.close()
         resolve({ status: 101 })
@@ -417,10 +427,16 @@ describe('平台端到端（真实进程 / TCP / TLS / Ed25519）', () => {
     assert.notEqual(replay.status, 101)
     // Prove the same unused credential is accepted from the rightful device.
     const legit = await new Promise<{ status?: number; error?: string }>((resolve) => {
-      const ws = new WebSocket(`wss://127.0.0.1:${runtimePort}/`, ['orca-runtime', `orca-cred.${credential}`], {
-        rejectUnauthorized: false,
-        headers: { 'x-orca-device-pubkey': (client as unknown as { deviceKey: string }).deviceKey }
-      })
+      const ws = new WebSocket(
+        `wss://127.0.0.1:${runtimePort}/`,
+        ['orca-runtime', `orca-cred.${credential}`],
+        {
+          rejectUnauthorized: false,
+          headers: {
+            'x-orca-device-pubkey': (client as unknown as { deviceKey: string }).deviceKey
+          }
+        }
+      )
       ws.once('open', () => {
         ws.close()
         resolve({ status: 101 })
@@ -429,7 +445,10 @@ describe('平台端到端（真实进程 / TCP / TLS / Ed25519）', () => {
       ws.once('unexpected-response', (_req, res) => resolve({ status: res.statusCode }))
     })
     assert.equal(legit.status, 101)
-    saveEvidence(EVIDENCE, 'E7b-device-transplant.json', { transplant: replay, rightfulDevice: legit })
+    saveEvidence(EVIDENCE, 'E7b-device-transplant.json', {
+      transplant: replay,
+      rightfulDevice: legit
+    })
     client.close()
   })
 
@@ -440,17 +459,25 @@ describe('平台端到端（真实进程 / TCP / TLS / Ed25519）', () => {
     const connect = await client.requestConnect(projects[0].id)
 
     const WebSocket = requireWs()
-    const noHeader = await new Promise<{ status?: number; error?: string; reject?: string }>((resolve) => {
-      const ws = new WebSocket(`wss://127.0.0.1:${runtimePort}/`, ['orca-runtime', `orca-cred.${connect.credential}`], {
-        rejectUnauthorized: false
-      })
-      ws.once('open', () => {
-        ws.close()
-        resolve({ status: 101 })
-      })
-      ws.once('error', (err) => resolve({ error: err.message }))
-      ws.once('unexpected-response', (_req, res) => resolve({ status: res.statusCode, reject: String(res.headers['x-orca-reject'] ?? '') }))
-    })
+    const noHeader = await new Promise<{ status?: number; error?: string; reject?: string }>(
+      (resolve) => {
+        const ws = new WebSocket(
+          `wss://127.0.0.1:${runtimePort}/`,
+          ['orca-runtime', `orca-cred.${connect.credential}`],
+          {
+            rejectUnauthorized: false
+          }
+        )
+        ws.once('open', () => {
+          ws.close()
+          resolve({ status: 101 })
+        })
+        ws.once('error', (err) => resolve({ error: err.message }))
+        ws.once('unexpected-response', (_req, res) =>
+          resolve({ status: res.statusCode, reject: String(res.headers['x-orca-reject'] ?? '') })
+        )
+      }
+    )
     assert.notEqual(noHeader.status, 101, 'omitting the device header must not grant access')
 
     saveEvidence(EVIDENCE, 'E7b2-missing-device-header.json', noHeader)
@@ -462,46 +489,59 @@ describe('平台端到端（真实进程 / TCP / TLS / Ed25519）', () => {
     await client.login('zhangsan', 'Passw0rd!')
     const projects = await client.listProjects()
     const connect = await client.requestConnect(projects[0].id)
-    const claims = JSON.parse(Buffer.from(connect.credential.split('.')[1], 'base64url').toString()) as {
+    const claims = JSON.parse(
+      Buffer.from(connect.credential.split('.')[1], 'base64url').toString()
+    ) as {
       devicePubKey: string
     }
     const protocolKey = Buffer.from(claims.devicePubKey, 'base64').toString('base64url')
     const WebSocket = requireWs()
 
     // No x-orca-device-pubkey header: exactly what a browser can send.
-    const browser = await new Promise<{ status?: number; error?: string; reject?: string }>((resolve) => {
-      const ws = new WebSocket(
-        `wss://127.0.0.1:${runtimePort}/`,
-        ['orca-runtime', `orca-cred.${connect.credential}`, `orca-device.${protocolKey}`],
-        { rejectUnauthorized: false }
-      )
-      ws.once('open', () => {
-        ws.close()
-        resolve({ status: 101 })
-      })
-      ws.once('error', (err) => resolve({ error: err.message }))
-      ws.once('unexpected-response', (_req, res) =>
-        resolve({ status: res.statusCode, reject: String(res.headers['x-orca-reject'] ?? '') })
-      )
-    })
-    assert.equal(browser.status, 101, 'a header-less browser client must be admitted by the subprotocol key')
+    const browser = await new Promise<{ status?: number; error?: string; reject?: string }>(
+      (resolve) => {
+        const ws = new WebSocket(
+          `wss://127.0.0.1:${runtimePort}/`,
+          ['orca-runtime', `orca-cred.${connect.credential}`, `orca-device.${protocolKey}`],
+          { rejectUnauthorized: false }
+        )
+        ws.once('open', () => {
+          ws.close()
+          resolve({ status: 101 })
+        })
+        ws.once('error', (err) => resolve({ error: err.message }))
+        ws.once('unexpected-response', (_req, res) =>
+          resolve({ status: res.statusCode, reject: String(res.headers['x-orca-reject'] ?? '') })
+        )
+      }
+    )
+    assert.equal(
+      browser.status,
+      101,
+      'a header-less browser client must be admitted by the subprotocol key'
+    )
 
     // A header naming a different device cannot be masked by a valid subprotocol key.
-    const conflicting = await new Promise<{ status?: number; error?: string; reject?: string }>((resolve) => {
-      const ws = new WebSocket(
-        `wss://127.0.0.1:${runtimePort}/`,
-        ['orca-runtime', `orca-cred.${connect.credential}`, `orca-device.${protocolKey}`],
-        { rejectUnauthorized: false, headers: { 'x-orca-device-pubkey': 'attacker-device-public-key' } }
-      )
-      ws.once('open', () => {
-        ws.close()
-        resolve({ status: 101 })
-      })
-      ws.once('error', (err) => resolve({ error: err.message }))
-      ws.once('unexpected-response', (_req, res) =>
-        resolve({ status: res.statusCode, reject: String(res.headers['x-orca-reject'] ?? '') })
-      )
-    })
+    const conflicting = await new Promise<{ status?: number; error?: string; reject?: string }>(
+      (resolve) => {
+        const ws = new WebSocket(
+          `wss://127.0.0.1:${runtimePort}/`,
+          ['orca-runtime', `orca-cred.${connect.credential}`, `orca-device.${protocolKey}`],
+          {
+            rejectUnauthorized: false,
+            headers: { 'x-orca-device-pubkey': 'attacker-device-public-key' }
+          }
+        )
+        ws.once('open', () => {
+          ws.close()
+          resolve({ status: 101 })
+        })
+        ws.once('error', (err) => resolve({ error: err.message }))
+        ws.once('unexpected-response', (_req, res) =>
+          resolve({ status: res.statusCode, reject: String(res.headers['x-orca-reject'] ?? '') })
+        )
+      }
+    )
     assert.notEqual(conflicting.status, 101)
 
     saveEvidence(EVIDENCE, 'E7b3-browser-device-token.json', { browser, conflicting })

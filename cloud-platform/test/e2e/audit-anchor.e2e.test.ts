@@ -27,7 +27,12 @@ const INTERNAL_TOKEN = 'm100-internal-token'
 const ANCHOR_INTERVAL_MS = 600
 
 type AnchorBody = { publicKeyPem: string | null; anchors: AuditAnchor[] }
-type AuditLine = { seq: number; hash: string; eventType: string; metadata?: Record<string, unknown> }
+type AuditLine = {
+  seq: number
+  hash: string
+  eventType: string
+  metadata?: Record<string, unknown>
+}
 
 let dir = ''
 let logPath = ''
@@ -127,7 +132,15 @@ async function waitForAnchors(min: number, timeoutMs = 15_000): Promise<AnchorBo
   return body
 }
 
-type AuditLine = { seq: number; ts?: number; hash: string; prevHash?: string; eventType: string; metadata?: Record<string, unknown>; [key: string]: unknown }
+type AuditLine = {
+  seq: number
+  ts?: number
+  hash: string
+  prevHash?: string
+  eventType: string
+  metadata?: Record<string, unknown>
+  [key: string]: unknown
+}
 
 /**
  * Re-forges the whole chain after changing one event, the way an attacker with
@@ -152,7 +165,9 @@ function reforge(lines: AuditLine[], tamperSeq: number): AuditLine[] {
       traceId: tampered.traceId,
       metadata: tampered.metadata ?? {}
     }
-    const hash = createHash('sha256').update(`${prev}|${canonicalJson(body)}`).digest('hex')
+    const hash = createHash('sha256')
+      .update(`${prev}|${canonicalJson(body)}`)
+      .digest('hex')
     const reforged = { ...tampered, prevHash: prev, hash }
     prev = hash
     return reforged
@@ -199,7 +214,11 @@ test('审计签名锚点：签名可独立验证、与链尾一致、重启后�
   // ---- and points at an event that is really in the log ----
   let events = logLines()
   for (const anchor of grown.anchors) {
-    assert.equal(anchorMatchesChain(events, anchor), true, `anchor ${anchor.seq} must match the log`)
+    assert.equal(
+      anchorMatchesChain(events, anchor),
+      true,
+      `anchor ${anchor.seq} must match the log`
+    )
   }
   const seqs = grown.anchors.map((anchor) => anchor.seq)
   assert.deepEqual(
@@ -228,7 +247,11 @@ test('审计签名锚点：签名可独立验证、与链尾一致、重启后�
     afterRestart.anchors.length >= grown.anchors.length,
     `anchors must survive a restart, had ${grown.anchors.length}, now ${afterRestart.anchors.length}`
   )
-  assert.equal(afterRestart.publicKeyPem, publicKeyPem, 'the anchor key must be stable across restarts')
+  assert.equal(
+    afterRestart.publicKeyPem,
+    publicKeyPem,
+    'the anchor key must be stable across restarts'
+  )
   await produceEvents(1)
   const next = await anchorNow()
   assert.ok(next)
@@ -241,7 +264,10 @@ test('审计签名锚点：签名可独立验证、与链尾一致、重启后�
   const lines = logLines()
   // Between two real anchors, so both sides of the rewrite are provable.
   const tamperSeq = (grown.anchors[0]?.seq ?? 1) + 1
-  assert.ok(lines.some((line) => line.seq === tamperSeq), 'tampered event must exist')
+  assert.ok(
+    lines.some((line) => line.seq === tamperSeq),
+    'tampered event must exist'
+  )
   const reforged = reforge(lines, tamperSeq)
   const beforeTamper = grown.anchors.filter((anchor) => anchor.seq < tamperSeq)
   const afterTamper = grown.anchors.filter((anchor) => anchor.seq > tamperSeq)

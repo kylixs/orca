@@ -158,7 +158,10 @@ describe('审计链落盘：重启续链与篡改检测（真实进程）', () =
     return body.accessToken ?? ''
   }
 
-  async function verifyOn(service: Service, token: string): Promise<{ status: number; body: VerifyBody }> {
+  async function verifyOn(
+    service: Service,
+    token: string
+  ): Promise<{ status: number; body: VerifyBody }> {
     const res = await fetch(`${service.url}/v1/audit/verify`, {
       headers: { authorization: `Bearer ${token}` }
     })

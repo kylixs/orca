@@ -32,7 +32,12 @@ function parseRows(markdown: string): Row[] {
     if (!/^\| AC-\d\d \|/.test(line)) {
       continue
     }
-    const cells = line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim())
+    const cells = line
+      .trim()
+      .replace(/^\|/, '')
+      .replace(/\|$/, '')
+      .split('|')
+      .map((c) => c.trim())
     if (cells.length !== 7) {
       continue
     }
@@ -181,7 +186,6 @@ test('验收索引：每条 AC 的证据文件都存在、非空且可解析', (
   writeFileSync(INDEX_MD, lines.join('\n'))
 })
 
-
 test('验收指引：覆盖每条 AC、不引用未知编号、未验证项如实列出', () => {
   const runbook = readFileSync(RUNBOOK_MD, 'utf8')
   const referenced = [...runbook.matchAll(/AC-\d\d/g)].map((match) => match[0] ?? '')
@@ -197,7 +201,10 @@ test('验收指引：覆盖每条 AC、不引用未知编号、未验证项如�
   const leftover = runbook.slice(runbook.indexOf('剩余未验证项'))
   for (const row of parseRows(readFileSync(PLAN, 'utf8'))) {
     if (row.status === 'UNVERIFIED') {
-      assert.ok(leftover.includes(row.ac), `${row.ac} is UNVERIFIED but not listed as leftover work`)
+      assert.ok(
+        leftover.includes(row.ac),
+        `${row.ac} is UNVERIFIED but not listed as leftover work`
+      )
     }
   }
 })

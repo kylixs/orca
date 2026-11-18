@@ -110,7 +110,11 @@ test('AC-26 三副本共用一个写入者：10 万条并发无分叉、可校�
 
   // ---- scale: three concurrent producers on the same append path the replicas use ----
   // Integer split: 33334 + 33333 + 33333 = 100000.
-  const perProducer = [Math.ceil(TOTAL_EVENTS / 3), Math.floor(TOTAL_EVENTS / 3), Math.floor(TOTAL_EVENTS / 3)]
+  const perProducer = [
+    Math.ceil(TOTAL_EVENTS / 3),
+    Math.floor(TOTAL_EVENTS / 3),
+    Math.floor(TOTAL_EVENTS / 3)
+  ]
   const started = Date.now()
   const chunks = await Promise.all(
     [0, 1, 2].map(async (producer) => {

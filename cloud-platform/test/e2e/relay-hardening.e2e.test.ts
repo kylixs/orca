@@ -39,10 +39,23 @@ async function startRouteApi(): Promise<Api> {
 function tlsHelloFor(sni: string): Buffer {
   // Hand-built ClientHello: enough for the relay's SNI parser.
   const name = Buffer.from(sni, 'ascii')
-  const serverName = Buffer.concat([Buffer.from([0x00]), Buffer.from([(name.length >> 8) & 0xff, name.length & 0xff]), name])
-  const serverNameList = Buffer.concat([Buffer.from([(serverName.length >> 8) & 0xff, serverName.length & 0xff]), serverName])
-  const ext = Buffer.concat([Buffer.from([0x00, 0x00, (serverNameList.length >> 8) & 0xff, serverNameList.length & 0xff]), serverNameList])
-  const extensions = Buffer.concat([Buffer.from([(ext.length >> 8) & 0xff, ext.length & 0xff]), ext])
+  const serverName = Buffer.concat([
+    Buffer.from([0x00]),
+    Buffer.from([(name.length >> 8) & 0xff, name.length & 0xff]),
+    name
+  ])
+  const serverNameList = Buffer.concat([
+    Buffer.from([(serverName.length >> 8) & 0xff, serverName.length & 0xff]),
+    serverName
+  ])
+  const ext = Buffer.concat([
+    Buffer.from([0x00, 0x00, (serverNameList.length >> 8) & 0xff, serverNameList.length & 0xff]),
+    serverNameList
+  ])
+  const extensions = Buffer.concat([
+    Buffer.from([(ext.length >> 8) & 0xff, ext.length & 0xff]),
+    ext
+  ])
   const body = Buffer.concat([
     Buffer.from([0x03, 0x03]),
     Buffer.alloc(32, 7),
@@ -51,11 +64,22 @@ function tlsHelloFor(sni: string): Buffer {
     Buffer.from([0x01, 0x00]), // compression
     extensions
   ])
-  const handshake = Buffer.concat([Buffer.from([0x01]), Buffer.from([(body.length >> 16) & 0xff, (body.length >> 8) & 0xff, body.length & 0xff]), body])
-  return Buffer.concat([Buffer.from([0x16, 0x03, 0x01, (handshake.length >> 8) & 0xff, handshake.length & 0xff]), handshake])
+  const handshake = Buffer.concat([
+    Buffer.from([0x01]),
+    Buffer.from([(body.length >> 16) & 0xff, (body.length >> 8) & 0xff, body.length & 0xff]),
+    body
+  ])
+  return Buffer.concat([
+    Buffer.from([0x16, 0x03, 0x01, (handshake.length >> 8) & 0xff, handshake.length & 0xff]),
+    handshake
+  ])
 }
 
-function attempt(sni: string, port: number, timeoutMs = 1200): Promise<{ closed: boolean; received: boolean }> {
+function attempt(
+  sni: string,
+  port: number,
+  timeoutMs = 1200
+): Promise<{ closed: boolean; received: boolean }> {
   return new Promise((resolve) => {
     const socket = connect(port, '127.0.0.1')
     let received = false
@@ -203,7 +227,12 @@ describe('M10 中继 SNI 白名单与边界', () => {
     assert.ok(events.length > 0, 'events recorded')
     for (const event of events) {
       const keys = Object.keys(event).sort()
-      assert.deepEqual(keys, ['at', 'outcome', 'reason', 'routeKey', 'sni', 'sourceIp', 'target'].filter((k) => k in event).sort())
+      assert.deepEqual(
+        keys,
+        ['at', 'outcome', 'reason', 'routeKey', 'sni', 'sourceIp', 'target']
+          .filter((k) => k in event)
+          .sort()
+      )
       assert.equal('payload' in event, false)
       assert.equal('credential' in event, false)
     }
