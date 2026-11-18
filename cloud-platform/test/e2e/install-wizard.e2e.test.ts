@@ -23,6 +23,11 @@ import { dirname, join } from 'node:path'
 import { Window } from 'happy-dom'
 import { buildHash, DEFAULT_ROUTE, parseHash } from '../../apps/web/router/routes.js'
 import { registerHost, saveEvidence, spawnService, type Service } from './harness.ts'
+import {
+  installCommandTemplateSource,
+  renderInstallCommand,
+  runOneLiner
+} from './helpers/install-command-harness.ts'
 
 /**
  * M114b2 (FR-4.11): adding a host or a relay is a wizard, not a runbook — the
@@ -90,51 +95,6 @@ function expectedInstallCommand(url: string): string {
   // U253: `${code}` braces matter — bash 3.2 consumes the first byte of the
   // UTF-8 comma after a bare `$code`, losing the exit code from the message.
   return `curl -fsSL "${url}" -o "${file}" || { echo '安装失败：命令已失效或网络不可达，请让管理员重新生成（65）' >&2; exit 65; }; bash "${file}"; code=$?; if [ "$code" -eq 0 ]; then rm -f "${file}" || echo "安装完成，但临时文件未能删除：${file}" >&2; else echo "安装脚本退出码 \${code}，临时文件保留在 ${file}" >&2; fi; exit "$code"`
-}
-
-/**
- * U181: runs the copied one-liner with a stubbed curl that writes `body` to the
- * `-o` target, so the only exit code is the install script's.
- */
-function runOneLinerWithStubScript(
-  command: string,
-  body: string
-): { status: number | null; stdout: string; stderr: string; tmpDir: string; kept: string[] } {
-  const home = mkdtempSync(join(tmpdir(), 'orca-one-liner-'))
-  const bin = join(home, 'bin')
-  mkdirSync(bin)
-  writeFileSync(
-    join(bin, 'curl'),
-    `#!/usr/bin/env bash
-prev=""
-out=""
-for arg in "$@"; do
-  if [ "$prev" = "-o" ]; then out="$arg"; fi
-  prev="$arg"
-done
-[ -n "$out" ] || exit 2
-cat > "$out" <<'ORCA_ONE_LINER_STUB'
-${body}
-ORCA_ONE_LINER_STUB
-exit 0
-`,
-    { mode: 0o755 }
-  )
-  const tmpDir = join(home, 'tmp')
-  mkdirSync(tmpDir)
-  const result = spawnSync('bash', ['-c', command], {
-    encoding: 'utf8',
-    cwd: home,
-    timeout: 10_000,
-    env: { PATH: `${bin}:/usr/bin:/bin`, HOME: home, TMPDIR: tmpDir }
-  })
-  return {
-    status: result.status,
-    stdout: result.stdout,
-    stderr: result.stderr,
-    tmpDir,
-    kept: readdirSync(tmpDir)
-  }
 }
 
 /** A clean-host HOME with TLS stubs so the script skips openssl. */
@@ -2281,7 +2241,9 @@ exit 0
 
   test('U181: 安装脚本以 78 退出时 one-liner 外层退出码也是 78', async () => {
     const command = await generateHostCommand()
-    const run = runOneLinerWithStubScript(command, "echo 'STUB-78: 缺少必需配置' >&2\nexit 78")
+    const run = runOneLiner(command, {
+      body: "echo 'STUB-78: 缺少必需配置' >&2\nexit 78"
+    })
 
     assert.equal(run.status, 78, run.stderr)
     assert.match(run.stderr, /STUB-78: 缺少必需配置/)
@@ -2293,7 +2255,9 @@ exit 0
 
   test('U181: 安装脚本以 68 退出时 one-liner 外层退出码也是 68', async () => {
     const command = await generateHostCommand()
-    const run = runOneLinerWithStubScript(command, "echo 'STUB-68: 平台健康检查失败' >&2\nexit 68")
+    const run = runOneLiner(command, {
+      body: "echo 'STUB-68: 平台健康检查失败' >&2\nexit 68"
+    })
 
     assert.equal(run.status, 68, run.stderr)
     assert.match(run.stderr, /STUB-68: 平台健康检查失败/)
@@ -2308,7 +2272,9 @@ exit 0
     // code and the comma vanish. This text pin holds on bash 4/5 too, where
     // the runtime assertion below passes either way.
     assert.ok(command.includes('${code}，'), command)
-    const run = runOneLinerWithStubScript(command, "echo 'STUB-78: 缺少必需配置' >&2\nexit 78")
+    const run = runOneLiner(command, {
+      body: "echo 'STUB-78: 缺少必需配置' >&2\nexit 78"
+    })
 
     assert.equal(run.status, 78, run.stderr)
     assert.match(run.stderr, /安装脚本退出码 78，临时文件保留在/)
@@ -2317,30 +2283,18 @@ exit 0
   test('U275: 向导渲染的 one-liner 与 app.js 源码模板逐字一致', async () => {
     // The runtime suite evaluates this same source, so equality here proves the
     // wizard's command is the program under test rather than a hand-copied twin.
-    const app = readFileSync(join(WEB_SOURCE, 'app.js'), 'utf8')
-    const body = /function installCommand\(url\) \{\n([\s\S]*?)\n\}/.exec(app)?.[1]
-    assert.ok(body, 'app.js must define installCommand(url)')
-    const file = /const file = '([^']+)'/.exec(body)?.[1]
-    assert.ok(file, 'installCommand must bind the temp file path')
-    const literal = /return `([\s\S]*?)`/.exec(body)?.[1]
-    assert.ok(literal, 'installCommand must return a template literal')
-    const interpolations = [
-      ...new Set([...literal.matchAll(/(?<!\\)\$\{(\w+)\}/g)].map((m) => m[1]))
-    ].sort()
-    assert.deepEqual(interpolations, ['file', 'url'], literal)
-    assert.ok(literal.includes('\\${code}'), 'the exit-code message must escape ${code}')
-    const fromSource = (url: string): string =>
-      literal
-        .replace(/\\\$\{code\}/g, '${code}')
-        .replace(/\$\{url\}/g, () => url)
-        .replace(/\$\{file\}/g, () => file)
+    const template = installCommandTemplateSource()
 
     const command = await generateHostCommand()
     const download = /download=([\w-]+)/.exec(command)?.[1] ?? ''
     const token = /token=([\w-]+)/.exec(command)?.[1] ?? ''
     assert.equal(
       command,
-      fromSource(`${api.url}/install/host.sh?download=${download}&token=${token}`)
+      renderInstallCommand(
+        template.template,
+        template.file,
+        `${api.url}/install/host.sh?download=${download}&token=${token}`
+      )
     )
   }, 60_000)
 
