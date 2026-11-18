@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  assertInstallTemplateInterpolations,
   installCommandTemplateSource,
   renderInstallCommand,
   runOneLiner,
@@ -32,6 +33,33 @@ const runLiner = (
 function installScripts(run: OneLinerRun): string[] {
   return run.kept.filter((name) => /^orca-install-.*\.sh$/.test(name))
 }
+
+describe('U275: the renderer evaluates in a single pass', () => {
+  test('URL 中字面 ${file} 不被二次替换，\\${code} 仍解码', () => {
+    const url = 'https://platform.example/x/${file}/y'
+    const rendered = installCommand(url)
+
+    assert.ok(rendered.includes(`"${url}"`), rendered)
+    assert.ok(!rendered.includes('x/${TMPDIR:-/tmp}/orca-install-$$.sh/y'), rendered)
+    // The literal exit-code placeholder is decoded exactly once.
+    assert.ok(rendered.includes('安装脚本退出码 ${code}，'), rendered)
+    assert.ok(!rendered.includes('\\${code}'), rendered)
+  })
+})
+
+describe('U275: template interpolation contract', () => {
+  test('模板必须同时插值 ${file} 与 ${url}', () => {
+    assert.doesNotThrow(() => assertInstallTemplateInterpolations('a ${file} b ${url} c'))
+    assert.throws(
+      () => assertInstallTemplateInterpolations('a "${url}" -o /tmp/x.sh'),
+      /must interpolate both \$\{file\} and \$\{url\}; missing: \$\{file\}/
+    )
+    assert.throws(
+      () => assertInstallTemplateInterpolations('a "/tmp/x.sh" -o "${file}"'),
+      /must interpolate both \$\{file\} and \$\{url\}; missing: \$\{url\}/
+    )
+  })
+})
 
 describe('U275/U276: install one-liner runs under a real shell', () => {
   test('模板取自 app.js 源码，转义与引号不被测试重写', () => {

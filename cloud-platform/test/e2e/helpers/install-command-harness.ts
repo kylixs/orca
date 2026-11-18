@@ -40,16 +40,7 @@ export function installCommandTemplateSource(): InstallCommandTemplate {
   const template = /return `([\s\S]*?)`/.exec(source)?.[1]
   assert.ok(template, 'installCommand must return a template literal')
 
-  // `[^}]*` (not `\w+`) so non-identifier forms are seen and rejected, not skipped.
-  const interpolations = [
-    ...new Set([...template.matchAll(/(?<!\\)\$\{([^}]*)\}/g)].map((m) => m[0]))
-  ]
-  const unexpected = interpolations.filter((token) => token !== '${file}' && token !== '${url}')
-  assert.deepEqual(
-    unexpected,
-    [],
-    `installCommand may only interpolate \${file} and \${url}; found: ${unexpected.join(', ')}`
-  )
+  assertInstallTemplateInterpolations(template)
   // The renderer decodes only `\${code}`; any other escape would diverge from
   // real JS template evaluation, so fail here rather than run a wrong program.
   assert.doesNotMatch(
@@ -61,12 +52,36 @@ export function installCommandTemplateSource(): InstallCommandTemplate {
   return { source, file, template }
 }
 
+/**
+ * Fails unless the template interpolates exactly `${file}` and `${url}`. Both are
+ * required: a hardcoded path or URL would still render, so the suite must see
+ * the source actually interpolate each value it claims to exercise.
+ */
+export function assertInstallTemplateInterpolations(template: string): void {
+  // `[^}]*` (not `\w+`) so non-identifier forms are seen and rejected, not skipped.
+  const interpolations = [
+    ...new Set([...template.matchAll(/(?<!\\)\$\{([^}]*)\}/g)].map((m) => m[0]))
+  ]
+  const unexpected = interpolations.filter((token) => token !== '${file}' && token !== '${url}')
+  assert.deepEqual(
+    unexpected,
+    [],
+    `installCommand may only interpolate \${file} and \${url}; found: ${unexpected.join(', ')}`
+  )
+  const missing = ['${file}', '${url}'].filter((token) => !interpolations.includes(token))
+  assert.deepEqual(
+    missing,
+    [],
+    `installCommand must interpolate both \${file} and \${url}; missing: ${missing.join(', ')}`
+  )
+}
+
 /** Renders the extracted template the way JS would, for the given URL. */
 export function renderInstallCommand(template: string, file: string, url: string): string {
-  return template
-    .replace(/\\\$\{code\}/g, '${code}')
-    .replace(/\$\{url\}/g, () => url)
-    .replace(/\$\{file\}/g, () => file)
+  // Single pass: inserted values are never rescanned for the other placeholder.
+  return template.replace(/\\(\$\{code\})|\$\{url\}|\$\{file\}/g, (match, code) =>
+    code ? '${code}' : match === '${url}' ? url : file
+  )
 }
 
 /** A failed download: curl never creates the file, or dies mid-body. */
