@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import fs from 'node:fs'
+import path from 'node:path'
 import type {
   AuditEvent,
   Device,
@@ -51,14 +51,17 @@ function digestRefreshToken(token: string): string {
   return createHash('sha256').update(token).digest('hex')
 }
 
-/** Snapshot keys are digests; pre-U233 files carried plaintext, hashed on load. */
+/**
+ * Snapshot keys are digests; pre-U233 files carried plaintext, hashed on load.
+ * U249 P2-1: a prefixed key is self-describing even without the marker (legacy
+ * plaintext tokens are base64url and never contain `:`), so strip it first; a
+ * v1 binary rewriting a newer file must not get its keys hashed a second time.
+ */
 function restoredRefreshTokenKey(key: string, hashed: boolean): string {
-  if (!hashed) {
-    return digestRefreshToken(key)
+  if (key.startsWith(REFRESH_TOKEN_DIGEST_PREFIX)) {
+    return key.slice(REFRESH_TOKEN_DIGEST_PREFIX.length)
   }
-  return key.startsWith(REFRESH_TOKEN_DIGEST_PREFIX)
-    ? key.slice(REFRESH_TOKEN_DIGEST_PREFIX.length)
-    : key
+  return hashed ? key : digestRefreshToken(key)
 }
 
 type AccessTokenEntry = {
@@ -113,35 +116,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function entriesOf<T>(value: unknown, field: string): Entry<T>[] {
-  if (!Array.isArray(value)) {
-    throw new Error(`snapshot ${field} is not an array`)
-  }
+  if (!Array.isArray(value)) { throw new Error(`snapshot ${field} is not an array`) }
   return value.map((entry) => {
-    if (!Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== 'string') {
-      throw new Error(`snapshot ${field} has an invalid entry`)
-    }
+    if (!Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== 'string') { throw new Error(`snapshot ${field} has an invalid entry`) }
     return [entry[0], entry[1] as T]
   })
 }
 
 function arrayOf<T>(value: unknown, field: string): T[] {
-  if (!Array.isArray(value)) {
-    throw new Error(`snapshot ${field} is not an array`)
-  }
+  if (!Array.isArray(value)) { throw new Error(`snapshot ${field} is not an array`) }
   return value as T[]
 }
 
 function requireNumber(value: unknown, field: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error(`snapshot ${field} is not a number`)
-  }
+  if (typeof value !== 'number' || !Number.isFinite(value)) { throw new Error(`snapshot ${field} is not a number`) }
   return value
 }
 
 function requireString(value: unknown, field: string): string {
-  if (typeof value !== 'string') {
-    throw new Error(`snapshot ${field} is not a string`)
-  }
+  if (typeof value !== 'string') { throw new Error(`snapshot ${field} is not a string`) }
   return value
 }
 
@@ -196,15 +189,9 @@ export function restoreSnapshot(
   } catch {
     throw new Error('snapshot is not valid JSON')
   }
-  if (!isRecord(parsed)) {
-    throw new Error('snapshot is not an object')
-  }
-  if (!READABLE_SNAPSHOT_VERSIONS.has(parsed.version)) {
-    throw new Error(`snapshot version ${String(parsed.version)} is not supported`)
-  }
-  if (!isRecord(parsed.policies)) {
-    throw new Error('snapshot policies is not an object')
-  }
+  if (!isRecord(parsed)) { throw new Error('snapshot is not an object') }
+  if (!READABLE_SNAPSHOT_VERSIONS.has(parsed.version)) { throw new Error(`snapshot version ${String(parsed.version)} is not supported`) }
+  if (!isRecord(parsed.policies)) { throw new Error('snapshot policies is not an object') }
 
   const users = entriesOf<User>(parsed.users, 'users')
   const hosts = entriesOf<Host>(parsed.hosts, 'hosts')
@@ -219,10 +206,7 @@ export function restoreSnapshot(
   const hostGrants = arrayOf<HostGrant>(parsed.hostGrants, 'hostGrants')
   const revocations = arrayOf<Revocation>(parsed.revocations, 'revocations')
   const hostTokens = arrayOf<HostToken>(parsed.hostTokens, 'hostTokens')
-  const installDownloadTokens = arrayOf<InstallDownloadToken>(
-    parsed.installDownloadTokens,
-    'installDownloadTokens'
-  )
+  const installDownloadTokens = arrayOf<InstallDownloadToken>(parsed.installDownloadTokens, 'installDownloadTokens')
   const audit = arrayOf<AuditEvent>(parsed.audit, 'audit')
   const auditSeq = requireNumber(parsed.auditSeq, 'auditSeq')
   const auditTip = requireString(parsed.auditTip, 'auditTip')
@@ -251,17 +235,23 @@ export function restoreSnapshot(
     restoredRefreshTokenKey(key, hashedRefreshTokens),
     sessionId
   ])
+  // U249 P2-2: reading a malformed entry value (`users:[["u",null]]`) throws while
+  // building the name indexes, so build all maps locally and commit in one place.
+  const usersByName = new Map(users.map(([, user]) => [user.username, user]))
+  const hostsByName = new Map(hosts.map(([, host]) => [host.name, host]))
+  const projectsByKey = new Map(projects.map(([, project]) => [project.key, project]))
 
+  // Commit point: nothing above may mutate the store, so a throw leaves it intact.
   store.users = new Map(users)
-  store.usersByName = new Map(users.map(([, user]) => [user.username, user]))
+  store.usersByName = usersByName
   store.devices = new Map(devices)
   store.sessions = new Map(sessions)
   store.accessTokens = new Map(accessTokens)
   store.refreshTokens = new Map(refreshTokenEntries)
   store.hosts = new Map(hosts)
-  store.hostsByName = new Map(hosts.map(([, host]) => [host.name, host]))
+  store.hostsByName = hostsByName
   store.projects = new Map(projects)
-  store.projectsByKey = new Map(projects.map(([, project]) => [project.key, project]))
+  store.projectsByKey = projectsByKey
   store.grants = grants
   store.hostGrants = hostGrants
   store.revocations = revocations
@@ -278,10 +268,31 @@ export function restoreSnapshot(
 }
 
 function writeAtomic(file: string, text: string): void {
-  mkdirSync(dirname(file), { recursive: true })
+  fs.mkdirSync(path.dirname(file), { recursive: true })
   const tmp = `${file}.${process.pid}.tmp`
-  writeFileSync(tmp, text, { encoding: 'utf8', mode: 0o600 })
-  renameSync(tmp, file)
+  fs.writeFileSync(tmp, text, { encoding: 'utf8', mode: 0o600 })
+  fs.renameSync(tmp, file)
+}
+
+/** U249 P3: repeated unreadable starts must not accumulate full snapshots forever. */
+const CORRUPT_BACKUP_LIMIT = 3
+
+/** Keeps the newest corrupt backups; pruning is best-effort and never blocks startup. */
+function pruneCorruptBackups(file: string): void {
+  try {
+    const dir = path.dirname(file)
+    const prefix = `${path.basename(file)}.corrupt-`
+    const backups = fs.readdirSync(dir)
+      .filter((name) => name.startsWith(prefix))
+      .map((name) => ({ name, ts: Number(name.slice(prefix.length)) }))
+      .filter((entry) => Number.isFinite(entry.ts))
+      .sort((left, right) => right.ts - left.ts)
+    for (const stale of backups.slice(CORRUPT_BACKUP_LIMIT)) {
+      fs.rmSync(path.join(dir, stale.name), { force: true })
+    }
+  } catch {
+    // Ignore: retention must not fail startup.
+  }
 }
 
 /**
@@ -301,10 +312,10 @@ export function attachStorePersistence(
   const writeFile = options.writeFile ?? writeAtomic
 
   let lastWritten: string | null = null
-  if (existsSync(file)) {
+  if (fs.existsSync(file)) {
     let restoredText: string | null = null
     try {
-      restoredText = readFileSync(file, 'utf8')
+      restoredText = fs.readFileSync(file, 'utf8')
       restoreSnapshot(store, restoredText, auditLimit)
     } catch (error) {
       // U249 P2-2: preserve the unreadable bytes before any flush can overwrite
@@ -312,8 +323,9 @@ export function attachStorePersistence(
       restoredText = null
       const backup = `${file}.corrupt-${Date.now()}`
       try {
-        renameSync(file, backup)
+        fs.renameSync(file, backup)
         log.warn(`[store-persistence] ignoring ${file}: ${String(error)} (kept as ${backup})`)
+        pruneCorruptBackups(file)
       } catch (renameError) {
         log.warn(
           `[store-persistence] ignoring ${file}: ${String(error)} (backup failed: ${String(renameError)})`

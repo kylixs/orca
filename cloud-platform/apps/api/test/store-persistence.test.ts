@@ -219,7 +219,7 @@ describe('平台 dev store 快照：序列化与恢复', () => {
 })
 
 describe('平台 dev store 快照：损坏与默认关闭', () => {
-  /** U249 P2-2: the unreadable file must survive the first timer tick, renamed. */
+  /** U249 P2-2/P3: unreadable files are renamed, old backups pruned, the store stays empty. */
   async function assertUnreadableSnapshotPreserved(
     name: string,
     original: Buffer
@@ -227,7 +227,11 @@ describe('平台 dev store 快照：损坏与默认关闭', () => {
     const root = tempRoot()
     try {
       const file = path.join(root, name)
+      const seeded = [1000, 2000, 4000].map((ts) => `${name}.corrupt-${ts}`)
       writeFileSync(file, original)
+      for (const entry of seeded) {
+        writeFileSync(path.join(root, entry), 'old', 'utf8')
+      }
       const store = new Store()
       const warnings: string[] = []
       const handle = attachStorePersistence(store, {
@@ -240,26 +244,38 @@ describe('平台 dev store 快照：损坏与默认关闭', () => {
         const backups = readdirSync(root).filter((entry) =>
           entry.startsWith(`${name}.corrupt-`)
         )
-        assert.equal(backups.length, 1, 'exactly one corrupt backup')
-        assert.ok(
-          readFileSync(path.join(root, backups[0]!)).equals(original),
-          'the preserved bytes must stay byte-identical for diagnosis'
-        )
+        assert.equal(backups.length, 3, 'only the newest 3 backups are kept')
+        assert.equal(backups.includes(seeded[0]!), false, 'older backups are pruned')
+        const preserved = backups.filter((entry) => !seeded.includes(entry))
+        assert.equal(preserved.length, 1)
+        assert.ok(readFileSync(path.join(root, preserved[0]!)).equals(original))
 
         // Let at least one 50ms flush tick run: it must not touch the backup.
         await new Promise((resolve) => setTimeout(resolve, 150))
         assert.equal(warnings.length, 1)
-        const rewritten = JSON.parse(readFileSync(file, 'utf8')) as {
-          version: number
-          users: unknown[]
-        }
-        assert.equal(rewritten.version, SNAPSHOT_VERSION)
-        assert.deepEqual(rewritten.users, [])
+        assert.equal(existsSync(file), true, 'the first tick must write a fresh snapshot')
         assert.equal(store.users.size, 0)
+        assert.equal(store.sessions.size, 0)
         assert.equal(store.hosts.size, 0)
+        assert.equal(store.policies.version, 1)
+        assert.equal(store.auditSeq, 0)
       } finally {
         handle.stop()
       }
+      // A second startup reads the fresh empty snapshot: no warning, no new backup.
+      const second = new Store()
+      const secondWarnings: unknown[] = []
+      attachStorePersistence(second, {
+        file,
+        intervalMs: 50,
+        log: { warn: (...args: unknown[]) => secondWarnings.push(args[0]) }
+      }).stop()
+      assert.equal(secondWarnings.length, 0)
+      assert.equal(second.users.size, 0)
+      assert.equal(
+        readdirSync(root).filter((entry) => entry.startsWith(`${name}.corrupt-`)).length,
+        3
+      )
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -319,6 +335,12 @@ describe('平台 dev store 快照：损坏与默认关闭', () => {
       calls: 600,
       bytes: 64 * 1024 * 1024
     })
+  })
+
+  test('毒化 entry 值：整体不提交，快照按不可读流程改名并自愈', async () => {
+    const doc = JSON.parse(serializeSnapshot(new Store())) as { users: unknown[] }
+    doc.users = [['user_poison', null]]
+    await assertUnreadableSnapshotPreserved('poisoned.json', Buffer.from(JSON.stringify(doc)))
   })
 
   test('env 未设置时不加载也不创建快照文件', async () => {
@@ -584,6 +606,11 @@ describe('平台 dev store 快照：refresh token 明文剥离（U233 F6）', ()
 
 describe('平台 dev store 快照：版本兼容与回滚（U233/U249）', () => {
   const digestOf = (token: string): string => createHash('sha256').update(token).digest('hex')
+  type MutableSnapshot = {
+    version: number
+    refreshTokensHashed?: boolean
+    refreshTokens: [string, string][]
+  }
 
   test('写出 v1 + 哈希标记，读取端接受 v1/v2，未知版本拒绝', () => {
     const digest = digestOf('v1-token')
@@ -678,6 +705,61 @@ describe('平台 dev store 快照：版本兼容与回滚（U233/U249）', () =>
     assert.equal(restored.projects.size, 1)
     assert.equal(restored.refreshTokens.get(digestOf(token)), 'sess_rollback')
     assert.equal(restored.refreshTokens.has(snapshotKey!), false)
+  })
+
+  test('无标记的 sha256: 前缀 key 只剥离一次，有标记语义不变', () => {
+    const digest = digestOf('downgrade-token')
+    const doc = JSON.parse(serializeSnapshot(new Store())) as MutableSnapshot
+    doc.version = 1
+    delete doc.refreshTokensHashed
+    doc.refreshTokens = [[`sha256:${digest}`, 'sess_a']]
+    const unmarked = new Store()
+    restoreSnapshot(unmarked, JSON.stringify(doc))
+    assert.equal(unmarked.refreshTokens.get(digest), 'sess_a')
+    assert.equal(unmarked.refreshTokens.has(digestOf(`sha256:${digest}`)), false)
+    doc.refreshTokensHashed = true
+    doc.refreshTokens = [[digest, 'sess_a']]
+    restoreSnapshot(unmarked, JSON.stringify(doc))
+    assert.equal(unmarked.refreshTokens.get(digest), 'sess_a')
+  })
+
+  test('降级写回后提交 sha256:<digest> 不命中会话，也不触发撤销', async () => {
+    const root = tempRoot()
+    const file = path.join(root, 'platform-store.json')
+    const post = (base: string, route: string, body: unknown) =>
+      fetch(`${base}${route}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+    try {
+      const first = withEnv(file, () => createApp({ port: 0 }))
+      const base = `http://127.0.0.1:${await first.listen()}`
+      const login = await post(base, '/v1/auth/login', { username: 'admin', password: 'Adm1n!', deviceName: 'u249-p21' })
+      assert.equal(login.status, 200)
+      const token = String(((await login.json()) as Record<string, unknown>).refreshToken)
+      await first.close()
+      // A pre-U233 binary flushes the state it restored: no marker, keys verbatim.
+      const doc = JSON.parse(readFileSync(file, 'utf8')) as MutableSnapshot
+      doc.version = 1
+      delete doc.refreshTokensHashed
+      const forgedKey = `sha256:${digestOf(token)}`
+      const sessionId = doc.refreshTokens.find(([key]) => key === forgedKey)?.[1]
+      assert.ok(sessionId, 'the rewritten file must carry the prefixed digest key')
+      writeFileSync(file, JSON.stringify(doc), 'utf8')
+      const second = withEnv(file, () => createApp({ port: 0 }))
+      const secondBase = `http://127.0.0.1:${await second.listen()}`
+      try {
+        assert.equal((await post(secondBase, '/v1/auth/refresh', { refreshToken: forgedKey })).status, 401)
+        assert.equal(second.store.sessions.get(sessionId!)?.revokedAt, null)
+        const real = await post(secondBase, '/v1/auth/refresh', { refreshToken: token })
+        assert.equal(real.status, 200, 'the real token must still refresh')
+      } finally {
+        await second.close()
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   test('已写出的 v2 文件可加载，并在启动时降级写回 v1 + 标记', () => {
