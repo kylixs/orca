@@ -43,7 +43,7 @@
 | AUTH-TOKEN-STORE | 令牌哈希入库与快照持久化 | FR-1.2（服务端） | P0 | 🟢 | 100% | store-persistence **21/21** |
 | AUTH-TOKEN-GC | 令牌回收与快照明文剥离 | FR-1.2（服务端） | P0 | 🟢 | 100%（D18 A1 已实施 `b521fb87988`；A2 按裁定不做） | session-sweep + snapshot-credential-strip **11/11**（主会话复跑） |
 | AUTH-LOGIN-LOCKOUT | 5 次失败锁 15 分钟 | FR-1.4 | P0 | 🟢 | 100% | 契约 9/9、body 5/5、entry-module 9/9 |
-| AUTH-LDAP-ADMIT | LDAP 组门槛准入 | FR-1.5 | P1 | 🟡 | 80%（D15 已定：登录时组全量替换，待实施） | ldap-admission 6/6 |
+| AUTH-LDAP-ADMIT | LDAP 组门槛准入 | FR-1.5 | P1 | 🟢 | 100%（D15-1 已实施 `73bc4ce6647`：登录时组全量替换） | `ldap-admission` **14/14**（含移出组/去重 2 例，主会话复跑） |
 | AUTH-REVOKE-SELF | 自助登出与设备吊销 | FR-1.6 | P0 | 🟢 | 100% | u229/u241 套件 |
 | AUTH-REVOKE-FORCE | 管理员强制下线（含 3+ follower 并发） | FR-1.6 | P0 | 🟢 | 100% | **12/12** |
 | AUTH-PERM-PROPAGATE | 权限变更即时生效与 60s 断连 | FR-1.7 | P1 | 🟢 | 100% | policy/u244 相关 |
@@ -140,17 +140,17 @@
 | QA-AUTH-BASE | 认证 24 文件基线 | — | P0（门禁） | 🟢 | 100% | **267/267** |
 | QA-BASE-MATRIX | 授权组合矩阵基线 | — | P0（门禁） | 🟢 | 100% | **113/113** |
 | QA-E2E-SWEEP | 全仓 e2e 全景 | — | P0（门禁） | 🟢 | 100% | **1143/1143，0 skip** |
-| QA-TIMEOUT-GATE | 超时形态门禁与存量迁移 | — | P1（门禁） | 🟡 | 99%（基线 0 已达成；U315 词法残余 2 形） | 门禁测试 40+23；300×1800 实跑 |
+| QA-TIMEOUT-GATE | 超时形态门禁与存量迁移 | — | P1（门禁） | 🟡 | 99%（基线 0；U315 范围已关，残余 U317 两形） | 门禁测试 71（70 pass/1 skip）；296 文件扫描 |
 | QA-TYPE-GATE | apps 类型门禁 | — | P1（门禁） | 🟢 | 100% | `tc:apps` 16→0 |
 | QA-EVIDENCE-CHECKERS | 台账表格/sha/编码校验 | — | P0（门禁） | 🟢 | 100% | 三脚本 + 自测 |
 
 
 ## 4. 汇总与口径
 
-- 综合完成度：**(66 + 0.5×3) / 70 = 96.4%**（定义：🟢计 1、🟡计 0.5、⚪计 0；域进度按同法计算）
-- 叶子功能项 **70**：🟢 **66**、🟡 **3**（AUTH-LDAP-ADMIT、AUTH-COOKIE-MODE、QA-TIMEOUT-GATE）、⚪ **1**（FILE-DL-RPC）
+- 综合完成度：**(67 + 0.5×2) / 70 = 97.1%**（定义：🟢计 1、🟡计 0.5、⚪计 0；域进度按同法计算）
+- 叶子功能项 **70**：🟢 **67**、🟡 **2**（AUTH-COOKIE-MODE、QA-TIMEOUT-GATE）、⚪ **1**（FILE-DL-RPC）
 - 计数口径：叶子行数按本文件表行实测（70），下次更新须重算并同步本节
-- 阻塞源（剩余）：D15-1 组替换待实施、D5–D10 部署检查单已交付（生产启用待运维）、D21-C9 缓（登记缺口）、U315 门禁词法残余；D18/D20/D22/LGA-6 已实施或收口
+- 阻塞源（剩余）：AUTH-COOKIE-MODE 生产启用待运维执行检查单、D21-C9 缓（登记缺口）、U317 门禁两形；D15-1/D18/D20/D22/LGA-6/U315 已完成
 - 所有计数为**指定范围基线**；「全仓无红」仅由 QA-E2E-SWEEP 的全景扫描支撑（协议 §2-142），不得以子集基线替代
 - 当日台账增量：U272–U313；唯一重开：WEB-ROUTING（U307→U310→U312），修复后回绿
 ## 5. 按地图推进的规则与顺序
@@ -167,7 +167,7 @@
 
 | 地图编号 | 状态 | 台账/决策 | 套件或证据 |
 |---|---|---|---|
-| QA-TIMEOUT-GATE | 🟡 | U291（已关，基线 0）、U313（已关）、U315（残余词法） | `check-test-timeouts.test.mjs` 40、`-numeric.test.mjs` 23；批 1–9 合跑记录；`evidence/m110-load-300` |
+| QA-TIMEOUT-GATE | 🟡 | U291/U313/U315 已关；U317（两形残余） | 门禁套件 71（70 pass/1 skip）、扫描 296 文件；`evidence/m110-load-300` |
 | WEB-NAV-ROUTING | 🟢 | U307/U310/U312/U314（已关） | `web-exploratory-fixes` 45、U310 定向 1/1（主会话复跑） |
 | MOB-HOST-DETAIL | 🟢 | U278（已裁定不开发） | `u80-mobile-shell` 390×844 sheet、`u80-mobile-m9fix` 触控 44px |
 | AUTH-LOGIN-LOCKOUT | 🟢 | U289/U292/U293/U294/U296（已关） | 契约 9/9、entry-module 9/9、lockout 14/14 |
@@ -175,7 +175,7 @@
 | AUTH-PAGE-CSP | 🟢 | D10（维持 Report-Only） | csp-zero 6/6 |
 | AUTH-TOKEN-GC | 🟢 | D18（已实施 `b521fb87988`）、U233 F6 | `session-sweep` + `snapshot-credential-strip` 11/11 |
 | AUTH-SESSION-EXPIRE | 🟢 | D20（已实施）、U243/U230 | `u243-session-events` 4/4 |
-| AUTH-LDAP-ADMIT / AZ-LDAP-GROUP | 🟡/🟢 | D15（已定，组替换待实施）、U212；LGA-6 已收口 | ldap-admission 6/6（复跑）、准入设计 v3 |
+| AUTH-LDAP-ADMIT / AZ-LDAP-GROUP | 🟢/🟢 | D15-1（已实施 `73bc4ce6647`）、U212 已关；LGA-6 收口 | `ldap-admission` 14/14（主会话复跑）、准入设计 v3 |
 | AZ-ENUM-GUARD | 🟢 | D24（保留 404 静默）、U247 观察 | web-project-entry 10/10 |
 | PRJ-PROVISION-ERR | 🟢 | D22（已实施）、U54-008 | `web-project-entry` 11/11 |
 | FILE-DL-RPC / FILE-COPY-CAPTURE | ⚪/🟢 | D21（C9 缓登记；C6 已落地）、U66 第二口径结案 | `cloud-file-copy-audit` 8/8 |
