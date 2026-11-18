@@ -33,6 +33,15 @@ test('maps platform api changes to the critical cloud e2e set, not the whole tre
   assert.deepEqual(targets.cloudE2E, CRITICAL_CLOUD_E2E)
 })
 
+test('maps login-lockout changes to its suite and the api contract test', () => {
+  const targets = changedTargets(['cloud-platform/apps/login-lockout/src/lockout.ts'])
+  assert.deepEqual(targets.vitest, [])
+  assert.deepEqual(targets.cloudE2E, [
+    'cloud-platform/apps/login-lockout/test/*.test.ts',
+    'cloud-platform/apps/api/test/local-lockout-contract.test.ts'
+  ])
+})
+
 test('ignores unrelated files', () => {
   const targets = changedTargets(['README.md', 'cloud-platform/PROGRESS.md'])
   assert.deepEqual(targets, { vitest: [], cloudE2E: [] })

@@ -1,5 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { LOCK_MS, MAX_FAILURES } from './lockout-constants.ts'
 
 /**
@@ -166,8 +168,9 @@ export async function startLockoutService(options: {
   }
 }
 
-// Why the path check: the same file is imported by tests, where argv[1] is the runner.
-const isMain = process.argv[1]?.includes('login-lockout') === true
+// Why exact: tests import this file, where argv[1] is the runner rather than this module.
+const entryPath = process.argv[1]
+const isMain = entryPath !== undefined && import.meta.url === pathToFileURL(resolve(entryPath)).href
 if (isMain) {
   const service = await startLockoutService({
     port: Number(process.env.PORT ?? 18789),
