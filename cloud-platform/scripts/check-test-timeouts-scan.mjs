@@ -1,6 +1,6 @@
 // Static scan: node:test ignores numeric timeout positions (Node 24).
-// Numeric third arg (test/it) and numeric second arg (hooks) are silently dropped,
-// as is an object third arg on test/it. See ledger U287/U290/U291/U295/U297/U303.
+// Numeric third arg (test/it and hooks) and numeric second arg (hooks) are silently
+// dropped, as is an object third arg on test/it. See ledger U287/U290/U291/U295/U297/U303/U305.
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -17,7 +17,8 @@ export const SCAN_SCOPE = [
 export const FORMS = {
   TEST_NUMERIC_THIRD: 'test-numeric-third',
   TEST_OBJECT_THIRD: 'test-object-third',
-  HOOK_NUMERIC_SECOND: 'hook-numeric-second'
+  HOOK_NUMERIC_SECOND: 'hook-numeric-second',
+  HOOK_NUMERIC_THIRD: 'hook-numeric-third'
 }
 
 const CALL_PATTERN = /(?<![\w$.])(beforeEach|afterEach|before|after|test|it)\s*\(/g
@@ -350,6 +351,9 @@ function scanSourceInternal(source, { file = '<memory>' } = {}) {
     }
     if (isNumericTimeout(args[1])) {
       push(FORMS.HOOK_NUMERIC_SECOND)
+    } else if (args.length >= 3 && isNumericTimeout(args[2])) {
+      // Node 24 reads hook options from arg 2, so a numeric third arg is dropped.
+      push(FORMS.HOOK_NUMERIC_THIRD)
     }
   }
   return { violations, signatures }
@@ -359,12 +363,25 @@ export function scanSource(source, options = {}) {
   return scanSourceInternal(source, options).violations
 }
 
+// U305 ②: `5000`, `5_000`, `+5000` and `(5000)` are one timeout, so one key.
+const NUMERIC_TOKEN = /(?<![\w$.])\+?(\d[\d_]*(?:\.\d+)?(?:[eE][+-]?\d+)?)/g
+
+function normalizeNumericTokens(arg) {
+  let text = arg.trim()
+  let stripped = stripOuterParens(text)
+  while (stripped !== text && NUMERIC_LITERAL.test(stripped)) {
+    text = stripped
+    stripped = stripOuterParens(text)
+  }
+  return text.replace(NUMERIC_TOKEN, (_, digits) => digits.replace(/_/g, ''))
+}
+
 // U300: key on callee + non-callback args (the callback body is not the violation), so
 // re-wraps and unrelated body edits keep the key. Args are already comment/string-blanked.
 export function callSignature(name, args) {
   const callbackIndex = name === 'test' || name === 'it' ? 1 : 0
   const kept = args.filter((_, index) => index !== callbackIndex)
-  return `${name}(${kept.map((arg) => arg.replace(/\s+/g, '')).join(',')})`
+  return `${name}(${kept.map((arg) => normalizeNumericTokens(arg).replace(/\s+/g, '')).join(',')})`
 }
 
 function compareViolations(a, b) {
@@ -375,12 +392,17 @@ export function scanSources(sources) {
   const contexts = new Map()
   const violations = []
   for (const { file, source } of sources) {
+    // U305 ③: duplicate files would replace the per-file signature map under the
+    // first scan's violation objects; scan each file once.
+    if (contexts.has(file)) {
+      continue
+    }
     const result = scanSourceInternal(source, { file })
     contexts.set(file, result)
     violations.push(...result.violations)
   }
   violations.sort(compareViolations)
-  return { violations, contexts, scannedFiles: sources.length }
+  return { violations, contexts, scannedFiles: contexts.size }
 }
 
 export function scanTestTimeouts({ files, root = ROOT }) {
@@ -388,8 +410,8 @@ export function scanTestTimeouts({ files, root = ROOT }) {
     file: displayPath(file, root),
     source: readFileSync(file, 'utf8')
   }))
-  const { violations, contexts } = scanSources(sources)
-  return { files, violations, contexts }
+  const { violations, contexts, scannedFiles } = scanSources(sources)
+  return { files, violations, contexts, scannedFiles }
 }
 
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'coverage'])

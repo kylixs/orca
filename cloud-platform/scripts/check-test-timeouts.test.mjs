@@ -96,6 +96,18 @@ test('flags numeric second argument on hooks', () => {
   ])
 })
 
+test('flags numeric third argument on hooks (Node 24 ignores arg 2 options only)', () => {
+  const violations = scanSource(
+    'before(fn, setup, 5000)\nafterEach(run, opts, 30_000)\n' +
+      'before(fn, 5000)\nbefore(fn, opts, callback)\n'
+  )
+  assert.deepEqual(violations, [
+    { file: '<memory>', line: 1, form: 'hook-numeric-third' },
+    { file: '<memory>', line: 2, form: 'hook-numeric-third' },
+    { file: '<memory>', line: 3, form: 'hook-numeric-second' }
+  ])
+})
+
 test('accepts the legal options-second form on hooks', () => {
   const violations = scanSource(
     'before(() => {}, { timeout: 5000 })\nafterEach(fn, { timeout: 1000 })\n'
@@ -127,9 +139,7 @@ test('flags a numeric timeout when the body holds a regex with an escaped paren'
     "  assert.doesNotMatch(body, /INTERNAL_ERROR|at [\\w./]+\\s*\\(/, 'no leak')",
     '}, 120_000)'
   ].join('\n')
-  assert.deepEqual(scanSource(source), [
-    { file: '<memory>', line: 1, form: 'test-numeric-third' }
-  ])
+  assert.deepEqual(scanSource(source), [{ file: '<memory>', line: 1, form: 'test-numeric-third' }])
 })
 
 test('bracket pairing skips regex, template expressions, comments and strings', () => {
@@ -138,19 +148,15 @@ test('bracket pairing skips regex, template expressions, comments and strings', 
     'const quoteRegex = /curl -fsSL "([^"]+)"/.exec(command)',
     'test(`label ${fn(1, "a)b")}`, () => {',
     "  // test('pseudo', () => {}, 1)",
-    "  const real = /a\\(b\\)/.test(text)",
+    '  const real = /a\\(b\\)/.test(text)',
     '}, 5000)'
   ].join('\n')
-  assert.deepEqual(scanSource(source), [
-    { file: '<memory>', line: 3, form: 'test-numeric-third' }
-  ])
+  assert.deepEqual(scanSource(source), [{ file: '<memory>', line: 3, form: 'test-numeric-third' }])
 })
 
 test('division is not mistaken for a regex literal', () => {
   const source = "const seconds = totalMs / 1000\ntest('x', () => {}, 5000)\n"
-  assert.deepEqual(scanSource(source), [
-    { file: '<memory>', line: 2, form: 'test-numeric-third' }
-  ])
+  assert.deepEqual(scanSource(source), [{ file: '<memory>', line: 2, form: 'test-numeric-third' }])
 })
 
 test('does not treat call-like text inside a regex as a test call', () => {
@@ -164,9 +170,7 @@ test('does not report a call-like regex after return as a test call', () => {
     "function pattern(value) { return /test('x', fn, 5000)/ }",
     "test('real', () => {}, 5000)"
   ].join('\n')
-  assert.deepEqual(scanSource(source), [
-    { file: '<memory>', line: 2, form: 'test-numeric-third' }
-  ])
+  assert.deepEqual(scanSource(source), [{ file: '<memory>', line: 2, form: 'test-numeric-third' }])
 })
 
 test('regex literals after return, arrow and ternary keep bracket pairing', () => {
@@ -177,9 +181,7 @@ test('regex literals after return, arrow and ternary keep bracket pairing', () =
     '  const f = () => { return /re)/ }',
     '}, 5000)'
   ].join('\n')
-  assert.deepEqual(scanSource(source), [
-    { file: '<memory>', line: 1, form: 'test-numeric-third' }
-  ])
+  assert.deepEqual(scanSource(source), [{ file: '<memory>', line: 1, form: 'test-numeric-third' }])
 })
 
 // U301 ①: a \`/\` inside \`[...]\` must not close the regex and leave a stray \`]\`.
@@ -216,18 +218,108 @@ test('escaped parens inside a character class do not break brackets', () => {
     '  const match = text.match(/[\\(/]+/)',
     '}, 5000)'
   ].join('\n')
-  assert.deepEqual(scanSource(source), [
-    { file: '<memory>', line: 1, form: 'test-numeric-third' }
-  ])
+  assert.deepEqual(scanSource(source), [{ file: '<memory>', line: 1, form: 'test-numeric-third' }])
 })
 
 // U303 ③ known limitation: `v`-flag nested classes close on the first `]`, leaving a
 // stray `]` that breaks call pairing. Skip rather than pretend the scanner supports it.
 test.skip('v-flag nested character classes are a known unsupported limitation', () => {
   const source = ["test('nested class', () => {", '  const re = /[[a]/]/v', '}, 5000)'].join('\n')
-  assert.deepEqual(scanSource(source), [
-    { file: '<memory>', line: 1, form: 'test-numeric-third' }
-  ])
+  assert.deepEqual(scanSource(source), [{ file: '<memory>', line: 1, form: 'test-numeric-third' }])
+})
+
+// U305 ②: plain, underscored, parenthesized and signed spellings share one baseline key.
+test('numeric literal spellings normalize to one baseline key', () => {
+  withTempDir((root) => {
+    const file = writeFixture(root, 'a.test.ts', "test('a', () => {}, 5000)\n")
+    const baselinePath = join(root, 'baseline.json')
+    checkTestTimeouts({ files: [file], baselinePath })
+    const [key] = Object.keys(JSON.parse(readFileSync(baselinePath, 'utf8')).entries)
+
+    for (const spelling of ['5_000', '(5000)', '+5000', '((5_000))']) {
+      writeFileSync(file, `test('a', () => {}, ${spelling})\n`)
+      const result = checkTestTimeouts({ files: [file], baselinePath })
+      assert.equal(result.exitCode, 0, spelling)
+      assert.deepEqual(result.newViolations, [], spelling)
+
+      checkTestTimeouts({ files: [file], baselinePath, updateBaseline: true })
+      const [rewritten] = Object.keys(JSON.parse(readFileSync(baselinePath, 'utf8')).entries)
+      assert.equal(rewritten, key, spelling)
+    }
+  })
+})
+
+// U305 ③: duplicate paths replaced the per-file signature map and threw a TypeError.
+test('duplicate files are scanned once instead of throwing', () => {
+  withTempDir((root) => {
+    const file = writeFixture(root, 'a.test.ts', "test('a', () => {}, 5000)\n")
+    const baselinePath = join(root, 'baseline.json')
+    const created = checkTestTimeouts({ files: [file, file], baselinePath })
+    assert.equal(created.baselineWritten, true)
+    assert.equal(created.scannedFiles, 1)
+    assert.equal(created.baselineCount, 1)
+
+    const repeat = checkTestTimeouts({ files: [file, file], baselinePath })
+    assert.equal(repeat.exitCode, 0)
+    assert.deepEqual(repeat.newViolations, [])
+    assert.deepEqual(scanTestTimeouts({ files: [file, file] }).violations, [
+      { file, line: 1, form: 'test-numeric-third' }
+    ])
+  })
+})
+
+// U305 ⑤: the key must not include the callback body.
+test('unrelated callback body edits keep the baseline key', () => {
+  withTempDir((root) => {
+    const file = writeFixture(root, 'a.test.ts', "test('a', () => { alpha(1) }, 5000)\n")
+    const baselinePath = join(root, 'baseline.json')
+    checkTestTimeouts({ files: [file], baselinePath })
+    const [key] = Object.keys(JSON.parse(readFileSync(baselinePath, 'utf8')).entries)
+
+    writeFileSync(file, "test('a', () => { beta(2, 3) }, 5000)\n")
+    const checked = checkTestTimeouts({ files: [file], baselinePath })
+    assert.equal(checked.exitCode, 0)
+    assert.deepEqual(checked.newViolations, [])
+
+    checkTestTimeouts({ files: [file], baselinePath, updateBaseline: true })
+    const [rewritten] = Object.keys(JSON.parse(readFileSync(baselinePath, 'utf8')).entries)
+    assert.equal(rewritten, key)
+  })
+})
+
+// U305 ①: fewer occurrences than the baseline is a tighten candidate, not a failure.
+test('stale baseline keys are reported without failing the check', () => {
+  withTempDir((root) => {
+    const file = writeFixture(root, 'a.test.ts', 'before(fn, 5000)\nbefore(fn, 5000)\n')
+    const baselinePath = join(root, 'baseline.json')
+    checkTestTimeouts({ files: [file], baselinePath })
+
+    writeFileSync(file, 'before(fn, 5000)\n')
+    const result = checkTestTimeouts({ files: [file], baselinePath })
+    assert.equal(result.exitCode, 0)
+    assert.deepEqual(result.newViolations, [])
+    assert.equal(result.staleKeys.length, 1)
+    assert.equal(result.staleKeys[0].baselineCount, 2)
+    assert.equal(result.staleKeys[0].currentCount, 1)
+  })
+})
+
+test('CLI prints a stale-key note and stays green', () => {
+  withTempDir((root) => {
+    const baselinePath = join(root, 'baseline.json')
+    checkTestTimeouts({ files: entry.collectScopeFiles(), baselinePath })
+    const payload = JSON.parse(readFileSync(baselinePath, 'utf8'))
+    payload.entries['cloud-platform/test/gone.test.ts|hook-numeric-second|000000000000'] = 1
+    writeFileSync(baselinePath, JSON.stringify(payload))
+
+    const stdout = execFileSync(
+      process.execPath,
+      ['cloud-platform/scripts/check-test-timeouts.mjs', '--check', '--baseline', baselinePath],
+      { cwd: REPO_ROOT, encoding: 'utf8' }
+    )
+    assert.match(stdout, /baseline note: 1 baseline key\(s\) currently below their count/)
+    assert.match(stdout, /cloud-platform\/test\/gone\.test\.ts\|hook-numeric-second\|000000000000/)
+  })
 })
 
 test('baseline mode stays green when nothing is added', () => {
@@ -476,10 +568,7 @@ test(
       ])
 
       // Dirty worktree: line drift plus an uncommitted object-third violation.
-      writeFileSync(
-        file,
-        `\n${readFileSync(file, 'utf8')}test('b', () => {}, { timeout: 10 })\n`
-      )
+      writeFileSync(file, `\n${readFileSync(file, 'utf8')}test('b', () => {}, { timeout: 10 })\n`)
       const baselinePath = join(root, 'baseline.json')
 
       const clean = checkTestTimeouts({ baselinePath, fromHead: true, headRoot: root })

@@ -92,12 +92,17 @@ function readBaseline(baselinePath) {
   return counts
 }
 
-function writeBaseline(baselinePath, violations, contexts, scannedFiles) {
+function countByContentKey(violations, contexts) {
   const counts = new Map()
   for (const violation of violations) {
     const key = contentKey(violation, contexts.get(violation.file))
     counts.set(key, (counts.get(key) ?? 0) + 1)
   }
+  return counts
+}
+
+function writeBaseline(baselinePath, violations, contexts, scannedFiles) {
+  const counts = countByContentKey(violations, contexts)
   const entries = {}
   for (const key of [...counts.keys()].sort()) {
     entries[key] = counts.get(key)
@@ -138,6 +143,18 @@ function findNewViolations(violations, contexts, baseline) {
   return newViolations
 }
 
+// Non-failing report: keys whose current count fell below the baseline (tighten candidates).
+function findStaleKeys(counts, baseline) {
+  const stale = []
+  for (const [key, count] of baseline) {
+    const current = counts.get(key) ?? 0
+    if (current < count) {
+      stale.push({ key, baselineCount: count, currentCount: current })
+    }
+  }
+  return stale.sort((a, b) => a.key.localeCompare(b.key))
+}
+
 export function checkTestTimeouts({
   files = [],
   baselinePath = DEFAULT_BASELINE,
@@ -154,7 +171,7 @@ export function checkTestTimeouts({
         return {
           violations: result.violations,
           contexts: result.contexts,
-          scannedFiles: files.length
+          scannedFiles: result.scannedFiles
         }
       })()
   const created = !existsSync(baselinePath)
@@ -171,17 +188,20 @@ export function checkTestTimeouts({
       ...base,
       exitCode: 0,
       newViolations: [],
+      staleKeys: [],
       baselineWritten: true,
       baselineCount: payload.counts.total,
       source: fromHead ? scanned.ref : 'worktree'
     }
   }
   const baseline = readBaseline(baselinePath)
+  const currentCounts = countByContentKey(scanned.violations, scanned.contexts)
   const newViolations = findNewViolations(scanned.violations, scanned.contexts, baseline)
   return {
     ...base,
     exitCode: newViolations.length === 0 ? 0 : 1,
     newViolations,
+    staleKeys: findStaleKeys(currentCounts, baseline),
     baselineWritten: false,
     baselineCount: baselineTotal(baseline),
     source: fromHead ? scanned.ref : 'worktree'

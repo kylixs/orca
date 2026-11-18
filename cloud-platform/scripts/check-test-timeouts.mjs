@@ -75,6 +75,14 @@ function main(argv) {
   for (const violation of result.newViolations) {
     console.error(`${violation.file}:${violation.line} ${violation.form}`)
   }
+  if (result.baselineWritten === false && result.staleKeys.length > 0) {
+    console.log(
+      `test timeout baseline note: ${result.staleKeys.length} baseline key(s) currently below their count`
+    )
+    for (const stale of result.staleKeys) {
+      console.log(`  ${stale.key} (baseline ${stale.baselineCount}, current ${stale.currentCount})`)
+    }
+  }
   const origin = options.fromHead ? ' in HEAD' : ''
   if (result.exitCode === 1) {
     console.error(
