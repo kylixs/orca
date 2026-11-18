@@ -50,9 +50,8 @@ function dataRootWithCredential(): string {
 }
 
 function backups(root: string): string[] {
-  return readdirSync(root).filter((name) =>
-    name.startsWith(`${CLOUD_HOST_CREDENTIAL_FILENAME}.bak-`)
-  )
+  // Design name: orca-cloud-host.replaced-<epoch>.json.
+  return readdirSync(root).filter((name) => name.startsWith('orca-cloud-host.replaced-'))
 }
 
 describe('--reenroll enforcement under a live instance lock', () => {
@@ -88,6 +87,7 @@ describe('--reenroll after the instance lock is acquired', () => {
       async () => {
         expect(existsSync(join(root, CLOUD_HOST_CREDENTIAL_FILENAME))).toBe(false)
         expect(backups(root)).toHaveLength(1)
+        expect(backups(root)[0]).toMatch(/^orca-cloud-host\.replaced-\d+\.json$/)
         storeHostCredential(root, NEW)
         return {}
       },

@@ -1,5 +1,6 @@
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -13,6 +14,8 @@ import { CLOUD_HOST_CREDENTIAL_FILENAME } from '../cloud-platform/cloud-host-enr
 import { beginHostCredentialReenrollment } from './host-credential-reenrollment'
 
 const CREDENTIAL = { hostId: 'h1', hostName: 'host-a', credential: 'old', registeredAt: 1 }
+const DESIGN_BACKUP_PREFIX = 'orca-cloud-host.replaced-'
+const LEGACY_BACKUP_PREFIX = `${CLOUD_HOST_CREDENTIAL_FILENAME}.bak-`
 
 function temporaryDataRoot(): string {
   return mkdtempSync(join(tmpdir(), 'orca-reenroll-'))
@@ -24,15 +27,17 @@ function seedCredential(dataRoot: string): string {
   return path
 }
 
+function replacementBackups(dataRoot: string): string[] {
+  return readdirSync(dataRoot).filter((entry) => entry.startsWith(DESIGN_BACKUP_PREFIX))
+}
+
 function backupPathOf(dataRoot: string): string {
-  const name = readdirSync(dataRoot).find((entry) =>
-    entry.startsWith(`${CLOUD_HOST_CREDENTIAL_FILENAME}.bak-`)
-  )
-  return join(dataRoot, name ?? `${CLOUD_HOST_CREDENTIAL_FILENAME}.bak-missing`)
+  const name = replacementBackups(dataRoot)[0]
+  return join(dataRoot, name ?? `${DESIGN_BACKUP_PREFIX}missing.json`)
 }
 
 describe('--reenroll credential transaction', () => {
-  it('renames the old credential to a 0600 backup before re-registration', () => {
+  it('renames the old credential to a 0600 orca-cloud-host.replaced-<epoch>.json backup', () => {
     const dataRoot = temporaryDataRoot()
     const credentialPath = seedCredential(dataRoot)
 
@@ -40,7 +45,9 @@ describe('--reenroll credential transaction', () => {
 
     expect(transaction).not.toBeNull()
     expect(existsSync(credentialPath)).toBe(false)
-    const backupPath = join(dataRoot, `${CLOUD_HOST_CREDENTIAL_FILENAME}.bak-1700000000000`)
+    // Rename is the atomic step: exactly one new file, no temp/partial artifact.
+    expect(readdirSync(dataRoot)).toEqual([`${DESIGN_BACKUP_PREFIX}1700000000000.json`])
+    const backupPath = join(dataRoot, `${DESIGN_BACKUP_PREFIX}1700000000000.json`)
     expect(JSON.parse(readFileSync(backupPath, 'utf8'))).toEqual(CREDENTIAL)
     expect(statSync(backupPath).mode & 0o777).toBe(0o600)
   })
@@ -52,9 +59,7 @@ describe('--reenroll credential transaction', () => {
     beginHostCredentialReenrollment(dataRoot)?.rollback()
 
     expect(JSON.parse(readFileSync(credentialPath, 'utf8'))).toEqual(CREDENTIAL)
-    expect(existsSync(join(dataRoot, `${CLOUD_HOST_CREDENTIAL_FILENAME}.bak-${Date.now()}`))).toBe(
-      false
-    )
+    expect(replacementBackups(dataRoot)).toEqual([])
   })
 
   it('keeps a credential written after a late failure and removes the dead backup', () => {
@@ -95,5 +100,45 @@ describe('--reenroll credential transaction', () => {
 
   it('does nothing when there is no credential to replace', () => {
     expect(beginHostCredentialReenrollment(temporaryDataRoot())).toBeNull()
+  })
+
+  it('removes legacy .bak- leftovers once the live credential is moved aside', () => {
+    const dataRoot = temporaryDataRoot()
+    seedCredential(dataRoot)
+    writeFileSync(join(dataRoot, `${LEGACY_BACKUP_PREFIX}1`), '{"dead":true}')
+    writeFileSync(join(dataRoot, `${LEGACY_BACKUP_PREFIX}2`), '{"dead":true}')
+
+    beginHostCredentialReenrollment(dataRoot)
+
+    expect(readdirSync(dataRoot).filter((name) => name.startsWith(LEGACY_BACKUP_PREFIX))).toEqual(
+      []
+    )
+    expect(replacementBackups(dataRoot)).toHaveLength(1)
+  })
+
+  it('keeps legacy .bak- leftovers when there is no live credential to replace', () => {
+    const dataRoot = temporaryDataRoot()
+    const legacy = join(dataRoot, `${LEGACY_BACKUP_PREFIX}1`)
+    writeFileSync(legacy, '{"only-copy":true}')
+
+    expect(beginHostCredentialReenrollment(dataRoot)).toBeNull()
+
+    // It may be the only recoverable credential; never delete it blind.
+    expect(existsSync(legacy)).toBe(true)
+  })
+
+  it('leaves the credential and legacy backups intact when the atomic rename fails', () => {
+    const dataRoot = temporaryDataRoot()
+    const credentialPath = seedCredential(dataRoot)
+    const legacy = join(dataRoot, `${LEGACY_BACKUP_PREFIX}1`)
+    writeFileSync(legacy, '{"dead":true}')
+    // A directory at the target path makes rename(2) fail before anything moves.
+    const blocked = join(dataRoot, `${DESIGN_BACKUP_PREFIX}1700000000000.json`)
+    mkdirSync(blocked)
+
+    expect(() => beginHostCredentialReenrollment(dataRoot, () => 1_700_000_000_000)).toThrow()
+
+    expect(JSON.parse(readFileSync(credentialPath, 'utf8'))).toEqual(CREDENTIAL)
+    expect(existsSync(legacy)).toBe(true)
   })
 })
