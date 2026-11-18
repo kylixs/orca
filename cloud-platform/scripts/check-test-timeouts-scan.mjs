@@ -1,7 +1,7 @@
 // Static scan: node:test ignores numeric timeout positions (Node 24).
 // Numeric third arg (test/it and hooks) and numeric second arg (hooks) are silently
 // dropped, as is an object third arg on test/it. See ledger
-// U287/U290/U291/U295/U297/U303/U305/U306/U308.
+// U287/U290/U291/U295/U297/U303/U305/U306/U308/U309.
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -286,8 +286,11 @@ function stripOuterParens(arg) {
   return text
 }
 
-// Top-level binary operator or comma outside nested brackets. A leading unary sign
-// does not count, so `-a` stays one operand while `-a + b` does not.
+// Top-level operator or comma outside nested brackets. A leading unary sign does not
+// count, so `-a` stays one operand while `-a + b` does not. [U309]
+const WORD_OPERATORS = new Set(['in', 'instanceof'])
+const SYMBOL_OPERATORS = new Set(['*', '/', '%', '?', '|', '&', '^', '=', '<', '>'])
+
 function hasTopLevelOperator(text) {
   let depth = 0
   for (let index = 0; index < text.length; index += 1) {
@@ -300,11 +303,32 @@ function hasTopLevelOperator(text) {
       if (char === ',') {
         return true
       }
-      if (
-        (char === '+' || char === '-' || char === '*' || char === '/' || char === '%') &&
-        index > 0
-      ) {
+      if (char === '+' || char === '-') {
+        if (index > 0) {
+          return true
+        }
+        continue
+      }
+      if (char === '!') {
+        // `!a` is unary; only `!=`/`!==` are binary.
+        if (text[index + 1] === '=') {
+          return true
+        }
+        continue
+      }
+      if (SYMBOL_OPERATORS.has(char)) {
         return true
+      }
+      if (/[A-Za-z_$]/.test(char)) {
+        let end = index + 1
+        while (end < text.length && /[\w$]/.test(text[end])) {
+          end += 1
+        }
+        // A dotted name is a property (`obj.in`), never the `in` operator.
+        if (text[index - 1] !== '.' && WORD_OPERATORS.has(text.slice(index, end))) {
+          return true
+        }
+        index = end - 1
       }
     }
   }
@@ -402,12 +426,20 @@ function canonicalNumericLiteral(body, negative) {
   }
 }
 
-const SPECIAL_NUMERIC_IDENTIFIER = /^(?:Infinity|NaN)$/
+// Member-access spellings Node ignores just like the bare identifiers. [U309]
+const SPECIAL_NUMERIC_IDENTIFIER =
+  /^(?:Infinity|NaN|Number\.(?:POSITIVE_INFINITY|NEGATIVE_INFINITY|NaN)|globalThis\.(?:Infinity|NaN))$/
+// A TS `as` assertion does not change the value; the type stays in the text key. [U309]
+const TS_AS_ASSERTION = /\s+as\s+\S[\s\S]*$/
 
-// `Infinity`, `-Infinity` and `NaN` are silently ignored by node:test too, but they
-// are identifiers rather than numeric literals. [U308]
+// `Infinity`, `-Infinity`, `NaN` and their member-access spellings are silently
+// ignored by node:test too, but they are identifiers rather than numeric literals. [U308]
 function isSpecialNumericTimeout(arg) {
-  return SPECIAL_NUMERIC_IDENTIFIER.test(peelNumericLiteral(arg).body)
+  const body = peelNumericLiteral(arg).body
+  if (SPECIAL_NUMERIC_IDENTIFIER.test(body)) {
+    return true
+  }
+  return SPECIAL_NUMERIC_IDENTIFIER.test(body.replace(TS_AS_ASSERTION, '').trim())
 }
 
 function isNumericLiteral(arg) {

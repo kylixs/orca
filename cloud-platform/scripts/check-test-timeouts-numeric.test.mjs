@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { scanSource } from './check-test-timeouts.mjs'
-import { callSignature } from './check-test-timeouts-scan.mjs'
+import { callSignature, scanSources } from './check-test-timeouts-scan.mjs'
 
 // U306: every numeric literal form Node silently drops from a timeout position.
 test('flags every numeric literal form node:test silently ignores', () => {
@@ -122,6 +122,105 @@ test('non-finite numeric literals keep a raw marker without crashing', () => {
   assert.equal(key('1e999'), "test('a',raw:1e999)")
   assert.equal(key('-1e999'), "test('a',raw:-1e999)")
   assert.notEqual(key('1e999'), key('Infinity'))
+})
+
+// U309 ①: folding must not conflate a sign applied to a whole expression with a sign
+// applied to its first operand. Every non-arithmetic operator group keeps its own key.
+const NON_ARITHMETIC_OPERATOR_PAIRS = [
+  ['a ? b : c', 'conditional'],
+  ['a || b', 'logical-or'],
+  ['a && b', 'logical-and'],
+  ['a ?? b', 'nullish'],
+  ['a === b', 'strict-equal'],
+  ['a !== b', 'strict-not-equal'],
+  ['a == b', 'loose-equal'],
+  ['a != b', 'loose-not-equal'],
+  ['a < b', 'less-than'],
+  ['a > b', 'greater-than'],
+  ['a <= b', 'less-or-equal'],
+  ['a >= b', 'greater-or-equal'],
+  ['a instanceof B', 'instanceof'],
+  ['a in b', 'in'],
+  ['a & b', 'bit-and'],
+  ['a | b', 'bit-or'],
+  ['a ^ b', 'bit-xor'],
+  ['a << b', 'shift-left'],
+  ['a >> b', 'shift-right'],
+  ['a >>> b', 'shift-right-unsigned']
+]
+
+test('unary-sign folding keeps every non-arithmetic operator group distinct', () => {
+  const key = (spelling) => callSignature('test', ["'a'", '() => {}', spelling])
+  for (const [expression, label] of NON_ARITHMETIC_OPERATOR_PAIRS) {
+    assert.notEqual(key(`-(${expression})`), key(`-${expression}`), label)
+  }
+  // Redundant parens still fold, and a unary `!` is not a binary operator.
+  assert.equal(key('-((a || b))'), key('-(a || b)'))
+  assert.equal(key('-(((DURATION_S * 1_000)))'), key('-(DURATION_S * 1_000)'))
+  assert.equal(key('-(!a)'), key('-!a'))
+})
+
+// U309 ①: comments are blanked by sanitize before folding, so operator- or comma-looking
+// text inside them cannot change a signature.
+test('fold operators and commas inside comments are not seen', () => {
+  const source = [
+    "test('a', fn, -(TEST_TIMEOUT * 1_000))",
+    "test('b', fn, -((TEST_TIMEOUT /* ? : || && === */ * 1_000)))",
+    "test('c', fn, TEST_TIMEOUT * 1_000)",
+    "test('d', fn, TEST_TIMEOUT /* a, b */ * 1_000)"
+  ].join('\n')
+  const { violations, contexts } = scanSources([{ file: 'lex.ts', source: `${source}\n` }])
+  assert.equal(violations.length, 4)
+  const signatures = violations.map((violation) =>
+    contexts.get('lex.ts').signatures.get(violation)
+  )
+  assert.equal(signatures[0], signatures[1])
+  assert.equal(signatures[2], signatures[3])
+  assert.notEqual(signatures[0], signatures[2])
+})
+
+// U309 ②: Node also silently ignores member-access and asserted non-finite spellings.
+test('flags member-access and asserted non-finite specials', () => {
+  const source = [
+    "test('a', fn, Number.POSITIVE_INFINITY)",
+    "test('b', fn, Number.NEGATIVE_INFINITY)",
+    "test('c', fn, Number.NaN)",
+    'before(fn, globalThis.Infinity)',
+    'afterEach(fn, globalThis.NaN)',
+    "it('d', fn, Infinity as number)",
+    'before(fn, -Number.POSITIVE_INFINITY)',
+    "test('e', fn, ((globalThis.NaN)))",
+    'after(fn, opts, Infinity as number)'
+  ].join('\n')
+  assert.deepEqual(scanSource(`${source}\n`), [
+    { file: '<memory>', line: 1, form: 'numeric-special' },
+    { file: '<memory>', line: 2, form: 'numeric-special' },
+    { file: '<memory>', line: 3, form: 'numeric-special' },
+    { file: '<memory>', line: 4, form: 'numeric-special' },
+    { file: '<memory>', line: 5, form: 'numeric-special' },
+    { file: '<memory>', line: 6, form: 'numeric-special' },
+    { file: '<memory>', line: 7, form: 'numeric-special' },
+    { file: '<memory>', line: 8, form: 'numeric-special' },
+    { file: '<memory>', line: 9, form: 'numeric-special' }
+  ])
+})
+
+test('does not flag lookalikes of the newly recognized specials', () => {
+  const source = [
+    "test('a', fn, isFinite)",
+    "test('b', fn, Infinity2)",
+    "test('c', fn, myNaN)",
+    "test('d', fn, Number.MAX_SAFE_INTEGER)",
+    "test('e', fn, globalThis.isNaN)"
+  ].join('\n')
+  assert.deepEqual(scanSource(`${source}\n`), [])
+})
+
+// U309 ②: `Infinity as number` is left as text (no evaluation, type kept in the key).
+test('asserted specials stay text-normalized in the baseline key', () => {
+  const key = (spelling) => callSignature('test', ["'a'", '() => {}', spelling])
+  assert.equal(key('Infinity as number'), "test('a',Infinityasnumber)")
+  assert.equal(key('Number.NaN'), "test('a',Number.NaN)")
 })
 
 // U308 ④: boundary literal forms were only covered in test position before.
