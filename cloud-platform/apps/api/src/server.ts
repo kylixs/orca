@@ -285,22 +285,97 @@ function parseRefreshGraceMs(value: number | string | null | undefined): number 
 
 type ReadBodyResult = { body: Record<string, unknown>; oversized: boolean }
 
+/**
+ * U251: a declared overage up to this budget is discarded before the refusal so
+ * a client still writing the body reads the 413 instead of a connection reset.
+ * The drain is also time-boxed; an endless stream never holds the connection.
+ */
+const OVERSIZE_DRAIN_LIMIT_BYTES = 2 * 1024 * 1024
+const OVERSIZE_DRAIN_TIMEOUT_MS = 250
+
+async function drainDeclaredBody(req: IncomingMessage): Promise<void> {
+  await new Promise<void>((resolve) => {
+    let drained = 0
+    let done = false
+    const finish = (): void => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      req.off('data', onData)
+      req.off('end', finish)
+      resolve()
+    }
+    const onData = (chunk: Buffer): void => {
+      drained += chunk.length
+      if (drained > OVERSIZE_DRAIN_LIMIT_BYTES) {
+        req.pause()
+        finish()
+      }
+    }
+    const timer = setTimeout(() => {
+      req.pause()
+      finish()
+    }, OVERSIZE_DRAIN_TIMEOUT_MS)
+    req.on('data', onData)
+    req.on('end', finish)
+    // Late resets from the peer must stay swallowed.
+    req.on('error', finish)
+  })
+}
+
+/**
+ * U251: an over-cap body is refused at the first byte past the cap, never
+ * drained without a bound. A `content-length` far over the cap is refused from
+ * the header alone; a modest overage is discarded first (see above) so the 413
+ * reaches a client that is mid-write. Callers answering 413 close the
+ * connection; internal callers keep their empty-body semantics and close too.
+ */
 async function readBody(req: IncomingMessage, maxBytes?: number): Promise<ReadBodyResult> {
+  const declaredLength = Number(req.headers['content-length'])
+  if (maxBytes !== undefined && Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    if (declaredLength <= OVERSIZE_DRAIN_LIMIT_BYTES) await drainDeclaredBody(req)
+    return { body: {}, oversized: true }
+  }
   const chunks: Buffer[] = []
   let size = 0
   let oversized = false
-  for await (const chunk of req) {
-    const buffer = chunk as Buffer
-    size += buffer.length
-    // Keep draining an oversized body so the connection stays usable, but
-    // discard it: the caller treats it as no body.
-    if (maxBytes !== undefined && size > maxBytes) {
-      oversized = true
-      chunks.length = 0
-      continue
+  let settled = false
+  // Why not `for await`: returning early destroys the request (and its socket)
+  // before the caller can send the 413.
+  await new Promise<void>((resolve, reject) => {
+    const settle = (): void => {
+      if (settled) return
+      settled = true
+      req.off('data', onData)
+      req.off('end', onEnd)
+      // The error listener stays: a late reset from the still-streaming peer
+      // must not surface as an uncaught 'error' after the refusal is sent.
+      resolve()
     }
-    if (!oversized) chunks.push(buffer)
-  }
+    const onData = (chunk: Buffer): void => {
+      size += chunk.length
+      if (maxBytes !== undefined && size > maxBytes) {
+        oversized = true
+        chunks.length = 0
+        // Stop consuming: the caller closes instead of draining the stream.
+        req.pause()
+        settle()
+        return
+      }
+      chunks.push(chunk)
+    }
+    const onEnd = (): void => settle()
+    const onError = (error: Error): void => {
+      if (settled) return
+      settled = true
+      req.off('data', onData)
+      req.off('end', onEnd)
+      reject(error)
+    }
+    req.on('data', onData)
+    req.on('end', onEnd)
+    req.on('error', onError)
+  })
   if (oversized) return { body: {}, oversized: true }
   if (chunks.length === 0) return { body: {}, oversized: false }
   try {
@@ -323,6 +398,28 @@ async function readJson(
 }
 
 /**
+ * U251: internal ingress keeps its discard-the-whole-body semantics, but an
+ * oversized stream is closed instead of drained to completion.
+ */
+async function readInternalBody(
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<Record<string, unknown>> {
+  const { body, oversized } = await readBody(req, INTERNAL_BODY_MAX_BYTES)
+  if (oversized) res.setHeader('connection', 'close')
+  return body
+}
+
+/**
+ * U251: a refused body was not consumed, so close instead of letting Node drain
+ * it to preserve keep-alive. Only oversized requests lose the connection.
+ */
+function rejectOversizedBody(res: ServerResponse, traceId: string): void {
+  res.setHeader('connection', 'close')
+  error(res, 413, 'PAYLOAD_TOO_LARGE', '请求体过大。', traceId)
+}
+
+/**
  * U250 tier 2: a sensitive write's body is its only input, so an oversized one
  * is refused before any mutation or audit. Returns null after sending the 413.
  * U251: heartbeat overrides the default, since one beat carries a whole batch.
@@ -335,7 +432,7 @@ async function readSensitiveWriteBody(
 ): Promise<Record<string, unknown> | null> {
   const { body, oversized } = await readBody(req, maxBytes)
   if (!oversized) return body
-  error(res, 413, 'PAYLOAD_TOO_LARGE', '请求体过大。', traceId)
+  rejectOversizedBody(res, traceId)
   return null
 }
 
@@ -347,9 +444,12 @@ const LOGOUT_BODY_MAX_BYTES = 16 * 1024
 
 /**
  * U250: internal ingress calls are small control messages; an oversized body is
- * dropped whole (readJson turns it into `{}`) so peers keep their old semantics.
+ * dropped whole so peers keep their old semantics.
+ * U251 P3: `internal/audit/file-events` accepts metadata up to
+ * `FILE_EVENT_METADATA_LIMIT` (4096 B) plus top-level fields, so 4 KiB rejected
+ * legal events; 8 KiB covers the full envelope.
  */
-const INTERNAL_BODY_MAX_BYTES = 4 * 1024
+const INTERNAL_BODY_MAX_BYTES = 8 * 1024
 
 /** U244: the force-offline body only carries an optional audit note. */
 const FORCE_OFFLINE_BODY_MAX_BYTES = 4 * 1024
@@ -3616,7 +3716,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       const loginBody = await readBody(req, AUTH_BODY_MAX_BYTES)
       if (loginBody.oversized) {
         res.setHeader('cache-control', 'no-store')
-        return error(res, 413, 'PAYLOAD_TOO_LARGE', '请求体过大。', traceId)
+        return rejectOversizedBody(res, traceId)
       }
       const body = loginBody.body
       const username = String(body.username ?? '')
@@ -3767,7 +3867,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         const cookieBody = await readBody(req, AUTH_BODY_MAX_BYTES)
         if (cookieBody.oversized) {
           res.setHeader('cache-control', 'no-store')
-          return error(res, 413, 'PAYLOAD_TOO_LARGE', '请求体过大。', traceId)
+          return rejectOversizedBody(res, traceId)
         }
         const body = cookieBody.body
         // Re-check after the body read: a concurrent revoke must still 401.
@@ -3914,7 +4014,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       const fallbackBody = await readBody(req, AUTH_BODY_MAX_BYTES)
       if (fallbackBody.oversized) {
         res.setHeader('cache-control', 'no-store')
-        return error(res, 413, 'PAYLOAD_TOO_LARGE', '请求体过大。', traceId)
+        return rejectOversizedBody(res, traceId)
       }
       const body = fallbackBody.body
       // U235/U236: readJson normalises null/scalars to {}; an array has no
@@ -4005,7 +4105,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       const handoff = await readBody(req, AUTH_BODY_MAX_BYTES)
       if (handoff.oversized) {
         res.setHeader('cache-control', 'no-store')
-        return error(res, 413, 'PAYLOAD_TOO_LARGE', '请求体过大。', traceId)
+        return rejectOversizedBody(res, traceId)
       }
       if (hasAmbiguousRefreshCookie(req)) {
         clearRefreshCookie(res)
@@ -5116,9 +5216,11 @@ export function createApp(config: ApiConfig): ApiHandle {
             permission: 'platform:admin'
           })
         }
+        // U251 P3: same order as the other tiers — audit availability first, so
+        // a broken chain answers 503 even when the body is oversized.
+        if (!auditAllowsMutations(res, traceId)) return
         const body = await readSensitiveWriteBody(req, res, traceId)
         if (!body) return
-        if (!auditAllowsMutations(res, traceId)) return
         // `inherit: true` is the only way back to following the global default:
         // it drops the explicit flag and ignores any downloadPolicy in the body.
         // Old clients never send it, so their requests take the pinned branch.
@@ -6222,7 +6324,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (token !== internalToken) {
         return error(res, 401, 'INTERNAL_TOKEN_INVALID', '内部令牌无效。', traceId)
       }
-      const outcome = await recordFileEvent(await readJson(req, INTERNAL_BODY_MAX_BYTES), traceId)
+      const outcome = await recordFileEvent(await readInternalBody(req, res), traceId)
       if (outcome.retryAfter) res.setHeader('retry-after', '60')
       return json(res, outcome.status, outcome.body)
     }
@@ -6809,7 +6911,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (token !== internalToken) {
         return error(res, 401, 'INTERNAL_TOKEN_INVALID', '内部令牌无效。', traceId)
       }
-      const body = await readJson(req, INTERNAL_BODY_MAX_BYTES)
+      const body = await readInternalBody(req, res)
       const installNonce = parseInstallNonce(body)
       if (installNonce === null) {
         return error(

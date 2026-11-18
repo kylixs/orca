@@ -1,5 +1,6 @@
 import { after, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
+import { Agent, request as httpRequest } from 'node:http'
 import { createApp, type ApiHandle } from '../src/server.ts'
 
 /**
@@ -10,7 +11,7 @@ import { createApp, type ApiHandle } from '../src/server.ts'
 
 const ORIGIN = 'https://console.u249.example'
 const AUTH_BODY_MAX_BYTES = 16 * 1024
-const INTERNAL_BODY_MAX_BYTES = 4 * 1024
+const INTERNAL_BODY_MAX_BYTES = 8 * 1024
 const SENSITIVE_WRITE_BODY_MAX_BYTES = 16 * 1024
 const DENIED_AUDIT_BODY_MAX_BYTES = 4 * 1024
 const HEARTBEAT_BODY_MAX_BYTES = 1024 * 1024
@@ -231,6 +232,156 @@ function seedHandoff(app: ApiHandle, code: string): void {
     userId: user.id,
     projectId: 'proj_payment',
     expiresAt: Date.now() + 60_000
+  })
+}
+
+/**
+ * U251: declares `content-length` above the cap but only writes a prefix. The
+ * server must answer from the header alone, without waiting for the body.
+ */
+function declaredOversizedRequest(
+  base: string,
+  path: string,
+  declared: number
+): Promise<{ status: number; connection: string | undefined; body: string; elapsedMs: number }> {
+  return new Promise((resolve, reject) => {
+    const started = Date.now()
+    const req = httpRequest(
+      `${base}${path}`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'content-length': String(declared) }
+      },
+      (res) => {
+        let body = ''
+        res.setEncoding('utf8')
+        res.on('data', (chunk: string) => {
+          body += chunk
+        })
+        res.on('end', () => {
+          const elapsedMs = Date.now() - started
+          clearTimeout(deadline)
+          req.destroy()
+          resolve({
+            status: res.statusCode ?? 0,
+            connection: res.headers.connection,
+            body,
+            elapsedMs
+          })
+        })
+      }
+    )
+    // A server that waits for the rest of the declared body must fail, not hang.
+    const deadline = setTimeout(() => {
+      req.destroy()
+      reject(new Error('no 413 before the deadline: the server waited for the full body'))
+    }, 1500)
+    req.on('error', reject)
+    req.write('{"username":"admin"')
+  })
+}
+
+/**
+ * U251: streams a chunked body (no `content-length`) past the cap until the
+ * server closes. Reports when the 413 and the socket close arrived.
+ */
+function streamingOversizedRequest(
+  base: string,
+  path: string
+): Promise<{
+  status: number
+  connection: string | undefined
+  responseMs: number
+  closeMs: number
+  sentBytes: number
+}> {
+  return new Promise((resolve, reject) => {
+    const started = Date.now()
+    let status = 0
+    let connection: string | undefined
+    let responseMs = 0
+    let closeMs = 0
+    let sentBytes = 0
+    let headersReceived = false
+    let socketClosed = false
+    let settled = false
+    const finish = (): void => {
+      if (!headersReceived || !socketClosed || settled) return
+      settled = true
+      clearInterval(writeTimer)
+      clearTimeout(deadline)
+      resolve({ status, connection, responseMs, closeMs, sentBytes })
+    }
+    const req = httpRequest(
+      `${base}${path}`,
+      { method: 'POST', headers: { 'content-type': 'application/json' } },
+      (res) => {
+        responseMs = Date.now() - started
+        status = res.statusCode ?? 0
+        connection = res.headers.connection
+        headersReceived = true
+        // The refusal arrived: stop feeding the stream and let the socket close.
+        clearInterval(writeTimer)
+        res.resume()
+        finish()
+      }
+    )
+    req.on('socket', (socket) => {
+      socket.once('close', () => {
+        closeMs = Date.now() - started
+        socketClosed = true
+        finish()
+      })
+    })
+    // A reset after the headers is expected; only an early failure is fatal.
+    req.on('error', (error: Error) => {
+      if (headersReceived || settled) return
+      clearInterval(writeTimer)
+      clearTimeout(deadline)
+      reject(error)
+    })
+    const chunk = Buffer.alloc(8 * 1024, 'x')
+    const writeTimer = setInterval(() => {
+      if (headersReceived) return
+      try {
+        req.write(chunk)
+        sentBytes += chunk.length
+      } catch {
+        // Writing after the reset is the expected outcome.
+      }
+    }, 2)
+    // A server that drains the whole stream must fail, not hang.
+    const deadline = setTimeout(() => {
+      clearInterval(writeTimer)
+      req.destroy()
+      reject(new Error('no 413 before the deadline: the stream was drained to completion'))
+    }, 2000)
+  })
+}
+
+function agentPost(
+  agent: Agent,
+  url: string,
+  body: string
+): Promise<{ status: number; reused: boolean }> {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest(
+      url,
+      {
+        method: 'POST',
+        agent,
+        headers: {
+          'content-type': 'application/json',
+          'content-length': String(Buffer.byteLength(body))
+        }
+      },
+      (res) => {
+        res.resume()
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, reused: req.reusedSocket }))
+      }
+    )
+    req.on('error', reject)
+    req.end(body)
   })
 }
 
@@ -497,7 +648,7 @@ describe('U250 档 2 已鉴权敏感写 body 上限（16 KiB）', () => {
   })
 })
 
-describe('U250 内部端点 body 上限（4 KiB，超限丢弃整包）', () => {
+describe('U250/U251 内部端点 body 上限（8 KiB，超限丢弃整包）', () => {
   test('internal relay-endpoint：超限按空 body 处理，非对象归一化为 {}', async () => {
     const base = await start()
     const valid = JSON.stringify({ id: 'u250-relay', port: 28450 })
@@ -545,6 +696,24 @@ describe('U250 内部端点 body 上限（4 KiB，超限丢弃整包）', () => 
     const scalar = await postInternal(base, '/v1/internal/audit/file-events', 'null')
     assert.equal(scalar.status, 400)
     assert.equal(errorCode((await scalar.json()) as Json), 'INVALID_FILE_EVENT')
+  })
+
+  test('file-events：4096 B metadata + 顶层字段的合法包（>4 KiB）不被丢弃', async () => {
+    const base = await start()
+    // A real event may carry metadata up to FILE_EVENT_METADATA_LIMIT (4096 B)
+    // plus its envelope; the old 4 KiB cap turned that legal shape into `{}`.
+    const envelope = JSON.stringify({
+      eventType: 'file_download',
+      result: 'success',
+      subject: 's'.repeat(4 * 1024),
+      metadata: { path: 'd'.repeat(1024) }
+    })
+    const bytes = Buffer.byteLength(envelope)
+    assert.ok(bytes > 4 * 1024, `fixture is ${bytes} B, must exceed the old cap`)
+    assert.ok(bytes < INTERNAL_BODY_MAX_BYTES, `fixture is ${bytes} B, must fit the new cap`)
+
+    const res = await postInternal(base, '/v1/internal/audit/file-events', envelope)
+    assert.equal(res.status, 200, await res.text())
   })
 })
 
@@ -770,4 +939,92 @@ describe('U251 heartbeat 独立 body 上限（1 MiB）', () => {
     assert.equal(errorCode((await beat.json()) as Json), 'PAYLOAD_TOO_LARGE')
     assert.equal(app.store.hosts.get(hostId)?.status, 'online', 'the refused beat changed nothing')
   })
+})
+
+describe('U251 超限早拒（不等待、不排空请求体）', () => {
+  test('声明 content-length 远超上限：只发少量前缀即收到 413 且 Connection: close', async () => {
+    const base = await start()
+    // 8 MiB is past the bounded drain budget, so the refusal must come from the
+    // header alone. A modest overage is drained first for client compatibility.
+    const { status, connection, body, elapsedMs } = await declaredOversizedRequest(
+      base,
+      '/v1/auth/login',
+      8 * 1024 * 1024
+    )
+
+    assert.equal(status, 413)
+    assert.equal(connection, 'close')
+    assert.equal(errorCode(JSON.parse(body) as Json), 'PAYLOAD_TOO_LARGE')
+    assert.ok(elapsedMs < 1000, `the refusal waited ${elapsedMs}ms for the declared body`)
+  }, { timeout: 5000 })
+
+  test('chunked 持续发送超限：立即 413、连接关闭且不再消费', async () => {
+    const base = await start()
+    const { status, connection, responseMs, closeMs, sentBytes } =
+      await streamingOversizedRequest(base, '/v1/auth/login')
+
+    assert.equal(status, 413)
+    assert.equal(connection, 'close')
+    assert.ok(responseMs < 1000, `the refusal arrived after ${responseMs}ms`)
+    assert.ok(closeMs >= responseMs, 'the connection closes only after the refusal')
+    assert.ok(sentBytes > AUTH_BODY_MAX_BYTES, `the client streamed ${sentBytes} B before the close`)
+  }, { timeout: 5000 })
+
+  test('keep-alive：未超限的正常请求继续复用同一连接', async () => {
+    const base = await start()
+    const agent = new Agent({ keepAlive: true, maxSockets: 1 })
+    try {
+      const first = await agentPost(
+        agent,
+        `${base}/v1/auth/login`,
+        JSON.stringify({ username: 'admin', password: 'Adm1n!', deviceName: 'u251-ka-1' })
+      )
+      const second = await agentPost(
+        agent,
+        `${base}/v1/auth/login`,
+        JSON.stringify({ username: 'admin', password: 'Adm1n!', deviceName: 'u251-ka-2' })
+      )
+
+      assert.equal(first.status, 200)
+      assert.equal(second.status, 200)
+      assert.equal(first.reused, false, 'the first request opens the connection')
+      assert.equal(second.reused, true, 'a normal request keeps the connection usable')
+    } finally {
+      agent.destroy()
+    }
+  }, { timeout: 5000 })
+})
+
+describe('U251 P3 审计可用性检查先于 policy 读取', () => {
+  test('审计链损坏 + 超限 body → 503 AUDIT_CHAIN_BROKEN，而非 413', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u251-policy-order')
+
+    if (app.store.audit.length === 0) {
+      app.audit.append({
+        eventType: 'login',
+        actor: 'admin',
+        targetType: 'session',
+        targetId: null,
+        result: 'success',
+        traceId: 'u251-seed'
+      })
+    }
+    const first = app.store.audit[0]
+    assert.ok(first)
+    first.metadata = { ...first.metadata, tampered: true }
+    assert.equal(app.audit.verify().ok, false, 'the chain is now broken')
+
+    const res = await authedJson(
+      base,
+      admin.token,
+      'PUT',
+      `/v1/projects/${PROJECT_ID}/policy`,
+      oversizedBody({ downloadPolicy: 'allow' })
+    )
+
+    assert.equal(res.status, 503)
+    assert.equal(errorCode((await res.json()) as Json), 'AUDIT_CHAIN_BROKEN')
+    assert.equal(app.store.projects.get(PROJECT_ID)?.downloadPolicy, 'deny', 'nothing was written')
+  }, { timeout: 5000 })
 })
