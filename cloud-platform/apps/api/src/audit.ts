@@ -696,7 +696,7 @@ export class AuditChain {
     for (let index = events.length - 1; index >= 0; index -= 1) {
       const event = events[index]
       if (!event) continue
-      if (filter.cursor && event.seq >= filter.cursor) continue
+      if (filter.cursor !== undefined && event.seq >= filter.cursor) continue
       if (filter.since && event.ts < filter.since) continue
       if (filter.until !== undefined && event.ts > filter.until) continue
       if (
