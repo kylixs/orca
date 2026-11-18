@@ -1,6 +1,8 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   assertInstallTemplateInterpolations,
@@ -17,6 +19,7 @@ import {
  * from app.js source, never re-typed here, so drift in the wizard cannot pass.
  * U276: a transfer cut mid-body leaves a partial file, so the failure case
  * writes bytes before failing and asserts the wrapper removed them.
+ * U281: a signal mid-download must clean the partial file via the EXIT trap.
  */
 
 const INSTALL = installCommandTemplateSource()
@@ -32,6 +35,89 @@ const runLiner = (
 /** Files the one-liner itself creates: anything else in TMPDIR is not residue. */
 function installScripts(run: OneLinerRun): string[] {
   return run.kept.filter((name) => /^orca-install-.*\.sh$/.test(name))
+}
+
+// U281: curl starts writing, proves it with a marker, then hangs so the shell
+// can be interrupted mid-transfer (unlike the sync harness, which must reap).
+const INTERRUPTED_CURL = `#!/usr/bin/env bash
+prev=""
+out=""
+for arg in "$@"; do
+  if [ "$prev" = "-o" ]; then out="$arg"; fi
+  prev="$arg"
+done
+[ -n "$out" ] || exit 2
+printf '#!/usr/bin/env bash\\necho U281-PARTIAL\\n' > "$out"
+: > "$HOME/u281-download-started"
+sleep 60
+`
+
+type InterruptedRun = {
+  code: number | null
+  signal: NodeJS.Signals | null
+  /** Files present mid-download; the script proves bytes were written. */
+  during: string[]
+  partialBody: string
+  /** Files left after the shell exited. */
+  kept: string[]
+  stderr: string
+}
+
+function waitForDownloadStart(marker: string, timeoutMs = 5000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + timeoutMs
+    const poll = (): void => {
+      if (existsSync(marker)) {
+        resolve()
+        return
+      }
+      if (Date.now() > deadline) {
+        reject(new Error('timed out waiting for the download to start'))
+        return
+      }
+      setTimeout(poll, 20)
+    }
+    poll()
+  })
+}
+
+/** Runs the one-liner in its own process group, interrupts it mid-download. */
+async function runInterrupted(): Promise<InterruptedRun> {
+  const home = mkdtempSync(join(tmpdir(), 'orca-u281-'))
+  const bin = join(home, 'bin')
+  mkdirSync(bin)
+  writeFileSync(join(bin, 'curl'), INTERRUPTED_CURL, { mode: 0o755 })
+  const tmpDir = join(home, 'tmp')
+  mkdirSync(tmpDir)
+  const child = spawn('bash', ['-c', installCommand(INSTALL_URL)], {
+    cwd: home,
+    detached: true,
+    env: { PATH: `${bin}:/usr/bin:/bin`, HOME: home, TMPDIR: tmpDir },
+    stdio: ['ignore', 'ignore', 'pipe']
+  })
+  let stderr = ''
+  child.stderr?.on('data', (chunk: Buffer) => {
+    stderr += chunk.toString()
+  })
+  // Attach before the kill: a fast exit must not race the listener.
+  const exited = new Promise<[number | null, NodeJS.Signals | null]>((resolve) => {
+    child.on('exit', (code, signal) => resolve([code, signal]))
+  })
+  try {
+    await waitForDownloadStart(join(home, 'u281-download-started'))
+    const during = readdirSync(tmpDir)
+    const partial = during.find((name) => /^orca-install-.*\.sh$/.test(name))
+    const partialBody = partial ? readFileSync(join(tmpDir, partial), 'utf8') : ''
+    assert.notEqual(child.pid, undefined)
+    process.kill(-child.pid, 'SIGINT')
+    const [code, signal] = await exited
+    return { code, signal, during, partialBody, kept: readdirSync(tmpDir), stderr }
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill('SIGKILL')
+    }
+    rmSync(home, { recursive: true, force: true })
+  }
 }
 
 describe('U275: the renderer evaluates in a single pass', () => {
@@ -135,5 +221,37 @@ describe('U275/U276: install one-liner runs under a real shell', () => {
     assert.equal(run.status, 0, run.stderr)
     assert.match(run.stderr, /安装完成，但临时文件未能删除：/)
     assert.equal(run.kept.length, 1, 'the undeletable script is still there')
+  })
+})
+
+describe('U281: interruption and cleanup failure', () => {
+  test('下载中途 SIGINT：外层经 trap 退出，且 TMPDIR 无 orca-install-*.sh 残留', async () => {
+    const run = await runInterrupted()
+
+    // §2-141: prove the signal hit an in-flight download, not a no-op.
+    assert.ok(
+      run.during.some((name) => /^orca-install-.*\.sh$/.test(name)),
+      `the stub must create the -o target before hanging; saw: ${run.during.join(', ')}`
+    )
+    assert.match(run.partialBody, /U281-PARTIAL/, 'the partial body must be on disk mid-download')
+    assert.deepEqual(
+      run.kept.filter((name) => /^orca-install-.*\.sh$/.test(name)),
+      [],
+      'an interrupted download must not leave orca-install-*.sh behind'
+    )
+    assert.equal(run.signal, null, `the INT trap must exit rather than die by signal: ${run.stderr}`)
+    assert.ok(
+      run.code === 130 || run.code === 143,
+      `an interrupt must exit through the trap (130/143), got ${run.code}; ${run.stderr}`
+    )
+  })
+
+  test('下载失败且 rm 失败：stderr 告警清理失败，仍以 65 退出', () => {
+    const run = runLiner(null, { extraStubs: { rm: '#!/usr/bin/env bash\nexit 1\n' } })
+
+    assert.equal(run.status, 65, run.stderr)
+    assert.match(run.stderr, /临时文件清理失败：.*orca-install-\d+\.sh/)
+    assert.match(run.stderr, /安装失败：命令已失效或网络不可达，请让管理员重新生成（65）/)
+    assert.deepEqual(installScripts(run), [])
   })
 })
