@@ -20,6 +20,8 @@ const REGISTER_BODY_MAX_BYTES = 64 * 1024
 const FORCE_OFFLINE_BODY_MAX_BYTES = 4 * 1024
 const DENIED_AUDIT_BODY_MAX_BYTES = 4 * 1024
 const HEARTBEAT_BODY_MAX_BYTES = 1024 * 1024
+/** U259 §2/§3/§5: a declared body no handler may consume before its early verdict. */
+const DECLARED_HUGE_BODY = 16 * 1024 * 1024
 const FILE_EVENT_METADATA_LIMIT = 4096
 const PROJECT_PATH_MAX_CHARS = 4096
 /** U257: register names are indexed and audited, so they share ingest's bound. */
@@ -336,6 +338,24 @@ async function waitForAuditEvent(
   assert.fail('the expected audit event never reached the chain')
 }
 
+/** U259 §3: the same in-process tamper the D2 pin uses, reused for D1/D3/D4. */
+function breakAuditChain(app: ApiHandle): void {
+  if (app.store.audit.length === 0) {
+    app.audit.append({
+      eventType: 'login',
+      actor: 'admin',
+      targetType: 'session',
+      targetId: null,
+      result: 'success',
+      traceId: 'u259-chain-seed'
+    })
+  }
+  const first = app.store.audit[0]
+  assert.ok(first)
+  first.metadata = { ...first.metadata, tampered: true }
+  assert.equal(app.audit.verify().ok, false, 'the chain is now broken')
+}
+
 function redeemHandoff(
   base: string,
   body: string,
@@ -361,19 +381,33 @@ function seedHandoff(app: ApiHandle, code: string): void {
 /**
  * U251: declares `content-length` above the cap but only writes a prefix. The
  * server must answer from the header alone, without waiting for the body.
+ * U259: headers/method are parameterised so the auth and denied orderings can
+ * use the same non-pumping shape; `setCookie` is the undici-safe array form.
  */
 function declaredOversizedRequest(
   base: string,
   path: string,
-  declared: number
-): Promise<{ status: number; connection: string | undefined; body: string; elapsedMs: number }> {
+  declared: number,
+  headers: Record<string, string> = {},
+  method = 'POST'
+): Promise<{
+  status: number
+  connection: string | undefined
+  setCookie: string[]
+  body: string
+  elapsedMs: number
+}> {
   return new Promise((resolve, reject) => {
     const started = Date.now()
     const req = httpRequest(
       `${base}${path}`,
       {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'content-length': String(declared) }
+        method,
+        headers: {
+          'content-type': 'application/json',
+          'content-length': String(declared),
+          ...headers
+        }
       },
       (res) => {
         let body = ''
@@ -388,6 +422,7 @@ function declaredOversizedRequest(
           resolve({
             status: res.statusCode ?? 0,
             connection: res.headers.connection,
+            setCookie: res.headers['set-cookie'] ?? [],
             body,
             elapsedMs
           })
@@ -397,7 +432,7 @@ function declaredOversizedRequest(
     // A server that waits for the rest of the declared body must fail, not hang.
     const deadline = setTimeout(() => {
       req.destroy()
-      reject(new Error('no 413 before the deadline: the server waited for the full body'))
+      reject(new Error('no early verdict before the deadline: the server waited for the full body'))
     }, 1500)
     req.on('error', reject)
     req.write('{"username":"admin"')
@@ -3119,5 +3154,512 @@ describe('U259 §4 refresh Cookie 413 真断言', () => {
     const session = app.store.sessions.get(sessionId)
     assert.ok(session)
     assert.equal(session.revokedAt, null, 'the session survives the refused refresh')
+  })
+})
+
+/**
+ * U259 §2: for login/refresh the credential-shape verdict must be reached
+ * before the body cap, otherwise a caller can use 413-vs-401/403 to probe
+ * Cookie/Origin state and make the server consume an unbounded body.
+ */
+describe('U259 §2 401/403 先于 413', () => {
+  test('O1 login 重复 Cookie + 声明 16 MiB → 401 先于 413，并清除 Cookie', async () => {
+    const base = await start()
+    const result = await declaredOversizedRequest(
+      base,
+      '/v1/auth/login',
+      DECLARED_HUGE_BODY,
+      { cookie: 'orca_refresh=a; orca_refresh=b' },
+      'POST'
+    )
+
+    assert.equal(result.status, 401, 'the ambiguous Cookie wins over the body cap')
+    assert.equal(errorCode(JSON.parse(result.body) as Json), 'SESSION_EXPIRED')
+    assert.equal(
+      result.body.includes('PAYLOAD_TOO_LARGE'),
+      false,
+      'the size verdict must leak nowhere'
+    )
+    assert.equal(result.connection, 'close', 'the unread body must not be drained')
+    assert.ok(result.elapsedMs < 1000, `the refusal took ${result.elapsedMs}ms`)
+    assert.match(result.setCookie.join(','), /Max-Age=0/, 'the stale Cookie is cleared')
+  })
+
+  test('O2 login 外部 Origin + 声明 16 MiB → 403 CSRF_REJECTED 先于 413', async () => {
+    const base = await start()
+    const result = await declaredOversizedRequest(
+      base,
+      '/v1/auth/login',
+      DECLARED_HUGE_BODY,
+      { origin: 'https://evil.example' },
+      'POST'
+    )
+
+    assert.equal(result.status, 403, 'the foreign Origin wins over the body cap')
+    assert.equal(errorCode(JSON.parse(result.body) as Json), 'CSRF_REJECTED')
+    assert.equal(result.body.includes('PAYLOAD_TOO_LARGE'), false)
+    assert.equal(result.connection, 'close')
+    assert.ok(result.elapsedMs < 1000, `the refusal took ${result.elapsedMs}ms`)
+    assert.equal(result.setCookie.length, 0, 'a CSRF refusal never touches Cookie state')
+  })
+
+  test('O3 refresh 重复 Cookie + 声明 16 MiB → 401 先于 413，并清除 Cookie', async () => {
+    const base = await start()
+    const result = await declaredOversizedRequest(
+      base,
+      '/v1/auth/refresh',
+      DECLARED_HUGE_BODY,
+      { cookie: 'orca_refresh=a; orca_refresh=b', origin: ORIGIN },
+      'POST'
+    )
+
+    assert.equal(result.status, 401)
+    assert.equal(errorCode(JSON.parse(result.body) as Json), 'SESSION_EXPIRED')
+    assert.equal(result.body.includes('PAYLOAD_TOO_LARGE'), false)
+    assert.equal(result.connection, 'close')
+    assert.ok(result.elapsedMs < 1000, `the refusal took ${result.elapsedMs}ms`)
+    assert.match(result.setCookie.join(','), /Max-Age=0/, 'the stale Cookie is cleared')
+  })
+
+  test('O4 refresh Cookie CSRF 失败 + 声明 16 MiB → 403 先于 413，不清 Cookie', async () => {
+    const { app, base } = await startApp()
+    const loginRes = await login(
+      base,
+      JSON.stringify({ username: 'admin', password: 'Adm1n!', deviceName: 'u259-o4' }),
+      { origin: ORIGIN }
+    )
+    assert.equal(loginRes.status, 200, await loginRes.text())
+    const cookie = loginRes.headers.getSetCookie()[0]?.split(';')[0] ?? ''
+    assert.match(cookie, /^orca_refresh=/)
+
+    const result = await declaredOversizedRequest(
+      base,
+      '/v1/auth/refresh',
+      DECLARED_HUGE_BODY,
+      { cookie, origin: 'https://evil.example' },
+      'POST'
+    )
+    assert.equal(result.status, 403, 'the CSRF verdict wins over the body cap')
+    assert.equal(errorCode(JSON.parse(result.body) as Json), 'CSRF_REJECTED')
+    assert.equal(result.body.includes('PAYLOAD_TOO_LARGE'), false)
+    assert.equal(result.connection, 'close')
+    assert.ok(result.elapsedMs < 1000, `the refusal took ${result.elapsedMs}ms`)
+    assert.equal(result.setCookie.length, 0, 'CSRF has no side effect on the Cookie')
+
+    const sessions = [...app.store.sessions.values()]
+    assert.equal(sessions.length, 1)
+    assert.equal(sessions[0]?.revokedAt, null, 'the refused request did not revoke the session')
+    const small = await refresh(base, '{}', { cookie, origin: ORIGIN })
+    assert.equal(small.status, 200, 'the untouched Cookie still refreshes')
+  })
+
+  test('O5 refresh 无效 token + 超限 → 413（不区分 token 是否存在）', async () => {
+    const { app, base } = await startApp()
+    const missing = 'u259-does-not-exist'
+
+    const refused = await refresh(base, oversized({ refreshToken: missing }))
+    assert.equal(refused.status, 413, 'the cap runs before the token lookup')
+    assert.equal(errorCode((await refused.json()) as Json), 'PAYLOAD_TOO_LARGE')
+    assert.equal(refused.headers.get('cache-control'), 'no-store')
+
+    const small = await refresh(base, JSON.stringify({ refreshToken: missing }))
+    assert.equal(small.status, 401, 'the same token is only judged after a readable body')
+    assert.equal(errorCode((await small.json()) as Json), 'SESSION_EXPIRED')
+    assert.equal(
+      app.store.audit.filter((event) => event.eventType === 'refresh.reuse_detected').length,
+      0
+    )
+  })
+
+  test('O6 login 错凭据 + 超限 → 413，不计失败、不写登录失败审计', async () => {
+    const { app, base } = await startApp()
+
+    const refused = await login(base, oversized({ username: 'admin', password: 'wrong' }))
+    assert.equal(refused.status, 413, 'the cap runs before the credential check')
+    assert.equal(errorCode((await refused.json()) as Json), 'PAYLOAD_TOO_LARGE')
+    assert.equal(
+      app.store.loginAttempts.get('admin')?.count ?? 0,
+      0,
+      'the refused request must not poison the lockout counter'
+    )
+    assert.equal(
+      app.store.audit.filter((event) => event.eventType === 'login').length,
+      0,
+      'no login failure event is written'
+    )
+
+    const accepted = await login(
+      base,
+      JSON.stringify({ username: 'admin', password: 'Adm1n!', deviceName: 'u259-o6-ok' })
+    )
+    assert.equal(accepted.status, 200, 'the correct credentials still work')
+    assert.equal(app.store.sessions.size, 1)
+  })
+})
+
+/**
+ * U259 §3: D2 already pins "503 before 413". D1/D3/D4 are the remaining
+ * high-impact writes whose audit-availability gate must run before the body
+ * read, or a broken chain degrades into a 413 with unbounded consumption.
+ */
+describe('U259 §3 503 先于 413 推广到 D1/D3/D4', () => {
+  function brokenVerdict(result: { status: number; connection: string | undefined; body: string }) {
+    assert.equal(result.status, 503)
+    const parsed = JSON.parse(result.body) as Json
+    assert.equal(errorCode(parsed), 'AUDIT_CHAIN_BROKEN')
+    const details = (parsed.error as Json).details as Json
+    assert.equal(details.reason, 'chain_broken', 'write_failed is a different, retryable branch')
+    assert.equal(result.connection, 'close')
+  }
+
+  test('C1 D1 项目更新：链损坏 + 声明 16 MiB → 503，项目不变', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u259-c1')
+    const before = app.store.projects.get(PROJECT_ID)
+    assert.ok(before)
+    const repoUrl = before.repoUrl
+    const defaultBranch = before.defaultBranch
+    breakAuditChain(app)
+
+    const result = await declaredOversizedRequest(
+      base,
+      `/v1/projects/${PROJECT_ID}`,
+      DECLARED_HUGE_BODY,
+      { authorization: `Bearer ${admin.token}` },
+      'PUT'
+    )
+
+    brokenVerdict(result)
+    const after = app.store.projects.get(PROJECT_ID)
+    assert.ok(after)
+    assert.equal(after.repoUrl, repoUrl, 'nothing was written')
+    assert.equal(after.defaultBranch, defaultBranch, 'nothing was written')
+  })
+
+  test('C3 D3 全局下载策略：链损坏 + 声明 16 MiB → 503，策略与版本不变', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u259-c3')
+    const downloadDefault = app.store.policies.downloadDefault
+    const version = app.store.policies.version
+    breakAuditChain(app)
+
+    const result = await declaredOversizedRequest(
+      base,
+      '/v1/policies/download',
+      DECLARED_HUGE_BODY,
+      { authorization: `Bearer ${admin.token}` },
+      'PUT'
+    )
+
+    brokenVerdict(result)
+    assert.equal(
+      app.store.policies.downloadDefault,
+      downloadDefault,
+      'the global default is unchanged'
+    )
+    assert.equal(app.store.policies.version, version, 'the policy version is unchanged')
+  })
+
+  test('C4 D4 主机维护：链损坏 + 声明 16 MiB → 503，主机仍在线', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u259-c4')
+    breakAuditChain(app)
+
+    const result = await declaredOversizedRequest(
+      base,
+      `/v1/hosts/${HOST_ID}/maintenance`,
+      DECLARED_HUGE_BODY,
+      { authorization: `Bearer ${admin.token}` },
+      'POST'
+    )
+
+    brokenVerdict(result)
+    const host = app.store.hosts.get(HOST_ID)
+    assert.ok(host)
+    assert.equal(host.status, 'online', 'the audit gate precedes the field check and the write')
+    assert.equal(host.maintenanceReason, null)
+  })
+
+  test('C5 对照：链健康 + 同样超限 body → 413 且无写入', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u259-c5')
+    const projectBefore = app.store.projects.get(PROJECT_ID)
+    assert.ok(projectBefore)
+    const repoUrl = projectBefore.repoUrl
+    const downloadDefault = app.store.policies.downloadDefault
+    const version = app.store.policies.version
+
+    const update = await authedJson(
+      base,
+      admin.token,
+      'PUT',
+      `/v1/projects/${PROJECT_ID}`,
+      oversizedBody({ repoUrl: 'https://git.example.com/changed.git', defaultBranch: 'changed' })
+    )
+    assert.equal(update.status, 413)
+    assert.equal(errorCode((await update.json()) as Json), 'PAYLOAD_TOO_LARGE')
+    assert.equal(update.headers.get('connection'), 'close')
+
+    const policy = await authedJson(
+      base,
+      admin.token,
+      'PUT',
+      '/v1/policies/download',
+      oversizedBody({ downloadDefault: 'allow' })
+    )
+    assert.equal(policy.status, 413)
+    assert.equal(errorCode((await policy.json()) as Json), 'PAYLOAD_TOO_LARGE')
+    assert.equal(policy.headers.get('connection'), 'close')
+
+    const maintenance = await authedJson(
+      base,
+      admin.token,
+      'POST',
+      `/v1/hosts/${HOST_ID}/maintenance`,
+      oversizedBody({ enabled: true })
+    )
+    assert.equal(maintenance.status, 413)
+    assert.equal(errorCode((await maintenance.json()) as Json), 'PAYLOAD_TOO_LARGE')
+    assert.equal(maintenance.headers.get('connection'), 'close')
+
+    const projectAfter = app.store.projects.get(PROJECT_ID)
+    assert.ok(projectAfter)
+    assert.equal(projectAfter.repoUrl, repoUrl, 'the healthy-chain 413 still writes nothing')
+    assert.equal(app.store.policies.downloadDefault, downloadDefault)
+    assert.equal(app.store.policies.version, version)
+    const host = app.store.hosts.get(HOST_ID)
+    assert.ok(host)
+    assert.equal(host.status, 'online')
+  })
+})
+
+/**
+ * U259 §5: these six denial branches decide on the role alone; they must never
+ * start reading the body to enrich the denied audit, or an unauthorised caller
+ * regains ownership of how much the server consumes.
+ */
+describe('U259 §5 denied 审计固定字段（不读 body）', () => {
+  const BODY_FIELDS = [
+    'role',
+    'downloadPolicy',
+    'inherit',
+    'downloadDefault',
+    'key',
+    'path',
+    'hostId',
+    'name',
+    'pad',
+    'auditSize'
+  ]
+
+  function assertFixedDeniedEvent(
+    event: Json | undefined,
+    expected: { eventType: string; targetType: string; targetId: string | null }
+  ): void {
+    assert.ok(event, `${expected.eventType} denied event is missing`)
+    assert.equal(event.eventType, expected.eventType)
+    assert.equal(event.actor, 'zhangsan')
+    assert.equal(event.targetType, expected.targetType)
+    assert.equal(event.targetId, expected.targetId)
+    assert.equal(event.result, 'denied')
+    assert.deepEqual(
+      event.metadata,
+      { reason: 'PERMISSION_DENIED', requiredPermission: 'platform:admin' },
+      'the denied event carries exactly the fixed fields'
+    )
+    for (const field of BODY_FIELDS) {
+      assert.equal(field in event, false, `${field} must not leak into the event`)
+      assert.equal(field in (event.metadata as Json), false, `${field} must not leak into metadata`)
+    }
+    assert.notEqual((event.metadata as Json).reason, 'attacker text', 'the body note is not copied')
+  }
+
+  function oneDeniedEvent(events: Json[], eventType: string, targetType: string): Json | undefined {
+    const matches = events.filter(
+      (event) => event.eventType === eventType && event.targetType === targetType
+    )
+    assert.equal(matches.length, 1, `expected one ${eventType}/${targetType} denied event`)
+    return matches[0]
+  }
+
+  test('N1-N6：403 + 固定审计字段，不含任何 body 字段', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u259-n-admin')
+    const dev = await loginAs(base, 'zhangsan', 'Passw0rd!', 'u259-n-dev')
+    const devSession = [...app.store.sessions.values()].find(
+      (session) => session.userId === dev.userId
+    )
+    assert.ok(devSession)
+    const projectBefore = app.store.projects.get(PROJECT_ID)
+    assert.ok(projectBefore)
+    const projectCount = app.store.projects.size
+    const downloadPolicy = projectBefore.downloadPolicy
+    const globalDefault = app.store.policies.downloadDefault
+    const policyVersion = app.store.policies.version
+    const hostTokenCount = app.store.hostTokens.length
+    const pad = 'x'.repeat(1024)
+
+    const requests = [
+      {
+        method: 'PUT',
+        path: `/v1/users/${dev.userId}/roles`,
+        body: { role: 'admin', pad }
+      },
+      {
+        method: 'PUT',
+        path: `/v1/projects/${PROJECT_ID}/policy`,
+        body: { downloadPolicy: 'allow', inherit: true, pad }
+      },
+      {
+        method: 'PUT',
+        path: '/v1/policies/download',
+        body: { downloadDefault: 'allow', pad }
+      },
+      {
+        method: 'POST',
+        path: '/v1/projects',
+        body: {
+          hostId: HOST_ID,
+          key: 'u259-denied',
+          name: 'u259-denied',
+          path: '/srv/u259-denied',
+          defaultBranch: 'main',
+          pad
+        }
+      },
+      { method: 'POST', path: '/v1/hosts/tokens', body: { hostId: HOST_ID, pad } },
+      {
+        method: 'POST',
+        path: `/v1/users/${dev.userId}/sessions/revoke`,
+        body: { reason: 'attacker text', pad }
+      }
+    ]
+    for (const request of requests) {
+      const res = await authedJson(
+        base,
+        dev.token,
+        request.method,
+        request.path,
+        JSON.stringify(request.body)
+      )
+      assert.equal(res.status, 403, `${request.method} ${request.path}`)
+      assert.equal(errorCode((await res.json()) as Json), 'PERMISSION_DENIED')
+    }
+
+    const events = await deniedAuditEvents(base, admin.token, 'zhangsan')
+    assertFixedDeniedEvent(oneDeniedEvent(events, 'role_update', 'user'), {
+      eventType: 'role_update',
+      targetType: 'user',
+      targetId: dev.userId
+    })
+    assertFixedDeniedEvent(oneDeniedEvent(events, 'policy_update', 'project'), {
+      eventType: 'policy_update',
+      targetType: 'project',
+      targetId: PROJECT_ID
+    })
+    assertFixedDeniedEvent(oneDeniedEvent(events, 'policy_update', 'policy'), {
+      eventType: 'policy_update',
+      targetType: 'policy',
+      targetId: 'download'
+    })
+    assertFixedDeniedEvent(oneDeniedEvent(events, 'project_create', 'project'), {
+      eventType: 'project_create',
+      targetType: 'project',
+      targetId: null
+    })
+    assertFixedDeniedEvent(oneDeniedEvent(events, 'host_token_create', 'host'), {
+      eventType: 'host_token_create',
+      targetType: 'host',
+      targetId: null
+    })
+    assertFixedDeniedEvent(oneDeniedEvent(events, 'session_revoke', 'user'), {
+      eventType: 'session_revoke',
+      targetType: 'user',
+      targetId: dev.userId
+    })
+
+    const devUser = app.store.users.get(dev.userId)
+    assert.ok(devUser)
+    assert.deepEqual(devUser.roles, ['developer'], 'the refused role change did nothing')
+    const projectAfter = app.store.projects.get(PROJECT_ID)
+    assert.ok(projectAfter)
+    assert.equal(projectAfter.downloadPolicy, downloadPolicy)
+    assert.equal(app.store.policies.downloadDefault, globalDefault)
+    assert.equal(app.store.policies.version, policyVersion)
+    assert.equal(app.store.projects.size, projectCount, 'the refused create wrote no project')
+    assert.equal(app.store.projectsByKey.has('u259-denied'), false)
+    assert.equal(app.store.hostTokens.length, hostTokenCount, 'the refused mint wrote no token')
+    assert.equal(devSession.revokedAt, null, 'the refused revoke left the session live')
+  })
+
+  test('N1-N6 声明 16 MiB 未读 body：403 + close，审计仍为固定字段', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u259-nh-admin')
+    const dev = await loginAs(base, 'zhangsan', 'Passw0rd!', 'u259-nh-dev')
+    const devSession = [...app.store.sessions.values()].find(
+      (session) => session.userId === dev.userId
+    )
+    assert.ok(devSession)
+    const authorization = { authorization: `Bearer ${dev.token}` }
+    const hostTokenCount = app.store.hostTokens.length
+
+    const requests = [
+      { method: 'PUT', path: `/v1/users/${dev.userId}/roles` },
+      { method: 'PUT', path: `/v1/projects/${PROJECT_ID}/policy` },
+      { method: 'PUT', path: '/v1/policies/download' },
+      { method: 'POST', path: '/v1/projects' },
+      { method: 'POST', path: '/v1/hosts/tokens' },
+      { method: 'POST', path: `/v1/users/${dev.userId}/sessions/revoke` }
+    ]
+    for (const request of requests) {
+      const result = await declaredOversizedRequest(
+        base,
+        request.path,
+        DECLARED_HUGE_BODY,
+        authorization,
+        request.method
+      )
+      assert.equal(result.status, 403, `${request.method} ${request.path}`)
+      assert.equal(errorCode(JSON.parse(result.body) as Json), 'PERMISSION_DENIED')
+      assert.equal(result.connection, 'close', `${request.path} must not drain the declared body`)
+      assert.ok(result.elapsedMs < 1000, `${request.path} refused in ${result.elapsedMs}ms`)
+    }
+
+    const events = await deniedAuditEvents(base, admin.token, 'zhangsan')
+    assertFixedDeniedEvent(oneDeniedEvent(events, 'role_update', 'user'), {
+      eventType: 'role_update',
+      targetType: 'user',
+      targetId: dev.userId
+    })
+    assertFixedDeniedEvent(oneDeniedEvent(events, 'policy_update', 'project'), {
+      eventType: 'policy_update',
+      targetType: 'project',
+      targetId: PROJECT_ID
+    })
+    assertFixedDeniedEvent(oneDeniedEvent(events, 'policy_update', 'policy'), {
+      eventType: 'policy_update',
+      targetType: 'policy',
+      targetId: 'download'
+    })
+    assertFixedDeniedEvent(oneDeniedEvent(events, 'project_create', 'project'), {
+      eventType: 'project_create',
+      targetType: 'project',
+      targetId: null
+    })
+    assertFixedDeniedEvent(oneDeniedEvent(events, 'host_token_create', 'host'), {
+      eventType: 'host_token_create',
+      targetType: 'host',
+      targetId: null
+    })
+    assertFixedDeniedEvent(oneDeniedEvent(events, 'session_revoke', 'user'), {
+      eventType: 'session_revoke',
+      targetType: 'user',
+      targetId: dev.userId
+    })
+
+    assert.equal(devSession.revokedAt, null)
+    assert.equal(app.store.projectsByKey.has('u259-denied'), false)
+    assert.equal(app.store.hostTokens.length, hostTokenCount, 'the refused mint wrote no token')
+    assert.equal(app.store.policies.version, 1)
   })
 })
