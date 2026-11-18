@@ -228,7 +228,7 @@ ExecStart=/usr/bin/orca-ide --host-mode
 
 | # | 执行者 | 动作 | 失败语义 |
 | --- | --- | --- | --- |
-| 1 | 脚本 | 预检命令/CLI 路径/profile 可写（U182 批 2 的 helper） | 非 0，不消耗令牌 |
+| 1 | 脚本 | 预检命令/CLI 路径/`ADVERTISE_HOST` 探测/自签 TLS 生成/profile 可写（U182 批 2 的 helper） | 78，不消耗令牌 |
 | 2 | 脚本 | 原子写 `host.env`（`ORCA_USER_DATA_PATH`、`ORCA_CLOUD_*`、TLS 路径） | 非 0，不启动 |
 | 3 | 脚本 | `/health` 可达性检查（已有，2xx） | 68（与 relay 同码），不消耗令牌 |
 | 4 | 脚本 | `orca-ide --host-mode --preflight` | CLI 78；安装器区分配置 78 / 运行时 64，不消耗令牌 |

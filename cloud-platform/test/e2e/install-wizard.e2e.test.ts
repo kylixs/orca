@@ -827,8 +827,8 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     const bin = makeSparsePath(home, { hostname: HOSTNAME_STUB, 'orca-ide': ORCA_STUB })
     const run = runInstallScript(await fetchHostScript(), home, { PATH: bin })
 
-    assert.equal(run.status, 64, run.stderr)
-    assert.match(run.stderr, /无法自动探测本机地址（64）/)
+    assert.equal(run.status, 78, run.stderr)
+    assert.match(run.stderr, /无法自动探测本机地址（78）/)
     assert.match(run.stderr, /ADVERTISE_HOST/)
     assert.equal(existsSync(join(home, '.orca-cloud', 'host.env')), false)
   })
@@ -851,7 +851,7 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     assert.match(env, /^ORCA_CLOUD_ADVERTISE_HOST=10\.9\.8\.7$/m)
   })
 
-  test('U182: openssl 失败保留 stderr 并 exit 69', async () => {
+  test('U182: openssl 失败保留 stderr 并 exit 78', async () => {
     const home = mkdtempSync(join(tmpdir(), 'orca-install-'))
     const bin = makeSparsePath(home, {
       hostname:
@@ -861,9 +861,9 @@ describe('M114b2 向导式添加：脚本端点与 Web 命令', () => {
     })
     const run = runInstallScript(await fetchHostScript(), home, { PATH: bin })
 
-    assert.equal(run.status, 69, run.stderr)
+    assert.equal(run.status, 78, run.stderr)
     assert.match(run.stderr, /openssl-stub-boom/)
-    assert.match(run.stderr, /自签 TLS 证书生成失败（69 /)
+    assert.match(run.stderr, /自签 TLS 证书生成失败（78 /)
   })
 
   test('U182: OpenSSL 1.0.2 降级为临时 config 生成 SAN，不使用 -addext', async () => {

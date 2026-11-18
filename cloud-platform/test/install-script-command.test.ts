@@ -101,16 +101,16 @@ describe('U183 R12: install-script command helper', () => {
     assert.doesNotMatch(script, /ORCA_CLOUD_REENROLL/)
   })
 
-  test('U181 H13: 安装器不再以 1 退出（ADVERTISE 64 / TLS 69）', () => {
+  test('U181 H13: 安装器不再以 1 退出（ADVERTISE 78 / TLS 78）', () => {
     const script = hostInstallScript({
       platformUrl: 'https://platform.example',
       token: 'tok'
     })
     // `1` is reserved for the host process (retryable runtime failure).
-    assert.match(script, /无法自动探测本机地址（64）/)
-    assert.match(script, /请显式设置 ADVERTISE_HOST[^\n]*\n\s*exit 64/)
-    assert.match(script, /自签 TLS 证书生成失败（69 /)
-    assert.match(script, /指向已有证书后重试。[^\n]*\n\s*exit 69/)
+    assert.match(script, /无法自动探测本机地址（78）/)
+    assert.match(script, /请显式设置 ADVERTISE_HOST[^\n]*\n\s*exit 78/)
+    assert.match(script, /自签 TLS 证书生成失败（78 /)
+    assert.match(script, /指向已有证书后重试。[^\n]*\n\s*exit 78/)
     assert.doesNotMatch(script, /exit 1\b/)
   })
 

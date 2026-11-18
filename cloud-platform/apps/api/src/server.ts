@@ -532,9 +532,9 @@ else
   fi
 fi
 if [ -z "$ORCA_ADVERTISE" ]; then
-  echo ">> 无法自动探测本机地址（64）：hostname -I / ipconfig getifaddr en0 / hostname 均失败。" >&2
+  echo ">> 无法自动探测本机地址（78）：hostname -I / ipconfig getifaddr en0 / hostname 均失败。" >&2
   echo ">> 请显式设置 ADVERTISE_HOST=<本机可达 IP> 后重试。" >&2
-  exit 64
+  exit 78
 fi
 
 ORCA_USER_DATA_PATH="\${ORCA_HOST_PROFILE:-$HOME/.orca-cloud/profile}"
@@ -584,9 +584,9 @@ ORCA_SSL_CONF_EOF
     rm -f "$ORCA_SSL_CONF"
   fi
   if [ "$ORCA_TLS_OK" != 1 ]; then
-    echo ">> 自签 TLS 证书生成失败（69 / openssl \${ORCA_OPENSSL_VER:-unknown}）：请检查上面的 openssl 错误；" >&2
+    echo ">> 自签 TLS 证书生成失败（78 / openssl \${ORCA_OPENSSL_VER:-unknown}）：请检查上面的 openssl 错误；" >&2
     echo ">> 或设置 ORCA_TLS_CERT/ORCA_TLS_KEY 指向已有证书后重试。" >&2
-    exit 69
+    exit 78
   fi
 fi
 
