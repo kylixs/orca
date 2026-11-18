@@ -1822,7 +1822,7 @@ describe('U251 heartbeat 独立 body 上限（1 MiB）', () => {
 })
 
 describe('U251 超限早拒（不等待、不排空请求体）', () => {
-  test('声明 content-length 远超上限：只发少量前缀即收到 413 且 Connection: close', async () => {
+  test('声明 content-length 远超上限：只发少量前缀即收到 413 且 Connection: close', { timeout: 5000 }, async () => {
     const base = await start()
     // 8 MiB is past the bounded drain budget, so the refusal must come from the
     // header alone. A modest overage is drained first for client compatibility.
@@ -1836,9 +1836,9 @@ describe('U251 超限早拒（不等待、不排空请求体）', () => {
     assert.equal(connection, 'close')
     assert.equal(errorCode(JSON.parse(body) as Json), 'PAYLOAD_TOO_LARGE')
     assert.ok(elapsedMs < 1000, `the refusal waited ${elapsedMs}ms for the declared body`)
-  }, { timeout: 5000 })
+  })
 
-  test('chunked 持续发送超限：立即 413、连接关闭且不再消费', async () => {
+  test('chunked 持续发送超限：立即 413、连接关闭且不再消费', { timeout: 5000 }, async () => {
     const base = await start()
     const { status, connection, responseMs, closeMs, sentBytes } =
       await streamingOversizedRequest(base, '/v1/auth/login')
@@ -1848,9 +1848,9 @@ describe('U251 超限早拒（不等待、不排空请求体）', () => {
     assert.ok(responseMs < 1000, `the refusal arrived after ${responseMs}ms`)
     assert.ok(closeMs >= responseMs, 'the connection closes only after the refusal')
     assert.ok(sentBytes > AUTH_BODY_MAX_BYTES, `the client streamed ${sentBytes} B before the close`)
-  }, { timeout: 5000 })
+  })
 
-  test('keep-alive：未超限的正常请求继续复用同一连接', async () => {
+  test('keep-alive：未超限的正常请求继续复用同一连接', { timeout: 5000 }, async () => {
     const base = await start()
     const agent = new Agent({ keepAlive: true, maxSockets: 1 })
     try {
@@ -1872,11 +1872,11 @@ describe('U251 超限早拒（不等待、不排空请求体）', () => {
     } finally {
       agent.destroy()
     }
-  }, { timeout: 5000 })
+  })
 })
 
 describe('U251 P3 审计可用性检查先于 policy 读取', () => {
-  test('审计链损坏 + 超限 body → 503 AUDIT_CHAIN_BROKEN，而非 413', async () => {
+  test('审计链损坏 + 超限 body → 503 AUDIT_CHAIN_BROKEN，而非 413', { timeout: 5000 }, async () => {
     const { app, base } = await startApp()
     const admin = await loginAs(base, 'admin', 'Adm1n!', 'u251-policy-order')
 
@@ -1906,7 +1906,7 @@ describe('U251 P3 审计可用性检查先于 policy 读取', () => {
     assert.equal(res.status, 503)
     assert.equal(errorCode((await res.json()) as Json), 'AUDIT_CHAIN_BROKEN')
     assert.equal(app.store.projects.get(PROJECT_ID)?.downloadPolicy, 'deny', 'nothing was written')
-  }, { timeout: 5000 })
+  })
 })
 
 /**
@@ -2020,7 +2020,7 @@ describe('U254 超长 body 字段不得把审计事件撑过 writer 16 KiB', () 
  * body, 403/200, audit event) stay the same.
  */
 describe('U255 readJson 超限路径关闭 keep-alive', () => {
-  test('未认证 logout 声明 16 MiB：返回 200 后仅收下请求头与小前缀', async () => {
+  test('未认证 logout 声明 16 MiB：返回 200 后仅收下请求头与小前缀', { timeout: 8000 }, async () => {
     const base = await start()
     const declared = 16 * 1024 * 1024
     const prefixBytes = 4 * 1024
@@ -2040,9 +2040,9 @@ describe('U255 readJson 超限路径关闭 keep-alive', () => {
     )
     assert.ok(result.responseMs < 1000, `the response took ${result.responseMs}ms`)
     assert.ok(result.closeMs < 1500, `the close took ${result.closeMs}ms`)
-  }, { timeout: 8000 })
+  })
 
-  test('chunked 超限 logout：拒绝后同连接/新连接仍能继续请求', async () => {
+  test('chunked 超限 logout：拒绝后同连接/新连接仍能继续请求', { timeout: 8000 }, async () => {
     const base = await start()
     const url = new URL(base)
     const socket = await connectRaw(base)
@@ -2097,9 +2097,9 @@ describe('U255 readJson 超限路径关闭 keep-alive', () => {
     socket.destroy()
 
     assert.equal(second.status, 200, 'a refused chunked body must not wedge the connection')
-  }, { timeout: 8000 })
+  })
 
-  test('3 处 403 拒绝分支：超限 body 仍 403、关闭连接并写入 denied 审计', async () => {
+  test('3 处 403 拒绝分支：超限 body 仍 403、关闭连接并写入 denied 审计', { timeout: 8000 }, async () => {
     const { base } = await startApp()
     const admin = await loginAs(base, 'admin', 'Adm1n!', 'u255-deny-admin')
     const dev = await loginAs(base, 'zhangsan', 'Passw0rd!', 'u255-deny-dev')
@@ -2136,9 +2136,9 @@ describe('U255 readJson 超限路径关闭 keep-alive', () => {
     )
     assert.ok(policyEvent, 'the refused provision-policy write is audited')
     assert.equal((policyEvent.metadata as Json).mode, '')
-  }, { timeout: 8000 })
+  })
 
-  test('force-offline：超限 body 仍 200 + 撤销，审计按空 body 记录', async () => {
+  test('force-offline：超限 body 仍 200 + 撤销，审计按空 body 记录', { timeout: 8000 }, async () => {
     const { app, base } = await startApp()
     const dev = await loginAs(base, 'zhangsan', 'Passw0rd!', 'u255-force-dev')
     const admin = await loginAs(base, 'admin', 'Adm1n!', 'u255-force-admin')
@@ -2173,7 +2173,7 @@ describe('U255 readJson 超限路径关闭 keep-alive', () => {
     assert.ok(event, 'the revocation is still audited')
     assert.equal((event.metadata as Json).revokedSessions, 1)
     assert.equal('reason' in (event.metadata as Json), false, 'the oversized note was discarded')
-  }, { timeout: 8000 })
+  })
 })
 
 /**
@@ -2553,13 +2553,13 @@ describe('U258 读取前拒绝：未读的大 body 不保持 keep-alive', () => 
     )
   }
 
-  test('未认证 POST /v1/projects 声明 16 MiB → 401，消费字节远小于声明、连接关闭', async () => {
+  test('未认证 POST /v1/projects 声明 16 MiB → 401，消费字节远小于声明、连接关闭', { timeout: 8000 }, async () => {
     const base = await start()
     const result = await pacedDeclaredBodyRequest(base, '/v1/projects', DECLARED_16_MIB)
     assertHugeUnreadBody('unauth project create', result, 401)
-  }, { timeout: 8000 })
+  })
 
-  test('错误内部令牌 声明 16 MiB → 401，消费字节远小于声明、连接关闭', async () => {
+  test('错误内部令牌 声明 16 MiB → 401，消费字节远小于声明、连接关闭', { timeout: 8000 }, async () => {
     const base = await start()
     const result = await pacedDeclaredBodyRequest(
       base,
@@ -2568,17 +2568,17 @@ describe('U258 读取前拒绝：未读的大 body 不保持 keep-alive', () => 
       { 'x-internal-token': 'u258-wrong-internal-token' }
     )
     assertHugeUnreadBody('wrong internal token', result, 401)
-  }, { timeout: 8000 })
+  })
 
-  test('无效注册令牌 声明 16 MiB → 401，消费字节远小于声明、连接关闭', async () => {
+  test('无效注册令牌 声明 16 MiB → 401，消费字节远小于声明、连接关闭', { timeout: 8000 }, async () => {
     const base = await start()
     const result = await pacedDeclaredBodyRequest(base, '/v1/hosts/register', DECLARED_16_MIB, {
       authorization: 'Bearer u258-invalid-register-token'
     })
     assertHugeUnreadBody('invalid register token', result, 401)
-  }, { timeout: 8000 })
+  })
 
-  test('未知主机 heartbeat 声明 16 MiB → 404，消费字节远小于声明、连接关闭', async () => {
+  test('未知主机 heartbeat 声明 16 MiB → 404，消费字节远小于声明、连接关闭', { timeout: 8000 }, async () => {
     const base = await start()
     const result = await pacedDeclaredBodyRequest(
       base,
@@ -2587,9 +2587,9 @@ describe('U258 读取前拒绝：未读的大 body 不保持 keep-alive', () => 
       { authorization: 'Bearer u258-invalid-host-credential' }
     )
     assertHugeUnreadBody('unknown host heartbeat', result, 404)
-  }, { timeout: 8000 })
+  })
 
-  test('小 body 的 401 仍保持 keep-alive：同连接第二次请求成功', async () => {
+  test('小 body 的 401 仍保持 keep-alive：同连接第二次请求成功', { timeout: 5000 }, async () => {
     const base = await start()
     const url = new URL(base)
     const socket = await connectRaw(base)
@@ -2616,9 +2616,9 @@ describe('U258 读取前拒绝：未读的大 body 不保持 keep-alive', () => 
     } finally {
       socket.destroy()
     }
-  }, { timeout: 5000 })
+  })
 
-  test('合法登录不受影响：200 且同一连接继续复用', async () => {
+  test('合法登录不受影响：200 且同一连接继续复用', { timeout: 5000 }, async () => {
     const base = await start()
     const agent = new Agent({ keepAlive: true, maxSockets: 1 })
     try {
@@ -2639,7 +2639,7 @@ describe('U258 读取前拒绝：未读的大 body 不保持 keep-alive', () => 
     } finally {
       agent.destroy()
     }
-  }, { timeout: 5000 })
+  })
 })
 
 /**

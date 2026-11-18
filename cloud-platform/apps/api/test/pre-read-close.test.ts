@@ -462,19 +462,19 @@ after(async () => {
 })
 
 describe('U264 非 JSON 出口的读取前关闭', () => {
-  test('未认证 GET 不存在的静态页声明 16 MiB → 404、消费远小于声明、连接关闭', async () => {
+  test('未认证 GET 不存在的静态页声明 16 MiB → 404、消费远小于声明、连接关闭', { timeout: 8000 }, async () => {
     const base = await startApp()
     const result = await pacedDeclaredRequest(base, 'GET', '/definitely-not-a-page', DECLARED_16_MIB)
     assertUnreadBodyClosed('static 404', result, 404, DECLARED_16_MIB)
-  }, { timeout: 8000 })
+  })
 
-  test('未认证 OPTIONS /v1/projects 声明 2 MiB → 204、消费远小于声明、连接关闭', async () => {
+  test('未认证 OPTIONS /v1/projects 声明 2 MiB → 204、消费远小于声明、连接关闭', { timeout: 8000 }, async () => {
     const base = await startApp()
     const result = await pacedDeclaredRequest(base, 'OPTIONS', '/v1/projects', DECLARED_2_MIB)
     assertUnreadBodyClosed('cors preflight', result, 204, DECLARED_2_MIB)
-  }, { timeout: 8000 })
+  })
 
-  test('OPTIONS 的小 body 仍保持 keep-alive：同连接继续可用', async () => {
+  test('OPTIONS 的小 body 仍保持 keep-alive：同连接继续可用', { timeout: 5000 }, async () => {
     const base = await startApp()
     const url = new URL(base)
     const socket = await connectRaw(base)
@@ -502,11 +502,11 @@ describe('U264 非 JSON 出口的读取前关闭', () => {
     } finally {
       socket.destroy()
     }
-  }, { timeout: 5000 })
+  })
 })
 
 describe('U264 chunked 有界排空', () => {
-  test('13 B chunked 的 401：合法帧、同连接第二次请求 200', async () => {
+  test('13 B chunked 的 401：合法帧、同连接第二次请求 200', { timeout: 5000 }, async () => {
     const base = await startApp()
     const url = new URL(base)
     const socket = await connectRaw(base)
@@ -529,9 +529,9 @@ describe('U264 chunked 有界排空', () => {
     } finally {
       socket.destroy()
     }
-  }, { timeout: 5000 })
+  })
 
-  test('15 KiB chunked 在 16 KiB 预算内：keep-alive，同连接 GET /health 200', async () => {
+  test('15 KiB chunked 在 16 KiB 预算内：keep-alive，同连接 GET /health 200', { timeout: 5000 }, async () => {
     const base = await startApp()
     const url = new URL(base)
     const socket = await connectRaw(base)
@@ -553,9 +553,9 @@ describe('U264 chunked 有界排空', () => {
     } finally {
       socket.destroy()
     }
-  }, { timeout: 5000 })
+  })
 
-  test('32 KiB chunked 超过 16 KiB 预算：401 可达后连接关闭', async (t) => {
+  test('32 KiB chunked 超过 16 KiB 预算：401 可达后连接关闭', { timeout: 8000 }, async (t) => {
     const base = await startApp()
     const url = new URL(base)
     const socket = await connectRaw(base)
@@ -609,11 +609,11 @@ describe('U264 chunked 有界排空', () => {
     } finally {
       socket.destroy()
     }
-  }, { timeout: 8000 })
+  })
 })
 
 describe('U264 合法大 body 不受影响', () => {
-  test('32,889 B register 仍 201，且同一 keep-alive 连接复用', async () => {
+  test('32,889 B register 仍 201，且同一 keep-alive 连接复用', { timeout: 8000 }, async () => {
     const base = await startApp()
     const token = await login(base, 'u264-register-admin')
     const hostToken = await mintHostToken(base, token)
@@ -632,5 +632,5 @@ describe('U264 合法大 body 不受影响', () => {
     } finally {
       agent.destroy()
     }
-  }, { timeout: 8000 })
+  })
 })
