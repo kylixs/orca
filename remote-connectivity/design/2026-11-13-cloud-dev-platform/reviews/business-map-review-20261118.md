@@ -24,25 +24,25 @@
 
 ### 2.1 🟡 进行中 / 部分交付（5 项）
 
-| 编号 | 功能 | 进度 | 阻塞类型 | 阻塞编号 | 需要谁做什么 | 相关文档 |
+| 编号 | 功能 | 优先级 | 进度 | 阻塞类型 | 阻塞编号 | 需要谁做什么 | 相关文档 |
 |---|---|---|---|---|---|---|
-| AUTH-LDAP-ADMIT | LDAP 组门槛准入 | 80% | 语义裁定 | **D15**（D15-1..8） | 裁定撤销边界/嵌套组/503 语义；Phase 0 文档已交付 | `work-orders/ldap-group-admission-design.md`、`test-reports/u212-d15-brief-20261118.md` |
-| AUTH-COOKIE-MODE | Cookie 模式启用范围 | 95% | 启用决策 | **D5–D10** | 确认生产启用范围与部署前置（CSP 顺序、粘性 store、Host/XFP）；默认关闭可继续 | `test-reports/u197-ac-coverage.md`、`u197-closure-verdict-20261118.md`、`work-orders/pending-decisions-2026-11-17.md` |
-| AUTH-CSP | 认证页 CSP enforcement | 70% | 启用决策 | **D10**（stage 2） | 决定 report-uri 上报地址、enforcement 时间与宿主侧 CSP | `test-reports/u224-*`、`current-state/m01-auth.md` |
-| AZ-ENUM-GUARD | 无权限项目防探测 | 90% | 政策裁定 | **D24** | 确认「防枚举 404 不留痕」是否保留；若不保留需补 denial 审计 | `current-state/m07-audit.md`、`test-reports/open-rows-triage-20261118.md` |
-| QA-TIMEOUT-GATE | 超时形态门禁与存量迁移 | 99% | 施工收尾 | **U291** | `load-300` 完整规模实跑（300×1800s）完成后提交代码/基线/台账，基线归零 | `test-reports/timeouts-burndown-plan-20261118.md`、`test-plan.md` §7.3 |
+| AUTH-LDAP-ADMIT | LDAP 组门槛准入 | P1 | 80% | 语义裁定 | **D15**（D15-1..8） | 裁定撤销边界/嵌套组/503 语义；Phase 0 文档已交付 | `work-orders/ldap-group-admission-design.md`、`test-reports/u212-d15-brief-20261118.md` |
+| AUTH-COOKIE-MODE | Cookie 模式启用范围 | P0 | 95% | 启用决策 | **D5–D10** | 确认生产启用范围与部署前置（CSP 顺序、粘性 store、Host/XFP）；默认关闭可继续 | `test-reports/u197-ac-coverage.md`、`u197-closure-verdict-20261118.md`、`work-orders/pending-decisions-2026-11-17.md` |
+| AUTH-PAGE-CSP | 认证页 CSP enforcement | P0 | 70% | 启用决策 | **D10**（stage 2） | 决定 report-uri 上报地址、enforcement 时间与宿主侧 CSP | `test-reports/u224-*`、`current-state/m01-auth.md` |
+| AZ-ENUM-GUARD | 无权限项目防探测 | P0 | 90% | 政策裁定 | **D24** | 确认「防枚举 404 不留痕」是否保留；若不保留需补 denial 审计 | `current-state/m07-audit.md`、`test-reports/open-rows-triage-20261118.md` |
+| QA-TIMEOUT-GATE | 超时形态门禁与存量迁移 | P1（门禁） | 99% | 施工收尾 | **U291** | `load-300` 完整规模实跑（300×1800s）完成后提交代码/基线/台账，基线归零 | `test-reports/timeouts-burndown-plan-20261118.md`、`test-plan.md` §7.3 |
 
 ### 2.2 ⚪ 待决策 / 待开工（7 项）
 
-| 编号 | 功能 | 阻塞类型 | 阻塞编号 | 决策要点（推荐见括号） | 相关文档 |
+| 编号 | 功能 | 优先级 | 阻塞类型 | 阻塞编号 | 决策要点（推荐见括号） | 相关文档 |
 |---|---|---|---|---|---|
-| AUTH-TOKEN-GC | 令牌回收与快照明文剥离 | 决策 | **D18** | 惰性 + 60s sweep + retention；快照剥离 `accessTokens`/`webHandoffs` 明文（推荐方案 A） | `test-reports/u233-d18-token-gc-brief-20261118.md` |
-| AUTH-SESSION-EXPIRE | 过期自动登出与 `session.expired` 审计事件 | 决策 | **D20** | 首个撤销者写 1 条 best-effort 事件（推荐 A）；与 U230 事件词汇批同批 | `u243-session-expiry-event-brief.md` |
-| AZ-LDAP-GROUP | LDAP 组授权（LGA-1~6） | 评审 | 用户评审 | 组→系统准入与组授权设计已产出，待评审后派工 | `work-orders/ldap-open-source-survey.md`、`u212-*` |
-| PRJ-PROVISION-ERR | 克隆失败原因呈现 | 决策 | **D22** | 内联 `provisioningError` + 覆盖层 + 管理员重试（推荐 B，零 wire 变更） | `work-orders/pending-decisions-2026-11-17.md` 附四 |
-| FILE-DL-RPC | 专用 `files.download` 流式 RPC | 决策 | **D21（C9）** | 只做 C9+C6（推荐 B），补齐 host-attested 下载审计 | 同附三 |
-| FILE-COPY-CAPTURE | DOM 选区复制捕获 | 决策 | **D21（C6）** | 同 D21-B | 同附三 |
-| MOB-DETAIL | 移动端主机详情 sheet | 决策 | **U278** | 补 sheet（信息/权限双段三卡）或裁定「移动端二期」 | `current-state/m03-projects.md`、`ui/prototype-mobile-notes.md` |
+| AUTH-TOKEN-GC | 令牌回收与快照明文剥离 | P0 | 决策 | **D18** | 惰性 + 60s sweep + retention；快照剥离 `accessTokens`/`webHandoffs` 明文（推荐方案 A） | `test-reports/u233-d18-token-gc-brief-20261118.md` |
+| AUTH-SESSION-EXPIRE | 过期自动登出与 `session.expired` 审计事件 | P0 | 决策 | **D20** | 首个撤销者写 1 条 best-effort 事件（推荐 A）；与 U230 事件词汇批同批 | `u243-session-expiry-event-brief.md` |
+| AZ-LDAP-GROUP | LDAP 组授权（LGA-1~6） | P1 | 评审 | 用户评审 | 组→系统准入与组授权设计已产出，待评审后派工 | `work-orders/ldap-open-source-survey.md`、`u212-*` |
+| PRJ-PROVISION-ERR | 克隆失败原因呈现 | P0 | 决策 | **D22** | 内联 `provisioningError` + 覆盖层 + 管理员重试（推荐 B，零 wire 变更） | `work-orders/pending-decisions-2026-11-17.md` 附四 |
+| FILE-DL-RPC | 专用 `files.download` 流式 RPC | P0（分期） | 决策 | **D21（C9）** | 只做 C9+C6（推荐 B），补齐 host-attested 下载审计 | 同附三 |
+| FILE-COPY-CAPTURE | DOM 选区复制捕获 | P1（二期） | 决策 | **D21（C6）** | 同 D21-B | 同附三 |
+| MOB-HOST-DETAIL | 移动端主机详情 sheet | P1（形态扩展） | 决策 | **U278** | 补 sheet（信息/权限双段三卡）或裁定「移动端二期」 | `current-state/m03-projects.md`、`ui/prototype-mobile-notes.md` |
 
 ---
 
