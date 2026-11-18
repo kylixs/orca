@@ -22,7 +22,20 @@ export const FORMS = {
 }
 
 const CALL_PATTERN = /(?<![\w$.])(beforeEach|afterEach|before|after|test|it)\s*\(/g
-const NUMERIC_LITERAL = /^[+-]?\d[\d_]*(?:\.\d+)?(?:[eE][+-]?\d+)?$/
+
+// Numeric literal forms Node/TS accepts: decimal (fraction/exponent, `_` separators),
+// hex/octal/binary, and BigInt (`n`). Signs and outer parens are peeled separately. [U306]
+const DECIMAL_DIGITS = String.raw`\d(?:_?\d)*`
+const DECIMAL_LITERAL = String.raw`(?:${DECIMAL_DIGITS}(?:\.(?:${DECIMAL_DIGITS})?)?|\.${DECIMAL_DIGITS})(?:[eE][+-]?${DECIMAL_DIGITS})?`
+const HEX_LITERAL = String.raw`0[xX][0-9a-fA-F](?:_?[0-9a-fA-F])*`
+const OCTAL_LITERAL = String.raw`0[oO][0-7](?:_?[0-7])*`
+const BINARY_LITERAL = String.raw`0[bB][01](?:_?[01])*`
+const RADIX_LITERAL = `(?:${HEX_LITERAL}|${OCTAL_LITERAL}|${BINARY_LITERAL})`
+// BigInt precedes radix/decimal so `5000n` and `0x1388n` keep their `n` suffix.
+const BIGINT_LITERAL = `(?:${DECIMAL_DIGITS}|${RADIX_LITERAL})n`
+const NUMERIC_TOKEN_SOURCE = `(?:${BIGINT_LITERAL}|${RADIX_LITERAL}|${DECIMAL_LITERAL})`
+const NUMERIC_LITERAL = new RegExp(`^${NUMERIC_TOKEN_SOURCE}$`)
+const NUMERIC_TOKEN = new RegExp(`(?<![\\w$.])${NUMERIC_TOKEN_SOURCE}`, 'g')
 const REGEX_KEYWORDS = new Set([
   'return',
   'typeof',
@@ -271,8 +284,63 @@ function stripOuterParens(arg) {
   return text
 }
 
+// Strips outer parens only when the content is not a top-level sequence (`(a, b)`),
+// so `before(fn, (a, b))` never collapses into `before(fn, a, b)`.
+function stripExpressionParens(arg) {
+  let text = arg.trim()
+  for (;;) {
+    const stripped = stripOuterParens(text)
+    if (stripped === text || splitTopLevel(stripped, 0, stripped.length).length > 1) {
+      return text
+    }
+    text = stripped
+  }
+}
+
+// `-((+5000))` -> { negative: true, body: '5000' }.
+function peelNumericLiteral(arg) {
+  let text = arg.trim()
+  let negative = false
+  for (;;) {
+    const stripped = stripOuterParens(text)
+    if (stripped !== text) {
+      text = stripped
+    } else if (text.startsWith('+') || text.startsWith('-')) {
+      if (text[0] === '-') {
+        negative = !negative
+      }
+      text = text.slice(1).trim()
+    } else {
+      return { negative, body: text }
+    }
+  }
+}
+
+// Exact for integer/radix/BigInt literals; fractions and exponents use Number.
+// BigInt drops the `n` on purpose (see normalizeNumericArg).
+function canonicalNumericLiteral(body, negative) {
+  const bigint = body.endsWith('n')
+  const digits = (bigint ? body.slice(0, -1) : body).replace(/_/g, '')
+  const isRadix = /^0[xXoObB]/.test(digits)
+  try {
+    if (bigint || isRadix || !/[.eE]/.test(digits)) {
+      const value = BigInt(digits)
+      return String(negative && value !== 0n ? -value : value)
+    }
+    const value = Number(digits)
+    if (!Number.isFinite(value)) {
+      throw new Error('non-finite')
+    }
+    return String(negative ? -value : value)
+  } catch {
+    // Unparseable (e.g. `1e999` -> Infinity): keep the text with a marker so it
+    // cannot collide with a parsed canonical value. [U306]
+    return `raw:${negative ? '-' : ''}${digits}`
+  }
+}
+
 function isNumericLiteral(arg) {
-  return NUMERIC_LITERAL.test(stripOuterParens(arg))
+  return NUMERIC_LITERAL.test(peelNumericLiteral(arg).body)
 }
 
 // Numeric literals plus constant arithmetic like `DURATION_S * 1_000 + 300_000`.
@@ -284,7 +352,7 @@ function isNumericTimeout(arg) {
   if (!/\d/.test(text) || !/^[\w$+\-*/%.()\s]+$/.test(text)) {
     return false
   }
-  const withoutNumbers = text.replace(/\d[\d_]*(?:\.\d+)?(?:[eE][+-]?\d+)?/g, ' ')
+  const withoutNumbers = text.replace(NUMERIC_TOKEN, ' ')
   const identifiers = withoutNumbers.match(/[A-Za-z_$][\w$]*/g) ?? []
   return identifiers.every((identifier) => /^[A-Z][A-Z0-9_]*$/.test(identifier))
 }
@@ -363,17 +431,22 @@ export function scanSource(source, options = {}) {
   return scanSourceInternal(source, options).violations
 }
 
-// U305 ②: `5000`, `5_000`, `+5000` and `(5000)` are one timeout, so one key.
-const NUMERIC_TOKEN = /(?<![\w$.])\+?(\d[\d_]*(?:\.\d+)?(?:[eE][+-]?\d+)?)/g
-
-function normalizeNumericTokens(arg) {
-  let text = arg.trim()
-  let stripped = stripOuterParens(text)
-  while (stripped !== text && NUMERIC_LITERAL.test(stripped)) {
-    text = stripped
-    stripped = stripOuterParens(text)
+// U306: equivalent spellings (`5_000`, `5e3`, `0x1388`, `(5000)`, `-(5000)`) share
+// one key, so a pure formatting change never reports a new violation. BigInt maps to
+// the same key as an equal Number: Node ignores `5000n` exactly like `5000`, so the
+// spelling change is the same violation, not a new call site.
+function normalizeNumericArg(arg) {
+  const { negative, body } = peelNumericLiteral(arg)
+  if (NUMERIC_LITERAL.test(body)) {
+    return canonicalNumericLiteral(body, negative)
   }
-  return text.replace(NUMERIC_TOKEN, (_, digits) => digits.replace(/_/g, ''))
+  // Expressions stay textual: fold redundant outer parens and canonicalize each
+  // numeric token; never evaluate the expression (a scanner must not execute input,
+  // and evaluating arbitrary constant expressions is more machinery than warranted).
+  return stripExpressionParens(arg).replace(NUMERIC_TOKEN, (token) => {
+    const peeled = peelNumericLiteral(token)
+    return canonicalNumericLiteral(peeled.body, peeled.negative)
+  })
 }
 
 // U300: key on callee + non-callback args (the callback body is not the violation), so
@@ -381,7 +454,7 @@ function normalizeNumericTokens(arg) {
 export function callSignature(name, args) {
   const callbackIndex = name === 'test' || name === 'it' ? 1 : 0
   const kept = args.filter((_, index) => index !== callbackIndex)
-  return `${name}(${kept.map((arg) => normalizeNumericTokens(arg).replace(/\s+/g, '')).join(',')})`
+  return `${name}(${kept.map((arg) => normalizeNumericArg(arg).replace(/\s+/g, '')).join(',')})`
 }
 
 function compareViolations(a, b) {

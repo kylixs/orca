@@ -12,6 +12,7 @@ import {
   scanSource,
   scanTestTimeouts
 } from './check-test-timeouts.mjs'
+import { callSignature } from './check-test-timeouts-scan.mjs'
 
 const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))
 const GIT_OPTIONS = { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }
@@ -247,6 +248,81 @@ test('numeric literal spellings normalize to one baseline key', () => {
       assert.equal(rewritten, key, spelling)
     }
   })
+})
+
+// U306: every numeric literal form Node silently drops from a timeout position.
+test('flags every numeric literal form node:test silently ignores', () => {
+  const spellings = [
+    '5000',
+    '5_000',
+    '5e3',
+    '1e1_0',
+    '0x1388',
+    '0o11610',
+    '0b1001110001000',
+    '5000n',
+    '0x1388n',
+    '5000.0',
+    '+5000',
+    '-(5000)',
+    '((5_000))'
+  ]
+  const source = spellings.map((spelling, index) => `test('t${index}', () => {}, ${spelling})`)
+  const violations = scanSource(`${source.join('\n')}\n`)
+  assert.deepEqual(
+    violations,
+    spellings.map((_, index) => ({
+      file: '<memory>',
+      line: index + 1,
+      form: 'test-numeric-third'
+    }))
+  )
+})
+
+// U306: equivalent spellings collapse to one decimal canonical string, so a pure
+// formatting change keeps the baseline key. BigInt intentionally shares the key with
+// an equal Number: Node ignores `5000n` exactly like `5000`.
+test('equivalent numeric literal spellings normalize to one baseline key', () => {
+  const key = (spelling) => callSignature('test', ["'a'", '() => {}', spelling])
+  const canonical = key('5000')
+  for (const spelling of [
+    '5_000',
+    '5e3',
+    '5000.0',
+    '0x1388',
+    '0o11610',
+    '0b1001110001000',
+    '+5000',
+    '((5_000))',
+    '5000n',
+    '0x1388n'
+  ]) {
+    assert.equal(key(spelling), canonical, spelling)
+  }
+  assert.equal(key('-(5000)'), key('-5000'))
+  assert.equal(key('1e1_0'), key('10000000000'))
+})
+
+test('different numeric values keep different baseline keys', () => {
+  const key = (spelling) => callSignature('test', ["'a'", '() => {}', spelling])
+  assert.notEqual(key('5000'), key('5001'))
+  assert.notEqual(key('5000n'), key('5001n'))
+  assert.notEqual(key('0x1388'), key('0x1389'))
+})
+
+// U306: expressions are text-normalized only — outer parens fold, nothing is evaluated.
+test('constant expressions fold redundant outer parens into one key', () => {
+  const key = (spelling) => callSignature('test', ["'a'", '() => {}', spelling])
+  const bare = key('DURATION_S * 1_000')
+  assert.equal(key('(DURATION_S * 1_000)'), bare)
+  assert.equal(key('((DURATION_S * 1_000))'), bare)
+  assert.equal(key('DURATION_S * 0x3e8'), bare)
+})
+
+test('sequence parentheses are not folded into separate arguments', () => {
+  const oneArg = callSignature('before', ['fn', '(5000, 6000)'])
+  const twoArgs = callSignature('before', ['fn', '5000', '6000'])
+  assert.notEqual(oneArg, twoArgs)
 })
 
 // U305 ③: duplicate paths replaced the per-file signature map and threw a TypeError.
