@@ -2068,10 +2068,18 @@ async function main() {
     method: 'PUT',
     pathname: projectPolicyPath,
     token: ctx.admin,
-    body: { readRatePerHour: { calls: 0, bytes: 1 } },
+    // U260: the missing downloadPolicy used to make this 400 come from the D2
+    // required-field check, so the rate branch was never exercised.
+    body: { downloadPolicy: 'allow', readRatePerHour: { calls: 0, bytes: 1 } },
     op: '项目限速：非法值',
-    expected: '400 POLICY_INVALID',
-    check: isError(400, 'POLICY_INVALID')
+    expected: '400 POLICY_INVALID（读取限速必须是大于 0 的 calls/bytes）',
+    check: has(
+      (res) =>
+        res.status === 400 &&
+        res.json?.error?.code === 'POLICY_INVALID' &&
+        typeof res.json?.error?.message === 'string' &&
+        res.json.error.message.includes('读取限速')
+    )
   })
   await probe({
     id: 'Y22',
