@@ -165,22 +165,29 @@ export type WebHandoff = { userId: string; projectId: string; expiresAt: number 
 
 type LoginAttemptRecord = { count: number; lockedUntil: number }
 
+/** Must match `MAX_FAILURES` in apps/login-lockout/src/lockout.ts. */
+const MAX_LOGIN_FAILURES = 5
+
 /**
  * U293: one lock decision for both the write and read paths, so they cannot
  * drift apart again. `remaining` mirrors the shared store for every state.
  */
 function lockStateOf(record: LoginAttemptRecord | undefined, now: number): LockoutState {
   if (!record) {
-    return { locked: false, remaining: 5, lockedUntil: 0 }
+    return { locked: false, remaining: MAX_LOGIN_FAILURES, lockedUntil: 0 }
   }
   if (record.lockedUntil > now) {
     return { locked: true, remaining: 0, lockedUntil: record.lockedUntil }
   }
   // An expired lock must not keep counting old failures.
   if (record.lockedUntil !== 0) {
-    return { locked: false, remaining: 5, lockedUntil: 0 }
+    return { locked: false, remaining: MAX_LOGIN_FAILURES, lockedUntil: 0 }
   }
-  return { locked: false, remaining: Math.max(0, 5 - record.count), lockedUntil: 0 }
+  return {
+    locked: false,
+    remaining: Math.max(0, MAX_LOGIN_FAILURES - record.count),
+    lockedUntil: 0
+  }
 }
 
 export class Store {

@@ -5,7 +5,7 @@ import {
   ENFORCED_TIMEOUT_FIXTURE,
   LEGACY_TIMEOUT_FIXTURE,
   runNodeTestFixture
-} from '../helpers/timeout-selfcheck.ts'
+} from '../node-test-selfcheck/timeout-selfcheck.ts'
 
 /**
  * U290: gate e2e suites must use `test(name, { timeout }, fn)`. The legacy
