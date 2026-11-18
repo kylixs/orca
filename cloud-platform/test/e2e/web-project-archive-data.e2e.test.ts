@@ -66,7 +66,7 @@ before(async () => {
   archivedId = await createProject('w2-archived')
   const archived = await adminApi(`/v1/projects/${archivedId}/archive`, { method: 'POST' })
   assert.equal(archived.status, 200, JSON.stringify(archived.body))
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await service?.stop()

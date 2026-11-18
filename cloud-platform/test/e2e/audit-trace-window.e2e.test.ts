@@ -88,12 +88,12 @@ async function verifyChain(token: string): Promise<{ ok: boolean; checked: numbe
   return (await res.json()) as { ok: boolean; checked: number }
 }
 
-before(startApp, 30_000)
+before(startApp, { timeout: 30_000 })
 after(async () => {
   await app?.close()
 })
 
-test('AC-13 审计员查用户近 7 天：窗口边界、分页完整、traceId 可关联', async () => {
+test('AC-13 审计员查用户近 7 天：窗口边界、分页完整、traceId 可关联', { timeout: 60_000 }, async () => {
   const admin = await login('admin', 'Adm1n!', 'm89-admin')
   assert.notEqual(admin.token, '')
 
@@ -253,4 +253,4 @@ test('AC-13 审计员查用户近 7 天：窗口边界、分页完整、traceId 
     },
     chain: verified
   })
-}, 60_000)
+})

@@ -67,13 +67,13 @@ before(async () => {
   const body = (await projects.json()) as { projects: { id: string }[] }
   projectId = body.projects[0]?.id ?? ''
   assert.notEqual(projectId, '')
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await service?.stop()
 })
 
-test('AC-18 每个管理接口的拒绝都写 denied 审计，且链仍可校验', async () => {
+test('AC-18 每个管理接口的拒绝都写 denied 审计，且链仍可校验', { timeout: 120_000 }, async () => {
   // ---- every privileged endpoint a developer can reach ----
   const attempts: { label: string; status: number; eventType: string }[] = []
   const attempt = async (
@@ -176,4 +176,4 @@ test('AC-18 每个管理接口的拒绝都写 denied 审计，且链仍可校验
     missingEventTypes: missing,
     chain: verdict
   })
-}, 120_000)
+})

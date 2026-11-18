@@ -64,7 +64,7 @@ before(async () => {
     assert.equal(res.status, 200, await res.text())
   }
   browser = await chromium.launch({ channel: 'chrome', headless: true })
-}, 180_000)
+}, { timeout: 180_000 })
 
 after(async () => {
   await browser?.close()

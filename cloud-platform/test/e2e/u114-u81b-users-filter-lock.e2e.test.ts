@@ -24,7 +24,7 @@ before(async () => {
     /\[api\] listening on http:\/\/127\.0\.0\.1:(\d+)/,
     'api-u114-d4'
   )
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await service?.stop()

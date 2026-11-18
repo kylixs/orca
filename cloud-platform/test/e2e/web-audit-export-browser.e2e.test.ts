@@ -225,7 +225,7 @@ before(async () => {
     body: JSON.stringify({ profile: 'admin', url: `${api.url}/` })
   })
   tabId = tab.id
-}, 180_000)
+}, { timeout: 180_000 })
 
 after(async () => {
   const apiCtx = api
@@ -252,7 +252,7 @@ after(async () => {
     }
   }
   writeEvidenceFiles()
-}, 60_000)
+}, { timeout: 60_000 })
 
 testCase('capability probe: auditExport field advertises jsonl', async () => {
   const status = await apiJson<{

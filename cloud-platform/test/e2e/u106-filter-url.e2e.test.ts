@@ -19,7 +19,7 @@ before(async () => {
     /\[api\] listening on http:\/\/127\.0\.0\.1:(\d+)/,
     'api-u106-filter'
   )
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await service?.stop()
