@@ -714,7 +714,13 @@ describe('U197 S5 Web 客户端真实 Chromium：Cookie 会话 / 迁移 / 回退
       )
 
       // Log out while the probe is in flight, then log in as another account.
+      // The UI flips synchronously, but the server clears the Cookie in its response.
+      const logoutAnswered = page.waitForResponse(
+        (response) => new URL(response.url()).pathname === '/v1/auth/logout',
+        { timeout: 20_000 }
+      )
       await page.locator('#logoutBtn').click()
+      assert.equal((await logoutAnswered).status(), 200, 'the platform answered the logout')
       await page.waitForSelector(VIEW_LOGIN, { state: 'visible', timeout: 15_000 })
       assert.equal(await refreshCookieOf(context), undefined, 'logout clears the Cookie')
       await page.fill('#username', 'zhangsan')
