@@ -200,7 +200,18 @@ describe('U325 文件预览上限与二进制拒绝（真实平台 + 真实 Runt
     })
     expect(read.ok, JSON.stringify(read)).toBe(true)
     if (read.ok) {
-      const result = read.result as { content: string; truncated: boolean; byteLength: number }
+      const result = read.result satisfies {
+        content: string
+        truncated: boolean
+        byteLength: number
+      }
+      if (
+        typeof result.content !== 'string' ||
+        typeof result.truncated !== 'boolean' ||
+        typeof result.byteLength !== 'number'
+      ) {
+        throw new Error(`unexpected files.read result shape: ${JSON.stringify(read)}`)
+      }
       expect(result.truncated).toBe(true)
       expect(Buffer.byteLength(result.content, 'utf8')).toBe(PREVIEW_CAP_BYTES)
       expect(result.content).not.toContain(TAIL_MARKER)
