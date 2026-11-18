@@ -1,12 +1,11 @@
 {
-  "generatedAt": "2026-11-18T10:27:23.298Z",
+  "generatedAt": "2026-11-18T11:25:54.974Z",
   "scanner": "cloud-platform/scripts/check-test-timeouts.mjs",
   "scanScope": [
-    "cloud-platform/apps/**/test/**/*.ts",
-    "cloud-platform/test/**/*.ts",
-    "cloud-platform/apps/*/src/**/*.test.ts"
+    "**/*.{ts,tsx,mts,cts,mjs,cjs,js} importing node:test",
+    "files referenced by package.json scripts that invoke `node --test`"
   ],
-  "scannedFiles": 203,
+  "scannedFiles": 296,
   "counts": {
     "total": 0,
     "byForm": {}
