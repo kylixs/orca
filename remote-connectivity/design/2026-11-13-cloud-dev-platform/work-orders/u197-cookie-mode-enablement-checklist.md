@@ -23,7 +23,7 @@
   ORCA_CLOUD_PUBLIC_ORIGIN=https://<console-origin>
   ORCA_CLOUD_COOKIE_MODE=auto
   ```
-- [ ] 启动日志确认无降级告警：缺 origin 时 `auto` 会降级 `never` 并告警；非 loopback 纯 http 会显式降级并告警。
+- [ ] 启动日志确认无降级告警：缺 origin 时 `auto` 会降级 `never` 并告警；非 loopback 纯 http **不降级**但会告警 `omits Secure on the refresh cookie`——出现即按 §1 修正 origin 为 https，或回退 `never`。
 - [ ] 用真实浏览器打开控制台，确认登录后 Cookie 存在且页面可刷新恢复。
 
 ## 3. 验证子集（服务端 + 真实浏览器）
