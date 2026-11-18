@@ -1,6 +1,10 @@
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { login, registerHost, saveEvidence, spawnService, type Service } from './harness.ts'
+import {
+  installCommandTemplateSource,
+  renderInstallCommand
+} from './helpers/install-command-harness.ts'
 import { loadWebConsolePage, type WebConsolePage } from './web-console-page.ts'
 
 /**
@@ -225,13 +229,24 @@ test('G09-3 注册弹框「复制命令」：写入完整命令、toast 已复�
   await page.settle()
   assert.equal(callsTo(page, 'POST', '/v1/hosts/tokens'), 1, 'generate mints one token')
   const command = page.window.document.querySelector('#installCmd')?.textContent ?? ''
-  assert.match(
+  // Derive the expected command from app.js's own template so a template edit
+  // cannot stale this assertion; the contract itself is pinned below (U284).
+  const installUrl = /curl -fsSL "([^"]+)"/.exec(command)?.[1]
+  assert.ok(installUrl, 'command downloads the script from the install endpoint')
+  const { template, file } = installCommandTemplateSource()
+  assert.equal(
     command,
-    /^curl -fsSL "https:\/\/web\.console\.local\/install\/host\.sh\?/,
-    'command downloads the script explicitly (U182: no bash <(curl …) pipe)'
+    renderInstallCommand(template, file, installUrl),
+    'the dialog renders the current one-liner template verbatim'
   )
   assert.match(command, /token=/)
-  assert.match(command, /\|\| exit 1/, 'command propagates download/exec failure')
+  assert.match(command, /trap '[^']+' EXIT;/, 'an EXIT trap cleans up the temp file')
+  assert.match(
+    command,
+    /-o "\$file" \|\| \{[^}]*exit 65; \}/,
+    'a failed download exits 65 instead of running an empty script (U182/U276)'
+  )
+  assert.match(command, /exit "\$code"$/, 'the install script exit code is propagated (U181)')
   assert.doesNotMatch(command, /bash <\(curl/)
 
   page.window.document
