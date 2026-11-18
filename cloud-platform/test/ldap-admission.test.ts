@@ -50,7 +50,12 @@ async function startApp(config: Partial<ApiConfig> = {}): Promise<Ctx> {
   const port = await app.listen()
   openApps.push(app)
   const base = `http://127.0.0.1:${port}`
-  const request = async (method: string, path: string, body?: Json, token?: string): Promise<Resp> => {
+  const request = async (
+    method: string,
+    path: string,
+    body?: Json,
+    token?: string
+  ): Promise<Resp> => {
     const res = await fetch(`${base}${path}`, {
       method,
       headers: {
@@ -77,7 +82,11 @@ function loginWith(ctx: Ctx): Login {
 }
 
 function expectRefusal(res: Resp, where: string): void {
-  assert.equal(res.status, 401, `${where}: expected 401, got ${res.status} ${JSON.stringify(res.body)}`)
+  assert.equal(
+    res.status,
+    401,
+    `${where}: expected 401, got ${res.status} ${JSON.stringify(res.body)}`
+  )
   assert.equal(res.body.error?.code, REFUSAL_CODE, where)
   assert.equal(res.body.error?.message, REFUSAL_MESSAGE, where)
 }
@@ -88,11 +97,14 @@ function expectInvalidCredentials(res: Resp, where: string): void {
 }
 
 /** Pre-LGAA adapter: password-checked, no requiredGroup concept — the gate is the only admission point (§6.1-A3). */
-function plainAdapter(accounts: Map<string, { password: string; profile: LdapProfile }>): LdapAdapter {
+function plainAdapter(
+  accounts: Map<string, { password: string; profile: LdapProfile }>
+): LdapAdapter {
   return {
     async authenticate(username, password) {
       const account = accounts.get(username)
-      if (!account || account.password !== password) return { ok: false, reason: 'invalid_credentials' }
+      if (!account || account.password !== password)
+        return { ok: false, reason: 'invalid_credentials' }
       return { ok: true, profile: account.profile }
     }
   }
@@ -122,7 +134,10 @@ async function wrongUntilLocked(
   for (let attempt = 1; attempt <= expectedFirstLock; attempt += 1) {
     const res = await login(username, wrongPassword)
     if (attempt < expectedFirstLock) {
-      expectInvalidCredentials(res, `wrong #${attempt} must stay 401 (count continues, not reset/jumped)`)
+      expectInvalidCredentials(
+        res,
+        `wrong #${attempt} must stay 401 (count continues, not reset/jumped)`
+      )
     } else {
       assert.equal(res.status, 423, `wrong #${attempt} must hit the FR-1.4 lock`)
       assert.equal(res.body.error?.code, 'ACCOUNT_LOCKED')
@@ -152,7 +167,10 @@ describe('LDAP 分组准入登录链（§6.1 A1-A12）', () => {
 
     // 闸门侧：注入 adapter + config；profile 含 platform-admins 也不再派生管理员（§4.2 废除实证）。
     const accounts = new Map([account('wangwu', ZHANGSAN_PW, ['platform-admins', 'orca-cloud'])])
-    const gateSide = await startApp({ ldap: plainAdapter(accounts), ldapRequiredGroup: 'orca-cloud' })
+    const gateSide = await startApp({
+      ldap: plainAdapter(accounts),
+      ldapRequiredGroup: 'orca-cloud'
+    })
     const wangwu = loginWith(gateSide)
     const wangwuOk = await wangwu('wangwu', ZHANGSAN_PW)
     assert.equal(wangwuOk.status, 200)
@@ -183,7 +201,11 @@ describe('LDAP 分组准入登录链（§6.1 A1-A12）', () => {
     // 密码已验（adapter ok）→ clearLoginFailures 已跑 → 闸门统一拒绝。
     expectRefusal(await login('wangwu', ZHANGSAN_PW), 'gate-side refusal')
     assert.equal(ctx.app.store.usersByName.has('wangwu'), false)
-    assert.equal(deniedEvents(ctx.app, 'wangwu').length, 1, 'gate refusal must audit ldap_group_denied')
+    assert.equal(
+      deniedEvents(ctx.app, 'wangwu').length,
+      1,
+      'gate refusal must audit ldap_group_denied'
+    )
     // 清零后从头计数：其后再错 4 次 401，第 5 次才触锁。
     // 未清零则第 4 次就 423；清零后又 +1 则第 4 次也 423 —— 只有「清零且不增量」对上本序列。
     await wrongUntilLocked(login, 'wangwu', 'wrong-pass', 5)
@@ -249,7 +271,10 @@ describe('LDAP 分组准入登录链（§6.1 A1-A12）', () => {
     ] as const
     // 闸门侧：注入 adapter，profile 可变。
     const gateAccounts = new Map([account('zhangsan', ZHANGSAN_PW, [])])
-    const gate = await startApp({ ldap: plainAdapter(gateAccounts), ldapRequiredGroup: 'orca-cloud' })
+    const gate = await startApp({
+      ldap: plainAdapter(gateAccounts),
+      ldapRequiredGroup: 'orca-cloud'
+    })
     const gateLogin = loginWith(gate)
     // Mock 侧：MockLdapAdapter 自带 requiredGroup（查询侧同形）。
     const mockAccounts = new Map([account('zhangsan', ZHANGSAN_PW, [])])
@@ -325,7 +350,11 @@ describe('LDAP 分组准入登录链（§6.1 A1-A12）', () => {
         ['lisi', ZHANGSAN_PW]
       ] as const) {
         const res = await login(username, password)
-        assert.equal(res.status, 200, `${username} must pass with blank value ${JSON.stringify(blank)}`)
+        assert.equal(
+          res.status,
+          200,
+          `${username} must pass with blank value ${JSON.stringify(blank)}`
+        )
       }
       assert.equal(deniedEvents(ctx.app).length, 0)
     }
@@ -340,7 +369,10 @@ describe('LDAP 分组准入登录链（§6.1 A1-A12）', () => {
     const ctx = await startApp({ ldap: unavailable, ldapRequiredGroup: 'orca-cloud' })
     const login = loginWith(ctx)
     // 现状疣（:1703-1720 不分 reason）：unavailable 走凭据分支 401+计数，不改进为 503。
-    expectInvalidCredentials(await login('lisi', ZHANGSAN_PW), 'unavailable maps to 401 (documented wart)')
+    expectInvalidCredentials(
+      await login('lisi', ZHANGSAN_PW),
+      'unavailable maps to 401 (documented wart)'
+    )
     assert.equal(ctx.app.store.usersByName.has('lisi'), false, 'no seed on unavailable')
     assert.equal(ctx.app.store.sessions.size, 0, 'no session on unavailable')
     assert.equal(deniedEvents(ctx.app).length, 0, 'unavailable is not an admission refusal')
@@ -354,7 +386,10 @@ describe('LDAP 分组准入登录链（§6.1 A1-A12）', () => {
       account('worker', ZHANGSAN_PW, ['developers']),
       account('auditor', ZHANGSAN_PW, ['orca-cloud'])
     ])
-    const gate = await startApp({ ldap: plainAdapter(gateAccounts), ldapRequiredGroup: 'orca-cloud' })
+    const gate = await startApp({
+      ldap: plainAdapter(gateAccounts),
+      ldapRequiredGroup: 'orca-cloud'
+    })
     const gateLogin = loginWith(gate)
     const auditorFirst = await gateLogin('auditor', ZHANGSAN_PW)
     assert.equal(auditorFirst.status, 200)
@@ -371,13 +406,22 @@ describe('LDAP 分组准入登录链（§6.1 A1-A12）', () => {
     assert.equal(verify.status, 200)
     assert.equal(verify.body.ok, true)
     // 按查询检索：同 actor 的两类 failure 各就各位，reason 可区分。
-    const events = await gate.get('/v1/audit/events?eventType=login&result=failure&actor=worker&limit=50', auditorToken)
-    assert.equal(events.status, 200)
-    const reasons = ((events.body as { events: { metadata?: { reason?: string } }[] }).events ?? []).map(
-      (event) => event.metadata?.reason
+    const events = await gate.get(
+      '/v1/audit/events?eventType=login&result=failure&actor=worker&limit=50',
+      auditorToken
     )
-    assert.ok(reasons.includes('ldap_group_denied'), `refusal must be retrievable: ${JSON.stringify(reasons)}`)
-    assert.ok(reasons.includes('invalid_credentials'), 'credential failure must stay distinguishable')
+    assert.equal(events.status, 200)
+    const reasons = (
+      (events.body as { events: { metadata?: { reason?: string } }[] }).events ?? []
+    ).map((event) => event.metadata?.reason)
+    assert.ok(
+      reasons.includes('ldap_group_denied'),
+      `refusal must be retrievable: ${JSON.stringify(reasons)}`
+    )
+    assert.ok(
+      reasons.includes('invalid_credentials'),
+      'credential failure must stay distinguishable'
+    )
     // metadata 参与哈希：改写拒绝事件 metadata → verify 断链 409。
     const refused = deniedEvents(gate.app, 'worker')[0]
     assert.ok(refused, 'refusal event present in chain')
@@ -396,5 +440,86 @@ describe('LDAP 分组准入登录链（§6.1 A1-A12）', () => {
     assert.equal(adapterVerify.status, 200)
     assert.equal(adapterVerify.body.ok, true)
     assert.equal(deniedEvents(adapterSide.app, 'zhangsan').length, 1)
+  })
+})
+
+/**
+ * D15-1 (decision-authz-20261118.md §1): the directory is authoritative for
+ * group membership at sign-in. The old union kept a removed group's grants
+ * alive forever; replacement must take effect on the next login, and grants
+ * carried only by the removed group must stop matching.
+ */
+describe('D15-1 sign-in replaces the group set', () => {
+  function mutableAdapter(state: { groups: string[] }): LdapAdapter {
+    return {
+      async authenticate(username) {
+        return {
+          ok: true,
+          profile: ldapProfile({
+            username,
+            displayName: username,
+            dept: 'platform',
+            groups: [...state.groups]
+          })
+        }
+      }
+    }
+  }
+
+  function groupsOf(app: ApiHandle, username: string): string[] {
+    const user = app.store.usersByName.get(username)
+    assert.ok(user, 'user must exist after login')
+    return [...user.groups].sort()
+  }
+
+  function projectKeys(body: Json): string[] {
+    const projects = (body as { projects?: { key?: string }[] }).projects ?? []
+    return projects.map((project) => project.key ?? '')
+  }
+
+  test('a removed group loses its project grant on the next login', async () => {
+    const state = { groups: ['team-payment', 'team-a'] }
+    const ctx = await startApp({ ldap: mutableAdapter(state) })
+    const login = loginWith(ctx)
+
+    const first = await login('member', 'irrelevant')
+    assert.equal(first.status, 200)
+    assert.deepEqual(groupsOf(ctx.app, 'member'), ['team-a', 'team-payment'])
+    const firstProjects = await ctx.get('/v1/projects', (first.body as LoginOk).accessToken)
+    assert.equal(firstProjects.status, 200)
+    assert.ok(
+      projectKeys(firstProjects.body).includes('payment-service'),
+      'team-payment grant must apply while the group is present'
+    )
+
+    state.groups = ['team-a']
+    const second = await login('member', 'irrelevant')
+    assert.equal(second.status, 200)
+    assert.deepEqual(groupsOf(ctx.app, 'member'), ['team-a'])
+    const secondProjects = await ctx.get('/v1/projects', (second.body as LoginOk).accessToken)
+    assert.equal(secondProjects.status, 200)
+    assert.ok(
+      !projectKeys(secondProjects.body).includes('payment-service'),
+      'a removed group must not keep its project grant'
+    )
+  })
+
+  test('replacement also adds new groups and de-duplicates the directory answer', async () => {
+    const state = { groups: ['team-a'] }
+    const ctx = await startApp({ ldap: mutableAdapter(state) })
+    const login = loginWith(ctx)
+
+    const first = await login('member', 'irrelevant')
+    assert.equal(first.status, 200)
+    assert.deepEqual(groupsOf(ctx.app, 'member'), ['team-a'])
+
+    state.groups = ['team-a', 'team-b', 'team-b']
+    const second = await login('member', 'irrelevant')
+    assert.equal(second.status, 200)
+    assert.deepEqual(
+      groupsOf(ctx.app, 'member'),
+      ['team-a', 'team-b'],
+      'new groups appear and duplicates collapse (replacement is not a clear)'
+    )
   })
 })

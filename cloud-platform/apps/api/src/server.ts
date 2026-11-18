@@ -4017,7 +4017,10 @@ export function createApp(config: ApiConfig): ApiHandle {
           status: 'active'
         })
       }
-      user.groups = [...new Set([...user.groups, ...result.profile.groups])]
+      // D15-1: the directory is authoritative for group membership at sign-in.
+      // A union would keep a removed group's grants alive forever; replacement
+      // makes revocation take effect on the next login (fail-closed).
+      user.groups = [...new Set(result.profile.groups)]
       // 角色覆盖优先于 LDAP 种子（§7.3）：种子只在首登生效，覆盖后每次登录重算。
       if (user.roleOverride) {
         user.roles = USER_PAGE_ROLES[user.roleOverride]
