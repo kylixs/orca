@@ -1,6 +1,11 @@
 import { after, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { createApp, type ApiHandle } from '../src/server.ts'
+import { Store } from '../src/store.ts'
+import { serializeSnapshot } from '../src/snapshot-serialize.ts'
 
 /**
  * U263: `isDirectAddrForm` fed `https://<addr>/cloud-admin.html`, so a `@` or
@@ -11,16 +16,29 @@ import { createApp, type ApiHandle } from '../src/server.ts'
 const ORIGIN = 'https://console.u263.example'
 const INTERNAL_TOKEN = 'u263-token'
 const apps: ApiHandle[] = []
+const tempDirs: string[] = []
 
-async function start(): Promise<{ app: ApiHandle; base: string }> {
-  const app = createApp({
-    port: 0,
-    accessTtlMs: 60_000,
-    refreshTtlMs: 60_000,
-    internalToken: INTERNAL_TOKEN,
-    cookieMode: 'auto',
-    publicOrigin: ORIGIN
-  })
+async function start(
+  options: { storeFile?: string } = {}
+): Promise<{ app: ApiHandle; base: string }> {
+  const previous = process.env.ORCA_PLATFORM_STORE_FILE
+  if (options.storeFile !== undefined) process.env.ORCA_PLATFORM_STORE_FILE = options.storeFile
+  let app: ApiHandle
+  try {
+    app = createApp({
+      port: 0,
+      accessTtlMs: 60_000,
+      refreshTtlMs: 60_000,
+      internalToken: INTERNAL_TOKEN,
+      cookieMode: 'auto',
+      publicOrigin: ORIGIN
+    })
+  } finally {
+    if (options.storeFile !== undefined) {
+      if (previous === undefined) delete process.env.ORCA_PLATFORM_STORE_FILE
+      else process.env.ORCA_PLATFORM_STORE_FILE = previous
+    }
+  }
   apps.push(app)
   const port = await app.listen()
   return { app, base: `http://127.0.0.1:${port}` }
@@ -97,6 +115,7 @@ function successfulRegistrations(app: ApiHandle): number {
 
 after(async () => {
   await Promise.all(apps.map((app) => app.close()))
+  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true })
 })
 
 describe('U263 directAddrs 拒绝 URL 保留字符', () => {
@@ -281,5 +300,132 @@ describe('U265 方括号 IPv6 语法与地址长度', () => {
     })
     assert.equal(unlisted.status, 200)
     assert.equal(unlisted.headers.get('access-control-allow-origin'), null)
+  })
+})
+
+describe('U268 directAddrs 长度边界与 mapped IPv6', () => {
+  /** RFC 1035 max: 63/63/63/61 labels = 253 chars (254 with trailing dot). */
+  const DNS_253 = ['a'.repeat(63), 'b'.repeat(63), 'c'.repeat(63), 'd'.repeat(61)].join('.')
+  const DNS_254 = `${DNS_253}.`
+  const LENGTH_CASES = [
+    { addr: `${DNS_253}:6553`, chars: 258, accepted: true },
+    { addr: `${DNS_253}:65535`, chars: 259, accepted: true },
+    { addr: `${DNS_254}:65535`, chars: 260, accepted: true },
+    { addr: 'a'.repeat(261), chars: 261, accepted: true },
+    { addr: 'a'.repeat(264), chars: 264, accepted: true },
+    { addr: 'a'.repeat(265), chars: 265, accepted: false }
+  ] as const
+
+  const MAPPED_IPV6 = ['[::ffff:192.0.2.1]', '[::ffff:192.0.2.1]:443']
+  const INVALID_MAPPED_IPV6 = ['[::ffff:999.0.0.1]', '[::ffff:999.0.0.1]:443']
+
+  test('register 接受 259 字符合法 host:port：253 DNS + :65535', async () => {
+    const { app, base } = await start()
+    const admin = await loginAs(base, 'u268-259-admin')
+    const token = await mintHostToken(base, admin)
+    const addr = `${DNS_253}:65535`
+    assert.equal(addr.length, 259)
+
+    const res = await registerHost(base, token, {
+      name: 'u268-259',
+      protocolVersion: 3,
+      directAddrs: [addr]
+    })
+    assert.equal(res.status, 201, await res.clone().text())
+    assert.deepEqual(app.store.hostsByName.get('u268-259')?.directAddrs, [addr])
+  })
+
+  test('register 按 264 上限逐个接受 258/259/260/261/264 并拒绝 265', async () => {
+    const { app, base } = await start()
+    const admin = await loginAs(base, 'u268-length-admin')
+
+    for (const entry of LENGTH_CASES) {
+      assert.equal(entry.addr.length, entry.chars, 'the fixture has the intended length')
+      const token = await mintHostToken(base, admin)
+      const name = `u268-length-${entry.chars}`
+      const res = await registerHost(base, token, {
+        name,
+        protocolVersion: 3,
+        directAddrs: [entry.addr]
+      })
+      const payload = (await res.json()) as Json
+      if (entry.accepted) {
+        assert.equal(res.status, 201, `${entry.chars} chars: ${JSON.stringify(payload)}`)
+        assert.deepEqual(app.store.hostsByName.get(name)?.directAddrs, [entry.addr])
+      } else {
+        assert.equal(res.status, 400, `${entry.chars} chars: ${JSON.stringify(payload)}`)
+        assert.equal(errorCode(payload), 'HOST_DIRECTADDRS_INVALID')
+        assert.equal(app.store.hostsByName.has(name), false, 'the oversized address is not persisted')
+        assert.equal(app.store.hostTokens.at(-1)?.usedAt, null, 'the refusal spends no token')
+      }
+    }
+  })
+
+  test('register 接受 IPv4-mapped IPv6（方括号内允许点），仍由真实解析器判伪', async () => {
+    const { app, base } = await start()
+    const admin = await loginAs(base, 'u268-mapped-admin')
+
+    const token = await mintHostToken(base, admin)
+    const accepted = await registerHost(base, token, {
+      name: 'u268-mapped',
+      protocolVersion: 3,
+      directAddrs: MAPPED_IPV6
+    })
+    assert.equal(accepted.status, 201, await accepted.clone().text())
+    assert.deepEqual(app.store.hostsByName.get('u268-mapped')?.directAddrs, MAPPED_IPV6)
+
+    for (const [index, addr] of INVALID_MAPPED_IPV6.entries()) {
+      const badToken = await mintHostToken(base, admin)
+      const name = `u268-mapped-bad-${index}`
+      const res = await registerHost(base, badToken, {
+        name,
+        protocolVersion: 3,
+        directAddrs: [addr]
+      })
+      const payload = (await res.json()) as Json
+      assert.equal(res.status, 400, `directAddrs=${JSON.stringify(addr)}: ${JSON.stringify(payload)}`)
+      assert.equal(errorCode(payload), 'HOST_DIRECTADDRS_INVALID')
+      assert.equal(app.store.hostsByName.has(name), false)
+      assert.equal(app.store.hostTokens.at(-1)?.usedAt, null)
+    }
+  })
+
+  test('快照恢复丢弃非字符串 directAddrs：项目列表 200 而非 500', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'orca-u268-'))
+    tempDirs.push(dir)
+    const file = join(dir, 'store.json')
+    const snapshot = JSON.parse(serializeSnapshot(new Store())) as { hosts: unknown[] }
+    snapshot.hosts.push([
+      'host_dev001',
+      {
+        id: 'host_dev001',
+        name: 'dev-001',
+        fingerprint: 'sha256:u268host',
+        tlsFingerprint: 'sha256:u268tls',
+        e2eePublicKey: 'u268',
+        orcaVersion: '1.5.0',
+        protocolVersion: 3,
+        zone: 'intranet',
+        directAddrs: [123, { bad: true }, '10.0.0.5:9000'],
+        relayRoute: null,
+        capabilities: [],
+        projectsRoot: null,
+        projectDirs: [],
+        status: 'online',
+        maintenanceReason: null,
+        lastHeartbeatAt: Date.now(),
+        credentialHash: null,
+        revokedAt: null
+      }
+    ])
+    writeFileSync(file, JSON.stringify(snapshot))
+
+    const { app, base } = await start({ storeFile: file })
+    const admin = await loginAs(base, 'u268-snapshot-admin')
+    const res = await fetch(`${base}/v1/projects`, {
+      headers: { authorization: `Bearer ${admin}`, origin: 'https://console.u268.example' }
+    })
+    assert.equal(res.status, 200, await res.clone().text())
+    assert.deepEqual(app.store.hosts.get('host_dev001')?.directAddrs, ['10.0.0.5:9000'])
   })
 })

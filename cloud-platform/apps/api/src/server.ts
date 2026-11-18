@@ -545,12 +545,12 @@ function codeFingerprint(code: string): string {
 }
 
 /**
- * U265: a dialable `host[:port]` is far shorter than 255 chars — DNS names stop
- * at 253 and bracketed IPv6 plus a port measures ~51 — so 255 bounds every legal
- * form with margin. The check is O(1) and also runs in `browserPageOrigins`,
- * which scans every host address on each CORS-bearing request.
+ * U268: the longest legal form is a 253-char DNS name (254 with trailing dot)
+ * plus `:` + five port digits = 260, so 264 leaves margin without accepting a
+ * form a URL parser could not dial. O(1), and also runs in `browserPageOrigins`
+ * on every CORS-bearing request.
  */
-const MAX_DIRECT_ADDR_CHARS = 255
+const MAX_DIRECT_ADDR_CHARS = 264
 
 /**
  * A direct address must be a bare `host[:port]` (IPv6 bracketed), because it is
@@ -560,10 +560,12 @@ const MAX_DIRECT_ADDR_CHARS = 255
  * cannot turn the splice into another origin.
  * U265: the bracket class admits malformed IPv6 (`[::::::]`), so the real parser
  * decides, not the character set.
+ * U268: it also admits `.` so IPv4-mapped IPv6 (`[::ffff:192.0.2.1]`) reaches
+ * `isIPv6`; a dotted non-address such as `[::ffff:999.0.0.1]` still fails there.
  */
 function isDirectAddrForm(addr: string): boolean {
   if (addr.length === 0 || addr.length > MAX_DIRECT_ADDR_CHARS) return false
-  const match = addr.match(/^(\[[0-9A-Fa-f:]+\]|[A-Za-z0-9._-]+)(?::(\d{1,5}))?$/)
+  const match = addr.match(/^(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9._-]+)(?::(\d{1,5}))?$/)
   if (!match) return false
   const port = match[2]
   if (port !== undefined && (Number(port) < 1 || Number(port) > 65535)) return false
@@ -584,6 +586,14 @@ function isDialableDirectAddr(addr: string): boolean {
   } catch {
     return false
   }
+}
+
+/**
+ * U268: a hand-edited or very old snapshot can carry non-string elements. Every
+ * reader scans this array, so drop them at load rather than 500 on `.match`.
+ */
+function stringDirectAddrs(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((addr): addr is string => typeof addr === 'string') : []
 }
 
 /**
@@ -2372,6 +2382,13 @@ export function createApp(config: ApiConfig): ApiHandle {
   // U131: dev-store snapshots are opt-in; without the env var the store stays in memory.
   const storeFile = (process.env.ORCA_PLATFORM_STORE_FILE ?? '').trim()
   const storePersistence = storeFile ? attachStorePersistence(store, { file: storeFile }) : null
+  if (storePersistence) {
+    // U268: a restored snapshot may hold non-string entries; readers scan this
+    // array and would throw on the first one.
+    for (const host of store.hosts.values()) {
+      host.directAddrs = stringDirectAddrs(host.directAddrs)
+    }
+  }
   // U202 E9: one export store per process; startup prune plus unref'd periodic sweep.
   const auditExportStore = createAuditExportStore(process.env, {
     dir: config.auditExportDir,
