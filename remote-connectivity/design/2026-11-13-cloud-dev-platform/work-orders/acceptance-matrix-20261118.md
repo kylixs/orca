@@ -71,7 +71,7 @@
 | ADMIN 管理台 / CLIENT 客户端 / WEB 控制台 / MOB / DSGN / QA | DSGN-PROTO-U67 | U67 原型、验收截图与回归脚本 | 🟢 | proto-tab-check **39/39** | 今日实跑 39/39（脚本；非 e2e） |
 | ADMIN 管理台 / CLIENT 客户端 / WEB 控制台 / MOB / DSGN / QA | QA-AUTH-BASE | 认证 25 文件基线 | 🟢 | **267/267**（auth-baseline-6，25 文件全量 0 skip） | 今日实跑 267/267 |
 | ADMIN 管理台 / CLIENT 客户端 / WEB 控制台 / MOB / DSGN / QA | QA-BASE-MATRIX | 授权组合矩阵基线 | 🟢 | **113/113** | 今日实跑 113/113 |
-| ADMIN 管理台 / CLIENT 客户端 / WEB 控制台 / MOB / DSGN / QA | QA-E2E-SWEEP | 全仓 e2e 全景 | 🟢 | **第八轮：148 文件 / 37 批 / 1150 tests（1147 pass / 0 fail / 3 env skip）**，hashes_same=yes；U326 拆分后 149 文件/1152，**待第九轮** | 第八轮 148 文件/1150（1147 pass / 3 env skip）；拆分后 149/1152 待第九轮 |
+| ADMIN 管理台 / CLIENT 客户端 / WEB 控制台 / MOB / DSGN / QA | QA-E2E-SWEEP | 全仓 e2e 全景 | 🟢 | **第九轮：149 文件 / 38 批 / 1152 tests（1149 pass / 0 fail / 3 env skip）**，hashes_same=yes（最终门禁） | 今日实跑 第九轮 149/1152（1149 pass / 3 env skip） |
 | ADMIN 管理台 / CLIENT 客户端 / WEB 控制台 / MOB / DSGN / QA | QA-TIMEOUT-GATE | 超时形态门禁与存量迁移 | 🟢 | 门禁测试 **92（91 pass/1 skip）**；296 文件、0 new | 今日实跑 92（91+1）、296 文件 0 new |
 | ADMIN 管理台 / CLIENT 客户端 / WEB 控制台 / MOB / DSGN / QA | QA-TYPE-GATE | apps 类型门禁 | 🟢 | `tc:apps` 16→0 | 历史 `tc:apps` 16→0（本轮未重跑） |
 | ADMIN 管理台 / CLIENT 客户端 / WEB 控制台 / MOB / DSGN / QA | QA-EVIDENCE-CHECKERS | 台账表格/sha/编码校验 | 🟢 | 三脚本 + 自测 | 今日三脚本 RC 0 + 自测 15/15 |
