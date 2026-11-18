@@ -1793,8 +1793,8 @@ async function main() {
     token: ctx.admin,
     body: { subjectType: 'role', subjectId: ctx.devUserId, permissions: ['open'] },
     op: '项目授权：非法 subjectType 被当作 user',
-    expected: '400 SUBJECT_TYPE_INVALID',
-    check: isError(400, 'SUBJECT_TYPE_INVALID')
+    expected: '400 GRANT_SUBJECT_TYPE_INVALID',
+    check: isError(400, 'GRANT_SUBJECT_TYPE_INVALID')
   })
   await probe({
     id: 'G12',
