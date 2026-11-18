@@ -589,6 +589,22 @@ function isDialableDirectAddr(addr: string): boolean {
 }
 
 /**
+ * U272: `Number("not-a-number")` became NaN and was stored as null, silently
+ * losing the version the host reported. A version is a non-negative safe integer;
+ * `Number.isFinite` also rejects `"1e999"`, which parses to Infinity.
+ */
+function isProtocolVersionValue(value: unknown): value is number | string {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) && Number.isSafeInteger(value) && value >= 0
+  }
+  if (typeof value !== 'string') return false
+  const trimmed = value.trim()
+  if (!/^\d+$/.test(trimmed)) return false
+  const numeric = Number(trimmed)
+  return Number.isFinite(numeric) && Number.isSafeInteger(numeric)
+}
+
+/**
  * U268: a hand-edited or very old snapshot can carry non-string elements. Every
  * reader scans this array, so drop them at load rather than 500 on `.match`.
  */
@@ -1883,6 +1899,11 @@ const GRANT_PERMISSION_SET = new Set<string>([
   'browser',
   'download'
 ])
+
+/** U273: a whole-row PUT is a set; repeated bits must not inflate the stored row. */
+function dedupePermissions<T extends string>(permissions: T[]): T[] {
+  return [...new Set(permissions)]
+}
 
 /**
  * Groups the platform has seen: the union of logged-in users' LDAP groups and
@@ -5206,13 +5227,14 @@ export function createApp(config: ApiConfig): ApiHandle {
         const submittedPermissions: unknown[] = body.permissions
         // PUT is a whole-row replacement, so an out-of-contract bit rejects the
         // row instead of silently storing a bit no host rule reads.
-        const permissions = submittedPermissions.filter(
+        const whitelisted = submittedPermissions.filter(
           (permission): permission is Permission =>
             typeof permission === 'string' && GRANT_PERMISSION_SET.has(permission)
         )
-        if (permissions.length !== submittedPermissions.length) {
+        if (whitelisted.length !== submittedPermissions.length) {
           return error(res, 400, 'GRANT_PERMISSION_INVALID', '权限位不在允许范围内。', traceId)
         }
+        const permissions = dedupePermissions(whitelisted)
         // The ACL matches on the user id, so a username has to be resolved here:
         // storing it verbatim would mint a grant that reads as granted and never
         // fires (M116-QA-001). A group nobody has been seen in is the same dead
@@ -5934,6 +5956,21 @@ export function createApp(config: ApiConfig): ApiHandle {
           traceId
         )
       }
+      // U272 H44: a non-numeric version used to be stored as null. Refuse it
+      // while the single-use token is still unused; null/absent keep the default.
+      if (
+        body.protocolVersion !== undefined &&
+        body.protocolVersion !== null &&
+        !isProtocolVersionValue(body.protocolVersion)
+      ) {
+        return error(
+          res,
+          400,
+          'HOST_PROTOCOL_VERSION_INVALID',
+          'protocolVersion 必须是非负整数。',
+          traceId
+        )
+      }
       // U261 H8: an element check must run before the single-use token is spent.
       // A non-string reached `ipOfDirectAddr` and became a 500 after the spend.
       // U265: the URL parse check runs here too, still before the spend.
@@ -6039,7 +6076,9 @@ export function createApp(config: ApiConfig): ApiHandle {
       target.tlsFingerprint = String(body.tlsFingerprint ?? '') || null
       target.e2eePublicKey = String(body.e2eePublicKeyB64 ?? '')
       target.orcaVersion = String(body.orcaVersion ?? '')
-      target.protocolVersion = Number(body.protocolVersion ?? 3)
+      target.protocolVersion = isProtocolVersionValue(body.protocolVersion)
+        ? Number(body.protocolVersion)
+        : 3
       target.zone = zone
       target.directAddrs = Array.isArray(body.directAddrs) ? (body.directAddrs as string[]) : []
       // An absent relayRoute means the host named none: derive it from the address
@@ -6420,11 +6459,11 @@ export function createApp(config: ApiConfig): ApiHandle {
         }
         const submittedPermissions: unknown[] = body.permissions
         // PUT replaces the whole row: one bad bit rejects the row, never partially stores it.
-        const permissions = submittedPermissions.filter(
+        const whitelisted = submittedPermissions.filter(
           (permission): permission is HostPermission =>
             typeof permission === 'string' && HOST_PERMISSION_SET.has(permission)
         )
-        if (permissions.length !== submittedPermissions.length) {
+        if (whitelisted.length !== submittedPermissions.length) {
           return error(
             res,
             400,
@@ -6433,6 +6472,7 @@ export function createApp(config: ApiConfig): ApiHandle {
             traceId
           )
         }
+        const permissions = dedupePermissions(whitelisted)
         // Same resolver as project grants (AA1): ids and exact group names only.
         const resolved = resolveGrantSubject(store, subjectType, submitted)
         if (!resolved.ok) {
