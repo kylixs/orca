@@ -67,6 +67,11 @@
 查询参数（`auditQueryParams`）：`limit=50`、`q`、`eventFamily`（族）或 `eventType`（单类型）、`username`、`fileName`、`result`、`projectId`、`hostId`、`since`/`until`（ISO）、`cursor`。
 客户端校验（`auditFilterError`，与 API 门限对齐）：`q` 长度 2–128；`fileName` ≤128；起始/结束必须可解析；结束不得早于开始；窗口 >31 天拒绝；只给 since 且距今 >31 天拒绝。
 
+### 非法查询参数口径
+
+- `since` 非法（如 `since=not-a-date`）静默忽略、按未传处理，保持旧客户端兼容（`apps/api/src/audit-query.ts:91-95`；契约测试 `test/audit-query.test.ts:223`，e2e `test/e2e/u66-2-audit-query.e2e.test.ts:393`）。
+- 非法 `cursor` 当前同样被静默忽略（返回 200），将改为 400 `INVALID_QUERY`（U13，另行处理）。
+
 ## 4. 数据来源
 
 - `GET /v1/audit/events?<conditions>` → `{ events: AuditEvent[], nextCursor }`；事件字段：`seq/ts/actor/eventType/targetType/targetId/result/traceId/metadata`。

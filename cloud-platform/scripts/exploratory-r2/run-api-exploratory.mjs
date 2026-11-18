@@ -2829,15 +2829,32 @@ async function main() {
     actual: `HTTP ${since32.status} ${since32.json?.error?.code ?? ''}`,
     ok: since32.status === 400 && since32.json?.error?.code === 'TIME_WINDOW_TOO_LARGE'
   })
-  const sinceBad = await request('GET', '/v1/audit/events?since=not-a-date', { token: ctx.admin })
+  // U12: bad since is intentionally ignored for old clients (audit-query.ts:91-95; test/audit-query.test.ts:223).
+  const sinceBadUntil = new Date().toISOString()
+  const sinceBadControl = await request(
+    'GET',
+    `/v1/audit/events?limit=50&until=${encodeURIComponent(sinceBadUntil)}`,
+    { token: ctx.admin }
+  )
+  const sinceBad = await request(
+    'GET',
+    `/v1/audit/events?limit=50&since=not-a-date&until=${encodeURIComponent(sinceBadUntil)}`,
+    { token: ctx.admin }
+  )
+  const sinceBadSeqs = (sinceBad.json?.events ?? []).map((event) => event.seq)
+  const sinceBadControlSeqs = (sinceBadControl.json?.events ?? []).map((event) => event.seq)
   manualCase({
     id: 'U12',
     area: 'audit',
     sev: 'P3',
     op: '时间窗：非法日期',
-    expected: '400 明确拒绝',
-    actual: `HTTP ${sinceBad.status} n=${sinceBad.json?.events?.length}`,
-    ok: sinceBad.status === 400
+    expected: '200 且忽略 since（与无 since 控制查询一致）',
+    actual: `HTTP ${sinceBad.status} n=${sinceBadSeqs.length} sameAsControl=${JSON.stringify(sinceBadSeqs) === JSON.stringify(sinceBadControlSeqs)}`,
+    ok:
+      sinceBad.status === 200 &&
+      sinceBadControl.status === 200 &&
+      sinceBadSeqs.length > 0 &&
+      JSON.stringify(sinceBadSeqs) === JSON.stringify(sinceBadControlSeqs)
   })
   const cursorBad = await request('GET', '/v1/audit/events?cursor=abc', { token: ctx.admin })
   manualCase({
