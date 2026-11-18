@@ -549,9 +549,11 @@ function codeFingerprint(code: string): string {
  * A direct address must be a bare `host[:port]` (IPv6 bracketed), because it is
  * spliced verbatim into `https://<addr>/web-index.html`: a scheme, path, or
  * unbracketed IPv6 would move the handoff code onto a different origin or path.
+ * U263: the host part admits only name characters, so URL delimiters (`@ \ / ? # %`)
+ * cannot turn the splice into another origin.
  */
 function isDirectAddrForm(addr: string): boolean {
-  const match = addr.match(/^(\[[0-9A-Fa-f:]+\]|[^:[\]/?#\s]+)(?::(\d{1,5}))?$/)
+  const match = addr.match(/^(\[[0-9A-Fa-f:]+\]|[A-Za-z0-9._-]+)(?::(\d{1,5}))?$/)
   if (!match) return false
   const port = match[2]
   return port === undefined || (Number(port) >= 1 && Number(port) <= 65535)
