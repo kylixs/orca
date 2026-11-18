@@ -78,6 +78,14 @@ test('U58 U13 cursor accepts decimal non-negative integers', async () => {
     assert.equal(errorCode(result.body), undefined, `cursor=${cursor} must not be an error`)
     assert.ok(Array.isArray(result.body.events), `cursor=${cursor} returns a page`)
   }
+  // Cursor is exclusive (`seq >= cursor` is skipped), so 0/1 must be empty pages —
+  // this pins that 0 is an explicit filter, not the old falsy «no cursor».
+  const zero = await queryCursor('0')
+  assert.equal((zero.body.events as unknown[]).length, 0, 'cursor=0 selects no seq')
+  const one = await queryCursor('1')
+  assert.equal((one.body.events as unknown[]).length, 0, 'seq starts at 1')
+  const high = await queryCursor('999999')
+  assert.ok((high.body.events as unknown[]).length > 0, 'a cursor above every seq keeps them')
 })
 
 test('U58 U13 cursor rejects every non-decimal or unsafe value', async () => {
