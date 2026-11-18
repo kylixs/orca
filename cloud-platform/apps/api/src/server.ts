@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
+import { isIPv6 } from 'node:net'
 import { lstat, readFile, rm, stat } from 'node:fs/promises'
 import { createReadStream, readFileSync } from 'node:fs'
 import { join, normalize } from 'node:path'
@@ -604,17 +605,45 @@ function codeFingerprint(code: string): string {
 }
 
 /**
+ * U265: a dialable `host[:port]` is far shorter than 255 chars — DNS names stop
+ * at 253 and bracketed IPv6 plus a port measures ~51 — so 255 bounds every legal
+ * form with margin. The check is O(1) and also runs in `browserPageOrigins`,
+ * which scans every host address on each CORS-bearing request.
+ */
+const MAX_DIRECT_ADDR_CHARS = 255
+
+/**
  * A direct address must be a bare `host[:port]` (IPv6 bracketed), because it is
  * spliced verbatim into `https://<addr>/web-index.html`: a scheme, path, or
  * unbracketed IPv6 would move the handoff code onto a different origin or path.
  * U263: the host part admits only name characters, so URL delimiters (`@ \ / ? # %`)
  * cannot turn the splice into another origin.
+ * U265: the bracket class admits malformed IPv6 (`[::::::]`), so the real parser
+ * decides, not the character set.
  */
 function isDirectAddrForm(addr: string): boolean {
+  if (addr.length === 0 || addr.length > MAX_DIRECT_ADDR_CHARS) return false
   const match = addr.match(/^(\[[0-9A-Fa-f:]+\]|[A-Za-z0-9._-]+)(?::(\d{1,5}))?$/)
   if (!match) return false
   const port = match[2]
-  return port === undefined || (Number(port) >= 1 && Number(port) <= 65535)
+  if (port !== undefined && (Number(port) < 1 || Number(port) > 65535)) return false
+  const host = match[1]
+  return host.startsWith('[') ? isIPv6(host.slice(1, -1)) : true
+}
+
+/**
+ * U265: the form whitelist cannot prove `new URL` will accept the splice; an
+ * address it refuses must be rejected before a token is spent or a host stored,
+ * or every later project view (and project create) 500s on Invalid URL.
+ */
+function isDialableDirectAddr(addr: string): boolean {
+  if (!isDirectAddrForm(addr)) return false
+  try {
+    new URL(`https://${addr}`)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -3380,13 +3409,20 @@ export function createApp(config: ApiConfig): ApiHandle {
    */
   function browserPageOrigins(): Set<string> {
     const origins = new Set<string>()
+    const addOrigin = (value: string): void => {
+      try {
+        origins.add(new URL(value).origin)
+      } catch {
+        // A form the URL parser refuses cannot be a browser page origin.
+      }
+    }
     for (const host of store.hosts.values()) {
       for (const addr of host.directAddrs) {
-        if (isDirectAddrForm(addr)) origins.add(`https://${addr}`)
+        if (isDirectAddrForm(addr)) addOrigin(`https://${addr}`)
       }
     }
     for (const node of relayNodes.all()) {
-      if (node.browserHost !== '') origins.add(`https://${node.browserHost}`)
+      if (node.browserHost !== '') addOrigin(`https://${node.browserHost}`)
     }
     return origins
   }
@@ -3395,10 +3431,19 @@ export function createApp(config: ApiConfig): ApiHandle {
    * The request's Origin when it is one of those page origins, else null. Exact
    * match, never a wildcard: a bearer token rides the Authorization header,
    * which CORS does not protect — this only decides who may read the reply.
+   * U265: both sides are URL-normalized, so a host stored as `Example.COM:443`
+   * matches the `https://example.com` a browser serializes.
    */
   function corsAllowOriginFor(req: IncomingMessage): string | null {
-    const origin = req.headers.origin?.toString().trim() ?? ''
-    return origin !== '' && browserPageOrigins().has(origin) ? origin : null
+    const raw = req.headers.origin?.toString().trim() ?? ''
+    if (raw === '') return null
+    let origin: string
+    try {
+      origin = new URL(raw).origin
+    } catch {
+      return null
+    }
+    return browserPageOrigins().has(origin) ? origin : null
   }
 
   /**
@@ -3416,9 +3461,15 @@ export function createApp(config: ApiConfig): ApiHandle {
     if (!h || !addr || !h.tlsFingerprint || !isDirectAddrForm(addr)) {
       return ''
     }
-    const page = new URL(`https://${addr}/cloud-admin.html`)
-    page.searchParams.set('api', platformOrigin)
-    return page.toString()
+    try {
+      const page = new URL(`https://${addr}/cloud-admin.html`)
+      page.searchParams.set('api', platformOrigin)
+      return page.toString()
+    } catch {
+      // U265: a restored snapshot may pre-date the parse check; an unviewable
+      // page is better than an uncaught 500 on every project listing.
+      return ''
+    }
   }
 
   /** Credentials in a clone URL are host-only; readers get the address without them. */
@@ -5928,10 +5979,11 @@ export function createApp(config: ApiConfig): ApiHandle {
       }
       // U261 H8: an element check must run before the single-use token is spent.
       // A non-string reached `ipOfDirectAddr` and became a 500 after the spend.
+      // U265: the URL parse check runs here too, still before the spend.
       if (
         body.directAddrs !== undefined &&
         (!Array.isArray(body.directAddrs) ||
-          !body.directAddrs.every((addr) => typeof addr === 'string' && isDirectAddrForm(addr)))
+          !body.directAddrs.every((addr) => typeof addr === 'string' && isDialableDirectAddr(addr)))
       ) {
         audit.appendBestEffort({
           eventType: 'host_register',
@@ -6092,11 +6144,13 @@ export function createApp(config: ApiConfig): ApiHandle {
         const body = await readSensitiveWriteBody(req, res, traceId, HEARTBEAT_BODY_MAX_BYTES)
         if (!body) return
         // Bad addresses would be stored and later splice into every project view;
-        // reject the beat before anything is persisted (U57 H14).
+        // reject the beat before anything is persisted (U57 H14, U265).
         if (
           body.directAddrs !== undefined &&
           (!Array.isArray(body.directAddrs) ||
-            !body.directAddrs.every((addr) => typeof addr === 'string' && isDirectAddrForm(addr)))
+            !body.directAddrs.every(
+              (addr) => typeof addr === 'string' && isDialableDirectAddr(addr)
+            ))
         ) {
           return error(
             res,
@@ -7344,7 +7398,7 @@ export function createApp(config: ApiConfig): ApiHandle {
     // direct address stops being a precondition (a relayed host may list none).
     const browserEntry = browserEntryUrlFor(host.relayRoute)
     const directAddr = host.directAddrs[0]
-    if (browserEntry === '' && (!directAddr || !isDirectAddrForm(directAddr))) {
+    if (browserEntry === '' && (!directAddr || !isDialableDirectAddr(directAddr))) {
       audit.appendBestEffort({
         eventType: 'web_handoff',
         actor: user.username,

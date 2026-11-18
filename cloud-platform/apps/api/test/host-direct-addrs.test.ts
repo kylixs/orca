@@ -85,6 +85,16 @@ const REFUSED = [
 
 const ACCEPTED = ['10.0.0.5', '10.0.0.5:9000', '[::1]', '[::1]:443']
 
+/** U265: the character class admits these, but no URL parser can dial them. */
+const MALFORMED_BRACKETED_IPV6 = ['[::::::]', '[1:2:3:4:5:6:7:8:9]', '[::1]%eth0']
+const OVERSIZED_ADDR = 'a'.repeat(2000)
+
+function successfulRegistrations(app: ApiHandle): number {
+  return app.store.audit.filter(
+    (event) => event.eventType === 'host_register' && event.result === 'success'
+  ).length
+}
+
 after(async () => {
   await Promise.all(apps.map((app) => app.close()))
 })
@@ -172,5 +182,104 @@ describe('U263 directAddrs 拒绝 URL 保留字符', () => {
     })
     assert.equal(accepted.status, 200, await accepted.clone().text())
     assert.deepEqual(app.store.hosts.get(hostId)?.directAddrs, ACCEPTED)
+  })
+})
+
+describe('U265 方括号 IPv6 语法与地址长度', () => {
+  test('register 拒绝畸形方括号 IPv6：400、不落库、无成功审计、令牌不耗', async () => {
+    const { app, base } = await start()
+    const admin = await loginAs(base, 'u265-malformed-admin')
+
+    for (const [index, addr] of MALFORMED_BRACKETED_IPV6.entries()) {
+      const token = await mintHostToken(base, admin)
+      const name = `u265-malformed-${index}`
+      const res = await registerHost(base, token, {
+        name,
+        protocolVersion: 3,
+        directAddrs: [addr]
+      })
+      const payload = (await res.json()) as Json
+      assert.equal(res.status, 400, `directAddrs=${JSON.stringify(addr)}: ${JSON.stringify(payload)}`)
+      assert.equal(errorCode(payload), 'HOST_DIRECTADDRS_INVALID')
+      assert.equal(app.store.hostsByName.has(name), false, 'the bad address is not persisted')
+      assert.equal(app.store.hostTokens.at(-1)?.usedAt, null, 'the refusal spends no token')
+    }
+    assert.equal(successfulRegistrations(app), 0, 'no successful registration is audited')
+  })
+
+  test('register 拒绝超长地址（2000 字符）：400 且令牌不耗', async () => {
+    const { app, base } = await start()
+    const admin = await loginAs(base, 'u265-oversized-admin')
+    const token = await mintHostToken(base, admin)
+
+    const res = await registerHost(base, token, {
+      name: 'u265-oversized',
+      protocolVersion: 3,
+      directAddrs: [OVERSIZED_ADDR]
+    })
+    const payload = (await res.json()) as Json
+    assert.equal(res.status, 400, JSON.stringify(payload))
+    assert.equal(errorCode(payload), 'HOST_DIRECTADDRS_INVALID')
+    assert.equal(app.store.hostsByName.has('u265-oversized'), false)
+    assert.equal(app.store.hostTokens.at(-1)?.usedAt, null, 'the refusal spends no token')
+    assert.equal(successfulRegistrations(app), 0)
+  })
+
+  test('heartbeat 拒绝畸形 IPv6/超长地址，不覆盖旧值', async () => {
+    const { app, base } = await start()
+    const admin = await loginAs(base, 'u265-heartbeat-admin')
+    const token = await mintHostToken(base, admin)
+
+    const registered = await registerHost(base, token, {
+      name: 'u265-heartbeat-bounded',
+      protocolVersion: 3,
+      directAddrs: ['10.0.0.5:9000']
+    })
+    assert.equal(registered.status, 201, await registered.clone().text())
+    const { hostId, credential } = (await registered.json()) as {
+      hostId: string
+      credential: string
+    }
+
+    for (const addr of [...MALFORMED_BRACKETED_IPV6, OVERSIZED_ADDR]) {
+      const res = await postHeartbeat(base, hostId, credential, { directAddrs: [addr] })
+      const payload = (await res.json()) as Json
+      assert.equal(res.status, 400, `directAddrs=${JSON.stringify(addr)}: ${JSON.stringify(payload)}`)
+      assert.equal(errorCode(payload), 'HOST_DIRECTADDRS_INVALID')
+      assert.deepEqual(app.store.hosts.get(hostId)?.directAddrs, ['10.0.0.5:9000'])
+    }
+  })
+
+  test('CORS：归一化主机大小写与显式 :443 后已列 Origin 可读取', async () => {
+    const { base } = await start()
+    const admin = await loginAs(base, 'u265-cors-admin')
+    const token = await mintHostToken(base, admin)
+
+    const registered = await registerHost(base, token, {
+      name: 'u265-cors',
+      protocolVersion: 3,
+      directAddrs: ['Console.U265.Example:443']
+    })
+    assert.equal(registered.status, 201, await registered.clone().text())
+
+    // What a browser serializes from the host page above.
+    const listed = await fetch(`${base}/v1/projects`, {
+      headers: { authorization: `Bearer ${admin}`, origin: 'https://console.u265.example' }
+    })
+    assert.equal(listed.status, 200, await listed.clone().text())
+    assert.equal(listed.headers.get('access-control-allow-origin'), 'https://console.u265.example')
+
+    // A client that sends the pre-normalized form names the same origin.
+    const raw = await fetch(`${base}/v1/projects`, {
+      headers: { authorization: `Bearer ${admin}`, origin: 'https://CONSOLE.U265.EXAMPLE:443' }
+    })
+    assert.equal(raw.status, 200, await raw.clone().text())
+    assert.equal(raw.headers.get('access-control-allow-origin'), 'https://console.u265.example')
+
+    const unlisted = await fetch(`${base}/v1/projects`, {
+      headers: { authorization: `Bearer ${admin}`, origin: 'https://evil.example' }
+    })
+    assert.equal(unlisted.status, 200)
+    assert.equal(unlisted.headers.get('access-control-allow-origin'), null)
   })
 })
