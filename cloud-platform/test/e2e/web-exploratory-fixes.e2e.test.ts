@@ -1180,9 +1180,9 @@ test('U116 工作台心跳文案与后端默认离线窗一致', { timeout: 120_
   // Scope to the stat hint: #content textContent glues the numeric value to the hint.
   const hint =
     [...page.window.document.querySelectorAll<HTMLElement>('#content .stat')]
-      .find((card) => card.querySelector('.stat-label')?.textContent?.trim() === '主机在线')
+      .find((card) => card.querySelector('.stat-label')?.textContent?.trim() === '在线项目')
       ?.querySelector('.stat-hint')?.textContent ?? ''
-  assert.ok(hint, 'the 主机在线 stat card must render its hint')
+  assert.ok(hint, 'the 在线项目 stat card must render its hint')
   // Digit boundary: `160 秒…` must not satisfy the match for a 60-second window.
   assert.match(
     hint,

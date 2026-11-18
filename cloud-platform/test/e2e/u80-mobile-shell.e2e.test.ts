@@ -332,7 +332,7 @@ test('390×844：工作台统计 2×2、提示条一次可关、最近项目触�
     assert.equal(await page.locator('#content .grid-4 .stat').count(), 4)
     assert.deepEqual(await page.locator('#content .stat-label').allInnerTexts(), [
       '可访问项目',
-      '主机在线',
+      '在线项目',
       '禁用下载项目',
       '下载默认策略'
     ])

@@ -956,7 +956,7 @@ async function renderWorkbench() {
     }
     <div class="grid-4">
       ${stat('可访问项目', String(projects.length), '按 ACL 过滤')}
-      ${stat('主机在线', String(online), '60 秒无心跳转离线')}
+      ${stat('在线项目', String(online), '60 秒无心跳转离线')}
       ${stat('禁用下载项目', String(denied), '导出入口已隐藏')}
       ${stat('下载默认策略', policy.downloadDefault === 'deny' ? '禁止' : '允许', `策略版本 v${policy.version}`)}
     </div>

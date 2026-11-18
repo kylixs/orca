@@ -182,8 +182,8 @@ test('G05 工作台统计卡四项逐字来自 API：项目数/在线数/禁用�
     value: String(expected.total),
     hint: '按 ACL 过滤'
   })
-  assert.deepEqual(card(cards, '主机在线'), {
-    label: '主机在线',
+  assert.deepEqual(card(cards, '在线项目'), {
+    label: '在线项目',
     value: String(expected.online),
     hint: '60 秒无心跳转离线'
   })
