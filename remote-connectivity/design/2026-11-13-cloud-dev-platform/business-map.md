@@ -103,7 +103,7 @@
 | FILE-PATH-GUARD | 相对路径与 `..` 穿越拒绝 | FR-6.5 | P0 | 🟢 | 100% | file-contract |
 | FILE-DL-POLICY | 全局/项目下载策略与即时生效 | FR-7.1/7.2/7.6 | P0 | 🟢 | 100% | download-policy 套件 |
 | FILE-DL-HARDEN | 宿主侧硬拦（现有 RPC） | FR-7.3 | P0 | 🟢 | 100% | guard 7/7、enforcement 4/4 |
-| FILE-DL-RPC | 专用 `files.download` 流式 RPC | FR-9.12 | P0（分期） | ⚪ | 0%（D21：缓；现有 readChunk 审计+宿主硬拦已覆盖，字面缺口登记） | 缓登记 U66/D21；现有 guard 7/7、enforcement 4/4 |
+| FILE-DL-RPC | 专用 `files.download` 流式 RPC | FR-9.12 | P0（分期） | ⚪ | 0%（D21：缓；C9 前置调研亦建议维持缓，A 仅关闭 5 个点名方法中的 1 个） | 缓登记 U66/D21；guard 7/7、enforcement 4/4、download-policy 3/3；调研 `test-reports/d21-c9-prep-20261118.md` |
 | FILE-DL-AUDIT | 拦截/超阈值读取审计 | FR-7.4 | P0 | 🟢 | 100% | audit-file-events 套件 |
 | FILE-COPY-CAPTURE | DOM 选区复制捕获 | FR-9.14（FR-9.13–16 未入库） | P1（二期） | 🟢 | 100%（C6 已落地于云端简易工作区） | cloud-file-copy-audit **8/8** |
 

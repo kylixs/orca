@@ -37,7 +37,7 @@
 | 编号 | 最终决策 | 主会话评审 | 解锁 | 复杂度 |
 |---|---|---|---|---|
 | D11 | 修订 FR-2.5 对齐现有四卡（可访问项目 / 在线项目 / 禁用下载项目 / 下载默认策略）；「主机在线」标签改「在线项目」；今日会话、待审批下载标二期；不加后端数据源 | 接受。U203 的 QA-030 搜索/筛选/通知残留须**另登记**新行，不得用主机页提交冒充 | U202、U203（统计卡半项） | 需求文本 1 行 + 前端标签 |
-| D21 | 只保留 C6：云简易工作区已有复制捕获（`cloud-file-copy-capture.tsx`、8/8），复核并回写 §6.2；原生验收面若包含则补同一监听。C9 缓（现有 readChunk 审计 + 宿主硬拦 + 覆盖声明基本满足，FR-9.12 字面缺口如实登记）；C10 不做（与 U70 硬拦语义冲突）；P4 待合规签字；P5 未触容量线不立项 | 接受（已核实实现文件与 8/8 用例存在） | U66 口径 B 结案；FILE-COPY-CAPTURE 转🟢 | 0 新 RPC / 0 事件 |
+| D21 | 只保留 C6：云简易工作区已有复制捕获（`cloud-file-copy-capture.tsx`、8/8），复核并回写 §6.2；原生验收面若包含则补同一监听。C9 缓（现有 readChunk 审计 + 宿主硬拦 + 覆盖声明基本满足，FR-9.12 字面缺口如实登记）；C10 不做（与 U70 硬拦语义冲突）；P4 待合规签字；P5 未触容量线不立项。**C9 前置调研（`test-reports/d21-c9-prep-20261118.md`）**：建议维持 B——A 仅关闭 `files.download`（FR-9.12 点名 5 方法中的 1 个，AC-40 仍不能全绿），成本约 1 新 RPC + 1 新文件 + 6 改动 + 2 套测试，并需拍板读预算计入与双报口径；readChunk 真实路径在 `src/main/runtime`，事件为裸名 `file_download`/`download_blocked` | 接受（已核实实现文件与 8/8 用例存在） | U66 口径 B 结案；FILE-COPY-CAPTURE 转🟢 | 0 新 RPC / 0 事件 |
 | D22 | B 最小版：`provisioningError` 已在 `projectView` 加性下发，只改前端三处项目渲染 + `openDisabledReason` title；不做前置探测、新 API、重试入口 | 接受 | U54-008 可关；PRJ-PROVISION-ERR 转🟢 | 前端 3 处 |
 | D25 | B 最小版：新增一个 `workflow_dispatch` job（`build_template: true`、`ORCA_REQUIRE_ORCAD_TEMPLATE=1`，产物绑定分支 SHA，约 60 行、1 artifact、7 天）；不动 `pr.yml`/`release-cut.yml` | 接受 | U181 H11–H13 | 1 工作流文件 |
 | U278 | 一期不新增开发：平台 Web 控制台 ≤700px 已有全屏主机详情 sheet（信息/权限），缺口只在 `ui/prototype-mobile.html` 原型稿；原型 sheet 归二期素材 | 接受。纠正「功能缺失」表述 | MOB-HOST-DETAIL 转🟢 | 0 |
