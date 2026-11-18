@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+import * as entry from './check-test-timeouts.mjs'
 import {
   checkTestTimeouts,
   parseArgs,
@@ -197,12 +198,33 @@ test('regex character classes do not truncate the enclosing test call', () => {
   ])
 })
 
+// U303 ②: a dotted name is a property, not a keyword, so `/` after it is division.
+test('dotted keyword names do not swallow a following test call', () => {
+  const source = [
+    "const a = obj.in / 2, x = test('a', () => {}, 5000) / 3",
+    "const b = obj.return / 2, y = test('b', () => {}, 6000) / 3"
+  ].join('\n')
+  assert.deepEqual(scanSource(source), [
+    { file: '<memory>', line: 1, form: 'test-numeric-third' },
+    { file: '<memory>', line: 2, form: 'test-numeric-third' }
+  ])
+})
+
 test('escaped parens inside a character class do not break brackets', () => {
   const source = [
     "test('paren class', () => {",
     '  const match = text.match(/[\\(/]+/)',
     '}, 5000)'
   ].join('\n')
+  assert.deepEqual(scanSource(source), [
+    { file: '<memory>', line: 1, form: 'test-numeric-third' }
+  ])
+})
+
+// U303 ③ known limitation: `v`-flag nested classes close on the first `]`, leaving a
+// stray `]` that breaks call pairing. Skip rather than pretend the scanner supports it.
+test.skip('v-flag nested character classes are a known unsupported limitation', () => {
+  const source = ["test('nested class', () => {", '  const re = /[[a]/]/v', '}, 5000)'].join('\n')
   assert.deepEqual(scanSource(source), [
     { file: '<memory>', line: 1, form: 'test-numeric-third' }
   ])
@@ -474,6 +496,23 @@ test(
     })
   }
 )
+
+// U303 ①: the entry file re-exports both split modules; a dropped re-export breaks callers.
+test('entry re-exports the split scanner and baseline API', () => {
+  for (const name of [
+    'SCAN_SCOPE',
+    'FORMS',
+    'scanSource',
+    'scanTestTimeouts',
+    'collectScopeFiles',
+    'headScopeFiles',
+    'scanHeadSources',
+    'checkTestTimeouts',
+    'parseArgs'
+  ]) {
+    assert.ok(name in entry, name)
+  }
+})
 
 test('parseArgs rejects unknown flags and missing paths', () => {
   assert.throws(() => parseArgs(['--nope']), /unknown argument/)
