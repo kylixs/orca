@@ -33,12 +33,35 @@ function json(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body))
 }
 
+/**
+ * U250: bound the append body. A legal batch holds up to MAX_BATCH events, so a
+ * flat 4 KiB cap would reject the documented workload; 1 KiB per event stays
+ * bounded while covering a full batch, and an oversized body is dropped whole.
+ */
+const APPEND_BODY_MAX_BYTES = MAX_BATCH * 1024
+
 async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = []
-  for await (const chunk of req) chunks.push(chunk as Buffer)
-  if (chunks.length === 0) return {}
+  let size = 0
+  let oversized = false
+  for await (const chunk of req) {
+    const buffer = chunk as Buffer
+    size += buffer.length
+    // Keep draining an oversized body so the connection stays usable.
+    if (size > APPEND_BODY_MAX_BYTES) {
+      oversized = true
+      chunks.length = 0
+      continue
+    }
+    if (!oversized) chunks.push(buffer)
+  }
+  if (oversized || chunks.length === 0) return {}
   try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>
+    const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+    // `null` and scalars have no fields, so treat them like an absent body.
+    if (parsed === null || typeof parsed !== 'object') return {}
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: non-null object from JSON.parse is an array or plain object; callers only read properties.
+    return parsed as Record<string, unknown>
   } catch {
     return {}
   }

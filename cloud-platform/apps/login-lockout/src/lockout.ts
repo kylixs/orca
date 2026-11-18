@@ -71,12 +71,34 @@ function json(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body))
 }
 
+/**
+ * U250: internal calls are small control messages; an oversized body is dropped
+ * whole (readJson returns `{}`) so peers keep their old semantics.
+ */
+const INTERNAL_BODY_MAX_BYTES = 4 * 1024
+
 async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = []
-  for await (const chunk of req) chunks.push(chunk as Buffer)
-  if (chunks.length === 0) return {}
+  let size = 0
+  let oversized = false
+  for await (const chunk of req) {
+    const buffer = chunk as Buffer
+    size += buffer.length
+    // Keep draining an oversized body so the connection stays usable.
+    if (size > INTERNAL_BODY_MAX_BYTES) {
+      oversized = true
+      chunks.length = 0
+      continue
+    }
+    if (!oversized) chunks.push(buffer)
+  }
+  if (oversized || chunks.length === 0) return {}
   try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>
+    const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+    // `null` and scalars have no fields, so treat them like an absent body.
+    if (parsed === null || typeof parsed !== 'object') return {}
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: non-null object from JSON.parse is an array or plain object; callers only read properties.
+    return parsed as Record<string, unknown>
   } catch {
     return {}
   }
@@ -117,8 +139,7 @@ export async function startLockoutService(options: {
     // A GET carries the name in the query, a POST in the body.
     const body = req.method === 'GET' ? {} : await readJson(req)
     const fromQuery = url.searchParams.get('username')
-    const username =
-      fromQuery ?? (typeof body.username === 'string' ? body.username : '')
+    const username = fromQuery ?? (typeof body.username === 'string' ? body.username : '')
     if (username === '') {
       return json(res, 400, { error: { code: 'USERNAME_REQUIRED' } })
     }
