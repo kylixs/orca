@@ -135,6 +135,11 @@ describe('D18 会话清扫：删除集合与保留集合', () => {
     store.refreshTokens.set('ref_recent', recentRevoked.id)
     store.refreshTokens.set('ref_orphan', 'sess_missing')
 
+    // Snapshot the revocation ledger by value: `store.revocations` aliases the
+    // fixture array, so deepEqual against it would pass even if sweep mutated
+    // entries in place. Compare serialized copies instead.
+    const revocationsBefore = JSON.stringify(store.revocations)
+
     sweepSessionsOnce(deps(store, clock, events))
 
     assert.deepEqual([...store.sessions.keys()].sort(), [
@@ -151,7 +156,11 @@ describe('D18 会话清扫：删除集合与保留集合', () => {
     assert.deepEqual(events, ['sess_expired'], 'one event for the one expiry transition')
     assert.equal(expired.revokedAt, NOW)
     assert.equal(expired.epoch, 2)
-    assert.deepEqual(store.revocations, revocations, 'revocations are never swept')
+    assert.equal(
+      JSON.stringify(store.revocations),
+      revocationsBefore,
+      'revocations are never swept'
+    )
 
     // Past retention the expired/recently revoked sessions and their refresh
     // digests go too; the live session and the event survive.
@@ -162,7 +171,7 @@ describe('D18 会话清扫：删除集合与保留集合', () => {
     assert.deepEqual([...store.refreshTokens.keys()], ['ref_live'])
     assert.deepEqual([...store.accessTokens.keys()], ['tok_live'])
     assert.deepEqual(events, ['sess_expired'], 'deletion must not write another event')
-    assert.deepEqual(store.revocations, revocations)
+    assert.equal(JSON.stringify(store.revocations), revocationsBefore)
   })
 
   test('retention 边界：恰好到期删除，早 1ms 保留', () => {
