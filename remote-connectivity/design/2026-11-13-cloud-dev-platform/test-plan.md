@@ -173,6 +173,7 @@
 | `cloud-platform/test/e2e/web-project-entry.e2e.test.ts`（U274，已修 `beba9cf089d`） | 项目入口（FR-3.8/FR-3.11 邻接） | **10 例**（`node --test` 实测 10 pass）：非法地址用例改为注册边界断言 400 `HOST_DIRECTADDRS_INVALID`；「在线但无 sessionPageUrl」fixture 改用 `dev-nosession`（TLS 指纹 + 无直连地址）；入口/详情/维护/离线矩阵断言未变 |
 | `cloud-platform/apps/api/test/snapshot-malformed-direct-addr.test.ts`（U277 新增、U280 补测；U280 修复 `abc06c54421`） | 快照恢复畸形直连地址（AC-02 邻接） | **4 例 / 1 suite**（`node --test` 实测 4 pass）：U277 原 2 例——恢复 `127.0.0.1:99999`（端口越界）后列表 200 且 `sessionPageUrl` 为空串，`127.0.0.1:17001` 对照非空且可解析；U280 追加 2 例——`console.example/evil`、`user@evil.example` 同样列表 200 + 空串。合并为一行：同一文件、同一 suite、同一地址守卫谓词，U280 仅扩畸形样本 |
 | `remote-connectivity/design/2026-11-13-cloud-dev-platform/ui/proto-tab-check.mjs`（U67/U279） | 原型页签回归（host 抽屉、项目弹窗、移动端项目面板） | **脚本型 39 断言 PASS / 0 FAIL**（独立 Playwright 脚本，非 `node:test`；仓库根执行 `node remote-connectivity/design/2026-11-13-cloud-dev-platform/ui/proto-tab-check.mjs`，退出码 0=全绿，仅全绿时刷新 `ui/screenshots/u67-*.png`）：桌面 host 抽屉、项目弹窗与移动端项目面板的 查看/控制/管理 三页签初始态、切换与单面板可见、卡片顺序/标题/计数一致与只读派生卡、切换后滚动复位、关闭重开回到首页签，以及桌面/移动端零 pageerror/console error |
+| `cloud-platform/test/e2e/web-host-lifecycle-feedback.e2e.test.ts`（U284，全仓 e2e 全景唯一稳定红） | FR-4.11 邻接（one-liner 契约） | 🟡 待修：G09-3 仍按旧 one-liner 字面断言（命令以 `curl -fsSL` 开头且含 `\|\| exit 1`），现模板为 `file=…; trap …; … exit 65; … exit "$code"`（`568d1dc43c9`/`23bc6a4f872`/`a73f780e9c6`）；三次执行均红，产品行为符合 U181/U276/U281。全仓全景第二轮 **1141 tests / 1140 pass / 1 fail**（`test-reports/full-e2e-sweep-20261118.md`）；该文件 4 例中 3 pass / 1 fail。台账 U284 |
 
 ## 7. 执行命令
 
@@ -229,6 +230,24 @@ test/e2e/web-refresh-cookie.e2e.test.ts
 
 纳入判据（按认证子系统缺陷台账，不按目录）：登录/刷新/登出/Cookie/CSRF/启动恢复/会话撤销/认证页 CSP。新增认证类套件时须同时更新本清单，否则基线计数不可比。
 禁止：`pnpm test`、全量测试、并行拉起多个 e2e。
+
+### 7.2 全仓 e2e 全景（口径与命令）
+
+范围：`cloud-platform/test/e2e/*.e2e.test.ts` 全量（2026-11-18 实测 146 文件、37 批），不是子系统子集。本节是 §7.1 禁令的受控例外：分批、批间串行，日常回归仍按 §7.1。
+
+```bash
+cd cloud-platform
+# 文件名字典序每批 4 个，批间串行；共 37 批
+ORCA_BACKGROUND_LAUNCH=1 node --test --test-concurrency=2 \
+  test/e2e/<batch>.e2e.test.ts test/e2e/<batch>.e2e.test.ts \
+  test/e2e/<batch>.e2e.test.ts test/e2e/<batch>.e2e.test.ts
+```
+
+- 量级：单轮约 22 分钟（两轮实测 1369s / 1297s），最长单批 240s，故批大小取 4 文件。
+- 结论口径：报原始 `tests / pass / fail / skipped`；fail 按三类归属——① 产品缺陷、② 测试缺陷/陈旧 fixture、③ 环境/并发改写工作树（INVALID，单独复跑转绿）。跳过项不得从分母中抹掉。
+- 与子集基线的关系：§7.1 认证 24 文件 266、授权矩阵 113、T1 关键集均为子集，只能证明对应范围，不得替代全景结论；全仓结论必须由全景扫描支撑。
+- 已知环境噪声：扫描期间另一会话改写 `apps/web/app.js`，会让 `new Function`/模板解析瞬时失败（2026-11-18 第一轮 F2–F8）；此类红必须单独复跑确认后再归属。
+- 证据：`cloud-platform/test-reports/full-e2e-sweep-20261118.md`（第二轮 1141 tests / 1140 pass / 1 fail，唯一稳定红 U284）。
 
 ## 8. 维护约定
 
