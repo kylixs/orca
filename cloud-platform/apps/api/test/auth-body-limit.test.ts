@@ -2020,24 +2020,26 @@ describe('U254 超长 body 字段不得把审计事件撑过 writer 16 KiB', () 
  * body, 403/200, audit event) stay the same.
  */
 describe('U255 readJson 超限路径关闭 keep-alive', () => {
-  test('未认证 logout 声明 64 MiB：返回 200 后不再读走整包', async () => {
+  test('未认证 logout 声明 16 MiB：返回 200 后仅收下请求头与小前缀', async () => {
     const base = await start()
-    const result = await declaredHugeRawRequest(base, '/v1/auth/logout', 64 * 1024 * 1024, {})
+    const declared = 16 * 1024 * 1024
+    const prefixBytes = 4 * 1024
+    const result = await stalledDeclaredRequest(base, '/v1/auth/logout', declared, prefixBytes)
 
     assert.equal(result.status, 200, 'logout keeps its empty-body 200')
     assert.equal(
-      result.flushedAll,
-      false,
-      `the server accepted the full 64 MiB declaration (flushed=${result.flushedBytes} B, ` +
-        `connection=${String(result.connection)}, response=${result.responseMs}ms, close=${result.closeMs}ms)`
+      result.connection,
+      'close',
+      'an unread oversized body must not keep the connection'
     )
-    assert.equal(result.connection, 'close', 'an unread oversized body must not keep the connection')
+    assert.equal(result.closed, true, 'the server closes the connection')
     assert.ok(
-      result.flushedBytes < 64 * 1024 * 1024 - 2 * 1024 * 1024,
-      `the server accepted ${result.flushedBytes} B of 64 MiB`
+      result.sentBytes < 2 * 1024 * 1024,
+      `only the request head and a ${prefixBytes} B prefix were sent ` +
+        `(${result.sentBytes} B of ${declared} B)`
     )
     assert.ok(result.responseMs < 1000, `the response took ${result.responseMs}ms`)
-    assert.ok(result.closeMs > 0 && result.closeMs < 1500, `the close took ${result.closeMs}ms`)
+    assert.ok(result.closeMs < 1500, `the close took ${result.closeMs}ms`)
   }, { timeout: 8000 })
 
   test('chunked 超限 logout：拒绝后同连接/新连接仍能继续请求', async () => {
@@ -2771,7 +2773,7 @@ describe('U259 §1 各档精确边界', () => {
   })
 
   test('B2 AUTH refresh body 16 KiB：16,384 → 200 轮换；16,385 → 413 不消耗 token', async () => {
-    const base = await start()
+    const { app, base } = await startApp()
     const first = (await (
       await login(
         base,
@@ -2794,6 +2796,18 @@ describe('U259 §1 各档精确边界', () => {
       )
     ).json()) as Json
     const token = String(second.refreshToken)
+    const device = [...app.store.devices.values()].find(
+      (entry) => entry.name === 'u259-b2-refused'
+    )
+    assert.ok(device, 'the refused login device is recorded')
+    const session = [...app.store.sessions.values()].find((entry) => entry.deviceId === device.id)
+    assert.ok(session, 'the refused login session is recorded')
+    const before = {
+      refreshHash: session.refreshHash,
+      previousRefreshHash: session.previousRefreshHash,
+      graceUntil: session.graceUntil,
+      refreshExpiresAt: session.refreshExpiresAt
+    }
     const refused = await refresh(
       base,
       exactJsonBytes({ refreshToken: token }, AUTH_BODY_MAX_BYTES + 1)
@@ -2802,6 +2816,16 @@ describe('U259 §1 各档精确边界', () => {
     assert.equal(errorCode((await refused.json()) as Json), 'PAYLOAD_TOO_LARGE')
     assert.equal(refused.headers.get('cache-control'), 'no-store')
     assert.equal(refused.headers.get('connection'), 'close')
+    // Why snapshots: a rotate-then-413 still answers 200 via previous+grace, so
+    // the follow-up status alone cannot prove the token was unconsumed.
+    assert.equal(session.refreshHash, before.refreshHash, 'refreshHash is unchanged')
+    assert.equal(
+      session.previousRefreshHash,
+      before.previousRefreshHash,
+      'previousRefreshHash is unchanged'
+    )
+    assert.equal(session.graceUntil, before.graceUntil, 'graceUntil is unchanged')
+    assert.equal(session.refreshExpiresAt, before.refreshExpiresAt, 'refreshExpiresAt is unchanged')
 
     const again = await refresh(base, JSON.stringify({ refreshToken: token }))
     assert.equal(again.status, 200, 'the refused refresh neither rotated nor consumed the token')
@@ -3150,6 +3174,11 @@ describe('U259 §4 refresh Cookie 413 真断言', () => {
     const res = await refresh(base, oversized({}), { cookie, origin: ORIGIN })
     assert.equal(res.status, 413)
     assert.equal(errorCode((await res.json()) as Json), 'PAYLOAD_TOO_LARGE')
+    assert.equal(
+      res.headers.getSetCookie().length,
+      0,
+      'a refused refresh must neither clear nor rotate the Cookie'
+    )
 
     assert.equal(session.refreshHash, before.refreshHash, 'refreshHash is unchanged')
     assert.equal(
