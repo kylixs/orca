@@ -275,10 +275,11 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
     const declaredDevicePubKey =
       headerDeviceKey && protocolDeviceKey && headerDeviceKey !== protocolDeviceKey
         ? `${headerDeviceKey}\u0000${protocolDeviceKey}`
-        : (headerDeviceKey ?? protocolDeviceKey)
+        : (headerDeviceKey ?? protocolDeviceKey ?? undefined)
     const admission = gateway.admit(credential, declaredDevicePubKey)
     if (!admission.ok || !admission.payload) {
-      socket.write(`HTTP/1.1 401 Unauthorized\r\nx-orca-reject: ${admission.code}\r\n\r\n`)
+      const rejectCode = admission.ok ? undefined : admission.code
+      socket.write(`HTTP/1.1 401 Unauthorized\r\nx-orca-reject: ${rejectCode}\r\n\r\n`)
       socket.destroy()
       return
     }

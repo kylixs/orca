@@ -303,8 +303,9 @@ function findLongestString(
     return
   }
   // SAFETY: `value` is a non-null non-array object; Object.entries reads own keys.
-  for (const [childKey, childValue] of Object.entries(value as Record<string, unknown>)) {
-    findLongestString(childValue, field ?? childKey, depth + 1, value, childKey, best)
+  const record = value as Record<string, unknown>
+  for (const [childKey, childValue] of Object.entries(record)) {
+    findLongestString(childValue, field ?? childKey, depth + 1, record, childKey, best)
   }
 }
 
@@ -314,12 +315,13 @@ function shrinkLongestString(metadata: Record<string, unknown>, stats: SanitizeS
   findLongestString(metadata, null, 0, null, null, best)
   const ref = best.ref
   if (ref === null) return false
-  const current = Array.isArray(ref.holder) ? ref.holder[ref.index] : ref.holder[ref.key]
+  const isArrayRef = 'index' in ref
+  const current = isArrayRef ? ref.holder[ref.index] : ref.holder[ref.key]
   if (typeof current !== 'string') return false
   const target = Math.max(AUDIT_STRING_MIN_CHARS, Math.floor(ref.length / 2))
   if (target >= ref.length) return false
   const shrunk = truncateChars(current, target)
-  if (Array.isArray(ref.holder)) ref.holder[ref.index] = shrunk
+  if (isArrayRef) ref.holder[ref.index] = shrunk
   else ref.holder[ref.key] = shrunk
   stats.truncated = true
   if (ref.field !== null) noteField(stats, ref.field)

@@ -1,0 +1,14 @@
+{
+  "extends": "../config/tsconfig.node.json",
+  "include": ["apps/*/src/**/*.ts"],
+  "exclude": ["apps/*/src/**/*.test.ts", "apps/*/test/**/*"],
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "allowImportingTsExtensions": true,
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  }
+}

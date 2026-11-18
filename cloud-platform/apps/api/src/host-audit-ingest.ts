@@ -269,7 +269,7 @@ export type HostAuditActorResolver = (deviceId: string) => { username: string } 
 
 /** Returns how many reports reached the chain; the host clears the whole batch either way. */
 export function appendHostAuditReports(
-  audit: AuditChain,
+  audit: Pick<AuditChain, 'appendBestEffort'>,
   host: { id: string; name: string },
   reports: readonly HostAuditReport[],
   traceId: string,
@@ -287,7 +287,7 @@ export function appendHostAuditReports(
 
 /** Legacy shape, byte-for-byte: `host.` prefix, host actor, subject in metadata. */
 function appendSecurityRefusal(
-  audit: AuditChain,
+  audit: Pick<AuditChain, 'appendBestEffort'>,
   host: { id: string; name: string },
   report: HostAuditReport,
   traceId: string
@@ -311,7 +311,7 @@ function appendSecurityRefusal(
 
 /** §2.8: file events land under their bare names with user attribution (§2.1). */
 function appendFileEvent(
-  audit: AuditChain,
+  audit: Pick<AuditChain, 'appendBestEffort'>,
   host: { id: string; name: string },
   report: HostAuditReport,
   traceId: string,

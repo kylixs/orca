@@ -124,7 +124,8 @@ export class CloudClient {
 
   private upgrade(endpoint: Endpoint, route: 'direct' | 'relay', credential: string): Promise<void> {
     const url = new URL(endpoint.url)
-    const options: WebSocket.ClientOptions = {}
+    // `servername` is a TLS option ws passes through but does not declare.
+    const options: WebSocket.ClientOptions & { servername?: string } = {}
     if (url.protocol === 'wss:') {
       options.headers = { 'x-orca-device-pubkey': this.deviceKey }
       options.rejectUnauthorized = this.options.tlsRejectUnauthorized ?? false

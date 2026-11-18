@@ -719,9 +719,8 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
       socket.on('error', () => socket.destroy())
       admitPerIp(socket, socket.remoteAddress?.replace(/^::ffff:/, '') ?? 'unknown')
     })
-    await new Promise<void>((resolve) =>
-      browserServer.listen(browser.port, '0.0.0.0', () => resolve())
-    )
+    const listening = browserServer
+    await new Promise<void>((resolve) => listening.listen(browser.port, '0.0.0.0', () => resolve()))
     const browserAddress = browserServer.address()
     browserPort =
       typeof browserAddress === 'object' && browserAddress ? browserAddress.port : browser.port

@@ -55,7 +55,11 @@ export async function startInternalChannel(
       }
       const subject = socket.getPeerCertificate?.()
       const cn = subject?.subject?.CN ?? ''
-      if (options.allowedCNs && options.allowedCNs.length > 0 && !options.allowedCNs.includes(cn)) {
+      if (
+        options.allowedCNs &&
+        options.allowedCNs.length > 0 &&
+        !(typeof cn === 'string' && options.allowedCNs.includes(cn))
+      ) {
         res.writeHead(403, { 'content-type': 'application/json' })
         res.end(
           JSON.stringify({

@@ -231,7 +231,7 @@ export type ApiConfig = {
 
 export type ApiHandle = {
   store: Store
-  audit: AuditChain
+  audit: AuditSink
   /** U202 E9: file-backed export jobs shared by export routes and cleanup. */
   auditExportStore: AuditExportJobStore
   /** U201 E6b: drains queued export jobs; the accept route schedules a pass. */
@@ -2180,7 +2180,9 @@ function validateFileEventMetadata(input: {
     raw.excerptBytes !== undefined ||
     raw.excerptTruncated !== undefined
 
-  if (invalid) return { ok: false, ...invalid }
+  // SAFETY: `fail` calls above assign this; TS does not track closure writes.
+  const failure = invalid as { field: string; reason: string } | null
+  if (failure !== null) return { ok: false, ...failure }
 
   const metadata: Record<string, unknown> = {
     hostId: input.hostId,
@@ -3022,7 +3024,10 @@ export function createApp(config: ApiConfig): ApiHandle {
       : { locked: false, remaining: 5, lockedUntil: 0 }
   }
 
-  async function recordLoginFailure(username: string): Promise<LockoutState | null> {
+  /** Local mode has no lock deadline; callers only read `locked`/`remaining`. */
+  async function recordLoginFailure(
+    username: string
+  ): Promise<Pick<LockoutState, 'locked' | 'remaining'> | null> {
     if (sharedLockout) {
       try {
         return await sharedLockout.recordFailure(username)
