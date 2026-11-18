@@ -2314,6 +2314,36 @@ exit 0
     assert.match(run.stderr, /安装脚本退出码 78，临时文件保留在/)
   }, 60_000)
 
+  test('U275: 向导渲染的 one-liner 与 app.js 源码模板逐字一致', async () => {
+    // The runtime suite evaluates this same source, so equality here proves the
+    // wizard's command is the program under test rather than a hand-copied twin.
+    const app = readFileSync(join(WEB_SOURCE, 'app.js'), 'utf8')
+    const body = /function installCommand\(url\) \{\n([\s\S]*?)\n\}/.exec(app)?.[1]
+    assert.ok(body, 'app.js must define installCommand(url)')
+    const file = /const file = '([^']+)'/.exec(body)?.[1]
+    assert.ok(file, 'installCommand must bind the temp file path')
+    const literal = /return `([\s\S]*?)`/.exec(body)?.[1]
+    assert.ok(literal, 'installCommand must return a template literal')
+    const interpolations = [
+      ...new Set([...literal.matchAll(/(?<!\\)\$\{(\w+)\}/g)].map((m) => m[1]))
+    ].sort()
+    assert.deepEqual(interpolations, ['file', 'url'], literal)
+    assert.ok(literal.includes('\\${code}'), 'the exit-code message must escape ${code}')
+    const fromSource = (url: string): string =>
+      literal
+        .replace(/\\\$\{code\}/g, '${code}')
+        .replace(/\$\{url\}/g, () => url)
+        .replace(/\$\{file\}/g, () => file)
+
+    const command = await generateHostCommand()
+    const download = /download=([\w-]+)/.exec(command)?.[1] ?? ''
+    const token = /token=([\w-]+)/.exec(command)?.[1] ?? ''
+    assert.equal(
+      command,
+      fromSource(`${api.url}/install/host.sh?download=${download}&token=${token}`)
+    )
+  }, 60_000)
+
   test('download 令牌按 kind 隔离并绑定 hostId；无效令牌可回退 Bearer', async () => {
     // A relay token must not fetch the host script, even with a valid host
     // registration token alongside: kind is part of the grant.
