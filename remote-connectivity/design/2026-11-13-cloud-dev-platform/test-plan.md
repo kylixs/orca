@@ -189,6 +189,40 @@ npx tsc -p config/tsconfig.tc.web.json --noEmit
 pnpm run check:code-quality:changed
 ```
 
+
+### 7.1 认证基线（24 文件 / 266 测试，可复现清单）
+
+历史台账只写「24 套件 / 266 tests」，无法复核文件构成；2026-11-18 12:4x 由 `/tmp/auth-baseline-3.log` 的 49 个顶层 suite 反推，49/49 精确对应下列 24 个文件（当前 HEAD 复跑 **266/266，0 fail / 0 skip**，`/tmp/auth-baseline-4.log`，206s）。
+
+```bash
+cd cloud-platform && ORCA_BACKGROUND_LAUNCH=1 node --test --test-concurrency=2 \
+test/e2e/refresh-cookie.e2e.test.ts \
+test/e2e/session-renewal.e2e.test.ts \
+test/e2e/u197-ac-probes.e2e.test.ts \
+test/e2e/u197-cookie-browser.e2e.test.ts \
+test/e2e/u197-csp-zero-violation.e2e.test.ts \
+test/e2e/u197-migration-browser.e2e.test.ts \
+test/e2e/u197-web-cookie-browser-race-probe.e2e.test.ts \
+test/e2e/u197-web-cookie-browser.e2e.test.ts \
+test/e2e/u198-legacy-reload.e2e.test.ts \
+test/e2e/u228-disabled-user-session.e2e.test.ts \
+test/e2e/u228-web-disabled-session.e2e.test.ts \
+test/e2e/u229-logout-body.e2e.test.ts \
+test/e2e/u229-web-logout-grace.e2e.test.ts \
+test/e2e/u229-web-refresh-epoch.e2e.test.ts \
+test/e2e/u229-web-startup-resilience.e2e.test.ts \
+test/e2e/u230-disabled-user-edges.e2e.test.ts \
+test/e2e/u232-pending-logout-retry.e2e.test.ts \
+test/e2e/u236-body-fuzz.e2e.test.ts \
+test/e2e/u236-non-object-body.e2e.test.ts \
+test/e2e/u237-required-body-fields.e2e.test.ts \
+test/e2e/u241-logout-idempotent.e2e.test.ts \
+test/e2e/u241-revocation-epoch.e2e.test.ts \
+test/e2e/u244-admin-force-offline.e2e.test.ts \
+test/e2e/web-refresh-cookie.e2e.test.ts
+```
+
+纳入判据（按认证子系统缺陷台账，不按目录）：登录/刷新/登出/Cookie/CSRF/启动恢复/会话撤销/认证页 CSP。新增认证类套件时须同时更新本清单，否则基线计数不可比。
 禁止：`pnpm test`、全量测试、并行拉起多个 e2e。
 
 ## 8. 维护约定
