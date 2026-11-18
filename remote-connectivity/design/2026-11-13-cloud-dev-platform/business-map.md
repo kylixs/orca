@@ -167,7 +167,7 @@
 | 地图编号 | 状态 | 台账/决策 | 套件或证据 |
 |---|---|---|---|
 | QA-TIMEOUT-GATE | 🟡 | U291（`load-300` 收尾）、U313（已关）、U315（新登记） | `check-test-timeouts.test.mjs` 40、`-numeric.test.mjs` 23；批 1–8 合跑记录 |
-| WEB-NAV-ROUTING | 🟢 | U307/U310/U312（已关）、U314（在途） | `web-exploratory-fixes` 45、U310 定向 1/1 |
+| WEB-NAV-ROUTING | 🟢 | U307/U310/U312/U314（已关） | `web-exploratory-fixes` 45、U310 定向 1/1（主会话复跑） |
 | MOB-HOST-DETAIL | ⚪ | U278 | `u80-mobile-*` 套件 |
 | AUTH-LOGIN-LOCKOUT | 🟢 | U289/U292/U293/U294/U296（已关） | 契约 9/9、entry-module 9/9、lockout 14/14 |
 | AUTH-COOKIE-MODE | 🟡 | D5–D10、U216、U197 QA-032 | u197 浏览器套件 9/9、认证基线 267/267 |
