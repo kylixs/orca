@@ -144,6 +144,7 @@
 | QA-TYPE-GATE | apps 类型门禁 | — | P1（门禁） | 🟢 | 100% | `tc:apps` 16→0 |
 | QA-EVIDENCE-CHECKERS | 台账表格/sha/编码校验 | — | P0（门禁） | 🟢 | 100% | 三脚本 + 自测 |
 
+
 ## 4. 汇总与口径
 
 - 综合完成度：**(58 + 0.5×5) / 70 = 86.4%**（定义：🟢计 1、🟡计 0.5、⚪计 0；域进度按同法计算）
@@ -152,3 +153,43 @@
 - 阻塞源：D5–D10（cookieMode）、D15（LDAP 撤销边界）、D18（token GC）、D20（session.expired）、D21（U66 第二口径）、D22（克隆失败呈现）、D24（拒绝留痕）、U278（移动端详情）
 - 所有计数为**指定范围基线**；「全仓无红」仅由 QA-E2E-SWEEP 的全景扫描支撑（协议 §2-142），不得以子集基线替代
 - 当日台账增量：U272–U313；唯一重开：WEB-ROUTING（U307→U310→U312），修复后回绿
+## 5. 按地图推进的规则与顺序
+
+### 5.1 规则（防止迷失方向）
+
+1. **每个任务必须挂一个地图编号**：任务书、提交标题、台账行都写 `<域>-<子域>-<功能项>`（如 `fix(WEB-NAV-ROUTING): …`）。挂不上编号的工作不启动——确需做则先在本文件补叶子。
+2. **测试按叶子登记**：新增/修改用例必须写清它验证哪条叶子（套件名 + 计数），并在本文件「测试」列或 §5.2 追溯表可查。
+3. **完成即回写**：叶子状态变化（🟢/🟡/⚪）与计数变化当轮更新本文件，并在复盘文档 `reviews/business-map-review-*.md` 追加一条。
+4. **决策项不施工**：⚪ 叶子在用户裁定前只允许做「不改变语义」的准备（设计、探针、证据），不得改运行时行为。
+
+### 5.2 活跃与未完成项 → 台账/证据追溯
+
+| 地图编号 | 状态 | 台账/决策 | 套件或证据 |
+|---|---|---|---|
+| QA-TIMEOUT-GATE | 🟡 | U291（`load-300` 收尾）、U313（已关）、U315（新登记） | `check-test-timeouts.test.mjs` 40、`-numeric.test.mjs` 23；批 1–8 合跑记录 |
+| WEB-NAV-ROUTING | 🟢 | U307/U310/U312（已关）、U314（在途） | `web-exploratory-fixes` 45、U310 定向 1/1 |
+| MOB-HOST-DETAIL | ⚪ | U278 | `u80-mobile-*` 套件 |
+| AUTH-LOGIN-LOCKOUT | 🟢 | U289/U292/U293/U294/U296（已关） | 契约 9/9、entry-module 9/9、lockout 14/14 |
+| AUTH-COOKIE-MODE | 🟡 | D5–D10、U216、U197 QA-032 | u197 浏览器套件 9/9、认证基线 267/267 |
+| AUTH-PAGE-CSP | 🟡 | D10、U224 | csp-zero 6/6 |
+| AUTH-TOKEN-GC | ⚪ | D18、U233 F6 | `u233-d18-token-gc-brief` |
+| AUTH-SESSION-EXPIRE | ⚪ | D20、U243/U230 | `u243-session-expiry-event-brief` |
+| AUTH-LDAP-ADMIT / AZ-LDAP-GROUP | 🟡/⚪ | D15、U212、LGA-1~6 | ldap-admission 6/6、准入设计 v3 |
+| AZ-ENUM-GUARD | 🟡 | D24、U247 观察 | web-project-entry 10/10 |
+| PRJ-PROVISION-ERR | ⚪ | D22、U54-008 | `pending-decisions` 附四 |
+| FILE-DL-RPC / FILE-COPY-CAPTURE | ⚪ | D21（C9/C6）、U66 第二口径 | `pending-decisions` 附三 |
+| FILE-DL-HARDEN | 🟢 | U66 二期（已关） | guard 7/7、enforcement 4/4 |
+| CLIENT-INSTALL-ONELINER | 🟢 | U275/U276/U281/U283/U285/U288（已关） | 运行期 14/14、自检 2/2 |
+| HOST-ONBOARD-REGISTER | 🟢 | U272（已关） | protocol-version 3/3 |
+| CONN-DIRECT-ADDR | 🟢 | U263/U265/U268/U274/U277/U280（已关） | 12/12 + 畸形快照 5/5 |
+| DSGN-PROTO-U67 | 🟢 | U67/U279（已关） | proto-tab-check 39/39 |
+| QA-TYPE-GATE | 🟢 | U282/U286（已关） | `tc:apps` 16→0 |
+| QA-EVIDENCE-CHECKERS | 🟢 | 三个检查脚本 + 自测 | `check-ledger-*`、`check-doc-encoding` |
+
+### 5.3 推荐推进顺序（P0 → P1，先施工后决策）
+
+1. **QA-TIMEOUT-GATE 收尾**（P1 门禁，无阻塞）：`load-300` 提交 → U315 漏报修复 → 基线归零 → 回写本表
+2. **QA-E2E-SWEEP 复跑**（P0 门禁）：U310 产品改动后必须重跑全景，0 红才更新
+3. **WEB-NAV-ROUTING 收口**：U314 全量绿后转 100%
+4. **跨叶子维护批**（格式化债务，20+ e2e 文件 oxfmt-red）：单独提交，不改变语义
+5. **决策项**：按复盘文档 §4 的勾选清单，优先 D21/D22（P0 用户可见）→ D5–D10 → D18/D20 → D15/D24 → U278

@@ -3,6 +3,7 @@
 - 文档性质：**周期性复盘文档**（后续每次复盘在本文件追加「复盘记录」，不新建同名文件）
 - 配套地图：[`../business-map.md`](../business-map.md)（编号、状态、测试计数以该文件为准）
 - 数据来源：`defect-ledger.md`、`test-plan.md`、`work-orders/pending-decisions-2026-11-17.md`、`work-orders/decision-index-20261118.md`、当日 test-reports
+- 推进顺序与开发/测试规则见 [`../business-map.md`](../business-map.md) §5（任务必须挂地图编号；测试按叶子登记；决策项不施工）
 - 使用方式：人工复核时按 §2「未完成功能清单」逐项确认 → 在 §4「复核动作」勾选 → 决策后回到台账更新 U 行 → 下次复盘填写 §5
 
 ---
