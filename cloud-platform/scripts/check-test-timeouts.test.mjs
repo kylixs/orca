@@ -157,6 +157,57 @@ test('does not treat call-like text inside a regex as a test call', () => {
   assert.deepEqual(scanSource(source), [])
 })
 
+// U301 ②: \`return\` must open a regex, otherwise its body is scanned as code.
+test('does not report a call-like regex after return as a test call', () => {
+  const source = [
+    "function pattern(value) { return /test('x', fn, 5000)/ }",
+    "test('real', () => {}, 5000)"
+  ].join('\n')
+  assert.deepEqual(scanSource(source), [
+    { file: '<memory>', line: 2, form: 'test-numeric-third' }
+  ])
+})
+
+test('regex literals after return, arrow and ternary keep bracket pairing', () => {
+  const source = [
+    "test('real', () => {",
+    '  const arrow = () => /re/',
+    '  const pick = (v) => (v ? /a/ : /b/)',
+    '  const f = () => { return /re)/ }',
+    '}, 5000)'
+  ].join('\n')
+  assert.deepEqual(scanSource(source), [
+    { file: '<memory>', line: 1, form: 'test-numeric-third' }
+  ])
+})
+
+// U301 ①: a \`/\` inside \`[...]\` must not close the regex and leave a stray \`]\`.
+test('regex character classes do not truncate the enclosing test call', () => {
+  const source = [
+    "test('negated class', () => {",
+    '  const parts = value.match(/[^/]+/)',
+    '}, 5000)',
+    "test('class with slash', () => {",
+    "  const slash = '/'.match(/[/]/)",
+    '}, 5000)'
+  ].join('\n')
+  assert.deepEqual(scanSource(source), [
+    { file: '<memory>', line: 1, form: 'test-numeric-third' },
+    { file: '<memory>', line: 4, form: 'test-numeric-third' }
+  ])
+})
+
+test('escaped parens inside a character class do not break brackets', () => {
+  const source = [
+    "test('paren class', () => {",
+    '  const match = text.match(/[\\(/]+/)',
+    '}, 5000)'
+  ].join('\n')
+  assert.deepEqual(scanSource(source), [
+    { file: '<memory>', line: 1, form: 'test-numeric-third' }
+  ])
+})
+
 test('baseline mode stays green when nothing is added', () => {
   withTempDir((root) => {
     const file = writeFixture(root, 'a.test.ts', "test('a', () => {}, 5000)\n")

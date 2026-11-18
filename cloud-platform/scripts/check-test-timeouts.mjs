@@ -72,7 +72,7 @@ function isRegexStart(out, index) {
     while (start > 0 && /[\w$]/.test(out[start - 1])) {
       start -= 1
     }
-    return REGEX_KEYWORDS.has(out.slice(start, cursor + 1))
+    return REGEX_KEYWORDS.has(out.slice(start, cursor + 1).join(''))
   }
   return true
 }
@@ -128,12 +128,16 @@ function sanitize(source) {
     } else if (frame.type === 'string' || frame.type === 'regex' || frame.type === 'template') {
       const closes =
         (frame.type === 'string' && char === frame.quote) ||
-        (frame.type === 'regex' && char === '/') ||
+        (frame.type === 'regex' && char === '/' && !frame.inClass) ||
         (frame.type === 'template' && char === '`')
       if (char === '\\') {
         if (blank(char)) { out[index] = ' ' }
         if (next !== undefined && blank(next)) { out[index + 1] = ' ' }
         index += 2
+      } else if (frame.type === 'regex' && (char === '[' || (char === ']' && frame.inClass))) {
+        frame.inClass = char === '['
+        out[index] = ' '
+        index += 1
       } else if (closes) {
         stack.pop()
         index += 1
@@ -143,9 +147,7 @@ function sanitize(source) {
         stack.push({ type: 'code', depth: 1, templateExpr: true })
         index += 2
       } else {
-        if (blank(char)) {
-          out[index] = ' '
-        }
+        if (blank(char)) { out[index] = ' ' }
         index += 1
       }
     } else if (char === '/' && next === '/') {
@@ -160,7 +162,7 @@ function sanitize(source) {
       index += 2
     } else if (char === '/' && isRegexStart(out, index) && regexEnd(source, index) !== -1) {
       out[index] = ' '
-      stack.push({ type: 'regex' })
+      stack.push({ type: 'regex', inClass: false })
       index += 1
     } else if (char === "'" || char === '"') {
       out[index] = ' '
