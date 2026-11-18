@@ -94,13 +94,13 @@ before(async () => {
   adminToken = await login(service.url, 'admin', 'Adm1n!')
   // zhangsan's groups (`developers`, `team-payment`) are the known group set.
   devToken = await login(service.url, 'zhangsan', 'Passw0rd!')
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await service?.stop()
 })
 
-test('AA1 admin 目录端点：用户清单与已知组清单从 store 派生', async () => {
+test('AA1 admin 目录端点：用户清单与已知组清单从 store 派生', { timeout: 120_000 }, async () => {
   const res = await api('/v1/directory')
   assert.equal(res.status, 200, JSON.stringify(res.body))
   const directory = res.body as Directory
@@ -124,9 +124,9 @@ test('AA1 admin 目录端点：用户清单与已知组清单从 store 派生', 
     users: directory.users.map((user) => user.username),
     groups: directory.groups
   })
-}, 120_000)
+})
 
-test('AA1 非 admin 读目录：403 且落 directory_read/denied 审计', async () => {
+test('AA1 非 admin 读目录：403 且落 directory_read/denied 审计', { timeout: 120_000 }, async () => {
   const res = await api('/v1/directory', { token: devToken })
   assert.equal(res.status, 403)
   assert.equal((res.body.error as { code: string }).code, 'PERMISSION_DENIED')
@@ -139,9 +139,9 @@ test('AA1 非 admin 读目录：403 且落 directory_read/denied 审计', async 
   assert.equal(event.metadata?.requiredPermission, 'platform:admin')
 
   saveEvidence(EVIDENCE, 'directory-denied.json', event)
-}, 120_000)
+})
 
-test('AA1 组名校验：未知组 400 且不落死行，已知组 200', async () => {
+test('AA1 组名校验：未知组 400 且不落死行，已知组 200', { timeout: 120_000 }, async () => {
   const before = await grants()
 
   const typo = await putGrant(adminToken, 'group', 'team-typo', BASE)
@@ -164,9 +164,9 @@ test('AA1 组名校验：未知组 400 且不落死行，已知组 200', async (
     knownGroup: known,
     storedAfterRefusal: afterTypo
   })
-}, 120_000)
+})
 
-test('AA1 权限位校验：越界位 400 且存量授权行不变', async () => {
+test('AA1 权限位校验：越界位 400 且存量授权行不变', { timeout: 120_000 }, async () => {
   await putGrant(adminToken, 'group', 'team-payment', BASE)
   const before = await grants()
 
@@ -182,9 +182,9 @@ test('AA1 权限位校验：越界位 400 且存量授权行不变', async () =>
   assert.equal((await putGrant(adminToken, 'group', 'team-payment', allBits)).status, 200)
 
   saveEvidence(EVIDENCE, 'permission-validation.json', { invalid, storedAfterRefusal: after })
-}, 120_000)
+})
 
-test('AA1 AC-18：非 admin 写授权 403 现在落 grant_update/denied 审计', async () => {
+test('AA1 AC-18：非 admin 写授权 403 现在落 grant_update/denied 审计', { timeout: 120_000 }, async () => {
   const before = await grants()
 
   const refused = await putGrant(devToken, 'group', 'team-payment', ['open', 'browser'])
@@ -201,4 +201,4 @@ test('AA1 AC-18：非 admin 写授权 403 现在落 grant_update/denied 审计',
   assert.equal(event.metadata?.requiredPermission, 'platform:admin')
 
   saveEvidence(EVIDENCE, 'grant-denied-audit.json', event)
-}, 120_000)
+})

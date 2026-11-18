@@ -130,7 +130,7 @@ function click(page: ReturnType<typeof loadWebConsolePage>, selector: string): v
   element.click()
 }
 
-test('U72-1 审计员登录：侧栏审计入口可见、其余管理入口隐藏，审计页渲染真实事件', async () => {
+test('U72-1 审计员登录：侧栏审计入口可见、其余管理入口隐藏，审计页渲染真实事件', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(url)
   await page.settle()
   await page.submitLogin('lisi', 'Passw0rd!')
@@ -171,14 +171,14 @@ test('U72-1 审计员登录：侧栏审计入口可见、其余管理入口隐�
     seededEventsRendered: ['u73-alpha.log', 'u73-beta.log'],
     directoryApiStatus: directory.status
   })
-}, 120_000)
+})
 
 /**
  * F6 E5 (AC-M7-14): an auditor's project/host dropdowns are empty because both
  * list endpoints are denied (hosts) or ACL-filtered to nothing (projects); the
  * page now explains why instead of leaving two silent empty selects.
  */
-test('U72-4 审计员项目/主机筛选为空时显示解释文案（F6 E5）', async () => {
+test('U72-4 审计员项目/主机筛选为空时显示解释文案（F6 E5）', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(url)
   await page.settle()
   await page.submitLogin('lisi', 'Passw0rd!')
@@ -214,13 +214,13 @@ test('U72-4 审计员项目/主机筛选为空时显示解释文案（F6 E5）',
     hostsApiStatus: hosts.status,
     explained: true
   })
-}, 120_000)
+})
 
 /**
  * 3.12 / AC-M7-29: the chain health block renders status data and the verify
  * button drives /v1/audit/verify from the console, including the 409 shape.
  */
-test('U72-5 管理员审计页：链健康/容量只读区块 + 校验审计链（成功与断链）', async () => {
+test('U72-5 管理员审计页：链健康/容量只读区块 + 校验审计链（成功与断链）', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
@@ -259,9 +259,9 @@ test('U72-5 管理员审计页：链健康/容量只读区块 + 校验审计链�
     verifyEndpointCalled: true,
     brokenChainVerdict: '链已断裂：seq 3（已校验 2 条）'
   })
-}, 120_000)
+})
 
-test('U72-2 管理员不回退：全部管理入口可见，审计页与用户页照常渲染', async () => {
+test('U72-2 管理员不回退：全部管理入口可见，审计页与用户页照常渲染', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
@@ -284,9 +284,9 @@ test('U72-2 管理员不回退：全部管理入口可见，审计页与用户�
     roleChip: page.text('#roleChip'),
     visibleRoutes: ['hosts', 'relays', 'users', 'audit', 'settings']
   })
-}, 120_000)
+})
 
-test('U72-3 普通开发者：无任何管理入口，强制直达 audit/hosts 仍渲染无权访问', async () => {
+test('U72-3 普通开发者：无任何管理入口，强制直达 audit/hosts 仍渲染无权访问', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(url)
   await page.settle()
   await page.submitLogin('zhangsan', 'Passw0rd!')
@@ -310,9 +310,9 @@ test('U72-3 普通开发者：无任何管理入口，强制直达 audit/hosts �
     forcedAuditRoute: 'forbidden',
     forcedHostsRoute: 'forbidden'
   })
-}, 120_000)
+})
 
-test('U73-1 双击查询：两代请求仅最新一代生效，行数等于真实事件数 2', async () => {
+test('U73-1 双击查询：两代请求仅最新一代生效，行数等于真实事件数 2', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
@@ -336,9 +336,9 @@ test('U73-1 双击查询：两代请求仅最新一代生效，行数等于真�
     rowCountAfterDoubleClick: rows.length,
     rows: names.slice(0, 300)
   })
-}, 120_000)
+})
 
-test('U73-2 清除后立即换条件查询：仅新条件行，不与未过滤结果混表', async () => {
+test('U73-2 清除后立即换条件查询：仅新条件行，不与未过滤结果混表', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
@@ -368,4 +368,4 @@ test('U73-2 清除后立即换条件查询：仅新条件行，不与未过滤�
     rowCountAfterClearAndQuery: rows.length,
     betaAbsent: true
   })
-}, 120_000)
+})

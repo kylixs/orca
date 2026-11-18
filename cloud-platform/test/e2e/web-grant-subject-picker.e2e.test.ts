@@ -101,7 +101,7 @@ before(async () => {
     'api-web-grant-subject-picker'
   )
   adminToken = await login(service.url, 'admin', 'Adm1n!')
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await service?.stop()
@@ -111,7 +111,7 @@ after(async () => {
   })
 })
 
-test('AA4-1 admin 打开权限页签：拉一次目录，用户/组 datalist 含种子数据且随类型切换', async () => {
+test('AA4-1 admin 打开权限页签：拉一次目录，用户/组 datalist 含种子数据且随类型切换', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await openPermTab(page, 'admin', 'Adm1n!')
 
@@ -157,9 +157,9 @@ test('AA4-1 admin 打开权限页签：拉一次目录，用户/组 datalist 含
     defaultList: 'projectGroupOptions'
   })
   cases['admin-datalist'] = `目录 1 次；用户 ${users.length} 个（值=username，提示含显示名/部门），组 ${groups.length} 个`
-}, 120_000)
+})
 
-test('AA4-2 未知组提交：GROUP_NOT_FOUND 明确 toast，输入保留，页签不变', async () => {
+test('AA4-2 未知组提交：GROUP_NOT_FOUND 明确 toast，输入保留，页签不变', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await openPermTab(page, 'admin', 'Adm1n!')
   const before = await grants()
@@ -188,9 +188,9 @@ test('AA4-2 未知组提交：GROUP_NOT_FOUND 明确 toast，输入保留，页�
     storedGrants: before
   })
   cases['unknown-group'] = '未知组 → toast「授予失败：组不存在或平台未见过该组。」，输入保留，页签 0 刷新，服务端 0 死行'
-}, 120_000)
+})
 
-test('AA4-3 非 admin：无「详情」入口，零目录请求，直调 PUT grants 仍 403', async () => {
+test('AA4-3 非 admin：无「详情」入口，零目录请求，直调 PUT grants 仍 403', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('zhangsan', 'Passw0rd!')
@@ -225,4 +225,4 @@ test('AA4-3 非 admin：无「详情」入口，零目录请求，直调 PUT gra
     directPut: { status: direct.status, code: direct.body.error.code }
   })
   cases['non-admin'] = 'developer：无详情入口、目录 0 次；直调 PUT /grants → 403 PERMISSION_DENIED'
-}, 120_000)
+})

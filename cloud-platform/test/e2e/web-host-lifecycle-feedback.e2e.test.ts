@@ -149,7 +149,7 @@ before(async () => {
     })
   })
   assert.equal(created.status, 201, JSON.stringify(created.body))
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await service?.stop()
@@ -162,7 +162,7 @@ after(async () => {
   })
 })
 
-test('G09-1 抽屉「进入维护模式」→ 行变维护中、项目打开入口禁用', async () => {
+test('G09-1 抽屉「进入维护模式」→ 行变维护中、项目打开入口禁用', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await loginAsAdmin(page)
   await openHostDrawer(page, lifecycleHostId)
@@ -190,9 +190,9 @@ test('G09-1 抽屉「进入维护模式」→ 行变维护中、项目打开入�
 
   cases['maintenance-enter'] =
     '抽屉进入维护 → POST {enabled:true,reason}；列表行维护中；项目打开禁用（主机维护中）'
-}, 120_000)
+})
 
-test('G09-2 下线：样式化确认卡取消零 DELETE，确认后行变已吊销', async () => {
+test('G09-2 下线：样式化确认卡取消零 DELETE，确认后行变已吊销', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await loginAsAdmin(page)
   await openHostDrawer(page, lifecycleHostId)
@@ -225,9 +225,9 @@ test('G09-2 下线：样式化确认卡取消零 DELETE，确认后行变已吊�
 
   cases['revoke-confirm'] =
     '样式化确认卡：取消 → 0 DELETE、抽屉不关、平台未吊销；确认 → 1 DELETE、行已吊销'
-}, 120_000)
+})
 
-test('G09-3 注册弹框「复制命令」：写入完整命令、toast 已复制、弹框保持', async () => {
+test('G09-3 注册弹框「复制命令」：写入完整命令、toast 已复制、弹框保持', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await loginAsAdmin(page)
   await page.clickNav('hosts')
@@ -285,9 +285,9 @@ test('G09-3 注册弹框「复制命令」：写入完整命令、toast 已复�
   assert.ok(page.window.document.querySelector('.dialog-backdrop'), 'copy keeps the dialog open')
 
   cases['copy-command'] = '注册弹框展示命令；复制写入完整 bash 命令、toast 已复制、弹框保持'
-}, 120_000)
+})
 
-test('G09-4 失败态：令牌/维护/下线请求失败均 toast 原因且状态不变', async () => {
+test('G09-4 失败态：令牌/维护/下线请求失败均 toast 原因且状态不变', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await loginAsAdmin(page)
   await page.clickNav('hosts')
@@ -332,4 +332,4 @@ test('G09-4 失败态：令牌/维护/下线请求失败均 toast 原因且状�
   page.clearFails()
   cases['failure-toast'] =
     '令牌 500 → 注册主机失败：模拟平台故障（不开弹框）；维护 500 → 进入维护模式失败、状态 online；下线 500 → 下线主机失败、未吊销'
-}, 120_000)
+})

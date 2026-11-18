@@ -26,13 +26,13 @@ before(async () => {
     /\[api\] listening on http:\/\/127\.0\.0\.1:(\d+)/,
     'api-web-gating'
   )
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await service?.stop()
 })
 
-test('AC-18 开发者登录 Web 前端：管理导航隐藏，直达管理路由显示无权限页，接口 403 且有审计', async () => {
+test('AC-18 开发者登录 Web 前端：管理导航隐藏，直达管理路由显示无权限页，接口 403 且有审计', { timeout: 120_000 }, async () => {
   const page = loadPage(service.url)
   await page.settle()
   // The platform has no session in this DOM yet: the login view is showing.
@@ -132,9 +132,9 @@ test('AC-18 开发者登录 Web 前端：管理导航隐藏，直达管理路由
     adminNavVisibleForAdmin: true,
     deniedAuditPresent: true
   })
-}, 120_000)
+})
 
-test('AC-18 管理员登录：管理导航可见，管理路由可用', async () => {
+test('AC-18 管理员登录：管理导航可见，管理路由可用', { timeout: 120_000 }, async () => {
   const page = loadPage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
@@ -147,9 +147,9 @@ test('AC-18 管理员登录：管理导航可见，管理路由可用', async ()
   await page.clickNav('hosts')
   assert.equal(page.text('#crumbs'), '平台设置 / 主机')
   assert.doesNotMatch(page.text('#content'), /无权访问/)
-}, 120_000)
+})
 
-test('M114b 管理员「中继」页：导航可见且渲染 /v1/relays 数据', async () => {
+test('M114b 管理员「中继」页：导航可见且渲染 /v1/relays 数据', { timeout: 120_000 }, async () => {
   // A real registration, so the table shows what the platform would show an admin.
   const registered = await fetch(`${service.url}/v1/internal/relay-endpoint`, {
     method: 'POST',
@@ -183,4 +183,4 @@ test('M114b 管理员「中继」页：导航可见且渲染 /v1/relays 数据',
     listedRelay: { id: 'relay-web', host: 'relay.example.test', port: 18443, online: true },
     content: content.slice(0, 600)
   })
-}, 120_000)
+})

@@ -650,7 +650,7 @@ before(async () => {
     })
   }).then((res) => res.json().then((body: { accessToken: string }) => body.accessToken))
   assert.notEqual(devToken, '')
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await api?.stop()
@@ -2181,7 +2181,7 @@ exit 0
     })
   })
 
-  test('Web 向导命令照抄可执行：download 令牌免登录，二次使用 401', async () => {
+  test('Web 向导命令照抄可执行：download 令牌免登录，二次使用 401', { timeout: 120_000 }, async () => {
     const wizard = loadWizard(api.url)
     await wizard.login()
     assert.equal(wizard.window.location.origin, api.url)
@@ -2243,9 +2243,9 @@ exit 0
       relayScriptVerbatim: 200,
       relayReplay: 401
     })
-  }, 120_000)
+  })
 
-  test('U181: 安装脚本以 78 退出时 one-liner 外层退出码也是 78', async () => {
+  test('U181: 安装脚本以 78 退出时 one-liner 外层退出码也是 78', { timeout: 60_000 }, async () => {
     const command = await generateHostCommand()
     const run = runOneLiner(command, {
       body: "echo 'STUB-78: 缺少必需配置' >&2\nexit 78"
@@ -2257,9 +2257,9 @@ exit 0
     assert.doesNotMatch(run.stderr, /命令已失效或网络不可达/)
     assert.equal(run.kept.length, 1, 'a failed install keeps the script')
     assert.ok(run.stderr.includes(join(run.tmpDir, run.kept[0])), run.stderr)
-  }, 60_000)
+  })
 
-  test('U181: 安装脚本以 68 退出时 one-liner 外层退出码也是 68', async () => {
+  test('U181: 安装脚本以 68 退出时 one-liner 外层退出码也是 68', { timeout: 60_000 }, async () => {
     const command = await generateHostCommand()
     const run = runOneLiner(command, {
       body: "echo 'STUB-68: 平台健康检查失败' >&2\nexit 68"
@@ -2270,9 +2270,9 @@ exit 0
     assert.doesNotMatch(run.stderr, /命令已失效或网络不可达/)
     assert.equal(run.kept.length, 1, 'a failed install keeps the script')
     assert.ok(run.stderr.includes(join(run.tmpDir, run.kept[0])), run.stderr)
-  }, 60_000)
+  })
 
-  test('U253: 安装失败消息保留退出码 78（bash 3.2 变量后紧跟全角逗号）', async () => {
+  test('U253: 安装失败消息保留退出码 78（bash 3.2 变量后紧跟全角逗号）', { timeout: 60_000 }, async () => {
     const command = await generateHostCommand()
     // bash 3.2 eats the first UTF-8 byte of `，` after a bare `$code`, so the
     // code and the comma vanish. This text pin holds on bash 4/5 too, where
@@ -2284,9 +2284,9 @@ exit 0
 
     assert.equal(run.status, 78, run.stderr)
     assert.match(run.stderr, /安装脚本退出码 78，临时文件保留在/)
-  }, 60_000)
+  })
 
-  test('U275: 向导渲染的 one-liner 与 app.js 源码模板逐字一致', async () => {
+  test('U275: 向导渲染的 one-liner 与 app.js 源码模板逐字一致', { timeout: 60_000 }, async () => {
     // The runtime suite evaluates this same source, so equality here proves the
     // wizard's command is the program under test rather than a hand-copied twin.
     const template = installCommandTemplateSource()
@@ -2302,9 +2302,9 @@ exit 0
         `${api.url}/install/host.sh?download=${download}&token=${token}`
       )
     )
-  }, 60_000)
+  })
 
-  test('download 令牌按 kind 隔离并绑定 hostId；无效令牌可回退 Bearer', async () => {
+  test('download 令牌按 kind 隔离并绑定 hostId；无效令牌可回退 Bearer', { timeout: 120_000 }, async () => {
     // A relay token must not fetch the host script, even with a valid host
     // registration token alongside: kind is part of the grant.
     const relayDownload = await mintRelayDownload()
@@ -2362,9 +2362,9 @@ exit 0
       bearerFallback: 200,
       anonymousInvalid: 401
     })
-  }, 120_000)
+  })
 
-  test('过期 download 令牌 401：host 与 relay 一致', async () => {
+  test('过期 download 令牌 401：host 与 relay 一致', { timeout: 120_000 }, async () => {
     const shortApi = await spawnService(
       'apps/api/src/server.ts',
       { PORT: '0', INTERNAL_TOKEN, ORCA_CLOUD_INSTALL_DOWNLOAD_TTL_MS: '25' },
@@ -2403,7 +2403,7 @@ exit 0
     } finally {
       await shortApi.stop()
     }
-  }, 120_000)
+  })
 })
 
 describe('U183 R6: tar 安全检查、解包与原子激活', () => {

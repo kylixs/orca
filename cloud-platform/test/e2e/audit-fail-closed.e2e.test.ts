@@ -92,7 +92,7 @@ function errorCode(body: Json): unknown {
 }
 
 describe('审计不可写时敏感操作 fail-closed（真实平台进程）', () => {
-  test('M32-1 日志文件只读：建项目被拒 503 且确实没建，读取与登录仍可用；恢复后重新可用', async () => {
+  test('M32-1 日志文件只读：建项目被拒 503 且确实没建，读取与登录仍可用；恢复后重新可用', { timeout: 40000 }, async () => {
     const logPath = join(mkdtempSync(join(tmpdir(), 'orca-audit-fc-')), 'audit.jsonl')
     let service = await startWithLog(logPath)
     try {
@@ -164,9 +164,9 @@ describe('审计不可写时敏感操作 fail-closed（真实平台进程）', (
       chmodSync(logPath, 0o600)
       await service.stop()
     }
-  }, 40000)
+  })
 
-  test('M32-2 审计链被改写后重启：敏感操作 503 AUDIT_CHAIN_BROKEN，登录与读取不受影响', async () => {
+  test('M32-2 审计链被改写后重启：敏感操作 503 AUDIT_CHAIN_BROKEN，登录与读取不受影响', { timeout: 60000 }, async () => {
     const logPath = join(mkdtempSync(join(tmpdir(), 'orca-audit-fc-chain-')), 'audit.jsonl')
     const first = await startWithLog(logPath)
     const firstToken = await login(first)
@@ -214,11 +214,11 @@ describe('审计不可写时敏感操作 fail-closed（真实平台进程）', (
     } finally {
       await third.stop()
     }
-  }, 60000)
+  })
 })
 
 describe('fail-closed 覆盖全部敏感写（真实平台进程）', () => {
-  test('M32-3 授权变更、设备吊销、主机令牌、维护、策略在审计不可写时全部拒绝，且状态未变', async () => {
+  test('M32-3 授权变更、设备吊销、主机令牌、维护、策略在审计不可写时全部拒绝，且状态未变', { timeout: 40000 }, async () => {
     const logPath = join(mkdtempSync(join(tmpdir(), 'orca-audit-fc-all-')), 'audit.jsonl')
     const service = await startWithLog(logPath)
     try {
@@ -309,7 +309,7 @@ describe('fail-closed 覆盖全部敏感写（真实平台进程）', () => {
       chmodSync(logPath, 0o600)
       await service.stop()
     }
-  }, 40000)
+  })
 })
 
 describe('审计健康升级（真实 writer 进程）', () => {
@@ -355,7 +355,7 @@ describe('审计健康升级（真实 writer 进程）', () => {
     return last
   }
 
-  test('M32-4 write_failed 后发生真实断链：/v1/status 升级为 chain_broken 并保留 first/lastFailure', async () => {
+  test('M32-4 write_failed 后发生真实断链：/v1/status 升级为 chain_broken 并保留 first/lastFailure', { timeout: 40000 }, async () => {
     const dir = mkdtempSync(join(tmpdir(), 'orca-u249-health-'))
     const logPath = join(dir, 'audit.jsonl')
     const leasePath = join(dir, 'writer.lease')
@@ -419,5 +419,5 @@ describe('审计健康升级（真实 writer 进程）', () => {
       chmodSync(logPath, 0o600)
       await writer.stop()
     }
-  }, 40000)
+  })
 })

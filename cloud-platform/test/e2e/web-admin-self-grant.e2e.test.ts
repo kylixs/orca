@@ -145,7 +145,7 @@ before(async () => {
       body: JSON.stringify({ status: 'online' })
     }).catch(() => undefined)
   }, 400)
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   if (beat) {
@@ -218,7 +218,7 @@ function redactHandoff(url: string): string {
   return url.replace(/#handoff=[A-Za-z0-9_-]+/, '#handoff=<redacted>')
 }
 
-test('AA5-1 未授权管理员「授权并打开」：确认五位→恰好一次 PUT grants→同页覆盖层', async () => {
+test('AA5-1 未授权管理员「授权并打开」：确认五位→恰好一次 PUT grants→同页覆盖层', { timeout: 120_000 }, async () => {
   const page = await loginAdminWorkbench()
   const row = rowFor(page, 'selfgrant-project')
   const projectId = await projectIdOf('selfgrant-project')
@@ -299,9 +299,9 @@ test('AA5-1 未授权管理员「授权并打开」：确认五位→恰好一�
   })
   matrix['self-grant-open'] =
     '授权并打开 → 确认五位+断开提示 → 1×PUT grants(username=admin) → 1×POST admin web-handoff 同页覆盖层；授权后行恢复 打开/Orca Web'
-}, 120_000)
+})
 
-test('AA5-2 取消自授：关闭确认框零请求，grants 无 admin 行', async () => {
+test('AA5-2 取消自授：关闭确认框零请求，grants 无 admin 行', { timeout: 120_000 }, async () => {
   const page = await loginAdminWorkbench()
   const entry = entryIn(rowFor(page, 'cancel-project'), '授权并打开')
   assert.ok(entry, 'the cancel-project row carries the self-grant entry')
@@ -331,9 +331,9 @@ test('AA5-2 取消自授：关闭确认框零请求，grants 无 admin 行', asy
     projectsPageEntry: true
   })
   matrix['cancel'] = '关闭确认框 → 请求增量为空、grants 仍为空；我的项目行渲染同一入口'
-}, 120_000)
+})
 
-test('AA5-3 已授权管理员：打开直接 handoff，无确认框无 PUT', async () => {
+test('AA5-3 已授权管理员：打开直接 handoff，无确认框无 PUT', { timeout: 120_000 }, async () => {
   const page = await loginAdminWorkbench()
   const row = rowFor(page, 'granted-project')
   assert.equal(entryIn(row, '授权并打开'), null, 'an admin holding open needs no self-grant entry')
@@ -364,9 +364,9 @@ test('AA5-3 已授权管理员：打开直接 handoff，无确认框无 PUT', as
     overlay: redactHandoff(iframe.src)
   })
   matrix['granted-admin'] = '已有 open 的 admin → 打开直接 POST admin web-handoff 进同页覆盖层，零确认框零 PUT'
-}, 120_000)
+})
 
-test('AA5-4 非 admin：不渲染自授入口，直调 PUT 403、项目 404 语义不变', async () => {
+test('AA5-4 非 admin：不渲染自授入口，直调 PUT 403、项目 404 语义不变', { timeout: 120_000 }, async () => {
   // The write path stays the platform's: a project the developer cannot see
   // answers 404 (existence is never leaked), one they hold open on answers 403.
   const selfGrantId = await projectIdOf('selfgrant-project')
@@ -427,4 +427,4 @@ test('AA5-4 非 admin：不渲染自授入口，直调 PUT 403、项目 404 语�
   })
   matrix['non-admin'] =
     'developer：无自授入口、PUT 403 PERMISSION_DENIED、项目 404、持 open 直接 handoff'
-}, 120_000)
+})

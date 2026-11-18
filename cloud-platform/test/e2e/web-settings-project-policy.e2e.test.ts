@@ -135,7 +135,7 @@ before(async () => {
   followProjectId = await createProject(FOLLOW_KEY)
   const archivedId = await createProject(ARCHIVED_KEY)
   await archiveProject(archivedId)
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await service?.stop()
@@ -145,7 +145,7 @@ after(async () => {
   })
 })
 
-test('G27-1 全量在营项目入列：跟随行、覆盖行都在，归档项目不出现', async () => {
+test('G27-1 全量在营项目入列：跟随行、覆盖行都在，归档项目不出现', { timeout: 120_000 }, async () => {
   await setPolicy(PROJECT, { downloadPolicy: 'deny' })
   await setPolicy(followProjectId, { inherit: true })
 
@@ -174,9 +174,9 @@ test('G27-1 全量在营项目入列：跟随行、覆盖行都在，归档项�
     scopeLine: page.text('#policyScope')
   })
   record('full-listing', '两个在营项目全部入列（含跟随全局），归档项目不出现；统计 全部 2/跟随 1/覆盖 1')
-}, 120_000)
+})
 
-test('G27-2 三态映射与来源徽标：跟随全局选项带当前值，显式等于全局时标明与全局相同', async () => {
+test('G27-2 三态映射与来源徽标：跟随全局选项带当前值，显式等于全局时标明与全局相同', { timeout: 120_000 }, async () => {
   await setPolicy(PROJECT, { downloadPolicy: 'deny' })
   await setPolicy(followProjectId, { downloadPolicy: 'allow' })
 
@@ -206,9 +206,9 @@ test('G27-2 三态映射与来源徽标：跟随全局选项带当前值，显�
     effective: '当前生效：禁止'
   })
   record('tri-state', '显式 deny 且全局 deny → 独立覆盖（与全局相同）；follow 行 value=inherit 且选项含 当前：禁止')
-}, 120_000)
+})
 
-test('G27-3 行内保存携带 expectedVersion：新建覆盖与回退继承都成功且版本推进', async () => {
+test('G27-3 行内保存携带 expectedVersion：新建覆盖与回退继承都成功且版本推进', { timeout: 120_000 }, async () => {
   await setPolicy(followProjectId, { inherit: true })
   const seenVersion = await policeVersion()
   const page = await openSettings()
@@ -240,9 +240,9 @@ test('G27-3 行内保存携带 expectedVersion：新建覆盖与回退继承都�
     versionAfterCreate: seenVersion + 1
   })
   record('expected-version', '跟随行选允许 → PUT {downloadPolicy:allow, expectedVersion:v}；回退 → {inherit:true, expectedVersion:v+1}')
-}, 120_000)
+})
 
-test('G27-4 行级 409：保留选择、报服务端版本/值，刷新后重试先 GET 再重放', async () => {
+test('G27-4 行级 409：保留选择、报服务端版本/值，刷新后重试先 GET 再重放', { timeout: 120_000 }, async () => {
   await setPolicy(followProjectId, { inherit: true })
   const seenVersion = await policeVersion()
   const fakeVersion = seenVersion + 7
@@ -304,9 +304,9 @@ test('G27-4 行级 409：保留选择、报服务端版本/值，刷新后重试
     retry: { downloadPolicy: 'allow', expectedVersion: seenVersion }
   })
   record('row-conflict', '409 行内报服务端 v+7/当前值禁止、选择保留 allow；刷新后重试 GET 后以当前版本重放成功')
-}, 120_000)
+})
 
-test('G27-5 全局联动：跟随行随全局、覆盖行不动，文案只承诺宿主心跳', async () => {
+test('G27-5 全局联动：跟随行随全局、覆盖行不动，文案只承诺宿主心跳', { timeout: 120_000 }, async () => {
   await setPolicy(PROJECT, { downloadPolicy: 'deny' })
   await setPolicy(followProjectId, { inherit: true })
   const page = await openSettings()
@@ -343,9 +343,9 @@ test('G27-5 全局联动：跟随行随全局、覆盖行不动，文案只承�
     scopeLine: page.text('#policyScope')
   })
   record('global-linkage', '全局翻 allow：跟随行生效变允许、钉住行仍禁止；toast/页面只说宿主心跳生效，无 30 秒/已同步')
-}, 120_000)
+})
 
-test('G27-6 超过 200 个项目：渲染前端搜索框并可过滤，不分页', async () => {
+test('G27-6 超过 200 个项目：渲染前端搜索框并可过滤，不分页', { timeout: 120_000 }, async () => {
   const projects = Array.from({ length: 201 }, (_, index) => ({
     id: `proj_bulk_${index}`,
     name: `bulk-project-${String(index).padStart(3, '0')}`,
@@ -380,4 +380,4 @@ test('G27-6 超过 200 个项目：渲染前端搜索框并可过滤，不分页
     visibleRows: visible.length
   })
   record('search', '201 个项目一次性渲染，出现搜索框；过滤 bulk-project-137 后仅 1 行可见')
-}, 120_000)
+})

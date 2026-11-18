@@ -175,7 +175,7 @@ before(async () => {
       }).catch(() => undefined)
     }
   }, 700)
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   if (beat) {
@@ -185,7 +185,7 @@ after(async () => {
   saveEvidence(EVIDENCE, 'entry-matrix.json', { feature: 'W7b handoff consumption', cases: matrix })
 })
 
-test('W7b-cors 白名单宿主页来源：预检 204 且放行 authorization/content-type', async () => {
+test('W7b-cors 白名单宿主页来源：预检 204 且放行 authorization/content-type', { timeout: 120_000 }, async () => {
   const preflight = await fetch(`${service.url}/v1/projects`, {
     method: 'OPTIONS',
     headers: {
@@ -238,9 +238,9 @@ test('W7b-cors 白名单宿主页来源：预检 204 且放行 authorization/con
   })
   matrix['cors-allow'] =
     `宿主页来源 ${HOST_ORIGIN} 与中继边缘 ${EDGE_ORIGIN} 预检 204 + ACAO 回显；410 错误响应同样携带 ACAO`
-}, 120_000)
+})
 
-test('W7b-cors 非白名单来源无 CORS 头（负向）', async () => {
+test('W7b-cors 非白名单来源无 CORS 头（负向）', { timeout: 120_000 }, async () => {
   const preflight = await fetch(`${service.url}/v1/projects`, {
     method: 'OPTIONS',
     headers: {
@@ -282,9 +282,9 @@ test('W7b-cors 非白名单来源无 CORS 头（负向）', async () => {
   })
   matrix['cors-deny'] =
     'evil.example 预检与实际响应零 CORS 头；/v1/internal/* 不参与；同源控制台不受影响'
-}, 120_000)
+})
 
-test('W7b-url 入口 URL：中继边缘优先、直连兜底、恒带 ?api= 平台地址', async () => {
+test('W7b-url 入口 URL：中继边缘优先、直连兜底、恒带 ?api= 平台地址', { timeout: 120_000 }, async () => {
   const relayed = new URL(await issueHandoff(devToken, relayedProjectId))
   assert.equal(relayed.origin, EDGE_ORIGIN, 'a healthy browser edge wins over the direct address')
   assert.equal(relayed.pathname, '/h/w7b-relayed/web-index.html')
@@ -310,9 +310,9 @@ test('W7b-url 入口 URL：中继边缘优先、直连兜底、恒带 ?api= 平�
   })
   matrix['entry-url'] =
     '中继边缘优先 /h/<route>/web-index.html?api=…；无边缘回落直连；中继-only 宿主可签发'
-}, 120_000)
+})
 
-test('W7b-button 「Orca Web」点击真实走 web-handoff 并用一次性 URL 开新标签', async () => {
+test('W7b-button 「Orca Web」点击真实走 web-handoff 并用一次性 URL 开新标签', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('zhangsan', 'Passw0rd!')
@@ -347,9 +347,9 @@ test('W7b-button 「Orca Web」点击真实走 web-handoff 并用一次性 URL �
     buttonProjectId: button.dataset.orcaWeb
   })
   matrix['button'] = '点击 → POST web-handoff → window.open(一次性 URL)，URL 与签发响应同源同形'
-}, 120_000)
+})
 
-test('W7b-button 签发失败以 toast 提示（QA-009 形态）', async () => {
+test('W7b-button 签发失败以 toast 提示（QA-009 形态）', { timeout: 120_000 }, async () => {
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('zhangsan', 'Passw0rd!')
@@ -370,7 +370,7 @@ test('W7b-button 签发失败以 toast 提示（QA-009 形态）', async () => {
   assert.match(toast.textContent ?? '', /主机维护中/)
   saveEvidence(EVIDENCE, 'console-button-failure.json', { toast: toast.textContent?.trim() })
   matrix['button-failure'] = '签发失败 → toast「打开失败：<平台消息>」，不打开新标签'
-}, 120_000)
+})
 
 /** The Orca Web action button on the named project's workbench row. */
 function orcaWebButton(page: WebConsolePage, projectKey: string): HTMLButtonElement | null {
