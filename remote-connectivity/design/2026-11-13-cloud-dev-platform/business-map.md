@@ -30,7 +30,7 @@
 | WEB | 平台 Web 控制台 | P0 | 🟢 | 100%（路由 P1 已修） | web-exploratory **45/45**、移动端用户页 5/5 |
 | MOB | 移动端形态 | P1 | 🟢 | 100%（响应式全屏 sheet 已覆盖，原型稿归二期） | u80-mobile-shell 390×844 sheet、m9fix 触控 44px |
 | DSGN | 设计原型与文档 | P1 | 🟢 | 100% | proto-tab-check **39/39** |
-| QA | 测试与门禁基建 | P0 | 🟢 | 100%（U317 已实施） | 全仓 e2e **1149/1149**；门禁 **89（88 pass/1 skip）**，基线 **0** |
+| QA | 测试与门禁基建 | P0 | 🟢 | 100%（U317 已实施） | 全仓 e2e **1149/1149**；门禁 **92（91 pass/1 skip）**，基线 **0** |
 
 ## 3. 功能项明细
 
@@ -140,7 +140,7 @@
 | QA-AUTH-BASE | 认证 24 文件基线 | — | P0（门禁） | 🟢 | 100% | **267/267** |
 | QA-BASE-MATRIX | 授权组合矩阵基线 | — | P0（门禁） | 🟢 | 100% | **113/113** |
 | QA-E2E-SWEEP | 全仓 e2e 全景 | — | P0（门禁） | 🟢 | 100% | **1149/1149，0 skip**（第七轮，148 文件；U319 后定向复跑） |
-| QA-TIMEOUT-GATE | 超时形态门禁与存量迁移 | — | P1（门禁） | 🟢 | 100%（U317/U321 已实施；范围漂移提示非失败） | 门禁测试 **89（88 pass/1 skip）**；296 文件、0 new |
+| QA-TIMEOUT-GATE | 超时形态门禁与存量迁移 | — | P1（门禁） | 🟢 | 100%（U317/U321 已实施；范围漂移提示非失败） | 门禁测试 **92（91 pass/1 skip）**；296 文件、0 new |
 | QA-TYPE-GATE | apps 类型门禁 | — | P1（门禁） | 🟢 | 100% | `tc:apps` 16→0 |
 | QA-EVIDENCE-CHECKERS | 台账表格/sha/编码校验 | — | P0（门禁） | 🟢 | 100% | 三脚本 + 自测 |
 
@@ -172,9 +172,8 @@
 | HOST-ONBOARD-WIZARD | 🟢 | U181（H11–H13 打包验收产物待出） | install-wizard 90/90；D25 手动构建 job |
 | AUTH-REVOKE-FORCE | 🟢 | U245③（D23 自撤/同级测试待补） | u244 12/12 |
 | ADMIN-CONSOLE-WORKBENCH / QA-EVIDENCE-CHECKERS | 🟢 | U323（探索重放脚本标签漂移，非门禁） | U322 复审发现 |
-| QA-TIMEOUT-GATE | 🟢 | U324（import 正则边界，P2，0 文件命中） | U321 复审 |
 | —（无叶子：早期探索/FR 外增强） | ⚪ | U11/U12/U27/U32/U54/U56/U58/U74/U76/U116/U316 | 台账 §3.2 |
-| QA-TIMEOUT-GATE | 🟢 | U291/U313/U315/U317/U321 已关 | 门禁套件 **89（88 pass/1 skip）**、扫描 296 文件 0 new；`evidence/m110-load-300` |
+| QA-TIMEOUT-GATE | 🟢 | U291/U313/U315/U317/U321/U324 已关 | 门禁套件 **92（91 pass/1 skip）**、扫描 296 文件 0 new；`evidence/m110-load-300` |
 | WEB-NAV-ROUTING | 🟢 | U307/U310/U312/U314（已关） | `web-exploratory-fixes` 45、U310 定向 1/1（主会话复跑） |
 | MOB-HOST-DETAIL | 🟢 | U278（已裁定不开发） | `u80-mobile-shell` 390×844 sheet、`u80-mobile-m9fix` 触控 44px |
 | AUTH-LOGIN-LOCKOUT | 🟢 | U289/U292/U293/U294/U296（已关） | 契约 9/9、entry-module 9/9、lockout 14/14 |
