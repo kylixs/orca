@@ -11,7 +11,11 @@ import { createApp, type ApiHandle } from '../src/server.ts'
 const ORIGIN = 'https://console.u249.example'
 const AUTH_BODY_MAX_BYTES = 16 * 1024
 const INTERNAL_BODY_MAX_BYTES = 4 * 1024
+const SENSITIVE_WRITE_BODY_MAX_BYTES = 16 * 1024
+const DENIED_AUDIT_BODY_MAX_BYTES = 4 * 1024
 const INTERNAL_TOKEN = 'u249-token'
+const PROJECT_ID = 'proj_payment'
+const HOST_ID = 'host_dev001'
 const apps: ApiHandle[] = []
 
 async function startApp(): Promise<{ app: ApiHandle; base: string }> {
@@ -66,6 +70,46 @@ function postInternal(base: string, path: string, body: string): Promise<Respons
 function errorCode(body: Json): unknown {
   const error = body.error
   return error !== null && typeof error === 'object' ? (error as Json).code : undefined
+}
+
+async function loginAs(
+  base: string,
+  username: string,
+  password: string,
+  device: string
+): Promise<{ token: string; userId: string }> {
+  const res = await login(base, JSON.stringify({ username, password, deviceName: device }))
+  assert.equal(res.status, 200, `${username} must log in`)
+  const body = (await res.json()) as Json
+  const user = body.user as Json | undefined
+  return { token: String(body.accessToken ?? ''), userId: String(user?.id ?? '') }
+}
+
+function authedJson(
+  base: string,
+  token: string,
+  method: string,
+  path: string,
+  body?: string
+): Promise<Response> {
+  return fetch(`${base}${path}`, {
+    method,
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    ...(body === undefined ? {} : { body })
+  })
+}
+
+function oversizedSensitive(fields: Record<string, unknown>): string {
+  // The named fields stay legible in the JSON; only the cap decides they are ignored.
+  return JSON.stringify({ ...fields, pad: 'x'.repeat(SENSITIVE_WRITE_BODY_MAX_BYTES * 2) })
+}
+
+async function deniedAuditEvents(base: string, token: string, actor: string): Promise<Json[]> {
+  const query = new URLSearchParams({ actor, result: 'denied', limit: '200' })
+  const res = await authedJson(base, token, 'GET', `/v1/audit/events?${query.toString()}`)
+  assert.equal(res.status, 200, 'audit query must be available to the admin')
+  const body = (await res.json()) as Json
+  return (body.events as Json[] | undefined) ?? []
 }
 
 function redeemHandoff(
@@ -195,6 +239,161 @@ describe('U249 未认证 login/refresh body 上限', () => {
 
     const small = await refresh(base, '{}', { cookie, origin: ORIGIN })
     assert.equal(small.status, 200)
+  })
+})
+
+describe('U250 档 2 已鉴权敏感写 body 上限（16 KiB）', () => {
+  test('正常写路径：超限 413 PAYLOAD_TOO_LARGE，且先于任何写入', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u250-write-admin')
+    const dev = await loginAs(base, 'zhangsan', 'Passw0rd!', 'u250-write-dev')
+    assert.notEqual(admin.token, '')
+    assert.notEqual(dev.userId, '')
+
+    const cases = [
+      {
+        name: '项目 grants',
+        method: 'PUT',
+        path: `/v1/projects/${PROJECT_ID}/grants`,
+        body: { subjectType: 'user', subjectId: dev.userId, permissions: ['open'] }
+      },
+      {
+        name: '项目 policy',
+        method: 'PUT',
+        path: `/v1/projects/${PROJECT_ID}/policy`,
+        body: { downloadPolicy: 'allow' }
+      },
+      {
+        name: '用户 roles',
+        method: 'PUT',
+        path: `/v1/users/${dev.userId}/roles`,
+        body: { role: 'auditor' }
+      },
+      { name: 'hosts/tokens 签发', method: 'POST', path: '/v1/hosts/tokens', body: {} },
+      {
+        name: 'host grants',
+        method: 'PUT',
+        path: `/v1/hosts/${HOST_ID}/grants`,
+        body: { subjectType: 'user', subjectId: dev.userId, permissions: ['view'] }
+      },
+      {
+        name: 'host provision-policy',
+        method: 'PUT',
+        path: `/v1/hosts/${HOST_ID}/provision-policy`,
+        body: { mode: 'open' }
+      },
+      {
+        name: '全局下载策略',
+        method: 'PUT',
+        path: '/v1/policies/download',
+        body: { downloadDefault: 'allow' }
+      }
+    ]
+
+    for (const entry of cases) {
+      const res = await authedJson(
+        base,
+        admin.token,
+        entry.method,
+        entry.path,
+        oversizedSensitive(entry.body)
+      )
+      assert.equal(res.status, 413, `${entry.name} must answer 413`)
+      assert.equal(
+        errorCode((await res.json()) as Json),
+        'PAYLOAD_TOO_LARGE',
+        `${entry.name} must name the size refusal`
+      )
+    }
+
+    // A 413 precedes the write: none of the refused changes may have landed.
+    assert.equal(app.store.policies.downloadDefault, 'deny', 'global policy untouched')
+    assert.equal(
+      app.store.projects.get(PROJECT_ID)?.downloadPolicy,
+      'deny',
+      'project policy untouched'
+    )
+    assert.equal(
+      app.store.hosts.get(HOST_ID)?.provisionPolicy,
+      undefined,
+      'provision policy untouched'
+    )
+    assert.ok(
+      !app.store.users.get(dev.userId)?.roles.includes('platform:auditor'),
+      'role untouched'
+    )
+    assert.ok(
+      !app.store.grants.some(
+        (grant) => grant.projectId === PROJECT_ID && grant.subjectId === dev.userId
+      ),
+      'project grant untouched'
+    )
+    assert.ok(
+      !app.store.hostGrants.some(
+        (grant) => grant.hostId === HOST_ID && grant.subjectId === dev.userId
+      ),
+      'host grant untouched'
+    )
+  })
+
+  test('拒绝分支：超限 body 仍 403，denied 审计按空 body 记录', async () => {
+    const { base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u250-deny-admin')
+    const dev = await loginAs(base, 'zhangsan', 'Passw0rd!', 'u250-deny-dev')
+    const pad = 'x'.repeat(DENIED_AUDIT_BODY_MAX_BYTES * 2)
+
+    const projectGrant = await authedJson(
+      base,
+      dev.token,
+      'PUT',
+      `/v1/projects/${PROJECT_ID}/grants`,
+      JSON.stringify({ pad, subjectType: 'user', subjectId: dev.userId, permissions: ['open'] })
+    )
+    assert.equal(projectGrant.status, 403, 'a denied project grant write stays 403')
+    assert.equal(
+      errorCode((await projectGrant.json()) as Json),
+      'PERMISSION_DENIED',
+      'the refusal keeps its permission error code'
+    )
+
+    const hostGrant = await authedJson(
+      base,
+      dev.token,
+      'PUT',
+      `/v1/hosts/${HOST_ID}/grants`,
+      JSON.stringify({ pad, subjectType: 'user', subjectId: dev.userId, permissions: ['view'] })
+    )
+    assert.equal(hostGrant.status, 403, 'a denied host grant write stays 403')
+    assert.equal(errorCode((await hostGrant.json()) as Json), 'PERMISSION_DENIED')
+
+    const provision = await authedJson(
+      base,
+      dev.token,
+      'PUT',
+      `/v1/hosts/${HOST_ID}/provision-policy`,
+      JSON.stringify({ pad, mode: 'open' })
+    )
+    assert.equal(provision.status, 403, 'a denied provision-policy write stays 403')
+    assert.equal(errorCode((await provision.json()) as Json), 'PERMISSION_DENIED')
+
+    // Over the 4 KiB audit cap the body counts as empty, so the record stays
+    // bounded instead of echoing an attacker-sized document.
+    const events = await deniedAuditEvents(base, admin.token, 'zhangsan')
+    const projectEvent = events.find((event) => event.eventType === 'grant_update')
+    assert.ok(projectEvent, 'the refused project grant write is audited')
+    assert.equal((projectEvent.metadata as Json).subjectId, '')
+    assert.deepEqual((projectEvent.metadata as Json).permissions, [])
+
+    const hostEvent = events.find((event) => event.eventType === 'host_grant_update')
+    assert.ok(hostEvent, 'the refused host grant write is audited')
+    assert.equal((hostEvent.metadata as Json).subjectId, '')
+    assert.deepEqual((hostEvent.metadata as Json).permissions, [])
+
+    const provisionEvent = events.find(
+      (event) => event.eventType === 'host_provision_policy_update'
+    )
+    assert.ok(provisionEvent, 'the refused provision-policy write is audited')
+    assert.equal((provisionEvent.metadata as Json).mode, '')
   })
 })
 

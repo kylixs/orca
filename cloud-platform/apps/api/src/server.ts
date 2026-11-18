@@ -322,6 +322,21 @@ async function readJson(
   return (await readBody(req, maxBytes)).body
 }
 
+/**
+ * U250 tier 2: a sensitive write's body is its only input, so an oversized one
+ * is refused before any mutation or audit. Returns null after sending the 413.
+ */
+async function readSensitiveWriteBody(
+  req: IncomingMessage,
+  res: ServerResponse,
+  traceId: string
+): Promise<Record<string, unknown> | null> {
+  const { body, oversized } = await readBody(req, SENSITIVE_WRITE_BODY_MAX_BYTES)
+  if (!oversized) return body
+  error(res, 413, 'PAYLOAD_TOO_LARGE', '请求体过大。', traceId)
+  return null
+}
+
 /** Login/refresh/handoff bodies carry only credentials; logout uses the same cap. */
 const AUTH_BODY_MAX_BYTES = 16 * 1024
 
@@ -337,6 +352,15 @@ const INTERNAL_BODY_MAX_BYTES = 4 * 1024
 /** U244: the force-offline body only carries an optional audit note. */
 const FORCE_OFFLINE_BODY_MAX_BYTES = 4 * 1024
 const FORCE_OFFLINE_REASON_MAX_CHARS = 200
+
+/** U250 tier 2: an authenticated sensitive write carries a small JSON command. */
+const SENSITIVE_WRITE_BODY_MAX_BYTES = 16 * 1024
+
+/**
+ * U250 tier 2: a denied 403 branch reads the body only to name what was refused.
+ * The cap makes the audit record bounded; an oversized body counts as empty.
+ */
+const DENIED_AUDIT_BODY_MAX_BYTES = 4 * 1024
 
 function e2eeKeyFingerprint(e2eePublicKeyB64: string): string {
   const digest = createHash('sha256').update(Buffer.from(e2eePublicKeyB64, 'base64')).digest('hex')
@@ -4869,7 +4893,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         if (!isAdmin(authed.user) && !authed.user.roles.includes('project:owner')) {
           // AC-18: a refused grant write is a 403 *and* an audit event.
           // U62 G4: the event names the refused subject.
-          const body = await readJson(req)
+          const body = await readJson(req, DENIED_AUDIT_BODY_MAX_BYTES)
           return denyPrivileged(res, traceId, authed.user, {
             eventType: 'grant_update',
             targetType: 'project',
@@ -4879,7 +4903,8 @@ export function createApp(config: ApiConfig): ApiHandle {
           })
         }
         if (!auditAllowsMutations(res, traceId)) return
-        const body = await readJson(req)
+        const body = await readSensitiveWriteBody(req, res, traceId)
+        if (!body) return
         // U62 B12: same contract as host grants — reject unknown subject types.
         if (
           body.subjectType !== undefined &&
@@ -5077,7 +5102,8 @@ export function createApp(config: ApiConfig): ApiHandle {
             permission: 'platform:admin'
           })
         }
-        const body = await readJson(req)
+        const body = await readSensitiveWriteBody(req, res, traceId)
+        if (!body) return
         if (!auditAllowsMutations(res, traceId)) return
         // `inherit: true` is the only way back to following the global default:
         // it drops the explicit flag and ignores any downloadPolicy in the body.
@@ -5258,7 +5284,8 @@ export function createApp(config: ApiConfig): ApiHandle {
         })
       }
       if (!auditAllowsMutations(res, traceId)) return
-      const body = await readJson(req)
+      const body = await readSensitiveWriteBody(req, res, traceId)
+      if (!body) return
       const next =
         body.role === 'developer' || body.role === 'auditor' || body.role === 'admin'
           ? body.role
@@ -5531,7 +5558,8 @@ export function createApp(config: ApiConfig): ApiHandle {
         })
       }
       if (!auditAllowsMutations(res, traceId)) return
-      const body = await readJson(req)
+      const body = await readSensitiveWriteBody(req, res, traceId)
+      if (!body) return
       const boundHostId =
         typeof body.hostId === 'string' && body.hostId.trim() ? body.hostId.trim() : null
       if (boundHostId && !store.hosts.has(boundHostId)) {
@@ -5956,7 +5984,7 @@ export function createApp(config: ApiConfig): ApiHandle {
           // AC-18: a refused host grant write is a 403 *and* an audit event.
           // U62 G4: the event names the refused subject, so the body is read
           // here even though the caller never reaches the mutation.
-          const body = await readJson(req)
+          const body = await readJson(req, DENIED_AUDIT_BODY_MAX_BYTES)
           return denyPrivileged(res, traceId, authed.user, {
             eventType: 'host_grant_update',
             targetType: 'host',
@@ -5969,7 +5997,8 @@ export function createApp(config: ApiConfig): ApiHandle {
           })
         }
         if (!auditAllowsMutations(res, traceId)) return
-        const body = await readJson(req)
+        const body = await readSensitiveWriteBody(req, res, traceId)
+        if (!body) return
         // U62 B12: the contract is user|group; anything else is a caller bug
         // and must be refused, never silently stored as a user row.
         if (
@@ -6087,7 +6116,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         if (!isAdmin(authed.user)) {
           // U62 G4: the refused event records the attempted mode, so the body
           // is read for the record even though the caller never gets a write.
-          const body = await readJson(req)
+          const body = await readJson(req, DENIED_AUDIT_BODY_MAX_BYTES)
           return denyPrivileged(res, traceId, authed.user, {
             eventType: 'host_provision_policy_update',
             targetType: 'host',
@@ -6100,7 +6129,8 @@ export function createApp(config: ApiConfig): ApiHandle {
           })
         }
         if (!auditAllowsMutations(res, traceId)) return
-        const body = await readJson(req)
+        const body = await readSensitiveWriteBody(req, res, traceId)
+        if (!body) return
         const mode = body.mode
         if (mode !== 'open' && mode !== 'restricted') {
           return error(
@@ -6656,7 +6686,8 @@ export function createApp(config: ApiConfig): ApiHandle {
           })
         }
         if (!auditAllowsMutations(res, traceId)) return
-        const body = await readJson(req)
+        const body = await readSensitiveWriteBody(req, res, traceId)
+        if (!body) return
         // U58 Y14 + U237: an unknown or missing value used to be coerced to
         // `deny`, silently changing the platform policy. Refuse it instead.
         if (body.downloadDefault !== 'allow' && body.downloadDefault !== 'deny') {
