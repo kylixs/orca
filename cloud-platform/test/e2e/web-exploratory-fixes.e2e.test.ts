@@ -1430,60 +1430,135 @@ test('U54 QA-022 慢页面返回不覆盖已切换的页面', { timeout: 120_000
 })
 
 test('U310 双击导航两个慢请求同时在途时不触发重放循环', { timeout: 120_000 }, async () => {
-  const page = loadWebConsolePage(service.url)
-  await page.settle()
-  await page.submitLogin('admin', 'Adm1n!')
-  // Login lands on workbench; let it finish so the double click starts exactly
-  // the two concurrent users renders this case needs.
-  await page.settle()
-
-  const usersNav = page.window.document.querySelector<HTMLElement>(
-    '.nav-item[data-route="users"]'
-  )!
-  // Hold both requests: a double click force-renders the same route twice, which
-  // is the two-renders-in-flight state the old guard never converged from.
-  page.hold('GET', '/v1/users')
-  usersNav.click()
-  page.hold('GET', '/v1/users')
-  usersNav.click()
-  assert.match(page.text('#content'), /加载中/, 'both renders are still in flight')
-
-  const startedAt = Date.now()
-  await page.release()
-
-  let headAt: number | undefined
-  while (Date.now() - startedAt < 2000) {
-    if (page.window.document.querySelector('#content .page-head')) {
-      headAt = Date.now() - startedAt
-      break
+  // U312: the shim releases every held request at once, so completion order used
+  // to depend on network races. Gate the second /v1/users response at the network
+  // boundary instead: the stale generation finishes alone, then the newest one
+  // follows. The old unconditional replay must fire a third request in that
+  // window; the bounded implementation must not.
+  const networkFetch = globalThis.fetch
+  let usersRequests = 0
+  let staleResponseDone: () => void = () => undefined
+  const staleCompleted = new Promise<void>((resolve) => {
+    staleResponseDone = resolve
+  })
+  let openNewestResponse: () => void = () => undefined
+  const newestResponseGate = new Promise<void>((resolve) => {
+    openNewestResponse = resolve
+  })
+  let newestResponseAt = Number.POSITIVE_INFINITY
+  let thirdRequestAt = Number.POSITIVE_INFINITY
+  let tornDown = false
+  globalThis.fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    const method = (init?.method ?? 'GET').toUpperCase()
+    if (tornDown || method !== 'GET' || new URL(url).pathname !== '/v1/users') {
+      return networkFetch(input, init)
     }
-    await new Promise((resolve) => setTimeout(resolve, 25))
+    usersRequests += 1
+    if (usersRequests === 1) {
+      const response = await networkFetch(input, init)
+      staleResponseDone()
+      return response
+    }
+    if (usersRequests === 2) {
+      await newestResponseGate
+      const response = await networkFetch(input, init)
+      newestResponseAt = Date.now()
+      return response
+    }
+    thirdRequestAt = Math.min(thirdRequestAt, Date.now())
+    return networkFetch(input, init)
   }
-  assert.ok(headAt !== undefined, '#content .page-head must appear within 2s')
-  // Keep watching the rest of the 2s window: a replay loop keeps requesting.
-  const remaining = Math.max(0, 2000 - (Date.now() - startedAt))
-  await new Promise((resolve) => setTimeout(resolve, remaining))
-  const usersCalls = page.calls().filter((call) => call === 'GET /v1/users').length
-  assert.ok(usersCalls <= 3, `two clicks must stay at most 3 /v1/users calls, saw ${usersCalls}`)
-  assert.equal(
-    page.window.document.querySelector('#content')!.getAttribute('aria-busy'),
-    'false',
-    'the settled page is not busy'
-  )
 
-  // A route change after the double click must still converge.
-  await page.clickNav('hosts')
-  assert.match(page.text('#crumbs'), /主机/, 'the breadcrumb follows the new route')
-  assert.ok(
-    page.window.document.querySelector('#content .page-head'),
-    'the new route paints its own page head'
-  )
-  assert.equal(
-    page.window.document.querySelector('#content')!.getAttribute('aria-busy'),
-    'false',
-    'the new route settles'
-  )
-  record('U310', `双击导航两个慢请求在途：2s 内 /v1/users ${usersCalls} 次，页头 ${headAt}ms 可见`)
+  try {
+    const page = loadWebConsolePage(service.url)
+    await page.settle()
+    await page.submitLogin('admin', 'Adm1n!')
+    // Login lands on workbench; let it finish so the double click starts exactly
+    // the two concurrent users renders this case needs.
+    await page.settle()
+
+    const usersNav = page.window.document.querySelector<HTMLElement>(
+      '.nav-item[data-route="users"]'
+    )!
+    // Hold both requests: a double click force-renders the same route twice, which
+    // is the two-renders-in-flight state the old guard never converged from.
+    const usersCalls = (): number =>
+      page.calls().filter((call) => call === 'GET /v1/users').length
+    page.hold('GET', '/v1/users')
+    usersNav.click()
+    page.hold('GET', '/v1/users')
+    usersNav.click()
+    assert.match(page.text('#content'), /加载中/, 'both renders are still in flight')
+    assert.equal(usersCalls(), 2, 'both clicks issued a /v1/users request')
+
+    const released = page.release()
+    let staleTimer: ReturnType<typeof setTimeout> | undefined
+    try {
+      await Promise.race([
+        staleCompleted,
+        new Promise<void>((_, reject) => {
+          staleTimer = setTimeout(
+            () => reject(new Error('the stale render never completed')),
+            5000
+          )
+        })
+      ])
+    } finally {
+      if (staleTimer) {
+        clearTimeout(staleTimer)
+      }
+    }
+    // Let the stale completion run its handler: an unconditional replay (the old
+    // build) issues its third request right here, before the newest response.
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    assert.equal(
+      usersCalls(),
+      2,
+      'no /v1/users replay may start before the newest response completes'
+    )
+
+    openNewestResponse()
+    await released
+    await page.settle()
+    const settledCalls = usersCalls()
+    assert.ok(
+      settledCalls <= 3,
+      `two clicks must stay at most 3 /v1/users calls, saw ${settledCalls}`
+    )
+    if (settledCalls > 2) {
+      // A replay is only legitimate once both generations settled; one that
+      // started earlier is the stale-age loop this case exists to catch.
+      assert.ok(
+        thirdRequestAt >= newestResponseAt,
+        'a third /v1/users request must not start before both responses completed'
+      )
+    }
+    assert.match(page.text('#content'), /用户管理/, 'the newest render paints the users page')
+    assert.equal(
+      page.window.document.querySelector('#content')!.getAttribute('aria-busy'),
+      'false',
+      'the settled page is not busy'
+    )
+
+    // A route change after the double click must still converge.
+    await page.clickNav('hosts')
+    assert.match(page.text('#crumbs'), /主机/, 'the breadcrumb follows the new route')
+    assert.ok(
+      page.window.document.querySelector('#content .page-head'),
+      'the new route paints its own page head'
+    )
+    assert.equal(
+      page.window.document.querySelector('#content')!.getAttribute('aria-busy'),
+      'false',
+      'the new route settles'
+    )
+    record('U310', `双击导航两请求旧先新后释放：/v1/users ${settledCalls} 次，无提前重放`)
+  } finally {
+    tornDown = true
+    openNewestResponse()
+    globalThis.fetch = networkFetch
+  }
 })
 
 test('U54 QA-024 最近项目按最近更新时间排序而非数组顺序', { timeout: 120_000 }, async () => {
