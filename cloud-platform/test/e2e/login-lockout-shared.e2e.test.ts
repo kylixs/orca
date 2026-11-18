@@ -56,7 +56,7 @@ async function login(
 before(async () => {
   counter = await startCounter()
   replicas = await Promise.all([0, 1, 2].map((index) => startReplica(counter.url, index)))
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await Promise.all(replicas.map((replica) => replica.stop()))

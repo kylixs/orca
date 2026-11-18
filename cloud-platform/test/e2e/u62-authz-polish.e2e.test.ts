@@ -160,7 +160,7 @@ before(async () => {
   })
   assert.equal(created.status, 201, JSON.stringify(created.body))
   p1 = created.body.id
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await service?.stop()

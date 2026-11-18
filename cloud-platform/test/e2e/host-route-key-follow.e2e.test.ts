@@ -132,7 +132,7 @@ before(async () => {
   assert.ok(devToken !== '' && devDeviceId !== '')
 
   relay = await startRelay({ port: 0, id: 'relay-follow', apiUrl: api.url, internalToken: INTERNAL_TOKEN })
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await relay?.close()

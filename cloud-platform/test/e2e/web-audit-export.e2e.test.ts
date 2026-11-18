@@ -24,7 +24,7 @@ before(async () => {
     'web-audit-export'
   )
   await login(service.url, 'admin', 'Adm1n!')
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await service?.stop()

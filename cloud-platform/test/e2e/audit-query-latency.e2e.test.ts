@@ -128,7 +128,7 @@ before(async () => {
     'api-m105'
   )
   adminToken = await login(api.url, 'admin', 'Adm1n!')
-}, 180_000)
+}, { timeout: 180_000 })
 
 after(async () => {
   await api?.stop()
@@ -136,7 +136,7 @@ after(async () => {
   await writer?.stop()
 })
 
-test('M105-1 31 天窗口审计查询 P95 ≤ 2s；注入 2.2s 延迟时同一断言转红', async () => {
+test('M105-1 31 天窗口审计查询 P95 ≤ 2s；注入 2.2s 延迟时同一断言转红', { timeout: 300_000 }, async () => {
   await appendCorpus(FIRST_MILESTONE)
   const small = await sample(SAMPLES)
   assertQueryBudget(small, BUDGET_MS)
@@ -180,4 +180,4 @@ test('M105-1 31 天窗口审计查询 P95 ≤ 2s；注入 2.2s 延迟时同一�
     platform: process.platform,
     node: process.version
   })
-}, 300_000)
+})

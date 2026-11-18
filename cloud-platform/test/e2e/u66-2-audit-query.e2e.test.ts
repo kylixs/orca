@@ -202,7 +202,7 @@ before(async () => {
   })
 
   clock = NOW
-}, 30_000)
+}, { timeout: 30_000 })
 
 after(async () => {
   await app?.close()
@@ -492,7 +492,7 @@ test('U66-2-6 /v1/audit/status：admin/auditor-only，缺口摘要与容量水�
   })
 })
 
-test('U78-1 接入类事件可检索：目录自服务端目录派生，q 命中事件类型与脚本路径', async () => {
+test('U78-1 接入类事件可检索：目录自服务端目录派生，q 命中事件类型与脚本路径', { timeout: 30_000 }, async () => {
   // Real access flows mint the events: a denied script fetch, an admin script
   // fetch, admin-only list refusals, and a registration token mint.
   const devToken = await login('zhangsan', 'Passw0rd!', 'u78-dev')
@@ -563,9 +563,9 @@ test('U78-1 接入类事件可检索：目录自服务端目录派生，q 命中
     qByScriptPath: seqsOf(byPath),
     qWhitelistHolds: { permissionDenied: [] }
   })
-}, 30_000)
+})
 
-test('U66-2-7 性能抽测：大链 limit=50 关键字/文件名/四条件查询 P95', async () => {
+test('U66-2-7 性能抽测：大链 limit=50 关键字/文件名/四条件查询 P95', { timeout: 120_000 }, async () => {
   clock = NOW
   const bulkStart = T0 + 100_000
   for (let index = 0; index < 20_000; index += 1) {
@@ -636,4 +636,4 @@ test('U66-2-7 性能抽测：大链 limit=50 关键字/文件名/四条件查询
     platform: process.platform,
     node: process.version
   })
-}, 120_000)
+})

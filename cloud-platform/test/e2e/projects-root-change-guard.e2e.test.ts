@@ -174,7 +174,7 @@ before(async () => {
   rootB = join(mkdtempSync(join(tmpdir(), 'orca-u21-root-b-')), 'projects')
   mkdirSync(rootA, { recursive: true })
   mkdirSync(rootB, { recursive: true })
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await api?.stop()

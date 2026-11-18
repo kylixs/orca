@@ -107,7 +107,7 @@ before(async () => {
     { ORCA_CLOUD_ACCESS_TTL_MS: '1500' }
   )
   browser = await chromium.launch({ headless: true })
-}, 180_000)
+}, { timeout: 180_000 })
 
 after(async () => {
   await browser?.close()

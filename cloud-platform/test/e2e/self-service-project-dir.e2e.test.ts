@@ -156,7 +156,7 @@ before(async () => {
   // project, and an escaped name must not materialise a directory.
   projectsRoot = join(mkdtempSync(join(tmpdir(), 'orca-m115-root-')), 'projects')
   mkdirSync(projectsRoot, { recursive: true })
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await api?.stop()
