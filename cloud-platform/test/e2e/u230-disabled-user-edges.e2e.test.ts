@@ -112,7 +112,7 @@ function deleteUser(app: ApiHandle, username: string) {
 function auditOf(app: ApiHandle, sessionId: string): AuditEvent[] {
   return app.store.audit.filter(
     (event) =>
-      event.eventType === 'logout' &&
+      event.eventType === 'session.revoked' &&
       event.targetId === sessionId &&
       event.metadata?.reason === 'USER_DISABLED'
   )
@@ -180,7 +180,7 @@ describe('U230 停用账号边界（真实 createApp + HTTP）', () => {
     const [event] = auditOf(app, session.id)
     assert.ok(event, 'the refusal must be audited')
     assert.equal(event.actor, 'zhangsan')
-    assert.equal(event.result, 'denied')
+    assert.equal(event.result, 'success')
     assert.equal(event.metadata.source, 'cookie')
     assert.equal(
       JSON.stringify(event.metadata).includes(previous),
@@ -326,7 +326,7 @@ describe('U230 停用账号边界（真实 createApp + HTTP）', () => {
     assert.equal(typeof verdict.tip, 'string')
 
     const events = await fetch(
-      `${base}/v1/audit/events?eventType=logout&result=denied&limit=50`,
+      `${base}/v1/audit/events?eventType=session.revoked&limit=50`,
       { headers: { authorization: `Bearer ${admin.body.accessToken ?? ''}` } }
     )
     assert.equal(events.status, 200)

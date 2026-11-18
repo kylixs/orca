@@ -50,6 +50,8 @@ export const AUDIT_EVENT_TYPES: readonly string[] = [
   'refresh.reuse_detected',
   'relay_list',
   'role_update',
+  'session.expired',
+  'session.revoked',
   'session_revoke',
   'signing_key_rotate',
   'user_list',

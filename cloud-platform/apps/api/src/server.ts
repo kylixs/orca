@@ -136,6 +136,7 @@ import {
   BROWSER_ROUTE_KEY_PATTERN,
   RELAY_ALIVE_DEFAULT_MS
 } from './relay-nodes.ts'
+import { resolveSessionSweepIntervalMs, startSessionSweep } from './session-sweep.ts'
 import {
   createRemoteLoginLockout,
   lockoutUnavailable,
@@ -196,6 +197,8 @@ export type ApiConfig = {
   auditExportTokenTtlMs?: number
   /** Queued-export rescue sweep interval; tests shrink it to observe the rescue. */
   auditExportSweepMs?: number
+  /** D18 session sweep interval; `0` disables. Defaults to ORCA_CLOUD_SESSION_SWEEP_MS. */
+  sessionSweepMs?: number
   /** U183 R2: where relay bundles are published; defaults to cloud-platform/dist/relay-bundles. */
   relayBundleDir?: string
   /** U183 R2: bundle sha the platform embeds when the request names none. */
@@ -3286,6 +3289,37 @@ export function createApp(config: ApiConfig): ApiHandle {
     return true
   }
 
+  /** The single `session.expired` write point shared by refresh and sweep. */
+  function appendSessionExpired(
+    session: Session,
+    source: 'cookie' | 'body' | 'sweep',
+    traceId: string | null
+  ): void {
+    audit.appendBestEffort({
+      eventType: 'session.expired',
+      actor: store.users.get(session.userId)?.username ?? null,
+      targetType: 'session',
+      targetId: session.id,
+      result: 'success',
+      traceId,
+      metadata: { reason: 'EXPIRED', source, expiredAt: session.refreshExpiresAt }
+    })
+  }
+
+  /**
+   * D20: the first revocation of an expired session writes the only
+   * `session.expired` event; concurrent refreshes and later sweeps see false.
+   */
+  function expireSessionOnce(
+    session: Session,
+    source: 'cookie' | 'body',
+    traceId: string
+  ): boolean {
+    if (!revokeSessionOnce(session)) return false
+    appendSessionExpired(session, source, traceId)
+    return true
+  }
+
   /**
    * U230②: a disabled session is revoked and audited at most once. The re-check
    * after the barrier keeps concurrent refreshes from double-bumping the epoch.
@@ -3298,16 +3332,30 @@ export function createApp(config: ApiConfig): ApiHandle {
   ): Promise<void> {
     await config.beforeDisabledSessionRevoke?.()
     if (!revokeSessionOnce(session)) return
+    // D20: the revoke succeeded, so this is not a refused request; the old
+    // `logout/denied` pair read backwards for an automatic termination.
     audit.appendBestEffort({
-      eventType: 'logout',
+      eventType: 'session.revoked',
       actor: user?.username ?? null,
       targetType: 'session',
       targetId: session.id,
-      result: 'denied',
+      result: 'success',
       traceId,
       metadata: { reason: 'USER_DISABLED', source }
     })
   }
+
+  // D18: reaps credentials no client returned for; the same first-revoke gate
+  // and `session.expired` writer as the refresh path, so sweep stays 1 event.
+  const sessionSweep = startSessionSweep({
+    store,
+    now,
+    revokeSessionOnce,
+    recordExpired: (session) => {
+      appendSessionExpired(session, 'sweep', null)
+    },
+    intervalMs: config.sessionSweepMs ?? resolveSessionSweepIntervalMs(process.env)
+  })
 
   /**
    * U244: two admin force-offline requests for one user may race. Serialising
@@ -4038,7 +4086,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         if (cookieSession.revokedAt || cookieSession.refreshExpiresAt < now()) {
           // U241 ②: revoking on expiry makes old access tokens fail immediately;
           // an already-revoked session is left untouched (no second bump).
-          revokeSessionOnce(cookieSession)
+          expireSessionOnce(cookieSession, 'cookie', traceId)
           clearRefreshCookie(res)
           return error(res, 401, 'SESSION_EXPIRED', '会话已失效，请重新登录。', traceId)
         }
@@ -4191,7 +4239,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (!session || session.revokedAt || session.refreshExpiresAt < now()) {
         // U241 ②: an expired session is revoked once so its access tokens die
         // now instead of at the next access-TTL boundary.
-        if (session) revokeSessionOnce(session)
+        if (session) expireSessionOnce(session, 'body', traceId)
         if (refreshCookieEnabled()) clearRefreshCookie(res)
         return error(res, 401, 'SESSION_EXPIRED', '会话已失效，请重新登录。', traceId)
       }
@@ -7820,6 +7868,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       return signingKeys.current()
     },
     close: async () => {
+      sessionSweep.stop()
       auditExportSweep.stop()
       auditExportCleanup.stop()
       storePersistence?.flushNow()

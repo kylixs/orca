@@ -10,3 +10,8 @@ test('U201 E2: export events are part of the audit catalog', () => {
 test('U201 E2: the catalog has no duplicate event types', () => {
   assert.equal(new Set(AUDIT_EVENT_TYPES).size, AUDIT_EVENT_TYPES.length)
 })
+
+test('D20: session lifecycle events are catalogued', () => {
+  assert.ok(AUDIT_EVENT_TYPES.includes('session.expired'))
+  assert.ok(AUDIT_EVENT_TYPES.includes('session.revoked'))
+})

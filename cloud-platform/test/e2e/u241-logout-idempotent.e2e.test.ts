@@ -177,7 +177,7 @@ describe('U241 ① 登出撤销幂等（真实 createApp + HTTP）', () => {
     assert.equal(session.epoch, 2, 'one revocation means one epoch bump')
     const disabledEvents = app.store.audit.filter(
       (event) =>
-        event.eventType === 'logout' &&
+        event.eventType === 'session.revoked' &&
         event.targetId === session.id &&
         event.metadata?.reason === 'USER_DISABLED'
     )
