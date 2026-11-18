@@ -80,6 +80,8 @@
 
 - 维护端点必填 `enabled`（布尔）：缺失/字符串/`null`/`0` → 400 `HOST_MAINTENANCE_INVALID`，不再默认进入维护；校验在认证/授权/`auditAllowsMutations`、`HOST_REVOKED` 之后（`server.ts:5803-5811`，`097025df563`）。
 
+- 请求体上限：`hosts/register`、心跳、维护按档 3，`hosts/tokens`/`grants`/`provision-policy` 按档 2（拒绝分支仍 403 + denied 审计），见 M1「U250 body 分档」。
+
 ## 5. 已知缺陷（台账）
 
 - 🟢 U19：项目登记未校验主机在线（主机页状态与项目创建共用 `hostOnline` 判定）。

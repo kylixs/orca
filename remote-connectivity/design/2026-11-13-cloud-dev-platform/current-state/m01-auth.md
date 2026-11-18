@@ -153,6 +153,17 @@
 
 **契约 B（U250 `fix(u250)`）**：认证凭据类 body（login / refresh / `POST /v1/web/handoff`，body 承载唯一凭据或一次性交接码）超限 → `413 PAYLOAD_TOO_LARGE`，且在凭据状态检查**之前**拒绝、不消耗任何凭据（handoff 读取点 `server.ts:3963`，用例 `auth-body-limit.test.ts`）；定位器/备注类 body（logout / force-offline）超限 → 丢弃为空 body、动作照常（force-offline 4 KiB 读取点 `server.ts:5325`，用例 `u244-admin-force-offline.e2e.test.ts`）。
 
+**U250 body 分档（HEAD 行号）**
+
+| 档位 | 上限 | 超限语义 | 代表端点、行号与提交 |
+| --- | --- | --- | --- |
+| 1 鉴权前 | 16 KiB | login / refresh（Cookie 源与 body 回退）/ handoff → `413 PAYLOAD_TOO_LARGE`，在凭据状态检查前拒绝、不消耗凭据；logout 超限按空 body，Bearer/Cookie 撤销照常 | login `server.ts:3605`、refresh `3756`/`3903`、handoff `3994`、logout `4130`；`571ebe26df1`、`f697adfcfdd` |
+| 2 敏感写 | 16 KiB | 认证后的权限/策略写 → 413；**拒绝分支不返回 413，是为了保持拒绝语义与 denied 审计**：仍返回 403，并以 4 KiB 上限读取 body 供 denied 审计（超限记为空） | 成功写 grants `4909`/`6009`、project policy `5108`、user roles `5290`、host tokens `5564`、provision-policy `6141`、global policy `6699`；拒绝读 `4899`/`5996`/`6128`；`d271157ba45` |
+| 3 普通写 | 16 KiB | 认证后的业务写 → `413 PAYLOAD_TOO_LARGE`，在任何变更/审计前拒绝 | projects 创建/self/更新 `4457`/`4595`/`4795`、hosts/register `5608`、heartbeat `5721`、maintenance `5924`、audit/export `6284`、web-handoff mint `6918`、connect `7037`；`aa2e3b798a3` |
+| 4 内部端点 | 4 KiB | 内部令牌校验后读取；超限整包丢弃为 `{}`，端点按空 body 走既有语义，与旧对端兼容 | `internal/audit/file-events` `6212`、`internal/relay-endpoint` `6799`；`70b727e46e3` |
+
+常量与入口：`AUTH_BODY_MAX_BYTES`/`LOGOUT_BODY_MAX_BYTES` `server.ts:341`/`344`、`SENSITIVE_WRITE_BODY_MAX_BYTES` `357`、`DENIED_AUDIT_BODY_MAX_BYTES` `363`、`INTERNAL_BODY_MAX_BYTES` `350`；统一 413 助手 `readSensitiveWriteBody` `server.ts:329-338`，超限丢弃在 `readBody` `server.ts:288-315`。
+
 ## 7. 测试覆盖
 
 **认证/会话专项（HEAD 已提交）**
