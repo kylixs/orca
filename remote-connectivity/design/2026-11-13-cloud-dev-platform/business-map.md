@@ -103,7 +103,7 @@
 | FILE-PATH-GUARD | 相对路径与 `..` 穿越拒绝 | FR-6.5 | P0 | 🟢 | 100% | file-contract |
 | FILE-DL-POLICY | 全局/项目下载策略与即时生效 | FR-7.1/7.2/7.6 | P0 | 🟢 | 100% | download-policy 套件 |
 | FILE-DL-HARDEN | 宿主侧硬拦（现有 RPC） | FR-7.3 | P0 | 🟢 | 100% | guard 7/7、enforcement 4/4 |
-| FILE-DL-RPC | 专用 `files.download` 流式 RPC | FR-9.12 | P0（分期） | ⚪ | 0%（D21：缓；现有 readChunk 审计+宿主硬拦已覆盖，字面缺口登记） | — |
+| FILE-DL-RPC | 专用 `files.download` 流式 RPC | FR-9.12 | P0（分期） | ⚪ | 0%（D21：缓；现有 readChunk 审计+宿主硬拦已覆盖，字面缺口登记） | 缓登记 U66/D21；现有 guard 7/7、enforcement 4/4 |
 | FILE-DL-AUDIT | 拦截/超阈值读取审计 | FR-7.4 | P0 | 🟢 | 100% | audit-file-events 套件 |
 | FILE-COPY-CAPTURE | DOM 选区复制捕获 | FR-9.14（FR-9.13–16 未入库） | P1（二期） | 🟢 | 100%（C6 已落地于云端简易工作区） | cloud-file-copy-audit **8/8** |
 
@@ -123,7 +123,7 @@
 
 | 编号 | 功能 | FR | 优先级 | 状态 | 进度 | 测试 |
 |---|---|---|---|---|---|
-| ADMIN-CONSOLE-WORKBENCH | 工作台四卡与项目表 | FR-2.1–2.6 | P0 | 🟢 | 100% | workbench 套件（AC-01） |
+| ADMIN-CONSOLE-WORKBENCH | 工作台四卡与项目表 | FR-2.1–2.6 | P0 | 🟢 | 100%（搜索/筛选/通知为 FR 外增强，另挂 U316） | workbench 套件（AC-01） |
 | ADMIN-USERS-ROLES | 用户/角色管理 | FR-9.2 | P1 | 🟢 | 100% | u67-3-users 6/6 |
 | ADMIN-PERM-TAB | 位置即权限三卡片 | FR-9.3 | P0 | 🟢 | 100% | u67-3a/3b、drawer 11/11 |
 | ADMIN-CONSOLE-GATING | 管控面入口门控 | FR-9.7 | P0 | 🟢 | 100% | web-admin-gating 3/3（admin-gating 13 例另计） |
@@ -167,6 +167,7 @@
 
 | 地图编号 | 状态 | 台账/决策 | 套件或证据 |
 |---|---|---|---|
+| ADMIN-CONSOLE-WORKBENCH | 🟢 | U316（QA-030 搜索/筛选/通知，FR 外增强，⚪ 挂账） | workbench 套件（AC-01） |
 | QA-TIMEOUT-GATE | 🟡 | U291/U313/U315 已关；U317（七形残余，进行中） | 门禁套件 71（70 pass/1 skip）、扫描 296 文件；`evidence/m110-load-300` |
 | WEB-NAV-ROUTING | 🟢 | U307/U310/U312/U314（已关） | `web-exploratory-fixes` 45、U310 定向 1/1（主会话复跑） |
 | MOB-HOST-DETAIL | 🟢 | U278（已裁定不开发） | `u80-mobile-shell` 390×844 sheet、`u80-mobile-m9fix` 触控 44px |
