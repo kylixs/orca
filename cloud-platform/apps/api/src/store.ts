@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto'
-import { LOCK_MS } from '../../login-lockout/src/lockout.ts'
+import { LOCK_MS, MAX_FAILURES } from '../../login-lockout/src/lockout-constants.ts'
 import type { Permission } from '../../../packages/contract/src/credential.ts'
 import type { LockoutState } from './login-lockout-client.ts'
 
@@ -166,27 +166,24 @@ export type WebHandoff = { userId: string; projectId: string; expiresAt: number 
 
 type LoginAttemptRecord = { count: number; lockedUntil: number }
 
-/** Must match `MAX_FAILURES` in apps/login-lockout/src/lockout.ts. */
-const MAX_LOGIN_FAILURES = 5
-
 /**
  * U293: one lock decision for both the write and read paths, so they cannot
  * drift apart again. `remaining` mirrors the shared store for every state.
  */
 function lockStateOf(record: LoginAttemptRecord | undefined, now: number): LockoutState {
   if (!record) {
-    return { locked: false, remaining: MAX_LOGIN_FAILURES, lockedUntil: 0 }
+    return { locked: false, remaining: MAX_FAILURES, lockedUntil: 0 }
   }
   if (record.lockedUntil > now) {
     return { locked: true, remaining: 0, lockedUntil: record.lockedUntil }
   }
   // An expired lock must not keep counting old failures.
   if (record.lockedUntil !== 0) {
-    return { locked: false, remaining: MAX_LOGIN_FAILURES, lockedUntil: 0 }
+    return { locked: false, remaining: MAX_FAILURES, lockedUntil: 0 }
   }
   return {
     locked: false,
-    remaining: Math.max(0, MAX_LOGIN_FAILURES - record.count),
+    remaining: Math.max(0, MAX_FAILURES - record.count),
     lockedUntil: 0
   }
 }
@@ -287,7 +284,7 @@ export class Store {
     // An expired lock starts a fresh count; stale failures must not carry over.
     const record = existing && existing.lockedUntil === 0 ? existing : { count: 0, lockedUntil: 0 }
     record.count += 1
-    if (record.count >= MAX_LOGIN_FAILURES) {
+    if (record.count >= MAX_FAILURES) {
       record.lockedUntil = now + LOCK_MS
       record.count = 0
     }

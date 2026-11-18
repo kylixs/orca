@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { LOCK_MS, MAX_FAILURES } from './lockout-constants.ts'
 
 /**
  * Shared login-lockout counter (AC-02 under multi-replica deployment).
@@ -10,8 +11,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
  * replicas call — the same shape as the audit writer.
  */
 
-export const MAX_FAILURES = 5
-export const LOCK_MS = 15 * 60_000
+export { LOCK_MS, MAX_FAILURES }
 
 export type LockoutState = { locked: boolean; remaining: number; lockedUntil: number }
 

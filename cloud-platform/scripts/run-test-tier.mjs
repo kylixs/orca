@@ -55,6 +55,14 @@ export const CHANGE_RULES = [
   { prefix: 'src/shared/', tests: ['src/shared'] },
   { prefix: 'cloud-platform/apps/api/', tests: [], cloudE2E: CRITICAL_CLOUD_E2E },
   {
+    prefix: 'cloud-platform/apps/login-lockout/',
+    tests: [],
+    cloudE2E: [
+      'cloud-platform/apps/login-lockout/test/*.test.ts',
+      'cloud-platform/apps/api/test/local-lockout-contract.test.ts'
+    ]
+  },
+  {
     prefix: 'cloud-platform/apps/web/',
     tests: [],
     cloudE2E: ['cloud-platform/test/e2e/web-*.e2e.test.ts']
