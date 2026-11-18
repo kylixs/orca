@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { Agent, request as httpRequest } from 'node:http'
 import { connect, type Socket } from 'node:net'
 import { createApp, type ApiHandle } from '../src/server.ts'
+import { AUDIT_EVENT_MAX_BYTES, AUDIT_METADATA_MAX_BYTES } from '../src/audit.ts'
 import { startAuditWriter, type AuditWriter } from '../../audit-writer/src/writer.ts'
 
 /**
@@ -20,6 +21,8 @@ const DENIED_AUDIT_BODY_MAX_BYTES = 4 * 1024
 const HEARTBEAT_BODY_MAX_BYTES = 1024 * 1024
 const FILE_EVENT_METADATA_LIMIT = 4096
 const PROJECT_PATH_MAX_CHARS = 4096
+/** U257: register names are indexed and audited, so they share ingest's bound. */
+const HOST_NAME_MAX_CHARS = 128
 const INTERNAL_TOKEN = 'u249-token'
 const PROJECT_ID = 'proj_payment'
 const HOST_ID = 'host_dev001'
@@ -282,6 +285,26 @@ async function deniedAuditEvents(base: string, token: string, actor: string): Pr
   assert.equal(res.status, 200, 'audit query must be available to the admin')
   const body = (await res.json()) as Json
   return (body.events as Json[] | undefined) ?? []
+}
+
+/** U257: `appendBestEffort` over the remote client is fire-and-forget. */
+async function waitForAuditEvent(
+  base: string,
+  token: string,
+  params: Record<string, string>,
+  predicate: (event: Json) => boolean
+): Promise<Json> {
+  const deadline = Date.now() + 3_000
+  while (Date.now() < deadline) {
+    const query = new URLSearchParams({ limit: '200', ...params })
+    const res = await authedJson(base, token, 'GET', `/v1/audit/events?${query.toString()}`)
+    assert.equal(res.status, 200, 'audit query must be available to the admin')
+    const events = (((await res.json()) as Json).events as Json[] | undefined) ?? []
+    const found = events.find(predicate)
+    if (found) return found
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  assert.fail('the expected audit event never reached the chain')
 }
 
 function redeemHandoff(
@@ -1921,4 +1944,245 @@ describe('U255 readJson 超限路径关闭 keep-alive', () => {
     assert.equal((event.metadata as Json).revokedSessions, 1)
     assert.equal('reason' in (event.metadata as Json), false, 'the oversized note was discarded')
   }, { timeout: 8000 })
+})
+
+/**
+ * U257: the API used to hand the writer legal-but-huge events (control-character
+ * inflation, 20k names, 16k versions, two 4096-char CJK roots), so the writer
+ * answered 400 and an otherwise valid request became a 500 or the best-effort
+ * event silently disappeared. The boundary now lives at both write entries.
+ */
+describe('U257 审计事件体积全局护栏', () => {
+  test('2700 个 NUL 的 project path → 400，事件归一后入链且链仍可验证', async () => {
+    const { app, base } = await startAppWithWriter()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u257-ctrl-admin')
+    const path = '\u0000'.repeat(2700)
+    const body = JSON.stringify({
+      hostId: HOST_ID,
+      key: 'u257-ctrl-path',
+      name: 'u257-ctrl-path',
+      path,
+      defaultBranch: 'main'
+    })
+    assert.ok(
+      Buffer.byteLength(body) < SENSITIVE_WRITE_BODY_MAX_BYTES,
+      'the body is legal; only the escaped path inflates the event'
+    )
+
+    const res = await authedJson(base, admin.token, 'POST', '/v1/projects', body)
+    const payload = (await res.json()) as Json
+    assert.equal(res.status, 400, JSON.stringify(payload))
+    assert.equal(errorCode(payload), 'PROJECT_PATH_INVALID')
+    assert.equal(app.store.projectsByKey.has('u257-ctrl-path'), false)
+
+    const denied = await deniedAuditEvents(base, admin.token, 'admin')
+    const event = denied.find(
+      (entry) => (entry.metadata as Json | undefined)?.reason === 'PROJECT_PATH_INVALID'
+    )
+    assert.ok(event, 'the refused create is audited')
+    assert.ok(Buffer.byteLength(JSON.stringify(event)) <= AUDIT_EVENT_MAX_BYTES)
+    assert.ok(
+      Buffer.byteLength(JSON.stringify(event.metadata)) <= AUDIT_METADATA_MAX_BYTES,
+      'metadata stays inside the per-event budget'
+    )
+    const metadata = event.metadata as Json
+    assert.equal(typeof metadata.path, 'string', 'the locatable prefix survives')
+    assert.equal((metadata.auditSize as Json).truncated, true)
+
+    const verdict = await app.audit.verify()
+    assert.equal(verdict.ok, true, 'bounding happens before the hash, so the chain verifies')
+  })
+
+  test('20,000 字符 host name → 400 HOST_NAME_INVALID，令牌未消耗且可重试', async () => {
+    const { app, base } = await startAppWithWriter()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u257-name-admin')
+    const token = await mintHostToken(base, admin.token)
+    const hugeName = 'n'.repeat(20_000)
+
+    const refused = await registerHost(
+      base,
+      token,
+      JSON.stringify({ name: hugeName, protocolVersion: 3 })
+    )
+    const payload = (await refused.json()) as Json
+    assert.equal(refused.status, 400, JSON.stringify(payload))
+    assert.equal(errorCode(payload), 'HOST_NAME_INVALID')
+    assert.equal(app.store.hostsByName.has(hugeName), false, 'no oversized name is indexed')
+    assert.equal(app.store.hostTokens.at(-1)?.usedAt, null, 'the refusal spends no token')
+
+    const retried = await registerHost(
+      base,
+      token,
+      JSON.stringify({ name: 'u257-name-retry', protocolVersion: 3 })
+    )
+    assert.equal(retried.status, 201, await retried.text())
+    assert.ok(app.store.hostsByName.has('u257-name-retry'))
+
+    // The denial is best-effort and only recorded with the bounded name.
+    const event = await waitForAuditEvent(
+      base,
+      admin.token,
+      { eventType: 'host_register', result: 'denied' },
+      (entry) => (entry.metadata as Json | undefined)?.reason === 'HOST_NAME_INVALID'
+    )
+    const metadata = event.metadata as Json
+    assert.ok(((metadata.name as string) ?? '').length <= HOST_NAME_MAX_CHARS)
+    assert.ok(Buffer.byteLength(JSON.stringify(event)) <= AUDIT_EVENT_MAX_BYTES)
+  })
+
+  test('审计失败 → 503 AUDIT_UNAVAILABLE，令牌回滚且主机不落库', async () => {
+    const { app, base, writer } = await startAppWithWriter()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u257-fail-admin')
+    const token = await mintHostToken(base, admin.token)
+    await writer.close()
+
+    const res = await registerHost(
+      base,
+      token,
+      JSON.stringify({ name: 'u257-fail-closed', protocolVersion: 3 })
+    )
+    const payload = (await res.json()) as Json
+    assert.equal(res.status, 503, JSON.stringify(payload))
+    assert.equal(errorCode(payload), 'AUDIT_UNAVAILABLE')
+    assert.equal(app.store.hostsByName.has('u257-fail-closed'), false, 'no unrecorded host')
+    assert.equal(app.store.hosts.get('u257-fail-closed'), undefined)
+    assert.equal(app.store.hostTokens.at(-1)?.usedAt, null, 'the token is reusable after the retry')
+  })
+
+  test('并发同令牌双注册 → 仅一个 201，主机只落库一次', async () => {
+    const { app, base } = await startAppWithWriter()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u257-race-admin')
+    const token = await mintHostToken(base, admin.token)
+    const body = JSON.stringify({ name: 'u257-race-host', protocolVersion: 3 })
+
+    const [first, second] = await Promise.all([
+      registerHost(base, token, body),
+      registerHost(base, token, body)
+    ])
+    assert.deepEqual(
+      [first.status, second.status].sort(),
+      [201, 401],
+      'the token reservation is synchronous, so only one request can win'
+    )
+    const hosts = [...app.store.hostsByName.values()].filter(
+      (host) => host.name === 'u257-race-host'
+    )
+    assert.equal(hosts.length, 1)
+  })
+
+  test('2 × 4096 CJK projectsRoot 的 root-change 事件不超限', async () => {
+    const { app, base } = await startAppWithWriter()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u257-root-admin')
+    const token = await mintHostToken(base, admin.token)
+    const registered = await registerHost(
+      base,
+      token,
+      JSON.stringify({ name: 'u257-root-host', protocolVersion: 3 })
+    )
+    assert.equal(registered.status, 201)
+    const host = (await registered.json()) as Json
+    const hostId = String(host.hostId)
+    const stored = app.store.hosts.get(hostId)
+    assert.ok(stored)
+
+    const currentRoot = `/${'项'.repeat(PROJECT_PATH_MAX_CHARS - 1)}`
+    const requestedRoot = `/${'目'.repeat(PROJECT_PATH_MAX_CHARS - 1)}`
+    stored.projectsRoot = currentRoot
+    // A non-archived project makes the root move a conflict, which is the event
+    // whose two path fields used to exceed the writer's per-event cap.
+    app.store.projects.set('proj_u257_root', {
+      id: 'proj_u257_root',
+      key: 'u257-root-proj',
+      name: 'U257 root',
+      repoUrl: '',
+      hostId,
+      path: `${currentRoot}/proj`,
+      defaultBranch: 'main',
+      downloadPolicy: 'deny',
+      status: 'ready',
+      createdAt: Date.now()
+    })
+
+    const beat = await postHeartbeat(
+      base,
+      hostId,
+      String(host.credential),
+      JSON.stringify({ status: 'online', projectsRoot: requestedRoot })
+    )
+    assert.equal(beat.status, 200)
+    const beatBody = (await beat.json()) as Json
+    assert.equal(beatBody.projectsRootRejected, 'PROJECTS_ROOT_CONFLICT')
+    assert.equal(app.store.hosts.get(hostId)?.projectsRoot, currentRoot, 'the old root is kept')
+
+    const event = await waitForAuditEvent(
+      base,
+      admin.token,
+      { eventType: 'projects_root_change', result: 'denied' },
+      (entry) => (entry.metadata as Json | undefined)?.reason === 'PROJECTS_ROOT_CONFLICT'
+    )
+    assert.ok(Buffer.byteLength(JSON.stringify(event)) <= AUDIT_EVENT_MAX_BYTES)
+    const metadata = event.metadata as Json
+    assert.ok(Buffer.byteLength(JSON.stringify(metadata)) <= AUDIT_METADATA_MAX_BYTES)
+    assert.equal((metadata.auditSize as Json).truncated, true)
+    assert.ok(((metadata.requested as string) ?? '').length < PROJECT_PATH_MAX_CHARS)
+    assert.ok(((metadata.current as string) ?? '').length < PROJECT_PATH_MAX_CHARS)
+  })
+
+  test('16,202 字符 clientVersion → 426 VERSION_UNSUPPORTED，事件归一', async () => {
+    const { app, base } = await startAppWithWriter()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u257-version-admin')
+    const token = await mintHostToken(base, admin.token)
+    const registered = await registerHost(
+      base,
+      token,
+      JSON.stringify({ name: 'u257-version-host', protocolVersion: 3 })
+    )
+    assert.equal(registered.status, 201)
+    const host = (await registered.json()) as Json
+    const hostId = String(host.hostId)
+
+    const projectId = 'proj_u257_version'
+    app.store.projects.set(projectId, {
+      id: projectId,
+      key: 'u257-version-proj',
+      name: 'U257 version',
+      repoUrl: '',
+      hostId,
+      path: '/srv/u257-version',
+      defaultBranch: 'main',
+      downloadPolicy: 'deny',
+      status: 'ready',
+      createdAt: Date.now()
+    })
+    app.store.grants.push({
+      projectId,
+      subjectType: 'user',
+      subjectId: admin.userId,
+      permissions: ['open']
+    })
+
+    const offered = '0'.repeat(16_202)
+    const body = JSON.stringify({ clientVersion: offered })
+    assert.ok(Buffer.byteLength(body) < SENSITIVE_WRITE_BODY_MAX_BYTES, 'the body is legal')
+    const res = await authedJson(
+      base,
+      admin.token,
+      'POST',
+      `/v1/projects/${projectId}/connect`,
+      body
+    )
+    const payload = (await res.json()) as Json
+    assert.equal(res.status, 426, JSON.stringify(payload))
+    assert.equal(errorCode(payload), 'VERSION_UNSUPPORTED')
+
+    const denied = await deniedAuditEvents(base, admin.token, 'admin')
+    const event = denied.find(
+      (entry) => (entry.metadata as Json | undefined)?.reason === 'VERSION_UNSUPPORTED'
+    )
+    assert.ok(event, 'the refused connect is audited')
+    const metadata = event.metadata as Json
+    assert.ok(((metadata.offered as string) ?? '').length <= 64)
+    assert.ok(Buffer.byteLength(JSON.stringify(event)) <= AUDIT_EVENT_MAX_BYTES)
+    assert.equal((metadata.auditSize as Json).truncated, true)
+  })
 })

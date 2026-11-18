@@ -9,6 +9,7 @@ import { validateProjectPath } from '../../../packages/contract/src/project-path
 import { validateProjectRepoUrl } from '../../../packages/contract/src/repo-url.ts'
 import { validateProjectDefaultBranch } from '../../../packages/contract/src/branch-name.ts'
 import {
+  MAX_PROJECT_KEY_LENGTH,
   projectKeyFromName,
   validateProjectKey
 } from '../../../packages/contract/src/project-key.ts'
@@ -40,7 +41,7 @@ import {
   type Permission,
   type SigningKey
 } from '../../../packages/contract/src/credential.ts'
-import { AuditChain, type AuditSummary } from './audit.ts'
+import { AuditChain, AUDIT_REASON_MAX_CHARS, type AuditSummary } from './audit.ts'
 import { AUDIT_RECENT_WINDOW_MS, AUDIT_WINDOW_MS, parseAuditQuery } from './audit-query.ts'
 import {
   AUDIT_EXPORT_OBJECT_KEYS,
@@ -469,7 +470,9 @@ const INTERNAL_BODY_MAX_BYTES = 8 * 1024
 
 /** U244: the force-offline body only carries an optional audit note. */
 const FORCE_OFFLINE_BODY_MAX_BYTES = 4 * 1024
-const FORCE_OFFLINE_REASON_MAX_CHARS = 200
+
+/** U257: the register name is stored, indexed, and audited; 128 matches ingest. */
+const HOST_NAME_MAX_CHARS = 128
 
 /** U250 tier 2: an authenticated sensitive write carries a small JSON command. */
 const SENSITIVE_WRITE_BODY_MAX_BYTES = 16 * 1024
@@ -4623,7 +4626,10 @@ export function createApp(config: ApiConfig): ApiHandle {
           result: 'denied',
           traceId,
           // U254: a 16 KiB key would push the event past the writer's 16 KiB cap.
-          metadata: { reason: keyVerdict.code, key: String(body.key ?? '').slice(0, 64) }
+          metadata: {
+            reason: keyVerdict.code,
+            key: String(body.key ?? '').slice(0, MAX_PROJECT_KEY_LENGTH)
+          }
         })
         return error(res, 400, keyVerdict.code, keyVerdict.message, traceId)
       }
@@ -5514,7 +5520,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (!auditAllowsMutations(res, traceId)) return
       const body = await readJsonWithRes(req, res, FORCE_OFFLINE_BODY_MAX_BYTES)
       const rawReason = typeof body.reason === 'string' ? body.reason.trim() : ''
-      const reason = rawReason.slice(0, FORCE_OFFLINE_REASON_MAX_CHARS)
+      const reason = rawReason.slice(0, AUDIT_REASON_MAX_CHARS)
       const target = store.users.get(targetId)
       if (!target) {
         return error(res, 404, 'USER_NOT_FOUND', '用户不存在。', traceId)
@@ -5767,6 +5773,26 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (name === '') {
         return error(res, 400, 'HOST_NAME_REQUIRED', 'name 为必填的主机标识。', traceId)
       }
+      // U257: the name is indexed and audited; a 20k name used to 500 after the
+      // token was spent. Refuse it while the token is still unused.
+      if (name.length > HOST_NAME_MAX_CHARS) {
+        audit.appendBestEffort({
+          eventType: 'host_register',
+          actor: 'agent',
+          targetType: 'host',
+          targetId: null,
+          result: 'denied',
+          traceId,
+          metadata: { name: name.slice(0, HOST_NAME_MAX_CHARS), reason: 'HOST_NAME_INVALID' }
+        })
+        return error(
+          res,
+          400,
+          'HOST_NAME_INVALID',
+          `主机标识不能超过 ${HOST_NAME_MAX_CHARS} 个字符。`,
+          traceId
+        )
+      }
       // U256: bound the root before the single-use token is spent. A 15,003-char
       // root is a field error (400), not an oversized-body refusal (413).
       if (
@@ -5790,48 +5816,88 @@ export function createApp(config: ApiConfig): ApiHandle {
           traceId
         )
       }
+      // U257: the body read yielded, so recheck here. Check and reserve are
+      // synchronous, which is what closes the same-token registration race.
+      if (entry.usedAt) {
+        return error(res, 401, 'HOST_TOKEN_INVALID', '注册令牌无效或已使用。', traceId)
+      }
       entry.usedAt = now()
       const existing = store.hostsByName.get(name)
-      // U143: a revoked host must not come back through name reuse.
+      const zone = String(body.networkZone ?? 'intranet')
+      // U143: a revoked host must not come back through name reuse. The token is
+      // released only when the denial itself could not be audited.
       if (existing && existing.revokedAt !== null) {
-        await audit.append({
-          eventType: 'host_register',
-          actor: 'agent',
-          targetType: 'host',
-          targetId: existing.id,
-          result: 'denied',
-          traceId,
-          metadata: { name, reason: 'host_revoked' }
-        })
+        if (
+          !(await recordAudit(
+            res,
+            {
+              eventType: 'host_register',
+              actor: 'agent',
+              targetType: 'host',
+              targetId: existing.id,
+              result: 'denied',
+              traceId,
+              metadata: { name, reason: 'host_revoked' }
+            },
+            traceId
+          ))
+        ) {
+          entry.usedAt = null
+          return
+        }
         return error(res, 409, 'HOST_REVOKED', '主机已被吊销，无法重新注册。', traceId)
       }
       const credential = randomBytes(32).toString('base64url')
-      const target: Host = existing ?? {
-        id: `host_${randomBytes(4).toString('hex')}`,
-        name,
-        fingerprint: '',
-        tlsFingerprint: null,
-        e2eePublicKey: '',
-        orcaVersion: '',
-        protocolVersion: 3,
-        zone: 'intranet',
-        directAddrs: [],
-        relayRoute: null,
-        capabilities: [],
-        projectsRoot: null,
-        projectDirs: [],
-        status: 'online',
-        maintenanceReason: null,
-        lastHeartbeatAt: now(),
-        credentialHash: null,
-        revokedAt: null
+      // U257: mutate a staged copy so a failed audit leaves the stored host and
+      // the host index exactly as they were.
+      const target: Host = existing
+        ? { ...existing }
+        : {
+            id: `host_${randomBytes(4).toString('hex')}`,
+            name,
+            fingerprint: '',
+            tlsFingerprint: null,
+            e2eePublicKey: '',
+            orcaVersion: '',
+            protocolVersion: 3,
+            zone: 'intranet',
+            directAddrs: [],
+            relayRoute: null,
+            capabilities: [],
+            projectsRoot: null,
+            projectDirs: [],
+            status: 'online',
+            maintenanceReason: null,
+            lastHeartbeatAt: now(),
+            credentialHash: null,
+            revokedAt: null
+          }
+      // Write-ahead: the success event lands before any store mutation; a failed
+      // audit releases the token so the host can retry instead of losing it.
+      if (
+        !(await recordAudit(
+          res,
+          {
+            eventType: 'host_register',
+            actor: 'agent',
+            targetType: 'host',
+            targetId: target.id,
+            result: 'success',
+            traceId,
+            metadata: { name, zone }
+          },
+          traceId
+        ))
+      ) {
+        entry.usedAt = null
+        return
       }
       target.fingerprint = String(body.fingerprint ?? '')
       target.tlsFingerprint = String(body.tlsFingerprint ?? '') || null
       target.e2eePublicKey = String(body.e2eePublicKeyB64 ?? '')
       target.orcaVersion = String(body.orcaVersion ?? '')
       target.protocolVersion = Number(body.protocolVersion ?? 3)
-      target.zone = String(body.networkZone ?? 'intranet')
+      target.zone = zone
       target.directAddrs = Array.isArray(body.directAddrs) ? (body.directAddrs as string[]) : []
       // An absent relayRoute means the host named none: derive it from the address
       // it advertises rather than the hostname (M114a). Explicit values are kept as is.
@@ -5867,15 +5933,6 @@ export function createApp(config: ApiConfig): ApiHandle {
           updatedAt: now()
         })
       }
-      await audit.append({
-        eventType: 'host_register',
-        actor: 'agent',
-        targetType: 'host',
-        targetId: target.id,
-        result: 'success',
-        traceId,
-        metadata: { name, zone: target.zone }
-      })
       return json(res, 201, {
         hostId: target.id,
         credential,
@@ -6123,7 +6180,7 @@ export function createApp(config: ApiConfig): ApiHandle {
               metadata: {
                 enabled: nextStatus === 'maintenance',
                 // U254: a 16 KiB note would push the event past the writer's 16 KiB cap.
-                reason: nextReason.slice(0, 200),
+                reason: nextReason.slice(0, AUDIT_REASON_MAX_CHARS),
                 ...(viaHostGrant ? { via: 'host_grant' } : {})
               }
             },

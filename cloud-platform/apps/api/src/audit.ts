@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto'
 import { canonicalJson } from '../../../packages/contract/src/credential.ts'
+import { MAX_PROJECT_KEY_LENGTH } from '../../../packages/contract/src/project-key.ts'
+import { PROJECT_PATH_MAX_CHARS } from './project-self-service.ts'
 import type { AuditEvent, AuditEventInput } from './store.ts'
 
 /** The chain needs only the tail plus the log it appends to, not the whole store. */
@@ -50,6 +52,392 @@ export type AuditQueryResult = { events: AuditEvent[]; nextCursor: number | null
 /** Capacity envelope from the U66 phase-one scope (tech design §4.4). */
 export const ENVELOPE_DAILY_FILE_EVENTS = 5_000
 export const ENVELOPE_TOTAL_EVENTS = 1_000_000
+
+/**
+ * U257: every event the API hands to the writer stays under this budget, which
+ * leaves 4 KiB below the writer's independent 16 KiB backstop. Measuring the
+ * serialized bytes (not `.length`) is what bounds control-character inflation:
+ * one `\u0000` is 1 UTF-16 unit but 6 JSON bytes.
+ */
+export const AUDIT_EVENT_MAX_BYTES = 12 * 1024
+export const AUDIT_METADATA_MAX_BYTES = 8 * 1024
+/** Shared by host maintenance and admin force-offline notes. */
+export const AUDIT_REASON_MAX_CHARS = 200
+
+const AUDIT_FIELD_MAX_CHARS = 1024
+const AUDIT_ARRAY_MAX_ITEMS = 50
+const AUDIT_DEPTH_MAX = 4
+const AUDIT_KEYS_MAX = 64
+const AUDIT_KEY_NAME_MAX_CHARS = 128
+const AUDIT_DROPPED_FIELDS_MAX = 16
+const AUDIT_STRING_MIN_CHARS = 64
+const AUDIT_TOP_LEVEL_MAX = {
+  eventType: 128,
+  actor: 256,
+  targetType: 64,
+  targetId: 256,
+  traceId: 128
+} as const
+
+/** Per-field caps; unknown keys fall back to `AUDIT_FIELD_MAX_CHARS`. */
+const AUDIT_FIELD_LIMITS: Record<string, number> = {
+  path: PROJECT_PATH_MAX_CHARS,
+  key: MAX_PROJECT_KEY_LENGTH,
+  reason: AUDIT_REASON_MAX_CHARS,
+  name: 200,
+  hostName: 128,
+  offered: 64,
+  clientVersion: 64,
+  min: 64,
+  version: 64,
+  fingerprint: 128,
+  previousFingerprint: 128,
+  codeFingerprint: 128,
+  code: 128,
+  fileName: 255,
+  savedName: 255,
+  username: 128,
+  subject: 128,
+  error: 500
+}
+
+export type AuditSizeStats = {
+  truncated: boolean
+  /** Serialized size before bounding, so the marker explains the loss. */
+  originalBytes: number
+  droppedFields: string[]
+  droppedItems: number
+}
+
+export type BoundedAuditInput = { input: AuditEventInput } & AuditSizeStats
+
+type SanitizeStats = { fields: Set<string>; droppedItems: number; truncated: boolean }
+type StringRef =
+  | { holder: unknown[]; index: number; length: number; field: string | null }
+  | { holder: Record<string, unknown>; key: string; length: number; field: string | null }
+
+function noteField(stats: SanitizeStats, name: string): void {
+  stats.fields.add(name.length > 64 ? name.slice(0, 64) : name)
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isForbiddenKey(key: string): boolean {
+  return key === '__proto__' || key === 'prototype' || key === 'constructor'
+}
+
+function jsonBytes(value: unknown): number {
+  const serialized = JSON.stringify(value)
+  return serialized === undefined ? 0 : Buffer.byteLength(serialized)
+}
+
+/** Codepoint-safe so a truncation never splits a surrogate pair. */
+function truncateChars(value: string, limit: number): string {
+  return Array.from(value).slice(0, limit).join('')
+}
+
+function fieldLimit(key: string): number {
+  return AUDIT_FIELD_LIMITS[key] ?? AUDIT_FIELD_MAX_CHARS
+}
+
+function clipTopLevel(input: AuditEventInput): { top: AuditEventInput; clipped: string[] } {
+  const clipped: string[] = []
+  const text = (value: unknown, field: keyof typeof AUDIT_TOP_LEVEL_MAX): string => {
+    const raw = typeof value === 'string' ? value : ''
+    const limit = AUDIT_TOP_LEVEL_MAX[field]
+    if (raw.length > limit) {
+      clipped.push(field)
+      return truncateChars(raw, limit)
+    }
+    return raw
+  }
+  const nullable = (value: unknown, field: keyof typeof AUDIT_TOP_LEVEL_MAX): string | null =>
+    value === null || typeof value !== 'string' ? null : text(value, field)
+  const top: AuditEventInput = {
+    eventType: text(input.eventType, 'eventType'),
+    actor: nullable(input.actor, 'actor'),
+    targetType: nullable(input.targetType, 'targetType'),
+    targetId: nullable(input.targetId, 'targetId'),
+    result: input.result,
+    traceId: nullable(input.traceId, 'traceId')
+  }
+  if (input.metadata !== undefined) top.metadata = input.metadata
+  return { top, clipped }
+}
+
+function sanitizeValue(
+  value: unknown,
+  depth: number,
+  key: string | null,
+  stats: SanitizeStats
+): unknown {
+  if (typeof value === 'string') {
+    const limit = key === null ? AUDIT_FIELD_MAX_CHARS : fieldLimit(key)
+    if (value.length > limit) {
+      stats.truncated = true
+      if (key !== null) noteField(stats, key)
+      return truncateChars(value, limit)
+    }
+    return value
+  }
+  if (value === null || typeof value === 'boolean') return value
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  // BigInt cannot be JSON-serialized; let the caller fall back to a skeleton.
+  if (typeof value === 'bigint') return value
+  if (typeof value !== 'object') return undefined
+  if (depth >= AUDIT_DEPTH_MAX) {
+    stats.truncated = true
+    if (key !== null) noteField(stats, key)
+    return '[truncated]'
+  }
+  if (Array.isArray(value)) {
+    const kept = value.slice(0, AUDIT_ARRAY_MAX_ITEMS)
+    if (value.length > kept.length) {
+      stats.truncated = true
+      stats.droppedItems += value.length - kept.length
+    }
+    return kept.map((item) => {
+      const sanitized = sanitizeValue(item, depth + 1, null, stats)
+      // `undefined` in an array makes canonicalJson emit an invalid fragment on
+      // restart, so verify would call the untouched chain broken.
+      return sanitized === undefined ? null : sanitized
+    })
+  }
+  const output: Record<string, unknown> = {}
+  let count = 0
+  // SAFETY: `value` is a non-null non-array object; Object.entries reads own keys.
+  for (const [childKey, childValue] of Object.entries(value as Record<string, unknown>)) {
+    if (isForbiddenKey(childKey)) continue
+    if (childKey.length > AUDIT_KEY_NAME_MAX_CHARS || count >= AUDIT_KEYS_MAX) {
+      stats.truncated = true
+      noteField(stats, childKey)
+      continue
+    }
+    const sanitized = sanitizeValue(childValue, depth + 1, childKey, stats)
+    if (sanitized === undefined) continue
+    output[childKey] = sanitized
+    count += 1
+  }
+  return output
+}
+
+function buildAuditSize(stats: SanitizeStats, originalBytes: number): Record<string, unknown> {
+  const mark: Record<string, unknown> = { truncated: true, originalBytes }
+  if (stats.fields.size > 0) {
+    mark.droppedFields = [...stats.fields].slice(0, AUDIT_DROPPED_FIELDS_MAX)
+  }
+  if (stats.droppedItems > 0) mark.droppedItems = stats.droppedItems
+  return mark
+}
+
+function withAuditSize(
+  metadata: Record<string, unknown>,
+  stats: SanitizeStats,
+  originalBytes: number
+): Record<string, unknown> {
+  return { ...metadata, auditSize: buildAuditSize(stats, originalBytes) }
+}
+
+function findLongestString(
+  value: unknown,
+  field: string | null,
+  depth: number,
+  holder: Record<string, unknown> | unknown[] | null,
+  key: string | number | null,
+  best: { ref: StringRef | null }
+): void {
+  if (typeof value === 'string') {
+    if (
+      value.length > AUDIT_STRING_MIN_CHARS &&
+      holder !== null &&
+      key !== null &&
+      (best.ref === null || value.length > best.ref.length)
+    ) {
+      if (Array.isArray(holder) && typeof key === 'number') {
+        best.ref = { holder, index: key, length: value.length, field }
+      } else if (!Array.isArray(holder) && typeof key === 'string') {
+        best.ref = { holder, key, length: value.length, field }
+      }
+    }
+    return
+  }
+  if (depth >= AUDIT_DEPTH_MAX || value === null || typeof value !== 'object') return
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => findLongestString(item, field, depth + 1, value, index, best))
+    return
+  }
+  // SAFETY: `value` is a non-null non-array object; Object.entries reads own keys.
+  for (const [childKey, childValue] of Object.entries(value as Record<string, unknown>)) {
+    findLongestString(childValue, field ?? childKey, depth + 1, value, childKey, best)
+  }
+}
+
+/** Halves the longest remaining string; returns false when none is shrinkable. */
+function shrinkLongestString(metadata: Record<string, unknown>, stats: SanitizeStats): boolean {
+  const best: { ref: StringRef | null } = { ref: null }
+  findLongestString(metadata, null, 0, null, null, best)
+  const ref = best.ref
+  if (ref === null) return false
+  const current = Array.isArray(ref.holder) ? ref.holder[ref.index] : ref.holder[ref.key]
+  if (typeof current !== 'string') return false
+  const target = Math.max(AUDIT_STRING_MIN_CHARS, Math.floor(current.length / 2))
+  if (target >= current.length) return false
+  const shrunk = truncateChars(current, target)
+  if (Array.isArray(ref.holder)) ref.holder[ref.index] = shrunk
+  else ref.holder[ref.key] = shrunk
+  stats.truncated = true
+  if (ref.field !== null) noteField(stats, ref.field)
+  return true
+}
+
+/** Drops explanatory fields first, then the largest; metadata always keeps a key. */
+function dropLargestField(metadata: Record<string, unknown>, stats: SanitizeStats): boolean {
+  const keys = Object.keys(metadata).filter((key) => key !== 'auditSize')
+  if (keys.length === 0) return false
+  const lowPriority = new Set(['limits', 'sampleKeys', 'excerpt', 'items', 'entries'])
+  keys.sort((a, b) => {
+    // Low-priority (drop first) sorts ahead of high-priority.
+    const priority = Number(lowPriority.has(b)) - Number(lowPriority.has(a))
+    return priority !== 0 ? priority : jsonBytes(metadata[b]) - jsonBytes(metadata[a])
+  })
+  const victim = keys[0]
+  if (victim === undefined) return false
+  delete metadata[victim]
+  stats.truncated = true
+  noteField(stats, victim)
+  return true
+}
+
+function boundMetadataBytes(
+  metadata: Record<string, unknown>,
+  stats: SanitizeStats,
+  originalBytes: number
+): Record<string, unknown> {
+  for (let round = 0; round < 8; round += 1) {
+    const candidate = withAuditSize(metadata, stats, originalBytes)
+    if (jsonBytes(candidate) <= AUDIT_METADATA_MAX_BYTES) return candidate
+    if (shrinkLongestString(metadata, stats)) continue
+    if (dropLargestField(metadata, stats)) continue
+    return { auditSize: buildAuditSize(stats, originalBytes) }
+  }
+  const candidate = withAuditSize(metadata, stats, originalBytes)
+  return jsonBytes(candidate) <= AUDIT_METADATA_MAX_BYTES
+    ? candidate
+    : { auditSize: buildAuditSize(stats, originalBytes) }
+}
+
+function shrinkTopLevel(input: AuditEventInput): AuditEventInput {
+  const shrinkText = (value: string): string =>
+    value.length > AUDIT_STRING_MIN_CHARS
+      ? truncateChars(value, Math.max(AUDIT_STRING_MIN_CHARS, Math.floor(value.length / 2)))
+      : value
+  const shrinkNullable = (value: string | null): string | null =>
+    value === null ? null : shrinkText(value)
+  let next: AuditEventInput = { ...input }
+  for (let round = 0; round < 8; round += 1) {
+    if (jsonBytes(next) <= AUDIT_EVENT_MAX_BYTES) return next
+    next = {
+      ...next,
+      eventType: shrinkText(next.eventType),
+      actor: shrinkNullable(next.actor),
+      targetType: shrinkNullable(next.targetType),
+      targetId: shrinkNullable(next.targetId),
+      traceId: shrinkNullable(next.traceId)
+    }
+  }
+  return next
+}
+
+/**
+ * The normalized metadata must be JSON-stable: the log stores `JSON.stringify`
+ * and restart verification recomputes with canonicalJson.
+ */
+function assertJsonRoundTrip(metadata: Record<string, unknown>): void {
+  const serialized = JSON.stringify(metadata)
+  if (serialized === undefined) throw new Error('audit metadata is not serializable')
+  const roundTripped: unknown = JSON.parse(serialized)
+  if (canonicalJson(metadata) !== canonicalJson(roundTripped)) {
+    throw new Error('audit metadata does not survive a JSON roundtrip')
+  }
+}
+
+/**
+ * U257: the one place an audit event is bounded before it is hashed, stored, or
+ * sent to the writer. Normal input is returned byte-for-byte unchanged (no
+ * marker); overflow is reduced by serialized bytes, never by character count.
+ */
+export function boundedAuditMetadata(input: AuditEventInput): BoundedAuditInput {
+  let originalBytes = 0
+  try {
+    originalBytes = jsonBytes(input)
+  } catch {
+    originalBytes = 0
+  }
+  try {
+    const { top, clipped } = clipTopLevel(input)
+    const rawMetadata: unknown = input.metadata ?? {}
+    const marked =
+      isRecord(rawMetadata) &&
+      isRecord(rawMetadata.auditSize) &&
+      rawMetadata.auditSize.truncated === true
+    if (marked && jsonBytes(top) <= AUDIT_EVENT_MAX_BYTES) {
+      // Idempotent: this is our own output, already inside both budgets.
+      return { input: top, truncated: true, originalBytes, droppedFields: [], droppedItems: 0 }
+    }
+    const stats: SanitizeStats = {
+      fields: new Set(clipped),
+      droppedItems: 0,
+      truncated: clipped.length > 0
+    }
+    const sanitized = sanitizeValue(rawMetadata, 0, null, stats)
+    const metadata = isRecord(sanitized) ? sanitized : {}
+    // Reserved: a caller-supplied marker must never be trusted or survive.
+    delete metadata.auditSize
+    const hadMetadata = input.metadata !== undefined
+    if (!stats.truncated && jsonBytes(metadata) <= AUDIT_METADATA_MAX_BYTES) {
+      const bounded: AuditEventInput = hadMetadata ? { ...top, metadata } : top
+      return { input: bounded, truncated: false, originalBytes, droppedFields: [], droppedItems: 0 }
+    }
+    let boundedMetadata = boundMetadataBytes(metadata, stats, originalBytes)
+    let bounded: AuditEventInput = { ...top, metadata: boundedMetadata }
+    if (jsonBytes(bounded) > AUDIT_EVENT_MAX_BYTES) {
+      boundedMetadata = { auditSize: buildAuditSize(stats, originalBytes) }
+      bounded = { ...top, metadata: boundedMetadata }
+    }
+    if (jsonBytes(bounded) > AUDIT_EVENT_MAX_BYTES) {
+      bounded = { ...shrinkTopLevel({ ...top, metadata: boundedMetadata }) }
+    }
+    assertJsonRoundTrip(boundedMetadata)
+    return {
+      input: bounded,
+      truncated: true,
+      originalBytes,
+      droppedFields: [...stats.fields].slice(0, AUDIT_DROPPED_FIELDS_MAX),
+      droppedItems: stats.droppedItems
+    }
+  } catch {
+    // BigInt/circular metadata must not wedge the request: keep the event
+    // skeleton and let the operation proceed (or fail) on its own semantics.
+    const { top } = clipTopLevel(input)
+    return {
+      input: {
+        eventType: top.eventType,
+        actor: top.actor,
+        targetType: top.targetType,
+        targetId: top.targetId,
+        result: top.result,
+        traceId: top.traceId,
+        metadata: { auditSize: { truncated: true, originalBytes, reason: 'unserializable' } }
+      },
+      truncated: true,
+      originalBytes,
+      droppedFields: [],
+      droppedItems: 0
+    }
+  }
+}
 
 export type AuditSummary = {
   chain: { ok: boolean; lastSeq: number }
@@ -175,7 +563,8 @@ export class AuditChain {
     }
   }
 
-  append(input: AuditEventInput): AuditEvent {
+  append(rawInput: AuditEventInput): AuditEvent {
+    const input = boundedAuditMetadata(rawInput).input
     const seq = this.store.auditSeq + 1
     const ts = this.now()
     const prevHash = this.store.auditTip

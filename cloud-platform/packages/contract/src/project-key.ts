@@ -9,7 +9,7 @@ export type ProjectKeyVerdict =
   | { ok: true; key: string }
   | { ok: false; code: 'PROJECT_KEY_INVALID'; message: string }
 
-const MAX_PROJECT_KEY_LENGTH = 64
+export const MAX_PROJECT_KEY_LENGTH = 64
 const PROJECT_KEY = /^[a-z0-9][a-z0-9._-]*$/
 
 function reject(message: string): ProjectKeyVerdict {

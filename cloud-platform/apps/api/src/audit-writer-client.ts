@@ -1,4 +1,10 @@
-import type { AuditHealth, AuditQuery, AuditQueryResult, AuditSummary } from './audit.ts'
+import {
+  boundedAuditMetadata,
+  type AuditHealth,
+  type AuditQuery,
+  type AuditQueryResult,
+  type AuditSummary
+} from './audit.ts'
 import type { AuditEvent, AuditEventInput } from './store.ts'
 
 export type { AuditQuery, AuditQueryResult } from './audit.ts'
@@ -128,7 +134,8 @@ export function createRemoteAudit(options: {
     }
   }
 
-  const append = async (input: AuditEventInput): Promise<AuditEvent> => {
+  const append = async (rawInput: AuditEventInput): Promise<AuditEvent> => {
+    const input = boundedAuditMetadata(rawInput).input
     let res: Response
     try {
       res = await call('/v1/append', {
