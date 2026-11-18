@@ -4435,3 +4435,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **m01 U264 策略文档**（`f6f5727eaed`，1 文件 +7/−1）：新增预读前关闭规则段（`installUnreadBodyPolicy`/`applyUnreadBodyPolicy`/出口清单/chunked 有界排空/internal 共享模块与历史镜像说明/已知 EPIPE 限制），行号锚定 `b290025b097` 并程序化比对；同时更正原 U258「拒绝出口统一 close」的过时表述。U267② 独立复审已派。
 - **U269 关闭**（`c67dc16b2ed`，+26/−27）：删除 `errorsBeforeResponse` 重言式断言；32 KiB 用例改显式 `closeMs >= responseMs` + 整帧算术（32,917/32,918，三次实测一致）。两向变异：删 chunked 分支 → **仅 32 KiB 红**；chunked 一律 close → **三例红**。主会话复跑 7/7。
 - **U268 修复**（`28964a07a67`，2 文件 +179/−16）：上限 264（259/260 边界算术）；方括号接受 mapped IPv6（`isIPv6` 兜底）；快照非字符串元素过滤（历史损坏快照不再 500）。红→绿三项、变异两向精确红；主会话复跑 host-direct-addrs **12/12**、host-authorization 11/11。m04 文档与 U268 复审并行。
+- **m04 地址上限文档更正**（`63bc6611b39`，1 文件 +3/−1）：`MAX_DIRECT_ADDR_CHARS=264` 与 259/260 算术、mapped IPv6 与 `isIPv6` 兜底、`stringDirectAddrs` 历史快照清洗；按 §2-136 写符号名并锚定 `28964a07a67`。
