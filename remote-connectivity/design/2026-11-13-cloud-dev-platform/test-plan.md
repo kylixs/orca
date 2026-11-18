@@ -251,6 +251,7 @@ ORCA_BACKGROUND_LAUNCH=1 node --test --test-concurrency=2 \
   test/e2e/<batch>.e2e.test.ts test/e2e/<batch>.e2e.test.ts
 ```
 
+- 计数工件：自定义 reporter 每文件写一行 `{"file","tests","pass","fail","skipped","cancelled","todo","duration_ms","failed_tests"}`；汇总 `cat counts-*.jsonl` 后按字段求和（**不是** node:test 事件流，按 `type` 统计会得到 0/0 假读数）。每轮结束必须写 `DONE` + `summary.json`（协议 §2-160），派发代理退出不得成为汇总依赖。
 - 量级：单轮约 22 分钟（final2 实测 1301s / 1320s），最长单批 197–236s，故批大小取 4 文件。
 - 结论口径：报原始 `tests / pass / fail / skipped`；fail 按三类归属——① 产品缺陷、② 测试缺陷/陈旧 fixture、③ 环境/并发改写工作树（INVALID，单独复跑转绿）。跳过项不得从分母中抹掉。
 - 与子集基线的关系：§7.1 认证 24 文件 267、授权矩阵 113、T1 关键集均为子集，只能证明对应范围，不得替代全景结论；全仓结论必须由全景扫描支撑。
