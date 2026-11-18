@@ -4367,3 +4367,5 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **lockout/writer body 上限批已派**：两服务 4 KiB + 非对象归一化（JSON `null` 现可能 500），每服务 2 例 + 变异。
 - **U250 档 2（敏感写）完成**（`d271157ba45`，2 文件）：10 处调用点——正常写路径统一 16 KiB → 413；三个拒绝分支（项目 grants、host grants、provision-policy）**保持 403**、改用 4 KiB 读取并按空 body 记 denied 审计（返回 413 会改写拒绝语义）。新增 helper `readSensitiveWriteBody` 与两个上限常量。单测 11/11、u236 fuzz + u237 共 40/40（主会话复跑），变异各去掉一处上限即红。**档 3（9 处普通写）已派**。
 - **U250 档 3 完成**（`aa2e3b798a3`，2 文件）：9 处普通写统一 16 KiB→413（复用档 2 helper；heartbeat 上限在凭据校验后、写入前；`hosts/register` 超限不消耗单次令牌、响应带 code/traceId）。单测 **15/15**、project-update/host-authorization/audit-export **29/29**（主会话复跑）。档 4 剩余 lockout/writer 在途；文档档位表已派。
+- **U250 关闭**：四档 body 上限全部落地——档 2 `d271157ba45`（敏感写 16 KiB，拒绝分支保持 403）、档 3 `aa2e3b798a3`（普通写 9 处）、档 4 `70b727e46e3`（内部 4 KiB）+ `192d1bdb7e5`（lockout 4 KiB、writer **1 MiB**——合法 500 事件批次约 60 KiB，4 KiB 会误杀；两服务 `null` 此前 500，现归一为 `{}`，各补 5 例子进程真端口测试）。主会话复跑各级 11+15+10 例全绿。
+- **one-liner 复审卡死处置**：原代理 16 分钟无活动且不回应催问，按纪律 TaskStop 后重派**收紧范围**的复审（抽命令原文、`bash -c` 四场景、三点静态检查、变异 + pin 复原），20 分钟内要求先给结论。
