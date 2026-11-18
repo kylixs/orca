@@ -3,6 +3,7 @@ import { timingSafeEqual, createHash } from 'node:crypto'
 import { AuditChain } from '../../api/src/audit.ts'
 import { createWriterLease } from './writer-lease.ts'
 import { openAnchorStore, type AnchorStore } from './anchor.ts'
+import { MAX_BATCH, MAX_EVENT_BYTES, APPEND_BODY_MAX_BYTES } from './writer-limits.ts'
 import { openAuditLogFile } from '../../api/src/audit-log-file.ts'
 import type { AuditEvent, AuditEventInput } from '../../api/src/store.ts'
 
@@ -15,7 +16,6 @@ import type { AuditEvent, AuditEventInput } from '../../api/src/store.ts'
  * interleaves, which is what makes concurrent replicas safe without a lock.
  */
 
-const MAX_BATCH = 1000
 const DEFAULT_LEASE_TTL_MS = 3_000
 /** Design §13.2: one signed anchor every five minutes. */
 const DEFAULT_ANCHOR_INTERVAL_MS = 300_000
@@ -32,14 +32,6 @@ function json(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
   res.end(JSON.stringify(body))
 }
-
-/**
- * U252: a legal batch holds up to MAX_BATCH events, and one file event can carry
- * 4096 B of metadata (~4.4 KiB serialized). 16 KiB per event bounds the
- * serialized request body at 16 MiB while covering every legal event shape.
- */
-const MAX_EVENT_BYTES = 16 * 1024
-const APPEND_BODY_MAX_BYTES = MAX_BATCH * MAX_EVENT_BYTES
 
 async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = []

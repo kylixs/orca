@@ -1,6 +1,7 @@
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnService, type Service } from '../../../test/e2e/harness.ts'
+import { MAX_BATCH, MAX_EVENT_BYTES, APPEND_BODY_MAX_BYTES } from './writer-limits.ts'
 
 /**
  * U250: the audit writer bounds its append body while still accepting a full
@@ -9,10 +10,6 @@ import { spawnService, type Service } from '../../../test/e2e/harness.ts'
  */
 
 const TOKEN = 'u250-writer-token'
-/** Mirrors writer.ts: MAX_BATCH (1000) events x 16 KiB each. */
-const MAX_BATCH = 1000
-const MAX_EVENT_BYTES = 16 * 1024
-const APPEND_BODY_MAX_BYTES = MAX_BATCH * MAX_EVENT_BYTES
 let service: Service
 
 before(async () => {
