@@ -10,6 +10,8 @@ import { createApp, type ApiHandle } from '../src/server.ts'
 
 const ORIGIN = 'https://console.u249.example'
 const AUTH_BODY_MAX_BYTES = 16 * 1024
+const INTERNAL_BODY_MAX_BYTES = 4 * 1024
+const INTERNAL_TOKEN = 'u249-token'
 const apps: ApiHandle[] = []
 
 async function startApp(): Promise<{ app: ApiHandle; base: string }> {
@@ -17,7 +19,7 @@ async function startApp(): Promise<{ app: ApiHandle; base: string }> {
     port: 0,
     accessTtlMs: 60_000,
     refreshTtlMs: 60_000,
-    internalToken: 'u249-token',
+    internalToken: INTERNAL_TOKEN,
     cookieMode: 'auto',
     publicOrigin: ORIGIN
   })
@@ -51,6 +53,14 @@ function refresh(base: string, body: string, headers: Record<string, string> = {
 function oversized(fields: Record<string, unknown>): string {
   // Comfortably above the cap; the old code buffered all of it before parsing.
   return JSON.stringify({ ...fields, pad: 'x'.repeat(AUTH_BODY_MAX_BYTES * 4) })
+}
+
+function postInternal(base: string, path: string, body: string): Promise<Response> {
+  return fetch(`${base}${path}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-internal-token': INTERNAL_TOKEN },
+    body
+  })
 }
 
 function errorCode(body: Json): unknown {
@@ -185,5 +195,56 @@ describe('U249 未认证 login/refresh body 上限', () => {
 
     const small = await refresh(base, '{}', { cookie, origin: ORIGIN })
     assert.equal(small.status, 200)
+  })
+})
+
+describe('U250 内部端点 body 上限（4 KiB，超限丢弃整包）', () => {
+  test('internal relay-endpoint：超限按空 body 处理，非对象归一化为 {}', async () => {
+    const base = await start()
+    const valid = JSON.stringify({ id: 'u250-relay', port: 28450 })
+
+    const ok = await postInternal(base, '/v1/internal/relay-endpoint', valid)
+    assert.equal(ok.status, 200)
+
+    // An unknown top-level field is ignored by parseRelayRegistration, so a
+    // full read would still be a 200; only the discard turns this into a 400.
+    const huge = await postInternal(
+      base,
+      '/v1/internal/relay-endpoint',
+      JSON.stringify({ id: 'u250-relay', port: 28450, pad: 'x'.repeat(INTERNAL_BODY_MAX_BYTES * 2) })
+    )
+    assert.equal(huge.status, 400)
+    assert.equal(errorCode((await huge.json()) as Json), 'RELAY_PORT_INVALID')
+
+    const scalar = await postInternal(base, '/v1/internal/relay-endpoint', 'null')
+    assert.equal(scalar.status, 400)
+    assert.equal(errorCode((await scalar.json()) as Json), 'RELAY_PORT_INVALID')
+  })
+
+  test('internal audit file-events：超限按空 body 处理，非对象归一化为 {}', async () => {
+    const base = await start()
+    const valid = JSON.stringify({ eventType: 'file_download', result: 'success' })
+
+    // No cloud session: a valid body answers 200 without touching the chain.
+    const ok = await postInternal(base, '/v1/internal/audit/file-events', valid)
+    assert.equal(ok.status, 200)
+
+    // `subject` is an allowed field, so a full read would still be a 200; only
+    // the discard (empty body) fails the eventType check.
+    const huge = await postInternal(
+      base,
+      '/v1/internal/audit/file-events',
+      JSON.stringify({
+        eventType: 'file_download',
+        result: 'success',
+        subject: 'x'.repeat(INTERNAL_BODY_MAX_BYTES * 2)
+      })
+    )
+    assert.equal(huge.status, 400)
+    assert.equal(errorCode((await huge.json()) as Json), 'INVALID_FILE_EVENT')
+
+    const scalar = await postInternal(base, '/v1/internal/audit/file-events', 'null')
+    assert.equal(scalar.status, 400)
+    assert.equal(errorCode((await scalar.json()) as Json), 'INVALID_FILE_EVENT')
   })
 })

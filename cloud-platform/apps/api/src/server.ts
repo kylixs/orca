@@ -327,6 +327,13 @@ const AUTH_BODY_MAX_BYTES = 16 * 1024
 
 /** A logout body only ever carries a refresh token; anything larger is ignored. */
 const LOGOUT_BODY_MAX_BYTES = 16 * 1024
+
+/**
+ * U250: internal ingress calls are small control messages; an oversized body is
+ * dropped whole (readJson turns it into `{}`) so peers keep their old semantics.
+ */
+const INTERNAL_BODY_MAX_BYTES = 4 * 1024
+
 /** U244: the force-offline body only carries an optional audit note. */
 const FORCE_OFFLINE_BODY_MAX_BYTES = 4 * 1024
 const FORCE_OFFLINE_REASON_MAX_CHARS = 200
@@ -6163,7 +6170,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (token !== internalToken) {
         return error(res, 401, 'INTERNAL_TOKEN_INVALID', '内部令牌无效。', traceId)
       }
-      const outcome = await recordFileEvent(await readJson(req), traceId)
+      const outcome = await recordFileEvent(await readJson(req, INTERNAL_BODY_MAX_BYTES), traceId)
       if (outcome.retryAfter) res.setHeader('retry-after', '60')
       return json(res, outcome.status, outcome.body)
     }
@@ -6748,7 +6755,7 @@ export function createApp(config: ApiConfig): ApiHandle {
       if (token !== internalToken) {
         return error(res, 401, 'INTERNAL_TOKEN_INVALID', '内部令牌无效。', traceId)
       }
-      const body = await readJson(req)
+      const body = await readJson(req, INTERNAL_BODY_MAX_BYTES)
       const installNonce = parseInstallNonce(body)
       if (installNonce === null) {
         return error(
