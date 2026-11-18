@@ -87,7 +87,9 @@ function commandUrl(command: string): string {
  */
 function expectedInstallCommand(url: string): string {
   const file = '${TMPDIR:-/tmp}/orca-install-$$.sh'
-  return `curl -fsSL "${url}" -o "${file}" || { echo '安装失败：命令已失效或网络不可达，请让管理员重新生成（65）' >&2; exit 65; }; bash "${file}"; code=$?; if [ "$code" -eq 0 ]; then rm -f "${file}" || echo "安装完成，但临时文件未能删除：${file}" >&2; else echo "安装脚本退出码 $code，临时文件保留在 ${file}" >&2; fi; exit "$code"`
+  // U253: `${code}` braces matter — bash 3.2 consumes the first byte of the
+  // UTF-8 comma after a bare `$code`, losing the exit code from the message.
+  return `curl -fsSL "${url}" -o "${file}" || { echo '安装失败：命令已失效或网络不可达，请让管理员重新生成（65）' >&2; exit 65; }; bash "${file}"; code=$?; if [ "$code" -eq 0 ]; then rm -f "${file}" || echo "安装完成，但临时文件未能删除：${file}" >&2; else echo "安装脚本退出码 \${code}，临时文件保留在 ${file}" >&2; fi; exit "$code"`
 }
 
 /**
@@ -2298,6 +2300,18 @@ exit 0
     assert.doesNotMatch(run.stderr, /命令已失效或网络不可达/)
     assert.equal(run.kept.length, 1, 'a failed install keeps the script')
     assert.ok(run.stderr.includes(join(run.tmpDir, run.kept[0])), run.stderr)
+  }, 60_000)
+
+  test('U253: 安装失败消息保留退出码 78（bash 3.2 变量后紧跟全角逗号）', async () => {
+    const command = await generateHostCommand()
+    // bash 3.2 eats the first UTF-8 byte of `，` after a bare `$code`, so the
+    // code and the comma vanish. This text pin holds on bash 4/5 too, where
+    // the runtime assertion below passes either way.
+    assert.ok(command.includes('${code}，'), command)
+    const run = runOneLinerWithStubScript(command, "echo 'STUB-78: 缺少必需配置' >&2\nexit 78")
+
+    assert.equal(run.status, 78, run.stderr)
+    assert.match(run.stderr, /安装脚本退出码 78，临时文件保留在/)
   }, 60_000)
 
   test('download 令牌按 kind 隔离并绑定 hostId；无效令牌可回退 Bearer', async () => {
