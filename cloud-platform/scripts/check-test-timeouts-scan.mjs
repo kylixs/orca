@@ -2,9 +2,8 @@
 // Numeric third arg (test/it and hooks) and numeric second arg (hooks) are silently
 // dropped, as is an object third arg on test/it. See ledger
 // U287/U290/U291/U295/U297/U303/U305/U306/U308/U309/U311/U313.
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import {
   NUMERIC_LITERAL,
   NUMERIC_TOKEN,
@@ -16,15 +15,11 @@ import {
   stripExpressionParens,
   stripOuterParens
 } from './check-test-timeouts-lexer.mjs'
+import { ROOT, SCAN_EXCLUSIONS, SCAN_SCOPE, collectScopeFiles } from './check-test-timeouts-scope.mjs'
 
-export const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)))
+export { ROOT, SCAN_EXCLUSIONS, SCAN_SCOPE, collectScopeFiles }
+
 export const PLATFORM_ROOT = path.join(ROOT, 'cloud-platform')
-
-export const SCAN_SCOPE = [
-  'cloud-platform/apps/**/test/**/*.ts',
-  'cloud-platform/test/**/*.ts',
-  'cloud-platform/apps/*/src/**/*.test.ts'
-]
 
 export const FORMS = {
   TEST_NUMERIC_THIRD: 'test-numeric-third',
@@ -34,7 +29,16 @@ export const FORMS = {
   NUMERIC_SPECIAL: 'numeric-special'
 }
 
-const CALL_PATTERN = /(?<![\w$.])(beforeEach|afterEach|before|after|test|it)\s*\(/g
+// U315: node:test collectors can be chained: `test.skip/only/todo` and the `it`
+// variants accept the same arguments, so they must be matched too. The negative
+// lookbehind still rejects properties on other objects (`obj.test.skip(...)`).
+const CALL_PATTERN =
+  /(?<![\w$.])(beforeEach|afterEach|before|after|(?:test|it)(?:\.(?:skip|only|todo))?)\s*\(/g
+
+function baseCallName(name) {
+  const dot = name.indexOf('.')
+  return dot === -1 ? name : name.slice(0, dot)
+}
 
 function toPosix(value) {
   return value.split(path.sep).join('/')
@@ -172,7 +176,7 @@ function scanSourceInternal(source, { file = '<memory>' } = {}) {
   CALL_PATTERN.lastIndex = 0
   let match
   while ((match = CALL_PATTERN.exec(clean)) !== null) {
-    const name = match[1]
+    const name = baseCallName(match[1])
     const openIndex = match.index + match[0].length - 1
     const closeIndex = findCloseParen(clean, openIndex)
     if (closeIndex === -1) {
@@ -282,38 +286,4 @@ export function scanTestTimeouts({ files, root = ROOT }) {
   }))
   const { violations, contexts, scannedFiles } = scanSources(sources)
   return { files, violations, contexts, scannedFiles }
-}
-
-const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'coverage'])
-
-function walk(dir, predicate, output) {
-  if (!existsSync(dir)) {
-    return
-  }
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name)
-    if (entry.isDirectory()) {
-      if (!SKIP_DIRS.has(entry.name)) {
-        walk(full, predicate, output)
-      }
-    } else if (predicate(entry.name)) {
-      output.add(full)
-    }
-  }
-}
-
-export function collectScopeFiles() {
-  const files = new Set()
-  const appRoot = path.join(PLATFORM_ROOT, 'apps')
-  const apps = existsSync(appRoot)
-    ? readdirSync(appRoot, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => entry.name)
-    : []
-  for (const app of apps) {
-    walk(path.join(appRoot, app, 'test'), (name) => name.endsWith('.ts'), files)
-    walk(path.join(appRoot, app, 'src'), (name) => name.endsWith('.test.ts'), files)
-  }
-  walk(path.join(PLATFORM_ROOT, 'test'), (name) => name.endsWith('.ts'), files)
-  return [...files].sort()
 }

@@ -8,6 +8,7 @@ import { collectScopeFiles } from './check-test-timeouts-scan.mjs'
 
 export {
   FORMS,
+  SCAN_EXCLUSIONS,
   SCAN_SCOPE,
   collectScopeFiles,
   scanSource,
@@ -27,6 +28,9 @@ export function parseArgs(argv) {
       options.updateBaseline = true
     } else if (arg === '--from-head') {
       options.fromHead = true
+    } else if (arg === '--scan') {
+      // Explicit worktree scan; the default mode. Kept for the documented command.
+      options.scan = true
     } else if (arg === '--check') {
       options.checkOnly = true
     } else if (arg === '--baseline') {

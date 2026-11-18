@@ -9,6 +9,12 @@ import {
   scanSources,
   scanTestTimeouts
 } from './check-test-timeouts-scan.mjs'
+import {
+  SCAN_EXCLUSIONS,
+  SOURCE_EXTENSIONS,
+  discoverRunnerReferences,
+  isExcluded
+} from './check-test-timeouts-scope.mjs'
 
 export const DEFAULT_BASELINE = path.join(PLATFORM_ROOT, 'scripts', 'test-timeouts-baseline.json')
 
@@ -27,33 +33,66 @@ function git(args, root) {
   return execFileSync('git', args, { cwd: root, encoding: 'utf8', maxBuffer: GIT_MAX_BUFFER })
 }
 
-function inScanScope(file) {
-  if (!file.endsWith('.ts')) {
-    return false
+// U315: exact import/require pattern, evaluated by git grep against committed
+// content. It cannot match helper comments such as "node:test ignores ...".
+const NODE_TEST_IMPORT_GREP = String.raw`(from|require[[:space:]]*\()[[:space:]]*['"]node:test['"]`
+const SOURCE_PATHSPECS = [...SOURCE_EXTENSIONS].map((extension) => `*${extension}`)
+
+function gitOrEmpty(args, root) {
+  try {
+    return git(args, root)
+  } catch (error) {
+    // git grep exits 1 when there is simply no match.
+    if (error.status === 1) {
+      return ''
+    }
+    throw error
   }
-  const parts = file.split('/')
-  if (parts[0] !== 'cloud-platform') {
-    return false
-  }
-  if (parts[1] === 'test') {
-    return true
-  }
-  if (parts[1] === 'apps' && parts.length >= 5 && parts[3] === 'test') {
-    return true
-  }
-  return parts[1] === 'apps' && parts[3] === 'src' && file.endsWith('.test.ts')
 }
 
-export function headScopeFiles({ root = ROOT, ref = 'HEAD' } = {}) {
-  const listed = git(
-    ['ls-tree', '-r', '--name-only', '--full-tree', ref, '--', 'cloud-platform'],
+// Committed scope: importers are found without reading every blob; runner
+// references are intersected with the committed file list so a dirty worktree
+// cannot invent files. Evidence trees are excluded exactly as in the worktree.
+export function headScopeFiles({ root = ROOT, ref = 'HEAD', exclusions = SCAN_EXCLUSIONS } = {}) {
+  const listed = new Set(
+    git(['ls-tree', '-r', '--name-only', '--full-tree', ref], root)
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+  )
+  const grepped = gitOrEmpty(
+    [
+      'grep',
+      '-l',
+      '-I',
+      '-E',
+      '-e',
+      NODE_TEST_IMPORT_GREP,
+      ref,
+      '--',
+      ...SOURCE_PATHSPECS
+    ],
     root
   )
-  return listed
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => inScanScope(line))
-    .sort()
+  const files = new Set()
+  for (const line of grepped.split('\n')) {
+    const entry = line.trim()
+    if (entry.length === 0) {
+      continue
+    }
+    const prefix = `${ref}:`
+    const file = entry.startsWith(prefix) ? entry.slice(prefix.length) : entry
+    if (listed.has(file) && !isExcluded(file, exclusions)) {
+      files.add(file)
+    }
+  }
+  for (const reference of discoverRunnerReferences({ root, exclusions })) {
+    const file = path.relative(root, reference).split(path.sep).join('/')
+    if (listed.has(file) && !isExcluded(file, exclusions)) {
+      files.add(file)
+    }
+  }
+  return [...files].sort()
 }
 
 // Scan committed content, so a dirty working tree cannot leak into the baseline (U297).

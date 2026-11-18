@@ -400,3 +400,60 @@ test('sequence parentheses are not folded into separate arguments', () => {
   const twoArgs = callSignature('before', ['fn', '5000', '6000'])
   assert.notEqual(oneArg, twoArgs)
 })
+
+// U315: node:test's `test.skip/only/todo` (and the `it` variants) are the same
+// collector, so numeric/object timeouts there are dropped just like `test(...)`.
+test('flags timeout arguments on chained test modifiers', () => {
+  const source = [
+    "test.skip('a', fn, 5000)",
+    "test.only('b', fn, 6000)",
+    "test.todo('c', fn, { timeout: 7000 })",
+    "it.skip('d', fn, 8000)",
+    "it.only('e', fn, 9000)",
+    "it.todo('f', fn, 10_000)",
+    "test.skip('plain', fn)",
+    "test.only('legal', { timeout: 5000 }, fn)"
+  ].join('\n')
+  const { violations, contexts } = scanSources([{ file: 'chain.ts', source: `${source}\n` }])
+  assert.deepEqual(violations, [
+    { file: 'chain.ts', line: 1, form: 'test-numeric-third' },
+    { file: 'chain.ts', line: 2, form: 'test-numeric-third' },
+    { file: 'chain.ts', line: 3, form: 'test-object-third' },
+    { file: 'chain.ts', line: 4, form: 'test-numeric-third' },
+    { file: 'chain.ts', line: 5, form: 'test-numeric-third' },
+    { file: 'chain.ts', line: 6, form: 'test-numeric-third' }
+  ])
+  // The modifier never leaks into the baseline key, so renaming skip -> only at the
+  // same call site is not a new violation. Compare against a plain `test(...)` scan
+  // because sanitize blanks the title in both signatures.
+  const plain = scanSources([{ file: 'plain.ts', source: "test('a', fn, 5000)\n" }])
+  const plainSignature = plain.contexts
+    .get('plain.ts')
+    .signatures.get(plain.violations[0])
+  assert.equal(contexts.get('chain.ts').signatures.get(violations[0]), plainSignature)
+})
+
+test('chained-modifier detection does not match properties on other objects', () => {
+  const source = [
+    'obj.test.skip(fn, 5000)',
+    'latest.skip(fn, 5000)',
+    'submit.only(fn, 5000)',
+    'edit.todo(fn, 5000)',
+    "test.skip('pseudo', fn)"
+  ].join('\n')
+  assert.deepEqual(scanSource(`${source}\n`), [])
+})
+
+// U315: object timeouts are the legal form on hooks, including when the hook is
+// wrapped in chained modifiers? Hooks have no modifiers, but the object must never
+// be mistaken for a dropped numeric argument.
+test('accepts object timeouts on before and after hooks', () => {
+  const source = [
+    'before(startApp, { timeout: 30_000 })',
+    'after(stopApp, { timeout: 60_000 })',
+    'beforeEach(setup, { timeout: 1_000 })',
+    'afterEach(cleanup, { timeout: 2_000 })',
+    'before(setup, { timeout: TEST_TIMEOUT })'
+  ].join('\n')
+  assert.deepEqual(scanSource(`${source}\n`), [])
+})

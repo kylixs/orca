@@ -502,30 +502,33 @@ test('--from-head baseline matches an independent scan of committed HEAD', () =>
     assert.equal(result.baselineWritten, true)
     assert.equal(result.source, 'HEAD')
 
-    const listed = execFileSync(
+    // U315: independent enumeration of committed node:test importers (git grep),
+    // excluding archived evidence trees exactly like the scanner policy.
+    const grepped = execFileSync(
       'git',
-      ['ls-tree', '-r', '--name-only', '--full-tree', 'HEAD', '--', 'cloud-platform'],
+      [
+        'grep',
+        '-l',
+        '-I',
+        '-E',
+        '-e',
+        String.raw`(from|require[[:space:]]*\()[[:space:]]*['"]node:test['"]`,
+        'HEAD',
+        '--',
+        '*.ts',
+        '*.tsx',
+        '*.mts',
+        '*.cts',
+        '*.mjs',
+        '*.cjs',
+        '*.js'
+      ],
       GIT_OPTIONS
     )
-    const files = listed
+    const files = grepped
       .split('\n')
-      .map((line) => line.trim())
-      .filter((file) => {
-        if (!file.endsWith('.ts')) {
-          return false
-        }
-        const parts = file.split('/')
-        if (parts[0] !== 'cloud-platform') {
-          return false
-        }
-        if (parts[1] === 'test') {
-          return true
-        }
-        if (parts[1] === 'apps' && parts[3] === 'test' && parts.length >= 5) {
-          return true
-        }
-        return parts[1] === 'apps' && parts[3] === 'src' && file.endsWith('.test.ts')
-      })
+      .map((line) => line.trim().replace(/^HEAD:/, ''))
+      .filter((file) => file.length > 0 && !/(^|\/)evidence\//.test(file))
     assert.ok(files.length > 0)
     let independentTotal = 0
     for (const file of files) {
@@ -551,7 +554,8 @@ test(
       const testDir = join(root, 'cloud-platform', 'test')
       mkdirSync(testDir, { recursive: true })
       const file = join(testDir, 'a.test.ts')
-      writeFileSync(file, "test('a', () => {}, 5000)\n")
+      // U315: scope is decided by the node:test import, not by the directory.
+      writeFileSync(file, "import test from 'node:test'\ntest('a', () => {}, 5000)\n")
       const git = (args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' })
       git(['init', '-q'])
       git(['add', '.'])
@@ -580,7 +584,7 @@ test(
       assert.equal(checked.exitCode, 1)
       assert.deepEqual(
         checked.newViolations.map((violation) => `${violation.file}:${violation.line}`),
-        ['cloud-platform/test/a.test.ts:3']
+        ['cloud-platform/test/a.test.ts:4']
       )
     })
   }
