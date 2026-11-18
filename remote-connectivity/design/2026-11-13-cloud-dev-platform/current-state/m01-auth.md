@@ -171,7 +171,13 @@
 **U255 超限连接的关闭语义（`5060e50e75c`）**
 - `readJsonWithRes`（`server.ts:435-443`）在 oversized 时置 `connection: close`，body 仍为 `{}`；5 处调用：logout `4303`、项目 grants 403 `5086`、host grants 403 `6264`、provision-policy 403 `6396`、force-offline `5551`。旧 `readJson` 已删除（`apps/api/src` 内 `rg` 0 命中）。
 - 三种超限路径（`readBody` `server.ts:363-424`）：声明 ≤2 MiB → 有界排空（2 MiB/250 ms，常量 `320-321`）后响应；声明 >2 MiB → 仅凭 header 立即响应并关闭；chunked → `pause` 后关闭。大声明包或快速 chunked 写者可能收到 reset 而非完整响应（U251 `8d9f5d3101b`）。
-- ✅ **U258（已落地 `301c49139e0`，原 ⛔ P2）**：早于 body 读取的 401/403 拒绝不再无界排空——拒绝出口统一置 `connection: close`（`json` 判定 `server.ts:253-268`；`readBody` 标记已消费 `:366`；公开入口绑定请求 `:3636`；内部监听同规则 `:7649`）。原观测：非管理员 force-offline 403 实读 8 MiB/29 ms、未认证 `POST /v1/projects` 实读 64 MiB/34 ms。
+- ✅ **U258（已落地 `301c49139e0`，原 ⛔ P2）**：早于 body 读取的 401/403 拒绝不再无界排空——拒绝出口对声明超限统一置 `connection: close`（`json` 判定 `server.ts:253-268`；`readBody` 标记已消费 `:366`；公开入口绑定请求 `:3636`；内部监听同规则 `:7649`；chunked 自 U264 起改为有界排空，见下）。原观测：非管理员 force-offline 403 实读 8 MiB/29 ms、未认证 `POST /v1/projects` 实读 64 MiB/34 ms。
+
+**U264 预读前关闭规则（`b290025b097`；本段行号锚定该提交）**
+- `installUnreadBodyPolicy()`（`server.ts:308-316`）在 `handle()` 入口（`:3697-3698`）为每个响应包装一次 `res.writeHead`：首次写出前由 `applyUnreadBodyPolicy()`（`:298-305`）判定——body 未被 `readBody` 消费（`bodyReadRequests`，标记点 `:424`）且声明 `content-length > 16 KiB`（`UNREAD_BODY_CLOSE_BYTES` `:249`）→ 置 `connection: close`。一处覆盖 OPTIONS 204、`serveStatic` 200/304/404、relay bundle、install script、audit export 与全部 `json()` 出口；internal 非 `/v1/` 404 走同一 helper（`:7753`）。
+- chunked：首次写头时启动有界排空（`boundUnreadChunkedBody()` `:267-292`，16 KiB / 250 ms，常量 `:250-251`）；小体量读到 `end` 保持 keep-alive，超预算或超时 `req.destroy()`。这取代了 U258 对 chunked 的一律关闭。
+- internal-channel 现由共享模块 `unread-body-policy.ts`（U267② 抽取，`9f3a5534638`）提供同一策略，mTLS 401/403/500 与 404 出口复用；`b290025b097` 当时为 30 行最小镜像 `closeUnreadBody()`（`internal-channel.ts:33-64`，调用 `:87/:97/:107`）。
+- 已知限制：声明/突发 ≥768 KiB 时客户端可能先收到 EPIPE 而非完整响应（U251 已知）；双门与多出口的覆盖以 `pre-read-close.test.ts`、`auth-body-limit.test.ts` 为准。
 
 ## 7. 测试覆盖
 
