@@ -163,6 +163,26 @@ export type InstallDownloadToken = {
 /** A one-time web handoff code (FR-3.10), bound to its user and project. */
 export type WebHandoff = { userId: string; projectId: string; expiresAt: number }
 
+type LoginAttemptRecord = { count: number; lockedUntil: number }
+
+/**
+ * U293: one lock decision for both the write and read paths, so they cannot
+ * drift apart again. `remaining` mirrors the shared store for every state.
+ */
+function lockStateOf(record: LoginAttemptRecord | undefined, now: number): LockoutState {
+  if (!record) {
+    return { locked: false, remaining: 5, lockedUntil: 0 }
+  }
+  if (record.lockedUntil > now) {
+    return { locked: true, remaining: 0, lockedUntil: record.lockedUntil }
+  }
+  // An expired lock must not keep counting old failures.
+  if (record.lockedUntil !== 0) {
+    return { locked: false, remaining: 5, lockedUntil: 0 }
+  }
+  return { locked: false, remaining: Math.max(0, 5 - record.count), lockedUntil: 0 }
+}
+
 export class Store {
   users = new Map<string, User>()
   usersByName = new Map<string, User>()
@@ -190,7 +210,7 @@ export class Store {
     // Design §9.3: reads are bounded per project per rolling hour (calls and bytes).
     readRatePerHour: { calls: 600, bytes: 64 * 1024 * 1024 }
   }
-  loginAttempts = new Map<string, { count: number; lockedUntil: number }>()
+  loginAttempts = new Map<string, LoginAttemptRecord>()
   audit: AuditEvent[] = []
   auditSeq = 0
   auditTip = 'GENESIS'
@@ -251,9 +271,10 @@ export class Store {
 
   recordLoginFailure(username: string, now: number): LockoutState {
     const existing = this.loginAttempts.get(username)
+    const current = lockStateOf(existing, now)
     // U292: a locked account ignores further failures, matching the shared store.
-    if (existing && existing.lockedUntil > now) {
-      return { locked: true, remaining: 0, lockedUntil: existing.lockedUntil }
+    if (current.locked) {
+      return current
     }
     // An expired lock starts a fresh count; stale failures must not carry over.
     const record = existing && existing.lockedUntil === 0 ? existing : { count: 0, lockedUntil: 0 }
@@ -263,29 +284,18 @@ export class Store {
       record.count = 0
     }
     this.loginAttempts.set(username, record)
-    const locked = record.lockedUntil > now
-    return {
-      locked,
-      remaining: locked ? 0 : Math.max(0, 5 - record.count),
-      lockedUntil: locked ? record.lockedUntil : 0
-    }
+    return lockStateOf(record, now)
   }
 
   /** Read-only view: checking a login must not increment the counter. */
   loginLockState(username: string, now: number): LockoutState {
     const record = this.loginAttempts.get(username)
-    if (!record) {
-      return { locked: false, remaining: 5, lockedUntil: 0 }
-    }
-    if (record.lockedUntil > now) {
-      return { locked: true, remaining: 0, lockedUntil: record.lockedUntil }
-    }
+    const state = lockStateOf(record, now)
     // U292: reset on read like the shared store, so an expired lock stays in the past.
-    if (record.lockedUntil !== 0) {
+    if (record && record.lockedUntil !== 0 && !state.locked) {
       this.loginAttempts.delete(username)
-      return { locked: false, remaining: 5, lockedUntil: 0 }
     }
-    return { locked: false, remaining: Math.max(0, 5 - record.count), lockedUntil: 0 }
+    return state
   }
 
   clearLoginFailures(username: string): void {

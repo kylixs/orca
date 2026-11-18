@@ -122,6 +122,60 @@ describe('本地与共享登录锁定契约同构（U289）', () => {
     }
   })
 
+  test('两个失败同时通过预检后落锁：不延长且与共享同序语义一致（U293）', async () => {
+    const local = new Store()
+    const shared = createLockoutStore()
+    const username = 'u293-concurrent'
+
+    // MAX-1 次失败：下一次失败触发锁定，另一个并发请求落在锁定窗口内。
+    for (let attempt = 0; attempt < MAX_FAILURES - 1; attempt += 1) {
+      assert.deepEqual(local.recordLoginFailure(username, NOW), shared.recordFailure(username, NOW))
+    }
+
+    // 两个请求都在任一写入前通过预检（模拟登录接口的异步鉴权窗口），再按到达顺序记录失败。
+    const runConcurrentRequests = async (
+      precheck: (now: number) => LockoutState,
+      record: (now: number) => LockoutState
+    ): Promise<LockoutState[]> => {
+      let prechecked = 0
+      let openGate!: () => void
+      const bothPrechecked = new Promise<void>((resolve) => {
+        openGate = resolve
+      })
+      const attempt = async (recordAt: number): Promise<LockoutState> => {
+        const state = precheck(NOW)
+        assert.equal(state.locked, false, '预检必须发生在锁定之前')
+        assert.equal(state.remaining, 1)
+        prechecked += 1
+        if (prechecked === 2) {
+          openGate()
+        }
+        await bothPrechecked
+        return record(recordAt)
+      }
+      return Promise.all([attempt(NOW), attempt(NOW + 1_000)])
+    }
+
+    const localResults = await runConcurrentRequests(
+      (now) => local.loginLockState(username, now),
+      (now) => local.recordLoginFailure(username, now)
+    )
+    const sharedResults = await runConcurrentRequests(
+      (now) => shared.isLocked(username, now),
+      (now) => shared.recordFailure(username, now)
+    )
+
+    assert.deepEqual(localResults, sharedResults)
+    assert.deepEqual(localResults, [
+      { locked: true, remaining: 0, lockedUntil: NOW + LOCK_MS },
+      { locked: true, remaining: 0, lockedUntil: NOW + LOCK_MS }
+    ])
+    assert.deepEqual(
+      local.loginLockState(username, NOW + 1_000),
+      shared.isLocked(username, NOW + 1_000)
+    )
+  })
+
   test('三次失败后本地只读 remaining 与共享 isLocked 一致（=2）', () => {
     const local = new Store()
     const shared = createLockoutStore()
