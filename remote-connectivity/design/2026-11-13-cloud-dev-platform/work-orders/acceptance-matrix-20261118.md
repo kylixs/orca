@@ -1,6 +1,6 @@
 # 业务地图验收矩阵（2026-11-18）
 
-- 上游：`../business-map.md`（70 叶子，🟢69/⚪1）
+- 上游：`../business-map.md`（70 叶子，🟢68/🟡1/⚪1，97.9%）
 - 今日门禁：第八轮全景 148 文件/37 批全 exit 0、1150 tests（1147 pass/0 fail/3 env skip）；认证 267/267；矩阵 113/113；超时门禁 92（91+1）
 
 | 域 | 编号 | 功能 | 状态 | 地图证据 | 今日验收 |
@@ -18,14 +18,14 @@
 | AUTH 身份与会话 | AUTH-PAGE-CSP | 认证页 CSP（Report-Only） | 🟢 | csp-zero 6/6 | 第八轮全景覆盖 |
 | AUTH 身份与会话 | AUTH-COMPAT-LEGACY | 旧客户端兼容与启动恢复 | 🟢 | u198 2/2、u229 系列 | 第八轮全景覆盖 |
 | AUTH 身份与会话 | AUTH-SESSION-EXPIRE | 过期自动登出与 `session.expired` 事件 | 🟢 | `u243-session-events` 4/4（主会话复跑） | 第八轮全景覆盖 |
-| AZ 授权与准入 | AZ-HOST-GRANT | 主机授权全权/只读两级 | 🟢 | host-authorization | 第八轮全景覆盖 |
+| AZ 授权与准入 | AZ-HOST-GRANT | 主机授权全权/只读两级 | 🟢 | host-authorization **11/11** | 今日实跑 11/11 |
 | AZ 授权与准入 | AZ-PROJECT-GRANT | 项目权限位与三原则合成 | 🟢 | u67 套件 | 第八轮全景覆盖 |
 | AZ 授权与准入 | AZ-REVIEW-MATRIX | 角色×端点组合矩阵 | 🟢 | **113/113** | 第八轮全景覆盖 |
 | AZ 授权与准入 | AZ-GRANT-VALIDATE | 非法 subject/permission 拒绝、重复位去重 | 🟢 | dedupe **4/4**、u62 4/4 | 第八轮全景覆盖 |
-| AZ 授权与准入 | AZ-DENIAL-AUDIT | 越权拒绝审计 | 🟢 | admin-denial-audit | 第八轮全景覆盖 |
+| AZ 授权与准入 | AZ-DENIAL-AUDIT | 越权拒绝审计 | 🟢 | admin-denial-audit **1/1** | 今日实跑 1/1 |
 | AZ 授权与准入 | AZ-ENUM-GUARD | 无权限项目防探测（404/不泄露） | 🟢 | web-project-entry 10/10 | 第八轮全景覆盖 |
 | AZ 授权与准入 | AZ-LDAP-GROUP | LDAP 组授权（LGA-1~6） | 🟢 | `ldap-admission` 6/6（主会话复跑 2026-11-18） | 第八轮全景覆盖 |
-| PRJ 项目 | PRJ-CREATE-ADMIN | 管理员登记项目与创建校验 | 🟢 | registration/self-service | 第八轮全景覆盖 |
+| PRJ 项目 | PRJ-CREATE-ADMIN | 管理员登记项目与创建校验 | 🟢 | registration **7/7**、self-service **10/10**（另有 web 9/9、project-dir 6/6） | 今日实跑 7/7 + 10/10（另有 web 9/9、dir 6/6） |
 | PRJ 项目 | PRJ-CREATE-SELF | 开发者自助建项目（仓库可选） | 🟢 | self-service-project-dir 6/6 | 第八轮全景覆盖 |
 | PRJ 项目 | PRJ-LIFECYCLE-ARCHIVE | 归档/恢复与只读 30 天 | 🟢 | actions 7/7、detail 5/5、data 8/8 | 第八轮全景覆盖 |
 | PRJ 项目 | PRJ-ACCESS-CONNECT | 打开项目、会话复用与凭证签发 | 🟢 | project-connect 套件 | 第八轮全景覆盖 |
@@ -36,13 +36,13 @@
 | HOST 开发机与中继 | HOST-RUNTIME-HEARTBEAT | 心跳与 auditGap 上报 | 🟢 | u71 4/4、host-offline 1/1 | 第八轮全景覆盖 |
 | HOST 开发机与中继 | HOST-RELAY-PAGE | 中继独立管理页 | 🟢 | relay-endpoint 4/4 | 第八轮全景覆盖 |
 | HOST 开发机与中继 | HOST-BROWSER-RELAY | 经中继访问宿主 Web 界面 | 🟢 | browser-entry 6/6、browser-mode 6/6 | 第八轮全景覆盖 |
-| HOST 开发机与中继 | HOST-RUNTIME-REVOKE | 吊销主机与路由清理 | 🟢 | host-revocation | 第八轮全景覆盖 |
+| HOST 开发机与中继 | HOST-RUNTIME-REVOKE | 吊销主机与路由清理 | 🟢 | host-revocation **1/1** | 今日实跑 1/1 |
 | CONN 连接与选路 | CONN-SELECT-ROUTE | 直连/中继选路与故障诊断 | 🟢 | route-key-follow 4/4、failover | 第八轮全景覆盖 |
 | CONN 连接与选路 | CONN-DIRECT-ADDR | 直连地址校验与历史快照清洗 | 🟢 | 12/12 + 畸形快照 5/5 | 第八轮全景覆盖 |
 | CONN 连接与选路 | CONN-RELAY-BOUND | 中继只转发、不做授权判定 | 🟢 | relay-hardening、edge-hygiene 5/5 | 第八轮全景覆盖 |
-| FILE 文件浏览与下载管控 | FILE-BROWSER-BROWSE | 文件浏览器（展开/搜索/只读） | 🟢 | file-contract | 第八轮全景覆盖 |
-| FILE 文件浏览与下载管控 | FILE-BROWSER-PREVIEW | 512KB 预览上限与二进制不可预览 | 🟢 | file-contract | 第八轮全景覆盖 |
-| FILE 文件浏览与下载管控 | FILE-PATH-GUARD | 相对路径与 `..` 穿越拒绝 | 🟢 | file-contract | 第八轮全景覆盖 |
+| FILE 文件浏览与下载管控 | FILE-BROWSER-BROWSE | 文件浏览器（展开/搜索/只读） | 🟢 | file-contract **6/6**（M29-1 浏览/只读 1/1） | 今日实跑 6/6（M29-1） |
+| FILE 文件浏览与下载管控 | FILE-BROWSER-PREVIEW | 512KB 预览上限与二进制不可预览 | 🟡 | U325：补预览上限/二进制用例 | U325：专项用例缺，降 🟡 |
+| FILE 文件浏览与下载管控 | FILE-PATH-GUARD | 相对路径与 `..` 穿越拒绝 | 🟢 | file-contract **6/6**（M29-2/3 2/2） | 今日实跑 6/6（M29-2/3 2/2） |
 | FILE 文件浏览与下载管控 | FILE-DL-POLICY | 全局/项目下载策略与即时生效 | 🟢 | download-policy 套件 | 第八轮全景覆盖 |
 | FILE 文件浏览与下载管控 | FILE-DL-HARDEN | 宿主侧硬拦（现有 RPC） | 🟢 | guard 7/7、enforcement 4/4 | 第八轮全景覆盖 |
 | FILE 文件浏览与下载管控 | FILE-DL-RPC | 专用 `files.download` 流式 RPC | ⚪ | 缓登记 U66/D21；guard 7/7、enforcement 4/4、download-policy 3/3；调研 `test-reports/d21-c9-prep-20261118.md` | 未实施（D21-C9 缓） |
@@ -52,7 +52,7 @@
 | AUD 审计 | AUD-APPEND-ATOMIC | 落盘失败不留内存残条 | 🟢 | u246 组 3/3（U244 为 11/11） | 第八轮全景覆盖 |
 | AUD 审计 | AUD-BODY-GUARD | 事件体积全局护栏与截断标记 | 🟢 | audit-event-size **17/17** | 今日实跑 17/17 |
 | AUD 审计 | AUD-QUERY-FILTER | 时间/用户/类型筛选、游标、31 天窗 | 🟢 | u66-2 8/8、query 28/28 | 第八轮全景覆盖 |
-| AUD 审计 | AUD-EXPORT-DOWNLOAD | 审计员导出与二次确认 | 🟢 | audit-export 系列 | 第八轮全景覆盖 |
+| AUD 审计 | AUD-EXPORT-DOWNLOAD | 审计员导出与二次确认 | 🟢 | audit-export **14/14**、audit-export-download **11/11** | 今日实跑 14/14 + 11/11 |
 | AUD 审计 | AUD-TRACE-CORRELATE | traceId 关联 | 🟢 | audit-trace-window 1/1 | 第八轮全景覆盖 |
 | AUD 审计 | AUD-CURSOR-GATE | 游标/路径参数校验 | 🟢 | cursor 3/3 + writer 4/4 | 第八轮全景覆盖 |
 | ADMIN 管理台 / CLIENT 客户端 / WEB 控制台 / MOB / DSGN / QA | ADMIN-CONSOLE-WORKBENCH | 工作台四卡与项目表 | 🟢 | `u70-workbench-cards` 3/3（在线项目）、AC-01 | 第八轮全景覆盖 |
@@ -78,6 +78,6 @@
 
 ## 说明
 
-- 「今日验收」指 2026-11-18 主会话或独立代理实跑；第八轮全景覆盖全部 148 个 e2e 文件（含各叶子引用的 e2e 套件）。
+- 「今日验收」指 2026-11-18 主会话或独立代理实跑；第八轮全景覆盖全部 148 个 e2e 文件。
 - `relay-container-harness` 3 例因缺 Docker/镜像走既有降级 skip，需在容器环境补跑。
-- 未实施：`FILE-DL-RPC`（D21-C9 缓）；叶子外挂账：U181（H11–H13 产物）、U233 F4（已设计缓办）、U323（探索脚本 2 行）。
+- 未实施：`FILE-DL-RPC`（D21-C9 缓）；待补证据：`FILE-BROWSER-PREVIEW`（U325）；叶子外挂账：U181、U233 F4、U323、U326。
