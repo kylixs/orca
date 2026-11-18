@@ -4366,3 +4366,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **test-plan 补登 6 个新套件行**（`491f442ac72`，+6）：race-probe（拆分来源与 9 例）、u237 必填（14 例含优先级钉子）、auth-body-limit（9 例）、store-persistence 三文件（21 例）、audit-health-escalation、audit-writer-client；并纠正「force-offline 4 KiB 在 auth-body-limit」的错误归属（实际 `u244:690`）。
 - **lockout/writer body 上限批已派**：两服务 4 KiB + 非对象归一化（JSON `null` 现可能 500），每服务 2 例 + 变异。
 - **U250 档 2（敏感写）完成**（`d271157ba45`，2 文件）：10 处调用点——正常写路径统一 16 KiB → 413；三个拒绝分支（项目 grants、host grants、provision-policy）**保持 403**、改用 4 KiB 读取并按空 body 记 denied 审计（返回 413 会改写拒绝语义）。新增 helper `readSensitiveWriteBody` 与两个上限常量。单测 11/11、u236 fuzz + u237 共 40/40（主会话复跑），变异各去掉一处上限即红。**档 3（9 处普通写）已派**。
+- **U250 档 3 完成**（`aa2e3b798a3`，2 文件）：9 处普通写统一 16 KiB→413（复用档 2 helper；heartbeat 上限在凭据校验后、写入前；`hosts/register` 超限不消耗单次令牌、响应带 code/traceId）。单测 **15/15**、project-update/host-authorization/audit-export **29/29**（主会话复跑）。档 4 剩余 lockout/writer 在途；文档档位表已派。
