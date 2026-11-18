@@ -81,10 +81,58 @@ function commandUrl(command: string): string {
   return /curl -fsSL "([^"]+)"/.exec(command)?.[1] ?? ''
 }
 
-/** U182: the copied one-liner must make a failed download observable. */
+/**
+ * U182/U181: a failed download exits 65; otherwise the install script's own
+ * exit code is propagated, and a failed run keeps the script for diagnosis.
+ */
 function expectedInstallCommand(url: string): string {
   const file = '${TMPDIR:-/tmp}/orca-install-$$.sh'
-  return `curl -fsSL "${url}" -o "${file}" && bash "${file}" && rm -f "${file}" || { echo '安装失败：命令已失效或网络不可达，请让管理员重新生成'; false; } || exit 1`
+  return `curl -fsSL "${url}" -o "${file}" || { echo '安装失败：命令已失效或网络不可达，请让管理员重新生成（65）' >&2; exit 65; }; bash "${file}"; code=$?; if [ "$code" -eq 0 ]; then rm -f "${file}" || echo "安装完成，但临时文件未能删除：${file}" >&2; else echo "安装脚本退出码 $code，临时文件保留在 ${file}" >&2; fi; exit "$code"`
+}
+
+/**
+ * U181: runs the copied one-liner with a stubbed curl that writes `body` to the
+ * `-o` target, so the only exit code is the install script's.
+ */
+function runOneLinerWithStubScript(
+  command: string,
+  body: string
+): { status: number | null; stdout: string; stderr: string; tmpDir: string; kept: string[] } {
+  const home = mkdtempSync(join(tmpdir(), 'orca-one-liner-'))
+  const bin = join(home, 'bin')
+  mkdirSync(bin)
+  writeFileSync(
+    join(bin, 'curl'),
+    `#!/usr/bin/env bash
+prev=""
+out=""
+for arg in "$@"; do
+  if [ "$prev" = "-o" ]; then out="$arg"; fi
+  prev="$arg"
+done
+[ -n "$out" ] || exit 2
+cat > "$out" <<'ORCA_ONE_LINER_STUB'
+${body}
+ORCA_ONE_LINER_STUB
+exit 0
+`,
+    { mode: 0o755 }
+  )
+  const tmpDir = join(home, 'tmp')
+  mkdirSync(tmpDir)
+  const result = spawnSync('bash', ['-c', command], {
+    encoding: 'utf8',
+    cwd: home,
+    timeout: 10_000,
+    env: { PATH: `${bin}:/usr/bin:/bin`, HOME: home, TMPDIR: tmpDir }
+  })
+  return {
+    status: result.status,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    tmpDir,
+    kept: readdirSync(tmpDir)
+  }
 }
 
 /** A clean-host HOME with TLS stubs so the script skips openssl. */
@@ -581,6 +629,16 @@ function loadWizard(platformUrl: string) {
     return wait(waitFor)
   }
   return { window, login, click, nav, text: (selector: string) => wait(selector) }
+}
+
+/** U181: the host one-liner exactly as the wizard renders it. */
+async function generateHostCommand(): Promise<string> {
+  const wizard = loadWizard(api.url)
+  await wizard.login()
+  return wizard
+    .nav('hosts', '#registerHostBtn')
+    .then(() => wizard.click('#registerHostBtn', '#generateHostTokenBtn'))
+    .then(() => wizard.click('#generateHostTokenBtn', '#installCmd'))
 }
 
 before(async () => {
@@ -2175,10 +2233,12 @@ exit 0
       hostCmd,
       expectedInstallCommand(`${api.url}/install/host.sh?download=${hostDownload}&token=${token}`)
     )
-    // U182: `bash <(curl …)` exits 0 on a failed download; the copied command
-    // must instead fail visibly and tell the admin to regenerate it.
-    assert.match(hostCmd, /\|\| \{ echo '.*请让管理员重新生成'; false; \} \|\| exit 1$/)
-    assert.ok(hostCmd.includes('|| exit 1'))
+    // U182/U181: a failed download must fail visibly (65) and tell the admin to
+    // regenerate it; the install script's own code is propagated, never `1`.
+    assert.match(hostCmd, /\|\| \{ echo '.*请让管理员重新生成（65）' >&2; exit 65; \}/)
+    assert.ok(hostCmd.includes('code=$?'))
+    assert.match(hostCmd, /exit "\$code"$/)
+    assert.doesNotMatch(hostCmd, /\|\| exit 1$/)
     // The exact URL the admin copies must answer WITHOUT any Authorization header:
     // that is what `curl -fsSL` on the target machine actually sends.
     const hostUrl = commandUrl(hostCmd)
@@ -2216,6 +2276,29 @@ exit 0
       relayReplay: 401
     })
   }, 120_000)
+
+  test('U181: 安装脚本以 78 退出时 one-liner 外层退出码也是 78', async () => {
+    const command = await generateHostCommand()
+    const run = runOneLinerWithStubScript(command, "echo 'STUB-78: 缺少必需配置' >&2\nexit 78")
+
+    assert.equal(run.status, 78, run.stderr)
+    assert.match(run.stderr, /STUB-78: 缺少必需配置/)
+    // The script itself owns the failure text; the shell only reports the path.
+    assert.doesNotMatch(run.stderr, /命令已失效或网络不可达/)
+    assert.equal(run.kept.length, 1, 'a failed install keeps the script')
+    assert.ok(run.stderr.includes(join(run.tmpDir, run.kept[0])), run.stderr)
+  }, 60_000)
+
+  test('U181: 安装脚本以 68 退出时 one-liner 外层退出码也是 68', async () => {
+    const command = await generateHostCommand()
+    const run = runOneLinerWithStubScript(command, "echo 'STUB-68: 平台健康检查失败' >&2\nexit 68")
+
+    assert.equal(run.status, 68, run.stderr)
+    assert.match(run.stderr, /STUB-68: 平台健康检查失败/)
+    assert.doesNotMatch(run.stderr, /命令已失效或网络不可达/)
+    assert.equal(run.kept.length, 1, 'a failed install keeps the script')
+    assert.ok(run.stderr.includes(join(run.tmpDir, run.kept[0])), run.stderr)
+  }, 60_000)
 
   test('download 令牌按 kind 隔离并绑定 hostId；无效令牌可回退 Bearer', async () => {
     // A relay token must not fetch the host script, even with a valid host
