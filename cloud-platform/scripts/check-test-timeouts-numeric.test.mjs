@@ -243,7 +243,76 @@ test('equivalent non-finite spellings share canonical special keys', () => {
   }
   assert.equal(key('NaN'), "test('a',special:nan)")
   assert.notEqual(key('Infinity'), key('-Infinity'))
+  // U313 ③: NaN's sign is unobservable at a timeout position, so `-NaN` shares the
+  // NaN key while staying distinct from the signed infinities.
+  assert.equal(key('-NaN'), key('NaN'))
+  assert.notEqual(key('-NaN'), key('-Infinity'))
 })
+
+// U313 ①: comments used to blank the bracket member (sanitize blanks string bodies),
+// so these three forms silently escaped. The special view strips comments but keeps
+// string literals, so the member name survives.
+const COMMENTED_BRACKET_SPECIALS = [
+  ['Number /* c */ ["POSITIVE_INFINITY"]', 'Number.POSITIVE_INFINITY'],
+  ['Number["NEGATIVE_INFINITY"] /* c */', 'Number.NEGATIVE_INFINITY'],
+  ['(Number /* c */)["NaN"]', 'Number.NaN']
+]
+
+const scanSpecialKey = (timeout) => {
+  const { violations, contexts } = scanSources([
+    { file: 'lex.ts', source: `test('a', () => {}, ${timeout})\n` }
+  ])
+  return contexts.get('lex.ts').signatures.get(violations[0])
+}
+
+for (const [spelling, canonical] of COMMENTED_BRACKET_SPECIALS) {
+  test(`flags commented bracket special: ${spelling}`, () => {
+    assert.deepEqual(scanSource(`test('a', fn, ${spelling})\n`), [
+      { file: '<memory>', line: 1, form: 'numeric-special' }
+    ])
+    // Comments are blanked before the signature is keyed, so the comment variant
+    // collapses onto the canonical special key.
+    assert.equal(scanSpecialKey(spelling), scanSpecialKey(canonical))
+  })
+}
+
+test('comment placement around dotted specials keeps the canonical key', () => {
+  assert.equal(
+    scanSpecialKey('Number /* c */ . POSITIVE_INFINITY'),
+    scanSpecialKey('Number.POSITIVE_INFINITY')
+  )
+  assert.equal(
+    scanSpecialKey('(Number) /* c */ . POSITIVE_INFINITY'),
+    scanSpecialKey('Number.POSITIVE_INFINITY')
+  )
+})
+
+// U313 ②: bare signed infinities are not JS globals, and globalThis/global do not
+// expose POSITIVE_INFINITY/NEGATIVE_INFINITY (the value is undefined). Reporting them
+// was an over-match; they must stay silent, including comment and lookalike variants.
+test('does not flag bare or undefined-global signed infinity spellings', () => {
+  const source = [
+    "test('a', fn, POSITIVE_INFINITY)",
+    "test('b', fn, NEGATIVE_INFINITY)",
+    "test('c', fn, globalThis.POSITIVE_INFINITY)",
+    "test('d', fn, global.NEGATIVE_INFINITY)",
+    'before(fn, globalThis["POSITIVE_INFINITY"])',
+    'after(fn, global["NEGATIVE_INFINITY"])',
+    "test('e', fn, (globalThis /* c */).POSITIVE_INFINITY)",
+    "test('f', fn, globalTh.is)",
+    "test('g', fn, globalThisX.POSITIVE_INFINITY)"
+  ].join('\n')
+  assert.deepEqual(scanSource(`${source}\n`), [])
+  const key = (spelling) => callSignature('test', ["'a'", '() => {}', spelling])
+  // Real members still canonicalize, so the tightening did not disable the fix.
+  assert.equal(key('Number.POSITIVE_INFINITY'), key('Infinity'))
+  assert.equal(key('Number["NEGATIVE_INFINITY"]'), key('-Infinity'))
+  assert.equal(key('globalThis.Infinity'), key('Infinity'))
+  assert.equal(key('global.NaN'), key('NaN'))
+  assert.notEqual(key('POSITIVE_INFINITY'), key('Infinity'))
+  assert.notEqual(key('globalThis.POSITIVE_INFINITY'), key('Infinity'))
+})
+
 
 // U311 ①: a dot separated by spaces is still property access, and a generic call's `<`
 // is not an operator, so redundant parens fold across a unary sign on both forms.
