@@ -4380,3 +4380,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U253 关闭**（`889bd059d21`）：one-liner 提示改为 `${code}，`，新增「bash 3.2 下失败提示含真实 78」用例；install-wizard + 迁移 **95/95**（主会话复跑），`bash -c` 最小复现对照「旧：乱码 / 新：78」。
 - **U252 ①②③ 全部落地**：register 独立 64 KiB（合法最大 200×255 B 包 → 201、超限 413 且令牌可复用）、项目 path 4096 契约（>4096 → 400 `PROJECT_PATH_INVALID` + denial 审计）、writer 已在前批；单测 **27/27**、host-authorization+project-update **15/15**（主会话复跑），两项变异红；跨版本安全。U252 待两项复审收敛后翻绿。
 - **修复后认证基线重跑：266/266，0 fail / 0 cancelled / 0 skip**（CONC=2，206s，`/tmp/auth-baseline-2.log`）——该基线产生于 U251 P1/P2/P3 与 U252/U253 修复之后，可作为关闭证据（单测/矩阵重跑随后）。
+- **修复后单测/矩阵重跑**：单测批 **375/375**（较 361 增 14：auth-body-limit 27、writer 7、lockout 5 等）、授权矩阵 **113/113**，均 0 skip、EXIT=0（`/tmp/unit-baseline-2.log`、`/tmp/matrix-baseline-2.log`）。关闭结论草稿的基线表已更新为修复后值。
