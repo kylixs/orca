@@ -322,7 +322,7 @@ async function readJson(
   return (await readBody(req, maxBytes)).body
 }
 
-/** Login/refresh bodies carry only credentials; logout uses the same cap. */
+/** Login/refresh/handoff bodies carry only credentials; logout uses the same cap. */
 const AUTH_BODY_MAX_BYTES = 16 * 1024
 
 /** A logout body only ever carries a refresh token; anything larger is ignored. */
@@ -3957,6 +3957,14 @@ export function createApp(config: ApiConfig): ApiHandle {
     // ---- web handoff (FR-3.10): a browser trades its one-time code for a session ----
     // Deliberately before token resolution: the caller has no session yet.
     if (req.method === 'POST' && path === '/v1/web/handoff') {
+      // U250: the body carries the one-time handoff code, a credential. Cap it
+      // before any credential-state check, so an oversized request is refused
+      // without consuming or probing a code or Cookie.
+      const handoff = await readBody(req, AUTH_BODY_MAX_BYTES)
+      if (handoff.oversized) {
+        res.setHeader('cache-control', 'no-store')
+        return error(res, 413, 'PAYLOAD_TOO_LARGE', '请求体过大。', traceId)
+      }
       if (hasAmbiguousRefreshCookie(req)) {
         clearRefreshCookie(res)
         res.setHeader('cache-control', 'no-store')
@@ -3971,7 +3979,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         res.setHeader('cache-control', 'no-store')
         return error(res, 401, 'SESSION_EXPIRED', '会话状态异常，请清除 Cookie 后重试。', traceId)
       }
-      const body = await readJson(req)
+      const body = handoff.body
       const code = String(body.code ?? '')
       const fingerprint = codeFingerprint(code)
       const deny = async (

@@ -149,7 +149,9 @@
 | `POST /v1/auth/logout` | Bearer + Cookie + 可选 body refresh | 清 Cookie → 定位全部显式凭据 → 撤销（已撤销跳过；重复 Cookie 只记标志，显式凭据仍撤） | `revokedAt`（U241 幂等） | 仅显式凭据命中的 session（不吊销 device、不写 user 撤销集合） | `logout` success（已撤销不重复）/denied（UNKNOWN_REFRESH；USER_DISABLED 由刷新禁用路径写入） |
 | `POST /v1/users/:id/sessions/revoke` | Bearer（admin） | auth→admin→链健康预检→404 检查→leader `recordAudit`（失败即 503 且无撤销/无标记）→撤销→user 撤销集合 | per-user 队列 leader outcome（leader 失败时 follower 重试为新 leader）；`revokedAt` | 全部 session + user 撤销集合；不吊销 device | `session_revoke` success（leader 每次，含零撤销）/denied；并发 follower 无 |
 
-**认证 body 上限（U249 `571ebe26df1`）**：`POST /v1/auth/login` 与 `POST /v1/auth/refresh`（Cookie 源与 body 回退）body > 16 KiB → `413 PAYLOAD_TOO_LARGE`，解析前丢弃（不计数/不轮换/不撤销）；`POST /v1/auth/logout` 同 16 KiB 上限，但超限按无 body 处理（不报错，Bearer/Cookie 撤销照常）。`server.ts:288-330,3574-3578,3725-3729,3872-3876,4091`；`auth-body-limit.test.ts`
+**认证 body 上限（U249 `571ebe26df1`）**：`POST /v1/auth/login` 与 `POST /v1/auth/refresh`（Cookie 源与 body 回退）body > 16 KiB → `413 PAYLOAD_TOO_LARGE`，解析前丢弃（不计数/不轮换/不撤销）；`POST /v1/auth/logout` 同 16 KiB 上限，但超限按无 body 处理（不报错，Bearer/Cookie 撤销照常）。`server.ts:288-330,3574-3578,3725-3729,3872-3876,4099`；`auth-body-limit.test.ts`
+
+**契约 B（U250 `fix(u250)`）**：认证凭据类 body（login / refresh / `POST /v1/web/handoff`，body 承载唯一凭据或一次性交接码）超限 → `413 PAYLOAD_TOO_LARGE`，且在凭据状态检查**之前**拒绝、不消耗任何凭据（handoff 读取点 `server.ts:3963`，用例 `auth-body-limit.test.ts`）；定位器/备注类 body（logout / force-offline）超限 → 丢弃为空 body、动作照常（force-offline 4 KiB 读取点 `server.ts:5325`，用例 `u244-admin-force-offline.e2e.test.ts`）。
 
 ## 7. 测试覆盖
 

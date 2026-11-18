@@ -105,6 +105,14 @@ function revoke(
   })
 }
 
+function revokeRaw(base: string, token: string, userId: string, body: string): Promise<Response> {
+  return fetch(`${base}/v1/users/${userId}/sessions/revoke`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body
+  })
+}
+
 function logout(base: string, token: string): Promise<Response> {
   return fetch(`${base}/v1/auth/logout`, {
     method: 'POST',
@@ -677,5 +685,40 @@ describe('U244 管理员强制下线（真实 createApp + HTTP）', () => {
     const appJs = readFileSync(new URL('../../apps/web/app.js', import.meta.url), 'utf8')
     assert.match(appJs, /session_revoke: '会话撤销'/, 'the console dropdown needs a zh label')
     assert.match(appJs, /'session_revoke'/, 'the fallback type list must mirror the catalog')
+  })
+
+  test('force-offline body 超 4 KiB → 按空 body 处理且撤销照常（U250 契约 B）', async () => {
+    const { app, base } = await start()
+    assert.equal((await login(base, 'zhangsan', 'Passw0rd!')).status, 200)
+    const admin = await login(base, 'admin', 'Adm1n!')
+    const zhang = app.store.usersByName.get('zhangsan')
+    assert.ok(zhang)
+    const session = sessionsOf(app, zhang.id)[0]
+    assert.ok(session)
+    const oversized = JSON.stringify({
+      reason: 'x'.repeat(4 * 1024),
+      pad: 'y'.repeat(4 * 1024)
+    })
+    assert.ok(Buffer.byteLength(oversized) > 4 * 1024, 'the fixture must exceed the cap')
+
+    const forced = await revokeRaw(base, admin.body.accessToken ?? '', zhang.id, oversized)
+
+    assert.equal(forced.status, 200, 'an optional note must never block a security action')
+    assert.deepEqual((await forced.json()) as RevokeBody, { ok: true, revokedSessions: 1 })
+    assert.ok(session.revokedAt !== null)
+    assert.equal(session.epoch, 2)
+    const event = app.store.audit.find(
+      (entry) =>
+        entry.eventType === 'session_revoke' &&
+        entry.result === 'success' &&
+        entry.targetId === zhang.id
+    )
+    assert.ok(event, 'the revocation must still be audited')
+    assert.equal(event.metadata.revokedSessions, 1)
+    assert.equal(
+      'reason' in event.metadata,
+      false,
+      'an oversized body is discarded whole, never truncated into a reason'
+    )
   })
 })
