@@ -77,6 +77,7 @@
 - 审计链来源：平台 audit writer（单写者哈希链）；`host.audit_gap` 由宿主心跳 delta 落链（U71）。
 - 写入语义（U246，`audit.ts:154-190`）：先算 seq/hash → `persist` → 成功后才推进内存 `auditSeq/tip`；写盘失败时链状态完全不变（不产生 phantom success），`appendBestEffort` 返回 false 无残留。writer 区分可重试 `write_failed`（503 `AUDIT_WRITE_FAILED`，恢复无需重启、`/health` 透真实状态）与 `chain_broken`（503 `AUDIT_CHAIN_BROKEN`，需人工处理）。已知边界为 **at-least-once**：远端已提交但响应丢失、或批量中途失败后的重试会产生新 seq 的重复逻辑事件（平台 API 走单事件路径不受影响）。
 - **writer 互操作（U249 `571ebe26df1`，`audit-writer-client.ts:114-158`）**：远程 writer 收到旧 writer（<U246）的 `503 AUDIT_CHAIN_BROKEN` 时先探测 `/v1/status.reason`，仅 `chain_broken` 才锁存断链；探测失败或原因不符降级为可重试 `AUDIT_UNAVAILABLE`（`write_failed`），瞬时故障不再让副本停在断链态。
+- **单事件体积护栏（U254 `b1caa1d4239`）**：writer 单事件上限 `MAX_EVENT_BYTES`=16 KiB（`writer.ts:41`），超限整批 400 `BATCH_INVALID`；维护 `reason` 截 200、拒绝 `key` 截 64、拒绝 `path` 截 4096（`server.ts:6126`、`4626`、`4667`），避免 16 KiB 字段撑爆事件；更高层全局体积护栏见 U257（在修，P1）。
 - **持久化（2026-11-16）**：dev 平台启用 `AUDIT_LOG_PATH` 追加式审计文件，重启后 `prevHash` 续接（实测 `verify ok:true` 跨 `--platform-only` 重启）；事件字段 `actor/targetType/targetId/traceId` 合法可为 null（U133 修校验器，此前该类事件会被误判 corrupt）。
 
 ## 5. 已知缺陷与观察
