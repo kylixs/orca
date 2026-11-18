@@ -4550,3 +4550,5 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U233 P2-2 加固**（`cb93e2ee930`）：`revocations` 断言改为 sweep 前后 `JSON.stringify` 快照比较，变异 `splice` 即红；记入 U233 复审栏。
 - 地图更新：**70 叶子 / 🟢67 / 🟡2 / ⚪1 / 97.1%**。
 - **第五次全景中止，登记 U318（D15-1 夹具回归，P1）**：`MockLdapAdapter` 中 `zhangsan` 的 profile 组只有 `developers`，种子为 `developers`+`team-payment`，而 `proj_payment` 授权主体是组 `team-payment`；组改全量替换后 zhangsan 登录即失去项目——批 05 `file-contract`、批 06 `host-offline`/`host-revocation` 连片红。全景已停（不产生无效结论），U318 登记并要求代码会话对齐 mock 目录组后重跑。同时按 peer 复核修正检查单 §2「非 loopback 纯 http 不降级、仅告警」表述（`b19728ef522`）。
+- **U318 已修并关闭**（`3f00172bc1e`）：`MockLdapAdapter` 的 zhangsan profile 补 `groups:['developers','team-payment']` 与种子目录一致；主会话复跑 `file-contract` **6/6**，peer 复跑五套件 **28/28**。第六次全景已重启，批 05/06 恢复 exit 0。
+- **AUTH-COOKIE-MODE 收口（U214 关闭）**：D5–D10 同源默认关闭 + 检查单 `19c908da06f`；AC 21/21、认证 267/267。AUTH 域 13 叶子全部 🟢；地图 **68/1/1 = 97.9%**（余 QA-TIMEOUT-GATE 的 U317、FILE-DL-RPC 缓登记）。
