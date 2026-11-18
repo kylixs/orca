@@ -92,6 +92,7 @@
 | 更新（仅 API） | `PUT /v1/projects/:id` body 至少含 `repoUrl` 或 `defaultBranch`（显式 `null` 合法）；缺失 → 400 `PROJECT_UPDATE_INVALID`；`path`/`hostId` → 400 `PROJECT_FIELD_IMMUTABLE`（先于必填判定）；校验在认证/授权/`auditAllowsMutations` 之后（`server.ts:4693-4712`，`097025df563`） |
 
 - 请求体上限：项目创建/自助/更新按档 3，`PUT grants`/`policy` 按档 2；拒绝分支仍 403 + denied 审计，见 M1「U250 body 分档」。
+- 项目路径契约上限：`PROJECT_PATH_MAX_CHARS = 4096`；创建时 `>4096` → 400 `PROJECT_PATH_INVALID` 并记 `project_create` denied 审计（`server.ts:475,4641`，`dc9c6e938ad`）。Windows 扩展长路径不再依赖 body 上限兜底。
 
 ## 5. 已知缺陷（台账）
 

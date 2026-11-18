@@ -25,6 +25,7 @@
 
 - 说明：「在目标开发机执行以下命令完成注册。脚本会写入环境配置并生成自签证书，令牌 24 小时内有效且只能使用一次。」
 - 等宽命令块：`bash <(curl -fsSL <平台 origin>/install/host.sh?token=<token>)`。
+- 命令为单行 bash 片段：变量后紧跟非 ASCII（如 `${code}，`）必须写 `${var}` 花括号，bash 3.2 会把 UTF-8 首字节当作变量名一部分吞掉（U253 `889bd059d21`，`app.js:2649`）。
 - 底部按钮：「复制命令」（复制后 toast「已复制」，弹框保持）+「关闭」。
 
 **主机详情抽屉（右侧 `.drawer`，标题「主机 <名称>」）**
@@ -80,7 +81,7 @@
 
 - 维护端点必填 `enabled`（布尔）：缺失/字符串/`null`/`0` → 400 `HOST_MAINTENANCE_INVALID`，不再默认进入维护；校验在认证/授权/`auditAllowsMutations`、`HOST_REVOKED` 之后（`server.ts:5803-5811`，`097025df563`）。
 
-- 请求体上限：`hosts/register`、心跳、维护按档 3，`hosts/tokens`/`grants`/`provision-policy` 按档 2（拒绝分支仍 403 + denied 审计），见 M1「U250 body 分档」。
+- 请求体上限：`hosts/register` 64 KiB（U252 `dc9c6e938ad`）、心跳 1 MiB（U251 `fbf0237658d`）、维护按档 3（16 KiB），`hosts/tokens`/`grants`/`provision-policy` 按档 2（16 KiB；拒绝分支仍 403 + denied 审计），见 M1「U250 body 分档」。
 
 ## 5. 已知缺陷（台账）
 

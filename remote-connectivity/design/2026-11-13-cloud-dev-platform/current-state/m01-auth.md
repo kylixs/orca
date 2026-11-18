@@ -157,12 +157,16 @@
 
 | 档位 | 上限 | 超限语义 | 代表端点、行号与提交 |
 | --- | --- | --- | --- |
-| 1 鉴权前 | 16 KiB | login / refresh（Cookie 源与 body 回退）/ handoff → `413 PAYLOAD_TOO_LARGE`，在凭据状态检查前拒绝、不消耗凭据；logout 超限按空 body，Bearer/Cookie 撤销照常 | login `server.ts:3605`、refresh `3756`/`3903`、handoff `3994`、logout `4130`；`571ebe26df1`、`f697adfcfdd` |
-| 2 敏感写 | 16 KiB | 认证后的权限/策略写 → 413；**拒绝分支不返回 413，是为了保持拒绝语义与 denied 审计**：仍返回 403，并以 4 KiB 上限读取 body 供 denied 审计（超限记为空） | 成功写 grants `4909`/`6009`、project policy `5108`、user roles `5290`、host tokens `5564`、provision-policy `6141`、global policy `6699`；拒绝读 `4899`/`5996`/`6128`；`d271157ba45` |
-| 3 普通写 | 16 KiB | 认证后的业务写 → `413 PAYLOAD_TOO_LARGE`，在任何变更/审计前拒绝 | projects 创建/self/更新 `4457`/`4595`/`4795`、hosts/register `5608`、heartbeat `5721`、maintenance `5924`、audit/export `6284`、web-handoff mint `6918`、connect `7037`；`aa2e3b798a3` |
-| 4 内部端点 | 4 KiB | 内部令牌校验后读取；超限整包丢弃为 `{}`，端点按空 body 走既有语义，与旧对端兼容 | `internal/audit/file-events` `6212`、`internal/relay-endpoint` `6799`；`70b727e46e3` |
+| 1 鉴权前 | 16 KiB | login / refresh（Cookie 源与 body 回退）/ handoff → `413 PAYLOAD_TOO_LARGE`，在凭据状态检查前拒绝、不消耗凭据；logout 超限按空 body，Bearer/Cookie 撤销照常 | login `server.ts:3732`、refresh `3883`/`4030`、handoff `4121`、logout `4257`；`571ebe26df1`、`f697adfcfdd` |
+| 2 敏感写 | 16 KiB | 认证后的权限/策略写 → 413；**拒绝分支不返回 413，是为了保持拒绝语义与 denied 审计**：仍返回 403，并以 4 KiB 上限读取 body 供 denied 审计（超限记为空） | 成功写 grants `5039`/`6277`、project policy `5241`、user roles `5422`、host tokens `5696`、provision-policy `6145`、global policy `6835`；拒绝读 `5029`/`6132`/`6264`；`d271157ba45` |
+| 3 普通写 | 16 KiB | 认证后的业务写 → `413 PAYLOAD_TOO_LARGE`，在任何变更/审计前拒绝 | projects 创建/self/更新 `4584`/`4725`/`4925`、maintenance `6060`、audit/export `6420`、web-handoff mint `7054`、connect `7173`；`aa2e3b798a3` |
+| 3a 注册（U252） | 64 KiB | 契约允许 200×255 B `projectDirs`，合法最大 52,232 B（3.19×16 KiB）→ 独立档；超限 413 `PAYLOAD_TOO_LARGE` 且不消耗一次性令牌 | `hosts/register` `5742`、常量 `server.ts:468`；`dc9c6e938ad` |
+| 3b 心跳（U251） | 1 MiB | 一拍含 100 事件（metadata 各 ≤4096 B）+ 200 `projectDirs` + 32 provision 报告，实测合法最大 443 KB；超限 413 + `connection: close`，不落库 | `hosts/:id/heartbeat` `5857`、常量 `server.ts:484`；`fbf0237658d` |
+| 4 内部端点（U251） | 8 KiB | 内部令牌校验后读取；超限整包丢弃为 `{}` 并置 `connection: close`，端点按空 body 走既有语义，与旧对端兼容 | `internal/audit/file-events` `6348`、`internal/relay-endpoint` `6935`；`8d9f5d3101b` |
 
-常量与入口：`AUTH_BODY_MAX_BYTES`/`LOGOUT_BODY_MAX_BYTES` `server.ts:341`/`344`、`SENSITIVE_WRITE_BODY_MAX_BYTES` `357`、`DENIED_AUDIT_BODY_MAX_BYTES` `363`、`INTERNAL_BODY_MAX_BYTES` `350`；统一 413 助手 `readSensitiveWriteBody` `server.ts:329-338`，超限丢弃在 `readBody` `server.ts:288-315`。
+常量与入口：`AUTH_BODY_MAX_BYTES`/`LOGOUT_BODY_MAX_BYTES` `server.ts:440`/`443`、`INTERNAL_BODY_MAX_BYTES` `452`、`SENSITIVE_WRITE_BODY_MAX_BYTES` `459`、`REGISTER_BODY_MAX_BYTES` `468`、`PROJECT_PATH_MAX_CHARS` `475`、`HEARTBEAT_BODY_MAX_BYTES` `484`、`DENIED_AUDIT_BODY_MAX_BYTES` `490`；统一 413 助手 `readSensitiveWriteBody` `server.ts:427-437`，超限丢弃在 `readBody` `server.ts:333-391`。
+
+- 远程 audit-writer 追加上限（U252 `2ed0f0b439d`）：每批 ≤ `MAX_BATCH`(1000) × 16 KiB = 16 MiB，单事件 >16 KiB → 400 `BATCH_INVALID`；`writer.ts:18,41-42,198-202`；写入语义见 M7 §4。
 
 ## 7. 测试覆盖
 
