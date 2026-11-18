@@ -1,5 +1,6 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   installCommandTemplateSource,
@@ -13,6 +14,8 @@ import {
  * download, the install script's own exit code including 128+n, temp-file
  * cleanup) can only be proven by running it. The command under test is derived
  * from app.js source, never re-typed here, so drift in the wizard cannot pass.
+ * U276: a transfer cut mid-body leaves a partial file, so the failure case
+ * writes bytes before failing and asserts the wrapper removed them.
  */
 
 const INSTALL = installCommandTemplateSource()
@@ -21,11 +24,16 @@ const installCommand = (url: string): string =>
   renderInstallCommand(INSTALL.template, INSTALL.file, url)
 const runLiner = (
   body: string | null,
-  options: { extraStubs?: Record<string, string> } = {}
+  options: { extraStubs?: Record<string, string>; failure?: 'unreachable' | 'partial' } = {}
 ): OneLinerRun =>
   runOneLiner(installCommand(INSTALL_URL), { body, scratchPrefix: 'orca-u275-', ...options })
 
-describe('U275: install one-liner runs under a real shell', () => {
+/** Files the one-liner itself creates: anything else in TMPDIR is not residue. */
+function installScripts(run: OneLinerRun): string[] {
+  return run.kept.filter((name) => /^orca-install-.*\.sh$/.test(name))
+}
+
+describe('U275/U276: install one-liner runs under a real shell', () => {
   test('模板取自 app.js 源码，转义与引号不被测试重写', () => {
     assert.ok(INSTALL.source.includes('exit "$code"'))
     assert.ok(installCommand(INSTALL_URL).endsWith('exit "$code"'))
@@ -33,12 +41,28 @@ describe('U275: install one-liner runs under a real shell', () => {
     assert.ok(installCommand(INSTALL_URL).includes(`curl -fsSL "${INSTALL_URL}" -o `))
   })
 
-  test('下载失败：外层退出 65 并提示重新生成，不留下临时文件', () => {
+  test('下载失败且未创建文件（curl 22）：外层退出 65 并提示重新生成', () => {
     const run = runLiner(null)
 
     assert.equal(run.status, 65, run.stderr)
     assert.match(run.stderr, /安装失败：命令已失效或网络不可达，请让管理员重新生成（65）/)
-    assert.deepEqual(run.kept, [], 'a failed download must not leave a script behind')
+    assert.deepEqual(installScripts(run), [])
+  })
+
+  test('下载中途断开（curl 18）写入半截文件：外层 65 且目录无 orca-install-*.sh 残留', () => {
+    const run = runLiner(null, { failure: 'partial' })
+
+    assert.ok(
+      existsSync(join(run.home, 'u276-partial-written')),
+      'the stub must actually write bytes to the -o target before failing'
+    )
+    assert.equal(run.status, 65, run.stderr)
+    assert.match(run.stderr, /安装失败：命令已失效或网络不可达，请让管理员重新生成（65）/)
+    assert.deepEqual(
+      installScripts(run),
+      [],
+      'a partial download must be removed before the 65 exit'
+    )
   })
 
   for (const code of [64, 69, 70]) {

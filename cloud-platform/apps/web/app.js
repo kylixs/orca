@@ -2642,11 +2642,12 @@ function copyCommandAction(cmd) {
  * U182: `bash <(curl …)` exits 0 when the download fails, because bash then
  * runs an empty program. Download first so failure is observable.
  * U181: propagate the install script's own exit code (68/69/70/78); only a
- * successful run removes the temp file, and failures keep it for diagnosis.
+ * successful run removes the temp file, and install failures keep it for
+ * diagnosis. U276: a failed download removes the partial file curl wrote.
  */
 function installCommand(url) {
   const file = '${TMPDIR:-/tmp}/orca-install-$$.sh'
-  return `curl -fsSL "${url}" -o "${file}" || { echo '安装失败：命令已失效或网络不可达，请让管理员重新生成（65）' >&2; exit 65; }; bash "${file}"; code=$?; if [ "$code" -eq 0 ]; then rm -f "${file}" || echo "安装完成，但临时文件未能删除：${file}" >&2; else echo "安装脚本退出码 \${code}，临时文件保留在 ${file}" >&2; fi; exit "$code"`
+  return `curl -fsSL "${url}" -o "${file}" || { rm -f "${file}"; echo '安装失败：命令已失效或网络不可达，请让管理员重新生成（65）' >&2; exit 65; }; bash "${file}"; code=$?; if [ "$code" -eq 0 ]; then rm -f "${file}" || echo "安装完成，但临时文件未能删除：${file}" >&2; else echo "安装脚本退出码 \${code}，临时文件保留在 ${file}" >&2; fi; exit "$code"`
 }
 
 /**

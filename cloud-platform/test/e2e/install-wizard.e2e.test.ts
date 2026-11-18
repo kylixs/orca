@@ -89,12 +89,13 @@ function commandUrl(command: string): string {
 /**
  * U182/U181: a failed download exits 65; otherwise the install script's own
  * exit code is propagated, and a failed run keeps the script for diagnosis.
+ * U276: the failed-download branch also removes the partial file curl wrote.
  */
 function expectedInstallCommand(url: string): string {
   const file = '${TMPDIR:-/tmp}/orca-install-$$.sh'
   // U253: `${code}` braces matter — bash 3.2 consumes the first byte of the
   // UTF-8 comma after a bare `$code`, losing the exit code from the message.
-  return `curl -fsSL "${url}" -o "${file}" || { echo '安装失败：命令已失效或网络不可达，请让管理员重新生成（65）' >&2; exit 65; }; bash "${file}"; code=$?; if [ "$code" -eq 0 ]; then rm -f "${file}" || echo "安装完成，但临时文件未能删除：${file}" >&2; else echo "安装脚本退出码 \${code}，临时文件保留在 ${file}" >&2; fi; exit "$code"`
+  return `curl -fsSL "${url}" -o "${file}" || { rm -f "${file}"; echo '安装失败：命令已失效或网络不可达，请让管理员重新生成（65）' >&2; exit 65; }; bash "${file}"; code=$?; if [ "$code" -eq 0 ]; then rm -f "${file}" || echo "安装完成，但临时文件未能删除：${file}" >&2; else echo "安装脚本退出码 \${code}，临时文件保留在 ${file}" >&2; fi; exit "$code"`
 }
 
 /** A clean-host HOME with TLS stubs so the script skips openssl. */
@@ -2197,7 +2198,10 @@ exit 0
     )
     // U182/U181: a failed download must fail visibly (65) and tell the admin to
     // regenerate it; the install script's own code is propagated, never `1`.
-    assert.match(hostCmd, /\|\| \{ echo '.*请让管理员重新生成（65）' >&2; exit 65; \}/)
+    assert.match(
+      hostCmd,
+      /\|\| \{ rm -f "[^"]+"; echo '.*请让管理员重新生成（65）' >&2; exit 65; \}/
+    )
     assert.ok(hostCmd.includes('code=$?'))
     assert.match(hostCmd, /exit "\$code"$/)
     assert.doesNotMatch(hostCmd, /\|\| exit 1$/)
