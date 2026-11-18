@@ -128,7 +128,7 @@
 | ADMIN-PERM-TAB | 位置即权限三卡片 | FR-9.3 | P0 | 🟢 | 100% | u67-3a/3b、drawer 11/11 |
 | ADMIN-CONSOLE-GATING | 管控面入口门控 | FR-9.7 | P0 | 🟢 | 100% | web-admin-gating 3/3（admin-gating 13 例另计） |
 | ADMIN-CONSOLE-SETTINGS | 平台设置与策略页 | FR-9.4 | P0 | 🟢 | 100% | web-settings 6/6 |
-| CLIENT-INSTALL-ONELINER | 安装命令可照抄执行（退出码/信号/清理） | FR-4.11 | P0 | 🟢 | 100% | 运行期 **14/14**、自检 2/2 |
+| CLIENT-INSTALL-ONELINER | 安装命令可照抄执行（退出码/信号/清理） | FR-4.11 | P0 | 🟢 | 100% | `install-one-liner-runtime` **14/14**、`test-timeout-selfcheck.e2e` **2/2** |
 | CLIENT-ZERO-ENV | 安装即可用、平台地址可填 | FR-2.7 | P0 | 🟢 | 100% | u106 路由套件 |
 | CLIENT-BRANDING-UI | 品牌/登录页/关于页定制 | FR-10.1 | P0 | 🟢 | 100% | m70 验收 |
 | CLIENT-RESILIENCE-OFFLINE | 平台不可用提示 | FR-10.5 | P1 | 🟢 | 100% | m70、m9fix |
