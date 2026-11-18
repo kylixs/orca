@@ -80,7 +80,9 @@ function snapshotOf(store: Store, auditLimit = DEFAULT_AUDIT_LIMIT): SnapshotDoc
       delete persisted.currentRefreshToken
       return [id, persisted]
     }),
-    accessTokens: [...store.accessTokens.entries()],
+    // D18: bearer tokens are regenerable from a refresh; keep the array in the
+    // schema but never write plaintext credentials to disk.
+    accessTokens: [],
     // U233 F6: the map is keyed by sha256(token), so no plaintext reaches disk.
     refreshTokens: [...store.refreshTokens.entries()].map(
       ([digest, sessionId]): Entry<string> => [`${REFRESH_TOKEN_DIGEST_PREFIX}${digest}`, sessionId]
@@ -93,7 +95,9 @@ function snapshotOf(store: Store, auditLimit = DEFAULT_AUDIT_LIMIT): SnapshotDoc
     relayRoutes: [...store.relayRoutes.entries()],
     hostTokens: store.hostTokens,
     installDownloadTokens: store.installDownloadTokens,
-    webHandoffs: [...store.webHandoffs.entries()],
+    // D18: a handoff code is a live credential; one-time codes do not survive
+    // a restart. The empty array keeps the snapshot schema readable by old peers.
+    webHandoffs: [],
     policies: store.policies,
     audit,
     auditSeq: store.auditSeq,
