@@ -47,7 +47,7 @@ const LEGACY_APP_FIXTURE = join(ROOT, 'test/fixtures/u197-legacy-app.js.snapshot
  * change: `sha256sum apps/web/app.js` (macOS/Linux) or
  * `Get-FileHash -Algorithm SHA256 apps/web/app.js` (Windows), then rerun.
  * U225 F1: compared LF-normalised (`sha256Lf`), so line endings never matter. */
-const HEAD_APP_SHA256 = '52cdd24ef2f613a541a1e4f09383441d0c0ffd5fca9796dade2d816f45faf34a'
+const HEAD_APP_SHA256 = 'dc04deb69960a1695581a84ae0ec1812d769abcdebcec6dfe981262e61d34be6'
 /** U225 P3: sha256 of the fixture body after its 13-line provenance header
  * (`tail -n +14 test/fixtures/u197-legacy-app.js.snapshot | sha256sum`). */
 const LEGACY_FIXTURE_BODY_SHA256 =
