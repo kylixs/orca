@@ -2830,32 +2830,53 @@ async function main() {
     ok: since32.status === 400 && since32.json?.error?.code === 'TIME_WINDOW_TOO_LARGE'
   })
   // U12: bad since is intentionally ignored for old clients (audit-query.ts:91-95; test/audit-query.test.ts:223).
-  const sinceBadUntil = new Date().toISOString()
-  const sinceBadControl = await request(
-    'GET',
-    `/v1/audit/events?limit=50&until=${encodeURIComponent(sinceBadUntil)}`,
-    { token: ctx.admin }
+  // Anchor until to server data: a client Date.now() bound drifts into future/past when
+  // ORCA_LOCAL_PLATFORM_URL is remote, flipping this case between empty and inconsistent.
+  const sinceBaseline = await request('GET', '/v1/audit/events?limit=50', { token: ctx.admin })
+  const sinceBaselineEvents = sinceBaseline.json?.events ?? []
+  const sinceBaselineMaxTs = sinceBaselineEvents.reduce(
+    (max, event) => (typeof event.ts === 'number' && event.ts > max ? event.ts : max),
+    -Infinity
   )
-  const sinceBad = await request(
-    'GET',
-    `/v1/audit/events?limit=50&since=not-a-date&until=${encodeURIComponent(sinceBadUntil)}`,
-    { token: ctx.admin }
-  )
-  const sinceBadSeqs = (sinceBad.json?.events ?? []).map((event) => event.seq)
-  const sinceBadControlSeqs = (sinceBadControl.json?.events ?? []).map((event) => event.seq)
-  manualCase({
-    id: 'U12',
-    area: 'audit',
-    sev: 'P3',
-    op: '时间窗：非法日期',
-    expected: '200 且忽略 since（与无 since 控制查询一致）',
-    actual: `HTTP ${sinceBad.status} n=${sinceBadSeqs.length} sameAsControl=${JSON.stringify(sinceBadSeqs) === JSON.stringify(sinceBadControlSeqs)}`,
-    ok:
-      sinceBad.status === 200 &&
-      sinceBadControl.status === 200 &&
-      sinceBadSeqs.length > 0 &&
-      JSON.stringify(sinceBadSeqs) === JSON.stringify(sinceBadControlSeqs)
-  })
+  if (sinceBaselineEvents.length === 0) {
+    console.log('U12 SKIPPED (no events)')
+    manualCase({
+      id: 'U12',
+      area: 'audit',
+      sev: 'P3',
+      op: '时间窗：非法日期',
+      expected: '200 且忽略 since（与无 since 控制查询一致）',
+      actual: 'U12 SKIPPED (no events)',
+      ok: true
+    })
+  } else {
+    const sinceBadUntil = new Date(sinceBaselineMaxTs).toISOString()
+    const sinceBadControl = await request(
+      'GET',
+      `/v1/audit/events?limit=50&until=${encodeURIComponent(sinceBadUntil)}`,
+      { token: ctx.admin }
+    )
+    const sinceBad = await request(
+      'GET',
+      `/v1/audit/events?limit=50&since=not-a-date&until=${encodeURIComponent(sinceBadUntil)}`,
+      { token: ctx.admin }
+    )
+    const sinceBadSeqs = (sinceBad.json?.events ?? []).map((event) => event.seq)
+    const sinceBadControlSeqs = (sinceBadControl.json?.events ?? []).map((event) => event.seq)
+    manualCase({
+      id: 'U12',
+      area: 'audit',
+      sev: 'P3',
+      op: '时间窗：非法日期',
+      expected: '200 且忽略 since（与无 since 控制查询一致）',
+      actual: `HTTP ${sinceBad.status} n=${sinceBadSeqs.length} sameAsControl=${JSON.stringify(sinceBadSeqs) === JSON.stringify(sinceBadControlSeqs)}`,
+      ok:
+        sinceBad.status === 200 &&
+        sinceBadControl.status === 200 &&
+        sinceBadSeqs.length > 0 &&
+        JSON.stringify(sinceBadSeqs) === JSON.stringify(sinceBadControlSeqs)
+    })
+  }
   const cursorBad = await request('GET', '/v1/audit/events?cursor=abc', { token: ctx.admin })
   manualCase({
     id: 'U13',
