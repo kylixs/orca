@@ -254,3 +254,29 @@
 **逐项推荐**：C9 做（归 B）；C6 做（归 B）；C10 缓（先与 U70 对齐）；P4 缓（待 O-12 合规确认）；P5 缓（容量触发，同 D3-B）。
 
 **状态：待用户裁定，未开工。**
+
+---
+
+## 附四：D13/U54-008 克隆失败呈现一页决策包（2026-11-18）
+
+**现状证据**（用户可见路径）
+- 失败只由宿主心跳写入：`cloud-platform/apps/api/src/server.ts:3504-3528`（`provisioned[]` → `status=failed` + `provisioningError`，缺省 `PROVISION_FAILED`）；列表序列化 `server.ts:3492`。
+- Web 列表不显示项目状态：桌面表头 `cloud-platform/apps/web/app.js:2046`、手机卡 `app.js:1062` 只显示主机状态；失败项目仅「打开」禁用，title 为「项目准备失败」（`app.js:1020-1023`）。
+- 原因只在管理员详情抽屉：`app.js:1817-1820`（详情入口 `app.js:1122` 仅 admin）；文案粗到 `PROVISION_FAILED: 项目准备失败，请查看主机日志。`（`src/main/cloud-platform/cloud-project-provision.ts:162-175`；git stderr 因凭证风险不回传，`cloud-provision-assignment.ts:206-215`）。
+- 非管理员点「打开」：`/connect` 的 409 已带 `provisioningError`（`server.ts:7523-7526`），但 `api()` 只取 message（`app.js:108-113`），覆盖层只剩「项目准备失败，暂无法打开。」（`app.js:1499-1505`）。
+- U141/U142 后非法 URL 已在登记时 400（`server.ts:4801-4813`，AC-M3-33 ✅）；剩余失败只有克隆才知道（不可达/无权限/分支不存在）。
+
+**三方案对照**
+
+| 方案 | 代价 | 风险 | 兼容/可见影响 |
+| A 前置校验 | L（3–4 切片）：新增宿主探测 RPC + 创建时同步等待 + 离线/超时语义 | 网络瞬断/限流被误判为拒绝；私有仓库探测扩大凭据面 | 新 RPC 需能力协商；创建从毫秒变秒级 |
+| B 内联原因 | S–M（2–3 切片）：列表行/卡显示失败+原因+重试 | 原因本身粗（宿主脱敏），信息增益有限 | `provisioningError` 已在列表响应，无新 API 字段 |
+| C 现状+文档 | S：标注「失败原因仅管理员详情可见」 | 非管理员无任何解释；管理员仍须多点一层 | 零改动 |
+
+**推荐 B（先内联，不做前置探测）。** 语法错误已被 U141 同步挡住；剩余失败只能真克隆才知道，A 的探测同样会被瞬断误判并拖慢创建。B 复用已有 `provisioningError`，不改 wire：列表行/卡补失败徽标与原因、失败覆盖层读 `err.body.error.provisioningError`，并给管理员「重试」（复用 PATCH repoUrl 重新置 provisioning；若新增 re-provision 端点则需版本门）。
+
+**必补测试（不论选哪个）**
+1. Web 列表：fixture 项目 `status=failed + provisioningError=…`，断言列表行/卡出现失败状态与原因；非管理员点「打开」后失败覆盖层文本含该原因，而非仅通用文案。
+2. API 契约：`GET /v1/projects` 对 failed 返回 `provisioningError`、ready 不带该字段（加性兼容）；若选 A 再加「探测失败→409 且不落库」「探测超时→可重试且不判死」两条。
+
+**状态：待用户裁定，未开工。**
