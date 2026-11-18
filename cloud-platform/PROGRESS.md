@@ -4348,3 +4348,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **U249 语义文档同步**（`61cefc9bd15`，4 文件 +6/−2）：m01 补 body 上限（login/refresh 超限 413；**logout 超限仍静默按空 body**）、m06 补强制下线「审计后重新枚举 + metadata/响应计数语义」并修正过期端点行号、m07 补旧 writer 探测后锁存、business-flows 补快照形态。代理纠正台账一处表述（logout 并不返回 413），已在台账更正。
 - **U249 P3 客户端三项**（`b0183c972f6`，4 文件 +242/−18）：426 归为 `error`（不登出、不清凭据）、超时探测真正 abort（复用 refresh AbortController）、未知能力探测 60s 有界退避（`sessionStorage: orca.authModeProbeFailedAt`，`ok`/`rejected` 清除）；主会话复跑三套件 **71/71**；pin 更新 `1a7bab2b…`。备注：`u197-web-cookie-browser` 已 1067 行（超 max-lines 800），需拆分（未加 disable）。
 - **安装器码值归 78**（`a02e466c14d`，4 文件 ±15）：`ADVERTISE_HOST` 探测失败与自签 TLS 生成失败 64/69 → **78**（与设计 §2.4「配置失败保持 78」一致；69 专指 systemd 服务安装失败），设计 §3.1 步 1 补入两处；单测 12/12 + install-wizard 86/86（主会话复跑），两处变异均红。
+- **类型基线（当前 HEAD，`9514a376e96`）**：`pnpm typecheck:cloud-e2e` 与 `pnpm tc:node` 均 **EXIT=0**（含 build:packages 与 orcad 模板前置），确认 A1–A5 / U249 P3 / 冷读修复后无类型回归。
