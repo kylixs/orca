@@ -39,7 +39,7 @@ before(async () => {
   })
   probeHostId = host.hostId
   probeHostCredential = host.credential
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await service?.stop()
@@ -95,7 +95,7 @@ async function listGrants(): Promise<GrantRow[]> {
   return ((await res.json()) as { grants: GrantRow[] }).grants
 }
 
-test('M116-QA-001 用户级授权按用户名解析为账号：授权真实生效，未知用户被拒', async () => {
+test('M116-QA-001 用户级授权按用户名解析为账号：授权真实生效，未知用户被拒', { timeout: 120_000 }, async () => {
   const lisi = await login(service.url, 'lisi', 'Passw0rd!')
 
   // Before: lisi holds no grant on the seeded project (his groups are developers
@@ -146,9 +146,9 @@ test('M116-QA-001 用户级授权按用户名解析为账号：授权真实生�
     grantedPermissions: visible?.permissions ?? [],
     unknownUser: unknown
   })
-}, 120_000)
+})
 
-test('M116-QA-001 授权变更只撤销该用户的凭证：项目级撤销不得发生', async () => {
+test('M116-QA-001 授权变更只撤销该用户的凭证：项目级撤销不得发生', { timeout: 120_000 }, async () => {
   // zhangsan works on the project through his group grant; his session must be
   // untouched by lisi's grant change.
   const zhangsan = await login(service.url, 'zhangsan', 'Passw0rd!')
@@ -213,4 +213,4 @@ test('M116-QA-001 授权变更只撤销该用户的凭证：项目级撤销不�
     revokedProjects: revoked.projects.map((p) => p.id),
     zhangsanPermissionsUnchanged: true
   })
-}, 120_000)
+})

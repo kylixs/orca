@@ -105,7 +105,7 @@ before(async () => {
     'api-m106'
   )
   browser = await chromium.launch({ channel: 'chrome', headless: true })
-}, 300_000)
+}, { timeout: 300_000 })
 
 after(async () => {
   await browser?.close()
@@ -148,7 +148,7 @@ async function listSample(page: import('playwright').Page): Promise<Sample> {
   return { elapsedMs, rows }
 }
 
-test('M106-1 200 个项目的工作台列表加载 P95 ≤ 500ms；注入 700ms 延迟时同一断言转红', async () => {
+test('M106-1 200 个项目的工作台列表加载 P95 ≤ 500ms；注入 700ms 延迟时同一断言转红', { timeout: 300_000 }, async () => {
   const total = await seedProjects()
   assert.equal(total, PROJECTS, `developer must see exactly ${PROJECTS} projects, saw ${total}`)
 
@@ -202,4 +202,4 @@ test('M106-1 200 个项目的工作台列表加载 P95 ≤ 500ms；注入 700ms 
   })
 
   await page.context().close()
-}, 300_000)
+})

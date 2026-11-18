@@ -81,7 +81,7 @@ before(async () => {
     'api-u198-legacy-reload'
   )
   browser = await chromium.launch({ headless: true })
-}, 180_000)
+}, { timeout: 180_000 })
 
 after(async () => {
   await browser?.close()

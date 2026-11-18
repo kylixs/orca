@@ -23,7 +23,7 @@ before(async () => {
     'api-u106-mobile'
   )
   browser = await chromium.launch({ channel: 'chrome', headless: true })
-}, 180_000)
+}, { timeout: 180_000 })
 
 after(async () => {
   await browser?.close()

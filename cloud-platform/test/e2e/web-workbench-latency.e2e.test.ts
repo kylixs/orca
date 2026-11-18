@@ -37,7 +37,7 @@ before(async () => {
   )
   // Headless and no viewport chrome: this must never take the user's screen.
   browser = await chromium.launch({ channel: 'chrome', headless: true })
-}, 180_000)
+}, { timeout: 180_000 })
 
 after(async () => {
   await browser?.close()
@@ -88,7 +88,7 @@ async function sample(index: number, extraDelayMs = 0): Promise<Sample> {
   }
 }
 
-test('AC-01 提交登录到工作台可交互 P95 ≤ 1.5s（真实 Chrome 渲染，50 次采样）', async () => {
+test('AC-01 提交登录到工作台可交互 P95 ≤ 1.5s（真实 Chrome 渲染，50 次采样）', { timeout: 300_000 }, async () => {
   // One warm-up sample: the requirement excludes first install, not steady state.
   await sample(-1)
   const samples: Sample[] = []
@@ -132,4 +132,4 @@ test('AC-01 提交登录到工作台可交互 P95 ≤ 1.5s（真实 Chrome 渲�
     slowP95 - measuredP95 >= 300,
     `a 400ms backend regression must show up; baseline ${measuredP95}ms vs slow ${slowP95}ms`
   )
-}, 300_000)
+})

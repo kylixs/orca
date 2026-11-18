@@ -98,7 +98,7 @@ before(async () => {
   const admin = await login(gatedAdmins, 'admin', ADMIN_PW)
   assert.equal(admin.status, 200)
   adminToken = admin.body.accessToken ?? ''
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await Promise.all(

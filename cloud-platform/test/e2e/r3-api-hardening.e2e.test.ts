@@ -144,7 +144,7 @@ before(async () => {
     'api-r3-hardening'
   )
   adminToken = await login(api.url, 'admin', 'Adm1n!')
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await api?.stop()
