@@ -97,7 +97,7 @@ function expectedInstallCommand(url: string): string {
   const file = '${TMPDIR:-/tmp}/orca-install-$$.sh'
   // U253: `${code}` braces matter — bash 3.2 consumes the first byte of the
   // UTF-8 comma after a bare `$code`, losing the exit code from the message.
-  return `file="${file}"; done=0; trap '[ "$done" = 1 ] || rm -f "$file"' EXIT; trap 'exit 130' INT; trap 'exit 143' TERM; curl -fsSL "${url}" -o "$file" || { rm -f "$file" || echo '临时文件清理失败：'"$file" >&2; echo '安装失败：命令已失效或网络不可达，请让管理员重新生成（65）' >&2; exit 65; }; done=1; bash "$file"; code=$?; if [ "$code" -eq 0 ]; then rm -f "$file" || echo "安装完成，但临时文件未能删除：$file" >&2; else echo "安装脚本退出码 \${code}，临时文件保留在 $file" >&2; fi; exit "$code"`
+  return `file="${file}"; done=0; trap '[ "$done" = 1 ] || rm -f "$file"' EXIT; trap 'exit 130' INT; trap 'exit 143' TERM; trap 'exit 131' QUIT; curl -fsSL "${url}" -o "$file" || { rm -f "$file" || echo '临时文件清理失败：'"$file" >&2; echo '安装失败：命令已失效或网络不可达，请让管理员重新生成（65）' >&2; exit 65; }; done=1; bash "$file"; code=$?; if [ "$code" -eq 0 ]; then rm -f "$file" || echo "安装完成，但临时文件未能删除：$file" >&2; else echo "安装脚本退出码 \${code}，临时文件保留在 $file" >&2; fi; exit "$code"`
 }
 
 /** A clean-host HOME with TLS stubs so the script skips openssl. */
