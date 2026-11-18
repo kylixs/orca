@@ -205,30 +205,67 @@ async function openTlsSocket(): Promise<TLSSocket> {
   return socket
 }
 
-type RawTlsResponse = { status: number; headers: Record<string, string>; body: string }
+type RawTlsResponse = {
+  status: number
+  headers: Record<string, string>
+  body: string
+  /** Time from the first write to the complete response. */
+  responseMs: number
+  /** Time to the socket close, or null when the close was still awaited at the deadline. */
+  closeMs: number | null
+  bytesWrittenAtClose: number
+  errors: string[]
+}
+
+type RawTlsResponseOptions = {
+  /** Keep listening after the response for the server-issued close. */
+  awaitClose?: boolean
+  /** Runs once the response is complete, before the awaited close arrives. */
+  onResponse?: () => void
+}
 
 /** Reads one framed response off a raw TLS socket. */
 function readTlsResponse(
   socket: TLSSocket,
   timeoutMs: number,
-  label: string
+  label: string,
+  options: RawTlsResponseOptions = {}
 ): Promise<RawTlsResponse> {
   return new Promise((resolve, reject) => {
+    const started = Date.now()
+    const errors: string[] = []
     let buffer = Buffer.alloc(0)
     let headerEnd = -1
     let expectedBody = 0
     let chunked = false
     let chunkCursor = 0
     let chunkedBody = Buffer.alloc(0)
+    let bodyText = ''
     let status = 0
     const headers: Record<string, string> = {}
     let done = false
+    let responseDone = false
+    let responseMs = 0
+    let closeMs: number | null = null
     const cleanup = (): void => {
       done = true
       clearTimeout(timer)
       socket.off('data', onData)
       socket.off('close', onClose)
       socket.off('error', onError)
+    }
+    const result = (): RawTlsResponse => ({
+      status,
+      headers,
+      body: bodyText,
+      responseMs,
+      closeMs,
+      bytesWrittenAtClose: socket.bytesWritten,
+      errors: [...errors]
+    })
+    const settle = (): void => {
+      cleanup()
+      resolve(result())
     }
     const consumeChunked = (): boolean => {
       while (true) {
@@ -244,20 +281,21 @@ function readTlsResponse(
       }
     }
     const maybeResolve = (): void => {
-      if (done || headerEnd === -1) return
+      if (done || responseDone || headerEnd === -1) return
       if (chunked) {
         if (!consumeChunked()) return
-        cleanup()
-        resolve({ status, headers, body: chunkedBody.toString('utf8') })
+        bodyText = chunkedBody.toString('utf8')
+      } else {
+        if (buffer.length - headerEnd < expectedBody) return
+        bodyText = buffer.subarray(headerEnd, headerEnd + expectedBody).toString('utf8')
+      }
+      responseDone = true
+      responseMs = Date.now() - started
+      if (!options.awaitClose) {
+        settle()
         return
       }
-      if (buffer.length - headerEnd < expectedBody) return
-      cleanup()
-      resolve({
-        status,
-        headers,
-        body: buffer.subarray(headerEnd, headerEnd + expectedBody).toString('utf8')
-      })
+      options.onResponse?.()
     }
     const onData = (chunk: Buffer): void => {
       buffer = Buffer.concat([buffer, chunk])
@@ -280,19 +318,38 @@ function readTlsResponse(
     }
     const onClose = (): void => {
       if (done) return
-      maybeResolve()
-      if (done) return
+      closeMs = Date.now() - started
+      if (!responseDone) {
+        maybeResolve()
+      }
+      if (responseDone) {
+        settle()
+        return
+      }
       cleanup()
       reject(new Error(`${label}: socket closed before a complete response`))
     }
     const onError = (error: Error): void => {
       if (done) return
-      maybeResolve()
-      if (done) return
+      errors.push(error.message)
+      // A reset after the full response is the server tearing down an unread body.
+      if (responseDone && options.awaitClose) return
+      if (!responseDone) {
+        maybeResolve()
+      }
+      if (responseDone) {
+        settle()
+        return
+      }
       cleanup()
       reject(error)
     }
     const timer = setTimeout(() => {
+      if (done) return
+      if (responseDone) {
+        settle()
+        return
+      }
       cleanup()
       reject(new Error(`${label}: no response within ${timeoutMs}ms`))
     }, timeoutMs)
@@ -690,6 +747,86 @@ describe('M9 内部通道 mTLS', () => {
           firstStatus: first.status,
           secondStatus: second.status,
           firstConnection: first.headers.connection ?? null
+        })
+      } finally {
+        socket.destroy()
+      }
+    },
+    { timeout: 8000 }
+  )
+
+  test(
+    'U270: 内部通道 chunked 32 KiB 超 16 KiB 预算 → 401 可达后连接关闭',
+    async (t) => {
+      const socket = await openTlsSocket()
+      const body = Buffer.alloc(32 * 1024, 'x')
+      const preResponseShard = 8 * 1024
+      const requestHead = [
+        'POST /v1/internal/relay-routes HTTP/1.1',
+        'Host: 127.0.0.1',
+        'Content-Type: application/json',
+        'x-internal-token: wrong-token',
+        'Transfer-Encoding: chunked',
+        'Connection: keep-alive',
+        '',
+        ''
+      ].join('\r\n')
+      try {
+        const pending = readTlsResponse(socket, 4000, 'chunked 32 KiB over budget', {
+          awaitClose: true,
+          onResponse: () => {
+            // Finish the one legal chunk and terminate; the tail crosses the drain bound.
+            socket.write(body.subarray(preResponseShard))
+            socket.write('\r\n')
+            socket.write('0\r\n\r\n')
+          }
+        })
+        socket.write(requestHead)
+        socket.write(`${body.length.toString(16)}\r\n`)
+        socket.write(body.subarray(0, preResponseShard))
+        const result = await pending
+        t.diagnostic(
+          `32 KiB chunked: response=${result.responseMs}ms, ` +
+            `close=${result.closeMs === null ? 'not closed' : `${result.closeMs}ms`}, ` +
+            `bytesWrittenAtClose=${result.bytesWrittenAtClose}`
+        )
+        assert.equal(
+          result.status,
+          401,
+          'the refusal is readable before the bound closes the socket'
+        )
+        assert.notEqual(
+          result.headers.connection,
+          'close',
+          'chunked is not closed from the header alone'
+        )
+        assert.ok(
+          result.closeMs !== null,
+          'a chunked body past the 16 KiB bound must close the connection'
+        )
+        const closeMs = result.closeMs
+        assert.ok(
+          closeMs >= result.responseMs,
+          `the refusal (${result.responseMs}ms) must precede the close (${closeMs}ms)`
+        )
+        // One legal frame: request head + size line + 32,768 B body + 2 B chunk
+        // CRLF + 5 B terminator.
+        const framedBytes =
+          Buffer.byteLength(requestHead, 'latin1') +
+          Buffer.byteLength(`${body.length.toString(16)}\r\n`, 'latin1') +
+          body.length +
+          2 +
+          5
+        assert.ok(
+          result.bytesWrittenAtClose >= framedBytes &&
+            result.bytesWrittenAtClose <= framedBytes + 1,
+          `the whole legal frame reached the socket: ` +
+            `${result.bytesWrittenAtClose} B vs ${framedBytes} B`
+        )
+        assert.ok(result.responseMs < 1000, `the refusal took ${result.responseMs}ms`)
+        saveEvidence(EVIDENCE, 'unread-chunked-32k-close.json', {
+          ...result,
+          framedBytes
         })
       } finally {
         socket.destroy()
