@@ -145,6 +145,8 @@ ok → clearLoginFailures（:1722 原位——密码已证即清计数）
 
 Gitea/GitLab 的 filter miss 一律通算「登录失败」、文案含混（GitLab 甚至置 `ldap_blocked`）；本平台明确提示要求**区分**「用户不存在」与「在目录但未入组」。生产 adapter（`createLdapsAdapter`，独立工单实现）流程：
 
+> **filter/DN 转义契约（P1-6）**：用户名按 RFC 4515 转义、准入组 CN 单值校验（拒绝 `,` `=` `\` 等 DN 特殊字符）、禁止自由 filter——以 **G04 §4-3** 为准；平台不构造 filter，转义责任在 adapter。**G04-1（依赖评审）是生产 adapter 的开工门**（§5.2）。
+
 ```
 准入开启（requiredGroup 存在）：
 1. 服务账号 bind（或匿名 search 目录）——search 权限前置（§5.3）
@@ -169,7 +171,7 @@ ORCA_CLOUD_LDAP_REQUIRED_GROUP    # 准入组 CN 名单值；未设置/空白=�
 
 - `ApiConfig` 加性字段 `ldapRequiredGroup?: string`（同 `loginLockoutUrl` 形态）；createApp 读点：`(config.ldapRequiredGroup ?? process.env.ORCA_CLOUD_LDAP_REQUIRED_GROUP ?? '').trim()` 归一为空则 null——trim 防「空白 env 意外开启」；进程内测试传 config 不碰 env。
 - 入口装配（:4270 条件 spread 同款）：`...(process.env.ORCA_CLOUD_LDAP_REQUIRED_GROUP ? { ldapRequiredGroup: process.env.ORCA_CLOUD_LDAP_REQUIRED_GROUP } : {})`。
-- 默认 Mock 装配（:1118）改为 `config.ldap ?? new MockLdapAdapter(accounts, requiredGroup ? { requiredGroup } : undefined)`——env 一到，Mock 即镜像生产 adapter 的 filter 行为（§5.1），e2e 走生产同形路径。
+- 默认 Mock 装配（:1118）改为 `config.ldap ?? new MockLdapAdapter(accounts, requiredGroup ? { requiredGroup } : undefined)`——env 一到，Mock 即镜像生产 adapter 的 filter 行为（§5.1），e2e 走对外行为同形的路径（判定顺序不同，见 §5.1 末）。
 - 组 DN 展开（生产）：CN 名单值 + 组搜索基（生产 adapter 配置键，§5.2）合成 memberOf 值；最终键名归生产工单钉（§8-Q5）。
 
 **路径覆盖（R4：种子/会话/既有登录路径全走过滤）**：
@@ -187,6 +189,7 @@ ORCA_CLOUD_LDAP_REQUIRED_GROUP    # 准入组 CN 名单值；未设置/空白=�
 - 事实源链：目录用户条目 **memberOf** 属性（查询侧 filter 条件与回填属性同源）→ adapter DN→CN 归一 → `profile.groups` → 闸门 `includes` 判断。
 - 形态**定死 memberOf，不做双栈**（survey §3-2；用户两次指令确认）：posixGroup（无 memberOf 属性的目录）不在本设计范围——该形态下 memberOf filter/回填皆空 → 准入开启时 fail-closed 拒绝（方向安全）；登记 §8-Q2，需求出现再设计。
 - env/闸门匹配：**精确、大小写敏感**的 CN 相等（`Array.prototype.includes`）。CN 派先例（GitLab admin_group/Gitea 组过滤/Jenkins，survey §2-①）；Grafana `org_role` 大小写敏感同类。大小写偏差=fail-closed 拒绝（放行方向=提权风险面，不做折叠）；运维修正组名即可，边界进 §6 用例。
+- **运维规则（P2-5，fail-closed）**：准入组名与目录组 CN 必须逐字符精确、大小写一致；任何偏差一律 fail-closed 拒绝，平台不做大小写折叠（半套折叠会让准入与授权出现两套匹配规则）。组改名（含仅大小写变化）后须同步 env 与组授权主体并重启；旧 `user.groups` 并集不会自动迁移（撤销边界待 D15-1）。
 
 ### 3.6 兼容性声明（调度裁定项 7）
 
@@ -229,9 +232,9 @@ survey §3-6 点名的冲突点（「platform-admins 组首登 seed 平台管理
 
 ## 5. Mock / 生产适配
 
-### 5.1 Mock：真实适配（镜像生产 filter 路径，保 e2e 保真）
+### 5.1 Mock：真实适配（对外行为同形、判定顺序不同，保 e2e 保真）
 
-用户钦定查询侧 filter 后，Mock 若只靠平台闸门，e2e 验到的就不是生产同形路径。适配（最小改动）：
+用户钦定查询侧 filter 后，Mock 若只靠平台闸门，e2e 验到的就不是对外行为同形的路径。适配（最小改动）：
 
 ```
 // ldap.ts：构造参数加可选配置
@@ -241,7 +244,7 @@ new MockLdapAdapter(accounts, { requiredGroup?: string })
 //（先核密码、再判组——顺序与生产二分诊断相反，但对外结果一致：不在组一律 not_admitted）
 ```
 
-- 装配：:1118 处 requiredGroup 存在即透传给 Mock（§3.4）——**e2e 经 env 驱动即走 adapter 侧 not_admitted 路径**（生产同形）。
+- 装配：:1118 处 requiredGroup 存在即透传给 Mock（§3.4）——**e2e 经 env 驱动即走 adapter 侧 not_admitted 路径**（对外行为同形、判定顺序不同）。
 - `ldapProfile({ groups })` 按账户可配（ldap.ts:37-50）不变；默认三账户 profile 恰好构成双向门矩阵：
 
 | mock 账户  | profile.groups                   | env=`platform-admins` 时 | env=`developers` 时 |
@@ -251,13 +254,14 @@ new MockLdapAdapter(accounts, { requiredGroup?: string })
 | lisi       | `['developers']`（缺省 :48）     | 401                      | 200                  |
 
 - 自定义组名（orca-cloud）、多组 profile 的用例走**进程内注入**：`createApp({ ldap: stubAdapter, ldapRequiredGroup })`（ApiConfig.ldap :93 + 新 config 字段）。
-- 如实说明差异：Mock 先验密码后判组、生产先 filter 后验密码——「错误密码+不在组」在 Mock 得 `invalid_credentials`（+计数）、生产得 `not_admitted`（不计数，密码不泄漏目录外信息恰是生产语义的优点）；在组/不在组主路径两形态行为完全一致。
+- 如实说明差异（**对外行为同形、判定顺序不同**）：Mock 先验密码后判组、生产先 filter 后验密码——「错误密码+不在组」在 Mock 得 `invalid_credentials`（+计数）、生产得 `not_admitted`（不计数，密码不泄漏目录外信息恰是生产语义的优点）；在组/不在组主路径两形态行为完全一致。
 
 ### 5.2 生产 LDAPS：同接口、filter 内嵌、引用可复用部分
 
 - **接口零改动**（reason 加性除外，§3.2）：`createLdapsAdapter(config)` 承接作废方案 git 历史 `170f4e28f84` §6 的已核实骨架——TLS 连接、用户 DN 搜索、用户密码 simple bind（认证本体）、自读组属性、DN→CN 归一、`ORCA_CLOUD_LDAP_URL` 存在即选生产 adapter 的入口装配、`ApiConfig.ldap` 注入点不动。**两处语义修正**：①用户查找 filter 内嵌 memberOf 准入条件（§3.3，本设计核心增量）；②组的用途从「角色重算」改为「准入+组并集合并（Grant 组主体）」。
 - **配置键**（生产工单钉最终名，§8-Q5）：`ORCA_CLOUD_LDAP_URL` / `ORCA_CLOUD_LDAP_GROUP_ATTR`（缺省 memberOf）/ 组搜索基（合成 `CN=<准入组>,<基>`）/ 服务账号 bindDN+bindPassword（search 权限，§5.3）。
 - **过滤位置声明（如实）**：主执行在 LDAP 查询侧（用户钦定形态 A）；平台闸门保留为统一语义点+防御第二道（§3.1）。与 Gitea/GitLab 的差别在二分 miss 诊断与独立审计（§3.3）——形态一致、诊断更强。
+- **filter/DN 转义契约（引用 G04 §4-3）**：用户名 RFC 4515 转义、准入组 CN 单值校验（拒绝 DN 特殊字符）、禁止自由 filter 由生产 adapter 承接，本设计平台侧不重复实现。**G04-1 依赖评审是生产 adapter 的开工门**——未通过前不开工 adapter（G04 仍为草案），也不得宣称生产 adapter 可用。
 - **依赖前置**：Node 内置无 LDAP 客户端，候选 `ldapts`（作废方案 git 历史 170f4e28f84 §6 评审结论照抄）；本仓库零运行时依赖纪律（cloud-platform/PLAN.md §0）→ 引依赖须独立评审，生产 adapter 连同评审走独立工单；本设计的准入链（Mock/注入）零新依赖即可全量验证。
 
 ### 5.3 simple-bind 能力边界（如实声明）
@@ -271,6 +275,27 @@ simple bind 只回答「凭据对不对」，**不具备任何查询能力**—�
 
 前提不满足时：准入开启 → 所有登录在 filter 阶段失败（uid 复查命中则 `not_admitted`）——**全员 fail-closed，无提权风险，方向安全**；准入关闭 → 回到现状登录（组回填空仅影响组并集展示）。四条是**部署前置条件**，进运维 checklist；真实目录核实挂 `ORCA_REAL_LDAP_TEST=1` 门（作废方案 git 历史 170f4e28f84 §6 先例），归生产 adapter 工单。
 
+### 5.4 生产启用/回滚运维 runbook（P2-3、P2-5，零语义）
+
+> 本 runbook 只固定操作顺序与 fail-closed 规则，不裁定 D15-1..8 的任何语义项（撤销边界、绝对寿命、503、嵌套组、未认证枚举等仍在 D 表待裁定）。生产 adapter 本体仍归 G04（G04-1 为开工门）；在 adapter 落地前，本 runbook 只适用于 Mock/注入形态的准入链，不得据此宣称生产 adapter 已实现。
+
+**启用顺序（必须按序）**：
+
+1. **入组**：把启动种子 admin 及全部应准入用户加入目录准入组 CN；核实 §5.3 四条目录前置（可 search、条目含 memberOf、服务账号权限、登录属性）。
+2. **先授权（如用组主体）**：若主机/项目授权以准入组为主体，先完成 `HostGrant`/`Grant` 写入（主体名=组 CN），再进入下一步；冷启动先授权后设 env，避免「用户已能登录但组授权尚未建立」的空窗。
+3. **升级全副本**：所有 API 副本升级到含准入链的版本并重启；**旧副本未升级前不得设 env**（混合版本旧副本 fail-open；是否要求共享配置见 D15-8）。
+4. **设 env**：所有副本设置 `ORCA_CLOUD_LDAP_REQUIRED_GROUP=<CN>`；组名与目录 CN 必须精确、大小写一致（P2-5）。
+5. **重启**：逐副本重启使 env 生效（env 只在启动读点生效，无热加载）。
+6. **验证**：管理员登录 200；非准入组账号 401 `LDAP_GROUP_NOT_ADMITTED` +「账号未加入平台准入组。」；审计可见 `login/failure reason=ldap_group_denied`；拒绝不增加锁定计数；启动日志打印准入组名（不含凭据）。
+
+**回滚（撤 env 重启）**：移除（或清空）全部副本的 `ORCA_CLOUD_LDAP_REQUIRED_GROUP` 并重启 → 回到现状全放行；已拒用户无 User 行、无会话，无需善后；已在组用户不受影响。
+
+**运维规则（P2-5，fail-closed）**：
+
+- 准入组名与目录组 CN 必须逐字符精确、大小写一致；任何偏差=fail-closed 拒绝，平台不折叠大小写、不做前缀/同名模糊匹配（与 §3.5 一致）。
+- 组改名（即使仅大小写变化）后必须同步 env、组授权主体并重启；旧 `user.groups` 并集不会自动迁移（撤销边界待 D15-1）。
+- 目录不可达/搜索失败且准入开启时全员 fail-closed 拒绝（方向安全）；不得以降级 Mock 或跳过准入作应急，故障期按上述回滚步骤撤 env。
+
 ---
 
 ## 6. 测试计划
@@ -280,7 +305,7 @@ simple bind 只回答「凭据对不对」，**不具备任何查询能力**—�
 | #   | 用例                                       | 断言                                                                                                                                                                                                        |
 | --- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A1  | 在组登录成功（两层各验）                   | 200；roles 按种子/override 规则（与组无关）；`user.groups` 含准入组                                                                                                                                          |
-| A2  | 不在组拒绝（adapter 侧，生产同形）         | 401 + `LDAP_GROUP_NOT_ADMITTED` + 明确提示文案；store 无该用户行（未 seed）；锁定计数**不增不清**（`recordLoginFailure`/`clearLoginFailures` 均未触）                                                        |
+| A2  | 不在组拒绝（adapter 侧，对外行为同形）     | 401 + `LDAP_GROUP_NOT_ADMITTED` + 明确提示文案；store 无该用户行（未 seed）；锁定计数**不增不清**（`recordLoginFailure`/`clearLoginFailures` 均未触）                                                        |
 | A3  | 不在组拒绝（闸门侧：注入无 requiredGroup 概念的 adapter） | 同码同文案同审计；清零已发生、不增量                                                                                                                                                            |
 | A4  | 拒绝后再入组                               | A2 后 adapter 改判在组 → 同账密立即 200（无锁定残留）                                                                                                                                                         |
 | A5  | 未配置 env 零回归                          | `ldapRequiredGroup` 缺省 → 三 mock 账户全 200；无 `not_admitted`、无 `ldap_group_denied` 审计；:1731 废除后 lisi 首登 roles=`['developer']` 不变                                                              |
@@ -292,7 +317,7 @@ simple bind 只回答「凭据对不对」，**不具备任何查询能力**—�
 | A11 | env 设置 + LDAP 不可达（fail-closed 边界） | 注入恒 unavailable adapter + env 开启 → `!ok` 路径无会话、无 seed、无准入绕过；**现状如实记录**：:1703-1720 不分 reason，unavailable 得 401+计数（既有疣）——`not_admitted` 分支不改变该现状，503 不计数改进沿作废方案 LG-8 挂生产工单 |
 | A12 | 审计事件落链                               | A2/A3 拒绝事件经 `/v1/audit/verify` 验链通过；事件可经审计查询按 `reason=ldap_group_denied` 检索；metadata 参与哈希（改写即断链，沿 U66 语义）                                                                |
 
-### 6.2 e2e（`test/e2e/ldap-admission.e2e.test.ts`；spawnService + env，真实 HTTP，走生产同形 adapter 路径）
+### 6.2 e2e（`test/e2e/ldap-admission.e2e.test.ts`；spawnService + env，真实 HTTP，走对外行为同形的 adapter 路径；判定顺序不同）
 
 | #   | 用例                                             | 断言                                                                                 |
 | --- | ------------------------------------------------ | ------------------------------------------------------------------------------------ |

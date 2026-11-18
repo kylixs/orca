@@ -38,7 +38,7 @@
 - `User.roleOverride?: 'developer'|'auditor'|'admin'`（`store.ts:14`）：非 null 时登录 seed/重算以覆盖为准；页面写覆盖即设该字段。
 - 端点 `PUT /v1/users/{id}/roles`（admin-only）：400 `ROLE_INVALID`、404 `USER_NOT_FOUND`、403 + denied 审计；写 `role_update` 审计（`from/to/username/revoked`）；管理员降级调用 `revokeUserCredentials(username,'role_changed')`（≤60 s 心跳闭环），升级不撤销。
 - 服务端每请求按 store 活用户实时判定角色（token 为 opaque 键，非 roles 快照）；前端导航在登录响应快照上渲染，角色变更后旧页面导航可能陈旧，直到 `/v1/me` 或 403 刷新。
-- LDAP 只做登录准入门槛（`ORCA_CLOUD_LDAP_REQUIRED_GROUP`），**组→角色映射已废除**；新用户首登一律普通，升权走用户管理页覆盖。
+- LDAP 只做登录准入门槛（`ORCA_CLOUD_LDAP_REQUIRED_GROUP`），**组→角色映射已废除**；新用户首登一律普通，升权走用户管理页覆盖。组名与组授权主体匹配均为**精确、大小写敏感、fail-closed**（运维规则，详见准入设计 §3.5/§5.4）；准入启用/回滚 runbook 见该设计 §5.4。
 
 ## 4. 资源角色（三卡片）与位映射
 
@@ -87,6 +87,7 @@ canCreateProjectOnHost = isAdmin || hostBits.has('provision')
 3. **全权是来源**：`view+provision` 给该主机全部非归档项目可见性与六操作位；`download` 只继承项目显式位 + 策略，不由主机推导。
 4. **判定默认拒绝**：可见性/打开/签票统一 `effectiveProjectPermissions(...).includes('open')`；宿主按票据 `perms` 的方法映射逐方法拒绝（`cloud-rpc-permission.ts`），宿主无第二套主机级判断。
 5. **审计**：授权写 `grant_update` / `host_grant_update`；拒绝写 denied；角色写 `role_update`。
+6. **组主体匹配精确、大小写敏感**：`user.groups` 与组授权 `subjectId` 按字符串精确匹配，不做大小写折叠/前缀匹配；LDAP 准入组同理 fail-closed（P2-5 运维规则）。
 
 ## 5. 现状 vs 设计（尚未实现/有偏差）
 

@@ -106,8 +106,9 @@
 
 **服务端认证语义（现状）**
 
-- 密码只经 LDAP adapter 校验，平台不存密码；生产为 LDAPS simple-bind adapter（代码中仅 Mock 实现，`ldap.ts` 注释声明生产接同接口）。
+- 密码只经 LDAP adapter 校验，平台不存密码；生产为 LDAPS simple-bind adapter（代码中仅 Mock 实现，`ldap.ts` 注释声明生产接同接口；filter/DN 转义与 CN 单值校验按 G04 §4-3，G04-1 是生产 adapter 开工门）。
 - 准入组语义（U69a 裁定）：**组=登录准入，不是角色映射**；新用户首登角色一律 `developer`，角色由平台内用户管理覆盖（`roleOverride` 优先）。
+- **准入运维规则（P2-3/P2-5，零语义）**：组名与目录 CN 必须精确、大小写敏感，不匹配一律 fail-closed 拒绝；启用顺序=入组→（如用组主体先建授权）→升级全副本→设 env→重启→验证，回滚=撤 env 重启（详见 `work-orders/ldap-group-admission-design.md` §5.4）。旧副本未升级前不得设 env（混合版本 fail-open，D15-8 待裁定）。
 - 会话：access/refresh TTL 见上表；旧 body 模式 refresh 每次旋转，旧值宽限期内可复用、宽限期外撤销会话；Cookie 模式 refresh 不轮换。
 - 锁定计数：配置 `ORCA_CLOUD_LOGIN_LOCKOUT_URL` 时走共享服务（不可达 → 登录 `503 PLATFORM_UNAVAILABLE`，fail-closed）；未配置时进程内计数（5 次 / 15 分钟）。
 - 审计：登录成功/失败、登出、`refresh.reuse_detected`、`refresh.grace_reuse` 均落链；复用事件只记来源，不记 token（`server.ts:4051-4059,4080-4088,4101-4109`；`refresh-cookie` 审计用例）。
@@ -218,7 +219,7 @@
 - ⛔ **U219/D17（AC9b/AC9c/AC15(g)）**：迁移分支「无能力标记时加载先发一次无 body 探测」未实现；`u197-migration-browser` 的 AC15(g) 单次重载用例与 `u197-web-cookie-browser-race-probe` 的 AC9c 均为 skip。现状是渐进迁移，且换新构建首次加载不迁移（INVALID-FACT 已如实标注）。
 - ✅ **U228**：禁用账号登录/刷新复查与「重放仍 401 即登出」已合入；覆盖见 `u228-disabled-user-session.e2e.test.ts`、`u228-web-disabled-session.e2e.test.ts`。
 - 浏览器端「重放仍 401 → 自动登出」目前由 happy-dom 套件覆盖（`u228-web-disabled-session`）；真实 Chromium 同分支未单列（P3）。
-- 生产 LDAPS adapter 不在本仓库实现（仅 Mock），真实 bind/`memberOf` 过滤行为无法从当前代码验证。
+- 生产 LDAPS adapter 不在本仓库实现（仅 Mock），真实 bind/`memberOf` 过滤行为无法从当前代码验证；生产 adapter 的 filter/DN 转义契约见 G04 §4-3，G04-1（依赖评审）为开工门，本文件不宣称已实现。
 - 「刷新后仅缓存 user、无 token」路径由 `session-renewal` AC-M1-14 覆盖（happy-dom），真实 Chromium 无同名用例。
 - 登录页密码显示切换仍仅手测（WEB-R2-011）。
 - 探测/验证命令：`pnpm test cloud-platform/test/e2e/refresh-cookie.e2e.test.ts`、`…/u197-web-cookie-browser.e2e.test.ts`、`…/u197-web-cookie-browser-race-probe.e2e.test.ts`、`…/u198-legacy-reload.e2e.test.ts`（真实 Chromium 需本机可启动 headless Chromium）。
