@@ -288,3 +288,5 @@
 三选项：**A** PR 上传统（最小改动，但模板缺口未解）；**B** 新增 `workflow_dispatch` 构建 job，复用 `build_template: true` 并设 `ORCA_REQUIRE_ORCAD_TEMPLATE=1`（推荐，产物精确绑定验收 SHA）；**C** 直接用 release 产物（零改动，但验收对象是 bump 后 commit）。
 
 状态：待用户裁定，未改动任何工作流。
+
+> 编号对照（2026-11-18）：附四的「D13」与决策索引的「D22」是**同一项**（克隆失败呈现）；索引预留的 D22（`session.revoked`）已并入 D20 词汇批；D23 与 U245③ 为同一项。裁定任一处即视为全部生效。
