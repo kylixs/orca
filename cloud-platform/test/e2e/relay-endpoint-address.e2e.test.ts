@@ -142,7 +142,7 @@ before(async () => {
     apiUrl: api.url,
     internalToken: INTERNAL_TOKEN
   })
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await sourceRelay?.close()

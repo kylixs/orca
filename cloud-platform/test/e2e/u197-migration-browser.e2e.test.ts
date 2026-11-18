@@ -210,7 +210,7 @@ before(async () => {
     'api-u197-migration-browser-never'
   )
   browser = await chromium.launch({ headless: true })
-}, 180_000)
+}, { timeout: 180_000 })
 
 after(async () => {
   await browser?.close()

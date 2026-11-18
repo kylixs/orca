@@ -66,7 +66,7 @@ before(async () => {
   assert.ok(target, 'the seeded developer must exist')
   userId = target.id
   userName = target.displayName
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await service?.stop()

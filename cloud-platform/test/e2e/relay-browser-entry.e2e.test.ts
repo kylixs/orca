@@ -187,7 +187,7 @@ before(async () => {
     apiUrl: api.url,
     internalToken: INTERNAL_TOKEN
   })
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   if (exportedPublicHost !== undefined) process.env.RELAY_BROWSER_PUBLIC_HOST = exportedPublicHost
@@ -294,7 +294,7 @@ describe('W6b 平台浏览器入口字段', () => {
     saveEvidence(EVIDENCE, 'connect-payload.json', { browserEntryUrl: body.host?.browserEntryUrl })
   })
 
-  test('无中继宣告 browserHost：入口一律空串', async () => {
+  test('无中继宣告 browserHost：入口一律空串', { timeout: 60_000 }, async () => {
     quietApi = await spawnService(
       'apps/api/src/server.ts',
       { PORT: '0', INTERNAL_TOKEN: `${INTERNAL_TOKEN}-quiet` },
@@ -348,9 +348,9 @@ describe('W6b 平台浏览器入口字段', () => {
     } finally {
       adminToken = previousToken
     }
-  }, 60_000)
+  })
 
-  test('宣告中继掉线超窗：last-known 死宣告不再拼出入口 URL', async () => {
+  test('宣告中继掉线超窗：last-known 死宣告不再拼出入口 URL', { timeout: 60_000 }, async () => {
     // Alive window 6s against the 2s announce beat: a live relay stays
     // comfortably healthy, a stopped one lapses within one window.
     lapseApi = await spawnService(
@@ -418,5 +418,5 @@ describe('W6b 平台浏览器入口字段', () => {
     assert.ok(after, 'host missing')
     assert.equal(after.browserEntryUrl, '', 'a dead announcement must not mint an entry URL')
     saveEvidence(EVIDENCE, 'lapsed-relay-entry.json', { lapsed, host: after })
-  }, 60_000)
+  })
 })

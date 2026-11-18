@@ -90,7 +90,7 @@ function errorCode(body: Json): unknown {
   return error !== null && typeof error === 'object' ? (error as Json).code : undefined
 }
 
-test('U246 writer 写失败可重试、无残留、health 真实、客户端不当作断链', async () => {
+test('U246 writer 写失败可重试、无残留、health 真实、客户端不当作断链', { timeout: 40000 }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'orca-u246-'))
   const logPath = join(dir, 'audit.log')
   const writer = await startWriter(logPath)
@@ -172,4 +172,4 @@ test('U246 writer 写失败可重试、无残留、health 真实、客户端不�
     await replica?.stop()
     await writer.stop()
   }
-}, 40000)
+})

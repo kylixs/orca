@@ -137,7 +137,7 @@ before(async () => {
   )
   browserPort = relay.port
   relaySniPort = await waitForLog(relay, /\[relay\] listening on :(\d+)/)
-}, 60_000)
+}, { timeout: 60_000 })
 
 after(async () => {
   await bareRelay?.close()
@@ -223,7 +223,7 @@ describe('W6a 中继浏览器模式监听', () => {
     saveEvidence(EVIDENCE, 'sni-mode-unchanged.json', { relaySniPort, message })
   })
 
-  test('未配置浏览器证书：监听完全不启用', async () => {
+  test('未配置浏览器证书：监听完全不启用', { timeout: 30_000 }, async () => {
     // In-process: the handle reports no browser port.
     bareRelay = await startRelay({
       port: 0,
@@ -249,5 +249,5 @@ describe('W6a 中继浏览器模式监听', () => {
     } finally {
       await bare.stop()
     }
-  }, 30_000)
+  })
 })

@@ -103,7 +103,7 @@ before(async () => {
   assert.equal(login.status, 200)
   adminToken = ((await login.json()) as { accessToken: string }).accessToken
   assert.notEqual(adminToken, '')
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await api?.stop()

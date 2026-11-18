@@ -199,7 +199,7 @@ before(async () => {
     apiUrl: api.url,
     internalToken: INTERNAL_TOKEN
   })
-}, 180_000)
+}, { timeout: 180_000 })
 
 after(async () => {
   await relayA?.close()
@@ -222,7 +222,7 @@ async function heartbeat(): Promise<void> {
   assert.equal(beat.status, 200)
 }
 
-test('AC-23 双中继注册；杀一个后平台不再下发，客户端 5 次内切到存活节点且新会话成功率 ≥99%', async () => {
+test('AC-23 双中继注册；杀一个后平台不再下发，客户端 5 次内切到存活节点且新会话成功率 ≥99%', { timeout: 240_000 }, async () => {
   await heartbeat()
 
   const before = await connectTicket()
@@ -294,4 +294,4 @@ test('AC-23 双中继注册；杀一个后平台不再下发，客户端 5 次�
     staleListFailover: failedOver,
     relayBStats: relayB.stats()
   })
-}, 240_000)
+})
