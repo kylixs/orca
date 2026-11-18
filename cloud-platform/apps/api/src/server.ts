@@ -3019,15 +3019,11 @@ export function createApp(config: ApiConfig): ApiHandle {
       const state = await sharedLockout.isLocked(username)
       return lockoutUnavailable(state) ? null : state
     }
-    return store.isLocked(username, now())
-      ? { locked: true, remaining: 0, lockedUntil: 0 }
-      : { locked: false, remaining: 5, lockedUntil: 0 }
+    return store.loginLockState(username, now())
   }
 
-  /** Local mode has no lock deadline; callers only read `locked`/`remaining`. */
-  async function recordLoginFailure(
-    username: string
-  ): Promise<Pick<LockoutState, 'locked' | 'remaining'> | null> {
+  /** Local mode returns the shared counter's shape; only `locked` gates the login. */
+  async function recordLoginFailure(username: string): Promise<LockoutState | null> {
     if (sharedLockout) {
       try {
         return await sharedLockout.recordFailure(username)

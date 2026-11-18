@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import type { Permission } from '../../../packages/contract/src/credential.ts'
+import type { LockoutState } from './login-lockout-client.ts'
 
 export type User = {
   id: string
@@ -248,7 +249,7 @@ export class Store {
     }
   }
 
-  recordLoginFailure(username: string, now: number): { locked: boolean; remaining: number } {
+  recordLoginFailure(username: string, now: number): LockoutState {
     const record = this.loginAttempts.get(username) ?? { count: 0, lockedUntil: 0 }
     record.count += 1
     if (record.count >= 5) {
@@ -256,10 +257,21 @@ export class Store {
       record.count = 0
     }
     this.loginAttempts.set(username, record)
+    const locked = record.lockedUntil > now
     return {
-      locked: record.lockedUntil > now,
-      remaining: record.lockedUntil > now ? 0 : 5 - record.count
+      locked,
+      remaining: locked ? 0 : 5 - record.count,
+      lockedUntil: locked ? record.lockedUntil : 0
     }
+  }
+
+  /** Read-only view: checking a login must not increment the counter. */
+  loginLockState(username: string, now: number): LockoutState {
+    const record = this.loginAttempts.get(username)
+    if (!record || record.lockedUntil <= now) {
+      return { locked: false, remaining: 5, lockedUntil: 0 }
+    }
+    return { locked: true, remaining: 0, lockedUntil: record.lockedUntil }
   }
 
   clearLoginFailures(username: string): void {
@@ -267,7 +279,6 @@ export class Store {
   }
 
   isLocked(username: string, now: number): boolean {
-    const record = this.loginAttempts.get(username)
-    return Boolean(record && record.lockedUntil > now)
+    return this.loginLockState(username, now).locked
   }
 }
