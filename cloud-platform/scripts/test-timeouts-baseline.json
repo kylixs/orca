@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-18T09:29:39.750Z",
+  "generatedAt": "2026-11-18T09:46:58.624Z",
   "scanner": "cloud-platform/scripts/check-test-timeouts.mjs",
   "scanScope": [
     "cloud-platform/apps/**/test/**/*.ts",
@@ -8,10 +8,10 @@
   ],
   "scannedFiles": 203,
   "counts": {
-    "total": 39,
+    "total": 26,
     "byForm": {
-      "hook-numeric-second": 28,
-      "test-numeric-third": 11
+      "hook-numeric-second": 20,
+      "test-numeric-third": 6
     }
   },
   "entries": {
@@ -21,22 +21,12 @@
     "cloud-platform/test/e2e/audit-anchor.e2e.test.ts|test-numeric-third|47142d19e3d0": 1,
     "cloud-platform/test/e2e/audit-trace-window.e2e.test.ts|hook-numeric-second|cef9ed8ee77e": 1,
     "cloud-platform/test/e2e/audit-trace-window.e2e.test.ts|test-numeric-third|6b90b28364d0": 1,
-    "cloud-platform/test/e2e/audit-verify.e2e.test.ts|test-numeric-third|f51157e7ac1c": 3,
     "cloud-platform/test/e2e/audit-writer-standby.e2e.test.ts|hook-numeric-second|313f61641296": 1,
     "cloud-platform/test/e2e/audit-writer-standby.e2e.test.ts|test-numeric-third|47142d19e3d0": 1,
-    "cloud-platform/test/e2e/audit-writer.e2e.test.ts|hook-numeric-second|313f61641296": 1,
-    "cloud-platform/test/e2e/audit-writer.e2e.test.ts|test-numeric-third|2d751bd3bfe1": 1,
     "cloud-platform/test/e2e/u106-filter-url.e2e.test.ts|hook-numeric-second|313f61641296": 1,
-    "cloud-platform/test/e2e/u106-workspace-route.e2e.test.ts|hook-numeric-second|313f61641296": 1,
     "cloud-platform/test/e2e/u114-u81b-users-filter-lock.e2e.test.ts|hook-numeric-second|313f61641296": 1,
-    "cloud-platform/test/e2e/u197-ac-probes.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
-    "cloud-platform/test/e2e/u197-cookie-browser.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
-    "cloud-platform/test/e2e/u197-csp-zero-violation.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
     "cloud-platform/test/e2e/u197-web-cookie-browser.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
     "cloud-platform/test/e2e/u58-input-hardening.e2e.test.ts|hook-numeric-second|313f61641296": 1,
-    "cloud-platform/test/e2e/u70-workbench-cards.e2e.test.ts|hook-numeric-second|313f61641296": 1,
-    "cloud-platform/test/e2e/u79-host-relay-binding.e2e.test.ts|hook-numeric-second|cef9ed8ee77e": 1,
-    "cloud-platform/test/e2e/u79-host-relay-binding.e2e.test.ts|test-numeric-third|6b90b28364d0": 1,
     "cloud-platform/test/e2e/u80-mobile-audit.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
     "cloud-platform/test/e2e/u80-mobile-global.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
     "cloud-platform/test/e2e/u80-mobile-m9fix.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
@@ -44,7 +34,6 @@
     "cloud-platform/test/e2e/ui-screenshots.e2e.test.ts|test-numeric-third|2d751bd3bfe1": 1,
     "cloud-platform/test/e2e/web-audit-export-browser.e2e.test.ts|hook-numeric-second|775379c1db6b": 1,
     "cloud-platform/test/e2e/web-audit-export-browser.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
-    "cloud-platform/test/e2e/web-handoff.e2e.test.ts|hook-numeric-second|313f61641296": 1,
     "cloud-platform/test/e2e/web-project-archive-actions.e2e.test.ts|hook-numeric-second|313f61641296": 1,
     "cloud-platform/test/e2e/web-project-archive-data.e2e.test.ts|hook-numeric-second|313f61641296": 1,
     "cloud-platform/test/e2e/web-project-archive-detail.e2e.test.ts|hook-numeric-second|ffb407650b0c": 1,
