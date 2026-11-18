@@ -1,5 +1,6 @@
 import {
   boundedAuditMetadata,
+  type AuditFailureReason,
   type AuditHealth,
   type AuditQuery,
   type AuditQueryResult,
@@ -108,13 +109,44 @@ export function createRemoteAudit(options: {
     throw lastError
   }
 
-  const markWriteFailed = (error: unknown): void => {
-    // A single failure must not wedge the API forever: the next successful call clears it.
+  /**
+   * Mirrors `AuditChain.markUnhealthy` (audit.ts:580-583): a verified
+   * `chain_broken` outranks a retryable write failure and is latched until a
+   * healthy append/verify clears it; the reverse keeps the first cause.
+   */
+  const markUnhealthy = (reason: AuditFailureReason, detail: string): void => {
+    const current = health
+    if (current.ok) {
+      health = { ok: false, reason, detail, firstFailure: reason, lastFailure: reason }
+      return
+    }
+    if (reason === 'write_failed') {
+      // Never downgrade a verified break; only a healthy probe/append releases it.
+      if (current.reason === 'chain_broken') {
+        health = { ...current, lastFailure: reason }
+        return
+      }
+      health = {
+        ok: false,
+        reason,
+        detail,
+        firstFailure: current.firstFailure ?? current.reason,
+        lastFailure: reason
+      }
+      return
+    }
+    // chain_broken escalates a write failure; firstFailure keeps the origin.
     health = {
       ok: false,
-      reason: 'write_failed',
-      detail: error instanceof Error ? error.message : String(error)
+      reason,
+      detail: current.reason === 'chain_broken' ? current.detail : detail,
+      firstFailure: current.firstFailure ?? current.reason,
+      lastFailure: reason
     }
+  }
+
+  const markWriteFailed = (error: unknown): void => {
+    markUnhealthy('write_failed', error instanceof Error ? error.message : String(error))
   }
 
   /**
@@ -160,7 +192,7 @@ export function createRemoteAudit(options: {
           markWriteFailed(detail)
           throw Object.assign(new Error(detail), { code: 'AUDIT_UNAVAILABLE' })
         }
-        health = { ok: false, reason: 'chain_broken', detail: 'audit writer chain broken' }
+        markUnhealthy('chain_broken', 'audit writer chain broken')
         throw Object.assign(new Error('audit chain broken'), { code: 'AUDIT_CHAIN_BROKEN' })
       }
       if (res.status === 503 && refused === 'AUDIT_WRITE_FAILED') {

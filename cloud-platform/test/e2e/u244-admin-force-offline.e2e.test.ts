@@ -223,6 +223,34 @@ function rendezvous(timeoutMs = 2_000): () => Promise<void> {
   }
 }
 
+/** U245-A: one leader plus N followers must all arrive before any takes the lock. */
+function rendezvousAmong(parties: number, timeoutMs = 2_000): () => Promise<void> {
+  let arrivals = 0
+  let release: () => void = () => {}
+  let fail: (error: Error) => void = () => {}
+  const gate = new Promise<void>((resolve, reject) => {
+    release = resolve
+    fail = reject
+  })
+  const timer = setTimeout(
+    () =>
+      fail(
+        new Error(`only ${arrivals}/${parties} revokes reached the barrier within ${timeoutMs}ms`)
+      ),
+    timeoutMs
+  )
+  timer.unref()
+  gate.catch(() => {})
+  return async () => {
+    arrivals += 1
+    if (arrivals === parties) {
+      clearTimeout(timer)
+      release()
+    }
+    await gate
+  }
+}
+
 after(async () => {
   await Promise.all(apps.map((app) => app.close()))
 })
@@ -243,7 +271,9 @@ describe('U244 管理员强制下线（真实 createApp + HTTP）', () => {
     const devices = [...app.store.devices.values()].filter((device) => device.userId === zhang.id)
     assert.equal(devices.length, 2)
 
-    const revoked = await revoke(base, admin.body.accessToken ?? '', zhang.id, { reason: '离职交接' })
+    const revoked = await revoke(base, admin.body.accessToken ?? '', zhang.id, {
+      reason: '离职交接'
+    })
 
     assert.equal(revoked.status, 200)
     assert.deepEqual((await revoked.json()) as RevokeBody, { ok: true, revokedSessions: 2 })
@@ -466,6 +496,94 @@ describe('U244 管理员强制下线（真实 createApp + HTTP）', () => {
     assert.equal(afterRepeat[1]?.metadata.revokedSessions, 0)
   })
 
+  test('U245-A：1 leader + 3 followers 并发撤销只审计一次，metadata=目标数、响应=实际数', async () => {
+    const parties = 4
+    const { app, base } = await start({ beforeUserSessionRevoke: rendezvousAmong(parties) })
+    for (let index = 0; index < 3; index += 1) {
+      assert.equal((await login(base, 'zhangsan', 'Passw0rd!')).status, 200)
+    }
+    const admin = await login(base, 'admin', 'Adm1n!')
+    assert.equal(admin.status, 200)
+    const zhang = app.store.usersByName.get('zhangsan')
+    assert.ok(zhang)
+    assert.equal(sessionsOf(app, zhang.id).length, 3, 'three logins make three target sessions')
+    const token = admin.body.accessToken ?? ''
+
+    // Park the leader inside its write-ahead audit, then mint a fourth session in
+    // that window: metadata keeps the pre-audit target count, the response reports
+    // what was actually revoked.
+    const originalAppend = app.audit.append.bind(app.audit)
+    let releaseAudit: () => void = () => {}
+    const auditGate = new Promise<void>((resolve) => {
+      releaseAudit = resolve
+    })
+    let signalAuditEntered: () => void = () => {}
+    const auditEntered = new Promise<void>((resolve) => {
+      signalAuditEntered = resolve
+    })
+    let parked = false
+    let watchdog: ReturnType<typeof setTimeout> | undefined
+    app.audit.append = async (input) => {
+      if (!parked && input.eventType === 'session_revoke' && input.result === 'success') {
+        parked = true
+        signalAuditEntered()
+        // A forgotten release must fail the case, not hang the runner.
+        watchdog = setTimeout(releaseAudit, 5_000)
+        watchdog.unref()
+        await auditGate
+      }
+      return originalAppend(input)
+    }
+    try {
+      const racing = Promise.all(
+        Array.from({ length: parties }, () => revoke(base, token, zhang.id))
+      )
+      await auditEntered
+      const windowLogin = await login(base, 'zhangsan', 'Passw0rd!')
+      assert.equal(windowLogin.status, 200, 'a login inside the audit window still succeeds')
+      releaseAudit()
+
+      const responses = await racing
+      assert.deepEqual(
+        responses.map((res) => res.status),
+        Array.from({ length: parties }, () => 200)
+      )
+      const bodies = await Promise.all(
+        responses.map(async (res) => (await res.json()) as RevokeBody)
+      )
+      const actualCounts = bodies.map((body) => body.revokedSessions ?? -1).sort((a, b) => a - b)
+      assert.deepEqual(
+        actualCounts,
+        [0, 0, 0, 4],
+        'the leader reports the actual count; every follower reports 0'
+      )
+
+      const successEvents = app.store.audit.filter(
+        (entry) =>
+          entry.eventType === 'session_revoke' &&
+          entry.result === 'success' &&
+          entry.targetId === zhang.id
+      )
+      assert.equal(successEvents.length, 1, 'one target action, one audit event (no duplicates)')
+      assert.equal(
+        successEvents[0]?.metadata.revokedSessions,
+        3,
+        'metadata keeps the pre-audit target count'
+      )
+
+      const allSessions = sessionsOf(app, zhang.id)
+      assert.equal(allSessions.length, 4, 'three logins plus the window login')
+      for (const session of allSessions) {
+        assert.ok(session.revokedAt !== null, 'no target session may be missed')
+        assert.equal(session.epoch, 2, 'the revokedAt re-check keeps the epoch bump exactly once')
+      }
+    } finally {
+      if (watchdog) clearTimeout(watchdog)
+      releaseAudit()
+      app.audit.append = originalAppend
+    }
+  })
+
   test('leader 审计失败时 follower 重试而非虚假 200；审计恢复后仍只写一条', async () => {
     const { app, base } = await start({ beforeUserSessionRevoke: recurringRendezvous() })
     assert.equal((await login(base, 'zhangsan', 'Passw0rd!')).status, 200)
@@ -508,7 +626,10 @@ describe('U244 管理员强制下线（真实 createApp + HTTP）', () => {
         false,
         'the host ticket must survive a refused audit write'
       )
-      assert.equal(app.store.audit.filter((entry) => entry.eventType === 'session_revoke').length, 0)
+      assert.equal(
+        app.store.audit.filter((entry) => entry.eventType === 'session_revoke').length,
+        0
+      )
 
       auditDown = false
       app.audit.append = originalAppend
@@ -516,8 +637,13 @@ describe('U244 管理员强制下线（真实 createApp + HTTP）', () => {
         revoke(base, token, zhang.id),
         revoke(base, token, zhang.id)
       ])
-      assert.deepEqual(recovered.map((res) => res.status), [200, 200])
-      const counts = await Promise.all(recovered.map(async (res) => (await res.json()) as RevokeBody))
+      assert.deepEqual(
+        recovered.map((res) => res.status),
+        [200, 200]
+      )
+      const counts = await Promise.all(
+        recovered.map(async (res) => (await res.json()) as RevokeBody)
+      )
       assert.deepEqual(
         counts.map((body) => body.revokedSessions).sort(),
         [0, 1],
