@@ -13,6 +13,8 @@ const AUTH_BODY_MAX_BYTES = 16 * 1024
 const INTERNAL_BODY_MAX_BYTES = 4 * 1024
 const SENSITIVE_WRITE_BODY_MAX_BYTES = 16 * 1024
 const DENIED_AUDIT_BODY_MAX_BYTES = 4 * 1024
+const HEARTBEAT_BODY_MAX_BYTES = 1024 * 1024
+const FILE_EVENT_METADATA_LIMIT = 4096
 const INTERNAL_TOKEN = 'u249-token'
 const PROJECT_ID = 'proj_payment'
 const HOST_ID = 'host_dev001'
@@ -115,6 +117,90 @@ function registerHost(base: string, token: string, body: string): Promise<Respon
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
     body
+  })
+}
+
+function postHeartbeat(
+  base: string,
+  hostId: string,
+  credential: string,
+  body: string
+): Promise<Response> {
+  return fetch(`${base}/v1/hosts/${hostId}/heartbeat`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${credential}` },
+    body
+  })
+}
+
+/**
+ * U251: the largest beat a current host can legally send — 100 file events whose
+ * metadata sits near the platform's 4096 B per-event cap, 200 projectDirs (200 B
+ * names), and 32 provision reports (500 B errors). Every shape comes from the
+ * upstream producers: `cloud-host-audit.ts` (100/beat), `cloud-project-dirs.ts`
+ * (200 names), and `cloud-provision-report-queue.ts` (32 reports).
+ */
+function legalMaxHeartbeat(): string {
+  const metadata = {
+    hostId: 'h'.repeat(128),
+    hostName: 'n'.repeat(128),
+    projectKey: 'p'.repeat(128),
+    method: 'm'.repeat(128),
+    kind: 'k'.repeat(128),
+    surface: 's'.repeat(128),
+    capturePoint: 'c'.repeat(128),
+    captureConfidence: 'c'.repeat(128),
+    copyKind: 'c'.repeat(128),
+    policy: 'p'.repeat(128),
+    reason: 'r'.repeat(128),
+    mime: 'm'.repeat(128),
+    clientVersion: 'v'.repeat(64),
+    fileName: 'f'.repeat(255),
+    savedName: 's'.repeat(255),
+    path: 'd'.repeat(1024),
+    sizeBytes: Number.MAX_SAFE_INTEGER,
+    copiedChars: Number.MAX_SAFE_INTEGER,
+    copiedBytes: Number.MAX_SAFE_INTEGER,
+    itemCount: Number.MAX_SAFE_INTEGER,
+    occurredAt: Number.MAX_SAFE_INTEGER,
+    isBinary: true,
+    truncated: true,
+    excerptTruncated: false,
+    sha256: 'a'.repeat(64),
+    sha256Source: 'host'
+  }
+  assert.ok(
+    Buffer.byteLength(JSON.stringify(metadata)) <= FILE_EVENT_METADATA_LIMIT,
+    'the fixture metadata must stay inside the per-event cap or the event is dropped'
+  )
+
+  const audit = Array.from({ length: 100 }, (_, index) => ({
+    eventType: 'file_download',
+    result: 'success',
+    deviceId: `device_u251_${index}`,
+    subject: 'user:zhangsan',
+    projectId: PROJECT_ID,
+    method: 'GET',
+    traceId: `trace_u251_${index}`,
+    metadata
+  }))
+  const projectDirs = Array.from(
+    { length: 200 },
+    (_, index) => `dir${String(index).padStart(3, '0')}${'d'.repeat(194)}`
+  )
+  const provisioned = Array.from({ length: 32 }, (_, index) => ({
+    projectId: `proj_u251_${index}`,
+    ok: false,
+    error: 'e'.repeat(500)
+  }))
+
+  return JSON.stringify({
+    status: 'online',
+    directAddrs: ['192.168.10.10:5210'],
+    projectDirs,
+    provisioned,
+    audit,
+    orcaVersion: '1.5.0'
   })
 }
 
@@ -601,7 +687,8 @@ describe('U250 档 3 普通读写调用点 body 上限（16 KiB）', () => {
     assert.equal(app.store.hosts.get(HOST_ID)?.status, 'online', 'maintenance was not applied')
     assert.equal(app.store.webHandoffs.size, 0, 'no handoff code was minted')
 
-    // Heartbeat needs a registered host holding a valid credential.
+    // U251: heartbeat is no longer a 16 KiB sensitive write; a 32 KiB beat is a
+    // legal batch headroom case and must be accepted.
     const hostToken = await mintHostToken(base, admin.token)
     const registered = await registerHost(
       base,
@@ -610,15 +697,77 @@ describe('U250 档 3 普通读写调用点 body 上限（16 KiB）', () => {
     )
     assert.equal(registered.status, 201)
     const host = (await registered.json()) as Json
-    const beat = await fetch(`${base}/v1/hosts/${String(host.hostId)}/heartbeat`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${String(host.credential)}`
-      },
-      body: oversizedBody({ status: 'online' })
+    const beat = await postHeartbeat(
+      base,
+      String(host.hostId),
+      String(host.credential),
+      oversizedBody({ status: 'online' })
+    )
+    assert.equal(beat.status, 200, await beat.text())
+  })
+})
+
+describe('U251 heartbeat 独立 body 上限（1 MiB）', () => {
+  test('100 审计事件（4096 B metadata）+ 200 projectDirs + 32 报告 → 200，整批入链', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u251-beat-admin')
+    const hostToken = await mintHostToken(base, admin.token)
+    const registered = await registerHost(
+      base,
+      hostToken,
+      JSON.stringify({ name: 'u251-beat-host', protocolVersion: 3, networkZone: 'intranet' })
+    )
+    assert.equal(registered.status, 201)
+    const host = (await registered.json()) as Json
+    const hostId = String(host.hostId)
+
+    const body = legalMaxHeartbeat()
+    const bodyBytes = Buffer.byteLength(body)
+    assert.ok(bodyBytes > SENSITIVE_WRITE_BODY_MAX_BYTES, 'the legal beat exceeds the old 16 KiB cap')
+    assert.ok(bodyBytes < HEARTBEAT_BODY_MAX_BYTES, 'the legal beat stays inside the new cap')
+
+    const beat = await postHeartbeat(base, hostId, String(host.credential), body)
+    assert.equal(beat.status, 200, await beat.text())
+
+    // The host only calls clearThrough after beat.ok, so a 200 with the whole
+    // batch in the chain is exactly the acknowledgement that unblocks it.
+    const query = await authedJson(
+      base,
+      admin.token,
+      'GET',
+      '/v1/audit/events?eventType=file_download&limit=200'
+    )
+    assert.equal(query.status, 200)
+    const page = (await query.json()) as Json
+    const events = (page.events as Json[] | undefined) ?? []
+    assert.equal(events.length, 100, 'the platform accepted every event in the batch')
+    assert.equal((events[0]?.metadata as Json | undefined)?.path, 'd'.repeat(1024))
+
+    const stored = app.store.hosts.get(hostId)
+    assert.equal(stored?.projectDirs.length, 200, 'all 200 reported directories were stored')
+    assert.ok(stored?.projectDirs.every((dir) => dir.length === 200))
+  })
+
+  test('超过 1 MiB → 413 PAYLOAD_TOO_LARGE，心跳状态不写入', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u251-huge-admin')
+    const hostToken = await mintHostToken(base, admin.token)
+    const registered = await registerHost(
+      base,
+      hostToken,
+      JSON.stringify({ name: 'u251-huge-host', protocolVersion: 3, networkZone: 'intranet' })
+    )
+    assert.equal(registered.status, 201)
+    const host = (await registered.json()) as Json
+    const hostId = String(host.hostId)
+
+    const huge = JSON.stringify({
+      status: 'offline',
+      pad: 'x'.repeat(HEARTBEAT_BODY_MAX_BYTES + 1024)
     })
-    assert.equal(beat.status, 413, 'heartbeat must answer 413')
+    const beat = await postHeartbeat(base, hostId, String(host.credential), huge)
+    assert.equal(beat.status, 413)
     assert.equal(errorCode((await beat.json()) as Json), 'PAYLOAD_TOO_LARGE')
+    assert.equal(app.store.hosts.get(hostId)?.status, 'online', 'the refused beat changed nothing')
   })
 })

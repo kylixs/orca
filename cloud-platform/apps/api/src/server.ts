@@ -325,13 +325,15 @@ async function readJson(
 /**
  * U250 tier 2: a sensitive write's body is its only input, so an oversized one
  * is refused before any mutation or audit. Returns null after sending the 413.
+ * U251: heartbeat overrides the default, since one beat carries a whole batch.
  */
 async function readSensitiveWriteBody(
   req: IncomingMessage,
   res: ServerResponse,
-  traceId: string
+  traceId: string,
+  maxBytes = SENSITIVE_WRITE_BODY_MAX_BYTES
 ): Promise<Record<string, unknown> | null> {
-  const { body, oversized } = await readBody(req, SENSITIVE_WRITE_BODY_MAX_BYTES)
+  const { body, oversized } = await readBody(req, maxBytes)
   if (!oversized) return body
   error(res, 413, 'PAYLOAD_TOO_LARGE', '请求体过大。', traceId)
   return null
@@ -355,6 +357,15 @@ const FORCE_OFFLINE_REASON_MAX_CHARS = 200
 
 /** U250 tier 2: an authenticated sensitive write carries a small JSON command. */
 const SENSITIVE_WRITE_BODY_MAX_BYTES = 16 * 1024
+
+/**
+ * U251: one beat carries the host's whole pending batch — 100 audit events whose
+ * per-event metadata may reach 4096 B (`host-audit-ingest.ts`), 200 projectDirs
+ * (200 B each), and 32 provision reports (500 B errors). A legal maximum
+ * measured ~433 KiB, so 1 MiB admits every valid beat; a 413 here would strand
+ * the batch forever because the host only clears through after `beat.ok`.
+ */
+const HEARTBEAT_BODY_MAX_BYTES = 1024 * 1024
 
 /**
  * U250 tier 2: a denied 403 branch reads the body only to name what was refused.
@@ -5718,7 +5729,9 @@ export function createApp(config: ApiConfig): ApiHandle {
         if (!target.credentialHash || !safeEqual(target.credentialHash, hashToken(bearer))) {
           return error(res, 401, 'HOST_CREDENTIAL_INVALID', '主机凭证无效。', traceId)
         }
-        const body = await readSensitiveWriteBody(req, res, traceId)
+        // U251: a beat batches audit events, directories, and provision reports,
+        // so it has its own cap instead of the 16 KiB single-command limit.
+        const body = await readSensitiveWriteBody(req, res, traceId, HEARTBEAT_BODY_MAX_BYTES)
         if (!body) return
         // Bad addresses would be stored and later splice into every project view;
         // reject the beat before anything is persisted (U57 H14).
