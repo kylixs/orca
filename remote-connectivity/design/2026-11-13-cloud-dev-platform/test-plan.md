@@ -256,7 +256,7 @@ ORCA_BACKGROUND_LAUNCH=1 node --test --test-concurrency=2 \
 - 结论口径：报原始 `tests / pass / fail / skipped`；fail 按三类归属——① 产品缺陷、② 测试缺陷/陈旧 fixture、③ 环境/并发改写工作树（INVALID，单独复跑转绿）。跳过项不得从分母中抹掉。
 - 与子集基线的关系：§7.1 认证 24 文件 267、授权矩阵 113、T1 关键集均为子集，只能证明对应范围，不得替代全景结论；全仓结论必须由全景扫描支撑。
 - 已知环境噪声：扫描期间另一会话改写 `apps/web/app.js`，会让 `new Function`/模板解析瞬时失败（2026-11-18 第一轮 F2–F8）；此类红必须单独复跑确认后再归属。
-- 证据：`cloud-platform/test-reports/full-e2e-sweep-20261118.md`（首轮 1141/1140/1，唯一稳定红 U284）；**首轮收官 `full-e2e-sweep-final-20261118.md`：1141/1141/0（HEAD `0fa1d21b9c4`）；第二轮收官 `full-e2e-sweep-final2-20261118.md`：147 文件 1143/1143/0，0 skipped，37 批全部 exit 0**（HEAD `691f4f404fb`）；**第四轮（U310 修复后）`full-e2e-sweep-final4-20261118.md`：147 文件、37 批、1144/1144/0、0 skipped，扫描前后测试文件 sha256 全部一致**（日志 `/tmp/e2e-sweep-final4/`）。
+- 证据：`cloud-platform/test-reports/full-e2e-sweep-20261118.md`（首轮 1141/1140/1，唯一稳定红 U284）；**首轮收官 `full-e2e-sweep-final-20261118.md`：1141/1141/0（HEAD `0fa1d21b9c4`）；第二轮收官 `full-e2e-sweep-final2-20261118.md`：147 文件 1143/1143/0，0 skipped，37 批全部 exit 0**（HEAD `691f4f404fb`）；**第四轮（U310 修复后）`full-e2e-sweep-final4-20261118.md`：147 文件、37 批、1144/1144/0、0 skipped，扫描前后测试文件 sha256 全部一致**（日志 `/tmp/e2e-sweep-final4/`）；**第七轮（D15/D18/D20/D22 后）`full-e2e-sweep-final7-20261118.md`：148 文件、37 批、1149/1149/0、0 skipped**（批 20 首轮因 U319 固定 sha 红，pin 修复后定向复跑 31/31；日志 `/tmp/e2e-sweep-final7/`）。
 
 ### 7.3 node:test 超时形态门禁（静态检查）
 
