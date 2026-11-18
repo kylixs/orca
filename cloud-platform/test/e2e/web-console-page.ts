@@ -4,6 +4,18 @@ import { Window } from 'happy-dom'
 import { ROOT } from './harness.ts'
 
 const WEB_SOURCE = join(ROOT, 'apps/web')
+const APP_ENTRY = join(WEB_SOURCE, 'app.js')
+
+let cachedAppSource: string | undefined
+
+/**
+ * U288: lazy, cached app.js read so the evaluated page and any expectation
+ * derived from its source share one snapshot. Import must not touch the disk.
+ */
+export function readWebAppSource(): string {
+  cachedAppSource ??= readFileSync(APP_ENTRY, 'utf8')
+  return cachedAppSource
+}
 
 export type WebConsolePage = {
   window: Window
@@ -198,7 +210,7 @@ export function loadWebConsolePage(
     /^export /gm,
     ''
   )
-  const source = `${routesSource}\n${readFileSync(join(WEB_SOURCE, 'app.js'), 'utf8').replace(
+  const source = `${routesSource}\n${readWebAppSource().replace(
     /^import[^\n]*from '\.\/router\/routes\.js'\n/m,
     ''
   )}`

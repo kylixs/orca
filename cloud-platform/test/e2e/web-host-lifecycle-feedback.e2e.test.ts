@@ -2,10 +2,10 @@ import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { login, registerHost, saveEvidence, spawnService, type Service } from './harness.ts'
 import {
-  installCommandTemplateSource,
+  assertInstallTemplateInterpolations,
   renderInstallCommand
 } from './helpers/install-command-harness.ts'
-import { loadWebConsolePage, type WebConsolePage } from './web-console-page.ts'
+import { loadWebConsolePage, readWebAppSource, type WebConsolePage } from './web-console-page.ts'
 
 /**
  * G09: the maintenance/revoke console actions and the registration dialog
@@ -20,8 +20,22 @@ import { loadWebConsolePage, type WebConsolePage } from './web-console-page.ts'
 
 const EVIDENCE = 'g09-host-lifecycle-feedback'
 const FAILURE_BODY = { error: { code: 'SIMULATED_FAILURE', message: '模拟平台故障' } }
-// U285: read app.js once at module load; a mid-assertion re-read races a concurrent rewrite.
-const INSTALL = installCommandTemplateSource()
+
+/**
+ * U288: derive the expected command from the same cached app.js read the page
+ * runs. Import stays disk-free, so one bad read cannot take all four cases down.
+ */
+function installTemplate(): { file: string; template: string } {
+  const appSource = readWebAppSource()
+  const fn = /function installCommand\(url\) \{\n([\s\S]*?)\n\}/.exec(appSource)
+  assert.ok(fn, 'app.js must define installCommand(url)')
+  const file = /const file = '([^']+)'/.exec(fn[1])?.[1]
+  assert.ok(file, 'installCommand must bind the temp file path')
+  const template = /return `([\s\S]*?)`/.exec(fn[1])?.[1]
+  assert.ok(template, 'installCommand must return a template literal')
+  assertInstallTemplateInterpolations(template)
+  return { file, template }
+}
 
 let service: Service
 let adminToken = ''
@@ -95,6 +109,8 @@ function drawer(page: WebConsolePage): HTMLElement | null {
 }
 
 before(async () => {
+  // U288: surface an unreadable app.js here, once, instead of failing at import.
+  installTemplate()
   service = await spawnService(
     'apps/api/src/server.ts',
     { PORT: '0', INTERNAL_TOKEN: 'g09-internal-token' },
@@ -233,21 +249,22 @@ test('G09-3 注册弹框「复制命令」：写入完整命令、toast 已复�
   const command = page.window.document.querySelector('#installCmd')?.textContent ?? ''
   const installUrl = /curl -fsSL "([^"]+)"/.exec(command)?.[1]
   assert.ok(installUrl, 'command downloads the script from the install endpoint')
-  // U285: pin the endpoint itself (origin + the server's install route) instead
-  // of echoing the command's own URL, so a drifted path cannot pass.
+  // U288: pins the URL app.js builds, not the server route (the matrix suite
+  // covers the route); echoing the command's own URL could not catch drift.
   const endpoint = new URL(installUrl)
   assert.equal(
     endpoint.origin,
     'https://web.console.local',
     'the one-liner targets the console origin'
   )
-  assert.equal(endpoint.pathname, '/install/host.sh', 'the install route path is pinned')
+  assert.equal(endpoint.pathname, '/install/host.sh', 'the path app.js builds is pinned')
   assert.ok(endpoint.searchParams.get('token'), 'the install URL carries the registration token')
   // Derive the expected command from app.js's own template so a template edit
   // cannot stale this assertion; the contract itself is pinned below (U284).
+  const install = installTemplate()
   assert.equal(
     command,
-    renderInstallCommand(INSTALL.template, INSTALL.file, installUrl),
+    renderInstallCommand(install.template, install.file, installUrl),
     'the dialog renders the current one-liner template verbatim'
   )
   assert.match(command, /token=/)
@@ -260,9 +277,7 @@ test('G09-3 注册弹框「复制命令」：写入完整命令、toast 已复�
   assert.match(command, /exit "\$code"$/, 'the install script exit code is propagated (U181)')
   assert.doesNotMatch(command, /bash <\(curl/)
 
-  page.window.document
-    .querySelector<HTMLButtonElement>('#copyInstallCmd')!
-    .click()
+  page.window.document.querySelector<HTMLButtonElement>('#copyInstallCmd')!.click()
   await page.settle()
 
   assert.deepEqual(copies, [command], 'the copy action writes the full command')

@@ -1,7 +1,15 @@
 import { test, describe, type TestContext } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -281,45 +289,59 @@ describe('U275/U276: install one-liner runs under a real shell', () => {
 })
 
 describe('U281/U283: interruption and cleanup failure', () => {
-  bashTest('下载中途 SIGINT：外层经 trap 恰以 130 退出，且 TMPDIR 无 orca-install-*.sh 残留', async () => {
-    const run = await runInterrupted('SIGINT')
+  bashTest(
+    '下载中途 SIGINT：外层经 trap 恰以 130 退出，且 TMPDIR 无 orca-install-*.sh 残留',
+    async () => {
+      const run = await runInterrupted('SIGINT')
 
-    // §2-141: prove the signal hit an in-flight download, not a no-op.
-    assert.ok(
-      run.during.some((name) => /^orca-install-.*\.sh$/.test(name)),
-      `the stub must create the -o target before hanging; saw: ${run.during.join(', ')}`
-    )
-    assert.match(run.partialBody, /U281-PARTIAL/, 'the partial body must be on disk mid-download')
-    assert.deepEqual(
-      run.kept.filter((name) => /^orca-install-.*\.sh$/.test(name)),
-      [],
-      'an interrupted download must not leave orca-install-*.sh behind'
-    )
-    assert.equal(run.signal, null, `the INT trap must exit rather than die by signal: ${run.stderr}`)
-    // U283: only SIGINT was sent, so an INT→TERM reroute must not pass as 143.
-    assert.equal(run.code, 130, `SIGINT must exit through the INT trap with 130; ${run.stderr}`)
-  })
-
-  bashTest('下载中途 SIGQUIT：外层经 trap 恰以 131 退出，且无 orca-install-*.sh 残留', async (t) => {
-    if (!QUIT_TRAP) {
-      t.skip('SIGQUIT trap unavailable in this environment')
-      return
+      // §2-141: prove the signal hit an in-flight download, not a no-op.
+      assert.ok(
+        run.during.some((name) => /^orca-install-.*\.sh$/.test(name)),
+        `the stub must create the -o target before hanging; saw: ${run.during.join(', ')}`
+      )
+      assert.match(run.partialBody, /U281-PARTIAL/, 'the partial body must be on disk mid-download')
+      assert.deepEqual(
+        run.kept.filter((name) => /^orca-install-.*\.sh$/.test(name)),
+        [],
+        'an interrupted download must not leave orca-install-*.sh behind'
+      )
+      assert.equal(
+        run.signal,
+        null,
+        `the INT trap must exit rather than die by signal: ${run.stderr}`
+      )
+      // U283: only SIGINT was sent, so an INT→TERM reroute must not pass as 143.
+      assert.equal(run.code, 130, `SIGINT must exit through the INT trap with 130; ${run.stderr}`)
     }
-    const run = await runInterrupted('SIGQUIT')
+  )
 
-    assert.ok(
-      run.during.some((name) => /^orca-install-.*\.sh$/.test(name)),
-      `the stub must create the -o target before hanging; saw: ${run.during.join(', ')}`
-    )
-    assert.match(run.partialBody, /U281-PARTIAL/, 'the partial body must be on disk mid-download')
-    assert.deepEqual(
-      run.kept.filter((name) => /^orca-install-.*\.sh$/.test(name)),
-      [],
-      'a SIGQUIT-interrupted download must not leave orca-install-*.sh behind'
-    )
-    assert.equal(run.signal, null, `the QUIT trap must exit rather than die by signal: ${run.stderr}`)
-    assert.equal(run.code, 131, `SIGQUIT must exit through the QUIT trap with 131; ${run.stderr}`)
-  })
+  bashTest(
+    '下载中途 SIGQUIT：外层经 trap 恰以 131 退出，且无 orca-install-*.sh 残留',
+    async (t) => {
+      if (!QUIT_TRAP) {
+        t.skip('SIGQUIT trap unavailable in this environment')
+        return
+      }
+      const run = await runInterrupted('SIGQUIT')
+
+      assert.ok(
+        run.during.some((name) => /^orca-install-.*\.sh$/.test(name)),
+        `the stub must create the -o target before hanging; saw: ${run.during.join(', ')}`
+      )
+      assert.match(run.partialBody, /U281-PARTIAL/, 'the partial body must be on disk mid-download')
+      assert.deepEqual(
+        run.kept.filter((name) => /^orca-install-.*\.sh$/.test(name)),
+        [],
+        'a SIGQUIT-interrupted download must not leave orca-install-*.sh behind'
+      )
+      assert.equal(
+        run.signal,
+        null,
+        `the QUIT trap must exit rather than die by signal: ${run.stderr}`
+      )
+      assert.equal(run.code, 131, `SIGQUIT must exit through the QUIT trap with 131; ${run.stderr}`)
+    }
+  )
 
   bashTest('下载中断留下半截文件且 rm 失败：告警含完整路径、外层 65、文件仍残留', () => {
     const run = runLiner(null, {
