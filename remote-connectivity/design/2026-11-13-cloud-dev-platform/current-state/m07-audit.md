@@ -1,6 +1,6 @@
 # M7 审计（查询 / 结果表 / 事件详情 / 缺口状态 / 权限）
 
-> 基线提交：`664a91e0322`（2026-11-16 工作区快照；工作树 U106-R3 未提交改动不影响审计页）。
+> 行号按 `301c49139e0` 校准（server.ts 的 `host_register` fail-closed 与单事件体积护栏段落）；`app.js`（L2077-2537）、`styles.css`（L914-1040）、`audit.ts` 及 `server.ts` L3660-3825 等引用为历史版本（原基线 `664a91e0322`，2026-11-16 工作区快照；工作树 U106-R3 未提交改动不影响审计页）。
 > 前端：`cloud-platform/apps/web/app.js`（`renderAudit` 及审计辅助函数，约 L2077-2537；样式 `cloud-platform/apps/web/styles.css` L914-1040）。后端：`cloud-platform/apps/api/src/server.ts`（`GET /v1/audit/events`、`/v1/audit/status`、`/v1/audit/verify`，约 L3660-3825）。
 
 ## 1. 页面/界面布局
@@ -129,4 +129,4 @@
 
 ## 7. 基线提交
 
-`664a91e0322d90e4d32ce9d092526159c3052854`。本模块无工作树在途改动。
+`301c49139e0429162f0eb9ea1e57e068a44e8e4c`（server.ts 行号已按此校准；`app.js`/`styles.css`/`audit.ts` 行号为历史版本）。本模块无工作树在途改动。

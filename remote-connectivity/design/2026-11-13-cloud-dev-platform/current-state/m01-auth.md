@@ -1,6 +1,6 @@
 # M1 登录与认证（现状）
 
-> 基线提交：`a5d6d2162b4`（2026-11-18）｜来源：`cloud-platform/apps/web/app.js`、`cloud-platform/apps/api/src/{server.ts,refresh-cookie.ts,web-release.ts}` 代码阅读 + 已提交套件。文中行号均指该 HEAD（工作树若含未提交改动会使行号偏移）。
+> 基线提交：`301c49139e0`（`server.ts` 行号已按此校准；`app.js` 等引用为历史版本，原基线 `a5d6d2162b4`/2026-11-18）｜来源：`cloud-platform/apps/web/app.js`、`cloud-platform/apps/api/src/{server.ts,refresh-cookie.ts,web-release.ts}` 代码阅读 + 已提交套件。文中 `server.ts` 行号均指该 HEAD（工作树若含未提交改动会使行号偏移）。
 > 刷新记录：2026-11-18 按 HEAD `39ad743d793`（U228 后）整理，覆盖 U197 Cookie 会话（登录形态/双读刷新/页面恢复/登出）、U218 登出撤销与 CSRF、U219/D17 迁移缺口、U220 Origin 边界、U221–U223 客户端硬化、U225–U227 测试收紧。U228（禁用账号登录/刷新复查）已合入 `39ad743d793`（登录/刷新拒绝非 active 并撤销会话；客户端重放仍 401 即登出）。
 > 本次未启动 18787（探测 `000`），界面描述以生产管理台代码为准。
 
