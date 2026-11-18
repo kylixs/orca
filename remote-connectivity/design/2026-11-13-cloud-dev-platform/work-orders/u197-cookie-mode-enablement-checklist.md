@@ -58,3 +58,7 @@
 
 - [ ] 启用/回退操作人、时间、环境、`ORCA_CLOUD_PUBLIC_ORIGIN`、构建 SHA 已写入变更记录。
 - [ ] 若任一项验证失败：立即执行 §4 回退，并按 U197 台账登记缺口。
+
+## 6. 附注
+
+- 重启后快照不再包含 `accessTokens`/`webHandoffs`，旧 bearer 立即失效、客户端需走一次 refresh；服务启动即执行一次过期清扫（每会话至多一条 `session.expired`，重启不重复）。

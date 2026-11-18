@@ -118,8 +118,8 @@
 - **D5–D10**：`cookieMode` 仅在**平台同源控制台**启用（`auto`/`always` + `ORCA_CLOUD_PUBLIC_ORIGIN`）；默认关闭，配置即开、撤配置即回退；宿主跨源 handoff 继续 Bearer + body refresh。CSP 维持 `Report-Only`，不新增上报管道。启用前置四项：TLS、`ORCA_CLOUD_PUBLIC_ORIGIN` 精确配置（Host/XFP 不入判据）、多副本粘性会话或共享 store、宿主跨源路径确认不依赖 Cookie；四项写入部署检查单。
 - **D12**：不新增 `lastUsedAt`，一期不做；项目「最近使用」维持 `createdAt` 排序（U196 关闭）。
 - **D16**：接受 Cookie 同值重发所需的内存明文 refresh（仅内存、不落盘，U216）。
-- **D18（已裁定，待实施）**：只做惰性 + 60s sweep（`ORCA_CLOUD_SESSION_SWEEP_MS` 可关，retention 固定 60s）+ 快照剥离 `accessTokens`/`webHandoffs`；不做退役 token FIFO、不新增端点、不持久化。
-- **D20（已裁定，待实施）**：只新增 `session.expired`（首个撤销者 1 条，sweep 复用）与 `session.revoked`（替换禁用用户现有 `logout` + `denied`）；不改 401/清 Cookie。
+- **D18（已实施 `b521fb87988`）**：只做惰性 + 60s sweep（`ORCA_CLOUD_SESSION_SWEEP_MS` 可关，retention 固定 60s）+ 快照剥离 `accessTokens`/`webHandoffs`；不做退役 token FIFO、不新增端点、不持久化。服务启动时立即清扫一次（每个会话至多一条 `session.expired`，重启不重复；`0` 关闭时跳过）；快照剥离使重启后旧 bearer 立即失效、需 refresh。
+- **D20（已实施 `77dea8b4dda`）**：只新增 `session.expired`（首个撤销者 1 条，sweep 复用）与 `session.revoked`（替换禁用用户现有 `logout` + `denied`）；不改 401/清 Cookie。
 
 ## 4. 数据来源
 
@@ -149,8 +149,8 @@
 - 🟡 U106：全站唯一 URL 路由（含登录回跳/刷新恢复）在途；现状仅 hash 页级恢复。
 - 🔴 U103：刷新 Orca Web 停留在旧登录界面（工作区侧续会话，非平台登录页）。
 - 🟡 U214/D5–D10：Cookie 模式已实现并默认关闭；同源启用范围与部署检查单待落。
-- 🟡 U233 F6/D18：令牌回收与快照明文剥离已裁定，待实施。
-- 🟡 U243①/U230①/D20：会话事件词汇（`session.expired`/`session.revoked`）已裁定，待实施。
+- 🟢 U233 F6/D18：令牌回收与快照明文剥离已实施（`b521fb87988`，11/11）。
+- 🟢 U243①/U230①/D20：会话事件词汇（`session.expired`/`session.revoked`）已实施（`77dea8b4dda`，u243 4/4）。
 - 🟢 U216：内存明文 refresh 权衡已接受（D16）。
 
 ## 6. 认证端点不变式表（§2-118）
