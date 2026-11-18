@@ -4361,3 +4361,4 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **handoff body 上限**（`f697adfcfdd`，4 文件）：`readBody(req, 16KiB)` 为分支第一条语句，413 先于重复 Cookie/Origin/`consumeWebHandoff`；force-offline 4 KiB 超限按空 body 且撤销照常；m01 增「契约 B」段并校正 logout 行号 4091→4099。单测 7/7、u244+refresh-cookie 64/64（主会话复跑），两处变异红。U250 其余调用点分档在途。
 - **store-persistence 模块拆分令已派**（复审要求：文件 298/300、测试 800/800，改动前必须先拆）；分档 agent 与 one-liner 复审并行。
 - **快照持久化模块拆分**（`f79c24f2a87`，8 文件）：`store-persistence.ts` 只留生命周期（125 行/计数 87），拆出 `snapshot-serialize.ts`、`snapshot-restore-codec.ts`、`snapshot-file-io.ts`、`snapshot-backup-retention.ts`；测试拆为 3 文件。用例 21、`assert.` 114 次、suites 5 全部不变；主会话复跑 **21/21**，`tc:node` 通过、oxlint 8 文件 0 finding；外部调用方 import 未变（`serializeSnapshot` 保留重导出）。文档中指向旧文件的行号引用已派重映射。
+- **拆分文档引用重映射**（`69f8558781d`，1 文件 +1/−1）：`business-flows.md:92` 的 4 组旧行号按新模块重定位到 `snapshot-serialize.ts:26,45`、`snapshot-restore-codec.ts:118-141`、`snapshot-backup-retention.ts:17-23`、`store-persistence.ts:40-64`，8 个边界行 `sed` 核验一致。
