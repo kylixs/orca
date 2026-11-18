@@ -5,6 +5,7 @@ import { createWriterLease } from './writer-lease.ts'
 import { openAnchorStore, type AnchorStore } from './anchor.ts'
 import { MAX_BATCH, MAX_EVENT_BYTES, APPEND_BODY_MAX_BYTES } from './writer-limits.ts'
 import { openAuditLogFile } from '../../api/src/audit-log-file.ts'
+import { isEntryModule } from '../../login-lockout/src/entry-module.ts'
 import type { AuditEvent, AuditEventInput } from '../../api/src/store.ts'
 
 /**
@@ -305,9 +306,8 @@ export async function startAuditWriter(options: {
   }
 }
 
-// Why the path check: the same file is imported by tests, where argv[1] is the runner.
-const isMain = process.argv[1]?.includes('audit-writer') === true
-if (isMain) {
+// Imported by tests, where argv[1] is the test file, so this stays false.
+if (isEntryModule(import.meta.url, process.argv[1])) {
   const writer = await startAuditWriter({
     port: Number(process.env.PORT ?? 18788),
     internalToken: process.env.INTERNAL_TOKEN ?? 'internal-test-token',

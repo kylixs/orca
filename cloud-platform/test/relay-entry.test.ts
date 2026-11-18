@@ -17,6 +17,7 @@ import { preflightRelay } from '../apps/relay/src/relay.ts'
 
 const PLATFORM_ROOT = resolve(import.meta.dirname, '..')
 const RELAY_SRC = join(PLATFORM_ROOT, 'apps/relay/src')
+const ENTRY_MODULE_SRC = join(PLATFORM_ROOT, 'apps/login-lockout/src')
 const CONTRACT_SRC = join(PLATFORM_ROOT, 'packages/contract/src')
 const RELEASE_SHA = 'a'.repeat(64)
 const cleanups: Array<() => void> = []
@@ -31,10 +32,15 @@ function makeRelayTree(): RelayTree {
   const root = mkdtempSync(join(tmpdir(), 'orca-relay-entry-'))
   const release = join(root, 'releases', RELEASE_SHA)
   mkdirSync(join(release, 'apps/relay/src'), { recursive: true })
+  mkdirSync(join(release, 'apps/login-lockout/src'), { recursive: true })
   mkdirSync(join(release, 'packages/contract/src'), { recursive: true })
   cpSync(join(RELAY_SRC, 'relay.ts'), join(release, 'apps/relay/src/relay.ts'))
   cpSync(join(RELAY_SRC, 'sni.ts'), join(release, 'apps/relay/src/sni.ts'))
   cpSync(join(RELAY_SRC, 'relay-version.ts'), join(release, 'apps/relay/src/relay-version.ts'))
+  cpSync(
+    join(ENTRY_MODULE_SRC, 'entry-module.ts'),
+    join(release, 'apps/login-lockout/src/entry-module.ts')
+  )
   cpSync(
     join(CONTRACT_SRC, 'internal-fetch.ts'),
     join(release, 'packages/contract/src/internal-fetch.ts')

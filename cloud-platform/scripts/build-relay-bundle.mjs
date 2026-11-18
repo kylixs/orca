@@ -34,7 +34,7 @@ export const DEFAULT_PLATFORM_ROOT = resolve(SCRIPT_DIR, '..')
 export const DEFAULT_OUT_DIR = join(DEFAULT_PLATFORM_ROOT, 'dist', 'relay-bundles')
 
 const RELAY_ENTRY = 'apps/relay/src/relay.ts'
-const ALLOWED_PREFIXES = ['apps/relay/src/', 'packages/contract/src/']
+const ALLOWED_PREFIXES = ['apps/relay/src/', 'apps/login-lockout/src/', 'packages/contract/src/']
 const VERSION_FILE = 'VERSION'
 
 /**
@@ -45,6 +45,7 @@ export const REQUIRED_FILES = [
   RELAY_ENTRY,
   'apps/relay/src/relay-version.ts',
   'apps/relay/src/sni.ts',
+  'apps/login-lockout/src/entry-module.ts',
   'packages/contract/src/internal-fetch.ts'
 ]
 

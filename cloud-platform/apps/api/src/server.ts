@@ -6,6 +6,7 @@ import { lstat, readFile, rm, stat } from 'node:fs/promises'
 import { createReadStream, readFileSync } from 'node:fs'
 import { join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { isEntryModule } from '../../login-lockout/src/entry-module.ts'
 import { validateProjectPath } from '../../../packages/contract/src/project-path.ts'
 import { validateProjectRepoUrl } from '../../../packages/contract/src/repo-url.ts'
 import { validateProjectDefaultBranch } from '../../../packages/contract/src/branch-name.ts'
@@ -7858,7 +7859,7 @@ function ttlFromEnv(name: string): number | undefined {
   return Number.isFinite(value) && value > 0 ? value : undefined
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isEntryModule(import.meta.url, process.argv[1])) {
   const accessTtlMs = ttlFromEnv('ORCA_CLOUD_ACCESS_TTL_MS')
   const refreshTtlMs = ttlFromEnv('ORCA_CLOUD_REFRESH_TTL_MS')
   const handoffTtlMs = ttlFromEnv('ORCA_CLOUD_HANDOFF_TTL_MS')

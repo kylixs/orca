@@ -5,6 +5,7 @@ import { assertInsideRoot } from './path-containment.ts'
 import { resolveFileRequestPath } from './file-request-paths.ts'
 import { WebSocketServer } from 'ws'
 import { isInsideRoot } from '../../../packages/contract/src/permissions.ts'
+import { isEntryModule } from '../../login-lockout/src/entry-module.ts'
 import { mtlsFetch } from '../../../packages/contract/src/internal-fetch.ts'
 import type { CredentialPayload } from '../../../packages/contract/src/credential.ts'
 import { PolicyGateway, type GatewayPolicy } from './policy-gateway.ts'
@@ -460,7 +461,7 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isEntryModule(import.meta.url, process.argv[1])) {
   const runtime = await startRuntimeSim({
     hostId: process.env.HOST_ID ?? 'host_dev001',
     hostName: process.env.HOST_NAME ?? 'dev-001',

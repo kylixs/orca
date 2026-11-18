@@ -6,9 +6,9 @@ import {
 } from 'node:https'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
-import { readFileSync, realpathSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { readFileSync } from 'node:fs'
 import { mtlsFetch } from '../../../packages/contract/src/internal-fetch.ts'
+import { isEntryModule } from '../../login-lockout/src/entry-module.ts'
 import { extractSni } from './sni.ts'
 import { RELAY_CODE_VERSION } from './relay-version.ts'
 
@@ -300,16 +300,6 @@ export function preflightRelay(
   }
   const id = env.ORCA_CLOUD_RELAY_ID?.trim() || `relay:${port}`
   return { ok: true, id, port }
-}
-
-/** Main-module check that survives both a `current` symlink and a symlinked prefix. */
-export function isMainModule(argv1: string | undefined, moduleUrl: string): boolean {
-  if (!argv1) return false
-  try {
-    return realpathSync(argv1) === realpathSync(fileURLToPath(moduleUrl))
-  } catch {
-    return false
-  }
 }
 
 /** All three env vars must be set: a half-configured browser listener is worse than none. */
@@ -757,7 +747,7 @@ export async function startRelay(options: RelayOptions): Promise<RelayHandle> {
   }
 }
 
-if (isMainModule(process.argv[1], import.meta.url)) {
+if (isEntryModule(import.meta.url, process.argv[1])) {
   if (process.argv.includes('--preflight')) {
     const preflight = preflightRelay()
     if (!preflight.ok) {

@@ -114,6 +114,11 @@ test('changing one source byte changes the bundle sha', async (t) => {
     recursive: true
   })
   cpSync(
+    join(DEFAULT_PLATFORM_ROOT, 'apps/login-lockout/src'),
+    join(platformRoot, 'apps/login-lockout/src'),
+    { recursive: true }
+  )
+  cpSync(
     join(DEFAULT_PLATFORM_ROOT, 'packages/contract/src'),
     join(platformRoot, 'packages/contract/src'),
     { recursive: true }

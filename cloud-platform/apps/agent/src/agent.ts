@@ -1,4 +1,5 @@
 import { generateKeyPairSync } from 'node:crypto'
+import { isEntryModule } from '../../login-lockout/src/entry-module.ts'
 
 export type AgentOptions = {
   apiUrl: string
@@ -104,7 +105,7 @@ export async function startAgent(options: AgentOptions): Promise<AgentHandle> {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isEntryModule(import.meta.url, process.argv[1])) {
   const agent = await startAgent({
     apiUrl: process.env.API_URL ?? 'http://127.0.0.1:18787',
     hostName: process.env.HOST_NAME ?? 'dev-001',

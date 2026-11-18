@@ -67,6 +67,17 @@ test('entry through a symlinked file is the entry', () => {
   assert.equal(legacyIsEntryModule(realFileUrl, fileLink), false)
 })
 
+test('symlinked metaUrl with the real entry is the entry', () => {
+  // Only realpathing the self side makes a symlinked import.meta.url match argv[1].
+  assert.equal(isEntryModule(pathToFileURL(fileLink).href, realFile), true)
+  assert.equal(isEntryModule(pathToFileURL(join(dirLink, 'entry.ts')).href, realFile), true)
+})
+
+test('a non-file metaUrl is not the entry and does not throw', () => {
+  assert.equal(isEntryModule('https://example.com/entry.ts', SELF_PATH), false)
+  assert.equal(isEntryModule('data:text/javascript,export{}', SELF_PATH), false)
+})
+
 test('missing argv[1] is not the entry', () => {
   assert.equal(isEntryModule(SELF_URL, undefined), false)
 })
