@@ -144,7 +144,7 @@
 | `src/main/cloud-platform/cloud-host-tls-pinning.test.ts`（M109，§5.3 传输）    | AC-29 邻接                               | 真实平台 + 真实 TLS Runtime + MITM（另一张自签证书终结后转发）：真端点可连、换证书 `TLS_FINGERPRINT_MISMATCH` 被拒、无指纹不校验（旧平台兼容）；证据 `m109-host-tls-pinning/host-tls-pinning.json`                                                                                                                                                                                             |
 | `src/main/cloud-platform/m70-acceptance.test.ts`                               | AC-09                                    | 真实平台进程 + 真实 Orca Runtime + 真实加密 RPC                                                                                                                                                                                                                                                                                                                                                |
 | `cloud-platform/test/e2e/platform.e2e.test.ts::E3`                             | AC-21                                    | 加强断言：必须 401 且带 `x-orca-reject`，并输出到 `m70-acceptance`                                                                                                                                                                                                                                                                                                                             |
-| `cloud-platform/test/e2e/u244-admin-force-offline.e2e.test.ts`（U244，FR-1.6） | FR-1.6 管理员强制下线                    | 真实 `createApp` + HTTP 11 例：多设备撤销、旧 access 401、refresh 401 + 清 Cookie、宿主撤销集合、非管理员 403 + denied 审计、审计 fail-closed 503、并发/重复幂等（重复仍留痕）、leader 审计失败 follower 重试、session_revoke 目录/下拉                                                                                                                                                                                                                                  |
+| `cloud-platform/test/e2e/u244-admin-force-offline.e2e.test.ts`（U244，FR-1.6） | FR-1.6 管理员强制下线                    | 真实 `createApp` + HTTP 12 例：多设备撤销、旧 access 401、refresh 401 + 清 Cookie、宿主撤销集合、非管理员 403 + denied 审计、审计 fail-closed 503、并发/重复幂等（重复仍留痕）、leader 审计失败 follower 重试、session_revoke 目录/下拉                                                                                                                                                                                                                                  |
 | `cloud-platform/test/e2e/authorization-combination-matrix.e2e.test.ts`（U247） | 授权组合矩阵（全端点 × 三角色）          | 真实 `createApp` + HTTP 113/113：34 端点 × admin/auditor/developer，另覆盖匿名 401、强制下线后旧 token 401、禁用用户既有 token 401/重登 403 `USER_DISABLED`；`denyPrivileged` 型 403 均回查 `GET /v1/audit/events` 命中（含 targetId），未发现「应拒未拒」。已登记观察：archive/restore 对非管理员 404 不留痕、admin 不隐含项目 open、auditor 直读不对称、无 `/v1/settings*` 族，见台账 U247。 |
 | `cloud-platform/test/e2e/web-document-csp.e2e.test.ts`（U197 S6 / D10 阶段 1） | U197 AC10（安全纵深） | 真实 `createApp` + HTTP 6 例：仅 HTML 文档带 `Content-Security-Policy-Report-Only`（入口/显式 index/哈希入口/文件系统回退），JS/CSS/JSON/审计导出/404 不带；`STATIC_SECURITY_HEADERS` 不含任何 CSP key；304 重验证 HTML 带、JS 不带；`ORCA_CLOUD_CSP_REPORT_ONLY` 仅 trim 后 `off` 关闭（`false`/`0` 仍开）；关键指令逐条钉死（`frame-src 'self' https:`、`img-src 'self' data:`、`object-src 'none'`、`base-uri 'none'`、`frame-ancestors 'none'` 必须在，`upgrade-insecure-requests` 与 `script-src 'unsafe-inline'` 必须不在）。落地 `0fd4062f33c`，补强 `9e8f51b4852`；真实浏览器零违规观测与内联 `onclick` 重构未完成 |
 | `cloud-platform/test/e2e/u197-web-cookie-browser-race-probe.e2e.test.ts`（U197 S5 / U231/U232/U249） | U197 AC9c（竞态回归） | 真实 API 进程 + 真实 Chromium 9 例：U232 慢登出与 refresh 晚于新登录（晚到响应丢弃、新 Cookie 存活）、U231 F3 无 body Cookie 探测在途时登出（旧 `Set-Cookie` 不复活会话）、伪造 `orca.authMode=cookie` 标记一次失败即回登录、U222 N1 页内刷新传输失败保留会话并在恢复后重试成功、AC9c 两例（清空 localStorage 仅凭 Cookie 一次刷新进应用；无标记无旧键且无 Cookie 一次失败回登录）、U249 探测失败 60 秒退避且结论出现后清除。由 1067 行原文件按 max-lines 拆分（`e83c73ae8ef`），用例逐字保留 |
@@ -162,13 +162,13 @@
 | `cloud-platform/apps/api/test/pre-read-close.test.ts`（U264，已落地 `b290025b097`） | U264 非 JSON 出口套件 | **7 例**（`node --test` 实测 7 pass；`b4554353cd6` 合法帧重写）：静态 404 声明 16 MiB → 404 且消费远小于声明并关闭；未认证 `OPTIONS /v1/projects` 声明 2 MiB → 204 且关闭；OPTIONS 小 body 保持 keep-alive；13 B chunked 401 不关闭、同连接二次请求成功；15 KiB chunked 在 16 KiB 预算内保持 keep-alive；32 KiB chunked 拒绝后有界排空并最终关闭（经「删 `boundUnreadChunkedBody` 即红」验证有效）；32,889 B 合法 register 201 且 keep-alive 复用 |
 | `cloud-platform/apps/api/test/store-persistence*.test.ts`（U131/U197/U233；拆分 `f79c24f2a87`） | 快照持久化（AC-16 邻接） | 3 文件 21 例：`store-persistence.test.ts` 8 例（序列化/恢复往返、索引重建、审计截断 10000 条、损坏/未知版本/毒化快照改名保留并自愈、未配置不落盘）；`store-persistence-refresh-digest.test.ts` 6 例（快照不含明文 refresh token、旧明文 key 加载后在内存重建摘要并立即清洗磁盘、清洗后 flush 保持摘要且不重复写、写回失败不阻断后续 flush）；`store-persistence-rollback.test.ts` 7 例（v1/v2 互读、v1 读取端仅要求刷新重登、摘要前缀只剥离一次、降级写回不误撤销、二次启动种子幂等）。快照模块按 max-lines 拆分后用例逐字保留 |
 | `cloud-platform/apps/api/test/audit-health-escalation.test.ts`（U249） | 审计健康状态（AC-26 邻接） | 3 例：`write_failed` 后真实断链升级为 `chain_broken` 且 `firstFailure` 保留首因；`chain_broken` 全局锁存，修复后成功写盘与后续 `write_failed` 均不降级；成功写盘仍清除 `write_failed`（既有语义不变） |
-| `cloud-platform/apps/api/test/audit-writer-client.test.ts`（U249） | 审计写入客户端（AC-26 邻接） | 3 例：旧 writer 的瞬时 `write_failed` 包装为 `AUDIT_CHAIN_BROKEN` 并按可重试处理（不再一次失败即锁死）；writer 确认 `chain_broken` 保持全局锁存语义；`status` 探测本身失败不凭一次 503 锁存 `chain_broken`，仅在探测成功确认后才锁存 |
-| `cloud-platform/apps/api/test/audit-cursor-validation.test.ts`（U58 U13/W5，已修 `8917b193a8a`；语义钉住 `aaab38a9fce`） | 审计游标校验（U58 余项，AC-26 邻接） | **3 例**（`node --test` 实测 3 pass）：仅接受十进制非负安全整数，`0`/`1`/`999999` 均 200；`abc`/`-1`/`1.5`/` 1`/`1e3`/空串 → 400 `INVALID_QUERY` 且无 `events`/`nextCursor`；对照无游标请求 200，证明 400 由游标值引起而非端点关闭；`cursor=0`/`1` 空页、`999999` 非空钉住「0 是显式过滤而非 falsy 缺省」 |
+| `cloud-platform/apps/api/test/audit-writer-client.test.ts`（U249） | 审计写入客户端（AC-26 邻接） | 6 例：旧 writer 的瞬时 `write_failed` 包装为 `AUDIT_CHAIN_BROKEN` 并按可重试处理（不再一次失败即锁死）；writer 确认 `chain_broken` 保持全局锁存语义；`status` 探测本身失败不凭一次 503 锁存 `chain_broken`，仅在探测成功确认后才锁存 |
+| `cloud-platform/apps/api/test/audit-cursor-validation.test.ts`（U58-子项 U13/W5，已修 `8917b193a8a`；语义钉住 `aaab38a9fce`） | 审计游标校验（U58 余项，AC-26 邻接） | **3 例**（`node --test` 实测 3 pass）：仅接受十进制非负安全整数，`0`/`1`/`999999` 均 200；`abc`/`-1`/`1.5`/` 1`/`1e3`/空串 → 400 `INVALID_QUERY` 且无 `events`/`nextCursor`；对照无游标请求 200，证明 400 由游标值引起而非端点关闭；`cursor=0`/`1` 空页、`999999` 非空钉住「0 是显式过滤而非 falsy 缺省」 |
 | `cloud-platform/apps/api/test/heartbeat-protocol-version.test.ts`（U272，已修 `c8afce74276`） | 注册/心跳 protocolVersion（AC-02 邻接） | **3 例**（`node --test` 实测 3 pass）：合法数字与纯数字字符串接受并落库；`null`/缺省回落 3；`1.5`/`true`/空串/`"3x"`/`"1e999"`/负值/超安全整数及 `"not-a-number"` → 400 `HOST_PROTOCOL_VERSION_INVALID`，不消耗一次性令牌、不改旧值、不落成功审计；拒绝后同令牌合法注册成功、随后心跳 200 且 online |
 | `cloud-platform/apps/api/test/grant-subject-dedupe.test.ts`（U273，已修 `c8afce74276`） | 授权主体去重（AC-04 邻接） | **4 例**（`node --test` 实测 4 pass）：项目授权重复位 `['open','open','terminal']` 落库并回显 `['open','terminal']` 且单行；同 subject 两次 PUT 仍单行（替换非追加）；user/group 同 id 不合并（两行各自 subjectType）；host 授权重复位 `['view','view','maintain']` 去重且只落一行 |
 | `cloud-platform/apps/audit-writer/src/writer-cursor-validation.test.ts`（U58，已修 `6ca1f373ded`） | writer `/v1/events` 游标校验（AC-26 邻接） | **4 例**（`node --test` 实测 4 pass）：`0`/`1`/`999999` 合法；`abc`/`-1`/`1.5`/`1e3`/空串/` 1` 与超安全整数、400 位数字串 → 400 `INVALID_QUERY` 且无 `events`/`nextCursor`；`cursor=0` 空页、`cursor=2` 返回 seq 1，对照省略游标返回全量，证明 0 未被 falsy 检查吞掉 |
 | `cloud-platform/test/e2e/web-exploratory-fixes.e2e.test.ts`（U58 W5/U116；`8917b193a8a`/`6bb1a28a229`） | 静态路径与工作台文案（U58 W5/U116） | **44 例**（`node --test` 实测 44 pass）：新增非法百分号转义 `/%E0%A4%A` → 404 `text/plain`、不泄露 `URI malformed`/错误码/栈；合法 `%69ndex.html` → 200 `text/html`；U116 心跳文案断言收紧到 `#content .stat` 的 `.stat-hint`、常量行锚定、数字边界，并放行「最近心跳 N 秒」新措辞；断言加固不改例数 |
-| `cloud-platform/test/install-one-liner-runtime.test.ts`（U275，已修 `ccc38b562e8`） | 安装 one-liner 退出码（FR-4.11 邻接） | **13 例 / 4 suites**（`node --test` 实测 13 pass；U275 8 例 → U276 harness P3 11 例 → U281 追加 2 例）：从 `app.js` 源码取模板、真实 bash 执行——下载失败退出 65、下载中途断开（curl 18）不留半截脚本、脚本 64/69/70 原码透传、`kill -TERM`→143、成功删临时文件、`rm` 失败退出 0 + stderr 告警、模板来源与 `\${code}` 守卫；U281 补 SIGINT 中断经 trap 退出（130/143）且 TMPDIR 无 `orca-install-*.sh` 残留、下载失败且 `rm` 失败仍以 65 退出 |
+| `cloud-platform/test/install-one-liner-runtime.test.ts`（U275，已修 `ccc38b562e8`） | 安装 one-liner 退出码（FR-4.11 邻接） | **14 例 / 4 suites**（`node --test` 实测 14 pass；U275 8 例 → U276 harness P3 11 例 → U281 追加 2 例）：从 `app.js` 源码取模板、真实 bash 执行——下载失败退出 65、下载中途断开（curl 18）不留半截脚本、脚本 64/69/70 原码透传、`kill -TERM`→143、成功删临时文件、`rm` 失败退出 0 + stderr 告警、模板来源与 `\${code}` 守卫；U281 补 SIGINT 中断经 trap 退出（130/143）且 TMPDIR 无 `orca-install-*.sh` 残留、下载失败且 `rm` 失败仍以 65 退出 |
 | `cloud-platform/test/e2e/u71-audit-gap-heartbeat.e2e.test.ts`（U274，已修 `beba9cf089d`） | auditGap 心跳（AC-26 邻接） | **4 例**（`node --test` 实测 4 pass；与 web-project-entry 合跑 14/14）：fixture 端口改 17001–17003；同 bootId 同计数连发两拍仅 1 条、计数变化新增增量而非累计、bootId 变化记 dropped、多主机 gap 事件后链校验通过 |
 | `cloud-platform/test/e2e/web-project-entry.e2e.test.ts`（U274，已修 `beba9cf089d`） | 项目入口（FR-3.8/FR-3.11 邻接） | **10 例**（`node --test` 实测 10 pass）：非法地址用例改为注册边界断言 400 `HOST_DIRECTADDRS_INVALID`；「在线但无 sessionPageUrl」fixture 改用 `dev-nosession`（TLS 指纹 + 无直连地址）；入口/详情/维护/离线矩阵断言未变 |
 | `cloud-platform/apps/api/test/snapshot-malformed-direct-addr.test.ts`（U277 新增、U280 补测；U280 修复 `abc06c54421`） | 快照恢复畸形直连地址（AC-02 邻接） | **5 例 / 1 suite**（当前 `node --test` 实测 5 pass；U280 补测时为 4 例，`983269073a` 增 `127.0.0.1:0` 端口样本）：U277 原 2 例——恢复 `127.0.0.1:99999`（端口越界）后列表 200 且 `sessionPageUrl` 为空串，`127.0.0.1:17001` 对照非空且可解析；U280 追加 2 例——`console.example/evil`、`user@evil.example` 同样列表 200 + 空串。合并为一行：同一文件、同一 suite、同一地址守卫谓词，U280 仅扩畸形样本 |
@@ -196,9 +196,9 @@ pnpm run check:code-quality:changed
 ```
 
 
-### 7.1 认证基线（24 文件 / 266 测试，可复现清单）
+### 7.1 认证基线（24 文件 / 267 测试，可复现清单）
 
-历史台账只写「24 套件 / 266 tests」，无法复核文件构成；2026-11-18 12:4x 由 `/tmp/auth-baseline-3.log` 的 49 个顶层 suite 反推，49/49 精确对应下列 24 个文件（当前 HEAD 复跑 **267/267，0 fail / 0 skip**，`/tmp/auth-baseline-5.log`，206s；较 266 多出的 1 例为 U245-A「1 leader + 3 followers 并发撤销只审计一次」）。
+历史台账只写「24 套件 / 266 tests」，无法复核文件构成；2026-11-18 12:4x 由 `/tmp/auth-baseline-3.log` 的 49 个顶层 suite 反推，49/49 精确对应下列 24 个文件（当前 HEAD 复跑 **267/267，0 fail / 0 skip**，最新证据 `/tmp/auth-baseline-6.log`（206.8s），历史 `-5.log` 同为 267；较 266 多出的 1 例为 U245-A「1 leader + 3 followers 并发撤销只审计一次」）。
 
 ```bash
 cd cloud-platform && ORCA_BACKGROUND_LAUNCH=1 node --test --test-concurrency=2 \
@@ -233,7 +233,7 @@ test/e2e/web-refresh-cookie.e2e.test.ts
 
 ### 7.2 全仓 e2e 全景（口径与命令）
 
-范围：`cloud-platform/test/e2e/*.e2e.test.ts` 全量（2026-11-18 实测 146 文件、37 批），不是子系统子集。本节是 §7.1 禁令的受控例外：分批、批间串行，日常回归仍按 §7.1。
+范围：`cloud-platform/test/e2e/*.e2e.test.ts` 全量（2026-11-18 实测 **147** 文件、37 批；首轮快照 146，期间新增 e2e 自检后为 147），不是子系统子集。本节是 §7.1 禁令的受控例外：分批、批间串行，日常回归仍按 §7.1。
 
 ```bash
 cd cloud-platform
@@ -243,9 +243,9 @@ ORCA_BACKGROUND_LAUNCH=1 node --test --test-concurrency=2 \
   test/e2e/<batch>.e2e.test.ts test/e2e/<batch>.e2e.test.ts
 ```
 
-- 量级：单轮约 22 分钟（两轮实测 1369s / 1297s），最长单批 240s，故批大小取 4 文件。
+- 量级：单轮约 22 分钟（final2 实测 1301s / 1320s），最长单批 197–236s，故批大小取 4 文件。
 - 结论口径：报原始 `tests / pass / fail / skipped`；fail 按三类归属——① 产品缺陷、② 测试缺陷/陈旧 fixture、③ 环境/并发改写工作树（INVALID，单独复跑转绿）。跳过项不得从分母中抹掉。
-- 与子集基线的关系：§7.1 认证 24 文件 266、授权矩阵 113、T1 关键集均为子集，只能证明对应范围，不得替代全景结论；全仓结论必须由全景扫描支撑。
+- 与子集基线的关系：§7.1 认证 24 文件 267、授权矩阵 113、T1 关键集均为子集，只能证明对应范围，不得替代全景结论；全仓结论必须由全景扫描支撑。
 - 已知环境噪声：扫描期间另一会话改写 `apps/web/app.js`，会让 `new Function`/模板解析瞬时失败（2026-11-18 第一轮 F2–F8）；此类红必须单独复跑确认后再归属。
 - 证据：`cloud-platform/test-reports/full-e2e-sweep-20261118.md`（首轮 1141/1140/1，唯一稳定红 U284）；**首轮收官 `full-e2e-sweep-final-20261118.md`：1141/1141/0（HEAD `0fa1d21b9c4`）；第二轮收官 `full-e2e-sweep-final2-20261118.md`：147 文件 1143/1143/0，0 skipped，37 批全部 exit 0**（HEAD `691f4f404fb`）。
 
