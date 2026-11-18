@@ -280,3 +280,11 @@
 2. API 契约：`GET /v1/projects` 对 failed 返回 `provisioningError`、ready 不带该字段（加性兼容）；若选 A 再加「探测失败→409 且不落库」「探测超时→可重试且不判死」两条。
 
 **状态：待用户裁定，未开工。**
+
+## 附五：D25 U181 H11–H13 验收产物来源（2026-11-18）
+
+详见 `u181-h11-ci-artifact-plan.md`。核心事实：`pr.yml` 的 `package` job 产 deb 但**不上传**，且不构建 `out/orcad-template`、未设 `ORCA_REQUIRE_ORCAD_TEMPLATE`，故其 deb 缺 `resources/orcad-template`，过不了 runbook §1.1 产物门；`release-cut.yml` 的 deb 只进 draft release 且绑定 bump 后的 tag SHA。
+
+三选项：**A** PR 上传统（最小改动，但模板缺口未解）；**B** 新增 `workflow_dispatch` 构建 job，复用 `build_template: true` 并设 `ORCA_REQUIRE_ORCAD_TEMPLATE=1`（推荐，产物精确绑定验收 SHA）；**C** 直接用 release 产物（零改动，但验收对象是 bump 后 commit）。
+
+状态：待用户裁定，未改动任何工作流。
