@@ -10,10 +10,12 @@ import {
   scanTestTimeouts
 } from './check-test-timeouts-scan.mjs'
 import {
+  NODE_TEST_IMPORT_GREP,
   SCAN_EXCLUSIONS,
   SOURCE_EXTENSIONS,
-  discoverRunnerReferences,
-  isExcluded
+  committedRunnerTargets,
+  isExcluded,
+  runnerTokens
 } from './check-test-timeouts-scope.mjs'
 
 export const DEFAULT_BASELINE = path.join(PLATFORM_ROOT, 'scripts', 'test-timeouts-baseline.json')
@@ -34,8 +36,8 @@ function git(args, root) {
 }
 
 // U315: exact import/require pattern, evaluated by git grep against committed
-// content. It cannot match helper comments such as "node:test ignores ...".
-const NODE_TEST_IMPORT_GREP = String.raw`(from|require[[:space:]]*\()[[:space:]]*['"]node:test['"]`
+// content. It cannot match helper comments such as "node:test ignores ...". U317 ⑤:
+// the pattern is exported by the scope module, shared with the worktree RegExp.
 const SOURCE_PATHSPECS = [...SOURCE_EXTENSIONS].map((extension) => `*${extension}`)
 
 function gitOrEmpty(args, root) {
@@ -51,15 +53,15 @@ function gitOrEmpty(args, root) {
 }
 
 // Committed scope: importers are found without reading every blob; runner
-// references are intersected with the committed file list so a dirty worktree
-// cannot invent files. Evidence trees are excluded exactly as in the worktree.
+// references come from the committed package.json files and are intersected with the
+// committed file list, so a dirty worktree cannot invent files. Evidence trees are
+// excluded exactly as in the worktree.
 export function headScopeFiles({ root = ROOT, ref = 'HEAD', exclusions = SCAN_EXCLUSIONS } = {}) {
-  const listed = new Set(
-    git(['ls-tree', '-r', '--name-only', '--full-tree', ref], root)
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-  )
+  const listed = git(['ls-tree', '-r', '--name-only', '--full-tree', ref], root)
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+  const listedSet = new Set(listed)
   const grepped = gitOrEmpty(
     [
       'grep',
@@ -82,14 +84,35 @@ export function headScopeFiles({ root = ROOT, ref = 'HEAD', exclusions = SCAN_EX
     }
     const prefix = `${ref}:`
     const file = entry.startsWith(prefix) ? entry.slice(prefix.length) : entry
-    if (listed.has(file) && !isExcluded(file, exclusions)) {
+    if (listedSet.has(file) && !isExcluded(file, exclusions)) {
       files.add(file)
     }
   }
-  for (const reference of discoverRunnerReferences({ root, exclusions })) {
-    const file = path.relative(root, reference).split(path.sep).join('/')
-    if (listed.has(file) && !isExcluded(file, exclusions)) {
-      files.add(file)
+  // U317 ③: read the committed manifests, never the worktree ones.
+  for (const manifestPath of listed) {
+    if (
+      path.posix.basename(manifestPath) !== 'package.json' ||
+      isExcluded(manifestPath, exclusions)
+    ) {
+      continue
+    }
+    let manifest
+    try {
+      manifest = JSON.parse(git(['show', `${ref}:${manifestPath}`], root))
+    } catch {
+      continue
+    }
+    const directory = path.posix.dirname(manifestPath)
+    for (const token of runnerTokens(manifest)) {
+      for (const file of committedRunnerTargets(
+        directory === '.' ? '' : directory,
+        token,
+        listed
+      )) {
+        if (SOURCE_EXTENSIONS.has(path.posix.extname(file)) && !isExcluded(file, exclusions)) {
+          files.add(file)
+        }
+      }
     }
   }
   return [...files].sort()
@@ -128,7 +151,10 @@ function readBaseline(baselinePath) {
     }
     counts.set(key, count)
   }
-  return counts
+  return {
+    counts,
+    scannedFiles: Number.isInteger(parsed.scannedFiles) ? parsed.scannedFiles : null
+  }
 }
 
 function countByContentKey(violations, contexts) {
@@ -235,14 +261,22 @@ export function checkTestTimeouts({
   }
   const baseline = readBaseline(baselinePath)
   const currentCounts = countByContentKey(scanned.violations, scanned.contexts)
-  const newViolations = findNewViolations(scanned.violations, scanned.contexts, baseline)
+  const newViolations = findNewViolations(scanned.violations, scanned.contexts, baseline.counts)
+  // U317 ④: surface scope drift explicitly rather than letting a silently different
+  // file set pass as an ordinary clean check. This is a hint, not a failure: the
+  // pinned scope test is what fails when the intended scope moves.
+  const scopeMismatch =
+    baseline.scannedFiles === null || baseline.scannedFiles === scanned.scannedFiles
+      ? null
+      : { baselineScannedFiles: baseline.scannedFiles, scannedFiles: scanned.scannedFiles }
   return {
     ...base,
     exitCode: newViolations.length === 0 ? 0 : 1,
     newViolations,
-    staleKeys: findStaleKeys(currentCounts, baseline),
+    staleKeys: findStaleKeys(currentCounts, baseline.counts),
     baselineWritten: false,
-    baselineCount: baselineTotal(baseline),
+    baselineCount: baselineTotal(baseline.counts),
+    scopeMismatch,
     source: fromHead ? scanned.ref : 'worktree'
   }
 }

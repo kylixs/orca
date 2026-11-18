@@ -614,3 +614,28 @@ test('parseArgs rejects unknown flags and missing paths', () => {
   assert.equal(parseArgs(['--from-head']).fromHead, true)
   assert.equal(parseArgs(['--from-head', '--check']).checkOnly, true)
 })
+
+// U317 ④: a check run exposes an explicit hint when the current scan scope no longer
+// matches the baseline's recorded file count (the count itself is pinned separately).
+test('reports scan-size drift against the baseline scannedFiles', () => {
+  withTempDir((root) => {
+    const first = writeFixture(root, 'a.test.mjs', "import test from 'node:test'\n")
+    const second = writeFixture(root, 'b.test.mjs', "import test from 'node:test'\n")
+    const baselinePath = join(root, 'baseline.json')
+    const created = checkTestTimeouts({ files: [first], baselinePath })
+    assert.equal(created.scannedFiles, 1)
+    const checked = checkTestTimeouts({ files: [first, second], baselinePath, root })
+    assert.equal(checked.exitCode, 0)
+    assert.deepEqual(checked.scopeMismatch, { baselineScannedFiles: 1, scannedFiles: 2 })
+  })
+})
+
+test('matching scan size reports no scope drift', () => {
+  withTempDir((root) => {
+    const first = writeFixture(root, 'a.test.mjs', "import test from 'node:test'\n")
+    const baselinePath = join(root, 'baseline.json')
+    checkTestTimeouts({ files: [first], baselinePath })
+    const checked = checkTestTimeouts({ files: [first], baselinePath, root })
+    assert.equal(checked.scopeMismatch, null)
+  })
+})

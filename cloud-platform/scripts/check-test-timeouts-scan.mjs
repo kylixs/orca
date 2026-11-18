@@ -15,9 +15,25 @@ import {
   stripExpressionParens,
   stripOuterParens
 } from './check-test-timeouts-lexer.mjs'
-import { ROOT, SCAN_EXCLUSIONS, SCAN_SCOPE, collectScopeFiles } from './check-test-timeouts-scope.mjs'
+import {
+  NODE_TEST_IMPORT,
+  NODE_TEST_IMPORT_GREP,
+  NODE_TEST_IMPORT_SOURCE,
+  ROOT,
+  SCAN_EXCLUSIONS,
+  SCAN_SCOPE,
+  collectScopeFiles
+} from './check-test-timeouts-scope.mjs'
 
-export { ROOT, SCAN_EXCLUSIONS, SCAN_SCOPE, collectScopeFiles }
+export {
+  NODE_TEST_IMPORT,
+  NODE_TEST_IMPORT_GREP,
+  NODE_TEST_IMPORT_SOURCE,
+  ROOT,
+  SCAN_EXCLUSIONS,
+  SCAN_SCOPE,
+  collectScopeFiles
+}
 
 export const PLATFORM_ROOT = path.join(ROOT, 'cloud-platform')
 
@@ -63,7 +79,7 @@ function objectHasTimeout(arg) {
 // U313 ②: bare `POSITIVE_INFINITY`/`NEGATIVE_INFINITY` are not JS globals, and
 // `globalThis.POSITIVE_INFINITY`/`global.POSITIVE_INFINITY` evaluate to undefined.
 // Only `Number` carries the signed-infinite members; every object carries Infinity/NaN.
-const SPECIAL_OBJECT = String.raw`(?:Number|globalThis|global)`
+const SPECIAL_OBJECTS = new Set(['Number', 'globalThis', 'global'])
 const SPECIAL_MEMBER = String.raw`(?:Infinity|NaN|POSITIVE_INFINITY|NEGATIVE_INFINITY)`
 const SPECIAL_MEMBERS = new Map([
   ['Infinity', 'special:infinity'],
@@ -72,14 +88,64 @@ const SPECIAL_MEMBERS = new Map([
   ['NaN', 'special:nan']
 ])
 const NUMBER_ONLY_MEMBERS = new Set(['POSITIVE_INFINITY', 'NEGATIVE_INFINITY'])
+
+// U317: access may use optional chaining and the bracket member may be a backtick
+// string. The object is normalized separately, so `((Number))` and `(Number as any)`
+// collapse onto `Number`.
+const SPECIAL_QUOTE = '(?<quote>[\'"`])'
 const SPECIAL_ACCESS = new RegExp(
-  String.raw`^(?:(?<object>${SPECIAL_OBJECT})\s*\.|\(\s*(?<parenObject>${SPECIAL_OBJECT})\s*\)\s*\.)?\s*(?<member>${SPECIAL_MEMBER})$`
+  String.raw`^(?<object>.*?)\s*(?:\?\.|\.)\s*(?<member>${SPECIAL_MEMBER})$`
 )
 const SPECIAL_BRACKET = new RegExp(
-  String.raw`^(?:(?<object>${SPECIAL_OBJECT})\s*|\(\s*(?<parenObject>${SPECIAL_OBJECT})\s*\)\s*)\[\s*(?<quote>['"])(?<member>${SPECIAL_MEMBER})\k<quote>\s*\]$`
+  String.raw`^(?<object>.*?)\s*\??\.?\s*\[\s*` +
+    SPECIAL_QUOTE +
+    String.raw`(?<member>${SPECIAL_MEMBER})\k<quote>\s*\]$`
 )
-// `as`/`satisfies` only annotate the type; the runtime value is unchanged. [U309/U311]
-const TS_TYPE_CLAUSE = /\s+(?:as|satisfies)\s+\S[\s\S]*$/
+const TYPE_CLAUSE_KEYWORDS = new Set(['as', 'satisfies'])
+
+// Index of a top-level ` as `/` satisfies ` clause, or -1. Parentheses/brackets only
+// nest here; a clause inside them is handled after the outer parens are peeled.
+function typeClauseStart(text) {
+  let depth = 0
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+    if (char === '(' || char === '[' || char === '{') {
+      depth += 1
+    } else if (char === ')' || char === ']' || char === '}') {
+      depth -= 1
+    } else if (depth === 0 && /[A-Za-z_$]/.test(char) && /\s/.test(text[index - 1] ?? '')) {
+      let end = index + 1
+      while (end < text.length && /[\w$]/.test(text[end])) {
+        end += 1
+      }
+      if (TYPE_CLAUSE_KEYWORDS.has(text.slice(index, end)) && /\s/.test(text[end] ?? '')) {
+        return index
+      }
+      index = end - 1
+    }
+  }
+  return -1
+}
+
+// `as`/`satisfies` only annotate the type and outer parens do not change the value.
+// Peel both repeatedly so `(Infinity) as number` and `((Number))` normalize away.
+function normalizeSpecialExpression(value) {
+  let text = value.trim()
+  for (;;) {
+    const clause = typeClauseStart(text)
+    const withoutClause = clause === -1 ? text : text.slice(0, clause).trim()
+    const stripped = stripOuterParens(withoutClause)
+    if (stripped === text) {
+      return text
+    }
+    text = stripped
+  }
+}
+
+function specialObject(objectText) {
+  const object = normalizeSpecialExpression(objectText)
+  return SPECIAL_OBJECTS.has(object) ? object : null
+}
 
 // U313 ③: `-NaN` and `NaN` share one key because the sign is unobservable at a
 // node:test timeout position — the argument is dropped either way. (`Object.is`
@@ -106,16 +172,28 @@ function specialMemberKey(object, member) {
 }
 
 function canonicalSpecialBody(body) {
-  const text = body.trim().replace(TS_TYPE_CLAUSE, '').trim()
-  const match = SPECIAL_ACCESS.exec(text) ?? SPECIAL_BRACKET.exec(text)
-  return match
-    ? specialMemberKey(match.groups.object ?? match.groups.parenObject, match.groups.member)
-    : null
+  const text = normalizeSpecialExpression(body)
+  const access = SPECIAL_ACCESS.exec(text)
+  if (access !== null) {
+    const object = specialObject(access.groups.object)
+    return object === null ? null : specialMemberKey(object, access.groups.member)
+  }
+  const bracket = SPECIAL_BRACKET.exec(text)
+  if (bracket !== null) {
+    const object = specialObject(bracket.groups.object)
+    return object === null ? null : specialMemberKey(object, bracket.groups.member)
+  }
+  return SPECIAL_MEMBERS.has(text) ? specialMemberKey(undefined, text) : null
 }
 
 function canonicalSpecialKey(arg) {
-  const { negative, body } = peelNumericLiteral(arg)
-  return applySpecialSign(canonicalSpecialBody(body), negative)
+  const peeled = peelNumericLiteral(arg)
+  const normalized = normalizeSpecialExpression(peeled.body)
+  const signed = peelNumericLiteral(normalized)
+  return applySpecialSign(
+    canonicalSpecialBody(signed.body),
+    peeled.negative !== signed.negative
+  )
 }
 
 // U313 ①: match on sanitize(source, { preserveLiterals: true }) — comments are blanked
@@ -237,9 +315,9 @@ function normalizeNumericArg(arg) {
   if (NUMERIC_LITERAL.test(body)) {
     return canonicalNumericLiteral(body, negative)
   }
-  const special = canonicalSpecialBody(body)
+  const special = canonicalSpecialKey(arg)
   if (special !== null) {
-    return applySpecialSign(special, negative)
+    return special
   }
   // Expressions stay textual: fold redundant outer parens and canonicalize each
   // numeric token; never evaluate the expression (a scanner must not execute input,

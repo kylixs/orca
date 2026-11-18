@@ -444,6 +444,51 @@ test('chained-modifier detection does not match properties on other objects', ()
   assert.deepEqual(scanSource(`${source}\n`), [])
 })
 
+// U317 ①: normalize before matching — repeated outer parens, top-level `as`/
+// `satisfies` clauses, optional chaining and backtick members. Each spelling must be
+// detected and must collapse onto the key of its canonical bare form.
+const SPECIAL_FORM_CASES = [
+  ['(Infinity) as number', 'Infinity'],
+  ['(-Infinity) as number', '-Infinity'],
+  ['Number?.POSITIVE_INFINITY', 'Infinity'],
+  ['Number?.["NaN"]', 'NaN'],
+  ['((Number))["NaN"]', 'NaN'],
+  ['(Number as any)["NaN"]', 'NaN'],
+  ['Number[`NaN`]', 'NaN']
+]
+
+for (const [spelling, canonical] of SPECIAL_FORM_CASES) {
+  test(`flags normalized special spelling: ${spelling}`, () => {
+    assert.deepEqual(scanSource(`test('a', fn, ${spelling})\n`), [
+      { file: '<memory>', line: 1, form: 'numeric-special' }
+    ])
+    assert.equal(scanSpecialKey(spelling), scanSpecialKey(canonical))
+  })
+}
+
+// U317 ②: reverse cases. A spelling that only appears inside a string/template body
+// is data, never a call; lookalike receivers and unrelated properties stay silent.
+test('does not flag special spellings inside strings or template text', () => {
+  const source = [
+    "test('a', fn, '(Infinity) as number')",
+    'test("b", fn, `Number?.POSITIVE_INFINITY`)',
+    'test("c", fn, `Number?.["NaN"]`)',
+    'const label = "test(\'hidden\', fn, (-Infinity) as number)"'
+  ].join('\n')
+  assert.deepEqual(scanSource(`${source}\n`), [])
+})
+
+test('does not treat lookalike receivers or properties as specials', () => {
+  const source = [
+    'globalTh.is(fn, 5000)',
+    'globalThisX.POSITIVE_INFINITY',
+    'obj.test.skip(fn, 5000)',
+    'Number?.isNaN',
+    'Number[`isNaN`]'
+  ].join('\n')
+  assert.deepEqual(scanSource(`${source}\n`), [])
+})
+
 // U315: object timeouts are the legal form on hooks, including when the hook is
 // wrapped in chained modifiers? Hooks have no modifiers, but the object must never
 // be mistaken for a dropped numeric argument.

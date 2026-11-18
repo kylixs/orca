@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import {
+  NODE_TEST_IMPORT,
+  NODE_TEST_IMPORT_GREP,
+  NODE_TEST_IMPORT_SOURCE,
   SCAN_EXCLUSIONS,
   collectScopeFiles,
   headScopeFiles
@@ -96,7 +100,10 @@ test('collectScopeFiles covers the real runner trees but not evidence', () => {
   assert.ok(files.includes('.github/actions/cloud-sql-rollout-lease/action-contract.test.mjs'))
   assert.ok(files.includes('docs/site/tests/docs-package.test.mjs'))
   assert.ok(files.some((file) => /^cloud\/dev\/scripts\/.+\.test\.mjs$/.test(file)))
-  assert.ok(files.length >= 290, `expected >= 290 files, got ${files.length}`)
+  // U317: pin the exact count. A change here means the scan scope itself moved; the
+  // baseline's `scannedFiles` and this number are expected to stay in lockstep, and
+  // checkTestTimeouts() reports a mismatch against the baseline at check time.
+  assert.equal(files.length, 296, `expected exactly 296 files, got ${files.length}`)
   assert.ok(files.every((file) => !/(^|\/)evidence\//.test(file)))
   assert.ok(files.every((file) => !/^(?:src\/main|mobile|tests|config\/scripts)\//.test(file)))
 })
@@ -109,4 +116,54 @@ test('headScopeFiles uses the same expanded policy', () => {
   assert.ok(files.includes('.github/actions/cloud-sql-rollout-lease/storage-lease.test.mjs'))
   assert.ok(files.includes('docs/site/tests/docs-package.test.mjs'))
   assert.ok(files.every((file) => !/(^|\/)evidence\//.test(file)))
+})
+
+// U317 ③: runner references in HEAD mode come from the committed package.json, never
+// from the dirty worktree; otherwise an uncommitted script could add files to scope.
+test('headScopeFiles reads runner references from committed package.json', () => {
+  withTempRoot((root) => {
+    writeFixture(
+      root,
+      'package.json',
+      JSON.stringify({ scripts: { test: 'node --test specs/committed.test.mjs' } })
+    )
+    writeFixture(root, 'specs/committed.test.mjs', 'export const committed = 1\n')
+    writeFixture(root, 'specs/dirty-only.test.mjs', 'export const dirty = 1\n')
+    const git = (args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' })
+    git(['init', '-q'])
+    git(['add', '.'])
+    git([
+      '-c',
+      'user.name=t',
+      '-c',
+      'user.email=t@example.com',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '-qm',
+      'init'
+    ])
+    // Uncommitted manifest change must not leak into HEAD scope.
+    writeFixture(
+      root,
+      'package.json',
+      JSON.stringify({
+        scripts: { test: 'node --test specs/committed.test.mjs specs/dirty-only.test.mjs' }
+      })
+    )
+    assert.deepEqual(headScopeFiles({ root }), ['specs/committed.test.mjs'])
+  })
+})
+
+// U317 ⑤: the worktree and HEAD import patterns derive from one source, so a change
+// to one cannot silently drift from the other.
+test('worktree and HEAD import patterns share one source', () => {
+  // The authored pattern is POSIX ERE (grep) form; the JS RegExp is the same text
+  // with `[[:space:]]` translated to `\s`, so the two cannot drift.
+  assert.equal(NODE_TEST_IMPORT_GREP, NODE_TEST_IMPORT_SOURCE)
+  assert.equal(NODE_TEST_IMPORT.source, NODE_TEST_IMPORT_SOURCE.replaceAll('[[:space:]]', '\\s'))
+  assert.ok(NODE_TEST_IMPORT.test("import test from 'node:test'"))
+  assert.ok(NODE_TEST_IMPORT.test('const test = require("node:test")'))
+  assert.ok(NODE_TEST_IMPORT.test('import test\n  from\n  "node:test"'))
+  assert.ok(!NODE_TEST_IMPORT.test("import test from 'node:test-extra'"))
 })

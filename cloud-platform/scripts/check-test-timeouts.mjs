@@ -8,6 +8,9 @@ import { collectScopeFiles } from './check-test-timeouts-scan.mjs'
 
 export {
   FORMS,
+  NODE_TEST_IMPORT,
+  NODE_TEST_IMPORT_GREP,
+  NODE_TEST_IMPORT_SOURCE,
   SCAN_EXCLUSIONS,
   SCAN_SCOPE,
   collectScopeFiles,
@@ -86,6 +89,12 @@ function main(argv) {
     for (const stale of result.staleKeys) {
       console.log(`  ${stale.key} (baseline ${stale.baselineCount}, current ${stale.currentCount})`)
     }
+  }
+  // U317 ④: explicit hint when the scanned file set no longer matches the baseline.
+  if (result.baselineWritten === false && result.scopeMismatch !== null) {
+    console.log(
+      `test timeout baseline note: scan scope covers ${result.scopeMismatch.scannedFiles} file(s), baseline recorded ${result.scopeMismatch.baselineScannedFiles}`
+    )
   }
   const origin = options.fromHead ? ' in HEAD' : ''
   if (result.exitCode === 1) {

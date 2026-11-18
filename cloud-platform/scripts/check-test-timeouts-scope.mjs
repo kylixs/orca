@@ -23,7 +23,14 @@ export const SOURCE_EXTENSIONS = new Set([
 
 // Matches the import forms the audit counted (default/named/namespace import and
 // CommonJS require); `node:test` only. Dynamic import is not used by node:test files.
-export const NODE_TEST_IMPORT = /(?:from\s*['"]node:test['"]|require\s*\(\s*['"]node:test['"]\s*\))/
+// U317 ⑤: one authored pattern feeds both scopes. POSIX ERE (`git grep -E`) spells
+// whitespace `[[:space:]]`, while JS RegExp spells it `\s`; deriving both from the
+// same text keeps worktree and HEAD enumeration from drifting apart.
+export const NODE_TEST_IMPORT_SOURCE = String.raw`(from[[:space:]]*['"]node:test['"]|require[[:space:]]*\([[:space:]]*['"]node:test['"][[:space:]]*\))`
+export const NODE_TEST_IMPORT_GREP = NODE_TEST_IMPORT_SOURCE
+export const NODE_TEST_IMPORT = new RegExp(
+  NODE_TEST_IMPORT_SOURCE.replaceAll('[[:space:]]', String.raw`\s`)
+)
 
 export const SCAN_SCOPE = [
   '**/*.{ts,tsx,mts,cts,mjs,cjs,js} importing node:test',
@@ -117,6 +124,28 @@ function runnerArguments(script) {
   return tokens
 }
 
+// U317 ③: manifest parsing is shared with the HEAD enumeration so both scopes agree
+// on which scripts invoke `node --test` and where their arguments end.
+export function runnerTokens(manifest) {
+  const tokens = []
+  for (const script of Object.values(manifest?.scripts ?? {})) {
+    if (typeof script === 'string') {
+      tokens.push(...runnerArguments(script))
+    }
+  }
+  return tokens
+}
+
+// Resolve a runner token against committed paths only. Explicit targets must be
+// committed; glob tokens match the committed file list (Node's glob semantics).
+export function committedRunnerTargets(directory, token, files) {
+  const resolved = toPosix(path.posix.normalize(path.posix.join(directory, token)))
+  if (!/[*?[]/.test(token)) {
+    return files.includes(resolved) ? [resolved] : []
+  }
+  return files.filter((file) => path.matchesGlob(file, resolved))
+}
+
 export function discoverRunnerReferences({ root = ROOT, exclusions = SCAN_EXCLUSIONS } = {}) {
   const references = new Set()
   walk(
@@ -130,29 +159,24 @@ export function discoverRunnerReferences({ root = ROOT, exclusions = SCAN_EXCLUS
         return
       }
       const directory = path.dirname(absolute)
-      for (const script of Object.values(manifest.scripts ?? {})) {
-        if (typeof script !== 'string') {
+      for (const token of runnerTokens(manifest)) {
+        const resolved = path.resolve(directory, token)
+        const relative = toPosix(path.relative(root, resolved))
+        if (isExcluded(relative, exclusions)) {
           continue
         }
-        for (const token of runnerArguments(script)) {
-          const resolved = path.resolve(directory, token)
-          const relative = toPosix(path.relative(root, resolved))
-          if (isExcluded(relative, exclusions)) {
+        const hasGlob = /[*?[]/.test(token)
+        const matches = hasGlob ? globSync(resolved) : existsSync(resolved) ? [resolved] : []
+        for (const candidate of matches) {
+          if (!SOURCE_EXTENSIONS.has(path.extname(candidate))) {
             continue
           }
-          const hasGlob = /[*?[]/.test(token)
-          const matches = hasGlob ? globSync(resolved) : existsSync(resolved) ? [resolved] : []
-          for (const candidate of matches) {
-            if (!SOURCE_EXTENSIONS.has(path.extname(candidate))) {
-              continue
+          try {
+            if (statSync(candidate).isFile()) {
+              references.add(candidate)
             }
-            try {
-              if (statSync(candidate).isFile()) {
-                references.add(candidate)
-              }
-            } catch {
-              // Missing or unreadable runner target: ignore rather than crash the gate.
-            }
+          } catch {
+            // Missing or unreadable runner target: ignore rather than crash the gate.
           }
         }
       }
