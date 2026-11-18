@@ -1622,8 +1622,9 @@ async function main() {
       downloadPolicy: 'banana'
     },
     op: '建项目：非法 downloadPolicy',
+    // 与项目/全局 policy PUT 同码（D2），不再使用从未存在的 DOWNLOAD_POLICY_INVALID。
     expected: '400 明确拒绝（而非静默按 deny）',
-    check: isError(400, 'DOWNLOAD_POLICY_INVALID')
+    check: isError(400, 'POLICY_INVALID')
   })
   if (p45?.status === 201 && p45.json?.id) ctx.temp.projectIds.push(p45.json.id)
 
