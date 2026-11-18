@@ -1,0 +1,55 @@
+name: Build Template Artifact
+
+# D25: on-demand orcad template artifact bound to the dispatched branch SHA.
+# Why a reusable call: a shipped template needs every target's node-pty slot, which no
+# single runner can compile; this is the same lane merge release-cut uses.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-template-artifact-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  template:
+    uses: ./.github/workflows/node-server-tests.yml
+    with:
+      ref: ${{ github.sha }}
+      build_template: true
+
+  publish:
+    name: publish template artifact
+    needs: template
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    env:
+      # Same gate the desktop packaging path uses; the template lanes export it too.
+      ORCA_REQUIRE_ORCAD_TEMPLATE: '1'
+    steps:
+      - name: Download the merged template
+        uses: actions/download-artifact@v8
+        with:
+          name: orcad-template
+          path: template
+
+      - name: Name the artifact
+        id: artifact
+        run: |
+          branch="$(printf '%s' "$GITHUB_REF_NAME" | tr -cs 'A-Za-z0-9._-' '-')"
+          echo "name=orcad-template-${branch}-${GITHUB_SHA:0:12}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the template artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.artifact.outputs.name }}
+          path: template/
+          # Per-target .server-target and .runtime-node markers are dotfiles.
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
