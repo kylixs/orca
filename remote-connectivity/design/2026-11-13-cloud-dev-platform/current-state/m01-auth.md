@@ -164,7 +164,7 @@
 | 3b 心跳（U251） | 1 MiB | 一拍含 100 事件（metadata 各 ≤4096 B）+ 200 `projectDirs` + 32 provision 报告，实测合法最大 443 KB；超限 413 + `connection: close`，不落库 | `hosts/:id/heartbeat` `5857`、常量 `server.ts:484`；`fbf0237658d` |
 | 4 内部端点（U251） | 8 KiB | 内部令牌校验后读取；超限整包丢弃为 `{}` 并置 `connection: close`，端点按空 body 走既有语义，与旧对端兼容 | `internal/audit/file-events` `6348`、`internal/relay-endpoint` `6935`；`8d9f5d3101b` |
 
-常量与入口：`AUTH_BODY_MAX_BYTES`/`LOGOUT_BODY_MAX_BYTES` `server.ts:440`/`443`、`INTERNAL_BODY_MAX_BYTES` `452`、`SENSITIVE_WRITE_BODY_MAX_BYTES` `459`、`REGISTER_BODY_MAX_BYTES` `468`、`PROJECT_PATH_MAX_CHARS` `475`、`HEARTBEAT_BODY_MAX_BYTES` `484`、`DENIED_AUDIT_BODY_MAX_BYTES` `490`；统一 413 助手 `readSensitiveWriteBody` `server.ts:427-437`，超限丢弃在 `readBody` `server.ts:333-391`。
+常量与入口：`AUTH_BODY_MAX_BYTES`/`LOGOUT_BODY_MAX_BYTES` `server.ts:440`/`443`、`INTERNAL_BODY_MAX_BYTES` `452`、`SENSITIVE_WRITE_BODY_MAX_BYTES` `459`、`REGISTER_BODY_MAX_BYTES` `468`、`PROJECT_PATH_MAX_CHARS` `project-self-service.ts:17`（U256 移出，`server.ts:16` 导入）、`HEARTBEAT_BODY_MAX_BYTES` `484`、`DENIED_AUDIT_BODY_MAX_BYTES` `490`；统一 413 助手 `readSensitiveWriteBody` `server.ts:427-437`，超限丢弃在 `readBody` `server.ts:333-391`。
 
 - 远程 audit-writer 追加上限（U252 `2ed0f0b439d`）：每批 ≤ `MAX_BATCH`(1000) × 16 KiB = 16 MiB，单事件 >16 KiB → 400 `BATCH_INVALID`；`writer.ts:18,41-42,198-202`；写入语义见 M7 §4。
 

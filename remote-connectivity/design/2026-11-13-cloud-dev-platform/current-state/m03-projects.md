@@ -92,7 +92,8 @@
 | 更新（仅 API） | `PUT /v1/projects/:id` body 至少含 `repoUrl` 或 `defaultBranch`（显式 `null` 合法）；缺失 → 400 `PROJECT_UPDATE_INVALID`；`path`/`hostId` → 400 `PROJECT_FIELD_IMMUTABLE`（先于必填判定）；校验在认证/授权/`auditAllowsMutations` 之后（`server.ts:4693-4712`，`097025df563`） |
 
 - 请求体上限：项目创建/自助/更新按档 3，`PUT grants`/`policy` 按档 2；拒绝分支仍 403 + denied 审计，见 M1「U250 body 分档」。
-- 项目路径契约上限：`PROJECT_PATH_MAX_CHARS = 4096`；创建时 `>4096` → 400 `PROJECT_PATH_INVALID` 并记 `project_create` denied 审计（`server.ts:475,4641`，`dc9c6e938ad`）。Windows 扩展长路径不再依赖 body 上限兜底。
+- 项目路径契约上限：`PROJECT_PATH_MAX_CHARS = 4096` 单一定义在 `project-self-service.ts:17`，由 `server.ts:16` 导入（U256 `552ccd93177`）；创建时 `>4096` → 400 `PROJECT_PATH_INVALID` 并记 `project_create` denied 审计（`server.ts:4655-4668`，`dc9c6e938ad`）。Windows 扩展长路径不再依赖 body 上限兜底。
+- 自助创建派生路径（U256）：`projectsRoot + 目录名` 超 4096 → 400 `PROJECT_PATH_INVALID`，在任何项目行创建前拒绝、不落库（`server.ts:4821-4827`，判定 `project-self-service.ts:157-164`）；`PROJECT_DIR_NAME_MAX_BYTES = 255`（UTF-8 字节），`parseProjectDirs` 静默丢弃超限目录名以保住 200 × 255 B 前提（`project-self-service.ts:20,58-66`）。
 
 ## 5. 已知缺陷（台账）
 
