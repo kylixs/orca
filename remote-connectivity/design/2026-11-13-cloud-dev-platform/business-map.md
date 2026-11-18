@@ -19,7 +19,7 @@
 | 域 | 名称 | 优先级 | 状态 | 进度 | 测试证据 |
 |---|---|---|---|---|
 | AUTH | 身份认证与会话 | P0 | 🟡 | 76.9%（🟡cookieMode/LDAP 准入；⚪token GC/session.expired） | 24 文件认证基线 **267/267**；锁定相关 **14/14** |
-| AZ | 授权与准入 | P0 | 🟡 | 85.7%（⚪LDAP 组授权，LGA-6 收口待文档） | 组合矩阵 **113/113**；api 授权相关 116/116 |
+| AZ | 授权与准入 | P0 | 🟡 | 85.7%（🟡 组替换 D15-1 待实施；LGA-6 已收口） | 组合矩阵 **113/113**；api 授权相关 116/116 |
 | PRJ | 项目 | P0 | 🟡 | 83.3%（⚪克隆失败呈现 D22） | 归档/自助/详情/连接等 e2e 套件 |
 | HOST | 开发机与中继 | P0 | 🟢 | 100% | mtls 12/12、relay 5/5、host-offline 1/1 等 |
 | CONN | 连接与选路 | P0 | 🟢 | 100% | 直连地址 12/12、畸形地址快照 5/5 |
@@ -62,7 +62,7 @@
 | AZ-GRANT-VALIDATE | 非法 subject/permission 拒绝、重复位去重 | FR-9.3 | P0 | 🟢 | 100% | dedupe **4/4**、u62 4/4 |
 | AZ-DENIAL-AUDIT | 越权拒绝审计 | FR-9.5 | P0 | 🟢 | 100% | admin-denial-audit |
 | AZ-ENUM-GUARD | 无权限项目防探测（404/不泄露） | FR-2.2 | P0 | 🟢 | 100%（D24 保留操作级 404 静默，不新增审计通道） | web-project-entry 10/10 |
-| AZ-LDAP-GROUP | LDAP 组授权（LGA-1~6） | FR-1.5 | P1 | ⚪ | 0%（已裁定不新增功能；LGA-6 文档收口待办） | — |
+| AZ-LDAP-GROUP | LDAP 组授权（LGA-1~6） | FR-1.5 | P1 | 🟢 | 100%（裁定不新增功能；LGA-6 收口完成：m11 裁定节 + U211 文案 + 回归） | `ldap-admission` 6/6（主会话复跑 2026-11-18） |
 
 ### PRJ 项目
 
@@ -148,9 +148,9 @@
 ## 4. 汇总与口径
 
 - 综合完成度：**(62 + 0.5×3) / 70 = 90.7%**（定义：🟢计 1、🟡计 0.5、⚪计 0；域进度按同法计算）
-- 叶子功能项 **70**：🟢 **64**、🟡 **3**（AUTH-LDAP-ADMIT、AUTH-COOKIE-MODE、QA-TIMEOUT-GATE）、⚪ **3**（AUTH-TOKEN-GC、AZ-LDAP-GROUP、FILE-DL-RPC）
+- 叶子功能项 **70**：🟢 **65**、🟡 **3**（AUTH-LDAP-ADMIT、AUTH-COOKIE-MODE、QA-TIMEOUT-GATE）、⚪ **2**（AUTH-TOKEN-GC、FILE-DL-RPC）
 - 计数口径：叶子行数按本文件表行实测（70），下次更新须重算并同步本节
-- 阻塞源（均已决策，剩余为实施/文档）：D18 待实施、D20 待实施、D15-1 待实施、D22 待实施、D5–D10 部署检查单待写、LGA-6 文档收口待办、D21-C9 缓（登记缺口）、U315 门禁词法残余
+- 阻塞源（均已决策，剩余为实施/文档）：D18 待实施、D20 已实施、D15-1 待实施、D22 已实施、D5–D10 部署检查单待写、D21-C9 缓（登记缺口）、U315 门禁词法残余
 - 所有计数为**指定范围基线**；「全仓无红」仅由 QA-E2E-SWEEP 的全景扫描支撑（协议 §2-142），不得以子集基线替代
 - 当日台账增量：U272–U313；唯一重开：WEB-ROUTING（U307→U310→U312），修复后回绿
 ## 5. 按地图推进的规则与顺序
@@ -175,7 +175,7 @@
 | AUTH-PAGE-CSP | 🟢 | D10（维持 Report-Only） | csp-zero 6/6 |
 | AUTH-TOKEN-GC | ⚪ | D18（已定，待实施）、U233 F6 | `u233-d18-token-gc-brief` |
 | AUTH-SESSION-EXPIRE | 🟢 | D20（已实施）、U243/U230 | `u243-session-events` 4/4 |
-| AUTH-LDAP-ADMIT / AZ-LDAP-GROUP | 🟡/⚪ | D15（已定，组替换待实施；LGA-6 文档收口待办）、U212 | ldap-admission 6/6、准入设计 v3 |
+| AUTH-LDAP-ADMIT / AZ-LDAP-GROUP | 🟡/🟢 | D15（已定，组替换待实施）、U212；LGA-6 已收口 | ldap-admission 6/6（复跑）、准入设计 v3 |
 | AZ-ENUM-GUARD | 🟢 | D24（保留 404 静默）、U247 观察 | web-project-entry 10/10 |
 | PRJ-PROVISION-ERR | 🟢 | D22（已实施）、U54-008 | `web-project-entry` 11/11 |
 | FILE-DL-RPC / FILE-COPY-CAPTURE | ⚪/🟢 | D21（C9 缓登记；C6 已落地）、U66 第二口径结案 | `cloud-file-copy-audit` 8/8 |
