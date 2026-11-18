@@ -166,14 +166,14 @@ before(async () => {
   keyPath = join(dir, 'anchor-key.json')
   writer = await startWriter()
   api = await startApi()
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await api?.stop()
   await writer?.stop()
 })
 
-test('审计签名锚点：签名可独立验证、与链尾一致、重启后保留、能识破重写', async () => {
+test('审计签名锚点：签名可独立验证、与链尾一致、重启后保留、能识破重写', { timeout: 120_000 }, async () => {
   // ---- real events, then automatic anchors on the interval ----
   await produceEvents(3)
   const first = await waitForAnchors(1)
@@ -286,4 +286,4 @@ test('审计签名锚点：签名可独立验证、与链尾一致、重启后�
       anchorsAfterTamper: forgedVerdicts
     }
   })
-}, 120_000)
+})

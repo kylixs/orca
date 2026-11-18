@@ -133,7 +133,7 @@ before(async () => {
   await page.click('#loginBtn')
   await page.waitForSelector('#view-app:not([hidden])')
   await page.waitForSelector('#hostTableWrap table')
-}, 180_000)
+}, { timeout: 180_000 })
 
 after(async () => {
   await browser?.close()

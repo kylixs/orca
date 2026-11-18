@@ -75,7 +75,7 @@ before(async () => {
   await archive(conflictId)
   // The released key is reusable by a new live project; restore must now 409.
   await createProject('w4-conflict', 'w4-conflict-new', '/srv/work/w4-conflict-new')
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await service?.stop()

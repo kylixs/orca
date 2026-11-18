@@ -98,7 +98,7 @@ before(async () => {
     permissions: ['open']
   })
   assert.equal(granted.status, 200, granted.text)
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await api?.stop()

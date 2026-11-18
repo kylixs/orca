@@ -112,7 +112,7 @@ before(async () => {
   writerA = await startWriter('writer-a')
   writerB = await startWriter('writer-b')
   replicas = await Promise.all([0, 1].map((index) => startReplica(index)))
-}, 120_000)
+}, { timeout: 120_000 })
 
 after(async () => {
   await Promise.all(replicas.map((replica) => replica.stop()))
@@ -120,7 +120,7 @@ after(async () => {
   await writerB?.stop()
 })
 
-test('M87 主写入者被杀：租约过期后备用接管，链继续且不分叉；空窗期 fail-closed', async () => {
+test('M87 主写入者被杀：租约过期后备用接管，链继续且不分叉；空窗期 fail-closed', { timeout: 120_000 }, async () => {
   const [primary, secondary] = replicas
   assert.ok(primary && secondary)
   // Each replica is a separate process with its own store, so its token is its own.
@@ -190,4 +190,4 @@ test('M87 主写入者被杀：租约过期后备用接管，链继续且不分�
     tail: { seq: seqs.at(-1), size: seqs.length },
     projectCreateEvents: created
   })
-}, 120_000)
+})

@@ -51,14 +51,14 @@ before(async () => {
     'api-shots'
   )
   browser = await chromium.launch({ channel: 'chrome', headless: true })
-}, 180_000)
+}, { timeout: 180_000 })
 
 after(async () => {
   await browser?.close()
   await service?.stop()
 })
 
-test('M113-1 管理与开发者 Web 页面截图', async () => {
+test('M113-1 管理与开发者 Web 页面截图', { timeout: 180_000 }, async () => {
   // ---- developer: the workbench a normal user lands on ----
   const dev = await signInAs('zhangsan', 'Passw0rd!')
   await shot(dev, 'web-workbench-developer')
@@ -103,4 +103,4 @@ test('M113-1 管理与开发者 Web 页面截图', async () => {
       'web-admin-settings'
     ]
   })
-}, 180_000)
+})
