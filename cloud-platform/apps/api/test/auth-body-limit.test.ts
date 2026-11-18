@@ -394,6 +394,7 @@ function declaredOversizedRequest(
   status: number
   connection: string | undefined
   setCookie: string[]
+  cacheControl: string | undefined
   body: string
   elapsedMs: number
 }> {
@@ -423,6 +424,7 @@ function declaredOversizedRequest(
             status: res.statusCode ?? 0,
             connection: res.headers.connection,
             setCookie: res.headers['set-cookie'] ?? [],
+            cacheControl: res.headers['cache-control'],
             body,
             elapsedMs
           })
@@ -803,6 +805,22 @@ function declaredHugeRawRequest(
   })
 }
 
+/** Decodes the chunked reply framing `readRawResponse` also handles. */
+function decodeChunkedBody(payload: Buffer): string {
+  const parts: Buffer[] = []
+  let cursor = 0
+  while (cursor < payload.length) {
+    const lineEnd = payload.indexOf('\r\n', cursor)
+    if (lineEnd === -1) break
+    const size = Number.parseInt(payload.subarray(cursor, lineEnd).toString('latin1'), 16)
+    if (!Number.isFinite(size) || size === 0) break
+    const start = lineEnd + 2
+    parts.push(payload.subarray(start, start + size))
+    cursor = start + size + 2
+  }
+  return Buffer.concat(parts).toString('utf8')
+}
+
 /**
  * U258: declares 16 MiB, waits for the refusal from the header alone, and only
  * then pumps the declared body. That ordering is what makes the bug legible —
@@ -815,7 +833,8 @@ function pacedDeclaredBodyRequest(
   base: string,
   path: string,
   declared: number,
-  headers: Record<string, string> = {}
+  headers: Record<string, string> = {},
+  method = 'POST'
 ): Promise<{
   status: number
   connection: string | undefined
@@ -825,6 +844,7 @@ function pacedDeclaredBodyRequest(
   closed: boolean
   acceptedBytes: number
   attemptedBytes: number
+  body: string
 }> {
   return new Promise((resolve, reject) => {
     const started = Date.now()
@@ -841,6 +861,9 @@ function pacedDeclaredBodyRequest(
     let settled = false
     let writeTimer: NodeJS.Timeout | undefined
     let headerBuffer = Buffer.alloc(0)
+    let headerLength = -1
+    let chunked = false
+    let rawBody = Buffer.alloc(0)
     const finish = (): void => {
       if (settled) return
       settled = true
@@ -858,7 +881,8 @@ function pacedDeclaredBodyRequest(
         receivedResponse: received,
         closed,
         acceptedBytes,
-        attemptedBytes: attempted
+        attemptedBytes: attempted,
+        body: chunked ? decodeChunkedBody(rawBody) : rawBody.toString('utf8')
       })
     }
     const pump = (): void => {
@@ -885,7 +909,7 @@ function pacedDeclaredBodyRequest(
       socket.destroy()
       reject(
         new Error(
-          `POST ${path}: neither the refusal nor the close settled within 5000ms ` +
+          `${method} ${path}: neither the refusal nor the close settled within 5000ms ` +
             `(accepted=${acceptedBytes} B, attempted=${attempted} B, ` +
             `response=${received ? status : 'none'}, connection=${connection ?? 'none'}, ` +
             `closed=${closed})`
@@ -895,7 +919,7 @@ function pacedDeclaredBodyRequest(
     socket.once('connect', () => {
       socket.write(
         [
-          `POST ${path} HTTP/1.1`,
+          `${method} ${path} HTTP/1.1`,
           `Host: ${url.host}`,
           'Content-Type: application/json',
           `Content-Length: ${declared}`,
@@ -907,7 +931,10 @@ function pacedDeclaredBodyRequest(
       )
     })
     socket.on('data', (data: Buffer) => {
-      if (received) return
+      if (received) {
+        rawBody = Buffer.concat([rawBody, data])
+        return
+      }
       headerBuffer = Buffer.concat([headerBuffer, data])
       const index = headerBuffer.indexOf('\r\n\r\n')
       if (index === -1) return
@@ -916,10 +943,14 @@ function pacedDeclaredBodyRequest(
       for (const line of lines.slice(1)) {
         const colon = line.indexOf(':')
         if (colon === -1) continue
-        if (line.slice(0, colon).trim().toLowerCase() === 'connection') {
-          connection = line.slice(colon + 1).trim()
+        const name = line.slice(0, colon).trim().toLowerCase()
+        if (name === 'connection') connection = line.slice(colon + 1).trim()
+        else if (name === 'transfer-encoding') {
+          chunked = line.slice(colon + 1).trim().toLowerCase().includes('chunked')
         }
       }
+      headerLength = index + 4
+      rawBody = headerBuffer.subarray(headerLength)
       received = true
       responseMs = Date.now() - started
       if (closed) finish()
@@ -3661,5 +3692,717 @@ describe('U259 §5 denied 审计固定字段（不读 body）', () => {
     assert.equal(app.store.projectsByKey.has('u259-denied'), false)
     assert.equal(app.store.hostTokens.length, hostTokenCount, 'the refused mint wrote no token')
     assert.equal(app.store.policies.version, 1)
+  })
+})
+
+/**
+ * U259 §6/§7/P3: observe an early verdict without pumping 16 MiB. Declares a
+ * body, writes only a prefix, and reports when the refusal and the close land.
+ */
+function stalledDeclaredRequest(
+  base: string,
+  path: string,
+  declared: number,
+  prefixBytes: number
+): Promise<{
+  status: number
+  connection: string | undefined
+  responseMs: number
+  closeMs: number
+  closed: boolean
+  sentBytes: number
+}> {
+  return new Promise((resolve, reject) => {
+    const started = Date.now()
+    const url = new URL(base)
+    const socket = connect(Number(url.port), url.hostname)
+    const prefix = Buffer.alloc(prefixBytes, 'x')
+    const head = [
+      `POST ${path} HTTP/1.1`,
+      `Host: ${url.host}`,
+      'Content-Type: application/json',
+      `Content-Length: ${declared}`,
+      'Connection: keep-alive',
+      '',
+      ''
+    ].join('\r\n')
+    let buffer = Buffer.alloc(0)
+    let status = 0
+    let connection: string | undefined
+    let responseMs = 0
+    let closeMs = 0
+    let settled = false
+    const finish = (): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(deadline)
+      const index = buffer.indexOf('\r\n\r\n')
+      if (index !== -1) {
+        const lines = buffer.subarray(0, index).toString('latin1').split('\r\n')
+        status = Number(lines[0]?.split(' ')[1] ?? 0)
+        for (const line of lines.slice(1)) {
+          const colon = line.indexOf(':')
+          if (colon === -1) continue
+          if (line.slice(0, colon).trim().toLowerCase() === 'connection') {
+            connection = line.slice(colon + 1).trim()
+          }
+        }
+      }
+      socket.destroy()
+      resolve({
+        status,
+        connection,
+        responseMs,
+        closeMs,
+        closed: true,
+        sentBytes: Buffer.byteLength(head) + prefix.length
+      })
+    }
+    const deadline = setTimeout(() => {
+      if (settled) return
+      settled = true
+      socket.destroy()
+      reject(
+        new Error(
+          `POST ${path}: no refusal/close within 3000ms ` +
+            `(sent=${Buffer.byteLength(head) + prefix.length} B of ${declared} B)`
+        )
+      )
+    }, 3000)
+    socket.once('connect', () => {
+      socket.write(head)
+      socket.write(prefix)
+    })
+    socket.on('data', (data: Buffer) => {
+      buffer = Buffer.concat([buffer, data])
+      if (responseMs === 0 && buffer.includes('\r\n\r\n')) {
+        responseMs = Date.now() - started
+      }
+    })
+    socket.on('close', () => {
+      closeMs = Date.now() - started
+      finish()
+    })
+    socket.on('error', () => {
+      // The refusal and the close carry the verdict.
+    })
+  })
+}
+
+/** Sends a raw request and returns whatever Node's parser replies before closing. */
+function rawExchange(
+  base: string,
+  request: string
+): Promise<{
+  status: number
+  connection: string | undefined
+  body: string
+  closed: boolean
+}> {
+  return new Promise((resolve, reject) => {
+    const url = new URL(base)
+    const socket = connect(Number(url.port), url.hostname)
+    let buffer = Buffer.alloc(0)
+    let settled = false
+    const finish = (): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(deadline)
+      const index = buffer.indexOf('\r\n\r\n')
+      socket.destroy()
+      if (index === -1) {
+        reject(new Error('the parser did not answer before the socket closed'))
+        return
+      }
+      const lines = buffer.subarray(0, index).toString('latin1').split('\r\n')
+      const status = Number(lines[0]?.split(' ')[1] ?? 0)
+      let connection: string | undefined
+      for (const line of lines.slice(1)) {
+        const colon = line.indexOf(':')
+        if (colon === -1) continue
+        if (line.slice(0, colon).trim().toLowerCase() === 'connection') {
+          connection = line.slice(colon + 1).trim()
+        }
+      }
+      resolve({
+        status,
+        connection,
+        body: buffer.subarray(index + 4).toString('utf8'),
+        closed: true
+      })
+    }
+    const deadline = setTimeout(() => {
+      if (settled) return
+      settled = true
+      socket.destroy()
+      reject(new Error('the parser neither answered nor closed within 1500ms'))
+    }, 1500)
+    socket.once('connect', () => socket.write(request))
+    socket.on('data', (data: Buffer) => {
+      buffer = Buffer.concat([buffer, data])
+    })
+    socket.on('close', finish)
+    socket.on('error', () => {
+      // A reset after the parser's 400 is part of the observed close.
+    })
+  })
+}
+
+describe('U259 §6 并发组合', () => {
+  test('P1 两个并发超限 login：均 413、无会话、失败计数不变', async () => {
+    const { app, base } = await startApp()
+    const results = await Promise.all([
+      login(base, oversized({ username: 'admin', password: 'Adm1n!', deviceName: 'u259-p1-a' })),
+      login(base, oversized({ username: 'admin', password: 'Adm1n!', deviceName: 'u259-p1-b' }))
+    ])
+    assert.deepEqual(
+      results.map((res) => res.status),
+      [413, 413],
+      'both concurrent overages are refused'
+    )
+    for (const res of results) {
+      const payload = (await res.json()) as Json
+      assert.equal(errorCode(payload), 'PAYLOAD_TOO_LARGE')
+      assert.equal(res.headers.get('connection'), 'close', 'each refusal closes its connection')
+    }
+    assert.equal(app.store.sessions.size, 0, 'neither request creates a session')
+    assert.equal(app.store.loginAttempts.size, 0, 'the shared failure counter is untouched')
+    assert.equal(
+      app.store.audit.filter((event) => event.eventType === 'login').length,
+      0,
+      'no login event is written'
+    )
+  })
+
+  test('P2 同注册令牌并发：超限 + 正常 → [201,413]，令牌只兑现一次', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u259-p2-admin')
+    const token = await mintHostToken(base, admin.token)
+    const entry = app.store.hostTokens.at(-1)
+    assert.ok(entry)
+    let usedAtReads = 0
+    let usedAtWrites = 0
+    let usedAtValue: number | null = null
+    Object.defineProperty(entry, 'usedAt', {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        usedAtReads += 1
+        return usedAtValue
+      },
+      set: (value: number | null) => {
+        usedAtWrites += 1
+        usedAtValue = value
+      }
+    })
+
+    const normalBody = JSON.stringify({ name: 'u259-p2-race-host', protocolVersion: 3 })
+    const oversizedBody = oversizedRegisterBody({ name: 'u259-p2-race-over' })
+    type Parked = {
+      req: ReturnType<typeof httpRequest>
+      response: Promise<{ status: number; payload: Json }>
+      body: string
+      prefixLength: number
+    }
+    const park = (body: string): Parked => {
+      const bodyLength = Buffer.byteLength(body)
+      const prefixLength = Math.floor(body.length / 2)
+      let resolveResponse!: (value: { status: number; payload: Json }) => void
+      let rejectResponse!: (error: Error) => void
+      const response = new Promise<{ status: number; payload: Json }>((resolve, reject) => {
+        resolveResponse = resolve
+        rejectResponse = reject
+      })
+      const req = httpRequest(
+        `${base}/v1/hosts/register`,
+        {
+          method: 'POST',
+          agent: false,
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${token}`,
+            'content-length': String(bodyLength)
+          }
+        },
+        (res) => {
+          let text = ''
+          res.setEncoding('utf8')
+          res.on('data', (chunk: string) => {
+            text += chunk
+          })
+          res.on('end', () => {
+            resolveResponse({ status: res.statusCode ?? 0, payload: JSON.parse(text) as Json })
+          })
+        }
+      )
+      req.on('error', rejectResponse)
+      void response.catch(() => undefined)
+      req.flushHeaders()
+      req.write(body.slice(0, prefixLength))
+      return { req, response, body, prefixLength }
+    }
+    const parked = [park(oversizedBody), park(normalBody)]
+    const hostsBefore = new Set(app.store.hosts.keys())
+    try {
+      const deadline = Date.now() + 2000
+      while (usedAtReads < 2) {
+        if (Date.now() > deadline) {
+          throw new Error(`only ${usedAtReads}/2 registrations reached the token check`)
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 2))
+      }
+      // Both handlers are past the token check and parked in the body read.
+      for (const item of parked) {
+        item.req.end(item.body.slice(item.prefixLength))
+      }
+      const results = await Promise.all(parked.map((item) => item.response))
+      assert.deepEqual(
+        results.map((result) => result.status).sort(),
+        [201, 413],
+        'the oversized read is refused without spending the token the normal request needs'
+      )
+      const created = results.find((result) => result.status === 201)
+      const refused = results.find((result) => result.status === 413)
+      assert.ok(created)
+      assert.ok(refused)
+      assert.equal(errorCode(refused.payload), 'PAYLOAD_TOO_LARGE')
+
+      const hostId = String(created.payload.hostId)
+      const addedHosts = [...app.store.hosts.keys()].filter((id) => !hostsBefore.has(id))
+      assert.deepEqual(addedHosts, [hostId], 'exactly one host is stored')
+      assert.equal(app.store.hosts.size, hostsBefore.size + 1)
+      assert.equal(app.store.hosts.get(hostId)?.name, 'u259-p2-race-host')
+      assert.equal(usedAtWrites, 1, 'the single-use token is reserved exactly once')
+      assert.equal(typeof entry.usedAt, 'number')
+
+      const replay = await registerHost(
+        base,
+        token,
+        JSON.stringify({ name: 'u259-p2-replay', protocolVersion: 3 })
+      )
+      assert.equal(replay.status, 401, 'the spent token cannot register again')
+    } finally {
+      for (const item of parked) item.req.destroy()
+    }
+  })
+
+  test('P3 同注册令牌并发：超限 + 超限 → [413,413]，令牌未消耗', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u259-p3-admin')
+    const token = await mintHostToken(base, admin.token)
+    const entry = app.store.hostTokens.at(-1)
+    assert.ok(entry)
+    let usedAtReads = 0
+    let usedAtWrites = 0
+    let usedAtValue: number | null = null
+    Object.defineProperty(entry, 'usedAt', {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        usedAtReads += 1
+        return usedAtValue
+      },
+      set: (value: number | null) => {
+        usedAtWrites += 1
+        usedAtValue = value
+      }
+    })
+
+    const bodies = [
+      oversizedRegisterBody({ name: 'u259-p3-race-a' }),
+      oversizedRegisterBody({ name: 'u259-p3-race-b' })
+    ]
+    type Parked = {
+      req: ReturnType<typeof httpRequest>
+      response: Promise<{ status: number; payload: Json }>
+      body: string
+      prefixLength: number
+    }
+    const park = (body: string): Parked => {
+      const bodyLength = Buffer.byteLength(body)
+      const prefixLength = Math.floor(body.length / 2)
+      let resolveResponse!: (value: { status: number; payload: Json }) => void
+      let rejectResponse!: (error: Error) => void
+      const response = new Promise<{ status: number; payload: Json }>((resolve, reject) => {
+        resolveResponse = resolve
+        rejectResponse = reject
+      })
+      const req = httpRequest(
+        `${base}/v1/hosts/register`,
+        {
+          method: 'POST',
+          agent: false,
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${token}`,
+            'content-length': String(bodyLength)
+          }
+        },
+        (res) => {
+          let text = ''
+          res.setEncoding('utf8')
+          res.on('data', (chunk: string) => {
+            text += chunk
+          })
+          res.on('end', () => {
+            resolveResponse({ status: res.statusCode ?? 0, payload: JSON.parse(text) as Json })
+          })
+        }
+      )
+      req.on('error', rejectResponse)
+      void response.catch(() => undefined)
+      req.flushHeaders()
+      req.write(body.slice(0, prefixLength))
+      return { req, response, body, prefixLength }
+    }
+    const parked = bodies.map(park)
+    const hostsBefore = new Set(app.store.hosts.keys())
+    try {
+      const deadline = Date.now() + 2000
+      while (usedAtReads < 2) {
+        if (Date.now() > deadline) {
+          throw new Error(`only ${usedAtReads}/2 registrations reached the token check`)
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 2))
+      }
+      for (const item of parked) {
+        item.req.end(item.body.slice(item.prefixLength))
+      }
+      const results = await Promise.all(parked.map((item) => item.response))
+      assert.deepEqual(
+        results.map((result) => result.status),
+        [413, 413],
+        'both oversized reads are refused'
+      )
+      for (const result of results) {
+        assert.equal(errorCode(result.payload), 'PAYLOAD_TOO_LARGE')
+      }
+      assert.equal(app.store.hosts.size, hostsBefore.size, 'no host is stored')
+      assert.equal(usedAtWrites, 0, 'a refused oversized read never reserves the token')
+      assert.equal(entry.usedAt, null, 'the token is still unused')
+
+      const retry = await registerHost(
+        base,
+        token,
+        JSON.stringify({ name: 'u259-p3-retry', protocolVersion: 3 })
+      )
+      assert.equal(retry.status, 201, await retry.text())
+      assert.ok(app.store.hostsByName.has('u259-p3-retry'), 'the same token registers afterwards')
+    } finally {
+      for (const item of parked) item.req.destroy()
+    }
+  })
+
+  test('P4 两个并发 chunked 超限 login：均 413、连接关闭、新连接仍可登录', async () => {
+    const { app, base } = await startApp()
+    const results = await Promise.all([
+      streamingOversizedRequest(base, '/v1/auth/login'),
+      streamingOversizedRequest(base, '/v1/auth/login')
+    ])
+    for (const result of results) {
+      assert.equal(result.status, 413, 'each chunked overage is refused')
+      assert.equal(result.connection, 'close', 'an unread chunked stream closes')
+      assert.ok(result.responseMs < 1000, `the refusal took ${result.responseMs}ms`)
+      assert.ok(
+        result.closeMs >= result.responseMs,
+        `the close (${result.closeMs}ms) must not precede the response (${result.responseMs}ms)`
+      )
+      assert.ok(
+        result.sentBytes > AUTH_BODY_MAX_BYTES,
+        `the stream passed the cap before the refusal (${result.sentBytes} B)`
+      )
+    }
+    const accepted = await login(
+      base,
+      JSON.stringify({ username: 'admin', password: 'Adm1n!', deviceName: 'u259-p4-after' })
+    )
+    assert.equal(accepted.status, 200, 'two wedged streams do not block a new connection')
+    assert.equal(app.store.sessions.size, 1)
+  })
+
+  test('P5 超限 + 正常并发同一写端点：恰好一个项目与一条成功审计', async () => {
+    const { app, base } = await startApp()
+    const admin = await loginAs(base, 'admin', 'Adm1n!', 'u259-p5-admin')
+    const acceptedKey = 'u259-p5-ok'
+    const refusedKey = 'u259-p5-no'
+    const acceptedFields = {
+      hostId: HOST_ID,
+      key: acceptedKey,
+      name: acceptedKey,
+      path: '/srv/u259-p5-ok',
+      defaultBranch: 'main'
+    }
+    const refusedFields = {
+      hostId: HOST_ID,
+      key: refusedKey,
+      name: refusedKey,
+      path: '/srv/u259-p5-no',
+      defaultBranch: 'main'
+    }
+    const results = await Promise.all([
+      authedJson(base, admin.token, 'POST', '/v1/projects', oversizedBody(refusedFields)),
+      authedJson(base, admin.token, 'POST', '/v1/projects', JSON.stringify(acceptedFields))
+    ])
+    assert.deepEqual(
+      results.map((res) => res.status).sort(),
+      [201, 413],
+      'the concurrent write does not turn the overage into a second create'
+    )
+    const refused = results.find((res) => res.status === 413)
+    assert.ok(refused)
+    assert.equal(errorCode((await refused.json()) as Json), 'PAYLOAD_TOO_LARGE')
+    assert.equal(refused.headers.get('connection'), 'close')
+    assert.ok(app.store.projectsByKey.has(acceptedKey), 'the normal write persists')
+    assert.equal(app.store.projectsByKey.has(refusedKey), false, 'the overage persists nothing')
+
+    const events = app.store.audit.filter(
+      (event) => event.eventType === 'project_create' && event.result === 'success'
+    )
+    assert.equal(
+      events.filter((event) => (event.metadata as Json | undefined)?.key === acceptedKey).length,
+      1,
+      'the accepted create is audited exactly once'
+    )
+    assert.equal(
+      events.filter((event) => (event.metadata as Json | undefined)?.key === refusedKey).length,
+      0,
+      'the refused create writes no success event'
+    )
+  })
+})
+
+describe('U259 §7 早退 close 顺序（U264 后）', () => {
+  test('E1 未认证 401：声明 16 MiB 的完整 JSON 响应先于关闭', async () => {
+    const base = await start()
+    const result = await pacedDeclaredBodyRequest(base, '/v1/projects', DECLARED_HUGE_BODY)
+    assert.equal(result.receivedResponse, true, 'the refusal must be readable')
+    assert.equal(result.status, 401)
+    assert.equal(errorCode(JSON.parse(result.body) as Json), 'SESSION_EXPIRED')
+    assert.equal(result.connection, 'close', 'the unread 16 MiB body must not keep keep-alive')
+    assert.equal(result.closed, true, 'the server closes the connection')
+    assert.ok(
+      result.closeMs >= result.responseMs,
+      `the response (${result.responseMs}ms) must precede the close (${result.closeMs}ms)`
+    )
+    assert.ok(result.responseMs < 1000, `the refusal took ${result.responseMs}ms`)
+    assert.ok(
+      result.acceptedBytes < 2 * 1024 * 1024,
+      `the server accepted ${result.acceptedBytes} B of 16 MiB`
+    )
+  })
+
+  test('E2 无权限 403（项目策略）：声明 16 MiB 先响应后关闭，策略不变', async () => {
+    const { app, base } = await startApp()
+    const dev = await loginAs(base, 'zhangsan', 'Passw0rd!', 'u259-e2-dev')
+    const project = app.store.projects.get(PROJECT_ID)
+    assert.ok(project)
+    const downloadPolicy = project.downloadPolicy
+    const explicit = project.downloadPolicyExplicit
+    const version = app.store.policies.version
+
+    const result = await pacedDeclaredBodyRequest(
+      base,
+      `/v1/projects/${PROJECT_ID}/policy`,
+      DECLARED_HUGE_BODY,
+      { authorization: `Bearer ${dev.token}` },
+      'PUT'
+    )
+    assert.equal(result.receivedResponse, true)
+    assert.equal(result.status, 403, 'the role verdict wins over the body cap')
+    assert.equal(errorCode(JSON.parse(result.body) as Json), 'PERMISSION_DENIED')
+    assert.equal(result.connection, 'close', 'the 403 must not consume the declared body')
+    assert.equal(result.closed, true)
+    assert.ok(
+      result.closeMs >= result.responseMs,
+      `the response (${result.responseMs}ms) must precede the close (${result.closeMs}ms)`
+    )
+    assert.ok(result.responseMs < 1000, `the refusal took ${result.responseMs}ms`)
+    assert.ok(
+      result.acceptedBytes < 2 * 1024 * 1024,
+      `the server accepted ${result.acceptedBytes} B of 16 MiB`
+    )
+
+    const after = app.store.projects.get(PROJECT_ID)
+    assert.ok(after)
+    assert.equal(after.downloadPolicy, downloadPolicy, 'the denied write changes no policy')
+    assert.equal(after.downloadPolicyExplicit, explicit)
+    assert.equal(app.store.policies.version, version)
+  })
+
+  test('E3 无权限 403（审计导出）：声明 16 MiB 不创建导出任务', async () => {
+    const { app, base } = await startApp()
+    const dev = await loginAs(base, 'zhangsan', 'Passw0rd!', 'u259-e3-dev')
+    const result = await declaredOversizedRequest(
+      base,
+      '/v1/audit/export',
+      DECLARED_HUGE_BODY,
+      { authorization: `Bearer ${dev.token}` },
+      'POST'
+    )
+    assert.equal(result.status, 403)
+    assert.equal(errorCode(JSON.parse(result.body) as Json), 'PERMISSION_DENIED')
+    assert.equal(result.connection, 'close', 'the high-risk export exit never reads the body')
+    assert.equal(result.cacheControl, 'no-store')
+    assert.ok(result.elapsedMs < 1000, `the refusal took ${result.elapsedMs}ms`)
+    assert.equal(app.auditExportStore.countActive(), 0, 'no export job is queued')
+  })
+
+  test('E4 close 阈值：16,384 B 保持 keep-alive；16,385 B 关闭', async () => {
+    const base = await start()
+    const url = new URL(base)
+    const atLimit = 'x'.repeat(AUTH_BODY_MAX_BYTES)
+    const overLimit = 'x'.repeat(AUTH_BODY_MAX_BYTES + 1)
+
+    const kept = await connectRaw(base)
+    try {
+      kept.write(
+        [
+          'POST /v1/projects HTTP/1.1',
+          `Host: ${url.host}`,
+          'Content-Type: application/json',
+          `Content-Length: ${Buffer.byteLength(atLimit)}`,
+          'Connection: keep-alive',
+          '',
+          atLimit
+        ].join('\r\n')
+      )
+      const first = await readRawResponse(kept, 2000, '16,384 B unauthenticated 401')
+      assert.equal(first.status, 401)
+      assert.notEqual(
+        first.headers.connection,
+        'close',
+        'a body at the close threshold keeps keep-alive'
+      )
+      kept.write(
+        ['GET /health HTTP/1.1', `Host: ${url.host}`, 'Connection: keep-alive', '', ''].join('\r\n')
+      )
+      const second = await readRawResponse(kept, 2000, 'health after the threshold body')
+      assert.equal(second.status, 200, 'the same connection serves the next request')
+    } finally {
+      kept.destroy()
+    }
+
+    const closedSocket = await connectRaw(base)
+    try {
+      closedSocket.write(
+        [
+          'POST /v1/projects HTTP/1.1',
+          `Host: ${url.host}`,
+          'Content-Type: application/json',
+          `Content-Length: ${Buffer.byteLength(overLimit)}`,
+          'Connection: keep-alive',
+          '',
+          overLimit
+        ].join('\r\n')
+      )
+      const over = await readRawResponse(closedSocket, 2000, '16,385 B unauthenticated 401')
+      assert.equal(over.status, 401)
+      assert.equal(over.headers.connection, 'close', 'one byte past the threshold closes')
+      await waitForClose(closedSocket, 2000)
+    } finally {
+      closedSocket.destroy()
+    }
+  })
+})
+
+describe('U259 P3 排空与传输边界', () => {
+  test('X1 声明 1 MiB（≤2 MiB 排空预算）完整发送：413 可读；小 body 仍 200', async () => {
+    const { app, base } = await startApp()
+    const declaredBody = JSON.stringify({
+      username: 'admin',
+      password: 'Adm1n!',
+      deviceName: 'u259-x1-over',
+      pad: 'x'.repeat(1024 * 1024)
+    })
+    assert.ok(Buffer.byteLength(declaredBody) > AUTH_BODY_MAX_BYTES)
+    assert.ok(Buffer.byteLength(declaredBody) <= 2 * 1024 * 1024, 'the drain budget must cover it')
+
+    const refused = await login(base, declaredBody)
+    assert.equal(refused.status, 413, 'the fully sent overage is still refused')
+    assert.equal(errorCode((await refused.json()) as Json), 'PAYLOAD_TOO_LARGE')
+    assert.equal(refused.headers.get('connection'), 'close')
+
+    const accepted = await login(
+      base,
+      JSON.stringify({ username: 'admin', password: 'Adm1n!', deviceName: 'u259-x1-small' })
+    )
+    assert.equal(accepted.status, 200, 'a small legal body on the same endpoint still works')
+    assert.equal(app.store.sessions.size, 1)
+  })
+
+  test('X2 声明 2 MiB 只发 4 KiB：250 ms 定时器到点后拒绝并关闭', async () => {
+    const base = await start()
+    const declared = 2 * 1024 * 1024
+    const prefixBytes = 4 * 1024
+    const result = await stalledDeclaredRequest(
+      base,
+      '/v1/auth/login',
+      declared,
+      prefixBytes
+    )
+    assert.equal(result.status, 413, 'the refusal does not wait for the remaining body')
+    assert.equal(result.connection, 'close')
+    assert.equal(result.closed, true, 'the stalled stream is destroyed')
+    assert.ok(result.sentBytes < declared, 'most of the declared body was never sent')
+    assert.ok(
+      result.responseMs >= 200,
+      `the 250 ms drain timer must govern the verdict, got ${result.responseMs}ms`
+    )
+    assert.ok(
+      result.closeMs >= result.responseMs,
+      `the close (${result.closeMs}ms) must not precede the response (${result.responseMs}ms)`
+    )
+  })
+
+  test('X6 malformed / 负数 / 重复 Content-Length：Node 解析器 400 + close', async () => {
+    const { app, base } = await startApp()
+    const url = new URL(base)
+    const auditBefore = app.store.audit.length
+    const head = ['POST /v1/auth/login HTTP/1.1', `Host: ${url.host}`]
+    const cases: { label: string; request: string }[] = [
+      {
+        label: 'non-numeric',
+        request: [...head, 'Content-Type: application/json', 'Content-Length: abc', '', ''].join(
+          '\r\n'
+        )
+      },
+      {
+        label: 'negative',
+        request: [...head, 'Content-Type: application/json', 'Content-Length: -1', '', ''].join(
+          '\r\n'
+        )
+      },
+      {
+        label: 'conflicting duplicates',
+        request: [
+          ...head,
+          'Content-Type: application/json',
+          'Content-Length: 5',
+          'Content-Length: 6',
+          '',
+          'hello'
+        ].join('\r\n')
+      },
+      {
+        label: 'content-length + chunked',
+        request: [
+          ...head,
+          'Content-Type: application/json',
+          'Content-Length: 5',
+          'Transfer-Encoding: chunked',
+          '',
+          'hello'
+        ].join('\r\n')
+      }
+    ]
+    for (const item of cases) {
+      const result = await rawExchange(base, item.request)
+      assert.equal(result.status, 400, `${item.label}: Node answers 400`)
+      assert.equal(result.connection, 'close', `${item.label}: the parser closes the connection`)
+      assert.equal(result.body, '', `${item.label}: no handler body is produced`)
+      assert.equal(result.closed, true)
+    }
+    assert.equal(app.store.sessions.size, 0, 'the handler never ran')
+    assert.equal(app.store.audit.length, auditBefore, 'no audit event is written')
   })
 })
