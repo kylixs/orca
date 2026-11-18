@@ -105,6 +105,10 @@
 - **U97**（🟢）「最近 31 天」边界越界 + 错误不展示：预设钳 31 天 − 5 分钟并钉 until；错误横幅恢复并标注「下方为上次结果」。
 - **U74**（⚪）`file_copy` 摘录分支经真实入口不可达（二期开关契约）；`download_blocked` 恒标 advisory（契约如此）。
 - **U114-D4**（⚪，覆盖缺口）U86 几何断点仅一次性截图，无自动化回归。
+- 🟢 **U208**（已接受设计约束）：导出下载链接每次状态读取即轮换，屏上旧链失效；UI 约定「成功后不再读状态」或用最后一次响应 URL，不新增常驻刷新。
+- 🟢 **U210**（已接受设计约束）：host.* 拒绝的 traceId 只到心跳批次粒度，UI 按 traceId 可能出现重复行；不做逐请求关联。
+- 🟢 **U247/D24**（已接受边界）：`archive`/`restore` 对非管理员/不可见目标返回操作级 404 且不写 denial 审计；保留静默，不新增审计通道。
+- 🟢 **U245/D23**（策略已定）：管理员可自撤或撤同级管理员，不引入 admin 层级；以 `session_revoke` 审计留痕即可，不需额外审批链。
 
 未登记观察（建议登记）：
 
@@ -124,7 +128,7 @@
 - `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/u72-u73-audit-role-race.e2e.test.ts`：审计员入口/页面渲染、管理员不回退、开发者 403、双击查询与清除后查询的 latest-wins、auditor 空下拉解释（U72-4）、链健康/容量区块与校验按钮成功/409（U72-5，U136③）。
 - `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/audit-verify.e2e.test.ts`：链校验 200/409、校验动作入链、非授权 403（API 层）。
 - `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/audit-fail-closed.e2e.test.ts`、`audit-writer.e2e.test.ts`、`audit-writer-standby.e2e.test.ts`、`audit-anchor.e2e.test.ts`、`audit-query-latency.e2e.test.ts`、`audit-trace-window.e2e.test.ts`：写失败 fail-closed、单写者/备用、锚点、延迟、trace 窗口。
-- `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/authorization-combination-matrix.e2e.test.ts`（U247，`34b49057f7d`）：34 端点 × admin/auditor/developer + 匿名/强制下线/禁用身份 113/113；`denyPrivileged` 型 403 均回查 `GET /v1/audit/events` 命中（含 targetId）；`archive`/`restore` 对非管理员 404 且不写 denial（观察，台账 U247）。
+- `/Users/gongdewei/work/projects/orca/cloud-platform/test/e2e/authorization-combination-matrix.e2e.test.ts`（U247，`34b49057f7d`）：34 端点 × admin/auditor/developer + 匿名/强制下线/禁用身份 113/113；`denyPrivileged` 型 403 均回查 `GET /v1/audit/events` 命中（含 targetId）；`archive`/`restore` 对非管理员 404 且不写 denial（已接受边界，D24；台账 U247）。
 - 证据：`/Users/gongdewei/work/projects/orca/cloud-platform/evidence/u66-5-audit-ui/`、`.../u66-2-query/`、`.../u71-audit-gap/`、`.../u72u73-fix/`、`.../m31-audit-verify/`、`.../u66-final-reverify/`；U86 前后截图与文字提取在 `/Users/gongdewei/work/projects/orca/evidence/u86-fix/`（audit-before/after-layout.json 含控件坐标、hintPresent=false）。
 
 未覆盖：

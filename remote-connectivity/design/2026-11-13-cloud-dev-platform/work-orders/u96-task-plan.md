@@ -12,42 +12,42 @@
 
 ## A 部分任务计划（Orca Web 云票据恢复）
 
-| 令 | 内容 | 依赖 | 状态 | 验收要点 |
-| --- | --- | --- | --- | --- |
-| A-1 | 宿主策略表放行 `session.tabs.*` 只读/恢复子集 + `workspace.info.capabilities` 加性字段 | — | **✅ 完成** `87e07c366be`（120 例绿；取证：capability 返回、tab 进 inventory、exit/close 退役；**负发现=headless listAll 20s 超时**） | 云票据下方法放行；listAll 按 workspaceRoot fail-closed；旧宿主零噪声 |
-| A-1b | **headless census 回落**：无 authoritative 窗口时 inventory 从 legacy `listAllMobileSessionTabs`（=workspaceSession 持久源，A-6 同源）构建，不等待 graph publication epoch | A-1 | **✅ 完成** `04771583922`（实测 3/2/3/1ms，原 >20s；有窗口语义零变） | headless 云宿主 listAll/subscribeAll 不再挂 20s；有窗口宿主行为不变 |
-| A-4 | 客户端 capability 谓词+三处云跳过点条件取消 | A-1（契约层并行可先做） | **✅ 完成** `18ecede0a60`（谓词 shouldMirrorCloudSessionTabs；新宿 20 例+旧宿主 0 调用断言） | capability 含→走恢复链；缺→保持现状（零 RPC 拒绝） |
-| A-6 | 宿主持久化缺口：快照写 `workspaceSession.tabsByWorktree`（幂等追加/更新，close 退役） | — | **✅ 完成** `e4c27ebf699`（persistPerPublish 幂等；4 新例含重启重载恢复；24 例回归绿） | 宿主重启后 loader 可恢复 tab 行；关闭不复活 |
-| A-2 | 云 inventory 过滤（`projectCloudSessionTabsInventory`）+ `session.tabs` 作用域 | A-1 | **✅ 完成** `1590e9fc956`（worktree 级/tab 级 scope+assertCloudSessionTabVisible fail-closed；9 新例+118 绿） | 越界 worktree 帧丢弃；多项目隔离 |
-| A-3 | `terminal.list/adoptOrphans` 放行+三重 scope | A-1，与 A-2 共享 path guard **串行** | **✅ 完成** `ee92bb2e449`（restore-scope 模块+拓扑校验；53 例绿） | 无 selector/越界拒绝；跨 worktree handle 拒绝 |
-| A-5 | bootstrap 顺序+孤儿认领接通（**最小可用里程碑**） | A-2/3/4 | **✅ 落地** `430b2a2f312`（**M1 核心绿**：3 tab 同 id 恢复+活动一致+双 PTY marker 可见；断点：move 超时 U99 / 文件标签无云通路 U100 / Bun TLS 工具注记） | 页面重开→标签组/布局/活动标签恢复；活 PTY 回放 marker 可见 |
-| A-7 | scrollback 回放边界（1000 行/512 KiB/truncated；localOnly 不外发；死 PTY→ended UI） | A-5 | **✅ 模块落地** `4dc482a272a`（13 新例；**面板接线待 B-令6 合并点**——已声明 API 与接入方式） | A7 断言全过 |
-| A-8 | 端到端回归（页面重载/宿主重启两档+旧宿主+多项目） | A-5/6/7 | **T2/T3/T4 ✅；T1 站已适配** `c36b9f682f4`+`ac695fac00c`（轮询/组差集/宿主契约；仅 reload 段 KNOWN RED=等 U103-B1 静默续会话产品修复） | A1-A11 AC 全过；evidence/u96-fix/ |
+| 令   | 内容                                                                                                                                                                       | 依赖                                 | 状态                                                                                                                                                     | 验收要点                                                             |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| A-1  | 宿主策略表放行 `session.tabs.*` 只读/恢复子集 + `workspace.info.capabilities` 加性字段                                                                                     | —                                    | **✅ 完成** `87e07c366be`（120 例绿；取证：capability 返回、tab 进 inventory、exit/close 退役；**负发现=headless listAll 20s 超时**）                    | 云票据下方法放行；listAll 按 workspaceRoot fail-closed；旧宿主零噪声 |
+| A-1b | **headless census 回落**：无 authoritative 窗口时 inventory 从 legacy `listAllMobileSessionTabs`（=workspaceSession 持久源，A-6 同源）构建，不等待 graph publication epoch | A-1                                  | **✅ 完成** `04771583922`（实测 3/2/3/1ms，原 >20s；有窗口语义零变）                                                                                     | headless 云宿主 listAll/subscribeAll 不再挂 20s；有窗口宿主行为不变  |
+| A-4  | 客户端 capability 谓词+三处云跳过点条件取消                                                                                                                                | A-1（契约层并行可先做）              | **✅ 完成** `18ecede0a60`（谓词 shouldMirrorCloudSessionTabs；新宿 20 例+旧宿主 0 调用断言）                                                             | capability 含→走恢复链；缺→保持现状（零 RPC 拒绝）                   |
+| A-6  | 宿主持久化缺口：快照写 `workspaceSession.tabsByWorktree`（幂等追加/更新，close 退役）                                                                                      | —                                    | **✅ 完成** `e4c27ebf699`（persistPerPublish 幂等；4 新例含重启重载恢复；24 例回归绿）                                                                   | 宿主重启后 loader 可恢复 tab 行；关闭不复活                          |
+| A-2  | 云 inventory 过滤（`projectCloudSessionTabsInventory`）+ `session.tabs` 作用域                                                                                             | A-1                                  | **✅ 完成** `1590e9fc956`（worktree 级/tab 级 scope+assertCloudSessionTabVisible fail-closed；9 新例+118 绿）                                            | 越界 worktree 帧丢弃；多项目隔离                                     |
+| A-3  | `terminal.list/adoptOrphans` 放行+三重 scope                                                                                                                               | A-1，与 A-2 共享 path guard **串行** | **✅ 完成** `ee92bb2e449`（restore-scope 模块+拓扑校验；53 例绿）                                                                                        | 无 selector/越界拒绝；跨 worktree handle 拒绝                        |
+| A-5  | bootstrap 顺序+孤儿认领接通（**最小可用里程碑**）                                                                                                                          | A-2/3/4                              | **✅ 落地** `430b2a2f312`（**M1 核心绿**：3 tab 同 id 恢复+活动一致+双 PTY marker 可见；断点：move 超时 U99 / 文件标签无云通路 U100 / Bun TLS 工具注记） | 页面重开→标签组/布局/活动标签恢复；活 PTY 回放 marker 可见           |
+| A-7  | scrollback 回放边界（1000 行/512 KiB/truncated；localOnly 不外发；死 PTY→ended UI）                                                                                        | A-5                                  | **✅ 模块落地** `4dc482a272a`（13 新例；**面板接线待 B-令6 合并点**——已声明 API 与接入方式）                                                             | A7 断言全过                                                          |
+| A-8  | 端到端回归（页面重载/宿主重启两档+旧宿主+多项目）                                                                                                                          | A-5/6/7                              | **T2/T3/T4 ✅；T1 站已适配** `c36b9f682f4`+`ac695fac00c`（轮询/组差集/宿主契约；仅 reload 段 KNOWN RED=等 U103-B1 静默续会话产品修复）                   | A1-A11 AC 全过；evidence/u96-fix/                                    |
 
 **并行约束**：A-1 是前置；A-2→A-3 串行；A-4/A-6 与 2/3 并行安全；A-5 汇聚；A-7/8 收口。
 
 ## B 部分任务计划（简易工作区对接会话状态，方向 2）
 
-| 令 | 内容 | 依赖 | 状态 |
-| --- | --- | --- | --- |
-| B-0 | 完整设计（复用 A 通道+autoRestoreFit 尺寸弹框+overlay suspend/end 语义+多用户 scope） | A 设计/V 诊断 | **设计在途** |
-| B-令1 | 纯投影模块+reducer 扩展 | A-令1（已落） | **✅ 完成** `1f91ac00efc`（投影/合并/幂等/活动兜底 11 例+44 绿） |
-| B-令2 | bootstrap hook（capability 门控+subscribe/list+退避/负缓存） | A-令2/4 | **✅ 完成** `d2847b50b7d`（hook+负缓存+闭包重试环修复；5 新例 42 绿） |
-| B-令3 | 终端 attach/create/pending/ended/重开 | A-令5/6 | **✅ 完成** `6d1999cd60f`（三态决策；双 PTY 消除实证 0 调用；A-7 接线完成；310 绿） |
-| B-令4 | 关闭/激活/新建双向 | A-令3 | **✅ 完成** `d1902c398c8`（回环保护/拒绝语义/降级；61 绿）；**过渡态申报：新终端可能双 PTY，B-令3 attach 落地即消除（B-令3 必做项）** |
-| B-令5 | suspend/end 协议+面板卸载策略 | — | **✅ 完成** `8f986d89e90`（suspend 保活/end 回收/logout=suspend；features 协商；278 测试+overlay 8/8） |
-| B-令6 | 尺寸冲突 overlay+claim/restoreFit+get/setAutoRestoreFit scope（含 **U98 抢尺寸修复**） | A-令3 | **✅ 完成** `4b3e9365482`（U98 订阅被动化+per-PTY override 全局零写+overlay；78 绿；面板瘦身 302 行） |
-| B-令7 | 回放边界+ended 阈值+孤儿兜底 | A-令3/7 | **✅ 完成** `d81600ab1e9`（孤儿 adopt 拓扑校验+重开限频+回放两态；62 绿） |
-| B-令8 | 端到端回归（双端同步 e2e） | 全部 | **✅ 完成** `ec7d1bd093f`（5 绿：双向可见/同 PTY 输入/suspend 保活恢复/尺寸冲突/旧宿主零噪声；2 红转缺陷 U107/U108） |
+| 令    | 内容                                                                                   | 依赖          | 状态                                                                                                                                  |
+| ----- | -------------------------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| B-0   | 完整设计（复用 A 通道+autoRestoreFit 尺寸弹框+overlay suspend/end 语义+多用户 scope）  | A 设计/V 诊断 | **设计在途**                                                                                                                          |
+| B-令1 | 纯投影模块+reducer 扩展                                                                | A-令1（已落） | **✅ 完成** `1f91ac00efc`（投影/合并/幂等/活动兜底 11 例+44 绿）                                                                      |
+| B-令2 | bootstrap hook（capability 门控+subscribe/list+退避/负缓存）                           | A-令2/4       | **✅ 完成** `d2847b50b7d`（hook+负缓存+闭包重试环修复；5 新例 42 绿）                                                                 |
+| B-令3 | 终端 attach/create/pending/ended/重开                                                  | A-令5/6       | **✅ 完成** `6d1999cd60f`（三态决策；双 PTY 消除实证 0 调用；A-7 接线完成；310 绿）                                                   |
+| B-令4 | 关闭/激活/新建双向                                                                     | A-令3         | **✅ 完成** `d1902c398c8`（回环保护/拒绝语义/降级；61 绿）；**过渡态申报：新终端可能双 PTY，B-令3 attach 落地即消除（B-令3 必做项）** |
+| B-令5 | suspend/end 协议+面板卸载策略                                                          | —             | **✅ 完成** `8f986d89e90`（suspend 保活/end 回收/logout=suspend；features 协商；278 测试+overlay 8/8）                                |
+| B-令6 | 尺寸冲突 overlay+claim/restoreFit+get/setAutoRestoreFit scope（含 **U98 抢尺寸修复**） | A-令3         | **✅ 完成** `4b3e9365482`（U98 订阅被动化+per-PTY override 全局零写+overlay；78 绿；面板瘦身 302 行）                                 |
+| B-令7 | 回放边界+ended 阈值+孤儿兜底                                                           | A-令3/7       | **✅ 完成** `d81600ab1e9`（孤儿 adopt 拓扑校验+重开限频+回放两态；62 绿）                                                             |
+| B-令8 | 端到端回归（双端同步 e2e）                                                             | 全部          | **✅ 完成** `ec7d1bd093f`（5 绿：双向可见/同 PTY 输入/suspend 保活恢复/尺寸冲突/旧宿主零噪声；2 红转缺陷 U107/U108）                  |
 
 ## 验收里程碑
 
-| 里程碑 | 条件 |
-| --- | --- |
-| M1 最小可用（页面重开恢复） | A-1/2/3/4/5 落地 + 真机「开 2 组 3 标签→关页→重开→恢复」通过 |
-| M2 重启持久化 | A-6/7 落地 + 宿主重启档恢复+ended 态 UX |
-| M3 B 双向一致 | B 批落地 + 双端同步 e2e（开/关/输入三向） |
-| M4 收口 | A-8 全 AC 绿 + U95/回归套件零红 + 证据入档 |
+| 里程碑                      | 条件                                                         |
+| --------------------------- | ------------------------------------------------------------ |
+| M1 最小可用（页面重开恢复） | A-1/2/3/4/5 落地 + 真机「开 2 组终端标签（3 个终端）→关页→重开→恢复」通过（U100：文件/编辑器 tab 恢复移出一期） |
+| M2 重启持久化               | A-6/7 落地 + 宿主重启档恢复+ended 态 UX                      |
+| M3 B 双向一致               | B 批落地 + 双端同步 e2e（开/关/输入三向）                    |
+| M4 收口                     | A-8 全 AC 绿 + U95/回归套件零红 + 证据入档                   |
 
 ## 纪律与约束
 

@@ -431,3 +431,14 @@ TTL 注入口径（P2）：`ORCA_CLOUD_ACCESS_TTL_MS` 只用于缩短 access TTL
 4. **grace 与审计**：默认 `graceMs=30_000`、上限 `60_000` 是否接受，生产是否允许 `0`；`refresh.grace_reuse` / `refresh.reuse_detected` 的审计目录与告警阈值；多标签登出是否用 `BroadcastChannel` 即时切换（否则接受下一次请求被动登出）。**绝对寿命（v4 标注）**：Cookie 源 + 空 body 刷新会以同一 refresh 值重发 `Set-Cookie` 并推进 `refreshExpiresAt`（滑动续期），活跃会话没有绝对上限；若「会话绝对寿命」（如 12 小时封顶、强制重登）是安全目标，需另行裁定并引入 `sessionStartedAt`/绝对 `expiresAt`，本设计不提供。
 5. **迁移、回退与 body 移除**：四分支状态机是否按 §2B 执行；新 Web + 旧服务端回退 `localStorage` 是否接受（该组合下 QA-032 保持未关闭）；回滚顺序固定为 Web 先、服务端后；body refresh 移除是否接受「遥测 30/14 天 + 90 天期限兜底」与强制旧标签重登。
 6. **部署前置、CSP 与关闭范围**：TLS、反向代理的 Host/`X-Forwarded-Proto`、`ORCA_CLOUD_PUBLIC_ORIGIN` 的配置责任（v5：Cookie 模式下 `ORCA_CLOUD_PUBLIC_ORIGIN` 是**必填**，未配置时 `auto` 降级 `never`、`always` 拒启；代理头默认不采信）；多副本必须粘性会话或共享 store；CSP 是否与 B 同批（`style-src 'unsafe-inline'` 为过渡豁免）；宿主跨源 handoff 的 Cookie 不生效是否接受为当前限制；QA-032 关闭只认平台同源 Cookie-only 刷新，TTL 缩短、`orca.user` PII、宿主 `orca.webCloudSession` 均不纳入关闭条件。
+
+---
+
+## 6. 启用裁定（D5–D10，2026-11-18）
+
+- **范围**：`cookieMode` 仅在**平台同源控制台**启用（`ORCA_CLOUD_COOKIE_MODE=auto` 或 `always`，且配置 `ORCA_CLOUD_PUBLIC_ORIGIN`）；宿主跨源 handoff 不启用（Cookie 不生效），维持 Bearer + body refresh。
+- **默认关闭**：不配置即维持现状（无 origin 时 `auto` 降级 `never`）；配置即开、撤配置即回退。QA-032 的关闭只认平台同源 Cookie-only 刷新。
+- **四项前置（部署检查单）**：① TLS；② `ORCA_CLOUD_PUBLIC_ORIGIN` 精确配置（`Host`/`X-Forwarded-Proto` 不入同源判据）；③ 多副本必须粘性会话或共享 store；④ 确认宿主跨源路径不依赖平台 Cookie。
+- **启用命令**：`ORCA_CLOUD_COOKIE_MODE=auto ORCA_CLOUD_PUBLIC_ORIGIN=https://<平台源> <platform-start>`；**回退命令**：改为 `ORCA_CLOUD_COOKIE_MODE=never`（或移除配置）后重启平台。
+- **回退顺序**：先回退 Web（恢复归档旧构建），再回退服务端；禁止先回退服务端，否则已切到 Cookie-only 的页面无法恢复。
+- **CSP**：维持 `Content-Security-Policy-Report-Only`，不新增上报管道（D10）。
