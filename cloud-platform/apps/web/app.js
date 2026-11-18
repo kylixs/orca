@@ -675,17 +675,24 @@ function applyRoute(route, { force = false } = {}) {
  * instead of forcing every renderer to abort its own write.
  */
 let contentEpoch = 0
+/** Epochs still awaiting their render; see the stale branch below (U310). */
+const rendersInFlight = new Set()
 
 /** One failed fetch must not leave the page stuck on its own spinner (M116-QA-011). */
 async function loadContent(render, epoch = ++contentEpoch) {
+  rendersInFlight.add(epoch)
   const container = content()
   container.setAttribute('aria-busy', 'true')
   container.innerHTML = '<p class="muted">加载中…</p>'
   try {
     const result = await render()
     if (epoch !== contentEpoch) {
-      // The renderer just wrote stale content; collapse to the current route.
-      applyRoute(parseHash(location.hash), { force: true })
+      // U310: the newest render will paint the live route; replaying here while
+      // it is in flight restarts both renders and the pair never converges.
+      if (!rendersInFlight.has(contentEpoch)) {
+        // The renderer just wrote stale content; collapse to the current route.
+        applyRoute(parseHash(location.hash), { force: true })
+      }
     }
     return result
   } catch (err) {
@@ -700,6 +707,7 @@ async function loadContent(render, epoch = ++contentEpoch) {
       </div>`
     $('#retryContent').onclick = () => void loadContent(render)
   } finally {
+    rendersInFlight.delete(epoch)
     if (epoch === contentEpoch) container.setAttribute('aria-busy', 'false')
   }
 }

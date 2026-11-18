@@ -1429,6 +1429,63 @@ test('U54 QA-022 慢页面返回不覆盖已切换的页面', { timeout: 120_000
   record('QA-022', '设置页慢请求返回后，面包屑与主体均为当前的主机页')
 })
 
+test('U310 双击导航两个慢请求同时在途时不触发重放循环', { timeout: 120_000 }, async () => {
+  const page = loadWebConsolePage(service.url)
+  await page.settle()
+  await page.submitLogin('admin', 'Adm1n!')
+  // Login lands on workbench; let it finish so the double click starts exactly
+  // the two concurrent users renders this case needs.
+  await page.settle()
+
+  const usersNav = page.window.document.querySelector<HTMLElement>(
+    '.nav-item[data-route="users"]'
+  )!
+  // Hold both requests: a double click force-renders the same route twice, which
+  // is the two-renders-in-flight state the old guard never converged from.
+  page.hold('GET', '/v1/users')
+  usersNav.click()
+  page.hold('GET', '/v1/users')
+  usersNav.click()
+  assert.match(page.text('#content'), /加载中/, 'both renders are still in flight')
+
+  const startedAt = Date.now()
+  await page.release()
+
+  let headAt: number | undefined
+  while (Date.now() - startedAt < 2000) {
+    if (page.window.document.querySelector('#content .page-head')) {
+      headAt = Date.now() - startedAt
+      break
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  assert.ok(headAt !== undefined, '#content .page-head must appear within 2s')
+  // Keep watching the rest of the 2s window: a replay loop keeps requesting.
+  const remaining = Math.max(0, 2000 - (Date.now() - startedAt))
+  await new Promise((resolve) => setTimeout(resolve, remaining))
+  const usersCalls = page.calls().filter((call) => call === 'GET /v1/users').length
+  assert.ok(usersCalls <= 3, `two clicks must stay at most 3 /v1/users calls, saw ${usersCalls}`)
+  assert.equal(
+    page.window.document.querySelector('#content')!.getAttribute('aria-busy'),
+    'false',
+    'the settled page is not busy'
+  )
+
+  // A route change after the double click must still converge.
+  await page.clickNav('hosts')
+  assert.match(page.text('#crumbs'), /主机/, 'the breadcrumb follows the new route')
+  assert.ok(
+    page.window.document.querySelector('#content .page-head'),
+    'the new route paints its own page head'
+  )
+  assert.equal(
+    page.window.document.querySelector('#content')!.getAttribute('aria-busy'),
+    'false',
+    'the new route settles'
+  )
+  record('U310', `双击导航两个慢请求在途：2s 内 /v1/users ${usersCalls} 次，页头 ${headAt}ms 可见`)
+})
+
 test('U54 QA-024 最近项目按最近更新时间排序而非数组顺序', { timeout: 120_000 }, async () => {
   for (const suffix of ['alpha', 'bravo', 'charlie', 'delta']) {
     const name = `recent-${suffix}`
