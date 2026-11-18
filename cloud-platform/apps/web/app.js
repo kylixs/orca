@@ -1028,7 +1028,11 @@ function permissionSummary(p) {
 function openDisabledReason(p) {
   if (p.status === 'archived') return '项目已归档，无法打开'
   if (p.status === 'provisioning') return '项目准备中，暂时无法打开'
-  if (p.status === 'failed') return '项目准备失败'
+  if (p.status === 'failed') {
+    // D22: the platform-redacted reason travels in projectView; the row and the
+    // dialog title state it verbatim instead of a generic failure.
+    return p.provisioningError ? `项目准备失败：${p.provisioningError}` : '项目准备失败'
+  }
   if (p.hostStatus === 'maintenance') return '主机维护中'
   if (p.hostStatus !== 'online') return '主机离线'
   if (p.permissions.length === 0 && isAdmin()) {
@@ -1043,12 +1047,24 @@ function openDisabledAttr(p) {
   return reason ? `disabled title="${esc(reason)}"` : ''
 }
 
+/**
+ * D22: the host's redacted clone failure is already in projectView, so list rows
+ * show it inline; the same text also reaches the 打开 title via openDisabledReason.
+ */
+function provisioningErrorHtml(p) {
+  if (p.status !== 'failed' || !p.provisioningError) {
+    return ''
+  }
+  return `<div class="inline-error mono" data-provisioning-error>准备失败：${esc(p.provisioningError)}</div>`
+}
+
 function projectCard(p, globalDefault) {
   const offline = p.hostStatus !== 'online'
   return `
     <div class="card project-card">
       <div class="name"><span class="dot ${offline ? 'offline' : 'online'}"></span><span class="name-text">${esc(p.name)}</span> ${archivedBadge(p)}</div>
       <div class="path">${esc(p.repoUrl || p.path)}</div>
+      ${provisioningErrorHtml(p)}
       <div class="meta-row">
         <span>${esc(p.hostName ?? '—')}</span>
         <span class="badge">${esc(p.defaultBranch)}</span>
@@ -1087,6 +1103,7 @@ function projectListCard(p, { lifecycle = false } = {}) {
       <span class="badge ${statusTone}">${statusLabel}</span>
     </div>
     <div class="plc-path mono">${esc(p.repoUrl || p.path)}</div>
+    ${provisioningErrorHtml(p)}
     <div class="plc-fields">
       <div class="plc-field"><span class="k">可见范围</span><span class="v">${esc(permissionSummary(p))}</span></div>
       <div class="plc-field"><span class="k">创建时间</span><span class="v">${relative(p.createdAt ?? Date.now())}</span></div>
@@ -1222,7 +1239,7 @@ function confirmSelfGrant(projectId) {
 function projectRow(p) {
   const offline = p.hostStatus !== 'online'
   return `<tr>
-    <td><strong>${esc(p.name)}</strong> ${archivedBadge(p)}<div class="muted mono">${esc(p.path)}</div></td>
+    <td><strong>${esc(p.name)}</strong> ${archivedBadge(p)}<div class="muted mono">${esc(p.path)}</div>${provisioningErrorHtml(p)}</td>
     <td class="mono muted">${esc(p.repoUrl)}</td>
     <td>${esc(p.hostName ?? '—')} ${hostStatusBadge(p)}</td>
     <td class="muted">${esc(permissionSummary(p))}</td>
@@ -2057,7 +2074,7 @@ const PROJECT_TABLE_HEAD =
 /** One desktop row; archived history rows swap live entries for 详情/恢复 (U116① W3/W4). */
 function projectTableRow(p, globalDefault, { lifecycle = false } = {}) {
   return `<tr>
-        <td><strong>${esc(p.name)}</strong> ${archivedBadge(p)}<div class="muted mono">${esc(p.path)}</div></td>
+        <td><strong>${esc(p.name)}</strong> ${archivedBadge(p)}<div class="muted mono">${esc(p.path)}</div>${provisioningErrorHtml(p)}</td>
         <td class="mono muted">${esc(p.repoUrl)}</td>
         <td>${esc(p.hostName)} ${hostStatusBadge(p)}</td>
         <td class="muted">${esc(permissionSummary(p))}</td>

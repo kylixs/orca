@@ -25,6 +25,9 @@ import { loadWebConsolePage, type WebConsolePage } from './web-console-page.ts'
 const EVIDENCE = 'w3-fixes'
 const INTERNAL_TOKEN = 'w3-internal-token'
 const BROWSER_EDGE_HOST = 'edge.w3.test:8443'
+// D22: the host-reported, platform-redacted clone failure shown in list rows.
+const PROVISION_FAILURE = 'git clone failed: authentication required'
+const PROVISION_FAILED_REPO = 'https://git.example.com/team/provision-failed.git'
 
 let service: Service
 let adminToken = ''
@@ -32,6 +35,7 @@ let devToken = ''
 let liveProjectId = ''
 let liveSessionPageUrl = ''
 let maintHostId = ''
+let failedProjectId = ''
 let beat: ReturnType<typeof setInterval> | undefined
 const matrix: Record<string, string> = {}
 
@@ -105,13 +109,35 @@ async function announceBrowserEdge(): Promise<void> {
   assert.equal(res.status, 200, JSON.stringify(await res.json()))
 }
 
-async function createProject(key: string, hostId: string): Promise<string> {
+async function createProject(
+  key: string,
+  hostId: string,
+  extra: Record<string, unknown> = {}
+): Promise<string> {
   const created = await api('/v1/projects', {
     method: 'POST',
-    body: JSON.stringify({ key, name: key, hostId, path: `/srv/work/${key}` })
+    body: JSON.stringify({ key, name: key, hostId, path: `/srv/work/${key}`, ...extra })
   })
   assert.equal(created.status, 201, JSON.stringify(created.body))
   return (created.body as { id: string }).id
+}
+
+/** The host's provision report is the only producer of status=failed + reason. */
+async function reportProvisionFailure(
+  hostId: string,
+  credential: string,
+  projectId: string,
+  error: string
+): Promise<void> {
+  const res = await fetch(`${service.url}/v1/hosts/${hostId}/heartbeat`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${credential}` },
+    body: JSON.stringify({
+      status: 'online',
+      provisioned: [{ projectId, ok: false, error }]
+    })
+  })
+  assert.equal(res.status, 200, await res.text())
 }
 
 /** Puts the open-permission bundle for one group on one project's row. */
@@ -198,6 +224,23 @@ before(async () => {
   })
   await createProject('combo-project', comboHost.hostId)
 
+  // D22: a repo URL enters provisioning; a failed host report turns it into the
+  // failed+provisioningError state every project surface must explain.
+  const failedHost = await registerHost({
+    name: 'dev-provision-failed',
+    directAddr: '127.0.0.1:17006',
+    tlsFingerprint: 'sha256:provision-failed'
+  })
+  failedProjectId = await createProject('provision-failed-project', failedHost.hostId, {
+    repoUrl: PROVISION_FAILED_REPO
+  })
+  await reportProvisionFailure(
+    failedHost.hostId,
+    failedHost.credential,
+    failedProjectId,
+    PROVISION_FAILURE
+  )
+
   // The admin's and the developer's groups both hold open on the two beating
   // hosts' projects, so each role exercises every online row state.
   for (const project of ['live-project', 'noedge-project']) {
@@ -205,14 +248,19 @@ before(async () => {
       await grantOpen(project, subjectId)
     }
   }
-  for (const project of ['nosession-project', 'maint-project', 'combo-project']) {
+  for (const project of [
+    'nosession-project',
+    'maint-project',
+    'combo-project',
+    'provision-failed-project'
+  ]) {
     await grantOpen(project, 'platform-admins')
   }
 
   // Keeps every beating host inside the heartbeat window; the rest stay silent
   // and are the offline side of the matrix.
   beat = setInterval(() => {
-    for (const host of [tlsHost, noEdgeHost, noSessionHost, maintHost]) {
+    for (const host of [tlsHost, noEdgeHost, noSessionHost, maintHost, failedHost]) {
       void fetch(`${service.url}/v1/hosts/${host.hostId}/heartbeat`, {
         method: 'POST',
         headers: {
@@ -710,3 +758,88 @@ test('W3-admin-open 离线宿主行：打开/Orca Web 置灰，详情仍可看',
   matrix['offline-combo'] =
     'admin+open+离线 → 打开/Orca Web disabled title=主机离线；详情仍可点，弹框打开项目同因置灰'
 })
+
+/** D22: the same inline failure + disabled reason on every project surface. */
+function assertProvisioningFailure(
+  scope: HTMLElement,
+  open: HTMLButtonElement | HTMLAnchorElement | null,
+  label: string
+): void {
+  const inline = scope.querySelector<HTMLElement>('[data-provisioning-error]')
+  assert.ok(inline, `${label}: the row/card shows the provisioning error inline`)
+  assert.match(inline.textContent ?? '', /准备失败/, `${label}: the line names the failure`)
+  assert.ok(
+    inline.textContent?.includes(PROVISION_FAILURE),
+    `${label}: the host-reported reason is rendered verbatim`
+  )
+  assert.ok(open, `${label}: the open entry stays rendered`)
+  assert.equal(open.disabled, true, `${label}: a failed project cannot be opened`)
+  assert.equal(
+    open.title,
+    `项目准备失败：${PROVISION_FAILURE}`,
+    `${label}: the title repeats the same reason`
+  )
+}
+
+test(
+  'D22 provisioningError 内联展示：工作台 / 我的项目 / 管理台表；无错误不显示',
+  { timeout: 120_000 },
+  async () => {
+    // Precondition: the failure travelled on the real projectView, not a stub.
+    const view = await api('/v1/projects')
+    const failed = view.body.projects.find((p: { id: string }) => p.id === failedProjectId) as
+      | { status: string; provisioningError?: string }
+      | undefined
+    assert.ok(failed, 'the failed project is listed')
+    assert.equal(failed.status, 'failed')
+    assert.equal(failed.provisioningError, PROVISION_FAILURE)
+
+    const page = loadWebConsolePage(service.url)
+    await page.settle()
+    await page.submitLogin('admin', 'Adm1n!')
+    await page.clickNav('workbench')
+
+    // 工作台 · 全部项目表 (projectRow)
+    assertProvisioningFailure(
+      rowFor(page, 'provision-failed-project'),
+      entryIn(rowFor(page, 'provision-failed-project'), '打开'),
+      '工作台表行'
+    )
+    // 工作台 · 最近项目卡 (projectCard)
+    const card = [...page.window.document.querySelectorAll<HTMLElement>('.project-card')].find(
+      (candidate) => candidate.textContent?.includes('provision-failed-project')
+    )
+    assert.ok(card, 'the newly created failed project is among the recent cards')
+    assertProvisioningFailure(card, entryIn(card, '打开'), '工作台最近项目卡')
+    // 无错误不显示: a ready project renders no inline failure.
+    assert.equal(
+      rowFor(page, 'live-project').querySelector('[data-provisioning-error]'),
+      null,
+      '工作台: a ready project shows no provisioning error'
+    )
+
+    // 我的项目 · 桌面表 (projectTableRow) + 手机卡 (projectListCard)
+    await page.clickNav('projects')
+    const projectsRow = rowFor(page, 'provision-failed-project')
+    assertProvisioningFailure(projectsRow, entryIn(projectsRow, '打开'), '我的项目表行')
+    const listCard = [
+      ...page.window.document.querySelectorAll<HTMLElement>('.project-list-card')
+    ].find((candidate) => candidate.textContent?.includes('provision-failed-project'))
+    assert.ok(listCard, 'the phone card renders the same row data')
+    assertProvisioningFailure(listCard, entryIn(listCard, '打开工作区'), '我的项目手机卡')
+    assert.equal(
+      rowFor(page, 'live-project').querySelector('[data-provisioning-error]'),
+      null,
+      '我的项目: a ready project shows no provisioning error'
+    )
+
+    saveEvidence(EVIDENCE, 'provisioning-error-inline.json', {
+      projectId: failedProjectId,
+      provisioningError: failed.provisioningError,
+      openTitle: `项目准备失败：${PROVISION_FAILURE}`,
+      surfaces: ['工作台表行', '工作台最近项目卡', '我的项目表行', '我的项目手机卡']
+    })
+    matrix['provisioning-error'] =
+      'failed + provisioningError → 工作台表/卡、我的项目表/卡均内联「准备失败：<reason>」；打开 disabled 且 title 同因；ready 行不显示'
+  }
+)
