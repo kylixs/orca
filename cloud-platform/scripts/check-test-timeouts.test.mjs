@@ -1,14 +1,19 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import {
   checkTestTimeouts,
   parseArgs,
   scanSource,
   scanTestTimeouts
 } from './check-test-timeouts.mjs'
+
+const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))
+const GIT_OPTIONS = { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }
 
 function withTempDir(run) {
   const root = mkdtempSync(join(tmpdir(), 'test-timeouts-'))
@@ -23,6 +28,15 @@ function writeFixture(root, name, source) {
   const file = join(root, name)
   writeFileSync(file, source)
   return file
+}
+
+function gitAvailable() {
+  try {
+    execFileSync('git', ['--version'], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
 }
 
 test('flags numeric third argument on test/it', () => {
@@ -105,6 +119,44 @@ test('does not flag method calls or identifiers ending in a test name', () => {
   assert.deepEqual(violations, [])
 })
 
+// U295: a regex literal with an escaped paren used to swallow the enclosing call.
+test('flags a numeric timeout when the body holds a regex with an escaped paren', () => {
+  const source = [
+    "test('U58 W5 invalid escape', async () => {",
+    "  assert.doesNotMatch(body, /INTERNAL_ERROR|at [\\w./]+\\s*\\(/, 'no leak')",
+    '}, 120_000)'
+  ].join('\n')
+  assert.deepEqual(scanSource(source), [
+    { file: '<memory>', line: 1, form: 'test-numeric-third' }
+  ])
+})
+
+test('bracket pairing skips regex, template expressions, comments and strings', () => {
+  const source = [
+    'const backtickRegex = /return `([\\s\\S]*?)`/.exec(src)',
+    'const quoteRegex = /curl -fsSL "([^"]+)"/.exec(command)',
+    'test(`label ${fn(1, "a)b")}`, () => {',
+    "  // test('pseudo', () => {}, 1)",
+    "  const real = /a\\(b\\)/.test(text)",
+    '}, 5000)'
+  ].join('\n')
+  assert.deepEqual(scanSource(source), [
+    { file: '<memory>', line: 3, form: 'test-numeric-third' }
+  ])
+})
+
+test('division is not mistaken for a regex literal', () => {
+  const source = "const seconds = totalMs / 1000\ntest('x', () => {}, 5000)\n"
+  assert.deepEqual(scanSource(source), [
+    { file: '<memory>', line: 2, form: 'test-numeric-third' }
+  ])
+})
+
+test('does not treat call-like text inside a regex as a test call', () => {
+  const source = "const pattern = /test\\('x', fn, 5000\\)/g\n"
+  assert.deepEqual(scanSource(source), [])
+})
+
 test('baseline mode stays green when nothing is added', () => {
   withTempDir((root) => {
     const file = writeFixture(root, 'a.test.ts', "test('a', () => {}, 5000)\n")
@@ -114,11 +166,55 @@ test('baseline mode stays green when nothing is added', () => {
     assert.equal(created.exitCode, 0)
     const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'))
     assert.equal(baseline.counts.total, 1)
-    assert.deepEqual(baseline.violations, [`${file}:1`])
+    assert.deepEqual(baseline.counts.byForm, { 'test-numeric-third': 1 })
+    assert.equal(Object.keys(baseline.entries).length, 1)
 
     const repeat = checkTestTimeouts({ files: [file], baselinePath })
     assert.equal(repeat.exitCode, 0)
     assert.deepEqual(repeat.newViolations, [])
+  })
+})
+
+test('baseline entries key on file + form + normalized content, not line numbers', () => {
+  withTempDir((root) => {
+    const file = writeFixture(root, 'a.test.ts', "test('a', () => {}, 5000)\n")
+    const baselinePath = join(root, 'baseline.json')
+    checkTestTimeouts({ files: [file], baselinePath })
+    const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'))
+    const [key] = Object.keys(baseline.entries)
+    assert.match(key, /\|test-numeric-third\|[0-9a-f]{12}$/)
+    assert.equal(baseline.entries[key], 1)
+  })
+})
+
+test('line drift with unchanged content does not create a new violation', () => {
+  withTempDir((root) => {
+    const file = writeFixture(root, 'a.test.ts', "test('a', () => {}, 5000)\n")
+    const baselinePath = join(root, 'baseline.json')
+    checkTestTimeouts({ files: [file], baselinePath })
+
+    writeFileSync(file, `\n\n// moved down\n${readFileSync(file, 'utf8')}`)
+    const result = checkTestTimeouts({ files: [file], baselinePath })
+    assert.equal(result.exitCode, 0)
+    assert.deepEqual(result.newViolations, [])
+  })
+})
+
+test('duplicate content keys are counted so only the excess occurrence is new', () => {
+  withTempDir((root) => {
+    const file = writeFixture(root, 'a.test.ts', 'before(fn, 5000)\nbefore(fn, 5000)\n')
+    const baselinePath = join(root, 'baseline.json')
+    checkTestTimeouts({ files: [file], baselinePath })
+    const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'))
+    assert.deepEqual(Object.values(baseline.entries), [2])
+
+    writeFileSync(file, `${readFileSync(file, 'utf8')}before(fn, 5000)\n`)
+    const result = checkTestTimeouts({ files: [file], baselinePath })
+    assert.equal(result.exitCode, 1)
+    assert.deepEqual(
+      result.newViolations.map((violation) => `${violation.file}:${violation.line}`),
+      [`${file}:3`]
+    )
   })
 })
 
@@ -149,11 +245,23 @@ test('--update-baseline rewrites the full list', () => {
     assert.equal(result.exitCode, 0)
     assert.equal(result.baselineCount, 2)
     const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'))
-    assert.deepEqual(baseline.violations, [`${file}:1`, `${file}:2`])
+    assert.equal(Object.keys(baseline.entries).length, 2)
     assert.deepEqual(baseline.counts.byForm, {
       'test-numeric-third': 1,
       'hook-numeric-second': 1
     })
+  })
+})
+
+test('legacy file:line baselines are rejected with a regeneration hint', () => {
+  withTempDir((root) => {
+    const file = writeFixture(root, 'a.test.ts', "test('a', () => {}, 5000)\n")
+    const baselinePath = join(root, 'baseline.json')
+    writeFileSync(baselinePath, JSON.stringify({ violations: [`${file}:1`] }))
+    assert.throws(
+      () => checkTestTimeouts({ files: [file], baselinePath }),
+      /regenerate with --from-head or --update-baseline/
+    )
   })
 })
 
@@ -165,8 +273,105 @@ test('scanTestTimeouts walks explicit files and reports file:line form', () => {
   })
 })
 
+test('--from-head baseline matches an independent scan of committed HEAD', () => {
+  withTempDir((root) => {
+    const baselinePath = join(root, 'baseline.json')
+    const result = checkTestTimeouts({ baselinePath, fromHead: true })
+    assert.equal(result.exitCode, 0)
+    assert.equal(result.baselineWritten, true)
+    assert.equal(result.source, 'HEAD')
+
+    const listed = execFileSync(
+      'git',
+      ['ls-tree', '-r', '--name-only', '--full-tree', 'HEAD', '--', 'cloud-platform'],
+      GIT_OPTIONS
+    )
+    const files = listed
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((file) => {
+        if (!file.endsWith('.ts')) {
+          return false
+        }
+        const parts = file.split('/')
+        if (parts[0] !== 'cloud-platform') {
+          return false
+        }
+        if (parts[1] === 'test') {
+          return true
+        }
+        if (parts[1] === 'apps' && parts[3] === 'test' && parts.length >= 5) {
+          return true
+        }
+        return parts[1] === 'apps' && parts[3] === 'src' && file.endsWith('.test.ts')
+      })
+    assert.ok(files.length > 0)
+    let independentTotal = 0
+    for (const file of files) {
+      const source = execFileSync('git', ['show', `HEAD:${file}`], GIT_OPTIONS)
+      independentTotal += scanSource(source, { file }).length
+    }
+    assert.equal(result.baselineCount, independentTotal)
+    const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'))
+    assert.equal(baseline.counts.total, independentTotal)
+    assert.equal(baseline.scannedFiles, files.length)
+
+    const recheck = checkTestTimeouts({ baselinePath, fromHead: true, checkOnly: true })
+    assert.equal(recheck.exitCode, 0)
+    assert.deepEqual(recheck.newViolations, [])
+  })
+})
+
+test(
+  'from-head baseline ignores a dirty worktree in a minimal repo',
+  { skip: !gitAvailable() },
+  () => {
+    withTempDir((root) => {
+      const testDir = join(root, 'cloud-platform', 'test')
+      mkdirSync(testDir, { recursive: true })
+      const file = join(testDir, 'a.test.ts')
+      writeFileSync(file, "test('a', () => {}, 5000)\n")
+      const git = (args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' })
+      git(['init', '-q'])
+      git(['add', '.'])
+      git([
+        '-c',
+        'user.name=t',
+        '-c',
+        'user.email=t@example.com',
+        '-c',
+        'commit.gpgsign=false',
+        'commit',
+        '-qm',
+        'init'
+      ])
+
+      // Dirty worktree: line drift plus an uncommitted object-third violation.
+      writeFileSync(
+        file,
+        `\n${readFileSync(file, 'utf8')}test('b', () => {}, { timeout: 10 })\n`
+      )
+      const baselinePath = join(root, 'baseline.json')
+
+      const clean = checkTestTimeouts({ baselinePath, fromHead: true, headRoot: root })
+      assert.equal(clean.baselineCount, 1)
+      const dirtyOnly = checkTestTimeouts({ files: [file], baselinePath: join(root, 'dirty.json') })
+      assert.equal(dirtyOnly.baselineCount, 2)
+
+      const checked = checkTestTimeouts({ files: [file], baselinePath, root })
+      assert.equal(checked.exitCode, 1)
+      assert.deepEqual(
+        checked.newViolations.map((violation) => `${violation.file}:${violation.line}`),
+        ['cloud-platform/test/a.test.ts:3']
+      )
+    })
+  }
+)
+
 test('parseArgs rejects unknown flags and missing paths', () => {
   assert.throws(() => parseArgs(['--nope']), /unknown argument/)
   assert.throws(() => parseArgs(['--baseline']), /requires a path/)
   assert.equal(parseArgs(['--update-baseline']).updateBaseline, true)
+  assert.equal(parseArgs(['--from-head']).fromHead, true)
+  assert.equal(parseArgs(['--from-head', '--check']).checkOnly, true)
 })
