@@ -54,7 +54,7 @@
 - Cookie 下发的判定只看 `Origin` 与配置的 `ORCA_CLOUD_PUBLIC_ORIGIN` 是否同源，**不用 Host/X-Forwarded-Proto**（`server.ts:2004-2008`、`refresh-cookie.ts:134-148`）。
 - 同源登录：`Set-Cookie` + body `{accessToken, refreshCookie:true, expiresIn, user, device}`，body **无** `refreshToken`（`server.ts:3622-3639`）。
 - 非同源/无 Origin/`never`：body `{accessToken, refreshToken, expiresIn, user, device}`，无 Cookie（`server.ts:3625-3628`）。
-- 平台同源 handoff 同 Cookie 模式；宿主跨源 handoff 保留 body refresh（`server.ts:3984-3987`）。
+- 平台同源 handoff 同 Cookie 模式；宿主跨源 handoff 保留 body refresh（`server.ts:4093-4096`）。
 - 客户端能力标记：`orca.authMode='cookie'`（`app.js:5-7,138-142`）；账号归属标记：`orca.tokenOwner`（`app.js:8-9,299-317`）；登出欠账标记：`orca.pendingLogout`（`app.js:10-11`）。
 
 **刷新语义（HEAD）**
@@ -151,7 +151,7 @@
 
 **认证 body 上限（U249 `571ebe26df1`）**：`POST /v1/auth/login` 与 `POST /v1/auth/refresh`（Cookie 源与 body 回退）body > 16 KiB → `413 PAYLOAD_TOO_LARGE`，解析前丢弃（不计数/不轮换/不撤销）；`POST /v1/auth/logout` 同 16 KiB 上限，但超限按无 body 处理（不报错，Bearer/Cookie 撤销照常）。`server.ts:288-330,3574-3578,3725-3729,3872-3876,4099`；`auth-body-limit.test.ts`
 
-**契约 B（U250 `fix(u250)`）**：认证凭据类 body（login / refresh / `POST /v1/web/handoff`，body 承载唯一凭据或一次性交接码）超限 → `413 PAYLOAD_TOO_LARGE`，且在凭据状态检查**之前**拒绝、不消耗任何凭据（handoff 读取点 `server.ts:3963`，用例 `auth-body-limit.test.ts`）；定位器/备注类 body（logout / force-offline）超限 → 丢弃为空 body、动作照常（force-offline 4 KiB 读取点 `server.ts:5325`，用例 `u244-admin-force-offline.e2e.test.ts`）。
+**契约 B（U250 `fix(u250)`）**：认证凭据类 body（login / refresh / `POST /v1/web/handoff`，body 承载唯一凭据或一次性交接码）超限 → `413 PAYLOAD_TOO_LARGE`，且在凭据状态检查**之前**拒绝、不消耗任何凭据（handoff 读取点 `server.ts:3994`，用例 `auth-body-limit.test.ts`）；定位器/备注类 body（logout / force-offline）超限 → 丢弃为空 body、动作照常（force-offline 4 KiB 读取点 `server.ts:5325`，用例 `u244-admin-force-offline.e2e.test.ts`）。
 
 **U250 body 分档（HEAD 行号）**
 
