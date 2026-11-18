@@ -1,6 +1,6 @@
 # M7 审计（查询 / 结果表 / 事件详情 / 缺口状态 / 权限）
 
-> 行号按 `301c49139e0` 校准（server.ts 的 `host_register` fail-closed 与单事件体积护栏段落）；`app.js`（L2077-2537）、`styles.css`（L914-1040）、`audit.ts` 及 `server.ts` L3660-3825 等引用为历史版本（原基线 `664a91e0322`，2026-11-16 工作区快照；工作树 U106-R3 未提交改动不影响审计页）。
+> `server.ts` 行号按冻结代码 `28964a07a67` 校准（文档提交 `214a58f6f1c`；`server.ts` 的 `host_register` fail-closed 与单事件体积护栏段落）；`app.js`（L2077-2537）、`styles.css`（L914-1040）、`audit.ts` 及 `server.ts` L3660-3825 等引用为历史版本（原基线 `664a91e0322`，2026-11-16 工作区快照；工作树 U106-R3 未提交改动不影响审计页）。
 > 前端：`cloud-platform/apps/web/app.js`（`renderAudit` 及审计辅助函数，约 L2077-2537；样式 `cloud-platform/apps/web/styles.css` L914-1040）。后端：`cloud-platform/apps/api/src/server.ts`（`GET /v1/audit/events`、`/v1/audit/status`、`/v1/audit/verify`，约 L3660-3825）。
 
 ## 1. 页面/界面布局
@@ -80,11 +80,11 @@
 - 上述不变量由 `writer-limits.test.ts:20-48` 4 例固化（余量、metadata 关系、派生关系、单一来源扫描）。
 - **API 侧运行时强制（U257 T1–T4 `564055e63ba`）**：`audit.ts` 的 `boundedAuditMetadata`（:371）是唯一归一入口，接在 `AuditChain.append`（:566-567）与 `createRemoteAudit.append`（`audit-writer-client.ts:137-138`），`appendBestEffort`（:557）经 `append` 继承；`audit-event-size.test.ts` 12 例固化。规则：顶层字段限 128/256/64/256/128（`AUDIT_TOP_LEVEL_MAX` :74-80）并丢弃未知顶层键；metadata 字段上限表（:83-102：path 4096、key=`MAX_PROJECT_KEY_LENGTH`、reason=`AUDIT_REASON_MAX_CHARS`、name 200、hostName 128、clientVersion 64，未知键 1024）；数组保留前 50 项（:68/:196）、深度 4（:69/:190）、每层 64 键（:70/:213）；拒绝 `__proto__`/`prototype`/`constructor`（:127-129）；数组内 `undefined`→`null`（:201-206，否则重启校验会把未改动的链误判为断链）；BigInt/循环引用等不可序列化 metadata 降级为事件骨架（:420-439）。超限按**序列化字节**（非字符数）二分缩减最长字符串 → 丢字段（优先 limits/sampleKeys/excerpt/items/entries）→ 仅剩 `auditSize` 的骨架兜底（:313-329），最后做 `canonicalJson` 往返断言（:357-364）。正常输入逐字节不变且不加标记，归一幂等。
 - 截断标记是 `metadata.auditSize = { truncated, originalBytes, droppedFields?, droppedItems? }`（:226-233），`droppedFields` 最多列 16 个；不可序列化时附 `reason:'unserializable'`（:432）。它与文件事件上传用的 `metadata.truncated` 不是同一字段；调用方自带的 `auditSize` 一律删除、不信任（:396-397）。
-- **`host_register` fail-closed（`server.ts:5788-5971`）**：`name` 为空/超 `HOST_NAME_MAX_CHARS`=128 → 400 且**不耗令牌**（超长另落 denied 审计，:5808-5825）→ `projectsRoot` 校验（:5828-5848）→ body 读取后无 `await` 地同步复检并置位 `usedAt`（:5849-5854，堵同令牌并发 TOCTOU）→ 审计先写，失败回滚 `usedAt` 并 503（:5905-5924；吊销主机拒绝同理 :5857-5879）→ 只改 staged 副本 `target`（:5881-5904）→ 最后 `hosts.set`/`hostsByName.set`（:5945-5946）→ 201；审计失败不会留下已落库主机或已耗令牌。
-- 常量共享：`MAX_PROJECT_KEY_LENGTH` 由 `packages/contract/src/project-key.ts:12` 导出（不再硬编码 64）；`AUDIT_REASON_MAX_CHARS=200`（`audit.ts:65`）；`HOST_NAME_MAX_CHARS=128`（`server.ts:503`）。
+- **`host_register` fail-closed（`server.ts:5876-6084`）**：`name` 为空/超 `HOST_NAME_MAX_CHARS`=128 → 400 且**不耗令牌**（超长另落 denied 审计，:5894-5912）→ `projectsRoot` 校验（:5914-5936）→ body 读取后无 `await` 地同步复检并置位 `usedAt`（:5962-5967，堵同令牌并发 TOCTOU）→ 审计先写，失败回滚 `usedAt` 并 503（:6018-6037；吊销主机拒绝同理 :5970-5992）→ 只改 staged 副本 `target`（:5993-6017）→ 最后 `hosts.set`/`hostsByName.set`（:6058-6059）→ 201；审计失败不会留下已落库主机或已耗令牌。
+- 常量共享：`MAX_PROJECT_KEY_LENGTH` 由 `packages/contract/src/project-key.ts:12` 导出（不再硬编码 64）；`AUDIT_REASON_MAX_CHARS=200`（`audit.ts:65`）；`HOST_NAME_MAX_CHARS=128`（`server.ts:502`）。
 - 遗留：`clientVersion` 只在归一器内截到 64（`audit.ts:90`），响应/比较侧的契约限长属 T5 未做；数组上限实现取 50（`AUDIT_ARRAY_MAX_ITEMS` :68），低于任务简报建议的 200——计数上限只是粗筛，真正预算是 8 KiB 序列化字节，200 项长字符串/目录名仍会远超预算并由字节缩减兜底，故取 50 提前收敛。
 - **writer 互操作（U249 `571ebe26df1`，`audit-writer-client.ts:114-158`）**：远程 writer 收到旧 writer（<U246）的 `503 AUDIT_CHAIN_BROKEN` 时先探测 `/v1/status.reason`，仅 `chain_broken` 才锁存断链；探测失败或原因不符降级为可重试 `AUDIT_UNAVAILABLE`（`write_failed`），瞬时故障不再让副本停在断链态。
-- **单事件体积护栏（U254 `b1caa1d4239`）**：writer 单事件上限 `MAX_EVENT_BYTES`=16 KiB（`writer-limits.ts:13`），超限整批 400 `BATCH_INVALID`；维护 `reason` 截 200、拒绝 `key` 截 64、拒绝 `path` 截 4096（`server.ts:6213`、`4661`、`4703`），避免 16 KiB 字段撑爆事件；更高层全局体积护栏见上（U257 已落地 `564055e63ba`）。
+- **单事件体积护栏（U254 `b1caa1d4239`）**：writer 单事件上限 `MAX_EVENT_BYTES`=16 KiB（`writer-limits.ts:13`），超限整批 400 `BATCH_INVALID`；维护 `reason` 截 200、拒绝 `key` 截 64、拒绝 `path` 截 4096（`server.ts:6328`、`4731`、`4773`），避免 16 KiB 字段撑爆事件；更高层全局体积护栏见上（U257 已落地 `564055e63ba`）。
 - **持久化（2026-11-16）**：dev 平台启用 `AUDIT_LOG_PATH` 追加式审计文件，重启后 `prevHash` 续接（实测 `verify ok:true` 跨 `--platform-only` 重启）；事件字段 `actor/targetType/targetId/traceId` 合法可为 null（U133 修校验器，此前该类事件会被误判 corrupt）。
 
 ## 5. 已知缺陷与观察
@@ -129,4 +129,4 @@
 
 ## 7. 基线提交
 
-`301c49139e0429162f0eb9ea1e57e068a44e8e4c`（server.ts 行号已按此校准；`app.js`/`styles.css`/`audit.ts` 行号为历史版本）。本模块无工作树在途改动。
+`214a58f6f1cf4aa299490941f125d8649987552b`（`server.ts` 行号按冻结代码 `28964a07a67` 校准；`app.js`/`styles.css`/`audit.ts` 行号为历史版本）。本模块无工作树在途改动。

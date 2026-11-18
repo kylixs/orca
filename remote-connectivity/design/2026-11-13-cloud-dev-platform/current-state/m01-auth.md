@@ -1,6 +1,6 @@
 # M1 登录与认证（现状）
 
-> 基线提交：`301c49139e0`（`server.ts` 行号已按此校准；`app.js` 等引用为历史版本，原基线 `a5d6d2162b4`/2026-11-18）｜来源：`cloud-platform/apps/web/app.js`、`cloud-platform/apps/api/src/{server.ts,refresh-cookie.ts,web-release.ts}` 代码阅读 + 已提交套件。文中 `server.ts` 行号均指该 HEAD（工作树若含未提交改动会使行号偏移）。
+> 基线提交：`214a58f6f1c`（`server.ts` 行号按冻结代码 `28964a07a67` 校准，文档提交 `214a58f6f1c`；`app.js` 等引用为历史版本，原基线 `a5d6d2162b4`/2026-11-18）｜来源：`cloud-platform/apps/web/app.js`、`cloud-platform/apps/api/src/{server.ts,refresh-cookie.ts,web-release.ts}` 代码阅读 + 已提交套件。文中 `server.ts` 行号均指该 HEAD（工作树若含未提交改动会使行号偏移）。
 > 刷新记录：2026-11-18 按 HEAD `39ad743d793`（U228 后）整理，覆盖 U197 Cookie 会话（登录形态/双读刷新/页面恢复/登出）、U218 登出撤销与 CSRF、U219/D17 迁移缺口、U220 Origin 边界、U221–U223 客户端硬化、U225–U227 测试收紧。U228（禁用账号登录/刷新复查）已合入 `39ad743d793`（登录/刷新拒绝非 active 并撤销会话；客户端重放仍 401 即登出）。
 > 本次未启动 18787（探测 `000`），界面描述以生产管理台代码为准。
 
@@ -40,7 +40,7 @@
 | A6  | 点击密码框眼睛                             | 明文/密文切换                                                                                                                                                                                                                                                                                                                                                         | 无        | —                                                                                                                                                                     | 无         |
 | A7  | 任意业务请求返回 401                       | `api()` 只尝试**一次刷新+一次重放**（`app.js:70-108`）。Cookie 模式先发一次无 body `/v1/auth/refresh`（`credentials:'same-origin'`）；无 Cookie 可解析时才用 body 回退（`app.js:259-297`）。刷新结果四态：`ok` 重放；`rejected`（HTTP **400/401**）→ `logout()`；`error`（403/408/429/5xx 与传输失败）→ **不登出**，失败原请求交给调用方；`stale`（auth 代际已变）→ 不写状态/不登出，交回原 401（`app.js` U229/U232）。并发 401 共享一次刷新（`app.js:110-112`） | 无        | 刷新被拒 → 清会话回登录页。**重放仍 401**：`retried` 分支直接 `logout()` 回登录页（U228 `39ad743d793`，裸 fetch 不递归） | 已登录     |
 | A8  | 刷新/重开页面                              | **Cookie 模式**：一次无 body 刷新 → 成功后 `GET /v1/me`（`retried:true`，不启动第二条刷新链）→ 进主框架（`app.js:5321-5350`）。**旧模式**：有 access 时 `GET /v1/me`，401 触发 body 刷新并重放一次（`app.js:5352-5367`；`u198-legacy-reload` 断言顺序 `/v1/me:401 → refresh:200 → /v1/me:200`）。`orca.pendingLogout=1` 时**先显示登录页**再补发一次登出、不自动进入（`app.js:5312-5317`） | 无        | 刷新失败/`/v1/me` 失败 → 移除缓存 user、显示登录页。仅缓存 user、无 access/无 Cookie 模式时直接登录页（`session-renewal` AC-M1-14）                                      | 有本地会话 |
-| A9  | 点击「退出」                               | 关闭工作区 iframe → 置 `orca.pendingLogout=1` → 异步 `POST /v1/auth/logout`（同时带 Bearer 与同源 Cookie；服务端清 Cookie 的多作用域并撤销 Bearer/Cookie 定位到的**全部** session，`server.ts:4283-4362`）→ 本地清 access/refresh/tokenOwner、`orca.authMode`、缓存 user 与登录框输入 → 回登录页。请求网络失败保留标记，下次加载重试一次；收到 2xx 或 401 即删标记（`app.js:5081-5145`）。多标签为**被动**登出：另一标签下一次请求 401 → 刷新被拒 → 登出（`u197-web-cookie-browser` AC7） | 无        | 登出请求失败被吞，本地仍清空；HttpOnly Cookie 由下次加载的补发清理                                                                                                    | 已登录     |
+| A9  | 点击「退出」                               | 关闭工作区 iframe → 置 `orca.pendingLogout=1` → 异步 `POST /v1/auth/logout`（同时带 Bearer 与同源 Cookie；服务端清 Cookie 的多作用域并撤销 Bearer/Cookie 定位到的**全部** session，`server.ts:4353-4432`）→ 本地清 access/refresh/tokenOwner、`orca.authMode`、缓存 user 与登录框输入 → 回登录页。请求网络失败保留标记，下次加载重试一次；收到 2xx 或 401 即删标记（`app.js:5081-5145`）。多标签为**被动**登出：另一标签下一次请求 401 → 刷新被拒 → 登出（`u197-web-cookie-browser` AC7） | 无        | 登出请求失败被吞，本地仍清空；HttpOnly Cookie 由下次加载的补发清理                                                                                                    | 已登录     |
 
 **会话代际与迁移 owner 策略（U229）**
 
@@ -51,18 +51,18 @@
 
 **登录响应形态（HEAD）**
 
-- Cookie 下发的判定只看 `Origin` 与配置的 `ORCA_CLOUD_PUBLIC_ORIGIN` 是否同源，**不用 Host/X-Forwarded-Proto**（`server.ts:2265-2269`、`refresh-cookie.ts:134-148`）。
-- 同源登录：`Set-Cookie` + body `{accessToken, refreshCookie:true, expiresIn, user, device}`，body **无** `refreshToken`（`server.ts:3889-3903`）。
-- 非同源/无 Origin/`never`：body `{accessToken, refreshToken, expiresIn, user, device}`，无 Cookie（`server.ts:3891-3893`）。
-- 平台同源 handoff 同 Cookie 模式；宿主跨源 handoff 保留 body refresh（`server.ts:4264-4269`）。
+- Cookie 下发的判定只看 `Origin` 与配置的 `ORCA_CLOUD_PUBLIC_ORIGIN` 是否同源，**不用 Host/X-Forwarded-Proto**（`server.ts:2304-2309`、`refresh-cookie.ts:134-148`）。
+- 同源登录：`Set-Cookie` + body `{accessToken, refreshCookie:true, expiresIn, user, device}`，body **无** `refreshToken`（`server.ts:3959-3974`）。
+- 非同源/无 Origin/`never`：body `{accessToken, refreshToken, expiresIn, user, device}`，无 Cookie（`server.ts:3962`）。
+- 平台同源 handoff 同 Cookie 模式；宿主跨源 handoff 保留 body refresh（`server.ts:4336-4341`）。
 - 客户端能力标记：`orca.authMode='cookie'`（`app.js:5-7,138-142`）；账号归属标记：`orca.tokenOwner`（`app.js:8-9,299-317`）；登出欠账标记：`orca.pendingLogout`（`app.js:10-11`）。
 
 **刷新语义（HEAD）**
 
-- 服务端**双读**：能解析出 Cookie session 时以 Cookie 为准，body 只作回显/宽限判定（`server.ts:3914-3923`）。
-- Cookie 源**不轮换**：current 每次命中只续 access、滑动 `refreshExpiresAt`、同值重发 Cookie（`refreshCookie:true`）；重建失败时保留浏览器原 Cookie（`server.ts:4056-4072`）。
-- previous（宽限内）只发 access，不续期、不重发 Cookie；宽限外或既非 current 也非 previous → 撤销 session + 401 + `refresh.reuse_detected`（`server.ts:3975-4023`）。
-- body 源（无 Cookie 或 Cookie 无法解析）：current 正常轮换并置 `previousRefreshHash/graceUntil`，同源时例外地同时 `Set-Cookie`；previous 在宽限内回显请求值、不轮换；宽限外撤销并 401；未知 token 直接 401（不撤销未知会话）（`server.ts:4075-4159`）。
+- 服务端**双读**：能解析出 Cookie session 时以 Cookie 为准，body 只作回显/宽限判定（`server.ts:3984-3992`）。
+- Cookie 源**不轮换**：current 每次命中只续 access、滑动 `refreshExpiresAt`、同值重发 Cookie（`refreshCookie:true`）；重建失败时保留浏览器原 Cookie（`server.ts:4126-4142`）。
+- previous（宽限内）只发 access，不续期、不重发 Cookie；宽限外或既非 current 也非 previous → 撤销 session + 401 + `refresh.reuse_detected`（`server.ts:4021-4026,4045-4093`）。
+- body 源（无 Cookie 或 Cookie 无法解析）：current 正常轮换并置 `previousRefreshHash/graceUntil`，同源时例外地同时 `Set-Cookie`；previous 在宽限内回显请求值、不轮换；宽限外撤销并 401；未知 token 直接 401（不撤销未知会话）（`server.ts:4144-4228`）。
 - 撤销一致性（U241）：所有 session 级撤销经 `revokeSessionOnce`——仅在 `revokedAt === null` 时置值并 `bumpEpoch`（幂等）；覆盖过期/已撤销拒绝、reuse 三处、禁用、登出、设备批量。过期路径零审计、reuse 恰一条；已撤销再命中不重复 bump。**已知**：刷新过期后客户端自动登出时链上无撤销事件（U243①，待事件词汇批）。
 - 客户端三态 `ok/rejected/error`，只有 `rejected` 触发登出（`app.js:155-297`）。
 
@@ -76,33 +76,33 @@
 
 | 项          | 现状                                                                                                                                                                 | 来源                                                    |
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| access TTL  | 默认 30 分钟；`ORCA_CLOUD_ACCESS_TTL_MS` / `accessTtlMs` 可覆盖                                                                                                       | `server.ts:139,2231`                                    |
-| refresh TTL | 默认 12 小时；`ORCA_CLOUD_REFRESH_TTL_MS` / `refreshTtlMs` 可覆盖                                                                                                     | `server.ts:140,2232`                                    |
-| grace       | 默认 30 秒，上限 60 秒；`ORCA_CLOUD_REFRESH_GRACE_MS`；`0`=严格复用；非法/负数回落默认                                                                                | `server.ts:141-143,306-310`                             |
-| Cookie 属性 | `Path=/v1/auth`、`HttpOnly`、`SameSite=Lax`、`Max-Age=ceil(refreshTTL/1000)`；下发不带 Domain；`Secure` 见下                                                         | `refresh-cookie.ts:60-80`；`server.ts:2313-2323`        |
-| 清理作用域  | host-only `/v1/auth` + Domain `/v1/auth`（origin 为域名时）+ 旧构建 `Path=/`；重复 Cookie 也按这三条清                                                                 | `refresh-cookie.ts:93-113`；`server.ts:2325-2339`       |
-| 模式        | `auto`（默认）/`always`/`never`；`auto` 无有效 origin 降级 `never` 并告警一次；`always` 无 origin 启动即失败；非法值回落 `auto`                                       | `refresh-cookie.ts:173-212`；`server.ts:2250-2254`      |
+| access TTL  | 默认 30 分钟；`ORCA_CLOUD_ACCESS_TTL_MS` / `accessTtlMs` 可覆盖                                                                                                       | `server.ts:145,2270`                                    |
+| refresh TTL | 默认 12 小时；`ORCA_CLOUD_REFRESH_TTL_MS` / `refreshTtlMs` 可覆盖                                                                                                     | `server.ts:146,2271`                                    |
+| grace       | 默认 30 秒，上限 60 秒；`ORCA_CLOUD_REFRESH_GRACE_MS`；`0`=严格复用；非法/负数回落默认                                                                                | `server.ts:147-149,305-310`                             |
+| Cookie 属性 | `Path=/v1/auth`、`HttpOnly`、`SameSite=Lax`、`Max-Age=ceil(refreshTTL/1000)`；下发不带 Domain；`Secure` 见下                                                         | `refresh-cookie.ts:60-80`；`server.ts:2352-2362`        |
+| 清理作用域  | host-only `/v1/auth` + Domain `/v1/auth`（origin 为域名时）+ 旧构建 `Path=/`；重复 Cookie 也按这三条清                                                                 | `refresh-cookie.ts:93-113`；`server.ts:2364-2378`       |
+| 模式        | `auto`（默认）/`always`/`never`；`auto` 无有效 origin 降级 `never` 并告警一次；`always` 无 origin 启动即失败；非法值回落 `auto`                                       | `refresh-cookie.ts:173-212`；`server.ts:2289-2294`      |
 | Secure      | `always` 强制加；`auto` 在 https 或 loopback http 加；非 loopback http 省略并告警                                                                                    | `refresh-cookie.ts:193-211`                             |
-| PUBLIC_ORIGIN | 规范化 origin（scheme/host 小写、去默认端口与尾斜杠）；只用于同源判断与 Cookie 作用域，不信任 XFP/Host                                                                 | `refresh-cookie.ts:115-148`；`server.ts:2261-2269`      |
+| PUBLIC_ORIGIN | 规范化 origin（scheme/host 小写、去默认端口与尾斜杠）；只用于同源判断与 Cookie 作用域，不信任 XFP/Host                                                                 | `refresh-cookie.ts:115-148`；`server.ts:2289-2294`      |
 
 **失败分支（HEAD）**
 
 | 分支                     | 现象                                                                                                                             | 来源                                                                                   |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| CSRF 403                 | Cookie 认证的刷新缺失/跨源/`null` Origin，或 `content-type` 不是 `application/json` → `403 CSRF_REJECTED`，无续期/清理副作用       | `server.ts:2301-2311,3924-3927`；`refresh-cookie` CSRF 用例                            |
-| 重复 Cookie 401          | `orca_refresh` 出现两次（同名/多 Cookie 头）→ 登录/handoff/刷新/登出一律硬 `401 SESSION_EXPIRED`，清三种作用域，**不回退 body、不轮换、不撤销 session**（刷新） | `server.ts:2272-2274,3760-3763,3909-3912,4172-4175,4287-4290,4358-4360`；`refresh-cookie` 245/267 |
-| Cookie 缺失              | 服务端回退 body 刷新；Cookie 模式客户端若无旧 refresh → `rejected` → 回登录，无循环                                               | `server.ts:4075-4094`；`app.js:5321-5350`；`u197-web-cookie-browser`                   |
+| CSRF 403                 | Cookie 认证的刷新缺失/跨源/`null` Origin，或 `content-type` 不是 `application/json` → `403 CSRF_REJECTED`，无续期/清理副作用       | `server.ts:2344-2350,3995-3997`；`refresh-cookie` CSRF 用例                            |
+| 重复 Cookie 401          | `orca_refresh` 出现两次（同名/多 Cookie 头）→ 登录/handoff/刷新/登出一律硬 `401 SESSION_EXPIRED`，清三种作用域，**不回退 body、不轮换、不撤销 session**（刷新） | `server.ts:2310-2313,3830-3834,3977-3982,4242-4246,4357,4428-4430`；`refresh-cookie` 245/267 |
+| Cookie 缺失              | 服务端回退 body 刷新；Cookie 模式客户端若无旧 refresh → `rejected` → 回登录，无循环                                               | `server.ts:4144-4165`；`app.js:5321-5350`；`u197-web-cookie-browser`                   |
 | 传输失败                 | 客户端记为 `error`：页内请求**不登出**、保留会话、恢复后可重试；启动探测失败→登录页，不空白/无未捕获异常（启动含 10s 超时，U229 F5）                          | `app.js:174-179,208-212,273-285`；`web-refresh-cookie` U222 N1、`u197-web-cookie-browser-race-probe` 496/541 |
 | 刷新 5xx/429/403         | 客户端归 `error`：不登出、保留会话，业务错误交给调用方（U229 F7） | `app.js` `refreshVerdict`；`u229-web-startup-resilience` |
 | 登录 200 非契约响应      | 校验 `accessToken/user.username/device.id`，不满足抛 `PLATFORM_UNAVAILABLE`「平台响应异常」，不写 `"undefined"`（U229 F6） | `u229-web-startup-resilience` |
 | 非对象 JSON body         | `readJson` 将 `null`/标量归一为 `{}`（数组/对象保留），各端点返回既有 4xx 而非 500（U236） | `u236-non-object-body` |
 | 登出带重复 Cookie        | 清三作用域后仍用 Bearer/body 显式凭据撤销，响应保持 401；仅重复 Cookie 不猜测撤销（U233 F1） | `refresh-cookie.e2e`、`u229-logout-body` |
 | refresh 请求体为 `null`  | 视为假 body：Cookie 源 200 不回显/不轮换；无 Cookie 401（U235） | `u235-refresh-null`（`refresh-cookie.e2e` 内） |
-| 外来 Origin 登录         | 配置了 PUBLIC_ORIGIN 时非平台 Origin 登录 → `403 CSRF_REJECTED`，不下发 body refresh                                              | `server.ts:2293-2299,3774-3777`；`refresh-cookie` 139                                 |
-| 带 Cookie 但无 Origin    | 登录/handoff → `401 SESSION_EXPIRED`，不按 Cookie 源解析                                                                          | `server.ts:2276-2286,3767-3773`；`refresh-cookie` 149                                 |
+| 外来 Origin 登录         | 配置了 PUBLIC_ORIGIN 时非平台 Origin 登录 → `403 CSRF_REJECTED`，不下发 body refresh                                              | `server.ts:2332-2338,3844-3846`；`refresh-cookie` 139                                 |
+| 带 Cookie 但无 Origin    | 登录/handoff → `401 SESSION_EXPIRED`，不按 Cookie 源解析                                                                          | `server.ts:2319-2324,3837-3842`；`refresh-cookie` 149                                 |
 | 刷新被拒                 | 客户端 `logout()`，清本地并回登录页                                                                                              | `app.js:84-98`                                                                         |
-| refresh 过期/会话已撤销  | 服务端 `401 SESSION_EXPIRED` 并清 Cookie                                                                                         | `server.ts:3936-3942,4089-4095`                                                        |
-| 禁用账号                 | **已修复（U228 `39ad743d793`）**：登录非 active → 403 `USER_DISABLED`（审计 login denied、不发令牌/Cookie）；刷新 Cookie/body 两源在 current/previous/宽限前统一检查 → 撤销+bump epoch+清 Cookie+401；客户端重放仍 401 即登出（旧行为见探索 E1） | `server.ts:3845-3858`（登录）、`3943-3950`（Cookie 刷新）、`4096-4102`（body 刷新）；`test-reports/u197-auth-exploration-20261118.md` E1     |
+| refresh 过期/会话已撤销  | 服务端 `401 SESSION_EXPIRED` 并清 Cookie                                                                                         | `server.ts:4005-4012,4158-4165`                                                        |
+| 禁用账号                 | **已修复（U228 `39ad743d793`）**：登录非 active → 403 `USER_DISABLED`（审计 login denied、不发令牌/Cookie）；刷新 Cookie/body 两源在 current/previous/宽限前统一检查 → 撤销+bump epoch+清 Cookie+401；客户端重放仍 401 即登出（旧行为见探索 E1） | `server.ts:3914-3928`（登录）、`4013-4020`（Cookie 刷新）、`4166-4172`（body 刷新）；`test-reports/u197-auth-exploration-20261118.md` E1     |
 
 **服务端认证语义（现状）**
 
@@ -110,7 +110,7 @@
 - 准入组语义（U69a 裁定）：**组=登录准入，不是角色映射**；新用户首登角色一律 `developer`，角色由平台内用户管理覆盖（`roleOverride` 优先）。
 - 会话：access/refresh TTL 见上表；旧 body 模式 refresh 每次旋转，旧值宽限期内可复用、宽限期外撤销会话；Cookie 模式 refresh 不轮换。
 - 锁定计数：配置 `ORCA_CLOUD_LOGIN_LOCKOUT_URL` 时走共享服务（不可达 → 登录 `503 PLATFORM_UNAVAILABLE`，fail-closed）；未配置时进程内计数（5 次 / 15 分钟）。
-- 审计：登录成功/失败、登出、`refresh.reuse_detected`、`refresh.grace_reuse` 均落链；复用事件只记来源，不记 token（`server.ts:3980-3988,4009-4017,4128-4136`；`refresh-cookie` 审计用例）。
+- 审计：登录成功/失败、登出、`refresh.reuse_detected`、`refresh.grace_reuse` 均落链；复用事件只记来源，不记 token（`server.ts:4051-4059,4080-4088,4101-4109`；`refresh-cookie` 审计用例）。
 
 ## 4. 数据来源
 
@@ -149,34 +149,34 @@
 | `POST /v1/auth/logout` | Bearer + Cookie + 可选 body refresh | 清 Cookie → 定位全部显式凭据 → 撤销（已撤销跳过；重复 Cookie 只记标志，显式凭据仍撤） | `revokedAt`（U241 幂等） | 仅显式凭据命中的 session（不吊销 device、不写 user 撤销集合） | `logout` success（已撤销不重复）/denied（UNKNOWN_REFRESH；USER_DISABLED 由刷新禁用路径写入） |
 | `POST /v1/users/:id/sessions/revoke` | Bearer（admin） | auth→admin→链健康预检→404 检查→leader `recordAudit`（失败即 503 且无撤销/无标记）→撤销→user 撤销集合 | per-user 队列 leader outcome（leader 失败时 follower 重试为新 leader）；`revokedAt` | 全部 session + user 撤销集合；不吊销 device | `session_revoke` success（leader 每次，含零撤销）/denied；并发 follower 无 |
 
-**认证 body 上限（U249 `571ebe26df1`）**：`POST /v1/auth/login` 与 `POST /v1/auth/refresh`（Cookie 源与 body 回退）body > 16 KiB → `413 PAYLOAD_TOO_LARGE`，解析前丢弃（不计数/不轮换/不撤销）；`POST /v1/auth/logout` 同 16 KiB 上限，但超限按无 body 处理（不报错，Bearer/Cookie 撤销照常）。`server.ts:363-424,3778-3782,3929-3933,4076-4080,4303`；`auth-body-limit.test.ts`
+**认证 body 上限（U249 `571ebe26df1`）**：`POST /v1/auth/login` 与 `POST /v1/auth/refresh`（Cookie 源与 body 回退）body > 16 KiB → `413 PAYLOAD_TOO_LARGE`，解析前丢弃（不计数/不轮换/不撤销）；`POST /v1/auth/logout` 同 16 KiB 上限，但超限按无 body 处理（不报错，Bearer/Cookie 撤销照常）。`server.ts:362-423,3848-3852,3999-4003,4146-4150,4373`；`auth-body-limit.test.ts`
 
-**契约 B（U250 `fix(u250)`）**：认证凭据类 body（login / refresh / `POST /v1/web/handoff`，body 承载唯一凭据或一次性交接码）超限 → `413 PAYLOAD_TOO_LARGE`，且在凭据状态检查**之前**拒绝、不消耗任何凭据（handoff 读取点 `server.ts:4167`，用例 `auth-body-limit.test.ts`）；定位器/备注类 body（logout / force-offline）超限 → 丢弃为空 body、动作照常（force-offline 4 KiB 读取点 `server.ts:5551`，用例 `u244-admin-force-offline.e2e.test.ts`）。
+**契约 B（U250 `fix(u250)`）**：认证凭据类 body（login / refresh / `POST /v1/web/handoff`，body 承载唯一凭据或一次性交接码）超限 → `413 PAYLOAD_TOO_LARGE`，且在凭据状态检查**之前**拒绝、不消耗任何凭据（handoff 读取点 `server.ts:4237`，用例 `auth-body-limit.test.ts`）；定位器/备注类 body（logout / force-offline）超限 → 丢弃为空 body、动作照常（force-offline 4 KiB 读取点 `server.ts:5639`，用例 `u244-admin-force-offline.e2e.test.ts`）。
 
 **U250 body 分档（HEAD 行号）**
 
 | 档位 | 上限 | 超限语义 | 代表端点、行号与提交 |
 | --- | --- | --- | --- |
-| 1 鉴权前 | 16 KiB | login / refresh（Cookie 源与 body 回退）/ handoff → `413 PAYLOAD_TOO_LARGE`，在凭据状态检查前拒绝、不消耗凭据；logout 超限按空 body，Bearer/Cookie 撤销照常 | login `server.ts:3778`、refresh `3929`/`4076`、handoff `4167`、logout `4303`；`571ebe26df1`、`f697adfcfdd` |
-| 2 敏感写 | 16 KiB | 认证后的权限/策略写 → 413；**拒绝分支不返回 413，是为了保持拒绝语义与 denied 审计**：仍返回 403，并以 4 KiB 上限读取 body 供 denied 审计（超限记为空） | 成功写 grants `5096`/`6277`、project policy `5298`、user roles `5479`、host tokens `5753`、provision-policy `6409`、global policy `6967`；拒绝读 `5086`/`6264`/`6396`；`d271157ba45` |
-| 3 普通写 | 16 KiB | 认证后的业务写 → `413 PAYLOAD_TOO_LARGE`，在任何变更/审计前拒绝 | projects 创建/self/更新 `4630`/`4776`/`4982`、maintenance `6191`、audit/export `6552`、web-handoff mint `7186`、connect `7305`；`aa2e3b798a3` |
-| 3a 注册（U252） | 64 KiB | 契约允许 200×255 B `projectDirs`，合法最大 52,232 B（3.19×16 KiB）→ 独立档；超限 413 `PAYLOAD_TOO_LARGE` 且不消耗一次性令牌 | `hosts/register` `5788`、常量 `server.ts:517`；`dc9c6e938ad` |
-| 3b 心跳（U251） | 1 MiB | 一拍含 100 事件（metadata 各 ≤4096 B）+ 200 `projectDirs` + 32 provision 报告，实测合法最大 443 KB；超限 413 + `connection: close`，不落库 | `hosts/:id/heartbeat` `5988`、常量 `server.ts:526`；`fbf0237658d` |
-| 4 内部端点（U251） | 8 KiB | 内部令牌校验后读取；超限整包丢弃为 `{}` 并置 `connection: close`，端点按空 body 走既有语义，与旧对端兼容 | `internal/audit/file-events` `6480`、`internal/relay-endpoint` `7067`；`8d9f5d3101b` |
+| 1 鉴权前 | 16 KiB | login / refresh（Cookie 源与 body 回退）/ handoff → `413 PAYLOAD_TOO_LARGE`，在凭据状态检查前拒绝、不消耗凭据；logout 超限按空 body，Bearer/Cookie 撤销照常 | login `server.ts:3848`、refresh `3999`/`4146`、handoff `4237`、logout `4373`；`571ebe26df1`、`f697adfcfdd` |
+| 2 敏感写 | 16 KiB | 认证后的权限/策略写 → 413；**拒绝分支不返回 413，是为了保持拒绝语义与 denied 审计**：仍返回 403，并以 4 KiB 上限读取 body 供 denied 审计（超限记为空） | 成功写 grants `5184`/`6392`、project policy `5386`、user roles `5567`、host tokens `5841`、provision-policy `6524`、global policy `7082`；拒绝读 `5174`/`6379`/`6511`；`d271157ba45` |
+| 3 普通写 | 16 KiB | 认证后的业务写 → `413 PAYLOAD_TOO_LARGE`，在任何变更/审计前拒绝 | projects 创建/self/更新 `4700`/`4864`/`5070`、maintenance `6306`、audit/export `6667`、web-handoff mint `7301`、connect `7420`；`aa2e3b798a3` |
+| 3a 注册（U252） | 64 KiB | 契约允许 200×255 B `projectDirs`，合法最大 52,232 B（3.19×16 KiB）→ 独立档；超限 413 `PAYLOAD_TOO_LARGE` 且不消耗一次性令牌 | `hosts/register` `5887`、常量 `server.ts:516`；`dc9c6e938ad` |
+| 3b 心跳（U251） | 1 MiB | 一拍含 100 事件（metadata 各 ≤4096 B）+ 200 `projectDirs` + 32 provision 报告，实测合法最大 443 KB；超限 413 + `connection: close`，不落库 | `hosts/:id/heartbeat` `6101`、常量 `server.ts:525`；`fbf0237658d` |
+| 4 内部端点（U251） | 8 KiB | 内部令牌校验后读取；超限整包丢弃为 `{}` 并置 `connection: close`，端点按空 body 走既有语义，与旧对端兼容 | `internal/audit/file-events` `6595`、`internal/relay-endpoint` `7182`；`8d9f5d3101b` |
 
-常量与入口：`AUTH_BODY_MAX_BYTES`/`LOGOUT_BODY_MAX_BYTES` `server.ts:485`/`488`、`INTERNAL_BODY_MAX_BYTES` `497`、`SENSITIVE_WRITE_BODY_MAX_BYTES` `506`、`REGISTER_BODY_MAX_BYTES` `517`、`PROJECT_PATH_MAX_CHARS` `project-self-service.ts:17`（U256 移出，`server.ts:16` 导入）、`HEARTBEAT_BODY_MAX_BYTES` `526`、`DENIED_AUDIT_BODY_MAX_BYTES` `532`；统一 413 助手 `readSensitiveWriteBody` `server.ts:472-482`，超限丢弃在 `readBody` `server.ts:363-424`。
+常量与入口：`AUTH_BODY_MAX_BYTES`/`LOGOUT_BODY_MAX_BYTES` `server.ts:484`/`487`、`INTERNAL_BODY_MAX_BYTES` `496`、`SENSITIVE_WRITE_BODY_MAX_BYTES` `505`、`REGISTER_BODY_MAX_BYTES` `516`、`PROJECT_PATH_MAX_CHARS` `project-self-service.ts:17`（U256 移出，`server.ts:18` 导入）、`HEARTBEAT_BODY_MAX_BYTES` `525`、`DENIED_AUDIT_BODY_MAX_BYTES` `531`；统一 413 助手 `readSensitiveWriteBody` `server.ts:471-481`，超限丢弃在 `readBody` `server.ts:362-423`。
 
 - 远程 audit-writer 追加上限（U252 `2ed0f0b439d`）：每批 ≤ `MAX_BATCH`(1000) × 16 KiB = 16 MiB，单事件 >16 KiB → 400 `BATCH_INVALID`；`writer.ts:18,41-42,198-202`；写入语义见 M7 §4。
 
 **U255 超限连接的关闭语义（`5060e50e75c`）**
-- `readJsonWithRes`（`server.ts:435-443`）在 oversized 时置 `connection: close`，body 仍为 `{}`；5 处调用：logout `4303`、项目 grants 403 `5086`、host grants 403 `6264`、provision-policy 403 `6396`、force-offline `5551`。旧 `readJson` 已删除（`apps/api/src` 内 `rg` 0 命中）。
-- 三种超限路径（`readBody` `server.ts:363-424`）：声明 ≤2 MiB → 有界排空（2 MiB/250 ms，常量 `320-321`）后响应；声明 >2 MiB → 仅凭 header 立即响应并关闭；chunked → `pause` 后关闭。大声明包或快速 chunked 写者可能收到 reset 而非完整响应（U251 `8d9f5d3101b`）。
-- ✅ **U258（已落地 `301c49139e0`，原 ⛔ P2）**：早于 body 读取的 401/403 拒绝不再无界排空——拒绝出口对声明超限统一置 `connection: close`（`json` 判定 `server.ts:253-268`；`readBody` 标记已消费 `:366`；公开入口绑定请求 `:3636`；内部监听同规则 `:7649`；chunked 自 U264 起改为有界排空，见下）。原观测：非管理员 force-offline 403 实读 8 MiB/29 ms、未认证 `POST /v1/projects` 实读 64 MiB/34 ms。
+- `readJsonWithRes`（`server.ts:434-442`）在 oversized 时置 `connection: close`，body 仍为 `{}`；5 处调用：logout `4373`、项目 grants 403 `5174`、host grants 403 `6379`、provision-policy 403 `6511`、force-offline `5639`。旧 `readJson` 已删除（`apps/api/src` 内 `rg` 0 命中）。
+- 三种超限路径（`readBody` `server.ts:362-423`）：声明 ≤2 MiB → 有界排空（2 MiB/250 ms，常量 `319-320`）后响应；声明 >2 MiB → 仅凭 header 立即响应并关闭；chunked → `pause` 后关闭。大声明包或快速 chunked 写者可能收到 reset 而非完整响应（U251 `8d9f5d3101b`）。
+- ✅ **U258（已落地 `301c49139e0`，原 ⛔ P2）**：早于 body 读取的 401/403 拒绝不再无界排空——拒绝出口对声明超限统一置 `connection: close`（`json` 判定 `server.ts:259-267`；`readBody` 标记已消费 `:365`；公开入口绑定请求 `:3705`；内部监听由 `internal-channel.ts:46` 安装同一策略，`server.ts:7762-7764` 的 404 亦覆盖；chunked 自 U264 起改为有界排空，见下）。原观测：非管理员 force-offline 403 实读 8 MiB/29 ms、未认证 `POST /v1/projects` 实读 64 MiB/34 ms。
 
-**U264 预读前关闭规则（`b290025b097`；本段行号锚定该提交）**
-- `installUnreadBodyPolicy()`（`server.ts:308-316`）在 `handle()` 入口（`:3697-3698`）为每个响应包装一次 `res.writeHead`：首次写出前由 `applyUnreadBodyPolicy()`（`:298-305`）判定——body 未被 `readBody` 消费（`bodyReadRequests`，标记点 `:424`）且声明 `content-length > 16 KiB`（`UNREAD_BODY_CLOSE_BYTES` `:249`）→ 置 `connection: close`。一处覆盖 OPTIONS 204、`serveStatic` 200/304/404、relay bundle、install script、audit export 与全部 `json()` 出口；internal 非 `/v1/` 404 走同一 helper（`:7753`）。
-- chunked：首次写头时启动有界排空（`boundUnreadChunkedBody()` `:267-292`，16 KiB / 250 ms，常量 `:250-251`）；小体量读到 `end` 保持 keep-alive，超预算或超时 `req.destroy()`。这取代了 U258 对 chunked 的一律关闭。
-- internal-channel 现由共享模块 `unread-body-policy.ts`（U267② 抽取，`9f3a5534638`）提供同一策略，mTLS 401/403/500 与 404 出口复用；`b290025b097` 当时为 30 行最小镜像 `closeUnreadBody()`（`internal-channel.ts:33-64`，调用 `:87/:97/:107`）。
+**U264 预读前关闭规则（`b290025b097`；行号已按冻结代码重校）**
+- `installUnreadBodyPolicy()`（`unread-body-policy.ts:79-89`）在 `server.ts` 的 `handle()` 入口（`server.ts:3705-3706`）为每个响应包装一次 `res.writeHead`：首次写出前由 `applyUnreadBodyPolicy()`（`unread-body-policy.ts:69-76`）判定——body 未被 `readBody` 消费（`bodyReadRequests`，`unread-body-policy.ts:17,21-23`；标记点 `server.ts:365`）且声明 `content-length > 16 KiB`（`UNREAD_BODY_CLOSE_BYTES` `unread-body-policy.ts:13`）→ 置 `connection: close`。一处覆盖 OPTIONS 204、`serveStatic` 200/304/404、relay bundle、install script、audit export 与全部 `json()` 出口；internal 非 `/v1/` 404 走同一 helper（`server.ts:7762-7764`）。
+- chunked：首次写头时启动有界排空（`boundUnreadChunkedBody()` `unread-body-policy.ts:37-62`，16 KiB / 250 ms，常量 `:14-15`）；小体量读到 `end` 保持 keep-alive，超预算或超时 `req.destroy()`。这取代了 U258 对 chunked 的一律关闭。
+- internal-channel 现由共享模块 `unread-body-policy.ts`（U267② 抽取，`9f3a5534638`）提供同一策略，mTLS 401/403/500 与 404 出口复用（现行引用见 `internal-channel.ts:5,46`）；`b290025b097` 当时为 30 行最小镜像 `closeUnreadBody()`（`internal-channel.ts:33-64`，调用 `:87/:97/:107`）。
 - 已知限制：声明/突发 ≥768 KiB 时客户端可能先收到 EPIPE 而非完整响应（U251 已知）；双门与多出口的覆盖以 `pre-read-close.test.ts`、`auth-body-limit.test.ts` 为准。
 
 ## 7. 测试覆盖
