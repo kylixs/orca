@@ -108,8 +108,9 @@ async function runInterrupted(): Promise<InterruptedRun> {
     const during = readdirSync(tmpDir)
     const partial = during.find((name) => /^orca-install-.*\.sh$/.test(name))
     const partialBody = partial ? readFileSync(join(tmpDir, partial), 'utf8') : ''
-    assert.notEqual(child.pid, undefined)
-    process.kill(-child.pid, 'SIGINT')
+    const pid = child.pid
+    assert.ok(pid !== undefined, 'spawn must return a pid')
+    process.kill(-pid, 'SIGINT')
     const [code, signal] = await exited
     return { code, signal, during, partialBody, kept: readdirSync(tmpDir), stderr }
   } finally {
