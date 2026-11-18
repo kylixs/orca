@@ -8,8 +8,10 @@ import { createApp, type ApiHandle } from '../src/server.ts'
  * U264: the U258 pre-read close rule only covered the JSON exits. Static files,
  * OPTIONS and the other bare `writeHead/end` replies still drained an unread
  * 16 MiB body, and every chunked request was closed even when tiny. These tests
- * pin the single `writeHead` wrapper and the bounded chunked drain. Kept apart
- * from auth-body-limit.test.ts, which another change is editing concurrently.
+ * pin the single `writeHead` wrapper and the bounded chunked drain. U267: the
+ * chunked cases send legal frames (one size line per chunk), so a parser error
+ * cannot stand in for the drain bound. Kept apart from auth-body-limit.test.ts,
+ * which another change is editing concurrently.
  */
 
 const ORIGIN = 'https://console.u264.example'
@@ -33,26 +35,71 @@ async function startApp(): Promise<string> {
   return `http://127.0.0.1:${port}`
 }
 
-type RawResponse = { status: number; headers: Record<string, string>; body: string }
+type RawResponse = {
+  status: number
+  headers: Record<string, string>
+  body: string
+  /** Time from the first write to the complete response. */
+  responseMs: number
+  /** Time to the socket close, or null when the close was still awaited at the deadline. */
+  closeMs: number | null
+  bytesWrittenAtClose: number
+  /** Client-side errors seen before the response was complete (a framing error would land here). */
+  errorsBeforeResponse: number
+  errors: string[]
+}
+
+type RawResponseOptions = {
+  /** Keep listening after the response for the server-issued close. */
+  awaitClose?: boolean
+  /** Runs once the response is complete, before the awaited close arrives. */
+  onResponse?: () => void
+}
 
 /** Reads one framed response off a raw socket (mirrors the U255 helper). */
-function readRawResponse(socket: Socket, timeoutMs: number, label: string): Promise<RawResponse> {
+function readRawResponse(
+  socket: Socket,
+  timeoutMs: number,
+  label: string,
+  options: RawResponseOptions = {}
+): Promise<RawResponse> {
   return new Promise((resolve, reject) => {
+    const started = Date.now()
+    const errors: string[] = []
     let buffer = Buffer.alloc(0)
     let headerEnd = -1
     let expectedBody = 0
     let chunked = false
     let chunkCursor = 0
     let chunkedBody = Buffer.alloc(0)
+    let bodyText = ''
     let status = 0
     let headers: Record<string, string> = {}
     let done = false
+    let responseDone = false
+    let responseMs = 0
+    let errorsBeforeResponse = 0
+    let closeMs: number | null = null
     const cleanup = (): void => {
       done = true
       clearTimeout(timer)
       socket.off('data', onData)
       socket.off('close', onClose)
       socket.off('error', onError)
+    }
+    const result = (): RawResponse => ({
+      status,
+      headers,
+      body: bodyText,
+      responseMs,
+      closeMs,
+      bytesWrittenAtClose: socket.bytesWritten,
+      errorsBeforeResponse,
+      errors: [...errors]
+    })
+    const settle = (): void => {
+      cleanup()
+      resolve(result())
     }
     const consumeChunked = (): boolean => {
       while (true) {
@@ -71,20 +118,22 @@ function readRawResponse(socket: Socket, timeoutMs: number, label: string): Prom
       }
     }
     const maybeResolve = (): void => {
-      if (done || headerEnd === -1) return
+      if (done || responseDone || headerEnd === -1) return
       if (chunked) {
         if (!consumeChunked()) return
-        cleanup()
-        resolve({ status, headers, body: chunkedBody.toString('utf8') })
+        bodyText = chunkedBody.toString('utf8')
+      } else {
+        if (buffer.length - headerEnd < expectedBody) return
+        bodyText = buffer.subarray(headerEnd, headerEnd + expectedBody).toString('utf8')
+      }
+      responseDone = true
+      responseMs = Date.now() - started
+      errorsBeforeResponse = errors.length
+      if (!options.awaitClose) {
+        settle()
         return
       }
-      if (buffer.length - headerEnd < expectedBody) return
-      cleanup()
-      resolve({
-        status,
-        headers,
-        body: buffer.subarray(headerEnd, headerEnd + expectedBody).toString('utf8')
-      })
+      options.onResponse?.()
     }
     const onData = (chunk: Buffer): void => {
       buffer = Buffer.concat([buffer, chunk])
@@ -107,19 +156,29 @@ function readRawResponse(socket: Socket, timeoutMs: number, label: string): Prom
     }
     const onClose = (): void => {
       if (done) return
-      maybeResolve()
-      if (done) return
+      closeMs = Date.now() - started
+      if (!responseDone) maybeResolve()
+      if (responseDone) {
+        settle()
+        return
+      }
       cleanup()
       reject(new Error(`${label}: socket closed before a complete response`))
     }
     const onError = (error: Error): void => {
       if (done) return
-      maybeResolve()
-      if (done) return
+      errors.push(error.message)
+      // A reset after the full response is the server tearing down an unread body.
+      if (responseDone && options.awaitClose) return
       cleanup()
       reject(error)
     }
     const timer = setTimeout(() => {
+      if (done) return
+      if (responseDone) {
+        settle()
+        return
+      }
       cleanup()
       reject(new Error(`${label}: no response within ${timeoutMs}ms`))
     }, timeoutMs)
@@ -151,6 +210,30 @@ async function connectRaw(base: string): Promise<Socket> {
   })
   return socket
 }
+
+/** One legal chunk: exactly one size line, the body split into shards, then CRLF. */
+function chunkFrame(payload: Buffer, shardBytes: number): Buffer[] {
+  const frames = [Buffer.from(`${payload.length.toString(16)}\r\n`, 'latin1')]
+  for (let offset = 0; offset < payload.length; offset += shardBytes) {
+    frames.push(payload.subarray(offset, offset + shardBytes))
+  }
+  frames.push(Buffer.from('\r\n', 'latin1'))
+  return frames
+}
+
+function chunkedRequestHead(host: string, path: string): string {
+  return [
+    `POST ${path} HTTP/1.1`,
+    `Host: ${host}`,
+    'Content-Type: application/json',
+    'Transfer-Encoding: chunked',
+    'Connection: keep-alive',
+    '',
+    ''
+  ].join('\r\n')
+}
+
+const CHUNKED_TERMINATOR = '0\r\n\r\n'
 
 /**
  * Declares a body, waits for the refusal computed from headers alone, then pumps
@@ -426,98 +509,104 @@ describe('U264 非 JSON 出口的读取前关闭', () => {
   }, { timeout: 5000 })
 })
 
-describe('U264 chunked 小体量保持 keep-alive', () => {
-  test('13 B chunked 的 401：不关闭连接，同连接第二次请求成功', async () => {
+describe('U264 chunked 有界排空', () => {
+  test('13 B chunked 的 401：合法帧、无解析错误，同连接第二次请求 200', async () => {
     const base = await startApp()
     const url = new URL(base)
     const socket = await connectRaw(base)
-    const body = 'u264-small-13'
-    assert.equal(Buffer.byteLength(body), 13)
+    const body = Buffer.from('u264-small-13', 'utf8')
+    assert.equal(body.length, 13)
     try {
-      socket.write(
-        [
-          'POST /v1/projects HTTP/1.1',
-          `Host: ${url.host}`,
-          'Content-Type: application/json',
-          'Transfer-Encoding: chunked',
-          'Connection: keep-alive',
-          '',
-          `${Buffer.byteLength(body).toString(16)}\r\n${body}\r\n0\r\n\r\n`
-        ].join('\r\n')
-      )
+      socket.write(chunkedRequestHead(url.host, '/v1/projects'))
+      for (const frame of chunkFrame(body, 5)) socket.write(frame)
+      socket.write(CHUNKED_TERMINATOR)
       const first = await readRawResponse(socket, 2000, 'chunked small 401')
       assert.equal(first.status, 401)
       assert.notEqual(first.headers.connection, 'close', 'a small chunked body keeps keep-alive')
+      assert.equal(
+        first.errorsBeforeResponse,
+        0,
+        `valid chunk frames must not trip the parser: ${first.errors.join('; ')}`
+      )
 
       socket.write(
         ['GET /health HTTP/1.1', `Host: ${url.host}`, 'Connection: keep-alive', '', ''].join('\r\n')
       )
       const second = await readRawResponse(socket, 2000, 'health on the same connection')
       assert.equal(second.status, 200, 'the refused chunked request must not wedge the connection')
+      assert.deepEqual(second.errors, [], 'the reused connection sees no client-side error')
     } finally {
       socket.destroy()
     }
   }, { timeout: 5000 })
 
-  test('超过 16 KiB 的 chunked 未读 body：拒绝后可读，连接最终被关闭', async () => {
+  test('15 KiB chunked 在 16 KiB 预算内：keep-alive，同连接 GET /health 200', async () => {
     const base = await startApp()
-    const socket = await connectRaw(base)
     const url = new URL(base)
-    let closed = false
-    socket.on('close', () => {
-      closed = true
-    })
+    const socket = await connectRaw(base)
+    const body = Buffer.alloc(15 * 1024, 'x')
     try {
-      socket.write(
-        [
-          'POST /v1/projects HTTP/1.1',
-          `Host: ${url.host}`,
-          'Content-Type: application/json',
-          'Transfer-Encoding: chunked',
-          'Connection: keep-alive',
-          '',
-          '8000\r\n'
-        ].join('\r\n')
-      )
-      const first = await new Promise<{ status: number; connection: string | undefined }>(
-        (resolve, reject) => {
-          let buffer = Buffer.alloc(0)
-          const timer = setTimeout(() => reject(new Error('no refusal within 2000ms')), 2000)
-          const onData = (data: Buffer): void => {
-            buffer = Buffer.concat([buffer, data])
-            const index = buffer.indexOf('\r\n\r\n')
-            if (index === -1) return
-            socket.off('data', onData)
-            clearTimeout(timer)
-            const lines = buffer.subarray(0, index).toString('latin1').split('\r\n')
-            const status = Number(lines[0]?.split(' ')[1] ?? 0)
-            const connection = lines
-              .slice(1)
-              .find((line) => line.toLowerCase().startsWith('connection:'))
-              ?.slice('connection:'.length)
-              .trim()
-            resolve({ status, connection })
-          }
-          socket.on('data', onData)
-        }
-      )
-      assert.equal(first.status, 401, 'the refusal is sent before the body is drained')
-      assert.notEqual(first.connection, 'close', 'chunked is not closed from the header alone')
+      socket.write(chunkedRequestHead(url.host, '/v1/projects'))
+      for (const frame of chunkFrame(body, 4 * 1024)) socket.write(frame)
+      socket.write(CHUNKED_TERMINATOR)
+      const first = await readRawResponse(socket, 2000, 'chunked 15 KiB 401')
+      assert.equal(first.status, 401)
+      assert.notEqual(first.headers.connection, 'close', 'within-budget chunked keeps keep-alive')
+      assert.equal(first.errorsBeforeResponse, 0, `no parser error: ${first.errors.join('; ')}`)
 
-      // Keep the stream going well past the drain bound; the server must destroy.
-      const payload = Buffer.alloc(32 * 1024, 'x')
-      for (let index = 0; index < 8 && !closed; index += 1) {
-        try {
-          socket.write(`${payload.length.toString(16)}\r\n`)
-          socket.write(payload)
+      socket.write(
+        ['GET /health HTTP/1.1', `Host: ${url.host}`, 'Connection: keep-alive', '', ''].join('\r\n')
+      )
+      const second = await readRawResponse(socket, 2000, 'health after 15 KiB chunked')
+      assert.equal(second.status, 200, '15 KiB is inside the drain budget')
+      assert.deepEqual(second.errors, [], 'the reused connection sees no client-side error')
+    } finally {
+      socket.destroy()
+    }
+  }, { timeout: 5000 })
+
+  test('32 KiB chunked 超过 16 KiB 预算：401 可达后连接关闭，且不是帧错误', async (t) => {
+    const base = await startApp()
+    const url = new URL(base)
+    const socket = await connectRaw(base)
+    const body = Buffer.alloc(32 * 1024, 'x')
+    const preResponseShard = 8 * 1024
+    try {
+      const pending = readRawResponse(socket, 4000, 'chunked 32 KiB over budget', {
+        awaitClose: true,
+        onResponse: () => {
+          // Finish the one legal chunk and terminate; the tail crosses the drain bound.
+          socket.write(body.subarray(preResponseShard))
           socket.write('\r\n')
-        } catch {
-          break
+          socket.write(CHUNKED_TERMINATOR)
         }
-        await new Promise((resolve) => setTimeout(resolve, 20))
-      }
-      await new Promise((resolve) => setTimeout(resolve, 300))
-      assert.equal(closed, true, 'a chunked stream past the bound must end the connection')
+      })
+      socket.write(chunkedRequestHead(url.host, '/v1/projects'))
+      socket.write(`${body.length.toString(16)}\r\n`)
+      socket.write(body.subarray(0, preResponseShard))
+      const result = await pending
+      t.diagnostic(
+        `32 KiB chunked: response=${result.responseMs}ms, ` +
+          `close=${result.closeMs === null ? 'not closed' : `${result.closeMs}ms`}, ` +
+          `bytesWrittenAtClose=${result.bytesWrittenAtClose}, ` +
+          `errorsBeforeResponse=${result.errorsBeforeResponse}`
+      )
+      assert.equal(result.status, 401, 'the refusal is readable before the bound closes the socket')
+      assert.notEqual(result.headers.connection, 'close', 'chunked is not closed from the header alone')
+      assert.equal(
+        result.errorsBeforeResponse,
+        0,
+        `valid frames must not raise ECONNRESET/EPIPE before the refusal: ${result.errors.join('; ')}`
+      )
+      assert.ok(
+        result.closeMs !== null,
+        'a chunked body past the 16 KiB bound must close the connection'
+      )
+      assert.ok(
+        result.bytesWrittenAtClose >= body.length,
+        `the whole legal body was written (${result.bytesWrittenAtClose} B of ${body.length} B)`
+      )
+      assert.ok(result.responseMs < 1000, `the refusal took ${result.responseMs}ms`)
     } finally {
       socket.destroy()
     }
