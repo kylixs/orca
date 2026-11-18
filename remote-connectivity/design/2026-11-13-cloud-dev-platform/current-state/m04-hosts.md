@@ -83,7 +83,13 @@
 
 - 请求体上限：`hosts/register` 64 KiB（U252 `dc9c6e938ad`）、心跳 1 MiB（U251 `fbf0237658d`）、维护按档 3（16 KiB），`hosts/tokens`/`grants`/`provision-policy` 按档 2（16 KiB；拒绝分支仍 403 + denied 审计），见 M1「U250 body 分档」。register 64 KiB 的注释前提（U256 `552ccd93177`）：合法最大约 56 KiB（200 × 255 B `projectDirs` + `projectsRoot` ≤4096），根目录 4096 上界使该前提自洽（`server.ts:477-486`）。
 
-- `directAddrs` 元素（`isDirectAddrForm`，`server.ts:555`）：仅 `host[:port]`——IPv4/主机名白名单 `[A-Za-z0-9._-]+`（可选端口 1–65535），冒号只可作端口分隔；IPv6 必须方括号 `[...]`，裸 IPv6 拒绝；`@ \ / ? # % :` 等 URL 保留字符一律 400 `HOST_DIRECTADDRS_INVALID`（注册 `server.ts:5871-5892` 在 `usedAt` 前拒绝、令牌不消耗；心跳 `server.ts:6036-6048` 整拍拒绝、不覆盖已存地址）。因 `sessionPageUrl` 由该地址拼接，放开 `@` 等字符可把 URL 指向攻击者域（U263 `b1f2880847a`；`apps/api/test/host-direct-addrs.test.ts`）。
+- `directAddrs` 元素（`isDirectAddrForm`，`server.ts:624-632`）：仅 `host[:port]`——IPv4/主机名白名单 `[A-Za-z0-9._-]+`（可选端口 1–65535），冒号只可作端口分隔；IPv6 必须方括号 `[...]`，裸 IPv6 拒绝，方括号分支去括号后用 `net.isIPv6` 真校验（`[::::::]` 等畸形串拒绝）；`@ \ / ? # % :` 等 URL 保留字符一律 400 `HOST_DIRECTADDRS_INVALID`。首行 `MAX_DIRECT_ADDR_CHARS=255`（依据 DNS 253 + IPv6 括号/端口余量；该谓词在每次带 CORS 请求的 `browserPageOrigins` 扫描中执行，O(1)；`server.ts:613`）。因 `sessionPageUrl` 由该地址拼接，放开 `@` 等字符可把 URL 指向攻击者域（U263 `b1f2880847a`；U265 `708cd4cf5d3`；`apps/api/test/host-direct-addrs.test.ts`）。
+
+- U265 拨号兜底：`isDialableDirectAddr`（`server.ts:639-647`）在 form 通过后再 `new URL('https://'+addr)` try/catch；注册（`server.ts:5983-5987`，`usedAt` 前）与心跳（`server.ts:6148-6154`，落库前）均用它，拒绝时不落库、不耗令牌、无成功审计。`net.isIPv6` 与 URL 解析互为独立防线（双门冗余）：变异只放开一门仍绿，两门同时放开才红。
+
+- 历史地址容错（U265）：`sessionPageUrlFor`（`server.ts:3459`）对旧快照里已存的不合法地址不再抛 500 而返回空串；web-handoff（`server.ts:7401`）入口用 `isDialableDirectAddr` 复查并拒绝。
+
+- CORS 归一化（U265）：`browserPageOrigins`（`server.ts:3410`）与 `corsAllowOriginFor`（`server.ts:3437`）两侧都用 `new URL(...).origin` 归一化后比较——`Console.U265.Example:443` 与浏览器序列化的 `https://console.u265.example` 精确匹配；未列 Origin 无 ACAO，非法 Origin 直接返回 null（`apps/api/test/host-direct-addrs.test.ts` U265 CORS 用例）。
 
 ## 5. 已知缺陷（台账）
 
