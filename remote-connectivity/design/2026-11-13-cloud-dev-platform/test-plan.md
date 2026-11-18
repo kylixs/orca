@@ -206,7 +206,7 @@ pnpm run check:code-quality:changed
 
 ### 7.1 认证基线（25 文件 / 267 已测 + 2 待复跑，可复现清单）
 
-历史台账只写「24 套件 / 266 tests」，无法复核文件构成；2026-11-18 12:4x 由 `/tmp/auth-baseline-3.log` 的 49 个顶层 suite 反推，49/49 精确对应下列 24 个文件（当前 HEAD 复跑 **267/267，0 fail / 0 skip**，最新证据 `/tmp/auth-baseline-6.log`（206.8s），历史 `-5.log` 同为 267；较 266 多出的 1 例为 U245-A「1 leader + 3 followers 并发撤销只审计一次」）。
+历史台账只写「24 套件 / 266 tests」，无法复核文件构成；2026-11-18 12:4x 由 `/tmp/auth-baseline-3.log` 的 49 个顶层 suite 反推，49/49 反推的 24 个文件历史口径；现为 25 文件（`u244-admin-revoke-policy` 由 U326 拆出，2 例待基线复跑）（当前 HEAD 复跑 **267/267，0 fail / 0 skip**，最新证据 `/tmp/auth-baseline-6.log`（206.8s），历史 `-5.log` 同为 267；较 266 多出的 1 例为 U245-A「1 leader + 3 followers 并发撤销只审计一次」）。
 
 ```bash
 cd cloud-platform && ORCA_BACKGROUND_LAUNCH=1 node --test --test-concurrency=2 \
@@ -242,7 +242,7 @@ test/e2e/web-refresh-cookie.e2e.test.ts
 
 ### 7.2 全仓 e2e 全景（口径与命令）
 
-范围：`cloud-platform/test/e2e/*.e2e.test.ts` 全量（2026-11-18 实测 **147** 文件、37 批；首轮快照 146，期间新增 e2e 自检后为 147），不是子系统子集。本节是 §7.1 禁令的受控例外：分批、批间串行，日常回归仍按 §7.1。
+范围：`cloud-platform/test/e2e/*.e2e.test.ts` 全量（2026-11-18 第八轮实测 **148** 文件、37 批；U326 拆分后 149 文件/1152，待第九轮），不是子系统子集。本节是 §7.1 禁令的受控例外：分批、批间串行，日常回归仍按 §7.1。
 
 ```bash
 cd cloud-platform
@@ -255,7 +255,7 @@ ORCA_BACKGROUND_LAUNCH=1 node --test --test-concurrency=2 \
 - 计数工件：自定义 reporter 每文件写一行 `{"file","tests","pass","fail","skipped","cancelled","todo","duration_ms","failed_tests"}`；汇总 `cat counts-*.jsonl` 后按字段求和（**不是** node:test 事件流，按 `type` 统计会得到 0/0 假读数）。每轮结束必须写 `DONE` + `summary.json`（协议 §2-160），派发代理退出不得成为汇总依赖。
 - 量级：单轮约 22 分钟（final2 实测 1301s / 1320s），最长单批 197–236s，故批大小取 4 文件。
 - 结论口径：报原始 `tests / pass / fail / skipped`；fail 按三类归属——① 产品缺陷、② 测试缺陷/陈旧 fixture、③ 环境/并发改写工作树（INVALID，单独复跑转绿）。跳过项不得从分母中抹掉。
-- 与子集基线的关系：§7.1 认证 24 文件 267、授权矩阵 113、T1 关键集均为子集，只能证明对应范围，不得替代全景结论；全仓结论必须由全景扫描支撑。
+- 与子集基线的关系：§7.1 认证 25 文件（267 已测 + 2 待复跑）、授权矩阵 113、T1 关键集均为子集，只能证明对应范围，不得替代全景结论；全仓结论必须由全景扫描支撑。
 - 已知环境噪声：扫描期间另一会话改写 `apps/web/app.js`，会让 `new Function`/模板解析瞬时失败（2026-11-18 第一轮 F2–F8）；此类红必须单独复跑确认后再归属。
 - 证据：`cloud-platform/test-reports/full-e2e-sweep-20261118.md`（首轮 1141/1140/1，唯一稳定红 U284）；**首轮收官 `full-e2e-sweep-final-20261118.md`：1141/1141/0（HEAD `0fa1d21b9c4`）；第二轮收官 `full-e2e-sweep-final2-20261118.md`：147 文件 1143/1143/0，0 skipped，37 批全部 exit 0**（HEAD `691f4f404fb`）；**第四轮（U310 修复后）`full-e2e-sweep-final4-20261118.md`：147 文件、37 批、1144/1144/0、0 skipped，扫描前后测试文件 sha256 全部一致**（日志 `/tmp/e2e-sweep-final4/`）；**第七轮（D15/D18/D20/D22 后）`full-e2e-sweep-final7-20261118.md`：148 文件、37 批、1149/1149/0、0 skipped**（批 20 首轮因 U319 固定 sha 红，pin 修复后定向复跑 31/31；日志 `/tmp/e2e-sweep-final7/`）；**第八轮（格式化批 + U320/U322 后）`full-e2e-sweep-final8-20261118.md`：148 文件、37 批全 exit 0、1150 tests（1147 pass / 0 fail / 3 环境 skip）、hashes_same=yes**（日志 `/tmp/e2e-sweep-final8/`）。
 
