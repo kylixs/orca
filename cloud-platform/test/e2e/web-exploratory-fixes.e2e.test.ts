@@ -1812,3 +1812,18 @@ test('WEB-R2-012 管理员项目页副标题说明为管理员视图', async () 
   assert.equal(subtitle.trim(), '管理员视图：展示全部项目（含未授权项目）。')
   assert.doesNotMatch(subtitle, /仅展示你有「打开项目」权限的项目/)
 }, 120_000)
+
+test('U58 W5 非法百分号转义路径返回 404 而不是 500', async () => {
+  const res = await fetch(`${service.url}/%E0%A4%A`)
+  const body = await res.text()
+  assert.equal(res.status, 404, `malformed escape must be a 404, got ${res.status}: ${body}`)
+  assert.doesNotMatch(body, /URI malformed/, 'the decoder error must not leak')
+  assert.doesNotMatch(body, /INTERNAL_ERROR|at [\w./]+\s*\(/, 'no error code or stack')
+}, 120_000)
+
+test('U58 W5 合法百分号编码路径仍正常返回', async () => {
+  const res = await fetch(`${service.url}/%69ndex.html`)
+  const body = await res.text()
+  assert.equal(res.status, 200, `a valid encoded path still resolves: ${body.slice(0, 200)}`)
+  assert.match(body, /<html/i)
+}, 120_000)

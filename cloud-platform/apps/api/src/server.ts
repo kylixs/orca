@@ -6627,6 +6627,18 @@ export function createApp(config: ApiConfig): ApiHandle {
         projectId,
         hostId
       } = parsedQuery.value
+      // U58 U13: `Number()` accepted "1e3"/"1.5" and NaN was silently dropped;
+      // cursor is an event seq, so only decimal non-negative integers are valid.
+      const rawCursor = url.searchParams.get('cursor')
+      const cursor =
+        rawCursor === null
+          ? undefined
+          : /^\d+$/.test(rawCursor) && Number.isSafeInteger(Number(rawCursor))
+            ? Number(rawCursor)
+            : null
+      if (cursor === null) {
+        return error(res, 400, 'INVALID_QUERY', 'cursor 必须是十进制非负整数。', traceId)
+      }
       const page = await audit.query({
         actor,
         eventType,
@@ -6641,7 +6653,7 @@ export function createApp(config: ApiConfig): ApiHandle {
         projectId,
         hostId,
         limit,
-        cursor: url.searchParams.get('cursor') ? Number(url.searchParams.get('cursor')) : undefined
+        cursor
       })
       return json(res, 200, page)
     }
@@ -7667,7 +7679,18 @@ export function createApp(config: ApiConfig): ApiHandle {
     if (serveAsset(path, req, res)) {
       return
     }
-    const rel = path === '/' ? 'index.html' : decodeURIComponent(path).replace(/^\//, '')
+    let decoded: string
+    try {
+      decoded = decodeURIComponent(path)
+    } catch (err) {
+      // U58 W5: a malformed escape is a bad path, not a server fault — 404, no stack.
+      if (err instanceof URIError) {
+        sendStaticNotFound(res)
+        return
+      }
+      throw err
+    }
+    const rel = path === '/' ? 'index.html' : decoded.replace(/^\//, '')
     // Release keys are posix names; normalize() would produce backslashes on Windows.
     const name = normalize(rel)
       .replace(/^(\.\.[/\\])+/, '')
