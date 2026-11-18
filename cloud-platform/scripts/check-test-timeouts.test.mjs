@@ -175,7 +175,7 @@ test('baseline mode stays green when nothing is added', () => {
   })
 })
 
-test('baseline entries key on file + form + normalized content, not line numbers', () => {
+test('baseline entries key on file + form + normalized call signature, not line numbers', () => {
   withTempDir((root) => {
     const file = writeFixture(root, 'a.test.ts', "test('a', () => {}, 5000)\n")
     const baselinePath = join(root, 'baseline.json')
@@ -197,6 +197,62 @@ test('line drift with unchanged content does not create a new violation', () => 
     const result = checkTestTimeouts({ files: [file], baselinePath })
     assert.equal(result.exitCode, 0)
     assert.deepEqual(result.newViolations, [])
+  })
+})
+
+// U300: a call re-wrapped across lines must keep the same key.
+test('the same call wrapped across lines keeps its baseline key', () => {
+  withTempDir((root) => {
+    const file = writeFixture(root, 'a.test.ts', "test('a', () => {}, DURATION_S * 1_000)\n")
+    const baselinePath = join(root, 'baseline.json')
+    checkTestTimeouts({ files: [file], baselinePath })
+    const [singleLineKey] = Object.keys(JSON.parse(readFileSync(baselinePath, 'utf8')).entries)
+
+    writeFileSync(file, "test(\n  'a',\n  () => {},\n  DURATION_S *\n    1_000\n)\n")
+    const checked = checkTestTimeouts({ files: [file], baselinePath })
+    assert.equal(checked.exitCode, 0)
+    assert.deepEqual(checked.newViolations, [])
+
+    checkTestTimeouts({ files: [file], baselinePath, updateBaseline: true })
+    const [wrappedKey] = Object.keys(JSON.parse(readFileSync(baselinePath, 'utf8')).entries)
+    assert.equal(wrappedKey, singleLineKey)
+  })
+})
+
+test('changed timeout content yields a different key and one new violation', () => {
+  withTempDir((root) => {
+    const file = writeFixture(root, 'a.test.ts', "test('a', () => {}, 5000)\n")
+    const baselinePath = join(root, 'baseline.json')
+    checkTestTimeouts({ files: [file], baselinePath })
+
+    for (const changed of [
+      "test('a', () => {}, 5001)\n",
+      "test('a', () => {}, { timeout: 5000 })\n",
+      "test('a', () => {}, DURATION_S * 1_000)\n"
+    ]) {
+      writeFileSync(file, changed)
+      const result = checkTestTimeouts({ files: [file], baselinePath })
+      assert.equal(result.exitCode, 1, changed)
+      assert.equal(result.newViolations.length, 1, changed)
+    }
+  })
+})
+
+test('identical calls are counted, so replacing one reports one new violation', () => {
+  withTempDir((root) => {
+    const file = writeFixture(root, 'a.test.ts', 'before(fn, 5000)\nbefore(fn, 5000)\n')
+    const baselinePath = join(root, 'baseline.json')
+    checkTestTimeouts({ files: [file], baselinePath })
+    const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'))
+    assert.deepEqual(Object.values(baseline.entries), [2])
+
+    writeFileSync(file, 'before(fn, 5000)\nbefore(fn, 6000)\n')
+    const result = checkTestTimeouts({ files: [file], baselinePath })
+    assert.equal(result.exitCode, 1)
+    assert.deepEqual(
+      result.newViolations.map((violation) => violation.line),
+      [2]
+    )
   })
 })
 

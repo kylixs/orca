@@ -304,6 +304,7 @@ function scanSourceInternal(source, { file = '<memory>' } = {}) {
   const clean = sanitize(source)
   const lineStarts = lineStartsOf(source)
   const violations = []
+  const signatures = new Map()
   CALL_PATTERN.lastIndex = 0
   let match
   while ((match = CALL_PATTERN.exec(clean)) !== null) {
@@ -315,15 +316,20 @@ function scanSourceInternal(source, { file = '<memory>' } = {}) {
     }
     const args = splitTopLevel(clean, openIndex + 1, closeIndex)
     const line = lineAt(lineStarts, match.index)
+    const push = (form) => {
+      const violation = { file, line, form }
+      signatures.set(violation, callSignature(name, args))
+      violations.push(violation)
+    }
     if (name === 'test' || name === 'it') {
       if (args.length < 3) {
         continue
       }
       const third = args[2]
       if (isNumericTimeout(third)) {
-        violations.push({ file, line, form: FORMS.TEST_NUMERIC_THIRD })
+        push(FORMS.TEST_NUMERIC_THIRD)
       } else if (objectHasTimeout(third)) {
-        violations.push({ file, line, form: FORMS.TEST_OBJECT_THIRD })
+        push(FORMS.TEST_OBJECT_THIRD)
       }
       continue
     }
@@ -331,26 +337,27 @@ function scanSourceInternal(source, { file = '<memory>' } = {}) {
       continue
     }
     if (isNumericTimeout(args[1])) {
-      violations.push({ file, line, form: FORMS.HOOK_NUMERIC_SECOND })
+      push(FORMS.HOOK_NUMERIC_SECOND)
     }
   }
-  return { violations, clean, lineStarts }
+  return { violations, signatures }
 }
 
 export function scanSource(source, options = {}) {
   return scanSourceInternal(source, options).violations
 }
 
-function lineTextAt(clean, lineStarts, line) {
-  const start = lineStarts[line - 1] ?? 0
-  const end = lineStarts[line] ?? clean.length
-  return clean.slice(start, end)
+// U300: key on callee + non-callback args (the callback body is not the violation), so
+// re-wraps and unrelated body edits keep the key. Args are already comment/string-blanked.
+function callSignature(name, args) {
+  const callbackIndex = name === 'test' || name === 'it' ? 1 : 0
+  const kept = args.filter((_, index) => index !== callbackIndex)
+  return `${name}(${kept.map((arg) => arg.replace(/\s+/g, '')).join(',')})`
 }
 
-// Location-independent key: file + form + hash(normalized violation line).
+// Location-independent key: file + form + hash(normalized call signature).
 function contentKey(violation, context) {
-  const normalized = lineTextAt(context.clean, context.lineStarts, violation.line).replace(/\s+/g, '')
-  const digest = createHash('sha256').update(normalized).digest('hex').slice(0, 12)
+  const digest = createHash('sha256').update(context.signatures.get(violation)).digest('hex').slice(0, 12)
   return `${violation.file}|${violation.form}|${digest}`
 }
 
@@ -453,8 +460,8 @@ export function scanHeadSources({ root = ROOT, ref = 'HEAD' } = {}) {
 
 function summarize(violations) {
   const byForm = {}
-  for (const violation of violations) {
-    byForm[violation.form] = (byForm[violation.form] ?? 0) + 1
+  for (const { form } of violations) {
+    byForm[form] = (byForm[form] ?? 0) + 1
   }
   return byForm
 }
@@ -607,10 +614,7 @@ function main(argv) {
     console.error(`test timeout check aborted: ${error.message}`)
     return 2
   }
-  let files = []
-  if (!options.fromHead || options.checkOnly) {
-    files = collectScopeFiles()
-  }
+  const files = options.fromHead && !options.checkOnly ? [] : collectScopeFiles()
   if (!options.fromHead && files.length === 0) {
     console.error('test timeout check aborted: no test files matched the scan scope')
     return 2
