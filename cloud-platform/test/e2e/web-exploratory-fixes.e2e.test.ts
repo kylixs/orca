@@ -1,6 +1,15 @@
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { login, registerHost, saveEvidence, spawnService, type Service } from './harness.ts'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import {
+  ROOT,
+  login,
+  registerHost,
+  saveEvidence,
+  spawnService,
+  type Service
+} from './harness.ts'
 import { loadWebConsolePage, type WebConsolePage } from './web-console-page.ts'
 
 /**
@@ -1153,14 +1162,25 @@ test('U54 WEB-R2-014 长文本筛选输入限制 128 字符，密码框不受限
   record('WEB-R2-014', '项目/主机搜索与审计 q/fileName/traceId 均限制 128 字符，密码框不设上限')
 }, 120_000)
 
-test('U116 工作台心跳文案反映后端在线判定窗口', async () => {
+test('U116 工作台心跳文案与后端默认离线窗一致', async () => {
+  // U116③: the card states the offline window, not a raw heartbeat interval.
+  const serverSource = readFileSync(join(ROOT, 'apps/api/src/server.ts'), 'utf8')
+  const constant = /const HOST_OFFLINE_DEFAULT_MS = ([\d_]+)/.exec(serverSource)
+  const windowMs = constant ? Number(constant[1].replaceAll('_', '')) : 0
+  assert.ok(windowMs > 0, 'the backend default offline window must stay readable')
+  const seconds = windowMs / 1000
+
   const page = loadWebConsolePage(service.url)
   await page.settle()
   await page.submitLogin('admin', 'Adm1n!')
   const text = page.window.document.querySelector('#content')!.textContent ?? ''
-  assert.match(text, /60 秒无心跳转离线/, 'the copy must state the real offline window')
-  assert.doesNotMatch(text, /心跳 15 秒/, 'the old 15s copy must be gone')
-  record('U116', '工作台统计卡心跳文案改为「60 秒无心跳转离线」，与 HOST_OFFLINE_DEFAULT_MS 一致')
+  assert.match(
+    text,
+    new RegExp(`${seconds} 秒无心跳转离线`),
+    'the copy must state the real offline window'
+  )
+  assert.doesNotMatch(text, /心跳\s*\d+\s*秒/, 'the old bare beat-interval copy must be gone')
+  record('U116', `工作台统计卡心跳文案为「${seconds} 秒无心跳转离线」，与 HOST_OFFLINE_DEFAULT_MS 一致`)
 }, 120_000)
 
 test('U54 QA-019 中继最近注册时间按 zh-CN 渲染', async () => {
@@ -1789,6 +1809,6 @@ test('WEB-R2-012 管理员项目页副标题说明为管理员视图', async () 
   await page.clickNav('projects')
   const subtitle =
     page.window.document.querySelector('#content .page-head p')?.textContent ?? ''
-  assert.match(subtitle, /管理员视图/)
+  assert.equal(subtitle.trim(), '管理员视图：展示全部项目（含未授权项目）。')
   assert.doesNotMatch(subtitle, /仅展示你有「打开项目」权限的项目/)
 }, 120_000)
