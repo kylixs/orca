@@ -171,7 +171,7 @@
 **U255 超限连接的关闭语义（`5060e50e75c`）**
 - `readJsonWithRes`（`server.ts:406-414`）在 oversized 时置 `connection: close`，body 仍为 `{}`；5 处调用：logout `4270`、项目 grants 403 `5050`、host grants 403 `6177`、provision-policy 403 `6309`、force-offline `5515`。旧 `readJson` 已删除（`apps/api/src` 内 `rg` 0 命中）。
 - 三种超限路径（`readBody` `server.ts:337-395`）：声明 ≤2 MiB → 有界排空（2 MiB/250 ms，常量 `294-295`）后响应；声明 >2 MiB → 仅凭 header 立即响应并关闭；chunked → `pause` 后关闭。大声明包或快速 chunked 写者可能收到 reset 而非完整响应（U251 `8d9f5d3101b`）。
-- ⛔ **U258（在修，P2）**：早于 body 读取的 401/403 拒绝仍 keep-alive 且无界排空——非管理员 force-offline 403 实读 8 MiB/29 ms、未认证 `POST /v1/projects` 实读 64 MiB/34 ms；修复方向＝拒绝出口统一置 `connection: close`（待 U257 后合入）。
+- ⛔ **U258（在修，P2）**：早于 body 读取的 401/403 拒绝仍 keep-alive 且无界排空——非管理员 force-offline 403 实读 8 MiB/29 ms、未认证 `POST /v1/projects` 实读 64 MiB/34 ms；修复方向＝拒绝出口统一置 `connection: close`（U257 已落地 `564055e63ba`）。
 
 ## 7. 测试覆盖
 
