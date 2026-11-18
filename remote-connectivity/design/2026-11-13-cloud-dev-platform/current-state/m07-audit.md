@@ -19,7 +19,7 @@
     - 关键字 `#auditKeyword`：「关键字：类型 / 路径 / 文件名 / 账号 / 项目（2–128 字符）」；
     - 时间范围 `#auditRange`：最近 24 小时 / 最近 7 天（默认）/ 最近 31 天；
     - 起始/结束 `#auditSince` / `#auditUntil`：`datetime-local`；
-    - 操作类型 `#auditType`：全部操作 + 两个族（「下载族 · 下载 + 拦截」family:download、「复制族 · file_copy」family:copy）+ 服务端 `eventTypes` 目录逐项（无目录的旧平台回退 14 项内置列表）；
+    - 操作类型 `#auditType`：全部操作 + 两个族（「下载族 · 下载 + 拦截」family:download、「复制族 · file_copy」family:copy）+ 服务端 `eventTypes` 目录逐项（无目录的旧平台回退 15 项内置列表）；
     - 用户 `#auditActor`：「用户（域账号，精确）」；
     - 项目 `#auditProject`：全部项目 + `GET /v1/projects` 可见项目；
     - 主机 `#auditHost`：全部主机 + 未吊销主机；

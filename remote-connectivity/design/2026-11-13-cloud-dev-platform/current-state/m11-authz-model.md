@@ -23,7 +23,7 @@
 | 项目授权           | 项目详情弹框（`openProjectDetail`），同款「信息 \| 权限」tab | 权限 tab = 查看/控制 + 管理（主机推导只读卡）                                 |
 | 全局角色           | 导航「用户管理」页（admin-only）                             | 列表只读；角色只在用户详情弹框下拉修改；变更确认 → `PUT /v1/users/{id}/roles` |
 | 旧「成员与权限」页 | —                                                            | 已整体删除（页面+导航+旧路由渲染 404，U106 T6 修订），符合 U67 审定二         |
-| 深链               | `projects                                                    | hosts                                                                         | users/<id>`+`?tab=perms` | U106 R3 深链（已派/在途，见 U106 行） |
+| 深链               | `projects` / `hosts` / `users/<id>`（+ `?tab=perms`）        | 已实现（U106 R3，`9e436334e88`；`u106-detail-deeplink` 覆盖）                 |
 
 ## 3. 全局角色（用户管理页）
 
@@ -46,7 +46,7 @@
 
 - 主机：`HostGrant { hostId, subjectType, subjectId, permissions: ('provision'|'maintain'|'view')[] }`，平台内部，**不进票据**。
 - 项目：`Grant { projectId, subjectType, subjectId, permissions: Permission[] }`，位集合 `open/terminal/agent/file:read/file:write/browser/download`。
-- 同一主体同一资源只有一行；卡片是位分组视图，加入卡片 = 位并集写回整行（PUT 整行替换）。
+- 同一主体同一资源只有一行。主机 tab 位置即权限：加入/调整写入目标卡的位组，移除删除整行；项目 tab 是共享行位并集视图：加入卡片 = 位并集写回整行，移除只减该卡位（均 PUT 整行替换）。
 
 ### 4.2 当前实现（HEAD）
 
@@ -59,7 +59,7 @@
 | 项目 | 控制 | `terminal + agent + file:write + browser + download` | 项目内操作位；`download` 仍受项目/全局下载策略约束                                                   |
 | 项目 | 管理 | 无项目级位                                           | 只读派生：列出按 U65 在本项目获得权限的主机级主体（来源视图，写入口在主机弹框；不扩大）              |
 
-- 卡片匹配规则：`row.permissions` 与卡片 `bits` **任一相交**即入卡；行尾徽标显示合成级别（主机：全权/全权+维护/只读/管理/其他；项目：查看/控制拼接）。
+- 卡片匹配规则：主机 tab 按 `hostRoleOf` 归入唯一最高卡（查看 < 控制 < 管理，位置即权限）；项目 tab 按 `row.permissions` 与卡片 `bits` **任一相交**入卡（共享行位并集，同一行可同时出现在查看/控制）。两 tab 的 chip 均只显示主体名 + 类型，不再显示合成级别徽标。
 - 无卡片认领的历史/直写位组合进「其他位组合」卡（可移除、不可再加卡）。
 - 即时保存：每次添加/移除 = 一次 PUT；同主体已在其它卡时先弹覆盖确认；失败 toast + 重拉 GET 重绘；降级文案声明断会话 ≤60 s。
 - 主机授权端点：`GET/PUT /v1/hosts/{id}/grants`、`PUT /v1/hosts/{id}/provision-policy`，全部 admin-only；拒绝落 `host_grant_read`/`host_grant_update` 审计（含被拒主体）。
@@ -93,8 +93,8 @@ canCreateProjectOnHost = isAdmin || hostBits.has('provision')
 
 | 设计项                                  | 现状                                                          | 结论                                                           |
 | --------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------- |
-| U67 审定二「位置即权限 · 层级单卡」     | 当前仍是**位并集 + 合成徽标 + 同主体可出现在多张卡**          | **未实现**（U67 🔴 / U67b 🔴）；验收按现状不得宣称层级单卡     |
-| 主体行只留名字+类型徽标，删除权限词尾注 | 当前 chip 仍显示合成级别 badge                                | **未实现**                                                     |
+| U67 审定二「位置即权限 · 层级单卡」     | 主机 tab 已按 `hostRoleOf` 归入唯一最高卡（写入即目标卡位组，移除整行）；项目 tab 保留共享行位并集（设计保留） | **已实现**（U67 🟢 / U67b 🟢）                                 |
+| 主体行只留名字+类型徽标，删除权限词尾注 | chip 仅显示主体名 + 类型（`showLevel:false`），级别徽标已移除 | **已实现**                                                     |
 | 项目「管理」卡 = 主机推导只读           | 已实现（`projectDerivedCardHtml`）                            | 已实现                                                         |
 | 主机卡「控制」含创建能力                | 已实现且文案注明                                              | 已实现                                                         |
 | 60 s 撤凭证常驻提示                     | 已实现（文案+断会话声明）                                     | 已实现；角色降级与主机授权收缩（U136⑤）均走 `revokeUserCredentials` 心跳闭环 |
@@ -122,14 +122,14 @@ canCreateProjectOnHost = isAdmin || hostBits.has('provision')
 
 | U                                | 状态 | 说明                                                                                                                               |
 | -------------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| [U65](../defect-ledger.md#L71)   | 🔴   | 主机授权语义深化总项；后端 `effectiveProjectPermissions`/`hostAccessLevel` 与 C10 授权收缩撤销（U136⑤）已实现，下载二期宿主硬拦、UI 终验未闭合 |
-| [U67](../defect-ledger.md#L77)   | 🔴   | 授权方案重构；三卡片/用户页已实现，审定二「位置即权限·层级单卡」未实现                                                             |
-| [U67b](../defect-ledger.md#L79)  | 🔴   | 用户复核 UI 不达标（详情页授权入口/卡片形态）；当前实现需按审定二重做                                                              |
+| [U65](../defect-ledger.md#L71)   | 🟢   | 主机授权语义深化总项已实现；后端 `effectiveProjectPermissions`/`hostAccessLevel`、C10 授权收缩撤销（U136⑤）与下载宿主硬拦均闭环 |
+| [U67](../defect-ledger.md#L77)   | 🟢   | 授权方案重构已完成；三卡片/用户页已实现，主机 tab 按审定二「位置即权限·层级单卡」落地 |
+| [U67b](../defect-ledger.md#L79)  | 🟢   | 用户复核 UI 已按审定二重做：详情页权限 tab 三卡片、位置即权限（主机 tab） |
 | [U45](../defect-ledger.md#L52)   | 🟢   | 授权矩阵 12 格补齐断言                                                                                                             |
 | [U61](../defect-ledger.md#L67)   | 🟢   | authz 组合批：open 口径统一、路径占用键含 hostId 等                                                                                |
 | [U62](../defect-ledger.md#L68)   | 🟢   | denied 审计字段/policy 等打磨                                                                                                      |
 | [U69a](../defect-ledger.md#L80)  | 🟢   | LDAP 方向撤回：分组=登录门槛，角色平台内管理                                                                                       |
-| [U106](../defect-ledger.md#L107) | 🟡   | 详情深链 `?tab=perms` R3 在途                                                                                                      |
+| [U106](../defect-ledger.md#L107) | 🟢   | 详情深链 `?tab=perms` 已实现（R3 `9e436334e88`）                                                                                   |
 
 **验收注意**：U65 原文矩阵（全权=provision+maintain+view）已被 2026-11-15 审定修订为「全权=`view+provision`，缺 maintain 不降级」；当前代码与卡片均按修订后语义，验收不得按旧表判定。
 
@@ -143,4 +143,4 @@ canCreateProjectOnHost = isAdmin || hostBits.has('provision')
 
 - 授权组合矩阵（U247，`34b49057f7d`）：34 端点 × admin/auditor/developer，另覆盖匿名 401、强制下线后旧 token 401、禁用用户既有 token 401/重登 403 `USER_DISABLED`；`denyPrivileged` 型 403 均回查 `GET /v1/audit/events` 命中（含 targetId）。观察：admin 不隐含项目 `open`（`/connect`、`/web-handoff` 403，详情/grants/policy 因 `isAdmin` 200）、auditor 项目列表为空但直读详情/grants/policy 200、`archive`/`restore` 对非管理员 404 且不写 denial、无 `/v1/settings*` 族；指向台账 U247。
 
-**未覆盖/薄弱**：审定二层级单卡的 e2e（当前无实现）、下载二期宿主硬拦、roleOverride 与 LDAP 再登录竞态已有 `u72-u73` 覆盖；主机授权收缩触发凭证撤销已由 U136⑤（host-authorization e2e）覆盖。
+**未覆盖/薄弱**：下载二期宿主硬拦、roleOverride 与 LDAP 再登录竞态已有 `u72-u73` 覆盖；审定二主机 tab 位置即权限由 `web-host-permission-drawer` 覆盖；主机授权收缩触发凭证撤销已由 U136⑤（host-authorization e2e）覆盖。

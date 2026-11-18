@@ -13,7 +13,7 @@
 **工作台（`#/workbench`）**
 
 - 页头：问候语（凌晨/上午/下午/晚上好 + 显示名）与一句概览「你有 N 个可访问项目，其中 M 个所在主机在线」。
-- 四张统计卡 `.grid-4`（D11 口径，2026-11-18）：`可访问项目`（按 ACL 过滤）、`在线项目`（所在主机在线的可访问项目数；提示文案「60 秒无心跳转离线」，对应后端默认离线窗 `HOST_OFFLINE_DEFAULT_MS`——原标签「主机在线」按 D11 修正为「在线项目」）、`禁用下载项目`（导出入口已隐藏）、`下载默认策略`（允许/禁止 + 策略版本 vN）。「今日会话」「待审批下载」属二期（FR-2.5）。
+- 四张统计卡 `.grid-4`（D11 口径，2026-11-18）：`可访问项目`（按 ACL 过滤）、`主机在线`（值=所在主机在线的可访问项目数；提示文案「60 秒无心跳转离线」，对应后端默认离线窗 `HOST_OFFLINE_DEFAULT_MS`；按 D11 更名为「在线项目」的标签改动在 U322 实施中，代码当前仍为「主机在线」）、`禁用下载项目`（导出入口已隐藏）、`下载默认策略`（允许/禁止 + 策略版本 vN）。「今日会话」「待审批下载」属二期（FR-2.5）。
 - 「最近项目」区：取列表前 3 个，卡片含在线点、名称、归档徽标、仓库/路径、主机、默认分支徽标、创建相对时间、主机状态徽标、下载徽标、「打开」按钮；无项目时显示空态卡。
 - 「全部项目」表：列 `项目 / 仓库 / 主机 / 可见范围 / 状态 / 操作`；行内操作同下方操作清单；空态「没有可访问的项目」。
 
@@ -67,7 +67,7 @@ hash 形态 `#/<路径>?<查询>`，路由表在 `cloud-platform/apps/web/router
 
 **静态服务运维语义（U125）**：平台进程**启动时**把 `cloud-platform/apps/web/{index.html,app.js,styles.css,router/routes.js}` 读入内存并冻结为 release build（`apps/api/src/web-release.ts`，哈希内容寻址 `/assets/<build>/…`，build 会归档供旧页面继续取用），运行期**不再回读源文件**。因此改了 app.js/styles.css（或 routes.js）后，必须**重启平台**才对 18787 外显：`node cloud-platform/scripts/local-env-reseed.mjs --restart-platform`。排障「改了 UI 没变化」时先核对 served 与源哈希：`curl -fsS https://127.0.0.1:18787/v1/web/release` 的 `build` 及各资源 `sha256` 应与源文件 `shasum -a 256` 一致（静态响应头 `x-orca-web-build` 同源于该 build）；不一致即进程仍在服务启动时快照，重启后复验。
 
-**CSP 现状（U197 S6 / D10 阶段 1，2026-11-18）**：仅 HTML 文档下发 `Content-Security-Policy-Report-Only`——入口 `/`、`/index.html`、哈希入口 `/assets/<build>/index.html` 与文件系统回退的 `.html`；JS/CSS/JSON/审计导出/404 均不带，避免策略扩散。策略常量 `STATIC_CSP_REPORT_ONLY`（`apps/api/src/static-delivery.ts:23-24`）故意不入共享 `STATIC_SECURITY_HEADERS`（`:15-17`），后者会被 JSON（`server.ts:241-247`）与审计导出（`:6409-6419`）继承；写头在 `sendStaticAsset`（`static-delivery.ts:141-143`），三处调用按文件名是否为 `.html` 判定而非 contentType（`server.ts:7094,7117,7151,7169`），304 与 200 共用同一 headers，故重验证同样带/不带（`:147-149`）。开关 `ORCA_CLOUD_CSP_REPORT_ONLY` 默认开，仅 `trim().toLowerCase()` 后等于 `off` 才关闭（`server.ts:7090-7093`；`false`/`0` 仍开）。测试 `cloud-platform/test/e2e/web-document-csp.e2e.test.ts` 覆盖上述范围、304 继承、env 语义与策略指令字面量。**已知未完成**：真实浏览器全流程零违规观测（草稿 T2/T3）、`app.js:2067` 内联 `onclick` 重构、上报端点（`report-uri`/`report-to`）、宿主侧 `cloud-admin.html`/`web-index.html` 独立策略评估。落地 `0fd4062f33c`，补强 `9e8f51b4852`；草稿 `work-orders/u197-csp-draft.md`。
+**CSP 现状（U197 S6 / D10 阶段 1，2026-11-18）**：仅 HTML 文档下发 `Content-Security-Policy-Report-Only`——入口 `/`、`/index.html`、哈希入口 `/assets/<build>/index.html` 与文件系统回退的 `.html`；JS/CSS/JSON/审计导出/404 均不带，避免策略扩散。策略常量 `STATIC_CSP_REPORT_ONLY`（`apps/api/src/static-delivery.ts:23-24`）故意不入共享 `STATIC_SECURITY_HEADERS`（`:15-17`），后者会被 JSON（`server.ts:273-275`）与审计导出（`:7081-7082`）继承；写头在 `sendStaticAsset`（`static-delivery.ts:141-143`），三处调用按文件名是否为 `.html` 判定而非 contentType（`server.ts:7769,7814,7831`），304 与 200 共用同一 headers，故重验证同样带/不带（`:147-149`）。开关 `ORCA_CLOUD_CSP_REPORT_ONLY` 默认开，仅 `trim().toLowerCase()` 后等于 `off` 才关闭（`server.ts:7753-7755`；`false`/`0` 仍开）。测试 `cloud-platform/test/e2e/web-document-csp.e2e.test.ts` 覆盖上述范围、304 继承、env 语义与策略指令字面量；真实浏览器零违规观测与内联 `onclick` 重构已由 `dd37b0004a2`（`u197-csp-zero-violation.e2e.test.ts`）完成。**已知未完成**：上报端点（`report-uri`/`report-to`）、宿主侧 `cloud-admin.html`/`web-index.html` 独立策略评估。落地 `0fd4062f33c`，补强 `9e8f51b4852`；草稿 `work-orders/u197-csp-draft.md`。
 
 **R1-R6 收口清单（对照设计 T1-T14，2026-11-16）**
 

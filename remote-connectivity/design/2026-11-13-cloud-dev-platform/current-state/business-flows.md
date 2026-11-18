@@ -1,7 +1,7 @@
 # 业务链路图（验收与用例编写基线）
 
 > 建立：2026-11-16（用户指令 §3h 强制门）。本次按 M1-M12 模块文档填充到步骤级。
-> 基线提交：`664a91e0322`（M1-M12 共同基线；工作树 U106-R3 详情深链与 U112/U113 修复尚未提交，相关处标「在途」）。
+> 基线提交：`664a91e0322`（M1-M12 共同基线）；U106-R3 详情深链（`9e436334e88`）与 U112/U113 修复已合入，本文按当前 HEAD 记录。
 > 每条链路：入口 → 步骤与状态迁移 → 失败分支 → 涉及 API/事件/存储 → 已有测试/探索路径 → 覆盖状态。
 > 纪律：只记录**当前实现**；设计稿中的未落地行为一律标「未实现（U 号）」，不据此断言。
 
@@ -50,7 +50,7 @@
 7. **退出**：关闭工作区 iframe（不结束宿主 PTY）→ 置 `orca.pendingLogout=1` → 异步 `POST /v1/auth/logout`（Bearer + 同源 Cookie；服务端另接受可选 body `refreshToken`，见状态机要点）→ 服务端清 Cookie 多作用域并撤销 Bearer/Cookie/body 定位到的**全部** session → 本地清 access/refresh/tokenOwner、`orca.authMode`、缓存 user 与登录框输入 → 回登录页。请求网络失败保留标记，下次加载重试一次；收到 2xx 或 401 即删标记（`app.js:5081-5145`）。多标签为**被动**登出：另一标签下一次请求 401 → 刷新被拒 → 登出。可见反馈：登录页且输入为空。［来源 m01-A9、m01 §3；服务端 U229 F10 `ec1b10e691d`］
 8. **迁移**：
    - **AC9a（标记真 + 旧键）**：Cookie 刷新成功是迁移闸门，成功后才删 `orca.access`/`orca.refresh`/`orca.tokenOwner`（`clearLegacyTokens`，`app.js:146-152`）。
-   - **AC9b/AC9c ⛔ 未实现**：无 `orca.authMode` 标记时**不**发起无 body 探测；仅有效 Cookie、无旧键的浏览器首次加载不恢复；旧构建换新构建首次加载不迁移，access 过期后才走一次 body 回退并置标记。阻塞于 D17/U219（`u197-migration-browser` AC15(g) skip、`u197-web-cookie-browser-race-probe` AC9c skip）。［来源 m01-A8 迁移分支、m01 §7 U219/D17］
+   - **AC9b/AC9c 已实现（U219/D17，`4e808df20f2`；后续 `296dcf40ac7`/`b0183c972f`）**：无 `orca.authMode` 标记时按能力未知处理——首次加载先发一次无 body 探测；成功即进入 Cookie 模式并删旧键，被拒时最多一次 body 回退并写 `legacy`。`u197-migration-browser` AC15(g) 与 `u197-web-cookie-browser-race-probe` AC9c 已去 skip。［来源 m01-A8 迁移分支、m01 §7 U219/D17］
 
 **服务端状态机要点**：
 
@@ -88,21 +88,21 @@
 | 面   | 内容                                                                                                                                          |
 | ---- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | API  | `POST /v1/auth/login`、`POST /v1/auth/refresh`、`POST /v1/auth/logout`（服务端接受可选 body `refreshToken`）、`GET /v1/me`                       |
-| 事件 | `login` success/failure（`INVALID_CREDENTIALS`/`locked`/`ldap_group_denied`/`USER_DISABLED`）、`logout` success/denied、`refresh.reuse_detected`、`refresh.grace_reuse`、denied 审计族 |
+| 事件 | `login` success/failure（`INVALID_CREDENTIALS`/`locked`/`ldap_group_denied`/`USER_DISABLED`）、`logout` success/denied、`refresh.reuse_detected`、`refresh.grace_reuse`、`session.expired`、`session.revoked`、denied 审计族 |
 | 存储 | 浏览器 Cookie 模式：`orca.user`/`orca.device`/`orca.authMode`/`orca.pendingLogout`（access 仅内存）；旧模式另写 `orca.access`/`orca.refresh`/`orca.tokenOwner`。Cookie：`orca_refresh`。平台：`store.users`、`store.sessions`、`store.refreshTokens`、锁定计数（共享服务或进程内）。`refreshTokens` 的 key 自 `57327d771e2` 起为 `sha256:` 摘要（查找先哈希，`currentRefreshTokenOf` 回退用已校验的 Cookie 值）；开发快照为 v1 + `refreshTokensHashed` 标记（短命的 v2 已撤回，仍可读并回写 v1），不可读快照改名 `.corrupt-<ts>` 保留，恢复先整份校验再一次性提交（U249 `90307467a45`、`57327d771e2`；`snapshot-serialize.ts:26,45`、`snapshot-restore-codec.ts:118-141`、`snapshot-backup-retention.ts:17-23`、`store-persistence.ts:40-64`） |
 | 配置 | `ORCA_CLOUD_ACCESS_TTL_MS`、`ORCA_CLOUD_REFRESH_TTL_MS`、`ORCA_CLOUD_REFRESH_GRACE_MS`、`ORCA_CLOUD_COOKIE_MODE`、`ORCA_CLOUD_PUBLIC_ORIGIN`、`ORCA_CLOUD_LDAP_REQUIRED_GROUP`/`ldapRequiredGroup`、`ORCA_CLOUD_LOGIN_LOCKOUT_URL` |
 
 ### 5. 已有测试 / 探索路径
 
 - 测试：[ldap-admission.test.ts](../../../../cloud-platform/test/ldap-admission.test.ts)、[ldap-mock-required-group.test.ts](../../../../cloud-platform/test/ldap-mock-required-group.test.ts)、[ldap-admission.e2e.test.ts](../../../../cloud-platform/test/e2e/ldap-admission.e2e.test.ts)、[login-lockout-shared.e2e.test.ts](../../../../cloud-platform/test/e2e/login-lockout-shared.e2e.test.ts)、[session-renewal.e2e.test.ts](../../../../cloud-platform/test/e2e/session-renewal.e2e.test.ts)、[web-exploratory-fixes.e2e.test.ts](../../../../cloud-platform/test/e2e/web-exploratory-fixes.e2e.test.ts)（M116-QA-012 空提交零请求、R5-① 退出清空凭据）、[web-admin-gating.e2e.test.ts](../../../../cloud-platform/test/e2e/web-admin-gating.e2e.test.ts)、[u106-console-routing.e2e.test.ts](../../../../cloud-platform/test/e2e/u106-console-routing.e2e.test.ts)（登录回跳、深链刷新）。
-- Cookie/会话专项（U197/U218/U228/U229）：[refresh-cookie.test.ts](../../../../cloud-platform/test/refresh-cookie.test.ts)（Cookie 解析/序列化/清理/模式）、[refresh-cookie.e2e.test.ts](../../../../cloud-platform/test/e2e/refresh-cookie.e2e.test.ts)（双读/grace/CSRF/重复 Cookie/登出撤销）、[u197-cookie-browser.e2e.test.ts](../../../../cloud-platform/test/e2e/u197-cookie-browser.e2e.test.ts)（真实 Chromium Cookie 罐）、[u197-web-cookie-browser.e2e.test.ts](../../../../cloud-platform/test/e2e/u197-web-cookie-browser.e2e.test.ts)（迁移 AC9a、重载一次刷新、多标签被动登出）、[u197-web-cookie-browser-race-probe.e2e.test.ts](../../../../cloud-platform/test/e2e/u197-web-cookie-browser-race-probe.e2e.test.ts)（AC9c skip、U231/U232 竞态、U249 退避）、[web-refresh-cookie.e2e.test.ts](../../../../cloud-platform/test/e2e/web-refresh-cookie.e2e.test.ts)（旧契约兼容、删键时机、U221/U222 硬化）、[u197-ac-probes.e2e.test.ts](../../../../cloud-platform/test/e2e/u197-ac-probes.e2e.test.ts)、[u197-migration-browser.e2e.test.ts](../../../../cloud-platform/test/e2e/u197-migration-browser.e2e.test.ts)、[u198-legacy-reload.e2e.test.ts](../../../../cloud-platform/test/e2e/u198-legacy-reload.e2e.test.ts)、[u228-disabled-user-session.e2e.test.ts](../../../../cloud-platform/test/e2e/u228-disabled-user-session.e2e.test.ts)、[u228-web-disabled-session.e2e.test.ts](../../../../cloud-platform/test/e2e/u228-web-disabled-session.e2e.test.ts)。
+- Cookie/会话专项（U197/U218/U228/U229）：[refresh-cookie.test.ts](../../../../cloud-platform/test/refresh-cookie.test.ts)（Cookie 解析/序列化/清理/模式）、[refresh-cookie.e2e.test.ts](../../../../cloud-platform/test/e2e/refresh-cookie.e2e.test.ts)（双读/grace/CSRF/重复 Cookie/登出撤销）、[u197-cookie-browser.e2e.test.ts](../../../../cloud-platform/test/e2e/u197-cookie-browser.e2e.test.ts)（真实 Chromium Cookie 罐）、[u197-web-cookie-browser.e2e.test.ts](../../../../cloud-platform/test/e2e/u197-web-cookie-browser.e2e.test.ts)（迁移 AC9a、重载一次刷新、多标签被动登出）、[u197-web-cookie-browser-race-probe.e2e.test.ts](../../../../cloud-platform/test/e2e/u197-web-cookie-browser-race-probe.e2e.test.ts)（AC9c 覆盖、U231/U232 竞态、U249 退避）、[web-refresh-cookie.e2e.test.ts](../../../../cloud-platform/test/e2e/web-refresh-cookie.e2e.test.ts)（旧契约兼容、删键时机、U221/U222 硬化）、[u197-ac-probes.e2e.test.ts](../../../../cloud-platform/test/e2e/u197-ac-probes.e2e.test.ts)、[u197-migration-browser.e2e.test.ts](../../../../cloud-platform/test/e2e/u197-migration-browser.e2e.test.ts)、[u198-legacy-reload.e2e.test.ts](../../../../cloud-platform/test/e2e/u198-legacy-reload.e2e.test.ts)、[u228-disabled-user-session.e2e.test.ts](../../../../cloud-platform/test/e2e/u228-disabled-user-session.e2e.test.ts)、[u228-web-disabled-session.e2e.test.ts](../../../../cloud-platform/test/e2e/u228-web-disabled-session.e2e.test.ts)。
 - 探索：[web-console-paths.md](../../../../cloud-platform/scripts/exploratory-r2/web-console-paths.md) L1-L8（空提交/错误凭据/密码可见性/正确登录/退出残留/会话刷新）；[api-paths.md](../../../../cloud-platform/scripts/exploratory-r2/api-paths.md) A1-A16（登录/刷新/登出边界）。
 
 ### 6. 覆盖状态
 
-- 正常步骤 **8**，已覆盖 **7**（401→refresh→单请求重放由 `session-renewal`/`u197-web-cookie-browser` 钉住；密码切换由 `web-exploratory-fixes` 覆盖）；第 8 步迁移仅 AC9a 已覆盖，AC9b/AC9c ⛔ 未实现（U219/D17）。
+- 正常步骤 **8**，已覆盖 **8**（401→refresh→单请求重放由 `session-renewal`/`u197-web-cookie-browser` 钉住；密码切换由 `web-exploratory-fixes` 覆盖；第 8 步迁移 AC9a/AC9b/AC9c 已由迁移套件覆盖）。
 - 失败分支 **15**，已覆盖 **15**（refresh 5xx/429 误登出已由 U234 F7 修复）。
-- 已知未实现/缺口：迁移探测（U219/D17）；U103 属工作区侧刷新，不在本链路。
+- 已知缺口：无迁移缺口（U219/D17 已实现）；U103 属工作区侧刷新，不在本链路。
 
 ---
 
@@ -278,8 +278,8 @@
 
 ### 1. 入口
 
-- 项目详情弹框「权限」页签（`#/projects/<id>?tab=perms` 深链未实现，R3 在途；当前仅弹框内切换）。
-- 主机详情抽屉「权限」页签（`#/hosts/<id>?tab=perms` 深链未实现，R3 在途）。
+- 项目详情弹框「权限」页签（`#/projects/<id>?tab=perms` 深链已实现，R3 `9e436334e88`；`u106-detail-deeplink` 覆盖）。
+- 主机详情抽屉「权限」页签（`#/hosts/<id>?tab=perms` 深链已实现，R3 `9e436334e88`；`u106-detail-deeplink` 覆盖）。
 - 用户管理详情弹框角色下拉（全局角色，F9）。
 
 ### 2. 步骤与状态迁移
@@ -303,7 +303,7 @@
 5. **主机只读上限** → 只读主体的项目内有效位强制裁剪为 `open+file:read`，即使项目行授予 terminal/file:write 也不进票据。用户动作：需终端/写文件须主机侧升到 `view+provision`。［来源 m11 §4.3］
 6. **项目授权不扩大主机** → 项目级授权不产生主机可见性/创建/维护；仅 `provision`/`maintain` 混合位不推导项目可见性。用户动作：主机级授权需在主机抽屉办理。［来源 m11 §4.3］
 7. **降级断会话端到端** → 角色降级已覆盖；主机授权收缩（U136⑤）按有效位收缩撤销受影响用户（user 主体本人、组主体组员），扩位不撤销，审计带 `removedPermissions`/`revokedUsers`/`accessLevel`。用户动作：无，≤60 s 心跳后旧票据失效。［来源 m11 §5/§8、U65/U136⑤］
-8. **审定二「位置即权限 · 层级单卡」** → **未实现（U67/U67b）**：当前仍是位并集 + 合成徽标 + 同主体可出现在多张卡。验收不得宣称层级单卡。［来源 m11 §5］
+8. **审定二「位置即权限 · 层级单卡」** → **已实现（U67/U67b，主机 tab）**：主机 tab 按 `hostRoleOf` 归入唯一最高卡（位置即权限，chip 无级别徽标，移除即整行）；项目 tab 保留共享行位并集（设计保留）。［来源 m11 §5］
 
 ### 4. 涉及 API / 事件 / 存储
 
@@ -322,8 +322,8 @@
 ### 6. 覆盖状态
 
 - 正常步骤 **9**，已覆盖 **9**（S7 降级断会话含主机授权收缩，U136⑤）。
-- 失败分支 **8**，已覆盖 **7**（E1-E7），未实现 **1**（E8 U67/U67b）。
-- 未实现：层级单卡/位置即权限（U67/U67b）。
+- 失败分支 **8**，已覆盖 **8**（E1-E8；E8 主机 tab 位置即权限已实现，项目 tab 保留共享行位并集）。
+- 未实现：无（项目 tab 共享行位并集为设计保留）。
 
 ---
 
@@ -490,7 +490,7 @@
 ### 1. 入口
 
 - 侧栏「用户管理」/ `#/users`（admin-only）。
-- 列表行「详情」→ 用户详情弹框（HEAD 不改 URL；`#/users/:id` R3 在途）。
+- 列表行「详情」→ `#/users/:id` 深链 + 用户详情弹框（R3 `9e436334e88`；关闭回列表）。
 - 角色唯一写入口 = 详情弹框内角色下拉。
 
 ### 2. 步骤与状态迁移
@@ -504,7 +504,7 @@
 7. **确认降级（admin→非 admin）**：同一 PUT；后端记 `role_update metadata.revoked=true` 并 `revokeUserCredentials`，旧 token 下一请求失去管控面（≤60 秒心跳撤销）；确认按钮 danger。可见反馈：被降级用户失去管理入口。［来源 m06-3.10］
 8. **roleOverride 重登优先**：再次登录时若存在 `roleOverride`，`roles = USER_PAGE_ROLES[roleOverride]`，LDAP 组不再推导角色；`roleSource='admin-override'`。可见反馈：重登后角色保持覆盖值。［来源 m06 §3 角色语义］
 9. **停用账号展示**：列表/详情显示「已停用」；详情角色下拉 disabled，change 处理器二次拦截；`requireAuth` 对 `status!=='active'` 返回 null（已签发 token 失效）。可见反馈：禁止改角色/API 401。［来源 m06-3.11/§3］
-10. **深链详情（设计目标）**：`#/users/:id` **未实现（U106 R3，工作树在途）**；HEAD 详情不改 URL。［来源 m06 §1/§5、m11 §2］
+10. **深链详情**：`#/users/:id` 已实现（U106 R3 `9e436334e88`）——直开/刷新保持/关闭回用户列表；未知 id 404。［来源 m06 §1/§5、m11 §2］
 
 ### 3. 失败分支
 
@@ -532,9 +532,9 @@
 
 ### 6. 覆盖状态
 
-- 正常步骤 **10**，已覆盖 **8**（S9 停用锁定无自动化，U114-D4；S10 深链未实现 U106 R3）。
+- 正常步骤 **10**，已覆盖 **9**（S9 停用锁定无自动化，U114-D4；S10 深链已由 `u106-detail-deeplink` 覆盖）。
 - 失败分支 **7**，已覆盖 **4**（E2/E4/E6/E7），未覆盖 **3**（E1 加载失败、E3 保存失败回滚、E5 服务端停用校验）。
-- 未实现：`#/users/:id` 深链（U106 R3，在途）；无分页/无新建/停用入口（非缺陷，设计未承诺）。
+- 未实现：无分页/无新建/停用入口（非缺陷，设计未承诺）。
 
 ---
 
@@ -585,13 +585,13 @@
 | F2       | 11       | 8        | 9          | 8          | 归档/恢复无控制台入口；provisioning→ready UI                    |
 | F3       | 8        | 8        | 6          | 4          | U106 R4 覆盖层路由/刷新；U106 W3 项目 403/404；U112 D5          |
 | F4       | 9        | 9        | 7          | 6          | U112 D1 end、D2 pending→ended、D5 退避；U99 多组复验            |
-| F5       | 9        | 8        | 9          | 7          | U67/U67b 层级单卡未实现                                         |
+| F5       | 9        | 8        | 9          | 8          | 无（主机 tab 位置即权限已实现；项目 tab 保留共享行位并集）      |
 | F6       | 9        | 7        | 8          | 5          | 文件名复制/审计首屏失败                                       |
 | F7       | 11       | 8        | 9          | 7          | 维护/下线 UI；安装命令鉴权一致性存疑                            |
 | F8       | 8        | 7        | 8          | 7          | 命令粘贴执行鉴权一致性存疑                                      |
 | F9       | 10       | 7        | 8          | 4          | U106 R3 深链；U114-D4 筛选态/停用锁                             |
 | F10      | 0        | 0        | 0          | 0          | U80 已实现；展示层适配不派生业务步骤                             |
-| **合计** | **82**   | **71**   | **71**     | **54**     | —                                                               |
+| **合计** | **82**   | **71**   | **71**     | **55**     | —                                                               |
 
 **填充规则重申**（沿用骨架）：
 

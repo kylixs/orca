@@ -1,6 +1,6 @@
 # M6 用户管理（列表 / 查询 / 详情弹框 / 角色覆盖 / 停用账号）
 
-> 基线提交：`664a91e0322`（2026-11-16 工作区快照）。当前工作树另有未提交的 U106-R3 详情深链改动（`cloud-platform/apps/web/app.js`）：会把用户详情接入 `#/users/:id` 与浏览器后退；本文件按 HEAD 记录（HEAD 上详情只能从列表点开）。
+> 基线提交：`664a91e0322`（2026-11-16 工作区快照）；用户详情深链 `#/users/:id` 已由 U106-R3（`9e436334e88`）合入并覆盖（`u106-detail-deeplink.e2e.test.ts`）。
 > 前端：`cloud-platform/apps/web/app.js`（`renderUsersPage` / `filterUsers` / `userDetailMarkup` / `confirmUserRoleChange` / `applyUserRoleChange`，约 L1554-1765）。后端：`cloud-platform/apps/api/src/server.ts`（`GET /v1/users`、`PUT /v1/users/{id}/roles`，约 L2933-3010）。
 
 ## 1. 页面/界面布局
@@ -29,13 +29,13 @@
      弹框底部说明：角色变更写 role_update 审计、覆盖优先于平台默认角色、降级断开云会话、列表只读仅此处修改。
      不展示创建时间/最近登录（users API 无该字段，不虚构）。
 - **分页**：无。`GET /v1/users` 一次返回全部账号，查询三条件均为**客户端过滤**（零 wire 变更），页脚只显示总数/筛选数。
-- **无**：新建用户、删除用户、启用/停用操作、管理员强制下线按钮（U244 仅 API，UI 待 D15 批次）、批量操作、排序、导出、服务端分页。
+- **无**：新建用户、删除用户、启用/停用操作、管理员强制下线按钮（本期不做，D15-U244；API-only）、批量操作、排序、导出、服务端分页。
 
 ## 2. 菜单与入口
 
 - 侧栏 `#adminNav` 的「用户管理」按钮（`index.html` L61）。仅 `platform:admin` 可见；auditor/developer 隐藏。
 - 直达 `#/users`：非管理员 → `routeAllowed` 拒绝 → 「无权访问」页（保留 URL），不发 `GET /v1/users`。
-- 列表行「详情」→ 打开弹框（HEAD 不改变 URL；R3 工作树将改为 `#/users/:id` push）。
+- 列表行「详情」→ push `#/users/:id` 并打开弹框（U106-R3 `9e436334e88`；关闭回列表）。
 - 详情弹框内角色下拉是角色修改的**唯一入口**；列表没有任何写控件。
 
 ## 3. 操作清单
@@ -54,7 +54,7 @@
 | 3.10 | 确认降级（admin→非 admin）               | 同上 PUT；后端记 `role_update` metadata `revoked=true` 并 `revokeUserCredentials`，旧 token 下一请求失去管控面（≤60 秒心跳撤销）                                             | 确认按钮 `danger`，文案「管理员 → 审计」「降级将断开该用户当前云会话（≤60 秒）」          | 同 3.9                                                                              |
 | 3.11 | 停用账号                                 | 列表/详情正常显示「已停用」；详情角色下拉 disabled，change 处理器也二次拦截                                                                                                  | 无                                                                                        | 无                                                                                  |
 | 3.12 | 关闭详情                                 | 同 3.7                                                                                                                                                                       | 无                                                                                        | 无                                                                                  |
-| 3.13 | 管理员强制下线（**仅 API，Web 暂无按钮**） | `POST /v1/users/{id}/sessions/revoke` body `{reason?}` → `{ok:true, revokedSessions:N}`。撤销该用户全部 session（epoch+1，旧 access 立即 401；refresh 401 并清 Cookie），并写 `user:<username>` 宿主撤销集合；**不吊销 device**；重复/并发幂等 | 无（API-only；Web 按钮待 D15 批次）                                                        | 403 `PERMISSION_DENIED`（denied 审计）/ 404 `USER_NOT_FOUND` / 503 `AUDIT_CHAIN_BROKEN`（审计不可写则不撤销，fail-closed） |
+| 3.13 | 管理员强制下线（**仅 API，Web 暂无按钮**） | `POST /v1/users/{id}/sessions/revoke` body `{reason?}` → `{ok:true, revokedSessions:N}`。撤销该用户全部 session（epoch+1，旧 access 立即 401；refresh 401 并清 Cookie），并写 `user:<username>` 宿主撤销集合；**不吊销 device**；重复/并发幂等 | 无（API-only；Web 按钮本期不做，D15-U244）                                                | 403 `PERMISSION_DENIED`（denied 审计）/ 404 `USER_NOT_FOUND` / 503 `AUDIT_CHAIN_BROKEN`（审计不可写则不撤销，fail-closed） |
 
 角色语义（服务端）：
 
@@ -71,7 +71,7 @@
 - 审计后重新枚举（U249 `0253dc9c6d2`）：审计成功后按 `userId + revokedAt===null` 重查并撤销——轮内无 await，audit await 期间落地的登录不会漏；循环至一轮零撤销，上界 3 轮。metadata 仍为审计前 `live` 计数，响应为实际撤销数（`server.ts:5360-5371`；metadata `:5338,5349-5352`）。
 - 权限与审计：`platform:admin`；非管理员 403 + `session_revoke` denied 审计（`requiredPermission=platform:admin`）。写前经 `auditAllowsMutations` 门禁，审计链不可写时 503 且**不撤销任何 session / 不写宿主撤销集合**（fail-closed）。
 - 撤销范围：逐活跃 session `revokeSessionOnce`（epoch+1 → 旧 access 立即 401，refresh 401 并清 Cookie）；`appendRevocation('user', username, 'admin_force_offline')` 让已建 WSS 宿主票据一并失效；**不写 device 撤销**。并发/重复由 `withUserSessionRevokeLock`（`:2996-3022`）串行化：并发只撤一次且只写一条审计；重复请求返回 `revokedSessions:0`，但 leader 每次仍写一条 `session_revoke` 审计（管理员动作必留痕，U244 复审后语义）。
-- **Web 暂无按钮**：用户管理页只有「详情」与角色修改，强制下线为 API-only；UI 待 D15 批次（`work-orders/pending-decisions-2026-11-17.md` U244）。
+- **Web 暂无按钮**：用户管理页只有「详情」与角色修改；强制下线本期不做 Web 入口（D15-U244），保持 API-only。
 - 测试：`cloud-platform/test/e2e/u244-admin-force-offline.e2e.test.ts`。
 
 ## 4. 数据来源
@@ -115,8 +115,8 @@
 - 角色变更后筛选态保持（整页重绘）——U114-D4 点名缺口。
 - 停用账号的角色下拉锁定与 change 二次拦截——无自动化。
 - 弹框关闭焦点回归、Esc/遮罩关闭路径——u46-3 覆盖通用 dialog，未专门断言本页。
-- 深链 `#/users/:id`（R3 工作树新增）尚无基线测试。
+- 深链 `#/users/:id` 已由 `u106-detail-deeplink.e2e.test.ts` 覆盖（直开/刷新保持/关闭回列表；未知 id 404）。
 
 ## 7. 基线提交
 
-`664a91e0322d90e4d32ce9d092526159c3052854`。工作树 U106-R3 未提交改动会把详情打开改为 URL push；验收若在 R3 合入后执行，请按新提交更新 §1/§2/§3.7。
+`664a91e0322d90e4d32ce9d092526159c3052854`。用户详情深链已由 U106-R3（`9e436334e88`）合入，§1/§2/§3.7 已按 URL push 更新。
