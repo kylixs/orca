@@ -4548,4 +4548,5 @@ U138 残余全家族收口（U153–U171）后的改动面定向回归，**非�
 - **D15-1 交付并主会话复验**（`73bc4ce6647`）：登录时 `user.groups = [...new Set(result.profile.groups)]`（全量替换、去重、非清空）；移出组后重登旧组授权不再命中。`ldap-admission` **14/14**（原 e2e 6/6 + 进程内 2 例），变异回并集/不去重各自精确红。U212 关闭，`AUTH-LDAP-ADMIT` 🟢。
 - **U315 范围门禁交付**（`944928d5296`+`6fd1df866e6`）：范围判定改为 import/require `node:test` 或 package.json `node --test` 引用，排除项数据化；扫描 203→**296** 文件、迁移 0 处；主会话复跑门禁套件 **71（70 pass/1 skip）**、`--check`/`--scan` 0 new。**另立 U317**：`(Infinity) as number`、`(-Infinity) as number`、`Number?.POSITIVE_INFINITY` 经 `scanSource` 复验仍 0 命中（原第二行误编为 U315）。
 - **U233 P2-2 加固**（`cb93e2ee930`）：`revocations` 断言改为 sweep 前后 `JSON.stringify` 快照比较，变异 `splice` 即红；记入 U233 复审栏。
-- 地图更新：**70 叶子 / 🟢67 / 🟡2 / ⚪1 / 97.1%**；第五次全仓全景已启动（148 文件，覆盖 D15/D18/D20/D22 后代码，结束后作为黄金旅程门禁）。
+- 地图更新：**70 叶子 / 🟢67 / 🟡2 / ⚪1 / 97.1%**。
+- **第五次全景中止，登记 U318（D15-1 夹具回归，P1）**：`MockLdapAdapter` 中 `zhangsan` 的 profile 组只有 `developers`，种子为 `developers`+`team-payment`，而 `proj_payment` 授权主体是组 `team-payment`；组改全量替换后 zhangsan 登录即失去项目——批 05 `file-contract`、批 06 `host-offline`/`host-revocation` 连片红。全景已停（不产生无效结论），U318 登记并要求代码会话对齐 mock 目录组后重跑。同时按 peer 复核修正检查单 §2「非 loopback 纯 http 不降级、仅告警」表述（`b19728ef522`）。
