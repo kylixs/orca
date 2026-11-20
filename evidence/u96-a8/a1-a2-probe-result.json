@@ -1,0 +1,599 @@
+{
+  "workspaceA": "/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+  "markers": ["U96_A8_LIVE_ONE", "U96_A8_LIVE_TWO"],
+  "list.before": {
+    "worktree": "repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+    "tabCount": 1,
+    "groupCount": 1,
+    "activeTabId": "a837f5e1-d957-4643-8bdc-7ade772d89fd::76e08a8e-af2c-463e-80ab-a776fab24b02",
+    "activeGroupId": "headless-terminals:repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+    "tabs": [
+      {
+        "id": "a837f5e1-d957-4643-8bdc-7ade772d89fd::76e08a8e-af2c-463e-80ab-a776fab24b02",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      }
+    ],
+    "groups": [
+      {
+        "id": "headless-terminals:repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+        "activeTabId": "a837f5e1-d957-4643-8bdc-7ade772d89fd",
+        "tabOrder": ["a837f5e1-d957-4643-8bdc-7ade772d89fd"]
+      }
+    ]
+  },
+  "terminal.create.1": {
+    "ok": true,
+    "result": {
+      "terminal": {
+        "handle": "term_34edcca6-4ab1-461e-9972-04fbffd814ac",
+        "tabId": "c61d543c-d222-4142-94cf-c3c8f3fb644e",
+        "paneKey": "c61d543c-d222-4142-94cf-c3c8f3fb644e:8da0c2c5-a1c9-44b3-b134-0064d92f0bcc",
+        "ptyId": "pty-a8-3",
+        "worktreeId": "repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+        "title": "U96 A8 terminal 1",
+        "executionHostId": "local",
+        "hostPlatform": "darwin",
+        "surface": "background",
+        "processId": 31801,
+        "warning": "Terminal term_34edcca6-4ab1-461e-9972-04fbffd814ac is running, but Orca could not make it discoverable. Run `orca terminal focus --terminal term_34edcca6-4ab1-461e-9972-04fbffd814ac` to reveal and focus it."
+      }
+    }
+  },
+  "terminal.create.2": {
+    "ok": true,
+    "result": {
+      "terminal": {
+        "handle": "term_29375099-7746-426d-ad63-6dbe73d3d194",
+        "tabId": "c15a035e-9622-4a36-a64d-535798d9d713",
+        "paneKey": "c15a035e-9622-4a36-a64d-535798d9d713:51925943-f0f2-409d-bb4f-45100f5374c4",
+        "ptyId": "pty-a8-4",
+        "worktreeId": "repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+        "title": "U96 A8 terminal 2",
+        "executionHostId": "local",
+        "hostPlatform": "darwin",
+        "surface": "background",
+        "processId": 31815,
+        "warning": "Terminal term_29375099-7746-426d-ad63-6dbe73d3d194 is running, but Orca could not make it discoverable. Run `orca terminal focus --terminal term_29375099-7746-426d-ad63-6dbe73d3d194` to reveal and focus it."
+      }
+    }
+  },
+  "terminal.create.3": {
+    "ok": true,
+    "result": {
+      "terminal": {
+        "handle": "term_c3674c4b-2761-45ba-9cc0-6bc8cf182aa7",
+        "tabId": "a939845a-0669-4c05-99a2-4f0523b6db56",
+        "paneKey": "a939845a-0669-4c05-99a2-4f0523b6db56:aba0e9b7-ae83-47f7-b17d-b1d6d4546367",
+        "ptyId": "pty-a8-5",
+        "worktreeId": "repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+        "title": "U96 A8 terminal 3",
+        "executionHostId": "local",
+        "hostPlatform": "darwin",
+        "surface": "background",
+        "processId": 31816,
+        "warning": "Terminal term_c3674c4b-2761-45ba-9cc0-6bc8cf182aa7 is running, but Orca could not make it discoverable. Run `orca terminal focus --terminal term_c3674c4b-2761-45ba-9cc0-6bc8cf182aa7` to reveal and focus it."
+      }
+    }
+  },
+  "list.afterCreate": {
+    "worktree": "repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+    "tabCount": 4,
+    "groupCount": 1,
+    "activeTabId": "a837f5e1-d957-4643-8bdc-7ade772d89fd::76e08a8e-af2c-463e-80ab-a776fab24b02",
+    "activeGroupId": "headless-terminals:repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+    "tabs": [
+      {
+        "id": "a837f5e1-d957-4643-8bdc-7ade772d89fd::76e08a8e-af2c-463e-80ab-a776fab24b02",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      },
+      {
+        "id": "c61d543c-d222-4142-94cf-c3c8f3fb644e::8da0c2c5-a1c9-44b3-b134-0064d92f0bcc",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      },
+      {
+        "id": "c15a035e-9622-4a36-a64d-535798d9d713::51925943-f0f2-409d-bb4f-45100f5374c4",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      },
+      {
+        "id": "a939845a-0669-4c05-99a2-4f0523b6db56::aba0e9b7-ae83-47f7-b17d-b1d6d4546367",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      }
+    ],
+    "groups": [
+      {
+        "id": "headless-terminals:repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+        "activeTabId": "a837f5e1-d957-4643-8bdc-7ade772d89fd",
+        "tabOrder": [
+          "a837f5e1-d957-4643-8bdc-7ade772d89fd",
+          "c61d543c-d222-4142-94cf-c3c8f3fb644e",
+          "c15a035e-9622-4a36-a64d-535798d9d713",
+          "a939845a-0669-4c05-99a2-4f0523b6db56"
+        ]
+      }
+    ]
+  },
+  "session.tabs.move.split": {
+    "ok": true,
+    "result": {
+      "moved": true
+    }
+  },
+  "list.afterSplit": {
+    "worktree": "repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+    "tabCount": 4,
+    "groupCount": 2,
+    "activeTabId": "a837f5e1-d957-4643-8bdc-7ade772d89fd::76e08a8e-af2c-463e-80ab-a776fab24b02",
+    "activeGroupId": "headless-terminals:repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+    "tabs": [
+      {
+        "id": "a837f5e1-d957-4643-8bdc-7ade772d89fd::76e08a8e-af2c-463e-80ab-a776fab24b02",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      },
+      {
+        "id": "c61d543c-d222-4142-94cf-c3c8f3fb644e::8da0c2c5-a1c9-44b3-b134-0064d92f0bcc",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      },
+      {
+        "id": "c15a035e-9622-4a36-a64d-535798d9d713::51925943-f0f2-409d-bb4f-45100f5374c4",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      },
+      {
+        "id": "a939845a-0669-4c05-99a2-4f0523b6db56::aba0e9b7-ae83-47f7-b17d-b1d6d4546367",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      }
+    ],
+    "groups": [
+      {
+        "id": "headless-terminals:repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+        "activeTabId": "a837f5e1-d957-4643-8bdc-7ade772d89fd",
+        "tabOrder": [
+          "a837f5e1-d957-4643-8bdc-7ade772d89fd",
+          "c15a035e-9622-4a36-a64d-535798d9d713",
+          "a939845a-0669-4c05-99a2-4f0523b6db56"
+        ]
+      },
+      {
+        "id": "5f6d550b-326e-428f-bc48-dd40f2013e22",
+        "activeTabId": "c61d543c-d222-4142-94cf-c3c8f3fb644e",
+        "tabOrder": ["c61d543c-d222-4142-94cf-c3c8f3fb644e"]
+      }
+    ]
+  },
+  "session.tabs.move.third": {
+    "ok": true,
+    "result": {
+      "moved": true
+    }
+  },
+  "session.tabs.activate.second": {
+    "ok": true,
+    "result": {
+      "worktree": "repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+      "publicationEpoch": "headless:mwiq577z:client-navigation",
+      "snapshotVersion": 11,
+      "activeGroupId": "5f6d550b-326e-428f-bc48-dd40f2013e22",
+      "activeTabId": "c61d543c-d222-4142-94cf-c3c8f3fb644e::8da0c2c5-a1c9-44b3-b134-0064d92f0bcc",
+      "activeTabType": "terminal",
+      "tabGroups": [
+        {
+          "id": "headless-terminals:repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+          "activeTabId": "a837f5e1-d957-4643-8bdc-7ade772d89fd",
+          "tabOrder": [
+            "a837f5e1-d957-4643-8bdc-7ade772d89fd",
+            "a939845a-0669-4c05-99a2-4f0523b6db56"
+          ]
+        },
+        {
+          "id": "5f6d550b-326e-428f-bc48-dd40f2013e22",
+          "activeTabId": "c61d543c-d222-4142-94cf-c3c8f3fb644e",
+          "tabOrder": [
+            "c61d543c-d222-4142-94cf-c3c8f3fb644e",
+            "c15a035e-9622-4a36-a64d-535798d9d713"
+          ]
+        }
+      ],
+      "tabGroupLayout": {
+        "type": "split",
+        "direction": "horizontal",
+        "first": {
+          "type": "leaf",
+          "groupId": "headless-terminals:repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main"
+        },
+        "second": {
+          "type": "leaf",
+          "groupId": "5f6d550b-326e-428f-bc48-dd40f2013e22"
+        },
+        "ratio": 0.5
+      },
+      "tabs": [
+        {
+          "type": "terminal",
+          "id": "a837f5e1-d957-4643-8bdc-7ade772d89fd::76e08a8e-af2c-463e-80ab-a776fab24b02",
+          "parentTabId": "a837f5e1-d957-4643-8bdc-7ade772d89fd",
+          "leafId": "76e08a8e-af2c-463e-80ab-a776fab24b02",
+          "title": "zsh",
+          "ptyId": "pty-a8-1",
+          "parentLayout": {
+            "root": {
+              "type": "leaf",
+              "leafId": "76e08a8e-af2c-463e-80ab-a776fab24b02"
+            },
+            "activeLeafId": "76e08a8e-af2c-463e-80ab-a776fab24b02",
+            "expandedLeafId": null,
+            "ptyIdsByLeafId": {
+              "76e08a8e-af2c-463e-80ab-a776fab24b02": "pty-a8-1"
+            }
+          },
+          "isActive": false,
+          "status": "ready",
+          "terminal": "term_a07d28f4-0aab-4d60-ae15-32cefadc87ca"
+        },
+        {
+          "type": "terminal",
+          "id": "c61d543c-d222-4142-94cf-c3c8f3fb644e::8da0c2c5-a1c9-44b3-b134-0064d92f0bcc",
+          "parentTabId": "c61d543c-d222-4142-94cf-c3c8f3fb644e",
+          "leafId": "8da0c2c5-a1c9-44b3-b134-0064d92f0bcc",
+          "title": "zsh",
+          "ptyId": "pty-a8-3",
+          "parentLayout": {
+            "root": {
+              "type": "leaf",
+              "leafId": "8da0c2c5-a1c9-44b3-b134-0064d92f0bcc"
+            },
+            "activeLeafId": "8da0c2c5-a1c9-44b3-b134-0064d92f0bcc",
+            "expandedLeafId": null,
+            "ptyIdsByLeafId": {
+              "8da0c2c5-a1c9-44b3-b134-0064d92f0bcc": "pty-a8-3"
+            }
+          },
+          "isActive": true,
+          "status": "ready",
+          "terminal": "term_34edcca6-4ab1-461e-9972-04fbffd814ac"
+        },
+        {
+          "type": "terminal",
+          "id": "c15a035e-9622-4a36-a64d-535798d9d713::51925943-f0f2-409d-bb4f-45100f5374c4",
+          "parentTabId": "c15a035e-9622-4a36-a64d-535798d9d713",
+          "leafId": "51925943-f0f2-409d-bb4f-45100f5374c4",
+          "title": "zsh",
+          "ptyId": "pty-a8-4",
+          "parentLayout": {
+            "root": {
+              "type": "leaf",
+              "leafId": "51925943-f0f2-409d-bb4f-45100f5374c4"
+            },
+            "activeLeafId": "51925943-f0f2-409d-bb4f-45100f5374c4",
+            "expandedLeafId": null,
+            "ptyIdsByLeafId": {
+              "51925943-f0f2-409d-bb4f-45100f5374c4": "pty-a8-4"
+            }
+          },
+          "isActive": false,
+          "status": "ready",
+          "terminal": "term_29375099-7746-426d-ad63-6dbe73d3d194"
+        },
+        {
+          "type": "terminal",
+          "id": "a939845a-0669-4c05-99a2-4f0523b6db56::aba0e9b7-ae83-47f7-b17d-b1d6d4546367",
+          "parentTabId": "a939845a-0669-4c05-99a2-4f0523b6db56",
+          "leafId": "aba0e9b7-ae83-47f7-b17d-b1d6d4546367",
+          "title": "zsh",
+          "ptyId": "pty-a8-5",
+          "parentLayout": {
+            "root": {
+              "type": "leaf",
+              "leafId": "aba0e9b7-ae83-47f7-b17d-b1d6d4546367"
+            },
+            "activeLeafId": "aba0e9b7-ae83-47f7-b17d-b1d6d4546367",
+            "expandedLeafId": null,
+            "ptyIdsByLeafId": {
+              "aba0e9b7-ae83-47f7-b17d-b1d6d4546367": "pty-a8-5"
+            }
+          },
+          "isActive": false,
+          "status": "ready",
+          "terminal": "term_c3674c4b-2761-45ba-9cc0-6bc8cf182aa7"
+        }
+      ],
+      "clientHostedPagesUnreconciled": true
+    }
+  },
+  "list.beforeReconnect": {
+    "worktree": "repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+    "tabCount": 4,
+    "groupCount": 2,
+    "activeTabId": "c61d543c-d222-4142-94cf-c3c8f3fb644e::8da0c2c5-a1c9-44b3-b134-0064d92f0bcc",
+    "activeGroupId": "5f6d550b-326e-428f-bc48-dd40f2013e22",
+    "tabs": [
+      {
+        "id": "a837f5e1-d957-4643-8bdc-7ade772d89fd::76e08a8e-af2c-463e-80ab-a776fab24b02",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      },
+      {
+        "id": "c61d543c-d222-4142-94cf-c3c8f3fb644e::8da0c2c5-a1c9-44b3-b134-0064d92f0bcc",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      },
+      {
+        "id": "c15a035e-9622-4a36-a64d-535798d9d713::51925943-f0f2-409d-bb4f-45100f5374c4",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      },
+      {
+        "id": "a939845a-0669-4c05-99a2-4f0523b6db56::aba0e9b7-ae83-47f7-b17d-b1d6d4546367",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      }
+    ],
+    "groups": [
+      {
+        "id": "headless-terminals:repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+        "activeTabId": "a837f5e1-d957-4643-8bdc-7ade772d89fd",
+        "tabOrder": ["a837f5e1-d957-4643-8bdc-7ade772d89fd", "a939845a-0669-4c05-99a2-4f0523b6db56"]
+      },
+      {
+        "id": "5f6d550b-326e-428f-bc48-dd40f2013e22",
+        "activeTabId": "c61d543c-d222-4142-94cf-c3c8f3fb644e",
+        "tabOrder": ["c61d543c-d222-4142-94cf-c3c8f3fb644e", "c15a035e-9622-4a36-a64d-535798d9d713"]
+      }
+    ]
+  },
+  "terminal.read.one.before": {
+    "ok": true,
+    "result": {
+      "terminal": {
+        "handle": "term_34edcca6-4ab1-461e-9972-04fbffd814ac",
+        "status": "running",
+        "tail": [
+          "printf 'U96_A8_LIVE_ONE\\n'",
+          "gongdewei@GongDeweideMacBook-Pro main % printf 'U96_A8_LIVE_ONE",
+          "quote> '",
+          "U96_A8_LIVE_ONE",
+          "gongdewei@GongDeweideMacBook-Pro main %"
+        ],
+        "truncated": false,
+        "limited": false,
+        "oldestCursor": "0",
+        "nextCursor": "4",
+        "latestCursor": "4",
+        "returnedLineCount": 5,
+        "source": "stream"
+      }
+    }
+  },
+  "terminal.read.two.before": {
+    "ok": true,
+    "result": {
+      "terminal": {
+        "handle": "term_29375099-7746-426d-ad63-6dbe73d3d194",
+        "status": "running",
+        "tail": [
+          "printf 'U96_A8_LIVE_TWO\\n'",
+          "gongdewei@GongDeweideMacBook-Pro main % printf 'U96_A8_LIVE_TWO",
+          "quote> '",
+          "U96_A8_LIVE_TWO",
+          "gongdewei@GongDeweideMacBook-Pro main %"
+        ],
+        "truncated": false,
+        "limited": false,
+        "oldestCursor": "0",
+        "nextCursor": "4",
+        "latestCursor": "4",
+        "returnedLineCount": 5,
+        "source": "stream"
+      }
+    }
+  },
+  "reopen.ensure": {
+    "ok": true,
+    "workspacePath": "/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+    "created": false,
+    "provisioned": false,
+    "capabilities": ["pty", "files", "agent", "managed-credential"],
+    "route": "direct"
+  },
+  "list.afterReconnect": {
+    "worktree": "repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+    "tabCount": 4,
+    "groupCount": 2,
+    "activeTabId": "c61d543c-d222-4142-94cf-c3c8f3fb644e::8da0c2c5-a1c9-44b3-b134-0064d92f0bcc",
+    "activeGroupId": "5f6d550b-326e-428f-bc48-dd40f2013e22",
+    "tabs": [
+      {
+        "id": "a837f5e1-d957-4643-8bdc-7ade772d89fd::76e08a8e-af2c-463e-80ab-a776fab24b02",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      },
+      {
+        "id": "c61d543c-d222-4142-94cf-c3c8f3fb644e::8da0c2c5-a1c9-44b3-b134-0064d92f0bcc",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      },
+      {
+        "id": "c15a035e-9622-4a36-a64d-535798d9d713::51925943-f0f2-409d-bb4f-45100f5374c4",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      },
+      {
+        "id": "a939845a-0669-4c05-99a2-4f0523b6db56::aba0e9b7-ae83-47f7-b17d-b1d6d4546367",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      }
+    ],
+    "groups": [
+      {
+        "id": "headless-terminals:repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+        "activeTabId": "a837f5e1-d957-4643-8bdc-7ade772d89fd",
+        "tabOrder": ["a837f5e1-d957-4643-8bdc-7ade772d89fd", "a939845a-0669-4c05-99a2-4f0523b6db56"]
+      },
+      {
+        "id": "5f6d550b-326e-428f-bc48-dd40f2013e22",
+        "activeTabId": "c61d543c-d222-4142-94cf-c3c8f3fb644e",
+        "tabOrder": ["c61d543c-d222-4142-94cf-c3c8f3fb644e", "c15a035e-9622-4a36-a64d-535798d9d713"]
+      }
+    ]
+  },
+  "terminal.read.one.afterReconnect": {
+    "ok": true,
+    "result": {
+      "terminal": {
+        "handle": "term_34edcca6-4ab1-461e-9972-04fbffd814ac",
+        "status": "running",
+        "tail": [
+          "printf 'U96_A8_LIVE_ONE\\n'",
+          "gongdewei@GongDeweideMacBook-Pro main % printf 'U96_A8_LIVE_ONE",
+          "quote> '",
+          "U96_A8_LIVE_ONE",
+          "gongdewei@GongDeweideMacBook-Pro main %"
+        ],
+        "truncated": false,
+        "limited": false,
+        "oldestCursor": "0",
+        "nextCursor": "4",
+        "latestCursor": "4",
+        "returnedLineCount": 5,
+        "source": "stream"
+      }
+    }
+  },
+  "terminal.read.two.afterReconnect": {
+    "ok": true,
+    "result": {
+      "terminal": {
+        "handle": "term_29375099-7746-426d-ad63-6dbe73d3d194",
+        "status": "running",
+        "tail": [
+          "printf 'U96_A8_LIVE_TWO\\n'",
+          "gongdewei@GongDeweideMacBook-Pro main % printf 'U96_A8_LIVE_TWO",
+          "quote> '",
+          "U96_A8_LIVE_TWO",
+          "gongdewei@GongDeweideMacBook-Pro main %"
+        ],
+        "truncated": false,
+        "limited": false,
+        "oldestCursor": "0",
+        "nextCursor": "4",
+        "latestCursor": "4",
+        "returnedLineCount": 5,
+        "source": "stream"
+      }
+    }
+  },
+  "restart.persistedSession": {
+    "worktreeKey": "repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+    "tabIds": [
+      "a837f5e1-d957-4643-8bdc-7ade772d89fd",
+      "c61d543c-d222-4142-94cf-c3c8f3fb644e",
+      "c15a035e-9622-4a36-a64d-535798d9d713",
+      "a939845a-0669-4c05-99a2-4f0523b6db56"
+    ],
+    "layoutTabIds": [
+      "a837f5e1-d957-4643-8bdc-7ade772d89fd",
+      "42599c54-5aea-4bca-a05f-bfd1e2265c9f",
+      "c61d543c-d222-4142-94cf-c3c8f3fb644e",
+      "c15a035e-9622-4a36-a64d-535798d9d713",
+      "a939845a-0669-4c05-99a2-4f0523b6db56"
+    ]
+  },
+  "terminal.close": {
+    "ok": true,
+    "result": {
+      "close": {
+        "handle": "term_34edcca6-4ab1-461e-9972-04fbffd814ac",
+        "tabId": "c61d543c-d222-4142-94cf-c3c8f3fb644e",
+        "ptyKilled": true
+      }
+    }
+  },
+  "list.afterClose": {
+    "worktree": "repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+    "tabCount": 3,
+    "groupCount": 2,
+    "activeTabId": "c15a035e-9622-4a36-a64d-535798d9d713::51925943-f0f2-409d-bb4f-45100f5374c4",
+    "activeGroupId": "5f6d550b-326e-428f-bc48-dd40f2013e22",
+    "tabs": [
+      {
+        "id": "a837f5e1-d957-4643-8bdc-7ade772d89fd::76e08a8e-af2c-463e-80ab-a776fab24b02",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      },
+      {
+        "id": "c15a035e-9622-4a36-a64d-535798d9d713::51925943-f0f2-409d-bb4f-45100f5374c4",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      },
+      {
+        "id": "a939845a-0669-4c05-99a2-4f0523b6db56::aba0e9b7-ae83-47f7-b17d-b1d6d4546367",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      }
+    ],
+    "groups": [
+      {
+        "id": "headless-terminals:repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+        "activeTabId": "a837f5e1-d957-4643-8bdc-7ade772d89fd",
+        "tabOrder": ["a837f5e1-d957-4643-8bdc-7ade772d89fd", "a939845a-0669-4c05-99a2-4f0523b6db56"]
+      },
+      {
+        "id": "5f6d550b-326e-428f-bc48-dd40f2013e22",
+        "activeTabId": "c15a035e-9622-4a36-a64d-535798d9d713",
+        "tabOrder": ["c15a035e-9622-4a36-a64d-535798d9d713"]
+      }
+    ]
+  },
+  "restart.persistedSessionAfterClose": [
+    "a837f5e1-d957-4643-8bdc-7ade772d89fd",
+    "c15a035e-9622-4a36-a64d-535798d9d713",
+    "a939845a-0669-4c05-99a2-4f0523b6db56"
+  ]
+}

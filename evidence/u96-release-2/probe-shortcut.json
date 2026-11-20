@@ -1,0 +1,26 @@
+{
+  "mark": "RELEASE2-MARK-1794804428643",
+  "steps": {
+    "fresh": {
+      "url": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787&project=proj_5b0d9ba3",
+      "overlay": false,
+      "appLayout": true,
+      "signIn": false,
+      "tabs": ["Terminal", "Terminal"],
+      "xterm": 2,
+      "text": " "
+    },
+    "newTabFresh": {
+      "before": 2,
+      "after": ["Terminal", "Terminal"],
+      "xterm": 2,
+      "overlay": false,
+      "url": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787&project=proj_5b0d9ba3"
+    },
+    "newTabFreshOk": false
+  },
+  "errors": [],
+  "tipsInitial": 1,
+  "phase": "newTabFresh",
+  "failure": "TimeoutError: locator.click: Timeout 90000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.xterm').last()\u001b[22m\n\u001b[2m    - locator resolved to <div dir=\"ltr\" class=\"terminal xterm xterm-dom-renderer-owner-2\">…</div>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not visible\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not visible\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    174 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m        - element is not visible\u001b[22m\n\u001b[2m      - retrying click action\u001b[22m\n\u001b[2m        - waiting 500ms\u001b[22m\n"
+}

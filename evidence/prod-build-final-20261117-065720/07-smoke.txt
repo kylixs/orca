@@ -1,0 +1,10 @@
+# Smoke tests
+platform /: 200
+platform /app.js: 200
+platform /v1/web/release: 200
+relay /h/dev-local-02/web-index.html: 200
+  local  out/web/web-index.html sha: 52a161cd7c489f09e1dc8638f4f17d4112d395ba3dc3743f8f7750e509c0b8b9
+  served relay web-index.html sha:   52a161cd7c489f09e1dc8638f4f17d4112d395ba3dc3743f8f7750e509c0b8b9
+relay /assets/web-DLTmCn5f.js: 200 served=aa3fd7602f4416a43a744324db47c3977a06cfab74ea0383896dc0ad2d00a8a4 local=aa3fd7602f4416a43a744324db47c3977a06cfab74ea0383896dc0ad2d00a8a4
+relay /assets/main-BMQKJ13j.js: 200 served=785597bca2e7dd97a652a20a197c077079e635a5663433448e0e1d9fd8c98a64 local=785597bca2e7dd97a652a20a197c077079e635a5663433448e0e1d9fd8c98a64
+login/bootstrap: relay web-index contains <div id="root"> and module entry; no auth required (200)

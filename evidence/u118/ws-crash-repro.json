@@ -1,0 +1,335 @@
+{
+  "user": "zhangsan",
+  "steps": {
+    "baseline": {
+      "tabs": ["web-terminal-c474504a-4784-4440-a724-83ff14166767"],
+      "overlay": false,
+      "appLayout": true
+    },
+    "startMs": 1794805191297,
+    "clickedMs": 269,
+    "after": {
+      "tabs": [],
+      "overlay": true,
+      "appLayout": false
+    },
+    "brokeAtMs": 30380
+  },
+  "ws": [
+    {
+      "t": 1794805181125,
+      "ev": "new",
+      "url": "wss://100.67.197.59:18444/h/dev-local-02/",
+      "msgs": 0,
+      "opens": 0,
+      "rel": -10172
+    },
+    {
+      "t": 1794805181125,
+      "ev": "open",
+      "url": "wss://100.67.197.59:18444/h/dev-local-02/",
+      "msgs": 0,
+      "opens": 1,
+      "rel": -10172
+    },
+    {
+      "t": 1794805184535,
+      "ev": "new",
+      "url": "wss://100.67.197.59:18444/h/dev-local-02/",
+      "msgs": 0,
+      "opens": 0,
+      "rel": -6762
+    },
+    {
+      "t": 1794805184535,
+      "ev": "open",
+      "url": "wss://100.67.197.59:18444/h/dev-local-02/",
+      "msgs": 0,
+      "opens": 1,
+      "rel": -6762
+    },
+    {
+      "t": 1794805184718,
+      "ev": "new",
+      "url": "wss://100.67.197.59:18444/h/dev-local-02/",
+      "msgs": 0,
+      "opens": 0,
+      "rel": -6579
+    },
+    {
+      "t": 1794805184739,
+      "ev": "new",
+      "url": "wss://100.67.197.59:18444/h/dev-local-02/",
+      "msgs": 0,
+      "opens": 0,
+      "rel": -6558
+    },
+    {
+      "t": 1794805184718,
+      "ev": "open",
+      "url": "wss://100.67.197.59:18444/h/dev-local-02/",
+      "msgs": 0,
+      "opens": 1,
+      "rel": -6579
+    },
+    {
+      "t": 1794805184739,
+      "ev": "open",
+      "url": "wss://100.67.197.59:18444/h/dev-local-02/",
+      "msgs": 0,
+      "opens": 1,
+      "rel": -6558
+    },
+    {
+      "t": 1794805184739,
+      "ev": "close",
+      "code": 1005,
+      "reason": "",
+      "url": "wss://100.67.197.59:18444/h/dev-local-02/",
+      "msgs": 3,
+      "opens": 1,
+      "rel": -6558
+    },
+    {
+      "t": 1794805185625,
+      "ev": "new",
+      "url": "wss://100.67.197.59:18444/h/dev-local-02/",
+      "msgs": 0,
+      "opens": 0,
+      "rel": -5672
+    },
+    {
+      "t": 1794805185625,
+      "ev": "open",
+      "url": "wss://100.67.197.59:18444/h/dev-local-02/",
+      "msgs": 0,
+      "opens": 1,
+      "rel": -5672
+    },
+    {
+      "t": 1794805191349,
+      "ev": "new",
+      "url": "wss://100.67.197.59:18444/h/dev-local-02/",
+      "msgs": 0,
+      "opens": 0,
+      "rel": 52
+    },
+    {
+      "t": 1794805191349,
+      "ev": "open",
+      "url": "wss://100.67.197.59:18444/h/dev-local-02/",
+      "msgs": 0,
+      "opens": 1,
+      "rel": 52
+    },
+    {
+      "t": 1794805191349,
+      "ev": "close",
+      "code": 1005,
+      "reason": "",
+      "url": "wss://100.67.197.59:18444/h/dev-local-02/",
+      "msgs": 3,
+      "opens": 1,
+      "rel": 52
+    },
+    {
+      "t": 1794805184535,
+      "ev": "close",
+      "code": 1005,
+      "reason": "",
+      "url": "wss://100.67.197.59:18444/h/dev-local-02/",
+      "msgs": 5,
+      "opens": 1,
+      "rel": -6762
+    },
+    {
+      "t": 1794805184718,
+      "ev": "close",
+      "code": 1005,
+      "reason": "",
+      "url": "wss://100.67.197.59:18444/h/dev-local-02/",
+      "msgs": 5,
+      "opens": 1,
+      "rel": -6579
+    },
+    {
+      "t": 1794805185625,
+      "ev": "close",
+      "code": 1005,
+      "reason": "",
+      "url": "wss://100.67.197.59:18444/h/dev-local-02/",
+      "msgs": 13,
+      "opens": 1,
+      "rel": -5672
+    },
+    {
+      "t": 1794805181125,
+      "ev": "close",
+      "code": 1005,
+      "reason": "",
+      "url": "wss://100.67.197.59:18444/h/dev-local-02/",
+      "msgs": 41,
+      "opens": 1,
+      "rel": -10172
+    }
+  ],
+  "console": [
+    {
+      "t": 1794805185587,
+      "type": "warning",
+      "text": "[web-runtime-session] failed to update pane layout: Method 'session.tabs.updatePaneLayout' is not available to cloud sessions",
+      "rel": -5710
+    }
+  ],
+  "status": [
+    {
+      "t": 1794805191296,
+      "tag": "baseline",
+      "snaps": [
+        {
+          "transport": "ready",
+          "verification": "verified",
+          "seq": 13,
+          "checkedAt": 1794805186060
+        }
+      ],
+      "rel": -1
+    },
+    {
+      "t": 1794805192577,
+      "tag": "t1s",
+      "snaps": [
+        {
+          "transport": "ready",
+          "verification": "verified",
+          "seq": 16,
+          "checkedAt": 1794805191392
+        }
+      ],
+      "rel": 1280
+    },
+    {
+      "t": 1794805195594,
+      "tag": "t4s",
+      "snaps": [
+        {
+          "transport": "ready",
+          "verification": "verified",
+          "seq": 16,
+          "checkedAt": 1794805191392
+        }
+      ],
+      "rel": 4297
+    },
+    {
+      "t": 1794805198601,
+      "tag": "t7s",
+      "snaps": [
+        {
+          "transport": "ready",
+          "verification": "verified",
+          "seq": 16,
+          "checkedAt": 1794805191392
+        }
+      ],
+      "rel": 7304
+    },
+    {
+      "t": 1794805201608,
+      "tag": "t10s",
+      "snaps": [
+        {
+          "transport": "ready",
+          "verification": "verified",
+          "seq": 16,
+          "checkedAt": 1794805191392
+        }
+      ],
+      "rel": 10311
+    },
+    {
+      "t": 1794805204619,
+      "tag": "t13s",
+      "snaps": [
+        {
+          "transport": "ready",
+          "verification": "verified",
+          "seq": 16,
+          "checkedAt": 1794805191392
+        }
+      ],
+      "rel": 13322
+    },
+    {
+      "t": 1794805207633,
+      "tag": "t16s",
+      "snaps": [
+        {
+          "transport": "ready",
+          "verification": "verified",
+          "seq": 16,
+          "checkedAt": 1794805191392
+        }
+      ],
+      "rel": 16336
+    },
+    {
+      "t": 1794805210642,
+      "tag": "t19s",
+      "snaps": [
+        {
+          "transport": "ready",
+          "verification": "verified",
+          "seq": 16,
+          "checkedAt": 1794805191392
+        }
+      ],
+      "rel": 19345
+    },
+    {
+      "t": 1794805213657,
+      "tag": "t22s",
+      "snaps": [
+        {
+          "transport": "ready",
+          "verification": "verified",
+          "seq": 16,
+          "checkedAt": 1794805191392
+        }
+      ],
+      "rel": 22360
+    },
+    {
+      "t": 1794805216664,
+      "tag": "t25s",
+      "snaps": [
+        {
+          "transport": "ready",
+          "verification": "verified",
+          "seq": 16,
+          "checkedAt": 1794805191392
+        }
+      ],
+      "rel": 25367
+    },
+    {
+      "t": 1794805219672,
+      "tag": "t28s",
+      "snaps": [
+        {
+          "transport": "ready",
+          "verification": "verified",
+          "seq": 16,
+          "checkedAt": 1794805191392
+        }
+      ],
+      "rel": 28375
+    },
+    {
+      "t": 1794805221678,
+      "tag": "after",
+      "snaps": [],
+      "rel": 30381
+    }
+  ]
+}

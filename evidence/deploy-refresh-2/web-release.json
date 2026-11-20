@@ -1,0 +1,19 @@
+{
+  "contract": 1,
+  "minContract": 1,
+  "build": "e7df5302c33d",
+  "assets": {
+    "app.js": {
+      "path": "/assets/e7df5302c33d/app.js",
+      "sha256": "19c542aceff01915096f1ec3330867f0eb86d486188e83c9d4949237b6e62af1"
+    },
+    "router/routes.js": {
+      "path": "/assets/e7df5302c33d/router/routes.js",
+      "sha256": "a9eb3f555968d1a84232049ba7a608672c0d27acaa30edf0b7246f884a91b169"
+    },
+    "styles.css": {
+      "path": "/assets/e7df5302c33d/styles.css",
+      "sha256": "ec66cbcdd740f08d37491e47c6d94b7c3016f4b9ce20558672437e3e0f6ca163"
+    }
+  }
+}

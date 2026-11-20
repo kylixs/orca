@@ -1,0 +1,33 @@
+{
+  "hostId": "host_eaece0f0",
+  "hostName": "dev-local-02",
+  "hash": "#/hosts/host_eaece0f0?tab=perms",
+  "cards": [
+    {
+      "key": "view",
+      "headText": "查看0 个主体",
+      "headBadges": [],
+      "chips": []
+    },
+    {
+      "key": "control",
+      "headText": "控制1 个主体",
+      "headBadges": [],
+      "chips": [
+        {
+          "text": "zhangsan 用户 调整 ✕",
+          "badges": [],
+          "type": "用户"
+        }
+      ]
+    },
+    {
+      "key": "manage",
+      "headText": "管理0 个主体",
+      "headBadges": [],
+      "chips": []
+    }
+  ],
+  "threeCards": true,
+  "noHeadBitBadge": true
+}

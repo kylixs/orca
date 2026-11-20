@@ -1,0 +1,47 @@
+{
+  "task": "U129 online retest",
+  "date": "2026-11-16T08:06:25.555Z",
+  "step1": {
+    "cmd": "node cloud-platform/scripts/local-env-reseed.mjs --platform-only",
+    "exit": 0,
+    "platformRestartedPid": 32766,
+    "webBuild": "02a0b735e9ff",
+    "hostsDeferred": ["dev-local-02", "dev-local-03"],
+    "hostPidsPreserved": [47856, 94852],
+    "note": "U126 platform-only leaves the in-memory store empty; hosts cannot re-enrol",
+    "hostPidsAfterRetest": {
+      "main": [47856, 94852],
+      "isolated": [45898, 46047]
+    }
+  },
+  "step2": {
+    "served": "https://127.0.0.1:18787/app.js",
+    "http": 200,
+    "bytes": 139012,
+    "clipboardWriteOccurrences": 1,
+    "servedSha256": "39f447e919183ebb812c8a3a14e74d925817daa6628520d1de24a3a55bc4cda2",
+    "sourceSha256": "39f447e919183ebb812c8a3a14e74d925817daa6628520d1de24a3a55bc4cda2",
+    "match": true
+  },
+  "step3": {
+    "canonicalProbe": "evidence/journey-7/probe-b10.mjs",
+    "result": "blocked",
+    "reason": "platform-only restart emptied the in-memory store; /v1/projects returned only proj_payment on offline host_dev001; .workspace-frame never appeared",
+    "artifact": "evidence/u129-retest/probe-b10-canonical.json"
+  },
+  "isolatedFallback": {
+    "root": "/tmp/orca-u129-retest",
+    "port": 18788,
+    "reseedExit": 1,
+    "reseedFailure": "host handoff routes through its relay key (no relay node in fresh root)",
+    "iframeAllow": "clipboard-write",
+    "featurePolicyAllowsClipboardWrite": true,
+    "frameWrite": "ok",
+    "parentClipboardText": "u129-retest-payload",
+    "frameClipboardReadLength": null,
+    "frameClipboardReadNote": "clipboard-read is NOT delegated; readText inside frame is policy-blocked, expected",
+    "fileTree": "degraded: host reports 当前项目未授予终端权限 (fresh-root grant sync), so the app copy button path and file_copy audit could not be exercised",
+    "auditFileCopyEvents": 0,
+    "noWritePermissionsPolicyViolation": true
+  }
+}

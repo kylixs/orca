@@ -1,0 +1,226 @@
+{
+  "generatedAt": "2026-11-17T00:50:04.612Z",
+  "build": {
+    "entry": "/Users/gongdewei/work/projects/orca/out/main/index.js",
+    "flavor": "prebuilt (SKIP_BUILD=1)",
+    "rebuilt": false
+  },
+  "steps": [
+    {
+      "name": "start-platform",
+      "ok": true,
+      "ms": 106
+    },
+    {
+      "name": "admin-login",
+      "ok": true,
+      "ms": 13
+    },
+    {
+      "name": "host-token",
+      "ok": true,
+      "ms": 2
+    },
+    {
+      "name": "launch-host",
+      "ok": true,
+      "ms": 475
+    },
+    {
+      "name": "wait-host-online",
+      "ok": true,
+      "ms": 3
+    },
+    {
+      "name": "launch-client",
+      "ok": true,
+      "ms": 558
+    },
+    {
+      "name": "sign-in",
+      "ok": true,
+      "ms": 30378
+    },
+    {
+      "name": "open-project",
+      "ok": true,
+      "ms": 38
+    },
+    {
+      "name": "create-first-tab",
+      "ok": true,
+      "ms": 1525
+    },
+    {
+      "name": "create-second-tab",
+      "ok": true,
+      "ms": 1476
+    },
+    {
+      "name": "split-right",
+      "ok": true,
+      "ms": 620
+    },
+    {
+      "name": "drag-across-groups",
+      "ok": true,
+      "ms": 3345
+    },
+    {
+      "name": "reorder-within-group",
+      "ok": true,
+      "ms": 4474
+    }
+  ],
+  "consoleLogs": [
+    "warning: %cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged.",
+    "warning: xterm.js: task queue exceeded allotted deadline by 27ms"
+  ],
+  "tabsBeforeSplit": [
+    "9709502e-6167-47f2-b3e7-0db64e9173bb",
+    "6e5947e6-4cb7-4a25-9450-2aa68ee5bdf9"
+  ],
+  "toastsByStage": {
+    "after-split": [],
+    "after-drag": [],
+    "after-reorder": [],
+    "after-reorder-settle": []
+  },
+  "layoutBeforeDrag": {
+    "strips": [
+      {
+        "stripHostGroupId": "e816f9ee-19e5-490c-933f-0b21ffb39964",
+        "worktreeId": "f887d904-2502-4879-82f3-cd4875bc2264::/private/tmp/c6-drag-p9FH6z/projects/c6-drag-project/.orca-worktrees/zhangsan/main",
+        "tabs": [
+          "9709502e-6167-47f2-b3e7-0db64e9173bb"
+        ]
+      },
+      {
+        "stripHostGroupId": "f41359fe-adff-45cd-b68b-9055f1b48e5b",
+        "worktreeId": "f887d904-2502-4879-82f3-cd4875bc2264::/private/tmp/c6-drag-p9FH6z/projects/c6-drag-project/.orca-worktrees/zhangsan/main",
+        "tabs": [
+          "6e5947e6-4cb7-4a25-9450-2aa68ee5bdf9"
+        ]
+      }
+    ],
+    "bodies": [
+      {
+        "bodyGroupId": "e816f9ee-19e5-490c-933f-0b21ffb39964",
+        "worktreeId": "f887d904-2502-4879-82f3-cd4875bc2264::/private/tmp/c6-drag-p9FH6z/projects/c6-drag-project/.orca-worktrees/zhangsan/main",
+        "x": 281,
+        "y": 36,
+        "w": 255,
+        "h": 654
+      },
+      {
+        "bodyGroupId": "f41359fe-adff-45cd-b68b-9055f1b48e5b",
+        "worktreeId": "f887d904-2502-4879-82f3-cd4875bc2264::/private/tmp/c6-drag-p9FH6z/projects/c6-drag-project/.orca-worktrees/zhangsan/main",
+        "x": 542,
+        "y": 36,
+        "w": 255,
+        "h": 654
+      }
+    ]
+  },
+  "dragDispatched": true,
+  "layoutAfterDrag": [
+    {
+      "stripHostGroupId": "f41359fe-adff-45cd-b68b-9055f1b48e5b",
+      "worktreeId": "f887d904-2502-4879-82f3-cd4875bc2264::/private/tmp/c6-drag-p9FH6z/projects/c6-drag-project/.orca-worktrees/zhangsan/main",
+      "tabs": [
+        "6e5947e6-4cb7-4a25-9450-2aa68ee5bdf9",
+        "9709502e-6167-47f2-b3e7-0db64e9173bb"
+      ]
+    }
+  ],
+  "domAssertion": {
+    "movedTabId": "9709502e-6167-47f2-b3e7-0db64e9173bb",
+    "presentAfter": true,
+    "groupAfter": "f41359fe-adff-45cd-b68b-9055f1b48e5b",
+    "targetGroup": "f41359fe-adff-45cd-b68b-9055f1b48e5b"
+  },
+  "hostAssertion": {
+    "oracle": "session.tabs.list",
+    "worktreeId": "f887d904-2502-4879-82f3-cd4875bc2264::/private/tmp/c6-drag-p9FH6z/projects/c6-drag-project/.orca-worktrees/zhangsan/main",
+    "rpcHostTab": {
+      "type": "terminal",
+      "id": "9709502e-6167-47f2-b3e7-0db64e9173bb::aa66e5c6-1324-404c-a8a8-fbd67983cd0f",
+      "parentTabId": "9709502e-6167-47f2-b3e7-0db64e9173bb",
+      "leafId": "aa66e5c6-1324-404c-a8a8-fbd67983cd0f",
+      "title": "Terminal 1",
+      "ptyId": "remote:cloud-649340d5-7abc-4543-981b-8d39c71edf4b@@term_96e461e61b628c37b53e3edaf9e0bf6d",
+      "terminalTheme": {
+        "mode": "light",
+        "theme": {
+          "background": "#ffffff",
+          "foreground": "#2e3434",
+          "cursor": "#2e3434",
+          "cursorAccent": "#ffffff",
+          "selectionBackground": "#accef7",
+          "selectionForeground": "#2e3434",
+          "black": "#2e3436",
+          "red": "#cc0000",
+          "green": "#4e9a06",
+          "yellow": "#8e7700",
+          "blue": "#3465a4",
+          "magenta": "#75507b",
+          "cyan": "#05727e",
+          "white": "#6a6a6a",
+          "brightBlack": "#555753",
+          "brightRed": "#ef2929",
+          "brightGreen": "#1b7a1b",
+          "brightYellow": "#6d5a00",
+          "brightBlue": "#204a87",
+          "brightMagenta": "#ad7fa8",
+          "brightCyan": "#034b50",
+          "brightWhite": "#3d3d3d"
+        }
+      },
+      "parentLayout": {
+        "root": {
+          "type": "leaf",
+          "leafId": "aa66e5c6-1324-404c-a8a8-fbd67983cd0f"
+        },
+        "activeLeafId": "aa66e5c6-1324-404c-a8a8-fbd67983cd0f",
+        "expandedLeafId": null,
+        "ptyIdsByLeafId": {
+          "aa66e5c6-1324-404c-a8a8-fbd67983cd0f": "remote:cloud-649340d5-7abc-4543-981b-8d39c71edf4b@@term_96e461e61b628c37b53e3edaf9e0bf6d"
+        }
+      },
+      "isActive": true,
+      "status": "ready",
+      "terminal": "term_d5711c48-291a-4fed-bc57-45dfbd5116ef"
+    },
+    "rpcTargetGroups": [
+      {
+        "id": "f41359fe-adff-45cd-b68b-9055f1b48e5b",
+        "activeTabId": "9709502e-6167-47f2-b3e7-0db64e9173bb",
+        "tabOrder": [
+          "6e5947e6-4cb7-4a25-9450-2aa68ee5bdf9",
+          "9709502e-6167-47f2-b3e7-0db64e9173bb"
+        ],
+        "recentTabIds": [
+          "6e5947e6-4cb7-4a25-9450-2aa68ee5bdf9",
+          "9709502e-6167-47f2-b3e7-0db64e9173bb"
+        ]
+      }
+    ]
+  },
+  "reorder": {
+    "beforeOrder": [
+      "6e5947e6-4cb7-4a25-9450-2aa68ee5bdf9",
+      "9709502e-6167-47f2-b3e7-0db64e9173bb"
+    ],
+    "domOrder": [
+      "9709502e-6167-47f2-b3e7-0db64e9173bb",
+      "6e5947e6-4cb7-4a25-9450-2aa68ee5bdf9"
+    ],
+    "hostOrder": [
+      "9709502e-6167-47f2-b3e7-0db64e9173bb",
+      "6e5947e6-4cb7-4a25-9450-2aa68ee5bdf9"
+    ]
+  },
+  "toasts": [],
+  "errorToasts": [],
+  "verdict": "PASS"
+}

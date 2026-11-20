@@ -1,0 +1,248 @@
+{
+  "generatedAt": "2026-11-17T00:14:53.769Z",
+  "build": {
+    "entry": "/Users/gongdewei/work/projects/orca/out/main/index.js",
+    "flavor": "production (no VITE_EXPOSE_STORE)",
+    "rebuilt": false
+  },
+  "steps": [
+    {
+      "name": "start-platform",
+      "ok": true,
+      "ms": 105
+    },
+    {
+      "name": "admin-login",
+      "ok": true,
+      "ms": 12
+    },
+    {
+      "name": "host-token",
+      "ok": true,
+      "ms": 2
+    },
+    {
+      "name": "launch-host",
+      "ok": true,
+      "ms": 461
+    },
+    {
+      "name": "wait-host-online",
+      "ok": true,
+      "ms": 1
+    },
+    {
+      "name": "launch-client",
+      "ok": true,
+      "ms": 507
+    },
+    {
+      "name": "sign-in",
+      "ok": true,
+      "ms": 30421
+    },
+    {
+      "name": "open-project",
+      "ok": true,
+      "ms": 34
+    },
+    {
+      "name": "create-first-tab",
+      "ok": true,
+      "ms": 1526
+    },
+    {
+      "name": "create-second-tab",
+      "ok": true,
+      "ms": 1477
+    },
+    {
+      "name": "split-right",
+      "ok": true,
+      "ms": 625
+    },
+    {
+      "name": "drag-across-groups",
+      "ok": true,
+      "ms": 3271
+    },
+    {
+      "name": "reorder-within-group",
+      "ok": true,
+      "ms": 4429
+    }
+  ],
+  "consoleLogs": [
+    "warning: %cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged.",
+    "warning: xterm.js: task queue exceeded allotted deadline by 24ms"
+  ],
+  "tabsBeforeSplit": [
+    "20bf39df-d22e-4304-aef2-9c629f73f1ae",
+    "654c63d9-1f96-4ad4-8e44-b287d14cdd1b"
+  ],
+  "toastsByStage": {
+    "after-split": [
+      {
+        "type": "error",
+        "text": "无法在主机上移动该标签页。"
+      }
+    ],
+    "after-drag": [
+      {
+        "type": "error",
+        "text": "无法在主机上移动该标签页。"
+      },
+      {
+        "type": "error",
+        "text": "无法在主机上移动该标签页。"
+      }
+    ],
+    "after-reorder": [
+      {
+        "type": "error",
+        "text": "无法在主机上移动该标签页。"
+      }
+    ],
+    "after-reorder-settle": []
+  },
+  "layoutBeforeDrag": {
+    "strips": [
+      {
+        "stripHostGroupId": "22f3414a-1d17-4b0a-86ab-4cb79afd47d6",
+        "worktreeId": "f3c7f4de-d0f5-44f1-b1d5-cb7b8055671a::/private/tmp/c6-drag-xNjVkL/projects/c6-drag-project/.orca-worktrees/zhangsan/main",
+        "tabs": [
+          "20bf39df-d22e-4304-aef2-9c629f73f1ae"
+        ]
+      },
+      {
+        "stripHostGroupId": "874ef14e-f4fc-4b53-879e-d909bb0d1239",
+        "worktreeId": "f3c7f4de-d0f5-44f1-b1d5-cb7b8055671a::/private/tmp/c6-drag-xNjVkL/projects/c6-drag-project/.orca-worktrees/zhangsan/main",
+        "tabs": [
+          "654c63d9-1f96-4ad4-8e44-b287d14cdd1b"
+        ]
+      }
+    ],
+    "bodies": [
+      {
+        "bodyGroupId": "22f3414a-1d17-4b0a-86ab-4cb79afd47d6",
+        "worktreeId": "f3c7f4de-d0f5-44f1-b1d5-cb7b8055671a::/private/tmp/c6-drag-xNjVkL/projects/c6-drag-project/.orca-worktrees/zhangsan/main",
+        "x": 281,
+        "y": 36,
+        "w": 255,
+        "h": 654
+      },
+      {
+        "bodyGroupId": "874ef14e-f4fc-4b53-879e-d909bb0d1239",
+        "worktreeId": "f3c7f4de-d0f5-44f1-b1d5-cb7b8055671a::/private/tmp/c6-drag-xNjVkL/projects/c6-drag-project/.orca-worktrees/zhangsan/main",
+        "x": 542,
+        "y": 36,
+        "w": 255,
+        "h": 654
+      }
+    ]
+  },
+  "dragDispatched": true,
+  "layoutAfterDrag": [
+    {
+      "stripHostGroupId": "874ef14e-f4fc-4b53-879e-d909bb0d1239",
+      "worktreeId": "f3c7f4de-d0f5-44f1-b1d5-cb7b8055671a::/private/tmp/c6-drag-xNjVkL/projects/c6-drag-project/.orca-worktrees/zhangsan/main",
+      "tabs": [
+        "654c63d9-1f96-4ad4-8e44-b287d14cdd1b",
+        "20bf39df-d22e-4304-aef2-9c629f73f1ae"
+      ]
+    }
+  ],
+  "domAssertion": {
+    "movedTabId": "20bf39df-d22e-4304-aef2-9c629f73f1ae",
+    "presentAfter": true,
+    "groupAfter": "874ef14e-f4fc-4b53-879e-d909bb0d1239",
+    "targetGroup": "874ef14e-f4fc-4b53-879e-d909bb0d1239"
+  },
+  "hostAssertion": {
+    "oracle": "session.tabs.list",
+    "worktreeId": "f3c7f4de-d0f5-44f1-b1d5-cb7b8055671a::/private/tmp/c6-drag-xNjVkL/projects/c6-drag-project/.orca-worktrees/zhangsan/main",
+    "rpcHostTab": {
+      "type": "terminal",
+      "id": "20bf39df-d22e-4304-aef2-9c629f73f1ae::b35d44ce-6716-48be-b390-ce7a1185b6c4",
+      "parentTabId": "20bf39df-d22e-4304-aef2-9c629f73f1ae",
+      "leafId": "b35d44ce-6716-48be-b390-ce7a1185b6c4",
+      "title": "Terminal 1",
+      "ptyId": "remote:cloud-f2bad77b-3ff0-4f5e-ad2e-f03674316c2b@@term_56ce22ea7a8e3d9fc54939135940c0e4",
+      "terminalTheme": {
+        "mode": "light",
+        "theme": {
+          "background": "#ffffff",
+          "foreground": "#2e3434",
+          "cursor": "#2e3434",
+          "cursorAccent": "#ffffff",
+          "selectionBackground": "#accef7",
+          "selectionForeground": "#2e3434",
+          "black": "#2e3436",
+          "red": "#cc0000",
+          "green": "#4e9a06",
+          "yellow": "#8e7700",
+          "blue": "#3465a4",
+          "magenta": "#75507b",
+          "cyan": "#05727e",
+          "white": "#6a6a6a",
+          "brightBlack": "#555753",
+          "brightRed": "#ef2929",
+          "brightGreen": "#1b7a1b",
+          "brightYellow": "#6d5a00",
+          "brightBlue": "#204a87",
+          "brightMagenta": "#ad7fa8",
+          "brightCyan": "#034b50",
+          "brightWhite": "#3d3d3d"
+        }
+      },
+      "parentLayout": {
+        "root": {
+          "type": "leaf",
+          "leafId": "b35d44ce-6716-48be-b390-ce7a1185b6c4"
+        },
+        "activeLeafId": "b35d44ce-6716-48be-b390-ce7a1185b6c4",
+        "expandedLeafId": null,
+        "ptyIdsByLeafId": {
+          "b35d44ce-6716-48be-b390-ce7a1185b6c4": "remote:cloud-f2bad77b-3ff0-4f5e-ad2e-f03674316c2b@@term_56ce22ea7a8e3d9fc54939135940c0e4"
+        }
+      },
+      "isActive": true,
+      "status": "ready",
+      "terminal": "term_5400d2e9-2768-4986-9bf3-f53727369a26"
+    },
+    "rpcTargetGroups": [
+      {
+        "id": "874ef14e-f4fc-4b53-879e-d909bb0d1239",
+        "activeTabId": "20bf39df-d22e-4304-aef2-9c629f73f1ae",
+        "tabOrder": [
+          "654c63d9-1f96-4ad4-8e44-b287d14cdd1b",
+          "20bf39df-d22e-4304-aef2-9c629f73f1ae"
+        ],
+        "recentTabIds": [
+          "654c63d9-1f96-4ad4-8e44-b287d14cdd1b",
+          "20bf39df-d22e-4304-aef2-9c629f73f1ae"
+        ]
+      }
+    ],
+    "profileStateDb": "/private/tmp/c6-drag-xNjVkL/host-ud-hcrEpU/profiles/local-default/profile-state.db",
+    "dbTabsOnMovedWorktree": [
+      {
+        "id": "20bf39df-d22e-4304-aef2-9c629f73f1ae",
+        "groupId": null,
+        "title": "Terminal 2"
+      }
+    ]
+  },
+  "reorder": {
+    "domOrder": [
+      "20bf39df-d22e-4304-aef2-9c629f73f1ae",
+      "654c63d9-1f96-4ad4-8e44-b287d14cdd1b"
+    ],
+    "hostOrder": [
+      "20bf39df-d22e-4304-aef2-9c629f73f1ae",
+      "654c63d9-1f96-4ad4-8e44-b287d14cdd1b"
+    ]
+  },
+  "toasts": [],
+  "verdict": "PASS"
+}

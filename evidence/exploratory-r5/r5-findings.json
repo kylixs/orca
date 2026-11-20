@@ -1,0 +1,563 @@
+{
+  "base": "https://127.0.0.1:18787",
+  "viewport": "desktop only (mobile deferred to r6)",
+  "checks": [
+    {
+      "pathId": "P1'",
+      "id": "login",
+      "status": "PASS",
+      "detail": "admin / 平台管理员"
+    },
+    {
+      "pathId": "P1'",
+      "id": "P1-1 list count == API",
+      "status": "PASS",
+      "detail": "3/3"
+    },
+    {
+      "pathId": "P1'",
+      "id": "P1-1 list read-only",
+      "status": "PASS",
+      "detail": "c0/b详情 c0/b详情 c0/b详情"
+    },
+    {
+      "pathId": "P1'",
+      "id": "P1-1 foot total",
+      "status": "PASS",
+      "detail": "共 3 个账号 · 服务端按请求实时判定角色；角色降级会断开当前云会话（≤60 秒），升级即时生效、不断会话。变更可在审计日志按「角色变更 · role_update」筛选。"
+    },
+    {
+      "pathId": "P1'",
+      "id": "P1-7 role source marks",
+      "status": "PASS",
+      "detail": [
+        {
+          "user": "李静 admin",
+          "username": "admin",
+          "source": "LDAP 同步",
+          "badge": false
+        },
+        {
+          "user": "张伟 zhangsan",
+          "username": "zhangsan",
+          "source": "LDAP 同步",
+          "badge": false
+        },
+        {
+          "user": "李四 lisi",
+          "username": "lisi",
+          "source": "LDAP 同步",
+          "badge": false
+        }
+      ]
+    },
+    {
+      "pathId": "P1'",
+      "id": "P1-2 keyword hit",
+      "status": "PASS",
+      "detail": "1/1"
+    },
+    {
+      "pathId": "P1'",
+      "id": "P1-2 empty state",
+      "status": "PASS",
+      "detail": "没有符合筛选条件的账号——请调整关键字或重置条件"
+    },
+    {
+      "pathId": "P1'",
+      "id": "P1-2 apply button fallback",
+      "status": "PASS",
+      "detail": "same empty state"
+    },
+    {
+      "pathId": "P1'",
+      "id": "P1-3 role admin",
+      "status": "PASS",
+      "detail": "1/1"
+    },
+    {
+      "pathId": "P1'",
+      "id": "P1-3 role auditor empty",
+      "status": "PASS",
+      "detail": "没有符合筛选条件的账号——请调整关键字或重置条件"
+    },
+    {
+      "pathId": "P1'",
+      "id": "P1-3 status disabled empty",
+      "status": "PASS",
+      "detail": "没有符合筛选条件的账号——请调整关键字或重置条件"
+    },
+    {
+      "pathId": "P1'",
+      "id": "P1-3 status active",
+      "status": "PASS",
+      "detail": "3/3"
+    },
+    {
+      "pathId": "P1'",
+      "id": "P1-4 combined filter",
+      "status": "PASS",
+      "detail": "1/1"
+    },
+    {
+      "pathId": "P1'",
+      "id": "P1-4 reset restores all",
+      "status": "PASS",
+      "detail": {
+        "q": "",
+        "role": "all",
+        "status": "all",
+        "foot": "共 3 个账号 · 服务端按请求实时判定角色；角色降级会断开当前云会话（≤60 秒），升级即时生效、不断会话。变更可在审计日志按「角色变更 · role_update」筛选。"
+      }
+    },
+    {
+      "pathId": "P1'",
+      "id": "P1-5 detail fields",
+      "status": "PASS",
+      "detail": "显示名 李静 账号 admin 部门 平台工程部 LDAP 组 platform-admins 平台角色 普通 审计 管理员 点击可修改 角色来源 LDAP 同步 状态 活跃 角色变更写入 role_update 审计，按用户覆盖优先于 LDAP 同步；降级将断开该用户当前云会话（≤60 秒），升级即时生效。列表只读，角色修改仅在此处进行。"
+    },
+    {
+      "pathId": "P1'",
+      "id": "P1-5 detail role select",
+      "status": "PASS",
+      "detail": "admin"
+    },
+    {
+      "pathId": "P1'",
+      "id": "P1-6 confirm chain content",
+      "status": "PASS",
+      "detail": {
+        "confirmTitle": "角色变更",
+        "rolledBack": "admin",
+        "dangerStyle": {
+          "text": "确认变更",
+          "danger": true
+        },
+        "confirmText": "李静（admin）：管理员 → 普通。 变更写入 role_update 审计；按用户覆盖优先于 LDAP 同步，再次登录不会被同步覆盖。 降级将断开该用户当前云会话（≤60 秒）。"
+      }
+    },
+    {
+      "pathId": "P1'",
+      "id": "P1-6 cancel sends no PUT + rolls back",
+      "status": "PASS",
+      "detail": {
+        "rolePuts": 0,
+        "confirmGone": true,
+        "detailStillOpen": true,
+        "selectValue": "admin"
+      }
+    },
+    {
+      "pathId": "P2'",
+      "id": "P2-1 three grid rows",
+      "status": "PASS",
+      "detail": [
+        "auditKeyword,auditRange,auditSince,auditUntil,auditType",
+        "auditActor,auditProject,auditHost,auditFileName",
+        "auditResult,auditApply,auditReset"
+      ]
+    },
+    {
+      "pathId": "P2'",
+      "id": "P2-1 row membership",
+      "status": "PASS",
+      "detail": [
+        ["auditKeyword", "auditRange", "auditSince", "auditType", "auditUntil"],
+        ["auditActor", "auditFileName", "auditHost", "auditProject"],
+        ["auditApply", "auditReset", "auditResult"]
+      ]
+    },
+    {
+      "pathId": "P2'",
+      "id": "P2-1 geometry sane",
+      "status": "PASS",
+      "detail": {
+        "withinFilter": true,
+        "overlapFree": true,
+        "actionsRight": 1416,
+        "resultRight": 538.5
+      }
+    },
+    {
+      "pathId": "P2'",
+      "id": "P2-2 bottom hint removed",
+      "status": "PASS",
+      "detail": {
+        "oldHint": false,
+        "nextClass": "table-wrap",
+        "filterMuted": 0,
+        "header": "查询身份、连接、文件下载与复制、下载拦截与管理操作事件。只追加、哈希链校验；保留 180 天，查询时间窗最大 31 天。已显示 50 条。"
+      }
+    },
+    {
+      "pathId": "P2'",
+      "id": "P2-3 31-day copy in header",
+      "status": "PASS",
+      "detail": "查询身份、连接、文件下载与复制、下载拦截与管理操作事件。只追加、哈希链校验；保留 180 天，查询时间窗最大 31 天。已显示 50 条。"
+    },
+    {
+      "pathId": "P2'",
+      "id": "P2-4 combo row count == API",
+      "status": "PASS",
+      "detail": "19/19"
+    },
+    {
+      "pathId": "P2'",
+      "id": "P2-4 combo rows match filters",
+      "status": "PASS",
+      "detail": [
+        [
+          "2026/11/16 10:38:36",
+          "admin",
+          "login",
+          "dev_1ffe99167bc7",
+          "—",
+          "—",
+          "✓ 成功",
+          "025a9678-1b07-4bc5-85d2-4ae38ff5ac52 复制"
+        ],
+        [
+          "2026/11/16 10:38:26",
+          "admin",
+          "login",
+          "dev_99c5a6ab158e",
+          "—",
+          "—",
+          "✓ 成功",
+          "6f587582-9eef-41a2-bf7f-4bcb29573058 复制"
+        ]
+      ]
+    },
+    {
+      "pathId": "P2'",
+      "id": "P2-4 header count matches rows",
+      "status": "PASS",
+      "detail": "查询身份、连接、文件下载与复制、下载拦截与管理操作事件。只追加、哈希链校验；保留 180 天，查询时间窗最大 31 天。已显示 19 条。"
+    },
+    {
+      "pathId": "P2'",
+      "id": "P2-4 31-day preset boundary",
+      "status": "OBSERVE",
+      "detail": {
+        "rowsAfter": 19,
+        "errorHidden": true,
+        "errorText": "",
+        "uiWindowError": true,
+        "console": [
+          "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+          "Error: 查询时间窗最大 31 天。"
+        ],
+        "requestCode": null,
+        "apiStatus": 200
+      }
+    },
+    {
+      "pathId": "P3'",
+      "id": "P3-0 demo-app open available",
+      "status": "PASS",
+      "detail": "demo-app /Users/gongdewei/orca-local-env/host/projects/demo-app dev-local-02 open · terminal · agent · file:read · file:write 禁止 打开详情Orca Web"
+    },
+    {
+      "pathId": "P3'",
+      "id": "P3-0 workspace ready",
+      "status": "PASS",
+      "detail": {
+        "state": "ready",
+        "frameUrl": "https://100.67.197.59:18444/h/dev-local-02/cloud-admin.html?api=https%3A%2F%2F127.0.0.1%3A18787&embed=1&project=proj_6dc390d2"
+      }
+    },
+    {
+      "pathId": "P3'",
+      "id": "P3-0 terminal live",
+      "status": "PASS",
+      "detail": "实时"
+    },
+    {
+      "pathId": "P3'",
+      "id": "P3-1 initial fill gap < one row",
+      "status": "PASS",
+      "detail": {
+        "gapPanePanel": 0,
+        "gapHostXterm": 15.5,
+        "lineHeight": 16,
+        "rows": 45
+      }
+    },
+    {
+      "pathId": "P3'",
+      "id": "P3-2 resize fit follows",
+      "status": "PASS",
+      "detail": {
+        "rowsBefore": 45,
+        "rowsAfter": 43,
+        "gapPanePanel": 0,
+        "gapHostXterm": 7.5,
+        "lineHeight": 16
+      }
+    },
+    {
+      "pathId": "P3'",
+      "id": "P3-3 echo badge appears",
+      "status": "PASS",
+      "detail": {
+        "text": "echo 41ms p95",
+        "title": "回显 P50 41ms · P95 41ms · max 41ms · 1 键"
+      }
+    },
+    {
+      "pathId": "P3'",
+      "id": "P3-3 badge updates with input",
+      "status": "PASS",
+      "detail": {
+        "before": {
+          "text": "echo 41ms p95",
+          "samples": 1
+        },
+        "after": {
+          "text": "echo 56ms p95",
+          "samples": 5
+        }
+      }
+    },
+    {
+      "pathId": "P3'",
+      "id": "P3-4 long output rendered",
+      "status": "PASS",
+      "detail": {
+        "screenChanged": true,
+        "samplesBeforeLong": 5,
+        "samplesLong": 9,
+        "scrollDelta": 0
+      }
+    },
+    {
+      "pathId": "P3'",
+      "id": "P3-4 still filled after long output",
+      "status": "PASS",
+      "detail": {
+        "gapPanePanel": 0,
+        "gapHostXterm": 7.5,
+        "lineHeight": 16
+      }
+    }
+  ],
+  "paths": {
+    "P1'": true,
+    "P2'": true,
+    "P3'": true
+  },
+  "steps": {
+    "usersList": {
+      "count": 3,
+      "api": 3,
+      "first": {
+        "text": "李静 admin 平台工程部 platform-admins 管理员 LDAP 同步 活跃 详情",
+        "cells": [
+          "李静\nadmin",
+          "平台工程部",
+          "platform-admins",
+          "管理员",
+          "LDAP 同步",
+          "活跃",
+          "详情"
+        ],
+        "controls": 0,
+        "buttons": ["详情"]
+      }
+    },
+    "auditCombo": {
+      "domRows": 19,
+      "apiRows": 19,
+      "header": "查询身份、连接、文件下载与复制、下载拦截与管理操作事件。只追加、哈希链校验；保留 180 天，查询时间窗最大 31 天。已显示 19 条。",
+      "sample": [
+        "2026/11/16 10:38:36",
+        "admin",
+        "login",
+        "dev_1ffe99167bc7",
+        "—",
+        "—",
+        "✓ 成功",
+        "025a9678-1b07-4bc5-85d2-4ae38ff5ac52 复制"
+      ]
+    },
+    "workspace": {
+      "state": "ready",
+      "frameUrl": "https://100.67.197.59:18444/h/dev-local-02/cloud-admin.html?api=https%3A%2F%2F127.0.0.1%3A18787&embed=1&project=proj_6dc390d2"
+    },
+    "terminalInitial": {
+      "viewport": {
+        "w": 1440,
+        "h": 860
+      },
+      "pane": {
+        "top": 41,
+        "bottom": 830.5,
+        "height": 789.5,
+        "left": 0,
+        "right": 1140
+      },
+      "panel": {
+        "top": 41,
+        "bottom": 830.5,
+        "height": 789.5,
+        "left": 0,
+        "right": 1140
+      },
+      "host": {
+        "top": 82,
+        "bottom": 817.5,
+        "height": 735.5,
+        "left": 13,
+        "right": 1127
+      },
+      "xterm": {
+        "top": 82,
+        "bottom": 802,
+        "height": 720,
+        "left": 13,
+        "right": 1117
+      },
+      "rows": 45,
+      "domRows": 0,
+      "charHeight": null,
+      "hasRowsEl": false,
+      "canvases": 2,
+      "scrollHeight": 720,
+      "clientHeight": 720,
+      "lineHeight": 16,
+      "gapPanePanel": 0,
+      "gapHostXterm": 15.5
+    },
+    "lineHeightProbe": {
+      "cursorBefore": {
+        "top": 82,
+        "left": 349,
+        "styleTop": "0px",
+        "styleLeft": "336px"
+      },
+      "cursorAfter": {
+        "top": 98,
+        "left": 349,
+        "styleTop": "16px",
+        "styleLeft": "336px"
+      },
+      "lineHeight": 16,
+      "rowsBefore": 45
+    },
+    "terminalResized": {
+      "viewport": {
+        "w": 1280,
+        "h": 820
+      },
+      "pane": {
+        "top": 41,
+        "bottom": 790.5,
+        "height": 749.5,
+        "left": 0,
+        "right": 980
+      },
+      "panel": {
+        "top": 41,
+        "bottom": 790.5,
+        "height": 749.5,
+        "left": 0,
+        "right": 980
+      },
+      "host": {
+        "top": 82,
+        "bottom": 777.5,
+        "height": 695.5,
+        "left": 13,
+        "right": 967
+      },
+      "xterm": {
+        "top": 82,
+        "bottom": 770,
+        "height": 688,
+        "left": 13,
+        "right": 957
+      },
+      "rows": 43,
+      "domRows": 0,
+      "charHeight": null,
+      "hasRowsEl": false,
+      "canvases": 2,
+      "scrollHeight": 688,
+      "clientHeight": 688,
+      "lineHeight": 16,
+      "gapPanePanel": 0,
+      "gapHostXterm": 7.5
+    },
+    "terminalLong": {
+      "viewport": {
+        "w": 1280,
+        "h": 820
+      },
+      "pane": {
+        "top": 41,
+        "bottom": 790.5,
+        "height": 749.5,
+        "left": 0,
+        "right": 980
+      },
+      "panel": {
+        "top": 41,
+        "bottom": 790.5,
+        "height": 749.5,
+        "left": 0,
+        "right": 980
+      },
+      "host": {
+        "top": 82,
+        "bottom": 777.5,
+        "height": 695.5,
+        "left": 13,
+        "right": 967
+      },
+      "xterm": {
+        "top": 82,
+        "bottom": 770,
+        "height": 688,
+        "left": 13,
+        "right": 957
+      },
+      "rows": null,
+      "domRows": 0,
+      "charHeight": null,
+      "hasRowsEl": false,
+      "canvases": 2,
+      "scrollHeight": 688,
+      "clientHeight": 688,
+      "lineHeight": 16,
+      "gapPanePanel": 0,
+      "gapHostXterm": 7.5,
+      "longSeen": true,
+      "screenChanged": true,
+      "samplesBeforeLong": 5,
+      "samplesLong": 9,
+      "scrollBeforeLong": 688,
+      "scrollAfterLong": 688,
+      "scrollDelta": 0,
+      "rowsBefore": 45,
+      "rowsAfter": 43
+    }
+  },
+  "observations": [
+    {
+      "id": "R5-OBS-01",
+      "area": "audit / 31 天预设边界",
+      "severity": "P2",
+      "title": "「最近 31 天」预设触发服务端窗口拒绝，页面静默保留旧结果",
+      "expected": "预设「最近 31 天」应可查询，或至少把窗口超限显示为错误提示",
+      "actual": "客户端 since=now-744h，请求到达服务端时窗口 >31d → 400（uiWindowError=true，console=Failed to load resource: the server responded with a status of 400 (Bad Request) | Error: 查询时间窗最大 31 天。）；DOM 行数保持 19（旧结果未替换），#auditError hidden=true",
+      "repro": "审计页时间范围选「最近 31 天」→ 查询",
+      "note": "r5 组合过滤改用「最近 7 天」后通过；直连 API 探针当次 HTTP 200，说明边界受毫秒级延迟影响呈抖动，UI 预设仍会命中 400"
+    }
+  ],
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+    "Error: 查询时间窗最大 31 天。"
+  ],
+  "generatedAt": "2026-11-16T02:38:49.803Z",
+  "pass": true
+}

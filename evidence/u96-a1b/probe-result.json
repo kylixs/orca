@@ -1,0 +1,558 @@
+{
+  "workspace.info": {
+    "ok": true,
+    "result": {
+      "project": {
+        "id": "proj_44f92388",
+        "root": "/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project",
+        "repoUrl": "",
+        "defaultBranch": "main"
+      },
+      "workspace": {
+        "root": "/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan",
+        "path": "/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan/main",
+        "branch": "e2e/main"
+      },
+      "perms": ["open", "terminal", "file:read", "file:write"],
+      "capabilities": ["cloud.session-tabs-restore.v1"]
+    }
+  },
+  "session.tabs.listAll.beforeCreate": {
+    "elapsedMs": 3,
+    "reply": {
+      "ok": true,
+      "result": {
+        "snapshots": [
+          {
+            "worktree": "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan/main",
+            "publicationEpoch": "headless:pty-backed:mwiorff5:client-navigation",
+            "snapshotVersion": 1,
+            "activeGroupId": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan/main",
+            "activeTabId": "6f8310a3-9486-4a29-8f36-236287cdae06::f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+            "activeTabType": "terminal",
+            "tabGroups": [
+              {
+                "id": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan/main",
+                "activeTabId": "6f8310a3-9486-4a29-8f36-236287cdae06",
+                "tabOrder": ["6f8310a3-9486-4a29-8f36-236287cdae06"]
+              }
+            ],
+            "tabs": [
+              {
+                "type": "terminal",
+                "id": "6f8310a3-9486-4a29-8f36-236287cdae06::f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+                "parentTabId": "6f8310a3-9486-4a29-8f36-236287cdae06",
+                "leafId": "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+                "title": "Terminal",
+                "ptyId": "pty-probe-1",
+                "parentLayout": {
+                  "root": {
+                    "type": "leaf",
+                    "leafId": "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132"
+                  },
+                  "activeLeafId": "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+                  "expandedLeafId": null,
+                  "ptyIdsByLeafId": {
+                    "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132": "pty-probe-1"
+                  }
+                },
+                "isActive": true,
+                "status": "ready",
+                "terminal": "term_62390595-8ebc-454f-bff1-c487061db7d8"
+              }
+            ],
+            "clientHostedPagesUnreconciled": true
+          }
+        ]
+      }
+    }
+  },
+  "terminal.list.beforeCreate": {
+    "ok": false,
+    "code": "forbidden",
+    "message": "Method 'terminal.list' is not available to cloud sessions."
+  },
+  "terminal.create": {
+    "ok": true,
+    "result": {
+      "terminal": {
+        "handle": "term_3116dd40-9a71-412e-ac43-b5c6426a658f",
+        "tabId": "270ce0f0-9805-4f90-a382-4b586df4d0fb",
+        "paneKey": "270ce0f0-9805-4f90-a382-4b586df4d0fb:5364542d-0e3e-4a42-b69c-82d230ba0673",
+        "ptyId": "pty-probe-2",
+        "worktreeId": "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan/main",
+        "title": "u96-probe",
+        "executionHostId": "local",
+        "hostPlatform": "darwin",
+        "surface": "background",
+        "processId": 59715,
+        "warning": "Terminal term_3116dd40-9a71-412e-ac43-b5c6426a658f is running, but Orca could not make it discoverable. Run `orca terminal focus --terminal term_3116dd40-9a71-412e-ac43-b5c6426a658f` to reveal and focus it."
+      }
+    }
+  },
+  "session.tabs.listAll.afterCreate": {
+    "elapsedMs": 2,
+    "reply": {
+      "ok": true,
+      "result": {
+        "snapshots": [
+          {
+            "worktree": "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan/main",
+            "publicationEpoch": "headless:pty-backed:mwiorff5:client-navigation",
+            "snapshotVersion": 4,
+            "activeGroupId": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan/main",
+            "activeTabId": "6f8310a3-9486-4a29-8f36-236287cdae06::f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+            "activeTabType": "terminal",
+            "tabGroups": [
+              {
+                "id": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan/main",
+                "activeTabId": "6f8310a3-9486-4a29-8f36-236287cdae06",
+                "tabOrder": [
+                  "6f8310a3-9486-4a29-8f36-236287cdae06",
+                  "270ce0f0-9805-4f90-a382-4b586df4d0fb"
+                ]
+              }
+            ],
+            "tabs": [
+              {
+                "type": "terminal",
+                "id": "6f8310a3-9486-4a29-8f36-236287cdae06::f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+                "parentTabId": "6f8310a3-9486-4a29-8f36-236287cdae06",
+                "leafId": "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+                "title": "zsh",
+                "ptyId": "pty-probe-1",
+                "parentLayout": {
+                  "root": {
+                    "type": "leaf",
+                    "leafId": "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132"
+                  },
+                  "activeLeafId": "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+                  "expandedLeafId": null,
+                  "ptyIdsByLeafId": {
+                    "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132": "pty-probe-1"
+                  }
+                },
+                "isActive": true,
+                "status": "ready",
+                "terminal": "term_62390595-8ebc-454f-bff1-c487061db7d8"
+              },
+              {
+                "type": "terminal",
+                "id": "270ce0f0-9805-4f90-a382-4b586df4d0fb::5364542d-0e3e-4a42-b69c-82d230ba0673",
+                "parentTabId": "270ce0f0-9805-4f90-a382-4b586df4d0fb",
+                "leafId": "5364542d-0e3e-4a42-b69c-82d230ba0673",
+                "title": "zsh",
+                "ptyId": "pty-probe-2",
+                "parentLayout": {
+                  "root": {
+                    "type": "leaf",
+                    "leafId": "5364542d-0e3e-4a42-b69c-82d230ba0673"
+                  },
+                  "activeLeafId": "5364542d-0e3e-4a42-b69c-82d230ba0673",
+                  "expandedLeafId": null,
+                  "ptyIdsByLeafId": {
+                    "5364542d-0e3e-4a42-b69c-82d230ba0673": "pty-probe-2"
+                  }
+                },
+                "isActive": false,
+                "status": "ready",
+                "terminal": "term_3116dd40-9a71-412e-ac43-b5c6426a658f"
+              }
+            ],
+            "clientHostedPagesUnreconciled": true
+          }
+        ]
+      }
+    }
+  },
+  "session.tabs.list.afterCreate": {
+    "ok": true,
+    "result": {
+      "worktree": "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan/main",
+      "publicationEpoch": "headless:pty-backed:mwiorff5:client-navigation",
+      "snapshotVersion": 4,
+      "activeGroupId": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan/main",
+      "activeTabId": "6f8310a3-9486-4a29-8f36-236287cdae06::f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+      "activeTabType": "terminal",
+      "tabGroups": [
+        {
+          "id": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan/main",
+          "activeTabId": "6f8310a3-9486-4a29-8f36-236287cdae06",
+          "tabOrder": [
+            "6f8310a3-9486-4a29-8f36-236287cdae06",
+            "270ce0f0-9805-4f90-a382-4b586df4d0fb"
+          ]
+        }
+      ],
+      "tabs": [
+        {
+          "type": "terminal",
+          "id": "6f8310a3-9486-4a29-8f36-236287cdae06::f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+          "parentTabId": "6f8310a3-9486-4a29-8f36-236287cdae06",
+          "leafId": "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+          "title": "zsh",
+          "ptyId": "pty-probe-1",
+          "parentLayout": {
+            "root": {
+              "type": "leaf",
+              "leafId": "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132"
+            },
+            "activeLeafId": "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+            "expandedLeafId": null,
+            "ptyIdsByLeafId": {
+              "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132": "pty-probe-1"
+            }
+          },
+          "isActive": true,
+          "status": "ready",
+          "terminal": "term_62390595-8ebc-454f-bff1-c487061db7d8"
+        },
+        {
+          "type": "terminal",
+          "id": "270ce0f0-9805-4f90-a382-4b586df4d0fb::5364542d-0e3e-4a42-b69c-82d230ba0673",
+          "parentTabId": "270ce0f0-9805-4f90-a382-4b586df4d0fb",
+          "leafId": "5364542d-0e3e-4a42-b69c-82d230ba0673",
+          "title": "zsh",
+          "ptyId": "pty-probe-2",
+          "parentLayout": {
+            "root": {
+              "type": "leaf",
+              "leafId": "5364542d-0e3e-4a42-b69c-82d230ba0673"
+            },
+            "activeLeafId": "5364542d-0e3e-4a42-b69c-82d230ba0673",
+            "expandedLeafId": null,
+            "ptyIdsByLeafId": {
+              "5364542d-0e3e-4a42-b69c-82d230ba0673": "pty-probe-2"
+            }
+          },
+          "isActive": false,
+          "status": "ready",
+          "terminal": "term_3116dd40-9a71-412e-ac43-b5c6426a658f"
+        }
+      ],
+      "clientHostedPagesUnreconciled": true
+    }
+  },
+  "terminal.list.afterCreate": {
+    "ok": false,
+    "code": "forbidden",
+    "message": "Method 'terminal.list' is not available to cloud sessions."
+  },
+  "terminal.create.second": {
+    "ok": true,
+    "result": {
+      "terminal": {
+        "handle": "term_06dc4e48-9257-41c6-a261-4dad3f090cd6",
+        "tabId": "57320d7d-a788-4050-abe9-2e80d60d1763",
+        "paneKey": "57320d7d-a788-4050-abe9-2e80d60d1763:715cdcaa-d116-462a-8747-abacdeced04d",
+        "ptyId": "pty-probe-3",
+        "worktreeId": "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan/main",
+        "title": "u96-probe-pty-exit",
+        "executionHostId": "local",
+        "hostPlatform": "darwin",
+        "surface": "background",
+        "processId": 59836,
+        "warning": "Terminal term_06dc4e48-9257-41c6-a261-4dad3f090cd6 is running, but Orca could not make it discoverable. Run `orca terminal focus --terminal term_06dc4e48-9257-41c6-a261-4dad3f090cd6` to reveal and focus it."
+      }
+    }
+  },
+  "session.tabs.list.afterPtyExit": {
+    "ok": true,
+    "result": {
+      "worktree": "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan/main",
+      "publicationEpoch": "headless:pty-backed:mwiorff5:client-navigation",
+      "snapshotVersion": 6,
+      "activeGroupId": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan/main",
+      "activeTabId": "6f8310a3-9486-4a29-8f36-236287cdae06::f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+      "activeTabType": "terminal",
+      "tabGroups": [
+        {
+          "id": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan/main",
+          "activeTabId": "6f8310a3-9486-4a29-8f36-236287cdae06",
+          "tabOrder": [
+            "6f8310a3-9486-4a29-8f36-236287cdae06",
+            "270ce0f0-9805-4f90-a382-4b586df4d0fb"
+          ]
+        }
+      ],
+      "retiredTerminalSurfaces": [
+        {
+          "parentTabId": "57320d7d-a788-4050-abe9-2e80d60d1763",
+          "leafId": "715cdcaa-d116-462a-8747-abacdeced04d",
+          "ptyId": "pty-probe-3",
+          "terminal": "term_06dc4e48-9257-41c6-a261-4dad3f090cd6",
+          "incarnationId": "runtime:8ba65ee0-222a-4022-997a-f8f0ee6c1f10:1"
+        }
+      ],
+      "tabs": [
+        {
+          "type": "terminal",
+          "id": "6f8310a3-9486-4a29-8f36-236287cdae06::f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+          "parentTabId": "6f8310a3-9486-4a29-8f36-236287cdae06",
+          "leafId": "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+          "title": "zsh",
+          "ptyId": "pty-probe-1",
+          "parentLayout": {
+            "root": {
+              "type": "leaf",
+              "leafId": "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132"
+            },
+            "activeLeafId": "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+            "expandedLeafId": null,
+            "ptyIdsByLeafId": {
+              "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132": "pty-probe-1"
+            }
+          },
+          "isActive": true,
+          "status": "ready",
+          "terminal": "term_62390595-8ebc-454f-bff1-c487061db7d8"
+        },
+        {
+          "type": "terminal",
+          "id": "270ce0f0-9805-4f90-a382-4b586df4d0fb::5364542d-0e3e-4a42-b69c-82d230ba0673",
+          "parentTabId": "270ce0f0-9805-4f90-a382-4b586df4d0fb",
+          "leafId": "5364542d-0e3e-4a42-b69c-82d230ba0673",
+          "title": "zsh",
+          "ptyId": "pty-probe-2",
+          "parentLayout": {
+            "root": {
+              "type": "leaf",
+              "leafId": "5364542d-0e3e-4a42-b69c-82d230ba0673"
+            },
+            "activeLeafId": "5364542d-0e3e-4a42-b69c-82d230ba0673",
+            "expandedLeafId": null,
+            "ptyIdsByLeafId": {
+              "5364542d-0e3e-4a42-b69c-82d230ba0673": "pty-probe-2"
+            }
+          },
+          "isActive": false,
+          "status": "ready",
+          "terminal": "term_3116dd40-9a71-412e-ac43-b5c6426a658f"
+        }
+      ],
+      "clientHostedPagesUnreconciled": true
+    }
+  },
+  "session.tabs.listAll.afterPtyExit": {
+    "elapsedMs": 3,
+    "reply": {
+      "ok": true,
+      "result": {
+        "snapshots": [
+          {
+            "worktree": "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan/main",
+            "publicationEpoch": "headless:pty-backed:mwiorff5:client-navigation",
+            "snapshotVersion": 6,
+            "activeGroupId": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan/main",
+            "activeTabId": "6f8310a3-9486-4a29-8f36-236287cdae06::f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+            "activeTabType": "terminal",
+            "tabGroups": [
+              {
+                "id": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan/main",
+                "activeTabId": "6f8310a3-9486-4a29-8f36-236287cdae06",
+                "tabOrder": [
+                  "6f8310a3-9486-4a29-8f36-236287cdae06",
+                  "270ce0f0-9805-4f90-a382-4b586df4d0fb"
+                ]
+              }
+            ],
+            "retiredTerminalSurfaces": [
+              {
+                "parentTabId": "57320d7d-a788-4050-abe9-2e80d60d1763",
+                "leafId": "715cdcaa-d116-462a-8747-abacdeced04d",
+                "ptyId": "pty-probe-3",
+                "terminal": "term_06dc4e48-9257-41c6-a261-4dad3f090cd6",
+                "incarnationId": "runtime:8ba65ee0-222a-4022-997a-f8f0ee6c1f10:1"
+              }
+            ],
+            "tabs": [
+              {
+                "type": "terminal",
+                "id": "6f8310a3-9486-4a29-8f36-236287cdae06::f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+                "parentTabId": "6f8310a3-9486-4a29-8f36-236287cdae06",
+                "leafId": "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+                "title": "zsh",
+                "ptyId": "pty-probe-1",
+                "parentLayout": {
+                  "root": {
+                    "type": "leaf",
+                    "leafId": "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132"
+                  },
+                  "activeLeafId": "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+                  "expandedLeafId": null,
+                  "ptyIdsByLeafId": {
+                    "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132": "pty-probe-1"
+                  }
+                },
+                "isActive": true,
+                "status": "ready",
+                "terminal": "term_62390595-8ebc-454f-bff1-c487061db7d8"
+              },
+              {
+                "type": "terminal",
+                "id": "270ce0f0-9805-4f90-a382-4b586df4d0fb::5364542d-0e3e-4a42-b69c-82d230ba0673",
+                "parentTabId": "270ce0f0-9805-4f90-a382-4b586df4d0fb",
+                "leafId": "5364542d-0e3e-4a42-b69c-82d230ba0673",
+                "title": "zsh",
+                "ptyId": "pty-probe-2",
+                "parentLayout": {
+                  "root": {
+                    "type": "leaf",
+                    "leafId": "5364542d-0e3e-4a42-b69c-82d230ba0673"
+                  },
+                  "activeLeafId": "5364542d-0e3e-4a42-b69c-82d230ba0673",
+                  "expandedLeafId": null,
+                  "ptyIdsByLeafId": {
+                    "5364542d-0e3e-4a42-b69c-82d230ba0673": "pty-probe-2"
+                  }
+                },
+                "isActive": false,
+                "status": "ready",
+                "terminal": "term_3116dd40-9a71-412e-ac43-b5c6426a658f"
+              }
+            ],
+            "clientHostedPagesUnreconciled": true
+          }
+        ]
+      }
+    }
+  },
+  "terminal.close": {
+    "ok": true,
+    "result": {
+      "close": {
+        "handle": "term_3116dd40-9a71-412e-ac43-b5c6426a658f",
+        "tabId": "270ce0f0-9805-4f90-a382-4b586df4d0fb",
+        "ptyKilled": true
+      }
+    }
+  },
+  "session.tabs.listAll.afterClose": {
+    "elapsedMs": 1,
+    "reply": {
+      "ok": true,
+      "result": {
+        "snapshots": [
+          {
+            "worktree": "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan/main",
+            "publicationEpoch": "headless:pty-backed:mwiorff5:client-navigation",
+            "snapshotVersion": 8,
+            "activeGroupId": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan/main",
+            "activeTabId": "6f8310a3-9486-4a29-8f36-236287cdae06::f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+            "activeTabType": "terminal",
+            "tabGroups": [
+              {
+                "id": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan/main",
+                "activeTabId": "6f8310a3-9486-4a29-8f36-236287cdae06",
+                "tabOrder": ["6f8310a3-9486-4a29-8f36-236287cdae06"]
+              }
+            ],
+            "retiredTerminalSurfaces": [
+              {
+                "parentTabId": "57320d7d-a788-4050-abe9-2e80d60d1763",
+                "leafId": "715cdcaa-d116-462a-8747-abacdeced04d",
+                "ptyId": "pty-probe-3",
+                "terminal": "term_06dc4e48-9257-41c6-a261-4dad3f090cd6",
+                "incarnationId": "runtime:8ba65ee0-222a-4022-997a-f8f0ee6c1f10:1"
+              },
+              {
+                "parentTabId": "270ce0f0-9805-4f90-a382-4b586df4d0fb",
+                "leafId": "5364542d-0e3e-4a42-b69c-82d230ba0673",
+                "ptyId": "pty-probe-2",
+                "terminal": "term_3116dd40-9a71-412e-ac43-b5c6426a658f"
+              }
+            ],
+            "tabs": [
+              {
+                "type": "terminal",
+                "id": "6f8310a3-9486-4a29-8f36-236287cdae06::f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+                "parentTabId": "6f8310a3-9486-4a29-8f36-236287cdae06",
+                "leafId": "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+                "title": "zsh",
+                "ptyId": "pty-probe-1",
+                "parentLayout": {
+                  "root": {
+                    "type": "leaf",
+                    "leafId": "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132"
+                  },
+                  "activeLeafId": "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+                  "expandedLeafId": null,
+                  "ptyIdsByLeafId": {
+                    "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132": "pty-probe-1"
+                  }
+                },
+                "isActive": true,
+                "status": "ready",
+                "terminal": "term_62390595-8ebc-454f-bff1-c487061db7d8"
+              }
+            ],
+            "clientHostedPagesUnreconciled": true
+          }
+        ]
+      }
+    }
+  },
+  "session.tabs.list.afterClose": {
+    "ok": true,
+    "result": {
+      "worktree": "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan/main",
+      "publicationEpoch": "headless:pty-backed:mwiorff5:client-navigation",
+      "snapshotVersion": 8,
+      "activeGroupId": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan/main",
+      "activeTabId": "6f8310a3-9486-4a29-8f36-236287cdae06::f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+      "activeTabType": "terminal",
+      "tabGroups": [
+        {
+          "id": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-hEcF4j/probe-project/.orca-worktrees/zhangsan/main",
+          "activeTabId": "6f8310a3-9486-4a29-8f36-236287cdae06",
+          "tabOrder": ["6f8310a3-9486-4a29-8f36-236287cdae06"]
+        }
+      ],
+      "retiredTerminalSurfaces": [
+        {
+          "parentTabId": "57320d7d-a788-4050-abe9-2e80d60d1763",
+          "leafId": "715cdcaa-d116-462a-8747-abacdeced04d",
+          "ptyId": "pty-probe-3",
+          "terminal": "term_06dc4e48-9257-41c6-a261-4dad3f090cd6",
+          "incarnationId": "runtime:8ba65ee0-222a-4022-997a-f8f0ee6c1f10:1"
+        },
+        {
+          "parentTabId": "270ce0f0-9805-4f90-a382-4b586df4d0fb",
+          "leafId": "5364542d-0e3e-4a42-b69c-82d230ba0673",
+          "ptyId": "pty-probe-2",
+          "terminal": "term_3116dd40-9a71-412e-ac43-b5c6426a658f"
+        }
+      ],
+      "tabs": [
+        {
+          "type": "terminal",
+          "id": "6f8310a3-9486-4a29-8f36-236287cdae06::f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+          "parentTabId": "6f8310a3-9486-4a29-8f36-236287cdae06",
+          "leafId": "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+          "title": "zsh",
+          "ptyId": "pty-probe-1",
+          "parentLayout": {
+            "root": {
+              "type": "leaf",
+              "leafId": "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132"
+            },
+            "activeLeafId": "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132",
+            "expandedLeafId": null,
+            "ptyIdsByLeafId": {
+              "f1c58f11-f8ba-4dcb-aa9d-a494c74d6132": "pty-probe-1"
+            }
+          },
+          "isActive": true,
+          "status": "ready",
+          "terminal": "term_62390595-8ebc-454f-bff1-c487061db7d8"
+        }
+      ],
+      "clientHostedPagesUnreconciled": true
+    }
+  },
+  "terminal.list.afterClose": {
+    "ok": false,
+    "code": "forbidden",
+    "message": "Method 'terminal.list' is not available to cloud sessions."
+  }
+}

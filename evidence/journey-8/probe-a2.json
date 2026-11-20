@@ -1,0 +1,1087 @@
+{
+  "base": "https://127.0.0.1:18787",
+  "stamp": 1794817796820,
+  "steps": {
+    "consoleUrl": "https://127.0.0.1:18787/#/workbench",
+    "envs": [
+      {
+        "id": "web-e1de16ea-9522-47ed-8ddf-5935d96d2d1d",
+        "name": "zhangsan-demo (cloud session)"
+      }
+    ],
+    "store0": {
+      "exposed": true,
+      "activeWorktreeId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3",
+      "activeTabId": "web-terminal-0e0b8f33-dd74-452a-a1de-b134886a6ad2",
+      "activeTabIdByWorktree": "web-terminal-0e0b8f33-dd74-452a-a1de-b134886a6ad2",
+      "activeGroupIdByWorktree": "bd589e0b-5560-4f66-9841-6d8b7f0bd43f",
+      "tabs": [
+        {
+          "id": "web-terminal-0e0b8f33-dd74-452a-a1de-b134886a6ad2",
+          "keys": [
+            "id",
+            "ptyId",
+            "worktreeId",
+            "title",
+            "defaultTitle",
+            "customTitle",
+            "color",
+            "isPinned",
+            "sortOrder",
+            "createdAt"
+          ],
+          "raw": {
+            "id": "web-terminal-0e0b8f33-dd74-452a-a1de-b134886a6ad2",
+            "ptyId": "remote:web-e1de16ea-9522-47ed-8ddf-5935d96d2d1d@@term_afc3f30e-cb5d-4d35-b7e6-c0ef627b13f5",
+            "worktreeId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3",
+            "title": "Terminal",
+            "defaultTitle": "J7 terminal 1",
+            "customTitle": null,
+            "color": null,
+            "isPinned": false,
+            "sortOrder": 0,
+            "createdAt": 1794817801266
+          }
+        },
+        {
+          "id": "web-terminal-02acdaee-1574-4c7c-83a7-a014dfd8a434",
+          "keys": [
+            "id",
+            "ptyId",
+            "worktreeId",
+            "title",
+            "defaultTitle",
+            "customTitle",
+            "color",
+            "isPinned",
+            "sortOrder",
+            "createdAt"
+          ],
+          "raw": {
+            "id": "web-terminal-02acdaee-1574-4c7c-83a7-a014dfd8a434",
+            "ptyId": "remote:web-e1de16ea-9522-47ed-8ddf-5935d96d2d1d@@term_5990bbad-2514-42c6-aa87-b869796a81e3",
+            "worktreeId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3",
+            "title": "Terminal",
+            "defaultTitle": "J7 terminal 1",
+            "customTitle": null,
+            "color": null,
+            "isPinned": false,
+            "sortOrder": 1,
+            "createdAt": 1794817801267
+          }
+        }
+      ],
+      "tabBarOrder": [
+        "web-terminal-0e0b8f33-dd74-452a-a1de-b134886a6ad2",
+        "web-terminal-02acdaee-1574-4c7c-83a7-a014dfd8a434"
+      ]
+    },
+    "listAll": {
+      "snapshots": [
+        {
+          "worktree": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3",
+          "tabCount": 2,
+          "groupCount": 1,
+          "activeTabId": "02acdaee-1574-4c7c-83a7-a014dfd8a434::75fdb241-817d-4e2f-a8c8-480ffe0cd5cd"
+        }
+      ]
+    },
+    "list0": {
+      "ok": true,
+      "result": {
+        "worktree": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3",
+        "publicationEpoch": "renderer:a1e677bf-b3e7-4db0-a562-274858b80903:client-navigation",
+        "snapshotVersion": 10,
+        "activeGroupId": "headless-terminals:6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3",
+        "activeTabId": "02acdaee-1574-4c7c-83a7-a014dfd8a434::75fdb241-817d-4e2f-a8c8-480ffe0cd5cd",
+        "activeTabType": "terminal",
+        "tabGroups": [
+          {
+            "id": "headless-terminals:6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3",
+            "activeTabId": "02acdaee-1574-4c7c-83a7-a014dfd8a434",
+            "tabOrder": [
+              "0e0b8f33-dd74-452a-a1de-b134886a6ad2",
+              "02acdaee-1574-4c7c-83a7-a014dfd8a434"
+            ]
+          }
+        ],
+        "tabs": [
+          {
+            "type": "terminal",
+            "id": "0e0b8f33-dd74-452a-a1de-b134886a6ad2::875ebcca-a4ab-4835-9b25-789ce8f26f7f",
+            "parentTabId": "0e0b8f33-dd74-452a-a1de-b134886a6ad2",
+            "leafId": "875ebcca-a4ab-4835-9b25-789ce8f26f7f",
+            "title": "Terminal",
+            "ptyId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@d42d2ef2",
+            "incarnationId": "487b625f-aa08-465d-9270-7bee739a151d",
+            "parentLayout": {
+              "root": {
+                "type": "leaf",
+                "leafId": "875ebcca-a4ab-4835-9b25-789ce8f26f7f"
+              },
+              "activeLeafId": "875ebcca-a4ab-4835-9b25-789ce8f26f7f",
+              "expandedLeafId": null,
+              "ptyIdsByLeafId": {
+                "875ebcca-a4ab-4835-9b25-789ce8f26f7f": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@d42d2ef2"
+              }
+            },
+            "isActive": false,
+            "status": "ready",
+            "terminal": "term_afc3f30e-cb5d-4d35-b7e6-c0ef627b13f5"
+          },
+          {
+            "type": "terminal",
+            "id": "02acdaee-1574-4c7c-83a7-a014dfd8a434::75fdb241-817d-4e2f-a8c8-480ffe0cd5cd",
+            "parentTabId": "02acdaee-1574-4c7c-83a7-a014dfd8a434",
+            "leafId": "75fdb241-817d-4e2f-a8c8-480ffe0cd5cd",
+            "title": "Terminal",
+            "ptyId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@87e841a0",
+            "incarnationId": "666859d2-4091-4fd5-81f6-92acc5a0baca",
+            "parentLayout": {
+              "root": {
+                "type": "leaf",
+                "leafId": "75fdb241-817d-4e2f-a8c8-480ffe0cd5cd"
+              },
+              "activeLeafId": "75fdb241-817d-4e2f-a8c8-480ffe0cd5cd",
+              "expandedLeafId": null,
+              "ptyIdsByLeafId": {
+                "75fdb241-817d-4e2f-a8c8-480ffe0cd5cd": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@87e841a0"
+              }
+            },
+            "isActive": true,
+            "status": "ready",
+            "terminal": "term_5990bbad-2514-42c6-aa87-b869796a81e3"
+          }
+        ]
+      }
+    },
+    "retire": [
+      {
+        "id": "0e0b8f33-dd74-452a-a1de-b134886a6ad2",
+        "ok": true
+      }
+    ],
+    "list1": {
+      "ok": true,
+      "result": {
+        "worktree": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3",
+        "publicationEpoch": "renderer:a1e677bf-b3e7-4db0-a562-274858b80903:client-navigation",
+        "snapshotVersion": 24,
+        "activeGroupId": "f70b5c48-6931-477e-8c65-d8ade124aab9",
+        "activeTabId": "02acdaee-1574-4c7c-83a7-a014dfd8a434::75fdb241-817d-4e2f-a8c8-480ffe0cd5cd",
+        "activeTabType": "terminal",
+        "tabGroups": [
+          {
+            "id": "f70b5c48-6931-477e-8c65-d8ade124aab9",
+            "activeTabId": "02acdaee-1574-4c7c-83a7-a014dfd8a434",
+            "tabOrder": ["02acdaee-1574-4c7c-83a7-a014dfd8a434"],
+            "recentTabIds": ["02acdaee-1574-4c7c-83a7-a014dfd8a434"]
+          }
+        ],
+        "tabGroupLayout": {
+          "type": "leaf",
+          "groupId": "f70b5c48-6931-477e-8c65-d8ade124aab9"
+        },
+        "retiredTerminalSurfaces": [
+          {
+            "parentTabId": "0e0b8f33-dd74-452a-a1de-b134886a6ad2",
+            "leafId": "875ebcca-a4ab-4835-9b25-789ce8f26f7f",
+            "ptyId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@d42d2ef2",
+            "terminal": "term_afc3f30e-cb5d-4d35-b7e6-c0ef627b13f5",
+            "incarnationId": "487b625f-aa08-465d-9270-7bee739a151d"
+          }
+        ],
+        "tabs": [
+          {
+            "type": "terminal",
+            "id": "02acdaee-1574-4c7c-83a7-a014dfd8a434::75fdb241-817d-4e2f-a8c8-480ffe0cd5cd",
+            "parentTabId": "02acdaee-1574-4c7c-83a7-a014dfd8a434",
+            "leafId": "75fdb241-817d-4e2f-a8c8-480ffe0cd5cd",
+            "title": "J7 terminal 1",
+            "ptyId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@87e841a0",
+            "incarnationId": "666859d2-4091-4fd5-81f6-92acc5a0baca",
+            "terminalTheme": {
+              "mode": "light",
+              "theme": {
+                "background": "#ffffff",
+                "foreground": "#2e3434",
+                "cursor": "#2e3434",
+                "cursorAccent": "#ffffff",
+                "selectionBackground": "#accef7",
+                "selectionForeground": "#2e3434",
+                "black": "#2e3436",
+                "red": "#cc0000",
+                "green": "#4e9a06",
+                "yellow": "#8e7700",
+                "blue": "#3465a4",
+                "magenta": "#75507b",
+                "cyan": "#05727e",
+                "white": "#6a6a6a",
+                "brightBlack": "#555753",
+                "brightRed": "#ef2929",
+                "brightGreen": "#1b7a1b",
+                "brightYellow": "#6d5a00",
+                "brightBlue": "#204a87",
+                "brightMagenta": "#ad7fa8",
+                "brightCyan": "#034b50",
+                "brightWhite": "#3d3d3d"
+              }
+            },
+            "parentLayout": {
+              "root": {
+                "type": "leaf",
+                "leafId": "75fdb241-817d-4e2f-a8c8-480ffe0cd5cd"
+              },
+              "activeLeafId": "75fdb241-817d-4e2f-a8c8-480ffe0cd5cd",
+              "expandedLeafId": null,
+              "ptyIdsByLeafId": {
+                "75fdb241-817d-4e2f-a8c8-480ffe0cd5cd": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@87e841a0"
+              }
+            },
+            "isActive": true,
+            "status": "ready",
+            "terminal": "term_5990bbad-2514-42c6-aa87-b869796a81e3"
+          }
+        ]
+      }
+    },
+    "created": [
+      {
+        "ok": true,
+        "terminal": {
+          "handle": "term_53132bb1-db84-440c-aeca-9210a770393b",
+          "tabId": "4aa40b5b-6f66-430b-bede-309ad26f5f57",
+          "paneKey": "4aa40b5b-6f66-430b-bede-309ad26f5f57:0f69ad96-6242-4def-a2aa-ac3136339ea9",
+          "ptyId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@7f73e91a",
+          "worktreeId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3",
+          "title": "J7 probe 1",
+          "executionHostId": "local",
+          "incarnationId": "0e74c17a-6b6c-4166-abe8-7dce6591a52c",
+          "hostPlatform": "darwin",
+          "surface": "visible"
+        }
+      },
+      {
+        "ok": true,
+        "terminal": {
+          "handle": "term_18246db3-e24b-4a0d-ae47-a452e69dda59",
+          "tabId": "d18592f4-2586-43f6-9e11-7b776fc253c6",
+          "paneKey": "d18592f4-2586-43f6-9e11-7b776fc253c6:fb2a5ca6-831a-4580-9eee-6917e726f68d",
+          "ptyId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@94ef6fbd",
+          "worktreeId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3",
+          "title": "J7 probe 2",
+          "executionHostId": "local",
+          "incarnationId": "4b4773e0-c554-457a-9425-c7b6e1f85f8b",
+          "hostPlatform": "darwin",
+          "surface": "visible"
+        }
+      }
+    ],
+    "list2": {
+      "ok": true,
+      "result": {
+        "worktree": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3",
+        "publicationEpoch": "renderer:a1e677bf-b3e7-4db0-a562-274858b80903:client-navigation",
+        "snapshotVersion": 34,
+        "activeGroupId": "f70b5c48-6931-477e-8c65-d8ade124aab9",
+        "activeTabId": "d18592f4-2586-43f6-9e11-7b776fc253c6::fb2a5ca6-831a-4580-9eee-6917e726f68d",
+        "activeTabType": "terminal",
+        "tabGroups": [
+          {
+            "id": "f70b5c48-6931-477e-8c65-d8ade124aab9",
+            "activeTabId": "d18592f4-2586-43f6-9e11-7b776fc253c6",
+            "tabOrder": [
+              "02acdaee-1574-4c7c-83a7-a014dfd8a434",
+              "4aa40b5b-6f66-430b-bede-309ad26f5f57",
+              "d18592f4-2586-43f6-9e11-7b776fc253c6"
+            ],
+            "recentTabIds": ["02acdaee-1574-4c7c-83a7-a014dfd8a434"]
+          }
+        ],
+        "tabGroupLayout": {
+          "type": "leaf",
+          "groupId": "f70b5c48-6931-477e-8c65-d8ade124aab9"
+        },
+        "retiredTerminalSurfaces": [
+          {
+            "parentTabId": "0e0b8f33-dd74-452a-a1de-b134886a6ad2",
+            "leafId": "875ebcca-a4ab-4835-9b25-789ce8f26f7f",
+            "ptyId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@d42d2ef2",
+            "terminal": "term_afc3f30e-cb5d-4d35-b7e6-c0ef627b13f5",
+            "incarnationId": "487b625f-aa08-465d-9270-7bee739a151d"
+          }
+        ],
+        "tabs": [
+          {
+            "type": "terminal",
+            "id": "02acdaee-1574-4c7c-83a7-a014dfd8a434::75fdb241-817d-4e2f-a8c8-480ffe0cd5cd",
+            "parentTabId": "02acdaee-1574-4c7c-83a7-a014dfd8a434",
+            "leafId": "75fdb241-817d-4e2f-a8c8-480ffe0cd5cd",
+            "title": "J7 terminal 1",
+            "ptyId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@87e841a0",
+            "incarnationId": "666859d2-4091-4fd5-81f6-92acc5a0baca",
+            "terminalTheme": {
+              "mode": "light",
+              "theme": {
+                "background": "#ffffff",
+                "foreground": "#2e3434",
+                "cursor": "#2e3434",
+                "cursorAccent": "#ffffff",
+                "selectionBackground": "#accef7",
+                "selectionForeground": "#2e3434",
+                "black": "#2e3436",
+                "red": "#cc0000",
+                "green": "#4e9a06",
+                "yellow": "#8e7700",
+                "blue": "#3465a4",
+                "magenta": "#75507b",
+                "cyan": "#05727e",
+                "white": "#6a6a6a",
+                "brightBlack": "#555753",
+                "brightRed": "#ef2929",
+                "brightGreen": "#1b7a1b",
+                "brightYellow": "#6d5a00",
+                "brightBlue": "#204a87",
+                "brightMagenta": "#ad7fa8",
+                "brightCyan": "#034b50",
+                "brightWhite": "#3d3d3d"
+              }
+            },
+            "parentLayout": {
+              "root": {
+                "type": "leaf",
+                "leafId": "75fdb241-817d-4e2f-a8c8-480ffe0cd5cd"
+              },
+              "activeLeafId": "75fdb241-817d-4e2f-a8c8-480ffe0cd5cd",
+              "expandedLeafId": null,
+              "ptyIdsByLeafId": {
+                "75fdb241-817d-4e2f-a8c8-480ffe0cd5cd": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@87e841a0"
+              }
+            },
+            "isActive": false,
+            "status": "ready",
+            "terminal": "term_5990bbad-2514-42c6-aa87-b869796a81e3"
+          },
+          {
+            "type": "terminal",
+            "id": "4aa40b5b-6f66-430b-bede-309ad26f5f57::0f69ad96-6242-4def-a2aa-ac3136339ea9",
+            "parentTabId": "4aa40b5b-6f66-430b-bede-309ad26f5f57",
+            "leafId": "0f69ad96-6242-4def-a2aa-ac3136339ea9",
+            "title": "J7 probe 1",
+            "ptyId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@7f73e91a",
+            "incarnationId": "0e74c17a-6b6c-4166-abe8-7dce6591a52c",
+            "terminalTheme": {
+              "mode": "light",
+              "theme": {
+                "background": "#ffffff",
+                "foreground": "#2e3434",
+                "cursor": "#2e3434",
+                "cursorAccent": "#ffffff",
+                "selectionBackground": "#accef7",
+                "selectionForeground": "#2e3434",
+                "black": "#2e3436",
+                "red": "#cc0000",
+                "green": "#4e9a06",
+                "yellow": "#8e7700",
+                "blue": "#3465a4",
+                "magenta": "#75507b",
+                "cyan": "#05727e",
+                "white": "#6a6a6a",
+                "brightBlack": "#555753",
+                "brightRed": "#ef2929",
+                "brightGreen": "#1b7a1b",
+                "brightYellow": "#6d5a00",
+                "brightBlue": "#204a87",
+                "brightMagenta": "#ad7fa8",
+                "brightCyan": "#034b50",
+                "brightWhite": "#3d3d3d"
+              }
+            },
+            "parentLayout": {
+              "root": {
+                "type": "leaf",
+                "leafId": "0f69ad96-6242-4def-a2aa-ac3136339ea9"
+              },
+              "activeLeafId": "0f69ad96-6242-4def-a2aa-ac3136339ea9",
+              "expandedLeafId": null,
+              "ptyIdsByLeafId": {
+                "0f69ad96-6242-4def-a2aa-ac3136339ea9": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@7f73e91a"
+              }
+            },
+            "isActive": false,
+            "status": "ready",
+            "terminal": "term_53132bb1-db84-440c-aeca-9210a770393b"
+          },
+          {
+            "type": "terminal",
+            "id": "d18592f4-2586-43f6-9e11-7b776fc253c6::fb2a5ca6-831a-4580-9eee-6917e726f68d",
+            "parentTabId": "d18592f4-2586-43f6-9e11-7b776fc253c6",
+            "leafId": "fb2a5ca6-831a-4580-9eee-6917e726f68d",
+            "title": "J7 probe 2",
+            "ptyId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@94ef6fbd",
+            "incarnationId": "4b4773e0-c554-457a-9425-c7b6e1f85f8b",
+            "terminalTheme": {
+              "mode": "light",
+              "theme": {
+                "background": "#ffffff",
+                "foreground": "#2e3434",
+                "cursor": "#2e3434",
+                "cursorAccent": "#ffffff",
+                "selectionBackground": "#accef7",
+                "selectionForeground": "#2e3434",
+                "black": "#2e3436",
+                "red": "#cc0000",
+                "green": "#4e9a06",
+                "yellow": "#8e7700",
+                "blue": "#3465a4",
+                "magenta": "#75507b",
+                "cyan": "#05727e",
+                "white": "#6a6a6a",
+                "brightBlack": "#555753",
+                "brightRed": "#ef2929",
+                "brightGreen": "#1b7a1b",
+                "brightYellow": "#6d5a00",
+                "brightBlue": "#204a87",
+                "brightMagenta": "#ad7fa8",
+                "brightCyan": "#034b50",
+                "brightWhite": "#3d3d3d"
+              }
+            },
+            "parentLayout": {
+              "root": {
+                "type": "leaf",
+                "leafId": "fb2a5ca6-831a-4580-9eee-6917e726f68d"
+              },
+              "activeLeafId": "fb2a5ca6-831a-4580-9eee-6917e726f68d",
+              "expandedLeafId": null,
+              "ptyIdsByLeafId": {
+                "fb2a5ca6-831a-4580-9eee-6917e726f68d": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@94ef6fbd"
+              }
+            },
+            "isActive": true,
+            "status": "ready",
+            "terminal": "term_18246db3-e24b-4a0d-ae47-a452e69dda59"
+          }
+        ]
+      }
+    },
+    "fresh": [
+      {
+        "id": "4aa40b5b-6f66-430b-bede-309ad26f5f57::0f69ad96-6242-4def-a2aa-ac3136339ea9",
+        "parentTabId": "4aa40b5b-6f66-430b-bede-309ad26f5f57",
+        "isActive": false
+      },
+      {
+        "id": "d18592f4-2586-43f6-9e11-7b776fc253c6::fb2a5ca6-831a-4580-9eee-6917e726f68d",
+        "parentTabId": "d18592f4-2586-43f6-9e11-7b776fc253c6",
+        "isActive": true
+      }
+    ],
+    "splitInput": {
+      "surface0": {
+        "type": "terminal",
+        "id": "4aa40b5b-6f66-430b-bede-309ad26f5f57::0f69ad96-6242-4def-a2aa-ac3136339ea9",
+        "parentTabId": "4aa40b5b-6f66-430b-bede-309ad26f5f57",
+        "leafId": "0f69ad96-6242-4def-a2aa-ac3136339ea9",
+        "title": "J7 probe 1",
+        "ptyId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@7f73e91a",
+        "incarnationId": "0e74c17a-6b6c-4166-abe8-7dce6591a52c",
+        "terminalTheme": {
+          "mode": "light",
+          "theme": {
+            "background": "#ffffff",
+            "foreground": "#2e3434",
+            "cursor": "#2e3434",
+            "cursorAccent": "#ffffff",
+            "selectionBackground": "#accef7",
+            "selectionForeground": "#2e3434",
+            "black": "#2e3436",
+            "red": "#cc0000",
+            "green": "#4e9a06",
+            "yellow": "#8e7700",
+            "blue": "#3465a4",
+            "magenta": "#75507b",
+            "cyan": "#05727e",
+            "white": "#6a6a6a",
+            "brightBlack": "#555753",
+            "brightRed": "#ef2929",
+            "brightGreen": "#1b7a1b",
+            "brightYellow": "#6d5a00",
+            "brightBlue": "#204a87",
+            "brightMagenta": "#ad7fa8",
+            "brightCyan": "#034b50",
+            "brightWhite": "#3d3d3d"
+          }
+        },
+        "parentLayout": {
+          "root": {
+            "type": "leaf",
+            "leafId": "0f69ad96-6242-4def-a2aa-ac3136339ea9"
+          },
+          "activeLeafId": "0f69ad96-6242-4def-a2aa-ac3136339ea9",
+          "expandedLeafId": null,
+          "ptyIdsByLeafId": {
+            "0f69ad96-6242-4def-a2aa-ac3136339ea9": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@7f73e91a"
+          }
+        },
+        "isActive": false,
+        "status": "ready",
+        "terminal": "term_53132bb1-db84-440c-aeca-9210a770393b"
+      },
+      "surface1": {
+        "type": "terminal",
+        "id": "d18592f4-2586-43f6-9e11-7b776fc253c6::fb2a5ca6-831a-4580-9eee-6917e726f68d",
+        "parentTabId": "d18592f4-2586-43f6-9e11-7b776fc253c6",
+        "leafId": "fb2a5ca6-831a-4580-9eee-6917e726f68d",
+        "title": "J7 probe 2",
+        "ptyId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@94ef6fbd",
+        "incarnationId": "4b4773e0-c554-457a-9425-c7b6e1f85f8b",
+        "terminalTheme": {
+          "mode": "light",
+          "theme": {
+            "background": "#ffffff",
+            "foreground": "#2e3434",
+            "cursor": "#2e3434",
+            "cursorAccent": "#ffffff",
+            "selectionBackground": "#accef7",
+            "selectionForeground": "#2e3434",
+            "black": "#2e3436",
+            "red": "#cc0000",
+            "green": "#4e9a06",
+            "yellow": "#8e7700",
+            "blue": "#3465a4",
+            "magenta": "#75507b",
+            "cyan": "#05727e",
+            "white": "#6a6a6a",
+            "brightBlack": "#555753",
+            "brightRed": "#ef2929",
+            "brightGreen": "#1b7a1b",
+            "brightYellow": "#6d5a00",
+            "brightBlue": "#204a87",
+            "brightMagenta": "#ad7fa8",
+            "brightCyan": "#034b50",
+            "brightWhite": "#3d3d3d"
+          }
+        },
+        "parentLayout": {
+          "root": {
+            "type": "leaf",
+            "leafId": "fb2a5ca6-831a-4580-9eee-6917e726f68d"
+          },
+          "activeLeafId": "fb2a5ca6-831a-4580-9eee-6917e726f68d",
+          "expandedLeafId": null,
+          "ptyIdsByLeafId": {
+            "fb2a5ca6-831a-4580-9eee-6917e726f68d": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@94ef6fbd"
+          }
+        },
+        "isActive": true,
+        "status": "ready",
+        "terminal": "term_18246db3-e24b-4a0d-ae47-a452e69dda59"
+      },
+      "targetGroup": {
+        "id": "f70b5c48-6931-477e-8c65-d8ade124aab9",
+        "activeTabId": "d18592f4-2586-43f6-9e11-7b776fc253c6",
+        "tabOrder": [
+          "02acdaee-1574-4c7c-83a7-a014dfd8a434",
+          "4aa40b5b-6f66-430b-bede-309ad26f5f57",
+          "d18592f4-2586-43f6-9e11-7b776fc253c6"
+        ],
+        "recentTabIds": ["02acdaee-1574-4c7c-83a7-a014dfd8a434"]
+      }
+    },
+    "split": {
+      "ok": true,
+      "result": {
+        "moved": true
+      }
+    },
+    "list3": {
+      "ok": true,
+      "result": {
+        "worktree": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3",
+        "publicationEpoch": "renderer:a1e677bf-b3e7-4db0-a562-274858b80903:client-navigation",
+        "snapshotVersion": 35,
+        "activeGroupId": "f70b5c48-6931-477e-8c65-d8ade124aab9",
+        "activeTabId": "d18592f4-2586-43f6-9e11-7b776fc253c6::fb2a5ca6-831a-4580-9eee-6917e726f68d",
+        "activeTabType": "terminal",
+        "tabGroups": [
+          {
+            "id": "f70b5c48-6931-477e-8c65-d8ade124aab9",
+            "activeTabId": "d18592f4-2586-43f6-9e11-7b776fc253c6",
+            "tabOrder": [
+              "02acdaee-1574-4c7c-83a7-a014dfd8a434",
+              "d18592f4-2586-43f6-9e11-7b776fc253c6"
+            ],
+            "recentTabIds": ["02acdaee-1574-4c7c-83a7-a014dfd8a434"]
+          },
+          {
+            "id": "f46e28f3-8c0b-4b0c-b7db-0e8637b5dfc4",
+            "activeTabId": "4aa40b5b-6f66-430b-bede-309ad26f5f57",
+            "tabOrder": ["4aa40b5b-6f66-430b-bede-309ad26f5f57"],
+            "recentTabIds": ["4aa40b5b-6f66-430b-bede-309ad26f5f57"]
+          }
+        ],
+        "tabGroupLayout": {
+          "type": "split",
+          "direction": "horizontal",
+          "first": {
+            "type": "leaf",
+            "groupId": "f70b5c48-6931-477e-8c65-d8ade124aab9"
+          },
+          "second": {
+            "type": "leaf",
+            "groupId": "f46e28f3-8c0b-4b0c-b7db-0e8637b5dfc4"
+          },
+          "ratio": 0.5
+        },
+        "retiredTerminalSurfaces": [
+          {
+            "parentTabId": "0e0b8f33-dd74-452a-a1de-b134886a6ad2",
+            "leafId": "875ebcca-a4ab-4835-9b25-789ce8f26f7f",
+            "ptyId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@d42d2ef2",
+            "terminal": "term_afc3f30e-cb5d-4d35-b7e6-c0ef627b13f5",
+            "incarnationId": "487b625f-aa08-465d-9270-7bee739a151d"
+          }
+        ],
+        "tabs": [
+          {
+            "type": "terminal",
+            "id": "02acdaee-1574-4c7c-83a7-a014dfd8a434::75fdb241-817d-4e2f-a8c8-480ffe0cd5cd",
+            "parentTabId": "02acdaee-1574-4c7c-83a7-a014dfd8a434",
+            "leafId": "75fdb241-817d-4e2f-a8c8-480ffe0cd5cd",
+            "title": "J7 terminal 1",
+            "ptyId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@87e841a0",
+            "incarnationId": "666859d2-4091-4fd5-81f6-92acc5a0baca",
+            "terminalTheme": {
+              "mode": "light",
+              "theme": {
+                "background": "#ffffff",
+                "foreground": "#2e3434",
+                "cursor": "#2e3434",
+                "cursorAccent": "#ffffff",
+                "selectionBackground": "#accef7",
+                "selectionForeground": "#2e3434",
+                "black": "#2e3436",
+                "red": "#cc0000",
+                "green": "#4e9a06",
+                "yellow": "#8e7700",
+                "blue": "#3465a4",
+                "magenta": "#75507b",
+                "cyan": "#05727e",
+                "white": "#6a6a6a",
+                "brightBlack": "#555753",
+                "brightRed": "#ef2929",
+                "brightGreen": "#1b7a1b",
+                "brightYellow": "#6d5a00",
+                "brightBlue": "#204a87",
+                "brightMagenta": "#ad7fa8",
+                "brightCyan": "#034b50",
+                "brightWhite": "#3d3d3d"
+              }
+            },
+            "parentLayout": {
+              "root": {
+                "type": "leaf",
+                "leafId": "75fdb241-817d-4e2f-a8c8-480ffe0cd5cd"
+              },
+              "activeLeafId": "75fdb241-817d-4e2f-a8c8-480ffe0cd5cd",
+              "expandedLeafId": null,
+              "ptyIdsByLeafId": {
+                "75fdb241-817d-4e2f-a8c8-480ffe0cd5cd": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@87e841a0"
+              }
+            },
+            "isActive": false,
+            "status": "ready",
+            "terminal": "term_5990bbad-2514-42c6-aa87-b869796a81e3"
+          },
+          {
+            "type": "terminal",
+            "id": "d18592f4-2586-43f6-9e11-7b776fc253c6::fb2a5ca6-831a-4580-9eee-6917e726f68d",
+            "parentTabId": "d18592f4-2586-43f6-9e11-7b776fc253c6",
+            "leafId": "fb2a5ca6-831a-4580-9eee-6917e726f68d",
+            "title": "J7 probe 2",
+            "ptyId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@94ef6fbd",
+            "incarnationId": "4b4773e0-c554-457a-9425-c7b6e1f85f8b",
+            "terminalTheme": {
+              "mode": "light",
+              "theme": {
+                "background": "#ffffff",
+                "foreground": "#2e3434",
+                "cursor": "#2e3434",
+                "cursorAccent": "#ffffff",
+                "selectionBackground": "#accef7",
+                "selectionForeground": "#2e3434",
+                "black": "#2e3436",
+                "red": "#cc0000",
+                "green": "#4e9a06",
+                "yellow": "#8e7700",
+                "blue": "#3465a4",
+                "magenta": "#75507b",
+                "cyan": "#05727e",
+                "white": "#6a6a6a",
+                "brightBlack": "#555753",
+                "brightRed": "#ef2929",
+                "brightGreen": "#1b7a1b",
+                "brightYellow": "#6d5a00",
+                "brightBlue": "#204a87",
+                "brightMagenta": "#ad7fa8",
+                "brightCyan": "#034b50",
+                "brightWhite": "#3d3d3d"
+              }
+            },
+            "parentLayout": {
+              "root": {
+                "type": "leaf",
+                "leafId": "fb2a5ca6-831a-4580-9eee-6917e726f68d"
+              },
+              "activeLeafId": "fb2a5ca6-831a-4580-9eee-6917e726f68d",
+              "expandedLeafId": null,
+              "ptyIdsByLeafId": {
+                "fb2a5ca6-831a-4580-9eee-6917e726f68d": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@94ef6fbd"
+              }
+            },
+            "isActive": true,
+            "status": "ready",
+            "terminal": "term_18246db3-e24b-4a0d-ae47-a452e69dda59"
+          },
+          {
+            "type": "terminal",
+            "id": "4aa40b5b-6f66-430b-bede-309ad26f5f57::0f69ad96-6242-4def-a2aa-ac3136339ea9",
+            "parentTabId": "4aa40b5b-6f66-430b-bede-309ad26f5f57",
+            "leafId": "0f69ad96-6242-4def-a2aa-ac3136339ea9",
+            "title": "J7 probe 1",
+            "ptyId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@7f73e91a",
+            "incarnationId": "0e74c17a-6b6c-4166-abe8-7dce6591a52c",
+            "terminalTheme": {
+              "mode": "light",
+              "theme": {
+                "background": "#ffffff",
+                "foreground": "#2e3434",
+                "cursor": "#2e3434",
+                "cursorAccent": "#ffffff",
+                "selectionBackground": "#accef7",
+                "selectionForeground": "#2e3434",
+                "black": "#2e3436",
+                "red": "#cc0000",
+                "green": "#4e9a06",
+                "yellow": "#8e7700",
+                "blue": "#3465a4",
+                "magenta": "#75507b",
+                "cyan": "#05727e",
+                "white": "#6a6a6a",
+                "brightBlack": "#555753",
+                "brightRed": "#ef2929",
+                "brightGreen": "#1b7a1b",
+                "brightYellow": "#6d5a00",
+                "brightBlue": "#204a87",
+                "brightMagenta": "#ad7fa8",
+                "brightCyan": "#034b50",
+                "brightWhite": "#3d3d3d"
+              }
+            },
+            "parentLayout": {
+              "root": {
+                "type": "leaf",
+                "leafId": "0f69ad96-6242-4def-a2aa-ac3136339ea9"
+              },
+              "activeLeafId": "0f69ad96-6242-4def-a2aa-ac3136339ea9",
+              "expandedLeafId": null,
+              "ptyIdsByLeafId": {
+                "0f69ad96-6242-4def-a2aa-ac3136339ea9": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@7f73e91a"
+              }
+            },
+            "isActive": false,
+            "status": "ready",
+            "terminal": "term_53132bb1-db84-440c-aeca-9210a770393b"
+          }
+        ]
+      }
+    },
+    "splitNewGroup": {
+      "id": "f46e28f3-8c0b-4b0c-b7db-0e8637b5dfc4",
+      "activeTabId": "4aa40b5b-6f66-430b-bede-309ad26f5f57",
+      "tabOrder": ["4aa40b5b-6f66-430b-bede-309ad26f5f57"],
+      "recentTabIds": ["4aa40b5b-6f66-430b-bede-309ad26f5f57"]
+    },
+    "moveToGroup": {
+      "ok": true,
+      "result": {
+        "moved": true
+      }
+    },
+    "list4": {
+      "ok": true,
+      "result": {
+        "worktree": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3",
+        "publicationEpoch": "renderer:a1e677bf-b3e7-4db0-a562-274858b80903:client-navigation",
+        "snapshotVersion": 36,
+        "activeGroupId": "f46e28f3-8c0b-4b0c-b7db-0e8637b5dfc4",
+        "activeTabId": "d18592f4-2586-43f6-9e11-7b776fc253c6::fb2a5ca6-831a-4580-9eee-6917e726f68d",
+        "activeTabType": "terminal",
+        "tabGroups": [
+          {
+            "id": "f70b5c48-6931-477e-8c65-d8ade124aab9",
+            "activeTabId": "02acdaee-1574-4c7c-83a7-a014dfd8a434",
+            "tabOrder": ["02acdaee-1574-4c7c-83a7-a014dfd8a434"],
+            "recentTabIds": ["02acdaee-1574-4c7c-83a7-a014dfd8a434"]
+          },
+          {
+            "id": "f46e28f3-8c0b-4b0c-b7db-0e8637b5dfc4",
+            "activeTabId": "4aa40b5b-6f66-430b-bede-309ad26f5f57",
+            "tabOrder": [
+              "4aa40b5b-6f66-430b-bede-309ad26f5f57",
+              "d18592f4-2586-43f6-9e11-7b776fc253c6"
+            ],
+            "recentTabIds": [
+              "4aa40b5b-6f66-430b-bede-309ad26f5f57",
+              "d18592f4-2586-43f6-9e11-7b776fc253c6"
+            ]
+          }
+        ],
+        "tabGroupLayout": {
+          "type": "split",
+          "direction": "horizontal",
+          "first": {
+            "type": "leaf",
+            "groupId": "f70b5c48-6931-477e-8c65-d8ade124aab9"
+          },
+          "second": {
+            "type": "leaf",
+            "groupId": "f46e28f3-8c0b-4b0c-b7db-0e8637b5dfc4"
+          },
+          "ratio": 0.5
+        },
+        "retiredTerminalSurfaces": [
+          {
+            "parentTabId": "0e0b8f33-dd74-452a-a1de-b134886a6ad2",
+            "leafId": "875ebcca-a4ab-4835-9b25-789ce8f26f7f",
+            "ptyId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@d42d2ef2",
+            "terminal": "term_afc3f30e-cb5d-4d35-b7e6-c0ef627b13f5",
+            "incarnationId": "487b625f-aa08-465d-9270-7bee739a151d"
+          }
+        ],
+        "tabs": [
+          {
+            "type": "terminal",
+            "id": "02acdaee-1574-4c7c-83a7-a014dfd8a434::75fdb241-817d-4e2f-a8c8-480ffe0cd5cd",
+            "parentTabId": "02acdaee-1574-4c7c-83a7-a014dfd8a434",
+            "leafId": "75fdb241-817d-4e2f-a8c8-480ffe0cd5cd",
+            "title": "J7 terminal 1",
+            "ptyId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@87e841a0",
+            "incarnationId": "666859d2-4091-4fd5-81f6-92acc5a0baca",
+            "terminalTheme": {
+              "mode": "light",
+              "theme": {
+                "background": "#ffffff",
+                "foreground": "#2e3434",
+                "cursor": "#2e3434",
+                "cursorAccent": "#ffffff",
+                "selectionBackground": "#accef7",
+                "selectionForeground": "#2e3434",
+                "black": "#2e3436",
+                "red": "#cc0000",
+                "green": "#4e9a06",
+                "yellow": "#8e7700",
+                "blue": "#3465a4",
+                "magenta": "#75507b",
+                "cyan": "#05727e",
+                "white": "#6a6a6a",
+                "brightBlack": "#555753",
+                "brightRed": "#ef2929",
+                "brightGreen": "#1b7a1b",
+                "brightYellow": "#6d5a00",
+                "brightBlue": "#204a87",
+                "brightMagenta": "#ad7fa8",
+                "brightCyan": "#034b50",
+                "brightWhite": "#3d3d3d"
+              }
+            },
+            "parentLayout": {
+              "root": {
+                "type": "leaf",
+                "leafId": "75fdb241-817d-4e2f-a8c8-480ffe0cd5cd"
+              },
+              "activeLeafId": "75fdb241-817d-4e2f-a8c8-480ffe0cd5cd",
+              "expandedLeafId": null,
+              "ptyIdsByLeafId": {
+                "75fdb241-817d-4e2f-a8c8-480ffe0cd5cd": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@87e841a0"
+              }
+            },
+            "isActive": false,
+            "status": "ready",
+            "terminal": "term_5990bbad-2514-42c6-aa87-b869796a81e3"
+          },
+          {
+            "type": "terminal",
+            "id": "4aa40b5b-6f66-430b-bede-309ad26f5f57::0f69ad96-6242-4def-a2aa-ac3136339ea9",
+            "parentTabId": "4aa40b5b-6f66-430b-bede-309ad26f5f57",
+            "leafId": "0f69ad96-6242-4def-a2aa-ac3136339ea9",
+            "title": "J7 probe 1",
+            "ptyId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@7f73e91a",
+            "incarnationId": "0e74c17a-6b6c-4166-abe8-7dce6591a52c",
+            "terminalTheme": {
+              "mode": "light",
+              "theme": {
+                "background": "#ffffff",
+                "foreground": "#2e3434",
+                "cursor": "#2e3434",
+                "cursorAccent": "#ffffff",
+                "selectionBackground": "#accef7",
+                "selectionForeground": "#2e3434",
+                "black": "#2e3436",
+                "red": "#cc0000",
+                "green": "#4e9a06",
+                "yellow": "#8e7700",
+                "blue": "#3465a4",
+                "magenta": "#75507b",
+                "cyan": "#05727e",
+                "white": "#6a6a6a",
+                "brightBlack": "#555753",
+                "brightRed": "#ef2929",
+                "brightGreen": "#1b7a1b",
+                "brightYellow": "#6d5a00",
+                "brightBlue": "#204a87",
+                "brightMagenta": "#ad7fa8",
+                "brightCyan": "#034b50",
+                "brightWhite": "#3d3d3d"
+              }
+            },
+            "parentLayout": {
+              "root": {
+                "type": "leaf",
+                "leafId": "0f69ad96-6242-4def-a2aa-ac3136339ea9"
+              },
+              "activeLeafId": "0f69ad96-6242-4def-a2aa-ac3136339ea9",
+              "expandedLeafId": null,
+              "ptyIdsByLeafId": {
+                "0f69ad96-6242-4def-a2aa-ac3136339ea9": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@7f73e91a"
+              }
+            },
+            "isActive": false,
+            "status": "ready",
+            "terminal": "term_53132bb1-db84-440c-aeca-9210a770393b"
+          },
+          {
+            "type": "terminal",
+            "id": "d18592f4-2586-43f6-9e11-7b776fc253c6::fb2a5ca6-831a-4580-9eee-6917e726f68d",
+            "parentTabId": "d18592f4-2586-43f6-9e11-7b776fc253c6",
+            "leafId": "fb2a5ca6-831a-4580-9eee-6917e726f68d",
+            "title": "J7 probe 2",
+            "ptyId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@94ef6fbd",
+            "incarnationId": "4b4773e0-c554-457a-9425-c7b6e1f85f8b",
+            "terminalTheme": {
+              "mode": "light",
+              "theme": {
+                "background": "#ffffff",
+                "foreground": "#2e3434",
+                "cursor": "#2e3434",
+                "cursorAccent": "#ffffff",
+                "selectionBackground": "#accef7",
+                "selectionForeground": "#2e3434",
+                "black": "#2e3436",
+                "red": "#cc0000",
+                "green": "#4e9a06",
+                "yellow": "#8e7700",
+                "blue": "#3465a4",
+                "magenta": "#75507b",
+                "cyan": "#05727e",
+                "white": "#6a6a6a",
+                "brightBlack": "#555753",
+                "brightRed": "#ef2929",
+                "brightGreen": "#1b7a1b",
+                "brightYellow": "#6d5a00",
+                "brightBlue": "#204a87",
+                "brightMagenta": "#ad7fa8",
+                "brightCyan": "#034b50",
+                "brightWhite": "#3d3d3d"
+              }
+            },
+            "parentLayout": {
+              "root": {
+                "type": "leaf",
+                "leafId": "fb2a5ca6-831a-4580-9eee-6917e726f68d"
+              },
+              "activeLeafId": "fb2a5ca6-831a-4580-9eee-6917e726f68d",
+              "expandedLeafId": null,
+              "ptyIdsByLeafId": {
+                "fb2a5ca6-831a-4580-9eee-6917e726f68d": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@94ef6fbd"
+              }
+            },
+            "isActive": true,
+            "status": "ready",
+            "terminal": "term_18246db3-e24b-4a0d-ae47-a452e69dda59"
+          }
+        ]
+      }
+    },
+    "domAfter": {
+      "appLayout": true,
+      "tabs": [
+        {
+          "id": "web-terminal-02acdaee-1574-4c7c-83a7-a014dfd8a434",
+          "active": "true",
+          "aria": null,
+          "title": "J7 terminal 1"
+        },
+        {
+          "id": "web-terminal-4aa40b5b-6f66-430b-bede-309ad26f5f57",
+          "active": "false",
+          "aria": null,
+          "title": "J7 probe 1"
+        },
+        {
+          "id": "web-terminal-d18592f4-2586-43f6-9e11-7b776fc253c6",
+          "active": "false",
+          "aria": null,
+          "title": "J7 probe 2"
+        }
+      ],
+      "strips": 1,
+      "xterm": 3
+    },
+    "storeAfter": {
+      "activeTabId": "web-terminal-02acdaee-1574-4c7c-83a7-a014dfd8a434",
+      "activeTabIdByWorktree": "web-terminal-02acdaee-1574-4c7c-83a7-a014dfd8a434",
+      "activeGroupIdByWorktree": "f70b5c48-6931-477e-8c65-d8ade124aab9",
+      "tabs": [
+        {
+          "id": "web-terminal-02acdaee-1574-4c7c-83a7-a014dfd8a434"
+        },
+        {
+          "id": "web-terminal-4aa40b5b-6f66-430b-bede-309ad26f5f57"
+        },
+        {
+          "id": "web-terminal-d18592f4-2586-43f6-9e11-7b776fc253c6"
+        }
+      ]
+    }
+  },
+  "errors": [],
+  "projects": [
+    {
+      "id": "proj_payment",
+      "key": "payment-service",
+      "hostId": "host_dev001"
+    },
+    {
+      "id": "proj_4b5721f0",
+      "key": "demo-app",
+      "hostId": "host_b58500c3"
+    },
+    {
+      "id": "proj_c1cc0f50",
+      "key": "zhangsan-demo",
+      "hostId": "host_b58500c3"
+    },
+    {
+      "id": "proj_1b716a71",
+      "key": "infra-tools",
+      "hostId": "host_132a3c9d"
+    },
+    {
+      "id": "proj_404ff737",
+      "key": "zhangsan-lab",
+      "hostId": "host_132a3c9d"
+    }
+  ]
+}

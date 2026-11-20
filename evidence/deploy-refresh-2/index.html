@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Orca Cloud 云端开发平台</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/assets/e7df5302c33d/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- 登录 -->
+      <section id="view-login" class="login-wrap" hidden>
+        <form class="login-card" id="loginForm" novalidate>
+          <div class="brand">
+            <svg viewBox="0 0 24 24" class="brand-mark" aria-hidden="true">
+              <rect
+                x="3"
+                y="3"
+                width="18"
+                height="18"
+                rx="5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+              />
+              <path
+                d="M8 15.5 12 8l4 7.5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linejoin="round"
+              />
+            </svg>
+            <span>ORCA CLOUD</span>
+          </div>
+          <h1>登录云端开发平台</h1>
+          <p class="muted">使用公司域账号登录</p>
+
+          <label class="field">
+            <span>域账号</span>
+            <input
+              id="username"
+              name="username"
+              autocomplete="username"
+              placeholder="域账号，如 zhangsan"
+              required
+            />
+          </label>
+          <label class="field">
+            <span>密码</span>
+            <div class="password-row">
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autocomplete="current-password"
+                placeholder="密码"
+                required
+              />
+              <button type="button" class="icon-btn" id="togglePassword" aria-label="显示密码">
+                <svg viewBox="0 0 24 24">
+                  <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              </button>
+            </div>
+          </label>
+          <p class="inline-error" id="loginError" hidden></p>
+          <button class="btn primary block" id="loginBtn" type="submit">登录</button>
+          <p class="login-foot">
+            登录即表示同意《平台使用规范》。<span class="tag">内网直连 / 外网访问</span>
+          </p>
+        </form>
+      </section>
+
+      <!-- 主框架 -->
+      <div id="view-app" class="shell" hidden>
+        <aside class="sidebar">
+          <div class="brand small">
+            <svg viewBox="0 0 24 24" class="brand-mark" aria-hidden="true">
+              <rect
+                x="3"
+                y="3"
+                width="18"
+                height="18"
+                rx="5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+              />
+              <path
+                d="M8 15.5 12 8l4 7.5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linejoin="round"
+              />
+            </svg>
+            <span>ORCA CLOUD</span>
+          </div>
+          <nav class="nav" id="nav">
+            <button data-route="workbench" class="nav-item">工作台</button>
+            <button data-route="projects" class="nav-item">我的项目</button>
+            <div class="nav-group" id="adminNav" hidden>
+              <p class="nav-label">管理</p>
+              <button data-route="hosts" class="nav-item">主机</button>
+              <button data-route="relays" class="nav-item">中继</button>
+              <button data-route="users" class="nav-item">用户管理</button>
+              <button data-route="audit" class="nav-item">审计日志</button>
+              <button data-route="settings" class="nav-item">平台设置</button>
+            </div>
+          </nav>
+          <div class="user-box">
+            <div class="avatar" id="userAvatar">—</div>
+            <div class="user-meta">
+              <span id="userName">—</span>
+              <span class="muted" id="userDept"></span>
+            </div>
+            <button class="link-btn" id="logoutBtn">退出</button>
+          </div>
+        </aside>
+
+        <main class="main">
+          <header class="topbar">
+            <div class="crumbs" id="crumbs">工作台</div>
+            <div class="topbar-actions">
+              <span class="role-chip" id="roleChip"></span>
+              <button class="btn ghost" id="open403">查看无权限页</button>
+            </div>
+          </header>
+          <div class="content" id="content"></div>
+        </main>
+      </div>
+    </div>
+    <script type="module" src="/assets/e7df5302c33d/app.js"></script>
+  </body>
+</html>

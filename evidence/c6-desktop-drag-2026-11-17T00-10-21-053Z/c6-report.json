@@ -1,0 +1,58 @@
+{
+  "generatedAt": "2026-11-17T00:10:21.055Z",
+  "build": {
+    "entry": "/Users/gongdewei/work/projects/orca/out/main/index.js",
+    "flavor": "production (no VITE_EXPOSE_STORE)",
+    "rebuilt": false
+  },
+  "steps": [
+    {
+      "name": "start-platform",
+      "ok": true,
+      "ms": 518
+    },
+    {
+      "name": "admin-login",
+      "ok": true,
+      "ms": 35
+    },
+    {
+      "name": "host-token",
+      "ok": true,
+      "ms": 5
+    },
+    {
+      "name": "launch-host",
+      "ok": true,
+      "ms": 6246
+    },
+    {
+      "name": "wait-host-online",
+      "ok": true,
+      "ms": 6
+    },
+    {
+      "name": "launch-client",
+      "ok": true,
+      "ms": 2549
+    },
+    {
+      "name": "sign-in",
+      "ok": true,
+      "ms": 30950
+    },
+    {
+      "name": "open-project",
+      "ok": true,
+      "ms": 151
+    },
+    {
+      "name": "create-first-tab",
+      "ok": false,
+      "ms": 10006,
+      "error": "locator.click: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /^(New tab|新建标签页)$/i }).first()\u001b[22m\n"
+    }
+  ],
+  "verdict": "FAIL",
+  "error": "locator.click: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /^(New tab|新建标签页)$/i }).first()\u001b[22m\n"
+}

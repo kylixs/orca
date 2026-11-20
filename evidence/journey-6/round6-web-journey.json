@@ -1,0 +1,67 @@
+{
+  "base": "https://127.0.0.1:18787",
+  "stamp": 1794810151538,
+  "markers": {
+    "one": "J6-A-ONE-1794810151538",
+    "two": "J6-A-TWO-1794810151538"
+  },
+  "steps": {
+    "devLogin": {
+      "status": 200,
+      "ok": true
+    },
+    "cleanProject": {
+      "key": "zhangsan-demo",
+      "status": 200,
+      "projectId": "proj_558c064b",
+      "inheritedTabs": "to-close"
+    },
+    "a1": {
+      "url": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787&project=proj_558c064b",
+      "hash": "",
+      "appLayout": true,
+      "signInForm": false,
+      "tabs": [
+        {
+          "id": "web-terminal-ac5feef6-bd2f-4a5c-bcba-1cc7dae673fd",
+          "title": "J6 terminal 1",
+          "ariaSelected": null,
+          "dataActive": "true"
+        },
+        {
+          "id": "web-terminal-e0a6074e-961d-40f0-a8c4-0e0231d27eed",
+          "title": "J6 terminal 2",
+          "ariaSelected": null,
+          "dataActive": "false"
+        },
+        {
+          "id": "web-terminal-14621137-612d-49aa-adae-7a400171ff9d",
+          "title": "Terminal",
+          "ariaSelected": null,
+          "dataActive": "false"
+        }
+      ],
+      "strips": 1,
+      "xterm": 3,
+      "host": {
+        "envId": "web-f07eb0d9-acdb-464c-aa7f-fec42ba9fd49",
+        "worktreeId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3",
+        "candidates": [],
+        "apiAvailable": true
+      }
+    },
+    "a5CloseRetire": {
+      "inherited": 3,
+      "retired": [
+        "ac5feef6-bd2f-4a5c-bcba-1cc7dae673fd::07e9f3d6-28ff-417e-9f81-3d99a0c11f65",
+        "e0a6074e-961d-40f0-a8c4-0e0231d27eed::22a2f0e2-dffc-476f-ab68-b3a583b4ab60"
+      ],
+      "remaining": 1,
+      "retiredStillListed": false
+    }
+  },
+  "gates": {},
+  "errors": [],
+  "ok": false,
+  "failure": "Error: grouped-activate: {\"createdTabs\":[{\"handle\":\"term_112f086a-504f-4819-bc9a-c69f4e74e762\",\"parentTabId\":\"c918802d-5096-49a6-8869-7b03381748e3\",\"surfaceId\":\"c918802d-5096-49a6-8869-7b03381748e3::faae2067-05a4-4ef0-ae64-45c5de4b9f60\"},{\"handle\":\"term_8f0a12c9-2fdc-4ce2-ba3c-27db184fe9fe\",\"parentTabId\":\"9e5f0468-15ab-498b-a4f5-f4a1b887716d\",\"surfaceId\":\"9e5f0468-15ab-498b-a4f5-f4a1b887716d::8f461ddb-55bf-42de-89f8-9f94c97b019b\"}],\"groups\":[{\"id\":\"5765ef62-9bb0-4f1d-aa0a-3b7a7a7d9971\",\"activeTabId\":\"9e5f0468-15ab-498b-a4f5-f4a1b887716d\",\"tabOrder\":[\"c918802d-5096-49a6-8869-7b03381748e3\",\"9e5f0468-15ab-498b-a4f5-f4a1b887716d\",\"14621137-612d-49aa-adae-7a400171ff9d\"]}],\"activeTabId\":\"9e5f0468-15ab-498b-a4f5-f4a1b887716d::8f461ddb-55bf-42de-89f8-9f94c97b019b\",\"activeGroupId\":\"5765ef62-9bb0-4f1d-aa0a-3b7a7a7d9971\",\"tabs\":[{\"id\":\"c918802d-5096-49a6-8869-7b03381748e3::faae2067-05a4-4ef0-ae64-45c5de4b9f60\",\"parentTabId\":\"c918802d-5096-49a6-8869-7b03381748e3\"},{\"id\":\"9e5f0468-15ab-498b-a4f5-f4a1b887716d::8f461ddb-55bf-42de-89f8-9f94c97b019b\",\"parentTabId\":\"9e5f0468-15ab-498b-a4f5-f4a1b887716d\"},{\"id\":\"14621137-612d-49aa-adae-7a400171ff9d::16991967-2276-4e45-bd1c-305f8f0b33bb\",\"parentTabId\":\"14621137-612d-49aa-adae-7a400171ff9d\"}]}"
+}

@@ -1,0 +1,419 @@
+{
+  "base": "https://127.0.0.1:18787",
+  "stamp": 1794836102067,
+  "markers": {
+    "one": "U113-RT-ONE-1794836102067",
+    "two": "U113-RT-TWO-1794836102067"
+  },
+  "setup": {
+    "login": {
+      "status": 200,
+      "ok": true
+    },
+    "project": {
+      "id": "proj_c1cc0f50",
+      "key": "zhangsan-demo",
+      "hostId": "host_b58500c3",
+      "token": true
+    },
+    "env": {
+      "envId": "web-5bdb1ed8-8cd9-456e-a70f-432a63d90dda",
+      "activeWorktreeId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3",
+      "worktree": "id:6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3"
+    },
+    "retire": {
+      "baselineTabs": 2,
+      "keepParent": "ad5abd8b-ae27-43a9-9b77-30f3e6580e41",
+      "retired": [
+        {
+          "parent": "08dfe6fe-2c1d-4c90-aa3e-688005b779ec",
+          "ok": true
+        }
+      ]
+    },
+    "seeded": {
+      "tabCount": 3,
+      "groupCount": 2,
+      "markers": {
+        "one": "U113-RT-ONE-1794836102067",
+        "two": "U113-RT-TWO-1794836102067"
+      },
+      "handles": {
+        "one": "term_77218ad7-782b-4302-8c21-e7375a42c187",
+        "two": "term_223eca32-66d3-4786-8007-84afa5f5a96e"
+      },
+      "terminalTabIds": [
+        "b39c545e-13ed-4266-9050-ec74cbecfdc7",
+        "ded1a81d-53a2-4de4-911a-216b3fcb9767"
+      ],
+      "groups": [
+        {
+          "id": "b0332593-e8ad-4052-935f-190c3706d4f7",
+          "tabOrder": [
+            "ad5abd8b-ae27-43a9-9b77-30f3e6580e41",
+            "ded1a81d-53a2-4de4-911a-216b3fcb9767"
+          ]
+        },
+        {
+          "id": "654a9ef0-67da-4651-879a-5b487e6ba8fd",
+          "tabOrder": [
+            "b39c545e-13ed-4266-9050-ec74cbecfdc7"
+          ]
+        }
+      ]
+    }
+  },
+  "rounds": [
+    {
+      "scenario": "f5",
+      "round": 1,
+      "phase": "r1-f5",
+      "checks": {
+        "app_layout": true,
+        "signed_in": true,
+        "tabs_3": true,
+        "groups_2": true,
+        "single_active": true,
+        "marker_one_readable": true,
+        "marker_two_readable": true
+      },
+      "pass": true,
+      "observation": {
+        "host": {
+          "tabs": 3,
+          "groups": 2,
+          "activeTabId": "ded1a81d-53a2-4de4-911a-216b3fcb9767::daa2423e-68d1-443b-9cb4-653243f9825b",
+          "activeParent": "ded1a81d-53a2-4de4-911a-216b3fcb9767"
+        },
+        "dom": {
+          "tabs": 3,
+          "strips": 2,
+          "xterm": 3,
+          "active": "web-terminal-b39c545e-13ed-4266-9050-ec74cbecfdc7",
+          "activeEqualsStore": true,
+          "activeEqualsHost": false,
+          "bothMarkersVisible": false
+        },
+        "store": {
+          "tabs": 3,
+          "groups": 2,
+          "activeTabId": "web-terminal-b39c545e-13ed-4266-9050-ec74cbecfdc7",
+          "activeGroupId": "654a9ef0-67da-4651-879a-5b487e6ba8fd"
+        }
+      }
+    },
+    {
+      "scenario": "close-reopen",
+      "round": 1,
+      "phase": "r1-close-reopen",
+      "checks": {
+        "app_layout": true,
+        "signed_in": true,
+        "tabs_3": true,
+        "groups_2": true,
+        "single_active": true,
+        "marker_one_readable": true,
+        "marker_two_readable": true
+      },
+      "pass": true,
+      "observation": {
+        "host": {
+          "tabs": 3,
+          "groups": 2,
+          "activeTabId": "ded1a81d-53a2-4de4-911a-216b3fcb9767::daa2423e-68d1-443b-9cb4-653243f9825b",
+          "activeParent": "ded1a81d-53a2-4de4-911a-216b3fcb9767"
+        },
+        "dom": {
+          "tabs": 3,
+          "strips": 2,
+          "xterm": 2,
+          "active": "web-terminal-ded1a81d-53a2-4de4-911a-216b3fcb9767",
+          "activeEqualsStore": true,
+          "activeEqualsHost": true,
+          "bothMarkersVisible": false
+        },
+        "store": {
+          "tabs": 3,
+          "groups": 2,
+          "activeTabId": "web-terminal-ded1a81d-53a2-4de4-911a-216b3fcb9767",
+          "activeGroupId": "654a9ef0-67da-4651-879a-5b487e6ba8fd"
+        }
+      }
+    },
+    {
+      "scenario": "second-open",
+      "round": 1,
+      "phase": "r1-second-open",
+      "checks": {
+        "app_layout": true,
+        "signed_in": true,
+        "tabs_3": true,
+        "groups_2": true,
+        "single_active": true,
+        "marker_one_readable": true,
+        "marker_two_readable": true
+      },
+      "pass": true,
+      "observation": {
+        "host": {
+          "tabs": 3,
+          "groups": 2,
+          "activeTabId": "b39c545e-13ed-4266-9050-ec74cbecfdc7::540c879d-e7fa-489d-9766-41fe519ebda9",
+          "activeParent": "b39c545e-13ed-4266-9050-ec74cbecfdc7"
+        },
+        "dom": {
+          "tabs": 3,
+          "strips": 2,
+          "xterm": 2,
+          "active": "web-terminal-b39c545e-13ed-4266-9050-ec74cbecfdc7",
+          "activeEqualsStore": true,
+          "activeEqualsHost": true,
+          "bothMarkersVisible": false
+        },
+        "store": {
+          "tabs": 3,
+          "groups": 2,
+          "activeTabId": "web-terminal-b39c545e-13ed-4266-9050-ec74cbecfdc7",
+          "activeGroupId": "654a9ef0-67da-4651-879a-5b487e6ba8fd"
+        }
+      }
+    },
+    {
+      "scenario": "f5",
+      "round": 2,
+      "phase": "r2-f5",
+      "checks": {
+        "app_layout": true,
+        "signed_in": true,
+        "tabs_3": true,
+        "groups_2": true,
+        "single_active": true,
+        "marker_one_readable": true,
+        "marker_two_readable": true
+      },
+      "pass": true,
+      "observation": {
+        "host": {
+          "tabs": 3,
+          "groups": 2,
+          "activeTabId": "ded1a81d-53a2-4de4-911a-216b3fcb9767::daa2423e-68d1-443b-9cb4-653243f9825b",
+          "activeParent": "ded1a81d-53a2-4de4-911a-216b3fcb9767"
+        },
+        "dom": {
+          "tabs": 3,
+          "strips": 2,
+          "xterm": 2,
+          "active": "web-terminal-ded1a81d-53a2-4de4-911a-216b3fcb9767",
+          "activeEqualsStore": true,
+          "activeEqualsHost": true,
+          "bothMarkersVisible": false
+        },
+        "store": {
+          "tabs": 3,
+          "groups": 2,
+          "activeTabId": "web-terminal-ded1a81d-53a2-4de4-911a-216b3fcb9767",
+          "activeGroupId": "654a9ef0-67da-4651-879a-5b487e6ba8fd"
+        }
+      }
+    },
+    {
+      "scenario": "close-reopen",
+      "round": 2,
+      "phase": "r2-close-reopen",
+      "checks": {
+        "app_layout": true,
+        "signed_in": true,
+        "tabs_3": true,
+        "groups_2": true,
+        "single_active": true,
+        "marker_one_readable": true,
+        "marker_two_readable": true
+      },
+      "pass": true,
+      "observation": {
+        "host": {
+          "tabs": 3,
+          "groups": 2,
+          "activeTabId": "ded1a81d-53a2-4de4-911a-216b3fcb9767::daa2423e-68d1-443b-9cb4-653243f9825b",
+          "activeParent": "ded1a81d-53a2-4de4-911a-216b3fcb9767"
+        },
+        "dom": {
+          "tabs": 3,
+          "strips": 2,
+          "xterm": 3,
+          "active": "web-terminal-b39c545e-13ed-4266-9050-ec74cbecfdc7",
+          "activeEqualsStore": true,
+          "activeEqualsHost": false,
+          "bothMarkersVisible": false
+        },
+        "store": {
+          "tabs": 3,
+          "groups": 2,
+          "activeTabId": "web-terminal-b39c545e-13ed-4266-9050-ec74cbecfdc7",
+          "activeGroupId": "654a9ef0-67da-4651-879a-5b487e6ba8fd"
+        }
+      }
+    },
+    {
+      "scenario": "second-open",
+      "round": 2,
+      "phase": "r2-second-open",
+      "checks": {
+        "app_layout": true,
+        "signed_in": true,
+        "tabs_3": true,
+        "groups_2": true,
+        "single_active": true,
+        "marker_one_readable": true,
+        "marker_two_readable": true
+      },
+      "pass": true,
+      "observation": {
+        "host": {
+          "tabs": 3,
+          "groups": 2,
+          "activeTabId": "b39c545e-13ed-4266-9050-ec74cbecfdc7::540c879d-e7fa-489d-9766-41fe519ebda9",
+          "activeParent": "b39c545e-13ed-4266-9050-ec74cbecfdc7"
+        },
+        "dom": {
+          "tabs": 3,
+          "strips": 2,
+          "xterm": 3,
+          "active": "web-terminal-ded1a81d-53a2-4de4-911a-216b3fcb9767",
+          "activeEqualsStore": true,
+          "activeEqualsHost": false,
+          "bothMarkersVisible": false
+        },
+        "store": {
+          "tabs": 3,
+          "groups": 2,
+          "activeTabId": "web-terminal-ded1a81d-53a2-4de4-911a-216b3fcb9767",
+          "activeGroupId": "654a9ef0-67da-4651-879a-5b487e6ba8fd"
+        }
+      }
+    },
+    {
+      "scenario": "f5",
+      "round": 3,
+      "phase": "r3-f5",
+      "checks": {
+        "app_layout": true,
+        "signed_in": true,
+        "tabs_3": true,
+        "groups_2": true,
+        "single_active": true,
+        "marker_one_readable": true,
+        "marker_two_readable": true
+      },
+      "pass": true,
+      "observation": {
+        "host": {
+          "tabs": 3,
+          "groups": 2,
+          "activeTabId": "b39c545e-13ed-4266-9050-ec74cbecfdc7::540c879d-e7fa-489d-9766-41fe519ebda9",
+          "activeParent": "b39c545e-13ed-4266-9050-ec74cbecfdc7"
+        },
+        "dom": {
+          "tabs": 3,
+          "strips": 2,
+          "xterm": 2,
+          "active": "web-terminal-b39c545e-13ed-4266-9050-ec74cbecfdc7",
+          "activeEqualsStore": true,
+          "activeEqualsHost": true,
+          "bothMarkersVisible": false
+        },
+        "store": {
+          "tabs": 3,
+          "groups": 2,
+          "activeTabId": "web-terminal-b39c545e-13ed-4266-9050-ec74cbecfdc7",
+          "activeGroupId": "654a9ef0-67da-4651-879a-5b487e6ba8fd"
+        }
+      }
+    },
+    {
+      "scenario": "close-reopen",
+      "round": 3,
+      "phase": "r3-close-reopen",
+      "checks": {
+        "app_layout": true,
+        "signed_in": true,
+        "tabs_3": true,
+        "groups_2": true,
+        "single_active": true,
+        "marker_one_readable": true,
+        "marker_two_readable": true
+      },
+      "pass": true,
+      "observation": {
+        "host": {
+          "tabs": 3,
+          "groups": 2,
+          "activeTabId": "b39c545e-13ed-4266-9050-ec74cbecfdc7::540c879d-e7fa-489d-9766-41fe519ebda9",
+          "activeParent": "b39c545e-13ed-4266-9050-ec74cbecfdc7"
+        },
+        "dom": {
+          "tabs": 3,
+          "strips": 2,
+          "xterm": 3,
+          "active": "web-terminal-ded1a81d-53a2-4de4-911a-216b3fcb9767",
+          "activeEqualsStore": true,
+          "activeEqualsHost": false,
+          "bothMarkersVisible": false
+        },
+        "store": {
+          "tabs": 3,
+          "groups": 2,
+          "activeTabId": "web-terminal-ded1a81d-53a2-4de4-911a-216b3fcb9767",
+          "activeGroupId": "654a9ef0-67da-4651-879a-5b487e6ba8fd"
+        }
+      }
+    },
+    {
+      "scenario": "second-open",
+      "round": 3,
+      "phase": "r3-second-open",
+      "checks": {
+        "app_layout": true,
+        "signed_in": true,
+        "tabs_3": true,
+        "groups_2": true,
+        "single_active": true,
+        "marker_one_readable": true,
+        "marker_two_readable": true
+      },
+      "pass": true,
+      "observation": {
+        "host": {
+          "tabs": 3,
+          "groups": 2,
+          "activeTabId": "b39c545e-13ed-4266-9050-ec74cbecfdc7::540c879d-e7fa-489d-9766-41fe519ebda9",
+          "activeParent": "b39c545e-13ed-4266-9050-ec74cbecfdc7"
+        },
+        "dom": {
+          "tabs": 3,
+          "strips": 2,
+          "xterm": 2,
+          "active": "web-terminal-b39c545e-13ed-4266-9050-ec74cbecfdc7",
+          "activeEqualsStore": true,
+          "activeEqualsHost": true,
+          "bothMarkersVisible": false
+        },
+        "store": {
+          "tabs": 3,
+          "groups": 2,
+          "activeTabId": "web-terminal-b39c545e-13ed-4266-9050-ec74cbecfdc7",
+          "activeGroupId": "654a9ef0-67da-4651-879a-5b487e6ba8fd"
+        }
+      }
+    }
+  ],
+  "observations": {},
+  "errors": [],
+  "gates": {
+    "f5_3_rounds_pass": true,
+    "close-reopen_3_rounds_pass": true,
+    "second-open_3_rounds_pass": true,
+    "all_9_rounds_pass": true
+  },
+  "ok": true
+}

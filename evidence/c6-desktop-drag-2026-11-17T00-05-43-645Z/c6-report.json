@@ -1,0 +1,53 @@
+{
+  "generatedAt": "2026-11-17T00:05:43.645Z",
+  "build": {
+    "entry": "/Users/gongdewei/work/projects/orca/out/main/index.js",
+    "flavor": "production (no VITE_EXPOSE_STORE)",
+    "rebuilt": false
+  },
+  "steps": [
+    {
+      "name": "start-platform",
+      "ok": true,
+      "ms": 102
+    },
+    {
+      "name": "admin-login",
+      "ok": true,
+      "ms": 12
+    },
+    {
+      "name": "host-token",
+      "ok": true,
+      "ms": 2
+    },
+    {
+      "name": "launch-host",
+      "ok": true,
+      "ms": 537
+    },
+    {
+      "name": "wait-host-online",
+      "ok": true,
+      "ms": 9
+    },
+    {
+      "name": "launch-client",
+      "ok": true,
+      "ms": 660
+    },
+    {
+      "name": "sign-in",
+      "ok": true,
+      "ms": 30329
+    },
+    {
+      "name": "open-project",
+      "ok": false,
+      "ms": 180812,
+      "error": "page.waitForSelector: Timeout 180000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[data-tab-id]') to be visible\u001b[22m\n"
+    }
+  ],
+  "verdict": "FAIL",
+  "error": "page.waitForSelector: Timeout 180000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[data-tab-id]') to be visible\u001b[22m\n"
+}

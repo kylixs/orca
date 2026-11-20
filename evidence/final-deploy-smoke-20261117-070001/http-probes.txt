@@ -1,0 +1,7 @@
+=== platform / ===
+status=200
+=== relay web-index ===
+status=200 size=564
+52a161cd7c489f09e1dc8638f4f17d4112d395ba3dc3743f8f7750e509c0b8b9  /tmp/relay-web-index.html
+52a161cd7c489f09e1dc8638f4f17d4112d395ba3dc3743f8f7750e509c0b8b9  out/web/web-index.html
+served==disk: YES

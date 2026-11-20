@@ -1,0 +1,80 @@
+{
+  "workOrder": "W9 A-line rerun (e2e mode)",
+  "generatedAt": "2026-11-16T22:19:35.499Z",
+  "build": {
+    "mode": "e2e",
+    "env": "VITE_EXPOSE_STORE=true",
+    "targets": [
+      "main",
+      "preload",
+      "renderer"
+    ],
+    "webRebuilt": false
+  },
+  "preload": {
+    "MODE": "e2e",
+    "VITE_EXPOSE_STORE": "true",
+    "exposeStore": true
+  },
+  "renderer": {
+    "monacoE2EProbe": true
+  },
+  "artifacts": {
+    "before": {
+      "main": "eaebe47931309834e046d0c8dc8fc1f7917bb60da373f13690f233ccf915eb63",
+      "preload": "9727610cae36e75dbc87be9a72c329a24ddfd7625991d93a4a4f1ef9e51318cc",
+      "rendererIndex": "6b6657a13059ca11ea9b2b4720a2763dcdb1f4615d4de06d2a082fff346a821d",
+      "webIndex": "02e50b3c373b06fdab5936f3aae6b3b9e3c3f69b05a2a62a2603c74e72208733"
+    },
+    "after": {
+      "main": "eaebe47931309834e046d0c8dc8fc1f7917bb60da373f13690f233ccf915eb63",
+      "preload": "9a7ca33511c948c4f5a2060484bdcba3950887048126f3e51bff32541c5e7070",
+      "rendererIndex": "f3a32bb87bcd64720dea24d88406857f3eebff0bc7cd185c627c58bef5722cdb",
+      "webIndex": "02e50b3c373b06fdab5936f3aae6b3b9e3c3f69b05a2a62a2603c74e72208733"
+    }
+  },
+  "run": {
+    "command": "ORCA_BACKGROUND_LAUNCH=1 SKIP_BUILD=1 ... playwright test cloud-golden-journey-desktop.spec.ts --project=electron-headless --workers=1",
+    "result": "passed",
+    "wallSeconds": 39.5,
+    "testSeconds": 37.6
+  },
+  "steps": [
+    {
+      "step": "S0-platform",
+      "ok": true
+    },
+    {
+      "step": "S1-host-enrol",
+      "ok": true
+    },
+    {
+      "step": "S2-project-grant",
+      "ok": true
+    },
+    {
+      "step": "A2-login",
+      "ok": true
+    },
+    {
+      "step": "A3-open-project",
+      "ok": true
+    },
+    {
+      "step": "A4-terminal",
+      "ok": true
+    },
+    {
+      "step": "A5-file-tree",
+      "ok": true
+    },
+    {
+      "step": "A6-evidence",
+      "ok": true
+    },
+    {
+      "step": "A7-host-audit",
+      "ok": true
+    }
+  ]
+}

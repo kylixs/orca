@@ -1,0 +1,89 @@
+{
+  "steps": {
+    "freshTabs": [
+      {
+        "id": "web-terminal-8ea1dcda-a9cd-49e9-982e-0a323185725e",
+        "title": "Terminal",
+        "selected": null,
+        "rect": {
+          "x": 281,
+          "y": 4,
+          "w": 220
+        }
+      },
+      {
+        "id": "web-terminal-c474504a-4784-4440-a724-83ff14166767",
+        "title": "Terminal",
+        "selected": null,
+        "rect": {
+          "x": 501,
+          "y": 4,
+          "w": 220
+        }
+      }
+    ],
+    "tabsAfterClose": [
+      {
+        "id": "web-terminal-c474504a-4784-4440-a724-83ff14166767",
+        "title": "Terminal 3",
+        "selected": null,
+        "rect": {
+          "x": 281,
+          "y": 4,
+          "w": 220
+        }
+      }
+    ],
+    "menu": [
+      {
+        "role": "listbox",
+        "slot": null,
+        "text": "demo-app Inactive main primary main Inactive main main-2 Active main main-3",
+        "html": "<div role=\"presentation\" class=\"relative w-full\" style=\"height: 196px;\"><div role=\"presentation\" data-worktree-virtual-row=\"true\" data-worktree-virtual-row-key=\"hdr:project:repo:2dcb1590-b849-45bb-912a-9a4cc2123990\" data-worktree-virtual-row-start=\"0\" data-worktree-sticky-header=\"\" data-worktree-sti"
+      },
+      {
+        "role": null,
+        "slot": null,
+        "text": "New Terminal ⌘T New Browser Tab ⌘⇧B New Markdown ⌘⇧M Claude Claude Agent Teams Qoder CLI Gemini Kiro CodeBuddy Agent settings…",
+        "html": "<div data-side=\"bottom\" data-align=\"start\" role=\"menu\" aria-orientation=\"vertical\" data-state=\"open\" data-radix-menu-content=\"\" dir=\"ltr\" id=\"radix-_r_5b_\" aria-labelledby=\"radix-_r_5a_\" data-slot=\"dropdown-menu-content\" class=\"z-[70] max-h-(--radix-dropdown-menu-content-available-height) min-w-[11r"
+      },
+      {
+        "role": "menu",
+        "slot": "dropdown-menu-content",
+        "text": "New Terminal ⌘T New Browser Tab ⌘⇧B New Markdown ⌘⇧M Claude Claude Agent Teams Qoder CLI Gemini Kiro CodeBuddy Agent settings…",
+        "html": "<form class=\"pb-1\"><div class=\"-mx-1 flex items-center px-3\"><input data-slot=\"input\" class=\"w-full min-w-0 appearance-none border-input py-1 transition-[color,box-shadow] outline-none selection:bg-primary selection:text-primary-foreground file:inline-flex file:h-7 file:border-0 file:bg-transparent "
+      }
+    ],
+    "menuTexts": [
+      "Inactivemainprimarymain",
+      "Inactivemainmain-2",
+      "Activemainmain-3",
+      "New Terminal⌘T",
+      "New Browser Tab⌘⇧B",
+      "New Markdown⌘⇧M",
+      "Claude",
+      "Claude Agent Teams",
+      "Qoder CLI",
+      "Gemini",
+      "Kiro",
+      "CodeBuddy",
+      "Agent settings…"
+    ],
+    "newTerminalCount": 1,
+    "tabsAfterCreate": [
+      {
+        "id": "web-terminal-c474504a-4784-4440-a724-83ff14166767",
+        "title": "Terminal 3",
+        "selected": null,
+        "rect": {
+          "x": 281,
+          "y": 4,
+          "w": 220
+        }
+      }
+    ],
+    "created": false
+  },
+  "errors": [],
+  "tips": 1
+}

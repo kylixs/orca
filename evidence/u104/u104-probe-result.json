@@ -1,0 +1,99 @@
+{
+  "base": "https://127.0.0.1:18787",
+  "marker": "U104-1794802114389",
+  "steps": {
+    "open1-fresh": {
+      "url": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787",
+      "hash": "",
+      "tabs": [
+        {
+          "id": "f058120b-396a-4cd6-bbc7-45b30463075f",
+          "title": "Terminal 1",
+          "active": null
+        }
+      ],
+      "groups": [],
+      "terminalRows": [],
+      "storage": {
+        "orca.web.workspaceSession.v1.runtime:web-880643a6-9275-4bf5-97f5-cf0f3ab77f92": "{\"activeRepoId\":null,\"activeWorktreeId\":\"2dcb1590-b849-45bb-912a-9a4cc2123990::/Users/gongdewei/orca-local-env/host/projects/demo-app/.orca-worktrees/admin/main-2\",\"activeTabId\":null,\"tabsByWorktree\":{},\"terminalLayoutsByTabId\":{},\"openFilesByWorktree\":{},\"markdownFrontmatterVisible\":{},\"browserTabsByWorktree\":{},\"browserPagesByWorkspace\":{},\"activeBrowserTabIdByWorktree\":{},\"activeFileIdByWorktree\":{},\"activeTabTypeByWorktree\":{},\"browserUrlHistory\":[],\"defaultTerminalTabsAppliedByWorktreeId\":{}}",
+        "orca.web.workspaceSession.v1": "{\"activeRepoId\":null,\"activeWorktreeId\":null,\"activeTabId\":null,\"tabsByWorktree\":{},\"terminalLayoutsByTabId\":{},\"openFilesByWorktree\":{},\"markdownFrontmatterVisible\":{},\"browserTabsByWorktree\":{},\"browserPagesByWorkspace\":{},\"activeBrowserTabIdByWorktree\":{},\"activeFileIdByWorktree\":{},\"activeTabTypeByWorktree\":{},\"browserUrlHistory\":[],\"defaultTerminalTabsAppliedByWorktreeId\":{}}"
+      }
+    },
+    "open1-after-marker": {
+      "url": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787",
+      "hash": "",
+      "tabs": [
+        {
+          "id": "f058120b-396a-4cd6-bbc7-45b30463075f",
+          "title": "Terminal 1",
+          "active": null
+        }
+      ],
+      "groups": [],
+      "terminalRows": [],
+      "storage": {
+        "orca.web.workspaceSession.v1.runtime:web-880643a6-9275-4bf5-97f5-cf0f3ab77f92": "{\"activeRepoId\":null,\"activeWorktreeId\":\"2dcb1590-b849-45bb-912a-9a4cc2123990::/Users/gongdewei/orca-local-env/host/projects/demo-app/.orca-worktrees/admin/main-2\",\"activeTabId\":null,\"tabsByWorktree\":{},\"terminalLayoutsByTabId\":{},\"openFilesByWorktree\":{},\"markdownFrontmatterVisible\":{},\"browserTabsByWorktree\":{},\"browserPagesByWorkspace\":{},\"activeBrowserTabIdByWorktree\":{},\"activeFileIdByWorktree\":{},\"activeTabTypeByWorktree\":{},\"browserUrlHistory\":[],\"defaultTerminalTabsAppliedByWorktreeId\":{}}",
+        "orca.web.workspaceSession.v1": "{\"activeRepoId\":null,\"activeWorktreeId\":null,\"activeTabId\":null,\"tabsByWorktree\":{},\"terminalLayoutsByTabId\":{},\"openFilesByWorktree\":{},\"markdownFrontmatterVisible\":{},\"browserTabsByWorktree\":{},\"browserPagesByWorkspace\":{},\"activeBrowserTabIdByWorktree\":{},\"activeFileIdByWorktree\":{},\"activeTabTypeByWorktree\":{},\"browserUrlHistory\":[],\"defaultTerminalTabsAppliedByWorktreeId\":{}}"
+      }
+    },
+    "open2-second-tab-fresh": {
+      "url": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787",
+      "hash": "",
+      "tabs": [
+        {
+          "id": "68b62096-11e3-41a9-9b68-03497e785919",
+          "title": "Terminal 1",
+          "active": null
+        }
+      ],
+      "groups": [],
+      "terminalRows": [],
+      "storage": {
+        "orca.web.workspaceSession.v1.runtime:web-880643a6-9275-4bf5-97f5-cf0f3ab77f92": "{\"activeRepoId\":null,\"activeWorktreeId\":\"2dcb1590-b849-45bb-912a-9a4cc2123990::/Users/gongdewei/orca-local-env/host/projects/demo-app/.orca-worktrees/admin/main-2\",\"activeTabId\":null,\"tabsByWorktree\":{},\"terminalLayoutsByTabId\":{},\"openFilesByWorktree\":{},\"markdownFrontmatterVisible\":{},\"browserTabsByWorktree\":{},\"browserPagesByWorkspace\":{},\"activeBrowserTabIdByWorktree\":{},\"activeFileIdByWorktree\":{},\"activeTabTypeByWorktree\":{},\"browserUrlHistory\":[],\"defaultTerminalTabsAppliedByWorktreeId\":{}}",
+        "orca.web.workspaceSession.v1.runtime:web-81d0bff8-66cb-4411-8309-4f80b6a84fb2": "{\"activeRepoId\":null,\"activeWorktreeId\":\"2dcb1590-b849-45bb-912a-9a4cc2123990::/Users/gongdewei/orca-local-env/host/projects/demo-app/.orca-worktrees/admin/main-2\",\"activeTabId\":null,\"tabsByWorktree\":{},\"terminalLayoutsByTabId\":{},\"openFilesByWorktree\":{},\"markdownFrontmatterVisible\":{},\"browserTabsByWorktree\":{},\"browserPagesByWorkspace\":{},\"activeBrowserTabIdByWorktree\":{},\"activeFileIdByWorktree\":{},\"activeTabTypeByWorktree\":{},\"browserUrlHistory\":[],\"defaultTerminalTabsAppliedByWorktreeId\":{}}",
+        "orca.web.workspaceSession.v1": "{\"activeRepoId\":null,\"activeWorktreeId\":null,\"activeTabId\":null,\"tabsByWorktree\":{},\"terminalLayoutsByTabId\":{},\"openFilesByWorktree\":{},\"markdownFrontmatterVisible\":{},\"browserTabsByWorktree\":{},\"browserPagesByWorkspace\":{},\"activeBrowserTabIdByWorktree\":{},\"activeFileIdByWorktree\":{},\"activeTabTypeByWorktree\":{},\"browserUrlHistory\":[],\"defaultTerminalTabsAppliedByWorktreeId\":{}}"
+      }
+    },
+    "open2-settled": {
+      "url": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787",
+      "hash": "",
+      "tabs": [
+        {
+          "id": "68b62096-11e3-41a9-9b68-03497e785919",
+          "title": "Terminal 1",
+          "active": null
+        }
+      ],
+      "groups": [],
+      "terminalRows": [],
+      "storage": {
+        "orca.web.workspaceSession.v1.runtime:web-880643a6-9275-4bf5-97f5-cf0f3ab77f92": "{\"activeRepoId\":null,\"activeWorktreeId\":\"2dcb1590-b849-45bb-912a-9a4cc2123990::/Users/gongdewei/orca-local-env/host/projects/demo-app/.orca-worktrees/admin/main-2\",\"activeTabId\":null,\"tabsByWorktree\":{},\"terminalLayoutsByTabId\":{},\"openFilesByWorktree\":{},\"markdownFrontmatterVisible\":{},\"browserTabsByWorktree\":{},\"browserPagesByWorkspace\":{},\"activeBrowserTabIdByWorktree\":{},\"activeFileIdByWorktree\":{},\"activeTabTypeByWorktree\":{},\"browserUrlHistory\":[],\"defaultTerminalTabsAppliedByWorktreeId\":{}}",
+        "orca.web.workspaceSession.v1.runtime:web-81d0bff8-66cb-4411-8309-4f80b6a84fb2": "{\"activeRepoId\":null,\"activeWorktreeId\":\"2dcb1590-b849-45bb-912a-9a4cc2123990::/Users/gongdewei/orca-local-env/host/projects/demo-app/.orca-worktrees/admin/main-2\",\"activeTabId\":null,\"tabsByWorktree\":{},\"terminalLayoutsByTabId\":{},\"openFilesByWorktree\":{},\"markdownFrontmatterVisible\":{},\"browserTabsByWorktree\":{},\"browserPagesByWorkspace\":{},\"activeBrowserTabIdByWorktree\":{},\"activeFileIdByWorktree\":{},\"activeTabTypeByWorktree\":{},\"browserUrlHistory\":[],\"defaultTerminalTabsAppliedByWorktreeId\":{}}",
+        "orca.web.workspaceSession.v1": "{\"activeRepoId\":null,\"activeWorktreeId\":null,\"activeTabId\":null,\"tabsByWorktree\":{},\"terminalLayoutsByTabId\":{},\"openFilesByWorktree\":{},\"markdownFrontmatterVisible\":{},\"browserTabsByWorktree\":{},\"browserPagesByWorkspace\":{},\"activeBrowserTabIdByWorktree\":{},\"activeFileIdByWorktree\":{},\"activeTabTypeByWorktree\":{},\"browserUrlHistory\":[],\"defaultTerminalTabsAppliedByWorktreeId\":{}}"
+      }
+    },
+    "open2-after-reload": {
+      "url": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787",
+      "hash": "",
+      "tabs": [],
+      "groups": [],
+      "terminalRows": [],
+      "storage": {
+        "orca.web.workspaceSession.v1.runtime:web-880643a6-9275-4bf5-97f5-cf0f3ab77f92": "{\"activeRepoId\":null,\"activeWorktreeId\":\"2dcb1590-b849-45bb-912a-9a4cc2123990::/Users/gongdewei/orca-local-env/host/projects/demo-app/.orca-worktrees/admin/main-2\",\"activeTabId\":null,\"tabsByWorktree\":{},\"terminalLayoutsByTabId\":{},\"openFilesByWorktree\":{},\"markdownFrontmatterVisible\":{},\"browserTabsByWorktree\":{},\"browserPagesByWorkspace\":{},\"activeBrowserTabIdByWorktree\":{},\"activeFileIdByWorktree\":{},\"activeTabTypeByWorktree\":{},\"browserUrlHistory\":[],\"defaultTerminalTabsAppliedByWorktreeId\":{}}",
+        "orca.web.workspaceSession.v1.runtime:web-81d0bff8-66cb-4411-8309-4f80b6a84fb2": "{\"activeRepoId\":null,\"activeWorktreeId\":\"2dcb1590-b849-45bb-912a-9a4cc2123990::/Users/gongdewei/orca-local-env/host/projects/demo-app/.orca-worktrees/admin/main-2\",\"activeTabId\":null,\"tabsByWorktree\":{},\"terminalLayoutsByTabId\":{},\"openFilesByWorktree\":{},\"markdownFrontmatterVisible\":{},\"browserTabsByWorktree\":{},\"browserPagesByWorkspace\":{},\"activeBrowserTabIdByWorktree\":{},\"activeFileIdByWorktree\":{},\"activeTabTypeByWorktree\":{},\"browserUrlHistory\":[],\"defaultTerminalTabsAppliedByWorktreeId\":{}}",
+        "orca.web.workspaceSession.v1": "{\"activeRepoId\":null,\"activeWorktreeId\":\"2dcb1590-b849-45bb-912a-9a4cc2123990::/Users/gongdewei/orca-local-env/host/projects/demo-app/.orca-worktrees/admin/main-2\",\"activeTabId\":null,\"tabsByWorktree\":{},\"terminalLayoutsByTabId\":{},\"openFilesByWorktree\":{},\"markdownFrontmatterVisible\":{},\"browserTabsByWorktree\":{},\"browserPagesByWorkspace\":{},\"activeBrowserTabIdByWorktree\":{},\"activeFileIdByWorktree\":{},\"activeTabTypeByWorktree\":{},\"browserUrlHistory\":[],\"defaultTerminalTabsAppliedByWorktreeId\":{}}"
+      }
+    }
+  },
+  "ws": {
+    "open1": {
+      "sent": [],
+      "recv": []
+    },
+    "open2": {
+      "sent": [],
+      "recv": []
+    }
+  },
+  "errors": []
+}

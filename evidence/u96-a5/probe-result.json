@@ -1,0 +1,407 @@
+{
+  "marker": "U96_A5_LIVE_MARKER",
+  "workspacePath": "/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+  "workspace.info": {
+    "ok": true,
+    "result": {
+      "project": {
+        "id": "proj_a2e26d32",
+        "root": "/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project",
+        "repoUrl": "",
+        "defaultBranch": "main"
+      },
+      "workspace": {
+        "root": "/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan",
+        "path": "/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+        "branch": "e2e/main"
+      },
+      "perms": ["open", "terminal", "file:read", "file:write"],
+      "capabilities": ["cloud.session-tabs-restore.v1"]
+    }
+  },
+  "session.tabs.list.before": {
+    "worktree": "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+    "tabCount": 1,
+    "groupCount": 1,
+    "activeTabId": "2c6a68ca-4397-48f6-8c27-97b79d0f590b::d6368018-ac75-4975-8eb3-b34329f45757",
+    "activeGroupId": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+    "tabs": [
+      {
+        "id": "2c6a68ca-4397-48f6-8c27-97b79d0f590b::d6368018-ac75-4975-8eb3-b34329f45757",
+        "title": "Terminal",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      }
+    ],
+    "groups": [
+      {
+        "id": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+        "activeTabId": "2c6a68ca-4397-48f6-8c27-97b79d0f590b",
+        "tabOrder": ["2c6a68ca-4397-48f6-8c27-97b79d0f590b"]
+      }
+    ]
+  },
+  "terminal.create.first": {
+    "ok": true,
+    "result": {
+      "terminal": {
+        "handle": "term_f745e5b5-9a61-4cbf-ba9b-d18816fce649",
+        "tabId": "04fa727e-d536-4fd0-a45e-2cfc77727ecd",
+        "paneKey": "04fa727e-d536-4fd0-a45e-2cfc77727ecd:f06e8762-695d-4c9c-a579-a0795e359e2b",
+        "ptyId": "pty-probe-2",
+        "worktreeId": "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+        "title": "U96 A5 terminal 1",
+        "executionHostId": "local",
+        "hostPlatform": "darwin",
+        "surface": "background",
+        "processId": 59535,
+        "warning": "Terminal term_f745e5b5-9a61-4cbf-ba9b-d18816fce649 is running, but Orca could not make it discoverable. Run `orca terminal focus --terminal term_f745e5b5-9a61-4cbf-ba9b-d18816fce649` to reveal and focus it."
+      }
+    }
+  },
+  "terminal.create.second": {
+    "ok": true,
+    "result": {
+      "terminal": {
+        "handle": "term_5f7e8170-17ff-4ea2-b721-c4d63a42531d",
+        "tabId": "9d5cc28d-6cb5-4036-8ca9-1fc7f62c9434",
+        "paneKey": "9d5cc28d-6cb5-4036-8ca9-1fc7f62c9434:4eb57aaf-3814-4a1c-8aad-58c1707c800e",
+        "ptyId": "pty-probe-3",
+        "worktreeId": "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+        "title": "U96 A5 terminal 2",
+        "executionHostId": "local",
+        "hostPlatform": "darwin",
+        "surface": "background",
+        "processId": 59538,
+        "warning": "Terminal term_5f7e8170-17ff-4ea2-b721-c4d63a42531d is running, but Orca could not make it discoverable. Run `orca terminal focus --terminal term_5f7e8170-17ff-4ea2-b721-c4d63a42531d` to reveal and focus it."
+      }
+    }
+  },
+  "session.tabs.list.afterCreate": {
+    "worktree": "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+    "tabCount": 3,
+    "groupCount": 1,
+    "activeTabId": "2c6a68ca-4397-48f6-8c27-97b79d0f590b::d6368018-ac75-4975-8eb3-b34329f45757",
+    "activeGroupId": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+    "tabs": [
+      {
+        "id": "2c6a68ca-4397-48f6-8c27-97b79d0f590b::d6368018-ac75-4975-8eb3-b34329f45757",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      },
+      {
+        "id": "04fa727e-d536-4fd0-a45e-2cfc77727ecd::f06e8762-695d-4c9c-a579-a0795e359e2b",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      },
+      {
+        "id": "9d5cc28d-6cb5-4036-8ca9-1fc7f62c9434::4eb57aaf-3814-4a1c-8aad-58c1707c800e",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      }
+    ],
+    "groups": [
+      {
+        "id": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+        "activeTabId": "2c6a68ca-4397-48f6-8c27-97b79d0f590b",
+        "tabOrder": [
+          "2c6a68ca-4397-48f6-8c27-97b79d0f590b",
+          "04fa727e-d536-4fd0-a45e-2cfc77727ecd",
+          "9d5cc28d-6cb5-4036-8ca9-1fc7f62c9434"
+        ]
+      }
+    ]
+  },
+  "session.tabs.move.second": {
+    "ok": false,
+    "code": "RPC_TIMEOUT"
+  },
+  "session.tabs.list.afterMove": {
+    "worktree": "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+    "tabCount": 3,
+    "groupCount": 1,
+    "activeTabId": "2c6a68ca-4397-48f6-8c27-97b79d0f590b::d6368018-ac75-4975-8eb3-b34329f45757",
+    "activeGroupId": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+    "tabs": [
+      {
+        "id": "2c6a68ca-4397-48f6-8c27-97b79d0f590b::d6368018-ac75-4975-8eb3-b34329f45757",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      },
+      {
+        "id": "04fa727e-d536-4fd0-a45e-2cfc77727ecd::f06e8762-695d-4c9c-a579-a0795e359e2b",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      },
+      {
+        "id": "9d5cc28d-6cb5-4036-8ca9-1fc7f62c9434::4eb57aaf-3814-4a1c-8aad-58c1707c800e",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      }
+    ],
+    "groups": [
+      {
+        "id": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+        "activeTabId": "2c6a68ca-4397-48f6-8c27-97b79d0f590b",
+        "tabOrder": [
+          "2c6a68ca-4397-48f6-8c27-97b79d0f590b",
+          "04fa727e-d536-4fd0-a45e-2cfc77727ecd",
+          "9d5cc28d-6cb5-4036-8ca9-1fc7f62c9434"
+        ]
+      }
+    ]
+  },
+  "terminal.read.first.beforeReopen": {
+    "ok": true,
+    "result": {
+      "terminal": {
+        "handle": "term_f745e5b5-9a61-4cbf-ba9b-d18816fce649",
+        "status": "running",
+        "tail": [
+          "printf 'U96_A5_LIVE_MARKER_ONE\\n'",
+          "",
+          "",
+          "U96_A5_LIVE_MARKER_ONE",
+          "gongdewei@GongDeweideMacBook-Pro main %"
+        ],
+        "truncated": false,
+        "limited": false,
+        "oldestCursor": "0",
+        "nextCursor": "4",
+        "latestCursor": "4",
+        "returnedLineCount": 5,
+        "source": "stream"
+      }
+    }
+  },
+  "reopen.ensure": {
+    "ok": true,
+    "workspacePath": "/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+    "created": false,
+    "provisioned": false,
+    "capabilities": ["pty", "files", "agent", "managed-credential"],
+    "route": "direct"
+  },
+  "session.tabs.list.reopened": {
+    "worktree": "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+    "tabCount": 3,
+    "groupCount": 1,
+    "activeTabId": "2c6a68ca-4397-48f6-8c27-97b79d0f590b::d6368018-ac75-4975-8eb3-b34329f45757",
+    "activeGroupId": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+    "tabs": [
+      {
+        "id": "2c6a68ca-4397-48f6-8c27-97b79d0f590b::d6368018-ac75-4975-8eb3-b34329f45757",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      },
+      {
+        "id": "04fa727e-d536-4fd0-a45e-2cfc77727ecd::f06e8762-695d-4c9c-a579-a0795e359e2b",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      },
+      {
+        "id": "9d5cc28d-6cb5-4036-8ca9-1fc7f62c9434::4eb57aaf-3814-4a1c-8aad-58c1707c800e",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      }
+    ],
+    "groups": [
+      {
+        "id": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+        "activeTabId": "2c6a68ca-4397-48f6-8c27-97b79d0f590b",
+        "tabOrder": [
+          "2c6a68ca-4397-48f6-8c27-97b79d0f590b",
+          "04fa727e-d536-4fd0-a45e-2cfc77727ecd",
+          "9d5cc28d-6cb5-4036-8ca9-1fc7f62c9434"
+        ]
+      }
+    ]
+  },
+  "terminal.list.reopened": {
+    "ok": true,
+    "result": {
+      "terminals": [
+        {
+          "handle": "term_be8111d2-67f1-4f47-9eff-7f469cd1ed1b",
+          "ptyId": "pty-probe-1",
+          "incarnationId": null,
+          "orphaned": false,
+          "worktreeId": "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+          "worktreePath": "/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+          "branch": "refs/heads/e2e/main",
+          "tabId": "2c6a68ca-4397-48f6-8c27-97b79d0f590b",
+          "leafId": "d6368018-ac75-4975-8eb3-b34329f45757",
+          "title": "zsh",
+          "connected": true,
+          "writable": true,
+          "lastOutputAt": 1794800206943,
+          "preview": "gongdewei@GongDeweideMacBook-Pro main %",
+          "executionHostId": "local"
+        },
+        {
+          "handle": "term_f745e5b5-9a61-4cbf-ba9b-d18816fce649",
+          "ptyId": "pty-probe-2",
+          "incarnationId": null,
+          "orphaned": false,
+          "worktreeId": "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+          "worktreePath": "/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+          "branch": "refs/heads/e2e/main",
+          "tabId": "04fa727e-d536-4fd0-a45e-2cfc77727ecd",
+          "leafId": "f06e8762-695d-4c9c-a579-a0795e359e2b",
+          "title": "zsh",
+          "connected": true,
+          "writable": true,
+          "lastOutputAt": 1794800206965,
+          "preview": "printf 'U96_A5_LIVE_MARKER_ONE\\n'\nU96_A5_LIVE_MARKER_ONE\ngongdewei@GongDeweideMacBook-Pro main %",
+          "executionHostId": "local"
+        },
+        {
+          "handle": "term_5f7e8170-17ff-4ea2-b721-c4d63a42531d",
+          "ptyId": "pty-probe-3",
+          "incarnationId": null,
+          "orphaned": false,
+          "worktreeId": "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+          "worktreePath": "/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+          "branch": "refs/heads/e2e/main",
+          "tabId": "9d5cc28d-6cb5-4036-8ca9-1fc7f62c9434",
+          "leafId": "4eb57aaf-3814-4a1c-8aad-58c1707c800e",
+          "title": "zsh",
+          "connected": true,
+          "writable": true,
+          "lastOutputAt": 1794800206905,
+          "preview": "printf 'U96_A5_LIVE_MARKER_TWO\\n'\nU96_A5_LIVE_MARKER_TWO\ngongdewei@GongDeweideMacBook-Pro main %",
+          "executionHostId": "local"
+        }
+      ],
+      "hostScope": {
+        "hostIds": [],
+        "omittedHostIds": ["local"]
+      },
+      "visualLayouts": [
+        {
+          "worktreeId": "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+          "worktreePath": "/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+          "root": {
+            "type": "group",
+            "groupId": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main",
+            "activeTabId": "2c6a68ca-4397-48f6-8c27-97b79d0f590b",
+            "tabs": [
+              {
+                "tabId": "2c6a68ca-4397-48f6-8c27-97b79d0f590b",
+                "title": "Terminal",
+                "activeLeafId": "d6368018-ac75-4975-8eb3-b34329f45757",
+                "panes": {
+                  "type": "terminal",
+                  "handle": "term_be8111d2-67f1-4f47-9eff-7f469cd1ed1b",
+                  "tabId": "2c6a68ca-4397-48f6-8c27-97b79d0f590b",
+                  "leafId": "d6368018-ac75-4975-8eb3-b34329f45757",
+                  "title": "zsh",
+                  "connected": true,
+                  "active": true
+                }
+              },
+              {
+                "tabId": "04fa727e-d536-4fd0-a45e-2cfc77727ecd",
+                "title": "U96 A5 terminal 1",
+                "activeLeafId": "f06e8762-695d-4c9c-a579-a0795e359e2b",
+                "panes": {
+                  "type": "terminal",
+                  "handle": "term_f745e5b5-9a61-4cbf-ba9b-d18816fce649",
+                  "tabId": "04fa727e-d536-4fd0-a45e-2cfc77727ecd",
+                  "leafId": "f06e8762-695d-4c9c-a579-a0795e359e2b",
+                  "title": "zsh",
+                  "connected": true,
+                  "active": true
+                }
+              },
+              {
+                "tabId": "9d5cc28d-6cb5-4036-8ca9-1fc7f62c9434",
+                "title": "U96 A5 terminal 2",
+                "activeLeafId": "4eb57aaf-3814-4a1c-8aad-58c1707c800e",
+                "panes": {
+                  "type": "terminal",
+                  "handle": "term_5f7e8170-17ff-4ea2-b721-c4d63a42531d",
+                  "tabId": "9d5cc28d-6cb5-4036-8ca9-1fc7f62c9434",
+                  "leafId": "4eb57aaf-3814-4a1c-8aad-58c1707c800e",
+                  "title": "zsh",
+                  "connected": true,
+                  "active": true
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "topologyRevisions": {
+        "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a5-gLSiea/probe-project/.orca-worktrees/zhangsan/main": 0
+      },
+      "totalCount": 3,
+      "truncated": false
+    }
+  },
+  "terminal.read.first.reopened": {
+    "ok": true,
+    "result": {
+      "terminal": {
+        "handle": "term_f745e5b5-9a61-4cbf-ba9b-d18816fce649",
+        "status": "running",
+        "tail": [
+          "printf 'U96_A5_LIVE_MARKER_ONE\\n'",
+          "",
+          "",
+          "U96_A5_LIVE_MARKER_ONE",
+          "gongdewei@GongDeweideMacBook-Pro main %"
+        ],
+        "truncated": false,
+        "limited": false,
+        "oldestCursor": "0",
+        "nextCursor": "4",
+        "latestCursor": "4",
+        "returnedLineCount": 5,
+        "source": "stream"
+      }
+    }
+  },
+  "terminal.read.second.reopened": {
+    "ok": true,
+    "result": {
+      "terminal": {
+        "handle": "term_5f7e8170-17ff-4ea2-b721-c4d63a42531d",
+        "status": "running",
+        "tail": [
+          "printf 'U96_A5_LIVE_MARKER_TWO\\n'",
+          "",
+          "",
+          "U96_A5_LIVE_MARKER_TWO",
+          "gongdewei@GongDeweideMacBook-Pro main %"
+        ],
+        "truncated": false,
+        "limited": false,
+        "oldestCursor": "0",
+        "nextCursor": "4",
+        "latestCursor": "4",
+        "returnedLineCount": 5,
+        "source": "stream"
+      }
+    }
+  }
+}

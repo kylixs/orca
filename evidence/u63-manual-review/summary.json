@@ -1,0 +1,163 @@
+{
+  "title": "U63 人工复核证据重验",
+  "base": "https://127.0.0.1:18787",
+  "startedAt": "2026-11-16T15:21:41.551Z",
+  "account": "admin",
+  "steps": [
+    {
+      "step": 1,
+      "name": "login",
+      "action": "打开管理台，输入 admin/Adm1n! 登录",
+      "expected": "登录成功进入管理台，角色=平台管理员，默认工作台",
+      "actual": "角色=平台管理员；面包屑=工作台",
+      "verdict": "PASS",
+      "screenshots": [
+        "step-1-login.png",
+        "step-1-console.png"
+      ],
+      "durationMs": 1410
+    },
+    {
+      "step": 2,
+      "name": "workbench",
+      "action": "登录后默认工作台，读取统计/项目卡片/项目表",
+      "expected": "统计四值、项目卡片与项目表数据来自平台且一致",
+      "actual": "统计=[\"可访问项目 5 按 ACL 过滤\",\"主机在线 4 60 秒无心跳转离线\",\"禁用下载项目 1 导出入口已隐藏\",\"下载默认策略 允许 策略版本 v34\"]；卡片样本=[\"payment-service git@git.example.com:pay/payment-service.git dev-001 main 创建于 6 小时前 主机离线 允许下载 打开\"]；表行=5；API={\"projects\":5,\"hostsOnline\":2,\"policyVersion\":34,\"downloadDefault\":\"allow\"}",
+      "verdict": "PASS",
+      "screenshots": [
+        "step-2-workbench.png"
+      ],
+      "durationMs": 1849
+    },
+    {
+      "step": 3,
+      "name": "projects-list-detail-perms",
+      "action": "我的项目：列表 → demo-app 详情 → 权限页签",
+      "expected": "列表有项目行；详情含基本信息/运行配置/授权与策略；权限页签含查看/控制/管理(主机推导)三卡",
+      "actual": "列表行=5，搜索框=true；首行=payment-service /srv/work/payment-service git@git.example.com:pay/payment-service.git dev-001 主机离线 管理员可见（未授权） 允许 打开授权并打开详情；权限卡=[{\"key\":\"view\",\"head\":\"查看 4 个主体\"},{\"key\":\"control\",\"head\":\"控制 3 个主体\"},{\"key\":\"derived\",\"head\":\"管理 主机推导 · 只读 1 个主体\"}]",
+      "verdict": "PASS",
+      "screenshots": [
+        "step-3-projects-list.png",
+        "step-3-project-detail-info.png",
+        "step-3-project-detail-perms.png"
+      ],
+      "durationMs": 3948
+    },
+    {
+      "step": 4,
+      "name": "workspace",
+      "action": "项目行点「Orca Web」→ 新标签免登进入工作区 → 终端 echo → 文件树打开 README.md",
+      "expected": "新标签挂载 Orca 工作区；终端回显输入；文件树可浏览并打开文件",
+      "actual": "入口=首个可用 Orca Web 入口；工作区={\"appLayout\":true,\"explorer\":true,\"signIn\":false,\"bodyHead\":\"Orca Search Onboarding checklist Tasks Automations Orca Mobile New Projects demo-app Inactive main primary main Active main main-2 Inactive main main-3 Terminal Command demo-app Na\"}；终端回显=true（文件 marker=true）；文件=/Users/gongdewei/orca-local-env/host/projects/demo-app/.orca-worktrees/admin/main-2/ README.md；页面错误=0",
+      "verdict": "PASS",
+      "screenshots": [
+        "step-4-workspace.png",
+        "step-4-terminal.png",
+        "step-4-file-tree.png"
+      ],
+      "durationMs": 13788
+    },
+    {
+      "step": 5,
+      "name": "hosts",
+      "action": "主机：列表 → dev-local-02 详情抽屉",
+      "expected": "列表列有名称/地址/中继/版本/心跳/状态；详情含 ID/真实指纹/版本/能力与维护/下线按钮",
+      "actual": "主机=dev-local-02 intranet；行样本=[\"dev-001 intranet 127.0.0.1:16768 dev-001 — 1.5.0 p3 7 小时前 已吊销 详情\"]；详情按钮=[{\"text\":\"信息\",\"disabled\":false},{\"text\":\"权限\",\"disabled\":false},{\"text\":\"进入维护模式\",\"disabled\":false},{\"text\":\"下线主机\",\"disabled\":false},{\"text\":\"添加\",\"disabled\":false},{\"text\":\"调整\",\"disabled\":false},{\"text\":\"✕\",\"disabled\":false},{\"text\":\"添加\",\"disabled\":false},{\"text\":\"添加\",\"disabled\":false}]；字段=信息 权限 主机 ID host_b58500c3 指纹 host:dev-local-02 E2EE 公钥 elM9qFE+HzVLG4Tz49ZRZ8bN4RIpPeYzRq/lagdu1Ts= 版本 · 协议 v3 网络位置 intranet 直连地址 100.103.213.12:51610 中继路由 dev-local-02 中继绑定 100.103.213.12:51610 能力 pty, files, agent, man；差异：指纹为占位 host:dev-local-02（非真实 TLS 指纹）；在线主机版本为空（仅 · 协议 v3），版本列空白",
+      "verdict": "DIFF",
+      "screenshots": [
+        "step-5-hosts.png",
+        "step-5-host-detail.png"
+      ],
+      "durationMs": 4456
+    },
+    {
+      "step": 6,
+      "name": "relays",
+      "action": "中继：列表 → 点「刷新」",
+      "expected": "中继表展示节点/客户端地址/状态/注册时间；刷新后表仍在且无错误横幅",
+      "actual": "刷新前={\"rows\":1,\"first\":\"relay:18443 100.67.197.59:18443 在线 11/16/2026, 11:22:05 PM\",\"warning\":null}；刷新后={\"rows\":1,\"warning\":null,\"addBtn\":true}",
+      "verdict": "PASS",
+      "screenshots": [
+        "step-6-relays.png",
+        "step-6-relays-refresh.png"
+      ],
+      "durationMs": 4295
+    },
+    {
+      "step": 7,
+      "name": "users-role",
+      "action": "用户管理：列表 → zhangsan 详情 → 角色 普通→审计→普通",
+      "expected": "用户列表含角色列；详情角色可改并二次确认；变更写 role_update 审计；还原成功",
+      "actual": "对象=zhangsan；列表行=3，表头=[\"用户\",\"部门\",\"LDAP 组\",\"角色\",\"角色来源\",\"状态\",\"操作\"]；角色=developer→auditor→developer；确认框=角色变更 张伟（zhangsan）：普通 → 审计。 变更写入 role_update 审计；按用户覆盖优先于 LDAP 同步，再次登录不会被同步覆盖。 升级即时生效，不断开会话。 确认变更 关闭；toast=",
+      "verdict": "PASS",
+      "screenshots": [
+        "step-7-users.png",
+        "step-7-user-detail.png",
+        "step-7-role-confirm.png",
+        "step-7-role-changed.png",
+        "step-7-role-reverted.png"
+      ],
+      "durationMs": 8035
+    },
+    {
+      "step": 8,
+      "name": "audit",
+      "action": "审计日志：读取列表 → 展开链健康 → 点「校验审计链」",
+      "expected": "已显示 N 条事件；链健康显示正常/最后序号；手动校验返回「校验通过：已校验 N 条」",
+      "actual": "列表=查询身份、连接、文件下载与复制、下载拦截与管理操作事件。只追加、哈希链校验；保留 180 天，查询时间窗最大 31 天。已显示 50 条。；链健康=链健康与容量（只读） 链健康：正常 最后序号 4543；容量：未超限 文件事件今日 17 / 5000，累计 17 / 1000000。 持久化：已写入本地审计文件。 校验审计链；校验=校验通过：已校验 4543 条，链尾 62c6e2e76d3bb1e69705e31159d8a25912bd77311fab4183a954d8de415ae75e",
+      "verdict": "PASS",
+      "screenshots": [
+        "step-8-audit.png",
+        "step-8-audit-health.png",
+        "step-8-audit-verify.png"
+      ],
+      "durationMs": 4227
+    },
+    {
+      "step": 9,
+      "name": "settings",
+      "action": "平台设置：读取全局下载策略与项目覆盖",
+      "expected": "显示全局禁止/允许单选、当前版本、跟随/覆盖项目计数与覆盖表",
+      "actual": "{\"checked\":\"allow\",\"version\":\"当前版本 v34\",\"scope\":\"跟随全局默认 4 个项目 · 独立覆盖 1 个项目\",\"overrideRows\":1,\"saveBtn\":true}",
+      "verdict": "PASS",
+      "screenshots": [
+        "step-9-settings.png"
+      ],
+      "durationMs": 2688
+    },
+    {
+      "step": 10,
+      "name": "logout",
+      "action": "点击顶栏「退出」",
+      "expected": "回到登录页，会话凭据清除，输入框不残留上一账号",
+      "actual": "{\"loginVisible\":true,\"appHidden\":true,\"access\":null,\"refresh\":null,\"username\":\"\",\"password\":\"\",\"hash\":\"#/login\"}",
+      "verdict": "PASS",
+      "screenshots": [
+        "step-10-logout.png"
+      ],
+      "durationMs": 1059
+    }
+  ],
+  "diffs": [
+    {
+      "page": "主机页/详情（step-5）",
+      "expected": "在线主机显示 orcaVersion + p<protocol>；指纹应为可核对的真实 TLS 指纹",
+      "actual": "版本列/详情仅显示「· 协议 v3」或空白；指纹为占位「host:dev-local-02」。与 WEB-R2-007 记录一致，仍为残留差异。",
+      "screenshots": [
+        "step-5-hosts.png",
+        "step-5-host-detail.png"
+      ]
+    }
+  ],
+  "finishedAt": "2026-11-16T15:22:28.036Z",
+  "summary": {
+    "total": 10,
+    "pass": 9,
+    "diff": 1
+  },
+  "notes": [
+    "step-2 的「主机在线 4」是“项目所在主机在线”的项目数，与 API 去重在线主机数 2 不同；模块文档 W1 定义为按项目 hostStatus 计数，故不作为差异。",
+    "step-7 角色修改为可逆写操作：zhangsan developer→auditor→developer，审计中可见两条 role_update。",
+    "step-4 使用首个可用 Orca Web 入口（demo-app 动态项目 ID 与固定常量不同）；终端回显由 /tmp marker 与截图双重确认。"
+  ]
+}

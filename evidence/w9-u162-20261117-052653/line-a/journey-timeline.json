@@ -1,0 +1,130 @@
+{
+  "line": "A-desktop",
+  "workOrder": "W9a",
+  "runMarker": "orca-journey-1794864417126",
+  "generatedAt": "2026-11-16T21:27:36.234Z",
+  "steps": [
+    {
+      "step": "S0-platform",
+      "label": "平台进程启动与管理员登录",
+      "startedAt": "2026-11-16T21:26:57.211Z",
+      "durationMs": 116,
+      "ok": true
+    },
+    {
+      "step": "S1-host-enrol",
+      "label": "宿主注册：令牌换取、TLS 上线，直连地址/E2EE 密钥/指纹齐备",
+      "startedAt": "2026-11-16T21:26:57.327Z",
+      "durationMs": 802,
+      "ok": true,
+      "detail": {
+        "hostId": "host_edb5ef81",
+        "directAddr": "127.0.0.1:53934",
+        "tlsFingerprint": "sha256:8959135a4a2cab7a788171d78945173d2bc0892c7e70dc1cc604d5ba73b745fc"
+      }
+    },
+    {
+      "step": "S2-project-grant",
+      "label": "管理员建项目（绑定宿主）并授权 team-payment 组",
+      "startedAt": "2026-11-16T21:26:58.129Z",
+      "durationMs": 18,
+      "ok": true,
+      "detail": {
+        "projectId": "proj_307f31d6",
+        "grant": "group:team-payment"
+      }
+    },
+    {
+      "step": "A2-login",
+      "label": "开发者登录（状态栏「登录云端平台」segment → 弹框，平台地址预填）",
+      "startedAt": "2026-11-16T21:26:58.184Z",
+      "durationMs": 31528,
+      "ok": true,
+      "detail": {
+        "platformUrl": "http://127.0.0.1:53915",
+        "developer": "zhangsan",
+        "entry": "status-bar-segment-dialog"
+      }
+    },
+    {
+      "step": "A3-open-project",
+      "label": "打开项目：工作区落在本人 checkout，线路为直连",
+      "startedAt": "2026-11-16T21:27:29.712Z",
+      "durationMs": 2058,
+      "ok": true,
+      "detail": {
+        "projectId": "proj_307f31d6",
+        "repoExecutionHostId": "runtime:cloud-c414d6c5-0155-4bb1-9308-4025ba269246",
+        "workspacePath": "/private/tmp/w9a-journey-PhhDfA/projects/journey-payment/.orca-worktrees/zhangsan/main",
+        "route": "direct",
+        "probes": {
+          "probes": [
+            {
+              "route": "direct",
+              "endpoint": "127.0.0.1:53934",
+              "ok": true,
+              "elapsedMs": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "A4-terminal",
+      "label": "终端输入 echo orca-journey && ls，断言回显与输出",
+      "startedAt": "2026-11-16T21:27:31.770Z",
+      "durationMs": 423,
+      "ok": true,
+      "detail": {
+        "ptyId": "remote:cloud-c414d6c5-0155-4bb1-9308-4025ba269246@@term_bc46642f6251e6a928d1567238e6587a",
+        "commandOutputMs": 154,
+        "markerOccurrences": 2
+      }
+    },
+    {
+      "step": "A5-file-tree",
+      "label": "文件树浏览 → 打开文件 → 内容断言",
+      "startedAt": "2026-11-16T21:27:32.193Z",
+      "durationMs": 777,
+      "ok": true,
+      "detail": {
+        "file": "journey-note.txt",
+        "expectedContent": "orca-journey-1794864417126-file"
+      }
+    },
+    {
+      "step": "A6-evidence",
+      "label": "旅程证据落盘：时间线与关键截图齐备",
+      "startedAt": "2026-11-16T21:27:32.970Z",
+      "durationMs": 1,
+      "ok": true,
+      "detail": {
+        "screenshots": 5,
+        "timelineSteps": 7
+      }
+    },
+    {
+      "step": "A7-host-audit",
+      "label": "宿主审计计数：F7/F8 门控方法严格为零，其余落在已知基线集合内（O1 治理不变量）",
+      "startedAt": "2026-11-16T21:27:32.971Z",
+      "durationMs": 2009,
+      "ok": true,
+      "detail": {
+        "denialCount": 4,
+        "byMethod": {
+          "host.pwsh.isAvailable": 1,
+          "host.wsl.listDistros": 1,
+          "host.wsl.isAvailable": 1,
+          "host.gitBash.isAvailable": 1
+        }
+      }
+    }
+  ],
+  "screenshots": [
+    "01-login-dialog.png",
+    "02-signed-in.png",
+    "02-workspace-opened.png",
+    "03-terminal-output.png",
+    "04-file-opened.png"
+  ]
+}

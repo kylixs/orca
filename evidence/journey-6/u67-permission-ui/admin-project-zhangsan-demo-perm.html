@@ -1,0 +1,253 @@
+<div class="page-head">
+  <div>
+    <h1>下午好，李静</h1>
+    <p>你有 7 个可访问项目，其中 6 个所在主机在线。</p>
+  </div>
+</div>
+<div class="grid-4">
+  <div class="card stat">
+    <div class="stat-label">可访问项目</div>
+    <div class="stat-value">7</div>
+    <div class="stat-hint">按 ACL 过滤</div>
+  </div>
+  <div class="card stat">
+    <div class="stat-label">主机在线</div>
+    <div class="stat-value">6</div>
+    <div class="stat-hint">心跳 15 秒</div>
+  </div>
+  <div class="card stat">
+    <div class="stat-label">禁用下载项目</div>
+    <div class="stat-value">1</div>
+    <div class="stat-hint">导出入口已隐藏</div>
+  </div>
+  <div class="card stat">
+    <div class="stat-label">下载默认策略</div>
+    <div class="stat-value">允许</div>
+    <div class="stat-hint">策略版本 v3</div>
+  </div>
+</div>
+<div class="section-head">
+  <h2>最近项目</h2>
+  <button class="btn ghost" data-go="projects">查看全部</button>
+</div>
+<div class="grid-3">
+  <div class="card project-card">
+    <div class="name"><span class="dot offline"></span>payment-service</div>
+    <div class="path">git@git.example.com:pay/payment-service.git</div>
+    <div class="meta-row">
+      <span>dev-001</span>
+      <span class="badge">main</span>
+      <span>创建于 47 分钟前</span>
+      <span class="badge">主机离线</span>
+    </div>
+    <div class="foot">
+      <span class="badge">允许下载</span>
+      <button class="btn primary sm" data-open="proj_payment" disabled="" title="主机离线">
+        打开
+      </button>
+    </div>
+  </div>
+  <div class="card project-card">
+    <div class="name"><span class="dot online"></span>demo-app</div>
+    <div class="path">/Users/gongdewei/orca-local-env/host/projects/demo-app</div>
+    <div class="meta-row">
+      <span>dev-local-02</span>
+      <span class="badge">main</span>
+      <span>创建于 46 分钟前</span>
+    </div>
+    <div class="foot">
+      <span class="badge lock">下载已禁用</span>
+      <button class="btn primary sm" data-open="proj_369e97d1">打开</button>
+    </div>
+  </div>
+  <div class="card project-card">
+    <div class="name"><span class="dot online"></span>zhangsan-demo</div>
+    <div class="path">/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo</div>
+    <div class="meta-row">
+      <span>dev-local-02</span>
+      <span class="badge">main</span>
+      <span>创建于 46 分钟前</span>
+    </div>
+    <div class="foot">
+      <span class="badge">允许下载</span>
+      <button class="btn primary sm" data-open="proj_558c064b">打开</button>
+    </div>
+  </div>
+</div>
+<div class="section-head"><h2>全部项目</h2></div>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>项目</th>
+        <th>仓库</th>
+        <th>主机</th>
+        <th>可见范围</th>
+        <th>状态</th>
+        <th class="actions">操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>
+          <strong>payment-service</strong>
+          <div class="muted mono">/srv/work/payment-service</div>
+        </td>
+        <td class="mono muted">git@git.example.com:pay/payment-service.git</td>
+        <td>dev-001 <span class="badge">主机离线</span></td>
+        <td class="muted">管理员可见（未授权）</td>
+        <td><span class="dot offline"></span> 主机离线</td>
+        <td class="actions">
+          <button class="btn sm" data-open="proj_payment" disabled="" title="主机离线">打开</button
+          ><button class="btn sm" disabled="" title="主机离线">授权并打开</button
+          ><button class="btn sm" data-detail="proj_payment">详情</button>
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <strong>demo-app</strong>
+          <div class="muted mono">/Users/gongdewei/orca-local-env/host/projects/demo-app</div>
+        </td>
+        <td class="mono muted"></td>
+        <td>dev-local-02</td>
+        <td class="muted">open · terminal · agent · file:read · file:write</td>
+        <td><span class="dot online"></span> 可打开</td>
+        <td class="actions">
+          <button class="btn sm" data-open="proj_369e97d1">打开</button
+          ><button class="btn sm" data-detail="proj_369e97d1">详情</button
+          ><button
+            class="btn sm"
+            data-orca-web="proj_369e97d1"
+            title="在新标签打开 Orca Web 工作区"
+          >
+            Orca Web
+          </button>
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <strong>zhangsan-demo</strong>
+          <div class="muted mono">/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo</div>
+        </td>
+        <td class="mono muted"></td>
+        <td>dev-local-02</td>
+        <td class="muted">open · terminal · agent · file:read · file:write</td>
+        <td><span class="dot online"></span> 可打开</td>
+        <td class="actions">
+          <button class="btn sm" data-open="proj_558c064b">打开</button
+          ><button class="btn sm" data-detail="proj_558c064b">详情</button
+          ><button
+            class="btn sm"
+            data-orca-web="proj_558c064b"
+            title="在新标签打开 Orca Web 工作区"
+          >
+            Orca Web
+          </button>
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <strong>infra-tools</strong>
+          <div class="muted mono">/Users/gongdewei/orca-local-env/host2/projects/infra-tools</div>
+        </td>
+        <td class="mono muted"></td>
+        <td>dev-local-03</td>
+        <td class="muted">open · terminal · agent · file:read · file:write</td>
+        <td><span class="dot online"></span> 可打开</td>
+        <td class="actions">
+          <button class="btn sm" data-open="proj_8eea08de">打开</button
+          ><button class="btn sm" data-detail="proj_8eea08de">详情</button
+          ><button
+            class="btn sm"
+            data-orca-web="proj_8eea08de"
+            title="在新标签打开 Orca Web 工作区"
+          >
+            Orca Web
+          </button>
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <strong>zhangsan-lab</strong>
+          <div class="muted mono">/Users/gongdewei/orca-local-env/host2/projects/zhangsan-lab</div>
+        </td>
+        <td class="mono muted"></td>
+        <td>dev-local-03</td>
+        <td class="muted">管理员可见（未授权）</td>
+        <td><span class="dot online"></span> 可打开</td>
+        <td class="actions">
+          <button
+            class="btn sm"
+            data-open="proj_528e9b38"
+            disabled=""
+            title="项目未授权给你，请先在项目详情的「权限」页签中授权"
+          >
+            打开</button
+          ><button
+            class="btn sm"
+            data-self-grant="proj_528e9b38"
+            title="先给自己授权，再进入项目工作区"
+          >
+            授权并打开</button
+          ><button class="btn sm" data-detail="proj_528e9b38">详情</button>
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <strong>journey6-1794809712151</strong>
+          <div class="muted mono">
+            /Users/gongdewei/orca-local-env/host/projects/journey6-1794809712151
+          </div>
+        </td>
+        <td class="mono muted"></td>
+        <td>dev-local-02</td>
+        <td class="muted">管理员可见（未授权）</td>
+        <td><span class="dot online"></span> 可打开</td>
+        <td class="actions">
+          <button
+            class="btn sm"
+            data-open="proj_d7f86f8d"
+            disabled=""
+            title="项目未授权给你，请先在项目详情的「权限」页签中授权"
+          >
+            打开</button
+          ><button
+            class="btn sm"
+            data-self-grant="proj_d7f86f8d"
+            title="先给自己授权，再进入项目工作区"
+          >
+            授权并打开</button
+          ><button class="btn sm" data-detail="proj_d7f86f8d">详情</button>
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <strong>journey6-1794809793639</strong>
+          <div class="muted mono">
+            /Users/gongdewei/orca-local-env/host/projects/journey6-1794809793639
+          </div>
+        </td>
+        <td class="mono muted"></td>
+        <td>dev-local-02</td>
+        <td class="muted">管理员可见（未授权）</td>
+        <td><span class="dot online"></span> 可打开</td>
+        <td class="actions">
+          <button
+            class="btn sm"
+            data-open="proj_54969e5e"
+            disabled=""
+            title="项目未授权给你，请先在项目详情的「权限」页签中授权"
+          >
+            打开</button
+          ><button
+            class="btn sm"
+            data-self-grant="proj_54969e5e"
+            title="先给自己授权，再进入项目工作区"
+          >
+            授权并打开</button
+          ><button class="btn sm" data-detail="proj_54969e5e">详情</button>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>

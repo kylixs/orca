@@ -1,0 +1,18 @@
+{
+  "handles": [
+    {
+      "tabId": "terminal-35236f07-0446-4229-8110-d29a24657e79",
+      "handle": "term_5a595aed-d02f-43e8-b9c2-891e38a3c27e"
+    },
+    {
+      "tabId": "terminal-dfa60074-711d-40a1-ab8d-b0096aaadfce",
+      "handle": "term_4bc3d398-41dd-4596-af73-6b56653b9fd5"
+    }
+  ],
+  "remaining": [],
+  "statuses": [
+    "exited",
+    "exited"
+  ],
+  "eventsAfterEnd": 12
+}

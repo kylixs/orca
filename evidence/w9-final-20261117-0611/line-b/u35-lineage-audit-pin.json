@@ -1,0 +1,17 @@
+{
+  "probeMethod": "worktree.lineageList",
+  "outsideMobileAllowlist": true,
+  "refusal": "Method 'worktree.lineageList' is not available to cloud sessions",
+  "auditCountBefore": 0,
+  "auditCountAfter": 1,
+  "auditDenialsAtPinClose": {
+    "worktree.lineageList": 1,
+    "orchestration.workerTerminalUserInput": 2,
+    "host.gitBash.isAvailable": 2,
+    "host.pwsh.isAvailable": 2,
+    "host.wsl.listDistros": 2,
+    "host.wsl.isAvailable": 2,
+    "preflight.check": 2,
+    "repo.list": 1
+  }
+}

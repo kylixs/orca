@@ -1,0 +1,28 @@
+# after 2026-11-16T07:31:57Z
+## proc
+47856     1       00:56 /opt/homebrew/Cellar/node/24.5.0/bin/node /Users/gongdewei/orca-local-env/bin/host-supervisor.mjs /Users/gongdewei/work/projects/orca/no
+47873     1       00:56 /Users/gongdewei/work/projects/orca/node_modules/.pnpm/electron@43.7.5_supports-color@7.2.0/node_modules/electron/dist/Electron.app/Cont
+47874 47857       00:56 /Users/gongdewei/work/projects/orca/node_modules/.pnpm/electron@43.7.5_supports-color@7.2.0/node_modules/electron/dist/Electron.app/Cont
+47875 47857       00:56 /Users/gongdewei/work/projects/orca/node_modules/.pnpm/electron@43.7.5_supports-color@7.2.0/node_modules/electron/dist/Electron.app/Cont
+47901 47857       00:56 /Users/gongdewei/work/projects/orca/node_modules/.pnpm/electron@43.7.5_supports-color@7.2.0/node_modules/electron/dist/Electron.app/Cont
+47902 47857       00:56 /Users/gongdewei/work/projects/orca/node_modules/.pnpm/electron@43.7.5_supports-color@7.2.0/node_modules/electron/dist/Electron.app/Cont
+94852     1       25:41 /opt/homebrew/Cellar/node/24.5.0/bin/node /Users/gongdewei/orca-local-env/bin/host-supervisor.mjs /Users/gongdewei/work/projects/orca/no
+## old pids alive?
+93016/93017 gone
+## listeners
+Electron  47857 gongdewei   75u  IPv4 0xe0e99a175d11a17c      0t0  TCP *:51883 (LISTEN)
+node      88911 gongdewei   12u  IPv4 0x964a55428934d250      0t0  TCP *:18787 (LISTEN)
+node      92581 gongdewei   12u  IPv4 0xe775ffe5ded651a7      0t0  TCP 127.0.0.1:18787 (LISTEN)
+Electron  94898 gongdewei   75u  IPv4 0x3d9e282beca04f59      0t0  TCP *:18889 (LISTEN)
+## direct
+127.0.0.1:51883 http=200 t=0.021520
+100.103.213.12:51883 http=200 t=0.003715
+## relay
+relay -k http=200 t=0.048072
+relay verify http=000
+## hosts
+dev-local-02 online= True status= online addrs= ['100.103.213.12:51883'] relayTarget= 100.103.213.12:51883 hb= 1794814311986
+dev-local-03 online= True status= online addrs= ['100.103.213.12:18889'] relayTarget= 100.103.213.12:18889 hb= 1794814318001
+## handoff
+{"url":"https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787#handoff=Wujd5GSG_rKMmKu54kF4f1n2P7_9XO7SAdNWb8NDT4k&project=proj_f9d32d32","expiresIn":60}
+status=201

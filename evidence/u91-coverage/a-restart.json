@@ -1,0 +1,20 @@
+{
+  "station": "A-RESTART",
+  "entry": "cloud-admin.html?embed=1&project=<id>",
+  "marker": "U91-RESTART-1794848901451",
+  "before": {
+    "workspacePath": "/private/tmp/u91-journey-jtDi5T/projects/u91-git/.orca-worktrees/zhangsan/main",
+    "project": "u91-git",
+    "terminal": "实时"
+  },
+  "after": {
+    "workspacePath": "/private/tmp/u91-journey-jtDi5T/projects/u91-git/.orca-worktrees/zhangsan/main",
+    "project": "u91-git",
+    "terminal": "实时"
+  },
+  "reauthenticationCalls": [],
+  "screenshots": [
+    "a-restart-before.png",
+    "a-restart-after.png"
+  ]
+}

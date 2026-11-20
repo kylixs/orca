@@ -1,0 +1,36 @@
+{
+  "host": "dev-local-02",
+  "mappingOk": true,
+  "writePath": {
+    "addOk": true,
+    "addChipOk": true,
+    "viewRemoveOk": true,
+    "adjustOk": true,
+    "adjustCardOk": true,
+    "adjustCopyOk": true,
+    "removeOk": true,
+    "dangerOk": true
+  },
+  "residualRows": [
+    {
+      "hostId": "host_281843a9",
+      "subjectType": "user",
+      "subjectId": "user_eff396fc-a0d8-42c5-8471-1abf1b2aa26d",
+      "permissions": ["view", "provision"],
+      "username": "zhangsan"
+    }
+  ],
+  "calls": [
+    "GET /v1/hosts/host_281843a9/grants",
+    "PUT /v1/hosts/host_281843a9/grants",
+    "GET /v1/hosts/host_281843a9/grants",
+    "PUT /v1/hosts/host_281843a9/grants",
+    "GET /v1/hosts/host_281843a9/grants",
+    "PUT /v1/hosts/host_281843a9/grants",
+    "GET /v1/hosts/host_281843a9/grants",
+    "PUT /v1/hosts/host_281843a9/grants",
+    "GET /v1/hosts/host_281843a9/grants",
+    "PUT /v1/hosts/host_281843a9/grants",
+    "GET /v1/hosts/host_281843a9/grants"
+  ]
+}

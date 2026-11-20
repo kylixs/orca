@@ -1,0 +1,115 @@
+{
+  "task": "deploy-refresh: rebuild web release and refresh :18787 platform snapshot to HEAD",
+  "date": "2026-11-16T06:45:00Z",
+  "head": "29f11447da28485a52f788f9c6a9823e5bfcc88e",
+  "codeChanges": "none (build + platform restart only)",
+  "rebuild": {
+    "command": "env -u VITE_EXPOSE_STORE pnpm run build:web",
+    "exit": 0,
+    "outWeb": {
+      "files": 1481,
+      "treeSha256": "cf75751c21ae78c185a0f52a61ebaeeb278bf85536f1700c3491cf2938f6b46f",
+      "builtAt": "2026-11-16T14:41 local",
+      "windowStoreMarkers": 0,
+      "note": "non-instrumented rebuild; previously present exposeStore=true build markers replaced"
+    }
+  },
+  "platformRestart": {
+    "command": "node cloud-platform/scripts/local-env-reseed.mjs --restart-platform",
+    "exit": 0,
+    "platformPid": 19680,
+    "webBuildBefore": "56ab51abab57",
+    "webBuildAfter": "3f2c2df95156",
+    "reseedVerify": "failures=[] relay={\"dev-local-02\":200,\"dev-local-03\":200}"
+  },
+  "checks": {
+    "a_platformAndLogin": {
+      "platformLoopback": 200,
+      "platformPublicEdge": 200,
+      "publicEdge": "https://100.103.213.12:18787/",
+      "adminLogin": 200
+    },
+    "b_servedAppJsMatchesSource": {
+      "servedSha256": "a1a1ed7b4a1326552d2e5668596198122a0de433125b897c30da1aef6ea7748a",
+      "sourceSha256": "a1a1ed7b4a1326552d2e5668596198122a0de433125b897c30da1aef6ea7748a",
+      "identical": true,
+      "entryHeader": "x-orca-web-build: 3f2c2df95156",
+      "hashedAsset": "/assets/3f2c2df95156/app.js identical",
+      "publicEdgeAppJs": "identical"
+    },
+    "c_permissionUi": {
+      "hostDevLocal02": {
+        "id": "host_eaece0f0",
+        "cards": ["view", "control", "manage"],
+        "threeCards": true,
+        "headBitBadges": [],
+        "cardHeadNoPositionBadge": true,
+        "controlChip": "zhangsan 用户 调整 ✕"
+      },
+      "projectZhangsanDemo": {
+        "id": "proj_7b8fd037",
+        "cards": ["view", "control", "derived"],
+        "threeCards": true,
+        "writableHeadBitBadges": [],
+        "cardHeadNoPositionBadge": true,
+        "derived": {
+          "head": "管理主机推导 · 只读 1 个主体",
+          "readOnly": true,
+          "noAddInput": true,
+          "noRemoveButton": true,
+          "jumpHostId": "host_eaece0f0",
+          "chip": "zhangsan 用户 来源：控制卡"
+        }
+      },
+      "derivedJump": {
+        "hashAfterClick": "#/hosts/host_eaece0f0?tab=perms",
+        "hostCardsRendered": 3
+      }
+    },
+    "d_routing": {
+      "members404": {
+        "hash": "#/members",
+        "heading": "页面不存在",
+        "text": "没有找到这个页面：#/members"
+      },
+      "deepLinkReload": {
+        "hash": "#/hosts/host_eaece0f0?tab=perms",
+        "cards": ["view", "control", "manage"],
+        "preserved": true
+      }
+    }
+  },
+  "constraintDeviation": {
+    "item": "reseed --restart-platform restarted both hosts (PTY sessions lost)",
+    "evidence": [
+      "reseed.log: '[reseed] health rebuild needed: host offline' immediately after '[reseed] platform started pid=19680'",
+      "reseed result hosts: dev-local-02 pid=20131 reused=false; dev-local-03 pid=22266 reused=false",
+      "new host ids: host_eaece0f0 (dev-local-02), host_4a5fb9c0 (dev-local-03); supervisors started 14:41:38/14:41:41"
+    ],
+    "mechanism": "local-env-reseed.mjs runs probeEnvironment right after ensurePlatform; a freshly restarted platform briefly reports hosts offline, so health.healthy=false and ensureHost kills/restarts each host unconditionally (no host-preserving flag). The instructed command therefore cannot restart only the platform in this state.",
+    "postState": "both hosts online; relay route 200 for dev-local-02 and dev-local-03; reseed exit 0"
+  },
+  "observation": {
+    "item": "old hashed web build is not archived by the local environment",
+    "detail": "reseed does not set ORCA_CLOUD_WEB_ARCHIVE, so GET /assets/56ab51abab57/app.js returns 404 after restart. The current snapshot itself is correct; only cross-deploy archive replay is unavailable locally."
+  },
+  "evidence": [
+    "build-web.log",
+    "out-web-digest.txt",
+    "reseed.log",
+    "platform-http.txt",
+    "admin-login.json",
+    "before-headers.txt",
+    "after-headers.txt",
+    "app.js.before",
+    "app.js.after",
+    "app.js.public",
+    "app.js.hashed",
+    "index.after.html",
+    "hosts-after.json",
+    "host-perms.json",
+    "project-perms.json",
+    "verify-ui.json",
+    "verify-ui.log"
+  ]
+}

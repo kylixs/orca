@@ -1,0 +1,97 @@
+{
+  "probe": {
+    "screenInlineHeight": "832px",
+    "screenHeight": 832,
+    "termFontSize": "16px",
+    "termLineHeight": "24px",
+    "hasRowsDiv": false,
+    "kids": [
+      {
+        "cls": "xterm-helpers",
+        "w": 0,
+        "h": 0
+      },
+      {
+        "cls": "",
+        "w": 0,
+        "h": 0
+      },
+      {
+        "cls": "xterm-decoration-container",
+        "w": 1264,
+        "h": 0
+      },
+      {
+        "cls": "xterm-link-layer",
+        "w": 1264,
+        "h": 832
+      },
+      {
+        "cls": "",
+        "w": 1264,
+        "h": 832
+      }
+    ],
+    "vars": {
+      "--xterm-cell-height": "",
+      "--xterm-cell-width": ""
+    }
+  },
+  "rowsInferred": {
+    "note": "cellHeight = screenHeight / rows; rows from xterm fit = floor((host - padding)/cellHeight). Use CSS var or xterm canvas layer height.",
+    "screenHeight1600": 832
+  },
+  "at1600": {
+    "paneBottom": 930.5,
+    "panel": {
+      "top": 41,
+      "bottom": 930.5,
+      "height": 889.5
+    },
+    "host": {
+      "top": 82,
+      "bottom": 917.5,
+      "height": 835.5
+    },
+    "screen": {
+      "top": 82,
+      "bottom": 914,
+      "height": 832
+    },
+    "gapPaneToPanel": 0,
+    "gapHostToScreen": 3.5
+  },
+  "at1280": {
+    "paneBottom": 790.5,
+    "panel": {
+      "top": 41,
+      "bottom": 790.5,
+      "height": 749.5
+    },
+    "host": {
+      "top": 82,
+      "bottom": 777.5,
+      "height": 695.5
+    },
+    "screen": {
+      "top": 82,
+      "bottom": 770,
+      "height": 688
+    },
+    "gapPaneToPanel": 0,
+    "gapHostToScreen": 7.5
+  },
+  "derived": {
+    "gcdScreenHeights": 16,
+    "fontPx": "16px",
+    "cellHeightPx": 16,
+    "rows1600": 52,
+    "rows1280": 43,
+    "gap1600": 3.5,
+    "gap1280": 7.5,
+    "gapUnderOneRow1600": true,
+    "gapUnderOneRow1280": true,
+    "paneBottomGap1600": 0,
+    "paneBottomGap1280": 0
+  }
+}

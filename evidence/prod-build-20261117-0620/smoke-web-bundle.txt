@@ -1,0 +1,16 @@
+-- out/web assets containing U163 marker --
+  out/web/assets/native-chat-layout-actions-BRG810Sj.js
+  out/web/assets/zh-fz49CxUc.js
+
+-- served main chunk --
+GET /web-Ba9qwhAX.js status=404
+GET /assets/web-Ba9qwhAX.js status=200
+  served sha=42367e5d27cafcead28f6469f23f3cbc6a89baea207f6b59ebf23545062a76d5
+  disk   sha=42367e5d27cafcead28f6469f23f3cbc6a89baea207f6b59ebf23545062a76d5
+  U163 marker in served web-Ba9qwhAX.js: 0
+
+-- served marker chunks --
+GET /assets/native-chat-layout-actions-BRG810Sj.js status=200
+  assets/native-chat-layout-actions-BRG810Sj.js served sha=6ab4f101f1d8f6c1630e57b41a899d7be91869be0667c9fa990474d143bbf577 disk sha=6ab4f101f1d8f6c1630e57b41a899d7be91869be0667c9fa990474d143bbf577 marker_lines=1
+GET /assets/zh-fz49CxUc.js status=200
+  assets/zh-fz49CxUc.js served sha=727af1da522b62159409a9e82cc07437d0195e072a4cb4e1aa9deeed949b4d84 disk sha=727af1da522b62159409a9e82cc07437d0195e072a4cb4e1aa9deeed949b4d84 marker_lines=1

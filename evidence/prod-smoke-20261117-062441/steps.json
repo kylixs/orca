@@ -1,0 +1,228 @@
+{
+  "startedAt": "2026-11-16T22:41:21.635Z",
+  "TS": "20261117-062441",
+  "entry": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787&project=proj_c1cc0f50",
+  "marker": "PROD-SMOKE-20261117-062441",
+  "steps": [
+    {
+      "step": "0-signin",
+      "ok": true,
+      "at": "2026-11-16T22:40:01.843Z",
+      "evidence": {
+        "url": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787&project=proj_c1cc0f50",
+        "tabs": 4,
+        "xterms": 3,
+        "onboardingDismissed": true,
+        "body": "Orca 搜索 入门清单 任务 自动化 Orca 手机端 新功能 项目 zhangsan-demo Inactive main 主要 main Active main main-3 Inactive 未读： main main-2 J7 terminal 1 Terminal 命令 Terminal Terminal zhangsan-demo 名称 内容 src README.md 0 KB · 0 0 1 个主机 登录云端平台"
+      },
+      "notes": "workspace mounted"
+    },
+    {
+      "step": "1-shell-terminal-echo",
+      "ok": true,
+      "at": "2026-11-16T22:40:02.650Z",
+      "evidence": {
+        "terminalVisible": true,
+        "echoSeen": true,
+        "xterms": [
+          {
+            "x": 285,
+            "y": 40,
+            "w": 234,
+            "h": 928
+          },
+          {
+            "x": 773,
+            "y": 40,
+            "w": 478,
+            "h": 928
+          },
+          {
+            "x": 529,
+            "y": 40,
+            "w": 234,
+            "h": 928
+          }
+        ],
+        "tabCount": 4,
+        "terminalTail": "441\ngongdewei@GongDeweideMacBook-Pro main-3 % \ngongdewei@GongDeweideMacBook-Pro main-3 % echo PROD-SMOKE-20261117-062441\nPROD-SMOKE-20261117-062441\ngongdewei@GongDeweideMacBook-Pro main-3 % echo PROD-SMOKE-\n20261117-062441\nPROD-SMOKE-20261117-062441\ngongdewei@GongDeweideMacBoec\nE-20261117-062441\nPROD-SMOKE-20261117-062441\ngongdewei@GongDeweideMacBook-Pro main-3 % \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+        "dialogs": [],
+        "shellShot": "screenshots/02-terminal-echo.png"
+      },
+      "notes": "echo PROD-SMOKE-20261117-062441 read back from terminal clipboard selection"
+    },
+    {
+      "step": "2-file-tree-readme",
+      "ok": true,
+      "at": "2026-11-16T22:40:03.585Z",
+      "evidence": {
+        "explorerShell": true,
+        "editorPath": "/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3/ README.md",
+        "editorText": "zhangsan-demo Inactive main 主要 main Active main main-3 Inactive 未读： main main-2 J7 terminal 1 Terminal README.md 命令 /Users/gongdewei/",
+        "activeTabTitles": [
+          "README.md"
+        ],
+        "explorerRowSample": [
+          "src",
+          "README.md"
+        ],
+        "shot": "screenshots/03-file-editor.png"
+      },
+      "notes": "opened /Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3/ README.md"
+    },
+    {
+      "step": "3-new-tab-split-right",
+      "ok": true,
+      "at": "2026-11-16T22:40:11.836Z",
+      "evidence": {
+        "newTabId": "web-terminal-b33907a3-f986-47cc-b18e-234cbe98cd44",
+        "triggerVisible": true,
+        "groupsBefore": 3,
+        "groupsAfter": 4,
+        "runBodiesAfter": 4,
+        "groups": {
+          "strips": 4,
+          "bodies": 4,
+          "ids": [
+            "13a00b8c-d7c4-48e6-aad7-abe40eec4a25",
+            "03164690-63a3-4ffe-8692-bf64a5c643a1",
+            "0d62908f-b524-4e98-8a11-747834ec4026",
+            "daa464d1-ae13-47c9-9276-e62912c5a859"
+          ]
+        },
+        "groupStripBoxes": [
+          {
+            "x": 281,
+            "y": 4,
+            "w": 116,
+            "h": 32
+          },
+          {
+            "x": 403,
+            "y": 4,
+            "w": 116,
+            "h": 32
+          },
+          {
+            "x": 525,
+            "y": 4,
+            "w": 238,
+            "h": 32
+          },
+          {
+            "x": 769,
+            "y": 4,
+            "w": 482,
+            "h": 32
+          }
+        ],
+        "stripColumns": 4,
+        "columnsBefore": 2,
+        "columnsAfter": 3,
+        "xtermBoxes": [
+          {
+            "x": 773,
+            "y": 40,
+            "w": 478,
+            "h": 928
+          },
+          {
+            "x": 529,
+            "y": 40,
+            "w": 234,
+            "h": 928
+          },
+          {
+            "x": 407,
+            "y": 40,
+            "w": 112,
+            "h": 928
+          }
+        ],
+        "toasts": [],
+        "dialogs": [],
+        "bodyTail": "自动化 Orca 手机端 新功能 项目 zhangsan-demo Inactive main 主要 main Active main main-3 Inactive 未读： main main-2 J7 terminal 1 Terminal README.md 命令 /Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3/ README.md File path copied B I S zhangsan-demo 研发自助创建的演示项目。 用法 Bash node src/render.js Terminal Terminal Terminal zhangsan-demo 名称 内容 src README.md 0 KB · 0 0 1 个主机 登录云端平台",
+        "shot": "screenshots/05-split-right.png"
+      },
+      "notes": "two pane columns observed"
+    },
+    {
+      "step": "4-close-new-tab-one-click",
+      "ok": true,
+      "at": "2026-11-16T22:40:15.290Z",
+      "evidence": {
+        "createdTabId": "web-terminal-56f9bfc3-00b2-4f98-bc01-fda50de39a77",
+        "closeClickOnce": true,
+        "closed": true,
+        "remainingTabs": 5,
+        "groups": {
+          "strips": 4,
+          "bodies": 4
+        },
+        "toasts": [],
+        "dialogs": [],
+        "shot": "screenshots/06-close-tab.png"
+      },
+      "notes": "tab gone after a single X click"
+    },
+    {
+      "step": "5-refresh-restore",
+      "ok": false,
+      "at": "2026-11-16T22:41:21.635Z",
+      "evidence": {
+        "preRefresh": {
+          "tabs": [
+            "J7 terminal 1",
+            "Terminal",
+            "Terminal",
+            "Terminal",
+            "Terminal"
+          ],
+          "groups": {
+            "strips": 4,
+            "bodies": 4
+          },
+          "xterms": 4,
+          "cloudSessionStored": false,
+          "runtimeEnvStored": true
+        },
+        "afterRefresh": {
+          "url": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787&project=proj_c1cc0f50",
+          "tabs": [],
+          "groups": {
+            "strips": 0,
+            "bodies": 0,
+            "ids": []
+          },
+          "xterms": [],
+          "hasSignInForm": true,
+          "toasts": [],
+          "body": "Connect to Orca Paste a pairing URL from an Orca server that this browser can reach. Your cloud session ended when this page closed. Sign in again to continue. Cloud account Pairing code Platform address Username Password Device name Shown in the platform device list. Signing in enrols this browser on first use. Sign in and connect"
+        },
+        "shot": "screenshots/07-after-refresh.png"
+      },
+      "notes": "restore incomplete"
+    }
+  ],
+  "consoleErrors": [],
+  "consoleAll": [
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x10c00456a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x10c00455800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x10c0044e000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x10c00456a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+    }
+  ],
+  "pageErrors": [],
+  "requestFailures": []
+}

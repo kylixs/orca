@@ -1,0 +1,312 @@
+{
+  "startedAt": "2026-11-16T02:15:39.344Z",
+  "checks": {
+    "u81b": {
+      "accountCount": 3,
+      "listRoleControls": 0,
+      "fullRoles": ["管理员", "普通", "普通"],
+      "keyword": {
+        "keyword": "adm",
+        "count": 1,
+        "allRowsMatch": true
+      },
+      "roleFilter": {
+        "value": "admin",
+        "count": 1,
+        "allRowsAdmin": true,
+        "roles": ["管理员"]
+      },
+      "statusFilter": {
+        "value": "disabled",
+        "realRows": 0,
+        "emptyStateRow": 1,
+        "emptyStateCopy": "没有符合筛选条件的账号——请调整关键字或重置条件",
+        "previousCountWasEmptyStateRow": true
+      },
+      "reset": {
+        "count": 3,
+        "inputs": {
+          "query": "",
+          "role": "all",
+          "status": "all"
+        },
+        "afterResetRealRows": 3
+      },
+      "detail": {
+        "title": "用户详情 · 李静",
+        "fieldLabels": ["显示名", "账号", "部门", "LDAP 组", "平台角色", "角色来源", "状态"],
+        "roleSelectCount": 1,
+        "roleOptions": ["普通", "审计", "管理员"]
+      },
+      "changeFlow": {
+        "from": "admin",
+        "to": "developer",
+        "confirmTitle": "角色变更",
+        "confirmBody": "李静（admin）：管理员 → 普通。\n\n变更写入 role_update 审计；按用户覆盖优先于 LDAP 同步，再次登录不会被同步覆盖。\n\n降级将断开该用户当前云会话（≤60 秒）。",
+        "confirmButtons": ["确认变更", "关闭"],
+        "dangerClass": "btn danger",
+        "cancelled": true,
+        "detailStillOpen": true,
+        "rolePutsIssued": 0
+      },
+      "activeFilter": {
+        "realRows": 3
+      }
+    },
+    "u86": {
+      "controls": [
+        {
+          "id": "auditKeyword",
+          "top": 203.98,
+          "bottom": 235.98,
+          "height": 32,
+          "left": 256
+        },
+        {
+          "id": "auditRange",
+          "top": 203.98,
+          "bottom": 235.98,
+          "height": 32,
+          "left": 699.33
+        },
+        {
+          "id": "auditSince",
+          "top": 203.98,
+          "bottom": 235.98,
+          "height": 32,
+          "left": 921
+        },
+        {
+          "id": "auditUntil",
+          "top": 203.98,
+          "bottom": 235.98,
+          "height": 32,
+          "left": 1142.66
+        },
+        {
+          "id": "auditType",
+          "top": 203.98,
+          "bottom": 235.98,
+          "height": 32,
+          "left": 1364.33
+        },
+        {
+          "id": "auditActor",
+          "top": 243.98,
+          "bottom": 275.98,
+          "height": 32,
+          "left": 256
+        },
+        {
+          "id": "auditProject",
+          "top": 243.98,
+          "bottom": 275.98,
+          "height": 32,
+          "left": 588.5
+        },
+        {
+          "id": "auditHost",
+          "top": 243.98,
+          "bottom": 275.98,
+          "height": 32,
+          "left": 921
+        },
+        {
+          "id": "auditFileName",
+          "top": 243.98,
+          "bottom": 275.98,
+          "height": 32,
+          "left": 1253.5
+        },
+        {
+          "id": "auditResult",
+          "top": 283.98,
+          "bottom": 315.98,
+          "height": 32,
+          "left": 256
+        }
+      ],
+      "actions": {
+        "top": 283.98,
+        "bottom": 315.98,
+        "height": 32,
+        "left": 588.5
+      },
+      "gridCSS": {
+        "display": "grid",
+        "columnGap": "10px",
+        "rowGap": "8px",
+        "gridTemplateColumns": "100.828px 100.828px 100.828px 100.828px 100.828px 100.828px 100.828px 100.828px 100.844px 100.828px 100.828px 100.828px"
+      },
+      "rowGroups": [
+        {
+          "top": 203.98,
+          "items": ["auditKeyword", "auditRange", "auditSince", "auditUntil", "auditType"]
+        },
+        {
+          "top": 243.98,
+          "items": ["auditActor", "auditProject", "auditHost", "auditFileName"]
+        },
+        {
+          "top": 283.98,
+          "items": ["auditResult", "actions"]
+        }
+      ],
+      "rowCount": 3,
+      "hintLineAbsent": true,
+      "removedHintTokensInBody": {
+        "defaultRecent7d": false,
+        "keyword2128": false
+      },
+      "headerHas31Days": true,
+      "headerText": "查询身份、连接、文件下载与复制、下载拦截与管理操作事件。只追加、哈希链校验；保留 180 天，查询时间窗最大 31 天。已显示 50 条。",
+      "filterText": "最近 24 小时\n最近 7 天（默认）\n最近 31 天\n全部操作\n下载族 · 下载 + 拦截\n复制族 · file_copy\n审计查询 · audit_query\n审计校验 · audit_verify\n连接拒绝 · connection_rejected\n设备撤销 · device_revoke\n目录读取 · directory_read\n下载拦截 · download_blocked\n复制文件内容 · file_copy\n文件下载 · file_download\n权限变更 · grant_update\n主机审计缺口 · host.audit_gap\n主机连接拒绝 · host.connection_rejected\n主机路径拒绝 · host.path_denied\n主机方法拒绝 · host.method_denied\n主机 E2EE 密钥变更 · host_e2ee_key_changed\n主机授权读取 · host_grant_read\n主机授权变更 · host_grant_update\n主机列表 · host_list\n主机维护 · host_maintenance\n项目根拒绝 · host_projects_root_rejected\n建项目策略变更 · host_provision_policy_update\n主机注册 · host_register\n主机撤销 · host_revoke\n主机 TLS 指纹变更 · host_tls_fingerprint_changed\n注册令牌签发 · host_token_create\n安装脚本取用 · install_script\n登录 · login\n登出 · logout\n策略变更 · policy_update\n连接 · project_access\n项目归档 · project_archive\n打开项目 · project_connect\n项目创建 · project_create\n项目开通 · project_provision\n项目恢复 · project_restore\n项目更新 · project_update\n项目根变更 · projects_root_change\n开通分配 · provision_assign\n中继列表 · relay_list\n角色变更 · role_update\n签名密钥轮换 · signing_key_rotate\n用户列表 · user_list\n会话交接 · web_handoff\n全部项目\npayment-service\ndemo-app\nzhangsan-demo\ninfra-tools\nzhangsan-lab\n全部主机\ndev-local-02\ndev-local-03\n全部结果\n成功\n失败\n拒绝\n查询\n清除"
+    },
+    "u83": {
+      "at1600x1000": {
+        "viewport": {
+          "w": 1600,
+          "h": 960
+        },
+        "pane": {
+          "top": 41,
+          "bottom": 930.5,
+          "height": 889.5
+        },
+        "panel": {
+          "top": 41,
+          "bottom": 930.5,
+          "height": 889.5
+        },
+        "host": {
+          "top": 82,
+          "bottom": 917.5,
+          "height": 835.5
+        },
+        "xtermScreen": {
+          "top": 82,
+          "bottom": 914,
+          "height": 832
+        },
+        "xtermViewport": {
+          "top": 82,
+          "bottom": 914,
+          "height": 832
+        },
+        "rowHeight": null,
+        "rows": null,
+        "terminalState": "实时",
+        "gapPaneToPanelBottom": 0,
+        "gapHostToXtermBottom": 3.5,
+        "xtermBox": {
+          "x": 13,
+          "y": 122,
+          "width": 1264,
+          "height": 832
+        }
+      },
+      "at1280x860": {
+        "viewport": {
+          "w": 1280,
+          "h": 820
+        },
+        "pane": {
+          "top": 41,
+          "bottom": 790.5,
+          "height": 749.5
+        },
+        "panel": {
+          "top": 41,
+          "bottom": 790.5,
+          "height": 749.5
+        },
+        "host": {
+          "top": 82,
+          "bottom": 777.5,
+          "height": 695.5
+        },
+        "xtermScreen": {
+          "top": 82,
+          "bottom": 770,
+          "height": 688
+        },
+        "xtermViewport": {
+          "top": 82,
+          "bottom": 770,
+          "height": 688
+        },
+        "rowHeight": null,
+        "rows": null,
+        "terminalState": "实时",
+        "gapPaneToPanelBottom": 0,
+        "gapHostToXtermBottom": 7.5
+      },
+      "filled": true,
+      "filledAfterResize": true
+    },
+    "u84": {
+      "badgeFirst": {
+        "text": "echo 32ms p95",
+        "title": "回显 P50 23ms · P95 32ms · max 35ms · 20 键"
+      },
+      "samplesFirst": 20,
+      "badgeAfterMoreKeys": {
+        "text": "echo 33ms p95",
+        "title": "回显 P50 20ms · P95 33ms · max 42ms · 40 键"
+      },
+      "badgePresent": true,
+      "badgeMatchesFormat": true,
+      "titleHasP50P95MaxSamples": true,
+      "samplesIncreased": true
+    }
+  },
+  "consoleErrors": [],
+  "finishedAt": "2026-11-16T02:15:50.211Z",
+  "rowHeightDerivation": {
+    "cellHeightPx": 16,
+    "rows1600": 52,
+    "rows1280": 43
+  },
+  "verdicts": {
+    "U83": {
+      "pass": true,
+      "paneBottomGap1600": 0,
+      "screenBottomGap1600": 3.5,
+      "paneBottomGap1280": 0,
+      "screenBottomGap1280": 7.5,
+      "rowHeight": 16
+    },
+    "U84": {
+      "pass": true,
+      "badge": {
+        "text": "echo 32ms p95",
+        "title": "回显 P50 23ms · P95 32ms · max 35ms · 20 键"
+      },
+      "badgeLater": {
+        "text": "echo 33ms p95",
+        "title": "回显 P50 20ms · P95 33ms · max 42ms · 40 键"
+      }
+    },
+    "U81b": {
+      "pass": true
+    },
+    "U86": {
+      "pass": true,
+      "rows": [
+        {
+          "top": 203.98,
+          "items": ["auditKeyword", "auditRange", "auditSince", "auditUntil", "auditType"]
+        },
+        {
+          "top": 243.98,
+          "items": ["auditActor", "auditProject", "auditHost", "auditFileName"]
+        },
+        {
+          "top": 283.98,
+          "items": ["auditResult", "actions"]
+        }
+      ]
+    },
+    "consoleErrors": 0
+  }
+}

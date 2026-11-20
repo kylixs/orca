@@ -1,0 +1,142 @@
+{
+  "line": "B-orca-web",
+  "workOrder": "W9b",
+  "runMarker": "orca-web-journey-1794864461099",
+  "generatedAt": "2026-11-16T21:28:12.644Z",
+  "steps": [
+    {
+      "step": "S0-platform",
+      "label": "平台进程启动与管理员登录",
+      "startedAt": "2026-11-16T21:27:41.253Z",
+      "durationMs": 115,
+      "ok": true
+    },
+    {
+      "step": "S1-host-enrol",
+      "label": "宿主注册：真实 Orca 宿主进程 TLS 上线，直连地址/E2EE 密钥齐备（production 方法表，伺服 out/web）",
+      "startedAt": "2026-11-16T21:27:41.368Z",
+      "durationMs": 718,
+      "ok": true,
+      "detail": {
+        "hostId": "host_f8e234e6",
+        "hostOrigin": "https://127.0.0.1:54639"
+      }
+    },
+    {
+      "step": "S2-project-grant",
+      "label": "管理员建项目（绑定宿主）并授权 team-payment 组（C4/C5 前置）",
+      "startedAt": "2026-11-16T21:27:42.086Z",
+      "durationMs": 20,
+      "ok": true,
+      "detail": {
+        "projectId": "proj_eaa4d632",
+        "grant": "group:team-payment"
+      }
+    },
+    {
+      "step": "B1-console-login",
+      "label": "zhangsan 登录平台 Web，项目行出现可点击的「Orca Web」入口（open 权限）",
+      "startedAt": "2026-11-16T21:27:42.554Z",
+      "durationMs": 414,
+      "ok": true,
+      "detail": {
+        "projectId": "proj_eaa4d632",
+        "entry": "button[data-orca-web]"
+      }
+    },
+    {
+      "step": "B2-handoff-new-tab",
+      "label": "点击「Orca Web」：真实调用 web-handoff，新标签打开 #handoff=<code>&project=<id> 入口",
+      "startedAt": "2026-11-16T21:27:42.968Z",
+      "durationMs": 355,
+      "ok": true,
+      "detail": {
+        "minted": "POST /v1/projects/{id}/web-handoff",
+        "entryUrl": "https://127.0.0.1:54639/web-index.html?api=http%3A%2F%2F127.0.0.1%3A54625#handoff=<redacted>&project=proj_eaa4d632"
+      }
+    },
+    {
+      "step": "B3-auto-enter-workspace",
+      "label": "新标签换码自动进入工作区：hash 清空、无登录表单、降级 toast=false、云侧栏空态、会话持久化",
+      "startedAt": "2026-11-16T21:27:43.323Z",
+      "durationMs": 8980,
+      "ok": true,
+      "detail": {
+        "hash": "",
+        "signInForm": false,
+        "degradedToast": false,
+        "sessionPersisted": true,
+        "environmentName": "journey-web (cloud session)",
+        "cloudDenialConsoleLogs": 0,
+        "consoleErrorWarningCount": 1
+      }
+    },
+    {
+      "step": "B4-cloud-workspace-view",
+      "label": "B4 工作区视图：bootstrap 登记项目行并激活宿主管理的本人 checkout，桌面目录仍按票据范围被拒",
+      "startedAt": "2026-11-16T21:27:52.303Z",
+      "durationMs": 34,
+      "ok": true,
+      "detail": {
+        "mode": "w13",
+        "sidebarCloudEmptyState": false,
+        "repoCount": 1,
+        "activeWorktreeId": "cfa43f12-c698-4603-a75d-fab8c74fe513::/private/tmp/w9b-journey-UcOC0I/projects/journey-web/.orca-worktrees/zhangsan/main",
+        "activeWorktreePath": "/private/tmp/w9b-journey-UcOC0I/projects/journey-web/.orca-worktrees/zhangsan/main",
+        "explorerShellMounted": true,
+        "catalogRefusal": "Method 'repo.list' is not available to cloud sessions",
+        "denialLogCount": 0,
+        "consoleErrorWarningCount": 1
+      }
+    },
+    {
+      "step": "B5-replay-410-fallback",
+      "label": "同链接在全新浏览器档案重放：换码 410，回落登录表单并预填平台地址",
+      "startedAt": "2026-11-16T21:27:52.337Z",
+      "durationMs": 1358,
+      "ok": true,
+      "detail": {
+        "redeemStatus": 410,
+        "signInForm": true,
+        "prefilledApiUrl": "http://127.0.0.1:54625"
+      }
+    },
+    {
+      "step": "E1-journey-evidence",
+      "label": "旅程证据落盘：时间线与关键截图齐备（编号 E1，避开 §2-B6 中继步骤）",
+      "startedAt": "2026-11-16T21:27:53.695Z",
+      "durationMs": 1,
+      "ok": true,
+      "detail": {
+        "screenshots": 5,
+        "timelineSteps": 8
+      }
+    },
+    {
+      "step": "E2-host-audit",
+      "label": "宿主审计计数：全程 method_denied 落在已知基线集合内（B4 repo.list 探针在链可闻），零新增拒绝",
+      "startedAt": "2026-11-16T21:27:53.696Z",
+      "durationMs": 8902,
+      "ok": true,
+      "detail": {
+        "denialCount": 6,
+        "byMethod": {
+          "repo.list": 1,
+          "host.gitBash.isAvailable": 1,
+          "host.pwsh.isAvailable": 1,
+          "host.wsl.listDistros": 1,
+          "host.wsl.isAvailable": 1,
+          "preflight.check": 1
+        }
+      }
+    }
+  ],
+  "screenshots": [
+    "01-console-orca-web-entry.png",
+    "02-console-after-click.png",
+    "03-web-workspace-entered.png",
+    "04-cloud-session-with-workspace-view.png",
+    "05-replay-410-sign-in.png",
+    "06-b4-terminal-stream-and-file.png"
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "host": {
+    "id": "host_8516a27d",
+    "name": "dev-local-03",
+    "fingerprint": "host:dev-local-03",
+    "tlsFingerprint": "sha256:958eb8aaa4fa8dd10d948eb01c7931dd4e0c51b643c7cf9de3e96ae1aecc7509",
+    "e2eePublicKey": "gBtahPhSHRW6wf84R8ONwbhSaoAz/whALK3F7jLxuRM=",
+    "orcaVersion": "",
+    "protocolVersion": 3,
+    "zone": "intranet",
+    "directAddrs": ["100.103.213.12:18889"],
+    "relayRoute": "dev-local-03",
+    "capabilities": ["pty", "files", "agent", "managed-credential"],
+    "projectsRoot": "/Users/gongdewei/orca-local-env/host2/projects",
+    "projectDirs": ["infra-tools", "zhangsan-lab"],
+    "status": "online",
+    "maintenanceReason": null,
+    "lastHeartbeatAt": 1794809892805,
+    "revokedAt": null,
+    "online": true,
+    "browserEntryUrl": "https://100.67.197.59:18444/h/dev-local-03/web-index.html",
+    "relayTarget": "100.103.213.12:18889",
+    "relayOnline": true
+  },
+  "before": [
+    {
+      "hostId": "host_8516a27d",
+      "subjectType": "user",
+      "subjectId": "user_eff396fc-a0d8-42c5-8471-1abf1b2aa26d",
+      "permissions": ["view", "provision"],
+      "username": "zhangsan"
+    }
+  ],
+  "uiBefore": {
+    "view": [],
+    "control": ["zhangsan"],
+    "manage": [],
+    "other": []
+  },
+  "mapped": [
+    {
+      "subject": "zhangsan",
+      "permissions": ["view", "provision"],
+      "expectedCard": "control",
+      "uiCards": ["control"],
+      "uiCard": "control"
+    }
+  ],
+  "mappingOk": true
+}

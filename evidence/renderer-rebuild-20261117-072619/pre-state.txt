@@ -1,0 +1,15 @@
+# pre state 2026-11-17T07:26:19+08:00
+## index.html sha
+6470b31984b5fc760c217b870e89bd119b74f4ae46cc0730c26a535d2eb25f94  out/renderer/index.html
+## manifest sha
+287a1d8997b5747075ccef81d4f683543722042f47af88d4accb8bdbf799f1bd  out/renderer/.vite/manifest.json
+## mtimes
+Nov 17 06:57:49 2026 out/renderer/index.html
+Nov 17 06:57:49 2026 out/renderer/.vite/manifest.json
+## web-session-tabs-sync chunk
+7b19eb675b1b01ce5568a654375ac6f186172d1e7df94d80d0e78f185972dd8d  out/renderer/assets/web-session-tabs-sync-B84SGzJh.js
+## monacoEditorE2E hits
+       0
+## isKnownHostSessionGroupId hits
+       0
+## group mapping exports in tabs-sync chunk

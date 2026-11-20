@@ -1,0 +1,57 @@
+=== A. wizard verbatim: GET /install/host.sh?token=<installToken> (NO Authorization) ===
+HTTP/1.1 401 Unauthorized
+content-type: application/json; charset=utf-8
+Date: Mon, 16 Nov 2026 04:50:23 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+Transfer-Encoding: chunked
+
+{"error":{"code":"SESSION_EXPIRED","message":"登录已过期，请重新登录。","traceId":"a6788051-26b6-4a12-b3f7-624b8e9bf461"}}
+=== B. same URL + admin Bearer ===
+HTTP/1.1 200 OK
+content-type: text/x-shellscript; charset=utf-8
+Date: Mon, 16 Nov 2026 04:50:23 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+Transfer-Encoding: chunked
+
+#!/usr/bin/env bash
+# Orca Cloud 开发机接入脚本（平台生成；内嵌一次性注册令牌，注册一次后失效）
+set -euo pipefail
+
+ORCA_ENV_FILE="${ORCA_ENV_FILE:-$HOME/.orca-cloud/host.env}"
+mkdir -p "$(dirname "$ORCA_ENV_FILE")"
+umask 077
+
+=== C. relay.sh verbatim (NO Authorization) ===
+HTTP/1.1 401 Unauthorized
+content-type: application/json; charset=utf-8
+Date: Mon, 16 Nov 2026 04:50:23 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+Transfer-Encoding: chunked
+
+{"error":{"code":"SESSION_EXPIRED","message":"登录已过期，请重新登录。","traceId":"3c5b379c-1bad-4623-93be-055412300527"}}
+=== D. relay.sh + admin Bearer ===
+HTTP/1.1 200 OK
+content-type: text/x-shellscript; charset=utf-8
+Date: Mon, 16 Nov 2026 04:50:23 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+Transfer-Encoding: chunked
+
+#!/usr/bin/env bash
+# Orca Cloud 中继接入脚本（平台生成；内嵌内部控制令牌，仅管理员可见）
+set -euo pipefail
+
+ORCA_ENV_FILE="${ORCA_ENV_FILE:-$HOME/.orca-cloud/relay.env}"
+
+=== E. control: host.sh?token=<accessToken> (query only, access token) ===
+HTTP/1.1 401 Unauthorized
+content-type: application/json; charset=utf-8
+Date: Mon, 16 Nov 2026 04:50:23 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+Transfer-Encoding: chunked
+
+{"error":{"code":"SESSION_EXPIRED","message":"登录已过期，请重新登录。","traceId":"bbe58d20-cfe6-4313-be99-e795fef18777"}}

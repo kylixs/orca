@@ -1,0 +1,233 @@
+{
+  "environment": "https://127.0.0.1:18787",
+  "ranAt": "2026-11-16T15:15:13.636Z",
+  "viewports": {
+    "mobile": "390x844 isMobile",
+    "tablet": "768x1024"
+  },
+  "account": "admin",
+  "checks": [
+    {
+      "name": "390 login -> workbench",
+      "pass": true,
+      "detail": {
+        "hash": "#/workbench"
+      }
+    },
+    {
+      "name": "390 bottom tabbar 4 items visible",
+      "pass": true,
+      "detail": [
+        {
+          "text": "工作台",
+          "visible": true
+        },
+        {
+          "text": "项目",
+          "visible": true
+        },
+        {
+          "text": "审计",
+          "visible": true
+        },
+        {
+          "text": "更多",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "name": "390 stat cards 2x2 (4 cards, 2 columns x 2 rows)",
+      "pass": true,
+      "detail": {
+        "count": 4,
+        "cols": 2,
+        "rows": 2,
+        "stats": [
+          {
+            "label": "可访问项目",
+            "x": 12,
+            "y": 224,
+            "w": 177
+          },
+          {
+            "label": "主机在线",
+            "x": 201,
+            "y": 224,
+            "w": 177
+          },
+          {
+            "label": "禁用下载项目",
+            "x": 12,
+            "y": 346,
+            "w": 177
+          },
+          {
+            "label": "下载默认策略",
+            "x": 201,
+            "y": 346,
+            "w": 177
+          }
+        ]
+      }
+    },
+    {
+      "name": "390 mobile workspace hint visible",
+      "pass": true,
+      "detail": {
+        "visible": true,
+        "text": "移动端工作区请打开 Orca Web 工作区（自带移动端支持）\n知道了"
+      }
+    },
+    {
+      "name": "390 workbench no horizontal overflow",
+      "pass": true,
+      "detail": {
+        "innerWidth": 390,
+        "docScroll": 390,
+        "bodyScroll": 390,
+        "ok": true
+      }
+    },
+    {
+      "name": "390 project phone cards show name/status/created time",
+      "pass": true,
+      "detail": {
+        "count": 5,
+        "first": {
+          "name": "payment-service",
+          "status": "离线",
+          "created": "6 小时前",
+          "scope": "管理员可见（未授权）",
+          "hasOpen": true,
+          "openEnabled": false
+        }
+      }
+    },
+    {
+      "name": "390 chips horizontal-scroll (overflow-x auto, nowrap)",
+      "pass": true,
+      "detail": {
+        "visible": true,
+        "overflowX": "auto",
+        "flexWrap": "nowrap",
+        "scrollWidth": 366,
+        "clientWidth": 366,
+        "horizontalScrollable": false
+      }
+    },
+    {
+      "name": "390 open workspace blocked with toast, hash unchanged",
+      "pass": true,
+      "detail": {
+        "toastText": "请在 Orca Web 工作区打开（自带移动端支持）",
+        "hashBefore": "#/projects",
+        "hashAfter": "#/projects",
+        "cardIndex": 1
+      }
+    },
+    {
+      "name": "390 projects no horizontal overflow",
+      "pass": true,
+      "detail": {
+        "innerWidth": 390,
+        "docScroll": 390,
+        "bodyScroll": 390,
+        "ok": true
+      }
+    },
+    {
+      "name": "390 project detail opens fullscreen sheet",
+      "pass": true,
+      "detail": {
+        "visible": true,
+        "width": 390,
+        "height": 844,
+        "viewport": {
+          "w": 390,
+          "h": 844
+        },
+        "fullscreen": true,
+        "closeVisible": true,
+        "dialogBg": "rgb(255, 255, 255)"
+      }
+    },
+    {
+      "name": "390 permission cards stacked vertically",
+      "pass": true,
+      "detail": {
+        "count": 3,
+        "sameX": true,
+        "strictlyDescending": true,
+        "cards": [
+          {
+            "title": "查看",
+            "x": 16,
+            "y": 269,
+            "w": 358
+          },
+          {
+            "title": "控制",
+            "x": 16,
+            "y": 512,
+            "w": 358
+          },
+          {
+            "title": "管理",
+            "x": 16,
+            "y": 774,
+            "w": 358
+          }
+        ]
+      }
+    },
+    {
+      "name": "390 sheet close returns to project list",
+      "pass": true,
+      "detail": {
+        "sheetGone": true,
+        "cardsVisible": true,
+        "hash": "#/projects"
+      }
+    },
+    {
+      "name": "768 bottom tabbar hidden and sidebar visible",
+      "pass": true,
+      "detail": {
+        "tabbarHidden": true,
+        "navVisible": true,
+        "navWidth": 231,
+        "tipHidden": true,
+        "innerWidth": 768,
+        "docScroll": 768
+      }
+    },
+    {
+      "name": "768 four stat cards in two columns",
+      "pass": true,
+      "detail": {
+        "count": 4,
+        "cols": 2,
+        "rows": 2
+      }
+    },
+    {
+      "name": "768 no horizontal overflow",
+      "pass": true,
+      "detail": {
+        "tabbarHidden": true,
+        "navVisible": true,
+        "navWidth": 231,
+        "tipHidden": true,
+        "innerWidth": 768,
+        "docScroll": 768
+      }
+    }
+  ],
+  "realData": {
+    "projectCards": 5,
+    "firstProject": "payment-service",
+    "permissionCards": 3
+  },
+  "consoleErrors": []
+}

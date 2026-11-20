@@ -1,0 +1,24 @@
+{
+  "task": "U127 remote relay CA cert + systemd",
+  "date": "2026-11-16T23:02:36.655138",
+  "authorized_by": "user 2026-11-16 (dev env non-dangerous autonomy; relay not in production use)",
+  "remote": "root@100.67.197.59 (jlc-ubuntu)",
+  "changes": {
+    "cert": "/root/.orca-cloud/tls/relay-browser.crt replaced with CA-signed (SAN relay.local/*.relay.local/100.67.197.59)",
+    "backup": "relay-browser.crt.selfsigned.bak / .key.selfsigned.bak",
+    "service": "/etc/systemd/system/orca-relay.service (EnvironmentFile=/root/.orca-cloud/relay.env, Restart=always)",
+    "token": "unchanged (existing env)",
+    "old_process": "3125778 killed, exact pid"
+  },
+  "evidence": {
+    "openssl_verify_remote": "OK",
+    "ports": [
+      "0.0.0.0:18443",
+      "0.0.0.0:18444"
+    ],
+    "relay_log": "routes synced n=2",
+    "handoff_url": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=...#handoff=...",
+    "handoff_http": 200,
+    "system_trust_verify": "0 (ok)"
+  }
+}

@@ -1,0 +1,14 @@
+=== preload baked env object (production) ===
+	"MODE": "production",
+
+-- preloadEnv assignment --
+
+-- exposeStore resolution --
+var exposeStore = preloadEnv?.MODE === "e2e" || isEnvFlagEnabled(preloadEnv?.VITE_EXPOSE_STORE);
+
+=== web config object with exposeStore ===
+ayMs:i,terminalRetentionLimit:a}}var GN=!1,KN=GN&&typeof window<`u`?new URLSearchParams(window.location.search):null;const qN=GN&&KN?.get(`orcaE2EDisableRemoteTerminalStallRecovery`)===`1`;var JN=WN({exposeStore:GN,terminalParkingDelayMs:Number(KN?.get(`orcaE2ETerminalParkingDelayMs`))||null,terminalRetentionLimit:Number(KN?.get(`or
+
+-- YN definition --
+YN=typeof window<`u`&&window.api?.e2e?window.api.e2e.getConfig():JN,XN=new Map,ZN=new Map
+YN=typeof window<`u`&&window.api?.e2e?window.api.e2e.getConfig():JN

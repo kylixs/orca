@@ -1,0 +1,19 @@
+{
+  "shellReached": true,
+  "dialogsBefore": [],
+  "overlayGoneByGotIt": true,
+  "dialogsAfter": [],
+  "xtermDom": {
+    "outer": "<div dir=\"ltr\" class=\"terminal xterm focus\" style=\"background-color: rgb(255, 255, 255);\"><canvas class=\"xterm-decoration-overview-ruler\" width=\"7\" height=\"928\" style=\"width: 7px; height: 928px;\"></canvas><div class=\"xterm-viewport\"></div><div class=\"xterm-scrollable-element  xterm-mac\" role=\"presentation\" style=\"position: relative; background-color: rgb(255, 255, 255);\"><div class=\"xterm-screen\" style=\"width: 952px; height: 928px;\"><div class=\"xterm-helpers\"><textarea class=\"xterm-helper-textarea\" aria-label=\"Terminal input\" aria-multiline=\"false\" autocomplete=\"off\" autocorrect=\"off\" autocapi",
+    "canvases": 4,
+    "rows": 0,
+    "rowsTextLen": 0,
+    "a11y": null,
+    "screenText": ".xterm .xterm-scrollable-element > .xterm-scrollbar > .xterm-slider {\n  background: #b4b4b966;\n}\n.xterm .xterm-scrollable-element > .xterm-scrollbar > .xterm-slider:hover {\n  background: #b4b4b999;\n}\n.xterm .xterm-scrollable-element > .xterm-scrollbar > .xterm-slider.xterm-active {\n  background: #b4"
+  },
+  "focused": true,
+  "rowsTextLenAfter": 0,
+  "clipMeta": "gongdewei@GongDeweideMacBook-Pro main-3 % printf 'J7-A-ONE-1794866918472\\n'\nJ7-A-ONE-1794866918472\ngongdewei@GongDeweideMacBook-Pro main-3 % echo PROD-SMOKE-20261117-062441\nPROD-SMOKE-20261117-062441\ngongdewei@GongDeweideMacBook-Pro main-3 % \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+  "clipCtrl": "gongdewei@GongDeweideMacBook-Pro main-3 % printf 'J7-A-ONE-1794866918472\\n'\nJ7-A-ONE-1794866918472\ngongdewei@GongDeweideMacBook-Pro main-3 % echo PROD-SMOKE-20261117-062441\nPROD-SMOKE-20261117-062441\ngongdewei@GongDeweideMacBook-Pro main-3 % \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+  "dialogNow": []
+}

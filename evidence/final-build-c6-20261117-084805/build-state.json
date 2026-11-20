@@ -1,0 +1,51 @@
+{
+  "generatedAt": "2026-11-17T00:50:13.900Z",
+  "gitHead": "635d6d93fe13bc746e1378c11f26dc1ecc3e1245",
+  "buildMode": "production (env -u VITE_EXPOSE_STORE)",
+  "files": {
+    "out/main/index.js": {
+      "sha256": "a5857b773ea366cbfd004e6738c41b53f44597e5352d0af7b80a4f95592a9eed",
+      "size": 9638425,
+      "mtime": "2026-11-17T00:48:15.642Z"
+    },
+    "out/preload/index.js": {
+      "sha256": "9727610cae36e75dbc87be9a72c329a24ddfd7625991d93a4a4f1ef9e51318cc",
+      "size": 390831,
+      "mtime": "2026-11-17T00:48:15.840Z"
+    },
+    "out/renderer/web-index.html": {
+      "sha256": "075803836a3ff7d361bdcdd29834f5085e7dbe7ebfb805339917e29f0bd6a5a9",
+      "size": 564,
+      "mtime": "2026-11-17T00:48:19.493Z"
+    },
+    "out/web/web-index.html": {
+      "sha256": "a74552de1991da96863e74cc2e8b20836cdc87695fc988399bf4c3c249303383",
+      "size": 564,
+      "mtime": "2026-11-17T00:48:23.931Z"
+    },
+    "out/web/cloud-admin.html": {
+      "sha256": "84f3a9e54730b4a36c0d56a21aa072edf02c14f5b48d63a060725f3d70bb990e",
+      "size": 587,
+      "mtime": "2026-11-17T00:48:23.931Z"
+    }
+  },
+  "checks": {
+    "main_activeLeafId_occurrences": 58,
+    "main_terminalLayoutsByTabId_occurrences": 153,
+    "preload_mode_production": true,
+    "preload_exposeStore_false_expr": true,
+    "preload_vite_flag_baked_out": true,
+    "web_hasKnownHostSessionGroups": true,
+    "web_u171_desktop_resolution": true,
+    "web_tuple_mapping_key": true,
+    "web_tuple_key_chunk": "out/web/assets/web-runtime-browser-creation-Bi23uUKT.js",
+    "renderer_tuple_mapping_key": true,
+    "renderer_tuple_key_chunk": "out/renderer/assets/web-runtime-browser-creation-DT4yHSOp.js",
+    "renderer_hasKnownHostSessionGroups": true
+  },
+  "webChunks": [
+    "out/web/assets/web-runtime-session-BWzW1b6u.js",
+    "out/web/assets/web-runtime-session-C7p-WgHR.js",
+    "out/web/assets/web-runtime-session-CxSAlu-U.js"
+  ]
+}

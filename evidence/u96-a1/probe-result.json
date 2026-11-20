@@ -1,0 +1,299 @@
+{
+  "workspace.info": {
+    "ok": true,
+    "result": {
+      "project": {
+        "id": "proj_04ce1792",
+        "root": "/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-2XIeUo/probe-project",
+        "repoUrl": "",
+        "defaultBranch": "main"
+      },
+      "workspace": {
+        "root": "/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-2XIeUo/probe-project/.orca-worktrees/zhangsan",
+        "path": "/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-2XIeUo/probe-project/.orca-worktrees/zhangsan/main",
+        "branch": "e2e/main"
+      },
+      "perms": ["open", "terminal", "file:read", "file:write"],
+      "capabilities": ["cloud.session-tabs-restore.v1"]
+    }
+  },
+  "session.tabs.listAll.beforeCreate": {
+    "ok": false,
+    "code": "RPC_TIMEOUT"
+  },
+  "terminal.list.beforeCreate": {
+    "ok": false,
+    "code": "forbidden",
+    "message": "Method 'terminal.list' is not available to cloud sessions."
+  },
+  "terminal.create": {
+    "ok": true,
+    "result": {
+      "terminal": {
+        "handle": "term_9b00e35c-5026-4284-9711-7dc938a8d669",
+        "tabId": "e8a06d7d-a42c-45ff-ab1f-892c20784588",
+        "paneKey": "e8a06d7d-a42c-45ff-ab1f-892c20784588:a864152e-6558-42a5-a607-1a6d1dda3c96",
+        "ptyId": "pty-probe-2",
+        "worktreeId": "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-2XIeUo/probe-project/.orca-worktrees/zhangsan/main",
+        "title": "u96-probe",
+        "executionHostId": "local",
+        "hostPlatform": "darwin",
+        "surface": "background",
+        "processId": 43272,
+        "warning": "Terminal term_9b00e35c-5026-4284-9711-7dc938a8d669 is running, but Orca could not make it discoverable. Run `orca terminal focus --terminal term_9b00e35c-5026-4284-9711-7dc938a8d669` to reveal and focus it."
+      }
+    }
+  },
+  "session.tabs.listAll.afterCreate": {
+    "ok": false,
+    "code": "RPC_TIMEOUT"
+  },
+  "session.tabs.list.afterCreate": {
+    "ok": true,
+    "result": {
+      "worktree": "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-2XIeUo/probe-project/.orca-worktrees/zhangsan/main",
+      "publicationEpoch": "headless:pty-backed:mwiofvyg:client-navigation",
+      "snapshotVersion": 4,
+      "activeGroupId": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-2XIeUo/probe-project/.orca-worktrees/zhangsan/main",
+      "activeTabId": "80a0070e-d951-4f5e-b9e3-19895405071a::e4ecdf18-103f-4a65-9b1b-0ea75e529382",
+      "activeTabType": "terminal",
+      "tabGroups": [
+        {
+          "id": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-2XIeUo/probe-project/.orca-worktrees/zhangsan/main",
+          "activeTabId": "80a0070e-d951-4f5e-b9e3-19895405071a",
+          "tabOrder": [
+            "80a0070e-d951-4f5e-b9e3-19895405071a",
+            "e8a06d7d-a42c-45ff-ab1f-892c20784588"
+          ]
+        }
+      ],
+      "tabs": [
+        {
+          "type": "terminal",
+          "id": "80a0070e-d951-4f5e-b9e3-19895405071a::e4ecdf18-103f-4a65-9b1b-0ea75e529382",
+          "parentTabId": "80a0070e-d951-4f5e-b9e3-19895405071a",
+          "leafId": "e4ecdf18-103f-4a65-9b1b-0ea75e529382",
+          "title": "zsh",
+          "ptyId": "pty-probe-1",
+          "parentLayout": {
+            "root": {
+              "type": "leaf",
+              "leafId": "e4ecdf18-103f-4a65-9b1b-0ea75e529382"
+            },
+            "activeLeafId": "e4ecdf18-103f-4a65-9b1b-0ea75e529382",
+            "expandedLeafId": null,
+            "ptyIdsByLeafId": {
+              "e4ecdf18-103f-4a65-9b1b-0ea75e529382": "pty-probe-1"
+            }
+          },
+          "isActive": true,
+          "status": "ready",
+          "terminal": "term_d5a96421-eca2-445a-afda-83ea75747be8"
+        },
+        {
+          "type": "terminal",
+          "id": "e8a06d7d-a42c-45ff-ab1f-892c20784588::a864152e-6558-42a5-a607-1a6d1dda3c96",
+          "parentTabId": "e8a06d7d-a42c-45ff-ab1f-892c20784588",
+          "leafId": "a864152e-6558-42a5-a607-1a6d1dda3c96",
+          "title": "zsh",
+          "ptyId": "pty-probe-2",
+          "parentLayout": {
+            "root": {
+              "type": "leaf",
+              "leafId": "a864152e-6558-42a5-a607-1a6d1dda3c96"
+            },
+            "activeLeafId": "a864152e-6558-42a5-a607-1a6d1dda3c96",
+            "expandedLeafId": null,
+            "ptyIdsByLeafId": {
+              "a864152e-6558-42a5-a607-1a6d1dda3c96": "pty-probe-2"
+            }
+          },
+          "isActive": false,
+          "status": "ready",
+          "terminal": "term_9b00e35c-5026-4284-9711-7dc938a8d669"
+        }
+      ],
+      "clientHostedPagesUnreconciled": true
+    }
+  },
+  "terminal.list.afterCreate": {
+    "ok": false,
+    "code": "forbidden",
+    "message": "Method 'terminal.list' is not available to cloud sessions."
+  },
+  "terminal.create.second": {
+    "ok": true,
+    "result": {
+      "terminal": {
+        "handle": "term_dd1c4973-aba9-4d35-8401-05c97d1f6811",
+        "tabId": "10a83090-92fd-434f-98bc-a55283dd023f",
+        "paneKey": "10a83090-92fd-434f-98bc-a55283dd023f:c60f87d9-362a-439f-842e-61ad058aa930",
+        "ptyId": "pty-probe-3",
+        "worktreeId": "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-2XIeUo/probe-project/.orca-worktrees/zhangsan/main",
+        "title": "u96-probe-pty-exit",
+        "executionHostId": "local",
+        "hostPlatform": "darwin",
+        "surface": "background",
+        "processId": 44005,
+        "warning": "Terminal term_dd1c4973-aba9-4d35-8401-05c97d1f6811 is running, but Orca could not make it discoverable. Run `orca terminal focus --terminal term_dd1c4973-aba9-4d35-8401-05c97d1f6811` to reveal and focus it."
+      }
+    }
+  },
+  "session.tabs.list.afterPtyExit": {
+    "ok": true,
+    "result": {
+      "worktree": "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-2XIeUo/probe-project/.orca-worktrees/zhangsan/main",
+      "publicationEpoch": "headless:pty-backed:mwiofvyg:client-navigation",
+      "snapshotVersion": 6,
+      "activeGroupId": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-2XIeUo/probe-project/.orca-worktrees/zhangsan/main",
+      "activeTabId": "80a0070e-d951-4f5e-b9e3-19895405071a::e4ecdf18-103f-4a65-9b1b-0ea75e529382",
+      "activeTabType": "terminal",
+      "tabGroups": [
+        {
+          "id": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-2XIeUo/probe-project/.orca-worktrees/zhangsan/main",
+          "activeTabId": "80a0070e-d951-4f5e-b9e3-19895405071a",
+          "tabOrder": [
+            "80a0070e-d951-4f5e-b9e3-19895405071a",
+            "e8a06d7d-a42c-45ff-ab1f-892c20784588"
+          ]
+        }
+      ],
+      "retiredTerminalSurfaces": [
+        {
+          "parentTabId": "10a83090-92fd-434f-98bc-a55283dd023f",
+          "leafId": "c60f87d9-362a-439f-842e-61ad058aa930",
+          "ptyId": "pty-probe-3",
+          "terminal": "term_dd1c4973-aba9-4d35-8401-05c97d1f6811",
+          "incarnationId": "runtime:960daa76-53fa-4bae-b885-e4c943a9bb16:1"
+        }
+      ],
+      "tabs": [
+        {
+          "type": "terminal",
+          "id": "80a0070e-d951-4f5e-b9e3-19895405071a::e4ecdf18-103f-4a65-9b1b-0ea75e529382",
+          "parentTabId": "80a0070e-d951-4f5e-b9e3-19895405071a",
+          "leafId": "e4ecdf18-103f-4a65-9b1b-0ea75e529382",
+          "title": "zsh",
+          "ptyId": "pty-probe-1",
+          "parentLayout": {
+            "root": {
+              "type": "leaf",
+              "leafId": "e4ecdf18-103f-4a65-9b1b-0ea75e529382"
+            },
+            "activeLeafId": "e4ecdf18-103f-4a65-9b1b-0ea75e529382",
+            "expandedLeafId": null,
+            "ptyIdsByLeafId": {
+              "e4ecdf18-103f-4a65-9b1b-0ea75e529382": "pty-probe-1"
+            }
+          },
+          "isActive": true,
+          "status": "ready",
+          "terminal": "term_d5a96421-eca2-445a-afda-83ea75747be8"
+        },
+        {
+          "type": "terminal",
+          "id": "e8a06d7d-a42c-45ff-ab1f-892c20784588::a864152e-6558-42a5-a607-1a6d1dda3c96",
+          "parentTabId": "e8a06d7d-a42c-45ff-ab1f-892c20784588",
+          "leafId": "a864152e-6558-42a5-a607-1a6d1dda3c96",
+          "title": "zsh",
+          "ptyId": "pty-probe-2",
+          "parentLayout": {
+            "root": {
+              "type": "leaf",
+              "leafId": "a864152e-6558-42a5-a607-1a6d1dda3c96"
+            },
+            "activeLeafId": "a864152e-6558-42a5-a607-1a6d1dda3c96",
+            "expandedLeafId": null,
+            "ptyIdsByLeafId": {
+              "a864152e-6558-42a5-a607-1a6d1dda3c96": "pty-probe-2"
+            }
+          },
+          "isActive": false,
+          "status": "ready",
+          "terminal": "term_9b00e35c-5026-4284-9711-7dc938a8d669"
+        }
+      ],
+      "clientHostedPagesUnreconciled": true
+    }
+  },
+  "session.tabs.listAll.afterPtyExit": {
+    "ok": false,
+    "code": "RPC_TIMEOUT"
+  },
+  "terminal.close": {
+    "ok": true,
+    "result": {
+      "close": {
+        "handle": "term_9b00e35c-5026-4284-9711-7dc938a8d669",
+        "tabId": "e8a06d7d-a42c-45ff-ab1f-892c20784588",
+        "ptyKilled": true
+      }
+    }
+  },
+  "session.tabs.listAll.afterClose": {
+    "ok": false,
+    "code": "RPC_TIMEOUT"
+  },
+  "session.tabs.list.afterClose": {
+    "ok": true,
+    "result": {
+      "worktree": "repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-2XIeUo/probe-project/.orca-worktrees/zhangsan/main",
+      "publicationEpoch": "headless:pty-backed:mwiofvyg:client-navigation",
+      "snapshotVersion": 8,
+      "activeGroupId": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-2XIeUo/probe-project/.orca-worktrees/zhangsan/main",
+      "activeTabId": "80a0070e-d951-4f5e-b9e3-19895405071a::e4ecdf18-103f-4a65-9b1b-0ea75e529382",
+      "activeTabType": "terminal",
+      "tabGroups": [
+        {
+          "id": "headless-terminals:repo-probe::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a1-2XIeUo/probe-project/.orca-worktrees/zhangsan/main",
+          "activeTabId": "80a0070e-d951-4f5e-b9e3-19895405071a",
+          "tabOrder": ["80a0070e-d951-4f5e-b9e3-19895405071a"]
+        }
+      ],
+      "retiredTerminalSurfaces": [
+        {
+          "parentTabId": "10a83090-92fd-434f-98bc-a55283dd023f",
+          "leafId": "c60f87d9-362a-439f-842e-61ad058aa930",
+          "ptyId": "pty-probe-3",
+          "terminal": "term_dd1c4973-aba9-4d35-8401-05c97d1f6811",
+          "incarnationId": "runtime:960daa76-53fa-4bae-b885-e4c943a9bb16:1"
+        },
+        {
+          "parentTabId": "e8a06d7d-a42c-45ff-ab1f-892c20784588",
+          "leafId": "a864152e-6558-42a5-a607-1a6d1dda3c96",
+          "ptyId": "pty-probe-2",
+          "terminal": "term_9b00e35c-5026-4284-9711-7dc938a8d669"
+        }
+      ],
+      "tabs": [
+        {
+          "type": "terminal",
+          "id": "80a0070e-d951-4f5e-b9e3-19895405071a::e4ecdf18-103f-4a65-9b1b-0ea75e529382",
+          "parentTabId": "80a0070e-d951-4f5e-b9e3-19895405071a",
+          "leafId": "e4ecdf18-103f-4a65-9b1b-0ea75e529382",
+          "title": "zsh",
+          "ptyId": "pty-probe-1",
+          "parentLayout": {
+            "root": {
+              "type": "leaf",
+              "leafId": "e4ecdf18-103f-4a65-9b1b-0ea75e529382"
+            },
+            "activeLeafId": "e4ecdf18-103f-4a65-9b1b-0ea75e529382",
+            "expandedLeafId": null,
+            "ptyIdsByLeafId": {
+              "e4ecdf18-103f-4a65-9b1b-0ea75e529382": "pty-probe-1"
+            }
+          },
+          "isActive": true,
+          "status": "ready",
+          "terminal": "term_d5a96421-eca2-445a-afda-83ea75747be8"
+        }
+      ]
+    }
+  },
+  "terminal.list.afterClose": {
+    "ok": false,
+    "code": "forbidden",
+    "message": "Method 'terminal.list' is not available to cloud sessions."
+  }
+}

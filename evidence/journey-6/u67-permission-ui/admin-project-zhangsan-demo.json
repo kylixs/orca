@@ -1,0 +1,33 @@
+{
+  "project": "zhangsan-demo",
+  "cardKeys": ["view", "control", "derived"],
+  "derivedOk": true,
+  "headerOk": true,
+  "writePath": {
+    "viewOk": true,
+    "viewChipOk": true,
+    "controlOk": true,
+    "controlChipOk": true,
+    "viewLayerKept": true,
+    "copyOk": true,
+    "downgradeOk": true,
+    "removeOk": true
+  },
+  "dangerOk": true,
+  "residualRows": [
+    {
+      "projectId": "proj_558c064b",
+      "subjectType": "user",
+      "subjectId": "user_eff396fc-a0d8-42c5-8471-1abf1b2aa26d",
+      "permissions": ["open", "terminal", "agent", "file:read", "file:write"],
+      "username": "zhangsan"
+    },
+    {
+      "projectId": "proj_558c064b",
+      "subjectType": "user",
+      "subjectId": "user_d9da147d-0d35-4453-a766-9a603845b713",
+      "permissions": ["open", "terminal", "agent", "file:read", "file:write"],
+      "username": "admin"
+    }
+  ]
+}

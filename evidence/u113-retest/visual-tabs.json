@@ -1,0 +1,24 @@
+{
+  "markers": {
+    "one": "U113-RT-ONE-1794836224324",
+    "two": "U113-RT-TWO-1794836224324"
+  },
+  "tabs": [
+    {
+      "tabId": "web-terminal-dfd4ffb8-d3ac-48b9-a4da-c7caf622d04c",
+      "title": "U113 terminal 1",
+      "marker": "U113-RT-ONE-1794836224324",
+      "screenshot": "visual-mark-one.png",
+      "hostReadOk": true
+    },
+    {
+      "tabId": "web-terminal-d52accc7-c364-47ff-83d4-f721f0019ac6",
+      "title": "U113 terminal 2",
+      "marker": "U113-RT-TWO-1794836224324",
+      "screenshot": "visual-mark-two.png",
+      "hostReadOk": true
+    }
+  ],
+  "ok": true,
+  "errors": []
+}

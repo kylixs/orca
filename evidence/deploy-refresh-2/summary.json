@@ -1,0 +1,66 @@
+{
+  "task": "de-instrumented web rebuild + platform-only snapshot refresh",
+  "date": "2026-11-16T07:06:00Z",
+  "head": "1177f9684a17f3905306c8f2aeb8dec38d241820",
+  "codeChanges": "none (build + platform-only restart only)",
+  "rebuild": {
+    "command": "env -u VITE_EXPOSE_STORE pnpm run build:web",
+    "exit": 0,
+    "outWeb": {
+      "files": 1481,
+      "treeSha256": "3468ed920be39126a6a2e365e5cea367c8d1786fb32a51b0605db1b9cc1c6db4",
+      "windowStoreMarkers": 0,
+      "note": "grep -ro 'window.__store' over out/web/assets = 0; a benign '__store' substring remains inside the unrelated store chunk"
+    }
+  },
+  "platformOnlyRestart": {
+    "command": "node cloud-platform/scripts/local-env-reseed.mjs --platform-only",
+    "exit": 0,
+    "platformPidBefore": 53600,
+    "platformPidAfter": 87692,
+    "platformRestarted": true,
+    "webBuildBefore": "3f2c2df95156",
+    "webBuildAfter": "e7df5302c33d",
+    "sourceBuild": "e7df5302c33d",
+    "snapshotOk": true,
+    "reseedFailures": [],
+    "hostAssertions": "deferred",
+    "deferredHosts": ["dev-local-02", "dev-local-03"],
+    "note": "dev platform store is in-memory, so a restart starts empty; hosts are untouched and go offline until a full reseed"
+  },
+  "processComparison": {
+    "forwarder": { "pidBefore": 88911, "pidAfter": 88911 },
+    "dev-local-02": { "pidBefore": 54012, "pidAfter": 54012, "alive": true },
+    "dev-local-03": { "pidBefore": 55910, "pidAfter": 55910, "alive": true }
+  },
+  "ptySurvival": {
+    "dev-local-02": { "before": 143, "after": 143, "kept": 143 },
+    "dev-local-03": { "before": 19, "after": 20, "kept": 19, "newPids": [90443] },
+    "note": "counts are real descendants captured with pgrep -P (Boolean-filtered); platform-only-evidence.json counts add a spurious pid 0 from the script's empty pgrep split"
+  },
+  "checks": {
+    "a_webRelease": {
+      "endpoint": "GET /v1/web/release -> 200",
+      "build": "e7df5302c33d",
+      "sourceBuild": "e7df5302c33d",
+      "match": true
+    },
+    "b_servedAppMatchesSource": {
+      "sourceSha256": "19c542aceff01915096f1ec3330867f0eb86d486188e83c9d4949237b6e62af1",
+      "servedAppJsSha256": "19c542aceff01915096f1ec3330867f0eb86d486188e83c9d4949237b6e62af1",
+      "servedHashedAppJsSha256": "19c542aceff01915096f1ec3330867f0eb86d486188e83c9d4949237b6e62af1",
+      "match": true
+    },
+    "c_header": {
+      "entry": "GET /",
+      "status": 200,
+      "xOrcaWebBuild": "e7df5302c33d"
+    },
+    "d_platformAndLogin": {
+      "platformGetRoot": 200,
+      "adminLogin": 200,
+      "accessToken": "present"
+    }
+  },
+  "commit": null
+}

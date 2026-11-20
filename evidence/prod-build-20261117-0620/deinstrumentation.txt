@@ -1,0 +1,24 @@
+=== 1) preload MODE / exposeStore ===
+-- occurrences of VITE_EXPOSE_STORE in out/preload --
+1
+-- baked import.meta.env object --
+{ GOOSE_MODE: "auto" }
+-- exposeStore expression --
+-- built e2e config object --
+exposeStore: exposeStore$1
+
+=== 2) renderer e2e probe symbols ===
+__monacoEditorE2E occurrences: 0
+monaco-e2e-probe chunk/files: 1
+installMonacoE2EProbe symbol: 0
+__orcaE2E / __webRuntimeSessionE2E: 1
+
+=== 3) out/web store exposure ===
+exposeStore:!0: 0
+__store=: 1
+VITE_EXPOSE_STORE: 0
+__webRuntimeSessionE2E: 1
+-- exposeStore config values --
+   1 out/web/assets/store-cZQgKD1S.js:exposeStore:GN
+   1 out/web/assets/store-cZQgKD1S.js:exposeStore:r
+   1 out/web/assets/web-root-B4oNFfJo.js:exposeStore:ir

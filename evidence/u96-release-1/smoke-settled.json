@@ -1,0 +1,33 @@
+{
+  "steps": {
+    "loaded": {
+      "url": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787"
+    },
+    "t3000": {
+      "tabs": [
+        {
+          "title": "Terminal",
+          "active": null
+        }
+      ],
+      "groups": 0,
+      "groupIds": [],
+      "xterm": 1,
+      "text": "Orca Search Onboarding checklist Tasks Automations Orca Mobile New Projects demo-app Inactive main primary main Active main main-2 Inactive main main-3 Terminal Command demo-app Names Contents docs U src README.md 0 KB · 0 0 1 host 登录云端平台 Project added demo-app TIP Jump to a worktree with ⌘J Search worktrees, switch tabs, tweak settings, or spin up a new worktree, all without leaving the keyboard."
+    },
+    "t5000": {
+      "tabs": [
+        {
+          "title": "Terminal",
+          "active": null
+        }
+      ],
+      "groups": 0,
+      "groupIds": [],
+      "xterm": 1,
+      "text": "Orca Search Onboarding checklist Tasks Automations Orca Mobile New Projects demo-app Inactive main primary main Active main main-2 Inactive main main-3 Terminal Command demo-app Names Contents docs U src README.md 0 KB · 0 0 1 host 登录云端平台 TIP Jump to a worktree with ⌘J Search worktrees, switch tabs, tweak settings, or spin up a new worktree, all without leaving the keyboard. Rebind the shortcut an"
+    }
+  },
+  "errors": [],
+  "ok": true
+}

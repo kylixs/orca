@@ -1,0 +1,15 @@
+{
+  "base": "https://127.0.0.1:18788",
+  "steps": {
+    "frames": [
+      "https://127.0.0.1:18788/#/workspace/proj_fd19e4ff",
+      "https://127.0.0.1:49927/cloud-admin.html?api=https%3A%2F%2F127.0.0.1%3A18788&embed=1&project=proj_fd19e4ff"
+    ],
+    "iframeUrl": "https://127.0.0.1:49927/cloud-admin.html?api=https%3A%2F%2F127.0.0.1%3A18788&embed=1&project=proj_fd19e4ff",
+    "simpleWorkspace": true,
+    "treeVisible": false,
+    "fileTreeMarkers": [],
+    "nodeMissing": true,
+    "events": []
+  }
+}

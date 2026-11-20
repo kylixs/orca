@@ -1,0 +1,46 @@
+{
+  "webClaim": {
+    "ok": true,
+    "result": {
+      "updated": true,
+      "applied": true,
+      "seq": 1
+    }
+  },
+  "simpleClaim": {
+    "ok": true,
+    "result": {
+      "updated": true,
+      "applied": true,
+      "seq": 2
+    }
+  },
+  "simpleSaw": [
+    {
+      "type": "fit-override-changed",
+      "mode": "remote-desktop-fit",
+      "cols": 120,
+      "rows": 40
+    },
+    {
+      "type": "fit-override-changed",
+      "mode": "desktop-fit",
+      "cols": 90,
+      "rows": 28
+    }
+  ],
+  "webSaw": [
+    {
+      "type": "fit-override-changed",
+      "mode": "desktop-fit",
+      "cols": 120,
+      "rows": 40
+    },
+    {
+      "type": "fit-override-changed",
+      "mode": "remote-desktop-fit",
+      "cols": 90,
+      "rows": 28
+    }
+  ]
+}

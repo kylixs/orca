@@ -1,0 +1,15 @@
+{
+  "base": "https://127.0.0.1:18788",
+  "project": "proj_fd19e4ff",
+  "steps": {
+    "iframeAllow": "clipboard-write",
+    "iframeUrl": "https://127.0.0.1:49927/cloud-admin.html?api=https%3A%2F%2F127.0.0.1%3A18788&embed=1&project=proj_fd19e4ff#handoff=6fzw8Bi9mC7mua-TON8QToAtY7H5xbFKzh9rHY5mgNM&project=proj_fd19e4ff",
+    "delegationSupported": true,
+    "write": "ok",
+    "frameClipboardLength": null,
+    "pageClipboardText": "u129-retest-payload"
+  },
+  "errors": [
+    "Permissions policy violation: The Clipboard API has been blocked because of a permissions policy applied to the current document. See https://crbug.com/414348233 for more details."
+  ]
+}

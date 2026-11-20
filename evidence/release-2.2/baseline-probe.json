@@ -1,0 +1,82 @@
+{
+  "base": "https://127.0.0.1:18787",
+  "user": "zhangsan",
+  "probes": {
+    "demo-app": {
+      "tabs": [
+        {
+          "id": "web-terminal-c474504a-4784-4440-a724-83ff14166767",
+          "title": "Terminal"
+        },
+        {
+          "id": "web-terminal-4463065f-3445-4ecb-83e4-9074d6e983ad",
+          "title": "Terminal"
+        },
+        {
+          "id": "web-terminal-70d9fec0-887b-43a4-874b-dc47367a7662",
+          "title": "Terminal"
+        }
+      ],
+      "xterm": 3,
+      "tabCount": 3,
+      "appLayout": true
+    },
+    "zhangsan-demo": {
+      "tabs": [
+        {
+          "id": "web-terminal-3d79520c-a5a5-41dc-b046-5c1283cb826c",
+          "title": "Terminal 1"
+        },
+        {
+          "id": "14621137-612d-49aa-adae-7a400171ff9d",
+          "title": "Terminal 1"
+        }
+      ],
+      "xterm": 2,
+      "tabCount": 2,
+      "appLayout": true
+    },
+    "infra-tools": {
+      "tabs": [
+        {
+          "id": "web-terminal-6fcbfd6b-e98e-47d3-ba1b-497b4cf18e0a",
+          "title": "Terminal 4"
+        }
+      ],
+      "xterm": 1,
+      "tabCount": 1,
+      "appLayout": true
+    },
+    "zhangsan-lab": {
+      "tabs": [
+        {
+          "id": "web-terminal-c130f838-ef96-40c1-8c43-6cc25b9aee94",
+          "title": "Terminal 1"
+        },
+        {
+          "id": "web-terminal-66db553c-2016-4170-a69e-98dd326346a1",
+          "title": "Terminal"
+        },
+        {
+          "id": "web-terminal-44f6e79a-338e-47bc-bcca-4c799eb49fd1",
+          "title": "Terminal"
+        },
+        {
+          "id": "web-terminal-ff5a5d71-e85f-40f7-bf70-70997008f8e9",
+          "title": "Terminal"
+        }
+      ],
+      "xterm": 4,
+      "tabCount": 4,
+      "appLayout": true
+    }
+  },
+  "errors": [],
+  "projectIds": {
+    "payment-service": "proj_payment",
+    "demo-app": "proj_369e97d1",
+    "zhangsan-demo": "proj_558c064b",
+    "infra-tools": "proj_8eea08de",
+    "zhangsan-lab": "proj_528e9b38"
+  }
+}

@@ -1,0 +1,183 @@
+{
+  "workspaceA": "/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+  "workspaceB": "/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-b/.orca-worktrees/zhangsan/main",
+  "projectB.terminal.create": {
+    "ok": true,
+    "result": {
+      "terminal": {
+        "handle": "term_0ea2fb60-3392-43ae-a3b9-ff804eea9340",
+        "tabId": "262acd80-6c7e-4cd3-894b-080ee8bea338",
+        "paneKey": "262acd80-6c7e-4cd3-894b-080ee8bea338:b43f1a04-5d51-4d9f-b2d2-4c14e56da096",
+        "ptyId": "pty-a8-6",
+        "worktreeId": "repo-b::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-b/.orca-worktrees/zhangsan/main",
+        "title": "U96 A8 project B terminal",
+        "executionHostId": "local",
+        "hostPlatform": "darwin",
+        "surface": "background",
+        "processId": 32110,
+        "warning": "Terminal term_0ea2fb60-3392-43ae-a3b9-ff804eea9340 is running, but Orca could not make it discoverable. Run `orca terminal focus --terminal term_0ea2fb60-3392-43ae-a3b9-ff804eea9340` to reveal and focus it."
+      }
+    }
+  },
+  "projectB.list.A": {
+    "worktree": null,
+    "tabCount": 0,
+    "groupCount": 0,
+    "activeTabId": null,
+    "activeGroupId": null,
+    "tabs": [],
+    "groups": []
+  },
+  "projectB.list.B": {
+    "worktree": "repo-b::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-b/.orca-worktrees/zhangsan/main",
+    "tabCount": 2,
+    "groupCount": 1,
+    "activeTabId": "42599c54-5aea-4bca-a05f-bfd1e2265c9f::7741280e-f329-4cad-a019-3e439e0113ae",
+    "activeGroupId": "headless-terminals:repo-b::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-b/.orca-worktrees/zhangsan/main",
+    "tabs": [
+      {
+        "id": "42599c54-5aea-4bca-a05f-bfd1e2265c9f::7741280e-f329-4cad-a019-3e439e0113ae",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      },
+      {
+        "id": "262acd80-6c7e-4cd3-894b-080ee8bea338::b43f1a04-5d51-4d9f-b2d2-4c14e56da096",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      }
+    ],
+    "groups": [
+      {
+        "id": "headless-terminals:repo-b::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-b/.orca-worktrees/zhangsan/main",
+        "activeTabId": "42599c54-5aea-4bca-a05f-bfd1e2265c9f",
+        "tabOrder": ["42599c54-5aea-4bca-a05f-bfd1e2265c9f", "262acd80-6c7e-4cd3-894b-080ee8bea338"]
+      }
+    ]
+  },
+  "projectA.listAfterB": {
+    "worktree": "repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+    "tabCount": 3,
+    "groupCount": 2,
+    "activeTabId": "a837f5e1-d957-4643-8bdc-7ade772d89fd::76e08a8e-af2c-463e-80ab-a776fab24b02",
+    "activeGroupId": "headless-terminals:repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+    "tabs": [
+      {
+        "id": "a837f5e1-d957-4643-8bdc-7ade772d89fd::76e08a8e-af2c-463e-80ab-a776fab24b02",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      },
+      {
+        "id": "c15a035e-9622-4a36-a64d-535798d9d713::51925943-f0f2-409d-bb4f-45100f5374c4",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      },
+      {
+        "id": "a939845a-0669-4c05-99a2-4f0523b6db56::aba0e9b7-ae83-47f7-b17d-b1d6d4546367",
+        "title": "zsh",
+        "type": "terminal",
+        "ptyId": null,
+        "handle": null
+      }
+    ],
+    "groups": [
+      {
+        "id": "headless-terminals:repo-a::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-a/.orca-worktrees/zhangsan/main",
+        "activeTabId": "a837f5e1-d957-4643-8bdc-7ade772d89fd",
+        "tabOrder": ["a837f5e1-d957-4643-8bdc-7ade772d89fd", "a939845a-0669-4c05-99a2-4f0523b6db56"]
+      },
+      {
+        "id": "5f6d550b-326e-428f-bc48-dd40f2013e22",
+        "activeTabId": "c15a035e-9622-4a36-a64d-535798d9d713",
+        "tabOrder": ["c15a035e-9622-4a36-a64d-535798d9d713"]
+      }
+    ]
+  },
+  "projectB.listAll": {
+    "ok": true,
+    "result": {
+      "snapshots": [
+        {
+          "worktree": "repo-b::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-b/.orca-worktrees/zhangsan/main",
+          "publicationEpoch": "headless:pty-backed:mwiq55nc:client-navigation",
+          "snapshotVersion": 4,
+          "activeGroupId": "headless-terminals:repo-b::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-b/.orca-worktrees/zhangsan/main",
+          "activeTabId": "42599c54-5aea-4bca-a05f-bfd1e2265c9f::7741280e-f329-4cad-a019-3e439e0113ae",
+          "activeTabType": "terminal",
+          "tabGroups": [
+            {
+              "id": "headless-terminals:repo-b::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-b/.orca-worktrees/zhangsan/main",
+              "activeTabId": "42599c54-5aea-4bca-a05f-bfd1e2265c9f",
+              "tabOrder": [
+                "42599c54-5aea-4bca-a05f-bfd1e2265c9f",
+                "262acd80-6c7e-4cd3-894b-080ee8bea338"
+              ]
+            }
+          ],
+          "tabs": [
+            {
+              "type": "terminal",
+              "id": "42599c54-5aea-4bca-a05f-bfd1e2265c9f::7741280e-f329-4cad-a019-3e439e0113ae",
+              "parentTabId": "42599c54-5aea-4bca-a05f-bfd1e2265c9f",
+              "leafId": "7741280e-f329-4cad-a019-3e439e0113ae",
+              "title": "zsh",
+              "ptyId": "pty-a8-2",
+              "parentLayout": {
+                "root": {
+                  "type": "leaf",
+                  "leafId": "7741280e-f329-4cad-a019-3e439e0113ae"
+                },
+                "activeLeafId": "7741280e-f329-4cad-a019-3e439e0113ae",
+                "expandedLeafId": null,
+                "ptyIdsByLeafId": {
+                  "7741280e-f329-4cad-a019-3e439e0113ae": "pty-a8-2"
+                }
+              },
+              "isActive": true,
+              "status": "ready",
+              "terminal": "term_a0fab32b-de8f-4c06-9737-7a6fa824b796"
+            },
+            {
+              "type": "terminal",
+              "id": "262acd80-6c7e-4cd3-894b-080ee8bea338::b43f1a04-5d51-4d9f-b2d2-4c14e56da096",
+              "parentTabId": "262acd80-6c7e-4cd3-894b-080ee8bea338",
+              "leafId": "b43f1a04-5d51-4d9f-b2d2-4c14e56da096",
+              "title": "zsh",
+              "ptyId": "pty-a8-6",
+              "parentLayout": {
+                "root": {
+                  "type": "leaf",
+                  "leafId": "b43f1a04-5d51-4d9f-b2d2-4c14e56da096"
+                },
+                "activeLeafId": "b43f1a04-5d51-4d9f-b2d2-4c14e56da096",
+                "expandedLeafId": null,
+                "ptyIdsByLeafId": {
+                  "b43f1a04-5d51-4d9f-b2d2-4c14e56da096": "pty-a8-6"
+                }
+              },
+              "isActive": false,
+              "status": "ready",
+              "terminal": "term_0ea2fb60-3392-43ae-a3b9-ff804eea9340"
+            }
+          ],
+          "clientHostedPagesUnreconciled": true
+        }
+      ]
+    }
+  },
+  "projectB.listAll.worktrees": [
+    "repo-b::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-a8-8APJM6/project-b/.orca-worktrees/zhangsan/main"
+  ],
+  "projectB.crossScopeList": {
+    "ok": false,
+    "code": "forbidden",
+    "message": "Writes are limited to your own workspace root inside this project."
+  }
+}

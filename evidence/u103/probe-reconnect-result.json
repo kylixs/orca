@@ -1,0 +1,60 @@
+{
+  "steps": {
+    "popup": {
+      "console": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+        }
+      ],
+      "pageErrors": [],
+      "failed": []
+    },
+    "afterReload": {
+      "url": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787",
+      "inputs": [
+        {
+          "id": "web-cloud-api-url",
+          "type": "text",
+          "value": "",
+          "placeholder": "https://cloud.example.com"
+        },
+        {
+          "id": "web-cloud-username",
+          "type": "text",
+          "value": "",
+          "placeholder": ""
+        },
+        {
+          "id": "web-cloud-password",
+          "type": "password",
+          "value": "",
+          "placeholder": ""
+        },
+        {
+          "id": "web-cloud-device-name",
+          "type": "text",
+          "value": "Orca Web",
+          "placeholder": ""
+        }
+      ],
+      "buttons": ["Cloud account", "Pairing code", "Sign in and connect"],
+      "body": "Connect to Orca\n\nPaste a pairing URL from an Orca server that this browser can reach.\n\nYour cloud session ended when this page closed. Sign in again to continue.\nCloud account\nPairing code\nPlatform address\nUsername\nPassword\nDevice name\n\nShown in the platform device list. Signing in enrols this browser on first use.\n\nSign in and connect"
+    },
+    "hasCloudForm": true,
+    "reconnect": {
+      "enteredWorkspace": false
+    },
+    "afterReconnect": {
+      "url": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787",
+      "appLayout": false,
+      "body": "Connect to Orca\n\nPaste a pairing URL from an Orca server that this browser can reach.\n\nYour cloud session ended when this page closed. Sign in again to continue.\nCloud account\nPairing code\nPlatform address\nUsername\nPassword\nDevice name\n\nShown in the platform device list. Signing in enrols this browser on first use.\n\nPROJECT_FORBIDDEN\n\n项目无权限，无法打开。\n\nSign in and connect",
+      "consoleErrors": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+        }
+      ]
+    }
+  }
+}

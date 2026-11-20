@@ -1,0 +1,15 @@
+=== now ===
+2026-11-17 07:02:00
+=== disk artifact sha ===
+e1f230309168bce755fdd824bdb8fff360e662eab21f3c932962b10c47cc6e20  /Users/gongdewei/work/projects/orca/out/main/index.js
+9727610cae36e75dbc87be9a72c329a24ddfd7625991d93a4a4f1ef9e51318cc  /Users/gongdewei/work/projects/orca/out/preload/index.js
+=== build mtime ===
+-rw-r--r--@ 1 gongdewei  staff  9638199 Nov 17 06:57 /Users/gongdewei/work/projects/orca/out/main/index.js
+-rw-r--r--@ 1 gongdewei  staff      564 Nov 17 06:57 /Users/gongdewei/work/projects/orca/out/web/web-index.html
+=== host processes ===
+20287 Tue Nov 17 07:01:51 2026     /opt/homebrew/Cellar/node/24.5.0/bin/node /Users/gongdewei/orca-local-env/bin/host-supervisor.mjs /Users/gongdewei/work/projects/orca/node_modules/.pnpm/electron@43.7.5_supports-color@7.2.0/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron /Users/gongdewei/work/projects/orca/out/main/index.js
+20288 Tue Nov 17 07:01:51 2026     /Users/gongdewei/work/projects/orca/node_modules/.pnpm/electron@43.7.5_supports-color@7.2.0/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron /Users/gongdewei/work/projects/orca/out/main/index.js
+22171 Tue Nov 17 07:01:55 2026     /opt/homebrew/Cellar/node/24.5.0/bin/node /Users/gongdewei/orca-local-env/bin/host-supervisor.mjs /Users/gongdewei/work/projects/orca/node_modules/.pnpm/electron@43.7.5_supports-color@7.2.0/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron /Users/gongdewei/work/projects/orca/out/main/index.js
+22183 Tue Nov 17 07:01:55 2026     /Users/gongdewei/work/projects/orca/node_modules/.pnpm/electron@43.7.5_supports-color@7.2.0/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron /Users/gongdewei/work/projects/orca/out/main/index.js
+=== pidfiles ===
+202872217119818

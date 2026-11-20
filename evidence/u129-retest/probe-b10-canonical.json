@@ -1,0 +1,5 @@
+{
+  "base": "https://127.0.0.1:18787",
+  "steps": {},
+  "error": "TimeoutError: locator.waitFor: Timeout 60000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.workspace-frame') to be visible\u001b[22m\n"
+}

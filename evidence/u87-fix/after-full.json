@@ -36,7 +36,12 @@
         "restored": { "samples": 20, "p50Ms": 3.69, "p95Ms": 7.14, "maxMs": 10.08 }
       }
     ],
-    "environment": { "platform": "darwin", "node": "v24.5.0", "shell": "/bin/zsh", "clientAndHostOnSameMachine": true }
+    "environment": {
+      "platform": "darwin",
+      "node": "v24.5.0",
+      "shell": "/bin/zsh",
+      "clientAndHostOnSameMachine": true
+    }
   },
   "comparison": {
     "beforeFullPath": {

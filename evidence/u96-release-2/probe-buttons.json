@@ -1,0 +1,865 @@
+{
+  "buttons": [
+    {
+      "i": 0,
+      "label": "Toggle sidebar",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 126,
+        "y": 6,
+        "w": 32,
+        "h": 24
+      },
+      "visible": true,
+      "cls": "sidebar-toggle"
+    },
+    {
+      "i": 1,
+      "label": "Go back",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 224,
+        "y": 8,
+        "w": 22,
+        "h": 20
+      },
+      "visible": true,
+      "cls": "sidebar-toggle sidebar-toggle-compact"
+    },
+    {
+      "i": 2,
+      "label": "Go forward",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 246,
+        "y": 8,
+        "w": 22,
+        "h": 20
+      },
+      "visible": true,
+      "cls": "sidebar-toggle sidebar-toggle-compact"
+    },
+    {
+      "i": 3,
+      "label": "Search worktrees and browser tabs",
+      "title": "",
+      "text": "Search",
+      "rect": {
+        "x": 8,
+        "y": 44,
+        "w": 264,
+        "h": 32
+      },
+      "visible": true,
+      "cls": "group flex w-full items-center gap-2 rounded-md bg-worktree-sidebar-foreground/5 px-2 py-1.5 text-left text-[13px] font-"
+    },
+    {
+      "i": 4,
+      "label": "",
+      "title": "",
+      "text": "Onboarding checklist",
+      "rect": {
+        "x": 8,
+        "y": 78,
+        "w": 264,
+        "h": 32
+      },
+      "visible": true,
+      "cls": "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] font-medium tracking-tight transition-colors"
+    },
+    {
+      "i": 5,
+      "label": "",
+      "title": "",
+      "text": "Tasks",
+      "rect": {
+        "x": 8,
+        "y": 111,
+        "w": 264,
+        "h": 32
+      },
+      "visible": true,
+      "cls": "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] font-medium tracking-tight transition-colors"
+    },
+    {
+      "i": 6,
+      "label": "Open GitHub tasks",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 224,
+        "y": 118,
+        "w": 18,
+        "h": 18
+      },
+      "visible": true,
+      "cls": "rounded p-0.5 text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:"
+    },
+    {
+      "i": 7,
+      "label": "Open Jira tasks",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 246,
+        "y": 118,
+        "w": 18,
+        "h": 18
+      },
+      "visible": true,
+      "cls": "rounded p-0.5 text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:"
+    },
+    {
+      "i": 8,
+      "label": "",
+      "title": "",
+      "text": "Automations",
+      "rect": {
+        "x": 8,
+        "y": 145,
+        "w": 264,
+        "h": 32
+      },
+      "visible": true,
+      "cls": "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] font-medium tracking-tight transition-colors"
+    },
+    {
+      "i": 9,
+      "label": "",
+      "title": "",
+      "text": "Orca Mobile New",
+      "rect": {
+        "x": 8,
+        "y": 178,
+        "w": 264,
+        "h": 32
+      },
+      "visible": true,
+      "cls": "flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left"
+    },
+    {
+      "i": 10,
+      "label": "View activity",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 164,
+        "y": 226,
+        "w": 24,
+        "h": 24
+      },
+      "visible": true,
+      "cls": "inline-flex shrink-0 items-center justify-center gap-2 cursor-pointer text-sm font-medium whitespace-nowrap transition-a"
+    },
+    {
+      "i": 11,
+      "label": "Workspace options",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 192,
+        "y": 226,
+        "w": 24,
+        "h": 24
+      },
+      "visible": true,
+      "cls": "inline-flex shrink-0 items-center justify-center gap-2 cursor-pointer text-sm font-medium whitespace-nowrap transition-a"
+    },
+    {
+      "i": 12,
+      "label": "Add project",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 220,
+        "y": 226,
+        "w": 24,
+        "h": 24
+      },
+      "visible": true,
+      "cls": "inline-flex shrink-0 items-center justify-center gap-2 cursor-pointer text-sm font-medium whitespace-nowrap transition-a"
+    },
+    {
+      "i": 13,
+      "label": "New workspace",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 248,
+        "y": 226,
+        "w": 24,
+        "h": 24
+      },
+      "visible": true,
+      "cls": "inline-flex shrink-0 items-center justify-center gap-2 cursor-pointer text-sm font-medium whitespace-nowrap transition-a"
+    },
+    {
+      "i": 16,
+      "label": "Mark as unread",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 25,
+        "y": 297,
+        "w": 16,
+        "h": 16
+      },
+      "visible": true,
+      "cls": "group/unread relative flex cursor-pointer items-center justify-center rounded transition-all size-4 hover:bg-accent/80 a"
+    },
+    {
+      "i": 18,
+      "label": "Mark as unread",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 25,
+        "y": 353,
+        "w": 16,
+        "h": 16
+      },
+      "visible": true,
+      "cls": "group/unread relative flex cursor-pointer items-center justify-center rounded transition-all size-4 hover:bg-accent/80 a"
+    },
+    {
+      "i": 20,
+      "label": "Mark as unread",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 25,
+        "y": 409,
+        "w": 16,
+        "h": 16
+      },
+      "visible": true,
+      "cls": "group/unread relative flex cursor-pointer items-center justify-center rounded transition-all size-4 hover:bg-accent/80 a"
+    },
+    {
+      "i": 22,
+      "label": "Settings",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 8,
+        "y": 846,
+        "w": 24,
+        "h": 24
+      },
+      "visible": true,
+      "cls": "inline-flex shrink-0 items-center justify-center gap-2 cursor-pointer text-sm font-medium whitespace-nowrap transition-a"
+    },
+    {
+      "i": 23,
+      "label": "Help",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 36,
+        "y": 846,
+        "w": 24,
+        "h": 24
+      },
+      "visible": true,
+      "cls": "inline-flex shrink-0 items-center justify-center gap-2 cursor-pointer text-sm font-medium whitespace-nowrap transition-a"
+    },
+    {
+      "i": 24,
+      "label": "Reveal active workspace",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 220,
+        "y": 846,
+        "w": 24,
+        "h": 24
+      },
+      "visible": true,
+      "cls": "inline-flex shrink-0 items-center justify-center gap-2 cursor-pointer text-sm font-medium whitespace-nowrap transition-a"
+    },
+    {
+      "i": 25,
+      "label": "Workspace board",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 248,
+        "y": 846,
+        "w": 24,
+        "h": 24
+      },
+      "visible": true,
+      "cls": "inline-flex shrink-0 items-center justify-center gap-2 cursor-pointer text-sm font-medium whitespace-nowrap transition-a"
+    },
+    {
+      "i": 26,
+      "label": "Close tab Terminal",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 479,
+        "y": 12,
+        "w": 16,
+        "h": 16
+      },
+      "visible": true,
+      "cls": "relative z-10 flex items-center justify-center w-4 h-4 rounded-sm shrink-0 text-muted-foreground hover:text-foreground h"
+    },
+    {
+      "i": 28,
+      "label": "New tab",
+      "title": "New tab",
+      "text": "",
+      "rect": {
+        "x": 510,
+        "y": 6,
+        "w": 28,
+        "h": 28
+      },
+      "visible": true,
+      "cls": "ml-2 my-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/50 hover"
+    },
+    {
+      "i": 29,
+      "label": "Add quick command",
+      "title": "",
+      "text": "Command",
+      "rect": {
+        "x": 996,
+        "y": 6,
+        "w": 88,
+        "h": 28
+      },
+      "visible": true,
+      "cls": "my-auto flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-muted-foreground hover:bg-accent/50 hover:text-foreg"
+    },
+    {
+      "i": 31,
+      "label": "Split Terminal Right",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 1053,
+        "y": 36,
+        "w": 18,
+        "h": 24
+      },
+      "visible": true,
+      "cls": "inline-flex shrink-0 items-center justify-center gap-2 cursor-pointer text-sm font-medium whitespace-nowrap transition-a"
+    },
+    {
+      "i": 32,
+      "label": "Close tab",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 1070,
+        "y": 36,
+        "w": 18,
+        "h": 24
+      },
+      "visible": true,
+      "cls": "inline-flex shrink-0 items-center justify-center gap-2 cursor-pointer text-sm font-medium whitespace-nowrap transition-a"
+    },
+    {
+      "i": 33,
+      "label": "Explorer (⌘⇧E)",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 1099,
+        "y": 0,
+        "w": 36,
+        "h": 36
+      },
+      "visible": true,
+      "cls": "relative flex shrink-0 items-center justify-center transition-colors right-sidebar-header-no-drag h-[36px] w-9 text-fore"
+    },
+    {
+      "i": 34,
+      "label": "Agents",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 1135,
+        "y": 0,
+        "w": 36,
+        "h": 36
+      },
+      "visible": true,
+      "cls": "relative flex shrink-0 items-center justify-center transition-colors right-sidebar-header-no-drag h-[36px] w-9 text-mute"
+    },
+    {
+      "i": 35,
+      "label": "Source Control (⌘⇧G)",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 1171,
+        "y": 0,
+        "w": 36,
+        "h": 36
+      },
+      "visible": true,
+      "cls": "relative flex shrink-0 items-center justify-center transition-colors right-sidebar-header-no-drag h-[36px] w-9 text-mute"
+    },
+    {
+      "i": 36,
+      "label": "Checks",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 1207,
+        "y": 0,
+        "w": 36,
+        "h": 36
+      },
+      "visible": true,
+      "cls": "relative flex shrink-0 items-center justify-center transition-colors right-sidebar-header-no-drag h-[36px] w-9 text-mute"
+    },
+    {
+      "i": 37,
+      "label": "Toggle right sidebar",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 1400,
+        "y": 6,
+        "w": 32,
+        "h": 24
+      },
+      "visible": true,
+      "cls": "sidebar-toggle mr-1"
+    },
+    {
+      "i": 38,
+      "label": "Collapse All",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 1344,
+        "y": 40,
+        "w": 24,
+        "h": 24
+      },
+      "visible": true,
+      "cls": "inline-flex shrink-0 items-center justify-center gap-2 text-sm font-medium whitespace-nowrap transition-all outline-none"
+    },
+    {
+      "i": 39,
+      "label": "Refresh Explorer",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 1376,
+        "y": 40,
+        "w": 24,
+        "h": 24
+      },
+      "visible": true,
+      "cls": "inline-flex shrink-0 items-center justify-center gap-2 cursor-pointer text-sm font-medium whitespace-nowrap transition-a"
+    },
+    {
+      "i": 40,
+      "label": "More Explorer Actions",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 1408,
+        "y": 40,
+        "w": 24,
+        "h": 24
+      },
+      "visible": true,
+      "cls": "inline-flex shrink-0 items-center justify-center gap-2 cursor-pointer text-sm font-medium whitespace-nowrap transition-a"
+    },
+    {
+      "i": 41,
+      "label": "Match Case",
+      "title": "Match Case",
+      "text": "",
+      "rect": {
+        "x": 1363,
+        "y": 79,
+        "w": 18,
+        "h": 18
+      },
+      "visible": true,
+      "cls": "inline-flex shrink-0 items-center justify-center gap-2 cursor-pointer text-sm font-medium whitespace-nowrap transition-a"
+    },
+    {
+      "i": 42,
+      "label": "Match Whole Word",
+      "title": "Match Whole Word",
+      "text": "",
+      "rect": {
+        "x": 1385,
+        "y": 79,
+        "w": 18,
+        "h": 18
+      },
+      "visible": true,
+      "cls": "inline-flex shrink-0 items-center justify-center gap-2 cursor-pointer text-sm font-medium whitespace-nowrap transition-a"
+    },
+    {
+      "i": 43,
+      "label": "Use Regular Expression",
+      "title": "Use Regular Expression",
+      "text": "",
+      "rect": {
+        "x": 1407,
+        "y": 79,
+        "w": 18,
+        "h": 18
+      },
+      "visible": true,
+      "cls": "inline-flex shrink-0 items-center justify-center gap-2 cursor-pointer text-sm font-medium whitespace-nowrap transition-a"
+    },
+    {
+      "i": 44,
+      "label": "Filter files by name",
+      "title": "",
+      "text": "Names",
+      "rect": {
+        "x": 1101,
+        "y": 108,
+        "w": 164,
+        "h": 24
+      },
+      "visible": true,
+      "cls": "inline-flex items-center justify-center gap-2 whitespace-nowrap outline-none focus-visible:border-ring disabled:pointer-"
+    },
+    {
+      "i": 45,
+      "label": "Search file contents",
+      "title": "",
+      "text": "Contents",
+      "rect": {
+        "x": 1267,
+        "y": 108,
+        "w": 164,
+        "h": 24
+      },
+      "visible": true,
+      "cls": "inline-flex items-center justify-center gap-2 whitespace-nowrap outline-none focus-visible:border-ring disabled:pointer-"
+    },
+    {
+      "i": 46,
+      "label": "",
+      "title": "",
+      "text": "docs U",
+      "rect": {
+        "x": 1091,
+        "y": 149,
+        "w": 349,
+        "h": 24
+      },
+      "visible": true,
+      "cls": "flex w-full items-center gap-1 rounded-sm px-2 py-1 text-left text-xs transition-colors hover:bg-accent hover:text-foreg"
+    },
+    {
+      "i": 47,
+      "label": "",
+      "title": "",
+      "text": "src",
+      "rect": {
+        "x": 1091,
+        "y": 173,
+        "w": 349,
+        "h": 24
+      },
+      "visible": true,
+      "cls": "flex w-full items-center gap-1 rounded-sm px-2 py-1 text-left text-xs transition-colors hover:bg-accent hover:text-foreg"
+    },
+    {
+      "i": 48,
+      "label": "",
+      "title": "",
+      "text": "README.md",
+      "rect": {
+        "x": 1091,
+        "y": 197,
+        "w": 349,
+        "h": 24
+      },
+      "visible": true,
+      "cls": "flex w-full items-center gap-1 rounded-sm px-2 py-1 text-left text-xs transition-colors hover:bg-accent hover:text-foreg"
+    },
+    {
+      "i": 50,
+      "label": "Refresh rate limits",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 12,
+        "y": 881,
+        "w": 15,
+        "h": 15
+      },
+      "visible": true,
+      "cls": "p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+    },
+    {
+      "i": 51,
+      "label": "Resource Manager, 0 terminal sessions",
+      "title": "",
+      "text": "0 KB · 0",
+      "rect": {
+        "x": 1126,
+        "y": 879,
+        "w": 90,
+        "h": 20
+      },
+      "visible": true,
+      "cls": "relative inline-flex items-center gap-1.5 cursor-pointer rounded px-1 py-0.5 hover:bg-accent/70"
+    },
+    {
+      "i": 52,
+      "label": "Ports, 0 workspace ports",
+      "title": "",
+      "text": "0",
+      "rect": {
+        "x": 1228,
+        "y": 879,
+        "w": 33,
+        "h": 19
+      },
+      "visible": true,
+      "cls": "inline-flex cursor-pointer items-center gap-1.5 rounded px-1 py-0.5 hover:bg-accent/70"
+    },
+    {
+      "i": 53,
+      "label": "Remote host connection status",
+      "title": "",
+      "text": "1 host",
+      "rect": {
+        "x": 1273,
+        "y": 879,
+        "w": 68,
+        "h": 19
+      },
+      "visible": true,
+      "cls": "inline-flex items-center gap-1.5 cursor-pointer rounded px-1 py-0.5 hover:bg-accent/70"
+    },
+    {
+      "i": 54,
+      "label": "",
+      "title": "",
+      "text": "登录云端平台",
+      "rect": {
+        "x": 1353,
+        "y": 879,
+        "w": 75,
+        "h": 19
+      },
+      "visible": true,
+      "cls": "inline-flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-[11px] font-medium text-muted-foreground transiti"
+    }
+  ],
+  "clicks": [
+    {
+      "target": {
+        "i": 3,
+        "label": "Search worktrees and browser tabs",
+        "title": "",
+        "text": "Search",
+        "rect": {
+          "x": 8,
+          "y": 44,
+          "w": 264,
+          "h": 32
+        },
+        "visible": true,
+        "cls": "group flex w-full items-center gap-2 rounded-md bg-worktree-sidebar-foreground/5 px-2 py-1.5 text-left text-[13px] font-"
+      },
+      "before": 0,
+      "items": [],
+      "menus": 2
+    },
+    {
+      "target": {
+        "i": 9,
+        "label": "",
+        "title": "",
+        "text": "Orca Mobile New",
+        "rect": {
+          "x": 8,
+          "y": 178,
+          "w": 264,
+          "h": 32
+        },
+        "visible": true,
+        "cls": "flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left"
+      },
+      "before": 0,
+      "items": [],
+      "menus": 1
+    },
+    {
+      "target": {
+        "i": 13,
+        "label": "New workspace",
+        "title": "",
+        "text": "",
+        "rect": {
+          "x": 248,
+          "y": 226,
+          "w": 24,
+          "h": 24
+        },
+        "visible": true,
+        "cls": "inline-flex shrink-0 items-center justify-center gap-2 cursor-pointer text-sm font-medium whitespace-nowrap transition-a"
+      },
+      "before": 0,
+      "items": [],
+      "menus": 1
+    },
+    {
+      "target": {
+        "i": 26,
+        "label": "Close tab Terminal",
+        "title": "",
+        "text": "",
+        "rect": {
+          "x": 479,
+          "y": 12,
+          "w": 16,
+          "h": 16
+        },
+        "visible": true,
+        "cls": "relative z-10 flex items-center justify-center w-4 h-4 rounded-sm shrink-0 text-muted-foreground hover:text-foreground h"
+      },
+      "before": 0,
+      "items": [],
+      "menus": 1
+    },
+    {
+      "target": {
+        "i": 28,
+        "label": "New tab",
+        "title": "New tab",
+        "text": "",
+        "rect": {
+          "x": 510,
+          "y": 6,
+          "w": 28,
+          "h": 28
+        },
+        "visible": true,
+        "cls": "ml-2 my-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/50 hover"
+      },
+      "before": 0,
+      "items": [],
+      "menus": 1
+    },
+    {
+      "target": {
+        "i": 32,
+        "label": "Close tab",
+        "title": "",
+        "text": "",
+        "rect": {
+          "x": 1070,
+          "y": 36,
+          "w": 18,
+          "h": 24
+        },
+        "visible": true,
+        "cls": "inline-flex shrink-0 items-center justify-center gap-2 cursor-pointer text-sm font-medium whitespace-nowrap transition-a"
+      },
+      "before": 0,
+      "items": [],
+      "menus": 1
+    }
+  ],
+  "tipsClosed": 1,
+  "candidates": [
+    {
+      "i": 3,
+      "label": "Search worktrees and browser tabs",
+      "title": "",
+      "text": "Search",
+      "rect": {
+        "x": 8,
+        "y": 44,
+        "w": 264,
+        "h": 32
+      },
+      "visible": true,
+      "cls": "group flex w-full items-center gap-2 rounded-md bg-worktree-sidebar-foreground/5 px-2 py-1.5 text-left text-[13px] font-"
+    },
+    {
+      "i": 9,
+      "label": "",
+      "title": "",
+      "text": "Orca Mobile New",
+      "rect": {
+        "x": 8,
+        "y": 178,
+        "w": 264,
+        "h": 32
+      },
+      "visible": true,
+      "cls": "flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left"
+    },
+    {
+      "i": 13,
+      "label": "New workspace",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 248,
+        "y": 226,
+        "w": 24,
+        "h": 24
+      },
+      "visible": true,
+      "cls": "inline-flex shrink-0 items-center justify-center gap-2 cursor-pointer text-sm font-medium whitespace-nowrap transition-a"
+    },
+    {
+      "i": 26,
+      "label": "Close tab Terminal",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 479,
+        "y": 12,
+        "w": 16,
+        "h": 16
+      },
+      "visible": true,
+      "cls": "relative z-10 flex items-center justify-center w-4 h-4 rounded-sm shrink-0 text-muted-foreground hover:text-foreground h"
+    },
+    {
+      "i": 28,
+      "label": "New tab",
+      "title": "New tab",
+      "text": "",
+      "rect": {
+        "x": 510,
+        "y": 6,
+        "w": 28,
+        "h": 28
+      },
+      "visible": true,
+      "cls": "ml-2 my-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/50 hover"
+    },
+    {
+      "i": 32,
+      "label": "Close tab",
+      "title": "",
+      "text": "",
+      "rect": {
+        "x": 1070,
+        "y": 36,
+        "w": 18,
+        "h": 24
+      },
+      "visible": true,
+      "cls": "inline-flex shrink-0 items-center justify-center gap-2 cursor-pointer text-sm font-medium whitespace-nowrap transition-a"
+    }
+  ]
+}

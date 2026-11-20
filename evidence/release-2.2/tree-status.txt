@@ -1,0 +1,80 @@
+HEAD_SHA=aa8fd6bfa85c887db28360b3c5e24a7f551e53d6
+HEAD_TIME=2026-11-16 13:29:41 +0800
+SNAPSHOT_AT=2026-11-16 13:31:17 +0800
+PORCELAIN_COUNT=266
+--- staged/untracked non-M ---
+?? evidence/exploratory-r5/
+?? evidence/release-2.2/
+?? evidence/u103/
+?? evidence/u104/
+?? evidence/u115/
+?? evidence/u118/
+?? evidence/u81b-fix/
+?? evidence/u83-fix/
+?? evidence/u86-fix/
+?? evidence/u88-fix/
+?? evidence/u90-fix/
+?? evidence/u91-coverage/
+?? evidence/u94-verify/
+?? evidence/u96-a1/
+?? evidence/u96-a1b/
+?? evidence/u96-a5/
+?? evidence/u96-a8-t1/
+?? evidence/u96-a8/
+?? evidence/u96-b8/e10-fit-conflict.json
+?? evidence/u96-b8/e11-end-retire.json
+?? evidence/u96-b8/e8-dual-client-sync.json
+?? evidence/u96-b8/e9-suspend-end.json
+?? evidence/u96-diagnosis/
+?? evidence/u96-release-1/
+?? evidence/u96-release-2/
+?? evidence/u99/
+?? remote-connectivity/analysis/centos7-host-upgrade-plan.md
+?? remote-connectivity/analysis/nginx-sni-tcp-proxy-plan.md
+?? remote-connectivity/analysis/pc-connect-to-cloud-orca.md
+?? remote-connectivity/analysis/pc-mobile-shared-remote-connect-plan.md
+?? remote-connectivity/analysis/remote-browser-scroll-lag-analysis.md
+?? remote-connectivity/analysis/remote-terminal-load-diagnostics.md
+?? remote-connectivity/analysis/remote-terminal-scrollback-loading-optimization.md
+?? remote-connectivity/guides/
+--- cloud-platform source diffs (numstat) ---
+1995	539	cloud-platform/scripts/exploratory-r2/run-api-exploratory.mjs
+728	128	cloud-platform/scripts/exploratory-r2/run-workspace-exploration.mjs
+597	147	cloud-platform/scripts/exploratory-r2/run-authz-combo.mjs
+597	109	cloud-platform/scripts/exploratory-r2/run-workspace-manual-review.mjs
+326	93	cloud-platform/scripts/exploratory-r2/driver-man-review-desktop.mjs
+280	280	cloud-platform/scripts/exploratory-r2/api-paths.md
+268	244	cloud-platform/test/e2e/relay-browser-edge-hygiene.e2e.test.ts
+245	51	cloud-platform/scripts/exploratory-r2/run-lifecycle-crosshost.mjs
+190	139	cloud-platform/scripts/exploratory-r2/run-authz-combo-web.mjs
+150	160	cloud-platform/test/console-routes.test.ts
+144	112	cloud-platform/test/load/load-300.test.ts
+135	48	cloud-platform/scripts/exploratory-r2/driver-fresh2.mjs
+132	84	cloud-platform/apps/web/index.html
+121	9	cloud-platform/test/e2e/mtls-control-channel.e2e.test.ts
+113	22	cloud-platform/test/e2e/review07-gaps.e2e.test.ts
+103	32	cloud-platform/scripts/exploratory-r2/driver-final.mjs
+102	62	cloud-platform/test/e2e/platform.e2e.test.ts
+87	96	cloud-platform/apps/web/router/routes.js
+78	17	cloud-platform/scripts/exploratory-r2/web-console-paths.mjs
+74	74	cloud-platform/scripts/exploratory-r2/authz-api-combo-paths.md
+65	35	cloud-platform/scripts/playwright-server/prototype-inventory.mjs
+60	16	cloud-platform/test/ldap-admission.test.ts
+58	22	cloud-platform/scripts/exploratory-r2/driver-infra.mjs
+57	14	cloud-platform/scripts/exploratory-r2/replay-binary-preview.mjs
+54	18	cloud-platform/scripts/exploratory-r2/replay-api-hardening-r3.mjs
+51	30	cloud-platform/scripts/exploratory-r2/probe-man-review-deep.mjs
+51	15	cloud-platform/scripts/exploratory-r2/probe-terminal-crosshost.mjs
+50	15	cloud-platform/scripts/exploratory-r2/driver-boundary.mjs
+48	23	cloud-platform/scripts/exploratory-r2/driver-fresh.mjs
+47	25	cloud-platform/scripts/exploratory-r2/web-console-paths.md
+46	5	cloud-platform/scripts/playwright-server/prototype-diff.test.mjs
+45	33	cloud-platform/scripts/exploratory-r2/desktop-paths.md
+45	12	cloud-platform/apps/runtime/src/runtime-sim.ts
+44	15	cloud-platform/scripts/exploratory-r2/replay-reentry-3scenarios.mjs
+43	38	cloud-platform/scripts/exploratory-r2/driver-terminal-rpc.mjs
+43	11	cloud-platform/scripts/exploratory-r2/replay-web-console-r5.mjs
+41	35	cloud-platform/test/e2e/control-plane-resilience.e2e.test.ts
+41	11	cloud-platform/test/e2e/u62-authz-polish.e2e.test.ts
+41	10	cloud-platform/scripts/exploratory-r2/probe-dirty-close.mjs
+40	16	cloud-platform/scripts/exploratory-r2/workspace-paths.md

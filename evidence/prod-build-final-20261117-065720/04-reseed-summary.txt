@@ -1,0 +1,3 @@
+failures= []
+webSnapshot.ok= True build= 8f5651b109ab source= 8f5651b109ab
+hosts= [('dev-local-02', True, 'host_b58500c3'), ('dev-local-03', True, 'host_132a3c9d')]

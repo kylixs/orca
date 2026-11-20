@@ -1,0 +1,40 @@
+=== preload import.meta.env literal (production) ===
+{
+	"BASE_URL": "/",
+
+-- any baked VITE_EXPOSE_STORE key value pair --
+(none above means no baked true/false key)
+
+=== out/web exposeStore guard constant ===
+var GN=!1
+exposeStore:!0 count: 0
+__store= occurrence: 1
+note: __store= assignment is inside if(YN.exposeStore&&...) where YN.exposeStore derives from GN=!1 (dead branch)
+=== preload env literal around MODE ===
+ess,
+		exposeStore: exposeStore$1,
+		userDataDir,
+		terminalParkingDelayMs,
+		terminalRetentionLimit
+	};
+}
+var preloadEnv = {
+=== confirm VITE_EXPOSE_STORE only as code ref ===
+turn value === true || value === "true";
+}
+var exposeStore = preloadEnv?.MODE === "e2e" || isEnvFlagEnabled(preloadEnv?.VITE_EXPOSE_STORE);
+const preloadE2EConfig = createE2EConfig({
+	headless: process.env.ORCA_E2E_HEADLESS === "1",
+	exposeStore,
+	userDataD
+---
+=== preloadEnv literal (production) ===
+{
+	"BASE_URL": "/",
+	"DEV": false,
+	"MODE": "production",
+	"PROD": true,
+	"SSR": true
+}
+=== preload exposeStore evaluation ===
+preloadEnv?.MODE === "e2e" || isEnvFlagEnabled(preloadEnv?.VITE_EXPOSE_STORE)

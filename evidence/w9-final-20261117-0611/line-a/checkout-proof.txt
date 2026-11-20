@@ -1,0 +1,3 @@
+root=/tmp/w9a-journey-fHB2Sb
+/private/tmp/w9a-journey-fHB2Sb/projects/journey-payment                                218afc2 [main]
+/private/tmp/w9a-journey-fHB2Sb/projects/journey-payment/.orca-worktrees/zhangsan/main  218afc2 [e2e/main]

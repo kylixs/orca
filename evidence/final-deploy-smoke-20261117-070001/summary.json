@@ -1,0 +1,99 @@
+{
+  "time": "2026-11-17T07:08+08:00",
+  "reseed": {
+    "command": "node cloud-platform/scripts/local-env-reseed.mjs --restart-platform (full, not --platform-only)",
+    "first_attempt": "reused live 06:50 hosts (no restart) -> forced restart",
+    "second_attempt": "platform health timeout (transient EADDRINUSE)",
+    "final_attempt": "OK",
+    "hosts": {
+      "dev-local-02": {
+        "pid": 20287,
+        "started": "2026-11-17 07:01:51",
+        "id": "host_b58500c3"
+      },
+      "dev-local-03": {
+        "pid": 22171,
+        "started": "2026-11-17 07:01:55",
+        "id": "host_132a3c9d"
+      }
+    },
+    "failures": [],
+    "relay": {
+      "dev-local-02": 200,
+      "dev-local-03": 200
+    },
+    "log": "evidence/final-deploy-smoke-20261117-070001/reseed-restart2.log"
+  },
+  "pty_inventory": {
+    "before": {
+      "host": {
+        "worktrees": 4,
+        "tabs": 85,
+        "uniquePtyIds": 85,
+        "activeTabId": "8d1c7179-135e-42ab-8f56-9bad876746c7"
+      },
+      "host2": {
+        "worktrees": 4,
+        "tabs": 27,
+        "uniquePtyIds": 27,
+        "activeTabId": "d87eb5f2-d6f8-4df4-be43-a3549ace24cd"
+      }
+    },
+    "after": {
+      "host": {
+        "worktrees": 4,
+        "tabs": 88,
+        "uniquePtyIds": 88,
+        "activeTabId": "fbcdcb4c-d62b-44b0-bbbd-5933f52fd4e9"
+      },
+      "host2": {
+        "worktrees": 4,
+        "tabs": 27,
+        "uniquePtyIds": 27,
+        "activeTabId": "d87eb5f2-d6f8-4df4-be43-a3549ace24cd"
+      }
+    },
+    "note": "hosts restarted 07:01:51/07:01:55; PTYs from the 06:50 hosts were lost (expected/accepted). host tabs 85->88 because the smoke created 3 terminals; host2 unchanged at 27."
+  },
+  "host_main": {
+    "loaded_path": "/Users/gongdewei/work/projects/orca/out/main/index.js",
+    "sha256": "e1f230309168bce755fdd824bdb8fff360e662eab21f3c932962b10c47cc6e20",
+    "mtime": "2026-11-17 06:57",
+    "preload_sha256": "9727610cae36e75dbc87be9a72c329a24ddfd7625991d93a4a4f1ef9e51318cc",
+    "out_web_sha256": "52a161cd7c489f09e1dc8638f4f17d4112d395ba3dc3743f8f7750e509c0b8b9",
+    "host_start_after_build": true,
+    "u168_commit": "4e3842165d6e22403925aa2a78d230904fe17b4a fix(runtime): roll back the whole focus pair on rejected adoption",
+    "u168_ancestor_of_head": true,
+    "runtime_session_tabs_proof": {
+      "envId": "web-7008ce80-78ed-4279-bab2-9451a7dbfd9c",
+      "worktree": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3",
+      "runtimeId": "8524515a-4797-4645-8e24-eab50d58d3ca",
+      "protocolVersion": 3,
+      "liveTabCount": 72,
+      "beforeActive": "fe078f59-279d-4ef4-84cb-f0276fdd9ee9::7b6205c3-8a55-46b3-9278-fb81a303d044",
+      "beforeActiveGroupId": "ae7bcbc5-bd72-473a-a763-42da3b60d62c",
+      "target": "fbcdcb4c-d62b-44b0-bbbd-5933f52fd4e9::00f47044-2634-4e0d-923c-f7a00fc4ea41",
+      "activateOk": true,
+      "activateError": null,
+      "afterActive": "fbcdcb4c-d62b-44b0-bbbd-5933f52fd4e9::00f47044-2634-4e0d-923c-f7a00fc4ea41",
+      "afterActiveGroupId": "ae7bcbc5-bd72-473a-a763-42da3b60d62c",
+      "afterActiveType": "terminal",
+      "moved": true
+    }
+  },
+  "smoke": {
+    "platform_root_200": true,
+    "relay_web_index": {
+      "status": 200,
+      "served_sha_equals_out_web": true
+    },
+    "login_new_terminal_echo": true,
+    "refresh_restore_U166": true,
+    "echo_marker": "PROD-FINAL-20261117-070001",
+    "errors": []
+  },
+  "provenance": {
+    "git_HEAD": "08715eec2cc155cfceede95ce2df8aba5ebba7af",
+    "note": "out/main built 06:57 after U168 commit 06:55 and contains it (ancestor of HEAD)"
+  }
+}

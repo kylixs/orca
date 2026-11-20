@@ -1,0 +1,47 @@
+{
+  "entry": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787#handoff=<redacted>&project=proj_c1cc0f50",
+  "steps": [
+    {
+      "step": "handoff-enter",
+      "ok": true,
+      "before": {
+        "url": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787&project=proj_c1cc0f50",
+        "hasApp": true,
+        "hasSignInForm": false,
+        "body": "Orca 搜索 入门清单 任务 自动化 Orca 手机端 新功能 项目 zhangsan-demo Inactive main 主要 main Active main main-3 Inactive 未读： main main-2 J7 terminal 1 Terminal 命令 Terminal Terminal Terminal zhangsan-demo 名称 内容 src README.md 0 KB · 0 0 1 个主机 登录云端平台",
+        "tabs": [
+          "J7 terminal 1",
+          "Terminal",
+          "Terminal",
+          "Terminal",
+          "Terminal"
+        ],
+        "groupStrips": 4,
+        "xterms": 4,
+        "cloudSessionStored": true,
+        "runtimeEnvStored": true
+      }
+    },
+    {
+      "step": "handoff-reload-restore",
+      "ok": true,
+      "after": {
+        "url": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787&project=proj_c1cc0f50",
+        "hasApp": true,
+        "hasSignInForm": false,
+        "body": "Orca 搜索 入门清单 任务 自动化 Orca 手机端 新功能 项目 zhangsan-demo Inactive main 主要 main Active main main-3 Inactive 未读： main main-2 J7 terminal 1 Terminal 命令 Terminal Terminal Terminal zhangsan-demo 名称 内容 src README.md 0 KB · 0 0 1 个主机 登录云端平台 TIP Dictate into any pane 聚焦终端、编辑器或智能体提示符，然后按 ⌘ E 开始语音听写。按 ⌘ E 再次停止。 随时更改模型、听写模式或快捷方式 设置 → 语音. Set up voice dictation ⌘ E 开始听写 智能体提示 › 查看此差异以了解边缘情况，并为您发现的任何内容添加测试。 听... 关闭",
+        "tabs": [
+          "J7 terminal 1",
+          "Terminal",
+          "Terminal",
+          "Terminal",
+          "Terminal"
+        ],
+        "groupStrips": 4,
+        "xterms": 4,
+        "cloudSessionStored": true,
+        "runtimeEnvStored": true
+      }
+    }
+  ]
+}

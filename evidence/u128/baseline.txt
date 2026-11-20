@@ -1,0 +1,72 @@
+# baseline 2026-11-16T07:30:18Z
+## start times
+Mon Nov 16 15:06:13 2026     93017
+Mon Nov 16 15:06:16 2026     94898
+## out/web mtime
+2026-11-16T15:06:14 /Users/gongdewei/work/projects/orca/out/web/web-index.html
+## lsof 63681
+COMMAND    PID      USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+Electron 93017 gongdewei   75u  IPv4 0x21a306de835e7a51      0t0  TCP *:63681 (LISTEN)
+## probe result
+{"path":"/","timeout":true,"bytes":0,"head":""}
+{"path":"/web-index.html","timeout":true,"bytes":0,"head":""}
+{"path":"/health","timeout":true,"bytes":0,"head":""}
+## ws upgrade result
+{"port":63681,"bytes":149,"head":"HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Type: text/html\r\nContent-Length: 21\r\nx-orca-reject: credential_missing\r\n\r\nç¼ºå°è¿æ¥å­è¯ã"}
+## host.log tail 15
+  'row.$order': 2,
+  'row.sortOrder': 4,
+  'terminalEntry.executionHostId': 16,
+  'terminalEntry.sortOrder': 1,
+  'terminalEntry.*': 34,
+  'entry.$order': 2,
+  'group.$order': 1,
+  'group.*': 1,
+  'sleeping.tabId': 2,
+  'session.tabGroupLayouts': 1,
+  'session.terminalSurfaceTombstonesByPaneKey': 1
+}
+[workspace-layout] round-trip check: local [ { kind: 'unknown_change', change: 'sleeping.tabId' } ]
+[workspace-layout] round-trip check: local [ { kind: 'unknown_change', change: 'sleeping.tabId' } ]
+[pty:history:gc] totalDirs=88 orphaned=0 pruned=0
+## sample main-thread
+
+Analysis of sampling Electron (pid 93017) every 1 millisecond
+Process:         Electron [93017]
+Path:            /Users/USER/*/Electron.app/Contents/MacOS/Electron
+Load Address:    0x10219c000
+Identifier:      com.github.Electron
+Version:         43.7.5 (43.7.5)
+Code Type:       ARM64
+Platform:        macOS
+Parent Process:  node [93016]
+Target Type:     live task
+
+Date/Time:       2026-11-16 15:30:39.329 +0800
+Launch Time:     2026-11-16 15:06:13.224 +0800
+OS Version:      macOS 15.6 (24G84)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+
+Physical footprint:         201.2M
+Physical footprint (peak):  303.6M
+Idle exit:                  untracked
+----
+
+Call graph:
+    871 Thread_15771889   DispatchQueue_1: com.apple.main-thread  (serial)
+    + 871 start  (in dyld) + 6076  [0x19d2feb98]
+    +   871 ElectronMain  (in Electron Framework) + 388  [0x10fa43c20]
+    +     871 uv_guess_handle  (in Electron Framework) + 2068  [0x10fd33d5c]
+    +       871 node::PrincipalRealm::inspector_enable_network_tracking() const  (in Electron Framework) + 111660  [0x10fa3881c]
+    +         871 node::HandleWrap::GetConstructorTemplate(node::IsolateData*)  (in Electron Framework) + 1508  [0x10fe3ff4c]
+    +           871 node::HandleWrap::GetConstructorTemplate(node::IsolateData*)  (in Electron Framework) + 4920  [0x10fe40ca0]
+    +             871 node::HandleWrap::GetConstructorTemplate(node::IsolateData*)  (in Electron Framework) + 5148  [0x10fe40d84]
+    +               871 node::HandleWrap::GetConstructorTemplate(node::IsolateData*)  (in Electron Framework) + 5696  [0x10fe40fa8]
+    +                 871 v8::SharedMemoryStatistics::SharedMemoryStatistics()  (in Electron Framework) + 91932  [0x10f1ea21c]
+    +                   871 v8::SharedMemoryStatistics::SharedMemoryStatistics()  (in Electron Framework) + 93536  [0x10f1ea860]
+    +                     871 uv__strscpy  (in Electron Framework) + 8756  [0x10fe6917c]
+    +                       871 v8::SharedArrayBuffer::MaybeNew(v8::Isolate*, unsigned long, v8::BackingStoreInitializationMode)  (in Electron Framework) + 956  [0x110080470]
+    +                         871 -[NSApplication run]  (in AppKit) + 480  [0x1a16a0be4]
+    +                           871 -[NSApplication(NSEventRouting) _nextEventMatchingEventMask:untilDate:inMode:dequeue:]  (in AppKit) + 688  [0x1a204c940]
+    +                             871 _DPSNextEvent  (in AppKit) + 684  [0x1a16ada34]

@@ -1,0 +1,1774 @@
+{
+  "base": "https://127.0.0.1:18787",
+  "head": "aa8fd6bfa85c887db28360b3c5e24a7f551e53d6",
+  "user": "zhangsan",
+  "project": "zhangsan-lab",
+  "marker": "RELEASE22-MARK-1794807181178",
+  "steps": {
+    "ldapDefaultLogin": {
+      "admin": {
+        "status": 200,
+        "ok": true,
+        "code": null
+      },
+      "zhangsan": {
+        "status": 200,
+        "ok": true,
+        "code": null
+      },
+      "lisi": {
+        "status": 200,
+        "ok": true,
+        "code": null
+      }
+    },
+    "devLogin": {
+      "status": 200,
+      "ok": true
+    },
+    "openWorkspace": {
+      "tipsDismissed": {
+        "closed": 1,
+        "remaining": 0
+      },
+      "settleMs": 2559,
+      "appLayout": true,
+      "signInForm": false,
+      "tabs": [
+        {
+          "id": "web-terminal-c130f838-ef96-40c1-8c43-6cc25b9aee94",
+          "title": "Terminal 1",
+          "active": null
+        },
+        {
+          "id": "web-terminal-66db553c-2016-4170-a69e-98dd326346a1",
+          "title": "Terminal",
+          "active": null
+        }
+      ],
+      "xterm": 2,
+      "tabCount": 2,
+      "consoleErrors": 0
+    },
+    "threeTabs": {
+      "tab2": {
+        "method": "menu",
+        "ms": 570,
+        "before": 2,
+        "after": 3,
+        "tabs": [
+          {
+            "id": "web-terminal-c130f838-ef96-40c1-8c43-6cc25b9aee94",
+            "title": "Terminal 1",
+            "active": null
+          },
+          {
+            "id": "web-terminal-44f6e79a-338e-47bc-bcca-4c799eb49fd1",
+            "title": "Terminal",
+            "active": null
+          },
+          {
+            "id": "web-terminal-66db553c-2016-4170-a69e-98dd326346a1",
+            "title": "Terminal",
+            "active": null
+          }
+        ]
+      },
+      "tab3": {
+        "method": "menu",
+        "ms": 302,
+        "before": 3,
+        "after": 4,
+        "tabs": [
+          {
+            "id": "web-terminal-c130f838-ef96-40c1-8c43-6cc25b9aee94",
+            "title": "Terminal 1",
+            "active": null
+          },
+          {
+            "id": "web-terminal-44f6e79a-338e-47bc-bcca-4c799eb49fd1",
+            "title": "Terminal",
+            "active": null
+          },
+          {
+            "id": "ff5a5d71-e85f-40f7-bf70-70997008f8e9",
+            "title": "Terminal 3",
+            "active": null
+          },
+          {
+            "id": "web-terminal-66db553c-2016-4170-a69e-98dd326346a1",
+            "title": "Terminal",
+            "active": null
+          }
+        ]
+      },
+      "tabCount": 4,
+      "xterm": 4,
+      "tabs": [
+        {
+          "id": "web-terminal-c130f838-ef96-40c1-8c43-6cc25b9aee94",
+          "title": "Terminal 1",
+          "active": null
+        },
+        {
+          "id": "web-terminal-44f6e79a-338e-47bc-bcca-4c799eb49fd1",
+          "title": "Terminal",
+          "active": null
+        },
+        {
+          "id": "ff5a5d71-e85f-40f7-bf70-70997008f8e9",
+          "title": "Terminal 3",
+          "active": null
+        },
+        {
+          "id": "web-terminal-66db553c-2016-4170-a69e-98dd326346a1",
+          "title": "Terminal",
+          "active": null
+        }
+      ],
+      "markerVisible": false,
+      "soakMs": 40007,
+      "afterSoakTabs": 4,
+      "afterSoakXterm": 4,
+      "afterSoakMarker": false
+    },
+    "reloadRestore": {
+      "restoreMs": 93742,
+      "tabCount": 4,
+      "xterm": 4,
+      "tabs": [
+        {
+          "id": "web-terminal-c130f838-ef96-40c1-8c43-6cc25b9aee94",
+          "title": "Terminal 1",
+          "active": null
+        },
+        {
+          "id": "web-terminal-66db553c-2016-4170-a69e-98dd326346a1",
+          "title": "Terminal",
+          "active": null
+        },
+        {
+          "id": "web-terminal-44f6e79a-338e-47bc-bcca-4c799eb49fd1",
+          "title": "Terminal",
+          "active": null
+        },
+        {
+          "id": "web-terminal-ff5a5d71-e85f-40f7-bf70-70997008f8e9",
+          "title": "Terminal",
+          "active": null
+        }
+      ],
+      "markerRestored": false,
+      "termTail": " \n ",
+      "consoleErrors": 1
+    },
+    "closeReopen": {
+      "tabCount": 4,
+      "xterm": 4,
+      "tabs": [
+        {
+          "id": "web-terminal-c130f838-ef96-40c1-8c43-6cc25b9aee94",
+          "title": "Terminal 1",
+          "active": null
+        },
+        {
+          "id": "web-terminal-66db553c-2016-4170-a69e-98dd326346a1",
+          "title": "Terminal",
+          "active": null
+        },
+        {
+          "id": "web-terminal-44f6e79a-338e-47bc-bcca-4c799eb49fd1",
+          "title": "Terminal",
+          "active": null
+        },
+        {
+          "id": "web-terminal-ff5a5d71-e85f-40f7-bf70-70997008f8e9",
+          "title": "Terminal",
+          "active": null
+        }
+      ],
+      "markerRestored": false,
+      "consoleErrors": 0
+    },
+    "secondOpen": {
+      "tabCount": 4,
+      "xterm": 4,
+      "tabs": [
+        {
+          "id": "web-terminal-c130f838-ef96-40c1-8c43-6cc25b9aee94",
+          "title": "Terminal 1",
+          "active": null
+        },
+        {
+          "id": "web-terminal-66db553c-2016-4170-a69e-98dd326346a1",
+          "title": "Terminal",
+          "active": null
+        },
+        {
+          "id": "web-terminal-44f6e79a-338e-47bc-bcca-4c799eb49fd1",
+          "title": "Terminal",
+          "active": null
+        },
+        {
+          "id": "web-terminal-ff5a5d71-e85f-40f7-bf70-70997008f8e9",
+          "title": "Terminal",
+          "active": null
+        }
+      ],
+      "markerRestored": false,
+      "consoleErrors": 0
+    },
+    "adminLogin": {
+      "status": 200,
+      "ok": true
+    },
+    "adminProjects": {
+      "count": 5,
+      "target": {
+        "id": "proj_528e9b38",
+        "name": "zhangsan-lab"
+      }
+    },
+    "projectDeepLink": {
+      "hashBeforeReload": "#/projects/proj_528e9b38",
+      "hashAfterReload": "#/projects/proj_528e9b38",
+      "dialogBeforeReload": true,
+      "dialogAfterReload": true,
+      "hashPreserved": true
+    },
+    "membersRoute": {
+      "hash": "#/members",
+      "hashPreserved": true,
+      "notFoundVisible": true
+    },
+    "logout": {
+      "hash": "#/login",
+      "access": null,
+      "refresh": null
+    }
+  },
+  "consoleErrors": [
+    {
+      "phase": "a-open",
+      "type": "console",
+      "text": "Failed to load resource: net::ERR_CONNECTION_TIMED_OUT"
+    }
+  ],
+  "failure": null,
+  "gates": {
+    "f_ldap_default_login_200": true,
+    "a_app_layout_one_tab": true,
+    "a_zero_console_errors": true,
+    "b_three_tabs": false,
+    "b_soak_stable": false,
+    "b_reload_restores": false,
+    "c_close_reopen_restores": false,
+    "d_second_open_restores": false,
+    "e_project_deep_link": true,
+    "e_members_404": true,
+    "e_logout_clears_hash": true
+  },
+  "ok": false,
+  "responseTail": [
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/book-open-BvP72rXp.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/bot-CaMlU-HM.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/repo-icon-BZlE1nSG.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/braces-BBX9hLgv.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/box-Bhvi9SnQ.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/database-DNvyzjqu.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/folder-BthHY-bp.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/package-DfIKwd6E.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/layers-S5LcEMz1.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/sparkles-CfhsqlVi.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/palette-Z9iu7PK-.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/chart-column-DZig6BdK.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/wrench-CZpXs1zS.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/circle-question-mark-CisMgEHs.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/chevrons-up-down-DRqwfL7G.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/code-CaKxXEp5.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/terminal-tab-rename-request-D02--z9F.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/editor-autosave-usBWVyhS.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/terminal-tab-actions-BkutrK7u.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/connection-context-CTTsCcd9.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/floating-workspace-terminal-actions-DuU-OzDa.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/download-B-k4F1Fu.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/eye-off-vCHLYeaI.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/earth-BqGkb_bz.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/eye-B3ASYAwC.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/file-text-q8lc5ocz.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/files-DJi70GZN.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/DetachedHeadBadge-CztsGWQq.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/git-compare-DO24reoX.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/github-C37wGKmz.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/gitlab-DTGfgldX.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/info-CfnkuuY0.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/key-round-DiR_jGwY.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/keyboard-CCWFmyR8.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/lightbulb-Da0GbBBg.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/list-filter-CtmQ5R6o.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/list-checks-CS_s-ejL.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/message-square-text-DO8yo2mP.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/corner-down-left-BlbOjH-i.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/settings-BYsVd5Kl.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/ShortcutKeyCombo-Bz3szSyi.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/terminal-provider-snapshot-capability-BK-j67wv.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/codex-session-restart-B7Zyu7Sx.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/structured-agent-session-status-feed-CuS2Xoh2.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/background-terminal-worktree-mount-Chq4F_12.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/monitor-smartphone-5hfF6EQT.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/monitor-BTNtE_LG.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/FloatingTerminalIconContextMenu-6yejNYPn.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/git-fork-CCHG6jwB.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/plugin-command-keybindings-TyO1ezBL.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/refresh-cw-CXRYeJYN.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/terminal-Cj0otjGb.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/SettingsFormControls-C1FxTPtE.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/ui-zoom-level-JN6ibAv-.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/useDetectedAgents-CWzjL0_a.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/app-menu-paste-85JfJhWm.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/text-control-paste-D7t8YfDE.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/primary-selection-CO0-tDRf.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/plugin-manifest-yCXcIg8m.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/panel-right-D-lL7q8t.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/refresh-ccw-2aZztfyd.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/rotate-ccw-DAKGLz-U.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/server-off-Dg-OdS9e.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/sliders-horizontal-BnO9AVs7.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/settings-2-BOhhhIuC.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/smartphone-BUOkvHhW.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/star-C2tMEdyZ.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/send-tOnelvTU.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/AgentChildRowContent-BszjuBn9.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/native-chat-turn-status-BL3W0Ryh.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/agent-finished-timestamp-BBiGlYK7.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/header-event-guards-In7aSwHn.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/CliSkillRuntimeSetup-D3GOwSbB.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/agent-row-pane-live-title-1rUo6V_H.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/project-skill-runtime-Cu-zjhC-.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/orchestration-setup-state-DEjhh1ag.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/useInstalledAgentSkills-BUCU5B3X.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/linear-agent-skill-runtime-hJL91ZQt.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/virtual-rows-DkUau1fJ.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/use-now-pW1WYnDX.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/agent-row-dot-state-Gk98MtTN.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/agent-status-epoch-clock-Bx51DWoG.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/structured-agent-session-tab-activation-B-D2W8ZO.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/structured-conversation-name-CRQYEHKk.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/ssh-connect-in-flight-boz1aipr.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/ssh-connect-verb-B5NykwOJ.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/ssh-connection-recoverability-YUiwpVWz.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/structured-chat-row-name-Dd_NQ5kH.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/zap-Ce4theb0.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/uri-CyimEFu8.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/logo-DGguDnD2.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/agent-attention-contract-CLeukomr.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/cloud-login-panel-Cwt2g9wv.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/cloud-login-entry-Gr6oz2cY.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/status-bar-context-menu-policy-BdiKMfDA.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/skill-freshness-update-dialog-X8uo3Eev.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/use-cloud-session-hbTZRlAb.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/use-reused-array-identity-xEmj6D-F.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/repo-search-P1ABHdGP.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/activity-event-state-16RqCniv.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/AgentCombobox-5BiC2TED.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/confirmation-dialog-context-DlP7ksE1.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/workspace-creation-tour-handoff-BvPaKn6f.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/request-contextual-tour-when-ready-CBIE3EXk.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/use-contextual-tour-2JJGU_XD.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/diff-monaco-model-disposal-kLkjKN6r.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/file-explorer-operation-owner-CHB65emy.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/useEditorExternalWatch-D2SnsY5c.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/path-tree-D-ZFyV23.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/editor-model-owner-Um0y5n9U.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/editor-pending-flush-CGytHBmU.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/pdf-zoom-request-GtB9WqWY.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/ai-vault-search-settings-C4oe957K.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/native-chat-upgrade-tip-audience-yhlp5MP-.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/use-setup-guide-progress-DHFjuzig.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/use-integration-connection-status-DhwxbZ-g.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/useActiveProjectSkillRuntime-p2k9pwra.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/feature-wall-setup-steps-CVzB3chq.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/file-path-cursor-tooltip-Bol7FdAC.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/floating-workspace-guest-bridge-BhF-qbCy.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/panels-top-left-DwVlGhCp.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/jira-key-or-text-search-jAuLG0oq.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/paired-mobile-devices-C6oQlul3.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/use-work-item-source-search-DwXmNy8t.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/git-branch-plus-CQoRUc1r.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/case-sensitive-D2dfpzkC.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/github-work-item-identity-C-1Y7gJT.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/linear-issue-url-lookup-BBrEeasJ.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/runtime-repo-client-D5RTzhvo.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/automation-precheck-C-IJuB8o.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/git-status-refresh-D6vTknR_.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/file-search-include-pattern-DVc-Y6O4.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/folder-workspace-attached-worktrees-r145ol6s.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/worktree-display-name-order-T0xCaPoy.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/parent-pr-checks-rows-C7Rw8B4c.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/parent-pr-checks-hosted-review-cache-BvUbn7_3.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/SshHostAdvancedFields-D6GPN8q1.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/repository-settings-targets-Cbjy6xmP.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/AddRemoteHostDialog-BQ7HjAhl.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/linear-issue-workspace-attachment-D4_Aqu_F.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/plugin-command-execution-CAgYer-0.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/configured-worktree-base-path-BqJz8sFd.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/new-external-worktrees-inbox-actions-Db0H6xF_.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/external-worktree-inbox-8Ru80sMf.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/use-sidebar-host-scope-options-DXO2jhsv.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/workspace-chrome-metrics-DFHHGLP1.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/terminal-appearance-CwO6iDt6.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/monospace-font-family-DimFAskg.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/use-system-prefers-dark-BigbTImv.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/card-BD-PfKO8.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/sheet-6uPViZyt.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/runtime-project-refresh-scheduler-C63-P4UY.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/window-close-request-coordinator-BlojAlgV.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/native-file-drop-preparation-yL-jHySB.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/native-file-drop-rejection-message-B9aVYxh_.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/useSidebarResize-Dzb0xMt9.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/skill-freshness-C4S0sSYP.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/activate-ai-vault-structured-session-DexuOlsG.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/terminal-shortcut-capture-notification-MqiQpOxx.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/workspace-activation-terminal-focus-BgQIvLta.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/worktree-creation-flow-B_iOIALF.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/ephemeral-vm-recipes-DxGF3N-J.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/crash-diagnostics-CkxFGq0a.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/document-theme-D3MIO5Q9.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/editable-target-Do9bNoAi.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/editor-font-zoom-CBuTUemq.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/editor-model-registry-OVM5nXuR.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/github-links-CgNiV_gy.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/file-search-selection-57oyQPYX.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/linked-work-item-context-y2JQx5kO.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/local-file-access-B1Ok-yR8.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/task-preset-query-2DugfZst.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/screen-submit-shortcut-BWPnz0Jo.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/ssh-mutation-expectation-BDDp3WXg.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/modifier-double-tap-detector-BGl-oJ5R.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/plugin-panels-CsPHaDiB.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/review-refresh-policy-BhUWdcbi.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/appearance-usage-percentage-search-CNe5EP6e.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/codex-restart-notice-state-DRDxz9iY.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/Landing-BEOWf_qD.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/status-bar-agent-gating-CIV2e8C-.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/usage-roster-formatting-BX256-bj.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/StatusBar-9A2mJXJ7.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/UnexpectedSignoutCard-BF04Dwo2.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/circle-user-round-EUF5BY5C.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/RemoteServerUpdateStatus-CP8FLeOJ.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/progress-BfVpJWkp.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/RemoteServerUpdateDialog-CbN2yCz3.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/FileExplorer-Cb3LKjbV.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/file-type-icons-BbgEZC6J.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/file-DcN38nok.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/file-braces-C0HRFBmZ.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/link-Bw-rzgNA.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/file-plus-CVkuu7hU.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/regex-DJlPIkMQ.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/whole-word-DIbFm7pT.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/quick-open-file-list-DA9dTdpU.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/local-only-menu-hint-CnxkJ4Je.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/terminal-links-DTh9lZby.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/FileExplorerNameFilter-CZJNQ4_o.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/rename-file-D2gqCXMe.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/browser-workspace-tab-activation-DzsyhK7H.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/status-display-Btyh8svH.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/reveal-in-file-manager-C4tbKBGy.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/file-preview-B36ChaKY.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/SetupGuideTelemetryObserver-4MognDm7.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/use-setup-guide-telemetry-D7xbIjGt.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://127.0.0.1:18787/v1/projects/proj_528e9b38/connect"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/hard-drive-fOSo_oh_.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/feature-education-telemetry-BfcXUg68.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/workspace-space-format-DC_kRhZE.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/useDaemonActions-BmCr4cMP.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/ResourceUsageStatusSegment-BaqmzWnq.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/relative-time-format-buJLle4q.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/PortsStatusSegment-BMKcw0RD.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://127.0.0.1:18787/v1/projects/proj_528e9b38/connect"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/SshTargetCard-DRVC1OCN.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/circle-stop-DAIzExlL.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/SshStatusSegment-Bpt82gKo.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/runtime-environment-explicit-connect-BlZT01m9.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://127.0.0.1:18787/v1/projects/proj_528e9b38/connect"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/Terminal-Bv2QJUD-.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/OnboardingInlineCommandTerminal-D_BA1SUt.css"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/client-creation-action-error-BeWY6U_r.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/addon-fit-vhrmtoat.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/terminal-link-open-hints-CqgO8jJO.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/dist-6zXoCOV1.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/http-link-destinations-6qyLzq5k.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/terminal-native-only-shortcut-Bkx3fQZW.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/OnboardingInlineCommandTerminal-Cyoa00Ld.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/clipboard-copy-DyrNQyM0.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/xterm-B8POTnOF.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/clipboard-BxV4-1NZ.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/worktree-host-connection-phase-K01-W7Ti.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/image-DwfzWkRp.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/square-arrow-out-up-right-DaoR4QqX.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/useLocalImageSrc-Da9wQ6Ly.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/markdown-preview-links-BpafZSwa.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/process-output-field-scanner-Dl7_5qrI.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/plugin-panel-shell-BuRgFTKq.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/native-chat-tool-identity-DvJMFPmh.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/message-square-plus-BlwXWwo9.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/message-square-mkEZ5GKx.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/native-chat-layout-actions-Bvibou1p.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/request-active-terminal-pane-split-tthwqbHk.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/paperclip-CbLiSlAg.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/pause-TNKcurR0.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/play-7KeyRcB8.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/square-Dw2H_taO.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/CommentMarkdown-CTRtIMBQ.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/ccount-xxbjxTTT.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/lib-Bjw98Lf5.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/lib-LGTQ0k00.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/remark-github-callouts-CLCW4Yrv.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/markdown-github-callout-DFJNpF7g.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/MermaidBlock-s2I8REyh.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/use-document-dark-theme-Yj4gzz88.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/purify.es-BGfLiRMR.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/oniguruma-BeI1bC-X.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/AgentSessionContinuationDialog-B5U_Zu_A.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/dictation-control-events--TmnVrkr.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/useModalReturnFocus-DcmDrVFT.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/browser-focus-CbvMNTJ_.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/terminal-agent-paste-bracketing-sz_F8q6T.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/textarea-26loxeFB.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/programmatic-scroll-marks-Bz6sCmad.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/usePrefersReducedMotion-DBrUCD0D.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/client-environment-info-Dee8brhP.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/dom-text-search-highlights-ZQPI3uQf.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/find-query-bounds-60kJhY5m.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/locale-text-collators-DIid7FXu.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/quick-open-file-history-BPeqBuMI.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/scroll-cache-DoBps3dt.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/structured-agent-session-launch-message-BpsDdJ-n.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/chevron-left-R-apv-c0.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/arrow-up-right-CGWFpS2L.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/ArtifactPublishButton-xejv4ODu.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/use-mobile-emulator-agent-setup-state-DEupFYQa.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/share-2-9TlA8GAT.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/artifact-link-actions-B8OtgluX.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/house-Ch7tGOej.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/laptop-DnV28PH1.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/ai-vault-view-defaults-BJbDXQQD.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/panel-left-close-D17CXHAj.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/shield-alert-CCmSA7MT.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/shell-icons-BeYsmpvw.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/editor-labels-DD4e5eMF.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/activity-terminal-portal-D4Q7nLXF.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/terminal-tab-activity-status-CS1R9aVn.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/active-agent-note-send-C2bhq4Xk.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/notes-send-in-flight-D-HmA7ak.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/agent-message-send-jShEPAXt.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/use-window-stream-visibility-DyuBqR2x.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/integration-status-pill-CFvCHWT0.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/AgentSkillSetupPanel-hU58qpAa.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/browser-guest-web-preferences-BCenB1fN.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/ai-vault-session-drag-EgMMluod.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/agent-tab-shortcuts-DiWEVE0M.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://100.67.197.59:18444/h/dev-local-03/assets/addon-image-t5MpFsSB.js"
+    },
+    {
+      "phase": "d-reopen",
+      "status": 200,
+      "url": "https://127.0.0.1:18787/v1/projects/proj_528e9b38/connect"
+    }
+  ]
+}

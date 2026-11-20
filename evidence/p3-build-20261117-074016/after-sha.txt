@@ -1,0 +1,5 @@
+fb496c0fc441f8f28b78e62ce8b139b5efc3282ec7eb38b03d5c1cd2011d3db9  out/web/web-index.html
+aeae509b4226b79c691ea2e4c7c4dec0917e1d147b04e8bfbb8fea2b79cc6490  out/web/cloud-admin.html
+6f4ed76327ffa2a5f375c3679c381843055ec6f42582911f6044c98e8651d6f6  out/renderer/index.html
+704fc244f4e17b2487b0411dc760b97c1b0c003097dc5080e84b0e0442071b3f  out/renderer/popout.html
+89ff9becb6629d8bebc74904223fd45eb36b2eec17a5501cbfa2856344e21593  out/renderer/cloud-admin.html

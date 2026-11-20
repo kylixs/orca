@@ -1,0 +1,14 @@
+{
+  "accessToken": "KsgAfWycFCI8ctNf53oVFtvBytecoh_2BlSjJ64eL_M",
+  "refreshToken": "OqPdk6ZTEPmpXidp8hEpaFTAXI1dfnM6l83_4sTFVR4",
+  "expiresIn": 1800,
+  "user": {
+    "id": "user_bb4073ff-a20f-4c6c-b94d-26acb17f6f9c",
+    "username": "admin",
+    "displayName": "李静",
+    "dept": "平台工程部",
+    "roles": ["platform:admin", "developer"],
+    "permissions": ["platform:admin"]
+  },
+  "device": { "id": "dev_edc9d45b5a68", "name": "deploy-refresh" }
+}

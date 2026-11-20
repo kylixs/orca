@@ -1,0 +1,24 @@
+{
+  "stamp": 1794817796820,
+  "base": "https://127.0.0.1:18787",
+  "error": null,
+  "gates": {
+    "a1_console_login_workspace_open": true,
+    "a2_baseline_tabs_probed": true,
+    "a3_retire_to_one_tab": true,
+    "a4_create_two_terminals": true,
+    "a5_split_creates_second_group": true,
+    "a6_move_to_group": true,
+    "a7_dom_store_exposed_consistent": true,
+    "no_console_errors": true
+  },
+  "observations": {
+    "domStripsAfterSplit": 1,
+    "hostGroupsAfterSplit": 2,
+    "domTabCount": 3,
+    "domXterm": 3,
+    "storeActive": "web-terminal-02acdaee-1574-4c7c-83a7-a014dfd8a434",
+    "storeActiveByWorktree": "web-terminal-02acdaee-1574-4c7c-83a7-a014dfd8a434"
+  },
+  "parityNote": "domAfter.strips=1 matches journey-7 probe-a2 baseline; group rendering gate belongs to B-line reload-restore"
+}

@@ -1,0 +1,7 @@
+=== A) platform console on :18787 ===
+GET / status: 200
+GET /app.js status: 200
+served app.js sha256: 17d42785bd284bd9c068cd67b575c5822e9238418ba0f08d61982d3c89522ace
+source app.js sha256: 17d42785bd284bd9c068cd67b575c5822e9238418ba0f08d61982d3c89522ace
+U163 marker web-runtime-tab-move-mirror in platform app.js: 0
+server header: HTTP/1.1 404 Not Found content-type: application/json; charset=utf-8 Date: Mon, 16 Nov 2026 22:21:48 GMT 

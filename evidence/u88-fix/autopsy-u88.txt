@@ -1,0 +1,14 @@
+=== U88 autopsy 2026-11-16T01:56:52Z ===
+--- platform.log tail (run marker then clean startup, no error) ---
+[api] listening on https://127.0.0.1:18787 (kid=kid-1794794042647-356c682f)
+[reseed] 2026-11-16T01:55:53.268Z run start pid=91409
+[api] ready public=18787 internal=none
+[api] listening on https://127.0.0.1:18787 (kid=kid-1794794153510-a3dc3eec)
+--- killer process snapshot ---
+  PID STARTED                      COMMAND
+95564 Mon Nov 16 09:56:21 2026     /bin/zsh -c source /Users/gongdewei/.claude/shell-snapshots/snapshot-zsh-1794664239584-fo37lh.sh 2>/dev/null || true && setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL 2>/dev/null || true && { \builtin unalias -- 'which'; \builtin unset -f -- 'which'; } >/dev/null 2>&1 || true && { \builtin unalias -- 'unsetenv'; \builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || tr
+--- pkill -9 string ---
+pkill -9 -f "apps/api/src/server.ts"
+--- reseed run result ---
+[reseed] platform started pid=91461
+[reseed] OK

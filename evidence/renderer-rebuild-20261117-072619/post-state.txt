@@ -1,0 +1,28 @@
+# post state 2026-11-17T07:26:35+08:00
+## index.html sha
+0ce88e37225be60f456ed57cdcc6282dd9867034c07e0de064a55e1e7ce8faeb  out/renderer/index.html
+## manifest sha
+d77eaeb659a93dad1f8fc555ce1db5e56ac1e0f3db270bdbb37f665f43d8f03c  out/renderer/.vite/manifest.json
+## mtimes
+Nov 17 07:26:25 2026 out/renderer/index.html
+Nov 17 07:26:25 2026 out/renderer/.vite/manifest.json
+Nov 17 06:57:45 2026 out/main/index.js
+Nov 17 06:57:46 2026 out/preload/index.js
+## main/preload shas (unchanged check)
+e1f230309168bce755fdd824bdb8fff360e662eab21f3c932962b10c47cc6e20  out/main/index.js
+9727610cae36e75dbc87be9a72c329a24ddfd7625991d93a4a4f1ef9e51318cc  out/preload/index.js
+## monacoEditorE2E hits (assets+html)
+       0
+## isKnownHostSessionGroupId hits
+       4
+out/renderer/assets/web-session-tabs-sync-BFSkGEbR.js
+out/renderer/assets/web-runtime-session-wg1lyoK-.js
+## new tabs-sync chunk
+bb60dca58cc3435ae8b2fff6e4a224401260417b14005829886d0c9fd19dfbdf  out/renderer/assets/web-session-tabs-sync-BFSkGEbR.js
+## exposeStore constant-true search
+(empty above = no constant assignment)
+## manifest references
+web-runtime-session-Ch64vYZF.js
+web-runtime-session-DUEUB_rq.js
+web-runtime-session-wg1lyoK-.js
+web-session-tabs-sync-BFSkGEbR.js

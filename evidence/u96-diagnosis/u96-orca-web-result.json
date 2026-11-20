@@ -1,0 +1,28 @@
+{
+  "base": "https://127.0.0.1:18787",
+  "marker": "U96-WEB-1794796941182",
+  "steps": {
+    "web-open-fresh": {
+      "url": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787",
+      "hashPresent": false,
+      "tabs": [
+        {
+          "id": "1c706352-9a1a-4436-9aa9-f9e4257e9773",
+          "title": "Terminal 1",
+          "active": null
+        }
+      ],
+      "groupMarkers": 0,
+      "terminalRows": [],
+      "localStorage": {
+        "orca.web.workspaceSession.v1.runtime:web-290b913a-dde4-4497-b2fc-7b3913e16bc6": "{\"activeRepoId\":null,\"activeWorktreeId\":\"2dcb1590-b849-45bb-912a-9a4cc2123990::/Users/gongdewei/orca-local-env/host/projects/demo-app/.orca-worktrees/admin/main-2\",\"activeTabId\":null,\"tabsByWorktree\":{},\"terminalLayoutsByTabId\":{},\"openFilesByWorktree\":{},\"markdownFrontmatterVisible\":{},\"browserTabsByWorktree\":{},\"browserPagesByWorkspace\":{},\"activeBrowserTabIdByWorktree\":{},\"activeFileIdByWorktree\":{},\"activeTabTypeByWorktree\":{},\"browserUrlHistory\":[],\"defaultTerminalTabsAppliedByWorktreeId\":{}}",
+        "orca.web.ui.v1": "{\"lastActiveRepoId\":null,\"lastActiveWorktreeId\":null,\"activeView\":\"terminal\",\"sidebarWidth\":280,\"rightSidebarOpen\":true,\"rightSidebarTab\":\"explorer\",\"rightSidebarExplorerView\":\"files\",\"rightSidebarWidth\":350,\"markdownTocPanelWidth\":240,\"combinedDiffFileTreeWidth\":256,\"groupBy\":\"repo\",\"sortBy\":\"recent\",\"projectOrderBy\":\"manual\",\"showActiveOnly\":false,\"hideSleepingWorkspaces\":false,\"workspaceHostScope\":\"all\",\"visibleWorkspaceHostIds\":null,\"workspaceHostOrder\":[],\"automationHostFilter\":{\"kind\":\"all\"},\"manualRepoOrder\":[],\"showSleepingWorkspaces\":true,\"hideDefaultBranchWorkspace\":false,\"hideAutomationGeneratedWorkspaces\":false,\"hideCliCreatedWorkspaces\":false,\"hideDetachedHeadWorkspaces\":false,\"hideWorkspacesFromOtherDevices\":false,\"alwaysShowDefaultBranchWorkspace\":true,\"_explorerDisplayRootMigrated\":true,\"explorerDisplayRootByWorktree\":{},\"showDotfilesByWorktree\":{},\"filterRepoIds\":[],\"agentsVisibleHostIds\":null,\"agentsFilterRepoIds\":[],\"agentsHideWorkspacesFromOtherDevices\":false,\"agentsHideAutomationGeneratedWorkspaces\":false,\"agentsHideCliCreatedWorkspaces\":false,\"agentsShowChildAgents\":false,\"agentsCompactMode\":true,\"agentsShowSearch\":true,\"agentsReadFilter\":\"all\",\"agentsGroupBy\":\"status\",\"collapsedGroups\":[],\"uiZoomLevel\":0,\"editorFontZoomLevel\":0,\"worktreeCardProperties\":[\"status\",\"unread\",\"issue\",\"linear-issue\",\"jira-issue\",\"pr\",\"automation\",\"cli\",\"comment\",\"ports\",\"inline-agents\",\"host\"],\"_worktreeCardModeDefaulted\":true,\"agentActivityDisplayMode\":\"compact\",\"workspaceStatuses\":[{\"id\":\"todo\",\"label\":\"Todo\",\"color\":\"neutral\",\"icon\":\"circle\"},{\"id\":\"in-progress\",\"label\":\"In progress\",\"color\":\"conductor-progress\",\"icon\":\"conductor-progress\"},{\"id\":\"in-review\",\"label\":\"In review\",\"color\":\"conductor-review\",\"icon\":\"conductor-review\"},{\"id\":\"completed\",\"label\":\"Done\",\"color\":\"conductor-done\",\"icon\":\"conductor-done\"}],\"workspaceBoardOpacity\":1,\"workspaceBoardColumnWidth\":308,\"syncTaskStatusFromWorkspaceBoard\":false,\"_workspaceStatusesDefaultOrderMigrated\":true,\"_workspaceStatusesReorderedDefaultRepaired\":true,\"_workspaceStatusesDefaultWorkflowMigrated\":true,\"_workspaceStatusesDefaultVisualsMigrated\":true,\"statusBarItems\":[\"claude\",\"codex\",\"gemini\",\"antigravity\",\"opencode-go\",\"kimi\",\"minimax\",\"grok\",\"cursor\",\"zcode\",\"ssh\",\"resource-usage\",\"ports\"],\"statusBarVisible\":true,\"usagePercentageDisplay\":\"used\",\"statusBarUsageMode\":\"compact\",\"dismissedUpdateVersion\":null,\"dismissedUnexpectedSignoutVersion\":null,\"lastUpdateCheckAt\":null,\"trustedOrcaHooks\":{},\"setupScriptPromptDismissedRepoIds\":[],\"acknowledgedAgentsByPaneKey\":{},\"activityClearedAtByPaneKey\":{},\"manuallyUnreadTurnsByPaneKey\":{},\"setupGuideSidebarDismissed\":false,\"setupGuideBrowserMilestoneMigrated\":true,\"setupGuideBrowserMilestoneLegacyComplete\":false,\"browserImportHintHidden\":false,\"trayMinimizeNoticeShown\":false,\"osc52ClipboardDefaultOnNoticePending\":false,\"mobileEmulatorTabIntroDismissed\":false,\"mobileEmulatorAgentSetupDismissed\":false,\"projectOrderManualDefaultNoticeDismissed\":true,\"usageP",
+        "orca.web.workspaceSession.v1": "{\"activeRepoId\":null,\"activeWorktreeId\":null,\"activeTabId\":null,\"tabsByWorktree\":{},\"terminalLayoutsByTabId\":{},\"openFilesByWorktree\":{},\"markdownFrontmatterVisible\":{},\"browserTabsByWorktree\":{},\"browserPagesByWorkspace\":{},\"activeBrowserTabIdByWorktree\":{},\"activeFileIdByWorktree\":{},\"activeTabTypeByWorktree\":{},\"browserUrlHistory\":[],\"defaultTerminalTabsAppliedByWorktreeId\":{}}",
+        "orca.webCloudSession": "{\"version\":1,\"apiUrl\":\"https://127.0.0.1:18787\",\"accessToken\":\"nQx8BlDmetXgInyXe-Rk06WVQQLwoVAtgDuzXKwSZks\",\"refreshToken\":\"Sb1Y9NK0ijxZWegcKqKlWQUST_aB7gipQSNYp4X4W9E\",\"deviceId\":\"dev_c0dd90d24177\",\"displayName\":\"李静\",\"savedAtMs\":1794796943074}"
+      },
+      "sessionStorage": {}
+    }
+  },
+  "error": "TimeoutError: locator.click: Timeout 20000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /New tab|新标签页|新規タブ|Nouvel onglet|Nueva pestaña|새 탭/ }).first()\u001b[22m\n",
+  "errors": []
+}

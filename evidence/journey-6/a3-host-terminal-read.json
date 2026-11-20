@@ -1,0 +1,30 @@
+{
+  "env": {
+    "envId": "web-ac619782-b9b0-44e2-8985-643de991a717",
+    "worktree": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3",
+    "storeExposed": true
+  },
+  "dom": {
+    "appLayout": true,
+    "tabs": 0,
+    "xterm": 0
+  },
+  "markers": {
+    "ONE": "J6-HOSTREAD-ONE-1794810547660",
+    "TWO": "J6-HOSTREAD-TWO-1794810547660"
+  },
+  "reads": {
+    "J6-HOSTREAD-ONE-1794810547660": {
+      "ok": true,
+      "tail": "\nJ6-HOSTREAD-ONE-1794810547660\ngongdewei@GongDeweideMacBook-Pro main-3 %"
+    },
+    "J6-HOSTREAD-TWO-1794810547660": {
+      "ok": true,
+      "tail": "printf 'J6-HOSTREAD-TWO-1794810547660\\n'\n\nJ6-HOSTREAD-TWO-1794810547660\ngongdewei@GongDeweideMacBook-Pro main-3 %"
+    }
+  },
+  "gates": {
+    "a3_host_read_markers": true,
+    "a1_app_layout_terminal": false
+  }
+}

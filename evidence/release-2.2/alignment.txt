@@ -1,0 +1,25 @@
+=== alignment ===
+build artifacts:
+2026-11-16 13:31:21 out/main/index.js
+2026-11-16 13:31:28 out/cli/index.js
+2026-11-16 13:31:32 out/web/web-index.html
+2026-11-16 13:31:32 out/web/cloud-admin.html
+2026-11-16 13:31:25 out/renderer/web-index.html
+platform process:
+  PID STARTED                      COMMAND
+28278 Mon Nov 16 13:31:45 2026     /opt/homebrew/Cellar/node/24.5.0/bin/node /Users/gongdewei/work/projects/orca/cloud-platform/apps/api/src/server.ts
+pidfile /Users/gongdewei/orca-local-env/run/forwarder.pid: 88911
+pidfile /Users/gongdewei/orca-local-env/run/host.pid: 28720
+pidfile /Users/gongdewei/orca-local-env/run/host2.pid: 30837
+pidfile /Users/gongdewei/orca-local-env/run/platform.pid: 28278
+listeners:
+COMMAND   PID      USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node    28278 gongdewei   12u  IPv4 0x8b43f02ba1e30e5a      0t0  TCP 127.0.0.1:18787 (LISTEN)
+node    88911 gongdewei   12u  IPv4 0x964a55428934d250      0t0  TCP *:18787 (LISTEN)
+=== platform log tail ===
+[reseed] 2026-11-16T05:08:10.969Z run start pid=98394
+[api] ready public=18787 internal=none
+[api] listening on https://127.0.0.1:18787 (kid=kid-1794805711829-a3414fda)
+[reseed] 2026-11-16T05:31:45.138Z run start pid=28202
+[api] ready public=18787 internal=none
+[api] listening on https://127.0.0.1:18787 (kid=kid-1794807105500-4ff7f93a)

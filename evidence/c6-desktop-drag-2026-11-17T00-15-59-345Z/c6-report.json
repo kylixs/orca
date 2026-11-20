@@ -1,0 +1,267 @@
+{
+  "generatedAt": "2026-11-17T00:15:59.345Z",
+  "build": {
+    "entry": "/Users/gongdewei/work/projects/orca/out/main/index.js",
+    "flavor": "production (no VITE_EXPOSE_STORE)",
+    "rebuilt": false
+  },
+  "steps": [
+    {
+      "name": "start-platform",
+      "ok": true,
+      "ms": 104
+    },
+    {
+      "name": "admin-login",
+      "ok": true,
+      "ms": 12
+    },
+    {
+      "name": "host-token",
+      "ok": true,
+      "ms": 1
+    },
+    {
+      "name": "launch-host",
+      "ok": true,
+      "ms": 467
+    },
+    {
+      "name": "wait-host-online",
+      "ok": true,
+      "ms": 2
+    },
+    {
+      "name": "launch-client",
+      "ok": true,
+      "ms": 547
+    },
+    {
+      "name": "sign-in",
+      "ok": true,
+      "ms": 30437
+    },
+    {
+      "name": "open-project",
+      "ok": true,
+      "ms": 27
+    },
+    {
+      "name": "create-first-tab",
+      "ok": true,
+      "ms": 1531
+    },
+    {
+      "name": "create-second-tab",
+      "ok": true,
+      "ms": 1469
+    },
+    {
+      "name": "split-right",
+      "ok": true,
+      "ms": 563
+    },
+    {
+      "name": "drag-across-groups",
+      "ok": true,
+      "ms": 3293
+    },
+    {
+      "name": "reorder-within-group",
+      "ok": true,
+      "ms": 4470
+    }
+  ],
+  "consoleLogs": [
+    "warning: %cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged.",
+    "warning: xterm.js: task queue exceeded allotted deadline by 39ms"
+  ],
+  "tabsBeforeSplit": [
+    "7129197b-4aa5-4ef3-b210-e8791181dc00",
+    "de7f6bea-7b79-40b8-99d1-a612042e14b5"
+  ],
+  "toastsByStage": {
+    "after-split": [
+      {
+        "type": "error",
+        "text": "无法在主机上移动该标签页。"
+      }
+    ],
+    "after-drag": [
+      {
+        "type": "error",
+        "text": "无法在主机上移动该标签页。"
+      },
+      {
+        "type": "error",
+        "text": "无法在主机上移动该标签页。"
+      }
+    ],
+    "after-reorder": [
+      {
+        "type": "error",
+        "text": "无法在主机上移动该标签页。"
+      }
+    ],
+    "after-reorder-settle": []
+  },
+  "layoutBeforeDrag": {
+    "strips": [
+      {
+        "stripHostGroupId": "b9f37597-7c88-4182-8654-0bf891588660",
+        "worktreeId": "c92626d2-780a-4acb-83a0-702abdf4784c::/private/tmp/c6-drag-6gzdLi/projects/c6-drag-project/.orca-worktrees/zhangsan/main",
+        "tabs": [
+          "7129197b-4aa5-4ef3-b210-e8791181dc00"
+        ]
+      },
+      {
+        "stripHostGroupId": "4634a246-e0a0-4ecc-922e-473e00b4369b",
+        "worktreeId": "c92626d2-780a-4acb-83a0-702abdf4784c::/private/tmp/c6-drag-6gzdLi/projects/c6-drag-project/.orca-worktrees/zhangsan/main",
+        "tabs": [
+          "de7f6bea-7b79-40b8-99d1-a612042e14b5"
+        ]
+      }
+    ],
+    "bodies": [
+      {
+        "bodyGroupId": "b9f37597-7c88-4182-8654-0bf891588660",
+        "worktreeId": "c92626d2-780a-4acb-83a0-702abdf4784c::/private/tmp/c6-drag-6gzdLi/projects/c6-drag-project/.orca-worktrees/zhangsan/main",
+        "x": 281,
+        "y": 36,
+        "w": 255,
+        "h": 654
+      },
+      {
+        "bodyGroupId": "4634a246-e0a0-4ecc-922e-473e00b4369b",
+        "worktreeId": "c92626d2-780a-4acb-83a0-702abdf4784c::/private/tmp/c6-drag-6gzdLi/projects/c6-drag-project/.orca-worktrees/zhangsan/main",
+        "x": 542,
+        "y": 36,
+        "w": 255,
+        "h": 654
+      }
+    ]
+  },
+  "dragDispatched": true,
+  "layoutAfterDrag": [
+    {
+      "stripHostGroupId": "4634a246-e0a0-4ecc-922e-473e00b4369b",
+      "worktreeId": "c92626d2-780a-4acb-83a0-702abdf4784c::/private/tmp/c6-drag-6gzdLi/projects/c6-drag-project/.orca-worktrees/zhangsan/main",
+      "tabs": [
+        "de7f6bea-7b79-40b8-99d1-a612042e14b5",
+        "7129197b-4aa5-4ef3-b210-e8791181dc00"
+      ]
+    }
+  ],
+  "domAssertion": {
+    "movedTabId": "7129197b-4aa5-4ef3-b210-e8791181dc00",
+    "presentAfter": true,
+    "groupAfter": "4634a246-e0a0-4ecc-922e-473e00b4369b",
+    "targetGroup": "4634a246-e0a0-4ecc-922e-473e00b4369b"
+  },
+  "hostAssertion": {
+    "oracle": "session.tabs.list",
+    "worktreeId": "c92626d2-780a-4acb-83a0-702abdf4784c::/private/tmp/c6-drag-6gzdLi/projects/c6-drag-project/.orca-worktrees/zhangsan/main",
+    "rpcHostTab": {
+      "type": "terminal",
+      "id": "7129197b-4aa5-4ef3-b210-e8791181dc00::6f029399-6150-45e5-b1e2-c49590547700",
+      "parentTabId": "7129197b-4aa5-4ef3-b210-e8791181dc00",
+      "leafId": "6f029399-6150-45e5-b1e2-c49590547700",
+      "title": "Terminal 1",
+      "ptyId": "remote:cloud-a9cb342b-09ac-4935-8ede-99309d0923c5@@term_3b119a542196e6c073763a664c186d07",
+      "terminalTheme": {
+        "mode": "light",
+        "theme": {
+          "background": "#ffffff",
+          "foreground": "#2e3434",
+          "cursor": "#2e3434",
+          "cursorAccent": "#ffffff",
+          "selectionBackground": "#accef7",
+          "selectionForeground": "#2e3434",
+          "black": "#2e3436",
+          "red": "#cc0000",
+          "green": "#4e9a06",
+          "yellow": "#8e7700",
+          "blue": "#3465a4",
+          "magenta": "#75507b",
+          "cyan": "#05727e",
+          "white": "#6a6a6a",
+          "brightBlack": "#555753",
+          "brightRed": "#ef2929",
+          "brightGreen": "#1b7a1b",
+          "brightYellow": "#6d5a00",
+          "brightBlue": "#204a87",
+          "brightMagenta": "#ad7fa8",
+          "brightCyan": "#034b50",
+          "brightWhite": "#3d3d3d"
+        }
+      },
+      "parentLayout": {
+        "root": {
+          "type": "leaf",
+          "leafId": "6f029399-6150-45e5-b1e2-c49590547700"
+        },
+        "activeLeafId": "6f029399-6150-45e5-b1e2-c49590547700",
+        "expandedLeafId": null,
+        "ptyIdsByLeafId": {
+          "6f029399-6150-45e5-b1e2-c49590547700": "remote:cloud-a9cb342b-09ac-4935-8ede-99309d0923c5@@term_3b119a542196e6c073763a664c186d07"
+        }
+      },
+      "isActive": true,
+      "status": "ready",
+      "terminal": "term_2da8c2e4-1de4-4ff9-8286-407542b856ec"
+    },
+    "rpcTargetGroups": [
+      {
+        "id": "4634a246-e0a0-4ecc-922e-473e00b4369b",
+        "activeTabId": "7129197b-4aa5-4ef3-b210-e8791181dc00",
+        "tabOrder": [
+          "de7f6bea-7b79-40b8-99d1-a612042e14b5",
+          "7129197b-4aa5-4ef3-b210-e8791181dc00"
+        ],
+        "recentTabIds": [
+          "de7f6bea-7b79-40b8-99d1-a612042e14b5",
+          "7129197b-4aa5-4ef3-b210-e8791181dc00"
+        ]
+      }
+    ],
+    "profileStateDb": "/private/tmp/c6-drag-6gzdLi/host-ud-UJRAp6/profiles/local-default/profile-state.db",
+    "dbTabsOnMovedWorktree": [
+      {
+        "id": "7129197b-4aa5-4ef3-b210-e8791181dc00",
+        "groupId": null,
+        "title": "Terminal 2"
+      }
+    ]
+  },
+  "reorder": {
+    "domOrder": [
+      "7129197b-4aa5-4ef3-b210-e8791181dc00",
+      "de7f6bea-7b79-40b8-99d1-a612042e14b5"
+    ],
+    "hostOrder": [
+      "7129197b-4aa5-4ef3-b210-e8791181dc00",
+      "de7f6bea-7b79-40b8-99d1-a612042e14b5"
+    ]
+  },
+  "toasts": [],
+  "errorToasts": [
+    {
+      "type": "error",
+      "text": "无法在主机上移动该标签页。"
+    },
+    {
+      "type": "error",
+      "text": "无法在主机上移动该标签页。"
+    },
+    {
+      "type": "error",
+      "text": "无法在主机上移动该标签页。"
+    },
+    {
+      "type": "error",
+      "text": "无法在主机上移动该标签页。"
+    }
+  ],
+  "verdict": "FAIL",
+  "error": "no error toast may fire during split/drag/reorder\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  -  1\u001b[39m\n\u001b[31m+ Received  + 18\u001b[39m\n\n\u001b[32m- Array []\u001b[39m\n\u001b[31m+ Array [\u001b[39m\n\u001b[31m+   Object {\u001b[39m\n\u001b[31m+     \"text\": \"无法在主机上移动该标签页。\",\u001b[39m\n\u001b[31m+     \"type\": \"error\",\u001b[39m\n\u001b[31m+   },\u001b[39m\n\u001b[31m+   Object {\u001b[39m\n\u001b[31m+     \"text\": \"无法在主机上移动该标签页。\",\u001b[39m\n\u001b[31m+     \"type\": \"error\",\u001b[39m\n\u001b[31m+   },\u001b[39m\n\u001b[31m+   Object {\u001b[39m\n\u001b[31m+     \"text\": \"无法在主机上移动该标签页。\",\u001b[39m\n\u001b[31m+     \"type\": \"error\",\u001b[39m\n\u001b[31m+   },\u001b[39m\n\u001b[31m+   Object {\u001b[39m\n\u001b[31m+     \"text\": \"无法在主机上移动该标签页。\",\u001b[39m\n\u001b[31m+     \"type\": \"error\",\u001b[39m\n\u001b[31m+   },\u001b[39m\n\u001b[31m+ ]\u001b[39m"
+}

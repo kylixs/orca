@@ -1,0 +1,225 @@
+{
+  "generatedAt": "2026-11-17T00:13:24.125Z",
+  "build": {
+    "entry": "/Users/gongdewei/work/projects/orca/out/main/index.js",
+    "flavor": "production (no VITE_EXPOSE_STORE)",
+    "rebuilt": false
+  },
+  "steps": [
+    {
+      "name": "start-platform",
+      "ok": true,
+      "ms": 103
+    },
+    {
+      "name": "admin-login",
+      "ok": true,
+      "ms": 12
+    },
+    {
+      "name": "host-token",
+      "ok": true,
+      "ms": 2
+    },
+    {
+      "name": "launch-host",
+      "ok": true,
+      "ms": 469
+    },
+    {
+      "name": "wait-host-online",
+      "ok": true,
+      "ms": 2
+    },
+    {
+      "name": "launch-client",
+      "ok": true,
+      "ms": 588
+    },
+    {
+      "name": "sign-in",
+      "ok": true,
+      "ms": 30397
+    },
+    {
+      "name": "open-project",
+      "ok": true,
+      "ms": 25
+    },
+    {
+      "name": "create-first-tab",
+      "ok": true,
+      "ms": 1586
+    },
+    {
+      "name": "create-second-tab",
+      "ok": true,
+      "ms": 1513
+    },
+    {
+      "name": "split-right",
+      "ok": true,
+      "ms": 563
+    },
+    {
+      "name": "drag-across-groups",
+      "ok": true,
+      "ms": 3277
+    },
+    {
+      "name": "reorder-within-group",
+      "ok": true,
+      "ms": 4433
+    }
+  ],
+  "tabsBeforeSplit": [
+    "913ea7e5-7c7b-429e-baad-a938309b6fe8",
+    "ffaad9b0-9116-4878-bba8-5edbe3a5ce4b"
+  ],
+  "layoutBeforeDrag": {
+    "strips": [
+      {
+        "stripHostGroupId": "5d509d6f-a990-44de-b319-290defa83392",
+        "worktreeId": "d53b7a4f-7104-4589-8d2a-3ce68d37f0cc::/private/tmp/c6-drag-1v3wa4/projects/c6-drag-project/.orca-worktrees/zhangsan/main",
+        "tabs": [
+          "913ea7e5-7c7b-429e-baad-a938309b6fe8"
+        ]
+      },
+      {
+        "stripHostGroupId": "a920b225-25f6-455a-89c7-01663ace1d30",
+        "worktreeId": "d53b7a4f-7104-4589-8d2a-3ce68d37f0cc::/private/tmp/c6-drag-1v3wa4/projects/c6-drag-project/.orca-worktrees/zhangsan/main",
+        "tabs": [
+          "ffaad9b0-9116-4878-bba8-5edbe3a5ce4b"
+        ]
+      }
+    ],
+    "bodies": [
+      {
+        "bodyGroupId": "5d509d6f-a990-44de-b319-290defa83392",
+        "worktreeId": "d53b7a4f-7104-4589-8d2a-3ce68d37f0cc::/private/tmp/c6-drag-1v3wa4/projects/c6-drag-project/.orca-worktrees/zhangsan/main",
+        "x": 281,
+        "y": 36,
+        "w": 255,
+        "h": 654
+      },
+      {
+        "bodyGroupId": "a920b225-25f6-455a-89c7-01663ace1d30",
+        "worktreeId": "d53b7a4f-7104-4589-8d2a-3ce68d37f0cc::/private/tmp/c6-drag-1v3wa4/projects/c6-drag-project/.orca-worktrees/zhangsan/main",
+        "x": 542,
+        "y": 36,
+        "w": 255,
+        "h": 654
+      }
+    ]
+  },
+  "dragDispatched": true,
+  "layoutAfterDrag": [
+    {
+      "stripHostGroupId": "a920b225-25f6-455a-89c7-01663ace1d30",
+      "worktreeId": "d53b7a4f-7104-4589-8d2a-3ce68d37f0cc::/private/tmp/c6-drag-1v3wa4/projects/c6-drag-project/.orca-worktrees/zhangsan/main",
+      "tabs": [
+        "ffaad9b0-9116-4878-bba8-5edbe3a5ce4b",
+        "913ea7e5-7c7b-429e-baad-a938309b6fe8"
+      ]
+    }
+  ],
+  "domAssertion": {
+    "movedTabId": "913ea7e5-7c7b-429e-baad-a938309b6fe8",
+    "presentAfter": true,
+    "groupAfter": "a920b225-25f6-455a-89c7-01663ace1d30",
+    "targetGroup": "a920b225-25f6-455a-89c7-01663ace1d30"
+  },
+  "hostAssertion": {
+    "oracle": "session.tabs.list",
+    "worktreeId": "d53b7a4f-7104-4589-8d2a-3ce68d37f0cc::/private/tmp/c6-drag-1v3wa4/projects/c6-drag-project/.orca-worktrees/zhangsan/main",
+    "rpcHostTab": {
+      "type": "terminal",
+      "id": "913ea7e5-7c7b-429e-baad-a938309b6fe8::56fa9ced-fe0e-4121-866c-3dde7fa0e573",
+      "parentTabId": "913ea7e5-7c7b-429e-baad-a938309b6fe8",
+      "leafId": "56fa9ced-fe0e-4121-866c-3dde7fa0e573",
+      "title": "Terminal 1",
+      "ptyId": "remote:cloud-33cd4d43-156e-4221-b5bd-623ea824f48a@@term_1feaf146724223b2642b6b80964d220d",
+      "terminalTheme": {
+        "mode": "light",
+        "theme": {
+          "background": "#ffffff",
+          "foreground": "#2e3434",
+          "cursor": "#2e3434",
+          "cursorAccent": "#ffffff",
+          "selectionBackground": "#accef7",
+          "selectionForeground": "#2e3434",
+          "black": "#2e3436",
+          "red": "#cc0000",
+          "green": "#4e9a06",
+          "yellow": "#8e7700",
+          "blue": "#3465a4",
+          "magenta": "#75507b",
+          "cyan": "#05727e",
+          "white": "#6a6a6a",
+          "brightBlack": "#555753",
+          "brightRed": "#ef2929",
+          "brightGreen": "#1b7a1b",
+          "brightYellow": "#6d5a00",
+          "brightBlue": "#204a87",
+          "brightMagenta": "#ad7fa8",
+          "brightCyan": "#034b50",
+          "brightWhite": "#3d3d3d"
+        }
+      },
+      "parentLayout": {
+        "root": {
+          "type": "leaf",
+          "leafId": "56fa9ced-fe0e-4121-866c-3dde7fa0e573"
+        },
+        "activeLeafId": "56fa9ced-fe0e-4121-866c-3dde7fa0e573",
+        "expandedLeafId": null,
+        "ptyIdsByLeafId": {
+          "56fa9ced-fe0e-4121-866c-3dde7fa0e573": "remote:cloud-33cd4d43-156e-4221-b5bd-623ea824f48a@@term_1feaf146724223b2642b6b80964d220d"
+        }
+      },
+      "isActive": true,
+      "status": "ready",
+      "terminal": "term_501841ec-8663-47ea-908e-d6002fb2ec8c"
+    },
+    "rpcTargetGroups": [
+      {
+        "id": "a920b225-25f6-455a-89c7-01663ace1d30",
+        "activeTabId": "913ea7e5-7c7b-429e-baad-a938309b6fe8",
+        "tabOrder": [
+          "ffaad9b0-9116-4878-bba8-5edbe3a5ce4b",
+          "913ea7e5-7c7b-429e-baad-a938309b6fe8"
+        ],
+        "recentTabIds": [
+          "ffaad9b0-9116-4878-bba8-5edbe3a5ce4b",
+          "913ea7e5-7c7b-429e-baad-a938309b6fe8"
+        ]
+      }
+    ],
+    "profileStateDb": "/private/tmp/c6-drag-1v3wa4/host-ud-2x75uG/profiles/local-default/profile-state.db",
+    "dbTabsOnMovedWorktree": [
+      {
+        "id": "913ea7e5-7c7b-429e-baad-a938309b6fe8",
+        "groupId": null,
+        "title": "Terminal 2"
+      }
+    ]
+  },
+  "reorder": {
+    "domOrder": [
+      "913ea7e5-7c7b-429e-baad-a938309b6fe8",
+      "ffaad9b0-9116-4878-bba8-5edbe3a5ce4b"
+    ],
+    "hostOrder": [
+      "913ea7e5-7c7b-429e-baad-a938309b6fe8",
+      "ffaad9b0-9116-4878-bba8-5edbe3a5ce4b"
+    ]
+  },
+  "toasts": [
+    {
+      "type": "error",
+      "text": "无法在主机上移动该标签页。"
+    }
+  ],
+  "verdict": "FAIL",
+  "error": "no error toast may fire\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 1\u001b[39m\n\u001b[31m+ Received  + 6\u001b[39m\n\n\u001b[32m- Array []\u001b[39m\n\u001b[31m+ Array [\u001b[39m\n\u001b[31m+   Object {\u001b[39m\n\u001b[31m+     \"text\": \"无法在主机上移动该标签页。\",\u001b[39m\n\u001b[31m+     \"type\": \"error\",\u001b[39m\n\u001b[31m+   },\u001b[39m\n\u001b[31m+ ]\u001b[39m"
+}

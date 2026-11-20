@@ -1,0 +1,386 @@
+{
+  "base": "https://127.0.0.1:18787",
+  "viewport": "desktop 1440x900",
+  "checks": [
+    {
+      "pathId": "P1''",
+      "id": "baseline probe (§2-16)",
+      "status": "PASS",
+      "detail": {
+        "me": "admin",
+        "permissions": ["platform:admin"],
+        "projects": 7,
+        "hosts": 3,
+        "onlineHosts": 2,
+        "demoProject": true,
+        "targetHost": true,
+        "targetHostOnline": true,
+        "adminUser": true,
+        "directoryGroups": ["developers", "platform-admins", "team-payment"]
+      }
+    },
+    {
+      "pathId": "P1''",
+      "id": "P1-1 host exactly three role cards",
+      "status": "PASS",
+      "detail": "view:查看 control:控制 manage:管理"
+    },
+    {
+      "pathId": "P1''",
+      "id": "P1-1 host card counts == API role derivation",
+      "status": "PASS",
+      "detail": {
+        "actualHostCounts": [0, 1, 0],
+        "expectedHostCounts": [0, 1, 0]
+      }
+    },
+    {
+      "pathId": "P1''",
+      "id": "P1-1 host chips clean (no bits/level badge)",
+      "status": "PASS",
+      "detail": "head0/chip head0/chip0 head0/chip"
+    },
+    {
+      "pathId": "P1''",
+      "id": "P1-1 zhangsan sits in control card (position=role)",
+      "status": "PASS",
+      "detail": {
+        "zhangsan": ["view", "provision"],
+        "controlChips": ["user:user_eff396fc-a0d8-42c5-8471-1abf1b2aa26d"]
+      }
+    },
+    {
+      "pathId": "P1''",
+      "id": "P1-2 host add writes target card bits",
+      "status": "PASS",
+      "detail": {
+        "status": 200,
+        "permissions": ["view"]
+      }
+    },
+    {
+      "pathId": "P1''",
+      "id": "P1-2 host remove confirmation copy",
+      "status": "PASS",
+      "detail": {
+        "removeTitle": "移除全部授权",
+        "removeBody": "developers（组）\n\n宿主无法解析组成员，将断开该主机当前全部在线会话（≤60 秒内生效，FR-1.7）。",
+        "removeConfirmLabel": "确认移除"
+      }
+    },
+    {
+      "pathId": "P1''",
+      "id": "P1-2 host remove cleans baseline",
+      "status": "PASS",
+      "detail": {
+        "puts": 2,
+        "remaining": 1
+      }
+    },
+    {
+      "pathId": "P1''",
+      "id": "P1-3 host adjust chain (cancel, 0 PUT)",
+      "status": "PASS",
+      "detail": {
+        "adjustTitle": "调整角色",
+        "adjustActions": ["改为「查看」", "改为「管理」", "关闭"],
+        "extraPuts": 0
+      }
+    },
+    {
+      "pathId": "P1''",
+      "id": "P1-4 project two writable cards + derived card",
+      "status": "PASS",
+      "detail": "view:查看:badge0:add1 control:控制:badge0:add1 derived:管理:badge1:add0"
+    },
+    {
+      "pathId": "P1''",
+      "id": "P1-4 derived card read-only + host-derived subjects",
+      "status": "PASS",
+      "detail": {
+        "derived": {
+          "key": "derived",
+          "label": "管理",
+          "headBadges": 1,
+          "headText": "管理主机推导 · 只读1 个主体",
+          "desc": "项目级无「管理」权限位：归档 / 登记归创建者或平台管理员，主机维护属主机授权。下方为按 U65 推导在本项目获得权限的主机级主体——在主机详情弹框维护，项目授权不扩大到主机级。",
+          "adds": 0,
+          "removes": [],
+          "chips": ["zhangsan 用户 来源：控制卡"]
+        },
+        "hostControlHolders": ["zhangsan"]
+      }
+    },
+    {
+      "pathId": "P1''",
+      "id": "P1-4 view-only host holders excluded from derived",
+      "status": "PASS",
+      "detail": []
+    },
+    {
+      "pathId": "P1''",
+      "id": "P1-5 project add unions view bits",
+      "status": "PASS",
+      "detail": {
+        "status": 200,
+        "permissions": ["file:read", "open"]
+      }
+    },
+    {
+      "pathId": "P1''",
+      "id": "P1-5 project remove confirmation + cleanup",
+      "status": "PASS",
+      "detail": {
+        "puts": 2,
+        "remaining": 4
+      }
+    },
+    {
+      "pathId": "P1''",
+      "id": "P1-4 derived jump opens host perms drawer",
+      "status": "PASS",
+      "detail": {
+        "jumpHash": "#/hosts/host_281843a9?tab=perms",
+        "jumpTabActive": 1
+      }
+    },
+    {
+      "pathId": "P1''",
+      "id": "P1-6 user detail inline edit, list read-only",
+      "status": "PASS",
+      "detail": {
+        "userTitle": "用户详情 · 李静",
+        "userListControls": 0,
+        "roleSelectCount": 1,
+        "fields": 7
+      }
+    },
+    {
+      "pathId": "P1''",
+      "id": "P1-7 missing member detail 404 (hash preserved)",
+      "status": "PASS",
+      "detail": {
+        "text": "页面不存在 链接里的用户不存在或当前账号不可见。地址保留，刷新会重新校验。 返回用户管理",
+        "hash": "#/users/user_does_not_exist"
+      }
+    },
+    {
+      "pathId": "P2''",
+      "id": "P2-1 three detail deep links",
+      "status": "PASS",
+      "detail": {
+        "projectDeepTitle": "项目详情",
+        "hostDeepTitle": "主机 dev-local-02",
+        "userDeepTitle": "用户详情 · 李静"
+      }
+    },
+    {
+      "pathId": "P2''",
+      "id": "P2-1 ?tab=perms survives reload",
+      "status": "PASS",
+      "detail": {
+        "projectPermsAfterReload": {
+          "hash": "#/projects/proj_369e97d1?tab=perms",
+          "active": 1,
+          "panelVisible": true
+        },
+        "hostPermsAfterReload": {
+          "hash": "#/hosts/host_281843a9?tab=perms",
+          "active": 1,
+          "panelVisible": true
+        }
+      }
+    },
+    {
+      "pathId": "P2''",
+      "id": "P2-2 workspace overlay route + removal + unknown 404",
+      "status": "PASS",
+      "detail": {
+        "overlayHash": "#/workspace/proj_369e97d1",
+        "overlayGone": true,
+        "text": "页面不存在 链接里的项目不存在或当前账号不可见。地址保留，刷新会重新校验。 返回我的项目"
+      }
+    },
+    {
+      "pathId": "P2''",
+      "id": "P2-3 list filters in URL (replace/push/reset)",
+      "status": "PASS",
+      "detail": {
+        "filterHash": "#/users?query=%E5%BC%A0%E4%BC%9F",
+        "filteredRows": 1,
+        "historyBeforeType": 16,
+        "historyAfterType": 16,
+        "pushHash": "#/users?query=lisi",
+        "pushRows": 1,
+        "historyBeforePush": 16,
+        "historyAfterPush": 17,
+        "resetHash": "#/users",
+        "resetRows": 3,
+        "totalUsers": 3
+      }
+    },
+    {
+      "pathId": "P2''",
+      "id": "P2-4 404 five shapes (not-fallback)",
+      "status": "PASS",
+      "detail": [
+        "#/nope=>页面不存在/#/nope",
+        "#/projects/x/y=>页面不存在/#/projects/x/y",
+        "#projects=>页面不存在/#projects",
+        "#/projects/%E0%A4%A=>页面不存在/#/projects/%E0%A4%A",
+        "#/workspace/=>页面不存在/#/workspace/",
+        "#/not-found=>页面不存在/#/not-found"
+      ]
+    },
+    {
+      "pathId": "P2''",
+      "id": "P2-5 403 distinct from 404",
+      "status": "PASS",
+      "detail": {
+        "forbidden": "无权访问",
+        "missing": "页面不存在"
+      }
+    },
+    {
+      "pathId": "P2''",
+      "id": "P2-6 logout clears tokens + hash survives reload",
+      "status": "PASS",
+      "detail": {
+        "logoutState": {
+          "hash": "#/login",
+          "access": null,
+          "refresh": null,
+          "user": null
+        },
+        "afterReload": {
+          "hash": "#/login",
+          "loginVisible": true
+        }
+      }
+    },
+    {
+      "pathId": "P3''",
+      "id": "P3-1 host command verbatim from wizard",
+      "status": "PASS",
+      "detail": {
+        "installCmd": "bash <(curl -fsSL https://127.0.0.1:18787/install/host.sh?download=e7hIsqVxA3lG2oDEkiwccwQanrSmfJ_z&token=DcxaxHACK4-pNk2BsGzV9pWZFPZH8_b9)",
+        "wizardText": "在目标开发机执行以下命令完成注册。脚本会写入环境配置并生成自签证书，命令 10 分钟内有效且只能下载一次；注册令牌 24 小时内有效且只能使用一次。 bash <(curl -fsSL https://127.0.0.1:18787/install/host.sh?download=e7hIsqVxA3lG2oDEki"
+      }
+    },
+    {
+      "pathId": "P3''",
+      "id": "P3-2 verbatim URL 200 then 401",
+      "status": "PASS",
+      "detail": {
+        "firstStatus": 200,
+        "secondStatus": 401,
+        "contentType": "content-type: text/x-shellscript; charset=utf-8",
+        "bodyHead": "#!/usr/bin/env bash\n# Orca Cloud 开发机接入脚本（平台生成；内嵌一次"
+      }
+    },
+    {
+      "pathId": "P3''",
+      "id": "P3-3 Bearer path still issues script",
+      "status": "PASS",
+      "detail": {
+        "tokenStatus": 201,
+        "bearerStatus": 200,
+        "hasToken": true
+      }
+    },
+    {
+      "pathId": "P1''",
+      "id": "cleanup: no residual test grants",
+      "status": "PASS",
+      "detail": {
+        "hostClean": 1,
+        "projectClean": 4
+      }
+    }
+  ],
+  "paths": {
+    "P1''": true,
+    "P2''": true,
+    "P3''": true
+  },
+  "steps": {
+    "baseline": {
+      "me": "admin",
+      "permissions": ["platform:admin"],
+      "projects": 7,
+      "hosts": 3,
+      "onlineHosts": 2,
+      "demoProject": true,
+      "targetHost": true,
+      "targetHostOnline": true,
+      "adminUser": true,
+      "directoryGroups": ["developers", "platform-admins", "team-payment"]
+    },
+    "hostCards": [
+      {
+        "key": "view",
+        "label": "查看",
+        "headBadges": 0,
+        "chips": [],
+        "adds": 1
+      },
+      {
+        "key": "control",
+        "label": "控制",
+        "headBadges": 0,
+        "chips": [
+          {
+            "key": "user:user_eff396fc-a0d8-42c5-8471-1abf1b2aa26d",
+            "text": "zhangsan 用户 调整 ✕",
+            "levelBadges": 0
+          }
+        ],
+        "adds": 1
+      },
+      {
+        "key": "manage",
+        "label": "管理",
+        "headBadges": 0,
+        "chips": [],
+        "adds": 1
+      }
+    ],
+    "projectCards": [
+      {
+        "key": "view",
+        "label": "查看",
+        "headBadges": 0,
+        "headText": "查看4 个主体",
+        "desc": "项目可见、可打开；文件浏览与预览。",
+        "adds": 1,
+        "removes": [false, false, false, false],
+        "chips": ["team-payment 组 ✕", "zhangsan 用户 ✕", "lisi 用户 ✕", "admin 用户 ✕"]
+      },
+      {
+        "key": "control",
+        "label": "控制",
+        "headBadges": 0,
+        "headText": "控制3 个主体",
+        "desc": "项目内操作位：终端、Agent、文件写入、浏览器与下载；下载仍需项目 / 全局下载策略为「允许」才放行（FR-7）。",
+        "adds": 1,
+        "removes": [false, false, false],
+        "chips": ["team-payment 组 ✕", "zhangsan 用户 ✕", "admin 用户 ✕"]
+      },
+      {
+        "key": "derived",
+        "label": "管理",
+        "headBadges": 1,
+        "headText": "管理主机推导 · 只读1 个主体",
+        "desc": "项目级无「管理」权限位：归档 / 登记归创建者或平台管理员，主机维护属主机授权。下方为按 U65 推导在本项目获得权限的主机级主体——在主机详情弹框维护，项目授权不扩大到主机级。",
+        "adds": 0,
+        "removes": [],
+        "chips": ["zhangsan 用户 来源：控制卡"]
+      }
+    ]
+  },
+  "webSource": "working tree (pinned via route)",
+  "consoleErrors": [],
+  "puts": 4,
+  "generatedAt": "2026-11-16T06:39:21.007Z",
+  "pass": true
+}

@@ -1,0 +1,10 @@
+=== preload VITE_EXPOSE_STORE context (production) ===
+var exposeStore = preloadEnv?.MODE === "e2e" || isEnvFlagEnabled(preloadEnv?.VITE_EXPOSE_STORE);
+
+=== preload exposeStore definition ===
+var exposeStore = preloadEnv?.MODE === "e2e" || isEnvFlagEnabled(preloadEnv?.VITE_EXPOSE_STORE)
+const exposeStore$1 = Boolean(input.exposeStore)
+
+=== preload MODE / e2e literal ===
+1
+1

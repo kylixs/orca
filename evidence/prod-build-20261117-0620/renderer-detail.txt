@@ -1,0 +1,8 @@
+=== renderer files matching e2e/probe ===
+out/renderer/assets/monaco-e2e-probe-CiemkNbV.js
+-- content of matching file (first 300 bytes) --
+FILE out/renderer/assets/monaco-e2e-probe-CiemkNbV.js size=      44
+function e(e,t){return()=>{}}export{e as t};
+
+=== renderer __webRuntimeSessionE2E context ===
+out/renderer/assets/store-Gsydcht_.js:($9.getState(),16)),oP.exposeStore&&typeof window<`u`){let e=window;e.__store=$9,oP.exposeStore&&(e.__webRuntimeSessionE2E={createTerminal:async e=>(await Ve(async()=>{let{createWebRuntimeSessionTerminal:e}=await import(`.

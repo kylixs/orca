@@ -1,0 +1,14 @@
+{
+  "host": {
+    "worktrees": 4,
+    "tabs": 88,
+    "uniquePtyIds": 88,
+    "activeTabId": "fbcdcb4c-d62b-44b0-bbbd-5933f52fd4e9"
+  },
+  "host2": {
+    "worktrees": 4,
+    "tabs": 27,
+    "uniquePtyIds": 27,
+    "activeTabId": "d87eb5f2-d6f8-4df4-be43-a3549ace24cd"
+  }
+}

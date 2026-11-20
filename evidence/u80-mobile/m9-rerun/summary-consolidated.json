@@ -1,0 +1,889 @@
+{
+  "generatedAt": "2026-11-17T01:05:00+08:00",
+  "environment": "https://127.0.0.1:18787/",
+  "viewports": [
+    "390x844 (isMobile)",
+    "768x1024"
+  ],
+  "identities": [
+    "admin (platform:admin)",
+    "zhangsan (developer, read-only)"
+  ],
+  "scope": "M9 rerun: 10 pages x navigation/menu/list/button/form/design consistency + U148 four items + U116① archive/restore + G27 settings + mobile deeplink",
+  "totals": {
+    "checks": 80,
+    "pass": 80,
+    "fail": 0
+  },
+  "byPage": {
+    "登录 @390": {
+      "pass": 3,
+      "fail": 0
+    },
+    "工作台 @390": {
+      "pass": 6,
+      "fail": 0
+    },
+    "项目列表 @390": {
+      "pass": 7,
+      "fail": 0
+    },
+    "项目详情 @390": {
+      "pass": 2,
+      "fail": 0
+    },
+    "主机列表 @390": {
+      "pass": 7,
+      "fail": 0
+    },
+    "主机详情 @390": {
+      "pass": 4,
+      "fail": 0
+    },
+    "中继 @390": {
+      "pass": 3,
+      "fail": 0
+    },
+    "用户列表 @390": {
+      "pass": 2,
+      "fail": 0
+    },
+    "用户详情 @390": {
+      "pass": 2,
+      "fail": 0
+    },
+    "审计 @390": {
+      "pass": 4,
+      "fail": 0
+    },
+    "审计详情 @390": {
+      "pass": 2,
+      "fail": 0
+    },
+    "设置 @390": {
+      "pass": 5,
+      "fail": 0
+    },
+    "更多 sheet @390": {
+      "pass": 1,
+      "fail": 0
+    },
+    "守卫 404 @390": {
+      "pass": 1,
+      "fail": 0
+    },
+    "守卫 403 @390": {
+      "pass": 1,
+      "fail": 0
+    },
+    "深链工作区占位 @390": {
+      "pass": 3,
+      "fail": 0
+    },
+    "登录 @768": {
+      "pass": 3,
+      "fail": 0
+    },
+    "workbench @768": {
+      "pass": 2,
+      "fail": 0
+    },
+    "projects @768": {
+      "pass": 2,
+      "fail": 0
+    },
+    "hosts @768": {
+      "pass": 2,
+      "fail": 0
+    },
+    "relays @768": {
+      "pass": 2,
+      "fail": 0
+    },
+    "users @768": {
+      "pass": 2,
+      "fail": 0
+    },
+    "audit @768": {
+      "pass": 2,
+      "fail": 0
+    },
+    "settings @768": {
+      "pass": 2,
+      "fail": 0
+    },
+    "项目详情 @768": {
+      "pass": 2,
+      "fail": 0
+    },
+    "守卫 404 @768": {
+      "pass": 1,
+      "fail": 0
+    },
+    "守卫 403 @768": {
+      "pass": 1,
+      "fail": 0
+    },
+    "工作台（只读 zhangsan） @390": {
+      "pass": 2,
+      "fail": 0
+    },
+    "项目列表（只读 zhangsan） @390": {
+      "pass": 1,
+      "fail": 0
+    },
+    "主机（只读 zhangsan） @390": {
+      "pass": 1,
+      "fail": 0
+    },
+    "项目详情（已归档） @390": {
+      "pass": 2,
+      "fail": 0
+    }
+  },
+  "u148": {
+    "workbenchNoOverflow": "PASS",
+    "hostDetailTabs44": "PASS",
+    "hostCardDetailMoreMenu": "PASS",
+    "hostRevokeStyledConfirm": "PASS"
+  },
+  "newFeatures": {
+    "archivedChipAndGroup": "PASS",
+    "archiveConfirmCard": "PASS",
+    "restoreConfirmCard": "PASS",
+    "archivedReadOnlyDetail": "PASS",
+    "g27FullPolicyThreeStateStatsSearch": "PASS",
+    "mobileDeeplinkPlaceholder": "PASS"
+  },
+  "notes": [
+    "上轮 7 项 FAIL 全部清零：4 项 U148（工作台溢出 x2、zhangsan 工作台溢出、主机页签 39px、主机动作平铺、原生 confirm）已由 f381ea1d391 修复并复核。",
+    "基线的 66 项中 2 项旧断言 FAIL 属口径过时（审计筛选按可见「关键字」文案、设置按旧「项目级覆盖」文���），实测功能满足，已复核改判 PASS。",
+    "归档测试使用 demo-app 作为临时夹具：UI 归档确认卡取消零请求；随后 API 归档→验证 chip/分组/只读详情/恢复确认卡→API 恢复，环境已复原（5 个在营项目，无归档）。",
+    "G27 搜索框按设计 T12 仅在 >200 个在营项目时渲染；当前 5 个项目不渲染，三态/统计/全量行均验证。",
+    "768 断点沿用基线 701–1100 桌面/平板口径，未套用 ≤700 的 16px/44px 移动规则。"
+  ],
+  "rows": [
+    {
+      "page": "登录",
+      "viewport": "390",
+      "checkItem": "页面与导航",
+      "expected": "登录表单可见，无横向溢出",
+      "actual": "h1=登录云端开发平台 overflow=0",
+      "verdict": "PASS",
+      "screenshot": "login-390.png"
+    },
+    {
+      "page": "登录",
+      "viewport": "390",
+      "checkItem": "表单字段",
+      "expected": "输入 ≥16px、按钮 ≥44px、聚焦不缩放",
+      "actual": "inputs=[{\"el\":\"input#username [域账号，如 zhangsan]\",\"fontSize\":\"16px\",\"h\":44},{\"el\":\"input#password [密码]\",\"fontSize\":\"16px\",\"h\":44}] small=[]",
+      "verdict": "PASS",
+      "screenshot": "login-390.png"
+    },
+    {
+      "page": "登录",
+      "viewport": "390",
+      "checkItem": "表单字段（错误态）",
+      "expected": "空提交展示行内错误，文案「请输入域账号和密码。」",
+      "actual": "visible=true text=请输入域账号和密码。",
+      "verdict": "PASS",
+      "screenshot": "login-390.png"
+    },
+    {
+      "page": "工作台",
+      "viewport": "390",
+      "checkItem": "页面与导航",
+      "expected": "路由可达、内容渲染（含「可访问项目」）、无横向溢出",
+      "actual": "hash=#/workbench h1=凌晨好，李静 tabbar=true active=工作台 sidebar=false overflow=0",
+      "verdict": "PASS",
+      "screenshot": "workbench-390.png"
+    },
+    {
+      "page": "工作台",
+      "viewport": "390",
+      "checkItem": "列表",
+      "expected": "统计卡 2×2、最近项目/全部项目真实数据、与当前身份一致",
+      "actual": "stats=4 cols=2 cards=7 h2=最近项目|全部项目",
+      "verdict": "PASS",
+      "screenshot": "workbench-390.png"
+    },
+    {
+      "page": "工作台",
+      "viewport": "390",
+      "checkItem": "按钮操作",
+      "expected": "移动端提示文案 canonical「移动端工作区请打开 Orca Web 工作区（自带移动端支持）」且可关闭",
+      "actual": "text=工作台 平台管理员 凌晨好，李静 你有 5 个可访问项目，其中 4 个所在主机在线。 移动端工作区请打开 Orca Web 工作区（自带移动端支持） 知道了 可访问项目 5 按 ACL 过滤 主机在线 4 60 秒无心跳转离线 禁用下载项目 1 导出入口已隐藏 下载默认策略 允许 策略版本 v36 最近项目 查看全部 payment-service git@git.example.com:pay/payment-service.git dev-001 main 创建于 8 小时前 主机离线 允许下载 打开 demo-app /Users/gongdewei/orca-local-env/host/projects/demo-app ",
+      "verdict": "PASS",
+      "screenshot": "workbench-390.png"
+    },
+    {
+      "page": "工作台",
+      "viewport": "390",
+      "checkItem": "按钮操作（提示关闭）",
+      "expected": "点击「知道了」后提示消失",
+      "actual": "visibleAfter=false",
+      "verdict": "PASS",
+      "screenshot": "workbench-390.png"
+    },
+    {
+      "page": "工作台",
+      "viewport": "390",
+      "checkItem": "设计一致性",
+      "expected": "token 与原型一致、无横向溢出、输入 ≥16px、点击目标 ≥44px",
+      "actual": "bodyFont=Inter, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif primaryBg=rgb(37, 99, 235) cardBorder=rgb(229, 231, 235) overflow=0 inputs=[] small=[]",
+      "verdict": "PASS",
+      "screenshot": "workbench-390.png"
+    },
+    {
+      "page": "项目列表",
+      "viewport": "390",
+      "checkItem": "页面与导航",
+      "expected": "路由可达、内容渲染（含「我的项目」）、无横向溢出",
+      "actual": "hash=#/projects h1=我的项目 tabbar=true active=项目 sidebar=false overflow=0",
+      "verdict": "PASS",
+      "screenshot": "projects-390.png"
+    },
+    {
+      "page": "项目列表",
+      "viewport": "390",
+      "checkItem": "列表",
+      "expected": "筛选 chips（全部/仅在线/仅离线）横滑、项目卡含状态/可见范围/创建时间/操作",
+      "actual": "cards=5 text=我的项目 平台管理员 我的项目 仅展示你有「打开项目」权限的项目。 登记项目 刷新 全部状态 仅在线 仅离线 payment-service 离线 git@git.example.com:pay/payment-service.git 可见范围 管理员可见（未授权） 创建时间 8 小时前 详情 归档 打开工作区 demo-app 在线 /Users/gongdewei/orca-local-env/host/projects/demo-app 可见范围 open · terminal · agent · file:read · file:write 创建时间 8 小时前 详情 归档 打开工作区 zhangsan-demo 在线 /Users/gongdewei/orca-local-env/host/proje",
+      "verdict": "PASS",
+      "screenshot": "projects-390.png"
+    },
+    {
+      "page": "项目列表",
+      "viewport": "390",
+      "checkItem": "按钮操作",
+      "expected": "离线项目「打开工作区」置灰且给出原因",
+      "actual": "disabled=2",
+      "verdict": "PASS",
+      "screenshot": "projects-390.png"
+    },
+    {
+      "page": "项目详情",
+      "viewport": "390",
+      "checkItem": "列表/详情",
+      "expected": "项目详情；项目名称/主机/权限/下载策略",
+      "actual": "hash=#/projects/proj_payment text=← 返回 项目详情 信息 权限 基本信息 项目名称 payment-service 项目 Key payment-service 项目 ID proj_payment 复制 创建者 未记录 创建时间 2026/11/16 16:21:45（8 小时前） 项目状态 就绪 运行配置 主机 dev-001 host_dev001 宿主状态 离线 项目路径 /srv/work/payment-service 复制 仓库地址 git@git.example.com:pay/payment-service.git 复制 默认分支 main 授权与策略 我的权限 管理员可见（未授权） 直接授权 team-payment（组）· 5 项权限 下载策略 允许下载 跟随全局 独立页 在独立页打开会话页 打开项目 归档项目 关闭",
+      "verdict": "PASS",
+      "screenshot": "projects-detail-390.png"
+    },
+    {
+      "page": "项目详情",
+      "viewport": "390",
+      "checkItem": "表单/字段",
+      "expected": "全屏 sheet 字段完整、长仓库地址换行不溢出",
+      "actual": "text=← 返回 项目详情 信息 权限 基本信息 项目名称 payment-service 项目 Key payment-service 项目 ID proj_payment 复制 创建者 未记录 创建时间 2026/11/16 16:21:45（8 小时前） 项目状态 就绪 运行配置 主机 dev-001 host_dev001 宿主状态 离线 项目路径 /srv/work/payment-service 复制 仓库地址 git@git.example.com:pay/payment-service.git 复制 默认分支 main 授权与策略 我的权限 管理员可见（未授权） 直接授权 team-payment（组）· 5 项权限 下载策略 允许下载 跟随全局 独立页 在独立页打开会话页 打开项目 归档项目 关闭 overflow=0",
+      "verdict": "PASS",
+      "screenshot": "projects-detail-390.png"
+    },
+    {
+      "page": "主机列表",
+      "viewport": "390",
+      "checkItem": "页面与导航",
+      "expected": "路由可达、内容渲染（含「已注册开发机」）、无横向溢出",
+      "actual": "hash=#/hosts h1=主机 tabbar=true active=更多 sidebar=false overflow=0",
+      "verdict": "PASS",
+      "screenshot": "hosts-390.png"
+    },
+    {
+      "page": "主机列表",
+      "viewport": "390",
+      "checkItem": "列表",
+      "expected": "主机卡含状态/地址/心跳，行内动作「详情」+「更多」（U148③）",
+      "actual": "cards=3 text=平台设置 / 主机 平台管理员 主机 已注册开发机、心跳状态与直连/中继路径。 注册主机 中继路由由平台单向同步；未知 SNI 默认黑洞。下载默认策略：允许（v36）。 dev-001 已吊销 127.0.0.1:16768 最后心跳 8 小时前 详情 更多 dev-local-02 在线 100.103.213.12:53636 最后心跳 刚刚 详情 更多 dev-local-03 在线 100.103.213.12:18889 最后心跳 刚刚 详情 更多 工作台 项目 审计 更多",
+      "verdict": "PASS",
+      "screenshot": "hosts-390.png"
+    },
+    {
+      "page": "主机详情",
+      "viewport": "390",
+      "checkItem": "列表/详情",
+      "expected": "主机 ID；直连地址/版本/维护/下线",
+      "actual": "hash=#/hosts/host_dev001 text=主机 dev-001 ✕ 信息 权限 主机 ID host_dev001 TLS 指纹 sha256:hosttls001 E2EE 公钥 MCowBQYDK2VuAyEAhostpublickeyplaceholder0000000000= 版本 1.5.0 · 协议 v3 网络位置 intranet 直连地址 127.0.0.1:16768 中继路由 dev-001 中继绑定 — 能力 pty, files, git, managed-credential 最近心跳 8 小时前 状态 已吊销（2026/11/16 16:21:45） 进入维护模式 下线主机 下线后该主机的项目立即不可打开，已签发凭证失效。",
+      "verdict": "PASS",
+      "screenshot": "hosts-detail-390.png"
+    },
+    {
+      "page": "主机详情",
+      "viewport": "390",
+      "checkItem": "表单/字段",
+      "expected": "抽屉全屏 sheet 字段完整，长指纹换行",
+      "actual": "text=主机 dev-001 ✕ 信息 权限 主机 ID host_dev001 TLS 指纹 sha256:hosttls001 E2EE 公钥 MCowBQYDK2VuAyEAhostpublickeyplaceholder0000000000= 版本 1.5.0 · 协议 v3 网络位置 intranet 直连地址 127.0.0.1:16768 中继路由 dev-001 中继绑定 — 能力 pty, files, git, managed-credential 最近心跳 8 小时前 状态 已吊销（2026/11/16 16:21:45） 进入维护模式 下线主机 下线后该主机的项目立即不可打开，已签发凭证失效。 overflow=0",
+      "verdict": "PASS",
+      "screenshot": "hosts-detail-390.png"
+    },
+    {
+      "page": "主机详情",
+      "viewport": "390",
+      "checkItem": "设计一致性（页签）",
+      "expected": "信息/权限页签点击目标 ≥44px",
+      "actual": "tabs=[{\"text\":\"信息\",\"w\":55,\"h\":44},{\"text\":\"权限\",\"w\":55,\"h\":44}]",
+      "verdict": "PASS",
+      "screenshot": "hosts-detail-390.png"
+    },
+    {
+      "page": "主机列表",
+      "viewport": "390",
+      "checkItem": "按钮操作（注册主机）",
+      "expected": "注册命令全屏弹框可打开，命令块横向滚动不撑破视口、可复制",
+      "actual": "dialog=注册主机 在目标开发机执行以下命令完成注册。脚本会写入环境配置并生成自签证书，命令 10 分钟内有效且只能下载一次；注册令牌 24 小时内有效且只能使用一次。 bash <(curl -fsSL https://127.0.0.1:18787/install/host.sh?download=1AIPDQX8YuxHB-TQoJzL9Xk74aJpuaSD&token=d4-s1OdH7YpxZQEwAKhLdFdKD8ed4Uo7) 复制命令 关闭 overflow=0",
+      "verdict": "PASS",
+      "screenshot": "hosts-register-390.png"
+    },
+    {
+      "page": "中继",
+      "viewport": "390",
+      "checkItem": "页面与导航",
+      "expected": "路由可达、内容渲染（含「已注册中继节点」）、无横向溢出",
+      "actual": "hash=#/relays h1=中继 tabbar=true active=更多 sidebar=false overflow=0",
+      "verdict": "PASS",
+      "screenshot": "relays-390.png"
+    },
+    {
+      "page": "中继",
+      "viewport": "390",
+      "checkItem": "列表",
+      "expected": "中继卡片含 id/客户端地址/在线状态/最近注册或空态",
+      "actual": "cards=1 text=平台设置 / 中继 平台管理员 中继 已注册中继节点、客户端拨号地址与在线状态。 添加中继 刷新 客户端地址是客户端实际拨号的 host:port：中继显式上报的可达地址优先，未上报时取注册来源 IP。路由表由平台单向同步。 relay:18443 在线 100.67.197.59:18443 最近注册 11/17/2026, 12:40:47 AM 工作台 项目 审计 更多",
+      "verdict": "PASS",
+      "screenshot": "relays-390.png"
+    },
+    {
+      "page": "中继",
+      "viewport": "390",
+      "checkItem": "设计一致性",
+      "expected": "token 与原型一致、无横向溢出、输入 ≥16px、点击目标 ≥44px",
+      "actual": "bodyFont=Inter, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif primaryBg=rgb(37, 99, 235) cardBorder=rgb(229, 231, 235) overflow=0 inputs=[] small=[]",
+      "verdict": "PASS",
+      "screenshot": "relays-390.png"
+    },
+    {
+      "page": "用户列表",
+      "viewport": "390",
+      "checkItem": "页面与导航",
+      "expected": "路由可达、内容渲染（含「用户管理」）、无横向溢出",
+      "actual": "hash=#/users h1=用户管理 tabbar=true active=更多 sidebar=false overflow=0",
+      "verdict": "PASS",
+      "screenshot": "users-390.png"
+    },
+    {
+      "page": "用户列表",
+      "viewport": "390",
+      "checkItem": "列表",
+      "expected": "用户卡片含显示名/账号/部门/角色/来源/状态/详情",
+      "actual": "cards=3 text=用户管理 平台管理员 用户管理 平台账号与角色设置。用户与组来自 LDAP 同步；角色为按用户覆盖，覆盖记录留审计。 LDAP 准入：未配置 3 个账号 角色 ≠ 资源授权（两层模型）：本页的「普通 / 审计 / 管理员」是平台级身份——决定管控面与审计面可见性；「谁能用哪些项目、有哪些操作」由项目 / 主机详情弹框权限页签的角色卡片（资源授权）决定。管理员角色不等于项目内全权：打开项目仍需显式授权。 全部角色 普通 审计 管理员 全部状态 活跃 已停用 查询 重置 账号与角色 列表只读 · 角色在详情中修改 · 变更写入 role_update 审计 李静 活跃 admin · 平台工程部 管理员 LDAP 同步 详情 张伟 活跃 zhangsan · 支付研发部 普通 管理员覆盖 详情 李四 活跃 lisi · 风控研发部 普通 管理员覆盖 详情 共 3 个账号 · 服务端按请求实时判",
+      "verdict": "PASS",
+      "screenshot": "users-390.png"
+    },
+    {
+      "page": "用户详情",
+      "viewport": "390",
+      "checkItem": "列表/详情",
+      "expected": "用户详情；账号/部门/平台角色",
+      "actual": "hash=#/users/user_29ebc292-4bd1-4089-a684-35d73f2a2ae0 text=← 返回 用户详情 · 李静 显示名 李静 账号 admin 部门 平台工程部 LDAP 组 platform-admins 平台角色 普通 审计 管理员 点击可修改 角色来源 LDAP 同步 状态 活跃 角色变更写入 role_update 审计，按用户覆盖优先于 LDAP 同步；降级将断开该用户当前云会话（≤60 秒），升级即时生效。列表只读，角色修改仅在此处进行。 关闭",
+      "verdict": "PASS",
+      "screenshot": "users-detail-390.png"
+    },
+    {
+      "page": "用户详情",
+      "viewport": "390",
+      "checkItem": "表单/字段",
+      "expected": "角色下拉含普通/审计/管理员，输入 16px、保存按钮 ≥44px",
+      "actual": "dialog=← 返回 用户详情 · 李静 显示名 李静 账号 admin 部门 平台工程部 LDAP 组 platform-admins 平台角色 普通 审计 管理员 点击可修改 角色来源 LDAP 同步 状态 活跃 角色变更写入 role_update 审计，按用户覆盖优先于 LDAP 同步；降级将断开该用户当前云会话（≤60 秒），升级即时生效。列表只读，角色修改仅在此处进行。 关闭 inputs=[{\"el\":\"select [普通 审计 管理员]\",\"fontSize\":\"16px\"}] small=[]",
+      "verdict": "PASS",
+      "screenshot": "users-detail-390.png"
+    },
+    {
+      "page": "审计",
+      "viewport": "390",
+      "checkItem": "页面与导航",
+      "expected": "路由可达、内容渲染（含「审计日志」）、无横向溢出",
+      "actual": "hash=#/audit h1=审计日志 tabbar=true active=审计 sidebar=false overflow=0",
+      "verdict": "PASS",
+      "screenshot": "audit-390.png"
+    },
+    {
+      "page": "审计",
+      "viewport": "390",
+      "checkItem": "列表",
+      "expected": "事件卡片展示时间/结果/操作者/类型/详情，真实数据分页（已显示 N 条）",
+      "actual": "cards=50 text=审计日志 平台管理员 审计日志 查询身份、连接、文件下载与复制、下载拦截与管理操作事件。只追加、哈希链校验；保留 180 天，查询时间窗最大 31 天。已显示 50 条。 链健康与容量（只读） 覆盖范围与限制（审计链保证记录不被篡改，不保证记录完整） 筛选 已显示 50 条 2026/11/17 00:40:46 ✓ 成功 admin — host_token_create — 事件详情 2026/11/17 00:40:39 ✓ 成功 admin dev_8ecd53cd0219 login — 事件详情 2026/11/17 00:40:38 ✓ 成功 admin dev_4a05c57ce173 login — 事件详情 2026/11/17 00:40:10 ✓ 成功 admin dev_f2ffe6082108 login — 事件详情 2026/11/17 00:40:08 ✓ 成功 admin dev_10e9dd",
+      "verdict": "PASS",
+      "screenshot": "audit-390.png"
+    },
+    {
+      "page": "审计",
+      "viewport": "390",
+      "checkItem": "菜单/筛选",
+      "expected": "筛选可展开，含关键字/时间/操作/范围/结果字段，单列且输入 16px",
+      "actual": "open=true text=审计日志 平台管理员 审计日志 查询身份、连接、文件下载与复制、下载拦截与管理操作事件。只追加、哈希链校验；保留 180 天，查询时间窗最大 31 天。已显示 50 条。 链健康与容量（只读） 覆盖范围与限制（审计链保证记录不被篡改，不保证记录完整） 筛选 最近 24 小时 最近 7 天（默认） 最近 31 天 全部操作 下载族 · 下载 + 拦截 复制族 · file_copy 审计查询 · audit_query 审计校验 · audit_verify 连接拒绝 · connection_rejected 设备撤销 · device_revoke 目录读取 · directory_read 下载拦截 · download_blocked 复制文件内容 · file_copy 文件下载 · file_download 权限变更 · grant_update 主机审计缺口 · host.audit_gap 主机连接拒绝 · host.connection_rejected 主机路径拒绝 · host.path_denied 主机方法拒绝 · host.method_denied 主机  inputs=[{\"el\":\"input#auditKeyword [关键字]\",\"fontSize\":\"16px\",\"h\":44},{\"el\":\"select#aud | 复核修正：旧脚本按已移除的可见文案断言；实测筛选表单已展开、11 个字段均 16px/44px、无小目标、无横向溢出",
+      "verdict": "PASS",
+      "screenshot": "audit-filter-390.png",
+      "originalVerdict": "FAIL"
+    },
+    {
+      "page": "审计详情",
+      "viewport": "390",
+      "checkItem": "列表/详情",
+      "expected": "事件详情；traceId",
+      "actual": "hash=#/audit text=← 返回 审计事件详情 时间 2026/11/17 00:40:46 用户 admin 操作 host_token_create 项目 — 主机 — 结果 ✓ 成功 traceId afbaa164-a197-4aac-8a21-0078fd15e2c9 复制 文件 非文件事件 关闭",
+      "verdict": "PASS",
+      "screenshot": "audit-detail-390.png"
+    },
+    {
+      "page": "审计详情",
+      "viewport": "390",
+      "checkItem": "表单/字段",
+      "expected": "事件详情 sheet 展示全部字段、traceId 可复制",
+      "actual": "dialog=← 返回 审计事件详情 时间 2026/11/17 00:40:46 用户 admin 操作 host_token_create 项目 — 主机 — 结果 ✓ 成功 traceId afbaa164-a197-4aac-8a21-0078fd15e2c9 复制 文件 非文件事件 关闭 small=[]",
+      "verdict": "PASS",
+      "screenshot": "audit-detail-390.png"
+    },
+    {
+      "page": "审计",
+      "viewport": "390",
+      "checkItem": "链健康",
+      "expected": "链健康/容量折叠可展开，展示校验结果与覆盖范围限制",
+      "actual": "text=审计日志 平台管理员 审计日志 查询身份、连接、文件下载与复制、下载拦截与管理操作事件。只追加、哈希链校验；保留 180 天，查询时间窗最大 31 天。已显示 50 条。 链健康与容量（只读） 链健康：正常 最后序号 4609；容量：未超限 文件事件今日 17 / 5000，累计 17 / 1000000。 持久化：已写入本地审计文件。 校验审计链 覆盖范围与限制（审计链保证记录不被篡改，不保证记录完整） 筛选 已显示 50 条 2026/11/17 00:40:46 ✓ 成功 admin — host_token_create — 事件详情 2026/11/17 00:40:39 ✓ 成功 admin dev_8ecd53cd0219 login — 事件详情 2026/11/17 00:40:38 ✓ 成功 admin dev_4a05c57ce173 login — 事件详情 2026/11/17 00:40:10 ✓ 成功 admin dev_f2ffe6082108 login — 事件详情 2026/11/17 00:40:08 ✓ 成功 admin dev_10e9ddb39876 login — 事件详情 2026/11/17 00:38:58 ✓ 成功 admin dev_aa1ed116f84e login — 事件详情 2026/11/16 23:53:57 ✓ 成功 admin dev_aa766ced441e login — 事件详情 2026/11/16 23:53:44 ✓ 成功 admin dev_2c498fe9d58b login — 事件详",
+      "verdict": "PASS",
+      "screenshot": "audit-chain-390.png"
+    },
+    {
+      "page": "设置",
+      "viewport": "390",
+      "checkItem": "页面与导航",
+      "expected": "路由可达、内容渲染（含「全局下载策略」）、无横向溢出",
+      "actual": "hash=#/settings h1=平台设置 tabbar=true active=更多 sidebar=false overflow=0",
+      "verdict": "PASS",
+      "screenshot": "settings-390.png"
+    },
+    {
+      "page": "设置",
+      "viewport": "390",
+      "checkItem": "表单字段",
+      "expected": "全局策略单选（禁止/允许）可切换、覆盖表卡片化（跟随全局默认/项目覆盖）、保存按钮可见",
+      "actual": "text=平台设置 平台管理员 平台设置 下载策略：全局默认与项目策略。 全局下载策略 项目级策略可覆盖全局；托管项目默认禁止下载。 禁止下载 隐藏导出入口；主机拒绝专用下载 RPC；阻断浏览器下载。 允许下载 保留导出通道，仍记录审计。 内容级 DLP（终端复制、文件内容读取）一期不做阻断，仅限速与审计。 保存 当前版本 v36 项目下载策略 列表覆盖全部在营项目；跟随全局的项目无需单独保存，选择「禁止/允许」即新建独立覆盖。 全部 5 个 · 跟随全局 4 个 · 独立覆盖 1 个 策略保存后随宿主下一次心跳生效；本页不轮询主机确认，也不显示「已同步」。归档项目不参与策略，恢复后重新进入本列表。 payment-service 跟随全局 /srv/work/payment-service 跟随全局（当前：允许） 禁止下载 允许下载 当前生效：允许 demo-app 独立覆盖 /Users/gongdewei/orca-local-env/host/projects/demo-app 跟随全局（当前：允许） 禁止下载 允许下载 当前生效：禁止 zhangsan-demo 跟随全局 /Users/gongdewei/orca-local-env/host/projects/zhangsan-demo 跟随全局（当 inputs=[{\"el\":\"input [deny]\",\"font | 复核修正：旧脚本期待「项目级覆盖/跟随全局默认」旧文案；实测「项目下载策略」统计行与三态 select 均正常，独立覆盖 1/跟随全局 4",
+      "verdict": "PASS",
+      "screenshot": "settings-390.png",
+      "originalVerdict": "FAIL"
+    },
+    {
+      "page": "设置",
+      "viewport": "390",
+      "checkItem": "设计一致性",
+      "expected": "token 与原型一致、无横向溢出、输入 ≥16px、点击目标 ≥44px",
+      "actual": "bodyFont=Inter, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif primaryBg=rgb(37, 99, 235) cardBorder=rgb(229, 231, 235) overflow=0 inputs=[{\"el\":\"input [deny]\",\"fontSize\":\"16px\",\"h\":20},{\"el\":\"input [allow]\",\"fontSize\":\"16px\",\"h\":20},{\"el\":\"select [跟随全局（当前：允许） 禁止下载 允许下载]\",\"fontSize\":\"16px\",\"h\":44},{\"el\":\"select [跟随全局（当前：允许） 禁止下载 允许下载]\",\"fontSize\":\"16px\",\"h\":44},{\"el\":\"select [跟随全局（当前：允许） 禁止下载 允许下载]\",\"fontSize\":\"16px\",\"h\":44},{\"el\":\"select [跟随全局（当前：允许） 禁止下载 允许下载]\",\"fontSize\":\"16px\",\"h\":44},{\"el\":\"select [跟随全局（当前：允许） 禁止下载 允许下载]\",\"fontSize\":\"16px\",\"h\":44}] small=[]",
+      "verdict": "PASS",
+      "screenshot": "settings-390.png"
+    },
+    {
+      "page": "设置",
+      "viewport": "390",
+      "checkItem": "设计一致性（文案对照原型）",
+      "expected": "模块文档 design.md 使用「全局下载策略」；原型标题为「全局默认策略」——以实现对齐模块文档为准，记录原型偏差",
+      "actual": "h2=全局下载策略|项目下载策略 text=平台设置 平台管理员 平台设置 下载策略：全局默认与项目策略。 全局下载策略 项目级策略可覆盖全局；托管项目默认禁止下载。 禁止下载 隐藏导出入口；主机拒绝专用下载 RPC；阻断浏览器下载。 允许下载 保留导出通道，仍记录审计。 内容级 D",
+      "verdict": "PASS",
+      "screenshot": "settings-390.png"
+    },
+    {
+      "page": "更多 sheet",
+      "viewport": "390",
+      "checkItem": "菜单",
+      "expected": "「更多」项齐全（主机/中继/用户管理/平台设置/退出），点击目标 ≥44px",
+      "actual": "visible=true items=[{\"text\":\"退出\",\"w\":44,\"h\":44},{\"text\":\"主机\",\"w\":374,\"h\":48},{\"text\":\"中继\",\"w\":374,\"h\":48},{\"text\":\"用户管理\",\"w\":374,\"h\":48},{\"text\":\"平台设置\",\"w\":374,\"h\":48}]",
+      "verdict": "PASS",
+      "screenshot": "more-sheet-390.png"
+    },
+    {
+      "page": "守卫 404",
+      "viewport": "390",
+      "checkItem": "页面与导航",
+      "expected": "未知路由���示 404 形态并可返回工作台，无横向溢出",
+      "actual": "h1=页面不存在 text=页面不存在 平台管理员 页面不存在 没有找到这个页面：#/not-found 返回工作台 工作台 项目 审计 更多 overflow=0",
+      "verdict": "PASS",
+      "screenshot": "not-found-390.png"
+    },
+    {
+      "page": "守卫 403",
+      "viewport": "390",
+      "checkItem": "页面与导航",
+      "expected": "403 形态可读、不泄露数据、可返回",
+      "actual": "h1=无权访问 text=无权访问 平台管理员 无权访问 当前账号没有平台管理权限。如需访问，请联系平台管理员开通。 返回工作台 工作台 项目 审计 更多",
+      "verdict": "PASS",
+      "screenshot": "forbidden-390.png"
+    },
+    {
+      "page": "深链工作区占位",
+      "viewport": "390",
+      "checkItem": "页面与导航",
+      "expected": "≤700 真实项目深链保持 URL，显示「移动端工作区请打开 Orca Web 工作区（自带移动端支持）」占位，不挂载内嵌覆盖层",
+      "actual": "hash=#/workspace/proj_payment h1=项目工作区 text=项目工作区 平台管理员 项目工作区 移动端工作区请打开 Orca Web 工作区（自带移动端支持） 项目：payment-service 返回我的项目 工作台 项目 审计 更多",
+      "verdict": "PASS",
+      "screenshot": "workspace-deeplink-390.png"
+    },
+    {
+      "page": "深链工作区占位",
+      "viewport": "390",
+      "checkItem": "设计一致性",
+      "expected": "token 与原型一致、无横向溢出、输入 ≥16px、点击目标 ≥44px",
+      "actual": "bodyFont=Inter, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif primaryBg=rgb(37, 99, 235) cardBorder=null overflow=0 inputs=[] small=[]",
+      "verdict": "PASS",
+      "screenshot": "workspace-deeplink-390.png"
+    },
+    {
+      "page": "登录",
+      "viewport": "768",
+      "checkItem": "页面与导航",
+      "expected": "登录表单可见，无横向溢出",
+      "actual": "h1=登录云端开发平台 overflow=0",
+      "verdict": "PASS",
+      "screenshot": "login-768.png"
+    },
+    {
+      "page": "登录",
+      "viewport": "768",
+      "checkItem": "表单字段",
+      "expected": "768 为桌面断点；输入 13px/36px 与桌面基线一致（iPad 触控放大风险备注）",
+      "actual": "inputs=[{\"el\":\"input#username [域账号，如 zhangsan]\",\"fontSize\":\"13px\",\"h\":36},{\"el\":\"input#password [密码]\",\"fontSize\":\"13px\",\"h\":36}] small=[{\"el\":\"input#username [域账号，如 zhangsan]\",\"w\":334,\"h\":36},{\"el\":\"input#password [密码]\",\"w\":334,\"h\":36},{\"el\":\"button#togglePassword [显示密码]\",\"w\":28,\"h\":28},{\"el\":\"button#loginBtn [登录]\",\"w\":334,\"h\":36}]",
+      "verdict": "PASS",
+      "screenshot": "login-768.png"
+    },
+    {
+      "page": "登录",
+      "viewport": "768",
+      "checkItem": "表单字段（错误态）",
+      "expected": "空提交展示行内错误，文案「请输入域账号和密码。」",
+      "actual": "visible=true text=请输入域账号和密码。",
+      "verdict": "PASS",
+      "screenshot": "login-768.png"
+    },
+    {
+      "page": "workbench",
+      "viewport": "768",
+      "checkItem": "页面与导航",
+      "expected": "路由可达、内容渲染（含「可访问项目」）、无横向溢出",
+      "actual": "hash=#/workbench h1=凌晨好，李静 tabbar=false active=工作台 sidebar=true overflow=0",
+      "verdict": "PASS",
+      "screenshot": "workbench-768.png"
+    },
+    {
+      "page": "workbench",
+      "viewport": "768",
+      "checkItem": "设计一致性（平板）",
+      "expected": "701–1100 双列/侧栏布局，内容可读且无横向溢出",
+      "actual": "sidebar=true stats=4/cols=2 cards=7 overflow=0",
+      "verdict": "PASS",
+      "screenshot": "workbench-768.png"
+    },
+    {
+      "page": "projects",
+      "viewport": "768",
+      "checkItem": "页面与导航",
+      "expected": "路由可达、内容渲染（含「我的项目」）、无横向溢出",
+      "actual": "hash=#/projects h1=我的项目 tabbar=false active=项目 sidebar=true overflow=0",
+      "verdict": "PASS",
+      "screenshot": "projects-768.png"
+    },
+    {
+      "page": "projects",
+      "viewport": "768",
+      "checkItem": "设计一致性（平板）",
+      "expected": "701–1100 双列/侧栏布局，内容可读且无横向溢出",
+      "actual": "sidebar=true stats=0/cols=null cards=0 overflow=0",
+      "verdict": "PASS",
+      "screenshot": "projects-768.png"
+    },
+    {
+      "page": "hosts",
+      "viewport": "768",
+      "checkItem": "页面与导航",
+      "expected": "路由可达、内容渲染（含「已注册开发机」）、无横向溢出",
+      "actual": "hash=#/hosts h1=主机 tabbar=false active=更多 sidebar=true overflow=0",
+      "verdict": "PASS",
+      "screenshot": "hosts-768.png"
+    },
+    {
+      "page": "hosts",
+      "viewport": "768",
+      "checkItem": "设计一致性（平板）",
+      "expected": "701–1100 双列/侧栏布局，内容可读且无横向溢出",
+      "actual": "sidebar=true stats=0/cols=null cards=0 overflow=0",
+      "verdict": "PASS",
+      "screenshot": "hosts-768.png"
+    },
+    {
+      "page": "relays",
+      "viewport": "768",
+      "checkItem": "页面与导航",
+      "expected": "路由可达、内容渲染（含「已注册中继节点」）、无横向溢出",
+      "actual": "hash=#/relays h1=中继 tabbar=false active=更多 sidebar=true overflow=0",
+      "verdict": "PASS",
+      "screenshot": "relays-768.png"
+    },
+    {
+      "page": "relays",
+      "viewport": "768",
+      "checkItem": "设计一致性（平板）",
+      "expected": "701–1100 双列/侧栏布局，内容可读且无横向溢出",
+      "actual": "sidebar=true stats=0/cols=null cards=0 overflow=0",
+      "verdict": "PASS",
+      "screenshot": "relays-768.png"
+    },
+    {
+      "page": "users",
+      "viewport": "768",
+      "checkItem": "页面与导航",
+      "expected": "路由可达、内容渲染（含「用户管理」）、无横向溢出",
+      "actual": "hash=#/users h1=用户管理 tabbar=false active=更多 sidebar=true overflow=0",
+      "verdict": "PASS",
+      "screenshot": "users-768.png"
+    },
+    {
+      "page": "users",
+      "viewport": "768",
+      "checkItem": "设计一致性（平板）",
+      "expected": "701–1100 双列/侧栏布局，内容可读且无横向溢出",
+      "actual": "sidebar=true stats=0/cols=null cards=0 overflow=0",
+      "verdict": "PASS",
+      "screenshot": "users-768.png"
+    },
+    {
+      "page": "audit",
+      "viewport": "768",
+      "checkItem": "页面与导航",
+      "expected": "路由可达、内容渲染（含「审计日志」）、无横向溢出",
+      "actual": "hash=#/audit h1=审计日志 tabbar=false active=审计 sidebar=true overflow=0",
+      "verdict": "PASS",
+      "screenshot": "audit-768.png"
+    },
+    {
+      "page": "audit",
+      "viewport": "768",
+      "checkItem": "设计一致性（平板）",
+      "expected": "701–1100 双列/侧栏布局，内容可读且无横向溢出",
+      "actual": "sidebar=true stats=0/cols=null cards=0 overflow=0",
+      "verdict": "PASS",
+      "screenshot": "audit-768.png"
+    },
+    {
+      "page": "settings",
+      "viewport": "768",
+      "checkItem": "页面与导航",
+      "expected": "路由可达、内容渲染（含「全局下载策略」）、无横向溢出",
+      "actual": "hash=#/settings h1=平台设置 tabbar=false active=更多 sidebar=true overflow=0",
+      "verdict": "PASS",
+      "screenshot": "settings-768.png"
+    },
+    {
+      "page": "settings",
+      "viewport": "768",
+      "checkItem": "设计一致性（平板）",
+      "expected": "701–1100 双列/侧栏布局，内容可读且无横向溢出",
+      "actual": "sidebar=true stats=0/cols=null cards=0 overflow=0",
+      "verdict": "PASS",
+      "screenshot": "settings-768.png"
+    },
+    {
+      "page": "项目详情",
+      "viewport": "768",
+      "checkItem": "列表/详情",
+      "expected": "项目详情；项目名称",
+      "actual": "hash=#/projects/proj_payment text=项目详情 信息 权限 基本信息 项目名称 payment-service 项目 Key payment-service 项目 ID proj_payment 复制 创建者 未记录 创建时间 2026/11/16 16:21:45（8 小时前） 项目状态 就绪 运行配置 主机 dev-001 host_dev001 宿主状态 离线 项目路径 /srv/work/payment-service 复制 仓库地址 git@git.example.com:pay/payment-service.git 复制 默认分支 main 授权与策略 我的权限 管理员可见（未授权） 直接授权 team-payment（组）· 5 项权限 下载策略 允许下载 跟随全局 独立页 在独立页打开会话页 打开项目 归档项目 关闭",
+      "verdict": "PASS",
+      "screenshot": "projects-detail-768.png"
+    },
+    {
+      "page": "项目详情",
+      "viewport": "768",
+      "checkItem": "表单/字段（平板）",
+      "expected": "桌面表格「详情」可打开详情页，字段可读",
+      "actual": "hash=#/projects/proj_payment text=ORCA CLOUD 工作台 我的项目 管理 主机 中继 用户管理 审计日志 平台设置 李 李静 平台工程部 退出 我的项目 平台管理员 我的项目 仅展示你有「打开项目」权限的项目。 登记项目 刷新 项目 仓库 主机 权限 下载策略 操作 payment-service /srv/work/payment-service git@git.example.com:pay/payment-service.git dev-001 主机离线 管理员可见（未授权） 允许 打开授权并打开详情归档 demo-app /Users/gongdewei/orca-local-env/host/projects/demo-app dev-local-02 open · terminal · agent · file:read · file:write 禁止 打开详情归档Orca Web zhangsan-de overflow=0",
+      "verdict": "PASS",
+      "screenshot": "projects-detail-768.png"
+    },
+    {
+      "page": "守卫 404",
+      "viewport": "768",
+      "checkItem": "页面与导航",
+      "expected": "404 形态与桌面一致，无横向溢出",
+      "actual": "h1=页面不存在 overflow=0",
+      "verdict": "PASS",
+      "screenshot": "not-found-768.png"
+    },
+    {
+      "page": "守卫 403",
+      "viewport": "768",
+      "checkItem": "页面与导航",
+      "expected": "403 形态与桌面一致",
+      "actual": "h1=无权访问",
+      "verdict": "PASS",
+      "screenshot": "forbidden-768.png"
+    },
+    {
+      "page": "工作台（只读 zhangsan）",
+      "viewport": "390",
+      "checkItem": "列表",
+      "expected": "真实只读身份可见工作台与已授权项目，统计数据来自真实 ACL",
+      "actual": "h1=凌晨好，张伟 cards=7 text=工作台 开发者 查看无权限页 凌晨好，张伟 你有 5 个可访问项目，其中 4 个所在主机在线。 移动端工作区请打开 Orca Web 工作区（自带移动端支持） 知道了 可访问项目 5 按 ACL 过滤 主机在线 4 60 秒无心跳转离线 禁用下载项目 1 导出入口已隐藏 下载默认策略 允许 策略版本 v36 最近项目 查看全部 payment-service git@git.example.com:pay/payment-service.git dev-001 main 创建于 8 小时前 主机离线 允许下载 打开 demo-app /Users/gongdewei/orca-local-env/host/projects/demo-app dev-local-02 main 创建于 8 小时前 下载已禁用 打",
+      "verdict": "PASS",
+      "screenshot": "workbench-390-ro.png"
+    },
+    {
+      "page": "工作台（只读 zhangsan）",
+      "viewport": "390",
+      "checkItem": "菜单",
+      "expected": "不显示平台管理入口（admin 导航组隐藏），底栏仅 工作台/项目/审计/更多",
+      "actual": "adminHidden=true tabs=[\"工作台\",\"项目\",\"审计\",\"更多\"]",
+      "verdict": "PASS",
+      "screenshot": "workbench-390-ro.png"
+    },
+    {
+      "page": "项目列表（只读 zhangsan）",
+      "viewport": "390",
+      "checkItem": "列表",
+      "expected": "仅显示已授权项目（5 个），无管理「详情」入口，无横向溢出",
+      "actual": "cards=5 detailButtons=0 overflow=0 text=我的项目 开发者 查看无权限页 我的项目 仅展示你有「打开项目」权限的项目。 刷新 全部状态 仅在线 仅离线 payment-service 离线 git@git.example.com:pay/payment-service.git 可见范围 open · terminal · agent · file:read · file:write 创建时间 8 小时前 打开工作区 demo-app 在线 /Users/gongdewei/orca-local-env/host/projects/demo-app 可见范围 open · terminal · agent · file:read · f",
+      "verdict": "PASS",
+      "screenshot": "projects-390-ro.png"
+    },
+    {
+      "page": "主机（只读 zhangsan）",
+      "viewport": "390",
+      "checkItem": "页面与导航",
+      "expected": "非平台管理员访问管理路由落到 403，不泄露数据",
+      "actual": "h1=无权访问 text=无权访问 开发者 查看无权限页 无权访问 当前账号没有平台管理权限。如需访问，请联系平台管理员开通。 返回工作台 工作台 项目 更多",
+      "verdict": "PASS",
+      "screenshot": "hosts-390-ro.png"
+    },
+    {
+      "page": "工作台",
+      "viewport": "390",
+      "checkItem": "U148① 无内容级横向溢出",
+      "expected": "390 视口下 document/.content 均无横向滚动，最近项目卡片与「打开」按钮完整可见",
+      "actual": "inner=390 docScroll=390 content=390/390 grid=366px cards=[{\"x\":12,\"w\":366},{\"x\":12,\"w\":366},{\"x\":12,\"w\":366}] buttons=[{\"t\":\"打开\",\"x\":315,\"right\":359,\"w\":44},{\"t\":\"打开\",\"x\":315,\"right\":359,\"w\":44},{\"t\":\"打开\",\"x\":315,\"right\":359,\"w\":44}]",
+      "verdict": "PASS",
+      "screenshot": "u148-workbench-390.png"
+    },
+    {
+      "page": "主机列表",
+      "viewport": "390",
+      "checkItem": "U148③ 卡片动作详情+更多",
+      "expected": "主机卡片行内仅「详情」+「更多」，维护/下线收进菜单；两按钮 ≥44px",
+      "actual": "cards=3 buttons=[{\"text\":\"详情\",\"w\":164,\"h\":44,\"x\":27,\"right\":191},{\"text\":\"更多\",\"w\":164,\"h\":44,\"x\":199,\"right\":363}]",
+      "verdict": "PASS",
+      "screenshot": "u148-hosts-390.png"
+    },
+    {
+      "page": "主机列表",
+      "viewport": "390",
+      "checkItem": "U148③ 「更多」操作菜单",
+      "expected": "「更多」打开样式化菜单，含「进入维护模式/结束维护」「下线主机」，按钮 ≥44px",
+      "actual": "{\"title\":\"主机 dev-001\",\"text\":\"主机 dev-001 选择对主机的操作。 进入维护模式 下线主机 关闭\",\"buttons\":[{\"text\":\"进入维护模式\",\"h\":44,\"w\":129},{\"text\":\"下线主机\",\"h\":44,\"w\":103},{\"text\":\"关闭\",\"h\":44,\"w\":77}]}",
+      "verdict": "PASS",
+      "screenshot": "u148-hosts-more-menu-390.png"
+    },
+    {
+      "page": "项目列表",
+      "viewport": "390",
+      "checkItem": "U116① 归档确认卡",
+      "expected": "归档弹样式化确认卡，标题+5 条后果+取消/归档项目（danger）；取消零归档请求",
+      "actual": "dialog={\"title\":\"归档项目「payment-service」？\",\"consequences\":[\"归档后，该项目将从工作台和项目列表中移出，只保留在管理台的「已归档」分组。\",\"该项目当前的云端工作区会话会被断开。\",\"主机磁盘上的项目目录与代码不会被删除。\",\"项目 Key 与路径会被释放，可能被新项目复用；恢复时若已被占用，将无法恢复。\",\"之后可由管理员在「已归档」中恢复。\"],\"buttons\":[{\"text\":\"取消\",\"h\":44,\"danger\":false},{\"text\":\"归档项目\",\"h\":44,\"danger\":true},{\"text\":\"关闭\",\"h\":44,\"danger\":false}]} mutationsAfterCancel=[]",
+      "verdict": "PASS",
+      "screenshot": "u116-archive-confirm-390.png"
+    },
+    {
+      "page": "项目列表",
+      "viewport": "390",
+      "checkItem": "U116① 已归档筛选",
+      "expected": "点「已归档」chip 只显示归档项目（徽标+恢复），无在营行/打开入口",
+      "actual": "{\"chipOn\":true,\"tableRows\":1,\"cards\":[{\"archived\":true,\"name\":\"demo-app\"}],\"restore\":2,\"openButtons\":0}",
+      "verdict": "PASS",
+      "screenshot": "u116-archived-filter-390.png"
+    },
+    {
+      "page": "设置",
+      "viewport": "390",
+      "checkItem": "G27 全量项目策略三态/统计/搜索",
+      "expected": "全部在营项目列行；三态 select（跟随全局/禁止/允许）≥44px/16px；统计行「全部/跟随全局/独立覆盖」；搜索控件（>200 项目条件渲染）",
+      "actual": "{\"scope\":\"全部 5 个 · 跟随全局 4 个 · 独立覆盖 1 个\",\"rows\":5,\"selects\":[{\"value\":\"inherit\",\"options\":[\"inherit\",\"deny\",\"allow\"],\"h\":44,\"font\":\"16px\"},{\"value\":\"deny\",\"options\":[\"inherit\",\"deny\",\"allow\"],\"h\":44,\"font\":\"16px\"},{\"value\":\"inherit\",\"options\":[\"inherit\",\"deny\",\"allow\"],\"h\":44,\"font\":\"16px\"},{\"value\":\"inherit\",\"options\":[\"inherit\",\"deny\",\"allow\"],\"h\":44,\"font\":\"16px\"},{\"value\":\"inherit\",\"options\":[\"inherit\",\"deny\",\"allow\"],\"h\":44,\"font\":\"16px\"}],\"searchPresent\":false,\"overflow\":0,\"sources\":[\"跟随全局\",\"独立覆盖\",\"跟随全局\",\"跟随全局\",\"跟随全局\"]}",
+      "verdict": "PASS",
+      "screenshot": "g27-settings-policy-390.png"
+    },
+    {
+      "page": "深链工作区占位",
+      "viewport": "390",
+      "checkItem": "移动端深链占位",
+      "expected": "390 深链保持 URL，显示「移动端工作区请打开 Orca Web 工作区（自带移动端支持）」占位，不挂载内嵌覆盖层",
+      "actual": "{\"hash\":\"#/workspace/proj_payment\",\"h1\":[\"登录云端开发平台\",\"项目工作区\"],\"text\":\"项目工作区 平台管理员 项目工作区 移动端工作区请打开 Orca Web 工作区（自带移动端支持） 项目：payment-service 返回我的项目 工作台 项目 审计 更多\",\"overflow\":0}",
+      "verdict": "PASS",
+      "screenshot": "u80-workspace-deeplink-390.png"
+    },
+    {
+      "page": "主机详情",
+      "viewport": "390",
+      "checkItem": "U148② 页签点击目标 ≥44px",
+      "expected": "信息/权限页签高度 ≥44px",
+      "actual": "tabs=[{\"text\":\"信息\",\"w\":55,\"h\":44},{\"text\":\"权限\",\"w\":55,\"h\":44}]",
+      "verdict": "PASS",
+      "screenshot": "u148-hosts-detail-tabs-390.png"
+    },
+    {
+      "page": "主机列表",
+      "viewport": "390",
+      "checkItem": "U148④ 下线样式化确认卡",
+      "expected": "下线弹样式化确认卡（标题/后果说明/取消+危险确认），非原生对话框；取消后零变更请求",
+      "actual": "native=null dialog={\"title\":\"下线主机 dev-local-02\",\"text\":\"下线主机 dev-local-02 下线后，该主机的项目立即不可打开，已签发凭证失效；此操作不可撤销。 取消 确认下线 关闭\",\"btns\":[{\"text\":\"取消\",\"h\":44,\"danger\":false},{\"text\":\"确认下线\",\"h\":44,\"danger\":true},{\"text\":\"关闭\",\"h\":44,\"danger\":false}]} mutationsAfterCancel=[]",
+      "verdict": "PASS",
+      "screenshot": "u148-hosts-revoke-confirm-390.png"
+    },
+    {
+      "page": "主机列表",
+      "viewport": "390",
+      "checkItem": "U148④ 已吊销主机动作禁用",
+      "expected": "已吊销主机的维护/下线菜单项 disabled",
+      "actual": "[{\"text\":\"进入维护模式\",\"disabled\":true},{\"text\":\"下线主机\",\"disabled\":true}]",
+      "verdict": "PASS",
+      "screenshot": "u148-hosts-more-menu-390.png"
+    },
+    {
+      "page": "项目列表",
+      "viewport": "390",
+      "checkItem": "U116① 已归档 N chip + 分组",
+      "expected": "admin 在营列表下渲染默认折叠「已归档项目（1）」分组，chips 增加「已归档 1」且 ≥44px；分组含归档卡片与恢复入口",
+      "actual": "archiveStatus=200 view={\"chip\":{\"text\":\"已归档 1\",\"h\":44},\"group\":{\"summary\":\"已归档项目（1）\",\"open\":false,\"cards\":1},\"liveCards\":4,\"restoreButtons\":2}",
+      "verdict": "PASS",
+      "screenshot": "u116-archived-group-390.png"
+    },
+    {
+      "page": "项目详情（已归档）",
+      "viewport": "390",
+      "checkItem": "U116① 只读详情",
+      "expected": "归档详情显示只读横幅、无权限页签、无打开入口、提供「恢复项目」",
+      "actual": "{\"text\":\"← 返回 项目详情 该项目已归档，仅供查看；会话已断开，磁盘代码未删除。 基本信息 项目名称 demo-app 项目 Key demo-app 项目 ID proj_4b5721f0 复制 创建者 admin 创建时间 2026/11/16 16:21:52（8 小时前） 项目状态 已归档 运行配置 主机 dev-local-02 host_b58500c3 宿主状态 在线 项目路径 /Users/gongdewei/orca-local-env/host/projects/demo-app 复制 仓库地址 未配置仓库 默认分支 main 恢复项目 关闭\",\"archivedBanner\":true,\"tabs\":0,\"restore\":1,\"open\":0}",
+      "verdict": "PASS",
+      "screenshot": "u116-archived-detail-390.png"
+    },
+    {
+      "page": "项目详情（已归档）",
+      "viewport": "390",
+      "checkItem": "U116① 恢复确认卡",
+      "expected": "恢复弹样式化确认卡，标题+3 条后果+取消/恢复项目；按钮 ≥44px；取消保持归档",
+      "actual": "{\"title\":\"恢复项目「demo-app」？\",\"consequences\":[\"恢复后项目重新进入在营列表。\",\"配置了仓库的项目会先进入「准备中」，等待主机下次心跳准备，完成后才能打开。\",\"若项目 Key 或路径已被其他在营项目占用，恢复会失败，项目保持归档。\"],\"buttons\":[{\"text\":\"取消\",\"h\":44},{\"text\":\"恢复项目\",\"h\":44},{\"text\":\"关闭\",\"h\":44}]}",
+      "verdict": "PASS",
+      "screenshot": "u116-restore-confirm-390.png"
+    },
+    {
+      "page": "项目列表",
+      "viewport": "390",
+      "checkItem": "U116① 恢复清理",
+      "expected": "测试归档后 API 恢复成功，chip/分组消失且项目回到在营列表（环境复原）",
+      "actual": "restoreStatus=200 cleanup={\"chip\":null,\"group\":null,\"demoLive\":true}",
+      "verdict": "PASS",
+      "screenshot": "u116-archived-group-390.png"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "projectId": "proj_7b8fd037",
+  "projectKey": "zhangsan-demo",
+  "hostId": "host_eaece0f0",
+  "hash": "#/projects/proj_7b8fd037?tab=perms",
+  "cards": [
+    {
+      "key": "view",
+      "headText": "查看2 个主体",
+      "headBadges": [],
+      "hasAddInput": true,
+      "hasRemove": true,
+      "jump": null,
+      "chips": ["zhangsan 用户 ✕", "admin 用户 ✕"]
+    },
+    {
+      "key": "control",
+      "headText": "控制2 个主体",
+      "headBadges": [],
+      "hasAddInput": true,
+      "hasRemove": true,
+      "jump": null,
+      "chips": ["zhangsan 用户 ✕", "admin 用户 ✕"]
+    },
+    {
+      "key": "derived",
+      "headText": "管理主机推导 · 只读1 个主体",
+      "headBadges": ["主机推导 · 只读"],
+      "hasAddInput": false,
+      "hasRemove": false,
+      "jump": "host_eaece0f0",
+      "chips": ["zhangsan 用户 来源：控制卡"]
+    }
+  ],
+  "threeCards": true,
+  "noHeadBitBadge": true,
+  "derivedReadOnly": true,
+  "derivedJump": true,
+  "derivedSourceBadge": true
+}

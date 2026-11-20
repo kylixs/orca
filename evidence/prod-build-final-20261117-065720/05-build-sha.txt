@@ -1,0 +1,18 @@
+# Final production build (de-instrumented) - final-20261117-065720
+HEAD=f8fcb7e160d6a42ecc8d6103194516c0e994490a (docs(cloud): PROGRESS - U166 verified, U169 registered, final build running)
+
+[baseline before rebuild]
+HEAD=f8fcb7e160d6a42ecc8d6103194516c0e994490a
+baseline out/main/index.js=abe7ec60949a1a922b41fd0716d816062eb698003228aa446a3dc7a663fa5752
+baseline out/preload/index.js=9a7ca33511c948c4f5a2060484bdcba3950887048126f3e51bff32541c5e7070
+baseline out/web/web-index.html=17ce2ea5f98a6e6e3d4535dadffbdec8b537d2b89f4c01feabda02879c6ad38c
+baseline out/web/app.js=
+
+[new build outputs]
+e1f230309168bce755fdd824bdb8fff360e662eab21f3c932962b10c47cc6e20  out/main/index.js
+9727610cae36e75dbc87be9a72c329a24ddfd7625991d93a4a4f1ef9e51318cc  out/preload/index.js
+52a161cd7c489f09e1dc8638f4f17d4112d395ba3dc3743f8f7750e509c0b8b9  out/web/web-index.html
+6470b31984b5fc760c217b870e89bd119b74f4ae46cc0730c26a535d2eb25f94  out/renderer/index.html
+
+[build logs] logs/01-electron-vite.log EXIT: EXIT=0
+logs/02-web.log EXIT: EXIT=0

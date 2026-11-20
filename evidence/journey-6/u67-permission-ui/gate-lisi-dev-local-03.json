@@ -1,0 +1,8 @@
+{
+  "identity": "lisi",
+  "host": "dev-local-03",
+  "forbiddenPage": true,
+  "drawer": false,
+  "hostCalls": 0,
+  "grantCalls": 0
+}

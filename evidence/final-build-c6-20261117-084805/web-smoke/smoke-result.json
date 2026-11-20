@@ -1,0 +1,46 @@
+{
+  "relay": "https://100.67.197.59:18444/h/dev-local-02/web-index.html",
+  "platform": "https://127.0.0.1:18787",
+  "steps": {
+    "served-sha": {
+      "ok": true,
+      "status": 200,
+      "served": "a74552de1991da96863e74cc2e8b20836cdc87695fc988399bf4c3c249303383",
+      "disk": "a74552de1991da96863e74cc2e8b20836cdc87695fc988399bf4c3c249303383",
+      "match": true,
+      "size": 564
+    },
+    "login": {
+      "submitted": true,
+      "apiUrl": "https://127.0.0.1:18787"
+    },
+    "workspace": {
+      "appLayout": true,
+      "tabCount": 3,
+      "tabs": [
+        "web-terminal-70d9fec0-887b-43a4-874b-dc47367a7662",
+        "web-terminal-4463065f-3445-4ecb-83e4-9074d6e983ad",
+        "web-terminal-c474504a-4784-4440-a724-83ff14166767"
+      ],
+      "worktreeNodes": 6,
+      "url": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787&project=proj_4b5721f0"
+    },
+    "refresh-restore": {
+      "appLayout": true,
+      "loginForm": false,
+      "tabCount": 3,
+      "tabs": [
+        "web-terminal-4463065f-3445-4ecb-83e4-9074d6e983ad",
+        "web-terminal-c474504a-4784-4440-a724-83ff14166767",
+        "web-terminal-70d9fec0-887b-43a4-874b-dc47367a7662"
+      ],
+      "worktreeNodes": 6,
+      "url": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787&project=proj_4b5721f0",
+      "pass": true
+    }
+  },
+  "consoleErrors": [],
+  "pageErrors": [],
+  "consoleErrorCount": 0,
+  "pageErrorCount": 0
+}

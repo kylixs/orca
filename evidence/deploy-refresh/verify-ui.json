@@ -1,0 +1,99 @@
+{
+  "base": "https://127.0.0.1:18787",
+  "build": null,
+  "steps": {
+    "loginStatus": 200,
+    "servedBuild": "3f2c2df95156",
+    "host": {
+      "hostId": "host_eaece0f0",
+      "hostName": "dev-local-02",
+      "hash": "#/hosts/host_eaece0f0?tab=perms",
+      "cards": [
+        {
+          "key": "view",
+          "headText": "查看0 个主体",
+          "headBadges": [],
+          "chips": []
+        },
+        {
+          "key": "control",
+          "headText": "控制1 个主体",
+          "headBadges": [],
+          "chips": [
+            {
+              "text": "zhangsan 用户 调整 ✕",
+              "badges": [],
+              "type": "用户"
+            }
+          ]
+        },
+        {
+          "key": "manage",
+          "headText": "管理0 个主体",
+          "headBadges": [],
+          "chips": []
+        }
+      ],
+      "threeCards": true,
+      "noHeadBitBadge": true
+    },
+    "project": {
+      "projectId": "proj_7b8fd037",
+      "projectKey": "zhangsan-demo",
+      "hostId": "host_eaece0f0",
+      "hash": "#/projects/proj_7b8fd037?tab=perms",
+      "cards": [
+        {
+          "key": "view",
+          "headText": "查看2 个主体",
+          "headBadges": [],
+          "hasAddInput": true,
+          "hasRemove": true,
+          "jump": null,
+          "chips": ["zhangsan 用户 ✕", "admin 用户 ✕"]
+        },
+        {
+          "key": "control",
+          "headText": "控制2 个主体",
+          "headBadges": [],
+          "hasAddInput": true,
+          "hasRemove": true,
+          "jump": null,
+          "chips": ["zhangsan 用户 ✕", "admin 用户 ✕"]
+        },
+        {
+          "key": "derived",
+          "headText": "管理主机推导 · 只读1 个主体",
+          "headBadges": ["主机推导 · 只读"],
+          "hasAddInput": false,
+          "hasRemove": false,
+          "jump": "host_eaece0f0",
+          "chips": ["zhangsan 用户 来源：控制卡"]
+        }
+      ],
+      "threeCards": true,
+      "noHeadBitBadge": true,
+      "derivedReadOnly": true,
+      "derivedJump": true,
+      "derivedSourceBadge": true
+    },
+    "jump": {
+      "hash": "#/hosts/host_eaece0f0?tab=perms",
+      "drawer": true,
+      "cards": 3
+    },
+    "deepLinkReload": {
+      "hash": "#/hosts/host_eaece0f0?tab=perms",
+      "expectedHash": "#/hosts/host_eaece0f0?tab=perms",
+      "cards": ["view", "control", "manage"],
+      "preserved": true
+    },
+    "members404": {
+      "hash": "#/members",
+      "heading": "页面不存在",
+      "body": "没有找到这个页面：#/members"
+    }
+  },
+  "errors": [],
+  "ok": true
+}

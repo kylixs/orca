@@ -1,0 +1,67 @@
+<div class="page-head">
+  <div>
+    <h1>主机</h1>
+    <p>已注册开发机、心跳状态与直连/中继路径。</p>
+  </div>
+  <button class="btn primary" id="registerHostBtn">注册主机</button>
+</div>
+<div class="note">
+  中继路由由平台单向同步；未知 SNI 默认黑洞。下载默认策略：<strong>允许</strong>（v3）。
+</div>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>主机</th>
+        <th>直连地址</th>
+        <th>中继路由</th>
+        <th>中继</th>
+        <th>版本</th>
+        <th>心跳</th>
+        <th>状态</th>
+        <th class="actions">操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>
+          <strong>dev-001</strong>
+          <div class="muted mono">intranet</div>
+        </td>
+        <td class="mono">127.0.0.1:16768</td>
+        <td class="mono">dev-001</td>
+        <td><span class="muted mono">—</span></td>
+        <td>1.5.0 <span class="muted">p3</span></td>
+        <td>46 分钟前</td>
+        <td><span class="dot offline"></span> 已吊销</td>
+        <td class="actions"><button class="btn sm" data-host="host_dev001">详情</button></td>
+      </tr>
+      <tr>
+        <td>
+          <strong>dev-local-02</strong>
+          <div class="muted mono">intranet</div>
+        </td>
+        <td class="mono">100.103.213.12:59598</td>
+        <td class="mono">dev-local-02</td>
+        <td><span class="mono">100.103.213.12:59598</span></td>
+        <td><span class="muted">p3</span></td>
+        <td>刚刚</td>
+        <td><span class="dot online"></span> 在线</td>
+        <td class="actions"><button class="btn sm" data-host="host_281843a9">详情</button></td>
+      </tr>
+      <tr>
+        <td>
+          <strong>dev-local-03</strong>
+          <div class="muted mono">intranet</div>
+        </td>
+        <td class="mono">100.103.213.12:18889</td>
+        <td class="mono">dev-local-03</td>
+        <td><span class="mono">100.103.213.12:18889</span></td>
+        <td><span class="muted">p3</span></td>
+        <td>刚刚</td>
+        <td><span class="dot online"></span> 在线</td>
+        <td class="actions"><button class="btn sm" data-host="host_8516a27d">详情</button></td>
+      </tr>
+    </tbody>
+  </table>
+</div>

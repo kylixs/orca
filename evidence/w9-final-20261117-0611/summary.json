@@ -1,0 +1,66 @@
+{
+  "gate": "W9 official dual-line (A desktop / B Orca Web) — final build U163 v3",
+  "timestamp_local": "2026-11-17 06:11-06:16 CST",
+  "build": {
+    "out_main_index": "2026-11-17 06:07:52, 9637375 bytes, sha256 eaebe479...",
+    "out_web_index": "2026-11-17 06:08:09, 564 bytes, sha256 02e50b3c...",
+    "out_cli_index": "2026-11-16 15:08:12, 11395 bytes, sha256 322de953...",
+    "build_policy": "SKIP_BUILD=1 reused existing out; globalSetup logged skipping electron/cli/web builds",
+    "e2e_instrumentation": "MISSING for Electron: out/preload/index.js baked MODE=\"production\" and no VITE_EXPOSE_STORE, so preload e2eConfig.exposeStore=false and window.__store is never assigned. out/web IS instrumented (webBundleExposesStore marker present)."
+  },
+  "out_unchanged": true,
+  "line_a": {
+    "command": "ORCA_BACKGROUND_LAUNCH=1 SKIP_BUILD=1 ORCA_JOURNEY_GOLDEN_A_EVIDENCE_DIR=evidence/w9-final-20261117-0611/line-a npx playwright test tests/e2e/cloud-golden-journey-desktop.spec.ts --config tests/playwright.config.ts --project=electron-headless --workers=1 --reporter=list",
+    "result": "FAIL",
+    "tests": "0 passed, 1 failed",
+    "duration_s": 211.0,
+    "failed_step": "A3-open-project",
+    "error": "the client never activated the per-user checkout of the project; Timeout 180000ms; client store: {\"repos\":[],\"worktreeKeys\":[]}",
+    "root_cause": "Build instrumentation gap, not a product regression: window.__store is undefined because out/preload was built with MODE=production. The per-user checkout WAS created (git worktree list: .orca-worktrees/zhangsan/main on branch e2e/main) and the signed-in screenshot shows it active.",
+    "steps_ok": [
+      "S0-platform",
+      "S1-host-enrol",
+      "S2-project-grant",
+      "A2-login(31.5s)"
+    ],
+    "steps_blocked": [
+      "A3-open-project",
+      "A4-terminal",
+      "A5-file-tree",
+      "A6-evidence",
+      "A7-host-audit"
+    ],
+    "evidence": "line-a/ (2 screenshots + journey-timeline.json + checkout-proof.txt); line-a-failure/ (test-failed-1/2.png, error-context.md, trace)"
+  },
+  "line_b": {
+    "command": "ORCA_BACKGROUND_LAUNCH=1 SKIP_BUILD=1 ORCA_E2E_WEB_CLIENT=1 ORCA_JOURNEY_GOLDEN_B_EVIDENCE_DIR=evidence/w9-final-20261117-0611/line-b npx playwright test tests/e2e/cloud-golden-journey-orca-web.spec.ts --config tests/playwright.config.ts --project=electron-headless --workers=1 --reporter=list",
+    "result": "PASS",
+    "tests": "2 passed",
+    "duration_s": 32.5,
+    "test_durations_s": [
+      20.9,
+      9.7
+    ],
+    "steps": [
+      "S0-platform",
+      "S1-host-enrol",
+      "S2-project-grant",
+      "B1-console-login",
+      "B2-handoff-new-tab",
+      "B3-auto-enter-workspace(9.0s)",
+      "B4-cloud-workspace-view",
+      "B5-replay-410-fallback",
+      "E1-journey-evidence",
+      "E2-host-audit(8.9s)"
+    ],
+    "b4_detail": {
+      "repoCount": 1,
+      "activeWorktreePath": ".../.orca-worktrees/zhangsan/main",
+      "explorerShellMounted": true,
+      "catalogRefusal": "Method 'repo.list' is not available to cloud sessions"
+    },
+    "evidence": "line-b/ (6 screenshots + journey-timeline.json + u35-lineage-audit-pin.json)"
+  },
+  "failures": "A3 blocked by missing Electron e2e store oracle. Needs out/main+out/preload rebuilt with `npx electron-vite build --mode e2e` (or VITE_EXPOSE_STORE=true) before line A can be gated; no product code change is implicated.",
+  "environment": "persistent env (platform 127.0.0.1:18787, host/host2) untouched; no probe/driver was running at start; spec-spawned stacks shut down (ports closed), only idle daemon helpers remain from the runs."
+}

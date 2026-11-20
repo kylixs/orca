@@ -1,0 +1,299 @@
+{
+  "startedAt": "2026-11-16T06:18:22.337Z",
+  "base": "https://127.0.0.1:18787",
+  "combos": {
+    "hostDev02": {
+      "host": "dev-local-02",
+      "mappingOk": true,
+      "writePath": {
+        "addOk": true,
+        "addChipOk": true,
+        "viewRemoveOk": true,
+        "adjustOk": true,
+        "adjustCardOk": true,
+        "adjustCopyOk": true,
+        "removeOk": true,
+        "dangerOk": true
+      },
+      "residualRows": [
+        {
+          "hostId": "host_281843a9",
+          "subjectType": "user",
+          "subjectId": "user_eff396fc-a0d8-42c5-8471-1abf1b2aa26d",
+          "permissions": ["view", "provision"],
+          "username": "zhangsan"
+        }
+      ],
+      "calls": [
+        "GET /v1/hosts/host_281843a9/grants",
+        "PUT /v1/hosts/host_281843a9/grants",
+        "GET /v1/hosts/host_281843a9/grants",
+        "PUT /v1/hosts/host_281843a9/grants",
+        "GET /v1/hosts/host_281843a9/grants",
+        "PUT /v1/hosts/host_281843a9/grants",
+        "GET /v1/hosts/host_281843a9/grants",
+        "PUT /v1/hosts/host_281843a9/grants",
+        "GET /v1/hosts/host_281843a9/grants",
+        "PUT /v1/hosts/host_281843a9/grants",
+        "GET /v1/hosts/host_281843a9/grants"
+      ]
+    },
+    "hostDev03": {
+      "host": "dev-local-03",
+      "mappingOk": true,
+      "writePath": {
+        "addOk": true,
+        "addChipOk": true,
+        "viewRemoveOk": true,
+        "adjustOk": true,
+        "adjustCardOk": true,
+        "adjustCopyOk": true,
+        "removeOk": true,
+        "dangerOk": true
+      },
+      "residualRows": [
+        {
+          "hostId": "host_8516a27d",
+          "subjectType": "user",
+          "subjectId": "user_eff396fc-a0d8-42c5-8471-1abf1b2aa26d",
+          "permissions": ["view", "provision"],
+          "username": "zhangsan"
+        }
+      ],
+      "calls": [
+        "GET /v1/hosts/host_8516a27d/grants",
+        "PUT /v1/hosts/host_8516a27d/grants",
+        "GET /v1/hosts/host_8516a27d/grants",
+        "PUT /v1/hosts/host_8516a27d/grants",
+        "GET /v1/hosts/host_8516a27d/grants",
+        "PUT /v1/hosts/host_8516a27d/grants",
+        "GET /v1/hosts/host_8516a27d/grants",
+        "PUT /v1/hosts/host_8516a27d/grants",
+        "GET /v1/hosts/host_8516a27d/grants",
+        "PUT /v1/hosts/host_8516a27d/grants",
+        "GET /v1/hosts/host_8516a27d/grants"
+      ]
+    },
+    "projectZdemo": {
+      "project": "zhangsan-demo",
+      "cardKeys": ["view", "control", "derived"],
+      "derivedOk": true,
+      "headerOk": true,
+      "writePath": {
+        "viewOk": true,
+        "viewChipOk": true,
+        "controlOk": true,
+        "controlChipOk": true,
+        "viewLayerKept": true,
+        "copyOk": true,
+        "downgradeOk": true,
+        "removeOk": true
+      },
+      "dangerOk": true,
+      "residualRows": [
+        {
+          "projectId": "proj_558c064b",
+          "subjectType": "user",
+          "subjectId": "user_eff396fc-a0d8-42c5-8471-1abf1b2aa26d",
+          "permissions": ["open", "terminal", "agent", "file:read", "file:write"],
+          "username": "zhangsan"
+        },
+        {
+          "projectId": "proj_558c064b",
+          "subjectType": "user",
+          "subjectId": "user_d9da147d-0d35-4453-a766-9a603845b713",
+          "permissions": ["open", "terminal", "agent", "file:read", "file:write"],
+          "username": "admin"
+        }
+      ]
+    }
+  },
+  "gates": {
+    "zhangsanDev02": {
+      "identity": "zhangsan",
+      "host": "dev-local-02",
+      "forbiddenPage": true,
+      "drawer": false,
+      "hostCalls": 0,
+      "grantCalls": 0
+    },
+    "zhangsanDev03": {
+      "identity": "zhangsan",
+      "host": "dev-local-03",
+      "forbiddenPage": true,
+      "drawer": false,
+      "hostCalls": 0,
+      "grantCalls": 0
+    },
+    "lisiDev02": {
+      "identity": "lisi",
+      "host": "dev-local-02",
+      "forbiddenPage": true,
+      "drawer": false,
+      "hostCalls": 0,
+      "grantCalls": 0
+    },
+    "lisiDev03": {
+      "identity": "lisi",
+      "host": "dev-local-03",
+      "forbiddenPage": true,
+      "drawer": false,
+      "hostCalls": 0,
+      "grantCalls": 0
+    },
+    "apiZhangsan": [
+      {
+        "identity": "zhangsan",
+        "host": "dev-local-02",
+        "get": 403,
+        "put": 403
+      },
+      {
+        "identity": "zhangsan",
+        "host": "dev-local-03",
+        "get": 403,
+        "put": 403
+      }
+    ],
+    "apiLisi": [
+      {
+        "identity": "lisi",
+        "host": "dev-local-02",
+        "get": 403,
+        "put": 403
+      },
+      {
+        "identity": "lisi",
+        "host": "dev-local-03",
+        "get": 403,
+        "put": 403
+      }
+    ],
+    "lisiVisibility": {
+      "projects": [
+        {
+          "key": "demo-app",
+          "permissions": ["open", "file:read"]
+        }
+      ],
+      "onlyExplicit": true,
+      "noTerminal": true
+    },
+    "auditor": {
+      "promote": {
+        "status": 200,
+        "roles": ["developer", "platform:auditor"],
+        "source": "admin-override"
+      },
+      "loginRoles": ["developer", "platform:auditor"],
+      "navs": [
+        {
+          "route": "workbench",
+          "hidden": false
+        },
+        {
+          "route": "projects",
+          "hidden": false
+        },
+        {
+          "route": "hosts",
+          "hidden": true
+        },
+        {
+          "route": "relays",
+          "hidden": true
+        },
+        {
+          "route": "users",
+          "hidden": true
+        },
+        {
+          "route": "audit",
+          "hidden": false
+        },
+        {
+          "route": "settings",
+          "hidden": true
+        }
+      ],
+      "auditVisible": true,
+      "usersForbidden": true,
+      "auditApi": 200,
+      "usersApi": 403,
+      "hostGrantsPut": 403,
+      "projectGrantsPut": 403
+    },
+    "deniedAudit": {
+      "status": 200,
+      "total": 200,
+      "lisiDenied": 68,
+      "zhangsanDenied": 38,
+      "sample": [
+        {
+          "eventType": "host_grant_read",
+          "actor": "zhangsan",
+          "targetType": "host",
+          "targetId": "host_281843a9",
+          "result": "denied",
+          "traceId": "b6d0ef15-4ae2-482f-89dc-9d477eea3b1a",
+          "metadata": {
+            "reason": "PERMISSION_DENIED",
+            "requiredPermission": "platform:admin",
+            "hostId": "host_281843a9"
+          },
+          "seq": 409,
+          "ts": 1794808830064,
+          "prevHash": "587f2fa36f6d5aebabacc03ac9cc93c35e6e7806f04e571ffc69f4569f6211c0",
+          "hash": "3e915d560a321b362256e515ee93f570eea560f89263da3b4026b12f07d6df0a"
+        },
+        {
+          "eventType": "audit_query",
+          "actor": "lisi",
+          "targetType": "audit",
+          "targetId": null,
+          "result": "denied",
+          "traceId": "2257f92c-1aa7-4275-be86-f6e2903df399",
+          "metadata": {
+            "reason": "PERMISSION_DENIED",
+            "requiredPermission": "platform:auditor"
+          },
+          "seq": 388,
+          "ts": 1794808716637,
+          "prevHash": "c557c9d2f34247a741820991c6a372f90954282bff3c481de6538a57a59381d3",
+          "hash": "290bc55cc6c81ec3e0791ad43ed28ac2ef0153eb1f7263c962d4e4d522a97cf6"
+        },
+        {
+          "eventType": "audit_query",
+          "actor": "zhangsan",
+          "targetType": "audit",
+          "targetId": null,
+          "result": "denied",
+          "traceId": "445f7ea2-23d6-4ed0-9d66-6f89c7f98cf9",
+          "metadata": {
+            "reason": "PERMISSION_DENIED",
+            "requiredPermission": "platform:auditor"
+          },
+          "seq": 386,
+          "ts": 1794808716589,
+          "prevHash": "d232e5f82caa23610f3b3ba8b1bd3666e74b6ebf08f52609c282cf7578ea9414",
+          "hash": "0b370d6e2f70a4498c4beec1d8c3be68fcfc2a35f3c68b51dbbdf41ae7a881fe"
+        }
+      ]
+    }
+  },
+  "defects": [],
+  "restore": {
+    "lisiRole": 200,
+    "roles": ["developer"]
+  },
+  "restoreVerification": {
+    "residualHosts": {
+      "dev-local-02": 0,
+      "dev-local-03": 0
+    },
+    "residualProject": 0,
+    "lisiRoles": ["developer"]
+  },
+  "finishedAt": "2026-11-16T06:19:17.716Z",
+  "evidenceDir": "/Users/gongdewei/work/projects/orca/cloud-platform/evidence/u67-authz-refactor/2026-11-16T06-18-22-337Z"
+}

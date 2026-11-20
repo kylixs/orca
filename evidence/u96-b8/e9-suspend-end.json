@@ -1,0 +1,270 @@
+{
+  "marker": "U96_B8_SUSPEND_ALIVE",
+  "suspendKeptPty": {
+    "ok": true,
+    "result": {
+      "terminal": {
+        "handle": "term_ab5d9f4c-c1fc-40cf-bb68-bede0126fbec",
+        "status": "running",
+        "tail": [
+          "echo U96_B8_SUSPEND_ALIVE"
+        ],
+        "truncated": false,
+        "limited": false,
+        "oldestCursor": "0",
+        "nextCursor": "1",
+        "latestCursor": "1",
+        "returnedLineCount": 1,
+        "source": "stream"
+      }
+    }
+  },
+  "rowKept": {
+    "ok": true,
+    "result": {
+      "worktree": "repo-u96-b8::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-b8-KXhDr0/u96-service/.orca-worktrees/zhangsan/main",
+      "publicationEpoch": "headless:pty-backed:mwk52m33:client-navigation",
+      "snapshotVersion": 11,
+      "activeGroupId": "headless-terminals:repo-u96-b8::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-b8-KXhDr0/u96-service/.orca-worktrees/zhangsan/main",
+      "activeTabId": "dedb49cd-6738-4049-939b-fb95d98564d6::95c00e10-38b9-4b09-b763-1a568c10ad4c",
+      "activeTabType": "terminal",
+      "tabGroups": [
+        {
+          "id": "headless-terminals:repo-u96-b8::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-b8-KXhDr0/u96-service/.orca-worktrees/zhangsan/main",
+          "activeTabId": "dedb49cd-6738-4049-939b-fb95d98564d6",
+          "tabOrder": [
+            "dedb49cd-6738-4049-939b-fb95d98564d6",
+            "terminal-1ba61fce-051f-4ecd-9d95-d7f5f2cc45ad",
+            "terminal-54f088d6-5b86-4384-9643-fdc0862d2faf",
+            "terminal-1e6d5873-2d6e-43c7-9d48-e14c13bf2f43"
+          ]
+        }
+      ],
+      "retiredTerminalSurfaces": [
+        {
+          "parentTabId": "terminal-49b9966f-11a4-40b3-928b-4b8a3867c8d5",
+          "leafId": "49b9966f-11a4-40b3-928b-4b8a3867c8d5",
+          "ptyId": "pty-e2e-3",
+          "terminal": "term_f6bb3a55-701f-42c8-9c81-79ac5c530d6e",
+          "incarnationId": "runtime:dcf259a5-875e-4bb3-81e2-9f6f40b67337:2"
+        }
+      ],
+      "tabs": [
+        {
+          "type": "terminal",
+          "id": "dedb49cd-6738-4049-939b-fb95d98564d6::95c00e10-38b9-4b09-b763-1a568c10ad4c",
+          "parentTabId": "dedb49cd-6738-4049-939b-fb95d98564d6",
+          "leafId": "95c00e10-38b9-4b09-b763-1a568c10ad4c",
+          "title": "zsh",
+          "ptyId": "pty-e2e-1",
+          "parentLayout": {
+            "root": {
+              "type": "leaf",
+              "leafId": "95c00e10-38b9-4b09-b763-1a568c10ad4c"
+            },
+            "activeLeafId": "95c00e10-38b9-4b09-b763-1a568c10ad4c",
+            "expandedLeafId": null,
+            "ptyIdsByLeafId": {
+              "95c00e10-38b9-4b09-b763-1a568c10ad4c": "pty-e2e-1"
+            }
+          },
+          "isActive": true,
+          "status": "ready",
+          "terminal": "term_fe4b90a9-bb3f-4f25-9bbd-8b734b32a499"
+        },
+        {
+          "type": "terminal",
+          "id": "terminal-1ba61fce-051f-4ecd-9d95-d7f5f2cc45ad::1ba61fce-051f-4ecd-9d95-d7f5f2cc45ad",
+          "parentTabId": "terminal-1ba61fce-051f-4ecd-9d95-d7f5f2cc45ad",
+          "leafId": "1ba61fce-051f-4ecd-9d95-d7f5f2cc45ad",
+          "title": "zsh",
+          "ptyId": "pty-e2e-2",
+          "parentLayout": {
+            "root": {
+              "type": "leaf",
+              "leafId": "1ba61fce-051f-4ecd-9d95-d7f5f2cc45ad"
+            },
+            "activeLeafId": "1ba61fce-051f-4ecd-9d95-d7f5f2cc45ad",
+            "expandedLeafId": null,
+            "ptyIdsByLeafId": {
+              "1ba61fce-051f-4ecd-9d95-d7f5f2cc45ad": "pty-e2e-2"
+            }
+          },
+          "isActive": false,
+          "status": "ready",
+          "terminal": "term_ea67821b-15dc-4839-9f30-06f688bde2fc"
+        },
+        {
+          "type": "terminal",
+          "id": "terminal-54f088d6-5b86-4384-9643-fdc0862d2faf::54f088d6-5b86-4384-9643-fdc0862d2faf",
+          "parentTabId": "terminal-54f088d6-5b86-4384-9643-fdc0862d2faf",
+          "leafId": "54f088d6-5b86-4384-9643-fdc0862d2faf",
+          "title": "zsh",
+          "ptyId": "pty-e2e-4",
+          "parentLayout": {
+            "root": {
+              "type": "leaf",
+              "leafId": "54f088d6-5b86-4384-9643-fdc0862d2faf"
+            },
+            "activeLeafId": "54f088d6-5b86-4384-9643-fdc0862d2faf",
+            "expandedLeafId": null,
+            "ptyIdsByLeafId": {
+              "54f088d6-5b86-4384-9643-fdc0862d2faf": "pty-e2e-4"
+            }
+          },
+          "isActive": false,
+          "status": "ready",
+          "terminal": "term_d7d41752-9f17-45e8-a7b1-a9e819b5077e"
+        },
+        {
+          "type": "terminal",
+          "id": "terminal-1e6d5873-2d6e-43c7-9d48-e14c13bf2f43::1e6d5873-2d6e-43c7-9d48-e14c13bf2f43",
+          "parentTabId": "terminal-1e6d5873-2d6e-43c7-9d48-e14c13bf2f43",
+          "leafId": "1e6d5873-2d6e-43c7-9d48-e14c13bf2f43",
+          "title": "U96 Suspend",
+          "ptyId": "pty-e2e-5",
+          "parentLayout": {
+            "root": {
+              "type": "leaf",
+              "leafId": "1e6d5873-2d6e-43c7-9d48-e14c13bf2f43"
+            },
+            "activeLeafId": "1e6d5873-2d6e-43c7-9d48-e14c13bf2f43",
+            "expandedLeafId": null,
+            "ptyIdsByLeafId": {
+              "1e6d5873-2d6e-43c7-9d48-e14c13bf2f43": "pty-e2e-5"
+            }
+          },
+          "isActive": false,
+          "status": "ready",
+          "terminal": "term_ab5d9f4c-c1fc-40cf-bb68-bede0126fbec"
+        }
+      ],
+      "clientHostedPagesUnreconciled": true
+    }
+  },
+  "reopened": {
+    "list": {
+      "ok": true,
+      "result": {
+        "worktree": "repo-u96-b8::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-b8-KXhDr0/u96-service/.orca-worktrees/zhangsan/main",
+        "publicationEpoch": "headless:pty-backed:mwk52m33:client-navigation",
+        "snapshotVersion": 12,
+        "activeGroupId": "headless-terminals:repo-u96-b8::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-b8-KXhDr0/u96-service/.orca-worktrees/zhangsan/main",
+        "activeTabId": "dedb49cd-6738-4049-939b-fb95d98564d6::95c00e10-38b9-4b09-b763-1a568c10ad4c",
+        "activeTabType": "terminal",
+        "tabGroups": [
+          {
+            "id": "headless-terminals:repo-u96-b8::/private/var/folders/s6/78q6t8ms4tj39h5ksg3z8qj40000gn/T/orca-u96-b8-KXhDr0/u96-service/.orca-worktrees/zhangsan/main",
+            "activeTabId": "dedb49cd-6738-4049-939b-fb95d98564d6",
+            "tabOrder": [
+              "dedb49cd-6738-4049-939b-fb95d98564d6",
+              "terminal-1ba61fce-051f-4ecd-9d95-d7f5f2cc45ad",
+              "terminal-54f088d6-5b86-4384-9643-fdc0862d2faf",
+              "terminal-1e6d5873-2d6e-43c7-9d48-e14c13bf2f43"
+            ]
+          }
+        ],
+        "retiredTerminalSurfaces": [
+          {
+            "parentTabId": "terminal-49b9966f-11a4-40b3-928b-4b8a3867c8d5",
+            "leafId": "49b9966f-11a4-40b3-928b-4b8a3867c8d5",
+            "ptyId": "pty-e2e-3",
+            "terminal": "term_f6bb3a55-701f-42c8-9c81-79ac5c530d6e",
+            "incarnationId": "runtime:dcf259a5-875e-4bb3-81e2-9f6f40b67337:2"
+          }
+        ],
+        "tabs": [
+          {
+            "type": "terminal",
+            "id": "dedb49cd-6738-4049-939b-fb95d98564d6::95c00e10-38b9-4b09-b763-1a568c10ad4c",
+            "parentTabId": "dedb49cd-6738-4049-939b-fb95d98564d6",
+            "leafId": "95c00e10-38b9-4b09-b763-1a568c10ad4c",
+            "title": "zsh",
+            "ptyId": "pty-e2e-1",
+            "parentLayout": {
+              "root": {
+                "type": "leaf",
+                "leafId": "95c00e10-38b9-4b09-b763-1a568c10ad4c"
+              },
+              "activeLeafId": "95c00e10-38b9-4b09-b763-1a568c10ad4c",
+              "expandedLeafId": null,
+              "ptyIdsByLeafId": {
+                "95c00e10-38b9-4b09-b763-1a568c10ad4c": "pty-e2e-1"
+              }
+            },
+            "isActive": true,
+            "status": "ready",
+            "terminal": "term_fe4b90a9-bb3f-4f25-9bbd-8b734b32a499"
+          },
+          {
+            "type": "terminal",
+            "id": "terminal-1ba61fce-051f-4ecd-9d95-d7f5f2cc45ad::1ba61fce-051f-4ecd-9d95-d7f5f2cc45ad",
+            "parentTabId": "terminal-1ba61fce-051f-4ecd-9d95-d7f5f2cc45ad",
+            "leafId": "1ba61fce-051f-4ecd-9d95-d7f5f2cc45ad",
+            "title": "zsh",
+            "ptyId": "pty-e2e-2",
+            "parentLayout": {
+              "root": {
+                "type": "leaf",
+                "leafId": "1ba61fce-051f-4ecd-9d95-d7f5f2cc45ad"
+              },
+              "activeLeafId": "1ba61fce-051f-4ecd-9d95-d7f5f2cc45ad",
+              "expandedLeafId": null,
+              "ptyIdsByLeafId": {
+                "1ba61fce-051f-4ecd-9d95-d7f5f2cc45ad": "pty-e2e-2"
+              }
+            },
+            "isActive": false,
+            "status": "ready",
+            "terminal": "term_ea67821b-15dc-4839-9f30-06f688bde2fc"
+          },
+          {
+            "type": "terminal",
+            "id": "terminal-54f088d6-5b86-4384-9643-fdc0862d2faf::54f088d6-5b86-4384-9643-fdc0862d2faf",
+            "parentTabId": "terminal-54f088d6-5b86-4384-9643-fdc0862d2faf",
+            "leafId": "54f088d6-5b86-4384-9643-fdc0862d2faf",
+            "title": "zsh",
+            "ptyId": "pty-e2e-4",
+            "parentLayout": {
+              "root": {
+                "type": "leaf",
+                "leafId": "54f088d6-5b86-4384-9643-fdc0862d2faf"
+              },
+              "activeLeafId": "54f088d6-5b86-4384-9643-fdc0862d2faf",
+              "expandedLeafId": null,
+              "ptyIdsByLeafId": {
+                "54f088d6-5b86-4384-9643-fdc0862d2faf": "pty-e2e-4"
+              }
+            },
+            "isActive": false,
+            "status": "ready",
+            "terminal": "term_d7d41752-9f17-45e8-a7b1-a9e819b5077e"
+          },
+          {
+            "type": "terminal",
+            "id": "terminal-1e6d5873-2d6e-43c7-9d48-e14c13bf2f43::1e6d5873-2d6e-43c7-9d48-e14c13bf2f43",
+            "parentTabId": "terminal-1e6d5873-2d6e-43c7-9d48-e14c13bf2f43",
+            "leafId": "1e6d5873-2d6e-43c7-9d48-e14c13bf2f43",
+            "title": "zsh",
+            "ptyId": "pty-e2e-5",
+            "parentLayout": {
+              "root": {
+                "type": "leaf",
+                "leafId": "1e6d5873-2d6e-43c7-9d48-e14c13bf2f43"
+              },
+              "activeLeafId": "1e6d5873-2d6e-43c7-9d48-e14c13bf2f43",
+              "expandedLeafId": null,
+              "ptyIdsByLeafId": {
+                "1e6d5873-2d6e-43c7-9d48-e14c13bf2f43": "pty-e2e-5"
+              }
+            },
+            "isActive": false,
+            "status": "ready",
+            "terminal": "term_ab5d9f4c-c1fc-40cf-bb68-bede0126fbec"
+          }
+        ],
+        "clientHostedPagesUnreconciled": true
+      }
+    }
+  }
+}

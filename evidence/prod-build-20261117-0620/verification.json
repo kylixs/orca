@@ -1,0 +1,50 @@
+{
+  "task": "production delivery-form finalization (de-instrumented rebuild + platform-only refresh)",
+  "timestamp": "2026-11-16T22:21:00Z",
+  "commit": "7f3900a48213b701b2850098ce2fff85d450aaa5",
+  "builds": {
+    "electron_vite": { "command": "env -u VITE_EXPOSE_STORE pnpm run build:electron-vite -- --mode production", "mode": "production", "exit": 0 },
+    "web": { "command": "env -u VITE_EXPOSE_STORE pnpm run build:web", "mode": "production", "exit": 0 }
+  },
+  "deinstrumentation": {
+    "preload": {
+      "MODE": "production",
+      "baked_VITE_EXPOSE_STORE_key": false,
+      "exposeStore": "preloadEnv?.MODE === \"e2e\" || isEnvFlagEnabled(preloadEnv?.VITE_EXPOSE_STORE) -> false",
+      "VITE_EXPOSE_STORE_true_literal": false
+    },
+    "renderer": {
+      "__monacoEditorE2E": 0,
+      "installMonacoE2EProbe": 0,
+      "note": "monaco-e2e-probe chunk remains as a 44-byte no-op (body folded); __webRuntimeSessionE2E string remains behind exposeStore guard"
+    },
+    "web": {
+      "exposeStore_true_literal": 0,
+      "baked_constant": "GN=!1",
+      "__store_assignment_literal": 1,
+      "__store_assignment_reachable": false,
+      "note": "single __store= literal is inside if(YN.exposeStore && ...) where YN.exposeStore derives from GN=!1; dead branch, never assigns at runtime"
+    }
+  },
+  "reseed_platform_only": {
+    "web_build": "8f5651b109ab",
+    "web_source_build": "8f5651b109ab",
+    "web_ok": true,
+    "hosts": [
+      { "name": "dev-local-02", "online": true, "id": "host_b58500c3", "restarted": false },
+      { "name": "dev-local-03", "online": true, "id": "host_132a3c9d", "restarted": false }
+    ],
+    "failures": []
+  },
+  "smoke": {
+    "platform_root_status": 200,
+    "platform_app_js_status": 200,
+    "platform_app_js_served_equals_source": true,
+    "web_index_via_relay_status": 200,
+    "web_index_served_equals_out_web": true,
+    "main_chunk_served_equals_out_web": true,
+    "u163_marker_served": ["assets/native-chat-layout-actions-BRG810Sj.js", "assets/zh-fz49CxUc.js"],
+    "u163_marker_in_platform_console": false
+  },
+  "main_identical_between_modes": true
+}

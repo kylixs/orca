@@ -1,0 +1,417 @@
+{
+  "generatedAt": "2026-11-16T16:43:44.118Z",
+  "environment": "https://127.0.0.1:18787/",
+  "totals": {
+    "checks": 13,
+    "pass": 8,
+    "fail": 5
+  },
+  "rows": [
+    {
+      "page": "工作台",
+      "viewport": "390",
+      "checkItem": "U148① 无内容级横向溢出",
+      "expected": "390 视口下 document/.content 均无横向滚动，最近项目卡片与「打开」按钮完整可见",
+      "actual": "inner=390 docScroll=390 content=390/390 grid=366px cards=[{\"x\":12,\"w\":366},{\"x\":12,\"w\":366},{\"x\":12,\"w\":366}] buttons=[{\"t\":\"打开\",\"x\":315,\"right\":359,\"w\":44},{\"t\":\"打开\",\"x\":315,\"right\":359,\"w\":44},{\"t\":\"打开\",\"x\":315,\"right\":359,\"w\":44}]",
+      "verdict": "PASS",
+      "screenshot": "u148-workbench-390.png"
+    },
+    {
+      "page": "主机列表",
+      "viewport": "390",
+      "checkItem": "U148③ 卡片动作详情+更多",
+      "expected": "主机卡片行内仅「详情」+「更多」，维护/下线收进菜单；两按钮 ≥44px",
+      "actual": "cards=3 buttons=[{\"text\":\"详情\",\"w\":164,\"h\":44,\"x\":27,\"right\":191},{\"text\":\"更多\",\"w\":164,\"h\":44,\"x\":199,\"right\":363}]",
+      "verdict": "PASS",
+      "screenshot": "u148-hosts-390.png"
+    },
+    {
+      "page": "主机列表",
+      "viewport": "390",
+      "checkItem": "U148③ 「更多」操作菜单",
+      "expected": "「更多」打开样式化菜单，含「进入维护模式/结束维护」「下线主机」，按钮 ≥44px",
+      "actual": "{\"title\":\"主机 dev-001\",\"text\":\"主机 dev-001 选择对主机的操作。 进入维护模式 下线主机 关闭\",\"buttons\":[{\"text\":\"进入维护模式\",\"h\":44,\"w\":129},{\"text\":\"下线主机\",\"h\":44,\"w\":103},{\"text\":\"关闭\",\"h\":44,\"w\":77}]}",
+      "verdict": "PASS",
+      "screenshot": "u148-hosts-more-menu-390.png"
+    },
+    {
+      "page": "主机列表",
+      "viewport": "390",
+      "checkItem": "U148④ 下线样式化确认卡",
+      "expected": "下线弹样式化确认卡（标题/后果说明/取消+危险确认），非原生对话框；取消后零变更请求",
+      "actual": "native=null dialog={\"error\":\"TimeoutError: locator.click: Timeout 30000ms exceeded.\\nCall log:\\n\\u001b[2m  - waiting for locator('[role=\\\"dialog\\\"] .foot button').filter({ hasText: '下线主机' }).first()\\u001b[22m\\n\\u001b[2m    - locator resolved to <button disabled data-action=\\\"1\\\" class=\\\"btn danger\\\">下线主机</button>\\u001b[22m\\n\\u001b[2m  - attempting click action\\u001b[22m\\n\\u001b[2m    2 × waiting for element to be visible, enabled and stable\\u001b[22m\\n\\u001b[2m      - element is not enabled\\u001b[22m\\n\\u001b[2m    - retrying click action\\u001b[22m\\n\\u001b[2m    - waiting 20ms\\u001b[22m\\n\\u001b[2m    2 × waiting for element to be visible, enabled and stable\\u001b[22m\\n\\u001b[2m      - element is not enabled\\u001b[22m\\n\\u001b[2m    - retrying click action\\u001b[22m\\n\\u001b[2m      - waiting 100ms\\u001b[22m\\n\\u001b[2m    58 × waiting for element to be visible, enabled and stable\\u001b[22m\\n\\u001b[2m       - element is not enabled\\u001b[22m\\n\\u001b[2m     - retrying click action\\u001b[22m\\n\\u001b[2m       - waiting 500ms\\u001b[22m\\n\"} mutationsAfterCancel=[]",
+      "verdict": "FAIL",
+      "screenshot": "u148-hosts-revoke-confirm-390.png"
+    },
+    {
+      "page": "主机详情",
+      "viewport": "390",
+      "checkItem": "U148② 页签点击目标 ≥44px",
+      "expected": "信息/权限页签高度 ≥44px",
+      "actual": "tabs=[]",
+      "verdict": "FAIL",
+      "screenshot": "u148-hosts-detail-tabs-390.png"
+    },
+    {
+      "page": "项目列表",
+      "viewport": "390",
+      "checkItem": "U116① 归档确认卡",
+      "expected": "归档弹样式化确认卡，标题+5 条后果+取消/归档项目（danger）；取消零归档请求",
+      "actual": "dialog={\"title\":\"归档项目「payment-service」？\",\"consequences\":[\"归档后，该项目将从工作台和项目列表中移出，只保留在管理台的「已归档」分组。\",\"该项目当前的云端工作区会话会被断开。\",\"主机磁盘上的项目目录与代码不会被删除。\",\"项目 Key 与路径会被释放，可能被新项目复用；恢复时若已被占用，将无法恢复。\",\"之后可由管理员在「已归档」中恢复。\"],\"buttons\":[{\"text\":\"取消\",\"h\":44,\"danger\":false},{\"text\":\"归档项目\",\"h\":44,\"danger\":true},{\"text\":\"关闭\",\"h\":44,\"danger\":false}]} mutationsAfterCancel=[]",
+      "verdict": "PASS",
+      "screenshot": "u116-archive-confirm-390.png"
+    },
+    {
+      "page": "项目列表",
+      "viewport": "390",
+      "checkItem": "U116① 已归档 N chip + 分组",
+      "expected": "admin 在营列表下渲染默认折叠「已归档项目（1）」分组，chips 增加「已归档 1」且 ≥44px",
+      "actual": "archiveStatus=200 view={\"chip\":{\"text\":\"已归档 1\",\"h\":44},\"group\":{\"summary\":\"已归档项目（1）\",\"open\":false,\"cards\":1,\"badges\":[\"\",\"\",\"\"]},\"liveCards\":4,\"restoreButtons\":2}",
+      "verdict": "FAIL",
+      "screenshot": "u116-archived-group-390.png"
+    },
+    {
+      "page": "项目列表",
+      "viewport": "390",
+      "checkItem": "U116① 已归档筛选",
+      "expected": "点「已归档」chip 只显示归档项目（徽标+恢复），无在营行/打开入口",
+      "actual": "{\"chipOn\":true,\"tableRows\":1,\"cards\":[{\"archived\":true,\"name\":\"demo-app\"}],\"restore\":2,\"openButtons\":0}",
+      "verdict": "PASS",
+      "screenshot": "u116-archived-filter-390.png"
+    },
+    {
+      "page": "项目详情（已归档）",
+      "viewport": "390",
+      "checkItem": "U116① 只读详情",
+      "expected": "归档详情显示只读横幅、无权限页签、无打开入口、提供「恢复项目」",
+      "actual": "{\"error\":\"TimeoutError: locator.click: Timeout 30000ms exceeded.\\nCall log:\\n\\u001b[2m  - waiting for locator('.archived-group [data-detail], #projectBody [data-detail]').first()\\u001b[22m\\n\\u001b[2m    - locator resolved to <button class=\\\"btn sm\\\" data-detail=\\\"proj_4b5721f0\\\">详情</button>\\u001b[22m\\n\\u001b[2m  - attempting click action\\u001b[22m\\n\\u001b[2m    2 × waiting for element to be visible, enabled and stable\\u001b[22m\\n\\u001b[2m      - element is not visible\\u001b[22m\\n\\u001b[2m    - retrying click action\\u001b[22m\\n\\u001b[2m    - waiting 20ms\\u001b[22m\\n\\u001b[2m    2 × waiting for element to be visible, enabled and stable\\u001b[22m\\n\\u001b[2m      - element is not visible\\u001b[22m\\n\\u001b[2m    - retrying click action\\u001b[22m\\n\\u001b[2m      - waiting 100ms\\u001b[22m\\n\\u001b[2m    58 × waiting for element to be visible, enabled and stable\\u001b[22m\\n\\u001b[2m       - element is not visible\\u001b[22m\\n\\u001b[2m     - retrying click action\\u001b[22m\\n\\u001b[2m       - waiting 500ms\\u001b[22m\\n\"}",
+      "verdict": "FAIL",
+      "screenshot": "u116-archived-detail-390.png"
+    },
+    {
+      "page": "项目详情（已归档）",
+      "viewport": "390",
+      "checkItem": "U116① 恢复确认卡",
+      "expected": "恢复弹样式化确认卡，标题+3 条后果+取消/恢复项目；按钮 ≥44px；取消保持归档",
+      "actual": "{\"error\":\"TimeoutError: locator.click: Timeout 30000ms exceeded.\\nCall log:\\n\\u001b[2m  - waiting for locator('[role=\\\"dialog\\\"] button, .drawer button').filter({ hasText: '恢复项目' }).first()\\u001b[22m\\n\"}",
+      "verdict": "FAIL",
+      "screenshot": "u116-restore-confirm-390.png"
+    },
+    {
+      "page": "项目列表",
+      "viewport": "390",
+      "checkItem": "U116① 恢复清理",
+      "expected": "测试归档后 API 恢复成功，chip/分组消失且项目回到在营列表（环境复原）",
+      "actual": "restoreStatus=200 cleanup={\"chip\":null,\"group\":null,\"demoLive\":true}",
+      "verdict": "PASS",
+      "screenshot": "u116-archived-group-390.png"
+    },
+    {
+      "page": "设置",
+      "viewport": "390",
+      "checkItem": "G27 全量项目策略三态/统计/搜索",
+      "expected": "全部在营项目列行；三态 select（跟随全局/禁止/允许）≥44px/16px；统计行「全部/跟随全局/独立覆盖」；搜索控件（>200 项目条件渲染）",
+      "actual": "{\"scope\":\"全部 5 个 · 跟随全局 4 个 · 独立覆盖 1 个\",\"rows\":5,\"selects\":[{\"value\":\"inherit\",\"options\":[\"inherit\",\"deny\",\"allow\"],\"h\":44,\"font\":\"16px\"},{\"value\":\"deny\",\"options\":[\"inherit\",\"deny\",\"allow\"],\"h\":44,\"font\":\"16px\"},{\"value\":\"inherit\",\"options\":[\"inherit\",\"deny\",\"allow\"],\"h\":44,\"font\":\"16px\"},{\"value\":\"inherit\",\"options\":[\"inherit\",\"deny\",\"allow\"],\"h\":44,\"font\":\"16px\"},{\"value\":\"inherit\",\"options\":[\"inherit\",\"deny\",\"allow\"],\"h\":44,\"font\":\"16px\"}],\"searchPresent\":false,\"overflow\":0,\"sources\":[\"跟随全局\",\"独立覆盖\",\"跟随全局\",\"跟随全局\",\"跟随全局\"]}",
+      "verdict": "PASS",
+      "screenshot": "g27-settings-policy-390.png"
+    },
+    {
+      "page": "深链工作区占位",
+      "viewport": "390",
+      "checkItem": "移动端深链占位",
+      "expected": "390 深链保持 URL，显示「移动端工作区请打开 Orca Web 工作区（自带移动端支持）」占位，不挂载内嵌覆盖层",
+      "actual": "{\"hash\":\"#/workspace/proj_payment\",\"h1\":[\"登录云端开发平台\",\"项目工作区\"],\"text\":\"项目工作区 平台管理员 项目工作区 移动端工作区请打开 Orca Web 工作区（自带移动端支持） 项目：payment-service 返回我的项目 工作台 项目 审计 更多\",\"overflow\":0}",
+      "verdict": "PASS",
+      "screenshot": "u80-workspace-deeplink-390.png"
+    }
+  ],
+  "raw": {
+    "u148-workbench-390": {
+      "innerWidth": 390,
+      "docScroll": 390,
+      "contentScroll": 390,
+      "contentClient": 390,
+      "gridCols": "366px",
+      "cards": [
+        {
+          "x": 12,
+          "w": 366
+        },
+        {
+          "x": 12,
+          "w": 366
+        },
+        {
+          "x": 12,
+          "w": 366
+        }
+      ],
+      "opens": [
+        {
+          "t": "打开",
+          "x": 315,
+          "right": 359,
+          "w": 44
+        },
+        {
+          "t": "打开",
+          "x": 315,
+          "right": 359,
+          "w": 44
+        },
+        {
+          "t": "打开",
+          "x": 315,
+          "right": 359,
+          "w": 44
+        }
+      ]
+    },
+    "u148-hosts-390": {
+      "cards": 3,
+      "btns": [
+        {
+          "text": "详情",
+          "w": 164,
+          "h": 44,
+          "x": 27,
+          "right": 191
+        },
+        {
+          "text": "更多",
+          "w": 164,
+          "h": 44,
+          "x": 199,
+          "right": 363
+        }
+      ]
+    },
+    "u148-hosts-more-menu-390": {
+      "title": "主机 dev-001",
+      "text": "主机 dev-001 选择对主机的操作。 进入维护模式 下线主机 关闭",
+      "buttons": [
+        {
+          "text": "进入维护模式",
+          "h": 44,
+          "w": 129
+        },
+        {
+          "text": "下线主机",
+          "h": 44,
+          "w": 103
+        },
+        {
+          "text": "关闭",
+          "h": 44,
+          "w": 77
+        }
+      ]
+    },
+    "u148-hosts-revoke-confirm-390": {
+      "error": "TimeoutError: locator.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[role=\"dialog\"] .foot button').filter({ hasText: '下线主机' }).first()\u001b[22m\n\u001b[2m    - locator resolved to <button disabled data-action=\"1\" class=\"btn danger\">下线主机</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not enabled\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not enabled\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    58 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m       - element is not enabled\u001b[22m\n\u001b[2m     - retrying click action\u001b[22m\n\u001b[2m       - waiting 500ms\u001b[22m\n"
+    },
+    "u148-hosts-detail-tabs-390": [],
+    "u116-archive-confirm-390": {
+      "title": "归档项目「payment-service」？",
+      "consequences": [
+        "归档后，该项目将从工作台和项目列表中移出，只保留在管理台的「已归档」分组。",
+        "该项目当前的云端工作区会话会被断开。",
+        "主机磁盘上的项目目录与代码不会被删除。",
+        "项目 Key 与路径会被释放，可能被新项目复用；恢复时若已被占用，将无法恢复。",
+        "之后可由管理员在「已归档」中恢复。"
+      ],
+      "buttons": [
+        {
+          "text": "取消",
+          "h": 44,
+          "danger": false
+        },
+        {
+          "text": "归档项目",
+          "h": 44,
+          "danger": true
+        },
+        {
+          "text": "关闭",
+          "h": 44,
+          "danger": false
+        }
+      ]
+    },
+    "u116-archived-group-390": {
+      "archiveRes": {
+        "status": 200,
+        "json": {
+          "id": "proj_4b5721f0",
+          "key": "demo-app",
+          "name": "demo-app",
+          "repoUrl": "",
+          "hostId": "host_b58500c3",
+          "hostName": "dev-local-02",
+          "hostStatus": "online",
+          "sessionPageUrl": "https://100.103.213.12:53636/cloud-admin.html?api=https%3A%2F%2F127.0.0.1%3A18787",
+          "browserEntryUrl": "https://100.67.197.59:18444/h/dev-local-02/web-index.html",
+          "path": "/Users/gongdewei/orca-local-env/host/projects/demo-app",
+          "defaultBranch": "main",
+          "downloadPolicy": "deny",
+          "downloadPolicyExplicit": true,
+          "status": "archived",
+          "createdBy": "admin",
+          "createdAt": 1794817312701,
+          "permissions": [
+            "open",
+            "terminal",
+            "agent",
+            "file:read",
+            "file:write"
+          ]
+        }
+      },
+      "archView": {
+        "chip": {
+          "text": "已归档 1",
+          "h": 44
+        },
+        "group": {
+          "summary": "已归档项目（1）",
+          "open": false,
+          "cards": 1,
+          "badges": [
+            "",
+            "",
+            ""
+          ]
+        },
+        "liveCards": 4,
+        "restoreButtons": 2
+      }
+    },
+    "u116-archived-filter-390": {
+      "chipOn": true,
+      "tableRows": 1,
+      "cards": [
+        {
+          "archived": true,
+          "name": "demo-app"
+        }
+      ],
+      "restore": 2,
+      "openButtons": 0
+    },
+    "u116-archived-detail-390": {
+      "error": "TimeoutError: locator.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.archived-group [data-detail], #projectBody [data-detail]').first()\u001b[22m\n\u001b[2m    - locator resolved to <button class=\"btn sm\" data-detail=\"proj_4b5721f0\">详情</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not visible\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not visible\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    58 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m       - element is not visible\u001b[22m\n\u001b[2m     - retrying click action\u001b[22m\n\u001b[2m       - waiting 500ms\u001b[22m\n"
+    },
+    "u116-restore-confirm-390": {
+      "error": "TimeoutError: locator.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[role=\"dialog\"] button, .drawer button').filter({ hasText: '恢复项目' }).first()\u001b[22m\n"
+    },
+    "u116-cleanup": {
+      "restoreRes": {
+        "status": 200,
+        "json": {
+          "id": "proj_4b5721f0",
+          "key": "demo-app",
+          "name": "demo-app",
+          "repoUrl": "",
+          "hostId": "host_b58500c3",
+          "hostName": "dev-local-02",
+          "hostStatus": "online",
+          "sessionPageUrl": "https://100.103.213.12:53636/cloud-admin.html?api=https%3A%2F%2F127.0.0.1%3A18787",
+          "browserEntryUrl": "https://100.67.197.59:18444/h/dev-local-02/web-index.html",
+          "path": "/Users/gongdewei/orca-local-env/host/projects/demo-app",
+          "defaultBranch": "main",
+          "downloadPolicy": "deny",
+          "downloadPolicyExplicit": true,
+          "status": "ready",
+          "createdBy": "admin",
+          "createdAt": 1794817312701,
+          "permissions": [
+            "open",
+            "terminal",
+            "agent",
+            "file:read",
+            "file:write"
+          ]
+        }
+      },
+      "cleanup": {
+        "chip": null,
+        "group": null,
+        "demoLive": true
+      }
+    },
+    "g27-settings-policy-390": {
+      "scope": "全部 5 个 · 跟随全局 4 个 · 独立覆盖 1 个",
+      "rows": 5,
+      "selects": [
+        {
+          "value": "inherit",
+          "options": [
+            "inherit",
+            "deny",
+            "allow"
+          ],
+          "h": 44,
+          "font": "16px"
+        },
+        {
+          "value": "deny",
+          "options": [
+            "inherit",
+            "deny",
+            "allow"
+          ],
+          "h": 44,
+          "font": "16px"
+        },
+        {
+          "value": "inherit",
+          "options": [
+            "inherit",
+            "deny",
+            "allow"
+          ],
+          "h": 44,
+          "font": "16px"
+        },
+        {
+          "value": "inherit",
+          "options": [
+            "inherit",
+            "deny",
+            "allow"
+          ],
+          "h": 44,
+          "font": "16px"
+        },
+        {
+          "value": "inherit",
+          "options": [
+            "inherit",
+            "deny",
+            "allow"
+          ],
+          "h": 44,
+          "font": "16px"
+        }
+      ],
+      "searchPresent": false,
+      "overflow": 0,
+      "sources": [
+        "跟随全局",
+        "独立覆盖",
+        "跟随全局",
+        "跟随全局",
+        "跟随全局"
+      ]
+    },
+    "u80-workspace-deeplink-390": {
+      "hash": "#/workspace/proj_payment",
+      "h1": [
+        "登录云端开发平台",
+        "项目工作区"
+      ],
+      "text": "项目工作区 平台管理员 项目工作区 移动端工作区请打开 Orca Web 工作区（自带移动端支持） 项目：payment-service 返回我的项目 工作台 项目 审计 更多",
+      "overflow": 0
+    }
+  }
+}

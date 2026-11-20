@@ -1,0 +1,144 @@
+{
+  "user": "zhangsan",
+  "steps": {
+    "baseline": {
+      "tabs": [
+        {
+          "id": "web-terminal-c474504a-4784-4440-a724-83ff14166767",
+          "title": "Terminal"
+        }
+      ],
+      "xterm": 1,
+      "overlay": false,
+      "appLayout": true
+    },
+    "second": {
+      "tabs": [
+        {
+          "id": "web-terminal-c474504a-4784-4440-a724-83ff14166767",
+          "title": "Terminal"
+        },
+        {
+          "id": "web-terminal-4463065f-3445-4ecb-83e4-9074d6e983ad",
+          "title": "Terminal"
+        }
+      ],
+      "xterm": 2,
+      "overlay": false,
+      "appLayout": true
+    },
+    "secondMs": 411,
+    "third": {
+      "tabs": [
+        {
+          "id": "web-terminal-c474504a-4784-4440-a724-83ff14166767",
+          "title": "Terminal"
+        },
+        {
+          "id": "web-terminal-4463065f-3445-4ecb-83e4-9074d6e983ad",
+          "title": "Terminal"
+        },
+        {
+          "id": "70d9fec0-887b-43a4-874b-dc47367a7662",
+          "title": "Terminal 2"
+        }
+      ],
+      "xterm": 3,
+      "overlay": false,
+      "appLayout": true
+    },
+    "thirdMs": 327,
+    "afterSoak": {
+      "tabs": [
+        {
+          "id": "web-terminal-c474504a-4784-4440-a724-83ff14166767",
+          "title": "Terminal"
+        },
+        {
+          "id": "web-terminal-4463065f-3445-4ecb-83e4-9074d6e983ad",
+          "title": "Terminal"
+        },
+        {
+          "id": "web-terminal-70d9fec0-887b-43a4-874b-dc47367a7662",
+          "title": "Terminal"
+        }
+      ],
+      "xterm": 3,
+      "overlay": false,
+      "appLayout": true
+    },
+    "soakMs": 40004,
+    "beforeReload": {
+      "tabs": [
+        {
+          "id": "web-terminal-c474504a-4784-4440-a724-83ff14166767",
+          "title": "Terminal"
+        },
+        {
+          "id": "web-terminal-4463065f-3445-4ecb-83e4-9074d6e983ad",
+          "title": "Terminal"
+        },
+        {
+          "id": "web-terminal-70d9fec0-887b-43a4-874b-dc47367a7662",
+          "title": "Terminal"
+        }
+      ],
+      "xterm": 3,
+      "overlay": false,
+      "appLayout": true
+    },
+    "afterReload": {
+      "tabs": [
+        {
+          "id": "web-terminal-c474504a-4784-4440-a724-83ff14166767",
+          "title": "Terminal"
+        },
+        {
+          "id": "web-terminal-4463065f-3445-4ecb-83e4-9074d6e983ad",
+          "title": "Terminal"
+        },
+        {
+          "id": "web-terminal-70d9fec0-887b-43a4-874b-dc47367a7662",
+          "title": "Terminal"
+        }
+      ],
+      "xterm": 3,
+      "overlay": false,
+      "appLayout": true
+    }
+  },
+  "errors": [],
+  "console": [
+    {
+      "t": 1794805736571,
+      "type": "warning",
+      "text": "[web-runtime-session] failed to update pane layout: Method 'session.tabs.updatePaneLayout' is not available to cloud sessions"
+    },
+    {
+      "t": 1794805736901,
+      "type": "warning",
+      "text": "WebSocket connection to 'wss://100.67.197.59:18444/h/dev-local-02/' failed: WebSocket is closed before the connection is established."
+    },
+    {
+      "t": 1794805737021,
+      "type": "warning",
+      "text": "[web-runtime-session] failed to update pane layout: Method 'session.tabs.updatePaneLayout' is not available to cloud sessions"
+    },
+    {
+      "t": 1794805778195,
+      "type": "warning",
+      "text": "[web-runtime-session] failed to update pane layout: Method 'session.tabs.updatePaneLayout' is not available to cloud sessions"
+    },
+    {
+      "t": 1794805778209,
+      "type": "warning",
+      "text": "[web-runtime-session] failed to update pane layout: Method 'session.tabs.updatePaneLayout' is not available to cloud sessions"
+    },
+    {
+      "t": 1794805778277,
+      "type": "warning",
+      "text": "[web-runtime-session] failed to update pane layout: Method 'session.tabs.updatePaneLayout' is not available to cloud sessions"
+    }
+  ],
+  "ok": true
+}

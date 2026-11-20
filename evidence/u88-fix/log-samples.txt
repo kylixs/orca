@@ -1,0 +1,26 @@
+=== U88 log samples 2026-11-16T01:57:57Z ===
+--- ~/orca-local-env/logs/platform.log (1718 bytes) ---
+[reseed] 2026-11-16T01:55:53.268Z run start pid=91409
+[reseed] 2026-11-16T01:57:40.477Z run start pid=22319
+[reseed] 2026-11-16T01:57:40.477Z run start pid=22319
+[api] ready public=18787 internal=none
+[api] listening on https://127.0.0.1:18787 (kid=kid-1794794261190-c99e9c63)
+--- ~/orca-local-env/logs/forwarder.log (153 bytes) ---
+[reseed] 2026-11-16T01:55:53.268Z run start pid=91409
+[reseed] 2026-11-16T01:57:40.480Z run start pid=22319
+[forwarder] 0.0.0.0:18787 -> 127.0.0.1:18787
+[reseed] 2026-11-16T01:55:53.268Z run start pid=91409
+[reseed] 2026-11-16T01:57:40.480Z run start pid=22319
+--- ~/orca-local-env/logs/host.log (27054 bytes) ---
+[reseed] 2026-11-16T01:55:53.268Z run start pid=91409
+[reseed] 2026-11-16T01:57:40.480Z run start pid=22319
+  'session.terminalSurfaceTombstonesByPaneKey': 1
+}
+[pty:history:gc] totalDirs=50 orphaned=0 pruned=0
+--- ~/orca-local-env/logs/host2.log (12984 bytes) ---
+[reseed] 2026-11-16T01:55:53.268Z run start pid=91409
+[reseed] 2026-11-16T01:57:40.480Z run start pid=22319
+  'session.tabGroupLayouts': 1,
+  'session.terminalSurfaceTombstonesByPaneKey': 1
+}
+--- platform 18787: 200 ---

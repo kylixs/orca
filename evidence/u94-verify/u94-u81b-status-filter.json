@@ -1,0 +1,27 @@
+{
+  "statuses": {
+    "active": {
+      "realRows": 3,
+      "emptyRow": 0,
+      "texts": [
+        "李静 admin 平台工程部 platform-admins 管理员 LDAP 同步 活跃 详情",
+        "张伟 zhangsan 支付研发部 developers, team-payment 普通 LDAP 同步 活跃 详情",
+        "李四 lisi 风控研发部 developers 普通 LDAP 同步 活跃 详情"
+      ]
+    },
+    "disabled": {
+      "realRows": 0,
+      "emptyRow": 1,
+      "texts": ["没有符合筛选条件的账号——请调整关键字或重置条件"]
+    }
+  },
+  "afterReset": {
+    "realRows": 3,
+    "emptyRow": 0,
+    "texts": [
+      "李静 admin 平台工程部 platform-admins 管理员 LDAP 同步 活跃 详情",
+      "张伟 zhangsan 支付研发部 developers, team-payment 普通 LDAP 同步 活跃 详情",
+      "李四 lisi 风控研发部 developers 普通 LDAP 同步 活跃 详情"
+    ]
+  }
+}

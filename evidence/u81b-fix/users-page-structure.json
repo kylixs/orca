@@ -1,0 +1,38 @@
+{
+  "prototypeAnchors": [
+    "用户管理",
+    "LDAP 同步正常",
+    "角色 ≠ 资源授权（两层模型）",
+    "账号与角色",
+    "列表只读 · 角色在详情中修改 · 变更写入 role_update 审计",
+    "按用户覆盖，覆盖记录留审计",
+    "服务端按请求实时判定角色",
+    "角色语义：普通",
+    "新用户首登角色一律普通",
+    "升权经用户管理页覆盖"
+  ],
+  "columns": ["用户", "部门", "LDAP 组", "角色", "角色来源", "状态", "操作"],
+  "accountCount": 3,
+  "query": {
+    "keywordAccount": 1,
+    "keywordDisplayName": 2,
+    "roleAdmin": 1,
+    "statusDisabled": 0,
+    "combination": 0,
+    "reset": 3
+  },
+  "detailFields": 7,
+  "changeFlow": {
+    "dialog": true,
+    "upgrade": {
+      "danger": false,
+      "source": "admin-override"
+    },
+    "demote": {
+      "danger": true,
+      "revokedCopy": true,
+      "source": "admin-override"
+    },
+    "confirmedPut": "PUT /v1/users/user_549ddacf-dc70-4ee7-9e5d-76b03b852c3e/roles"
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "platform": {
+    "pidBefore": 38085,
+    "pid": 6287,
+    "status": "started",
+    "restarted": true,
+    "url": "https://127.0.0.1:18787",
+    "log": "/Users/gongdewei/orca-local-env/logs/platform.log",
+    "webArchive": "/Users/gongdewei/orca-local-env/web-archive"
+  },
+  "webSnapshot": {
+    "ok": true,
+    "build": "8f5651b109ab",
+    "sourceBuild": "8f5651b109ab",
+    "files": {
+      "app.js": {
+        "served": "17d42785bd284bd9c068cd67b575c5822e9238418ba0f08d61982d3c89522ace",
+        "expected": "17d42785bd284bd9c068cd67b575c5822e9238418ba0f08d61982d3c89522ace",
+        "match": true
+      },
+      "styles.css": {
+        "served": "c46739e8d0776d3893226222b5b3e06568c96226ae7d1188de56612219738e46",
+        "expected": "c46739e8d0776d3893226222b5b3e06568c96226ae7d1188de56612219738e46",
+        "match": true
+      },
+      "router/routes.js": {
+        "served": "a9eb3f555968d1a84232049ba7a608672c0d27acaa30edf0b7246f884a91b169",
+        "expected": "a9eb3f555968d1a84232049ba7a608672c0d27acaa30edf0b7246f884a91b169",
+        "match": true
+      }
+    },
+    "failures": []
+  },
+  "failures": [],
+  "hosts": [
+    {
+      "name": "dev-local-02",
+      "online": true,
+      "id": "host_b58500c3",
+      "pidBefore": 38947,
+      "pid": 38947,
+      "kept": 156,
+      "before": 157
+    },
+    {
+      "name": "dev-local-03",
+      "online": true,
+      "id": "host_132a3c9d",
+      "pidBefore": 40071,
+      "pid": 40071,
+      "kept": 52,
+      "before": 52
+    }
+  ]
+}

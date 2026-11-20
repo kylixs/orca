@@ -1,0 +1,146 @@
+{
+  "generatedAt": "2026-11-17T00:51:44.955Z",
+  "build": {
+    "gitHead": "635d6d93fe13bc746e1378c11f26dc1ecc3e1245",
+    "mode": "production (env -u VITE_EXPOSE_STORE)",
+    "files": {
+      "out/main/index.js": {
+        "sha256": "a5857b773ea366cbfd004e6738c41b53f44597e5352d0af7b80a4f95592a9eed",
+        "size": 9638425,
+        "mtime": "2026-11-17T00:48:15.642Z"
+      },
+      "out/preload/index.js": {
+        "sha256": "9727610cae36e75dbc87be9a72c329a24ddfd7625991d93a4a4f1ef9e51318cc",
+        "size": 390831,
+        "mtime": "2026-11-17T00:48:15.840Z"
+      },
+      "out/renderer/web-index.html": {
+        "sha256": "075803836a3ff7d361bdcdd29834f5085e7dbe7ebfb805339917e29f0bd6a5a9",
+        "size": 564,
+        "mtime": "2026-11-17T00:48:19.493Z"
+      },
+      "out/web/web-index.html": {
+        "sha256": "a74552de1991da96863e74cc2e8b20836cdc87695fc988399bf4c3c249303383",
+        "size": 564,
+        "mtime": "2026-11-17T00:48:23.931Z"
+      },
+      "out/web/cloud-admin.html": {
+        "sha256": "84f3a9e54730b4a36c0d56a21aa072edf02c14f5b48d63a060725f3d70bb990e",
+        "size": 587,
+        "mtime": "2026-11-17T00:48:23.931Z"
+      }
+    },
+    "checks": {
+      "main_activeLeafId_occurrences": 58,
+      "main_terminalLayoutsByTabId_occurrences": 153,
+      "preload_mode_production": true,
+      "preload_exposeStore_false_expr": true,
+      "preload_vite_flag_baked_out": true,
+      "web_hasKnownHostSessionGroups": true,
+      "web_u171_desktop_resolution": true,
+      "web_tuple_mapping_key": true,
+      "web_tuple_key_chunk": "out/web/assets/web-runtime-browser-creation-Bi23uUKT.js",
+      "renderer_tuple_mapping_key": true,
+      "renderer_tuple_key_chunk": "out/renderer/assets/web-runtime-browser-creation-DT4yHSOp.js",
+      "renderer_hasKnownHostSessionGroups": true
+    },
+    "electronLog": "evidence/final-build-c6-20261117-084805/build-electron.log",
+    "webLog": "evidence/final-build-c6-20261117-084805/build-web.log"
+  },
+  "reseed": {
+    "command": "node cloud-platform/scripts/local-env-reseed.mjs --restart-platform",
+    "exit": 0,
+    "platformPid": 15603,
+    "hostPids": {
+      "dev-local-02": 15973,
+      "dev-local-03": 17094
+    },
+    "hostsOnline": true,
+    "failures": [],
+    "relay": {
+      "dev-local-02": 200,
+      "dev-local-03": 200
+    },
+    "note": "First run reused healthy platform+hosts; forced --restart-platform run restarted platform and both hosts onto out/main mtime 08:48",
+    "logLines": [
+      "[reseed] host online dev-local-03 pid=17094 id=host_132a3c9d addrs=100.103.213.12:18889",
+      "[reseed] projects demo-app=proj_4b5721f0 zhangsan-demo=proj_c1cc0f50 infra-tools=proj_1b716a71 zhangsan-lab=proj_404ff737",
+      "[reseed] verify failures=[] relay={\"dev-local-02\":200,\"dev-local-03\":200}",
+      "[reseed] legacy removed /tmp/m114-* assets",
+      "[reseed] evidence /Users/gongdewei/work/projects/orca/cloud-platform/evidence/env-persist-2026-11-14/result.json /Users/gongdewei/work/projects/orca/cloud-platform/evidence/env-persist-2026-11-14/multi-host.json",
+      "[reseed] OK"
+    ]
+  },
+  "c6": {
+    "verdict": "PASS",
+    "toastsByStage": {
+      "after-split": [],
+      "after-drag": [],
+      "after-reorder": [],
+      "after-reorder-settle": []
+    },
+    "errorToasts": [],
+    "dragDispatched": true,
+    "domAssertion": {
+      "movedTabId": "9709502e-6167-47f2-b3e7-0db64e9173bb",
+      "presentAfter": true,
+      "groupAfter": "f41359fe-adff-45cd-b68b-9055f1b48e5b",
+      "targetGroup": "f41359fe-adff-45cd-b68b-9055f1b48e5b"
+    },
+    "hostOracle": "session.tabs.list",
+    "reorderHostOrder": [
+      "9709502e-6167-47f2-b3e7-0db64e9173bb",
+      "6e5947e6-4cb7-4a25-9450-2aa68ee5bdf9"
+    ],
+    "reorderDomOrder": [
+      "9709502e-6167-47f2-b3e7-0db64e9173bb",
+      "6e5947e6-4cb7-4a25-9450-2aa68ee5bdf9"
+    ],
+    "log": "evidence/final-build-c6-20261117-084805/c6.log"
+  },
+  "webSmoke": {
+    "servedSha": {
+      "ok": true,
+      "status": 200,
+      "served": "a74552de1991da96863e74cc2e8b20836cdc87695fc988399bf4c3c249303383",
+      "disk": "a74552de1991da96863e74cc2e8b20836cdc87695fc988399bf4c3c249303383",
+      "match": true,
+      "size": 564
+    },
+    "login": {
+      "submitted": true,
+      "apiUrl": "https://127.0.0.1:18787"
+    },
+    "workspaceTabs": [
+      "web-terminal-70d9fec0-887b-43a4-874b-dc47367a7662",
+      "web-terminal-4463065f-3445-4ecb-83e4-9074d6e983ad",
+      "web-terminal-c474504a-4784-4440-a724-83ff14166767"
+    ],
+    "refreshRestore": {
+      "appLayout": true,
+      "loginForm": false,
+      "tabCount": 3,
+      "tabs": [
+        "web-terminal-4463065f-3445-4ecb-83e4-9074d6e983ad",
+        "web-terminal-c474504a-4784-4440-a724-83ff14166767",
+        "web-terminal-70d9fec0-887b-43a4-874b-dc47367a7662"
+      ],
+      "worktreeNodes": 6,
+      "url": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787&project=proj_4b5721f0",
+      "pass": true
+    },
+    "consoleErrorCount": 0,
+    "pageErrorCount": 0,
+    "failure": null,
+    "result": "evidence/final-build-c6-20261117-084805/web-smoke/smoke-result.json"
+  },
+  "ptyAfterRestart": {
+    "source": "web session tabs after host restart",
+    "tabCount": 3,
+    "tabIds": [
+      "web-terminal-70d9fec0-887b-43a4-874b-dc47367a7662",
+      "web-terminal-4463065f-3445-4ecb-83e4-9074d6e983ad",
+      "web-terminal-c474504a-4784-4440-a724-83ff14166767"
+    ]
+  }
+}

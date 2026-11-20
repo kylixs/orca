@@ -1,0 +1,17 @@
+U115 verify — install wizard copy-paste executability (2026-11-16, 18787 persistent env)
+Result: CONFIRMED DEFECT (both host.sh and relay.sh).
+
+A. GET /install/host.sh?token=<installToken>  (wizard verbatim, no Authorization) -> 401 SESSION_EXPIRED
+B. GET /install/host.sh?token=<installToken>  + Authorization: Bearer <admin>     -> 200 text/x-shellscript
+C. GET /install/relay.sh                      (wizard verbatim, no Authorization) -> 401 SESSION_EXPIRED
+D. GET /install/relay.sh                      + Authorization: Bearer <admin>     -> 200 text/x-shellscript
+E. GET /install/host.sh?token=<admin accessToken> (query only, valid access token) -> 401 SESSION_EXPIRED
+
+Root cause: server.ts resolveToken() (line ~1289) reads ONLY `Authorization: Bearer`.
+The query `token` on host.sh is the host registration token (hostTokens table), never an auth credential.
+requireAuth() fails before token validation, so both script kinds are unreachable from the target machine.
+
+Tests missed it: install-wizard.e2e "the exact command the admin copies must work as-is" then fetches the
+same URL WITH `headers: auth(adminToken)` — the add-on header is exactly what the copied curl lacks.
+
+Tokens in this evidence were scrubbed; lengths: accessToken=43, installToken=32 (unused, still valid until TTL).

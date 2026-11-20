@@ -1,0 +1,62 @@
+{
+  "line": "A-desktop",
+  "workOrder": "W9a",
+  "runMarker": "orca-journey-1794867011699",
+  "generatedAt": "2026-11-16T22:13:43.869Z",
+  "steps": [
+    {
+      "step": "S0-platform",
+      "label": "平台进程启动与管理员登录",
+      "startedAt": "2026-11-16T22:10:11.786Z",
+      "durationMs": 117,
+      "ok": true
+    },
+    {
+      "step": "S1-host-enrol",
+      "label": "宿主注册：令牌换取、TLS 上线，直连地址/E2EE 密钥/指纹齐备",
+      "startedAt": "2026-11-16T22:10:11.903Z",
+      "durationMs": 839,
+      "ok": true,
+      "detail": {
+        "hostId": "host_1bb3b597",
+        "directAddr": "127.0.0.1:54090",
+        "tlsFingerprint": "sha256:d4fd10819dc196df76e5f2c08d061050e2e9b9e0e6379ead0a0d2e4b73459526"
+      }
+    },
+    {
+      "step": "S2-project-grant",
+      "label": "管理员建项目（绑定宿主）并授权 team-payment 组",
+      "startedAt": "2026-11-16T22:10:12.742Z",
+      "durationMs": 28,
+      "ok": true,
+      "detail": {
+        "projectId": "proj_5e171f2c",
+        "grant": "group:team-payment"
+      }
+    },
+    {
+      "step": "A2-login",
+      "label": "开发者登录（状态栏「登录云端平台」segment → 弹框，平台地址预填）",
+      "startedAt": "2026-11-16T22:10:12.804Z",
+      "durationMs": 31452,
+      "ok": true,
+      "detail": {
+        "platformUrl": "http://127.0.0.1:54070",
+        "developer": "zhangsan",
+        "entry": "status-bar-segment-dialog"
+      }
+    },
+    {
+      "step": "A3-open-project",
+      "label": "打开项目：工作区落在本人 checkout，线路为直连",
+      "startedAt": "2026-11-16T22:10:44.256Z",
+      "durationMs": 179341,
+      "ok": false,
+      "error": "the client never activated the per-user checkout of the project\n\nthe client never activated the per-user checkout of the project\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\nCall Log:\n- Timeout 180000ms exceeded while waiting on the predicate; client store: {\"repos\":[],\"worktreeKeys\":[]}"
+    }
+  ],
+  "screenshots": [
+    "01-login-dialog.png",
+    "02-signed-in.png"
+  ]
+}

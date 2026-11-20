@@ -1,0 +1,19 @@
+{
+  "base": "https://127.0.0.1:18787",
+  "stamp": 1794850444063,
+  "markers": {
+    "one": "J7-A-ONE-1794850444063",
+    "two": "J7-A-TWO-1794850444063"
+  },
+  "steps": {
+    "devLogin": {
+      "status": 200,
+      "ok": true
+    }
+  },
+  "gates": {},
+  "measurements": {},
+  "errors": [],
+  "ok": false,
+  "failure": "TypeError: fetch failed"
+}

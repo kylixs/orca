@@ -1,0 +1,27 @@
+{
+  "station": "A-GIT",
+  "workspacePath": "/private/tmp/u91-journey-jtDi5T/projects/u91-git/.orca-worktrees/zhangsan/main",
+  "changes": {
+    "modified": "README.md",
+    "untracked": "u91-untracked.txt"
+  },
+  "groups": [
+    "modified",
+    "untracked"
+  ],
+  "diff": {
+    "source": "工作区",
+    "sideBySide": {
+      "original": "# u91-git",
+      "modified": "U91-GIT-MODIFIED-1794848901451"
+    },
+    "inline": {
+      "containsModified": true
+    }
+  },
+  "screenshots": [
+    "a-git-changes.png",
+    "a-git-diff-side-by-side.png",
+    "a-git-diff-inline.png"
+  ]
+}

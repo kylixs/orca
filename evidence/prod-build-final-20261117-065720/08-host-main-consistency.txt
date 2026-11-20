@@ -1,0 +1,14 @@
+# Host main consistency
+host supervisor pid 81627 / child 81628 started: Tue Nov 17 06:50:00 2026
+out/main/index.js rebuilt at: Nov 17 06:57:45 2026
+baseline (loaded by host) main sha: abe7ec60949a1a922b41fd0716d816062eb698003228aa446a3dc7a663fa5752
+new production main sha:           e1f230309168bce755fdd824bdb8fff360e662eab21f3c932962b10c47cc6e20
+baseline main had U168: NO (compiled used '\''e.activeTabId'\'', no fencedSnapshot)
+new main has U168: YES (paired fallback found)
+
+CONCLUSION: host was started at 06:50 from the pre-U168 e2e build (06:48).
+--platform-only reseed restarts only the platform; hosts keep old main.
+=> U168 paired rollback is NOT live on dev-local-02/03 until the hosts are restarted
+   (run reseed without --platform-only, which rebuilds/enrolls hosts).
+=> out/web + preload + renderer are served/loaded from disk per request, so the
+   refreshed web bundle IS live through the relay (verified byte-identical).

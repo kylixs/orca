@@ -1,0 +1,527 @@
+{
+  "base": "https://127.0.0.1:18787",
+  "stamp": 1794823643662,
+  "markers": {
+    "one": "J7-A-ONE-1794823643662",
+    "two": "J7-A-TWO-1794823643662"
+  },
+  "steps": {
+    "devLogin": {
+      "status": 200,
+      "ok": true
+    },
+    "projects": [
+      {
+        "id": "proj_payment",
+        "key": "payment-service",
+        "hostId": "host_dev001"
+      },
+      {
+        "id": "proj_4b5721f0",
+        "key": "demo-app",
+        "hostId": "host_b58500c3"
+      },
+      {
+        "id": "proj_c1cc0f50",
+        "key": "zhangsan-demo",
+        "hostId": "host_b58500c3"
+      },
+      {
+        "id": "proj_1b716a71",
+        "key": "infra-tools",
+        "hostId": "host_132a3c9d"
+      },
+      {
+        "id": "proj_404ff737",
+        "key": "zhangsan-lab",
+        "hostId": "host_132a3c9d"
+      }
+    ],
+    "baseline": {
+      "demo-app": {
+        "projectId": "proj_4b5721f0",
+        "hostId": "host_b58500c3",
+        "domTabCount": 3,
+        "domStrips": 1,
+        "storeTabCount": 3,
+        "worktree": "id:2dcb1590-b849-45bb-912a-9a4cc2123990::/Users/gongdewei/orca-local-env/host/projects/demo-app/.orca-worktrees/zhangsan/main-3",
+        "listAll": [
+          {
+            "worktree": "2dcb1590-b849-45bb-912a-9a4cc2123990::/Users/gongdewei/orca-local-env/host/projects/demo-app/.orca-worktrees/zhangsan/main-3",
+            "tabCount": 3,
+            "groupCount": 1
+          }
+        ]
+      },
+      "infra-tools": {
+        "projectId": "proj_1b716a71",
+        "hostId": "host_132a3c9d",
+        "domTabCount": 1,
+        "domStrips": 1,
+        "storeTabCount": 1,
+        "worktree": "id:14613876-7626-45d6-bf44-ebdc27b13c86::/Users/gongdewei/orca-local-env/host2/projects/infra-tools/.orca-worktrees/zhangsan/main-2",
+        "listAll": [
+          {
+            "worktree": "14613876-7626-45d6-bf44-ebdc27b13c86::/Users/gongdewei/orca-local-env/host2/projects/infra-tools/.orca-worktrees/zhangsan/main-2",
+            "tabCount": 1,
+            "groupCount": 1
+          }
+        ]
+      },
+      "zhangsan-lab": {
+        "projectId": "proj_404ff737",
+        "hostId": "host_132a3c9d",
+        "domTabCount": 4,
+        "domStrips": 1,
+        "storeTabCount": 4,
+        "worktree": "id:ee5bbc5c-c62e-4d24-82e3-b9633073920b::/Users/gongdewei/orca-local-env/host2/projects/zhangsan-lab/.orca-worktrees/zhangsan/main-3",
+        "listAll": [
+          {
+            "worktree": "ee5bbc5c-c62e-4d24-82e3-b9633073920b::/Users/gongdewei/orca-local-env/host2/projects/zhangsan-lab/.orca-worktrees/zhangsan/main-3",
+            "tabCount": 4,
+            "groupCount": 1
+          }
+        ]
+      },
+      "zhangsan-demo": {
+        "projectId": "proj_c1cc0f50",
+        "hostId": "host_b58500c3",
+        "domTabCount": 3,
+        "domStrips": 2,
+        "storeTabCount": 3,
+        "worktree": "id:6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3",
+        "listAll": [
+          {
+            "worktree": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3",
+            "tabCount": 3,
+            "groupCount": 1
+          }
+        ]
+      }
+    },
+    "a1": {
+      "url": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787&project=proj_c1cc0f50",
+      "hash": "",
+      "appLayout": true,
+      "signInForm": false,
+      "visibility": "visible",
+      "tabs": [
+        {
+          "id": "web-terminal-35a2da4a-ca24-4785-b1c9-a7e4d5ff0cb3",
+          "title": "Terminal",
+          "dataActive": "false",
+          "visible": true
+        },
+        {
+          "id": "web-terminal-61a91bdf-c30b-4154-9a91-79b35c079195",
+          "title": "Terminal",
+          "dataActive": "true",
+          "visible": true
+        },
+        {
+          "id": "web-terminal-165a0417-8b06-45e4-9627-8b9c25acaecf",
+          "title": "Terminal",
+          "dataActive": "false",
+          "visible": true
+        }
+      ],
+      "strips": 2,
+      "activePaneHeaders": 1,
+      "xterm": 3,
+      "env": {
+        "envId": "web-e43ebacd-eb65-4ace-bf76-66956d00ac39",
+        "name": "zhangsan-demo (cloud session)",
+        "worktree": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3"
+      }
+    },
+    "a2Retire": {
+      "baselineTabs": 3,
+      "keepParent": "165a0417-8b06-45e4-9627-8b9c25acaecf",
+      "retired": [
+        {
+          "parent": "35a2da4a-ca24-4785-b1c9-a7e4d5ff0cb3",
+          "ok": true
+        },
+        {
+          "parent": "61a91bdf-c30b-4154-9a91-79b35c079195",
+          "ok": true
+        }
+      ],
+      "remaining": {
+        "ok": true,
+        "tabs": [
+          {
+            "id": "165a0417-8b06-45e4-9627-8b9c25acaecf::1b3b72b0-c898-4401-b53a-48af27d6c908",
+            "parentTabId": "165a0417-8b06-45e4-9627-8b9c25acaecf",
+            "title": "U138 probe 1794822308231",
+            "isActive": true
+          }
+        ],
+        "tabGroups": [
+          {
+            "id": "99e96104-9a70-4ace-8ee5-33399f2979bd",
+            "activeTabId": "165a0417-8b06-45e4-9627-8b9c25acaecf",
+            "tabOrder": ["165a0417-8b06-45e4-9627-8b9c25acaecf"]
+          }
+        ],
+        "activeTabId": "165a0417-8b06-45e4-9627-8b9c25acaecf::1b3b72b0-c898-4401-b53a-48af27d6c908",
+        "activeGroupId": "99e96104-9a70-4ace-8ee5-33399f2979bd"
+      }
+    },
+    "a2": {
+      "expectedTabCount": 3,
+      "activeLocalId": "web-terminal-f5ff3fec-de6b-4c79-9a23-f16cf87d4ce4",
+      "activeParentTabId": "f5ff3fec-de6b-4c79-9a23-f16cf87d4ce4",
+      "host": {
+        "tabCount": 3,
+        "groupCount": 2,
+        "activeTabId": "f5ff3fec-de6b-4c79-9a23-f16cf87d4ce4::5e2779fb-5a7e-4702-a44b-26332769f879",
+        "groups": [
+          {
+            "id": "99e96104-9a70-4ace-8ee5-33399f2979bd",
+            "activeTabId": "165a0417-8b06-45e4-9627-8b9c25acaecf",
+            "tabOrder": ["165a0417-8b06-45e4-9627-8b9c25acaecf"]
+          },
+          {
+            "id": "75857784-c13a-4052-aec4-e42ab17f53eb",
+            "activeTabId": "f5ff3fec-de6b-4c79-9a23-f16cf87d4ce4",
+            "tabOrder": [
+              "f5ff3fec-de6b-4c79-9a23-f16cf87d4ce4",
+              "7ad59658-0503-4b7c-844e-2f13a4f62c94"
+            ],
+            "recentTabIds": [
+              "f5ff3fec-de6b-4c79-9a23-f16cf87d4ce4",
+              "7ad59658-0503-4b7c-844e-2f13a4f62c94"
+            ]
+          }
+        ]
+      },
+      "domBeforeReload": {
+        "tabCount": 3,
+        "strips": 1,
+        "active": ["web-terminal-165a0417-8b06-45e4-9627-8b9c25acaecf"],
+        "activePaneHeaders": 1
+      },
+      "storeBeforeReload": {
+        "activeTabId": "web-terminal-165a0417-8b06-45e4-9627-8b9c25acaecf",
+        "groups": 1
+      },
+      "terminalRead": {
+        "one": true,
+        "two": true
+      }
+    },
+    "reloadRestore": {
+      "ms": 1343,
+      "dom": {
+        "tabCount": 3,
+        "strips": 2,
+        "active": ["web-terminal-f5ff3fec-de6b-4c79-9a23-f16cf87d4ce4"],
+        "activePaneHeaders": 1,
+        "visibility": "visible",
+        "signInForm": false
+      },
+      "store": {
+        "activeTabId": "web-terminal-f5ff3fec-de6b-4c79-9a23-f16cf87d4ce4",
+        "tabCount": 3,
+        "groupCount": 2
+      },
+      "host": {
+        "tabCount": 3,
+        "groupCount": 2,
+        "activeTabId": "7ad59658-0503-4b7c-844e-2f13a4f62c94::47d888d0-93ba-4dc3-b1ef-6bae00f68e2d",
+        "activeParent": "7ad59658-0503-4b7c-844e-2f13a4f62c94"
+      },
+      "agreement": {
+        "dom": "web-terminal-f5ff3fec-de6b-4c79-9a23-f16cf87d4ce4",
+        "store": "web-terminal-f5ff3fec-de6b-4c79-9a23-f16cf87d4ce4",
+        "hostLocal": "web-terminal-7ad59658-0503-4b7c-844e-2f13a4f62c94"
+      },
+      "agreementSettled": {
+        "ok": true,
+        "ms": 15,
+        "dom": "web-terminal-7ad59658-0503-4b7c-844e-2f13a4f62c94",
+        "store": "web-terminal-7ad59658-0503-4b7c-844e-2f13a4f62c94",
+        "hostLocal": "web-terminal-7ad59658-0503-4b7c-844e-2f13a4f62c94",
+        "domActiveCount": 1,
+        "strips": 2,
+        "domTabCount": 3,
+        "storeGroupCount": 2,
+        "hostGroupCount": 2
+      },
+      "terminalRead": {
+        "one": true,
+        "two": true
+      }
+    },
+    "b6F5": {
+      "ms": 1299,
+      "dom": {
+        "tabCount": 3,
+        "strips": 2,
+        "active": ["web-terminal-7ad59658-0503-4b7c-844e-2f13a4f62c94"]
+      },
+      "terminalRead": {
+        "one": true,
+        "two": true
+      }
+    },
+    "b7Reopens": [
+      {
+        "cycle": 1,
+        "dom": {
+          "tabCount": 3,
+          "strips": 2,
+          "active": ["web-terminal-f5ff3fec-de6b-4c79-9a23-f16cf87d4ce4"]
+        },
+        "store": {
+          "activeTabId": "web-terminal-f5ff3fec-de6b-4c79-9a23-f16cf87d4ce4",
+          "groupCount": 2
+        },
+        "host": {
+          "tabCount": 3,
+          "groupCount": 2,
+          "activeTabId": "7ad59658-0503-4b7c-844e-2f13a4f62c94::47d888d0-93ba-4dc3-b1ef-6bae00f68e2d"
+        },
+        "agreement": {
+          "dom": "web-terminal-f5ff3fec-de6b-4c79-9a23-f16cf87d4ce4",
+          "store": "web-terminal-f5ff3fec-de6b-4c79-9a23-f16cf87d4ce4",
+          "hostLocal": "web-terminal-7ad59658-0503-4b7c-844e-2f13a4f62c94"
+        },
+        "terminalRead": {
+          "one": true,
+          "two": true
+        }
+      },
+      {
+        "cycle": 2,
+        "dom": {
+          "tabCount": 3,
+          "strips": 2,
+          "active": ["web-terminal-7ad59658-0503-4b7c-844e-2f13a4f62c94"]
+        },
+        "store": {
+          "activeTabId": "web-terminal-7ad59658-0503-4b7c-844e-2f13a4f62c94",
+          "groupCount": 2
+        },
+        "host": {
+          "tabCount": 3,
+          "groupCount": 2,
+          "activeTabId": "7ad59658-0503-4b7c-844e-2f13a4f62c94::47d888d0-93ba-4dc3-b1ef-6bae00f68e2d"
+        },
+        "agreement": {
+          "dom": "web-terminal-7ad59658-0503-4b7c-844e-2f13a4f62c94",
+          "store": "web-terminal-7ad59658-0503-4b7c-844e-2f13a4f62c94",
+          "hostLocal": "web-terminal-7ad59658-0503-4b7c-844e-2f13a4f62c94"
+        },
+        "terminalRead": {
+          "one": true,
+          "two": true
+        }
+      },
+      {
+        "cycle": 3,
+        "dom": {
+          "tabCount": 3,
+          "strips": 2,
+          "active": ["web-terminal-f5ff3fec-de6b-4c79-9a23-f16cf87d4ce4"]
+        },
+        "store": {
+          "activeTabId": "web-terminal-f5ff3fec-de6b-4c79-9a23-f16cf87d4ce4",
+          "groupCount": 2
+        },
+        "host": {
+          "tabCount": 3,
+          "groupCount": 2,
+          "activeTabId": "7ad59658-0503-4b7c-844e-2f13a4f62c94::47d888d0-93ba-4dc3-b1ef-6bae00f68e2d"
+        },
+        "agreement": {
+          "dom": "web-terminal-f5ff3fec-de6b-4c79-9a23-f16cf87d4ce4",
+          "store": "web-terminal-f5ff3fec-de6b-4c79-9a23-f16cf87d4ce4",
+          "hostLocal": "web-terminal-7ad59658-0503-4b7c-844e-2f13a4f62c94"
+        },
+        "terminalRead": {
+          "one": true,
+          "two": true
+        }
+      }
+    ],
+    "a3Close": {
+      "before": {
+        "tabCount": 3,
+        "groupCount": 2
+      },
+      "closedParent": "7ad59658-0503-4b7c-844e-2f13a4f62c94",
+      "closeOk": true,
+      "after": {
+        "tabCount": 2,
+        "groupCount": 2,
+        "closedStillListed": false
+      },
+      "dom": {
+        "tabCount": 2,
+        "strips": 2
+      },
+      "terminalReadRemaining": true,
+      "hostFinal": {
+        "tabCount": 2,
+        "groupCount": 2
+      }
+    },
+    "b10": {
+      "embedUrl": "https://100.67.197.59:18444/h/dev-local-02/cloud-admin.html?api=https%3A%2F%2F127.0.0.1%3A18787&embed=1&project=proj_c1cc0f50",
+      "copyButtonId": "cloud-workspace-file-copy",
+      "copyStatusText": "复制内容",
+      "eventCount": 7,
+      "events": [
+        {
+          "seq": 1273,
+          "eventType": "file_copy",
+          "actor": "zhangsan",
+          "result": "success",
+          "fileName": "README.md",
+          "copyKind": "content-whole",
+          "capturePoint": "web-clipboard-api",
+          "hostId": "host_b58500c3"
+        },
+        {
+          "seq": 1001,
+          "eventType": "file_copy",
+          "actor": "zhangsan",
+          "result": "success",
+          "fileName": "README.md",
+          "copyKind": "content-whole",
+          "capturePoint": "web-clipboard-api",
+          "hostId": "host_b58500c3"
+        },
+        {
+          "seq": 679,
+          "eventType": "file_copy",
+          "actor": "zhangsan",
+          "result": "success",
+          "fileName": "README.md",
+          "copyKind": "content-whole",
+          "capturePoint": "web-clipboard-api",
+          "hostId": "host_b58500c3"
+        },
+        {
+          "seq": 488,
+          "eventType": "file_copy",
+          "actor": "zhangsan",
+          "result": "success",
+          "fileName": "README.md",
+          "copyKind": "content-whole",
+          "capturePoint": "web-clipboard-api",
+          "hostId": "host_b58500c3"
+        },
+        {
+          "seq": 290,
+          "eventType": "file_copy",
+          "actor": "zhangsan",
+          "result": "success",
+          "fileName": "README.md",
+          "copyKind": "content-whole",
+          "capturePoint": "web-clipboard-api",
+          "hostId": "host_b58500c3"
+        }
+      ]
+    },
+    "adminLogin": {
+      "status": 200,
+      "ok": true
+    },
+    "routing": {
+      "projectId": "proj_c1cc0f50",
+      "detailHash": "#/projects/proj_c1cc0f50?tab=perms",
+      "beforeHash": "#/projects/proj_c1cc0f50?tab=perms",
+      "afterHash": "#/projects/proj_c1cc0f50?tab=perms",
+      "hashPreserved": true,
+      "dialogVisible": true,
+      "dialogAfterReload": true,
+      "members": {
+        "hash": "#/members",
+        "notFound": true
+      }
+    },
+    "b9PermCards": {
+      "dev-local-02": [
+        {
+          "key": "view",
+          "label": "查看",
+          "subjects": 0
+        },
+        {
+          "key": "control",
+          "label": "控制",
+          "subjects": 1
+        },
+        {
+          "key": "manage",
+          "label": "管理",
+          "subjects": 0
+        }
+      ],
+      "dev-local-03": [
+        {
+          "key": "view",
+          "label": "查看",
+          "subjects": 0
+        },
+        {
+          "key": "control",
+          "label": "控制",
+          "subjects": 1
+        },
+        {
+          "key": "manage",
+          "label": "管理",
+          "subjects": 0
+        }
+      ]
+    },
+    "b10AuditUi": {
+      "rows": [
+        "2026/11/16 18:08:29 zhangsan 复制 file_copy 客户端自报 · advisory proj_c1cc0f50 dev-local-02 README.md 复制 97 B · 69 字符 / 97 字节 · README.md ✓ 成功 tr_f0e8591ba9fb4d3d876cee0a57858461 复制 展开",
+        "复制内容摘录 未记录内容摘录（仅保留指纹） 内容指纹与复制长度 sha256:08c0de2bc48fe39b63c45f9839f2d6fbfdbe9a737912e2cc077b0fc7749e55c3 复制 69 字符 / 97 字节 · 仅记录指纹，不可反推内容",
+        "2026/11/16 17:39:40 zhangsan 复制 file_copy 客户端自报 · advisory proj_c1cc0f50 dev-local-02 README.md 复制 97 B · 69 字符 / 97 字节 · README.md ✓ 成功 tr_df159df86747419bb5e947ca3116e6a5 复制 展开",
+        "复制内容摘录 未记录内容摘录（仅保留指纹） 内容指纹与复制长度 sha256:08c0de2bc48fe39b63c45f9839f2d6fbfdbe9a737912e2cc077b0fc7749e55c3 复制 69 字符 / 97 字节 · 仅记录指纹，不可反推内容",
+        "2026/11/16 17:24:50 zhangsan 复制 file_copy 客户端自报 · advisory proj_c1cc0f50 dev-local-02 README.md 复制 97 B · 69 字符 / 97 字节 · README.md ✓ 成功 tr_fed9ff8fc75c43a2b3586a4a3c40ec3c 复制 展开"
+      ],
+      "matched": 8,
+      "filter": {
+        "event": "file_copy",
+        "fileName": "README.md"
+      }
+    },
+    "logout": {
+      "hash": "#/login",
+      "access": null,
+      "refresh": null
+    }
+  },
+  "gates": {
+    "baseline_probed_before_drill": true,
+    "a1_workspace_terminal": true,
+    "a2_three_tabs_two_groups_before_reload": true,
+    "a2_reload_dom_store_host_agree": true,
+    "a2_reload_content_markers": true,
+    "b6_f5_restores_three_tabs_content": true,
+    "b7_reopen_three_times": false,
+    "a3_close_semantics": true,
+    "b8_deeplink_hash_preserved": true,
+    "b8_members_404": true,
+    "b9_permission_three_cards": true,
+    "b10_copy_captured_and_auditable": true,
+    "b8_logout_clears_hash": true
+  },
+  "measurements": {
+    "baselineCounts": {
+      "demo-app": 3,
+      "infra-tools": 1,
+      "zhangsan-lab": 4,
+      "zhangsan-demo": 3
+    }
+  },
+  "errors": [],
+  "ok": false
+}

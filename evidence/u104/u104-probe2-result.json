@@ -1,0 +1,83 @@
+{
+  "steps": {
+    "openA": {
+      "local": {
+        "tabs": [
+          {
+            "id": "92d024aa-3968-4511-ba2d-e8b16383bb27",
+            "title": "Terminal 1"
+          }
+        ],
+        "envKey": "orca.web.runtimeEnvironment.v1",
+        "env": "{\"id\":\"web-9643bedd-d515-4bdb-82e5-c931c0d1df74\",\"name\":\"demo-app (cloud session)\",\"createdAt\":1794802422122,\"updatedAt\":1794802427598,\"lastUsedAt\":1794802427598,\"runtimeId\":\"8dc60b5a-3c73-4c05-a3e8-1808df09c4ad\",\"pairedDeviceId\":\"dev_9fd65f362a4a\",\"preferredEndpointId\":\"ws-web-9643bedd-d515-4bdb-82e5-c931c0d1df74\",\"endpoints\":[{\"id\":\"ws-web-9643bedd-d515-4bdb-82e5-c931c0d1df74\",\"kind\":\"websocket\",\"label\":\"WebSocket\",\"endpoint\":\"wss://100.103.213.12:56226\",\"deviceToken\":\"Geuf5XjdBlnD6ceG8PwR_yM2_lSC9WR2m8iq0dpr3us\",\"publicKeyB64\":\"elM9qFE+HzVLG4Tz49ZRZ8bN4RIpPeYzRq/lagdu1Ts=\"}],\"cloudLoginRequ"
+      },
+      "host": {
+        "selector": "web-9643bedd-d515-4bdb-82e5-c931c0d1df74",
+        "ok": false,
+        "error": {
+          "code": "forbidden",
+          "message": "Method 'session.tabs.listAll' is not available to cloud sessions",
+          "data": {
+            "denial": "METHOD_NOT_AVAILABLE"
+          }
+        },
+        "snapshotCount": 0,
+        "snapshots": []
+      }
+    },
+    "openB": {
+      "local": {
+        "tabs": [
+          {
+            "id": "bef0b2a4-43dc-4d07-aca9-7c3ee96c9896",
+            "title": "Terminal 1"
+          }
+        ],
+        "envKey": "orca.web.workspaceSession.v1.runtime:web-9643bedd-d515-4bdb-82e5-c931c0d1df74",
+        "env": "{\"activeRepoId\":null,\"activeWorktreeId\":\"2dcb1590-b849-45bb-912a-9a4cc2123990::/Users/gongdewei/orca-local-env/host/projects/demo-app/.orca-worktrees/admin/main-2\",\"activeTabId\":null,\"tabsByWorktree\":{},\"terminalLayoutsByTabId\":{},\"openFilesByWorktree\":{},\"markdownFrontmatterVisible\":{},\"browserTabsByWorktree\":{},\"browserPagesByWorkspace\":{},\"activeBrowserTabIdByWorktree\":{},\"activeFileIdByWorktree\":{},\"activeTabTypeByWorktree\":{},\"browserUrlHistory\":[],\"defaultTerminalTabsAppliedByWorktreeId\":{}}"
+      },
+      "host": {
+        "selector": "web-31e8f1a6-1849-4f80-966a-56c19baebd3a",
+        "ok": false,
+        "error": {
+          "code": "forbidden",
+          "message": "Method 'session.tabs.listAll' is not available to cloud sessions",
+          "data": {
+            "denial": "METHOD_NOT_AVAILABLE"
+          }
+        },
+        "snapshotCount": 0,
+        "snapshots": []
+      }
+    },
+    "openB-settled": {
+      "local": {
+        "tabs": [
+          {
+            "id": "bef0b2a4-43dc-4d07-aca9-7c3ee96c9896",
+            "title": "Terminal 1"
+          }
+        ],
+        "envKey": "orca.web.workspaceSession.v1.runtime:web-9643bedd-d515-4bdb-82e5-c931c0d1df74",
+        "env": "{\"activeRepoId\":null,\"activeWorktreeId\":\"2dcb1590-b849-45bb-912a-9a4cc2123990::/Users/gongdewei/orca-local-env/host/projects/demo-app/.orca-worktrees/admin/main-2\",\"activeTabId\":null,\"tabsByWorktree\":{},\"terminalLayoutsByTabId\":{},\"openFilesByWorktree\":{},\"markdownFrontmatterVisible\":{},\"browserTabsByWorktree\":{},\"browserPagesByWorkspace\":{},\"activeBrowserTabIdByWorktree\":{},\"activeFileIdByWorktree\":{},\"activeTabTypeByWorktree\":{},\"browserUrlHistory\":[],\"defaultTerminalTabsAppliedByWorktreeId\":{}}"
+      },
+      "host": {
+        "selector": "web-31e8f1a6-1849-4f80-966a-56c19baebd3a",
+        "ok": false,
+        "error": {
+          "code": "forbidden",
+          "message": "Method 'session.tabs.listAll' is not available to cloud sessions",
+          "data": {
+            "denial": "METHOD_NOT_AVAILABLE"
+          }
+        },
+        "snapshotCount": 0,
+        "snapshots": []
+      }
+    }
+  },
+  "console": [
+    "openA:log: [pty-connect] pane=1 tab=92d024aa-3968-4511-ba2d-e8b16383bb27 restored=null existing=null detached=null reattach=null hasTransport=false pendingKey=[\"92d024aa-3968-4511-ba2d-e8b16383bb27:ced4ad18-e36e-4410-aab4-a913c2d0120e\",0,null]",
+    "openB:log: [pty-connect] pane=1 tab=bef0b2a4-43dc-4d07-aca9-7c3ee96c9896 restored=null existing=null detached=null reattach=null hasTransport=false pendingKey=[\"bef0b2a4-43dc-4d07-aca9-7c3ee96c9896:0e0e7362-03ca-4b72-9aab-0d3c0f786709\",0,null]"
+  ]
+}

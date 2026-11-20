@@ -1,0 +1,28 @@
+{
+  "at": "2026-11-16T23:07:53.926Z",
+  "rpc": {
+    "envId": "web-7008ce80-78ed-4279-bab2-9451a7dbfd9c",
+    "worktree": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3",
+    "runtimeId": "8524515a-4797-4645-8e24-eab50d58d3ca",
+    "protocolVersion": 3,
+    "liveTabCount": 72,
+    "beforeActive": "fe078f59-279d-4ef4-84cb-f0276fdd9ee9::7b6205c3-8a55-46b3-9278-fb81a303d044",
+    "beforeActiveGroupId": "ae7bcbc5-bd72-473a-a763-42da3b60d62c",
+    "target": "fbcdcb4c-d62b-44b0-bbbd-5933f52fd4e9::00f47044-2634-4e0d-923c-f7a00fc4ea41",
+    "activateOk": true,
+    "activateError": null,
+    "afterActive": "fbcdcb4c-d62b-44b0-bbbd-5933f52fd4e9::00f47044-2634-4e0d-923c-f7a00fc4ea41",
+    "afterActiveGroupId": "ae7bcbc5-bd72-473a-a763-42da3b60d62c",
+    "afterActiveType": "terminal",
+    "moved": true
+  },
+  "gitHead": "08715eec2cc155cfceede95ce2df8aba5ebba7af",
+  "u168Commit": "4e3842165d6e22403925aa2a78d230904fe17b4a fix(runtime): roll back the whole focus pair on rejected adoption",
+  "mainSha": "e1f230309168bce755fdd824bdb8fff360e662eab21f3c932962b10c47cc6e20  /Users/gongdewei/work/projects/orca/out/main/index.js",
+  "u168SourceInBuildNote": "out/main built 06:57 after U168 commit 06:55; hosts restarted 07:01 load this file",
+  "hostLogStart": [
+    "[reseed] 2026-11-16T23:00:03.752Z run start pid=16359",
+    "[reseed] 2026-11-16T23:00:14.676Z run start pid=16927",
+    "[reseed] 2026-11-16T23:01:48.362Z run start pid=19692"
+  ]
+}

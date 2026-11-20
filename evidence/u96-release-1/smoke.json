@@ -1,0 +1,65 @@
+{
+  "base": "https://127.0.0.1:18787",
+  "steps": {
+    "platformRoot": {
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "bytes": 3858
+    },
+    "login": {
+      "status": 200,
+      "ok": true
+    },
+    "auditStatus": {
+      "status": 200,
+      "healthy": true,
+      "persisted": false,
+      "chain": {
+        "ok": true,
+        "lastSeq": 30
+      },
+      "keys": ["ok", "persisted", "chain", "gaps", "capacity", "ingressGaps", "eventTypes"]
+    },
+    "hosts": {
+      "status": 200,
+      "list": [
+        {
+          "name": "dev-001",
+          "online": false,
+          "relayOnline": true,
+          "addrs": ["127.0.0.1:16768"]
+        },
+        {
+          "name": "dev-local-02",
+          "online": true,
+          "relayOnline": true,
+          "addrs": ["100.103.213.12:56080"]
+        },
+        {
+          "name": "dev-local-03",
+          "online": true,
+          "relayOnline": true,
+          "addrs": ["100.103.213.12:18889"]
+        }
+      ]
+    },
+    "webWorkspace": {
+      "appLayout": true,
+      "url": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787"
+    },
+    "assetAlignment": [
+      {
+        "src": "/h/dev-local-02/assets/web-Cim4UIdS.js",
+        "bytes": 2804,
+        "matchesBuild": "web-Cim4UIdS.js"
+      }
+    ],
+    "webUi": {
+      "tabs": 0,
+      "xterm": 0,
+      "title": "Orca Web"
+    }
+  },
+  "errors": [],
+  "ok": true
+}

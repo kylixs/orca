@@ -1,0 +1,88 @@
+{
+  "host": {
+    "groups": [
+      {
+        "id": "fccb67de-e612-47ba-b4e0-a433446bbdb8",
+        "tabOrder": [
+          "4714989a-8203-4a59-92be-250dcffd16f9",
+          "382ab915-fafc-4f76-9284-55b5b12af606",
+          "ec8b2f75-664d-48ba-98a2-5727b0498cd0"
+        ]
+      },
+      {
+        "id": "0af3f973-9546-4be4-819a-8338df606b15",
+        "tabOrder": ["df1fb24f-0a14-427b-a8fe-7515c79192b2", "e493c28a-1bea-4feb-82c6-18cc0a780594"]
+      }
+    ],
+    "tabs": [
+      {
+        "id": "4714989a-8203-4a59-92be-250dcffd16f9::30300044-d3cd-4990-990c-e4f9a2673871",
+        "title": "Terminal 1"
+      },
+      {
+        "id": "382ab915-fafc-4f76-9284-55b5b12af606::34d798db-29b4-4a0a-b7ad-804aeafa79bd",
+        "title": "U96 A8 e2e terminal 1"
+      },
+      {
+        "id": "ec8b2f75-664d-48ba-98a2-5727b0498cd0::6045f452-43d6-4b2f-8df7-0c3d15578902",
+        "title": "U96 A8 e2e terminal 3"
+      },
+      {
+        "id": "df1fb24f-0a14-427b-a8fe-7515c79192b2::f6e13990-3393-4e11-8fba-bf8a000bc8a3",
+        "title": "U96 A8 e2e terminal 2"
+      },
+      {
+        "id": "e493c28a-1bea-4feb-82c6-18cc0a780594::c13fe022-00b5-4187-9573-2e9f1be1466f",
+        "title": "Terminal"
+      }
+    ],
+    "active": "df1fb24f-0a14-427b-a8fe-7515c79192b2::f6e13990-3393-4e11-8fba-bf8a000bc8a3",
+    "activeGroup": "0af3f973-9546-4be4-819a-8338df606b15"
+  },
+  "store": {
+    "groups": [
+      {
+        "id": "2f05faaa-67c3-44e8-9c23-0deef6fc2f5c",
+        "tabOrder": [
+          "web-terminal-e493c28a-1bea-4feb-82c6-18cc0a780594",
+          "web-terminal-4714989a-8203-4a59-92be-250dcffd16f9",
+          "web-terminal-382ab915-fafc-4f76-9284-55b5b12af606",
+          "web-terminal-df1fb24f-0a14-427b-a8fe-7515c79192b2",
+          "web-terminal-ec8b2f75-664d-48ba-98a2-5727b0498cd0"
+        ],
+        "activeTabId": "web-terminal-e493c28a-1bea-4feb-82c6-18cc0a780594"
+      }
+    ],
+    "layout": {
+      "type": "leaf",
+      "groupId": "2f05faaa-67c3-44e8-9c23-0deef6fc2f5c"
+    },
+    "activeGroup": "2f05faaa-67c3-44e8-9c23-0deef6fc2f5c",
+    "active": "web-terminal-4714989a-8203-4a59-92be-250dcffd16f9",
+    "tabs": [
+      {
+        "id": "web-terminal-4714989a-8203-4a59-92be-250dcffd16f9",
+        "title": "Terminal 1"
+      },
+      {
+        "id": "web-terminal-382ab915-fafc-4f76-9284-55b5b12af606",
+        "title": "U96 A8 e2e terminal 1"
+      },
+      {
+        "id": "web-terminal-df1fb24f-0a14-427b-a8fe-7515c79192b2",
+        "title": "U96 A8 e2e terminal 2"
+      },
+      {
+        "id": "web-terminal-ec8b2f75-664d-48ba-98a2-5727b0498cd0",
+        "title": "U96 A8 e2e terminal 3"
+      },
+      {
+        "id": "web-terminal-e493c28a-1bea-4feb-82c6-18cc0a780594",
+        "title": "Terminal"
+      }
+    ],
+    "layoutKeys": [
+      "8690652c-6875-474b-84cd-453166139b56::/private/tmp/u91-journey-alcATV/projects/u91-git/.orca-worktrees/zhangsan/main"
+    ]
+  }
+}

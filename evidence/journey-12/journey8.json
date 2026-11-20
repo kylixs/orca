@@ -1,0 +1,519 @@
+{
+  "base": "https://127.0.0.1:18787",
+  "stamp": 1794825238918,
+  "markers": {
+    "one": "J7-A-ONE-1794825238918",
+    "two": "J7-A-TWO-1794825238918"
+  },
+  "steps": {
+    "devLogin": {
+      "status": 200,
+      "ok": true
+    },
+    "projects": [
+      {
+        "id": "proj_payment",
+        "key": "payment-service",
+        "hostId": "host_dev001"
+      },
+      {
+        "id": "proj_4b5721f0",
+        "key": "demo-app",
+        "hostId": "host_b58500c3"
+      },
+      {
+        "id": "proj_c1cc0f50",
+        "key": "zhangsan-demo",
+        "hostId": "host_b58500c3"
+      },
+      {
+        "id": "proj_1b716a71",
+        "key": "infra-tools",
+        "hostId": "host_132a3c9d"
+      },
+      {
+        "id": "proj_404ff737",
+        "key": "zhangsan-lab",
+        "hostId": "host_132a3c9d"
+      }
+    ],
+    "baseline": {
+      "demo-app": {
+        "projectId": "proj_4b5721f0",
+        "hostId": "host_b58500c3",
+        "domTabCount": 3,
+        "domStrips": 1,
+        "storeTabCount": 3,
+        "worktree": "id:2dcb1590-b849-45bb-912a-9a4cc2123990::/Users/gongdewei/orca-local-env/host/projects/demo-app/.orca-worktrees/zhangsan/main-3",
+        "listAll": [
+          {
+            "worktree": "2dcb1590-b849-45bb-912a-9a4cc2123990::/Users/gongdewei/orca-local-env/host/projects/demo-app/.orca-worktrees/zhangsan/main-3",
+            "tabCount": 3,
+            "groupCount": 1
+          }
+        ]
+      },
+      "infra-tools": {
+        "projectId": "proj_1b716a71",
+        "hostId": "host_132a3c9d",
+        "domTabCount": 1,
+        "domStrips": 1,
+        "storeTabCount": 1,
+        "worktree": "id:14613876-7626-45d6-bf44-ebdc27b13c86::/Users/gongdewei/orca-local-env/host2/projects/infra-tools/.orca-worktrees/zhangsan/main-2",
+        "listAll": [
+          {
+            "worktree": "14613876-7626-45d6-bf44-ebdc27b13c86::/Users/gongdewei/orca-local-env/host2/projects/infra-tools/.orca-worktrees/zhangsan/main-2",
+            "tabCount": 1,
+            "groupCount": 1
+          }
+        ]
+      },
+      "zhangsan-lab": {
+        "projectId": "proj_404ff737",
+        "hostId": "host_132a3c9d",
+        "domTabCount": 4,
+        "domStrips": 1,
+        "storeTabCount": 4,
+        "worktree": "id:ee5bbc5c-c62e-4d24-82e3-b9633073920b::/Users/gongdewei/orca-local-env/host2/projects/zhangsan-lab/.orca-worktrees/zhangsan/main-3",
+        "listAll": [
+          {
+            "worktree": "ee5bbc5c-c62e-4d24-82e3-b9633073920b::/Users/gongdewei/orca-local-env/host2/projects/zhangsan-lab/.orca-worktrees/zhangsan/main-3",
+            "tabCount": 4,
+            "groupCount": 1
+          }
+        ]
+      },
+      "zhangsan-demo": {
+        "projectId": "proj_c1cc0f50",
+        "hostId": "host_b58500c3",
+        "domTabCount": 2,
+        "domStrips": 2,
+        "storeTabCount": 2,
+        "worktree": "id:6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3",
+        "listAll": [
+          {
+            "worktree": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3",
+            "tabCount": 2,
+            "groupCount": 1
+          }
+        ]
+      }
+    },
+    "a1": {
+      "url": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787&project=proj_c1cc0f50",
+      "hash": "",
+      "appLayout": true,
+      "signInForm": false,
+      "visibility": "visible",
+      "tabs": [
+        {
+          "id": "web-terminal-f5ff3fec-de6b-4c79-9a23-f16cf87d4ce4",
+          "title": "Terminal",
+          "dataActive": "false",
+          "visible": true
+        },
+        {
+          "id": "web-terminal-026d6259-a020-48e0-82cb-edda0f4354fa",
+          "title": "Terminal",
+          "dataActive": "true",
+          "visible": true
+        }
+      ],
+      "strips": 2,
+      "activePaneHeaders": 1,
+      "xterm": 2,
+      "env": {
+        "envId": "web-6e05b75c-6f8b-424f-af48-ce9fae83d2ec",
+        "name": "zhangsan-demo (cloud session)",
+        "worktree": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3"
+      }
+    },
+    "a2Retire": {
+      "baselineTabs": 2,
+      "keepParent": "026d6259-a020-48e0-82cb-edda0f4354fa",
+      "retired": [
+        {
+          "parent": "f5ff3fec-de6b-4c79-9a23-f16cf87d4ce4",
+          "ok": true
+        }
+      ],
+      "remaining": {
+        "ok": true,
+        "tabs": [
+          {
+            "id": "026d6259-a020-48e0-82cb-edda0f4354fa::5be1f91a-f437-42f0-b107-08f8d746faea",
+            "parentTabId": "026d6259-a020-48e0-82cb-edda0f4354fa",
+            "title": "J7 terminal 1",
+            "isActive": true
+          }
+        ],
+        "tabGroups": [
+          {
+            "id": "b127757e-7a16-45ee-b1cd-30eb49ac4fa1",
+            "activeTabId": "026d6259-a020-48e0-82cb-edda0f4354fa",
+            "tabOrder": ["026d6259-a020-48e0-82cb-edda0f4354fa"],
+            "recentTabIds": ["026d6259-a020-48e0-82cb-edda0f4354fa"]
+          }
+        ],
+        "activeTabId": "026d6259-a020-48e0-82cb-edda0f4354fa::5be1f91a-f437-42f0-b107-08f8d746faea",
+        "activeGroupId": "b127757e-7a16-45ee-b1cd-30eb49ac4fa1"
+      }
+    },
+    "a2": {
+      "expectedTabCount": 3,
+      "activeLocalId": "web-terminal-8fdafd75-bccc-49fd-9599-8d1b10b3f46c",
+      "activeParentTabId": "8fdafd75-bccc-49fd-9599-8d1b10b3f46c",
+      "host": {
+        "tabCount": 3,
+        "groupCount": 2,
+        "activeTabId": "8fdafd75-bccc-49fd-9599-8d1b10b3f46c::0731c91d-8e94-4d04-b6dc-2126db0e4561",
+        "groups": [
+          {
+            "id": "b127757e-7a16-45ee-b1cd-30eb49ac4fa1",
+            "activeTabId": "026d6259-a020-48e0-82cb-edda0f4354fa",
+            "tabOrder": ["026d6259-a020-48e0-82cb-edda0f4354fa"],
+            "recentTabIds": ["026d6259-a020-48e0-82cb-edda0f4354fa"]
+          },
+          {
+            "id": "aa388d96-333d-401c-ba61-a66f98b8d6b2",
+            "activeTabId": "8fdafd75-bccc-49fd-9599-8d1b10b3f46c",
+            "tabOrder": [
+              "8fdafd75-bccc-49fd-9599-8d1b10b3f46c",
+              "ef02ad68-c98e-4bb1-91f9-85cefe7ed214"
+            ],
+            "recentTabIds": [
+              "8fdafd75-bccc-49fd-9599-8d1b10b3f46c",
+              "ef02ad68-c98e-4bb1-91f9-85cefe7ed214"
+            ]
+          }
+        ]
+      },
+      "domBeforeReload": {
+        "tabCount": 3,
+        "strips": 1,
+        "active": ["web-terminal-026d6259-a020-48e0-82cb-edda0f4354fa"],
+        "activePaneHeaders": 1
+      },
+      "storeBeforeReload": {
+        "activeTabId": "web-terminal-026d6259-a020-48e0-82cb-edda0f4354fa",
+        "groups": 1
+      },
+      "terminalRead": {
+        "one": true,
+        "two": true
+      }
+    },
+    "reloadRestore": {
+      "ms": 21109,
+      "dom": {
+        "tabCount": 3,
+        "strips": 2,
+        "active": ["web-terminal-8fdafd75-bccc-49fd-9599-8d1b10b3f46c"],
+        "activePaneHeaders": 1,
+        "visibility": "visible",
+        "signInForm": false
+      },
+      "store": {
+        "activeTabId": "web-terminal-8fdafd75-bccc-49fd-9599-8d1b10b3f46c",
+        "tabCount": 3,
+        "groupCount": 2
+      },
+      "host": {
+        "tabCount": 3,
+        "groupCount": 2,
+        "activeTabId": "8fdafd75-bccc-49fd-9599-8d1b10b3f46c::0731c91d-8e94-4d04-b6dc-2126db0e4561",
+        "activeParent": "8fdafd75-bccc-49fd-9599-8d1b10b3f46c"
+      },
+      "agreement": {
+        "dom": "web-terminal-8fdafd75-bccc-49fd-9599-8d1b10b3f46c",
+        "store": "web-terminal-8fdafd75-bccc-49fd-9599-8d1b10b3f46c",
+        "hostLocal": "web-terminal-8fdafd75-bccc-49fd-9599-8d1b10b3f46c"
+      },
+      "agreementSettled": {
+        "ok": false,
+        "timeoutMs": 20000,
+        "dom": "web-terminal-8fdafd75-bccc-49fd-9599-8d1b10b3f46c",
+        "store": "web-terminal-8fdafd75-bccc-49fd-9599-8d1b10b3f46c",
+        "hostLocal": "web-terminal-ef02ad68-c98e-4bb1-91f9-85cefe7ed214",
+        "domActiveCount": 1,
+        "strips": 2,
+        "domTabCount": 3,
+        "storeGroupCount": 2,
+        "hostGroupCount": 2
+      },
+      "terminalRead": {
+        "one": true,
+        "two": true
+      }
+    },
+    "b6F5": {
+      "ms": 1093,
+      "dom": {
+        "tabCount": 3,
+        "strips": 2,
+        "active": ["web-terminal-ef02ad68-c98e-4bb1-91f9-85cefe7ed214"]
+      },
+      "terminalRead": {
+        "one": true,
+        "two": true
+      }
+    },
+    "b7Reopens": [
+      {
+        "cycle": 1,
+        "dom": {
+          "tabCount": 3,
+          "strips": 2,
+          "active": ["web-terminal-8fdafd75-bccc-49fd-9599-8d1b10b3f46c"]
+        },
+        "store": {
+          "activeTabId": "web-terminal-8fdafd75-bccc-49fd-9599-8d1b10b3f46c",
+          "groupCount": 2
+        },
+        "host": {
+          "tabCount": 3,
+          "groupCount": 2,
+          "activeTabId": "ef02ad68-c98e-4bb1-91f9-85cefe7ed214::8aa17a03-98e7-4ac9-8a9a-d8b8fc26dc01"
+        },
+        "agreement": {
+          "dom": "web-terminal-8fdafd75-bccc-49fd-9599-8d1b10b3f46c",
+          "store": "web-terminal-8fdafd75-bccc-49fd-9599-8d1b10b3f46c",
+          "hostLocal": "web-terminal-ef02ad68-c98e-4bb1-91f9-85cefe7ed214"
+        },
+        "terminalRead": {
+          "one": true,
+          "two": true
+        }
+      },
+      {
+        "cycle": 2,
+        "dom": {
+          "tabCount": 3,
+          "strips": 2,
+          "active": ["web-terminal-ef02ad68-c98e-4bb1-91f9-85cefe7ed214"]
+        },
+        "store": {
+          "activeTabId": "web-terminal-ef02ad68-c98e-4bb1-91f9-85cefe7ed214",
+          "groupCount": 2
+        },
+        "host": {
+          "tabCount": 3,
+          "groupCount": 2,
+          "activeTabId": "ef02ad68-c98e-4bb1-91f9-85cefe7ed214::8aa17a03-98e7-4ac9-8a9a-d8b8fc26dc01"
+        },
+        "agreement": {
+          "dom": "web-terminal-ef02ad68-c98e-4bb1-91f9-85cefe7ed214",
+          "store": "web-terminal-ef02ad68-c98e-4bb1-91f9-85cefe7ed214",
+          "hostLocal": "web-terminal-ef02ad68-c98e-4bb1-91f9-85cefe7ed214"
+        },
+        "terminalRead": {
+          "one": true,
+          "two": true
+        }
+      },
+      {
+        "cycle": 3,
+        "dom": {
+          "tabCount": 3,
+          "strips": 2,
+          "active": ["web-terminal-8fdafd75-bccc-49fd-9599-8d1b10b3f46c"]
+        },
+        "store": {
+          "activeTabId": "web-terminal-8fdafd75-bccc-49fd-9599-8d1b10b3f46c",
+          "groupCount": 2
+        },
+        "host": {
+          "tabCount": 3,
+          "groupCount": 2,
+          "activeTabId": "8fdafd75-bccc-49fd-9599-8d1b10b3f46c::0731c91d-8e94-4d04-b6dc-2126db0e4561"
+        },
+        "agreement": {
+          "dom": "web-terminal-8fdafd75-bccc-49fd-9599-8d1b10b3f46c",
+          "store": "web-terminal-8fdafd75-bccc-49fd-9599-8d1b10b3f46c",
+          "hostLocal": "web-terminal-8fdafd75-bccc-49fd-9599-8d1b10b3f46c"
+        },
+        "terminalRead": {
+          "one": true,
+          "two": true
+        }
+      }
+    ],
+    "a3Close": {
+      "before": {
+        "tabCount": 3,
+        "groupCount": 2
+      },
+      "closedParent": "ef02ad68-c98e-4bb1-91f9-85cefe7ed214",
+      "closeOk": true,
+      "after": {
+        "tabCount": 2,
+        "groupCount": 2,
+        "closedStillListed": false
+      },
+      "dom": {
+        "tabCount": 2,
+        "strips": 2
+      },
+      "terminalReadRemaining": true,
+      "hostFinal": {
+        "tabCount": 2,
+        "groupCount": 2
+      }
+    },
+    "b10": {
+      "embedUrl": "https://100.67.197.59:18444/h/dev-local-02/cloud-admin.html?api=https%3A%2F%2F127.0.0.1%3A18787&embed=1&project=proj_c1cc0f50",
+      "copyButtonId": "cloud-workspace-file-copy",
+      "copyStatusText": "复制内容",
+      "eventCount": 9,
+      "events": [
+        {
+          "seq": 1850,
+          "eventType": "file_copy",
+          "actor": "zhangsan",
+          "result": "success",
+          "fileName": "README.md",
+          "copyKind": "content-whole",
+          "capturePoint": "web-clipboard-api",
+          "hostId": "host_b58500c3"
+        },
+        {
+          "seq": 1604,
+          "eventType": "file_copy",
+          "actor": "zhangsan",
+          "result": "success",
+          "fileName": "README.md",
+          "copyKind": "content-whole",
+          "capturePoint": "web-clipboard-api",
+          "hostId": "host_b58500c3"
+        },
+        {
+          "seq": 1273,
+          "eventType": "file_copy",
+          "actor": "zhangsan",
+          "result": "success",
+          "fileName": "README.md",
+          "copyKind": "content-whole",
+          "capturePoint": "web-clipboard-api",
+          "hostId": "host_b58500c3"
+        },
+        {
+          "seq": 1001,
+          "eventType": "file_copy",
+          "actor": "zhangsan",
+          "result": "success",
+          "fileName": "README.md",
+          "copyKind": "content-whole",
+          "capturePoint": "web-clipboard-api",
+          "hostId": "host_b58500c3"
+        },
+        {
+          "seq": 679,
+          "eventType": "file_copy",
+          "actor": "zhangsan",
+          "result": "success",
+          "fileName": "README.md",
+          "copyKind": "content-whole",
+          "capturePoint": "web-clipboard-api",
+          "hostId": "host_b58500c3"
+        }
+      ]
+    },
+    "adminLogin": {
+      "status": 200,
+      "ok": true
+    },
+    "routing": {
+      "projectId": "proj_c1cc0f50",
+      "detailHash": "#/projects/proj_c1cc0f50?tab=perms",
+      "beforeHash": "#/projects/proj_c1cc0f50?tab=perms",
+      "afterHash": "#/projects/proj_c1cc0f50?tab=perms",
+      "hashPreserved": true,
+      "dialogVisible": true,
+      "dialogAfterReload": true,
+      "members": {
+        "hash": "#/members",
+        "notFound": true
+      }
+    },
+    "b9PermCards": {
+      "dev-local-02": [
+        {
+          "key": "view",
+          "label": "查看",
+          "subjects": 0
+        },
+        {
+          "key": "control",
+          "label": "控制",
+          "subjects": 1
+        },
+        {
+          "key": "manage",
+          "label": "管理",
+          "subjects": 0
+        }
+      ],
+      "dev-local-03": [
+        {
+          "key": "view",
+          "label": "查看",
+          "subjects": 0
+        },
+        {
+          "key": "control",
+          "label": "控制",
+          "subjects": 1
+        },
+        {
+          "key": "manage",
+          "label": "管理",
+          "subjects": 0
+        }
+      ]
+    },
+    "b10AuditUi": {
+      "rows": [
+        "2026/11/16 18:35:18 zhangsan 复制 file_copy 客户端自报 · advisory proj_c1cc0f50 dev-local-02 README.md 复制 97 B · 69 字符 / 97 字节 · README.md ✓ 成功 tr_d2b9ebee26a141ed95f4bc14e0cee96c 复制 展开",
+        "复制内容摘录 未记录内容摘录（仅保留指纹） 内容指纹与复制长度 sha256:08c0de2bc48fe39b63c45f9839f2d6fbfdbe9a737912e2cc077b0fc7749e55c3 复制 69 字符 / 97 字节 · 仅记录指纹，不可反推内容",
+        "2026/11/16 18:20:00 zhangsan 复制 file_copy 客户端自报 · advisory proj_c1cc0f50 dev-local-02 README.md 复制 97 B · 69 字符 / 97 字节 · README.md ✓ 成功 tr_09f24b0d045742c2b3d46de9566cc06b 复制 展开",
+        "复制内容摘录 未记录内容摘录（仅保留指纹） 内容指纹与复制长度 sha256:08c0de2bc48fe39b63c45f9839f2d6fbfdbe9a737912e2cc077b0fc7749e55c3 复制 69 字符 / 97 字节 · 仅记录指纹，不可反推内容",
+        "2026/11/16 18:08:29 zhangsan 复制 file_copy 客户端自报 · advisory proj_c1cc0f50 dev-local-02 README.md 复制 97 B · 69 字符 / 97 字节 · README.md ✓ 成功 tr_f0e8591ba9fb4d3d876cee0a57858461 复制 展开"
+      ],
+      "matched": 10,
+      "filter": {
+        "event": "file_copy",
+        "fileName": "README.md"
+      }
+    },
+    "logout": {
+      "hash": "#/login",
+      "access": null,
+      "refresh": null
+    }
+  },
+  "gates": {
+    "baseline_probed_before_drill": true,
+    "a1_workspace_terminal": true,
+    "a2_three_tabs_two_groups_before_reload": true,
+    "a2_reload_dom_store_host_agree": false,
+    "a2_reload_content_markers": true,
+    "b6_f5_restores_three_tabs_content": true,
+    "b7_reopen_three_times": false,
+    "a3_close_semantics": true,
+    "b8_deeplink_hash_preserved": true,
+    "b8_members_404": true,
+    "b9_permission_three_cards": true,
+    "b10_copy_captured_and_auditable": true,
+    "b8_logout_clears_hash": true
+  },
+  "measurements": {
+    "baselineCounts": {
+      "demo-app": 3,
+      "infra-tools": 1,
+      "zhangsan-lab": 4,
+      "zhangsan-demo": 2
+    }
+  },
+  "errors": [],
+  "ok": false
+}

@@ -1,0 +1,20 @@
+=== B) Orca web client via relay (hosts serve out/web) ===
+GET web-index.html status: 200
+served web-index sha256: bee94d9208804ffe8ba31b577d3cccde5d80953c9d0f09370d4de19830ff9cc0
+out/web/web-index sha256: bee94d9208804ffe8ba31b577d3cccde5d80953c9d0f09370d4de19830ff9cc0
+-- served html --
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Orca Web</title>
+    <script type="module" crossorigin src="./assets/web-Ba9qwhAX.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/main-BMQKJ13j.js">
+    <link rel="modulepreload" crossorigin href="./assets/preload-helper-Bx-dKjAD.js">
+    <link rel="stylesheet" crossorigin href="./assets/main-Bz0wxyn2.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

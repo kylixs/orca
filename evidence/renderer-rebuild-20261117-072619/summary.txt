@@ -1,0 +1,29 @@
+Renderer-only production rebuild (U169 v2)
+==========================================
+Command (run from repo root, no VITE_EXPOSE_STORE in env):
+  ORCA_ELECTRON_VITE_TARGET=renderer node config/scripts/run-electron-vite-build.mjs \
+    --config config/electron-vite-target.config.cts --ignoreConfigWarning --mode production
+
+Target config only carries electronViteConfig.renderer, so out/main and out/preload were not written.
+
+Before -> After
+  out/renderer/index.html        6470b31984b5fc760c217b870e89bd119b74f4ae46cc0730c26a535d2eb25f94
+                              -> 0ce88e37225be60f456ed57cdcc6282dd9867034c07e0de064a55e1e7ce8faeb
+  out/renderer/.vite/manifest.json 287a1d8997b5747075ccef81d4f683543722042f47af88d4accb8bdbf799f1bd
+                              -> d77eaeb659a93dad1f8fc555ce1db5e56ac1e0f3db270bdbb37f665f43d8f03c
+  web-session-tabs-sync chunk   B84SGzJh.js 7b19eb... -> BFSkGEbR.js bb60dca58cc3435ae8b2fff6e4a224401260417b14005829886d0c9fd19dfbdf
+
+Unchanged outputs (mtimes still 06:57):
+  out/main/index.js     Nov 17 06:57:45
+  out/preload/index.js  Nov 17 06:57:46
+
+Markers
+  __monacoEditorE2E hits: 0 (assets + index.html)
+  isKnownHostSessionGroupId hits: 4 across 2 chunks
+    out/renderer/assets/web-session-tabs-sync-BFSkGEbR.js (1, plus resolveHostSessionGroupIdForWebSessionGroup)
+    out/renderer/assets/web-runtime-session-wg1lyoK-.js (guard call site)
+  exposeStore constant true: none (minified constants nP=!1, Zn=!1; no VITE_EXPOSE_STORE literal)
+  Renderer boot graph gate: PASS (390 chunks, 5150.7 KB minified)
+
+Running host: existing BrowserWindows keep their already-loaded renderer; the new
+out/renderer is picked up only when a window is (re)created, e.g. after an app restart.

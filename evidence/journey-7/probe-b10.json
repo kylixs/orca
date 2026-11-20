@@ -1,0 +1,36 @@
+{
+  "base": "https://127.0.0.1:18787",
+  "steps": {
+    "frames": [
+      "https://127.0.0.1:18787/#/workspace/proj_4b5721f0",
+      "https://100.67.197.59:18444/h/dev-local-02/cloud-admin.html?api=https%3A%2F%2F127.0.0.1%3A18787&embed=1&project=proj_4b5721f0"
+    ],
+    "iframeUrl": "https://100.67.197.59:18444/h/dev-local-02/cloud-admin.html?api=https%3A%2F%2F127.0.0.1%3A18787&embed=1&project=proj_4b5721f0",
+    "simpleWorkspace": true,
+    "treeVisible": true,
+    "fileTreeMarkers": [
+      "cloud-simple-workspace-right-panel",
+      "cloud-workspace-file-tree-node-docs",
+      "cloud-workspace-file-tree-node-src",
+      "cloud-workspace-file-tree-node-README.md"
+    ],
+    "copyButton": "cloud-workspace-file-copy",
+    "copyStatusText": "复制内容",
+    "clipboardLength": 80,
+    "frameClipboardLength": null,
+    "events": [
+      {
+        "eventType": "file_copy",
+        "actor": "zhangsan",
+        "result": "success",
+        "fileName": "README.md",
+        "copyKind": "content-whole",
+        "capturePoint": "web-clipboard-api",
+        "hostId": "host_b58500c3"
+      }
+    ]
+  },
+  "errors": [
+    "Permissions policy violation: The Clipboard API has been blocked because of a permissions policy applied to the current document. See https://crbug.com/414348233 for more details."
+  ]
+}

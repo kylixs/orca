@@ -1,0 +1,65 @@
+U90 — M104 cloud-connection-establish-latency node-pool failure: root cause and fix
+====================================================================================
+
+Symptom (as recorded by U87, evidence/u87-fix/after-full.json)
+- Direct and relay describes both red in the node pool: platform port ECONNREFUSED at
+  sample time (~12-18s in), then both afterAll `stopRelayStack` calls burn the 60s hook
+  timeout. Reproduced on the node pool and independent of the U87 routing change.
+
+Root cause: two separate defects, one external trigger
+-----------------------------------------------------
+1. Platform child killed by a broad external kill (trigger).
+   The fixture starts the platform with `spawn(process.execPath,
+   ['cloud-platform/apps/api/src/server.ts'])` (cloud-platform-server-process.ts).
+   The persistent local-env platform on 18787 runs the same argv, and the reseed
+   workflow used a broad `pkill -9 -f "apps/api/src/server.ts"` (captured verbatim in
+   evidence/u88-fix/autopsy-u88.txt; two reseed runs in evidence/u88-fix/reseed-run*.log).
+   That pattern also matches every fixture platform child, so M104's platform was
+   SIGKILL'd mid-sampling -> client sees ECONNREFUSED on the platform port. The kill
+   landing ~12-18s into the direct/relay sampling matches the recorded symptom; the
+   reseed ran more than once, so both describes were hit.
+
+2. Teardown hang because signal death was not recognised (amplifier).
+   `Platform.stop()` resolved only when `proc.exitCode !== null`. A signal-killed child
+   keeps `exitCode === null` with `signalCode` set, and its 'exit' event has already
+   fired, so the late `proc.once('exit')` never fires -> 60s hook timeout per describe.
+
+Why the cause was invisible
+- The fixture piped the platform's stderr but attached no reader, and never recorded the
+  child's exit code/signal. All an observer saw was ECONNREFUSED.
+
+Fix (fixtures only; no product code, no assertion changes)
+----------------------------------------------------------
+- cloud-platform-server-process.ts (startPlatform):
+  * drain stdout AND stderr into one log buffer (unread stderr previously hid crashes
+    and could block the child on a full pipe);
+  * record exit code/signal; reject startup with the log tail; print
+    `[platform] exited before teardown (code=... signal=...): <log tail>` when the child
+    exits after ready but before stop() was requested;
+  * stop() treats `exit || exitCode !== null || signalCode !== null` as already exited,
+    so a signal-killed platform tears down immediately instead of hanging 60s.
+- cloud-latency-hop-fixture.ts (startLatencyHop.close):
+  * track proxied client/upstream sockets and destroy them before `server.close()`;
+    Node's server.close() waits for open connections, so one lingering proxied session
+    could otherwise hang teardown for the full hook timeout.
+
+Verification (node-runtime pool; `pnpm test <files>` routes these to that pool)
+------------------------------------------------------------------------------
+- pre-fix, isolated:           PASS  40.28s, 1 file / 2 tests   (evidence/u90-fix/u90-m104-run1.log)
+- pre-fix, M102+M103+M104:     PASS  40.75s, 3 files / 4 tests  (evidence/u90-fix/u90-m104-run2.log)
+- post-fix, isolated:          PASS  39.62s, 1 file / 2 tests   (evidence/u90-fix/u90-m104-run3.log)
+- post-fix, M102+M103+M104:    PASS  41.51s, 3 files / 4 tests  (evidence/u90-fix/u90-m104-run4.log)
+- typecheck: `pnpm tc:node` PASS (evidence/u90-fix/u90-tc.log)
+- oxlint on both changed files: clean
+
+Environment note
+- The trigger is external to the suite (broad pkill used by the local-env reseed).
+  U89 bans broad pkill/killall in agent process cleanup; with the narrowed cleanup the
+  suite is consistently green in this worktree (runs 1-4). The fixture now fails fast and
+  prints the killer evidence (exit code/signal + log tail) instead of hanging 60s if a
+  broad kill ever recurs.
+- The persistent platform on 18787 was probed before, during and after these runs and
+  was never touched by this work; only PIDs spawned by startRelayStack were stopped.
+- Same platform-start/stop bug exists in local copies inside
+  cloud-revocation-precision.test.ts and cloud-session-service.test.ts (not on the U90
+  path); worth a follow-up to reuse the shared fixture.

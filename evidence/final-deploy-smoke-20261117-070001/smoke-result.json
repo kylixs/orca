@@ -1,0 +1,126 @@
+{
+  "marker": "PROD-FINAL-20261117-070001",
+  "steps": {
+    "login": {
+      "at": "2026-11-16T23:07:25.153Z",
+      "submitted": true
+    },
+    "workspace": {
+      "at": "2026-11-16T23:07:30.959Z",
+      "worktreeId": null,
+      "tabs": [
+        "web-terminal-fbcdcb4c-d62b-44b0-bbbd-5933f52fd4e9",
+        "web-terminal-fe078f59-279d-4ef4-84cb-f0276fdd9ee9",
+        "web-terminal-5aedd6a3-f8c8-4e2c-ac50-e38b98c63a97",
+        "web-terminal-6def1288-1274-4b88-8c61-3f5cbd2cc6a0",
+        "web-terminal-b33907a3-f986-47cc-b18e-234cbe98cd44",
+        "web-terminal-7c6bb40e-cb58-45aa-84dd-743e1e3b5eb3",
+        "web-terminal-49d58733-d65c-45b9-bdb6-31a3f52dcdbd"
+      ]
+    },
+    "new-terminal": {
+      "at": "2026-11-16T23:07:34.132Z",
+      "path": "runtime-rpc",
+      "countBefore": 7,
+      "created": [
+        "b3e339db-bbcd-4e96-b4f9-b65301929442"
+      ],
+      "rpc": {
+        "envId": "web-38ee5db4-9fb1-49f7-a28b-a89d5846b3f6",
+        "worktree": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3",
+        "createdRes": {
+          "id": "web-rpc-33-1794870451013",
+          "ok": true,
+          "result": {
+            "terminal": {
+              "handle": "term_4028a85e63631069f8c674cdb77b4644",
+              "tabId": "b3e339db-bbcd-4e96-b4f9-b65301929442",
+              "paneKey": "b3e339db-bbcd-4e96-b4f9-b65301929442:df21dda2-f402-4dd8-b1eb-77e5d452da68",
+              "ptyId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3@@1cd620b1",
+              "worktreeId": "6269a393-e401-4227-8bb3-9de63bdb6648::/Users/gongdewei/orca-local-env/host/projects/zhangsan-demo/.orca-worktrees/zhangsan/main-3",
+              "title": null,
+              "executionHostId": "local",
+              "incarnationId": "7bc66ba6-0032-4dcc-8633-130d1072500c",
+              "hostPlatform": "darwin",
+              "surface": "visible"
+            }
+          },
+          "_meta": {
+            "runtimeId": "8524515a-4797-4645-8e24-eab50d58d3ca"
+          }
+        },
+        "handle": "term_4028a85e63631069f8c674cdb77b4644",
+        "tabId": "b3e339db-bbcd-4e96-b4f9-b65301929442",
+        "send": {
+          "id": "web-rpc-34-1794870451085",
+          "ok": true,
+          "result": {
+            "send": {
+              "handle": "term_4028a85e63631069f8c674cdb77b4644",
+              "accepted": true,
+              "bytesWritten": 32
+            }
+          },
+          "_meta": {
+            "runtimeId": "8524515a-4797-4645-8e24-eab50d58d3ca"
+          }
+        },
+        "read": {
+          "id": "web-rpc-37-1794870454119",
+          "ok": true,
+          "result": {
+            "terminal": {
+              "handle": "term_4028a85e63631069f8c674cdb77b4644",
+              "status": "running",
+              "tail": [
+                "",
+                "PROD-FINAL-20261117-070001",
+                "gongdewei@GongDeweideMacBook-Pro main-3 %"
+              ],
+              "truncated": false,
+              "limited": false,
+              "oldestCursor": "0",
+              "nextCursor": "2",
+              "latestCursor": "2",
+              "returnedLineCount": 3,
+              "source": "stream"
+            }
+          },
+          "_meta": {
+            "runtimeId": "8524515a-4797-4645-8e24-eab50d58d3ca"
+          }
+        }
+      }
+    },
+    "echo": {
+      "at": "2026-11-16T23:07:39.654Z",
+      "focused": true,
+      "marker": "PROD-FINAL-20261117-070001",
+      "matchedLines": [],
+      "rpcReadOk": true,
+      "rpcMarkerHits": 1,
+      "outputLine": true,
+      "pass": true,
+      "rpcReadTail": "{\"terminal\":{\"handle\":\"term_4028a85e63631069f8c674cdb77b4644\",\"status\":\"running\",\"tail\":[\"\",\"PROD-FINAL-20261117-070001\",\"gongdewei@GongDeweideMacBook-Pro main-3 %\"],\"truncated\":false,\"limited\":false,\"oldestCursor\":\"0\",\"nextCursor\":\"2\",\"latestCursor\":\"2\",\"returnedLineCount\":3,\"source\":\"stream\"}}",
+      "tail": ""
+    },
+    "refresh-restore": {
+      "at": "2026-11-16T23:07:41.062Z",
+      "worktreeId": null,
+      "tabs": [
+        "web-terminal-fbcdcb4c-d62b-44b0-bbbd-5933f52fd4e9",
+        "web-terminal-fe078f59-279d-4ef4-84cb-f0276fdd9ee9",
+        "web-terminal-5aedd6a3-f8c8-4e2c-ac50-e38b98c63a97",
+        "web-terminal-6def1288-1274-4b88-8c61-3f5cbd2cc6a0",
+        "web-terminal-b33907a3-f986-47cc-b18e-234cbe98cd44",
+        "web-terminal-7c6bb40e-cb58-45aa-84dd-743e1e3b5eb3",
+        "web-terminal-49d58733-d65c-45b9-bdb6-31a3f52dcdbd",
+        "web-terminal-b3e339db-bbcd-4e96-b4f9-b65301929442"
+      ],
+      "count": 8,
+      "createdRestored": true,
+      "pass": true
+    }
+  },
+  "errors": []
+}

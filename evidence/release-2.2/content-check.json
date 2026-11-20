@@ -1,0 +1,35 @@
+{
+  "mark": "RELEASE22-CONTENT-1794807828800",
+  "args": [],
+  "steps": {
+    "open1": {
+      "tabCount": 3,
+      "xterm": 3,
+      "domRows": 2
+    },
+    "typed": {
+      "frameHits": 0,
+      "typedTail": " \n "
+    },
+    "reload": {
+      "tabsRestoredMs": 61420,
+      "tabCount": 3,
+      "xterm": 3,
+      "domRows": 2,
+      "markFrameHits": 0,
+      "markRestoredOverWire": false,
+      "rowsTail": " \n "
+    },
+    "reopen": {
+      "tabCount": 3,
+      "xterm": 3,
+      "domRows": 2,
+      "markFrameHits": 0,
+      "markRestoredOverWire": false,
+      "rowsTail": " \n "
+    }
+  },
+  "consoleErrors": [],
+  "failedRequests": [],
+  "ws": {}
+}

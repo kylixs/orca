@@ -1,0 +1,62 @@
+{
+  "station": "U96-A1",
+  "entry": "web-index.html?api=<platform>#handoff=<code>",
+  "markerOne": "U96-A8-E2E-ONE-1794848901454",
+  "markerTwo": "U96-A8-E2E-TWO-1794848901454",
+  "worktreeId": "9871e220-8972-4092-912a-3e4bcfa538b6::/private/tmp/u91-journey-jtDi5T/projects/u91-git/.orca-worktrees/zhangsan/main",
+  "createdHostTabIds": [
+    "3dbb47bd-68d4-47ca-ad26-925804a253e3",
+    "39731e6c-42e8-4838-a875-63bfddfe8cad",
+    "20499402-4234-4dce-9325-9e0f061d6ad2"
+  ],
+  "before": {
+    "tabCount": 6,
+    "groupCount": 2,
+    "groups": [
+      {
+        "id": "4fdb4e6b-7592-4e99-a68e-0cf41657b281",
+        "tabOrder": [
+          "aeabdb16-2b90-45ff-ab45-f8eb4713b4de",
+          "terminal-c9153773-129c-4dcc-b857-52aecbdfd8b0",
+          "terminal-265eae94-719f-4400-904f-52a89c1dc99e",
+          "3dbb47bd-68d4-47ca-ad26-925804a253e3",
+          "20499402-4234-4dce-9325-9e0f061d6ad2"
+        ]
+      },
+      {
+        "id": "d6bb6019-b327-40c6-aa7a-365746148341",
+        "tabOrder": [
+          "39731e6c-42e8-4838-a875-63bfddfe8cad"
+        ]
+      }
+    ],
+    "activeTabId": "39731e6c-42e8-4838-a875-63bfddfe8cad::90598ff4-1340-4484-bfb3-66af690dd173",
+    "activeGroupId": "d6bb6019-b327-40c6-aa7a-365746148341"
+  },
+  "after": {
+    "tabCount": 6,
+    "groupCount": 2,
+    "groups": [
+      [
+        "web-terminal-aeabdb16-2b90-45ff-ab45-f8eb4713b4de",
+        "web-terminal-terminal-c9153773-129c-4dcc-b857-52aecbdfd8b0",
+        "web-terminal-terminal-265eae94-719f-4400-904f-52a89c1dc99e",
+        "web-terminal-3dbb47bd-68d4-47ca-ad26-925804a253e3"
+      ],
+      [
+        "web-terminal-39731e6c-42e8-4838-a875-63bfddfe8cad",
+        "web-terminal-20499402-4234-4dce-9325-9e0f061d6ad2"
+      ]
+    ],
+    "activeLocalTabId": "web-terminal-39731e6c-42e8-4838-a875-63bfddfe8cad",
+    "markersVisible": [
+      "U96-A8-E2E-ONE-1794848901454",
+      "U96-A8-E2E-TWO-1794848901454"
+    ],
+    "reauthenticationCalls": []
+  },
+  "screenshots": [
+    "u96-a1-before-reload.png",
+    "u96-a1-after-reload.png"
+  ]
+}

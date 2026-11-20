@@ -1,0 +1,115 @@
+{
+  "mark": "RELEASE2-MARK-1794804728572",
+  "user": "zhangsan",
+  "steps": {
+    "baseline": {
+      "tabs": [
+        {
+          "id": "web-terminal-c474504a-4784-4440-a724-83ff14166767",
+          "title": "Terminal 3"
+        }
+      ],
+      "xterm": 1,
+      "visibleXterm": 1,
+      "text": "",
+      "overlay": false,
+      "appLayout": true,
+      "signIn": false
+    },
+    "menuItem": "New Terminal⌘T",
+    "menuSnapshots": [
+      {
+        "i": 0,
+        "tabs": 1,
+        "xterm": 1,
+        "overlay": false
+      },
+      {
+        "i": 14,
+        "tabs": 1,
+        "xterm": 1,
+        "overlay": false
+      },
+      {
+        "i": 28,
+        "tabs": 1,
+        "xterm": 1,
+        "overlay": false
+      },
+      {
+        "i": 42,
+        "tabs": 1,
+        "xterm": 1,
+        "overlay": false
+      },
+      {
+        "i": 56,
+        "tabs": 0,
+        "xterm": 0,
+        "overlay": true
+      },
+      {
+        "i": 70,
+        "tabs": 0,
+        "xterm": 0,
+        "overlay": true
+      },
+      {
+        "i": 84,
+        "tabs": 0,
+        "xterm": 0,
+        "overlay": true
+      },
+      {
+        "i": 98,
+        "tabs": 0,
+        "xterm": 0,
+        "overlay": true
+      },
+      {
+        "i": 112,
+        "tabs": 0,
+        "xterm": 0,
+        "overlay": true
+      },
+      {
+        "i": 126,
+        "tabs": 0,
+        "xterm": 0,
+        "overlay": true
+      },
+      {
+        "i": 140,
+        "tabs": 0,
+        "xterm": 0,
+        "overlay": true
+      },
+      {
+        "i": 154,
+        "tabs": 0,
+        "xterm": 0,
+        "overlay": true
+      },
+      {
+        "i": 168,
+        "tabs": 0,
+        "xterm": 0,
+        "overlay": true
+      }
+    ],
+    "afterMenuClick": {
+      "tabs": [],
+      "xterm": 0,
+      "visibleXterm": 0,
+      "text": "",
+      "overlay": true,
+      "appLayout": false,
+      "signIn": false
+    },
+    "menuCreated": false
+  },
+  "errors": [],
+  "tipsInitial": 1,
+  "phase": "menu",
+  "failure": "Error: second tab not created; overlay=true tabs=0"
+}

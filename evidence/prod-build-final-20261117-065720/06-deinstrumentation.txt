@@ -1,0 +1,17 @@
+# De-instrumentation verification
+preload MODE=production: production
+preload VITE_EXPOSE_STORE baked key present: no
+preload exposeStore runtime expr: var exposeStore = preloadEnv?.MODE === "e2e" || isEnvFlagEnabled(preloadEnv?.VITE_EXPOSE_STORE);
+preload exposeStore:!0 literal: 0
+
+renderer __monacoEditorE2E (files): 0
+out/web exposeStore:!0: 0
+out/web VITE_EXPOSE_STORE baked: 0
+out/web exposeStore truthy constants (GN/ir): GN=!1 in store bundle, ir=!1 in web-root bundle
+
+main rendererAuthoredLayoutDigest occurrences: 1
+main U168 paired fallback compiled snippet:
+FOUND: activeGroupId:f?i.activeGroupId:t.activeGroupId,activeTabId:f?a.activeTabId:t.activeTabId,activeTabType:f?a.activeTabType:t.activeTabType
+context: ntFences(r);this.releaseRuntimeSessionOwnershipForRendererRetiredTabs(i,t);let a=this.mergePreservedHeadlessMobileSessionTabs(i,t),o=n!==void 0&&n.publicationEpoch===e.publicationEpoch,s=n!==void 0&&T3o(e)===n.rendererTabGroupLayoutSignature,c=n===void 0?!1:n.rendererAuthoredLayoutDigest===void 0?s:
+
+fencedSnapshot resolve context: applyMobileSessionRetirementFences(e){let t=e;for(let n of e.tabs){if(n.type!==`terminal`||this.isMobileSessionSurfaceMe

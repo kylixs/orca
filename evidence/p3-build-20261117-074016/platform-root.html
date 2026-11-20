@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Orca Cloud 云端开发平台</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/assets/8f5651b109ab/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- 登录 -->
+      <section id="view-login" class="login-wrap" hidden>
+        <form class="login-card" id="loginForm" novalidate>
+          <div class="brand">
+            <svg viewBox="0 0 24 24" class="brand-mark" aria-hidden="true">
+              <rect
+                x="3"
+                y="3"
+                width="18"
+                height="18"
+                rx="5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+              />
+              <path
+                d="M8 15.5 12 8l4 7.5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linejoin="round"
+              />
+            </svg>
+            <span>ORCA CLOUD</span>
+          </div>
+          <h1>登录云端开发平台</h1>
+          <p class="muted">使用公司域账号登录</p>
+
+          <label class="field">
+            <span>域账号</span>
+            <input
+              id="username"
+              name="username"
+              autocomplete="username"
+              placeholder="域账号，如 zhangsan"
+              required
+            />
+          </label>
+          <label class="field">
+            <span>密码</span>
+            <div class="password-row">
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autocomplete="current-password"
+                placeholder="密码"
+                required
+              />
+              <button
+                type="button"
+                class="icon-btn"
+                id="togglePassword"
+                aria-label="显示密码"
+                aria-pressed="false"
+              >
+                <svg viewBox="0 0 24 24">
+                  <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              </button>
+            </div>
+          </label>
+          <p class="inline-error" id="loginError" hidden></p>
+          <button class="btn primary block" id="loginBtn" type="submit">登录</button>
+          <p class="login-foot">
+            登录即表示同意《平台使用规范》。<span class="tag">内网直连 / 外网访问</span>
+          </p>
+        </form>
+      </section>
+
+      <!-- 主框架 -->
+      <div id="view-app" class="shell" hidden>
+        <aside class="sidebar">
+          <div class="brand small">
+            <svg viewBox="0 0 24 24" class="brand-mark" aria-hidden="true">
+              <rect
+                x="3"
+                y="3"
+                width="18"
+                height="18"
+                rx="5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+              />
+              <path
+                d="M8 15.5 12 8l4 7.5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linejoin="round"
+              />
+            </svg>
+            <span>ORCA CLOUD</span>
+          </div>
+          <nav class="nav" id="nav">
+            <button data-route="workbench" class="nav-item">工作台</button>
+            <button data-route="projects" class="nav-item">我的项目</button>
+            <div class="nav-group" id="adminNav" hidden>
+              <p class="nav-label">管理</p>
+              <button data-route="hosts" class="nav-item">主机</button>
+              <button data-route="relays" class="nav-item">中继</button>
+              <button data-route="users" class="nav-item">用户管理</button>
+              <button data-route="audit" class="nav-item">审计日志</button>
+              <button data-route="settings" class="nav-item">平台设置</button>
+            </div>
+          </nav>
+          <div class="user-box">
+            <div class="avatar" id="userAvatar">—</div>
+            <div class="user-meta">
+              <span id="userName">—</span>
+              <span class="muted" id="userDept"></span>
+            </div>
+            <button class="link-btn" id="logoutBtn">退出</button>
+          </div>
+        </aside>
+
+        <main class="main">
+          <header class="topbar">
+            <div class="crumbs" id="crumbs">工作台</div>
+            <div class="topbar-actions">
+              <span class="role-chip" id="roleChip"></span>
+              <button class="btn ghost" id="open403">查看无权限页</button>
+            </div>
+          </header>
+          <div class="content" id="content"></div>
+        </main>
+
+        <!-- U80 M1: 移动端底部导航；桌面由 CSS 隐藏 -->
+        <nav class="tabbar" id="tabbar" aria-label="移动端主导航">
+          <button class="tabitem" type="button" data-route="workbench">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="4" y="4" width="6" height="9" rx="1" />
+              <rect x="14" y="4" width="6" height="5" rx="1" />
+              <rect x="4" y="17" width="6" height="3" rx="1" />
+              <rect x="14" y="13" width="6" height="7" rx="1" />
+            </svg>
+            <span>工作台</span>
+          </button>
+          <button class="tabitem" type="button" data-route="projects">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"
+              />
+            </svg>
+            <span>项目</span>
+          </button>
+          <button class="tabitem" type="button" id="tabAudit" data-route="audit">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="5" y="4" width="14" height="17" rx="2" />
+              <path d="M9 4.5h6M9 10h6M9 14h6M9 18h4" />
+            </svg>
+            <span>审计</span>
+          </button>
+          <button
+            class="tabitem"
+            type="button"
+            id="tabMore"
+            data-tab="more"
+            aria-expanded="false"
+            aria-controls="moreSheet"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+            <span>更多</span>
+          </button>
+        </nav>
+
+        <!-- U80 M1: 「更多」收纳桌面侧栏的管理入口与退出 -->
+        <div class="more-backdrop" id="moreSheet" hidden>
+          <div class="more-sheet" role="dialog" aria-modal="true" aria-label="更多">
+            <div class="more-sheet-head">
+              <strong>更多</strong>
+              <span class="muted" id="moreAccount"></span>
+              <button class="link-btn" type="button" id="moreLogout">退出</button>
+            </div>
+            <div class="more-list" id="moreNav">
+              <button class="more-item" type="button" data-route="hosts">主机</button>
+              <button class="more-item" type="button" data-route="relays">中继</button>
+              <button class="more-item" type="button" data-route="users">用户管理</button>
+              <button class="more-item" type="button" data-route="settings">平台设置</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/assets/8f5651b109ab/app.js"></script>
+  </body>
+</html>

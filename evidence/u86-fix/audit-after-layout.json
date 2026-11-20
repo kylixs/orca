@@ -1,0 +1,93 @@
+{
+  "visibleText": "审计日志\n\n查询身份、连接、文件下载与复制、下载拦截与管理操作事件。只追加、哈希链校验；保留 180 天，查询时间窗最大 31 天。已显示 32 条。\n\n覆盖范围与限制（审计链保证记录不被篡改，不保证记录完整）\n最近 24 小时\n最近 7 天（默认）\n最近 31 天\n全部操作\n下载族 · 下载 + 拦截\n复制族 · file_copy\n审计查询 · audit_query\n审计校验 · audit_verify\n连接拒绝 · connection_rejected\n设备撤销 · device_revoke\n目录读取 · directory_read\n下载拦截 · download_blocked\n复制文件内容 · file_copy\n文件下载 · file_download\n权限变更 · grant_update\n主机审计缺口 · host.audit_gap\n主机连接拒绝 · host.connection_rejected\n主机路径拒绝 · host.path_denied\n主机方法拒绝 · host.method_denied\n主机 E2EE 密钥变更 · host_e2ee_key_changed\n主机授权读取 · host_grant_read\n主机授权变更 · host_grant_update\n主机列表 · host_list\n主机维护 · host_maintenance\n项目根拒绝 · host_projects_root_rejected\n建项目策略变更 · host_provision_policy_update\n主机注册 · host_register\n主机撤销 · host_revoke\n主机 TLS 指纹变更 · host_tls_fingerprint_changed\n注册令牌签发 · host_token_create\n安装脚本取用 · install_script\n登录 · login\n登出 · logout\n策略变更 · policy_update\n连接 · project_access\n项目归档 · project_archive\n打开项目 · project_connect\n项目创建 · project_create\n项目开通 · project_provision\n项目恢复 · project_restore\n项目更新 · project_update\n项目根变更 · projects_root_change\n开通分配 · provision_assign\n中继列表 · relay_list\n角色变更 · role_update\n签名密钥轮换 · signing_key_rotate\n用户列表 · user_list\n会话交接 · web_handoff\n全部项目\npayment-service\ndemo-app\nzhangsan-demo\ninfra-tools\nzhangsan-lab\n全部主机\ndev-local-02\ndev-local-03\n全部结果\n成功\n失败\n拒绝\n查询\n清除\n时间\t用户\t操作\t项目\t主机\t文件 · 大小\t结果\t详情 / TRACEID\n2026/11/16 10:01:39\tadmin\tlogin\tdev_6f58d07ed755\t—\t—\t✓ 成功\t36f08e3b-324d-4ae5-b316-58182a9e6dcb 复制\n2026/11/16 10:01:38\tadmin\tlogin\tdev_d19429dd6944\t—\t—\t✓ 成功\tc6787e1e-1bb5-4e82-a3b6-a1583b7c8a10 复制\n2026/11/16 10:01:21\tadmin\tlogin\tdev_0e4492b82a4a\t—\t—\t✓ 成功\t6f0340c9-3593-4441-af3d-7b272f593f01 复制\n2026/11/16 10:00:44\tadmin\tweb_handoff\tproj_e8b1fb27\thost_89cd54aa\t—\t✓ 成功\t24a7e4bd-4306-4c43-839d-ee6a3940bcac 复制\n2026/11/16 10:00:44\tadmin\tweb_handoff\tproj_6dc390d2\thost_35356a32\t—\t✓ 成功\t6f206b61-0c57-47f3-9b26-ce3f30bb7832 复制\n2026/11/16 10:00:43\tadmin\tpolicy_update\tproj_6dc390d2\t—\t—\t✓ 成功\t074dbfa6-54f2-4597-b3b7-c51f8955e90c 复制\n2026/11/16 10:00:43\tadmin\tpolicy_update\tdownload\t—\t—\t✓ 成功\t11ea61e0-c3ae-45fc-900e-e74e4b97cee6 复制\n2026/11/16 10:00:43\tzhangsan\tproject_create\tproj_07d8e1b3\thost_89cd54aa\t—\t✓ 成功\t937de327-89b1-426a-b6c6-f5ff6b6255e5 复制\n2026/11/16 10:00:43\tadmin\tgrant_update\tproj_e8b1fb27\t—\t—\t✓ 成功\t94437f2e-2625-4ceb-b4da-21c0f2dfb896 复制\n2026/11/16 10:00:43\tadmin\tgrant_update\tproj_e8b1fb27\t—\t—\t✓ 成功\t545a7153-c331-4dd7-aa0b-913ec6b1c742 复制\n2026/11/16 10:00:43\tadmin\tproject_create\tproj_e8b1fb27\t—\t—\t✓ 成功\t20340bdf-b562-4a88-9a36-ab4b04a26263 复制\n2026/11/16 10:00:43\tadmin\tgrant_update\tproj_0cdd1b81\t—\t—\t✓ 成功\ta218abfa-13d2-446d-95bb-3506a4bf0812 复制\n2026/11/16 10:00:43\tadmin\tgrant_update\tproj_0cdd1b81\t—\t—\t✓ 成功\t9863ce15-67ab-4331-8a30-a4a1a1bbc554 复制\n2026/11/16 10:00:43\tzhangsan\tproject_create\tproj_0cdd1b81\thost_35356a32\t—\t✓ 成功\t947ca4b4-a5d5-47d3-89e8-c378b50d459c 复制\n2026/11/16 10:00:43\tadmin\tgrant_update\tproj_6dc390d2\t—\t—\t✓ 成功\td33bd24c-607f-48d2-8b38-352a843635f5 复制\n2026/11/16 10:00:43\tadmin\tgrant_update\tproj_6dc390d2\t—\t—\t✓ 成功\t2154d9f0-a1f5-4e4f-a8bb-0a310337d607 复制\n2026/11/16 10:00:43\tadmin\tgrant_update\tproj_6dc390d2\t—\t—\t✓ 成功\t9c92fcd8-e776-4737-a697-7a80db21c45d 复制\n2026/11/16 10:00:43\tadmin\tgrant_update\tproj_6dc390d2\t—\t—\t✓ 成功\t376fcfcb-79eb-4f62-9974-c5c627d6f6f4 复制\n2026/11/16 10:00:43\tadmin\tproject_create\tproj_6dc390d2\t—\t—\t✓ 成功\t89f51f27-476a-4eac-b7f5-211dd964b53e 复制\n2026/11/16 10:00:43\tadmin\thost_grant_update\thost_89cd54aa\thost_89cd54aa\t—\t✓ 成功\t00e79fd7-49e0-4dba-93e1-7921caae5768 复制\n2026/11/16 10:00:43\tadmin\thost_grant_update\thost_35356a32\thost_35356a32\t—\t✓ 成功\tfb59e329-f94c-4316-83c6-558419642aac 复制\n2026/11/16 10:00:42\t—\thost_e2ee_key_changed\thost_89cd54aa\t—\t—\t✓ 成功\tac2e7a71-b3c2-4892-bdf1-e1b07437ce4b 复制\n2026/11/16 10:00:42\tagent\thost_register\thost_89cd54aa\t—\t—\t✓ 成功\t56e4dd91-a2b5-4254-9d64-2ce18d39b992 复制\n2026/11/16 10:00:39\tadmin\thost_token_create\t—\t—\t—\t✓ 成功\td2abac9d-1995-4878-89c2-0a7467821c76 复制\n2026/11/16 10:00:39\t—\thost_e2ee_key_changed\thost_35356a32\t—\t—\t✓ 成功\t5989b434-d8fc-4a8d-be65-f3f2ac4a46e7 复制\n2026/11/16 10:00:39\tagent\thost_register\thost_35356a32\t—\t—\t✓ 成功\ta1222a77-9b8c-456a-8ab1-9301eeaa561e 复制\n2026/11/16 10:00:36\tadmin\thost_token_create\t—\t—\t—\t✓ 成功\t0f1b320e-99cd-4ef4-8302-145b5d76e857 复制\n2026/11/16 10:00:36\tadmin\thost_revoke\thost_dev001\t—\t—\t✓ 成功\t1276ba41-684a-4ddd-aa0a-f316dd82fa47 复制\n2026/11/16 10:00:36\tlisi\tlogin\tdev_35cd3ba76e98\t—\t—\t✓ 成功\t84971f51-a981-4881-99de-a687408907ea 复制\n2026/11/16 10:00:36\tzhangsan\tlogin\tdev_98d86b6f4b00\t—\t—\t✓ 成功\t644ad786-c7b7-469b-847d-cf3830c1cf18 复制\n2026/11/16 10:00:36\tadmin\tlogin\tdev_5190266cb0a4\t—\t—\t✓ 成功\te5b663cf-e9a2-47ae-9894-2cb174bc77b1 复制\n2026/11/16 10:00:36\tadmin\tlogin\tdev_fd29695aa4c6\t—\t—\t✓ 成功\t882c9d31-b0ca-434e-b146-7e68bdd65ea7 复制",
+  "textContent": "\n    审计日志查询身份、连接、文件下载与复制、下载拦截与管理操作事件。只追加、哈希链校验；保留 180 天，查询时间窗最大 31 天。已显示 32 条。\n    \n    \n      覆盖范围与限制（审计链保证记录不被篡改，不保证记录完整）\n      \n        可捕获：桌面云工作区下载（files.readChunk，客户端自报）、宿主 browser.download、移动端保存、应用内复制（Web / 桌面 / 移动端）、宿主拒绝与前端下载拦截。\n        \n          不可捕获：开发机 shell 的 scp / git push / curl / cp 等带外传输；Finder / Explorer、拖拽、第三方应用、截图 / 录屏 / OCR；纯浏览器「另存为」、跨域 iframe 选区、键盘 Ctrl+C（一期）。\n          缺口：客户端离线、绕过应用接缝、宿主进程重启可能丢事件；缺口可见性为 best-effort，宿主瞬时崩溃无法精确检测。\n          可信度：主机确认（host-attested）为宿主确认；客户端自报（client-declared）为 advisory，只表示客户端声明，不作为宿主确认结论；推断（inferred）为启发式归属。\n        \n      \n    \n    \n      \n      \n        最近 24 小时\n        最近 7 天（默认）\n        最近 31 天\n      \n      \n      \n      \n        全部操作\n        下载族 · 下载 + 拦截复制族 · file_copy审计查询 · audit_query审计校验 · audit_verify连接拒绝 · connection_rejected设备撤销 · device_revoke目录读取 · directory_read下载拦截 · download_blocked复制文件内容 · file_copy文件下载 · file_download权限变更 · grant_update主机审计缺口 · host.audit_gap主机连接拒绝 · host.connection_rejected主机路径拒绝 · host.path_denied主机方法拒绝 · host.method_denied主机 E2EE 密钥变更 · host_e2ee_key_changed主机授权读取 · host_grant_read主机授权变更 · host_grant_update主机列表 · host_list主机维护 · host_maintenance项目根拒绝 · host_projects_root_rejected建项目策略变更 · host_provision_policy_update主机注册 · host_register主机撤销 · host_revoke主机 TLS 指纹变更 · host_tls_fingerprint_changed注册令牌签发 · host_token_create安装脚本取用 · install_script登录 · login登出 · logout策略变更 · policy_update连接 · project_access项目归档 · project_archive打开项目 · project_connect项目创建 · project_create项目开通 · project_provision项目恢复 · project_restore项目更新 · project_update项目根变更 · projects_root_change开通分配 · provision_assign中继列表 · relay_list角色变更 · role_update签名密钥轮换 · signing_key_rotate用户列表 · user_list会话交接 · web_handoff\n      \n      \n      \n        全部项目\n        payment-servicedemo-appzhangsan-demoinfra-toolszhangsan-lab\n      \n      \n        全部主机\n        dev-local-02dev-local-03\n      \n      \n      \n        全部结果\n        成功\n        失败\n        拒绝\n      \n      \n        查询\n        清除\n      \n    \n    \n    \n      \n        时间用户操作项目主机文件 · 大小结果详情 / traceId\n        \n          \n      2026/11/16 10:01:39\n      admin\n      login\n      dev_6f58d07ed755\n      —\n      —\n      ✓ 成功\n      \n        36f08e3b-324d-4ae5-b316-58182a9e6dcb\n        复制\n        \n      \n    \n      2026/11/16 10:01:38\n      admin\n      login\n      dev_d19429dd6944\n      —\n      —\n      ✓ 成功\n      \n        c6787e1e-1bb5-4e82-a3b6-a1583b7c8a10\n        复制\n        \n      \n    \n      2026/11/16 10:01:21\n      admin\n      login\n      dev_0e4492b82a4a\n      —\n      —\n      ✓ 成功\n      \n        6f0340c9-3593-4441-af3d-7b272f593f01\n        复制\n        \n      \n    \n      2026/11/16 10:00:44\n      admin\n      web_handoff\n      proj_e8b1fb27\n      host_89cd54aa\n      —\n      ✓ 成功\n      \n        24a7e4bd-4306-4c43-839d-ee6a3940bcac\n        复制\n        \n      \n    \n      2026/11/16 10:00:44\n      admin\n      web_handoff\n      proj_6dc390d2\n      host_35356a32\n      —\n      ✓ 成功\n      \n        6f206b61-0c57-47f3-9b26-ce3f30bb7832\n        复制\n        \n      \n    \n      2026/11/16 10:00:43\n      admin\n      policy_update\n      proj_6dc390d2\n      —\n      —\n      ✓ 成功\n      \n        074dbfa6-54f2-4597-b3b7-c51f8955e90c\n        复制\n        \n      \n    \n      2026/11/16 10:00:43\n      admin\n      policy_update\n      download\n      —\n      —\n      ✓ 成功\n      \n        11ea61e0-c3ae-45fc-900e-e74e4b97cee6\n        复制\n        \n      \n    \n      2026/11/16 10:00:43\n      zhangsan\n      project_create\n      proj_07d8e1b3\n      host_89cd54aa\n      —\n      ✓ 成功\n      \n        937de327-89b1-426a-b6c6-f5ff6b6255e5\n        复制\n        \n      \n    \n      2026/11/16 10:00:43\n      admin\n      grant_update\n      proj_e8b1fb27\n      —\n      —\n      ✓ 成功\n      \n        94437f2e-2625-4ceb-b4da-21c0f2dfb896\n        复制\n        \n      \n    \n      2026/11/16 10:00:43\n      admin\n      grant_update\n      proj_e8b1fb27\n      —\n      —\n      ✓ 成功\n      \n        545a7153-c331-4dd7-aa0b-913ec6b1c742\n        复制\n        \n      \n    \n      2026/11/16 10:00:43\n      admin\n      project_create\n      proj_e8b1fb27\n      —\n      —\n      ✓ 成功\n      \n        20340bdf-b562-4a88-9a36-ab4b04a26263\n        复制\n        \n      \n    \n      2026/11/16 10:00:43\n      admin\n      grant_update\n      proj_0cdd1b81\n      —\n      —\n      ✓ 成功\n      \n        a218abfa-13d2-446d-95bb-3506a4bf0812\n        复制\n        \n      \n    \n      2026/11/16 10:00:43\n      admin\n      grant_update\n      proj_0cdd1b81\n      —\n      —\n      ✓ 成功\n      \n        9863ce15-67ab-4331-8a30-a4a1a1bbc554\n        复制\n        \n      \n    \n      2026/11/16 10:00:43\n      zhangsan\n      project_create\n      proj_0cdd1b81\n      host_35356a32\n      —\n      ✓ 成功\n      \n        947ca4b4-a5d5-47d3-89e8-c378b50d459c\n        复制\n        \n      \n    \n      2026/11/16 10:00:43\n      admin\n      grant_update\n      proj_6dc390d2\n      —\n      —\n      ✓ 成功\n      \n        d33bd24c-607f-48d2-8b38-352a843635f5\n        复制\n        \n      \n    \n      2026/11/16 10:00:43\n      admin\n      grant_update\n      proj_6dc390d2\n      —\n      —\n      ✓ 成功\n      \n        2154d9f0-a1f5-4e4f-a8bb-0a310337d607\n        复制\n        \n      \n    \n      2026/11/16 10:00:43\n      admin\n      grant_update\n      proj_6dc390d2\n      —\n      —\n      ✓ 成功\n      \n        9c92fcd8-e776-4737-a697-7a80db21c45d\n        复制\n        \n      \n    \n      2026/11/16 10:00:43\n      admin\n      grant_update\n      proj_6dc390d2\n      —\n      —\n      ✓ 成功\n      \n        376fcfcb-79eb-4f62-9974-c5c627d6f6f4\n        复制\n        \n      \n    \n      2026/11/16 10:00:43\n      admin\n      project_create\n      proj_6dc390d2\n      —\n      —\n      ✓ 成功\n      \n        89f51f27-476a-4eac-b7f5-211dd964b53e\n        复制\n        \n      \n    \n      2026/11/16 10:00:43\n      admin\n      host_grant_update\n      host_89cd54aa\n      host_89cd54aa\n      —\n      ✓ 成功\n      \n        00e79fd7-49e0-4dba-93e1-7921caae5768\n        复制\n        \n      \n    \n      2026/11/16 10:00:43\n      admin\n      host_grant_update\n      host_35356a32\n      host_35356a32\n      —\n      ✓ 成功\n      \n        fb59e329-f94c-4316-83c6-558419642aac\n        复制\n        \n      \n    \n      2026/11/16 10:00:42\n      —\n      host_e2ee_key_changed\n      host_89cd54aa\n      —\n      —\n      ✓ 成功\n      \n        ac2e7a71-b3c2-4892-bdf1-e1b07437ce4b\n        复制\n        \n      \n    \n      2026/11/16 10:00:42\n      agent\n      host_register\n      host_89cd54aa\n      —\n      —\n      ✓ 成功\n      \n        56e4dd91-a2b5-4254-9d64-2ce18d39b992\n        复制\n        \n      \n    \n      2026/11/16 10:00:39\n      admin\n      host_token_create\n      —\n      —\n      —\n      ✓ 成功\n      \n        d2abac9d-1995-4878-89c2-0a7467821c76\n        复制\n        \n      \n    \n      2026/11/16 10:00:39\n      —\n      host_e2ee_key_changed\n      host_35356a32\n      —\n      —\n      ✓ 成功\n      \n        5989b434-d8fc-4a8d-be65-f3f2ac4a46e7\n        复制\n        \n      \n    \n      2026/11/16 10:00:39\n      agent\n      host_register\n      host_35356a32\n      —\n      —\n      ✓ 成功\n      \n        a1222a77-9b8c-456a-8ab1-9301eeaa561e\n        复制\n        \n      \n    \n      2026/11/16 10:00:36\n      admin\n      host_token_create\n      —\n      —\n      —\n      ✓ 成功\n      \n        0f1b320e-99cd-4ef4-8302-145b5d76e857\n        复制\n        \n      \n    \n      2026/11/16 10:00:36\n      admin\n      host_revoke\n      host_dev001\n      —\n      —\n      ✓ 成功\n      \n        1276ba41-684a-4ddd-aa0a-f316dd82fa47\n        复制\n        \n      \n    \n      2026/11/16 10:00:36\n      lisi\n      login\n      dev_35cd3ba76e98\n      —\n      —\n      ✓ 成功\n      \n        84971f51-a981-4881-99de-a687408907ea\n        复制\n        \n      \n    \n      2026/11/16 10:00:36\n      zhangsan\n      login\n      dev_98d86b6f4b00\n      —\n      —\n      ✓ 成功\n      \n        644ad786-c7b7-469b-847d-cf3830c1cf18\n        复制\n        \n      \n    \n      2026/11/16 10:00:36\n      admin\n      login\n      dev_5190266cb0a4\n      —\n      —\n      ✓ 成功\n      \n        e5b663cf-e9a2-47ae-9894-2cb174bc77b1\n        复制\n        \n      \n    \n      2026/11/16 10:00:36\n      admin\n      login\n      dev_fd29695aa4c6\n      —\n      —\n      ✓ 成功\n      \n        882c9d31-b0ca-434e-b146-7e68bdd65ea7\n        复制\n        \n      \n    \n        \n      \n    \n    ",
+  "hintPresent": false,
+  "timeLimitVisible": true,
+  "controls": [
+    {
+      "id": "auditKeyword",
+      "x": 256,
+      "y": 204,
+      "w": 380,
+      "h": 32
+    },
+    {
+      "id": "auditRange",
+      "x": 646,
+      "y": 204,
+      "w": 185,
+      "h": 32
+    },
+    {
+      "id": "auditSince",
+      "x": 841,
+      "y": 204,
+      "w": 185,
+      "h": 32
+    },
+    {
+      "id": "auditUntil",
+      "x": 1036,
+      "y": 204,
+      "w": 185,
+      "h": 32
+    },
+    {
+      "id": "auditType",
+      "x": 1231,
+      "y": 204,
+      "w": 185,
+      "h": 32
+    },
+    {
+      "id": "auditActor",
+      "x": 256,
+      "y": 244,
+      "w": 283,
+      "h": 32
+    },
+    {
+      "id": "auditProject",
+      "x": 549,
+      "y": 244,
+      "w": 283,
+      "h": 32
+    },
+    {
+      "id": "auditHost",
+      "x": 841,
+      "y": 244,
+      "w": 283,
+      "h": 32
+    },
+    {
+      "id": "auditFileName",
+      "x": 1134,
+      "y": 244,
+      "w": 283,
+      "h": 32
+    },
+    {
+      "id": "auditResult",
+      "x": 256,
+      "y": 284,
+      "w": 283,
+      "h": 32
+    },
+    {
+      "id": "auditApply",
+      "x": 1296,
+      "y": 284,
+      "w": 56,
+      "h": 32
+    },
+    {
+      "id": "auditReset",
+      "x": 1360,
+      "y": 284,
+      "w": 56,
+      "h": 32
+    }
+  ],
+  "rows": [204, 244, 284]
+}

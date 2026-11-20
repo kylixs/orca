@@ -1,0 +1,19 @@
+== U169 L1/L2 (out/web structured-agent-session-launch) ==
+reeId:e.worktreeId};e.hostGroups&&Gn(t,e.hostGroups.map(e=>e.id));let n=e=>[...new Set(e)].sort().join(`\0`),r=new Set(e.hostToLocalTabId.values()),i=e=>new Set(e.filter(e=>r.has(e))),a=e.hostGroups?new Map(e.hostGroups.map(e=>[e.id,e])):null,o=new Map(e.localGroups.map(e=>[e.id,e]));for(let[r,s]of Er(e.environmentId,e.worktreeId)){let c=o.get(r);if(!c){An({...t,groupId:r});continue}if(!a)continue;let l=a.get(s),u=l?i(l.tabOrder.map(t=>e.hostToLocalTabId.get(t)).filter(e=>e!==void 0)):null;(!u||u.size===0||n(u)!==n(i(c.tabOrder)))&&An({...t,groupId:r})
+
+== U157 phase guard (out/renderer Onboarding chunk) ==
+)&&(r===void 0||r===B),a=Jt(v),o=await It(a,i);if(i()){if(o===void 0){if(z=!1,K.currentPhase!==`disconnected`){let e=K.isActive?K.currentEpoch:K.begin();K.parkRetryForExternalTrigger(e,()=>
+ing();return r&&!yn(r)?!1:yn(e,!0)}function Bn(){x!==!0||!v||!j||N||V||tt(v)||K.currentPhase!==`disconnected`||(j=!1,M=!0,re(v,g))}let Vn=e=>Hn.connect(e),Hn={async connect(e){Gt();let t=++
+
+== U169 in renderer ==
+out/renderer/assets/structured-agent-session-launch-CjkeMoyN.js
+
+== __monacoEditorE2E counts ==
+web:        0
+renderer:        0
+
+== exposeStore values ==
+web web-e2e: out/web/assets/web-root-BEHT6v6H.js:var ir=!1
+web remote-terminal: var GN=!1
+renderer web-e2e: var Zn=!1
+renderer remote-terminal: out/renderer/assets/store-Q6OjK8jW.js:var nP=!1

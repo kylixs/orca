@@ -1,0 +1,15 @@
+{
+  "steps": {
+    "fresh": {
+      "url": "https://100.67.197.59:18444/h/dev-local-02/web-index.html?api=https%3A%2F%2F127.0.0.1%3A18787&project=proj_d933d940",
+      "overlay": false,
+      "appLayout": true,
+      "tabs": ["Terminal"],
+      "xterm": 1,
+      "termText": ""
+    }
+  },
+  "errors": [],
+  "phase": "fresh",
+  "failure": "TimeoutError: locator.click: Timeout 90000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.xterm').last()\u001b[22m\n\u001b[2m    - locator resolved to <div dir=\"ltr\" class=\"terminal xterm\">…</div>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div class=\"scrollbar-sleek flex min-h-0 min-w-0 flex-1 flex-col justify-between overflow-y-auto px-8 py-9 md:shrink-0 md:basis-1/2\">…</div> from <div role=\"dialog\" tabindex=\"-1\" id=\"radix-_r_3s_\" data-state=\"open\" data-slot=\"dialog-content\" aria-labelledby=\"radix-_r_3t_\" aria-describedby=\"radix-_r_3u_\" class=\"fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] grid-cols-[minmax(0,1fr)] translate-x-[-50%] translate-y-[-50%] rounded-lg border border-black/14 text-foreground shadow-[0_20px_60px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl duration-200 outline-none dark:border-white/14 dark:shadow-[0_…>…</div> subtree intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - wait"
+}

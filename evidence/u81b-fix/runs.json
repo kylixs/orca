@@ -1,0 +1,16 @@
+{
+  "u67-3-users-page": { "tests": 6, "pass": 6, "fail": 0, "duration_ms": 11635 },
+  "regression": {
+    "suites": [
+      "web-admin-gating",
+      "u72-u73-audit-role-race",
+      "u67-role-authz",
+      "web-admin-self-grant"
+    ],
+    "tests": 19,
+    "pass": 19,
+    "fail": 0
+  },
+  "tc_node": { "exit": 0, "ts_errors": 0 },
+  "quality_gate_my_files": "0 findings (repo-wide 41 pre-existing findings on unrelated files)"
+}

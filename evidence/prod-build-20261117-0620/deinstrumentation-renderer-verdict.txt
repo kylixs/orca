@@ -1,0 +1,6 @@
+=== renderer exposeStore constant (desktop renderer) ===
+renderer __monacoEditorE2E: 0
+renderer installMonacoE2EProbe: 0
+renderer monaco-e2e-probe file: out/renderer/assets/monaco-e2e-probe-CiemkNbV.js (size=      44)
+renderer __webRuntimeSessionE2E guarded count: 1
+renderer exposeStore:!1 occurrences: 0

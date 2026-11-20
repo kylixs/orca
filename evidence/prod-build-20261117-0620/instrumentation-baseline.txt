@@ -1,0 +1,16 @@
+== preload VITE_EXPOSE_STORE ==
+VITE_EXPOSE_STORE": "true"
+VITE_EXPOSE_STORE);
+== preload MODE ==
+== preload exposeStore ==
+exposeStore: exposeStore$1
+== renderer __monacoEditorE2E count ==
+1
+== renderer e2e probe symbol counts ==
+0
+== web exposeStore:!0 count ==
+0
+== web __store= count ==
+1
+== web VITE_EXPOSE_STORE count ==
+0

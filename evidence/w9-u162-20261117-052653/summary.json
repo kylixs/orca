@@ -1,0 +1,30 @@
+{
+  "gate": "W9 official dual-line (A desktop / B Orca Web)",
+  "build": "out/main 2026-11-17 05:04 (U153-U162); out/web 2026-11-17 04:12 instrumented",
+  "build_policy": "SKIP_BUILD=1 reused existing out; globalSetup verified it skipped electron+cli+web builds",
+  "out_unchanged": true,
+  "line_a": {
+    "command": "ORCA_BACKGROUND_LAUNCH=1 SKIP_BUILD=1 ORCA_JOURNEY_GOLDEN_A_EVIDENCE_DIR=<dir>/line-a npx playwright test tests/e2e/cloud-golden-journey-desktop.spec.ts --config tests/playwright.config.ts --project=electron-headless --workers=1 --reporter=list",
+    "result": "PASS",
+    "tests": "1 passed",
+    "duration_s": 39.8,
+    "test_duration_s": 37.9,
+    "steps": ["S0-platform", "S1-host-enrol", "S2-project-grant", "A2-login(31.5s)", "A3-open-project", "A4-terminal", "A5-file-tree", "A6-evidence", "A7-host-audit"],
+    "evidence": "line-a/ (5 screenshots + journey-timeline.json)"
+  },
+  "line_b": {
+    "command": "ORCA_BACKGROUND_LAUNCH=1 SKIP_BUILD=1 ORCA_E2E_WEB_CLIENT=1 ORCA_JOURNEY_GOLDEN_B_EVIDENCE_DIR=<dir>/line-b npx playwright test tests/e2e/cloud-golden-journey-orca-web.spec.ts --config tests/playwright.config.ts --project=electron-headless --workers=1 --reporter=list",
+    "result": "PASS",
+    "tests": "2 passed",
+    "duration_s": 32.3,
+    "test_durations_s": [20.6, 9.7],
+    "steps": ["S0-platform", "S1-host-enrol", "S2-project-grant", "B1-console-login", "B2-handoff-new-tab", "B3-auto-enter-workspace(9.0s)", "B4-cloud-workspace-view", "B5-replay-410-fallback", "E1-journey-evidence", "E2-host-audit(8.9s)"],
+    "evidence": "line-b/ (6 screenshots + journey-timeline.json + u35-lineage-audit-pin.json)"
+  },
+  "failures": "none",
+  "notes": [
+    "Specs spawn their own platform on an ephemeral port and their own host from out/main; the environment platform 127.0.0.1:18787 (pid 24937) and dev-local-02/03 hosts were not touched.",
+    "Harmless: prepare:cli-output logs 'ln: /usr/local/bin/orca-dev: Permission denied' but exits 0 and writes no out artifact.",
+    "No product code changed."
+  ]
+}

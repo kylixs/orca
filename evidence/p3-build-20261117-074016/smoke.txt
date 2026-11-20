@@ -1,0 +1,10 @@
+== smoke 2026-11-16T23:42:08Z ==
+platform / -> 200
+platform /app.js -> 200 180116B
+platform /assets styles -> 200
+platform /assets app.js -> 200 180116B
+login page (hash route /#/login) -> 200
+login UI: served root html has id="view-login" + id="loginForm" (2 matches); app.js references loginForm
+relay web-index -> 200 564B
+relay served sha: fb496c0fc441f8f28b78e62ce8b139b5efc3282ec7eb38b03d5c1cd2011d3db9
+out/web sha:      fb496c0fc441f8f28b78e62ce8b139b5efc3282ec7eb38b03d5c1cd2011d3db9

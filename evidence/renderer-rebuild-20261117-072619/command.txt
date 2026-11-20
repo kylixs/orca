@@ -1,0 +1,1 @@
+ORCA_ELECTRON_VITE_TARGET=renderer node config/scripts/run-electron-vite-build.mjs --config config/electron-vite-target.config.cts --ignoreConfigWarning --mode production
