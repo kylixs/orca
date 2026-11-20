@@ -4,11 +4,8 @@ import type { RuntimeMobileSessionTabsResult } from '../../../../shared/runtime-
 
 const recover = vi.hoisted(() =>
   vi.fn(
-    async (
-      _state: unknown,
-      snapshot: RuntimeMobileSessionTabsResult,
-      _environmentId: string
-    ) => snapshot
+    async (_state: unknown, snapshot: RuntimeMobileSessionTabsResult, _environmentId: string) =>
+      snapshot
   )
 )
 

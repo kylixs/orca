@@ -210,9 +210,7 @@ function WebRoot(): React.JSX.Element {
 
   if (!hasEnvironment) {
     if (startup.locationError) {
-      return (
-        <WebCloudWorkspaceError kind="not-found" apiUrl={startup.workspaceLocation.apiUrl} />
-      )
+      return <WebCloudWorkspaceError kind="not-found" apiUrl={startup.workspaceLocation.apiUrl} />
     }
     // Why no sign-in form here: signing in again cannot grant a project the
     // account already could not see, and would silently swap the page.

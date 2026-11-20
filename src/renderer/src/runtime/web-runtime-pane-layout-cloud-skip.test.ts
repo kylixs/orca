@@ -21,9 +21,7 @@ const LAYOUT = {
 }
 
 function stubCall(): ReturnType<typeof vi.fn> {
-  const runtimeCall = vi
-    .fn()
-    .mockResolvedValue({ id: 'p', ok: true, result: { updated: true } })
+  const runtimeCall = vi.fn().mockResolvedValue({ id: 'p', ok: true, result: { updated: true } })
   vi.stubGlobal('window', { api: { runtimeEnvironments: { call: runtimeCall } } })
   return runtimeCall
 }
@@ -36,9 +34,7 @@ describe('updateWebRuntimePaneLayout on a cloud session (U119)', () => {
 
   it('sends no updatePaneLayout RPC for a cloud project row', async () => {
     environmentId = 'env-cloud'
-    storeState.runtimeEnvironments = [
-      { id: environmentId, cloudProject: { projectId: 'proj' } }
-    ]
+    storeState.runtimeEnvironments = [{ id: environmentId, cloudProject: { projectId: 'proj' } }]
     const runtimeCall = stubCall()
 
     await expect(updateWebRuntimePaneLayout(LAYOUT)).resolves.toBe(true)

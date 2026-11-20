@@ -62,17 +62,17 @@ describe('web-cloud-workspace-location', () => {
       webCloudWorkspaceLocationError({ apiUrl: 'https://cloud.test', projectId: 'proj_1234abcd' })
     ).toBeNull()
     expect(webCloudWorkspaceLocationError({ apiUrl: null, projectId: null })).toBeNull()
-    expect(
-      webCloudWorkspaceLocationError({ apiUrl: null, projectId: 'not a project id' })
-    ).toBe('invalid-project')
-    expect(
-      webCloudWorkspaceLocationError({ apiUrl: null, projectId: 'proj_<script>' })
-    ).toBe('invalid-project')
-    expect(
-      webCloudWorkspaceLocationError({ apiUrl: 'javascript:alert(1)', projectId: null })
-    ).toBe('invalid-api')
-    expect(
-      webCloudWorkspaceLocationError({ apiUrl: 'not-a-url', projectId: 'proj_1' })
-    ).toBe('invalid-api')
+    expect(webCloudWorkspaceLocationError({ apiUrl: null, projectId: 'not a project id' })).toBe(
+      'invalid-project'
+    )
+    expect(webCloudWorkspaceLocationError({ apiUrl: null, projectId: 'proj_<script>' })).toBe(
+      'invalid-project'
+    )
+    expect(webCloudWorkspaceLocationError({ apiUrl: 'javascript:alert(1)', projectId: null })).toBe(
+      'invalid-api'
+    )
+    expect(webCloudWorkspaceLocationError({ apiUrl: 'not-a-url', projectId: 'proj_1' })).toBe(
+      'invalid-api'
+    )
   })
 })

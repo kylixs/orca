@@ -19,7 +19,11 @@ import {
 const WORKSPACE = '/srv/checkout'
 const WORKTREE = `path:${WORKSPACE}`
 
-function pendingRow(tabId: string, leafId: string, ptyId: string | null): RuntimeMobileSessionTerminalClientTab {
+function pendingRow(
+  tabId: string,
+  leafId: string,
+  ptyId: string | null
+): RuntimeMobileSessionTerminalClientTab {
   return {
     type: 'terminal',
     id: `${tabId}::${leafId}`,
@@ -94,9 +98,7 @@ describe('collectSimpleWorkspaceOrphanCandidates', () => {
 })
 
 describe('readSimpleOrphanInventory', () => {
-  const candidates = [
-    { tabId: 'tab-a', leafId: 'leaf-1', ptyId: 'pty-leaf-1', title: 'zsh' }
-  ]
+  const candidates = [{ tabId: 'tab-a', leafId: 'leaf-1', ptyId: 'pty-leaf-1', title: 'zsh' }]
   const scope = { worktree: WORKTREE, workspacePath: WORKSPACE }
 
   it('ptyId 匹配且宿主自证 orphaned：产出一条带 incarnation 的 claim', () => {
@@ -120,9 +122,7 @@ describe('readSimpleOrphanInventory', () => {
       { incarnationId: null },
       { worktreePath: '/srv/other' }
     ]) {
-      expect(readSimpleOrphanInventory(candidates, orphanListing(patch), scope)?.claims).toEqual(
-        []
-      )
+      expect(readSimpleOrphanInventory(candidates, orphanListing(patch), scope)?.claims).toEqual([])
     }
   })
 

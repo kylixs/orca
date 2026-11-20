@@ -103,9 +103,9 @@ describe('host-active authority (U138 phase 6)', () => {
 
     expect(after.activeTabIdByWorktree[WT]).toBe(RIGHT_TAB)
     expect(after.activeGroupIdByWorktree[WT]).toBe('group-right')
-    expect(after.groupsByWorktree[WT]?.find((group) => group.id === 'group-right')?.activeTabId).toBe(
-      RIGHT_TAB
-    )
+    expect(
+      after.groupsByWorktree[WT]?.find((group) => group.id === 'group-right')?.activeTabId
+    ).toBe(RIGHT_TAB)
   })
 
   it('follows a later host broadcast with no local gesture and no layout re-adoption', () => {

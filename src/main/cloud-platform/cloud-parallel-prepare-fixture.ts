@@ -30,10 +30,7 @@ import {
   type Platform
 } from './cloud-session-e2e-harness'
 import { parseCloudProjectRegistration } from './cloud-provision-recovery-fixture'
-import {
-  startLocalGitDaemon,
-  type LocalGitDaemon
-} from './cloud-project-provisioning-fixture'
+import { startLocalGitDaemon, type LocalGitDaemon } from './cloud-project-provisioning-fixture'
 
 /** Real platform + enrolled host + TLS runtime for the M64 parallel-prepare suite. */
 

@@ -39,7 +39,10 @@ function compiledExposeStoreActive(source: string): boolean {
   for (const match of source.matchAll(/\bexposeStore:(\w+)\b/g)) {
     const flag = match[1].replace(/\$/g, '\\$')
     // The same variable is assigned `!1` when the flag was lost at build time.
-    if (new RegExp(`\\b${flag}=!0\\b`).test(source) && !new RegExp(`\\b${flag}=!1\\b`).test(source)) {
+    if (
+      new RegExp(`\\b${flag}=!0\\b`).test(source) &&
+      !new RegExp(`\\b${flag}=!1\\b`).test(source)
+    ) {
       return true
     }
   }

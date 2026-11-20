@@ -43,7 +43,8 @@ export function createLinearStatusActions(
           return { connected: false, viewer: null } satisfies LinearConnectionStatus
         }
         return linearStatus(get().settings)
-      })().then((status) => {
+      })()
+        .then((status) => {
           if (
             mutationGeneration !== getLinearMutationGeneration() ||
             !isCurrentLinearStatusRead(statusReadGeneration) ||

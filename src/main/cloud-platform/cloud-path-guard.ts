@@ -53,7 +53,6 @@ export type CloudPathGuardRuntime = CloudSessionTabsGuardRuntime & {
   resolveAgentSessionContext?: (sessionId: string) => { worktreeId: string } | null
 }
 
-
 function collectPaths(params: unknown, spec: CloudFilePaths): string[] {
   const paths: string[] = []
   for (const key of spec.singular) {

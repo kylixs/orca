@@ -47,10 +47,7 @@ describe('cloud workspace fallback seeding', () => {
 
     expect(appStore.state.createTab).not.toHaveBeenCalled()
     expect(appStore.state.setActiveTab).not.toHaveBeenCalled()
-    expect(appStore.state.setActiveWorktree).toHaveBeenCalledWith(
-      WORKTREE_ID,
-      EXECUTION_HOST_ID
-    )
+    expect(appStore.state.setActiveWorktree).toHaveBeenCalledWith(WORKTREE_ID, EXECUTION_HOST_ID)
   })
 
   it('seeds exactly one fallback tab when the inventory left the worktree empty', () => {

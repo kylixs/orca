@@ -180,9 +180,7 @@ describe('workspace.info（云会话工作区自省）', () => {
 
     const result = resultOf(await call(runtime, CLOUD))
 
-    expect(readStringArray(result, 'capabilities')).toEqual([
-      'cloud.session-tabs-restore.v1'
-    ])
+    expect(readStringArray(result, 'capabilities')).toEqual(['cloud.session-tabs-restore.v1'])
   })
 
   it('未 ensure 时 path/branch 为 null 是正常应答', async () => {

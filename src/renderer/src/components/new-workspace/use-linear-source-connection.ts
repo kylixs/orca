@@ -46,8 +46,7 @@ export function useLinearSourceConnection(args: {
   // Why: a cloud session's host refuses linear.* — the credentials are host account
   // assets the ticket never carries (O1 F5). Report "not connected" without asking.
   const cloudSession =
-    environmentId !== null &&
-    isCloudSessionEnvironmentId(runtimeEnvironments, environmentId)
+    environmentId !== null && isCloudSessionEnvironmentId(runtimeEnvironments, environmentId)
 
   useEffect(() => {
     const source = sourceRef.current
@@ -56,7 +55,12 @@ export function useLinearSourceConnection(args: {
     }
     let stale = false
     if (cloudSession) {
-      setState({ scope, runtimeRevision, sourceStoreStatus, status: { connected: false, viewer: null } })
+      setState({
+        scope,
+        runtimeRevision,
+        sourceStoreStatus,
+        status: { connected: false, viewer: null }
+      })
       return
     }
     void linearStatus(source)

@@ -208,9 +208,9 @@ describe('终端地址边界', () => {
       ok: false,
       reason: 'terminal_unknown'
     })
-    expect(
-      await check('terminal.setAutoRestoreFit', { ms: 5000, terminal: 'term-own' })
-    ).toEqual({ ok: true })
+    expect(await check('terminal.setAutoRestoreFit', { ms: 5000, terminal: 'term-own' })).toEqual({
+      ok: true
+    })
     expect(
       await check('terminal.setAutoRestoreFit', { ms: 5000, terminal: 'term-teammate' })
     ).toMatchObject({ ok: false, reason: 'workspace_scope' })

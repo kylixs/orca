@@ -145,8 +145,7 @@ export function readSimpleOrphanInventory(
   )
   return {
     claims,
-    topologyRevision:
-      revisionKey === undefined ? 0 : (readNumber(revisions, revisionKey) ?? 0)
+    topologyRevision: revisionKey === undefined ? 0 : (readNumber(revisions, revisionKey) ?? 0)
   }
 }
 
@@ -177,9 +176,9 @@ export async function recoverSimpleWorkspaceTerminalOrphans(args: {
     return null
   }
   const worktree = cloudWorktreeSelector(args.workspacePath)
-  const listed = await args.rpc('terminal.list', buildSimpleOrphanListParams(worktree)).catch(
-    () => null
-  )
+  const listed = await args
+    .rpc('terminal.list', buildSimpleOrphanListParams(worktree))
+    .catch(() => null)
   if (!args.isCurrent() || !listed?.ok) {
     return null
   }
@@ -190,10 +189,9 @@ export async function recoverSimpleWorkspaceTerminalOrphans(args: {
   if (inventory === null || inventory.claims.length === 0) {
     return null
   }
-  const adopted = await args.rpc(
-    'terminal.adoptOrphans',
-    buildSimpleOrphanAdoptParams(worktree, inventory)
-  ).catch(() => null)
+  const adopted = await args
+    .rpc('terminal.adoptOrphans', buildSimpleOrphanAdoptParams(worktree, inventory))
+    .catch(() => null)
   if (!args.isCurrent() || !adopted?.ok) {
     return null
   }

@@ -50,7 +50,10 @@ export default function WebCloudWorkspaceError({
           <div className="min-w-0">
             <h1 className="text-base font-semibold leading-6">
               {forbidden
-                ? translate('auto.web.WebConnect.projectForbiddenTitle', 'This project cannot be opened')
+                ? translate(
+                    'auto.web.WebConnect.projectForbiddenTitle',
+                    'This project cannot be opened'
+                  )
                 : translate('auto.web.WebConnect.pageNotFoundTitle', 'Page not found')}
             </h1>
             <p className="mt-1 text-sm leading-5 text-muted-foreground">
