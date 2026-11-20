@@ -61,12 +61,12 @@ Findings 统计：BLOCKER 2 / MAJOR 17 / MINOR 11。
 
 ## Requirement coverage
 
-| 用户需求 | 覆盖情况 | 结论 |
-|---|---|---|
-| 1. 长按选中复制文字 | 文本/代码已有 `<Text selectable>`；Markdown 计划传 `rangeSelectable`；HTML 源码可复制；HTML **渲染视图**明确推迟到 P2；没有文件预览的选择态原型；终端产物文本可沿用同一路径 | **部分覆盖，需确认 HTML 渲染视图范围并补原型/测试** |
-| 2. 下载/保存到手机 | Worktree 文件用 `files.stat` + `files.readChunk` + cache 分块方案可行，复用 `mobile-file-media-download.ts` 的 size/mtime 校验；但 Android 没有可靠保存落点（分享面板不等同保存），终端产物只能整文件读取，缓存清理/0 字节/权限未定义 | **Android 不成立，整体不通过** |
-| 3. 用手机 App 打开文件 | iOS 分享面板可覆盖“存储到文件”和部分打开方式；Android 用 `expo-sharing` 只有 `ACTION_SEND`，不是 `ACTION_VIEW`；MIME/UTI、iPad anchor、无可用 App、下载未完成状态未定义 | **Android 不成立，整体不通过** |
-| 4. 过滤查找文件 | `files.searchPaths` 已对移动端开放，可搜索未展开目录；类型 chips 可由扩展名实现；但 limit 上限 32、20k 截断未呈现、top-N 后再过滤会漏结果、旧主机回退弱、无分页/计数 | **部分覆盖，需修正契约和结果语义** |
+| 用户需求               | 覆盖情况                                                                                                                                                                                                                              | 结论                                                |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| 1. 长按选中复制文字    | 文本/代码已有 `<Text selectable>`；Markdown 计划传 `rangeSelectable`；HTML 源码可复制；HTML **渲染视图**明确推迟到 P2；没有文件预览的选择态原型；终端产物文本可沿用同一路径                                                           | **部分覆盖，需确认 HTML 渲染视图范围并补原型/测试** |
+| 2. 下载/保存到手机     | Worktree 文件用 `files.stat` + `files.readChunk` + cache 分块方案可行，复用 `mobile-file-media-download.ts` 的 size/mtime 校验；但 Android 没有可靠保存落点（分享面板不等同保存），终端产物只能整文件读取，缓存清理/0 字节/权限未定义 | **Android 不成立，整体不通过**                      |
+| 3. 用手机 App 打开文件 | iOS 分享面板可覆盖“存储到文件”和部分打开方式；Android 用 `expo-sharing` 只有 `ACTION_SEND`，不是 `ACTION_VIEW`；MIME/UTI、iPad anchor、无可用 App、下载未完成状态未定义                                                               | **Android 不成立，整体不通过**                      |
+| 4. 过滤查找文件        | `files.searchPaths` 已对移动端开放，可搜索未展开目录；类型 chips 可由扩展名实现；但 limit 上限 32、20k 截断未呈现、top-N 后再过滤会漏结果、旧主机回退弱、无分页/计数                                                                  | **部分覆盖，需修正契约和结果语义**                  |
 
 ## 待确认问题
 

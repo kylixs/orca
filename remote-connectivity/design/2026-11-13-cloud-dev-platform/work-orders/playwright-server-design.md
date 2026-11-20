@@ -9,18 +9,18 @@
 
 ## 0. 结论速览
 
-| 项 | 设计结论 |
-| --- | --- |
-| 形态 | 独立 Node 进程 `cloud-platform/scripts/playwright-server/`，持有 Playwright Chromium；不依赖 Electron，不 import 任何产品代码 |
-| 端口 | 默认 `127.0.0.1:0`（随机端口），启动后把 `{port,token,pid}` 写入 `evidence/playwright-server/server.json`（0600） |
-| 协议 | HTTP（控制与执行）+ WS（运行事件流）；仅回环绑定，要求 Bearer token |
-| 页签 | `TabRegistry` 以 `t1,t2,…` 稳定 id 管理；支持按 id / URL 片段 / 标题片段 / `active` 寻址；每个页签记录所属身份上下文与 iframe 列表 |
-| 登录态 | 每身份一个 BrowserContext，`storageState` 落盘；服务重启后仍登录；`cloud-admin.html` iframe 的 cookie/localStorage 同属该上下文 |
-| 脚本 | 单文件 `defineJourney({ run })`：服务模式注入常驻 `page/ui`，独立模式由 `runIfMain` 启动临时 Chromium；两种模式执行同一 `run` |
-| 原型对照 | 用**同一个 DOM 清点器**分别驱动 `prototype.html` 与实际 Web，产出结构化清单，再按布局/字段/菜单三类做归一化 diff |
-| 与既有 | `tests/e2e/*.spec.ts` 不迁移、`global-setup` 不改；新 server 只服务 Web 平台与云端工作区，Electron 探索仍由 `exploratory-r2` 承担 |
-| 安全 | 回环绑定 + token + Host/Origin 校验 + 脚本目录白名单；`node:vm` 不作为安全边界 |
-| 验收 | 探索代理连续注入脚本驱动多页签且状态不丢；同一脚本 `node` 独立回归退出 0；原型 diff 能报出已知 6 类差异 |
+| 项       | 设计结论                                                                                                                           |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| 形态     | 独立 Node 进程 `cloud-platform/scripts/playwright-server/`，持有 Playwright Chromium；不依赖 Electron，不 import 任何产品代码      |
+| 端口     | 默认 `127.0.0.1:0`（随机端口），启动后把 `{port,token,pid}` 写入 `evidence/playwright-server/server.json`（0600）                  |
+| 协议     | HTTP（控制与执行）+ WS（运行事件流）；仅回环绑定，要求 Bearer token                                                                |
+| 页签     | `TabRegistry` 以 `t1,t2,…` 稳定 id 管理；支持按 id / URL 片段 / 标题片段 / `active` 寻址；每个页签记录所属身份上下文与 iframe 列表 |
+| 登录态   | 每身份一个 BrowserContext，`storageState` 落盘；服务重启后仍登录；`cloud-admin.html` iframe 的 cookie/localStorage 同属该上下文    |
+| 脚本     | 单文件 `defineJourney({ run })`：服务模式注入常驻 `page/ui`，独立模式由 `runIfMain` 启动临时 Chromium；两种模式执行同一 `run`      |
+| 原型对照 | 用**同一个 DOM 清点器**分别驱动 `prototype.html` 与实际 Web，产出结构化清单，再按布局/字段/菜单三类做归一化 diff                   |
+| 与既有   | `tests/e2e/*.spec.ts` 不迁移、`global-setup` 不改；新 server 只服务 Web 平台与云端工作区，Electron 探索仍由 `exploratory-r2` 承担  |
+| 安全     | 回环绑定 + token + Host/Origin 校验 + 脚本目录白名单；`node:vm` 不作为安全边界                                                     |
+| 验收     | 探索代理连续注入脚本驱动多页签且状态不丢；同一脚本 `node` 独立回归退出 0；原型 diff 能报出已知 6 类差异                            |
 
 ---
 
@@ -28,13 +28,13 @@
 
 ### 1.1 三类既有 Playwright 形态
 
-| 形态 | 位置 | 形态特征 | 本设计的关系 |
-| --- | --- | --- | --- |
-| Electron E2E spec | `tests/e2e/*.spec.ts` + `tests/playwright.config.ts` | `@stablyai/playwright-test` 的 `_electron.launch()`；`globalSetup` 构建 Electron/CLI/web 并造测试仓库；每 spec 独立 app + userData | **不迁移、不改配置**。回归 spec 继续独立存在 |
-| 一次性浏览器 probe | `cloud-platform/evidence/u46-8-assembly/probe-u46-8-browser-journey.mjs` | 真实平台 + 真实 TLS runtime + headless Chromium；登录→项目弹窗→iframe 工作区→文件/编辑器/git/终端；`ignoreHTTPSErrors`；截图 + verdict | 本设计**独立脚本模式**的直接原型；把「每次冷启动浏览器」升级为「常驻实例 + 多页签」 |
-| 桌面探索驱动 | `cloud-platform/scripts/exploratory-r2/desktop-harness.mjs`、`driver-*.mjs` | 每个 driver 重新 `_electron.launch`，隔离 HOME/userData，后台 headless；语义 helper 已具备（login/worktree/terminal/dumpUi） | 语义 helper 的命名与职责可借鉴，但 Electron 生命周期不复用；新 server 面向 Web |
-| 仪器化先例 | `src/renderer/src/components/editor/monaco-e2e-probe.ts` | 仅 `--mode e2e` 或 `VITE_EXPOSE_STORE=true` 暴露 `window.__monacoEditorE2E` | **不新增产品仪器化**。对照与断言优先真实 DOM / `data-testid` / role / 文本；既有 `data-testid` 足够 |
-| 本地环境 | `cloud-platform/scripts/local-env-reseed.mjs` | 幂等重建平台 `https://127.0.0.1:18787`、双 host、demo 仓库、admin/zhangsan/lisi、evidence | server 以**子进程**方式按需调用 reseed，不 import 其模块 |
+| 形态               | 位置                                                                        | 形态特征                                                                                                                               | 本设计的关系                                                                                        |
+| ------------------ | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Electron E2E spec  | `tests/e2e/*.spec.ts` + `tests/playwright.config.ts`                        | `@stablyai/playwright-test` 的 `_electron.launch()`；`globalSetup` 构建 Electron/CLI/web 并造测试仓库；每 spec 独立 app + userData     | **不迁移、不改配置**。回归 spec 继续独立存在                                                        |
+| 一次性浏览器 probe | `cloud-platform/evidence/u46-8-assembly/probe-u46-8-browser-journey.mjs`    | 真实平台 + 真实 TLS runtime + headless Chromium；登录→项目弹窗→iframe 工作区→文件/编辑器/git/终端；`ignoreHTTPSErrors`；截图 + verdict | 本设计**独立脚本模式**的直接原型；把「每次冷启动浏览器」升级为「常驻实例 + 多页签」                 |
+| 桌面探索驱动       | `cloud-platform/scripts/exploratory-r2/desktop-harness.mjs`、`driver-*.mjs` | 每个 driver 重新 `_electron.launch`，隔离 HOME/userData，后台 headless；语义 helper 已具备（login/worktree/terminal/dumpUi）           | 语义 helper 的命名与职责可借鉴，但 Electron 生命周期不复用；新 server 面向 Web                      |
+| 仪器化先例         | `src/renderer/src/components/editor/monaco-e2e-probe.ts`                    | 仅 `--mode e2e` 或 `VITE_EXPOSE_STORE=true` 暴露 `window.__monacoEditorE2E`                                                            | **不新增产品仪器化**。对照与断言优先真实 DOM / `data-testid` / role / 文本；既有 `data-testid` 足够 |
+| 本地环境           | `cloud-platform/scripts/local-env-reseed.mjs`                               | 幂等重建平台 `https://127.0.0.1:18787`、双 host、demo 仓库、admin/zhangsan/lisi、evidence                                              | server 以**子进程**方式按需调用 reseed，不 import 其模块                                            |
 
 ### 1.2 为什么不是「给现有 spec 加一个 server」
 
@@ -110,29 +110,29 @@ node cloud-platform/scripts/playwright-server/server.mjs \
 
 所有请求需 `Authorization: Bearer <token>`（除 `/health` 可选）。`Host` 必须是 `127.0.0.1:<port>`；带 `Origin` 时必须是同源，否则 403。
 
-| 方法 | 路径 | 语义 |
-| --- | --- | --- |
-| GET | `/health` | `{ok,browser,profiles,tabs,uptimeMs,baseUrl}` |
-| GET | `/tabs` | 页签列表：`[{id,profile,url,title,active,frames[],createdAt}]` |
-| POST | `/tabs` | `{profile,url}` 新开页签；返回页签 |
-| POST | `/tabs/:id/activate` | 切换活动页签（仅登记，不抢 OS 焦点） |
-| POST | `/tabs/:id/navigate` | `{url}` |
-| POST | `/tabs/:id/reload` | 重载 |
-| DELETE | `/tabs/:id` | 关闭页签 |
-| GET | `/tabs/:id/state` | `{url,title,frames,route,h1s,nav,localStorageKeys,cookieNames,consoleErrors}` |
-| POST | `/tabs/:id/screenshot` | `{path?,fullPage?}`，仅允许写入 evidence 目录 |
-| POST | `/tabs/:id/evaluate` | `{frame?,expression}`，在浏览器沙箱执行并回传 JSON |
-| GET | `/profiles` | `[{name,role,loggedIn,cookieNames,storageKeys,tabs}]` |
-| POST | `/profiles/:name/login` | `{address?,username?,password?}`；成功后持久化 storageState |
-| POST | `/profiles/:name/logout` | 清 cookie/localStorage 并落盘 |
-| GET | `/scripts` | 已注册脚本：`[{name,path,sha256,tags}]` |
-| POST | `/scripts` | `{name,path}` 注册文件；`{name,source}` 写入 `<state>/runs/<runId>/journey.mjs` 后注册 |
-| POST | `/runs` | `{script\|source, mode:"explore"\|"regression", profile?, params?, isolate?}` → `{runId}` |
-| GET | `/runs/:id` | `{status,step,steps[],result,logs[],artifacts[],error?}` |
-| POST | `/runs/:id/cancel` | 取消运行（尽力）；`isolate` 模式可硬杀子进程 |
-| GET | `/prototype/inventory` | `?route=` 原型结构化清单 |
-| POST | `/compare/prototype` | `{route\|all,role?}` → 差异报告路径与摘要 |
-| POST | `/shutdown` | 优雅关闭浏览器与服务 |
+| 方法   | 路径                     | 语义                                                                                      |
+| ------ | ------------------------ | ----------------------------------------------------------------------------------------- |
+| GET    | `/health`                | `{ok,browser,profiles,tabs,uptimeMs,baseUrl}`                                             |
+| GET    | `/tabs`                  | 页签列表：`[{id,profile,url,title,active,frames[],createdAt}]`                            |
+| POST   | `/tabs`                  | `{profile,url}` 新开页签；返回页签                                                        |
+| POST   | `/tabs/:id/activate`     | 切换活动页签（仅登记，不抢 OS 焦点）                                                      |
+| POST   | `/tabs/:id/navigate`     | `{url}`                                                                                   |
+| POST   | `/tabs/:id/reload`       | 重载                                                                                      |
+| DELETE | `/tabs/:id`              | 关闭页签                                                                                  |
+| GET    | `/tabs/:id/state`        | `{url,title,frames,route,h1s,nav,localStorageKeys,cookieNames,consoleErrors}`             |
+| POST   | `/tabs/:id/screenshot`   | `{path?,fullPage?}`，仅允许写入 evidence 目录                                             |
+| POST   | `/tabs/:id/evaluate`     | `{frame?,expression}`，在浏览器沙箱执行并回传 JSON                                        |
+| GET    | `/profiles`              | `[{name,role,loggedIn,cookieNames,storageKeys,tabs}]`                                     |
+| POST   | `/profiles/:name/login`  | `{address?,username?,password?}`；成功后持久化 storageState                               |
+| POST   | `/profiles/:name/logout` | 清 cookie/localStorage 并落盘                                                             |
+| GET    | `/scripts`               | 已注册脚本：`[{name,path,sha256,tags}]`                                                   |
+| POST   | `/scripts`               | `{name,path}` 注册文件；`{name,source}` 写入 `<state>/runs/<runId>/journey.mjs` 后注册    |
+| POST   | `/runs`                  | `{script\|source, mode:"explore"\|"regression", profile?, params?, isolate?}` → `{runId}` |
+| GET    | `/runs/:id`              | `{status,step,steps[],result,logs[],artifacts[],error?}`                                  |
+| POST   | `/runs/:id/cancel`       | 取消运行（尽力）；`isolate` 模式可硬杀子进程                                              |
+| GET    | `/prototype/inventory`   | `?route=` 原型结构化清单                                                                  |
+| POST   | `/compare/prototype`     | `{route\|all,role?}` → 差异报告路径与摘要                                                 |
+| POST   | `/shutdown`              | 优雅关闭浏览器与服务                                                                      |
 
 WS `/ws`：客户端先发 `{op:"hello",token}`；随后服务端推送
 `{type:"run.started"|"step"|"log"|"screenshot"|"run.result"|"run.error",runId,...}`。
@@ -169,10 +169,10 @@ WS `/ws`：客户端先发 `{op:"hello",token}`；随后服务端推送
 
 ### 3.1 分层
 
-| 层 | 名称 | 内容 | 面向 |
-| --- | --- | --- | --- |
-| 第一层 | 包装层 `ui` | 稳定语义操作：`login/openProject/tab/click/fill/discover/screenshot/assertText…` | 探索代理，低选择器噪声 |
-| 第二层 | 原生 Playwright | `page`、`locator`、`frameLocator`、`expect` 直用 | 回归脚本，可独立运行 |
+| 层     | 名称            | 内容                                                                             | 面向                   |
+| ------ | --------------- | -------------------------------------------------------------------------------- | ---------------------- |
+| 第一层 | 包装层 `ui`     | 稳定语义操作：`login/openProject/tab/click/fill/discover/screenshot/assertText…` | 探索代理，低选择器噪声 |
+| 第二层 | 原生 Playwright | `page`、`locator`、`frameLocator`、`expect` 直用                                 | 回归脚本，可独立运行   |
 
 包装层是**薄封装**：每个 `ui.*` 内部只做「目标解析 + 等待 + 调用真实 Playwright + 记录步骤」。`ui.page`、`ui.locator()`、`ui.frameLocator()` 原样暴露，语义 API 不覆盖的能力随时下落。
 
@@ -214,18 +214,18 @@ export default journey
 
 ### 3.3 第一层 `ui` API（v1）
 
-| 组 | 方法 |
-| --- | --- |
-| 身份 | `login(role,opts)`、`logout()`、`whoami()`、`profile()` |
-| 导航 | `goto(route)`、`nav(label)`、`openProject(keyOrId)`、`back()`、`crumbs()` |
-| 页签 | `newTab(url)`、`tabs()`、`tab(target)`、`activate(target)`、`close(target)` |
-| 作用域 | `frame('workspace'|'main'|srcSubstring)`、`locator(sel)`、`page` |
-| 交互 | `click(target)`、`fill(target,value)`、`select(target,value)`、`press(key)`、`hover(target)`、`menu(name)` |
-| 目标解析 | `{testid}` / `{role,name}` / `{text}` / `{label}` / `{css}`；缺省顺序 testid → role → text |
-| 发现 | `discover(route|tab?)`、`inventory()`、`frames()`、`console()`、`network()` |
-| 断言 | `expectVisible`、`expectText`、`expectCount`、`expectRoute`、`expectColumns`、`expectNoConsoleErrors` |
-| 产物 | `screenshot(name,{fullPage})`、`snapshot(name)`、`log(...)` |
-| 对照 | `comparePrototype({route|all})` |
+| 组       | 方法                                                                                                       |
+| -------- | ---------------------------------------------------------------------------------------------------------- |
+| 身份     | `login(role,opts)`、`logout()`、`whoami()`、`profile()`                                                    |
+| 导航     | `goto(route)`、`nav(label)`、`openProject(keyOrId)`、`back()`、`crumbs()`                                  |
+| 页签     | `newTab(url)`、`tabs()`、`tab(target)`、`activate(target)`、`close(target)`                                |
+| 作用域   | `frame('workspace'                                                                                         | 'main'                                                      | srcSubstring)`、`locator(sel)`、`page` |
+| 交互     | `click(target)`、`fill(target,value)`、`select(target,value)`、`press(key)`、`hover(target)`、`menu(name)` |
+| 目标解析 | `{testid}` / `{role,name}` / `{text}` / `{label}` / `{css}`；缺省顺序 testid → role → text                 |
+| 发现     | `discover(route                                                                                            | tab?)`、`inventory()`、`frames()`、`console()`、`network()` |
+| 断言     | `expectVisible`、`expectText`、`expectCount`、`expectRoute`、`expectColumns`、`expectNoConsoleErrors`      |
+| 产物     | `screenshot(name,{fullPage})`、`snapshot(name)`、`log(...)`                                                |
+| 对照     | `comparePrototype({route                                                                                   | all})`                                                      |
 
 `expect` 语义：
 
@@ -250,10 +250,10 @@ evidence/playwright-server/
 
 ### 4.1 两侧输入
 
-| 侧 | 来源 | 驱动方式 |
-| --- | --- | --- |
+| 侧   | 来源                                                                         | 驱动方式                                                                                                                               |
+| ---- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | 原型 | `remote-connectivity/design/2026-11-13-cloud-dev-platform/ui/prototype.html` | 同一 Chromium 的独立 context 打开 `file://`；按 `data-route` / `data-page` 切换；隐藏的 dialog/drawer/menu 也在静态 DOM 中，可一并清点 |
-| 实际 | `https://127.0.0.1:18787/`（`cloud-platform/apps/web`） | 登录后按实际 `data-route` 导航；工作区在同页 overlay + `cloud-admin.html` iframe |
+| 实际 | `https://127.0.0.1:18787/`（`cloud-platform/apps/web`）                      | 登录后按实际 `data-route` 导航；工作区在同页 overlay + `cloud-admin.html` iframe                                                       |
 
 **同一个清点函数** `extractDomInventory(page|frame)` 同时用于两侧，避免「原型用 HTML 解析器、实际用 DOM」造成 schema 漂移。原型额外支持 `role:admin|developer` 两轮，以覆盖原型的前端角色门禁。
 
@@ -280,11 +280,11 @@ evidence/playwright-server/
 
 ### 4.3 三类差异的检测
 
-| 类 | 关注对象 | 检测方式 | 判定 |
-| --- | --- | --- | --- |
-| 布局 | 页面是否存在、导航分组/顺序、区块顺序、统计卡标签、表格列顺序/数量、面包屑 | 有序列表做 LCS；页面/路由做可达性探测（逐个 `data-route` 实际导航，记录 reached/forbidden/missing） | 缺页面/缺主导航=P0；列/区块增删或重排=P1；仅顺序微调=P2 |
-| 字段 | 表单 label、类型、必填、禁用/只读、placeholder、下拉选项、帮助文案 | 归一化 label 后匹配：精确 → 别名表 → Dice 相似度 ≥0.75 → missing；再比对属性 | 缺字段/必填性变化=P1；文案/可选性变化=P2 |
-| 菜单 | 侧栏项、页面动作按钮、上下文菜单、dialog 按钮、抽屉动作 | 标签+role 集合比对；对原型每个菜单项用 `getByRole`/`getByText` 在实际页面试探，记录 `exact/renamed/missing` | 缺动作/菜单项=P1；禁用态或文案变化=P2 |
+| 类   | 关注对象                                                                   | 检测方式                                                                                                    | 判定                                                    |
+| ---- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| 布局 | 页面是否存在、导航分组/顺序、区块顺序、统计卡标签、表格列顺序/数量、面包屑 | 有序列表做 LCS；页面/路由做可达性探测（逐个 `data-route` 实际导航，记录 reached/forbidden/missing）         | 缺页面/缺主导航=P0；列/区块增删或重排=P1；仅顺序微调=P2 |
+| 字段 | 表单 label、类型、必填、禁用/只读、placeholder、下拉选项、帮助文案         | 归一化 label 后匹配：精确 → 别名表 → Dice 相似度 ≥0.75 → missing；再比对属性                                | 缺字段/必填性变化=P1；文案/可选性变化=P2                |
+| 菜单 | 侧栏项、页面动作按钮、上下文菜单、dialog 按钮、抽屉动作                    | 标签+role 集合比对；对原型每个菜单项用 `getByRole`/`getByText` 在实际页面试探，记录 `exact/renamed/missing` | 缺动作/菜单项=P1；禁用态或文案变化=P2                   |
 
 归一化规则：NFC、去首尾空白、折叠空白、剥离可选标记（`· 只读`、`（二期）`）、统一「主机管理/主机」等别名。别名表是显式数据文件，命中即报 `renamed`，不静默吞掉。
 
@@ -301,14 +301,14 @@ evidence/playwright-server/
 
 静态对照已能确认以下差异，验收 demo 必须能报出：
 
-| # | 类 | 原型 | 实际 Web |
-| --- | --- | --- | --- |
-| 1 | 菜单 | 侧栏「项目授权」「下载策略」 | 「成员与权限」「平台设置」（`apps/web/index.html:61-63`） |
-| 2 | 布局 | 工作台统计：进行中项目/今日会话/可用主机/待审批下载 | 可访问项目/主机在线/禁用下载项目/下载默认策略（`app.js:180-196`） |
-| 3 | 布局 | 工作台「全部项目」7 列，含「最近使用」 | 6 列，无「最近使用」（`app.js:199-208`） |
-| 4 | 页面 | `#/diagnostics` 连接诊断页 | 实际无 `diagnostics` 路由/渲染器（`app.js:111-119`） |
-| 5 | 布局 | P3 项目视图是完整 IDE 路由 | 实际是同页 overlay + `cloud-admin.html` iframe |
-| 6 | 字段 | 登录框 id `loginAccount/loginPassword` | `username/password`（label 相同，属 selector 漂移而非字段缺失） |
+| #   | 类   | 原型                                                | 实际 Web                                                          |
+| --- | ---- | --------------------------------------------------- | ----------------------------------------------------------------- |
+| 1   | 菜单 | 侧栏「项目授权」「下载策略」                        | 「成员与权限」「平台设置」（`apps/web/index.html:61-63`）         |
+| 2   | 布局 | 工作台统计：进行中项目/今日会话/可用主机/待审批下载 | 可访问项目/主机在线/禁用下载项目/下载默认策略（`app.js:180-196`） |
+| 3   | 布局 | 工作台「全部项目」7 列，含「最近使用」              | 6 列，无「最近使用」（`app.js:199-208`）                          |
+| 4   | 页面 | `#/diagnostics` 连接诊断页                          | 实际无 `diagnostics` 路由/渲染器（`app.js:111-119`）              |
+| 5   | 布局 | P3 项目视图是完整 IDE 路由                          | 实际是同页 overlay + `cloud-admin.html` iframe                    |
+| 6   | 字段 | 登录框 id `loginAccount/loginPassword`              | `username/password`（label 相同，属 selector 漂移而非字段缺失）   |
 
 ### 4.6 报告
 
@@ -319,15 +319,15 @@ evidence/playwright-server/
 
 ## 5. 与既有测试体系的关系
 
-| 既有 | 新 server |
-| --- | --- |
-| `tests/e2e/*.spec.ts` Electron 回归 | 不迁移；新 server 不进入 `tests/playwright.config.ts` 的 `testDir` |
-| `tests/e2e/global-setup.ts` 构建 Electron/CLI/web | 不修改；新 server 只消费已构建的 `out/web` 与被 reseed 的平台 |
-| `@stablyai/playwright-test` | 新 server 用 `playwright`（同一版本 1.63.0）；独立模式不依赖 test runner |
-| `exploratory-r2` Electron 驱动 | 保留；新 server 是 Web 对应物 |
-| `probe-u46-8-browser-journey.mjs` | 其旅程步骤可作为首批 journey 的素材；新 server 不再每次冷启动 |
-| `local-env-reseed.mjs` | 以子进程调用（`--ensure-env`），或仅做健康探测；不 import |
-| `monaco-e2e-probe.ts` | 不新增类似仪器化；优先真实 DOM。`VITE_EXPOSE_STORE` 仅作为既有 web oracle 的说明 |
+| 既有                                              | 新 server                                                                        |
+| ------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `tests/e2e/*.spec.ts` Electron 回归               | 不迁移；新 server 不进入 `tests/playwright.config.ts` 的 `testDir`               |
+| `tests/e2e/global-setup.ts` 构建 Electron/CLI/web | 不修改；新 server 只消费已构建的 `out/web` 与被 reseed 的平台                    |
+| `@stablyai/playwright-test`                       | 新 server 用 `playwright`（同一版本 1.63.0）；独立模式不依赖 test runner         |
+| `exploratory-r2` Electron 驱动                    | 保留；新 server 是 Web 对应物                                                    |
+| `probe-u46-8-browser-journey.mjs`                 | 其旅程步骤可作为首批 journey 的素材；新 server 不再每次冷启动                    |
+| `local-env-reseed.mjs`                            | 以子进程调用（`--ensure-env`），或仅做健康探测；不 import                        |
+| `monaco-e2e-probe.ts`                             | 不新增类似仪器化；优先真实 DOM。`VITE_EXPOSE_STORE` 仅作为既有 web oracle 的说明 |
 
 集成点：
 
@@ -348,11 +348,11 @@ evidence/playwright-server/
 
 ### 6.2 脚本执行边界
 
-| 方案 | 结论 |
-| --- | --- |
-| `node:vm` | **不作为安全边界**。无 ESM/模块解析，逃逸容易，且无法把 Playwright 句柄安全暴露；只可能用于纯函数片段，本设计不需要 |
-| 直接 `import()`（v1 默认） | 用于探索脚本：脚本由同一代理/用户编写，属可信本地代码。收益是可直接使用常驻 `page`、`locator`、`frame`，且步骤流最完整。风险是死循环会阻塞 server → 由 run 超时 + `page.close()` 尽力打断，文档明确「不可中止同步死循环」 |
-| 子进程 + Playwright `connect`（`isolate:true`，二期） | `browser-host` 改用 `chromium.launchServer()` 暴露 Playwright endpoint；子进程 `chromium.connect(wsEndpoint)` 得到同一批 context/page。可获得崩溃隔离与硬超时，脚本文件不变。`/tabs/:id/evaluate` 仍在浏览器沙箱内执行 |
+| 方案                                                  | 结论                                                                                                                                                                                                                      |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `node:vm`                                             | **不作为安全边界**。无 ESM/模块解析，逃逸容易，且无法把 Playwright 句柄安全暴露；只可能用于纯函数片段，本设计不需要                                                                                                       |
+| 直接 `import()`（v1 默认）                            | 用于探索脚本：脚本由同一代理/用户编写，属可信本地代码。收益是可直接使用常驻 `page`、`locator`、`frame`，且步骤流最完整。风险是死循环会阻塞 server → 由 run 超时 + `page.close()` 尽力打断，文档明确「不可中止同步死循环」 |
+| 子进程 + Playwright `connect`（`isolate:true`，二期） | `browser-host` 改用 `chromium.launchServer()` 暴露 Playwright endpoint；子进程 `chromium.connect(wsEndpoint)` 得到同一批 context/page。可获得崩溃隔离与硬超时，脚本文件不变。`/tabs/:id/evaluate` 仍在浏览器沙箱内执行    |
 
 脚本白名单：默认只允许 `cloud-platform/scripts/playwright-server/journeys/`；`ORCA_PW_SERVER_SCRIPTS_DIRS` 可追加目录（路径分隔符按平台拆分）。注册时 `realpath` 后做前缀校验。内联 `source` 写入 `<state>/runs/<runId>/` 再 import，不执行网络来源。
 
@@ -453,16 +453,16 @@ evidence/playwright-server/
 
 ## 9. 风险与限制
 
-| 风险 | 处理 |
-| --- | --- |
-| 实际 Web 用 `innerHTML` 动态渲染，class/结构易变 | 优先 `data-testid`/role/文本；`discover()` 本身是选择器发现工具；对照结果按结构而非 class |
-| 原型是独立 vanilla 实现，非同一 React 组件 | 只做结构/字段/菜单对照与截图复核，不做像素门禁 |
-| 打开项目会触发真实 provision/会话 | 回归模式默认干净 context，数据由 reseed 提供；探索模式容忍既有会话 |
-| 平台自签 TLS | context `ignoreHTTPSErrors`；Node 侧 fetch 用 `NODE_EXTRA_CA_CERTS` 指向 dev CA |
-| 同步死循环阻塞 server | v1 明确限制 + 超时；`isolate:true` 子进程模式作为二期硬隔离 |
-| 远程/SSH 主机 | 浏览器只访问平台入口，远端执行仍由平台与 host 承担；server 不新增 SSH 逻辑 |
-| Windows | 路径全用 `path`；若 server 派生进程，统一走 `@orca/process-host` 的 `spawnProcess`，禁止裸 `child_process` |
-| Playwright 版本漂移 | 固定根仓 `playwright@1.63.0`；不单独安装浏览器 |
+| 风险                                             | 处理                                                                                                       |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| 实际 Web 用 `innerHTML` 动态渲染，class/结构易变 | 优先 `data-testid`/role/文本；`discover()` 本身是选择器发现工具；对照结果按结构而非 class                  |
+| 原型是独立 vanilla 实现，非同一 React 组件       | 只做结构/字段/菜单对照与截图复核，不做像素门禁                                                             |
+| 打开项目会触发真实 provision/会话                | 回归模式默认干净 context，数据由 reseed 提供；探索模式容忍既有会话                                         |
+| 平台自签 TLS                                     | context `ignoreHTTPSErrors`；Node 侧 fetch 用 `NODE_EXTRA_CA_CERTS` 指向 dev CA                            |
+| 同步死循环阻塞 server                            | v1 明确限制 + 超时；`isolate:true` 子进程模式作为二期硬隔离                                                |
+| 远程/SSH 主机                                    | 浏览器只访问平台入口，远端执行仍由平台与 host 承担；server 不新增 SSH 逻辑                                 |
+| Windows                                          | 路径全用 `path`；若 server 派生进程，统一走 `@orca/process-host` 的 `spawnProcess`，禁止裸 `child_process` |
+| Playwright 版本漂移                              | 固定根仓 `playwright@1.63.0`；不单独安装浏览器                                                             |
 
 ---
 
@@ -530,23 +530,23 @@ node cloud-platform/scripts/playwright-server/compare-prototype.mjs --all --role
 - **文档路径**：`remote-connectivity/design/2026-11-13-cloud-dev-platform/work-orders/playwright-server-design.md`。
 - **置信度**：高。既有 probe/harness、平台启动方式、Web DOM 与原型结构均已静态核对；剩余不确定性集中在「实际 Web 动态渲染带来的选择器稳定性」与「探索脚本是否需要子进程硬隔离」，两者均已在设计中留出明确升级路径。
 
-
 ## 主会话审定（2026-11-15）
 
 全盘采纳：①常驻 Node 进程+headless Chromium+身份隔离上下文（admin/zhangsan/lisi）+127.0.0.1 HTTP/WS 端口协议；②defineJourney 单文件双模式（server 注入常驻 page/ui ∥ runIfMain 临时 Chromium 独立回归）——两种模式同一脚本正文；③原型对照=同一 DOM 清点器双轮（prototype.html file:// + 实际页，admin/developer 两轮含隐藏层）+三类差异检测（布局 LCS/字段 Dice+别名表/菜单 label+role）+6 条可预见差异作验收自检；④与 tests/e2e spec 不迁移、server 服务探索与快速回归；⑤升级路径（isolate:true+launchServer/connect）留档。实现切分按设计 §切分节（PS 系令），四路探索回收后并行派发。
-
 
 ## 主会话审定补充：常用扩展函数库（2026-11-15 用户指令）
 
 包装层第一层 `ui` 在语义薄封装之上增**扩展函数库**（实现令含；场景在使用中持续探索扩展）：
 
 **提取类**（§9b 文字提取优先原则的落地）：
+
 - `extractText(scope?, selector?)` —— 整块/按区域结构化文本（重点区域数据与状态判读）
 - `extractLayout(pageId?)` —— 页面区块树/导航/栅格位置（原型对照输入）
 - `extractState()` —— 业务状态词聚合（就绪/准备中/失败/离线/维护/计数/徽标）
 - `extractTable(selector?)` —— 表格行列结构化（审计/授权矩阵/项目列表）
 
 **操作类**（项目内常用语义封装）：
+
 - `login(username)` / `logout()` —— 身份矩阵快捷切换（复用驻留上下文）
 - `navigateMenu(pageId)` —— 侧栏/路由导航
 - `openProject(id)` / `openDetail(id)` / `openWorkspace(id)` —— 三操作直达
@@ -554,6 +554,7 @@ node cloud-platform/scripts/playwright-server/compare-prototype.mjs --all --role
 - `fillForm(fieldMap)` —— 表单批量填充+提交
 
 **断言/发现类**：
+
 - `assertText(expected, scope?)` / `waitForState(text)` / `discover()` —— 控件清单发现（探索核心）
 - `compareWithPrototype(pageId)` —— 原型对照（调 DOM 清点器）
 - `screenshot(target?)` —— 辅助证据（布局类问题）

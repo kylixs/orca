@@ -46,7 +46,7 @@ for (...) {
 }
 ```
 
-The loop runs over the HTTP, file and slash-path spans that were just pushed, so it also deletes real URLs and directory paths whose final character is `/`. The surviving text is then rebuilt by the fallback/merge pass, which cannot re-attach a leading or trailing separator (the join pass only fills gaps *between* tokens).
+The loop runs over the HTTP, file and slash-path spans that were just pushed, so it also deletes real URLs and directory paths whose final character is `/`. The surviving text is then rebuilt by the fallback/merge pass, which cannot re-attach a leading or trailing separator (the join pass only fills gaps _between_ tokens).
 
 Verified against the real tokenizer:
 
@@ -57,9 +57,9 @@ open https://example.com/a/ now      -> "https://example.com/a"
 /tmp/                                -> "tmp"
 ```
 
-`https://example.com/` is a very common form, and `/var/log/` losing a leading slash makes the copied value a *relative* path. This is a regression of the pre-change `WORD_RE` selection, which included `/` and copied such paths/URLs whole, and contradicts R6/TL-T13 (“URL/路径长按复制整段不变”) and the design’s “URL/路径原子 span 不再拆”. The existing vectors G12/G13 only use URLs/paths without a trailing slash, so tests do not see it.
+`https://example.com/` is a very common form, and `/var/log/` losing a leading slash makes the copied value a _relative_ path. This is a regression of the pre-change `WORD_RE` selection, which included `/` and copied such paths/URLs whole, and contradicts R6/TL-T13 (“URL/路径长按复制整段不变”) and the design’s “URL/路径原子 span 不再拆”. The existing vectors G12/G13 only use URLs/paths without a trailing slash, so tests do not see it.
 
-**Fix:** apply the separator check only to the `SLASH_PATH_RE` matches (keep the HTTP/file matches intact), and only drop a slash-path span when its text is *entirely* separators (e.g. `/`, `//`, `./`), not when it merely ends with one. Add `https://example.com/`, `/var/log/`, `C:\` and `./src/` vectors asserting the full copied text in both Segmenter arms.
+**Fix:** apply the separator check only to the `SLASH_PATH_RE` matches (keep the HTTP/file matches intact), and only drop a slash-path span when its text is _entirely_ separators (e.g. `/`, `//`, `./`), not when it merely ends with one. Add `https://example.com/`, `/var/log/`, `C:\` and `./src/` vectors asserting the full copied text in both Segmenter arms.
 
 ---
 
@@ -69,7 +69,7 @@ open https://example.com/a/ now      -> "https://example.com/a"
 
 **Where:** `mobile/src/session/terminal-link-presentation.ts:97-103`.
 
-When `new URL(filtered)` throws, the function returns `summary: filtered` — the entire URL. The tap detector matches `https?://…` broadly, so a malformed but matched value can reach the sheet, e.g. `https://user:pass@` or `https://user:pass@[bad/path` (both parse-throw; both contain userinfo). The sheet then renders `user:pass@…` as the *summary*, defeating A22’s “summary hides userinfo” anti-phishing contract. Also, `isBidiOrControl` (`:9-21`) filters bidi/control but not zero-width format characters (U+200B–U+200D, U+2060, U+FEFF), which can hide characters in the expanded full URL.
+When `new URL(filtered)` throws, the function returns `summary: filtered` — the entire URL. The tap detector matches `https?://…` broadly, so a malformed but matched value can reach the sheet, e.g. `https://user:pass@` or `https://user:pass@[bad/path` (both parse-throw; both contain userinfo). The sheet then renders `user:pass@…` as the _summary_, defeating A22’s “summary hides userinfo” anti-phishing contract. Also, `isBidiOrControl` (`:9-21`) filters bidi/control but not zero-width format characters (U+200B–U+200D, U+2060, U+FEFF), which can hide characters in the expanded full URL.
 **Fix:** on parse failure show a defanged/truncated prefix (no userinfo, no path) or a neutral “Unparseable URL” line while keeping the full URL only in the explicitly expanded view; add the Cf range to the sanitizer. Add a component/presentation test with `https://user:pass@[bad/path`.
 
 ### m2. The desktop action can fail silently despite the “never silent” requirement

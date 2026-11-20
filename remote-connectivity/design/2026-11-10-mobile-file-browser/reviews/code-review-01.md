@@ -37,14 +37,14 @@ Findings 统计：**BLOCKER 2 / MAJOR 5 / MINOR 10**。
 
 CI 在 PR 上执行 `pnpm run check:code-quality:changed`（`.github/workflows/pr.yml:257`）。本需求新增：
 
-| 文件:行 | 规则 | 说明 |
-|---|---|---|
-| `mobile/src/files/mobile-file-save.ts:6` | `import/no-duplicates` | 第 6、9 行各自从 `./mobile-file-download-cache` import 一次。根 `pnpm lint` 用 `--deny-warnings` 也会失败。合并 import 即可。 |
-| `mobile/src/files/mobile-file-download-cache.ts:274` | `typescript/consistent-type-assertions` | `parsed as Partial<CacheMetadata>` 没有 SAFETY 依据。后续字段检查虽已覆盖，但规则要求行内 disable + `SAFETY:`，或用运行时 guard 替代断言。 |
-| `mobile/src/files/file-download-naming.ts:9` | unused `oxlint-disable` | `BIDI_CONTROLS` 的正则并未触发 `no-control-regex`；删除该指令。 |
-| `mobile/src/files/MobileFileExplorerPanel.tsx:104-107` | `react-doctor/no-adjust-state-on-prop-change` | 4 条。`useEffect` 在 `hostId/worktreeId` 变化后清空搜索/分类/菜单状态。 |
-| `mobile/src/files/use-mobile-file-search.ts:111` | `react-doctor/no-derived-state-effect` | 查询变化后在 effect 里同步 `setState`。 |
-| `mobile/src/files/use-mobile-file-search.test.ts:26` | `typescript/consistent-type-assertions` | `as unknown as RpcClient`；请用带类型的最小 stub，或加行内 SAFETY disable。 |
+| 文件:行                                                | 规则                                          | 说明                                                                                                                                       |
+| ------------------------------------------------------ | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `mobile/src/files/mobile-file-save.ts:6`               | `import/no-duplicates`                        | 第 6、9 行各自从 `./mobile-file-download-cache` import 一次。根 `pnpm lint` 用 `--deny-warnings` 也会失败。合并 import 即可。              |
+| `mobile/src/files/mobile-file-download-cache.ts:274`   | `typescript/consistent-type-assertions`       | `parsed as Partial<CacheMetadata>` 没有 SAFETY 依据。后续字段检查虽已覆盖，但规则要求行内 disable + `SAFETY:`，或用运行时 guard 替代断言。 |
+| `mobile/src/files/file-download-naming.ts:9`           | unused `oxlint-disable`                       | `BIDI_CONTROLS` 的正则并未触发 `no-control-regex`；删除该指令。                                                                            |
+| `mobile/src/files/MobileFileExplorerPanel.tsx:104-107` | `react-doctor/no-adjust-state-on-prop-change` | 4 条。`useEffect` 在 `hostId/worktreeId` 变化后清空搜索/分类/菜单状态。                                                                    |
+| `mobile/src/files/use-mobile-file-search.ts:111`       | `react-doctor/no-derived-state-effect`        | 查询变化后在 effect 里同步 `setState`。                                                                                                    |
+| `mobile/src/files/use-mobile-file-search.test.ts:26`   | `typescript/consistent-type-assertions`       | `as unknown as RpcClient`；请用带类型的最小 stub，或加行内 SAFETY disable。                                                                |
 
 修复建议（Panel）：在使用点给 panel 加 `key={`${hostId}:${worktreeId}`}`（路由页、`SessionDockColumn` 都适用），删除该重置 effect；或采用 `MobileFileMarkdownPreview` 里“渲染期比较上一个 prop”的写法。`use-mobile-file-search` 若确实必须由 effect 驱动异步查询，就加一条带理由的 `// oxlint-disable-next-line react-doctor/no-derived-state-effect -- ...`，否则把可派生的状态移出 effect。
 

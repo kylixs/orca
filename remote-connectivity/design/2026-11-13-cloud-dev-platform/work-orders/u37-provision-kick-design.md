@@ -32,13 +32,13 @@
 
 `POST /v1/hosts/{id}/heartbeat` 响应（`server.ts:2329-2363`）今天携带：
 
-| 字段 | 内容 | 先例意义 |
-| --- | --- | --- |
-| `hostRevoked` | 宿主级吊销 | 单向指令，宿主收到即停摆 |
-| `projectsRootRejected` | **U21 新增**，可选、仅拒绝时出现 | **wire-additive 下行扩展的最近先例**；注释即「Optional so older hosts that ignore it stay on the wire untouched」 |
-| `policyVersion` / `policies` | `downloadDefault`、`projectOverrides`（**按 projectId 的 per-project 映射**）、`readRatePerHour`、`rateOverrides` | 下行已携带 per-project 数据，无需新通道 |
-| `revoked` | users/projects/devices/jtis 四集合 | 数组式批量下行 |
-| `maintenance` / `serverTime` | 维护态、时钟 | — |
+| 字段                         | 内容                                                                                                              | 先例意义                                                                                                          |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `hostRevoked`                | 宿主级吊销                                                                                                        | 单向指令，宿主收到即停摆                                                                                          |
+| `projectsRootRejected`       | **U21 新增**，可选、仅拒绝时出现                                                                                  | **wire-additive 下行扩展的最近先例**；注释即「Optional so older hosts that ignore it stay on the wire untouched」 |
+| `policyVersion` / `policies` | `downloadDefault`、`projectOverrides`（**按 projectId 的 per-project 映射**）、`readRatePerHour`、`rateOverrides` | 下行已携带 per-project 数据，无需新通道                                                                           |
+| `revoked`                    | users/projects/devices/jtis 四集合                                                                                | 数组式批量下行                                                                                                    |
+| `maintenance` / `serverTime` | 维护态、时钟                                                                                                      | —                                                                                                                 |
 
 宿主侧 `sendHeartbeat`（`cloud-host-enrollment.ts:176-211`）**白名单式**摘取 `policyVersion/policies/revoked/maintenance/hostRevoked` 组装 `HeartbeatResult`——未知字段天然不可见，这是「旧宿主零感知」的结构性保证，也是 U21 选它做下行扩展的原因。
 
@@ -59,22 +59,22 @@ W12b-2（U17）已把回报器安装修复到 `installRuntimeCloudSurfaces`（`c
 
 `planCloudProjectProvision`（`cloud-project-provision.ts:34-42`）×`orca-runtime.ts:119-179`：
 
-| hasRepo | hasRepoUrl | 计划 | 执行 | 幂等性 |
-| --- | --- | --- | --- | --- |
-| true | * | already-provisioned | `registerExistingCheckout`（只补 store 行/缓存，零触碰内容） | 重入无副作用 |
-| false | true | clone | `cloneToPath`（`--` 分隔 argv、per-path `withPathLock` 串行、失败清理半成品、落 store 注册） | 已是仓库即短路 |
-| false | false | init | `initToPath`（建目录+`git init`+首提交+注册） | 已是仓库即短路 |
+| hasRepo | hasRepoUrl | 计划                | 执行                                                                                         | 幂等性         |
+| ------- | ---------- | ------------------- | -------------------------------------------------------------------------------------------- | -------------- |
+| true    | *          | already-provisioned | `registerExistingCheckout`（只补 store 行/缓存，零触碰内容）                                 | 重入无副作用   |
+| false   | true       | clone               | `cloneToPath`（`--` 分隔 argv、per-path `withPathLock` 串行、失败清理半成品、落 store 注册） | 已是仓库即短路 |
+| false   | false      | init                | `initToPath`（建目录+`git init`+首提交+注册）                                                | 已是仓库即短路 |
 
 **关键**：kick 执行器只需要「拿着指派调用 `provisionCloudProject`」，重复指派/重启重放/并发去重全部由这层既有语义吸收。
 
 ### 1.5 死锁四段（U37 本体）
 
-| 段 | 位置 | 事实 |
-| --- | --- | --- |
-| ① connect 只放行 ready | `server.ts:2790-2814` | failed→409 `PROJECT_NOT_PREPARED`；provisioning→409 `PROJECT_PROVISIONING`（U20） |
-| ② ready 只来自回报 | `server.ts:749-785` 是唯一把 provisioning 翻成 ready 的路径（其余写入点只置 provisioning/archived） | |
-| ③ 克隆只发生在票据内 | `project.provision`（`project-provision.ts`）是宿主唯一调用 `provisionCloudProject` 的入口 | |
-| ④ 票据只发 ready | ① ⇒ provisioning 拿不到票 ⇒ ③ 永不执行 ⇒ ② 永不翻转 | **环** |
+| 段                     | 位置                                                                                                | 事实                                                                              |
+| ---------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| ① connect 只放行 ready | `server.ts:2790-2814`                                                                               | failed→409 `PROJECT_NOT_PREPARED`；provisioning→409 `PROJECT_PROVISIONING`（U20） |
+| ② ready 只来自回报     | `server.ts:749-785` 是唯一把 provisioning 翻成 ready 的路径（其余写入点只置 provisioning/archived） |                                                                                   |
+| ③ 克隆只发生在票据内   | `project.provision`（`project-provision.ts`）是宿主唯一调用 `provisionCloudProject` 的入口          |                                                                                   |
+| ④ 票据只发 ready       | ① ⇒ provisioning 拿不到票 ⇒ ③ 永不执行 ⇒ ② 永不翻转                                                 | **环**                                                                            |
 
 provisioning 的四个写入点（全部「带 repoUrl ⇒ provisioning」）：admin create `server.ts:1538`、self-service create `:1654`、PUT `:1801`、restore `:1980`。**平台侧没有任何「解锁」写入口**（U34 笔记 `structuralFinding` 已证：平台进程外置无 store 直写通道）。
 
@@ -140,9 +140,14 @@ provisioning 的四个写入点（全部「带 repoUrl ⇒ provisioning」）：
 function pendingProvisionAssignments(hostId: string) {
   return [...store.projects.values()]
     .filter((p) => p.hostId === hostId && p.status === 'provisioning' && p.repoUrl !== '')
-    .sort((a, b) => a.createdAt - b.createdAt)     // 稳定顺序 ⇒ 分拍可预期
-    .slice(0, MAX_ASSIGNMENTS_PER_BEAT)            // 16；余量下拍续发
-    .map((p) => ({ projectId: p.id, path: p.path, repoUrl: p.repoUrl, defaultBranch: p.defaultBranch }))
+    .sort((a, b) => a.createdAt - b.createdAt) // 稳定顺序 ⇒ 分拍可预期
+    .slice(0, MAX_ASSIGNMENTS_PER_BEAT) // 16；余量下拍续发
+    .map((p) => ({
+      projectId: p.id,
+      path: p.path,
+      repoUrl: p.repoUrl,
+      defaultBranch: p.defaultBranch
+    }))
 }
 ```
 
@@ -180,16 +185,16 @@ cloud-agent-client.refreshOnce()（beat 成功后，与 revocations/policies 应
 
 ### 3.4 幂等 / 时序矩阵
 
-| 场景 | 行为 | 依据 |
-| --- | --- | --- |
-| 同拍/跨拍重复指派 | 第二次进 `already-provisioned` → `registerExistingCheckout` → ok（provisioned:false）→ 重复报告被平台幂等吸收 | §1.4 |
-| 克隆在途又来指派 | `inFlightByProjectId` 忽略；即使漏防也有 per-path `withPathLock` 串行化 | clone 控制器 :164 |
-| 宿主重启 | 重启后首拍重发 ⇒ 继续未竟克隆；已克隆则短路 | 平台按 status 派生 |
-| 回报丢失（平台宕机） | 队列保留（32 上限、同项目覆盖）→ 恢复补报；期间重发指派幂等 | report-queue 语义 |
-| 平台刚翻转 ready 但宿主还在跑第二个重复指派 | 短路无副作用；多余 ok 报告不改变 ready | `applyProjectProvisionReports` 幂等置 ready |
-| 克隆成功但项目已被 archive | 平台跳过 archived 的报告（`server.ts:764`）；指派派生也排除 archived | 既有护栏 |
-| 他宿主伪造/串线 | 派生强制 `hostId` 绑定；平台回报处理拒他 host 项目（`:764`） | 双向隔离 |
-| PUT 改 repoUrl 但路径已是检出 | `already-provisioned` 短路 ⇒ 不强制重克隆（**与票据路径现状一致**，非本设计引入）；如需强制，后续指派加 generation 字段（wire-additive 可加） | §7 开放问题 |
+| 场景                                        | 行为                                                                                                                                          | 依据                                        |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| 同拍/跨拍重复指派                           | 第二次进 `already-provisioned` → `registerExistingCheckout` → ok（provisioned:false）→ 重复报告被平台幂等吸收                                 | §1.4                                        |
+| 克隆在途又来指派                            | `inFlightByProjectId` 忽略；即使漏防也有 per-path `withPathLock` 串行化                                                                       | clone 控制器 :164                           |
+| 宿主重启                                    | 重启后首拍重发 ⇒ 继续未竟克隆；已克隆则短路                                                                                                   | 平台按 status 派生                          |
+| 回报丢失（平台宕机）                        | 队列保留（32 上限、同项目覆盖）→ 恢复补报；期间重发指派幂等                                                                                   | report-queue 语义                           |
+| 平台刚翻转 ready 但宿主还在跑第二个重复指派 | 短路无副作用；多余 ok 报告不改变 ready                                                                                                        | `applyProjectProvisionReports` 幂等置 ready |
+| 克隆成功但项目已被 archive                  | 平台跳过 archived 的报告（`server.ts:764`）；指派派生也排除 archived                                                                          | 既有护栏                                    |
+| 他宿主伪造/串线                             | 派生强制 `hostId` 绑定；平台回报处理拒他 host 项目（`:764`）                                                                                  | 双向隔离                                    |
+| PUT 改 repoUrl 但路径已是检出               | `already-provisioned` 短路 ⇒ 不强制重克隆（**与票据路径现状一致**，非本设计引入）；如需强制，后续指派加 generation 字段（wire-additive 可加） | §7 开放问题                                 |
 
 ### 3.5 安全
 
@@ -207,32 +212,32 @@ cloud-agent-client.refreshOnce()（beat 成功后，与 revocations/policies 应
 
 ### 平台（`cloud-platform/apps/api/src/`）
 
-| # | 文件 | 改动 |
-| --- | --- | --- |
-| P1 | `server.ts` | 新增纯函数 `pendingProvisionAssignments(hostId)`（过滤/排序/切片 16）；heartbeat 响应体在 `revokedAt === null` 分支加 `...(assignments.length ? { provisionAssignments: assignments } : {})`（置于 `projectsRootRejected` 旁，沿用其注释风格）；指派集合变化时 `project_provision_assigned` 审计（host 级 in-memory 去重） |
-| P2 | — | store.ts / 契约包 / 请求 wire：**零改动**（status 派生，无新字段；上行 `provisioned` 原样） |
+| #   | 文件        | 改动                                                                                                                                                                                                                                                                                                                       |
+| --- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P1  | `server.ts` | 新增纯函数 `pendingProvisionAssignments(hostId)`（过滤/排序/切片 16）；heartbeat 响应体在 `revokedAt === null` 分支加 `...(assignments.length ? { provisionAssignments: assignments } : {})`（置于 `projectsRootRejected` 旁，沿用其注释风格）；指派集合变化时 `project_provision_assigned` 审计（host 级 in-memory 去重） |
+| P2  | —           | store.ts / 契约包 / 请求 wire：**零改动**（status 派生，无新字段；上行 `provisioned` 原样）                                                                                                                                                                                                                                |
 
 ### 宿主（`src/main/`）
 
-| # | 文件 | 改动 |
-| --- | --- | --- |
-| H1 | `cloud-platform/cloud-host-enrollment.ts` | `HeartbeatResult` 增加 `provisionAssignments: unknown`（原始透传，与 `policies`/`revoked` 同风格；`readField` 摘取） |
-| H2 | 新文件 `cloud-platform/cloud-provision-assignment.ts` | `CloudProvisionAssignment` 类型；`parseCloudProvisionAssignments(value): CloudProvisionAssignment[]`（`readArrayValue`/`readString` 防御解析，条目数 ≤16、字段长度截断、类型不符单条丢弃）；`isProvisionableCheckoutPath(path)`（规范绝对判定，宿主侧 twin，规则对齐 `packages/contract/src/project-path.ts`——按 `cloud-credential.ts` 先例宿主不直接 import 平台契约包） |
-| H3 | `cloud-platform/cloud-agent-client.ts` | `refreshOnce` 成功拍解析并派发；`CloudAgentClient` 接口 + 返回对象新增 `onProvisionAssignment(listener): () => void` |
-| H4 | `startup/cloud-runtime-admission.ts` | `CloudRuntimeTarget` 新增 `provisionCloudProject?: (input: CloudProjectProvisionInput) => Promise<CloudProjectProvisionResult>`（`OrcaRuntimeService` 已实现同名方法 ⇒ 结构化满足，`orca-runtime.ts:119` 零改动） |
-| H5 | `startup/cloud-runtime-attach.ts` | `installRuntimeCloudSurfaces`（Pick 增加 `onProvisionAssignment`）安装 kick 执行器：模块级串行队列 + `inFlightByProjectId` 去重 + 防御校验 + 失败回报 + `runtime_unavailable` 静默跳过 + 永不抛 |
-| H6 | `runtime/orca-runtime.ts` / `runtime-repository-clone-controller.ts` | **零改动**（克隆/初始化/注册全复用） |
+| #   | 文件                                                                 | 改动                                                                                                                                                                                                                                                                                                                                                                      |
+| --- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| H1  | `cloud-platform/cloud-host-enrollment.ts`                            | `HeartbeatResult` 增加 `provisionAssignments: unknown`（原始透传，与 `policies`/`revoked` 同风格；`readField` 摘取）                                                                                                                                                                                                                                                      |
+| H2  | 新文件 `cloud-platform/cloud-provision-assignment.ts`                | `CloudProvisionAssignment` 类型；`parseCloudProvisionAssignments(value): CloudProvisionAssignment[]`（`readArrayValue`/`readString` 防御解析，条目数 ≤16、字段长度截断、类型不符单条丢弃）；`isProvisionableCheckoutPath(path)`（规范绝对判定，宿主侧 twin，规则对齐 `packages/contract/src/project-path.ts`——按 `cloud-credential.ts` 先例宿主不直接 import 平台契约包） |
+| H3  | `cloud-platform/cloud-agent-client.ts`                               | `refreshOnce` 成功拍解析并派发；`CloudAgentClient` 接口 + 返回对象新增 `onProvisionAssignment(listener): () => void`                                                                                                                                                                                                                                                      |
+| H4  | `startup/cloud-runtime-admission.ts`                                 | `CloudRuntimeTarget` 新增 `provisionCloudProject?: (input: CloudProjectProvisionInput) => Promise<CloudProjectProvisionResult>`（`OrcaRuntimeService` 已实现同名方法 ⇒ 结构化满足，`orca-runtime.ts:119` 零改动）                                                                                                                                                         |
+| H5  | `startup/cloud-runtime-attach.ts`                                    | `installRuntimeCloudSurfaces`（Pick 增加 `onProvisionAssignment`）安装 kick 执行器：模块级串行队列 + `inFlightByProjectId` 去重 + 防御校验 + 失败回报 + `runtime_unavailable` 静默跳过 + 永不抛                                                                                                                                                                           |
+| H6  | `runtime/orca-runtime.ts` / `runtime-repository-clone-controller.ts` | **零改动**（克隆/初始化/注册全复用）                                                                                                                                                                                                                                                                                                                                      |
 
 ### 测试
 
-| # | 文件 | 改动 |
-| --- | --- | --- |
-| T1 | 新 `src/main/cloud-platform/cloud-provision-assignment.test.ts` | 纯单测：正常解析、缺字段/错型单条丢弃、条数截断、path 非法形态矩阵（`..`/相对/尾分隔符/控制字符）、URL/branch 校验对接 |
-| T2 | 新 `src/main/cloud-platform/cloud-provision-kick.test.ts` | 真平台 + 真注册宿主 + 真 TLS runtime + 真 bare git（仿 `cloud-project-provisioning.test.ts` 骨架），用例见 §5-A |
-| T3 | `src/main/cloud-platform/cloud-project-provisioning.test.ts`（M57） | 复活 + 语义改写，见 §5-C |
-| T4 | `src/main/cloud-platform/cloud-repo-less-project.test.ts` | W12b-3 还原「宿主亲手克隆」（回退 `c6fc42880ce` 对该用例的 hunk + 补 wait-ready 循环），见 §5-B |
-| T5 | 新 `cloud-platform/test/e2e/provision-assignment-delivery.e2e.test.ts` | 真平台进程 + 伪造心跳宿主（仿 `project-connect-readiness.e2e.test.ts` 的 `registerHost`+`beat`），平台半边闭环，见 §5-D |
-| T6 | 既有回归批 | §5-E 清单，全部零改动跑绿 |
+| #   | 文件                                                                   | 改动                                                                                                                    |
+| --- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| T1  | 新 `src/main/cloud-platform/cloud-provision-assignment.test.ts`        | 纯单测：正常解析、缺字段/错型单条丢弃、条数截断、path 非法形态矩阵（`..`/相对/尾分隔符/控制字符）、URL/branch 校验对接  |
+| T2  | 新 `src/main/cloud-platform/cloud-provision-kick.test.ts`              | 真平台 + 真注册宿主 + 真 TLS runtime + 真 bare git（仿 `cloud-project-provisioning.test.ts` 骨架），用例见 §5-A         |
+| T3  | `src/main/cloud-platform/cloud-project-provisioning.test.ts`（M57）    | 复活 + 语义改写，见 §5-C                                                                                                |
+| T4  | `src/main/cloud-platform/cloud-repo-less-project.test.ts`              | W12b-3 还原「宿主亲手克隆」（回退 `c6fc42880ce` 对该用例的 hunk + 补 wait-ready 循环），见 §5-B                         |
+| T5  | 新 `cloud-platform/test/e2e/provision-assignment-delivery.e2e.test.ts` | 真平台进程 + 伪造心跳宿主（仿 `project-connect-readiness.e2e.test.ts` 的 `registerHost`+`beat`），平台半边闭环，见 §5-D |
+| T6  | 既有回归批                                                             | §5-E 清单，全部零改动跑绿                                                                                               |
 
 ---
 
@@ -272,15 +277,15 @@ cloud-agent-client.refreshOnce()（beat 成功后，与 revocations/policies 应
 
 ### E. 零改动回归批（防 U37 修复引入新回归）
 
-| 套件 | 防的是什么 |
-| --- | --- |
-| `cloud-platform/test/e2e/project-connect-readiness.e2e.test.ts` | U20 门禁逐字不变（provisioning/failed 仍 409；ready 快路径照旧） |
-| `cloud-platform/test/e2e/projects-root-change-guard.e2e.test.ts` | U21 下行字段先例不受新字段影响 |
-| `src/main/startup/cloud-runtime-admission-attach.test.ts`（U34 套 1） | 回报器/kick 执行器同点安装的首启时序（W12b-2/U17）不回退 |
-| `src/main/cloud-platform/cloud-repo-less-project.test.ts` 其余用例、`self-service-projects`/`self-service-project-dir` e2e | repo-less 三态（init/已有目录/已登记检出）零回归 |
-| `cloud-platform/test/e2e/m70-acceptance.e2e.test.ts` + 平台 e2e 全批 + `project-update`/`project-archive` | PUT/restore 置 provisioning 的既有断言（翻转语义不变，只是现在有宿主接活） |
-| `src/main/cloud-platform/cloud-project-provision.test.ts`（纯单元） | 四态计划/URL/branch 校验不动 |
-| 全量：`pnpm tc:node` + `node config/scripts/run-vitest.mjs`（U28 入口）+ `oxlint` + `cloud-platform` e2e 批 | 常规门禁 |
+| 套件                                                                                                                       | 防的是什么                                                                 |
+| -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `cloud-platform/test/e2e/project-connect-readiness.e2e.test.ts`                                                            | U20 门禁逐字不变（provisioning/failed 仍 409；ready 快路径照旧）           |
+| `cloud-platform/test/e2e/projects-root-change-guard.e2e.test.ts`                                                           | U21 下行字段先例不受新字段影响                                             |
+| `src/main/startup/cloud-runtime-admission-attach.test.ts`（U34 套 1）                                                      | 回报器/kick 执行器同点安装的首启时序（W12b-2/U17）不回退                   |
+| `src/main/cloud-platform/cloud-repo-less-project.test.ts` 其余用例、`self-service-projects`/`self-service-project-dir` e2e | repo-less 三态（init/已有目录/已登记检出）零回归                           |
+| `cloud-platform/test/e2e/m70-acceptance.e2e.test.ts` + 平台 e2e 全批 + `project-update`/`project-archive`                  | PUT/restore 置 provisioning 的既有断言（翻转语义不变，只是现在有宿主接活） |
+| `src/main/cloud-platform/cloud-project-provision.test.ts`（纯单元）                                                        | 四态计划/URL/branch 校验不动                                               |
+| 全量：`pnpm tc:node` + `node config/scripts/run-vitest.mjs`（U28 入口）+ `oxlint` + `cloud-platform` e2e 批                | 常规门禁                                                                   |
 
 验收探针（首批验收模式，留档 `cloud-platform/evidence/u37-provision-kick/`）：对 T2-A 的用户精确场景出 observation JSON（含观察输出原文，遵 U27 整改），并在 kick 落地前先录一条「死锁复现」对照（create 带 repoUrl → 3 拍心跳后仍 provisioning → connect 409）。
 
@@ -290,11 +295,11 @@ cloud-agent-client.refreshOnce()（beat 成功后，与 revocations/policies 应
 
 > 每令独立可合入：令 A 单独上线=字段无人读（行为不变）；令 B 单独上线=旧平台无字段（无指派、无行为变化）。依赖关系仅 C 需要前两者。
 
-| 令 | 域 | 内容 | 文件 | 估时 |
-| --- | --- | --- | --- | --- |
-| **A 平台下行** | `cloud-platform/apps/api` | `pendingProvisionAssignments` + 响应字段 + 指派审计（§3.1，审计项可裁） | P1 | ~15 min |
-| **B 宿主执行** | `src/main/cloud-platform` + `src/main/startup` | 解析/校验模块 + 事件派发 + 目标类型 + kick 执行器（§3.3 全部纪律） | H1–H5 | ~20 min |
-| **C 测试与回归** | `src/main/cloud-platform/*.test.ts` + `cloud-platform/test/e2e` | T1–T5 + §5-E 回归批 | T1–T6 | ~2×20 min，**建议拆两遍跑**：C1=平台 e2e（T5，随令 A 审定）+ 单测 T1；C2=宿主端到端 T2 + M57/套件 2 复活 T3/T4 + 回归批 |
+| 令               | 域                                                              | 内容                                                                    | 文件  | 估时                                                                                                                    |
+| ---------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------- |
+| **A 平台下行**   | `cloud-platform/apps/api`                                       | `pendingProvisionAssignments` + 响应字段 + 指派审计（§3.1，审计项可裁） | P1    | ~15 min                                                                                                                 |
+| **B 宿主执行**   | `src/main/cloud-platform` + `src/main/startup`                  | 解析/校验模块 + 事件派发 + 目标类型 + kick 执行器（§3.3 全部纪律）      | H1–H5 | ~20 min                                                                                                                 |
+| **C 测试与回归** | `src/main/cloud-platform/*.test.ts` + `cloud-platform/test/e2e` | T1–T5 + §5-E 回归批                                                     | T1–T6 | ~2×20 min，**建议拆两遍跑**：C1=平台 e2e（T5，随令 A 审定）+ 单测 T1；C2=宿主端到端 T2 + M57/套件 2 复活 T3/T4 + 回归批 |
 
 ---
 
@@ -304,7 +309,6 @@ cloud-agent-client.refreshOnce()（beat 成功后，与 revocations/policies 应
 2. **`project_provision_assigned` 审计**：推荐保留（区分「宿主版本过旧/离线」与「克隆在途」，补 U35 相邻观测面）；若求最小可在令 A 中裁掉，后续 wire/additive 补。
 3. **PUT 改 repoUrl 到「已是检出」的路径**：kick 与票据路径一样 `already-provisioned` 短路，不强制重克隆（现状语义，非本缺陷范围）。若产品要求强制，需指派加 generation/expectedRemote 字段 + 宿主强制重克隆语义（会清用户本地状态），建议另立台账评估。
 4. **U20 的 provisioning 409 分支保留为应急回退开关**：方案 c（放行 provisioning）不实施，但若 kick 上线前线上被死锁卡住，回退 `43c79e1978b` 的 provisioning 分支可临时解锁（代价=失败暴露点回退），此回退是否预置成 feature flag 由主会话定。
-
 
 ## 8. 主会话审定（2026-11-14）
 

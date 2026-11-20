@@ -30,19 +30,19 @@
 
 ### 1.1 三操作契约（本令唯一需求源）
 
-| 操作 | 语义 | 现在的实现 | U46 后 |
-| --- | --- | --- | --- |
-| **详情** | 管理台**弹框**查看项目信息（字段≈创建表单 + 必要补充） | 管理员链接新标签打开宿主 `cloud-admin.html` 登录页（`app.js:310-318`） | 同页只读弹框；独立页入口降级为弹框内次要链接 |
-| **打开** | **管理台同页面进入简易版工作区**（P3：左中右、中间多标签、点右侧文件加标签、终端/文件编辑/预览设计图·HTML），只在当前浏览器查看，不惊动远程主机 orca | 一次性 handoff 新标签打开 orca web（`app.js:441-448`） | 同页覆盖层 + iframe 工作区；handoff 保留为平台版本不支持的回落 |
-| **Orca Web** | 打开 orca web 工作区（W13b 现语义） | W13b handoff → `web-index.html` | **不动**（同按钮、同端点、同语义） |
+| 操作         | 语义                                                                                                                                                 | 现在的实现                                                             | U46 后                                                         |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------- |
+| **详情**     | 管理台**弹框**查看项目信息（字段≈创建表单 + 必要补充）                                                                                               | 管理员链接新标签打开宿主 `cloud-admin.html` 登录页（`app.js:310-318`） | 同页只读弹框；独立页入口降级为弹框内次要链接                   |
+| **打开**     | **管理台同页面进入简易版工作区**（P3：左中右、中间多标签、点右侧文件加标签、终端/文件编辑/预览设计图·HTML），只在当前浏览器查看，不惊动远程主机 orca | 一次性 handoff 新标签打开 orca web（`app.js:441-448`）                 | 同页覆盖层 + iframe 工作区；handoff 保留为平台版本不支持的回落 |
+| **Orca Web** | 打开 orca web 工作区（W13b 现语义）                                                                                                                  | W13b handoff → `web-index.html`                                        | **不动**（同按钮、同端点、同语义）                             |
 
 ### 1.2 FR-3.11 修订史（第三次修订）
 
-| 次 | 时间 | 变更 | 入口形态 |
-| --- | --- | --- | --- |
-| R1 | 2026-11-14（M117/M122） | 首次落地：双入口「详情」（管理员→宿主会话页）+「Orca Web」（open→handoff）；「打开」同 handoff | 两个新标签页 |
-| R2 | 2026-11-14（U5/W3c） | 「打开」= 进入工作区，删除「连接信息已就绪」原始地址对话框 | 新标签页 |
-| **R3（本令）** | **2026-11-15（U46）** | **三操作语义澄清**：详情=弹框；打开=同页简易工作区；Orca Web 保持 R2 语义 | **弹框 + 同页覆盖层** |
+| 次             | 时间                    | 变更                                                                                           | 入口形态              |
+| -------------- | ----------------------- | ---------------------------------------------------------------------------------------------- | --------------------- |
+| R1             | 2026-11-14（M117/M122） | 首次落地：双入口「详情」（管理员→宿主会话页）+「Orca Web」（open→handoff）；「打开」同 handoff | 两个新标签页          |
+| R2             | 2026-11-14（U5/W3c）    | 「打开」= 进入工作区，删除「连接信息已就绪」原始地址对话框                                     | 新标签页              |
+| **R3（本令）** | **2026-11-15（U46）**   | **三操作语义澄清**：详情=弹框；打开=同页简易工作区；Orca Web 保持 R2 语义                      | **弹框 + 同页覆盖层** |
 
 ### 1.3 FR-3.9 语义演进（能力面不缩、承载方式变）
 
@@ -102,24 +102,24 @@ handoff：`POST /v1/projects/:id/web-handoff`（1951 → 3048）签发 60s 一�
 
 ### 3.2 字段清单与来源映射（零新增端点）
 
-| 区块 | 字段 | 来源 | 展示规则 |
-| --- | --- | --- | --- |
-| 基本信息 | 项目名称 | `projectView.name` | 文本 |
-| | 项目 Key | `projectView.key` | mono |
-| | 项目 ID | `projectView.id` | mono，可复制 |
-| | 创建者 | **`projectView.createdBy`（本次唯一增量字段）** | 文本；`null/缺省`→「未记录」；仅 admin/auditor 下发 |
-| | 创建时间 | `projectView.createdAt` | 绝对时间 + 相对时间（复用 `relative()`） |
-| | 项目状态 | `projectView.status` | 徽标：准备中/就绪/准备失败/已归档 |
-| | 准备失败原因 | `projectView.provisioningError` | mono，仅 `failed` 时显示 |
-| 运行配置 | 主机 | `hostName` + `hostId` | 主机名 + mono id |
-| | 宿主状态 | `hostStatus` + `hostMaintenanceReason` | 在线/离线/维护中（+原因） |
-| | 项目路径 | `projectView.path` | mono，可复制 |
-| | 仓库地址 | `projectView.repoUrl` | mono；空→「未配置仓库」 |
-| | 默认分支 | `projectView.defaultBranch` | mono |
-| 授权与策略 | 我的权限 | `projectView.permissions` | 权限徽标；管理员空集→「管理员可见（未授权）」，复用 `permissionSummary` 语义（`app.js:241-249`） |
-| | 直接授权概要 | `GET /v1/projects/:id/grants`（既有，管理员） | 主体（用户名/组 id）+ 权限数量；空→「无直接授权」；**不改端点、不显示继承来源**（端点不返回） |
-| | 下载策略 | `downloadPolicy` + `downloadPolicyExplicit` + `GET /v1/policies/download` | 生效值 + 来源（项目覆盖 / 跟随全局），复用 `effectiveDownloadPolicy`（`app.js:171-173`） |
-| | 会话页 | `sessionPageUrl` | 管理员「在独立页打开」链接（空则不显示） |
+| 区块       | 字段         | 来源                                                                      | 展示规则                                                                                         |
+| ---------- | ------------ | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| 基本信息   | 项目名称     | `projectView.name`                                                        | 文本                                                                                             |
+|            | 项目 Key     | `projectView.key`                                                         | mono                                                                                             |
+|            | 项目 ID      | `projectView.id`                                                          | mono，可复制                                                                                     |
+|            | 创建者       | **`projectView.createdBy`（本次唯一增量字段）**                           | 文本；`null/缺省`→「未记录」；仅 admin/auditor 下发                                              |
+|            | 创建时间     | `projectView.createdAt`                                                   | 绝对时间 + 相对时间（复用 `relative()`）                                                         |
+|            | 项目状态     | `projectView.status`                                                      | 徽标：准备中/就绪/准备失败/已归档                                                                |
+|            | 准备失败原因 | `projectView.provisioningError`                                           | mono，仅 `failed` 时显示                                                                         |
+| 运行配置   | 主机         | `hostName` + `hostId`                                                     | 主机名 + mono id                                                                                 |
+|            | 宿主状态     | `hostStatus` + `hostMaintenanceReason`                                    | 在线/离线/维护中（+原因）                                                                        |
+|            | 项目路径     | `projectView.path`                                                        | mono，可复制                                                                                     |
+|            | 仓库地址     | `projectView.repoUrl`                                                     | mono；空→「未配置仓库」                                                                          |
+|            | 默认分支     | `projectView.defaultBranch`                                               | mono                                                                                             |
+| 授权与策略 | 我的权限     | `projectView.permissions`                                                 | 权限徽标；管理员空集→「管理员可见（未授权）」，复用 `permissionSummary` 语义（`app.js:241-249`） |
+|            | 直接授权概要 | `GET /v1/projects/:id/grants`（既有，管理员）                             | 主体（用户名/组 id）+ 权限数量；空→「无直接授权」；**不改端点、不显示继承来源**（端点不返回）    |
+|            | 下载策略     | `downloadPolicy` + `downloadPolicyExplicit` + `GET /v1/policies/download` | 生效值 + 来源（项目覆盖 / 跟随全局），复用 `effectiveDownloadPolicy`（`app.js:171-173`）         |
+|            | 会话页       | `sessionPageUrl`                                                          | 管理员「在独立页打开」链接（空则不显示）                                                         |
 
 不展示：`browserEntryUrl`（内部路由）、完整 ACL 矩阵（在「成员与权限」页）、宿主延迟（弹框不连宿主）。**弹框不触发任何宿主 RPC**。
 
@@ -157,17 +157,18 @@ handoff：`POST /v1/projects/:id/web-handoff`（1951 → 3048）签发 60s 一�
 
 ### 4.1 架构选型：A（app.js 内嵌视图）vs B（cloud-admin iframe / 组件嵌入）
 
-| 维度 | A · app.js 内嵌工作区视图 | B · 宿主伺服 `cloud-admin.html` iframe（**采纳**） |
-| --- | --- | --- |
-| 浏览器可达性 | **不可行**：跨网段必须经中继浏览器边缘；WSS 前缀由页面路径 `/h/<routeKey>/` 推导（`web-path-prefix.ts:16,42-57`），平台源页面没有该前缀；票据 relay 端点是 SNI 形态（`server.ts:726-735`），浏览器拨不了。需自建第二条传输路径 | 页面本身就是宿主/中继边缘，前缀推导、直连与中继两种形态、W5c 子票重签全部原样生效 |
-| 客户端代码 | 需把 `src/renderer/src/web`（E2EE、设备密钥、WebRuntimeClient、票据换发）打进平台 Web 包 → 第二套浏览器客户端 | 复用现有 `cloud-browser-bridge`，平台包零增长 |
-| UI 复用 | app.js 是 vanilla；终端 WebGL / xterm / 文件面板 / 诊断对话框都要重写 | `CloudTerminalPanel`、`CloudFilePanel`、`CloudConnectionDiagnosticsDialog`、主机键/连接失败对话框直接复用 |
-| 多标签与编辑器宿主 | 控制台 state 里再写一套标签状态机；工作区随控制台重渲染 | React 工作区内部 reducer；iframe 文档与控制台路由互不干扰 |
-| 状态隔离 | 与控制台共享全局 state，切换路由易误伤 | 独立文档、独立 session/localStorage；关闭需显式握手 |
-| 与工作台路由共存 | 需要给控制台加路由/挡住导航 | 控制台用覆盖层；iframe 用 `?embed=1` 只渲染工作区，工作台视图不进入 iframe |
-| 代价 | 传输/客户端重复，且中继场景做不到 | 跨文档 postMessage 协议；iframe 生命周期收尾；宿主 bundle 版本落差 |
+| 维度               | A · app.js 内嵌工作区视图                                                                                                                                                                                                      | B · 宿主伺服 `cloud-admin.html` iframe（**采纳**）                                                        |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| 浏览器可达性       | **不可行**：跨网段必须经中继浏览器边缘；WSS 前缀由页面路径 `/h/<routeKey>/` 推导（`web-path-prefix.ts:16,42-57`），平台源页面没有该前缀；票据 relay 端点是 SNI 形态（`server.ts:726-735`），浏览器拨不了。需自建第二条传输路径 | 页面本身就是宿主/中继边缘，前缀推导、直连与中继两种形态、W5c 子票重签全部原样生效                         |
+| 客户端代码         | 需把 `src/renderer/src/web`（E2EE、设备密钥、WebRuntimeClient、票据换发）打进平台 Web 包 → 第二套浏览器客户端                                                                                                                  | 复用现有 `cloud-browser-bridge`，平台包零增长                                                             |
+| UI 复用            | app.js 是 vanilla；终端 WebGL / xterm / 文件面板 / 诊断对话框都要重写                                                                                                                                                          | `CloudTerminalPanel`、`CloudFilePanel`、`CloudConnectionDiagnosticsDialog`、主机键/连接失败对话框直接复用 |
+| 多标签与编辑器宿主 | 控制台 state 里再写一套标签状态机；工作区随控制台重渲染                                                                                                                                                                        | React 工作区内部 reducer；iframe 文档与控制台路由互不干扰                                                 |
+| 状态隔离           | 与控制台共享全局 state，切换路由易误伤                                                                                                                                                                                         | 独立文档、独立 session/localStorage；关闭需显式握手                                                       |
+| 与工作台路由共存   | 需要给控制台加路由/挡住导航                                                                                                                                                                                                    | 控制台用覆盖层；iframe 用 `?embed=1` 只渲染工作区，工作台视图不进入 iframe                                |
+| 代价               | 传输/客户端重复，且中继场景做不到                                                                                                                                                                                              | 跨文档 postMessage 协议；iframe 生命周期收尾；宿主 bundle 版本落差                                        |
 
 **否决的备选**：
+
 - A1 在 app.js 里重写一个云客户端：重复 + 中继不可达（上表）。
 - A2 把 React 工作区作为 island 编进平台包：仍是第二套客户端，且平台 Web 独立发布（M78/AC-19），等于把 Orca 运行时版本化两次。
 - C 维持新标签打开独立页：不满足"同页面"。
@@ -222,24 +223,34 @@ handoff：`POST /v1/projects/:id/web-handoff`（1951 → 3048）签发 60s 一�
 
 ```ts
 type WorkspaceTab =
-  | { id: string; kind: 'terminal'; title: string }                 // Terminal 1..N
-  | { id: string; kind: 'file'; path: string; title: string; mode: 'source' | 'preview' | 'image' | 'binary' }
+  | { id: string; kind: 'terminal'; title: string } // Terminal 1..N
+  | {
+      id: string
+      kind: 'file'
+      path: string
+      title: string
+      mode: 'source' | 'preview' | 'image' | 'binary'
+    }
 
 type WorkspaceState = {
   tabs: WorkspaceTab[]
   activeId: string | null
-  buffers: Record<string, FileBuffer>   // 按 tab id；切走不丢
+  buffers: Record<string, FileBuffer> // 按 tab id；切走不丢
 }
 type FileBuffer = {
   path: string
-  content: string; baseContent: string
+  content: string
+  baseContent: string
   state: 'loading' | 'ready' | 'error'
-  truncated: boolean; readOnly: boolean
-  saving: boolean; errorCode?: string
+  truncated: boolean
+  readOnly: boolean
+  saving: boolean
+  errorCode?: string
 }
 ```
 
 规则：
+
 - **打开文件**：同路径已开 → 只激活，不新增；否则新增 `file` 标签并激活。
 - **新建终端**：`+ 终端` → `Terminal N`（N 取未用最小序号）；上限 6（每终端一条子套接字；`MAX_SOCKETS_PER_DEVICE_SESSION=12`，`cloud-session-limits.ts:40`），超限 toast。
 - **激活**：标签点击/键盘；终端面板**保持挂载**（不被卸载），非激活用 `hidden` + `active=false` 抑制 fit/viewport（见 §4.5）。
@@ -277,26 +288,26 @@ type FileBuffer = {
 
 ### 4.8 预览（设计图 / HTML / 二进制）
 
-| 类型 | 判定 | 渲染 | 安全 |
-| --- | --- | --- | --- |
-| 图片（png/jpg/jpeg/gif/webp/bmp/ico/svg） | 扩展名白名单 → `previewCloudFile` → `isImage && mimeType` | `<img src="data:<mime>;base64,<content>">`，自适应容器，加载失败占位 | data URL + img 上下文，不执行脚本 |
-| HTML | 扩展名 `.html/.htm` → `files.read` 取文本 | `mode='preview'`：`<iframe sandbox="" referrerPolicy="no-referrer" srcDoc={content}>`（**无 allow-scripts / allow-same-origin**）；`mode='source'`：编辑器/只读源码 | 相对资源不解析（文档级预览，不是本地 dev server 预览）；脚本不执行 |
-| PDF | `previewCloudFile` → `mimeType==='application/pdf'` | 占位「PDF 预览不在简易版范围」+ 文件大小 | 不嵌入外部查看器 |
-| 其他二进制 | `isBinary` | 占位 + mime + 大小 | — |
-| 超大 | 宿主 `file_too_large` / 读配额错误 | 行内错误码，不伪装空内容 | — |
+| 类型                                      | 判定                                                      | 渲染                                                                                                                                                                | 安全                                                               |
+| ----------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| 图片（png/jpg/jpeg/gif/webp/bmp/ico/svg） | 扩展名白名单 → `previewCloudFile` → `isImage && mimeType` | `<img src="data:<mime>;base64,<content>">`，自适应容器，加载失败占位                                                                                                | data URL + img 上下文，不执行脚本                                  |
+| HTML                                      | 扩展名 `.html/.htm` → `files.read` 取文本                 | `mode='preview'`：`<iframe sandbox="" referrerPolicy="no-referrer" srcDoc={content}>`（**无 allow-scripts / allow-same-origin**）；`mode='source'`：编辑器/只读源码 | 相对资源不解析（文档级预览，不是本地 dev server 预览）；脚本不执行 |
+| PDF                                       | `previewCloudFile` → `mimeType==='application/pdf'`       | 占位「PDF 预览不在简易版范围」+ 文件大小                                                                                                                            | 不嵌入外部查看器                                                   |
+| 其他二进制                                | `isBinary`                                                | 占位 + mime + 大小                                                                                                                                                  | —                                                                  |
+| 超大                                      | 宿主 `file_too_large` / 读配额错误                        | 行内错误码，不伪装空内容                                                                                                                                            | —                                                                  |
 
 - 预览与编辑共用**一次读取**：HTML 用 `files.read` 的文本同时喂源码与 srcdoc；图片用 `files.readPreview`。不新增 RPC。
 - 读配额：平台默认 600 次/64MB 每项目每小时（`store.ts:156`），大图会消耗预算；错误如实呈现（§8 R7）。
 
 ### 4.9 权限语义与降级矩阵
 
-| 票据权限 | 「打开」入口 | 终端标签 | 文件树 | 读取/预览 | 保存 | 呈现 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `open` | ✔（宿主在线） | ✘ | ✘ | ✘ | ✘ | **无法进入工作区**：`openWorkspace` 的 ensure（`worktree.list/createManaged` 需 `terminal`）失败 → iframe 显示明确降级页「当前项目未授予终端权限，无法创建工作区」+ 错误码，不是空白/死循环 |
-| +`terminal` | ✔ | ✔ | ✔（checkout 已 ensure） | 由 `file:read` 决定 | 由 `file:write` 决定 | |
-| +`file:read` | ✔ | ✔ | ✔ | ✔ | ✘ | 只读标签 + 「只读」徽标 |
-| +`file:write` | ✔ | ✔ | ✔ | ✔ | ✔ | 编辑器可保存 |
-| `agent` / `browser` / `download` | 不呈现（简易版不含 Agent 标签、localhost 浏览器预览、下载） | | | | | |
+| 票据权限                         | 「打开」入口                                                | 终端标签 | 文件树                  | 读取/预览           | 保存                 | 呈现                                                                                                                                                                                        |
+| -------------------------------- | ----------------------------------------------------------- | -------- | ----------------------- | ------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `open`                           | ✔（宿主在线）                                               | ✘        | ✘                       | ✘                   | ✘                    | **无法进入工作区**：`openWorkspace` 的 ensure（`worktree.list/createManaged` 需 `terminal`）失败 → iframe 显示明确降级页「当前项目未授予终端权限，无法创建工作区」+ 错误码，不是空白/死循环 |
+| +`terminal`                      | ✔                                                           | ✔        | ✔（checkout 已 ensure） | 由 `file:read` 决定 | 由 `file:write` 决定 |                                                                                                                                                                                             |
+| +`file:read`                     | ✔                                                           | ✔        | ✔                       | ✔                   | ✘                    | 只读标签 + 「只读」徽标                                                                                                                                                                     |
+| +`file:write`                    | ✔                                                           | ✔        | ✔                       | ✔                   | ✔                    | 编辑器可保存                                                                                                                                                                                |
+| `agent` / `browser` / `download` | 不呈现（简易版不含 Agent 标签、localhost 浏览器预览、下载） |          |                         |                     |                      |                                                                                                                                                                                             |
 
 - **如实核对（既有语义，不改）**：`use-cloud-session.openProject` 调用的是 `bridge.openWorkspace`（`use-cloud-session.ts:262`），而 ensure 需要 `terminal`；因此 `open+file:read`（W5b-2 的 viewer）在真实 UI 路径上会停在 ensure 失败，W5b-2 里渲染出的"无授权占位"是直接调 bridge `openProject`（只 connect）才可见的状态。本令**不改变**这条桥语义，只要求内嵌模式把 ensure 失败呈现成明确的权限降级页（复用 W5b 文案），并保留「在独立页打开」退路。
 - 无 `open`：控制台行内「打开」沿用 `openDisabledReason` 置灰；管理员走既有「授权并打开」。自授后进入**内嵌**工作区（不再新标签）。
@@ -305,12 +316,12 @@ type FileBuffer = {
 
 ### 4.10 与现有「打开」handoff 的替换边界
 
-| 入口 | 现状 | U46 后 |
-| --- | --- | --- |
-| 「打开」 | `POST /web-handoff` → `window.open` orca web | `POST /web-handoff { surface:'admin' }` → 同页覆盖层；平台不支持时回落 `window.open` |
-| 「授权并打开」 | PUT grants → `POST /web-handoff` → `window.open` | PUT grants → 同内嵌流程 |
-| 「Orca Web」 | `POST /web-handoff` → `window.open` | **逐字节不变** |
-| 「详情」 | 新标签 `cloud-admin.html` | 弹框；独立页保留为弹框内次要链接 |
+| 入口           | 现状                                             | U46 后                                                                               |
+| -------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| 「打开」       | `POST /web-handoff` → `window.open` orca web     | `POST /web-handoff { surface:'admin' }` → 同页覆盖层；平台不支持时回落 `window.open` |
+| 「授权并打开」 | PUT grants → `POST /web-handoff` → `window.open` | PUT grants → 同内嵌流程                                                              |
+| 「Orca Web」   | `POST /web-handoff` → `window.open`              | **逐字节不变**                                                                       |
+| 「详情」       | 新标签 `cloud-admin.html`                        | 弹框；独立页保留为弹框内次要链接                                                     |
 
 - 旧平台（无 `surface`）+ 新控制台：响应 URL 仍是 `web-index.html` → 控制台识别路径并**回落** `window.open` + toast「当前平台版本不支持内嵌工作区，已在新标签打开」。新平台 + 旧控制台：不传 `surface`，行为不变。旧宿主 bundle + 新控制台：iframe 里是旧版 `cloud-admin.html`（工作台视图、可能要求登录）→ 20s 无 ready → 失败态 + 「在新标签打开 Orca Web」。三向都有人工/自动退路。
 - 内嵌流程的入口前置检查（`surface=admin` 时）：`provisioning` → 409 `PROJECT_PROVISIONING`、`failed` → 409 `PROJECT_NOT_PREPARED`，控制台直接给原因而不是进一个空 iframe。`web` surface 的既有行为不动（最小回归面）。
@@ -332,13 +343,13 @@ type FileBuffer = {
 
 ### 5.3 兼容矩阵
 
-| 平台 API | 控制台 Web | 宿主 bundle(`cloud-admin`) | 结果 |
-| --- | --- | --- | --- |
-| 新 | 新 | 新 | 同页工作区全功能 |
-| 旧 | 新 | 新 | handoff 不含 `surface` → 控制台识别 `web-index.html` → 新标签打开（旧行为） |
-| 新 | 旧 | 任意 | 旧控制台不发 `surface` → 行为不变 |
-| 新 | 新 | 旧 | iframe 为旧管理台页 → 20s 失败态 → 「在新标签打开 Orca Web」 |
-| 任意 | 新 | 旧/新 | 详情弹框只读平台数据 → 始终可用（`createdBy` 缺省显示「未记录」） |
+| 平台 API | 控制台 Web | 宿主 bundle(`cloud-admin`) | 结果                                                                        |
+| -------- | ---------- | -------------------------- | --------------------------------------------------------------------------- |
+| 新       | 新         | 新                         | 同页工作区全功能                                                            |
+| 旧       | 新         | 新                         | handoff 不含 `surface` → 控制台识别 `web-index.html` → 新标签打开（旧行为） |
+| 新       | 旧         | 任意                       | 旧控制台不发 `surface` → 行为不变                                           |
+| 新       | 新         | 旧                         | iframe 为旧管理台页 → 20s 失败态 → 「在新标签打开 Orca Web」                |
+| 任意     | 新         | 旧/新                      | 详情弹框只读平台数据 → 始终可用（`createdBy` 缺省显示「未记录」）           |
 
 ---
 
@@ -346,14 +357,14 @@ type FileBuffer = {
 
 ### 6.1 分层
 
-| 层 | 内容 | 形态 |
-| --- | --- | --- |
-| 平台 Web（控制台） | 详情弹框字段/状态/无写请求；打开→覆盖层/iframe/postMessage/回落；旧平台回落；退出与登出；自授后内嵌 | `cloud-platform/test/e2e/*.e2e.test.ts` + `web-console-page.ts`（happy-dom） |
-| 平台 API | `surface=admin` 的 URL/状态前置/审计；`createdBy` 角色可见性；旧 surface 回归 | `cloud-platform/test/e2e/web-handoff*.test.ts`、`web-project-entry`（真实平台进程） |
-| 云管理台桥 | handoff 解析（先清 hash 再兑换）、持久化、自动打开、失败回落登录表单、恢复路径 | renderer vitest（scripted fetch + 真实平台） |
-| 工作区组件 | 标签状态机、终端的挂载/fit 守卫/关闭、文件树懒加载、编辑器脏/保存/冲突/截断、预览安全属性、权限矩阵 | React 组件测试 |
-| 真栈 e2e | 真平台 + 真 TLS 宿主 + 真 PTY：读取/保存/预览/越权/重放/无终端 viewer | `src/renderer/src/cloud-admin/*.e2e.test.ts`（node 池，复用 `cloud-session-e2e-harness`） |
-| 真浏览器验收 | 控制台登录 → 打开 → iframe 工作区 → 终端回显 → 文件编辑保存 → 图片/HTML 预览 → 返回；隐藏渲染 + CDP 截图 | Playwright（headless/隐藏，禁用 `show()`/focus，遵 AGENTS.md） |
+| 层                 | 内容                                                                                                     | 形态                                                                                      |
+| ------------------ | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| 平台 Web（控制台） | 详情弹框字段/状态/无写请求；打开→覆盖层/iframe/postMessage/回落；旧平台回落；退出与登出；自授后内嵌      | `cloud-platform/test/e2e/*.e2e.test.ts` + `web-console-page.ts`（happy-dom）              |
+| 平台 API           | `surface=admin` 的 URL/状态前置/审计；`createdBy` 角色可见性；旧 surface 回归                            | `cloud-platform/test/e2e/web-handoff*.test.ts`、`web-project-entry`（真实平台进程）       |
+| 云管理台桥         | handoff 解析（先清 hash 再兑换）、持久化、自动打开、失败回落登录表单、恢复路径                           | renderer vitest（scripted fetch + 真实平台）                                              |
+| 工作区组件         | 标签状态机、终端的挂载/fit 守卫/关闭、文件树懒加载、编辑器脏/保存/冲突/截断、预览安全属性、权限矩阵      | React 组件测试                                                                            |
+| 真栈 e2e           | 真平台 + 真 TLS 宿主 + 真 PTY：读取/保存/预览/越权/重放/无终端 viewer                                    | `src/renderer/src/cloud-admin/*.e2e.test.ts`（node 池，复用 `cloud-session-e2e-harness`） |
+| 真浏览器验收       | 控制台登录 → 打开 → iframe 工作区 → 终端回显 → 文件编辑保存 → 图片/HTML 预览 → 返回；隐藏渲染 + CDP 截图 | Playwright（headless/隐藏，禁用 `show()`/focus，遵 AGENTS.md）                            |
 
 ### 6.2 具体断言（编号即验收项）
 
@@ -367,17 +378,17 @@ type FileBuffer = {
 
 ## 7. 实施切分（每令 ≤20 分钟，域不相交）
 
-| 令 | 域（文件所有权） | 内容 | 依赖 |
-| --- | --- | --- | --- |
-| U46-1 | 平台 API：`cloud-platform/apps/api/src/server.ts` + 其测试 | `createdBy`（admin/auditor）、`surface:'admin'`（URL/前置状态/审计/响应字段）、兼容测试 | — |
-| U46-2 | 平台 Web：`apps/web/app.js` + `styles.css`（通道③独占） | 详情弹框（字段/刷新/弹框内打开/独立页链接）+ `dialog()` 无障碍 + D1–D6 | 1 |
-| U46-3 | 同上（同通道，串行） | 「打开」→ 覆盖层/iframe/postMessage/失败回落 + O1–O5 | 2 |
-| U46-4 | 云管理台入口/桥：`cloud-admin/main.tsx`、`cloud-browser-bridge.ts`、`cloud-app.tsx`、`use-cloud-session.ts` + web 测试 | handoff 入口、`loginWithHandoff`、`embed` 模式、自动打开、ready/dirty/close/logout 消息 + C1–C5 | 1（URL 形态） |
-| U46-5a | 工作区新文件：`cloud-simple-workspace*` | 外壳 + 标签 reducer + 左栏 + 状态栏 + 空态 + T1 | 4 |
-| U46-5b | `cloud-terminal-panel.tsx` + 新文件 | 终端标签（title/active/fit 守卫）+ T2 | 5a |
-| U46-6 | 工作区新文件：`cloud-workspace-file-tree.tsx` | 懒加载文件树 + T3 | 5a |
-| U46-7 | 工作区新文件：`cloud-workspace-file-tab.tsx` + 预览组件 | 编辑器/缓冲区/冲突/预览 + T4/T5/T6 | 5a |
-| U46-8 | 测试工程（只测试/证据） | 真栈 E1–E7 + 真浏览器旅程 + 回归矩阵 + 证据 | 1–7 |
+| 令     | 域（文件所有权）                                                                                                       | 内容                                                                                            | 依赖          |
+| ------ | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ------------- |
+| U46-1  | 平台 API：`cloud-platform/apps/api/src/server.ts` + 其测试                                                             | `createdBy`（admin/auditor）、`surface:'admin'`（URL/前置状态/审计/响应字段）、兼容测试         | —             |
+| U46-2  | 平台 Web：`apps/web/app.js` + `styles.css`（通道③独占）                                                                | 详情弹框（字段/刷新/弹框内打开/独立页链接）+ `dialog()` 无障碍 + D1–D6                          | 1             |
+| U46-3  | 同上（同通道，串行）                                                                                                   | 「打开」→ 覆盖层/iframe/postMessage/失败回落 + O1–O5                                            | 2             |
+| U46-4  | 云管理台入口/桥：`cloud-admin/main.tsx`、`cloud-browser-bridge.ts`、`cloud-app.tsx`、`use-cloud-session.ts` + web 测试 | handoff 入口、`loginWithHandoff`、`embed` 模式、自动打开、ready/dirty/close/logout 消息 + C1–C5 | 1（URL 形态） |
+| U46-5a | 工作区新文件：`cloud-simple-workspace*`                                                                                | 外壳 + 标签 reducer + 左栏 + 状态栏 + 空态 + T1                                                 | 4             |
+| U46-5b | `cloud-terminal-panel.tsx` + 新文件                                                                                    | 终端标签（title/active/fit 守卫）+ T2                                                           | 5a            |
+| U46-6  | 工作区新文件：`cloud-workspace-file-tree.tsx`                                                                          | 懒加载文件树 + T3                                                                               | 5a            |
+| U46-7  | 工作区新文件：`cloud-workspace-file-tab.tsx` + 预览组件                                                                | 编辑器/缓冲区/冲突/预览 + T4/T5/T6                                                              | 5a            |
+| U46-8  | 测试工程（只测试/证据）                                                                                                | 真栈 E1–E7 + 真浏览器旅程 + 回归矩阵 + 证据                                                     | 1–7           |
 
 规则：1 与 2/3 与 4–7 的域不相交可并行；2/3 同属 `app.js` 必须串行；6/7 文件不相交可并行；任何安全路径改动与测试分提交；提交前核对暂存集。
 
@@ -387,20 +398,20 @@ type FileBuffer = {
 
 ### 风险
 
-| # | 风险 | 缓解 |
-| --- | --- | --- |
-| R1 | iframe 内的 PTY/套接字在覆盖层被移除时未必走 React 卸载清理 | 关闭握手（`close`→`closeProject`→`closed`，300ms 兜底）+ E7 回收断言 |
-| R2 | 60s handoff 码 vs 冷缓存 iframe 加载慢 | 点击时立即签发并立刻设 `src`；失败态给重试与「在新标签打开」两条路 |
-| R3 | 隐藏终端 `fit()` 出 0 列把 PTY 打坏 | `active` prop 抑制 fit/viewport；补组件测试与真栈回显 |
-| R4 | 保存静默覆盖他人修改（无 ETag） | 保存前重读比对 + 冲突框（重新加载/覆盖/取消） |
-| R5 | 截断文本写回损坏文件 | `truncated` → 强制只读，无保存入口 |
-| R6 | 非 UTF-8 文本按 UTF-8 解码丢字节 | 如实记录为简易版限制；不走 `writeBase64`（需二进制读回，当前无对应读方法） |
-| R7 | 大图/大量读取吃平台配额（600 次/64MB 每小时） | 宿主错误码如实呈现；不做自动重试风暴 |
-| R8 | 多终端内存/GPU 与 12 socket 预算 | 终端标签上限 6；标签条明示 |
-| R9 | 旧宿主 bundle 不认 `embed=1` | 20s ready 超时 → 失败态 + 新标签 Orca Web |
-| R10 | 控制台登出后 iframe 会话可能仍存活到令牌过期 | 登出先移除覆盖层 + `postMessage(logout)` → `bridge.logout()`；平台吊销仍是权威 |
-| R11 | 点击劫持面（宿主静态页当前无 `X-Frame-Options`） | 记入 Q4；若要硬化，用宿主已配置的平台 origin 生成 `frame-ancestors`，不能用可被请求方伪造的 `?api=` 值 |
-| R12 | 设计系统门禁（计算 className/原始色） | 全部用 `cn()` + token + `components/ui`；控制台样式只加类不做内联色值 |
+| #   | 风险                                                        | 缓解                                                                                                   |
+| --- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| R1  | iframe 内的 PTY/套接字在覆盖层被移除时未必走 React 卸载清理 | 关闭握手（`close`→`closeProject`→`closed`，300ms 兜底）+ E7 回收断言                                   |
+| R2  | 60s handoff 码 vs 冷缓存 iframe 加载慢                      | 点击时立即签发并立刻设 `src`；失败态给重试与「在新标签打开」两条路                                     |
+| R3  | 隐藏终端 `fit()` 出 0 列把 PTY 打坏                         | `active` prop 抑制 fit/viewport；补组件测试与真栈回显                                                  |
+| R4  | 保存静默覆盖他人修改（无 ETag）                             | 保存前重读比对 + 冲突框（重新加载/覆盖/取消）                                                          |
+| R5  | 截断文本写回损坏文件                                        | `truncated` → 强制只读，无保存入口                                                                     |
+| R6  | 非 UTF-8 文本按 UTF-8 解码丢字节                            | 如实记录为简易版限制；不走 `writeBase64`（需二进制读回，当前无对应读方法）                             |
+| R7  | 大图/大量读取吃平台配额（600 次/64MB 每小时）               | 宿主错误码如实呈现；不做自动重试风暴                                                                   |
+| R8  | 多终端内存/GPU 与 12 socket 预算                            | 终端标签上限 6；标签条明示                                                                             |
+| R9  | 旧宿主 bundle 不认 `embed=1`                                | 20s ready 超时 → 失败态 + 新标签 Orca Web                                                              |
+| R10 | 控制台登出后 iframe 会话可能仍存活到令牌过期                | 登出先移除覆盖层 + `postMessage(logout)` → `bridge.logout()`；平台吊销仍是权威                         |
+| R11 | 点击劫持面（宿主静态页当前无 `X-Frame-Options`）            | 记入 Q4；若要硬化，用宿主已配置的平台 origin 生成 `frame-ancestors`，不能用可被请求方伪造的 `?api=` 值 |
+| R12 | 设计系统门禁（计算 className/原始色）                       | 全部用 `cn()` + token + `components/ui`；控制台样式只加类不做内联色值                                  |
 
 ### 开放问题（请主会话裁定）
 
@@ -424,11 +435,9 @@ type FileBuffer = {
 - 不把访问令牌放进 URL；iframe URL 的 hash 只带一次性 code（与 W7b 同语义）。
 - 不引入第二套浏览器云客户端；不把 Orca 运行时编译进平台 Web 包。
 
-
 ## 10. 主会话审定（2026-11-15）
 
 全盘采纳：①架构 B（iframe 嵌入）——传输可达性（中继边缘 WSS 前缀推导）为硬约束论证成立；②详情字段清单（零新增端点、createdBy 唯一增量、离线不置灰）；③开放问题：Q1=详情保持 admin-only、Q3 文件重命名/删除/复制不做、Q5 Agent 标签不做；④wire-additive 两处（surface:'admin'+createdBy）采纳。派发序：U46-1∥U46-4 并行（URL 形态以本文档契约为界）→U46-2/3（app.js 串行）→U46-5a→5b∥6∥7 并行→U46-8 收口。
-
 
 ## 11. 需求增量（2026-11-15 用户指令，覆盖 §4.3 布局并扩展标签类型）
 
@@ -440,11 +449,9 @@ type FileBuffer = {
 
 覆盖 §4.3/§4.4/§4.6/§4.8 相应部分；其余条款不变。切分调整：U46-6 文件树+过滤；U46-6b git 变更面板（首步核验 git RPC）；U46-7a 编辑器+md+着色；U46-7b 预览（drawio/svg/img）+diff 标签页（依赖 6b 的 git RPC 结论）；5a 已止损通知（两栏+四类型）。
 
-
 ## 12. 复用指导（2026-11-15 用户指令：复用 orca web 组件与参考设计）
 
 各组件令实现时**优先复用 orca web（src/renderer/src/web/，W13b 云会话视图）的组件与形态**：外壳参考其 app-layout/侧栏/面板组合与 CloudSessionEmptyState 降级态；文件树**优先直接复用或最小适配其 explorer**（同数据面 cloud file RPC，勿重造树逻辑，无过滤则新增）；编辑器参考其 Monaco 加载/`__monacoEditorE2E` 管线与 md 呈现（如有）；终端参考其终端管线与 W13b 终端标签形态。跨包能 import 则 import，不能则形态复制适配并注明来源先例。后续令（5b/6b/7b/8）派发词直接含此要求。
-
 
 ## 13. md 双模式澄清（2026-11-15 用户指令）
 

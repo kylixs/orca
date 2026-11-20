@@ -12,24 +12,24 @@ Prior findings: **3/3 blockers FIXED; 11/12 majors FIXED, 1 STILL OPEN (M1); 7/7
 
 ## Prior findings
 
-| ID | Severity | Status | Evidence |
-|---|---|---|---|
-| B1 | BLOCKER | **FIXED** | `design.md:269-272` snaps only on `getWidth()===0` plus left-neighbour width 2; G29 and prototype states 02/03 cover both half-cells. |
-| B2 | BLOCKER | **FIXED** | `design.md:273-294` defines `start/endExclusive`, the length formula, and names every producer; TL-S3 is one atomic change. Producer crossing is a new gap: N-C. |
-| B3 | BLOCKER | **FIXED** | `test-plan.md:132-162` uses a width-aware buffer and exact cell/model/select/copy rows G1–G18. |
-| M1 | MAJOR | **STILL OPEN (narrowed)** | Fullwidth, URL/path, emoji, and combining atomicity are now specified (`design.md:298-305`), but `C++`/`100%` still cannot be produced by the stated merge rule: N-A. |
-| M2 | MAJOR | **FIXED** | `design.md:246-256`; G9–G11, G26–G28; prototypes 01/05/07/13/14. The new CJK rule introduces a tokenizer inconsistency: N-B. |
-| M3 | MAJOR | **FIXED** | `design.md:209-212`; A12 now asserts `activate:false`, no pending ref, caller-projected active tab, and reconnect. Isolation/order gap remains: N-D. |
-| M4 | MAJOR | **FIXED** | `design.md:214-224`; `test-plan.md:119-130`. One stale mailto row remains: m1. |
-| M5 | MAJOR | **FIXED** | `design.md:317`; A16/A17. |
-| M6 | MAJOR | **FIXED** | `design.md:307-314`; TL-T2; prototype carries full-URL/footer/switch. |
-| M7 | MAJOR | **FIXED** | `design.md:315`; A25; prototypes 08/15 and `closeAll` restore the pre-open keyboard and focus. |
-| M8 | MAJOR | **FIXED** | `design.md:226-240`; A18–A21; legacy preselection, switch table, write failure, and async `ask` are explicit. One-time cleanup remains vague: m3. |
-| M9 | MAJOR | **FIXED** | `design.md:263-265` pins `zh`, caching, reset, and the mandatory Chrome-74 path; G19–G22. |
-| M10 | MAJOR | **FIXED** | `test-plan.md:107-117`; mapping exists. Omissions remain: m5. |
-| M11 | MAJOR | **FIXED** | `design.md:257-260`; B13/B14/B16; prototypes declare the non-goals. |
-| M12 | MAJOR | **FIXED (selection)** | `tasks.md:79-84`; TL-S3 owns seed/model/drag/selectAll/eviction/document-scope. Link merge order is a new gap: N-D. |
-| m1–m7 | MINOR | **FIXED** | English copy, URL presentation, no prefbar/undo, a11y, failure states, folder/floating, prototype placement/link styling, 500 ms overlay + menu are all present. |
+| ID    | Severity | Status                    | Evidence                                                                                                                                                              |
+| ----- | -------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| B1    | BLOCKER  | **FIXED**                 | `design.md:269-272` snaps only on `getWidth()===0` plus left-neighbour width 2; G29 and prototype states 02/03 cover both half-cells.                                 |
+| B2    | BLOCKER  | **FIXED**                 | `design.md:273-294` defines `start/endExclusive`, the length formula, and names every producer; TL-S3 is one atomic change. Producer crossing is a new gap: N-C.      |
+| B3    | BLOCKER  | **FIXED**                 | `test-plan.md:132-162` uses a width-aware buffer and exact cell/model/select/copy rows G1–G18.                                                                        |
+| M1    | MAJOR    | **STILL OPEN (narrowed)** | Fullwidth, URL/path, emoji, and combining atomicity are now specified (`design.md:298-305`), but `C++`/`100%` still cannot be produced by the stated merge rule: N-A. |
+| M2    | MAJOR    | **FIXED**                 | `design.md:246-256`; G9–G11, G26–G28; prototypes 01/05/07/13/14. The new CJK rule introduces a tokenizer inconsistency: N-B.                                          |
+| M3    | MAJOR    | **FIXED**                 | `design.md:209-212`; A12 now asserts `activate:false`, no pending ref, caller-projected active tab, and reconnect. Isolation/order gap remains: N-D.                  |
+| M4    | MAJOR    | **FIXED**                 | `design.md:214-224`; `test-plan.md:119-130`. One stale mailto row remains: m1.                                                                                        |
+| M5    | MAJOR    | **FIXED**                 | `design.md:317`; A16/A17.                                                                                                                                             |
+| M6    | MAJOR    | **FIXED**                 | `design.md:307-314`; TL-T2; prototype carries full-URL/footer/switch.                                                                                                 |
+| M7    | MAJOR    | **FIXED**                 | `design.md:315`; A25; prototypes 08/15 and `closeAll` restore the pre-open keyboard and focus.                                                                        |
+| M8    | MAJOR    | **FIXED**                 | `design.md:226-240`; A18–A21; legacy preselection, switch table, write failure, and async `ask` are explicit. One-time cleanup remains vague: m3.                     |
+| M9    | MAJOR    | **FIXED**                 | `design.md:263-265` pins `zh`, caching, reset, and the mandatory Chrome-74 path; G19–G22.                                                                             |
+| M10   | MAJOR    | **FIXED**                 | `test-plan.md:107-117`; mapping exists. Omissions remain: m5.                                                                                                         |
+| M11   | MAJOR    | **FIXED**                 | `design.md:257-260`; B13/B14/B16; prototypes declare the non-goals.                                                                                                   |
+| M12   | MAJOR    | **FIXED (selection)**     | `tasks.md:79-84`; TL-S3 owns seed/model/drag/selectAll/eviction/document-scope. Link merge order is a new gap: N-D.                                                   |
+| m1–m7 | MINOR    | **FIXED**                 | English copy, URL presentation, no prefbar/undo, a11y, failure states, folder/floating, prototype placement/link styling, 500 ms overlay + menu are all present.      |
 
 ---
 

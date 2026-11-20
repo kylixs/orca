@@ -176,14 +176,14 @@ touch → viewportToCell → (absRow, cellCol)
 
 ## 5. 风险与备选
 
-| 风险 | 处理 |
-|---|---|
-| `Intl.Segmenter` 不可用 | 使用正则/Unicode 范围回退；测试覆盖 |
-| emoji/组合字符边界 | 以 xterm cell 的 `getChars()`/`getWidth()` 为准，不用 code unit 下标 |
-| 选区跨行 + 宽字符 | 增加跨行测试；只在种子/端点吸附时映射，长度仍用 cell |
-| 远程打开能力不可用 | 禁用远程动作 + hint；folder/floating 隐藏 |
-| 用户已有全局偏好 | v2 键默认 `ask`；旧键只作一次预选并迁移 |
-| 协议兼容 | 复用 `browser.tabCreate`，不新增移动端 RPC |
+| 风险                    | 处理                                                                 |
+| ----------------------- | -------------------------------------------------------------------- |
+| `Intl.Segmenter` 不可用 | 使用正则/Unicode 范围回退；测试覆盖                                  |
+| emoji/组合字符边界      | 以 xterm cell 的 `getChars()`/`getWidth()` 为准，不用 code unit 下标 |
+| 选区跨行 + 宽字符       | 增加跨行测试；只在种子/端点吸附时映射，长度仍用 cell                 |
+| 远程打开能力不可用      | 禁用远程动作 + hint；folder/floating 隐藏                            |
+| 用户已有全局偏好        | v2 键默认 `ask`；旧键只作一次预选并迁移                              |
+| 协议兼容                | 复用 `browser.tabCreate`，不新增移动端 RPC                           |
 
 ---
 
@@ -211,26 +211,25 @@ touch → viewportToCell → (absRow, cellCol)
    - Folder/floating workspace：远程项隐藏；sheet 仍提供本机/复制/取消。OTA web shell 不在本期终端 sheet 范围。
 3. **链接类型矩阵**：
 
-   | 类型 | 行为 |
-   |---|---|
-   | 文本 HTTP/HTTPS | 弹框（本机/远程/复制/取消） |
-   | OSC 8 HTTP/HTTPS | 弹框 |
-   | OSC 8 file | 文件 tap（原有行为） |
-   | `file://` | 文件 tap |
-   | 裸文件路径/带行号路径 | 文件 tap |
-   | `mailto:` | **非本期**；现有检测器不识别，保持 tap 行为，不新增 matcher |
-   | 自定义 scheme | 非本期；保持现有/忽略，不弹框 |
+   | 类型                  | 行为                                                        |
+   | --------------------- | ----------------------------------------------------------- |
+   | 文本 HTTP/HTTPS       | 弹框（本机/远程/复制/取消）                                 |
+   | OSC 8 HTTP/HTTPS      | 弹框                                                        |
+   | OSC 8 file            | 文件 tap（原有行为）                                        |
+   | `file://`             | 文件 tap                                                    |
+   | 裸文件路径/带行号路径 | 文件 tap                                                    |
+   | `mailto:`             | **非本期**；现有检测器不识别，保持 tap 行为，不新增 matcher |
+   | 自定义 scheme         | 非本期；保持现有/忽略，不弹框                               |
 
 4. **记住选择语义**：
 
-   | 动作 | 写偏好 | 说明 |
-   |---|---|---|
-   | 在本机打开 | ✅ | 记住后后续直接本机打开 |
-   | 在桌面 Orca 打开 | ✅ | 记住后后续直接远程打开 |
-   | 复制链接 | ❌ | 不写偏好、不改变 ask 模式；sheet 复制后关闭 |
-   | 取消 | ❌ | 不写偏好 |
-   | 远程项隐藏/不可用 | ❌ | 本次不写偏好；已有非 ask 值保持不变（host 恢复后仍直开） |
-
+   | 动作              | 写偏好 | 说明                                                     |
+   | ----------------- | ------ | -------------------------------------------------------- |
+   | 在本机打开        | ✅     | 记住后后续直接本机打开                                   |
+   | 在桌面 Orca 打开  | ✅     | 记住后后续直接远程打开                                   |
+   | 复制链接          | ❌     | 不写偏好、不改变 ask 模式；sheet 复制后关闭              |
+   | 取消              | ❌     | 不写偏好                                                 |
+   | 远程项隐藏/不可用 | ❌     | 本次不写偏好；已有非 ask 值保持不变（host 恢复后仍直开） |
    - 偏好写失败：toast 提示，本次动作仍执行，下次仍弹框。
    - 偏好全局（按设备），不按 host/workspace 分；本期不做 per-host。
    - **版本化键**：新键 `orca:terminalLinkOpenMode:v2`（`ask|phone-browser|orca-browser`），初始 state 为 `ask`。旧键 `orca:terminalLinkOpenMode` **在第一次 sheet 打开时**读取（不要在 focus loader 提前消费）：把值作为第一次 sheet 的预选高亮，不自动执行、不预开 Remember。迁移规则：**仅当 v2 不存在**时写 `ask` 到 v2；v2 已存在则保持用户值，只删除旧键。第二次打开不再预选。`use-mobile-session-preference-focus.ts` 只加载 v2；旧键迁移由第一次 sheet 入口执行。新 Remember 只写 v2。
@@ -238,6 +237,7 @@ touch → viewportToCell → (absRow, cellCol)
    - 预选高亮：仅给对应动作加 selected 样式/无障碍 state，不改变默认焦点；Remember 默认 off。
    - **记住值直开前必须重新过能力/工作区门禁**：`mode !== ask` 时，只有当首选动作在**当前** client/statusReadable/capability/creating/workspace 条件下仍可用，才直接执行；否则不调用 create/open，显示 sheet（远程禁用/隐藏 + hint）。不自动降级存储值（host 恢复后仍可用）。本机首选也需 URL scheme 可打开；否则回落 sheet。
    - 用例：stored `orca-browser` + 旧 host/离线/未知/creating/folder/floating；断言无 `browser.tabCreate`、active tab 仍终端、sheet/hint 正确。
+
 5. **URL 展示**：
    - 摘要显示 scheme + host + port（**隐藏 userinfo**）；展开完整 URL 时保留 userinfo，但先过滤 bidi/控制字符。摘要与展开分别测试。
    - `http://` 显示明文警告。
@@ -272,15 +272,16 @@ touch → viewportToCell → (absRow, cellCol)
 2. **选区坐标统一为 end-exclusive**：
    ```ts
    type SelectionSpan = {
-     start: { row: number; col: number }       // first cell
+     start: { row: number; col: number } // first cell
      endExclusive: { row: number; col: number } // one past last cell
    }
    ```
    - `applyXtermSelection` 用 `endExclusive - start` 计算 cell 长度，不再使用 `end.col - start.col + 1`：
      ```ts
-     const length = end.row === start.row
-       ? end.col - start.col
-       : (cols - start.col) + (end.row - start.row - 1) * cols + end.col
+     const length =
+       end.row === start.row
+         ? end.col - start.col
+         : cols - start.col + (end.row - start.row - 1) * cols + end.col
      ```
    - **所有 producer 必须同时改**（TL-S3 合并 seed/model/drag/selectAll/eviction）：
      - seed：先算 token coverage `[start,endExclusive)`，再存 anchor=首 glyph 起始 cell、focus=最后一个被包含 glyph 起始 cell；
@@ -340,20 +341,20 @@ touch → viewportToCell → (absRow, cellCol)
 
 ### 7.5 任务调整
 
-| ID | 任务 | 依赖 |
-|---|---|---|
-| TL-T1A | 先加 `ask` 分支，再改默认；旧偏好迁移为预选 | — |
+| ID     | 任务                                                    | 依赖  |
+| ------ | ------------------------------------------------------- | ----- |
+| TL-T1A | 先加 `ask` 分支，再改默认；旧偏好迁移为预选             | —     |
 | TL-T3A | 动作执行时复核 active handle + in-flight/consumed guard | TL-T3 |
-| TL-T6A | 偏好写失败 toast；copy/cancel 不写偏好 | TL-T6 |
-| TL-T7A | 键盘 dismiss/reopen 流程 | TL-T3 |
-| TL-T8 | `snapToGlyphStart` + width-aware 几何测试 | TL-S1 |
-| TL-T9 | end-exclusive SelectionSpan 全链路改造 | TL-S3 |
-| TL-T10 | 远程打开不切换手机 tab；能力判断改为 client/可调用 | TL-T4 |
-| TL-T11 | URL 摘要/展开/HTTP/loopback/bidi 处理 | TL-T2 |
-| TL-T12 | 失败态/离线/未知能力/创建中 | TL-T3 |
-| TL-T13 | URL/路径长按复制回归 | TL-S2 |
-| TL-T14 | 选择模型/overlay/手柄测试 | TL-S5 |
-| TL-T15 | Folder workspace/OTA/键盘/读屏用例 | 全部 |
+| TL-T6A | 偏好写失败 toast；copy/cancel 不写偏好                  | TL-T6 |
+| TL-T7A | 键盘 dismiss/reopen 流程                                | TL-T3 |
+| TL-T8  | `snapToGlyphStart` + width-aware 几何测试               | TL-S1 |
+| TL-T9  | end-exclusive SelectionSpan 全链路改造                  | TL-S3 |
+| TL-T10 | 远程打开不切换手机 tab；能力判断改为 client/可调用      | TL-T4 |
+| TL-T11 | URL 摘要/展开/HTTP/loopback/bidi 处理                   | TL-T2 |
+| TL-T12 | 失败态/离线/未知能力/创建中                             | TL-T3 |
+| TL-T13 | URL/路径长按复制回归                                    | TL-S2 |
+| TL-T14 | 选择模型/overlay/手柄测试                               | TL-S5 |
+| TL-T15 | Folder workspace/OTA/键盘/读屏用例                      | 全部  |
 
 ### 7.6 原型修订
 

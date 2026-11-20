@@ -9,10 +9,10 @@
 
 ## 0. 结论摘要
 
-| 形态 | 现象定性 | 机理 |
-| --- | --- | --- |
-| **Orca Web 工作区（云端票据）** | **回归**：原有「宿主会话标签镜像」恢复链在云会话被整体摘除，且未补替代通道 | ①客户端按云环境谓词跳过 `session.tabs.*` 镜像（O1-a）；②宿主云方法表本就拒绝 `session.tabs.*`；③浏览器本地会话持久化刻意剔除 tabs/handles；④每次进入工作区 bootstrap 只补建 1 个新 tab，落到 `terminal.create` 新 PTY → 空白 |
-| **简易工作区（管理台内嵌 cloud-admin）** | **从未实现**：独立 React 应用，标签只在内存 reducer；关闭 overlay 即销毁 iframe 并关闭连接 | 无任何 tabs/终端句柄持久化；`initialTabs` 永远是空；每个终端 tab 挂载即新建 PTY、卸载即关闭句柄 |
+| 形态                                     | 现象定性                                                                                   | 机理                                                                                                                                                                                                                         |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Orca Web 工作区（云端票据）**          | **回归**：原有「宿主会话标签镜像」恢复链在云会话被整体摘除，且未补替代通道                 | ①客户端按云环境谓词跳过 `session.tabs.*` 镜像（O1-a）；②宿主云方法表本就拒绝 `session.tabs.*`；③浏览器本地会话持久化刻意剔除 tabs/handles；④每次进入工作区 bootstrap 只补建 1 个新 tab，落到 `terminal.create` 新 PTY → 空白 |
+| **简易工作区（管理台内嵌 cloud-admin）** | **从未实现**：独立 React 应用，标签只在内存 reducer；关闭 overlay 即销毁 iframe 并关闭连接 | 无任何 tabs/终端句柄持久化；`initialTabs` 永远是空；每个终端 tab 挂载即新建 PTY、卸载即关闭句柄                                                                                                                              |
 
 用户口径「原来可以恢复」成立：**非云（配对/中继）Orca Web 一直靠宿主标签清单恢复**，不是浏览器本地恢复。改成云端开发（cloud ticket）后，这条链在客户端与宿主两端同时被关闭。
 
@@ -82,14 +82,14 @@
 
 ## 2. 现象矩阵与复现
 
-| 场景 | 期望 | 实测 | 证据 |
-| --- | --- | --- | --- |
-| 简易工作区：开 Terminal 1 + README.md → 关闭 overlay → 重开 | 同项目同标签组 + 终端内容 | 工作区标签全为 0（只剩右栏“文件/Git 变更”）；终端面板 0 | `u96-1..3`、`u96-probe-result.json`（before 2 个 tab → reopen 0） |
-| 简易工作区：整页刷新管理台 → 重开项目 | 同上 | 同样 0 个工作区标签 | `u96-4-reopen-overlay.png`、result `reopen-after-reload` |
-| Orca Web（云票据）首次进入 | 项目标签组 | 恒为 1 个新 `Terminal 1` | `u96-web-1-fresh.png`、`u96-orca-web-result.json` `web-open-fresh` |
-| Orca Web（云票据）浏览器持久化 | 至少能留下布局 | `orca.web.workspaceSession.v1.runtime:web-...` 中 `tabsByWorktree:{}`、`terminalLayoutsByTabId:{}`、`activeTabId:null` | 同上 localStorage dump |
-| 非云配对/中继 Orca Web | 宿主镜像恢复 | 代码链完整（镜像未门控；`session.tabs.*` 权限 `workspace` 对 runtime-paired 放行） | 静态链路 |
-| 宿主重启 vs 仅重开页面 | 均应恢复 | 云票据两处都丢：页面重开丢本地内存；宿主重启后旧 PTY 也不可达（无清单/无本地句柄） | 代码路径 |
+| 场景                                                        | 期望                      | 实测                                                                                                                   | 证据                                                               |
+| ----------------------------------------------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| 简易工作区：开 Terminal 1 + README.md → 关闭 overlay → 重开 | 同项目同标签组 + 终端内容 | 工作区标签全为 0（只剩右栏“文件/Git 变更”）；终端面板 0                                                                | `u96-1..3`、`u96-probe-result.json`（before 2 个 tab → reopen 0）  |
+| 简易工作区：整页刷新管理台 → 重开项目                       | 同上                      | 同样 0 个工作区标签                                                                                                    | `u96-4-reopen-overlay.png`、result `reopen-after-reload`           |
+| Orca Web（云票据）首次进入                                  | 项目标签组                | 恒为 1 个新 `Terminal 1`                                                                                               | `u96-web-1-fresh.png`、`u96-orca-web-result.json` `web-open-fresh` |
+| Orca Web（云票据）浏览器持久化                              | 至少能留下布局            | `orca.web.workspaceSession.v1.runtime:web-...` 中 `tabsByWorktree:{}`、`terminalLayoutsByTabId:{}`、`activeTabId:null` | 同上 localStorage dump                                             |
+| 非云配对/中继 Orca Web                                      | 宿主镜像恢复              | 代码链完整（镜像未门控；`session.tabs.*` 权限 `workspace` 对 runtime-paired 放行）                                     | 静态链路                                                           |
+| 宿主重启 vs 仅重开页面                                      | 均应恢复                  | 云票据两处都丢：页面重开丢本地内存；宿主重启后旧 PTY 也不可达（无清单/无本地句柄）                                     | 代码路径                                                           |
 
 > 说明：Orca Web 的“关闭→重开”运行探针在用户指示“先分析代码/停止编写探针”后中止；该面结论由**本地存储快照 + 代码链路**给出，证据文件 `u96-orca-web-result.json` 只含首屏与存储快照。
 
@@ -110,13 +110,13 @@
 
 ### 3.3 对台账嫌疑提交的 diff 审读（均无罪）
 
-| 提交 | 改动面 | 与恢复的关系 |
-| --- | --- | --- |
-| U52 `284795fb8b8` | `cloud-simple-workspace.tsx` 仅给 EmptyState 传 `canReadFiles`；右栏/标签图标/copy | 不触 tabs reducer、不触持久化 |
-| U83 `2fc13910ded` | `cloud-simple-workspace.tsx` 一个 className `[&>*]:h-full` + 注释 | 纯布局 |
-| U81b `70847f4f4a1` / U86 `8f50d9e96fd` | `cloud-platform/apps/web/app.js` 用户页/审计页 | 不触工作区 |
-| U84b `6b67ea041ba` | `terminal-output-batcher.ts` 单写刷新 | 输出延迟，不涉恢复 |
-| 当前工作树 | 仅 `.gitignore`、验收索引 md 与未跟踪 evidence/分析文档 | 无产品码改动 |
+| 提交                                   | 改动面                                                                             | 与恢复的关系                  |
+| -------------------------------------- | ---------------------------------------------------------------------------------- | ----------------------------- |
+| U52 `284795fb8b8`                      | `cloud-simple-workspace.tsx` 仅给 EmptyState 传 `canReadFiles`；右栏/标签图标/copy | 不触 tabs reducer、不触持久化 |
+| U83 `2fc13910ded`                      | `cloud-simple-workspace.tsx` 一个 className `[&>*]:h-full` + 注释                  | 纯布局                        |
+| U81b `70847f4f4a1` / U86 `8f50d9e96fd` | `cloud-platform/apps/web/app.js` 用户页/审计页                                     | 不触工作区                    |
+| U84b `6b67ea041ba`                     | `terminal-output-batcher.ts` 单写刷新                                              | 输出延迟，不涉恢复            |
+| 当前工作树                             | 仅 `.gitignore`、验收索引 md 与未跟踪 evidence/分析文档                            | 无产品码改动                  |
 
 结论：恢复能力缺失不是这些近期修复造成的，而是 W13b/O1-a 的云链路设计选择（见 1.2）。
 
@@ -178,20 +178,20 @@
 
 ## 5. 关键文件索引
 
-| 关注点 | 文件 |
-| --- | --- |
-| 会话状态模型 | `src/shared/workspace-session-state-types.ts` |
-| 宿主持久化读写 | `src/main/persistence/loading-store/*`、`src/main/persistence-*.test.ts` |
-| 渲染层发布图 | `src/renderer/src/runtime/sync-runtime-graph/graph-publication.ts`、`src/main/ipc/runtime.ts` |
-| headless 清单重建 | `src/main/runtime/orca-runtime-hydrate-headless-mobile-session-tabs-from-workspace-session.ts` |
-| Web 镜像链 | `src/renderer/src/runtime/web-session-tabs-sync/**`、`web-runtime-session-snapshot.ts` |
-| 云环境谓词/跳过 | `src/shared/runtime-environments.ts`、`global-session-subscription.ts`、`active-session-subscription.ts` |
-| 云方法表 | `src/main/cloud-platform/cloud-rpc-permission.ts`、`src/main/runtime/rpc/rpc-caller-scope.ts` |
-| 云终端 scope | `src/main/cloud-platform/cloud-terminal-scope.ts` |
-| Web 本地会话 sanitize | `src/renderer/src/web/web-workspace-session.ts`、`web/preload-api/web-workspace-session-api.ts` |
-| 云 Web bootstrap/建 tab | `src/renderer/src/web/web-cloud-workspace-bootstrap.ts`、`web-cloud-workspace-store-ports.ts` |
-| 云 Web 新终端分流 | `src/renderer/src/components/use-terminal-create-actions.ts`、`components/terminal/terminal-tab-create.ts` |
-| 简易工作区 | `src/renderer/src/cloud/cloud-simple-workspace.tsx`、`cloud-simple-workspace-tabs.ts`、`cloud-terminal-panel.tsx`、`cloud-app.tsx` |
-| 管理台覆盖层 | `cloud-platform/apps/web/app.js`（openProjectWorkspace / requestWorkspaceClose） |
-| 终端快照回放 | `src/main/runtime/rpc/methods/terminal/terminal-multiplex-initial-snapshot.ts` |
-| 孤儿 PTY 认领 | `src/renderer/src/runtime/web-session-terminal-orphan-recovery.ts` |
+| 关注点                  | 文件                                                                                                                               |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| 会话状态模型            | `src/shared/workspace-session-state-types.ts`                                                                                      |
+| 宿主持久化读写          | `src/main/persistence/loading-store/*`、`src/main/persistence-*.test.ts`                                                           |
+| 渲染层发布图            | `src/renderer/src/runtime/sync-runtime-graph/graph-publication.ts`、`src/main/ipc/runtime.ts`                                      |
+| headless 清单重建       | `src/main/runtime/orca-runtime-hydrate-headless-mobile-session-tabs-from-workspace-session.ts`                                     |
+| Web 镜像链              | `src/renderer/src/runtime/web-session-tabs-sync/**`、`web-runtime-session-snapshot.ts`                                             |
+| 云环境谓词/跳过         | `src/shared/runtime-environments.ts`、`global-session-subscription.ts`、`active-session-subscription.ts`                           |
+| 云方法表                | `src/main/cloud-platform/cloud-rpc-permission.ts`、`src/main/runtime/rpc/rpc-caller-scope.ts`                                      |
+| 云终端 scope            | `src/main/cloud-platform/cloud-terminal-scope.ts`                                                                                  |
+| Web 本地会话 sanitize   | `src/renderer/src/web/web-workspace-session.ts`、`web/preload-api/web-workspace-session-api.ts`                                    |
+| 云 Web bootstrap/建 tab | `src/renderer/src/web/web-cloud-workspace-bootstrap.ts`、`web-cloud-workspace-store-ports.ts`                                      |
+| 云 Web 新终端分流       | `src/renderer/src/components/use-terminal-create-actions.ts`、`components/terminal/terminal-tab-create.ts`                         |
+| 简易工作区              | `src/renderer/src/cloud/cloud-simple-workspace.tsx`、`cloud-simple-workspace-tabs.ts`、`cloud-terminal-panel.tsx`、`cloud-app.tsx` |
+| 管理台覆盖层            | `cloud-platform/apps/web/app.js`（openProjectWorkspace / requestWorkspaceClose）                                                   |
+| 终端快照回放            | `src/main/runtime/rpc/methods/terminal/terminal-multiplex-initial-snapshot.ts`                                                     |
+| 孤儿 PTY 认领           | `src/renderer/src/runtime/web-session-terminal-orphan-recovery.ts`                                                                 |

@@ -25,26 +25,26 @@
 
 ### 1.2 预览类型
 
-| 类型 | 渲染 | 说明 |
-|---|---|---|
-| 文本/代码 | `MobileFilePreviewSourceText` 的 `<Text selectable>` | 支持原生长按选择；512 KB 上限，可能截断 |
-| Markdown | `MobileFileMarkdownPreview`，预览/源码切换 | 渲染段落默认不可选（`MobileMarkdown` 的 `rangeSelectable` 默认 false） |
-| 图片 | RN `<Image>`，data URI，可缩放 | 10 MB 上限 |
-| 音视频 | WebView 媒体文档 | `files.stat` + `files.readChunk`，384 KB/块，256 MB 上限；缓存文件预览结束即删除 |
-| HTML（文件浏览器） | 源码文本 | 没有渲染预览 |
-| HTML（会话产物） | `MobileHtmlPreview` | WebView/iframe，已有预览/源码切换 |
-| PDF | 不可预览 | 客户端排除；服务端其实能返回 base64 |
-| 其它二进制 | 行禁用 | 无操作 |
+| 类型               | 渲染                                                 | 说明                                                                             |
+| ------------------ | ---------------------------------------------------- | -------------------------------------------------------------------------------- |
+| 文本/代码          | `MobileFilePreviewSourceText` 的 `<Text selectable>` | 支持原生长按选择；512 KB 上限，可能截断                                          |
+| Markdown           | `MobileFileMarkdownPreview`，预览/源码切换           | 渲染段落默认不可选（`MobileMarkdown` 的 `rangeSelectable` 默认 false）           |
+| 图片               | RN `<Image>`，data URI，可缩放                       | 10 MB 上限                                                                       |
+| 音视频             | WebView 媒体文档                                     | `files.stat` + `files.readChunk`，384 KB/块，256 MB 上限；缓存文件预览结束即删除 |
+| HTML（文件浏览器） | 源码文本                                             | 没有渲染预览                                                                     |
+| HTML（会话产物）   | `MobileHtmlPreview`                                  | WebView/iframe，已有预览/源码切换                                                |
+| PDF                | 不可预览                                             | 客户端排除；服务端其实能返回 base64                                              |
+| 其它二进制         | 行禁用                                               | 无操作                                                                           |
 
 ### 1.3 已有能力与缺口
 
-| 能力 | 现状 |
-|---|---|
-| 长按复制文字 | 文本/代码预览已支持原生选择；Markdown 渲染段落默认不可选；无“复制全文/复制路径”菜单 |
-| 下载保存到手机 | **不存在**。预览的 Save 只把终端产物写回桌面 |
-| 分享/用其它 App 打开 | **不存在**。没有 `expo-sharing`、Intent、FileProvider 流程 |
-| 搜索/过滤 | **不存在** UI。服务端 `files.searchPaths` 已对移动端开放；已有 `use-mobile-native-chat-file-search.ts` 可复用其防抖/缓存思路 |
-| 文件操作菜单 | 通用 `ActionSheetModal` 已存在，但文件 explorer/preview 未使用 |
+| 能力                 | 现状                                                                                                                         |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| 长按复制文字         | 文本/代码预览已支持原生选择；Markdown 渲染段落默认不可选；无“复制全文/复制路径”菜单                                          |
+| 下载保存到手机       | **不存在**。预览的 Save 只把终端产物写回桌面                                                                                 |
+| 分享/用其它 App 打开 | **不存在**。没有 `expo-sharing`、Intent、FileProvider 流程                                                                   |
+| 搜索/过滤            | **不存在** UI。服务端 `files.searchPaths` 已对移动端开放；已有 `use-mobile-native-chat-file-search.ts` 可复用其防抖/缓存思路 |
+| 文件操作菜单         | 通用 `ActionSheetModal` 已存在，但文件 explorer/preview 未使用                                                               |
 
 ### 1.4 传输与限制
 
@@ -237,18 +237,18 @@ MobileFilePreviewScreen
 
 ## 5. 边界与风险
 
-| 风险 | 处理 |
-|---|---|
-| 512 KB 文本截断 | 复制/下载时提示；下载走 chunk 取完整文件 |
-| 大文件/弱网 | 进度、取消、重试；cache 256 MB 上限；SAF 直写 ≤16 MB，更大走分享面板 |
-| 文件变化 | 下载前后校验 size/mtime；变化则报错重试 |
-| 终端产物无分块 | 文本 ≤512 KB；图片按 ~3 MB 预算；超限提示桌面处理 |
-| OTA web-shell 缺少原生能力 | 强制 native 路由；旧二进制能力探测降级（8.5） |
-| iOS 文件打开方式 | `expo-sharing` 系统面板；无法保证所有类型都有 App |
-| Android FileProvider | `expo-sharing` 处理 content URI；`ACTION_VIEW` 用 contentUri + grant |
-| 路径/文件名注入 | 服务端校验路径；客户端文件名安全化 |
-| Markdown 渲染选择 | 独立 `nativeTextSelection`，不复用 `rangeSelectable` |
-| 旧服务器不支持 `files.searchPaths` | 清单回退，5000 上限提示；`method_not_found`/`forbidden` 都覆盖 |
+| 风险                               | 处理                                                                 |
+| ---------------------------------- | -------------------------------------------------------------------- |
+| 512 KB 文本截断                    | 复制/下载时提示；下载走 chunk 取完整文件                             |
+| 大文件/弱网                        | 进度、取消、重试；cache 256 MB 上限；SAF 直写 ≤16 MB，更大走分享面板 |
+| 文件变化                           | 下载前后校验 size/mtime；变化则报错重试                              |
+| 终端产物无分块                     | 文本 ≤512 KB；图片按 ~3 MB 预算；超限提示桌面处理                    |
+| OTA web-shell 缺少原生能力         | 强制 native 路由；旧二进制能力探测降级（8.5）                        |
+| iOS 文件打开方式                   | `expo-sharing` 系统面板；无法保证所有类型都有 App                    |
+| Android FileProvider               | `expo-sharing` 处理 content URI；`ACTION_VIEW` 用 contentUri + grant |
+| 路径/文件名注入                    | 服务端校验路径；客户端文件名安全化                                   |
+| Markdown 渲染选择                  | 独立 `nativeTextSelection`，不复用 `rangeSelectable`                 |
+| 旧服务器不支持 `files.searchPaths` | 清单回退，5000 上限提示；`method_not_found`/`forbidden` 都覆盖       |
 
 ---
 
@@ -318,37 +318,37 @@ MobileFilePreviewScreen
     - `safeLocalFileName()` 处理 `/`、`..`、控制字符、Unicode 双向控制符、超长名（≤255 字节）、点文件、无扩展名、0 字节。
     - 统一 MIME/UTI 映射；代码/纯文本回退 `text/plain`；未知类型 `application/octet-stream` 并提示可能无应用可打开。
     - 至少覆盖：
-      | 扩展名 | MIME | iOS UTI |
-      |---|---|---|
-      | png | image/png | public.png |
-      | jpg/jpeg | image/jpeg | public.jpeg |
-      | gif | image/gif | com.compuserve.gif |
-      | webp | image/webp | org.webmproject.webp |
-      | pdf | application/pdf | com.adobe.pdf |
-      | zip | application/zip | public.zip-archive |
-      | mp4 | video/mp4 | public.mpeg-4 |
-      | mp3 | audio/mpeg | public.mp3 |
-      | md/txt/ts/tsx/html | text/plain（html 可 text/html） | public.plain-text |
-      | 未知 | application/octet-stream | public.data |
+      | 扩展名             | MIME                            | iOS UTI              |
+      | ------------------ | ------------------------------- | -------------------- |
+      | png                | image/png                       | public.png           |
+      | jpg/jpeg           | image/jpeg                      | public.jpeg          |
+      | gif                | image/gif                       | com.compuserve.gif   |
+      | webp               | image/webp                      | org.webmproject.webp |
+      | pdf                | application/pdf                 | com.adobe.pdf        |
+      | zip                | application/zip                 | public.zip-archive   |
+      | mp4                | video/mp4                       | public.mpeg-4        |
+      | mp3                | audio/mpeg                      | public.mp3           |
+      | md/txt/ts/tsx/html | text/plain（html 可 text/html） | public.plain-text    |
+      | 未知               | application/octet-stream        | public.data          |
 14. **可发现性/无障碍**
     - 长按触发 `triggerMediumImpact` 触觉；文件行保留轻量“…”入口作为长按的替代（满足无障碍/可发现性）。
     - 所有触控目标 ≥44×44 或使用 hitSlop；打开/关闭弹层保持焦点管理。
 
 ### 7.2 文件类型 × 动作矩阵
 
-| 类型 | 预览 | 复制内容 | 保存到手机 | 打开方式 |
-|---|---|---|---|---|
-| 文本/代码 | ✅ | ✅（截断提示） | ✅ | ✅ |
-| Markdown | ✅（渲染/源码） | ✅ | ✅ | ✅ |
-| 图片 | ✅ | — | ✅ | ✅ |
-| 音视频 | ✅ | — | ✅ | ✅ |
-| HTML | ✅（源码；渲染见 HTML 需求） | ✅ | ✅ | ✅ |
-| PDF | ❌（本期不做 PDF 预览） | — | ✅ | ✅ |
-| 其它二进制 | ❌ | — | ✅ | ✅ |
-| 目录 | — | — | — | — |
-| 终端产物（文本） | ✅（≤512 KB） | ✅（≤512 KB） | ✅（≤512 KB） | ✅（≤512 KB） |
-| 终端产物（图片） | ✅ | — | ✅（≤~3 MB） | ✅（≤~3 MB） |
-| 读取失败/无权限 | 行徽标 + Retry（由动作失败缓存产生） | — | — | — |
+| 类型             | 预览                                 | 复制内容       | 保存到手机    | 打开方式      |
+| ---------------- | ------------------------------------ | -------------- | ------------- | ------------- |
+| 文本/代码        | ✅                                   | ✅（截断提示） | ✅            | ✅            |
+| Markdown         | ✅（渲染/源码）                      | ✅             | ✅            | ✅            |
+| 图片             | ✅                                   | —              | ✅            | ✅            |
+| 音视频           | ✅                                   | —              | ✅            | ✅            |
+| HTML             | ✅（源码；渲染见 HTML 需求）         | ✅             | ✅            | ✅            |
+| PDF              | ❌（本期不做 PDF 预览）              | —              | ✅            | ✅            |
+| 其它二进制       | ❌                                   | —              | ✅            | ✅            |
+| 目录             | —                                    | —              | —             | —             |
+| 终端产物（文本） | ✅（≤512 KB）                        | ✅（≤512 KB）  | ✅（≤512 KB） | ✅（≤512 KB） |
+| 终端产物（图片） | ✅                                   | —              | ✅（≤~3 MB）  | ✅（≤~3 MB）  |
+| 读取失败/无权限  | 行徽标 + Retry（由动作失败缓存产生） | —              | —             | —             |
 
 ### 7.3 进度与状态机
 
@@ -414,8 +414,8 @@ MobileFilePreviewScreen
 ### 8.7 SAF 大文件
 
 - SAF 直写只用于 ≤16 MB（避免 base64 大字符串 OOM/ANR）。
-- >16 MB 至 256 MB：用 `expo-sharing` 分享 cache 文件，让用户在 Files/Downloads/云盘保存（FileProvider 流式读取），不构造大字符串。
-- >256 MB：提示 “File is too large; save it on desktop.”
+- > 16 MB 至 256 MB：用 `expo-sharing` 分享 cache 文件，让用户在 Files/Downloads/云盘保存（FileProvider 流式读取），不构造大字符串。
+- > 256 MB：提示 “File is too large; save it on desktop.”
 - 测试：10 KB SAF、18.2 MB 分享保存、重名/扩展名/哈希；接近 256 MB 的失败提示。
 
 ### 8.8 与 HTML 需求的交付顺序
@@ -461,4 +461,3 @@ MobileFilePreviewScreen
 - 新增 `expo-sharing`、`expo-intent-launcher` 后必须 prebuild/dev client 重建，并更新应用版本号。
 - 发布验证：新二进制动作可用；旧二进制 OTA 不崩溃且能力降级；商店构建包含原生模块。
 - 回滚：feature flag 关闭 Save/Open，保留 Copy path/content/搜索。
-

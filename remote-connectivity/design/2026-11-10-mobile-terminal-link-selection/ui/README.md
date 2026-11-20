@@ -8,11 +8,11 @@
 
 The HTML prototypes live in the shared prototype directory:
 
-| Prototype | Path | Purpose |
-|---|---|---|
-| Terminal link sheet | [`../../ui-prototypes/terminal-link.html`](../../ui-prototypes/terminal-link.html) | Link tap → Open on this phone / Open in Orca on desktop / Copy link / Cancel, background desktop open, URL review, capability states, legacy preselection, floating workspace, keyboard and tab-switch behavior |
-| Terminal selection | [`../../ui-prototypes/terminal-selection.html`](../../ui-prototypes/terminal-selection.html) | 500 ms long-press overlay and menu, wide-character geometry, nearby phrase selection, long CJK runs, blank/end-of-line, handles, and the Copy / Select All menu |
-| Prototype index | [`../../ui-prototypes/index.html`](../../ui-prototypes/index.html) | Entry point linking both prototypes and the other mobile flows |
+| Prototype           | Path                                                                                         | Purpose                                                                                                                                                                                                         |
+| ------------------- | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Terminal link sheet | [`../../ui-prototypes/terminal-link.html`](../../ui-prototypes/terminal-link.html)           | Link tap → Open on this phone / Open in Orca on desktop / Copy link / Cancel, background desktop open, URL review, capability states, legacy preselection, floating workspace, keyboard and tab-switch behavior |
+| Terminal selection  | [`../../ui-prototypes/terminal-selection.html`](../../ui-prototypes/terminal-selection.html) | 500 ms long-press overlay and menu, wide-character geometry, nearby phrase selection, long CJK runs, blank/end-of-line, handles, and the Copy / Select All menu                                                 |
+| Prototype index     | [`../../ui-prototypes/index.html`](../../ui-prototypes/index.html)                           | Entry point linking both prototypes and the other mobile flows                                                                                                                                                  |
 
 Open either file directly in a browser. Both are single self-contained HTML files with no external dependencies, fixed 390 × 844 dark phone frames, practical ARIA labels/roles, and clickable interactions. No build step or server is required.
 

@@ -11,10 +11,10 @@ Both round-02 MINORs are correctly fixed. No earlier BLOCKER or MAJOR is re-open
 
 ## Round-02 disposition
 
-| ID | Status | Evidence |
-|---|---|---|
-| MINOR 1 — legacy migration lost update | **Fixed** | One module-level barrier (`mobile/src/storage/preferences.ts:275-291`) now orders `saveTerminalLinkOpenMode` (`:303-306`) and the migration's read/compare/write (`:316-344`). `loadTerminalLinkOpenMode` waits the barrier (`:294`). See verification below. |
-| MINOR 2 — A21 / A30b coverage | **Fixed** | A21 at `mobile/src/session/use-mobile-session-file-actions.test.ts:341-378` runs the real screen-state and preference-focus hooks; A30b at `:380-412` drives unavailable → sheet → recovered → direct with no preference rewrite. Both are discriminating, not tautological. |
+| ID                                     | Status    | Evidence                                                                                                                                                                                                                                                                     |
+| -------------------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MINOR 1 — legacy migration lost update | **Fixed** | One module-level barrier (`mobile/src/storage/preferences.ts:275-291`) now orders `saveTerminalLinkOpenMode` (`:303-306`) and the migration's read/compare/write (`:316-344`). `loadTerminalLinkOpenMode` waits the barrier (`:294`). See verification below.                |
+| MINOR 2 — A21 / A30b coverage          | **Fixed** | A21 at `mobile/src/session/use-mobile-session-file-actions.test.ts:341-378` runs the real screen-state and preference-focus hooks; A30b at `:380-412` drives unavailable → sheet → recovered → direct with no preference rewrite. Both are discriminating, not tautological. |
 
 ---
 

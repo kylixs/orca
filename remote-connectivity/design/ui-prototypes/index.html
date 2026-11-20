@@ -1,248 +1,730 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%233b82f6'/%3E%3Ccircle cx='16' cy='16' r='7' fill='none' stroke='%23111111' stroke-width='3'/%3E%3C/svg%3E">
-<title>Orca Mobile · UI 原型总览</title>
-<style>
-  :root{
-    --bg:#111111;--page:#0a0a0b;--panel:#161618;--surface:#1c1c1f;--surface-2:#26262a;
-    --line:#2d2d31;--line-strong:#3f3f45;--text:#f4f4f5;--muted:#a1a1a7;--subtle:#77777f;
-    --accent:#3b82f6;--accent-ink:#ffffff;--accent-soft:rgba(59,130,246,.18);
-    --warn:#f59e0b;--warn-text:#fcd34d;--warn-soft:rgba(245,158,11,.12);
-    --danger:#ef4444;--ok:#22c55e;--radius:6px;
-    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
-    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
-  }
-  *{box-sizing:border-box}
-  [hidden]{display:none!important}
-  html{color-scheme:dark}
-  body{margin:0;background:radial-gradient(1100px 700px at 12% -8%,#17171b 0%,var(--page) 58%) fixed;color:var(--text);font-family:var(--sans);-webkit-font-smoothing:antialiased;line-height:1.5}
-  .page{max-width:1380px;margin:0 auto;padding:58px 44px 110px}
-  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.17em;color:var(--accent);text-transform:uppercase;margin-bottom:14px}
-  h1{margin:0 0 16px;font-size:38px;line-height:1.12;letter-spacing:-.025em;font-weight:700;max-width:940px}
-  .lede{margin:0;max-width:880px;color:var(--muted);font-size:15.5px;line-height:1.7}
-  .lede strong{color:var(--text);font-weight:600}
-  .page-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
-  .pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:999px;padding:6px 12px;font-size:12px}
-  .pill strong{color:var(--text);font-weight:600}
-  .legend{display:flex;flex-wrap:wrap;gap:11px 24px;align-items:center;margin:34px 0 44px;padding:17px 20px;border:1px solid var(--line);border-radius:var(--radius);background:rgba(22,22,24,.72)}
-  .legend-title{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--subtle);font-family:var(--mono);margin-right:4px}
-  .legend-item{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
-  .swatch{width:14px;height:14px;border-radius:var(--radius);flex:none;background:var(--accent)}
-  .swatch.soft{background:rgba(59,130,246,.34);box-shadow:inset 0 0 0 1px rgba(59,130,246,.55)}
-  .swatch.warn{background:var(--warn)}
-  .swatch.danger{background:var(--danger)}
-  .swatch.dim{background:#414147}
-  .swatch.sheet{background:#1a1a1d;border:1px solid #53535b;border-radius:var(--radius) var(--radius) 2px 2px}
-  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:22px}
-  .card{position:relative;display:flex;flex-direction:column;gap:16px;padding:24px;border:1px solid var(--line);border-radius:var(--radius);background:linear-gradient(180deg,rgba(28,28,31,.92),rgba(22,22,24,.92));text-decoration:none;color:inherit;transition:border-color .2s,transform .2s,box-shadow .2s;overflow:hidden}
-  .card::before{content:"";position:absolute;inset:0 0 auto;height:2px;background:linear-gradient(90deg,var(--accent),transparent 72%);opacity:.7}
-  .card:hover{border-color:#4b5563;transform:translateY(-2px);box-shadow:0 18px 44px rgba(0,0,0,.4)}
-  .card:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
-  .card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
-  .card-kicker{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:8px}
-  .card h2{margin:0;font-size:20px;letter-spacing:-.01em;line-height:1.25}
-  .card-desc{margin:0;color:var(--muted);font-size:13px;line-height:1.6}
-  .state-list{list-style:none;margin:2px 0 0;padding:0;display:flex;flex-direction:column;gap:2px}
-  .state-list a{display:flex;align-items:center;gap:9px;padding:6px 8px;margin:0 -8px;border-radius:var(--radius);color:var(--muted);text-decoration:none;font-size:12.5px;line-height:1.45}
-  .state-list a:hover{background:var(--surface);color:var(--text)}
-  .state-list a::before{content:"";width:5px;height:5px;border-radius:50%;background:#4b5563;flex:none}
-  .state-list a:hover::before{background:var(--accent)}
-  .card-foot{margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:14px;border-top:1px solid var(--line)}
-  .open{display:inline-flex;align-items:center;gap:7px;color:#93c5fd;font-size:12.5px;font-weight:600}
-  .doclink{color:var(--subtle);font-size:11.5px;text-decoration:none}
-  .doclink:hover{color:var(--text);text-decoration:underline}
-  .notes-band{display:flex;flex-wrap:wrap;gap:18px;margin-top:46px;padding:22px 24px;border:1px solid var(--line);border-radius:var(--radius);background:rgba(22,22,24,.6)}
-  .notes-band h3{margin:0 0 8px;font-size:13px;letter-spacing:.02em}
-  .notes-band p{margin:0;color:var(--muted);font-size:12.5px;line-height:1.65;max-width:540px}
-  .notes-band .col{flex:1 1 300px}
-  .footnote{margin-top:36px;color:var(--subtle);font-size:12px;line-height:1.7;max-width:980px}
-  .footnote code{font-family:var(--mono);font-size:11.5px;color:#c4d3e2;background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:1px 5px}
-  @media (max-width:720px){.page{padding:34px 20px 70px}h1{font-size:29px}.cards{grid-template-columns:1fr}}
-  @media (prefers-reduced-motion: reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
-</style>
-</head>
-<body>
-<main class="page">
-  <header>
-    <div class="eyebrow">Orca Mobile · G2 UI Prototypes</div>
-    <h1>文件操作、终端链接与 HTML 打开方式</h1>
-    <p class="lede">三个移动端需求的交互原型，覆盖 <strong>文件长按菜单、搜索与筛选、终端链接打开选择、中文/emoji 选区、HTML 预览/源码切换</strong>。手机框内 UI 文案为英文（实现基准）；页面中文仅作设计说明。所有原型为 390 × 844 深色手机框，自包含 HTML。</p>
-    <div class="page-meta" aria-label="原型元信息">
-      <span class="pill"><strong>390 × 844</strong> phone frames</span>
-      <span class="pill"><strong>#111111</strong> · <strong>#3b82f6</strong> · <strong>6px</strong></span>
-      <span class="pill"><strong>44 × 44</strong> touch targets</span>
-      <span class="pill"><strong>4</strong> prototype screens</span>
-    </div>
-  </header>
-
-  <section class="legend" aria-label="图例">
-    <span class="legend-title">Legend</span>
-    <span class="legend-item"><span class="swatch"></span>强调 / 可交互</span>
-    <span class="legend-item"><span class="swatch soft"></span>当前文件 / 当前模式 / 选区</span>
-    <span class="legend-item"><span class="swatch sheet"></span>底部 ActionSheet（唯一弹层形态）</span>
-    <span class="legend-item"><span class="swatch dim"></span>不可预览（行仍可长按）</span>
-    <span class="legend-item"><span class="swatch warn"></span>能力限制 / 回退提示</span>
-    <span class="legend-item"><span class="swatch danger"></span>读取失败 / 被阻止的 scheme</span>
-  </section>
-
-  <section class="cards" aria-label="原型列表">
-    <div class="card">
-      <div class="card-top">
-        <div>
-          <div class="card-kicker">File browser</div>
-          <h2>文件操作与搜索</h2>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%233b82f6'/%3E%3Ccircle cx='16' cy='16' r='7' fill='none' stroke='%23111111' stroke-width='3'/%3E%3C/svg%3E"
+    />
+    <title>Orca Mobile · UI 原型总览</title>
+    <style>
+      :root {
+        --bg: #111111;
+        --page: #0a0a0b;
+        --panel: #161618;
+        --surface: #1c1c1f;
+        --surface-2: #26262a;
+        --line: #2d2d31;
+        --line-strong: #3f3f45;
+        --text: #f4f4f5;
+        --muted: #a1a1a7;
+        --subtle: #77777f;
+        --accent: #3b82f6;
+        --accent-ink: #ffffff;
+        --accent-soft: rgba(59, 130, 246, 0.18);
+        --warn: #f59e0b;
+        --warn-text: #fcd34d;
+        --warn-soft: rgba(245, 158, 11, 0.12);
+        --danger: #ef4444;
+        --ok: #22c55e;
+        --radius: 6px;
+        --mono:
+          ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+        --sans:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', 'PingFang SC',
+          'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      html {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        background: radial-gradient(1100px 700px at 12% -8%, #17171b 0%, var(--page) 58%) fixed;
+        color: var(--text);
+        font-family: var(--sans);
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.5;
+      }
+      .page {
+        max-width: 1380px;
+        margin: 0 auto;
+        padding: 58px 44px 110px;
+      }
+      .eyebrow {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.17em;
+        color: var(--accent);
+        text-transform: uppercase;
+        margin-bottom: 14px;
+      }
+      h1 {
+        margin: 0 0 16px;
+        font-size: 38px;
+        line-height: 1.12;
+        letter-spacing: -0.025em;
+        font-weight: 700;
+        max-width: 940px;
+      }
+      .lede {
+        margin: 0;
+        max-width: 880px;
+        color: var(--muted);
+        font-size: 15.5px;
+        line-height: 1.7;
+      }
+      .lede strong {
+        color: var(--text);
+        font-weight: 600;
+      }
+      .page-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 20px;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--muted);
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 12px;
+      }
+      .pill strong {
+        color: var(--text);
+        font-weight: 600;
+      }
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 11px 24px;
+        align-items: center;
+        margin: 34px 0 44px;
+        padding: 17px 20px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: rgba(22, 22, 24, 0.72);
+      }
+      .legend-title {
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--subtle);
+        font-family: var(--mono);
+        margin-right: 4px;
+      }
+      .legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12.5px;
+        color: var(--muted);
+      }
+      .swatch {
+        width: 14px;
+        height: 14px;
+        border-radius: var(--radius);
+        flex: none;
+        background: var(--accent);
+      }
+      .swatch.soft {
+        background: rgba(59, 130, 246, 0.34);
+        box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.55);
+      }
+      .swatch.warn {
+        background: var(--warn);
+      }
+      .swatch.danger {
+        background: var(--danger);
+      }
+      .swatch.dim {
+        background: #414147;
+      }
+      .swatch.sheet {
+        background: #1a1a1d;
+        border: 1px solid #53535b;
+        border-radius: var(--radius) var(--radius) 2px 2px;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 22px;
+      }
+      .card {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 24px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: linear-gradient(180deg, rgba(28, 28, 31, 0.92), rgba(22, 22, 24, 0.92));
+        text-decoration: none;
+        color: inherit;
+        transition:
+          border-color 0.2s,
+          transform 0.2s,
+          box-shadow 0.2s;
+        overflow: hidden;
+      }
+      .card::before {
+        content: '';
+        position: absolute;
+        inset: 0 0 auto;
+        height: 2px;
+        background: linear-gradient(90deg, var(--accent), transparent 72%);
+        opacity: 0.7;
+      }
+      .card:hover {
+        border-color: #4b5563;
+        transform: translateY(-2px);
+        box-shadow: 0 18px 44px rgba(0, 0, 0, 0.4);
+      }
+      .card:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 3px;
+      }
+      .card-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .card-kicker {
+        font-family: var(--mono);
+        font-size: 10.5px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: 8px;
+      }
+      .card h2 {
+        margin: 0;
+        font-size: 20px;
+        letter-spacing: -0.01em;
+        line-height: 1.25;
+      }
+      .card-desc {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+      .state-list {
+        list-style: none;
+        margin: 2px 0 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .state-list a {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 6px 8px;
+        margin: 0 -8px;
+        border-radius: var(--radius);
+        color: var(--muted);
+        text-decoration: none;
+        font-size: 12.5px;
+        line-height: 1.45;
+      }
+      .state-list a:hover {
+        background: var(--surface);
+        color: var(--text);
+      }
+      .state-list a::before {
+        content: '';
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: #4b5563;
+        flex: none;
+      }
+      .state-list a:hover::before {
+        background: var(--accent);
+      }
+      .card-foot {
+        margin-top: auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding-top: 14px;
+        border-top: 1px solid var(--line);
+      }
+      .open {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        color: #93c5fd;
+        font-size: 12.5px;
+        font-weight: 600;
+      }
+      .doclink {
+        color: var(--subtle);
+        font-size: 11.5px;
+        text-decoration: none;
+      }
+      .doclink:hover {
+        color: var(--text);
+        text-decoration: underline;
+      }
+      .notes-band {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 18px;
+        margin-top: 46px;
+        padding: 22px 24px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: rgba(22, 22, 24, 0.6);
+      }
+      .notes-band h3 {
+        margin: 0 0 8px;
+        font-size: 13px;
+        letter-spacing: 0.02em;
+      }
+      .notes-band p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12.5px;
+        line-height: 1.65;
+        max-width: 540px;
+      }
+      .notes-band .col {
+        flex: 1 1 300px;
+      }
+      .footnote {
+        margin-top: 36px;
+        color: var(--subtle);
+        font-size: 12px;
+        line-height: 1.7;
+        max-width: 980px;
+      }
+      .footnote code {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        color: #c4d3e2;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 3px;
+        padding: 1px 5px;
+      }
+      @media (max-width: 720px) {
+        .page {
+          padding: 34px 20px 70px;
+        }
+        h1 {
+          font-size: 29px;
+        }
+        .cards {
+          grid-template-columns: 1fr;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header>
+        <div class="eyebrow">Orca Mobile · G2 UI Prototypes</div>
+        <h1>文件操作、终端链接与 HTML 打开方式</h1>
+        <p class="lede">
+          三个移动端需求的交互原型，覆盖
+          <strong
+            >文件长按菜单、搜索与筛选、终端链接打开选择、中文/emoji 选区、HTML 预览/源码切换</strong
+          >。手机框内 UI 文案为英文（实现基准）；页面中文仅作设计说明。所有原型为 390 × 844
+          深色手机框，自包含 HTML。
+        </p>
+        <div class="page-meta" aria-label="原型元信息">
+          <span class="pill"><strong>390 × 844</strong> phone frames</span>
+          <span class="pill"
+            ><strong>#111111</strong> · <strong>#3b82f6</strong> · <strong>6px</strong></span
+          >
+          <span class="pill"><strong>44 × 44</strong> touch targets</span>
+          <span class="pill"><strong>4</strong> prototype screens</span>
         </div>
-      </div>
-      <p class="card-desc">点按预览、长按或行尾「…」打开菜单；二进制 / PDF 只隐藏 Preview。搜索与筛选保留祖先目录、隐藏空目录；Save to phone 与 Open with 使用不同系统结果。</p>
-      <ul class="state-list">
-        <li><a href="file-actions.html#file-tree">01 · 文件树 + 搜索 / 筛选（可交互）</a></li>
-        <li><a href="file-actions.html#file-filter">02 · Code 筛选：祖先目录保留</a></li>
-        <li><a href="file-actions.html#file-filter-docs">02b · Docs 筛选：PDF 归 Docs / not loaded</a></li>
-        <li><a href="file-actions.html#file-sheet">03 · 文本文件操作菜单</a></li>
-        <li><a href="file-actions.html#file-image">04 · 图片操作菜单</a></li>
-        <li><a href="file-actions.html#file-media">05 · 媒体操作菜单</a></li>
-        <li><a href="file-actions.html#file-pdf">06 · PDF / 二进制操作菜单</a></li>
-        <li><a href="file-actions.html#file-artifact-text">07 · 终端产物 · 可编辑小文本（未保存修改，header Save）</a></li>
-        <li><a href="file-actions.html#file-artifact-text-too-large">07b · 终端产物 · 文本超过 512 KB（仅 Copy path）</a></li>
-        <li><a href="file-actions.html#file-artifact-image">08 · 终端产物 · 小图片（无 header Save）</a></li>
-        <li><a href="file-actions.html#file-artifact-image-large">08b · 终端产物 · 图片超预算（无 header Save）</a></li>
-        <li><a href="file-actions.html#file-read-failure">09 · 读取失败 · Retry read / 无权限</a></li>
-        <li><a href="file-actions.html#file-save-safe">10 · Save to phone · Android SAF</a></li>
-        <li><a href="file-actions.html#file-save-result">11 · Save to phone · 已保存结果（路径 + SHA-256 + 24h）</a></li>
-        <li><a href="file-actions.html#file-open-android">12 · Open with · Android ACTION_VIEW</a></li>
-        <li><a href="file-actions.html#file-open-ios">13 · Open with · iOS 分享面板</a></li>
-        <li><a href="file-actions.html#file-sheet-ios">13b · iOS 操作菜单 · Save to Files</a></li>
-        <li><a href="file-actions.html#file-download-progress">14 · Save to phone · 预览页准备进度 / 取消</a></li>
-        <li><a href="file-actions.html#file-list-download-progress">14b · Save to phone · 列表侧进度 / 单飞</a></li>
-        <li><a href="file-actions.html#file-download-retry">15 · Save to phone · 失败 / 重试</a></li>
-        <li><a href="file-actions.html#file-search">16 · 搜索首 32 条 / 20k 截断</a></li>
-        <li><a href="file-actions.html#file-search-old-host">16b · 旧主机搜索 · 5000 上限</a></li>
-        <li><a href="file-actions.html#file-selection">17 · HTML 渲染视图 · 文字选择</a></li>
-        <li><a href="file-actions.html#file-save-share-fallback">18 · Save to phone · Android &gt;16 MB 分享回退</a></li>
-        <li><a href="file-actions.html#file-save-error">19 · Save to phone · 取消 / 权限失败</a></li>
-        <li><a href="file-actions.html#file-too-large">20 · Save to phone · &gt;256 MB 桌面提示</a></li>
-        <li><a href="file-actions.html#file-single-flight">21 · 单飞 · 重复动作禁用</a></li>
-        <li><a href="file-actions.html#file-cache-settings">22 · Settings · 清除保存缓存</a></li>
-      </ul>
-      <div class="card-foot">
-        <a class="open" href="file-actions.html">打开原型 →</a>
-        <a class="doclink" href="../2026-11-10-mobile-file-browser/design.md">设计文档</a>
-      </div>
-    </div>
+      </header>
 
-    <div class="card">
-      <div class="card-top">
-        <div>
-          <div class="card-kicker">Terminal links</div>
-          <h2>终端链接打开方式</h2>
+      <section class="legend" aria-label="图例">
+        <span class="legend-title">Legend</span>
+        <span class="legend-item"><span class="swatch"></span>强调 / 可交互</span>
+        <span class="legend-item"><span class="swatch soft"></span>当前文件 / 当前模式 / 选区</span>
+        <span class="legend-item"
+          ><span class="swatch sheet"></span>底部 ActionSheet（唯一弹层形态）</span
+        >
+        <span class="legend-item"><span class="swatch dim"></span>不可预览（行仍可长按）</span>
+        <span class="legend-item"><span class="swatch warn"></span>能力限制 / 回退提示</span>
+        <span class="legend-item"
+          ><span class="swatch danger"></span>读取失败 / 被阻止的 scheme</span
+        >
+      </section>
+
+      <section class="cards" aria-label="原型列表">
+        <div class="card">
+          <div class="card-top">
+            <div>
+              <div class="card-kicker">File browser</div>
+              <h2>文件操作与搜索</h2>
+            </div>
+          </div>
+          <p class="card-desc">
+            点按预览、长按或行尾「…」打开菜单；二进制 / PDF 只隐藏
+            Preview。搜索与筛选保留祖先目录、隐藏空目录；Save to phone 与 Open with
+            使用不同系统结果。
+          </p>
+          <ul class="state-list">
+            <li><a href="file-actions.html#file-tree">01 · 文件树 + 搜索 / 筛选（可交互）</a></li>
+            <li><a href="file-actions.html#file-filter">02 · Code 筛选：祖先目录保留</a></li>
+            <li>
+              <a href="file-actions.html#file-filter-docs"
+                >02b · Docs 筛选：PDF 归 Docs / not loaded</a
+              >
+            </li>
+            <li><a href="file-actions.html#file-sheet">03 · 文本文件操作菜单</a></li>
+            <li><a href="file-actions.html#file-image">04 · 图片操作菜单</a></li>
+            <li><a href="file-actions.html#file-media">05 · 媒体操作菜单</a></li>
+            <li><a href="file-actions.html#file-pdf">06 · PDF / 二进制操作菜单</a></li>
+            <li>
+              <a href="file-actions.html#file-artifact-text"
+                >07 · 终端产物 · 可编辑小文本（未保存修改，header Save）</a
+              >
+            </li>
+            <li>
+              <a href="file-actions.html#file-artifact-text-too-large"
+                >07b · 终端产物 · 文本超过 512 KB（仅 Copy path）</a
+              >
+            </li>
+            <li>
+              <a href="file-actions.html#file-artifact-image"
+                >08 · 终端产物 · 小图片（无 header Save）</a
+              >
+            </li>
+            <li>
+              <a href="file-actions.html#file-artifact-image-large"
+                >08b · 终端产物 · 图片超预算（无 header Save）</a
+              >
+            </li>
+            <li>
+              <a href="file-actions.html#file-read-failure">09 · 读取失败 · Retry read / 无权限</a>
+            </li>
+            <li><a href="file-actions.html#file-save-safe">10 · Save to phone · Android SAF</a></li>
+            <li>
+              <a href="file-actions.html#file-save-result"
+                >11 · Save to phone · 已保存结果（路径 + SHA-256 + 24h）</a
+              >
+            </li>
+            <li>
+              <a href="file-actions.html#file-open-android">12 · Open with · Android ACTION_VIEW</a>
+            </li>
+            <li><a href="file-actions.html#file-open-ios">13 · Open with · iOS 分享面板</a></li>
+            <li>
+              <a href="file-actions.html#file-sheet-ios">13b · iOS 操作菜单 · Save to Files</a>
+            </li>
+            <li>
+              <a href="file-actions.html#file-download-progress"
+                >14 · Save to phone · 预览页准备进度 / 取消</a
+              >
+            </li>
+            <li>
+              <a href="file-actions.html#file-list-download-progress"
+                >14b · Save to phone · 列表侧进度 / 单飞</a
+              >
+            </li>
+            <li>
+              <a href="file-actions.html#file-download-retry">15 · Save to phone · 失败 / 重试</a>
+            </li>
+            <li><a href="file-actions.html#file-search">16 · 搜索首 32 条 / 20k 截断</a></li>
+            <li>
+              <a href="file-actions.html#file-search-old-host">16b · 旧主机搜索 · 5000 上限</a>
+            </li>
+            <li><a href="file-actions.html#file-selection">17 · HTML 渲染视图 · 文字选择</a></li>
+            <li>
+              <a href="file-actions.html#file-save-share-fallback"
+                >18 · Save to phone · Android &gt;16 MB 分享回退</a
+              >
+            </li>
+            <li>
+              <a href="file-actions.html#file-save-error">19 · Save to phone · 取消 / 权限失败</a>
+            </li>
+            <li>
+              <a href="file-actions.html#file-too-large"
+                >20 · Save to phone · &gt;256 MB 桌面提示</a
+              >
+            </li>
+            <li><a href="file-actions.html#file-single-flight">21 · 单飞 · 重复动作禁用</a></li>
+            <li>
+              <a href="file-actions.html#file-cache-settings">22 · Settings · 清除保存缓存</a>
+            </li>
+          </ul>
+          <div class="card-foot">
+            <a class="open" href="file-actions.html">打开原型 →</a>
+            <a class="doclink" href="../2026-11-10-mobile-file-browser/design.md">设计文档</a>
+          </div>
         </div>
-      </div>
-      <p class="card-desc">终端 URL 弹出选择面板；远程打开在桌面 Orca 后台新建标签，桌面不抢焦点，手机停留在终端。覆盖 URL 摘要/展开、HTTP/loopback/SSH 提示、远程能力四态、旧版 host、旧偏好预选、浮动工作区、键盘两态与切 tab 状态。</p>
-      <ul class="state-list">
-        <li><a href="terminal-link.html#link-terminal">01 · Terminal — tap a URL</a></li>
-        <li><a href="terminal-link.html#link-choice">02 · Open link — remote available</a></li>
-        <li><a href="terminal-link.html#link-http-loopback">03 · Plain HTTP + loopback hint</a></li>
-        <li><a href="terminal-link.html#link-offline">04 · Remote disabled — desktop offline</a></li>
-        <li><a href="terminal-link.html#link-creating">05 · Creating browser — double tap ignored</a></li>
-        <li><a href="terminal-link.html#link-unknown">06 · Remote disabled — capability unknown</a></li>
-        <li><a href="terminal-link.html#link-folder">07 · Folder workspace — remote hidden</a></li>
-        <li><a href="terminal-link.html#link-keyboard">08 · Keyboard open before — restored on close</a></li>
-        <li><a href="terminal-link.html#link-remote-opened">09 · Remote opened — background tab, phone stays</a></li>
-        <li><a href="terminal-link.html#link-tab-switch">10 · Terminal tab switched — sheet dismissed</a></li>
-        <li><a href="terminal-link.html#link-remember-on">11 · Remember on — Copy and Cancel never save</a></li>
-        <li><a href="terminal-link.html#link-legacy">12 · Legacy preference — one-time preselection, migrated</a></li>
-        <li><a href="terminal-link.html#link-old-host">13 · Old host — remote visible but disabled</a></li>
-        <li><a href="terminal-link.html#link-floating">14 · Floating workspace — remote hidden</a></li>
-        <li><a href="terminal-link.html#link-keyboard-closed">15 · Keyboard closed before — stays closed</a></li>
-        <li><a href="terminal-link.html#link-full-url">16 · Full URL expanded — userinfo after filtering</a></li>
-      </ul>
-      <div class="card-foot">
-        <a class="open" href="terminal-link.html">打开原型 →</a>
-        <a class="doclink" href="../2026-11-10-mobile-terminal-link-selection/design.md">设计文档</a>
-      </div>
-    </div>
 
-    <div class="card">
-      <div class="card-top">
-        <div>
-          <div class="card-kicker">Terminal selection</div>
-          <h2>中文 / emoji 选区</h2>
+        <div class="card">
+          <div class="card-top">
+            <div>
+              <div class="card-kicker">Terminal links</div>
+              <h2>终端链接打开方式</h2>
+            </div>
+          </div>
+          <p class="card-desc">
+            终端 URL 弹出选择面板；远程打开在桌面 Orca
+            后台新建标签，桌面不抢焦点，手机停留在终端。覆盖 URL 摘要/展开、HTTP/loopback/SSH
+            提示、远程能力四态、旧版 host、旧偏好预选、浮动工作区、键盘两态与切 tab 状态。
+          </p>
+          <ul class="state-list">
+            <li><a href="terminal-link.html#link-terminal">01 · Terminal — tap a URL</a></li>
+            <li><a href="terminal-link.html#link-choice">02 · Open link — remote available</a></li>
+            <li>
+              <a href="terminal-link.html#link-http-loopback">03 · Plain HTTP + loopback hint</a>
+            </li>
+            <li>
+              <a href="terminal-link.html#link-offline">04 · Remote disabled — desktop offline</a>
+            </li>
+            <li>
+              <a href="terminal-link.html#link-creating"
+                >05 · Creating browser — double tap ignored</a
+              >
+            </li>
+            <li>
+              <a href="terminal-link.html#link-unknown"
+                >06 · Remote disabled — capability unknown</a
+              >
+            </li>
+            <li>
+              <a href="terminal-link.html#link-folder">07 · Folder workspace — remote hidden</a>
+            </li>
+            <li>
+              <a href="terminal-link.html#link-keyboard"
+                >08 · Keyboard open before — restored on close</a
+              >
+            </li>
+            <li>
+              <a href="terminal-link.html#link-remote-opened"
+                >09 · Remote opened — background tab, phone stays</a
+              >
+            </li>
+            <li>
+              <a href="terminal-link.html#link-tab-switch"
+                >10 · Terminal tab switched — sheet dismissed</a
+              >
+            </li>
+            <li>
+              <a href="terminal-link.html#link-remember-on"
+                >11 · Remember on — Copy and Cancel never save</a
+              >
+            </li>
+            <li>
+              <a href="terminal-link.html#link-legacy"
+                >12 · Legacy preference — one-time preselection, migrated</a
+              >
+            </li>
+            <li>
+              <a href="terminal-link.html#link-old-host"
+                >13 · Old host — remote visible but disabled</a
+              >
+            </li>
+            <li>
+              <a href="terminal-link.html#link-floating">14 · Floating workspace — remote hidden</a>
+            </li>
+            <li>
+              <a href="terminal-link.html#link-keyboard-closed"
+                >15 · Keyboard closed before — stays closed</a
+              >
+            </li>
+            <li>
+              <a href="terminal-link.html#link-full-url"
+                >16 · Full URL expanded — userinfo after filtering</a
+              >
+            </li>
+          </ul>
+          <div class="card-foot">
+            <a class="open" href="terminal-link.html">打开原型 →</a>
+            <a class="doclink" href="../2026-11-10-mobile-terminal-link-selection/design.md"
+              >设计文档</a
+            >
+          </div>
         </div>
-      </div>
-      <p class="card-desc">500 ms 长按即显示 overlay 与 Copy/Select All 菜单；覆盖中文/emoji/NFD/全角/折行、标点附近吸附、长 CJK run 5 字窗口（与分词无关）、空白/行尾无 token、宽字符手柄拖动、手柄交叉归一化与复制一致性。</p>
-      <ul class="state-list">
-        <li><a href="terminal-selection.html#select-hold">01 · 500 ms — overlay + Copy/Select All menu</a></li>
-        <li><a href="terminal-selection.html#select-cjk">02 · 中文abc — right half of 文</a></li>
-        <li><a href="terminal-selection.html#select-emoji">03 · 中文😀English — emoji right half</a></li>
-        <li><a href="terminal-selection.html#select-english">04 · 中文😀English — tap E</a></li>
-        <li><a href="terminal-selection.html#select-and">05 · 验证 权限边界 &amp; token — tap &amp;</a></li>
-        <li><a href="terminal-selection.html#select-merge">06 · CJK merge — 登录流程</a></li>
-        <li><a href="terminal-selection.html#select-space">07 · 中文 abc — tap space</a></li>
-        <li><a href="terminal-selection.html#select-fullwidth">08 · Fullwidth ＡＢＣ１２３</a></li>
-        <li><a href="terminal-selection.html#select-nfd">09 · NFD é</a></li>
-        <li><a href="terminal-selection.html#select-wrap">10 · Wrapped line — KLMNOP</a></li>
-        <li><a href="terminal-selection.html#select-drag">11 · Handle drag across a wide glyph</a></li>
-        <li><a href="terminal-selection.html#select-menu">12 · Selection menu — Copy / Select All</a></li>
-        <li><a href="terminal-selection.html#select-long-run-start">13 · Long CJK run — 5-char window, tap 人</a></li>
-        <li><a href="terminal-selection.html#select-long-run-end">14 · Long CJK run — 5-char window, tap 国</a></li>
-        <li><a href="terminal-selection.html#select-blank">15 · Blank / end of line — Copy disabled</a></li>
-        <li><a href="terminal-selection.html#select-long-run-window">16 · 7-char CJK run — tap 风</a></li>
-        <li><a href="terminal-selection.html#select-cross-start">17 · Handle crossing — start dragged past end</a></li>
-        <li><a href="terminal-selection.html#select-cross-end">18 · Handle crossing — end dragged before start</a></li>
-        <li><a href="terminal-selection.html#selection-notes">附 · Non-goals and mapping notes</a></li>
-      </ul>
-      <div class="card-foot">
-        <a class="open" href="terminal-selection.html">打开原型 →</a>
-        <a class="doclink" href="../2026-11-10-mobile-terminal-link-selection/design.md">设计文档</a>
-      </div>
-    </div>
 
-    <div class="card">
-      <div class="card-top">
-        <div>
-          <div class="card-kicker">HTML preview</div>
-          <h2>HTML 打开方式</h2>
+        <div class="card">
+          <div class="card-top">
+            <div>
+              <div class="card-kicker">Terminal selection</div>
+              <h2>中文 / emoji 选区</h2>
+            </div>
+          </div>
+          <p class="card-desc">
+            500 ms 长按即显示 overlay 与 Copy/Select All
+            菜单；覆盖中文/emoji/NFD/全角/折行、标点附近吸附、长 CJK run 5
+            字窗口（与分词无关）、空白/行尾无 token、宽字符手柄拖动、手柄交叉归一化与复制一致性。
+          </p>
+          <ul class="state-list">
+            <li>
+              <a href="terminal-selection.html#select-hold"
+                >01 · 500 ms — overlay + Copy/Select All menu</a
+              >
+            </li>
+            <li>
+              <a href="terminal-selection.html#select-cjk">02 · 中文abc — right half of 文</a>
+            </li>
+            <li>
+              <a href="terminal-selection.html#select-emoji"
+                >03 · 中文😀English — emoji right half</a
+              >
+            </li>
+            <li><a href="terminal-selection.html#select-english">04 · 中文😀English — tap E</a></li>
+            <li>
+              <a href="terminal-selection.html#select-and"
+                >05 · 验证 权限边界 &amp; token — tap &amp;</a
+              >
+            </li>
+            <li><a href="terminal-selection.html#select-merge">06 · CJK merge — 登录流程</a></li>
+            <li><a href="terminal-selection.html#select-space">07 · 中文 abc — tap space</a></li>
+            <li>
+              <a href="terminal-selection.html#select-fullwidth">08 · Fullwidth ＡＢＣ１２３</a>
+            </li>
+            <li><a href="terminal-selection.html#select-nfd">09 · NFD é</a></li>
+            <li><a href="terminal-selection.html#select-wrap">10 · Wrapped line — KLMNOP</a></li>
+            <li>
+              <a href="terminal-selection.html#select-drag">11 · Handle drag across a wide glyph</a>
+            </li>
+            <li>
+              <a href="terminal-selection.html#select-menu"
+                >12 · Selection menu — Copy / Select All</a
+              >
+            </li>
+            <li>
+              <a href="terminal-selection.html#select-long-run-start"
+                >13 · Long CJK run — 5-char window, tap 人</a
+              >
+            </li>
+            <li>
+              <a href="terminal-selection.html#select-long-run-end"
+                >14 · Long CJK run — 5-char window, tap 国</a
+              >
+            </li>
+            <li>
+              <a href="terminal-selection.html#select-blank"
+                >15 · Blank / end of line — Copy disabled</a
+              >
+            </li>
+            <li>
+              <a href="terminal-selection.html#select-long-run-window"
+                >16 · 7-char CJK run — tap 风</a
+              >
+            </li>
+            <li>
+              <a href="terminal-selection.html#select-cross-start"
+                >17 · Handle crossing — start dragged past end</a
+              >
+            </li>
+            <li>
+              <a href="terminal-selection.html#select-cross-end"
+                >18 · Handle crossing — end dragged before start</a
+              >
+            </li>
+            <li>
+              <a href="terminal-selection.html#selection-notes">附 · Non-goals and mapping notes</a>
+            </li>
+          </ul>
+          <div class="card-foot">
+            <a class="open" href="terminal-selection.html">打开原型 →</a>
+            <a class="doclink" href="../2026-11-10-mobile-terminal-link-selection/design.md"
+              >设计文档</a
+            >
+          </div>
         </div>
-      </div>
-      <p class="card-desc">首次点击 Ask；Preview / Source 位于第二行工具栏；右上角只有一个「…」。含相对资源、512 KB、读取失败、无可用 App、被阻止 scheme 与偏好恢复。</p>
-      <ul class="state-list">
-        <li><a href="html-open-modes.html#html-chooser">01 · 首次点击 · Ask</a></li>
-        <li><a href="html-open-modes.html#html-preview">02 · 渲染视图 · 相对资源警告</a></li>
-        <li><a href="html-open-modes.html#html-menu">03 · 唯一溢出入口 · ActionSheet</a></li>
-        <li><a href="html-open-modes.html#html-source">04 · 源码视图 · 已记住 Source</a></li>
-        <li><a href="html-open-modes.html#html-large">05 · 超过 512 KB · 渲染禁用</a></li>
-        <li><a href="html-open-modes.html#html-read-failure">06 · 读取失败</a></li>
-        <li><a href="html-open-modes.html#html-no-app">07 · 无可用 App · 共享菜单</a></li>
-        <li><a href="html-open-modes.html#html-blocked">08 · 被阻止的 scheme</a></li>
-        <li><a href="html-open-modes.html#html-longpress">09 · 长按 HTML 文件行</a></li>
-        <li><a href="html-open-modes.html#html-preference">10 · Browser settings · 偏好恢复</a></li>
-      </ul>
-      <div class="card-foot">
-        <a class="open" href="html-open-modes.html">打开原型 →</a>
-        <a class="doclink" href="../2026-11-10-mobile-html-open-modes/design.md">设计文档</a>
-      </div>
-    </div>
-  </section>
 
-  <section class="notes-band" aria-label="使用说明">
-    <div class="col">
-      <h3>如何查看</h3>
-      <p>直接打开各 HTML 文件。文件树中点击文件行进入预览，长按 500 ms 或点击行尾「…」打开 ActionSheet；搜索框与类型 chips 可实时筛选。HTML 预览用第二行工具栏切换 Preview / Source，右上角「…」打开同一套文件动作。</p>
-    </div>
-    <div class="col">
-      <h3>原型范围</h3>
-      <p>覆盖默认、长按、选中、禁用、无权限、能力受限、下载进度 / 失败、保存与打开方式结果、搜索截断与 HTML 安全状态。手机框内英文文案是实现基准；页面中文说明仅用于设计沟通。演示数据为虚构文件与 URL。</p>
-    </div>
-    <div class="col">
-      <h3>设计约束</h3>
-      <p>主题 token：背景 <code>#111111</code>、强调色 <code>#3b82f6</code>、圆角 <code>6px</code>。触控目标 44 × 44 或 hitSlop。所有弹层为底部 ActionSheet，不使用锚定 popover。Save to phone（Android SAF / iOS Save to Files）与 Open with（Android ACTION_VIEW / iOS 分享面板）是两个独立结果。</p>
-    </div>
-  </section>
+        <div class="card">
+          <div class="card-top">
+            <div>
+              <div class="card-kicker">HTML preview</div>
+              <h2>HTML 打开方式</h2>
+            </div>
+          </div>
+          <p class="card-desc">
+            首次点击 Ask；Preview / Source 位于第二行工具栏；右上角只有一个「…」。含相对资源、512
+            KB、读取失败、无可用 App、被阻止 scheme 与偏好恢复。
+          </p>
+          <ul class="state-list">
+            <li><a href="html-open-modes.html#html-chooser">01 · 首次点击 · Ask</a></li>
+            <li><a href="html-open-modes.html#html-preview">02 · 渲染视图 · 相对资源警告</a></li>
+            <li><a href="html-open-modes.html#html-menu">03 · 唯一溢出入口 · ActionSheet</a></li>
+            <li><a href="html-open-modes.html#html-source">04 · 源码视图 · 已记住 Source</a></li>
+            <li><a href="html-open-modes.html#html-large">05 · 超过 512 KB · 渲染禁用</a></li>
+            <li><a href="html-open-modes.html#html-read-failure">06 · 读取失败</a></li>
+            <li><a href="html-open-modes.html#html-no-app">07 · 无可用 App · 共享菜单</a></li>
+            <li><a href="html-open-modes.html#html-blocked">08 · 被阻止的 scheme</a></li>
+            <li><a href="html-open-modes.html#html-longpress">09 · 长按 HTML 文件行</a></li>
+            <li>
+              <a href="html-open-modes.html#html-preference">10 · Browser settings · 偏好恢复</a>
+            </li>
+          </ul>
+          <div class="card-foot">
+            <a class="open" href="html-open-modes.html">打开原型 →</a>
+            <a class="doclink" href="../2026-11-10-mobile-html-open-modes/design.md">设计文档</a>
+          </div>
+        </div>
+      </section>
 
-  <p class="footnote">流程依据 <code>remote-connectivity/design/DEVELOPMENT_PROCESS.md</code> G2：每个需求一张主流程原型 + 关键状态。原型不代替真实 UI，但用于指导实现与 UI 评审。HTML 本期不提供外部浏览器标签页动作；只有 Preview / Source 参与 “Remember my choice”。</p>
-</main>
-</body>
+      <section class="notes-band" aria-label="使用说明">
+        <div class="col">
+          <h3>如何查看</h3>
+          <p>
+            直接打开各 HTML 文件。文件树中点击文件行进入预览，长按 500 ms 或点击行尾「…」打开
+            ActionSheet；搜索框与类型 chips 可实时筛选。HTML 预览用第二行工具栏切换 Preview /
+            Source，右上角「…」打开同一套文件动作。
+          </p>
+        </div>
+        <div class="col">
+          <h3>原型范围</h3>
+          <p>
+            覆盖默认、长按、选中、禁用、无权限、能力受限、下载进度 /
+            失败、保存与打开方式结果、搜索截断与 HTML
+            安全状态。手机框内英文文案是实现基准；页面中文说明仅用于设计沟通。演示数据为虚构文件与
+            URL。
+          </p>
+        </div>
+        <div class="col">
+          <h3>设计约束</h3>
+          <p>
+            主题 token：背景 <code>#111111</code>、强调色 <code>#3b82f6</code>、圆角
+            <code>6px</code>。触控目标 44 × 44 或 hitSlop。所有弹层为底部 ActionSheet，不使用锚定
+            popover。Save to phone（Android SAF / iOS Save to Files）与 Open with（Android
+            ACTION_VIEW / iOS 分享面板）是两个独立结果。
+          </p>
+        </div>
+      </section>
+
+      <p class="footnote">
+        流程依据
+        <code>remote-connectivity/design/DEVELOPMENT_PROCESS.md</code> G2：每个需求一张主流程原型 +
+        关键状态。原型不代替真实 UI，但用于指导实现与 UI 评审。HTML
+        本期不提供外部浏览器标签页动作；只有 Preview / Source 参与 “Remember my choice”。
+      </p>
+    </main>
+  </body>
 </html>

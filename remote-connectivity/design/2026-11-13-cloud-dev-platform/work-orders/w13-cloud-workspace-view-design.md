@@ -33,19 +33,19 @@
 
 ## 2. 复用资产清单（Reuse Before Reimplementing）
 
-| 资产 | 位置 | 在 W13 中的角色 |
-| --- | --- | --- |
-| `openCloudWorkspaceOverRpc` / `provisionCloudProjectOverRpc` | `src/shared/cloud-workspace-open.ts` | ensure checkout（provision→list→createManaged，幂等键 `cloud-open:<projectId>:<branch>`），桌面 main 与管理台桥已在用，web 直接复用 |
-| `selectCloudInitialWorktreeId` | `src/shared/cloud-initial-worktree.ts` | 按 workspacePath 精确匹配选中初始工作区 |
-| `cloudProjectRepoTarget` / `syncCloudProjectRepos` | `src/renderer/src/cloud/cloud-project-repos.ts` | repo 行目标构造与幂等去重语义参考（web 侧取数源不同：workspace.info 而非平台环境对象） |
-| `addRepoPath` / `fetchWorktrees` / `setActiveWorktree` | App store（web preload shim 已覆盖：`web-repositories-api.ts` / `web-worktrees-api.ts`） | 侧栏行与工作区目录水合、激活 |
-| `WebRuntimeClient`（`call` + `subscribe`） | `src/renderer/src/web/web-runtime-client.ts` | 一元 RPC 走主 socket；流式订阅自动走 W5c 重签子 socket |
-| W5c 重签订阅 | `web-runtime-child-ticket-offers.ts` + `attachTicketReSigner`（handoff 接线已在 `web-cloud-connect.ts:238`） | 终端 `terminal.multiplex` 子连接的短票（AC-29 主机键钉扎已含） |
-| W9A-7 multiplex 云准入 | `cloud-terminal-multiplex-boundary.ts` + `terminal-multiplex-method.ts` | 云会话订阅帧级 workspace-scope 边界（唯一解析点 + path_denied 审计） |
-| W5b files.* 权限映射 | `cloud-rpc-permission.ts` READ/WRITE + `cloud-file-path-params.ts` 路径参数声明表 | explorer 读写全部走既有映射与路径护栏，**零表改动** |
-| `project.provision` 方法范本 | `src/main/runtime/rpc/methods/project-provision.ts` | 云专属方法的登记/上下文/错误形态范本 |
-| W9A-6 槽位记账 | `cloud-session-limits.ts`（≤3 设备/用户/项目、≤12 socket/设备会话、≤32/主机） | bootstrap 零新增 socket，预算不变 |
-| W9A-5 pairing 身份 | `cloud-runtime-environment.ts`（同键不轮换） | web bootstrap 全程渲染层 RPC，不触发 main 登记路径，pairing 零轮换 |
+| 资产                                                         | 位置                                                                                                         | 在 W13 中的角色                                                                                                                     |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `openCloudWorkspaceOverRpc` / `provisionCloudProjectOverRpc` | `src/shared/cloud-workspace-open.ts`                                                                         | ensure checkout（provision→list→createManaged，幂等键 `cloud-open:<projectId>:<branch>`），桌面 main 与管理台桥已在用，web 直接复用 |
+| `selectCloudInitialWorktreeId`                               | `src/shared/cloud-initial-worktree.ts`                                                                       | 按 workspacePath 精确匹配选中初始工作区                                                                                             |
+| `cloudProjectRepoTarget` / `syncCloudProjectRepos`           | `src/renderer/src/cloud/cloud-project-repos.ts`                                                              | repo 行目标构造与幂等去重语义参考（web 侧取数源不同：workspace.info 而非平台环境对象）                                              |
+| `addRepoPath` / `fetchWorktrees` / `setActiveWorktree`       | App store（web preload shim 已覆盖：`web-repositories-api.ts` / `web-worktrees-api.ts`）                     | 侧栏行与工作区目录水合、激活                                                                                                        |
+| `WebRuntimeClient`（`call` + `subscribe`）                   | `src/renderer/src/web/web-runtime-client.ts`                                                                 | 一元 RPC 走主 socket；流式订阅自动走 W5c 重签子 socket                                                                              |
+| W5c 重签订阅                                                 | `web-runtime-child-ticket-offers.ts` + `attachTicketReSigner`（handoff 接线已在 `web-cloud-connect.ts:238`） | 终端 `terminal.multiplex` 子连接的短票（AC-29 主机键钉扎已含）                                                                      |
+| W9A-7 multiplex 云准入                                       | `cloud-terminal-multiplex-boundary.ts` + `terminal-multiplex-method.ts`                                      | 云会话订阅帧级 workspace-scope 边界（唯一解析点 + path_denied 审计）                                                                |
+| W5b files.* 权限映射                                         | `cloud-rpc-permission.ts` READ/WRITE + `cloud-file-path-params.ts` 路径参数声明表                            | explorer 读写全部走既有映射与路径护栏，**零表改动**                                                                                 |
+| `project.provision` 方法范本                                 | `src/main/runtime/rpc/methods/project-provision.ts`                                                          | 云专属方法的登记/上下文/错误形态范本                                                                                                |
+| W9A-6 槽位记账                                               | `cloud-session-limits.ts`（≤3 设备/用户/项目、≤12 socket/设备会话、≤32/主机）                                | bootstrap 零新增 socket，预算不变                                                                                                   |
+| W9A-5 pairing 身份                                           | `cloud-runtime-environment.ts`（同键不轮换）                                                                 | web bootstrap 全程渲染层 RPC，不触发 main 登记路径，pairing 零轮换                                                                  |
 
 ---
 
@@ -81,17 +81,17 @@ export const WORKSPACE_INFO_METHODS = [
 ```ts
 type CloudWorkspaceInfo = {
   project: {
-    id: string             // = 票据 payload.project（平台项目 id）
-    root: string           // = 票据 payload.projectRoot
-    repoUrl: string        // = 票据 payload.repoUrl ?? ''（旧票缺省空串，与 CloudRpcSession 对齐）
-    defaultBranch: string  // = 票据 payload.defaultBranch ?? ''
+    id: string // = 票据 payload.project（平台项目 id）
+    root: string // = 票据 payload.projectRoot
+    repoUrl: string // = 票据 payload.repoUrl ?? ''（旧票缺省空串，与 CloudRpcSession 对齐）
+    defaultBranch: string // = 票据 payload.defaultBranch ?? ''
   }
   workspace: {
-    root: string                // = 票据 payload.workspaceRoot（该用户在该项目下的检出根）
-    path: string | null         // 已存在的检出路径；null = 尚未 ensure（首次打开是正常态）
-    branch: string | null       // 该检出的当前分支；path 为 null 或 git 读取失败时为 null
+    root: string // = 票据 payload.workspaceRoot（该用户在该项目下的检出根）
+    path: string | null // 已存在的检出路径；null = 尚未 ensure（首次打开是正常态）
+    branch: string | null // 该检出的当前分支；path 为 null 或 git 读取失败时为 null
   }
-  perms: CloudPermission[]      // 票据 perms 回显（渲染层据此做权限感知降级，免二次探测）
+  perms: CloudPermission[] // 票据 perms 回显（渲染层据此做权限感知降级，免二次探测）
 }
 ```
 
@@ -101,13 +101,13 @@ type CloudWorkspaceInfo = {
 
 ### 3.3 per-project 票据语义下的信息边界（不得泄露宿主全域）
 
-| 数据 | 是否返回 | 理由 |
-| --- | --- | --- |
-| 本票据 project/workspace 根、repoUrl、defaultBranch、perms | 是 | 票据本来就在准入时签给该会话 |
-| workspaceRoot 内该用户自己的检出路径/分支 | 是 | §8.3 step 3 的自省目的 |
-| workspaceRoot 内**其他成员**的检出路径 | 否（`workspace.path` 只取本票据 workspaceRoot 内的行） | 见下「已知共享边界」 |
-| 宿主全域 repo 目录、其他项目、其他用户会话、SSH 目标、设备/配对表、宿主自身路径（userData 等） | **否** | W7c 裁定的泄露面，一个字段都不加 |
-| 工作区之外的文件系统信息 | 否 | 读边界=projectRoot（resolveRealPath 后），写边界=workspaceRoot（§7.3） |
+| 数据                                                                                           | 是否返回                                               | 理由                                                                   |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------- |
+| 本票据 project/workspace 根、repoUrl、defaultBranch、perms                                     | 是                                                     | 票据本来就在准入时签给该会话                                           |
+| workspaceRoot 内该用户自己的检出路径/分支                                                      | 是                                                     | §8.3 step 3 的自省目的                                                 |
+| workspaceRoot 内**其他成员**的检出路径                                                         | 否（`workspace.path` 只取本票据 workspaceRoot 内的行） | 见下「已知共享边界」                                                   |
+| 宿主全域 repo 目录、其他项目、其他用户会话、SSH 目标、设备/配对表、宿主自身路径（userData 等） | **否**                                                 | W7c 裁定的泄露面，一个字段都不加                                       |
+| 工作区之外的文件系统信息                                                                       | 否                                                     | 读边界=projectRoot（resolveRealPath 后），写边界=workspaceRoot（§7.3） |
 
 > **已知共享边界（如实记录，不在 W13 扩面）**：既有 `worktree.list` 对云会话按 repo 粒度放行（`checkRepoScopedRead` 只验 repo 在 projectRoot 内），因此同一 repo 下队友检出的路径/名称对会话「读可达、写不可驱」——W9A-7 审计已实证并接受。`workspace.info` 不扩大它（只返回本 workspaceRoot 内的第一条）；可选硬化（宿主侧对云会话的 `worktree.list` 结果按票据 workspaceRoot 过滤）列为本文 §9 开放问题 Q3，不在本令实施。
 
@@ -154,22 +154,22 @@ type CloudWorkspaceInfo = {
 
 ### 4.2 模块与命名（避免 generic 名）
 
-| 新文件 | 职责 |
-| --- | --- |
-| `src/main/runtime/rpc/methods/workspace-info.ts` | `WORKSPACE_INFO_METHODS`（宿主实现） |
-| `src/shared/cloud-workspace-info.ts` | 响应字段清单 + `readCloudWorkspaceInfo` 读取器（宿主/web/测试三方同一契约） |
-| `src/renderer/src/web/preload-api/web-cloud-workspace-api.ts` | web preload 新可选命名空间 `cloudWorkspace`（`info()` + `ensure()`，内部走 `callRuntimeResult`；桌面侧该命名空间缺席） |
-| `src/renderer/src/web/web-cloud-workspace-bootstrap.ts` | 三阶段 bootstrap + 状态机（供 hydration 调用；`resetWebCloudWorkspaceBootstrap` 供测试） |
-| `src/renderer/src/components/sidebar/worktree-list/listing/CloudSessionEmptyState.tsx`（改） | 增 bootstrap 态呈现（connecting/failed + 原因文案），不改动原生骨架 |
+| 新文件                                                                                       | 职责                                                                                                                   |
+| -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `src/main/runtime/rpc/methods/workspace-info.ts`                                             | `WORKSPACE_INFO_METHODS`（宿主实现）                                                                                   |
+| `src/shared/cloud-workspace-info.ts`                                                         | 响应字段清单 + `readCloudWorkspaceInfo` 读取器（宿主/web/测试三方同一契约）                                            |
+| `src/renderer/src/web/preload-api/web-cloud-workspace-api.ts`                                | web preload 新可选命名空间 `cloudWorkspace`（`info()` + `ensure()`，内部走 `callRuntimeResult`；桌面侧该命名空间缺席） |
+| `src/renderer/src/web/web-cloud-workspace-bootstrap.ts`                                      | 三阶段 bootstrap + 状态机（供 hydration 调用；`resetWebCloudWorkspaceBootstrap` 供测试）                               |
+| `src/renderer/src/components/sidebar/worktree-list/listing/CloudSessionEmptyState.tsx`（改） | 增 bootstrap 态呈现（connecting/failed + 原因文案），不改动原生骨架                                                    |
 
 ### 4.3 权限感知降级（perms 回显的用途）
 
-| 票据 perms | 呈现 |
-| --- | --- |
-| 仅 `open` | 侧栏项目行出现（repo.add 允许），无工作区激活（worktree.list 需 `terminal`）→ 云卡显示「未授予终端权限」 |
-| +`terminal` | ensure + 激活工作区；终端可用；explorer 仅在也有 `file:read` 时挂载 |
-| +`file:read`/`file:write` | explorer/编辑器按既有面板能力呈现；`download` 缺失或策略 deny → 导出项按既有隐藏/禁用语义 |
-| 任一步被宿主拒 | 该面降级为占位/空态（同 W5a 管理台「无授权占位」语义），**不报错弹窗、不降级启动** |
+| 票据 perms                | 呈现                                                                                                     |
+| ------------------------- | -------------------------------------------------------------------------------------------------------- |
+| 仅 `open`                 | 侧栏项目行出现（repo.add 允许），无工作区激活（worktree.list 需 `terminal`）→ 云卡显示「未授予终端权限」 |
+| +`terminal`               | ensure + 激活工作区；终端可用；explorer 仅在也有 `file:read` 时挂载                                      |
+| +`file:read`/`file:write` | explorer/编辑器按既有面板能力呈现；`download` 缺失或策略 deny → 导出项按既有隐藏/禁用语义                |
+| 任一步被宿主拒            | 该面降级为占位/空态（同 W5a 管理台「无授权占位」语义），**不报错弹窗、不降级启动**                       |
 
 ### 4.4 状态机与失败回落（含 W7c 兜底保留）
 
@@ -203,21 +203,21 @@ bootstrap: idle → loading(info) → ensuring → seeding → done
 
 ### 5.1 cloudMethodAccess 权限点表（W13 流实际触碰的方法）
 
-| 方法 | cloudMethodAccess | 路径/目标护栏 | 拒绝审计 |
-| --- | --- | --- | --- |
-| `workspace.info` | `session`（既有，**零改动**） | 无参数；宿主只回票据域内数据 | 非云调用 → `CLOUD_SESSION_REQUIRED` 普通回包（不入云审计） |
-| `project.provision` | `open`（既有） | 宿主只读 `context.cloud` | 既有 |
-| `worktree.list` | `terminal`（既有） | `checkRepoScopedRead`：repo 须在 projectRoot 内 | `path_denied / PATH_OUTSIDE_ROOT` |
-| `worktree.createManaged` | `terminal`（既有） | 绝对目标须在 workspaceRoot 内 | 同上 |
-| `repo.add` | `open`（既有） | `checkProjectRootTarget`：resolveRealPath 后恰等于票据 projectRoot | 同上 |
-| `files.readDir/read/...` | `file:read`（既有） | `CLOUD_FILE_PATH_PARAMS` 声明 + projectRoot 读边界；未声明路径段的方法一律 `path_unverifiable` 拒 | 同上 |
-| `files.write/...` | `file:write`（既有） | workspaceRoot 写边界（符号链接解析后） | 同上 |
-| `files.watch/unwatch` | `file:read`（既有） | 同读边界 | 同上 |
-| `git.*` | `terminal`（既有前缀） | cloud-git-scope（工作目录边界） | 同上 |
-| `terminal.create/send/updateViewport/close` | `terminal`（既有前缀） | create：worktree→workspaceRoot；handle 族：句柄→workspaceRoot | 同上 |
-| `terminal.multiplex` | `terminal`（既有） | 信封无条件、**每条订阅帧**在唯一解析点验 workspace-scope（W9A-7） | 帧级 `path_denied`（reason=workspace_scope） |
-| `agent.*` | `agent`（既有前缀） | 既有 agent 边界 | 同上 |
-| download 族 | `download` + 策略 `downloadAllowed` 优先（§9.3 策略 outranks 票据） | 既有 | `method_denied` |
+| 方法                                        | cloudMethodAccess                                                   | 路径/目标护栏                                                                                     | 拒绝审计                                                   |
+| ------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `workspace.info`                            | `session`（既有，**零改动**）                                       | 无参数；宿主只回票据域内数据                                                                      | 非云调用 → `CLOUD_SESSION_REQUIRED` 普通回包（不入云审计） |
+| `project.provision`                         | `open`（既有）                                                      | 宿主只读 `context.cloud`                                                                          | 既有                                                       |
+| `worktree.list`                             | `terminal`（既有）                                                  | `checkRepoScopedRead`：repo 须在 projectRoot 内                                                   | `path_denied / PATH_OUTSIDE_ROOT`                          |
+| `worktree.createManaged`                    | `terminal`（既有）                                                  | 绝对目标须在 workspaceRoot 内                                                                     | 同上                                                       |
+| `repo.add`                                  | `open`（既有）                                                      | `checkProjectRootTarget`：resolveRealPath 后恰等于票据 projectRoot                                | 同上                                                       |
+| `files.readDir/read/...`                    | `file:read`（既有）                                                 | `CLOUD_FILE_PATH_PARAMS` 声明 + projectRoot 读边界；未声明路径段的方法一律 `path_unverifiable` 拒 | 同上                                                       |
+| `files.write/...`                           | `file:write`（既有）                                                | workspaceRoot 写边界（符号链接解析后）                                                            | 同上                                                       |
+| `files.watch/unwatch`                       | `file:read`（既有）                                                 | 同读边界                                                                                          | 同上                                                       |
+| `git.*`                                     | `terminal`（既有前缀）                                              | cloud-git-scope（工作目录边界）                                                                   | 同上                                                       |
+| `terminal.create/send/updateViewport/close` | `terminal`（既有前缀）                                              | create：worktree→workspaceRoot；handle 族：句柄→workspaceRoot                                     | 同上                                                       |
+| `terminal.multiplex`                        | `terminal`（既有）                                                  | 信封无条件、**每条订阅帧**在唯一解析点验 workspace-scope（W9A-7）                                 | 帧级 `path_denied`（reason=workspace_scope）               |
+| `agent.*`                                   | `agent`（既有前缀）                                                 | 既有 agent 边界                                                                                   | 同上                                                       |
+| download 族                                 | `download` + 策略 `downloadAllowed` 优先（§9.3 策略 outranks 票据） | 既有                                                                                              | `method_denied`                                            |
 
 **结论：云权限表（`cloudMethodAccess`）零新增行、零改动；`SESSION_METHODS` 不变；契约包 `METHOD_RULES`（含 `workspace.info: null`）本就一致，无平台侧改动。**
 
@@ -236,15 +236,15 @@ bootstrap: idle → loading(info) → ensuring → seeding → done
 
 ### 6.1 分层
 
-| 层 | 内容 | 形态 |
-| --- | --- | --- |
-| 宿主单测 | `workspace-info`：云上下文→票据字段直出；无检出→`path/branch=null`；有检出→路径+分支；git 读失败→branch=null；非云→`CLOUD_SESSION_REQUIRED`；响应键白名单 | 纯 vitest（伪造 context） |
-| 真宿主方法表 | `cloud-runtime-admission` 扩展表含 `WORKSPACE_INFO_METHODS`；**production 方法表真实宿主**：真平台+TLS 云宿主上 `workspace.info` 可答、返回值与登记项目一致；非云宿主对该方法 `method_not_found`（owner 侧） | 真栈套件，**必须登记 `config/scripts/vitest-node-runtime-files.mjs` 的 `NODE_RUNTIME_INCLUDE`**（W5b 缺陷 B1 / W9A-7 MAJ-1 同型教训：bun 池过不了自签 TLS + node-pty） |
-| web bootstrap 单测 | 三阶段成功路径（repo 行+激活）；`method_not_found`→空态保留；ensure 失败→可重试空态；失败不降级启动（hydrationSucceeded 仍 true）；W7c 跳过清单不被触碰；重连重跑幂等；每页一次去重 | renderer vitest（VITE_EXPOSE_STORE 探针可复用旅程的 `window.__store` 断言法） |
-| 旅程翻转 | `tests/e2e/cloud-golden-journey-orca-web.spec.ts`：`W13_CLOUD_WORKSPACE_VIEW_LANDED = true`（与 W13b 同提交翻转）——B4 改为断言工作区表面（侧栏行、`repos.length===1`、`activeWorktreeId` 非空、无降级 toast、**零 cloud-denial 控制台错**）；启用被 skip 的「终端流式回显 + 文件树打开」用例（≥2 次 `/connect`、回显 marker、`[data-orca-explorer-shell]` 开种子文件→编辑器内容断言、宿主审计零 `replayed`）；B5/B6 不动 | Playwright 真栈（既有 spec，隔离 worktree 构建） |
-| 越权负向 | §5.2 全表 | 宿主单测 + 真栈负向（`path_denied`/`method_denied` 审计断言，沿 W9A7-2 断言口径：事件类型 + reason + 无意外同级事件） |
-| 零回归 | ① mobile：allowlist/移动流式套件双 runner；② 配对 web（非云）与桌面：web+ipc-events+sidebar+App 云入口族、cloud-admin session e2e（W5b）、平台 web e2e（handoff 24 例）；③ W7c 套件原样全绿（空态组件测试更新为含新 bootstrap 态）；④ 原生桌面逐字节不变（不触 `ALL_RPC_METHODS`、不触桌面启动链） | 既有套件矩阵 |
-| 点亮面清单 | §4.6 的实测拒绝清单落 JSON 证据 | 真栈探针 |
+| 层                 | 内容                                                                                                                                                                                                                                                                                                                                                                                                                     | 形态                                                                                                                                                                   |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 宿主单测           | `workspace-info`：云上下文→票据字段直出；无检出→`path/branch=null`；有检出→路径+分支；git 读失败→branch=null；非云→`CLOUD_SESSION_REQUIRED`；响应键白名单                                                                                                                                                                                                                                                                | 纯 vitest（伪造 context）                                                                                                                                              |
+| 真宿主方法表       | `cloud-runtime-admission` 扩展表含 `WORKSPACE_INFO_METHODS`；**production 方法表真实宿主**：真平台+TLS 云宿主上 `workspace.info` 可答、返回值与登记项目一致；非云宿主对该方法 `method_not_found`（owner 侧）                                                                                                                                                                                                             | 真栈套件，**必须登记 `config/scripts/vitest-node-runtime-files.mjs` 的 `NODE_RUNTIME_INCLUDE`**（W5b 缺陷 B1 / W9A-7 MAJ-1 同型教训：bun 池过不了自签 TLS + node-pty） |
+| web bootstrap 单测 | 三阶段成功路径（repo 行+激活）；`method_not_found`→空态保留；ensure 失败→可重试空态；失败不降级启动（hydrationSucceeded 仍 true）；W7c 跳过清单不被触碰；重连重跑幂等；每页一次去重                                                                                                                                                                                                                                      | renderer vitest（VITE_EXPOSE_STORE 探针可复用旅程的 `window.__store` 断言法）                                                                                          |
+| 旅程翻转           | `tests/e2e/cloud-golden-journey-orca-web.spec.ts`：`W13_CLOUD_WORKSPACE_VIEW_LANDED = true`（与 W13b 同提交翻转）——B4 改为断言工作区表面（侧栏行、`repos.length===1`、`activeWorktreeId` 非空、无降级 toast、**零 cloud-denial 控制台错**）；启用被 skip 的「终端流式回显 + 文件树打开」用例（≥2 次 `/connect`、回显 marker、`[data-orca-explorer-shell]` 开种子文件→编辑器内容断言、宿主审计零 `replayed`）；B5/B6 不动 | Playwright 真栈（既有 spec，隔离 worktree 构建）                                                                                                                       |
+| 越权负向           | §5.2 全表                                                                                                                                                                                                                                                                                                                                                                                                                | 宿主单测 + 真栈负向（`path_denied`/`method_denied` 审计断言，沿 W9A7-2 断言口径：事件类型 + reason + 无意外同级事件）                                                  |
+| 零回归             | ① mobile：allowlist/移动流式套件双 runner；② 配对 web（非云）与桌面：web+ipc-events+sidebar+App 云入口族、cloud-admin session e2e（W5b）、平台 web e2e（handoff 24 例）；③ W7c 套件原样全绿（空态组件测试更新为含新 bootstrap 态）；④ 原生桌面逐字节不变（不触 `ALL_RPC_METHODS`、不触桌面启动链）                                                                                                                       | 既有套件矩阵                                                                                                                                                           |
+| 点亮面清单         | §4.6 的实测拒绝清单落 JSON 证据                                                                                                                                                                                                                                                                                                                                                                                          | 真栈探针                                                                                                                                                               |
 
 ### 6.2 门禁与证据
 
@@ -266,13 +266,14 @@ W13 的产品改动不自动等于旅程转绿——有两个独立的翻转前�
 
 **方案取舍**：
 
-| 方案 | 内容 | 评价 |
-| --- | --- | --- |
-| **a（采纳）· 探针门复用既有 e2e 信号** | `monaco-e2e-probe.ts:31` 的门改为 `MODE !== 'e2e' && String(import.meta.env.VITE_EXPOSE_STORE) !== 'true'` 时跳过安装（与 `web-e2e-config.ts:4` 同一表达式，本地内联，不引 web preload 依赖） | 零构建脚本改动；web e2e 构建已传该 env，探针随之就位；生产 web/desktop bundle（env 缺省）不装探针；桌面 `--mode e2e` 行为不变（全仓 `MODE==='e2e'` 仅此一处使用，无连带面） |
-| a'· global-setup 给 `run-vite-web-build.mjs` 传 `--mode e2e` | 脚本已透传 argv（`run-vite-web-build.mjs:19`） | 需改 global-setup 且绕开/重排 `pnpm run build:web` 的链条（build:packages 与 verify 的执行序），改动面大无收益，弃 |
-| b（备选）· 断言改 DOM oracle | 删 `valueTail` 断言，改断 `.editor-header-path` + `.view-lines` 可视行含 marker | 弱断言（Monaco 只渲染视口行，marker 行可能不在可视范围），仅当 a 被否时使用 |
+| 方案                                                         | 内容                                                                                                                                                                                          | 评价                                                                                                                                                                        |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **a（采纳）· 探针门复用既有 e2e 信号**                       | `monaco-e2e-probe.ts:31` 的门改为 `MODE !== 'e2e' && String(import.meta.env.VITE_EXPOSE_STORE) !== 'true'` 时跳过安装（与 `web-e2e-config.ts:4` 同一表达式，本地内联，不引 web preload 依赖） | 零构建脚本改动；web e2e 构建已传该 env，探针随之就位；生产 web/desktop bundle（env 缺省）不装探针；桌面 `--mode e2e` 行为不变（全仓 `MODE==='e2e'` 仅此一处使用，无连带面） |
+| a'· global-setup 给 `run-vite-web-build.mjs` 传 `--mode e2e` | 脚本已透传 argv（`run-vite-web-build.mjs:19`）                                                                                                                                                | 需改 global-setup 且绕开/重排 `pnpm run build:web` 的链条（build:packages 与 verify 的执行序），改动面大无收益，弃                                                          |
+| b（备选）· 断言改 DOM oracle                                 | 删 `valueTail` 断言，改断 `.editor-header-path` + `.view-lines` 可视行含 marker                                                                                                               | 弱断言（Monaco 只渲染视口行，marker 行可能不在可视范围），仅当 a 被否时使用                                                                                                 |
 
 **门禁兼容性**：
+
 - `verify-web-build.mjs` 只检查 `out/web/*.html` 的资源引用相对性——探针在 JS chunk 内、不产 HTML 资源引用，门禁不受影响；`pnpm run build:web` 生产路径（含 `build:web-from-renderer`）不传该 env，门在运行时求值为不安装，行为不变。
 - **如实记录的代价**：`import.meta.env.VITE_EXPOSE_STORE` 未定义时不会被 define 期静态替换，生产 web 包里会**保留探针代码体**（仅运行时不可达）——这与既有 `web-e2e-config.ts`/`store/index.ts:158` 的 e2e 门完全同型，不是新暴露面（探针只读编辑器状态，无写通道）。若主会话要求生产包零探针字节，则需把信号改成可静态折叠的 `MODE`（即方案 a'），由主会话定夺。
 - 相应地，生产负向断言取**运行时形态**：默认 `build:web`（无 env）下打开编辑器后断言 `window.__monacoEditorE2E === undefined`；不做产物 grep 断言（非常量门分支不保证被剔除，grep 会误报）。
@@ -282,34 +283,34 @@ W13 的产品改动不自动等于旅程转绿——有两个独立的翻转前�
 
 `cloud-golden-journey-orca-web.spec.ts` 内三处必须**同一提交**内联动（任一遗漏都会让旅程假绿或假红）：
 
-| 位置 | 现状 | W13b 动作 |
-| --- | --- | --- |
-| `:55` `const W13_CLOUD_WORKSPACE_VIEW_LANDED = false` | 关 | 翻 `true`（或直接删常量、内联条件，删更干净——避免留下第二个「永远 true 的开关」） |
+| 位置                                                                      | 现状     | W13b 动作                                                                                                                                                                                               |
+| ------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `:55` `const W13_CLOUD_WORKSPACE_VIEW_LANDED = false`                     | 关       | 翻 `true`（或直接删常量、内联条件，删更干净——避免留下第二个「永远 true 的开关」）                                                                                                                       |
 | `:493` B4 步 `if (LANDED) throw new Error('W13 landed: flip this step…')` | tripwire | **重写 B4 断言块**（该 throw 的注释即交接说明）：侧栏出现项目行（云空态不再匹配）、`repos.length===1`、`activeWorktreeId` 非空、bootstrap 后无降级 toast、`denialLogs===[]`；红线证据截图改拍工作区形态 |
-| `:603` 流式用例 `test.skip(!LANDED, …)` | skip | 启用（断言体已是现成的：≥2 次 `/connect`（W5c 重签）、回显 marker、`[data-orca-explorer-shell]` 开种子文件、编辑器内容（依赖 §7.1 方案 a）、宿主审计零 `replayed`） |
+| `:603` 流式用例 `test.skip(!LANDED, …)`                                   | skip     | 启用（断言体已是现成的：≥2 次 `/connect`（W5c 重签）、回显 marker、`[data-orca-explorer-shell]` 开种子文件、编辑器内容（依赖 §7.1 方案 a）、宿主审计零 `replayed`）                                     |
 
 **验收口径**：B 线旅程 **B4（重写后）–B5–B6 + 启用后的流式用例全绿**，跑两遍（首跑 + 复跑，沿 W9b 惯例）；时间线 JSON 与截图（含新 `06-b4-terminal-stream-and-file`）更新进 `cloud-platform/evidence/journey-golden-b/`（W13c 或 W13b 证据目录另存一份引用）。
 
 ### 7.3 既有断言的兼容矩阵（W13 不得破坏的现行口径）
 
-| 既有断言 | 位置 | W13 后必须仍成立 | 风险点 |
-| --- | --- | --- | --- |
-| B3：8s settle 内 `denialLogs === []`（控制台零 `not available to cloud sessions`） | 旅程 B3 | **成立**——bootstrap 只发允许方法；点亮面若新产生被拒调用且打到控制台，B3 即红。这是 §4.6 点亮面清单的硬约束：**任何新拒绝路径必须被既有 skip/守门覆盖或 fail-soft 吞掉，不允许以未处理 rejection 形态上控制台** | 高（R1 的量化形态） |
-| B3：`environment.name` 含项目名、hash 清空、会话持久化 | 旅程 B3 | 不动 bootstrap 不影响（bootstrap 在 B3 断言的 8s 窗口内应已完成或仍在 loading，二者都不断言失败——B3 不断言 `repos.length`） | 中 |
-| W5c：宿主审计零 `replayed`；每订阅恰一张新票 | W5c 证据/用例 | 终端流式走既有 W5c 通道，不新增取票路径 | 低 |
-| W7c：`web-cloud-session-scope` 跳过清单、桥接云分支、空态兜底 | W7c 套件 | 全部原样；空态组件测试更新仅限新增 bootstrap 态呈现 | 低 |
-| W9a 桌面黄金线 / W5b cloud-admin e2e / 平台 web e2e 24 例 | 各证据 | 不触桌面启动链、不触 `ALL_RPC_METHODS`、不触 cloud-admin 域 → 逐字节不变 | 低 |
-| `verify-web-build` / `pnpm tc:web` / code-quality | 构建门 | §7.1 方案 a 不改构建；新文件走既有 lint/tc 门 | 低 |
+| 既有断言                                                                           | 位置          | W13 后必须仍成立                                                                                                                                                                                                | 风险点              |
+| ---------------------------------------------------------------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| B3：8s settle 内 `denialLogs === []`（控制台零 `not available to cloud sessions`） | 旅程 B3       | **成立**——bootstrap 只发允许方法；点亮面若新产生被拒调用且打到控制台，B3 即红。这是 §4.6 点亮面清单的硬约束：**任何新拒绝路径必须被既有 skip/守门覆盖或 fail-soft 吞掉，不允许以未处理 rejection 形态上控制台** | 高（R1 的量化形态） |
+| B3：`environment.name` 含项目名、hash 清空、会话持久化                             | 旅程 B3       | 不动 bootstrap 不影响（bootstrap 在 B3 断言的 8s 窗口内应已完成或仍在 loading，二者都不断言失败——B3 不断言 `repos.length`）                                                                                     | 中                  |
+| W5c：宿主审计零 `replayed`；每订阅恰一张新票                                       | W5c 证据/用例 | 终端流式走既有 W5c 通道，不新增取票路径                                                                                                                                                                         | 低                  |
+| W7c：`web-cloud-session-scope` 跳过清单、桥接云分支、空态兜底                      | W7c 套件      | 全部原样；空态组件测试更新仅限新增 bootstrap 态呈现                                                                                                                                                             | 低                  |
+| W9a 桌面黄金线 / W5b cloud-admin e2e / 平台 web e2e 24 例                          | 各证据        | 不触桌面启动链、不触 `ALL_RPC_METHODS`、不触 cloud-admin 域 → 逐字节不变                                                                                                                                        | 低                  |
+| `verify-web-build` / `pnpm tc:web` / code-quality                                  | 构建门        | §7.1 方案 a 不改构建；新文件走既有 lint/tc 门                                                                                                                                                                   | 低                  |
 
 ---
 
 ## 8. 实施切分建议（每代理 ≤15 分钟口径）
 
-| 子令 | 组件域 | 内容 | 提交 |
-| --- | --- | --- | --- |
-| W13a | 宿主（src/main） | `workspace-info.ts` + 共享契约 + 登记扩展 + 单测 + 真宿主方法表套件（入 node 池） | `feat(cloud): host workspace info for cloud sessions` |
-| W13b | web（renderer web + 启动链） | preload 命名空间 + bootstrap + 空态升级 + §7.1 探针门 + §7.2 旅程翻转（B4 重写 + skip 启用，同一提交） | `feat(web): cloud session workspace view` |
-| W13c | 测试工程 | 越权负向补全 + 点亮面清单探针 + 生产 web 包探针运行时负向断言 + 零回归矩阵跑批 | `test(cloud): cloud workspace boundary negatives` |
+| 子令 | 组件域                       | 内容                                                                                                   | 提交                                                  |
+| ---- | ---------------------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| W13a | 宿主（src/main）             | `workspace-info.ts` + 共享契约 + 登记扩展 + 单测 + 真宿主方法表套件（入 node 池）                      | `feat(cloud): host workspace info for cloud sessions` |
+| W13b | web（renderer web + 启动链） | preload 命名空间 + bootstrap + 空态升级 + §7.1 探针门 + §7.2 旅程翻转（B4 重写 + skip 启用，同一提交） | `feat(web): cloud session workspace view`             |
+| W13c | 测试工程                     | 越权负向补全 + 点亮面清单探针 + 生产 web 包探针运行时负向断言 + 零回归矩阵跑批                         | `test(cloud): cloud workspace boundary negatives`     |
 
 依赖：W13a → W13b → W13c；三权分立（实现→测试→审计）照 work-orders 总纲执行。
 
@@ -319,16 +320,16 @@ W13 的产品改动不自动等于旅程转绿——有两个独立的翻转前�
 
 **风险**
 
-| # | 风险 | 缓解 |
-| --- | --- | --- |
-| R1 | 激活工作区把大量 App 面带进云会话，新面可能撞上未在 W7c 清单里的被拒 RPC（坏路径：白屏/卡死/噪声） | §4.6 点亮面清单为硬性执行步骤；新发现只记账不修（O1）；bootstrap 全程 fail-soft |
-| R2 | 首开 ensure（克隆）可达分钟级，用户停在云卡上无反馈 | 空态升级为 bootstrap 态呈现（loading/ensuing 文案）；ensure 超时/失败可重试；克隆预算沿用 `PROVISION_TIMEOUT_MS=600s` |
-| R3 | `repo.add` 会在宿主 repo 目录登记项目根（宿主全局状态），同宿主多用户语义 | 与桌面云入口同语义且幂等（同路径返回既有行）；侧栏行仅在各自环境作用域内可见；写/读边界仍按各自票据 |
-| R4 | 混合版本：老宿主 + 新 web | `method_not_found` → 云空态保留（明确归因文案）；不重试不降级 |
-| R5 | W9b 裁定的「repo.add hack」误读风险 | §0.5 明确边界论证：path 唯一来源=宿主票据域 + 宿主侧 pin（`project_scope` 拒绝其余），实现代理须在交付说明引用本节 |
-| R6 | 真栈测试在默认 bun 池不可达（W5b-B1/W9A7-MAJ-1 同型） | 新真栈套件强制登记 `NODE_RUNTIME_INCLUDE`；`pnpm test` 全量无红作为收口条件 |
-| R7 | explorer/编辑器部分动作调桌面专属 preload（web 侧为「unavailable in paired web clients」抛错） | 点亮面清单覆盖高频动作；W13 只保证不崩不卡，桌面专属动作的云会话隐藏属 O1/后续 UX 令 |
-| R8 | §7.1 方案 a 使探针代码体进入生产 web 包（运行时不可达，与既有 e2e 门同型） | 已在 §7.1 如实声明代价；若主会话要求生产包零探针字节，改用方案 a'（`--mode e2e` 静态折叠门）或方案 b（DOM oracle） |
+| #   | 风险                                                                                               | 缓解                                                                                                                  |
+| --- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| R1  | 激活工作区把大量 App 面带进云会话，新面可能撞上未在 W7c 清单里的被拒 RPC（坏路径：白屏/卡死/噪声） | §4.6 点亮面清单为硬性执行步骤；新发现只记账不修（O1）；bootstrap 全程 fail-soft                                       |
+| R2  | 首开 ensure（克隆）可达分钟级，用户停在云卡上无反馈                                                | 空态升级为 bootstrap 态呈现（loading/ensuing 文案）；ensure 超时/失败可重试；克隆预算沿用 `PROVISION_TIMEOUT_MS=600s` |
+| R3  | `repo.add` 会在宿主 repo 目录登记项目根（宿主全局状态），同宿主多用户语义                          | 与桌面云入口同语义且幂等（同路径返回既有行）；侧栏行仅在各自环境作用域内可见；写/读边界仍按各自票据                   |
+| R4  | 混合版本：老宿主 + 新 web                                                                          | `method_not_found` → 云空态保留（明确归因文案）；不重试不降级                                                         |
+| R5  | W9b 裁定的「repo.add hack」误读风险                                                                | §0.5 明确边界论证：path 唯一来源=宿主票据域 + 宿主侧 pin（`project_scope` 拒绝其余），实现代理须在交付说明引用本节    |
+| R6  | 真栈测试在默认 bun 池不可达（W5b-B1/W9A7-MAJ-1 同型）                                              | 新真栈套件强制登记 `NODE_RUNTIME_INCLUDE`；`pnpm test` 全量无红作为收口条件                                           |
+| R7  | explorer/编辑器部分动作调桌面专属 preload（web 侧为「unavailable in paired web clients」抛错）     | 点亮面清单覆盖高频动作；W13 只保证不崩不卡，桌面专属动作的云会话隐藏属 O1/后续 UX 令                                  |
+| R8  | §7.1 方案 a 使探针代码体进入生产 web 包（运行时不可达，与既有 e2e 门同型）                         | 已在 §7.1 如实声明代价；若主会话要求生产包零探针字节，改用方案 a'（`--mode e2e` 静态折叠门）或方案 b（DOM oracle）    |
 
 **开放问题（请主会话裁定）**
 
@@ -342,10 +343,10 @@ W13 的产品改动不自动等于旅程转绿——有两个独立的翻转前�
 
 ## 10. 备选方案与不采办理由
 
-| 备选 | 不采纳理由 |
-| --- | --- |
-| 宿主在 `workspace.info` 内做登记（repo 行）与 ensure（建检出） | 把只读自省方法变成变异方法：幂等/审计语义混浊、失败路径变长（克隆超时占据自省调用）、与 §8.3「ensure 由 open 动作驱动」的既有分工冲突 |
-| web 端跳过宿主、直接从平台 API 取项目 path 再 `repo.add` | 正是 W9b 裁定否掉的 hack：绕开宿主票据边界（宿主 pin 是唯一执行点），且平台 path 与票据 projectRoot 可能不一致（登记后变更） |
+| 备选                                                                          | 不采纳理由                                                                                                                                                                                            |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 宿主在 `workspace.info` 内做登记（repo 行）与 ensure（建检出）                | 把只读自省方法变成变异方法：幂等/审计语义混浊、失败路径变长（克隆超时占据自省调用）、与 §8.3「ensure 由 open 动作驱动」的既有分工冲突                                                                 |
+| web 端跳过宿主、直接从平台 API 取项目 path 再 `repo.add`                      | 正是 W9b 裁定否掉的 hack：绕开宿主票据边界（宿主 pin 是唯一执行点），且平台 path 与票据 projectRoot 可能不一致（登记后变更）                                                                          |
 | 专用云工作区组件（复用 cloud-admin 的 `CloudFilePanel`/`CloudTerminalPanel`） | 与 FR-3.12「功能面对等」冲突：被 skip 的 B4 用例断言的是原生 explorer 壳与编辑器；再造一套面板 = 第二套文件/终端管线，违背 Reuse 原则，且管理台组件的 rpc 缝（cloud-browser-bridge）与 web 传输不同型 |
-| 给云表新增 `worktree.ensure`/批量目录方法等新行 | 违反 W7c「不扩充表」裁定；现有 `open`/`terminal`/`file:*` 覆盖已足 |
-| 把 W7c 的空态组件替换为「云工作区视图」组件（侧栏内嵌文件树） | 破坏「原生侧栏并存」原则；主面已有完整工作区形态，侧栏内嵌第二份文件树是重复面 |
+| 给云表新增 `worktree.ensure`/批量目录方法等新行                               | 违反 W7c「不扩充表」裁定；现有 `open`/`terminal`/`file:*` 覆盖已足                                                                                                                                    |
+| 把 W7c 的空态组件替换为「云工作区视图」组件（侧栏内嵌文件树）                 | 破坏「原生侧栏并存」原则；主面已有完整工作区形态，侧栏内嵌第二份文件树是重复面                                                                                                                        |

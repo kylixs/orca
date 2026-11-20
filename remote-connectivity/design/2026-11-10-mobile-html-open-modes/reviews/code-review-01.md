@@ -119,26 +119,26 @@ Also, A5 ("change back to Ask, next tap re-opens the chooser") is only covered b
 
 ## Design conformance summary
 
-| Area | Result |
-|---|---|
-| Preference key `orca:mobileHtmlOpenMode`, enum validation, ask fallback, write-failure notice | Pass (`preferences.ts:328-345`, list/preview hooks, settings) |
-| Browser settings row + PickerModal, only reset-to-Ask path | Pass (`browser-settings-screen.tsx:169-207`) |
-| Mode precedence terminal/truncated > route > line > pref > ask | Pass in normal flows; bare-route race in m1 |
-| Page-local mode, return writes no preference, no `setParams` | Pass (`use-mobile-file-preview-html-mode.ts`, screen local state) |
-| Route `mode` through type/normalize/nav/app routes/terminal branch | Pass (`mobile-file-preview-route.ts:21,60-64,99,117`; navigation test) |
-| Single action builder, exact array, one Preview in both contexts | Pass (`mobile-file-actions.test.ts:116-177`; explorer/preview component tests) |
-| Auto chooser two modes + remember; long-press/overflow never write preference | Pass (`MobileFileOpenModeSheet`, `use-mobile-file-html-open-mode`, explorer tests) |
-| Frame controlled, no double toolbar, session wrapper preserved | Pass (`MobileHtmlPreview.tsx:31-101`; body passes `showToolbar=false`) |
-| textInteraction integration | Pass; Android test issue m7 |
-| Relative-asset detector + ≤3 refs + exact copy | Pass; heuristic false positives m8 |
-| 512 KB: 511/512 render, 513 disabled, banner/source note exact copy | Implementation correct; tests missing (M2) |
-| Copy content on demand, partial-copy hint/notice | Implementation present; tests missing (M2) |
-| Terminal artifact HTML source-only, Save preserved | Pass (`MobileFilePreviewBody.tsx:114-131`; screen `sourceOnly`) |
-| OTA forces native, mode not lost | Pass (`preview/[worktreeId].tsx`; web-shell route tests) |
-| Scheme allowlist, top-frame vs subframe, no external for subframes, no bridge, no file access | Pass, except fragment/`srcdoc` handling (M1) |
-| Web sandbox iframe, no toast | Pass (existing web tests) |
-| `openExternalLink` contract unchanged | Pass (optional `onFailure` is additive) |
-| data/about handling | `data:` and exact `about:blank` pass; fragment/`about:srcdoc` fail (M1) |
+| Area                                                                                          | Result                                                                             |
+| --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Preference key `orca:mobileHtmlOpenMode`, enum validation, ask fallback, write-failure notice | Pass (`preferences.ts:328-345`, list/preview hooks, settings)                      |
+| Browser settings row + PickerModal, only reset-to-Ask path                                    | Pass (`browser-settings-screen.tsx:169-207`)                                       |
+| Mode precedence terminal/truncated > route > line > pref > ask                                | Pass in normal flows; bare-route race in m1                                        |
+| Page-local mode, return writes no preference, no `setParams`                                  | Pass (`use-mobile-file-preview-html-mode.ts`, screen local state)                  |
+| Route `mode` through type/normalize/nav/app routes/terminal branch                            | Pass (`mobile-file-preview-route.ts:21,60-64,99,117`; navigation test)             |
+| Single action builder, exact array, one Preview in both contexts                              | Pass (`mobile-file-actions.test.ts:116-177`; explorer/preview component tests)     |
+| Auto chooser two modes + remember; long-press/overflow never write preference                 | Pass (`MobileFileOpenModeSheet`, `use-mobile-file-html-open-mode`, explorer tests) |
+| Frame controlled, no double toolbar, session wrapper preserved                                | Pass (`MobileHtmlPreview.tsx:31-101`; body passes `showToolbar=false`)             |
+| textInteraction integration                                                                   | Pass; Android test issue m7                                                        |
+| Relative-asset detector + ≤3 refs + exact copy                                                | Pass; heuristic false positives m8                                                 |
+| 512 KB: 511/512 render, 513 disabled, banner/source note exact copy                           | Implementation correct; tests missing (M2)                                         |
+| Copy content on demand, partial-copy hint/notice                                              | Implementation present; tests missing (M2)                                         |
+| Terminal artifact HTML source-only, Save preserved                                            | Pass (`MobileFilePreviewBody.tsx:114-131`; screen `sourceOnly`)                    |
+| OTA forces native, mode not lost                                                              | Pass (`preview/[worktreeId].tsx`; web-shell route tests)                           |
+| Scheme allowlist, top-frame vs subframe, no external for subframes, no bridge, no file access | Pass, except fragment/`srcdoc` handling (M1)                                       |
+| Web sandbox iframe, no toast                                                                  | Pass (existing web tests)                                                          |
+| `openExternalLink` contract unchanged                                                         | Pass (optional `onFailure` is additive)                                            |
+| data/about handling                                                                           | `data:` and exact `about:blank` pass; fragment/`about:srcdoc` fail (M1)            |
 
 ## Gate status
 

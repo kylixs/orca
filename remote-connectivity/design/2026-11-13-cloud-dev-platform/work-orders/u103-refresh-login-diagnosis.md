@@ -40,6 +40,7 @@
 ### B 代码级策略 + 恢复链缺陷——本症状的因
 
 **B1（F5 强制回登录，策略问题）**
+
 - 云端条目创建时 `web-cloud-connect.ts:131` 写入 `cloudLoginRequired: true`
   （注释即 “a reload must still return to sign-in”）。
 - `web-root.tsx:48` 启动时据此把 stored env 判为已结束 → 删除 env → WebConnect；
@@ -51,6 +52,7 @@
   但它是「F5 即登录」的直接原因，属可修的产品策略缺口。
 
 **B2（重新登录也进不了工作区，恢复链 bug）**
+
 - 刷新后的 WebConnect 表单 Platform address 为空：popup URL 有 `?api=`，
   但该参数只服务 handoff 入口，未预填到 Cloud account 表单。
 - 即使手动填地址并登录成功，`web-cloud-connect.ts:157 selectProject()`

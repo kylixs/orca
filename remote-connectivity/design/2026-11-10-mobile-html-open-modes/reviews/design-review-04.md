@@ -13,22 +13,22 @@
 
 ## Prior findings（review-03 逐条核对）
 
-| 编号 | 级别 | 状态 | 核对结果 |
-|---|---|---|---|
-| 03-M1 | MAJOR | **已解决** | 8.5（`design.md:382`）与 B2/B9（`test-plan.md:55/60`）、README:29、原型状态 02-09 统一为 `Preview、Source、Save to phone、Open with、Copy content、Copy path、Cancel`；HT-U4 已写同一顺序。文件浏览的共有动作相对顺序不变，HTML 仅在 Preview 后插入 Source，交叉数组可同时成立。 |
-| 03-M2 | MAJOR | **已解决** | 8.5（`design.md:383`）明确 HTML 的模式 `Preview` 取代通用文件 `Preview`，`list`/`preview` 两个 context 都只生成一个 Preview；HT-U4 与 B2/B3/B9 承接。Playwright 实测状态 02/04/08 均只有一个 Preview。 |
-| 03-M3 | MAJOR | **已解决** | 8.4（`design.md:363-372`）已把 `sourceOnly/terminalArtifact` 与 `truncated` 放到 `route.mode` 之前；A14/A15（`test-plan.md:47-48`）与 HT-T3（`tasks.md:12`）、HT-U12（`:15`）一致；A13 仍正确表达“无 terminal/truncated 时 route.mode 优先”。 |
-| 03-M4 | MAJOR | **已解决** | 8.1（`design.md:340-345`）限定顶层 frame 外开/拒绝，子帧按白名单放行；HT-U7/HT-V4、C10/C11a/C11b/C18 均承接。iOS 的 `isTopFrame` 与 Android 固定 true/不报子帧的事实已写入设计；C18 已改为可判定断言。残留 Android 子帧危险 scheme 的表述见 04-m6。 |
-| 03-M5 | MAJOR | **已解决** | HT-U17 已删除；HT-U6（`tasks.md:35`）明确不加 `textInteractionEnabled`，由 FB-U11 在 HT-U6/HT-V1 之后追加；合并顺序（`tasks.md:60`）写明 FB-U11 唯一 owner；FB 任务表依赖方向一致。 |
-| 03-m1 | MINOR | **部分解决** | `setParams`（114）与恢复入口（50/84）已清；偏好键、自动弹层计数、header 切换、动作顺序等正文旧值仍残留 → 04-m1。 |
-| 03-m2 | MINOR | **部分解决** | 512 KB 源码/横幅、blocked toast、C11 分平台、C8 矩阵均已精确化；no-app 精确文案与原型不一致、B12 边界标签错误 → 04-m2、04-m3。 |
-| 03-m3 | MINOR | **已解决** | C8（`test-plan.md:77`）已含 `http(s):`、`data:`、空 HTML，且 `mailto/tel/javascript/about/blob///#/空 href` 与 `./`、`../`、裸名、根绝对路径齐全；与 8.6 一致。 |
-| 03-m4 | MINOR | **已解决** | 8.7（`design.md:406`）与 HT-U9（`tasks.md:38`）要求 HTML 专用 `truncatedNote`，R2（`test-plan.md:95`）保留 Markdown 既有 “Preview truncated. File size: …”。 |
-| 03-m5 | MINOR | **已解决** | `onBlockedScheme` 已进入 Frame API 思路、HT-U6/HT-V4、C10/C12；web 无 toast/由 shell 上报的平台差异已写明。 |
-| 03-m6 | MINOR | **部分解决** | B12/B13 与 README 状态 05/06 已给完整数组；但 8.3 的函数输入仍与 8.5/HT-U1 不一致 → 04-m4。 |
-| 03-m7 | MINOR | **已解决** | 3.1/7.8、HT-T5、README 与原型状态 10 均为“行 + PickerModal”；与 `browser-settings-screen.tsx` 现有交互一致，Playwright 实测通过。 |
-| 03-m8 | MINOR | **已解决** | 8.7/HT-U6/HT-U11 已区分 iOS 与 Android；C13（`test-plan.md:83`）分平台写明期望。 |
-| 03-m9 | MINOR | **已解决** | HT-U12 依赖 HT-V1（`tasks.md:15`），HT-U3 依赖 HT-T3/HT-V1（`:23`）；文件重叠已串行化。合并顺序遗漏 HT-U3 见 04-m5。 |
+| 编号  | 级别  | 状态         | 核对结果                                                                                                                                                                                                                                                                         |
+| ----- | ----- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 03-M1 | MAJOR | **已解决**   | 8.5（`design.md:382`）与 B2/B9（`test-plan.md:55/60`）、README:29、原型状态 02-09 统一为 `Preview、Source、Save to phone、Open with、Copy content、Copy path、Cancel`；HT-U4 已写同一顺序。文件浏览的共有动作相对顺序不变，HTML 仅在 Preview 后插入 Source，交叉数组可同时成立。 |
+| 03-M2 | MAJOR | **已解决**   | 8.5（`design.md:383`）明确 HTML 的模式 `Preview` 取代通用文件 `Preview`，`list`/`preview` 两个 context 都只生成一个 Preview；HT-U4 与 B2/B3/B9 承接。Playwright 实测状态 02/04/08 均只有一个 Preview。                                                                           |
+| 03-M3 | MAJOR | **已解决**   | 8.4（`design.md:363-372`）已把 `sourceOnly/terminalArtifact` 与 `truncated` 放到 `route.mode` 之前；A14/A15（`test-plan.md:47-48`）与 HT-T3（`tasks.md:12`）、HT-U12（`:15`）一致；A13 仍正确表达“无 terminal/truncated 时 route.mode 优先”。                                    |
+| 03-M4 | MAJOR | **已解决**   | 8.1（`design.md:340-345`）限定顶层 frame 外开/拒绝，子帧按白名单放行；HT-U7/HT-V4、C10/C11a/C11b/C18 均承接。iOS 的 `isTopFrame` 与 Android 固定 true/不报子帧的事实已写入设计；C18 已改为可判定断言。残留 Android 子帧危险 scheme 的表述见 04-m6。                              |
+| 03-M5 | MAJOR | **已解决**   | HT-U17 已删除；HT-U6（`tasks.md:35`）明确不加 `textInteractionEnabled`，由 FB-U11 在 HT-U6/HT-V1 之后追加；合并顺序（`tasks.md:60`）写明 FB-U11 唯一 owner；FB 任务表依赖方向一致。                                                                                              |
+| 03-m1 | MINOR | **部分解决** | `setParams`（114）与恢复入口（50/84）已清；偏好键、自动弹层计数、header 切换、动作顺序等正文旧值仍残留 → 04-m1。                                                                                                                                                                 |
+| 03-m2 | MINOR | **部分解决** | 512 KB 源码/横幅、blocked toast、C11 分平台、C8 矩阵均已精确化；no-app 精确文案与原型不一致、B12 边界标签错误 → 04-m2、04-m3。                                                                                                                                                   |
+| 03-m3 | MINOR | **已解决**   | C8（`test-plan.md:77`）已含 `http(s):`、`data:`、空 HTML，且 `mailto/tel/javascript/about/blob///#/空 href` 与 `./`、`../`、裸名、根绝对路径齐全；与 8.6 一致。                                                                                                                  |
+| 03-m4 | MINOR | **已解决**   | 8.7（`design.md:406`）与 HT-U9（`tasks.md:38`）要求 HTML 专用 `truncatedNote`，R2（`test-plan.md:95`）保留 Markdown 既有 “Preview truncated. File size: …”。                                                                                                                     |
+| 03-m5 | MINOR | **已解决**   | `onBlockedScheme` 已进入 Frame API 思路、HT-U6/HT-V4、C10/C12；web 无 toast/由 shell 上报的平台差异已写明。                                                                                                                                                                      |
+| 03-m6 | MINOR | **部分解决** | B12/B13 与 README 状态 05/06 已给完整数组；但 8.3 的函数输入仍与 8.5/HT-U1 不一致 → 04-m4。                                                                                                                                                                                      |
+| 03-m7 | MINOR | **已解决**   | 3.1/7.8、HT-T5、README 与原型状态 10 均为“行 + PickerModal”；与 `browser-settings-screen.tsx` 现有交互一致，Playwright 实测通过。                                                                                                                                                |
+| 03-m8 | MINOR | **已解决**   | 8.7/HT-U6/HT-U11 已区分 iOS 与 Android；C13（`test-plan.md:83`）分平台写明期望。                                                                                                                                                                                                 |
+| 03-m9 | MINOR | **已解决**   | HT-U12 依赖 HT-V1（`tasks.md:15`），HT-U3 依赖 HT-T3/HT-V1（`:23`）；文件重叠已串行化。合并顺序遗漏 HT-U3 见 04-m5。                                                                                                                                                             |
 
 ---
 
@@ -72,20 +72,20 @@
 
 ## Prototype checklist
 
-| 检查项 | 结果 |
-|---|---|
-| 唯一 Preview / 动作顺序 | 通过（Playwright）：状态 02-09 的动作数组一致，均只有一个 Preview；顺序为 Preview、Source、Save to phone、Open with、Copy content、Copy path、Cancel（不可用项隐藏）。 |
-| 预览页溢出入口 | 通过：每个预览态恰好一个 header `…`（`data-toggle-menu`），打开同一形态的 ActionSheet；状态 03 默认展开也同序。 |
-| 文件列表 header More | 通过：状态 01/09 用 44px spacer，无未绑定 More；状态 09 行尾按钮属于文件浏览行操作。 |
-| 第二行工具栏 | 通过：每个预览态恰好一个 `role="tablist"`、两个 tab；无重复切换控件。 |
-| 自动弹层 | 通过：状态 01 只有 Preview/Source/Cancel + Remember，无外部动作、无 More。 |
-| 512 KB | 通过：状态 05 Preview `disabled`/`aria-disabled`，横幅与 “Showing first 512 KB” 精确；ActionSheet 为 Source、Save、Open、Copy content（Copies the first 512 KB）、Copy path、Cancel。文案与 C9 一致，但 B12 场景名需修 → 04-m3。 |
-| 读取失败 | 通过：状态 06 数组 Retry、Save、Open、Copy path、Cancel；Preview/Source/Copy content 隐藏，与 B13/README 一致。 |
-| 无可用 App | 通过（结构/数组）；toast 文案与 C14 不一致 → 04-m2。 |
-| 被阻止 scheme | 通过：状态 08 in-frame toast 文案与 README/C10 一致；仅顶层 frame 的说明已在状态文案中。 |
-| 长按菜单 | 通过：状态 09 与溢出同序、无 remember、无 Reset/Ask，选择模式不写偏好。 |
-| 设置恢复 | 通过：状态 10 为“HTML open mode”行 + PickerModal（Ask/Preview/Source），唯一 Reset-to-Ask 路径；与现有 Browser 设置页结构一致。 |
-| 无旧元素 | 通过：无 prefbar、无 “Reset to Ask”、无文件大小标签、无 “Link blocked” 弹层、无 “Open in Orca browser”。 |
+| 检查项                  | 结果                                                                                                                                                                                                                             |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 唯一 Preview / 动作顺序 | 通过（Playwright）：状态 02-09 的动作数组一致，均只有一个 Preview；顺序为 Preview、Source、Save to phone、Open with、Copy content、Copy path、Cancel（不可用项隐藏）。                                                           |
+| 预览页溢出入口          | 通过：每个预览态恰好一个 header `…`（`data-toggle-menu`），打开同一形态的 ActionSheet；状态 03 默认展开也同序。                                                                                                                  |
+| 文件列表 header More    | 通过：状态 01/09 用 44px spacer，无未绑定 More；状态 09 行尾按钮属于文件浏览行操作。                                                                                                                                             |
+| 第二行工具栏            | 通过：每个预览态恰好一个 `role="tablist"`、两个 tab；无重复切换控件。                                                                                                                                                            |
+| 自动弹层                | 通过：状态 01 只有 Preview/Source/Cancel + Remember，无外部动作、无 More。                                                                                                                                                       |
+| 512 KB                  | 通过：状态 05 Preview `disabled`/`aria-disabled`，横幅与 “Showing first 512 KB” 精确；ActionSheet 为 Source、Save、Open、Copy content（Copies the first 512 KB）、Copy path、Cancel。文案与 C9 一致，但 B12 场景名需修 → 04-m3。 |
+| 读取失败                | 通过：状态 06 数组 Retry、Save、Open、Copy path、Cancel；Preview/Source/Copy content 隐藏，与 B13/README 一致。                                                                                                                  |
+| 无可用 App              | 通过（结构/数组）；toast 文案与 C14 不一致 → 04-m2。                                                                                                                                                                             |
+| 被阻止 scheme           | 通过：状态 08 in-frame toast 文案与 README/C10 一致；仅顶层 frame 的说明已在状态文案中。                                                                                                                                         |
+| 长按菜单                | 通过：状态 09 与溢出同序、无 remember、无 Reset/Ask，选择模式不写偏好。                                                                                                                                                          |
+| 设置恢复                | 通过：状态 10 为“HTML open mode”行 + PickerModal（Ask/Preview/Source），唯一 Reset-to-Ask 路径；与现有 Browser 设置页结构一致。                                                                                                  |
+| 无旧元素                | 通过：无 prefbar、无 “Reset to Ask”、无文件大小标签、无 “Link blocked” 弹层、无 “Open in Orca browser”。                                                                                                                         |
 
 ## Platform check（iOS / Android / SSH / folder / OTA）
 
@@ -96,15 +96,15 @@
 
 ## AC → 用例覆盖
 
-| AC | 对应用例 | 结论 |
-|---|---|---|
-| AC1 首次点击弹层 | A1/A2/A3/A8 | 可验证；自动弹层固定两个模式。 |
-| AC2 渲染/源码切换 | A2/A3/B1/B8/A14/A15 | 可验证；优先级由 8.4 唯一化。 |
-| AC3 溢出/长按菜单 | B2/B3/B9/B11/B12/B13 | 可验证；数组与唯一 Preview 已固定；B12 标签需修。 |
-| AC4 记住/恢复 | A4/A5/A9/A10/A11 | 可验证；设置页为唯一恢复入口。 |
-| AC5 相对资源/大文件 | C2/C5/C8/C9 | 可验证；边界与文案已精确。 |
-| AC6 外链/安全 | C3/C10/C11a/C11b/C12/C18 | 可验证；C18 的 Android 子帧说明见 04-m6。 |
-| AC7 回归 | R1-R8 | 可覆盖；R2 保留 Markdown 文案，R7 terminal artifact source-only。 |
+| AC                  | 对应用例                 | 结论                                                              |
+| ------------------- | ------------------------ | ----------------------------------------------------------------- |
+| AC1 首次点击弹层    | A1/A2/A3/A8              | 可验证；自动弹层固定两个模式。                                    |
+| AC2 渲染/源码切换   | A2/A3/B1/B8/A14/A15      | 可验证；优先级由 8.4 唯一化。                                     |
+| AC3 溢出/长按菜单   | B2/B3/B9/B11/B12/B13     | 可验证；数组与唯一 Preview 已固定；B12 标签需修。                 |
+| AC4 记住/恢复       | A4/A5/A9/A10/A11         | 可验证；设置页为唯一恢复入口。                                    |
+| AC5 相对资源/大文件 | C2/C5/C8/C9              | 可验证；边界与文案已精确。                                        |
+| AC6 外链/安全       | C3/C10/C11a/C11b/C12/C18 | 可验证；C18 的 Android 子帧说明见 04-m6。                         |
+| AC7 回归            | R1-R8                    | 可覆盖；R2 保留 Markdown 文案，R7 terminal artifact source-only。 |
 
 ## 处理建议
 

@@ -1,5 +1,7 @@
 # 云端开发平台一期 · 人工验收指引（M111）
 
+> **已被 [`acceptance-runbook-v2.2.md`](./acceptance-runbook-v2.2.md) 取代**；2026-11-17 批次的自动门证据与人工项见该文 §8，本文件仅留作历史记录。
+
 > 配套 `acceptance-index.md`（机器校验的证据索引）。自动化已证明的行为这里不重复断言；
 > 本指引回答「验收人**亲手做什么、应看到什么**」。每行标注 AC 与已有自动化证据。
 > 结论词汇同 test-plan：PASS / PASS(部分) / UNVERIFIED。

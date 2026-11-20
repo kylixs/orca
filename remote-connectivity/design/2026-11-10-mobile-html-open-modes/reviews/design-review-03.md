@@ -11,24 +11,24 @@
 
 ## Prior findings（review-02 逐条核对）
 
-| 编号 | 级别 | 状态 | 核对结果 |
-|---|---|---|---|
-| 02-B1 | BLOCKER | 部分解决 | `tasks.md:21` 的 HT-U1 已只导出模式动作，`tasks.md:24` 的 HT-U4 已扩展 FB 唯一构造器，HT-U3 已把切换放到第二行工具栏；但共享构造器的动作顺序与 Preview 语义仍未统一 → 03-M1、03-M2。 |
-| 02-M1 | MAJOR | 已解决 | 不可成立的 Orca 浏览器、无限循环超时、非 UTF-8 报错断言已从 `test-plan.md` 删除；C4/C6 改为可判定。残留“记录/固定文案”表述 → 03-m2。 |
-| 02-M2 | MAJOR | 部分解决 | `design.md:333-341` 已改为 scheme-only、明确不区分手势，C11 断言可落地；但 iframe 的顶层/子帧策略仍有平台缺口 → 03-M4。 |
-| 02-M3 | MAJOR | 已解决 | `design.md:349-354` 固定 worktree 两个模式、line/terminal 直开；A8 与原型状态 01 一致。残留正文旧计数描述 → 03-m1。 |
-| 02-M4 | MAJOR | 部分解决 | HT-V1/U13/T2/U11 依赖已修正；但 HT-U17/FB-U11 仍重复且依赖方向相反，HT-U12 与 HT-V1 仍可并行改同一 body → 03-M5、03-m9。 |
-| 02-M5 | MAJOR | 部分解决 | 优先级已写入 `design.md:356-369`，但顺序把 `route.mode` 放在 terminal artifact 之上，与 source-only 冲突 → 03-M3。 |
-| 02-M6 | MAJOR | 已解决 | `design.md:343-347` 与 8.5 只保留设置页恢复；B2 无 Ask、原型状态 10 是唯一恢复入口、菜单无 Reset。 |
-| 02-M7 | MAJOR | 已解决 | `design.md:380-388` 已补齐忽略/提示规则；C8 覆盖 `mailto/tel/javascript/about/blob///#/空 href` 与 `./`、`../`、裸名、根绝对路径。残留 http(s)/data 与空文档用例 → 03-m3。 |
-| 02-m1 | MINOR | 已解决 | 实测：文件列表状态 01/09 无 header More，无文件大小标签，无 prefbar，无 missing-asset 占位、无 Link blocked 弹层；状态 02-08 的 7 个溢出按钮全部打开同一个 `data-overflow-sheet`。 |
-| 02-m2 | MINOR | 已解决（设计/原型） | 512 KB 禁用态、固定英文文案、`aria-disabled`、`Showing first 512 KB` 在状态 05 齐全；测试的精确文案仍缺 → 03-m2/03-m4。 |
-| 02-m3 | MINOR | 已解决 | 白名单落在新模块 `html-preview-scheme.ts`，`openExternalLink` 契约不变；R8 保留回归。 |
-| 02-m4 | MINOR | 已解决 | `design.md:368` 明确 page-local、返回不写偏好；原型状态 04 无 restore。正文旧表述未清 → 03-m1。 |
-| 02-m5 | MINOR | 已解决 | 长按/溢出不显示 remember，状态 09 动作齐全；动作顺序与共享 builder 的冲突 → 03-M1。 |
-| 02-m6 | MINOR | 已解决 | Copy content 已进入 8.5、B10、原型状态 02-05/07/08/09；截断副文案 `Copies the first 512 KB` 存在。 |
-| 02-m7 | MINOR | **未解决** | 设计正文仍保留旧偏好键、旧计数、旧 header 切换、旧返回规则、设置/菜单恢复与旧动作顺序 → 03-m1。 |
-| 02-m8 | MINOR | 已解决（有平台保留） | 8.7 与 HT-U17/FB-U11 已纳入文字选择；`textInteractionEnabled` 仅 iOS，C13 未分平台 → 03-m8。 |
+| 编号  | 级别    | 状态                 | 核对结果                                                                                                                                                                             |
+| ----- | ------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 02-B1 | BLOCKER | 部分解决             | `tasks.md:21` 的 HT-U1 已只导出模式动作，`tasks.md:24` 的 HT-U4 已扩展 FB 唯一构造器，HT-U3 已把切换放到第二行工具栏；但共享构造器的动作顺序与 Preview 语义仍未统一 → 03-M1、03-M2。 |
+| 02-M1 | MAJOR   | 已解决               | 不可成立的 Orca 浏览器、无限循环超时、非 UTF-8 报错断言已从 `test-plan.md` 删除；C4/C6 改为可判定。残留“记录/固定文案”表述 → 03-m2。                                                 |
+| 02-M2 | MAJOR   | 部分解决             | `design.md:333-341` 已改为 scheme-only、明确不区分手势，C11 断言可落地；但 iframe 的顶层/子帧策略仍有平台缺口 → 03-M4。                                                              |
+| 02-M3 | MAJOR   | 已解决               | `design.md:349-354` 固定 worktree 两个模式、line/terminal 直开；A8 与原型状态 01 一致。残留正文旧计数描述 → 03-m1。                                                                  |
+| 02-M4 | MAJOR   | 部分解决             | HT-V1/U13/T2/U11 依赖已修正；但 HT-U17/FB-U11 仍重复且依赖方向相反，HT-U12 与 HT-V1 仍可并行改同一 body → 03-M5、03-m9。                                                             |
+| 02-M5 | MAJOR   | 部分解决             | 优先级已写入 `design.md:356-369`，但顺序把 `route.mode` 放在 terminal artifact 之上，与 source-only 冲突 → 03-M3。                                                                   |
+| 02-M6 | MAJOR   | 已解决               | `design.md:343-347` 与 8.5 只保留设置页恢复；B2 无 Ask、原型状态 10 是唯一恢复入口、菜单无 Reset。                                                                                   |
+| 02-M7 | MAJOR   | 已解决               | `design.md:380-388` 已补齐忽略/提示规则；C8 覆盖 `mailto/tel/javascript/about/blob///#/空 href` 与 `./`、`../`、裸名、根绝对路径。残留 http(s)/data 与空文档用例 → 03-m3。           |
+| 02-m1 | MINOR   | 已解决               | 实测：文件列表状态 01/09 无 header More，无文件大小标签，无 prefbar，无 missing-asset 占位、无 Link blocked 弹层；状态 02-08 的 7 个溢出按钮全部打开同一个 `data-overflow-sheet`。   |
+| 02-m2 | MINOR   | 已解决（设计/原型）  | 512 KB 禁用态、固定英文文案、`aria-disabled`、`Showing first 512 KB` 在状态 05 齐全；测试的精确文案仍缺 → 03-m2/03-m4。                                                              |
+| 02-m3 | MINOR   | 已解决               | 白名单落在新模块 `html-preview-scheme.ts`，`openExternalLink` 契约不变；R8 保留回归。                                                                                                |
+| 02-m4 | MINOR   | 已解决               | `design.md:368` 明确 page-local、返回不写偏好；原型状态 04 无 restore。正文旧表述未清 → 03-m1。                                                                                      |
+| 02-m5 | MINOR   | 已解决               | 长按/溢出不显示 remember，状态 09 动作齐全；动作顺序与共享 builder 的冲突 → 03-M1。                                                                                                  |
+| 02-m6 | MINOR   | 已解决               | Copy content 已进入 8.5、B10、原型状态 02-05/07/08/09；截断副文案 `Copies the first 512 KB` 存在。                                                                                   |
+| 02-m7 | MINOR   | **未解决**           | 设计正文仍保留旧偏好键、旧计数、旧 header 切换、旧返回规则、设置/菜单恢复与旧动作顺序 → 03-m1。                                                                                      |
+| 02-m8 | MINOR   | 已解决（有平台保留） | 8.7 与 HT-U17/FB-U11 已纳入文字选择；`textInteractionEnabled` 仅 iOS，C13 未分平台 → 03-m8。                                                                                         |
 
 ---
 
@@ -102,23 +102,23 @@
 
 ## Prototype checklist
 
-| 检查项 | 结果 |
-|---|---|
-| 文件列表 header More | 通过。状态 01/09 用 44px spacer（`html-open-modes.html:253/721`），无未绑定 More。 |
-| 文件大小标签 | 通过。目录行无 size 文案。 |
-| prefbar / Reset to Ask | 通过。无 prefbar；状态 10 是唯一恢复入口；所有菜单无 Reset/Ask。 |
-| missing-asset 占位 / Link blocked 弹层 | 通过。状态 02 的警告是设计内检测提示；状态 08 用 in-frame toast，不是弹层。 |
-| 所有溢出按钮打开同一 sheet | 通过（Playwright 实测）：状态 02-08 共 7 个 `data-toggle-menu` 全部打开各自的 `data-overflow-sheet`，动作顺序一致、不可用项按状态隐藏。 |
-| 动作顺序 | 与 8.5/B2/README 一致（Preview、Source、Open with、Save to phone、Copy content、Copy path、Cancel）；与 FB design/test 冲突 → 03-M1。 |
-| 自动弹层两个模式 | 通过。状态 01 只有 Preview/Source + remember + Cancel。 |
-| 长按菜单 | 通过。状态 09 与溢出同序，无 remember、无 Ask，有一个 Preview（与 03-M2 的实现规则需对齐）。 |
-| 相对资源提示 | 通过。状态 02 列出 `./styles/app.css`、`./assets/hero.png`、`url(../images/bg.png)`，来自演示源码实际引用。 |
-| 512 KB | 通过。状态 05 Preview `disabled`/`aria-disabled`、固定横幅、源码 `Showing first 512 KB`；caption 明确 511/512 可渲染、513 起截断。 |
-| 读取失败 | 通过。状态 06 只提供 Retry，sheet 隐藏 Preview/Source/Copy content。 |
-| 无可用 App | 通过。状态 07 隐藏 Open with，保留 Save to phone 提示。 |
-| 被阻止 scheme | 通过（视觉）。状态 08 toast 文案与 README 一致；实现回调/测试缺口见 03-m5。 |
-| 设置恢复 | 通过（入口）。状态 10 Ask/Preview/Source；控件形态与现有设置页不同 → 03-m7。 |
-| 无障碍/触控 | 44×44、hitSlop、tablist/switch/dialog 角色基本到位；sheet 焦点/返回键由 HT-U13 实现。 |
+| 检查项                                 | 结果                                                                                                                                    |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 文件列表 header More                   | 通过。状态 01/09 用 44px spacer（`html-open-modes.html:253/721`），无未绑定 More。                                                      |
+| 文件大小标签                           | 通过。目录行无 size 文案。                                                                                                              |
+| prefbar / Reset to Ask                 | 通过。无 prefbar；状态 10 是唯一恢复入口；所有菜单无 Reset/Ask。                                                                        |
+| missing-asset 占位 / Link blocked 弹层 | 通过。状态 02 的警告是设计内检测提示；状态 08 用 in-frame toast，不是弹层。                                                             |
+| 所有溢出按钮打开同一 sheet             | 通过（Playwright 实测）：状态 02-08 共 7 个 `data-toggle-menu` 全部打开各自的 `data-overflow-sheet`，动作顺序一致、不可用项按状态隐藏。 |
+| 动作顺序                               | 与 8.5/B2/README 一致（Preview、Source、Open with、Save to phone、Copy content、Copy path、Cancel）；与 FB design/test 冲突 → 03-M1。   |
+| 自动弹层两个模式                       | 通过。状态 01 只有 Preview/Source + remember + Cancel。                                                                                 |
+| 长按菜单                               | 通过。状态 09 与溢出同序，无 remember、无 Ask，有一个 Preview（与 03-M2 的实现规则需对齐）。                                            |
+| 相对资源提示                           | 通过。状态 02 列出 `./styles/app.css`、`./assets/hero.png`、`url(../images/bg.png)`，来自演示源码实际引用。                             |
+| 512 KB                                 | 通过。状态 05 Preview `disabled`/`aria-disabled`、固定横幅、源码 `Showing first 512 KB`；caption 明确 511/512 可渲染、513 起截断。      |
+| 读取失败                               | 通过。状态 06 只提供 Retry，sheet 隐藏 Preview/Source/Copy content。                                                                    |
+| 无可用 App                             | 通过。状态 07 隐藏 Open with，保留 Save to phone 提示。                                                                                 |
+| 被阻止 scheme                          | 通过（视觉）。状态 08 toast 文案与 README 一致；实现回调/测试缺口见 03-m5。                                                             |
+| 设置恢复                               | 通过（入口）。状态 10 Ask/Preview/Source；控件形态与现有设置页不同 → 03-m7。                                                            |
+| 无障碍/触控                            | 44×44、hitSlop、tablist/switch/dialog 角色基本到位；sheet 焦点/返回键由 HT-U13 实现。                                                   |
 
 ## Platform check（folder workspace / SSH / remote / iOS / Android）
 
@@ -129,15 +129,15 @@
 
 ## AC → 用例覆盖
 
-| AC | 对应用例 | 结论 |
-|---|---|---|
-| AC1 首次点击弹层 | A1/A2/A3/A8 | A1/A8 具体；原型的两个模式与设计一致。 |
-| AC2 渲染/源码切换 | A2/A3/B1/B8 | 可验证；路由优先级见 03-M3。 |
-| AC3 溢出/长按菜单 | B2/B3/B9/B11 | B2/B9 受 03-M1/03-M2 阻塞。 |
-| AC4 记住/恢复 | A4/A5/A9/A10/A11 | 三处已统一为设置页恢复。 |
-| AC5 相对资源/大文件 | C2/C5/C8/C9 | 检测矩阵/文案见 03-m3/03-m4。 |
-| AC6 外链/安全 | C3/C10/C11/C12 | scheme 策略可行；iframe 见 03-M4；C12/C18 记录式断言见 03-m2。 |
-| AC7 回归 | R1-R8 | R2 受 03-m4 影响；R7 受 03-M3 影响；其余可覆盖。 |
+| AC                  | 对应用例         | 结论                                                           |
+| ------------------- | ---------------- | -------------------------------------------------------------- |
+| AC1 首次点击弹层    | A1/A2/A3/A8      | A1/A8 具体；原型的两个模式与设计一致。                         |
+| AC2 渲染/源码切换   | A2/A3/B1/B8      | 可验证；路由优先级见 03-M3。                                   |
+| AC3 溢出/长按菜单   | B2/B3/B9/B11     | B2/B9 受 03-M1/03-M2 阻塞。                                    |
+| AC4 记住/恢复       | A4/A5/A9/A10/A11 | 三处已统一为设置页恢复。                                       |
+| AC5 相对资源/大文件 | C2/C5/C8/C9      | 检测矩阵/文案见 03-m3/03-m4。                                  |
+| AC6 外链/安全       | C3/C10/C11/C12   | scheme 策略可行；iframe 见 03-M4；C12/C18 记录式断言见 03-m2。 |
+| AC7 回归            | R1-R8            | R2 受 03-m4 影响；R7 受 03-M3 影响；其余可覆盖。               |
 
 ## 需主会话确认
 

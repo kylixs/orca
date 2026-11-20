@@ -5,13 +5,13 @@
 
 ## 1. 层与字段
 
-| 层                    | 字段/来源                                                                                             | 谁写                                     | 生命周期           |
-| --------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------- | ------------------ |
-| 宿主内存快照          | `session.tabs.list` 的 `activeTabId` / group `activeTabId`                                            | activate/close/create 后由宿主运行时维护 | 进程内             |
-| 宿主持久              | `WorkspaceSessionState.activeTabIdByWorktree`、group active、split `activeLeafId`                     | 配对客户端 activate（二期 `fa6143d4fa7`）；桌面窗口 focus 回写 | 重启保留           |
-| 宿主每设备选择        | `mobileClientTabSelectionsByDeviceId[dev]`                                                            | activate 时按 pairedDeviceId 写          | 重启保留（可陈旧） |
-| 客户端本地恢复        | 浏览器本地 `activeTabIdByWorktree` / per-worktree 选择                                                | 用户手势与本地恢复                       | 页面级             |
-| DOM                   | 渲染出的 `data-active`                                                                                | 由 store 派生                            | 页面级             |
+| 层             | 字段/来源                                                                         | 谁写                                                           | 生命周期           |
+| -------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------- | ------------------ |
+| 宿主内存快照   | `session.tabs.list` 的 `activeTabId` / group `activeTabId`                        | activate/close/create 后由宿主运行时维护                       | 进程内             |
+| 宿主持久       | `WorkspaceSessionState.activeTabIdByWorktree`、group active、split `activeLeafId` | 配对客户端 activate（二期 `fa6143d4fa7`）；桌面窗口 focus 回写 | 重启保留           |
+| 宿主每设备选择 | `mobileClientTabSelectionsByDeviceId[dev]`                                        | activate 时按 pairedDeviceId 写                                | 重启保留（可陈旧） |
+| 客户端本地恢复 | 浏览器本地 `activeTabIdByWorktree` / per-worktree 选择                            | 用户手势与本地恢复                                             | 页面级             |
+| DOM            | 渲染出的 `data-active`                                                            | 由 store 派生                                                  | 页面级             |
 
 ## 2. 优先级（裁定后）
 

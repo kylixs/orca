@@ -10,28 +10,28 @@
 
 ## Prior findings（design-review-01 逐条核对）
 
-| 编号 | 级别 | 状态 | 核对结果 |
-|---|---|---|---|
-| 01-B1 | BLOCKER | **未解决（残留）** | 设计 7.1/7.3 已统一动作模型并移除 Orca 浏览器，但 `tasks.md:17` 的 HT-U1 仍新建完整动作构造器（含 Orca 浏览器/其它 App/复制路径），`tasks.md:19-20` 仍把切换放 header、HT-U4 只依赖 HT-U1，`tasks.md:68` 又要求“只追加模式项”。开发计划仍会造出第二套模型 → 见 B1。 |
-| 01-M1 | MAJOR | 部分解决 | 设计 7.2（`design.md:215-224`）抽出受控 `MobileHtmlPreviewFrame`，HT-U6 已建任务；但 `tasks.md:27` 的 HT-V1 只依赖 HT-T3，未依赖 HT-U6，按任务顺序仍会把有内部 state 的 `MobileHtmlPreview` 当 body 复用 → 见 M4。 |
-| 01-M2 | MAJOR | 部分解决 | 设计 7.3（`design.md:226-231`）与原型已移除 Orca 浏览器；但 `test-plan.md:40/42/43/55` 和 `tasks.md:17` 仍保留该动作/用例 → 见 B1、M1。 |
-| 01-M3 | MAJOR | 部分解决 | 设计 7.4（`design.md:235-243`）新增 scheme 白名单并写明 iframe/网络外带边界；但原生端“脚本/meta refresh 不得自动拉起外部 App”缺少可落地的用户激活判定 → 见 M2。 |
-| 01-M4 | MAJOR | 部分解决 | 设计 7.5（`design.md:245-250`）新增 `findRelativeHtmlAssetRefs` 并让原型按检测结果提示；但忽略规则会误报 `mailto:`/`tel:`/协议相对 URL，且遗漏根绝对路径 → 见 M7。 |
-| 01-M5 | MAJOR | 部分解决 | 设计 7.6（`design.md:252-258`）改为“truncated → 源码 + 渲染禁用”，测试 C9/原型状态 05 已补；但自动弹层无法在读取前知道截断，且 3.4 仍保留 `files.readDocPreview` 旧说法 → 见 M3、m2、m7。 |
-| 01-M6 | MAJOR | 已解决 | 7.7（`design.md:260-265`）限定只有 preview/source 可记住，外部动作不写偏好；A9/A10 覆盖。长按文案仍含糊 → 见 m5。 |
-| 01-M7 | MAJOR | 部分解决 | 7.8（`design.md:267-271`）与 HT-T5 把设置落到 Browser 设置页；但 HT-T1（`tasks.md:9`）仍写 `settings/*`，HT-T4（`:57`）与 HT-T5 重叠，存在再建页面的风险 → 见 M4。 |
-| 01-M8 | MAJOR | 部分解决 | 7.9（`design.md:273-281`）决定强制 native 并列出参数链；但 HT-T2（`tasks.md:10`）未列 app 路由文件，HT-U11（`:64`）仍依赖“FB-U7 决策”而 FB 已决定，R5 仍写“或提示” → 见 M4、M1。 |
-| 01-M9 | MAJOR | 部分解决 | 7.10（`design.md:283-288`）规定 line/column 默认 source、terminalArtifact 只读源码；但未定义 route mode、line/column、偏好三者的优先级，且 `MobileFilePreviewBody` 没有 source 标志可区分只读终端产物 → 见 M5。 |
-| 01-M10 | MAJOR | **未解决** | `test-plan.md:54/56` 仍保留“无限循环有超时/限制”“非 UTF-8 报错”，5.3（`:129`）却说已删除；B2/B4/B5/C5 仍断言 Orca 浏览器。M1 仍未解决 → 见 M1。 |
-| 01-M11 | MAJOR | 部分解决 | 7.11（`design.md:290-295`）定义 `availableHtmlOpenActions` 只计 preview/source；但“本期均可用 → 2”与 >512 KB 禁用预览冲突，A8 的“1 个 → 直开”没有可产生 1 的实际输入 → 见 M3。 |
-| 01-m1 | MINOR | 已解决 | 原型手机框内文案已全部为英文；中文仅页面注解（`ui/README.md:5`、原型 779）。 |
-| 01-m2 | MINOR | 已解决 | 分段控件 44px（原型 73）、菜单项 52px（133）、开关 28px 但有 `inset:-8px` 命中区（154）；设计 7.13 也写入 hitSlop。 |
-| 01-m3 | MINOR | 已解决 | 设计 7.13（`design.md:308`）改用 `ActionSheetModal`/`BottomDrawer`；原型为底部 sheet，带 scrim/外部点击关闭。焦点管理落到 HT-U13。 |
-| 01-m4 | MINOR | 已解决 | 键统一为 `orca:mobileHtmlOpenMode`（7.7/原型 769），非法值回退 ask，A10 覆盖。 |
-| 01-m5 | MINOR | 部分解决 | 7.13（`design.md:312`）决定用局部 state、不用 `setParams`；但“返回重置规则”仍未写出，3.3 仍写“保留当前模式（可选）” → 见 m4。 |
-| 01-m6 | MINOR | 已解决 | 原型新增状态 05（512 KB）、06（读取失败）、07（无 App）、08（被阻止 scheme）；但引入若干设计未覆盖的元素 → 见 m1。 |
-| 01-m7 | MINOR | 已解决 | 长按复用同一 ActionSheet，HTML 只追加 Preview/Source，无 remember 开关（原型 09）；动作顺序仍未固定 → 见 m5。 |
-| 01-m8 | MINOR | 已解决（设计） | 7.13/HT-U14 补 500ms、触觉、滚动取消、与 onPress 互斥、`accessibilityState`；但测试计划无对应交互用例 → 见 m5。 |
+| 编号   | 级别    | 状态               | 核对结果                                                                                                                                                                                                                                                            |
+| ------ | ------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 01-B1  | BLOCKER | **未解决（残留）** | 设计 7.1/7.3 已统一动作模型并移除 Orca 浏览器，但 `tasks.md:17` 的 HT-U1 仍新建完整动作构造器（含 Orca 浏览器/其它 App/复制路径），`tasks.md:19-20` 仍把切换放 header、HT-U4 只依赖 HT-U1，`tasks.md:68` 又要求“只追加模式项”。开发计划仍会造出第二套模型 → 见 B1。 |
+| 01-M1  | MAJOR   | 部分解决           | 设计 7.2（`design.md:215-224`）抽出受控 `MobileHtmlPreviewFrame`，HT-U6 已建任务；但 `tasks.md:27` 的 HT-V1 只依赖 HT-T3，未依赖 HT-U6，按任务顺序仍会把有内部 state 的 `MobileHtmlPreview` 当 body 复用 → 见 M4。                                                  |
+| 01-M2  | MAJOR   | 部分解决           | 设计 7.3（`design.md:226-231`）与原型已移除 Orca 浏览器；但 `test-plan.md:40/42/43/55` 和 `tasks.md:17` 仍保留该动作/用例 → 见 B1、M1。                                                                                                                             |
+| 01-M3  | MAJOR   | 部分解决           | 设计 7.4（`design.md:235-243`）新增 scheme 白名单并写明 iframe/网络外带边界；但原生端“脚本/meta refresh 不得自动拉起外部 App”缺少可落地的用户激活判定 → 见 M2。                                                                                                     |
+| 01-M4  | MAJOR   | 部分解决           | 设计 7.5（`design.md:245-250`）新增 `findRelativeHtmlAssetRefs` 并让原型按检测结果提示；但忽略规则会误报 `mailto:`/`tel:`/协议相对 URL，且遗漏根绝对路径 → 见 M7。                                                                                                  |
+| 01-M5  | MAJOR   | 部分解决           | 设计 7.6（`design.md:252-258`）改为“truncated → 源码 + 渲染禁用”，测试 C9/原型状态 05 已补；但自动弹层无法在读取前知道截断，且 3.4 仍保留 `files.readDocPreview` 旧说法 → 见 M3、m2、m7。                                                                           |
+| 01-M6  | MAJOR   | 已解决             | 7.7（`design.md:260-265`）限定只有 preview/source 可记住，外部动作不写偏好；A9/A10 覆盖。长按文案仍含糊 → 见 m5。                                                                                                                                                   |
+| 01-M7  | MAJOR   | 部分解决           | 7.8（`design.md:267-271`）与 HT-T5 把设置落到 Browser 设置页；但 HT-T1（`tasks.md:9`）仍写 `settings/*`，HT-T4（`:57`）与 HT-T5 重叠，存在再建页面的风险 → 见 M4。                                                                                                  |
+| 01-M8  | MAJOR   | 部分解决           | 7.9（`design.md:273-281`）决定强制 native 并列出参数链；但 HT-T2（`tasks.md:10`）未列 app 路由文件，HT-U11（`:64`）仍依赖“FB-U7 决策”而 FB 已决定，R5 仍写“或提示” → 见 M4、M1。                                                                                    |
+| 01-M9  | MAJOR   | 部分解决           | 7.10（`design.md:283-288`）规定 line/column 默认 source、terminalArtifact 只读源码；但未定义 route mode、line/column、偏好三者的优先级，且 `MobileFilePreviewBody` 没有 source 标志可区分只读终端产物 → 见 M5。                                                     |
+| 01-M10 | MAJOR   | **未解决**         | `test-plan.md:54/56` 仍保留“无限循环有超时/限制”“非 UTF-8 报错”，5.3（`:129`）却说已删除；B2/B4/B5/C5 仍断言 Orca 浏览器。M1 仍未解决 → 见 M1。                                                                                                                     |
+| 01-M11 | MAJOR   | 部分解决           | 7.11（`design.md:290-295`）定义 `availableHtmlOpenActions` 只计 preview/source；但“本期均可用 → 2”与 >512 KB 禁用预览冲突，A8 的“1 个 → 直开”没有可产生 1 的实际输入 → 见 M3。                                                                                      |
+| 01-m1  | MINOR   | 已解决             | 原型手机框内文案已全部为英文；中文仅页面注解（`ui/README.md:5`、原型 779）。                                                                                                                                                                                        |
+| 01-m2  | MINOR   | 已解决             | 分段控件 44px（原型 73）、菜单项 52px（133）、开关 28px 但有 `inset:-8px` 命中区（154）；设计 7.13 也写入 hitSlop。                                                                                                                                                 |
+| 01-m3  | MINOR   | 已解决             | 设计 7.13（`design.md:308`）改用 `ActionSheetModal`/`BottomDrawer`；原型为底部 sheet，带 scrim/外部点击关闭。焦点管理落到 HT-U13。                                                                                                                                  |
+| 01-m4  | MINOR   | 已解决             | 键统一为 `orca:mobileHtmlOpenMode`（7.7/原型 769），非法值回退 ask，A10 覆盖。                                                                                                                                                                                      |
+| 01-m5  | MINOR   | 部分解决           | 7.13（`design.md:312`）决定用局部 state、不用 `setParams`；但“返回重置规则”仍未写出，3.3 仍写“保留当前模式（可选）” → 见 m4。                                                                                                                                       |
+| 01-m6  | MINOR   | 已解决             | 原型新增状态 05（512 KB）、06（读取失败）、07（无 App）、08（被阻止 scheme）；但引入若干设计未覆盖的元素 → 见 m1。                                                                                                                                                  |
+| 01-m7  | MINOR   | 已解决             | 长按复用同一 ActionSheet，HTML 只追加 Preview/Source，无 remember 开关（原型 09）；动作顺序仍未固定 → 见 m5。                                                                                                                                                       |
+| 01-m8  | MINOR   | 已解决（设计）     | 7.13/HT-U14 补 500ms、触觉、滚动取消、与 onPress 互斥、`accessibilityState`；但测试计划无对应交互用例 → 见 m5。                                                                                                                                                     |
 
 ---
 
@@ -111,17 +111,17 @@
 
 ## Prototype checklist
 
-| 检查项 | 结果 |
-|---|---|
-| 源码/渲染切换 | 通过。状态 02 中 tab 切换会隐藏/显示 `[data-pane]`，`aria-selected` 同步（浏览器实测）。 |
-| 溢出菜单 | 状态 02/03 存在并可打开；状态 04-08 的 More 只 toast，不打开同一 sheet（m1）。 |
-| 长按菜单与溢出平价 | 状态 09 与状态 03 的动作/分组一致，无 remember 开关；动作顺序未固定（m5）。 |
-| 自动弹层 | 状态 01 存在，写明只计两个模式；但计数无法处理 >512 KB/line（M3）。 |
-| 相对资源提示 | 状态 02 存在，列出 3 个实际引用，符合 7.5；检测边界见 M7。 |
-| >512 KB 禁用态 | 状态 05 的 Preview 为 disabled，源码有截断提示；文案/无障碍断言见 m2。 |
-| 导航拒绝 | 状态 08 展示 `file:` 被阻止；该 “Link blocked” 弹层未进入设计/测试（m1）。 |
-| 无 “Open in Orca browser” | 通过。状态 02/03/09 的菜单均无该动作。 |
-| 无障碍 | 44×44/命中区、tab/switch/dialog 角色基本到位；sheet 的焦点陷阱与返回键需按 HT-U13 实现。 |
+| 检查项                    | 结果                                                                                     |
+| ------------------------- | ---------------------------------------------------------------------------------------- |
+| 源码/渲染切换             | 通过。状态 02 中 tab 切换会隐藏/显示 `[data-pane]`，`aria-selected` 同步（浏览器实测）。 |
+| 溢出菜单                  | 状态 02/03 存在并可打开；状态 04-08 的 More 只 toast，不打开同一 sheet（m1）。           |
+| 长按菜单与溢出平价        | 状态 09 与状态 03 的动作/分组一致，无 remember 开关；动作顺序未固定（m5）。              |
+| 自动弹层                  | 状态 01 存在，写明只计两个模式；但计数无法处理 >512 KB/line（M3）。                      |
+| 相对资源提示              | 状态 02 存在，列出 3 个实际引用，符合 7.5；检测边界见 M7。                               |
+| >512 KB 禁用态            | 状态 05 的 Preview 为 disabled，源码有截断提示；文案/无障碍断言见 m2。                   |
+| 导航拒绝                  | 状态 08 展示 `file:` 被阻止；该 “Link blocked” 弹层未进入设计/测试（m1）。               |
+| 无 “Open in Orca browser” | 通过。状态 02/03/09 的菜单均无该动作。                                                   |
+| 无障碍                    | 44×44/命中区、tab/switch/dialog 角色基本到位；sheet 的焦点陷阱与返回键需按 HT-U13 实现。 |
 
 ## Platform check（folder workspace / SSH / remote）
 
@@ -130,15 +130,15 @@
 
 ## AC → 用例覆盖
 
-| AC | 对应用例 | 结论 |
-|---|---|---|
-| AC1 首次点击弹层 | A1/A2/A3/A8 | A1 文案陈旧，A8 输入不可构造；见 M3 |
-| AC2 渲染/源码切换 | A2/A3/B1/B8 | B8 可验证受控 Frame；路由优先级见 M5 |
-| AC3 溢出/长按菜单 | B2/B3/B9 | B2 仍含 Orca 浏览器；B9 无期望顺序；见 B1/M1/m5 |
-| AC4 记住/恢复 | A4/A5/A9/A10 | 记忆语义已覆盖；“恢复 Ask”入口三处不一致，见 M6 |
-| AC5 相对资源/大文件 | C2/C5/C8/C9 | 检测边界见 M7；512 KB 文案/禁用态见 m2 |
-| AC6 外链/安全 | C1/C3/C10/C11/C12 | C11/C12 不可判定；Android 策略缺失，见 M2 |
-| AC7 回归 | R1-R7 | R5 仍是“可用或提示”，与强制 native 冲突；见 M1/M4 |
+| AC                  | 对应用例          | 结论                                              |
+| ------------------- | ----------------- | ------------------------------------------------- |
+| AC1 首次点击弹层    | A1/A2/A3/A8       | A1 文案陈旧，A8 输入不可构造；见 M3               |
+| AC2 渲染/源码切换   | A2/A3/B1/B8       | B8 可验证受控 Frame；路由优先级见 M5              |
+| AC3 溢出/长按菜单   | B2/B3/B9          | B2 仍含 Orca 浏览器；B9 无期望顺序；见 B1/M1/m5   |
+| AC4 记住/恢复       | A4/A5/A9/A10      | 记忆语义已覆盖；“恢复 Ask”入口三处不一致，见 M6   |
+| AC5 相对资源/大文件 | C2/C5/C8/C9       | 检测边界见 M7；512 KB 文案/禁用态见 m2            |
+| AC6 外链/安全       | C1/C3/C10/C11/C12 | C11/C12 不可判定；Android 策略缺失，见 M2         |
+| AC7 回归            | R1-R7             | R5 仍是“可用或提示”，与强制 native 冲突；见 M1/M4 |
 
 ---
 

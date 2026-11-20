@@ -27,36 +27,36 @@ Findings 统计：BLOCKER 0 / MAJOR 2 / MINOR 14。
 
 ### 2.1 MAJOR
 
-| ID | 结论 | 证据 |
-|---|---|---|
-| M1 Markdown Android 选择 | **已解决** | `design.md:394-398`（8.6）新增 `textSelectionMode`/document 语义；`tasks.md:32` FB-U5；`test-plan.md:41` A5 明确段落/标题/列表/代码可选。 |
-| M2 读失败行状态 | **已解决** | `design.md:413-417`（8.9）定义 `readFailures`、错误码映射、Retry/重连清除；`tasks.md:39` FB-U12；`test-plan.md:49` A13；原型 09 明确“动作后产生”。跨屏写入机制未指定见 m14。 |
-| M3 HTML Frame 落点/顺序 | **已解决** | `design.md:407-411`（8.8）；`tasks.md:38` FB-U11 依赖 HT-U6/HT-V1；`test-plan.md:47` A11；原型 17 标注跨需求。遗留 FB-Q7 文案见 m6。 |
-| M4 Download/Save 语义 | **已解决** | `design.md:359-365`（8.1）删除 Download；`tasks.md:29` FB-U2；`test-plan.md:37` A1、`:73` B18；原型所有 sheet 无 Download 动作（Playwright 检查 `downloadAction: []`）。 |
+| ID                        | 结论         | 证据                                                                                                                                                                                                             |
+| ------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M1 Markdown Android 选择  | **已解决**   | `design.md:394-398`（8.6）新增 `textSelectionMode`/document 语义；`tasks.md:32` FB-U5；`test-plan.md:41` A5 明确段落/标题/列表/代码可选。                                                                        |
+| M2 读失败行状态           | **已解决**   | `design.md:413-417`（8.9）定义 `readFailures`、错误码映射、Retry/重连清除；`tasks.md:39` FB-U12；`test-plan.md:49` A13；原型 09 明确“动作后产生”。跨屏写入机制未指定见 m14。                                     |
+| M3 HTML Frame 落点/顺序   | **已解决**   | `design.md:407-411`（8.8）；`tasks.md:38` FB-U11 依赖 HT-U6/HT-V1；`test-plan.md:47` A11；原型 17 标注跨需求。遗留 FB-Q7 文案见 m6。                                                                             |
+| M4 Download/Save 语义     | **已解决**   | `design.md:359-365`（8.1）删除 Download；`tasks.md:29` FB-U2；`test-plan.md:37` A1、`:73` B18；原型所有 sheet 无 Download 动作（Playwright 检查 `downloadAction: []`）。                                         |
 | M5 终端产物模型/范围/预算 | **部分解决** | 目标字段与 prepare 任务已补（`design.md:284-292`、`:367-373`；`tasks.md:15` FB-T4B、`:21` FB-T10；`test-plan.md:64-68` B9-B13）。但截断态不可达（M1），原型 header Save 错误（M2），Copy path 语义未定义（m4）。 |
-| M6 缓存保留策略 | **已解决** | `design.md:375-379`（8.3）固定 24h/512MB LRU/启动清理/设置页；`test-plan.md:70` B15、`:83` C5；原型 11/12/13/22。LRU/16MB 边界断言缺失见 m3。 |
-| M7 旧主机 5000 上限 | **已解决** | `design.md:381-386`（8.4）、`:302`；`tasks.md:52` FB-S8；`test-plan.md:101` D11；原型 16b。现有 reader 的 totalCount 缺口见 m5。 |
-| M8 懒加载树过滤 | **已解决** | `design.md:385`；`tasks.md:51` FB-S7；`test-plan.md:100` D10；原型 02/02b 覆盖未加载/已加载空目录/祖先保留。 |
-| M9 旧二进制能力探测 | **已解决** | `design.md:388-392`（8.5）；`tasks.md:14` FB-T4A、`:22` FB-T11、`:34` FB-U7；`test-plan.md:84-85` C6/C7、`:115` R6。SAF/`File.contentUri` 探测覆盖见 m13。 |
-| M10 测试旧预期 | **已解决** | D3/D5/A1/A2/B6/R6 已按 7.x 重写（`test-plan.md:37-38`、`:61`、`:93-95`、`:115`）；iOS 必过 `:13`、`:121` R12。精确数组/文案仍有小缺口见 m11。 |
-| M11 SAF 大文件 | **已解决** | `design.md:400-405`（8.7）≤16MB SAF、16-256MB 分享、>256MB 桌面提示；`tasks.md:16` FB-T5、`:13` FB-T4；`test-plan.md:58-60` B3-B5；原型 10/18/20。 |
+| M6 缓存保留策略           | **已解决**   | `design.md:375-379`（8.3）固定 24h/512MB LRU/启动清理/设置页；`test-plan.md:70` B15、`:83` C5；原型 11/12/13/22。LRU/16MB 边界断言缺失见 m3。                                                                    |
+| M7 旧主机 5000 上限       | **已解决**   | `design.md:381-386`（8.4）、`:302`；`tasks.md:52` FB-S8；`test-plan.md:101` D11；原型 16b。现有 reader 的 totalCount 缺口见 m5。                                                                                 |
+| M8 懒加载树过滤           | **已解决**   | `design.md:385`；`tasks.md:51` FB-S7；`test-plan.md:100` D10；原型 02/02b 覆盖未加载/已加载空目录/祖先保留。                                                                                                     |
+| M9 旧二进制能力探测       | **已解决**   | `design.md:388-392`（8.5）；`tasks.md:14` FB-T4A、`:22` FB-T11、`:34` FB-U7；`test-plan.md:84-85` C6/C7、`:115` R6。SAF/`File.contentUri` 探测覆盖见 m13。                                                       |
+| M10 测试旧预期            | **已解决**   | D3/D5/A1/A2/B6/R6 已按 7.x 重写（`test-plan.md:37-38`、`:61`、`:93-95`、`:115`）；iOS 必过 `:13`、`:121` R12。精确数组/文案仍有小缺口见 m11。                                                                    |
+| M11 SAF 大文件            | **已解决**   | `design.md:400-405`（8.7）≤16MB SAF、16-256MB 分享、>256MB 桌面提示；`tasks.md:16` FB-T5、`:13` FB-T4；`test-plan.md:58-60` B3-B5；原型 10/18/20。                                                               |
 
 ### 2.2 MINOR
 
-| ID | 结论 | 说明 |
-|---|---|---|
-| m1 用户流程/备选方案 | **已解决** | `design.md:419-434`（8.10/8.11）。 |
-| m2 搜索结果交互 | **已解决** | 原型 16/16b 结果行已接预览；`…`/长按打开同一 sheet。Playwright 验证：点击结果后 `data-preview-view` 从 hidden 变为可见，行尾按钮打开 `data-file-sheet`。 |
-| m3 结果页/终端 Save | **部分解决** | 结果页已入 8.1/原型 11，但仍无任务/测试（m8）；终端 Save 状态出现新错误（M2）。 |
-| m4 旧任务文字/发布 | **已解决** | `tasks.md:10`、`:22` 已改；T11 覆盖商店构建/OTA。 |
-| m5 搜索框/加载/离线 | **已解决** | 常驻搜索；`tasks.md:49` FB-S5、`:53` FB-S9；`test-plan.md:94` D4。 |
-| m6 Copy content 来源 | **未解决** | `design.md:124` 仍写“复制当前已加载内容”，与 A7/FB-U6 的“按需读取”冲突（m1）。 |
-| m7 长按/点击互斥 | **已解决** | `design.md:421`；`tasks.md:28` FB-U1；`test-plan.md:48` A12、`:120` R11；原型 03 `longFired`。 |
-| m8 单飞/列表进度 | **部分解决** | 单飞已入 8.3/8.10、FB-U9、R10、原型 21；列表侧进度原型仍缺（m9）。 |
-| m9 目录动作一致性 | **已解决** | `design.md:95`、8.10；`test-plan.md:38` A2；原型 01/02/02b 目录仅 Copy path。 |
-| m10 平台副文案/Cancel/PDF | **已解决** | 原型 13b iOS “Save to Files”；Cancel 作为 action；PDF 归 Docs（02b、`matchesChip` `file-actions.html:2117-2124`）。 |
-| m11 旧主机 forbidden | **已解决** | `design.md:384`；`test-plan.md:93` D3；使用 `isMobileMethodUnavailableError`。 |
-| m12 MIME/UTI 表 | **未解决** | design 仍只有一句“统一映射”（m2）。 |
+| ID                        | 结论         | 说明                                                                                                                                                     |
+| ------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| m1 用户流程/备选方案      | **已解决**   | `design.md:419-434`（8.10/8.11）。                                                                                                                       |
+| m2 搜索结果交互           | **已解决**   | 原型 16/16b 结果行已接预览；`…`/长按打开同一 sheet。Playwright 验证：点击结果后 `data-preview-view` 从 hidden 变为可见，行尾按钮打开 `data-file-sheet`。 |
+| m3 结果页/终端 Save       | **部分解决** | 结果页已入 8.1/原型 11，但仍无任务/测试（m8）；终端 Save 状态出现新错误（M2）。                                                                          |
+| m4 旧任务文字/发布        | **已解决**   | `tasks.md:10`、`:22` 已改；T11 覆盖商店构建/OTA。                                                                                                        |
+| m5 搜索框/加载/离线       | **已解决**   | 常驻搜索；`tasks.md:49` FB-S5、`:53` FB-S9；`test-plan.md:94` D4。                                                                                       |
+| m6 Copy content 来源      | **未解决**   | `design.md:124` 仍写“复制当前已加载内容”，与 A7/FB-U6 的“按需读取”冲突（m1）。                                                                           |
+| m7 长按/点击互斥          | **已解决**   | `design.md:421`；`tasks.md:28` FB-U1；`test-plan.md:48` A12、`:120` R11；原型 03 `longFired`。                                                           |
+| m8 单飞/列表进度          | **部分解决** | 单飞已入 8.3/8.10、FB-U9、R10、原型 21；列表侧进度原型仍缺（m9）。                                                                                       |
+| m9 目录动作一致性         | **已解决**   | `design.md:95`、8.10；`test-plan.md:38` A2；原型 01/02/02b 目录仅 Copy path。                                                                            |
+| m10 平台副文案/Cancel/PDF | **已解决**   | 原型 13b iOS “Save to Files”；Cancel 作为 action；PDF 归 Docs（02b、`matchesChip` `file-actions.html:2117-2124`）。                                      |
+| m11 旧主机 forbidden      | **已解决**   | `design.md:384`；`test-plan.md:93` D3；使用 `isMobileMethodUnavailableError`。                                                                           |
+| m12 MIME/UTI 表           | **未解决**   | design 仍只有一句“统一映射”（m2）。                                                                                                                      |
 
 ---
 
@@ -103,13 +103,13 @@ Findings 统计：BLOCKER 0 / MAJOR 2 / MINOR 14。
 
 ## 4. Requirement coverage
 
-| 用户需求 | 覆盖情况 | 结论 |
-|---|---|---|
-| 1. 长按选中复制文字 | 文本/代码/Markdown 有明确选择语义；Markdown Android 已改独立 `textSelectionMode`；HTML 由 HTML Frame 提供 | **覆盖**；A5/A9 需真机证据 |
-| 2. 下载/保存到手机 | 唯一 Save to phone、prepare-only、24h、SAF ≤16MB、>16MB 分享回退、终端产物任务均在设计层成立 | **部分覆盖**：终端文本截断态不可达（M1），终端 header Save 错误（M2） |
-| 3. 用手机 App 打开 | Android ACTION_VIEW/contentUri/flags、iOS 分享/UTI/anchor、旧二进制降级均有设计/任务/测试 | **覆盖**；补 SAF/contentUri 能力 mock（m13） |
-| 4. 搜索/过滤 | 32/5000/20k、totalCount/truncated、懒加载过滤、method_not_found/forbidden 均已定义 | **覆盖**；totalCount reader 需落地（m5） |
-| 5. 不回归现有预览/媒体/终端编辑/OTA | 回归 AC、R1-R12、终端 Save、旧二进制矩阵已列 | **部分覆盖**：终端 Save 态原型冲突（M2），列表侧进度原型缺（m9） |
+| 用户需求                            | 覆盖情况                                                                                                  | 结论                                                                  |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| 1. 长按选中复制文字                 | 文本/代码/Markdown 有明确选择语义；Markdown Android 已改独立 `textSelectionMode`；HTML 由 HTML Frame 提供 | **覆盖**；A5/A9 需真机证据                                            |
+| 2. 下载/保存到手机                  | 唯一 Save to phone、prepare-only、24h、SAF ≤16MB、>16MB 分享回退、终端产物任务均在设计层成立              | **部分覆盖**：终端文本截断态不可达（M1），终端 header Save 错误（M2） |
+| 3. 用手机 App 打开                  | Android ACTION_VIEW/contentUri/flags、iOS 分享/UTI/anchor、旧二进制降级均有设计/任务/测试                 | **覆盖**；补 SAF/contentUri 能力 mock（m13）                          |
+| 4. 搜索/过滤                        | 32/5000/20k、totalCount/truncated、懒加载过滤、method_not_found/forbidden 均已定义                        | **覆盖**；totalCount reader 需落地（m5）                              |
+| 5. 不回归现有预览/媒体/终端编辑/OTA | 回归 AC、R1-R12、终端 Save、旧二进制矩阵已列                                                              | **部分覆盖**：终端 Save 态原型冲突（M2），列表侧进度原型缺（m9）      |
 
 ---
 
