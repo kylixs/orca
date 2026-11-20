@@ -1,7 +1,4 @@
-import {
-  MIN_WEB_CONTRACT_VERSION,
-  WEB_CONTRACT_VERSION
-} from './web-release.ts'
+import { MIN_WEB_CONTRACT_VERSION, WEB_CONTRACT_VERSION } from './web-release.ts'
 
 /**
  * A frontend released earlier than the API still calls the endpoints it was
@@ -17,7 +14,9 @@ export type WebContractCheck =
   | { ok: true; offered: number }
   | { ok: false; offered: number | null; min: number; max: number }
 
-export function readWebContract(headers: Record<string, string | string[] | undefined>): number | null {
+export function readWebContract(
+  headers: Record<string, string | string[] | undefined>
+): number | null {
   const raw = headers['x-orca-web-contract']
   const value = Array.isArray(raw) ? raw[0] : raw
   if (typeof value !== 'string' || value.trim() === '') {
@@ -31,7 +30,11 @@ export function checkWebContract(offeredHeader: number | null): WebContractCheck
   if (offeredHeader === null) {
     return { ok: true, offered: WEB_CONTRACT_VERSION }
   }
-  if (Number.isNaN(offeredHeader) || offeredHeader < MIN_WEB_CONTRACT_VERSION || offeredHeader > WEB_CONTRACT_VERSION) {
+  if (
+    Number.isNaN(offeredHeader) ||
+    offeredHeader < MIN_WEB_CONTRACT_VERSION ||
+    offeredHeader > WEB_CONTRACT_VERSION
+  ) {
     return {
       ok: false,
       offered: Number.isNaN(offeredHeader) ? null : offeredHeader,

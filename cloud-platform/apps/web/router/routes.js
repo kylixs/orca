@@ -8,30 +8,30 @@
  */
 
 /** 无 hash 的根地址回落到此路由。 */
-export const DEFAULT_ROUTE = "workbench";
+export const DEFAULT_ROUTE = 'workbench'
 
 // 字面段大小写敏感；`:id` 为不透明参数。顺序只影响同长度的字面匹配，当前无冲突。
 const ROUTE_PATTERNS = Object.freeze([
-  { name: "login", segments: ["login"] },
-  { name: "workbench", segments: ["workbench"] },
-  { name: "projects", segments: ["projects"] },
-  { name: "projects", segments: ["projects", ":id"] },
-  { name: "workspace", segments: ["workspace", ":id"] },
-  { name: "hosts", segments: ["hosts"] },
-  { name: "hosts", segments: ["hosts", ":id"] },
-  { name: "relays", segments: ["relays"] },
-  { name: "users", segments: ["users"] },
-  { name: "users", segments: ["users", ":id"] },
-  { name: "audit", segments: ["audit"] },
-  { name: "settings", segments: ["settings"] },
-  { name: "forbidden", segments: ["forbidden"] },
-  { name: "not-found", segments: ["not-found"] },
-]);
+  { name: 'login', segments: ['login'] },
+  { name: 'workbench', segments: ['workbench'] },
+  { name: 'projects', segments: ['projects'] },
+  { name: 'projects', segments: ['projects', ':id'] },
+  { name: 'workspace', segments: ['workspace', ':id'] },
+  { name: 'hosts', segments: ['hosts'] },
+  { name: 'hosts', segments: ['hosts', ':id'] },
+  { name: 'relays', segments: ['relays'] },
+  { name: 'users', segments: ['users'] },
+  { name: 'users', segments: ['users', ':id'] },
+  { name: 'audit', segments: ['audit'] },
+  { name: 'settings', segments: ['settings'] },
+  { name: 'forbidden', segments: ['forbidden'] },
+  { name: 'not-found', segments: ['not-found'] }
+])
 
 /** 去重后的路由名，供导航/文档校验。 */
 export const ROUTE_NAMES = Object.freeze([
-  ...new Set(ROUTE_PATTERNS.map((pattern) => pattern.name)),
-]);
+  ...new Set(ROUTE_PATTERNS.map((pattern) => pattern.name))
+])
 
 /**
  * 解析 `#/...`。未知形态一律返回显式 `not-found`（不回落工作台）。
@@ -40,64 +40,59 @@ export const ROUTE_NAMES = Object.freeze([
  * @returns {Route}
  */
 export function parseHash(hash) {
-  const source = typeof hash === "string" ? hash : "";
-  const fragment = source.startsWith("#") ? source.slice(1) : source;
-  const queryIndex = fragment.indexOf("?");
-  const rawPath = queryIndex === -1 ? fragment : fragment.slice(0, queryIndex);
+  const source = typeof hash === 'string' ? hash : ''
+  const fragment = source.startsWith('#') ? source.slice(1) : source
+  const queryIndex = fragment.indexOf('?')
+  const rawPath = queryIndex === -1 ? fragment : fragment.slice(0, queryIndex)
   const query = normalizeQuery(
-    new URLSearchParams(
-      queryIndex === -1 ? "" : fragment.slice(queryIndex + 1),
-    ),
-  );
-  const notFound = () => ({ name: "not-found", params: {}, query });
+    new URLSearchParams(queryIndex === -1 ? '' : fragment.slice(queryIndex + 1))
+  )
+  const notFound = () => ({ name: 'not-found', params: {}, query })
 
-  if (rawPath === "" || rawPath === "/") {
-    return { name: DEFAULT_ROUTE, params: {}, query };
+  if (rawPath === '' || rawPath === '/') {
+    return { name: DEFAULT_ROUTE, params: {}, query }
   }
-  if (!rawPath.startsWith("/")) {
-    return notFound();
+  if (!rawPath.startsWith('/')) {
+    return notFound()
   }
 
-  const trimmed =
-    rawPath.length > 1 && rawPath.endsWith("/")
-      ? rawPath.slice(0, -1)
-      : rawPath;
-  const segments = trimmed.slice(1).split("/");
+  const trimmed = rawPath.length > 1 && rawPath.endsWith('/') ? rawPath.slice(0, -1) : rawPath
+  const segments = trimmed.slice(1).split('/')
 
   for (const pattern of ROUTE_PATTERNS) {
     if (pattern.segments.length !== segments.length) {
-      continue;
+      continue
     }
     /** @type {RouteParams} */
-    const params = {};
-    let matched = true;
+    const params = {}
+    let matched = true
     for (let index = 0; index < pattern.segments.length; index += 1) {
-      const expected = pattern.segments[index];
-      const actual = segments[index];
-      if (expected.startsWith(":")) {
+      const expected = pattern.segments[index]
+      const actual = segments[index]
+      if (expected.startsWith(':')) {
         // 字面段按原样比较，参数段才解码：百分号编码不能伪装成字面路由。
-        let decoded;
+        let decoded
         try {
-          decoded = decodeURIComponent(actual);
+          decoded = decodeURIComponent(actual)
         } catch {
-          matched = false;
-          break;
+          matched = false
+          break
         }
-        if (decoded === "") {
-          matched = false;
-          break;
+        if (decoded === '') {
+          matched = false
+          break
         }
-        params[expected.slice(1)] = decoded;
+        params[expected.slice(1)] = decoded
       } else if (expected !== actual) {
-        matched = false;
-        break;
+        matched = false
+        break
       }
     }
     if (matched) {
-      return { name: pattern.name, params, query };
+      return { name: pattern.name, params, query }
     }
   }
-  return notFound();
+  return notFound()
 }
 
 /**
@@ -106,65 +101,61 @@ export function parseHash(hash) {
  * @returns {string}
  */
 export function buildHash(route) {
-  const name = route?.name;
-  const query = toQuery(route?.query);
-  if (name === "not-found") {
-    return withQuery("#/not-found", query);
+  const name = route?.name
+  const query = toQuery(route?.query)
+  if (name === 'not-found') {
+    return withQuery('#/not-found', query)
   }
 
-  const params = route?.params ?? {};
-  const patterns = ROUTE_PATTERNS.filter((pattern) => pattern.name === name);
+  const params = route?.params ?? {}
+  const patterns = ROUTE_PATTERNS.filter((pattern) => pattern.name === name)
   if (patterns.length === 0) {
-    throw new RangeError(`未知路由：${String(name)}`);
+    throw new RangeError(`未知路由：${String(name)}`)
   }
 
   const usable = patterns.filter((candidate) =>
-    candidate.segments.every(
-      (segment) => !segment.startsWith(":") || hasParam(params, segment),
-    ),
-  );
+    candidate.segments.every((segment) => !segment.startsWith(':') || hasParam(params, segment))
+  )
   // 参数更具体的变体优先（`projects/:id` 胜过 `projects`）。
   const pattern =
     usable.length === 0
       ? patterns[0]
       : usable.reduce((best, candidate) =>
-          candidate.segments.length > best.segments.length ? candidate : best,
-        );
+          candidate.segments.length > best.segments.length ? candidate : best
+        )
 
   const path = pattern.segments
     .map((segment) =>
-      segment.startsWith(":")
-        ? encodeURIComponent(requireParam(params, segment.slice(1)))
-        : segment,
+      segment.startsWith(':') ? encodeURIComponent(requireParam(params, segment.slice(1))) : segment
     )
-    .join("/");
-  return withQuery(`#/${path}`, query);
+    .join('/')
+  return withQuery(`#/${path}`, query)
 }
 
 /** @param {Record<string, string>} params @param {string} segment */
 function hasParam(params, segment) {
-  const value = params[segment.slice(1)];
-  return typeof value === "string" && value !== "";
+  const value = params[segment.slice(1)]
+  return typeof value === 'string' && value !== ''
 }
 
 /** @param {Record<string, string>} params @param {string} key */
 function requireParam(params, key) {
-  const value = params[key];
-  if (typeof value !== "string" || value === "") {
-    throw new TypeError(`路由缺少参数：${key}`);
+  const value = params[key]
+  if (typeof value !== 'string' || value === '') {
+    throw new TypeError(`路由缺少参数：${key}`)
   }
-  return value;
+  return value
 }
 
 /** @param {URLSearchParams} input @returns {RouteQuery} */
 function normalizeQuery(input) {
-  const query = new URLSearchParams();
+  const query = new URLSearchParams()
   for (const [key, value] of input) {
-    if (value !== "") {
-      query.append(key, value);
+    if (value !== '') {
+      query.append(key, value)
     }
   }
-  return query;
+  return query
 }
 
 /**
@@ -172,33 +163,33 @@ function normalizeQuery(input) {
  * @returns {RouteQuery}
  */
 function toQuery(input) {
-  const query = new URLSearchParams();
+  const query = new URLSearchParams()
   if (input === undefined || input === null) {
-    return query;
+    return query
   }
   if (input instanceof URLSearchParams) {
     for (const [key, value] of input) {
-      if (value !== "") {
-        query.append(key, value);
+      if (value !== '') {
+        query.append(key, value)
       }
     }
-    return query;
+    return query
   }
   const entries =
-    typeof input[Symbol.iterator] === "function"
+    typeof input[Symbol.iterator] === 'function'
       ? /** @type {Iterable<[string, unknown]>} */ (input)
-      : Object.entries(input);
+      : Object.entries(input)
   for (const [key, value] of entries) {
-    if (value === undefined || value === null || value === "") {
-      continue;
+    if (value === undefined || value === null || value === '') {
+      continue
     }
-    query.append(String(key), String(value));
+    query.append(String(key), String(value))
   }
-  return query;
+  return query
 }
 
 /** @param {string} base @param {RouteQuery} query */
 function withQuery(base, query) {
-  const serialized = query.toString();
-  return serialized === "" ? base : `${base}?${serialized}`;
+  const serialized = query.toString()
+  return serialized === '' ? base : `${base}?${serialized}`
 }

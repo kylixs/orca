@@ -7,7 +7,10 @@ import {
   requiresWritePath,
   MULTI_PATH_WRITE_PARAMS
 } from '../../../packages/contract/src/permissions.ts'
-import { verifyCredential, type CredentialPayload } from '../../../packages/contract/src/credential.ts'
+import {
+  verifyCredential,
+  type CredentialPayload
+} from '../../../packages/contract/src/credential.ts'
 
 /** Milliseconds since issue; `iat` alone is whole seconds and cannot settle a same-second revoke+regrant. */
 const issuedAtMs = (payload: CredentialPayload): number => payload.iatMs ?? payload.iat * 1000
@@ -217,7 +220,10 @@ export class PolicyGateway {
   }
 
   async executeRead(payload: CredentialPayload, path: string): Promise<string> {
-    const resolved = await assertInsideRoot(await realpath(this.localPath(payload.projectRoot)), this.localPath(path))
+    const resolved = await assertInsideRoot(
+      await realpath(this.localPath(payload.projectRoot)),
+      this.localPath(path)
+    )
     return readFile(resolved, 'utf8')
   }
 

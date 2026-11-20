@@ -1,4 +1,12 @@
-import { closeSync, openSync, readFileSync, statSync, unlinkSync, utimesSync, writeSync } from 'node:fs'
+import {
+  closeSync,
+  openSync,
+  readFileSync,
+  statSync,
+  unlinkSync,
+  utimesSync,
+  writeSync
+} from 'node:fs'
 
 /**
  * Leader lease for a pair of audit writers (G-04 standby).

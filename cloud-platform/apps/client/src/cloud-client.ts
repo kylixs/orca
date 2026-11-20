@@ -23,7 +23,9 @@ export type ConnectResponse = {
   clientVersionCheck: { min: string; ok: boolean }
 }
 
-export type RpcResult = { ok: true; result: unknown } | { ok: false; code: string; message?: string }
+export type RpcResult =
+  | { ok: true; result: unknown }
+  | { ok: false; code: string; message?: string }
 
 let rpcId = 0
 
@@ -50,7 +52,12 @@ export class CloudClient {
     const res = await fetch(`${this.apiUrl}/v1/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ username, password, devicePubKey: this.deviceKey, deviceName: 'e2e-client' })
+      body: JSON.stringify({
+        username,
+        password,
+        devicePubKey: this.deviceKey,
+        deviceName: 'e2e-client'
+      })
     })
     const body = (await res.json()) as Record<string, unknown>
     if (!res.ok) throw new Error(`login failed: ${(body.error as { code: string }).code}`)
@@ -71,16 +78,24 @@ export class CloudClient {
     this.socket?.on('close', (code: number, data: Buffer) => listener(code, data.toString()))
   }
 
-  async listProjects(): Promise<{ id: string; name: string; hostStatus: string; permissions: string[] }[]> {
+  async listProjects(): Promise<
+    { id: string; name: string; hostStatus: string; permissions: string[] }[]
+  > {
     const res = await this.api('/v1/projects')
-    const body = (await res.json()) as { projects: { id: string; name: string; hostStatus: string; permissions: string[] }[] }
+    const body = (await res.json()) as {
+      projects: { id: string; name: string; hostStatus: string; permissions: string[] }[]
+    }
     return body.projects
   }
 
   async requestConnect(projectId: string): Promise<ConnectResponse> {
     const res = await this.api(`/v1/projects/${projectId}/connect`, {
       method: 'POST',
-      body: JSON.stringify({ deviceId: this.deviceId, devicePubKey: this.deviceKey, clientVersion: '1.5.0' })
+      body: JSON.stringify({
+        deviceId: this.deviceId,
+        devicePubKey: this.deviceKey,
+        clientVersion: '1.5.0'
+      })
     })
     if (!res.ok) {
       const body = (await res.json()) as { error: { code: string } }
@@ -104,10 +119,16 @@ export class CloudClient {
         maxDirectAddrs: options.maxDirectAddrs
       })
       if (!selection.chosen || !selection.route) {
-        const directFailed = selection.probes.filter((p) => !p.ok && p.endpoint.url in connect.endpoints.direct)
+        const directFailed = selection.probes.filter(
+          (p) => !p.ok && p.endpoint.url in connect.endpoints.direct
+        )
         const relayFailed = selection.probes.filter((p) => !p.ok).length === selection.probes.length
         throw Object.assign(new Error('no reachable endpoint'), {
-          code: relayFailed ? 'RELAY_UNREACHABLE' : directFailed ? 'DIRECT_TIMEOUT' : 'CONNECT_TIMEOUT',
+          code: relayFailed
+            ? 'RELAY_UNREACHABLE'
+            : directFailed
+              ? 'DIRECT_TIMEOUT'
+              : 'CONNECT_TIMEOUT',
           probes: selection.probes
         })
       }
@@ -122,7 +143,11 @@ export class CloudClient {
     }
   }
 
-  private upgrade(endpoint: Endpoint, route: 'direct' | 'relay', credential: string): Promise<void> {
+  private upgrade(
+    endpoint: Endpoint,
+    route: 'direct' | 'relay',
+    credential: string
+  ): Promise<void> {
     const url = new URL(endpoint.url)
     // `servername` is a TLS option ws passes through but does not declare.
     const options: WebSocket.ClientOptions & { servername?: string } = {}
@@ -139,7 +164,11 @@ export class CloudClient {
       })
       ws.once('error', (err) => reject(err))
       ws.once('unexpected-response', (_req, res) => {
-        reject(Object.assign(new Error(`upgrade rejected: ${res.statusCode}`), { statusCode: res.statusCode }))
+        reject(
+          Object.assign(new Error(`upgrade rejected: ${res.statusCode}`), {
+            statusCode: res.statusCode
+          })
+        )
       })
     })
   }

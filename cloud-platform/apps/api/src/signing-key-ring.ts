@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto'
-import { generateSigningKey, type PublicKeyEntry, type SigningKey } from '../../../packages/contract/src/credential.ts'
+import {
+  generateSigningKey,
+  type PublicKeyEntry,
+  type SigningKey
+} from '../../../packages/contract/src/credential.ts'
 
 /**
  * Rotating signing keys (design §6.5 C 4429 / AC-31). A rotation must not
@@ -27,7 +31,10 @@ function kid(nowMs: number): string {
   return `kid-${nowMs}-${randomUUID().slice(0, 8)}`
 }
 
-export function createSigningKeyRing(now: () => number, retentionMs = KEY_RETENTION_MS): SigningKeyRing {
+export function createSigningKeyRing(
+  now: () => number,
+  retentionMs = KEY_RETENTION_MS
+): SigningKeyRing {
   let active = generateSigningKey(kid(now()))
   let retiredKeys: RetiredSigningKey[] = []
 

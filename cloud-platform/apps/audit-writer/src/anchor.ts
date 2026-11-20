@@ -1,10 +1,4 @@
-import {
-  createPrivateKey,
-  createPublicKey,
-  generateKeyPairSync,
-  sign,
-  verify
-} from 'node:crypto'
+import { createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify } from 'node:crypto'
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 

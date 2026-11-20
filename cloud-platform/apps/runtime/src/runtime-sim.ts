@@ -78,7 +78,9 @@ type RevocationSnapshot = {
 function parseRevocations(value: unknown): RevocationSnapshot | null {
   if (!value || typeof value !== 'object') return null
   const candidate = value as Record<string, unknown>
-  const entries = (key: 'projects' | 'users' | 'devices'): { id: string; since: number }[] | null => {
+  const entries = (
+    key: 'projects' | 'users' | 'devices'
+  ): { id: string; since: number }[] | null => {
     const raw = candidate[key]
     if (!Array.isArray(raw)) return null
     const parsed: { id: string; since: number }[] = []
@@ -207,7 +209,9 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
       fetch(`${publicUrl}/v1/jwks`, { signal: timeout() }),
       mtlsFetch(control, '/v1/internal/policy', { signal: timeout() }),
       mtlsFetch(control, '/v1/internal/revocations', { signal: timeout() })
-    ]).then((results) => results.map((result) => (result.status === 'fulfilled' ? result.value : null)))
+    ]).then((results) =>
+      results.map((result) => (result.status === 'fulfilled' ? result.value : null))
+    )
 
     if (jwksRes?.ok) {
       try {
@@ -320,7 +324,10 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
       const revokedReason = gateway.revocationReason(payload)
       if (revokedReason) {
         ws.send(
-          JSON.stringify({ id: request.id, error: { code: 'PERMISSION_DENIED', message: '会话已失效。' } })
+          JSON.stringify({
+            id: request.id,
+            error: { code: 'PERMISSION_DENIED', message: '会话已失效。' }
+          })
         )
         ws.close(4403, revokedReason)
         return
@@ -345,7 +352,10 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
         const resolved = filePath('read')
         if (!resolved.ok) {
           ws.send(
-            JSON.stringify({ id: request.id, error: { code: resolved.code, message: resolved.message } })
+            JSON.stringify({
+              id: request.id,
+              error: { code: resolved.code, message: resolved.message }
+            })
           )
           return
         }
@@ -360,7 +370,10 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
         const resolved = filePath('write')
         if (!resolved.ok) {
           ws.send(
-            JSON.stringify({ id: request.id, error: { code: resolved.code, message: resolved.message } })
+            JSON.stringify({
+              id: request.id,
+              error: { code: resolved.code, message: resolved.message }
+            })
           )
           return
         }
@@ -370,10 +383,17 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
         return
       }
       if (request.method === 'worktree.createManaged') {
-        const branch = String(request.params?.branchName ?? request.params?.branchNameOverride ?? '')
+        const branch = String(
+          request.params?.branchName ?? request.params?.branchNameOverride ?? ''
+        )
         const idempotencyKey = String(request.params?.idempotencyKey ?? '')
         if (!branch) {
-          ws.send(JSON.stringify({ id: request.id, error: { code: 'BAD_REQUEST', message: '缺少分支名' } }))
+          ws.send(
+            JSON.stringify({
+              id: request.id,
+              error: { code: 'BAD_REQUEST', message: '缺少分支名' }
+            })
+          )
           return
         }
         // Reject instead of rewriting: silently mapping ".." to "branch" could collide
@@ -382,7 +402,12 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
         // A name of pure separators sanitizes to dashes and would become a real
         // directory with no relation to any branch.
         if (!/[A-Za-z0-9]/.test(cleaned) || cleaned.startsWith('.') || cleaned.includes('..')) {
-          ws.send(JSON.stringify({ id: request.id, error: { code: 'BAD_REQUEST', message: '分支名不合法' } }))
+          ws.send(
+            JSON.stringify({
+              id: request.id,
+              error: { code: 'BAD_REQUEST', message: '分支名不合法' }
+            })
+          )
           return
         }
         const sanitized = cleaned
@@ -391,7 +416,9 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
         const key = `${payload.project}:${payload.deviceId}:${idempotencyKey || sanitized}`
         const existing = worktrees.get(key)
         if (existing) {
-          ws.send(JSON.stringify({ id: request.id, result: { worktreeId: key, path: existing.path } }))
+          ws.send(
+            JSON.stringify({ id: request.id, result: { worktreeId: key, path: existing.path } })
+          )
           return
         }
         // nestWorkspaces=false: the worktree sits directly under workspaceRoot.
@@ -433,7 +460,9 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
         return
       }
       if (request.method === 'sessions.whoami') {
-        ws.send(JSON.stringify({ id: request.id, result: { sub: payload.sub, project: payload.project } }))
+        ws.send(
+          JSON.stringify({ id: request.id, result: { sub: payload.sub, project: payload.project } })
+        )
         return
       }
       ws.send(JSON.stringify({ id: request.id, error: { code: 'NOT_IMPLEMENTED' } }))
@@ -443,7 +472,9 @@ export async function startRuntimeSim(options: RuntimeSimOptions): Promise<Runti
     }
   }
 
-  await new Promise<void>((resolve) => httpServer.listen(options.port, '127.0.0.1', () => resolve()))
+  await new Promise<void>((resolve) =>
+    httpServer.listen(options.port, '127.0.0.1', () => resolve())
+  )
   const address = httpServer.address()
   const port = typeof address === 'object' && address ? address.port : options.port
 
@@ -468,7 +499,9 @@ if (isEntryModule(import.meta.url, process.argv[1])) {
     port: Number(process.env.PORT ?? 16768),
     apiUrl: process.env.API_URL ?? 'http://127.0.0.1:18787',
     publicApiUrl: process.env.PUBLIC_API_URL,
-    controlTimeoutMs: process.env.CONTROL_TIMEOUT_MS ? Number(process.env.CONTROL_TIMEOUT_MS) : undefined,
+    controlTimeoutMs: process.env.CONTROL_TIMEOUT_MS
+      ? Number(process.env.CONTROL_TIMEOUT_MS)
+      : undefined,
     internalToken:
       process.env.INTERNAL_TOKEN ?? process.env.ORCA_CLOUD_INTERNAL_TOKEN ?? 'internal-test-token',
     keyPath: process.env.INTERNAL_TLS_KEY,
